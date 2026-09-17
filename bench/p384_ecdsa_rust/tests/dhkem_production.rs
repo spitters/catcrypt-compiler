@@ -12,6 +12,9 @@
 //! * AWS-LC — a reconstruction from its exported ECDH and HKDF
 //!   (`src/awslc.rs`); its HPKE has no P-384 KEM.  Skipped, with a message,
 //!   when the library is absent (`P384_AWSLC_LIBCRYPTO`).
+//! * Microsoft SymCrypt — a reconstruction from its exported key import,
+//!   ECDH and HKDF (`src/symcrypt.rs`); it has no HPKE.  Skipped, with a
+//!   message, when the module is absent (`P384_SYMCRYPT_LIB`).
 //!
 //! Private keys cross the boundary as RFC 9180 big-endian bytes and enter
 //! the kernels as little-endian limbs, converted explicitly.
@@ -22,7 +25,7 @@ mod common;
 
 use common::{Backend, Rng};
 use p384_ecdsa_rust::dhkem_kdf::{sk_be_from_le, sk_le_from_be};
-use p384_ecdsa_rust::{awslc, bssl, dhkem_ref, ossl_kem, scalar, sec1};
+use p384_ecdsa_rust::{awslc, bssl, dhkem_ref, ossl_kem, scalar, sec1, symcrypt};
 
 const CASES: usize = 16;
 
@@ -162,6 +165,13 @@ fn library_versions() {
     } else {
         println!("SKIP: no AWS-LC libcrypto at {}", awslc::library_path());
     }
+    if symcrypt::available() {
+        let (a, m) = symcrypt::API_VERSION;
+        println!("symcrypt: module accepts API {a}.{m}, from {}", symcrypt::library_path());
+        assert!(symcrypt::accepts_version(a, m));
+    } else {
+        println!("SKIP: no SymCrypt module at {}", symcrypt::library_path());
+    }
 }
 
 type CEncap = Box<dyn Fn(&[u8; 48], &[u8; 97]) -> Option<([u8; 97], [u8; 48])>>;
@@ -216,6 +226,21 @@ fn c_sides() -> Vec<CSide> {
             // (crypto/fipsmodule/ec/oct.c); `EC_KEY_set_private_key` rejects
             // a scalar not below n (`ec_bignum_to_scalar`).
             accepts_hybrid: true,
+            reduces_sk: false,
+        });
+    }
+    if symcrypt::available() {
+        v.push(CSide {
+            name: "symcrypt reconstruction".into(),
+            encap: Box::new(|sk, pk| symcrypt::dhkem_encap(&mut symcrypt::KemState::new(), sk, pk)),
+            decap: Box::new(|enc, sk, pk| symcrypt::dhkem_decap(&mut symcrypt::KemState::new(), enc, sk, pk)),
+            // SymCrypt takes points as X || Y only, so the prefix check is
+            // the reconstruction's (`0x04` only); `SymCryptEcpointSetValue`
+            // rejects a coordinate not below p (lib/ecpoint.c) and the
+            // default validation an off-curve point; `SymCryptEckeySetValue`
+            // rejects a private key not below n (lib/eckey.c:370-378) and
+            // zero (`:440-444`).
+            accepts_hybrid: false,
             reduces_sk: false,
         });
     }
@@ -316,6 +341,53 @@ fn awslc_accepts_the_hybrid_encoding() {
         Some(hybrid_secret(&henc, &valid, &r_be, &pk_r))
     );
     println!("aws-lc: hybrid pkR and hybrid enc accepted; mismatched parity rejected");
+}
+
+/// SymCrypt's documented opt-out, `SYMCRYPT_FLAG_KEY_NO_FIPS |
+/// SYMCRYPT_FLAG_KEY_MINIMAL_VALIDATION`, which the reconstruction does not
+/// use: under it `SymCryptEckeySetValue` accepts a private key `>= n` as
+/// `sk mod n` and a public point off the curve, and
+/// `SymCryptEcDhSecretAgreement` then multiplies the off-curve point.  A
+/// coordinate not below `p` is still rejected.  Under the default flags all
+/// three are rejected.
+#[test]
+fn symcrypt_minimal_validation_opt_out() {
+    if !symcrypt::available() {
+        println!("SKIP: no SymCrypt module at {}", symcrypt::library_path());
+        return;
+    }
+    use symcrypt::{FLAG_ECKEY_ECDH as ECDH, FLAG_KEY_MINIMAL_VALIDATION as MIN, FLAG_KEY_NO_FIPS as NOFIPS};
+    let mut rng = Rng::new(0xc0e3);
+    let (_, _, pk_r) = recipient(&mut rng);
+    let xy = |s: &[u8; 97]| -> [u8; 96] { s[1..].try_into().unwrap() };
+    let peer = symcrypt::import(None, Some(&xy(&pk_r)), ECDH).expect("valid pkR");
+
+    // sk = n + 1 is refused by default and taken as 1 under the opt-out.
+    let mut n1 = scalar::N;
+    n1[0] += 1;
+    let n1_be = sec1::be48(&n1);
+    assert!(symcrypt::import(Some(&n1_be), None, ECDH).is_err());
+    let reduced = symcrypt::import(Some(&n1_be), None, ECDH | NOFIPS | MIN).expect("opt-out accepts n + 1");
+    let mut one = [0u8; 48];
+    one[47] = 1;
+    assert_eq!(symcrypt::ecdh(&reduced, &peer), dhkem_ref::dh(&one, &pk_r), "n + 1 acts as 1");
+    assert!(symcrypt::import(Some(&[0u8; 48]), None, ECDH | NOFIPS | MIN).is_err(), "zero is still refused");
+
+    // An off-curve point is refused by default and accepted under the opt-out.
+    let mut off = pk_r;
+    off[96] ^= 1;
+    assert!(symcrypt::import(None, Some(&xy(&off)), ECDH).is_err());
+    assert!(symcrypt::import(None, Some(&xy(&off)), ECDH | NOFIPS).is_err(), "NO_FIPS alone keeps the curve check");
+    let bad = symcrypt::import(None, Some(&xy(&off)), ECDH | NOFIPS | MIN).expect("opt-out accepts off-curve");
+    let own = symcrypt::import(Some(&one), None, ECDH).unwrap();
+    assert!(symcrypt::ecdh(&own, &bad).is_some(), "ECDH runs on the off-curve point");
+
+    // A coordinate equal to p is refused under both.
+    let (_, y) = sec1::coords(&pk_r);
+    let mut xp = [0u8; 97];
+    sec1::encode(&mut xp, &sec1::P, &y);
+    assert!(symcrypt::import(None, Some(&xy(&xp)), ECDH | NOFIPS | MIN).is_err());
+    println!("symcrypt MINIMAL_VALIDATION: sk = n + 1 taken as 1, off-curve point accepted and multiplied; x = p refused");
 }
 
 #[test]

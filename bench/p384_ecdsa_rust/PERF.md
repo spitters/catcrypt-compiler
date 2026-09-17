@@ -28,7 +28,7 @@ s2n-bignum checkout (see README.md, [§ Paths](README.md#paths)):
 | command | what it runs |
 |---|---|
 | `make bench` | ECDSA and DHKEM, `--features s2n`, CryptOpt and pure-Rust AUCurves field, one process each |
-| `make bench-production` | the same with the OpenSSL, BoringSSL and (when present) AWS-LC columns, `--features s2n,production` |
+| `make bench-production` | the same with the OpenSSL, BoringSSL and (when present) AWS-LC and SymCrypt columns, `--features s2n,production` |
 | `make bench-dhkem` | DHKEM only, three AUCurves field configurations: pure Rust, CryptOpt, s2n-bignum (`P384_S2N_FIELD`) |
 | `make field` | the P-384 field multiply, `fieldbench`, `--features s2n,emit-field` |
 
@@ -42,6 +42,7 @@ s2n-bignum checkout (see README.md, [§ Paths](README.md#paths)):
 | `P384_S2N_FIELD` | AUCurves field from an s2n-bignum archive or an emitted `.s` file (build time) | unset |
 | `P384_OPENSSL36_LIBCRYPTO` | the OpenSSL 3.2+ library of the native DHKEM rows | `/opt/microsoft/mdatp/lib/libcrypto.so.3` |
 | `P384_AWSLC_LIBCRYPTO` | the AWS-LC library; its rows are skipped when absent | `~/Claude/bench_refs/aws-lc-build/crypto/libcrypto.so` |
+| `P384_SYMCRYPT_LIB` | the SymCrypt module; its rows are skipped when absent or not version 103.13 | `~/Claude/bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/libsymcrypt.so.103` |
 | `KAT_RANDOM`, `FIELD_SAMPLES`, `FIELD_INNER` | `fieldbench`: random known-answer pairs, samples, multiplies per sample | 100000, 301, 2000 |
 
 The AUCurves field configuration is fixed at build time, so a benchmark binary
@@ -786,3 +787,81 @@ The Graviola sign column is its whole API (hash, RNG and RFC 6979 nonce
 included) and is not like for like; the verify column is. The two montmul files
 differ only in the frame (red-zone moves or `push`/`pop`), and their rows agree
 within the run-to-run spread.
+
+## Measured, SymCrypt
+
+2026-09-17, the machine of
+[§ Measured, the AUCurves backends](#measured-the-aucurves-backends), rustc
+1.93.0, `--features s2n,production`, core 15, `BENCH_SECTIONS=ecdsa,dhkem
+BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000`, `P384_OPENSSL36_LIBCRYPTO`
+set to the OpenSSL 4.1.0-dev build, `gen/` holding the emitted ECDSA and DHKEM
+sources. Two processes, one after the other: `pure`, the AUCurves field in
+fiat-crypto Rust (`P384_NO_CRYPTOPT=1`), and `enc`, the AUCurves field over the
+encoded s2n-bignum montmul of `bench/s2n_import` (`P384_S2N_FIELD` naming the
+file `make encode-montmul` writes there; README.md,
+[§ DHKEM, Commands](README.md#commands-1), gives the path). **Load average** (1, 5, 15 min): `pure`
+3.42, 3.56, 4.39 before and 2.28, 3.10, 4.12 after; `enc` 2.00, 2.98, 4.06
+before and 3.03, 2.95, 3.91 after. SymCrypt is 103.13.0, the shared module
+described in README.md, [§ SymCrypt](README.md#symcrypt-the-fourth-production-opponent).
+
+Median µs per operation, and ours over SymCrypt in the same process. The
+`s2n` backend does not depend on the AUCurves field; its two columns show the
+drift between the processes.
+
+| op | ours `aucurves`, pure | ours `aucurves`, enc | ours `s2n`, pure / enc | SymCrypt, pure / enc | `aucurves` / SymCrypt, pure / enc | `s2n` / SymCrypt, pure / enc |
+|---|---|---|---|---|---|---|
+| ECDSA sign (SymCrypt: full API, own nonce) | 84.1 | 55.3 | 26.6 / 26.2 | 165.6 / 165.6 | 0.51 / 0.33 | 0.16 / 0.16 |
+| ECDSA verify | 475.9 | 286.8 | 140.1 / 137.9 | 184.8 / 184.7 | **2.58 / 1.55** | 0.76 / 0.75 |
+| DHKEM encap (SymCrypt: reconstruction) | 507.4 | 314.5 | 138.3 / 144.0 | 309.4 / 320.1 | **1.64** / 0.98 | 0.45 / 0.45 |
+| DHKEM decap (SymCrypt: reconstruction) | 429.6 | 266.9 | 114.9 / 118.7 | 160.8 / 165.9 | **2.67 / 1.61** | 0.71 / 0.72 |
+
+Both of our DHKEM rows are the emitted kernels, and the ECDSA rows the
+emitted orchestration.
+
+**Signing.** SymCrypt's module exports no nonce-supplied entry point, so its
+sign figure is `SymCryptEcDsaSign` with its own RNG nonce. The full-API table
+of the same processes times the call again (165.4 µs pure, 165.5 µs enc) and
+one 48-byte `SymCryptRandom` draw alone (0.39 µs, 0.38 µs); the difference,
+165.0 µs and 165.1 µs, estimates SymCrypt's cost with the nonce supplied, and
+the ratios against it are 0.51 and 0.16 (pure) and 0.33 and 0.16 (enc), equal
+to two decimals to those above. The second draw inside the call, the blinding
+factor of the `k` inversion, is in all of these figures on SymCrypt's side.
+
+**Where we lose.**
+
+* **`aucurves` verification and decapsulation, in both field
+  configurations**: 2.58 and 2.67 with the fiat-crypto Rust field, 1.55 and
+  1.61 with the encoded montmul. The pure-Rust rows are not same-tier
+  (Rust field against SymCrypt's MULX assembly). The `enc` rows are same-tier
+  on the field multiply, so the remaining loss is above it: our group law in
+  Rust (complete RCB formulas, projective coordinates) over a field whose
+  square is a multiply in this configuration, against SymCrypt's C Jacobian
+  formulas over a dedicated square. The split was not measured. With the arithmetic replaced by s2n-bignum's (the `s2n` row) the
+  same orchestration is faster than SymCrypt on both, 0.76 and 0.71, so the
+  loss is under the leaves, not in the emitted sequence.
+* **`aucurves` pure-Rust encapsulation**: 1.64. With the encoded montmul the
+  row is 0.98, a tie within the drift between the processes (the `s2n`
+  encap row moved by 4 % between them).
+
+Every other row of ours is faster than SymCrypt: all four `s2n` rows (0.16 to
+0.76) and both `aucurves` sign rows, though the sign rows compare a
+nonce-supplied kernel with SymCrypt's full API.
+
+**SymCrypt against the other opponents in the same processes** (pure): its
+verification is 1.18 times AWS-LC's (184.8 against 156.9 µs) and 0.43 times
+BoringSSL's; its full-API signature is 2.39 times AWS-LC's nonce-supplied one
+(69.4 µs). Its encapsulation takes 1.92 times its decapsulation (309.4 against
+160.8 µs): `Encap` computes `skE*G` at key import, a fixed-window multiply
+with no comb, which is also the bulk of its signing cost. The reasons read
+from the source (a fixed window of width 6 with about 380 doublings for
+`k*G`, a group order handled by a MULX product and a division per multiply, a
+blinded binary-GCD inverse, a heap allocation per call) were not isolated.
+`SymCryptHkdf` took 1.8 µs (pure) and 1.9 µs (enc) for `ExtractAndExpand`,
+the fastest KDF of the processes; ours took 2.4 and 2.6 µs.
+
+**What could not be isolated or verified.** SymCrypt's nonce-supplied
+signing cost: the entry point that takes `k` is not exported by the shared
+module. The attribution of the `enc` verification and decapsulation loss to
+the group law rather than to the square-as-multiply field configuration: no
+run with a dedicated square under AUCurves was made against SymCrypt. The
+CryptOpt configuration was not run against SymCrypt.

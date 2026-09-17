@@ -16,10 +16,10 @@
 #   make bench       # both AUCurves configurations, pinned, round-robin
 #   make field       # the P-384 field multiply: our emitted kernels vs s2n
 #   make test-no-s2n # the two AUCurves backends alone, s2n feature off
-#   make production  # OpenSSL + BoringSSL + AWS-LC interop suite, both field configs
+#   make production  # OpenSSL + BoringSSL + AWS-LC + SymCrypt interop suite, both field configs
 #   make dhkem       # DHKEM(P-384) suites, with and without the C libraries
 #   make bench-dhkem # DHKEM(P-384) benchmark, three AUCurves field configs
-#   make bench-production  # the benchmark with OpenSSL, BoringSSL and AWS-LC columns
+#   make bench-production  # the benchmark with OpenSSL, BoringSSL, AWS-LC and SymCrypt columns
 #   make clean
 
 CARGO ?= cargo --offline

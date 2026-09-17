@@ -105,10 +105,14 @@ emit-field = []
 #   AWS-LC     ../../../bench_refs/aws-lc-build/crypto/libcrypto.so, opened
 #              with dlopen at run time and skipped when absent (override
 #              with P384_AWSLC_LIBCRYPTO)
+#   SymCrypt   ../../../bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/
+#              module/libsymcrypt.so.103, opened with dlopen at run time and
+#              skipped when absent (override with P384_SYMCRYPT_LIB)
 #
-# The three export the same C names, so only BoringSSL is linked by name;
-# `src/ossl.rs` says why the others are loaded instead.  Adds `src/bssl.rs`,
-# `src/ossl.rs`, `src/ossl_kem.rs`, `src/awslc.rs`, `tests/production.rs`,
+# The first three export the same C names, so only BoringSSL is linked by
+# name; `src/ossl.rs` says why the others are loaded instead.  Adds
+# `src/bssl.rs`, `src/ossl.rs`, `src/ossl_kem.rs`, `src/awslc.rs`,
+# `src/symcrypt.rs`, `tests/production.rs`,
 # `tests/dhkem_production.rs` and the production columns of the benchmark.
 production = []
 

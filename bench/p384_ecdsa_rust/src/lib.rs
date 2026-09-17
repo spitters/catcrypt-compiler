@@ -29,7 +29,9 @@
 //! * [`bssl`] and [`ossl`], under `--features production` — BoringSSL and
 //!   OpenSSL 3.0 `libcrypto`, the ECDSA a TLS stack runs, through their C
 //!   APIs; and [`awslc`], AWS-LC's `libcrypto.so` loaded at run time, whose
-//!   P-384 field is s2n-bignum assembly.
+//!   P-384 field is s2n-bignum assembly; and [`symcrypt`], Microsoft
+//!   SymCrypt's shared module loaded at run time, whose P-384 field is its
+//!   own MULX Montgomery assembly.
 //! * [`scalar`] — the mod-`n` field the scalar leaves use.
 //! * [`codec`] — conversions between the byte ABI and the library types.
 //! * [`vectors`] — FIPS 186-4 CAVP P-384/SHA-384 signature-generation
@@ -48,8 +50,8 @@
 //!   `hkdf`.
 //! * [`hpke_rs`] — hpke-rs 0.7.0 over its RustCrypto provider, the native
 //!   HPKE opponent; DHKEM reconstructions over Graviola in [`grav`], over
-//!   BoringSSL in [`bssl`], over AWS-LC in [`awslc`], and over OpenSSL in
-//!   [`ossl_kem`].
+//!   BoringSSL in [`bssl`], over AWS-LC in [`awslc`], over SymCrypt in
+//!   [`symcrypt`], and over OpenSSL in [`ossl_kem`].
 //!
 //! The ABI: scalars and digests are `[u8; 48]`, canonical little-endian
 //! integers in `[0, n)`; points are `[u8; 144]`, projective `X || Y || Z`
@@ -80,8 +82,9 @@ pub mod lincomb_s2n;
 pub mod s2n;
 
 // The production TLS-stack opponents: BoringSSL linked statically, OpenSSL
-// 3.0 loaded from the system `libcrypto.so.3`, AWS-LC loaded from its build
-// tree.  Off by default; see `build.rs` and the module headers.
+// 3.0 loaded from the system `libcrypto.so.3`, AWS-LC and SymCrypt loaded
+// from their build trees.  Off by default; see `build.rs` and the module
+// headers.
 #[cfg(feature = "production")]
 pub mod awslc;
 #[cfg(feature = "production")]
@@ -90,6 +93,8 @@ pub mod bssl;
 pub mod ossl;
 #[cfg(feature = "production")]
 pub mod ossl_kem;
+#[cfg(feature = "production")]
+pub mod symcrypt;
 
 pub use generated::{p384_ecdsa_sign, p384_ecdsa_verify, p384_ecdsa_verify_msm, EMITTED};
 pub use generated::{p384_dhkem_decap, p384_dhkem_encap, DHKEM_DECAP_EMITTED, DHKEM_ENCAP_EMITTED};

@@ -10,9 +10,11 @@ implementation to test the emitted code against, the FIPS 186-4 CAVP
 vectors, the Wycheproof adversarial corpus, equivalence and interop tests
 against RustCrypto and Graviola, and a wall-clock comparison with both.
 Behind `--features production` it adds the C libraries production TLS
-stacks run, OpenSSL 3.0, BoringSSL and AWS-LC, to the interop suite and the
-benchmark ([§ OpenSSL and BoringSSL](#openssl-and-boringssl-the-production-opponents),
-[§ AWS-LC](#aws-lc-the-third-production-opponent)).
+stacks run, OpenSSL 3.0, BoringSSL and AWS-LC, and Microsoft SymCrypt, to
+the interop suite and the benchmark
+([§ OpenSSL and BoringSSL](#openssl-and-boringssl-the-production-opponents),
+[§ AWS-LC](#aws-lc-the-third-production-opponent),
+[§ SymCrypt](#symcrypt-the-fourth-production-opponent)).
 
 The leaves come in three backends, and the same emitted orchestration is
 compiled over each: AUCurves `p384-safe-rust` with the fiat-crypto field,
@@ -58,7 +60,7 @@ not a file of this repository.
 | `src/backend.rs` | catcrypt-compiler | the backend table the tests and the benchmark iterate | none |
 | `src/reference.rs`, `src/dhkem_ref.rs` | catcrypt-compiler | independent reference ECDSA and DHKEM | none |
 | `tests/`, `src/vectors.rs` | catcrypt-compiler | CAVP, Wycheproof, differential, leaf, scalar, s2n-backend, RustCrypto, Graviola, production and DHKEM suites ([§ Commands](#commands)) | none; test evidence |
-| `src/rc.rs`, `src/grav.rs`, `src/ossl.rs`, `src/ossl_kem.rs`, `src/bssl.rs`, `src/awslc.rs`, `src/hpke_rs.rs` | catcrypt-compiler | bridges to the opponents: RustCrypto `p384` 0.13.1, Graviola 0.4.1, OpenSSL, BoringSSL, AWS-LC, hpke-rs 0.7.0 | none |
+| `src/rc.rs`, `src/grav.rs`, `src/ossl.rs`, `src/ossl_kem.rs`, `src/bssl.rs`, `src/awslc.rs`, `src/symcrypt.rs`, `src/hpke_rs.rs` | catcrypt-compiler | bridges to the opponents: RustCrypto `p384` 0.13.1, Graviola 0.4.1, OpenSSL, BoringSSL, AWS-LC, SymCrypt 103.13.0, hpke-rs 0.7.0 | none |
 | `src/bin/bench.rs`, `src/bin/fieldbench.rs` | catcrypt-compiler | the ECDSA and DHKEM benchmark; the field-multiply comparison | none; results in [PERF.md](PERF.md) |
 | [`bench/s2n_import`](../s2n_import/README.md) | catcrypt-compiler | the s2n-bignum importer (`import_s2n.sh`, `translate.awk`), re-emit and encode drivers, the framed known-answer test | none; the importer is untrusted |
 | [`Ascent/Demos/S2nMontmulP384.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384.lean), [`S2nMontsqrP384.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontsqrP384.lean) | catcrypt-compiler, under `CatCrypt/Crypto/SecureCompilation/` | the imported `bignum_montmul_p384` (264 instructions) and `bignum_montsqr_p384` (230) as `List (JInstr 64)`, pinned to s2n-bignum commit `7bd7c8ca` | the block lengths |
@@ -128,6 +130,7 @@ zero `k` drives `r` to zero and is reported the same way.
 | OpenSSL 3.0.13 `libcrypto.so.3` | external, system library | production opponent (`--features production`), never ours |
 | BoringSSL at `956bac6e4db9` | external, `libcrypto.a` | production opponent (`--features production`), never ours |
 | AWS-LC 5.9.0 at `f3798b6fe6a8` | external, `libcrypto.so` of the build tree `~/Claude/bench_refs/aws-lc-build`, P-384 field in s2n-bignum assembly | production opponent, ECDSA and DHKEM reconstruction (`--features production`, skipped when absent), never ours |
+| Microsoft SymCrypt 103.13.0 at `286762b` (MIT) | external, the shared module `libsymcrypt.so.103` of the CMake preset `Linux_AMD64_GCC_Release`, P-384 field in SymCrypt's own MULX assembly | production opponent, ECDSA and DHKEM reconstruction (`--features production`, skipped when absent), never ours |
 | DHKEM orchestration (`gen/p384_dhkem_*.rs`, transcription until they land) | CatCrypt compiler emit | ours |
 | DHKEM leaves (`src/leaves.rs`, `src/leaves_s2n.rs`, `src/dhkem_kdf.rs`, `src/sec1.rs`) | this crate | ours (plumbing; HKDF is `hkdf` 0.12.4 / `hmac` 0.12.1 / `sha2` 0.10.9, external) |
 | reference DHKEM (`src/dhkem_ref.rs`) | this crate over RustCrypto `p384` ECDH and `hkdf` | reference, not a kernel |
@@ -374,8 +377,9 @@ and BoringSSL, the static `libcrypto.a` of the checkout at
 opponents. `src/ossl.rs` and `src/bssl.rs` are the bridges, `tests/production.rs`
 the interop suite; the benchmark gains an OpenSSL and a BoringSSL column. Off
 by default: without the feature the crate builds and tests exactly as before
-(80 tests without `s2n`, 94 with it). AWS-LC, a third production opponent
-behind the same feature, has its own section below.
+(80 tests without `s2n`, 94 with it). AWS-LC and SymCrypt, a third and a
+fourth production opponent behind the same feature, have their own sections
+below.
 
 ### Linkage
 
@@ -489,8 +493,8 @@ digest and a pre-built `ECDSA_SIG`.
 
 ### Interop
 
-`tests/production.rs`, ten of its sixteen tests (the other six are AWS-LC's,
-below), all passing on both leaf backends in both
+`tests/production.rs`, ten of its twenty-three tests (six are AWS-LC's and
+seven SymCrypt's, below), all passing on both leaf backends in both
 AUCurves field configurations (`P384_NO_CRYPTOPT=1` and not). The
 marshalling: our scalars are little-endian limbs, the libraries take
 big-endian 48-byte strings (`rc::be_from_limbs`), a public key is set with
@@ -612,6 +616,178 @@ all six print `SKIP:` and pass.
 No ECDSA divergence was found. The DHKEM reconstruction has one; see
 [§ Divergences of the opponents from RFC 9180](#divergences-of-the-opponents-from-rfc-9180).
 
+## SymCrypt, the fourth production opponent
+
+`--features production` also brings in Microsoft SymCrypt 103.13.0 (commit
+`286762b`, MIT licence), the shared module `libsymcrypt.so.103` built in the
+checkout `~/Claude/bench_refs/symcrypt` with the CMake preset
+`Linux_AMD64_GCC_Release`. `src/symcrypt.rs` is the bridge. As for AWS-LC,
+the module is loaded at run time: `symcrypt::available()` reports whether it
+loaded and accepted the API version, and each SymCrypt test prints a `SKIP:`
+line and passes when it did not. `P384_SYMCRYPT_LIB` overrides the path.
+File:line references in this section are to that checkout.
+
+### Linkage of SymCrypt
+
+SymCrypt's exported names carry the prefix `SymCrypt` and collide with
+neither OpenSSL nor BoringSSL. The module is opened as the other run-time
+libraries are, `dlopen(RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND)` by absolute
+path, with every function taken from the handle with `dlsym`, so the build
+needs no SymCrypt file. The module exports 709 dynamic symbols and has no
+`DT_NEEDED` entry; its undefined references (`malloc`, `getentropy`, the
+`pthread_mutex_*` functions and a few others) resolve against the process.
+Two exports are `const` pointer variables, `SymCryptEcurveParamsNistP384`
+and `SymCryptHmacSha384Algorithm`; the bridge dereferences the address
+`dlsym` returns.
+
+The module's ELF constructor `SymCryptModuleMain`
+(`symcrypt:modules/posix/common/module.c:12-71`) calls `SymCryptInit` and
+`SymCryptRngInit`, and `SymCryptInit` is documented as unnecessary for the
+shared object (`symcrypt:inc/symcrypt.h:505-510`). The bridge calls
+`SymCryptModuleInitEx(103, 13)` (`symcrypt:modules/posix/common/module.c:79-87`),
+the non-fatal form behind `SYMCRYPT_MODULE_INIT_EX()`, and treats a refusal
+as absence. The module exports no version string; `symcrypt_is_103_13`
+shows that it accepts 103.13 and refuses 103.14 and 104.0, so its version is
+103.13.
+
+The build is `CMAKE_BUILD_TYPE=RelWithDebInfo`, which is what the preset named
+`Release` sets (`symcrypt:CMakePresets.json:69-78`; `-O2 -g -DNDEBUG`), GCC
+13.3.0, `SYMCRYPT_USE_ASM=ON`, `SYMCRYPT_FIPS_BUILD=OFF`, stripped, with the
+debug information in `module/generic/.debug/`.
+`SYMCRYPT_MODULE_DO_FIPS_SELFTESTS` is 0
+(`symcrypt:modules/symcrypt_modules_common.h:10-12`), so the constructor
+runs no self-test. Importing a key without `SYMCRYPT_FLAG_KEY_NO_FIPS` runs
+the ECDSA or ECDH self-test once per process
+(`symcrypt:lib/eckey.c:547-566`); the benchmark imports its keys before any
+timed call.
+
+### SymCrypt's P-384 arithmetic
+
+SymCrypt has its own P-384 field multiply in MULX assembly, with a
+Montgomery reduction specialised to the form of `p`. Everything above the
+field is generic C: Jacobian formulas, a fixed-window multiply without a
+comb, and a group order handled by the generic multiply-then-divide table.
+
+| layer | source |
+|---|---|
+| curve object | `SymCryptEcurveAllocate(SymCryptEcurveParamsNistP384, 0)`, once per process in the bridge; `a = -3` selects the type `SHORT_WEIERSTRASS_AM3` (`symcrypt:lib/ecurve.c:325-340`), whose dispatch entry is `symcrypt:lib/ec_dispatch.c:77-92` |
+| field modulus type | built with `SYMCRYPT_FLAG_DATA_PUBLIC` and `100 * 384` expected operations (`symcrypt:lib/ecurve.c:13`, `:284-290`); `SymCryptFdefDecideModulusType` sets the Montgomery and NIST P-384 features (`symcrypt:lib/fdef_mod.c:300-319`), and the first selection entry (`symcrypt:lib/a_dispatch.c:81`) takes the `MULXP384` table when the CPU has BMI2 and ADX (`symcrypt:lib/sc_lib.h:314`) |
+| field multiply, square | `SymCryptFdefModMulMontgomeryMulxP384Asm`, `SymCryptFdefModSquareMontgomeryMulxP384Asm` (`symcrypt:lib/sc_lib.h:2211-2222`, `symcrypt:lib/amd64/fdef_mulx.symcryptasm:1400-1693`): MULX/ADCX/ADOX products interleaved with Montgomery steps whose reduction uses `p = 2^384 - 2^128 - 2^96 + 2^32 - 1` (the comment at `:1452-1497`); the square enters the multiply (`:1687`) |
+| field inverse | `SymCryptFdef369ModInvMontgomery` (`symcrypt:lib/fdef369_mod.c:201-231`) → `SymCryptFdefModInvGeneric` (`symcrypt:lib/fdef_mod.c:986`), a binary extended GCD on the input times a random factor (`:1075-1082`) unless the caller marks it public |
+| group-order modulus type | built with 1 expected operation (`symcrypt:lib/ecurve.c:14`, `:399-405`), below the Montgomery threshold of 10 (`symcrypt:lib/fdef_mod.c:300-303`), so the last, generic selection entry (`symcrypt:lib/a_dispatch.c:101`, table `symcrypt:lib/sc_lib.h:2120-2131`) |
+| scalar multiply mod `n` | `SymCryptFdefModMulGeneric` (`symcrypt:lib/fdef_mod.c:935-957`): `SymCryptFdefRawMul`, which calls `SymCryptFdefRawMulMulx` when the CPU has MULX (`symcrypt:lib/fdef_int.c:781-783`), then `SymCryptFdefRawDivMod` |
+| scalar inverse | `SymCryptFdefModInvGeneric`, the same blinded binary GCD: signing passes the flag 0 for `k` (`symcrypt:lib/ec_dsa.c:311`), so `k` is blinded with a second RNG draw; verification marks `s` public (`:612`) |
+| points | Jacobian C formulas, `SymCryptShortWeierstrassAdd` (`symcrypt:lib/ec_short_weierstrass.c:843`), `SymCryptShortWeierstrassDoubleSpecializedAm3` (`:499`) |
+| `k*G` in signing and key import | `SymCryptEcpointScalarMulFixedWindow` (`symcrypt:lib/ec_mul.c:90-331`): signed fixed window, `w = 6` (`symcrypt:inc/symcrypt_internal.h:2926`, `symcrypt:lib/ecurve.c:446-447`), over the 16 odd multiples of `G` computed once at curve allocation (`symcrypt:lib/ecurve.c:481-499`), selected by masked copy; about 380 doublings per multiply |
+| `k*P` in ECDH | the same routine, with the 16 odd multiples of `P` computed on each call |
+| `u1*G + u2*Q` | `SymCryptEcpointMultiScalarMulWnafWithInterleaving` (`symcrypt:lib/ec_mul.c:339`), interleaved wNAF, `w = 6` |
+| sign | `SymCryptEcDsaSign` (`symcrypt:lib/ec_dsa.c:408-436`) → `SymCryptEcDsaSignEx` with no nonce (`:146-403`): `SymCryptEcpointSetRandom` draws `k` in `[1, n - 1]` and computes `k*G` (`:286-290`, `symcrypt:lib/ec_mul.c:546-570`); one heap allocation of scratch space per call (`symcrypt:lib/ec_dsa.c:233`) |
+| verify | `SymCryptEcDsaVerify` (`symcrypt:lib/ec_dsa.c:440-694`) |
+| ECDH | `SymCryptEcDhSecretAgreement` (`symcrypt:lib/ec_dh.c:12-157`): checks that the peer point is not the identity, multiplies (`:115`), checks the result, returns `x`; the curve check is done at key import |
+| key import | `SymCryptEckeySetValue` (`symcrypt:lib/eckey.c:261-577`): private key below `n` and non-zero (`:370-378`, `:440-444`), coordinates below `p` (`symcrypt:lib/ecpoint.c:645-660`), point on the curve (`symcrypt:lib/eckey.c:209-215`); with a private key and no public key, computes `d*G`; with both and without `SYMCRYPT_FLAG_KEY_NO_FIPS`, recomputes `d*G` and compares (`:486-529`) |
+| RNG | `SymCryptRandom` (`symcrypt:modules/posix/common/rng.c`): AES-CTR DRBG behind a mutex, requests under 128 bytes served from a cache (`:176`) |
+
+**Which routines run, traced.** The module is stripped, but its debug
+file carries the build ID. With that file reachable through a build-ID
+directory, gdb counted the calls of one test,
+`symcrypt_suite::full_api_nonce_is_fresh` (one pairwise key import, two
+signatures, two verifications, and the ECDSA self-test the first import
+triggers):
+
+| routine | calls |
+|---|---|
+| `SymCryptFdefModMulMontgomeryMulxP384Asm` | 17 397 |
+| `SymCryptFdefModSquareMontgomeryMulxP384Asm` | 6 082 |
+| `SymCryptFdefModMulMontgomeryMulx`, `SymCryptFdef369ModMulMontgomery`, `SymCryptFdefModMulMontgomery` | 0 |
+| `SymCryptFdefModMulGeneric` | 22 |
+| `SymCryptFdefRawMulMulx` | 22 |
+| `SymCryptFdefModSquareGeneric` | 0 |
+| `SymCryptEcpointScalarMulFixedWindow` | 4 |
+| `SymCryptEcpointMultiScalarMulWnafWithInterleaving` | 3 |
+| `SymCryptEcpointGenericSetRandom` | 2 |
+| `SymCryptFdefModInvGeneric` | 12 |
+
+So on this CPU the field is the P-384 MULX routine and the group order the
+generic multiply-and-divide over `SymCryptFdefRawMulMulx`, as the source
+predicts. The split of the four fixed-window calls (import, two signatures,
+self-test) is read from the source, not traced. The reproduction, with
+`$S` a scratch directory:
+
+    mkdir -p $S/dbg/.build-id/d7
+    ln -s ~/Claude/bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/generic/.debug/libsymcrypt.so.103.13.0 \
+      $S/dbg/.build-id/d7/fcb5a95c00644e79cc8a8fedc07ce411d835ce.debug
+    # a gdb script: set debug-file-directory $S/dbg; one `break` per routine,
+    # each with `commands silent continue end`; run; info breakpoints
+    gdb -batch -x count.gdb --args target/release/deps/production-<hash> \
+      --exact symcrypt_suite::full_api_nonce_is_fresh --test-threads=1
+
+### Tiering against SymCrypt
+
+| our configuration | against SymCrypt | why |
+|---|---|---|
+| `aucurves`, fiat-crypto field, pure Rust | not same tier, against us | Rust field against a MULX assembly field |
+| `aucurves`, encoded s2n-bignum montmul | same tier on the field multiply | a P-384 Montgomery multiply in assembly on both sides (ours: s2n-bignum's `bignum_montmul_p384`, bytes Lean-proved; theirs: `MulxP384Asm`); our square is a multiply, theirs a dedicated entry; group law Rust against C |
+| `aucurves`, CryptOpt assembly field | same tier on the field | not measured against SymCrypt |
+| `s2n` | not same tier, in our favour above the field | both fields are P-384-specialised MULX assembly; our point double and add are s2n-bignum assembly, SymCrypt's are C |
+
+Our scalar arithmetic mod `n` (fiat-crypto Montgomery, divstep inverse)
+differs from SymCrypt's (a product and a division per multiply, a blinded
+binary GCD) on every row.
+
+### Signing fairness with SymCrypt
+
+`SymCryptEcDsaSignEx`, which accepts a nonce, is defined
+(`symcrypt:lib/ec_dsa.c:146`) and exported by the static
+`libsymcrypt_common.a`, but it is not in the shared module's export list
+(`symcrypt:modules/posix/common/exports.ver`), and `nm -D` does not list it.
+No other exported function takes `k`. Linking the static library instead
+would be a different build of SymCrypt and was not done. So:
+
+| side | input | nonce | what is timed |
+|---|---|---|---|
+| our kernel | digest, `k` | supplied | the arithmetic |
+| SymCrypt, table column | digest | drawn by SymCrypt | `SymCryptEcDsaSign`, `r \|\| s` copied into two arrays |
+| SymCrypt, full-API table | digest | drawn by SymCrypt | the same call, a second arm |
+| SymCrypt, derivation row | — | — | one `SymCryptRandom` call for 48 bytes |
+
+The `vs SC` sign ratio is therefore not like for like. SymCrypt's nonce
+derivation is `SymCryptModSetRandom`: one 48-byte draw, a comparison with
+`n - 1` and, rarely, a retry (`symcrypt:lib/fdef_mod.c:784-803`). The
+derivation row times the draw alone, and "full API minus nonce derivation"
+is an estimate of SymCrypt's nonce-supplied cost. The second 48-byte draw,
+the blinding factor of the `k` inversion, stays in that estimate, because
+`SymCryptEcDsaSignEx` with a supplied `k` draws it too. The signing key is
+imported as the pair `(d, Q)` with the default validation, which recomputes
+`d*G` at import, outside the timed arm. Verification is `SymCryptEcDsaVerify`
+on the digest and a pre-built 96-byte `r || s`.
+
+### Interop with SymCrypt
+
+`tests/production.rs`, seven tests for SymCrypt: checks 1 and 2 of the shared
+suite (the same macro as for the other three libraries), a CAVP test without
+the signing half, and four SymCrypt-only tests. All pass on both leaf
+backends with `P384_NO_CRYPTOPT=1`; with `P384_SYMCRYPT_LIB` naming a
+missing file all seven print `SKIP:` and pass.
+
+| check | SymCrypt |
+|---|---|
+| our kernel's signature verifies under `SymCryptEcDsaVerify` (per backend) | 32/32, 32/32 flipped-bit rejected |
+| `SymCryptEcDsaSign`'s signature verifies under `p384_ecdsa_verify` with `ok = 1` (per backend) | 32/32, 32/32 `s + 1` rejected |
+| nonce-supplied `(r, s)` byte-identical to the kernel's | not possible, no exported entry point |
+| CAVP `(d, Q)` passes the pairwise import check; the published `(m, r, s)` verifies under `Q` | 15/15, 15/15, 15/15 flipped-bit rejected |
+| CAVP: SymCrypt's own signature of `m` verifies under SymCrypt and under the kernel (both backends) | 15/15 |
+| two signatures of one digest differ in `r` and both verify | yes |
+| key import rejects an off-curve point, `x = p`, `y = p`, a mismatched pair, `d = 0`, `d = n` | 6/6 |
+| module version | `SymCryptModuleInitEx` accepts 103.13, refuses 103.14 and 104.0 |
+| RNG arm returns distinct outputs | 16/16 |
+
+No ECDSA divergence was found. The CAVP check covers `d`, `Q`, `m`, `r` and
+`s` on the verification side; `k` and the published signature cannot be
+checked on the signing side. The DHKEM reconstruction rejects every invalid
+input the kernels reject;
+[§ Divergences of the opponents from RFC 9180](#divergences-of-the-opponents-from-rfc-9180)
+records what SymCrypt accepts under its validation opt-out.
+
 ## Paths
 
 The three path dependencies are relative and assume the AUCurves checkout is
@@ -652,6 +828,10 @@ Further paths are read, never written, and are not cargo dependencies:
                     (feature `production`, ECDSA and DHKEM, opened with dlopen
                      at run time and skipped when absent; override with
                      P384_AWSLC_LIBCRYPTO)
+    symcrypt     -> ../../../bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/libsymcrypt.so.103
+                    (feature `production`, ECDSA and DHKEM, opened with dlopen
+                     at run time and skipped when absent or not version
+                     103.13; override with P384_SYMCRYPT_LIB)
 
 `S2N_BIGNUM_DIR` is the single setting for the s2n-bignum checkout: `build.rs`,
 the `Makefile` of this directory (which also derives `S2N_FIELD` from it for
@@ -919,11 +1099,13 @@ built s2n-bignum checkout, or the default of [§ Paths](#paths) to exist. The
     # the Graviola interop suite only
     P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n --test graviola -- --nocapture
 
-    # the OpenSSL, BoringSSL and AWS-LC interop suite
+    # the OpenSSL, BoringSSL, AWS-LC and SymCrypt interop suite
     P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n,production --test production -- --nocapture
 
-    # the same with AWS-LC from another build, or absent (its tests then skip)
-    P384_AWSLC_LIBCRYPTO=/path/to/libcrypto.so P384_NO_CRYPTOPT=1 \
+    # the same with AWS-LC or SymCrypt from another build, or absent (their
+    # tests then skip)
+    P384_AWSLC_LIBCRYPTO=/path/to/libcrypto.so P384_SYMCRYPT_LIB=/path/to/libsymcrypt.so.103 \
+      P384_NO_CRYPTOPT=1 \
       cargo test --offline --release --features s2n,production --test production -- --nocapture
 
     # the s2n backend's own suite: constants, comb, interleaved pass, and the
@@ -941,7 +1123,8 @@ built s2n-bignum checkout, or the default of [§ Paths](#paths) to exist. The
     P384_NO_CRYPTOPT=1 BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 taskset -c 15 \
       cargo run --offline --release --quiet --features s2n --bin bench
 
-    # the same with the OpenSSL, BoringSSL and (when present) AWS-LC columns
+    # the same with the OpenSSL, BoringSSL and (when present) AWS-LC and
+    # SymCrypt columns
     BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 taskset -c 15 \
       cargo run --offline --release --quiet --features s2n,production --bin bench
     P384_NO_CRYPTOPT=1 BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 taskset -c 15 \
@@ -967,12 +1150,15 @@ s2n-backend, 13 scalar-field, the Wycheproof corpus, and 15 DHKEM
 (`tests/dhkem.rs`). Every test that drives a kernel runs once per backend, so
 the counts are test functions, not scored cases. Without the feature it is
 80, the s2n file compiling to nothing. With `--features s2n,production` it is
-116, the sixteen of `tests/production.rs` (ten for OpenSSL and BoringSSL,
-six for AWS-LC) and the six of `tests/dhkem_production.rs` added; those
-files compile to nothing without `production`. The three counts, 80, 94 and
-116, were rerun on 2026-09-16 after AWS-LC was added, with
-`P384_NO_CRYPTOPT=1` only, every test passing; the `s2n,production` count was
-rerun on 2026-09-17 in this repository, 116 passing. Under `--features force-fallback` two fewer, because the two
+124, the twenty-three of `tests/production.rs` (ten for OpenSSL and
+BoringSSL, six for AWS-LC, seven for SymCrypt) and the seven of
+`tests/dhkem_production.rs` added; those files compile to nothing without
+`production`. The three counts, 80, 94 and 124, were rerun on 2026-09-17
+after SymCrypt was added, with `P384_NO_CRYPTOPT=1` only, every test passing
+and no compiler warning from this crate; the `s2n,production` run was
+repeated with `P384_SYMCRYPT_LIB` naming a missing file, the SymCrypt
+tests printing `SKIP:` and passing. Before SymCrypt was added the
+`s2n,production` count was 116. Under `--features force-fallback` two fewer, because the two
 ECDSA `built_against_the_emitted_sources` assertions are compiled out; the
 DHKEM one checks the fallback instead. Before AWS-LC was added, all five
 configurations were run on 2026-09-16 with every test passing, the
@@ -1045,7 +1231,7 @@ report the choice; `tests/dhkem.rs::built_against_the_emitted_sources_when_prese
 checks it against the directory. Both files have been in `gen/` since
 2026-09-17, when `lake exe emit-p384-rust` wrote them;
 `P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n,production`
-passes 116 tests on them. The DHKEM tables of [PERF.md](PERF.md) marked
+passes 116 tests on them, 124 since SymCrypt was added. The DHKEM tables of [PERF.md](PERF.md) marked
 "transcription" predate that, and
 [PERF.md § Emitted kernels](PERF.md#emitted-kernels) holds the run on the
 emitted sources.
@@ -1066,6 +1252,7 @@ cache and the checkouts, not assumed:
 | OpenSSL 3.6.0, `/opt/microsoft/mdatp/lib/libcrypto.so.3` | **yes**: `EVP_PKEY_encapsulate` / `EVP_PKEY_decapsulate` with `operation = "DHKEM"` (the layer under `OSSL_HPKE_encap`) | native API, and the same reconstruction |
 | OpenSSL 4.1.0-dev, `bench_refs/openssl-install/lib/libcrypto.so.4` | **yes**, the same operation | the same two roles, when `P384_OPENSSL36_LIBCRYPTO` names it |
 | AWS-LC 5.9.0 at `f3798b6fe6a8` | its HPKE has KEMs X25519 (`0x0020`) and ML-KEM only (`aws-lc:include/openssl/hpke.h:41-44`); no P-384 KEM | reconstruction from `EC_POINT_*`, `ECDH_compute_key`, `HKDF_extract`/`HKDF_expand`, in the shape of the BoringSSL one (`src/awslc.rs`) |
+| SymCrypt 103.13.0 at `286762b` | no HPKE; ECDH (`SymCryptEcDhSecretAgreement`) and HKDF (`SymCryptHkdf`) are exported | reconstruction from `SymCryptEckeySetValue`, `SymCryptEckeyGetValue`, `SymCryptEcDhSecretAgreement` and `SymCryptHkdf` over `SymCryptHmacSha384Algorithm` (`src/symcrypt.rs`) |
 
 The OpenSSL 3.6.0 library is the copy Microsoft Defender for Endpoint ships,
 used as found and loaded with `dlopen` (override with
@@ -1089,6 +1276,21 @@ AWS-LC's P-384 is described in
 s2n-bignum assembly. `ECDH_compute_key` copies the peer point into a fresh
 `EC_KEY` and runs `EC_KEY_check_fips` on it on every call, and that cost is
 inside its DHKEM rows.
+
+SymCrypt's P-384 is described in
+[§ SymCrypt](#symcrypt-the-fourth-production-opponent). Its key objects take
+points as the 96-byte `X || Y` string, so the reconstruction checks the SEC1
+prefix itself and accepts only `0x04`. `Encap` imports `skE` alone with
+`SYMCRYPT_FLAG_ECKEY_ECDH` and the default validation, which computes
+`skE*G`; `SymCryptEckeyGetValue` returns that point as `enc`. `Decap`
+imports `(skR, pkR)` with `SYMCRYPT_FLAG_KEY_NO_FIPS` added, under which the
+range check on `skR` and the curve check on `pkR` still run but `skR*G` is
+not recomputed (`symcrypt:lib/eckey.c:486-488`), matching the kernel's
+`Decap`, which takes `pkR` as given. The peer point (`pkR` in `Encap`, `enc`
+in `Decap`) is imported with the default validation on every call.
+`SymCryptHkdf` computes `HKDF-Expand(HKDF-Extract(salt, ikm), info, L)` in
+one call, so `ExtractAndExpand` is one call with an empty salt and the
+labelled `ikm` and `info` of RFC 9180 §4; the crate's own KDF is not used.
 
 **Test vectors.** No official DHKEM(P-384) vectors are on this machine. The
 CFRG test-vector file in `~/Claude/libcrux/tests/hpke_test_vectors.json`
@@ -1121,18 +1323,21 @@ the implementations above, bit for bit where the interface admits it.
   `Encap`; private keys `0`, `n`, `n + 1`, `2^384 - 1` give `ok = 0` in both;
   the identity point encodes to `0x04 || 0^96` and a zero DH value.
 
-`tests/dhkem_production.rs`, 6 tests under `--features production`:
-BoringSSL, OpenSSL 3.0, OpenSSL 3.2+ and AWS-LC reconstructions agree bit
-for bit with our `Encap` (16 cases per backend) and interoperate both ways;
+`tests/dhkem_production.rs`, 7 tests under `--features production`:
+BoringSSL, OpenSSL 3.0, OpenSSL 3.2+, AWS-LC and SymCrypt reconstructions
+agree bit for bit with our `Encap` (16 cases per backend) and interoperate
+both ways;
 the OpenSSL 3.2+ native DHKEM
 with `ikme` gives the same `(enc, ss)` as our `Encap` with
 `skE = DeriveKeyPair(ikme)`, and decapsulates ours; the invalid strings above
 (plus prefix `0x07` and `x = p` for `(0, sqrt b)`) and out-of-range keys are
 checked on every C side, each side declaring which of the divergences below
-it has; `awslc_accepts_the_hybrid_encoding` pins AWS-LC's. The AWS-LC cases
-print `SKIP:` and pass when its library is absent. All six pass with the
-OpenSSL 3.2+ side set to Defender's 3.6.0 and, separately, to the 4.1.0-dev
-build.
+it has; `awslc_accepts_the_hybrid_encoding` pins AWS-LC's, and
+`symcrypt_minimal_validation_opt_out` pins what SymCrypt accepts under its
+validation opt-out. The AWS-LC and SymCrypt cases print `SKIP:` and pass
+when their library is absent. The six tests that predate SymCrypt pass with
+the OpenSSL 3.2+ side set to Defender's 3.6.0 and, separately, to the
+4.1.0-dev build; the seven were run on 2026-09-17 with the 3.6.0 default.
 
 ### Divergences of the opponents from RFC 9180
 
@@ -1146,7 +1351,8 @@ and each divergence is pinned by a test rather than skipped:
    coordinates to the Montgomery domain, which reduces them mod `p`, and
    checks only the curve equation. `x = p` with `y = sqrt(b)` is accepted as
    `(0, sqrt b)` (`tests/dhkem.rs::graviola_accepts_a_non_canonical_x_coordinate`).
-   RustCrypto, hpke-rs, BoringSSL, AWS-LC and every OpenSSL reject it.
+   RustCrypto, hpke-rs, BoringSSL, AWS-LC, SymCrypt and every OpenSSL
+   reject it.
 2. **OpenSSL 3.0.13, 3.6.0 and 4.1.0-dev accept the X9.62 hybrid
    encoding**, prefix
    `0x06` or `0x07` whose low bit matches the parity of `y`, both on key
@@ -1170,6 +1376,23 @@ and each divergence is pinned by a test rather than skipped:
    The 4.1.0-dev build behaves the same. AWS-LC rejects all four
    out-of-range keys: `EC_KEY_set_private_key` fails for a value not below
    `n` (`ec_bignum_to_scalar`, `aws-lc:crypto/fipsmodule/ec/ec_key.c:175-197`).
+   The SymCrypt reconstruction rejects all four as well.
+
+**SymCrypt under its default validation has none of the three.** The
+reconstruction accepts only the `0x04` prefix; `SymCryptEckeySetValue`
+rejects a coordinate not below `p`, a point off the curve, and a private key
+that is zero or not below `n`. `SymCryptEckeySetValue`'s own documentation
+states that the private key "is taken modulo the order of the subgroup"
+(`symcrypt:inc/symcrypt.h:8460-8462`); that holds only under the opt-out
+flags `SYMCRYPT_FLAG_KEY_NO_FIPS | SYMCRYPT_FLAG_KEY_MINIMAL_VALIDATION`,
+which skip the range check (`symcrypt:lib/eckey.c:367-407`) and the curve
+check (`:470-481`). `symcrypt_minimal_validation_opt_out` pins the
+behaviour under those flags: a private key `n + 1` is accepted and acts as
+`1`, zero is still refused, a point off the curve is accepted and
+`SymCryptEcDhSecretAgreement` multiplies it, and a coordinate equal to `p`
+is still refused (`symcrypt:lib/ecpoint.c:645-660` runs under every flag).
+`SYMCRYPT_FLAG_KEY_NO_FIPS` alone keeps the curve check. The reconstruction
+does not use `SYMCRYPT_FLAG_KEY_MINIMAL_VALIDATION`.
 
 ### Commands
 
@@ -1186,10 +1409,16 @@ and each divergence is pinned by a test rather than skipped:
     P384_S2N_FIELD=$S2N_BIGNUM_DIR/x86/libs2nbignum.a \
       BENCH_SECTIONS=dhkem BENCH_REPS=15 BENCH_ITERS=300 taskset -c 15 ./target/release/bench
 
-    # the AWS-LC and OpenSSL 4.1.0-dev run recorded in PERF.md
+    # the AWS-LC, SymCrypt and OpenSSL 4.1.0-dev runs recorded in PERF.md
     P384_NO_CRYPTOPT=1 cargo build --offline --release --features s2n,production --bin bench
     P384_OPENSSL36_LIBCRYPTO=$HOME/Claude/bench_refs/openssl-install/lib/libcrypto.so.4 \
       BENCH_SECTIONS=dhkem,ecdsa BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 \
+      taskset -c 15 ./target/release/bench
+    # the SymCrypt run's second process, AUCurves over the encoded montmul
+    P384_S2N_FIELD=$HOME/Claude/catcrypt-compiler/bench/s2n_import/gen/bignum_montmul_p384_encoded.s \
+      cargo build --offline --release --features s2n,production --bin bench
+    P384_OPENSSL36_LIBCRYPTO=$HOME/Claude/bench_refs/openssl-install/lib/libcrypto.so.4 \
+      BENCH_SECTIONS=ecdsa,dhkem BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 \
       taskset -c 15 ./target/release/bench
 
 Rebuild before each run: the field configuration is a build-time choice, so

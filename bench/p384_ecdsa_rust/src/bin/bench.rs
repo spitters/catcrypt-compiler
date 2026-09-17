@@ -61,6 +61,10 @@
 //! OpenSSL's `BN_generate_dsa_nonce` on its own.  AWS-LC (`src/awslc.rs`)
 //! joins as a third column when its shared library is present; it is
 //! driven as BoringSSL is, and its P-384 field is s2n-bignum assembly.
+//! Microsoft SymCrypt (`src/symcrypt.rs`) joins as a fourth when its module
+//! is present.  Its module exports no nonce-supplied signing entry point, so
+//! its `sign` column is the full API, `SymCryptEcDsaSign`, which draws its
+//! own nonce, and is not like for like; its RNG draw is timed on its own.
 //!
 //! Three micro-benchmarks run first, in the same round-robin style, because
 //! the whole-operation rows are the sum of many parts and a change to one of
@@ -84,10 +88,10 @@ use p384_ecdsa_rust::backend::{self, Backend};
 use p384_ecdsa_rust::scalar;
 use p384_ecdsa_rust::{grav, rc};
 #[cfg(feature = "production")]
-use p384_ecdsa_rust::{awslc, bssl, ossl};
+use p384_ecdsa_rust::{awslc, bssl, ossl, symcrypt};
 
-/// The production-library state the benchmark arms borrow.  AWS-LC is
-/// loaded at run time and is `None` when its library is absent.
+/// The production-library state the benchmark arms borrow.  AWS-LC and
+/// SymCrypt are loaded at run time and are `None` when absent.
 #[cfg(feature = "production")]
 struct Prod {
     digest: [u8; 48],
@@ -99,6 +103,21 @@ struct Prod {
     os_vk: ossl::Key,
     os_sig: ossl::Sig,
     aw: Option<(awslc::Key, awslc::Key, awslc::Sig)>,
+    sc: Option<(symcrypt::Key, symcrypt::Key, symcrypt::Sig)>,
+}
+
+/// One line naming the SymCrypt module the benchmark loaded, or its absence.
+#[cfg(feature = "production")]
+fn symcrypt_banner() -> String {
+    if symcrypt::available() {
+        let (a, m) = symcrypt::API_VERSION;
+        format!(
+            "SymCrypt module accepting API {a}.{m} from {}, MULX P-384 Montgomery field",
+            symcrypt::library_path()
+        )
+    } else {
+        format!("absent at {}", symcrypt::library_path())
+    }
 }
 
 /// One line naming the AWS-LC library the benchmark loaded, or its absence.
@@ -451,6 +470,11 @@ fn dhkem_section(reps: usize, iters: usize, field_config: &str) {
             assert_eq!(awslc::dhkem_encap(&mut st, &e_be, &pk_r), Some((enc, ss)), "AWS-LC encap disagrees");
             assert_eq!(awslc::dhkem_decap(&mut st, &enc, &r_be, &pk_r), Some(ss), "AWS-LC decap disagrees");
         }
+        if symcrypt::available() {
+            let mut st = symcrypt::KemState::new();
+            assert_eq!(symcrypt::dhkem_encap(&mut st, &e_be, &pk_r), Some((enc, ss)), "SymCrypt encap disagrees");
+            assert_eq!(symcrypt::dhkem_decap(&mut st, &enc, &r_be, &pk_r), Some(ss), "SymCrypt decap disagrees");
+        }
         (sys, v36)
     };
 
@@ -560,6 +584,17 @@ fn dhkem_section(reps: usize, iters: usize, field_config: &str) {
                 black_box(awslc::dhkem_decap(&mut aw_d.borrow_mut(), black_box(&enc), black_box(&r_be), black_box(&pk_r)));
             });
         }
+        if symcrypt::available() {
+            let sc_tier = "SymCrypt 103.13, MULX P-384 Montgomery asm";
+            let sc_e = std::cell::RefCell::new(symcrypt::KemState::new());
+            let sc_d = std::cell::RefCell::new(symcrypt::KemState::new());
+            row!("encap", "symcrypt", "reconstruction", sc_tier, move || {
+                black_box(symcrypt::dhkem_encap(&mut sc_e.borrow_mut(), black_box(&e_be), black_box(&pk_r)));
+            });
+            row!("decap", "symcrypt", "reconstruction", sc_tier, move || {
+                black_box(symcrypt::dhkem_decap(&mut sc_d.borrow_mut(), black_box(&enc), black_box(&r_be), black_box(&pk_r)));
+            });
+        }
         if let Some(lib) = v36 {
             let (num, _, _) = lib.version();
             let o6 = openssl_label(lib);
@@ -624,6 +659,11 @@ fn dhkem_section(reps: usize, iters: usize, field_config: &str) {
                 black_box(awslc::dhkem_extract_and_expand(black_box(&dh_bytes), black_box(&ctx)));
             });
         }
+        if symcrypt::available() {
+            row!("kdf", "symcrypt", "reconstruction", "SymCryptHkdf, HMAC-SHA384", move || {
+                black_box(symcrypt::dhkem_extract_and_expand(black_box(&dh_bytes), black_box(&ctx)));
+            });
+        }
         if let Some(lib) = v36 {
             row!("kdf", openssl_label(lib), "reconstruction", "EVP_KDF HKDF", move || {
                 black_box(lib.extract_and_expand(black_box(&dh_bytes), black_box(&ctx)));
@@ -686,6 +726,10 @@ fn dhkem_section(reps: usize, iters: usize, field_config: &str) {
     println!("#   DHKEM encap row adds DeriveKeyPair(ikme).");
     println!("# the aws-lc rows run ECDH_compute_key, which also copies and validates the");
     println!("#   peer point in a fresh EC_KEY on every call (EC_KEY_check_fips).");
+    println!("# the symcrypt rows import each key with SymCryptEckeySetValue on every call:");
+    println!("#   encap imports skE alone (which computes skE*G, returned as enc) and pkR;");
+    println!("#   decap imports (skR, pkR) with SYMCRYPT_FLAG_KEY_NO_FIPS, so skR*G is not");
+    println!("#   recomputed, and enc; every public import runs the curve check.");
     println!();
 
     println!("# HKDF share: ExtractAndExpand alone, same process");
@@ -795,6 +839,7 @@ fn main() {
                     None => println!("# openssl 3.2+ = absent at {}", p384_ecdsa_rust::ossl_kem::v36_path()),
                 }
                 println!("# aws-lc = {}", awslc_banner());
+                println!("# symcrypt = {}", symcrypt_banner());
             }
             println!();
             dhkem_section(reps, iters, field_config);
@@ -898,7 +943,19 @@ fn main() {
             assert!(awslc::verify(&vk, &digest, &sig), "AWS-LC rejects the kernel's signature");
             (sk, vk, sig)
         });
-        Prod { digest, kbe, bs_sk, bs_vk, bs_sig, os_sk, os_vk, os_sig, aw }
+        let sc = symcrypt::available().then(|| {
+            let sk = symcrypt::signing_key(&dbe, &qxb, &qyb).expect("SymCrypt refused the key pair");
+            let vk = symcrypt::verifying_key(&qxb, &qyb).expect("SymCrypt rejects d*G");
+            let sig = symcrypt::sig(&rbe, &sbe);
+            assert!(symcrypt::verify(&vk, &digest, &sig), "SymCrypt rejects the kernel's signature");
+            let (r2, s2) = symcrypt::sign(&sk, &digest);
+            assert!(symcrypt::verify(&vk, &digest, &symcrypt::sig(&r2, &s2)), "SymCrypt rejects its own signature");
+            let mut ok = 0u64;
+            (backends[0].verify)(&eb, &sb(&rc::limbs_from_be(&r2)), &sb(&rc::limbs_from_be(&s2)), &qs[0], &mut ok);
+            assert_eq!(ok, 1, "the kernel rejects SymCrypt's signature");
+            (sk, vk, sig)
+        });
+        Prod { digest, kbe, bs_sk, bs_vk, bs_sig, os_sk, os_vk, os_sig, aw, sc }
     };
 
     let config = match p384::FIELD_CONFIG {
@@ -913,8 +970,9 @@ fn main() {
     println!("# p384 ECDSA: emitted orchestration vs RustCrypto p384 0.13.1 and Graviola 0.4.1");
     #[cfg(feature = "production")]
     println!(
-        "# p384 ECDSA: emitted orchestration vs RustCrypto p384 0.13.1, Graviola 0.4.1, OpenSSL, BoringSSL{}",
-        if prod.aw.is_some() { " and AWS-LC" } else { "" }
+        "# p384 ECDSA: emitted orchestration vs RustCrypto p384 0.13.1, Graviola 0.4.1, OpenSSL, BoringSSL{}{}",
+        if prod.aw.is_some() { ", AWS-LC" } else { "" },
+        if prod.sc.is_some() { ", SymCrypt" } else { "" }
     );
     println!("# emitted sources in gen/: {}", p384_ecdsa_rust::EMITTED);
     println!("# {config}");
@@ -931,6 +989,7 @@ fn main() {
             bssl::REVISION
         );
         println!("# aws-lc = {}", awslc_banner());
+        println!("# symcrypt = {}", symcrypt_banner());
     }
     for b in backends {
         println!("# backend {:<9} = {}", b.name, b.arithmetic);
@@ -1050,6 +1109,29 @@ fn main() {
                 awslc::nonce_parts(aw_sk, black_box(&priv_words), black_box(&p.digest), &mut ast);
             }));
         }
+        if let Some((sc_sk, sc_vk, sc_sig)) = &p.sc {
+            // No nonce-supplied entry point: the `sign/symcrypt` arm is the
+            // full API, and `signfull/symcrypt` is the same call, so the
+            // full-API table has a figure from a second arm.
+            names.push("sign/symcrypt".into());
+            arms.push(Arm::new("", move || {
+                black_box(symcrypt::sign(sc_sk, black_box(&p.digest)));
+            }));
+            names.push("verify/symcrypt".into());
+            arms.push(Arm::new("", move || {
+                black_box(symcrypt::verify(sc_vk, black_box(&p.digest), black_box(sc_sig)));
+            }));
+            names.push("signfull/symcrypt".into());
+            arms.push(Arm::new("", move || {
+                black_box(symcrypt::sign(sc_sk, black_box(&p.digest)));
+            }));
+            names.push("symcrypt/random48".into());
+            arms.push(Arm::new("", || {
+                let mut b = [0u8; 48];
+                symcrypt::random48(&mut b);
+                black_box(b);
+            }));
+        }
     }
 
     names.push("graviola/sha384".into());
@@ -1097,6 +1179,9 @@ fn main() {
         if prod.aw.is_some() {
             opponents.push(("aws-lc", "vs AW", "aws-lc"));
         }
+        if prod.sc.is_some() {
+            opponents.push(("symcrypt", "vs SC", "symcrypt"));
+        }
     }
     let mut header = format!("{:<8} {:<10} {:>12}", "op", "backend", "ours ns/op");
     for (col, ratio, _) in &opponents {
@@ -1135,6 +1220,10 @@ fn main() {
         println!("#   the conversion of (r, s) to 48-byte strings.");
         println!("# aws-lc: as boringssl, through the same testing entry point; its field is");
         println!("#   s2n-bignum assembly, the arithmetic of the s2n backend and graviola.");
+        println!("# symcrypt: SymCryptEcDsaVerify on the digest and r || s.  Its sign column");
+        println!("#   is SymCryptEcDsaSign, the full API with its own RNG nonce: the module");
+        println!("#   exports no nonce-supplied entry point, so the vs-SC sign ratio is not");
+        println!("#   like for like (the table below times its RNG draw).");
     }
     println!();
 
@@ -1154,12 +1243,21 @@ fn main() {
         if prod.aw.is_some() {
             cols.push(("aws-lc", at("sign/aws-lc"), at("signfull/aws-lc"), at("aws-lc/nonce-parts")));
         }
-        println!("# production signing, full API (ECDSA_do_sign, the library's own nonce)");
+        if prod.sc.is_some() {
+            // No nonce-supplied arm exists for SymCrypt; NaN prints as "-".
+            cols.push(("symcrypt", f64::NAN, at("signfull/symcrypt"), at("symcrypt/random48")));
+        }
+        println!("# production signing, full API (ECDSA_do_sign / SymCryptEcDsaSign, the library's own nonce)");
         println!();
         let row = |label: &str, f: &dyn Fn(&(&str, f64, f64, f64)) -> f64, prec: usize| {
             let mut line = format!("{label:<44}");
             for c in &cols {
-                line.push_str(&format!(" {:>12.prec$}", f(c)));
+                let v = f(c);
+                if v.is_nan() {
+                    line.push_str(&format!(" {:>12}", "-"));
+                } else {
+                    line.push_str(&format!(" {v:>12.prec$}"));
+                }
             }
             println!("{line}");
         };
@@ -1172,9 +1270,14 @@ fn main() {
         row("ECDSA_do_sign, full API", &|c| c.2, 0);
         row("difference, full minus nonce supplied", &|c| c.2 - c.1, 0);
         row("nonce derivation alone", &|c| c.3, 0);
+        row("full API minus nonce derivation (estimate)", &|c| c.2 - c.3, 0);
         for b in backends {
             let a = at(&format!("sign/{}", b.name));
             row(&format!("{} sign / full API", b.name), &|c| a / c.2, 2);
+        }
+        for b in backends {
+            let a = at(&format!("sign/{}", b.name));
+            row(&format!("{} sign / (full API - nonce derivation)", b.name), &|c| a / (c.2 - c.3), 2);
         }
         println!();
         println!("# boringssl's full sign adds a SHA-512 of the private key and digest and a");
@@ -1182,6 +1285,11 @@ fn main() {
         println!("#   pair rebuilt from SHA512 and BN_rand_range_ex.  openssl's adds");
         println!("#   BN_generate_dsa_nonce, called directly.  aws-lc's ECDSA_do_sign has");
         println!("#   boringssl's structure, and its row is the same rebuilt pair.");
+        println!("#   symcrypt has no nonce-supplied row; its derivation row is one");
+        println!("#   SymCryptRandom call for 48 bytes, the draw SymCryptModSetRandom makes for");
+        println!("#   k.  Its sign also draws a second 48-byte blinding factor for the k");
+        println!("#   inversion, which a nonce-supplied sign would draw as well, so that draw");
+        println!("#   is left in the estimate.");
         println!("#   The difference row subtracts");
         println!("#   two separately timed arms of several hundred microseconds and is");
         println!("#   noisier than the component it would measure.  The ratios against the");
