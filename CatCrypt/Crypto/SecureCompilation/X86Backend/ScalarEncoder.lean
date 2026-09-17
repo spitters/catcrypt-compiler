@@ -700,10 +700,16 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       else if sw = 16 then enc0FRR 0xbf dn sn
       else if sw = 32 then encAluRRrev 0x63 dn sn
       else []
-  -- LEA = 8D /r with the SIB escape; no memory is touched.
+  -- LEA = 8D /r; no memory is touched. At scale 0 the index contributes nothing
+  -- to the address, and the arm emits the index-free `[base + disp]` form (the
+  -- `memTail` tail `encMemMov` shares with `MOV`), which is the form `gas` and
+  -- `LprogBytes`' `LEA` arm produce for `leaq off(%base), %dst`. A nonzero scale
+  -- takes the SIB-escape form `encLeaSib`.
   | .lea d base idx scale off =>
-      encLeaSib (gpNum (regOf alloc d)) (gpNum (regOf alloc base))
-        (gpNum (regOf alloc idx)) scale off
+      if scale = 0 then encMemMov 0x8d (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off
+      else
+        encLeaSib (gpNum (regOf alloc d)) (gpNum (regOf alloc base))
+          (gpNum (regOf alloc idx)) scale off
   | .or_ d s =>
       match s with
       | .reg r => encAluRR 0x09 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))

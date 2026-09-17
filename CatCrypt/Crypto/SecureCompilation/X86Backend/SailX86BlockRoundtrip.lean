@@ -31,6 +31,9 @@ instruction, with nothing left over.
 * `ADCX`/`ADOX` (`66`/`F3 0F38 F6`),
 * `MULX` in both the register and the memory-source form,
 * `loadMem`/`storeMem` (`8B`/`89` against `[base + disp]`),
+* the index-free `LEA` (`8D` against `[base + disp]`), written
+  `lea dst base base 0 off`: at scale `0` the index contributes nothing to the
+  address, and the decoder returns the base in the index position,
 
 under the side conditions the encoding needs: an immediate fits the width its
 opcode carries, and a displacement fits a signed 32-bit value (the encoder
@@ -40,6 +43,7 @@ same set, in the form `roundtrip_block` places as a hypothesis on each
 instruction of a block.
 
 Outside the covered set: `setc`, `test`, `loadMemIdx`, `storeMemIdx`, `loadSym`,
+the indexed `lea` (nonzero scale, the SIB form `encLeaSib`),
 the register-count shift forms, and the immediate-source arms of `cmov`/`adcx`/
 `adox`/`mulx`/`storeMem`, for which the encoder substitutes a `0` operand rather
 than encoding the instruction it was given. `test`'s opcodes (`85 /r` and
@@ -201,7 +205,14 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
                     some (.storeMem (regName (rexB r * 8 + bLow)) off
                             (.reg (regName (rexR r * 8 + rf))), rest2)
                 | none => none
-            else if modField modrm ≠ 3 then none
+            else if modField modrm ≠ 3 then
+              if op.toNat = 0x8d then
+                match decodeMemTail (modrm :: rest1) with
+                | some (rf, bLow, off, rest2) =>
+                    let b := regName (rexB r * 8 + bLow)
+                    some (.lea (regName (rexR r * 8 + rf)) b b 0 off, rest2)
+                | none => none
+              else none
             else if op.toNat = 0x81 then
               match rest1 with
               | j0 :: j1 :: j2 :: j3 :: rest2 =>
@@ -403,6 +414,7 @@ def decodableJ : JInstr 64 → Bool
   | .mulxMem _ _ (.reg _) _ off => dispOk32 off
   | .loadMem _ _ off => dispOk32 off
   | .storeMem _ off (.reg _) => dispOk32 off
+  | .lea _ base idx scale off => scale == 0 && base == idx && dispOk32 off
   | _ => false
 
 /-- `MULX` reads its first source from `%rdx` and does not encode it, so the
@@ -684,6 +696,38 @@ theorem roundtrip_mulxMem32 (alloc : GpAlloc) (dh dl a base : String) (off : Int
     vex2_w, vex2_pp, vex2_vvvv _ (gpNum_lt_16 _), one_sub_one_sub_bit,
     if_neg hmod, hdec, regName_split, renameJ, operandOf, nameOf, hrdx,
     if_true, and_true]
+
+/-- The index-free `LEA off(%base), %dst` (`REX.W 8D /r` against `[base + disp]`,
+    signed 32-bit displacement), written `lea dst base base 0 off`, decodes back to
+    itself. -/
+theorem roundtrip_lea32 (alloc : GpAlloc) (d base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk32 off = true) :
+    decodeJ1 (encodeJInstr alloc (.lea d base base 0 off) ++ rest)
+      = some (renameJ alloc (.lea d base base 0 off), rest) := by
+  obtain ⟨m, ts, hm, hmod⟩ :=
+    memTail_head (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off
+  have hdec :=
+    decodeMemTail_memTail32 (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off rest h
+  rw [hm, List.cons_append] at hdec
+  simp only [encodeJInstr, encMemMov, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, hm,
+    decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x0f) by decide),
+    if_neg (show ¬(0xb8 ≤ (0x8d : Nat) % 2 ^ 8 ∧ (0x8d : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x8b) by decide),
+    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x89) by decide),
+    ne_eq, hmod, not_false_eq_true, if_pos, hdec,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ]
+
+/-- The index-free `LEA off(%base), %dst` (`REX.W 8D /r`) decodes back to itself
+    for a displacement the `disp8` form encodes. -/
+theorem roundtrip_lea (alloc : GpAlloc) (d base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk off = true) :
+    decodeJ1 (encodeJInstr alloc (.lea d base base 0 off) ++ rest)
+      = some (renameJ alloc (.lea d base base 0 off), rest) :=
+  roundtrip_lea32 alloc d base off rest (dispOk32_of_dispOk off h)
 
 /-- `MOV off(%base), %dst` (`REX.W 8B /r`) decodes back to itself for a
     displacement the `disp8` form encodes. -/
@@ -1115,8 +1159,8 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #guard ! blockCovered (.setc "a")
 #guard ! blockCovered (.test "a" (.reg "b"))
 #guard ! blockCovered (.shl "a" (.reg "b"))
--- The flag-only, BMI1/BMI2, extension-move and address-computation forms have no
--- `decodeJ1` arm, so they sit outside the covered set.
+-- The flag-only, BMI1/BMI2 and extension-move forms, and the indexed `lea`, have
+-- no `decodeJ1` arm, so they sit outside the covered set.
 #guard ! blockCovered (.cmp "a" (.reg "b"))
 #guard ! blockCovered (.not_ "a")
 #guard ! blockCovered (.andn "a" "b" "c")
@@ -1129,6 +1173,10 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #guard ! blockCovered (.movzx "a" 8 "b")
 #guard ! blockCovered (.movsx "a" 8 "b")
 #guard ! blockCovered (.lea "a" "b" "c" 8 0)
+#guard ! blockCovered (.lea "a" "b" "b" 1 0)
+#guard ! blockCovered (.lea "a" "b" "c" 0 0)
+#guard blockCovered (.lea "a" "b" "b" 0 32)
+#guard ! blockCovered (.lea "a" "b" "b" 0 (2 ^ 31))
 #guard ! blockCovered (.mov "a" (.imm (2 ^ 64)))
 #guard blockCovered (.loadMem "a" "b" 4096)
 #guard blockCovered (.storeMem "a" (-2 ^ 31) (.reg "b"))
@@ -1244,7 +1292,10 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | sarx d src cnt => simp [decodableJ] at hd
   | movzx d sw src => simp [decodableJ] at hd
   | movsx d sw src => simp [decodableJ] at hd
-  | lea d base idx scale off => simp [decodableJ] at hd
+  | lea d base idx scale off =>
+      simp only [decodableJ, Bool.and_eq_true, beq_iff_eq] at hd
+      obtain ⟨⟨rfl, rfl⟩, hoff⟩ := hd
+      exact roundtrip_lea32 _ _ _ _ _ hoff
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
