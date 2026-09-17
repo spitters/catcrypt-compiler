@@ -1,8 +1,8 @@
---   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 -- Build roots: tracked modules under CatCrypt/ that no other tracked
--- Regenerate with:
 -- module imports. Their transitive closure is the whole library, so a
 -- module outside it is one no target and no import reaches.
+-- Regenerate with:
+--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 CatCrypt.Core.Basic
 CatCrypt.Core.GenHeap
 CatCrypt.Core.GenHeapRandomOracle
@@ -210,7 +210,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
-CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorrect
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
@@ -218,36 +217,20 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
+CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519MulSqrProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Framed
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CombSelectShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CompressShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519InvertShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519Join16Shipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519MaddShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PackSignShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519AddShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519MulShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SqrShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SubShipped
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
@@ -260,7 +243,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
-CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
@@ -448,7 +430,6 @@ CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254Emit
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377ECInv
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Emit
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2Miller
-CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377MillerLoop
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Sub
 CatCrypt.Crypto.SecureCompilation.RelationalFrontCiosSelect
 CatCrypt.Crypto.SecureCompilation.RelationalFrontCurve25519Emit
@@ -722,7 +703,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
-CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
@@ -800,6 +780,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeMontMulBlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShiftReg
 CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CFDecoder
+CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip
 CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86LeanUniversal
 CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Secp256k1LadderCopyFront
@@ -925,11 +906,9 @@ CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
 CatCrypt.Hax.Ascent.AscendHaxDemo
-CatCrypt.Hax.Ascent.Deps
+CatCrypt.Hax.Ascent.Coverage
 CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
-CatCrypt.Hax.Ascent.RuntimeOps
-CatCrypt.Hax.Ascent.Structs
 CatCrypt.Hax.PrimeirBuiltins
 CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
@@ -988,4 +967,3 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
-CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip

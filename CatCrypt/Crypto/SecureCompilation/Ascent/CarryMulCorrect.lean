@@ -567,6 +567,15 @@ theorem acc128 {x0 y0 x1 y1 s0 s1 c c' : Nat} (e0 : s0 + 2 ^ 64 * c = x0 + y0)
     s1 * 2 ^ 64 + s0 = x1 * 2 ^ 64 + y1 * 2 ^ 64 + x0 + y0 := by
   omega
 
+/-- `acc128` with the sum named: the two-word result is `T` when the four summands add up
+    to `T < 2^128`. -/
+theorem acc128S {x0 y0 x1 y1 s0 s1 c c' T : Nat} (e0 : s0 + 2 ^ 64 * c = x0 + y0)
+    (e1 : s1 + 2 ^ 64 * c' = x1 + y1 + c) (hT : x1 * 2 ^ 64 + y1 * 2 ^ 64 + x0 + y0 = T)
+    (hb : T < 2 ^ 128) :
+    s1 * 2 ^ 64 + s0 = T := by
+  subst hT
+  exact acc128 e0 e1 hb
+
 /-- The carry of a 128-bit column below `2^115` at bit `51`: the `bzhi` limb and the
     `shrd` carry recompose the column. -/
 theorem carry51 {hi lo S q c : Nat} (hS : hi * 2 ^ 64 + lo = S)
@@ -604,16 +613,18 @@ theorem col0 {P6 P7 P10 P9 P17 h6 l6 h7 l7 h10 l10 h9 l9 h17 l17 : Nat}
     (e80 : w80 + 2 ^ 64 * c80 = w58 + l17) (e81 : w81 + 2 ^ 64 * c81 = h17 + w59 + c80)
     (e89 : q89 = (w81 * 2 ^ 64 + w80) / 2 ^ 51 % 2 ^ 64) (e91 : c0 = w80 % 2 ^ 51) :
     c0 + 2 ^ 51 * q89 = P17 + P9 + P10 + P7 + P6 ∧ q89 < 2 ^ 64 := by
-  have a34 := acc128 e34 e35 (by linarith)
-  have S34 : w35 * 2 ^ 64 + w34 = P6 + P7 := by linarith
-  have a52 := acc128 e52 e53 (by linarith)
-  have S52 : w53 * 2 ^ 64 + w52 = P6 + P7 + P10 := by linarith
-  have a58 := acc128 e58 e59 (by linarith)
-  have S58 : w59 * 2 ^ 64 + w58 = P6 + P7 + P10 + P9 := by linarith
-  have a80 := acc128 e80 e81 (by linarith)
-  have F0 : w81 * 2 ^ 64 + w80 = P17 + P9 + P10 + P7 + P6 := by linarith
-  have G0 := carry51 F0 e89 e91 (by linarith)
-  exact ⟨G0, by linarith⟩
+  have B := Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b6 b7) b10) b9) b17
+  have S34 := acc128S e34 e35 (T := P6 + P7) (by rw [← m6, ← m7]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add b6 b7) (by norm_num))
+  have S52 := acc128S e52 e53 (T := P6 + P7 + P10) (by rw [← S34, ← m10]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add b6 b7) b10) (by norm_num))
+  have S58 := acc128S e58 e59 (T := P6 + P7 + P10 + P9) (by rw [← S52, ← m9]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b6 b7) b10) b9)
+      (by norm_num))
+  have F0 := acc128S e80 e81 (T := P6 + P7 + P10 + P9 + P17) (by rw [← S58, ← m17]; ac_rfl)
+    (lt_of_lt_of_le B (by norm_num))
+  have G0 := carry51 F0 e89 e91 (lt_of_lt_of_le B (by norm_num))
+  exact ⟨G0.trans (by ac_rfl), e89 ▸ Nat.mod_lt _ (by norm_num)⟩
 
 /-- Column 1 of `carry_mul` (instructions 36–107): the carried limb and carry of
     `a0 b1 + a1 b0 + 19 (a2 b4 + a3 b3 + a4 b2)` plus the carry of column 0. -/
@@ -631,18 +642,23 @@ theorem col1 {P1 P8 P13 P18 P3 h1 l1 h8 l8 h13 l13 h18 l18 h3 l3 : Nat}
     (e99 : w99 + 2 ^ 64 * c99 = w86 + q89) (e100 : w100 + 2 ^ 64 * c100 = w87 + c99)
     (e107 : q107 = (w100 * 2 ^ 64 + w99) / 2 ^ 51 % 2 ^ 64) (e106 : c1 = w99 % 2 ^ 51) :
     c1 + 2 ^ 51 * q107 = P3 + P18 + P13 + P1 + P8 + q89 ∧ q107 < 2 ^ 64 := by
-  have a36 := acc128 e36 e37 (by linarith)
-  have S36 : w37 * 2 ^ 64 + w36 = P1 + P8 := by linarith
-  have a56 := acc128 e56 e57 (by linarith)
-  have S56 : w57 * 2 ^ 64 + w56 = P1 + P8 + P13 := by linarith
-  have a82 := acc128 e82 e83 (by linarith)
-  have S82 : w83 * 2 ^ 64 + w82 = P1 + P8 + P13 + P18 := by linarith
-  have a86 := acc128 e86 e87 (by linarith)
-  have S86 : w87 * 2 ^ 64 + w86 = P1 + P8 + P13 + P18 + P3 := by linarith
-  have a99 := acc128 (y1 := 0) e99 (by simpa using e100) (by linarith)
-  have F1 : w100 * 2 ^ 64 + w99 = P3 + P18 + P13 + P1 + P8 + q89 := by linarith
-  have G1 := carry51 F1 e107 e106 (by linarith)
-  exact ⟨G1, by linarith⟩
+  have B := Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add
+    (Nat.add_lt_add b1 b8) b13) b18) b3) hq
+  have S36 := acc128S e36 e37 (T := P1 + P8) (by rw [← m1, ← m8]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add b1 b8) (by norm_num))
+  have S56 := acc128S e56 e57 (T := P1 + P8 + P13) (by rw [← S36, ← m13]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add b1 b8) b13) (by norm_num))
+  have S82 := acc128S e82 e83 (T := P1 + P8 + P13 + P18) (by rw [← S56, ← m18]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b1 b8) b13) b18)
+      (by norm_num))
+  have S86 := acc128S e86 e87 (T := P1 + P8 + P13 + P18 + P3) (by rw [← S82, ← m3]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b1 b8)
+      b13) b18) b3) (by norm_num))
+  have F1 := acc128S (y1 := 0) e99 (by rw [Nat.add_zero]; exact e100)
+    (T := P1 + P8 + P13 + P18 + P3 + q89) (by rw [← S86, Nat.zero_mul, Nat.add_zero])
+    (lt_of_lt_of_le B (by norm_num))
+  have G1 := carry51 F1 e107 e106 (lt_of_lt_of_le B (by norm_num))
+  exact ⟨G1.trans (by ac_rfl), e107 ▸ Nat.mod_lt _ (by norm_num)⟩
 
 /-- Column 2 of `carry_mul` (instructions 71–132): the carried limb and carry of
     `a0 b2 + a1 b1 + a2 b0 + 19 (a3 b4 + a4 b3)` plus the carry of column 1. -/
@@ -661,18 +677,24 @@ theorem col2 {P16 P4 P23 P21 P24 h16 l16 h4 l4 h23 l23 h21 l21 h24 l24 : Nat}
     (e121 : w121 + 2 ^ 64 * c121 = w119 + q107) (e122 : w122 + 2 ^ 64 * c122 = w120 + c121)
     (e124 : q124 = (w122 * 2 ^ 64 + w121) / 2 ^ 51 % 2 ^ 64) (e132 : c2 = w121 % 2 ^ 51) :
     c2 + 2 ^ 51 * q124 = P24 + P21 + P23 + P16 + P4 + q107 ∧ q124 < 2 ^ 64 := by
-  have a71 := acc128 e71 e72 (by linarith)
-  have S71 : w72 * 2 ^ 64 + w71 = P16 + P4 := by linarith
-  have a113 := acc128 e113 e114 (by linarith)
-  have S113 : w114 * 2 ^ 64 + w113 = P16 + P4 + P23 := by linarith
-  have a115 := acc128 e115 e116 (by linarith)
-  have S115 : w116 * 2 ^ 64 + w115 = P16 + P4 + P23 + P21 := by linarith
-  have a119 := acc128 e119 e120 (by linarith)
-  have S119 : w120 * 2 ^ 64 + w119 = P16 + P4 + P23 + P21 + P24 := by linarith
-  have a121 := acc128 (y1 := 0) e121 (by simpa using e122) (by linarith)
-  have F2 : w122 * 2 ^ 64 + w121 = P24 + P21 + P23 + P16 + P4 + q107 := by linarith
-  have G2 := carry51 F2 e124 e132 (by linarith)
-  exact ⟨G2, by linarith⟩
+  have B := Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add
+    (Nat.add_lt_add b16 b4) b23) b21) b24) hq
+  have S71 := acc128S e71 e72 (T := P16 + P4) (by rw [← m16, ← m4]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add b16 b4) (by norm_num))
+  have S113 := acc128S e113 e114 (T := P16 + P4 + P23) (by rw [← S71, ← m23]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add b16 b4) b23) (by norm_num))
+  have S115 := acc128S e115 e116 (T := P16 + P4 + P23 + P21) (by rw [← S113, ← m21]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b16 b4) b23) b21)
+      (by norm_num))
+  have S119 := acc128S e119 e120 (T := P16 + P4 + P23 + P21 + P24)
+    (by rw [← S115, ← m24]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b16 b4)
+      b23) b21) b24) (by norm_num))
+  have F2 := acc128S (y1 := 0) e121 (by rw [Nat.add_zero]; exact e122)
+    (T := P16 + P4 + P23 + P21 + P24 + q107) (by rw [← S119, Nat.zero_mul, Nat.add_zero])
+    (lt_of_lt_of_le B (by norm_num))
+  have G2 := carry51 F2 e124 e132 (lt_of_lt_of_le B (by norm_num))
+  exact ⟨G2.trans (by ac_rfl), e124 ▸ Nat.mod_lt _ (by norm_num)⟩
 
 /-- Column 3 of `carry_mul` (instructions 50–141): the carried limb and carry of
     `a0 b3 + a1 b2 + a2 b1 + a3 b0 + 19 a4 b4` plus the carry of column 2. -/
@@ -691,18 +713,24 @@ theorem col3 {P12 P11 P14 P25 P5 h12 l12 h11 l11 h14 l14 h25 l25 h5 l5 : Nat}
     (e135 : w135 + 2 ^ 64 * c135 = w133 + q124) (e136 : w136 + 2 ^ 64 * c136 = w134 + c135)
     (e141 : q141 = (w136 * 2 ^ 64 + w135) / 2 ^ 51 % 2 ^ 64) (e140 : c3 = w135 % 2 ^ 51) :
     c3 + 2 ^ 51 * q141 = P5 + P25 + P14 + P11 + P12 + q124 ∧ q141 < 2 ^ 64 := by
-  have a50 := acc128 e50 e51 (by linarith)
-  have S50 : w51 * 2 ^ 64 + w50 = P12 + P11 := by linarith
-  have a68 := acc128 e68 e69 (by linarith)
-  have S68 : w69 * 2 ^ 64 + w68 = P12 + P11 + P14 := by linarith
-  have a129 := acc128 e129 e130 (by linarith)
-  have S129 : w130 * 2 ^ 64 + w129 = P12 + P11 + P14 + P25 := by linarith
-  have a133 := acc128 e133 e134 (by linarith)
-  have S133 : w134 * 2 ^ 64 + w133 = P12 + P11 + P14 + P25 + P5 := by linarith
-  have a135 := acc128 (y1 := 0) e135 (by simpa using e136) (by linarith)
-  have F3 : w136 * 2 ^ 64 + w135 = P5 + P25 + P14 + P11 + P12 + q124 := by linarith
-  have G3 := carry51 F3 e141 e140 (by linarith)
-  exact ⟨G3, by linarith⟩
+  have B := Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add
+    (Nat.add_lt_add b12 b11) b14) b25) b5) hq
+  have S50 := acc128S e50 e51 (T := P12 + P11) (by rw [← m12, ← m11]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add b12 b11) (by norm_num))
+  have S68 := acc128S e68 e69 (T := P12 + P11 + P14) (by rw [← S50, ← m14]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add b12 b11) b14) (by norm_num))
+  have S129 := acc128S e129 e130 (T := P12 + P11 + P14 + P25) (by rw [← S68, ← m25]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b12 b11) b14) b25)
+      (by norm_num))
+  have S133 := acc128S e133 e134 (T := P12 + P11 + P14 + P25 + P5)
+    (by rw [← S129, ← m5]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b12 b11)
+      b14) b25) b5) (by norm_num))
+  have F3 := acc128S (y1 := 0) e135 (by rw [Nat.add_zero]; exact e136)
+    (T := P12 + P11 + P14 + P25 + P5 + q124) (by rw [← S133, Nat.zero_mul, Nat.add_zero])
+    (lt_of_lt_of_le B (by norm_num))
+  have G3 := carry51 F3 e141 e140 (lt_of_lt_of_le B (by norm_num))
+  exact ⟨G3.trans (by ac_rfl), e141 ▸ Nat.mod_lt _ (by norm_num)⟩
 
 /-- Column 4 of `carry_mul` (instructions 95–145): the low word and carry of
     `a0 b4 + a1 b3 + a2 b2 + a3 b1 + a4 b0` plus the carry of column 3; the carry leaves
@@ -723,17 +751,24 @@ theorem col4 {P15 P20 P19 P22 P2 h15 l15 h20 l20 h19 l19 h22 l22 h2 l2 : Nat}
     (e145 : q145 = (w143 * 2 ^ 64 + w142) / 2 ^ 51 % 2 ^ 64) :
     w142 % 2 ^ 51 + 2 ^ 51 * q145 = P2 + P22 + P19 + P20 + P15 + q141 ∧
       19 * q145 + 2 ^ 51 ≤ 2 ^ 64 := by
-  have a95 := acc128 e95 e96 (by linarith)
-  have S95 : w96 * 2 ^ 64 + w95 = P15 + P20 := by linarith
-  have a97 := acc128 e97 e98 (by linarith)
-  have S97 : w98 * 2 ^ 64 + w97 = P15 + P20 + P19 := by linarith
-  have a108 := acc128 e108 e109 (by linarith)
-  have S108 : w109 * 2 ^ 64 + w108 = P15 + P20 + P19 + P22 := by linarith
-  have a138 := acc128 e138 e139 (by linarith)
-  have S138 : w139 * 2 ^ 64 + w138 = P15 + P20 + P19 + P22 + P2 := by linarith
-  have a142 := acc128 (y1 := 0) e142 (by simpa using e143) (by linarith)
-  have F4 : w143 * 2 ^ 64 + w142 = P2 + P22 + P19 + P20 + P15 + q141 := by linarith
-  have G4 := carry51 F4 e145 rfl (by linarith)
+  have B := Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add
+    (Nat.add_lt_add b15 b20) b19) b22) b2) hq
+  have S95 := acc128S e95 e96 (T := P15 + P20) (by rw [← m15, ← m20]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add b15 b20) (by norm_num))
+  have S97 := acc128S e97 e98 (T := P15 + P20 + P19) (by rw [← S95, ← m19]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add b15 b20) b19) (by norm_num))
+  have S108 := acc128S e108 e109 (T := P15 + P20 + P19 + P22) (by rw [← S97, ← m22]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b15 b20) b19) b22)
+      (by norm_num))
+  have S138 := acc128S e138 e139 (T := P15 + P20 + P19 + P22 + P2)
+    (by rw [← S108, ← m2]; ac_rfl)
+    (lt_of_lt_of_le (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add (Nat.add_lt_add b15 b20)
+      b19) b22) b2) (by norm_num))
+  have F4 := acc128S (y1 := 0) e142 (by rw [Nat.add_zero]; exact e143)
+    (T := P15 + P20 + P19 + P22 + P2 + q141) (by rw [← S138, Nat.zero_mul, Nat.add_zero])
+    (lt_of_lt_of_le B (by norm_num))
+  have G4 := (carry51 F4 e145 rfl (lt_of_lt_of_le B (by norm_num))).trans
+    (show P15 + P20 + P19 + P22 + P2 + q141 = P2 + P22 + P19 + P20 + P15 + q141 by ac_rfl)
   refine ⟨G4, ?_⟩
   clear * - G4 hq b15 b20 b19 b22 b2
   omega
