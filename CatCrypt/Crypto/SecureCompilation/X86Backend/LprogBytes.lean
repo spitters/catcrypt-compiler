@@ -1197,9 +1197,9 @@ def isIdentityTagShift (opn : String) : Bool :=
   !isCarryOutBinding opn && (tagShiftExt (stripWidthTag opn)).isSome
     && tagShiftCount (stripWidthTag opn) == 0
 
-/-- The `LinstrR` forms whose encoding is empty by construction. The `FRAMEADD`
-    frame-extension directive is one: `LprogAsmPrinter.frameSize` reads it and the
-    printer drops it, so it reaches neither the text nor the byte stream. A
+/-- The `LinstrR` forms whose encoding is empty by construction. The `FRAMEADD` and
+    `FRAME` frame directives are two: `LprogAsmPrinter.frameSize` reads them and the
+    printer drops them, so they reach neither the text nor the byte stream. A
     count-in-tag shift by `0` of a general-purpose register onto itself is another:
     the printer and the encoder both drop it. -/
 def carriesNoBytes : LinstrR → Bool
@@ -1207,6 +1207,7 @@ def carriesNoBytes : LinstrR → Bool
   | .Lalign => true
   | .Llabel _ _ => true
   | .Lopn [] "FRAMEADD" _ => true
+  | .Lopn [] "FRAME" _ => true
   | .Lopn [.reg dn] opn [.reg sn] =>
       isMulHiBinding opn || (dn == sn && isGpName dn && isIdentityTagShift opn)
   | .Lopn _ opn _ => isMulHiBinding opn
@@ -1230,14 +1231,15 @@ def encodableLcmd (body : Lcmd) : Bool :=
   body.all fun instr => encodableLinstrR frame spillW instr.li_i (qsaveBytesFor body)
 
 -- Static checks pinning the frame-extension directive's byte status: `FRAMEADD`
--- carries no bytes by construction, so a body laying scratch buffers still
--- reaches the byte stream, while `FRAME` keeps the status it already had.
+-- and `FRAME` carry no bytes by construction, so a body laying scratch buffers or
+-- fixing its frame still reaches the byte stream.
 #guard carriesNoBytes (.Lopn [] "FRAMEADD" [.imm 128]) = true
 #guard encodableLinstrR 0 64 (.Lopn [] "FRAMEADD" [.imm 128]) = true
 #guard encodableLcmd
   [ ⟨0, .Lopn [] "FRAMEADD" [.imm 128]⟩
   , ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩ ] = true
-#guard carriesNoBytes (.Lopn [] "FRAME" [.imm 64]) = false
+#guard carriesNoBytes (.Lopn [] "FRAME" [.imm 64]) = true
+#guard encodableLinstrR 0 64 (.Lopn [] "FRAME" [.imm 64]) = true
 -- The identity self-shift carries no bytes and its encoding is empty; a shift by a
 -- nonzero count, and a by-0 shift between two registers, still carry bytes.
 #guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R15"]) = true
