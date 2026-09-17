@@ -502,17 +502,19 @@ theorem combSelect6Block_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ combSelect6Block = blockLeak s₂ combSelect6Block :=
   allDirect_constant_time combSelect6Block combSelect6Block_allDirect s₁ s₂
 
-/-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
-def emitMain : IO Unit := do
-  IO.FS.createDirAll "bench/ed25519_comb_compare/gen_com"
-  IO.FS.writeFile
-    "bench/ed25519_comb_compare/gen_com/ed25519_comb_select_x86_from_lean.s" combSelectAsm
-  IO.FS.writeFile
-    "bench/ed25519_comb_compare/gen_com/ed25519_comb5_select_x86_from_lean.s" combSelect5Asm
-  IO.FS.writeFile
-    "bench/ed25519_comb_compare/gen_com/ed25519_comb6_select_x86_from_lean.s" combSelect6Asm
-  IO.println "wrote gen_com/ed25519_comb_select_x86_from_lean.s (16-entry, 4-bit)"
-  IO.println "wrote gen_com/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
-  IO.println "wrote gen_com/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"
+/-- Write the three emitted select kernels (4-, 5- and 6-bit windows) into `dir`,
+    a path relative to the working directory. -/
+def emitTo (dir : String) : IO Unit := do
+  IO.FS.createDirAll dir
+  IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") combSelectAsm
+  IO.FS.writeFile (dir ++ "/ed25519_comb5_select_x86_from_lean.s") combSelect5Asm
+  IO.FS.writeFile (dir ++ "/ed25519_comb6_select_x86_from_lean.s") combSelect6Asm
+  IO.println s!"wrote {dir}/ed25519_comb_select_x86_from_lean.s (16-entry, 4-bit)"
+  IO.println s!"wrote {dir}/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
+  IO.println s!"wrote {dir}/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"
+
+/-- Emit driver for the dev-tree bench `bench/ed25519_comb_compare`, run from that
+    repository's root. -/
+def emitMain : IO Unit := emitTo "bench/ed25519_comb_compare/gen_com"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
