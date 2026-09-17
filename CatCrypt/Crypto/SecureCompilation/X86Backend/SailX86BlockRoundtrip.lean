@@ -33,7 +33,9 @@ instruction, with nothing left over.
 * `loadMem`/`storeMem` (`8B`/`89` against `[base + disp]`),
 
 under the side conditions the encoding needs: an immediate fits the width its
-opcode carries, and a displacement fits a signed byte. `blockCovered` is that
+opcode carries, and a displacement fits a signed 32-bit value (the encoder
+picks the `disp0`, `disp8` or `disp32` form, and the decoder reads all three).
+`blockCovered` is that
 same set, in the form `roundtrip_block` places as a hypothesis on each
 instruction of a block.
 
@@ -357,6 +359,16 @@ def renameJ (alloc : GpAlloc) : JInstr 64 → JInstr 64
 /-- A displacement the `[base + disp8]` form encodes exactly. -/
 def dispOk (off : Int) : Bool := -128 ≤ off ∧ off ≤ 127
 
+/-- A displacement the `[base + disp32]` form encodes exactly: a signed 32-bit
+    value. `memTail` emits the shortest of the `disp0`/`disp8`/`disp32` forms
+    that holds it. -/
+def dispOk32 (off : Int) : Bool := -2 ^ 31 ≤ off ∧ off < 2 ^ 31
+
+/-- A signed-byte displacement is a signed 32-bit displacement. -/
+theorem dispOk32_of_dispOk (off : Int) (h : dispOk off = true) : dispOk32 off = true := by
+  simp only [dispOk, dispOk32, decide_eq_true_eq] at h ⊢
+  omega
+
 /-- The instruction forms `decodeJ1` inverts, with the width side conditions each
     encoding needs. -/
 def decodableJ : JInstr 64 → Bool
@@ -388,9 +400,9 @@ def decodableJ : JInstr 64 → Bool
   | .adcx _ (.reg _) => true
   | .adox _ (.reg _) => true
   | .mulx _ _ (.reg _) (.reg _) => true
-  | .mulxMem _ _ (.reg _) _ off => dispOk off
-  | .loadMem _ _ off => dispOk off
-  | .storeMem _ off (.reg _) => dispOk off
+  | .mulxMem _ _ (.reg _) _ off => dispOk32 off
+  | .loadMem _ _ off => dispOk32 off
+  | .storeMem _ off (.reg _) => dispOk32 off
   | _ => false
 
 /-- `MULX` reads its first source from `%rdx` and does not encode it, so the
@@ -524,26 +536,65 @@ theorem sdisp8_disp8 (off : Int) (h : dispOk off = true) : sdisp8 (disp8 off) = 
   simp only [sdisp8, disp8, BitVec.toInt_ofInt, Int.bmod_def]
   split <;> omega
 
+/-- The four little-endian `disp32LE` bytes of a signed 32-bit displacement
+    decode, at `mod = 10`, back to the displacement: the bytes recompose to the
+    two's-complement value and `sdisp32` sign-extends it. -/
+theorem decodeDisp_disp32LE (off : Int) (rest : List (BitVec 8))
+    (h : dispOk32 off = true) :
+    decodeDisp 2 (disp32LE off ++ rest) = some (off, rest) := by
+  simp only [dispOk32, decide_eq_true_eq] at h
+  have hrec : ∀ v : Nat, v < 2 ^ 32 →
+      (v &&& 0xff) % 2 ^ 8 + ((v >>> 8) &&& 0xff) % 2 ^ 8 * 0x100
+        + ((v >>> 16) &&& 0xff) % 2 ^ 8 * 0x10000
+        + ((v >>> 24) &&& 0xff) % 2 ^ 8 * 0x1000000 = v := by
+    intro v hv
+    simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
+      Nat.shiftRight_eq_div_pow]
+    omega
+  simp only [disp32LE, imm32LE, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, decodeDisp, sdisp32, BitVec.toNat_ofNat,
+    hrec _ (BitVec.isLt (BitVec.ofInt 32 off)), BitVec.ofNat_toNat, BitVec.setWidth_eq,
+    BitVec.toInt_ofInt, Option.some.injEq, Prod.mk.injEq, and_true]
+  rw [Int.bmod_def]
+  split <;> omega
+
+/-- `decodeMemTail` inverts `memTail` on a signed 32-bit displacement: it
+    recovers the ModRM `reg` field, the base register's low three bits, and the
+    displacement, leaving no bytes. This covers the `disp0`, `disp8` and `disp32`
+    forms `memTail` selects between, and all four special bases — the SIB escape
+    at base low-3 = 4 and the forced `disp8` at base low-3 = 5. -/
+theorem decodeMemTail_memTail32 (reg base : Nat) (off : Int) (rest : List (BitVec 8))
+    (h : dispOk32 off = true) :
+    decodeMemTail (memTail reg base off ++ rest)
+      = some (reg &&& 7, base &&& 7, off, rest) := by
+  rcases Decidable.em (dispOk off = true) with h8 | h8
+  · have hd := sdisp8_disp8 off h8
+    simp only [dispOk, decide_eq_true_eq] at h8
+    rcases eq_or_ne off 0 with rfl | h0
+    · rcases Decidable.em (base &&& 7 = 4) with hs | hs
+      · simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
+          regField_modRMMem, hs]
+      · rcases Decidable.em (base &&& 7 = 5) with h5 | h5 <;>
+          simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
+            regField_modRMMem, hs, h5, hd]
+    · rcases Decidable.em (base &&& 7 = 4) with hs | hs <;>
+        simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
+          regField_modRMMem, hs, h0, hd, h8]
+  · have hd := decodeDisp_disp32LE off rest h
+    simp only [dispOk, decide_eq_true_eq] at h8
+    have h0 : off ≠ 0 := by omega
+    rcases Decidable.em (base &&& 7 = 4) with hs | hs <;>
+      simp [memTail, decodeMemTail, modField_modRMMem, rmField_modRMMem,
+        regField_modRMMem, hs, h0, h8, hd]
+
 /-- `decodeMemTail` inverts `memTail` on a signed-byte displacement: it recovers
     the ModRM `reg` field, the base register's low three bits, and the
-    displacement, leaving no bytes. This covers all four special bases — the SIB
-    escape at base low-3 = 4 and the forced `disp8` at base low-3 = 5. -/
+    displacement, leaving no bytes. -/
 theorem decodeMemTail_memTail (reg base : Nat) (off : Int) (rest : List (BitVec 8))
     (h : dispOk off = true) :
     decodeMemTail (memTail reg base off ++ rest)
-      = some (reg &&& 7, base &&& 7, off, rest) := by
-  have hd := sdisp8_disp8 off h
-  simp only [dispOk, decide_eq_true_eq] at h
-  rcases eq_or_ne off 0 with rfl | h0
-  · rcases Decidable.em (base &&& 7 = 4) with hs | hs
-    · simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
-        regField_modRMMem, hs]
-    · rcases Decidable.em (base &&& 7 = 5) with h5 | h5 <;>
-        simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
-          regField_modRMMem, hs, h5, hd]
-  · rcases Decidable.em (base &&& 7 = 4) with hs | hs <;>
-      simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
-        regField_modRMMem, hs, h0, hd, h]
+      = some (reg &&& 7, base &&& 7, off, rest) :=
+  decodeMemTail_memTail32 reg base off rest (dispOk32_of_dispOk off h)
 
 /-- A `memTail` byte string starts with a memory `ModRM` byte, whose `mod` field
     is `00`, `01` or `10` — never the register-direct `11`. -/
@@ -552,7 +603,7 @@ theorem memTail_head (reg base : Nat) (off : Int) :
   simp only [memTail]
   split_ifs <;> exact ⟨_, _, rfl, by simp [modField_modRMMem]⟩
 
-/-! ## 9. Round-trip for the `[base + disp8]` memory forms -/
+/-! ## 9. Round-trip for the `[base + disp]` memory forms -/
 
 /-- A `REX.W`-prefixed byte stream is none of the `66`/`F3`/`C4` mandatory-prefix
     families, so `decodeJ1` routes it to `decodeRex`. -/
@@ -570,9 +621,9 @@ theorem decodeJ1_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1)
     isRex_rex _ _ _ hr hx hb, if_true]
 
 /-- `MOV off(%base), %dst` (`REX.W 8B /r`) decodes back to itself for a
-    displacement the `disp8` form encodes. -/
-theorem roundtrip_loadMem (alloc : GpAlloc) (d base : String) (off : Int)
-    (rest : List (BitVec 8)) (h : dispOk off = true) :
+    signed 32-bit displacement. -/
+theorem roundtrip_loadMem32 (alloc : GpAlloc) (d base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk32 off = true) :
     decodeJ1 (encodeJInstr alloc (.loadMem d base off) ++ rest)
       = some (renameJ alloc (.loadMem d base off), rest) := by
   simp only [encodeJInstr, encMemMov, List.map_cons, List.map_nil, List.cons_append,
@@ -581,20 +632,20 @@ theorem roundtrip_loadMem (alloc : GpAlloc) (d base : String) (off : Int)
     decodeRex, BitVec.toNat_ofNat,
     if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
     if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    decodeMemTail_memTail _ _ _ _ h,
+    decodeMemTail_memTail32 _ _ _ _ h,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, if_true]
 
 /-- `MOV %src, off(%base)` (`REX.W 89 /r`) decodes back to itself for a
-    displacement the `disp8` form encodes. -/
-theorem roundtrip_storeMem (alloc : GpAlloc) (base s : String) (off : Int)
-    (rest : List (BitVec 8)) (h : dispOk off = true) :
+    signed 32-bit displacement. -/
+theorem roundtrip_storeMem32 (alloc : GpAlloc) (base s : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk32 off = true) :
     decodeJ1 (encodeJInstr alloc (.storeMem base off (.reg s)) ++ rest)
       = some (renameJ alloc (.storeMem base off (.reg s)), rest) := by
   obtain ⟨m, ts, hm, hmod⟩ :=
     memTail_head (gpNum (regOf alloc s)) (gpNum (regOf alloc base)) off
   have hdec :=
-    decodeMemTail_memTail (gpNum (regOf alloc s)) (gpNum (regOf alloc base)) off rest h
+    decodeMemTail_memTail32 (gpNum (regOf alloc s)) (gpNum (regOf alloc base)) off rest h
   rw [hm, List.cons_append] at hdec
   simp only [encodeJInstr, encMemMov, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, hm,
@@ -608,10 +659,10 @@ theorem roundtrip_storeMem (alloc : GpAlloc) (base s : String) (off : Int)
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true]
 
 /-- `MULX off(%base), %dstLo, %dstHi` (`VEX.LZ.F2.0F38.W1 F6 /r` against
-    `[base + disp8]`) decodes back to itself when the allocation pins the
-    implicit multiplier operand to `%rdx`. -/
-theorem roundtrip_mulxMem (alloc : GpAlloc) (dh dl a base : String) (off : Int)
-    (rest : List (BitVec 8)) (h : dispOk off = true)
+    `[base + disp]`, signed 32-bit displacement) decodes back to itself when the
+    allocation pins the implicit multiplier operand to `%rdx`. -/
+theorem roundtrip_mulxMem32 (alloc : GpAlloc) (dh dl a base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk32 off = true)
     (ha : mulxRdxOk alloc (.mulxMem dh dl (.reg a) base off) = true) :
     decodeJ1 (encodeJInstr alloc (.mulxMem dh dl (.reg a) base off) ++ rest)
       = some (renameJ alloc (.mulxMem dh dl (.reg a) base off), rest) := by
@@ -621,7 +672,7 @@ theorem roundtrip_mulxMem (alloc : GpAlloc) (dh dl a base : String) (off : Int)
   obtain ⟨m, ts, hm, hmod⟩ :=
     memTail_head (gpNum (regOf alloc dh)) (gpNum (regOf alloc base)) off
   have hdec :=
-    decodeMemTail_memTail (gpNum (regOf alloc dh)) (gpNum (regOf alloc base)) off rest h
+    decodeMemTail_memTail32 (gpNum (regOf alloc dh)) (gpNum (regOf alloc base)) off rest h
   rw [hm, List.cons_append] at hdec
   simp only [encodeJInstr, encMulxMem, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, hm, decodeJ1, BitVec.toNat_ofNat,
@@ -633,6 +684,32 @@ theorem roundtrip_mulxMem (alloc : GpAlloc) (dh dl a base : String) (off : Int)
     vex2_w, vex2_pp, vex2_vvvv _ (gpNum_lt_16 _), one_sub_one_sub_bit,
     if_neg hmod, hdec, regName_split, renameJ, operandOf, nameOf, hrdx,
     if_true, and_true]
+
+/-- `MOV off(%base), %dst` (`REX.W 8B /r`) decodes back to itself for a
+    displacement the `disp8` form encodes. -/
+theorem roundtrip_loadMem (alloc : GpAlloc) (d base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk off = true) :
+    decodeJ1 (encodeJInstr alloc (.loadMem d base off) ++ rest)
+      = some (renameJ alloc (.loadMem d base off), rest) :=
+  roundtrip_loadMem32 alloc d base off rest (dispOk32_of_dispOk off h)
+
+/-- `MOV %src, off(%base)` (`REX.W 89 /r`) decodes back to itself for a
+    displacement the `disp8` form encodes. -/
+theorem roundtrip_storeMem (alloc : GpAlloc) (base s : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk off = true) :
+    decodeJ1 (encodeJInstr alloc (.storeMem base off (.reg s)) ++ rest)
+      = some (renameJ alloc (.storeMem base off (.reg s)), rest) :=
+  roundtrip_storeMem32 alloc base s off rest (dispOk32_of_dispOk off h)
+
+/-- `MULX off(%base), %dstLo, %dstHi` (`VEX.LZ.F2.0F38.W1 F6 /r` against
+    `[base + disp8]`) decodes back to itself when the allocation pins the
+    implicit multiplier operand to `%rdx`. -/
+theorem roundtrip_mulxMem (alloc : GpAlloc) (dh dl a base : String) (off : Int)
+    (rest : List (BitVec 8)) (h : dispOk off = true)
+    (ha : mulxRdxOk alloc (.mulxMem dh dl (.reg a) base off) = true) :
+    decodeJ1 (encodeJInstr alloc (.mulxMem dh dl (.reg a) base off) ++ rest)
+      = some (renameJ alloc (.mulxMem dh dl (.reg a) base off), rest) :=
+  roundtrip_mulxMem32 alloc dh dl a base off rest (dispOk32_of_dispOk off h) ha
 
 /-! ## 10. Round-trip for the legacy REX-prefixed GP forms
 
@@ -1053,7 +1130,10 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #guard ! blockCovered (.movsx "a" 8 "b")
 #guard ! blockCovered (.lea "a" "b" "c" 8 0)
 #guard ! blockCovered (.mov "a" (.imm (2 ^ 64)))
-#guard ! blockCovered (.loadMem "a" "b" 4096)
+#guard blockCovered (.loadMem "a" "b" 4096)
+#guard blockCovered (.storeMem "a" (-2 ^ 31) (.reg "b"))
+#guard ! blockCovered (.loadMem "a" "b" (2 ^ 31))
+#guard ! blockCovered (.storeMem "a" (-2 ^ 31 - 1) (.reg "b"))
 
 /-- One instruction of the covered set decodes off the front of its own bytes,
     leaving whatever follows untouched. -/
@@ -1136,7 +1216,7 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | mulxMem dh dl a base off =>
       cases a with
       | imm v => simp [decodableJ] at hd
-      | reg ra => exact roundtrip_mulxMem _ _ _ _ _ _ _ hd hr
+      | reg ra => exact roundtrip_mulxMem32 _ _ _ _ _ _ _ hd hr
   | adcx d s =>
       cases s with
       | reg r => exact roundtrip_adcx _ _ _ _
@@ -1145,10 +1225,10 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
       cases s with
       | reg r => exact roundtrip_adox _ _ _ _
       | imm v => simp [decodableJ] at hd
-  | loadMem d base off => exact roundtrip_loadMem _ _ _ _ _ hd
+  | loadMem d base off => exact roundtrip_loadMem32 _ _ _ _ _ hd
   | storeMem base off s =>
       cases s with
-      | reg r => exact roundtrip_storeMem _ _ _ _ _ hd
+      | reg r => exact roundtrip_storeMem32 _ _ _ _ _ hd
       | imm v => simp [decodableJ] at hd
   | loadMemIdx d base idx scale => simp [decodableJ] at hd
   | storeMemIdx base idx scale s => simp [decodableJ] at hd
