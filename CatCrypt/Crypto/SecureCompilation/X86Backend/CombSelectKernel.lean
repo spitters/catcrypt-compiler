@@ -11,6 +11,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 
 /-!
 # Ed25519 fixed-base comb-window **constant-time select**, owned x86 backend (#387)
@@ -502,13 +504,34 @@ theorem combSelect6Block_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ combSelect6Block = blockLeak s₂ combSelect6Block :=
   allDirect_constant_time combSelect6Block combSelect6Block_allDirect s₁ s₂
 
-/-- Write the three emitted select kernels (4-, 5- and 6-bit windows) into `dir`,
-    a path relative to the working directory. -/
+/-- Write the three select kernels (4-, 5- and 6-bit windows) into `dir`, a path
+    relative to the working directory. These are the renderings of the
+    `combSelect*Block` kernels, each of which carries an `allDirect` constant-time
+    theorem. -/
 def emitTo (dir : String) : IO Unit := do
   IO.FS.createDirAll dir
   IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") combSelectAsm
   IO.FS.writeFile (dir ++ "/ed25519_comb5_select_x86_from_lean.s") combSelect5Asm
   IO.FS.writeFile (dir ++ "/ed25519_comb6_select_x86_from_lean.s") combSelect6Asm
+  IO.println s!"wrote {dir}/ed25519_comb_select_x86_from_lean.s (16-entry, 4-bit)"
+  IO.println s!"wrote {dir}/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
+  IO.println s!"wrote {dir}/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"
+
+/-- Write the owned renderings of the front output `CombSelectFront.combSelectFront`
+    at 16, 32 and 64 entries into `dir`, under the same symbol names as `emitTo`.
+    The front lowers each table read to an indexed load whose index register holds
+    a literal, so these renderings fall outside `allDirect`. -/
+def emitFrontTo (dir : String) : IO Unit := do
+  let some a4 := CombSelectFront.combSelectFrontAsm
+    | throw (IO.userError "front compilation of the 16-entry comb select failed")
+  let some a5 := CombSelectFront.combSelect5FrontAsm
+    | throw (IO.userError "front compilation of the 32-entry comb select failed")
+  let some a6 := CombSelectFront.combSelect6FrontAsm
+    | throw (IO.userError "front compilation of the 64-entry comb select failed")
+  IO.FS.createDirAll dir
+  IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") a4
+  IO.FS.writeFile (dir ++ "/ed25519_comb5_select_x86_from_lean.s") a5
+  IO.FS.writeFile (dir ++ "/ed25519_comb6_select_x86_from_lean.s") a6
   IO.println s!"wrote {dir}/ed25519_comb_select_x86_from_lean.s (16-entry, 4-bit)"
   IO.println s!"wrote {dir}/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
   IO.println s!"wrote {dir}/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"

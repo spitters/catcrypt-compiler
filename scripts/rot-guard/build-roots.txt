@@ -1,8 +1,8 @@
+--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 -- Build roots: tracked modules under CatCrypt/ that no other tracked
+-- Regenerate with:
 -- module imports. Their transitive closure is the whole library, so a
 -- module outside it is one no target and no import reaches.
--- Regenerate with:
---   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
 CatCrypt.Core.Basic
 CatCrypt.Core.GenHeap
 CatCrypt.Core.GenHeapRandomOracle
@@ -720,6 +720,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
+CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain

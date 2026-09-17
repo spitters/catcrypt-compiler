@@ -23,7 +23,10 @@ REPO    := $(abspath ../..)
 KERNEL  := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/CombSelectKernel.lean
 LEAN_S  := gen_com/ed25519_comb_select_x86_from_lean.s
 
-.PHONY: all emit kat run clean
+FRONT_S := gen_com_front/ed25519_comb_select_x86_from_lean.s
+FRONT_M := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/CombSelectFront.lean
+
+.PHONY: all emit kat run clean emit-front kat-front run-front
 
 all: comb_select_compare
 
@@ -44,5 +47,24 @@ kat: comb_select_compare
 run: comb_select_compare
 	$(PIN) ./comb_select_compare $(TRIALS)
 
+# The front-generated select, checked by the same harness. It is not the shipped
+# kernel: its table reads are indexed loads, outside the allDirect CT theorem.
+$(FRONT_S): $(KERNEL) $(FRONT_M) emit_front.lean
+	cd $(REPO) && lake env lean --run bench/ed25519_comb_select_compare/emit_front.lean
+
+emit-front: $(FRONT_S)
+
+front_combsel.o: $(FRONT_S)
+	$(CC) -c $(FRONT_S) -o front_combsel.o
+
+comb_select_compare_front: comb_select_compare.c front_combsel.o
+	$(CC) $(CFLAGS) comb_select_compare.c front_combsel.o -o $@
+
+kat-front: comb_select_compare_front
+	./comb_select_compare_front 1
+
+run-front: comb_select_compare_front
+	$(PIN) ./comb_select_compare_front $(TRIALS)
+
 clean:
-	rm -f lean_combsel.o comb_select_compare
+	rm -f lean_combsel.o comb_select_compare front_combsel.o comb_select_compare_front
