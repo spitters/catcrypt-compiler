@@ -23,6 +23,13 @@ section and symbol directives, `endbr64` before the bytes, `retq` after them, an
 The `#eval main` at the end writes `bench/s2n_import/gen/fe25519_{mul,sqr,add,sub}_x86_from_lean.s`
 when `lake lean` elaborates this file from the repository root. It fails, writing nothing,
 if the encoder's gate `encodableJBlock` rejects the allocation on any of the four blocks.
+
+## Main definitions
+
+* `hexByte`, `byteLines`: a byte as a `0x..` literal, and bytes as `.byte` directive lines.
+* `kernels`: the four framed kernels with their symbols and the theorem each file cites.
+* `kernelAsm`: the assembly file of one kernel.
+* `main`: writes the four files.
 -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin

@@ -24,6 +24,9 @@ fail=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   grep -qE '@kat-target|@bench-only' "$f" && continue           # tagged → allowed
+  # Ascent/Imported translates an already-printed assembly file back into JInstr
+  # so the ascent can prove it; such a module writes no artifact.
+  case "$f" in *Ascent/Imported/*) continue ;; esac
   case "$f" in *X86Backend/*|bench/*) continue ;; esac          # grandfathered infra
   grep -qxF "$f" "$baseline" && continue                        # in frozen baseline → grandfathered
   echo "EMIT-PROVENANCE: NEW untagged hand-JInstr emission in $f"
