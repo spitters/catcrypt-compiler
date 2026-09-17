@@ -8,6 +8,8 @@
 #   make compare   # instruction counts, sizes and differences against the archive
 #   make field     # known-answer gate and timing, in ../p384_ecdsa_rust
 #   make framed-kat  # encode the framed montmul, test it against s2n-bignum
+#   make import-owned   # import the owned backend's shipped Ed25519 functions
+#   make compare-owned  # print them back and compare with their sources
 #
 # Per kernel: import-montmul, import-montsqr, reemit-montmul, reemit-montsqr,
 # encode-montmul, encode-montsqr, compare-montmul, compare-montsqr.
@@ -20,6 +22,9 @@
 #   S2N_BIGNUM_DIR  the s2n-bignum checkout; the archive is
 #                   $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a. Default: the checkout
 #                   in the sibling SSProve-lean tree.
+#   OWNED_ASM       the directory of the shipped owned-backend files named in
+#                   owned_kernels.txt. Default: crates/catcrypt-ed25519/asm in
+#                   the sibling SSProve-lean tree.
 #   HEAVY_RUN       a wrapper for the `lake lean` commands. Default: the
 #                   sibling SSProve-lean tree's scripts/heavy-run.sh when that
 #                   file exists, otherwise none.
@@ -44,7 +49,7 @@ LAKE_LEAN := cd $(REPO) && LEAN_NUM_THREADS=1 $(if $(HEAVY_RUN),bash $(HEAVY_RUN
 
 .PHONY: import import-montmul import-montsqr reemit reemit-montmul reemit-montsqr \
         encode encode-montmul encode-montsqr compare compare-montmul compare-montsqr field \
-        encode-framed framed-kat
+        encode-framed framed-kat import-owned reemit-owned compare-owned
 
 import: import-montmul import-montsqr
 
@@ -96,3 +101,23 @@ framed-kat: $(FRAMED) kat_framed/kat.c kat_framed/check_saved.s
 
 field: $(REEMITTED) $(ENCODED) $(SQR_REEMITTED) $(SQR_ENCODED)
 	$(MAKE) -C ../p384_ecdsa_rust field-asm
+
+# The owned backend's shipped functions (owned_kernels.txt): import them,
+# print them back with reemit_owned.lean, compare with the sources.
+OWNED_ASM ?= $(abspath $(REPO)/../SSProve-lean/crates/catcrypt-ed25519/asm)
+IMPORTED := $(REPO)/CatCrypt/Crypto/SecureCompilation/Ascent/Imported
+OWNED_MODULES := $(shell awk 'NF == 3 && substr($$1, 1, 1) != "\043" { print $$1 }' owned_kernels.txt)
+OWNED_STAMP := gen/owned/.reemitted
+
+import-owned:
+	awk 'NF == 3 && substr($$1, 1, 1) != "\043"' owned_kernels.txt | while read -r m f s; do \
+	  ./import_owned.sh "$(OWNED_ASM)/$$f" "$$m" "$$s" || exit 1; done
+
+reemit-owned: $(OWNED_STAMP)
+
+$(OWNED_STAMP): $(OWNED_MODULES:%=$(IMPORTED)/%.lean) $(IMPORTED)/CallSeg.lean reemit_owned.lean
+	$(LAKE_LEAN) bench/s2n_import/reemit_owned.lean
+	touch $@
+
+compare-owned: $(OWNED_STAMP)
+	OWNED_ASM="$(OWNED_ASM)" ./compare_owned.sh

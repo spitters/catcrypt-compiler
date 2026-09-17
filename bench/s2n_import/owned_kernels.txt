@@ -1,0 +1,16 @@
+# The shipped functions imported by `make import-owned`, one per line:
+#   MODULE_NAME  FILE (relative to $(OWNED_ASM))  SYMBOL
+# Each is imported to CatCrypt/Crypto/SecureCompilation/Ascent/Imported/MODULE_NAME.lean
+# and re-emitted by reemit_owned.lean.
+Fe25519MulShipped         fe25519_mul_x86_from_lean.s          fe25519_mul_x86_from_lean
+Fe25519SqrShipped         fe25519_sqr_x86_from_lean.s          fe25519_sqr_x86_from_lean
+Fe25519AddShipped         fe25519_add_x86_from_lean.s          fe25519_add_x86_from_lean
+Fe25519SubShipped         fe25519_sub_x86_from_lean.s          fe25519_sub_x86_from_lean
+Ed25519CombSelectShipped  ed25519_comb_select_x86_from_lean.s  ed25519_comb_select_x86_from_lean
+Ed25519CompressShipped    ed25519_compress_x86_from_lean.s     ed25519_compress_x86_from_lean
+Ed25519PackSignShipped    ed25519_compress_x86_from_lean.s     ed25519_pack_sign_x86_from_lean
+Ed25519MaddShipped        ed25519_madd_x86_from_lean.s         ed25519_madd_x86_from_lean
+Ed25519Join16Shipped      ed25519_madd_x86_from_lean.s         ed25519_join16_x86_from_lean
+Ed25519InvertShipped      ed25519_invert_x86_from_lean.s       ed25519_invert_x86_from_lean
+Ed25519ScReduceShipped    ed25519_sc_reduce_x86_from_lean.s    ed25519_sc_reduce_x86_from_lean
+Ed25519ScMuladdShipped    ed25519_sc_muladd_x86_from_lean.s    ed25519_sc_muladd_x86_from_lean

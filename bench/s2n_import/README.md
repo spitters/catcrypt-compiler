@@ -14,7 +14,9 @@ encoder, and checks the results against s2n-bignum.
 | `encode.lean`, `encode_montsqr.lean` | encodes the imported block with `ScalarEncoder.encodeJBlock` and writes the bytes as `.byte` directives to `gen/<kernel>_encoded.s` |
 | `compare_insns.sh [KERNEL]` | assembles the re-emitted and encoded files and compares their disassembly and size with the s2n-bignum archive |
 | `encode_framed.lean`, `kat_framed/` | the framed montmul and its known-answer test ([§ The framed function](#the-framed-function)) |
-| `Makefile` | `import`, `reemit`, `encode`, `compare` (each for both kernels, or `-montmul` / `-montsqr`), `encode-framed`, `framed-kat`, `field` |
+| `import_owned.sh FILE.s MODULE [SYMBOL]`, `translate_owned.awk`, `owned_kernels.txt` | the importer for x86-64 files printed by CatCrypt's owned backend ([§ Importing the owned backend's output](#importing-the-owned-backends-output)) |
+| `reemit_owned.lean`, `compare_owned.sh` | prints the imported owned-backend functions back and compares them with their sources |
+| `Makefile` | `import`, `reemit`, `encode`, `compare` (each for both kernels, or `-montmul` / `-montsqr`), `encode-framed`, `framed-kat`, `field`, `import-owned`, `reemit-owned`, `compare-owned` |
 
 The known-answer gate and the timing are the `s2n-reemitted`, `s2n-encoded`,
 `s2n-sqr-reemitted` and `s2n-sqr-encoded` arms of
@@ -196,3 +198,166 @@ and `mov $0x1` on 32-bit registers become 64-bit `mov`, `mov $0xffffffff` become
 checks that each name is a 64-bit general register. Its prologue and epilogue are
 s2n-bignum's frame (`endbr64`, six `pushq`, six `popq`, `retq`), written as text:
 like every `renderLeafFn` frame they are outside the translated block.
+
+## Importing the owned backend's output
+
+`import_owned.sh FILE.s MODULE [SYMBOL]` translates one function of an x86-64 AT&T
+file printed by CatCrypt's owned backend (`AsmPrinter.renderLeafFn`,
+`renderSysVLeafFn`, `LprogAsmPrinter`) into
+`CatCrypt/Crypto/SecureCompilation/Ascent/Imported/<MODULE>.lean`, with the same
+guarantees as `import_s2n.sh`: an instruction outside the accepted shapes stops the
+import with `file:line: message` and exit status 1, and the module is left
+unchanged. `SYMBOL` is required when the file defines more than one function. The
+module docstring records the file's path in its git repository, that repository's
+commit, whether the file is tracked and unchanged there, and its SHA-256.
+`owned_kernels.txt` lists the imported functions; `make import-owned` regenerates
+them from `OWNED_ASM` (default `../SSProve-lean/crates/catcrypt-ed25519/asm`).
+
+The file is read as printed; no preprocessor runs. Comments (`# ...`) are dropped.
+A directive or label inside the function stops the import; other functions of the
+file are skipped.
+
+### Frame
+
+Dropped, with a check:
+
+* `endbr64` as the first instruction;
+* `pushq` of callee-saved registers at entry, each at most once, and the `popq`
+  sequence in reverse order before `ret`;
+* one stack allocation `leaq -N(%rsp), %rsp` or `subq $N, %rsp` after the pushes,
+  and the release `leaq N(%rsp), %rsp` or `addq $N, %rsp` with the same `N`, which
+  must precede the `popq` sequence and `ret`;
+* `ret` or `retq`.
+
+Kept as instructions: every `%rsp`-relative move, the red-zone saves of
+`renderSysVLeafFn` (`movq %rbx, -8(%rsp)` …) and the argument and callee-saved
+stores of the `LprogAsmPrinter` frame (`movq %rdi, 232(%rsp)` …), as
+`storeMem "%rsp" off (.reg r)` and `loadMem r "%rsp" off`. These are the forms
+`LeafFrame.framePrologue` and `frameEpilogue` use. Offsets are relative to `%rsp`
+after the dropped allocation. The importer places the entry run of stores into
+`%rsp` slots in segment 1, and the exit run of loads of callee-saved registers,
+each from the slot the entry run stored it to, in the last segment. For
+`fe25519_mul_x86_from_lean` segment 1 has the six instructions of
+`LeafFrame.framePrologue` and the last segment the six of `frameEpilogue`. No
+instruction of the body may name `%rsp` as a register, except as a memory base
+or `leaq` base.
+
+### Accepted shapes
+
+| source | `JInstr 64` | agreement with `evalInstr` |
+|---|---|---|
+| `movq %s, %d` / `movq $imm, %d` | `mov d (.reg s)` / `mov d (.imm v)`, `v < 2^64` | `setReg d v`, no flag |
+| `movq D(%b), %d` / `movq %s, D(%b)` | `loadMem d b D` / `storeMem b D (.reg s)` | cell `(b, D)`; no flag |
+| `movq (%b, %i, k), %d` / `movq %s, (%b, %i, k)`, `k ∈ {1,2,4,8}`, displacement 0 | `loadMemIdx d b i k` / `storeMemIdx b i k (.reg s)` | cell `(b, k·i)`; no flag |
+| `movl $imm, %r32`, `imm < 2^32` | `mov r64 (.imm imm)` | the processor zero-extends into the 64-bit register and writes no flag |
+| `leaq D(%b), %d` | `lea d b b 0 D` | `b + b·0 + D = b + D`; no flag |
+| `leaq D(%b, %i, k), %d` | `lea d b i k D` | `b + i·k + D`; no flag |
+| `addq` `subq` `adcq` `sbbq` `andq` `orq` `xorq` with `%s` or `$imm`, `imm < 2^31` | `add` `sub` `adc` `sbb` `and_` `or_` `xor_` | Jasmin's five-flag results; below `2^31` the sign-extended `imm32` is the value `BitVec.ofNat 64 imm` |
+| `addq D(%b), %d` | `addMem d b D` | `x86_ADD` with the cell |
+| `shlq` `shrq` `sarq` `$k, %d`, `1 ≤ k ≤ 63` | `shl` `shr` `sar` | count 0 is refused: the processor leaves the flags unchanged, `x86_SHL` makes them undefined |
+| `negq %d` | `neg d` | `x86_NEG` |
+| `imulq %s, %d` | `imul d (.reg s)` | low word, `OF = CF` the signed overflow, `SF`/`ZF`/`PF` undefined (as in the SDM) |
+| `imulq $imm, %s, %d`, `imm < 2^31` | `imulri d s imm` | `x86_IMULt (get s) imm` |
+| `mulx` / `mulxq %s, %lo, %hi`, `mulxq D(%b), %lo, %hi`, `lo ≠ hi` | `mulx hi lo (.reg "%rdx") (.reg s)` / `mulxMem hi lo (.reg "%rdx") b D` | unsigned `%rdx · src`, no flag |
+| `adcx` / `adcxq`, `adox` / `adoxq` with `%s` or `D(%b)` | `adcx` `adox` / `adcxMem` `adoxMem` | carry to `CF` / `OF` only |
+| `btq $k, %r`, `k < 64` | `bt r (.imm k)` | writes `CF` = bit `k` only; see below |
+| `setc %r8` (or `setb`) followed by `movzbq %r8, %r64` of the same register | `setc r64` | `evalInstr_setc_eq_setcc_movzx`: the pair writes `CF` zero-extended, no flag |
+| `setc %r8` not so followed | `setcc .b r64` | low byte under `MSB_MERGE` |
+| `movzbq %r8, %r64` not after `setc` | `movzx d 8 s` | low 8 bits of `s`, no flag |
+| `testq %s, %d` | `test d (.reg s)` | `x86_TEST`, no register written |
+| `cmovneq` `cmovnzq` / `cmoveq` `cmovzq` / `cmovbq` `cmovcq` with registers | `cmovne` / `cmove` / `cmovb` | reads `ZF` / `ZF` / `CF` |
+| `call SYM` | ends a `CallSeg` run with `callee := some SYM` | outside `JasminModel` |
+
+`%r8` stands for a low-byte register (`%al`, `%bl`, `%cl`, `%dl`, `%sil`, `%dil`,
+`%bpl`, `%r8b` … `%r15b`); `%ah` and the other high-byte registers are refused.
+
+The Intel SDM leaves `OF`, `SF` and `PF` undefined after `BT`; `evalInstr` keeps
+their previous values, as Jasmin's `x86_BT` does. The importer refuses an `adox`
+(the one accepted instruction that reads `OF`) between a `btq` and the next
+instruction that writes `OF`. No accepted instruction reads `SF` or `PF`.
+
+Refused, among others: `movl $imm, D(%b)`, which writes the low 4 bytes of an
+8-byte cell and has no counterpart in the word-granular `JState.store`; any jump;
+an indexed memory operand with a nonzero displacement; an immediate at or above
+`2^31` in a sign-extended position.
+
+### Functions with calls
+
+`JInstr` has no call instruction. A function containing `call` is imported as a
+`List CallSeg` (`Ascent/Imported/CallSeg.lean`): each element is a run of
+instructions and the symbol of the call that ends it, or `none`. The function is
+the concatenation of the runs with each recorded call after its run. The module
+states the instruction count over `CallSeg.instrs` and the call count over
+`CallSeg.callees`. A proof over such a function supplies a specification of each
+callee.
+
+### Memory model
+
+`JasminModel` keys memory by the name of the base register and an offset, one
+word per cell. A proof over an imported block is a statement about that model. It
+agrees with the processor when each base register holds one address throughout
+the block and distinct names address disjoint words. The importer lists in the
+module docstring the base registers it sees violate the first condition: a
+register written between two memory accesses through it (`%r14` in
+`sc_reduce`, `sc_muladd`, `pack_sign`, `join16`), and a register set by `leaq`
+from another register before a memory access through it (`%r9` from `%rsp` in
+`madd`, which reads the result of `join16` through `%r9` while `join16` wrote it
+through its own argument register).
+
+### Segments and count lemmas
+
+A segment ends after a call, after the entry run of `%rsp` stores, before the exit
+run of `%rsp` loads, and after 32 instructions (`MAXSEG`). A block of more than 16
+segments is grouped in parts of at most 16 segments, each with a count lemma
+(`…Part01_length`, or `…Part01_instrs` and `…Part01_calls`), and the block lemma
+rewrites with the part lemmas. A single `simp only [List.length_append]; rfl` over
+138 segments of 32 instructions exceeds the default recursion depth; over 16
+segments of 32 it elaborates without error, as does the block lemma over the parts.
+
+### Imported functions
+
+| module | function | instructions | calls | segments | parts |
+|---|---|---|---|---|---|
+| `Fe25519MulShipped` | `fe25519_mul_x86_from_lean` | 108 | 0 | 5 | 0 |
+| `Fe25519SqrShipped` | `fe25519_sqr_x86_from_lean` | 95 | 0 | 3 | 0 |
+| `Fe25519AddShipped` | `fe25519_add_x86_from_lean` | 46 | 0 | 2 | 0 |
+| `Fe25519SubShipped` | `fe25519_sub_x86_from_lean` | 27 | 0 | 1 | 0 |
+| `Ed25519CombSelectShipped` | `ed25519_comb_select_x86_from_lean` | 168 | 0 | 6 | 0 |
+| `Ed25519CompressShipped` | `ed25519_compress_x86_from_lean` | 15 | 4 | 4 | 0 |
+| `Ed25519PackSignShipped` | `ed25519_pack_sign_x86_from_lean` | 51 | 0 | 4 | 0 |
+| `Ed25519MaddShipped` | `ed25519_madd_x86_from_lean` | 98 | 15 | 18 | 2 |
+| `Ed25519Join16Shipped` | `ed25519_join16_x86_from_lean` | 102 | 0 | 5 | 0 |
+| `Ed25519InvertShipped` | `ed25519_invert_x86_from_lean` | 543 | 265 | 265 | 17 |
+| `Ed25519ScReduceShipped` | `ed25519_sc_reduce_x86_from_lean` | 3540 | 0 | 113 | 8 |
+| `Ed25519ScMuladdShipped` | `ed25519_sc_muladd_x86_from_lean` | 4354 | 0 | 138 | 9 |
+
+Not imported:
+
+* `ed25519_point_add` (in the file `ed25519_point_add_x86_from_lean` of `OWNED_ASM`): lines 1388 and 1389
+  are `movl $1457519847, 168(%rsp)` and `movl $604428764, 172(%rsp)`, which together
+  write the 8-byte word at `168(%rsp)`. `JInstr` has no 32-bit store. With these two
+  lines removed, the other 4855 instructions translate (585 `setc`/`movzbq` pairs,
+  639 `btq`, 117 `testq`/`cmovneq`, 144 `movl $imm, %r32`).
+* the file `ed25519_comb_table_from_lean` of `OWNED_ASM`: `.quad` data, no instructions.
+
+### Round trip
+
+`reemit_owned.lean` prints each imported block with `AsmPrinter.renderBlockBody`
+under the identity allocation, each call as `call SYM`, to
+`gen/owned/<MODULE>.s` (`make reemit-owned`). `compare_owned.sh [MODULE ...]`
+removes the dropped frame from the source function and compares the two line by
+line after this normalisation, applied to both sides:
+
+* comments removed, whitespace collapsed, one space after each comma;
+* `setb` is `setc`, `adcx` is `adcxq`, `adox` is `adoxq`, `mulx` is `mulxq`, `retq`
+  is `ret`, `callq` is `call`, `cmovnzq` is `cmovneq`, `cmovzq` is `cmoveq`,
+  `cmovcq` is `cmovbq`;
+* `movl $v, %r32` is `movq $v, %r64`;
+* a memory operand `(…)` is `0(…)`;
+* `D(%b, %b, 0)` is `D(%b)`.
+
+The spellings differ because the printers differ: `AsmPrinter` prints `setb` for
+`setc`, `adcx`/`adox` without suffix, `mulx` with a `# src1=` comment, and
+`D(%b, %b, 0)` for the index-free `lea`, which the assembler rejects (scale 0); the
+owned files print `setc`, `adcxq`, `(%r10)` and `leaq D(%b)`. `make compare-owned`
+exits 1 on any difference.
