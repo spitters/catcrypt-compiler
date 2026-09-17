@@ -10,6 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519Join16Shipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519InvertShipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped
+import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
@@ -78,7 +79,8 @@ def all : List Reemitted :=
     plain "Ed25519Join16Shipped" Ed25519Join16Shipped.ed25519Join16ShippedBlock,
     withCalls "Ed25519InvertShipped" Ed25519InvertShipped.ed25519InvertShippedBlock,
     plain "Ed25519ScReduceShipped" Ed25519ScReduceShipped.ed25519ScReduceShippedBlock,
-    plain "Ed25519ScMuladdShipped" Ed25519ScMuladdShipped.ed25519ScMuladdShippedBlock ]
+    plain "Ed25519ScMuladdShipped" Ed25519ScMuladdShipped.ed25519ScMuladdShippedBlock,
+    plain "Ed25519PointAddShipped" Ed25519PointAddShipped.ed25519PointAddShippedBlock ]
 
 def main : IO Unit := do
   IO.FS.createDirAll "bench/s2n_import/gen/owned"

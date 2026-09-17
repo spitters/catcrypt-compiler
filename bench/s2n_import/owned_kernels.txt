@@ -14,3 +14,4 @@ Ed25519Join16Shipped      ed25519_madd_x86_from_lean.s         ed25519_join16_x8
 Ed25519InvertShipped      ed25519_invert_x86_from_lean.s       ed25519_invert_x86_from_lean
 Ed25519ScReduceShipped    ed25519_sc_reduce_x86_from_lean.s    ed25519_sc_reduce_x86_from_lean
 Ed25519ScMuladdShipped    ed25519_sc_muladd_x86_from_lean.s    ed25519_sc_muladd_x86_from_lean
+Ed25519PointAddShipped    ed25519_point_add_x86_from_lean.s    ed25519_point_add

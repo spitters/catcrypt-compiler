@@ -330,14 +330,10 @@ segments of 32 it elaborates without error, as does the block lemma over the par
 | `Ed25519InvertShipped` | `ed25519_invert_x86_from_lean` | 543 | 265 | 265 | 17 |
 | `Ed25519ScReduceShipped` | `ed25519_sc_reduce_x86_from_lean` | 3540 | 0 | 113 | 8 |
 | `Ed25519ScMuladdShipped` | `ed25519_sc_muladd_x86_from_lean` | 4354 | 0 | 138 | 9 |
+| `Ed25519PointAddShipped` | `ed25519_point_add` (file `ed25519_point_add_x86_from_lean`) | 4859 | 0 | 154 | 10 |
 
 Not imported:
 
-* `ed25519_point_add` (in the file `ed25519_point_add_x86_from_lean` of `OWNED_ASM`): lines 1388 and 1389
-  are `movl $1457519847, 168(%rsp)` and `movl $604428764, 172(%rsp)`, which together
-  write the 8-byte word at `168(%rsp)`. `JInstr` has no 32-bit store. With these two
-  lines removed, the other 4855 instructions translate (585 `setc`/`movzbq` pairs,
-  639 `btq`, 117 `testq`/`cmovneq`, 144 `movl $imm, %r32`).
 * the file `ed25519_comb_table_from_lean` of `OWNED_ASM`: `.quad` data, no instructions.
 
 ### Round trip
