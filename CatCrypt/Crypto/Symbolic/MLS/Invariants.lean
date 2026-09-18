@@ -25,8 +25,14 @@ The MLS event predicate captures the core correspondence property:
 - **CommitVerified** → either a matching **Commit** exists (with the same
   tree root hash), or the committer is corrupted
 
-This is the TreeSync authentication property adapted to the DY-lite framework.
 The pattern is identical to EDHOC's `InitiatorMsg3 → ResponderMsg2 ∨ corrupt`.
+
+## Scope
+
+The `CommitVerified` clause postulates the correspondence that
+`mls_commit_authentication` reads back; it mentions no signature.
+`traceInvariant` for these invariants is established for the single honest
+trace `tr₁₀` (`honestSession_mls_invariant`) and for no other trace.
 
 ## References
 
@@ -132,12 +138,12 @@ def mlsStatePred (tr : Trace) (prin : String) (_sessId : Nat) (content : Bytes) 
 
 /-- MLS-specific event predicate.
 
-An event is valid if it corresponds to a well-formed protocol step:
-- **CommitVerified** events establish that the receiver verified the
-  committer's commit, giving either a matching Commit event or
-  committer corruption
-- **Commit** events record that the committer created a valid commit
-- Other events pass trivially -/
+- A **CommitVerified** event is valid when a matching earlier Commit event
+  exists or the committer is corrupt. The predicate postulates this
+  correspondence; it mentions no signature.
+- **GroupEstablished**, **Commit**, **PathSecret** and **EpochKey** events are
+  valid when their content is well formed.
+- Other events are valid. -/
 def mlsEventPred (tr : Trace) (i : Nat) (prin tag : String) (content : Bytes) : Prop :=
   if tag == commitVerifiedTag then
     -- CommitVerified: either a matching Commit exists, or committer is corrupted

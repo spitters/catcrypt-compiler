@@ -12,14 +12,26 @@ public import CatCrypt.Crypto.Symbolic.SigningDiscipline
 /-!
 # EDHOC Protocol Verification
 
-Proves that EDHOC Method 0 (SIG-SIG) honest session maintains
-`traceInvariant`, starting from the empty trace. Methods 1-3 follow
-the same pattern with additional DH operations.
+The trace that `honestSession_m0` (Method 0, SIG-SIG) produces from `.nil` is
+the explicit eleven-entry trace `tr₁₁`, and `tr₁₁` satisfies `traceInvariant`
+for `edhocInvariants`.
 
 ## Main results
 
 * `edhocEventPredMono` — EDHOC invariants are monotone under snoc
-* `honestSession_m0_invariant` — M0 honest session maintains invariant from `.nil`
+* `honestSession_m0_invariant` — the trace of `honestSession_m0` from `.nil`
+  satisfies the invariant
+
+## Scope
+
+`tr₁₁` is one attacker-free run of method 0: two honest parties, no
+corruption, one session. It is the only trace for which the EDHOC invariant is
+established; methods 1–3 have no such result. `honestSession_m0` inlines the
+steps of both roles and does not call `initiatorHandshake_m0` or
+`responderHandshake_m0`, which appear in no theorem. The `InitiatorMsg3` and
+`ResponderVerified` steps of the invariant proof supply their witnesses by
+pointing at entries that `honestSession_m0` itself recorded; no signature is
+checked. Messages 2 and 3 are sent unencrypted.
 -/
 
 @[expose] public section
@@ -162,9 +174,9 @@ theorem honestSession_m0_eq (I R : String) (sigKey_I sigKey_R : Bytes) :
     Trace.length_nil, Trace.length_snoc]
   rfl
 
-/-- The honest EDHOC M0 session maintains trace invariant from the empty trace.
-
-**No `traceInvariant` hypothesis** — derived from `traceInvariant .nil`. -/
+/-- The trace produced by `honestSession_m0` from the empty trace satisfies the
+EDHOC trace invariant. The proof extends `traceInvariant_nil` one entry at a
+time along `tr₁₁`. It covers this one trace and no other. -/
 theorem honestSession_m0_invariant (I R : String) (sigKey_I sigKey_R : Bytes) :
     Inv (honestSession_m0 I R sigKey_I sigKey_R .nil).2 := by
   rw [honestSession_m0_eq]

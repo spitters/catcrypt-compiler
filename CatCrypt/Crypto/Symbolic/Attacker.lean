@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Symbolic.Invariant
 /-!
 # Attacker Knowledge — Dolev-Yao Closure
 
-Port of DY*'s attacker knowledge predicate. The attacker can derive new
+An attacker knowledge predicate in the style of DY*. The attacker can derive new
 messages from known messages using the cryptographic constructors and
 destructors. The main theorem shows that attacker knowledge respects
 the label discipline.
@@ -20,6 +20,15 @@ the label discipline.
 * `AttackerKnows` — inductive: messages the attacker can derive
 * `attacker_only_knows_publishable` — main theorem: if the trace invariant
   holds, then everything the attacker knows is publishable
+
+## Differences from DY*
+
+* The rule for Diffie–Hellman builds `dh sk (dhPub pk')` from a known `sk`.
+  There is no equation `dh x (dhPub y) = dh y (dhPub x)`, and `Bytes.dhEquiv`
+  is not used here, so an attacker holding `y` does not derive the secret an
+  uncompromised party computes as `dh x (dhPub y)`.
+* The attacker does not generate randomness, and no rule recovers a message
+  from its signature.
 
 ## References
 

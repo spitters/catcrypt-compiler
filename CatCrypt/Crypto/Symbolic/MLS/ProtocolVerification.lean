@@ -23,6 +23,16 @@ starting from the empty trace.
   samples
 * `honestSession_mls_eq` — its trace is the named trace `tr₁₀`
 * `honestSession_mls_invariant` — that trace satisfies the invariant from `.nil`
+
+## Scope
+
+`tr₁₀` is one attacker-free run: one commit in one epoch, one receiver, no
+corruption. It is the only trace for which the MLS invariant is established.
+`honestSession_mls` inlines the steps of both roles; `commitOperation` and
+`processCommit` appear in no theorem. No theorem covers attacker sends,
+corruption, a second commit or interleaved sessions. The receiver obtains the
+epoch key without any message carrying the path secret, and the tree is
+represented by the parameter `rootHash` only.
 -/
 
 @[expose] public section
@@ -183,9 +193,9 @@ theorem honestSession_mls_eq (C R : String) (sigKey : Bytes)
     Bytes.signVerify, Bytes.beq_self, ↓reduceIte, Trace.length_nil, Trace.length_snoc]
   rfl
 
-/-- The honest MLS session maintains trace invariant from the empty trace.
-
-**No `traceInvariant` hypothesis** — derived from `traceInvariant .nil`. -/
+/-- The trace produced by `honestSession_mls` from the empty trace satisfies the
+MLS trace invariant. The proof extends `traceInvariant_nil` one entry at a
+time along `tr₁₀`. It covers this one trace and no other. -/
 theorem honestSession_mls_invariant (C R : String) (sigKey : Bytes)
     (members : List String) (groupId : Bytes) (epoch : Nat) (rootHash : Bytes)
     (hPubRH : ∀ tr : Trace, bytesPublishable tr rootHash) :

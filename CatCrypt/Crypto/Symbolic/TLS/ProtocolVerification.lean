@@ -6,8 +6,10 @@ Authors: CatCrypt Contributors
 module
 
 public meta import CatCrypt.Crypto.Symbolic.TLS.Events
-public meta import CatCrypt.Crypto.Symbolic.TLS.ForwardSecrecy
-public import CatCrypt.Crypto.Symbolic.TLS.ForwardSecrecy
+public meta import CatCrypt.Crypto.Symbolic.TLS.Invariants
+public import CatCrypt.Crypto.Symbolic.TLS.Invariants
+public meta import CatCrypt.Crypto.Symbolic.TimedLabel
+public import CatCrypt.Crypto.Symbolic.TimedLabel
 public meta import CatCrypt.Crypto.Symbolic.TracefulSpec
 public import CatCrypt.Crypto.Symbolic.TracefulSpec
 public meta import CatCrypt.Crypto.Symbolic.SigningDiscipline
@@ -16,14 +18,27 @@ public import CatCrypt.Crypto.Symbolic.SigningDiscipline
 /-!
 # TLS Protocol Verification
 
-Proves that the TLS 1.3 `honestSession` Traceful program maintains
-`traceInvariant`, starting from the empty trace. This closes the
-verification gap where `traceInvariant` was assumed rather than derived.
+The trace that `honestSession` produces from `.nil` is the explicit
+eight-entry trace `tr₈`, and `tr₈` satisfies `traceInvariant` for
+`tlsInvariants`.
 
 ## Main results
 
 * `tlsEventPredMono` — TLS invariants are monotone under snoc
-* `honestSession_invariant` — honest session maintains invariant from `.nil`
+* `honestSession_invariant` — the trace of `honestSession` from `.nil`
+  satisfies the invariant
+* `tr₈_appKey_server_not_known` — the attacker does not know the application
+  key on `tr₈`
+
+## Scope
+
+`tr₈` is one attacker-free run: two honest parties, two public messages, no
+corruption, one session. It is the only trace for which the TLS invariant is
+established. No theorem shows that `clientHandshake` or `serverHandshake`
+preserves the invariant, and none covers attacker sends, corruption or
+interleaved sessions. The `ClientFinished` step of the invariant proof supplies
+the `ServerFinished` witness by pointing at the entry that `honestSession`
+itself recorded; no signature is checked.
 -/
 
 @[expose] public section
@@ -109,10 +124,9 @@ theorem honestSession_eq (client server : String) (serverSigKey : Bytes) :
     Trace.length_nil, Trace.length_snoc]
   rfl
 
-/-- The honest TLS session maintains trace invariant from the empty trace.
-
-**No `traceInvariant` hypothesis** — derived from `traceInvariant .nil`.
-This closes Gap 1 for TLS. -/
+/-- The trace produced by `honestSession` from the empty trace satisfies the
+TLS trace invariant. The proof extends `traceInvariant_nil` one entry at a
+time along `tr₈`. It covers this one trace and no other. -/
 theorem honestSession_invariant (client server : String) (serverSigKey : Bytes) :
     Inv (honestSession client server serverSigKey .nil).2 := by
   rw [honestSession_eq]
@@ -186,17 +200,13 @@ theorem honestSession_clientFinished (client server : String) (serverSigKey : By
     unfold tr₈ Trace.eventTriggeredAt
     rfl⟩
 
-/-! ## Forward Secrecy: Discharging Bridge Hypotheses for Honest Trace
+/-! ## Facts about the honest trace `tr₈`
 
-For the honest trace `tr₈`, both `hNetworkTimed` and `hCorruptStateTimed`
-are trivially satisfied:
-
-1. `hNetworkTimed`: The two `msgSent` entries (positions 2, 6) contain only
-   DH public keys, literals, signatures, and hashes — all `.top` timed labels.
-2. `hCorruptStateTimed`: There are no `.corrupt` entries in `tr₈`, so it is
-   vacuously true.
-
-This yields forward secrecy with zero assumptions. -/
+`tr₈` has eight entries and none of them is a `.corrupt` entry. Its two
+`msgSent` entries (positions 2 and 6) contain only DH public keys, literals,
+signatures and hashes, whose timed labels are `.top`. The attacker of
+`AttackerKnows (tr₈ …)` therefore sees two public messages and no corrupted
+state. -/
 
 theorem tr₈_length (c s : String) (sk : Bytes) :
     (tr₈ c s sk).length = 8 := by
@@ -241,150 +251,31 @@ theorem hCorruptStateTimed_honest (client server : String) (serverSigKey : Bytes
   intro _ _ _ i _ hi
   exact absurd hi (tr₈_no_corrupt client server serverSigKey i _)
 
-/-- **TLS 1.3 Forward Secrecy for the Honest Session** — zero assumptions.
+/-- On the honest trace `tr₈` the attacker does not know the server-side
+application key `appKey_server = keySchedule (dh y gx)`.
 
-Combines `tls13_forward_secrecy_timed` with the discharged bridge hypotheses.
-If the attacker knows the session key of an honest TLS 1.3 session, the server
-must have been corrupted at or before `sessionTime`.
-
-We use the server's ephemeral key `y` as the secret key (since
-`appKey_server = keySchedule(dh(y, gx))`), so the timed label tracks the
-server's ephemeral. -/
-theorem tls13_forward_secrecy_timed_honest
-    (client server : String) (serverSigKey : Bytes)
-    (sessionTime : Nat)
-    (hTime : 3 ≤ sessionTime) :
-    @traceInvariant tlsInvariants (tr₈ client server serverSigKey) →
-    AttackerKnows (tr₈ client server serverSigKey)
-      (appKey_server client server) →
-    (tr₈ client server serverSigKey).isCorruptAt server sessionTime := by
-  -- appKey_server = keySchedule(dh(y, gx)) where y is generated at position 3
-  -- timedLabelOf(y) = .principalAt server 3
-  exact tls13_forward_secrecy_timed
-    (tr₈ client server serverSigKey) server
-    (appKey_server client server)
-    (y client server) (gx client)
-    sessionTime 3
-    (by unfold appKey_server; rfl)
-    (by -- timedLabelOf (y client server) = .principalAt server 3
-      unfold y timedLabelOf Trace.randLabelAt
-      -- y = Bytes.rand .dhKey 32 (tr₃ c s).length, and tr₃ has length 3
-      unfold tr₈ tr₇ tr₆ tr₅ tr₄ tr₃ tr₂ tr₁ tr₀
-      simp [Trace.entryAt, Trace.length, Label.toTimedLabel, principalLabel])
-    hTime
-    (hNetworkTimed_honest client server serverSigKey)
-    (hCorruptStateTimed_honest client server serverSigKey)
-
-/-! ## PSK Resumption: Trace Construction and Invariant
-
-The PSK-DHE resumption session `honestResumptionSession` produces 7 trace entries.
-We prove invariant from `.nil` with an arbitrary PSK. -/
-
--- PSK named traces
-noncomputable def ptr₀ : Trace := .nil
-noncomputable def px (client : String) := Bytes.rand .dhKey 32 0
-noncomputable def ptr₁ (client : String) : Trace :=
-  .snoc ptr₀ (.randGen .dhKey (principalLabel client) 32)
-
-noncomputable def pgx (client : String) := Bytes.dhPub (px client)
-
-noncomputable def ptr₂ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₁ client) (.event client pskClientHelloTag
-    (mkClientHelloContent client server (pgx client)))
-
-noncomputable def ptr₃ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₂ client server psk) (.msgSent
-    (.concat (mkClientHelloContent client server (pgx client)) (pskBinder psk (pgx client))))
-
-noncomputable def py (client server : String) (psk : Bytes) :=
-  Bytes.rand .dhKey 32 (ptr₃ client server psk).length
-
-noncomputable def ptr₄ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₃ client server psk) (.randGen .dhKey (principalLabel server) 32)
-
-noncomputable def pgy (client server : String) (psk : Bytes) :=
-  Bytes.dhPub (py client server psk)
-
-noncomputable def psk_appKey (client server : String) (psk : Bytes) :=
-  pskKeySchedule psk (Bytes.dh (py client server psk) (pgx client))
-
-noncomputable def ptr₅ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₄ client server psk) (.event server pskServerFinishedTag
-    (mkPSKFinishedContent server client (psk_appKey client server psk)))
-
-noncomputable def ptr₆ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₅ client server psk) (.msgSent (pgy client server psk))
-
-noncomputable def ptr₇ (client server : String) (psk : Bytes) : Trace :=
-  .snoc (ptr₆ client server psk) (.event client pskClientFinishedTag
-    (mkPSKFinishedContent client server (psk_appKey client server psk)))
-
-/-- The output of `honestResumptionSession` is `ptr₇`. -/
-theorem honestResumptionSession_eq (client server : String) (psk : Bytes) :
-    (honestResumptionSession client server psk .nil).2 =
-    ptr₇ client server psk := by
-  unfold honestResumptionSession ptr₇ ptr₆ ptr₅ ptr₄ ptr₃ ptr₂ ptr₁ ptr₀
-  unfold psk_appKey pgy py pgx px
-  simp only [bind, instMonadTraceful, mkRand, triggerEvent, sendMsg,
-    Trace.length_nil, Trace.length_snoc]
-  rfl
-
-/-- The honest PSK-DHE resumption session maintains trace invariant from `.nil`.
-
-**No `traceInvariant` hypothesis** — derived from `traceInvariant .nil`. -/
-theorem honestResumption_invariant (client server : String) (psk : Bytes) :
-    Inv (honestResumptionSession client server psk .nil).2 := by
-  rw [honestResumptionSession_eq]
-  unfold ptr₇
-  -- Chain of intermediate invariants
-  have hInv₀ : Inv ptr₀ := traceInvariant_nil
-  have hInv₁ : Inv (ptr₁ client) := traceInvariant_randGen hInv₀ (Or.inl rfl)
-  have hInv₂ : Inv (ptr₂ client server psk) := by
-    unfold ptr₂
-    apply traceInvariant_event hInv₁
-    show tlsEventPred _ _ _ _ _
-    unfold tlsEventPred; simp [pskClientHelloTag, clientFinishedTag, serverFinishedTag,
-      pskClientFinishedTag, pskServerFinishedTag, newSessionTicketTag]
-  have hInv₃ : Inv (ptr₃ client server psk) := by
-    unfold ptr₃
-    apply traceInvariant_sendMsg hInv₂
-    unfold pgx mkClientHelloContent pskBinder
-    simp [bytesPublishable, labelOf, Label.isCorrupt]
-  have hInv₄ : Inv (ptr₄ client server psk) :=
-    traceInvariant_randGen hInv₃ (Or.inl rfl)
-  have hInv₅ : Inv (ptr₅ client server psk) := by
-    unfold ptr₅
-    apply traceInvariant_event hInv₄
-    show tlsEventPred _ _ _ _ _
-    unfold tlsEventPred; simp [pskServerFinishedTag, clientFinishedTag, serverFinishedTag,
-      pskClientFinishedTag]
-    exact ⟨client, _, rfl⟩
-  have hInv₆ : Inv (ptr₆ client server psk) := by
-    unfold ptr₆
-    apply traceInvariant_sendMsg hInv₅
-    unfold pgy
-    simp [bytesPublishable, labelOf, Label.isCorrupt]
-  -- Final step: pskClientFinished requires matching pskServerFinished
-  apply traceInvariant_event hInv₆
-  show tlsEventPred _ _ _ _ _
-  unfold tlsEventPred
-  -- pskClientFinishedTag resolves to 3rd branch
-  have h1 : (pskClientFinishedTag == clientFinishedTag) = false := by native_decide
-  have h2 : (pskClientFinishedTag == serverFinishedTag) = false := by native_decide
-  have h3 : (pskClientFinishedTag == pskClientFinishedTag) = true := by native_decide
-  rw [if_neg (by rw [h1]; decide), if_neg (by rw [h2]; decide), if_pos (by rw [h3])]
-  refine ⟨server, _, rfl, .inl ⟨(ptr₄ client server psk).length, ?_, ?_⟩⟩
-  · -- (ptr₄ c s psk).length < (ptr₆ c s psk).length
-    unfold ptr₆ ptr₅ ptr₄ ptr₃ ptr₂ ptr₁ ptr₀
-    simp [Trace.length]
-  · -- eventTriggeredAt at position ptr₄.length in ptr₇
-    show (Trace.snoc (ptr₆ client server psk)
-        (.event client pskClientFinishedTag
-          (mkPSKFinishedContent client server (psk_appKey client server psk)))).entryAt
-      (ptr₄ client server psk).length =
-      some (.event server pskServerFinishedTag
-        (mkPSKFinishedContent server client (psk_appKey client server psk)))
-    unfold ptr₆ ptr₅
-    simp [Trace.entryAt, Trace.length, ptr₄, ptr₃, ptr₂, ptr₁, ptr₀]
+The statement concerns the single trace `tr₈`, which contains two public
+messages and no corruption. The label of `appKey_server` is that of the
+server's ephemeral `y`, so publishability would place `server` in the
+corruption set of `tr₈`, which is empty. The statement says nothing about a
+trace in which the attacker sends a message or a party is corrupted. -/
+theorem tr₈_appKey_server_not_known
+    (client server : String) (serverSigKey : Bytes) :
+    ¬ AttackerKnows (tr₈ client server serverSigKey)
+      (appKey_server client server) := by
+  intro hKnows
+  have hInv : Inv (tr₈ client server serverSigKey) := by
+    rw [← honestSession_eq]
+    exact honestSession_invariant client server serverSigKey
+  have hPub := attacker_only_knows_publishable hInv hKnows
+  have hLabel : labelOf (tr₈ client server serverSigKey) (appKey_server client server) =
+      .meet (.meet (.meet .top .top) (principalLabel server)) .top := by
+    unfold appKey_server y tr₈ tr₇ tr₆ tr₅ tr₄ tr₃ tr₂ tr₁ tr₀
+    simp [keySchedule, Bytes.zeros, labelOf, Trace.randLabelAt, Trace.entryAt, Trace.length]
+  unfold bytesPublishable at hPub
+  rw [hLabel] at hPub
+  simp only [Label.isCorrupt, principalLabel, and_true, true_and] at hPub
+  obtain ⟨j, _, hentry⟩ := hPub
+  exact tr₈_no_corrupt client server serverSigKey j server hentry
 
 end CatCrypt.Crypto.Symbolic.TLS

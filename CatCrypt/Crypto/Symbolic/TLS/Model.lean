@@ -10,14 +10,28 @@ public import CatCrypt.Crypto.Symbolic.TLS.Events
 /-!
 # TLS 1.3 Handshake Model
 
-The TLS 1.3 full handshake as `Traceful` programs, modeling client and
-server roles. This is the protocol model against which we prove the 4
-security properties.
+A simplified TLS 1.3 handshake as `Traceful` programs.
 
 ## Main definitions
 
 * `clientHandshake` — client role of the TLS 1.3 handshake
 * `serverHandshake` — server role of the TLS 1.3 handshake
+* `honestSession` — both roles inlined into one attacker-free run
+
+## Scope
+
+* Only `honestSession` appears in a theorem: `honestSession_invariant` shows
+  that its one output trace satisfies `tlsInvariants`. `clientHandshake` and
+  `serverHandshake` appear in no theorem and are not verified.
+* `clientHandshake` binds the result of `Bytes.signVerify` to `_verified` and
+  does not branch on it; it records `ClientFinished` whatever the signature.
+* `serverHandshake` sets the peer name to the literal `"client"` instead of
+  parsing it from the ClientHello.
+* The handshake flight is sent unencrypted. Under `labelOf` a ciphertext of a
+  secret plaintext is not publishable, so a trace that sends one does not
+  satisfy the invariant.
+* `honestResumptionSession` and `honestSessionWithTicket` are definitions
+  only; no theorem in this directory mentions them.
 
 ## Protocol Flow (1-RTT, no PSK)
 
@@ -59,7 +73,9 @@ open CatCrypt.Crypto.Symbolic
 /-- Client's handshake computation.
 
 Generates ephemeral DH key, sends ClientHello, receives ServerHello,
-derives keys, verifies server signature, and triggers ClientFinished event.
+derives keys, computes `Bytes.signVerify` on the server signature without
+using its result, and triggers the ClientFinished event. The program appears
+in no theorem.
 
 Parameters:
 - `client`: client's identity (e.g., hostname)
@@ -99,7 +115,8 @@ def clientHandshake (client server : String) (serverVK : Bytes)
 /-- Server's handshake computation.
 
 Receives ClientHello, generates ephemeral DH key, derives keys,
-signs the transcript, and triggers ServerFinished event.
+signs the transcript, and triggers ServerFinished event. The peer name in the
+event is the literal `"client"`. The program appears in no theorem.
 
 Parameters:
 - `server`: server's identity
@@ -135,10 +152,10 @@ def serverHandshake (server : String) (sigKey : Bytes)
 
 /-- A complete TLS session between honest client and server.
 
-In the symbolic model, we compose the client and server roles,
-with the attacker potentially modifying messages in transit.
-For honest execution (no attacker interference), the client receives
-the server's actual message. -/
+The steps of both roles are inlined into one program with no attacker
+interference: the client receives the server's actual message, and the client
+event reuses the server-side key. The program does not call `clientHandshake`
+or `serverHandshake`. -/
 def honestSession (client server : String) (serverSigKey : Bytes) :
     Traceful (Bytes × Bytes) := do
   -- Server setup: generate long-term signing key

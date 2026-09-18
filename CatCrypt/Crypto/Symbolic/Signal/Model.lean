@@ -10,12 +10,25 @@ public import CatCrypt.Crypto.Symbolic.Signal.Events
 /-!
 # Signal X3DH Protocol Model
 
-The X3DH key agreement as `Traceful` programs. Models the initiator (Alice)
-and responder (Bob) roles for an honest session.
+One attacker-free X3DH run as a single `Traceful` program.
 
 ## Main definitions
 
-* `honestX3DH` — complete honest X3DH session (both roles)
+* `honestX3DH` — Alice's steps of an X3DH exchange, followed by an `X3DHResp`
+  event recorded in Bob's name
+
+## Scope
+
+- The model has no responder role. Bob generates no key, receives no message
+  and computes nothing; `honestX3DH` records his `X3DHResp` event itself, with
+  the root key that Alice computed.
+- Bob's prekey bundle (`ikB`, `spkB`, `opkB`) is a parameter. The signature on
+  the signed prekey is not modelled, and nothing constrains who chose the
+  bundle, so the model says nothing about an attacker-supplied bundle.
+- The initial ciphertext of X3DH is not sent. Under `labelOf` a ciphertext of
+  a secret plaintext is not publishable, so a trace that sends one does not
+  satisfy the invariant.
+- The ratchet step `ratchetStep` of `Events.lean` is not used by this program.
 
 ## Design Notes
 
@@ -36,11 +49,12 @@ open CatCrypt.Crypto.Symbolic
 
 /-! ## Honest X3DH Session -/
 
-/-- A complete honest X3DH session.
+/-- One attacker-free X3DH run.
 
 Alice generates ephemeral and identity keys, computes the 4 DH operations,
-derives the root key, triggers events for both sides, and sends the
-initiator message.
+derives the root key, records her `X3DHInit` event and sends the initiator
+message. The program then records the `X3DHResp` event in Bob's name with the
+same root key; Bob has no program of his own.
 
 Parameters:
 - `alice`, `bob`: participant identities

@@ -12,13 +12,23 @@ public import CatCrypt.Crypto.Symbolic.SigningDiscipline
 /-!
 # Signal Protocol Verification
 
-Proves that `honestX3DH` maintains `traceInvariant` from the empty trace,
-and establishes the `EventPredMono` instance for Signal.
+The trace that `honestX3DH` produces from `.nil` is the explicit five-entry
+trace `tr₅`, and `tr₅` satisfies `traceInvariant` for `signalInvariants`.
 
 ## Main results
 
 * `signalEventPredMono` — Signal invariants are monotone under snoc
-* `honestX3DH_invariant` — honest X3DH session maintains invariant from `.nil`
+* `honestX3DH_invariant` — the trace of `honestX3DH` from `.nil` satisfies the
+  invariant
+
+## Scope
+
+`tr₅` is one attacker-free run: no corruption, one session, one message. It is
+the only trace for which the Signal invariant is established. `honestX3DH` is
+Alice's program; it records Bob's `X3DHResp` event itself, and the `X3DHResp`
+step of the invariant proof supplies the `X3DHInit` witness by pointing at the
+entry the same program recorded. The model has no responder role and no
+verified role program.
 -/
 
 @[expose] public section
@@ -102,9 +112,9 @@ theorem honestX3DH_eq (alice bob : String) (ikB spkB opkB : Bytes) :
     Trace.length_nil, Trace.length_snoc]
   rfl
 
-/-- The honest Signal X3DH session maintains trace invariant from the empty trace.
-
-**No `traceInvariant` hypothesis** — derived from `traceInvariant .nil`. -/
+/-- The trace produced by `honestX3DH` from the empty trace satisfies the Signal
+trace invariant. The proof extends `traceInvariant_nil` one entry at a time
+along `tr₅`. It covers this one trace and no other. -/
 theorem honestX3DH_invariant (alice bob : String) (ikB spkB opkB : Bytes) :
     Inv (honestX3DH alice bob ikB spkB opkB .nil).2 := by
   rw [honestX3DH_eq]

@@ -11,10 +11,19 @@ public import CatCrypt.Crypto.Symbolic.MLS.ParentHash
 /-!
 # MLS Group Authentication
 
-Combines TreeSync authentication (commit auth), parent hash guarantee,
+Combines commit authentication, injectivity of the symbolic tree hash
 and tree invariants: a verified commit has a matching commit event or a
 corrupted committer, and two views of the group agree at every leaf when
 their root hashes are equal.
+
+## Scope
+
+The commit-authentication part reads back the correspondence postulated by
+`mlsEventPred`, and the trace invariant is established only for the single
+attacker-free run `honestSession_mls_invariant`. `TreeSyncValid` is a
+hypothesis of `mls_treesync_security`; no MLS operation is proved to preserve
+it. The tree hash is injective because `Bytes.hash` is a free constructor, so
+the parent hash mechanism plays no part.
 
 ## Main results
 
@@ -29,7 +38,7 @@ their root hashes are equal.
 This file bridges the individual security results:
 1. **Commit Authentication** (`CommitAuth.lean`): verified commits correspond
    to real commits or committer corruption
-2. **Parent Hash Guarantee** (`ParentHash.lean`): trees with equal root hashes
+2. **Tree hash injectivity** (`ParentHash.lean`): trees with equal root hashes
    have equal leaf content
 3. **Tree Invariants** (`TreeInvariants.lean`): tree structure is well-formed
 
@@ -106,10 +115,10 @@ theorem mls_group_consistency
     | inl hCommit₂ =>
       right
       refine ⟨⟨hCommit₁, hCommit₂⟩, ?_⟩
-      -- Trees agree by parent hash guarantee
+      -- Trees agree by injectivity of the symbolic tree hash
       intro idx
       have hHash : treeHash tree₁ = treeHash tree₂ := by rw [hHash₁, hHash₂]
-      exact parent_hash_guarantee tree₁ tree₂ hHash idx
+      exact treeHash_detects_leaf_change tree₁ tree₂ idx hHash
 
 /-! ## Auth Service Integration -/
 

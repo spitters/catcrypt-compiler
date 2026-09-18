@@ -25,6 +25,13 @@ The event predicate encodes:
 - `X3DHResp` events require a matching `X3DHInit` event or corruption
 - `X3DHInit` events are unconstrained (initiator can start any time)
 - All other events are trivially valid
+
+## Scope
+
+The `X3DHResp` clause postulates the correspondence that
+`signal_x3dh_authentication` reads back; it mentions no signature or MAC.
+`traceInvariant` for these invariants is established for the single honest
+trace `tr₅` (`honestX3DH_invariant`) and for no other trace.
 -/
 
 @[expose] public section

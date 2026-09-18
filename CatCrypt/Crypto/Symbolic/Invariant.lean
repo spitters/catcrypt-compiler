@@ -10,8 +10,8 @@ public import CatCrypt.Crypto.Symbolic.Trace
 /-!
 # Trace Invariants
 
-Port of DY*'s trace invariant methodology. Protocol-specific predicates constrain
-which traces are valid, and the framework ensures invariant preservation.
+A trace invariant in the style of DY*. Protocol-specific predicates constrain
+which traces are valid.
 
 ## Main definitions
 
@@ -33,6 +33,23 @@ Labels are assigned structurally via `labelOf`:
 A value is "publishable" when its label is corrupt given the trace's corruption set.
 The main theorem (`attacker_only_knows_publishable` in `Attacker.lean`) shows that
 everything the DY attacker derives is publishable.
+
+## Differences from DY*
+
+* The label of a ciphertext is derived from the labels of its key and
+  plaintext (`aeadEnc` takes the `meet`; `pkeEnc` and `kemEncap` take the label
+  of the protected component). A ciphertext of an uncompromised secret is
+  therefore not publishable and cannot be sent. DY* labels ciphertexts public
+  and requires the plaintext label to flow to the key label.
+* The label of `dh sk pk` is the label of `sk` alone, so a secret shared with a
+  peer whose exponent the attacker holds is labelled as secret. DY* labels it
+  with the join of both keys' labels.
+* `traceInvariant` is a predicate on traces. No theorem states that the traces
+  reachable under attacker sends, corruption and interleaved sessions satisfy
+  it; the protocol developments establish it for one attacker-free run each.
+* Signatures and MACs are labelled `top` and carry no predicate, so event
+  predicates state authentication correspondences without a discharge
+  obligation at signing time.
 
 ## References
 

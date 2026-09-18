@@ -8,28 +8,39 @@ module
 public import CatCrypt.Crypto.Symbolic.EDHOC.Invariants
 
 /-!
-# EDHOC Responder Authentication
+# EDHOC: the InitiatorMsg3 / ResponderMsg2 event correspondence
 
-Theorem: If an initiator completes message_3 (triggers `InitiatorMsg3`),
-then either the responder also sent message_2 (triggered `ResponderMsg2`),
-or the responder is compromised.
+On a trace satisfying `edhocInvariants`, an `InitiatorMsg3` event is preceded
+by a matching `ResponderMsg2` event unless the responder is corrupt.
 
 ## Main result
 
-* `edhoc_responder_authentication` — responder authentication via correspondence
+* `edhoc_responder_authentication` — the correspondence, read back from
+  `edhocEventPred`
 
-## Proof Sketch
+## Proof
 
-1. Initiator triggers `InitiatorMsg3(I, R, prk_out)` at position `i`
-2. By `eventPred`, the initiator verified the responder's message_2
-3. By `edhocEventPred`, either a matching `ResponderMsg2` event exists,
-   or the responder is corrupted
-4. Injectivity of `mkMsg3Content` extracts the peer identity and key
+1. The invariant gives `edhocEventPred` at the position of the
+   `InitiatorMsg3(I, R, prk_out)` event.
+2. That clause states that a matching `ResponderMsg2` event exists or the
+   responder is corrupt.
+3. Injectivity of `mkMsg3Content` identifies the peer and the key.
+
+## Scope
+
+* The correspondence is postulated by `edhocEventPred`. No signature or MAC
+  predicate enters the proof.
+* `traceInvariant` for `edhocInvariants` is established only for the single
+  honest method-0 trace `tr₁₁` (`honestSession_m0_invariant`). No theorem
+  covers attacker sends, corruption, interleaved sessions or methods 1–3.
+* The role programs of `Model.lean` are not verified. The initiator programs
+  of methods 0 and 2 discard the result of `Bytes.signVerify` on `sig_2`, and
+  those of methods 1 and 3 do not check `mac_2`; each records `InitiatorMsg3`
+  regardless.
 
 ## References
 
 * DY*-extrinsic: TLS13 server authentication proof (same pattern)
-* ProVerif: `query event(InitMsg3(I,R,k)) ==> event(RespMsg2(R,I,_,k)) | corrupt(R)`
 -/
 
 @[expose] public section
@@ -38,11 +49,14 @@ namespace CatCrypt.Crypto.Symbolic.EDHOC
 
 open CatCrypt.Crypto.Symbolic
 
-/-- **Responder Authentication**: If an initiator completes the EDHOC handshake
-(sending message_3), then the responder also participated (sending message_2
-with a matching key), or the responder is compromised.
+/-- On a trace satisfying the invariant, an `InitiatorMsg3` event at `i` is
+preceded by a `ResponderMsg2` event with the same key, or the responder is
+corrupt at `i`.
 
-This is the EDHOC analogue of TLS 1.3 server authentication. -/
+The conclusion is the clause of `edhocEventPred` for `InitiatorMsg3` events,
+which the invariant hypothesis supplies. The invariant is established only for
+the honest method-0 trace `tr₁₁`, and no role program is shown to maintain
+it. -/
 theorem edhoc_responder_authentication
     (tr : Trace) (i : Nat) (initiator responder : String) (prk_out : Bytes) :
     traceInvariant tr →

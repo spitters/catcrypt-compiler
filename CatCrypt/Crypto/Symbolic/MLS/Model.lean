@@ -55,6 +55,17 @@ AEAD of the payload under the encapsulated secret. The receiver's epoch key is
 built from the decrypted secrets, so it equals the committer's epoch key term
 when the ciphertext is delivered unmodified.
 
+## Scope
+
+`commitOperation` and `processCommit` appear in no theorem and are not
+verified against `mlsInvariants`. A trace of `commitOperation` with a
+non-empty `recipientKeys` sends `sealPathSecret …`, whose label under
+`labelOf` is that of the sealed secrets, so the trace does not satisfy the
+publishability condition of `traceInvariant`. The run whose trace is analysed
+is `honestSession_mls` in `ProtocolVerification.lean`, which sends no sealed
+path message. The tree types of `TreeTypes.lean` are not used by either
+program: `rootHash` is a parameter.
+
 ## References
 
 * RFC 9420 Section 12.4 — Commit

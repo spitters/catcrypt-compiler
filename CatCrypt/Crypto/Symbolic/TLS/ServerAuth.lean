@@ -8,30 +8,34 @@ module
 public import CatCrypt.Crypto.Symbolic.TLS.Invariants
 
 /-!
-# TLS 1.3 Server Authentication
+# TLS 1.3: the ClientFinished / ServerFinished event correspondence
 
-Theorem: If a client completes a handshake (triggers `ClientFinished`),
-then either the server also completed its side (triggered `ServerFinished`),
-or the server's signing key is compromised.
+On a trace satisfying `tlsInvariants`, a `ClientFinished` event is preceded by
+a matching `ServerFinished` event unless the server is corrupt.
 
 ## Main result
 
-* `tls13_server_authentication` — server authentication via correspondence
+* `tls13_server_authentication` — the correspondence, read back from
+  `tlsEventPred`
 
-## Proof Sketch
+## Scope
 
-1. Client triggers `ClientFinished(client, server, appKey)` at position `i`
-2. By `eventPred`, the client verified a signature from `server`
-3. The signature `sign(sk_s, nonce, transcript)` was verified against `vk(sk_s)`
-4. By `attacker_only_knows_publishable`, if the attacker produced the signature,
-   then `sk_s` must be publishable (= server is corrupted)
-5. If the attacker did NOT produce it, then the server must have produced it,
-   which means `ServerFinished` was triggered
+* `tlsEventPred` requires, for every `ClientFinished` event, a matching earlier
+  `ServerFinished` event or a corrupt server. The theorem unpacks that
+  requirement and identifies the peer and key by injectivity of
+  `mkFinishedContent`. No signature or MAC predicate enters the proof, and
+  `attacker_only_knows_publishable` is not used.
+* `traceInvariant` for `tlsInvariants` is established only for the single
+  honest trace `tr₈` (`honestSession_invariant`). No theorem shows that a trace
+  with attacker sends, corruption or interleaved sessions satisfies it.
+* The role programs of `Model.lean` are not verified against the invariant.
+  `clientHandshake` discards the result of `Bytes.signVerify` and records
+  `ClientFinished` regardless, so the correspondence is not a property of that
+  program.
 
 ## References
 
 * DY*-extrinsic: TLS13 server authentication proof
-* ProVerif: `query event(ClientFinished(x,y,k)) ==> event(ServerFinished(y,x,k)) | corrupt(y)`
 -/
 
 @[expose] public section
@@ -40,12 +44,13 @@ namespace CatCrypt.Crypto.Symbolic.TLS
 
 open CatCrypt.Crypto.Symbolic
 
-/-- **Server Authentication**: If a client completes the TLS 1.3 handshake,
-then the server also completed it (with matching keys), or the server
-is compromised.
+/-- On a trace satisfying the invariant, a `ClientFinished` event at `i` is
+preceded by a `ServerFinished` event with the same key, or the server is
+corrupt at `i`.
 
-This corresponds to ProVerif's authentication query and is the first
-of the four main symbolic security properties. -/
+The conclusion is the clause of `tlsEventPred` for `ClientFinished` events,
+which the invariant hypothesis supplies. The invariant is established only for
+the honest trace `tr₈`, and no role program is shown to maintain it. -/
 theorem tls13_server_authentication
     (tr : Trace) (i : Nat) (client server : String) (appKey : Bytes) :
     traceInvariant tr →

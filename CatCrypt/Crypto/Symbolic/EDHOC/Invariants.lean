@@ -30,6 +30,14 @@ The EDHOC event predicate captures two correspondence properties:
 This follows the same pattern as `TLS/Invariants.lean` where
 `ClientFinished` requires a matching `ServerFinished`.
 
+## Scope
+
+Both correspondences are part of `edhocEventPred`;
+`edhoc_responder_authentication` and `edhoc_initiator_authentication` read
+them back. `traceInvariant` for these invariants is established for the single
+honest method-0 trace `tr₁₁` (`honestSession_m0_invariant`) and for no other
+trace.
+
 ## References
 
 * DY*-extrinsic: `DY.Lib.State.Typed`, protocol-specific invariant files
@@ -130,15 +138,16 @@ def edhocStatePred (tr : Trace) (prin : String) (_sessId : Nat) (content : Bytes
 
 /-- EDHOC-specific event predicate.
 
-An event is valid if it corresponds to a well-formed handshake step:
-- **InitiatorMsg3** events establish that the initiator verified the
-  responder's message_2, giving either a matching ResponderMsg2 or
-  responder corruption
-- **ResponderVerified** events establish that the responder verified the
-  initiator's message_3, giving either a matching InitiatorMsg3 or
-  initiator corruption
-- **ResponderMsg2** events simply record that the responder derived a key
-- Other events pass trivially -/
+- An **InitiatorMsg3** event is valid when a matching earlier ResponderMsg2
+  event exists or the responder is corrupt.
+- A **ResponderVerified** event is valid when a matching earlier InitiatorMsg3
+  event exists or the initiator is corrupt.
+- A **ResponderMsg2** event is valid when its content is well formed.
+- Other events are valid.
+
+The first two clauses postulate the correspondences. They mention no signature
+or MAC, and no role program is shown to establish them before recording the
+event. -/
 def edhocEventPred (tr : Trace) (i : Nat) (prin tag : String) (content : Bytes) : Prop :=
   if tag == initiatorMsg3Tag then
     ∃ (peer : String) (prk_out : Bytes),

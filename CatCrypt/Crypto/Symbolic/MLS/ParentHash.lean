@@ -8,16 +8,16 @@ module
 public import CatCrypt.Crypto.Symbolic.MLS.Invariants
 
 /-!
-# MLS Parent Hash Guarantee
+# Injectivity of the symbolic tree hash
 
-The parent hash guarantee ensures that if two trees have the same root hash
-and valid parent hash invariants, their structures agree on all direct paths.
+The tree hash of `SymTree` is injective because `Bytes.hash` is a free
+constructor. The parent hash mechanism of RFC 9420 plays no part in these
+results, and no statement here is the TreeSync parent hash guarantee.
 
 ## Main results
 
 * `treeHash_injective` — trees with equal hashes have equal structure
 * `treeHash_detects_leaf_change` — equal root hash implies equal leaves
-* `parent_hash_guarantee` — equal root hash implies agreement on every leaf
 
 ## Symbolic hash injectivity
 
@@ -114,26 +114,5 @@ theorem treeHash_ne_of_leaf_ne {n : Nat} (t₁ t₂ : SymTree n) (idx : LeafInde
     (hLeaf : getLeaf t₁ idx ≠ getLeaf t₂ idx) :
     treeHash t₁ ≠ treeHash t₂ :=
   fun h => absurd (treeHash_detects_leaf_change t₁ t₂ idx h) hLeaf
-
-/-! ## Full Parent Hash Guarantee -/
-
-/-- **Parent Hash Guarantee**: two trees with the same root hash agree
-on every leaf position.
-
-Corresponds to the Inria TreeSync parent hash guarantee
-(Wallez et al., USENIX Security 2023, Theorem 3), which is stated there
-under the parent hash invariant and proved from hash collision
-resistance with `z3rlimit=100`.
-
-In this symbolic model the parent hash invariant is not a hypothesis and
-the parent hash mechanism does no work in the proof. `Bytes.hash` is an
-injective constructor of the term algebra, so equal root hashes force
-structural equality of the two trees, and the statement is
-`treeHash_detects_leaf_change`. Two trees whose parent hash fields are
-arbitrary satisfy the conclusion just as well. -/
-theorem parent_hash_guarantee {n : Nat} (t₁ t₂ : SymTree n)
-    (hHash : treeHash t₁ = treeHash t₂) :
-    ∀ idx : LeafIndex n, getLeaf t₁ idx = getLeaf t₂ idx :=
-  fun idx => treeHash_detects_leaf_change t₁ t₂ idx hHash
 
 end CatCrypt.Crypto.Symbolic.MLS

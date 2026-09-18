@@ -25,6 +25,14 @@ The TLS invariants are defined at the trace/entry level without depending
 on `hasLabel` (which requires a `ProtocolInvariants` instance). Instead,
 we use structural predicates on the bytes values directly.
 
+## Scope
+
+The authentication correspondence is part of `tlsEventPred`: a
+`ClientFinished` event is valid only when a matching `ServerFinished` event or
+a corrupt server exists. `tls13_server_authentication` reads that clause back.
+`traceInvariant` for these invariants is established for the single honest
+trace `tr₈` (`honestSession_invariant`) and for no other trace.
+
 ## References
 
 * DY*-extrinsic: `DY.Lib.State.Typed`, protocol-specific invariant files
@@ -130,10 +138,13 @@ def tlsStatePred (tr : Trace) (prin : String) (_sessId : Nat) (content : Bytes) 
 
 /-- TLS-specific event predicate.
 
-An event is valid if it corresponds to a well-formed handshake step:
-- ClientFinished events record that the client verified the server's signature,
-  establishing either a matching ServerFinished event or server corruption
-- ServerFinished events record that the server derived a key -/
+- A `ClientFinished` event is valid when a matching earlier `ServerFinished`
+  event exists or the peer is corrupt. The predicate postulates this
+  correspondence; it mentions no signature, and no role program is shown to
+  establish it before recording the event.
+- A `ServerFinished` event is valid when its content is well formed.
+- The PSK clauses have the same two shapes. No PSK trace is shown to satisfy
+  the invariant. -/
 def tlsEventPred (tr : Trace) (i : Nat) (prin tag : String) (content : Bytes) : Prop :=
   if tag == clientFinishedTag then
     ∃ (peer : String) (appKey : Bytes),

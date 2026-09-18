@@ -50,11 +50,28 @@ Initiator (I)                                   Responder (R)
                                       trigger ResponderVerified(R, I, prk_out)
 ```
 
+## Scope
+
+- None of the eight role programs appears in a theorem; none is verified
+  against `edhocInvariants`. The honest run whose trace is analysed is
+  `honestSession_m0` in `ProtocolVerification.lean`, which inlines the
+  method-0 steps.
+- The programs accept without checking the peer's authenticator. The
+  method-0 and method-2 initiators and the method-0 and method-1 responders
+  bind `Bytes.signVerify` to `_verified` and do not branch on it. The
+  method-1 and method-3 initiators do not check `mac_2`, and the method-2 and
+  method-3 responders do not check `mac_3`. The "verify" steps of the flow
+  diagram above are absent from the programs.
+- Messages 2 and 3 are sent unencrypted. Under `labelOf` a ciphertext of a
+  secret plaintext is not publishable, so a trace that sends one does not
+  satisfy the invariant.
+
 ## Design Notes
 
 - EDHOC has MAC-based auth (Methods 1-3) and signature-based auth (Method 0)
 - DH commutativity: `dh(x, dhPub(y))` and `dh(y, dhPub(x))` are
-  structurally different but semantically equal via `Bytes.dhEquiv`
+  structurally different terms. `Bytes.dhEquiv` relates them, but neither the
+  attacker rules nor `labelOf` use it
 - Each method's key schedule uses a different number of DH operations
 - The `recvMsg` function models the attacker delivering messages
 -/

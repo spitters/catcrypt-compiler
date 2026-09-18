@@ -6,41 +6,36 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Symbolic.Signal.Auth
-public import CatCrypt.Crypto.Symbolic.Signal.KeySecrecy
 public import CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification
 
 /-!
-# Dual Security for Signal: Symbolic
+# Signal X3DH: the symbolic statements, conjoined
 
-This file documents the dual security architecture for Signal X3DH.
-The symbolic hypotheses provide trace-level guarantees.
+## Main result
 
-## Main Result
+* `signal_dual_security` — the event correspondence of
+  `signal_x3dh_authentication` together with the trace invariant of the
+  honest run `honestX3DH`.
 
-* `signal_dual_security` — Symbolic auth + key secrecy for Signal X3DH
+## Scope
 
-## Architecture
+* The trace invariant is established for one trace, the output of
+  `honestX3DH` from `.nil`. No theorem shows that a trace containing attacker
+  sends, corruption or a second session satisfies it.
+* The correspondence conjunct reads back `signalEventPred`, which requires a
+  matching `X3DHInit` event or a corrupt initiator whenever an `X3DHResp`
+  event is recorded. No signature or MAC check in a role program discharges
+  that requirement.
+* The model has no responder role. `honestX3DH` records Bob's `X3DHResp`
+  event inside Alice's program, so no program of Bob is analysed.
+* The file contains no secrecy statement for the X3DH root key.
 
-Signal X3DH has two independent security paths:
-
-### Path 1: Symbolic (`signal_dual_security`, this file)
-The symbolic results provide:
-- X3DH authentication (event correspondence)
-- Key secrecy (label analysis through key schedule)
-
-### Path 2: Computational
-Two independent computational arguments are wired up:
-- **CLC-derived generic bound**: `x3dh_uc_secure_from_symbolic` in
-  `CLCLinking.lean`, lifting `honestX3DH_invariant` to a
-  `numKeys • total` UC bound via the CLC bridge.
-- **Direct tight bound**: `x3dh_uc_secure` in `Signal/X3DH.lean`,
-  giving `ε_gdh + ε_kdf` under GDH + PRF.
-Both are packaged together in `Signal/X3DH/DualSecurity.lean`.
+The computational statements for X3DH are `x3dh_uc_secure_from_symbolic`
+(`CLCLinking.lean`) and `x3dh_uc_secure` (`Signal/X3DH.lean`).
 
 ## References
 
 * Signal Protocol specification: X3DH key agreement
-* DY* Signal: dual security (Bhargavan et al.)
 -/
 
 @[expose] public section
@@ -49,19 +44,20 @@ namespace CatCrypt.Crypto.Symbolic.Signal
 
 open CatCrypt.Crypto.Symbolic
 
-/-- **Signal dual security**: the three symbolic guarantees for X3DH, conjoined.
+/-- The two symbolic statements for X3DH, conjoined.
 
-The conjuncts are, in order: X3DH authentication — a completed `X3DHResp` at
-`i` is preceded by a matching `X3DHInit` unless the peer is corrupt
-(`signal_x3dh_authentication`); root-key secrecy — the attacker knows the
-X3DH root key only if the initiator is corrupt (`signal_x3dh_key_secrecy`);
-and the trace invariant for an honest session run from the empty trace
-(`honestX3DH_invariant`).
+The first conjunct is `signal_x3dh_authentication`: on a trace satisfying
+`signalInvariants`, an `X3DHResp` event at `i` is preceded by a matching
+`X3DHInit` event unless the initiator is corrupt at `i`. It unpacks the
+correspondence that `signalEventPred` postulates for `X3DHResp` events.
+
+The second conjunct is `honestX3DH_invariant`: the single trace produced by
+`honestX3DH` from `.nil` satisfies the invariant.
 
 The statement takes no hypotheses: each conjunct is the statement of the
 theorem that supplies it. -/
 theorem signal_dual_security :
-    /- Authentication -/
+    /- Event correspondence -/
     (∀ (tr : Trace) (i : Nat) (bob alice : String) (rootKey : Bytes),
       @traceInvariant signalInvariants tr →
       tr.eventTriggeredAt i bob x3dhRespTag
@@ -69,22 +65,9 @@ theorem signal_dual_security :
       (∃ j, j < i ∧ tr.eventTriggeredAt j alice x3dhInitTag
         (mkX3DHContent alice bob rootKey)) ∨
       tr.isCorruptAt alice i) ∧
-    /- Key secrecy -/
-    (∀ (tr : Trace) (alice : String) (rootKey : Bytes)
-      (ek ikA : Bytes) (ikB spkB opkB : Bytes),
-      rootKey = signalKeySchedule
-        (Bytes.dh ikA (Bytes.dhPub spkB))
-        (Bytes.dh ek (Bytes.dhPub ikB))
-        (Bytes.dh ek (Bytes.dhPub spkB))
-        (Bytes.dh ek (Bytes.dhPub opkB)) →
-      hasLabel tr ek (principalLabel alice) →
-      hasLabel tr ikA (principalLabel alice) →
-      @traceInvariant signalInvariants tr →
-      AttackerKnows tr rootKey →
-      tr.isCorruptAt alice (tr.length - 1)) ∧
-    /- Protocol verification -/
+    /- Invariant of the honest run -/
     (∀ (alice bob : String) (ikB spkB opkB : Bytes),
       @traceInvariant signalInvariants (honestX3DH alice bob ikB spkB opkB .nil).2) :=
-  ⟨signal_x3dh_authentication, signal_x3dh_key_secrecy, honestX3DH_invariant⟩
+  ⟨signal_x3dh_authentication, honestX3DH_invariant⟩
 
 end CatCrypt.Crypto.Symbolic.Signal

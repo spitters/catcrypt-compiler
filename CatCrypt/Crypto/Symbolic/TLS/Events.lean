@@ -94,7 +94,10 @@ def handshakeKeys (dhSS : Bytes) : Bytes :=
 
 TLS 1.3 session resumption via PSK (RFC 8446 §4.2.11).
 The server issues a NewSessionTicket after a successful handshake;
-the client uses it to resume without a full DH exchange. -/
+the client uses it to resume without a full DH exchange.
+
+These are definitions only: no PSK trace is shown to satisfy the invariant,
+and no correspondence or secrecy theorem is stated for the PSK mode. -/
 
 /-- Event tags for PSK resumption -/
 def newSessionTicketTag : String := "TLS.NewSessionTicket"

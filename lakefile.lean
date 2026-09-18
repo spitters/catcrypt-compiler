@@ -2289,10 +2289,8 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Attacker,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Bytes,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.Events,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ForwardSecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.InitiatorAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.Invariants,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.KeySecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.Model,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ProtocolVerification,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ResponderAuth,
@@ -2300,10 +2298,8 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Label,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.CommitAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.Events,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ForwardSecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.GroupAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.Invariants,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.KeySecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.Model,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ParentHash,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ProtocolVerification,
@@ -2313,7 +2309,6 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Auth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Events,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Invariants,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.KeySecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Linking,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Model,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification,
@@ -2325,13 +2320,8 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Soundness.MAC,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Soundness.Signature,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Events,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ForwardSecrecy,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.HNDL,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Invariants,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.KeySecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.Model,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.PSKAuth,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.PSKSecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ServerAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Tactic,
@@ -2456,8 +2446,6 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1P.Node221,
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1P.Node255,
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1P.NodeQ3,
-  ]
-def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1PPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Sha256Verified,
@@ -2468,6 +2456,8 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node4,
     Lake.Glob.one `CatCrypt.Crypto.Util.VestaPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.X25519Verified,
+  ]
+def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod1024,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod127,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod251,
@@ -2658,7 +2648,7 @@ require CompPoly from git
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "d53ce24125ce3e9c242a8dcf1c8759ca4b6d2aae"
+  "https://github.com/spitters/hax-lean.git" @ "878c4e0d1610505ac7f5be3ddea25b6806ba4cc5"
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"
