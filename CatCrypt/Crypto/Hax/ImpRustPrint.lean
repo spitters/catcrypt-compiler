@@ -18,6 +18,8 @@ Rust types of the locals it binds, and `parseImpRust` reads such text back;
 printed body, with the parameter types and the local types given as inputs,
 since an `ImpExpr` carries no Rust slot types; `parse_ppImpRustFn` is its round
 trip.  A type is a single whitespace-free token, such as `&mut[u8;48]`.
+`ppImpRustFnRet` prints a `fn` with a return type, whose body is a statement
+sequence ending in a variable — the returned local.
 
 The printer covers the statement fragment below, which contains every shape
 in the table of `lowCTToImp` (`CatCrypt.Crypto.Hax.LowCTToHax`); every other
@@ -28,6 +30,7 @@ the Rust form as, and the normalisation that relates it to the printed node.
 | `ImpExpr` | Rust | read by the hax frontend as |
 |---|---|---|
 | `unitVal` | `()` | `unitVal` |
+| `var x` | `x` | the tail expression of a block, `var x` |
 | `seq a b` | `a ; b`, and `{ a } ; b` when `a` is a `seq` or a `letBind` | `Block` of statements, `seq` |
 | `letBind x v b` | `let mut x : T = v ; b`, with `: T` when `ty x = some T` | `Let`, the continuation placed in the body |
 | `letBind x (array_update(x, i, s)) b` | `x [ i ] = s ; b` | `Assign` of `Index`: `assign x (array_update(x, i, s))`; `localMutation` rebinds it |
@@ -78,13 +81,15 @@ recursive-descent parser over tokens, with the token count as fuel.
 
 ## Main definitions
 
-* `ppToks`, `ppImpRust`, `ppImpRustFn` — the printer.
-* `lex`, `parseSeq`, `parseImpRust`, `parseImpRustFn` — the parser.
+* `ppToks`, `ppImpRust`, `ppImpRustFn`, `ppImpRustFnRet` — the printer.
+* `lex`, `parseSeq`, `parseImpRust`, `parseImpRustFn`, `parseImpRustFnRet` — the
+  parser.
 
 ## Main results
 
 * `parseSeq_ppToks` — the token-level round trip.
-* `parse_ppImpRust`, `parse_ppImpRustFn` — the text-level round trips.
+* `parse_ppImpRust`, `parse_ppImpRustFn`, `parse_ppImpRustFnRet` — the
+  text-level round trips.
 -/
 
 @[expose] public section
@@ -259,10 +264,11 @@ def arrUpdateArgs (x : String) : ImpExpr → Option (String × String)
       else none
   | _ => none
 
-/-- A binding or a sequence, printed in braces on the left of `;`. -/
+/-- A binding, a sequence or a variable, printed in braces on the left of `;`. -/
 def needsBrace : ImpExpr → Bool
   | .letBind .. => true
   | .seq .. => true
+  | .var .. => true
   | _ => false
 
 /-- The type annotation `: T` of a binder with the type `T` in `ty`. -/
@@ -290,6 +296,7 @@ def ppToks (ty : String → Option Tok) : ImpExpr → Option (List Tok)
           some ((if needsBrace a then ["{"] ++ ta ++ ["}"] else ta) ++ [";"] ++ tb)
       | _, _ => none
   | .unitVal => some ["(", ")"]
+  | .var x => if validIdent x then some [x] else none
   | .assign x v => if validIdent x then (rhsToks v).map fun tv => [x, "="] ++ tv else none
   | .ifThenElse (.var c) t e =>
       if validIdent c then
@@ -470,8 +477,11 @@ def parseStmt (p : List Tok → Option (ImpExpr × List Tok)) :
       | [] => none
     else
       match r with
-      | u :: r1 => if u = "=" then (parseRhs r1).map fun q => (.assign t q.1, q.2) else none
-      | [] => none
+      | u :: r1 =>
+          if u = "=" then (parseRhs r1).map fun q => (.assign t q.1, q.2)
+          else if u = ";" ∨ u = "}" then some (.var t, r)
+          else none
+      | [] => some (.var t, [])
 
 /-- The `=` of a binding, after an optional type annotation `: T`. -/
 def skipAnn : List Tok → Option (List Tok)
@@ -916,6 +926,19 @@ theorem parseStmt_assign (x : String) (r r' : List Tok) (v : ImpExpr) (hx : vali
   have h4 : x ≠ "match" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
   simp [parseStmt, hx'.1, h1, h2, h3, h4, hv]
 
+theorem parseStmt_var (x : String) (r : List Tok) (hx : validIdent x = true)
+    (hr : stmtStop r) : parseStmt p (x :: r) = some (.var x, r) := by
+  have hx' := validIdent_ne x hx
+  have h1 : x ≠ "if" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1
+  have h2 : x ≠ "while" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1
+  have h3 : x ≠ "for" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1
+  have h4 : x ≠ "match" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  cases r with
+  | nil => simp [parseStmt, hx'.1, h1, h2, h3, h4]
+  | cons u r1 =>
+    simp only [stmtStop] at hr
+    rcases hr with rfl | rfl <;> simp [parseStmt, hx'.1, h1, h2, h3, h4]
+
 end Steps
 
 /-- The first two tokens of a statement: not `let` or `{`, and no `[` second. -/
@@ -953,6 +976,20 @@ theorem parseSeq_arr (n : Nat) (x i s : String) (r rest : List Tok) (b : ImpExpr
   have h1 : x ≠ "let" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.1
   rw [parseSeq.eq_def]
   simp [hx'.2.2.1, h1, hb, expects]
+
+theorem parseSeq_var (n : Nat) (x : String) (rest : List Tok) (hx : validIdent x = true)
+    (hr : seqStop rest) : parseSeq (n + 1) (x :: rest) = some (.var x, rest) := by
+  have hx' := validIdent_ne x hx
+  have h1 : x ≠ "let" := hx'.2.2.2.2.2.2.2.2.2.2.2.2.1
+  have hst : stmtStop rest := stmtStop_of_seqStop rest hr
+  have hp := parseStmt_var (parseSeq n) x rest hx hst
+  rw [parseSeq.eq_def]
+  cases rest with
+  | nil => simp [h1, hx'.2.2.1, hp]
+  | cons u r1 =>
+    simp only [seqStop] at hr
+    subst hr
+    simp [h1, hx'.2.2.1, hp]
 
 theorem parseSeq_of_stmt (n : Nat) (ts rest : List Tok) (e : ImpExpr) (hh : StmtHead ts)
     (hs : parseStmt (parseSeq n) ts = some (e, rest)) (hr : seqStop rest) :
@@ -997,17 +1034,27 @@ theorem arrUpdateArgs_eq (x : String) (v : ImpExpr) (i s : String)
 theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
     ∀ ts, ppToks ty e = some ts →
     (∀ n rest, ts.length < n → seqStop rest → parseSeq n (ts ++ rest) = some (e, rest)) ∧
-    (needsBrace e = false → StmtHead ts ∧
-      ∀ n rest, ts.length ≤ n → stmtStop rest →
-        parseStmt (parseSeq n) (ts ++ rest) = some (e, rest)) := by
-  have ofStmt : ∀ (e : ImpExpr) (ts : List Tok), StmtHead ts →
+    (needsBrace e = false → ∀ n rest, ts.length ≤ n → stmtStop rest →
+      StmtHead (ts ++ rest) ∧ parseStmt (parseSeq n) (ts ++ rest) = some (e, rest)) := by
+  have ofStmt : ∀ (e : ImpExpr) (ts : List Tok),
+      (∀ n rest, ts.length ≤ n → stmtStop rest →
+        StmtHead (ts ++ rest) ∧ parseStmt (parseSeq n) (ts ++ rest) = some (e, rest)) →
+      ∀ n rest, ts.length < n → seqStop rest → parseSeq n (ts ++ rest) = some (e, rest) := by
+    intro e ts hs n rest hn hr
+    obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
+    obtain ⟨hh, hp⟩ := hs m rest (by omega) (stmtStop_of_seqStop rest hr)
+    exact parseSeq_of_stmt m _ rest e hh hp hr
+  have both : ∀ (e : ImpExpr) (ts : List Tok), StmtHead ts →
       (∀ n rest, ts.length ≤ n → stmtStop rest →
         parseStmt (parseSeq n) (ts ++ rest) = some (e, rest)) →
-      ∀ n rest, ts.length < n → seqStop rest → parseSeq n (ts ++ rest) = some (e, rest) := by
-    intro e ts hh hs n rest hn hr
-    obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
-    exact parseSeq_of_stmt m _ rest e (StmtHead_append _ _ hh)
-      (hs m rest (by omega) (stmtStop_of_seqStop rest hr)) hr
+      (∀ n rest, ts.length < n → seqStop rest → parseSeq n (ts ++ rest) = some (e, rest)) ∧
+      (needsBrace e = false → ∀ n rest, ts.length ≤ n → stmtStop rest →
+        StmtHead (ts ++ rest) ∧ parseStmt (parseSeq n) (ts ++ rest) = some (e, rest)) := by
+    intro e ts hh hs
+    have hb : ∀ n rest, ts.length ≤ n → stmtStop rest →
+        StmtHead (ts ++ rest) ∧ parseStmt (parseSeq n) (ts ++ rest) = some (e, rest) :=
+      fun n rest hn hr => ⟨StmtHead_append _ _ hh, hs n rest hn hr⟩
+    exact ⟨ofStmt _ _ hb, fun _ => hb⟩
   induction e using ImpExpr.ind
   case letBind x v b _ ihb =>
     intro ts h
@@ -1064,11 +1111,9 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
     | false =>
       simp only [hnb, Bool.false_eq_true, if_false, List.length_append, List.length_cons,
         List.length_nil] at hn ⊢
-      obtain ⟨hh, hs⟩ := (iha ta hta).2 hnb
-      have hap := hs m (";" :: (tb ++ rest)) (by omega) (Or.inr rfl)
+      obtain ⟨hh, hap⟩ := (iha ta hta).2 hnb m (";" :: (tb ++ rest)) (by omega) (Or.inr rfl)
       simp only [List.cons_append, List.nil_append, List.append_assoc]
-      exact parseSeq_of_stmt_semi m _ _ rest a b (StmtHead_append _ _ hh) hap
-        (hbp (by omega) hr)
+      exact parseSeq_of_stmt_semi m _ _ rest a b hh hap (hbp (by omega) hr)
   case unitVal =>
     intro ts h
     simp only [ppToks, Option.some.injEq] at h
@@ -1077,7 +1122,19 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
         parseStmt (parseSeq n) (["(", ")"] ++ rest) = some (.unitVal, rest) :=
       fun n rest _ _ => parseStmt_unit _ rest
     have hh : StmtHead ["(", ")"] := by simp [StmtHead]
-    exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+    exact both _ _ hh hs
+  case var x =>
+    intro ts h
+    refine ⟨?_, fun hnb => by simp [needsBrace] at hnb⟩
+    intro n rest hn hr
+    obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
+    simp only [ppToks] at h
+    split at h
+    · rename_i hx
+      simp only [Option.some.injEq] at h
+      subst h
+      simpa using parseSeq_var m x rest hx hr
+    · simp at h
   case assign x v _ =>
     intro ts h
     simp only [ppToks] at h
@@ -1096,7 +1153,7 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
           exact parseStmt_assign _ x _ rest v hx (parseRhs_rhsToks v tv hv rest hr)
         have hh : StmtHead ([x, "="] ++ tv) := by
           simp [StmtHead, hx'.2.2.2.2.2.2.2.2.2.2.2.2.1, hx'.2.2.1]
-        exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+        exact both _ _ hh hs
     · simp at h
   case ifThenElse c t e ihc iht ihe =>
     intro ts h
@@ -1121,7 +1178,7 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
             ((iht tt htt).1 n _ (by omega) rfl) ((ihe te hte).1 n _ (by omega) rfl)
         have hh : StmtHead (["if", v, "{"] ++ tt ++ ["}", "else", "{"] ++ te ++ ["}"]) := by
           simp [StmtHead, (validIdent_ne v hvi).2.2.2.2.1]
-        exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+        exact both _ _ hh hs
       · simp at h
     all_goals simp [ppToks] at h
   case whileLoop c b ihc ihb =>
@@ -1145,7 +1202,7 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
           exact parseStmt_while _ v _ rest b ((ihb tb htb).1 n _ (by omega) rfl)
         have hh : StmtHead (["while", v, "{"] ++ tb ++ ["}"]) := by
           simp [StmtHead, (validIdent_ne v hvi).2.2.2.2.1]
-        exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+        exact both _ _ hh hs
       · simp at h
     all_goals simp [ppToks] at h
   case forFold x lo hi b _ _ ihb =>
@@ -1172,7 +1229,7 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
           ((ihb tb htb).1 n _ (by omega) rfl)
       have hh : StmtHead (["for", x, "in"] ++ tl ++ [".."] ++ th ++ ["{"] ++ tb ++ ["}"]) := by
         simp [StmtHead, hx'.2.2.2.2.1]
-      exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+      exact both _ _ hh hs
     · simp at h
   case match_ scrut arms ihs iharms =>
     intro ts h
@@ -1216,7 +1273,7 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
                   have hh : StmtHead (["match"] ++ (f :: "(" :: ta) ++
                       ["{", "(", x, ",", y, ")", "=>", "{"] ++ tb ++ ["}", "}"]) := by
                     simp [StmtHead, hf'.2.2.2.2.1]
-                  exact ⟨ofStmt _ _ hh hs, fun _ => ⟨hh, hs⟩⟩
+                  exact both _ _ hh hs
                 · simp at h
               all_goals simp [ppToks] at h
             all_goals simp [ppToks] at h
@@ -1366,6 +1423,65 @@ theorem parse_ppImpRustFn (name : String) (params : List (String × Tok))
         (by simp) rfl
       simp only [List.length_append, List.length_singleton] at hseq
       simp only [parseImpRustFn, String.toList_ofList, lex_renderChars _ hok]
+      simp only [List.cons_append, List.nil_append, List.append_assoc]
+      simp [expects, parseParams_paramToks params pt hp, hseq]
+    · simp at h
+  · simp at h
+
+/-! ## §11  Functions with a return type -/
+
+/-- The Rust function `pub fn name(x₁ : T₁, …) -> T { body }`, with `T` the
+    return type; the tail of `body` is the returned expression. -/
+def ppImpRustFnRet (name : String) (params : List (String × Tok)) (retTy : Tok)
+    (ty : String → Option Tok) (body : ImpExpr) : Option String :=
+  if validIdent name then
+    match paramToks params, ppToks ty body with
+    | some pt, some tb =>
+        let ts := ["pub", "fn", name, "("] ++ pt ++ ["->", retTy, "{"] ++ tb ++ ["}"]
+        if ts.all tokOK then some (String.ofList (renderChars ts)) else none
+    | _, _ => none
+  else none
+
+/-- The name, the parameters, the return type and the body of a Rust function
+    with a return type, in the printed fragment. -/
+def parseImpRustFnRet (s : String) :
+    Option (String × List (String × Tok) × Tok × ImpExpr) :=
+  match lex s.toList with
+  | p :: f :: name :: r =>
+      if p = "pub" ∧ f = "fn" then do
+        let r1 ← expects ["("] r
+        let (ps, r2) ← parseParams r1
+        match r2 with
+        | a :: retTy :: r3 =>
+            if a = "->" then do
+              let r4 ← expects ["{"] r3
+              match parseSeq r4.length r4 with
+              | some (b, [c]) => if c = "}" then some (name, ps, retTy, b) else none
+              | _ => none
+            else none
+        | _ => none
+      else none
+  | _ => none
+
+/-- **Round trip.**  The parser reads a printed function with a return type
+    back. -/
+theorem parse_ppImpRustFnRet (name : String) (params : List (String × Tok)) (retTy : Tok)
+    (ty : String → Option Tok) (body : ImpExpr) (s : String)
+    (h : ppImpRustFnRet name params retTy ty body = some s) :
+    parseImpRustFnRet s = some (name, params, retTy, body) := by
+  unfold ppImpRustFnRet at h
+  split at h
+  · cases hp : paramToks params <;> cases hb : ppToks ty body <;>
+      simp only [hp, hb, reduceCtorEq] at h
+    rename_i pt tb
+    split at h
+    · rename_i hok
+      simp only [Option.some.injEq] at h
+      subst h
+      have hseq := (parseSeq_ppToks ty body tb hb).1 (tb ++ ["}"]).length ["}"]
+        (by simp) rfl
+      simp only [List.length_append, List.length_singleton] at hseq
+      simp only [parseImpRustFnRet, String.toList_ofList, lex_renderChars _ hok]
       simp only [List.cons_append, List.nil_append, List.append_assoc]
       simp [expects, parseParams_paramToks params pt hp, hseq]
     · simp at h

@@ -27,6 +27,7 @@ The differences `normHaxRead` removes:
 | `forFold v lo hi b` | `forLoop v lo hi b` | none |
 | `app "scalar#Op" args` on the right of a binding or an assignment | `app "Op" args` | `(Op, scalar#Op)` in `haxOpPairs` |
 | `app "scalar#Sub" args` | `app "saturating_sub" args` | as above |
+| `var x` as a call argument | `borrow (deref (var x))` | a reference parameter passed on |
 
 The frontend suffixes the bit-sensitive operators with the operand width, so
 `BitAnd` and `BitXor` on `u64` operands read as `BitAnd#64` and `BitXor#64`.
@@ -48,6 +49,19 @@ environment at `a` and continue with `b`, the loop rule because `forToLoop`
 maps `forFold` and `forLoop` to the same loop, and the renaming by
 `HaxOpsAgree`.
 
+A reborrow is removed because hax-lean's `denote` reads `borrow` and `deref` as
+the expression under them, so `borrow (deref e)` and `e` have the same
+denotation.
+
+## The returned local
+
+`retOfUnit x e` replaces the tail `unitVal` of a statement sequence by the
+variable `x`, the form `ppImpRustFnRet` prints inside a function with a return
+type.  `denote_retOfUnit` states that it runs as `seq e (var x)`, so it leaves
+the environment the body leaves and returns the value of `x` in it
+(`evalImp_retOfUnit`).  The frontend reads the tail expression of a block as
+that variable, which `normHaxRead` and `impEq` carry unchanged.
+
 `haxReadAgrees e x` is `impEq (normHaxRead x) e`, with `impEq` a structural
 equality on the printed fragment (`impEq_sound`).  `haxReadAgrees_sound` then
 states that `x` runs as `e` does.  With `ppImpRust ty e = some t` the parser of
@@ -56,15 +70,19 @@ states that `x` runs as `e` does.  With `ppImpRust ty e = some t` the parser of
 ## Main definitions
 
 * `haxOpPairs`, `haxOpName`, `HaxOpsAgree` — the operator names.
-* `normHaxRead` — the normaliser.
+* `normArg`, `normRhs`, `normHaxRead` — the normaliser.
+* `retOfUnit`, `TailUnit` — the tail of a statement sequence.
 * `impEq`, `haxReadAgrees` — the check.
 
 ## Main results
 
 * `denote_normHaxRead`, `evalImp_normHaxRead` — the normaliser preserves the
   source semantics.
+* `denote_retOfUnit`, `evalImp_retOfUnit` — the returned form yields the value
+  of the returned local.
 * `impEq_sound` — the equality is sound.
-* `haxReadAgrees_sound`, `haxReadAgrees_parse` — soundness of the check.
+* `haxReadAgrees_sound`, `haxReadAgrees_parse`, `haxReadAgrees_parseFnRet` —
+  soundness of the check.
 -/
 
 @[expose] public section
@@ -117,10 +135,21 @@ theorem HaxOpsAgree.name {bi : Builtins} (h : HaxOpsAgree bi) (f : String) :
 
 /-! ## §2  The normaliser -/
 
+/-- A call argument, with a reborrow `&*x` removed. -/
+def normArg : ImpExpr → ImpExpr
+  | .borrow (.deref e) => e
+  | e => e
+
+/-- `normArg` on every element of a list. -/
+def normArgs : List ImpExpr → List ImpExpr
+  | [] => []
+  | a :: as => normArg a :: normArgs as
+
 /-- The right-hand side of a binding or an assignment, with the operator name of
-    a call replaced by its scalar call. -/
+    a call replaced by its scalar call and the reborrows of its arguments
+    removed. -/
 def normRhs : ImpExpr → ImpExpr
-  | .app f args => .app (haxOpName f) args
+  | .app f args => .app (haxOpName f) (normArgs args)
   | e => e
 
 /-- `v` is an `array_update` whose array argument is `var a`. -/
@@ -154,6 +183,21 @@ end
 theorem normHaxRead_seq (a b : ImpExpr) (ha : ∀ x v, a ≠ .assign x v) :
     normHaxRead (.seq a b) = .seq (normHaxRead a) (normHaxRead b) := by
   cases a <;> first | rfl | exact absurd rfl (ha _ _)
+
+/-- The statement sequence with the tail `unitVal` replaced by the variable
+    `x`. -/
+def retOfUnit (x : String) : ImpExpr → ImpExpr
+  | .letBind y v b => .letBind y v (retOfUnit x b)
+  | .seq a b => .seq a (retOfUnit x b)
+  | .unitVal => .var x
+  | e => e
+
+/-- The tail of a statement sequence is `unitVal`. -/
+def TailUnit : ImpExpr → Bool
+  | .letBind _ _ b => TailUnit b
+  | .seq _ b => TailUnit b
+  | .unitVal => true
+  | _ => false
 
 /-! ## §3  The normaliser preserves the source semantics -/
 
@@ -202,13 +246,34 @@ section Semantics
 
 variable (bi : Builtins)
 
+/-- A reborrow runs as the expression it borrows. -/
+theorem denote_normArg (fuel : Nat) (a : ImpExpr) :
+    denote bi fuel (forToLoop (normArg a)) = denote bi fuel (forToLoop a) := by
+  unfold normArg
+  split
+  · simp [forToLoop, denote]
+  · rfl
+
+theorem denoteArgs_normArgs (fuel : Nat) (args : List ImpExpr) :
+    denoteArgs bi fuel (forToLoopArgs (normArgs args)) =
+      denoteArgs bi fuel (forToLoopArgs args) := by
+  induction args with
+  | nil => rfl
+  | cons a as ih =>
+    simp only [normArgs, forToLoopArgs]
+    unfold denoteArgs
+    rw [denote_normArg bi fuel a]
+    funext env
+    simp only [bind, StateT.bind]
+    cases (denote bi fuel (forToLoop a) env).1 <;> simp [ih]
+
 theorem denote_normRhs (h : HaxOpsAgree bi) (fuel : Nat) (v : ImpExpr) :
     AgreeE (denote bi fuel (forToLoop (normRhs v))) (denote bi fuel (forToLoop v)) := by
   cases v with
   | app f args =>
     simp only [normRhs, forToLoop]
     unfold denote
-    rw [h.name f]
+    rw [h.name f, denoteArgs_normArgs bi fuel args]
     refine agreeE_bind_same _ _ _ fun mv => ?_
     cases mv with
     | none => exact AgreeE.refl _
@@ -398,6 +463,102 @@ theorem evalImp_normHaxRead (h : HaxOpsAgree bi) (e : ImpExpr) (fuel : Nat) (env
     evalImp bi fuel (forToLoop (normHaxRead e)) env = evalImp bi fuel (forToLoop e) env :=
   evalImp_of_agreeE bi (denote_normHaxRead bi h e fuel) env
 
+/-! ### The returned local -/
+
+theorem denote_letBind_congr (fuel : Nat) (y : String) (v b b' : ImpExpr)
+    (h : denote bi fuel b = denote bi fuel b') :
+    denote bi fuel (.letBind y v b) = denote bi fuel (.letBind y v b') := by
+  simp only [denote]
+  rw [h]
+
+theorem denote_seq_congr_right (fuel : Nat) (a b b' : ImpExpr)
+    (h : denote bi fuel b = denote bi fuel b') :
+    denote bi fuel (.seq a b) = denote bi fuel (.seq a b') := by
+  simp only [denote]
+  rw [h]
+
+theorem denote_seq_assoc (fuel : Nat) (a b c : ImpExpr) :
+    denote bi fuel (.seq (.seq a b) c) = denote bi fuel (.seq a (.seq b c)) := by
+  funext env
+  simp only [denote, bind, StateT.bind, pure]
+  cases denote bi fuel a env with
+  | mk o env' => cases o <;> rfl
+
+theorem denote_seq_letBind (fuel : Nat) (y : String) (v b c : ImpExpr) :
+    denote bi fuel (.seq (.letBind y v b) c) = denote bi fuel (.letBind y v (.seq b c)) := by
+  funext env
+  simp only [denote, bind, StateT.bind, pure, modify, modifyGet, MonadStateOf.modifyGet]
+  cases denote bi fuel v env with
+  | mk o env' => cases o <;> rfl
+
+theorem denote_seq_unitVal (fuel : Nat) (c : ImpExpr) :
+    denote bi fuel (.seq .unitVal c) = denote bi fuel c := by
+  funext env
+  simp only [denote, bind, StateT.bind, pure, StateT.pure]
+
+theorem denote_seq_apply (fuel : Nat) (a b : ImpExpr) (env : Env) :
+    denote bi fuel (.seq a b) env =
+      match denote bi fuel a env with
+      | (.val _, s) => denote bi fuel b s
+      | (o, s) => (o, s) := by
+  simp only [denote, bind, StateT.bind, pure]
+  cases denote bi fuel a env with
+  | mk o s => cases o <;> rfl
+
+theorem denote_var_apply (fuel : Nat) (x : String) (env : Env) :
+    denote bi fuel (.var x) env =
+      (match env x with
+       | some w => .val w
+       | none => .err s!"undefined variable: {x}", env) := by
+  simp only [denote, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get, pure]
+  cases env x <;> rfl
+
+/-- **The returned form runs as the sequence of the body and the returned
+    variable.**  A statement sequence whose tail `unitVal` is replaced by `x`
+    runs as the sequence that runs the body and then reads `x`, so it leaves the
+    same environment and returns the value of `x` in it. -/
+theorem denote_retOfUnit (x : String) (e : ImpExpr) (h : TailUnit e = true) (fuel : Nat) :
+    denote bi fuel (forToLoop (retOfUnit x e)) =
+      denote bi fuel (forToLoop (.seq e (.var x))) := by
+  induction e using ImpExpr.ind with
+  | letBind y v b ihv ihb =>
+    simp only [TailUnit] at h
+    simp only [retOfUnit, forToLoop]
+    rw [denote_seq_letBind]
+    exact denote_letBind_congr bi fuel y _ _ _ (ihb h)
+  | seq a b iha ihb =>
+    simp only [TailUnit] at h
+    simp only [retOfUnit, forToLoop]
+    rw [denote_seq_assoc]
+    exact denote_seq_congr_right bi fuel _ _ _ (ihb h)
+  | unitVal => simp only [retOfUnit, forToLoop, denote_seq_unitVal]
+  | _ => simp [TailUnit] at h
+
+/-- **The returned form yields the value of the returned local.**  A successful
+    run of the returned form is a successful run of the body reaching the same
+    environment, and its value is the value of `x` in that environment. -/
+theorem evalImp_retOfUnit (x : String) (e : ImpExpr) (h : TailUnit e = true) (fuel : Nat)
+    (env env' : Env) (v : Value)
+    (hRun : evalImp bi fuel (forToLoop (retOfUnit x e)) env = some (v, env')) :
+    (∃ u, evalImp bi fuel (forToLoop e) env = some (u, env')) ∧ env' x = some v := by
+  simp only [evalImp, StateT.run, denote_retOfUnit bi x e h fuel, forToLoop,
+    denote_seq_apply, denote_var_apply] at hRun
+  simp only [evalImp, StateT.run]
+  cases hb : denote bi fuel (forToLoop e) env with
+  | mk o env1 =>
+    rw [hb] at hRun
+    cases o with
+    | val u =>
+      simp only at hRun
+      cases hx : env1 x with
+      | none => rw [hx] at hRun; simp at hRun
+      | some w =>
+        rw [hx] at hRun
+        simp only [Option.some.injEq, Prod.mk.injEq] at hRun
+        obtain ⟨rfl, rfl⟩ := hRun
+        exact ⟨⟨u, rfl⟩, hx⟩
+    | _ => simp at hRun
+
 end Semantics
 
 /-! ## §4  The check -/
@@ -575,6 +736,16 @@ theorem haxReadAgrees_parse (ty : String → Option ImpRust.Tok) (e x : ImpExpr)
     parseImpRust t = some (normHaxRead x) := by
   rw [impEq_sound _ _ hc]
   exact parse_ppImpRust ty e t hp
+
+/-- The parser of `ImpRustPrint` reads a printed function with a return type as
+    the normalised frontend reading of its body, when the reading passes the
+    check. -/
+theorem haxReadAgrees_parseFnRet (name : String) (params : List (String × ImpRust.Tok))
+    (retTy : ImpRust.Tok) (ty : String → Option ImpRust.Tok) (e x : ImpExpr) (t : String)
+    (hp : ppImpRustFnRet name params retTy ty e = some t) (hc : haxReadAgrees e x = true) :
+    parseImpRustFnRet t = some (name, params, retTy, normHaxRead x) := by
+  rw [impEq_sound _ _ hc]
+  exact parse_ppImpRustFnRet name params retTy ty e t hp
 
 /-! ## §5  A program for the round trip
 
