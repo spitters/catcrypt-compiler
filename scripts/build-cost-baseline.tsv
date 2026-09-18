@@ -6,6 +6,12 @@ CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean	404	2210	1660
 CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean	868	1360	1907
 CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	1210	3290	1853
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertCallModel.lean	19	2080	2052
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertChain.lean	161	845	972
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertLeafMul.lean	50	1910	1904
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertLeafSqr.lean	11	2380	1919
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertShippedProof.lean	30	2220	2061
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertTable.lean	116	829	930
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519LeafCallees.lean	28	2560	2180
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519LeafCalleesField.lean	96	2260	2053
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519LeafCalleesJoin.lean	49	2560	2318
