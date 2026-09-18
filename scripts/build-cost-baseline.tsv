@@ -38,6 +38,7 @@ CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Proof.lean	2160	282
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontsqrP384.lean	217	10700	835
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean	328	12100	2867
 CatCrypt/Crypto/SecureCompilation/Ascent/GuardsLeaf.lean	2180	47600	2036
+CatCrypt/Crypto/SecureCompilation/Ascent/Imported/ShippedCTPointAdd.lean	53	914	1065
 CatCrypt/Crypto/SecureCompilation/Dialects/CryptoDialectLeakExpansion.lean	316	1520	1735
 CatCrypt/Crypto/SecureCompilation/Dialects/RustExecLeafOracleBridge.lean	485	7990	1254
 CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectScalarDenote.lean	3250	2340	1926
