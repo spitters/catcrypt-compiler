@@ -10,6 +10,10 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 /-!
 # Call frames of `pushq`/`popq` form on the address machine
 
+@reimported: the frame lists model the prologues and epilogues that
+`Ascent/Imported` translates back from printed assembly; the module writes no
+artifact.
+
 `JInstr 64` has no `push`, `pop`, `call` or `ret`. This module writes them as
 `JInstr 64` sequences that leave the flags alone, as the hardware instructions do:
 
