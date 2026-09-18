@@ -56,6 +56,8 @@ covers both.
   equals `x · y`, respectively `x²`, in `ZMod p25519`.
 * `feMulComputes_all`, `feSqr_initState1`: the same statements from the kernel modules'
   initial states, in terms of `Fe25519MulKernel.limbsNat`.
+
+Provenance class: `@proved-hand-kernel theorems: feMulBlock_correct, feSqrBlock_correct`.
 -/
 
 @[expose] public section

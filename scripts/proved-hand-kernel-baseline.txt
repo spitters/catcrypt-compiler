@@ -1,0 +1,7 @@
+# Hand-written JInstr blocks whose encoded bytes ship, each with a correctness theorem
+# named in its @proved-hand-kernel tag. Every entry is scheduled to be generated
+# through a front; a new entry is a deliberate decision.
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/CombSelectBytes.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Fe25519AddSubSelectProof.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Fe25519KernelsBytes.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Fe25519MulSqrProof.lean

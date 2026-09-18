@@ -65,6 +65,8 @@ names are distinct banks, so an output buffer aliasing an input buffer is outsid
   instances `n = 16, 32, 64`.
 * `combSelectBlock_initState`, `combSelect5Block_initState`, `combSelect6Block_initState`:
   from the kernels' `initState tab didx`, the output limbs are `tab didx`.
+
+Provenance class: `@proved-hand-kernel theorems: feAddBlock_correct, feSubBlock_correct, combSelectBlock_correct`.
 -/
 
 @[expose] public section

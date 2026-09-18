@@ -32,6 +32,8 @@ shipped block of that function, it leaves at the output the four-limb value
 * `limbsNat_packTop`: the four-limb value after the top bit of the fourth limb is set.
 * `compressShipped_correct_addr`: the value, over callees at their specifications.
 * `compressShipped_correct`: the same over the shipped callees.
+
+Provenance class: `@reimported`.
 -/
 
 @[expose] public section

@@ -1,0 +1,6 @@
+# Blocks translated from third-party assembly (@imported). An entry whose tag names
+# no theorem is a trusted leaf: S2nMontsqrP384 (s2n-bignum bignum_montsqr_p384, with
+# its upstream HOL Light proof; no Lean correctness theorem).
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Framed.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontsqrP384.lean

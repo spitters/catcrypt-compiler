@@ -47,6 +47,8 @@ gives the machine-level result, and `LeafFrame.corresJ_framed` the refinement th
 * `s2nMontmulP384Framed_decode`: the encoded framed block decodes to itself.
 * `s2nMontmulP384FramedBytes_correct`: the instructions the encoded framed block decodes
   to compute the Montgomery product and restore `%rsp` and the callee-saved registers.
+
+Provenance class: `@imported theorems: s2nMontmulP384FramedBytes_correct`.
 -/
 
 @[expose] public section

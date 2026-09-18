@@ -30,6 +30,8 @@ and the memory it leaves over the name-keyed machine.
 * `packSign_nameKeyed`: the canonical block copies the four limbs at the bank `%rsi` to the
   bank `%rdi`, with the low bit of the word at `(%rdx, 0)` added into the top bit of the
   fourth limb.
+
+Provenance class: `@reimported`.
 -/
 
 @[expose] public section

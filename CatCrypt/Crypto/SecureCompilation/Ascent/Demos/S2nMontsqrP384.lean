@@ -66,6 +66,8 @@ reduction, and writes `z` through `%rdi`. The omitted frame saves and restores
   expansion is divided.
 * `s2nMontsqrP384Block`: the block, the concatenation of the segments.
 * `s2nMontsqrP384Block_length`: the block has 230 instructions.
+
+Provenance class: `@imported`.
 -/
 
 @[expose] public section

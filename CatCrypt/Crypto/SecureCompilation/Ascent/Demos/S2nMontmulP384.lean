@@ -65,6 +65,8 @@ omitted frame saves and restores `%rbx`, `%rbp`, `%r12`, `%r13`, `%r14`, `%r15`.
   them), each a literal `List (JInstr 64)`.
 * `s2nMontmulP384Block`: the block, the concatenation of the segments.
 * `s2nMontmulP384Block_length`: the block has 264 instructions.
+
+Provenance class: `@imported theorems: s2nMontmulP384_correct`.
 -/
 
 @[expose] public section

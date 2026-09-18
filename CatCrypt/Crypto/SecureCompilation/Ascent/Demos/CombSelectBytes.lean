@@ -65,6 +65,8 @@ is `%r11`; the candidate `c` is `%rax`.
 * `combSelectBytes_correct`, `combSelect5Bytes_correct`, `combSelect6Bytes_correct` and
   `combSelectBytes_constant_time`, `combSelect5Bytes_constant_time`,
   `combSelect6Bytes_constant_time`: the instances `n = 16, 32, 64`.
+
+Provenance class: `@proved-hand-kernel theorems: combSelectBytes_correct, selBytes_constant_time`.
 -/
 
 @[expose] public section

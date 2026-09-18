@@ -153,3 +153,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulBinopMov.lean  # fai
 CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulBinopWide.lean  # faithfulness proof chain for width-64 binops; the Lopn it builds are PROOF SUBJECTS, no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulConst.lean  # faithfulness proof chain for constant bindings; the Lopn it builds are PROOF SUBJECTS, no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulMulCarrySel.lean  # faithfulness proof chain for mulhi, carry chains and select; the Lopn it builds are PROOF SUBJECTS, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean  # opt-in Lprog to Lprog pass folding register-indexed loads and stores whose index is a known constant; builds IR as a compiler pass does, writes no artifact

@@ -73,6 +73,8 @@ in the form of `S2nMontmulP384.s2nMontmulP384FramedBytes_correct`.
 * `feMulFramedBytes_constant_time`, `feSqrFramedBytes_constant_time`,
   `feAddFramedBytes_constant_time`, `feSubFramedBytes_constant_time`: the leakage trace of
   the decoded instructions is the same from any two states.
+
+Provenance class: `@proved-hand-kernel theorems: feMulFramedBytes_correct, feSqrFramedBytes_correct, feAddFramedBytes_correct, feSubFramedBytes_correct`.
 -/
 
 @[expose] public section

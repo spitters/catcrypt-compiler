@@ -38,6 +38,8 @@ prologue's writes and the epilogue's reads are then handled directly.
   `%rsi` and at `%rdx`, reduced modulo `2 ^ 255 - 19`, at `%rdi`, changes no byte outside
   the 32 bytes at `%rdi` and the 48 bytes below `%rsp`, and keeps `%rsp`, whenever the two
   argument buffers and the output buffer are disjoint from the red-zone slots.
+
+Provenance class: `@reimported`.
 -/
 
 @[expose] public section
