@@ -549,7 +549,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrNestInline
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrReturn
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
@@ -753,7 +752,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused
-CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubLsemTie
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddmulSubmul1CarrySelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdxLprog
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCrateEmit
