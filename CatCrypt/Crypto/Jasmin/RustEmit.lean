@@ -13,9 +13,10 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 # Rust Source Emission from `LowCT`
 
 Counterpart to `LowCTToJasmin.ppJasminProg`: produces a Rust source
-string from a `LowCT`. Together with `writeJasminProg` this closes the
-bidirectional round-trip: one `LowCT` → one Jasmin file AND one Rust file,
-both proved-correct by `rustExecSimulates` family of theorems.
+string from a `LowCT`. Together with `writeJasminProg` one `LowCT` yields one
+Jasmin file and one Rust file. The `rustExecSimulates` family relates the
+`LowCT` semantics to its Jasmin translation; no theorem relates the Rust text
+this module prints to the `LowCT` it prints from.
 
 ## Style
 
@@ -24,8 +25,9 @@ parameters by reference (immutable for inputs, `&mut` for outputs). Calls
 to leaf functions like `fp_mul` become regular Rust calls. `RCloneCall`
 becomes an explicit `.clone()` on the source value.
 
-This is the SHIP form — what actually gets fed into the `cryptoptbls12-rs`
-crate for testing. Verified-correct by simulation against the same AST.
+This is the form that ships: it is the source of the `cryptoptbls12-rs`
+crate's tests and of the P-384 orchestration in `catcrypt-p384/gen/`, whose
+evidence is testing.
 -/
 
 @[expose] public section

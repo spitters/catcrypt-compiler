@@ -13,28 +13,15 @@ public import CatCrypt.Crypto.Jasmin.JasminSem
 /-!
 # Simulation theorem for `JasminToRustEmit.ppFunDecl`
 
-Sibling to `LowCTToJasmin.rustExecSimulates`, but at the **emitter** level.
-This file states the full simulation theorem against an axiomatized rustc
-oracle and proves the per-constructor lemmas about the expression printer
-`ppPExpr`.
+The per-constructor lemmas of §1 state, by `rfl`, the string `ppPExpr` prints
+for each expression constructor.
 
-## Status
-
-* §1 — eleven `ppPExpr_simulates_*` per-constructor lemmas closed (rfl).
-* §2 — `RustcExec` opaque relation + `RustcExec_correct` named axiom (the
-  trust-rustc leaf) + `ppFunDecl_simulates` Qed (one-line discharge of the
-  axiom). 0 sorry.
-
-## Framing
-
-We do **not** model rustc / LLVM internals — that would require importing
-the rustc reference semantics. Instead the simulation theorem is stated
-against an opaque `RustcExec` predicate, and the trust assumption ("rustc
-+ LLVM execute the emitted Rust source faithfully against the Jasmin
-operational semantics") is isolated to a single named axiom
-`RustcExec_correct`. This matches the technical report's "trust rustc +
-LLVM" leg: the leaf is auditable, replacing what was previously an
-implicit `sorry`-bearing placeholder.
+§2 states the simulation of `ppFunDecl` against an opaque `RustcExec`
+predicate. `ppFunDecl_simulates` is the named axiom `RustcExec_correct`
+applied to its hypothesis, and `RustcExec` is constrained by nothing else, so
+the statement is assumed rather than proved. The axiom bundles the
+correctness of the printer with that of rustc and LLVM; the printer's part has
+no proof in this module.
 -/
 
 @[expose] public section
@@ -120,13 +107,11 @@ theorem ppPExpr_simulates_PappN (op : OpN) (es : List PExpr) :
     ppPExpr (PExpr.PappN op es) = "/* unhandled PappN */" := by
   rfl
 
-/-! ## §2.  Top-level simulation theorem
+/-! ## §2.  Top-level simulation statement
 
-The simulation theorem ties the emitted Rust source `ppFunDecl fd` to the
-`jasminSem` big-step operational semantics, via an opaque `RustcExec`
-predicate. The trust leaf — that rustc + LLVM execute the emitted source
-faithfully against the Jasmin semantics — is recorded as a single named
-axiom `RustcExec_correct`, replacing what was previously a `sorry`. -/
+The statement ties the emitted Rust source `ppFunDecl fd` to the `jasminSem`
+big-step operational semantics through an opaque `RustcExec` predicate, and
+the named axiom `RustcExec_correct` asserts it. -/
 
 /-- Trust-rustc oracle: predicate "rustc compiles `src` and the resulting
     binary, when executed, transitions `σ` to `σ'` (under the same
@@ -134,24 +119,27 @@ axiom `RustcExec_correct`, replacing what was previously a `sorry`. -/
     we do not model rustc / LLVM internals. -/
 opaque RustcExec : String → LowCT.RustState → LowCT.RustState → Prop
 
-/-- **Trust-rustc leaf** (named, auditable axiom).
+/-- **Trust leaf for the printer and rustc together** (named axiom).
 
     For any `FunDecl fd` and any `jasminSem` derivation taking `σ` to `σ'`
     on `fd.body`, the rustc-compiled emitted source `ppFunDecl fd` exhibits
-    the same transition under `RustcExec`. This is the standard "trust
-    rustc + LLVM" assumption made explicit, replacing the previous
-    documented `sorry` with a single named axiom that downstream consumers
-    can inspect via `#print axioms`. -/
+    the same transition under `RustcExec`. The axiom bundles two claims: that
+    `ppFunDecl` prints a program with the meaning of `fd.body`, and that rustc
+    and LLVM execute it faithfully. The first is a property of the printer and
+    is not proved. -/
 axiom RustcExec_correct
     (leafSpec : LowCT.LeafSpec) (fd : FunDecl) (σ σ' : LowCT.RustState) :
     jasminSem leafSpec fd.body σ σ' → RustcExec (ppFunDecl fd) σ σ'
 
-/-- **JasminToRustEmit simulation theorem.**
+/-- (assumed bound) **JasminToRustEmit simulation statement.**
 
-    For any `FunDecl`, the emitted Rust source `ppFunDecl fd` is
-    operationally equivalent to executing `fd.body` under the Jasmin
-    big-step semantics. Discharged from `RustcExec_correct` (the
-    trust-rustc leaf). -/
+    For any `FunDecl`, `RustcExec (ppFunDecl fd)` holds of every `jasminSem`
+    transition of `fd.body`. The statement is the axiom `RustcExec_correct`
+    applied to its hypothesis. `RustcExec` is opaque and constrained by
+    nothing but that axiom, so the statement carries no information about the
+    printed text: the correctness of `ppFunDecl` is assumed here, not proved,
+    and the axiom covers outputs containing the printer's `unhandled`
+    markers. -/
 theorem ppFunDecl_simulates
     (leafSpec : LowCT.LeafSpec) (fd : FunDecl) (σ σ' : LowCT.RustState)
     (h : jasminSem leafSpec fd.body σ σ') :
