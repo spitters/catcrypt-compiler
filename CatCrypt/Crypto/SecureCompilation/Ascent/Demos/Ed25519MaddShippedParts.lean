@@ -30,18 +30,29 @@ the model in which a call's effect and its caller's accesses refer to one memory
   segments and their calls.
 * `feO m p o`: the four-limb little-endian value in the 32 bytes at `p + o`.
 * `FrameC m m' a n`: `m'` and `m` agree outside the `8 * n` bytes at `a`.
-* `FieldCallee`, `JoinCallee`, `MaddCallees`: the effect of each callee of the block
-  on the four-limb values at its argument pointers, on memory outside its output, and
-  on `%rsp`.
+* `redBase`, `FrameCS m m' a n sp`: the base of the eighteen words below `sp` that a
+  callee's own frame occupies, and a frame over the `8 * n` bytes at `a` together with
+  those words.
+* `RangeDisj a lo hi b lo' hi'`: the aligned cells in `[lo, hi]` from `a` and in
+  `[lo', hi']` from `b` occupy pairwise disjoint eight-byte ranges.
+* `FieldSep`, `JoinSep`: the pairwise disjointness of a callee's argument buffers, its
+  output and the words below `%rsp`.
+* `FieldEffect`, `JoinEffect`: the effect of one call on the four-limb values at its
+  argument pointers, on memory outside its output and the words below `%rsp`, and on
+  `%rsp`.
+* `FieldCallee`, `FieldCalleeSep`, `JoinCallee`, `MaddCallees`: that effect at every
+  state, respectively at every state whose buffers are separated.
 * `maddCells`: the eight-byte cells the block and its callees access, as
-  `(base, offset)` pairs of the entry registers `%rsp`, `%rsi` and `%rdi`.
+  `(base, offset)` pairs of the entry registers `%rsp`, `%rsi` and `%rdi`; the stack
+  cells run from the callee frames at `%rsp - 144` to the pointer slot at `%rsp + 584`.
 * `copyBlk`: the load-store pairs of the block's output copy.
 
 ## Main results
 
 * `runArgsRR`, `runArgsSR`, `runArgsSS`, `runArgsJoin`, `runEntry`, `runOutSetup`: the
   registers and the memory each segment body leaves.
-* `feO_frame`: a four-limb value survives a call whose output is disjoint from it.
+* `feO_frame`, `feO_frameS`: a four-limb value survives a call whose written cells are
+  disjoint from it.
 * `copyBlk_val`, `copyBlk_frame`: the copy moves each word and changes nothing else.
 * `djSS`, `djIS`, `djOS`: disjointness of two cells at one base and of cells at two
   different bases, the latter from `Separated ... maddCells`.
@@ -136,6 +147,85 @@ theorem feO_frame {m m' : AMem} {a p : BitVec 64} {n : Nat} {o : Int}
   refine congrArg bignumVal (List.map_congr_left fun j hj => ?_)
   exact read64_frameC hf _ fun k hk => hd k hk j hj
 
+/-- The eighteen eight-byte words below `sp`, as the buffer based at `sp - 144`. -/
+def redBase (sp : BitVec 64) : BitVec 64 := sp + BitVec.ofInt 64 (-144)
+
+/-- `m'` differs from `m` only in the `8 * n` bytes from `a` and the eighteen words
+    below `sp`. -/
+def FrameCS (m m' : AMem) (a : BitVec 64) (n : Nat) (sp : BitVec 64) : Prop :=
+  ∀ x : BitVec 64, (∀ k, k < n → ¬ InRange8 (a + BitVec.ofInt 64 (8 * k : Nat)) x) →
+    (∀ k, k < 18 → ¬ InRange8 (redBase sp + BitVec.ofInt 64 (8 * k : Nat)) x) →
+    m' x = m x
+
+/-- A frame over the output alone is a frame over the output together with the eighteen
+    words below `sp`. -/
+theorem frameCS_of_frameC {m m' : AMem} {a : BitVec 64} {n : Nat} (sp : BitVec 64)
+    (hf : FrameC m m' a n) : FrameCS m m' a n sp := fun x hx _ => hf x hx
+
+/-- A word outside the frame reads back unchanged. -/
+theorem read64_frameCS {m m' : AMem} {a : BitVec 64} {n : Nat} {sp : BitVec 64}
+    (hf : FrameCS m m' a n sp) (b : BitVec 64)
+    (hd : ∀ k, k < n → Disjoint8 (a + BitVec.ofInt 64 (8 * k : Nat)) b)
+    (hr : ∀ k, k < 18 → Disjoint8 (redBase sp + BitVec.ofInt 64 (8 * k : Nat)) b) :
+    read64 m' b = read64 m b := by
+  have key : ∀ i : Nat, i < 8 → m' (b + BitVec.ofNat 64 i) = m (b + BitVec.ofNat 64 i) :=
+    fun i hi => hf _ (fun k hk => not_inRange_of_disjoint _ _ i (hd k hk) hi)
+      (fun k hk => not_inRange_of_disjoint _ _ i (hr k hk) hi)
+  have h0 : m' b = m b := by simpa using key 0 (by decide)
+  simp only [read64, h0, key 1 (by decide), key 2 (by decide), key 3 (by decide),
+    key 4 (by decide), key 5 (by decide), key 6 (by decide), key 7 (by decide)]
+
+/-- A four-limb value whose limbs lie outside the frame survives it. -/
+theorem feO_frameS {m m' : AMem} {a p sp : BitVec 64} {n : Nat} {o : Int}
+    (hf : FrameCS m m' a n sp)
+    (hd : ∀ k, k < n → ∀ j ∈ limbOffs,
+      Disjoint8 (a + BitVec.ofInt 64 (8 * k : Nat)) (p + BitVec.ofInt 64 (o + j)))
+    (hr : ∀ k, k < 18 → ∀ j ∈ limbOffs,
+      Disjoint8 (redBase sp + BitVec.ofInt 64 (8 * k : Nat)) (p + BitVec.ofInt 64 (o + j))) :
+    feO m' p o = feO m p o := by
+  simp only [feO]
+  refine congrArg bignumVal (List.map_congr_left fun j hj => ?_)
+  exact read64_frameCS hf _ (fun k hk => hd k hk j hj) (fun k hk => hr k hk j hj)
+
+/-- The eight-byte cells at eight-byte-aligned offsets in `[lo, hi]` from `a` and in
+    `[lo', hi']` from `b` occupy pairwise disjoint ranges. -/
+def RangeDisj (a : BitVec 64) (lo hi : Int) (b : BitVec 64) (lo' hi' : Int) : Prop :=
+  ∀ o o' : Int, lo ≤ o → o ≤ hi → o % 8 = 0 → lo' ≤ o' → o' ≤ hi' → o' % 8 = 0 →
+    Disjoint8 (a + BitVec.ofInt 64 o) (b + BitVec.ofInt 64 o')
+
+theorem RangeDisj.symm {a b : BitVec 64} {lo hi lo' hi' : Int}
+    (h : RangeDisj a lo hi b lo' hi') : RangeDisj b lo' hi' a lo hi :=
+  fun o o' h1 h2 h3 h4 h5 h6 => (h o' o h4 h5 h6 h1 h2 h3).symm
+
+/-- A base is its own displacement by zero. -/
+theorem eq_add_ofInt_zero (p : BitVec 64) : p = p + BitVec.ofInt 64 0 := by simp
+
+/-- Two ranges at displacements of one base whose absolute offsets stay at least eight
+    apart. -/
+theorem rangeDisj_sameBase {p a b : BitVec 64} {d e : Int} (lo hi lo' hi' : Int)
+    (ha : a = p + BitVec.ofInt 64 d) (hb : b = p + BitVec.ofInt 64 e)
+    (h : ∀ o o' : Int, lo ≤ o → o ≤ hi → o % 8 = 0 → lo' ≤ o' → o' ≤ hi' → o' % 8 = 0 →
+      8 ≤ ((d + o) - (e + o')).natAbs ∧ ((d + o) - (e + o')).natAbs ≤ 2 ^ 64 - 8) :
+    RangeDisj a lo hi b lo' hi' := by
+  subst ha; subst hb
+  intro o o' a1 a2 a3 b1 b2 b3
+  rw [addI, addI]
+  exact disjoint8_add_ofInt _ _ _ (h o o' a1 a2 a3 b1 b2 b3).1 (h o o' a1 a2 a3 b1 b2 b3).2
+
+/-- Two ranges at displacements of two bases whose own ranges are disjoint. -/
+theorem rangeDisj_twoBase {p q a b : BitVec 64} {lo hi lo' hi' d e : Int}
+    (u1 u2 v1 v2 : Int) (hbase : RangeDisj p lo hi q lo' hi')
+    (ha : a = p + BitVec.ofInt 64 d) (hb : b = q + BitVec.ofInt 64 e)
+    (hu : ∀ o : Int, u1 ≤ o → o ≤ u2 → o % 8 = 0 → lo ≤ d + o ∧ d + o ≤ hi ∧ (d + o) % 8 = 0)
+    (hv : ∀ o : Int, v1 ≤ o → o ≤ v2 → o % 8 = 0 →
+      lo' ≤ e + o ∧ e + o ≤ hi' ∧ (e + o) % 8 = 0) :
+    RangeDisj a u1 u2 b v1 v2 := by
+  subst ha; subst hb
+  intro o o' a1 a2 a3 b1 b2 b3
+  rw [addI, addI]
+  exact hbase (d + o) (e + o') (hu o a1 a2 a3).1 (hu o a1 a2 a3).2.1 (hu o a1 a2 a3).2.2
+    (hv o' b1 b2 b3).1 (hv o' b1 b2 b3).2.1 (hv o' b1 b2 b3).2.2
+
 /-! ## 3. The callees -/
 
 open CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
@@ -146,28 +236,94 @@ def pM : Nat := 2 ^ 255 - 19
 
 theorem pM_pos : 0 < pM := by unfold pM; norm_num
 
-/-- A two-argument field callee: with both inputs below `pM`, it leaves `op` of the
-    four-limb values at `%rsi` and at `%rdx`, reduced modulo `pM`, at `%rdi`, changes
-    no memory outside the 32 bytes at `%rdi`, and keeps `%rsp`. -/
-def FieldCallee (C : ACallModel) (f : String) (op : Nat → Nat → Nat) : Prop :=
-  ∀ sa : AState,
-    (feO sa.mem (sa.regs "%rsi") 0 < pM → feO sa.mem (sa.regs "%rdx") 0 < pM →
-      feO (C f sa).mem (sa.regs "%rdi") 0
-        = op (feO sa.mem (sa.regs "%rsi") 0) (feO sa.mem (sa.regs "%rdx") 0) % pM)
-    ∧ FrameC sa.mem (C f sa).mem (sa.regs "%rdi") 4
-    ∧ (C f sa).regs "%rsp" = sa.regs "%rsp"
+/-- The buffers a field callee touches are pairwise disjoint: the four-limb output at
+    `%rdi`, the two four-limb arguments at `%rsi` and `%rdx`, and the eighteen words
+    below `%rsp`. -/
+structure FieldSep (sa : AState) : Prop where
+  /-- The output and the first argument. -/
+  oi : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsi") 0 24
+  /-- The output and the second argument. -/
+  oj : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rdx") 0 24
+  /-- The two arguments. -/
+  ij : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%rdx") 0 24
+  /-- The output and the words below `%rsp`. -/
+  os : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-144) (-8)
+  /-- The first argument and the words below `%rsp`. -/
+  is : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%rsp") (-144) (-8)
+  /-- The second argument and the words below `%rsp`. -/
+  js : RangeDisj (sa.regs "%rdx") 0 24 (sa.regs "%rsp") (-144) (-8)
 
-/-- The concatenation callee: it leaves the four-limb values at `%rsi`, `%rdx`, `%rcx`
-    and `%r8` in the four consecutive field slots at `%rdi`, changes no memory outside
-    the 128 bytes at `%rdi`, and keeps `%rsp`. -/
+/-- The buffers the concatenation callee touches are pairwise disjoint: the sixteen-word
+    output at `%rdi`, the four four-limb arguments at `%rsi`, `%rdx`, `%rcx` and `%r8`,
+    and the eighteen words below `%rsp`. -/
+structure JoinSep (sa : AState) : Prop where
+  /-- The output and the first argument. -/
+  o1 : RangeDisj (sa.regs "%rdi") 0 120 (sa.regs "%rsi") 0 24
+  /-- The output and the second argument. -/
+  o2 : RangeDisj (sa.regs "%rdi") 0 120 (sa.regs "%rdx") 0 24
+  /-- The output and the third argument. -/
+  o3 : RangeDisj (sa.regs "%rdi") 0 120 (sa.regs "%rcx") 0 24
+  /-- The output and the fourth argument. -/
+  o4 : RangeDisj (sa.regs "%rdi") 0 120 (sa.regs "%r8") 0 24
+  /-- The output and the words below `%rsp`. -/
+  os : RangeDisj (sa.regs "%rdi") 0 120 (sa.regs "%rsp") (-144) (-8)
+  /-- The first and second arguments. -/
+  a12 : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%rdx") 0 24
+  /-- The first and third arguments. -/
+  a13 : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%rcx") 0 24
+  /-- The first and fourth arguments. -/
+  a14 : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%r8") 0 24
+  /-- The first argument and the words below `%rsp`. -/
+  a1s : RangeDisj (sa.regs "%rsi") 0 24 (sa.regs "%rsp") (-144) (-8)
+  /-- The second and third arguments. -/
+  a23 : RangeDisj (sa.regs "%rdx") 0 24 (sa.regs "%rcx") 0 24
+  /-- The second and fourth arguments. -/
+  a24 : RangeDisj (sa.regs "%rdx") 0 24 (sa.regs "%r8") 0 24
+  /-- The second argument and the words below `%rsp`. -/
+  a2s : RangeDisj (sa.regs "%rdx") 0 24 (sa.regs "%rsp") (-144) (-8)
+  /-- The third and fourth arguments. -/
+  a34 : RangeDisj (sa.regs "%rcx") 0 24 (sa.regs "%r8") 0 24
+  /-- The third argument and the words below `%rsp`. -/
+  a3s : RangeDisj (sa.regs "%rcx") 0 24 (sa.regs "%rsp") (-144) (-8)
+  /-- The fourth argument and the words below `%rsp`. -/
+  a4s : RangeDisj (sa.regs "%r8") 0 24 (sa.regs "%rsp") (-144) (-8)
+
+/-- The effect of a two-argument field call at one state: with both inputs below `pM` it
+    leaves `op` of the four-limb values at `%rsi` and at `%rdx`, reduced modulo `pM`, at
+    `%rdi`, changes no memory outside the 32 bytes at `%rdi` and the eighteen words below
+    `%rsp`, and keeps `%rsp`. -/
+def FieldEffect (C : ACallModel) (f : String) (op : Nat → Nat → Nat) (sa : AState) : Prop :=
+  (feO sa.mem (sa.regs "%rsi") 0 < pM → feO sa.mem (sa.regs "%rdx") 0 < pM →
+    feO (C f sa).mem (sa.regs "%rdi") 0
+      = op (feO sa.mem (sa.regs "%rsi") 0) (feO sa.mem (sa.regs "%rdx") 0) % pM)
+  ∧ FrameCS sa.mem (C f sa).mem (sa.regs "%rdi") 4 (sa.regs "%rsp")
+  ∧ (C f sa).regs "%rsp" = sa.regs "%rsp"
+
+/-- A field callee with that effect at every state. -/
+def FieldCallee (C : ACallModel) (f : String) (op : Nat → Nat → Nat) : Prop :=
+  ∀ sa : AState, FieldEffect C f op sa
+
+/-- A field callee with that effect at every state whose buffers are pairwise
+    disjoint. -/
+def FieldCalleeSep (C : ACallModel) (f : String) (op : Nat → Nat → Nat) : Prop :=
+  ∀ sa : AState, FieldSep sa → FieldEffect C f op sa
+
+/-- The effect of the concatenation call at one state: it leaves the four-limb values at
+    `%rsi`, `%rdx`, `%rcx` and `%r8` in the four consecutive field slots at `%rdi`,
+    changes no memory outside the 128 bytes at `%rdi` and the eighteen words below
+    `%rsp`, and keeps `%rsp`. -/
+def JoinEffect (C : ACallModel) (f : String) (sa : AState) : Prop :=
+  (feO (C f sa).mem (sa.regs "%rdi") 0 = feO sa.mem (sa.regs "%rsi") 0
+    ∧ feO (C f sa).mem (sa.regs "%rdi") 32 = feO sa.mem (sa.regs "%rdx") 0
+    ∧ feO (C f sa).mem (sa.regs "%rdi") 64 = feO sa.mem (sa.regs "%rcx") 0
+    ∧ feO (C f sa).mem (sa.regs "%rdi") 96 = feO sa.mem (sa.regs "%r8") 0)
+  ∧ FrameCS sa.mem (C f sa).mem (sa.regs "%rdi") 16 (sa.regs "%rsp")
+  ∧ (C f sa).regs "%rsp" = sa.regs "%rsp"
+
+/-- The concatenation callee with that effect at every state whose buffers are pairwise
+    disjoint. -/
 def JoinCallee (C : ACallModel) (f : String) : Prop :=
-  ∀ sa : AState,
-    (feO (C f sa).mem (sa.regs "%rdi") 0 = feO sa.mem (sa.regs "%rsi") 0
-      ∧ feO (C f sa).mem (sa.regs "%rdi") 32 = feO sa.mem (sa.regs "%rdx") 0
-      ∧ feO (C f sa).mem (sa.regs "%rdi") 64 = feO sa.mem (sa.regs "%rcx") 0
-      ∧ feO (C f sa).mem (sa.regs "%rdi") 96 = feO sa.mem (sa.regs "%r8") 0)
-    ∧ FrameC sa.mem (C f sa).mem (sa.regs "%rdi") 16
-    ∧ (C f sa).regs "%rsp" = sa.regs "%rsp"
+  ∀ sa : AState, JoinSep sa → JoinEffect C f sa
 
 /-- The four callees of the mixed addition at their specifications. -/
 structure MaddCallees (C : ACallModel) : Prop where
@@ -176,25 +332,27 @@ structure MaddCallees (C : ACallModel) : Prop where
   /-- `fe25519_sub` subtracts modulo `pM`. -/
   sub : FieldCallee C subSym fun x y => x + (pM - y)
   /-- `fe25519_mul` multiplies modulo `pM`. -/
-  mul : FieldCallee C mulSym fun x y => x * y
+  mul : FieldCalleeSep C mulSym fun x y => x * y
   /-- `ed25519_join16` concatenates four field elements. -/
   join : JoinCallee C join16Sym
 
 /-! ## 4. The cells of the block and their disjointness -/
 
-/-- The eight-byte cells the block and its callees access: the 74 stack words at
-    `%rsp + 8i` up to the two pointer slots at 576 and 584, the 28 words of the input
-    point at `%rsi + 8i`, and the 16 output words at `%rdi + 8i`. -/
+/-- The eight-byte cells the block and its callees access: the 92 stack words from the
+    eighteen words of callee frames below `%rsp` up to the two pointer slots at 576 and
+    584, the 28 words of the input point at `%rsi + 8i`, and the 16 output words at
+    `%rdi + 8i`. -/
 def maddCells : List (String × Int) :=
-  (List.range 74).map (fun i => ("%rsp", ((8 * i : Nat) : Int))) ++
+  (List.range 92).map (fun i => ("%rsp", ((8 * i : Nat) : Int) - 144)) ++
   (List.range 28).map (fun i => ("%rsi", ((8 * i : Nat) : Int))) ++
   (List.range 16).map (fun i => ("%rdi", ((8 * i : Nat) : Int)))
 
-theorem memRsp (o : Int) (h0 : 0 ≤ o) (h1 : o ≤ 584) (h8 : o % 8 = 0) :
+theorem memRsp (o : Int) (h0 : -144 ≤ o) (h1 : o ≤ 584) (h8 : o % 8 = 0) :
     ("%rsp", o) ∈ maddCells := by
-  refine List.mem_append_left _ (List.mem_append_left _ (List.mem_map.2 ⟨(o / 8).toNat, ?_, ?_⟩))
+  refine List.mem_append_left _ (List.mem_append_left _
+    (List.mem_map.2 ⟨((o + 144) / 8).toNat, ?_, ?_⟩))
   · exact List.mem_range.2 (by omega)
-  · have : ((8 * (o / 8).toNat : Nat) : Int) = o := by omega
+  · have : ((8 * ((o + 144) / 8).toNat : Nat) : Int) - 144 = o := by omega
     rw [this]
 
 theorem memRsi (o : Int) (h0 : 0 ≤ o) (h1 : o ≤ 216) (h8 : o % 8 = 0) :
@@ -221,6 +379,11 @@ theorem keyAddr_shipped (P : String → BitVec 64) (b : String) (o : Int)
     (hb : shippedBank b = some b) : keyAddr shippedBank P (b, o) = P b + BitVec.ofInt 64 o := by
   simp only [keyAddr, basePtr, hb]
 
+/-- The address of a cell whose base register is named by an equation. -/
+theorem keyAddr_of {P : String → BitVec 64} {k : String × Int} {b : String} (hb : k.1 = b)
+    (hbb : shippedBank b = some b) : keyAddr shippedBank P k = P b + BitVec.ofInt 64 k.2 := by
+  simp only [keyAddr, basePtr, hb, hbb]
+
 /-- Two cells at one base, at offsets at least eight apart, are disjoint. -/
 theorem djSS (p : BitVec 64) (o o' : Int) (h : 8 ≤ (o - o').natAbs)
     (h' : (o - o').natAbs ≤ 2 ^ 64 - 8) :
@@ -229,7 +392,7 @@ theorem djSS (p : BitVec 64) (o o' : Int) (h : 8 ≤ (o - o').natAbs)
 
 /-- A stack cell and an input-point cell are disjoint. -/
 theorem djIS {R : String → BitVec 64} (hsep : Separated shippedBank R maddCells)
-    (o o' : Int) (h0 : 0 ≤ o) (h1 : o ≤ 584) (h8 : o % 8 = 0)
+    (o o' : Int) (h0 : -144 ≤ o) (h1 : o ≤ 584) (h8 : o % 8 = 0)
     (g0 : 0 ≤ o') (g1 : o' ≤ 216) (g8 : o' % 8 = 0) :
     Disjoint8 (R "%rsp" + BitVec.ofInt 64 o) (R "%rsi" + BitVec.ofInt 64 o') := by
   have h := hsep ("%rsp", o) (memRsp o h0 h1 h8) ("%rsi", o') (memRsi o' g0 g1 g8)
@@ -241,7 +404,7 @@ theorem djOS {R : String → BitVec 64} (hsep : Separated shippedBank R maddCell
     (o o' : Int) (h0 : 0 ≤ o) (h1 : o ≤ 584) (h8 : o % 8 = 0)
     (g0 : 0 ≤ o') (g1 : o' ≤ 120) (g8 : o' % 8 = 0) :
     Disjoint8 (R "%rsp" + BitVec.ofInt 64 o) (R "%rdi" + BitVec.ofInt 64 o') := by
-  have h := hsep ("%rsp", o) (memRsp o h0 h1 h8) ("%rdi", o') (memRdi o' g0 g1 g8)
+  have h := hsep ("%rsp", o) (memRsp o (by omega) h1 h8) ("%rdi", o') (memRdi o' g0 g1 g8)
     (by simp)
   rwa [keyAddr_shipped _ _ _ bankRsp, keyAddr_shipped _ _ _ bankRdi] at h
 
@@ -438,7 +601,8 @@ theorem copyBlk_val (sa : AState) (os : List Int) (hnd : os.Nodup)
 /-- One field call: the body sets the argument registers, the callee leaves the reduced
     result in the stack slot at `%rsp + d` and changes nothing else. -/
 theorem fieldStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
-    (hC : FieldCallee C f op) (sa : AState) (body : List (JInstr 64))
+    {sa : AState} {body : List (JInstr 64)}
+    (hC : FieldEffect C f op (runBlockA sa body))
     (SP a1 a2 : BitVec 64) (d : Int)
     (hm : (runBlockA sa body).mem = sa.mem)
     (hsp : (runBlockA sa body).regs "%rsp" = SP)
@@ -449,10 +613,10 @@ theorem fieldStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
     (C f (runBlockA sa body)).regs "%rsp" = SP
       ∧ feO (C f (runBlockA sa body)).mem SP d
         = op (feO sa.mem a1 0) (feO sa.mem a2 0) % pM
-      ∧ FrameC sa.mem (C f (runBlockA sa body)).mem (SP + BitVec.ofInt 64 d) 4 := by
-  obtain ⟨hval, hfr, hrsp⟩ := hC (runBlockA sa body)
+      ∧ FrameCS sa.mem (C f (runBlockA sa body)).mem (SP + BitVec.ofInt 64 d) 4 SP := by
+  obtain ⟨hval, hfr, hrsp⟩ := hC
   rw [hsi, hdx, hdi, hm] at hval
-  rw [hdi, hm] at hfr
+  rw [hdi, hm, hsp] at hfr
   refine ⟨by rw [hrsp, hsp], ?_, hfr⟩
   rw [feO_base, show d + (0 : Int) = d by omega] at hval
   exact hval hb1 hb2

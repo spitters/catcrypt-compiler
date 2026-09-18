@@ -186,86 +186,118 @@ theorem maddCallsRun {C : ACallModel} (hC : MaddCallees C) (sa : AState)
   have i1 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 1 s1 := by
     rw [← hs1]
-    exact stepRR hadd (by omega) hX i0 0 32 0 1 0 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (hb 1 (by omega)) (hb 0 (by omega)) rfl
+    exact stepRR (by omega) hX i0 0 32 0 1 0 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff]) (hadd _)
+      (hb 1 (by omega)) (hb 0 (by omega)) rfl
   obtain ⟨s2, hs2⟩ : ∃ s, C mulSym (runBlockA s1 (mg 2).body) = s := ⟨_, rfl⟩
   have i2 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 2 s2 := by
     rw [← hs2]
-    exact stepSR hmul (by omega) hX i1 32 0 128 0 4 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 0) (hb 4 (by omega)) rfl
+    exact stepSR (by omega) hX i1 32 0 128 0 4 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSR i1.rsp (inPtr_eq i1) hX 32 0 128 (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)))
+      (maddSV_lt sa 0) (hb 4 (by omega)) rfl
   obtain ⟨s3, hs3⟩ : ∃ s, C subSym (runBlockA s2 (mg 3).body) = s := ⟨_, rfl⟩
   have i3 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 3 s3 := by
     rw [← hs3]
-    exact stepRR hsub (by omega) hX i2 64 32 0 1 0 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (hb 1 (by omega)) (hb 0 (by omega)) rfl
+    exact stepRR (by omega) hX i2 64 32 0 1 0 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff]) (hsub _)
+      (hb 1 (by omega)) (hb 0 (by omega)) rfl
   obtain ⟨s4, hs4⟩ : ∃ s, C mulSym (runBlockA s3 (mg 4).body) = s := ⟨_, rfl⟩
   have i4 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 4 s4 := by
     rw [← hs4]
-    exact stepSR hmul (by omega) hX i3 96 64 160 2 5 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 2) (hb 5 (by omega)) rfl
+    exact stepSR (by omega) hX i3 96 64 160 2 5 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSR i3.rsp (inPtr_eq i3) hX 96 64 160 (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)))
+      (maddSV_lt sa 2) (hb 5 (by omega)) rfl
   obtain ⟨s5, hs5⟩ : ∃ s, C mulSym (runBlockA s4 (mg 5).body) = s := ⟨_, rfl⟩
   have i5 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 5 s5 := by
     rw [← hs5]
-    exact stepRR hmul (by omega) hX i4 128 96 192 3 6 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (hb 3 (by omega)) (hb 6 (by omega)) rfl
+    exact stepRR (by omega) hX i4 128 96 192 3 6 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepRR i4.rsp (inPtr_eq i4) hX 128 96 192 (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)))
+      (hb 3 (by omega)) (hb 6 (by omega)) rfl
   obtain ⟨s6, hs6⟩ : ∃ s, C addSym (runBlockA s5 (mg 6).body) = s := ⟨_, rfl⟩
   have i6 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 6 s6 := by
     rw [← hs6]
-    exact stepRR hadd (by omega) hX i5 160 64 64 2 2 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (hb 2 (by omega)) (hb 2 (by omega)) rfl
+    exact stepRR (by omega) hX i5 160 64 64 2 2 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff]) (hadd _)
+      (hb 2 (by omega)) (hb 2 (by omega)) rfl
   obtain ⟨s7, hs7⟩ : ∃ s, C subSym (runBlockA s6 (mg 7).body) = s := ⟨_, rfl⟩
   have i7 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 7 s7 := by
     rw [← hs7]
-    exact stepSS hsub (by omega) hX i6 192 32 96 1 3 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 1) (maddSV_lt sa 3) rfl
+    exact stepSS (by omega) hX i6 192 32 96 1 3 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff]) (hsub _)
+      (maddSV_lt sa 1) (maddSV_lt sa 3) rfl
   obtain ⟨s8, hs8⟩ : ∃ s, C addSym (runBlockA s7 (mg 8).body) = s := ⟨_, rfl⟩
   have i8 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 8 s8 := by
     rw [← hs8]
-    exact stepSS hadd (by omega) hX i7 224 32 96 1 3 (by simp [slotOff]) (by omega) (by omega)
-      (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 1) (maddSV_lt sa 3) rfl
+    exact stepSS (by omega) hX i7 224 32 96 1 3 (by simp [slotOff]) (by omega) (by omega)
+      (by simp [slotOff]) (by simp [slotOff]) (hadd _)
+      (maddSV_lt sa 1) (maddSV_lt sa 3) rfl
   obtain ⟨s9, hs9⟩ : ∃ s, C addSym (runBlockA s8 (mg 9).body) = s := ⟨_, rfl⟩
   have i9 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 9 s9 := by
     rw [← hs9]
-    exact stepSS hadd (by omega) hX i8 256 160 128 5 4 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 5) (maddSV_lt sa 4) rfl
+    exact stepSS (by omega) hX i8 256 160 128 5 4 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff]) (hadd _)
+      (maddSV_lt sa 5) (maddSV_lt sa 4) rfl
   obtain ⟨s10, hs10⟩ : ∃ s, C subSym (runBlockA s9 (mg 10).body) = s := ⟨_, rfl⟩
   have i10 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 10 s10 := by
     rw [← hs10]
-    exact stepSS hsub (by omega) hX i9 288 160 128 5 4 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 5) (maddSV_lt sa 4) rfl
+    exact stepSS (by omega) hX i9 288 160 128 5 4 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff]) (hsub _)
+      (maddSV_lt sa 5) (maddSV_lt sa 4) rfl
   obtain ⟨s11, hs11⟩ : ∃ s, C mulSym (runBlockA s10 (mg 11).body) = s := ⟨_, rfl⟩
   have i11 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 11 s11 := by
     rw [← hs11]
-    exact stepSS hmul (by omega) hX i10 320 192 288 6 9 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 6) (maddSV_lt sa 9) rfl
+    exact stepSS (by omega) hX i10 320 192 288 6 9 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSS i10.rsp 320 192 288 (by omega) (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)
+        (by omega)))
+      (maddSV_lt sa 6) (maddSV_lt sa 9) rfl
   obtain ⟨s12, hs12⟩ : ∃ s, C mulSym (runBlockA s11 (mg 12).body) = s := ⟨_, rfl⟩
   have i12 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 12 s12 := by
     rw [← hs12]
-    exact stepSS hmul (by omega) hX i11 352 224 256 7 8 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 7) (maddSV_lt sa 8) rfl
+    exact stepSS (by omega) hX i11 352 224 256 7 8 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSS i11.rsp 352 224 256 (by omega) (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)
+        (by omega)))
+      (maddSV_lt sa 7) (maddSV_lt sa 8) rfl
   obtain ⟨s13, hs13⟩ : ∃ s, C mulSym (runBlockA s12 (mg 13).body) = s := ⟨_, rfl⟩
   have i13 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 13 s13 := by
     rw [← hs13]
-    exact stepSS hmul (by omega) hX i12 384 256 288 8 9 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 8) (maddSV_lt sa 9) rfl
+    exact stepSS (by omega) hX i12 384 256 288 8 9 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSS i12.rsp 384 256 288 (by omega) (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)
+        (by omega)))
+      (maddSV_lt sa 8) (maddSV_lt sa 9) rfl
   obtain ⟨s14, hs14⟩ : ∃ s, C mulSym (runBlockA s13 (mg 14).body) = s := ⟨_, rfl⟩
   have i14 : MaddInv (sa.regs "%rsp") (sa.regs "%rsi") (sa.regs "%rdi") (maddSV sa)
       (maddIn sa) 14 s14 := by
     rw [← hs14]
-    exact stepSS hmul (by omega) hX i13 416 192 224 6 7 (by simp [slotOff]) (by omega)
-      (by omega) (by simp [slotOff]) (by simp [slotOff]) (maddSV_lt sa 6) (maddSV_lt sa 7) rfl
+    exact stepSS (by omega) hX i13 416 192 224 6 7 (by simp [slotOff]) (by omega)
+      (by omega) (by simp [slotOff]) (by simp [slotOff])
+      (hmul _ (sepSS i13.rsp 416 192 224 (by omega) (by omega) (by omega) (by omega)
+        (by omega) (by omega) (by omega) (by omega) (by omega) (by omega) (by omega)
+        (by omega)))
+      (maddSV_lt sa 6) (maddSV_lt sa 7) rfl
   obtain ⟨s15, hs15⟩ : ∃ s, C join16Sym (runBlockA s14 (mg 15).body) = s := ⟨_, rfl⟩
   obtain ⟨hj0, hj1, hj2, hj3, hj4, hj5⟩ : (C join16Sym (runBlockA s14 (mg 15).body)).regs "%rsp"
         = sa.regs "%rsp"
@@ -277,7 +309,7 @@ theorem maddCallsRun {C : ACallModel} (hC : MaddCallees C) (sa : AState)
           (sa.regs "%rsp" + BitVec.ofInt 64 584) = sa.regs "%rdi" := by
     obtain ⟨hm, hsp, hdi, hsi, hdx, hcx, hr8⟩ := runArgsJoin s14 448 320 352 384 416
     rw [i14.rsp] at hsp hdi hsi hdx hcx hr8
-    exact joinStep hjoin i14 hm hsp hdi hsi hdx hcx hr8
+    exact joinStep i14 (hjoin _ (sepJoinCall i14.rsp)) hm hsp hdi hsi hdx hcx hr8
   refine ⟨s15, ?_, by rw [← hs15]; exact hj0, by rw [← hs15]; exact hj5,
     by rw [← hs15]; exact hj1, by rw [← hs15]; exact hj2, by rw [← hs15]; exact hj3,
     by rw [← hs15]; exact hj4⟩

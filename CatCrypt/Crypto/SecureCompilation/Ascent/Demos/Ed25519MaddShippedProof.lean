@@ -38,10 +38,9 @@ coordinates to it in `ZMod p25519`.
 * `maddShipped_correct_addr`: at a call model satisfying `MaddCallees`, for pairwise
   separated cells and input coordinates below `2 ^ 255 - 19`, the four field elements at
   the output pointer after the block are the four coordinates of `maddSpecN` on the input
-  coordinates. `MaddCallees C` is a hypothesis on the call model, one specification per
-  callee; it holds of the model the shipped `fe25519_add`, `fe25519_sub`, `fe25519_mul`
-  and `ed25519_join16` blocks induce once each of those blocks carries that statement
-  over the address machine.
+  coordinates. `Ed25519LeafCallees.maddCallees_maddCallModel` discharges `MaddCallees` for
+  the model the shipped `fe25519_add`, `fe25519_sub`, `fe25519_mul` and `ed25519_join16`
+  blocks induce, and `Ed25519LeafCallees.maddShipped_correct` is this result at it.
 * `maddSpecN_maddSpecR`: in `ZMod p25519` those coordinates are the coordinates of the
   source formula.
 -/

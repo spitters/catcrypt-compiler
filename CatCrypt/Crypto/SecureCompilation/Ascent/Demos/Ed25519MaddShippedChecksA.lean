@@ -31,6 +31,8 @@ across one field call, across the concatenation call and across the output copy.
 * `copyOut`: the copy leaves at the output pointer the sixteen words of that block.
 * `stepRR`, `stepSR`, `stepSS`: `invStep` at each of the three argument shapes the
   block's call segments have.
+* `sepRR`, `sepSR`, `sepSS`, `sepJoinCall`: the pairwise disjointness of a call's output,
+  arguments and the words below `%rsp`, at those same shapes.
 -/
 
 @[expose] public section
@@ -52,9 +54,10 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT (join16Sym)
 /-- The stack slot of the intermediate field element `i`. -/
 def slotOff (i : Nat) : Int := ((32 * i : Nat) : Int)
 
-/-- The disjointness of a stack word and an input-point word. -/
+/-- The disjointness of a stack word, from the callee frames below `%rsp` up to the
+    pointer slot, and an input-point word. -/
 def CrossIn (SP P : BitVec 64) : Prop :=
-  ∀ o o' : Int, 0 ≤ o → o ≤ 584 → o % 8 = 0 → 0 ≤ o' → o' ≤ 216 → o' % 8 = 0 →
+  ∀ o o' : Int, -144 ≤ o → o ≤ 584 → o % 8 = 0 → 0 ≤ o' → o' ≤ 216 → o' % 8 = 0 →
     Disjoint8 (SP + BitVec.ofInt 64 o) (P + BitVec.ofInt 64 o')
 
 /-- The disjointness of a stack word and an output word. -/
@@ -77,41 +80,55 @@ structure MaddInv (SP P Q : BitVec 64) (SV IN : Nat → Nat) (k : Nat) (s : ASta
   /-- The output pointer in its stack slot. -/
   ptrOut : read64 s.mem (SP + BitVec.ofInt 64 584) = Q
 
-/-- A stack word outside the written slot survives a call. -/
+/-- A stack word outside the written slot and above the callee frames survives a call. -/
 theorem read64_stack_frame {m m' : AMem} {SP : BitVec 64} {d o : Int} {n : Nat}
-    (hf : FrameC m m' (SP + BitVec.ofInt 64 d) n)
+    (hf : FrameCS m m' (SP + BitVec.ofInt 64 d) n SP)
     (h : ∀ k, k < n → 8 ≤ ((d + 8 * (k : Nat)) - o).natAbs
-      ∧ ((d + 8 * (k : Nat)) - o).natAbs ≤ 2 ^ 64 - 8) :
+      ∧ ((d + 8 * (k : Nat)) - o).natAbs ≤ 2 ^ 64 - 8)
+    (ho0 : 0 ≤ o) (ho1 : o ≤ 584) :
     read64 m' (SP + BitVec.ofInt 64 o) = read64 m (SP + BitVec.ofInt 64 o) :=
-  read64_frameC hf _ fun k hk => by rw [addI]; exact djSS _ _ _ (h k hk).1 (h k hk).2
+  read64_frameCS hf _ (fun k hk => by rw [addI]; exact djSS _ _ _ (h k hk).1 (h k hk).2)
+    (fun k hk => by
+      rw [redBase, addI]
+      exact djSS _ _ _ (by omega) (by omega))
 
-/-- A stack field slot outside the written slot survives a call. -/
+/-- A stack field slot outside the written slot and above the callee frames survives a
+    call. -/
 theorem feO_slot_frame {m m' : AMem} {SP : BitVec 64} {d o : Int} {n : Nat}
-    (hf : FrameC m m' (SP + BitVec.ofInt 64 d) n)
+    (hf : FrameCS m m' (SP + BitVec.ofInt 64 d) n SP)
     (h : ∀ k, k < n → ∀ j ∈ limbOffs, 8 ≤ ((d + 8 * (k : Nat)) - (o + j)).natAbs
-      ∧ ((d + 8 * (k : Nat)) - (o + j)).natAbs ≤ 2 ^ 64 - 8) :
+      ∧ ((d + 8 * (k : Nat)) - (o + j)).natAbs ≤ 2 ^ 64 - 8)
+    (ho0 : 0 ≤ o) (ho1 : o ≤ 560) :
     feO m' SP o = feO m SP o := by
-  refine feO_frame hf fun k hk j hj => ?_
-  rw [addI]
-  exact djSS _ _ _ (h k hk j hj).1 (h k hk j hj).2
+  refine feO_frameS hf (fun k hk j hj => ?_) (fun k hk j hj => ?_)
+  · rw [addI]
+    exact djSS _ _ _ (h k hk j hj).1 (h k hk j hj).2
+  · simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
+    rw [redBase, addI]
+    rcases hj with rfl | rfl | rfl | rfl <;> exact djSS _ _ _ (by omega) (by omega)
 
 /-- An input coordinate survives a call writing a stack slot. -/
 theorem feO_in_frame {m m' : AMem} {SP P : BitVec 64} {d o : Int} {n : Nat}
-    (hX : CrossIn SP P) (hf : FrameC m m' (SP + BitVec.ofInt 64 d) n)
+    (hX : CrossIn SP P) (hf : FrameCS m m' (SP + BitVec.ofInt 64 d) n SP)
     (hn : 0 < n) (hd0 : 0 ≤ d) (hd1 : d + 8 * n ≤ 592) (hd8 : d % 8 = 0)
     (ho0 : 0 ≤ o) (ho1 : o + 24 ≤ 216) (ho8 : o % 8 = 0) :
     feO m' P o = feO m P o := by
-  refine feO_frame hf fun k hk j hj => ?_
-  rw [addI]
-  simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
-  refine hX _ _ (by omega) (by omega) (by omega) (by omega) ?_ ?_ <;>
-    rcases hj with rfl | rfl | rfl | rfl <;> omega
+  refine feO_frameS hf (fun k hk j hj => ?_) (fun k hk j hj => ?_)
+  · rw [addI]
+    simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
+    refine hX _ _ (by omega) (by omega) (by omega) (by omega) ?_ ?_ <;>
+      rcases hj with rfl | rfl | rfl | rfl <;> omega
+  · rw [redBase, addI]
+    simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
+    refine hX _ _ (by omega) (by omega) (by omega) (by omega) ?_ ?_ <;>
+      rcases hj with rfl | rfl | rfl | rfl <;> omega
 
 /-- One field call extends the state description by the slot it writes. -/
 theorem invStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
-    (hC : FieldCallee C f op) {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
+    {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
     (hk : k < 14) (hX : CrossIn SP P) {s : AState} (hI : MaddInv SP P Q SV IN k s)
-    {body : List (JInstr 64)} {a1 a2 : BitVec 64} {v1 v2 : Nat}
+    {body : List (JInstr 64)} (hC : FieldEffect C f op (runBlockA s body))
+    {a1 a2 : BitVec 64} {v1 v2 : Nat}
     (hm : (runBlockA s body).mem = s.mem)
     (hsp : (runBlockA s body).regs "%rsp" = SP)
     (hdi : (runBlockA s body).regs "%rdi" = SP + BitVec.ofInt 64 (slotOff k))
@@ -120,7 +137,7 @@ theorem invStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
     (hA1 : feO s.mem a1 0 = v1) (hA2 : feO s.mem a2 0 = v2)
     (hb1 : v1 < pM) (hb2 : v2 < pM) (hv : op v1 v2 % pM = SV k) :
     MaddInv SP P Q SV IN (k + 1) (C f (runBlockA s body)) := by
-  obtain ⟨hrsp, hval, hfr⟩ := fieldStep hC s body SP a1 a2 (slotOff k) hm hsp hdi hsi hdx
+  obtain ⟨hrsp, hval, hfr⟩ := fieldStep hC SP a1 a2 (slotOff k) hm hsp hdi hsi hdx
     (by rw [hA1]; exact hb1) (by rw [hA2]; exact hb2)
   refine ⟨hrsp, ?_, ?_, ?_, ?_⟩
   · intro i hi
@@ -129,7 +146,8 @@ theorem invStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
         intro u hu j hj
         simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
         simp only [slotOff]
-        rcases hj with rfl | rfl | rfl | rfl <;> omega)]
+        rcases hj with rfl | rfl | rfl | rfl <;> omega)
+        (by simp only [slotOff]; omega) (by simp only [slotOff]; omega)]
       exact hI.slots i hik
     · have hik' : i = k := by omega
       subst hik'
@@ -141,18 +159,21 @@ theorem invStep {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
       (by simp only [slotOff]; omega) (by simp only [slotOff]; omega)
       (by simp only [slotOff]; omega)]
     exact hI.inp j hj
-  · rw [read64_stack_frame hfr (by intro u hu; simp only [slotOff]; omega)]
+  · rw [read64_stack_frame hfr (by intro u hu; simp only [slotOff]; omega)
+      (by omega) (by omega)]
     exact hI.ptrIn
-  · rw [read64_stack_frame hfr (by intro u hu; simp only [slotOff]; omega)]
+  · rw [read64_stack_frame hfr (by intro u hu; simp only [slotOff]; omega)
+      (by omega) (by omega)]
     exact hI.ptrOut
 
 /-! ## 9. The concatenation call and the output copy -/
 
 /-- The concatenation call leaves the four coordinates in the result block at
     `%rsp + 448`. -/
-theorem joinStep {C : ACallModel} (hC : JoinCallee C join16Sym)
+theorem joinStep {C : ACallModel}
     {SP P Q : BitVec 64} {SV IN : Nat → Nat} {s : AState}
     (hI : MaddInv SP P Q SV IN 14 s) {body : List (JInstr 64)}
+    (hC : JoinEffect C join16Sym (runBlockA s body))
     (hm : (runBlockA s body).mem = s.mem)
     (hsp : (runBlockA s body).regs "%rsp" = SP)
     (hdi : (runBlockA s body).regs "%rdi" = SP + BitVec.ofInt 64 448)
@@ -166,12 +187,12 @@ theorem joinStep {C : ACallModel} (hC : JoinCallee C join16Sym)
       ∧ feO (C join16Sym (runBlockA s body)).mem SP 512 = SV 12
       ∧ feO (C join16Sym (runBlockA s body)).mem SP 544 = SV 13
       ∧ read64 (C join16Sym (runBlockA s body)).mem (SP + BitVec.ofInt 64 584) = Q := by
-  obtain ⟨⟨h0, h1, h2, h3⟩, hfr, hrsp⟩ := hC (runBlockA s body)
+  obtain ⟨⟨h0, h1, h2, h3⟩, hfr, hrsp⟩ := hC
   rw [hdi, hsi, hm] at h0
   rw [hdi, hdx, hm] at h1
   rw [hdi, hcx, hm] at h2
   rw [hdi, hr8, hm] at h3
-  rw [hdi, hm] at hfr
+  rw [hdi, hm, hsp] at hfr
   rw [feO_base] at h0 h1 h2 h3
   have e10 : feO s.mem SP 320 = SV 10 := by
     have := hI.slots 10 (by omega); simpa [slotOff] using this
@@ -194,7 +215,7 @@ theorem joinStep {C : ACallModel} (hC : JoinCallee C join16Sym)
   · rw [show (544 : Int) = 448 + 96 by norm_num, h3, feO_base,
       show (416 : Int) + 0 = 416 by norm_num]
     exact e13
-  · rw [read64_stack_frame hfr (by intro u hu; omega)]
+  · rw [read64_stack_frame hfr (by intro u hu; omega) (by omega) (by omega)]
     exact hI.ptrOut
 
 /-- The sixteen word offsets of the output copy. -/
@@ -249,10 +270,13 @@ theorem argSlot {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat} {s : AState
 
 /-- A call whose two arguments are input coordinates. -/
 theorem stepRR {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
-    (hC : FieldCallee C f op) {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
+    {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
     (hk : k < 14) (hX : CrossIn SP P) {s : AState} (hI : MaddInv SP P Q SV IN k s)
     (d o1 o2 : Int) (j1 j2 : Nat) (hd : d = slotOff k) (hj1 : j1 < 7) (hj2 : j2 < 7)
     (ho1 : o1 = slotOff j1) (ho2 : o2 = slotOff j2)
+    (hC : FieldEffect C f op (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%r10" "%r10" 0 o1, .lea "%rdx" "%r10" "%r10" 0 o2]))
     (hb1 : IN j1 < pM) (hb2 : IN j2 < pM) (hv : op (IN j1) (IN j2) % pM = SV k) :
     MaddInv SP P Q SV IN (k + 1) (C f (runBlockA s
       [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
@@ -261,16 +285,19 @@ theorem stepRR {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
   obtain ⟨hm, hsp, hdi, hsi, hdx⟩ := runArgsRR s (slotOff k) o1 o2
   rw [hI.rsp] at hdi hsp
   rw [inPtr_eq hI] at hsi hdx
-  exact invStep hC hk hX hI hm hsp hdi hsi hdx (argIn hI j1 hj1 o1 ho1)
+  exact invStep hk hX hI hC hm hsp hdi hsi hdx (argIn hI j1 hj1 o1 ho1)
     (argIn hI j2 hj2 o2 ho2) hb1 hb2 hv
 
 /-- A call whose first argument is an intermediate slot and whose second is an input
     coordinate. -/
 theorem stepSR {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
-    (hC : FieldCallee C f op) {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
+    {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
     (hk : k < 14) (hX : CrossIn SP P) {s : AState} (hI : MaddInv SP P Q SV IN k s)
     (d o1 o2 : Int) (i1 j2 : Nat) (hd : d = slotOff k) (hi1 : i1 < k) (hj2 : j2 < 7)
     (ho1 : o1 = slotOff i1) (ho2 : o2 = slotOff j2)
+    (hC : FieldEffect C f op (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%rsp" "%rsp" 0 o1, .lea "%rdx" "%r10" "%r10" 0 o2]))
     (hb1 : SV i1 < pM) (hb2 : IN j2 < pM) (hv : op (SV i1) (IN j2) % pM = SV k) :
     MaddInv SP P Q SV IN (k + 1) (C f (runBlockA s
       [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
@@ -279,15 +306,18 @@ theorem stepSR {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
   obtain ⟨hm, hsp, hdi, hsi, hdx⟩ := runArgsSR s (slotOff k) o1 o2
   rw [hI.rsp] at hdi hsp hsi
   rw [inPtr_eq hI] at hdx
-  exact invStep hC hk hX hI hm hsp hdi hsi hdx (argSlot hI i1 hi1 o1 ho1)
+  exact invStep hk hX hI hC hm hsp hdi hsi hdx (argSlot hI i1 hi1 o1 ho1)
     (argIn hI j2 hj2 o2 ho2) hb1 hb2 hv
 
 /-- A call whose two arguments are intermediate slots. -/
 theorem stepSS {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
-    (hC : FieldCallee C f op) {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
+    {SP P Q : BitVec 64} {SV IN : Nat → Nat} {k : Nat}
     (hk : k < 14) (hX : CrossIn SP P) {s : AState} (hI : MaddInv SP P Q SV IN k s)
     (d o1 o2 : Int) (i1 i2 : Nat) (hd : d = slotOff k) (hi1 : i1 < k) (hi2 : i2 < k)
     (ho1 : o1 = slotOff i1) (ho2 : o2 = slotOff i2)
+    (hC : FieldEffect C f op (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%rsp" "%rsp" 0 o1, .lea "%rdx" "%rsp" "%rsp" 0 o2]))
     (hb1 : SV i1 < pM) (hb2 : SV i2 < pM) (hv : op (SV i1) (SV i2) % pM = SV k) :
     MaddInv SP P Q SV IN (k + 1) (C f (runBlockA s
       [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
@@ -295,7 +325,130 @@ theorem stepSS {C : ACallModel} {f : String} {op : Nat → Nat → Nat}
   subst hd
   obtain ⟨hm, hsp, hdi, hsi, hdx⟩ := runArgsSS s (slotOff k) o1 o2
   rw [hI.rsp] at hdi hsp hsi hdx
-  exact invStep hC hk hX hI hm hsp hdi hsi hdx (argSlot hI i1 hi1 o1 ho1)
+  exact invStep hk hX hI hC hm hsp hdi hsi hdx (argSlot hI i1 hi1 o1 ho1)
     (argSlot hI i2 hi2 o2 ho2) hb1 hb2 hv
+
+/-! ## 10a. The separation of one call's buffers -/
+
+theorem crossIn_rangeDisj {SP P : BitVec 64} (hX : CrossIn SP P) :
+    RangeDisj SP (-144) 584 P 0 216 := hX
+
+/-- The buffers of a call whose two arguments are intermediate slots. -/
+theorem sepSS {SP : BitVec 64} {s : AState} (hrsp : s.regs "%rsp" = SP) (d o1 o2 : Int)
+    (hd0 : 0 ≤ d) (hd1 : d ≤ 448) (hd32 : d % 32 = 0)
+    (ha0 : 0 ≤ o1) (ha1 : o1 ≤ 448) (ha32 : o1 % 32 = 0)
+    (hb0 : 0 ≤ o2) (hb1 : o2 ≤ 448) (hb32 : o2 % 32 = 0)
+    (e1 : d ≠ o1) (e2 : d ≠ o2) (e3 : o1 ≠ o2) :
+    FieldSep (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%rsp" "%rsp" 0 o1, .lea "%rdx" "%rsp" "%rsp" 0 o2]) := by
+  obtain ⟨-, hsp, hdi, hsi, hdx⟩ := runArgsSS s d o1 o2
+  rw [hrsp] at hsp hdi hsi hdx
+  have hz := hsp.trans (eq_add_ofInt_zero SP)
+  exact
+    { oi := rangeDisj_sameBase 0 24 0 24 hdi hsi (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      oj := rangeDisj_sameBase 0 24 0 24 hdi hdx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      ij := rangeDisj_sameBase 0 24 0 24 hsi hdx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      os := rangeDisj_sameBase 0 24 (-144) (-8) hdi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      is := rangeDisj_sameBase 0 24 (-144) (-8) hsi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      js := rangeDisj_sameBase 0 24 (-144) (-8) hdx hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega) }
+
+/-- The buffers of a call whose first argument is an intermediate slot and whose second
+    is an input coordinate. -/
+theorem sepSR {SP P : BitVec 64} {s : AState} (hrsp : s.regs "%rsp" = SP)
+    (hin : inPtr s = P) (hX : CrossIn SP P) (d o1 o2 : Int)
+    (hd0 : 0 ≤ d) (hd1 : d ≤ 448) (hd32 : d % 32 = 0)
+    (ha0 : 0 ≤ o1) (ha1 : o1 ≤ 448) (ha32 : o1 % 32 = 0)
+    (hb0 : 0 ≤ o2) (hb1 : o2 ≤ 192) (hb32 : o2 % 32 = 0) (e1 : d ≠ o1) :
+    FieldSep (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%rsp" "%rsp" 0 o1, .lea "%rdx" "%r10" "%r10" 0 o2]) := by
+  obtain ⟨-, hsp, hdi, hsi, hdx⟩ := runArgsSR s d o1 o2
+  rw [hrsp] at hsp hdi hsi
+  rw [hin] at hdx
+  have hz := hsp.trans (eq_add_ofInt_zero SP)
+  have hR := crossIn_rangeDisj hX
+  exact
+    { oi := rangeDisj_sameBase 0 24 0 24 hdi hsi (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      oj := rangeDisj_twoBase 0 24 0 24 hR hdi hdx
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+      ij := rangeDisj_twoBase 0 24 0 24 hR hsi hdx
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+      os := rangeDisj_sameBase 0 24 (-144) (-8) hdi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      is := rangeDisj_sameBase 0 24 (-144) (-8) hsi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      js := rangeDisj_twoBase 0 24 (-144) (-8) hR.symm hdx hz
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩) }
+
+/-- The buffers of a call whose two arguments are input coordinates at distinct
+    offsets. -/
+theorem sepRR {SP P : BitVec 64} {s : AState} (hrsp : s.regs "%rsp" = SP)
+    (hin : inPtr s = P) (hX : CrossIn SP P) (d o1 o2 : Int)
+    (hd0 : 0 ≤ d) (hd1 : d ≤ 448) (hd32 : d % 32 = 0)
+    (ha0 : 0 ≤ o1) (ha1 : o1 ≤ 192) (ha32 : o1 % 32 = 0)
+    (hb0 : 0 ≤ o2) (hb1 : o2 ≤ 192) (hb32 : o2 % 32 = 0) (e3 : o1 ≠ o2) :
+    FieldSep (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 d,
+       .lea "%rsi" "%r10" "%r10" 0 o1, .lea "%rdx" "%r10" "%r10" 0 o2]) := by
+  obtain ⟨-, hsp, hdi, hsi, hdx⟩ := runArgsRR s d o1 o2
+  rw [hrsp] at hsp hdi
+  rw [hin] at hsi hdx
+  have hz := hsp.trans (eq_add_ofInt_zero SP)
+  have hR := crossIn_rangeDisj hX
+  exact
+    { oi := rangeDisj_twoBase 0 24 0 24 hR hdi hsi
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+      oj := rangeDisj_twoBase 0 24 0 24 hR hdi hdx
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+      ij := rangeDisj_sameBase 0 24 0 24 hsi hdx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      os := rangeDisj_sameBase 0 24 (-144) (-8) hdi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      is := rangeDisj_twoBase 0 24 (-144) (-8) hR.symm hsi hz
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+      js := rangeDisj_twoBase 0 24 (-144) (-8) hR.symm hdx hz
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩)
+        (fun o c1 c2 c3 => ⟨by omega, by omega, by omega⟩) }
+
+/-- The buffers of the concatenation call: the four result slots, the four coordinate
+    slots they are read from, and the words below `%rsp`. -/
+theorem sepJoinCall {SP : BitVec 64} {s : AState} (hrsp : s.regs "%rsp" = SP) :
+    JoinSep (runBlockA s
+      [.loadMem "%r10" "%rsp" 576, .lea "%rdi" "%rsp" "%rsp" 0 448,
+       .lea "%rsi" "%rsp" "%rsp" 0 320, .lea "%rdx" "%rsp" "%rsp" 0 352,
+       .lea "%rcx" "%rsp" "%rsp" 0 384, .lea "%r8" "%rsp" "%rsp" 0 416]) := by
+  obtain ⟨-, hsp, hdi, hsi, hdx, hcx, hr8⟩ := runArgsJoin s 448 320 352 384 416
+  rw [hrsp] at hsp hdi hsi hdx hcx hr8
+  have hz := hsp.trans (eq_add_ofInt_zero SP)
+  exact
+    { o1 := rangeDisj_sameBase 0 120 0 24 hdi hsi (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      o2 := rangeDisj_sameBase 0 120 0 24 hdi hdx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      o3 := rangeDisj_sameBase 0 120 0 24 hdi hcx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      o4 := rangeDisj_sameBase 0 120 0 24 hdi hr8 (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      os := rangeDisj_sameBase 0 120 (-144) (-8) hdi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a12 := rangeDisj_sameBase 0 24 0 24 hsi hdx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a13 := rangeDisj_sameBase 0 24 0 24 hsi hcx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a14 := rangeDisj_sameBase 0 24 0 24 hsi hr8 (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a1s := rangeDisj_sameBase 0 24 (-144) (-8) hsi hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a23 := rangeDisj_sameBase 0 24 0 24 hdx hcx (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a24 := rangeDisj_sameBase 0 24 0 24 hdx hr8 (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a2s := rangeDisj_sameBase 0 24 (-144) (-8) hdx hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a34 := rangeDisj_sameBase 0 24 0 24 hcx hr8 (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a3s := rangeDisj_sameBase 0 24 (-144) (-8) hcx hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega)
+      a4s := rangeDisj_sameBase 0 24 (-144) (-8) hr8 hz
+        (by intro o o' a1 a2 a3 b1 b2 b3; omega) }
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519MaddShippedProof

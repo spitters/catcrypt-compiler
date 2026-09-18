@@ -48,6 +48,8 @@ bank at the second argument. It also writes six red-zone slots below `%rsp`, whi
 * `mulShipped_correct_addr`: for separated cells, the block leaves the product modulo
   `2 ^ 255 - 19` at `%rdi`, changes no byte outside the 32 bytes at `%rdi` and the 48
   bytes below `%rsp`, and keeps `%rsp`.
+* `separated_mulCells`: the cells of the multiply block are separated when its two
+  argument buffers, its output buffer and its red-zone slots are pairwise disjoint.
 * `leafOut`, `runBlockA_regs_of_not_dsts`, `feO_eq_limbsNat`, `mem4_jOf`: the transport
   lemmas the three leaves share.
 -/
@@ -125,6 +127,14 @@ theorem shippedBank_rdi : shippedBank "%rdi" = some "%rdi" := by decide
 theorem shippedBank_rsi : shippedBank "%rsi" = some "%rsi" := by decide
 theorem shippedBank_rdx : shippedBank "%rdx" = some "%rdx" := by decide
 theorem shippedBank_rsp : shippedBank "%rsp" = some "%rsp" := by decide
+theorem shippedBank_rcx : shippedBank "%rcx" = some "%rcx" := by decide
+theorem shippedBank_r8 : shippedBank "%r8" = some "%r8" := by decide
+
+/-- Each register the shipped leaves address memory through is its own bank. -/
+macro "bank_self" : tactic =>
+  `(tactic| first
+      | exact shippedBank_rdi | exact shippedBank_rsi | exact shippedBank_rdx
+      | exact shippedBank_rsp | exact shippedBank_rcx | exact shippedBank_r8)
 
 /-- The four output cells occupy disjoint ranges at every pointer. -/
 theorem separated_outCells (R : String → BitVec 64) : Separated shippedBank R outCells := by
@@ -388,6 +398,49 @@ def mulCells : List (String × Int) :=
    ("%rcx", 0), ("%rcx", 8), ("%rcx", 16), ("%rcx", 24),
    ("%rdi", 0), ("%rdi", 8), ("%rdi", 16), ("%rdi", 24),
    ("%rsp", -8), ("%rsp", -16), ("%rsp", -24), ("%rsp", -32), ("%rsp", -40), ("%rsp", -48)]
+
+theorem mulCells_mem : ∀ k ∈ mulCells,
+    (k.1 = "%rsi" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rcx" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rdi" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rsp" ∧ -48 ≤ k.2 ∧ k.2 ≤ -8 ∧ k.2 % 8 = 0) := by decide
+
+/-- The cells of the multiply block are separated when its two argument buffers, its
+    output buffer and its red-zone slots are pairwise disjoint. -/
+theorem separated_mulCells {R : String → BitVec 64}
+    (h1 : RangeDisj (R "%rsi") 0 24 (R "%rcx") 0 24)
+    (h2 : RangeDisj (R "%rsi") 0 24 (R "%rdi") 0 24)
+    (h3 : RangeDisj (R "%rcx") 0 24 (R "%rdi") 0 24)
+    (h4 : RangeDisj (R "%rsi") 0 24 (R "%rsp") (-48) (-8))
+    (h5 : RangeDisj (R "%rcx") 0 24 (R "%rsp") (-48) (-8))
+    (h6 : RangeDisj (R "%rdi") 0 24 (R "%rsp") (-48) (-8)) :
+    Separated shippedBank R mulCells := by
+  intro k hk k' hk' hne
+  rcases mulCells_mem k hk with ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ |
+      ⟨hb, p0, p1, p8⟩ <;>
+    rcases mulCells_mem k' hk' with ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ |
+        ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ <;>
+    rw [keyAddr_of hb (by bank_self), keyAddr_of hb' (by bank_self)]
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact h1 _ _ p0 p1 p8 q0 q1 q8
+  · exact h2 _ _ p0 p1 p8 q0 q1 q8
+  · exact h4 _ _ p0 p1 p8 q0 q1 q8
+  · exact (h1 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact h3 _ _ p0 p1 p8 q0 q1 q8
+  · exact h5 _ _ p0 p1 p8 q0 q1 q8
+  · exact (h2 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (h3 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact h6 _ _ p0 p1 p8 q0 q1 q8
+  · exact (h4 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (h5 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (h6 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
 
 theorem mul_disciplinedFromD :
     disciplinedFromD shippedBank mulEntryD Fe25519MulShipped.fe25519MulShippedBlock = true := by

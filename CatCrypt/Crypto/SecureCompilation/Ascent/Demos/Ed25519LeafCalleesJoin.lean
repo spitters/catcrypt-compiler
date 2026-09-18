@@ -35,6 +35,8 @@ carry those same slots; `partCheck_sound` turns the check into the value stateme
 
 * `join_check`: the symbolic check of the canonical block.
 * `joinCanon_out`: the canonical block leaves each input word at its output cell.
+* `separated_joinCells`: the cells of the block are separated when its output block, its
+  four argument buffers and its stack slots are pairwise disjoint.
 * `joinShipped_correct_addr`: for separated cells, the block leaves the four input field
   elements in the four consecutive field slots at `%rdi`, changes no byte outside those
   128 bytes and its own stack slots, and keeps `%rsp`.
@@ -123,6 +125,82 @@ def joinCells : List (String × Int) :=
    ("%rdx", 0), ("%rdx", 8), ("%rdx", 16), ("%rdx", 24),
    ("%rcx", 0), ("%rcx", 8), ("%rcx", 16), ("%rcx", 24),
    ("%r8", 0), ("%r8", 8), ("%r8", 16), ("%r8", 24)]
+
+theorem joinCells_mem : ∀ k ∈ joinCells,
+    (k.1 = "%rsp" ∧ -24 ≤ k.2 ∧ k.2 ≤ 104 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rdi" ∧ 0 ≤ k.2 ∧ k.2 ≤ 120 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rsi" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rdx" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%rcx" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0)
+      ∨ (k.1 = "%r8" ∧ 0 ≤ k.2 ∧ k.2 ≤ 24 ∧ k.2 % 8 = 0) := by decide
+
+/-- The cells of the concatenation block are separated when its output block, its four
+    argument buffers and its stack slots are pairwise disjoint. -/
+theorem separated_joinCells {R : String → BitVec 64}
+    (g1 : RangeDisj (R "%rdi") 0 120 (R "%rsi") 0 24)
+    (g2 : RangeDisj (R "%rdi") 0 120 (R "%rdx") 0 24)
+    (g3 : RangeDisj (R "%rdi") 0 120 (R "%rcx") 0 24)
+    (g4 : RangeDisj (R "%rdi") 0 120 (R "%r8") 0 24)
+    (g5 : RangeDisj (R "%rdi") 0 120 (R "%rsp") (-24) 104)
+    (g6 : RangeDisj (R "%rsi") 0 24 (R "%rdx") 0 24)
+    (g7 : RangeDisj (R "%rsi") 0 24 (R "%rcx") 0 24)
+    (g8 : RangeDisj (R "%rsi") 0 24 (R "%r8") 0 24)
+    (g9 : RangeDisj (R "%rsi") 0 24 (R "%rsp") (-24) 104)
+    (g10 : RangeDisj (R "%rdx") 0 24 (R "%rcx") 0 24)
+    (g11 : RangeDisj (R "%rdx") 0 24 (R "%r8") 0 24)
+    (g12 : RangeDisj (R "%rdx") 0 24 (R "%rsp") (-24) 104)
+    (g13 : RangeDisj (R "%rcx") 0 24 (R "%r8") 0 24)
+    (g14 : RangeDisj (R "%rcx") 0 24 (R "%rsp") (-24) 104)
+    (g15 : RangeDisj (R "%r8") 0 24 (R "%rsp") (-24) 104) :
+    Separated shippedBank R joinCells := by
+  intro k hk k' hk' hne
+  rcases joinCells_mem k hk with ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ |
+      ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ | ⟨hb, p0, p1, p8⟩ <;>
+    rcases joinCells_mem k' hk' with ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ |
+        ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ | ⟨hb', q0, q1, q8⟩ <;>
+    rw [keyAddr_of hb (by bank_self), keyAddr_of hb' (by bank_self)]
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact (g5 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g9 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g12 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g14 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g15 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact g5 _ _ p0 p1 p8 q0 q1 q8
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact g1 _ _ p0 p1 p8 q0 q1 q8
+  · exact g2 _ _ p0 p1 p8 q0 q1 q8
+  · exact g3 _ _ p0 p1 p8 q0 q1 q8
+  · exact g4 _ _ p0 p1 p8 q0 q1 q8
+  · exact g9 _ _ p0 p1 p8 q0 q1 q8
+  · exact (g1 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact g6 _ _ p0 p1 p8 q0 q1 q8
+  · exact g7 _ _ p0 p1 p8 q0 q1 q8
+  · exact g8 _ _ p0 p1 p8 q0 q1 q8
+  · exact g12 _ _ p0 p1 p8 q0 q1 q8
+  · exact (g2 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g6 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact g10 _ _ p0 p1 p8 q0 q1 q8
+  · exact g11 _ _ p0 p1 p8 q0 q1 q8
+  · exact g14 _ _ p0 p1 p8 q0 q1 q8
+  · exact (g3 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g7 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g10 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
+  · exact g13 _ _ p0 p1 p8 q0 q1 q8
+  · exact g15 _ _ p0 p1 p8 q0 q1 q8
+  · exact (g4 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g8 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g11 _ _ q0 q1 q8 p0 p1 p8).symm
+  · exact (g13 _ _ q0 q1 q8 p0 p1 p8).symm
+  · have hoo : k.2 ≠ k'.2 := fun e => hne (Prod.ext (hb.trans hb'.symm) e)
+    exact djSS _ _ _ (by omega) (by omega)
 
 theorem join_foot :
     footOK joinCells (canonD shippedBank Ed25519Join16Shipped.ed25519Join16ShippedBlock)
