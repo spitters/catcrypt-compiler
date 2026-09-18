@@ -29,8 +29,15 @@ The differences `normHaxRead` removes:
 | `app "scalar#Sub" args` | `app "saturating_sub" args` | as above |
 | `var x` as a call argument | `borrow (deref (var x))` | a reference parameter passed on |
 
+A Rust block on the left of `;` scopes its bindings over the statements that
+follow it, so a printed `seq (letBind x v b) c` reads back as
+`letBind x v (seq b c)`.  `seqNF` associates the bindings and the sequencing of
+a statement sequence to the right and drops a `unitVal` on the left of `;`; the
+check compares the two sides in that form.
+
 The frontend suffixes the bit-sensitive operators with the operand width, so
-`BitAnd` and `BitXor` on `u64` operands read as `BitAnd#64` and `BitXor#64`.
+`BitAnd` and `BitXor` read as `BitAnd#64` and `BitXor#64` on `u64` operands and as
+`BitAnd#size` and `BitXor#size` on `usize` operands.
 A call to a free function of the crate reads as its unqualified name.  A
 comparison binding has the Rust type `bool` in the printed text; its reading is
 the same `app` node.  rustc desugars `while c { b }` to a `loop` with an inner
@@ -59,27 +66,32 @@ denotation.
 variable `x`, the form `ppImpRustFnRet` prints inside a function with a return
 type.  `denote_retOfUnit` states that it runs as `seq e (var x)`, so it leaves
 the environment the body leaves and returns the value of `x` in it
-(`evalImp_retOfUnit`).  The frontend reads the tail expression of a block as
-that variable, which `normHaxRead` and `impEq` carry unchanged.
+(`evalImp_retOfUnit`).  `retTail x e` is `retOfUnit x (appendSeq e unitVal)`,
+the returned form of a sequence whose tail is a loop or a call rather than
+`unitVal`; `evalImp_retTail` states the same for it.  The frontend reads the
+tail expression of a block as that variable, which `normHaxRead`, `seqNF` and
+`impEq` carry unchanged.
 
-`haxReadAgrees e x` is `impEq (normHaxRead x) e`, with `impEq` a structural
-equality on the printed fragment (`impEq_sound`).  `haxReadAgrees_sound` then
-states that `x` runs as `e` does.  With `ppImpRust ty e = some t` the parser of
-`ImpRustPrint` also reads `t` as `normHaxRead x` (`haxReadAgrees_parse`).
+`haxReadAgrees e x` is `impEq (seqNF (normHaxRead x)) (seqNF e)`, with `impEq` a
+structural equality on the printed fragment (`impEq_sound`).
+`haxReadAgrees_sound` then states that `x` runs as `e` does.
 
 ## Main definitions
 
 * `haxOpPairs`, `haxOpName`, `HaxOpsAgree` — the operator names.
 * `normArg`, `normRhs`, `normHaxRead` — the normaliser.
-* `retOfUnit`, `TailUnit` — the tail of a statement sequence.
+* `appendSeq`, `seqNF` — the sequence normal form.
+* `retOfUnit`, `TailUnit`, `retTail` — the tail of a statement sequence.
 * `impEq`, `haxReadAgrees` — the check.
 
 ## Main results
 
 * `denote_normHaxRead`, `evalImp_normHaxRead` — the normaliser preserves the
   source semantics.
-* `denote_retOfUnit`, `evalImp_retOfUnit` — the returned form yields the value
-  of the returned local.
+* `denote_appendSeq`, `denote_seqNF`, `evalImp_seqNF` — the sequence normal
+  form preserves the source semantics.
+* `denote_retOfUnit`, `evalImp_retOfUnit`, `evalImp_retTail` — the returned
+  form yields the value of the returned local.
 * `impEq_sound` — the equality is sound.
 * `haxReadAgrees_sound`, `haxReadAgrees_parse`, `haxReadAgrees_parseFnRet` —
   soundness of the check.
@@ -100,7 +112,8 @@ open _root_.Hax (ImpExpr ImpLit ImpPat Value Env Outcome Builtins denote denoteA
     printer prints as that operator. -/
 def haxOpPairs : List (String × String) :=
   [("Add", "scalar#Add"), ("Mul", "scalar#Mul"), ("BitAnd#64", "scalar#BitAnd"),
-   ("BitXor#64", "scalar#BitXor"), ("Lt", "scalar#Lt"), ("Gt", "scalar#Gt"),
+   ("BitAnd#size", "scalar#BitAnd"), ("BitXor#64", "scalar#BitXor"),
+   ("BitXor#size", "scalar#BitXor"), ("Lt", "scalar#Lt"), ("Gt", "scalar#Gt"),
    ("Le", "scalar#Le"), ("Ge", "scalar#Ge"), ("Eq", "scalar#Eq"), ("Ne", "scalar#Ne"),
    ("saturating_sub", "scalar#Sub")]
 
@@ -198,6 +211,49 @@ def TailUnit : ImpExpr → Bool
   | .seq _ b => TailUnit b
   | .unitVal => true
   | _ => false
+
+/-- The statement sequence `a ; c` with `a` associated to the right: a binding
+    of `a` scopes over `c`, the sequencing of `a` is kept to the right, and a
+    `unitVal` tail of `a` is dropped. -/
+def appendSeq : ImpExpr → ImpExpr → ImpExpr
+  | .letBind x v b, c => .letBind x v (appendSeq b c)
+  | .seq a b, c => .seq a (appendSeq b c)
+  | .unitVal, c => c
+  | a, c => .seq a c
+
+mutual
+
+/-- A statement sequence with its bindings and its sequencing associated to the
+    right: `(let x = v; b) ; c` becomes `let x = v; b ; c`, `(a ; b) ; c`
+    becomes `a ; b ; c`, and `() ; c` becomes `c`, recursively inside bindings,
+    conditionals, loop bodies and match arms. -/
+def seqNF : ImpExpr → ImpExpr
+  | .letBind x v b => .letBind x v (seqNF b)
+  | .seq a b => appendSeq (seqNF a) (seqNF b)
+  | .ifThenElse c t e => .ifThenElse c (seqNF t) (seqNF e)
+  | .whileLoop c b => .whileLoop c (seqNF b)
+  | .forLoop x lo hi b => .forLoop x lo hi (seqNF b)
+  | .forFold x lo hi b => .forFold x lo hi (seqNF b)
+  | .match_ s arms => .match_ s (seqNFArms arms)
+  | e => e
+
+/-- `seqNF` on every arm body. -/
+def seqNFArms : List (ImpPat × ImpExpr) → List (ImpPat × ImpExpr)
+  | [] => []
+  | (p, b) :: r => (p, seqNF b) :: seqNFArms r
+
+end
+
+/-- The statement sequence `e` with the variable `x` as its tail expression:
+    the body `ppImpRustFnRet` prints inside a function returning `x`. -/
+def retTail (x : String) (e : ImpExpr) : ImpExpr := retOfUnit x (appendSeq e .unitVal)
+
+/-- The tail of `e ; ()` is `unitVal`. -/
+theorem tailUnit_appendSeq_unitVal (e : ImpExpr) : TailUnit (appendSeq e .unitVal) = true := by
+  induction e using ImpExpr.ind with
+  | letBind x v b _ ihb => simpa only [appendSeq, TailUnit] using ihb
+  | seq a b _ ihb => simpa only [appendSeq, TailUnit] using ihb
+  | _ => simp [appendSeq, TailUnit]
 
 /-! ## §3  The normaliser preserves the source semantics -/
 
@@ -559,6 +615,144 @@ theorem evalImp_retOfUnit (x : String) (e : ImpExpr) (h : TailUnit e = true) (fu
         exact ⟨⟨u, rfl⟩, hx⟩
     | _ => simp at hRun
 
+/-! ### The sequence normal form -/
+
+theorem denote_bind_congr {α : Type} (m : StateM Env α) (k k' : α → StateM Env Outcome)
+    (hk : ∀ a, k a = k' a) : (m >>= k) = (m >>= k') := by
+  rw [funext hk]
+
+theorem denote_seq_congr (fuel : Nat) (a a' b b' : ImpExpr)
+    (ha : denote bi fuel a = denote bi fuel a') (hb : denote bi fuel b = denote bi fuel b') :
+    denote bi fuel (.seq a b) = denote bi fuel (.seq a' b') := by
+  simp only [denote]
+  rw [ha, hb]
+
+theorem denote_ifThenElse_congr (fuel : Nat) (c t t' e e' : ImpExpr)
+    (ht : denote bi fuel t = denote bi fuel t') (he : denote bi fuel e = denote bi fuel e') :
+    denote bi fuel (.ifThenElse c t e) = denote bi fuel (.ifThenElse c t' e') := by
+  simp only [denote]
+  rw [ht, he]
+
+theorem denote_whileLoop_congr (fuel : Nat) (c b b' : ImpExpr)
+    (hb : ∀ f, denote bi f b' = denote bi f b) :
+    denote bi fuel (.whileLoop c b') = denote bi fuel (.whileLoop c b) := by
+  simp only [denote]
+  exact denoteWhile_congr bi fuel c c b b' (fun _ => rfl) hb
+
+theorem denote_forLoop_congr (fuel : Nat) (x : String) (lo hi b b' : ImpExpr)
+    (hb : ∀ f, denote bi f b' = denote bi f b) :
+    denote bi fuel (.forLoop x lo hi b') = denote bi fuel (.forLoop x lo hi b) := by
+  have h : ∀ (f : Nat) (l h' : Int),
+      denoteForLoop bi f x l h' b' = denoteForLoop bi f x l h' b :=
+    fun f l h' => denoteForLoop_congr bi f x l h' b b' hb
+  simp only [denote, h]
+
+/-- `a ; c` with `a` associated to the right runs as `a ; c`. -/
+theorem denote_appendSeq (fuel : Nat) (c : ImpExpr) (a : ImpExpr) :
+    denote bi fuel (forToLoop (appendSeq a c))
+      = denote bi fuel (.seq (forToLoop a) (forToLoop c)) := by
+  induction a using ImpExpr.ind with
+  | letBind x v b _ ihb =>
+    show denote bi fuel (.letBind x (forToLoop v) (forToLoop (appendSeq b c)))
+      = denote bi fuel (.seq (.letBind x (forToLoop v) (forToLoop b)) (forToLoop c))
+    rw [denote_seq_letBind]
+    exact denote_letBind_congr bi fuel x _ _ _ ihb
+  | seq a b _ ihb =>
+    show denote bi fuel (.seq (forToLoop a) (forToLoop (appendSeq b c)))
+      = denote bi fuel (.seq (.seq (forToLoop a) (forToLoop b)) (forToLoop c))
+    rw [denote_seq_assoc]
+    exact denote_seq_congr_right bi fuel _ _ _ ihb
+  | unitVal => simp only [appendSeq, forToLoop, denote_seq_unitVal]
+  | _ => simp only [appendSeq, forToLoop]
+
+theorem denoteMatchArms_seqNFArms (fuel : Nat) (v : Value) (arms : List (ImpPat × ImpExpr))
+    (ih : ∀ pa ∈ arms,
+      denote bi fuel (forToLoop (seqNF pa.2)) = denote bi fuel (forToLoop pa.2)) :
+    denoteMatchArms bi fuel v (forToLoopArms (seqNFArms arms))
+      = denoteMatchArms bi fuel v (forToLoopArms arms) := by
+  induction arms with
+  | nil => rfl
+  | cons pa arms ihl =>
+    obtain ⟨p, b⟩ := pa
+    simp only [seqNFArms, forToLoopArms]
+    unfold denoteMatchArms
+    refine denote_bind_congr _ _ _ fun env => ?_
+    split
+    · exact denote_bind_congr _ _ _ fun _ => ih (p, b) List.mem_cons_self
+    · exact ihl fun pa hpa => ih pa (List.mem_cons_of_mem _ hpa)
+
+/-- **The sequence normal form preserves the source semantics.** -/
+theorem denote_seqNF (e : ImpExpr) : ∀ fuel,
+    denote bi fuel (forToLoop (seqNF e)) = denote bi fuel (forToLoop e) := by
+  induction e using ImpExpr.ind with
+  | letBind x v b _ ihb =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    exact denote_letBind_congr bi fuel x _ _ _ (ihb fuel)
+  | seq a b iha ihb =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    rw [denote_appendSeq bi fuel (seqNF b) (seqNF a)]
+    exact denote_seq_congr bi fuel _ _ _ _ (iha fuel) (ihb fuel)
+  | ifThenElse c t e _ iht ihe =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    exact denote_ifThenElse_congr bi fuel _ _ _ _ _ (iht fuel) (ihe fuel)
+  | whileLoop c b _ ihb =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    exact denote_whileLoop_congr bi fuel _ _ _ ihb
+  | forLoop x lo hi b _ _ ihb =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    exact denote_forLoop_congr bi fuel x _ _ _ _ ihb
+  | forFold x lo hi b _ _ ihb =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    exact denote_forLoop_congr bi fuel x _ _ _ _ ihb
+  | match_ s arms _ iha =>
+    intro fuel
+    simp only [seqNF, forToLoop]
+    unfold denote
+    refine denote_bind_congr _ _ _ fun rs => ?_
+    split
+    · exact denoteMatchArms_seqNFArms bi fuel _ arms fun pa hpa => iha pa hpa fuel
+    · rfl
+  | _ => intro fuel; rfl
+
+/-- The sequence normal form preserves the successful runs `evalImp`. -/
+theorem evalImp_seqNF (e : ImpExpr) (fuel : Nat) (env : Env) :
+    evalImp bi fuel (forToLoop (seqNF e)) env = evalImp bi fuel (forToLoop e) env := by
+  simp only [evalImp, StateT.run, denote_seqNF]
+
+/-- A run of `e ; ()` is a run of `e` reaching the same environment. -/
+theorem evalImp_seq_unitVal (e : ImpExpr) (fuel : Nat) (env env' : Env) (v : Value)
+    (h : evalImp bi fuel (.seq e .unitVal) env = some (v, env')) :
+    ∃ u, evalImp bi fuel e env = some (u, env') := by
+  simp only [evalImp, StateT.run, denote_seq_apply] at h
+  simp only [evalImp, StateT.run]
+  cases hb : denote bi fuel e env with
+  | mk o env1 =>
+    rw [hb] at h
+    cases o with
+    | val u =>
+      simp only [denote, pure, StateT.pure, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      exact ⟨u, rfl⟩
+    | _ => simp at h
+
+/-- **The returned form yields the value of the returned local.**  A successful
+    run of `retTail x e` is a successful run of `e` reaching the same
+    environment, and its value is the value of `x` in that environment. -/
+theorem evalImp_retTail (x : String) (e : ImpExpr) (fuel : Nat) (env env' : Env) (v : Value)
+    (hRun : evalImp bi fuel (forToLoop (retTail x e)) env = some (v, env')) :
+    (∃ u, evalImp bi fuel (forToLoop e) env = some (u, env')) ∧ env' x = some v := by
+  obtain ⟨⟨u, hu⟩, hx⟩ := evalImp_retOfUnit bi x (appendSeq e .unitVal)
+    (tailUnit_appendSeq_unitVal e) fuel env env' v hRun
+  refine ⟨?_, hx⟩
+  rw [evalImp, denote_appendSeq bi fuel .unitVal e] at hu
+  exact evalImp_seq_unitVal bi (forToLoop e) fuel env env' u hu
+
 end Semantics
 
 /-! ## §4  The check -/
@@ -719,33 +913,40 @@ theorem impEq_sound (a : ImpExpr) : ∀ b, impEq a b = true → a = b := by
   | _ => intro b h; cases b <;> simp [impEq] at h
 
 /-- **The check.**  The frontend's reading `extracted` of the printed text of
-    `printed`, normalised, equals `printed`. -/
-def haxReadAgrees (printed extracted : ImpExpr) : Bool := impEq (normHaxRead extracted) printed
+    `printed`, normalised, has the sequence normal form of `printed`. -/
+def haxReadAgrees (printed extracted : ImpExpr) : Bool :=
+  impEq (seqNF (normHaxRead extracted)) (seqNF printed)
 
 /-- **Soundness of the check.**  A frontend reading that passes the check runs,
     under the source semantics, as the printed expression does. -/
 theorem haxReadAgrees_sound (bi : Builtins) (h : HaxOpsAgree bi) (e x : ImpExpr)
     (hc : haxReadAgrees e x = true) (fuel : Nat) (env : Env) :
     evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env := by
-  rw [← impEq_sound _ _ hc, evalImp_normHaxRead bi h x fuel env]
+  rw [← evalImp_normHaxRead bi h x fuel env, ← evalImp_seqNF bi (normHaxRead x) fuel env,
+    impEq_sound _ _ hc, evalImp_seqNF bi e fuel env]
 
-/-- The parser of `ImpRustPrint` reads a printed text as the normalised
-    frontend reading of the text, when the reading passes the check. -/
+/-- The parser of `ImpRustPrint` reads a printed text back as the printed
+    expression, and a frontend reading of that text that passes the check has
+    the sequence normal form of that expression and runs as it does. -/
 theorem haxReadAgrees_parse (ty : String → Option ImpRust.Tok) (e x : ImpExpr) (t : String)
     (hp : ppImpRust ty e = some t) (hc : haxReadAgrees e x = true) :
-    parseImpRust t = some (normHaxRead x) := by
-  rw [impEq_sound _ _ hc]
-  exact parse_ppImpRust ty e t hp
+    parseImpRust t = some e ∧ seqNF (normHaxRead x) = seqNF e ∧
+      ∀ bi, HaxOpsAgree bi → ∀ fuel env,
+        evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env :=
+  ⟨parse_ppImpRust ty e t hp, impEq_sound _ _ hc,
+    fun bi h fuel env => haxReadAgrees_sound bi h e x hc fuel env⟩
 
-/-- The parser of `ImpRustPrint` reads a printed function with a return type as
-    the normalised frontend reading of its body, when the reading passes the
-    check. -/
+/-- The parser of `ImpRustPrint` reads a printed function with a return type
+    back as its body, and a frontend reading of that body that passes the check
+    has the sequence normal form of the body and runs as it does. -/
 theorem haxReadAgrees_parseFnRet (name : String) (params : List (String × ImpRust.Tok))
     (retTy : ImpRust.Tok) (ty : String → Option ImpRust.Tok) (e x : ImpExpr) (t : String)
     (hp : ppImpRustFnRet name params retTy ty e = some t) (hc : haxReadAgrees e x = true) :
-    parseImpRustFnRet t = some (name, params, retTy, normHaxRead x) := by
-  rw [impEq_sound _ _ hc]
-  exact parse_ppImpRustFnRet name params retTy ty e t hp
+    parseImpRustFnRet t = some (name, params, retTy, e) ∧ seqNF (normHaxRead x) = seqNF e ∧
+      ∀ bi, HaxOpsAgree bi → ∀ fuel env,
+        evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env :=
+  ⟨parse_ppImpRustFnRet name params retTy ty e t hp, impEq_sound _ _ hc,
+    fun bi h fuel env => haxReadAgrees_sound bi h e x hc fuel env⟩
 
 /-! ## §5  A program for the round trip
 
