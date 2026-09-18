@@ -2652,13 +2652,13 @@ require Veir from git
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "b6d677a9c7de99eee2ff5e6cb6f835b75afba517"
+  "https://github.com/spitters/ParamTransfer.git" @ "6a11d227b81f5a1ad22ba83b67487b39e468320a"
 require CompPoly from git
   "https://github.com/Verified-zkEVM/CompPoly" @ "v4.33.1"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "e43df711022bca15d8cf34ee011ab01189533534"
+  "https://github.com/spitters/hax-lean.git" @ "d53ce24125ce3e9c242a8dcf1c8759ca4b6d2aae"
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"
