@@ -219,6 +219,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
 CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519MaddShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
