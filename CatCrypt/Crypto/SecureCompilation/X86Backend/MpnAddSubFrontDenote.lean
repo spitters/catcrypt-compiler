@@ -279,7 +279,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (tmpName)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop (frontLoopBodyJ)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
-  (rolledForLoopNRt rolledForLoopNRt_denote)
+  (rolledForLoopNRt_denote)
 open CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyStepC
   (consistentS_bind frontLoopBodyJ_denote_foldl)
 open CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip

@@ -75,6 +75,13 @@ invariants of `A`, and agreement on `K`. When the abstract state after the body 
   canonical form (`andLoop_canon`), and is related by `LoopRel` to it under the invariant
   `andInv n` (index plus counter equals `n`, counter nonzero) and disjoint regions of `n`
   words.
+
+## Provenance of the example block
+
+@reimported: `andLoop` is the loop trip of `mpn_and_n_loop_owned` as the owned backend
+prints it (`crates/catcrypt-mpn/asm/mpn_and_n_loop_owned.s` in the CatCrypt development),
+transcribed into `JInstr` by hand. It is an instance of the refinement theorems and writes no
+artifact.
 -/
 
 @[expose] public section
