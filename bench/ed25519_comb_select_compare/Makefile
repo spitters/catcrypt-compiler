@@ -27,7 +27,8 @@ FRONT_S := gen_com_front/ed25519_comb_select_x86_from_lean.s
 FRONT_M := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/CombSelectFront.lean
 
 FOLD_S  := gen_com_folded/ed25519_comb_select_x86_from_lean.s
-FOLD_M  := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean
+FOLD_M  := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean \
+           $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/LprogCopyCoalesce.lean
 
 .PHONY: all emit kat run clean emit-front kat-front run-front emit-folded kat-folded run-folded
 
@@ -69,8 +70,9 @@ kat-front: comb_select_compare_front
 run-front: comb_select_compare_front
 	$(PIN) ./comb_select_compare_front $(TRIALS)
 
-# The front-generated select after the constant-index fold: every table read is a
-# fixed-offset load. Not the shipped kernel either.
+# The front-generated select after the constant-index fold and copy coalescing:
+# every table read is a
+# fixed-offset load and the front's copy chains are removed. Not the shipped kernel.
 $(FOLD_S): $(KERNEL) $(FRONT_M) $(FOLD_M) emit_folded.lean
 	cd $(REPO) && lake env lean --run bench/ed25519_comb_select_compare/emit_folded.lean
 

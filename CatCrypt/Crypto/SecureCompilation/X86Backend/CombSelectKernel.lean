@@ -13,6 +13,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
 
 /-!
 # Ed25519 fixed-base comb-window **constant-time select**, owned x86 backend (#387)
@@ -536,20 +538,20 @@ def emitFrontTo (dir : String) : IO Unit := do
   IO.println s!"wrote {dir}/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
   IO.println s!"wrote {dir}/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"
 
-/-- Write the front-generated selects after `ConstIndexFold.constIndexFold`, under
-    the shipped symbol names, into `dir`. -/
+/-- Write the front-generated selects after `ConstIndexFold.constIndexFold` and
+    `LprogCopyCoalesce.coalesceRounds`, under the shipped symbol names, into `dir`. -/
 def emitFoldedTo (dir : String) : IO Unit := do
-  let some a4 := CombSelectFront.combSelectFrontFoldedAsm
+  let some a4 := LprogCopyCoalesce.combSelectCoalescedAsmN "ed25519_comb_select_x86_from_lean" 16
     | throw (IO.userError "front compilation of the 16-entry comb select failed")
-  let some a5 := CombSelectFront.combSelect5FrontFoldedAsm
+  let some a5 := LprogCopyCoalesce.combSelectCoalescedAsmN "ed25519_comb5_select_x86_from_lean" 32
     | throw (IO.userError "front compilation of the 32-entry comb select failed")
-  let some a6 := CombSelectFront.combSelect6FrontFoldedAsm
+  let some a6 := LprogCopyCoalesce.combSelectCoalescedAsmN "ed25519_comb6_select_x86_from_lean" 64
     | throw (IO.userError "front compilation of the 64-entry comb select failed")
   IO.FS.createDirAll dir
   IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") a4
   IO.FS.writeFile (dir ++ "/ed25519_comb5_select_x86_from_lean.s") a5
   IO.FS.writeFile (dir ++ "/ed25519_comb6_select_x86_from_lean.s") a6
-  IO.println s!"wrote the folded 16-, 32- and 64-entry selects to {dir}"
+  IO.println s!"wrote the folded and coalesced 16-, 32- and 64-entry selects to {dir}"
 
 /-- Emit driver for the dev-tree bench `bench/ed25519_comb_compare`, run from that
     repository's root. -/
