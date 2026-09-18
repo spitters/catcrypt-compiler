@@ -299,7 +299,14 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         -- Multi-result external call: opaque default of its head result slot,
         -- mirroring the `jasminDenote.callN` arm. The full `k`-result
         -- evaluation is the follow-on correctness re-proof.
-        JasminTy.default (callNRet retTys))
+        JasminTy.default (callNRet retTys)
+    | .cmp c w, args =>
+        let a : BitVec w := s.get (vm _ args.head) (.reg w)
+        let b : BitVec w := s.get (vm _ args.tail.head) (.reg w)
+        cmpBit c a b
+    | .cmpImm c w n, args =>
+        let a : BitVec w := s.get (vm _ args.head) (.reg w)
+        cmpBit c a (BitVec.ofNat w n))
 
 /-! ## 3. Store-agrees-with-valuation invariant -/
 
@@ -640,6 +647,20 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
       | cons a rest =>
         show (BitVec.shiftLeft (s.get (vm _ a) (.reg w)) n)
           = BitVec.shiftLeft (a.lookup V) n
+        rw [hS _ a]
+  | cmp c w =>
+      cases args with
+      | cons a rest =>
+        cases rest with
+        | cons b rest' =>
+          show cmpBit c (s.get (vm _ a) (.reg w)) (s.get (vm _ b) (.reg w))
+            = cmpBit c (a.lookup V) (b.lookup V)
+          rw [hS _ a, hS _ b]
+  | cmpImm c w n =>
+      cases args with
+      | cons a rest =>
+        show cmpBit c (s.get (vm _ a) (.reg w)) (BitVec.ofNat w n)
+          = cmpBit c (a.lookup V) (BitVec.ofNat w n)
         rw [hS _ a]
 
 /-! ## 5. Threading the lowered instruction list through the store

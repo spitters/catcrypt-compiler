@@ -187,6 +187,16 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "SHL", [a, b] => some (a <<< b.toNat)
   | "SHR", [a, b] => some (a >>> b.toNat)
   | "ANDN", [a, b] => some ((~~~a) &&& b)
+  -- `SET<cc>`: the materialised comparison, the image of the dialect's `cmp` and
+  -- `cmpImm` under `opToLinstrR`. The result is the dialect's `cmpBit` at the
+  -- uniform width, so the destination holds `1` when the relation holds and `0`
+  -- otherwise.
+  | "SETE", [a, b] => some (BitVec.setWidth w (cmpBit .eq a b))
+  | "SETNE", [a, b] => some (BitVec.setWidth w (cmpBit .ne a b))
+  | "SETB", [a, b] => some (BitVec.setWidth w (cmpBit .ult a b))
+  | "SETBE", [a, b] => some (BitVec.setWidth w (cmpBit .ule a b))
+  | "SETA", [a, b] => some (BitVec.setWidth w (cmpBit .ugt a b))
+  | "SETAE", [a, b] => some (BitVec.setWidth w (cmpBit .uge a b))
   | "MOV", [a] => some a
   -- `MULXHI`: the high word of the full product `a * b` (the `hi` binding of a
   -- `MULX`; the low word is exported as `MUL`, already modeled). Denoted by the
@@ -289,6 +299,37 @@ theorem applyOpn_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
     condition bit is one, then the word taken when it is zero. -/
 @[simp] theorem applyOpn_select {w : Nat} (c a b : BitVec w) :
     applyOpn "CMOV" [c, a, b] = some (selectW (BitVec.setWidth 1 c) a b) := rfl
+
+/-- `applyOpn` on the `SET<cc>` mnemonic of a condition code denotes the dialect's
+    `cmpBit`, widened to the uniform word width: the fidelity tie for the
+    comparison ops `cmp` and `cmpImm`. -/
+@[simp] theorem applyOpn_cmp {w : Nat} (c : JasminCmp) (a b : BitVec w) :
+    applyOpn (cmpName c) [a, b] = some (BitVec.setWidth w (cmpBit c a b)) := by
+  cases c <;> rfl
+
+/-- A materialised comparison result is `0` or `1`. -/
+theorem setWidth_cmpBit_lt_two {w v : Nat} (c : JasminCmp) (a b : BitVec v) :
+    (BitVec.setWidth w (cmpBit c a b)).toNat < 2 := by
+  have h := (cmpBit c a b).isLt
+  have := BitVec.toNat_setWidth w (cmpBit c a b)
+  rw [this]
+  exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (by simpa using h)
+
+/-- Reading the low bit of a materialised comparison result recovers the
+    comparison bit, for every positive word width. -/
+theorem setWidth_one_setWidth_cmpBit {w v : Nat} (hw : 0 < w) (c : JasminCmp)
+    (a b : BitVec v) :
+    BitVec.setWidth 1 (BitVec.setWidth w (cmpBit c a b)) = cmpBit c a b := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_setWidth]
+  have h := (cmpBit c a b).isLt
+  have h2 : 2 ≤ 2 ^ w := by
+    calc 2 = 2 ^ 1 := rfl
+      _ ≤ 2 ^ w := Nat.pow_le_pow_right (by omega) hw
+  have h3 : (cmpBit c a b).toNat % 2 ^ w = (cmpBit c a b).toNat :=
+    Nat.mod_eq_of_lt (by omega)
+  rw [h3]
+  exact Nat.mod_eq_of_lt (by omega)
 
 /-- The ABI `MOVQ` opcode copies its single source word unchanged — the fidelity
     tie for the 64-bit move the prologue/arg-materialization/epilogue emit (same
@@ -394,6 +435,38 @@ def lsem1 {w : Nat} (i : LinstrR) (s1 s2 : Lstate w) : Prop := lsemStep i s1 = s
 theorem lsem1_deterministic {w : Nat} (i : LinstrR) (s1 s2 s3 : Lstate w)
     (h12 : lsem1 i s1 s2) (h13 : lsem1 i s1 s3) : s2 = s3 := by
   rw [lsem1] at h12 h13; rw [h12] at h13; exact Option.some.inj h13
+
+/-! ### 3a. The step of the comparison heads
+
+`opToLinstrR` emits `cmp c wOp` as `SET<cc>[:64] dst, a, b` and `cmpImm c wOp n`
+as `SET<cc>[:64] dst, a, #n`; `applyOpn` models the mnemonic as the dialect's
+`cmpBit`. -/
+
+/-- `stripWidthTag` recovers the comparison mnemonic from its width-tagged form. -/
+theorem stripWidthTag_withWidthTag_cmpName (wOp : Nat) (c : JasminCmp) :
+    stripWidthTag (withWidthTag wOp (cmpName c)) = cmpName c := by
+  unfold withWidthTag
+  split <;> cases c <;> decide +kernel
+
+/-- The exported `cmp` head writes the dialect's `cmpBit` of the two operand
+    registers, widened to the word width, and advances the pc. -/
+theorem lsemStep_cmp {w : Nat} (c : JasminCmp) (wOp : Nat) (nD nA nB : String)
+    (s : Lstate w) :
+    lsemStep (opToLinstrR (.cmp c wOp) nD [.reg nA, .reg nB]) s
+      = some ((s.setReg nD
+          (BitVec.setWidth w (cmpBit c (s.lvm nA) (s.lvm nB)))).nextPc) := by
+  simp only [opToLinstrR, lsemStep, List.map_cons, List.map_nil, evalOperand,
+    stripWidthTag_withWidthTag_cmpName, applyOpn_cmp]
+
+/-- The exported `cmpImm` head writes the dialect's `cmpBit` of the operand
+    register and the immediate, widened to the word width, and advances the pc. -/
+theorem lsemStep_cmpImm {w : Nat} (c : JasminCmp) (wOp n : Nat) (nD nA : String)
+    (s : Lstate w) :
+    lsemStep (opToLinstrR (.cmpImm c wOp n) nD [.reg nA]) s
+      = some ((s.setReg nD
+          (BitVec.setWidth w (cmpBit c (s.lvm nA) (BitVec.ofNat w n)))).nextPc) := by
+  simp only [opToLinstrR, List.cons_append, List.nil_append, lsemStep, List.map_cons,
+    List.map_nil, evalOperand, stripWidthTag_withWidthTag_cmpName, applyOpn_cmp]
 
 /-! ### 3a′. Reducing `lsemStep` past the `.arrIdx`-headed memory arm
 

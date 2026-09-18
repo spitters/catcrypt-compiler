@@ -253,6 +253,17 @@ def binOpName : JasminBinOp → String
   -- round-trips) and renders the non-destructive 3-operand `andn b, a, d`.
   | .andn => "ANDN"
 
+/-- Map a `JasminCmp` condition code to the base mnemonic of its materialised
+    comparison `Lopn [d] SET<cc> [a, b]` (`d := a <cc> b ? 1 : 0`); the suffix is
+    the x86 condition-code name. -/
+def cmpName : JasminCmp → String
+  | .eq => "SETE"
+  | .ne => "SETNE"
+  | .ult => "SETB"
+  | .ule => "SETBE"
+  | .ugt => "SETA"
+  | .uge => "SETAE"
+
 /-- Append the U64 width tag to a body mnemonic when the op is 64-bit. The
     32-bit ops (ChaCha20, SHA-256) carry no suffix and `read_linear`
     materialises them at its `default_ws = U32`; the 64-bit ops (Keccak) carry
@@ -478,6 +489,12 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
       if callHasWide retW argWs then
         .Lopn [.reg dst] (encodeCallW "CALLNW:" name retW argWs) srcs
       else .Lopn [.reg dst] ("CALLN:" ++ name) srcs
+  -- Scalar comparison: `SET<cc>` over the two compared operands, width-tagged at
+  -- the operand width. The destination receives `1` or `0`. The immediate form
+  -- carries its constant as a second, immediate source, so both forms share one
+  -- mnemonic family and one machine-model arm.
+  | .cmp c w => .Lopn [.reg dst] (withWidthTag w (cmpName c)) srcs
+  | .cmpImm c w n => .Lopn [.reg dst] (withWidthTag w (cmpName c)) (srcs ++ [.imm n])
 
 /-! ## 3. Walking the `Com` term
 

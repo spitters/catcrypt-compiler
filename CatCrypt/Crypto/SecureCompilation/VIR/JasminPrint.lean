@@ -151,6 +151,17 @@ def vpackZMMdMnemonic (bop : JasminBinOp) : String :=
   | .shr => "#VPSRLD"
   | .andn => "#VPANDN"
 
+/-- The call name a scalar comparison prints under: `SET` followed by the x86
+    condition-code name of the `JasminCmp`. -/
+def cmpCallName (c : JasminCmp) : String :=
+  match c with
+  | .eq => "SETE"
+  | .ne => "SETNE"
+  | .ult => "SETB"
+  | .ule => "SETBE"
+  | .ugt => "SETA"
+  | .uge => "SETAE"
+
 /-! ## 2. Names and the SSA `VarMap` -/
 
 /-- A typed De Bruijn → string name resolver, mirroring
@@ -426,6 +437,20 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         (fun i => pvarOf (argName vm e.args i) (argTy argTys i))
       .Ccall .DoInline [.Lvar (mkVarI dst (callNRet retTys))]
         { name := name } args
+  | .cmp c w =>
+      -- Scalar comparison: a call named by the condition code on `[a, b]`, with
+      -- a `reg 1` result, in the shape of the `select` arm.
+      let a := argName vm e.args 0
+      let b := argName vm e.args 1
+      .Ccall .DoInline [.Lvar (mkVarI dst (.reg 1))]
+        { name := cmpCallName c }
+        [pvarOf a (.reg w), pvarOf b (.reg w)]
+  | .cmpImm c w n =>
+      -- Scalar comparison against the compile-time constant `n`.
+      let a := argName vm e.args 0
+      .Ccall .DoInline [.Lvar (mkVarI dst (.reg 1))]
+        { name := cmpCallName c }
+        [pvarOf a (.reg w), .Pconst (Int.ofNat n)]
 
 /-- The SSA name a `Com.var` binding should use for the result of `e`.
     For `stackStore` the result *array* keeps the source array's name

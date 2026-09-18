@@ -188,6 +188,10 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- analogue of `extCall`, lining up 1:1 with a `func.call` carrying `k`
   -- results.
   | .callN _ _ _ => .func_call
+  -- Scalar comparisons: the registered `arith.cmpi`, whose `i1` result is the
+  -- `reg 1` boolean; the predicate is the condition code.
+  | .cmp _ _ => .arith_cmpi
+  | .cmpImm _ _ _ => .arith_cmpi
 
 /-! Per-op `rfl` coverage that the mapping function evaluates to the named
     `Veir.OpCode` constructor for each case. Semantic equivalence with the

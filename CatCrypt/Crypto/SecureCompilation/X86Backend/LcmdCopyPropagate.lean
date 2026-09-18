@@ -1833,6 +1833,21 @@ covers the stuck case, which needs two facts about the model: a single step's
 definedness depends on the opcode and source arity but not on the register
 values, and a dropped move (`applyOpn "MOV"`/`"MOVQ"`) always steps. -/
 
+/-- `applyOpn` on one source word succeeds or fails by opcode alone. -/
+theorem applyOpn_isSome_congr_one {w : Nat} (mn : String) (a c : BitVec w) :
+    (applyOpn mn [a]).isSome = (applyOpn mn [c]).isSome := by
+  simp only [applyOpn]; split <;> first | rfl | (split <;> simp_all)
+
+/-- `applyOpn` on two source words succeeds or fails by opcode alone. -/
+theorem applyOpn_isSome_congr_two {w : Nat} (mn : String) (a b c d : BitVec w) :
+    (applyOpn mn [a, b]).isSome = (applyOpn mn [c, d]).isSome := by
+  simp only [applyOpn]; split <;> simp_all
+
+/-- `applyOpn` on three source words succeeds or fails by opcode alone. -/
+theorem applyOpn_isSome_congr_three {w : Nat} (mn : String) (a b e c d f : BitVec w) :
+    (applyOpn mn [a, b, e]).isSome = (applyOpn mn [c, d, f]).isSome := by
+  simp only [applyOpn]; split <;> first | rfl | (split <;> simp_all)
+
 /-- `applyOpn` succeeds or fails by opcode and source arity, never by the source
     words: on two same-length argument lists its `isSome` is the same. -/
 theorem applyOpn_isSome_congr_length {w : Nat} (mn : String) :
@@ -1844,19 +1859,19 @@ theorem applyOpn_isSome_congr_length {w : Nat} (mn : String) :
       | nil => rfl
       | cons _ _ => simp at h
   | [a] => intro l₂ h; match l₂, h with
-      | [c], _ => simp only [applyOpn]; split <;> first | rfl | (split <;> simp_all)
+      | [c], _ => exact applyOpn_isSome_congr_one mn a c
   | a :: b :: l₁' => intro l₂ h; match l₂, h with
       | c :: d :: l₂', h =>
           cases l₁' with
           | nil => cases l₂' with
-              | nil => simp only [applyOpn]; split <;> simp_all
+              | nil => exact applyOpn_isSome_congr_two mn a b c d
               | cons _ _ => simp at h
           | cons _ tl => cases l₂' with
               | nil => simp at h
               | cons _ tl2 =>
                   cases tl with
                   | nil => cases tl2 with
-                      | nil => simp only [applyOpn]; split <;> first | rfl | (split <;> simp_all)
+                      | nil => exact applyOpn_isSome_congr_three mn _ _ _ _ _ _
                       | cons _ _ => simp at h
                   | cons _ _ => cases tl2 with
                       | nil => simp at h

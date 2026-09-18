@@ -501,6 +501,56 @@ plain move `mov<sz> src, dst`. The flag-setting side effects the x86 ISA attache
 (the implicit flag lvals `read_linear` synthesises) are not part of the AT&T text
 — `gas` adds them per the encoding — so the renderer emits no flag operands. -/
 
+/-- The AT&T `set<cc>` mnemonic of a stripped materialised-comparison opcode
+    `SET<cc>` (the image of `JasminOp.cmp` / `JasminOp.cmpImm`), `none` for every
+    other opcode. -/
+def setccAtt? : String → Option String
+  | "SETE" => some "sete" | "SETNE" => some "setne"
+  | "SETB" => some "setb" | "SETBE" => some "setbe"
+  | "SETA" => some "seta" | "SETAE" => some "setae"
+  | _ => none
+
+/-- Render a materialised comparison `Lopn [d] SET<cc> [a, b]`
+    (`d := a <cc> b ? 1 : 0`) as
+
+        cmp  b, a        # flags of a - b
+        mov  $0, d       # writes no flag
+        set<cc> d8       # low byte of d
+
+    The compare runs before `d` is written, so `d` may alias `a` or `b`; `mov`
+    and `set<cc>` both accept a spilled `d`. With both compared operands in
+    memory the first goes through the reserved scratch `R15`, as for `CMP`. An
+    immediate first operand, and a 64-bit immediate outside the sign-extended
+    32-bit range `cmp` encodes, render as a comment line gas rejects. -/
+def renderSetcc (frame spillW : Nat) (cc : String) (d : LOperand) (opn : String)
+    (a b : LOperand) (qsaveB : Nat) : List String :=
+  let w := mnemWidth opn
+  let sz := sizeSuffix w
+  let aOp := resolveOperand frame spillW w a qsaveB
+  let bOp := resolveOperand frame spillW w b qsaveB
+  let wideImm := match b with
+    | .imm v => w == 64 && v ≥ 2147483648
+    | _ => false
+  let immFirst := match a with
+    | .imm _ => true
+    | _ => false
+  if immFirst || wideImm then [ "\t# UNHANDLED-SETCC " ++ opn ]
+  else
+    let cmpLines :=
+      if isMemOperand a && isMemOperand b then
+        let scratch := resolveName frame spillW w "R15" qsaveB
+        [ "\tmov" ++ sz ++ " " ++ aOp ++ ", " ++ scratch,
+          "\tcmp" ++ sz ++ " " ++ bOp ++ ", " ++ scratch ]
+      else [ "\tcmp" ++ sz ++ " " ++ bOp ++ ", " ++ aOp ]
+    -- A spill cell is cleared at the body-uniform spill width, so a later reload
+    -- of the whole cell reads `0` or `1`.
+    let dw := match d with
+      | .reg n => if "k.".isPrefixOf n then max w spillW else w
+      | _ => w
+    cmpLines ++
+      [ "\tmov" ++ sizeSuffix dw ++ " $0, " ++ resolveOperand frame spillW dw d qsaveB,
+        "\t" ++ cc ++ " " ++ resolveOperand frame spillW 8 d qsaveB ]
+
 /-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
     AT&T line(s). Handles the three arities the owned-RA body produces:
 
@@ -799,7 +849,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- vector-RA / hand-built `Lcmd`; a GP-allocated operand surfaces as the
       -- `%<NOTZMM>` form gas rejects. The lane width selects the suffix: a `u64`
       -- mnemonic → `vpaddq`, a `u32` mnemonic → `vpaddd`.
-      if "VPACK".isPrefixOf opn then
+      -- The materialised comparison `SET<cc>` is rendered by `renderSetcc`.
+      if (setccAtt? (stripWidthTag opn)).isSome then
+        renderSetcc frame spillW ((setccAtt? (stripWidthTag opn)).getD "") d opn a b qsaveB
+      else if "VPACK".isPrefixOf opn then
         let mn := if (opn.splitOn "u32").length > 1 then "vpaddd" else "vpaddq"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
@@ -1247,6 +1300,16 @@ binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
         = ["\tvmovshdup %ymm1, %ymm0"]
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPBLENDD:170" [.reg "XMM1", .reg "XMM2"]
         = ["\tvpblendd $170, %ymm2, %ymm1, %ymm0"]
+/- The materialised comparison and the forms the compare-and-select fusion emits;
+   static pins of the printed text on single instructions. -/
+#guard renderLopn 0 0 false [.reg "RCX"] "SETNE:64" [.reg "R9", .imm 0]
+        = ["\tcmpq $0, %r9", "\tmovq $0, %rcx", "\tsetne %cl"]
+#guard renderLopn 0 0 false [.reg "RAX"] "SETB" [.reg "RAX", .reg "RDX"]
+        = ["\tcmpl %edx, %eax", "\tmovl $0, %eax", "\tsetb %al"]
+#guard renderLopn 0 0 false [.reg "R9"] "CMP:64" [.reg "R9", .imm 0]
+        = ["\tcmpq $0, %r9"]
+#guard renderLopn 0 0 false [.reg "RAX"] "CMOVNE:64" [.reg "RAX", .reg "RDX"]
+        = ["\tcmovneq %rdx, %rax"]
 
 /-- Render one owned-RA `LinstrR` to its AT&T line(s) in a frame of size `frame`.
 

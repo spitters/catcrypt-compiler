@@ -690,6 +690,59 @@ flag state). -/
 def selectW {w : Nat} (cond : BitVec 1) (a b : BitVec w) : BitVec w :=
   if cond = 1#1 then a else b
 
+/-! ### Comparisons producing a 1-bit boolean
+
+A comparison of two `w`-bit words yields a `reg 1` value: `1#1` when the relation
+holds and `0#1` otherwise. Every `reg 1` value is `0` or `1` (`bitVec1_eq`), so a
+comparison result is a well-formed condition for `selectW`. The condition code is
+a parameter of the op, as in CompCert's `Ocmp cond` and LLVM's `icmp pred`; the
+machine image is `cmp` followed by `setcc`, or `cmp` followed by `cmovcc` when the
+boolean only feeds selects. -/
+
+/-- Condition codes of the scalar comparison ops: equality, disequality and the
+    four unsigned orderings. -/
+inductive JasminCmp where
+  /-- `a = b` (x86 `e`). -/
+  | eq
+  /-- `a ≠ b` (x86 `ne`). -/
+  | ne
+  /-- Unsigned `a < b` (x86 `b`). -/
+  | ult
+  /-- Unsigned `a ≤ b` (x86 `be`). -/
+  | ule
+  /-- Unsigned `a > b` (x86 `a`). -/
+  | ugt
+  /-- Unsigned `a ≥ b` (x86 `ae`). -/
+  | uge
+  deriving DecidableEq, Repr
+
+/-- The relation a condition code denotes on two `w`-bit words. -/
+def JasminCmp.holds : JasminCmp → {w : Nat} → BitVec w → BitVec w → Bool
+  | .eq, _, a, b => a == b
+  | .ne, _, a, b => a != b
+  | .ult, _, a, b => a.ult b
+  | .ule, _, a, b => a.ule b
+  | .ugt, _, a, b => b.ult a
+  | .uge, _, a, b => b.ule a
+
+/-- The 1-bit result of a comparison: `1#1` when the relation holds, else `0#1`. -/
+def cmpBit {w : Nat} (c : JasminCmp) (a b : BitVec w) : BitVec 1 :=
+  if c.holds a b then 1#1 else 0#1
+
+/-- A `reg 1` value is `0` or `1`. -/
+theorem bitVec1_eq (v : BitVec 1) : v = 0#1 ∨ v = 1#1 := by
+  have h := v.isLt
+  rcases Nat.lt_or_ge v.toNat 1 with h0 | h1
+  · left; apply BitVec.eq_of_toNat_eq; simp; omega
+  · right; apply BitVec.eq_of_toNat_eq; simp; omega
+
+/-- Selecting on a comparison result takes the first word exactly when the
+    relation holds. -/
+theorem selectW_cmpBit {w v : Nat} (c : JasminCmp) (x y : BitVec v) (a b : BitVec w) :
+    selectW (cmpBit c x y) a b = if c.holds x y then a else b := by
+  unfold selectW cmpBit
+  cases c.holds x y <;> simp
+
 /-! ### Native right-rotate (task #497)
 
 `rorImm` denotes `BitVec.rotateRight`, the **same** value the emit path currently
@@ -820,6 +873,16 @@ inductive JasminOp where
       `JasminOp`), so uniform `JasminOp` consumers match `| .vymm _` once and
       never change. -/
   | vymm (op : YmmDialect.YmmOp)
+  /-- Scalar comparison of two registers: `[reg w, reg w] → reg 1`,
+      `out = cmpBit c a b`, which is `1` when `c.holds a b` and `0` otherwise.
+      A `reg 1` value is always `0` or `1` (`bitVec1_eq`), so the result is a
+      condition for `select`. The data effect of x86 `cmp b, a ; set<cc> out`.
+      The op is scalar only: it has no packed or SIMD lane form. -/
+  | cmp (c : JasminCmp) (w : Nat)
+  /-- Scalar comparison of a register against the compile-time immediate `n`:
+      `[reg w] → reg 1`, `out = cmpBit c a (BitVec.ofNat w n)`. The data effect
+      of x86 `cmp $n, a ; set<cc> out`. -/
+  | cmpImm (c : JasminCmp) (w n : Nat)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -952,6 +1015,8 @@ instance : DialectSignature jasminDialect where
     | .shlImm w _ => [.reg w]
     | .select w => [.reg 1, .reg w, .reg w]
     | .callN _ argTys _ => argTys
+    | .cmp _ w => [.reg w, .reg w]
+    | .cmpImm _ w _ => [.reg w]
   ret op := match op with
     | .regArith _ w => .reg w
     | .stackLoad w _ => .reg w
@@ -975,6 +1040,8 @@ instance : DialectSignature jasminDialect where
     | .shlImm w _ => .reg w
     | .select w => .reg w
     | .callN _ _ retTys => callNRet retTys
+    | .cmp _ _ => .reg 1
+    | .cmpImm _ _ _ => .reg 1
 
 /-! ## 6. Op denotation -/
 
@@ -1110,6 +1177,13 @@ instance jasminDenote : DialectDenote jasminDialect where
         let b : BitVec w := args.tail.tail.head
         selectW cond a b
     | .callN _ _ retTys => fun _ => JasminTy.default (callNRet retTys)
+    | .cmp c w => fun args =>
+        let a : BitVec w := args.head
+        let b : BitVec w := args.tail.head
+        cmpBit c a b
+    | .cmpImm c w n => fun args =>
+        let a : BitVec w := args.head
+        cmpBit c a (BitVec.ofNat w n)
 
 /-- Leaf-parametric denotation: identical to `jasminDenote` except opaque `extCall`
     leaves consult `leafSem` instead of the fixed default-returning `jasminExtSem`;

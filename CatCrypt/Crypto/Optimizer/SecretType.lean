@@ -250,6 +250,8 @@ theorem peepExpr_exprTaint {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => rfl
   | select w => rfl
   | callN name argTys retTys => rfl
+  | cmp c w => rfl
+  | cmpImm c w n => rfl
 
 /-! ## 6. The compositional-CT seed: peephole preserves `WellTainted`
 
@@ -428,6 +430,8 @@ theorem rewriteExpr_taint_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => simp [rewriteExpr]
   | select w => simp [rewriteExpr]
   | callN name argTys retTys => simp [rewriteExpr]
+  | cmp c w => simp [rewriteExpr]
+  | cmpImm c w n => simp [rewriteExpr]
 
 /-- Pointwise taint-monotonicity of two `Com`s of the same shape under the same
 taint assignment `T`: `c'` declassifies `c` if every binder of `c'` has taint

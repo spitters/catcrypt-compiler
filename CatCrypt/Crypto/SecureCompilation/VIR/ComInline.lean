@@ -389,6 +389,8 @@ theorem tryInlineExpr_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
   | shlImm => unfold tryInlineExpr at h_match; cases h_match
   | select => unfold tryInlineExpr at h_match; cases h_match
   | callN => unfold tryInlineExpr at h_match; cases h_match
+  | cmp => unfold tryInlineExpr at h_match; cases h_match
+  | cmpImm => unfold tryInlineExpr at h_match; cases h_match
   | extCall name eArgTys eRetTy =>
     -- `e.retTy_eq : eRetTy = bs` (the `Expr.mk` field gives the call's
     -- return type after the op-match).

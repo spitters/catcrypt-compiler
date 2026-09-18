@@ -695,6 +695,31 @@ def renderSelect (dst cond a b : String) : List String :=
    "w0 = w0 ^ w1;",
    dst ++ " = w0;"]
 
+/-- Render one scalar comparison binding `dst = cmpBit c a b` over the scratch
+    registers, with the result a `0`/`1` word. The second operand text `b` is a
+    register-file slot or a decimal literal. Equality and disequality take the
+    carry of `#NEG` of `a ^ b`, which is set exactly when the words differ; the
+    orderings take the carry of `#CMP`, the unsigned borrow of its first operand
+    minus its second. The carry is materialised by `#ADC` of two zeros, as in
+    `renderAddCarryHi`, and the complemented conditions flip the low bit. No
+    flag is branched on. -/
+def renderCmp (w : Nat) (c : JasminCmp) (dst a b : String) : List String :=
+  let ws := toString w
+  let mat := ["wb = 0;", "_, _, _, _, _, wb = #ADC_" ++ ws ++ "(wb, wb, cf);"]
+  let flip := ["wb = wb ^ 1;"]
+  let neq := ["w0 = " ++ a ++ ";", "w1 = " ++ b ++ ";", "w0 = w0 ^ w1;",
+              "_, cf, _, _, _, w0 = #NEG_" ++ ws ++ "(w0);"]
+  let below (x y : String) :=
+    ["w0 = " ++ x ++ ";", "w1 = " ++ y ++ ";",
+     "_, cf, _, _, _ = #CMP_" ++ ws ++ "(w0, w1);"]
+  (match c with
+   | .ne => neq ++ mat
+   | .eq => neq ++ mat ++ flip
+   | .ult => below a b ++ mat
+   | .uge => below a b ++ mat ++ flip
+   | .ugt => below b a ++ mat
+   | .ule => below b a ++ mat ++ flip) ++ [dst ++ " = wb;"]
+
 /-- Render one single-result `extCall name` binding `dst = name(arg0, arg1, …)`
     as a jasmin function call over the scratch registers (#616 E5a — function
     calls / kernel-to-kernel composition). The callee is a single-result
@@ -897,6 +922,23 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
           let b := argName vm e.args 2
           let dst := dstName next
           let lines := renderSelect dst cond a b
+          let (names, stmts, cnt) :=
+            emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
+          (dst :: names, lines ++ stmts, cnt)
+      | .cmp c w =>
+          -- Scalar comparison of two registers, materialised as a `0`/`1` word.
+          let a := argName vm e.args 0
+          let b := argName vm e.args 1
+          let dst := dstName next
+          let lines := renderCmp w c dst a b
+          let (names, stmts, cnt) :=
+            emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
+          (dst :: names, lines ++ stmts, cnt)
+      | .cmpImm c w n =>
+          -- Scalar comparison of a register against the literal `n`.
+          let a := argName vm e.args 0
+          let dst := dstName next
+          let lines := renderCmp w c dst a (toString n)
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)

@@ -452,6 +452,8 @@ theorem blockOpLane {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDia
   | select w => simp only [CoveredExpr] at he
   | callN nm a r => simp only [CoveredExpr] at he
   | vymm op => simp only [CoveredExpr] at he
+  | cmp c w => simp only [CoveredExpr] at he
+  | cmpImm c w n => simp only [CoveredExpr] at he
 
 /-! ## 6. Whole-program lane preservation -/
 

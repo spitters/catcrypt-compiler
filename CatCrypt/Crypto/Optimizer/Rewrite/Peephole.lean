@@ -174,6 +174,8 @@ theorem peepExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => simp [peepExpr]
   | select w => simp [peepExpr]
   | callN name argTys retTys => simp [peepExpr]
+  | cmp c w => simp [peepExpr]
+  | cmpImm c w n => simp [peepExpr]
 
 /-! ## 4. Cost non-increase of `peepExpr`
 
@@ -231,6 +233,8 @@ theorem peepExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => simp [peepExpr]
   | select w => simp [peepExpr]
   | callN name argTys retTys => simp [peepExpr]
+  | cmp c w => simp [peepExpr]
+  | cmpImm c w n => simp [peepExpr]
 
 /-! ## 5. The `Com`-level peephole pass
 

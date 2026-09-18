@@ -245,6 +245,15 @@ def binOpName : JasminBinOp → String
   -- BMI1 `andn` `(¬a) ∧ b`: the `#ANDN` intrinsic mnemonic.
   | .andn => "ANDN"
 
+/-- Map a `JasminCmp` condition code to the opcode name of its comparison. -/
+def cmpName : JasminCmp → String
+  | .eq => "SETE"
+  | .ne => "SETNE"
+  | .ult => "SETB"
+  | .ule => "SETBE"
+  | .ugt => "SETA"
+  | .uge => "SETAE"
+
 /-- The width carried by a `JasminTy` as the source-level `atype` U-width. -/
 def tyWidth : JasminTy → Nat
   | .reg w => w
@@ -303,6 +312,10 @@ def opToInstrR (op : JasminOp) (dst : String) (srcs : List UOperand) : InstrR :=
       .Copn [.var dst] .none op.jasminMnemonic srcs
   | .callN name _ _ =>
       .Copn [.var dst] .none ("CALLN:" ++ name) srcs
+  | .cmp c _ =>
+      .Copn [.var dst] .none (cmpName c) srcs
+  | .cmpImm c _ n =>
+      .Copn [.var dst] .none (cmpName c) (srcs ++ [.imm n])
 
 /-! ## 3. Walking the `Com` term
 

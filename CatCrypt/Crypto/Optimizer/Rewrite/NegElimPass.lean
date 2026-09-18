@@ -295,6 +295,8 @@ theorem negElimExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => simp [negElimExpr]
   | select w => simp [negElimExpr]
   | callN name argTys retTys => simp [negElimExpr]
+  | cmp c w => simp [negElimExpr]
+  | cmpImm c w n => simp [negElimExpr]
 
 /-! ## 5. Cost non-increase of `negElimExpr`
 
@@ -357,6 +359,8 @@ theorem negElimExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shlImm w n => simp [negElimExpr]
   | select w => simp [negElimExpr]
   | callN name argTys retTys => simp [negElimExpr]
+  | cmp c w => simp [negElimExpr]
+  | cmpImm c w n => simp [negElimExpr]
 
 /-! ## 6. The `Com`-level pass
 
@@ -452,6 +456,8 @@ theorem exprEntry_holds {Γ : Ctxt jasminDialect} {w : Nat}
   | shlImm w n => exact True.intro
   | select w => exact True.intro
   | callN name argTys retTys => exact True.intro
+  | cmp c w => exact True.intro
+  | cmpImm c w n => exact True.intro
 
 /-- `NEntry.weaken` preserves `holds` under the extended valuation: the source
 variable, weakened by `.there`, looks up the same value. -/
