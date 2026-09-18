@@ -44,8 +44,12 @@ bound, so the judgment never mentions De Bruijn contexts and composes along
   is `srcClean` and every variable it reads is bound at `.sword 64`, binds its
   result at `.sword 64`, preserves all non-temporary bindings, and emits a
   `ContJTotal` prefix.
+* `contJTotal_selectMaskCont` / `vmApprox_selectVm` — the word-select chain
+  is a jasmin-lowerable prefix and its `VarMap` realises the destination
+  update.
 * `TransTotal` — the reads-bound covered judgment (`RSkip` / `RBlock` / `RSeq`
-  / `RScalarSet` / `RScalarSetExpr` / `RArrLoad` / `RArrStore`).
+  / `RScalarSet` / `RScalarSetExpr` / `RArrLoad` / `RArrStore`, and `RSelect`
+  on a `u64` destination with selector and sources bound at `.sword 64`).
 * `translateDialectFull_total` / `translateDialectControl_total` — the front
   succeeds on a `TransTotal` body from any `VarMap` the entry map
   lower-bounds, with the exit map lower-bounding the exit `VarMap` and the
@@ -156,6 +160,26 @@ theorem srcTys_upd {σ : NameTys} {x : String} {t : CryptoTy}
   · exact hyx ▸ hx
   · exact hσ y (by simpa [NameTys.upd, if_neg hyx] using hy)
 
+/-- A weakening of the `VarMap` preserves every binding, shifted by one slot. -/
+theorem boundAt_weaken {Γ : Ctx} {vm : VarMap Γ} {y : String} {t s : CryptoTy}
+    (h : BoundAt vm y t) : BoundAt (vm.weaken (t := s)) y t := by
+  obtain ⟨v, hv⟩ := h
+  exact ⟨.there v, by simp [VarMap.weaken, hv]⟩
+
+/-- Lower-bound stability under a weakening of the `VarMap`. -/
+theorem vmApprox_weaken {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ} {s : CryptoTy}
+    (h : VmApprox σ vm) : VmApprox σ (vm.weaken (t := s)) :=
+  fun y t hy => boundAt_weaken (h y t hy)
+
+/-- The `VarMap` after the word-select chain (`selectVm`: seven anonymous
+    temporaries, then `dst` on top) realises the map update of `dst` at
+    `.sword 64`. -/
+theorem vmApprox_selectVm {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ}
+    (h : VmApprox σ vm) (dst : String) :
+    VmApprox (σ.upd dst (.sword 64)) (selectVm vm dst) :=
+  vmApprox_upd (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken
+    (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken h))))))) dst
+
 /-- `lookupU64` succeeds on a name bound at `.sword 64`. -/
 theorem lookupU64_of_lookup {Γ : Ctx} {vm : VarMap Γ} {y : String}
     {v : CVar Γ (.sword 64)} (h : vm.lookup y = some ⟨.sword 64, v⟩) :
@@ -251,6 +275,19 @@ theorem contJTotal_arrStoreCont {Γ : Ctx}
     · exact ContJTotal.castCtx _ (ContJTotal.varBind rfl)
     · exact ContJTotal.varBind rfl
   · exact ContJTotal.varBind rfl
+
+/-- The eight-op word-select chain is a jasmin-lowerable prefix: each of its
+    bindings (`bvConst`, `bvSub`, `bvOr`, `bvShiftR`, `bvXor`, `bvAnd`) lowers. -/
+theorem contJTotal_selectMaskCont {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ContJTotal (selectMaskCont sV aV cV) := by
+  unfold selectMaskCont
+  exact ContJTotal.comp (ContJTotal.varBind rfl)
+    (ContJTotal.comp (ContJTotal.varBind rfl)
+      (ContJTotal.comp (ContJTotal.varBind rfl)
+        (ContJTotal.comp (ContJTotal.varBind rfl)
+          (ContJTotal.comp (ContJTotal.varBind rfl)
+            (ContJTotal.comp (ContJTotal.varBind rfl)
+              (ContJTotal.comp (ContJTotal.varBind rfl) (ContJTotal.varBind rfl)))))))
 
 /-! ## 3. Totality of the `SExpr` chain lowering
 
@@ -368,6 +405,11 @@ inductive TransTotal : NameTys → LowCT → NameTys → Prop
       (hs : (σ src.locVar).isSome) (hi : (σ idxVar).isSome) :
       TransTotal σ (.RArrStore arr idxVar src)
         (σ.upd arr.locVar (encodeTy arr.locDst))
+  | rSelect {σ : NameTys} (dst : Located) (sel : String) (src0 src1 : Located)
+      (hd : ¬ isTmpName dst.locVar) (hty : dst.locDst = .TU64)
+      (hs : σ sel = some (.sword 64)) (h0 : σ src0.locVar = some (.sword 64))
+      (h1 : σ src1.locVar = some (.sword 64)) :
+      TransTotal σ (.RSelect dst sel src0 src1) (σ.upd dst.locVar (.sword 64))
 
 /-- A derivation keeps the name-to-type map temporary-free. -/
 theorem TransTotal.srcTys {σ σ' : NameTys} {c : LowCT}
@@ -380,6 +422,7 @@ theorem TransTotal.srcTys {σ σ' : NameTys} {c : LowCT}
   | rScalarSetExpr x e hx _ _ => exact srcTys_upd hσ hx
   | rArrLoad dst src idxVar hd _ _ => exact srcTys_upd hσ hd
   | rArrStore arr idxVar src ha _ _ _ => exact srcTys_upd hσ ha
+  | rSelect dst sel src0 src1 hd _ _ _ _ => exact srcTys_upd hσ hd
 
 /-- Every judged body lies in the straight-line scalar covered fragment. -/
 theorem TransTotal.toIsCoveredS {σ σ' : NameTys} {c : LowCT}
@@ -392,6 +435,7 @@ theorem TransTotal.toIsCoveredS {σ σ' : NameTys} {c : LowCT}
   | rScalarSetExpr x e _ hcl _ => exact .rScalarSetExpr x e hcl
   | rArrLoad dst src idxVar _ _ _ => exact .rArrLoad dst src idxVar
   | rArrStore arr idxVar src _ _ _ _ => exact .rArrStore arr idxVar src
+  | rSelect dst sel src0 src1 _ _ _ _ _ => exact .rSelect dst sel src0 src1
 
 /-! ## 5. Soundness: front success on a judged body -/
 
@@ -474,6 +518,14 @@ theorem translateDialectFull_total {σ σ' : NameTys} {c : LowCT}
       · simp only [translateDialectFull, hres, hvi]
       · exact vmApprox_upd ha arr.locVar
       · exact contJTotal_arrStoreCont arr.locDst _ _ _
+  | rSelect dst sel src0 src1 hd hty hs h0 h1 =>
+      intro Γ vm hσ ha
+      obtain ⟨sV, hsV⟩ := ha _ _ hs
+      obtain ⟨aV, haV⟩ := ha _ _ h0
+      obtain ⟨cV, hcV⟩ := ha _ _ h1
+      refine ⟨⟨selectCtx Γ, selectMaskCont sV aV cV, selectVm vm dst.locVar⟩, ?_,
+        vmApprox_selectVm ha dst.locVar, contJTotal_selectMaskCont sV aV cV⟩
+      simp only [translateDialectFull, hty, hsV, haV, hcV]
 
 /-- `translateDialectControl` succeeds on a judged body: on the covered
     fragment it coincides with `translateDialectFull`, which
