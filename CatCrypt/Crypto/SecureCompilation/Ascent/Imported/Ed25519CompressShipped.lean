@@ -18,7 +18,7 @@ backend, translated instruction by instruction. The file's producer is recorded 
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_compress_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `5a765fbc8aff83bff9eab87c81af0df5d9ae9944`
+  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
   (tracked and unchanged at that commit), file SHA-256
   `36a0fbf6138d0ee54f04de691b1c4674cd9594a4fdb5ba19ee0c73da3dd5e14f`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
@@ -30,6 +30,12 @@ backend, translated instruction by instruction. The file's producer is recorded 
   each checked by the importer: `pushq` of `%rbx`, `%r12`, `%r13` on entry and the
   `popq` sequence in reverse order on exit; the stack allocation `leaq -144(%rsp),
   %rsp` and its release `leaq 144(%rsp), %rsp`; `ret`.
+* `ed25519CompressShippedPrologue` and `ed25519CompressShippedEpilogue` are the
+  frame instructions before and after the block, `ret` excluded: each `pushq r` as
+  `lea "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each
+  `popq r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and
+  the stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
@@ -57,6 +63,8 @@ The block has 15 instructions. Source instructions by mnemonic: `movq` 8, `leaq`
   entry run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
 * `ed25519CompressShippedBlock`: the block, the concatenation of the segments.
+* `ed25519CompressShippedPrologue`, `ed25519CompressShippedEpilogue`: the frame
+  instructions before and after the block.
 
 ## Main results
 
@@ -117,6 +125,32 @@ def ed25519CompressShippedSeg04 : List CallSeg :=
 def ed25519CompressShippedBlock : List CallSeg :=
   ed25519CompressShippedSeg01 ++ ed25519CompressShippedSeg02 ++
   ed25519CompressShippedSeg03 ++ ed25519CompressShippedSeg04
+
+/-- The frame instructions of `ed25519_compress_x86_from_lean` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def ed25519CompressShippedPrologue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.5 `pushq %rbx`
+    .storeMem "%rsp" 0 (.reg "%rbx"),  -- l.5 `pushq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.6 `pushq %r12`
+    .storeMem "%rsp" 0 (.reg "%r12"),  -- l.6 `pushq %r12`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.7 `pushq %r13`
+    .storeMem "%rsp" 0 (.reg "%r13"),  -- l.7 `pushq %r13`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-144) ]  -- l.8 `leaq -144(%rsp), %rsp`
+
+/-- The frame instructions of `ed25519_compress_x86_from_lean` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def ed25519CompressShippedEpilogue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 144,  -- l.28 `leaq 144(%rsp), %rsp`
+    .loadMem "%r13" "%rsp" 0,  -- l.29 `popq %r13`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.29 `popq %r13`
+    .loadMem "%r12" "%rsp" 0,  -- l.30 `popq %r12`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.30 `popq %r12`
+    .loadMem "%rbx" "%rsp" 0,  -- l.31 `popq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.31 `popq %rbx`
 
 /-- The block has 15 instructions; the count of each segment is computed by `rfl`. -/
 theorem ed25519CompressShippedBlock_instrs :

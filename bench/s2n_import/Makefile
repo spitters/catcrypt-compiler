@@ -106,12 +106,12 @@ field: $(REEMITTED) $(ENCODED) $(SQR_REEMITTED) $(SQR_ENCODED)
 # print them back with reemit_owned.lean, compare with the sources.
 OWNED_ASM ?= $(abspath $(REPO)/../SSProve-lean/crates/catcrypt-ed25519/asm)
 IMPORTED := $(REPO)/CatCrypt/Crypto/SecureCompilation/Ascent/Imported
-OWNED_MODULES := $(shell awk 'NF == 3 && substr($$1, 1, 1) != "\043" { print $$1 }' owned_kernels.txt)
+OWNED_MODULES := $(shell awk '(NF == 3 || NF == 4) && substr($$1, 1, 1) != "\043" { print $$1 }' owned_kernels.txt)
 OWNED_STAMP := gen/owned/.reemitted
 
 import-owned:
-	awk 'NF == 3 && substr($$1, 1, 1) != "\043"' owned_kernels.txt | while read -r m f s; do \
-	  ./import_owned.sh "$(OWNED_ASM)/$$f" "$$m" "$$s" || exit 1; done
+	awk '(NF == 3 || NF == 4) && substr($$1, 1, 1) != "\043"' owned_kernels.txt | while read -r m f s r; do \
+	  SRC_REV="$$r" ./import_owned.sh "$(OWNED_ASM)/$$f" "$$m" "$$s" || exit 1; done
 
 reemit-owned: $(OWNED_STAMP)
 

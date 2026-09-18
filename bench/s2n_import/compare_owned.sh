@@ -11,13 +11,13 @@
 #              ../SSProve-lean/crates/catcrypt-ed25519/asm relative to this
 #              repository
 #
-# For each module, reads gen/owned/MODULE.s (written by reemit_owned.lean) and
-# the function SYMBOL of the source file, removes from the source the frame the
-# importer omits (a leading `endbr64`, `pushq` sequence and `leaq -N(%rsp), %rsp`
-# or `subq $N, %rsp`; a trailing `leaq N(%rsp), %rsp` or `addq $N, %rsp`, `popq`
-# sequence and `ret`), normalises both sides (see `norm` below and README.md),
-# and compares them line by line.  Prints the instruction counts and every
-# differing pair; exits 1 when any module differs or a file is missing.
+# For each module, reads gen/owned/MODULE.s (written by reemit_owned.lean: the
+# prologue, the body and the epilogue) and the function SYMBOL of the source file
+# (at the commit REV of owned_kernels.txt when that column is present), removes
+# from the source a leading `endbr64` and the trailing `ret`, which no imported
+# list holds, normalises both sides (see `norm` below and README.md), and
+# compares them line by line.  Prints the instruction counts and every differing
+# pair; exits 1 when any module differs or a file is missing.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +78,8 @@ function norm(s,    p, mn, rest, out, q, inner, n, parts) {
 { print norm($0) }
 AWK
 
-# The instruction lines of function $2 in file $1, frame removed.
+# The instruction lines of function $2 in file $1, a leading `endbr64` and the
+# trailing `ret` removed.
 source_body() {
   awk -v sym="$2" '
     function t(s) { p = index(s, "#"); if (p) s = substr(s, 1, p - 1); gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
@@ -89,9 +90,9 @@ source_body() {
     f { L[++n] = s; if (s ~ /^retq?$/) exit }
     END {
       a = 1
-      while (a <= n && (L[a] == "endbr64" || L[a] ~ /^pushq / || L[a] ~ /^leaq -[0-9]+\(%rsp\), *%rsp$/ || L[a] ~ /^subq \$[0-9]+, *%rsp$/)) a++
+      if (a <= n && L[a] == "endbr64") a++
       b = n
-      while (b >= a && (L[b] ~ /^retq?$/ || L[b] ~ /^popq / || L[b] ~ /^leaq [0-9]+\(%rsp\), *%rsp$/ || L[b] ~ /^addq \$[0-9]+, *%rsp$/)) b--
+      if (b >= a && L[b] ~ /^retq?$/) b--
       for (i = a; i <= b; i++) print L[i]
     }' "$1"
 }
@@ -117,10 +118,16 @@ fi
 
 status=0
 for m in "${mods[@]}"; do
-  read -r _ file sym < <(awk -v m="$m" '$1 == m { print; exit }' "$manifest") || true
+  file="" sym="" rev=""
+  read -r _ file sym rev < <(awk -v m="$m" '$1 == m { print; exit }' "$manifest") || true
   if [ -z "${file:-}" ]; then echo "compare_owned: $m is not in $manifest" >&2; status=1; continue; fi
   src="$asm/$file"
   re="$redir/$m.s"
+  if [ -n "$rev" ]; then
+    git -C "$asm" show "$rev:./$file" > "$tmp/rev.s" 2>/dev/null || {
+      echo "compare_owned: no $file at commit $rev of $asm" >&2; status=1; continue; }
+    src="$tmp/rev.s"
+  fi
   [ -f "$src" ] || { echo "compare_owned: no source $src; set OWNED_ASM" >&2; status=1; continue; }
   [ -f "$re" ] || { echo "compare_owned: no $re; run make reemit-owned" >&2; status=1; continue; }
   source_body "$src" "$sym" > "$tmp/s.txt"

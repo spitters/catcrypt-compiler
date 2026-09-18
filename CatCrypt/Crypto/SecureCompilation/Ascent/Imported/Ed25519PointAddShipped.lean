@@ -18,8 +18,8 @@ one exists.
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_point_add_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `7f6618cf0acf7033284032e7c6318a4a658c6191`
-  (tracked, with local changes against that commit), file SHA-256
+  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  (tracked and unchanged at that commit), file SHA-256
   `3b80e086b8adf05c578d14b0034932bf7d62e5ddcf95f5b7daaad1796552a341`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
@@ -29,6 +29,12 @@ one exists.
 * Omitted from the list: the assembler directives and the 3 frame instructions,
   each checked by the importer: the stack allocation `leaq -400(%rsp), %rsp` and
   its release `leaq 400(%rsp), %rsp`; `ret`.
+* `ed25519PointAddShippedPrologue` and `ed25519PointAddShippedEpilogue` are the
+  frame instructions before and after the block, `ret` excluded: each `pushq r` as
+  `lea "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each
+  `popq r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and
+  the stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
@@ -67,6 +73,8 @@ The block has 4859 instructions. Source instructions by mnemonic: `movq` 2208,
   in 10 parts of at most 16 consecutive segments, each with lemmas giving its
   instruction count.
 * `ed25519PointAddShippedBlock`: the block, the concatenation of the parts.
+* `ed25519PointAddShippedPrologue`, `ed25519PointAddShippedEpilogue`: the frame
+  instructions before and after the block.
 
 ## Main results
 
@@ -5588,6 +5596,20 @@ def ed25519PointAddShippedBlock : List (JInstr 64) :=
   ed25519PointAddShippedPart05 ++ ed25519PointAddShippedPart06 ++
   ed25519PointAddShippedPart07 ++ ed25519PointAddShippedPart08 ++
   ed25519PointAddShippedPart09 ++ ed25519PointAddShippedPart10
+
+/-- The frame instructions of `ed25519_point_add` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def ed25519PointAddShippedPrologue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 (-400) ]  -- l.5 `leaq -400(%rsp), %rsp`
+
+/-- The frame instructions of `ed25519_point_add` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def ed25519PointAddShippedEpilogue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 400 ]  -- l.5450 `leaq 400(%rsp), %rsp`
 
 /-- The block has 4859 instructions; the count of each part is a lemma above. -/
 theorem ed25519PointAddShippedBlock_length :

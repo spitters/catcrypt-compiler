@@ -209,9 +209,12 @@ guarantees as `import_s2n.sh`: an instruction outside the accepted shapes stops 
 import with `file:line: message` and exit status 1, and the module is left
 unchanged. `SYMBOL` is required when the file defines more than one function. The
 module docstring records the file's path in its git repository, that repository's
-commit, whether the file is tracked and unchanged there, and its SHA-256.
-`owned_kernels.txt` lists the imported functions; `make import-owned` regenerates
-them from `OWNED_ASM` (default `../SSProve-lean/crates/catcrypt-ed25519/asm`).
+commit, whether the file is tracked and unchanged there, and its SHA-256. With
+`SRC_REV` set in the environment the file is read as it is at that commit of its
+repository (`git show`), and the docstring records that commit.
+`owned_kernels.txt` lists the imported functions, with an optional fourth column
+giving that commit; `make import-owned` regenerates them from `OWNED_ASM` (default
+`../SSProve-lean/crates/catcrypt-ed25519/asm`).
 
 The file is read as printed; no preprocessor runs. Comments (`# ...`) are dropped.
 A directive or label inside the function stops the import; other functions of the
@@ -219,7 +222,8 @@ file are skipped.
 
 ### Frame
 
-Dropped, with a check:
+Kept out of the block, with a check, and written to `<module>Prologue` and
+`<module>Epilogue` (`endbr64` and `ret` excepted):
 
 * `endbr64` as the first instruction;
 * `pushq` of callee-saved registers at entry, each at most once, and the `popq`
@@ -228,6 +232,14 @@ Dropped, with a check:
   and the release `leaq N(%rsp), %rsp` or `addq $N, %rsp` with the same `N`, which
   must precede the `popq` sequence and `ret`;
 * `ret` or `retq`.
+
+In the prologue and epilogue lists, `pushq r` is `lea "%rsp" "%rsp" "%rsp" 0 (-8)`
+followed by `storeMem "%rsp" 0 (.reg r)`, and `popq r` is `loadMem r "%rsp" 0`
+followed by `lea "%rsp" "%rsp" "%rsp" 0 8`: `lea` writes no flag, as `pushq` and `popq`
+write none. The allocation and release are `lea` for `leaq` and `sub`/`add` with an
+immediate for `subq`/`addq`, whose flag effects are those of the hardware
+instruction. `Ascent.CallFrame` states these lists as `framePro` and `frameEpi` and
+proves the frame theorem over them.
 
 Kept as instructions: every `%rsp`-relative move, the red-zone saves of
 `renderSysVLeafFn` (`movq %rbx, -8(%rsp)` …) and the argument and callee-saved
@@ -339,9 +351,11 @@ Not imported:
 ### Round trip
 
 `reemit_owned.lean` prints each imported block with `AsmPrinter.renderBlockBody`
-under the identity allocation, each call as `call SYM`, to
+under the identity allocation, each call as `call SYM`, between its prologue and
+epilogue printed back as `pushq`, `popq` and the allocation and release, to
 `gen/owned/<MODULE>.s` (`make reemit-owned`). `compare_owned.sh [MODULE ...]`
-removes the dropped frame from the source function and compares the two line by
+removes a leading `endbr64` and the trailing `ret` from the source function (at the
+commit of the manifest's fourth column, when present) and compares the two line by
 line after this normalisation, applied to both sides:
 
 * comments removed, whitespace collapsed, one space after each comma;

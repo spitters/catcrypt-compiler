@@ -18,7 +18,7 @@ backend, translated instruction by instruction. The file's producer is recorded 
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_invert_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `5a765fbc8aff83bff9eab87c81af0df5d9ae9944`
+  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
   (tracked and unchanged at that commit), file SHA-256
   `1b6496f567b4aa1c39e3545d78f4e7e73c410b956f60488241d6aeb6b13ba0fe`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
@@ -30,6 +30,12 @@ backend, translated instruction by instruction. The file's producer is recorded 
   each checked by the importer: `pushq` of `%rbx` on entry and the `popq` sequence
   in reverse order on exit; the stack allocation `leaq -176(%rsp), %rsp` and its
   release `leaq 176(%rsp), %rsp`; `ret`.
+* `ed25519InvertShippedPrologue` and `ed25519InvertShippedEpilogue` are the frame
+  instructions before and after the block, `ret` excluded: each `pushq r` as `lea
+  "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each `popq
+  r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and the
+  stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
@@ -59,6 +65,8 @@ The block has 543 instructions. Source instructions by mnemonic: `leaq` 538, `ca
   parts of at most 16 consecutive segments, each with lemmas giving its instruction
   count and its call count.
 * `ed25519InvertShippedBlock`: the block, the concatenation of the parts.
+* `ed25519InvertShippedPrologue`, `ed25519InvertShippedEpilogue`: the frame
+  instructions before and after the block.
 
 ## Main results
 
@@ -2641,6 +2649,24 @@ def ed25519InvertShippedBlock : List CallSeg :=
   ed25519InvertShippedPart11 ++ ed25519InvertShippedPart12 ++
   ed25519InvertShippedPart13 ++ ed25519InvertShippedPart14 ++
   ed25519InvertShippedPart15 ++ ed25519InvertShippedPart16 ++ ed25519InvertShippedPart17
+
+/-- The frame instructions of `ed25519_invert_x86_from_lean` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def ed25519InvertShippedPrologue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.5 `pushq %rbx`
+    .storeMem "%rsp" 0 (.reg "%rbx"),  -- l.5 `pushq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-176) ]  -- l.6 `leaq -176(%rsp), %rsp`
+
+/-- The frame instructions of `ed25519_invert_x86_from_lean` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def ed25519InvertShippedEpilogue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 176,  -- l.815 `leaq 176(%rsp), %rsp`
+    .loadMem "%rbx" "%rsp" 0,  -- l.816 `popq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.816 `popq %rbx`
 
 /-- The block has 543 instructions; the count of each part is a lemma above. -/
 theorem ed25519InvertShippedBlock_instrs :

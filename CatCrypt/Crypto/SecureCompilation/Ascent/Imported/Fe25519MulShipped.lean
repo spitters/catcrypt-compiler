@@ -28,6 +28,12 @@ one exists.
   back by `AsmPrinter.renderBlockBody`, is the source's instruction sequence.
 * Omitted from the list: the assembler directives and the 1 frame instruction, each
   checked by the importer: `ret`.
+* `fe25519MulShippedPrologue` and `fe25519MulShippedEpilogue` are the frame
+  instructions before and after the block, `ret` excluded: each `pushq r` as `lea
+  "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each `popq
+  r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and the
+  stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. `%rsp` is constant in the body.
 * The first 6 instructions store registers into `%rsp` slots and form segment 1.
@@ -51,6 +57,8 @@ The block has 108 instructions. Source instructions by mnemonic: `movq` 27, `adc
   run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
 * `fe25519MulShippedBlock`: the block, the concatenation of the segments.
+* `fe25519MulShippedPrologue`, `fe25519MulShippedEpilogue`: the frame instructions
+  before and after the block.
 
 ## Main results
 
@@ -193,6 +201,20 @@ def fe25519MulShippedSeg05 : List (JInstr 64) :=
 def fe25519MulShippedBlock : List (JInstr 64) :=
   fe25519MulShippedSeg01 ++ fe25519MulShippedSeg02 ++ fe25519MulShippedSeg03 ++
   fe25519MulShippedSeg04 ++ fe25519MulShippedSeg05
+
+/-- The frame instructions of `fe25519_mul_x86_from_lean` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def fe25519MulShippedPrologue : List (JInstr 64) :=
+  []
+
+/-- The frame instructions of `fe25519_mul_x86_from_lean` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def fe25519MulShippedEpilogue : List (JInstr 64) :=
+  []
 
 /-- The block has 108 instructions; the count of each segment is computed by `rfl`. -/
 theorem fe25519MulShippedBlock_length :

@@ -11,8 +11,16 @@
 #   block    the name of the block definition
 #   partprefix  the name prefix of the part definitions
 #   maxseg   the largest segment, in instructions (default 32)
+#   prologue the name of the prologue definition
+#   epilogue the name of the epilogue definition
 #
-# Output on stdout: the segment definitions and the block definition.
+# Output on stdout: the segment definitions, the block definition, and the
+# prologue and epilogue definitions.  The prologue holds the frame instructions
+# before the body and the epilogue those after it, `endbr64` and `ret`
+# excluded: `pushq r` as `leaq -8(%rsp), %rsp` followed by the store of r at
+# 0(%rsp), `popq r` as the load of r from 0(%rsp) followed by
+# `leaq 8(%rsp), %rsp`, and the allocation and its release as the instruction
+# the text contains.
 #
 # Any statement outside the accepted shapes stops the translation: the program
 # prints `file:line: message` on stderr and exits 1.  The accepted shapes are
@@ -30,7 +38,9 @@ BEGIN {
     frame_n = ""           # the size of the dropped %rsp adjustment
     saverun = 1            # still inside the entry run of stores to %rsp
     n_save = 0
-    pend = 0               # a `setc` waiting for its `movzbq`
+    n_fp = 0               # prologue elements
+    n_fe = 0               # epilogue elements
+    pend = 0              # a `setc` waiting for its `movzbq`
     ofundef = 0            # OF/SF/PF undefined (after `btq`), per the SDM
     TWO31 = "2147483648"
     TWO32 = "4294967296"
@@ -218,6 +228,25 @@ function emit(lean, writes, bases, kind, text, line,    arr, n, i, b) {
 
 function count(mn) {
     MNCOUNT[mn]++
+}
+
+# Record one element of the prologue (`fp`) or the epilogue (`fe`).
+function frame_emit(which, lean, text, line) {
+    if (which == "fp") { n_fp++; FPOUT[n_fp] = lean; FPSRC[n_fp] = text; FPLOC[n_fp] = line }
+    else { n_fe++; FEOUT[n_fe] = lean; FESRC[n_fe] = text; FELOC[n_fe] = line }
+}
+
+# One frame list definition.
+function print_frame(name, doc, which,    n, k, lean, src, loc) {
+    n = (which == "fp") ? n_fp : n_fe
+    printf("\n/-- %s -/\ndef %s : List (JInstr 64) :=\n", doc, name)
+    if (n == 0) { printf("  []\n"); return }
+    for (k = 1; k <= n; k++) {
+        lean = (which == "fp") ? FPOUT[k] : FEOUT[k]
+        src = (which == "fp") ? FPSRC[k] : FESRC[k]
+        loc = (which == "fp") ? FPLOC[k] : FELOC[k]
+        printf("  %s %s%s  -- l.%d `%s`\n", (k == 1) ? "[" : " ", lean, (k < n) ? "," : " ]", loc, src)
+    }
 }
 
 # OF/SF/PF are undefined after `btq` (Intel SDM, BT); the model keeps their old
@@ -480,6 +509,8 @@ function statement(st,    mn, rest, p, v) {
             if (PUSHED[OPS[1]]) fail("`pushq` of " OPS[1] " twice")
             PUSHED[OPS[1]] = 1
             PUSH[++n_push] = OPS[1]
+            frame_emit("fp", ".lea \"%rsp\" \"%rsp\" \"%rsp\" 0 (-8)", st, cur_line)
+            frame_emit("fp", ".storeMem \"%rsp\" 0 (.reg " q(OPS[1]) ")", st, cur_line)
             return
         }
         if ((mn == "leaq" && OPS[2] == "%rsp" && OPS[1] ~ /^-[0-9]+\(%rsp\)$/) ||
@@ -488,6 +519,8 @@ function statement(st,    mn, rest, p, v) {
             if (v + 0 <= 0) fail("frame allocation of size 0: " st)
             frame_n = v + 0
             FRAME_TEXT = mn " " rest
+            if (mn == "leaq") frame_emit("fp", ".lea \"%rsp\" \"%rsp\" \"%rsp\" 0 (-" frame_n ")", st, cur_line)
+            else frame_emit("fp", ".sub \"%rsp\" (.imm " frame_n ")", st, cur_line)
             return
         }
         phase = "body"
@@ -500,6 +533,8 @@ function statement(st,    mn, rest, p, v) {
             v = (mn == "leaq") ? substr(OPS[1], 1, index(OPS[1], "(") - 1) : substr(OPS[1], 2)
             if (frame_n == "" || v + 0 != frame_n) fail("frame release `" st "` does not match the allocation (" frame_n ")")
             FRAME_REL_TEXT = mn " " rest
+            if (mn == "leaq") frame_emit("fe", ".lea \"%rsp\" \"%rsp\" \"%rsp\" 0 " frame_n, st, cur_line)
+            else frame_emit("fe", ".add \"%rsp\" (.imm " frame_n ")", st, cur_line)
             phase = "exit"
             return
         }
@@ -533,6 +568,8 @@ function statement(st,    mn, rest, p, v) {
             n_pop++
             if (n_pop > n_push || OPS[1] != PUSH[n_push - n_pop + 1])
                 fail("`popq " OPS[1] "` does not restore the frame in reverse push order")
+            frame_emit("fe", ".loadMem " q(OPS[1]) " \"%rsp\" 0", st, cur_line)
+            frame_emit("fe", ".lea \"%rsp\" \"%rsp\" \"%rsp\" 0 8", st, cur_line)
             return
         }
         if ((mn == "retq" || mn == "ret") && rest == "") {
@@ -687,6 +724,11 @@ END {
         line = line piece
     }
     print line
+
+    if (prologue != "") {
+        print_frame(prologue, sprintf("The frame instructions of `%s` before the body,\n    which the block omits: each `pushq r` as `leaq -8(%%rsp), %%rsp` followed by the\n    store of `r` at `0(%%rsp)`, and the stack allocation as the instruction the text\n    contains.", sym), "fp")
+        print_frame(epilogue, sprintf("The frame instructions of `%s` after the body,\n    which the block omits, `ret` excluded: the stack release as the instruction the\n    text contains, and each `popq r` as the load of `r` from `0(%%rsp)` followed by\n    `leaq 8(%%rsp), %%rsp`.", sym), "fe")
+    }
 
     frame = ""
     for (i = 1; i <= n_push; i++) frame = frame (i > 1 ? " " : "") PUSH[i]

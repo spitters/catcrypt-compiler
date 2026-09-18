@@ -48,3 +48,5 @@ CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorTranslate.lean	112	2910	1876
 CatCrypt/Crypto/SecureCompilation/VIR/MlkemNttFullResidentEmit.lean	1100	2570	2221
 CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean	260	677	755
 CatCrypt/Crypto/Hax/ImpRustPrint.lean	1710	1000	1090
+CatCrypt/Crypto/SecureCompilation/Ascent/CallFrame.lean	294	841	766
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519FramedCalls.lean	263	2040	2158

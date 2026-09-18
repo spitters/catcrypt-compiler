@@ -18,7 +18,7 @@ backend, translated instruction by instruction. The file's producer is recorded 
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_madd_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `5a765fbc8aff83bff9eab87c81af0df5d9ae9944`
+  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
   (tracked and unchanged at that commit), file SHA-256
   `19ab9911fbfec304ba74f70ae895c9efd76a3eae860b8c027664776745a3fb3e`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
@@ -29,6 +29,12 @@ backend, translated instruction by instruction. The file's producer is recorded 
 * Omitted from the list: the assembler directives and the 3 frame instructions,
   each checked by the importer: the stack allocation `leaq -112(%rsp), %rsp` and
   its release `leaq 112(%rsp), %rsp`; `ret`.
+* `ed25519Join16ShippedPrologue` and `ed25519Join16ShippedEpilogue` are the frame
+  instructions before and after the block, `ret` excluded: each `pushq r` as `lea
+  "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each `popq
+  r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and the
+  stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
@@ -54,6 +60,8 @@ The block has 102 instructions. Source instructions by mnemonic: `movq` 102.
   the entry run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
 * `ed25519Join16ShippedBlock`: the block, the concatenation of the segments.
+* `ed25519Join16ShippedPrologue`, `ed25519Join16ShippedEpilogue`: the frame
+  instructions before and after the block.
 
 ## Main results
 
@@ -190,6 +198,20 @@ def ed25519Join16ShippedSeg05 : List (JInstr 64) :=
 def ed25519Join16ShippedBlock : List (JInstr 64) :=
   ed25519Join16ShippedSeg01 ++ ed25519Join16ShippedSeg02 ++ ed25519Join16ShippedSeg03 ++
   ed25519Join16ShippedSeg04 ++ ed25519Join16ShippedSeg05
+
+/-- The frame instructions of `ed25519_join16_x86_from_lean` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def ed25519Join16ShippedPrologue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 (-112) ]  -- l.127 `leaq -112(%rsp), %rsp`
+
+/-- The frame instructions of `ed25519_join16_x86_from_lean` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def ed25519Join16ShippedEpilogue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 112 ]  -- l.230 `leaq 112(%rsp), %rsp`
 
 /-- The block has 102 instructions; the count of each segment is computed by `rfl`. -/
 theorem ed25519Join16ShippedBlock_length :

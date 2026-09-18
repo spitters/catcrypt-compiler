@@ -14,10 +14,13 @@
 #   OUT_LEAN     (environment) the Lean file to write; default
 #                CatCrypt/Crypto/SecureCompilation/Ascent/Imported/MODULE_NAME.lean
 #   MAXSEG       (environment) the largest segment, in instructions; default 32
+#   SRC_REV      (environment) a commit of the git repository holding FILE.s;
+#                when set, the file is read as it is at that commit
+#                (`git show SRC_REV:path`) instead of from the working tree
 #
 # The module docstring records the file's path relative to its git repository,
-# that repository's commit, whether the file is tracked and unchanged there, and
-# the file's SHA-256.  The script writes the module only when the translation
+# that repository's commit (SRC_REV when set), whether the file is tracked and
+# unchanged there, and the file's SHA-256.  The script writes the module only when the translation
 # succeeds; on an instruction outside the accepted shapes it prints
 # `file:line: message` and exits 1, leaving the module unchanged.  See README.md,
 # section "Importing the owned backend's output".
@@ -28,11 +31,25 @@ repo="$(cd "$here/../.." && pwd)"
 [ $# -ge 2 ] && [ $# -le 3 ] || { echo "usage: import_owned.sh FILE.s MODULE_NAME [SYMBOL]" >&2; exit 2; }
 src="$1"
 mod="$2"
-[ -f "$src" ] || { echo "import_owned: no file $src" >&2; exit 2; }
 [[ "$mod" =~ ^[A-Z][A-Za-z0-9]*$ ]] || { echo "import_owned: MODULE_NAME must be a capitalised identifier: $mod" >&2; exit 2; }
-src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+srcdir="$(cd "$(dirname "$src")" && pwd)"
+src="$srcdir/$(basename "$src")"
 
-mapfile -t fns < <(awk '/^[A-Za-z_][A-Za-z0-9_.$]*:[ \t]*$/ { sub(/:[ \t]*$/, ""); print }' "$src")
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# The text to translate: the working-tree file, or the file at SRC_REV.
+rev="${SRC_REV:-}"
+if [ -n "$rev" ]; then
+  git -C "$srcdir" show "$rev:./$(basename "$src")" > "$tmp/src.s" 2>/dev/null || {
+    echo "import_owned: $src is not in the git repository at commit $rev" >&2; exit 2; }
+  input="$tmp/src.s"
+else
+  [ -f "$src" ] || { echo "import_owned: no file $src" >&2; exit 2; }
+  input="$src"
+fi
+
+mapfile -t fns < <(awk '/^[A-Za-z_][A-Za-z0-9_.$]*:[ \t]*$/ { sub(/:[ \t]*$/, ""); print }' "$input")
 if [ $# -eq 3 ]; then
   sym="$3"
   printf '%s\n' "${fns[@]}" | grep -qxF -- "$sym" || {
@@ -48,32 +65,33 @@ out="${OUT_LEAN:-$repo/CatCrypt/Crypto/SecureCompilation/Ascent/Imported/$mod.le
 ns="CatCrypt.Crypto.SecureCompilation.Ascent.Imported.$mod"
 
 # Provenance of the input file.
-srcdir="$(dirname "$src")"
 if top="$(git -C "$srcdir" rev-parse --show-toplevel 2>/dev/null)"; then
   rel="${src#"$top"/}"
   reponame="$(basename "$top")"
-  commit="$(git -C "$top" rev-parse HEAD)"
-  if git -C "$top" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
+  if [ -n "$rev" ]; then
+    commit="$(git -C "$top" rev-parse "$rev^{commit}")"
+    state="tracked and unchanged at that commit"
+  elif git -C "$top" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
+    commit="$(git -C "$top" rev-parse HEAD)"
     if [ -z "$(git -C "$top" status --porcelain -- "$rel")" ]; then
       state="tracked and unchanged at that commit"
     else
       state="tracked, with local changes against that commit"
     fi
   else
+    commit="$(git -C "$top" rev-parse HEAD)"
     state="not tracked by git"
   fi
   where="\`$rel\` in the \`$reponame\` repository at commit \`$commit\` ($state)"
 else
   where="\`$src\`, outside any git repository"
 fi
-sha="$(sha256sum "$src" | cut -d' ' -f1)"
-
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+sha="$(sha256sum "$input" | cut -d' ' -f1)"
 
 awk -v sym="$sym" -v summary="$tmp/summary" -v maxseg="${MAXSEG:-32}" \
   -v prefix="${lmod}Seg" -v partprefix="${lmod}Part" -v block="${lmod}Block" \
-  -f "$here/translate_owned.awk" "$src" > "$tmp/body.lean"
+  -v prologue="${lmod}Prologue" -v epilogue="${lmod}Epilogue" \
+  -f "$here/translate_owned.awk" "$input" > "$tmp/body.lean"
 
 get() { awk -v k="$1" '$1 == k { $1 = ""; sub(/^ /, ""); print }' "$tmp/summary"; }
 n="$(get instructions)"
@@ -126,6 +144,9 @@ ndrop=$((ndrop + 1))
 droptext="$(printf '%s; ' "${dropped[@]}")"
 droptext="${droptext%; }"
 frame_b="$(bullet "Omitted from the list: the assembler directives and the $ndrop frame instruction$( [ "$ndrop" -gt 1 ] && echo s), each checked by the importer: $droptext.")"
+if [ "$endbr" = 1 ]; then fexcl="\`endbr64\` and \`$ret\`"; else fexcl="\`$ret\`"; fi
+frame_b="$frame_b
+$(bullet "\`${lmod}Prologue\` and \`${lmod}Epilogue\` are the frame instructions before and after the block, $fexcl excluded: each \`pushq r\` as \`lea \"%rsp\" \"%rsp\" \"%rsp\" 0 (-8)\` followed by \`storeMem \"%rsp\" 0 (.reg r)\`, each \`popq r\` as \`loadMem r \"%rsp\" 0\` followed by \`lea \"%rsp\" \"%rsp\" \"%rsp\" 0 8\`, and the stack allocation and its release as the instruction the text contains. \`lea\` writes no flag, as \`pushq\` and \`popq\` write none.")"
 if [ -n "$falloc" ]; then
   rsp_b="$(bullet "Every other instruction is kept, \`%rsp\`-relative moves included, as \`storeMem \"%rsp\" off\` and \`loadMem r \"%rsp\" off\`. Their offsets are relative to \`%rsp\` after the omitted allocation, and \`%rsp\` is constant in the body.")"
 else
@@ -236,6 +257,7 @@ $mnemonics
 $segs
 ${partsline:+$partsline
 }* \`${lmod}Block\`: $blockdesc.
+$(bullet "\`${lmod}Prologue\`, \`${lmod}Epilogue\`: the frame instructions before and after the block.")
 
 ## Main results
 

@@ -29,6 +29,12 @@ one exists.
 * Omitted from the list: the assembler directives and the 11 frame instructions,
   each checked by the importer: `pushq` of `%rbx`, `%r12`, `%r13`, `%r14`, `%r15`
   on entry and the `popq` sequence in reverse order on exit; `ret`.
+* `fe25519AddShippedPrologue` and `fe25519AddShippedEpilogue` are the frame
+  instructions before and after the block, `ret` excluded: each `pushq r` as `lea
+  "%rsp" "%rsp" "%rsp" 0 (-8)` followed by `storeMem "%rsp" 0 (.reg r)`, each `popq
+  r` as `loadMem r "%rsp" 0` followed by `lea "%rsp" "%rsp" "%rsp" 0 8`, and the
+  stack allocation and its release as the instruction the text contains. `lea`
+  writes no flag, as `pushq` and `popq` write none.
 * Every other instruction is kept, `%rsp`-relative moves included, as `storeMem
   "%rsp" off` and `loadMem r "%rsp" off`. `%rsp` is constant in the body.
 * Registers keep their physical names (`"%rax"`, …, `"%r15"`, `"%rsp"`); no
@@ -48,6 +54,8 @@ The block has 46 instructions. Source instructions by mnemonic: `movq` 23, `xorq
   run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
 * `fe25519AddShippedBlock`: the block, the concatenation of the segments.
+* `fe25519AddShippedPrologue`, `fe25519AddShippedEpilogue`: the frame instructions
+  before and after the block.
 
 ## Main results
 
@@ -118,6 +126,38 @@ def fe25519AddShippedSeg02 : List (JInstr 64) :=
     `bench/s2n_import/import_owned.sh`: the concatenation of its 2 segments. -/
 def fe25519AddShippedBlock : List (JInstr 64) :=
   fe25519AddShippedSeg01 ++ fe25519AddShippedSeg02
+
+/-- The frame instructions of `fe25519_add_x86_from_lean` before the body,
+    which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
+    store of `r` at `0(%rsp)`, and the stack allocation as the instruction the text
+    contains. -/
+def fe25519AddShippedPrologue : List (JInstr 64) :=
+  [ .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.5 `pushq %rbx`
+    .storeMem "%rsp" 0 (.reg "%rbx"),  -- l.5 `pushq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.6 `pushq %r12`
+    .storeMem "%rsp" 0 (.reg "%r12"),  -- l.6 `pushq %r12`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.7 `pushq %r13`
+    .storeMem "%rsp" 0 (.reg "%r13"),  -- l.7 `pushq %r13`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.8 `pushq %r14`
+    .storeMem "%rsp" 0 (.reg "%r14"),  -- l.8 `pushq %r14`
+    .lea "%rsp" "%rsp" "%rsp" 0 (-8),  -- l.9 `pushq %r15`
+    .storeMem "%rsp" 0 (.reg "%r15") ]  -- l.9 `pushq %r15`
+
+/-- The frame instructions of `fe25519_add_x86_from_lean` after the body,
+    which the block omits, `ret` excluded: the stack release as the instruction the
+    text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
+    `leaq 8(%rsp), %rsp`. -/
+def fe25519AddShippedEpilogue : List (JInstr 64) :=
+  [ .loadMem "%r15" "%rsp" 0,  -- l.56 `popq %r15`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.56 `popq %r15`
+    .loadMem "%r14" "%rsp" 0,  -- l.57 `popq %r14`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.57 `popq %r14`
+    .loadMem "%r13" "%rsp" 0,  -- l.58 `popq %r13`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.58 `popq %r13`
+    .loadMem "%r12" "%rsp" 0,  -- l.59 `popq %r12`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.59 `popq %r12`
+    .loadMem "%rbx" "%rsp" 0,  -- l.60 `popq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.60 `popq %rbx`
 
 /-- The block has 46 instructions; the count of each segment is computed by `rfl`. -/
 theorem fe25519AddShippedBlock_length :
