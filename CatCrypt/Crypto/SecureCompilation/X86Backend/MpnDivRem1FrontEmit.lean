@@ -55,18 +55,20 @@ extern uint64_t *mpn_divrem_1_preinv(uint64_t *qp, const uint64_t *up,
 ```
 
 `qp` (RDI), `up` (RSI), `n` (RDX), `d` (RCX), `dinv` (R8). `qp` holds `rs + 1`
-words, cell `rs` receiving the remainder. `d` must be normalised (bit 63 set)
-and `dinv` its Möller–Granlund reciprocal.
+words; cell `rs` supplies the incoming remainder, which must be below `d`, and
+receives the outgoing remainder. `d` must be normalised (bit 63 set) and `dinv`
+its Möller–Granlund reciprocal.
 
 ## Main results
 
 * `divLimb_val` / `divLimb_lt`: the per-limb Euclidean identity
   `q · d + r = u1 · 2^64 + u0` and `r < d`, under `u1 < d`.
-* `divFold_val`: the loop invariant over the memref carrier — after `k` trips
-  the accumulator cells `top+1-k … top` hold the top `k` quotient limbs and cell
-  `rs` the running remainder, with
-  `value (qp[top+1-k … top]) · d + r = value (up[top+1-k … top])`, for every
-  `NR` / `NU`.
+* `divFold_val_rem`: the loop invariant over the memref carrier — for a seed
+  `r0 = qp[rs]` below `d`, after `k` trips the accumulator cells
+  `top+1-k … top` hold the top `k` quotient limbs and cell `rs` the running
+  remainder, with
+  `value (qp[top+1-k … top]) · d + r = r0 · 2^(64k) + value (up[top+1-k … top])`,
+  for every `NR` / `NU`. `divFold_val` is its `r0 = 0` instance.
 * `divRem1RtProg_denote`: the runtime-trip loop program's denotation as the
   `JLoopBodyN` fold of the front body.
 * `preinvStep`: the word function the emitted body computes, and
@@ -83,7 +85,8 @@ trip-count back-edge, whose count is the public limb count `n`.
 
 ## Scope
 
-`divLimb_val`, `divLimb_lt` and `divFold_val` hold for every `NR` / `NU`; `NU`
+`divLimb_val`, `divLimb_lt`, `divFold_val_rem` and `divFold_val` hold for every
+`NR` / `NU`; `NU`
 fixes only the memref width of the concrete front-compiled instance below, whose
 rendered SIB accesses are byte-offset and so size-agnostic.
 
@@ -223,25 +226,27 @@ theorem divFoldStep_segCells {NR NU : Nat} (up : Fin NU → BitVec 64) (d : BitV
   exact divFoldStep_frame up d top rs acc t (top - t + 1 + i) hrs (by omega)
     (by omega) (by omega)
 
-/-- **The division loop invariant.** After `k` trips the accumulator's cells
-    `top+1-k, …, top` hold the top `k` quotient limbs and cell `rs` the running
-    remainder, and
-    `value (qp[top+1-k … top]) · d + r = value (up[top+1-k … top])`. The
-    remainder stays below the divisor. -/
-theorem divFold_val {NR NU : Nat} (up : Fin NU → BitVec 64) (d : BitVec 64)
+/-- **The division loop invariant with an incoming remainder.** Let
+    `r0 = qp[rs]` be the seed of the remainder cell, below the divisor. After
+    `k` trips the accumulator's cells `top+1-k, …, top` hold the top `k`
+    quotient limbs and cell `rs` the running remainder, and
+    `value (qp[top+1-k … top]) · d + r = r0 · 2^(64k) + value (up[top+1-k … top])`.
+    The remainder stays below the divisor. -/
+theorem divFold_val_rem {NR NU : Nat} (up : Fin NU → BitVec 64) (d : BitVec 64)
     (top rs : Nat) (acc : Fin NR → BitVec 64)
     (hrs : rs < NR) (htop : top < rs)
-    (h0 : memGetDyn acc rs = 0) (hd : 0 < d.toNat) :
+    (h0 : (memGetDyn acc rs).toNat < d.toNat) :
     ∀ k : Nat, k ≤ top + 1 →
       (memGetDyn (divFold up d top rs k acc) rs).toNat < d.toNat
         ∧ bignumVal (segCells (divFold up d top rs k acc) (top + 1 - k) k) * d.toNat
             + (memGetDyn (divFold up d top rs k acc) rs).toNat
-          = bignumVal (segCells up (top + 1 - k) k) := by
+          = (memGetDyn acc rs).toNat * 2 ^ (64 * k)
+            + bignumVal (segCells up (top + 1 - k) k) := by
   intro k
   induction k with
   | zero =>
       intro _
-      simp [divFold, segCells, bignumVal, h0, hd]
+      simp [divFold, segCells, bignumVal, h0]
   | succ m ih =>
       intro hm
       have hm' : m ≤ top + 1 := by omega
@@ -282,7 +287,31 @@ theorem divFold_val {NR NU : Nat} (up : Fin NU → BitVec 64) (d : BitVec 64)
               + 2 ^ 64 * (bignumVal (segCells F (top + 1 - m) m) * d.toNat
                   + (memGetDyn F rs).toNat) := by ring
         _ = (memGetDyn up (top - m)).toNat
-              + 2 ^ 64 * bignumVal (segCells up (top + 1 - m) m) := by rw [hIH]
+              + 2 ^ 64 * ((memGetDyn acc rs).toNat * 2 ^ (64 * m)
+                + bignumVal (segCells up (top + 1 - m) m)) := by rw [hIH]
+        _ = (memGetDyn acc rs).toNat * 2 ^ (64 * (m + 1))
+              + ((memGetDyn up (top - m)).toNat
+                + 2 ^ 64 * bignumVal (segCells up (top + 1 - m) m)) := by
+              rw [Nat.mul_succ, Nat.pow_add]; ring
+
+/-- **The division loop invariant.** With the remainder cell `rs` seeded at
+    zero, after `k` trips the accumulator's cells `top+1-k, …, top` hold the top
+    `k` quotient limbs and cell `rs` the running remainder, and
+    `value (qp[top+1-k … top]) · d + r = value (up[top+1-k … top])`. The
+    remainder stays below the divisor. The `r0 = 0` instance of
+    `divFold_val_rem`. -/
+theorem divFold_val {NR NU : Nat} (up : Fin NU → BitVec 64) (d : BitVec 64)
+    (top rs : Nat) (acc : Fin NR → BitVec 64)
+    (hrs : rs < NR) (htop : top < rs)
+    (h0 : memGetDyn acc rs = 0) (hd : 0 < d.toNat) :
+    ∀ k : Nat, k ≤ top + 1 →
+      (memGetDyn (divFold up d top rs k acc) rs).toNat < d.toNat
+        ∧ bignumVal (segCells (divFold up d top rs k acc) (top + 1 - k) k) * d.toNat
+            + (memGetDyn (divFold up d top rs k acc) rs).toNat
+          = bignumVal (segCells up (top + 1 - k) k) := by
+  intro k hk
+  have h := divFold_val_rem up d top rs acc hrs htop (by simp [h0, hd]) k hk
+  simpa [h0] using h
 
 /-! ## 3. The reciprocal step the emitted body computes
 

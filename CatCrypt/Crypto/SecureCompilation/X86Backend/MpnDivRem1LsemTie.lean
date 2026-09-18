@@ -15,8 +15,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
 program's denotation as the `JLoopBodyN` fold of the front body `divUpdate`, and
 `MpnDivRem1FrontDenoteVal.divRtProg_val` states the same program's denotation as
 the exact Euclidean fold `divFold` under the normalisation preconditions (divisor
-`d` with bit 63 set, correct reciprocal `dinv`, cleared seed cell `RS`, at least
-one trip, top limb index below `RS`).
+`d` with bit 63 set, correct reciprocal `dinv`, seed cell `RS` below `d`, at
+least one trip, top limb index below `RS`).
 `JasminLsemMemSourceTieUncond.loopMemArr_export_faithful_denote` is the general
 backend-faithfulness statement for an array-accumulator counter loop: the emitted
 machine loop's execution decodes at the accumulator array slot to
@@ -35,10 +35,12 @@ this body is completed in `JasminLsemMemArrTripDivRem`.
 
 ## Main results
 
-* `divrem_emitted_machine_val` — the full chain for `mpn_divrem_1`: the
-  array-faithfulness conclusion at `divUpdate` composed with `divRtProg_val`,
-  giving an output array that holds the exact Euclidean fold `divFold` of the
-  argument registers, under the normalisation preconditions.
+* `divrem_emitted_machine_val_rem` — the full chain for `mpn_divrem_1`: the
+  array-faithfulness conclusion at `divUpdate` composed with
+  `divRtProg_val_rem`, giving an output array that holds the exact Euclidean
+  fold `divFold` of the argument registers, under the normalisation
+  preconditions with a seed remainder below the divisor.
+* `divrem_emitted_machine_val` — its zero-seed instance.
 -/
 
 @[expose] public section
@@ -61,6 +63,47 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenoteVal
 
 /-! ## The machine execution computes the Euclidean quotient/remainder fold -/
 
+/-- **The machine execution computes the Euclidean quotient/remainder fold, for
+    an incoming remainder.** Given the array-accumulator backend-faithfulness
+    conclusion at `divUpdate` — the emitted machine loop `body` run by
+    `lsemFuelMemL` from a start state `s` decodes at the accumulator slot
+    `arrSlot` to the source fold `JLoopBodyN.denote ⟨n, divUpdate⟩` — and the
+    normalisation preconditions of `divRtProg_val_rem` (divisor `d` with bit 63
+    set, correct reciprocal `dinv`, seed cell `RS` below `d`, at least one trip,
+    top limb index below `RS`), the halt state's output array decodes to the
+    exact Euclidean fold `divFold` of the argument registers. -/
+theorem divrem_emitted_machine_val_rem
+    (V : Ctxt.Valuation Gouter)
+    (hrs : RS < NR)
+    (htop : (nVar.lookup V).toNat - 1 < RS)
+    (h0 : (memGetDyn (divInit.lookup V) RS).toNat < (dVar.lookup V).toNat)
+    (hd2 : 2 ^ 63 ≤ (dVar.lookup V).toNat)
+    (hv : (dinvVar.lookup V).toNat = (2 ^ 128 - 1) / (dVar.lookup V).toNat - 2 ^ 64)
+    (hn : 1 ≤ (nVar.lookup V).toNat)
+    (fn : String) (top : LLabel) (nReg : String)
+    (body : List LinstrRM) (arrSlot : String) (s : LstatePM)
+    (hfaithful : ∃ t : LstatePM,
+      lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
+          ((divCount.lookup V).toNat * (body.length + 1)) s = some t
+        ∧ decodeArrM t.base arrSlot 64 NR
+            = some (JLoopBodyN.denote ⟨(divCount.lookup V).toNat, divUpdate⟩
+                (Expr.lookupArgs divInvs V) (divInit.lookup V))) :
+    ∃ t : LstatePM,
+      lsemFuelMemL (singletonProgM fn (loopLinstrRM top nReg body))
+          ((divCount.lookup V).toNat * (body.length + 1)) s = some t
+        ∧ decodeArrM t.base arrSlot 64 NR
+            = some (divFold (upVar.lookup V) (dVar.lookup V)
+                ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) := by
+  obtain ⟨t, hrun, hdec⟩ := hfaithful
+  have hd := divRem1RtProg_denote (update := divUpdate) divUpdate_eq V
+  have hf := divRtProg_val_rem V hrs htop h0 hd2 hv hn
+  have heq : JLoopBodyN.denote ⟨(divCount.lookup V).toNat, divUpdate⟩
+        (Expr.lookupArgs divInvs V) (divInit.lookup V)
+      = divFold (upVar.lookup V) (dVar.lookup V)
+          ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V) :=
+    Option.some.inj (hd.symm.trans hf)
+  exact ⟨t, hrun, hdec.trans (congrArg some heq)⟩
+
 /-- **The machine execution computes the Euclidean quotient/remainder fold.**
     Given the array-accumulator backend-faithfulness conclusion at `divUpdate` —
     the emitted machine loop `body` run by `lsemFuelMemL` from a start state `s`
@@ -70,8 +113,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenoteVal
     preconditions of `divRtProg_val` (divisor `d` with bit 63 set, correct
     reciprocal `dinv`, cleared seed cell `RS`, at least one trip, top limb index
     below `RS`), the halt state's output array decodes to the exact Euclidean
-    fold `divFold` of the argument registers. The composition of the backend-
-    faithfulness tie with `divRtProg_val`. -/
+    fold `divFold` of the argument registers. The zero-seed instance of
+    `divrem_emitted_machine_val_rem`. -/
 theorem divrem_emitted_machine_val
     (V : Ctxt.Valuation Gouter)
     (hrs : RS < NR)
@@ -93,15 +136,9 @@ theorem divrem_emitted_machine_val
           ((divCount.lookup V).toNat * (body.length + 1)) s = some t
         ∧ decodeArrM t.base arrSlot 64 NR
             = some (divFold (upVar.lookup V) (dVar.lookup V)
-                ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) := by
-  obtain ⟨t, hrun, hdec⟩ := hfaithful
-  have hd := divRem1RtProg_denote (update := divUpdate) divUpdate_eq V
-  have hf := divRtProg_val V hrs htop h0 hd2 hv hn
-  have heq : JLoopBodyN.denote ⟨(divCount.lookup V).toNat, divUpdate⟩
-        (Expr.lookupArgs divInvs V) (divInit.lookup V)
-      = divFold (upVar.lookup V) (dVar.lookup V)
-          ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V) :=
-    Option.some.inj (hd.symm.trans hf)
-  exact ⟨t, hrun, hdec.trans (congrArg some heq)⟩
+                ((nVar.lookup V).toNat - 1) RS (nVar.lookup V).toNat (divInit.lookup V)) :=
+  divrem_emitted_machine_val_rem V hrs htop
+    (by rw [h0]; exact lt_of_lt_of_le (by simp) hd2) hd2 hv hn fn top nReg body arrSlot s
+    hfaithful
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1LsemTie
