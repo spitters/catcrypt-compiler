@@ -28,6 +28,7 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.Hax.HaxToLowCTSim_NoShadow
 CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
 CatCrypt.Crypto.Hax.HaxToLowCTSim_RCallN
+CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.ImpRustPrint
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
 CatCrypt.Crypto.Jasmin.AesBitsliceReflect
