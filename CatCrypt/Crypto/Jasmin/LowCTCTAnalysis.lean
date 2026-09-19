@@ -1752,8 +1752,8 @@ theorem cmdCT_sound
       simp only [cmdCT_RScalarSetExpr] at hCT; exact hCT
     cases hExec2 with
     | scalarSetExpr _ _ _ =>
-      have hEval : e.eval rs.rsScalar = e.eval rs2.rsScalar :=
-        SExpr.eval_eq_of_isPublic hEq e hPub
+      have hEval : e.evalState rs = e.evalState rs2 :=
+        SExpr.evalState_eq_of_isPublic hEq e hPub
       rw [hEval]
       exact hEq.set_scalar_same x _
 

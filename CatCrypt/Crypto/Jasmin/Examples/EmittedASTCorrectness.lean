@@ -2286,7 +2286,7 @@ lemma rscalarSetExpr_AllSlots
     ∃ rs', RustExec N leafSpec (LowCT.RScalarSetExpr x e) rs rs' ∧
       AllSlotsBoundAt slots rs' := by
   refine ⟨_, RustExec.scalarSetExpr x e rs, ?_⟩
-  exact AllSlotsBoundAt_setScalar slots rs x (e.eval rs.rsScalar) hP
+  exact AllSlotsBoundAt_setScalar slots rs x (e.evalState rs) hP
 
 /-- `RSeq c1 c2` preserves `AllSlotsBoundAt` if both halves do. -/
 lemma rseq_AllSlots

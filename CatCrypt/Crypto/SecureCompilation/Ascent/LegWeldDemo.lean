@@ -188,7 +188,9 @@ theorem demo_source_to_bytes :
       ∧ wEnc (BitVec.ofNat 64 (RustSrc.exec demoSrc (fun _ => 0) "r0"))
           = ((dav : Nat) : ZMod (2 ^ 64)) + ((dbv : Nat) : ZMod (2 ^ 64))
             - ((dcv : Nat) : ZMod (2 ^ 64)) := by
-  have h := legWeld_lower demoSrc (by decide) (.refl _) demo_run scalarInRange_default "r0"
+  have h := legWeld_lower demoSrc (by decide)
+    (by simp [demoSrc, demoE, RustSrc.limbFree, SExpr.limbFree])
+    (.refl _) demo_run scalarInRange_default "r0"
     (not_isTmp_short "r0" (by decide)) demoC_readsOK demoC_out demoFront demoFa (fun _ => True)
     demo_corres trivial
   exact ⟨h.1, h.2.trans (demoFa_at_r0 _)⟩

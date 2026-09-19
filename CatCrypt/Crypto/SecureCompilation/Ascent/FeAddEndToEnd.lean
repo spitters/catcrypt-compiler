@@ -306,11 +306,15 @@ def feAddSrc : RustSrc :=
 /-- `feAddSrc` is in the `if`-free fragment, so `lowerRefines` applies. -/
 theorem feAddSrc_ifFree : feAddSrc.ifFree = true := by decide
 
+/-- `feAddSrc` reads no tower limb. -/
+theorem feAddSrc_limbFree : feAddSrc.limbFree := by
+  simp [feAddSrc, addE, RustSrc.limbFree, SExpr.limbFree]
+
 /-- **The feAdd source→LowCT simulation.** The verified non-optimizing lowering
     `lower feAddSrc` refines the source semantics `RustSrc.exec feAddSrc` — no free
     hypothesis, delivered by `RustSubsetToLowCT.lowerRefines`. -/
 theorem feAddSrc_refines : RRefines (RustSrc.exec feAddSrc) (lower feAddSrc) :=
-  lowerRefines feAddSrc feAddSrc_ifFree
+  lowerRefines feAddSrc feAddSrc_ifFree feAddSrc_limbFree
 
 /-- The word the source semantics leaves at `r0` (env-independent: the kernel
     writes both inputs as literals), cast into the 64-bit word type. -/
@@ -364,8 +368,8 @@ theorem feAdd_source_to_bytes_tower (N : Nat) (leafSpec : LeafSpec) :
         = ctTransTy feAddSourceWord
       ∧ wEnc feAddSourceWord
           = ((av : Nat) : ZMod (2 ^ 64)) + ((bv : Nat) : ZMod (2 ^ 64)) := by
-  have h := legWeld_lower feAddSrc feAddSrc_ifFree feAddC_litNorm ⟨farsF, feAddC_run⟩
-    scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feAddC_readsOK feAddC_out
+  have h := legWeld_lower feAddSrc feAddSrc_ifFree feAddSrc_limbFree feAddC_litNorm
+    ⟨farsF, feAddC_run⟩ scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feAddC_readsOK feAddC_out
     ⟨faO, faHTrans, faW, faHName, faCom, faHRet, feAddJcom, faHCom⟩ faAdd (fun _ => True)
     feAdd_corres trivial
   exact ⟨h.1, h.2.trans (faAdd_at_r0 _)⟩

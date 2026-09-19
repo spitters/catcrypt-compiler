@@ -1173,7 +1173,7 @@ theorem rustExecSimulatesDialect
       -- `NoAliasVM o.vm`, not the SSA-emitted denotation.
       have hNAo : NoAliasVM o.vm :=
         translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias
-      exact ⟨_, noAlias_canonical_witness hNAo (rsSetScalar rs0 x (e.eval rs0.rsScalar))⟩
+      exact ⟨_, noAlias_canonical_witness hNAo (rsSetScalar rs0 x (e.evalState rs0))⟩
   | callSwap fname dest1 dest2 args rsCS rs1CS rs'CS _h1 _h2 ih1 ih2 =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       cases hMA1 : resolveLocatedArgs vm args with

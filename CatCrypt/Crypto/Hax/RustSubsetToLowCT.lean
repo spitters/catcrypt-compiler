@@ -202,6 +202,17 @@ def lower : RustSrc → LowCT
         (.RIfNz guardSlot (lower thn) (lower els))
   | .forN x n body => .RFor x n (lower body)
 
+/-- Every expression of `src` is `SExpr.limbFree`: the program reads no tower
+    limb, so its scalar-map semantics `RustSrc.exec` (stated with `SExpr.eval`)
+    is the value `RustExec.scalarSetExpr` writes. -/
+def RustSrc.limbFree : RustSrc → Prop
+  | .seq c1 c2 => c1.limbFree ∧ c2.limbFree
+  | .skip => True
+  | .letE _ e body => e.limbFree ∧ body.limbFree
+  | .assign _ e => e.limbFree
+  | .ifNz c thn els => c.limbFree ∧ thn.limbFree ∧ els.limbFree
+  | .forN _ _ body => body.limbFree
+
 /-! ## §3  The relational-compilation relation `RRefines` (LowCT analogue)
 
 `RRefines spec c` is the LowCT counterpart of `RelationalCompile.Refines`: it
@@ -241,14 +252,14 @@ theorem RRefines.skip : RRefines (fun σ => σ) .RSkip := by
   intro N leafSpec rs
   exact ⟨rs, RustExec.skip rs, rfl⟩
 
-/-- **Assignment compilation lemma.** `RScalarSetExpr x e` refines the scalar
-    write `σ ↦ σ[x := eval e σ]`. -/
-theorem RRefines.assign (x : String) (e : SExpr) :
+/-- **Assignment compilation lemma.** For a `limbFree` expression `e`,
+    `RScalarSetExpr x e` refines the scalar write `σ ↦ σ[x := eval e σ]`. -/
+theorem RRefines.assign (x : String) (e : SExpr) (he : e.limbFree) :
     RRefines (fun σ => fun y => if y = x then e.eval σ else σ y)
       (.RScalarSetExpr x e) := by
   intro N leafSpec rs
   refine ⟨_, RustExec.scalarSetExpr x e rs, ?_⟩
-  simp only [rsSetScalar]
+  simp only [rsSetScalar, SExpr.evalState_eq_eval rs e he]
   exact scalarUpdate_eq rs.rsScalar x (e.eval rs.rsScalar)
 
 /-- **Sequencing compilation lemma** — the composition rule. If `c1` refines
@@ -351,28 +362,28 @@ def RustSrc.ifFree : RustSrc → Bool
   | .forN _ _ body => body.ifFree
   | .ifNz _ _ _ => false
 
-/-- The lowering of an `if`-free source program refines its source semantics.
-    Assembled entirely from the §3.1–§3.2 compilation lemmas. -/
-theorem lowerRefines : ∀ (src : RustSrc), src.ifFree = true →
+/-- The lowering of an `if`-free, `limbFree` source program refines its source
+    semantics.  Assembled entirely from the §3.1–§3.2 compilation lemmas. -/
+theorem lowerRefines : ∀ (src : RustSrc), src.ifFree = true → src.limbFree →
     RRefines (RustSrc.exec src) (lower src)
-  | .skip, _ => by
+  | .skip, _, _ => by
       simpa [lower, RustSrc.exec] using RRefines.skip
-  | .assign x e, _ => by
-      simpa [lower, RustSrc.exec] using RRefines.assign x e
-  | .seq c1 c2, h => by
+  | .assign x e, _, hl => by
+      simpa [lower, RustSrc.exec] using RRefines.assign x e hl
+  | .seq c1 c2, h, hl => by
       simp only [RustSrc.ifFree, Bool.and_eq_true] at h
-      have := RRefines.seq (lowerRefines c1 h.1) (lowerRefines c2 h.2)
+      have := RRefines.seq (lowerRefines c1 h.1 hl.1) (lowerRefines c2 h.2 hl.2)
       simpa [lower, RustSrc.exec] using this
-  | .letE x e body, h => by
+  | .letE x e body, h, hl => by
       simp only [RustSrc.ifFree] at h
       -- lower = RSeq (RScalarSetExpr x e) (lower body); same shape as the spec
       -- `body.exec ∘ (σ ↦ σ[x := eval e σ])`. Assemble from assign + seq.
-      have := RRefines.seq (RRefines.assign x e) (lowerRefines body h)
+      have := RRefines.seq (RRefines.assign x e hl.1) (lowerRefines body h hl.2)
       simpa [lower, RustSrc.exec] using this
-  | .forN x n body, h => by
+  | .forN x n body, h, hl => by
       simp only [RustSrc.ifFree] at h
       -- lower = RFor x n (lower body); spec = forStepFold x (body.exec) n.
-      have hloop := RRefines.forN x (lowerRefines body h) n
+      have hloop := RRefines.forN x (lowerRefines body h hl) n
       refine fun N leafSpec rs => ?_
       obtain ⟨rs', hex, hsc⟩ := hloop N leafSpec rs
       refine ⟨rs', hex, ?_⟩
@@ -399,7 +410,7 @@ live, proved-once, inside `Refines.arith`); see the scope report. -/
     guard write is reflected in the conclusion, so the lemma is exact. Framing the
     guard slot out of the observable spec is the residual (scope report). -/
 theorem RRefines.ifNz (c : SExpr) {specThn specEls : (String → Nat) → (String → Nat)}
-    {thn' els' : LowCT}
+    {thn' els' : LowCT} (hcl : c.limbFree)
     (hThn : RRefines specThn thn') (hEls : RRefines specEls els') :
     RRefines
       (fun σ =>
@@ -408,7 +419,7 @@ theorem RRefines.ifNz (c : SExpr) {specThn specEls : (String → Nat) → (Strin
       (.RSeq (.RScalarSetExpr guardSlot c)
         (.RIfNz guardSlot thn' els')) := by
   intro N leafSpec rs
-  obtain ⟨rsg, hexg, hscg⟩ := RRefines.assign guardSlot c N leafSpec rs
+  obtain ⟨rsg, hexg, hscg⟩ := RRefines.assign guardSlot c hcl N leafSpec rs
   have hguard : rsg.rsScalar guardSlot = c.eval rs.rsScalar := by
     rw [hscg]; simp
   have hgσ : rsg.rsScalar = fun y => if y = guardSlot then c.eval rs.rsScalar else rs.rsScalar y :=
@@ -458,13 +469,17 @@ def exampleSrc : RustSrc :=
 theorem exampleSrc_ifFree : exampleSrc.ifFree = true := by
   simp [exampleSrc, RustSrc.ifFree]
 
+/-- `exampleSrc` reads no tower limb. -/
+theorem exampleSrc_limbFree : exampleSrc.limbFree := by
+  simp [exampleSrc, RustSrc.limbFree, SExpr.limbFree]
+
 /-- **The proved representative lowering.** The lowered LowCT command
     `lower exampleSrc` denotes the source semantics `exampleSrc.exec` — i.e. for
     any fuel, leaf spec, and start state, `RustExec` runs the lowering to a state
     whose scalar map is exactly the source program's. Discharged through the §3
     relational-compilation lemmas (via `lowerRefines`); no bespoke induction. -/
 theorem exampleProgRefines : RRefines (RustSrc.exec exampleSrc) (lower exampleSrc) :=
-  lowerRefines exampleSrc exampleSrc_ifFree
+  lowerRefines exampleSrc exampleSrc_ifFree exampleSrc_limbFree
 
 /-- Spelled-out corollary: the lowered command, run under `RustExec` from any
     state, lands in a state whose scalar map equals the source semantics applied

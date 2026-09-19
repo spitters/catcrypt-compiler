@@ -275,16 +275,24 @@ theorem lowerArith_denote (ρ : RegMap) (p : ArithSrc) (rs : RustState) (js : JS
     simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, if_false]
     exact hmatch v
 
+/-- The expression of an arithmetic source reads two scalar slots and no tower
+    limb. -/
+theorem ArithSrc.toSExpr_limbFree (p : ArithSrc) : p.toSExpr.limbFree := by
+  cases p with
+  | mk dst a op b => cases op <;> simp [ArithSrc.toSExpr, SExpr.limbFree]
+
 /-- The source post-state of `p.toLowCT` under the **real** `RustExec`
     operational semantics: `RustExec.scalarSetExpr` steps
-    `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`.  This
+    `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`
+    (`p.toSExpr` is `limbFree`, so `evalState` is `eval`).  This
     ties `lowerArith_denote`'s post-state to the `LowCT` semantics rather than
     to a re-stated denotation. -/
 theorem ArithSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : ArithSrc)
     (rs : RustState) :
     RustExec N leafSpec p.toLowCT rs
-      (rsSetScalar rs p.dst (p.toSExpr.eval rs.rsScalar)) :=
-  RustExec.scalarSetExpr p.dst p.toSExpr rs
+      (rsSetScalar rs p.dst (p.toSExpr.eval rs.rsScalar)) := by
+  rw [← SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
+  exact RustExec.scalarSetExpr p.dst p.toSExpr rs
 
 /-- **Denote preservation, against the real `RustExec`.**  Combines
     `ArithSrc.rustExec` (the source step) with `lowerArith_denote`:
@@ -301,6 +309,7 @@ theorem lowerArith_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
   -- `RustExec` on a `RScalarSetExpr` is deterministic: `rs'` is exactly the
   -- `scalarSetExpr` post-state.
   cases hexec
+  rw [SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
   exact lowerArith_denote ρ p rs js hρ hb hmatch
 
 /-! ## 6. Source CT ⇒ machine CT, end to end

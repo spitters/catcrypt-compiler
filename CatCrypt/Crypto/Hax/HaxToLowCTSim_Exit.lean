@@ -140,6 +140,14 @@ theorem scalarOpExpr_eval (op x y : String) (se : SExpr) (σ : String → Nat)
   split at h <;> (try cases h) <;> simp only [SExpr.eval, scalarOpNat]
   all_goals rfl
 
+/-- The `SExpr` of a scalar operation on two variables reads no tower limb: the
+    tower-aware evaluator gives it the value of `SExpr.eval`. -/
+theorem scalarOpExpr_evalState (op x y : String) (se : SExpr) (rs : RustState)
+    (h : scalarOpExpr op (.SVar x) (.SVar y) = some se) :
+    se.evalState rs = se.eval rs.rsScalar := by
+  unfold scalarOpExpr at h
+  split at h <;> (try cases h) <;> rfl
+
 /-- The builtin table computes every operation of `scalarOpExpr` on scalar
     values as a scalar value decoding to `scalarOpNat`. -/
 def ScalarOpsSound (bi : Builtins) : Prop :=
@@ -883,7 +891,11 @@ theorem exitSim_letBind_app (hs : ScalarOpsSound bi) (n op a b : String) (body :
         obtain ⟨rs', hexec, hagree, hx⟩ :=
           ihb tl fl fuel (env.extend n r) env' o (rsSetScalar rs n (se.eval rs.rsScalar)) bC x
             hokB hfl hB hrun hval (envAgreesOff_extend hn hsr hk hag) hret'
-        exact ⟨rs', RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ _) hexec, hagree, hx⟩
+        have hset : RustExec N leafSpec (.RScalarSetExpr n se) rs
+            (rsSetScalar rs n (se.eval rs.rsScalar)) := by
+          rw [← scalarOpExpr_evalState op a b se rs hse]
+          exact RustExec.scalarSetExpr _ _ _
+        exact ⟨rs', RustExec.seq _ _ _ _ _ hset hexec, hagree, hx⟩
 
 theorem exitSim_seq (a b : ImpExpr) (iha : ExitSim bi N leafSpec a)
     (ihb : ExitSim bi N leafSpec b) : ExitSim bi N leafSpec (.seq a b) := by

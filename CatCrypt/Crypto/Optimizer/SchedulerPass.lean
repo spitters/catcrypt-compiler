@@ -224,7 +224,44 @@ theorem SExpr.eval_eq_of_agree (σ1 σ2 : String → Nat) :
   -- on any two scalar environments.
   | SLimb v i => intro _; rfl
 
-/-! ### §3.2  Per-shape commutation (forward direction) -/
+/-- `SExpr.evalState` depends only on the scalar and tower heaps at the
+    expression's free variables: a scalar read `SVar x` uses `rsScalar x`, a
+    limb read `SLimb v i` uses `rsTower v`. -/
+theorem SExpr.evalState_eq_of_agree (rs1 rs2 : RustState) :
+    ∀ (e : SExpr), (∀ y ∈ e.freeVars,
+        rs1.rsScalar y = rs2.rsScalar y ∧ rs1.rsTower y = rs2.rsTower y) →
+      e.evalState rs1 = e.evalState rs2 := by
+  intro e
+  induction e with
+  | SVar x => intro h; exact (h x (by simp [SExpr.freeVars])).1
+  | SLit n => intro _; rfl
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SShr a b iha ihb
+  | SShl a b iha ihb | SAnd a b iha ihb | SXor a b iha ihb | SLt a b iha ihb
+  | SAsr a b iha ihb | SMulS a b iha ihb | SMulHiU a b iha ihb | SMulHiS a b iha ihb =>
+      intro h; simp only [SExpr.freeVars, List.mem_append] at h
+      simp only [SExpr.evalState, iha (fun y hy => h y (Or.inl hy)),
+        ihb (fun y hy => h y (Or.inr hy))]
+  | SLimb v i =>
+      intro h
+      simp only [SExpr.evalState, rsTowerLimb, (h v (by simp [SExpr.freeVars])).2]
+
+/-- A scalar write outside the free variables of `e` leaves `e.evalState`
+    unchanged. -/
+theorem SExpr.evalState_rsSetScalar_of_not_mem (rs : RustState) (x : String) (v : Nat)
+    (e : SExpr) (hx : x ∉ e.freeVars) :
+    e.evalState (rsSetScalar rs x v) = e.evalState rs :=
+  SExpr.evalState_eq_of_agree _ _ e fun y hy =>
+    ⟨rsSetScalar_other rs x y v (fun hc => hx (hc ▸ hy)), rfl⟩
+
+/-- A tower write outside the free variables of `e` leaves `e.evalState`
+    unchanged. -/
+theorem SExpr.evalState_locatedUpdate_of_not_mem (rs : RustState) (l : Located)
+    (w : RustVal l.locDst) (e : SExpr) (hl : l.locVar ∉ e.freeVars) :
+    e.evalState (locatedUpdate rs l w) = e.evalState rs :=
+  SExpr.evalState_eq_of_agree _ _ e fun y hy =>
+    ⟨rfl, locatedUpdate_rsTower_other rs l w y (fun hc => hl (hc ▸ hy))⟩
+
+/-! ### §3.2 Per-shape commutation (forward direction) -/
 
 /-- Two independent scalar assignments commute (forward direction). -/
 theorem scalar_scalar_comm_fwd (N : Nat) (leafSpec : LeafSpec)
@@ -237,20 +274,14 @@ theorem scalar_scalar_comm_fwd (N : Nat) (leafSpec : LeafSpec)
   cases hExec with
   | seq _ _ _ rmid _ h1 h2 =>
     cases h1; cases h2
-    have hag2 : ∀ y ∈ e2.freeVars,
-        (rsSetScalar rs x1 (e1.eval rs.rsScalar)).rsScalar y = rs.rsScalar y :=
-      fun y hy => rsSetScalar_other rs x1 y _ (fun hc => hRAW (hc ▸ hy))
-    have he2 : e2.eval (rsSetScalar rs x1 (e1.eval rs.rsScalar)).rsScalar
-             = e2.eval rs.rsScalar := SExpr.eval_eq_of_agree _ _ e2 hag2
-    have hag1 : ∀ y ∈ e1.freeVars,
-        (rsSetScalar rs x2 (e2.eval rs.rsScalar)).rsScalar y = rs.rsScalar y :=
-      fun y hy => rsSetScalar_other rs x2 y _ (fun hc => hWAR (hc ▸ hy))
-    have he1 : e1.eval (rsSetScalar rs x2 (e2.eval rs.rsScalar)).rsScalar
-             = e1.eval rs.rsScalar := SExpr.eval_eq_of_agree _ _ e1 hag1
+    have he2 : e2.evalState (rsSetScalar rs x1 (e1.evalState rs)) = e2.evalState rs :=
+      SExpr.evalState_rsSetScalar_of_not_mem rs x1 _ e2 hRAW
+    have he1 : e1.evalState (rsSetScalar rs x2 (e2.evalState rs)) = e1.evalState rs :=
+      SExpr.evalState_rsSetScalar_of_not_mem rs x2 _ e1 hWAR
     refine RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr x2 e2 rs) ?_
     rw [he2]
     have hc := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) x1 e1
-      (rsSetScalar rs x2 (e2.eval rs.rsScalar))
+      (rsSetScalar rs x2 (e2.evalState rs))
     rw [he1] at hc
     rw [rsSetScalar_comm rs x1 x2 _ _ hWAW] at *
     convert hc using 2
@@ -308,14 +339,14 @@ theorem call_call_comm_fwd (N : Nat) (leafSpec : LeafSpec)
         rw [← hfinal]
         exact RustExec.seq _ _ _ _ _ hStep2 hStep1
 
-/-! ### §3.2b  Mixed-shape commutation (always commutes)
+/-! ### §3.2b  Mixed-shape commutation
 
-`RScalarSetExpr` touches only the **scalar** heap; `RCall` touches only
-the **tower** heap.  The two namespaces are disjoint, so a scalar
-assignment and a leaf call *always* commute — independently of variable
-names.  (`indep` between mixed shapes is also true by construction, since
-`writeVar`/`readVars` live in different namespaces; but we don't even
-need the hypothesis here.) -/
+`RScalarSetExpr` writes only the **scalar** heap and `RCall` writes only the
+**tower** heap, so the two writes commute as states.  The scalar expression may
+read the tower heap through `SLimb v i`, whose free variable is the slot `v`;
+the assignment and the call commute when the call's destination is not a free
+variable of the expression, which `indep` supplies (`readVars` of an assignment
+is `e.freeVars`). -/
 
 /-- A scalar write and a tower write commute as states. -/
 theorem setScalar_update_comm (rs : RustState) (x : String) (v : Nat)
@@ -326,6 +357,7 @@ theorem setScalar_update_comm (rs : RustState) (x : String) (v : Nat)
 /-- Scalar-assignment then call commutes to call then scalar-assignment. -/
 theorem scalar_call_comm_fwd (N : Nat) (leafSpec : LeafSpec) (x : String) (e : SExpr)
     (f : String) (d : Located) (as : List Located) (rs rs' : RustState)
+    (hRAW : d.locVar ∉ e.freeVars)
     (hExec : RustExec N leafSpec (.RSeq (.RScalarSetExpr x e) (.RCall f d as)) rs rs') :
     RustExec N leafSpec (.RSeq (.RCall f d as) (.RScalarSetExpr x e)) rs rs' := by
   cases hExec with
@@ -333,7 +365,7 @@ theorem scalar_call_comm_fwd (N : Nat) (leafSpec : LeafSpec) (x : String) (e : S
     cases h1
     cases h2 with
     | call _ _ _ _ oldD argL hLook hargL hTy =>
-      set ev := e.eval rs.rsScalar with hev
+      set ev := e.evalState rs with hev
       have hLook' : locatedLookup rs d = some oldD := by
         rw [← hLook]; exact (locatedLookup_rsSetScalar rs x ev d).symm
       have hStepC : RustExec N leafSpec (.RCall f d as) rs
@@ -343,10 +375,9 @@ theorem scalar_call_comm_fwd (N : Nat) (leafSpec : LeafSpec) (x : String) (e : S
         exact RustExec.call (N := N) (leafSpec := leafSpec) f d as rs oldD _ hLook' rfl hTy
       set w := leafSpec.call f d.locDst (List.map (fun x => x.locDst) as) oldD argL with hw
       refine RustExec.seq _ _ _ _ _ hStepC ?_
-      have hsc : (locatedUpdate rs d w).rsScalar = rs.rsScalar := rfl
       have hc := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) x e
         (locatedUpdate rs d w)
-      rw [hsc] at hc
+      rw [SExpr.evalState_locatedUpdate_of_not_mem rs d w e hRAW, ← hev] at hc
       rw [setScalar_update_comm rs x ev d w] at *
       convert hc using 1
 
@@ -354,6 +385,7 @@ theorem scalar_call_comm_fwd (N : Nat) (leafSpec : LeafSpec) (x : String) (e : S
 theorem call_scalar_comm_fwd (N : Nat) (leafSpec : LeafSpec)
     (f : String) (d : Located) (as : List Located) (x : String) (e : SExpr)
     (rs rs' : RustState)
+    (hRAW : d.locVar ∉ e.freeVars)
     (hExec : RustExec N leafSpec (.RSeq (.RCall f d as) (.RScalarSetExpr x e)) rs rs') :
     RustExec N leafSpec (.RSeq (.RScalarSetExpr x e) (.RCall f d as)) rs rs' := by
   cases hExec with
@@ -363,8 +395,8 @@ theorem call_scalar_comm_fwd (N : Nat) (leafSpec : LeafSpec)
       cases h2
       set w := leafSpec.call f d.locDst (List.map (fun x => x.locDst) as) oldD argL with hw
       have hStepS : RustExec N leafSpec (.RScalarSetExpr x e) rs
-          (rsSetScalar rs x (e.eval rs.rsScalar)) := RustExec.scalarSetExpr x e rs
-      set ev := e.eval rs.rsScalar with hev
+          (rsSetScalar rs x (e.evalState rs)) := RustExec.scalarSetExpr x e rs
+      set ev := e.evalState rs with hev
       set rsS := rsSetScalar rs x ev with hrsS
       refine RustExec.seq _ _ _ _ _ hStepS ?_
       have hLook' : locatedLookup rsS d = some oldD := by
@@ -379,8 +411,7 @@ theorem call_scalar_comm_fwd (N : Nat) (leafSpec : LeafSpec)
                     (as.filterMap (fun a => rsS.rsTower a.locVar)) = w := by
         rw [hw, ← hargL']
       rw [hval] at hStepC
-      have hgoalScalar : (locatedUpdate rs d w).rsScalar = rs.rsScalar := rfl
-      rw [hgoalScalar, ← hev]
+      rw [SExpr.evalState_locatedUpdate_of_not_mem rs d w e hRAW, ← hev]
       rw [hrsS] at hStepC
       rw [setScalar_update_comm rs x ev d w] at hStepC
       rw [hrsS]; exact hStepC
@@ -436,11 +467,15 @@ theorem bbSwap_exec_iff (N : Nat) (leafSpec : LeafSpec) (s1 s2 : BBStmt)
             (by simp [BBStmt.writeVar])) hexec
       | call f2 d2 a2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
-        exact scalar_call_comm_fwd N leafSpec x1 e1 f2 d2 a2 rs rs' hexec
+        exact scalar_call_comm_fwd N leafSpec x1 e1 f2 d2 a2 rs rs'
+          (fun hc => hRead1 d2.locVar (by simpa [BBStmt.readVars] using hc)
+            (by simp [BBStmt.writeVar])) hexec
     | call f1 d1 a1 => cases s2 with
       | sset x2 e2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
-        exact call_scalar_comm_fwd N leafSpec f1 d1 a1 x2 e2 rs rs' hexec
+        exact call_scalar_comm_fwd N leafSpec f1 d1 a1 x2 e2 rs rs'
+          (fun hc => hRead2 d1.locVar (by simpa [BBStmt.readVars] using hc)
+            (by simp [BBStmt.writeVar])) hexec
       | call f2 d2 a2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
         refine call_call_comm_fwd N leafSpec f1 f2 d1 d2 a1 a2 rs rs'
@@ -464,11 +499,15 @@ theorem bbSwap_exec_iff (N : Nat) (leafSpec : LeafSpec) (s1 s2 : BBStmt)
             (by simp [BBStmt.writeVar])) hexec
       | call f2 d2 a2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
-        exact call_scalar_comm_fwd N leafSpec f2 d2 a2 x1 e1 rs rs' hexec
+        exact call_scalar_comm_fwd N leafSpec f2 d2 a2 x1 e1 rs rs'
+          (fun hc => hRead1 d2.locVar (by simpa [BBStmt.readVars] using hc)
+            (by simp [BBStmt.writeVar])) hexec
     | call f1 d1 a1 => cases s2 with
       | sset x2 e2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
-        exact scalar_call_comm_fwd N leafSpec x2 e2 f1 d1 a1 rs rs' hexec
+        exact scalar_call_comm_fwd N leafSpec x2 e2 f1 d1 a1 rs rs'
+          (fun hc => hRead2 d1.locVar (by simpa [BBStmt.readVars] using hc)
+            (by simp [BBStmt.writeVar])) hexec
       | call f2 d2 a2 =>
         simp only [BBStmt.toCmd] at hexec ⊢
         refine call_call_comm_fwd N leafSpec f2 f1 d2 d1 a2 a1 rs rs'

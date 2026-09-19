@@ -517,9 +517,9 @@ theorem revShift_exec (N : Nat) (leafSpec : LeafSpec) (T : List String) (A : Tow
   refine RustExec.seq _ _ _ (rsSetScalar rs i (hi - 1 - j)) _ ?_ h
   have hS := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) i
     (.SSub (.SLit (hi - 1)) (.SVar i)) (rsSetScalar rs i j)
-  have hv : (SExpr.SSub (.SLit (hi - 1)) (.SVar i)).eval (rsSetScalar rs i j).rsScalar =
+  have hv : (SExpr.SSub (.SLit (hi - 1)) (.SVar i)).evalState (rsSetScalar rs i j) =
       hi - 1 - j := by
-    simp [SExpr.eval, rsSetScalar]
+    simp [SExpr.evalState, rsSetScalar]
   rw [hv, rsSetScalar_collapse] at hS
   exact hS
 
@@ -1204,6 +1204,13 @@ theorem scalarCallSExpr_eval {f : String} {ea eb se : SExpr} {k : Nat â†’ Nat â†
   unfold scalarCallNat at hk
   split at hse <;> cases hse <;> cases hk <;> simp only [SExpr.eval] <;> split_ifs <;> omega
 
+/-- The scalar expression of a call on two `limbFree` operands is `limbFree`. -/
+theorem scalarCallSExpr_limbFree {f : String} {ea eb se : SExpr}
+    (hse : scalarCallSExpr f ea eb = some se) (ha : ea.limbFree) (hb : eb.limbFree) :
+    se.limbFree := by
+  unfold scalarCallSExpr at hse
+  split at hse <;> cases hse <;> simp [SExpr.limbFree, ha, hb]
+
 /-- The builtin table agrees with the calls computed in the scalar heap: such a
     call succeeds only on two values with scalar readings, and its result reads
     as the natural-number operation on them. -/
@@ -1285,8 +1292,10 @@ theorem progSimW_letBind_scalar (name f a b : String) (body : ImpExpr)
   have hTb : rs.rsTower b = none := hSF b (mem_of_contains S b hb)
   have hsa : rs.rsScalar a = n := hAgree.1 a va n hva hTa hn
   have hsb : rs.rsScalar b = m := hAgree.1 b vb m hvb hTb hm
-  have hEvalSe : se.eval (rsSetScalar rs name 0).rsScalar = k n m := by
-    rw [scalarCallSExpr_eval hk hse]
+  have hEvalSe : se.evalState (rsSetScalar rs name 0) = k n m := by
+    rw [SExpr.evalState_eq_eval _ se
+      (scalarCallSExpr_limbFree hse (by simp [SExpr.limbFree]) (by simp [SExpr.limbFree])),
+      scalarCallSExpr_eval hk hse]
     simp [SExpr.eval, rsSetScalar, hna, hnb, hsa, hsb]
   have hFresh : TowerFresh rs name := hSF name (mem_of_contains S name hName)
   have hAgree' :=

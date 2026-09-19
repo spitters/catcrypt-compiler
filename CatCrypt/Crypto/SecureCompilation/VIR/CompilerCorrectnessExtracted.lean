@@ -339,8 +339,8 @@ It differs from `RustExec` at the following two points:
    the compiled jasmin program — denotes an opaque leaf to
    `CryptoTy.default`;
 2. **`SExpr` arithmetic** — `RustExec`'s
-   `scalarSetExpr` arm evaluates with the saturating-`Nat` `SExpr.eval`
-   (e.g. `SSub (SLit 0) (SLit 1)` gives `0`), while `semScalar` uses the
+   `scalarSetExpr` arm evaluates with the saturating-`Nat` `SExpr.evalState`
+   (`SExpr.eval` on an `SLimb`-free expression; e.g. `SSub (SLit 0) (SLit 1)` gives `0`), while `semScalar` uses the
    wrapping `SExpr.evalBV` (gives `2^64 − 1`) — the hardware's behavior.
    Under the `SExpr.inRange` side condition, `SExpr.evalBV` equals the
    64-bit truncation of `SExpr.eval` (`SExpr.evalBV_eq_ofNat_eval`,

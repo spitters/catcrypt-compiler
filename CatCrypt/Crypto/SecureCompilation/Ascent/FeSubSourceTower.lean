@@ -82,13 +82,17 @@ def feSubSrc : RustSrc :=
 /-- `feSubSrc` is in the `if`-free fragment, so `lowerRefines` applies. -/
 theorem feSubSrc_ifFree : feSubSrc.ifFree = true := by decide
 
+/-- `feSubSrc` reads no tower limb. -/
+theorem feSubSrc_limbFree : feSubSrc.limbFree := by
+  simp [feSubSrc, subE, RustSrc.limbFree, SExpr.limbFree]
+
 /-- **The feSub source→LowCT simulation.**  The verified non-optimizing lowering
     `lower feSubSrc` refines the source semantics `RustSrc.exec feSubSrc`: under
     any fuel and leaf spec, `RustExec` runs the lowered LowCT program from any
     state to one whose scalar map is the source program's.  No free hypothesis —
     this is the source-tower leg the emit + ascent legs are welded to. -/
 theorem feSubSrc_refines : RRefines (RustSrc.exec feSubSrc) (lower feSubSrc) :=
-  lowerRefines feSubSrc feSubSrc_ifFree
+  lowerRefines feSubSrc feSubSrc_ifFree feSubSrc_limbFree
 
 /-! ## The source word and its identification with the emitted `feVal` -/
 
@@ -144,8 +148,8 @@ theorem feSub_source_to_bytes_tower (N : Nat) (leafSpec : LeafSpec) :
         = ctTransTy feSubSourceWord
       ∧ wEnc feSubSourceWord
           = ((av : Nat) : ZMod (2 ^ 64)) - ((bv : Nat) : ZMod (2 ^ 64)) := by
-  have h := legWeld_lower feSubSrc feSubSrc_ifFree feSubC_litNorm ⟨frsF, feSubC_run⟩
-    scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feSubC_readsOK feSubC_out
+  have h := legWeld_lower feSubSrc feSubSrc_ifFree feSubSrc_limbFree feSubC_litNorm
+    ⟨frsF, feSubC_run⟩ scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feSubC_readsOK feSubC_out
     ⟨fO, fHTrans, fW, fHName, fCom, fHRet, feJcom, fHCom⟩ faSub (fun _ => True) feSub_corres
     trivial
   exact ⟨h.1, h.2.trans (faSub_at_r0 _)⟩

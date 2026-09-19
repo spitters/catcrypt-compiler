@@ -103,6 +103,10 @@ theorem loopSrc_lower (v n : Nat) :
 theorem loopSrc_ifFree (v n : Nat) : (loopSrc v n).ifFree = true := by
   simp [loopSrc, loopBodySrc, RustSrc.ifFree]
 
+/-- The source kernel reads no tower limb. -/
+theorem loopSrc_limbFree (v n : Nat) : (loopSrc v n).limbFree := by
+  simp [loopSrc, loopBodySrc, RustSrc.limbFree, SExpr.limbFree]
+
 /-- **The source evaluation is defined and non-vacuous.**  Unlike `forFold`
     (`evalImp = none`), `RustSrc.exec` is a total state transformer: three trips of
     `loopSrc 7 3` leave the output slot `o` holding `7`. -/
@@ -117,7 +121,7 @@ example : RustSrc.exec (loopSrc 7 3) (fun _ => 0) "o" = 7 := by native_decide
     straight-line `feSubSrc_refines`. -/
 theorem loopSrc_refines (v n : Nat) :
     RRefines (RustSrc.exec (loopSrc v n)) (lower (loopSrc v n)) :=
-  lowerRefines (loopSrc v n) (loopSrc_ifFree v n)
+  lowerRefines (loopSrc v n) (loopSrc_ifFree v n) (loopSrc_limbFree v n)
 
 /-! ## §3  LowCT → clean spec: welding `corres_for` (the ascent leg) -/
 

@@ -651,8 +651,8 @@ theorem forShift_exec (N : Nat) (leafSpec : LeafSpec) (T : List String) (A : Tow
     refine RustExec.seq _ _ _ (rsSetScalar rs i (lo + j)) _ ?_ h
     have hS := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) i
       (.SAdd (.SVar i) (.SLit lo)) (rsSetScalar rs i j)
-    have hv : (SExpr.SAdd (.SVar i) (.SLit lo)).eval (rsSetScalar rs i j).rsScalar = lo + j := by
-      simp [SExpr.eval, rsSetScalar]; omega
+    have hv : (SExpr.SAdd (.SVar i) (.SLit lo)).evalState (rsSetScalar rs i j) = lo + j := by
+      simp [SExpr.evalState, rsSetScalar]; omega
     rw [hv, rsSetScalar_collapse] at hS
     exact hS
 

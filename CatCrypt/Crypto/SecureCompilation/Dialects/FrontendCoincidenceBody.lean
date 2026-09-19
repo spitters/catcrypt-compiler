@@ -59,7 +59,8 @@ heap-free, fresh-local, in-range scalar `ImpExpr` body.
 ## Residual `RustExec`-derivation step (stated precisely)
 
 The §2 `RustExec` derivation threads the *store* post-state under `StateAgree`
-and uses the `scalarSetExpr` constructor's stored value `e.eval rs.rsScalar`.
+and uses the `scalarSetExpr` constructor's stored value `e.evalState rs`, which
+is `e.eval rs.rsScalar` on a `limbFree` expression.
 What it does **not** internalise is the per-let `inRangeState`-discharge that
 ties `e.eval rs.rsScalar`'s `Nat` value to `e.evalStateBV rs`'s wrapping
 `BitVec 64` value *inside the running derivation* — that wrap-discharge is the
@@ -215,7 +216,7 @@ theorem stateAgree_scalarSetExpr {nIn : Nat} (params : List String)
         (rsSetScalar rs x (sv.eval rs.rsScalar))
       ∧ StateAgree params I (updRho ρ x (SExpr.evalBV (derivedBeta rs) sv))
           (rsSetScalar rs x (sv.eval rs.rsScalar)) := by
-  refine ⟨RustExec.scalarSetExpr x sv rs, ?_⟩
+  refine ⟨by rw [← SExpr.evalState_eq_eval rs sv hlf]; exact RustExec.scalarSetExpr x sv rs, ?_⟩
   -- The stored `Nat` value `sv.eval rs.rsScalar` equals `(sv.evalStateBV rs).toNat`.
   have hstore : sv.eval rs.rsScalar = (SExpr.evalBV (derivedBeta rs) sv).toNat := by
     -- `eval = evalState` off `SLimb`; `evalState` is `evalStateBV.toNat` on range.

@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 
 The compile-from-hax compression proofs in `CompileFromHaxCompressRound.lean`
 discharge value-correctness by *unrolling* a bounded loop into a flat
-let-chain (`compUnroll`/`stIter`).  That gives a genuine theorem, but the proof
+let-chain (`compUnroll`/`stIter`).  That gives a theorem, but the proof
 term grows with the trip count `N`: a concrete `N = 64` instantiation
 materialises a ~1700-binder term (OOM / kernel timeout on a small box).
 
@@ -101,7 +101,7 @@ theorem rfor_realizes_accFold {N : Nat} (leafSpec : LeafSpec)
                   (rsSetScalar r1 "i" n)),
               ?_⟩
       -- Compute the new accumulator and match it against `accFold _ (n+1)`.
-      simp only [SExpr.eval, rsSetScalar, accFold]
+      simp only [SExpr.evalState, rsSetScalar, accFold]
       rw [hacc1]; simp
 
 /-! ### Multi-scalar, counter-injecting body (SHA-256 round shape)

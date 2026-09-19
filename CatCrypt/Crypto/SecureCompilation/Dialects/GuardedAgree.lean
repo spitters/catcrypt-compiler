@@ -577,6 +577,21 @@ theorem gWrite_taken {flag : Option String} {k : Nat} {S : List String} {x : Str
     (fun hm => hb x hm)
   exact ⟨env2, by rw [hs, gVal_one (flagVal_of_flagOn hf)], hotb⟩
 
+/-- An `ltClean` expression has no `SLimb` node. -/
+theorem limbFree_of_ltClean : ∀ e : SExpr, ltClean e → e.limbFree := by
+  intro e
+  induction e with
+  | SVar x => intro _; trivial
+  | SLit n => intro _; trivial
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb
+  | SLt a b iha ihb =>
+      intro hcl; exact ⟨iha hcl.1, ihb hcl.2⟩
+  | SAsr a b iha ihb => intro hcl; exact hcl.elim
+  | SMulS a b iha ihb => intro hcl; exact hcl.elim
+  | SMulHiS a b iha ihb => intro hcl; exact hcl.elim
+  | SLimb v i => intro hcl; exact hcl.elim
+
 /-- Under the absent flag or a flag slot holding `1`, the conversion tracks a
     `RustExec` run: the output environment agrees with the output state on the
     names bound after the command. -/
@@ -636,6 +651,7 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
   | @rScalarSetExpr x e hx he _ =>
       intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
       cases hexec
+      rw [SExpr.evalState_eq_eval rs e (limbFree_of_ltClean e he)]
       obtain ⟨env2, hs2, hotb⟩ := gWrite_taken (v := elimLt e) (S := S) hf hx
         (srcClean_elimLt e he) (varsIn_elimLt e (varsIn_mono (bndP_of_sub hB hb) e hr)) hb
       have hval : (elimLt e).evalBV (envReader env) = BitVec.ofNat 64 (e.eval rs.rsScalar) := by

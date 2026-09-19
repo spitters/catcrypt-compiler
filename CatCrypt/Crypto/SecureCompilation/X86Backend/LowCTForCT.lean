@@ -23,14 +23,14 @@ there is no machine branch.  A literal-bound loop is therefore lowered by
 the literal index `i`) followed by the lowering of the body, and the `n`
 iteration blocks are concatenated for `i = 0 … n-1`.
 
-Two consequences, both stated honestly:
+Two consequences:
 
 * **No emitted branch.**  The unrolled block is one straight-line sequence of
   the same `mov`/`add`/`and`/`xor`/`imul` instructions the scalar block
   compiler already emits — plus a `mov ρx, imm i` per iteration, which is a
   register write with an immediate operand (no memory operand at all).  So the
   whole block is `allDirect`, and machine constant-time follows from the
-  keystone `allDirect_constant_time` exactly as in the straight-line case.
+  theorem `allDirect_constant_time` exactly as in the straight-line case.
 
 * **No secret-dependent control flow.**  The loop bound `n` is a literal, and
   the per-iteration loop-variable value `i` is a literal — neither depends on
@@ -54,12 +54,12 @@ what `RFor` models and what constant-time code is restricted to.
   `RustExec` `forZero`/`forSucc` operational semantics (see `forDenote_succ`
   and `forDenote_rustExec`).
 * `lowerFor_allDirect` / `lowerFor_constant_time` — machine constant-time
-  (the easy genuine half: the unrolled block is all `IsDirect`).
+  (the easy half: the unrolled block is all `IsDirect`).
 * `lowerFor_denote` — denote preservation: the unrolled machine block tracks
   `forDenote` under register-allocation well-formedness, proved by induction
   on `n` using `runBlock_append` per iteration and `lowerSeq_denote` for each
   body copy.
-* `forDenote_rustExec` / `lowerFor_denote_rustExec` — the tie to the genuine
+* `forDenote_rustExec` / `lowerFor_denote_rustExec` — the tie to the
   `RustExec.RFor` operational semantics: `forDenote` *is* the post-state the
   real `RForᵢ` arms reach, so the machine run tracks the real source loop.
 -/
@@ -89,11 +89,11 @@ structure ForSrc where
 
 /-! ## 2. Embedding into real `LowCT` -/
 
-/-- **The embedding into real `LowCT`.**  A `ForSrc` is the genuine
+/-- **The embedding into real `LowCT`.**  A `ForSrc` is the
     `LowCT.RFor x n B` command, where the body `B` is the right-nested
     `RSeq` chain of `RScalarSetExpr` nodes built by `ArithSrc.seqToLowCT`
     (the same embedding the basic-block compiler uses).  This makes the loop
-    a real `LowCT` node, executed by the genuine `RustExec.forZero`/`forSucc`
+    a real `LowCT` node, executed by the`RustExec.forZero`/`forSucc`
     semantics — not a disconnected re-statement. -/
 def ForSrc.toLowCT (f : ForSrc) : LowCT :=
   .RFor f.x f.n (ArithSrc.seqToLowCT f.body)
@@ -176,7 +176,7 @@ theorem forDenote_succ (x : String) (n : Nat) (body : List ArithSrc) (rs : RustS
   simp only [forDenote, List.range_succ, List.foldl_append, List.foldl_cons,
     List.foldl_nil]
 
-/-! ## 6. Machine constant-time: the easy genuine half -/
+/-! ## 6. Machine constant-time: the easy half -/
 
 /-- `lowerForIter` is `allDirect`: a `movImm` (direct) followed by the lowered
     body (direct by `lowerSeq_allDirect`). -/
@@ -203,7 +203,7 @@ theorem lowerFor_allDirect (ρ : RegMap) (f : ForSrc) :
     trace from any two initial states: the loop bound and per-iteration index
     are literals, so the observable control-flow + memory-address sequence is a
     function of the program text alone.  This is the bounded-loop instance of
-    the machine keystone — bounded loop ⇒ straight-line ⇒ constant-time, no
+    `allDirect_constant_time` — bounded loop ⇒ straight-line ⇒ constant-time, no
     secret-dependent branch. -/
 theorem lowerFor_constant_time (ρ : RegMap) (f : ForSrc) (s₁ s₂ : JState 64) :
     blockLeak s₁ (lowerFor ρ f) = blockLeak s₂ (lowerFor ρ f) :=
@@ -234,7 +234,7 @@ theorem lowerForIter_denote (ρ : RegMap) (hρ : Function.Injective ρ)
 /-- **Denote preservation (the hard half).**  If the machine state `js`
     matches the source state `rs` under `ρ`, then after running the unrolled
     loop the machine state matches the source post-state `forDenote f rs`
-    — the genuine `RustExec.RFor` result (see `lowerFor_denote_rustExec`).
+    — the`RustExec.RFor` result (see `lowerFor_denote_rustExec`).
 
     Hypotheses are the register-allocation well-formedness conditions:
     * `ρ` injective — distinct source slots get distinct machine registers
@@ -272,12 +272,12 @@ theorem lowerFor_denote (ρ : RegMap) (hρ : Function.Injective ρ) (f : ForSrc)
     -- One more iteration (index k) tracks the final source iteration.
     exact lowerForIter_denote ρ hρ ⟨x, k, body⟩ hwf' k _ _ hk
 
-/-! ## 8. The tie to the genuine `RustExec.RFor` operational semantics
+/-! ## 8. The tie to the`RustExec.RFor` operational semantics
 
 `forDenote` is not a re-stated denotation: it is provably the post-state the
 real `RustExec` `forZero`/`forSucc` arms reach on `f.toLowCT`.  So the
 machine-run correspondence `lowerFor_denote` is a correspondence against the
-genuine source loop semantics. -/
+`RustExec` source loop semantics. -/
 
 /-- One source iteration of the real `RustExec` over the body chain
     `ArithSrc.seqToLowCT body`: from state `rs`, `RustExec` steps the body to
@@ -293,7 +293,7 @@ theorem seqToLowCT_rustExec (N : Nat) (leafSpec : LeafSpec)
     rw [ArithSrc.seqToLowCT_cons, srcDenote_cons]
     exact RustExec.seq _ _ _ _ _ (ArithSrc.rustExec N leafSpec p rs) (ih _)
 
-/-- **`forDenote` is the genuine `RustExec.RFor` post-state.**  Running the real
+/-- **`forDenote` is the`RustExec.RFor` post-state.**  Running the real
     operational semantics on `f.toLowCT = RFor x n (body-chain)` from `rs`
     reaches exactly `forDenote f rs`.  Proved by induction on `f.n` matching
     `forZero` (`forDenote_zero`) and `forSucc` (`forDenote_succ`), with each
@@ -332,6 +332,7 @@ theorem seqToLowCT_rustExec_det (N : Nat) (leafSpec : LeafSpec)
       -- `p.toLowCT` is a single `RScalarSetExpr`; invert it.
       rw [ArithSrc.toLowCT] at hhead
       cases hhead
+      rw [SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree] at htail
       rw [srcDenote_cons]
       exact ih _ _ htail
 
@@ -358,7 +359,7 @@ theorem rustExec_RFor_det (N : Nat) (leafSpec : LeafSpec) (f : ForSrc)
       exact seqToLowCT_rustExec_det N leafSpec body _ _ hBody
 
 /-- **Denote preservation, against the real `RustExec` (end to end).**  For the
-    unique source post-state `rs'` reached by the genuine `RustExec` on the
+    unique source post-state `rs'` reached by the`RustExec` on the
     bounded loop `f.toLowCT`, the machine run of the unrolling ends in a
     `StateMatch`-related state.  Combines `forDenote_rustExec` (the source loop
     *is* `forDenote`, via determinism of `RustExec` on `RFor`) with

@@ -64,8 +64,7 @@ as `SpeculativeCT.archObs` does; indirect-branch and return misprediction
 destination slot; cache-line granularity and timing.
 
 `RScalarSetExpr` is interpreted with the tower-aware `SExpr.evalState`, so an
-`SLimb` node reads the tower heap. `RustExec.scalarSetExpr` uses the scalar-only
-`SExpr.eval`, whose `SLimb` arm returns `0`.
+`SLimb` node reads the tower heap, as in `RustExec.scalarSetExpr`.
 
 ## References
 
@@ -1252,8 +1251,8 @@ constructors outside the list in the module header, which are state-preserving
 here.
 
 `specRun` and `archRun` are deterministic total functions, whereas `RustExec` is a
-relation; on the constructors both model they agree, except that
-`RScalarSetExpr` is interpreted with the tower-aware `SExpr.evalState` rather than
-`RustExec.scalarSetExpr`'s scalar-only `SExpr.eval`. -/
+relation; on the constructors both model they agree. `RScalarSetExpr` is
+interpreted with the tower-aware `SExpr.evalState`, as in
+`RustExec.scalarSetExpr`. -/
 
 end CatCrypt.Crypto.SecureCompilation.SpeculativeCTStoreBuffer

@@ -19,7 +19,7 @@ operational premise `hExec : RustExec N leafSpec c rs rs'` (the saturating-`Nat`
 as **independent** hypotheses, and reads the output value out of `semScalar`'s
 `env'`. Its header flags that tying that value back to the `RustExec` `Nat`
 model is a deferred, per-fragment `inRange` reconciliation. This module supplies
-that reconciliation on an honestly-restricted fragment.
+that reconciliation on a restricted fragment.
 
 ## The crux fact
 
@@ -38,7 +38,7 @@ The value relation is the **soundness** form `EnvRel` — *wherever* the source
 env binds a non-temp name at `.sword 64`, its word is the `ofNat` image of the
 `RustState` scalar. This is compatible with `ConsistentS` (the translation
 consistency): both hold for the empty entry env (`fun _ => none`) at the empty
-varmap, so the two entry hypotheses no longer conflict. What `EnvRel` alone does
+varmap, so the two entry hypotheses are jointly satisfiable. What `EnvRel` alone does
 NOT give is that a *read* name is bound; that is the reads-follow-writes
 condition, carried by the domain invariant `EnvBoundOn rs env B` (`env` correct
 on the names in `B`) threaded against the structural scoping `afterB`/`readsOK`:
@@ -93,7 +93,7 @@ def EnvRel (rs : RustState) (env : SEnvScalar) : Prop :=
     env x = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar x)⟩
 
 /-- The **domain-restricted refinement**: the env binds every non-temp name in
-    `B` at `.sword 64` to its `ofNat` image. This is the load-bearing simulation
+    `B` at `.sword 64` to its `ofNat` image. This is the simulation
     invariant — reads consume a `B`-membership to know the read name is bound,
     and writes extend `B`. `EnvBoundOn rs env (fun _ => False)` is trivially true,
     which discharges the entry at the empty varmap, and `EnvBoundOn rs env
@@ -103,7 +103,7 @@ def EnvBoundOn (rs : RustState) (env : SEnvScalar) (B : String → Prop) : Prop 
     env x = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar x)⟩
 
 /-- The `u64`-range invariant carried alongside the relations: every scalar slot
-    is a genuine `u64` (`< 2^64`), the invariant under which `Nat`-monus and
+    is a `u64` (`< 2^64`), the invariant under which `Nat`-monus and
     `BitVec`-wrap coincide. -/
 def ScalarInRange (rs : RustState) : Prop := ∀ x : String, rs.rsScalar x < 2 ^ 64
 
@@ -251,7 +251,7 @@ The refinement `R n w := (w = BitVec.ofNat 64 n)` registers through
 codomain-embedding (`ReprEmbedding`) or graded-retraction level (`ofNat 64` is
 not injective, and `toNat ∘ ofNat 64 ≠ id` off-range). So it registers as
 domain-restricted `BinOpHomOn`s: free on the ring / bitwise / shift arms, and the
-one arm that needs a genuine side condition — subtraction — is *not* a
+one arm that needs a side condition — subtraction — is *not* a
 `BinOpHomOn` at all (its no-underflow condition is relational, `b ≤ a`); its
 whole-expression side-conditioned transfer is `SExpr.evalBV_eq_ofNat_eval`,
 re-exported below as `sexprTransfer`. -/
@@ -415,6 +415,21 @@ theorem evalBV_congr_on (B : String → Prop) (β1 β2 : String → BitVec 64) :
   | SMulHiS a b iha ihb => intro _ _ hcl; exact hcl.elim
   | SLimb v i => intro _ _ hcl; exact hcl.elim
 
+/-- A `srcClean` expression has no `SLimb` node. -/
+theorem limbFree_of_srcClean : ∀ e : SExpr, srcClean e → e.limbFree := by
+  intro e
+  induction e with
+  | SVar x => intro _; trivial
+  | SLit n => intro _; trivial
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      intro hcl; exact ⟨iha hcl.1, ihb hcl.2⟩
+  | SLt a b iha ihb => intro hcl; exact hcl.elim
+  | SAsr a b iha ihb => intro hcl; exact hcl.elim
+  | SMulS a b iha ihb => intro hcl; exact hcl.elim
+  | SMulHiS a b iha ihb => intro hcl; exact hcl.elim
+  | SLimb v i => intro hcl; exact hcl.elim
+
 /-! ### Straight-line agreement -/
 
 /-- The straight-line half of the simulation: on `IsCoveredAdeqS`, a `RustExec`
@@ -453,6 +468,7 @@ theorem agreeS {N : Nat} {leafSpec : LeafSpec} {c : LowCT} (h : IsCoveredAdeqS c
   | rScalarSetExpr x e hclean hir_e =>
       intro rs rs' env B hexec henv hir hreads
       cases hexec
+      rw [SExpr.evalState_eq_eval rs e (limbFree_of_srcClean e hclean)]
       have hvb : varsBoundIn B e := hreads
       obtain ⟨env2, nm, cnt', hsem2, _, hotb2, _, _⟩ :=
         semLowerSExpr_ok' rs B e env 0 henv hvb hclean
@@ -468,7 +484,7 @@ theorem agreeS {N : Nat} {leafSpec : LeafSpec} {c : LowCT} (h : IsCoveredAdeqS c
 /-! ### Counted-loop agreement (Nat-induction) -/
 
 /-- `BitVec.ofNat` is injective at `0` on the `u64` sub-domain — the φ-merge guard
-    fact (`condv = 0#64 ↔ rsScalar name = 0` when the scalar is a genuine `u64`). -/
+    fact (`condv = 0#64 ↔ rsScalar name = 0` when the scalar is a `u64`). -/
 theorem ofNat_eq_zero_iff {a : Nat} (ha : a < 2 ^ 64) :
     (BitVec.ofNat 64 a = 0) ↔ a = 0 := by
   constructor

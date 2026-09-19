@@ -251,15 +251,28 @@ def whileK (body : RustState → Option RustState) (g : String) :
   | 0, rs => if rs.rsScalar g = 0 then some rs else none
   | j + 1, rs => if rs.rsScalar g = 0 then some rs else (body rs).bind (whileK body g j)
 
+/-- `SExpr.limbFree` is decidable, by recursion on the expression. -/
+instance decLimbFree : (e : SExpr) → Decidable e.limbFree
+  | .SVar _ | .SLit _ => isTrue trivial
+  | .SLimb _ _ => isFalse (fun h => h)
+  | .SAdd a b | .SSub a b | .SMul a b | .SShr a b | .SShl a b | .SAnd a b
+  | .SXor a b | .SLt a b | .SAsr a b | .SMulS a b | .SMulHiU a b | .SMulHiS a b =>
+      have := decLimbFree a
+      have := decLimbFree b
+      inferInstanceAs (Decidable (a.limbFree ∧ b.limbFree))
+
 /-- The interpreter of the scalar-slot commands in which every loop runs at most
-    `k` trips. -/
+    `k` trips.  An assignment `RScalarSetExpr x e` runs when `e` is
+    `SExpr.limbFree`, where its value is `e.eval rs.rsScalar`
+    (`SExpr.evalState_eq_eval`); a tower-limb read is outside the interpreter. -/
 def runK (k : Nat) : LowCT → RustState → Option RustState
   | .RSkip, rs => some rs
   | .RSeq a b, rs => (runK k a rs).bind (runK k b)
   | .RBlock b, rs => runK k b rs
   | .RLetU64Zero x b, rs => runK k b (rsSetScalar rs x 0)
   | .RScalarSet x v, rs => some (rsSetScalar rs x v)
-  | .RScalarSetExpr x e, rs => some (rsSetScalar rs x (e.eval rs.rsScalar))
+  | .RScalarSetExpr x e, rs =>
+      if e.limbFree then some (rsSetScalar rs x (e.eval rs.rsScalar)) else none
   | .RIfNz g t e, rs => if rs.rsScalar g = 0 then runK k e rs else runK k t rs
   | .RWhileNz g b, rs => whileK (runK k b) g k rs
   | _, _ => none
@@ -305,7 +318,13 @@ theorem runK_rustExec (k : Nat) :
   | RBlock b ih => intro rs rs' h; exact .block _ _ _ (ih rs rs' h)
   | RLetU64Zero x b ih => intro rs rs' h; exact .letU64Zero _ _ _ _ (ih _ rs' h)
   | RScalarSet x v => intro rs rs' h; cases h; exact .scalarSet _ _ _
-  | RScalarSetExpr x e => intro rs rs' h; cases h; exact .scalarSetExpr _ _ _
+  | RScalarSetExpr x e =>
+      intro rs rs' h
+      simp only [runK] at h
+      split_ifs at h with hlf
+      cases h
+      rw [← SExpr.evalState_eq_eval rs e hlf]
+      exact .scalarSetExpr _ _ _
   | RIfNz g t e iht ihe =>
       intro rs rs' h
       simp only [runK] at h
@@ -337,7 +356,13 @@ theorem runK_unrollAll (k : Nat) :
   | RBlock b ih => intro rs rs' h; exact .block _ _ _ (ih rs rs' h)
   | RLetU64Zero x b ih => intro rs rs' h; exact .letU64Zero _ _ _ _ (ih _ rs' h)
   | RScalarSet x v => intro rs rs' h; cases h; exact .scalarSet _ _ _
-  | RScalarSetExpr x e => intro rs rs' h; cases h; exact .scalarSetExpr _ _ _
+  | RScalarSetExpr x e =>
+      intro rs rs' h
+      simp only [runK] at h
+      split_ifs at h with hlf
+      cases h
+      rw [← SExpr.evalState_eq_eval rs e hlf]
+      exact .scalarSetExpr _ _ _
   | RIfNz g t e iht ihe =>
       intro rs rs' h
       simp only [runK] at h
@@ -380,7 +405,8 @@ def runKL (k : Nat) : LowCT → List (String × Nat) → Option (List (String ×
   | .RBlock b, l => runKL k b l
   | .RLetU64Zero x b, l => runKL k b (insertL l x 0)
   | .RScalarSet x v, l => some (insertL l x v)
-  | .RScalarSetExpr x e, l => some (insertL l x (e.eval (lookupD l)))
+  | .RScalarSetExpr x e, l =>
+      if e.limbFree then some (insertL l x (e.eval (lookupD l))) else none
   | .RIfNz g t e, l => if lookupD l g = 0 then runKL k e l else runKL k t l
   | .RWhileNz g b, l => whileKL (runKL k b) g k l
   | _, _ => none
@@ -445,7 +471,11 @@ theorem runK_storeState (k : Nat) (tw : String → Option (Σ t : TowerType, Rus
   | RLetU64Zero x b ih => intro l; simp only [runK, runKL, rsSetScalar_storeState, ih]
   | RScalarSet x v => intro l; simp only [runK, runKL, rsSetScalar_storeState, Option.map_some]
   | RScalarSetExpr x e =>
-      intro l; simp only [runK, runKL, Option.map_some]; rw [← rsSetScalar_storeState]; rfl
+      intro l
+      simp only [runK, runKL]
+      split_ifs
+      · simp only [Option.map_some]; rw [← rsSetScalar_storeState]; rfl
+      · rfl
   | RIfNz g t e iht ihe =>
       intro l
       simp only [runK, runKL]

@@ -175,6 +175,7 @@ theorem agreeRun {c : LowCT} {rs rs' : RustState} (h : AdeqRun c rs rs') :
   | @rScalarSetExpr x e rs hclean hir_e =>
       intro N leafSpec rs₁ env B hexec henv hir hreads
       cases hexec
+      rw [SExpr.evalState_eq_eval rs e (limbFree_of_srcClean e hclean)]
       have hvb : varsBoundIn B e := hreads
       obtain ⟨env2, nm, cnt', hsem2, _, hotb2, _, _⟩ :=
         semLowerSExpr_ok' rs B e env 0 henv hvb hclean
@@ -371,9 +372,11 @@ theorem legWeld
 
 /-- **The weld at a `RustSrc` source.** The descent's refinement is the verified
     lowering `lowerRefines src`, transported along `hNorm : LitNorm (lower src) c`
-    to the front's term `c`; the source step is `RustSrc.exec src`. -/
+    to the front's term `c`; the source step is `RustSrc.exec src`.  The source
+    reads no tower limb (`hLf`), the scope of `lowerRefines`. -/
 theorem legWeld_lower
-    (src : RustSrc) (hIf : src.ifFree = true) {c : LowCT} (hNorm : LitNorm (lower src) c)
+    (src : RustSrc) (hIf : src.ifFree = true) (hLf : src.limbFree)
+    {c : LowCT} (hNorm : LitNorm (lower src) c)
     {rs : RustState} (hRun : ∃ rs', AdeqRun c rs rs') (hIR : ScalarInRange rs)
     (name : String) (hNT : ¬ isTmpName name)
     (hReads : readsOK (fun _ => False) c) (hOut : afterB (fun _ => False) c name)
@@ -384,7 +387,7 @@ theorem legWeld_lower
     F.jcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))
         = ctTransTy (BitVec.ofNat 64 (RustSrc.exec src rs.rsScalar name))
       ∧ wEnc (BitVec.ofNat 64 (RustSrc.exec src rs.rsScalar name)) = fa (derivedAbs rs) name :=
-  legWeld c (RustSrc.exec src) (rrefines_of_litNorm hNorm (lowerRefines src hIf))
+  legWeld c (RustSrc.exec src) (rrefines_of_litNorm hNorm (lowerRefines src hIf hLf))
     hRun hIR name hNT hReads hOut F fa P hCorres hP
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

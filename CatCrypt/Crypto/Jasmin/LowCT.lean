@@ -1999,13 +1999,14 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RArrLoadLit dst src idx) rs
         (locatedUpdate rs dst (leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx))
-  /-- **Phase Ext — set scalar slot to an `SExpr` value.**  Evaluates
-      the expression against the current scalar env and writes the
-      result.  Total: `SExpr.eval` is total on the partial-default
-      `rsScalar : String → Nat`. -/
+  /-- **Phase Ext — set scalar slot to an `SExpr` value.**  Evaluates the
+      expression with the tower-aware `SExpr.evalState`, so that
+      `RScalarSetExpr x (SLimb v i)` reads limb `i` of tower slot `v`, and
+      writes the result.  On an `SLimb`-free expression the value is
+      `e.eval rs.rsScalar` (`SExpr.evalState_eq_eval`). -/
   | scalarSetExpr : ∀ x e rs,
       RustExec N leafSpec (.RScalarSetExpr x e) rs
-        (rsSetScalar rs x (e.eval rs.rsScalar))
+        (rsSetScalar rs x (e.evalState rs))
   /-- **Phase E2 semantics — destination-threaded leaf call.**  Single
       output, shape-compatible with `call`, but the destination slot is
       threaded as the first call argument *and* the receiving lvalue:

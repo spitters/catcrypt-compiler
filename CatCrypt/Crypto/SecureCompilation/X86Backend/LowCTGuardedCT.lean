@@ -384,15 +384,22 @@ theorem lowerGuarded_denote (ρ : RegMap) (p : GuardedSrc) (rs : RustState) (js 
     simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, if_false]
     exact hmatch v
 
+/-- The expression of a guarded source reads scalar slots and no tower limb. -/
+theorem GuardedSrc.toSExpr_limbFree (p : GuardedSrc) : p.toSExpr.limbFree := by
+  cases p with
+  | mk dst a op => cases op <;> simp [GuardedSrc.toSExpr, SExpr.limbFree]
+
 /-- The source post-state of `p.toLowCT` under the **real** `RustExec`
     operational semantics: `RustExec.scalarSetExpr` steps
-    `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`. Ties
+    `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`
+    (`p.toSExpr` is `limbFree`, so `evalState` is `eval`). Ties
     `lowerGuarded_denote`'s post-state to the `LowCT` semantics. -/
 theorem GuardedSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : GuardedSrc)
     (rs : RustState) :
     RustExec N leafSpec p.toLowCT rs
-      (rsSetScalar rs p.dst (p.toSExpr.eval rs.rsScalar)) :=
-  RustExec.scalarSetExpr p.dst p.toSExpr rs
+      (rsSetScalar rs p.dst (p.toSExpr.eval rs.rsScalar)) := by
+  rw [← SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
+  exact RustExec.scalarSetExpr p.dst p.toSExpr rs
 
 /-- **Denote preservation, against the real `RustExec`.** Combines
     `GuardedSrc.rustExec` (the source step) with `lowerGuarded_denote`:
@@ -407,6 +414,7 @@ theorem lowerGuarded_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
     (hexec : RustExec N leafSpec p.toLowCT rs rs') :
     StateMatch ρ rs' (runBlock js (lowerGuarded ρ p)) := by
   cases hexec
+  rw [SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
   exact lowerGuarded_denote ρ p rs js hρ hwf hg hmatch
 
 /-! ## 7. Source CT ⇒ machine CT, end to end
