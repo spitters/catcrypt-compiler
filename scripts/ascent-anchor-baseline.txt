@@ -126,6 +126,7 @@ CatCrypt.Hax.Ascent.LocalCalls	no reason recorded
 CatCrypt.Hax.Ascent.Refines	no reason recorded
 CatCrypt.Hax.Ascent.RuntimeLeaves	no reason recorded
 CatCrypt.Hax.Ascent.RuntimeOps	no reason recorded
+CatCrypt.Hax.Ascent.Square	square algebra for the correspondence judgments; carries no kernel of its own
 CatCrypt.Hax.Ascent.Structs	no reason recorded
 CatCrypt.Hax.Ascent.TableCongr	no reason recorded
 CatCrypt.Hax.Ascent.WhileFold	no reason recorded
