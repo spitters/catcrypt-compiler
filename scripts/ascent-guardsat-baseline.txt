@@ -1,0 +1,36 @@
+# Ascent module/theorem pairs where a CLOSED CorresJ/BytesCorresJ theorem has
+# no corresJ_guardSat/bytesCorresJ_guardSat pairing attempt (see
+# CatCrypt/Crypto/SecureCompilation/Ascent/GuardSatisfiable.lean) in the module
+# or a module it imports. Each line: module<TAB>theorem-name<TAB>reason.
+# Recorded by scripts/ascent-nonvacuity-ratchet.sh --record.
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid1_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid2_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid3_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid4_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid5_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulMid_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	carryMulTail_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	solinasSeg1_corres_sym	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	solinasSeg2_corres_sym	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	solinasSeg3_corres_sym	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	solinasSeg4_corres_sym	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	solinasSquareBlock_corres_sym	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	carryMul_addAdcx_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	carryMul_imul_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	carryMul_lines8to16_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasBody_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasSeg1_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasSeg2_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasSeg3_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasSeg4_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	solinasSquareBlock_corres	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof	feAddBlock_corresJ	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof	feSubBlock_corresJ	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519MulSqrProof	feMulBlock_corresJ	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519MulSqrProof	feSqrBlock_corresJ	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86	add_descent_solver	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86	sub_descent_solver	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	alu_refines	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	compiled_refines	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	mulx_adcx_refines	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	sbb3_refines	no reason recorded

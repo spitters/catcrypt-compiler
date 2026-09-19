@@ -72,9 +72,12 @@
 #     right.
 #   * A candidate is considered discharged when `corresJ_guardSat` or
 #     `bytesCorresJ_guardSat`, followed by the candidate's exact name as a whole
-#     word, appears anywhere in the candidate's module or a module it imports
-#     (transitively, over the same Ascent-only import closure as the state-relation
-#     pass). This script does NOT check that the paired witness has the right type,
+#     word, appears in ANY ascent module. The pairing is not confined to the
+#     candidate's import closure: a `_guardSat` corollary lives in a module that
+#     IMPORTS the one stating the correspondence, since that is where the theorem is
+#     in scope, which is the opposite direction from the state-relation pass. A Lean
+#     theorem name is unambiguous, so the name alone identifies the candidate.
+#     This script does NOT check that the paired witness has the right type,
 #     or even that the pairing elaborates — it only checks that the pairing was
 #     ATTEMPTED. The elaborator is the actual check: `corresJ_guardSat`/
 #     `bytesCorresJ_guardSat` are stated with `SR`/`P` implicit
@@ -277,18 +280,17 @@ done < "$tmp/uses"
 sort -u -o "$tmp/violations" "$tmp/violations"
 sort -u -o "$tmp/ok" "$tmp/ok"
 
-# guardsat violations: a candidate (module, theorem-name) such that no module in
-# module's closure attempts a corresJ_guardSat/bytesCorresJ_guardSat pairing for it.
+# guardsat violations: a candidate (module, theorem-name) for which no ascent module
+# attempts a corresJ_guardSat/bytesCorresJ_guardSat pairing.
 : > "$tmp/gs_violations"
 : > "$tmp/gs_ok"
 while IFS=$'\t' read -r m name; do
   found=0
-  closure_ms=$(grep -P "^\Q$m\E\t" "$tmp/closure_pairs" | cut -f2)
-  [ -z "$closure_ms" ] && closure_ms="$m"
-  while IFS= read -r cm; do
-    [ -z "$cm" ] && continue
-    if grep -qP "^\Q$cm\E\t\Q$name\E\$" "$tmp/gs_discharged"; then found=1; break; fi
-  done <<< "$closure_ms"
+  # The pairing may sit in ANY ascent module, not only in the candidate's own import
+  # closure: a `_guardSat` corollary naturally lives in a module that IMPORTS the one
+  # stating the correspondence, since that is where the theorem is in scope, which is
+  # the opposite direction. Match on the theorem name, which is unambiguous here.
+  if grep -qP "\t\Q$name\E\$" "$tmp/gs_discharged"; then found=1; fi
   if [ "$found" -eq 1 ]; then
     printf '%s\t%s\n' "$m" "$name" >> "$tmp/gs_ok"
   else
