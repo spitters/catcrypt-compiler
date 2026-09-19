@@ -2546,6 +2546,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.Refines,
     Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeLeaves,
     Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeOps,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Square,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Structs,
     Lake.Glob.one `CatCrypt.Hax.Ascent.TableCongr,
     Lake.Glob.one `CatCrypt.Hax.Ascent.WhileFold,
