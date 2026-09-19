@@ -1552,12 +1552,29 @@ This already unlocks the whole SHA-256 ARX σ-family verbatim — `small_sigma0`
 (`ch`): that is the orthogonal `rhsOf`-has-no-NOT-`Rhs` limitation, not an
 `anfLift` gap. -/
 
-/-- Drop a trailing `#<width>` head tag, mapping the capitalized shift twins
-    `Shr`/`Shl` to the lowercase `shr`/`shl` the recognizers consume. A small
-    explicit table over the width-32 (and width-16 `Shr`) heads the SHA-256
-    extraction emits, kept as a literal-`if` chain so it reduces under
-    `simp [String.reduceEq]` (a generic `splitOn`-based stripper does not). Bare
-    heads (no `#`) pass through unchanged. -/
+/-- Drop an unsigned width tag from an ALU/shift/rotate head, mapping the
+    capitalized shift twins `Shr`/`Shl`/`Sar` to the lowercase `shr`/`shl`/`sar`
+    the recognizers consume.
+
+    The tagged forms covered are the bare-width `#8`/`#16`/`#32`/`#64`/`#size`
+    and the explicitly-unsigned `#u8`/`#u16`/`#u32`/`#u64`/`#usize` twins of each
+    ALU/shift/rotate head. Three classes pass through unchanged: bare heads,
+    heads carrying a signed tag (`isSignedHead`), and `cast` heads of any tag.
+    The recognizers key on bare unsigned heads, so leaving a signed or `cast`
+    head tagged is what makes the front reject it rather than read it as its
+    unsigned same-width twin — the front has a single register width `w`, at
+    which `Rhs.cast` is `BitVec.zeroExtend w`, the identity, so a `cast#w'` with
+    `w' ≠ w` has no sound bare image.
+
+    The table is a literal-`if` chain over full head names, with no `String`
+    decomposition or concatenation. `String.endsWith`, `String.dropRight` and
+    `String.splitOn` have unexposed bodies in a module and do not reduce at all,
+    so the downstream recognizer pins — which reduce this rewrite by `rfl` and by
+    `simp [String.reduceEq]` — would not close over them; `String.append` on
+    literals reduces, at about a millisecond per application. A decomposition on
+    `#` would also mangle the non-width `#` heads a hax extraction emits, such as
+    `struct_update#Xof#0#3`. The width-32 forms are tested first because a kernel
+    `String`-literal comparison costs a few milliseconds. -/
 def stripWidthSuffix (f : String) : String :=
   if f = "Shr#32" then "shr"
   else if f = "Shr#16" then "shr"
@@ -1570,7 +1587,90 @@ def stripWidthSuffix (f : String) : String :=
   else if f = "wrapping_add#32" then "wrapping_add"
   else if f = "wrapping_mul#32" then "wrapping_mul"
   else if f = "wrapping_sub#32" then "wrapping_sub"
+  else if f = "Shr#64" ∨ f = "Shr#8" ∨ f = "Shr#size" ∨ f = "Shr#u32" ∨
+     f = "Shr#u64" ∨ f = "Shr#u16" ∨ f = "Shr#u8" ∨ f = "Shr#usize" then "shr"
+  else if f = "Shl#64" ∨ f = "Shl#16" ∨ f = "Shl#8" ∨ f = "Shl#size" ∨ f = "Shl#u32" ∨
+     f = "Shl#u64" ∨ f = "Shl#u16" ∨ f = "Shl#u8" ∨ f = "Shl#usize" then "shl"
+  else if f = "BitXor#64" ∨ f = "BitXor#16" ∨ f = "BitXor#8" ∨ f = "BitXor#size" ∨
+     f = "BitXor#u32" ∨ f = "BitXor#u64" ∨ f = "BitXor#u16" ∨ f = "BitXor#u8" ∨
+     f = "BitXor#usize" then "BitXor"
+  else if f = "BitAnd#64" ∨ f = "BitAnd#16" ∨ f = "BitAnd#8" ∨ f = "BitAnd#size" ∨
+     f = "BitAnd#u32" ∨ f = "BitAnd#u64" ∨ f = "BitAnd#u16" ∨ f = "BitAnd#u8" ∨
+     f = "BitAnd#usize" then "BitAnd"
+  else if f = "BitOr#64" ∨ f = "BitOr#16" ∨ f = "BitOr#8" ∨ f = "BitOr#size" ∨
+     f = "BitOr#u32" ∨ f = "BitOr#u64" ∨ f = "BitOr#u16" ∨ f = "BitOr#u8" ∨
+     f = "BitOr#usize" then "BitOr"
+  else if f = "rotate_right#64" ∨ f = "rotate_right#16" ∨ f = "rotate_right#8" ∨
+     f = "rotate_right#size" ∨ f = "rotate_right#u32" ∨ f = "rotate_right#u64" ∨
+     f = "rotate_right#u16" ∨ f = "rotate_right#u8" ∨ f = "rotate_right#usize" then
+    "rotate_right"
+  else if f = "rotate_left#32" ∨ f = "rotate_left#64" ∨ f = "rotate_left#16" ∨
+     f = "rotate_left#8" ∨ f = "rotate_left#size" ∨ f = "rotate_left#u32" ∨
+     f = "rotate_left#u64" ∨ f = "rotate_left#u16" ∨ f = "rotate_left#u8" ∨
+     f = "rotate_left#usize" then "rotate_left"
+  else if f = "wrapping_add#64" ∨ f = "wrapping_add#16" ∨ f = "wrapping_add#8" ∨
+     f = "wrapping_add#size" ∨ f = "wrapping_add#u32" ∨ f = "wrapping_add#u64" ∨
+     f = "wrapping_add#u16" ∨ f = "wrapping_add#u8" ∨ f = "wrapping_add#usize" then
+    "wrapping_add"
+  else if f = "wrapping_mul#64" ∨ f = "wrapping_mul#16" ∨ f = "wrapping_mul#8" ∨
+     f = "wrapping_mul#size" ∨ f = "wrapping_mul#u32" ∨ f = "wrapping_mul#u64" ∨
+     f = "wrapping_mul#u16" ∨ f = "wrapping_mul#u8" ∨ f = "wrapping_mul#usize" then
+    "wrapping_mul"
+  else if f = "wrapping_sub#64" ∨ f = "wrapping_sub#16" ∨ f = "wrapping_sub#8" ∨
+     f = "wrapping_sub#size" ∨ f = "wrapping_sub#u32" ∨ f = "wrapping_sub#u64" ∨
+     f = "wrapping_sub#u16" ∨ f = "wrapping_sub#u8" ∨ f = "wrapping_sub#usize" then
+    "wrapping_sub"
+  else if f = "Not#64" ∨ f = "Not#16" ∨ f = "Not#8" ∨ f = "Not#size" ∨
+     f = "Not#u32" ∨ f = "Not#u64" ∨ f = "Not#u16" ∨ f = "Not#u8" ∨
+     f = "Not#usize" then "Not"
+  else if f = "BitNot#32" ∨ f = "BitNot#64" ∨ f = "BitNot#16" ∨ f = "BitNot#8" ∨
+     f = "BitNot#size" ∨ f = "BitNot#u32" ∨ f = "BitNot#u64" ∨ f = "BitNot#u16" ∨
+     f = "BitNot#u8" ∨ f = "BitNot#usize" then "BitNot"
+  else if f = "Sar#32" ∨ f = "Sar#64" ∨ f = "Sar#16" ∨ f = "Sar#8" ∨ f = "Sar#size" ∨
+     f = "Sar#u32" ∨ f = "Sar#u64" ∨ f = "Sar#u16" ∨ f = "Sar#u8" ∨
+     f = "Sar#usize" then "sar"
   else f
+
+/-- Whether an operator head carries a **signed** width tag (`#i8`/`#i16`/`#i32`/
+    `#i64`/`#isize`), or is a `cast` head of any tag. `stripWidthSuffix` leaves
+    both classes tagged, so the recognizers reject them; this predicate names the
+    rejection reason. A signed operation's meaning is not its unsigned twin's at
+    the front's single unsigned register width, and a `cast#w'` is the identity
+    only when `w'` is that width. -/
+def isSignedHead (f : String) : Bool :=
+  f = "Shr#i8" ∨ f = "Shr#i16" ∨ f = "Shr#i32" ∨ f = "Shr#i64" ∨ f = "Shr#isize" ∨
+  f = "Shl#i8" ∨ f = "Shl#i16" ∨ f = "Shl#i32" ∨ f = "Shl#i64" ∨ f = "Shl#isize" ∨
+  f = "Sar#i8" ∨ f = "Sar#i16" ∨ f = "Sar#i32" ∨ f = "Sar#i64" ∨ f = "Sar#isize" ∨
+  f = "BitXor#i8" ∨ f = "BitXor#i16" ∨ f = "BitXor#i32" ∨ f = "BitXor#i64" ∨
+  f = "BitAnd#i8" ∨ f = "BitAnd#i16" ∨ f = "BitAnd#i32" ∨ f = "BitAnd#i64" ∨
+  f = "BitOr#i8" ∨ f = "BitOr#i16" ∨ f = "BitOr#i32" ∨ f = "BitOr#i64" ∨
+  f = "Rem#i8" ∨ f = "Rem#i16" ∨ f = "Rem#i32" ∨ f = "Rem#i64" ∨
+  f = "Div#i8" ∨ f = "Div#i16" ∨ f = "Div#i32" ∨ f = "Div#i64" ∨
+  f = "wrapping_add#i8" ∨ f = "wrapping_add#i16" ∨ f = "wrapping_add#i32" ∨
+  f = "wrapping_add#i64" ∨
+  f = "wrapping_mul#i8" ∨ f = "wrapping_mul#i16" ∨ f = "wrapping_mul#i32" ∨
+  f = "wrapping_mul#i64" ∨
+  f = "wrapping_sub#i8" ∨ f = "wrapping_sub#i16" ∨ f = "wrapping_sub#i32" ∨
+  f = "wrapping_sub#i64" ∨
+  f = "cast#8" ∨ f = "cast#16" ∨ f = "cast#32" ∨ f = "cast#64" ∨
+  f = "cast#u8" ∨ f = "cast#u16" ∨ f = "cast#u32" ∨ f = "cast#u64" ∨
+  f = "cast#i8" ∨ f = "cast#i16" ∨ f = "cast#i32" ∨ f = "cast#i64" ∨
+  f = "cast#size" ∨ f = "cast#usize" ∨ f = "cast#isize"
+
+/-! Static checks on the two head tables: the width-64 unsigned heads reach their
+bare form, and the `cast` and signed-tagged heads do not. A head that stops being
+stripped turns a compiling front into a rejecting one with no other local
+signal. -/
+
+example : stripWidthSuffix "Shr#64" = "shr" := rfl
+example : stripWidthSuffix "Shl#64" = "shl" := rfl
+example : stripWidthSuffix "BitAnd#64" = "BitAnd" := rfl
+example : stripWidthSuffix "wrapping_add#64" = "wrapping_add" := rfl
+example : stripWidthSuffix "cast#64" = "cast#64" := rfl
+example : stripWidthSuffix "Shr#i32" = "Shr#i32" := rfl
+example : isSignedHead "Rem#i64" = true := rfl
+example : isSignedHead "cast#i32" = true := rfl
+example : isSignedHead "Shr#32" = false := rfl
 
 /-- Fresh hoisting-temporary name `_anf<n>`. Disjoint from real source names (no
     real binder starts with `_anf`) and from the σ-block scratch (`s`/`t`/`W…`). -/
