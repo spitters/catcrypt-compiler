@@ -68,23 +68,45 @@ theorem srcCD_front : cryptoDialectToJasminCom srcCD = some comBlock2 := rfl
 theorem frontCom_recognise : comToArithBlock comBlock2 = some block2 :=
   comBlock2_recognise
 
-/-- The bytes of the lowered block decode back to it. -/
+/-- The machine block, written as the chain it comes from: the front's output for
+    `srcCD`, recognised, then lowered. -/
+def frontBlock : List (JInstr 64) :=
+  match cryptoDialectToJasminCom srcCD with
+  | some jcom =>
+      match comToArithBlock jcom with
+      | some ab => lowerBlock ab nm2 g2
+      | none => []
+  | none => []
+
+/-- The chain lands the same instructions the lowering of `block2` gives. -/
+theorem frontBlock_eq : frontBlock = demoBlock := by
+  rw [frontBlock, srcCD_front]
+  simp only [frontCom_recognise]
+  rfl
+
+/-- The bytes of the front's block. -/
+def frontBytes : List (BitVec 8) := encodeJBlock idAlloc frontBlock
+
+/-- The bytes decode back to the block they encode. -/
 theorem frontBytes_decode :
-    decodeJStream demoBlock.length bytesOfCom = some demoBlock :=
-  demo_bytes_decode
+    decodeJStream frontBlock.length frontBytes = some frontBlock := by
+  rw [frontBytes, frontBlock_eq]
+  exact demo_bytes_decode
 
 /-- Running the decoded block leaves the front's output program's denotation in
     `%rdx`, for every machine state corresponding to the valuation. -/
 theorem frontBytes_denote (s : JState 64) (V : Ctxt.Valuation Δ2)
     (hinterp : JStateInterpG nm2 V s) :
-    (runBlock s demoBlock).get "%rdx" = comBlock2.denote V :=
-  demo_bytes_denote s V hinterp
+    (runBlock s frontBlock).get "%rdx" = comBlock2.denote V := by
+  rw [frontBlock_eq]
+  exact demo_bytes_denote s V hinterp
 
 /-! ## 3. The concrete value -/
 
 /-- On the sample state the block leaves `(7 + 35) * 7 = 294` in `%rdx`. -/
 theorem sample_front_bytes :
-    (runBlock sampleS2 demoBlock).get "%rdx" = (294 : BitVec 64) :=
-  sample_dialect_bytes
+    (runBlock sampleS2 frontBlock).get "%rdx" = (294 : BitVec 64) := by
+  rw [frontBlock_eq]
+  exact sample_dialect_bytes
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
