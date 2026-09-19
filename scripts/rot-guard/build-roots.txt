@@ -837,12 +837,9 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst
 CatCrypt.Crypto.SecureCompilation.ZkProtocolKernels
-CatCrypt.Crypto.Symbolic.EDHOC.ForwardSecrecy
 CatCrypt.Crypto.Symbolic.EDHOC.InitiatorAuth
-CatCrypt.Crypto.Symbolic.EDHOC.KeySecrecy
 CatCrypt.Crypto.Symbolic.EDHOC.ProtocolVerification
 CatCrypt.Crypto.Symbolic.EDHOC.ResponderAuth
-CatCrypt.Crypto.Symbolic.MLS.ForwardSecrecy
 CatCrypt.Crypto.Symbolic.MLS.GroupAuth
 CatCrypt.Crypto.Symbolic.MLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.Signal.Linking
@@ -851,10 +848,6 @@ CatCrypt.Crypto.Symbolic.Soundness.Hash
 CatCrypt.Crypto.Symbolic.Soundness.KEM
 CatCrypt.Crypto.Symbolic.Soundness.MAC
 CatCrypt.Crypto.Symbolic.Soundness.Signature
-CatCrypt.Crypto.Symbolic.TLS.HNDL
-CatCrypt.Crypto.Symbolic.TLS.KeySecrecy
-CatCrypt.Crypto.Symbolic.TLS.PSKAuth
-CatCrypt.Crypto.Symbolic.TLS.PSKSecrecy
 CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.TLS.ServerAuth
 CatCrypt.Crypto.Symbolic.Tactic
