@@ -156,6 +156,13 @@ theorem signedCmpOps_deepNoControlFlow : Builtins.DeepNoControlFlow signedCmpOps
   revert h; unfold signedCmpOps
   split <;> intro h <;> cases h <;> simp [Value.deepNoControlFlow]
 
+/-- The signed bitwise table returns signed words only. -/
+theorem signedBitwiseOps_deepNoControlFlow : Builtins.DeepNoControlFlow Hax.signedBitwiseOps := by
+  intro f args v h _
+  revert h; unfold Hax.signedBitwiseOps
+  split <;> intro h <;> (try split at h) <;> cases h <;>
+    simp [Value.deepNoControlFlow, wrapSint]
+
 /-- The panic table returns a value contained in an argument, or a boolean. -/
 theorem panicOps_deepNoControlFlow : Builtins.DeepNoControlFlow panicOps := by
   intro f args v h hargs
@@ -179,7 +186,8 @@ theorem widthOps_deepNoControlFlow : Builtins.DeepNoControlFlow widthOps :=
         (deepNoControlFlow_orElse _ _ widthCastOps_deepNoControlFlow
           (deepNoControlFlow_orElse _ _ widthArrayOps_deepNoControlFlow
             (deepNoControlFlow_orElse _ _ signedArithOps_deepNoControlFlow
-              signedCmpOps_deepNoControlFlow)))))
+              (deepNoControlFlow_orElse _ _ signedCmpOps_deepNoControlFlow
+                signedBitwiseOps_deepNoControlFlow))))))
 
 /-- `widthAwareBuiltins`, `widthOps` with `defaultBuiltins` as fallback, never
     fabricates a control-flow value. -/
