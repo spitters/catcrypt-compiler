@@ -285,13 +285,16 @@ def effWidth (opn : String) : Nat :=
     register-only forms (`CMOV`cc, `ANDN`, `ZEROEXT`/`TRUNC`, the SIB address
     ops `LOAD`/`STORE`/`LOADIDX`/`STOREIDX`/`LEA`, `SETC`, the variable-count
     shifts and the immediate shifts, whose count is carried in the mnemonic) do
-    not. The narrow `:16`/`:8` ABI moves are excluded with the width gate. -/
+    not. The two-source `SET<cc>` comparisons render their second operand as the
+    immediate of a `cmp`. The narrow `:16`/`:8` ABI moves are excluded with the
+    width gate. -/
 def isImmFoldable (opn : String) : Bool :=
   (parseImmShiftMnem opn).isNone
     && (mnemWidth opn == 32 || mnemWidth opn == 64)
     && (match stripAbiTag opn with
         | "MOV" | "MOVQ" | "ADD" | "SUB" | "AND" | "OR" | "XOR"
-        | "ADC" | "SBB" | "CMP" | "TEST" => true
+        | "ADC" | "SBB" | "CMP" | "TEST"
+        | "SETE" | "SETNE" | "SETB" | "SETBE" | "SETA" | "SETAE" => true
         | _ => false)
 
 /-- Is the (single) destination of this recognized op **write-only** — i.e.
