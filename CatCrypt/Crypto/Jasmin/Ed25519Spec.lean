@@ -843,11 +843,4 @@ axiom ed_smul_neg_correct (k : FpL25519) (P : EdPoint) :
       ⟨fp_opp (ed_smul k P).X, (ed_smul k P).Y,
        fp_opp (ed_smul k P).T, (ed_smul k P).Z⟩
 
-/-- **Proved (was axiom).** RFC 8032 sign/verify end-to-end correctness
-    placeholder — the statement was `True`, so it is now a theorem.
-    The actual end-to-end correctness statement (with the right Lean
-    types for byte-level inputs and signature outputs) is the open
-    obligation; this stub is just a placeholder. -/
-theorem rfc8032_sign_verify_correct_axiom : True := trivial
-
 end CatCrypt.Crypto.Jasmin.Ed25519Spec

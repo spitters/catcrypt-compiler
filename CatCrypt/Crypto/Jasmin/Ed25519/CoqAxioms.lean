@@ -88,7 +88,6 @@ structured audit trail that records a citation for each axiom.
 | Lean axiom | Status | Coq citation |
 |---|---|---|
 | `sign_verify_equation` (proved) | — | Lean theorem (no axiom needed) |
-| `rfc8032_sign_verify_correct_axiom` | (now `theorem`) | trivially `True` after promotion |
 | Future: `ed25519_sign_correct` | 🚧 phase1 (BLOCKED) | `AUCurves/.../Sign.v::ed25519_sign_correct` (Phase 1.3) — blocked on missing bedrock2 Edwards scalarmult (see `ed_smul` row above). Sign.v's docstring spells out the two paths to unblock (write `ed25519_scalarmult` natively, or wrap montladder via the Edwards-Montgomery iso). |
 | Future: `ed25519_verify_correct` | 🚧 phase1 (BLOCKED) | `AUCurves/.../Verify.v::ed25519_verify_correct` (Phase 1.4) — same blocker as Sign. |
 | Future: `ed25519_sign_rust_correct` | 🟡 phase1 (Stage 2 ready) | Phase 1.5: Stage 2 (safe Rust wrapper) is now producible — `AUCurves/.../ExtractRust.v::ed25519_safe_rust : string` emits a real Rust module via the extended ToSafeRustString.gen_module (KBytes/KBytesSlice support added 2026-04-26). Verified via vm_compute. Stage 1 (bedrock2 → C body) still pending Phase 1.3+1.4. The end-to-end correctness theorem chains the two stages plus ed25519_sign_correct from Sign.v. |
