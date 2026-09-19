@@ -1038,6 +1038,16 @@ theorem s2nMontmulP384_corresJ :
   simpa only [List.append_assoc, montAbs] using
     corresJ_append SRm corresJ_seg01 c02 (fun _ h => ⟨rfl, h.2⟩)
 
+/-- **`s2nMontmulP384_corresJ`'s precondition is satisfiable.** The all-zero machine state
+    and the all-zero abstract state are related by `SRm` and meet the entry guard
+    `stage = 0 ∧ x < 2 ^ 384`: `SRm`'s memory equations hold at `0 = 0`, and `StageRel` is
+    the trivial case at every stage other than the eleven it names, in particular `0`. So
+    `s2nMontmulP384_corresJ` is not a claim about the empty relation. -/
+theorem srm_stage0_satisfiable :
+    ∃ st a, SRm st a ∧ a.stage = 0 ∧ a.x < 2 ^ 384 :=
+  ⟨{ regs := fun _ => 0 }, { stage := 0, x := 0, y := 0, acc := 0 },
+    ⟨rfl, rfl, trivial⟩, rfl, by decide⟩
+
 /-! ## The abstract algorithm computes the Montgomery product -/
 
 /-- A reduction round divides exactly: `redcF T · 2^64 = T + d · p384` with

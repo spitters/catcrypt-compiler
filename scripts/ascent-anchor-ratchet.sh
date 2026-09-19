@@ -79,8 +79,28 @@ done
 file_text() {
   if [ -f "$snap/$1" ]; then cat "$snap/$1"; else cat "$1"; fi
 }
+# Strip block comments and docstrings character by character, closing a block on the
+# line that opened it. `sed -e '/\/-/,/-\//d'` cannot do this: its end address is
+# searched from the line AFTER the start, so two adjacent one-line docstrings delete
+# everything between them (measured 2026-09-19), which silently hid code from the
+# markers below.
 code_of() {
-  file_text "$1" | sed -e '/\/-/,/-\//d' -e 's/--.*$//'
+  file_text "$1" | awk '
+    BEGIN { depth = 0 }
+    {
+      out = ""; i = 1; n = length($0)
+      while (i <= n) {
+        two = substr($0, i, 2)
+        if (depth > 0) {
+          if (two == "-/") { depth--; i += 2 }
+          else if (two == "/-") { depth++; i += 2 }
+          else i++
+        } else if (two == "/-") { depth++; i += 2 }
+        else if (two == "--") { break }
+        else { out = out substr($0, i, 1); i++ }
+      }
+      print out
+    }'
 }
 
 tmp=$(mktemp -d)
