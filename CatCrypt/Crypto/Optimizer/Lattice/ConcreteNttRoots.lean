@@ -47,14 +47,14 @@ instance fact_prime_8380417 : Fact (Nat.Prime 8380417) := ⟨by norm_num⟩
 
 `256 = 2^8` is a prime power, so by `orderOf_eq_prime_pow` it suffices to show
 `17^256 = 1` and `17^128 ≠ 1`. Both are concrete computations in `ZMod 3329`
-closed by `native_decide`. -/
+closed by kernel evaluation (`decide +kernel`). -/
 
 /-- `(17 : ZMod 3329)^256 = 1`. -/
-theorem pow_256_17_eq_one : (17 : ZMod 3329) ^ 256 = 1 := by native_decide
+theorem pow_256_17_eq_one : (17 : ZMod 3329) ^ 256 = 1 := by decide +kernel
 
 /-- `(17 : ZMod 3329)^128 ≠ 1`, ruling out a smaller order (a divisor of 256
     smaller than 256 must divide 128). -/
-theorem pow_128_17_ne_one : (17 : ZMod 3329) ^ 128 ≠ 1 := by native_decide
+theorem pow_128_17_ne_one : (17 : ZMod 3329) ^ 128 ≠ 1 := by decide +kernel
 
 /-- The multiplicative order of `17` in `ZMod 3329` is exactly `256`. -/
 theorem orderOf_17_eq_256 : orderOf (17 : ZMod 3329) = 256 := by
@@ -81,10 +81,10 @@ theorem n_ne_zero_3329 : (256 : ZMod 3329) ≠ 0 := by decide
 NTT (FIPS 204); `8380417 - 1 = 2^13 * 1023`, so `512 ∣ 8380417 - 1`. -/
 
 /-- `(1753 : ZMod 8380417)^512 = 1`. -/
-theorem pow_512_1753_eq_one : (1753 : ZMod 8380417) ^ 512 = 1 := by native_decide
+theorem pow_512_1753_eq_one : (1753 : ZMod 8380417) ^ 512 = 1 := by decide +kernel
 
 /-- `(1753 : ZMod 8380417)^256 ≠ 1`. -/
-theorem pow_256_1753_ne_one : (1753 : ZMod 8380417) ^ 256 ≠ 1 := by native_decide
+theorem pow_256_1753_ne_one : (1753 : ZMod 8380417) ^ 256 ≠ 1 := by decide +kernel
 
 /-- The multiplicative order of `1753` in `ZMod 8380417` is exactly `512`. -/
 theorem orderOf_1753_eq_512 : orderOf (1753 : ZMod 8380417) = 512 := by
