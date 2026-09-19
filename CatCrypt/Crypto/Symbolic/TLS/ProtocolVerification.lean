@@ -27,13 +27,16 @@ eight-entry trace `tr₈`, and `tr₈` satisfies `traceInvariant` for
 * `tlsEventPredMono` — TLS invariants are monotone under snoc
 * `honestSession_invariant` — the trace of `honestSession` from `.nil`
   satisfies the invariant
+* `honestResumption_invariant` — the trace of `honestResumptionSession` from
+  `.nil` satisfies the invariant
 * `tr₈_appKey_server_not_known` — the attacker does not know the application
   key on `tr₈`
 
 ## Scope
 
-`tr₈` is one attacker-free run: two honest parties, two public messages, no
-corruption, one session. It is the only trace for which the TLS invariant is
+`tr₈` and `ptr₇` are attacker-free runs of the full and the PSK-DHE handshake:
+two honest parties, two public messages, no
+corruption, one session each. They are the only traces for which the TLS invariant is
 established. No theorem shows that `clientHandshake` or `serverHandshake`
 preserves the invariant, and none covers attacker sends, corruption or
 interleaved sessions. The `ClientFinished` step of the invariant proof supplies
@@ -277,5 +280,115 @@ theorem tr₈_appKey_server_not_known
   simp only [Label.isCorrupt, principalLabel, and_true, true_and] at hPub
   obtain ⟨j, _, hentry⟩ := hPub
   exact tr₈_no_corrupt client server serverSigKey j server hentry
+
+/-! ## PSK Resumption: Trace Construction and Invariant
+
+The PSK-DHE resumption session `honestResumptionSession` produces 7 trace entries.
+We prove invariant from `.nil` with an arbitrary PSK. -/
+
+-- PSK named traces
+noncomputable def ptr₀ : Trace := .nil
+noncomputable def px (client : String) := Bytes.rand .dhKey 32 0
+noncomputable def ptr₁ (client : String) : Trace :=
+  .snoc ptr₀ (.randGen .dhKey (principalLabel client) 32)
+
+noncomputable def pgx (client : String) := Bytes.dhPub (px client)
+
+noncomputable def ptr₂ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₁ client) (.event client pskClientHelloTag
+    (mkClientHelloContent client server (pgx client)))
+
+noncomputable def ptr₃ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₂ client server psk) (.msgSent
+    (.concat (mkClientHelloContent client server (pgx client)) (pskBinder psk (pgx client))))
+
+noncomputable def py (client server : String) (psk : Bytes) :=
+  Bytes.rand .dhKey 32 (ptr₃ client server psk).length
+
+noncomputable def ptr₄ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₃ client server psk) (.randGen .dhKey (principalLabel server) 32)
+
+noncomputable def pgy (client server : String) (psk : Bytes) :=
+  Bytes.dhPub (py client server psk)
+
+noncomputable def psk_appKey (client server : String) (psk : Bytes) :=
+  pskKeySchedule psk (Bytes.dh (py client server psk) (pgx client))
+
+noncomputable def ptr₅ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₄ client server psk) (.event server pskServerFinishedTag
+    (mkPSKFinishedContent server client (psk_appKey client server psk)))
+
+noncomputable def ptr₆ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₅ client server psk) (.msgSent (pgy client server psk))
+
+noncomputable def ptr₇ (client server : String) (psk : Bytes) : Trace :=
+  .snoc (ptr₆ client server psk) (.event client pskClientFinishedTag
+    (mkPSKFinishedContent client server (psk_appKey client server psk)))
+
+/-- The output of `honestResumptionSession` is `ptr₇`. -/
+theorem honestResumptionSession_eq (client server : String) (psk : Bytes) :
+    (honestResumptionSession client server psk .nil).2 =
+    ptr₇ client server psk := by
+  unfold honestResumptionSession ptr₇ ptr₆ ptr₅ ptr₄ ptr₃ ptr₂ ptr₁ ptr₀
+  unfold psk_appKey pgy py pgx px
+  simp only [bind, instMonadTraceful, mkRand, triggerEvent, sendMsg,
+    Trace.length_nil, Trace.length_snoc]
+  rfl
+
+/-- The trace of the PSK-DHE resumption session from `.nil` satisfies the invariant. -/
+theorem honestResumption_invariant (client server : String) (psk : Bytes) :
+    Inv (honestResumptionSession client server psk .nil).2 := by
+  rw [honestResumptionSession_eq]
+  unfold ptr₇
+  -- Chain of intermediate invariants
+  have hInv₀ : Inv ptr₀ := traceInvariant_nil
+  have hInv₁ : Inv (ptr₁ client) := traceInvariant_randGen hInv₀ (Or.inl rfl)
+  have hInv₂ : Inv (ptr₂ client server psk) := by
+    unfold ptr₂
+    apply traceInvariant_event hInv₁
+    show tlsEventPred _ _ _ _ _
+    unfold tlsEventPred; simp [pskClientHelloTag, clientFinishedTag, serverFinishedTag,
+      pskClientFinishedTag, pskServerFinishedTag, newSessionTicketTag]
+  have hInv₃ : Inv (ptr₃ client server psk) := by
+    unfold ptr₃
+    apply traceInvariant_sendMsg hInv₂
+    unfold pgx mkClientHelloContent pskBinder
+    simp [bytesPublishable, labelOf, Label.isCorrupt]
+  have hInv₄ : Inv (ptr₄ client server psk) :=
+    traceInvariant_randGen hInv₃ (Or.inl rfl)
+  have hInv₅ : Inv (ptr₅ client server psk) := by
+    unfold ptr₅
+    apply traceInvariant_event hInv₄
+    show tlsEventPred _ _ _ _ _
+    unfold tlsEventPred; simp [pskServerFinishedTag, clientFinishedTag, serverFinishedTag,
+      pskClientFinishedTag]
+    exact ⟨client, _, rfl⟩
+  have hInv₆ : Inv (ptr₆ client server psk) := by
+    unfold ptr₆
+    apply traceInvariant_sendMsg hInv₅
+    unfold pgy
+    simp [bytesPublishable, labelOf, Label.isCorrupt]
+  -- Final step: pskClientFinished requires matching pskServerFinished
+  apply traceInvariant_event hInv₆
+  show tlsEventPred _ _ _ _ _
+  unfold tlsEventPred
+  -- pskClientFinishedTag resolves to 3rd branch
+  have h1 : (pskClientFinishedTag == clientFinishedTag) = false := by decide
+  have h2 : (pskClientFinishedTag == serverFinishedTag) = false := by decide
+  have h3 : (pskClientFinishedTag == pskClientFinishedTag) = true := by decide
+  rw [if_neg (by rw [h1]; decide), if_neg (by rw [h2]; decide), if_pos (by rw [h3])]
+  refine ⟨server, _, rfl, .inl ⟨(ptr₄ client server psk).length, ?_, ?_⟩⟩
+  · -- (ptr₄ c s psk).length < (ptr₆ c s psk).length
+    unfold ptr₆ ptr₅ ptr₄ ptr₃ ptr₂ ptr₁ ptr₀
+    simp [Trace.length]
+  · -- eventTriggeredAt at position ptr₄.length in ptr₇
+    show (Trace.snoc (ptr₆ client server psk)
+        (.event client pskClientFinishedTag
+          (mkPSKFinishedContent client server (psk_appKey client server psk)))).entryAt
+      (ptr₄ client server psk).length =
+      some (.event server pskServerFinishedTag
+        (mkPSKFinishedContent server client (psk_appKey client server psk)))
+    unfold ptr₆ ptr₅
+    simp [Trace.entryAt, Trace.length, ptr₄, ptr₃, ptr₂, ptr₁, ptr₀]
 
 end CatCrypt.Crypto.Symbolic.TLS

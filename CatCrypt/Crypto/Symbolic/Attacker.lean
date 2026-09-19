@@ -133,11 +133,9 @@ theorem attacker_only_knows_publishable [inst : ProtocolInvariants]
     simp only [labelOf, Label.isCorrupt] at ih
     exact ih.2
   | aeadEnc _ _ _ _ ihk _ ihm _ =>
-    simp only [labelOf, Label.isCorrupt]
-    exact ⟨ihk, ihm⟩
-  | aeadDec _ _ _ ihct =>
-    simp only [labelOf, Label.isCorrupt] at ihct
-    exact ihct.2
+    exact isCorrupt_labelOf_aeadEnc ihk ihm
+  | aeadDec _ _ ihk ihct =>
+    exact isCorrupt_msg_of_aeadEnc ihk ihct
   | pk _ =>
     simp [labelOf, Label.isCorrupt]
   | pkeEnc _ _ _ _ _ ihm =>

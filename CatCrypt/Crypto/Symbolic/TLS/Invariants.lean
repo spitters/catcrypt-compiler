@@ -90,8 +90,7 @@ theorem labelOf_isCorrupt_mono_snoc (tr : Trace) (e : TraceEntry) (b : Bytes)
     simp only [labelOf, Label.isCorrupt]
     exact fun ⟨h₁, h₂⟩ => ⟨ih₁ h₁, ih₂ h₂⟩
   | aeadEnc _ _ _ _ ihk _ ihm _ =>
-    simp only [labelOf, Label.isCorrupt]
-    exact fun ⟨h₁, h₂⟩ => ⟨ihk h₁, ihm h₂⟩
+    exact isCorrupt_labelOf_aeadEnc_mono (Trace.Extends.snoc_self tr e) ihk ihm
   | kdfExtract _ _ ihs ihi =>
     simp only [labelOf, Label.isCorrupt]
     exact fun ⟨h₁, h₂⟩ => ⟨ihs h₁, ihi h₂⟩

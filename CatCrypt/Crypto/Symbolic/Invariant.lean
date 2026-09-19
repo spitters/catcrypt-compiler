@@ -17,6 +17,8 @@ which traces are valid.
 
 * `labelOf` — structural label assignment for bytes terms
 * `Trace.corruptSet` — set of principals corrupted in a trace
+* `Trace.Extends`, `aeadFlows` — trace extension, and the flow condition under which
+  a ciphertext is public
 * `bytesPublishable` — a bytes value's label is corrupt given the trace's corruption
 * `ProtocolInvariants` — typeclass bundling protocol-specific predicates
 * `traceInvariant` — a trace satisfies all entry-level invariants
@@ -26,7 +28,8 @@ which traces are valid.
 Labels are assigned structurally via `labelOf`:
 - Literals, public keys, hashes, signatures, MACs → `top` (always public)
 - Random values → label from trace entry at generation time
-- Concatenation, AEAD encryption, KDF extract → `meet` of component labels
+- Concatenation, KDF extract → `meet` of component labels
+- AEAD encryption → `top` when the key label flows to the plaintext label, else `meet`
 - PKE, KDF expand, KEM shared secret → label of protected component
 - DH shared secret → label of the secret key (asymmetric by construction)
 
@@ -36,11 +39,11 @@ everything the DY attacker derives is publishable.
 
 ## Differences from DY*
 
-* The label of a ciphertext is derived from the labels of its key and
-  plaintext (`aeadEnc` takes the `meet`; `pkeEnc` and `kemEncap` take the label
-  of the protected component). A ciphertext of an uncompromised secret is
-  therefore not publishable and cannot be sent. DY* labels ciphertexts public
-  and requires the plaintext label to flow to the key label.
+* An `aeadEnc` ciphertext is labelled `top` when the label of its key flows to
+  the label of its plaintext in the trace and in every extension of it
+  (`aeadFlows`), as in DY*; otherwise it takes the `meet` of the two labels.
+  `pkeEnc` and `kemEncap` take the label of the protected component, so a
+  public-key ciphertext of an uncompromised secret is not publishable.
 * The label of `dh sk pk` is the label of `sk` alone, so a secret shared with a
   peer whose exponent the attacker holds is labelled as secret. DY* labels it
   with the join of both keys' labels.
@@ -73,6 +76,22 @@ theorem Trace.entryAt_lt_length {tr : Trace} {i : Nat} {e : TraceEntry}
     · rename_i heq; rw [beq_iff_eq] at heq; simp [Trace.length]; omega
     · exact Nat.lt_succ_of_lt (ih h)
 
+/-! ## Trace extension -/
+
+/-- `tr'` extends `tr`: it is `tr` followed by further entries. -/
+inductive Trace.Extends (tr : Trace) : Trace → Prop where
+  | refl : Trace.Extends tr tr
+  | snoc {tr' : Trace} (e : TraceEntry) : Trace.Extends tr tr' → Trace.Extends tr (.snoc tr' e)
+
+theorem Trace.Extends.trans {tr₁ tr₂ tr₃ : Trace} (h₁₂ : tr₁.Extends tr₂)
+    (h₂₃ : tr₂.Extends tr₃) : tr₁.Extends tr₃ := by
+  induction h₂₃ with
+  | refl => exact h₁₂
+  | snoc e _ ih => exact .snoc e ih
+
+theorem Trace.Extends.snoc_self (tr : Trace) (e : TraceEntry) : tr.Extends (.snoc tr e) :=
+  .snoc e .refl
+
 /-! ## Label Assignment
 
 Structural label assignment for bytes terms. The label tracks which
@@ -85,11 +104,14 @@ The label convention:
 - `principalLabel p`: requires corruption of principal `p`
 - `meet l₁ l₂`: requires BOTH l₁ AND l₂ to be corrupt
 - `bot`: never available (unreachable in practice) -/
-def labelOf (tr : Trace) : Bytes → Label
+noncomputable def labelOf (tr : Trace) : Bytes → Label
   | .literal _ => .top
   | .rand _ _ time => tr.randLabelAt time |>.getD .bot
   | .concat b₁ b₂ => .meet (labelOf tr b₁) (labelOf tr b₂)
-  | .aeadEnc key _nonce msg _ad => .meet (labelOf tr key) (labelOf tr msg)
+  | .aeadEnc key _nonce msg _ad =>
+    open Classical in
+    if ∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg) then .top
+    else .meet (labelOf tr key) (labelOf tr msg)
   | .pk _ => .top
   | .pkeEnc _ _ msg => labelOf tr msg
   | .vk _ => .top
@@ -103,6 +125,65 @@ def labelOf (tr : Trace) : Bytes → Label
   | .kemEncap _ ss => labelOf tr ss
   | .kemSecretShared ss => labelOf tr ss
   | .mac _ _ => .top
+
+
+/-! ## The label of a ciphertext -/
+
+/-- The plaintext of an encryption may flow to its key in `tr` and in every
+extension of `tr`: whoever holds the key may hold the plaintext. -/
+def aeadFlows (tr : Trace) (key msg : Bytes) : Prop :=
+  ∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg)
+
+theorem aeadFlows_of_extends {tr tr' : Trace} (h : tr.Extends tr') {key msg : Bytes}
+    (hf : aeadFlows tr key msg) : aeadFlows tr' key msg :=
+  fun tr'' h' => hf tr'' (h.trans h')
+
+theorem labelOf_aeadEnc_of_flows {tr : Trace} {key nonce msg ad : Bytes}
+    (hf : aeadFlows tr key msg) : labelOf tr (.aeadEnc key nonce msg ad) = .top := by
+  have : (∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg)) := hf
+  simp only [labelOf, this, if_true]
+  exact if_pos this
+
+theorem labelOf_aeadEnc_of_not_flows {tr : Trace} {key nonce msg ad : Bytes}
+    (hf : ¬ aeadFlows tr key msg) :
+    labelOf tr (.aeadEnc key nonce msg ad) = .meet (labelOf tr key) (labelOf tr msg) := by
+  have : ¬ (∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg)) := hf
+  simp only [labelOf]
+  exact if_neg this
+
+/-- A ciphertext of corrupt key and plaintext is corrupt. -/
+theorem isCorrupt_labelOf_aeadEnc {tr : Trace} {key nonce msg ad : Bytes} {C : String → Prop}
+    (hk : (labelOf tr key).isCorrupt C) (hm : (labelOf tr msg).isCorrupt C) :
+    (labelOf tr (.aeadEnc key nonce msg ad)).isCorrupt C := by
+  classical
+  by_cases hf : aeadFlows tr key msg
+  · rw [labelOf_aeadEnc_of_flows hf]; simp [Label.isCorrupt]
+  · rw [labelOf_aeadEnc_of_not_flows hf]; exact ⟨hk, hm⟩
+
+/-- The plaintext of a corrupt ciphertext under a corrupt key is corrupt. -/
+theorem isCorrupt_msg_of_aeadEnc {tr : Trace} {key nonce msg ad : Bytes} {C : String → Prop}
+    (hk : (labelOf tr key).isCorrupt C)
+    (hct : (labelOf tr (.aeadEnc key nonce msg ad)).isCorrupt C) :
+    (labelOf tr msg).isCorrupt C := by
+  classical
+  by_cases hf : aeadFlows tr key msg
+  · exact hf tr .refl C hk
+  · rw [labelOf_aeadEnc_of_not_flows hf] at hct; exact hct.2
+
+/-- Corruption of a ciphertext label is preserved along a trace extension when
+it is preserved for the key and the plaintext. -/
+theorem isCorrupt_labelOf_aeadEnc_mono {tr tr' : Trace} (hext : tr.Extends tr')
+    {key nonce msg ad : Bytes} {C : String → Prop}
+    (ihk : (labelOf tr key).isCorrupt C → (labelOf tr' key).isCorrupt C)
+    (ihm : (labelOf tr msg).isCorrupt C → (labelOf tr' msg).isCorrupt C) :
+    (labelOf tr (.aeadEnc key nonce msg ad)).isCorrupt C →
+      (labelOf tr' (.aeadEnc key nonce msg ad)).isCorrupt C := by
+  classical
+  intro h
+  by_cases hf : aeadFlows tr key msg
+  · rw [labelOf_aeadEnc_of_flows (aeadFlows_of_extends hext hf)]; simp [Label.isCorrupt]
+  · rw [labelOf_aeadEnc_of_not_flows hf] at h
+    exact isCorrupt_labelOf_aeadEnc (ihk h.1) (ihm h.2)
 
 /-! ## Corruption Set -/
 

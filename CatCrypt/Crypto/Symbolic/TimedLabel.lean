@@ -54,7 +54,7 @@ is timed-publishable for the specific trace under consideration.
 For honest protocol executions (TLS, EDHOC), sent messages have `.top`
 timed labels (they consist of public values: DH public keys, signatures,
 MACs), so hypothesis (1) is trivially satisfied. Hypothesis (2) requires
-that corruption happens before key generation, which is a genuine forward
+that corruption happens before key generation, which is a forward
 secrecy assumption about the trace.
 
 ## References
@@ -205,7 +205,7 @@ theorem Trace.randLabelAt_lt_length {tr : Trace} {time : Nat} {l : Label}
 
 /-- **Bridge lemma**: Timed publishability implies untimed publishability.
 
-For every `Bytes` constructor, `timedLabelOf` and `labelOf` have the same
+For every `Bytes` constructor but `aeadEnc`, `timedLabelOf` and `labelOf` have the same
 structure, differing only at `rand` where the label is mapped through
 `Label.toTimedLabel`. Since `toTimedLabel_isCorrupt_implies` bridges the
 timed corruption to untimed corruption, the result follows by structural
@@ -231,8 +231,8 @@ theorem timedPublishable_implies_publishable {tr : Trace} {b : Bytes} :
     simp only [timedLabelOf, TimedLabel.isCorrupt, labelOf, Label.isCorrupt]
     exact fun ⟨h₁, h₂⟩ => ⟨ih₁ h₁, ih₂ h₂⟩
   | aeadEnc _ _ _ _ ihk _ ihm _ =>
-    simp only [timedLabelOf, TimedLabel.isCorrupt, labelOf, Label.isCorrupt]
-    exact fun ⟨h₁, h₂⟩ => ⟨ihk h₁, ihm h₂⟩
+    simp only [timedLabelOf, TimedLabel.isCorrupt]
+    exact fun ⟨h₁, h₂⟩ => isCorrupt_labelOf_aeadEnc (ihk h₁) (ihm h₂)
   | pk _ => exact fun _ => trivial
   | pkeEnc _ _ _ _ _ ihm => exact ihm
   | vk _ => exact fun _ => trivial

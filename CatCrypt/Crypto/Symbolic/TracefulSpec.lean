@@ -90,8 +90,7 @@ theorem labelOf_isCorrupt_mono_snoc (tr : Trace) (e : TraceEntry) (b : Bytes)
     simp only [labelOf, Label.isCorrupt]
     exact fun ⟨h₁, h₂⟩ => ⟨ih₁ h₁, ih₂ h₂⟩
   | aeadEnc _ _ _ _ ihk _ ihm _ =>
-    simp only [labelOf, Label.isCorrupt]
-    exact fun ⟨h₁, h₂⟩ => ⟨ihk h₁, ihm h₂⟩
+    exact isCorrupt_labelOf_aeadEnc_mono (Trace.Extends.snoc_self tr e) ihk ihm
   | kdfExtract _ _ ihs ihi =>
     simp only [labelOf, Label.isCorrupt]
     exact fun ⟨h₁, h₂⟩ => ⟨ihs h₁, ihi h₂⟩
@@ -121,6 +120,46 @@ theorem canFlow_labelOf_mono_snoc (tr : Trace) (e : TraceEntry)
     canFlow l (labelOf tr b) → canFlow l (labelOf (Trace.snoc tr e) b) := by
   intro hFlow C hC
   exact labelOf_isCorrupt_mono_snoc tr e b C (hFlow C hC)
+
+
+/-! ## Labels along a trace extension -/
+
+theorem Trace.Extends.length_le {tr tr' : Trace} (h : tr.Extends tr') :
+    tr.length ≤ tr'.length := by
+  induction h with
+  | refl => exact Nat.le_refl _
+  | snoc _ _ ih => exact Nat.le_trans ih (by simp [Trace.length])
+
+/-- An extension keeps the entries of the trace it extends. -/
+theorem Trace.Extends.entryAt_eq {tr tr' : Trace} (h : tr.Extends tr') {i : Nat}
+    (hi : i < tr.length) : tr'.entryAt i = tr.entryAt i := by
+  induction h with
+  | refl => rfl
+  | snoc _ h' ih =>
+    rw [Trace.entryAt_snoc_ne _ _ i (by have := h'.length_le; omega)]
+    exact ih
+
+/-- An extension keeps the label of a generated random value. -/
+theorem Trace.Extends.randLabelAt_eq {tr tr' : Trace} (h : tr.Extends tr') {t : Nat}
+    {L : Label} (hL : tr.randLabelAt t = some L) : tr'.randLabelAt t = some L := by
+  have hlt : t < tr.length := by
+    unfold Trace.randLabelAt at hL
+    split at hL
+    · rename_i heq; exact Trace.entryAt_lt_length heq
+    · exact absurd hL (by simp)
+  unfold Trace.randLabelAt at hL ⊢
+  rw [h.entryAt_eq hlt]
+  exact hL
+
+/-- A generated random key whose label flows to the label of a generated random
+plaintext: the ciphertext is public. -/
+theorem aeadFlows_rand {tr : Trace} {u₁ u₂ : Usage} {l₁ l₂ t₁ t₂ : Nat} {L₁ L₂ : Label}
+    (h₁ : tr.randLabelAt t₁ = some L₁) (h₂ : tr.randLabelAt t₂ = some L₂)
+    (hflow : canFlow L₁ L₂) :
+    aeadFlows tr (.rand u₁ l₁ t₁) (.rand u₂ l₂ t₂) := by
+  intro tr' hext
+  simp only [labelOf, hext.randLabelAt_eq h₁, hext.randLabelAt_eq h₂, Option.getD_some]
+  exact hflow
 
 /-- `isCorruptAt` is monotone under `snoc`. -/
 theorem Trace.isCorruptAt_mono_snoc (tr : Trace) (e : TraceEntry)
