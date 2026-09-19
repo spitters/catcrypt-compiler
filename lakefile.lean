@@ -546,6 +546,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorrect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulSpec,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.ComToArithBlock,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Control,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Corres,
@@ -633,13 +634,14 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSum,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.DialectToBytes,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge,
   ]
 def pkgModules4 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Exit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd,
@@ -838,10 +840,10 @@ def pkgModules4 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSelect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CT,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressProductTie,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie,
   ]
 def pkgModules5 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressProductTie,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512Tie,
@@ -1040,10 +1042,10 @@ def pkgModules5 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenReduces,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldEmitRealizesFromCommSquare,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldHornerEmitQ,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldModOpsGoldenPath,
   ]
 def pkgModules6 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldHornerEmitQ,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldModOpsGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldMul2x1GoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldMulEmitMldsa,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.FieldMulEmitRealizesFromCommSquare,
@@ -1242,10 +1244,10 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontMachine,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontMultiLimb,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP256,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP256Emit,
   ]
 def pkgModules7 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP256,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP256Emit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP384,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontP384Emit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.RelationalFrontPallas,
@@ -1444,10 +1446,10 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.CryptoToVIR,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.CurveDivisor,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim,
   ]
 def pkgModules8 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DerivedToFieldLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.DialectCoproduct,
@@ -1646,10 +1648,10 @@ def pkgModules8 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRhoChiIotaAbstractCom,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRotateSelect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundCatCryptEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola,
   ]
 def pkgModules9 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom,
@@ -1848,10 +1850,10 @@ def pkgModules9 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.ShaSigmaAbstractCom,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Shake256Covered,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeEmit,
   ]
 def pkgModules10 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Shake256Covered,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SimdAvx2IntFrontPrototype,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.SimdFrontPilot,
@@ -2050,10 +2052,10 @@ def pkgModules10 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.JasminOutputCTValidation,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayWholePermVpackZmmEmit,
   ]
 def pkgModules11 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayWholePermVpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayWholeRoundVpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayWholeVpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaComEmit,
@@ -2252,10 +2254,10 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512SigmaThirEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8ZmmWideEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sigma0FrontEmit,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sigma0FrontEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SimdBytesVsimd,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sm2FieldKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Sm2FieldProven,
@@ -2454,10 +2456,10 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node1,
     Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node2,
     Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node3,
-    Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node4,
-    Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node5,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node4,
+    Lake.Glob.one `CatCrypt.Crypto.Util.Pallas.Node5,
     Lake.Glob.one `CatCrypt.Crypto.Util.PallasPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.PrattCertificate,
     Lake.Glob.one `CatCrypt.Crypto.Util.ScalarFieldVerified,
