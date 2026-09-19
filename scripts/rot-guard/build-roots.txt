@@ -558,6 +558,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrNestInline
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrReturn
