@@ -59,9 +59,10 @@ here as two proved theorems:
   `RSeq (RScalarSet c gc) (RIfNz c (RScalarSet r x) (RScalarSet r y))`, producing
   the six-op φ-merge `Com` (`bvConst; bvConst; bvConst; bvEq; not; ite`).
 * **`condBackend_declines`** — the VIR `Com`→jasmin lowering *declines* that `Com`:
-  `cryptoDialectToJasminCom` returns `none`, because the φ-merge is built from the
-  `.bvEq` / `.not` / `.ite` ops, all outside the straight-line fragment `toJExprD`
-  lowers. This is the precise wall: a conditional select produces a `Com`
+  `cryptoDialectToJasminCom` returns `none`, because the φ-merge binds the bit
+  negation `.not`, which is outside the straight-line fragment `toJExprD`
+  lowers (`.bvEq` and `.ite` at a word type are inside it). This is the precise
+  wall: the φ-merge of a conditional produces a `Com`
   the current owned backend cannot emit (control reaches bytes only through the
   separate `Lprog`/`Lcond` labelled-branch emitter, not this `Com` route).
 
@@ -183,8 +184,8 @@ noncomputable def condFrontCom : Com catCryptDialect ([] : Ctx) (.sword 64) :=
 
 /-- **`condBackend_declines` — the wall, as a theorem.** The VIR `Com`→jasmin
     lowering `cryptoDialectToJasminCom` returns `none` on the φ-merge `Com`: the
-    `.bvEq` / `.not` / `.ite` ops the select emits are outside the straight-line
-    fragment `toJExprD` lowers, so the owned backend cannot emit the branch through
+    bit negation `.not` the φ-merge binds is outside the straight-line fragment
+    `toJExprD` lowers, so the owned backend cannot emit the branch through
     this route. This is exactly the `hEmit` edge `condKernel_bytes_of_emit` leaves
     open — a conditional select is the precise point at which the present
     `Com` pipeline stops short of bytes. -/

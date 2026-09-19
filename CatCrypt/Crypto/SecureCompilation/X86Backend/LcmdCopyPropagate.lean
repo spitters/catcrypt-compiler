@@ -299,7 +299,9 @@ def isImmFoldable (opn : String) : Bool :=
     two-address ALU class (`ADD` … `CMOVcc`) reads its destination
     (`op s, d`), so it is NOT in this class; `CMP`/`TEST` are kept out
     conservatively. The 3-source select `CMOV` fully writes its destination
-    (its self-alias cases are explicit source operands). -/
+    (its self-alias cases are explicit source operands). A materialised
+    comparison `SET<cc>` is printed `cmp y, x ; mov $0, d ; set<cc> d`: both
+    operands are read before `d` is zeroed, so `d` is write-only. -/
 def isDstWriteOnly (opn : String) : Bool :=
   match stripAbiTag opn with
   | "STOREIDX" => false
@@ -307,6 +309,7 @@ def isDstWriteOnly (opn : String) : Bool :=
     (parseImmShiftMnem opn).isSome ||
     (match m with
      | "MOV" | "MOVQ" | "LOAD" | "LOADIDX" | "LEA" | "SETC" | "CMOV"
+     | "SETE" | "SETNE" | "SETB" | "SETBE" | "SETA" | "SETAE"
      | "ZEROEXT" | "TRUNC" | "ANDN" => true
      | _ => false)
 

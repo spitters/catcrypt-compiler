@@ -23,7 +23,7 @@ tail.
 
 The typing enters because the front chooses its lowering by the types of the
 operands: a word select (`RSelect` over three `.sword 64` slots) lowers to the
-eight-op mask chain `selectMaskCont`, a select over any other slots to one
+three-op comparison select `selectCmpCont`, a select over any other slots to one
 opaque `extCall "select"`; a dynamic array load (`RArrLoad`) lowers to
 `memrefGetDyn` when the array is a `memref` and the index a word, and to
 `extCall "arrLoadDyn"` otherwise. The scalar assignment `RScalarSetExpr x e`
@@ -40,8 +40,10 @@ dialect prefixes differ.
 * `sexprLeak`, `lowerSExpr_leakTrace_expand` — the events of a lowered scalar
   expression, one per node, with the counter advance and the typing of the
   temporaries.
+* `selectCmpLeak`, `selectCmpCont_leakFactorsTrace_eq` — the three events of
+  the comparison select the `RSelect` arm emits.
 * `selectMaskLeak`, `selectMaskCont_leakFactorsTrace_eq` — the eight events of
-  the word-select mask chain.
+  the mask chain `selectMaskCont`.
 * `arrLoadLeakTy`, `arrLoadCont_leakFactorsTrace_eq` — the one event of a
   dynamic array load, by the operand types.
 * `expand`, `translateDialectFull_leakTrace_expand` — the compositional
@@ -209,6 +211,19 @@ theorem lowerSExpr_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) (e :
 
 /-! ## 3. The word select -/
 
+/-- The three events of the comparison select `selectCmpCont`: the zero
+    constant, the equality comparison and the conditional select. -/
+def selectCmpLeak : LeakTrace :=
+  [.pureOp "bvConst", .pureOp "bvEq", .pureOp "ite"]
+
+/-- **The comparison-select prefix prepends `selectCmpLeak`.** -/
+theorem selectCmpCont_leakFactorsTrace_eq {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ComCont.LeakFactorsTrace (selectCmpCont sV aV cV) selectCmpLeak := by
+  unfold selectCmpCont
+  exact ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+    (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+      (ComCont.varBind_leakFactorsTrace _))
+
 /-- The eight events of the word-select mask chain `selectMaskCont`: the zero
     constant, the negated selector, the or, the sign shift, the mask, the xor of
     the sources, the masked xor and the final xor. -/
@@ -312,7 +327,7 @@ def expand (τ : Typing) : LowCT → Option (LeakTrace × Typing)
   | .RSelect dst sel src0 src1 =>
       if dst.locDst = .TU64 ∧ τ sel = some (.sword 64) ∧ τ src0.locVar = some (.sword 64)
           ∧ τ src1.locVar = some (.sword 64) then
-        some (selectMaskLeak, τ.upd dst.locVar (encodeTy dst.locDst))
+        some (selectCmpLeak, τ.upd dst.locVar (encodeTy dst.locDst))
       else
         some ([.pureOp "extCall:select"], τ.upd dst.locVar (encodeTy dst.locDst))
   | .RArrLoad dst src idxVar =>
@@ -428,10 +443,9 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
               by simp [VarMap.tyOf, hs1]⟩
           simp only [expand, if_pos hc, Option.some.injEq, Prod.mk.injEq] at he
           obtain ⟨rfl, rfl⟩ := he
-          refine ⟨selectMaskCont_leakFactorsTrace_eq sV aV cV, ?_⟩
+          refine ⟨selectCmpCont_leakFactorsTrace_eq sV aV cV, ?_⟩
           show VarMap.tyOf (VarMap.bind _ _) = _
-          rw [VarMap.tyOf_bind, VarMap.tyOf_weaken, VarMap.tyOf_weaken, VarMap.tyOf_weaken,
-            VarMap.tyOf_weaken, VarMap.tyOf_weaken, VarMap.tyOf_weaken, VarMap.tyOf_weaken, hd]
+          rw [VarMap.tyOf_bind, VarMap.tyOf_weaken, VarMap.tyOf_weaken, hd]
           rfl
       · next hne =>
           have hc : ¬ (dst.locDst = .TU64 ∧ VarMap.tyOf vm sel = some (.sword 64)

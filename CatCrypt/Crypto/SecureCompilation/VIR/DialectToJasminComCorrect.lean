@@ -311,13 +311,32 @@ theorem addCarryWord_eq_addCarryWordC {w : Nat} (a b : BitVec w) (cin : BitVec 1
 theorem carryOutBit_eq_carryOutBitC {w : Nat} (a b : BitVec w) (cin : BitVec 1) :
     JasminDialect.carryOutBit a b cin = CatCryptDialect.carryOutBitC a b cin := rfl
 
+/-- On the bit type, `ctTransTy` is `BitVec.ofBool`. -/
+theorem ctTransTy_bit (v : Bool) : ctTransTy (t := .bit) v = BitVec.ofBool v := rfl
+
+/-- The jasmin equality comparison bit is `BitVec.ofBool` of the decided
+    equality, the value the dialect `bvEq` denotes. Bridges the `bvEq → cmp .eq`
+    lowering's denotation. -/
+theorem cmpBit_eq_ofBool {w : Nat} (a b : BitVec w) :
+    cmpBit .eq a b = BitVec.ofBool (decide (a = b)) := by
+  unfold cmpBit JasminCmp.holds
+  by_cases h : a = b <;> simp [h]
+
+/-- `selectW` on the image of a boolean is the boolean conditional, the value the
+    dialect `ite` denotes. Bridges the `ite → select` lowering's denotation. -/
+theorem selectW_ofBool {w : Nat} (c : Bool) (a b : BitVec w) :
+    selectW (BitVec.ofBool c) a b = if c then a else b := by
+  unfold selectW
+  cases c <;> simp
+
 /-- **`DialectJasminLeafAgrees` is provable (no hypothesis, no axiom).** Every
     leaf the dialect front lowers agrees: the six `regArith` ops, `regConst`,
     the dynamic-memref ops, the word-native crypto ops (`andn → regArith
     andn`, `bvShiftLV/bvShiftRV → regArith shl/shr`, `bvRor → rorImm`,
     `bvShiftRA → sarImm`), the immediate logical shifts (`bvShiftL/bvShiftR →
     shlImm/shrImm`), and the bignum-ALU word splits (`bvMulHi → mulhi`,
-    `bvAddCarryLo → addCarryLo`, `bvAddCarryHi → addCarryHi`) all agree by
+    `bvAddCarryLo → addCarryLo`, `bvAddCarryHi → addCarryHi`), and the word
+    select pair (`bvEq → cmp .eq`, `ite (.sword w) → select`) all agree by
     computation (the lowering preserves the `BitVec` op), and `extCall` leaves
     agree on the opaque canonical default (`leafAgrees_extCallD`). Every other
     `CatCryptOp` is outside the fragment (`toJExprD = none`), so the
@@ -634,6 +653,27 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       simp only [toJExprD] at he; cases he
       rw [ctTransTy_sword]; show BitVec.ofNat 128 v.toNat = v
       simp [BitVec.ofNat_toNat]
+  | bvEq w =>
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show cmpBit .eq ((toJVarD args.head).lookup (ctMapValD V))
+        ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
+        cmpBit_eq_ofBool]
+      cases args with | cons a t => cases t with | cons b t2 => rfl
+  | ite ty =>
+      cases ty with
+      | sword w =>
+          cases hop
+          simp only [toJExprD] at he; cases he
+          show selectW ((toJVarD args.head).lookup (ctMapValD V))
+            ((toJVarD args.tail.head).lookup (ctMapValD V))
+            ((toJVarD args.tail.tail.head).lookup (ctMapValD V)) = _
+          rw [ctMapValD_lookup, ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword,
+            ctTransTy_sword, ctTransTy_sword, ctTransTy_bit, selectW_ofBool]
+          cases args with
+            | cons c t => cases t with | cons a t2 => cases t2 with | cons b t3 => rfl
+      | _ => simp only [toJExprD, reduceCtorEq] at he
   | _ => simp only [toJExprD, reduceCtorEq] at he
 
 /-- **Preservation, unconditional.** `cryptoDialectToJasminCom_denote_eq` with the

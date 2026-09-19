@@ -69,8 +69,8 @@ fragment: the `RSeq` / `RBlock` / `RSkip` closure; the const/zero scalar binds
 N-dest `RCallN`); the dynamic-index array **load**/**store** arms (`RArrLoad` via
 `memGetDyn`, `RArrStore` via `memSetDyn`) and their literal-index twins
 (`RArrLoadLit`/`RArrStoreLit`, a `bvConst` index temp + the same read or write on a
-`TArr _ .TU64` word array, opaque on other slot and array types); the constant-time word select `RSelect` (the eight-op mask
-chain, §5e′, opaque on other slot types); the memref limb write `RLimbStore` (a
+`TArr _ .TU64` word array, opaque on other slot and array types); the constant-time word select `RSelect` (the comparison
+select, §5e′, opaque on other slot types); the memref limb write `RLimbStore` (a
 weaken-step + a `memrefSet` bind on a bound memref destination; on an unbound
 destination the literal slot, a `bvConst` bind + an `extCall (limbLitLeafName idx)`
 bind at the leaf oracle); and the contract assertion `RAssert` (no
@@ -1552,6 +1552,64 @@ theorem selectMaskCont_denote {Γ : Ctx} (vm : VarMap Γ)
   have h := selectMaskCont_denoteWith defaultLeaf vm V env hc dst sV aV cV
   rwa [catCryptDenoteWith_default] at h
 
+/-- The `ite` of `selectCmpCont` on the decided bit `s = 0` is `selectWord`. -/
+theorem selectWord_cmp (s a c : BitVec 64) :
+    (if (decide (s = 0#64) : Bool) then a else c) = selectWord s a c := by
+  unfold selectWord
+  by_cases hs : s = 0#64 <;> simp [hs]
+
+/-- The comparison select binds `dst` to `selectWord` of the three source slots,
+    keeps every other name consistent (the zero word and the comparison bit are
+    anonymous), and applied to any tail denotes that tail at the extended
+    valuation, under `catCryptDenoteWith ls` for every leaf oracle `ls` (the
+    prefix holds no leaf). -/
+theorem selectCmpCont_denoteWith (ls : SemLeafSpec) {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (dst : String) (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ V' : Ctxt.Valuation (d := catCryptDialect) (selectCmpCtx Γ),
+      ConsistentS (selectCmpVm vm dst) V'
+        (env.upd dst (t := .sword 64) (selectWord ((toVIRVar sV).lookup V)
+          ((toVIRVar aV).lookup V) ((toVIRVar cV).lookup V))) ∧
+      ∀ {t : CryptoTy} (tail : Com catCryptDialect (selectCmpCtx Γ) t),
+        ∃ com, selectCmpCont sV aV cV tail = some com ∧
+          @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ com V
+            = @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ tail V' := by
+  let s : BitVec 64 := (toVIRVar sV).lookup V
+  let a : BitVec 64 := (toVIRVar aV).lookup V
+  let c : BitVec 64 := (toVIRVar cV).lookup V
+  let V₁ := Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) V (0 : BitVec 64)
+  let V₂ := Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.bit) V₁
+    (decide (s = 0#64))
+  have h₂ : ConsistentS ((vm.weaken (t := .sword 64)).weaken (t := .bit)) V₂ env :=
+    consistentS_weaken (t := .bit) _ V₁ env
+      (consistentS_weaken (t := .sword 64) vm V env hc (0 : BitVec 64)) (decide (s = 0#64))
+  refine ⟨Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) V₂
+    (selectWord s a c), ?_, ?_⟩
+  · exact (scalar_step _ V₂ env h₂ dst
+      ({ op := .bvConst 64 (selectWord s a c), retTy_eq := rfl, args := .nil } :
+        Expr catCryptDialect _ (.sword 64))).1
+  · intro t tail
+    refine ⟨_, rfl, ?_⟩
+    exact congrArg
+      (fun v => @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ tail
+        (Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) V₂ v))
+      (selectWord_cmp s a c)
+
+/-- The comparison select binds `dst` to `selectWord` of the three source slots
+    (`selectCmpCont_denoteWith` at `defaultLeaf`). -/
+theorem selectCmpCont_denote {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (dst : String) (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ V' : Ctxt.Valuation (d := catCryptDialect) (selectCmpCtx Γ),
+      ConsistentS (selectCmpVm vm dst) V'
+        (env.upd dst (t := .sword 64) (selectWord ((toVIRVar sV).lookup V)
+          ((toVIRVar aV).lookup V) ((toVIRVar cV).lookup V))) ∧
+      ∀ {t : CryptoTy} (tail : Com catCryptDialect (selectCmpCtx Γ) t),
+        ∃ com, selectCmpCont sV aV cV tail = some com ∧
+          com.denote V = tail.denote V' := by
+  have h := selectCmpCont_denoteWith defaultLeaf vm V env hc dst sV aV cV
+  rwa [catCryptDenoteWith_default] at h
+
 /-! ## 6. Front-general scalar preservation over the straight-line fragment -/
 
 /-! ## 5f. The `SExpr`-recursion homomorphism (`RScalarSetExpr`) -/
@@ -2404,7 +2462,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
           rw [← hc src1.locVar, hcv]; rfl
         simp only [semScalarL, hd, henvS, henvA, henvC] at hsem
         obtain rfl := Option.some.inj hsem
-        exact selectMaskCont_denoteWith ls vm V env hc dst.locVar sV aV cV
+        exact selectCmpCont_denoteWith ls vm V env hc dst.locVar sV aV cV
       · rename_i hnot
         rcases hra : resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1]
           with _ | resolvedArgs
@@ -2922,8 +2980,8 @@ arms (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
   closes by definitional agreement.
 * **Multi-binding folds** (`RLetU64Zero` = prefix bind + body IH; `RCallSwap` /
   `RCloneCall` = two binds; `RLimbStore` and the word-shape `RArrLoadLit` /
-  `RArrStoreLit` = a weaken-step + one bind; the word-shape `RSelect` = seven
-  weaken-steps + one bind, `selectMaskCont_denote`; `RCallN` = N binds by induction
+  `RArrStoreLit` = a weaken-step + one bind; the word-shape `RSelect` = two
+  weaken-steps + one bind, `selectCmpCont_denote`; `RCallN` = N binds by induction
   on the dest list, generalizing the context): each per-bind step is a `scalar_step`
   (or `consistentS_weaken` for an anonymous temp), composed via `ComCont.comp` along
   the `RSeq` spine.
@@ -3224,8 +3282,7 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
       simp only [translateDialectFull] at htr
       split at htr
       · obtain rfl := Option.some.inj htr
-        exact ⟨[.sword 64, .sword 64, .sword 64, .sword 64,
-          .sword 64, .sword 64, .sword 64, .sword 64], rfl, fun h => absurd h (by simp)⟩
+        exact ⟨[.sword 64, .bit, .sword 64], rfl, fun h => absurd h (by simp)⟩
       · rcases hra : resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1]
           with _ | resolvedArgs
         · simp [hra] at htr

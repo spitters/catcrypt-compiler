@@ -667,8 +667,9 @@ def selOn (b : String) (i : LinstrR) : Option (String × String × String) :=
   | none => none
 
 /-- Lookahead for a comparison into `b`: no instruction after it reads `b`
-    before `b` is fully rewritten or the body ends with `b` outside `liveOut`,
-    other than selects on `b` reached through flag-silent instructions. -/
+    before `b` is fully rewritten or the body ends, or returns by `Lret`, with
+    `b` outside `liveOut`, other than selects on `b` reached through flag-silent
+    instructions. -/
 def worthScan (liveOut : List String) (b : String) : Bool → Lcmd → Bool
   | _, [] => !liveOut.contains b
   | inRun, k :: rest =>
@@ -679,6 +680,7 @@ def worthScan (liveOut : List String) (b : String) : Bool → Lcmd → Bool
             if (instrUses dsts opn srcs).contains b then false
             else if (fullDefsOf dsts opn).contains b then true
             else worthScan liveOut b (inRun && isFlagSilent opn) rest
+        | .Lret => !liveOut.contains b
         | _ => false
 
 /-- A comparison the fusion replaces: a `SETE:64`/`SETNE:64` into a pool

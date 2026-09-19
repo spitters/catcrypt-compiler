@@ -390,7 +390,16 @@ theorem lowerSExpr_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat)
   | SMulHiS _ _ _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
   | SLimb _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
 
-/-- **The word-select prefix leak-factors.** The eight `varBind`s of
+/-- **The comparison-select prefix leak-factors.** The three `varBind`s of
+    `selectCmpCont` prepend a fixed number of leak events. -/
+theorem selectCmpCont_leakFactors {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ k : Nat, ComCont.LeakFactors (selectCmpCont sV aV cV) k := by
+  unfold selectCmpCont
+  exact ⟨_, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+    (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+      (ComCont.varBind_leakFactors _))⟩
+
+/-- **The mask-chain prefix leak-factors.** The eight `varBind`s of
     `selectMaskCont` prepend a fixed number of leak events. -/
 theorem selectMaskCont_leakFactors {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
     ∃ k : Nat, ComCont.LeakFactors (selectMaskCont sV aV cV) k := by
@@ -487,7 +496,7 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
   | rSelect dst sel src0 src1 =>
       rw [translateDialectFull] at h
       split at h
-      · rw [Option.some.injEq] at h; subst h; exact selectMaskCont_leakFactors _ _ _
+      · rw [Option.some.injEq] at h; subst h; exact selectCmpCont_leakFactors _ _ _
       · split at h <;>
           first
             | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
@@ -910,7 +919,15 @@ theorem lowerSExpr_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat)
   | SMulHiS _ _ _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
   | SLimb _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
 
-/-- **The word-select prefix has a fixed leak-event trace.** -/
+/-- **The comparison-select prefix has a fixed leak-event trace.** -/
+theorem selectCmpCont_leakFactorsTrace {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ pre : LeakTrace, ComCont.LeakFactorsTrace (selectCmpCont sV aV cV) pre := by
+  unfold selectCmpCont
+  exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+    (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+      (ComCont.varBind_leakFactorsTrace _))⟩
+
+/-- **The mask-chain prefix has a fixed leak-event trace.** -/
 theorem selectMaskCont_leakFactorsTrace {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
     ∃ pre : LeakTrace, ComCont.LeakFactorsTrace (selectMaskCont sV aV cV) pre := by
   unfold selectMaskCont
@@ -1001,7 +1018,7 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
   | rSelect dst sel src0 src1 =>
       rw [translateDialectFull] at h
       split at h
-      · rw [Option.some.injEq] at h; subst h; exact selectMaskCont_leakFactorsTrace _ _ _
+      · rw [Option.some.injEq] at h; subst h; exact selectCmpCont_leakFactorsTrace _ _ _
       · split at h <;>
           first
             | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;

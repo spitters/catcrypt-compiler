@@ -352,9 +352,7 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
       simp only [translateDialectFull] at hT
       split at hT
       · simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind (noAlias_weaken (noAlias_weaken (noAlias_weaken
-          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken hNA)))))))
-          dst.locVar
+        exact noAlias_bind (noAlias_weaken (noAlias_weaken hNA)) dst.locVar
       · split at hT
         · exact absurd hT (by simp)
         · simp only [Option.some.injEq] at hT; subst hT
@@ -1051,7 +1049,7 @@ theorem rustExecSimulatesDialect
         obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
           ⟨dst.locDst, leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList⟩
         exact ⟨HVec.cons w V, hInv'⟩
-  -- The word select chain binds seven anonymous temporaries and the destination;
+  -- The word comparison select binds two anonymous temporaries and the destination;
   -- its post-state valuation is the canonical witness of the alias-free `VarMap`.
   -- Any other select is one opaque leaf binding.
   | selectFalse dst sel src0 src1 rs0 hTy srcV _hSel _hLook =>
@@ -1059,9 +1057,8 @@ theorem rustExecSimulatesDialect
       split at hTrans
       · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken (noAlias_weaken
-          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
-            (noAlias_weaken hInv.noAlias))))))) dst.locVar) _⟩
+        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken
+          (noAlias_weaken hInv.noAlias)) dst.locVar) _⟩
       · split at hTrans
         · exact absurd hTrans (by simp)
         · simp only [Option.some.injEq] at hTrans
@@ -1075,9 +1072,8 @@ theorem rustExecSimulatesDialect
       split at hTrans
       · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken (noAlias_weaken
-          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
-            (noAlias_weaken hInv.noAlias))))))) dst.locVar) _⟩
+        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken
+          (noAlias_weaken hInv.noAlias)) dst.locVar) _⟩
       · split at hTrans
         · exact absurd hTrans (by simp)
         · simp only [Option.some.injEq] at hTrans

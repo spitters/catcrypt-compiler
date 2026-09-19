@@ -29,8 +29,8 @@ This file extends that front to the **multi-binding arms** — the ones whose
 opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 
 * `RCall`            — one `extCall fname` rebinding the destination;
-* `RSelect`          — on 64-bit word slots, the eight-op branchless mask chain
-  of §1d; on any other slots, one opaque `extCall "select"` over the selector and
+* `RSelect`          — on 64-bit word slots, the comparison and conditional
+  select of §1d; on any other slots, one opaque `extCall "select"` over the selector and
   the two sources;
 * `RCallDstThreaded` — one `extCall fname` with `dst :: args`;
 * `RTupleLoad`       — one `extCall "tupleLoad:i"`;
@@ -636,15 +636,54 @@ def arrStoreCont {Γ : Ctx} (dty : TowerType)
 
 /-! ### 1d. The constant-time word select
 
-`RSelect dst sel src0 src1` on 64-bit words lowers to the branchless mask chain
+`RSelect dst sel src0 src1` on 64-bit words lowers to a comparison feeding a
+conditional select,
+
+    z = 0; b = (s == z); r = b ? a : c
+
+over the selector `s` and the sources `a` (`src0`) and `c` (`src1`)
+(`selectCmpCont`). `DialectToJasminCom` lowers the three ops to `regConst`,
+`cmp .eq` and `select`, which the x86 backend carries as `cmp` and `cmovcc`.
+
+`selectMaskCont` is the branchless mask chain computing the same word,
 
     z = 0; n = z - s; o = s | n; b = o >> 63; m = z - b;
     x = a ^ c; y = x & m; r = a ^ y
 
-over the selector `s` and the sources `a` (`src0`) and `c` (`src1`). `b` is `1`
-exactly when `s ≠ 0`, so `m` is all ones exactly then and `r` is `c`; otherwise
-`m = 0` and `r = a`. Every op is in the fragment `DialectToJasminCom` lowers
-(`regConst`, `regArith sub/or/xor/and`, `shrImm`). -/
+where `b` is `1` exactly when `s ≠ 0`, so `m` is all ones exactly then and `r`
+is `c`; otherwise `m = 0` and `r = a`. Every op of it is in the fragment
+`DialectToJasminCom` lowers (`regConst`, `regArith sub/or/xor/and`, `shrImm`). -/
+
+/-- The context the comparison select grows over `Γ`: the zero word, the
+    comparison bit, and the destination word on top. -/
+abbrev selectCmpCtx (Γ : Ctx) : Ctx :=
+  .sword 64 :: .bit :: .sword 64 :: Γ
+
+/-- The three-op comparison select computing `if s = 0 then a else c` over the
+    word slots `sV` (selector), `aV` and `cV`: the zero word, the bit `s = 0`,
+    and the `ite` on that bit. -/
+def selectCmpCont {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ComCont Γ (selectCmpCtx Γ) :=
+  let Γ₁ : Ctx := .sword 64 :: Γ
+  let Γ₂ : Ctx := .bit :: Γ₁
+  let eZ : Expr catCryptDialect Γ (.sword 64) :=
+    { op := .bvConst 64 0, retTy_eq := rfl, args := .nil }
+  let eB : Expr catCryptDialect Γ₁ .bit :=
+    { op := .bvEq 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there sV : CVar Γ₁ (.sword 64)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₁ (.sword 64))) .nil) }
+  let eR : Expr catCryptDialect Γ₂ (.sword 64) :=
+    { op := .ite (.sword 64), retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.here : CVar Γ₂ .bit))
+        (.cons (toVIRVar (CVar.there (CVar.there aV) : CVar Γ₂ (.sword 64)))
+          (.cons (toVIRVar (CVar.there (CVar.there cV) : CVar Γ₂ (.sword 64))) .nil)) }
+  ComCont.comp (ComCont.varBind eZ)
+    (ComCont.comp (ComCont.varBind eB) (ComCont.varBind eR))
+
+/-- The `VarMap` after the comparison select: the zero word and the comparison
+    bit are anonymous and `dst` names the top slot. -/
+def selectCmpVm {Γ : Ctx} (vm : VarMap Γ) (dst : String) : VarMap (selectCmpCtx Γ) :=
+  ((vm.weaken (t := .sword 64)).weaken (t := .bit)).bind (t := .sword 64) dst
 
 /-- The context the select chain grows over `Γ`: seven 64-bit temporaries and
     the destination word on top. -/
@@ -785,14 +824,14 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           | ⟨_argTys, hv⟩ =>
             let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar }
-  -- Constant-time select on 64-bit words: the mask chain of §1d. A select over
+  -- Constant-time select on 64-bit words: the comparison select of §1d. A select over
   -- any other slots (a point bundle, a field-element tower) is the opaque
   -- `extCall "select"` leaf over the selector and the two sources, in that order.
   | .RSelect dst sel src0 src1 =>
       match dst.locDst, vm.lookup sel, vm.lookup src0.locVar, vm.lookup src1.locVar with
       | .TU64, some ⟨.sword 64, sV⟩, some ⟨.sword 64, aV⟩, some ⟨.sword 64, cV⟩ =>
-          some { Γ' := selectCtx Γ, cont := selectMaskCont sV aV cV,
-                 vm := selectVm vm dst.locVar }
+          some { Γ' := selectCmpCtx Γ, cont := selectCmpCont sV aV cV,
+                 vm := selectCmpVm vm dst.locVar }
       | _, _, _, _ =>
           match resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1] with
           | none => none

@@ -57,13 +57,17 @@ dialect-`Expr` analogue of the `CExpr`-shaped `toJExpr`) and the structural
 | `bvMulHi w`                  | `mulhi w`              |
 | `bvAddCarryLo w`             | `addCarryLo w`         |
 | `bvAddCarryHi w`             | `addCarryHi w`         |
+| `bvEq w`                     | `cmp .eq w`            |
+| `ite (.sword w)`             | `select w`             |
 
 The arith/const/extCall/dynamic-memref rows are the original `CProg`-parity
 fragment; the rotate/variable-shift/`andn` rows are the word-native crypto
 extension (SHA/Keccak/ChaCha/bignum); the immediate-shift and bignum-ALU
 (`mulhi`/`addCarry*`) rows complete the word-native scalar op set, lowering
-instead of surviving as opaque leaves. Every other `CatCryptOp` returns `none`:
-`bvNot`/`bvEq`/`bvAdd64`/`bvAdc`/`ite`/`bitToSword`/the pair/sum ops/the bit
+instead of surviving as opaque leaves; the `bvEq`/`ite` rows carry the word
+select as a comparison feeding a conditional move. Every other `CatCryptOp`
+returns `none`:
+`bvNot`/`bvAdd64`/`bvAdc`/`ite` at a non-word type/`bitToSword`/the pair/sum ops/the bit
 ops/`sampleBit`/`sampleBv`, plus `bvRol` (jasmin has no scalar left-rotate op,
 so the dialect carries it as a faithful denotation but declines to lower it).
 
@@ -429,8 +433,30 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
       have hr : mapTy t = JasminTy.reg 128 := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
       some (hr ▸ { op := .regConst 128 v.toNat, retTy_eq := rfl, args := .nil })
-  -- Everything else is outside the lowered straight-line fragment — exactly the
-  -- ops `toJExpr` declines: `bvNot`/`bvEq`/`bvAdd64`/`bvAdc`/`ite`/`bitToSword`,
+  -- **Word equality and word select.** `bvEq w` ↦ jasmin `cmp .eq w`: the
+  -- `.bit` result maps to `.reg 1`, and `cmpBit .eq a b` is `BitVec.ofBool` of
+  -- the dialect's `decide (a = b)`. `ite (.sword w)` ↦ jasmin `select w`, whose
+  -- `[.reg 1, .reg w, .reg w]` signature is the pointwise image of
+  -- `[.bit, .sword w, .sword w]`. An `ite` at any other type is not lowered.
+  | .bvEq w =>
+      have hr : mapTy t = JasminTy.reg 1 := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.sword w, .sword w] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .cmp .eq w, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  | .ite (.sword w) =>
+      have hr : mapTy t = JasminTy.reg w := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.bit, .sword w, .sword w] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .select w, retTy_eq := rfl,
+          args := .cons (toJVarD args.head)
+            (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
+  -- Everything else is outside the lowered straight-line fragment:
+  -- `bvNot`/`bvAdd64`/`bvAdc`/`bitToSword`, `ite` at a non-word type,
   -- the pair/sum ops, the bit ops, the static-index memref ops, the sampling
   -- ops, and `bvRol` (jasmin has no scalar left-rotate op; `bvRol` is faithful
   -- in the dialect denotation but declines here).

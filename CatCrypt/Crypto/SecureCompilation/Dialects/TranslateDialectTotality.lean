@@ -44,9 +44,10 @@ bound, so the judgment never mentions De Bruijn contexts and composes along
   is `srcClean` and every variable it reads is bound at `.sword 64`, binds its
   result at `.sword 64`, preserves all non-temporary bindings, and emits a
   `ContJTotal` prefix.
-* `contJTotal_selectMaskCont` / `vmApprox_selectVm` — the word-select chain
-  is a jasmin-lowerable prefix and its `VarMap` realises the destination
-  update.
+* `contJTotal_selectCmpCont` / `vmApprox_selectCmpVm` — the comparison select
+  the `RSelect` arm emits is a jasmin-lowerable prefix and its `VarMap` realises
+  the destination update; `contJTotal_selectMaskCont` / `vmApprox_selectVm` are
+  the same two facts for the mask chain `selectMaskCont`.
 * `TransTotal` — the reads-bound covered judgment (`RSkip` / `RBlock` / `RSeq`
   / `RScalarSet` / `RScalarSetExpr` / `RArrLoad` / `RArrStore`, and `RSelect`
   on a `u64` destination with selector and sources bound at `.sword 64`).
@@ -180,6 +181,14 @@ theorem vmApprox_selectVm {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ}
   vmApprox_upd (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken
     (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken h))))))) dst
 
+/-- The `VarMap` after the comparison select (`selectCmpVm`: two anonymous
+    temporaries, then `dst` on top) realises the map update of `dst` at
+    `.sword 64`. -/
+theorem vmApprox_selectCmpVm {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ}
+    (h : VmApprox σ vm) (dst : String) :
+    VmApprox (σ.upd dst (.sword 64)) (selectCmpVm vm dst) :=
+  vmApprox_upd (vmApprox_weaken (vmApprox_weaken h)) dst
+
 /-- `lookupU64` succeeds on a name bound at `.sword 64`. -/
 theorem lookupU64_of_lookup {Γ : Ctx} {vm : VarMap Γ} {y : String}
     {v : CVar Γ (.sword 64)} (h : vm.lookup y = some ⟨.sword 64, v⟩) :
@@ -288,6 +297,14 @@ theorem contJTotal_selectMaskCont {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
           (ContJTotal.comp (ContJTotal.varBind rfl)
             (ContJTotal.comp (ContJTotal.varBind rfl)
               (ContJTotal.comp (ContJTotal.varBind rfl) (ContJTotal.varBind rfl)))))))
+
+/-- The three-op comparison select is a jasmin-lowerable prefix: each of its
+    bindings (`bvConst`, `bvEq`, `ite` at `.sword 64`) lowers. -/
+theorem contJTotal_selectCmpCont {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ContJTotal (selectCmpCont sV aV cV) := by
+  unfold selectCmpCont
+  exact ContJTotal.comp (ContJTotal.varBind rfl)
+    (ContJTotal.comp (ContJTotal.varBind rfl) (ContJTotal.varBind rfl))
 
 /-! ## 3. Totality of the `SExpr` chain lowering
 
@@ -523,8 +540,8 @@ theorem translateDialectFull_total {σ σ' : NameTys} {c : LowCT}
       obtain ⟨sV, hsV⟩ := ha _ _ hs
       obtain ⟨aV, haV⟩ := ha _ _ h0
       obtain ⟨cV, hcV⟩ := ha _ _ h1
-      refine ⟨⟨selectCtx Γ, selectMaskCont sV aV cV, selectVm vm dst.locVar⟩, ?_,
-        vmApprox_selectVm ha dst.locVar, contJTotal_selectMaskCont sV aV cV⟩
+      refine ⟨⟨selectCmpCtx Γ, selectCmpCont sV aV cV, selectCmpVm vm dst.locVar⟩, ?_,
+        vmApprox_selectCmpVm ha dst.locVar, contJTotal_selectCmpCont sV aV cV⟩
       simp only [translateDialectFull, hty, hsV, haV, hcV]
 
 /-- `translateDialectControl` succeeds on a judged body: on the covered

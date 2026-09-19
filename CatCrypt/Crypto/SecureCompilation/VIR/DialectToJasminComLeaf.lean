@@ -148,6 +148,10 @@ theorem dialectJasminLeafAgreesWith_holds {ls : SemLeafSpec} {jls : JLeafSem}
     cases hop
     have h0 := dialectJasminLeafAgrees_holds ⟨_, rfl, args⟩ V e' he
     cases sop <;> (simp only [toJExprD, reduceCtorEq] at he ⊢) <;> (try cases he) <;> exact h0
+  case ite ty =>
+    cases hop
+    have h0 := dialectJasminLeafAgrees_holds ⟨_, rfl, args⟩ V e' he
+    cases ty <;> (simp only [toJExprD, reduceCtorEq] at he ⊢) <;> (try cases he) <;> exact h0
   all_goals
     cases hop
     have h0 := dialectJasminLeafAgrees_holds ⟨_, rfl, args⟩ V e' he
