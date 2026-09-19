@@ -1,132 +1,121 @@
 # Ascent modules whose results are tied to neither a descent theorem nor the
 # encoded bytes. Each line: module<TAB>reason. Recorded by
 # scripts/ascent-anchor-ratchet.sh --record; the count may fall, never rise.
-CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Ascend	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Capstone	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorrect	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulSpec	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelational	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvSolver	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresSolver	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymEngine	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Solver	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitLowCT	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksA	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksB	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedParts	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontsqrP384	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSum	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Exit	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Guards	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.GuardsLeaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.HeapAbs	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Phases	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Polish	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.RelationalProductMvcgen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Strengthen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.While	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.WhileFun	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.WhileFunEmit	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.WriterTMvcgen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XDijkstraAll	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XHeapSoundness	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XMorphismInstance	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgen	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenControl	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF	no reason recorded
-CatCrypt.Crypto.SecureCompilation.Ascent.XrunRunBlockTie	no reason recorded
-CatCrypt.Hax.Ascent.AscendHax	no reason recorded
-CatCrypt.Hax.Ascent.AscendHaxDemo	no reason recorded
-CatCrypt.Hax.Ascent.Builtins	no reason recorded
-CatCrypt.Hax.Ascent.Corres	no reason recorded
-CatCrypt.Hax.Ascent.Coverage	no reason recorded
-CatCrypt.Hax.Ascent.Demo	no reason recorded
-CatCrypt.Hax.Ascent.Deps	no reason recorded
-CatCrypt.Hax.Ascent.EarlyExit	no reason recorded
-CatCrypt.Hax.Ascent.Encode	no reason recorded
-CatCrypt.Hax.Ascent.Exit	no reason recorded
-CatCrypt.Hax.Ascent.ExtTable	no reason recorded
-CatCrypt.Hax.Ascent.Fuel	no reason recorded
-CatCrypt.Hax.Ascent.Generate	no reason recorded
-CatCrypt.Hax.Ascent.GenRules	no reason recorded
-CatCrypt.Hax.Ascent.IfBreak	no reason recorded
-CatCrypt.Hax.Ascent.LocalCalls	no reason recorded
-CatCrypt.Hax.Ascent.Refines	no reason recorded
-CatCrypt.Hax.Ascent.RuntimeLeaves	no reason recorded
-CatCrypt.Hax.Ascent.RuntimeOps	no reason recorded
+CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx	INFRA, thin: a simulation framework between a byte-addressed address machine and the name-keyed runBlock machine, with a loop lift and one hand-transcribed instance over a synthetic kernel, writing no artifact by its own docstring. Its sole importer workspace-wide is VIR/JasminLsemAddrMem.lean, which takes only the standalone lemma disjoint8_of_toNat and builds its own separate simulation; that file has no importer of its own.
+CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf	DEAD (orphan): the LowCT array-load leaf SRarrLoad/corres_arrLoad has zero importers anywhere; every other occurrence of corres_arrLoad is a docstring mention in ArrStoreLeaf.lean calling it the store leaf's counterpart, not an import.
+CatCrypt.Crypto.SecureCompilation.Ascent.Ascend	INFRA: the ascend_sound/ascend_expr_sound/ascend_bitwise_sound fragment definitions underlying the ascend/ascend_expr/ascend_bitwise tactics; imported by Capstone.lean (an orphan) and AscendDecide.lean, which builds the Bool-checker layer on it.
+CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide	INFRA: the Bool fragment checkers with soundness (ascend!/ascend_expr!/ascend_bitwise!/ascend_unified!); imported by AscendMeta.lean, Guards.lean and Demos/Decide.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta	REACHABLE: proves keccakRoundBody_bitwise, a full Keccak-f[1600] round (theta/rho/pi/chi/iota) over 25 named lanes as a bitwise straight-line LowCT kernel, lifted to its BitVec 64 spec via 27 uses of its own ascend_meta tactic - a genuine kernel, not tactic scaffolding, with zero importers. No weld to Com jasminDialect/bytes yet; nearest template LegWeld.lean's legWeld_lower for a closed straight-line kernel with a source.
+CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot	DEAD (orphan): corres_setExprNot/corres_setExprOr have zero importers; RotateLeaf.lean's own docstring calls corres_setExprOr a leaf that has not yet landed.
+CatCrypt.Crypto.SecureCompilation.Ascent.Capstone	DEAD: capstone_word_to_field covers only the constant-assignment IsAscendable fragment (RSkip, RBlock, RSeq, RScalarSet, no arithmetic); its own docstring names CapstoneField.lean as the arithmetic-capable successor, and no in-tree module imports it.
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorrect	REACHABLE: carryMul_correct is functional correctness over runBlock for CryptOpt's fiat_curve25519_carry_mul at concrete registers, the shape feMulBlock_correct had before its bytes lift. Reaching bytes needs a LeafFrame prologue/epilogue wrap, an encodeJBlock/decodeJStream decode-identity theorem and an allDirect constant-time sibling - the recipe of Demos/Fe25519KernelsBytes.lean; carryMulBlock is a concrete List (JInstr 64) already register-allocated, so no renameBlock/allocGp step is needed first.
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres	INFRA: the SRmem-based CorresJ refinement of carry_mul's two memory-stable segments, with no bytes- or Com-facing conclusion of its own; its one consumer is the REACHABLE CarryMulCorrect.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulSpec	INFRA: mathematical specification vocabulary (eval5, carryMulP, CarryMulSpec, LimbsBelow54) for fiat-crypto's mul_correct, with no JInstr, Com or kernel content; consumed by CarryMulCorrect.lean and CryptOptAddr.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr	INFRA: the @[corres] label attribute; imported by CorresSolver.lean, CorresX86Solver.lean and CorresX86Mem.lean, the symbolic solvers that read the tagged leaf set.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge	INFRA: the base regEnv/corresJ_forget_to_corres bridge relation; imported by CorresBridgeArith.lean and CorresBridgeMem.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith	INFRA: arith_middle_tie_at_dst; imported only by CorresBridgeArithComplete.lean, which extends it to the non-temporary-name case.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete	INFRA: arith_middle_tie_nonTmp/_seq_nonTmp; imported by CorresBridgeCtrl.lean and CorresMachineTie.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl	INFRA: for_middle_tie_gen/for_middle_tie_arith; imported only by CorresMachineTieFragments.lean, itself an orphan - a bridge two levels from any live consumer.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem	INFRA: regMemEnv/mem_load_middle_tie_at_dst/mem_store_middle_tie_at_cell; imported by CorresBridgeMemStore.lean and CorresMachineTieFragments.lean, both themselves orphans.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore	DEAD (orphan): mem_store_middle_tie_full has zero importers and no other textual reference anywhere in the tree.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent	DEAD: frefines_ret/dotFrag_ret serve a toy dot-product fragment; the module's own docstring records that no composed descent-and-ascent program is proved in it, and the live siblings CorresDescentX86.lean and CorresDescentRiscv.lean state their own Refines analogue rather than importing it. No module in the tree imports it.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare	INFRA: RunBlockTriple/corresJ_iff_triple; imported by RunBlockMvcgen.lean (the mvcgen embedding) and JStateSepLogic.lean (an orphan).
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie	INFRA: SimTie/simTie_seq/simTie_arith_seq; imported only by CorresMachineTieFragments.lean, itself an orphan.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments	DEAD (orphan): simTie_for_of_body/simTie_memLoad have zero importers and no other reference in the tree - the sink of the CorresBridge*/CorresMachineTie tie chain, consuming three other modules but consumed by none.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelational	INFRA: the generic SRenc/EndoOpRealization/RealizedKernel derivation rule for Corres, instantiated only on a ZMod 251 addition toy kernel; its one consumer is CorresRelationalWeld.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld	REACHABLE, cheap: addMod251_front_weld already proves that translateDialectControl and cryptoDialectToJasminCom succeed and that jcom.denote equals the clean spec value at every input - the conclusion shape of EmitBridge.keystone_emit, reached through the lower-level semScalarToJasminCom_denote_eq. Restating it as a corollary of a recognized descent name adds no proof content; the kernel it welds is the ZMod 251 toy, not a shipped primitive, so anchoring it retires a baseline line without validating new arithmetic.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves	INFRA: SRr/corresR_of_set and the twelve RInst64 leaves; imported by CorresRiscvSolver.lean, which registers them under @[corresR].
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvSolver	INFRA with a live consumer: the corresRMachine engine instance and corres_sym_rv/corres_solve_rv tactics; imported by Demos/Riscv.lean, which runs corres_sym_rv on a real add-with-carry RV64 block.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSolver	INFRA: corresJ_cons/corresJ_castFa, the corresJMachine engine instance, corres_sym/corres_leaf/corres_chain/corres_solve; imported only by CorresX86Solver.lean, which specialises it to x86.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym	DEAD: solinasSeg1_corres_sym through solinasSquareBlock_corres_sym duplicate, via the corres_sym tactic, the refinement CorresX86Mem.lean proves independently (solinasSquareBlock_corres) and that SolinasSquareCorrect.lean actually consumes. Nothing in the tree imports CorresSym.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymEngine	INFRA: the generic SymM worklist engine (Machine/Shape/listShape/run/solve); imported by CorresSymScalar.lean (an orphan), CorresSolver.lean and CorresRiscvSolver.lean - the shared base of all three machine-specific solvers.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar	DEAD (orphan): the corresScalarMachine instance and corres_sym_scalar tactic have zero importers and zero invocations anywhere; the scalar kernels that could use it (e.g. Demos/Scalar) instead use corres_solve_scalar from CorresScalar.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem	INFRA: a leaf library of SRcarry2/SRmem CorresJ rules for individual x86 instructions (mov, add, xor, imul, loadMem, storeMem, mulxMem, adcx, adox, setcc, cmovcc) over the CryptOpt-ingested carry_mul/solinas_square blocks; consumed by SolinasSquareCorrect.lean, CorresSym.lean (dead) and CarryMulCorres.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Solver	INFRA with live consumers: SRx/corresJ_of_regs and the x86 leaf family; imported by Demos/X86StraightLine.lean, Demos/LeanSourceX86.lean and CorresX86Mem.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr	REACHABLE: carryMul_correct_addr and solinasSquare_correct_addr are functional correctness over AddrMem.runBlockA for CryptOpt's carry_mul and solinas_square at the concrete registers parsed from the asm files. Reaching bytes needs a frame wrap and the encodeJBlock, decode_phys and allDirect constant-time steps of Demos/Fe25519KernelsBytes.lean, at this stronger address-keyed memory model.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide	INFRA: demonstrates the deciding tactics (ascend_expr!, ascend_bitwise!, ascend_unified!, corres_solve_scalar) on toy arithmetic and bitwise kernels with no shipped or emitted counterpart; documented entry point for those tactics in Ascent/AGENTS.md and ASCENT.md, with no further consumer.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksA	INFRA: five of ten decide +kernel part checks (pa_part1..pa_part5) verifying the flag-aware symbolic executor against canonical parts of the imported ed25519_point_add block; feeds Ed25519PointAddShippedProof.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksB	INFRA: the remaining five part checks (pa_part6..pa_part10) of the same census, feeding Ed25519PointAddShippedProof.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedParts	INFRA: builds the flag-aware symbolic executor (SSt2, symStep2, symRun2) and its hash-consed node-expression machinery used by the Checks files and Proof.lean; states executor soundness, not a result about the shipped kernel's arithmetic.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof	REACHABLE: composes the part checks into paCanon_correct and the closed capstone paShipped_correct_addr, proving the actual shipped ed25519_point_add block (over runBlockA, parametric in buffer disjointness) computes Ed25519 point addition, plus paSpec_addSpec tying the result to the ZMod p25519 addition law. One EncodedBlockCorres-style encodeJBlock weld short of anchored, following the same recipe as Demos/S2nMontmulP384Bytes.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof	REACHABLE: a self-contained proof (word model muladdModel, nine part checks, closed capstones scMuladdCanon_correct/scMuladdShipped_correct_addr) that the shipped ed25519_sc_muladd block computes (a*b+c) mod L. Same gap and template as Ed25519PointAddShippedProof.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs	REACHABLE: feAddN_capstone/feAdd4_capstone_field prove a generic n-limb adcx chain refines modular/field addition over the ValueAbs/limbWindowAbs framework, for arbitrary register names - a general capstone, not tied to a concrete shipped block. Reaching bytes needs instantiating it at a real kernel's register names and applying the EncodedBlockCorres-style weld, template Demos/S2nMontmulP384Bytes.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv	REACHABLE: add_descent_riscv/sub_descent_riscv carry a Lean function through the descent (lowerRBlock64, corresR_of_refines) to a full runRBlock64 result, a complete toy source-to-machine-code chain; it does not cite com_riscv_e2e, the RV64 descent tie the ratchet regex recognizes. Blocked on, or a naming fix for, an RV64 byte encoder analogous to encodeJBlock, none of which was found in the files read.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86	REACHABLE: add_descent_x86/sub_descent_x86/add_descent_solver carry a Lean function through the descent and the ascent solver to runBlock/x86Target.compile output; the EncodedBlockCorres weld used by Demos/S2nMontmulP384Bytes.lean applies directly since the target is x86 JInstr. Its kernel is a toy two-argument add/sub, not a shipped primitive.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench	BLOCKED, not a benchmark despite its name: millerLoopProg_capstone (instantiated at N=8, N=64 and the 63-trip BLS12-377 ate parameter) proves a counted-loop LowCT kernel computes the mathematical Miller-loop fold over Fp12 tower arithmetic. Blocked because its field operations (fp12_square, fp12_mul, line_dbl, line_add, loop_bit) are RCall leaves the front/backend give only the opaque extCall semantics; no concrete leaf oracle ties them to an owned Fp12-tower emit kernel, so there is no route to Com jasminDialect or bytes today.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv	INFRA: addCarry_ascends is a two-instruction RV64 worked example (add + sltu computing a sum and its carry-out word), documented as the entry point for corres_sym_rv; makes no claim about a shipped kernel.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr	REACHABLE, close: already proves full correctness over the address machine (s2nMontmulP384_correct_addr and its aliasing instances, plus a frame theorem) for the actual imported bignum_montmul_p384 block, composing S2nMontmulP384Proof's name-keyed correctness with AddrMem.runBlockA_sim_readsBeforeWrites. Unanchored only because it targets runBlockA rather than the encoded bytes; composing it with the already-anchored S2nMontmulP384Bytes.lean/Framed.lean closes the gap with no new arithmetic content.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontsqrP384	REACHABLE but with real proof work remaining: this module is only the imported bignum_montsqr_p384 instruction list (230 instructions, data, no correctness claim); no s2nMontsqrP384_correct theorem exists anywhere in the tree. The block shares montmul's instruction repertoire (mulx/adcx/adox), so there is no compiler-capability wall, but reaching bytes needs a new proof of comparable size to S2nMontmulP384Proof.lean (~1200 lines).
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar	REACHABLE: qrClosed_frontDenote_val already reaches qrCom.denote .nil = 393216#64, a Com catCryptDialect denotation one level short of jasmin/bytes. Applying cryptoDialectToJasminCom and rustToJasminCom_endToEnd_unconditional, as FeSubEndToEnd.lean's feSub_endToEnd does, would complete the weld; template FeSubEndToEnd.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes	INFRA: feSub_value/feAdd_value are numeric corollaries (by decide) of the already-anchored feSub_source_to_bytes_tower/feAdd_source_to_bytes_tower. The ratchet's transitive-anchoring rule propagates from an anchored module to what it imports, not to its importers, so this file stays unanchored despite depending only on anchored results.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen	INFRA: tabulates which result monad (Kernel.tsLevel) the type-strengthening pass picks for each demo kernel, by rfl; pure bookkeeping with no compiled-artifact claim.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSum	INFRA: proves the summation do-while kernel's abstract loop value via the functional while rule over semU, with no front/jasmin weld; the source feeding Demos/WhileFunSumJasmin.lean, which carries it to the jasmin denotation.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin	REACHABLE, effectively at the target shape already: sumLoop_jasminDenote/sumLoop3_jasminDenote conclude a Com jasminDialect denotation equation, the same bytes shape ASCENT.md documents for the anchored capstones, via transU_to_jasminCom_endToEnd/corresU_whileFun_jasminDenote. Unanchored only because those identifiers are absent from the ratchet's descent regex, which recognizes rustToJasminCom_endToEnd, not transU_to_jasminCom_endToEnd.
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine	INFRA: pedagogical corres_sym worked examples (carry chains, an ALU block, x86Target.compile output of a two-statement program) over abstract register names; documented AGENTS.md/ASCENT.md entry point, makes no claim about a shipped kernel.
+CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone	REACHABLE: sbbBlock and feSub4_capstone form a concrete subtract-with-borrow JInstr chain whose register names are parameters, and sbb is decodable by SailX86Decoder at opcode 0x19, so the encodeJBlock route is open. Needs instantiation at concrete register names plus the decode and constant-time steps of Demos/Fe25519KernelsBytes.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit	REACHABLE: sbbColumn_agree and runBlock_lsem_agreeCF_seq_migrate feed, through RunBlockLsemAgreeCondSub -> RunBlockLsemAgreeMontRedc -> RunBlockLsemAgreeMontMulBlock, a whole-kernel four-limb Montgomery-multiply agreement, but that chain targets the lsemStraightMem machine wire, touches neither encodeJBlock nor decodeJStream, and ends in a module with no importer. Reaching bytes repackages the JInstr-level value correctness Curve4MontMulProvenEmit already carries as a CorresJ, as FieldReduce.corresJ_montRedc4Block does for the reduce stage, and welds it to EncodedBlockCorres.encodeJBlock_bytesCorresJ independently of the lsem leg.
+CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul	REACHABLE: EncodedBlockCorres.lean's own byte-level theorems bignumMulColumn_bytesCorresJ and add2adcx_bytesCorresJ substantively use this module's corresJ_adxBlock, corresJ_adcxChain, adxAbs, adcxAbs and SRcarry2/SRcarry, but only on toy register names, never joined to this module's own mulLimbs_spec/feMul4_capstone; feMul4_capstone has no call site anywhere. (Its import by the already-anchored Demos/S2nMontmulP384Bytes.lean is incidental: that theorem is built from S2nMontmulP384Proof.s2nMontmulP384_corresJ welded through the generic encodeJBlock_bytesCorresJ and uses no EcMultiLimbMul identifier.) Fix: pair mulLimbs_spec/feMul4_capstone with a bignumMulColumn_bytesCorresJ-shaped operational fact at concrete registers, copying Demos/S2nMontmulP384Bytes.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce	REACHABLE: corresJ_montRedc4Block is already a CorresJ fact for the real emitted block Curve4MontMulProvenEmit.emitMontRedc4Block, exactly the input shape EncodedBlockCorres.encodeJBlock_bytesCorresJ consumes. Reaching bytes needs a concrete allocation, and the blockCovered/mulxRdxOk/RenInjOn checks by decide, then the call to encodeJBlock_bytesCorresJ - the recipe of Demos/S2nMontmulP384Bytes.lean, bypassing the orphaned MontRedc4RunBlockFused.lean chain entirely.
+CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe	DEAD (research probe): whether stock mvcgen carries a grade; per ASCENT.md's own "Research probes outside the calculus" table, no module of the calculus, capstone or demonstration imports it and no capstone depends on it.
+CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP	DEAD (research probe): a standalone graded predicate transformer with grade-additive sequencing; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.Guards	INFRA: Guard/guardsHold, the array-layout total abstraction ascendGL/ascendG; imported by GuardsLeaf.lean and Strengthen.lean, both of which reach real kernel demonstrations.
+CatCrypt.Crypto.SecureCompilation.Ascent.GuardsLeaf	INFRA with real consumers: imported by Demos/MillerLoopKernelBench.lean (a real, BLOCKED, counted BLS12-377 Miller-loop kernel over field leaves) and by VIR/SemScalarLToJasminCom.lean outside the Ascent tree, a leaf-oracle bridge composing DialectToJasminComLeaf with the ascent's leaf-oracle semantics (part of COMPILER_ROADMAP.md's leaf-oracles pillar); neither consumer is anchored yet.
+CatCrypt.Crypto.SecureCompilation.Ascent.HeapAbs	INFRA: ValueAbs and SRof/SRpi/SRcarryOf; imported by Demos/HeapAbs.lean, which proves the REACHABLE feAddN_capstone/feAdd4_capstone_field over the abstraction.
+CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd	REACHABLE on a different axis than functional correctness: proves the actual shipped 4859-instruction ed25519_point_add block is constant time (ed25519PointAdd_constant_time, ed25519PointAdd_addr), extending the shipped_kernels_constant_time census. Unanchored because the ratchet's descent/bytes regexes track functional correctness only; there is no ratchet category yet for leakage-independence preserved to the encoded bytes.
+CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas	DEAD (orphan): none of MontReduceInvariant/SchoolbookMulInvariant/DivstepInvariant/FieldAddSubInvariant is referenced anywhere outside this file - window-invariant templates with no instantiation.
+CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc	INFRA: lowerBlock_tie_realloc/mulhiOp_runBlock_tie/RegBlock; imported by JasminMirrorTie.lean, which ties it to RunBlockCorres and Control.
+CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq	INFRA: ArithBlock/FreshFor/lowerBlock_tie; imported only by JasminComRunBlockRealloc.lean, which extends it with register reallocation.
+CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie	INFRA: JStateInterp/jasminBop_eq_machine/jasminOp_runBlock_tie; imported only by JasminComRunBlockSeq.lean - the base of the jasmin/runBlock tie chain that terminates at JasminMirrorTie.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie	DEAD: mulhiLoop_mirror_runBlock relates a psem.v mirror derivation of a counted MULX loop to runBlock's interpretation of the unrolled loop, over the synthetic kernel MulhiLoop.mainLoop rather than a shipped one. VIR/ComJasminBridgeProgram.lean names it in a docstring line but imports nothing from it; no module in the tree imports it.
+CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic	DEAD (orphan): DependsOn/ptsTo/writesOnly/sbb_framed_triple have zero importers and no other reference in the tree - a separation-logic scaffold over CorresHoare with one demo lemma nothing builds on.
+CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT	DEAD (research probe): leakage as the exception branch; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf	REACHABLE: loopSrc_source_preimage conjoins the descent refinement loopSrc_refines and the ascent correspondence loopSrc_corres over the same lowered RFor node; the file itself states no theorem fuses them into an emit conclusion indexed by RustSrc.exec. The fusion needs an RFor arm on LegWeld.lean's AdeqRun inductive (whose cases are straight-line only) and a legWeld_lower-style instance for the loop source.
+CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres	DEAD (orphan): corres_for_indexed/corres_rseqUpto/SRfqMixed/polyAdd_fold_corres have zero importers; the only other occurrences of these names are prose mentions inside MlkemPolyAddCapstone.lean's docstring, which this module imports, not vice versa.
+CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds	DEAD (orphan): the mont_bound tactic for carry-out/Montgomery range goals has zero importers and is invoked nowhere in the tree, despite AGENTS.md advertising it for the carry-chain goals EcMultiLimb*/FieldReduce proofs produce.
+CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres	REACHABLE: mpnAdd_runBlock, mpnSub_runBlock and the two kernel-block variants are concrete ADCX and SBB JInstr chains at named registers, so an encodeJBlock, decode_phys and constant-time wrap at a chosen name list reaches bytes by the recipe of Demos/Fe25519KernelsBytes.lean; no in-tree module imports it.
+CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb	DEAD (orphan): a re-export shim for ParamTransfer's Transfer.Param multi-limb names, with zero importers; HeapAbs.lean states the identical theorem using the fully-qualified ParamTransfer name directly rather than through this shim.
+CatCrypt.Crypto.SecureCompilation.Ascent.Phases	INFRA: the WA/TS phase factoring (corres_WA, MonadLevel, AbsProg); imported only by Guards.lean, for the array-layout automation.
+CatCrypt.Crypto.SecureCompilation.Ascent.Polish	DEAD/documentation-only: restates, by rfl and simp, the abstract programs ascendG produces for fourteen demonstration kernels; no statement evaluates a kernel at a concrete store or ties to a shipped primitive, and no module in the tree imports it. Cited by CAPABILITIES.md's Ascent-corpus row as documentation tooling - a candidate to move out of the anchor-scanned tree rather than delete, since it has reader value but will never itself anchor.
+CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen	DEAD (research probe): relational triples over ExceptT with leakage as the exception barrel; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.RelationalProductMvcgen	DEAD (research probe): relational Hoare triples as unary Std.Do triples over a product program; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf	INFRA with a live consumer: rotl_spec/corres_rotl; imported by Demos/Scalar.lean, which uses corres_rotl in a real scalar kernel demo.
+CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen	INFRA, weakly reached: runBlockM/sbb_leaf_triple_mvcgen; imported by RunBlockMvcgenMorphism.lean (an orphan) and by three research-probe modules (LeakageExceptT, WriterTMvcgen, RelationalProductMvcgen) that Ascent/AGENTS.md itself lists outside the calculus.
+CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism	DEAD (orphan): the theta/Spec.wp_theta/theta_sbb_leaf_triple morphism has zero importers; the only other mentions of wp_theta are docstring cross-references in the unrelated research-probe modules XPostShape.lean and XMorphismInstance.lean, not imports.
+CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf	INFRA: ctSelect_bitmask/corres_ctSelect; imported by Polish.lean, which documents the abstract programs of the demonstration kernels ascendG produces, including select-based ones.
+CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect	REACHABLE: solinasSquare_correct is functional correctness at JState 64 over runBlock, under CellsSeparated, for CryptOpt's 99-instruction fiat_curve25519_solinas_square - the maturity s2nMontmulP384_correct had before the multiply cluster gained its bytes layer, and CorresX86Mem.solinasSquareBlock_corres is already a CorresJ (SRmem ...) result of the shape encodeJBlock_bytesCorresJ consumes. Reaching bytes needs an allocation, per-segment s2nInstrOk checks by decide, and encodeJBlock_bytesCorresJ plus a decode theorem, as one new Demos module mirroring Demos/S2nMontmulP384Bytes.lean; the kernel spills and restores its own callee-used registers inline, so no Framed-style wrapper is needed first.
+CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec	INFRA: specification vocabulary (SolinasSquareSpec, eval4, curve25519P, limbsOfNat) with sanity lemmas and no program, LowCT term or machine kernel; its one consumer is SolinasSquareCorrect.lean.
+CatCrypt.Crypto.SecureCompilation.Ascent.Strengthen	INFRA with a live consumer: tsLowCTL_sound/tsHax/Kernel.tsLevel; imported by Demos/Strengthen.lean, which picks tsLevel for real demo kernels alongside FeAddEndToEnd and EarlyExit.
+CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp	DEAD (research probe): universal composability as a simulator existential over the leakage-transported relational judgment; per ASCENT.md's research-probes table, outside the calculus and unimported by it; imports CatCrypt.Crypto.UCMonad, unrelated to the ascent calculus.
+CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf	DEAD (orphan): wEnc32/semScalar_setExpr_width64 have zero importers anywhere - no kernel in the tree uses 32-bit words, so the width-32 leaf has no client.
+CatCrypt.Crypto.SecureCompilation.Ascent.WriterTMvcgen	DEAD (research probe): an accumulating log as write-only state for mvcgen; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid	DEAD (research probe): the advantage-triangle tactic advmvcgen over hybrid arguments; per ASCENT.md's research-probes table, outside the calculus and unimported by it; imports CatCrypt.Crypto.MultiQueryPRF, unrelated to the ascent calculus.
+CatCrypt.Crypto.SecureCompilation.Ascent.XDijkstraAll	DEAD (research probe): aggregator of the X* framework; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XHeapSoundness	DEAD (research probe): a disjoint-heap separation logic and a StateM soundness instance; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XMorphismInstance	DEAD (research probe): a base-change weakest-precondition morphism; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgen	DEAD (research probe): tactic xmvcgen; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenControl	DEAD (research probe): control flow for xmvcgen, tactic xmvcgen_ctl; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg	DEAD (research probe): tactic xmvcgen! over the @[xspec] set; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape	DEAD (research probe): the extended PostShape core; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF	DEAD (research probe): couplings at PMF; per ASCENT.md's research-probes table, outside the calculus and unimported by it.
+CatCrypt.Crypto.SecureCompilation.Ascent.XrunRunBlockTie	INFRA: ties the xrun ScalarTarget model to runBlock (XJFaithful, xrun_runBlock_tie, add_descent_runBlock); imports the anchored CorresDescentX86.lean and is imported by CorresX86Solver.lean.
+CatCrypt.Hax.Ascent.AscendHax	INFRA: the SymM-based hax_corres tactic generator that closes a Corres goal over binding lists one ImpExpr constructor at a time; consumed by AscendHaxDemo.lean and GenRules.lean inside the package and directly by CatCrypt/Crypto/ACME/SurfaceCorresRuntime.lean, a live protocol proof, outside it.
+CatCrypt.Hax.Ascent.AscendHaxDemo	INFRA: a regression demo reproving Demo.lean's keyEq comparison and a 20-binding straight-line kernel by the hax_corres tactic instead of by hand; zero importers anywhere, its only role is validating AscendHax.lean's automation.
+CatCrypt.Hax.Ascent.Builtins	INFRA: builds Builtins tables from named partial functions (Leaf, Table, Table.over, liftFn) and proves the corres_app transport equation once per leaf; the base leaf-table plumbing Deps.lean, Structs.lean, LocalCalls.lean and RuntimeLeaves.lean build on, reaching CatCrypt/Crypto/ACME transitively through them.
+CatCrypt.Hax.Ascent.Corres	INFRA: the core AutoCorres-style correspondence judgment Corres/CorresArgs over hax-lean's denote'/ImpExpr (a shallow post-pipeline interpreter, distinct from LowCT's semScalar and from the CatCrypt.Crypto.SecureCompilation.Ascent.Corres of the same name); the base calculus of the directory, imported by WhileFold.lean, AscendHax.lean, Demo.lean, Square.lean and Builtins.lean.
+CatCrypt.Hax.Ascent.Coverage	INFRA: the hax_ascend Ns/#hax_coverage Ns top-level command that reads a whole haxpipeT extraction and drives Generate.lean/Structs.lean/Deps.lean to emit a per-function correspondence and call lemma for every literal; a code-generation driver invoked by CatCrypt/Crypto/ACME/SurfaceCorresGen.lean (hax_ascend Acme) to generate the 17-function ACME table.
+CatCrypt.Hax.Ascent.Demo	INFRA: a hand-proved worked example (keyEqLit, keyEq_corres, a 32-entry array comparison) exercising Corres.lean's rules directly, without the generator; consumed only by AscendHaxDemo.lean, which reproves the identical statement automatically.
+CatCrypt.Hax.Ascent.Deps	INFRA: builds Builtins leaves for the methods of an extraction's <X>Deps dependency class (DepMethod, depsTable); consumed by Coverage.lean inside the package and directly by CatCrypt/Crypto/ACME/SurfaceCorres.lean (acmeDeps) outside it.
+CatCrypt.Hax.Ascent.EarlyExit	INFRA: the exception-level correspondence CorresX/FnCorresX for hax's early-return encoding, plus loop forms that can break or return; consumed internally by IfBreak.lean and TableCongr.lean, and through that chain underlies ACME's verify_challenge_response_fnCorresX.
+CatCrypt.Hax.Ascent.Encode	INFRA: HaxEnc, the encoding of a haxpipeT surface type into the untyped Value that denote' computes; value-representation plumbing underlying every leaf lemma in the directory, consumed by Corres.lean.
+CatCrypt.Hax.Ascent.ExtTable	INFRA: extBuiltins, the whole-extraction builtin table layering runtime operations, struct/deps leaves and the extraction's own local functions in dependency order; consumed by GenRules.lean, the surface-generator's rule set.
+CatCrypt.Hax.Ascent.Fuel	INFRA: proves fuel-monotonicity of denote' (denote'_fuel_mono, fuelFree); bookkeeping consumed by Corres.lean to build the correspondence's existential-fuel shape.
+CatCrypt.Hax.Ascent.Generate	INFRA: Hax.Ascent.Gen.ascendFn, the elaboration-time symbolic evaluator that walks a function's ImpExpr literal against GenRules/AscendHax rules and produces a shallow Lean function plus its FnCorres/FnCorresX proof with no hand-written loop specification; consumed by Coverage.lean, which drives it over a whole extraction.
+CatCrypt.Hax.Ascent.GenRules	INFRA: the rule set (CorresG, the guarded-exit form of CorresB, plus the counted/while loop rules over Hax.foldRange/forFold/whileFold) Generate.lean applies; the elaboration-time analogue of AscendMeta.lean on the LowCT side.
+CatCrypt.Hax.Ascent.IfBreak	INFRA: ifBreak/corresX_seq_ifBreak, the pattern for a guarded early return followed by a continuation, at the exception level; no consumer inside CatCrypt/Hax/Ascent/, but CatCrypt/Crypto/ACME/SurfaceCorresRuntime.lean imports it directly to prove verify_challenge_response's early-exit shape.
+CatCrypt.Hax.Ascent.LocalCalls	DEAD (superseded): defines leaves for calls to other functions of the same extraction (LocalFn.leaf, localTable), but has zero importers anywhere; Coverage.lean/ExtTable.lean instead solve the same same-extraction-call problem through extLocals/ExtFn, which is the mechanism actually on the live path.
+CatCrypt.Hax.Ascent.RuntimeLeaves	INFRA: the hax-source-side leaf oracle for runtime builtins (indexLeaf, arrayUpdateLeaf, repeatLeaf, range/slice leaves) - structurally the same role as GuardsLeaf.lean's leaf oracle for semScalar/LowCT, on the other side of the front; consumed by RuntimeOps.lean.
+CatCrypt.Hax.Ascent.RuntimeOps	INFRA: runtimeBuiltins, the builtin table interpreting the printer's runtime-operation names via RuntimeLeaves.lean, documenting the known semantic gaps against Rust; consumed by ExtTable.lean inside the package and directly by CatCrypt/Crypto/ACME/SurfaceCorresRuntime.lean (acmeRt) outside it.
 CatCrypt.Hax.Ascent.Square	square algebra for the correspondence judgments; carries no kernel of its own
-CatCrypt.Hax.Ascent.Structs	no reason recorded
-CatCrypt.Hax.Ascent.TableCongr	no reason recorded
-CatCrypt.Hax.Ascent.WhileFold	no reason recorded
+CatCrypt.Hax.Ascent.Structs	INFRA: leaves for a printer-generated struct's constructor, projection and update (ctorLeaf, projLeaf, updateLeaf, StructSpec.table) against the flat-tuple HaxEnc of a right-nested product; consumed by Coverage.lean inside the package and directly by CatCrypt/Crypto/ACME/SurfaceCorres.lean (acmeStructs) outside it.
+CatCrypt.Hax.Ascent.TableCongr	INFRA: callsOK/denote'_congr, the lemma that two builtin tables agreeing on every name a program calls give the same run, so a correspondence proved under a smaller table survives extension to a larger one; consumed by ExtTable.lean to justify function-by-function table growth.
+CatCrypt.Hax.Ascent.WhileFold	INFRA: the data-dependent (whileFold) and reverse-counted (forFoldRev) loop correspondence rules (WhileRecIn/whileLoopE, revLoop_corres) over denote', parametric in a body classifier; consumed by EarlyExit.lean.

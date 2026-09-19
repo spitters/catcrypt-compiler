@@ -35,25 +35,55 @@ cd "$(dirname "$0")/.."
 baseline=scripts/ascent-anchor-baseline.txt
 mode="${1:-}"
 
-files=$(git ls-files 'CatCrypt/Crypto/SecureCompilation/Ascent/*.lean' \
-                     'CatCrypt/Crypto/SecureCompilation/Ascent/**/*.lean' \
-                     'CatCrypt/Hax/Ascent/*.lean' 'CatCrypt/Hax/Ascent/**/*.lean' | sort)
+# Committed modules only. A module that exists in the index or the working tree but
+# not in HEAD is being written right now by one of the concurrent sessions; reading it
+# gives a different verdict from one run to the next, and CI classifies a commit.
+files=$(git ls-tree -r --name-only HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent \
+                                           CatCrypt/Hax/Ascent | grep '\.lean$' | sort)
 [ -n "$files" ] || { echo "ascent-anchor: no ascent modules found"; exit 1; }
 
 # Module name of a path, and the reverse: both are the path with / and . swapped.
 mod_of() { printf '%s' "${1%.lean}" | tr '/' '.'; }
 
-descent_re='legWeld|keystone_[A-Za-z0-9_]+|rustToJasminCom_endToEnd|robustCompilation_source_to_x86|com_arm_e2e|com_riscv_e2e'
+# Each name below concludes a `Com jasminDialect` (or a machine block) that agrees with
+# the source execution it is given, so a module reaching one states its result about the
+# program the verified pipeline produces.
+descent_re='legWeld|keystone_[A-Za-z0-9_]+|rustToJasminCom_endToEnd|robustCompilation_source_to_x86|com_arm_e2e|com_riscv_e2e|transU_to_jasminCom_endToEnd|translateDialectGuarded_jasmin'
 bytes_re='encodeJBlock|decodeJStream|[A-Za-z0-9_]*Bytes_correct'
 
 # Code text only: drop block docstrings/comments and line comments, so a mention
-# in prose does not anchor a module.
+# in prose does not anchor a module. The content comes from HEAD, not the working
+# tree: the tree is shared with concurrent sessions, and reading a file mid-edit
+# gives a different verdict run to run (measured 2026-09-19). HEAD is also what CI
+# checks out, so the local verdict and the CI verdict agree.
+# One snapshot of the commit, extracted once: a `git show` per file races with the
+# concurrent sessions' git activity and returns truncated content for some of them,
+# which changed the verdict run to run (measured 2026-09-19, same HEAD).
+snap=$(mktemp -d)
+trap 'rm -rf "$snap" "${tmp:-}"' EXIT
+# `git archive | tar` exits 0 on a truncated archive, and truncation happens when
+# another session holds the repository busy; an incomplete snapshot silently drops
+# anchors. Extract to a file, check git's own status, and verify the count.
+want=$(printf "%s\n" "$files" | wc -l)
+ok=0
+for _ in 1 2 3; do
+  rm -rf "${snap:?}"/* 2>/dev/null
+  if git archive HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent CatCrypt/Hax/Ascent \
+       > "$snap/.snapshot.tar" 2>/dev/null &&
+     tar -x -C "$snap" -f "$snap/.snapshot.tar" 2>/dev/null &&
+     [ "$(find "$snap" -name '*.lean' | wc -l)" -eq "$want" ]; then
+    ok=1; break
+  fi
+done
+[ "$ok" -eq 1 ] || { echo "ascent-anchor: cannot snapshot HEAD ($want modules expected)"; exit 1; }
+file_text() {
+  if [ -f "$snap/$1" ]; then cat "$snap/$1"; else cat "$1"; fi
+}
 code_of() {
-  sed -e '/\/-/,/-\//d' -e 's/--.*$//' "$1"
+  file_text "$1" | sed -e '/\/-/,/-\//d' -e 's/--.*$//'
 }
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
 : > "$tmp/direct"      # module<TAB>kind   (descent|bytes|both)
 : > "$tmp/imports"     # module<TAB>imported-ascent-module
 
@@ -61,13 +91,16 @@ for f in $files; do
   m=$(mod_of "$f")
   code=$(code_of "$f")
   d=0; b=0
-  printf '%s' "$code" | grep -qE "$descent_re" && d=1
-  printf '%s' "$code" | grep -qE "$bytes_re" && b=1
+  # Here-strings, not pipes: under `pipefail`, `grep -q` closes the pipe as soon as it
+  # matches, the upstream `sed` dies of SIGPIPE, and the pipeline reports failure on a
+  # match — timing-dependent, and it made the verdict flap run to run (2026-09-19).
+  grep -qE "$descent_re" <<< "$code" && d=1
+  grep -qE "$bytes_re" <<< "$code" && b=1
   if [ "$d$b" != "00" ]; then
     kind=$([ "$d$b" = "11" ] && echo both || { [ "$d" = 1 ] && echo descent || echo bytes; })
     printf '%s\t%s\n' "$m" "$kind" >> "$tmp/direct"
   fi
-  grep -oE '^ *(public |private |meta |public meta )*import (all )?[A-Za-z0-9_.]+' "$f" |
+  file_text "$f" | grep -oE "^ *(public |private |meta |public meta )*import (all )?[A-Za-z0-9_.]+" |
     awk '{print $NF}' | while read -r i; do
       case "$i" in
         CatCrypt.Crypto.SecureCompilation.Ascent.*|CatCrypt.Hax.Ascent.*)
@@ -76,15 +109,29 @@ for f in $files; do
     done
 done
 
-# Anchored set: direct anchors, then everything an anchored module imports.
-cut -f1 "$tmp/direct" | sort -u > "$tmp/anchored"
-while :; do
-  join -t'	' -1 1 -2 1 "$tmp/anchored" <(sort -t'	' -k1,1 "$tmp/imports") 2>/dev/null |
-    cut -f2 | cat - "$tmp/anchored" | sort -u > "$tmp/anchored.next"
-  cmp -s "$tmp/anchored" "$tmp/anchored.next" && break
-  mv "$tmp/anchored.next" "$tmp/anchored"
-done
-rm -f "$tmp/anchored.next"
+# Anchored set: the direct anchors, closed under "an anchored module imports it".
+# One awk pass rather than a join fixpoint: join needs both inputs in one collation,
+# and mixing a whole-line sort with a keyed sort made the closure disagree with
+# itself between runs on identical input (measured 2026-09-19).
+awk -F'\t' '
+  FNR == NR { anchored[$1] = 1; next }
+  { imp[$1] = imp[$1] "\t" $2 }
+  END {
+    changed = 1
+    while (changed) {
+      changed = 0
+      for (m in anchored) {
+        if (m in imp && !(m in expanded)) {
+          expanded[m] = 1
+          n = split(imp[m], xs, "\t")
+          for (i = 1; i <= n; i++)
+            if (xs[i] != "" && !(xs[i] in anchored)) { anchored[xs[i]] = 1; changed = 1 }
+        }
+      }
+    }
+    for (m in anchored) print m
+  }
+' <(cut -f1 "$tmp/direct") "$tmp/imports" | sort -u > "$tmp/anchored"
 
 for f in $files; do mod_of "$f"; echo; done | grep -v '^$' | sort -u > "$tmp/all"
 comm -23 "$tmp/all" "$tmp/anchored" > "$tmp/unanchored"
