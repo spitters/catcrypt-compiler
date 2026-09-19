@@ -29,14 +29,35 @@
 # Usage:
 #   scripts/rot-guard-build.sh --list            module names, one per line
 #   scripts/rot-guard-build.sh --check           manifest + coverage checks, no build
+#   scripts/rot-guard-build.sh --affected [FILE...]
+#                                                build only the roots whose import
+#                                                closure contains a changed module.
+#                                                FILEs are source paths; with none,
+#                                                the .lean files that differ from HEAD
+#                                                plus the untracked ones. Batch size
+#                                                from ROT_GUARD_BATCH (default 16).
 #   scripts/rot-guard-build.sh --build [BATCH]   build every listed module (BATCH per
-#                                                lake invocation, default 64)
+#                                                lake invocation, default 16)
+#
+# `--affected` is the check for a change in progress; `--build` is the full sweep,
+# for CI and before a release.
+#
+# On a machine whose builds share the heavy-run lock, take the lock per lake
+# invocation, through the prefix, and run this script UNWRAPPED:
+#
+#   ROT_GUARD_PREFIX="../SSProve-lean/scripts/heavy-run.sh env LEAN_NUM_THREADS=1" \
+#     bash scripts/rot-guard-build.sh --affected
+#
+# The lock is then released after every batch, so other builds get in between
+# batches. Wrapping the script itself in heavy-run.sh holds the lock for the whole
+# run, and doing both deadlocks; the script refuses that combination.
 #
 # Env:
 #   ROT_GUARD_MANIFEST         manifest path (default scripts/rot-guard/build-roots.txt)
 #   ROT_GUARD_PREFIX           command prefix for each build invocation, e.g.
 #                              "env LEAN_NUM_THREADS=1" to bound the number of
 #                              concurrent workers on a memory-tight box.
+#   ROT_GUARD_BATCH            roots per lake invocation for --affected (default 16).
 #   ROT_GUARD_WRITE_BASELINE=1 rewrite the orphan baseline from the current tree.
 #   ROT_GUARD_WRITE_MANIFEST=1 regenerate the manifest from the current import graph.
 
@@ -74,6 +95,42 @@ import_edges() {
           | grep -hoE '^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+CatCrypt[A-Za-z0-9_.]*' \
           | sed -E "s/^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+/${m}\t/"
       done
+}
+
+
+# Build the modules listed in file $1, $2 per lake invocation, each invocation
+# under ROT_GUARD_PREFIX. Lake skips modules that are already built, so an
+# interrupted run resumes where it stopped.
+build_mods() {
+  local list="$1" batch="$2" prefix="${ROT_GUARD_PREFIX:-}" total fail=0 i=0 ec b
+  # A prefix that takes the heavy-run lock, under a process that already holds
+  # it, waits on itself for ever. heavy-run.sh holds the lock on descriptor 9.
+  case "$prefix" in
+    *heavy-run*)
+      if [ "$(readlink "/proc/$$/fd/9" 2>/dev/null)" = "${TMPDIR:-/tmp}/catcrypt-heavy-build.lock" ]; then
+        echo "rot-guard: this script already runs under the heavy-run lock, and ROT_GUARD_PREFIX" >&2
+        echo "  takes it again, which deadlocks. Run the script unwrapped." >&2
+        return 2
+      fi ;;
+  esac
+  total=$(wc -l < "$list")
+  rm -f "$tmp"/batch.*
+  split -l "$batch" "$list" "$tmp/batch."
+  for b in "$tmp"/batch.*; do
+    # shellcheck disable=SC2046,SC2086
+    $prefix lake build $(cat "$b")
+    ec=$?
+    i=$(( i + $(wc -l < "$b") ))
+    if [ "$ec" -ne 0 ]; then
+      echo "rot-guard: FAIL — a module in this batch did not build (exit $ec):"
+      sed 's/^/    /' "$b"
+      fail=1
+    fi
+    echo "rot-guard: $i/$total modules built."
+  done
+  [ "$fail" -eq 0 ] || return 1
+  echo "rot-guard: all $total modules built."
+  return 0
 }
 
 tracked_modules > "$tmp/tracked"
@@ -213,31 +270,57 @@ case "$mode" in
     ;;
 
   --build)
-    batch="${2:-64}"
-    prefix="${ROT_GUARD_PREFIX:-}"
-    total=$(wc -l < "$tmp/mods")
-    fail=0
-    i=0
-    split -l "$batch" "$tmp/mods" "$tmp/batch."
-    for b in "$tmp"/batch.*; do
-      # shellcheck disable=SC2046,SC2086
-      $prefix lake build $(cat "$b")
-      ec=$?
-      i=$(( i + $(wc -l < "$b") ))
-      if [ "$ec" -ne 0 ]; then
-        echo "rot-guard: FAIL — a module in this batch did not build (exit $ec):"
-        sed 's/^/    /' "$b"
-        fail=1
-      fi
-      echo "rot-guard: $i/$total modules built."
-    done
-    [ "$fail" -eq 0 ] || exit 1
-    echo "rot-guard: all $total modules built."
-    exit 0
+    build_mods "$tmp/mods" "${2:-16}"
+    exit $?
+    ;;
+
+  --affected)
+    shift
+    # Changed sources: the arguments, or every .lean that differs from HEAD plus
+    # every untracked .lean.
+    if [ "$#" -gt 0 ]; then
+      printf '%s\n' "$@" > "$tmp/changedfiles"
+    else
+      { git diff --name-only HEAD -- '*.lean'
+        git ls-files --others --exclude-standard -- '*.lean'; } > "$tmp/changedfiles"
+    fi
+    grep -E '^CatCrypt/.*\.lean$' "$tmp/changedfiles" \
+      | sed -E 's/\.lean$//; s#/#.#g' | LC_ALL=C sort -u > "$tmp/changed"
+    if [ ! -s "$tmp/changed" ]; then
+      echo "rot-guard: no changed module under CatCrypt/; nothing to build."
+      exit 0
+    fi
+
+    # Every module whose import closure contains a changed module: the reverse
+    # closure of the changed set over the import edges (importer <TAB> imported).
+    import_edges > "$tmp/edges"
+    awk -F'\t' '
+      FNR==NR { rev[$2] = rev[$2] " " $1; next }
+      { if (!($0 in seen)) { seen[$0]=1; queue[++qn]=$0 } }
+      END {
+        for (i = 1; i <= qn; i++) {
+          split(rev[queue[i]], us, " ")
+          for (j in us) {
+            u = us[j]
+            if (u != "" && !(u in seen)) { seen[u]=1; queue[++qn]=u }
+          }
+        }
+        for (m in seen) print m
+      }' "$tmp/edges" "$tmp/changed" | LC_ALL=C sort -u > "$tmp/dependents"
+
+    # The manifest roots among them, in manifest order.
+    grep -xFf "$tmp/dependents" "$tmp/mods" > "$tmp/affected" || true
+    echo "rot-guard: $(wc -l < "$tmp/changed") changed modules reach $(wc -l < "$tmp/affected") of $(wc -l < "$tmp/mods") roots."
+    if [ ! -s "$tmp/affected" ]; then
+      echo "rot-guard: no manifest root imports a changed module."
+      exit 0
+    fi
+    build_mods "$tmp/affected" "${ROT_GUARD_BATCH:-16}"
+    exit $?
     ;;
 
   *)
-    echo "usage: $0 [--list | --check | --build [BATCH]]" >&2
+    echo "usage: $0 [--list | --check | --build [BATCH] | --affected [FILE...]]" >&2
     exit 2
     ;;
 esac
