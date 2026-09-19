@@ -49,6 +49,9 @@ jobs:
       - name: No new vacuous or assumption-shaped security theorem
         run: bash scripts/vacuous-theorem-ratchet.sh
 
+      - name: Ascent results tied to a descent theorem or the encoded bytes
+        run: bash scripts/ascent-anchor-ratchet.sh
+
       - name: No new plumbing-tagged security theorem
         run: bash scripts/uc-plumbing-ratchet.sh
 
