@@ -1001,4 +1001,425 @@ theorem copyTrip_simSeg {L : Layout} {frame : String → Option (BitVec 64)} {sc
     · exact Or.inl ⟨rfl, Or.inl hjt⟩
     · exact Or.inl ⟨rfl, Or.inr ⟨Or.inr ⟨rfl, by omega, hj⟩, hne j (hlen ▸ hj) hjt⟩⟩
 
+/-! ## 10. Two-source and carry register instructions -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
+
+/-- An instruction whose step reads `a` at its stored width `w` and `b` at `w`, and writes
+    a partial function of the two values to `dst`, is independent of `scr` when neither
+    source is `scr`. -/
+theorem regCompat_of_binary (scr : String) (i : LinstrRM) (dst a b : String)
+    (ha : a ≠ scr) (hb : b ≠ scr)
+    (g : (w : Nat) → BitVec w → BitVec w → Option (BitVec w))
+    (h : ∀ (s : LstateM) (zf : Bool) (w : Nat) (va : BitVec w), s.reg.getW a w = some va →
+      fstepF i s zf = (s.reg.getW b w).bind fun vb =>
+        (g w va vb).map fun v => ((s.setReg dst v).nextPc, zf)) :
+    RegCompat scr i := by
+  intro s ra zf bst z heq hstep
+  rcases hs : s.reg.lvm a with ⟨w, va⟩
+  have hg : s.reg.getW a w = some va := getW_eq_some_iff.mpr hs
+  have hga : ({ reg := ra } : LstateM).reg.getW a w = some va := by
+    show ra.getW a w = some va
+    rw [← heq.getW ha]; exact hg
+  have hgb : ({ reg := ra } : LstateM).reg.getW b w = s.reg.getW b w :=
+    (heq.getW hb w).symm
+  rw [h s zf w va hg] at hstep
+  rw [h _ zf w va hga, hgb]
+  cases hvb : s.reg.getW b w with
+  | none => simp [hvb] at hstep
+  | some vb =>
+    cases hv : g w va vb with
+    | none => simp [hvb, hv] at hstep
+    | some v =>
+      simp only [hvb, hv, Option.bind_some, Option.map_some, Option.some.injEq,
+        Prod.mk.injEq] at hstep ⊢
+      obtain ⟨rfl, rfl⟩ := hstep
+      exact ⟨_, ⟨rfl, rfl⟩, heq.setReg dst _, rfl⟩
+
+/-- An instruction whose step reads `a` at its stored width `w`, `b` at `w` and `c` at
+    width 1, and writes a function of the three values to `dst`, is independent of `scr`
+    when no source is `scr`. The written width is the width of the function value. -/
+theorem regCompat_of_ternary (scr : String) (i : LinstrRM) (dst a b c : String)
+    (ha : a ≠ scr) (hb : b ≠ scr) (hcs : c ≠ scr)
+    (g : (w : Nat) → BitVec w → BitVec w → BitVec 1 → Σ w', BitVec w')
+    (h : ∀ (s : LstateM) (zf : Bool) (w : Nat) (va : BitVec w), s.reg.getW a w = some va →
+      fstepF i s zf = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
+        ((s.setReg dst (g w va vb vc).2).nextPc, zf)) :
+    RegCompat scr i := by
+  intro s ra zf bst z heq hstep
+  rcases hs : s.reg.lvm a with ⟨w, va⟩
+  have hg : s.reg.getW a w = some va := getW_eq_some_iff.mpr hs
+  have hga : ({ reg := ra } : LstateM).reg.getW a w = some va := by
+    show ra.getW a w = some va
+    rw [← heq.getW ha]; exact hg
+  have hgb : ({ reg := ra } : LstateM).reg.getW b w = s.reg.getW b w :=
+    (heq.getW hb w).symm
+  have hgc : ({ reg := ra } : LstateM).reg.getW c 1 = s.reg.getW c 1 :=
+    (heq.getW hcs 1).symm
+  rw [h s zf w va hg] at hstep
+  rw [h _ zf w va hga, hgb, hgc]
+  cases hvb : s.reg.getW b w with
+  | none => simp [hvb] at hstep
+  | some vb =>
+    cases hvc : s.reg.getW c 1 with
+    | none => simp [hvb, hvc] at hstep
+    | some vc =>
+      simp only [hvb, hvc, Option.bind_some, Option.map_some, Option.some.injEq,
+        Prod.mk.injEq] at hstep ⊢
+      obtain ⟨rfl, rfl⟩ := hstep
+      exact ⟨_, ⟨rfl, rfl⟩, heq.setReg dst _, rfl⟩
+
+/-- The two-source register instruction `opn dst, a, b`. -/
+def binRegI (opn dst a b : String) : LinstrRM :=
+  (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b], MemTag.reg none)
+
+/-- The carry-chain register instruction `opn dst, a, b, c`, with `c` the width-1 carry
+    register. -/
+def carryRegI (opn dst a b c : String) : LinstrRM :=
+  (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b, .reg c], MemTag.reg none)
+
+/-- The step of a two-source instruction whose stripped mnemonic `base` is an `applyOpnN`
+    opcode: `b` is read at the stored width of `a` and `applyOpnN` is written to `dst`. -/
+theorem fstepF_binRegI (opn base dst a b : String) (hstrip : stripWidthTag opn = base)
+    (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    fstepF (binRegI opn dst a b) s zf = (s.reg.getW b w).bind fun vb =>
+      (applyOpnN w base [va, vb]).map fun v => ((s.setReg dst v).nextPc, zf) := by
+  have hc : cmpArgs? (binRegI opn dst a b) = none := by
+    simp only [cmpArgs?, binRegI, if_neg hcmp]
+  have hm : movRegArgs? (binRegI opn dst a b) = none := rfl
+  have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b], none) s.reg
+      = (s.reg.getW b w).bind fun vb =>
+          (applyOpnN w base [va, vb]).map fun v => (s.reg.setReg dst v).nextPc := by
+    rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
+      lsemStepMC_of_delegate _ _ (by simp only [mulhiStruct?, hstrip, if_neg hmul])
+        rfl rfl rfl rfl,
+      lsemStepSh_of_not_sar _ _ rfl]
+    simp only [lsemStepN, readReg_of_getW hg, evalOperandN, hstrip]
+    cases s.reg.getW b w with
+    | none => rfl
+    | some vb => cases hv : applyOpnN w base [va, vb] <;>
+      simp only [hv, Option.bind_some, Option.map_some, Option.map_none]
+  unfold fstepF
+  simp only [hc, hm]
+  rw [binRegI, lsemStepMem_reg, hstep]
+  cases s.reg.getW b w with
+  | none => rfl
+  | some vb =>
+    cases hv : applyOpnN w base [va, vb] with
+    | none => simp only [hv, Option.bind_some, Option.map_none]
+    | some v => simp only [hv, Option.bind_some, Option.map_some]; rfl
+
+/-- A two-source `applyOpnN` instruction is independent of `scr` when neither source is
+    `scr`. -/
+theorem regCompat_binRegI (scr opn base dst a b : String) (hstrip : stripWidthTag opn = base)
+    (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (ha : a ≠ scr) (hb : b ≠ scr) : RegCompat scr (binRegI opn dst a b) :=
+  regCompat_of_binary scr _ dst a b ha hb (fun w va vb => applyOpnN w base [va, vb])
+    fun s zf _ va hg => fstepF_binRegI opn base dst a b hstrip hcmp hmul s zf va hg
+
+theorem isRegInstr_binRegI (frame : String → Option (BitVec 64)) (opn dst a b : String) :
+    IsRegInstr frame (binRegI opn dst a b) :=
+  ⟨⟨none, rfl⟩, fun d src h => by simp [binRegI, slotMov?] at h⟩
+
+theorem isRegInstr_carryRegI (frame : String → Option (BitVec 64)) (opn dst a b c : String) :
+    IsRegInstr frame (carryRegI opn dst a b c) :=
+  ⟨⟨none, rfl⟩, fun d src h => by simp [carryRegI, slotMov?] at h⟩
+
+/-- A two-source `applyOpnN` step leaves every register other than `dst` unchanged. -/
+theorem fstepF_binRegI_getW {opn base dst a b : String} (hstrip : stripWidthTag opn = base)
+    (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    {s bst : LstateM} {zf z : Bool}
+    (h : fstepF (binRegI opn dst a b) s zf = some (bst, z)) (x : String) (hx : x ≠ dst)
+    (w : Nat) : bst.reg.getW x w = s.reg.getW x w := by
+  rcases hs : s.reg.lvm a with ⟨wa, va⟩
+  rw [fstepF_binRegI opn base dst a b hstrip hcmp hmul s zf va (getW_eq_some_iff.mpr hs)] at h
+  cases hvb : s.reg.getW b wa with
+  | none => simp [hvb] at h
+  | some vb =>
+    cases hv : applyOpnN wa base [va, vb] with
+    | none => simp [hvb, hv] at h
+    | some v =>
+      simp only [hvb, hv, Option.bind_some, Option.map_some, Option.some.injEq,
+        Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      simp [LstateM.setReg, LstateM.nextPc, hx]
+
+theorem stripWidthTag_AND64 : stripWidthTag "AND:64" = "AND" := by decide +kernel
+
+theorem stripWidthTag_OR64 : stripWidthTag "OR:64" = "OR" := by decide +kernel
+
+theorem stripWidthTag_XOR64 : stripWidthTag "XOR:64" = "XOR" := by decide +kernel
+
+/-- `AND:64 dst, a, b`. -/
+def andI (dst a b : String) : LinstrRM := binRegI "AND:64" dst a b
+
+/-- `OR:64 dst, a, b`. -/
+def orI (dst a b : String) : LinstrRM := binRegI "OR:64" dst a b
+
+/-- `XOR:64 dst, a, b`. -/
+def xorI (dst a b : String) : LinstrRM := binRegI "XOR:64" dst a b
+
+/-- `ADD:64 dst, a, b`. -/
+def addI (dst a b : String) : LinstrRM := binRegI "ADD:64" dst a b
+
+/-- `SUB:64 dst, a, b`. -/
+def subI (dst a b : String) : LinstrRM := binRegI "SUB:64" dst a b
+
+theorem regCompat_andI (scr dst a b : String) (ha : a ≠ scr) (hb : b ≠ scr) :
+    RegCompat scr (andI dst a b) :=
+  regCompat_binRegI scr _ "AND" dst a b stripWidthTag_AND64 (by decide +kernel) (by decide)
+    ha hb
+
+theorem regCompat_orI (scr dst a b : String) (ha : a ≠ scr) (hb : b ≠ scr) :
+    RegCompat scr (orI dst a b) :=
+  regCompat_binRegI scr _ "OR" dst a b stripWidthTag_OR64 (by decide +kernel) (by decide)
+    ha hb
+
+theorem regCompat_xorI (scr dst a b : String) (ha : a ≠ scr) (hb : b ≠ scr) :
+    RegCompat scr (xorI dst a b) :=
+  regCompat_binRegI scr _ "XOR" dst a b stripWidthTag_XOR64 (by decide +kernel) (by decide)
+    ha hb
+
+theorem regCompat_addI (scr dst a b : String) (ha : a ≠ scr) (hb : b ≠ scr) :
+    RegCompat scr (addI dst a b) :=
+  regCompat_binRegI scr _ "ADD" dst a b JasminLsemMemSourceTieUncond.stripWidthTag_ADD64
+    (by decide +kernel) (by decide) ha hb
+
+theorem regCompat_subI (scr dst a b : String) (ha : a ≠ scr) (hb : b ≠ scr) :
+    RegCompat scr (subI dst a b) :=
+  regCompat_binRegI scr _ "SUB" dst a b JasminLsemMemSourceTieUncond.stripWidthTag_SUB64
+    (by decide +kernel) (by decide) ha hb
+
+/-- The step of `AND:64 dst, a, b` from the two register reads. -/
+theorem fstepF_andI (dst a b : String) (s : LstateM) (zf : Bool) {w : Nat}
+    (va vb : BitVec w) (hga : s.reg.getW a w = some va) (hgb : s.reg.getW b w = some vb) :
+    fstepF (andI dst a b) s zf = some ((s.setReg dst (va &&& vb)).nextPc, zf) := by
+  rw [andI, fstepF_binRegI _ "AND" dst a b stripWidthTag_AND64 (by decide +kernel) (by decide)
+    s zf va hga, hgb]
+  rfl
+
+/-! ### The carry forms
+
+The carry forms `ADCX`, `ADCXHI`, `SBB`, `SBBHI` read the carry from a width-1 register
+`c` and the carry-out forms write a width-1 register; the flag `zf` is neither read nor
+written. Independence of `scr` requires `c ≠ scr` in addition to the two data sources. -/
+
+/-- The step of `ADCX dst, a, b, c`. -/
+theorem fstepF_adcx (opn dst a b c : String) (hstrip : stripWidthTag opn = "ADCX")
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    fstepF (carryRegI opn dst a b c) s zf = (s.reg.getW b w).bind fun vb =>
+      (s.reg.getW c 1).map fun vc => ((s.setReg dst (addCarryWord va vb vc)).nextPc, zf) := by
+  have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b, .reg c], none) s.reg
+      = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
+          (s.reg.setReg dst (addCarryWord va vb vc)).nextPc := by
+    rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, hstrip, if_true, readReg_of_getW hg]
+    cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+  unfold fstepF
+  simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
+    show movRegArgs? (carryRegI opn dst a b c) = none from rfl]
+  rw [carryRegI, lsemStepMem_reg, hstep]
+  cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+
+/-- `ADCX dst, a, b, c` is independent of `scr` when no source is `scr`. -/
+theorem regCompat_adcx (scr opn dst a b c : String) (hstrip : stripWidthTag opn = "ADCX")
+    (ha : a ≠ scr) (hb : b ≠ scr) (hc : c ≠ scr) : RegCompat scr (carryRegI opn dst a b c) :=
+  regCompat_of_ternary scr _ dst a b c ha hb hc (fun _ va vb vc => ⟨_, addCarryWord va vb vc⟩)
+    fun s zf _ va hg => fstepF_adcx opn dst a b c hstrip s zf va hg
+
+/-- The step of `ADCXHI dst, a, b, c`: the carry-out bit is written at width 1. -/
+theorem fstepF_adcxhi (opn dst a b c : String) (hstrip : stripWidthTag opn = "ADCXHI")
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    fstepF (carryRegI opn dst a b c) s zf = (s.reg.getW b w).bind fun vb =>
+      (s.reg.getW c 1).map fun vc => ((s.setReg dst (carryOutBit va vb vc)).nextPc, zf) := by
+  have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b, .reg c], none) s.reg
+      = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
+          (s.reg.setReg dst (carryOutBit va vb vc)).nextPc := by
+    rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, hstrip, if_true,
+      show ¬ ("ADCXHI" = "ADCX") by decide, if_false, readReg_of_getW hg]
+    cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+  unfold fstepF
+  simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
+    show movRegArgs? (carryRegI opn dst a b c) = none from rfl]
+  rw [carryRegI, lsemStepMem_reg, hstep]
+  cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+
+/-- `ADCXHI dst, a, b, c` is independent of `scr` when no source is `scr`. -/
+theorem regCompat_adcxhi (scr opn dst a b c : String) (hstrip : stripWidthTag opn = "ADCXHI")
+    (ha : a ≠ scr) (hb : b ≠ scr) (hc : c ≠ scr) : RegCompat scr (carryRegI opn dst a b c) :=
+  regCompat_of_ternary scr _ dst a b c ha hb hc (fun _ va vb vc => ⟨_, carryOutBit va vb vc⟩)
+    fun s zf _ va hg => fstepF_adcxhi opn dst a b c hstrip s zf va hg
+
+/-- The step of `SBB dst, a, b, c`. -/
+theorem fstepF_sbb (opn dst a b c : String) (hstrip : stripWidthTag opn = "SBB")
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    fstepF (carryRegI opn dst a b c) s zf = (s.reg.getW b w).bind fun vb =>
+      (s.reg.getW c 1).map fun vc => ((s.setReg dst (subBorrowWord va vb vc)).nextPc, zf) := by
+  have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b, .reg c], none) s.reg
+      = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
+          (s.reg.setReg dst (subBorrowWord va vb vc)).nextPc := by
+    rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, hstrip, if_true,
+      show ¬ ("SBB" = "ADCX") by decide, show ¬ ("SBB" = "ADCXHI") by decide, if_false,
+      readReg_of_getW hg]
+    cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+  unfold fstepF
+  simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
+    show movRegArgs? (carryRegI opn dst a b c) = none from rfl]
+  rw [carryRegI, lsemStepMem_reg, hstep]
+  cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+
+/-- `SBB dst, a, b, c` is independent of `scr` when no source is `scr`. -/
+theorem regCompat_sbb (scr opn dst a b c : String) (hstrip : stripWidthTag opn = "SBB")
+    (ha : a ≠ scr) (hb : b ≠ scr) (hc : c ≠ scr) : RegCompat scr (carryRegI opn dst a b c) :=
+  regCompat_of_ternary scr _ dst a b c ha hb hc (fun _ va vb vc => ⟨_, subBorrowWord va vb vc⟩)
+    fun s zf _ va hg => fstepF_sbb opn dst a b c hstrip s zf va hg
+
+/-- The step of `SBBHI dst, a, b, c`: the borrow-out bit is written at width 1. -/
+theorem fstepF_sbbhi (opn dst a b c : String) (hstrip : stripWidthTag opn = "SBBHI")
+    (s : LstateM) (zf : Bool) {w : Nat} (va : BitVec w) (hg : s.reg.getW a w = some va) :
+    fstepF (carryRegI opn dst a b c) s zf = (s.reg.getW b w).bind fun vb =>
+      (s.reg.getW c 1).map fun vc => ((s.setReg dst (borrowOutBit va vb vc)).nextPc, zf) := by
+  have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] opn [.reg a, .reg b, .reg c], none) s.reg
+      = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
+          (s.reg.setReg dst (borrowOutBit va vb vc)).nextPc := by
+    rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
+      hstrip, if_true, show ¬ ("SBBHI" = "ADCX") by decide,
+      show ¬ ("SBBHI" = "ADCXHI") by decide, show ¬ ("SBBHI" = "SBB") by decide, if_false,
+      readReg_of_getW hg]
+    cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+  unfold fstepF
+  simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
+    show movRegArgs? (carryRegI opn dst a b c) = none from rfl]
+  rw [carryRegI, lsemStepMem_reg, hstep]
+  cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
+
+/-- `SBBHI dst, a, b, c` is independent of `scr` when no source is `scr`. -/
+theorem regCompat_sbbhi (scr opn dst a b c : String) (hstrip : stripWidthTag opn = "SBBHI")
+    (ha : a ≠ scr) (hb : b ≠ scr) (hc : c ≠ scr) : RegCompat scr (carryRegI opn dst a b c) :=
+  regCompat_of_ternary scr _ dst a b c ha hb hc (fun _ va vb vc => ⟨_, borrowOutBit va vb vc⟩)
+    fun s zf _ va hg => fstepF_sbbhi opn dst a b c hstrip s zf va hg
+
+/-! ## 11. Instance: the AND trip
+
+The trip `x := A[idx]; y := B[idx]; z := x AND y; R := R[idx ↦ z]; idx += 1; n -= 1`,
+where `R` has the base of `A`, and `B` either has the base of `A` or occupies a region
+disjoint from it. At trip `t` the cells are the words `j ≥ t` under `A`, the words `j < t`
+under `R`, and under `B` the words `j ≥ t` when `B` shares the base and every word
+otherwise. -/
+
+/-- The name-keyed AND trip. -/
+def andTrip (L : Layout) (x y z A B R idx n : String) : List LinstrRM :=
+  [loadN L x A idx] ++ ([loadN L y B idx] ++ ([andI z x y] ++ ([storeN L R R idx z]
+    ++ ([addImmI idx idx 1] ++ [subImmI n n 1]))))
+
+/-- The pointer form of the AND trip. -/
+def andTripA (L : Layout) (scr qA qB qR x y z A B R idx n : String) : List LinstrRM :=
+  loadA L scr qA x A idx ++ (loadA L scr qB y B idx ++ ([andI z x y]
+    ++ (storeA L scr qR R R idx z ++ ([addImmI idx idx 1] ++ [subImmI n n 1]))))
+
+/-- The cells of the AND loop at trip `t`. -/
+def andK (L : Layout) (A B R : String) (t : Nat) : String → Nat → Prop :=
+  fun C j => (C = A ∧ t ≤ j ∧ j < L.len A)
+    ∨ (C = B ∧ j < L.len B ∧ (L.base B = L.base A → t ≤ j))
+    ∨ (C = R ∧ j < t ∧ j < L.len R)
+
+/-- **The AND trip.** With `R` at the region of `A`, and `B` at that region or at a region
+    disjoint from it, trip `t` of the name-keyed AND loop is simulated by its pointer form;
+    the cells move from `andK t` to `andK (t + 1)`. -/
+theorem andTrip_simSeg {L : Layout} {frame : String → Option (BitVec 64)} {scr : String}
+    (hsep : L.Sep frame) (x y z A B R idx n qA qB qR : String)
+    (hw : (L.base A).toNat + 8 * L.len A ≤ 2 ^ 64)
+    (hAR : A ≠ R) (hBR : B ≠ R) (hbase : L.base R = L.base A) (hlen : L.len R = L.len A)
+    (hlenB : L.len B = L.len A)
+    (hB : L.base B = L.base A ∨
+      ∀ j j', j < L.len B → j' < L.len A → L.addr B j ≠ L.addr A j')
+    (hqA : L.slot A = some qA) (hqB : L.slot B = some qB) (hqR : L.slot R = some qR)
+    (hidx : idx ≠ scr) (hx : x ≠ scr) (hy : y ≠ scr) (hz : z ≠ scr) (hn : n ≠ scr)
+    (hxi : idx ≠ x) (hyi : idx ≠ y) (hzi : idx ≠ z) (hni : idx ≠ n)
+    (t : Nat) (ht : t < L.len A) (ht64 : t < 2 ^ 64) :
+    SimSeg L frame scr (andK L A B R t) (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+      (andTrip L x y z A B R idx n) (andTripA L scr qA qB qR x y z A B R idx n)
+      (andK L A B R (t + 1)) (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 (t + 1))) := by
+  have htn : ∀ vi : BitVec 64, some (BitVec.ofNat 64 t) = some vi → vi.toNat = t := by
+    intro vi h
+    obtain rfl := Option.some.inj h
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt ht64]
+  have hloadA := SimSeg.load (L := L) (frame := frame) (scr := scr) (andK L A B R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t)) x A idx qA hqA hidx
+    (fun s vi hP hvi => by
+      rw [htn vi (hP ▸ hvi)]
+      exact Or.inl ⟨rfl, le_refl t, ht⟩)
+    (fun s zf b z hP h => by rw [fstepF_loadN_getW h idx hxi, hP])
+  have hloadB := SimSeg.load (L := L) (frame := frame) (scr := scr) (andK L A B R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t)) y B idx qB hqB hidx
+    (fun s vi hP hvi => by
+      rw [htn vi (hP ▸ hvi)]
+      exact Or.inr (Or.inl ⟨rfl, hlenB ▸ ht, fun _ => le_refl t⟩))
+    (fun s zf b z hP h => by rw [fstepF_loadN_getW h idx hyi, hP])
+  have hand := SimSeg.reg (L := L) (frame := frame) (scr := scr) (andK L A B R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t)) (andI z x y)
+    (isRegInstr_binRegI frame _ z x y) (regCompat_andI scr z x y hx hy)
+    (fun s zf b z' hP h => by
+      rw [fstepF_binRegI_getW stripWidthTag_AND64 (by decide +kernel) (by decide) h idx hzi,
+        hP])
+  have hstore := SimSeg.store (L := L) (frame := frame) (scr := scr) hsep (andK L A B R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t)) R R idx z qR rfl rfl hqR hidx hz
+    t (hlen ▸ ht) (fun s vi hP hvi => htn vi (hP ▸ hvi))
+    (fun s zf b z hP h => by rw [fstepF_storeN_getW h, hP])
+  have hadd := SimSeg.reg (L := L) (frame := frame) (scr := scr)
+    (afterStore L (andK L A B R t) R R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 t))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 (t + 1))) (addImmI idx idx 1)
+    (isRegInstr_addImmI frame idx idx 1) (regCompat_addImmI scr idx idx 1 hidx)
+    (fun s zf b z hP h => by
+      rw [fstepF_addImmI idx idx 1 s zf _ hP] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
+      simp [BitVec.ofNat_add])
+  have hsub := SimSeg.reg (L := L) (frame := frame) (scr := scr)
+    (afterStore L (andK L A B R t) R R t)
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 (t + 1)))
+    (fun s => s.reg.getW idx 64 = some (BitVec.ofNat 64 (t + 1))) (subImmI n n 1)
+    (isRegInstr_subImmI frame n n 1)
+    (regCompat_subImmI scr n n 1 hn)
+    (fun s zf b z hP h => by
+      rcases hs : s.reg.lvm n with ⟨w, va⟩
+      rw [fstepF_subImmI n n 1 s zf va (getW_eq_some_iff.mpr hs)] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
+      simpa [hni] using hP)
+  refine (hloadA.append (hloadB.append (hand.append (hstore.append
+    (hadd.append hsub))))).weaken (fun _ h => h) ?_ (fun _ h => h)
+  intro C j hk
+  have hne : ∀ j', j' < L.len A → j' ≠ t → L.addr R j' ≠ L.addr R t := by
+    intro j' hj' hjt hc
+    have h1 := L.addr_toNat R j' (hlen ▸ hj') (by rw [hbase, hlen]; exact hw)
+    have h2 := L.addr_toNat R t (hlen ▸ ht) (by rw [hbase, hlen]; exact hw)
+    rw [hc] at h1
+    omega
+  have haddr : ∀ j', L.addr A j' = L.addr R j' := fun j' => by
+    unfold Layout.addr; rw [hbase]
+  rcases hk with ⟨rfl, hle, hj⟩ | ⟨rfl, hj, hle⟩ | ⟨rfl, hlt, hj⟩
+  · refine Or.inr ⟨hAR, Or.inl ⟨rfl, by omega, hj⟩, ?_⟩
+    rw [haddr]
+    exact hne j hj (by omega)
+  · refine Or.inr ⟨hBR, Or.inr (Or.inl ⟨rfl, hj, fun h => by have := hle h; omega⟩), ?_⟩
+    rcases hB with hB | hB
+    · have hBa : L.addr C j = L.addr R j := by unfold Layout.addr; rw [hB, hbase]
+      rw [hBa]
+      exact hne j (hlenB ▸ hj) (by have := hle hB; omega)
+    · rw [← haddr]
+      exact hB j t hj ht
+  · by_cases hjt : j = t
+    · exact Or.inl ⟨rfl, Or.inl hjt⟩
+    · exact Or.inl ⟨rfl, Or.inr ⟨Or.inr (Or.inr ⟨rfl, by omega, hj⟩), hne j (hlen ▸ hj) hjt⟩⟩
+
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem

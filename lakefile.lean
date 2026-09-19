@@ -2080,6 +2080,7 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce,
@@ -2253,9 +2254,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopWide,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCover,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace,
@@ -2455,9 +2456,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Sha256Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Sha512Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node1,
-    Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node2,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node2,
     Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node3,
     Lake.Glob.one `CatCrypt.Crypto.Util.Vesta.Node4,
     Lake.Glob.one `CatCrypt.Crypto.Util.VestaPrimeCert,
