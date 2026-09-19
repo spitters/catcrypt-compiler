@@ -254,7 +254,7 @@ front_re='reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForL
 imported_re='## Provenance|PROVENANCE\.md|NasmParse|parseNasm|import_s2n\.sh|import_owned\.sh|s2n_import'
 
 classify_file() {
-  local path="$1"
+  local path="$1" block="${2:-}"
   case "$path" in
     */Ascent/Imported/*) echo IMPORTED; return ;;
   esac
@@ -282,6 +282,16 @@ classify_file() {
   # one hop away, and this script does not follow it, so `combSelectBlock` reads
   # HAND here though its payload is front-built).
   local code; code=$(code_of "$path")
+  # A block whose own definition opens a literal instruction list is HAND, whatever
+  # else the file mentions. A module can cite the front that verifies the algebra it
+  # transcribes while still writing the instructions out by hand, and crediting the
+  # citation would report a generated block where none exists (measured on
+  # Demos/FieldWordAddCorres.lean, which states the front's own denotation theorem
+  # and then hand-writes the twelve instructions).
+  if grep -qE "def[[:space:]]+$block\b[^=]*:=[[:space:]]*\[" <<< "$code" ||
+     grep -A2 -E "def[[:space:]]+$block\b" <<< "$code" | grep -qE '^[[:space:]]*\[' ; then
+    echo HAND; return
+  fi
   if grep -qE "$front_re" <<< "$code"; then echo GENERATED; return; fi
   echo HAND
 }
@@ -303,7 +313,7 @@ while IFS=$'\t' read -r m name; do
   else
     def_mod="$resolved"
     def_file=$(grep -P "^\Q$def_mod\E\t" "$tmp/mod2file" | cut -f2 | head -1)
-    cls=$(classify_file "$def_file")
+    cls=$(classify_file "$def_file" "$name")
     printf '%s\t%s\t%s\t%s\n' "$m" "$name" "$cls" "$def_mod" >> "$tmp/classified"
   fi
 done < "$tmp/uses"
