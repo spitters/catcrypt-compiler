@@ -34,6 +34,7 @@ instruction, with nothing left over.
 * the index-free `LEA` (`8D` against `[base + disp]`), written
   `lea dst base base 0 off`: at scale `0` the index contributes nothing to the
   address, and the decoder returns the base in the index position,
+* `MOVZX` from an 8- or 16-bit source (`0F B6`/`0F B7 /r`),
 
 under the side conditions the encoding needs: an immediate fits the width its
 opcode carries, and a displacement fits a signed 32-bit value (the encoder
@@ -43,6 +44,9 @@ same set, in the form `roundtrip_block` places as a hypothesis on each
 instruction of a block.
 
 Outside the covered set: `setc`, `test`, `loadMemIdx`, `storeMemIdx`, `loadSym`,
+`movzx` from a 32-bit source (its `MOV` encoding carries no `REX.W`, which
+`decodeRex`'s opcode table does not distinguish from the 64-bit `MOV` it already
+decodes — including this shape would make the two ambiguous), `movsx`,
 the indexed `lea` (nonzero scale, the SIB form `encLeaSib`),
 the register-count shift forms, and the immediate-source arms of `cmov`/`adcx`/
 `adox`/`mulx`/`storeMem`, for which the encoder substitutes a `0` operand rather
@@ -52,7 +56,11 @@ tables (`SailX86ByteFields.aluMnemonic`), so a block containing one does not
 satisfy `blockCovered`. The instructions the encoder declines
 (`ScalarEncoder.encodableJInstr` false: `inc`, `dec`, `clc`, `stc`, `xchg`,
 `imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`, `cmovcc`, `setcc`,
-`testN`, `bt`, `btr`, `bts`) are outside the covered set as well.
+`testN`, `bt`, `btr`, `bts`) are outside the covered set as well: `encodeJInstr`
+emits no bytes at all for these shapes (`ScalarEncoder.lean`'s `encodeJInstr`,
+final match arm), so a `decodeJ1` case for one of them would have nothing to
+invert — closing this part of the gap needs the encoder extended first, not
+the decoder.
 
 ## What the round-trip says
 
@@ -174,6 +182,10 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
               else if e.toNat = 0x44 then some (.cmove d s, rest1)
               else if e.toNat = 0x45 then some (.cmovne d s, rest1)
               else if e.toNat = 0x42 then some (.cmovb d s, rest1)
+              else if e.toNat = 0xb6 then
+                some (.movzx d 8 (regName (rexB r * 8 + rmField modrm)), rest1)
+              else if e.toNat = 0xb7 then
+                some (.movzx d 16 (regName (rexB r * 8 + rmField modrm)), rest1)
               else none
             else none
         | _ => none
@@ -415,6 +427,8 @@ def decodableJ : JInstr 64 → Bool
   | .loadMem _ _ off => dispOk32 off
   | .storeMem _ off (.reg _) => dispOk32 off
   | .lea _ base idx scale off => scale == 0 && base == idx && dispOk32 off
+  | .movzx _ 8 _ => true
+  | .movzx _ 16 _ => true
   | _ => false
 
 /-- `MULX` reads its first source from `%rdx` and does not encode it, so the
@@ -901,6 +915,41 @@ theorem roundtrip_cmovb (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)
     if_neg (show ¬((0x42 : Nat) % 2 ^ 8 = 0x44) by decide),
     if_neg (show ¬((0x42 : Nat) % 2 ^ 8 = 0x45) by decide)]
 
+/-- `MOVZX %src8, %dst` (`REX.W 0F B6 /r`, zero-extending an 8-bit source into a
+    64-bit register) decodes back to itself. -/
+theorem roundtrip_movzx8 (alloc : GpAlloc) (d src : String) (rest : List (BitVec 8)) :
+    decodeJ1 (encodeJInstr alloc (.movzx d 8 src) ++ rest)
+      = some (renameJ alloc (.movzx d 8 src), rest) := by
+  simp only [encodeJInstr, enc0FRR,
+    List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
+    rmField_modRMReg,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true,
+    if_neg (show ¬((0xb6 : Nat) = 0xaf) by decide),
+    if_neg (show ¬((0xb6 : Nat) = 0x44) by decide),
+    if_neg (show ¬((0xb6 : Nat) = 0x45) by decide),
+    if_neg (show ¬((0xb6 : Nat) = 0x42) by decide)]
+
+/-- `MOVZX %src16, %dst` (`REX.W 0F B7 /r`, zero-extending a 16-bit source into a
+    64-bit register) decodes back to itself. -/
+theorem roundtrip_movzx16 (alloc : GpAlloc) (d src : String) (rest : List (BitVec 8)) :
+    decodeJ1 (encodeJInstr alloc (.movzx d 16 src) ++ rest)
+      = some (renameJ alloc (.movzx d 16 src), rest) := by
+  simp only [encodeJInstr, if_neg (show ¬((16 : Nat) = 8) by decide), enc0FRR,
+    List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
+    rmField_modRMReg,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true,
+    if_neg (show ¬((0xb7 : Nat) = 0xaf) by decide),
+    if_neg (show ¬((0xb7 : Nat) = 0x44) by decide),
+    if_neg (show ¬((0xb7 : Nat) = 0x45) by decide),
+    if_neg (show ¬((0xb7 : Nat) = 0x42) by decide),
+    if_neg (show ¬((0xb7 : Nat) = 0xb6) by decide)]
+
 /-- The little-endian 32-bit recomposition, on the `% 2 ^ 8` byte values the
     decoder reads out of `BitVec.ofNat 8` bytes. -/
 theorem imm32_recompose_mod (v : Nat) (hv : v < 2 ^ 32) :
@@ -1170,7 +1219,9 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #guard ! blockCovered (.shlx "a" "b" "c")
 #guard ! blockCovered (.shrx "a" "b" "c")
 #guard ! blockCovered (.sarx "a" "b" "c")
-#guard ! blockCovered (.movzx "a" 8 "b")
+#guard blockCovered (.movzx "a" 8 "b")
+#guard blockCovered (.movzx "a" 16 "b")
+#guard ! blockCovered (.movzx "a" 32 "b")
 #guard ! blockCovered (.movsx "a" 8 "b")
 #guard ! blockCovered (.lea "a" "b" "c" 8 0)
 #guard ! blockCovered (.lea "a" "b" "b" 1 0)
@@ -1290,7 +1341,12 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | shlx d src cnt => simp [decodableJ] at hd
   | shrx d src cnt => simp [decodableJ] at hd
   | sarx d src cnt => simp [decodableJ] at hd
-  | movzx d sw src => simp [decodableJ] at hd
+  | movzx d sw src =>
+      rcases eq_or_ne sw 8 with rfl | h8
+      · exact roundtrip_movzx8 _ _ _ _
+      · rcases eq_or_ne sw 16 with rfl | h16
+        · exact roundtrip_movzx16 _ _ _ _
+        · simp [decodableJ, h8, h16] at hd
   | movsx d sw src => simp [decodableJ] at hd
   | lea d base idx scale off =>
       simp only [decodableJ, Bool.and_eq_true, beq_iff_eq] at hd
