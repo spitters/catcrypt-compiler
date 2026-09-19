@@ -30,8 +30,7 @@ public import CatCrypt.Crypto.Symbolic.Signal.ProtocolVerification
   event inside Alice's program, so no program of Bob is analysed.
 * The file contains no secrecy statement for the X3DH root key.
 
-The computational statements for X3DH are `x3dh_uc_secure_from_symbolic`
-(`CLCLinking.lean`) and `x3dh_uc_secure` (`Signal/X3DH.lean`).
+The computational statement for X3DH is `x3dh_uc_secure` (`Signal/X3DH.lean`).
 
 ## References
 
