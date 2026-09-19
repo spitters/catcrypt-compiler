@@ -21,12 +21,18 @@
 #   * It recognises only NAMED state relations matching `SR[A-Za-z0-9]+` — the
 #     `def`/`abbrev SRxxx (state) (abstract) : Prop` layout-predicate convention this
 #     tree already uses uniformly (`SRmem`, `SRm`, `SRcarry`, `SRx`, `SRalloc`, …,
-#     30+ instances). It does NOT check the GUARD argument (`P` above): in this tree
-#     that argument is almost always an inline lambda (`fun a => a.stage = 0 ∧ …`,
-#     93 occurrences), which a line-oriented grep cannot name or reason about. A
-#     module can pass this script while its guard alone is unsatisfiable; that
-#     obligation is not covered here and needs either a naming convention for
-#     guards or an LSP-driven checker.
+#     30+ instances).
+#   * The GUARD argument (`P` above) is checked SEPARATELY, by the second ratchet
+#     below (the `guardsat` pass, baseline `scripts/ascent-guardsat-baseline.txt`),
+#     because a script cannot see through the inline lambda (`fun a => a.stage = 0
+#     ∧ …`, 93 occurrences in this tree) that argument almost always is. That pass
+#     does not read the lambda either — nothing textual can — it only checks that a
+#     THEOREM exists pairing the correspondence with a witness; the pairing itself
+#     is checked by Lean's unifier at elaboration
+#     (`CatCrypt/Crypto/SecureCompilation/Ascent/GuardSatisfiable.lean`), not by
+#     this script. See "GUARD-SATISFIABILITY SCOPE" below for what that pass can
+#     and cannot see. A module can pass the state-relation check below while its
+#     guard is unsatisfiable; that is exactly the gap the second pass targets.
 #   * The witness search is per state-relation HEAD IDENTIFIER, not per fully
 #     applied term. `SRmem carryMulMidCells` and `SRmem carryMulTailCells` are both
 #     "the predicate SRmem" to this script; if a module used `SRmem` at a third,
@@ -49,11 +55,45 @@
 #     already documents (concurrent-session snapshot races): read that script's
 #     header before changing the snapshot mechanics here, they are copied from it.
 #
+# GUARD-SATISFIABILITY SCOPE (the `guardsat` pass), read before trusting IT:
+#
+#   * A candidate is a theorem whose header, after comment-stripping, is exactly
+#     `theorem NAME :` (optionally `private`/`protected`/`noncomputable`-prefixed)
+#     with nothing else before the colon — i.e. a CLOSED statement, no explicit or
+#     implicit binder — and whose body, before the first `:=`, mentions `CorresJ`
+#     or `BytesCorresJ`. This is deliberately narrow: it is exactly the shape a
+#     `GuardSatisfiable.corresJ_guardSat`/`bytesCorresJ_guardSat` application can
+#     discharge (their `SR`/`P` come from the named constant's own zero-argument
+#     type). A lemma taking hypotheses or bound variables before its `CorresJ`
+#     conclusion (`corresJ_row`, `corresJ_append`, `encodeJBlock_bytesCorresJ`, …) is
+#     invisible here on purpose: its guard is not a fixed closed term, so there is
+#     nothing concrete to witness until some caller instantiates it — and that
+#     instantiation, if it is itself a closed `NAME :` theorem, is caught in its own
+#     right.
+#   * A candidate is considered discharged when `corresJ_guardSat` or
+#     `bytesCorresJ_guardSat`, followed by the candidate's exact name as a whole
+#     word, appears anywhere in the candidate's module or a module it imports
+#     (transitively, over the same Ascent-only import closure as the state-relation
+#     pass). This script does NOT check that the paired witness has the right type,
+#     or even that the pairing elaborates — it only checks that the pairing was
+#     ATTEMPTED. The elaborator is the actual check: `corresJ_guardSat`/
+#     `bytesCorresJ_guardSat` are stated with `SR`/`P` implicit
+#     (`GuardSatisfiable.lean`), so Lean reads them off the candidate's own
+#     elaborated type at the call site and rejects a witness of the wrong guard as
+#     an ordinary type error. A `guard_satisfiable`-shaped call that fails to build
+#     is a build failure, not a silent pass here — but this script cannot itself
+#     tell a build failure from a build nobody has run; it is a presence check, and
+#     the orchestrator's build is what makes the presence load-bearing.
+#   * `Bytes_correct`-shaped results (`∃ c, decodeJStream n bs = some c ∧ ∀ st, …`)
+#     are not `CorresJ`/`BytesCorresJ` at all — no named guard, no vacuity mode — so
+#     this pass does not flag them, correctly: nothing.
+#
 # Usage: bash scripts/ascent-nonvacuity-ratchet.sh [--list | --record]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 baseline=scripts/ascent-nonvacuity-baseline.txt
+guardsat_baseline=scripts/ascent-guardsat-baseline.txt
 mode="${1:-}"
 
 files=$(git ls-tree -r --name-only HEAD -- CatCrypt/Crypto/SecureCompilation/Ascent \
@@ -113,6 +153,8 @@ tmp=$(mktemp -d)
 : > "$tmp/uses"      # module<TAB>SR-name    (module states a correspondence over SR-name)
 : > "$tmp/witness"   # module<TAB>SR-name    (module's OWN code witnesses SR-name)
 : > "$tmp/imports"   # module<TAB>imported-ascent-module
+: > "$tmp/gs_candidates"  # module<TAB>theorem-name (a closed CorresJ/BytesCorresJ theorem)
+: > "$tmp/gs_discharged"  # module<TAB>theorem-name (module's OWN code pairs it with a guardSat call)
 
 for f in $files; do
   m=$(mod_of "$f")
@@ -145,11 +187,49 @@ for f in $files; do
           printf '%s\t%s\n' "$m" "$i" >> "$tmp/imports" ;;
       esac
     done
+
+  # Guard-satisfiability candidates: a CLOSED `theorem NAME :` header (no binder
+  # before the colon) whose body, up to the first `:=`, mentions `CorresJ` or
+  # `BytesCorresJ` (see "GUARD-SATISFIABILITY SCOPE" above for exactly why this
+  # shape and no other).
+  gs_names=$(awk '
+    /^[[:space:]]*((private|protected|noncomputable)[[:space:]]+)*theorem[[:space:]]+[A-Za-z0-9_.'"'"']+[[:space:]]*:[[:space:]]*$/ {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      sub(/^((private|protected|noncomputable)[[:space:]]+)*theorem[[:space:]]+/, "", line)
+      sub(/[[:space:]]*:[[:space:]]*$/, "", line)
+      name = line; pending = 1; found = 0; next
+    }
+    pending {
+      if ($0 ~ /CorresJ|BytesCorresJ/) found = 1
+      if ($0 ~ /:=/) { pending = 0; if (found) print name }
+    }
+  ' <<< "$code")
+  if [ -n "$gs_names" ]; then
+    while read -r name; do
+      [ -z "$name" ] && continue
+      printf '%s\t%s\n' "$m" "$name" >> "$tmp/gs_candidates"
+    done <<< "$gs_names"
+  fi
+
+  # Guard-satisfiability discharge attempts: a `corresJ_guardSat`/
+  # `bytesCorresJ_guardSat` call and the candidate's name within the same two-line
+  # window used above. This only records that a pairing was ATTEMPTED; whether it
+  # elaborates is Lean's job, not this script's (see the scope note).
+  gs_calls=$(grep -oP '(corresJ_guardSat|bytesCorresJ_guardSat)\s+\K[A-Za-z0-9_.]+' <<< "$windows" || true)
+  if [ -n "$gs_calls" ]; then
+    while read -r name; do
+      [ -z "$name" ] && continue
+      printf '%s\t%s\n' "$m" "$name" >> "$tmp/gs_discharged"
+    done <<< "$gs_calls"
+  fi
 done
 
 sort -u -o "$tmp/uses" "$tmp/uses"
 sort -u -o "$tmp/witness" "$tmp/witness"
 sort -u -o "$tmp/imports" "$tmp/imports"
+sort -u -o "$tmp/gs_candidates" "$tmp/gs_candidates"
+sort -u -o "$tmp/gs_discharged" "$tmp/gs_discharged"
 
 # For each module, its transitive ascent-import closure (including itself): a plain
 # per-node BFS over the import edges (both sides small — well under a thousand
@@ -197,15 +277,44 @@ done < "$tmp/uses"
 sort -u -o "$tmp/violations" "$tmp/violations"
 sort -u -o "$tmp/ok" "$tmp/ok"
 
+# guardsat violations: a candidate (module, theorem-name) such that no module in
+# module's closure attempts a corresJ_guardSat/bytesCorresJ_guardSat pairing for it.
+: > "$tmp/gs_violations"
+: > "$tmp/gs_ok"
+while IFS=$'\t' read -r m name; do
+  found=0
+  closure_ms=$(grep -P "^\Q$m\E\t" "$tmp/closure_pairs" | cut -f2)
+  [ -z "$closure_ms" ] && closure_ms="$m"
+  while IFS= read -r cm; do
+    [ -z "$cm" ] && continue
+    if grep -qP "^\Q$cm\E\t\Q$name\E\$" "$tmp/gs_discharged"; then found=1; break; fi
+  done <<< "$closure_ms"
+  if [ "$found" -eq 1 ]; then
+    printf '%s\t%s\n' "$m" "$name" >> "$tmp/gs_ok"
+  else
+    printf '%s\t%s\n' "$m" "$name" >> "$tmp/gs_violations"
+  fi
+done < "$tmp/gs_candidates"
+
+sort -u -o "$tmp/gs_violations" "$tmp/gs_violations"
+sort -u -o "$tmp/gs_ok" "$tmp/gs_ok"
+
 n_uses=$(wc -l < "$tmp/uses")
 n_ok=$(wc -l < "$tmp/ok")
 n_bad=$(wc -l < "$tmp/violations")
+n_gs=$(wc -l < "$tmp/gs_candidates")
+n_gs_ok=$(wc -l < "$tmp/gs_ok")
+n_gs_bad=$(wc -l < "$tmp/gs_violations")
 
 if [ "$mode" = "--list" ]; then
-  echo "# witnessed ($n_ok of $n_uses module/predicate pairs):"
+  echo "# state-relation: witnessed ($n_ok of $n_uses module/predicate pairs):"
   sed 's/^/  /' "$tmp/ok"
-  echo "# unwitnessed ($n_bad):"
+  echo "# state-relation: unwitnessed ($n_bad):"
   sed 's/^/  /' "$tmp/violations"
+  echo "# guard: discharged ($n_gs_ok of $n_gs closed CorresJ/BytesCorresJ theorems):"
+  sed 's/^/  /' "$tmp/gs_ok"
+  echo "# guard: undischarged ($n_gs_bad):"
+  sed 's/^/  /' "$tmp/gs_violations"
   exit 0
 fi
 
@@ -222,7 +331,20 @@ if [ "$mode" = "--record" ]; then
     done < "$tmp/violations"
   } > "$baseline.new"
   mv "$baseline.new" "$baseline"
-  echo "ascent-nonvacuity: recorded $n_bad unwitnessed pair(s) in $baseline"
+  {
+    echo "# Ascent module/theorem pairs where a CLOSED CorresJ/BytesCorresJ theorem has"
+    echo "# no corresJ_guardSat/bytesCorresJ_guardSat pairing attempt (see"
+    echo "# CatCrypt/Crypto/SecureCompilation/Ascent/GuardSatisfiable.lean) in the module"
+    echo "# or a module it imports. Each line: module<TAB>theorem-name<TAB>reason."
+    echo "# Recorded by scripts/ascent-nonvacuity-ratchet.sh --record."
+    while IFS=$'\t' read -r m name; do
+      old=$(grep -P "^\Q$m\E\t\Q$name\E\t" "$guardsat_baseline" 2>/dev/null | head -1)
+      if [ -n "$old" ]; then echo "$old"; else printf '%s\t%s\tno reason recorded\n' "$m" "$name"; fi
+    done < "$tmp/gs_violations"
+  } > "$guardsat_baseline.new"
+  mv "$guardsat_baseline.new" "$guardsat_baseline"
+  echo "ascent-nonvacuity: recorded $n_bad unwitnessed state-relation pair(s) in $baseline"
+  echo "ascent-nonvacuity: recorded $n_gs_bad undischarged guard obligation(s) in $guardsat_baseline"
   exit 0
 fi
 
@@ -248,7 +370,32 @@ else
   fail=1
 fi
 
+if [ -f "$guardsat_baseline" ]; then
+  gs_base_keys=$(grep -v '^#' "$guardsat_baseline" | cut -f1,2 | sort -u)
+  gs_new=$(comm -23 <(cut -f1,2 "$tmp/gs_violations" | sort -u) <(printf '%s\n' "$gs_base_keys"))
+  if [ -n "$gs_new" ]; then
+    echo "ASCENT-GUARDSAT: closed CorresJ/BytesCorresJ theorem with no"
+    echo "  corresJ_guardSat/bytesCorresJ_guardSat pairing attempt, and not in"
+    echo "  $guardsat_baseline:"
+    printf '%s\n' "$gs_new" | sed 's/^/    /'
+    echo "  -> add \`theorem foo_guardSat : ∃ st a, SR st a ∧ P a :=\`"
+    echo "     \`  corresJ_guardSat foo w\` (or \`bytesCorresJ_guardSat\`), \`w\` a joint"
+    echo "     witness (see Ascent/Demos/S2nMontmulP384GuardSat.lean), or record it"
+    echo "     with its reason: bash scripts/ascent-nonvacuity-ratchet.sh --record"
+    fail=1
+  fi
+  gs_gone=$(comm -13 <(cut -f1,2 "$tmp/gs_violations" | sort -u) <(printf '%s\n' "$gs_base_keys"))
+  if [ -n "$gs_gone" ]; then
+    echo "ascent-nonvacuity: $(printf '%s\n' "$gs_gone" | grep -c .) guardsat baseline entr(y/ies) now discharged; run --record to drop them."
+  fi
+else
+  echo "ascent-nonvacuity: no guardsat baseline; run --record to create $guardsat_baseline"
+  fail=1
+fi
+
 base_n=$(grep -vc '^#' "$baseline" 2>/dev/null || echo 0)
+gs_base_n=$(grep -vc '^#' "$guardsat_baseline" 2>/dev/null || echo 0)
 echo "ascent-nonvacuity: $n_uses module/predicate pair(s) state a correspondence over a named SR-predicate, $n_ok witnessed, $n_bad unwitnessed (baseline ${base_n})."
+echo "ascent-nonvacuity: $n_gs closed CorresJ/BytesCorresJ theorem(s) found, $n_gs_ok guard-discharged, $n_gs_bad undischarged (baseline ${gs_base_n})."
 [ "$fail" -eq 0 ] && echo "ascent-nonvacuity: OK"
 exit $fail

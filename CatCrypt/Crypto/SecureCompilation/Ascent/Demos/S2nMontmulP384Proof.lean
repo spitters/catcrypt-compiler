@@ -1048,6 +1048,22 @@ theorem srm_stage0_satisfiable :
   ⟨{ regs := fun _ => 0 }, { stage := 0, x := 0, y := 0, acc := 0 },
     ⟨rfl, rfl, trivial⟩, rfl, by decide⟩
 
+/-- **`corresJ_seg02`'s precondition is satisfiable.** Stage `1` is not among
+    `StageRel`'s named cases, so it is the trivial `True` case, exactly as stage
+    `0` is for `srm_stage0_satisfiable`. -/
+theorem srm_stage1_satisfiable : ∃ st a, SRm st a ∧ a.stage = 1 ∧ a.x < 2 ^ 384 :=
+  ⟨{ regs := fun _ => 0 }, { stage := 1, x := 0, y := 0, acc := 0 },
+    ⟨rfl, rfl, trivial⟩, rfl, by decide⟩
+
+/-- **`corresJ_final`'s precondition is satisfiable.** Stage `13` is a named
+    `StageRel` case, `v7 st.regs "%r14" "%r15" "%r8" "%r9" "%r10" "%r11" "%r12" =
+    v`; at the all-zero register valuation this reads `0 = 0`, so it holds at
+    `acc = 0` together with the all-zero `%rsi`/`%rcx` memory `SRm` needs. -/
+theorem srm_stage13_satisfiable :
+    ∃ st a, SRm st a ∧ a.stage = 13 ∧ a.x < 2 ^ 384 ∧ a.acc < 2 ^ 384 + p384 :=
+  ⟨{ regs := fun _ => 0 }, { stage := 13, x := 0, y := 0, acc := 0 },
+    ⟨rfl, rfl, rfl⟩, rfl, by decide, by decide⟩
+
 /-! ## The abstract algorithm computes the Montgomery product -/
 
 /-- A reduction round divides exactly: `redcF T · 2^64 = T + d · p384` with
