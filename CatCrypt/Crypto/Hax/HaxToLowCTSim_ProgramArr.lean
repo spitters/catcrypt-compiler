@@ -45,6 +45,10 @@ are unchanged.  `haxToLowCTA A e` is the lowering followed by the pass.
   with `haxToLowCT`.
 * `simScopeA_lookup_mono` — the exit scope of the checker extends its entry
   scope.
+* `LimbReadAgrees`, `limbRead_exec`, `limbRead_sim` — the limb read
+  `let x = index(v, i)` at a literal `i`: the condition on the builtin table, the
+  `RustExec` step of `RScalarSetExpr x (SLimb v i)`, and the simulation of the
+  binding from a simulation of its body.  `simScopeA` rejects the binding.
 -/
 
 @[expose] public section
@@ -1117,5 +1121,121 @@ theorem haxToLowCT_simulates_programA
     rw [evalImp_typeAscription] at hEval
     exact ih fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   | _ => exact noneArm _ fun Γ => by simp [simScopeA]
+
+/-! ## §6  The limb read of a tower slot into the scalar heap
+
+`haxToLowCT` lowers a binding `let x = index(v, i)` of a variable `v` at a
+non-negative integer literal `i` to
+`RLetU64Zero x (RSeq (RScalarSetExpr x (SLimb v i)) body')`: limb `i` of the
+tower slot `v`, the little-endian `u64` at byte offset `8 * i` (`towerLimb`),
+is written to the scalar `x`.  The source run applies the builtin `index` to the
+value of `v` and the integer `i`.  A container slot is indexed by element through
+`RArrLoad`, with the stride of its element type; the limb read is that of a slot
+whose type is not a container (`t.elemType = t`). -/
+
+section LimbRead
+
+open _root_.Hax (denoteArgs)
+open CatCrypt.Crypto.Jasmin.LowCT (SExpr towerLimb rsTowerLimb)
+
+/-- The limb read agrees with the builtin `index`: at a slot type that is not a
+    container, for a value related by `bridge` to the slot, the builtin's result
+    on the integer index `i` has the scalar reading `towerLimb` of the slot at
+    `i`. -/
+def LimbReadAgrees (bridge : ValueTowerBridge) (bi : Builtins) : Prop :=
+  ∀ (t : TowerType) (vArr vRes : Value) (arrV : RustVal t) (i : Nat),
+    t.elemType = t → bridge t vArr arrV →
+    bi "index" [vArr, .int (i : Int)] = some vRes →
+    valueToScalar vRes = some (towerLimb arrV i)
+
+/-- The lowering of a limb read. -/
+theorem haxToLowCT_letBind_limb_some (name v : String) (k : Int) (hk : 0 ≤ k) (body : ImpExpr)
+    (c : LowCT)
+    (h : haxToLowCT (.letBind name (.app "index" [.var v, .lit (.int k)]) body) = some c) :
+    ∃ bodyC, haxToLowCT body = some bodyC ∧
+      c = .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SLimb v k.toNat)) bodyC) := by
+  simp only [haxToLowCT, haxArgsToLocated, haxArgToLocated] at h
+  cases hB : haxToLowCT body with
+  | none => simp [hB] at h
+  | some bodyC =>
+    refine ⟨bodyC, rfl, ?_⟩
+    simp [hB, limbReadArgs, hk] at h
+    exact h.symm
+
+/-- The source run of a binding `let name = f(v, l)` of a variable and a literal:
+    the builtin `f` on the value of `v` and the value of `l`, then the body from
+    the extended environment. -/
+theorem evalImp_letBind_app_var_lit_inv (bi : Builtins) (fuel : Nat) (name f v : String)
+    (l : ImpLit) (body : ImpExpr) (env : Env) (w : Value) (env' : Env)
+    (h : evalImp bi fuel (.letBind name (.app f [.var v, .lit l]) body) env = some (w, env')) :
+    ∃ va r, env v = some va ∧ bi f [va, Value.ofLit l] = some r ∧
+      evalImp bi fuel body (env.extend name r) = some (w, env') := by
+  unfold evalImp at h ⊢
+  have hNil : (denoteArgs bi fuel ([] : List ImpExpr)).run env = (some [], env) := by
+    unfold denoteArgs; rfl
+  rw [denote_letBind_run_eq, denote_app_run_eq, denoteArgs_cons_run_eq, denote_var_run_eq] at h
+  cases ha : env v with
+  | none => rw [ha] at h; simp at h
+  | some va =>
+    rw [ha] at h
+    simp only at h
+    rw [denoteArgs_cons_run_eq, denote_lit_eq] at h
+    simp only at h
+    rw [hNil] at h
+    simp only [Option.map_some] at h
+    cases hbi : bi f [va, Value.ofLit l] with
+    | none => rw [hbi] at h; simp at h
+    | some r =>
+      rw [hbi] at h
+      exact ⟨va, r, rfl, hbi, h⟩
+
+/-- The `RustExec` step of a limb read: from the scalar `name` zeroed,
+    `RScalarSetExpr name (SLimb v i)` sets it to limb `i` of the slot `v`. -/
+theorem limbRead_exec (N : Nat) (leafSpec : LeafSpec) (name v : String) (i : Nat)
+    (rs : RustState) (t : TowerType) (arrV : RustVal t) (hT : rs.rsTower v = some ⟨t, arrV⟩) :
+    RustExec N leafSpec (.RScalarSetExpr name (.SLimb v i)) (rsSetScalar rs name 0)
+      (rsSetScalar rs name (towerLimb arrV i)) := by
+  have hS := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) name (.SLimb v i)
+    (rsSetScalar rs name 0)
+  have hv : (SExpr.SLimb v i).evalState (rsSetScalar rs name 0) = towerLimb arrV i := by
+    simp [SExpr.evalState, rsTowerLimb, rsSetScalar, hT]
+  rw [hv, rsSetScalar_collapse] at hS
+  exact hS
+
+/-- **Simulation of a limb read.**  For a slot `v` of a type that is not a
+    container, related by `bridge` to the value of `v`, and a scalar name `name`
+    without a tower binding, the source run of `let name = index(v, k); body` is
+    simulated by `RLetU64Zero name (RSeq (RScalarSetExpr name (SLimb v k)) bodyC)`
+    when every run of `body` from the extended environment is simulated by
+    `bodyC` from the scalar heap extended with the limb. -/
+theorem limbRead_sim (bridge : ValueTowerBridge) (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
+    (hLimb : LimbReadAgrees bridge bi) (name v : String) (k : Int) (hk : 0 ≤ k)
+    (body : ImpExpr) (bodyC : LowCT) (fuel : Nat) (env env' : Env) (rs : RustState) (w : Value)
+    (t : TowerType) (arrV : RustVal t) (ht : t.elemType = t)
+    (hT : rs.rsTower v = some ⟨t, arrV⟩) (hFresh : TowerFresh rs name)
+    (hEval : evalImp bi fuel (.letBind name (.app "index" [.var v, .lit (.int k)]) body) env =
+      some (w, env'))
+    (hAgree : envAgreesRustT bridge env rs) (P : RustState → Prop)
+    (hBody : ∀ (r : Value) (n : Nat), valueToScalar r = some n →
+      evalImp bi fuel body (env.extend name r) = some (w, env') →
+      envAgreesRustT bridge (env.extend name r) (rsSetScalar rs name n) →
+      ∃ rs', RustExec N leafSpec bodyC (rsSetScalar rs name n) rs' ∧ P rs') :
+    ∃ rs', RustExec N leafSpec
+        (.RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SLimb v k.toNat)) bodyC)) rs rs' ∧
+      P rs' := by
+  obtain ⟨va, r, hva, hbi, hBodyEval⟩ :=
+    evalImp_letBind_app_var_lit_inv bi fuel name "index" v (.int k) body env w env' hEval
+  have hkk : ((k.toNat : Nat) : Int) = k := Int.toNat_of_nonneg hk
+  have hr : valueToScalar r = some (towerLimb arrV k.toNat) := by
+    refine hLimb t va r arrV k.toNat ht (hAgree.2 v va hva t arrV hT) ?_
+    rw [hkk]
+    exact hbi
+  obtain ⟨rs', hBodyExec, hP⟩ := hBody r _ hr hBodyEval
+    (envAgreesRustT_extend_scalar_fresh bridge env rs name r _ hFresh hr hAgree)
+  refine ⟨rs', ?_, hP⟩
+  refine RustExec.letU64Zero name _ rs rs' ?_
+  exact RustExec.seq _ _ _ _ _ (limbRead_exec N leafSpec name v k.toNat rs t arrV hT) hBodyExec
+
+end LimbRead
 
 end CatCrypt.Crypto.Hax

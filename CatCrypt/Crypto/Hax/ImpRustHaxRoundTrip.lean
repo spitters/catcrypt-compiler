@@ -62,6 +62,7 @@ theorem roundTrip_hax_simulates
     (hIdx : IndexAgrees bridge bi leafSpec)
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
     (hSc : ScalarCallsAgree bi)
+    (hLimb : LimbReadAgrees bridge bi)
     (fuel : Nat) (env env' : Env) (rs : RustState) (v : Value)
     (hSB : ScopeBound rs rtEntryScope) (hSF : NamesFresh rs rtScalars)
     (hEval : evalImp bi fuel (forToLoop roundTripExtracted) env = some (v, env'))
@@ -71,7 +72,7 @@ theorem roundTrip_hax_simulates
       NamesFresh rs' rtScalars ∧ ScalarInv [] rtScalars env' := by
   rw [haxReadAgrees_sound bi hOps _ _ roundTrip_haxReadAgrees] at hEval
   exact lowCTToImp_simulates_frontNF bridge bi N leafSpec [] rtScalars hLeaf hProj hLit hIdx
-    hUpd hSc roundTripLowCT roundTripImp lowCTToImp_roundTripLowCT fuel rtEntryScope
+    hUpd hSc hLimb roundTripLowCT roundTripImp lowCTToImp_roundTripLowCT fuel rtEntryScope
     rtExitScope env env' rs v roundTripImp_simScope hSB hSF hEval hAgree hInv
 
 end CatCrypt.Crypto.Hax

@@ -596,6 +596,52 @@ theorem scalarCallSExpr_isSome (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.
   unfold scalarCallSExpr scalarCallName scalarCallNames
   split <;> simp_all
 
+/-! ### Limb reads
+
+A binding `let name = index(v, i)` of a variable `v` at a non-negative integer
+literal `i` reads limb `i` of the tower slot `v` into the scalar heap: it lowers
+to the scalar assignment `RScalarSetExpr name (SLimb v i)` inside
+`RLetU64Zero name`.  An `index` call on two variables is the array load
+`RArrLoad`, whose result is a tower slot. -/
+
+/-- The slot and the limb of a limb read: the arguments of a call `index` on a
+    variable and a non-negative integer literal. -/
+def limbReadArgs (f : String) (args : List ImpExpr) : Option (String × Nat) :=
+  if f = "index" then
+    match args with
+    | [.var v, .lit (.int i)] => if 0 ≤ i then some (v, i.toNat) else none
+    | _ => none
+  else none
+
+/-- The arguments of a limb read are not all variables. -/
+theorem haxArgsToLocated_of_limbReadArgs {f : String} {args : List ImpExpr} {p : String × Nat}
+    (h : limbReadArgs f args = some p) (dt : TowerType) : haxArgsToLocated dt args = none := by
+  unfold limbReadArgs at h
+  split at h
+  · split at h
+    · simp [haxArgsToLocated, haxArgToLocated]
+    · cases h
+  · cases h
+
+/-- A limb read is a call `index` on a variable and the literal of its limb. -/
+theorem limbReadArgs_eq_some {f : String} {args : List ImpExpr} {v : String} {i : Nat}
+    (h : limbReadArgs f args = some (v, i)) :
+    f = "index" ∧ ∃ k : Int, 0 ≤ k ∧ k.toNat = i ∧ args = [.var v, .lit (.int k)] := by
+  unfold limbReadArgs at h
+  split at h
+  · rename_i hf
+    refine ⟨hf, ?_⟩
+    split at h
+    · rename_i w k
+      split at h
+      · rename_i hk
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact ⟨k, hk, rfl, rfl⟩
+      · cases h
+    · cases h
+  · cases h
+
 /-- Structural recursion `ImpExpr → Option LowCT`.
 
     Each recursive call is on a strict syntactic subterm of the input
@@ -652,6 +698,11 @@ def haxToLowCT : ImpExpr → Option LowCT
             | _ => some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
           else
             some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
+      -- Limb read: `let name = index(v, i); body` at a literal `i` lowers to the
+      -- scalar assignment of limb `i` of the tower slot `v`.
+      | none, some bodyC =>
+          (limbReadArgs f args).map fun p =>
+            .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SLimb p.1 p.2)) bodyC)
       | _,           _          => none
   | .letBind name (.lit (.uintLit w n)) body =>
       match haxToLowCT body with
@@ -1151,7 +1202,8 @@ biconditional that does hold uses a tight syntactic predicate
 
     The rules mirror, one-for-one, the arms of `haxToLowCT` that
     return `some`:
-    * `letBind _ (app _ args) body` — `args` all `var`s and `body` ANF;
+    * `letBind _ (app f args) body` — `args` all `var`s, or `f args` a limb
+      read (`limbReadArgs`), and `body` ANF;
     * `letBind _ (lit (uintLit ..)) body` — `body` ANF;
     * `letBind _ (lit (int n)) body` — `n ≥ 0` and `body` ANF;
     * `letBind _ (lit (bool _)) body` — `body` ANF (bools are 0/1 scalars);
@@ -1175,7 +1227,8 @@ biconditional that does hold uses a tight syntactic predicate
       remaining loop / control-flow constructors, non-`var`
       conditions, non-`var` tuple components) — not ANF. -/
 def AnfShaped : ImpExpr → Bool
-  | .letBind _ (.app _ args) body          => args.all isVar && AnfShaped body
+  | .letBind _ (.app f args) body          =>
+      (args.all isVar || (limbReadArgs f args).isSome) && AnfShaped body
   | .letBind _ (.lit (.uintLit _ _)) body  => AnfShaped body
   | .letBind _ (.lit (.int n)) body        => decide (n ≥ 0) && AnfShaped body
   -- Bool literal binding: 0/1 scalar; only `body` shape matters.

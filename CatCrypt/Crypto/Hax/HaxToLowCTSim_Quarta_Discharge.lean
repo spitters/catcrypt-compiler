@@ -118,7 +118,7 @@ theorem haxToLowCT_letBind_app_some
                    bodyC) := by
   simp only [haxToLowCT] at h
   cases hArgs : haxArgsToLocated (towerOfCallName f) args with
-  | none => simp [hArgs] at h
+  | none => cases hBody : haxToLowCT body <;> simp [hArgs, hBody, limbReadArgs, hf_not_idx] at h
   | some args' =>
     cases hBody : haxToLowCT body with
     | none => simp [hArgs, hBody] at h

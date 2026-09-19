@@ -28,6 +28,7 @@ parses:
 | `RLetZero x t (RLetZero y u (RSeq (RCallSwap f d e args) b))` | `match f(args) { (x, y) => b }` | `match_` |
 | `RLetU64Zero x (RSeq (RScalarSet x k) b)` | `let x = k; b` | `letBind` of an `int` literal |
 | `RLetU64Zero x (RSeq (RScalarSetExpr x e) b)` | `let x = scalar#Op(a, b); b` | `letBind` of a scalar call |
+| `RLetU64Zero x (RSeq (RScalarSetExpr x (SLimb v i)) b)` | `let x = index(v, i); b` with `i` a literal | `letBind` of a limb read |
 | `RIfNz v t e` | `if v { t } else { e }` | `ifThenElse (var _)` |
 | `RWhileNz v b` | `while v { b }` | `whileLoop (var _)` |
 | `RFor x n b` | `forFold x 0 n b` | `forFold` with literal bounds |
@@ -35,7 +36,8 @@ parses:
 
 A call argument is the variable of its slot.  The scalar expression of a
 `scalar#Op` binding is one of the shapes `scalarCallSExpr` produces on two
-variables (`scalarCallOfSExpr`), and a runtime loop bound is a variable, a
+variables (`scalarCallOfSExpr`), a limb read is `SLimb v i` itself
+(`limbReadOfSExpr`, the inverse of `limbReadArgs`), and a runtime loop bound is a variable, a
 literal, or `Add`/`Sub`/`Mul` over those (`sexprToImpBound`, the inverse of
 `impBoundToSExpr`); a bound that is a literal at the root is refused, since the
 front reads `forFold x 0 n` with a literal `n` as `RFor`.
@@ -59,7 +61,7 @@ by the binder.
 
 * `lowCTToImp` — the translation.
 * `frontNF` — the located types of the front's lowering.
-* `sexprToImpBound`, `scalarCallOfSExpr` — the scalar-expression arms.
+* `sexprToImpBound`, `scalarCallOfSExpr`, `limbReadOfSExpr` — the scalar-expression arms.
 
 ## Main results
 
@@ -122,6 +124,17 @@ def scalarCallOfSExpr : SExpr → Option (String × String × String)
       if a' = a ∧ b' = b then some ("scalar#Ne", a, b) else none
   | _ => none
 
+/-- The slot and the limb of a limb read `SLimb v i`. -/
+def limbReadOfSExpr : SExpr → Option (String × Nat)
+  | .SLimb v i => some (v, i)
+  | _ => none
+
+/-- The front reads the call `index` on a variable and the literal of a limb as
+    the limb read. -/
+theorem limbReadArgs_index (v : String) (i : Nat) :
+    limbReadArgs "index" [.var v, .lit (.int i)] = some (v, i) := by
+  simp [limbReadArgs]
+
 /-! ## §2  The translation -/
 
 /-- The call arguments of a list of slots: the variable of each slot. -/
@@ -172,7 +185,14 @@ def lowCTToImp : LowCT → Option ImpExpr
           if y = x then
             (lowCTToImp b).map fun b' => .letBind x (.app f [.var a, .var a2]) b'
           else none
-      | none => none
+      | none =>
+          match limbReadOfSExpr se with
+          | some (v, i) =>
+              if y = x then
+                (lowCTToImp b).map fun b' =>
+                  .letBind x (.app "index" [.var v, .lit (.int i)]) b'
+              else none
+          | none => none
   | .RIfNz v t e =>
       match lowCTToImp t, lowCTToImp e with
       | some t', some e' => some (.ifThenElse (.var v) t' e')
@@ -405,13 +425,23 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       obtain ⟨hn, hse⟩ := scalarCallOfSExpr_spec se f a a2 hsc
       obtain ⟨h1, h2⟩ := scalarCallName_ne hn
       simp [haxToLowCT, haxArgsToLocated, haxArgToLocated, ih b' hb, frontNF, h1, h2, hn, hse]
-  case case20 v t el t' el' hel ht iht ihel =>
+  case case19 y se b hsc v i hlr ih =>
+    simp only [lowCTToImp, hsc, hlr, ↓reduceIte] at h
+    cases hb : lowCTToImp b with
+    | none => simp [hb] at h
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at h
+      subst h
+      obtain rfl : se = .SLimb v i := by
+        cases se <;> simp_all [limbReadOfSExpr]
+      simp [haxToLowCT, haxArgsToLocated, haxArgToLocated, limbReadArgs_index, ih b' hb, frontNF]
+  case case22 v t el t' el' hel ht iht ihel =>
     simp only [lowCTToImp, ht, hel, Option.some.injEq] at h
     subst h
     simp [haxToLowCT, iht t' ht, ihel el' hel, frontNF]
-  case case21 =>
+  case case23 =>
     simp only [lowCTToImp, reduceCtorEq] at h
-  case case22 v b ih =>
+  case case24 v b ih =>
     simp only [lowCTToImp] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
@@ -419,7 +449,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       simp only [hb, Option.map_some, Option.some.injEq] at h
       subst h
       simp [haxToLowCT, ih b' hb, frontNF]
-  case case23 x n b ih =>
+  case case25 x n b ih =>
     simp only [lowCTToImp] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
@@ -427,7 +457,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       simp only [hb, Option.map_some, Option.some.injEq] at h
       subst h
       simp [haxToLowCT, ih b' hb, frontNF]
-  case case25 x bound b hi b' hb hbd hnl ih =>
+  case case27 x bound b hi b' hb hbd hnl ih =>
     have hL : lowCTToImp (.RForRuntime x bound b) = some (.forFold x (.lit (.int 0)) hi b') := by
       cases bound <;> first | exact absurd rfl (hnl _) | simp [lowCTToImp, hbd, hb]
     rw [hL, Option.some.injEq] at h
@@ -440,7 +470,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
     · simp [haxToLowCT, hI, ih b' hb]
     · exact absurd rfl (hnl n)
     · simp [haxToLowCT, hI, ih b' hb]
-  case case26 x bound b hnl hnone _ =>
+  case case28 x bound b hnl hnone _ =>
     have hL : lowCTToImp (.RForRuntime x bound b) =
         match sexprToImpBound bound, lowCTToImp b with
         | some hi, some b' => some (.forFold x (.lit (.int 0)) hi b')
@@ -450,7 +480,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
     cases h1 : sexprToImpBound bound <;> cases h2 : lowCTToImp b <;>
       simp only [h1, h2, reduceCtorEq] at h
     exact (hnone _ _ h1 h2).elim
-  case case27 =>
+  case case29 =>
     rw [lowCTToImp.eq_17] at h
     · simp only [reduceCtorEq] at h
     all_goals assumption

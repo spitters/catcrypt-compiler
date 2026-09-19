@@ -35,6 +35,11 @@ the same range, guard and body.
   `a` and `b` are names of `S` and `a`, `b` differ from `x`, and
   `ScalarCallsAgree` is the condition it places on the builtin table
   (`progSimW_letBind_scalar`).
+* A binding `let x = index(v, i)` at a non-negative integer literal `i` lowers to
+  `RScalarSetExpr x (SLimb v i)`; `simScopeW` accepts it when `x` is a name of
+  `S` and `v` is in scope at a type that is not a container (`t.elemType = t`),
+  and `LimbReadAgrees` is the condition it places on the builtin table
+  (`progSimW_letBind_limb`).
 
 ## Main results
 
@@ -186,7 +191,10 @@ theorem ScalarInv_of_eq {D S : List String} {env env' : Env} (h : ScalarInv D S 
 /-- The scope checker of `simScopeF` extended to a `forFold` from a non-negative
     integer literal to a scalar variable bound, a `forFoldRev` with non-negative
     integer literal bounds and a `whileFold` on a scalar guard; the exit scope of
-    every loop is its entry scope. -/
+    every loop is its entry scope.  A limb read `let x = index(v, i)` at a
+    non-negative integer literal `i` requires `x` to be a name of `S` and `v` to
+    be in scope at a type that is not a container, and leaves the scope
+    unchanged. -/
 def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerScope) :
     ImpExpr → Option TowerScope
   | .letBind name (.app f args) body =>
@@ -209,6 +217,13 @@ def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerSc
                 if decide (List.lookup arr Γ = some t) && decide (arr ≠ name) && S.contains idx
                     && scopeCompat Γ name .TFp && !S.contains name then
                   simScopeW tow D S T A ((name, .TFp) :: Γ) body
+                else none
+            | none => none
+        | [.var arr, .lit (.int i)] =>
+            match List.lookup arr Γ with
+            | some t =>
+                if decide (t.elemType = t) && decide (0 ≤ i) && S.contains name then
+                  simScopeW tow D S T A Γ body
                 else none
             | none => none
         | _ => none
@@ -337,6 +352,11 @@ theorem simScopeW_lookup_mono (tow : String → TowerType) (D S T : List String)
                 simp only [Bool.and_eq_true] at hc
                 exact ihBody _ Γ' h m dt
                   (lookup_cons_of_scopeCompat Γ name .TFp hc.1.2 m dt hm)
+              · cases h
+            · cases h
+          · split at h
+            · split at h
+              · exact ihBody Γ Γ' h m dt hm
               · cases h
             · cases h
           · cases h
@@ -1441,6 +1461,41 @@ theorem progSimW_letBind_index (name f arr idx : String) (body : ImpExpr)
   refine RustExec.letZero name .TFp _ rs rs' ?_
   exact RustExec.seq _ _ _ _ _ hLoad hBodyExec
 
+/-- The arm of a limb read: `let name = index(v, k)` at a non-negative integer
+    literal `k`, with `name` a scalar name and `v` in scope at a type that is not
+    a container, runs `RScalarSetExpr name (SLimb v k)`, and the body from the
+    extended scalar heap. -/
+theorem progSimW_letBind_limb (name f v : String) (k : Int) (body : ImpExpr)
+    (hf_arr : f ≠ "array_update") (hf_idx : f = "index")
+    (hLimb : LimbReadAgrees bridge bi)
+    (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
+    ProgSimW bridge bi N leafSpec D S T A
+      (.letBind name (.app f [.var v, .lit (.int k)]) body) := by
+  intro fuel Γ Γ' c env env' rs w hScope hSB hSF hHax hEval hAgree hNN
+  simp only [simScopeW, if_neg hf_arr, if_pos hf_idx] at hScope
+  subst hf_idx
+  rcases hL : List.lookup v Γ with _ | t
+  · rw [hL] at hScope; cases hScope
+  simp only [hL] at hScope
+  split at hScope
+  swap
+  · cases hScope
+  rename_i hc
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+  obtain ⟨⟨ht, hk⟩, hName⟩ := hc
+  obtain ⟨bodyC, hB, rfl⟩ := haxToLowCT_letBind_limb_some name v k hk body c hHax
+  obtain ⟨arrV, hT⟩ := hSB v t hL
+  simp only [forToLoop, forToLoopArgs] at hEval
+  rw [litTower_letU64Zero_scalarSetExpr, arrTower_letU64Zero, arrTower_seq, arrTower_scalarSetExpr]
+  have hFresh : TowerFresh rs name := hSF name (mem_of_contains S name hName)
+  refine limbRead_sim bridge bi N leafSpec hLimb name v k hk _ _ fuel env env' rs w t arrV ht hT
+    hFresh hEval hAgree
+    (fun rs' => envAgreesRustT bridge env' rs' ∧ ScopeBound rs' Γ' ∧ NamesFresh rs' S ∧
+      ScalarInv D S env') ?_
+  intro r n hr hBodyEval hAgree'
+  exact ihBody fuel Γ Γ' bodyC (env.extend name r) env' (rsSetScalar rs name n) w hScope hSB hSF hB
+    hBodyEval hAgree' (hNN.extend_of_nonneg name (nonneg_of_valueToScalar hr))
+
 theorem progSimW_letBind_arrUpdate (name f arr idx src : String) (body : ImpExpr)
     (hf_arr : f = "array_update")
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
@@ -1704,7 +1759,8 @@ theorem allVar_of_argsInScope (Γ : TowerScope) (dt : TowerType) (args : List Im
     its loops read back by `forToLoop`, from an environment whose names of `D`
     are bound and whose names of `S` hold non-negative integers, from the
     hypotheses of `haxToLowCT_simulates_programA` with the leaf condition on the
-    call names not computed in the scalar heap, and `ScalarCallsAgree`. -/
+    call names not computed in the scalar heap, `ScalarCallsAgree` and
+    `LimbReadAgrees`. -/
 theorem haxToLowCT_simulates_programW
     (bridge : ValueTowerBridge) (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (D S T : List String) (A : TowerScope)
@@ -1715,6 +1771,7 @@ theorem haxToLowCT_simulates_programW
     (hIdx : IndexAgrees bridge bi leafSpec)
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
     (hSc : ScalarCallsAgree bi)
+    (hLimb : LimbReadAgrees bridge bi)
     (e : ImpExpr) : ProgSimW bridge bi N leafSpec D S T A e := by
   have noneArm := progSimW_of_simScopeW_none bridge bi N leafSpec D S T A
   have hA := haxToLowCT_simulates_programA bridge (scalarCallFree bi) N leafSpec S T A
@@ -1771,11 +1828,16 @@ theorem haxToLowCT_simulates_programW
             hf_arr hUpd ihBody
       by_cases hf_idx : f = "index"
       · rcases hSh : varArgs2 args with _ | ⟨arr, idx⟩
-        · refine noneArm _ fun Γ => ?_
-          simp only [simScopeW, if_neg hf_arr, if_pos hf_idx]
-          split
-          · simp [varArgs2] at hSh
-          · rfl
+        · by_cases hl : ∃ (v : String) (k : Int), args = [.var v, .lit (.int k)]
+          · obtain ⟨v, k, rfl⟩ := hl
+            exact progSimW_letBind_limb bridge bi N leafSpec D S T A name f v k body hf_arr
+              hf_idx hLimb ihBody
+          · refine noneArm _ fun Γ => ?_
+            simp only [simScopeW, if_neg hf_arr, if_pos hf_idx]
+            split
+            · simp [varArgs2] at hSh
+            · exact absurd ⟨_, _, rfl⟩ hl
+            · rfl
         · rw [varArgs2_some hSh]
           exact progSimW_letBind_index bridge bi N leafSpec D S T A name f arr idx body hf_arr
             hf_idx hIdx ihBody
@@ -1899,29 +1961,33 @@ variable (bridge : ValueTowerBridge) (bi : Builtins) (N : Nat) (leafSpec : LeafS
   (hIdx : IndexAgrees bridge bi leafSpec)
   (hUpd : ArrUpdateAgrees bridge bi leafSpec)
   (hSc : ScalarCallsAgree bi)
+  (hLimb : LimbReadAgrees bridge bi)
 
-include hLeaf hProj hLit hIdx hUpd hSc
+include hLeaf hProj hLit hIdx hUpd hSc hLimb
 
 /-- A counted loop with non-negative integer literal bounds simulates, with the
     source run of the `forLoop` it is read as. -/
 theorem haxToLowCT_simulates_forFold (i : String) (lo hi : Int) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.forFold i (.lit (.int lo)) (.lit (.int hi)) body) :=
   progSimW_forFold bridge bi N leafSpec D S T A i lo hi body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc hLimb
+      body)
 
 /-- A reverse counted loop with non-negative integer literal bounds simulates,
     with the source run of the `forLoopRev` it is read as. -/
 theorem haxToLowCT_simulates_forFoldRev (i : String) (lo hi : Int) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.forFoldRev i (.lit (.int lo)) (.lit (.int hi)) body) :=
   progSimW_forFoldRev bridge bi N leafSpec D S T A i lo hi body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc hLimb
+      body)
 
 /-- A data-dependent loop on a scalar guard simulates, with the source run of
     the `whileLoop` it is read as. -/
 theorem haxToLowCT_simulates_whileFold (cond : String) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.whileFold (.var cond) body) :=
   progSimW_whileFold bridge bi N leafSpec D S T A cond body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc hLimb
+      body)
 
 end ClosedForms
 

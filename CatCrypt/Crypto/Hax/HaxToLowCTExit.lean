@@ -144,7 +144,8 @@ def letHead (name : String) : ImpExpr → Option (LowCT → LowCT)
   | .app f args =>
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
-      (haxArgsToLocated dt args).map fun args' bodyC =>
+      match haxArgsToLocated dt args with
+      | some args' => some fun bodyC =>
         if f = "array_update" then
           match args with
           | [.var arr, .var idx, .var src] =>
@@ -169,6 +170,9 @@ def letHead (name : String) : ImpExpr → Option (LowCT → LowCT)
           | _ => .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
         else
           .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
+      | none =>
+          (limbReadArgs f args).map fun p bodyC =>
+            .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SLimb p.1 p.2)) bodyC)
   | .lit (.uintLit w n) =>
       some fun bodyC => .RLetU64Zero name (.RSeq (.RScalarSet name (n % w.modulus)) bodyC)
   | .lit (.int n) =>
@@ -209,7 +213,9 @@ theorem haxToLowCT_letBind_eq_letHead (name : String) (val body : ImpExpr) :
     simp only [haxToLowCT, letHead]
     cases haxArgsToLocated (towerOfCallName f) args <;> cases haxToLowCT body <;>
       simp only [Option.map]
-    all_goals split_ifs <;> (repeat' split) <;> first | rfl | simp_all
+    all_goals first
+      | (cases limbReadArgs f args <;> rfl)
+      | (split_ifs <;> (repeat' split) <;> first | rfl | simp_all)
   | var s => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl
   | proj pe i =>
     cases pe with

@@ -18,15 +18,15 @@ result is the program-level front simulation `haxToLowCT_simulates_programW`
 instantiated at `e`, with the round trip `lowCTToImp_roundTrip` discharging its
 lowering hypothesis; its hypotheses are carried unchanged:
 
-* the leaf, projection, literal-store, index, array-update and scalar-call
-  agreements of the builtin table `bi` with `leafSpec` through `bridge`
-  (`hLeaf`, `hProj`, `hLit`, `hIdx`, `hUpd`, `hSc`);
+* the leaf, projection, literal-store, index, array-update, scalar-call and
+  limb-read agreements of the builtin table `bi` with `leafSpec` through `bridge`
+  (`hLeaf`, `hProj`, `hLit`, `hIdx`, `hUpd`, `hSc`, `hLimb`);
 * the scope checker `simScopeW towerOfCallName D S T A Γ e` accepts `e`;
 * the entry state is bound on `Γ` and fresh on the scalar names `S`, the entry
   environment agrees with it (`envAgreesRustT`) and satisfies `ScalarInv D S`.
 
-The checker accepts the call, literal, scalar-call, tuple-load, array-load and
-array-store bindings, `if`/`while` on a variable, `forFold` from a non-negative
+The checker accepts the call, literal, scalar-call, limb-read, tuple-load,
+array-load and array-store bindings, `if`/`while` on a variable, `forFold` from a non-negative
 literal to a literal or a variable bound, and sequencing.  It rejects the
 `match_` of a two-destination call, so the `RCallSwap` arm of `lowCTToImp` has
 the round trip and no simulation, as has a runtime loop bound other than a
@@ -67,6 +67,7 @@ theorem lowCTToImp_simulates
     (hIdx : IndexAgrees bridge bi leafSpec)
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
     (hSc : ScalarCallsAgree bi)
+    (hLimb : LimbReadAgrees bridge bi)
     (c : LowCT) (e : ImpExpr) (he : lowCTToImp c = some e)
     (fuel : Nat) (Γ Γ' : TowerScope) (env env' : Env) (rs : RustState) (v : Value)
     (hScope : simScopeW towerOfCallName D S T A Γ e = some Γ')
@@ -76,7 +77,7 @@ theorem lowCTToImp_simulates
     ∃ rs', RustExec N leafSpec (arrTower A (litTower T (frontNF c))) rs rs' ∧
       envAgreesRustT bridge env' rs' ∧ ScopeBound rs' Γ' ∧ NamesFresh rs' S ∧
       ScalarInv D S env' :=
-  haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc e
+  haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc hLimb e
     fuel Γ Γ' (frontNF c) env env' rs v hScope hSB hSF (lowCTToImp_roundTrip c e he) hEval
     hAgree hInv
 
@@ -93,6 +94,7 @@ theorem lowCTToImp_simulates_frontNF
     (hIdx : IndexAgrees bridge bi leafSpec)
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
     (hSc : ScalarCallsAgree bi)
+    (hLimb : LimbReadAgrees bridge bi)
     (c : LowCT) (e : ImpExpr) (he : lowCTToImp c = some e)
     (fuel : Nat) (Γ Γ' : TowerScope) (env env' : Env) (rs : RustState) (v : Value)
     (hScope : simScopeW towerOfCallName D S [] [] Γ e = some Γ')
@@ -103,7 +105,7 @@ theorem lowCTToImp_simulates_frontNF
       envAgreesRustT bridge env' rs' ∧ ScopeBound rs' Γ' ∧ NamesFresh rs' S ∧
       ScalarInv D S env' := by
   have h := lowCTToImp_simulates bridge bi N leafSpec D S [] [] hLeaf hProj hLit hIdx hUpd hSc
-    c e he fuel Γ Γ' env env' rs v hScope hSB hSF hEval hAgree hInv
+    hLimb c e he fuel Γ Γ' env env' rs v hScope hSB hSF hEval hAgree hInv
   rwa [litTower_nil, arrTower_nil] at h
 
 end CatCrypt.Crypto.Hax
