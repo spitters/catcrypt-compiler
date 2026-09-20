@@ -51,6 +51,21 @@ the ADX carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
 An immediate second source is gated on `aluImmGathers`, the signed 32-bit field
 the group-1 immediate form carries.
 
+The ADX carry chains are the mnemonics `LprogBytes.adxPrefix` routes: `ADCX` at
+the mandatory prefix `0x66` and `ADOX` at `0xf3`, both to
+`ScalarEncoder.encAdxCarry` on a branch of their own. Their carry-in is the CF or
+OF flag rather than an operand, and the encoders hardcode `REX.W`, so the
+dispatch does not read the width tag. The one-source and two-source shapes are
+the arms here; on the two-source shape the first source is matched by a wildcard
+and contributes no bytes, so the arm requires it to be the destination.
+
+The three-source shape `[a, src, cin]`, which carries the carry-in as an explicit
+value, is lowered above this module by
+`LoweringExtendedCoverage.lowerLinstrExtCov`. `encodeLopn` gives it a three-
+instruction sequence whose middle instruction is `encBtImm`, and `BT` is outside
+the fragment `ScalarEncoder.encodableJInstr` admits, so no gather of that shape
+agrees with it byte for byte.
+
 The mem-folded widening multiply `Lopn [.reg lo, .reg hi] "MULXMEM:64" [.reg
 (mem.<base>.<off>)]` is the one two-destination shape here. `encodeLopn` matches
 `MULXMEM` by name above the ADX and ALU tables and emits
@@ -95,10 +110,27 @@ neither its mnemonic nor its operand list nor its destination order matches what
   `physAlloc`, by `decide +kernel`.
 * `lowerMemOp_sbbImm0` — the gather at a small immediate, whose bytes agree with
   `encodeLopn` under `GatherImmForms.encodeJInstr7`.
+* `dispatch_adx_two` / `dispatch_adx_one` and the four `encodeLopn_ad*64` — the
+  ADX carry-chain dispatch of `ADCX:64` and `ADOX:64` down to `encAdxCarry`.
+* `jinstr_adcx` / `jinstr_adox` and the four `ad*64*_gather_bytes_agree` — the
+  carry-chain byte agreements.
+* `encJAdcx_RSI_R9` / `encJAdox_RSI_R9` — the same at concrete operands.
 * `dispatch_mulxmem` / `encodeLopn_mulxmem64` — the by-name dispatch of
   `MULXMEM:64` down to `encMulxMem`, with the destination pair transposed.
 * `jinstr_mulxMem` / `mulxmem64_gather_bytes_agree` / `encJMulxMem_RDI160` — the
   mem-folded widening multiply's byte agreement, and it at concrete operands.
+
+## What a byte agreement does not establish
+
+A byte agreement compares this module's lowering against `encodeLopn`, so an arm
+that reproduces `encodeLopn`'s own treatment of an operand satisfies it while
+denoting something else. `encodeLopn` discards the first source of a two-address
+ALU instruction and transposes the destination pair of `MULXMEM`; an arm that
+discarded or transposed the same way would be byte-equal at every operand and
+would say nothing about the instruction it lowers. Each arm below is written
+from `encodeLopn`'s argument order and from the hardware's contract for an
+operand the encoder does not read, and constrains the operands the encoder drops
+rather than dropping them as well.
 
 ## Scope
 
@@ -236,7 +268,9 @@ def mulxMultiplier : String := "RDX"
     `aluImmGathers`. A `MULXMEM:64`, whose destination list is the low word then
     the high word and whose single source is a `mem.<base>.<off>` name, lowers to
     `JInstr.mulxMem` over the high word first, the order that constructor takes.
-    Every arm requires the base and the register operands to be among the sixteen
+    An `ADCX:64` or `ADOX:64` over one register source, or over two whose first is
+    the destination, lowers to the in-place `JInstr.adcx` / `JInstr.adox`. Every
+    arm requires the base and the register operands to be among the sixteen
     `isGpName` names. Every other shape is `none`. -/
 def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
     (_qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
@@ -271,6 +305,16 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
   | .Lopn [.reg dn] "SBB:64" [.reg an, .imm v] =>
       if an == dn && isGpName dn && aluImmGathers v then some [JInstr.sbb dn (.imm v)]
       else none
+  | .Lopn [.reg dn] "ADCX:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.adcx dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "ADOX:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.adox dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "ADCX:64" [.reg sn] =>
+      if isGpName dn && isGpName sn then some [JInstr.adcx dn (.reg sn)] else none
+  | .Lopn [.reg dn] "ADOX:64" [.reg sn] =>
+      if isGpName dn && isGpName sn then some [JInstr.adox dn (.reg sn)] else none
   | .Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn] =>
       match memNameParts mn with
       | some (b, off) =>
@@ -324,6 +368,34 @@ theorem lowerMemOp_adc_imm (frame spillW qsaveB : Nat) (dn : String) (v : Nat)
     lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB
       = some [JInstr.adc dn (.imm v)] := by
   simp [lowerMemOp, hd, hv]
+
+/-- The `ADCX:64` arm's output on the two-source shape. -/
+theorem lowerMemOp_adcx₂ (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.adcx dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `ADOX:64` arm's output on the two-source shape. -/
+theorem lowerMemOp_adox₂ (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.adox dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `ADCX:64` arm's output on the one-source shape. -/
+theorem lowerMemOp_adcx₁ (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg sn]) qsaveB
+      = some [JInstr.adcx dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `ADOX:64` arm's output on the one-source shape. -/
+theorem lowerMemOp_adox₁ (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg sn]) qsaveB
+      = some [JInstr.adox dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
 
 /-- The `MULXMEM:64` arm's output. The destination list is read low word first
     and the `JInstr` takes the high word first. -/
@@ -389,6 +461,20 @@ theorem lowerCov6_adc_RCX_RDX :
 theorem lowerCov6_sbb_R10_R11 :
     lowerCov6 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .reg "R11"])
       = some [JInstr.sbb "R10" (.reg "R11")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the two-source ADX carry-chain add, so `lowerCov6`
+    reaches the new arm: `LoweringExtendedCoverage.lowerLinstrExtCov`'s ADX arms
+    match three sources, and the tables below it hold no `ADCX` row. -/
+theorem lowerCov6_adcx_RSI_R9 :
+    lowerCov6 64 64 (.Lopn [.reg "RSI"] "ADCX:64" [.reg "RSI", .reg "R9"])
+      = some [JInstr.adcx "RSI" (.reg "R9")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the two-source OF-chain add likewise. -/
+theorem lowerCov6_adox_RSI_R9 :
+    lowerCov6 64 64 (.Lopn [.reg "RSI"] "ADOX:64" [.reg "RSI", .reg "R9"])
+      = some [JInstr.adox "RSI" (.reg "R9")] := by
   with_unfolding_all rfl
 
 /-- `lowerCov5` declines the mem-folded widening multiply, so `lowerCov6` reaches
@@ -490,6 +576,72 @@ theorem encodeLopn_sbb64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : N
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
+
+/-! ### The ADX carry-chain dispatch
+
+`adxPrefix` routes `ADCX` and `ADOX` to `encAdxCarry` on a branch of its own,
+below the `MULX` names and above the `aluOpcode` table. Its one-source and
+two-source arms emit the single two-address carry-chain add, whose carry-in is
+the CF or OF flag rather than an operand. On the two-source arm the first source
+is a wildcard pattern that contributes nothing to the bytes. -/
+
+/-- **The two-source ADX dispatch.** `Lopn [.reg dn] "<MNEM>:64" [_, .reg sn]`
+    reduces to `encAdxCarry pfx (gpNumU dn) (gpNumU sn)`; the first source is
+    matched by a wildcard and does not reach the bytes. -/
+theorem dispatch_adx_two (frame spillW pfx : Nat) (mnem base : String)
+    (dn an sn : String) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = some pfx) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .reg sn]) qsaveB
+      = encAdxCarry pfx (gpNumU dn) (gpNumU sn) := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx,
+    Bool.false_eq_true, if_false]
+
+/-- **The one-source ADX dispatch.** -/
+theorem dispatch_adx_one (frame spillW pfx : Nat) (mnem base : String)
+    (dn sn : String) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = some pfx) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
+      = encAdxCarry pfx (gpNumU dn) (gpNumU sn) := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx,
+    Bool.false_eq_true, if_false]
+
+/-- `ADCX:64` (prefix `0x66`, the CF chain) two-source dispatch. -/
+theorem encodeLopn_adcx64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg an, .reg sn]) qsaveB
+      = encAdxCarry 0x66 (gpNumU dn) (gpNumU sn) :=
+  dispatch_adx_two frame spillW 0x66 "ADCX:64" "ADCX" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- `ADOX:64` (prefix `0xf3`, the OF chain) two-source dispatch. -/
+theorem encodeLopn_adox64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg an, .reg sn]) qsaveB
+      = encAdxCarry 0xf3 (gpNumU dn) (gpNumU sn) :=
+  dispatch_adx_two frame spillW 0xf3 "ADOX:64" "ADOX" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- `ADCX:64` one-source dispatch. -/
+theorem encodeLopn_adcx64₁ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg sn]) qsaveB
+      = encAdxCarry 0x66 (gpNumU dn) (gpNumU sn) :=
+  dispatch_adx_one frame spillW 0x66 "ADCX:64" "ADCX" dn sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- `ADOX:64` one-source dispatch. -/
+theorem encodeLopn_adox64₁ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg sn]) qsaveB
+      = encAdxCarry 0xf3 (gpNumU dn) (gpNumU sn) :=
+  dispatch_adx_one frame spillW 0xf3 "ADOX:64" "ADOX" dn sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
 
 /-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
     above the ADX and ALU tables, on a two-destination `Lopn` with a single
@@ -683,6 +835,70 @@ theorem adc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     adc_bytes_agree alloc frame spillW dn sn dn sn qsaveB
       hdk hsk hdm hsm hdsp hssp hr hsr]
 
+/-- `JInstr` `adcx` over a register source reduces to `encAdxCarry 0x66`. -/
+theorem jinstr_adcx (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.adcx d (.reg r))
+      = encAdxCarry 0x66 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- `JInstr` `adox` over a register source reduces to `encAdxCarry 0xf3`. -/
+theorem jinstr_adox (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.adox d (.reg r))
+      = encAdxCarry 0xf3 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- **The two-source `ADCX:64` byte agreement.** The gathered `adcx` block encodes
+    to the bytes `encodeLopn` gives for the CF-chain add. The `an == dn` condition
+    the arm carries is not what makes the bytes equal — the encoder reads neither
+    operand on that position — it is what makes the gathered instruction the one
+    the `Lopn` denotes. -/
+theorem adcx64₂_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "ADCX:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_adcx₂ frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_adcx64₂, jinstr_adcx, hr, hsr]
+
+/-- **The two-source `ADOX:64` byte agreement** (the OF chain, prefix `0xf3`). -/
+theorem adox64₂_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "ADOX:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_adox₂ frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_adox64₂, jinstr_adox, hr, hsr]
+
+/-- **The one-source `ADCX:64` byte agreement.** -/
+theorem adcx64₁_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW (.Lopn [.reg dn] "ADCX:64" [.reg sn]) qsaveB) := by
+  rw [lowerMemOp_adcx₁ frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_adcx64₁, jinstr_adcx, hr, hsr]
+
+/-- **The one-source `ADOX:64` byte agreement.** -/
+theorem adox64₁_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg sn]) qsaveB) := by
+  rw [lowerMemOp_adox₁ frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_adox64₁, jinstr_adox, hr, hsr]
+
 /-- `JInstr` `mulxMem` reduces to `encMulxMem` over its high-word, low-word and
     base numbers. The multiplier field is not read: `MULX` takes that operand
     implicitly in `%rdx`, so it contributes no bytes. -/
@@ -853,6 +1069,20 @@ theorem encJAdcImm_RCX_1000 :
 theorem encJSbbImm_R10_1000 :
     encodeJBlock physAlloc [JInstr.sbb "R10" (.imm 1000)]
       = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000]) := by
+  decide +kernel
+
+/-- The gathered `adcxq %r9, %rsi` byte-matches `encodeLopn`, at the operands the
+    Curve25519 ladder step's CF carry chain carries. -/
+theorem encJAdcx_RSI_R9 :
+    encodeJBlock physAlloc [JInstr.adcx "RSI" (.reg "R9")]
+      = encodeLopn 64 64 (.Lopn [.reg "RSI"] "ADCX:64" [.reg "RSI", .reg "R9"]) := by
+  decide +kernel
+
+/-- The gathered `adoxq %r9, %rsi` byte-matches `encodeLopn` (the OF chain, whose
+    mandatory prefix is `0xf3` where the CF chain's is `0x66`). -/
+theorem encJAdox_RSI_R9 :
+    encodeJBlock physAlloc [JInstr.adox "RSI" (.reg "R9")]
+      = encodeLopn 64 64 (.Lopn [.reg "RSI"] "ADOX:64" [.reg "RSI", .reg "R9"]) := by
   decide +kernel
 
 /-- The gathered `mulxq 160(%rdi), %rcx, %rsi` byte-matches `encodeLopn`, at the
