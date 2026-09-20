@@ -42,6 +42,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
 
 /-!
 # Constant-time conditional-move / select primitive for the owned backend (#581)
@@ -53,14 +55,11 @@ That mask is derived from *secret* data (the secret oil-space basis), so the swa
 must be **branchless** — a secret-dependent `Jcc` would leak the pivot pattern
 through the instruction-fetch timing.
 
-Until now the owned linear-jasmin `Lopn` printer (`LprogAsmPrinter`) rendered the
-GP-ALU alphabet (`ADD … SHR`, `MOV`, `CMP`/`TEST`, the ADX trio) and a Jcc on a
-**public** count (`Lcond`), but had **no `CMOVcc`** — the data-oblivious
-conditional move a *secret* condition must take. This module supplies and
-exercises that backend primitive in two interchangeable constant-time shapes:
+This module supplies and exercises the data-oblivious conditional move a
+*secret* condition must take, in two interchangeable constant-time shapes:
 
 * **`CMOVcc` select** (`cmovSwapLcmd`) — the GE-solve pivot swap via
-  `cmove`/`cmovne`/`cmovb`, the canonical branchless move. The owned printer now
+  `cmove`/`cmovne`/`cmovb`, the canonical branchless move. The owned printer
   maps the `CMOVE`/`CMOVNE`/`CMOVB`/`CMOVAE`/`CMOVL`/`CMOVGE` body mnemonics to
   `cmov<cc><sz>` (`LprogAsmPrinter.attBase`); the value semantics is pinned by
   `JasminModel.x86_CMOVcc` (`if b then src else dst`) on the matching
@@ -74,11 +73,32 @@ exercises that backend primitive in two interchangeable constant-time shapes:
 
 The CMOV shape is a backend printer primitive (`CMOVcc` has no
 `catCryptDialect` front op); the mask shape is the front-expressible CT-select
-the GE-solve can always take. Both are constant-time: the move/select **issues
-unconditionally**, only the written value depends on the condition — no PC
-divergence, no secret branch. The per-shape value semantics is pinned by small
-vectors through the full `evalInstr`/`x86_*` chain (`cmovSwap_value` /
-`maskSwap_value`, no loop-running `native_decide`).
+the GE-solve can always take. In both, the move/select issues unconditionally and
+only the written value depends on the condition. The per-shape value semantics is
+pinned by small vectors through the full `evalInstr`/`x86_*` chain
+(`cmovSwap_value` / `maskSwap_value`, no loop-running `native_decide`).
+
+## The constant-time results
+
+Because the mask is secret, the kernels carry the leakage obligation rather than
+a public-data declaration:
+
+* `cmovSwapBody_constant_time`, `maskSwapBody_constant_time` — the two
+  `List (JInstr 64)` shapes have the same `MachineConstantTime.blockLeak` trace
+  from any two initial machine states, via
+  `ConstantTimeCoverage.allDirect_constant_time`.
+* `cmovSwapLcmd_lcmdDirect` — the `CMOVcc` backend-primitive body uses only
+  base + compile-time-displacement addressing.
+* `maskSwapPolicy`, `maskSwapCom_indexFree`, `maskSwapLprog_lprogDirect`,
+  `maskSwap_emitChecked`, `maskSwap_gather_constant_time` — the deployed export
+  is index-free by construction and passes the `EmitCtGate` gate under a
+  `publicData := false` policy, so the gathered `JInstr 64` block of every
+  function body has a state-independent leakage trace. `emit` writes the artifact
+  through `EmitCtGate.emitCheckedTo`, so a later edit that makes the kernel
+  register-indexed stops the emit instead of writing the file.
+
+The leak conclusion is about the gathered `JInstr 64` block; no theorem here
+reaches the AT&T text `renderOwned` prints or the bytes an assembler makes of it.
 
 This is the **backend primitive** that unblocks the MAYO/UOV/SNOVA GE-solve sign
 emit; wiring it into the per-protocol GE-solve loop is the follow-on (#581/#582).
@@ -106,6 +126,15 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_constant_time)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
+  (lcmdDirect toLprogPhysAbi_lcmdDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms (gatherJBlock6)
+open CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+  (ComJasminCTByConstruction comJasminCT?_eq_true_iff)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge (comToLfundef_lcmdDirect)
 
 /-- A `MOV imm` at the `Lcmd` level (`Lopn [d] MOV:64 [#v]`). -/
 def movImm64L (d : String) (v : Nat) : Linstr :=
@@ -153,6 +182,18 @@ theorem cmovSwap_value :
       ∧ (sKeep.get "x").toNat = 0xAA ∧ (sKeep.get "y").toNat = 0xBB := by
   native_decide
 
+/-- The `CMOVcc` swap body touches no memory, so every instruction is in the
+    direct base + compile-time-displacement class. -/
+theorem cmovSwapBody_allDirect : allDirect cmovSwapBody = true := by decide
+
+/-- **`cmovSwapBody` is constant-time.** The block has the same machine leakage
+    trace from any two initial states, so the observable control-flow and
+    memory-address sequence carries no information about the zero flag the secret
+    pivot bit sets. -/
+theorem cmovSwapBody_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ cmovSwapBody = blockLeak s₂ cmovSwapBody :=
+  allDirect_constant_time cmovSwapBody cmovSwapBody_allDirect s₁ s₂
+
 /-! ## 2. The mask swap — value semantics (no CMOV, pure GP-ALU)
 
 The same swap with a `0 − cond` mask (`cond ∈ {0,1}`), the form the GF kernels
@@ -185,6 +226,17 @@ theorem maskSwap_value :
     (sSwap.get "x").toNat = 0xBB ∧ (sSwap.get "y").toNat = 0xAA
       ∧ (sKeep.get "x").toNat = 0xAA ∧ (sKeep.get "y").toNat = 0xBB := by
   native_decide
+
+/-- The mask swap body is pure register arithmetic, so every instruction is in
+    the direct base + compile-time-displacement class. -/
+theorem maskSwapBody_allDirect : allDirect maskSwapBody = true := by decide
+
+/-- **`maskSwapBody` is constant-time.** The block has the same machine leakage
+    trace from any two initial states, so the observable sequence carries no
+    information about the secret condition register. -/
+theorem maskSwapBody_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ maskSwapBody = blockLeak s₂ maskSwapBody :=
+  allDirect_constant_time maskSwapBody maskSwapBody_allDirect s₁ s₂
 
 /-- **Denotational tie.** The front-generated mask select and the `CMOVcc`
     select compute the SAME conditional swap: on the shared vectors both swap the
@@ -242,6 +294,11 @@ def cmovSwapLcmd : Lcmd :=
   , cmov64L "NE" "R9" (.reg "R10")       -- if cond≠0: y := tmp
   , mov64L (memName "RDI" 0) (.reg "R8") -- [x_ptr] := x
   , mov64L (memName "RSI" 0) (.reg "R9") ] -- [y_ptr] := y
+
+/-- Every instruction of the `CMOVcc` conditional-swap body addresses memory by a
+    base register and a compile-time displacement, the condition
+    `EmitCtGate.lprogDirect` imposes on a secret-input kernel. -/
+theorem cmovSwapLcmd_lcmdDirect : lcmdDirect cmovSwapLcmd = true := by decide
 
 /-! ## 4. AT&T emission through the owned printer (no jasminc) -/
 
@@ -351,6 +408,58 @@ def maskSwapLprog : Lprog :=
     front-lowered owned `Lprog` (no jasminc, no hand-built `Lcmd`). -/
 def maskSwapAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned maskSwapLprog
 
+/-! ## 4c. The constant-time obligation of the deployed mask kernel
+
+The pivot mask is derived from the secret oil-space basis, so the deployed
+conditional-swap kernel is emitted under a secret-input policy and its addressing
+must be index-free. The check is discharged structurally rather than by
+evaluating the export: `maskSwapCom` binds only register arithmetic, so it is in
+the index-free fragment `ComJasminCTByConstruction`, and
+`FrontCTBridge.comToLfundef_lcmdDirect` with
+`AllocCTPreservation.toLprogPhysAbi_lcmdDirect` carry that through the virtual
+body and the deployed allocation to the exported program. -/
+
+/-- The policy of the GE-solve conditional swap: its pivot mask is secret, so it
+    is emitted only through the directness check. -/
+def maskSwapPolicy : EmitCtGate.CtPolicy :=
+  EmitCtGate.CtPolicy.secretInputs
+    "the pivot mask of the GE-solve conditional swap is derived from the secret oil-space basis"
+
+/-- The front-generated mask conditional-swap `Com` binds only register
+    arithmetic, so it is in the index-free fragment of `Com jasminDialect`. -/
+theorem maskSwapCom_indexFree : ComJasminCTByConstruction maskSwapCom :=
+  (comJasminCT?_eq_true_iff maskSwapCom).mp rfl
+
+/-- No function body of the mask conditional-swap export uses register-indexed
+    addressing. -/
+theorem maskSwapLprog_lprogDirect : EmitCtGate.lprogDirect maskSwapLprog = true := by
+  rw [EmitCtGate.lprogDirect, List.all_eq_true]
+  intro f hf
+  simpa using
+    toLprogPhysAbi_lcmdDirect maskSwapCom "ge_solve_cswap_mask_owned"
+      (fun _ => none) (fun _ => none) maskInLoadMap maskOutStoreMap
+      ["RDI", "RSI"] [64, 64] none 0 false
+      (comToLfundef_lcmdDirect maskSwapCom (fun _ => none) maskSwapCom_indexFree) f hf
+
+/-- The gate admits the mask conditional swap under its secret-input policy. -/
+theorem maskSwap_emitChecked :
+    EmitCtGate.emitChecked LprogOptPipeline.renderOwned maskSwapPolicy
+        "ge_solve_cswap_mask_owned" maskSwapLprog
+      = .ok (LprogOptPipeline.renderOwned maskSwapLprog) :=
+  EmitCtGate.emitChecked_of_direct _ _ _ maskSwapLprog_lprogDirect
+
+/-- **The deployed kernel's leakage conclusion.** The gathered `JInstr 64` block
+    of every function body of the mask conditional-swap export has the same
+    machine leakage trace from any two initial states, so the address sequence
+    carries no information about the secret pivot mask. The statement is about
+    the gathered block, not about the rendered text or the bytes. -/
+theorem maskSwap_gather_constant_time {f : String × Lfundef} {g : List (JInstr 64)}
+    (hf : f ∈ maskSwapLprog.lp_funcs)
+    (hg : gatherJBlock6 f.2.lfd_body = some g) (s₁ s₂ : JState 64) :
+    blockLeak s₁ g = blockLeak s₂ g :=
+  EmitCtGate.emitChecked_gather_constant_time (render := LprogOptPipeline.renderOwned)
+    (sym := "ge_solve_cswap_mask_owned") rfl maskSwap_emitChecked hf hg s₁ s₂
+
 /-! ## 5. Rendered asm -/
 
 -- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would re-evaluate the optimizing back-end renderOwned at elaboration.
@@ -358,15 +467,17 @@ def maskSwapAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOp
 /-! ## 6. Emit driver -/
 
 /-- Write the owned-backend CT conditional-swap `.s` kernel into the bench
-    directory. The deployed conditional-swap artifact is the FRONT-GENERATED
-    mask twin (`maskSwapAsm`, via `translateDialectControl` +
+    directory, through the `EmitCtGate` gate under `maskSwapPolicy`: a program
+    with a register-indexed access raises `EmitCtGate.offenderMessage` instead of
+    reaching the file. The deployed conditional-swap artifact is the
+    FRONT-GENERATED mask twin (via `translateDialectControl` +
     `cryptoDialectToJasminCom`), which denotes the same conditional swap as the
     `CMOVcc` shape (`maskSwap_denotes_cmovSwap`). The `CMOVcc` shape stays as the
     backend-printer-primitive witness (`cmovSwapAsm`), not a deployed artifact. -/
-def emit : IO Unit := do
-  IO.FS.createDirAll "bench/mayo_compare/gen_com"
-  IO.FS.writeFile "bench/mayo_compare/gen_com/ge_solve_cswap_mask_owned.s" maskSwapAsm
-  IO.println "wrote ge_solve_cswap_mask_owned.s (owned backend, front-generated, no jasminc)"
+def emit : IO Unit :=
+  EmitCtGate.emitCheckedTo LprogOptPipeline.renderOwned maskSwapPolicy
+    "ge_solve_cswap_mask_owned" maskSwapLprog
+    "bench/mayo_compare/gen_com/ge_solve_cswap_mask_owned.s"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 

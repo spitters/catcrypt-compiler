@@ -101,7 +101,6 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381Pairing.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381PairingMap.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/ChaChaQRThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Chacha4WayQrObjectEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/CmovSelectEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve4DotProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve4MontMulProvenEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Curve6MontMulProvenEmit.lean

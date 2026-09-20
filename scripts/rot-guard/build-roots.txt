@@ -991,3 +991,10 @@ CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
+CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassSetccValueTie
+CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
+CatCrypt.Crypto.SecureCompilation.X86Backend.SelectImmCompare
+CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
+CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentity
+CatCrypt.Crypto.SecureCompilation.CtSelectLeak
+CatCrypt.Crypto.Hax.LowCTWipe
