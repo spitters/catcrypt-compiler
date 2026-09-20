@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.ComScalarPrefix
 public import CatCrypt.Crypto.SecureCompilation.Ascent.BlockTieFinalState
-public import CatCrypt.Crypto.SecureCompilation.Ascent.DialectToBytes
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FrontToBytes
 
 /-!
 # The scalar prefix of a dialect program, its bytes, and its slots
@@ -89,20 +89,21 @@ theorem unitProg_prefix_block :
     comScalarPrefix comBlock2Unit = some ⟨block2, comBlock2UnitTail⟩ :=
   comBlock2Unit_prefix
 
-/-- **The instance.** The bytes of the prefix decode back to it, and both slots
-    the prefix binds are readable from their registers. -/
+/-- **The instance.** The prefix lowers to the front-routed block, whose bytes
+    decode back to it, and both slots the prefix binds are readable from their
+    registers. -/
 theorem unitProg_prefix_bytes (s : JState 64) (V : Ctxt.Valuation Δ2)
     (hinterp : JStateInterpG nm2 V s) :
-    decodeJStream demoBlock.length bytesOfCom = some demoBlock ∧
+    decodeJStream frontBlock.length frontBytes = some frontBlock ∧
       JStateInterpG (finalNm block2 nm2 g2) (finalVal block2 V)
-        (runBlock s demoBlock) :=
-  ⟨demo_bytes_decode, lowerBlock_tie_state block2 nm2 g2 s V hinterp g2_fresh⟩
+        (runBlock s frontBlock) :=
+  ⟨frontBytes_decode, frontBlock_final_state s V hinterp⟩
 
 /-- On the sample state the prefix leaves `x + y = 42` in `%rcx` and
     `(x + y) * x = 294` in `%rdx`. -/
 theorem sample_prefix_slots :
-    (runBlock sampleS2 demoBlock).get "%rcx" = (42 : BitVec 64) ∧
-      (runBlock sampleS2 demoBlock).get "%rdx" = (294 : BitVec 64) :=
+    (runBlock sampleS2 frontBlock).get "%rcx" = (42 : BitVec 64) ∧
+      (runBlock sampleS2 frontBlock).get "%rdx" = (294 : BitVec 64) :=
   ⟨(unitProg_prefix_bytes sampleS2 sampleV2 sampleS2_interp).2 (.there .here),
    (unitProg_prefix_bytes sampleS2 sampleV2 sampleS2_interp).2 .here⟩
 
