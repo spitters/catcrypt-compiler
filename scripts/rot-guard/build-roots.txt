@@ -228,6 +228,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.FramedJInstrTie
 CatCrypt.Crypto.SecureCompilation.Ascent.PrefixToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CarryMulGuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectBytes
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectFrontSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CorresX86MemGuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519BytesLeafCalls
@@ -649,6 +650,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
+CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
 CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldMultiReturn
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
