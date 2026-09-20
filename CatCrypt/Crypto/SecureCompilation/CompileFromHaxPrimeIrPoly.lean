@@ -79,6 +79,9 @@ literals of the three generic callers are pinned verbatim from the extraction.
   for the extracted `ntt_mul` call node.
 * `polyMulDemo_call_pin`, `mlweEntryDemo_call_pin`, `nttDot2Demo_call_pin` —
   the call nodes sit inside the pinned extraction literals.
+* `recognize_head_forms_agree` and its siblings — recognition agrees on the
+  bare head and on the `PolyRing_<m>` head the emitter produces once the
+  method is resolved to an `impl` the crate defines.
 -/
 
 @[expose] public section
@@ -360,17 +363,31 @@ theorem nttDot2Demo_call_pin :
 qualifier; restore it under the primeir recognition context and key
 `recognizePolyOp` on the result. -/
 
-/-- Restore the `PolyRing.<m>` trait qualifier for the bare `PolyRing` method
-    heads. Any other head passes through unchanged, so it still fails
-    `recognizePolyOp`. -/
+/-- Restore the `PolyRing.<m>` trait qualifier for a `PolyRing` method head.
+    Both emitted forms are accepted: the bare method name, which `haxpipeT`
+    produces for a method it leaves in the `Deps` class, and the
+    `PolyRing_<m>` form it produces for a method resolved to an `impl` the
+    crate defines. Any other head passes through unchanged, so it still fails
+    `recognizePolyOp`.
+
+    The arms are written out rather than derived by stripping a prefix because
+    `String.startsWith` and `String.drop` do not reduce definitionally under
+    the module system, and the recognition fixtures below are `rfl`. -/
 def primeirPolyHead (f : String) : String :=
   if f = "ntt" then "PolyRing.ntt"
+  else if f = "PolyRing_ntt" then "PolyRing.ntt"
   else if f = "intt" then "PolyRing.intt"
+  else if f = "PolyRing_intt" then "PolyRing.intt"
   else if f = "basemul" then "PolyRing.basemul"
+  else if f = "PolyRing_basemul" then "PolyRing.basemul"
   else if f = "poly_add" then "PolyRing.poly_add"
+  else if f = "PolyRing_poly_add" then "PolyRing.poly_add"
   else if f = "poly_sub" then "PolyRing.poly_sub"
+  else if f = "PolyRing_poly_sub" then "PolyRing.poly_sub"
   else if f = "poly_smul" then "PolyRing.poly_smul"
+  else if f = "PolyRing_poly_smul" then "PolyRing.poly_smul"
   else if f = "ntt_mul" then "PolyRing.ntt_mul"
+  else if f = "PolyRing_ntt_mul" then "PolyRing.ntt_mul"
   else f
 
 /-- Recognize an extracted `PolyRing` call node as a `PolyOp` at `(q, n, c)`:
@@ -392,6 +409,46 @@ def recognizePrimeirPolyCall (e : ImpExpr) (q n : Nat) (c : ZMod q) : Option Pol
     it. `nttAddCom` is the composite that produces its result. -/
 theorem recognize_nttAddCall (q n : Nat) (c : ZMod q) :
     recognizePrimeirPolyCall nttAddCall q n c = none := rfl
+
+/-! ### The resolved-`impl` head form
+
+When the emitter binds a `PolyRing` method to an `impl` the crate defines, the
+call node carries `PolyRing_<m>` in place of the bare method name. Recognition
+is the same on both forms, and the composite and rejection cases stay as they
+are on the bare form. -/
+
+/-- The `ntt_mul` call node as emitted with the method resolved to a local
+    `impl`. -/
+def nttMulCallResolved : ImpExpr := .app "PolyRing_ntt_mul" [.var "a", .var "b"]
+
+/-- The `poly_add` call node as emitted with the methods resolved to a local
+    `impl`. -/
+def polyAddCallResolved : ImpExpr :=
+  .app "PolyRing_poly_add" [(.app "PolyRing_intt" [(.app "PolyRing_basemul"
+    [(.var "a_hat"), (.app "PolyRing_ntt" [(.var "s")])])]), (.var "e")]
+
+/-- The `ntt_add` call node as emitted with the method resolved to a local
+    `impl`. -/
+def nttAddCallResolved : ImpExpr :=
+  .app "PolyRing_ntt_add" [(.app "PolyRing_basemul" [(.var "a0"), (.var "v0")]),
+    (.app "PolyRing_basemul" [(.var "a1"), (.var "v1")])]
+
+@[simp] theorem recognize_nttMulCallResolved (q n : Nat) (c : ZMod q) :
+    recognizePrimeirPolyCall nttMulCallResolved q n c = some (.nttMul q n) := rfl
+
+@[simp] theorem recognize_polyAddCallResolved (q n : Nat) (c : ZMod q) :
+    recognizePrimeirPolyCall polyAddCallResolved q n c = some (.polyAdd q n) := rfl
+
+/-- The resolved `ntt_add` node is rejected for the same reason as the bare
+    one. -/
+theorem recognize_nttAddCallResolved (q n : Nat) (c : ZMod q) :
+    recognizePrimeirPolyCall nttAddCallResolved q n c = none := rfl
+
+/-- Recognition does not depend on which of the two head forms the emitter
+    produced. -/
+theorem recognize_head_forms_agree (q n : Nat) (c : ZMod q) :
+    recognizePrimeirPolyCall nttMulCallResolved q n c
+      = recognizePrimeirPolyCall nttMulCall q n c := rfl
 
 /-! ## 6. The pass: recognized binary coefficient-form call → emit leaf
 

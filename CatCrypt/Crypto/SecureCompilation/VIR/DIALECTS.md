@@ -125,8 +125,21 @@ A dialect's value type decides which lowerings can exist:
 | `cmpDialect` | booleans | `cmpLowering` into the shared-alphabet dialect `fieldCmpDialect` (`VIR/FieldCmpSum.lean`) |
 | `tensorExtDialect` | `Fin (2^k) → BitVec 64` | none |
 
-`fieldDialect` itself has no lowering to jasmin in this package, so none of these
-lowerings reaches bytes.
+`fieldDialect` reaches jasmin through `Algebraic/FieldToJasminWord.lean`, outside
+the `VIR/` and `Dialects/` directories this file's edge table is drawn from.
+`lowerK F : Com fieldDialect Γ t → Com jasminDialect (mapCtxW Γ) (mapTyW t)` is
+defined for a `SingleWordField p`; `fieldToJasminWord_denote` carries the
+denotation for a program covered by `GoodW p` (`fAdd`, `fSub`, `fNeg`, `fMul`,
+`fConst`, `fCopy`, `fieldDouble`, `fieldSquare`); `lowerK_scalar` places the
+result in `UniformScalarArith 64` and `lowerK_exportFaithful` gives the
+`ComLsemExportFaithful` precondition of the `toLprogPhysAbi` export.
+`Algebraic/Poseidon2BabyBearCompile.lean` takes that route to bytes for the whole
+Poseidon2 permutation. The restriction is the modulus, not the dialect:
+`SingleWordField p` requires `2 * p ≤ 2^63`, which the prime fields of the
+lattice and Plonky3 parameter sets satisfy and the pairing tower does not.
+
+A lowering into `fieldDialect` from the table above therefore reaches bytes
+exactly when its image lies in the `GoodW p` fragment at a single-word modulus.
 
 `ecDialect` has a front: `CompileFromHaxPrimeIrFrontEc.lean` recognises a hax
 `point_add` or `point_double` call node and emits a single-op `Com ecDialect` leaf,
@@ -225,6 +238,7 @@ not listed. The table covers the modules of this package.
 | `cmpDialect` | `fieldCmpDialect` | `cmpLowering` |
 | `derivedDialect` | `fieldDialect` | `lowerDerivedToField` |
 | `fieldDialect` | `fieldCmpDialect` | `fieldLowering` |
+| `fieldDialect` | `jasminDialect` | `lowerK` (`Algebraic/FieldToJasminWord.lean`), on the `GoodW p` fragment at a `SingleWordField p` |
 | `fpDialect` | `modArithDialect` | `lowerFieldToModArith` |
 | `funcDialect` | `jasminDialect` | `lowerFuncToJasmin` |
 | `latticeDialect` | `jasminDialect` | `lowerLatticeToJasmin`, `latticeLoweringData` |
@@ -240,6 +254,7 @@ not listed. The table covers the modules of this package.
 
 - `arithDialect`
 - `catCryptDialect`
+- `fieldDialect` (on the `GoodW p` fragment at a `SingleWordField p`)
 - `funcDialect`
 - `latticeDialect`
 - `memrefDialect` (both)
@@ -255,7 +270,6 @@ not listed. The table covers the modules of this package.
 - `ecDialect`
 - `edAffDialect`
 - `fieldCmpDialect`
-- `fieldDialect`
 - `flagDialect`
 - `fpDialect`
 - `mixedDialect`
