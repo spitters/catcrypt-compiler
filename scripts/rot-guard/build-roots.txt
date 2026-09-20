@@ -570,6 +570,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
 CatCrypt.Crypto.SecureCompilation.VIR.JasminBindingPrefixDenote
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreBlockEmit
+CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreBlockOrder
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreValue
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportChaCha
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru

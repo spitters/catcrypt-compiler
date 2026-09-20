@@ -5338,6 +5338,175 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
       | _ => []
     loads ++ expanded ++ callReload ++ store))
 
+/-- The per-position emitter of `physBodyWithStores`: the instructions that one
+    virtual position `(i, virtIdx)` of `body` contributes, as the concatenation
+    of its inline ABI-prologue loads, its register-allocated expansion, its
+    post-call pointer reloads and its inline output store.
+
+    `physBodyWithStores_eq_flatMap` states the agreement with the emitter:
+    `physBodyWithStores` is the `flatMap` of this function over `body.zipIdx`,
+    and that equality holds by `rfl`. Every argument is an argument of
+    `physBodyWithStores`, and the allocation table, the operand remap, the ABI
+    move mnemonics and the argument-load schedule are derived here exactly as
+    they are there, so an edit to one side that the other does not receive fails
+    the equality. -/
+def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
+    (inLoadMap : InLoadMap) (loadBase : String)
+    (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
+    (memrefBaseReload : String → Option String := fun _ => none)
+    (callArgBaseReload : List (String × String) := [])
+    (reservedVec : List Nat := []) : Linstr × Nat → Lcmd :=
+  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
+  let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
+              else remapOperand body tbl
+  let isBinop (opn : String) : Bool :=
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+      (stripWidthTag opn)
+  let isShift (opn : String) : Bool :=
+    stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
+  let movFor (opn : String) : String :=
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
+  let bodyIsU64 : Bool := body.any (fun i =>
+    match i.li_i with
+    | .Lopn _ opn _ => hasSuffix opn ":64"
+    | _ => false)
+  let abiMovReg : String :=
+    if abiW == 256 then "VMOVDQU" else if bodyIsU64 then "MOV:64" else "MOV"
+  let abiMovBuf : String :=
+    if abiW == 16 then "MOV:16"
+    else if abiW == 8 then "MOV:8"
+    else abiMovReg
+  let shiftImmVal (s1 : LOperand) : Option Nat :=
+    match s1 with
+    | .imm v => some v
+    | .reg n => shiftImm n
+    | _ => none
+  let n := outStoreMap.length
+  let total := numBindings body
+  let firstOutIdx := total - n
+  let nArgs := virtBodyNumArgs body
+  let firstUseMap : Array (Option Nat) :=
+    Id.run do
+      let mut arr : Array (Option Nat) := Array.replicate nArgs none
+      for (i, virtIdx) in body.zipIdx do
+        match i.li_i with
+        | .Lopn _ _ srcs =>
+            for src in srcs do
+              match src with
+              | .reg n =>
+                  for s in (List.range nArgs) do
+                    if n == argName s && (arr[s]?.getD none).isNone then
+                      arr := arr.set! s (some virtIdx)
+              | _ => pure ()
+        | _ => pure ()
+      return arr
+  let loadsAtPos : Nat → List (Nat × String × Nat) := fun pos =>
+    (List.range nArgs).filterMap (fun s =>
+      match firstUseMap[s]?.getD none with
+      | some fpos =>
+          if fpos == pos then
+            match inLoadMap s with
+            | some (_base, off) => some (s, loadBase, off)
+            | none => none
+          else none
+      | none => none)
+  fun ⟨i, virtIdx⟩ =>
+    let loads : Lcmd := (loadsAtPos virtIdx).flatMap (fun ⟨s, base, off⟩ =>
+      let phys := physNameForBody body tbl (argName s)
+      let dst : LOperand := .reg phys
+      let memSrc : LOperand := .reg (memName base off)
+      let reloadIn : Linstr :=
+        ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRsiName]⟩
+      if dst.isSpill then
+        [reloadIn,
+         ⟨0, .Lopn [.reg reloadScratch] abiMovBuf [memSrc]⟩,
+         ⟨0, .Lopn [dst] abiMovReg [.reg reloadScratch]⟩]
+      else
+        [reloadIn,
+         ⟨0, .Lopn [dst] abiMovBuf [memSrc]⟩])
+    let bidx := ((body.take virtIdx).filter (fun li =>
+      match li.li_i with | .Lopn _ _ _ => true | _ => false)).length
+    let expanded : Lcmd :=
+      match i.li_i with
+      | .Lopn (d :: _) opn (s0 :: s1 :: _) =>
+          if isBinop opn then
+            match (if isShift opn then shiftImmVal s1 else none) with
+            | some v =>
+                (lowerTwoAddrShiftImm (rmap d) (rmap s0) v opn (movFor opn)).map
+                  (fun r => ⟨i.li_ii, r⟩)
+            | none =>
+                (lowerTwoAddr (rmap d) (rmap s0) (rmap s1) opn (movFor opn)).map
+                  (fun r => ⟨i.li_ii, r⟩)
+          else
+            match i.li_i with
+            | .Lopn [d'] opn' [addr, val] =>
+                if isMemStore opn' then
+                  let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
+                  (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
+                  (legalizeMemStore (rmap d') addr' (rmap val) opn'
+                     (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
+                else
+                  [⟨i.li_ii, .Lopn [rmap d'] opn' [rmap addr, rmap val]⟩]
+            | .Lopn dsts opn srcs =>
+                [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+            | other => [⟨i.li_ii, other⟩]
+      | .Lopn [d] opn [s] =>
+          if isNativeShiftRotate opn then
+            (lowerNativeShiftRotate (rmap d) (rmap s) opn (movFor opn)).map
+              (fun r => ⟨i.li_ii, r⟩)
+          else if isMemLoad opn then
+            let (baseReload, s') := reloadMemrefBase memrefBaseReload (rmap s)
+            (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
+            (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
+              (fun r => ⟨i.li_ii, r⟩)
+          else
+            [⟨i.li_ii, .Lopn [rmap d] opn [rmap s]⟩]
+      | .Lopn dsts opn srcs =>
+          [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+      | other => [⟨i.li_ii, other⟩]
+    let store : Lcmd :=
+      match i.li_i with
+      | .Lopn (d :: _) _ _ =>
+          if bidx ≥ firstOutIdx ∧ bidx < total then
+            let outIdx := bidx - firstOutIdx
+            match outStoreMap[outIdx]? with
+            | some (_base, off) =>
+                let src := rmap d
+                let memDst : LOperand := .reg (memName storeBase off)
+                let reloadOut : Linstr :=
+                  ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
+                if src.isSpill then
+                  [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
+                   reloadOut,
+                   ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
+                else
+                  [reloadOut,
+                   ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
+            | none => []
+          else []
+      | _ => []
+    let callReload : Lcmd :=
+      match i.li_i with
+      | .Lcall _ _ =>
+          callArgBaseReload.map (fun (physReg, qsave) =>
+            (⟨0, .Lopn [.reg physReg] "MOVQ" [.reg qsave]⟩ : Linstr))
+      | _ => []
+    loads ++ expanded ++ callReload ++ store
+
+/-- `physBodyWithStores` is the `flatMap` of `physPositionEmit` over the
+    indexed body. -/
+theorem physBodyWithStores_eq_flatMap (shiftImm : ShiftImmOracle) (body : Lcmd)
+    (inLoadMap : InLoadMap) (loadBase : String)
+    (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat)
+    (memrefBaseReload : String → Option String)
+    (callArgBaseReload : List (String × String)) (reservedVec : List Nat) :
+    physBodyWithStores shiftImm body inLoadMap loadBase outStoreMap storeBase
+        abiW memrefBaseReload callArgBaseReload reservedVec
+      = body.zipIdx.flatMap (physPositionEmit shiftImm body inLoadMap loadBase
+          outStoreMap storeBase abiW memrefBaseReload callArgBaseReload
+          reservedVec) :=
+  rfl
+
 /-- The callee-saved-register restore epilogue: pops the 6 SysV callee-saved
     GP registers `(RBX, RBP, R12, R13, R14, R15)` from their red-zone save
     slots, restoring the caller's values before the function returns. Emitted
