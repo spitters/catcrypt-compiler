@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.DialectToBytes
+public import CatCrypt.Crypto.SecureCompilation.Ascent.BlockTieFinalState
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 
 /-!
@@ -101,12 +102,30 @@ theorem frontBytes_denote (s : JState 64) (V : Ctxt.Valuation Δ2)
   rw [frontBlock_eq]
   exact demo_bytes_denote s V hinterp
 
-/-! ## 3. The concrete value -/
+/-! ## 3. Every slot of the front's program -/
+
+/-- The state correspondence at the final context of the front's block: each SSA
+    slot of the front's program, including the ones it does not return, is held
+    by its machine register after `runBlock`. -/
+theorem frontBlock_final_state (s : JState 64) (V : Ctxt.Valuation Δ2)
+    (hinterp : JStateInterpG nm2 V s) :
+    JStateInterpG (finalNm block2 nm2 g2) (finalVal block2 V)
+      (runBlock s frontBlock) := by
+  rw [frontBlock_eq]
+  exact lowerBlock_tie_state block2 nm2 g2 s V hinterp g2_fresh
+
+/-! ## 4. The concrete values -/
 
 /-- On the sample state the block leaves `(7 + 35) * 7 = 294` in `%rdx`. -/
 theorem sample_front_bytes :
     (runBlock sampleS2 frontBlock).get "%rdx" = (294 : BitVec 64) := by
   rw [frontBlock_eq]
   exact sample_dialect_bytes
+
+/-- The intermediate slot `x + y` is readable from `%rcx`, which the front's
+    program binds but does not return. -/
+theorem sample_front_intermediate :
+    (runBlock sampleS2 frontBlock).get "%rcx" = (42 : BitVec 64) :=
+  frontBlock_final_state sampleS2 sampleV2 sampleS2_interp (.there .here)
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
