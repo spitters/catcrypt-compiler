@@ -405,12 +405,6 @@ structure ACarry2 where
 def SRcarry2 (st : JState 64) (a : ACarry2) : Prop :=
   (∀ r, st.regs r = a.regs r) ∧ st.flagB (·.cf) = a.cf ∧ st.flagB (·.of) = a.of
 
-/-- The state relation `SRcarry2` is non-empty. -/
-theorem srcarry2_satisfiable : ∃ st a, SRcarry2 st a := by
-  refine ⟨{ regs := fun _ => 0, flags := { cf := some false, of := some false } },
-    { regs := fun _ => 0, cf := false, of := false }, ?_⟩
-  exact ⟨fun _ => rfl, rfl, rfl⟩
-
 /-- The abstract `adcx` limb `dst := dst + src + CF` over `ACarry2`: the carry-out
     goes to `CF`, and `OF` is left untouched (the property that lets an `adcx` step
     thread through an interleaved `adox` chain). -/

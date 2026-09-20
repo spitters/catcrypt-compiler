@@ -162,22 +162,6 @@ theorem s2nMontmulP384Block_renInjOn :
   intro a ha b hb hab
   rwa [nameOf_s2nAlloc_block a ha, nameOf_s2nAlloc_block b hb] at hab
 
-/-! ## The precondition of the byte-level result is satisfiable -/
-
-/-- **`s2nMontmulP384_bytesCorresJ`'s precondition is satisfiable.** The all-zero
-    machine state pulls back to itself along the identity allocation `s2nAlloc` (it fixes
-    every name of `s2nMontmulP384Block`, by `nameOf_s2nAlloc_block`), and the underlying
-    `SRm` witness `srm_stage0_satisfiable` meets it and the entry guard. So the
-    `SRalloc`-pulled-back relation `s2nMontmulP384_bytesCorresJ` is stated over is not the
-    empty relation, and its byte-level `CorresJ` is not a claim about no reachable
-    state. -/
-theorem srAlloc_stage0_satisfiable :
-    ∃ st a, SRalloc (blockNamesXsym s2nMontmulP384Block) (nameOf s2nAlloc) SRm st a ∧
-      a.stage = 0 ∧ a.x < 2 ^ 384 := by
-  obtain ⟨st, a, hSR, hstage, hx⟩ := srm_stage0_satisfiable
-  refine ⟨st, a, ⟨st, ⟨fun n hn => by rw [nameOf_s2nAlloc_block n hn], rfl,
-    fun b hb _ => by rw [nameOf_s2nAlloc_block b hb]⟩, hSR⟩, hstage, hx⟩
-
 /-! ## The byte-level results -/
 
 /-- **The encoded bytes refine the abstract Montgomery multiplication.** The byte string

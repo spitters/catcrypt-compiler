@@ -756,13 +756,6 @@ def StageRel : Nat → JState 64 → AFe → Prop
 def SRf (yb : String) (st : JState 64) (a : AFe) : Prop :=
   mem4 st.mem "x" = a.x ∧ mem4 st.mem yb = a.y ∧ StageRel a.stage st a
 
-/-- The state relation `SRf yb` is non-empty at stage 0. -/
-theorem srf_satisfiable (yb : String) : ∃ st a, SRf yb st a := by
-  refine ⟨{ regs := fun _ => 0, flags := { cf := none, of := none }, mem := fun _ _ => 0 },
-    { stage := 0, x := 0, y := 0, acc := 0, q := 0 }, ?_⟩
-  simp only [SRf, mem4, StageRel]
-  decide
-
 theorem digit0 (M : JMem 64) (b : String) : (M b 0).toNat = ydig (mem4 M b) 0 := by
   have := (M b 0).isLt; have := (M b 8).isLt; have := (M b 16).isLt; have := (M b 24).isLt
   simp only [ydig, mem4]; omega

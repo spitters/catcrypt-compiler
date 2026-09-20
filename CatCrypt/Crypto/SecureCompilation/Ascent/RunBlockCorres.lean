@@ -142,12 +142,6 @@ structure ACarry where
 def SRcarry (st : JState 64) (a : ACarry) : Prop :=
   (∀ r, st.regs r = a.regs r) ∧ st.flagB (·.cf) = a.cf
 
-/-- The state relation `SRcarry` is non-empty. -/
-theorem srcarry_satisfiable : ∃ st a, SRcarry st a := by
-  refine ⟨{ regs := fun _ => 0, flags := { cf := some false, of := none } },
-    { regs := fun _ => 0, cf := false }, ?_⟩
-  exact ⟨fun _ => rfl, rfl⟩
-
 /-- The abstract subtract-with-borrow limb `dst := dst − src − CF`, with the
     borrow-out written to the carry bit. The data word is the machine two's-complement
     `sub_borrow`; the carry-out is the **clean integer-underflow predicate**

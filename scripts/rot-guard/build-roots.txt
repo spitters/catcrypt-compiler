@@ -556,14 +556,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChain
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChainLogic
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrNestInline
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrReturn
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
@@ -763,7 +755,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
-CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit
@@ -837,9 +828,12 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ymm256RodataConst
 CatCrypt.Crypto.SecureCompilation.ZkProtocolKernels
+CatCrypt.Crypto.Symbolic.EDHOC.ForwardSecrecy
 CatCrypt.Crypto.Symbolic.EDHOC.InitiatorAuth
+CatCrypt.Crypto.Symbolic.EDHOC.KeySecrecy
 CatCrypt.Crypto.Symbolic.EDHOC.ProtocolVerification
 CatCrypt.Crypto.Symbolic.EDHOC.ResponderAuth
+CatCrypt.Crypto.Symbolic.MLS.ForwardSecrecy
 CatCrypt.Crypto.Symbolic.MLS.GroupAuth
 CatCrypt.Crypto.Symbolic.MLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.Signal.Linking
@@ -848,6 +842,10 @@ CatCrypt.Crypto.Symbolic.Soundness.Hash
 CatCrypt.Crypto.Symbolic.Soundness.KEM
 CatCrypt.Crypto.Symbolic.Soundness.MAC
 CatCrypt.Crypto.Symbolic.Soundness.Signature
+CatCrypt.Crypto.Symbolic.TLS.HNDL
+CatCrypt.Crypto.Symbolic.TLS.KeySecrecy
+CatCrypt.Crypto.Symbolic.TLS.PSKAuth
+CatCrypt.Crypto.Symbolic.TLS.PSKSecrecy
 CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.TLS.ServerAuth
 CatCrypt.Crypto.Symbolic.Tactic

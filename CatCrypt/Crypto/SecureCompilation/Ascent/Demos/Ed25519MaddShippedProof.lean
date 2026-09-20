@@ -35,16 +35,12 @@ coordinates to it in `ZMod p25519`.
 
 ## Main results
 
-* `maddShipped_correct_cross`: at a call model satisfying `MaddCallees`, for stack words
-  disjoint from the input point and from the output words and input coordinates below
-  `2 ^ 255 - 19`, the four field elements at the output pointer after the block are the
-  four coordinates of `maddSpecN` on the input coordinates; the output may alias the
-  input. `maddShipped_correct_addr` is the same result for pairwise separated cells.
-  `Ed25519LeafCallees.maddCallees_maddCallModel` discharges `MaddCallees` for the model
-  the shipped `fe25519_add`, `fe25519_sub`, `fe25519_mul` and `ed25519_join16` blocks
-  induce, and `Ed25519LeafCallees.maddShipped_correct` is the separated result at it.
-* `maddOut_of_calls`: the output copy after the fifteen calls, over any call model whose
-  run reaches the result block.
+* `maddShipped_correct_addr`: at a call model satisfying `MaddCallees`, for pairwise
+  separated cells and input coordinates below `2 ^ 255 - 19`, the four field elements at
+  the output pointer after the block are the four coordinates of `maddSpecN` on the input
+  coordinates. `Ed25519LeafCallees.maddCallees_maddCallModel` discharges `MaddCallees` for
+  the model the shipped `fe25519_add`, `fe25519_sub`, `fe25519_mul` and `ed25519_join16`
+  blocks induce, and `Ed25519LeafCallees.maddShipped_correct` is this result at it.
 * `maddSpecN_maddSpecR`: in `ZMod p25519` those coordinates are the coordinates of the
   source formula.
 -/
@@ -96,78 +92,11 @@ theorem maddOutVal {SP Q : BitVec 64} (hO : CrossOut SP Q) (s : AState)
 
 /-! ## 16. The correctness of the block -/
 
-/-- **The output copy after the fifteen calls.** When the run of the block under `C`
-    reaches a state after the fifteen calls whose `%rsp` is the entry `%rsp`, whose output
-    pointer slot holds the entry `%rdi` and whose result block at `%rsp + 448` holds
-    `maddSV sa 10` to `maddSV sa 13`, and the stack words are disjoint from the output words
-    (`CrossOut`), the four field elements at the output pointer after the block are the four
-    coordinates of `maddSpecN` on the input coordinates. -/
-theorem maddOut_of_calls {C : ACallModel} (sa : AState)
-    (hO : CrossOut (sa.regs "%rsp") (sa.regs "%rdi"))
-    (hcalls : ∃ s : AState,
-      segsRunA C sa ed25519MaddShippedBlock = segsRunA C s (maddTail 16)
-        ∧ s.regs "%rsp" = sa.regs "%rsp"
-        ∧ read64 s.mem (sa.regs "%rsp" + BitVec.ofInt 64 584) = sa.regs "%rdi"
-        ∧ feO s.mem (sa.regs "%rsp") 448 = maddSV sa 10
-        ∧ feO s.mem (sa.regs "%rsp") 480 = maddSV sa 11
-        ∧ feO s.mem (sa.regs "%rsp") 512 = maddSV sa 12
-        ∧ feO s.mem (sa.regs "%rsp") 544 = maddSV sa 13) :
-    feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 0)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 1)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 2)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.2.1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 3)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.2.2 := by
-  obtain ⟨s, hrun, hsp, hq, v10, v11, v12, v13⟩ := hcalls
-  rw [hrun, maddTailCopy]
-  refine ⟨?_, ?_, ?_, ?_⟩
-  · rw [maddOutVal hO s hsp hq 0 (by omega), show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
-    exact v10
-  · rw [maddOutVal hO s hsp hq 1 (by omega), show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
-    exact v11
-  · rw [maddOutVal hO s hsp hq 2 (by omega), show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
-    exact v12
-  · rw [maddOutVal hO s hsp hq 3 (by omega), show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
-    exact v13
-
-/-- **The shipped `ed25519_madd` computes the mixed addition, with an output that may alias
-    its input.** For a state whose stack words are disjoint from the input point
-    (`CrossIn`) and from the output words (`CrossOut`) and whose seven input coordinates are
-    below `2 ^ 255 - 19`, and for a call model whose four callees meet their
-    specifications, the four field elements at the output pointer after the block are the
-    four coordinates of `maddSpecN` on those inputs. The input and output buffers may
-    overlap. -/
-theorem maddShipped_correct_cross {C : ACallModel} (hC : MaddCallees C) (sa : AState)
-    (hX : CrossIn (sa.regs "%rsp") (sa.regs "%rsi"))
-    (hO : CrossOut (sa.regs "%rsp") (sa.regs "%rdi"))
-    (hb : ∀ j, j < 7 → maddIn sa j < pM) :
-    feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 0)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 1)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 2)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.2.1
-      ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 3)
-        = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.2.2 :=
-  maddOut_of_calls sa hO (maddCallsRun hC sa hX hb)
-
-/-- **The shipped `ed25519_madd` computes the mixed addition, for separated cells.** For a
-    state whose input point, output buffer and stack frame occupy pairwise disjoint
-    eight-byte cells and whose seven input coordinates are below `2 ^ 255 - 19`, and for a
-    call model whose four callees meet their specifications, the four field elements at the
-    output pointer after the block are the four coordinates of `maddSpecN` on those inputs.
-    This is `maddShipped_correct_cross` with `CrossIn` and `CrossOut` read off the
-    separation. -/
+/-- **The shipped `ed25519_madd` computes the mixed addition.** For a state whose input
+    point, output buffer and stack frame occupy pairwise disjoint eight-byte cells and
+    whose seven input coordinates are below `2 ^ 255 - 19`, and for a call model whose
+    four callees meet their specifications, the four field elements at the output pointer
+    after the block are the four coordinates of `maddSpecN` on those inputs. -/
 theorem maddShipped_correct_addr {C : ACallModel} (hC : MaddCallees C) (sa : AState)
     (hsep : Separated shippedBank sa.regs maddCells)
     (hb : ∀ j, j < 7 → maddIn sa j < pM) :
@@ -182,9 +111,23 @@ theorem maddShipped_correct_addr {C : ACallModel} (hC : MaddCallees C) (sa : ASt
             (maddIn sa 5) (maddIn sa 6)).2.2.1
       ∧ feO (segsRunA C sa ed25519MaddShippedBlock).mem (sa.regs "%rdi") (slotOff 3)
         = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
-            (maddIn sa 5) (maddIn sa 6)).2.2.2 :=
-  maddShipped_correct_cross hC sa (fun o o' a b c d e f => djIS hsep o o' a b c d e f)
-    (fun o o' a b c d e f => djOS hsep o o' a b c d e f) hb
+            (maddIn sa 5) (maddIn sa 6)).2.2.2 := by
+  have hX : CrossIn (sa.regs "%rsp") (sa.regs "%rsi") :=
+    fun o o' a b c d e f => djIS hsep o o' a b c d e f
+  have hO : CrossOut (sa.regs "%rsp") (sa.regs "%rdi") :=
+    fun o o' a b c d e f => djOS hsep o o' a b c d e f
+  obtain ⟨s, hrun, hsp, hq, v10, v11, v12, v13⟩ := maddCallsRun ⟨hC.add, hC.sub, hC.mul,
+    hC.join⟩ sa hX hb
+  rw [hrun, maddTailCopy]
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [maddOutVal hO s hsp hq 0 (by omega), show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
+    exact v10
+  · rw [maddOutVal hO s hsp hq 1 (by omega), show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
+    exact v11
+  · rw [maddOutVal hO s hsp hq 2 (by omega), show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
+    exact v12
+  · rw [maddOutVal hO s hsp hq 3 (by omega), show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
+    exact v13
 
 /-! ## 17. The coordinates of the source formula -/
 

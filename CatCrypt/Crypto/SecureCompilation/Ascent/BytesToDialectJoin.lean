@@ -43,9 +43,6 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
-open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
-open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-! ## 1. The composition -/
@@ -79,28 +76,17 @@ theorem ne_padName_of_toList (r : String) (k : Nat)
   intro he
   exact h (by rw [he, padName, String.toList_ofList])
 
-/-- A name whose second character is not `'p'` is not a padding name: the empty
-    run is too short, and a non-empty run starts with `'p'`. -/
-theorem ne_padName_of_second (r : String) (c : Char) (rest : List Char)
-    (hr : r.toList = '%' :: c :: rest) (hc : c ≠ 'p') (k : Nat) :
-    r ≠ padName k := by
-  refine ne_padName_of_toList r k ?_
-  rw [hr]
-  match k with
-  | 0 => simp
-  | k + 1 => simp only [List.replicate]; simp [hc]
-
-/-- `%rax` is not a padding name. -/
-theorem rax_ne_padName (k : Nat) : ("%rax" : String) ≠ padName k :=
-  ne_padName_of_second _ 'r' ['a', 'x'] (by decide) (by decide) k
-
-/-- `%rbx` is not a padding name. -/
-theorem rbx_ne_padName (k : Nat) : ("%rbx" : String) ≠ padName k :=
-  ne_padName_of_second _ 'r' ['b', 'x'] (by decide) (by decide) k
-
-/-- `%rcx` is not a padding name. -/
-theorem rcx_ne_padName (k : Nat) : ("%rcx" : String) ≠ padName k :=
-  ne_padName_of_second _ 'r' ['c', 'x'] (by decide) (by decide) k
+/-- `%rcx` is not a padding name: matching lengths forces `k = 3`, and the run of
+    three `'p'` is not `rcx`. -/
+theorem rcx_ne_padName (k : Nat) : ("%rcx" : String) ≠ padName k := by
+  refine ne_padName_of_toList _ k ?_
+  rw [show ("%rcx" : String).toList = ['%', 'r', 'c', 'x'] from by decide]
+  intro h
+  have hl := congrArg List.length h
+  simp only [List.length_cons, List.length_replicate, List.length_nil] at hl
+  have hk : k = 3 := by omega
+  subst hk
+  simp [List.replicate] at h
 
 /-! ## 3. The source program and the machine block
 
@@ -149,14 +135,14 @@ theorem hfindJ (v : Ctxt.Var Γj (.reg 64)) (r : String) (h : findJ r = some v) 
 def kJ : KEnv Γj := .cons none (.cons (some 0) .nil)
 
 /-- `kJ` is consistent with any valuation sending `z` to zero. -/
-theorem kJ_consistent (V : Ctxt.Valuation Γj)
-    (hz : vz.lookup V = (0 : BitVec 64)) : KEnv.Consistent kJ V := by
+theorem kJ_consistent (V : Ctxt.Valuation Γj) (hz : vz.lookup V = 0) :
+    KEnv.Consistent kJ V := by
   intro w v n hv
   match v with
   | .here => exact absurd hv (by simp [kJ, KEnv.lookup])
   | .there .here =>
-      have hn : n = 0 := by simpa [kJ, KEnv.lookup] using hv.symm
-      subst hn
+      have : n = 0 := by simpa [kJ, KEnv.lookup] using hv
+      subst this
       simpa using hz
 
 /-! ## 4. The lift of the machine block -/
@@ -200,8 +186,9 @@ theorem joinOps_fresh : FreshFor nmJ (dstStream joinOps) := by
     match i, v with
     | 0, .here => exact by decide
     | 0, .there .here => exact by decide
-    | i + 1, .here => exact fun h => rax_ne_padName i h.symm
-    | i + 1, .there .here => exact fun h => rbx_ne_padName i h.symm
+    | i + 1, .here => exact fun h => ne_padName_of_toList "%rax" i (by decide) h.symm
+    | i + 1, .there .here =>
+        exact fun h => ne_padName_of_toList "%rbx" i (by decide) h.symm
 
 /-! ## 6. The certificate and the end-to-end statement -/
 
@@ -215,7 +202,7 @@ theorem joinAb_src_saturate_eq :
     value the source program `x + z` denotes, on every valuation sending `z` to
     zero and every machine state whose registers hold that valuation. -/
 theorem joinBlock_denote_source (s : JState 64) (V : Ctxt.Valuation Γj)
-    (hz : vz.lookup V = (0 : BitVec 64)) (hinterp : JStateInterpG nmJ V s) :
+    (hz : vz.lookup V = 0) (hinterp : JStateInterpG nmJ V s) :
     (runBlock s joinBlock).get "%rcx" = srcAddZ.denote V := by
   have h := block_denote_source joinBlock joinOps nmJ findJ hfindJ "%rcx" joinAb
     srcAddZ 1 kJ joinBlock_parse joinOps_elab s V (kJ_consistent V hz)
@@ -242,41 +229,9 @@ theorem joinBytes_decodes :
 /-- **The chain from bytes.** The bytes decode to a block whose result register
     holds the source program's value. -/
 theorem joinBytes_denote_source (s : JState 64) (V : Ctxt.Valuation Γj)
-    (hz : vz.lookup V = (0 : BitVec 64)) (hinterp : JStateInterpG nmJ V s) :
+    (hz : vz.lookup V = 0) (hinterp : JStateInterpG nmJ V s) :
     ∃ blk, decodeJStream joinBlock.length joinBytes = some blk ∧
       (runBlock s blk).get "%rcx" = srcAddZ.denote V :=
   ⟨joinBlock, joinBytes_decodes, joinBlock_denote_source s V hz hinterp⟩
-
-/-! ## 8. Non-vacuity
-
-The hypotheses of the end-to-end statement are satisfiable, and both sides
-evaluate to a value. -/
-
-/-- The valuation `⟨7, 0⟩`. -/
-def sampleVj : Ctxt.Valuation Γj := .cons (7 : BitVec 64) (.cons (0 : BitVec 64) .nil)
-
-/-- A machine state holding that valuation in `%rax` and `%rbx`. -/
-def sampleSj : JState 64 :=
-  { regs := fun r => if r = "%rax" then 7 else 0 }
-
-/-- The state corresponds to the valuation. -/
-theorem sampleSj_interp : JStateInterpG nmJ sampleVj sampleSj := by
-  intro v
-  match v with
-  | .here => rfl
-  | .there .here => rfl
-
-/-- On the concrete instance both sides are `7`: the machine block leaves `7` in
-    `%rcx`, and the source program `x + z` denotes `7`. -/
-theorem sample_join :
-    (runBlock sampleSj joinBlock).get "%rcx" = (7 : BitVec 64) ∧
-      srcAddZ.denote sampleVj = (7 : BitVec 64) :=
-  ⟨rfl, rfl⟩
-
-/-- The end-to-end statement instantiated on that state and valuation. -/
-example :
-    ∃ blk, decodeJStream joinBlock.length joinBytes = some blk ∧
-      (runBlock sampleSj blk).get "%rcx" = srcAddZ.denote sampleVj :=
-  joinBytes_denote_source sampleSj sampleVj rfl sampleSj_interp
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

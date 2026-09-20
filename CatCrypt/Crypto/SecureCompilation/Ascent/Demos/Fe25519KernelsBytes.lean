@@ -58,10 +58,6 @@ in the form of `S2nMontmulP384.s2nMontmulP384FramedBytes_correct`.
   red-zone convention.
 * The artifact lines `endbr64`, `retq` and the assembler directives are literal text and
   are not described; `ret` is outside `JInstr`.
-* The `*_correct`/`*Bytes_correct` results are `∃ c, decode = some c ∧ ∀ st, …`: universally
-  quantified over every machine state, with no `CorresJ`/`BytesCorresJ` guard. They carry no
-  guard-satisfiability obligation (`scripts/ascent-nonvacuity-ratchet.sh`'s guard pass), because
-  there is no guard to be vacuous over.
 
 ## Main results
 

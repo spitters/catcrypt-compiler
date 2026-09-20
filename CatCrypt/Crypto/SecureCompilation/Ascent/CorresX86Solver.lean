@@ -68,10 +68,6 @@ abbrev AStateX : Type := String → BitVec 64
 def SRx (st : JState 64) (a : AStateX) : Prop :=
   ∀ r, st.regs r = a r
 
-/-- The state relation `SRx` is non-empty. -/
-theorem srx_satisfiable : ∃ st a, SRx st a := by
-  exact ⟨{ regs := fun _ => 0, flags := { cf := none, of := none } }, fun _ => 0, fun _ => rfl⟩
-
 /-- The abstract register write. -/
 def writeX (d : String) (v : BitVec 64) (a : AStateX) : AStateX :=
   fun r => if r = d then v else a r

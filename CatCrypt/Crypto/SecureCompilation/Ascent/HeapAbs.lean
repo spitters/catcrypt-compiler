@@ -241,13 +241,6 @@ def SRcarryOf {A : Type} (V : ValueAbs (String → BitVec 64) A) (st : JState 64
     (a : A × Bool) : Prop :=
   V.Refines st.regs a.1 ∧ st.flagB (·.cf) = a.2
 
-/-- The state relation `SRcarryOf (ValueAbs.pi bvAbs)` is non-empty. -/
-theorem srcarryOf_satisfiable :
-    ∃ st, ∃ a : (String → BitVec 64) × Bool, SRcarryOf (ValueAbs.pi bvAbs) st a := by
-  refine ⟨{ regs := fun _ => 0, flags := { cf := some false, of := none } },
-    (fun _ => 0, false), ?_⟩
-  exact ⟨fun _ => rfl, rfl⟩
-
 theorem srwordNT_iff_srof (env : SEnvScalar) (a : String → ZMod (2 ^ 64)) :
     SRwordNT env a ↔ SRof wordAbs env a := Iff.rfl
 

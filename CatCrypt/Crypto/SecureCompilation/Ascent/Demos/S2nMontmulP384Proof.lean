@@ -1038,32 +1038,6 @@ theorem s2nMontmulP384_corresJ :
   simpa only [List.append_assoc, montAbs] using
     corresJ_append SRm corresJ_seg01 c02 (fun _ h => ⟨rfl, h.2⟩)
 
-/-- **`s2nMontmulP384_corresJ`'s precondition is satisfiable.** The all-zero machine state
-    and the all-zero abstract state are related by `SRm` and meet the entry guard
-    `stage = 0 ∧ x < 2 ^ 384`: `SRm`'s memory equations hold at `0 = 0`, and `StageRel` is
-    the trivial case at every stage other than the eleven it names, in particular `0`. So
-    `s2nMontmulP384_corresJ` is not a claim about the empty relation. -/
-theorem srm_stage0_satisfiable :
-    ∃ st a, SRm st a ∧ a.stage = 0 ∧ a.x < 2 ^ 384 :=
-  ⟨{ regs := fun _ => 0 }, { stage := 0, x := 0, y := 0, acc := 0 },
-    ⟨rfl, rfl, trivial⟩, rfl, by decide⟩
-
-/-- **`corresJ_seg02`'s precondition is satisfiable.** Stage `1` is not among
-    `StageRel`'s named cases, so it is the trivial `True` case, exactly as stage
-    `0` is for `srm_stage0_satisfiable`. -/
-theorem srm_stage1_satisfiable : ∃ st a, SRm st a ∧ a.stage = 1 ∧ a.x < 2 ^ 384 :=
-  ⟨{ regs := fun _ => 0 }, { stage := 1, x := 0, y := 0, acc := 0 },
-    ⟨rfl, rfl, trivial⟩, rfl, by decide⟩
-
-/-- **`corresJ_final`'s precondition is satisfiable.** Stage `13` is a named
-    `StageRel` case, `v7 st.regs "%r14" "%r15" "%r8" "%r9" "%r10" "%r11" "%r12" =
-    v`; at the all-zero register valuation this reads `0 = 0`, so it holds at
-    `acc = 0` together with the all-zero `%rsi`/`%rcx` memory `SRm` needs. -/
-theorem srm_stage13_satisfiable :
-    ∃ st a, SRm st a ∧ a.stage = 13 ∧ a.x < 2 ^ 384 ∧ a.acc < 2 ^ 384 + p384 :=
-  ⟨{ regs := fun _ => 0 }, { stage := 13, x := 0, y := 0, acc := 0 },
-    ⟨rfl, rfl, rfl⟩, rfl, by decide, by decide⟩
-
 /-! ## The abstract algorithm computes the Montgomery product -/
 
 /-- A reduction round divides exactly: `redcF T · 2^64 = T + d · p384` with

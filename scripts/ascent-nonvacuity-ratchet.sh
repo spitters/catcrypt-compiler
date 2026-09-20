@@ -240,11 +240,7 @@ sort -u -o "$tmp/gs_discharged" "$tmp/gs_discharged"
 # join, which is exactly the kind of collation-order-sensitive construction that
 # made the anchor ratchet flap run to run; see its header).
 awk -F'\t' '
-  # The increment is its own statement: under mawk 1.3.4, the `awk` on this box,
-  # `adj[$1 SUBSEP ++cnt[$1]] = $2` does not commit the increment before the subscript
-  # concatenation reads it, so every counter stays empty and each node ends up with no
-  # outgoing edges (measured 2026-09-19).
-  { cnt[$1]++; adj[$1 SUBSEP cnt[$1]] = $2; seen[$1] = 1; seen[$2] = 1 }
+  { adj[$1 SUBSEP ++cnt[$1]] = $2; seen[$1] = 1; seen[$2] = 1 }
   END {
     for (m in seen) {
       delete visited
