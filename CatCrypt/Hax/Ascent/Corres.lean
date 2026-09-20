@@ -80,6 +80,14 @@ theorem denote'_letBind {x : String} {val body : ImpExpr} {env s : Env} {v : Val
   simp only [denote', stateM_bind_apply, h]
   cases v <;> first | rfl | simp at hv
 
+/-- The right-hand side's value is bound at the name, and the assignment itself
+    returns `.unit`. -/
+theorem denote'_assign {x : String} {rhs : ImpExpr} {env s : Env} {v : Value}
+    (h : denote' bi fuel rhs env = (.val v, s)) (hv : v.isControlFlow = false) :
+    denote' bi fuel (.assign x rhs) env = (.val .unit, s.extend x v) := by
+  simp only [denote', stateM_bind_apply, h]
+  cases v <;> first | rfl | simp at hv
+
 theorem denote'_seq {e1 e2 : ImpExpr} {env s : Env} {v : Value}
     (h : denote' bi fuel e1 env = (.val v, s)) (hv : v.isControlFlow = false) :
     denote' bi fuel (.seq e1 e2) env = denote' bi fuel e2 s := by

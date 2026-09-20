@@ -109,7 +109,7 @@ arrow's exit relation under binding `x`.
 * `letBind_var_run_inv`, `corres_letBind_var_right_pullback`,
   `corres_letBind_var_right_not_iff`, `not_exit_of_read_of_lower` — the failure of the
   right unit as an equivalence, and where it fails
-* `denote'_assign` — the run of an assignment
+* `denote'_assign_tuple_nil` — the run of an assignment of the empty tuple
 -/
 
 @[expose] public section
@@ -493,19 +493,11 @@ theorem corres_letBind_var_right_pullback {P Q : Env → S → Prop} {G : S → 
     exact hext ▸ hQ
   · rw [denote'_val_mono bi (by rw [hs]) hf]; exact hs
 
-/-- The run of an assignment: the right-hand side's value is bound at the name and the
-    assignment itself returns `.unit`. -/
-theorem denote'_assign (fuel : Nat) {x : String} {rhs : ImpExpr} {env s : Env} {v : Value}
-    (h : denote' bi fuel rhs env = (.val v, s)) (hv : v.isControlFlow = false) :
-    denote' bi fuel (.assign x rhs) env = (.val .unit, s.extend x v) := by
-  simp only [denote', stateM_bind_apply, h]
-  cases v <;> first | rfl | simp at hv
-
 /-- The run of an assignment of the empty tuple. -/
 theorem denote'_assign_tuple_nil (fuel : Nat) (x : String) (env : Env) :
     denote' bi fuel (.assign x (.tuple [])) env
       = (.val .unit, env.extend x (.tuple [])) :=
-  denote'_assign fuel (denote'_tuple bi fuel (denoteArgs'_nil bi fuel env)) rfl
+  denote'_assign bi fuel (denote'_tuple bi fuel (denoteArgs'_nil bi fuel env)) rfl
 
 /-- **The right unit is not an equivalence, and restricting to the relations that read
     `x` does not make it one.** Both boundary relations read `x` at the arrow's value

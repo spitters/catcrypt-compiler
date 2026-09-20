@@ -8,20 +8,26 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
 
 /-!
-# The block tie under register reuse, and with a `mulhi` arm
+# The block tie under a register renaming, and with a `mulhi` arm
 
 `JasminComRunBlockSeq.lowerBlock_tie` ties a straight-line scalar-arithmetic block
 (`Com jasminDialect` ↔ `runBlock`) under a **fresh** register allocation. This
 module states the tie in two further forms, toward the general `Com jasminDialect ↔
 JState` correspondence D:
 
-1. **The register-reuse leg** (`lowerBlock_tie_realloc`). The block tie lowers with
-   a fresh (injective, range-disjoint) allocation; an allocator *reuses*
-   physical registers via a renaming `ρr`. Composing the block tie with
+1. **The renaming leg** (`lowerBlock_tie_realloc`). The block tie lowers with a
+   fresh (injective, range-disjoint) allocation; a renaming `ρr` relabels the
+   registers. Composing the block tie with
    `Optimizer.RandomizedRegAlloc.regalloc_runBlock_sound` (the `StateRel`
    renaming-soundness theorem) lifts the tie from the fresh allocation to the
    renamed one: reading the *renamed* output register after `runBlock` of the
    renamed lowered block equals the block's `Com` denotation.
+
+   `ρr` is injective with a left inverse, so it relabels a fresh allocation and
+   never maps two names onto one. An allocation that writes a result into a
+   register whose occupant is dead is the subject of `Ascent.LivenessTie`, whose
+   `lowerBlock_tie_live` replaces the range-disjointness conjunct of `FreshFor`
+   with a per-binder liveness condition.
 
 2. **One non-arithmetic op** (`mulhi`, the `MULX` high word). The six scalar-arith
    arms of `ArithBlock` all denote a plain `BitVec 64` ALU op; `mulhi` denotes the
@@ -33,7 +39,7 @@ JState` correspondence D:
 
 ## What is proved
 
-* `lowerBlock_tie_realloc` — the reuse leg: composition of `lowerBlock_tie` with
+* `lowerBlock_tie_realloc` — the renaming leg: composition of `lowerBlock_tie` with
   `regalloc_runBlock_sound`, transported through `StateRel`'s register-agreement
   projection to move the `.get` across the rename.
 * `lowerMulHi_get_dstHi` / `lowerMulHi_get_other` — the per-op mulhi value
@@ -61,17 +67,17 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
-/-! ## 1. The register-reuse leg
+/-! ## 1. The renaming leg
 
-The block tie `lowerBlock_tie` reads the fresh-allocation output register. An
-allocator reuses physical registers, applying a renaming `ρr` (injective on the
-live set, with left inverse `σr`). `regalloc_runBlock_sound` certifies that the
-renamed run's register `ρr n` agrees with the original run's register `n`; taking
-`n` to be the block tie's output register moves the tie onto the reused allocation. -/
+The block tie `lowerBlock_tie` reads the fresh-allocation output register. A
+renaming `ρr` (injective, with left inverse `σr`) relabels the registers.
+`regalloc_runBlock_sound` certifies that the renamed run's register `ρr n` agrees
+with the original run's register `n`; taking `n` to be the block tie's output
+register moves the tie onto the relabelled allocation. -/
 
-/-- **The reuse leg.** Lower the block with a fresh allocation (`lowerBlock`), then
-    apply a register renaming `ρr` (injective, left inverse `σr`) — a register
-    *reuse*. Reading the renamed output register `ρr (outReg …)` after `runBlock`
+/-- **The renaming leg.** Lower the block with a fresh allocation (`lowerBlock`),
+    then apply a register renaming `ρr` (injective, left inverse `σr`). Reading
+    the renamed output register `ρr (outReg …)` after `runBlock`
     of the renamed block from the `σr`-renamed initial state still equals the
     block's `Com jasminDialect` denotation. This composes the fresh-allocation
     block tie (`lowerBlock_tie`) with the renaming-soundness theorem
