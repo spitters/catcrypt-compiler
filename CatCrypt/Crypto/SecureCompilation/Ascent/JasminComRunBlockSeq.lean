@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
 
 /-!
 # The straight-line multi-op `Com jasminDialect` ↔ `runBlock` tie
@@ -72,16 +73,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 
-/-! ## 1. `runBlock` over a concatenation (local structural helper) -/
+/-! ## 1. `runBlock` over a concatenation
 
-/-- `runBlock` over a concatenation: run the first block, then the second from
-    the resulting state. (Local copy; the same lemma lives elsewhere in the
-    backend, not imported here.) -/
-theorem runBlock_append {w : Nat} (s : JState w) (l₁ l₂ : List (JInstr w)) :
-    runBlock s (l₁ ++ l₂) = runBlock (runBlock s l₁) l₂ := by
-  induction l₁ generalizing s with
-  | nil => rfl
-  | cons i is ih => simp only [List.cons_append, runBlock_cons, ih]
+`runBlock_append` — run the first block, then the second from the resulting
+state — is `RunBlockCorres.runBlock_append`, imported above. -/
 
 /-! ## 2. The per-op lowering over explicit registers
 

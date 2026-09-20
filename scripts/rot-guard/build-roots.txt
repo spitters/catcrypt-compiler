@@ -253,6 +253,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrict
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
