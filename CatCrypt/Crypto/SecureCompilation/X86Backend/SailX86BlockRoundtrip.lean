@@ -55,12 +55,15 @@ than encoding the instruction it was given. `test`'s opcodes (`85 /r` and
 tables (`SailX86ByteFields.aluMnemonic`), so a block containing one does not
 satisfy `blockCovered`. The instructions the encoder declines
 (`ScalarEncoder.encodableJInstr` false: `inc`, `dec`, `clc`, `stc`, `xchg`,
-`imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`, `cmovcc`, `setcc`,
-`testN`, `bt`, `btr`, `bts`) are outside the covered set as well: `encodeJInstr`
-emits no bytes at all for these shapes (`ScalarEncoder.lean`'s `encodeJInstr`,
-final match arm), so a `decodeJ1` case for one of them would have nothing to
-invert — closing this part of the gap needs the encoder extended first, not
-the decoder.
+`imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`, `testN`, `bt`, `btr`,
+`bts`) are outside the covered set as well: `encodeJInstr` emits no bytes at all
+for these shapes (`ScalarEncoder.lean`'s `encodeJInstr`, final match arm), so a
+`decodeJ1` case for one of them would have nothing to invert — closing this part
+of the gap needs the encoder extended first, not the decoder. The
+general-condition `cmovcc` and `setcc` are encoded (`encSetccByte`, the
+`0x40 + condCode` `cmovcc` arm) and are outside the covered set for the other
+reason: `decodableJ` returns false for both, so the decoder, not the encoder, is
+what a `decodeJ1` case for them waits on.
 
 ## What the round-trip says
 

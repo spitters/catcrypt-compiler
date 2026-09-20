@@ -373,6 +373,36 @@ def encSetcMovzx (d : Nat) : List (BitVec 8) :=
   let movzx : List Nat := [ rex 1 (bit d 3) 0 (bit d 3), 0x0f, 0xb6, modRMReg d d ]
   (setb ++ movzx).map (BitVec.ofNat 8)
 
+/-- The x86 condition-code field `tttn` of a `Condt`: the nibble the condition
+    contributes to the `SETcc` (`0F 90+tttn`), `CMOVcc` (`0F 40+tttn`) and `Jcc`
+    (`0F 80+tttn`) opcode bytes. `Condt`'s constructor order is the `tttn` order,
+    so the value is the constructor index.
+
+    Three of its entries are fixed independently by the condition-specific arms
+    of this encoder: `.b = 2` by `encSetcMovzx`'s `0F 92` and the `.cmovb` arm's
+    `0F 42`, `.e = 4` by the `.cmove` arm's `0F 44`, and `.ne = 5` by the
+    `.cmovne` arm's `0F 45` (`encSetccByte_setc_agree`,
+    `encodeJInstr_cmovcc_e_agree` and its two siblings). -/
+def condCode : Condt → Nat
+  | .o => 0x0  | .no => 0x1  | .b => 0x2  | .nb => 0x3
+  | .e => 0x4  | .ne => 0x5  | .be => 0x6  | .nbe => 0x7
+  | .s => 0x8  | .ns => 0x9  | .p => 0xa   | .np => 0xb
+  | .l => 0xc  | .nl => 0xd  | .le => 0xe  | .nle => 0xf
+
+/-- `SET<cc> %d8` (`[REX?] 0F 90+tttn ModRM(11, /0, d)`): the condition written
+    into the low byte of `d`, the upper bits of `d` untouched — the
+    `setRegMerge` write of `evalInstr`'s `setcc` arm, without the zero-extension
+    that the fused `setc` arm carries (`JasminModel.evalInstr_setc_eq_setcc_movzx`
+    splits `setc` into this instruction and a `movzx`).
+
+    The `REX` bands are `encSetcMovzx`'s: `REX.B` (`0x41`) for `d ≥ 8`, the bare
+    `REX` (`0x40`) for `4 ≤ d < 8` (`%spl/%bpl/%sil/%dil`, whose ModRM `rm`
+    values name `AH/CH/DH/BH` without a prefix), and none for `d < 4`. The `reg`
+    field is the opcode extension `/0`, which the SDM `SETcc r/m8` ignores. -/
+def encSetccByte (c : Condt) (d : Nat) : List (BitVec 8) :=
+  ((if bit d 3 = 1 then [rex 0 0 0 1] else if 4 ≤ d ∧ d < 8 then [rex 0 0 0 0] else [])
+    ++ [0x0f, 0x90 + condCode c, modRMReg 0 d]).map (BitVec.ofNat 8)
+
 /-- `ADCX`/`ADOX` (`pfx 0F38 F6`, `reg`=dst, `rm`=src). `pfx` is the mandatory
     prefix byte: `0x66` (ADCX) or `0xF3` (ADOX). -/
 def encAdxCarry (pfx d s : Nat) : List (BitVec 8) :=
@@ -760,6 +790,15 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       match s with
       | .reg r => enc0FRR 0x42 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
       | .imm _ => enc0FRR 0x42 (gpNum (regOf alloc d)) 0
+  -- `CMOVcc` at a general condition = `REX.W 0F 40+tttn /r`, the three
+  -- condition-specific arms above generalised over `condCode`.
+  | .cmovcc c d s =>
+      match s with
+      | .reg r => enc0FRR (0x40 + condCode c) (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
+      | .imm _ => enc0FRR (0x40 + condCode c) (gpNum (regOf alloc d)) 0
+  -- `SETcc` at a general condition writes the low byte of `d` alone; the
+  -- zero-extension belongs to the `movzx` the model pairs with it, not here.
+  | .setcc c d => encSetccByte c (gpNum (regOf alloc d))
   | .adcx d s =>
       match s with
       | .reg r => encAdxCarry 0x66 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
@@ -837,13 +876,12 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       encVex3RR 0b00010 0b00 0xf5 (gpNum (regOf alloc d))
         (gpNum (regOf alloc idx)) (gpNum (regOf alloc src))
   -- Not yet encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
-  -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the general `CMOVcc`/`SETcc`,
-  -- the sized `TEST` and `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr`
-  -- refuses them, so `encodeJInstr?` returns `none`; the text `AsmPrinter` path
-  -- renders them.
+  -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the sized `TEST` and
+  -- `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr` refuses them, so
+  -- `encodeJInstr?` returns `none`; the text `AsmPrinter` path renders them.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
-  | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => []
+  | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => []
 
 /-- Encode a whole block: concatenate the byte encodings of its instructions. The
     contiguous machine-code stream a `.text` section / loader consumes. -/
@@ -1004,6 +1042,68 @@ theorem encMulxRR_length (dh dl s : Nat) : (encMulxRR dh dl s).length = 5 := by
 theorem encAdxCarry_length (pfx d s : Nat) : (encAdxCarry pfx d s).length = 6 := by
   simp [encAdxCarry]
 
+/-- The bare `SETcc` is 4 bytes when its byte destination needs a `REX` prefix
+    (`d ≥ 8`, or the `%spl/%bpl/%sil/%dil` band `4 ≤ d < 8`), else 3. -/
+theorem encSetccByte_length (c : Condt) (d : Nat) :
+    (encSetccByte c d).length = if bit d 3 = 1 ∨ (4 ≤ d ∧ d < 8) then 4 else 3 := by
+  unfold encSetccByte
+  by_cases h1 : d >>> 3 % 2 = 1 <;> by_cases h2 : 4 ≤ d ∧ d < 8 <;>
+    simp [bit, h1, h2]
+
+/-- The `SETcc` half of the fused `setc` encoding is `encSetccByte .b`: the
+    `.setc` byte image is the general `SETcc` at condition `B` followed by the
+    `MOVZBQ` that zero-extends the written byte, for every `d`. This is the
+    condition-table check at `.b`, since `encSetcMovzx`'s `SETcc` opcode `0F 92`
+    is hard-coded. -/
+theorem encSetccByte_setc_agree (d : Nat) :
+    encSetcMovzx d
+      = encSetccByte .b d
+          ++ [ rex 1 (bit d 3) 0 (bit d 3), 0x0f, 0xb6, modRMReg d d ].map (BitVec.ofNat 8) := by
+  unfold encSetcMovzx encSetccByte condCode
+  split <;> simp
+
+/-! ### `SETcc`/`CMOVcc` condition bytes, pinned against `gas`
+
+Four `SETcc` and four `CMOVcc` conditions spread over the nibble range, each
+pinned to the bytes `gas` assembles, and between them covering the three `REX`
+bands of the `SETcc` byte destination:
+
+```
+41 0f 97 c0             seta   %r8b        \ encSetccByte .nbe 8
+0f 9e c1                setle  %cl         \ encSetccByte .le 1
+40 0f 90 c6             seto   %sil        \ encSetccByte .o 6
+40 0f 9b c5             setnp  %bpl        \ encSetccByte .np 5
+48 0f 47 f1             cmova  %rcx,%rsi   \ enc0FRR (0x40 + condCode .nbe) 6 1
+48 0f 4c f1             cmovl  %rcx,%rsi   \ enc0FRR (0x40 + condCode .l) 6 1
+48 0f 41 f1             cmovno %rcx,%rsi   \ enc0FRR (0x40 + condCode .no) 6 1
+48 0f 4d f1             cmovge %rcx,%rsi   \ enc0FRR (0x40 + condCode .nl) 6 1
+```
+-/
+
+theorem encSetccByte_pin_seta_r8 :
+    encSetccByte .nbe 8 = [0x41, 0x0f, 0x97, 0xc0] := by decide
+
+theorem encSetccByte_pin_setle_rcx :
+    encSetccByte .le 1 = [0x0f, 0x9e, 0xc1] := by decide
+
+theorem encSetccByte_pin_seto_rsi :
+    encSetccByte .o 6 = [0x40, 0x0f, 0x90, 0xc6] := by decide
+
+theorem encSetccByte_pin_setnp_rbp :
+    encSetccByte .np 5 = [0x40, 0x0f, 0x9b, 0xc5] := by decide
+
+theorem enc0FRR_pin_cmova_rcx_rsi :
+    enc0FRR (0x40 + condCode .nbe) 6 1 = [0x48, 0x0f, 0x47, 0xf1] := by decide
+
+theorem enc0FRR_pin_cmovl_rcx_rsi :
+    enc0FRR (0x40 + condCode .l) 6 1 = [0x48, 0x0f, 0x4c, 0xf1] := by decide
+
+theorem enc0FRR_pin_cmovno_rcx_rsi :
+    enc0FRR (0x40 + condCode .no) 6 1 = [0x48, 0x0f, 0x41, 0xf1] := by decide
+
+theorem enc0FRR_pin_cmovge_rcx_rsi :
+    enc0FRR (0x40 + condCode .nl) 6 1 = [0x48, 0x0f, 0x4d, 0xf1] := by decide
+
 /-! ## §7. The encodable fragment
 
 `encodeJInstr` is total: where x86-64 has no encoding for an operand shape it
@@ -1019,8 +1119,8 @@ the instructions not yet encoded, emits no bytes at all.
 * `CMOVcc`, `ADCX`, `ADOX` and `MULX`, which take no immediate operand at all
   and whose `.imm` arms fall back to register `0` (`%rax`).
 * `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the one-operand `IMUL`,
-  `SHLD`, `SHRD`, `RCL`, `RCR`, the general `CMOVcc`/`SETcc`, the sized `TEST` and
-  `BT`/`BTR`/`BTS`, which are not yet encoded and whose arms return no bytes.
+  `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and `BT`/`BTR`/`BTS`, which are
+  not yet encoded and whose arms return no bytes.
 
 `encodableJInstr` decides membership of the faithful fragment and
 `encodeJInstr?` refuses outside it, so an emitter reaching an unencodable
@@ -1035,15 +1135,15 @@ def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
 
 /-- The instruction and immediate operand shapes `encodeJInstr` encodes faithfully.
     The instructions `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the
-    one-operand `IMUL`, `SHLD`, `SHRD`, `RCL`, `RCR`, `CMOVcc`/`SETcc` at a general
-    condition, the sized `TEST` and `BT`/`BTR`/`BTS` are not yet encoded and are
-    outside the fragment. -/
+    one-operand `IMUL`, `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and
+    `BT`/`BTR`/`BTS` are not yet encoded and are outside the fragment. -/
 def encodableJInstr : JInstr 64 → Bool
   | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
   | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v)
   | .addToMem _ _ (.imm v) | .imulriMem _ _ _ v =>
       fitsImm32S v
-  | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
+  | .cmove _ (.imm _) | .cmovcc _ _ (.imm _)
+  | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
   -- a register-count shift encodes only when its count register is `%rcx`, a
   -- fact of the allocation this gate does not see; the flag-free BMI2 form is
@@ -1052,7 +1152,7 @@ def encodableJInstr : JInstr 64 → Bool
   -- the instructions `encodeJInstr` does not yet encode.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
-  | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => false
+  | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => false
   | _ => true
 
 /-- `encodeJInstr` restricted to the fragment it encodes faithfully. -/
@@ -1087,6 +1187,45 @@ theorem encodeJInstr?_add_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
 theorem encodeJInstr?_cmove_imm (alloc : GpAlloc) (d : String) (v : Nat) :
     encodeJInstr? alloc (.cmove d (.imm v)) = none :=
   encodeJInstr?_eq_none alloc _ rfl
+
+/-- `CMOVcc $imm` at a general condition has no x86 encoding and is refused. -/
+theorem encodeJInstr?_cmovcc_imm (alloc : GpAlloc) (c : Condt) (d : String) (v : Nat) :
+    encodeJInstr? alloc (.cmovcc c d (.imm v)) = none :=
+  encodeJInstr?_eq_none alloc _ rfl
+
+/-! ### The general condition against the condition-specific arms
+
+`condCode` is the one table the general `CMOVcc`/`SETcc` encodings read, and the
+three conditions that also have their own `JInstr` constructor pin three of its
+entries against opcode bytes written out in the arms above: `.e` against `0F 44`,
+`.ne` against `0F 45`, `.b` against `0F 42` (and, through
+`encSetccByte_setc_agree`, against `encSetcMovzx`'s `0F 92`). A renumbered
+condition moves one of those bytes and fails here. -/
+
+/-- `.cmovcc .e` and `.cmove` encode to the same bytes. -/
+theorem encodeJInstr_cmovcc_e_agree (alloc : GpAlloc) (d : String) (s : JOperand) :
+    encodeJInstr alloc (.cmovcc .e d s) = encodeJInstr alloc (.cmove d s) := by
+  cases s <;> rfl
+
+/-- `.cmovcc .ne` and `.cmovne` encode to the same bytes. -/
+theorem encodeJInstr_cmovcc_ne_agree (alloc : GpAlloc) (d : String) (s : JOperand) :
+    encodeJInstr alloc (.cmovcc .ne d s) = encodeJInstr alloc (.cmovne d s) := by
+  cases s <;> rfl
+
+/-- `.cmovcc .b` and `.cmovb` encode to the same bytes. -/
+theorem encodeJInstr_cmovcc_b_agree (alloc : GpAlloc) (d : String) (s : JOperand) :
+    encodeJInstr alloc (.cmovcc .b d s) = encodeJInstr alloc (.cmovb d s) := by
+  cases s <;> rfl
+
+/-- The byte image of the model's decomposition of `setc`: `.setc d` encodes to
+    the concatenation of the encodings of `.setcc .b d` and `.movzx d 8 d`, the
+    two instructions `JasminModel.evalInstr_setc_eq_setcc_movzx` splits it into. -/
+theorem encodeJInstr_setc_eq_setcc_movzx (alloc : GpAlloc) (d : String) :
+    encodeJInstr alloc (.setc d)
+      = encodeJInstr alloc (.setcc .b d) ++ encodeJInstr alloc (.movzx d 8 d) := by
+  show encSetcMovzx _ = encSetccByte _ _ ++ enc0FRR 0xb6 _ _
+  rw [encSetccByte_setc_agree]
+  rfl
 
 /-! ### Register-count shifts
 
