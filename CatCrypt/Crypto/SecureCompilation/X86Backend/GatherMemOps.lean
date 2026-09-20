@@ -35,16 +35,23 @@ source name with `parseMemNameGp` and emits `encMemMovw w 0x8d`. The matching
 `JInstr` constructor is `lea` at scale `0`, which `ScalarEncoder.encodeJInstr`
 encodes as `encMemMov 0x8d` — the index-free `[base + disp]` form.
 
-The same module carries the two-address add-with-carry
-`Lopn [.reg dst] "ADC:64" [.reg dst, .reg src]`, the shape the Curve25519 ladder
-step's carry chains are exported in. `LprogBytes.aluOpcode` holds `ADC` at
-`0x11`, so the two-source dispatch resolves it to `encTwoAddr` at `REX.W = 1`
-exactly as `ADD:64` and `SUB:64` resolve; the matching `JInstr` constructor is
-`adc`, which `ScalarEncoder.encodeJInstr` encodes as `encAluRR 0x11` on a
-register source, and which `encodableJInstr` refuses only at an immediate too
-wide for the sign-extended `81 /2 id` field. `ADC` is distinct from the ADX
-carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
+The same module carries the two in-place carry-chain mnemonics
+`Lopn [.reg dst] "ADC:64" [.reg dst, s]` and its `SBB:64` dual, the shapes the
+Curve25519 ladder step's carry chains are exported in. They are the two entries
+of `LprogBytes.aluOpcode` (`ADC` at `0x11`, `SBB` at `0x19`) that
+`LoweringExtended.lowerAluJ`, the mnemonic table the lowering below this gather
+dispatches on, has no row for; every other entry of `aluOpcode` is either in that
+table or is a memory mnemonic covered by the arms above. The two-source dispatch
+resolves both to `encTwoAddr` at `REX.W = 1` exactly as `ADD:64` and `SUB:64`
+resolve, and the matching `JInstr` constructors `adc` / `sbb` encode as
+`encAluRR 0x11` / `encAluRR 0x19` on a register source. Both are distinct from
+the ADX carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
 `encAdxCarry` above the `aluOpcode` dispatch.
+
+An immediate second source takes the group-1 `81 /digit id` form on the `JInstr`
+side at every value, while `LprogBytes.encImmOp` selects the shorter
+`83 /digit ib` form inside the sign-extended-imm8 range. The immediate arms are
+gated on `aluImmGathers`, the values on which the two selections coincide.
 
 ## Main results
 
@@ -66,13 +73,18 @@ carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
   operands under `physAlloc`, by `decide +kernel`.
 * `encJLea_RSP0_bytes` / `encJLea_R13_8_bytes` — the gathered `LEA:64` block's
   bytes at concrete operands, by `decide +kernel`.
-* `encodeLopn_adc64₂` — the two-source dispatch of `ADC:64` down to `encTwoAddr`
-  at opcode `0x11`, `w = 1`.
-* `adc_bytes_agree` / `adc64_gather_bytes_agree` — the `JInstr`-side reduction to
-  `encAluRR 0x11` and the byte agreement of the gathered `adc` block with
-  `encodeLopn`.
-* `encJAdc_RCX_RDX` — the same agreement at concrete operands under `physAlloc`,
-  by `decide +kernel`.
+* `encodeLopn_adc64₂` / `encodeLopn_sbb64₂` — the two-source dispatch of `ADC:64`
+  and `SBB:64` down to `encTwoAddr` at opcodes `0x11` / `0x19`, `w = 1`.
+* `dispatch_alu_imm₂` / `encImmOp_aluImm32` — the immediate two-source dispatch
+  down to `encImmOp`, and its group-1 `81 /digit id` arm.
+* `adc_bytes_agree` / `sbb_bytes_agree` and the four `*_gather_bytes_agree`
+  theorems — the `JInstr`-side reductions and the byte agreement of each gathered
+  block with `encodeLopn`.
+* `encJAdc_RCX_RDX`, `encJSbb_R10_R11`, `encJAdcImm_RCX_1000`,
+  `encJSbbImm_R10_1000` — the same agreements at concrete operands under
+  `physAlloc`, by `decide +kernel`.
+* `lowerMemOp_sbbImm0_none` — the refusal at a small immediate, where the two
+  encoders select different legal forms.
 
 ## Scope
 
@@ -87,12 +99,18 @@ is a `mem.<base>.<off>` name over a tabulated base. An index-scaled address and
 a `.rodata` symbol base are rejected, since neither is spelled as a `mem.*`
 operand name on the Lprog side.
 
-The `ADC:64` arm covers the in-place two-source form only: the first source must
-be the destination name. `encodeLopn` discards the first source on its
-`[d], [a, s]` ALU route, so at `a ≠ d` its bytes are the in-place instruction
-while the `Lopn` denotes `d := a + s + CF`; the arm rejects that shape rather
+The `ADC:64` and `SBB:64` arms cover the in-place two-source form only: the first
+source must be the destination name. `encodeLopn` discards the first source on
+its `[d], [a, s]` ALU route, so at `a ≠ d` its bytes are the in-place instruction
+while the `Lopn` denotes `d := a ± s ± CF`; the arms reject that shape rather
 than lowering it to a block whose first source is dropped. Operands outside the
 sixteen `isGpName` names are rejected as well.
+
+An immediate second source inside the sign-extended-imm8 range is rejected, since
+`encImmOp` takes the 4-byte `83 /digit ib` form there and `encodeJInstr` the
+7-byte `81 /digit id` one. The two denote the same operation, so this is a form
+selection to reconcile in an encoder variant, in the manner of `GatherImmForms`,
+rather than a shape to gather to different bytes.
 -/
 
 @[expose] public section
@@ -159,15 +177,27 @@ its own base and offset, unlike a `k.`/`qsave.` slot, whose offset
 `SpillSlotEncode.lowerCov5` resolves from the frame. They are in the signature
 so the arm composes at the same type as the rest of the chain. -/
 
+/-- Does an immediate second source encode to the same bytes on both sides? The
+    `JInstr` ALU arms encode an immediate through `ScalarEncoder.encAluImm`, the
+    `81 /digit id` imm32 form, at every value; `LprogBytes.encImmOp` selects the
+    4-byte `83 /digit ib` sign-extended-imm8 form whenever `fitsImm8S 1 v` holds
+    and the 7-byte imm32 form otherwise. The two forms denote the same operation
+    and differ in bytes, so the gathered block agrees with `encodeLopn` exactly on
+    the values that take the imm32 form on the Lprog side and lie inside the field
+    `ScalarEncoder.encodableJInstr` admits: `fitsImm32S v` and not
+    `fitsImm8S 1 v`. -/
+def aluImmGathers (v : Nat) : Bool := fitsImm32S v && !fitsImm8S 1 v
+
 /-- The array-ABI memory-operand lowering. A `STORE:64` whose destination is a
     `mem.<base>.<off>` name lowers to `JInstr.storeMem base off (.reg src)`; a
     `LOAD:64` whose source is one lowers to `JInstr.loadMem dst base off`; a
     `LEA:64` whose source is one lowers to `JInstr.lea dst base base 0 off`, the
     address computation at scale `0`, where the index register contributes
     `idx * 0` to the address and neither `encodeJInstr` nor `evalInstr` reads its
-    name, so the base name stands in for it. An `ADC:64` whose first source is
-    its destination lowers to `JInstr.adc dst (.reg src)`, the in-place
-    add-with-carry. Every arm requires the base and the register operands to be
+    name, so the base name stands in for it. An `ADC:64` or `SBB:64` whose first
+    source is its destination lowers to the in-place `JInstr.adc` / `JInstr.sbb`
+    over a register second source, and over an immediate second source inside
+    `aluImmGathers`. Every arm requires the base and the register operands to be
     among the sixteen `isGpName` names. Every other shape is `none`. -/
 def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
     (_qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
@@ -192,6 +222,15 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
       | none => none
   | .Lopn [.reg dn] "ADC:64" [.reg an, .reg sn] =>
       if an == dn && isGpName dn && isGpName sn then some [JInstr.adc dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "SBB:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.sbb dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "ADC:64" [.reg an, .imm v] =>
+      if an == dn && isGpName dn && aluImmGathers v then some [JInstr.adc dn (.imm v)]
+      else none
+  | .Lopn [.reg dn] "SBB:64" [.reg an, .imm v] =>
+      if an == dn && isGpName dn && aluImmGathers v then some [JInstr.sbb dn (.imm v)]
       else none
   | _ => none
 
@@ -225,6 +264,27 @@ theorem lowerMemOp_adc (frame spillW qsaveB : Nat) (dn sn : String)
     lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .reg sn]) qsaveB
       = some [JInstr.adc dn (.reg sn)] := by
   simp [lowerMemOp, hd, hs]
+
+/-- The `SBB:64` arm's output on the in-place shape. -/
+theorem lowerMemOp_sbb (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "SBB:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.sbb dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `ADC:64` arm's output on the in-place immediate shape. -/
+theorem lowerMemOp_adc_imm (frame spillW qsaveB : Nat) (dn : String) (v : Nat)
+    (hd : isGpName dn = true) (hv : aluImmGathers v = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB
+      = some [JInstr.adc dn (.imm v)] := by
+  simp [lowerMemOp, hd, hv]
+
+/-- The `SBB:64` arm's output on the in-place immediate shape. -/
+theorem lowerMemOp_sbb_imm (frame spillW qsaveB : Nat) (dn : String) (v : Nat)
+    (hd : isGpName dn = true) (hv : aluImmGathers v = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB
+      = some [JInstr.sbb dn (.imm v)] := by
+  simp [lowerMemOp, hd, hv]
 
 /-- `SpillSlotEncode.lowerCov5` with the array-ABI memory arms underneath: the
     spill-slot-aware lowering first, `lowerMemOp` on the shapes it declines. -/
@@ -267,6 +327,19 @@ theorem lowerCov6_lea_RSP0 :
 theorem lowerCov6_adc_RCX_RDX :
     lowerCov6 64 64 (.Lopn [.reg "RCX"] "ADC:64" [.reg "RCX", .reg "RDX"])
       = some [JInstr.adc "RCX" (.reg "RDX")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the in-place subtract-with-borrow, so `lowerCov6` reaches
+    the new arm: `LoweringExtended.lowerAluJ` has no `SBB` row either. -/
+theorem lowerCov6_sbb_R10_R11 :
+    lowerCov6 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .reg "R11"])
+      = some [JInstr.sbb "R10" (.reg "R11")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the immediate in-place carry-chain shapes as well. -/
+theorem lowerCov6_sbbImm_R10_1000 :
+    lowerCov6 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000])
+      = some [JInstr.sbb "R10" (.imm 1000)] := by
   with_unfolding_all rfl
 
 /-- The whole-body gather over `lowerCov6`: `SpillSlotEncode.gatherJBlock5` with
@@ -345,6 +418,66 @@ theorem encodeLopn_adc64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : N
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
+
+/-- `SBB:64` (opcode `0x19`, `w = 1`) two-source dispatch. -/
+theorem encodeLopn_sbb64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SBB:64" [.reg an, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x19 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_two frame spillW 0x19 "SBB:64" "SBB" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
+
+/-- **The immediate two-source dispatch.** On `Lopn [.reg dn] "<MNEM>" [.reg an,
+    .imm v]` the `[d], [a, s]` route takes its immediate branch before any of the
+    shift and ALU opcode tables, so the whole `encodeLopn` dispatch reduces to
+    `encImmOp`, which makes its own `83`-versus-`81` form selection. -/
+theorem dispatch_alu_imm₂ (frame spillW : Nat) (mnem base : String)
+    (dn an : String) (v qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hw : rexW (mnemWidth mnem) = 1)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = none) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .imm v]) qsaveB
+      = encImmOp 1 base (.reg dn) v := by
+  simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx,
+    Bool.false_eq_true, if_false]
+
+/-- **The group-1 immediate byte function.** Outside the sign-extended-imm8 range
+    `encImmOp` emits the `81 /digit id` form over the mnemonic's `aluImmDigit`,
+    which is `LprogJInstrBytesAgree` §1's width-threaded `encAluImmw`. The
+    `MOV`, `MOVQ` and `MUL` arms sit above the group-1 one and are excluded by
+    hypothesis, since the mnemonic stays a variable here. -/
+theorem encImmOp_aluImm32 (w digit : Nat) (base dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false)
+    (hmov : ¬ base = "MOV") (hmovq : ¬ base = "MOVQ") (hmul : ¬ base = "MUL")
+    (hsh : shiftImmExt base = none) (hdig : aluImmDigit base = some digit)
+    (hfit : fitsImm8S w v = false) :
+    encImmOp w base (.reg dn) v = encAluImmw w digit (gpNumU dn) v := by
+  simp [encImmOp, hsp, hsh, hdig, hfit]
+
+/-- `ADC:64` over an immediate outside the imm8 range (`81 /2 id`). -/
+theorem encodeLopn_adcImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
+    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADC:64" [.reg an, .imm v]) qsaveB
+      = encAluImmw 1 2 (gpNumU dn) v := by
+  rw [dispatch_alu_imm₂ frame spillW "ADC:64" "ADC" dn an v qsaveB
+      (by decide +kernel) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    encImmOp_aluImm32 1 2 "ADC" dn v hsp (by decide) (by decide) (by decide)
+      (by decide +kernel) (by decide +kernel) hfit]
+
+/-- `SBB:64` over an immediate outside the imm8 range (`81 /3 id`). -/
+theorem encodeLopn_sbbImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
+    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SBB:64" [.reg an, .imm v]) qsaveB
+      = encAluImmw 1 3 (gpNumU dn) v := by
+  rw [dispatch_alu_imm₂ frame spillW "SBB:64" "SBB" dn an v qsaveB
+      (by decide +kernel) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel) (by decide +kernel) (by decide +kernel),
+    encImmOp_aluImm32 1 3 "SBB" dn v hsp (by decide) (by decide) (by decide)
+      (by decide +kernel) (by decide +kernel) hfit]
 
 /-! ## 4. The byte agreement
 
@@ -464,6 +597,93 @@ theorem adc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     adc_bytes_agree alloc frame spillW dn sn dn sn qsaveB
       hdk hsk hdm hsm hdsp hssp hr hsr]
 
+/-- `JInstr` `sbb` over a register source reduces to `encAluRR 0x19`. -/
+theorem jinstr_sbb (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.sbb d (.reg r))
+      = encAluRR 0x19 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- **`SBB` bytes agree** (opcode `0x19`), under the same reg-reg side conditions
+    as `adc_bytes_agree`. -/
+theorem sbb_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
+    (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
+    (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
+    encodeJInstr alloc (.sbb d (.reg r))
+      = encTwoAddr frame spillW 1 0x19 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_sbb,
+    encTwoAddr_regReg frame spillW 1 0x19 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
+    encAluRRw_one, hd, hs]
+
+/-- **The `SBB:64` byte agreement.** The gathered `sbb` block encodes to the bytes
+    `encodeLopn` gives for the in-place subtract-with-borrow. -/
+theorem sbb64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
+    (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
+    (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "SBB:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "SBB:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_sbb frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_sbb64₂,
+    sbb_bytes_agree alloc frame spillW dn sn dn sn qsaveB
+      hdk hsk hdm hsm hdsp hssp hr hsr]
+
+/-! ### The immediate second source
+
+The gathered `JInstr` carries the immediate unchanged and `encodeJInstr` gives it
+the `81 /digit id` form; `aluImmGathers` restricts the arm to the values on which
+`encImmOp` selects that same form, so the agreement needs no reasoning about the
+`83 /digit ib` short form beyond the gate. -/
+
+/-- `aluImmGathers v` gives the two facts the immediate agreement consumes: the
+    value is outside the sign-extended-imm8 range, and inside the imm32 field
+    `encodableJInstr` admits. -/
+theorem fitsImm8S_of_aluImmGathers {v : Nat} (h : aluImmGathers v = true) :
+    fitsImm8S 1 v = false := by
+  unfold aluImmGathers at h
+  simp_all
+
+/-- **The `ADC:64` immediate byte agreement.** -/
+theorem adcImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn : String) (v qsaveB : Nat)
+    (hd : isGpName dn = true) (hv : aluImmGathers v = true)
+    (hdsp : isSpillOrQsave dn = false)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB) := by
+  rw [lowerMemOp_adc_imm frame spillW qsaveB dn v hd hv, Option.map_some,
+    encodeJBlock_singleton,
+    encodeLopn_adcImm frame spillW dn dn v qsaveB hdsp (fitsImm8S_of_aluImmGathers hv),
+    encAluImmw_one]
+  simp [encodeJInstr, hr]
+
+/-- **The `SBB:64` immediate byte agreement.** -/
+theorem sbbImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn : String) (v qsaveB : Nat)
+    (hd : isGpName dn = true) (hv : aluImmGathers v = true)
+    (hdsp : isSpillOrQsave dn = false)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB) := by
+  rw [lowerMemOp_sbb_imm frame spillW qsaveB dn v hd hv, Option.map_some,
+    encodeJBlock_singleton,
+    encodeLopn_sbbImm frame spillW dn dn v qsaveB hdsp (fitsImm8S_of_aluImmGathers hv),
+    encAluImmw_one]
+  simp [encodeJInstr, hr]
+
 /-! ## 5. The agreement at concrete operands
 
 The same two statements with every name and offset closed, under the physical
@@ -502,6 +722,34 @@ theorem encJAdc_RCX_RDX :
     encodeJBlock physAlloc [JInstr.adc "RCX" (.reg "RDX")]
       = encodeLopn 64 64 (.Lopn [.reg "RCX"] "ADC:64" [.reg "RCX", .reg "RDX"]) := by
   decide +kernel
+
+/-- The gathered `sbbq %r11, %r10` byte-matches `encodeLopn`. -/
+theorem encJSbb_R10_R11 :
+    encodeJBlock physAlloc [JInstr.sbb "R10" (.reg "R11")]
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .reg "R11"]) := by
+  decide +kernel
+
+/-- The gathered `adcq $1000, %rcx` byte-matches `encodeLopn`: `1000` is outside
+    the sign-extended-imm8 range, so both sides take the `81 /2 id` form. -/
+theorem encJAdcImm_RCX_1000 :
+    encodeJBlock physAlloc [JInstr.adc "RCX" (.imm 1000)]
+      = encodeLopn 64 64 (.Lopn [.reg "RCX"] "ADC:64" [.reg "RCX", .imm 1000]) := by
+  decide +kernel
+
+/-- The gathered `sbbq $1000, %r10` byte-matches `encodeLopn`. -/
+theorem encJSbbImm_R10_1000 :
+    encodeJBlock physAlloc [JInstr.sbb "R10" (.imm 1000)]
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000]) := by
+  decide +kernel
+
+/-- The gathered blocks for the two in-place carry-chain mnemonics at a small
+    immediate would NOT match `encodeLopn`, which takes the 4-byte
+    `83 /digit ib` short form there while `encodeJInstr` takes the 7-byte
+    `81 /digit id` one. `aluImmGathers` excludes the value, so `lowerMemOp`
+    declines the shape instead of gathering it to different bytes. -/
+theorem lowerMemOp_sbbImm0_none :
+    lowerMemOp 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 0]) = none := by
+  with_unfolding_all rfl
 
 /-! ### The `LEA:64` arm's bytes
 
