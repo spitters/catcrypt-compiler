@@ -71,11 +71,11 @@ makes the WHOLE body **gather** (`.isSome = true`, was `none`). At the byte leve
   shift) makes the gather byte-match `encodeLcmd` (§4, `coreNoSpill`).
 
 This residual is **not** a virtual-vs-physical artifact, an encoder bug, or a
-lowering-table lag like the previous two: it is a genuine **capability gap** — the
+lowering-table lag like the previous two: it is a **capability gap** — the
 JInstr scalar encoder lacks the `off(%rsp)` spill-slot resolution the Lprog
 encoder carries. Closing it needs a spill-aware JInstr `mov` (an `off(%rsp)`
 store/load arm keyed on the `qsave.`/`k.N` slot names), not a gather-coverage
-tweak. We state it honestly here rather than force a vacuous whole-body equality.
+tweak. It is recorded here rather than closed by a vacuous whole-body equality.
 
 ## The provable building blocks (`native_decide`-free)
 
@@ -113,7 +113,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand Condt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
@@ -124,9 +124,97 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
 open CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
 
+/-! ## The flag class: compare, materialised comparison, conditional move
+
+The two-source flag mnemonics the compare-and-select export emits — the flag-only
+`CMP:64`, the materialised comparison `SET<cc>:64` and the conditional moves
+`CMOVE:64` / `CMOVNE:64` / `CMOVB:64` — are lowered here, to the `JInstr` forms
+whose printed text `LprogAsmPrinter.renderLopn` gives the same mnemonic.
+
+`SET<cc>` is the three-instruction form `renderSetcc` prints (`cmp b, a`,
+`mov $0, d`, `set<cc> d8`), so it lowers to `[cmp a b, mov d 0, setcc c d]`. The
+model's `JInstr.setcc` writes the low byte under `MSB_MERGE` and the preceding
+zeroing `mov` clears the rest, which together give the zero-extended `0`/`1` the
+printed pair produces. `JInstr.setc` is not the target: it is fixed at `CF` and
+already zero-extends, so it covers neither the five other conditions nor the
+`mov $0` the printer emits. -/
+
+/-- The x86 condition code named by a `":64"`-tagged materialised-comparison
+    mnemonic `SET<cc>:64`, `none` for every other mnemonic. The unsigned
+    conditions are the ones `LprogAsmPrinter.setccAtt?` renders: `SETA` is
+    `Condt.nbe` and `SETAE` is `Condt.nb`, the negated forms Jasmin's `condt`
+    carries. -/
+def setccCondOf : String → Option Condt
+  | "SETE:64" => some .e | "SETNE:64" => some .ne
+  | "SETB:64" => some .b | "SETBE:64" => some .be
+  | "SETA:64" => some .nbe | "SETAE:64" => some .nb
+  | _ => none
+
+/-- The `JInstr` conditional move named by a `":64"`-tagged `CMOV<cc>:64`
+    mnemonic, `none` for every other mnemonic. The three conditions are those
+    the model carries as dedicated arms (`cmove`/`cmovne`/`cmovb`), which are
+    also the three `LprogBytes.twoByteOpcode` rows the Lprog byte encoder uses
+    for them. -/
+def cmovccJ (opn d : String) (s : JOperand) : Option (JInstr 64) :=
+  match opn with
+  | "CMOVE:64" => some (JInstr.cmove d s)
+  | "CMOVNE:64" => some (JInstr.cmovne d s)
+  | "CMOVB:64" => some (JInstr.cmovb d s)
+  | _ => none
+
+/-- A register name the flag-class arms address directly: a general-purpose
+    name that is not a spill or callee-save slot. -/
+def isPlainGp (n : String) : Bool := isGpName n && !isSpillOrQsave n
+
+/-- The second operand of a compare: a plain register, or an immediate inside
+    the sign-extended 32-bit range `cmp` encodes (the range outside which
+    `renderSetcc` and `renderLopn` emit their unhandled sentinel). -/
+def cmpSrcOk : LOperand → Bool
+  | .reg n => isPlainGp n
+  | .imm v => v < 2 ^ 31
+  | _ => false
+
+/-- Lower a two-source flag-class `Lopn [.reg d] opn [s0, s1]`:
+
+    * `CMP:64` in the two-address form `[d] CMP:64 [d, b]` → `[cmp d b]`, the
+      flags of `d - b` that `renderLopn` prints as `cmp<sz> b, d`;
+    * `SET<cc>:64 [a, b]` → `[cmp a b, mov d 0, setcc c d]`, the three lines
+      `renderSetcc` prints;
+    * `CMOV<cc>:64` in the two-address form `[d] CMOV<cc>:64 [d, s]` →
+      `[cmov<cc> d s]`, the single line `renderLopn` prints.
+
+    `none` for every other mnemonic, and for an operand shape outside the
+    register/immediate forms the arms address (a spill slot, an array operand,
+    an out-of-range immediate, or a `CMP`/`CMOV` whose first source is not the
+    destination — the printer reads the destination there, so a different first
+    source would denote something the printed text does not). -/
+def lowerFlagClassJ (d : String) (opn : String) (s0 s1 : LOperand) :
+    Option (List (JInstr 64)) :=
+  if !isPlainGp d then none
+  else
+    match setccCondOf opn, s0 with
+    | some c, .reg a =>
+        if isPlainGp a && cmpSrcOk s1 then
+          some [JInstr.cmp a (lowerJOperand s1), JInstr.mov d (JOperand.imm 0),
+                JInstr.setcc c d]
+        else none
+    | some _, _ => none
+    | none, _ =>
+        if opn == "CMP:64" then
+          if s0 == LOperand.reg d && cmpSrcOk s1 then
+            some [JInstr.cmp d (lowerJOperand s1)]
+          else none
+        else
+          match s1 with
+          | .reg sn =>
+              if s0 == LOperand.reg d && isPlainGp sn then
+                (cmovccJ opn d (JOperand.reg sn)).map (fun i => [i])
+              else none
+          | _ => none
+
 /-! ## 1. The full-body lowering: `MOVQ ↦ MOV:64` alias + per-shift drop-`mov` -/
 
-/-- The whole-body coverage lowering. Two arms vs `lowerLinstrExtCov3`:
+/-- The whole-body coverage lowering. Three arms vs `lowerLinstrExtCov3`:
 
     * **`MOVQ` alias**: a single-source `MOVQ` (the framing synonym `buildPrologue`
       emits) is lowered as the gather-covered `MOV:64` form. `encodeLopn` already
@@ -140,11 +228,15 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
       `lowerLinstrExtCov3`. A count-0 shift is the identity, and the encoder
       emits only its copy: nothing when `s = d`, `mov d, s` otherwise. The
       lowering does the same.
+    * **flag class**: a two-source `Lopn` that `lowerLinstrExtCov3` declines is
+      offered to `lowerFlagClassJ`, which covers `CMP:64`, `SET<cc>:64` and
+      `CMOV<cc>:64`. A two-source shape `lowerLinstrExtCov3` lowers keeps that
+      lowering.
 
     Every other shape delegates to `lowerLinstrExtCov3` verbatim (the in-place
     two-source ALU peephole). So `lowerLinstrExtCov4` differs from
-    `lowerLinstrExtCov3` only on the single-source `MOVQ` and the in-place
-    count-in-tag shift shapes. -/
+    `lowerLinstrExtCov3` on the single-source `MOVQ`, the in-place count-in-tag
+    shift, and the two-source shapes `lowerLinstrExtCov3` declines. -/
 def lowerLinstrExtCov4 : LinstrR → Option (List (JInstr 64))
   -- `MOVQ ↦ MOV:64` synonym alias (the framing mnemonic `buildPrologue` emits)
   | .Lopn [.reg dst] "MOVQ" [s] =>
@@ -161,8 +253,14 @@ def lowerLinstrExtCov4 : LinstrR → Option (List (JInstr 64))
           else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
           else lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
       | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
-  -- everything else (two-source ALU, MULXHI, memory, control-flow): the in-place
-  -- coverage superset verbatim
+  -- two sources: the in-place coverage superset, and where it declines the flag
+  -- class (`CMP:64`, `SET<cc>:64`, `CMOV<cc>:64`)
+  | .Lopn [.reg dst] opn [s0, s1] =>
+      match lowerLinstrExtCov3 (.Lopn [.reg dst] opn [s0, s1]) with
+      | some js => some js
+      | none => lowerFlagClassJ dst opn s0 s1
+  -- everything else (MULXHI, memory, control-flow): the in-place coverage
+  -- superset verbatim
   | i => lowerLinstrExtCov3 i
 
 /-- Lower a full `Linstr` (drops the position tag), full-body coverage. -/
@@ -282,6 +380,122 @@ theorem lowerCov4_movq (dst s : String)
   rw [hps]
   simp only [lowerJOperand, show stripWidthTag "MOV:64" = "MOV" from by decide +kernel, lowerAluJ]
 
+/-! ### 2a. The flag-class arms: lowering equations
+
+The flag class is reached only where `lowerLinstrExtCov3` declines, so each
+equation goes through `lowerLinstrExtCov3_eq_none`: none of the flag mnemonics is
+in the register-count shift table or the ALU table, and none of them is one of
+the three mnemonics `lowerLinstrExtCov3` routes to `lowerLinstrExtCov`. The
+equations are stated over a plain general-purpose destination (and, for the
+materialised comparison, a plain compared register), since that is the operand
+shape `lowerFlagClassJ` addresses; the hypotheses are decidable on a concrete
+register name. -/
+
+/-- The in-place coverage superset declines a two-source `Lopn` whose
+    tag-stripped mnemonic is in neither the register-count shift table nor the
+    ALU table, and which is none of the three mnemonics it routes to
+    `lowerLinstrExtCov`. -/
+theorem lowerLinstrExtCov3_eq_none (d opn : String) (s0 s1 : LOperand)
+    (h1 : opn ≠ "MULXHI:64") (h2 : opn ≠ "STORE") (h3 : opn ≠ "STOREIDX")
+    (hsh : lowerShiftRegJ d (stripWidthTag opn) (lowerJOperand s0) (lowerJOperand s1)
+      = none)
+    (halu : lowerAluJ d (stripWidthTag opn) (lowerJOperand s1) = none) :
+    lowerLinstrExtCov3 (.Lopn [.reg d] opn [s0, s1]) = none := by
+  unfold lowerLinstrExtCov3
+  split
+  · simp_all
+  · simp_all
+  · simp_all
+  · simp_all [lowerAluJ2InPlace]
+  · rename_i hx
+    exact (hx d opn s0 s1 rfl).elim
+
+/-- The two-address flag-only compare `CMP:64 [d] [d, b]` lowers to the single
+    `[cmp d b]`. -/
+theorem lowerCov4_cmp (d : String) (b : LOperand)
+    (hd : isPlainGp d = true) (hb : cmpSrcOk b = true) :
+    lowerLinstrExtCov4 (.Lopn [.reg d] "CMP:64" [.reg d, b])
+      = some [JInstr.cmp d (lowerJOperand b)] := by
+  have hc3 := lowerLinstrExtCov3_eq_none d "CMP:64" (.reg d) b (by decide) (by decide)
+    (by decide) (by simp [show stripWidthTag "CMP:64" = "CMP" from by decide +kernel,
+      lowerShiftRegJ])
+    (by simp [show stripWidthTag "CMP:64" = "CMP" from by decide +kernel, lowerAluJ])
+  show (match lowerLinstrExtCov3 (.Lopn [.reg d] "CMP:64" [.reg d, b]) with
+        | some js => some js
+        | none => lowerFlagClassJ d "CMP:64" (.reg d) b) = _
+  rw [hc3]
+  simp [lowerFlagClassJ, setccCondOf, hd, hb]
+
+/-- The two-address conditional move `CMOVNE:64 [d] [d, s]` lowers to the single
+    `[cmovne d s]`. -/
+theorem lowerCov4_cmovne (d s : String)
+    (hd : isPlainGp d = true) (hs : isPlainGp s = true) :
+    lowerLinstrExtCov4 (.Lopn [.reg d] "CMOVNE:64" [.reg d, .reg s])
+      = some [JInstr.cmovne d (.reg s)] := by
+  have hc3 := lowerLinstrExtCov3_eq_none d "CMOVNE:64" (.reg d) (.reg s) (by decide)
+    (by decide) (by decide)
+    (by simp [show stripWidthTag "CMOVNE:64" = "CMOVNE" from by decide +kernel,
+      lowerShiftRegJ])
+    (by simp [show stripWidthTag "CMOVNE:64" = "CMOVNE" from by decide +kernel, lowerAluJ])
+  show (match lowerLinstrExtCov3 (.Lopn [.reg d] "CMOVNE:64" [.reg d, .reg s]) with
+        | some js => some js
+        | none => lowerFlagClassJ d "CMOVNE:64" (.reg d) (.reg s)) = _
+  rw [hc3]
+  simp [lowerFlagClassJ, setccCondOf, cmovccJ, hd, hs]
+
+/-- The two-address conditional move `CMOVE:64 [d] [d, s]` lowers to the single
+    `[cmove d s]`. -/
+theorem lowerCov4_cmove (d s : String)
+    (hd : isPlainGp d = true) (hs : isPlainGp s = true) :
+    lowerLinstrExtCov4 (.Lopn [.reg d] "CMOVE:64" [.reg d, .reg s])
+      = some [JInstr.cmove d (.reg s)] := by
+  have hc3 := lowerLinstrExtCov3_eq_none d "CMOVE:64" (.reg d) (.reg s) (by decide)
+    (by decide) (by decide)
+    (by simp [show stripWidthTag "CMOVE:64" = "CMOVE" from by decide +kernel,
+      lowerShiftRegJ])
+    (by simp [show stripWidthTag "CMOVE:64" = "CMOVE" from by decide +kernel, lowerAluJ])
+  show (match lowerLinstrExtCov3 (.Lopn [.reg d] "CMOVE:64" [.reg d, .reg s]) with
+        | some js => some js
+        | none => lowerFlagClassJ d "CMOVE:64" (.reg d) (.reg s)) = _
+  rw [hc3]
+  simp [lowerFlagClassJ, setccCondOf, cmovccJ, hd, hs]
+
+/-- The materialised comparison `SETE:64 [d] [a, b]` lowers to the compare, the
+    zeroing move and the conditional set — the three lines `renderSetcc`
+    prints. -/
+theorem lowerCov4_sete (d a : String) (b : LOperand)
+    (hd : isPlainGp d = true) (ha : isPlainGp a = true) (hb : cmpSrcOk b = true) :
+    lowerLinstrExtCov4 (.Lopn [.reg d] "SETE:64" [.reg a, b])
+      = some [JInstr.cmp a (lowerJOperand b), JInstr.mov d (.imm 0),
+              JInstr.setcc .e d] := by
+  have hc3 := lowerLinstrExtCov3_eq_none d "SETE:64" (.reg a) b (by decide) (by decide)
+    (by decide)
+    (by simp [show stripWidthTag "SETE:64" = "SETE" from by decide +kernel,
+      lowerShiftRegJ])
+    (by simp [show stripWidthTag "SETE:64" = "SETE" from by decide +kernel, lowerAluJ])
+  show (match lowerLinstrExtCov3 (.Lopn [.reg d] "SETE:64" [.reg a, b]) with
+        | some js => some js
+        | none => lowerFlagClassJ d "SETE:64" (.reg a) b) = _
+  rw [hc3]
+  simp [lowerFlagClassJ, setccCondOf, hd, ha, hb]
+
+/-- The materialised comparison `SETNE:64 [d] [a, b]`. -/
+theorem lowerCov4_setne (d a : String) (b : LOperand)
+    (hd : isPlainGp d = true) (ha : isPlainGp a = true) (hb : cmpSrcOk b = true) :
+    lowerLinstrExtCov4 (.Lopn [.reg d] "SETNE:64" [.reg a, b])
+      = some [JInstr.cmp a (lowerJOperand b), JInstr.mov d (.imm 0),
+              JInstr.setcc .ne d] := by
+  have hc3 := lowerLinstrExtCov3_eq_none d "SETNE:64" (.reg a) b (by decide) (by decide)
+    (by decide)
+    (by simp [show stripWidthTag "SETNE:64" = "SETNE" from by decide +kernel,
+      lowerShiftRegJ])
+    (by simp [show stripWidthTag "SETNE:64" = "SETNE" from by decide +kernel, lowerAluJ])
+  show (match lowerLinstrExtCov3 (.Lopn [.reg d] "SETNE:64" [.reg a, b]) with
+        | some js => some js
+        | none => lowerFlagClassJ d "SETNE:64" (.reg a) b) = _
+  rw [hc3]
+  simp [lowerFlagClassJ, setccCondOf, hd, ha, hb]
+
 /-! ## 3. The shift per-op byte agreement (the deliverable, `native_decide`-free)
 
 For the count-in-tag shift the gathered single-op block encodes byte-for-byte to
@@ -357,7 +571,7 @@ agreement theorems (§3) — all kernel-independent — stay here. -/
 
 /-! ## 5. The real-kernel byte-identity bridge: status (honest)
 
-`ComToFramedJInstrLeaq.framedLeaqText_eq_lprog` is the load-bearing theorem that
+`ComToFramedJInstrLeaq.framedLeaqText_eq_lprog` is the theorem that
 turns a body byte-agreement into a whole-`.text` byte identity: its `hbody`
 hypothesis is `encodeJBlock f.alloc f.body = encodeLcmd body`, and its framing
 hypotheses (`hpush` / `hmar` / `hpop`) model the System-V framing as **separate**

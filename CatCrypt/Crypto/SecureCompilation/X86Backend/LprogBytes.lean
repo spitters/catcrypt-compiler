@@ -1468,6 +1468,12 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
+  -- the two-source materialised comparison the compare-and-select export emits.
+  -- `LprogAsmPrinter.renderSetcc` prints it as `cmp b, a ; mov $0, d ; set<cc> d8`;
+  -- the encoder's only `SET<cc>` arm is the zero-source `SETC` above, so a body
+  -- containing this form is declined rather than encoded.
+  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "RBX"], false)
+  , (.Lopn [.reg "R8"] "SETNE:64" [.reg "RAX", .reg "RBX"], false)
   -- the register-count shifts (`regArith .shr`/`.shl`/`.sar` with a runtime
   -- count), the BMI2 `shrx`/`shlx`/`sarx` that `LprogAsmPrinter.renderLopn`
   -- renders (`ScalarEncoder.encShiftX`); U64 only, since the VEX encoder

@@ -278,6 +278,42 @@ theorem lowerLinstrExtCov3_direct {i : LinstrR} {js : List (JInstr 64)}
   · exact lowerAluJ2InPlace_direct h
   · exact lowerLinstrExtCov2_direct hi h
 
+/-- The flag-class blocks — the compare, the materialised comparison's
+    compare/zero/set triple, and the conditional move — address no memory, so
+    every block the lowering produces is direct. -/
+theorem lowerFlagClassJ_direct {d opn : String} {s0 s1 : LOperand}
+    {js : List (JInstr 64)} (h : lowerFlagClassJ d opn s0 s1 = some js) :
+    allDirect js = true := by
+  unfold lowerFlagClassJ at h
+  split at h
+  · simp at h
+  · split at h
+    · split at h
+      · simp only [Option.some.injEq] at h
+        subst h; exact allDirect_of_forall (by simp [IsDirect])
+      · simp at h
+    · simp at h
+    · split at h
+      · split at h
+        · simp only [Option.some.injEq] at h
+          subst h; exact allDirect_of_forall (by simp [IsDirect])
+        · simp at h
+      · split at h
+        · split at h
+          · simp only [Option.map_eq_some_iff] at h
+            obtain ⟨i, hi', rfl⟩ := h
+            refine allDirect_of_forall ?_
+            intro j hj
+            simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+            subst hj
+            unfold cmovccJ at hi'
+            split at hi' <;>
+              first
+                | (simp only [Option.some.injEq] at hi'; subst hi'; simp [IsDirect])
+                | simp at hi'
+          · simp at h
+        · simp at h
+
 theorem lowerLinstrExtCov4_direct {i : LinstrR} {js : List (JInstr 64)}
     (hi : linstrRDirect i = true) (h : lowerLinstrExtCov4 i = some js) :
     allDirect js = true := by
@@ -300,6 +336,13 @@ theorem lowerLinstrExtCov4_direct {i : LinstrR} {js : List (JInstr 64)}
           subst h; exact allDirect_of_forall (by simp [IsDirect])
         · exact lowerLinstrExtCov3_direct hi h
     · exact lowerLinstrExtCov3_direct hi h
+  · -- the two-source in-place superset, else the flag class
+    split at h
+    · rename_i js' heq
+      simp only [Option.some.injEq] at h
+      subst h
+      exact lowerLinstrExtCov3_direct hi heq
+    · exact lowerFlagClassJ_direct h
   · exact lowerLinstrExtCov3_direct hi h
 
 theorem lowerCov5_direct {frame spillW qsaveB : Nat} {i : LinstrR}

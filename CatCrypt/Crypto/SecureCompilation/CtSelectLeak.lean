@@ -83,10 +83,9 @@ def keepsReg (r : String) : JInstr 64 → Bool
   | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
   | .btr d _ | .bts d _ | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _
   | .imulMem d _ _ | .imulriMem d _ _ _ | .bzhi d _ _ => r != d
-  | .cmovcc _ d _ => r != d
+  | .cmovcc _ d _ | .setcc _ d => r != d
   | .mulx d₁ d₂ _ _ | .mulxMem d₁ d₂ _ _ _ | .mul d₁ d₂ _ | .imulWide d₁ d₂ _
   | .xchg d₁ d₂ => r != d₁ && r != d₂
-  | _ => false
 
 /-- A register an instruction keeps holds the same value after the instruction
     as before it. -/
@@ -94,7 +93,7 @@ theorem get_evalInstr_of_keepsReg {r : String} {i : JInstr 64}
     (h : keepsReg r i = true) (s : JState 64) :
     (evalInstr s i).get r = s.get r := by
   cases i <;> simp only [keepsReg, bne_iff_ne, ne_eq, Bool.and_eq_true] at h <;>
-    simp_all [evalInstr, JState.setReg, JState.writeB5W, JState.writeB2W,
+    simp_all [evalInstr, JState.setReg, JState.setRegMerge, JState.writeB5W, JState.writeB2W,
       JState.writeB4W, JState.writeB5W2, JState.writeCFW, JState.writeB5,
       JState.writeB5N, JState.writeB5Mem, JState.store, JState.storeIdx,
       JState.get]
