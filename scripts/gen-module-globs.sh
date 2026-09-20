@@ -23,7 +23,18 @@ tmp="$(mktemp)"
   echo "$BEGIN"
   # Chunks of 200: one array literal of every module exceeds the elaborator's
   # recursion depth; the chunks are appended below.
-  { git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' | sed 's#\.lean$##; s#/#.#g'; } | LC_ALL=C sort -u \
+  # The module set is every `.lean` under `CatCrypt/` that the index or `HEAD`
+  # names and that exists on disk. The index alone is not enough: this worktree
+  # is shared, and a concurrent session's staged deletion of a file it has not
+  # removed drops that module from the list, so the generated lakefile stops
+  # naming a module the committed tree carries and `--check` fails on the next
+  # push. `HEAD` alone is not enough either: a module added and not yet
+  # committed has to be listed before it can build. The disk test keeps a
+  # removed module out.
+  { { git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean'
+      git ls-tree -r --name-only HEAD -- CatCrypt 2>/dev/null | grep -E '\.lean$' || true
+    } | LC_ALL=C sort -u | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
+      | sed 's#\.lean$##; s#/#.#g'; } | LC_ALL=C sort -u \
     | awk 'NR%200==1 { if (NR>1) print "  ]"; k++; printf "def pkgModules%d : Array Lake.Glob := #[\n", k }
            { printf "    Lake.Glob.one `%s,\n", $0 }
            END { print "  ]"; printf "%s\n", "" ;

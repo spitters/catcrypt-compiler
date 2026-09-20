@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Hax.Ascent.Corres
+public import CatCrypt.Hax.Ascent.Square
 
 /-!
 # A worked correspondence: comparing two arrays
@@ -134,8 +135,17 @@ theorem body_corres :
         (fun env t hP _ => ⟨RA_extend hP.1.1 "eq" _ (by decide) (by decide),
           Env.extend_same _ _ _⟩)
         (corres_var (fun _ _ hP _ => hP.2))
-    have hseq := corres_seq (corres_seq hlet (fun _ _ => rfl) (corres_unitVal _ _))
-      (fun _ _ => rfl) (corres_unitVal _ _)
+    have hseq : Corres demoBuiltins BodyP
+        (fun t => BodyG t ∧ (t.1.1.getD t.2.1.toNat 0 != t.1.2.getD t.2.1.toNat 0) = true)
+        (.seq (.seq (.letBind "eq" (.lit (.bool false)) (.var "eq")) .unitVal) .unitVal)
+        (fun _ => .unit) (fun env t => RA env t.1 ∧ env "eq" = some (.bool false)) := by
+      weld
+      · weld
+        · exact hlet
+        · exact fun _ _ => rfl
+        · exact corres_unitVal _ _
+      · exact fun _ _ => rfl
+      · exact corres_unitVal _ _
     refine corres_conseq hseq (fun _ _ h _ => h) (fun _ h => h) (fun _ _ => rfl) ?_
     intro env t hG hQ
     refine ⟨hQ.1, ?_⟩
