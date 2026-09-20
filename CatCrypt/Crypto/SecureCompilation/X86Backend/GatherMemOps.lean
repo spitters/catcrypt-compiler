@@ -51,6 +51,18 @@ the ADX carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
 An immediate second source is gated on `aluImmGathers`, the signed 32-bit field
 the group-1 immediate form carries.
 
+The mem-folded widening multiply `Lopn [.reg lo, .reg hi] "MULXMEM:64" [.reg
+(mem.<base>.<off>)]` is the one two-destination shape here. `encodeLopn` matches
+`MULXMEM` by name above the ADX and ALU tables and emits
+`ScalarEncoder.encMulxMem`, which takes the high word first, so the dispatch
+transposes the destination pair; the multiplier is not an operand, since `MULX`
+reads it implicitly in `%rdx`. `LoweringCoverageMulxMemSym.lowerLinstrExtCovMS`
+carries a `MULXMEM` arm of a different shape — the untagged mnemonic over
+`[a, .reg base, .imm off]`, with the destination pair in the opposite order —
+which is the forward-compatible form for an exporter arm that does not exist;
+neither its mnemonic nor its operand list nor its destination order matches what
+`encodeLopn` reads.
+
 ## Main results
 
 * `memNameParts` — the `mem.<base>.<off>` operand-name parse that keeps the base
@@ -83,6 +95,10 @@ the group-1 immediate form carries.
   `physAlloc`, by `decide +kernel`.
 * `lowerMemOp_sbbImm0` — the gather at a small immediate, whose bytes agree with
   `encodeLopn` under `GatherImmForms.encodeJInstr7`.
+* `dispatch_mulxmem` / `encodeLopn_mulxmem64` — the by-name dispatch of
+  `MULXMEM:64` down to `encMulxMem`, with the destination pair transposed.
+* `jinstr_mulxMem` / `mulxmem64_gather_bytes_agree` / `encJMulxMem_RDI160` — the
+  mem-folded widening multiply's byte agreement, and it at concrete operands.
 
 ## Scope
 
@@ -200,6 +216,14 @@ the byte encoders read. -/
     `GatherImmForms.encodeJInstr7` reconciles by making the same selection. -/
 def aluImmGathers (v : Nat) : Bool := fitsImm32S v
 
+/-- The register the BMI2 widening multiply reads as its first multiplicand.
+    `MULX` takes that operand implicitly in `%rdx`, so the `Lopn` source list
+    does not carry it and the physical allocation pins the multiplier there. The
+    `JInstr.mulxMem` constructor carries it as an explicit field, which
+    `ScalarEncoder.encodeJInstr` does not read and `evalInstr` does, so naming it
+    here is what keeps the lowered instruction's denotation the hardware's. -/
+def mulxMultiplier : String := "RDX"
+
 /-- The array-ABI memory-operand lowering. A `STORE:64` whose destination is a
     `mem.<base>.<off>` name lowers to `JInstr.storeMem base off (.reg src)`; a
     `LOAD:64` whose source is one lowers to `JInstr.loadMem dst base off`; a
@@ -209,8 +233,11 @@ def aluImmGathers (v : Nat) : Bool := fitsImm32S v
     name, so the base name stands in for it. An `ADC:64` or `SBB:64` whose first
     source is its destination lowers to the in-place `JInstr.adc` / `JInstr.sbb`
     over a register second source, and over an immediate second source inside
-    `aluImmGathers`. Every arm requires the base and the register operands to be
-    among the sixteen `isGpName` names. Every other shape is `none`. -/
+    `aluImmGathers`. A `MULXMEM:64`, whose destination list is the low word then
+    the high word and whose single source is a `mem.<base>.<off>` name, lowers to
+    `JInstr.mulxMem` over the high word first, the order that constructor takes.
+    Every arm requires the base and the register operands to be among the sixteen
+    `isGpName` names. Every other shape is `none`. -/
 def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
     (_qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
   match i with
@@ -244,6 +271,13 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
   | .Lopn [.reg dn] "SBB:64" [.reg an, .imm v] =>
       if an == dn && isGpName dn && aluImmGathers v then some [JInstr.sbb dn (.imm v)]
       else none
+  | .Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn] =>
+      match memNameParts mn with
+      | some (b, off) =>
+          if isGpName b && isGpName dlN && isGpName dhN then
+            some [JInstr.mulxMem dhN dlN (.reg mulxMultiplier) b off]
+          else none
+      | none => none
   | _ => none
 
 /-- The `STORE:64` arm's output. -/
@@ -290,6 +324,15 @@ theorem lowerMemOp_adc_imm (frame spillW qsaveB : Nat) (dn : String) (v : Nat)
     lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB
       = some [JInstr.adc dn (.imm v)] := by
   simp [lowerMemOp, hd, hv]
+
+/-- The `MULXMEM:64` arm's output. The destination list is read low word first
+    and the `JInstr` takes the high word first. -/
+theorem lowerMemOp_mulxmem (frame spillW qsaveB : Nat) (dlN dhN mn b : String)
+    (off : Int) (h : memNameParts mn = some (b, off))
+    (hb : isGpName b = true) (hl : isGpName dlN = true) (hh : isGpName dhN = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn]) qsaveB
+      = some [JInstr.mulxMem dhN dlN (.reg mulxMultiplier) b off] := by
+  simp [lowerMemOp, h, hb, hl, hh]
 
 /-- The `SBB:64` arm's output on the in-place immediate shape. -/
 theorem lowerMemOp_sbb_imm (frame spillW qsaveB : Nat) (dn : String) (v : Nat)
@@ -346,6 +389,14 @@ theorem lowerCov6_adc_RCX_RDX :
 theorem lowerCov6_sbb_R10_R11 :
     lowerCov6 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .reg "R11"])
       = some [JInstr.sbb "R10" (.reg "R11")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the mem-folded widening multiply, so `lowerCov6` reaches
+    the new arm: every arm of the chain below it matches a single-element
+    destination list, which a `MULXMEM` binding is not. -/
+theorem lowerCov6_mulxmem_RDI160 :
+    lowerCov6 64 64 (.Lopn [.reg "RCX", .reg "RSI"] "MULXMEM:64" [.reg "mem.RDI.160"])
+      = some [JInstr.mulxMem "RSI" "RCX" (.reg "RDX") "RDI" (160 : Int)] := by
   with_unfolding_all rfl
 
 /-- `lowerCov5` declines the immediate in-place carry-chain shapes as well. -/
@@ -439,6 +490,29 @@ theorem encodeLopn_sbb64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : N
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
+
+/-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
+    above the ADX and ALU tables, on a two-destination `Lopn` with a single
+    `mem.*` source. The destination list is `[low, high]` and `encMulxMem` takes
+    the high word first, so the dispatch transposes them. -/
+theorem dispatch_mulxmem (frame spillW : Nat) (mnem base : String)
+    (dlN dhN mn : String) (bb : Nat) (off : Int) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = true)
+    (hmem : parseMemName mn = some (bb, off)) :
+    encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg mn]) qsaveB
+      = encMulxMem (gpNumU dhN) (gpNumU dlN) bb off := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hmem,
+    Bool.false_eq_true, if_false, if_true]
+
+/-- `MULXMEM:64` dispatches to the VEX memory-form widening multiply. -/
+theorem encodeLopn_mulxmem64 (frame spillW : Nat) (dlN dhN mn : String) (bb : Nat)
+    (off : Int) (qsaveB : Nat) (hmem : parseMemName mn = some (bb, off)) :
+    encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn]) qsaveB
+      = encMulxMem (gpNumU dhN) (gpNumU dlN) bb off :=
+  dispatch_mulxmem frame spillW "MULXMEM:64" "MULXMEM" dlN dhN mn bb off qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hmem
 
 /-- **The immediate two-source dispatch.** On `Lopn [.reg dn] "<MNEM>" [.reg an,
     .imm v]` the `[d], [a, s]` route takes its immediate branch before any of the
@@ -609,6 +683,37 @@ theorem adc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     adc_bytes_agree alloc frame spillW dn sn dn sn qsaveB
       hdk hsk hdm hsm hdsp hssp hr hsr]
 
+/-- `JInstr` `mulxMem` reduces to `encMulxMem` over its high-word, low-word and
+    base numbers. The multiplier field is not read: `MULX` takes that operand
+    implicitly in `%rdx`, so it contributes no bytes. -/
+theorem jinstr_mulxMem (alloc : GpAlloc) (dh dl base : String) (a : JOperand)
+    (off : Int) :
+    encodeJInstr alloc (.mulxMem dh dl a base off)
+      = encMulxMem (gpNum (regOf alloc dh)) (gpNum (regOf alloc dl))
+          (gpNum (regOf alloc base)) off := rfl
+
+/-- **The `MULXMEM:64` byte agreement.** The gathered `mulxMem` block encodes to
+    the bytes `encodeLopn` gives for the mem-folded widening multiply. Both sides
+    transpose the destination pair the same way, so the low word stays in the
+    `vvvv` field and the high word in `ModRM.reg`. -/
+theorem mulxmem64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dlN dhN mn b : String) (off : Int) (qsaveB : Nat)
+    (h : memNameParts mn = some (b, off))
+    (hb : isGpName b = true) (hl : isGpName dlN = true) (hh : isGpName dhN = true)
+    (hrh : gpNum (regOf alloc dhN) = gpNumU dhN)
+    (hrl : gpNum (regOf alloc dlN) = gpNumU dlN)
+    (hbr : gpNum (regOf alloc b) = gpNumU b) :
+    (lowerMemOp frame spillW
+        (.Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn]) qsaveB) := by
+  rw [lowerMemOp_mulxmem frame spillW qsaveB dlN dhN mn b off h hb hl hh,
+    Option.map_some, encodeJBlock_singleton,
+    encodeLopn_mulxmem64 frame spillW dlN dhN mn (gpNumU b) off qsaveB
+      (parseMemName_of_memNameParts h),
+    jinstr_mulxMem, hrh, hrl, hbr]
+
 /-- `JInstr` `sbb` over a register source reduces to `encAluRR 0x19`. -/
 theorem jinstr_sbb (alloc : GpAlloc) (d r : String) :
     encodeJInstr alloc (.sbb d (.reg r))
@@ -748,6 +853,14 @@ theorem encJAdcImm_RCX_1000 :
 theorem encJSbbImm_R10_1000 :
     encodeJBlock physAlloc [JInstr.sbb "R10" (.imm 1000)]
       = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000]) := by
+  decide +kernel
+
+/-- The gathered `mulxq 160(%rdi), %rcx, %rsi` byte-matches `encodeLopn`, at the
+    operands the Curve25519 ladder step's mem-folded multiply carries. -/
+theorem encJMulxMem_RDI160 :
+    encodeJBlock physAlloc [JInstr.mulxMem "RSI" "RCX" (.reg "RDX") "RDI" (160 : Int)]
+      = encodeLopn 64 64
+          (.Lopn [.reg "RCX", .reg "RSI"] "MULXMEM:64" [.reg "mem.RDI.160"]) := by
   decide +kernel
 
 /-- The in-place carry-chain mnemonics gather at a small immediate as at any
