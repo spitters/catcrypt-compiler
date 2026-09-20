@@ -89,9 +89,10 @@ open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc (renameBlock renameInstr)
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
   (pullState runBlock_renameBlock_mem decode_phys phys_constant_time
     frameRegs_of_not_written)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
+  (selEntry selPre selPost selBlock)
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof
-  (selEntry selPre selPost selBlock selBlock_correct combSelectBlock_eq combSelect5Block_eq
-    combSelect6Block_eq)
+  (selBlock_correct combSelectBlock_eq combSelect5Block_eq combSelect6Block_eq)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
   (entryStride combSelectPinned combSelectAlloc combSelect5Alloc combSelect6Alloc
     combSelectBlock combSelect5Block combSelect6Block)

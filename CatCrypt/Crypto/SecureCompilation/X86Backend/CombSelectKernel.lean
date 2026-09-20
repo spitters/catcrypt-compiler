@@ -149,20 +149,30 @@ the constant-time form (the load address never depends on `d`).
 Initialise `a0..a3 := 0` so the result is the matching entry (or zero for an
 out-of-range index, which never occurs for a 4-bit window). The four words are
 stored to `z`. Every load offset is a literal — no secret-dependent address. -/
-def combSelectBlock : List (JInstr 64) :=
-  -- zero the four accumulators
-  [ .mov "a0" (.imm 0), .mov "a1" (.imm 0)
-  , .mov "a2" (.imm 0), .mov "a3" (.imm 0) ]
-  ++ ((List.range windowEntries).flatMap (fun j =>
-        let base : Int := Int.ofNat j * entryStride
-        [ .mov "mask" (.reg "d")            -- mask := d
-        , .sub "mask" (.imm j)              -- mask := d − j ; ZF = (d == j)
-        , .loadMem "c" "tbl" (base + 0),  .cmove "a0" (.reg "c")
-        , .loadMem "c" "tbl" (base + 8),  .cmove "a1" (.reg "c")
-        , .loadMem "c" "tbl" (base + 16), .cmove "a2" (.reg "c")
-        , .loadMem "c" "tbl" (base + 24), .cmove "a3" (.reg "c") ]))
-  ++ [ .storeMem "z" 0 (.reg "a0"), .storeMem "z" 8 (.reg "a1")
-     , .storeMem "z" 16 (.reg "a2"), .storeMem "z" 24 (.reg "a3") ]
+def selEntry (j : Nat) : List (JInstr 64) :=
+  let base : Int := Int.ofNat j * entryStride
+  [ .mov "mask" (.reg "d")            -- mask := d
+  , .sub "mask" (.imm j)              -- mask := d − j ; ZF = (d == j)
+  , .loadMem "c" "tbl" (base + 0),  .cmove "a0" (.reg "c")
+  , .loadMem "c" "tbl" (base + 8),  .cmove "a1" (.reg "c")
+  , .loadMem "c" "tbl" (base + 16), .cmove "a2" (.reg "c")
+  , .loadMem "c" "tbl" (base + 24), .cmove "a3" (.reg "c") ]
+
+/-- The accumulator zeroing that precedes the scan. -/
+def selPre : List (JInstr 64) :=
+  [ .mov "a0" (.imm 0), .mov "a1" (.imm 0), .mov "a2" (.imm 0), .mov "a3" (.imm 0) ]
+
+/-- The output stores that follow the scan. -/
+def selPost : List (JInstr 64) :=
+  [ .storeMem "z" 0 (.reg "a0"), .storeMem "z" 8 (.reg "a1")
+  , .storeMem "z" 16 (.reg "a2"), .storeMem "z" 24 (.reg "a3") ]
+
+/-- The `n`-entry constant-time select: zero the accumulators, scan the `n`
+    entries, store the four words. -/
+def selBlock (n : Nat) : List (JInstr 64) :=
+  selPre ++ (List.range n).flatMap selEntry ++ selPost
+
+def combSelectBlock : List (JInstr 64) := selBlock windowEntries
 
 /-- Block length: 4 (zero accs) + 16·(2 + 4·2) (per-entry compare + 4 load/cmove
     pairs) + 4 (stores) = 168. -/
@@ -286,7 +296,7 @@ text. -/
 /-- The select block takes no register-indexed memory access: the linear scan
     reads every entry at a compile-time-constant offset and selects with
     `cmove`. -/
-theorem combSelectBlock_allDirect : allDirect combSelectBlock = true := by
+theorem selBlock_allDirect (n : Nat) : allDirect (selBlock n) = true := by
   have hA : ∀ a b : List (JInstr 64),
       allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
   have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
@@ -295,8 +305,12 @@ theorem combSelectBlock_allDirect : allDirect combSelectBlock = true := by
     induction l with
     | nil => rfl
     | cons x t ih => simp [hA, h x, ih]
-  rw [combSelectBlock, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
-  simp [allDirect]; simp [IsDirect]
+  rw [selBlock, hA, hA,
+    hF _ _ (fun _ => by simp [selEntry, allDirect]; simp [IsDirect])]
+  simp [selPre, selPost, allDirect]; simp [IsDirect]
+
+theorem combSelectBlock_allDirect : allDirect combSelectBlock = true :=
+  selBlock_allDirect windowEntries
 
 /-- **Constant time.** The 16-entry comb window select produces the same machine
     leakage trace from any two starting states, so the emitted address sequence
@@ -317,20 +331,8 @@ the entry count grows. We pin the value/CT proofs for this variant too. -/
 /-- Number of entries scanned in one 5-bit signed window (`d ∈ {0,…,31}`). -/
 def windowEntries5 : Nat := 32
 
-/-- The 32-entry CT select block (same shape as `combSelectBlock`, wider scan). -/
-def combSelect5Block : List (JInstr 64) :=
-  [ .mov "a0" (.imm 0), .mov "a1" (.imm 0)
-  , .mov "a2" (.imm 0), .mov "a3" (.imm 0) ]
-  ++ ((List.range windowEntries5).flatMap (fun j =>
-        let base : Int := Int.ofNat j * entryStride
-        [ .mov "mask" (.reg "d")
-        , .sub "mask" (.imm j)
-        , .loadMem "c" "tbl" (base + 0),  .cmove "a0" (.reg "c")
-        , .loadMem "c" "tbl" (base + 8),  .cmove "a1" (.reg "c")
-        , .loadMem "c" "tbl" (base + 16), .cmove "a2" (.reg "c")
-        , .loadMem "c" "tbl" (base + 24), .cmove "a3" (.reg "c") ]))
-  ++ [ .storeMem "z" 0 (.reg "a0"), .storeMem "z" 8 (.reg "a1")
-     , .storeMem "z" 16 (.reg "a2"), .storeMem "z" 24 (.reg "a3") ]
+/-- The 32-entry CT select block: the same scan at a wider entry count. -/
+def combSelect5Block : List (JInstr 64) := selBlock windowEntries5
 
 /-- Init state for the 32-entry select. -/
 def initState5 (tab : Fin 32 → Fin 4 → BitVec 64) (didx : BitVec 64) : JState 64 :=
@@ -394,17 +396,8 @@ theorem combSelect5_constant_time_offsets :
   native_decide
 
 /-- The 32-entry select block takes no register-indexed memory access. -/
-theorem combSelect5Block_allDirect : allDirect combSelect5Block = true := by
-  have hA : ∀ a b : List (JInstr 64),
-      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
-  have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
-      (∀ x, allDirect (f x) = true) → allDirect (l.flatMap f) = true := by
-    intro l f h
-    induction l with
-    | nil => rfl
-    | cons x t ih => simp [hA, h x, ih]
-  rw [combSelect5Block, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
-  simp [allDirect]; simp [IsDirect]
+theorem combSelect5Block_allDirect : allDirect combSelect5Block = true :=
+  selBlock_allDirect windowEntries5
 
 /-- **Constant time.** The 32-entry comb window select produces the same machine
     leakage trace from any two starting states. -/
@@ -421,19 +414,7 @@ scanned over 64 slots, `d ∈ {0,…,63}`. Same CT scan, wider. -/
 def windowEntries6 : Nat := 64
 
 /-- The 64-entry CT select block. -/
-def combSelect6Block : List (JInstr 64) :=
-  [ .mov "a0" (.imm 0), .mov "a1" (.imm 0)
-  , .mov "a2" (.imm 0), .mov "a3" (.imm 0) ]
-  ++ ((List.range windowEntries6).flatMap (fun j =>
-        let base : Int := Int.ofNat j * entryStride
-        [ .mov "mask" (.reg "d")
-        , .sub "mask" (.imm j)
-        , .loadMem "c" "tbl" (base + 0),  .cmove "a0" (.reg "c")
-        , .loadMem "c" "tbl" (base + 8),  .cmove "a1" (.reg "c")
-        , .loadMem "c" "tbl" (base + 16), .cmove "a2" (.reg "c")
-        , .loadMem "c" "tbl" (base + 24), .cmove "a3" (.reg "c") ]))
-  ++ [ .storeMem "z" 0 (.reg "a0"), .storeMem "z" 8 (.reg "a1")
-     , .storeMem "z" 16 (.reg "a2"), .storeMem "z" 24 (.reg "a3") ]
+def combSelect6Block : List (JInstr 64) := selBlock windowEntries6
 
 /-- Init state for the 64-entry select. -/
 def initState6 (tab : Fin 64 → Fin 4 → BitVec 64) (didx : BitVec 64) : JState 64 :=
@@ -488,17 +469,8 @@ def combSelect6Asm : String :=
 #guard (BignumMontMulKernel.hasSub combSelect6Asm "cmoveq") && (BignumMontMulKernel.hasSub combSelect6Asm "subq") && (BignumMontMulKernel.hasSub combSelect6Asm "(%rdi)") && !(BignumMontMulKernel.hasSub combSelect6Asm ",%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi,")
 
 /-- The 64-entry select block takes no register-indexed memory access. -/
-theorem combSelect6Block_allDirect : allDirect combSelect6Block = true := by
-  have hA : ∀ a b : List (JInstr 64),
-      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
-  have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
-      (∀ x, allDirect (f x) = true) → allDirect (l.flatMap f) = true := by
-    intro l f h
-    induction l with
-    | nil => rfl
-    | cons x t ih => simp [hA, h x, ih]
-  rw [combSelect6Block, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
-  simp [allDirect]; simp [IsDirect]
+theorem combSelect6Block_allDirect : allDirect combSelect6Block = true :=
+  selBlock_allDirect windowEntries6
 
 /-- **Constant time.** The 64-entry comb window select produces the same machine
     leakage trace from any two starting states. -/
@@ -509,7 +481,14 @@ theorem combSelect6Block_constant_time (s₁ s₂ : JState 64) :
 /-- Write the three select kernels (4-, 5- and 6-bit windows) into `dir`, a path
     relative to the working directory. These are the renderings of the
     `combSelect*Block` kernels, each of which carries an `allDirect` constant-time
-    theorem. -/
+    theorem.
+
+    `emitTo`, `emitFrontTo` and `emitFoldedTo` write the same three file names,
+    under the same three symbol names, so that one harness links whichever it is
+    pointed at. Their contents are different algorithms: the blocks here scan with
+    `sub` and `cmove`, the front renderings scan with an arithmetic mask. Each
+    driver therefore takes its own `dir`, and two of them sharing one directory
+    would leave whichever ran last. -/
 def emitTo (dir : String) : IO Unit := do
   IO.FS.createDirAll dir
   IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") combSelectAsm

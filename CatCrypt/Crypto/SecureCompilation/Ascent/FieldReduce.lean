@@ -301,6 +301,25 @@ def SRmontRedc (t0Reg npReg mReg dcy rcy : String) (accs as : List String)
     (a.phase = MontRedcPhase.input →
       a.win = accs ∧ InputLoad t0Reg npReg mReg dcy rcy accs as p T nP st)
 
+/-- A register file for the reduce-step satisfiability witnesses: the modulus low limb `p0` holds
+`1`, the Montgomery constant register `np` holds `2^64 − 1`, and every other register reads `0`. -/
+def montRedcWitnessRegs (r : String) : BitVec 64 :=
+  if r = "p0" then 1 else if r = "np" then BitVec.allOnes 64 else 0
+
+/-- The state relation `SRmontRedc` is non-empty: the register file `montRedcWitnessRegs` with both
+flags clear is in the `input` phase of the relation at the accumulator window `["a0", "a1", "a2",
+"a3"]`, the modulus window `["p0", "p1", "p2", "p3"]`, modulus limbs `[1, 0, 0, 0]`, accumulator
+limbs `[0, 0, 0, 0]` and constant `2^64 − 1`. -/
+theorem srmontRedc_satisfiable :
+    ∃ st, ∃ a : AMontRedc,
+      SRmontRedc "t0" "np" "m" "dcy" "rcy" ["a0", "a1", "a2", "a3"] ["p0", "p1", "p2", "p3"]
+        [1, 0, 0, 0] [0, 0, 0, 0] (BitVec.allOnes 64) st a := by
+  refine ⟨{ regs := montRedcWitnessRegs, flags := { cf := some false, of := some false } },
+    { phase := MontRedcPhase.input, win := ["a0", "a1", "a2", "a3"], val := 0 }, ?_, ?_⟩
+  · decide
+  · intro _
+    exact ⟨rfl, by unfold InputLoad; decide⟩
+
 /-- The abstract transition of the reduce word-step: to the `output` phase, the shifted window
 `accs.drop 1 ++ [rcy]`, holding `Number.montgomeryReduce (valLimbs p) (2^64) n' a.val`. -/
 def faMontRedc (rcy : String) (accs : List String)
@@ -929,6 +948,19 @@ def SRmontRedc4 (p T : List (BitVec 64)) (nP : BitVec 64)
     (a.phase = MontRedcPhase.input →
       a.win = X86Backend.Curve4MontMulProvenEmit.accNames.take 4 ∧
       X86Backend.MontRedc4RunBlockProven.MontRedc4Load st p T nP)
+
+/-- The state relation `SRmontRedc4` is non-empty: the register file `montRedcWitnessRegs` with
+both flags clear is in the `input` phase of the relation at modulus limbs `[1, 0, 0, 0]`,
+accumulator limbs `[0, 0, 0, 0]` and constant `2^64 − 1`. -/
+theorem srmontRedc4_satisfiable :
+    ∃ st, ∃ a : AMontRedc,
+      SRmontRedc4 [1, 0, 0, 0] [0, 0, 0, 0] (BitVec.allOnes 64) st a := by
+  refine ⟨{ regs := montRedcWitnessRegs, flags := { cf := some false, of := some false } },
+    { phase := MontRedcPhase.input,
+      win := X86Backend.Curve4MontMulProvenEmit.accNames.take 4, val := 0 }, ?_, ?_⟩
+  · decide
+  · intro _
+    exact ⟨rfl, by unfold X86Backend.MontRedc4RunBlockProven.MontRedc4Load; decide⟩
 
 /-- The abstract transition of the fused reduce block: to the `output` phase, the top
 window `accNames[4..7] ++ [rtop]`, holding `Cios4LimbProven.montRedc4 (valLimbs p) n'

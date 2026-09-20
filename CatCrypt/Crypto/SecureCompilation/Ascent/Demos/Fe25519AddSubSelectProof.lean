@@ -523,32 +523,12 @@ theorem feSubBlock_correct (st : JState 64)
 /-! ## The comb table select, parametric in the number of entries -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
-  (entryStride combSelectBlock combSelect5Block combSelect6Block initState initState5
-    initState6 outLimbs)
+  (entryStride selEntry selPre selPost selBlock combSelectBlock combSelect5Block
+    combSelect6Block initState initState5 initState6 outLimbs)
 
-/-- One entry of the linear scan: compare the index with `j`, then conditionally move the
-    four words at `[tbl + 32·j + 8·k]` into `a0 … a3`. -/
-def selEntry (j : Nat) : List (JInstr 64) :=
-  let base : Int := Int.ofNat j * entryStride
-  [ .mov "mask" (.reg "d")
-  , .sub "mask" (.imm j)
-  , .loadMem "c" "tbl" (base + 0),  .cmove "a0" (.reg "c")
-  , .loadMem "c" "tbl" (base + 8),  .cmove "a1" (.reg "c")
-  , .loadMem "c" "tbl" (base + 16), .cmove "a2" (.reg "c")
-  , .loadMem "c" "tbl" (base + 24), .cmove "a3" (.reg "c") ]
-
-/-- The accumulator zeroing that precedes the scan. -/
-def selPre : List (JInstr 64) :=
-  [ .mov "a0" (.imm 0), .mov "a1" (.imm 0), .mov "a2" (.imm 0), .mov "a3" (.imm 0) ]
-
-/-- The output stores that follow the scan. -/
-def selPost : List (JInstr 64) :=
-  [ .storeMem "z" 0 (.reg "a0"), .storeMem "z" 8 (.reg "a1")
-  , .storeMem "z" 16 (.reg "a2"), .storeMem "z" 24 (.reg "a3") ]
-
-/-- The `n`-entry constant-time select. -/
-def selBlock (n : Nat) : List (JInstr 64) :=
-  selPre ++ (List.range n).flatMap selEntry ++ selPost
+/-! `selEntry`, `selPre`, `selPost` and `selBlock` are the kernel's own
+definitions, and the three window sizes are `selBlock` at their entry counts, so
+each of the three equations below unfolds one definition. -/
 
 theorem combSelectBlock_eq : combSelectBlock = selBlock 16 := rfl
 theorem combSelect5Block_eq : combSelect5Block = selBlock 32 := rfl
