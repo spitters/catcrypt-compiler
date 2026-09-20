@@ -30,6 +30,8 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
 CatCrypt.Crypto.Hax.HaxToLowCTSim_RCallN
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.ImpRustPrint
+CatCrypt.Crypto.Hax.LowCTToHaxP384
+CatCrypt.Crypto.Hax.LowCTToHaxSim
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
 CatCrypt.Crypto.Jasmin.AesBitsliceReflect
 CatCrypt.Crypto.Jasmin.AesGcmReflect
@@ -556,15 +558,21 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportNtru
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSntrup
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChain
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChainLogic
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrNestInline
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrReturn
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripCmp
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripLogical
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagInvTouch
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
@@ -712,6 +720,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVariantsEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Cios6LimbProven
 CatCrypt.Crypto.SecureCompilation.X86Backend.CmovSelectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
+CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectCmovFront
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
@@ -755,6 +764,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit
@@ -975,5 +985,4 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
-CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectCmovFront
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
