@@ -36,7 +36,7 @@ a binding register survives the rest of the chain.
 * `comBindingTy` — the type of a `Com`'s `k`-th binding.
 * `comPrefix` — the `Com` truncated at binding `k`.
 * `LvmFrame` — the register map outside a `regName` block is unchanged.
-* `epilogueOps` — the ABI epilogue's instruction list at `LinstrR`.
+* `epilogueOps` — `buildEpilogue`'s instruction list at `LinstrR`.
 
 ## Main results
 
@@ -47,10 +47,24 @@ a binding register survives the rest of the chain.
 * `straightOps_binding_denote` — binding `k`'s register holds
   `(comPrefix com k).denote V`.
 * `comToLprog_lsem_binding` — the same, from the encoded argument valuation.
-* `buildEpilogue_single_store_value` — the one-target epilogue stores the
-  designated binding's register value into `[R14 + off]`.
-* `buildEpilogue_dsts` — the epilogue writes only `R14`, `R15` and the map's
+* `buildEpilogue_single_store_value` — for a one-entry output map,
+  `buildEpilogue` stores the designated binding's register value into
+  `[R14 + off]`, given that the binding's register is not `R14`.
+* `buildEpilogue_dsts` — `buildEpilogue` writes only `R14`, `R15` and the map's
   `[R14 + off]` cells.
+
+The two `buildEpilogue` results carry a scope restriction that is not visible in
+their statements. **`buildEpilogue` is not applied on the emit path**: its only
+occurrences are its definition, `buildEpilogue_all_MOV`, these two results and
+three docstring mentions. `insertEpilogue` is applied, but on
+`retMat ++ calleeSaveRestoreEpilogue`. The mechanism a compiled kernel's output
+stores actually go through is the inline store block inside `physBodyWithStores`,
+which reloads the base register per store where `buildEpilogue` hoists one
+restore to the front. So these two results describe a store shape the compiler
+does not currently emit, and are kept as the single-target case of the argument
+the live path needs, not as evidence about any shipped kernel. The results above
+them — `comPrefix` and the frame family — are independent of that path and are
+what the live statement will be built from.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminBindingPrefixDenote
