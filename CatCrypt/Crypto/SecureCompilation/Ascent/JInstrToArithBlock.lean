@@ -105,7 +105,9 @@ def recogOp : List (JInstr 64) → Option (RawArith × List (JInstr 64))
 
 /-- Parse a decoded machine block into the list of ops it was lowered from. The
     empty block parses to the empty list; any instruction sequence that is not a
-    concatenation of recognised windows is rejected. -/
+    concatenation of recognised two-input windows is rejected — the one-input and
+    constant lowerings of `ArithBlock.un` and `ArithBlock.cnst` are outside the
+    parsed subset. -/
 def parseBlock : List (JInstr 64) → Option (List RawArith)
   | [] => some []
   | i₀ :: i₁ :: rest =>

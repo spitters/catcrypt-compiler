@@ -56,6 +56,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 def finalCtxB : {Γ : Ctxt jasminDialect} → ArithBlock Γ → Ctxt jasminDialect
   | Γ, .ret _ => Γ
   | _, .op _ _ _ _ rest => finalCtxB rest
+  | _, .un _ _ _ rest => finalCtxB rest
+  | _, .cnst _ rest => finalCtxB rest
 
 /-- **The register map at the final context.** The map accumulated by
     `lowerBlock`: each op binds its destination `g 0` to the new slot and shifts
@@ -64,6 +66,8 @@ def finalNm : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) → RegMapG Γ 
     (Nat → String) → RegMapG (finalCtxB ab)
   | _, .ret _, nm, _ => nm
   | _, .op _ _ _ _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .un _ _ _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .cnst _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
 
 /-- **The valuation at the final context.** The valuation accumulated by
     `ArithBlock.toCom`'s denotation: each op extends with its own denotation. -/
@@ -71,6 +75,8 @@ def finalVal : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
     Ctxt.Valuation Γ → Ctxt.Valuation (finalCtxB ab)
   | _, .ret _, V => V
   | _, .op bop _ a b rest, V => finalVal rest (V.extend ((arithExpr bop a b).denote V))
+  | _, .un uop _ a rest, V => finalVal rest (V.extend ((unExpr uop a).denote V))
+  | _, .cnst n rest, V => finalVal rest (V.extend ((constExpr n).denote V))
 
 /-- **The variable the block returns**, as a variable of the final context: the
     payload of the terminating `.ret`, reached through the op extensions. -/
@@ -78,6 +84,8 @@ def outVar : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
     Ctxt.Var (finalCtxB ab) (.reg 64)
   | _, .ret v => v
   | _, .op _ _ _ _ rest => outVar rest
+  | _, .un _ _ _ rest => outVar rest
+  | _, .cnst _ rest => outVar rest
 
 /-! ## 2. The tie at the final context -/
 
@@ -122,6 +130,48 @@ theorem lowerBlock_tie_state : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ
         (runBlock s (lowerArith2 bop (nm a) (nm b) (g 0)))
         (V.extend ((arithExpr bop a b).denote V)) hinterp' hfresh'
       simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
+  | _, .un uop huop a rest, nm, g, s, V, hinterp, hfresh => by
+      have hdisj := hfresh.2 0
+      have hinterp' : JStateInterpG (nm.extend (g 0))
+          (V.extend ((unExpr uop a).denote V))
+          (runBlock s (uop.toJInstr (g 0) (nm a))) := by
+        intro w
+        match w with
+        | .here =>
+            show (runBlock s (uop.toJInstr (g 0) (nm a))).get (g 0)
+                = (unExpr uop a).denote V
+            rw [lowerUn_get_dst uop huop (nm a) (g 0) s, hinterp a, unExpr_denote]
+        | .there w0 =>
+            show (runBlock s (uop.toJInstr (g 0) (nm a))).get (nm w0) = w0.lookup V
+            rw [lowerUn_get_other uop (nm a) (g 0) (nm w0)
+              (fun h => (hdisj w0) h.symm) s]
+            exact hinterp w0
+      have hfresh' : FreshFor (nm.extend (g 0)) (fun k => g (k + 1)) :=
+        FreshFor_extend nm g hfresh
+      have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun k => g (k + 1))
+        (runBlock s (uop.toJInstr (g 0) (nm a)))
+        (V.extend ((unExpr uop a).denote V)) hinterp' hfresh'
+      simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
+  | _, .cnst n rest, nm, g, s, V, hinterp, hfresh => by
+      have hdisj := hfresh.2 0
+      have hinterp' : JStateInterpG (nm.extend (g 0))
+          (V.extend ((constExpr n).denote V))
+          (runBlock s (lowerConst n (g 0))) := by
+        intro w
+        match w with
+        | .here =>
+            show (runBlock s (lowerConst n (g 0))).get (g 0) = (constExpr n).denote V
+            rw [lowerConst_get_dst n (g 0) s, constExpr_denote]
+        | .there w0 =>
+            show (runBlock s (lowerConst n (g 0))).get (nm w0) = w0.lookup V
+            rw [lowerConst_get_other n (g 0) (nm w0) (fun h => (hdisj w0) h.symm) s]
+            exact hinterp w0
+      have hfresh' : FreshFor (nm.extend (g 0)) (fun k => g (k + 1)) :=
+        FreshFor_extend nm g hfresh
+      have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun k => g (k + 1))
+        (runBlock s (lowerConst n (g 0)))
+        (V.extend ((constExpr n).denote V)) hinterp' hfresh'
+      simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
 
 /-! ## 3. The output register as one slot of the final context -/
 
@@ -133,6 +183,10 @@ theorem outReg_eq_finalNm : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) �
   | _, .ret _, _, _ => rfl
   | _, .op _ _ _ _ rest, nm, g =>
       outReg_eq_finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .un _ _ _ rest, nm, g =>
+      outReg_eq_finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .cnst _ rest, nm, g =>
+      outReg_eq_finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
 
 /-- The returned variable's value in the final valuation is the block's
     `Com jasminDialect` denotation. -/
@@ -141,6 +195,10 @@ theorem outVar_lookup_finalVal : {Γ : Ctxt jasminDialect} → (ab : ArithBlock 
   | _, .ret _, _ => rfl
   | _, .op bop _ a b rest, V =>
       outVar_lookup_finalVal rest (V.extend ((arithExpr bop a b).denote V))
+  | _, .un uop _ a rest, V =>
+      outVar_lookup_finalVal rest (V.extend ((unExpr uop a).denote V))
+  | _, .cnst n rest, V =>
+      outVar_lookup_finalVal rest (V.extend ((constExpr n).denote V))
 
 /-- **The output-register tie as one instance of the final-state tie.** Reading
     the block's output register after `runBlock` yields the program's
@@ -219,5 +277,15 @@ theorem block2_final_state_slots :
       ∧ (runBlock stateW (lowerBlock block2 nmW gW)).get (gW 1) = (294 : BitVec 64) := by
   have h := lowerBlock_tie_state block2 nmW gW stateW valW stateW_interp gW_fresh
   exact ⟨h (.there .here), h .here⟩
+
+/-- **Every slot of the mixed block is readable.** On the same allocation and
+    state, the constant's register holds `5`, the left-shift's register holds
+    `7 <<< 3 = 56` and the output register holds `56 ^^^ (35 >>> 2) = 48`. -/
+theorem block3_final_state_slots :
+    (runBlock stateW (lowerBlock block3 nmW gW)).get (gW 0) = (5 : BitVec 64)
+      ∧ (runBlock stateW (lowerBlock block3 nmW gW)).get (gW 2) = (56 : BitVec 64)
+      ∧ (runBlock stateW (lowerBlock block3 nmW gW)).get (gW 4) = (48 : BitVec 64) := by
+  have h := lowerBlock_tie_state block3 nmW gW stateW valW stateW_interp gW_fresh
+  exact ⟨h (.there (.there (.there (.there .here)))), h (.there (.there .here)), h .here⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

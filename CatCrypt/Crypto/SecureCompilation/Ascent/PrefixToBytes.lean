@@ -50,6 +50,8 @@ theorem finalCtx_eq_finalCtxB : {Γ : Ctxt jasminDialect} → (ab : ArithBlock �
     ab.finalCtx = finalCtxB ab
   | _, .ret _ => rfl
   | _, .op _ _ _ _ rest => finalCtx_eq_finalCtxB rest
+  | _, .un _ _ _ rest => finalCtx_eq_finalCtxB rest
+  | _, .cnst _ rest => finalCtx_eq_finalCtxB rest
 
 /-! ## 2. The composition -/
 
