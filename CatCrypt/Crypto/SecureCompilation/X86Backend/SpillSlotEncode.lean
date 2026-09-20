@@ -131,7 +131,18 @@ def lowerCov5L (frame spillW : Nat) (i : Linstr)
     (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
   lowerCov5 frame spillW i.li_i qsaveB
 
-/-- **The complete full-body `JInstr` gather.** Drop the trailing `Lret`, compute
+/-- A frame-size directive, `Lopn [] "FRAME" [.imm f]` or its `"FRAMEADD"`
+    companion. `LprogAsmPrinter.renderLopn` renders both as no text, and the byte
+    path supplies the frame through the framing wrap, so the gathered block
+    carries nothing for them. `frameSize` reads them from the body itself, not
+    from the gathered block, so dropping them here does not change the frame. -/
+def isFrameDirective (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn [] opn _ => opn == "FRAME" || opn == "FRAMEADD"
+  | _ => false
+
+/-- **The complete full-body `JInstr` gather.** Drop the trailing `Lret` and the
+    frame-size directives, compute
     the frame size + body-uniform spill width from the body (the SAME way
     `encodeLcmd` does — `frameSize`/`bodyIsU64`), then lower every remaining
     instruction through `lowerCov5` (the spill-slot-aware `mov` on top of the
@@ -142,7 +153,7 @@ def gatherJBlock5 (body : List Linstr) : Option (List (JInstr 64)) :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
   let qsaveB := qsaveBytesFor body
-  ((body.filter (fun i => !isLret i)).mapM
+  ((body.filter (fun i => !isLret i && !isFrameDirective i)).mapM
     (fun i => lowerCov5L frame spillW i qsaveB)).map List.flatten
 
 /-! ## 2. The qsave per-op byte agreements (the deliverable, `native_decide`-free)
