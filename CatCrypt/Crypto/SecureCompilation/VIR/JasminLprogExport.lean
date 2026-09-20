@@ -6,6 +6,9 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+import all Init.Data.List.Sort.Basic
+import all Init.Data.String.Slice
+import all Init.Data.String.Search
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
@@ -293,6 +296,88 @@ def natOfDigits? (cs : List Char) : Option Nat :=
       | some k => if '0' ≤ c && c ≤ '9' then some (k * 10 + (c.toNat - '0'.toNat)) else none
       | none => none) (some 0)
 
+/-- The scan state of `String.Slice.isNat` after a character list: the first
+    component is the early `false` answer once a character rejects the string,
+    the second records whether the previous character was a digit. -/
+def charsIsNatStep : List Char → (Option Bool × Bool) → (Option Bool × Bool)
+  | [], st => st
+  | c :: rest, st =>
+      if c = '_' then
+        (if (!st.2) = true then (some false, st.2)
+         else charsIsNatStep rest ((none : Option Bool), false))
+      else if c.isDigit = true then charsIsNatStep rest ((none : Option Bool), true)
+      else (some false, st.2)
+
+/-- `charsIsNatStep` is the `for` loop of `String.Slice.isNat` over a character
+    list. -/
+theorem forIn_charsIsNatStep : ∀ (l : List Char) (st : Option Bool × Bool),
+    (forIn l st (fun c (__s : Option Bool × Bool) =>
+        if c = '_' then
+          if (!__s.2) = true then pure (ForInStep.done (some false, __s.2))
+          else pure (ForInStep.yield ((none : Option Bool), false))
+        else
+          if c.isDigit = true then pure (ForInStep.yield ((none : Option Bool), true))
+          else pure (ForInStep.done (some false, __s.2))) : Id (Option Bool × Bool))
+      = charsIsNatStep l st := by
+  intro l
+  induction l with
+  | nil => intro st; rfl
+  | cons c rest ih =>
+    intro st
+    simp only [charsIsNatStep, List.forIn_cons]
+    split
+    · split
+      · rfl
+      · exact ih _
+    · split
+      · exact ih _
+      · rfl
+
+/-- `String.Slice.isNat` on a character list. -/
+def charsIsNat (l : List Char) : Bool :=
+  let st := charsIsNatStep l ((none : Option Bool), false)
+  st.1.getD st.2
+
+/-- `String.Slice.toNat?` on a character list: the decimal value with `_`
+    separators ignored when `charsIsNat` accepts the list, and `none`
+    otherwise. -/
+def charsToNat? (cs : List Char) : Option Nat :=
+  if charsIsNat cs then
+    some (cs.foldl (fun n c => if c = '_' then n else n * 10 + (c.toNat - '0'.toNat)) 0)
+  else none
+
+/-- `charsIsNat` is `String.Slice.isNat`. -/
+theorem sliceIsNat_eq (s : String.Slice) : s.isNat = charsIsNat s.copy.toList := by
+  rw [String.Slice.isNat]
+  simp only [String.Slice.forIn_eq_forIn_toList, forIn_charsIsNatStep, charsIsNat]
+  generalize charsIsNatStep s.copy.toList ((none : Option Bool), false) = st
+  obtain ⟨o, b⟩ := st
+  cases o <;> rfl
+
+/-- `charsToNat?` is `String.Slice.toNat?`. -/
+theorem sliceToNat?_eq (s : String.Slice) : s.toNat? = charsToNat? s.copy.toList := by
+  rw [String.Slice.toNat?, charsToNat?, sliceIsNat_eq, String.Slice.foldl_eq_foldl_toList]
+
+/-- `(s.drop k).toNat?`, the decimal suffix of a name after its `k`-character
+    prefix. `String.Slice.isNat` and `String.Slice.foldl` iterate over
+    `String.Pos` and have no normal form in the kernel; this parse recurses on
+    `List Char` and reduces. -/
+def strDropToNat? (s : String) (k : Nat) : Option Nat := charsToNat? (s.toList.drop k)
+
+/-- `strDropToNat?` is `String.toNat?` after `String.drop`. -/
+@[simp] theorem strDropToNat?_eq (s : String) (k : Nat) :
+    strDropToNat? s k = (s.drop k).toNat? := by
+  rw [strDropToNat?, sliceToNat?_eq, String.toList_copy_drop]
+
+/-- `String.toNat?` over the character list, so that a closed application
+    reduces in the kernel. -/
+def strToNat? (s : String) : Option Nat := charsToNat? s.toList
+
+/-- `strToNat?` is `String.toNat?`. -/
+@[simp] theorem strToNat?_eq (s : String) : strToNat? s = s.toNat? := by
+  rw [strToNat?, String.toNat?, sliceToNat?_eq]
+  simp
+
 /-- Strip the optional `":64"` width tag from a body mnemonic, recovering the
     base opcode for the `isBinop` / `isShift` recognizers. -/
 def stripWidthTag (mnem : String) : String :=
@@ -322,7 +407,7 @@ def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
         | "ROR" => some "ror" | "ROL" => some "rol"
         | "SHL" => some "shl" | "SHR" => some "shr" | "SAR" => some "sar"
         | _ => none
-      match att, nStr.toNat? with
+      match att, strToNat? nStr with
       | some a, some n => some (a, n, if isU64 then 64 else 32)
       | _, _ => none
   | _ => none
@@ -1612,9 +1697,9 @@ def parseCallW (opn : String) : Option (Nat × List Nat × String) :=
   | some s =>
       match s.splitOn ";" with
       | retStr :: argStr :: nameParts =>
-          match retStr.toNat? with
+          match strToNat? retStr with
           | some retW =>
-              let argWs := (argStr.splitOn ",").filterMap (·.toNat?)
+              let argWs := (argStr.splitOn ",").filterMap strToNat?
               some (retW, argWs, String.intercalate ";" nameParts)
           | none => none
       | _ => none
@@ -3281,6 +3366,96 @@ theorem physScanSpillStep_nodup (numRegs : Nat) (uses : Array Nat)
 def physSlotUses (tr : List PhysEvent) (s : Nat) : Nat :=
   (tr.flatMap PhysEvent.touched).count s
 
+/-- `List.merge` with an explicit fuel argument, recursive on the fuel. Fuel `0`
+    returns the first list. -/
+def mergeFuel {α : Type} (le : α → α → Bool) : Nat → List α → List α → List α
+  | 0, xs, _ => xs
+  | _ + 1, [], ys => ys
+  | _ + 1, xs, [] => xs
+  | f + 1, x :: xs, y :: ys =>
+      if le x y then x :: mergeFuel le f xs (y :: ys)
+      else y :: mergeFuel le f (x :: xs) ys
+
+/-- `mergeFuel` agrees with `List.merge` when the fuel covers both lists. -/
+theorem mergeFuel_eq {α : Type} (le : α → α → Bool) :
+    ∀ (f : Nat) (xs ys : List α), xs.length + ys.length ≤ f →
+      mergeFuel le f xs ys = List.merge xs ys le := by
+  intro f
+  induction f with
+  | zero =>
+    intro xs ys h
+    have hx : xs = [] := List.eq_nil_of_length_eq_zero (by omega)
+    have hy : ys = [] := List.eq_nil_of_length_eq_zero (by omega)
+    subst hx; subst hy; simp [mergeFuel]
+  | succ f ih =>
+    intro xs ys h
+    match xs, ys with
+    | [], ys => simp [mergeFuel]
+    | x :: xs, [] => simp [mergeFuel]
+    | x :: xs, y :: ys =>
+      simp only [List.length_cons] at h
+      by_cases hle : le x y
+      · rw [show mergeFuel le (f + 1) (x :: xs) (y :: ys)
+              = x :: mergeFuel le f xs (y :: ys) by simp [mergeFuel, hle]]
+        rw [ih xs (y :: ys) (by simp; omega), List.cons_merge_cons_pos _ _ _ hle]
+      · rw [show mergeFuel le (f + 1) (x :: xs) (y :: ys)
+              = y :: mergeFuel le f (x :: xs) ys by simp [mergeFuel, hle]]
+        rw [ih (x :: xs) ys (by simp; omega),
+          List.cons_merge_cons_neg _ _ _ (by simpa using hle)]
+
+open List.MergeSort.Internal in
+/-- `List.mergeSort` with an explicit fuel argument, recursive on the fuel: the
+    same contiguous split and the same merge, so the sort is stable. Fuel `0`
+    returns the list. -/
+def mergeSortFuel {α : Type} (le : α → α → Bool) : Nat → List α → List α
+  | 0, l => l
+  | _ + 1, [] => []
+  | _ + 1, [a] => [a]
+  | f + 1, a :: b :: l =>
+      let lr := splitInTwo ⟨a :: b :: l, rfl⟩
+      mergeFuel le (l.length + 2) (mergeSortFuel le f lr.1.1) (mergeSortFuel le f lr.2.1)
+
+open List.MergeSort.Internal in
+/-- `mergeSortFuel` agrees with `List.mergeSort` when the fuel covers the list. -/
+theorem mergeSortFuel_eq {α : Type} (le : α → α → Bool) :
+    ∀ (f : Nat) (l : List α), l.length ≤ f → mergeSortFuel le f l = List.mergeSort l le := by
+  intro f
+  induction f with
+  | zero =>
+    intro l h
+    match l with
+    | [] => simp [mergeSortFuel]
+    | a :: l => simp at h
+  | succ f ih =>
+    intro l h
+    match l with
+    | [] => simp [mergeSortFuel]
+    | [a] => simp [mergeSortFuel]
+    | a :: b :: l =>
+      simp only [List.length_cons] at h
+      show mergeFuel le (l.length + 2)
+          (mergeSortFuel le f (splitInTwo ⟨a :: b :: l, rfl⟩).1.1)
+          (mergeSortFuel le f (splitInTwo ⟨a :: b :: l, rfl⟩).2.1) = _
+      rw [ih _ (by have := (splitInTwo (n := l.length + 2) ⟨a :: b :: l, rfl⟩).1.2; omega),
+          ih _ (by have := (splitInTwo (n := l.length + 2) ⟨a :: b :: l, rfl⟩).2.2; omega)]
+      rw [List.mergeSort]
+      refine mergeFuel_eq le _ _ _ ?_
+      rw [List.length_mergeSort, List.length_mergeSort]
+      have h1 := (splitInTwo (n := l.length + 2) ⟨a :: b :: l, rfl⟩).1.2
+      have h2 := (splitInTwo (n := l.length + 2) ⟨a :: b :: l, rfl⟩).2.2
+      omega
+
+/-- `List.mergeSort` at the fuel its own argument supplies. `List.merge` and
+    `List.mergeSort` are sealed to the kernel, so a closed application of either
+    has no normal form; `mergeSortFuel` recurses on a `Nat` and reduces. -/
+def kernelMergeSort {α : Type} (le : α → α → Bool) (l : List α) : List α :=
+  mergeSortFuel le l.length l
+
+/-- `kernelMergeSort` is `List.mergeSort`. -/
+@[simp] theorem kernelMergeSort_eq {α : Type} (le : α → α → Bool) (l : List α) :
+    kernelMergeSort le l = l.mergeSort le :=
+  mergeSortFuel_eq le l.length l (Nat.le_refl _)
+
 /-- Compiled `physLiveData`: one `O(n)` pass over the trace records the first
     touch, the last touch and the touch count of every slot into arrays (rather
     than re-scanning the trace per slot in
@@ -3315,7 +3490,7 @@ def physLiveData (tr : List PhysEvent) : List (Nat × Nat × Nat) × Array Nat :
   let raw := (List.range univ).filterMap (fun s =>
     let (st, en) := physLiveRange tr s
     if st < tr.length then some (s, st, en) else none)
-  (raw.mergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1)),
+  (kernelMergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1)) raw,
    ((List.range univ).map (physSlotUses tr)).toArray)
 
 /-- The live slots paired with ranges, sorted by start then slot. -/
@@ -4030,7 +4205,7 @@ def straightCallRelocTableCore (body : Lcmd) (tbl : Array Nat) : Array Nat :=
       -- effective live range starts at 0: an argument first read after a
       -- call must count as call-crossing (its home is written before the
       -- call runs).
-      let st := if nm.startsWith "a" && ((nm.drop 1).toNat?).isSome
+      let st := if nm.startsWith "a" && (strDropToNat? nm 1).isSome
                 then 0 else it.2.1
       if nm != "%livepin" && !isHwRegName nm then
         let raw := physMapTabled tbl s
@@ -4208,7 +4383,7 @@ def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
     | .Lopn [.reg d] opn [.imm v] =>
         if (stripWidthTag opn) == "MOV" then
           if d.startsWith "r" then
-            match (d.drop 1).toNat? with
+            match strDropToNat? d 1 with
             | some k => if k < a.size then a := a.set! k (some v)
             | none => pure ()
     | _ => pure ()
@@ -4217,7 +4392,7 @@ def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
 /-- Resolve a body register name `r<k>` against a prebuilt `movImmTable`. -/
 def movImmLookup (tbl : Array (Option Nat)) (n : String) : Option Nat :=
   if n.startsWith "r" then
-    match (n.drop 1).toNat? with
+    match strDropToNat? n 1 with
     | some k => if k < tbl.size then tbl[k]! else none
     | none => none
   else none
@@ -4633,7 +4808,7 @@ def virtBodyNumArgs (body : Lcmd) : Nat :=
           match s with
           | .reg name =>
               if name.startsWith "a" then
-                match (name.drop 1).toNat? with
+                match strDropToNat? name 1 with
                 | some k => Nat.max n' (k + 1)
                 | none => n'
               else n'
@@ -5002,7 +5177,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   -- name is not an arg name in range).
   let argIdx? (nm : String) : Option Nat :=
     if nm.startsWith "a" then
-      match (nm.drop 1).toNat? with
+      match strDropToNat? nm 1 with
       | some s => if s < nArgs then some s else none
       | none => none
     else none
@@ -5555,7 +5730,7 @@ the `outStoreMap`/`inLoadMap` are slot-keyed, so they are unaffected. -/
 def residenceRenameName (nArgs : Nat) (slotOfBinding : Nat → Nat) (n : String) :
     String :=
   if n.startsWith "r" then
-    match (n.drop 1).toNat? with
+    match strDropToNat? n 1 with
     | some k => if k ≥ nArgs then "res" ++ toString (slotOfBinding (k - nArgs)) else n
     | none => n
   else n

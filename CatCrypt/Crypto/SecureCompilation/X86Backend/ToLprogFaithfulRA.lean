@@ -912,7 +912,7 @@ theorem liveCmp_total : ∀ (a b : Nat × Nat × Nat),
 /-- The shipped item list names each live slot once. -/
 theorem physLiveItems_slots_nodup (tr : List PhysEvent) :
     (physLiveItems tr).Pairwise (fun a b => ¬ a.1 = b.1) := by
-  simp only [physLiveItems, physLiveData]
+  simp only [physLiveItems, physLiveData, kernelMergeSort_eq]
   refine ((List.mergeSort_perm _ _).pairwise_iff (fun h he => h he.symm)).mpr ?_
   rw [List.pairwise_filterMap]
   refine List.nodup_range.imp ?_
@@ -929,7 +929,7 @@ theorem physLiveItems_slots_nodup (tr : List PhysEvent) :
 /-- The shipped item list meets the scan's input contract. -/
 theorem physLiveItems_sorted (tr : List PhysEvent) : ItemsSorted (physLiveItems tr) := by
   refine List.Pairwise.and ?_ (physLiveItems_slots_nodup tr)
-  simp only [physLiveItems, physLiveData]
+  simp only [physLiveItems, physLiveData, kernelMergeSort_eq]
   refine (List.pairwise_mergeSort liveCmp_trans liveCmp_total _).imp ?_
   intro a b h
   simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
@@ -939,7 +939,7 @@ theorem physLiveItems_sorted (tr : List PhysEvent) : ItemsSorted (physLiveItems 
 theorem physLiveItems_range (tr : List PhysEvent) :
     ∀ it ∈ physLiveItems tr, physLiveRange tr it.1 = (it.2.1, it.2.2) := by
   intro it hit
-  simp only [physLiveItems, physLiveData] at hit
+  simp only [physLiveItems, physLiveData, kernelMergeSort_eq] at hit
   rw [(List.mergeSort_perm _ _).mem_iff, List.mem_filterMap] at hit
   obtain ⟨a, _, hfa⟩ := hit
   by_cases ha : (physLiveRange tr a).1 < tr.length

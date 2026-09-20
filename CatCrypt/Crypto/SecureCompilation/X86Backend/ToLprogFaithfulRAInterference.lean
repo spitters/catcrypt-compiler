@@ -493,7 +493,7 @@ theorem physLiveItems_mem_of_start_lt {tr : List PhysEvent} {s : Nat}
     (hs : s < physUniverse tr) (hst : (physLiveRange tr s).1 < tr.length) :
     ∃ it ∈ physLiveItems tr, it.1 = s := by
   refine ⟨(s, (physLiveRange tr s).1, (physLiveRange tr s).2), ?_, rfl⟩
-  simp only [physLiveItems, physLiveData]
+  simp only [physLiveItems, physLiveData, kernelMergeSort_eq]
   rw [(List.mergeSort_perm _ _).mem_iff, List.mem_filterMap]
   exact ⟨s, List.mem_range.mpr hs, by simp only [hst, if_pos]⟩
 
