@@ -48,10 +48,8 @@ resolve, and the matching `JInstr` constructors `adc` / `sbb` encode as
 the ADX carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
 `encAdxCarry` above the `aluOpcode` dispatch.
 
-An immediate second source takes the group-1 `81 /digit id` form on the `JInstr`
-side at every value, while `LprogBytes.encImmOp` selects the shorter
-`83 /digit ib` form inside the sign-extended-imm8 range. The immediate arms are
-gated on `aluImmGathers`, the values on which the two selections coincide.
+An immediate second source is gated on `aluImmGathers`, the signed 32-bit field
+the group-1 immediate form carries.
 
 ## Main results
 
@@ -83,8 +81,8 @@ gated on `aluImmGathers`, the values on which the two selections coincide.
 * `encJAdc_RCX_RDX`, `encJSbb_R10_R11`, `encJAdcImm_RCX_1000`,
   `encJSbbImm_R10_1000` — the same agreements at concrete operands under
   `physAlloc`, by `decide +kernel`.
-* `lowerMemOp_sbbImm0_none` — the refusal at a small immediate, where the two
-  encoders select different legal forms.
+* `lowerMemOp_sbbImm0` — the gather at a small immediate, whose bytes agree with
+  `encodeLopn` under `GatherImmForms.encodeJInstr7`.
 
 ## Scope
 
@@ -106,11 +104,13 @@ while the `Lopn` denotes `d := a ± s ± CF`; the arms reject that shape rather
 than lowering it to a block whose first source is dropped. Operands outside the
 sixteen `isGpName` names are rejected as well.
 
-An immediate second source inside the sign-extended-imm8 range is rejected, since
-`encImmOp` takes the 4-byte `83 /digit ib` form there and `encodeJInstr` the
-7-byte `81 /digit id` one. The two denote the same operation, so this is a form
-selection to reconcile in an encoder variant, in the manner of `GatherImmForms`,
-rather than a shape to gather to different bytes.
+An immediate second source is admitted over the whole signed 32-bit field
+`aluImmGathers` names. Inside the sign-extended-imm8 range the live
+`ScalarEncoder.encodeJInstr` and `LprogBytes.encImmOp` select different group-1
+encodings of that instruction; both are valid and compute the same result, and
+`GatherImmForms.encodeJInstr7` is the encoder that makes the same selection as
+`encImmOp` and so agrees on bytes there. The agreements stated here against the
+live encoder carry `fitsImm8S 1 v = false` for that reason.
 -/
 
 @[expose] public section
@@ -175,18 +175,30 @@ everything else, so it composes below an existing lowering as a fallback. The
 `frame` / `spillW` / `qsaveB` parameters are not read: a `mem.*` operand carries
 its own base and offset, unlike a `k.`/`qsave.` slot, whose offset
 `SpillSlotEncode.lowerCov5` resolves from the frame. They are in the signature
-so the arm composes at the same type as the rest of the chain. -/
+so the arm composes at the same type as the rest of the chain.
 
-/-- Does an immediate second source encode to the same bytes on both sides? The
-    `JInstr` ALU arms encode an immediate through `ScalarEncoder.encAluImm`, the
-    `81 /digit id` imm32 form, at every value; `LprogBytes.encImmOp` selects the
-    4-byte `83 /digit ib` sign-extended-imm8 form whenever `fitsImm8S 1 v` holds
-    and the 7-byte imm32 form otherwise. The two forms denote the same operation
-    and differ in bytes, so the gathered block agrees with `encodeLopn` exactly on
-    the values that take the imm32 form on the Lprog side and lie inside the field
-    `ScalarEncoder.encodableJInstr` admits: `fitsImm32S v` and not
-    `fitsImm8S 1 v`. -/
-def aluImmGathers (v : Nat) : Bool := fitsImm32S v && !fitsImm8S 1 v
+The two-source arms require the first source to be the destination, which the
+physical export establishes by construction:
+`JasminLprogExport.legalizeBinop` writes the destination as the binop's first
+source in each of its four spill combinations, and `lowerTwoAddr` prepends
+`legalizeMov dst s0` exactly on the branch where the two differ. The pre-register-
+allocation form is the stated exception — `opToLinstrR`'s `regArith` arm binds a
+fresh destination, so its first source is some other name — and it is not what
+the byte encoders read. -/
+
+/-- Is an immediate second source inside the signed 32-bit field the group-1
+    `81 /digit id` form carries? This is `ScalarEncoder.encodableJInstr`'s own
+    gate on an ALU immediate, so an arm admitting exactly these values lowers
+    only to instructions that encoder encodes faithfully.
+
+    Which of the two legal group-1 encodings each side then selects is a separate
+    question from which values gather: `LprogBytes.encImmOp` takes the 4-byte
+    `83 /digit ib` form inside the sign-extended-imm8 range and
+    `ScalarEncoder.encodeJInstr` the 7-byte `81 /digit id` form at every value.
+    Both encodings are valid and compute the same result; what differs inside
+    that range is the agreement of the two byte streams, which
+    `GatherImmForms.encodeJInstr7` reconciles by making the same selection. -/
+def aluImmGathers (v : Nat) : Bool := fitsImm32S v
 
 /-- The array-ABI memory-operand lowering. A `STORE:64` whose destination is a
     `mem.<base>.<off>` name lowers to `JInstr.storeMem base off (.reg src)`; a
@@ -644,18 +656,14 @@ the `81 /digit id` form; `aluImmGathers` restricts the arm to the values on whic
 `encImmOp` selects that same form, so the agreement needs no reasoning about the
 `83 /digit ib` short form beyond the gate. -/
 
-/-- `aluImmGathers v` gives the two facts the immediate agreement consumes: the
-    value is outside the sign-extended-imm8 range, and inside the imm32 field
-    `encodableJInstr` admits. -/
-theorem fitsImm8S_of_aluImmGathers {v : Nat} (h : aluImmGathers v = true) :
-    fitsImm8S 1 v = false := by
-  unfold aluImmGathers at h
-  simp_all
-
-/-- **The `ADC:64` immediate byte agreement.** -/
+/-- **The `ADC:64` immediate byte agreement**, at the values where the live
+    `encodeJInstr` makes the same group-1 form selection `encImmOp` makes. Inside
+    the sign-extended-imm8 range the two byte streams differ and
+    `GatherImmForms.encodeJInstr7` is the encoder that agrees there. -/
 theorem adcImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     (dn : String) (v qsaveB : Nat)
     (hd : isGpName dn = true) (hv : aluImmGathers v = true)
+    (hfit : fitsImm8S 1 v = false)
     (hdsp : isSpillOrQsave dn = false)
     (hr : gpNum (regOf alloc dn) = gpNumU dn) :
     (lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB).map
@@ -664,14 +672,15 @@ theorem adcImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
           (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB) := by
   rw [lowerMemOp_adc_imm frame spillW qsaveB dn v hd hv, Option.map_some,
     encodeJBlock_singleton,
-    encodeLopn_adcImm frame spillW dn dn v qsaveB hdsp (fitsImm8S_of_aluImmGathers hv),
-    encAluImmw_one]
+    encodeLopn_adcImm frame spillW dn dn v qsaveB hdsp hfit, encAluImmw_one]
   simp [encodeJInstr, hr]
 
-/-- **The `SBB:64` immediate byte agreement.** -/
+/-- **The `SBB:64` immediate byte agreement**, under the same form-selection
+    condition as its `ADC:64` dual. -/
 theorem sbbImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     (dn : String) (v qsaveB : Nat)
     (hd : isGpName dn = true) (hv : aluImmGathers v = true)
+    (hfit : fitsImm8S 1 v = false)
     (hdsp : isSpillOrQsave dn = false)
     (hr : gpNum (regOf alloc dn) = gpNumU dn) :
     (lowerMemOp frame spillW (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB).map
@@ -680,8 +689,7 @@ theorem sbbImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
           (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB) := by
   rw [lowerMemOp_sbb_imm frame spillW qsaveB dn v hd hv, Option.map_some,
     encodeJBlock_singleton,
-    encodeLopn_sbbImm frame spillW dn dn v qsaveB hdsp (fitsImm8S_of_aluImmGathers hv),
-    encAluImmw_one]
+    encodeLopn_sbbImm frame spillW dn dn v qsaveB hdsp hfit, encAluImmw_one]
   simp [encodeJInstr, hr]
 
 /-! ## 5. The agreement at concrete operands
@@ -742,13 +750,13 @@ theorem encJSbbImm_R10_1000 :
       = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000]) := by
   decide +kernel
 
-/-- The gathered blocks for the two in-place carry-chain mnemonics at a small
-    immediate would NOT match `encodeLopn`, which takes the 4-byte
-    `83 /digit ib` short form there while `encodeJInstr` takes the 7-byte
-    `81 /digit id` one. `aluImmGathers` excludes the value, so `lowerMemOp`
-    declines the shape instead of gathering it to different bytes. -/
-theorem lowerMemOp_sbbImm0_none :
-    lowerMemOp 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 0]) = none := by
+/-- The in-place carry-chain mnemonics gather at a small immediate as at any
+    other value inside the signed 32-bit field. The bytes of this block match
+    `encodeLopn` under `GatherImmForms.encodeJInstr7`, which makes the same
+    group-1 form selection (`GatherImmForms.encJ7SbbImm0_eq_lopn`). -/
+theorem lowerMemOp_sbbImm0 :
+    lowerMemOp 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 0])
+      = some [JInstr.sbb "R10" (.imm 0)] := by
   with_unfolding_all rfl
 
 /-! ### The `LEA:64` arm's bytes

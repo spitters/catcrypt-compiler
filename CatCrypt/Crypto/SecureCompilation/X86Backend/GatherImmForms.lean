@@ -60,6 +60,9 @@ This module is the **additive** closing unit, on top of `SpillSlotEncode`:
   `encodeJInstr`, so this is a strict superset that agrees with the live encoder
   on all the bytes the 16 already-matching kernels produce.
 * **`gatherJBlock6`** — `gatherJBlock5` over `lowerCov6`.
+* **`encodeJInstr7` / `encodeJBlock7`** (§2b) — `encodeJInstr6` with the seven
+  group-1 arithmetic immediate arms carrying the same form selection `encImmOp`
+  makes between `83 /digit ib` and `81 /digit id`.
 
 We do **not** touch the live `encodeJInstr` / `encodeJBlock` (they have no
 3-byte-shift or imm32-sign-extend-`MOV` arm, and no nil-`MULXHI` form — the
@@ -340,6 +343,236 @@ theorem imm_forms_byte_match (frame spillW : Nat) (sn s0 s1 : String)
    encJShr1_eq_lopn frame spillW sn hns hgp hds,
    encJShl1_eq_lopn frame spillW sn hnl hgp hds,
    mulxhi_nil_eq_lopn physAlloc frame spillW "RAX" s0 s1⟩
+
+/-! ## 2b. The group-1 arithmetic immediate form: `encodeJInstr7`
+
+A fourth form selection of the same kind as §2's three. `LprogBytes.encImmOp`
+selects the 4-byte sign-extended-imm8 form `83 /digit ib` (`encAluImm8`) for a
+group-1 arithmetic immediate in `[-128, 127]` at the operand width, and the
+7-byte `81 /digit id` form (`encAluImmw`) outside it;
+`ScalarEncoder.encodeJInstr`'s ALU immediate arms are fixed at `encAluImm`, the
+`81 /digit id` form, at every value. Both encodings are valid and the CPU
+computes the same result from either — what differs inside the range is the
+agreement between the two byte streams, not the arithmetic the instruction
+performs.
+
+`encodeJInstr7` gives the seven group-1 arithmetic arms (`ADD` `/0`, `OR` `/1`,
+`ADC` `/2`, `SBB` `/3`, `AND` `/4`, `SUB` `/5`, `XOR` `/6`) the form `encImmOp`
+selects, and delegates every other instruction to `encodeJInstr6`, so it is a
+strict superset of §2 and agrees with it on every byte §2 produces. -/
+
+/-- The group-1 arithmetic immediate bytes at the U64 width, with the form
+    selection `LprogBytes.encImmOp` makes: the 4-byte `83 /digit ib` inside the
+    sign-extended-imm8 range, the 7-byte `81 /digit id` outside it. -/
+def g1ImmBytes (alloc : GpAlloc) (digit : Nat) (d : String) (v : Nat) :
+    List (BitVec 8) :=
+  if fitsImm8S 1 v then encAluImm8 1 digit (gpNum (regOf alloc d)) v
+  else encAluImm digit (gpNum (regOf alloc d)) v
+
+/-- Encode one scalar `JInstr 64` with the group-1 arithmetic immediate form
+    selection of `encImmOp` on top of `encodeJInstr6`'s three; every other arm
+    delegates to `encodeJInstr6`. -/
+def encodeJInstr7 (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
+  | .add d (.imm v)  => g1ImmBytes alloc 0 d v
+  | .or_ d (.imm v)  => g1ImmBytes alloc 1 d v
+  | .adc d (.imm v)  => g1ImmBytes alloc 2 d v
+  | .sbb d (.imm v)  => g1ImmBytes alloc 3 d v
+  | .and_ d (.imm v) => g1ImmBytes alloc 4 d v
+  | .sub d (.imm v)  => g1ImmBytes alloc 5 d v
+  | .xor_ d (.imm v) => g1ImmBytes alloc 6 d v
+  | i => encodeJInstr6 alloc i
+
+/-- Encode a whole block with the group-1-aware `encodeJInstr7`. -/
+def encodeJBlock7 (alloc : GpAlloc) (block : List (JInstr 64)) : List (BitVec 8) :=
+  block.flatMap (encodeJInstr7 alloc)
+
+/-- At the U64 width the `81 /digit id` wrapper is the hardcoded-`REX.W` shape
+    encoder: `encAluImmw 1 = encAluImm`. -/
+theorem encAluImmw_one_g1 (digit d v : Nat) :
+    encAluImmw 1 digit d v = encAluImm digit d v := by
+  simp [encAluImmw, encAluImm, rexOpt]
+
+/-- **The group-1 immediate byte function, both branches.** On a register
+    destination outside the spill/qsave slots, `encImmOp` on a group-1 arithmetic
+    mnemonic is its `aluImmDigit` form at the selection `fitsImm8S` makes. The
+    `MOV`, `MOVQ` and `MUL` arms above it are excluded by hypothesis, since the
+    mnemonic stays a variable here. -/
+theorem encImmOp_g1 (w digit : Nat) (base dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false)
+    (hmov : ¬ base = "MOV") (hmovq : ¬ base = "MOVQ") (hmul : ¬ base = "MUL")
+    (hsh : shiftImmExt base = none) (hdig : aluImmDigit base = some digit) :
+    encImmOp w base (.reg dn) v
+      = if fitsImm8S w v then encAluImm8 w digit (gpNumU dn) v
+        else encAluImmw w digit (gpNumU dn) v := by
+  simp [encImmOp, hsp, hsh, hdig]
+
+/-- `g1ImmBytes` is the `encImmOp` byte function at the U64 width, under the
+    resolver agreement `gpNum (regOf alloc d) = gpNumU dn`. -/
+theorem g1ImmBytes_eq_encImmOp (alloc : GpAlloc) (digit : Nat) (base d dn : String)
+    (v : Nat) (hsp : isSpillOrQsave dn = false)
+    (hmov : ¬ base = "MOV") (hmovq : ¬ base = "MOVQ") (hmul : ¬ base = "MUL")
+    (hsh : shiftImmExt base = none) (hdig : aluImmDigit base = some digit)
+    (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    g1ImmBytes alloc digit d v = encImmOp 1 base (.reg dn) v := by
+  rw [encImmOp_g1 1 digit base dn v hsp hmov hmovq hmul hsh hdig, g1ImmBytes, hr]
+  split <;> simp [encAluImmw_one_g1]
+
+/-! ### 2c. The per-opcode byte agreement
+
+Each group-1 arithmetic immediate arm of `encodeJInstr7` equals the `encImmOp`
+byte function of its mnemonic, at either form. The mnemonic facts are closed
+strings the kernel reduces. -/
+
+/-- `ADD` (`/0`). -/
+theorem encJ7_add_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.add d (.imm v)) = encImmOp 1 "ADD" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 0 "ADD" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `OR` (`/1`). -/
+theorem encJ7_or_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.or_ d (.imm v)) = encImmOp 1 "OR" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 1 "OR" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `ADC` (`/2`). -/
+theorem encJ7_adc_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.adc d (.imm v)) = encImmOp 1 "ADC" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 2 "ADC" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `SBB` (`/3`). -/
+theorem encJ7_sbb_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.sbb d (.imm v)) = encImmOp 1 "SBB" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 3 "SBB" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `AND` (`/4`). -/
+theorem encJ7_and_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.and_ d (.imm v)) = encImmOp 1 "AND" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 4 "AND" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `SUB` (`/5`). -/
+theorem encJ7_sub_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.sub d (.imm v)) = encImmOp 1 "SUB" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 5 "SUB" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-- `XOR` (`/6`). -/
+theorem encJ7_xor_imm (alloc : GpAlloc) (d dn : String) (v : Nat)
+    (hsp : isSpillOrQsave dn = false) (hr : gpNum (regOf alloc d) = gpNumU dn) :
+    encodeJInstr7 alloc (.xor_ d (.imm v)) = encImmOp 1 "XOR" (.reg dn) v :=
+  g1ImmBytes_eq_encImmOp alloc 6 "XOR" d dn v hsp (by decide) (by decide) (by decide)
+    (by decide +kernel) (by decide +kernel) hr
+
+/-! ### 2d. The agreement at concrete operands, on both sides of the selection
+
+Each opcode at a value inside the sign-extended-imm8 range and one outside it,
+under `physAlloc`, so both branches of the selection are pinned by reduction
+rather than assumed. `127` and `128` pin the boundary itself: `127` is the last
+value taking the 4-byte `83 /0 ib` form and `128` the first taking the 7-byte
+`81 /0 id` one. The `Lopn` carries the in-place two-source shape the physical
+export emits, whose first source is its destination. -/
+
+/-- `addq $8, %rax` — inside the range, the 4-byte `83 /0 ib` form on both
+    sides. -/
+theorem encJ7AddImm8_eq_lopn :
+    encodeJInstr7 physAlloc (.add "RAX" (.imm 8))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "ADD:64" [.reg "RAX", .imm 8]) := by
+  decide +kernel
+
+/-- `addq $1000, %rax` — outside the range, the 7-byte `81 /0 id` form on both
+    sides. -/
+theorem encJ7AddImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.add "RAX" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "ADD:64" [.reg "RAX", .imm 1000]) := by
+  decide +kernel
+
+/-- The last value of the short form: `127`. -/
+theorem encJ7AddImm127_eq_lopn :
+    encodeJInstr7 physAlloc (.add "RAX" (.imm 127))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "ADD:64" [.reg "RAX", .imm 127]) := by
+  decide +kernel
+
+/-- The first value of the imm32 form: `128`. -/
+theorem encJ7AddImm128_eq_lopn :
+    encodeJInstr7 physAlloc (.add "RAX" (.imm 128))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "ADD:64" [.reg "RAX", .imm 128]) := by
+  decide +kernel
+
+/-- `orq $8, %rax` and `orq $1000, %rax`. -/
+theorem encJ7OrImm8_eq_lopn :
+    encodeJInstr7 physAlloc (.or_ "RAX" (.imm 8))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "OR:64" [.reg "RAX", .imm 8]) := by
+  decide +kernel
+
+theorem encJ7OrImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.or_ "RAX" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "OR:64" [.reg "RAX", .imm 1000]) := by
+  decide +kernel
+
+/-- `adcq $0, %r10` — the carry-materialisation idiom the ladder step's carry
+    chains carry. -/
+theorem encJ7AdcImm0_eq_lopn :
+    encodeJInstr7 physAlloc (.adc "R10" (.imm 0))
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "ADC:64" [.reg "R10", .imm 0]) := by
+  decide +kernel
+
+theorem encJ7AdcImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.adc "R10" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "ADC:64" [.reg "R10", .imm 1000]) := by
+  decide +kernel
+
+/-- `sbbq $0, %r10` — the census's own instruction. -/
+theorem encJ7SbbImm0_eq_lopn :
+    encodeJInstr7 physAlloc (.sbb "R10" (.imm 0))
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 0]) := by
+  decide +kernel
+
+theorem encJ7SbbImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.sbb "R10" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "R10"] "SBB:64" [.reg "R10", .imm 1000]) := by
+  decide +kernel
+
+/-- `andq $8, %rax` and `andq $1000, %rax`. -/
+theorem encJ7AndImm8_eq_lopn :
+    encodeJInstr7 physAlloc (.and_ "RAX" (.imm 8))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "AND:64" [.reg "RAX", .imm 8]) := by
+  decide +kernel
+
+theorem encJ7AndImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.and_ "RAX" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "AND:64" [.reg "RAX", .imm 1000]) := by
+  decide +kernel
+
+/-- `subq $8, %rax` and `subq $1000, %rax`. -/
+theorem encJ7SubImm8_eq_lopn :
+    encodeJInstr7 physAlloc (.sub "RAX" (.imm 8))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "SUB:64" [.reg "RAX", .imm 8]) := by
+  decide +kernel
+
+theorem encJ7SubImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.sub "RAX" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "SUB:64" [.reg "RAX", .imm 1000]) := by
+  decide +kernel
+
+/-- `xorq $8, %rax` and `xorq $1000, %rax`. -/
+theorem encJ7XorImm8_eq_lopn :
+    encodeJInstr7 physAlloc (.xor_ "RAX" (.imm 8))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "XOR:64" [.reg "RAX", .imm 8]) := by
+  decide +kernel
+
+theorem encJ7XorImm1000_eq_lopn :
+    encodeJInstr7 physAlloc (.xor_ "RAX" (.imm 1000))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "XOR:64" [.reg "RAX", .imm 1000]) := by
+  decide +kernel
 
 /-! ## 3. `#eval` verification on the surveyed GoldenPath kernels — the milestone
 
