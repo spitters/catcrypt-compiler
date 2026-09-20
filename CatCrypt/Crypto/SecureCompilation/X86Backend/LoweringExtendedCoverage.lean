@@ -51,7 +51,7 @@ The new arms target the matching `JInstr 64` constructors (`JasminModel.lean`):
 | `ADCX:64  [s0,s1,cin]`         | `[mov dst s0, adcx dst s1]`  | carry-in is `CF` (implicit in the model) |
 | `ADOX:64  [s0,s1,cin]`         | `[mov dst s0, adox dst s1]`  | carry-in is `OF` (forward-compat) |
 | `ADCXHI:64 [_,_,_]`           | `setc dst`                   | carry-out = post-add `CF` (`SETB`+`MOVZBQ`) |
-| `ADOXHI:64 [_,_,_]`           | `setc dst`                   | carry-out = post-add `OF`/`CF` flag read |
+| `ADOXHI:64 [_,_,_]`           | `[setcc .o dst, movzx dst 8 dst]` | carry-out = post-add `OF` (`SETO`+`MOVZBQ`) |
 | `LOADIDX  [arrIdx b i s]`     | `loadMemIdx dst b i s`       | SIB gather (**not** `IsDirect`) |
 | `STOREIDX [arrIdx b i s, v]`  | `storeMemIdx b i s v`        | SIB scatter (**not** `IsDirect`) |
 
@@ -66,7 +66,8 @@ witnessed concretely (`demoLoadIdx_cov`/`demoStoreIdx_cov`, each `rfl`). The
 `lowerLinstrExt2`):
 
 * the carry-chain ADX data bindings `ADCX:64`/`ADOX:64` (two-address `mov; adcx`);
-* the carry-out flag reads `ADCXHI:64`/`ADOXHI:64` (`setc`);
+* the carry-out flag reads `ADCXHI:64` (`setc`, the `CF` chain) and `ADOXHI:64`
+  (`setcc .o` + `movzx`, the `OF` chain);
 * the register-indexed (SIB) memory ops `LOADIDX`/`STOREIDX`
   (`loadMemIdx`/`storeMemIdx`).
 
@@ -157,11 +158,13 @@ def lowerLinstrExtCov : LinstrR → Option (List (JInstr 64))
       some [JInstr.mov dst (lowerJOperand s0), JInstr.adcx dst (lowerJOperand s1)]
   | .Lopn [.reg dst] "ADOX:64" [s0, s1, _cin] =>
       some [JInstr.mov dst (lowerJOperand s0), JInstr.adox dst (lowerJOperand s1)]
-  -- carry-out flag read `ADCXHI:64`/`ADOXHI:64` → `setc dst`
+  -- carry-out flag read `ADCXHI:64` → `setc dst` (the `CF` chain)
   | .Lopn [.reg dst] "ADCXHI:64" [_s0, _s1, _cin] =>
       some [JInstr.setc dst]
+  -- carry-out flag read `ADOXHI:64` → `setcc .o dst ; movzx dst 8 dst` (the `OF`
+  -- chain: the byte write of the overflow flag, zero-extended over `dst`)
   | .Lopn [.reg dst] "ADOXHI:64" [_s0, _s1, _cin] =>
-      some [JInstr.setc dst]
+      some [JInstr.setcc .o dst, JInstr.movzx dst 8 dst]
   -- everything else: the supported-op superset verbatim
   | i => lowerLinstrExt2 i
 
@@ -186,6 +189,11 @@ theorem lowerLinstrExtCov_adox (dst : String) (s0 s1 cin : LOperand) :
 theorem lowerLinstrExtCov_adcxhi (dst : String) (s0 s1 cin : LOperand) :
     lowerLinstrExtCov (.Lopn [.reg dst] "ADCXHI:64" [s0, s1, cin])
       = some [JInstr.setc dst] := rfl
+
+/-- **New coverage: `ADOXHI:64` carry-out binding** → `setcc .o` + `movzx`. -/
+theorem lowerLinstrExtCov_adoxhi (dst : String) (s0 s1 cin : LOperand) :
+    lowerLinstrExtCov (.Lopn [.reg dst] "ADOXHI:64" [s0, s1, cin])
+      = some [JInstr.setcc .o dst, JInstr.movzx dst 8 dst] := rfl
 
 /-- **New coverage: register-indexed `LOADIDX`** → `loadMemIdx`. -/
 theorem lowerLinstrExtCov_loadidx (dst base idx : String) (scale : Nat) :
@@ -253,6 +261,10 @@ theorem lowerLinstrExtCov_adox_allDirect (dst : String) (s0 s1 : JOperand) :
 theorem lowerLinstrExtCov_setc_allDirect (dst : String) :
     allDirect [(JInstr.setc dst : JInstr 64)] = true := rfl
 
+/-- The overflow carry-out block (`setcc .o` + `movzx`) is `allDirect`. -/
+theorem lowerLinstrExtCov_setcc_movzx_allDirect (dst : String) :
+    allDirect [(JInstr.setcc .o dst : JInstr 64), JInstr.movzx dst 8 dst] = true := rfl
+
 /-- **The SIB load is NOT `IsDirect`** — register-indexed addressing. Recorded so
     no caller mistakes the SIB arms for the unconditional `allDirect` class. -/
 theorem lowerLinstrExtCov_loadidx_not_direct (dst base idx : String) (scale : Nat) :
@@ -279,6 +291,27 @@ theorem lowerLinstrExtCov_adcx_denote (dst : String) (s0 s1 : JOperand) (s : JSt
           (s1.eval (s.setReg dst (x86_MOV (s0.eval s))))
           ((s.setReg dst (x86_MOV (s0.eval s))).flagB (·.cf))).2 := by
   simp only [runBlock, evalInstr, JState.get, if_true]
+
+/-- **`ADOXHI` denotation.** Running the lowered `ADOXHI` carry-out block writes
+    the overflow flag into `dst` as the word `1`/`0`. This is the `OF` analogue of
+    the `setc` arm of `evalInstr`, which writes `CF` the same way; the split into
+    `SETcc` plus zero-extension is the one
+    `JasminModel.evalInstr_setc_eq_setcc_movzx` states at condition `.b`. -/
+theorem lowerLinstrExtCov_adoxhi_denote (dst : String) (s : JState 64) :
+    runBlock s [JInstr.setcc .o dst, JInstr.movzx dst 8 dst]
+      = s.setReg dst (if s.flagB (·.of) then 1 else 0) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setRegMerge,
+    JState.get_setReg_same, x86_MOVZX_wordExtendMerge]
+  have hb : ∀ c : Bool, (x86_SETcc c).setWidth 64 = (if c then 1 else 0 : BitVec 64) := by
+    intro c
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    cases c <;> simp [x86_SETcc]
+  rw [hb]
+  simp only [JState.setReg]
+  congr 1
+  funext r
+  split <;> rfl
 
 /-- **`LOADIDX` denotation.** The lowered SIB gather leaves `dst` holding the
     register-indexed memory word `[base + idx·scale]`. -/

@@ -462,4 +462,56 @@ in-place-elided by `GatherInPlace`). -/
   (encodeJBlock [("RDX","RDX"),("RCX","RCX")])
 #eval encodeLopn 0 0 (.Lopn [.reg "RDX"] "OR:64" [.reg "RDX", .reg "RCX"])
 
+/-! ## §4. The `ADOXHI:64` carry-out binding, at the byte level
+
+`LoweringExtendedCoverage.lowerLinstrExtCov` lowers the overflow carry-out binding
+`ADOXHI:64 [s0, s1, cin]` to `[setcc .o d, movzx d 8 d]`, and `LprogBytes.encodeLopn`
+encodes the same `Lopn` as `encSetccMovzx 0x90 (gpNumU dn)` — the `SETO` opcode
+`carryOutSetccOp "ADOXHI"` selects, followed by the `MOVZBQ` zero-extension. The two
+sides agree byte for byte under the resolver-agreement side condition the other
+`*_bytes_agree` lemmas carry. The `CF` sibling `ADCXHI:64` lowers to `setc`, whose
+encoding is `encSetccMovzx 0x92` (`LprogBytes.encSetccMovzx_setc_agree`). -/
+
+/-- The `SETO` + `MOVZBQ` pair of the Lprog encoder is the concatenation of the
+    `SETcc` byte encoding at condition `.o` and the `0F B6` zero-extension: the
+    overflow analogue of `LprogBytes.encSetccMovzx_setc_agree`. -/
+theorem encSetccMovzx_seto_agree (d : Nat) :
+    encSetccMovzx 0x90 d = encSetccByte .o d ++ enc0FRR 0xb6 d d := by
+  simp [encSetccMovzx, encSetccByte, enc0FRR, condCode, List.map_append]
+
+/-- `JInstr` `setcc .o` reduces to `encSetccByte .o` at the allocated number. -/
+theorem jinstr_setcc_o (alloc : GpAlloc) (d : String) :
+    encodeJInstr alloc (.setcc .o d) = encSetccByte .o (gpNum (regOf alloc d)) := rfl
+
+/-- `JInstr` `movzx d 8 d` reduces to the `0F B6` reg-reg form. -/
+theorem jinstr_movzx8_self (alloc : GpAlloc) (d : String) :
+    encodeJInstr alloc (.movzx d 8 d)
+      = enc0FRR 0xb6 (gpNum (regOf alloc d)) (gpNum (regOf alloc d)) := rfl
+
+/-- **The `ADOXHI:64` byte agreement.** The gathered `setcc .o` + `movzx` block
+    encodes to exactly the bytes `encodeLopn` gives for the overflow carry-out
+    binding, under the resolver agreement `hr` between the `JInstr` register name
+    and the Lprog `gpNumU` number. -/
+theorem adoxhi_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (dn : String)
+    (s0 s1 cin : LOperand) (hr : gpNum (regOf alloc dn) = gpNumU dn) :
+    (lowerLinstrExtCov (.Lopn [.reg dn] "ADOXHI:64" [s0, s1, cin])).map (encodeJBlock alloc)
+      = some (encodeLopn frame spillW (.Lopn [.reg dn] "ADOXHI:64" [s0, s1, cin])) := by
+  rw [lowerLinstrExtCov_adoxhi, Option.map_some, encodeLopn_adoxhi,
+    encSetccMovzx_seto_agree, ← hr]
+  simp [encodeJBlock, jinstr_setcc_o, jinstr_movzx8_self]
+
+/-- The same agreement at a concrete destination: the gathered `ADOXHI:64` block on
+    `RSI` is `seto %sil ; movzbq %sil, %rsi` = `40 0F 90 C6  48 0F B6 F6`. -/
+theorem encJAdoxhi_RSI :
+    (lowerLinstrExtCov (.Lopn [.reg "RSI"] "ADOXHI:64"
+        [.reg "RSI", .reg "R9", .reg "c1"])).map (encodeJBlock [("RSI", "%rsi"), ("R9", "%r9")])
+      = some [0x40, 0x0f, 0x90, 0xc6, 0x48, 0x0f, 0xb6, 0xf6] := by
+  decide +kernel
+
+/-- The concrete bytes are the ones `encodeLopn` emits for the same `Lopn`. -/
+theorem encodeLopn_adoxhi_RSI_bytes :
+    encodeLopn 0 0 (.Lopn [.reg "RSI"] "ADOXHI:64" [.reg "RSI", .reg "R9", .reg "c1"])
+      = [0x40, 0x0f, 0x90, 0xc6, 0x48, 0x0f, 0xb6, 0xf6] := by
+  decide +kernel
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
