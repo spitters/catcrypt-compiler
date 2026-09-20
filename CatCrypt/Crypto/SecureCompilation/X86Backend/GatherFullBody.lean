@@ -48,7 +48,7 @@ comparison on the real GoldenPath kernel `AsconLinear.asconSigma0Com`.
   the single `[shr d $n]` / `[shl d $n]`, a shift from a distinct register keeps
   the materialise `mov d, src`, and a count-0 shift lowers to its copy alone.
 
-## What byte-matches, and the one residual (honest)
+## What byte-matches, and the one residual
 
 On `asconSigma0`'s **physical** body (`Com.toLprogPhysAbi`), `gatherJBlock4` now
 makes the WHOLE body **gather** (`.isSome = true`, was `none`). At the byte level:
@@ -94,13 +94,14 @@ not `#eval`s:
   side is `lowerCov4_shr19`/`_shr28`/`_shl45`/`_shl36` (and `lowerCov4_movq` for the
   reg-reg arg-marshal alias).
 
-The whole-`aluCore` byte equality itself is `#eval` interpreter evidence (not a
-`decide`/`rfl` theorem): `LoweringExtended.parseShiftMnem` dispatches the shift
-arm via `String.startsWith`, which does not kernel-reduce in Lean 4.29 (only the
-compiled `#eval` evaluator runs it) — the same status `PhysBodyGather` /
-`GatherInPlace` record for their body `#eval`s. The per-op agreements above are
-the kernel-reducible certificate; the `#eval` confirms they compose on the real
-kernel.
+The whole-`aluCore` byte equality itself is `#eval` interpreter evidence, not a
+`decide`/`rfl` theorem. The obstruction is not the shift mnemonic: at a concrete
+mnemonic `LoweringExtended.parseShiftMnem` is closed by `decide +kernel`
+(§2, `parseShiftMnem_shr19` and its three neighbours). Where a whole-body byte
+equality stops is recorded in `FullBodyByteIdentity`, which states the agreement
+as `BodyBytesAgree` and derives the whole-ELF identity from it. The per-op
+agreements above are the kernel-reducible certificate; the `#eval` confirms they
+compose on the real kernel.
 
 No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval` byte
 witnesses in §4 are interpreter evaluation, not part of any proof term).
@@ -279,18 +280,40 @@ def gatherJBlock4 (body : List Linstr) : Option (List (JInstr 64)) :=
 
 An in-place count-in-tag shift (source register = destination) lowers to the
 **single** destructive op. The lowering is stated parametrically over the shift
-count `n` (carried as a hypothesis `hsh : parseShiftMnem opn = some (isLeft, n)`),
-because `parseShiftMnem` dispatches via `String.startsWith`, which does not
-kernel-reduce — the count value `n` is recovered from the hypothesis, not by
-reduction. A shift from a distinct register lowers through `lowerLinstrExtCov3`
-to `[mov d s, shr/shl d $n]`, the same two instructions the Lprog encoder emits. -/
+count `n`, carried as a hypothesis `hsh : parseShiftMnem opn = some (isLeft, n)`,
+so that one statement covers every count. At a concrete mnemonic the hypothesis is
+discharged by `decide +kernel`: `parseShiftMnem_shr19`, `parseShiftMnem_shr28`,
+`parseShiftMnem_shl45`, `parseShiftMnem_shl36` and `parseShiftMnem_mov64` below
+are those parses. A shift from a distinct register lowers through
+`lowerLinstrExtCov3` to `[mov d s, shr/shl d $n]`, the same two instructions the
+Lprog encoder emits. -/
+
+/-- The parse of the `SHR:19:64` mnemonic: a right shift by 19. -/
+theorem parseShiftMnem_shr19 : parseShiftMnem "SHR:19:64" = some (false, 19) := by
+  decide +kernel
+
+/-- The parse of the `SHR:28:64` mnemonic: a right shift by 28. -/
+theorem parseShiftMnem_shr28 : parseShiftMnem "SHR:28:64" = some (false, 28) := by
+  decide +kernel
+
+/-- The parse of the `SHL:45:64` mnemonic: a left shift by 45. -/
+theorem parseShiftMnem_shl45 : parseShiftMnem "SHL:45:64" = some (true, 45) := by
+  decide +kernel
+
+/-- The parse of the `SHL:36:64` mnemonic: a left shift by 36. -/
+theorem parseShiftMnem_shl36 : parseShiftMnem "SHL:36:64" = some (true, 36) := by
+  decide +kernel
+
+/-- The `MOV:64` mnemonic carries no shift count. -/
+theorem parseShiftMnem_mov64 : parseShiftMnem "MOV:64" = none := by
+  decide +kernel
 
 /-- A count-in-tag right shift `SHR:19:64 [d]` (dst `d`) lowers under
     `lowerLinstrExtCov4` to the **single** op `[shr d $n]`, given the parse
     `parseShiftMnem "SHR:19:64" = some (false, n)`. The mnemonic is concrete (so
     the `"MOVQ"`-head arm is decidably distinct and the matcher reduces to the
-    shift branch); the count `n` is recovered from the `parseShiftMnem` hypothesis
-    (it is not kernel-reducible — `String.startsWith`). The `SHR:28:64` /
+    shift branch); the count `n` is recovered from the `parseShiftMnem` hypothesis,
+    which `parseShiftMnem_shr19` discharges. The `SHR:28:64` /
     `SHL:45:64` / `SHL:36:64` analogues are `lowerCov4_shr28` / `lowerCov4_shl45` /
     `lowerCov4_shl36`. -/
 theorem lowerCov4_shr19 (dst : String) (n : Nat)
@@ -362,9 +385,8 @@ theorem lowerCov4_shl36 (dst : String) (n : Nat)
     `lowerLinstrExtCov4` to `[mov dst s]` — the same single op the `MOV:64`
     mnemonic gathers, which `encodeLopn` already byte-matches the `MOVQ` form
     (`FramingReconcile.encode_argMarshal_movq_eq_mov64`). The parse fact
-    `parseShiftMnem "MOV:64" = none` is carried as a hypothesis (it is only
-    `native_decide`-reducible — `String.startsWith` — so it stays out of the proof
-    term). -/
+    `parseShiftMnem "MOV:64" = none` is carried as a hypothesis, which
+    `parseShiftMnem_mov64` discharges. -/
 theorem lowerCov4_movq (dst s : String)
     (hps : parseShiftMnem "MOV:64" = none) :
     lowerLinstrExtCov4 (.Lopn [.reg dst] "MOVQ" [.reg s])
