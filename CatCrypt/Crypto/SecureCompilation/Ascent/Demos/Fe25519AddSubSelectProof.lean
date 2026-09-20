@@ -448,6 +448,13 @@ structure AFe where
 def SRfe (st : JState 64) (a : AFe) : Prop :=
   mem4 st.mem "x" = a.x ∧ mem4 st.mem "y" = a.y ∧ mem4 st.mem "z" = a.z
 
+/-- The state relation `SRfe` is non-empty. -/
+theorem srfe_satisfiable : ∃ st a, SRfe st a := by
+  refine ⟨{ regs := fun _ => 0, flags := { cf := none, of := none }, mem := fun _ _ => 0 },
+    { x := 0, y := 0, z := 0 }, ?_⟩
+  unfold SRfe mem4 limbsNat
+  decide
+
 /-- `feAddBlock` refines `z := (x + y) mod p25519` for `x + y < 2 · p25519`. -/
 theorem feAddBlock_corresJ :
     CorresJ SRfe (fun a => a.x + a.y < 2 * p25519)

@@ -164,6 +164,16 @@ theorem s2nMontmulP384Framed_corresJ :
   corresJ_framed s2nMontmulP384Block_frameSafe s2nMontmulP384_corresJ
     fun _ _ s t hA h => srm_stage17_frameAgree s t hA _ _ _ h
 
+/-- **`s2nMontmulP384Framed_corresJ`'s precondition is satisfiable.** The all-zero
+    machine state paired with the all-zero abstract state and the all-zero saved-register
+    record: `FrameRel SRm` holds because `SRm` holds at the all-zero pair
+    (`srm_stage0_satisfiable`) and every recorded register value is `0`, matching the
+    all-zero state's own registers. -/
+theorem frameRel_srm_stage0_satisfiable :
+    ∃ st p, FrameRel SRm st p ∧ p.1.stage = 0 ∧ p.1.x < 2 ^ 384 :=
+  ⟨{ regs := fun _ => 0 }, ({ stage := 0, x := 0, y := 0, acc := 0 }, fun _ => 0),
+    ⟨⟨rfl, rfl, trivial⟩, fun _ _ => rfl⟩, rfl, by decide⟩
+
 /-! ## The byte-level results -/
 
 theorem framePrologue_instrOk : framePrologue.all s2nInstrOk = true := by decide
@@ -223,6 +233,17 @@ theorem rdi_mem_framed : "%rdi" ∈ blockNamesXsym s2nMontmulP384FramedBlock := 
   simp only [blockNamesXsym, s2nMontmulP384FramedBlock, List.flatMap_append,
     List.mem_append] at h ⊢
   exact Or.inl (Or.inr h)
+
+/-- **`s2nMontmulP384Framed_bytesCorresJ`'s precondition is satisfiable.** The all-zero
+    machine state pulls back to itself along the identity allocation `s2nAlloc` (it fixes
+    every name of `s2nMontmulP384FramedBlock`, by `nameOf_s2nAlloc_framed`), and
+    `frameRel_srm_stage0_satisfiable`'s witness meets it and the entry guard. -/
+theorem srAlloc_frameRel_stage0_satisfiable :
+    ∃ st p, SRalloc (blockNamesXsym s2nMontmulP384FramedBlock) (nameOf s2nAlloc)
+        (FrameRel SRm) st p ∧ p.1.stage = 0 ∧ p.1.x < 2 ^ 384 := by
+  obtain ⟨st, p, hFR, hstage, hx⟩ := frameRel_srm_stage0_satisfiable
+  refine ⟨st, p, ⟨st, ⟨fun n hn => by rw [nameOf_s2nAlloc_framed n hn], rfl,
+    fun b hb _ => by rw [nameOf_s2nAlloc_framed b hb]⟩, hFR⟩, hstage, hx⟩
 
 /-- **The encoded framed block refines the abstract Montgomery multiplication.** -/
 theorem s2nMontmulP384Framed_bytesCorresJ :
