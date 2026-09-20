@@ -882,6 +882,7 @@ def pkgModules5 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CryptoSSA,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CtMemoryGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CtSelectLeak,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CtSelectLeak,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CtTableEmitGoldenPath,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CubExtGeneric,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects,
