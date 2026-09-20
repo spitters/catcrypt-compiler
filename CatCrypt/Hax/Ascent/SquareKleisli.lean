@@ -56,16 +56,23 @@ arrow's exit relation under binding `x`.
   run of the second leg, so the two `Corres` statements are equivalent
   (`corres_letBind_var_left_iff`).
 * Right unit. The composite's value function is the *first* leg's
-  (`hcompK_hidK_value`), which is what `corres_seq` discards. The composite is still
-  not the first leg: its run binds `x` in the exit environment
-  (`letBind_var_exit_extends`, and `letBind_var_run_ne_of_unbound` exhibits an
-  environment where the two runs differ), so the unit law is an implication and not an
-  equivalence. Under `hread` for the exit relation it holds in the direction that
-  composition needs: `corres_letBind_var_right` produces the composite's square over the
-  unchanged boundary `(P, G, V, Q)`. The converse is not derivable: the `Corres`
-  judgment for the composite reports the extended exit environment, and recovering the
-  first leg's own exit environment from it needs the exit relation to determine the
-  binding at `x`, which `Corres` does not carry.
+  (`hcompK_hidK_value`), which is what `corres_seq` discards. The composite is still not
+  the first leg: its run binds `x` in the exit environment (`letBind_var_exit_extends`,
+  and `letBind_var_run_ne_of_unbound` exhibits an environment where the two runs
+  differ). Under `hread` for the exit relation the law holds in the direction
+  composition needs, over the unchanged boundary `(P, G, V, Q)`
+  (`corres_letBind_var_right`), and it holds in that direction only:
+  `corres_letBind_var_right_not_iff` exhibits an arrow, with both boundary relations
+  reading `x` at its value, whose composite square holds while its own does not.
+
+  The failure is located: the composite's run *does* determine the first leg's
+  (`letBind_var_run_inv`), so the composite's square gives the first leg's square at the
+  exit relation pulled back along the binding (`corres_letBind_var_right_pullback`), and
+  the one missing step is `Q env σ` from `Q (env.extend x (V σ)) σ` at `env` the first
+  leg's own exit environment. That step cannot be assumed: a relation closed under that
+  lowering and satisfying `hread` is empty under the guard
+  (`not_exit_of_read_of_lower`), since removing `x` from an environment it holds at
+  produces an environment it must also hold at and cannot read `x` in.
 
 ## Which structure each of the three algebras is
 
@@ -77,8 +84,10 @@ arrow's exit relation under binding `x`.
 * The `hcompK` algebra of this module: a double semicategory whose horizontal
   composition is associative up to the equality of runs, with a left unit at the entry
   relations that read `x` and a right unit in one direction at the exit relations that
-  read `x`. Not a category: `hidK` exists only at those pointed relations, and the right
-  unit is an implication.
+  read `x`. Not a category, and not one on the relations that read `x` either: `hidK`
+  exists at exactly those relations, and `corres_letBind_var_right_not_iff` refutes the
+  right unit there, so the sub-algebra they span is again a double semicategory with a
+  one-sided unit.
 * The machine-side algebra of `Ascent/SquareStrict.lean`: a strict double category. All
   three horizontal laws are equalities of programs (`List.append_assoc`,
   `List.nil_append`, `List.append_nil`) and of proofs, and the interchange law is `rfl`.
@@ -96,7 +105,11 @@ arrow's exit relation under binding `x`.
   `hcompK_assoc_value` — associativity
 * `corres_letBind_var_left_iff` — the left unit
 * `corres_letBind_var_right`, `hcompK_hidK_value`, `letBind_var_exit_extends`,
-  `letBind_var_run_ne_of_unbound` — the right unit and its failure as an equivalence
+  `letBind_var_run_ne_of_unbound` — the right unit
+* `letBind_var_run_inv`, `corres_letBind_var_right_pullback`,
+  `corres_letBind_var_right_not_iff`, `not_exit_of_read_of_lower` — the failure of the
+  right unit as an equivalence, and where it fails
+* `denote'_assign` — the run of an assignment
 -/
 
 @[expose] public section
@@ -408,6 +421,35 @@ theorem letBind_var_exit_extends (fuel : Nat) {x : String} {e : ImpExpr} {env s 
   rw [denote'_letBind bi fuel h hv]
   exact denote'_var bi fuel (Env.extend_same s x v)
 
+/-- **The composite's run determines the first leg's run.** A run of
+    `.letBind x e (.var x)` returning a plain value comes from a run of `e` returning
+    that value, at an exit environment the composite's extends at `x`. -/
+theorem letBind_var_run_inv (fuel : Nat) {x : String} {e : ImpExpr} {env env'' : Env}
+    {v : Value} (hv : v.isControlFlow = false)
+    (h : denote' bi fuel (.letBind x e (.var x)) env = (.val v, env'')) :
+    ∃ s, denote' bi fuel e env = (.val v, s) ∧ env'' = s.extend x v := by
+  rcases hr : denote' bi fuel e env with ⟨r, s⟩
+  cases r with
+  | val w =>
+    cases w with
+    | controlFlow b u =>
+      rw [show denote' bi fuel (.letBind x e (.var x)) env
+          = (Outcome.val (.controlFlow b u), s) from by
+        simp only [denote', stateM_bind_apply, hr]; rfl] at h
+      injection h with h1 _
+      injection h1 with h2
+      exact absurd hv (by rw [← h2]; simp)
+    | _ =>
+      rw [letBind_var_exit_extends fuel hr rfl] at h
+      injection h with h1 h2
+      injection h1 with h3
+      subst h3
+      exact ⟨s, rfl, h2.symm⟩
+  | _ =>
+    rw [show denote' bi fuel (.letBind x e (.var x)) env = (_, s) from by
+      simp only [denote', stateM_bind_apply, hr]; rfl] at h
+    cases h
+
 /-- The extra binding is observable: at an environment where `x` is unbound, the run of
     `.letBind x .unitVal (.var x)` and the run of `.unitVal` differ. -/
 theorem letBind_var_run_ne_of_unbound (fuel : Nat) (x : String) :
@@ -434,5 +476,84 @@ theorem corres_letBind_var_right {P Q : Env → S → Prop} {G : S → Prop} {V 
   refine ⟨f₀, env', hQ, fun fuel hf => ?_⟩
   rw [letBind_var_exit_extends fuel (hrun fuel hf) (hplain σ hG),
     extend_of_read (hread env' σ hQ hG)]
+
+/-- **What the composite's square does determine.** The square over
+    `.letBind x e (.var x)` gives the square over `e` at the exit relation pulled back
+    along the binding, with no hypothesis on the exit relation. -/
+theorem corres_letBind_var_right_pullback {P Q : Env → S → Prop} {G : S → Prop}
+    {V : S → Value} {x : String} {e : ImpExpr}
+    (hplain : ∀ σ, G σ → (V σ).isControlFlow = false)
+    (h : Corres bi P G (.letBind x e (.var x)) V Q) :
+    Corres bi P G e V (fun env σ => Q (env.extend x (V σ)) σ) := by
+  intro env σ hP hG
+  obtain ⟨f₀, env'', hQ, hrun⟩ := h env σ hP hG
+  obtain ⟨s, hs, hext⟩ := letBind_var_run_inv f₀ (hplain σ hG) (hrun f₀ (Nat.le_refl f₀))
+  refine ⟨f₀, s, ?_, fun fuel hf => ?_⟩
+  · show Q (s.extend x (V σ)) σ
+    exact hext ▸ hQ
+  · rw [denote'_val_mono bi (by rw [hs]) hf]; exact hs
+
+/-- The run of an assignment: the right-hand side's value is bound at the name and the
+    assignment itself returns `.unit`. -/
+theorem denote'_assign (fuel : Nat) {x : String} {rhs : ImpExpr} {env s : Env} {v : Value}
+    (h : denote' bi fuel rhs env = (.val v, s)) (hv : v.isControlFlow = false) :
+    denote' bi fuel (.assign x rhs) env = (.val .unit, s.extend x v) := by
+  simp only [denote', stateM_bind_apply, h]
+  cases v <;> first | rfl | simp at hv
+
+/-- The run of an assignment of the empty tuple. -/
+theorem denote'_assign_tuple_nil (fuel : Nat) (x : String) (env : Env) :
+    denote' bi fuel (.assign x (.tuple [])) env
+      = (.val .unit, env.extend x (.tuple [])) :=
+  denote'_assign fuel (denote'_tuple bi fuel (denoteArgs'_nil bi fuel env)) rfl
+
+/-- **The right unit is not an equivalence, and restricting to the relations that read
+    `x` does not make it one.** Both boundary relations read `x` at the arrow's value
+    `.unit`, so `hidK` exists at each; the arrow assigns another value to `x`. The
+    square over `.letBind x e (.var x)` holds, because the trailing read rebinds `x` to
+    the returned value, and the square over `e` does not, because `e`'s own exit
+    environment holds the assigned value at `x`. -/
+theorem corres_letBind_var_right_not_iff (x : String) :
+    ∃ (P Q : Env → Unit → Prop) (G : Unit → Prop) (V : Unit → Value) (e : ImpExpr),
+      (∀ env σ, P env σ → G σ → env x = some (V σ)) ∧
+      (∀ env σ, Q env σ → G σ → env x = some (V σ)) ∧
+      (∀ σ, G σ → (V σ).isControlFlow = false) ∧
+      Corres bi P G (.letBind x e (.var x)) V Q ∧ ¬ Corres bi P G e V Q := by
+  refine ⟨fun env _ => env x = some Value.unit, fun env _ => env x = some Value.unit,
+    fun _ => True, fun _ => Value.unit, .assign x (.tuple []),
+    fun _ _ h _ => h, fun _ _ h _ => h, fun _ _ => rfl, ?_, ?_⟩
+  · intro env _ _ _
+    exact ⟨0, (env.extend x (Value.tuple [])).extend x Value.unit,
+      Env.extend_same _ x Value.unit,
+      fun fuel _ => letBind_var_exit_extends fuel (denote'_assign_tuple_nil fuel x env) rfl⟩
+  · intro hc
+    obtain ⟨f₀, env', hQ, hrun⟩ :=
+      hc (Env.empty.extend x Value.unit) () (Env.extend_same _ x Value.unit) trivial
+    have h := hrun f₀ (Nat.le_refl f₀)
+    rw [denote'_assign_tuple_nil] at h
+    have hEnv : (Env.empty.extend x Value.unit).extend x (Value.tuple []) = env' :=
+      congrArg Prod.snd h
+    rw [← hEnv, Env.extend_same] at hQ
+    simp at hQ
+
+/-- **An exit relation cannot both read `x` and be closed downward under the binding at
+    `x`.** The converse of `corres_letBind_var_right` needs `Q env σ` where only
+    `Q (env.extend x (V σ)) σ` is available; a relation satisfying both that lowering
+    property and `hread` is empty under the guard, so no hypothesis of that shape closes
+    the converse at a satisfiable exit relation. -/
+theorem not_exit_of_read_of_lower {x : String} {V : S → Value} {Q : Env → S → Prop}
+    {G : S → Prop} (hread : ∀ env σ, Q env σ → G σ → env x = some (V σ))
+    (hlower : ∀ env σ, G σ → Q (env.extend x (V σ)) σ → Q env σ)
+    {env : Env} {σ : S} (hG : G σ) : ¬ Q env σ := by
+  intro hQ
+  have hx : env x = some (V σ) := hread env σ hQ hG
+  have hre : (Env.remove env x).extend x (V σ) = env := by
+    funext y
+    by_cases hy : y = x
+    · subst hy; simp [Env.extend, hx]
+    · simp [Env.extend, Env.remove, hy]
+  have hQ₀ : Q (Env.remove env x) σ := hlower _ σ hG (by rw [hre]; exact hQ)
+  have hnone : (Env.remove env x) x = some (V σ) := hread _ σ hQ₀ hG
+  simp [Env.remove] at hnone
 
 end Hax.Ascent
