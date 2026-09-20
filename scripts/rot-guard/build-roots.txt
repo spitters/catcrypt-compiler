@@ -257,6 +257,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.LivenessTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LoweredBlockCT
+CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
