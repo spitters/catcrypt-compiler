@@ -58,13 +58,14 @@ the SAME `spillQsaveOff`. They compose with §3's shift agreements and the in-pl
 ALU agreements to constitute the matched full body.
 
 The whole-body equality `encodeJBlock physAlloc (gatherJBlock5 body).get =
-encodeLcmd body` itself remains `#eval` interpreter evidence (not a `decide`/`rfl`
-theorem), for the same reason `GatherFullBody` §4 records: `parseShiftMnem`
-(reached by `lowerLinstrExtCov4`'s shift arm) dispatches via `String.startsWith`,
-which does not kernel-reduce in Lean 4.29 — only the compiled `#eval` evaluator
-runs the assembled gather. The per-op theorems here (and in §3 there) are the
-kernel-reducible certificate; the `#eval` confirms they compose on the real
-kernel. No `sorry`, no axiom, no `native_decide`.
+encodeLcmd body` is `#eval` interpreter evidence rather than a `decide`/`rfl`
+theorem. The shift dispatch it runs through is kernel-reducible on a closed
+mnemonic: `LoweringExtended.parseShiftMnem` (reached by `lowerLinstrExtCov4`'s
+shift arm) detects the prefix with `JasminLprogExport.hasPrefix`, which is
+`List.isPrefixOf` on the character lists, and `shiftCountOf` recovers the count
+through `String.toList`/`drop`. The per-op theorems here (and in `GatherFullBody`
+§3) are the kernel-reducible constituents; the `#eval` confirms they compose on
+the real kernel. No `sorry`, no axiom, no `native_decide`.
 
 ## Net status — the milestone
 

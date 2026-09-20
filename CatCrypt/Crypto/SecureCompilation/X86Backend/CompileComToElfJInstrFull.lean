@@ -71,17 +71,19 @@ byte-identical.
   entry) is `true` — re-pointing that kernel's `_x86_elf` to this entry produces
   identical bytes, so the 23-kernel re-point is byte-safe (KAT-preserving).
 
-## Honest status — `#eval` certificate at the kernel, conditional theorem in general
+## Status — `#eval` certificate at the kernel, conditional theorem in general
 
-The whole-ELF byte identity ON `asconSigma0` is an `#eval` certificate, not a
-closed kernel theorem, for the same reason `SpillSlotEncode` §3 / `GatherFullBody`
-§4 record: the underlying body equality `jBodyBytes physBody = encodeLcmd physBody`
-runs through `parseShiftMnem`'s `String.startsWith` dispatch, which does **not**
-kernel-reduce in Lean 4.29 — only the compiled `#eval` evaluator runs the assembled
-gather. The conditional theorem `jElf_eq_lprogElf` IS closed: it discharges
-everything *above* the body agreement (the framing wrap + the whole ELF stitch),
-taking `jBodyBytes body = encodeLcmd body` as a hypothesis — exactly the `#eval`-level
-fact `SpillSlotEncode` §3 supplies. So the whole-ELF byte identity is:
+The whole-ELF byte identity ON `asconSigma0` is an `#eval` certificate: the
+underlying body equality `jBodyBytes physBody = encodeLcmd physBody` is recorded
+by the `#eval` in `GoldenPathByteIdentityDemo`, not by a closed kernel theorem.
+The shift dispatch itself is kernel-reducible on a closed mnemonic —
+`LoweringExtended.parseShiftMnem` detects the prefix with
+`JasminLprogExport.hasPrefix`, which is `List.isPrefixOf` on the character lists,
+and `shiftCountOf` recovers the count through `String.toList`/`drop`. The
+conditional theorem `jElf_eq_lprogElf` IS closed: it discharges everything *above*
+the body agreement (the framing wrap + the whole ELF stitch), taking `jBodyBytes
+body = encodeLcmd body` as a hypothesis — exactly the `#eval`-level fact
+`SpillSlotEncode` §3 supplies. So the whole-ELF byte identity is:
 (closed framing/stitch theorem) ∘ (`#eval` body agreement) = `#eval`-certified on the
 real kernel.
 
@@ -130,9 +132,8 @@ def wrapFundefBytes (body : List Linstr) (bodyBytes : List (BitVec 8)) : List (B
 /-- The full-body JInstr bytes of a physical body: gather the whole body with the
     spill-slot-aware `gatherJBlock5` and encode under `physAlloc`. By
     `SpillSlotEncode` §3 this equals `encodeLcmd body` on the real kernel
-    (`#eval`-certified — `parseShiftMnem`'s `String.startsWith` blocks kernel
-    reduction). The `getD []` guard is total — on a `gatherJBlock5`-coverable body it
-    is `some` (the real kernel is covered). -/
+    (`#eval`-certified). The `getD []` guard is total — on a `gatherJBlock5`-coverable
+    body it is `some` (the real kernel is covered). -/
 def jBodyBytes (body : List Linstr) : List (BitVec 8) :=
   ((gatherJBlock5 body).map (encodeJBlock physAlloc)).getD []
 
@@ -187,9 +188,8 @@ theorem wrap_encodeLcmd (body : List Linstr) :
     JInstr full-body ELF `ByteArray` (`jElf body fname`) equals the `Lprog` entry's
     `compileLprogToElf` of the single-function `Lprog` whose one function is
     `(fname, body)`. Both factor through the SAME `ElfObject.buildElfObjectMulti` on
-    a single leaf whose `.text` is `encodeLfundefBytes body`, so this is a FULL ELF
-    byte match, not merely a `.text` match — the kernel's external byte-KAT passes on
-    the re-point. -/
+    a single leaf whose `.text` is `encodeLfundefBytes body`, so the match covers the
+    whole ELF object rather than the `.text` section alone. -/
 theorem jElf_eq_lprogElf (body : List Linstr) (fname : String)
     (hbody : jBodyBytes body = encodeLcmd body) :
     jElf body fname
