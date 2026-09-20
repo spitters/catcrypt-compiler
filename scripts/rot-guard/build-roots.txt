@@ -267,6 +267,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
 CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
+CatCrypt.Crypto.SecureCompilation.Ascent.PhysAbiReduction
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
