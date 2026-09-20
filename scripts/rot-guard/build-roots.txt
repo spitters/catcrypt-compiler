@@ -215,6 +215,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
 CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
 CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainTie
+CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainZeroIn
 CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
