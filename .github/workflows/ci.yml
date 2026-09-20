@@ -46,6 +46,9 @@ jobs:
       - name: No new untagged hand-JInstr block (emit provenance)
         run: bash scripts/audit_emit_provenance.sh
 
+      - name: No new emitted kernel without a constant-time obligation
+        run: bash scripts/emit-ct-obligation-ratchet.sh
+
       - name: No new vacuous or assumption-shaped security theorem
         run: bash scripts/vacuous-theorem-ratchet.sh
 

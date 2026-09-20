@@ -1,0 +1,12 @@
+# Artifact-writing modules whose kernels run on PUBLIC data, so the leakage
+# trace carries no secret and the constant-time obligation does not apply. One
+# `path  # reason` per line, read by scripts/emit-ct-obligation-ratchet.sh.
+#
+# This is the module-level counterpart of the `publicData` flag that
+# VIR/FieldEcCmpOps.lean puts on a comparison op: it does not change what is
+# emitted, it records that the inputs are public. It is a claim about the
+# kernel's use, not something the compiler checks, so each line states why.
+#
+# A kernel that takes a secret key, scalar, nonce or message does NOT belong
+# here; it discharges the obligation instead (allDirect / lcmdDirect / a
+# _constant_time theorem).
