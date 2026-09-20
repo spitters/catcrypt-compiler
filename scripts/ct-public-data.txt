@@ -10,3 +10,9 @@
 # A kernel that takes a secret key, scalar, nonce or message does NOT belong
 # here; it discharges the obligation instead (allDirect / lcmdDirect / a
 # _constant_time theorem).
+
+CatCrypt/Crypto/Jasmin/Examples/CombTableInit.lean  # builds the fixed comb table from the Ed25519 base point and the identity, both curve constants; the secret-dependent step is the table lookup, which is CombSelectKernel's obligation
+CatCrypt/Crypto/Jasmin/Examples/CombTableInitArr.lean  # the array-slot form of the same table build, over the same two constant inputs
+CatCrypt/Crypto/Jasmin/Examples/CombTableInitArrV2.lean  # the runtime-indexed form of the same table build, over the same two constant inputs
+CatCrypt/Crypto/Jasmin/Examples/XEdDSAVerify.lean  # signature verification: the public key, the signature and the message digest are the verifier's public inputs
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogShapeKat.lean  # writes the golden instruction-text shape file; its inputs are exported program texts, not runtime data

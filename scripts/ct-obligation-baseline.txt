@@ -5,9 +5,6 @@
 # public-data in scripts/ct-public-data.txt with its reason.
 CatCrypt/Crypto/Jasmin/Examples/ArrayDemo.lean
 CatCrypt/Crypto/Jasmin/Examples/BenchOut.lean
-CatCrypt/Crypto/Jasmin/Examples/CombTableInit.lean
-CatCrypt/Crypto/Jasmin/Examples/CombTableInitArr.lean
-CatCrypt/Crypto/Jasmin/Examples/CombTableInitArrV2.lean
 CatCrypt/Crypto/Jasmin/Examples/Fe25519Invert.lean
 CatCrypt/Crypto/Jasmin/Examples/HkdfSha256Jasmin.lean
 CatCrypt/Crypto/Jasmin/Examples/HmacSha256Jasmin.lean
@@ -17,7 +14,6 @@ CatCrypt/Crypto/Jasmin/Examples/Sha256JasminDemo.lean
 CatCrypt/Crypto/Jasmin/Examples/Sha256JasminFull.lean
 CatCrypt/Crypto/Jasmin/Examples/X25519BenchEmit.lean
 CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSLEmit.lean
-CatCrypt/Crypto/Jasmin/Examples/XEdDSAVerify.lean
 CatCrypt/Crypto/Jasmin/JasminEmit.lean
 CatCrypt/Crypto/Jasmin/JasminToRustEmit.lean
 CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean
@@ -63,7 +59,6 @@ CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockResidentComEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockResidentEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/GgmDblLoopEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/GgmNodeLoopEmit.lean
-CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogShapeKat.lean
 CatCrypt/Crypto/SecureCompilation/VIR/JasminUprogExport.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakAvx2Emit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakLinearMain.lean
