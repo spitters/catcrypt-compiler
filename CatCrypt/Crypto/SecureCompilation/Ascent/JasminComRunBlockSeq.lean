@@ -22,11 +22,15 @@ the value the multi-op `Com jasminDialect` program denotes.
 ## Model — a dependently-typed straight-line block (`ArithBlock`)
 
 `ArithBlock Γ` is the covered straight-line sublanguage: a chain of binders, each
-binding a fresh `reg 64` slot in the growing De Bruijn context, terminated by
-returning one variable. Four binder shapes are covered — a scalar `regArith`
-(`.op`), a register copy or an immediate shift (`.un`, over `ArithUn`), and a
-compile-time constant (`.cnst`), the dialect images of `regArith bop 64`,
-`shlImm 64 k` / `shrImm 64 k` and `regConst 64 n`. Every `ArithBlock` compiles to
+binding a fresh slot in the growing De Bruijn context, terminated by returning
+one variable. Six binder shapes are covered — a scalar `regArith` (`.op`), a
+register copy or an immediate shift (`.un`, over `ArithUn`), a compile-time
+constant (`.cnst`), and a stack-array element load and store (`.load`,
+`.store`), the dialect images of `regArith bop 64`, `shlImm 64 k` /
+`shrImm 64 k`, `regConst 64 n` and `stackLoad 64 n` / `stackStore 64 n`. The
+memory arms carry the machine memory base of their array and the compile-time
+index the machine reads or writes at, since the covered machine forms take the
+index as a fixed displacement. Every `ArithBlock` compiles to
 a `Com jasminDialect Γ (.reg 64)` (`ArithBlock.toCom`), so the tie below is a
 statement about `Com.denote`, with no separate source semantics. This is the
 `Com`-valuation analogue (Framing A) of `LowCTToJInstrCT.lowerSeq_denote`, with
@@ -47,8 +51,18 @@ the growing dependent context handled by structural induction on `ArithBlock`
 * `FreshFor` — the register-allocation freshness invariant: the fresh-name
   stream is injective and disjoint from the live register map's range. Preserved
   as the context grows (`FreshFor_extend`).
+* `lowerLoad_get_dst` / `lowerLoad_get_other` / `lowerLoad_mem` and
+  `lowerStore_mem_same` / `lowerStore_mem_other` / `lowerStore_get` — the value
+  and both frame halves of the memory operations. `JState` memory is not the
+  register file, so each operation is framed over the registers it does not
+  write and over the memory cells it does not write.
+* `BlockMemOk` — the memory precondition of a block: per memory arm, the index
+  variable's value is the arm's index, and the cell an element load reads holds
+  the array element the dialect valuation gives it. It is `True` on a block with
+  no memory arm.
 * `lowerBlock_tie` — the block tie: for every straight-line `ArithBlock`,
-  under a `JStateInterpG` state correspondence and a `FreshFor` allocation,
+  under a `JStateInterpG` state correspondence, a `FreshFor` allocation and the
+  block's `BlockMemOk`,
   `(runBlock s (lowerBlock block ρ g)).get (outReg block ρ g)
      = block.toCom.denote V`. The left side is a machine register read after
   `runBlock` of the whole lowered block, the right side the `Com jasminDialect`
@@ -249,6 +263,98 @@ theorem lowerConst_get_other (n : Nat) (dst r : String) (hr : r ≠ dst)
   simp [lowerConst, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JOperand.eval,
     JState.setReg, JState.get, hr]
 
+/-! ## 2c. The stack-array element load and store
+
+`stackLoad 64 n` and `stackStore 64 n` take the element index as a `reg 64`
+operand. The machine forms `decodableJ` covers are the fixed-displacement
+`loadMem` / `storeMem`, so the block language covers the case where the index is
+a compile-time constant `k`, at the byte displacement `8 * k` of an array of
+64-bit words. `IsDispIndex` is that displacement's side condition: `8 * k` below
+`2 ^ 31`, the range `dispOk32` accepts. -/
+
+/-- The byte displacement of element `k` of an array of 64-bit words. -/
+def elemDisp (k : Nat) : Int := ((8 * k : Nat) : Int)
+
+/-- **The covered element indices.** The byte displacement `8 * k` is below
+    `2 ^ 31`, the signed 32-bit range the `[base + disp32]` encoding holds. -/
+def IsDispIndex (k : Nat) : Prop := 8 * k < 2 ^ 31
+
+/-- The decidable form of `IsDispIndex`. -/
+def isDispIndexB (k : Nat) : Bool := decide (8 * k < 2 ^ 31)
+
+/-- `isDispIndexB` implies the `Prop`-valued `IsDispIndex` that the memory arms
+    carry. -/
+theorem IsDispIndex_of_isDispIndexB {k : Nat} (h : isDispIndexB k = true) :
+    IsDispIndex k := by
+  simpa [isDispIndexB, IsDispIndex] using h
+
+/-- An index whose byte displacement is in the 32-bit range is below the word
+    range, so the index constant materialises as the index itself. -/
+theorem toNat_ofNat_of_dispIndex {k : Nat} (hk : IsDispIndex k) :
+    (BitVec.ofNat 64 k).toNat = k := by
+  have h1 : k < 2 ^ 31 := by
+    have : 8 * k < 2 ^ 31 := hk
+    omega
+  have h2 : (2 : Nat) ^ 31 ≤ 2 ^ 64 := Nat.pow_le_pow_right (by omega) (by omega)
+  have hk' : k < 2 ^ 64 := Nat.lt_of_lt_of_le h1 h2
+  simp [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk']
+
+/-- The machine instructions of an element load: the fixed-displacement
+    `loadMem` at `[base + 8·k]`. -/
+def lowerLoad (dst base : String) (k : Nat) : List (JInstr 64) :=
+  [ .loadMem dst base (elemDisp k) ]
+
+/-- The machine instructions of an element store: the fixed-displacement
+    `storeMem` of a register at `[base + 8·k]`. -/
+def lowerStore (base src : String) (k : Nat) : List (JInstr 64) :=
+  [ .storeMem base (elemDisp k) (.reg src) ]
+
+/-- **Element-load value agreement.** Running the lowered load and reading `dst`
+    yields the memory word at `[base + 8·k]`. -/
+theorem lowerLoad_get_dst (dst base : String) (k : Nat) (s : JState 64) :
+    (runBlock s (lowerLoad dst base k)).get dst = s.mem base (elemDisp k) := by
+  simp [lowerLoad, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg,
+    JState.get, JState.load]
+
+/-- **Element-load register frame.** The lowered load writes only `dst`; reading
+    any other register falls through unchanged. -/
+theorem lowerLoad_get_other (dst base : String) (k : Nat) (r : String) (hr : r ≠ dst)
+    (s : JState 64) :
+    (runBlock s (lowerLoad dst base k)).get r = s.get r := by
+  simp [lowerLoad, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg,
+    JState.get, hr]
+
+/-- **Element-load memory frame.** The lowered load writes no memory cell. -/
+theorem lowerLoad_mem (dst base : String) (k : Nat) (s : JState 64)
+    (b : String) (o : Int) :
+    (runBlock s (lowerLoad dst base k)).mem b o = s.mem b o := by
+  simp [lowerLoad, runBlock_cons, runBlock_nil, evalInstr, JState.setReg]
+
+/-- **Element-store value agreement.** Running the lowered store leaves the
+    source register's word in the memory cell `[base + 8·k]`. -/
+theorem lowerStore_mem_same (base src : String) (k : Nat) (s : JState 64) :
+    (runBlock s (lowerStore base src k)).mem base (elemDisp k) = s.get src := by
+  simp [lowerStore, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JOperand.eval,
+    JState.store, JState.get]
+
+/-- **Element-store memory frame.** The lowered store writes only the cell
+    `[base + 8·k]`; every other cell falls through unchanged. -/
+theorem lowerStore_mem_other (base src : String) (k : Nat) (s : JState 64)
+    (b : String) (o : Int) (h : ¬ (b = base ∧ o = elemDisp k)) :
+    (runBlock s (lowerStore base src k)).mem b o = s.mem b o := by
+  simp [lowerStore, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JOperand.eval,
+    JState.store, h]
+
+/-- **Element-store register frame.** The lowered store writes no register. -/
+theorem lowerStore_get (base src : String) (k : Nat) (r : String) (s : JState 64) :
+    (runBlock s (lowerStore base src k)).get r = s.get r := by
+  simp [lowerStore, runBlock_cons, runBlock_nil, evalInstr, JState.store, JState.get]
+
+/-- **Constant memory frame.** The lowered constant writes no memory cell. -/
+theorem lowerConst_mem (n : Nat) (dst : String) (s : JState 64) (b : String) (o : Int) :
+    (runBlock s (lowerConst n dst)).mem b o = s.mem b o := by
+  simp [lowerConst, runBlock_cons, runBlock_nil, evalInstr, JState.setReg]
+
 /-! ## 3. The straight-line block model `ArithBlock` -/
 
 /-- **The covered straight-line arithmetic sublanguage.** A chain of scalar
@@ -269,6 +375,19 @@ inductive ArithBlock : Ctxt jasminDialect → Type where
   /-- One constant `d := n`, binding a fresh slot, then continue. -/
   | cnst {Γ : Ctxt jasminDialect} (n : Nat) (rest : ArithBlock (.reg 64 :: Γ)) :
       ArithBlock Γ
+  /-- One element load `d := arr[i]`, binding the loaded word, then continue.
+      `base` is the machine memory base the array lives at, `k` the index the
+      machine reads at, and `hk` the displacement condition of `8 * k`. -/
+  | load {Γ : Ctxt jasminDialect} (n k : Nat) (hk : IsDispIndex k) (base : String)
+      (arr : Ctxt.Var Γ (.stackArr 64 n)) (i : Ctxt.Var Γ (.reg 64))
+      (rest : ArithBlock (.reg 64 :: Γ)) : ArithBlock Γ
+  /-- One element store `arr' := arr[i := src]`, binding the updated array, then
+      continue. `base` is the machine memory base the array lives at, `k` the
+      index the machine writes at, and `hk` the displacement condition of
+      `8 * k`. -/
+  | store {Γ : Ctxt jasminDialect} (n k : Nat) (hk : IsDispIndex k) (base : String)
+      (arr : Ctxt.Var Γ (.stackArr 64 n)) (i src : Ctxt.Var Γ (.reg 64))
+      (rest : ArithBlock (.stackArr 64 n :: Γ)) : ArithBlock Γ
 
 /-- The `regArith bop` expression on two `reg 64` variables, at width 64. Built
     exactly like `jasminSingleOp`'s op. -/
@@ -333,6 +452,56 @@ theorem unExpr_unOfShl {Γ : Ctxt jasminDialect} (k : Nat) (a : Ctxt.Var Γ (.re
     unExpr (unOfShl k) a = .mk (.shlImm 64 k) rfl (.cons a .nil) := by
   cases k <;> rfl
 
+/-- The de Bruijn index of a variable. -/
+def varIndex {Γ : Ctxt jasminDialect} {t : JasminTy} : Ctxt.Var Γ t → Nat
+  | .here => 0
+  | .there v => varIndex v + 1
+
+/-- **The canonical memory base of a stack array.** The name `mem` followed by
+    one `a` per unit of the array's de Bruijn *level* — its distance from the
+    bottom of the context. The level does not move when the context grows at the
+    head, so the same array keeps one base name through every binder of a block,
+    and the tally spelling reduces, so a concrete base name is read off a
+    recognised block by computation. -/
+def arrBase {Γ : Ctxt jasminDialect} {n : Nat} (arr : Ctxt.Var Γ (.stackArr 64 n)) :
+    String :=
+  String.ofList ('m' :: 'e' :: 'm' :: List.replicate (Γ.length - 1 - varIndex arr) 'a')
+
+/-- The canonical base is stable under a binder: an array reached through one
+    more `.there` keeps its name. -/
+theorem arrBase_there {Γ : Ctxt jasminDialect} {n : Nat} {t : JasminTy}
+    (arr : Ctxt.Var Γ (.stackArr 64 n)) :
+    arrBase (Ctxt.Var.there (s := t) arr) = arrBase arr := by
+  have h : List.length Γ + 1 - 1 - (varIndex arr + 1) = List.length Γ - 1 - varIndex arr := by
+    omega
+  simp only [arrBase, varIndex, List.length_cons, h]
+
+/-- The `stackLoad 64 n` expression on an array variable and an index variable. -/
+def loadExpr {Γ : Ctxt jasminDialect} {n : Nat} (arr : Ctxt.Var Γ (.stackArr 64 n))
+    (i : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
+  .mk (.stackLoad 64 n) rfl (.cons arr (.cons i .nil))
+
+/-- The load expression denotes to the total element read `stackGet` of the
+    array at the index's value. -/
+theorem loadExpr_denote {Γ : Ctxt jasminDialect} {n : Nat}
+    (arr : Ctxt.Var Γ (.stackArr 64 n)) (i : Ctxt.Var Γ (.reg 64))
+    (V : Ctxt.Valuation Γ) :
+    (loadExpr arr i).denote V = stackGet (arr.lookup V) (i.lookup V).toNat := rfl
+
+/-- The `stackStore 64 n` expression on an array variable, an index variable and
+    a value variable. -/
+def storeExpr {Γ : Ctxt jasminDialect} {n : Nat} (arr : Ctxt.Var Γ (.stackArr 64 n))
+    (i v : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.stackArr 64 n) :=
+  .mk (.stackStore 64 n) rfl (.cons arr (.cons i (.cons v .nil)))
+
+/-- The store expression denotes to the functional update `stackSet` of the
+    array at the index's value with the value variable's word. -/
+theorem storeExpr_denote {Γ : Ctxt jasminDialect} {n : Nat}
+    (arr : Ctxt.Var Γ (.stackArr 64 n)) (i v : Ctxt.Var Γ (.reg 64))
+    (V : Ctxt.Valuation Γ) :
+    (storeExpr arr i v).denote V
+      = stackSet (arr.lookup V) (i.lookup V).toNat (v.lookup V) := rfl
+
 /-- **Compile an `ArithBlock` to a `Com jasminDialect`.** The `.ret`
     becomes `Com.ret`; each `.op` becomes a `Com.var` binding `arithExpr`. The
     tie below is stated over this program's `Com.denote`. -/
@@ -342,6 +511,8 @@ def ArithBlock.toCom : {Γ : Ctxt jasminDialect} → ArithBlock Γ →
   | _, .op bop _ a b rest => .var (arithExpr bop a b) rest.toCom
   | _, .un uop _ a rest => .var (unExpr uop a) rest.toCom
   | _, .cnst n rest => .var (constExpr n) rest.toCom
+  | _, .load _ _ _ _ arr i rest => .var (loadExpr arr i) rest.toCom
+  | _, .store _ _ _ _ arr i src rest => .var (storeExpr arr i src) rest.toCom
 
 /-! ## 4. The register map and its extension -/
 
@@ -357,6 +528,14 @@ def RegMapG.extend {Γ : Ctxt jasminDialect} (ρ : RegMapG Γ) (d : String) :
   fun w =>
     match w with
     | .here => d
+    | .there w0 => ρ w0
+
+/-- Shift a register map under a stack-array binder: the new slot is not a
+    register, so every `reg 64` variable of the grown context is an old one. -/
+def RegMapG.shiftArr {Γ : Ctxt jasminDialect} {n : Nat} (ρ : RegMapG Γ) :
+    RegMapG (.stackArr 64 n :: Γ) :=
+  fun w =>
+    match w with
     | .there w0 => ρ w0
 
 /-! ## 5. The state correspondence and fresh-allocation invariant -/
@@ -390,6 +569,18 @@ theorem FreshFor_extend {Γ : Ctxt jasminDialect} (ρ : RegMapG Γ) (g : Nat →
   | .here => exact hinj (i + 1) 0 (by omega)
   | .there w0 => exact hdisj (i + 1) w0
 
+/-- The fresh invariant is preserved across the slot an element store binds: the
+    updated array is not a register, so the register map only shifts and the
+    fresh stream is untouched. -/
+theorem FreshFor_shiftArr {Γ : Ctxt jasminDialect} {n : Nat} (ρ : RegMapG Γ)
+    (g : Nat → String) (hfresh : FreshFor ρ g) :
+    FreshFor (RegMapG.shiftArr (n := n) ρ) g := by
+  obtain ⟨hinj, hdisj⟩ := hfresh
+  refine ⟨hinj, ?_⟩
+  intro i v
+  match v with
+  | .there w0 => exact hdisj i w0
+
 /-! ## 6. The lowering of a whole block and its output register -/
 
 /-- **The whole-block lowering.** A straight-line `ArithBlock` lowers to the
@@ -409,6 +600,11 @@ def lowerBlock : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
   | _, .cnst n rest, ρ, g =>
       lowerConst n (g 0)
         ++ lowerBlock rest (ρ.extend (g 0)) (fun k => g (k + 1))
+  | _, .load _ k _ base _ _ rest, ρ, g =>
+      lowerLoad (g 0) base k
+        ++ lowerBlock rest (ρ.extend (g 0)) (fun m => g (m + 1))
+  | _, .store _ k _ base _ _ src rest, ρ, g =>
+      lowerStore base (ρ src) k ++ lowerBlock rest (RegMapG.shiftArr ρ) g
 
 /-- **The block's output register.** The machine register holding the block's
     result after `runBlock` — the register of the finally-returned variable
@@ -422,8 +618,94 @@ def outReg : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
       outReg rest (ρ.extend (g 0)) (fun k => g (k + 1))
   | _, .cnst _ rest, ρ, g =>
       outReg rest (ρ.extend (g 0)) (fun k => g (k + 1))
+  | _, .load _ _ _ _ _ _ rest, ρ, g =>
+      outReg rest (ρ.extend (g 0)) (fun m => g (m + 1))
+  | _, .store _ _ _ _ _ _ _ rest, ρ, g =>
+      outReg rest (RegMapG.shiftArr ρ) g
+
+/-! ## 6b. The memory precondition of a block
+
+The scalar arms read only registers, whose values the state correspondence
+carries. A memory arm reads or writes at a fixed displacement, and no
+register-level correspondence says either that the index variable holds that
+displacement's index or what the memory cell holds. `BlockMemOk` is the
+obligation that supplies both: at the state each memory arm runs in, the index
+variable's value is the arm's index `k`, and for a load the cell `[base + 8·k]`
+holds the element the dialect valuation gives the array. It is `True` on a block
+with no memory arm, so a scalar block carries no obligation. -/
+
+/-- **The memory precondition of a block.** Per memory arm: the index variable's
+    value is the arm's index, and the cell an element load reads holds the array
+    element the dialect valuation gives it, at the state that arm runs in. -/
+def BlockMemOk : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
+    (Nat → String) → Ctxt.Valuation Γ → JState 64 → Prop
+  | _, .ret _, _, _, _, _ => True
+  | _, .op bop _ a b rest, ρ, g, V, s =>
+      BlockMemOk rest (ρ.extend (g 0)) (fun k => g (k + 1))
+        (V.extend ((arithExpr bop a b).denote V))
+        (runBlock s (lowerArith2 bop (ρ a) (ρ b) (g 0)))
+  | _, .un uop _ a rest, ρ, g, V, s =>
+      BlockMemOk rest (ρ.extend (g 0)) (fun k => g (k + 1))
+        (V.extend ((unExpr uop a).denote V))
+        (runBlock s (uop.toJInstr (g 0) (ρ a)))
+  | _, .cnst n rest, ρ, g, V, s =>
+      BlockMemOk rest (ρ.extend (g 0)) (fun k => g (k + 1))
+        (V.extend ((constExpr n).denote V))
+        (runBlock s (lowerConst n (g 0)))
+  | _, .load _ k _ base arr i rest, ρ, g, V, s =>
+      (i.lookup V).toNat = k ∧
+        s.mem base (elemDisp k) = stackGet (arr.lookup V) k ∧
+        BlockMemOk rest (ρ.extend (g 0)) (fun m => g (m + 1))
+          (V.extend ((loadExpr arr i).denote V))
+          (runBlock s (lowerLoad (g 0) base k))
+  | _, .store _ k _ base arr i src rest, ρ, g, V, s =>
+      (i.lookup V).toNat = k ∧
+        BlockMemOk rest (RegMapG.shiftArr ρ) g
+          (V.extend ((storeExpr arr i src).denote V))
+          (runBlock s (lowerStore base (ρ src) k))
 
 /-! ## 7. The block tie: the single-op tie composes over the block -/
+
+/-- **The state correspondence extends across an element load.** The loaded
+    register holds the array element the dialect valuation gives, and every old
+    register survives the load's frame. -/
+theorem load_interp_extend {Γ : Ctxt jasminDialect} {n : Nat} (k : Nat)
+    (base : String) (arr : Ctxt.Var Γ (.stackArr 64 n))
+    (i : Ctxt.Var Γ (.reg 64))
+    (ρ : RegMapG Γ) (g : Nat → String) (s : JState 64) (V : Ctxt.Valuation Γ)
+    (hinterp : JStateInterpG ρ V s) (hfresh : FreshFor ρ g)
+    (hidx : (i.lookup V).toNat = k)
+    (hmem : s.mem base (elemDisp k) = stackGet (arr.lookup V) k) :
+    JStateInterpG (ρ.extend (g 0)) (V.extend ((loadExpr arr i).denote V))
+      (runBlock s (lowerLoad (g 0) base k)) := by
+  obtain ⟨_, hdisj⟩ := hfresh
+  intro w
+  match w with
+  | .here =>
+      show (runBlock s (lowerLoad (g 0) base k)).get (g 0)
+          = stackGet (arr.lookup V) (i.lookup V).toNat
+      rw [lowerLoad_get_dst (g 0) base k, hmem, hidx]
+  | .there w0 =>
+      show (runBlock s (lowerLoad (g 0) base k)).get (ρ w0) = w0.lookup V
+      rw [lowerLoad_get_other (g 0) base k (ρ w0) (fun h => (hdisj 0 w0) h.symm)]
+      exact hinterp w0
+
+/-- **The state correspondence extends across an element store.** The store
+    writes no register, so every register survives and the updated array binds
+    none. -/
+theorem store_interp_extend {Γ : Ctxt jasminDialect} {n : Nat} (k : Nat)
+    (base : String) (arr : Ctxt.Var Γ (.stackArr 64 n)) (i src : Ctxt.Var Γ (.reg 64))
+    (ρ : RegMapG Γ) (s : JState 64) (V : Ctxt.Valuation Γ)
+    (hinterp : JStateInterpG ρ V s) :
+    JStateInterpG (RegMapG.shiftArr ρ)
+      (V.extend ((storeExpr arr i src).denote V))
+      (runBlock s (lowerStore base (ρ src) k)) := by
+  intro w
+  match w with
+  | .there w0 =>
+      show (runBlock s (lowerStore base (ρ src) k)).get (ρ w0) = w0.lookup V
+      rw [lowerStore_get base (ρ src) k (ρ w0)]
+      exact hinterp w0
 
 /-- **The straight-line multi-op `.denote ↔ runBlock` tie.**
     For every straight-line `ArithBlock`, under the state correspondence
@@ -441,12 +723,13 @@ def outReg : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
 theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) →
     (ρ : RegMapG Γ) → (g : Nat → String) → (s : JState 64) →
     (V : Ctxt.Valuation Γ) → JStateInterpG ρ V s → FreshFor ρ g →
+    (hmem : BlockMemOk block ρ g V s := by first | trivial | simp [BlockMemOk]) →
     (runBlock s (lowerBlock block ρ g)).get (outReg block ρ g)
       = block.toCom.denote V
-  | _, .ret v, ρ, g, s, V, hinterp, _ => by
+  | _, .ret v, ρ, g, s, V, hinterp, _, _ => by
       simp only [lowerBlock, outReg, runBlock_nil, ArithBlock.toCom, Com.denote]
       exact hinterp v
-  | _, .op bop hbop a b rest, ρ, g, s, V, hinterp, hfresh => by
+  | _, .op bop hbop a b rest, ρ, g, s, V, hinterp, hfresh, hmem => by
       -- The op's freshly allocated destination `g 0` differs from every old register.
       have hdisj := hfresh.2 0
       -- `JStateInterpG` extends to the grown context on the post-op state.
@@ -474,10 +757,10 @@ theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) �
       -- Recurse on `rest` from the post-op state, then match the split run.
       have key := lowerBlock_tie rest (ρ.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (lowerArith2 bop (ρ a) (ρ b) (g 0)))
-        (V.extend ((arithExpr bop a b).denote V)) hinterp' hfresh'
+        (V.extend ((arithExpr bop a b).denote V)) hinterp' hfresh' hmem
       simpa only [lowerBlock, outReg, ArithBlock.toCom, Com.denote, runBlock_append]
         using key
-  | _, .un uop huop a rest, ρ, g, s, V, hinterp, hfresh => by
+  | _, .un uop huop a rest, ρ, g, s, V, hinterp, hfresh, hmem => by
       have hdisj := hfresh.2 0
       have hinterp' : JStateInterpG (ρ.extend (g 0))
           (V.extend ((unExpr uop a).denote V))
@@ -497,10 +780,10 @@ theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) �
         FreshFor_extend ρ g hfresh
       have key := lowerBlock_tie rest (ρ.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (uop.toJInstr (g 0) (ρ a)))
-        (V.extend ((unExpr uop a).denote V)) hinterp' hfresh'
+        (V.extend ((unExpr uop a).denote V)) hinterp' hfresh' hmem
       simpa only [lowerBlock, outReg, ArithBlock.toCom, Com.denote, runBlock_append]
         using key
-  | _, .cnst n rest, ρ, g, s, V, hinterp, hfresh => by
+  | _, .cnst n rest, ρ, g, s, V, hinterp, hfresh, hmem => by
       have hdisj := hfresh.2 0
       have hinterp' : JStateInterpG (ρ.extend (g 0))
           (V.extend ((constExpr n).denote V))
@@ -518,7 +801,23 @@ theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) �
         FreshFor_extend ρ g hfresh
       have key := lowerBlock_tie rest (ρ.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (lowerConst n (g 0)))
-        (V.extend ((constExpr n).denote V)) hinterp' hfresh'
+        (V.extend ((constExpr n).denote V)) hinterp' hfresh' hmem
+      simpa only [lowerBlock, outReg, ArithBlock.toCom, Com.denote, runBlock_append]
+        using key
+  | _, .load _ k _ base arr i rest, ρ, g, s, V, hinterp, hfresh, hmem => by
+      have key := lowerBlock_tie rest (ρ.extend (g 0)) (fun m => g (m + 1))
+        (runBlock s (lowerLoad (g 0) base k))
+        (V.extend ((loadExpr arr i).denote V))
+        (load_interp_extend k base arr i ρ g s V hinterp hfresh hmem.1 hmem.2.1)
+        (FreshFor_extend ρ g hfresh) hmem.2.2
+      simpa only [lowerBlock, outReg, ArithBlock.toCom, Com.denote, runBlock_append]
+        using key
+  | _, .store _ k _ base arr i src rest, ρ, g, s, V, hinterp, hfresh, hmem => by
+      have key := lowerBlock_tie rest (RegMapG.shiftArr ρ) g
+        (runBlock s (lowerStore base (ρ src) k))
+        (V.extend ((storeExpr arr i src).denote V))
+        (store_interp_extend k base arr i src ρ s V hinterp)
+        (FreshFor_shiftArr ρ g hfresh) hmem.2
       simpa only [lowerBlock, outReg, ArithBlock.toCom, Com.denote, runBlock_append]
         using key
 
@@ -603,5 +902,47 @@ theorem block3_tie (ρ : RegMapG Δ2) (g : Nat → String) (s : JState 64)
       = JasminBinOp.xor.apply ((ArithUn.shl 3).apply (dA.lookup V))
           ((ArithUn.shr 2).apply (dB.lookup V)) := by
   rw [lowerBlock_tie block3 ρ g s V hinterp hfresh, block3_denote]
+
+/-! ## 10. Non-vacuity — a block that loads, computes and stores back
+
+A block over a single four-element stack array: materialise the index `1`, load
+element 1, shift it left by one, materialise the index `2` and store the result
+back into element 2. Both memory arms occur, and the computed value flows from
+the load through the shift into the store. -/
+
+/-- The one-array context `[stackArr 64 4]`. -/
+abbrev Δm : Ctxt jasminDialect := [.stackArr 64 4]
+
+/-- The array of `Δm`. -/
+abbrev dArr : Ctxt.Var Δm (.stackArr 64 4) := .here
+
+/-- **A load–compute–store block**: `i := 1 ; t := arr[i] ; u := t <<< 1 ;
+    j := 2 ; arr' := arr[j := u] ; ret u`. -/
+def block4 : ArithBlock Δm :=
+  .cnst 1
+    (.load 4 1 (show IsDispIndex 1 by unfold IsDispIndex; omega) "mem"
+        (.there .here) .here
+      (.un (.shl 1) (show (1 : Nat) < 64 by omega) .here
+        (.cnst 2
+          (.store 4 2 (show IsDispIndex 2 by unfold IsDispIndex; omega) "mem"
+              (.there (.there (.there (.there .here)))) .here (.there .here)
+            (.ret (.there (.there .here)))))))
+
+/-- The load–compute–store block denotes to `arr[1] <<< 1`, the value the store
+    writes back. -/
+theorem block4_denote (V : Ctxt.Valuation Δm) :
+    block4.toCom.denote V = (stackGet (dArr.lookup V) 1) <<< 1 := by
+  rfl
+
+/-- **The block tie on the load–compute–store block.** Under the state
+    correspondence, a fresh allocation and the block's memory precondition, the
+    machine `runBlock` of the whole lowered block reads `arr[1] <<< 1` from the
+    output register. -/
+theorem block4_tie (ρ : RegMapG Δm) (g : Nat → String) (s : JState 64)
+    (V : Ctxt.Valuation Δm) (hinterp : JStateInterpG ρ V s) (hfresh : FreshFor ρ g)
+    (hmem : BlockMemOk block4 ρ g V s) :
+    (runBlock s (lowerBlock block4 ρ g)).get (outReg block4 ρ g)
+      = (stackGet (dArr.lookup V) 1) <<< 1 := by
+  rw [lowerBlock_tie block4 ρ g s V hinterp hfresh hmem, block4_denote]
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

@@ -169,10 +169,12 @@ theorem liftBlock_runBlock_checked {Γ : Ctxt jasminDialect}
     (hlive : ∀ v : Ctxt.Var Γ (.reg 64), nm v ∈ live)
     (hparse : parseBlock blk = some ops) (helab : elabOps find ops out = some ab)
     (hcheck : freshCheck ops live = true)
-    (s : JState 64) (V : Ctxt.Valuation Γ) (hinterp : JStateInterpG nm V s) :
+    (s : JState 64) (V : Ctxt.Valuation Γ) (hinterp : JStateInterpG nm V s)
+    (hmem : BlockMemOk ab nm (dstStream ops) V s :=
+      by first | trivial | simp [BlockMemOk]) :
     (runBlock s blk).get (outReg ab nm (dstStream ops)) = ab.toCom.denote V :=
   liftBlock_runBlock blk ops nm find hfind out ab hparse helab s V hinterp
-    (freshFor_of_freshCheck nm ops live hlive hcheck)
+    (freshFor_of_freshCheck nm ops live hlive hcheck) hmem
 
 /-! ## 6. The check on the concrete allocation of `BytesToDialectJoin` -/
 

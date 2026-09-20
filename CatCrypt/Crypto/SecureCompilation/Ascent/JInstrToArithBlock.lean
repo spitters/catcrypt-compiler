@@ -304,13 +304,15 @@ theorem liftBlock_runBlock {Γ : Ctxt jasminDialect}
     (out : String) (ab : ArithBlock Γ)
     (hparse : parseBlock blk = some ops) (helab : elabOps find ops out = some ab)
     (s : JState 64) (V : Ctxt.Valuation Γ)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm (dstStream ops)) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm (dstStream ops))
+    (hmem : BlockMemOk ab nm (dstStream ops) V s :=
+      by first | trivial | simp [BlockMemOk]) :
     (runBlock s blk).get (outReg ab nm (dstStream ops)) = ab.toCom.denote V := by
   have hblk : blk = lowerBlock ab nm (dstStream ops) := by
     rw [elabOps_lowerBlock nm find hfind ops out ab helab]
     exact parseBlock_lowerRaw blk ops hparse
   rw [hblk]
-  exact lowerBlock_tie ab nm (dstStream ops) s V hinterp hfresh
+  exact lowerBlock_tie ab nm (dstStream ops) s V hinterp hfresh hmem
 
 /-! ## 8. Non-vacuity — a concrete decoded block lifted back
 

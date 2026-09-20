@@ -58,6 +58,8 @@ def finalCtxB : {Γ : Ctxt jasminDialect} → ArithBlock Γ → Ctxt jasminDiale
   | _, .op _ _ _ _ rest => finalCtxB rest
   | _, .un _ _ _ rest => finalCtxB rest
   | _, .cnst _ rest => finalCtxB rest
+  | _, .load _ _ _ _ _ _ rest => finalCtxB rest
+  | _, .store _ _ _ _ _ _ _ rest => finalCtxB rest
 
 /-- **The register map at the final context.** The map accumulated by
     `lowerBlock`: each op binds its destination `g 0` to the new slot and shifts
@@ -68,6 +70,9 @@ def finalNm : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) → RegMapG Γ 
   | _, .op _ _ _ _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
   | _, .un _ _ _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
   | _, .cnst _ rest, nm, g => finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .load _ _ _ _ _ _ rest, nm, g =>
+      finalNm rest (nm.extend (g 0)) (fun m => g (m + 1))
+  | _, .store _ _ _ _ _ _ _ rest, nm, g => finalNm rest (RegMapG.shiftArr nm) g
 
 /-- **The valuation at the final context.** The valuation accumulated by
     `ArithBlock.toCom`'s denotation: each op extends with its own denotation. -/
@@ -77,6 +82,9 @@ def finalVal : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
   | _, .op bop _ a b rest, V => finalVal rest (V.extend ((arithExpr bop a b).denote V))
   | _, .un uop _ a rest, V => finalVal rest (V.extend ((unExpr uop a).denote V))
   | _, .cnst n rest, V => finalVal rest (V.extend ((constExpr n).denote V))
+  | _, .load _ _ _ _ arr i rest, V => finalVal rest (V.extend ((loadExpr arr i).denote V))
+  | _, .store _ _ _ _ arr i src rest, V =>
+      finalVal rest (V.extend ((storeExpr arr i src).denote V))
 
 /-- **The variable the block returns**, as a variable of the final context: the
     payload of the terminating `.ret`, reached through the op extensions. -/
@@ -86,6 +94,8 @@ def outVar : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
   | _, .op _ _ _ _ rest => outVar rest
   | _, .un _ _ _ rest => outVar rest
   | _, .cnst _ rest => outVar rest
+  | _, .load _ _ _ _ _ _ rest => outVar rest
+  | _, .store _ _ _ _ _ _ _ rest => outVar rest
 
 /-! ## 2. The tie at the final context -/
 
@@ -100,11 +110,12 @@ def outVar : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
 theorem lowerBlock_tie_state : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) →
     (nm : RegMapG Γ) → (g : Nat → String) → (s : JState 64) →
     (V : Ctxt.Valuation Γ) → JStateInterpG nm V s → FreshFor nm g →
+    (hmem : BlockMemOk ab nm g V s := by first | trivial | simp [BlockMemOk]) →
     JStateInterpG (finalNm ab nm g) (finalVal ab V)
       (runBlock s (lowerBlock ab nm g))
-  | _, .ret _, _, _, _, _, hinterp, _ => by
+  | _, .ret _, _, _, _, _, hinterp, _, _ => by
       simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_nil] using hinterp
-  | _, .op bop hbop a b rest, nm, g, s, V, hinterp, hfresh => by
+  | _, .op bop hbop a b rest, nm, g, s, V, hinterp, hfresh, hmem => by
       -- The op's freshly allocated destination `g 0` differs from every old register.
       have hdisj := hfresh.2 0
       -- The correspondence extends to the grown context on the post-op state.
@@ -128,9 +139,9 @@ theorem lowerBlock_tie_state : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ
         FreshFor_extend nm g hfresh
       have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (lowerArith2 bop (nm a) (nm b) (g 0)))
-        (V.extend ((arithExpr bop a b).denote V)) hinterp' hfresh'
+        (V.extend ((arithExpr bop a b).denote V)) hinterp' hfresh' hmem
       simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
-  | _, .un uop huop a rest, nm, g, s, V, hinterp, hfresh => by
+  | _, .un uop huop a rest, nm, g, s, V, hinterp, hfresh, hmem => by
       have hdisj := hfresh.2 0
       have hinterp' : JStateInterpG (nm.extend (g 0))
           (V.extend ((unExpr uop a).denote V))
@@ -150,9 +161,9 @@ theorem lowerBlock_tie_state : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ
         FreshFor_extend nm g hfresh
       have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (uop.toJInstr (g 0) (nm a)))
-        (V.extend ((unExpr uop a).denote V)) hinterp' hfresh'
+        (V.extend ((unExpr uop a).denote V)) hinterp' hfresh' hmem
       simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
-  | _, .cnst n rest, nm, g, s, V, hinterp, hfresh => by
+  | _, .cnst n rest, nm, g, s, V, hinterp, hfresh, hmem => by
       have hdisj := hfresh.2 0
       have hinterp' : JStateInterpG (nm.extend (g 0))
           (V.extend ((constExpr n).denote V))
@@ -170,7 +181,21 @@ theorem lowerBlock_tie_state : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ
         FreshFor_extend nm g hfresh
       have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun k => g (k + 1))
         (runBlock s (lowerConst n (g 0)))
-        (V.extend ((constExpr n).denote V)) hinterp' hfresh'
+        (V.extend ((constExpr n).denote V)) hinterp' hfresh' hmem
+      simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
+  | _, .load _ k _ base arr i rest, nm, g, s, V, hinterp, hfresh, hmem => by
+      have key := lowerBlock_tie_state rest (nm.extend (g 0)) (fun m => g (m + 1))
+        (runBlock s (lowerLoad (g 0) base k))
+        (V.extend ((loadExpr arr i).denote V))
+        (load_interp_extend k base arr i nm g s V hinterp hfresh hmem.1 hmem.2.1)
+        (FreshFor_extend nm g hfresh) hmem.2.2
+      simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
+  | _, .store _ k _ base arr i src rest, nm, g, s, V, hinterp, hfresh, hmem => by
+      have key := lowerBlock_tie_state rest (RegMapG.shiftArr nm) g
+        (runBlock s (lowerStore base (nm src) k))
+        (V.extend ((storeExpr arr i src).denote V))
+        (store_interp_extend k base arr i src nm s V hinterp)
+        (FreshFor_shiftArr nm g hfresh) hmem.2
       simpa only [lowerBlock, finalCtxB, finalNm, finalVal, runBlock_append] using key
 
 /-! ## 3. The output register as one slot of the final context -/
@@ -187,6 +212,10 @@ theorem outReg_eq_finalNm : {Γ : Ctxt jasminDialect} → (ab : ArithBlock Γ) �
       outReg_eq_finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
   | _, .cnst _ rest, nm, g =>
       outReg_eq_finalNm rest (nm.extend (g 0)) (fun k => g (k + 1))
+  | _, .load _ _ _ _ _ _ rest, nm, g =>
+      outReg_eq_finalNm rest (nm.extend (g 0)) (fun m => g (m + 1))
+  | _, .store _ _ _ _ _ _ _ rest, nm, g =>
+      outReg_eq_finalNm rest (RegMapG.shiftArr nm) g
 
 /-- The returned variable's value in the final valuation is the block's
     `Com jasminDialect` denotation. -/
@@ -199,6 +228,10 @@ theorem outVar_lookup_finalVal : {Γ : Ctxt jasminDialect} → (ab : ArithBlock 
       outVar_lookup_finalVal rest (V.extend ((unExpr uop a).denote V))
   | _, .cnst n rest, V =>
       outVar_lookup_finalVal rest (V.extend ((constExpr n).denote V))
+  | _, .load _ _ _ _ arr i rest, V =>
+      outVar_lookup_finalVal rest (V.extend ((loadExpr arr i).denote V))
+  | _, .store _ _ _ _ arr i src rest, V =>
+      outVar_lookup_finalVal rest (V.extend ((storeExpr arr i src).denote V))
 
 /-- **The output-register tie as one instance of the final-state tie.** Reading
     the block's output register after `runBlock` yields the program's
@@ -206,10 +239,11 @@ theorem outVar_lookup_finalVal : {Γ : Ctxt jasminDialect} → (ab : ArithBlock 
     returned variable. -/
 theorem lowerBlock_tie_of_state {Γ : Ctxt jasminDialect} (ab : ArithBlock Γ)
     (nm : RegMapG Γ) (g : Nat → String) (s : JState 64) (V : Ctxt.Valuation Γ)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g)
+    (hmem : BlockMemOk ab nm g V s := by first | trivial | simp [BlockMemOk]) :
     (runBlock s (lowerBlock ab nm g)).get (outReg ab nm g) = ab.toCom.denote V := by
   rw [outReg_eq_finalNm ab nm g,
-    lowerBlock_tie_state ab nm g s V hinterp hfresh (outVar ab),
+    lowerBlock_tie_state ab nm g s V hinterp hfresh hmem (outVar ab),
     outVar_lookup_finalVal ab V]
 
 /-! ## 4. Non-vacuity — both slots of the two-op block are readable
@@ -287,5 +321,58 @@ theorem block3_final_state_slots :
       ∧ (runBlock stateW (lowerBlock block3 nmW gW)).get (gW 4) = (48 : BitVec 64) := by
   have h := lowerBlock_tie_state block3 nmW gW stateW valW stateW_interp gW_fresh
   exact ⟨h (.there (.there (.there (.there .here)))), h (.there (.there .here)), h .here⟩
+
+/-! ## 5. Non-vacuity — the load–compute–store block on a concrete memory
+
+A machine state whose memory holds `21` at element 1 of the array base, and the
+valuation that gives the array the same contents. Running the lowered block
+leaves `21 <<< 1 = 42` in the output register and writes it into the memory cell
+of element 2. -/
+
+/-- The register map of the one-array context: it has no `reg 64` slot. -/
+def nmM : RegMapG Δm := fun v =>
+  match v with
+  | .there w => nomatch w
+
+/-- The destination stream of the memory witness. -/
+def gM : Nat → String := tieRegName
+
+/-- The memory witness allocation is fresh: the stream is injective, and the
+    context has no register to collide with. -/
+theorem gM_fresh : FreshFor nmM gM := by
+  refine ⟨fun i j hij h => hij (tieRegName_inj h), ?_⟩
+  intro _ v
+  match v with
+  | .there w => exact nomatch w
+
+/-- The array contents of the witness: `21` at element 1, `0` elsewhere. -/
+def arrM : Fin 4 → BitVec 64 := fun j => if j.val = 1 then 21 else 0
+
+/-- The witness valuation, giving the array `arrM`. -/
+def valM : Ctxt.Valuation Δm := .cons arrM .nil
+
+/-- A machine state whose memory holds `arrM`'s element 1 at the array base. -/
+def stateM : JState 64 :=
+  { regs := fun _ => 0
+    mem := fun b o => if b = "mem" ∧ o = elemDisp 1 then 21 else 0 }
+
+/-- The witness state satisfies the block's memory precondition: each index
+    slot holds its arm's index, and the cell the load reads holds the array
+    element the valuation gives. -/
+theorem stateM_memOk : BlockMemOk block4 nmM gM valM stateM :=
+  ⟨rfl, rfl, rfl, trivial⟩
+
+/-- **The load–compute–store block runs on a concrete memory.** After `runBlock`
+    of the lowered block the output register holds `21 <<< 1 = 42`, and the
+    memory cell of element 2 holds the same word. -/
+theorem block4_concrete_run :
+    (runBlock stateM (lowerBlock block4 nmM gM)).get (outReg block4 nmM gM)
+        = (42 : BitVec 64)
+      ∧ (runBlock stateM (lowerBlock block4 nmM gM)).mem "mem" (elemDisp 2)
+        = (42 : BitVec 64) := by
+  refine ⟨?_, ?_⟩
+  · rw [block4_tie nmM gM stateM valM (fun v => nomatch v) gM_fresh stateM_memOk]
+    rfl
+  · rfl
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

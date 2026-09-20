@@ -52,6 +52,8 @@ theorem finalCtx_eq_finalCtxB : {Γ : Ctxt jasminDialect} → (ab : ArithBlock �
   | _, .op _ _ _ _ rest => finalCtx_eq_finalCtxB rest
   | _, .un _ _ _ rest => finalCtx_eq_finalCtxB rest
   | _, .cnst _ rest => finalCtx_eq_finalCtxB rest
+  | _, .load _ _ _ _ _ _ rest => finalCtx_eq_finalCtxB rest
+  | _, .store _ _ _ _ _ _ _ rest => finalCtx_eq_finalCtxB rest
 
 /-! ## 2. The composition -/
 
@@ -61,23 +63,24 @@ theorem finalCtx_eq_finalCtxB : {Γ : Ctxt jasminDialect} → (ab : ArithBlock �
     through the allocation; and after `runBlock` the state correspondence holds
     at the prefix's final context, so each slot sits in its own register. -/
 theorem prefix_bytes_state {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (c : Com jasminDialect Γ t) (ab : ArithBlock Γ)
+    (c : Com jasminDialect Γ t) (κ : ConstEnv Γ) (ab : ArithBlock Γ)
     (tail : Com jasminDialect ab.finalCtx t)
-    (h : comScalarPrefix c = some ⟨ab, tail⟩)
+    (h : comScalarPrefix c κ = some ⟨ab, tail⟩)
     (nm : RegMapG Γ) (g : Nat → String) (alloc : GpAlloc)
     (hc : ∀ i ∈ lowerBlock ab nm g, blockCovered i = true)
     (hr : ∀ i ∈ lowerBlock ab nm g, mulxRdxOk alloc i = true)
     (s : JState 64) (V : Ctxt.Valuation Γ)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g)
+    (hmem : BlockMemOk ab nm g V s := by first | trivial | simp [BlockMemOk]) :
     ab.toComWith tail = c
       ∧ decodeJStream (lowerBlock ab nm g).length
           (encodeJBlock alloc (lowerBlock ab nm g))
           = some ((lowerBlock ab nm g).map (renameJ alloc))
       ∧ JStateInterpG (finalNm ab nm g) (finalVal ab V)
           (runBlock s (lowerBlock ab nm g)) :=
-  ⟨comScalarPrefix_toComWith c ab tail h,
+  ⟨comScalarPrefix_toComWith c κ ab tail h,
    roundtrip_block alloc (lowerBlock ab nm g) hc hr,
-   lowerBlock_tie_state ab nm g s V hinterp hfresh⟩
+   lowerBlock_tie_state ab nm g s V hinterp hfresh hmem⟩
 
 /-! ## 3. The instance
 

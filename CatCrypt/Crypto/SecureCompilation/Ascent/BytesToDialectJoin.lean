@@ -65,9 +65,12 @@ theorem block_denote_source {Γ : Ctxt jasminDialect}
     (s : JState 64) (V : Ctxt.Valuation Γ)
     (hk : KEnv.Consistent k V)
     (hcert : saturateCom fuel ab.toCom k = saturateCom fuel src k)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm (dstStream ops)) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm (dstStream ops))
+    (hmem : BlockMemOk ab nm (dstStream ops) V s :=
+      by first | trivial | simp [BlockMemOk]) :
     (runBlock s blk).get (outReg ab nm (dstStream ops)) = src.denote V := by
-  rw [liftBlock_runBlock blk ops nm find hfind out ab hparse helab s V hinterp hfresh]
+  rw [liftBlock_runBlock blk ops nm find hfind out ab hparse helab s V hinterp hfresh
+    hmem]
   exact denote_eq_of_saturateCom_eq fuel ab.toCom src k V hk hcert
 
 /-! ## 2. Separating a physical register name from the padding names -/

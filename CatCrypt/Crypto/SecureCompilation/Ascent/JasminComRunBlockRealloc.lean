@@ -81,12 +81,13 @@ theorem lowerBlock_tie_realloc {Γ : Ctxt jasminDialect} (block : ArithBlock Γ)
     (ρ : RegMapG Γ) (g : Nat → String) (s : JState 64) (V : Ctxt.Valuation Γ)
     (hinterp : JStateInterpG ρ V s) (hfresh : FreshFor ρ g)
     (ρr σr : String → String) (hρr : Function.Injective ρr)
-    (hσr : Function.LeftInverse σr ρr) :
+    (hσr : Function.LeftInverse σr ρr)
+    (hmem : BlockMemOk block ρ g V s := by first | trivial | simp [BlockMemOk]) :
     (runBlock (renameState σr s) (renameBlock ρr (lowerBlock block ρ g))).get
         (ρr (outReg block ρ g))
       = block.toCom.denote V := by
   have hrel := regalloc_runBlock_sound hρr hσr (lowerBlock block ρ g) s
-  have hbase := lowerBlock_tie block ρ g s V hinterp hfresh
+  have hbase := lowerBlock_tie block ρ g s V hinterp hfresh hmem
   have hreg := hrel.regs (outReg block ρ g)
   simp only [JState.get] at hbase ⊢
   rw [hreg]; exact hbase

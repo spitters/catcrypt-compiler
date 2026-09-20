@@ -653,6 +653,7 @@ def pkgModules4 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FramedJInstrTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FreshForCheck,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.FrontToBytes,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe,

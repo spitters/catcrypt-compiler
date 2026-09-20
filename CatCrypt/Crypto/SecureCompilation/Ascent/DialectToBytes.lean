@@ -55,13 +55,14 @@ theorem dialect_bytes_denote {Γ : Ctxt jasminDialect}
     (hc : ∀ i ∈ lowerBlock ab nm g, blockCovered i = true)
     (hr : ∀ i ∈ lowerBlock ab nm g, mulxRdxOk alloc i = true)
     (s : JState 64) (V : Ctxt.Valuation Γ)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g)
+    (hmem : BlockMemOk ab nm g V s := by first | trivial | simp [BlockMemOk]) :
     decodeJStream (lowerBlock ab nm g).length
         (encodeJBlock alloc (lowerBlock ab nm g))
         = some ((lowerBlock ab nm g).map (renameJ alloc))
       ∧ (runBlock s (lowerBlock ab nm g)).get (outReg ab nm g) = c.denote V :=
   ⟨roundtrip_block alloc (lowerBlock ab nm g) hc hr,
-   com_lowerBlock_runBlock c ab h nm g s V hinterp hfresh⟩
+   com_lowerBlock_runBlock c ab h nm g s V hinterp hfresh hmem⟩
 
 /-! ## 2. The register map and the destination stream of the instance -/
 

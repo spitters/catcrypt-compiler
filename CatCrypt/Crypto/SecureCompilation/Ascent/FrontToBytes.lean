@@ -81,9 +81,7 @@ def frontBlock : List (JInstr 64) :=
 
 /-- The chain lands the same instructions the lowering of `block2` gives. -/
 theorem frontBlock_eq : frontBlock = demoBlock := by
-  rw [frontBlock, srcCD_front]
-  simp only [frontCom_recognise]
-  rfl
+  with_unfolding_all rfl
 
 /-- The bytes of the front's block. -/
 def frontBytes : List (BitVec 8) := encodeJBlock idAlloc frontBlock

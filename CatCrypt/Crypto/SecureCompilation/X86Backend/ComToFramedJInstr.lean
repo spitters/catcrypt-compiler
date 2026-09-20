@@ -127,7 +127,15 @@ def comBody {Γ : Ctxt jasminDialect} {t : JasminTy}
     package it with the given ABI/framing metadata. `none` when the body is outside
     the `gatherJBlock`-covered fragment (or has no function). The `alloc` / `args` /
     `savedRegs` are the placement the proved lowering pins (the same data the `Lprog`
-    framed path threads through `Com.toLprogPhysAbi`'s ABI parameters). -/
+    framed path threads through `Com.toLprogPhysAbi`'s ABI parameters).
+
+    `gatherJBlock` covers the two-address `"ADD"` / `"MOV"` forms, not the
+    three-address `"ADD:64"` / `"MUL:64"` forms `Com.toLprog` emits, so over an
+    exported body this is `none` on every program
+    (`Ascent.FramedJInstrTie.comToFramedJFunc_eq_none`). The entry that gathers an
+    exported body is `Ascent.FramedJInstrTie.comToFramedJFunc6`, which uses
+    `GatherImmForms.gatherJBlock6`; it cannot live here, because `GatherImmForms`
+    reaches this module through `FramingReconcile`. -/
 def comToFramedJFunc {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)
     (alloc : GpAlloc) (args : List AbiArg)

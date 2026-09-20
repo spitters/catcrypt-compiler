@@ -171,12 +171,14 @@ theorem liftBlock_runBlock_synth (blk : List (JInstr 64)) (ops : List RawArith)
     (helab : elabOps (findOf (entryNames ops)) ops out = some ab)
     (s : JState 64) (V : Ctxt.Valuation (ctxOf (entryNames ops)))
     (hinterp : JStateInterpG (nmOf (entryNames ops)) V s)
-    (hfresh : FreshFor (nmOf (entryNames ops)) (dstStream ops)) :
+    (hfresh : FreshFor (nmOf (entryNames ops)) (dstStream ops))
+    (hmem : BlockMemOk ab (nmOf (entryNames ops)) (dstStream ops) V s :=
+      by first | trivial | simp [BlockMemOk]) :
     (runBlock s blk).get (outReg ab (nmOf (entryNames ops)) (dstStream ops))
       = ab.toCom.denote V :=
   liftBlock_runBlock blk ops (nmOf (entryNames ops)) (findOf (entryNames ops))
     (findOf_nmOf (entryNames ops) (entryNames_nodup ops)) out ab hparse helab
-    s V hinterp hfresh
+    s V hinterp hfresh hmem
 
 /-! ## 5. Non-vacuity — a two-op block decompiled from nothing but itself
 

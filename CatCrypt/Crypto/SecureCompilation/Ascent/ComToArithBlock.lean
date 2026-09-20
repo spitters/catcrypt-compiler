@@ -14,8 +14,11 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.JInstrToArithBlock
 and the descent produces `Com jasminDialect`. This module recognises the second
 as the first: `comToArithBlock` maps a `Com jasminDialect Γ (.reg 64)` whose
 every binding is a scalar 64-bit `regArith`, a 64-bit `shlImm`/`shrImm` with a
-count below the word width, or a 64-bit `regConst`, to the `ArithBlock Γ` with
-those binders, and rejects everything else.
+count below the word width, a 64-bit `regConst`, or a 64-bit `stackLoad` /
+`stackStore` whose index operand names a slot bound by an earlier `regConst`
+binder, to the `ArithBlock Γ` with those binders, and rejects everything else.
+The constants bound along the program are carried in a `ConstEnv`, from which a
+memory binding reads its displacement index.
 
 `comToArithBlock_toCom` is the round trip: a recognised program is exactly the
 one its recognised block compiles back to, so the block carries no information
@@ -44,6 +47,14 @@ theorem hvector_two_eta.{u, v} {α : Type u} {f : α → Type v} {t₁ t₂ : α
   match xs with
   | .cons _ (.cons _ .nil) => rfl
 
+/-- A three-element `HVector` is the `cons` chain of its first three heads. -/
+theorem hvector_three_eta.{u, v} {α : Type u} {f : α → Type v} {t₁ t₂ t₃ : α}
+    (xs : HVector f [t₁, t₂, t₃]) :
+    HVector.cons xs.head (HVector.cons xs.tail.head
+      (HVector.cons xs.tail.tail.head HVector.nil)) = xs := by
+  match xs with
+  | .cons _ (.cons _ (.cons _ .nil)) => rfl
+
 /-- A one-element `HVector` is the `cons` of its head onto the empty vector. -/
 theorem hvector_one_eta.{u, v} {α : Type u} {f : α → Type v} {t₁ : α}
     (xs : HVector f [t₁]) : HVector.cons xs.head HVector.nil = xs := by
@@ -56,6 +67,29 @@ theorem hvector_nil_eta.{u, v} {α : Type u} {f : α → Type v}
   match xs with
   | .nil => rfl
 
+/-- **The constants bound at a context's register slots.** A slot bound by a
+    `regConst` binder carries that constant; every other slot carries none. The
+    memory arms read their displacement index from it, since the dialect's
+    `stackLoad` / `stackStore` take the index as a register operand while the
+    machine's covered load and store forms take it as a displacement. -/
+abbrev ConstEnv (Γ : Ctxt jasminDialect) := Ctxt.Var Γ (.reg 64) → Option Nat
+
+/-- Extend a constant environment with the constant of a new register slot. -/
+def ConstEnv.extend {Γ : Ctxt jasminDialect} (κ : ConstEnv Γ) (c : Option Nat) :
+    ConstEnv (.reg 64 :: Γ) :=
+  fun w =>
+    match w with
+    | .here => c
+    | .there w0 => κ w0
+
+/-- Shift a constant environment under a stack-array binder, which binds no
+    register slot. -/
+def ConstEnv.shiftArr {Γ : Ctxt jasminDialect} {n : Nat} (κ : ConstEnv Γ) :
+    ConstEnv (.stackArr 64 n :: Γ) :=
+  fun w =>
+    match w with
+    | .there w0 => κ w0
+
 /-- **Recognise a dialect program as a straight-line arithmetic block.** A
     `Com.ret` is the block's return; a `Com.var` is one block op when its
     expression binds a `reg 64` slot and is a scalar `regArith` at width 64, a
@@ -63,26 +97,46 @@ theorem hvector_nil_eta.{u, v} {α : Type u} {f : α → Type v}
     `regConst` at width 64, with the operands read off the expression's argument
     vector. Every other program is rejected. -/
 def comToArithBlock : {Γ : Ctxt jasminDialect} →
-    Com jasminDialect Γ (.reg 64) → Option (ArithBlock Γ)
-  | _, .ret v => some (.ret v)
-  | _, .var (t := t) e body =>
+    Com jasminDialect Γ (.reg 64) → (κ : ConstEnv Γ := fun _ => none) →
+    Option (ArithBlock Γ)
+  | _, .ret v, _ => some (.ret v)
+  | _, .var (t := t) e body, κ =>
       match t, e, body with
       | JasminTy.reg 64, ⟨.regArith bop 64, _, args⟩, body =>
           if hs : isScalarBopB bop = true then
-            (comToArithBlock body).map fun rest =>
+            (comToArithBlock body (κ.extend none)).map fun rest =>
               .op bop (IsScalarBop_of_isScalarBopB hs) args.head args.tail.head rest
           else none
       | JasminTy.reg 64, ⟨.shlImm 64 k, _, args⟩, body =>
           if hk : k < 64 then
-            (comToArithBlock body).map fun rest =>
+            (comToArithBlock body (κ.extend none)).map fun rest =>
               .un (unOfShl k) (IsScalarUn_unOfShl hk) args.head rest
           else none
       | JasminTy.reg 64, ⟨.shrImm 64 k, _, args⟩, body =>
           if hk : k < 64 then
-            (comToArithBlock body).map fun rest => .un (.shr k) hk args.head rest
+            (comToArithBlock body (κ.extend none)).map fun rest =>
+              .un (.shr k) hk args.head rest
           else none
-      | JasminTy.reg 64, ⟨.regConst 64 n, _, _⟩, body =>
-          (comToArithBlock body).map fun rest => .cnst n rest
+      | JasminTy.reg 64, ⟨.regConst 64 k, _, _⟩, body =>
+          (comToArithBlock body (κ.extend (some k))).map fun rest => .cnst k rest
+      | JasminTy.reg 64, ⟨.stackLoad 64 n, _, args⟩, body =>
+          match κ args.tail.head with
+          | some k =>
+              if hk : isDispIndexB k = true then
+                (comToArithBlock body (κ.extend none)).map fun rest =>
+                  .load n k (IsDispIndex_of_isDispIndexB hk) (arrBase args.head)
+                    args.head args.tail.head rest
+              else none
+          | none => none
+      | JasminTy.stackArr 64 n, ⟨.stackStore 64 _, rfl, args⟩, body =>
+          match κ args.tail.head with
+          | some k =>
+              if hk : isDispIndexB k = true then
+                (comToArithBlock body (ConstEnv.shiftArr κ)).map fun rest =>
+                  .store n k (IsDispIndex_of_isDispIndexB hk) (arrBase args.head)
+                    args.head args.tail.head args.tail.tail.head rest
+              else none
+          | none => none
       | _, _, _ => none
 
 /-! ## 2. The round trip -/
@@ -91,73 +145,102 @@ def comToArithBlock : {Γ : Ctxt jasminDialect} →
     the block it yields compiles to the same binding over the body's block. -/
 theorem comToArithBlock_var {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) (body : Com jasminDialect (t :: Γ) (.reg 64))
-    (ab : ArithBlock Γ) (h : comToArithBlock (.var e body) = some ab) :
-    ∃ rest : ArithBlock (t :: Γ),
-      comToArithBlock body = some rest ∧ ab.toCom = .var e rest.toCom := by
+    (κ : ConstEnv Γ) (ab : ArithBlock Γ)
+    (h : comToArithBlock (.var e body) κ = some ab) :
+    ∃ (κ' : ConstEnv (t :: Γ)) (rest : ArithBlock (t :: Γ)),
+      comToArithBlock body κ' = some rest ∧ ab.toCom = .var e rest.toCom := by
   unfold comToArithBlock at h
   split at h
   · rename_i bop hop args body'
     split at h
     · rename_i hs
-      rcases hb : comToArithBlock body' with _ | rest
+      rcases hb : comToArithBlock body' (κ.extend none) with _ | rest
       · rw [hb] at h; simp at h
       · rw [hb] at h
         simp only [Option.map_some, Option.some.injEq] at h
         subst h
-        refine ⟨rest, rfl, ?_⟩
+        refine ⟨κ.extend none, rest, hb, ?_⟩
         simp only [ArithBlock.toCom, arithExpr, hvector_two_eta args]
     · simp at h
   · rename_i k hop args body'
     split at h
     · rename_i hk
-      rcases hb : comToArithBlock body' with _ | rest
+      rcases hb : comToArithBlock body' (κ.extend none) with _ | rest
       · rw [hb] at h; simp at h
       · rw [hb] at h
         simp only [Option.map_some, Option.some.injEq] at h
         subst h
-        refine ⟨rest, rfl, ?_⟩
+        refine ⟨κ.extend none, rest, hb, ?_⟩
         simp only [ArithBlock.toCom, unExpr_unOfShl, hvector_one_eta args]
     · simp at h
   · rename_i k hop args body'
     split at h
     · rename_i hk
-      rcases hb : comToArithBlock body' with _ | rest
+      rcases hb : comToArithBlock body' (κ.extend none) with _ | rest
       · rw [hb] at h; simp at h
       · rw [hb] at h
         simp only [Option.map_some, Option.some.injEq] at h
         subst h
-        refine ⟨rest, rfl, ?_⟩
+        refine ⟨κ.extend none, rest, hb, ?_⟩
         simp only [ArithBlock.toCom, unExpr, hvector_one_eta args]
     · simp at h
   · rename_i n hop args body'
-    rcases hb : comToArithBlock body' with _ | rest
+    rcases hb : comToArithBlock body' (κ.extend (some n)) with _ | rest
     · rw [hb] at h; simp at h
     · rw [hb] at h
       simp only [Option.map_some, Option.some.injEq] at h
       subst h
-      refine ⟨rest, rfl, ?_⟩
+      refine ⟨κ.extend (some n), rest, hb, ?_⟩
       simp only [ArithBlock.toCom, constExpr, hvector_nil_eta args]
+  · rename_i n hop args body'
+    split at h
+    · rename_i k _
+      split at h
+      · rename_i hk
+        rcases hb : comToArithBlock body' (κ.extend none) with _ | rest
+        · rw [hb] at h; simp at h
+        · rw [hb] at h
+          simp only [Option.map_some, Option.some.injEq] at h
+          subst h
+          refine ⟨κ.extend none, rest, hb, ?_⟩
+          simp only [ArithBlock.toCom, loadExpr, hvector_two_eta args]
+      · simp at h
+    · simp at h
+  · rename_i n args body'
+    split at h
+    · rename_i k _
+      split at h
+      · rename_i hk
+        rcases hb : comToArithBlock body' (ConstEnv.shiftArr κ) with _ | rest
+        · rw [hb] at h; simp at h
+        · rw [hb] at h
+          simp only [Option.map_some, Option.some.injEq] at h
+          subst h
+          refine ⟨ConstEnv.shiftArr κ, rest, hb, ?_⟩
+          simp only [ArithBlock.toCom, storeExpr, hvector_three_eta args]
+      · simp at h
+    · simp at h
   · simp at h
 
 /-- **The recogniser invents nothing.** A recognised block compiles back to the
     program it was recognised from. -/
 theorem comToArithBlock_toCom : {Γ : Ctxt jasminDialect} →
-    (c : Com jasminDialect Γ (.reg 64)) → (ab : ArithBlock Γ) →
-    comToArithBlock c = some ab → ab.toCom = c
-  | _, .ret v, ab, h => by
+    (c : Com jasminDialect Γ (.reg 64)) → (κ : ConstEnv Γ) → (ab : ArithBlock Γ) →
+    comToArithBlock c κ = some ab → ab.toCom = c
+  | _, .ret v, _, ab, h => by
       simp only [comToArithBlock, Option.some.injEq] at h
       subst h; rfl
-  | _, .var e body, ab, h => by
-      obtain ⟨rest, hb, heq⟩ := comToArithBlock_var e body ab h
-      rw [heq, comToArithBlock_toCom body rest hb]
+  | _, .var e body, κ, ab, h => by
+      obtain ⟨κ', rest, hb, heq⟩ := comToArithBlock_var e body κ ab h
+      rw [heq, comToArithBlock_toCom body κ' rest hb]
 
 /-- The denotations agree: a recognised block's compiled program denotes what the
     recognised program denotes. -/
 theorem comToArithBlock_denote {Γ : Ctxt jasminDialect}
-    (c : Com jasminDialect Γ (.reg 64)) (ab : ArithBlock Γ)
-    (h : comToArithBlock c = some ab) (V : Ctxt.Valuation Γ) :
+    (c : Com jasminDialect Γ (.reg 64)) (κ : ConstEnv Γ) (ab : ArithBlock Γ)
+    (h : comToArithBlock c κ = some ab) (V : Ctxt.Valuation Γ) :
     ab.toCom.denote V = c.denote V := by
-  rw [comToArithBlock_toCom c ab h]
+  rw [comToArithBlock_toCom c κ ab h]
 
 /-! ## 3. The composite -/
 
@@ -169,10 +252,11 @@ theorem com_lowerBlock_runBlock {Γ : Ctxt jasminDialect}
     (c : Com jasminDialect Γ (.reg 64)) (ab : ArithBlock Γ)
     (h : comToArithBlock c = some ab)
     (nm : RegMapG Γ) (g : Nat → String) (s : JState 64) (V : Ctxt.Valuation Γ)
-    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g) :
+    (hinterp : JStateInterpG nm V s) (hfresh : FreshFor nm g)
+    (hmem : BlockMemOk ab nm g V s := by first | trivial | simp [BlockMemOk]) :
     (runBlock s (lowerBlock ab nm g)).get (outReg ab nm g) = c.denote V := by
-  rw [lowerBlock_tie ab nm g s V hinterp hfresh]
-  exact comToArithBlock_denote c ab h V
+  rw [lowerBlock_tie ab nm g s V hinterp hfresh hmem]
+  exact comToArithBlock_denote c _ ab h V
 
 /-! ## 4. Non-vacuity — a two-op dialect program recognised
 
@@ -191,7 +275,7 @@ theorem comBlock2_recognise : comToArithBlock comBlock2 = some block2 := by
 
 /-- The recognised block compiles back to the program it was recognised from. -/
 theorem comBlock2_toCom : block2.toCom = comBlock2 :=
-  comToArithBlock_toCom comBlock2 block2 comBlock2_recognise
+  comToArithBlock_toCom comBlock2 _ block2 comBlock2_recognise
 
 /-- The two-op program denotes to `(7 + 35) * 7 = 294` on the inputs `⟨7, 35⟩`. -/
 theorem comBlock2_denote_concrete :
@@ -232,7 +316,7 @@ theorem comBlock3_recognise : comToArithBlock comBlock3 = some block3 := by
 /-- The recognised mixed block compiles back to the program it was recognised
     from. -/
 theorem comBlock3_toCom : block3.toCom = comBlock3 :=
-  comToArithBlock_toCom comBlock3 block3 comBlock3_recognise
+  comToArithBlock_toCom comBlock3 _ block3 comBlock3_recognise
 
 /-- The mixed program denotes to `(7 <<< 3) ^^^ (35 >>> 2) = 48` on the inputs
     `⟨7, 35⟩`. -/
@@ -250,5 +334,34 @@ theorem comBlock3_lowerBlock_runBlock (nm : RegMapG Δ2) (g : Nat → String)
     (runBlock s (lowerBlock block3 nm g)).get (outReg block3 nm g)
       = comBlock3.denote V :=
   com_lowerBlock_runBlock comBlock3 block3 comBlock3_recognise nm g s V hinterp hfresh
+
+/-! ## 6. Non-vacuity — a program with a load and a store recognised
+
+A program over one four-element stack array whose index operands are the
+`regConst` slots bound just before each memory operation — the shape a
+constant-index array access lowers to. -/
+
+/-- The dialect program of the load–compute–store block: `i := 1 ;
+    t := arr[i] ; u := t <<< 1 ; j := 2 ; arr' := arr[j := u] ; ret u`. -/
+def comBlock4 : Com jasminDialect Δm (.reg 64) :=
+  .var (.mk (.regConst 64 1) rfl .nil)
+    (.var (.mk (.stackLoad 64 4) rfl (.cons (.there .here) (.cons .here .nil)))
+      (.var (.mk (.shlImm 64 1) rfl (.cons .here .nil))
+        (.var (.mk (.regConst 64 2) rfl .nil)
+          (.var (.mk (.stackStore 64 4) rfl
+              (.cons (.there (.there (.there (.there .here))))
+                (.cons .here (.cons (.there .here) .nil))))
+            (.ret (.there (.there .here)))))))
+
+/-- **The memory program is recognised.** Both memory binders are accepted: each
+    reads its displacement index from the constant slot its index operand names,
+    and its base from the array variable's canonical name. -/
+theorem comBlock4_recognise : comToArithBlock comBlock4 = some block4 := by
+  with_unfolding_all rfl
+
+/-- The recognised memory block compiles back to the program it was recognised
+    from. -/
+theorem comBlock4_toCom : block4.toCom = comBlock4 :=
+  comToArithBlock_toCom comBlock4 _ block4 comBlock4_recognise
 
 end CatCrypt.Crypto.SecureCompilation.Ascent
