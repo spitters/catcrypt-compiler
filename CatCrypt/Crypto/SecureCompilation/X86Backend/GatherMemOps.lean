@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemD
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
 
 /-!
-# `GatherMemOps` — the array-ABI memory-operand gather arms
+# `GatherMemOps` — the array-ABI memory-operand and carry-chain gather arms
 
 The framed array ABI (`JasminLprogExport.framedAbiLowerBody`,
 `ComL.toLfundefPhysFramedAbi`) lowers a register-indexed element access to a
@@ -19,30 +19,60 @@ constant-offset word move whose memory side is a `mem.<base>.<off>` operand
 name carried in an `LOperand.reg`:
 
 * `Lopn [.reg (mem.<base>.<off>)] "STORE:64" [.reg src]` — `movq %src, off(%base)`;
-* `Lopn [.reg dst] "LOAD:64" [.reg (mem.<base>.<off>)]` — `movq off(%base), %dst`.
+* `Lopn [.reg dst] "LOAD:64" [.reg (mem.<base>.<off>)]` — `movq off(%base), %dst`;
+* `Lopn [.reg dst] "LEA:64" [.reg (mem.<base>.<off>)]` — `leaq off(%base), %dst`,
+  the address itself, with no memory access.
 
-`LprogBytes.encodeLopn` encodes both: the mnemonic dispatch resolves
+`LprogBytes.encodeLopn` encodes both moves: the mnemonic dispatch resolves
 `STORE`/`LOAD` through `aluOpcode` to `0x89`/`0x8b` at `REX.W = 1` (the `:64`
 tag) and lands in `encTwoAddr`, whose memory arms parse the operand name with
 `parseMemName` and emit `encMemMovw`. The `JInstr` side has the matching
 constructors `storeMem` / `loadMem`, which `ScalarEncoder.encodeJInstr` encodes
 through `encMemMov` at a hardcoded `REX.W = 1` — the same bytes at `w = 1`.
+`LEA` is in none of the ALU, shift or `0F`-map tables, so it falls through the
+whole mnemonic dispatch to `encodeLopn`'s last one-source arm, which resolves the
+source name with `parseMemNameGp` and emits `encMemMovw w 0x8d`. The matching
+`JInstr` constructor is `lea` at scale `0`, which `ScalarEncoder.encodeJInstr`
+encodes as `encMemMov 0x8d` — the index-free `[base + disp]` form.
+
+The same module carries the two-address add-with-carry
+`Lopn [.reg dst] "ADC:64" [.reg dst, .reg src]`, the shape the Curve25519 ladder
+step's carry chains are exported in. `LprogBytes.aluOpcode` holds `ADC` at
+`0x11`, so the two-source dispatch resolves it to `encTwoAddr` at `REX.W = 1`
+exactly as `ADD:64` and `SUB:64` resolve; the matching `JInstr` constructor is
+`adc`, which `ScalarEncoder.encodeJInstr` encodes as `encAluRR 0x11` on a
+register source, and which `encodableJInstr` refuses only at an immediate too
+wide for the sign-extended `81 /2 id` field. `ADC` is distinct from the ADX
+carry chains `ADCX`/`ADOX`, which `LprogBytes.adxPrefix` routes to
+`encAdxCarry` above the `aluOpcode` dispatch.
 
 ## Main results
 
 * `memNameParts` — the `mem.<base>.<off>` operand-name parse that keeps the base
   as a NAME (the form `JInstr.storeMem` / `JInstr.loadMem` take), with
   `parseMemName_of_memNameParts` relating it to `LprogBytes.parseMemName`.
-* `lowerMemOp` — the two gather arms, `none` on every other shape.
+* `lowerMemOp` — the four gather arms, `none` on every other shape.
 * `lowerCov6` / `gatherJBlock6` — `SpillSlotEncode.lowerCov5` with `lowerMemOp`
   as the fallback, and the whole-body gather over it.
 * `encodeLopn_store64` / `encodeLopn_load64` — the closed-mnemonic dispatch of
   `STORE:64` / `LOAD:64` down to `encTwoAddr` at `w = 1`.
-* `store64_gather_bytes_agree` / `load64_gather_bytes_agree` — the byte
-  agreement: the gathered block encodes to exactly the bytes `encodeLopn` gives
-  for the same `Lopn`, under the resolver-agreement side conditions.
+* `dispatch_lea` / `encodeLopn_lea64` — the fall-through dispatch of `LEA:64`
+  down to `encMemMovw 1 0x8d`.
+* `store64_gather_bytes_agree` / `load64_gather_bytes_agree` /
+  `lea64_gather_bytes_agree` — the byte agreement: the gathered block encodes to
+  exactly the bytes `encodeLopn` gives for the same `Lopn`, under the
+  resolver-agreement side conditions.
 * `encJStoreMem_RSP24` / `encJLoadMem_RSP24` — the same agreement at concrete
   operands under `physAlloc`, by `decide +kernel`.
+* `encJLea_RSP0_bytes` / `encJLea_R13_8_bytes` — the gathered `LEA:64` block's
+  bytes at concrete operands, by `decide +kernel`.
+* `encodeLopn_adc64₂` — the two-source dispatch of `ADC:64` down to `encTwoAddr`
+  at opcode `0x11`, `w = 1`.
+* `adc_bytes_agree` / `adc64_gather_bytes_agree` — the `JInstr`-side reduction to
+  `encAluRR 0x11` and the byte agreement of the gathered `adc` block with
+  `encodeLopn`.
+* `encJAdc_RCX_RDX` — the same agreement at concrete operands under `physAlloc`,
+  by `decide +kernel`.
 
 ## Scope
 
@@ -51,6 +81,18 @@ carries `mnemWidth = 32`, so `encodeLopn` encodes it at `REX.W = 0` while
 `encMemMov` is fixed at `REX.W = 1`; those shapes stay rejected. A base or
 source name outside the sixteen `isGpName` names is rejected as well, rather
 than lowered to a block that would address `%rax`.
+
+The `LEA:64` arm covers the register-base displacement form only: a source that
+is a `mem.<base>.<off>` name over a tabulated base. An index-scaled address and
+a `.rodata` symbol base are rejected, since neither is spelled as a `mem.*`
+operand name on the Lprog side.
+
+The `ADC:64` arm covers the in-place two-source form only: the first source must
+be the destination name. `encodeLopn` discards the first source on its
+`[d], [a, s]` ALU route, so at `a ≠ d` its bytes are the in-place instruction
+while the `Lopn` denotes `d := a + s + CF`; the arm rejects that shape rather
+than lowering it to a block whose first source is dropped. Operands outside the
+sixteen `isGpName` names are rejected as well.
 -/
 
 @[expose] public section
@@ -65,7 +107,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-  (frameSize bodyIsU64 qsaveBytes qsaveBytesFor)
+  (frameSize bodyIsU64 qsaveBytes qsaveBytesFor mnemWidth isCarryOutBinding isMulHiBinding)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
   (lowerCov5 isFrameDirective)
@@ -119,9 +161,14 @@ so the arm composes at the same type as the rest of the chain. -/
 
 /-- The array-ABI memory-operand lowering. A `STORE:64` whose destination is a
     `mem.<base>.<off>` name lowers to `JInstr.storeMem base off (.reg src)`; a
-    `LOAD:64` whose source is one lowers to `JInstr.loadMem dst base off`. Both
-    arms require the base and the register operand to be among the sixteen
-    `isGpName` names. Every other shape is `none`. -/
+    `LOAD:64` whose source is one lowers to `JInstr.loadMem dst base off`; a
+    `LEA:64` whose source is one lowers to `JInstr.lea dst base base 0 off`, the
+    address computation at scale `0`, where the index register contributes
+    `idx * 0` to the address and neither `encodeJInstr` nor `evalInstr` reads its
+    name, so the base name stands in for it. An `ADC:64` whose first source is
+    its destination lowers to `JInstr.adc dst (.reg src)`, the in-place
+    add-with-carry. Every arm requires the base and the register operands to be
+    among the sixteen `isGpName` names. Every other shape is `none`. -/
 def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
     (_qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
   match i with
@@ -137,6 +184,15 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
           if isGpName b && isGpName dn then some [JInstr.loadMem dn b off]
           else none
       | none => none
+  | .Lopn [.reg dn] "LEA:64" [.reg sn] =>
+      match memNameParts sn with
+      | some (b, off) =>
+          if isGpName b && isGpName dn then some [JInstr.lea dn b b 0 off]
+          else none
+      | none => none
+  | .Lopn [.reg dn] "ADC:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.adc dn (.reg sn)]
+      else none
   | _ => none
 
 /-- The `STORE:64` arm's output. -/
@@ -154,6 +210,21 @@ theorem lowerMemOp_load (frame spillW qsaveB : Nat) (dn sn b : String) (off : In
     lowerMemOp frame spillW (.Lopn [.reg dn] "LOAD:64" [.reg sn]) qsaveB
       = some [JInstr.loadMem dn b off] := by
   simp [lowerMemOp, h, hb, hd]
+
+/-- The `LEA:64` arm's output. -/
+theorem lowerMemOp_lea (frame spillW qsaveB : Nat) (dn sn b : String) (off : Int)
+    (h : memNameParts sn = some (b, off))
+    (hb : isGpName b = true) (hd : isGpName dn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB
+      = some [JInstr.lea dn b b 0 off] := by
+  simp [lowerMemOp, h, hb, hd]
+
+/-- The `ADC:64` arm's output on the in-place shape. -/
+theorem lowerMemOp_adc (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.adc dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
 
 /-- `SpillSlotEncode.lowerCov5` with the array-ABI memory arms underneath: the
     spill-slot-aware lowering first, `lowerMemOp` on the shapes it declines. -/
@@ -180,6 +251,22 @@ theorem lowerCov6_store_RSP24 :
 theorem lowerCov6_load_RSP24 :
     lowerCov6 64 64 (.Lopn [.reg "RAX"] "LOAD:64" [.reg "mem.RSP.24"])
       = some [JInstr.loadMem "RAX" "RSP" (24 : Int)] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the array-ABI address computation, so `lowerCov6`
+    reaches the new arm. `leaq (%rsp), %rdi` is the frame-base materialisation the
+    array ABI emits ahead of the element accesses. -/
+theorem lowerCov6_lea_RSP0 :
+    lowerCov6 64 64 (.Lopn [.reg "RDI"] "LEA:64" [.reg "mem.RSP.0"])
+      = some [JInstr.lea "RDI" "RSP" "RSP" 0 (0 : Int)] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the in-place add-with-carry, so `lowerCov6` reaches the
+    new arm: `LoweringExtended.lowerAluJ`, which the two-source route below
+    `lowerCov5` dispatches on, has no `ADC` row. -/
+theorem lowerCov6_adc_RCX_RDX :
+    lowerCov6 64 64 (.Lopn [.reg "RCX"] "ADC:64" [.reg "RCX", .reg "RDX"])
+      = some [JInstr.adc "RCX" (.reg "RDX")] := by
   with_unfolding_all rfl
 
 /-- The whole-body gather over `lowerCov6`: `SpillSlotEncode.gatherJBlock5` with
@@ -214,6 +301,47 @@ theorem encodeLopn_load64 (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
     encodeLopn frame spillW (.Lopn [.reg dn] "LOAD:64" [.reg sn]) qsaveB
       = encTwoAddr frame spillW 1 0x8b (.reg dn) (.reg sn) qsaveB :=
   dispatch_alu_one frame spillW 0x8b "LOAD:64" "LOAD" dn sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
+
+/-- **The `LEA` fall-through dispatch.** `LEA` is in none of the `tagShiftExt`,
+    `aluOpcode` and `twoByteOpcode` tables, so on the one-source form
+    `Lopn [.reg dn] "<MNEM>" [.reg sn]` the `encodeLopn` dispatch falls through to
+    its last arm, which resolves the source with `parseMemNameGp` and emits the
+    `8D /r` effective-address bytes at the mnemonic's width. -/
+theorem dispatch_lea (frame spillW bb : Nat) (mnem base : String)
+    (dn sn : String) (off : Int) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hw : rexW (mnemWidth mnem) = 1)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = none) (htag : tagShiftExt base = none)
+    (halu : aluOpcode base = none) (h2b : twoByteOpcode base = none)
+    (hlea : (base == "LEA") = true)
+    (hd : isGpName dn = true) (hgp : parseMemNameGp sn = some (bb, off)) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
+      = encMemMovw 1 0x8d (gpNumU dn) bb off := by
+  simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, htag, halu, h2b,
+    hlea, hd, hgp, Bool.false_eq_true, if_false, if_true]
+
+/-- `LEA:64` (opcode `0x8d`, `w = 1`) dispatches to the effective-address bytes. -/
+theorem encodeLopn_lea64 (frame spillW bb : Nat) (dn sn : String) (off : Int)
+    (qsaveB : Nat) (hd : isGpName dn = true)
+    (hgp : parseMemNameGp sn = some (bb, off)) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB
+      = encMemMovw 1 0x8d (gpNumU dn) bb off :=
+  dispatch_lea frame spillW bb "LEA:64" "LEA" dn sn off qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) hd hgp
+
+/-- `ADC:64` (opcode `0x11`, `w = 1`) two-source dispatch: the `[d], [a, s]` ALU
+    route to `encTwoAddr`, which carries the destination and the second source. -/
+theorem encodeLopn_adc64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADC:64" [.reg an, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x11 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_two frame spillW 0x11 "ADC:64" "ADC" dn an sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
@@ -272,6 +400,70 @@ theorem load64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     load_bytes_agree alloc frame spillW 0x8b dn b off dn sn (gpNumU b) qsaveB
       hdk hsk hdm (parseMemName_of_memNameParts hs) hdsp hssp hr hbr]
 
+/-- **The `LEA:64` byte agreement.** The gathered `lea` block encodes to the bytes
+    `encodeLopn` gives for the array-ABI address computation. The source name's
+    `parseMemNameGp` image is a hypothesis: `memNameParts` and `parseMemNameGp`
+    split a `mem.*` name by different string primitives (`String.span` against
+    `String.splitOn`), and the two parses are not related by a lemma here. -/
+theorem lea64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn b : String) (off : Int) (qsaveB : Nat)
+    (hs : memNameParts sn = some (b, off))
+    (hb : isGpName b = true) (hd : isGpName dn = true)
+    (hgp : parseMemNameGp sn = some (gpNumU b, off))
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hbr : gpNum (regOf alloc b) = gpNumU b) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW (.Lopn [.reg dn] "LEA:64" [.reg sn]) qsaveB) := by
+  rw [lowerMemOp_lea frame spillW qsaveB dn sn b off hs hb hd, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_lea64 frame spillW (gpNumU b) dn sn off qsaveB hd hgp]
+  simp [encodeJInstr, hr, hbr, encMemMovw_one]
+
+/-- `JInstr` `adc` over a register source reduces to `encAluRR 0x11`, the shape
+    encoder `LprogJInstrBytesAgree` §1 relates to the width-threaded
+    `encAluRRw`. -/
+theorem jinstr_adc (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.adc d (.reg r))
+      = encAluRR 0x11 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- **`ADC` bytes agree.** The `JInstr` `adc` encoding equals the Lprog reg-reg
+    two-address byte function at opcode `0x11`, U64 width, under resolver
+    agreement. The side conditions are the reg-reg ones of
+    `LprogJInstrBytesAgree` §2b: neither operand is a spill/qsave slot or a
+    `mem.*` name. -/
+theorem adc_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
+    (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
+    (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
+    encodeJInstr alloc (.adc d (.reg r))
+      = encTwoAddr frame spillW 1 0x11 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_adc,
+    encTwoAddr_regReg frame spillW 1 0x11 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
+    encAluRRw_one, hd, hs]
+
+/-- **The `ADC:64` byte agreement.** The gathered `adc` block encodes to the bytes
+    `encodeLopn` gives for the in-place add-with-carry. -/
+theorem adc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
+    (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
+    (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "ADC:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "ADC:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_adc frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_adc64₂,
+    adc_bytes_agree alloc frame spillW dn sn dn sn qsaveB
+      hdk hsk hdm hsm hdsp hssp hr hsr]
+
 /-! ## 5. The agreement at concrete operands
 
 The same two statements with every name and offset closed, under the physical
@@ -302,6 +494,37 @@ theorem encJStoreMem_RDI8_R13 :
 theorem encJLoadMem_RDI8_R13 :
     encodeJBlock physAlloc [JInstr.loadMem "R13" "RDI" (8 : Int)]
       = encodeLopn 64 64 (.Lopn [.reg "R13"] "LOAD:64" [.reg "mem.RDI.8"]) := by
+  decide +kernel
+
+/-- The gathered `adcq %rdx, %rcx` byte-matches `encodeLopn` (the carry-chain add
+    the Curve25519 ladder step's limb accumulation is exported as). -/
+theorem encJAdc_RCX_RDX :
+    encodeJBlock physAlloc [JInstr.adc "RCX" (.reg "RDX")]
+      = encodeLopn 64 64 (.Lopn [.reg "RCX"] "ADC:64" [.reg "RCX", .reg "RDX"]) := by
+  decide +kernel
+
+/-! ### The `LEA:64` arm's bytes
+
+The `encodeLopn` side of this arm resolves its operand name with
+`LprogBytes.parseMemNameGp`, which is built on `String.splitOn` and `String.drop`,
+whose bodies the module system does not expose; the kernel reduces neither, so the
+`encodeLopn` side of a closed `LEA:64` does not reduce and the concrete agreement
+is out of reach by `decide +kernel`. The gathered side does reduce, and is pinned
+against its bytes here; `lea64_gather_bytes_agree` carries the agreement
+symbolically, with the `parseMemNameGp` value as a hypothesis. -/
+
+/-- The gathered `leaq (%rsp), %rdi` bytes: `REX.W`, the `8D /r` opcode, a
+    `mod = 00` ModRM with the `%rsp`-base SIB escape, and the `0x24` SIB byte. -/
+theorem encJLea_RSP0_bytes :
+    encodeJBlock physAlloc [JInstr.lea "RDI" "RSP" "RSP" 0 (0 : Int)]
+      = [0x48#8, 0x8d#8, 0x3c#8, 0x24#8] := by
+  decide +kernel
+
+/-- The gathered `leaq 8(%r13), %rax` bytes: `REX.W` with `REX.B` for the extended
+    base, the `8D /r` opcode, and the forced `disp8` the `%r13` base takes. -/
+theorem encJLea_R13_8_bytes :
+    encodeJBlock physAlloc [JInstr.lea "RAX" "R13" "R13" 0 (8 : Int)]
+      = [0x49#8, 0x8d#8, 0x45#8, 0x08#8] := by
   decide +kernel
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
