@@ -1005,3 +1005,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentity
 CatCrypt.Crypto.SecureCompilation.CtSelectLeak
 CatCrypt.Crypto.Hax.LowCTWipe
+CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
