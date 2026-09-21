@@ -57,6 +57,11 @@ whose value under the valuation is `0`.
   `twoLimbCfSetUnprefixed` — a two-limb witness entered with `CF` set, whose low
   limb wraps exactly when the carry-in is `1`: the prefixed run gives `12`, the
   unprefixed run `13`.
+
+@ascent-fixture theorems: clearCarry_cf, carryInterp_clearCarry
+`clearCarry` is the one-instruction prefix whose effect on the carry flag these
+theorems state, so the chain's carry-in assumption is discharged rather than
+assumed. It encodes no bytes that ship.
 -/
 
 @[expose] public section

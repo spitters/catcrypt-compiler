@@ -32,6 +32,10 @@ rather than only to a specification written for it.
 The instance is where the saturation earns its place: the two programs carry
 different ops on different operands and agree only under the constant
 hypothesis, which the canonicaliser discharges on both sides.
+
+@ascent-fixture theorems: joinBytes_decodes, joinBytes_denote_source
+`joinBlock` is the subject of the byte-to-dialect join: its encoding decodes back,
+and the decoded block denotes the source program. It encodes no bytes that ship.
 -/
 
 @[expose] public section

@@ -33,6 +33,11 @@ output register name.
 * `liftBlock_runBlock_synth` — the lift over the synthesised data.
 
 `FreshFor nm (dstStream ops)` remains a hypothesis, as in `liftBlock_runBlock`.
+
+@ascent-fixture theorems: synthDemo_parse, synthDemo_decompile_ops
+`synthDemoBlock` is the witness that the synthesised typing context, register map
+and scope map are the ones the block itself determines. It encodes no bytes that
+ship.
 -/
 
 @[expose] public section

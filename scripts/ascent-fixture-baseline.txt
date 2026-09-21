@@ -1,0 +1,15 @@
+# Ascent proof modules whose `List (JInstr n)` definitions are the SUBJECT of a
+# theorem -- a fixture, a witness or a demonstration -- and encode no bytes that
+# ship. Each module carries `@ascent-fixture theorems: …` in its docstring, and
+# every theorem it names must be declared under CatCrypt/.
+#
+# This is not the descent's grandfather list: a module here is not debt awaiting
+# a front, it is a proof subject. A block that IS meant to ship belongs under
+# @proved-hand-kernel, and one the owned backend printed belongs under
+# @reimported.
+CatCrypt/Crypto/SecureCompilation/Ascent/BlockContextSynthesis.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/BytesToDialectJoin.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/CallFrame.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/CarryChainZeroIn.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/DialectToBytes.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/FramedJInstrTie.lean

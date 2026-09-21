@@ -63,6 +63,11 @@ second recovered operation is the register the second input arrives in
 `lowerBlock_tie` and `liftBlock_runBlock` carry — does not hold of that body.
 `comBlock2_core_denote` therefore states the concrete agreement as a machine
 register read at a concrete entry state rather than through the tie.
+
+@ascent-fixture theorems: framedFunc2_denote, comBlock2_serialized_denote
+`framedBody2` and the `comBlock2` segments stand in for the compile entry's body;
+their identity with the serializer's output is a hypothesis of these theorems, not
+a conclusion. They encode no bytes that ship.
 -/
 
 @[expose] public section

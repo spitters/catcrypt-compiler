@@ -26,6 +26,10 @@ program's denotation in the output register.
   two-operation program `let s1 = x + y in let s2 = s1 * x in ret s2` lowers to
   six instructions over `%rax`, `%rbx`, `%rcx` and `%rdx`, and its bytes decode
   back to those instructions and compute `(x + y) * x`.
+
+@ascent-fixture theorems: demo_bytes_decode, demo_bytes_denote
+`demoBlock` is the instance of the general statement, lowered from a source `Com`
+written to exercise the recogniser. It encodes no bytes that ship.
 -/
 
 @[expose] public section
