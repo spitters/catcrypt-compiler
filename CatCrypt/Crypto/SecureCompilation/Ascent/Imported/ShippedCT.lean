@@ -544,6 +544,13 @@ def scrCellsC : List Int := [88, 96, 104, 112, 24, 16, 8, 168, 160, 152, 144, 13
 /-- The `%rsp` offsets public after part 6 from the empty set. -/
 def scrCellsD : List Int := [88, 96, 104, 112, 24, 16, 8, 168, 160, 152, 144]
 
+/-- The `%rsp` offsets public after part 7, from either entry set: part 7 ends in
+    the stack-clearing pass's thirty zero stores, and a cell holding the public
+    constant zero is public. -/
+def scrCellsE : List Int :=
+  [56, 48, 0, 128, 120, 80, 72, 168, 160, 152, 144, 136, 176, 184, 192, 200, 208, 216, 224, 232,
+    88, 96, 104, 112, 24, 16, 8]
+
 section ScReduce
 open Ed25519ScReduceShipped
 
@@ -576,9 +583,9 @@ theorem scReduce_strict_part06 :
 theorem scReduce_strict_part07 :
     check true (rspPub ["%r14", "%r15", "%rsp"] scrCellsC) ed25519ScReduceShippedPart07 = true ∧
       run (rspPub ["%r14", "%r15", "%rsp"] scrCellsC) ed25519ScReduceShippedPart07 =
-        rspPub ["%r15", "%r14", "%r8", "%rsp"] scrCellsC := by decide +kernel
+        rspPub ["%r8", "%rsp"] scrCellsE := by decide +kernel
 theorem scReduce_strict_part08 :
-    check true (rspPub ["%r15", "%r14", "%r8", "%rsp"] scrCellsC)
+    check true (rspPub ["%r8", "%rsp"] scrCellsE)
       ed25519ScReduceShippedPart08 = true := by decide +kernel
 
 theorem scReduce_empty_part01 :
@@ -609,9 +616,9 @@ theorem scReduce_empty_part06 :
 theorem scReduce_empty_part07 :
     check false (rspPub ["%r14", "%r15"] scrCellsD) ed25519ScReduceShippedPart07 = true ∧
       run (rspPub ["%r14", "%r15"] scrCellsD) ed25519ScReduceShippedPart07 =
-        rspPub ["%r15", "%r8"] scrCellsD := by decide +kernel
+        rspPub ["%r8"] scrCellsE := by decide +kernel
 theorem scReduce_empty_part08 :
-    check false (rspPub ["%r15", "%r8"] scrCellsD) ed25519ScReduceShippedPart08 = true := by
+    check false (rspPub ["%r8"] scrCellsE) ed25519ScReduceShippedPart08 = true := by
   decide +kernel
 
 theorem scReduce_check_strict : check true pub2 ed25519ScReduceShippedBlock = true := by
@@ -1307,3 +1314,4 @@ theorem shipped_kernels_constant_time :
     ed25519Compress_constant_time⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
+

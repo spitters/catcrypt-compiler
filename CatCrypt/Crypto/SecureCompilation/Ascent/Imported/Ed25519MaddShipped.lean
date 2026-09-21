@@ -18,9 +18,9 @@ where one exists.
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_madd_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
-  `19ab9911fbfec304ba74f70ae895c9efd76a3eae860b8c027664776745a3fb3e`.
+  `b16afc9f5f03c810d65863a4f4ae7028861acf8054a07cb3311b83b829d866fd`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
   line and text. The importer is not trusted: a correctness proof is stated over
@@ -58,7 +58,7 @@ where one exists.
   followed by the call that ends it, if any. The effect of a call is outside
   `JasminModel`.
 
-The block has 98 instructions. Source instructions by mnemonic: `movq` 50, `leaq`
+The block has 100 instructions. Source instructions by mnemonic: `movq` 52, `leaq`
 48, `call` 15.
 
 ## Main definitions
@@ -76,7 +76,7 @@ The block has 98 instructions. Source instructions by mnemonic: `movq` 50, `leaq
 
 ## Main results
 
-* `ed25519MaddShippedBlock_instrs`: the block has 98 instructions.
+* `ed25519MaddShippedBlock_instrs`: the block has 100 instructions.
 * `ed25519MaddShippedBlock_calls`: the block makes 15 calls.
 -/
 
@@ -284,11 +284,13 @@ def ed25519MaddShippedSeg17 : List CallSeg :=
           .storeMem "%r10" 112 (.reg "%r11") ]  -- l.116 `movq %r11, 112(%r10)`
       callee := none } ]
 
-/-- Segment 18 of the body: the 2 instructions from source lines 117–118. -/
+/-- Segment 18 of the body: the 4 instructions from source lines 117–120. -/
 def ed25519MaddShippedSeg18 : List CallSeg :=
   [ { body :=
         [ .loadMem "%r11" "%r9" 120,  -- l.117 `movq 120(%r9), %r11`
-          .storeMem "%r10" 120 (.reg "%r11") ]  -- l.118 `movq %r11, 120(%r10)`
+          .storeMem "%r10" 120 (.reg "%r11"),  -- l.118 `movq %r11, 120(%r10)`
+          .storeMem "%rsp" 576 (.imm 0),  -- l.119 `movq $0, 576(%rsp)`
+          .storeMem "%rsp" 584 (.imm 0) ]  -- l.120 `movq $0, 584(%rsp)`
       callee := none } ]
 
 /-- Part 1 of the body: segments 1–16. -/
@@ -318,9 +320,9 @@ theorem ed25519MaddShippedPart01_calls :
 def ed25519MaddShippedPart02 : List CallSeg :=
   ed25519MaddShippedSeg17 ++ ed25519MaddShippedSeg18
 
-/-- Part 2 has 34 instructions. -/
+/-- Part 2 has 36 instructions. -/
 theorem ed25519MaddShippedPart02_instrs :
-    (CallSeg.instrs ed25519MaddShippedPart02).length = 34 := by
+    (CallSeg.instrs ed25519MaddShippedPart02).length = 36 := by
   unfold ed25519MaddShippedPart02
   simp only [CallSeg.instrs_append, List.length_append]
   rfl
@@ -351,11 +353,11 @@ def ed25519MaddShippedPrologue : List (JInstr 64) :=
     text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
     `leaq 8(%rsp), %rsp`. -/
 def ed25519MaddShippedEpilogue : List (JInstr 64) :=
-  [ .lea "%rsp" "%rsp" "%rsp" 0 632 ]  -- l.119 `leaq 632(%rsp), %rsp`
+  [ .lea "%rsp" "%rsp" "%rsp" 0 632 ]  -- l.121 `leaq 632(%rsp), %rsp`
 
-/-- The block has 98 instructions; the count of each part is a lemma above. -/
+/-- The block has 100 instructions; the count of each part is a lemma above. -/
 theorem ed25519MaddShippedBlock_instrs :
-    (CallSeg.instrs ed25519MaddShippedBlock).length = 98 := by
+    (CallSeg.instrs ed25519MaddShippedBlock).length = 100 := by
   unfold ed25519MaddShippedBlock
   simp only [CallSeg.instrs_append, List.length_append, ed25519MaddShippedPart01_instrs,
     ed25519MaddShippedPart02_instrs]

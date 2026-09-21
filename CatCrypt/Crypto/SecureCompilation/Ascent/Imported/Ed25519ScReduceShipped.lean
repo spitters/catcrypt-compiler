@@ -18,9 +18,9 @@ recorded in `PROVENANCE.md` next to it, where one exists.
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_sc_reduce_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
-  `dd21a193f04290ab37fdc19352fafabc695f9968d01138be1df62af9f6a01654`.
+  `2da152df4996484a453efe2f8830e222f93278212d14c8a9dfb1b152a2362ed5`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
   line and text. The importer is not trusted: a correctness proof is stated over
@@ -39,8 +39,6 @@ recorded in `PROVENANCE.md` next to it, where one exists.
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
 * The first 8 instructions store registers into `%rsp` slots and form segment 1.
-  The last 6 instructions load callee-saved registers back from the slots segment 1
-  stored them to, and form the last segment.
 * Registers keep their physical names (`"%rax"`, …, `"%r15"`, `"%rsp"`); no
   register allocation is involved.
 * `JasminModel` keys memory by the name of the base register and a byte offset, at
@@ -51,7 +49,7 @@ recorded in `PROVENANCE.md` next to it, where one exists.
   through that register before and after the write share one memory bank in the
   model.
 
-The block has 3540 instructions. Source instructions by mnemonic: `movq` 2299,
+The block has 3570 instructions. Source instructions by mnemonic: `movq` 2329,
 `xorq` 440, `andq` 280, `addq` 264, `shrq` 136, `imulq` 60, `mulx` 60, `subq` 1.
 
 ## Main definitions
@@ -69,7 +67,7 @@ The block has 3540 instructions. Source instructions by mnemonic: `movq` 2299,
 
 ## Main results
 
-* `ed25519ScReduceShippedBlock_length`: the block has 3540 instructions.
+* `ed25519ScReduceShippedBlock_length`: the block has 3570 instructions.
 -/
 
 @[expose] public section
@@ -3941,23 +3939,53 @@ def ed25519ScReduceShippedSeg111 : List (JInstr 64) :=
     .loadMem "%r15" "%rsp" 152,  -- l.3532 `movq 152(%rsp), %r15`
     .storeMemIdx "%r14" "%r15" 8 (.reg "%rbx") ]  -- l.3533 `movq %rbx, (%r14, %r15, 8)`
 
-/-- Segment 112 of the body: the 6 instructions from source lines 3534–3539. -/
+/-- Segment 112 of the body: the 32 instructions from source lines 3534–3565. -/
 def ed25519ScReduceShippedSeg112 : List (JInstr 64) :=
   [ .loadMem "%r14" "%rsp" 232,  -- l.3534 `movq 232(%rsp), %r14`
     .loadMem "%r15" "%rsp" 160,  -- l.3535 `movq 160(%rsp), %r15`
     .storeMemIdx "%r14" "%r15" 8 (.reg "%rax"),  -- l.3536 `movq %rax, (%r14, %r15, 8)`
     .loadMem "%r14" "%rsp" 232,  -- l.3537 `movq 232(%rsp), %r14`
     .loadMem "%r15" "%rsp" 168,  -- l.3538 `movq 168(%rsp), %r15`
-    .storeMemIdx "%r14" "%r15" 8 (.reg "%rsi") ]  -- l.3539 `movq %rsi, (%r14, %r15, 8)`
-
-/-- Segment 113 of the body: the 6 instructions from source lines 3540–3545. -/
-def ed25519ScReduceShippedSeg113 : List (JInstr 64) :=
-  [ .loadMem "%rbx" "%rsp" 216,  -- l.3540 `movq 216(%rsp), %rbx`
+    .storeMemIdx "%r14" "%r15" 8 (.reg "%rsi"),  -- l.3539 `movq %rsi, (%r14, %r15, 8)`
+    .loadMem "%rbx" "%rsp" 216,  -- l.3540 `movq 216(%rsp), %rbx`
     .loadMem "%rbp" "%rsp" 208,  -- l.3541 `movq 208(%rsp), %rbp`
     .loadMem "%r12" "%rsp" 200,  -- l.3542 `movq 200(%rsp), %r12`
     .loadMem "%r13" "%rsp" 192,  -- l.3543 `movq 192(%rsp), %r13`
     .loadMem "%r14" "%rsp" 184,  -- l.3544 `movq 184(%rsp), %r14`
-    .loadMem "%r15" "%rsp" 176 ]  -- l.3545 `movq 176(%rsp), %r15`
+    .loadMem "%r15" "%rsp" 176,  -- l.3545 `movq 176(%rsp), %r15`
+    .storeMem "%rsp" 232 (.imm 0),  -- l.3546 `movq $0, 232(%rsp)`
+    .storeMem "%rsp" 224 (.imm 0),  -- l.3547 `movq $0, 224(%rsp)`
+    .storeMem "%rsp" 216 (.imm 0),  -- l.3548 `movq $0, 216(%rsp)`
+    .storeMem "%rsp" 208 (.imm 0),  -- l.3549 `movq $0, 208(%rsp)`
+    .storeMem "%rsp" 200 (.imm 0),  -- l.3550 `movq $0, 200(%rsp)`
+    .storeMem "%rsp" 192 (.imm 0),  -- l.3551 `movq $0, 192(%rsp)`
+    .storeMem "%rsp" 184 (.imm 0),  -- l.3552 `movq $0, 184(%rsp)`
+    .storeMem "%rsp" 176 (.imm 0),  -- l.3553 `movq $0, 176(%rsp)`
+    .storeMem "%rsp" 136 (.imm 0),  -- l.3554 `movq $0, 136(%rsp)`
+    .storeMem "%rsp" 144 (.imm 0),  -- l.3555 `movq $0, 144(%rsp)`
+    .storeMem "%rsp" 152 (.imm 0),  -- l.3556 `movq $0, 152(%rsp)`
+    .storeMem "%rsp" 160 (.imm 0),  -- l.3557 `movq $0, 160(%rsp)`
+    .storeMem "%rsp" 168 (.imm 0),  -- l.3558 `movq $0, 168(%rsp)`
+    .storeMem "%rsp" 72 (.imm 0),  -- l.3559 `movq $0, 72(%rsp)`
+    .storeMem "%rsp" 80 (.imm 0),  -- l.3560 `movq $0, 80(%rsp)`
+    .storeMem "%rsp" 120 (.imm 0),  -- l.3561 `movq $0, 120(%rsp)`
+    .storeMem "%rsp" 128 (.imm 0),  -- l.3562 `movq $0, 128(%rsp)`
+    .storeMem "%rsp" 0 (.imm 0),  -- l.3563 `movq $0, 0(%rsp)`
+    .storeMem "%rsp" 48 (.imm 0),  -- l.3564 `movq $0, 48(%rsp)`
+    .storeMem "%rsp" 56 (.imm 0) ]  -- l.3565 `movq $0, 56(%rsp)`
+
+/-- Segment 113 of the body: the 10 instructions from source lines 3566–3575. -/
+def ed25519ScReduceShippedSeg113 : List (JInstr 64) :=
+  [ .storeMem "%rsp" 64 (.imm 0),  -- l.3566 `movq $0, 64(%rsp)`
+    .storeMem "%rsp" 8 (.imm 0),  -- l.3567 `movq $0, 8(%rsp)`
+    .storeMem "%rsp" 16 (.imm 0),  -- l.3568 `movq $0, 16(%rsp)`
+    .storeMem "%rsp" 24 (.imm 0),  -- l.3569 `movq $0, 24(%rsp)`
+    .storeMem "%rsp" 32 (.imm 0),  -- l.3570 `movq $0, 32(%rsp)`
+    .storeMem "%rsp" 40 (.imm 0),  -- l.3571 `movq $0, 40(%rsp)`
+    .storeMem "%rsp" 112 (.imm 0),  -- l.3572 `movq $0, 112(%rsp)`
+    .storeMem "%rsp" 104 (.imm 0),  -- l.3573 `movq $0, 104(%rsp)`
+    .storeMem "%rsp" 96 (.imm 0),  -- l.3574 `movq $0, 96(%rsp)`
+    .storeMem "%rsp" 88 (.imm 0) ]  -- l.3575 `movq $0, 88(%rsp)`
 
 /-- Part 1 of the body: segments 1–16. -/
 def ed25519ScReduceShippedPart01 : List (JInstr 64) :=
@@ -4078,9 +4106,9 @@ def ed25519ScReduceShippedPart07 : List (JInstr 64) :=
   ed25519ScReduceShippedSeg109 ++ ed25519ScReduceShippedSeg110 ++
   ed25519ScReduceShippedSeg111 ++ ed25519ScReduceShippedSeg112
 
-/-- Part 7 has 486 instructions. -/
+/-- Part 7 has 512 instructions. -/
 theorem ed25519ScReduceShippedPart07_length :
-    ed25519ScReduceShippedPart07.length = 486 := by
+    ed25519ScReduceShippedPart07.length = 512 := by
   unfold ed25519ScReduceShippedPart07
   simp only [List.length_append]
   rfl
@@ -4089,9 +4117,9 @@ theorem ed25519ScReduceShippedPart07_length :
 def ed25519ScReduceShippedPart08 : List (JInstr 64) :=
   ed25519ScReduceShippedSeg113
 
-/-- Part 8 has 6 instructions. -/
+/-- Part 8 has 10 instructions. -/
 theorem ed25519ScReduceShippedPart08_length :
-    ed25519ScReduceShippedPart08.length = 6 := by
+    ed25519ScReduceShippedPart08.length = 10 := by
   unfold ed25519ScReduceShippedPart08
   rfl
 
@@ -4116,11 +4144,11 @@ def ed25519ScReduceShippedPrologue : List (JInstr 64) :=
     text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
     `leaq 8(%rsp), %rsp`. -/
 def ed25519ScReduceShippedEpilogue : List (JInstr 64) :=
-  [ .lea "%rsp" "%rsp" "%rsp" 0 240 ]  -- l.3546 `leaq 240(%rsp), %rsp`
+  [ .lea "%rsp" "%rsp" "%rsp" 0 240 ]  -- l.3576 `leaq 240(%rsp), %rsp`
 
-/-- The block has 3540 instructions; the count of each part is a lemma above. -/
+/-- The block has 3570 instructions; the count of each part is a lemma above. -/
 theorem ed25519ScReduceShippedBlock_length :
-    ed25519ScReduceShippedBlock.length = 3540 := by
+    ed25519ScReduceShippedBlock.length = 3570 := by
   unfold ed25519ScReduceShippedBlock
   simp only [List.length_append, ed25519ScReduceShippedPart01_length,
     ed25519ScReduceShippedPart02_length, ed25519ScReduceShippedPart03_length,

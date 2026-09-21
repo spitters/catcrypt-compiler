@@ -1341,6 +1341,17 @@ def scrCellsB : List ((String × Int) × AVal) :=
 def scrCellsC : List ((String × Int) × AVal) :=
   scHead 88 96 104 112 ++ scMid ++ scIdx ++ scrPtrs
 
+/-- The `%rsp` offsets part 7 of `ed25519_sc_reduce` sets to zero, in the order
+    the stack-clearing pass stores them. -/
+def scrZeroed : List Int :=
+  [56, 48, 0, 128, 120, 80, 72, 168, 160, 152, 144, 136, 176, 184, 192, 200, 208, 216, 224, 232]
+
+/-- `%rsp` cells tracked by `ed25519_sc_reduce` after part 7: the twenty the
+    stack-clearing pass has set to zero, then the seven constants part 6 leaves
+    at offsets the pass has not yet reached. -/
+def scrCellsE : List ((String × Int) × AVal) :=
+  scrZeroed.map (fun o => rc o (cst 0)) ++ scHead 88 96 104 112 ++ scMid
+
 /-- `%rsp` cells tracked by `ed25519_sc_muladd` with both cells 40 and 32. -/
 def scmCellsA : List ((String × Int) × AVal) :=
   scHead 104 112 120 128 ++ [rc 40 (cst 15), rc 32 (cst wMax)] ++ scMid ++ scmTail
@@ -1371,9 +1382,8 @@ def scrState : Nat → DState
       ("%r15", some (cst 6346243789798364141)), ("%r8", none), ("%r9", none)], scrCellsB⟩
   | 6 => ⟨true, [("%rsi", none), ("%rdi", none), ("%r8", none), ("%rcx", none), ("%r9", none),
       ("%r14", some (cst 0)), ("%rdx", none), ("%r15", some (cst 0))], scrCellsC⟩
-  | _ => ⟨true, [("%r15", some (cst 3)), ("%r14", some (.ptr "%rdi" 0)), ("%rsi", none),
-      ("%rdi", none), ("%rcx", none), ("%r9", none), ("%r8", some (cst wMax)),
-      ("%rdx", none)], scrCellsC⟩
+  | _ => ⟨true, [("%rsi", none), ("%rdi", none), ("%rcx", none), ("%r9", none),
+      ("%r8", some (cst wMax)), ("%rdx", none)], scrCellsE⟩
 
 /-- The abstract states of `ed25519_sc_muladd` after parts 1 to 8. -/
 def scmState : Nat → DState

@@ -18,9 +18,9 @@ backend, translated instruction by instruction. The file's producer is recorded 
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_compress_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
-  `36a0fbf6138d0ee54f04de691b1c4674cd9594a4fdb5ba19ee0c73da3dd5e14f`.
+  `d5c8ce6b913faf2c354aa7a768acd78c7cac6441cfeafcbae736926402c80d32`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
   line and text. The importer is not trusted: a correctness proof is stated over
@@ -53,12 +53,12 @@ backend, translated instruction by instruction. The file's producer is recorded 
   (`Ascent.Imported.CallSeg`): runs of instructions, each followed by the call that
   ends it, if any. The effect of a call is outside `JasminModel`.
 
-The block has 15 instructions. Source instructions by mnemonic: `movq` 8, `leaq` 7,
+The block has 16 instructions. Source instructions by mnemonic: `movq` 9, `leaq` 7,
 `call` 4.
 
 ## Main definitions
 
-* `ed25519CompressShippedSeg01` … `ed25519CompressShippedSeg04`: the block in 4
+* `ed25519CompressShippedSeg01` … `ed25519CompressShippedSeg05`: the block in 5
   segments, each a literal `List CallSeg`. A segment ends after a call, after the
   entry run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
@@ -68,7 +68,7 @@ The block has 15 instructions. Source instructions by mnemonic: `movq` 8, `leaq`
 
 ## Main results
 
-* `ed25519CompressShippedBlock_instrs`: the block has 15 instructions.
+* `ed25519CompressShippedBlock_instrs`: the block has 16 instructions.
 * `ed25519CompressShippedBlock_calls`: the block makes 4 calls.
 -/
 
@@ -119,12 +119,19 @@ def ed25519CompressShippedSeg04 : List CallSeg :=
           .lea "%rdx" "%rsp" "%rsp" 0 32 ]  -- l.26 `leaq 32(%rsp), %rdx`
       callee := some "ed25519_pack_sign_x86_from_lean" } ]  -- l.27 `call ed25519_pack_sign_x86_from_lean`
 
+/-- Segment 5 of the body: the 1 instruction from source line 28. -/
+def ed25519CompressShippedSeg05 : List CallSeg :=
+  [ { body :=
+        [ .storeMem "%rsp" 96 (.imm 0) ]  -- l.28 `movq $0, 96(%rsp)`
+      callee := none } ]
+
 /-- The body of `ed25519_compress_x86_from_lean`, translated instruction by instruction by
-    `bench/s2n_import/import_owned.sh`: the concatenation of its 4 segments.
+    `bench/s2n_import/import_owned.sh`: the concatenation of its 5 segments.
     Each segment is a run of instructions followed by the `call` that ends it, if any. -/
 def ed25519CompressShippedBlock : List CallSeg :=
   ed25519CompressShippedSeg01 ++ ed25519CompressShippedSeg02 ++
-  ed25519CompressShippedSeg03 ++ ed25519CompressShippedSeg04
+  ed25519CompressShippedSeg03 ++ ed25519CompressShippedSeg04 ++
+  ed25519CompressShippedSeg05
 
 /-- The frame instructions of `ed25519_compress_x86_from_lean` before the body,
     which the block omits: each `pushq r` as `leaq -8(%rsp), %rsp` followed by the
@@ -144,17 +151,17 @@ def ed25519CompressShippedPrologue : List (JInstr 64) :=
     text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
     `leaq 8(%rsp), %rsp`. -/
 def ed25519CompressShippedEpilogue : List (JInstr 64) :=
-  [ .lea "%rsp" "%rsp" "%rsp" 0 144,  -- l.28 `leaq 144(%rsp), %rsp`
-    .loadMem "%r13" "%rsp" 0,  -- l.29 `popq %r13`
-    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.29 `popq %r13`
-    .loadMem "%r12" "%rsp" 0,  -- l.30 `popq %r12`
-    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.30 `popq %r12`
-    .loadMem "%rbx" "%rsp" 0,  -- l.31 `popq %rbx`
-    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.31 `popq %rbx`
+  [ .lea "%rsp" "%rsp" "%rsp" 0 144,  -- l.29 `leaq 144(%rsp), %rsp`
+    .loadMem "%r13" "%rsp" 0,  -- l.30 `popq %r13`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.30 `popq %r13`
+    .loadMem "%r12" "%rsp" 0,  -- l.31 `popq %r12`
+    .lea "%rsp" "%rsp" "%rsp" 0 8,  -- l.31 `popq %r12`
+    .loadMem "%rbx" "%rsp" 0,  -- l.32 `popq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.32 `popq %rbx`
 
-/-- The block has 15 instructions; the count of each segment is computed by `rfl`. -/
+/-- The block has 16 instructions; the count of each segment is computed by `rfl`. -/
 theorem ed25519CompressShippedBlock_instrs :
-    (CallSeg.instrs ed25519CompressShippedBlock).length = 15 := by
+    (CallSeg.instrs ed25519CompressShippedBlock).length = 16 := by
   unfold ed25519CompressShippedBlock
   simp only [CallSeg.instrs_append, List.length_append]
   rfl

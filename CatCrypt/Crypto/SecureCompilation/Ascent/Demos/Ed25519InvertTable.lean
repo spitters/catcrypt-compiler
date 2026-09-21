@@ -215,7 +215,8 @@ theorem invertPart16_eq :
 
 theorem invertPart17_eq :
     Ed25519InvertShipped.ed25519InvertShippedPart17
-      = invertSteps17.map segOfStep ++ Ed25519InvertShipped.ed25519InvertShippedSeg265 := rfl
+      = invertSteps17.map segOfStep ++ Ed25519InvertShipped.ed25519InvertShippedSeg265
+        ++ Ed25519InvertShipped.ed25519InvertShippedSeg266 := rfl
 
 /-- The steps of segments 2 to 264. -/
 def invertSteps : List Step :=
@@ -232,7 +233,8 @@ def invertEnv1 : Env := ⟨some 2, none, none, none⟩
 theorem invertBlock_eq :
     Ed25519InvertShipped.ed25519InvertShippedBlock
       = Ed25519InvertShipped.ed25519InvertShippedSeg001 ++ invertSteps.map segOfStep
-        ++ Ed25519InvertShipped.ed25519InvertShippedSeg265 := by
+        ++ Ed25519InvertShipped.ed25519InvertShippedSeg265
+        ++ Ed25519InvertShipped.ed25519InvertShippedSeg266 := by
   unfold Ed25519InvertShipped.ed25519InvertShippedBlock invertSteps
   simp only [List.map_append, invertPart01_eq, invertPart02_eq, invertPart03_eq,
     invertPart04_eq, invertPart05_eq, invertPart06_eq, invertPart07_eq, invertPart08_eq,

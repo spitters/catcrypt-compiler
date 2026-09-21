@@ -111,7 +111,8 @@ theorem pack_wkList :
     writeKeys (canonD shippedBank Ed25519PackSignShipped.ed25519PackSignShippedBlock)
       = [("%rsp", 56), ("%rsp", 48), ("%rsp", 40), ("%rsp", 32), ("%rsp", 24), ("%rsp", 16),
          ("%rsp", 8), ("%rsp", 0), ("%rsp", -8), ("%rdi", 0), ("%rdi", 8), ("%rdi", 16),
-         ("%rdi", 24)] := by
+         ("%rdi", 24), ("%rsp", 56), ("%rsp", 48), ("%rsp", 40), ("%rsp", 32), ("%rsp", 24),
+         ("%rsp", 16), ("%rsp", 8), ("%rsp", 0), ("%rsp", -8)] := by
   decide +kernel
 
 theorem pack_wk :
@@ -179,11 +180,9 @@ theorem packSignShipped_correct_addr (sa : AState)
       (separated_of_subset pack_wk hsep) ?_
     intro k hk
     rw [pack_wkList] at hk
-    have hk' : k = ("%rsp", 56) ∨ k = ("%rsp", 48) ∨ k = ("%rsp", 40) ∨ k = ("%rsp", 32) ∨
-        k = ("%rsp", 24) ∨ k = ("%rsp", 16) ∨ k = ("%rsp", 8) ∨ k = ("%rsp", 0) ∨
-        k = ("%rsp", -8) ∨ k = ("%rdi", 0) ∨ k = ("%rdi", 8) ∨ k = ("%rdi", 16) ∨
-        k = ("%rdi", 24) := by simpa using hk
-    rcases hk' with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hk
+    rcases hk with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+      rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 8 (by omega)
     · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 7 (by omega)
     · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 6 (by omega)
@@ -197,5 +196,14 @@ theorem packSignShipped_correct_addr (sa : AState)
     · simpa [keyAddr_shipped _ _ _ shippedBank_rdi] using hx 1 (by omega)
     · simpa [keyAddr_shipped _ _ _ shippedBank_rdi] using hx 2 (by omega)
     · simpa [keyAddr_shipped _ _ _ shippedBank_rdi] using hx 3 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 8 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 7 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 6 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 5 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 4 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 3 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 2 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 1 (by omega)
+    · simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy 0 (by omega)
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PackSignLeaf

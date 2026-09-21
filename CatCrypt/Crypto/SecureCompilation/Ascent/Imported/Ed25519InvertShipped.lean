@@ -18,9 +18,9 @@ backend, translated instruction by instruction. The file's producer is recorded 
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_invert_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
-  `1b6496f567b4aa1c39e3545d78f4e7e73c410b956f60488241d6aeb6b13ba0fe`.
+  `41f039989b89ed43973e5eeb0255708889484d659e2f7aa47e72a0cc912c5999`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
   line and text. The importer is not trusted: a correctness proof is stated over
@@ -52,12 +52,12 @@ backend, translated instruction by instruction. The file's producer is recorded 
   a `List CallSeg` (`Ascent.Imported.CallSeg`): runs of instructions, each followed
   by the call that ends it, if any. The effect of a call is outside `JasminModel`.
 
-The block has 543 instructions. Source instructions by mnemonic: `leaq` 538, `call`
-265, `movq` 5.
+The block has 544 instructions. Source instructions by mnemonic: `leaq` 538, `call`
+265, `movq` 6.
 
 ## Main definitions
 
-* `ed25519InvertShippedSeg001` … `ed25519InvertShippedSeg265`: the block in 265
+* `ed25519InvertShippedSeg001` … `ed25519InvertShippedSeg266`: the block in 266
   segments, each a literal `List CallSeg`. A segment ends after a call, after the
   entry run of `%rsp` stores, before the exit run of `%rsp` loads, and after 32
   instructions.
@@ -70,7 +70,7 @@ The block has 543 instructions. Source instructions by mnemonic: `leaq` 538, `ca
 
 ## Main results
 
-* `ed25519InvertShippedBlock_instrs`: the block has 543 instructions.
+* `ed25519InvertShippedBlock_instrs`: the block has 544 instructions.
 * `ed25519InvertShippedBlock_calls`: the block makes 265 calls.
 -/
 
@@ -2215,6 +2215,12 @@ def ed25519InvertShippedSeg265 : List CallSeg :=
           .lea "%rdx" "%rsp" "%rsp" 0 0 ]  -- l.813 `leaq (%rsp), %rdx`
       callee := some "fe25519_mul_x86_from_lean" } ]  -- l.814 `call fe25519_mul_x86_from_lean`
 
+/-- Segment 266 of the body: the 1 instruction from source line 815. -/
+def ed25519InvertShippedSeg266 : List CallSeg :=
+  [ { body :=
+        [ .storeMem "%rsp" 128 (.imm 0) ]  -- l.815 `movq $0, 128(%rsp)`
+      callee := none } ]
+
 /-- Part 1 of the body: segments 1–16. -/
 def ed25519InvertShippedPart01 : List CallSeg :=
   ed25519InvertShippedSeg001 ++ ed25519InvertShippedSeg002 ++
@@ -2615,16 +2621,17 @@ theorem ed25519InvertShippedPart16_calls :
   simp only [CallSeg.callees_append, List.length_append]
   rfl
 
-/-- Part 17 of the body: segments 257–265. -/
+/-- Part 17 of the body: segments 257–266. -/
 def ed25519InvertShippedPart17 : List CallSeg :=
   ed25519InvertShippedSeg257 ++ ed25519InvertShippedSeg258 ++
   ed25519InvertShippedSeg259 ++ ed25519InvertShippedSeg260 ++
   ed25519InvertShippedSeg261 ++ ed25519InvertShippedSeg262 ++
-  ed25519InvertShippedSeg263 ++ ed25519InvertShippedSeg264 ++ ed25519InvertShippedSeg265
+  ed25519InvertShippedSeg263 ++ ed25519InvertShippedSeg264 ++
+  ed25519InvertShippedSeg265 ++ ed25519InvertShippedSeg266
 
-/-- Part 17 has 20 instructions. -/
+/-- Part 17 has 21 instructions. -/
 theorem ed25519InvertShippedPart17_instrs :
-    (CallSeg.instrs ed25519InvertShippedPart17).length = 20 := by
+    (CallSeg.instrs ed25519InvertShippedPart17).length = 21 := by
   unfold ed25519InvertShippedPart17
   simp only [CallSeg.instrs_append, List.length_append]
   rfl
@@ -2637,7 +2644,7 @@ theorem ed25519InvertShippedPart17_calls :
   rfl
 
 /-- The body of `ed25519_invert_x86_from_lean`, translated instruction by instruction by
-    `bench/s2n_import/import_owned.sh`: the concatenation of its 265 segments,
+    `bench/s2n_import/import_owned.sh`: the concatenation of its 266 segments,
     grouped in 17 parts.
     Each segment is a run of instructions followed by the `call` that ends it, if any. -/
 def ed25519InvertShippedBlock : List CallSeg :=
@@ -2664,13 +2671,13 @@ def ed25519InvertShippedPrologue : List (JInstr 64) :=
     text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
     `leaq 8(%rsp), %rsp`. -/
 def ed25519InvertShippedEpilogue : List (JInstr 64) :=
-  [ .lea "%rsp" "%rsp" "%rsp" 0 176,  -- l.815 `leaq 176(%rsp), %rsp`
-    .loadMem "%rbx" "%rsp" 0,  -- l.816 `popq %rbx`
-    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.816 `popq %rbx`
+  [ .lea "%rsp" "%rsp" "%rsp" 0 176,  -- l.816 `leaq 176(%rsp), %rsp`
+    .loadMem "%rbx" "%rsp" 0,  -- l.817 `popq %rbx`
+    .lea "%rsp" "%rsp" "%rsp" 0 8 ]  -- l.817 `popq %rbx`
 
-/-- The block has 543 instructions; the count of each part is a lemma above. -/
+/-- The block has 544 instructions; the count of each part is a lemma above. -/
 theorem ed25519InvertShippedBlock_instrs :
-    (CallSeg.instrs ed25519InvertShippedBlock).length = 543 := by
+    (CallSeg.instrs ed25519InvertShippedBlock).length = 544 := by
   unfold ed25519InvertShippedBlock
   simp only [CallSeg.instrs_append, List.length_append, ed25519InvertShippedPart01_instrs,
     ed25519InvertShippedPart02_instrs, ed25519InvertShippedPart03_instrs,

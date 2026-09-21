@@ -18,9 +18,9 @@ one exists.
 ## Provenance
 
 * Source: `crates/catcrypt-ed25519/asm/ed25519_point_add_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `ea6ef857310181de208d90eb1e5ce5171acfffaf`
+  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
-  `3b80e086b8adf05c578d14b0034932bf7d62e5ddcf95f5b7daaad1796552a341`.
+  `5b3cf92957bab88e115f700584ec50bd14a37bbe9e26f815076d2b95b856e022`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction
   to one `JInstr 64` constructor. The comment after each element gives the source
   line and text. The importer is not trusted: a correctness proof is stated over
@@ -39,8 +39,6 @@ one exists.
   "%rsp" off` and `loadMem r "%rsp" off`. Their offsets are relative to `%rsp`
   after the omitted allocation, and `%rsp` is constant in the body.
 * The first 8 instructions store registers into `%rsp` slots and form segment 1.
-  The last 6 instructions load callee-saved registers back from the slots segment 1
-  stored them to, and form the last segment.
 * Registers keep their physical names (`"%rax"`, …, `"%r15"`, `"%rsp"`); no
   register allocation is involved.
 * `JasminModel` keys memory by the name of the base register and a byte offset, at
@@ -59,14 +57,14 @@ one exists.
   leaves `OF`, `SF` and `PF` undefined after `BT`; the importer checks that no
   `adox` reads `OF` before a later instruction writes it.
 
-The block has 4859 instructions. Source instructions by mnemonic: `movq` 2208,
+The block has 4909 instructions. Source instructions by mnemonic: `movq` 2258,
 `adcxq` 639, `btq` 639, `movzbq` 585, `setc` 585, `imulq` 189, `mulx` 189, `movl`
 144, `cmovneq` 117, `testq` 117, `orq` 16, `xorq` 16.
 
 ## Main definitions
 
-* `ed25519PointAddShippedSeg001` … `ed25519PointAddShippedSeg154`: the block in
-  154 segments, each a literal `List (JInstr 64)`. A segment ends after a call,
+* `ed25519PointAddShippedSeg001` … `ed25519PointAddShippedSeg155`: the block in
+  155 segments, each a literal `List (JInstr 64)`. A segment ends after a call,
   after the entry run of `%rsp` stores, before the exit run of `%rsp` loads, and
   after 32 instructions.
 * `ed25519PointAddShippedPart01` … `ed25519PointAddShippedPart10`: the segments
@@ -78,7 +76,7 @@ The block has 4859 instructions. Source instructions by mnemonic: `movq` 2208,
 
 ## Main results
 
-* `ed25519PointAddShippedBlock_length`: the block has 4859 instructions.
+* `ed25519PointAddShippedBlock_length`: the block has 4909 instructions.
 -/
 
 @[expose] public section
@@ -5385,7 +5383,7 @@ def ed25519PointAddShippedSeg152 : List (JInstr 64) :=
     .loadMem "%r14" "%rsp" 280,  -- l.5429 `movq 280(%rsp), %r14`
     .or_ "%r15" (.reg "%r14") ]  -- l.5430 `orq %r14, %r15`
 
-/-- Segment 153 of the body: the 13 instructions from source lines 5431–5443. -/
+/-- Segment 153 of the body: the 32 instructions from source lines 5431–5462. -/
 def ed25519PointAddShippedSeg153 : List (JInstr 64) :=
   [ .storeMem "%rsp" 312 (.reg "%r15"),  -- l.5431 `movq %r15, 312(%rsp)`
     .loadMem "%r15" "%rsp" 312,  -- l.5432 `movq 312(%rsp), %r15`
@@ -5399,16 +5397,69 @@ def ed25519PointAddShippedSeg153 : List (JInstr 64) :=
     .storeMem "%rsp" 304 (.reg "%r15"),  -- l.5440 `movq %r15, 304(%rsp)`
     .loadMem "%r15" "%rsp" 304,  -- l.5441 `movq 304(%rsp), %r15`
     .loadMem "%r14" "%rsp" 392,  -- l.5442 `movq 392(%rsp), %r14`
-    .storeMem "%r14" 120 (.reg "%r15") ]  -- l.5443 `movq %r15, 120(%r14)`
-
-/-- Segment 154 of the body: the 6 instructions from source lines 5444–5449. -/
-def ed25519PointAddShippedSeg154 : List (JInstr 64) :=
-  [ .loadMem "%rbx" "%rsp" 376,  -- l.5444 `movq 376(%rsp), %rbx`
+    .storeMem "%r14" 120 (.reg "%r15"),  -- l.5443 `movq %r15, 120(%r14)`
+    .loadMem "%rbx" "%rsp" 376,  -- l.5444 `movq 376(%rsp), %rbx`
     .loadMem "%rbp" "%rsp" 368,  -- l.5445 `movq 368(%rsp), %rbp`
     .loadMem "%r12" "%rsp" 360,  -- l.5446 `movq 360(%rsp), %r12`
     .loadMem "%r13" "%rsp" 352,  -- l.5447 `movq 352(%rsp), %r13`
     .loadMem "%r14" "%rsp" 344,  -- l.5448 `movq 344(%rsp), %r14`
-    .loadMem "%r15" "%rsp" 336 ]  -- l.5449 `movq 336(%rsp), %r15`
+    .loadMem "%r15" "%rsp" 336,  -- l.5449 `movq 336(%rsp), %r15`
+    .storeMem "%rsp" 392 (.imm 0),  -- l.5450 `movq $0, 392(%rsp)`
+    .storeMem "%rsp" 384 (.imm 0),  -- l.5451 `movq $0, 384(%rsp)`
+    .storeMem "%rsp" 376 (.imm 0),  -- l.5452 `movq $0, 376(%rsp)`
+    .storeMem "%rsp" 368 (.imm 0),  -- l.5453 `movq $0, 368(%rsp)`
+    .storeMem "%rsp" 360 (.imm 0),  -- l.5454 `movq $0, 360(%rsp)`
+    .storeMem "%rsp" 352 (.imm 0),  -- l.5455 `movq $0, 352(%rsp)`
+    .storeMem "%rsp" 344 (.imm 0),  -- l.5456 `movq $0, 344(%rsp)`
+    .storeMem "%rsp" 336 (.imm 0),  -- l.5457 `movq $0, 336(%rsp)`
+    .storeMem "%rsp" 296 (.imm 0),  -- l.5458 `movq $0, 296(%rsp)`
+    .storeMem "%rsp" 288 (.imm 0),  -- l.5459 `movq $0, 288(%rsp)`
+    .storeMem "%rsp" 280 (.imm 0),  -- l.5460 `movq $0, 280(%rsp)`
+    .storeMem "%rsp" 272 (.imm 0),  -- l.5461 `movq $0, 272(%rsp)`
+    .storeMem "%rsp" 328 (.imm 0) ]  -- l.5462 `movq $0, 328(%rsp)`
+
+/-- Segment 154 of the body: the 32 instructions from source lines 5463–5494. -/
+def ed25519PointAddShippedSeg154 : List (JInstr 64) :=
+  [ .storeMem "%rsp" 320 (.imm 0),  -- l.5463 `movq $0, 320(%rsp)`
+    .storeMem "%rsp" 312 (.imm 0),  -- l.5464 `movq $0, 312(%rsp)`
+    .storeMem "%rsp" 304 (.imm 0),  -- l.5465 `movq $0, 304(%rsp)`
+    .storeMem "%rsp" 136 (.imm 0),  -- l.5466 `movq $0, 136(%rsp)`
+    .storeMem "%rsp" 128 (.imm 0),  -- l.5467 `movq $0, 128(%rsp)`
+    .storeMem "%rsp" 120 (.imm 0),  -- l.5468 `movq $0, 120(%rsp)`
+    .storeMem "%rsp" 112 (.imm 0),  -- l.5469 `movq $0, 112(%rsp)`
+    .storeMem "%rsp" 264 (.imm 0),  -- l.5470 `movq $0, 264(%rsp)`
+    .storeMem "%rsp" 224 (.imm 0),  -- l.5471 `movq $0, 224(%rsp)`
+    .storeMem "%rsp" 216 (.imm 0),  -- l.5472 `movq $0, 216(%rsp)`
+    .storeMem "%rsp" 208 (.imm 0),  -- l.5473 `movq $0, 208(%rsp)`
+    .storeMem "%rsp" 200 (.imm 0),  -- l.5474 `movq $0, 200(%rsp)`
+    .storeMem "%rsp" 192 (.imm 0),  -- l.5475 `movq $0, 192(%rsp)`
+    .storeMem "%rsp" 176 (.imm 0),  -- l.5476 `movq $0, 176(%rsp)`
+    .storeMem "%rsp" 160 (.imm 0),  -- l.5477 `movq $0, 160(%rsp)`
+    .storeMem "%rsp" 256 (.imm 0),  -- l.5478 `movq $0, 256(%rsp)`
+    .storeMem "%rsp" 248 (.imm 0),  -- l.5479 `movq $0, 248(%rsp)`
+    .storeMem "%rsp" 240 (.imm 0),  -- l.5480 `movq $0, 240(%rsp)`
+    .storeMem "%rsp" 232 (.imm 0),  -- l.5481 `movq $0, 232(%rsp)`
+    .storeMem "%rsp" 104 (.imm 0),  -- l.5482 `movq $0, 104(%rsp)`
+    .storeMem "%rsp" 96 (.imm 0),  -- l.5483 `movq $0, 96(%rsp)`
+    .storeMem "%rsp" 88 (.imm 0),  -- l.5484 `movq $0, 88(%rsp)`
+    .storeMem "%rsp" 80 (.imm 0),  -- l.5485 `movq $0, 80(%rsp)`
+    .storeMem "%rsp" 184 (.imm 0),  -- l.5486 `movq $0, 184(%rsp)`
+    .storeMem "%rsp" 168 (.imm 0),  -- l.5487 `movq $0, 168(%rsp)`
+    .storeMem "%rsp" 152 (.imm 0),  -- l.5488 `movq $0, 152(%rsp)`
+    .storeMem "%rsp" 144 (.imm 0),  -- l.5489 `movq $0, 144(%rsp)`
+    .storeMem "%rsp" 48 (.imm 0),  -- l.5490 `movq $0, 48(%rsp)`
+    .storeMem "%rsp" 56 (.imm 0),  -- l.5491 `movq $0, 56(%rsp)`
+    .storeMem "%rsp" 64 (.imm 0),  -- l.5492 `movq $0, 64(%rsp)`
+    .storeMem "%rsp" 72 (.imm 0),  -- l.5493 `movq $0, 72(%rsp)`
+    .storeMem "%rsp" 32 (.imm 0) ]  -- l.5494 `movq $0, 32(%rsp)`
+
+/-- Segment 155 of the body: the 5 instructions from source lines 5495–5499. -/
+def ed25519PointAddShippedSeg155 : List (JInstr 64) :=
+  [ .storeMem "%rsp" 40 (.imm 0),  -- l.5495 `movq $0, 40(%rsp)`
+    .storeMem "%rsp" 16 (.imm 0),  -- l.5496 `movq $0, 16(%rsp)`
+    .storeMem "%rsp" 24 (.imm 0),  -- l.5497 `movq $0, 24(%rsp)`
+    .storeMem "%rsp" 8 (.imm 0),  -- l.5498 `movq $0, 8(%rsp)`
+    .storeMem "%rsp" 0 (.imm 0) ]  -- l.5499 `movq $0, 0(%rsp)`
 
 /-- Part 1 of the body: segments 1–16. -/
 def ed25519PointAddShippedPart01 : List (JInstr 64) :=
@@ -5572,23 +5623,24 @@ theorem ed25519PointAddShippedPart09_length :
   simp only [List.length_append]
   rfl
 
-/-- Part 10 of the body: segments 145–154. -/
+/-- Part 10 of the body: segments 145–155. -/
 def ed25519PointAddShippedPart10 : List (JInstr 64) :=
   ed25519PointAddShippedSeg145 ++ ed25519PointAddShippedSeg146 ++
   ed25519PointAddShippedSeg147 ++ ed25519PointAddShippedSeg148 ++
   ed25519PointAddShippedSeg149 ++ ed25519PointAddShippedSeg150 ++
   ed25519PointAddShippedSeg151 ++ ed25519PointAddShippedSeg152 ++
-  ed25519PointAddShippedSeg153 ++ ed25519PointAddShippedSeg154
+  ed25519PointAddShippedSeg153 ++ ed25519PointAddShippedSeg154 ++
+  ed25519PointAddShippedSeg155
 
-/-- Part 10 has 275 instructions. -/
+/-- Part 10 has 325 instructions. -/
 theorem ed25519PointAddShippedPart10_length :
-    ed25519PointAddShippedPart10.length = 275 := by
+    ed25519PointAddShippedPart10.length = 325 := by
   unfold ed25519PointAddShippedPart10
   simp only [List.length_append]
   rfl
 
 /-- The body of `ed25519_point_add`, translated instruction by instruction by
-    `bench/s2n_import/import_owned.sh`: the concatenation of its 154 segments,
+    `bench/s2n_import/import_owned.sh`: the concatenation of its 155 segments,
     grouped in 10 parts. -/
 def ed25519PointAddShippedBlock : List (JInstr 64) :=
   ed25519PointAddShippedPart01 ++ ed25519PointAddShippedPart02 ++
@@ -5609,11 +5661,11 @@ def ed25519PointAddShippedPrologue : List (JInstr 64) :=
     text contains, and each `popq r` as the load of `r` from `0(%rsp)` followed by
     `leaq 8(%rsp), %rsp`. -/
 def ed25519PointAddShippedEpilogue : List (JInstr 64) :=
-  [ .lea "%rsp" "%rsp" "%rsp" 0 400 ]  -- l.5450 `leaq 400(%rsp), %rsp`
+  [ .lea "%rsp" "%rsp" "%rsp" 0 400 ]  -- l.5500 `leaq 400(%rsp), %rsp`
 
-/-- The block has 4859 instructions; the count of each part is a lemma above. -/
+/-- The block has 4909 instructions; the count of each part is a lemma above. -/
 theorem ed25519PointAddShippedBlock_length :
-    ed25519PointAddShippedBlock.length = 4859 := by
+    ed25519PointAddShippedBlock.length = 4909 := by
   unfold ed25519PointAddShippedBlock
   simp only [List.length_append, ed25519PointAddShippedPart01_length,
     ed25519PointAddShippedPart02_length, ed25519PointAddShippedPart03_length,

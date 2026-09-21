@@ -542,6 +542,13 @@ theorem copyBlk_frame (sa : AState) (os : List Int) (x : BitVec 64)
     show write64 sa.mem _ _ x = _
     exact write64_of_not_inRange _ _ _ _ (h o List.mem_cons_self)
 
+/-- The copy leaves `%rsp` alone. -/
+theorem copyBlk_rsp (sa : AState) (os : List Int) :
+    (runBlockA sa (copyBlk os)).regs "%rsp" = sa.regs "%rsp" := by
+  induction os generalizing sa with
+  | nil => rfl
+  | cons o os ih => rw [copyBlk_cons, ih]; rfl
+
 /-- A word disjoint from every copied word reads back unchanged. -/
 theorem read64_copyBlk_frame (sa : AState) (os : List Int) (b : BitVec 64)
     (h : ∀ o ∈ os, Disjoint8 (sa.regs "%r10" + BitVec.ofInt 64 o) b) :

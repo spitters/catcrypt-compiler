@@ -16,6 +16,10 @@ public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
 to `fe25519_add`, `fe25519_sub`, `fe25519_mul` and `ed25519_join16` over stack slots,
 followed by a sixteen-word copy to the output pointer.
 
+`@reimported`: `maddZeroTail` is the last two instructions of that block's final
+segment, the zero stores the stack-clearing pass appends, transcribed from the same
+printed text the pin carries.
+
 ## The model
 
 The block is a `List CallSeg`, so its run is `segsRunA` over the address machine
@@ -64,11 +68,17 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519MaddShipped
 open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-! ## 15. The output copy -/
+/-- The two zero stores the stack-clearing pass appends to the last segment. -/
+def maddZeroTail : List (JInstr 64) :=
+  [.storeMem "%rsp" 576 (.imm 0), .storeMem "%rsp" 584 (.imm 0)]
 
+
+set_option maxRecDepth 8000 in
 theorem maddTailCopy (C : ACallModel) (s : AState) :
     segsRunA C s (maddTail 16)
-      = runBlockA (runBlockA s [.loadMem "%r10" "%rsp" 584, .lea "%r9" "%rsp" "%rsp" 0 448])
-          (copyBlk outOffs) := by
+      = runBlockA (runBlockA s
+          [.loadMem "%r10" "%rsp" 584, .lea "%r9" "%rsp" "%rsp" 0 448])
+          (copyBlk outOffs ++ maddZeroTail) := by
   rw [segsRunA_tail_plain C s 16 (by omega) rfl, segsRunA_tail_plain C _ 17 (by omega) rfl,
     show maddTail 18 = [] from rfl, segsRunA_nil, ← runBlockA_append, ← runBlockA_append]
   rfl
@@ -78,6 +88,22 @@ theorem slot_mem_outOffs (k : Nat) (hk : k < 4) (j : Int) (hj : j ∈ limbOffs) 
   simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
   have hk4 : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3 := by omega
   rcases hk4 with rfl | rfl | rfl | rfl <;> rcases hj with rfl | rfl | rfl | rfl <;> decide
+
+/-- The appended zero stores write two frame words, which `CrossOut` keeps
+    disjoint from every output word. -/
+theorem maddZeroTail_feO {SP Q : BitVec 64} (hO : CrossOut SP Q) (t : AState)
+    (ht : t.regs "%rsp" = SP) (k : Nat) (hk : k < 4) :
+    feO (runBlockA t maddZeroTail).mem Q (slotOff k) = feO t.mem Q (slotOff k) := by
+  have hrange : ∀ u ∈ outOffs, 0 ≤ u ∧ u ≤ 120 ∧ u % 8 = 0 := by decide
+  simp only [feO]
+  refine congrArg bignumVal (List.map_congr_left fun j hj => ?_)
+  obtain ⟨ho0, ho1, ho8⟩ := hrange _ (slot_mem_outOffs k hk j hj)
+  simp only [maddZeroTail, runBlockA, evalInstrA, evalInstr, writeAddr, AState.view,
+    JState.store, ht]
+  rw [read64_write64_of_disjoint _ _ _ _
+      (hO 584 (slotOff k + j) (by omega) (by omega) (by omega) ho0 ho1 ho8),
+    read64_write64_of_disjoint _ _ _ _
+      (hO 576 (slotOff k + j) (by omega) (by omega) (by omega) ho0 ho1 ho8)]
 
 /-- The copy leaves the four coordinates of the result block at the output pointer. -/
 theorem maddOutVal {SP Q : BitVec 64} (hO : CrossOut SP Q) (s : AState)
@@ -125,15 +151,24 @@ theorem maddOut_of_calls {C : ACallModel} (sa : AState)
         = (maddSpecN (maddIn sa 0) (maddIn sa 1) (maddIn sa 2) (maddIn sa 3) (maddIn sa 4)
             (maddIn sa 5) (maddIn sa 6)).2.2.2 := by
   obtain ⟨s, hrun, hsp, hq, v10, v11, v12, v13⟩ := hcalls
-  rw [hrun, maddTailCopy]
+  obtain ⟨-, hsp', -, -⟩ := runOutSetup s
+  have hrsp : (runBlockA (runBlockA s
+      [JInstr.loadMem "%r10" "%rsp" 584, JInstr.lea "%r9" "%rsp" "%rsp" 0 448])
+        (copyBlk outOffs)).regs "%rsp" = sa.regs "%rsp" := by
+    rw [copyBlk_rsp, hsp', hsp]
+  rw [hrun, maddTailCopy, runBlockA_append]
   refine ⟨?_, ?_, ?_, ?_⟩
-  · rw [maddOutVal hO s hsp hq 0 (by omega), show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 0 (by omega), maddOutVal hO s hsp hq 0 (by omega),
+      show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
     exact v10
-  · rw [maddOutVal hO s hsp hq 1 (by omega), show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 1 (by omega), maddOutVal hO s hsp hq 1 (by omega),
+      show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
     exact v11
-  · rw [maddOutVal hO s hsp hq 2 (by omega), show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 2 (by omega), maddOutVal hO s hsp hq 2 (by omega),
+      show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
     exact v12
-  · rw [maddOutVal hO s hsp hq 3 (by omega), show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 3 (by omega), maddOutVal hO s hsp hq 3 (by omega),
+      show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
     exact v13
 
 /-- **The shipped `ed25519_madd` computes the mixed addition, with an output that may alias

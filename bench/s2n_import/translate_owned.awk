@@ -321,6 +321,10 @@ function translate(mn, rest, text,    n, s, d, v, lo, hi, r, k) {
             if (!MOFFZ) fail("indexed store with a nonzero displacement: " text)
             emit(".storeMemIdx " q(MBASE) " " q(MIDX) " " MSCALE " (.reg " q(s) ")", "", MBASE, "", text, cur_line); return
         }
+        # The stack-clearing pass emits an immediate store to a frame slot.
+        if (k == 1 && (v = imm(OPS[1])) != "") {
+            emit(".storeMem " q(MBASE) " " MOFF " (.imm " v ")", "", MBASE, "", text, cur_line); return
+        }
         fail("`movq` operand shape not accepted: " text)
     }
 

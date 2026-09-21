@@ -91,11 +91,18 @@ def packCanon7 : List (JInstr 64) :=
   [ .loadMem "%rbx" "%rsp" 40, .loadMem "%rbp" "%rsp" 32, .loadMem "%r12" "%rsp" 24,
     .loadMem "%r13" "%rsp" 16, .loadMem "%r14" "%rsp" 8, .loadMem "%r15" "%rsp" 0 ]
 
+/-- The nine zero stores the stack-clearing pass appends. They write the `%rsp`
+    bank only. -/
+def packCanon8 : List (JInstr 64) :=
+  [ .storeMem "%rsp" 56 (.imm 0), .storeMem "%rsp" 48 (.imm 0), .storeMem "%rsp" 40 (.imm 0),
+    .storeMem "%rsp" 32 (.imm 0), .storeMem "%rsp" 24 (.imm 0), .storeMem "%rsp" 16 (.imm 0),
+    .storeMem "%rsp" 8 (.imm 0), .storeMem "%rsp" 0 (.imm 0), .storeMem "%rsp" (-8) (.imm 0) ]
+
 /-- The seven parts are the canonical form of the shipped block. -/
 theorem packCanon_eq :
     canonD shippedBank Ed25519PackSignShipped.ed25519PackSignShippedBlock
       = packCanon1 ++ packCanon2 ++ packCanon3 ++ packCanon4 ++ packCanon5 ++ packCanon6
-        ++ packCanon7 := rfl
+        ++ packCanon7 ++ packCanon8 := rfl
 
 /-! ## The effect of each part -/
 
@@ -138,6 +145,11 @@ theorem packCanon6_mem (s : JState 64) :
         then s.regs "%rsi" + s.regs "%rdx" <<< 63 else s.mem b o := rfl
 
 theorem packCanon7_mem (s : JState 64) : (runBlock s packCanon7).mem = s.mem := rfl
+
+/-- The nine zero stores leave every bank but `%rsp` alone. -/
+theorem packCanon8_keep (s : JState 64) (b : String) (o : Int) (hb : b ≠ "%rsp") :
+    (runBlock s packCanon8).mem b o = s.mem b o := by
+  simp [packCanon8, runBlock, evalInstr, JState.store, hb]
 
 /-! ## The cells each part leaves untouched -/
 
@@ -192,7 +204,7 @@ theorem packSign_nameKeyed (st : JState 64) :
           Ed25519PackSignShipped.ed25519PackSignShippedBlock)).mem "%rdi" 24
         = st.mem "%rsi" 24 + (st.mem "%rdx" 0 &&& 1) <<< 63 := by
   rw [packCanon_eq, runBlock_append, runBlock_append, runBlock_append, runBlock_append,
-    runBlock_append, runBlock_append]
+    runBlock_append, runBlock_append, runBlock_append]
   set s1 := runBlock st packCanon1 with hs1
   set s2 := runBlock s1 packCanon2 with hs2
   set s3 := runBlock s2 packCanon3 with hs3
@@ -208,16 +220,16 @@ theorem packSign_nameKeyed (st : JState 64) :
     rw [hs4, packCanon4_keep _ _ _ (by simp), hs3, packCanon3_keep _ _ _ (by simp),
       hs2, packCanon2_keep _ _ _ (by simp), hs1, packCanon1_keep _ _ _ (by simp)]
   refine ⟨?_, ?_, ?_, ?_⟩
-  · rw [k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4,
+  · rw [packCanon8_keep _ _ _ (by simp), k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4,
       packCanon4_keep _ _ _ (by simp), hs3, packCanon3_keep _ _ _ (by simp), hs2,
       packCanon2_out, hs1, packCanon1_keep _ _ _ (by simp)]
-  · rw [k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4,
+  · rw [packCanon8_keep _ _ _ (by simp), k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4,
       packCanon4_keep _ _ _ (by simp), hs3, packCanon3_out, hs2,
       packCanon2_keep _ _ _ (by simp), hs1, packCanon1_keep _ _ _ (by simp)]
-  · rw [k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4, packCanon4_out, hs3,
+  · rw [packCanon8_keep _ _ _ (by simp), k7, hs6, packCanon6_keep _ _ _ (by simp), k5, hs4, packCanon4_out, hs3,
       packCanon3_keep _ _ _ (by simp), hs2, packCanon2_keep _ _ _ (by simp), hs1,
       packCanon1_keep _ _ _ (by simp)]
-  · rw [k7, hs6, packCanon6_out, hs5, packCanon5_rsi, packCanon5_rdx, y,
+  · rw [packCanon8_keep _ _ _ (by simp), k7, hs6, packCanon6_out, hs5, packCanon5_rsi, packCanon5_rdx, y,
       show s4.mem "%rdx" 0 = st.mem "%rdx" 0 from by
         rw [hs4, packCanon4_keep _ _ _ (by simp), hs3, packCanon3_keep _ _ _ (by simp),
           hs2, packCanon2_keep _ _ _ (by simp), hs1, packCanon1_keep _ _ _ (by simp)]]
