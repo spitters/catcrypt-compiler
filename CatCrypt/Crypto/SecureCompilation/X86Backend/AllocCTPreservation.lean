@@ -343,6 +343,14 @@ theorem lowerLinstrExtCov4_direct {i : LinstrR} {js : List (JInstr 64)}
       subst h
       exact lowerLinstrExtCov3_direct hi heq
     · exact lowerFlagClassJ_direct h
+  · -- the three-source conditional move, gated on plain general-purpose names
+    unfold GatherFullBody.lowerFlagClassCmovJ at h
+    split at h
+    · simp only [Option.some.injEq] at h
+      subst h
+      exact CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar.lowerLinstrExtCov2_cmov_allDirect
+        _ _ _ _
+    · simp at h
   · exact lowerLinstrExtCov3_direct hi h
 
 theorem lowerCov5_direct {frame spillW qsaveB : Nat} {i : LinstrR}

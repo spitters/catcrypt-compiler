@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
@@ -32,6 +33,12 @@ word.
   agree with an `Lstate` leaves the destination holding the word `applyOpn` gives
   the fused op on the same three source registers.
 * `flagClass_cmov_other_reg` — the block writes no register but the destination.
+* `zf_test_self` — the zero flag of `test c, c` is the whole-word zero test of
+  `c`, the condition the printer and the Lprog byte encoder read.
+* `flagClass_cmovSelect_value_tie` — the same value tie for
+  `LoweringCoverageCmovSar.lowerCmovJ`, the whole-word-test block
+  `GatherFullBody.encJCmovSelect_eq_lopn` byte-matches, on a condition word
+  holding `0` or `1`.
 -/
 
 @[expose] public section
@@ -44,6 +51,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar (lowerCmovJ)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
+  (selectW_setWidth_of_lt_two)
 
 /-! ## 1. The block -/
 
@@ -166,5 +176,93 @@ theorem flagClass_cmov_value_tie {d c a b : String} {s : Lstate 64} {j : JState 
 theorem flagClass_cmov_other_reg {d c a b r : String} {j : JState 64} (hr : r ≠ d) :
     (runBlock j (lowerCmovSelfContained d c a b)).regs r = j.regs r :=
   lowerCmovSelfContained_other j d c a b r hr
+
+/-! ## 4. The whole-word test: the block the byte encoder agrees with
+
+`LprogBytes.encCmovSelect` and `LprogAsmPrinter.renderLopn` materialise the
+condition with `test c, c`, whose zero flag is set when the whole condition word
+is zero. `LoweringCoverageCmovSar.lowerCmovJ` is that form, so it is the one
+`GatherFullBody.encJCmovSelect_eq_lopn` byte-matches. Its value agrees with
+`applyOpn`'s low-bit reading on a condition word holding `0` or `1` — the range
+the dialect's `reg 1` condition operand occupies — which is the scope condition
+`selectW_setWidth_of_lt_two` states. -/
+
+/-- The zero field of the flag tuple of `TEST x, x` is set exactly when the whole
+    word `x` is zero. -/
+theorem zf_x86_TEST_self {w : Nat} (x : BitVec w) :
+    (x86_TEST x x).zf = some (decide (x = 0)) := by
+  simp [x86_TEST, rflags_of_bwop, ZF_of_word, BitVec.toNat_eq]
+
+/-- The zero flag of `test c, c` is the whole-word zero test of `c`. -/
+theorem zf_test_self {w : Nat} (s : JState w) (c : String) :
+    (evalInstr s (JInstr.test c (JOperand.reg c))).flagB (·.zf)
+      = decide (s.get c = 0) := by
+  simp only [evalInstr, JState.flagB, JState.writeB5, JOperand.eval, JState.get,
+    zf_x86_TEST_self, Option.getD_some]
+  rfl
+
+/-- The whole-word-test block leaves the destination holding the true value on a
+    non-zero condition and the false value on a zero one. The condition register
+    is distinct from the destination, since on three distinct names the block
+    defaults the false value into the destination before the `test`. -/
+theorem lowerCmovJ_dest (s : JState 64) (d c a b : String) (hcd : c ≠ d) :
+    (runBlock s (lowerCmovJ d c a b)).regs d
+      = if s.get c = 0 then s.get b else s.get a := by
+  unfold lowerCmovJ
+  by_cases ha : a = d
+  · subst ha
+    simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
+      JState.get, x86_CMOVcc, zf_x86_TEST_self]
+    rfl
+  · rw [if_neg (by simpa using ha)]
+    by_cases hb : b = d
+    · subst hb
+      simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
+        JState.get, x86_CMOVcc, zf_x86_TEST_self]
+      rfl
+    · rw [if_neg (by simpa using hb)]
+      simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
+        JState.get, x86_CMOVcc, x86_MOV, zf_x86_TEST_self, hcd, ha]
+      rfl
+
+/-- **The byte-matched `CMOV` value tie.** On a condition word holding `0` or
+    `1`, the whole-word-test block leaves the destination holding the word the
+    fused `applyOpn` arm gives on the same three source registers. The claim is
+    about registers only — the `JInstr` side also writes the five flags of the
+    test, and `Lstate` has no flag component.
+
+    `hc2` is the scope of the tie rather than an assumption about the machine.
+    The block tests the condition register against itself, so its zero flag is
+    the whole word's, while `applyOpn "CMOV"` selects on
+    `selectW (BitVec.setWidth 1 c)`, which is bit zero. The two agree on `0` and
+    `1` and disagree at a condition word of `2`. For a program the front
+    produces, the dialect types the condition `reg 1` in
+    `select w : [reg 1, reg w, reg w] → reg w`, so a wider word cannot arise and
+    `hc2` is discharged by the typing. An `Lopn` written by hand or introduced by
+    a post-pass carries no such guarantee.
+
+    The block that agrees at every condition word is `lowerCmovSelfContained`,
+    which tests against the immediate `1`. It needs no scope condition and does
+    not byte-match `encodeLopn`: `test r, $1` encodes as `REX.W F7 /0 id`,
+    against `REX.W 85 /r` for the self-test. -/
+theorem flagClass_cmovSelect_value_tie {d c a b : String} {s : Lstate 64}
+    {j : JState 64} (hreg : ∀ r, j.regs r = s.lvm r) (hcd : c ≠ d)
+    (hc2 : (s.lvm c).toNat < 2) :
+    applyOpn "CMOV" [s.lvm c, s.lvm a, s.lvm b]
+      = some ((runBlock j (lowerCmovJ d c a b)).regs d) := by
+  rw [applyOpn_select, lowerCmovJ_dest j d c a b hcd,
+    selectW_setWidth_of_lt_two _ _ _ hc2]
+  simp only [JState.get, hreg]
+
+/-- The whole-word-test block writes no register but its destination. -/
+theorem lowerCmovJ_other (s : JState 64) (d c a b r : String) (hr : r ≠ d) :
+    (runBlock s (lowerCmovJ d c a b)).regs r = s.regs r := by
+  unfold lowerCmovJ
+  by_cases ha : a == d
+  · simp [ha, runBlock_cons, runBlock_nil, evalInstr, JState.setReg,
+      JState.writeB5, hr]
+  · by_cases hb : b == d <;>
+      simp [ha, hb, runBlock_cons, runBlock_nil, evalInstr, JState.setReg,
+        JState.writeB5, hr]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
