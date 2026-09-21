@@ -178,9 +178,20 @@ def enc0FRRw (w op d s : Nat) : List (BitVec 8) :=
   rexOpt w (bit d 3) 0 (bit s 3)
     ++ [BitVec.ofNat 8 0x0f, BitVec.ofNat 8 op, BitVec.ofNat 8 (modRMReg d s)]
 
-/-- Width-aware `MOV $imm32, %dst` (`C7 /0 id`). -/
+/-- Width-aware `MOV $imm32, %dst`, in the form gas selects.
+
+    At `REX.W = 0` the operand is 32-bit and gas takes the one-byte-shorter
+    `B8+rd id` form (`movl $1, %eax` → `b8 01 00 00 00`), with a `REX.B` prefix
+    only for an extended destination. At `REX.W = 1` that opcode is `movabs` with
+    a full `imm64`, so a 64-bit `MOV` of a value that fits a signed `imm32` takes
+    the `C7 /0 id` sign-extended form instead — which is also what
+    `encMovImm64`'s caller falls back FROM. Both forms decode to the same value;
+    the selection is what makes the byte stream agree with the assembler. -/
 def encMovImmw (w d v : Nat) : List (BitVec 8) :=
-  rexOpt w 0 0 (bit d 3) ++ [BitVec.ofNat 8 0xc7, BitVec.ofNat 8 (modRMReg 0 d)] ++ imm32LE v
+  if w = 0 then
+    rexOpt 0 0 0 (bit d 3) ++ [BitVec.ofNat 8 (0xb8 + d % 8)] ++ imm32LE v
+  else
+    rexOpt w 0 0 (bit d 3) ++ [BitVec.ofNat 8 0xc7, BitVec.ofNat 8 (modRMReg 0 d)] ++ imm32LE v
 
 /-- Width-aware imm-source ALU (`81 /digit id`): `reg`=digit, `rm`=dst, `imm32`. -/
 def encAluImmw (w digit d v : Nat) : List (BitVec 8) :=
