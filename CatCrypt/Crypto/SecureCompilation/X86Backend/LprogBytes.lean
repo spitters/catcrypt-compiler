@@ -649,12 +649,18 @@ def tagShiftExt (base : String) : Option Nat :=
     after the 4-char `"SHL:"`/`"SHR:"` prefix. Mirrors
     `LoweringExtended.shiftCountOf` exactly, so the byte encoder emits the SAME count
     `n` the JInstr gather's `lowerShiftImmJ`/`parseShiftMnem` lowers — the two sides'
-    shift counts coincide definitionally. (`String.toNat?` is not kernel-reducible,
-    so the *value* of `n` is `#eval`/`native_decide`-only; the arm SELECTION above is
-    kernel-clean, which is what the dispatch lemmas need.) `0` for an unparseable
-    suffix (never the case for an exporter-emitted mnemonic). -/
+    shift counts coincide definitionally. The decimal suffix is read by
+    `strDropToNat?`, the character-list parse, so a closed application reduces in
+    the kernel; `tagShiftCount_eq` states the value against `String.toNat?`. `0`
+    for an unparseable suffix (never the case for an exporter-emitted mnemonic). -/
 def tagShiftCount (base : String) : Nat :=
-  ((String.ofList (base.toList.drop 4)).toNat?).getD 0
+  (strDropToNat? base 4).getD 0
+
+/-- The shift count of a count-in-tag base is `String.toNat?` of the mnemonic's
+    decimal suffix. -/
+theorem tagShiftCount_eq (base : String) :
+    tagShiftCount base = ((String.ofList (base.toList.drop 4)).toNat?).getD 0 := by
+  rw [tagShiftCount, strDropToNat?, ← strToNat?_eq, strToNat?, String.toList_ofList]
 
 /-- The bytes of a count-in-tag register-source shift, given the op width bit `w`,
     the group-2 `/ext` (`tagShiftExt`), the destination GP number `dn`, and the

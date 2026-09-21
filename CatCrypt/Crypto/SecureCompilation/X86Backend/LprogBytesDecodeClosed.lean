@@ -80,7 +80,7 @@ theorem frameSize_of_noSpill (body : Lcmd) (F : Nat)
 
 /-- The count of the tag `"SHL:0"` is `0`. -/
 theorem tagShiftCount_SHL0 : tagShiftCount "SHL:0" = 0 := by
-  unfold tagShiftCount
+  rw [tagShiftCount_eq]
   rw [show String.ofList (List.drop 4 "SHL:0".toList) = "0" by decide,
     String.toNat?_eq_some_ofDigitChars (String.isNat_of_isDigit (by decide) (by simp))]
   simp [Nat.ofDigitChars_cons, Nat.ofDigitChars_nil]
