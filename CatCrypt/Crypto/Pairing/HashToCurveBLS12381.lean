@@ -77,9 +77,8 @@ Two steps are computations over the 381-bit field, which Rocq discharges by
 `vm_compute`/`native_compute`:
 * `edge_case_gx1_is_square` (the `tv1 = 0` Legendre check that
   `curveRhs A' B' (B'·(Z·A')⁻¹)` is a square, a property of the concrete
-  `(A', B', Z)` triple) evaluates one modular exponentiation over `Nat` by
-  `native_decide`, so `swuMapsToEprime` and its consumers depend on
-  `Lean.ofReduceBool`;
+  `(A', B', Z)` triple) exhibits a square root as a numeral and closes the two
+  resulting `a = b + k·p` identities over `Nat` by `norm_num`;
 * `isogenyPolyIdentity` (used by `isoMapsEprimeToE`) is proved in
   `IsogenyPolyIdentity` by a bounded reflective coefficient check.
 -/
@@ -101,6 +100,14 @@ theorem fp_nz (n : ℕ) (h0 : 0 < n) (hlt : n < BLS12381) : (n : FpBLS) ≠ 0 :=
   have hdvd : (BLS12381 : ℕ) ∣ n := (CharP.cast_eq_zero_iff FpBLS BLS12381 n).mp hz
   have := Nat.le_of_dvd h0 hdvd
   omega
+
+/-- A `Nat` equation of the form `a = b + k n` gives the equation of the casts
+    in `ZMod n`. -/
+private theorem natCast_eq_of_eq_add_mul {n a b k : ℕ} (h : a = b + k * n) :
+    ((a : ZMod n)) = (b : ZMod n) := by
+  subst h
+  push_cast [ZMod.natCast_self]
+  ring
 
 /-! ## §1  RFC 9380 field-map helpers (`HashToCurve.v`)
 
@@ -403,32 +410,60 @@ private theorem swuZ_pow_legendreExp : swuZ ^ legendreExp = -1 :=
     reflexivity` (a Legendre-symbol evaluation on the concrete field element
     `gx₁ = curveRhs A' B' (B'·(Z·A')⁻¹)`).
 
-    The proof computes the natural-number representative `gn` of `gx₁` through
-    `invMod`, checks `powMod gn legendreExp p = 1` by `native_decide`, and
-    transports both to `FpBLS` with `invMod_cast` and `powMod_cast`. -/
+    The proof exhibits the abscissa `x₁ = B'·(Z·A')⁻¹` and a square root `r` of
+    `gx₁` as natural-number literals, establishes each numeral identity in the
+    form `a = b + k·p` by `norm_num` and transports it with
+    `natCast_eq_of_eq_add_mul`, and concludes `gx₁^((p-1)/2) = r^(p-1) = 1`
+    from `ZMod.pow_card_sub_one_eq_one`. -/
 private theorem edge_case_gx1_is_square :
     isSquare (curveRhs isoA isoB (isoB * (swuZ * isoA)⁻¹)) = true := by
-  set aAn : ℕ := 0x144698a3b8e9433d693a02c96d4982b0ea985383ee66a8d8e8981aefd881ac98936f8da0e0f97f5cf428082d584c1d
-  set aBn : ℕ := 0x12e2908d11688030018b12e8753eee3b2016c1f0f24f4070a0b9c14fcef35ef55a23215a316ceaa5d1cc48e98e172be0
-  set ivn : ℕ := Transfer.ZModPowMod.invMod (11 * aAn) BLS12381 with hivn
-  set x1n : ℕ := aBn * ivn with hx1n
-  set gn  : ℕ := x1n ^ 3 + aAn * x1n + aBn with hgnn
-  have hne : (11 * aAn) % BLS12381 ≠ 0 := by decide
-  have hgn : Transfer.ZModPowMod.powMod gn legendreExp BLS12381 = 1 := by native_decide
-  have hA : isoA = (aAn : FpBLS) := rfl
-  have hB : isoB = (aBn : FpBLS) := rfl
-  have hmul : swuZ * isoA = ((11 * aAn : ℕ) : FpBLS) := by
-    rw [hA]; simp only [swuZ]; push_cast; ring
-  have hinv : (swuZ * isoA)⁻¹ = ((ivn : ℕ) : FpBLS) := by
-    rw [hmul, hivn, Transfer.ZModPowMod.invMod_cast BLS12381 (11 * aAn) hne]
-  have hbridge : curveRhs isoA isoB (isoB * (swuZ * isoA)⁻¹) = (gn : FpBLS) := by
-    rw [curveRhs, hinv, hA, hB, hgnn, hx1n]
-    push_cast; ring
-  rw [hbridge]
-  have hsq : (gn : FpBLS) ^ legendreExp = 1 := by
-    rw [← Transfer.ZModPowMod.powMod_cast gn legendreExp BLS12381, hgn, Nat.cast_one]
-  unfold isSquare
-  rw [if_pos hsq]
+  have hA : isoA ≠ 0 := by
+    rw [isoA]; exact fp_nz _ (by norm_num) (by norm_num)
+  have hZ : swuZ ≠ 0 := by
+    rw [swuZ]; exact fp_nz 11 (by norm_num) (by norm_num)
+  have hd : swuZ * isoA ≠ 0 := mul_ne_zero hZ hA
+  -- the exceptional abscissa as a natural-number literal
+  have hmul : swuZ * isoA
+      * ((2804858857133937099622193571436483626014013193105397454853431114229365119931628302936765775078151302032269524150292 : ℕ) : FpBLS)
+      = isoB := by
+    rw [swuZ, isoA, isoB]
+    have h :=
+      natCast_eq_of_eq_add_mul (n := BLS12381)
+        (a := 2804858857133937099622193571436483626014013193105397454853431114229365119931628302936765775078151302032269524150292
+          * (11 * 0x144698a3b8e9433d693a02c96d4982b0ea985383ee66a8d8e8981aefd881ac98936f8da0e0f97f5cf428082d584c1d))
+        (b := 0x12e2908d11688030018b12e8753eee3b2016c1f0f24f4070a0b9c14fcef35ef55a23215a316ceaa5d1cc48e98e172be0)
+        (k := 93971867586540033431931562345427700293651935620869855920714089765598245716121671177605233768949616849542905413412)
+        (by norm_num)
+    push_cast at h ⊢
+    linear_combination h
+  have hx1 : isoB * (swuZ * isoA)⁻¹
+      = ((2804858857133937099622193571436483626014013193105397454853431114229365119931628302936765775078151302032269524150292 : ℕ) : FpBLS) := by
+    rw [← hmul]
+    field_simp
+  -- the value of the curve polynomial there is a square
+  have hsq : curveRhs isoA isoB (isoB * (swuZ * isoA)⁻¹)
+      = ((883926319761702754759909536142450234040420493353017578303105057331414514426056372828799438842649753623273850162620 : ℕ) : FpBLS)
+      * ((883926319761702754759909536142450234040420493353017578303105057331414514426056372828799438842649753623273850162620 : ℕ) : FpBLS) := by
+    rw [curveRhs, hx1, isoA, isoB]
+    have h :=
+      natCast_eq_of_eq_add_mul (n := BLS12381)
+        (a := 2804858857133937099622193571436483626014013193105397454853431114229365119931628302936765775078151302032269524150292 ^ 3
+          + 0x144698a3b8e9433d693a02c96d4982b0ea985383ee66a8d8e8981aefd881ac98936f8da0e0f97f5cf428082d584c1d
+            * 2804858857133937099622193571436483626014013193105397454853431114229365119931628302936765775078151302032269524150292
+          + 0x12e2908d11688030018b12e8753eee3b2016c1f0f24f4070a0b9c14fcef35ef55a23215a316ceaa5d1cc48e98e172be0)
+        (b := 883926319761702754759909536142450234040420493353017578303105057331414514426056372828799438842649753623273850162620
+          * 883926319761702754759909536142450234040420493353017578303105057331414514426056372828799438842649753623273850162620)
+        (k := 5513298537139989984780785358163429970770758151005968195102091596805812961952125297268149430529864495170183974886817415764263289248013760592432335526914920189312741770800563603468816802636907401012586884244322997943723439520934396)
+        (by norm_num)
+    push_cast at h ⊢
+    linear_combination h
+  refine isSquare_of_pow_legendreExp _ ?_
+  have hr : ((883926319761702754759909536142450234040420493353017578303105057331414514426056372828799438842649753623273850162620 : ℕ) : FpBLS) ≠ 0 :=
+    fp_nz _ (by norm_num) (by norm_num)
+  have hexp : 2 * legendreExp = BLS12381 - 1 := by
+    rw [legendreExp]; norm_num
+  rw [hsq, ← sq, ← pow_mul, hexp]
+  exact ZMod.pow_card_sub_one_eq_one hr
 
 /-! ### §8.4  SWU lands on E' (Rocq `swu_maps_to_Eprime_proof`) -/
 
@@ -443,8 +478,7 @@ private theorem edge_case_gx1_is_square :
     `fpSqrt_correct` (proved), giving `y² = g(x)` for whichever branch is chosen.
 
     The `tv1 = 0` branch uses `edge_case_gx1_is_square`, the concrete Legendre
-    check on the `(A', B', Z)` triple, proved by `native_decide`; this is the
-    theorem's only dependence on `Lean.ofReduceBool`. The proof body itself
+    check on the `(A', B', Z)` triple. The proof body itself
     evaluates no numeral: the map's output is related to named intermediates by
     rewriting each intermediate into the definition's `let`-form body and closing
     with `exact rfl`, without zeta-expanding the body. -/
