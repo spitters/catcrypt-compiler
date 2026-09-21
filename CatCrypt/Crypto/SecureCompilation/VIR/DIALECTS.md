@@ -19,9 +19,11 @@ MID   lowering    catCryptDialect  thirDialect  latticeDialect  arith/memref/vec
 LOW   target      jasminDialect → Lprog → x86 / ELF bytes;  scf, memref (x86) → x86Dialect
 ```
 
-In this package no `Com`-level lowering connects the HIGH tier to jasmin: the graph
-at the end of this file lists `fieldDialect`, `modArithDialect`, `fpDialect`,
-`polyDialect` and `ecDialect` under "No path". The MID dialects lower into
+One HIGH-tier dialect reaches jasmin at the `Com` level: `fieldDialect`, through
+`lowerK` (`Algebraic/FieldToJasminWord.lean`), on the `GoodW p` fragment at a
+`SingleWordField p` — the generated graph below lists the edge and puts
+`fieldDialect` under "Reaches bytes". `modArithDialect`, `fpDialect`,
+`polyDialect` and `ecDialect` remain under "No path". The MID dialects lower into
 `jasminDialect`. The substrate is `jasminDialect`: its
 `regArith` ops carry word arithmetic, `stackLoad`/`stackStore` and the `Lprog` ABI
 carry memory, and `vsimd`/`vpackZMM` carry packed vector arithmetic. The neutral
@@ -291,3 +293,90 @@ not listed. The table covers the modules of this package.
 - `tensorExtDialect`
 - `tileDialect`
 - `toyDialect`
+
+_Each row names the `def` that carries the edge._
+
+### Lowering edges (a `def` taking `Com A` to `Com B`)
+
+| from | to | via |
+|---|---|---|
+| \`arithDialect\` | \`jasminDialect\` | \`lowerArithToJasmin\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`blake2bGJazzA\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`chacha20QRJazzA\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`cryptoDialectToJasminCom\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`reduceFrontCom\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`regPassA1prime\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`sha256Sigma0Jazz\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`sha512Sigma0Jazz\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`subFrontCom\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`toJasmin\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`toJasmin4\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`toJasminF\` |
+| \`catCryptDialect\` | \`jasminDialect\` | \`vProg\` |
+| \`catCryptDialect\` | \`mlirArithDialect\` | \`translate\` |
+| \`catCryptDialect\` | \`mlirMemrefDialect\` | \`translate\` |
+| \`cmpDialect\` | \`fieldCmpDialect\` | \`cmpLowering\` |
+| \`derivedDialect\` | \`fieldDialect\` | \`lowerDerivedToField\` |
+| \`fieldDialect\` | \`derivedDialect\` | \`op-level lowering\` |
+| \`fieldDialect\` | \`fieldCmpDialect\` | \`fieldLowering\` |
+| \`fieldDialect\` | \`jasminDialect\` | \`lowerK\` |
+| \`fpDialect\` | \`modArithDialect\` | \`lowerFieldToModArith\` |
+| \`funcDialect\` | \`jasminDialect\` | \`lowerFuncToJasmin\` |
+| \`latticeDialect\` | \`jasminDialect\` | \`latticeLoweringData\` |
+| \`latticeDialect\` | \`jasminDialect\` | \`lowerLatticeToJasmin\` |
+| \`latticeDialect\` | \`mlirPolynomialDialect\` | \`translate\` |
+| \`memrefDialect\` | \`jasminDialect\` | \`lowerMemrefToJasmin\` |
+| \`memrefDialect\` | \`x86Dialect\` | \`op-level lowering\` |
+| \`scfDialect\` | \`x86Dialect\` | \`op-level lowering\` |
+| \`thirDialect\` | \`catCryptDialect\` | \`lowerThirToCatCrypt\` |
+| \`thirDialect\` | \`catCryptDialect\` | \`lowerThirToCrypto\` |
+| \`thirDialect\` | \`jasminDialect\` | \`compileThirViaCatCryptOrFlat\` |
+| \`thirDialect\` | \`jasminDialect\` | \`lowerThir\` |
+| \`thirDialect\` | \`jasminDialect\` | \`thirToJasminViaCatCrypt\` |
+| \`vectorDialect\` | \`jasminDialect\` | \`lowerVectorToJasmin\` |
+
+### Reaches bytes via `jasminDialect or x86Dialect` (transitively) — the emit spine
+
+- `arithDialect`
+- `catCryptDialect`
+- `derivedDialect`
+- `fieldDialect`
+- `funcDialect`
+- `latticeDialect`
+- `memrefDialect`
+- `scfDialect`
+- `thirDialect`
+- `vectorDialect`
+
+### No path to `jasminDialect or x86Dialect` — correspondence / theory layers
+
+- `cmpDialect`
+- `dwDialect`
+- `ecConvertDialect`
+- `ecDialect`
+- `edAffDialect`
+- `fieldCmpDialect`
+- `flagDialect`
+- `fpDialect`
+- `latticeDialectG`
+- `mixedDialect`
+- `mlirArithDialect`
+- `mlirArithScfDialect`
+- `mlirMemrefDialect`
+- `mlirPolynomialDialect`
+- `mlirScfDialect`
+- `mlirVectorDialect`
+- `modArithDialect`
+- `modArithMontDialect`
+- `numDialect`
+- `pairingCheckDialect`
+- `pilot`
+- `polyDialect`
+- `quantumDialect`
+- `realLatticeDialect`
+- `smokeDialect`
+- `tensorExtDialect`
+- `tileDialect`
+- `toyDialect`
+- `wordDialect`
+
