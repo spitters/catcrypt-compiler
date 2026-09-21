@@ -117,14 +117,24 @@ instance : TyDenote natKernelDialect.Ty where
     | .nat => Nat
     | .bool => Bool
 
-instance : DialectSignature natKernelDialect where
-  sig
-    | .const _ => []
-    | .beq | .ble => [.nat, .nat]
-    | _ => [.nat, .nat]
-  ret
-    | .beq | .ble => .bool
-    | _ => .nat
+/-- The argument types of an operation: none for a literal, two naturals for
+    everything else. Named rather than inlined into the instance so that a
+    proof can reduce it with `dsimp only [natSig]`; the instance field's match
+    has no equation lemma a proof can reach. -/
+@[reducible] def natSig : NatKernelOp → List NatKernelTy
+  | .const _ => []
+  | _ => [.nat, .nat]
+
+/-- The result type of an operation: `.bool` for the two comparisons, `.nat`
+    for the rest. -/
+@[reducible] def natRet : NatKernelOp → NatKernelTy
+  | .beq => .bool
+  | .ble => .bool
+  | _ => .nat
+
+instance natKernelSig : DialectSignature natKernelDialect where
+  sig := natSig
+  ret := natRet
 
 instance : DialectDenote natKernelDialect where
   denote

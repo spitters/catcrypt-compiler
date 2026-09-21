@@ -1020,3 +1020,7 @@ CatCrypt.Crypto.SecureCompilation.CtSelectLeak
 CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelDialect
+CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelFlatten
+CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
+CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubOutFrame
