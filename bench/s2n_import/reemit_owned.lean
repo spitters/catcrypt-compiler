@@ -11,6 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519InvertShipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped
 import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
+import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519Pow22523Shipped
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
@@ -92,7 +93,7 @@ def withCalls (name : String) (b : List CallSeg) (pro epi : List (JInstr 64)) : 
 open Fe25519MulShipped Fe25519SqrShipped Fe25519AddShipped Fe25519SubShipped
   Ed25519CombSelectShipped Ed25519CompressShipped Ed25519PackSignShipped Ed25519MaddShipped
   Ed25519Join16Shipped Ed25519InvertShipped Ed25519ScReduceShipped Ed25519ScMuladdShipped
-  Ed25519PointAddShipped in
+  Ed25519PointAddShipped Fe25519Pow22523Shipped in
 def all : List Reemitted :=
   [ plain "Fe25519MulShipped" fe25519MulShippedBlock fe25519MulShippedPrologue
       fe25519MulShippedEpilogue,
@@ -119,7 +120,9 @@ def all : List Reemitted :=
     plain "Ed25519ScMuladdShipped" ed25519ScMuladdShippedBlock ed25519ScMuladdShippedPrologue
       ed25519ScMuladdShippedEpilogue,
     plain "Ed25519PointAddShipped" ed25519PointAddShippedBlock ed25519PointAddShippedPrologue
-      ed25519PointAddShippedEpilogue ]
+      ed25519PointAddShippedEpilogue,
+    withCalls "Fe25519Pow22523Shipped" fe25519Pow22523ShippedBlock
+      fe25519Pow22523ShippedPrologue fe25519Pow22523ShippedEpilogue ]
 
 def main : IO Unit := do
   IO.FS.createDirAll "bench/s2n_import/gen/owned"

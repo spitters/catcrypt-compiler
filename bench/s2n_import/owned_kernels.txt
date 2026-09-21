@@ -18,3 +18,4 @@ Ed25519InvertShipped      ed25519_invert_x86_from_lean.s       ed25519_invert_x8
 Ed25519ScReduceShipped    ed25519_sc_reduce_x86_from_lean.s    ed25519_sc_reduce_x86_from_lean
 Ed25519ScMuladdShipped    ed25519_sc_muladd_x86_from_lean.s    ed25519_sc_muladd_x86_from_lean
 Ed25519PointAddShipped    ed25519_point_add_x86_from_lean.s    ed25519_point_add
+Fe25519Pow22523Shipped    fe25519_pow22523_x86_from_lean.s     fe25519_pow22523_x86_from_lean

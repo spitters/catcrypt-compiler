@@ -19,6 +19,7 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdS
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519MaddShipped
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519InvertShipped
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CompressShipped
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519Pow22523Shipped
 
 /-!
 # Constant time of the shipped Ed25519 and fe25519 kernels
@@ -84,6 +85,7 @@ and the caller's argument slots are preserved across a call (`CalleeFrame`).
 | `ed25519_sc_muladd` | `ed25519ScMuladd_constant_time` | none | `ed25519ScMuladd_addr` | `pub4` |
 | `ed25519_madd` | `ed25519Madd_constant_time` | `LeafModel C` | `ed25519Madd_addr` | `pub2`, frame |
 | `ed25519_invert` | `ed25519Invert_constant_time` | `LeafModel C` | `ed25519Invert_addr` | `pub2`, frame |
+| `fe25519_pow22523` | `fe25519Pow22523_constant_time` | `LeafModel C` | `fe25519Pow22523_addr` | `pub2`, frame |
 | `ed25519_compress` | `ed25519Compress_constant_time` | `ShippedModel C` | `ed25519Compress_addr` | `pub4`, frame |
 
 `shipped_kernels_constant_time` collects the leakage theorems.
@@ -1104,6 +1106,33 @@ theorem ed25519Invert_addr (C : CallModel) (hC : LeafModel C)
 
 end Invert
 
+/-! ### `fe25519_pow22523` -/
+
+section Pow22523
+open Fe25519Pow22523Shipped
+
+/-- `fe25519_pow22523`: for any model of its callees in which `fe25519_mul` and
+    `fe25519_sqr` have the leakage traces of their imported blocks, the leakage
+    trace is the same from any two states. -/
+theorem fe25519Pow22523_constant_time (C : CallModel) (hC : LeafModel C) (s₁ s₂ : JState 64) :
+    segsLeak C s₁ fe25519Pow22523ShippedBlock = segsLeak C s₂ fe25519Pow22523ShippedBlock :=
+  (checkSegs_sound false leafLeakPre [] [] C (calleeFrame_nil C) (leafLeakPre_sound hC)
+    (fun h => absurd h Bool.false_ne_true) _ PubSet.empty (by decide +kernel)
+    (PubSet.agree_empty s₁ s₂)).1
+
+/-- `fe25519_pow22523`: if its callees have the traces of their imported blocks and
+    every callee preserves the SysV callee-saved registers and the argument slot at
+    `128(%rsp)`, the address trace is determined by `%rdi`, `%rsi`, `%rsp`. -/
+theorem fe25519Pow22523_addr (C : CallModel) (hC : LeafModel C)
+    (hF : CalleeFrame C sysvSaved (rspCells [128])) (s₁ s₂ : JState 64)
+    (hag : pub2.Agree s₁ s₂) :
+    segsAddr C s₁ fe25519Pow22523ShippedBlock = segsAddr C s₂ fe25519Pow22523ShippedBlock :=
+  (checkSegs_sound true leafAddrPre sysvSaved (rspCells [128]) C hF
+    (fun f A h => (leafAddrPre_sound hC f A h).1)
+    (fun _ f A h => (leafAddrPre_sound hC f A h).2) _ pub2 (by decide +kernel) hag).2 rfl
+
+end Pow22523
+
 /-! ### `ed25519_compress` -/
 
 /-- The callees of `ed25519_compress`, each with the empty public set. -/
@@ -1304,6 +1333,9 @@ theorem shipped_kernels_constant_time :
       segsLeak C s₂ Ed25519MaddShipped.ed25519MaddShippedBlock) ∧
     (∀ C, LeafModel C → ∀ s₁ s₂, segsLeak C s₁ Ed25519InvertShipped.ed25519InvertShippedBlock =
       segsLeak C s₂ Ed25519InvertShipped.ed25519InvertShippedBlock) ∧
+    (∀ C, LeafModel C → ∀ s₁ s₂,
+      segsLeak C s₁ Fe25519Pow22523Shipped.fe25519Pow22523ShippedBlock =
+        segsLeak C s₂ Fe25519Pow22523Shipped.fe25519Pow22523ShippedBlock) ∧
     (∀ C, ShippedModel C → ∀ s₁ s₂,
       segsLeak C s₁ Ed25519CompressShipped.ed25519CompressShippedBlock =
         segsLeak C s₂ Ed25519CompressShipped.ed25519CompressShippedBlock) :=
@@ -1311,7 +1343,7 @@ theorem shipped_kernels_constant_time :
     fe25519Sub_constant_time, ed25519CombSelect_constant_time, ed25519Join16_constant_time,
     ed25519PackSign_constant_time, ed25519ScReduce_constant_time,
     ed25519ScMuladd_constant_time, ed25519Madd_constant_time, ed25519Invert_constant_time,
-    ed25519Compress_constant_time⟩
+    fe25519Pow22523_constant_time, ed25519Compress_constant_time⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
 

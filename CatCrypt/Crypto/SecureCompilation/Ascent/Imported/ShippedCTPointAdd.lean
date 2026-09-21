@@ -128,8 +128,8 @@ theorem ed25519PointAdd_addr (s₁ s₂ : JState 64) (hag : pub2.Agree s₁ s₂
 end PointAdd
 
 /-- **The shipped kernels, point addition included, are constant time.** The
-    twelve statements of `shipped_kernels_constant_time`, and the leakage trace of
-    `ed25519_point_add` is the same from any two states. -/
+    thirteen statements of `shipped_kernels_constant_time`, and the leakage trace
+    of `ed25519_point_add` is the same from any two states. -/
 theorem shipped_kernels_constant_time_all :
     (∀ s₁ s₂ : JState 64, blockLeak s₁ Fe25519MulShipped.fe25519MulShippedBlock =
       blockLeak s₂ Fe25519MulShipped.fe25519MulShippedBlock) ∧
@@ -153,12 +153,16 @@ theorem shipped_kernels_constant_time_all :
       segsLeak C s₂ Ed25519MaddShipped.ed25519MaddShippedBlock) ∧
     (∀ C, LeafModel C → ∀ s₁ s₂, segsLeak C s₁ Ed25519InvertShipped.ed25519InvertShippedBlock =
       segsLeak C s₂ Ed25519InvertShipped.ed25519InvertShippedBlock) ∧
+    (∀ C, LeafModel C → ∀ s₁ s₂,
+      segsLeak C s₁ Fe25519Pow22523Shipped.fe25519Pow22523ShippedBlock =
+        segsLeak C s₂ Fe25519Pow22523Shipped.fe25519Pow22523ShippedBlock) ∧
     (∀ C, ShippedModel C → ∀ s₁ s₂,
       segsLeak C s₁ Ed25519CompressShipped.ed25519CompressShippedBlock =
         segsLeak C s₂ Ed25519CompressShipped.ed25519CompressShippedBlock) ∧
     (∀ s₁ s₂ : JState 64, blockLeak s₁ Ed25519PointAddShipped.ed25519PointAddShippedBlock =
       blockLeak s₂ Ed25519PointAddShipped.ed25519PointAddShippedBlock) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12⟩ := shipped_kernels_constant_time
-  exact ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, ed25519PointAdd_constant_time⟩
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13⟩ :=
+    shipped_kernels_constant_time
+  exact ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, ed25519PointAdd_constant_time⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
