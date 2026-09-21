@@ -283,13 +283,10 @@ theorem seqFlatten_idem (e : ImpExpr) :
 /-! ## The Kleisli horizontal arrows -/
 
 /-- Extending an environment at a name with the value it already holds is the
-    identity. -/
+    identity. `Env.extend_self` of `hax-lean` is the same statement and carries the
+    proof. -/
 theorem extend_of_read {env : Env} {x : String} {v : Value} (h : env x = some v) :
-    env.extend x v = env := by
-  funext y
-  by_cases hy : y = x
-  · subst hy; simp [Env.extend, h]
-  · simp [Env.extend, hy]
+    env.extend x v = env := Env.extend_self env x v h
 
 /-- The image of an exit relation under binding `x` to the value `V σ`: the entry
     relation of the body of a `.letBind` that binds `x`. -/
