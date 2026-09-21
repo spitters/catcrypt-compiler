@@ -54,9 +54,11 @@ def asconSigma0PhysBody : List Linstr :=
     Opacity is not the reason: every module on the path from `jBodyBytes` and
     `encodeLcmd` down to the byte lists carries a file-wide
     `@[expose] public section`, so there is nothing on it for `@[expose]` to
-    add. What closes the remaining gap in this codebase is `import all` in the
-    consumer, as `LprogBytesDecodeClosed` does for the same shape of closed
-    byte computation.
+    add. Neither is the consumer's import mode: a `module` consumer taking
+    `import all` on all nine path modules, at `maxRecDepth 8000000`, reports
+    the two sides not definitionally equal rather than exhausting a budget.
+    What remains is the conversion itself, and the earlier measurement that a
+    plain file closes it is the one to re-run before trusting either.
 
     Three measurements say where the difficulty is and is not. Both sides
     reduce: each is 128 bytes and the lengths and the leading byte values close
