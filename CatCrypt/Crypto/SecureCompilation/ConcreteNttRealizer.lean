@@ -11,65 +11,72 @@ public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-!
-# A CONCRETE NTT realizer: round-trip-verified encoding, KAT-free realization
+# A concrete cyclic-convolution leaf realizer over `.TPolyMod q n`
 
 The generic NTT-multiply emit→value seam (`GenericNttEmitValue`) discharges the
-realization down to a leaf-realization predicate that is, at the ML-KEM
-parameters, an externally-checked **KAT** hypothesis (`mlkem_nttEmitRealizes_of_kernel`
-takes `NttKernelRealizes … leafSpec` as an assumption — "the emitted kernel's
-leaf bytes decode to the cyclic convolution").  Its non-vacuity witnesses
-(`nttKernelRealizes_canonical`, `mlkem_nttKernelRealizes_canonical`) exhibit a
-concrete `LeafSpec` that satisfies the predicate, but only **parametrically** over
-an abstract `encode`/`decode` pair with a *hypothesised* section
-(`hsection : ∀ p, decode (encode p) = p`).
+realization down to a leaf-realization predicate that its instantiation at
+`q = 3329`, `n = 256` takes as a hypothesis (`mlkem_nttEmitRealizes_of_kernel`
+assumes `NttKernelRealizes … leafSpec`: the leaf-call value decodes to the
+cyclic convolution).  Its non-vacuity witnesses (`nttKernelRealizes_canonical`,
+`mlkem_nttKernelRealizes_canonical`) exhibit a `LeafSpec` satisfying the
+predicate parametrically over an abstract `encode`/`decode` pair with a section
+hypothesis (`hsection : ∀ p, decode (encode p) = p`).
 
-This module makes that section **concrete and proved**, so the realization holds
-**unconditionally** for a spec-computing realizer.  We exhibit:
+This module supplies a concrete, proved section, so the realization holds for a
+spec-computing realizer with no hypothesis.  It provides:
 
-* a `RustVal (.TPolyMod q n)` carrier (a byte array,
-  `Fin (storageBytes) → BitVec 8` — not a constructor wrapping the function and
-  certainly not an `axiom`), with a concrete two-bytes-per-coefficient
-  little-endian `encodeP`/`decodeP` pair, and
-* a **proved** round-trip `decodeP_encodeP : ∀ x, decodeP (encodeP x) = x`
-  (the crux — this is the byte-level fact a KAT would *assert*; here it is a
-  theorem, valid for every coefficient vector, whenever `q < 2^16`).
+* the `RustVal (.TPolyMod q n)` carrier (a byte array
+  `Fin storageBytes → BitVec 8`) with a two-bytes-per-coefficient little-endian
+  `encodeP`/`decodeP` pair, and
+* the round-trip theorem `decodeP_encodeP : ∀ x, decodeP (encodeP x) = x`,
+  valid for every coefficient vector whenever `q < 2^16`.
 
-From that round-trip the leaf realizer `cyclicConvLeafSpecP` provably computes the
-cyclic convolution (`NttKernelRealizesP`, a theorem — no KAT), and composing with
-the proven primitive-root facts (`isPrimitiveRoot_17_256`, `n_ne_zero_3329`) via
-the commuting-square discharge gives the unconditional ML-KEM realization
-`mlkem_nttEmitRealizes_concrete`.
+From that round-trip the leaf realizer `cyclicConvLeafSpecP` computes the cyclic
+convolution (`NttKernelRealizesP`), and composing with the primitive-root facts
+`isPrimitiveRoot_17_256`, `n_ne_zero_3329` through the commuting-square
+discharge gives `mlkem_nttEmitRealizes_concrete`: the realization of
+`nttMul 256 17` over `ZMod 3329`.
+
+## What `nttMul 256 17` is
+
+`nttMul 256 17` over `ZMod 3329` equals `cyclicConv 256`, multiplication in
+`Z_3329[X]/(X^256 − 1)`.  It is not FIPS 203's ML-KEM transform: ML-KEM's NTT is
+the incomplete 7-layer transform of `Z_3329[X]/(X^256 + 1)` into 128 quadratic
+residues, and no full negacyclic diagonalisation exists at this modulus because
+`3328 = 2^8 · 13` gives `ZMod 3329` no element of order 512
+(`ConcreteNttInstances.lean`, "ML-KEM is cyclic here, not negacyclic").  The
+jasmin leaf named `ntt_poly_mul_3329_256` in
+`bench/mlkem_compare/include/leaves.jinc` is formosa-mlkem's `_poly_basemul`,
+an NTT-domain pointwise multiply on already-transformed data, which is a third
+function; the string is used here only as the `LeafSpec` key.  The owned ML-KEM
+NTT that passes the NIST KAT is a separate artifact and is not described by this
+module.
 
 ## The `.TPolyMod` carrier vs the generic `.TFp` predicate
 
-`GenericNttEmitValue`'s `NttKernelRealizes`/`NttEmitRealizes` hardcode the carrier
-to `RustVal .TFp = JArray 48 = Fin 48 → BitVec 8` — 48 bytes = 384 bits.  No
-round-trip `decode ∘ encode = id` can exist on that carrier for the ML-KEM vector
-type `Fin 256 → ZMod 3329`: a faithful injection needs `≥ log₂(3329²⁵⁶) ≈ 3072`
-bits, far above 384 (pigeonhole).  The lattice carrier `RustVal (.TPolyMod 3329 256)`
-has `256 · 2 = 512` bytes = 4096 bits, which is large enough; it is the TowerType
-the compiler actually uses for ML-KEM polynomials (`TPolyMod 3329 256`).  We
-therefore re-state the realization predicates over `.TPolyMod q n` (a few lines)
-and re-run the same commuting-square discharge (the math content
-`nttMul_eq_cyclicConv'` is reused verbatim).
+`GenericNttEmitValue`'s `NttKernelRealizes`/`NttEmitRealizes` fix the carrier to
+`RustVal .TFp = JArray 48 = Fin 48 → BitVec 8`, 48 bytes = 384 bits.  No
+round-trip `decode ∘ encode = id` exists on that carrier for `Fin 256 → ZMod 3329`:
+an injection needs `≥ log₂(3329²⁵⁶) ≈ 3072` bits (pigeonhole).  The carrier
+`RustVal (.TPolyMod 3329 256)` has `256 · 2 = 512` bytes = 4096 bits, which
+suffices, and it is the TowerType the compiler uses for degree-256 polynomials
+mod 3329.  The realization predicates are therefore re-stated over
+`.TPolyMod q n` and the same commuting-square discharge is re-run; the
+convolution content `nttMul_eq_cyclicConv'` is reused unchanged.
 
-## Scope — what this proves and what it does not
+## Scope
 
-* **Proved (unconditional Lean theorem):** there is a *concrete* leaf realizer
-  (`cyclicConvLeafSpecP`) and a *concrete*, round-trip-verified byte encoding
-  (`encodeP`/`decodeP`, `decodeP_encodeP`) under which the full NTT-multiply
-  realization `NttEmitRealizesP` holds for **all** inputs — strictly stronger
-  than *assuming* a KAT, because the byte-level decode-equals-convolution fact is
-  a theorem here, not a test vector.
-* **NOT proved (the remaining residual):** that the *jasmin-emitted machine bytes*
-  of the real `ntt_poly_mul_3329_256` kernel equal this realizer.  That equality
-  — actual emitted assembly ≡ `cyclicConvLeafSpecP` — is the owned-machine-code
-  route and is a separate follow-up.  This file removes the *encoding* KAT (the
-  `decode ∘ encode = id` assumption); it does **not** remove the *machine-code*
-  obligation.
+* Proved: there is a concrete leaf realizer (`cyclicConvLeafSpecP`) and a
+  concrete, round-trip-verified byte encoding (`encodeP`/`decodeP`,
+  `decodeP_encodeP`) under which `NttEmitRealizesP` holds for all inputs.  The
+  byte-level decode-equals-convolution fact is a theorem, not a test vector.
+* Not proved: any relation between this realizer and emitted machine bytes.  No
+  theorem here relates `cyclicConvLeafSpecP` to the bytes of any kernel.
 
 ## References
-* NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA)
+* NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA).  The FIPS 203 transform is the
+  incomplete 7-layer NTT of `X^256 + 1`, which differs from the cyclic
+  convolution realized here as described above.
 -/
 
 @[expose] public section
@@ -96,7 +103,7 @@ a `ZMod q`.  The round-trip is a per-coefficient `Nat`-arithmetic fact. -/
 def coeffBytes : ℕ := 2
 
 /-- The concrete carrier for a length-`n` coefficient vector mod `q`:
-    `n` coefficients laid out two bytes each, little-endian.  This is a *real*
+    `n` coefficients laid out two bytes each, little-endian, as a
     `Fin (n * 2) → BitVec 8` byte array. -/
 abbrev PolyBytes (n : ℕ) : Type := Fin (n * coeffBytes) → BitVec 8
 
@@ -121,10 +128,9 @@ def decodeP {q n : ℕ} [NeZero q] (a : PolyBytes n) : Fin n → ZMod q :=
       have hlt := i.isLt; unfold coeffBytes; omega⟩).toNat
     ((lo + 256 * hi : ℕ) : ZMod q)
 
-/-- **The verified round-trip (the crux).**  For any modulus `q < 2^16`, decoding
-    the concrete little-endian byte encoding of a coefficient vector returns the
-    vector unchanged — for **all** inputs.  This is the byte-level fact a KAT would
-    merely *assert*; here it is a theorem. -/
+/-- The round-trip of the byte codec: for any modulus `q < 2^16`, decoding the
+    little-endian byte encoding of a coefficient vector returns the vector, for
+    all inputs. -/
 theorem decodeP_encodeP {q n : ℕ} [NeZero q] (hq : q < 65536)
     (x : Fin n → ZMod q) : decodeP (encodeP x) = x := by
   funext i
@@ -160,19 +166,20 @@ theorem decodeP_encodeP {q n : ℕ} [NeZero q] (hq : q < 65536)
 
 /-! ## §2  Realization predicates over the `.TPolyMod q n` carrier
 
-The generic predicates in `GenericNttEmitValue` hardcode the `.TFp` carrier (48
-bytes), which is too small for an honest round-trip (see the module docstring).
-We re-state the same two predicates over `RustVal (.TPolyMod q n)` — the carrier
-the compiler actually uses for ML-KEM polynomials, with `512` bytes of room — and
-re-run the identical commuting-square discharge.  Only the carrier TowerType
-differs; the convolution math (`nttMul_eq_cyclicConv'`) is reused verbatim.
+The generic predicates in `GenericNttEmitValue` fix the `.TFp` carrier (48
+bytes), which is too small for a round-trip (see the module docstring).  The
+same two predicates are re-stated over `RustVal (.TPolyMod q n)`, the carrier
+the compiler uses for degree-`n` polynomials mod `q` (512 bytes at
+`q = 3329`, `n = 256`), and the identical commuting-square discharge is re-run.
+Only the carrier TowerType differs; the convolution content
+(`nttMul_eq_cyclicConv'`) is reused unchanged.
 
 The carrier `RustVal (.TPolyMod q n) = JArray ((.TPolyMod q n).storageBytes)`
 equals `PolyBytes n = JArray (n · coeffBytes)` definitionally exactly when
 `(.TPolyMod q n).storageBytes = n · coeffBytes`, i.e. when `q` needs two bytes
-per coefficient.  We package that fact as a hypothesis `hwidth` and cast through
-it, so the predicates and the discharge stay parametric in `q, n` (the ML-KEM
-literals satisfy `hwidth` by `rfl` and `ZMod 3329` is a field, discharging the
+per coefficient.  That fact is a hypothesis `hwidth` cast through, so the
+predicates and the discharge stay parametric in `q, n` (the literals `3329`,
+`256` satisfy `hwidth` by `rfl`, and `ZMod 3329` is a field, discharging the
 `Field` instance `nttMul_eq_cyclicConv'` needs). -/
 
 /-- The `.TPolyMod`-carrier cyclic-convolution kernel-realization predicate: the
@@ -188,8 +195,9 @@ def NttKernelRealizesP (q n : ℕ) [NeZero q] [NeZero n]
           [⟨.TPolyMod q n, aVal⟩, ⟨.TPolyMod q n, bVal⟩])
       = cyclicConv n (decode aVal) (decode bVal)
 
-/-- The `.TPolyMod`-carrier full NTT-multiply realization predicate: the leaf-call
-    value decodes to `nttMul n ω …`. -/
+/-- The `.TPolyMod`-carrier `nttMul` realization predicate: the leaf-call value
+    decodes to `nttMul n ω …` (transform, pointwise product, inverse
+    transform at the root `ω`). -/
 def NttEmitRealizesP (q n : ℕ) [NeZero q] [NeZero n] [Fact (Nat.Prime q)] (ω : ZMod q)
     (decode : RustVal (.TPolyMod q n) → (Fin n → ZMod q))
     (leaf : String) (leafSpec : LeafSpec) : Prop :=
@@ -199,11 +207,11 @@ def NttEmitRealizesP (q n : ℕ) [NeZero q] [NeZero n] [Fact (Nat.Prime q)] (ω 
           [⟨.TPolyMod q n, aVal⟩, ⟨.TPolyMod q n, bVal⟩])
       = nttMul n ω (decode aVal) (decode bVal)
 
-/-- **Commuting-square discharge over `.TPolyMod`.**  Identical to
-    `nttEmitRealizes_of_cyclicConv`, re-run on the `.TPolyMod` carrier: a primitive
-    `n`-th root `ω` with `(n : ZMod q) ≠ 0` rewrites `nttMul = cyclicConv` (the
-    proven `nttMul_eq_cyclicConv'`), lifting the kernel realization to the full
-    NTT-multiply realization. -/
+/-- Commuting-square discharge over `.TPolyMod`, identical to
+    `nttEmitRealizes_of_cyclicConv` on the `.TPolyMod` carrier: a primitive
+    `n`-th root `ω` with `(n : ZMod q) ≠ 0` rewrites `nttMul = cyclicConv`
+    (`nttMul_eq_cyclicConv'`), lifting the kernel realization to the `nttMul`
+    realization. -/
 theorem nttEmitRealizesP_of_cyclicConv {q n : ℕ} [NeZero q] [NeZero n]
     [Fact (Nat.Prime q)] {ω : ZMod q}
     (decode : RustVal (.TPolyMod q n) → (Fin n → ZMod q))
@@ -216,16 +224,15 @@ theorem nttEmitRealizesP_of_cyclicConv {q n : ℕ} [NeZero q] [NeZero n]
 
 /-! ## §3  The concrete, spec-computing realizer (no abstract section)
 
-`cyclicConvLeafSpecP` is the canonical realizer wired to the **concrete**
-`encodeP`/`decodeP` of §1: at the NTT leaf it decodes both polynomial arguments,
-computes their cyclic convolution, and re-encodes; off-leaf it returns `oldDest`.
-Because the round-trip `decodeP_encodeP` is a *theorem*, `NttKernelRealizesP`
-holds **unconditionally** — there is no `hsection` hypothesis to assume.
+`cyclicConvLeafSpecP` is the canonical realizer wired to the concrete
+`encodeP`/`decodeP` of §1: at the named leaf it decodes both polynomial
+arguments, computes their cyclic convolution, and re-encodes; off-leaf it
+returns `oldDest`.  Because the round-trip `decodeP_encodeP` is a theorem,
+`NttKernelRealizesP` holds with no `hsection` hypothesis.
 
 `hwidth : (.TPolyMod q n).storageBytes = n * coeffBytes` makes `RustVal
 (.TPolyMod q n)` equal to `PolyBytes n`, letting the byte-level `encodeP`/`decodeP`
-serve as the carrier codec.  For ML-KEM (`q = 3329`, `n = 256`) it holds by
-`rfl`. -/
+serve as the carrier codec.  At `q = 3329`, `n = 256` it holds by `rfl`. -/
 
 /-- The decoder on the `.TPolyMod q n` carrier, obtained from the byte-level
     `decodeP` through the width equality `hwidth`. -/
@@ -273,11 +280,10 @@ def cyclicConvLeafSpecP {q n : ℕ} [NeZero q] [NeZero n]
     (leaf : String) (limbStore : LimbStoreSpec) : LeafSpec :=
   { call := cyclicConvCallSpecP hwidth leaf, limbStore := limbStore }
 
-/-- **Unconditional kernel realization (no KAT, no abstract section).**  The
-    concrete realizer `cyclicConvLeafSpecP` decodes its leaf-call value to the
-    cyclic convolution for **every** input — proved by the round-trip
-    `decodeTPoly_encodeTPoly` (valid for `q < 2^16`), not assumed via a test
-    vector. -/
+/-- The concrete realizer `cyclicConvLeafSpecP` decodes its leaf-call value to
+    the cyclic convolution for every input, by the round-trip
+    `decodeTPoly_encodeTPoly` (valid for `q < 2^16`).  No KAT and no abstract
+    section hypothesis. -/
 theorem nttKernelRealizesP_concrete {q n : ℕ} [NeZero q] [NeZero n]
     (hq : q < 65536)
     (hwidth : (TowerType.TPolyMod q n).storageBytes = n * coeffBytes)
@@ -292,26 +298,28 @@ theorem nttKernelRealizesP_concrete {q n : ℕ} [NeZero q] [NeZero n]
   simp only [cyclicConvCallSpecP, ite_true, dite_true]
   rw [decodeTPoly_encodeTPoly hq]
 
-/-! ## §4  The unconditional ML-KEM realization (the deliverable)
+/-! ## §4  The realization at `q = 3329`, `n = 256`, `ω = 17`
 
-Instantiating §3 at the ML-KEM parameters (`q = 3329`, `n = 256`, `ω = 17`) and
-discharging the commuting square with the **proven** `isPrimitiveRoot_17_256` and
-`n_ne_zero_3329` gives the full NTT-multiply realization with **no** KAT and **no**
-abstract section hypothesis — the realization is proved for all inputs of the
-concrete, spec-computing realizer with its round-trip-verified encoding. -/
+Instantiating §3 at `q = 3329`, `n = 256`, `ω = 17` and discharging the
+commuting square with `isPrimitiveRoot_17_256` and `n_ne_zero_3329` gives the
+`nttMul 256 17` realization with no KAT and no abstract section hypothesis, for
+all inputs of the concrete, spec-computing realizer with its round-trip-verified
+encoding.  `nttMul 256 17` over `ZMod 3329` is the cyclic convolution of
+`X^256 − 1`, not FIPS 203's transform of `X^256 + 1` (module docstring). -/
 
-/-- **ML-KEM NTT-multiply realization — UNCONDITIONAL.**  For the concrete
-    realizer `cyclicConvLeafSpecP 3329 256 …` and the concrete, round-trip-verified
-    `decodeP`/`encodeP` encoding, the full NTT-multiply realization
-    `NttEmitRealizesP 3329 256 17 …` holds for every input.  No KAT hypothesis and
-    no abstract `decode ∘ encode = id` assumption remain: the byte-level
+/-- For the concrete realizer `cyclicConvLeafSpecP 3329 256 …` and the
+    round-trip-verified `decodeP`/`encodeP` encoding, the realization
+    `NttEmitRealizesP 3329 256 17 …` holds for every input.  No KAT hypothesis
+    and no abstract `decode ∘ encode = id` assumption: the byte-level
     decode-equals-convolution fact is the theorem `decodeP_encodeP`, and the
-    transform·pointwise·inverse = cyclic-convolution fact is the proven
+    transform·pointwise·inverse = cyclic-convolution fact is
     `isPrimitiveRoot_17_256` + `n_ne_zero_3329` via the commuting square.
 
-    What is **not** proved here: that the jasmin-emitted machine bytes of the real
-    `ntt_poly_mul_3329_256` kernel equal `cyclicConvLeafSpecP` (the owned-machine
-    -code route — a separate follow-up). -/
+    The object realized is `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`,
+    multiplication in `Z_3329[X]/(X^256 − 1)`; it is not FIPS 203's ML-KEM
+    transform.  The leaf name `"ntt_poly_mul_3329_256"` is the `LeafSpec` key
+    and not a reference to the jasmin function of that name.  No statement about
+    emitted machine bytes is made here. -/
 theorem mlkem_nttEmitRealizes_concrete (limbStore : LimbStoreSpec) :
     NttEmitRealizesP 3329 256 (17 : ZMod 3329)
       (decodeTPoly (q := 3329) (n := 256) (by rfl))
