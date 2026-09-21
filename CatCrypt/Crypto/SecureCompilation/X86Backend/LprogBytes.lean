@@ -706,6 +706,17 @@ survives the select and can be reused. -/
     Gas-pinned: `movq %rax,%r11 ; testq %rcx,%rcx ; cmovneq %rbx,%r11` =
     `49 89 C3 | 48 85 C9 | 4C 0F 45 DB`.
 
+    A destination aliasing the CONDITION register is not among those three
+    cases, and in the disjoint branch the defaulting `mov` overwrites `cond`
+    before the `test` reads it. The invariant said to exclude it is a claim
+    about the register allocator carrying no theorem; no emitted artifact
+    contains the pattern (measured 2026-09-21 over every `.s` under `bench/`,
+    `crates/` and `gen/`), and `LoweringCoverageCmovSar.lowerLinstrExtCov2`
+    declines the shape when `cn == dst`, so the JInstr route is guarded where
+    this one is not. Hoisting `tst` above the `mov` fixes it at no cost in the
+    value semantics, and reorders every conditional select in every shipped
+    artifact, including the SHA-256-pinned `Ed25519PointAddShipped` block.
+
     The flag-setter here is `test`, matching `LprogAsmPrinter.renderLopn`, which
     is what the encoder-oracle diff compares against. The other byte producer
     reaches the same select through `JInstr`, where `LoweringCoverageCmovSar`

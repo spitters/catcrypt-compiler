@@ -1093,10 +1093,20 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- PC divergence (the CT form of an `if`). Render `mov f, d; test cond,cond;
       -- cmovne t, d`. When `d` already aliases the true-value register, default to
       -- `t` and `cmove f, d` instead (so the defaulting `mov` never clobbers `t`
-      -- before the conditional move reads it). `d`/`cond` are register-allocated
-      -- (the export's argument-liveness pin keeps the operands in distinct
-      -- registers), as `cmov`/`test` require for the destination and the tested
-      -- operand.
+      -- before the conditional move reads it).
+      --
+      -- A destination aliasing the CONDITION register is not handled: the
+      -- defaulting `mov` would overwrite `cond` before the `test` reads it. The
+      -- claim that this cannot arise — that the export's argument-liveness pin
+      -- leaves `d` and `cond` in distinct registers — is a statement about the
+      -- register allocator with no theorem behind it. No emitted artifact
+      -- contains the pattern (measured 2026-09-21 over every `.s` under `bench/`,
+      -- `crates/` and `gen/`). `LoweringCoverageCmovSar.lowerLinstrExtCov2`
+      -- declines the shape outright when `cn == dst`, so the JInstr route is
+      -- guarded and this one is not. Hoisting the `test` above the `mov` fixes
+      -- it on both byte producers and costs nothing at the value level, but it
+      -- reorders every conditional select in every shipped artifact, including
+      -- the SHA-256-pinned `Ed25519PointAddShipped` block.
       if base == "CMOV" then
         let dOp := resolveOperand frame spillW w d qsaveB
         let condOp := resolveOperand frame spillW w a qsaveB

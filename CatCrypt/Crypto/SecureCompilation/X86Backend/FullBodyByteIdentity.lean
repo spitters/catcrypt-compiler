@@ -50,10 +50,13 @@ def asconSigma0PhysBody : List Linstr :=
 
     The agreement holds and is checked by kernel conversion, outside the module
     system: in a plain Lean file importing this one, at a raised `maxRecDepth`,
-    `with_unfolding_all rfl` closes it. Inside a `module` the same proof fails,
-    because the definitions on the path are not exposed and the conversion
-    cannot unfold them, so the hypothesis cannot yet be discharged here.
-    Exposing that path is what would make this a theorem in the package.
+    `with_unfolding_all rfl` closes it. Inside a `module` the same proof fails.
+    Opacity is not the reason: every module on the path from `jBodyBytes` and
+    `encodeLcmd` down to the byte lists carries a file-wide
+    `@[expose] public section`, so there is nothing on it for `@[expose]` to
+    add. What closes the remaining gap in this codebase is `import all` in the
+    consumer, as `LprogBytesDecodeClosed` does for the same shape of closed
+    byte computation.
 
     Three measurements say where the difficulty is and is not. Both sides
     reduce: each is 128 bytes and the lengths and the leading byte values close
