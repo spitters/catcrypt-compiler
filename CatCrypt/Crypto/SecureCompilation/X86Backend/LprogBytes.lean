@@ -358,6 +358,41 @@ def encRspMem (w op r : Nat) (off : Int) : List (BitVec 8) :=
   else
     pfx ++ (BitVec.ofNat 8 (modRMMem 2 r 4) :: sib :: disp32LE off)
 
+/-- `MOV` of a sign-extended `imm32` into `[%rsp + off]`: `mov<sz> $v, off(%rsp)`,
+    the SDM `C7 /0 id` imm-to-memory form. The `reg` field is the opcode extension
+    `/0`; the addressing tail is `encRspMem`'s (`rm = 100`, SIB `0x24`, the
+    displacement band its size selects), with the immediate after it. The stack
+    zeroizer emits exactly this shape (`movq $0, qsave.X`), which the
+    imm-to-register family cannot express. -/
+def encMovImmRspMem (w : Nat) (off : Int) (v : Nat) : List (BitVec 8) :=
+  let pfx := rexOpt w 0 0 0 ++ [BitVec.ofNat 8 0xc7]
+  let sib : BitVec 8 := BitVec.ofNat 8 0x24
+  if off = 0 then
+    pfx ++ [BitVec.ofNat 8 (modRMMem 0 0 4), sib] ++ imm32LE v
+  else if -128 ≤ off ∧ off ≤ 127 then
+    pfx ++ [BitVec.ofNat 8 (modRMMem 1 0 4), sib, disp8 off] ++ imm32LE v
+  else
+    pfx ++ (BitVec.ofNat 8 (modRMMem 2 0 4) :: sib :: disp32LE off) ++ imm32LE v
+
+/-- `ADCX`/`ADOX` with a `%rsp`-relative memory source: `adcx<sz> off(%rsp), %d`.
+    The memory-source form of `ScalarEncoder.encAdxCarry`, which is register-only
+    (`modRMReg`). Same opcode — the mandatory prefix `pfx` (`0x66` CF chain,
+    `0xf3` OF chain), `REX.W`, `0F 38 F6 /r` — with the register in the ModRM
+    `reg` field and the addressing tail `encRspMem` builds: `rm = 100` (the SIB
+    escape `%rsp` forces), the SIB `0x24` (no index, base `%rsp`), and the
+    displacement in the `mod` band its size selects. `REX.B` is `0` because the
+    base is `%rsp` (SDM number 4), and there is no index, so `REX.X` is `0`. -/
+def encAdxRspMem (pfx d : Nat) (off : Int) : List (BitVec 8) :=
+  let head : List (BitVec 8) :=
+    [pfx, rex 1 (bit d 3) 0 0, 0x0f, 0x38, 0xf6].map (BitVec.ofNat 8)
+  let sib : BitVec 8 := BitVec.ofNat 8 0x24
+  if off = 0 then
+    head ++ [BitVec.ofNat 8 (modRMMem 0 d 4), sib]
+  else if -128 ≤ off ∧ off ≤ 127 then
+    head ++ [BitVec.ofNat 8 (modRMMem 1 d 4), sib, disp8 off]
+  else
+    head ++ (BitVec.ofNat 8 (modRMMem 2 d 4) :: sib :: disp32LE off)
+
 /-- Encode a two-address binop / move whose AT&T form is `op<sz> src, dst`, given the
     one-byte ALU opcode `op`, the frame size + body-uniform spill width (to resolve
     `%rsp`-relative spill/qsave operands to their offset, matching
@@ -931,14 +966,70 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
           -- chain in registers); a spill/qsave/`mem.*` operand is left as the
           -- visible empty byte list (KAT-catchable), never mis-encoded as `%rax`.
           | [.reg dn], [.reg an, .reg sn, .reg cn] =>
-              if isSpillOrQsave dn || isSpillOrQsave an || isSpillOrQsave sn
-                  || isSpillOrQsave cn || (parseMemName dn).isSome
+              -- The carry-in is always a plain register here (`bt $0, cin` has only
+              -- that form in this arm), and a `mem.*` operand in any position is
+              -- left to the residual. A spill/qsave `a`, `s` or destination IS
+              -- covered: those are the shapes the carry-chain kernels take under
+              -- register pressure, and the printer resolves each to `off(%rsp)`.
+              if isSpillOrQsave cn || (parseMemName dn).isSome
                   || (parseMemName an).isSome || (parseMemName sn).isSome
                   || (parseMemName cn).isSome then []
               else
-                (if an == dn then [] else encAluRRw w 0x89 (gpNumU dn) (gpNumU an))
-                  ++ encBtImm w (gpNumU cn) 0
-                  ++ encAdxCarry pfx (gpNumU dn) (gpNumU sn)
+                let btPart := encBtImm w (gpNumU cn) 0
+                -- `a` into the accumulator: the register copy (dropped when `a` is
+                -- already the accumulator, as the printer drops it when the two
+                -- operands render alike), or a reload from the slot `a` names.
+                let accInto : Nat → Option (List (BitVec 8)) := fun acc =>
+                  if isSpillOrQsave an then
+                    (spillQsaveOff frame spillW an qsaveB).map
+                      (fun offA => encRspMem w 0x8b acc offA)
+                  else if an == dn && acc == gpNumU dn then some []
+                  else some (encAluRRw w 0x89 acc (gpNumU an))
+                -- the two-address `adcx`/`adox`, register or `%rsp`-slot source
+                let adxInto : Nat → Option (List (BitVec 8)) := fun acc =>
+                  if isSpillOrQsave sn then
+                    (spillQsaveOff frame spillW sn qsaveB).map
+                      (fun offS => encAdxRspMem pfx acc offS)
+                  else some (encAdxCarry pfx acc (gpNumU sn))
+                if isSpillOrQsave dn then
+                  -- SPILLED DESTINATION. `adcx`/`adox` require a register
+                  -- destination, so borrow one and save it at the bottom of the red
+                  -- zone (`-128(%rsp)`), the sequence `renderLopn`'s spilled-`adcx`
+                  -- arm prints. `mov` leaves the flags alone, so the carry-out
+                  -- survives to the following `ADCXHI`/`ADOXHI` binding.
+                  --
+                  -- The printer picks the first of `%rax, %rbx, %rcx, %rdx` that
+                  -- occurs in none of the RENDERED operands. This arm picks by name
+                  -- inequality over `a`, `s`, `cin`, which agrees with that test
+                  -- exactly on the shape it accepts — destination a `%rsp` slot,
+                  -- the other three plain registers — because a slot renders as
+                  -- `N(%rsp)` and no GP name is a substring of another. A slot `a`
+                  -- or `s` here would widen the rendered set, so it is refused
+                  -- rather than encoded under the weaker test.
+                  if isSpillOrQsave an || isSpillOrQsave sn then []
+                  else
+                    match spillQsaveOff frame spillW dn qsaveB with
+                    | none => []
+                    | some offD =>
+                      let used := [an, sn, cn]
+                      match (["RAX", "RBX", "RCX", "RDX"].filter
+                              (fun r => !used.contains r)) with
+                      | [] => []
+                      | scratchName :: _ =>
+                        let acc := gpNumU scratchName
+                        match accInto acc, adxInto acc with
+                        | some mv, some ad =>
+                            btPart
+                              ++ encRspMem 1 0x89 acc (-128)
+                              ++ mv ++ ad
+                              ++ encRspMem w 0x89 acc offD
+                              ++ encRspMem 1 0x8b acc (-128)
+                        | _, _ => []
+                else
+                  -- Register destination: the accumulator IS the destination.
+                  match accInto (gpNumU dn), adxInto (gpNumU dn) with
+                  | some mv, some ad => mv ++ btPart ++ ad
+                  | _, _ => []
           -- two-source bridge form `[dst, src]` (`jinstrToLinstrR .adcx`/`.adox`):
           -- dst self-source, carry-in already IN the flag (the chained idiom).
           | [.reg dn], [_, .reg sn] => encAdxCarry pfx (gpNumU dn) (gpNumU sn)
@@ -954,7 +1045,41 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
           if base == "SETC" then encSetccMovzx 0x92 (gpNumU dn) else []
       | [d], [s] =>
           match s with
-          | .imm v => encImmOp w base d v
+          | .imm v =>
+            -- **imm64 into a spill slot.** x86 has no imm64-to-memory `MOV` (the
+            -- `C7 /0 id` form sign-extends 32 bits), so the printer's imm64-store
+            -- arm borrows a register at the bottom of the red zone, loads the
+            -- constant with the `movabs` form and stores one 64-bit word. No
+            -- instruction here writes a flag. The printer picks the first of
+            -- `%rax, %rbx, %rcx, %rdx` whose text is absent from the destination;
+            -- a `%rsp`-relative slot renders as `N(%rsp)`, which contains none of
+            -- them, so the choice is always `%rax` — matched here by construction.
+            -- A `mem.*` destination CAN contain one of those names, so it stays on
+            -- the residual rather than under this weaker test.
+            match d with
+            | .reg dn =>
+              if isSpillOrQsave dn && (base == "MOV" || base == "MOVQ") then
+                match spillQsaveOff frame spillW dn qsaveB with
+                | none => []
+                | some offD =>
+                  -- `MOVQ` is 64-bit-only, so its store width is `1`; a plain `MOV`
+                  -- carries the body width, exactly as the imm-to-register arm reads
+                  -- them. A value that fits a SIGNED imm32 takes the direct
+                  -- imm-to-memory form — this is the stack zeroizer's `movq $0, k.N`
+                  -- and `movq $0, qsave.X`. Only a value needing all 64 bits falls to
+                  -- the borrowed-scratch `movabs` + store above.
+                  let wSt := if base == "MOVQ" then 1 else w
+                  if v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v then
+                    encMovImmRspMem wSt offD v
+                  else if mnemWidth opn == 64 then
+                    let acc := gpNumU "RAX"
+                    encRspMem 1 0x89 acc (-128)
+                      ++ encMovImm64 acc v
+                      ++ encRspMem 1 0x89 acc offD
+                      ++ encRspMem 1 0x8b acc (-128)
+                  else []
+              else encImmOp w base d v
+            | _ => encImmOp w base d v
           | _ =>
             -- Count-in-tag register-source shift (`SHR:<n>:64 [d] [s]`): the rotate
             -- form `Com.toLprogPhysAbi` emits, with the count in `base` (the tag).
