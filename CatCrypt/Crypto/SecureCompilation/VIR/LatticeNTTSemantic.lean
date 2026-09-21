@@ -335,7 +335,8 @@ section Headline
 
 variable {q n : Nat} [Fact (Nat.Prime q)]
 
-/-- **Headline (concrete ML-KEM-style NTT soundness).**
+/-- Negacyclic NTT-multiply soundness over `ZMod q`, for a domain of size at
+    least `2n`.
 
     With the CompPoly NTT operations, the negacyclic reduction
     `%ₘ (X^n + 1)` of the real NTT product `realNttMul D (enc a) (enc b)`
@@ -345,16 +346,18 @@ variable {q n : Nat} [Fact (Nat.Prime q)]
       `(Σ_{i+j=k} (enc a)ᵢ (enc b)ⱼ) − (Σ_{i+j=k+n} (enc a)ᵢ (enc b)ⱼ)`.
 
     This combines:
-    * the *cyclic* NTT correctness `realNttMul_toPoly`
+    * the cyclic NTT correctness `realNttMul_toPoly`
       (= CompPoly's `fastMulImpl_eq_mul`), discharged via `enc_fits` for any
       domain of size `≥ 2n`; and
-    * the *negacyclic fold* `negacyclic_mul_coeff` (CompPoly's `Negacyclic`),
-      the `X^n ≡ −1` reduction that turns the cyclic full product into the
-      ML-KEM ring `Z_q[X] / (X^n + 1)`.
+    * the negacyclic fold `negacyclic_mul_coeff` (CompPoly's `Negacyclic`),
+      the `X^n ≡ −1` reduction that turns the cyclic full product into
+      `Z_q[X] / (X^n + 1)`.
 
-    Neither half is `rfl`: this is real convolution correctness plus the
-    negacyclic reduction, not the definitional `polyMulCF = id ∘ …`
-    of the toy dialect. -/
+    A `Domain (ZMod q)` of size `2^logN ≥ 2n` needs a primitive root of that
+    order. At `n = 256` this is order `512`: available in `ZMod 8380417`
+    (ML-DSA), not in `ZMod 3329` (ML-KEM, where `3328 = 2^8 · 13`), so the
+    theorem has no instance at ML-KEM's parameters; FIPS 203's transform is the
+    incomplete one of `MLKEM/Spec/Ntt.lean`. -/
 theorem realNttMul_negacyclic_coeff
     (D : Domain (ZMod q)) (hD : 2 * n ≤ D.n) (hn : 0 < n)
     (a b : Fin n → BitVec 16) {k : Nat} (hk : k < n) :
