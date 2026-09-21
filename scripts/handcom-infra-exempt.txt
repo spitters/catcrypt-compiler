@@ -156,3 +156,14 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulMulCarrySel.lean  # 
 CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean  # opt-in Lprog to Lprog pass folding register-indexed loads and stores whose index is a known constant; builds IR as a compiler pass does, writes no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/LprogCopyCoalesce.lean  # verified post-RA Lprog copy-coalescing pass (coalesceBody_stateStore); its select renderings are measurements of the pass, not a deployed artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/LprogCmovTestElim.lean  # verified post-RA Lprog pass sharing one test across a cmov run (cmovTestElimBody_fview); the #guard bodies are its static checks, no emit artifact
+CatCrypt/Crypto/SecureCompilation/Ascent/ControlFlowCT.lean  # executed-trace branch-channel theorems for the straight-line fragment; its three-instruction Lcond program is the negative control's proof subject, no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminBindingPrefixDenote.lean  # binding-prefix denotation and register-frame proofs over lsem; the Lopn shapes are proof subjects of buildEpilogue, which no emit path calls
+CatCrypt/Crypto/SecureCompilation/VIR/JasminInlineStoreValue.lean  # lsem semantics of the export emitter's inline output-store block; proof subject only, no renderer and no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminInlineStoreBlockEmit.lean  # proves physBodyWithStores emits the non-spill store block; Lopn appears only in hypotheses, no renderer and no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminInlineStoreBlockOrder.lean  # orders two emitted store blocks in the physBodyWithStores output; theorems only, no renderer and no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminInlineStoreSpillArm.lean  # lsem semantics of the export emitter's spill-routed store arm and its placement; proof subject only, no renderer and no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/MergeComDenote.lean  # denotation theorems for the exempt MergeCom combinators; the butterfly Coms are proof subjects of the merge equation, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/EmitCtGate.lean  # emit-time constant-time policy gate over a caller's Lprog; its one artifact originates in the exempt Bignum4AddArrAbiDemo
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherMemOps.lean  # Lprog-to-JInstr gather arms and their byte agreement; the Lopn terms are match arms and theorem subjects, no importer writes an artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/LprogBytesDecode.lean  # decoder for the LprogBytes encoder; its Lcmd loop bodies are proof subjects of the mpn round trips, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/SelectImmCompare.lean  # verified post-RA Lprog pass folding a constant into a comparison; it rewrites CombSelectCmovFront's front-generated program, no artifact
