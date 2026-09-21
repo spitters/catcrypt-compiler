@@ -11,6 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
 public import CatCrypt.Crypto.Optimizer.LoadCSE
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -1226,6 +1227,22 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     path (`JasminPrint.emitJazz`) is the jasminc-comparison/interop side and does
     NOT go through this. -/
 def renderOwned (p : Lprog) : String := renderLprogAtt (optimizeLprogBasicBlocks p)
+
+/-- **The owned back end with the frame cleared before every return.**
+    `StackZeroize.zeroizeLprog` runs after `optimizeLprogBasicBlocks` and before
+    the printer, so the census `StackZeroize.writtenFrameCells` reads the body
+    that is printed, and the reload and spill elimination of the optimizer never
+    sees a zero store to remove. The stores go between a body's last instruction
+    and its `Lret`, which the printer renders as the frame teardown and the
+    return, so they land after the callee-saved restores and while the frame is
+    still addressed by `RSP`.
+
+    `StackZeroize.zeroizeBody_lsemRun_erases` gives the effect on the frame and
+    `StackZeroize.zeroizePrefix_preserves_nonFrame` what is left alone; a body
+    that does not end in `Lret` is returned unchanged. An emitter whose kernel
+    holds a secret in its frame composes this in place of `renderOwned`. -/
+def renderOwnedZeroized (p : Lprog) : String :=
+  renderLprogAtt (StackZeroize.zeroizeLprog (optimizeLprogBasicBlocks p))
 
 /-- Fold a use-once ABI memory load into its single vector consumer: a
     `VMOVDQU [kv.d] [mem.m]` whose spill `d` is defined once (this load) and read

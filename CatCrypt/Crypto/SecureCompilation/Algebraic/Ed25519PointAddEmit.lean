@@ -125,7 +125,7 @@ def pointAddLprog : Lprog :=
     printer's two-output `MULX`. The body is straight-line, so the pass runs in
     its default mode, in which `%rdx` carries no live value across a fused pair. -/
 def pointAddAsm : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedZeroized
     (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog pointAddLprog)
 
 /-- Whether `s` contains the marker `UNHANDLED`. -/
