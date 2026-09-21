@@ -128,28 +128,39 @@ theorem toDigits_no_colon (k : Nat) : ∀ c ∈ Nat.toDigits 10 k, c ≠ ':' := 
         subst h
         exact digitChar_ne_colon _ (Nat.mod_lt k (by decide))
 
-/-- A decimal rendering carries no `:`, so it is one `splitChars` group. -/
+/-- A decimal rendering carries no `:`, so it is one `splitCharsAt` group. -/
 theorem toString_no_colon (k : Nat) : ∀ c ∈ (toString k).toList, c ≠ ':' := by
   show ∀ c ∈ (String.ofList (Nat.toDigits 10 k)).toList, c ≠ ':'
   rw [String.toList_ofList]
   exact toDigits_no_colon k
 
-/-- A separator-free list is a single `splitChars` group. -/
-theorem splitChars_no_sep (L : List Char) (h : ∀ c ∈ L, c ≠ ':') :
-    splitChars ':' L = [L] := by
+/-- Split a character list at every occurrence of `sep`, keeping the empty
+    groups: a list with `n` occurrences of `sep` yields `n + 1` groups, and the
+    separators are dropped. -/
+def splitCharsAt (sep : Char) : List Char → List (List Char)
+  | [] => [[]]
+  | c :: rest =>
+      if c = sep then [] :: splitCharsAt sep rest
+      else match splitCharsAt sep rest with
+        | [] => [[c]]
+        | g :: gs => (c :: g) :: gs
+
+/-- A separator-free list is a single `splitCharsAt` group. -/
+theorem splitCharsAt_no_sep (L : List Char) (h : ∀ c ∈ L, c ≠ ':') :
+    splitCharsAt ':' L = [L] := by
   induction L with
   | nil => rfl
-  | cons a _ ih => rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+  | cons a _ ih => rw [splitCharsAt, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
 
-/-- A separator-free prefix followed by a separator is the first `splitChars`
+/-- A separator-free prefix followed by a separator is the first `splitCharsAt`
     group. -/
-theorem splitChars_cons_sep (L R : List Char) (h : ∀ c ∈ L, c ≠ ':') :
-    splitChars ':' (L ++ ':' :: R) = L :: splitChars ':' R := by
+theorem splitCharsAt_cons_sep (L R : List Char) (h : ∀ c ∈ L, c ≠ ':') :
+    splitCharsAt ':' (L ++ ':' :: R) = L :: splitCharsAt ':' R := by
   induction L with
-  | nil => simp [splitChars]
+  | nil => simp [splitCharsAt]
   | cons a _ ih =>
       simp only [List.cons_append]
-      rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+      rw [splitCharsAt, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
 
 /-- A string ends with any suffix it was appended with. -/
 theorem hasSuffix_append (s pat : String) : hasSuffix (s ++ pat) pat = true := by
@@ -171,7 +182,7 @@ theorem stripWidthTag_append64 (s : String) : stripWidthTag (s ++ ":64") = s := 
     the `:64` width tag); `none` for any other mnemonic. -/
 def immShiftMnem? (opn : String) : Option (String × Nat) :=
   let core := if hasSuffix opn ":64" then stripWidthTag opn else opn
-  match splitChars ':' core.toList with
+  match splitCharsAt ':' core.toList with
   | [mn, ds] =>
       let m := String.ofList mn
       if m == "SHL" || m == "SHR" || m == "SAR" then (natOfDigits? ds).map (fun k => (m, k))
@@ -199,8 +210,8 @@ theorem immShiftMnem?_withWidthTag64 {m : String}
   have hw : withWidthTag 64 (m ++ ":" ++ toString k) = (m ++ ":" ++ toString k) ++ ":64" := rfl
   unfold immShiftMnem?
   rw [hw, if_pos (hasSuffix_append _ ":64"), stripWidthTag_append64]
-  simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
-    splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
+  simp only [toList_mnem, splitCharsAt_cons_sep _ _ (base_no_colon hm),
+    splitCharsAt_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
 /-- **The decoder agrees with an untagged rendering.** At a width other than
@@ -212,8 +223,8 @@ theorem immShiftMnem?_untagged {m : String}
     immShiftMnem? (m ++ ":" ++ toString k) = some (m, k) := by
   unfold immShiftMnem?
   rw [if_neg (by rw [hk]; exact Bool.false_ne_true)]
-  simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
-    splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
+  simp only [toList_mnem, splitCharsAt_cons_sep _ _ (base_no_colon hm),
+    splitCharsAt_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
 /-! ## 3. The instruction-level recogniser -/
