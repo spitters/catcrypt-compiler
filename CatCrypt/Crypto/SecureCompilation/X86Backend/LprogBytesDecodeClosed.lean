@@ -19,12 +19,11 @@ string facts as hypotheses: the frame size of the loop body is 64 and the count 
 tag `"SHL:0"` is 0. This module proves both and states the three round trips without
 hypotheses.
 
-`frameSize` reads the spill indices of a body through `String.isPrefixOf` and
-`String.toNat?`, and `tagShiftCount` reads the count through `String.toNat?`. Neither
-function evaluates in the kernel. The prefix test is rewritten to `hasPrefix` over the
-character lists (`WellFormedX86.isPrefixOf_eq_hasPrefix`), where it evaluates; on a body with no
-spill name the parse is never reached. The count of `"SHL:0"` follows from the `Std`
-characterisation of `String.toNat?` by `Nat.ofDigitChars`.
+`maxIdxL` is the spill-index scan with the prefix test over the character lists
+(`WellFormedX86.isPrefixOf_eq_hasPrefix`), and `frameSize_of_noSpill` reads the frame
+size of a body whose scans find no `k.N` and no `kv.N` name off it. The count of
+`"SHL:0"` follows from the `Std` characterisation of `String.toNat?` by
+`Nat.ofDigitChars`, applied through `LprogBytes.tagShiftCount_eq`.
 -/
 
 public section
@@ -54,11 +53,13 @@ def maxIdxL (pfx : String) (n : Nat) (body : Lcmd) : Option Nat :=
     | _ => acc) none
 
 theorem maxSpillIdx_eq (body : Lcmd) : maxSpillIdx body = maxIdxL "k." 2 body := by
-  simp only [maxSpillIdx, maxIdxL, WellFormedX86.isPrefixOf_eq_hasPrefix]
+  rw [maxSpillIdx_eq_toNat?]
+  simp only [maxIdxL, WellFormedX86.isPrefixOf_eq_hasPrefix]
   rfl
 
 theorem maxVecSpillIdx_eq (body : Lcmd) : maxVecSpillIdx body = maxIdxL "kv." 3 body := by
-  simp only [maxVecSpillIdx, maxIdxL, WellFormedX86.isPrefixOf_eq_hasPrefix]
+  rw [maxVecSpillIdx_eq_toNat?]
+  simp only [maxIdxL, WellFormedX86.isPrefixOf_eq_hasPrefix]
   rfl
 
 /-- The frame size of a body whose list-side spill scans find no `k.N` and no `kv.N`

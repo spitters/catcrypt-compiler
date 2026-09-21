@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+import all Init.Data.String.TakeDrop
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
@@ -1403,8 +1404,28 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
       else [ "\tcall " ++ f ]
   | other => [ "\t# UNHANDLED " ++ toString (repr other) ]
 
+/-- `String.isPrefixOf` is `JasminLprogExport.hasPrefix` with the arguments
+    swapped: both test `p.toList <+: s.toList`. `WellFormedX86` carries the same
+    statement for the module set that does not import this one. -/
+theorem isPrefixOf_eq_hasPrefix (p s : String) :
+    p.isPrefixOf s = VIR.JasminLprogExport.hasPrefix s p := by
+  rw [VIR.JasminLprogExport.hasPrefix, String.isPrefixOf, Bool.eq_iff_iff,
+    String.startsWith_string_iff, List.isPrefixOf_iff_prefix]
+
+/-- `String.toNat?` of a name's `k`-character-dropped suffix is
+    `JasminLprogExport.strDropToNat?`, the character-list parse. -/
+theorem toNat?_drop_toString (s : String) (k : Nat) :
+    String.toNat? (s.drop k).toString = VIR.JasminLprogExport.strDropToNat? s k := by
+  rw [VIR.JasminLprogExport.strDropToNat?, ← VIR.JasminLprogExport.strToNat?_eq,
+    VIR.JasminLprogExport.strToNat?]
+  congr 1
+  simp [String.toList_copy_drop]
+
 /-- The maximum U32-spill index `k.N` referenced in a body (`none` if no spill),
-    used to size the frame. -/
+    used to size the frame. The name test and the index parse both run over the
+    character list, so a closed application reduces in the kernel;
+    `maxSpillIdx_eq_toNat?` states the value against `String.isPrefixOf` and
+    `String.toNat?`. -/
 def maxSpillIdx (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
   body.foldl (fun acc i =>
     match i.li_i with
@@ -1412,13 +1433,31 @@ def maxSpillIdx (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
         (dsts ++ srcs).foldl (fun acc' o =>
           match o with
           | .reg nm =>
-              if "k.".isPrefixOf nm then
-                match String.toNat? (nm.drop 2).toString with
+              if VIR.JasminLprogExport.hasPrefix nm "k." then
+                match VIR.JasminLprogExport.strDropToNat? nm 2 with
                 | some k => some (max (acc'.getD 0) k)
                 | none => acc'
               else acc'
           | _ => acc') acc
     | _ => acc) none
+
+/-- The maximum U32-spill index read with `String.isPrefixOf` and `String.toNat?`. -/
+theorem maxSpillIdx_eq_toNat? (body : VIR.JasminLprogExport.Lcmd) :
+    maxSpillIdx body
+      = body.foldl (fun acc i =>
+          match i.li_i with
+          | .Lopn dsts _ srcs =>
+              (dsts ++ srcs).foldl (fun acc' o =>
+                match o with
+                | .reg nm =>
+                    if "k.".isPrefixOf nm then
+                      match String.toNat? (nm.drop 2).toString with
+                      | some k => some (max (acc'.getD 0) k)
+                      | none => acc'
+                    else acc'
+                | _ => acc') acc
+          | _ => acc) none := by
+  simp only [maxSpillIdx, isPrefixOf_eq_hasPrefix, toNat?_drop_toString]
 
 /-- The maximum `kv.N` **vector-spill** slot index used in the body (`none` if the
     body has no vector spills). Mirrors `maxSpillIdx` for the `kv.` class; a
@@ -1430,13 +1469,32 @@ def maxVecSpillIdx (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
         (dsts ++ srcs).foldl (fun acc' o =>
           match o with
           | .reg nm =>
-              if "kv.".isPrefixOf nm then
-                match String.toNat? (nm.drop 3).toString with
+              if VIR.JasminLprogExport.hasPrefix nm "kv." then
+                match VIR.JasminLprogExport.strDropToNat? nm 3 with
                 | some k => some (max (acc'.getD 0) k)
                 | none => acc'
               else acc'
           | _ => acc') acc
     | _ => acc) none
+
+/-- The maximum vector-spill index read with `String.isPrefixOf` and
+    `String.toNat?`. -/
+theorem maxVecSpillIdx_eq_toNat? (body : VIR.JasminLprogExport.Lcmd) :
+    maxVecSpillIdx body
+      = body.foldl (fun acc i =>
+          match i.li_i with
+          | .Lopn dsts _ srcs =>
+              (dsts ++ srcs).foldl (fun acc' o =>
+                match o with
+                | .reg nm =>
+                    if "kv.".isPrefixOf nm then
+                      match String.toNat? (nm.drop 3).toString with
+                      | some k => some (max (acc'.getD 0) k)
+                      | none => acc'
+                    else acc'
+                | _ => acc') acc
+          | _ => acc) none := by
+  simp only [maxVecSpillIdx, isPrefixOf_eq_hasPrefix, toNat?_drop_toString]
 
 /-- Bytes reserved for the vector-spill region: slot `0(%rsp)` is the `%ymm15`
     save cell used by spill legalization, slots `1 … maxVec+1` are the `kv.N`
@@ -1645,6 +1703,17 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
   [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩
   , ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩
   , ⟨0, .Lcall none ("f", 0)⟩ ] = 624
+
+-- The frame size reduces in the kernel, on a body whose names reach no spill
+-- parse and on one whose `k.3` name reaches it. The byte encoders compute the
+-- frame from the body, so a `frameSize` that only `#eval` evaluates leaves every
+-- whole-body byte identity out of the kernel's reach; these are the pins.
+example : frameSize [⟨0, .Lopn [.reg "qsave.RDI"] "MOVQ" [.reg "RDI"]⟩,
+    ⟨0, .Lopn [.reg "RAX"] "SHR:19:64" [.reg "RBX"]⟩, ⟨0, .Lret⟩] = 64 := by
+  decide +kernel
+
+example : frameSize [⟨0, .Lopn [.reg "k.3"] "MOVQ" [.reg "RDI"]⟩, ⟨0, .Lret⟩] = 80 := by
+  decide +kernel
 
 /-! ### Pins: the call-dependent qsave block
 

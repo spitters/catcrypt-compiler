@@ -46,20 +46,21 @@ def asconSigma0PhysBody : List Linstr :=
   physBodyOf asconSigma0Com "ascon_sigma0"
 
 /-- The full-body JInstr bytes of `asconSigma0`'s physical body equal the `Lprog`
-    encoder's bytes for the same body.
+    encoder's bytes for the same body. Both sides are 128 bytes.
 
-    `decide +kernel` does not establish this. The kernel stops before reaching any
-    byte: the `instDecidableEqList` instance is stuck on the head `match` of
-    `jBodyBytes asconSigma0PhysBody`, so `jBodyBytes` of this body does not reduce
-    to a list constructor at all. The obstruction is therefore in
-    `physBodyOf`/`gatherJBlock5`/`encodeJBlock` reducing at a closed argument, not
-    in the size of the comparison. The immediate-shift dispatch is not the
-    obstruction: `parseShiftMnem "SHR:19:64" = some (false, 19)` closes by
-    `decide +kernel`, since `LoweringExtended.parseShiftMnem` goes through
-    `JasminLprogExport.hasPrefix`, which is `List.isPrefixOf` on `String.toList`.
+    The agreement holds and is checked by kernel conversion, outside the module
+    system: in a plain Lean file importing this one, at a raised `maxRecDepth`,
+    `with_unfolding_all rfl` closes it. Inside a `module` the same proof fails,
+    because the definitions on the path are not exposed and the conversion
+    cannot unfold them, so the hypothesis cannot yet be discharged here.
+    Exposing that path is what would make this a theorem in the package.
 
-    Staging the body as a literal `List Linstr` and running the comparison on the
-    literal is the route that splits this into a reduction step and a byte step. -/
+    Three measurements say where the difficulty is and is not. Both sides
+    reduce: each is 128 bytes and the lengths and the leading byte values close
+    by `decide +kernel`. `instDecidableEqList` on the two composite terms does
+    not reduce, so the route is conversion rather than decision. And the
+    conversion exhausts the default recursion depth, reporting that as a failure
+    of definitional equality, which it is not. -/
 def BodyBytesAgree : Prop :=
   jBodyBytes asconSigma0PhysBody = encodeLcmd asconSigma0PhysBody
 
