@@ -34,7 +34,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-pattern='def [A-Za-z0-9_]* *: *List \(JInstr'
+# The pattern requires a definition BODY: `def f : List (JInstr n) := …`. Without the
+# `:=` it also matched a parser whose ARGUMENT is a block, e.g.
+# `def parseBlock : List (JInstr 64) -> Option (List RawArith)`, which authors nothing.
+# Measured over CatCrypt/ and bench/: 126 files match without it, 121 with; of the five
+# dropped, four sit in the wholesale-exempt `X86Backend/` and `bench/` trees, so exactly
+# one module's verdict changes and its matches are argument types.
+pattern='def [A-Za-z0-9_]* *: *List \(JInstr [0-9]*\) *:='
 baseline=scripts/emit_provenance_baseline.txt
 imported_list=scripts/imported-kernel-baseline.txt
 proved_list=scripts/proved-hand-kernel-baseline.txt
