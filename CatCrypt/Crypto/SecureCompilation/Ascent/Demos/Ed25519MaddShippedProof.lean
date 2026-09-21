@@ -73,7 +73,6 @@ def maddZeroTail : List (JInstr 64) :=
   [.storeMem "%rsp" 576 (.imm 0), .storeMem "%rsp" 584 (.imm 0)]
 
 
-set_option maxRecDepth 8000 in
 theorem maddTailCopy (C : ACallModel) (s : AState) :
     segsRunA C s (maddTail 16)
       = runBlockA (runBlockA s
