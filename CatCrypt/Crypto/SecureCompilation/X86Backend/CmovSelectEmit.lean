@@ -100,6 +100,26 @@ a public-data declaration:
 The leak conclusion is about the gathered `JInstr 64` block; no theorem here
 reaches the AT&T text `renderOwned` prints or the bytes an assembler makes of it.
 
+## Scope of the leakage model
+
+`MachineConstantTime.MLeak` has a `branch` constructor and a `mem` constructor.
+`JInstr` has no conditional-jump constructor, so no block of type
+`List (JInstr 64)` emits `MLeak.branch` and the branch channel is empty for every
+such block. The content of the results above is in the address channel: the
+sequence of effective memory addresses does not read a register value, hence not
+the secret pivot mask. The branchlessness of the two shapes is a property of the
+instruction type, not of these theorems.
+
+## The negative control
+
+`condIndexedSelectBody` is the table form of the same select, reading at
+`base + 8 · cond`. `condIndexedSelect_leaks_cond` exhibits two machine states
+differing only in the condition register whose leakage traces differ, and
+`condIndexedSwap_emitChecked_error` has the gate reject its `Lprog` under
+`maskSwapPolicy`. The contrast is the one
+`MachineConstantTime.nonCT_storeMemIdx_leaks_value` draws for the indexed
+scatter, at the condition register of this kernel.
+
 This is the **backend primitive** that unblocks the MAYO/UOV/SNOVA GE-solve sign
 emit; wiring it into the per-protocol GE-solve loop is the follow-on (#581/#582).
 -/
@@ -459,6 +479,65 @@ theorem maskSwap_gather_constant_time {f : String × Lfundef} {g : List (JInstr 
     blockLeak s₁ g = blockLeak s₂ g :=
   EmitCtGate.emitChecked_gather_constant_time (render := LprogOptPipeline.renderOwned)
     (sym := "ge_solve_cswap_mask_owned") rfl maskSwap_emitChecked hf hg s₁ s₂
+
+/-! ## 4d. The negative control
+
+The constant-time results above constrain the address channel, and the channel
+separates programs: a block whose effective addresses read a register value has
+a leakage trace that differs between two states disagreeing on that register.
+The witness is the table form of the same conditional select, which reads its
+result at `base + 8 · cond` instead of masking. -/
+
+/-- A conditional select reading its result at the register-indexed address
+    `base + 8 · cond`: the table form of the conditional swap. -/
+def condIndexedSelectBody (dst base cond : String) : List (JInstr 64) :=
+  [ .loadMemIdx dst base cond 8 ]
+
+/-- The machine state whose registers are all zero. -/
+def condZeroState : JState 64 := { regs := fun _ => 0 }
+
+/-- The machine state whose registers are all zero except `"cond"`, which is
+    one. -/
+def condOneState : JState 64 := { regs := fun r => if r = "cond" then 1 else 0 }
+
+/-- The register-indexed select is outside the direct-addressing class, so the
+    hypothesis of `allDirect_constant_time` is unavailable for it. -/
+theorem condIndexedSelectBody_not_allDirect :
+    allDirect (condIndexedSelectBody "d" "base" "cond") = false := by decide
+
+/-- **The negative control.** Two states differing only in the condition
+    register give the register-indexed select two different leakage traces, so
+    the conclusion `cmovSwapBody_constant_time` and `maskSwapBody_constant_time`
+    draw fails for a block of the same family that indexes on the condition. -/
+theorem condIndexedSelect_leaks_cond :
+    blockLeak condZeroState (condIndexedSelectBody "d" "base" "cond")
+      ≠ blockLeak condOneState (condIndexedSelectBody "d" "base" "cond") := by
+  decide
+
+/-- The register-indexed select at the `Lcmd` level: a `MOV` whose source is the
+    SIB operand `RSI[RDX*8]`, with `RDX` the condition register. -/
+def condIndexedSwapLcmd : Lcmd :=
+  [ ⟨0, .Lopn [.reg "R8"] (withWidthTag 64 "MOV") [.arrIdx "RSI" "RDX" 8]⟩ ]
+
+/-- The register-indexed select as a one-function `Lprog`. -/
+def condIndexedSwapLprog : Lprog :=
+  { lp_funcs := [("ge_solve_cswap_indexed", { lfd_body := condIndexedSwapLcmd })] }
+
+/-- The register-indexed select fails the whole-program directness check that
+    `maskSwapLprog_lprogDirect` establishes for the deployed kernel. -/
+theorem condIndexedSwapLprog_not_lprogDirect :
+    EmitCtGate.lprogDirect condIndexedSwapLprog = false := by decide
+
+/-- The gate rejects the register-indexed select under the same secret-input
+    policy that admits the mask kernel, naming the offending function and
+    instruction. -/
+theorem condIndexedSwap_emitChecked_error :
+    EmitCtGate.emitChecked LprogOptPipeline.renderOwned maskSwapPolicy
+        "ge_solve_cswap_indexed" condIndexedSwapLprog
+      = .error (EmitCtGate.offenderMessage "ge_solve_cswap_indexed"
+          "ge_solve_cswap_indexed"
+          ⟨0, .Lopn [.reg "R8"] (withWidthTag 64 "MOV") [.arrIdx "RSI" "RDX" 8]⟩) :=
+  rfl
 
 /-! ## 5. Rendered asm -/
 
