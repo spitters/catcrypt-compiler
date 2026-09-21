@@ -32,6 +32,17 @@ open Finset
 open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
 open CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 
+/-- The explicit **signed** negacyclic convolution (multiplication in
+`R[X]/(Xⁿ+1)`): `(x ⋆ y) k = Σᵢ ±xᵢ · y_{k−i}` over `Fin n` subtraction, with the
+sign `−1` exactly when the index wraps (`i.val > k.val`) and `+1` otherwise.
+Defined over any commutative ring, so that it is the ring multiplication for
+`ZMod q` at every `q`, prime or not; the identification with the twist-defined
+`negaConv` below needs a field. -/
+def signedNegaConv {R : Type*} [CommRing R] {n : ℕ} [NeZero n]
+    (x y : Fin n → R) : Fin n → R :=
+  fun k => ∑ i : Fin n,
+    (if i.val ≤ k.val then x i * y (k - i) else - (x i * y (k - i)))
+
 variable {R : Type*} [Field R] {ψ : R} {n : ℕ} [NeZero n]
 
 /-- A primitive `2n`-th root of unity satisfies `ψⁿ = −1`: `(ψⁿ)² = ψ^{2n} = 1`
@@ -46,13 +57,6 @@ lemma psi_pow_n (hψ : IsPrimitiveRoot ψ (2 * n)) : ψ ^ n = -1 := by
   rcases sq_eq_one_iff.mp hsq with h | h
   · exact absurd h hne
   · exact h
-
-/-- The explicit **signed** negacyclic convolution (multiplication in
-`R[X]/(Xⁿ+1)`): `(x ⋆ y) k = Σᵢ ±xᵢ · y_{k−i}` over `Fin n` subtraction, with the
-sign `−1` exactly when the index wraps (`i.val > k.val`) and `+1` otherwise. -/
-def signedNegaConv (x y : Fin n → R) : Fin n → R :=
-  fun k => ∑ i : Fin n,
-    (if i.val ≤ k.val then x i * y (k - i) else - (x i * y (k - i)))
 
 /-- The combined twist/untwist ψ-power factor on the `(i, k)` lane collapses to a
 sign: `ψ^{i.val} · ψ^{(k−i).val} · (ψ⁻¹)^{k.val} = ±1`, with `+1` when the `Fin n`
