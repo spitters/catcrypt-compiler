@@ -10,6 +10,7 @@ public import Mathlib.Algebra.Field.ZMod
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.FieldTheory.Finite.Basic
 public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.NormNum.Prime
 
 /-!
 # Verified `ZMod 3329` — the ML-KEM prime field
@@ -42,7 +43,7 @@ set_option autoImplicit false
 namespace CatCrypt.Util
 
 /-- ML-KEM is prime: `q = 3329`. -/
-instance fact_prime_3329 : Fact (Nat.Prime 3329) := ⟨by native_decide⟩
+instance fact_prime_3329 : Fact (Nat.Prime 3329) := ⟨by norm_num⟩
 
 /-- The ML-KEM prime field. An `abbrev` so the `ZMod` field/ring
     structure flows through transparently. -/

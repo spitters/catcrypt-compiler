@@ -9,6 +9,7 @@ public meta import Mathlib.Data.Nat.Prime.Defs
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.FieldTheory.Finite.Basic
 public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.NormNum.Prime
 
 /-!
 # Verified `ZMod 8380417` — the ML-DSA prime field
@@ -39,7 +40,7 @@ set_option autoImplicit false
 namespace CatCrypt.Util
 
 /-- ML-DSA modulus is prime: `q = 2^23 - 2^13 + 1 = 8380417`. -/
-instance fact_prime_8380417 : Fact (Nat.Prime 8380417) := ⟨by native_decide⟩
+instance fact_prime_8380417 : Fact (Nat.Prime 8380417) := ⟨by norm_num⟩
 
 /-- Sanity: `q = 2^23 - 2^13 + 1`. -/
 example : 8380417 = 2^23 - 2^13 + 1 := by decide
