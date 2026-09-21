@@ -10,26 +10,26 @@ public import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
 public import CatCrypt.Crypto.SecureCompilation.ConcreteMontMulRealizer
 
 /-!
-# Grounded FHE / threshold lattice-arithmetic backbones — whole-pipeline
+# Grounded FHE / threshold lattice-arithmetic cores — whole-pipeline
   emit-realization with ZERO assumed per-kernel hypotheses
 
 The computational core of BGV / BFV / CKKS homomorphic evaluation and of
-lattice-based threshold decryption / distributed key generation is the SAME
-arithmetic the ML-KEM / ML-DSA portfolio already grounds: **NTT-domain
-polynomial multiplication** (`nttMul = cyclicConv` at a proven primitive root)
-and **coefficient modular reduction** (Barrett `barrettCondsub`).  This module
-grounds three of these backbones **unconditionally** — every per-step
-realization is a *theorem* (a proved concrete realizer), so each headline carries
-**zero `NttEmitRealizesP` / `KernelRealizes` hypotheses** (only codec-fit / range
-side conditions, honestly flagged).  It reuses the proved concrete realizers
-already in-repo:
+lattice-based threshold decryption / distributed key generation is polynomial
+multiplication in an evaluation domain and coefficient modular reduction
+(Barrett `barrettCondsub`).  This module models the multiplication by the cyclic
+transform at (3329, 256, ω = 17): `nttMul 256 17 = cyclicConv 256` over
+`ZMod 3329`, multiplication modulo `X^256 − 1`.  That transform is not FIPS 203's
+7-layer transform modulo `X^256 + 1`, and the owned ML-KEM NTT that passes the
+NIST KAT is a separate artifact not described by the theorems used here.  Every
+per-step realization is a theorem (a proved concrete realizer), so each headline
+carries no `NttEmitRealizesP` / `KernelRealizes` hypothesis (only codec-fit /
+range side conditions).  It reuses the proved concrete realizers already in-repo:
 
-* `GroundedMlkemNtt.mlkem_ntt_computes_cyclicConv` — the ML-KEM NTT-multiply
-  leaf over the `.TPolyMod 3329 256` carrier, decoding to `cyclicConv 256` for
-  **every** input (in turn `ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`
-  + the verified `.TPolyMod` codec round-trip `decodeP_encodeP` + the proven
-  primitive root `isPrimitiveRoot_17_256`).  Axiom-clean
-  (`{propext, Classical.choice, Quot.sound}` only).
+* `GroundedMlkemNtt.mlkem_ntt_computes_cyclicConv` — the `nttMul 256 17` leaf
+  over the `.TPolyMod 3329 256` carrier, decoding to `cyclicConv 256` for every
+  input (in turn `ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete` + the
+  verified `.TPolyMod` codec round-trip `decodeP_encodeP` + the primitive root
+  `isPrimitiveRoot_17_256`).
 * `ConcreteBarrettRealizer.barrett_realizes_concrete` — the Barrett
   modular-reduction leaf over the base-256 `.TFp` codec, decoding to
   `barrettCondsub q k` for **every** input (in turn the verified round-trip
@@ -42,48 +42,50 @@ already in-repo:
 * `ProtocolEmitRealizes.pipeN` / `composeSpecs` — the carrier-`.TFp` unary
   composition law for the reduction chain.
 
-## Axioms (honest flag)
+## Axioms
 
-The two NTT backbones (`grounded_fhe_ctmult_realizes`,
+The two cyclic-transform cores (`grounded_fhe_ctmult_realizes`,
 `grounded_threshold_combine_realizes`) inherit, beyond the standard three
 `{propext, Classical.choice, Quot.sound}`, the two axioms
 `ConcreteNttRoots.pow_256_17_eq_one._native.native_decide.ax_1` and
-`pow_128_17_ne_one._native.native_decide.ax_1` — because the ML-KEM polynomial
+`pow_128_17_ne_one._native.native_decide.ax_1` — because the polynomial
 carrier `.TPolyMod 3329 256` requires the `Fact (Nat.Prime 3329)` instance and
 the primitive-root fact `isPrimitiveRoot_17_256`, both established by
-`native_decide`.  This is EXACTLY the axiom set already carried by the in-repo
-reference `GroundedMlkemNtt.grounded_mlkem_matvec_realizes` over the same proved
-realizer; it is NOT a kernel hypothesis.  Mirroring
+`native_decide`.  This is the axiom set carried by
+`GroundedMlkemNtt.grounded_mlkem_matvec_realizes`, the `k`-step fold of
+`cyclicConv 256` over the same proved realizer; it is not a kernel hypothesis.
+Mirroring
 `GroundedMpcZk` (whose permutation-path theorems carry the analogous BabyBear
 `native_decide` axiom while its strict PORTFOLIO is grounded through a strictly
-axiom-clean conjunct), the two strictly axiom-clean `.TFp` backbones — the
+axiom-clean conjunct), the two strictly axiom-clean `.TFp` cores — the
 Barrett modulus-switch reduce chain and the Montgomery-domain coefficient
 multiply — are the ones conjoined in the strict portfolio
 `grounded_fhe_threshold_portfolio` (`{propext, Classical.choice, Quot.sound}`
 only); the `native_decide`-carrying NTT chains are kept out of it.
 
-## The four grounded backbones
+## The four grounded cores
 
 * **`grounded_fhe_ctmult_realizes`** — the FHE ciphertext-multiply / key-switch
   NTT pipeline.  A BGV/BFV/CKKS homomorphic multiply (and the relinearization /
   key-switch that follows) is, in the NTT domain, repeated pointwise
   NTT-multiply of the operand polynomials: `c ↦ c ⊛ kᵢ` for the key-switching /
   ciphertext factors `kᵢ`.  We model the `k`-factor chain as a left fold of the
-  grounded `mlkemNttLeafSpec` NTT-multiply leaf, every per-step realization the
-  proved `mlkem_ntt_computes_cyclicConv` — so the whole chain decodes to the
-  iterated `cyclicConv 256`.  **ZERO kernel hypotheses.**
+  `mlkemNttLeafSpec` leaf (the cyclic transform at (3329, 256, ω = 17)), every
+  per-step realization the proved `mlkem_ntt_computes_cyclicConv` — so the
+  whole chain decodes to the iterated `cyclicConv 256`, with no kernel
+  hypothesis.
 
 * **`grounded_threshold_combine_realizes`** — the threshold-decryption /
   distributed-KeyGen NTT-domain share-combine.  In a lattice threshold scheme,
   each party publishes an NTT-domain partial decryption (or key share) and the
-  combiner accumulates them.  We ground the NTT-domain combine backbone as a
-  left fold of the same grounded NTT-multiply leaf over the share list — the
-  accumulate-of-NTT-domain-shares pattern — decoding to the iterated
-  `cyclicConv 256` of the decoded shares.  **ZERO kernel hypotheses.**
+  combiner accumulates them.  We ground the NTT-domain combine core as a
+  left fold of the same cyclic-transform leaf over the share list — the
+  accumulate-of-shares pattern — decoding to the iterated `cyclicConv 256` of
+  the decoded shares, with no kernel hypothesis.
 
 * **`grounded_bfv_modswitch_realizes`** — the BFV/BGV modulus-switch / rescale
   step.  Rescaling drops a coefficient from modulus `Q` to `Q'` by a rounded
-  divide-and-reduce; its modular-reduction backbone is a Barrett `condsub`
+  divide-and-reduce; its modular-reduction core is a Barrett `condsub`
   applied per coefficient, iterated over the `n` coefficients of the polynomial.
   We model the `n`-coefficient reduce chain as a `pipeN` of the grounded Barrett
   leaf, every per-step realization the proved `barrett_realizes_concrete` — so
@@ -98,16 +100,17 @@ only); the `native_decide`-carrying NTT chains are kept out of it.
   input (the proved `montMul_realizes_concrete`).  **ZERO kernel hypotheses**
   (only the codec-fit residue-range side condition).
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is not
 
-* **Grounded (unconditional Lean theorem):** every per-step realization of all
-  three backbones — each a proved concrete realizer
-  (`mlkem_ntt_computes_cyclicConv`, `barrett_realizes_concrete`), with no KAT and
-  no per-kernel hypothesis.  Each whole pipeline decodes to the composite of its
-  per-step arithmetic specs.
+* **Grounded (Lean theorem without kernel hypothesis):** every per-step
+  realization of all three cores — each a proved concrete realizer
+  (`mlkem_ntt_computes_cyclicConv`, the cyclic convolution `cyclicConv 256` over
+  `ZMod 3329`, and `barrett_realizes_concrete`), with no KAT and no per-kernel
+  hypothesis.  Each whole pipeline decodes to the composite of its per-step
+  arithmetic specs.
 
 * **The FHE / THRESHOLD SECURITY property is NOT what is grounded here.**  We
-  ground the *computational backbone* — the emitted NTT / reduce KERNEL PIPELINE
+  ground the *computational core* — the emitted NTT / reduce KERNEL PIPELINE
   computes its arithmetic spec — NOT the cryptographic properties of the
   construction.  Concretely: FHE SEMANTIC SECURITY (IND-CPA under RLWE), the
   NOISE-GROWTH / correctness bounds of homomorphic multiply and of modulus
@@ -117,7 +120,7 @@ only); the `native_decide`-carrying NTT chains are kept out of it.
   only: *the emitted NTT-multiply / Barrett-reduce kernel pipeline computes its
   polynomial-arithmetic spec*, unconditionally.
 
-* **Why NTT-multiply / Barrett and not a bespoke FHE primitive.**  Each backbone
+* **Why NTT-multiply / Barrett and not a bespoke FHE primitive.**  Each core
   here has a proved concrete realizer whose codec round-trip is proved per-bit /
   by digit-sum (axiom-clean).  We ground only the arithmetic primitives for which
   such a realizer already exists (`nttMul`, `barrettCondsub`); FHE-specific
@@ -158,24 +161,25 @@ open CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
 open CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
 open CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
 
-/-! ## §1  FHE ciphertext-multiply / key-switch NTT pipeline — UNCONDITIONAL
+/-! ## §1  FHE ciphertext-multiply / key-switch cyclic-transform pipeline
 
 A BGV/BFV/CKKS homomorphic multiply followed by relinearization / key-switching
 is, in the NTT (evaluation) domain, a sequence of pointwise polynomial
 multiplications of the operand against the ciphertext / key-switching factors:
-`c ↦ c ⊛ k₁ ⊛ k₂ ⊛ ⋯`.  Each `⊛` is one NTT-domain pointwise multiply, which the
-grounded ML-KEM NTT-multiply leaf `mlkemNttLeafSpec` realizes as `cyclicConv 256`
-for every input (the proved `mlkem_ntt_computes_cyclicConv`).  The `k`-factor
-chain is therefore a left fold of that grounded leaf, decoding to the iterated
-`cyclicConv 256` — with **ZERO kernel hypotheses**.
+`c ↦ c ⊛ k₁ ⊛ k₂ ⊛ ⋯`.  Each `⊛` is modelled by the cyclic transform at
+(3329, 256, ω = 17), which the leaf `mlkemNttLeafSpec` realizes as
+`cyclicConv 256` over `ZMod 3329` for every input (the proved
+`mlkem_ntt_computes_cyclicConv`).  The `k`-factor chain is therefore a left fold
+of that leaf, decoding to the iterated `cyclicConv 256`, with no kernel
+hypothesis.
 
 We work at the value level over the `.TPolyMod 3329 256` carrier (as
 `GroundedMlkemNtt.matvecChainValue` does), since the NTT-multiply is *binary*. -/
 
 /-- The value of a `k`-factor FHE ciphertext-multiply / key-switch chain: fold the
     key-switching / ciphertext factors `ks` left-to-right, each step multiplying
-    the running ciphertext accumulator against the next factor via the grounded
-    `mlkemNttLeafSpec` NTT-multiply leaf. -/
+    the running ciphertext accumulator against the next factor via the
+    `mlkemNttLeafSpec` leaf (the cyclic transform at (3329, 256, ω = 17)). -/
 def fheCtMultChainValue (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (ks : List (RustVal (.TPolyMod 3329 256)))
@@ -194,32 +198,35 @@ def fheCtMultChainSpec (ks : List (RustVal (.TPolyMod 3329 256)))
     (ct0 : Fin 256 → ZMod 3329) : Fin 256 → ZMod 3329 :=
   ks.foldl (fun acc k => cyclicConv 256 acc (mlkemDecode k)) ct0
 
-/-- **GROUNDED FHE ciphertext-multiply / key-switch NTT pipeline — UNCONDITIONAL.**
+/-- The FHE ciphertext-multiply / key-switch chain over the cyclic transform at
+    (3329, 256, ω = 17), realized with no kernel hypothesis.
 
     A BGV/BFV/CKKS homomorphic multiply + relinearization / key-switch is, in the
-    NTT domain, repeated pointwise polynomial multiply of the ciphertext against
+    evaluation domain, repeated pointwise polynomial multiply of the ciphertext against
     the `k` key-switching / ciphertext factors.  Its whole `k`-factor chain
-    decodes to the iterated cyclic convolution of the decoded operands — with
-    **ZERO kernel hypotheses**.  Every per-factor step is the proved
-    `mlkem_ntt_computes_cyclicConv` (itself the unconditional grounded ML-KEM
-    NTT-multiply realization: the verified `.TPolyMod 3329 256` codec round-trip
-    `decodeP_encodeP` + the proven primitive root `isPrimitiveRoot_17_256`).
+    decodes to the iterated cyclic convolution of the decoded operands, with no
+    kernel hypothesis.  Every per-factor step is the proved
+    `mlkem_ntt_computes_cyclicConv`, the realization of the cyclic transform
+    `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` (the verified
+    `.TPolyMod 3329 256` codec round-trip `decodeP_encodeP` + the primitive root
+    `isPrimitiveRoot_17_256`); that transform is multiplication modulo
+    `X^256 − 1`, not FIPS 203's transform.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted NTT
-    pointwise-multiply chain computes its polynomial-arithmetic spec.  It does NOT
-    prove the FHE scheme's SEMANTIC SECURITY (IND-CPA under RLWE) nor the
-    NOISE-GROWTH / correctness bound of homomorphic multiply, which are separate
+    Scope: this grounds the computational core — the emitted
+    cyclic-convolution chain computes its polynomial-arithmetic spec.  It does
+    not prove the FHE scheme's semantic security (IND-CPA under RLWE) nor the
+    noise-growth / correctness bound of homomorphic multiply, which are separate
     results.  The only residual is the machine-code obligation for the
-    `"ntt_poly_mul_3329_256"` leaf — the owned-machine-code route, NOT a per-step
+    `"ntt_poly_mul_3329_256"` leaf — the owned-machine-code route, not a per-step
     hypothesis.
 
-    AXIOM NOTE (honest flag): this theorem inherits, beyond the standard three
-    `{propext, Classical.choice, Quot.sound}`, the two ML-KEM-root `native_decide`
-    axioms (`pow_256_17_eq_one`, `pow_128_17_ne_one`) carried by the ML-KEM NTT
-    carrier `.TPolyMod 3329 256` — exactly the axioms of the in-repo reference
-    `GroundedMlkemNtt.grounded_mlkem_matvec_realizes`.  It is NOT a kernel
-    hypothesis; the strict portfolio (§5) is grounded through the two strictly
-    axiom-clean `.TFp` backbones instead. -/
+    Axioms: this theorem inherits, beyond the standard three
+    `{propext, Classical.choice, Quot.sound}`, the two `native_decide` axioms
+    for the root of unity 17 (`pow_256_17_eq_one`, `pow_128_17_ne_one`) carried
+    by the carrier `.TPolyMod 3329 256` — the axioms of
+    `GroundedMlkemNtt.grounded_mlkem_matvec_realizes`, the `k`-step fold of
+    `cyclicConv 256`.  It is not a kernel hypothesis; the strict portfolio (§5)
+    is grounded through the two strictly axiom-clean `.TFp` cores instead. -/
 theorem grounded_fhe_ctmult_realizes (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (ks : List (RustVal (.TPolyMod 3329 256)))
@@ -236,23 +243,25 @@ theorem grounded_fhe_ctmult_realizes (limbStore : LimbStoreSpec)
         [⟨.TPolyMod 3329 256, ct0⟩, ⟨.TPolyMod 3329 256, k⟩])]
       rw [mlkem_ntt_computes_cyclicConv limbStore ct0 k oldDest]
 
-/-! ## §2  Threshold-decryption / distributed-KeyGen NTT-domain share-combine —
-  UNCONDITIONAL
+/-! ## §2  Threshold-decryption / distributed-KeyGen share-combine over the
+  cyclic transform
 
 In a lattice-based threshold cryptosystem (threshold FHE, distributed key
 generation), each party publishes an NTT-domain partial decryption / key share
-and the combiner accumulates them in the evaluation domain.  The combine backbone
-is the same NTT-domain pointwise operation iterated over the share list.  We
-ground the NTT-domain share-combine as a left fold of the grounded
-`mlkemNttLeafSpec` NTT-multiply leaf — the accumulate-of-NTT-domain-shares
-pattern — decoding to the iterated `cyclicConv 256` of the decoded shares, with
-**ZERO kernel hypotheses**.  (The fold shape is shared with §1; here it is the
-share-combine of a threshold protocol rather than a ciphertext-multiply chain.)
+and the combiner accumulates them in the evaluation domain.  The combine core
+is the same evaluation-domain operation iterated over the share list.  We model
+the share-combine as a left fold of the `mlkemNttLeafSpec` leaf, which realizes
+the cyclic transform `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` — the
+accumulate-of-shares pattern — decoding to the iterated `cyclicConv 256` of the
+decoded shares, with no kernel hypothesis.  (The fold shape is shared with §1;
+here it is the share-combine of a threshold protocol rather than a
+ciphertext-multiply chain.)
 -/
 
 /-- The value of a threshold NTT-domain share-combine: fold the parties' NTT-domain
     shares `shares` left-to-right, each step combining the running accumulator
-    against the next share via the grounded `mlkemNttLeafSpec` NTT-domain leaf. -/
+    against the next share via the `mlkemNttLeafSpec` leaf (the cyclic transform
+    at (3329, 256, ω = 17)). -/
 def thresholdCombineValue (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (shares : List (RustVal (.TPolyMod 3329 256)))
@@ -270,28 +279,31 @@ def thresholdCombineSpec (shares : List (RustVal (.TPolyMod 3329 256)))
     (acc0 : Fin 256 → ZMod 3329) : Fin 256 → ZMod 3329 :=
   shares.foldl (fun acc s => cyclicConv 256 acc (mlkemDecode s)) acc0
 
-/-- **GROUNDED threshold-decryption / distributed-KeyGen NTT-domain share-combine
-    — UNCONDITIONAL.**
+/-- The threshold-decryption / distributed-KeyGen share-combine over the cyclic
+    transform at (3329, 256, ω = 17), realized with no kernel hypothesis.
 
     A lattice threshold scheme combines parties' NTT-domain partial decryptions /
     key shares in the evaluation domain.  Its whole `pipeN`-style share-combine
-    chain decodes to the iterated cyclic convolution of the decoded shares — with
-    **ZERO kernel hypotheses**.  Every per-share step is the proved
-    `mlkem_ntt_computes_cyclicConv` (the unconditional grounded NTT-domain leaf).
+    chain decodes to the iterated cyclic convolution of the decoded shares, with
+    no kernel hypothesis.  Every per-share step is the proved
+    `mlkem_ntt_computes_cyclicConv`, the realization of the cyclic transform
+    `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` (multiplication modulo
+    `X^256 − 1`, not FIPS 203's transform).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
-    NTT-domain combine chain computes its polynomial-arithmetic spec.  It does NOT
-    prove the threshold scheme's PRIVACY (a corrupt minority learns nothing about
-    the secret key / plaintext), ROBUSTNESS, nor distributed-KeyGen
-    SIMULATABILITY, which are separate cryptographic results.  The only residual
+    Scope: this grounds the computational core — the emitted
+    cyclic-convolution combine chain computes its polynomial-arithmetic spec.  It
+    does not prove the threshold scheme's privacy (a corrupt minority learns
+    nothing about the secret key / plaintext), robustness, nor distributed-KeyGen
+    simulatability, which are separate cryptographic results.  The only residual
     is the machine-code obligation for the `"ntt_poly_mul_3329_256"` leaf — the
-    owned-machine-code route, NOT a per-step hypothesis.
+    owned-machine-code route, not a per-step hypothesis.
 
-    AXIOM NOTE (honest flag): as for §1, this NTT-route theorem inherits the two
-    ML-KEM-root `native_decide` axioms carried by the `.TPolyMod 3329 256` carrier
-    (the same as the in-repo reference `grounded_mlkem_matvec_realizes`); it is NOT
-    a kernel hypothesis, and the strict portfolio (§5) is grounded through the two
-    strictly axiom-clean `.TFp` backbones instead. -/
+    Axioms: as for §1, this cyclic-transform theorem inherits the two
+    `native_decide` axioms for the root of unity 17 carried by the
+    `.TPolyMod 3329 256` carrier (the same as `grounded_mlkem_matvec_realizes`,
+    the `k`-step fold of `cyclicConv 256`); it is not a kernel hypothesis, and
+    the strict portfolio (§5) is grounded through the two strictly axiom-clean
+    `.TFp` cores instead. -/
 theorem grounded_threshold_combine_realizes (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (shares : List (RustVal (.TPolyMod 3329 256)))
@@ -312,7 +324,7 @@ theorem grounded_threshold_combine_realizes (limbStore : LimbStoreSpec)
 
 A BFV/BGV modulus switch (or a CKKS rescale) drops each coefficient from a larger
 modulus to a smaller one by a rounded divide and a modular reduction; its
-modular-reduction backbone is a Barrett conditional-subtract `barrettCondsub q k`
+modular-reduction core is a Barrett conditional-subtract `barrettCondsub q k`
 applied per coefficient.  Iterating it over the `n` coefficients of the
 polynomial is a `pipeN` of the grounded Barrett leaf, every per-coefficient step
 the proved `barrett_realizes_concrete` — so the whole reduce chain decodes to the
@@ -363,7 +375,7 @@ theorem modSwitch_realized (q k width : ℕ) (hw : width ≤ 48)
     the 48-byte carrier); it is NOT a kernel hypothesis — the Barrett realizer is
     unconditional.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted Barrett
+    Scope:this grounds the *computational core* — the emitted Barrett
     reduce chain computes its modular-reduction spec.  It does NOT prove the
     correctness of the modulus-switch ROUNDING (that the rescaled ciphertext
     decrypts to the scaled plaintext within the noise budget), which is a separate
@@ -388,7 +400,8 @@ keeps coefficients in the Montgomery domain and multiplies them with
 `montMul N R N'`.  The grounded Montgomery leaf `montMulLeafSpec` realizes that
 binary kernel as a `KernelRealizes2` theorem for every input — the proved
 `montMul_realizes_concrete` (in turn the verified base-256 `ℤ` codec round-trip
-`decodeZ_encodeZ`).  Unlike the ML-KEM NTT route, this `.TFp`-carrier realizer
+`decodeZ_encodeZ`).  Unlike the cyclic-transform route of §1–§2, this
+`.TFp`-carrier realizer
 needs no `Fact (Nat.Prime ·)` instance and no primitive root, so it is strictly
 axiom-clean (`{propext, Classical.choice, Quot.sound}`).  The side condition
 `hfit` is the codec-fit residue-range condition (the Montgomery product is a
@@ -410,7 +423,7 @@ representable residue `0 ≤ montMul … < 256 ^ width`), NOT a kernel hypothesi
     the representable-residue window) and `width ≤ 48` the digit-fit; NEITHER is a
     kernel hypothesis — the realizer computes `montMul N R N'` unconditionally.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
+    Scope:this grounds the *computational core* — the emitted
     Montgomery coefficient-multiply kernel computes `montMul N R N'`.  It does NOT
     prove the FHE scheme's security, nor the correctness of the RNS / Montgomery
     representation choice (that the Montgomery constants `N`, `R`, `N'` are
@@ -427,26 +440,27 @@ theorem grounded_fhe_montmul_coeff_realizes (N R N' : ℤ) (width : ℕ)
   montMul_realizes_concrete N R N' width hw leaf limbStore hfit
 
 /-! ## §5  The combined FHE / threshold headline — the two strictly-clean
-  `.TFp` backbones grounded
+  `.TFp` cores grounded
 
 The strict FHE / threshold portfolio conjoins the two strictly axiom-clean
-`.TFp`-carrier lattice-arithmetic backbones: the BFV/BGV modulus-switch Barrett
+`.TFp`-carrier lattice-arithmetic cores: the BFV/BGV modulus-switch Barrett
 reduce chain and the Montgomery-domain coefficient multiply.  Both are
 unconditional in their kernels and strictly axiom-clean
-(`{propext, Classical.choice, Quot.sound}`).  The two ML-KEM NTT-route backbones
-(§1, §2) are kept OUT of the strict portfolio: they carry the two ML-KEM-root
-`native_decide` axioms intrinsic to the `.TPolyMod 3329 256` carrier (the same
-axioms as the in-repo reference `grounded_mlkem_matvec_realizes`), exactly as
+(`{propext, Classical.choice, Quot.sound}`).  The two cyclic-transform cores
+(§1, §2, over `nttMul 256 17 = cyclicConv 256` at `ZMod 3329`) are kept out of
+the strict portfolio: they carry the two `native_decide` axioms for the root of
+unity 17 intrinsic to the `.TPolyMod 3329 256` carrier (the same axioms as
+`grounded_mlkem_matvec_realizes`, the `k`-step fold of `cyclicConv 256`), as
 `GroundedMpcZk` keeps its `native_decide`-carrying permutation path out of its
-strict portfolio and grounds the Merkle backbone through a strictly clean
-conjunct.  Each conjunct grounds a *computational backbone*, not an FHE /
+strict portfolio and grounds the Merkle core through a strictly clean
+conjunct.  Each conjunct grounds a *computational core*, not an FHE /
 threshold security property. -/
 
-/-- **THE FHE / THRESHOLD HEADLINE — two strictly axiom-clean backbones, ZERO
+/-- **THE FHE / THRESHOLD HEADLINE — two strictly axiom-clean cores, ZERO
     kernel hypotheses.**
 
     The two strictly axiom-clean `.TFp`-carrier FHE / threshold lattice-arithmetic
-    backbones conjoined:
+    cores conjoined:
 
     * the BFV/BGV modulus-switch / rescale Barrett reduce chain (`pipeN` of `n`
       `barrettCondsub q k` coefficient reductions), and
@@ -458,14 +472,14 @@ threshold security property. -/
     in turn a verified base-256 codec round-trip.  Both conjuncts are strictly
     axiom-clean (`{propext, Classical.choice, Quot.sound}`).
 
-    The two ML-KEM NTT-route backbones (`grounded_fhe_ctmult_realizes`,
-    `grounded_threshold_combine_realizes`) ground the iterated NTT-domain
-    polynomial-multiply backbone but inherit the two ML-KEM-root `native_decide`
-    axioms intrinsic to the `.TPolyMod 3329 256` carrier (see the §1/§2 AXIOM
-    NOTEs and the module Axioms section); they are therefore kept OUT of this
-    strict portfolio, mirroring `GroundedMpcZk`.
+    The two cyclic-transform cores (`grounded_fhe_ctmult_realizes`,
+    `grounded_threshold_combine_realizes`) ground the iterated
+    `cyclicConv 256` over `ZMod 3329` but inherit the two `native_decide` axioms
+    for the root of unity 17 intrinsic to the `.TPolyMod 3329 256` carrier (see
+    the §1/§2 axiom paragraphs and the module Axioms section); they are
+    therefore kept out of this strict portfolio, mirroring `GroundedMpcZk`.
 
-    HONEST scope: each conjunct grounds the *computational backbone* — that the
+    Scope:each conjunct grounds the *computational core* — that the
     emitted Barrett-reduce / Montgomery-multiply kernel pipeline computes its
     arithmetic spec.  It does NOT prove the FHE / threshold security (FHE SEMANTIC
     SECURITY under RLWE, homomorphic-multiply / modulus-switch NOISE-GROWTH

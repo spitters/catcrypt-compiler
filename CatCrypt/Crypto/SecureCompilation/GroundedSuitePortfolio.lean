@@ -24,18 +24,18 @@ It aggregates, in one compile-checked place, the per-domain **portfolio**
 theorems that the `Grounded*` modules expose, plus the per-protocol headline
 entries already collected in `GroundedPortfolio`.
 
-Each entry is a genuine definitional alias (`abbrev name := @Module.thm`), which
+Each entry is a definitional alias (`abbrev name := @Module.thm`), which
 forces its source theorem to elaborate and stay in scope.  If any source
 portfolio theorem were removed or weakened past its alias, this file would fail
 to typecheck — so it is a live, compile-time index of the grounding effort.
 
 ## What each grounded portfolio asserts
 
-Every entry grounds the **computational backbone** of a protocol family: the
+Every entry grounds the **computational core** of a protocol family: the
 emitted whole-kernel pipeline *computes its arithmetic / hash specification*
-(field add/mul, Horner / polynomial folds, Keccak / SHA sponges, NTT-domain
-pointwise multiply, Poseidon2 transcript), discharged with **ZERO assumed
-per-kernel realization hypotheses** (`KernelRealizes` / `KernelRealizes2` /
+(field add/mul, Horner / polynomial folds, Keccak / SHA sponges, the cyclic
+convolution `cyclicConv 256` over `ZMod 3329`, Poseidon2 transcript),
+discharged with no assumed per-kernel realization hypothesis (`KernelRealizes` / `KernelRealizes2` /
 `KernelRealizesT`).  Each per-step realization is a *theorem* — a proved
 concrete realizer (`keccak_realizes_concrete`, `fieldAdd_realizes_concrete`,
 `fieldMul_realizes_concrete`, `nttMul`-at-the-primitive-root, …) composed with a
@@ -45,26 +45,27 @@ conditions are codec-fit / range obligations (`width` bounds, accumulator range)
 ## Domain portfolios indexed here
 
 * **KDF / KEM** — `grounded_kdf_kem_portfolio` (HKDF-Extract/Expand + KEM
-  Decaps/Encaps session-key backbone over the Keccak sponge).
+  Decaps/Encaps session-key chain over the Keccak sponge).
 * **KDF hardening** — `grounded_kdf_hardening_portfolio`.
 * **Signature transport** — `grounded_sig_transport_portfolio`.
 * **PQC signatures** — `grounded_pqc_signature_portfolio` (VOLE / Fiat-Shamir
-  fold backbone).
+  fold chain).
 * **Handshake / transport** — `grounded_handshake_portfolio`.
 * **MPC / ZK** — `grounded_mpc_zk_portfolio`.
-* **SNARK backbones** — `grounded_snark_portfolio` (Horner / fold transcript
+* **SNARK cores** — `grounded_snark_portfolio` (Horner / fold transcript
   cores).
 * **FHE / threshold** — `grounded_fhe_threshold_portfolio` (the strict
   NTT-domain pointwise-multiply portfolio).
 * **Advanced protocols** — `grounded_advanced_protocol_portfolio`.
 
 Plus the per-protocol headline entries of `GroundedPortfolio` (AEAD modes,
-field-arithmetic KDF pipelines, hash sponges, ML-KEM NTT, Poseidon2 transcript,
+field-arithmetic KDF pipelines, hash sponges, the cyclic convolution
+`nttMul 256 17 = cyclicConv 256` over `ZMod 3329`, Poseidon2 transcript,
 Schnorr / EdDSA scalar core).
 
-## Honest scope and residual
+## Scope and residual
 
-Each grounded portfolio grounds the **computational backbone only** — *not*
+Each grounded portfolio grounds the **computational core only** — *not*
 protocol-level security, soundness, or unforgeability (privacy, robustness,
 EUF-CMA, KEM IND-CCA, distributed-KeyGen simulatability are separate
 cryptographic results and are NOT claimed here).
@@ -74,15 +75,15 @@ emitted kernel, the jasmin-emitted machine bytes must equal the realizer's
 `LeafSpec`.  This is one global obligation per kernel, discharged by the owned
 route — not a per-protocol or per-kernel hypothesis, and not a KAT.
 
-Two further honest caveats, neither a kernel hypothesis:
+Two further caveats, neither a kernel hypothesis:
 
 * The **EC group operations** of Schnorr / EdDSA (`s·G`, `c·P`, `R + c·P`) have
   no concrete field realizer and remain explicitly *un-grounded* — only the
   scalar-field response equation is grounded.
-* The lattice NTT variants that are isolated behind `native_decide` (the two
-  ML-KEM-root caveats) are kept OUT of the *strict* per-domain portfolios (e.g.
-  the FHE / threshold strict portfolio conjoins only the strictly clean fold and
-  pointwise-multiply backbones).
+* The cyclic-transform variants at (3329, 256, ω = 17) that carry the two
+  `native_decide` axioms for the root of unity 17 are kept out of the *strict*
+  per-domain portfolios (e.g. the FHE / threshold strict portfolio conjoins only
+  the strictly clean Barrett fold and Montgomery coefficient-multiply cores).
 -/
 
 @[expose] public section
@@ -93,7 +94,7 @@ namespace CatCrypt.Crypto.SecureCompilation.GroundedSuitePortfolio
 
 /-! ## §1  KDF / KEM and KDF hardening -/
 
-/-- KDF / KEM grounded portfolio (HKDF + KEM session-key backbone) — alias of
+/-- KDF / KEM grounded portfolio (HKDF + KEM session-key chain) — alias of
     the source theorem. -/
 abbrev kdf_kem_suite_grounded :=
   @GroundedKdfKem.grounded_kdf_kem_portfolio
@@ -125,7 +126,7 @@ abbrev handshake_suite_grounded :=
 abbrev mpc_zk_suite_grounded :=
   @GroundedMpcZk.grounded_mpc_zk_portfolio
 
-/-- SNARK backbone grounded portfolio (Horner / fold transcript cores) — alias
+/-- SNARK grounded portfolio (Horner / fold transcript cores) — alias
     of the source theorem. -/
 abbrev snark_suite_grounded :=
   @GroundedSnarkBackbones.grounded_snark_portfolio
@@ -165,7 +166,9 @@ abbrev keccak_sponge_grounded :=
 abbrev sha256_chain_grounded :=
   @GroundedPortfolio.sha256_chain_is_grounded
 
-/-- ML-KEM NTT-multiply grounded — re-export of `GroundedPortfolio`. -/
+/-- The cyclic convolution `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`
+    (multiplication modulo `X^256 − 1`, not FIPS 203's transform) realized —
+    re-export of `GroundedPortfolio`. -/
 abbrev mlkem_ntt_grounded :=
   @GroundedPortfolio.mlkem_ntt_is_grounded
 

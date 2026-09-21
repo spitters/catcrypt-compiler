@@ -10,14 +10,14 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 public import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
 
 /-!
-# Grounded PQC SIGNATURE computational backbones — whole-pipeline emit-realization
+# Grounded PQC SIGNATURE computational cores — whole-pipeline emit-realization
   with ZERO assumed per-kernel hypotheses
 
-This module grounds the *computational backbones* of three post-quantum
+This module grounds the *computational cores* of three post-quantum
 SIGNATURE families **unconditionally** — every per-step realization is a
 *theorem* (a proved concrete realizer), so each strict headline carries **zero
 `KernelRealizes` / `KernelRealizes2` / `KernelRealizesT` hypotheses** (only
-codec-fit side conditions, honestly flagged).  It reuses only the concrete
+codec-fit side conditions).  It reuses only the concrete
 realizers already proved in-repo:
 
 * `ConcreteSymFieldRealizer.fieldMul_realizes_concrete` /
@@ -30,12 +30,15 @@ realizers already proved in-repo:
   realization the **proved** `ConcreteHashRealizer.keccak_realizes_concrete`
   (its 200-byte codec round-trip `decodeKbytes_encodeKbytes` proved per-bit,
   axiom-clean).
-* `GroundedMlkemNtt.mlkem_ntt_computes_cyclicConv` — the proved NTT-multiply
-  leaf over the `.TPolyMod 3329 256` carrier (used ONLY in the isolated,
-  non-portfolio §4 NTT variant; it inherits the ML-KEM-root `native_decide`
-  axioms intrinsic to that carrier — see the Axioms note).
+* `GroundedMlkemNtt.mlkem_ntt_computes_cyclicConv` — the proved leaf for the
+  cyclic transform at (3329, 256, ω = 17), `nttMul 256 17 = cyclicConv 256`
+  over `ZMod 3329`, on the `.TPolyMod 3329 256` carrier (used only in the
+  isolated, non-portfolio §4 variant; it inherits the `native_decide` axioms
+  for the root of unity 17 intrinsic to that carrier — see the Axioms note).
+  That transform is multiplication modulo `X^256 − 1`, not FIPS 203's 7-layer
+  transform modulo `X^256 + 1`.
 
-## The grounded backbones
+## The grounded cores
 
 * **`grounded_uov_central_map_realizes`** (MAYO / UOV multivariate, §1) — the
   central-map / oil–vinegar quadratic-form evaluation.  Each UOV/MAYO public-map
@@ -60,40 +63,41 @@ realizers already proved in-repo:
   **ZERO `KernelRealizesT` hypotheses.**  Strictly axiom-clean.
 
 * **`grounded_lattice_sig_ntt_realizes`** (ISOLATED — §4, NOT in the strict
-  portfolio) — the NTT-domain polynomial-multiply backbone shared by lattice
+  portfolio) — the NTT-domain polynomial-multiply core shared by lattice
   SIGNATURE NTTs (ML-DSA / Dilithium NTT-multiply; the Falcon-style NTT
-  convolution).  Grounded as a left fold of the proved ML-KEM NTT-multiply leaf,
-  decoding to the iterated `cyclicConv 256`.  This is the **only proved NTT
-  realizer in-repo**, and it carries the two ML-KEM-root `native_decide` axioms
-  intrinsic to the `.TPolyMod 3329 256` carrier (see Axioms note); it is
-  therefore kept OUT of the strict portfolio, mirroring `GroundedFheThreshold`.
+  convolution).  Modelled as a left fold of the proved leaf for the cyclic
+  transform at (3329, 256, ω = 17), decoding to the iterated `cyclicConv 256`
+  over `ZMod 3329`; neither ML-DSA's nor Falcon's transform is this object.  It
+  carries the two `native_decide` axioms for the root of unity 17 intrinsic to
+  the `.TPolyMod 3329 256` carrier (see Axioms note); it is therefore kept out
+  of the strict portfolio, mirroring `GroundedFheThreshold`.
 
-## Axioms (honest flag)
+## Axioms
 
 The strict portfolio (`grounded_pqc_signature_portfolio`) and §1–§3 are strictly
 axiom-clean: `{propext, Classical.choice, Quot.sound}` only.
 
-The §4 NTT variant `grounded_lattice_sig_ntt_realizes` inherits, beyond the
-standard three, the two ML-KEM-root `native_decide` axioms
-`ConcreteNttRoots.pow_256_17_eq_one._native.native_decide.ax_1` and
-`pow_128_17_ne_one._native.native_decide.ax_1` — because the proved NTT carrier
+The §4 cyclic-transform variant `grounded_lattice_sig_ntt_realizes` inherits,
+beyond the standard three, the two `native_decide` axioms for the root of
+unity 17, `ConcreteNttRoots.pow_256_17_eq_one._native.native_decide.ax_1` and
+`pow_128_17_ne_one._native.native_decide.ax_1` — because the carrier
 `.TPolyMod 3329 256` requires the `Fact (Nat.Prime 3329)` instance and the
 primitive-root fact `isPrimitiveRoot_17_256`, both established by `native_decide`
-(exactly the axioms of the in-repo reference
-`GroundedMlkemNtt.grounded_mlkem_matvec_realizes` and
-`GroundedFheThreshold.grounded_fhe_ctmult_realizes`).  This is NOT a kernel
+(the axioms of `GroundedMlkemNtt.grounded_mlkem_matvec_realizes`, the `k`-step
+fold of `cyclicConv 256`, and of
+`GroundedFheThreshold.grounded_fhe_ctmult_realizes`).  This is not a kernel
 hypothesis; it is isolated out of the strict portfolio.
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is not
 
-* **Grounded (unconditional Lean theorem):** the *computational backbone* — that
+* **Grounded (unconditional Lean theorem):** the *computational core* — that
   the emitted field-arithmetic / Keccak-sponge / NTT kernel pipeline computes its
   arithmetic spec.  Every per-step realization is a proved concrete realizer
   (`fieldMul`/`fieldAdd_realizes_concrete`, `keccak_realizes_concrete`,
   `mlkem_ntt_computes_cyclicConv`), no KAT, no per-kernel hypothesis.
 
 * **The SIGNATURE SECURITY / hardness assumption is NOT grounded.**  We ground
-  the computational backbone only — NOT EUF-CMA unforgeability, and NOT the
+  the computational core only — NOT EUF-CMA unforgeability, and NOT the
   underlying hardness (the MQ / oil–vinegar problem for UOV/MAYO, the
   picture-of-MPC / VOLE soundness for Picnic/FAEST, SIS / NTRU for the lattice
   signatures).  Those are separate, assumption-bearing results.  This file says
@@ -101,12 +105,13 @@ hypothesis; it is isolated out of the strict portfolio.
   pipeline computes its arithmetic spec*, unconditionally.
 
 * **Why SHAKE/Keccak and field-arithmetic and not bespoke primitives.**  Each
-  backbone here has a proved concrete realizer whose codec round-trip is proved
+  core here has a proved concrete realizer whose codec round-trip is proved
   per-bit / by digit-sum (axiom-clean).  We ground only the primitives for which
-  such a realizer already exists.  Falcon's own NTT prime (12289) has **no**
-  proved realizer in-repo, so §4 uses the proved ML-KEM 3329/256 NTT-multiply
-  leaf as the carrier and is honestly labeled as such (a shared NTT-multiply
-  backbone, not Falcon's specific modulus).
+  such a realizer already exists.  Falcon's own NTT prime (12289) has no
+  proved realizer in-repo, so §4 uses the proved leaf for the cyclic transform
+  at (3329, 256, ω = 17) as the carrier and is labeled as such (a cyclic
+  convolution modulo `X^256 − 1`, not Falcon's modulus and not FIPS 203's
+  transform).
 
 * **The only machine-code residual (NOT a per-kernel hypothesis):** that the
   *jasmin-emitted machine bytes* of the real field-op / `keccak_f1600` /
@@ -173,7 +178,7 @@ def uovMacStepValue (q : ℕ) [NeZero q] (width : ℕ) (b : ZMod q)
     collapses by `decodeF_encodeF`.  `width ≤ 48` and `q < 2^(8·width)` are the
     codec-fit side conditions, NOT kernel hypotheses.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
+    Scope:this grounds the *computational core* — the emitted
     multiply-accumulate kernel chain computes its field-arithmetic spec.  It does
     NOT prove UOV/MAYO EUF-CMA unforgeability nor the hardness of the MQ /
     oil–vinegar problem, which are separate assumption-bearing results.  The only
@@ -214,7 +219,7 @@ def uovSeedExpandSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED MAYO / UOV SHAKE seed-expansion backbone — UNCONDITIONAL.**
+/-- **GROUNDED MAYO / UOV SHAKE seed-expansion core — UNCONDITIONAL.**
 
     UOV/MAYO expand a short seed into the bulk of the public key with
     SHAKE-128/256: `n` applications of the Keccak permutation `keccak_f steps` to
@@ -224,8 +229,8 @@ def uovSeedExpandSpecs (steps : KeccakStepMappings) (n : ℕ) :
     `keccak_realizes_concrete` (in turn the verified 200-byte codec round-trip
     `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **SHAKE / Keccak-permutation seed-expansion
-    backbone** of UOV/MAYO public-key generation.  The structural unpacking of the
+    Scope:this grounds the **SHAKE / Keccak-permutation seed-expansion
+    core** of UOV/MAYO public-key generation.  The structural unpacking of the
     squeezed stream into the matrix/oil-space coefficients is NOT modeled, and
     UOV/MAYO EUF-CMA unforgeability / MQ hardness is out of scope.  The only
     residual is the owned-emit obligation for the `"keccak_f1600"` leaf — NOT a
@@ -276,7 +281,7 @@ def voleFiatShamirSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **SHAKE / Keccak-permutation hash backbone** of
+    Scope:this grounds the **SHAKE / Keccak-permutation hash core** of
     the Picnic/FAEST commitment + Fiat–Shamir transcript.  The MPC-in-the-head /
     VOLE-in-the-head witness machinery (the GGM tree, the VOLE correlation, the
     ZK-hash bookkeeping) is NOT modeled, and Picnic/FAEST EUF-CMA / soundness is
@@ -297,26 +302,31 @@ theorem grounded_vole_fiatshamir_realizes (steps : KeccakStepMappings)
     (voleFiatShamirLeaves n) (voleFiatShamirSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §4  Lattice-signature NTT-multiply backbone — UNCONDITIONAL but ISOLATED
+/-! ## §4  Lattice-signature polynomial-multiply core over the cyclic
+  transform — isolated from the strict portfolio
 
 ML-DSA / Dilithium (and Falcon-style) signatures do their core polynomial
-arithmetic in the NTT domain: each polynomial product is an NTT-domain pointwise
-multiply.  We ground the iterated NTT-multiply backbone as a left fold of the
-proved ML-KEM NTT-multiply leaf `mlkemNttLeafSpec`, every per-step realization the
-proved `mlkem_ntt_computes_cyclicConv`, decoding to the iterated `cyclicConv 256`.
+arithmetic in an evaluation domain: each polynomial product is a pointwise
+multiply there.  We model the iterated multiply core as a left fold of the
+leaf `mlkemNttLeafSpec`, which realizes the cyclic transform at
+(3329, 256, ω = 17) — `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`,
+multiplication modulo `X^256 − 1` — every per-step realization the proved
+`mlkem_ntt_computes_cyclicConv`, decoding to the iterated `cyclicConv 256`.
+Neither ML-DSA's transform (modulo `X^256 + 1` at `q = 8380417`) nor Falcon's
+(prime 12289) is this object, and it is not FIPS 203's 7-layer transform either.
 
-This is the **only proved NTT realizer in-repo** (the ML-KEM 3329/256 carrier);
 Falcon's own prime (12289) has no proved realizer here, so this grounds the
-*shared* NTT-multiply backbone over the proved carrier, honestly labeled.  Because
-the `.TPolyMod 3329 256` carrier needs the `Fact (Nat.Prime 3329)` instance and
-the primitive root `isPrimitiveRoot_17_256` (both `native_decide`), this theorem
-carries the two ML-KEM-root `native_decide` axioms (see the module Axioms note)
-and is therefore kept OUT of the strict portfolio (§5). -/
+polynomial-multiply core over the proved (3329, 256, ω = 17) carrier and is
+labeled as such.  Because the `.TPolyMod 3329 256` carrier needs the
+`Fact (Nat.Prime 3329)` instance and the primitive root `isPrimitiveRoot_17_256`
+(both `native_decide`), this theorem carries the two `native_decide` axioms for
+the root of unity 17 (see the module Axioms note) and is therefore kept out of
+the strict portfolio (§5). -/
 
-/-- The value of a `k`-factor lattice-signature NTT-multiply chain: fold the
-    operand polynomials `ps` left-to-right, each step multiplying the running
-    accumulator against the next factor via the proved `mlkemNttLeafSpec`
-    NTT-multiply leaf. -/
+/-- The value of a `k`-factor lattice-signature polynomial-multiply chain: fold
+    the operand polynomials `ps` left-to-right, each step multiplying the running
+    accumulator against the next factor via the proved `mlkemNttLeafSpec` leaf
+    (the cyclic transform at (3329, 256, ω = 17)). -/
 def latticeSigNttChainValue (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (ps : List (RustVal (.TPolyMod 3329 256)))
@@ -334,32 +344,36 @@ def latticeSigNttChainSpec (ps : List (RustVal (.TPolyMod 3329 256)))
     (acc0 : Fin 256 → ZMod 3329) : Fin 256 → ZMod 3329 :=
   ps.foldl (fun acc p => cyclicConv 256 acc (mlkemDecode p)) acc0
 
-/-- **GROUNDED lattice-signature NTT-multiply backbone — UNCONDITIONAL (ISOLATED).**
+/-- The lattice-signature polynomial-multiply chain over the cyclic transform at
+    (3329, 256, ω = 17), realized with no kernel hypothesis; isolated from the
+    strict portfolio.
 
-    ML-DSA / Dilithium (and Falcon-style) signatures multiply polynomials in the
-    NTT domain.  Its whole `k`-factor NTT-multiply chain decodes to the iterated
-    cyclic convolution of the decoded operands — with **ZERO kernel hypotheses**.
-    Every per-factor step is the proved `mlkem_ntt_computes_cyclicConv` (itself the
-    unconditional grounded ML-KEM NTT-multiply realization: the verified
-    `.TPolyMod 3329 256` codec round-trip `decodeP_encodeP` + the proven primitive
-    root `isPrimitiveRoot_17_256`).
+    ML-DSA / Dilithium (and Falcon-style) signatures multiply polynomials in an
+    evaluation domain.  The whole `k`-factor chain here decodes to the iterated
+    cyclic convolution of the decoded operands, with no kernel hypothesis.
+    Every per-factor step is the proved `mlkem_ntt_computes_cyclicConv`, the
+    realization of `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` (the
+    verified `.TPolyMod 3329 256` codec round-trip `decodeP_encodeP` + the
+    primitive root `isPrimitiveRoot_17_256`).  That transform is multiplication
+    modulo `X^256 − 1`; it is not FIPS 203's transform, not ML-DSA's and not
+    Falcon's.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
-    NTT-multiply chain computes its polynomial-arithmetic spec.  It does NOT prove
-    ML-DSA / Falcon EUF-CMA unforgeability nor the SIS / NTRU hardness.  This is
-    the only proved NTT realizer in-repo; Falcon's own prime (12289) has no proved
-    realizer, so this uses the proved ML-KEM 3329/256 leaf as a shared NTT-multiply
-    carrier.  The only residual is the owned-emit obligation for the
-    `"ntt_poly_mul_3329_256"` leaf — NOT a per-step hypothesis.
+    Scope: this grounds the computational core — the emitted
+    cyclic-convolution chain computes its polynomial-arithmetic spec.  It does
+    not prove ML-DSA / Falcon EUF-CMA unforgeability nor the SIS / NTRU
+    hardness.  Falcon's own prime (12289) has no proved realizer, so this uses
+    the proved (3329, 256, ω = 17) leaf as the carrier.  The only residual is
+    the owned-emit obligation for the `"ntt_poly_mul_3329_256"` leaf — not a
+    per-step hypothesis.
 
-    AXIOM NOTE (honest flag): this theorem inherits, beyond the standard three
-    `{propext, Classical.choice, Quot.sound}`, the two ML-KEM-root `native_decide`
-    axioms (`pow_256_17_eq_one`, `pow_128_17_ne_one`) carried by the
-    `.TPolyMod 3329 256` carrier — exactly the axioms of the in-repo references
-    `GroundedMlkemNtt.grounded_mlkem_matvec_realizes` and
-    `GroundedFheThreshold.grounded_fhe_ctmult_realizes`.  It is NOT a kernel
-    hypothesis; the strict portfolio (§5) is grounded through the strictly
-    axiom-clean field + Keccak backbones instead. -/
+    Axioms: this theorem inherits, beyond the standard three
+    `{propext, Classical.choice, Quot.sound}`, the two `native_decide` axioms
+    for the root of unity 17 (`pow_256_17_eq_one`, `pow_128_17_ne_one`) carried
+    by the `.TPolyMod 3329 256` carrier — the axioms of
+    `GroundedMlkemNtt.grounded_mlkem_matvec_realizes` (the `k`-step fold of
+    `cyclicConv 256`) and `GroundedFheThreshold.grounded_fhe_ctmult_realizes`.
+    It is not a kernel hypothesis; the strict portfolio (§5) is grounded through
+    the strictly axiom-clean field + Keccak cores instead. -/
 theorem grounded_lattice_sig_ntt_realizes (limbStore : LimbStoreSpec)
     (oldDest : RustVal (.TPolyMod 3329 256))
     (ps : List (RustVal (.TPolyMod 3329 256)))
@@ -376,22 +390,22 @@ theorem grounded_lattice_sig_ntt_realizes (limbStore : LimbStoreSpec)
         [⟨.TPolyMod 3329 256, acc0⟩, ⟨.TPolyMod 3329 256, p⟩])]
       rw [mlkem_ntt_computes_cyclicConv limbStore acc0 p oldDest]
 
-/-! ## §5  The strict PQC-SIGNATURE headline — three strictly-clean backbones
+/-! ## §5  The strict PQC-SIGNATURE headline — three strictly-clean cores
 
 The strict PQC-signature portfolio conjoins the three strictly axiom-clean
-backbones: the MAYO/UOV central-map multiply-accumulate field step, the MAYO/UOV
+cores: the MAYO/UOV central-map multiply-accumulate field step, the MAYO/UOV
 SHAKE seed-expansion Keccak chain, and the Picnic/FAEST Fiat–Shamir Keccak chain.
 All three are unconditional in their kernels and strictly axiom-clean
-(`{propext, Classical.choice, Quot.sound}`).  The §4 NTT-route backbone is kept
-OUT of the strict portfolio: it carries the two ML-KEM-root `native_decide`
-axioms intrinsic to the `.TPolyMod 3329 256` carrier (see §4 AXIOM NOTE),
-mirroring `GroundedFheThreshold`.  Each conjunct grounds a *computational
-backbone*, not a signature-security property. -/
+(`{propext, Classical.choice, Quot.sound}`).  The §4 cyclic-transform core
+is kept out of the strict portfolio: it carries the two `native_decide` axioms
+for the root of unity 17 intrinsic to the `.TPolyMod 3329 256` carrier (see the
+§4 axiom paragraph), mirroring `GroundedFheThreshold`.  Each conjunct grounds a *computational
+core*, not a signature-security property. -/
 
-/-- **THE PQC-SIGNATURE HEADLINE — three strictly axiom-clean backbones, ZERO
+/-- **THE PQC-SIGNATURE HEADLINE — three strictly axiom-clean cores, ZERO
     kernel hypotheses.**
 
-    The three PQC-signature backbones conjoined:
+    The three PQC-signature cores conjoined:
 
     * the MAYO / UOV central-map oil–vinegar multiply-accumulate field step,
     * the MAYO / UOV SHAKE seed-expansion Keccak sponge, and
@@ -403,13 +417,14 @@ backbone*, not a signature-security property. -/
     round-trip.  All three are strictly axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    The §4 lattice-signature NTT backbone (`grounded_lattice_sig_ntt_realizes`)
-    grounds the iterated NTT-domain polynomial-multiply but inherits the two
-    ML-KEM-root `native_decide` axioms intrinsic to the `.TPolyMod 3329 256`
-    carrier (see the §4 AXIOM NOTE and the module Axioms section); it is therefore
-    kept OUT of this strict portfolio, mirroring `GroundedFheThreshold`.
+    The §4 lattice-signature core (`grounded_lattice_sig_ntt_realizes`)
+    grounds the iterated `cyclicConv 256` over `ZMod 3329` but inherits the two
+    `native_decide` axioms for the root of unity 17 intrinsic to the
+    `.TPolyMod 3329 256` carrier (see the §4 axiom paragraph and the module
+    Axioms section); it is therefore kept out of this strict portfolio,
+    mirroring `GroundedFheThreshold`.
 
-    HONEST scope: each conjunct grounds the *computational backbone* — that the
+    Scope:each conjunct grounds the *computational core* — that the
     emitted central-map / SHAKE-expand / Fiat–Shamir-hash kernel pipeline computes
     its arithmetic spec.  It does NOT prove the PQC-signature security (UOV/MAYO,
     Picnic/FAEST EUF-CMA unforgeability) nor the underlying hardness (MQ /

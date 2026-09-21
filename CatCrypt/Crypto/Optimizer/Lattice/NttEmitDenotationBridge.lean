@@ -37,8 +37,10 @@ step: the two stage outputs at indices `k` and `k + 2^e` are the two lanes of on
 ## Composition to the transform
 
 `nttIter` is proved equal to the recursive transform and to `dft` in
-`IterativeNttEqRec`. Chaining that with `dft_eq_polyEval`, the whole ML-KEM
-transform — every stage of which is a `ctButterfly` bank by the above — computes
+`IterativeNttEqRec`. Chaining that with `dft_eq_polyEval`, the whole transform
+`nttIter 8 17` (the full 256-point DFT at ω = 17 over `ZMod 3329`, not FIPS
+203's 7-layer transform) — every stage of which is a `ctButterfly` bank by the
+above — computes
 the polynomial evaluation `Σⱼ xⱼ · (ωᵏ)ʲ` at each output index, up to the
 decimation-in-time bit-reversal permutation `bitrevPerm 8`
 (`MlkemNttLayout.mlkemNttStorageLayout` is the identity storage layout, so the
@@ -146,7 +148,7 @@ theorem mlkem_omega_pow_128 : (17 : ZMod 3329) ^ 128 = -1 := by
   · exact h
 
 open CatCrypt.Crypto.Optimizer.Lattice.MlkemNttLayout in
-/-- **ML-KEM top-stage recursion.** The length-256 ML-KEM forward NTT
+/-- **Top-stage recursion at (3329, 256, ω = 17).** The full 256-point DFT
 (`nttIter 8 17`) is the length-256 merge stage applied to the two length-128
 iterative transforms of the contiguous input halves. The negacyclic twiddle
 condition `17^(2^7) = 17^128 = −1` is `mlkem_omega_pow_128`. Iterating this down
@@ -161,7 +163,8 @@ theorem mlkem_nttIter_succ_eq_ctMergeStage (x : Fin (2 ^ 8) → ZMod 3329) :
 
 /-! ## 3. Composition to the `dft` / polynomial-evaluation spec -/
 
-/-- **The ML-KEM stage sequence computes the DFT (polynomial-evaluation form).**
+/-- **The stage sequence at (3329, 256, ω = 17) computes the DFT
+(polynomial-evaluation form).**
 Running the iterative transform — every stage of which is a `ctButterfly` bank by
 `mlkem_nttIter_succ_eq_ctMergeStage` and `ctMergeStage_butterfly` — on the
 bit-reversed input evaluates, at each output index `k`, the coefficient
@@ -183,10 +186,13 @@ theorem mlkem_ntt_eq_polyEval (x : Fin (2 ^ 8) → ZMod 3329) (k : Fin (2 ^ 8)) 
 
 open CatCrypt.Crypto.Optimizer.Lattice.MlkemNttLayout in
 /-- **The kernel spec computes the DFT (polynomial-evaluation form).** The
-whole-transform specification `mlkemNttKernelSpec` the emit must satisfy, run on
-the bit-reversed input, evaluates the coefficient polynomial of `x` at `17^k`.
-This is the emit's target spec (`MlkemNttLayout.mlkemNttKernelSpec`) reduced to
-`NTTConvolutionTheorem`'s polynomial-evaluation identity. -/
+whole-transform specification `mlkemNttKernelSpec`, the full 256-point DFT at
+ω = 17 over `ZMod 3329`, run on the bit-reversed input, evaluates the
+coefficient polynomial of `x` at `17^k`.  This is
+`MlkemNttLayout.mlkemNttKernelSpec` reduced to `NTTConvolutionTheorem`'s
+polynomial-evaluation identity.  The spec is not FIPS 203's 7-layer transform
+modulo `X^256 + 1`; the owned ML-KEM NTT that passes the NIST KAT is a separate
+artifact not described by this theorem. -/
 theorem mlkemNttKernelSpec_eq_polyEval (x : Fin (2 ^ 8) → ZMod 3329)
     (k : Fin (2 ^ 8)) :
     mlkemNttKernelSpec (fun j => x ((BitReversalGeneric.bitrevPerm 8) j)) k

@@ -170,9 +170,11 @@ Rust-front statements do not include.
 For the NTT, `PolyDialect.nttMul_negacyclic_coeff` proves, under its parameter
 hypotheses, that the polynomial dialect's NTT multiply denotes the negacyclic
 convolution in `Z_q[X]/(Xⁿ+1)`, and `NttEmitDenotationBridge` proves that the
-butterfly-stage sequence, as a value model, computes the transform
-(`nttIter_succ_eq_ctMergeStage`, `mlkemNttKernelSpec_eq_polyEval`). No theorem
-relates the emitted ML-KEM NTT kernel to that model. The lattice-route theorems
+butterfly-stage sequence, as a value model, computes the full 256-point DFT at
+ω = 17 over `ZMod 3329` (`nttIter_succ_eq_ctMergeStage`,
+`mlkemNttKernelSpec_eq_polyEval`). That DFT is not FIPS 203's 7-layer transform
+modulo `X^256 + 1`, and no theorem relates the owned ML-KEM NTT kernel that
+passes the NIST KAT to that model. The lattice-route theorems
 (`latticeNttMul_compile_correct`, `compile_correct_all`,
 `robustCompilation_source_to_x86`) are stated over the lattice dialect, whose NTT and
 inverse NTT denote the identity and whose base multiply is the coefficient-wise

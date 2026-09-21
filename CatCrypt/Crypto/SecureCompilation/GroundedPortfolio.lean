@@ -62,9 +62,12 @@ verified codec round-trips.
   * Keccak-f[1600] sponge (FIPS 202) and SHA-256 Merkle–Damgård chain (FIPS 180-4)
     (`grounded_keccak_sponge_realizes`, `grounded_sha256_chain_realizes`).
 
-* **Lattice (ML-KEM)**
-  * ML-KEM NTT-multiply (FIPS 203) and the `k`-step matrix–vector pointwise
-    core (`mlkem_ntt_grounded`, `grounded_mlkem_matvec_realizes`).
+* **Lattice (cyclic transform at (3329, 256, ω = 17))**
+  * The cyclic convolution `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`,
+    multiplication modulo `X^256 − 1`, and its `k`-step left fold
+    (`mlkem_ntt_grounded`, `grounded_mlkem_matvec_realizes`).  This is not
+    FIPS 203's 7-layer transform modulo `X^256 + 1`; the owned ML-KEM NTT that
+    passes the NIST KAT is a separate artifact not described by these theorems.
 
 * **Zero-knowledge (Fiat-Shamir transcript)**
   * Poseidon2 Baby-Bear Fiat-Shamir transcript chain for STARK / Plonky3 / FRI
@@ -202,18 +205,22 @@ abbrev keccak_sponge_is_grounded :=
 abbrev sha256_chain_is_grounded :=
   @GroundedHashProtocol.grounded_sha256_chain_realizes
 
-/-! ## §4  Lattice (ML-KEM)
+/-! ## §4  Lattice (cyclic transform at (3329, 256, ω = 17))
 
-The ML-KEM NTT-multiply (FIPS 203) — already unconditional (the codec round-trip
-`decodeP_encodeP` plus `nttMul_eq_cyclicConv'` at the proven primitive root) —
-and the `k`-step matrix–vector pointwise core built from it. -/
+The cyclic convolution `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`,
+multiplication modulo `X^256 − 1`, realized with no hypothesis (the codec
+round-trip `decodeP_encodeP` plus `nttMul_eq_cyclicConv'` at the primitive root
+`17`), and the `k`-step left fold built from it.  Neither is FIPS 203's 7-layer
+transform modulo `X^256 + 1`; the owned ML-KEM NTT that passes the NIST KAT is a
+separate artifact not described by these theorems. -/
 
-/-- ML-KEM NTT-multiply (FIPS 203) grounded — alias of the source theorem. -/
+/-- The cyclic convolution `nttMul 256 17 = cyclicConv 256` over `ZMod 3329`,
+    realized by the concrete leaf realizer — alias of the source theorem. -/
 abbrev mlkem_ntt_is_grounded :=
   @GroundedMlkemNtt.mlkem_ntt_grounded
 
-/-- ML-KEM matrix–vector pointwise-multiply core grounded — alias of the
-    source theorem. -/
+/-- The `k`-step left fold of `cyclicConv 256` over `ZMod 3329` realized by the
+    leaf call — alias of the source theorem. -/
 abbrev mlkem_matvec_is_grounded :=
   @GroundedMlkemNtt.grounded_mlkem_matvec_realizes
 

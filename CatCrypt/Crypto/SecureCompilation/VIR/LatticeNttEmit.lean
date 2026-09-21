@@ -133,8 +133,11 @@ same for any block. The two definitions below are the identity function
 say nothing about the NTT.
 
 A whole-transform specification exists in `Optimizer/Lattice/MlkemNttLayout.lean`:
-`mlkemNttKernelSpec = nttIter 8 (17 : ZMod 3329)`, proved equal to `dft` via
-`bitrevPerm 8`. The 4-way lanes hold one 256-coefficient polynomial with
+`mlkemNttKernelSpec = nttIter 8 (17 : ZMod 3329)`, the full 256-point DFT at
+ω = 17, proved equal to `dft` via `bitrevPerm 8`. It is not FIPS 203's 7-layer
+transform modulo `X^256 + 1`, and the owned ML-KEM NTT that passes the NIST KAT
+is a separate artifact not described by it. The 4-way lanes hold one
+256-coefficient polynomial with
 cross-lane mixing, so that specification is not an instance of the per-lane
 `LaneMap` theorem, and no theorem here relates an emitted kernel to it. The
 semantics of the emitted 4-way bodies is in §6f. -/

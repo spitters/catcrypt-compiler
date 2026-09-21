@@ -46,12 +46,14 @@ Trocq registers `bbMulRelated` as a bare `instance` precisely because
 `bbFieldMul_eq` is an **unconditional** theorem — the commuting square holds with
 no hypothesis.  We follow the same rule:
 
-* The **ML-KEM cyclic** and **ML-DSA negacyclic** NTT-multiply realizers
-  (`ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`,
-  `ConcreteNegacyclicRealizer.mldsa_nttNegaEmitRealizes_concrete`) are
-  **unconditional** (their byte-level `decode ∘ encode = id` is the *theorem*
+* The cyclic-transform realizer at (3329, 256, ω = 17)
+  (`ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`, which realizes
+  `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` — multiplication modulo
+  `X^256 − 1`, not FIPS 203's transform) and the ML-DSA negacyclic realizer
+  (`ConcreteNegacyclicRealizer.mldsa_nttNegaEmitRealizes_concrete`) hold with
+  no hypothesis (their byte-level `decode ∘ encode = id` is the theorem
   `decodeP_encodeP` / `decodeP3_encodeP3`, not a KAT).  They are therefore
-  genuine bare instances — registered as `nttMulC` / `nttNegaMulC`.  Each is
+  bare instances — registered as `nttMulC` / `nttNegaMulC`.  Each is
   parametric over the kernel's `limbStore : LimbStoreSpec` (the realizer
   `LeafSpec` is built from it), so the instance is a parametric instance keyed on
   `limbStore`, not on a fixed store.
@@ -66,17 +68,18 @@ no hypothesis.  We follow the same rule:
 ## Carriers: `.TFp` (generic engine) vs `.TPolyMod q n` (honest NTT registry)
 
 The generic `KernelRealizes` / `KernelRealizes2` predicates live over the `.TFp`
-carrier (`= JArray 48`, 384 bits).  That carrier is **too small** for an honest
-round-trip on an ML-KEM / ML-DSA polynomial vector (pigeonhole — see
-`ConcreteNttRealizer`'s module docstring), so the *concrete* realizers live over
-the genuinely large `.TPolyMod q n` carrier (`NttEmitRealizesP` /
+carrier (`= JArray 48`, 384 bits).  That carrier is **too small** for a
+round-trip on a degree-256 polynomial vector mod 3329 or mod 8380417
+(pigeonhole — see `ConcreteNttRealizer`'s module docstring), so the *concrete*
+realizers live over the larger `.TPolyMod q n` carrier (`NttEmitRealizesP` /
 `NttNegaEmitRealizesP`).  We give the typeclass engine over **both**:
 
 * `KernelRealizesC` / `KernelRealizes2C` + `composeKernelC` — the generic `.TFp`
   engine (classes + extractors + composition), mirroring `Related` structurally;
 * `NttEmitRealizes2C` — the `.TPolyMod q n` binary NTT class that the two
-  *unconditional* concrete realizers populate as bare instances, so instance
-  resolution finds the ML-KEM / ML-DSA NTT-multiply realizations automatically.
+  hypothesis-free concrete realizers populate as bare instances, so instance
+  resolution finds the (3329, 256, ω = 17) cyclic-transform and the ML-DSA
+  negacyclic realizations automatically.
 
 ## References
 * `CatCrypt/Crypto/Bridges/Transfer/Related.lean` — the template engine.
@@ -175,20 +178,21 @@ theorem composeKernelC {C : Type*} (decode : RustVal .TFp → C) (spec1 spec2 : 
 /-! ## §4  Registering the concrete realizers as instances (the typeclass table)
 
 These are the closed rows of the registry — the `bbMulRelated` analogue.  Both
-NTT-multiply realizers are **unconditional** theorems over the `.TPolyMod q n`
-carrier (`NttEmitRealizesP` / `NttNegaEmitRealizesP`), so they are genuine bare
+NTT-multiply realizers are theorems without hypothesis over the `.TPolyMod q n`
+carrier (`NttEmitRealizesP` / `NttNegaEmitRealizesP`), so they are bare
 instances.  We give a `.TPolyMod q n` binary class `NttEmitRealizes2C`,
 parametric over the kernel's `limbStore` (the realizer `LeafSpec` is built from
 it), and populate it from the two concrete realizers — so instance resolution
-finds the ML-KEM and ML-DSA NTT-multiply realizations automatically.
+finds the (3329, 256, ω = 17) cyclic-transform and the ML-DSA negacyclic
+realizations automatically.
 
 A *new* lattice primitive with a concrete realizer of this shape becomes one more
 `instance` of `NttEmitRealizes2C`; nothing else changes. -/
 
-/-- **Binary NTT-multiply class over the honest `.TPolyMod q n` carrier.**  The
+/-- **Binary NTT-multiply class over the `.TPolyMod q n` carrier.**  The
     `.TPolyMod`-carrier twin of `KernelRealizes2C`: a registered instance asserts
-    the two-polynomial `leaf`-call decodes (over the genuinely large
-    `.TPolyMod q n` byte carrier) to `spec` of the two decoded polynomials.  Used
+    the two-polynomial `leaf`-call decodes (over the `.TPolyMod q n` byte
+    carrier) to `spec` of the two decoded polynomials.  Used
     for the lattice realizers, whose carrier `.TFp` cannot hold by pigeonhole. -/
 class NttEmitRealizes2C (q n : ℕ) [NeZero q] [NeZero n]
     (decode : RustVal (.TPolyMod q n) → (Fin n → ZMod q))
@@ -215,10 +219,12 @@ theorem transferNtt2C {q n : ℕ} [NeZero q] [NeZero n]
       = spec (decode aVal) (decode bVal) :=
   h.realizes aVal bVal oldDest
 
-/-- **ML-KEM NTT-multiply — registered (closed) instance.**  The unconditional
-    cyclic realizer `ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete` is a bare
-    instance of the registry — the `bbMulRelated` analogue.  Parametric over the
-    kernel's `limbStore`. -/
+/-- The cyclic transform at (3329, 256, ω = 17) — registered (closed) instance.
+    The realizer `ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`, which
+    computes `nttMul 256 17 = cyclicConv 256` over `ZMod 3329` (multiplication
+    modulo `X^256 − 1`, not FIPS 203's transform), is a bare instance of the
+    registry — the `bbMulRelated` analogue.  Parametric over the kernel's
+    `limbStore`. -/
 instance nttMulC (limbStore : LimbStoreSpec) :
     NttEmitRealizes2C 3329 256
       (ConcreteNttRealizer.decodeTPoly (q := 3329) (n := 256) (by rfl))
@@ -244,8 +250,9 @@ instance nttNegaMulC (limbStore : LimbStoreSpec) :
 
 /-! ## §5  The payoff: instance resolution finds the registered realizations -/
 
-/-- Instance resolution finds the registered ML-KEM NTT-multiply realization with
-    no manual proof — the registry is a typeclass database. -/
+/-- Instance resolution finds the registered (3329, 256, ω = 17)
+    cyclic-transform realization with no manual proof — the registry is a
+    typeclass database. -/
 example (limbStore : LimbStoreSpec) :
     NttEmitRealizes2C 3329 256
       (ConcreteNttRealizer.decodeTPoly (q := 3329) (n := 256) (by rfl))
@@ -268,8 +275,8 @@ example (limbStore : LimbStoreSpec) :
   inferInstance
 
 /-- And the realization equation is extracted from the synthesized instance via
-    `transferNtt2C` — the `transferRel` payoff, here for the registered ML-KEM
-    kernel. -/
+    `transferNtt2C` — the `transferRel` payoff, here for the registered
+    (3329, 256, ω = 17) cyclic-transform kernel. -/
 example (limbStore : LimbStoreSpec)
     (aVal bVal oldDest : RustVal (.TPolyMod 3329 256)) :
     ConcreteNttRealizer.decodeTPoly (q := 3329) (n := 256) (by rfl)

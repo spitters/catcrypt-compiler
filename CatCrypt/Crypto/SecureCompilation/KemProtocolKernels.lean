@@ -26,13 +26,14 @@ call, with no per-protocol proof skeleton.
   `sample_ntt_poly` rejection sampling, `shake256` noise sampling, and the
   `compress`/`decompress` ciphertext coders.  We cite the registered Keccak /
   SHA-3 / SHAKE rows (`HashKernelRegistryEntry`,
-  `KdfMacProtocolKernels.keccak_f1600`) for the leaf-names.  The NTT-multiply
-  *arithmetic* of ML-KEM is **not** part of this unary spine: it is the
-  registered **binary** NTT row `"ntt_poly_mul_3329_256"`
-  (`KernelRealizesClass.nttMulC` / `GenericNttEmitValue.NttEmitRealizes`), linked
-  in separately — `ProtocolKernels` is unary, so the symmetric/sampling spine and
-  the binary NTT-multiply realization compose at the protocol level, not inside a
-  single `pipeN`.
+  `KdfMacProtocolKernels.keccak_f1600`) for the leaf-names.  The polynomial
+  *arithmetic* is **not** part of this unary spine: the registered **binary**
+  row `"ntt_poly_mul_3329_256"` (`KernelRealizesClass.nttMulC` /
+  `GenericNttEmitValue.NttEmitRealizes`) computes the cyclic transform at
+  (3329, 256, ω = 17), not FIPS 203's transform (see §1), and is linked in
+  separately — `ProtocolKernels` is unary, so the symmetric/sampling spine and
+  the binary realization compose at the protocol level, not inside a single
+  `pipeN`.
 
 * **X25519 / ECDH** — the Montgomery ladder (RFC 7748) is a chain of `255`
   ladder-step folds, one `σ → σ` per scalar bit (each a constant-time
@@ -68,9 +69,9 @@ For protocol `P`:
 These KEM/PKE/key-exchange protocols' *whole* emit-realizations assemble from
 their hash / sample / ladder kernel rows by the generic template.  Per-protocol
 emit is: list the kernels, cite each kernel's realization (the leaf-bytes KAT, an
-honest hypothesis here), and apply `runRealizes`.  ML-KEM's NTT arithmetic is the
-registered binary NTT row linked in separately; the unary pipeline here is the
-symmetric/sampling spine.
+hypothesis here), and apply `runRealizes`.  The polynomial arithmetic is the
+registered binary cyclic-transform row linked in separately; the unary pipeline
+here is the symmetric/sampling spine.
 -/
 
 @[expose] public section
@@ -255,14 +256,18 @@ Leaf-names from the real extraction (`CatCrypt/Crypto/MLKEM/Extraction/`,
 `"sha3_512"`, `"shake128"`, `"sample_ntt_poly"`, `"shake256"`,
 `"compress_coeff"`, `"decompress_coeff"`.
 
-**The NTT-multiply arithmetic is NOT in this spine.**  ML-KEM's polynomial
-products are the registered **binary** NTT row `"ntt_poly_mul_3329_256"`
-(`KernelRealizesClass.nttMulC` / `GenericNttEmitValue.NttEmitRealizes`, with the
-unconditional cyclic realizer `ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`).
-`ProtocolKernels` is a *unary* template (one output feeds one input), whereas
-NTT-multiply takes two polynomial operands; so the binary NTT realization is
-linked in separately and composes with this symmetric/sampling spine at the
-protocol level — it is not part of `mlkemSpineSpecs`. -/
+**The polynomial-multiply arithmetic is NOT in this spine.**  The registered
+**binary** row `"ntt_poly_mul_3329_256"` (`KernelRealizesClass.nttMulC` /
+`GenericNttEmitValue.NttEmitRealizes`, with the realizer
+`ConcreteNttRealizer.mlkem_nttEmitRealizes_concrete`) computes the cyclic
+transform at (3329, 256, ω = 17): `nttMul 256 17 = cyclicConv 256` over
+`ZMod 3329`, multiplication modulo `X^256 − 1`.  That is not FIPS 203's 7-layer
+transform modulo `X^256 + 1`, and the owned ML-KEM NTT that passes the NIST KAT
+is a separate artifact not described by that realizer.  `ProtocolKernels` is a
+*unary* template (one output feeds one input), whereas the polynomial multiply
+takes two operands; so the binary realization is linked in separately and
+composes with this symmetric/sampling spine at the protocol level — it is not
+part of `mlkemSpineSpecs`. -/
 
 /-- ML-KEM `sha3_512` key/coin-derivation leaf (FIPS 203 `G`). -/
 def mlkemSha3_512Leaf : String := "sha3_512"
