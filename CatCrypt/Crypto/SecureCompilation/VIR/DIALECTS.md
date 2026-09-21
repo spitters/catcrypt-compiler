@@ -283,6 +283,7 @@ not listed. The table covers the modules of this package.
 - `mlirVectorDialect`
 - `modArithDialect`
 - `modArithMontDialect`
+- `natKernelDialect` (its target is the Lean kernel: `natKernelFn%` emits a Lean term, validated per program against `FlatProg.run`)
 - `numDialect`
 - `pairingCheckDialect`
 - `pilot`

@@ -1,4 +1,4 @@
-2117
+2107
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
@@ -35,7 +35,6 @@
 5	CatCrypt/Crypto/Optimizer/GraphColoringCoalesce.lean
 6	CatCrypt/Crypto/Optimizer/GraphColoringRegAlloc.lean
 6	CatCrypt/Crypto/Optimizer/InOrderCostModel.lean
-4	CatCrypt/Crypto/Optimizer/Lattice/ConcreteNttRoots.lean
 24	CatCrypt/Crypto/Optimizer/ModReduceSelect.lean
 6	CatCrypt/Crypto/Optimizer/RandomizedRegAlloc.lean
 4	CatCrypt/Crypto/Optimizer/RandomizedScheduleSearch.lean
@@ -46,7 +45,6 @@
 2	CatCrypt/Crypto/Optimizer/UncomputePass.lean
 2	CatCrypt/Crypto/Pairing/Fp2TowerImport.lean
 4	CatCrypt/Crypto/Pairing/Fp6Fp12TowerImport.lean
-1	CatCrypt/Crypto/Pairing/HashToCurveBLS12381.lean
 1	CatCrypt/Crypto/Pairing/ZModPolyReflect.lean
 1	CatCrypt/Crypto/Primitives/BLAKE2s.lean
 1	CatCrypt/Crypto/Primitives/HMAC.lean
@@ -468,12 +466,9 @@
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/X86Dialect.lean
 9	CatCrypt/Crypto/SecureCompilation/X86Backend/XorCombineRolledEmit.lean
 6	CatCrypt/Crypto/SecureCompilation/X86Backend/XtsTweakKernel.lean
-3	CatCrypt/Crypto/Symbolic/TLS/ProtocolVerification.lean
 1	CatCrypt/Crypto/Util/Falcon512Verified.lean
 3	CatCrypt/Crypto/Util/Gf16.lean
 5	CatCrypt/Crypto/Util/Gf256.lean
 1	CatCrypt/Crypto/Util/ZMod127.lean
-1	CatCrypt/Crypto/Util/ZMod3329.lean
 1	CatCrypt/Crypto/Util/ZMod4591.lean
-1	CatCrypt/Crypto/Util/ZMod8380417.lean
 1	CatCrypt/Tactics/PolyZpTest.lean
