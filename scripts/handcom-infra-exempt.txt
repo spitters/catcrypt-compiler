@@ -167,3 +167,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/EmitCtGate.lean  # emit-time consta
 CatCrypt/Crypto/SecureCompilation/X86Backend/GatherMemOps.lean  # Lprog-to-JInstr gather arms and their byte agreement; the Lopn terms are match arms and theorem subjects, no importer writes an artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/LprogBytesDecode.lean  # decoder for the LprogBytes encoder; its Lcmd loop bodies are proof subjects of the mpn round trips, no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/SelectImmCompare.lean  # verified post-RA Lprog pass folding a constant into a comparison; it rewrites CombSelectCmovFront's front-generated program, no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminImmShiftMnem.lean  # decoder for the count-in-mnemonic immediate shift the exporter renders, with its agreement theorems; LinstrR is the recogniser argument type, no renderer and no artifact
