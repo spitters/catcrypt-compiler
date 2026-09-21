@@ -732,6 +732,41 @@ def encCmovSelect (w dn cn tn fn : Nat) : List (BitVec 8) :=
   else if dn == fn then tst ++ enc0FRRw w 0x45 dn tn
   else encAluRRw w 0x89 dn fn ++ tst ++ enc0FRRw w 0x45 dn tn
 
+/-- The red-zone cell the spilled-destination select parks its borrowed scratch
+    in, the same `-128(%rsp)` the printer uses. Call-free leaves do not write
+    below `%rsp`, and the export's slots sit at `-8k` for the register ABI
+    arguments, never that deep. -/
+def cmovRedZone : Int := -128
+
+/-- The scratch register a spilled-destination select borrows: the first of
+    `%rax`, `%rbx`, `%rcx`, `%rdx` that is none of the three sources, as the
+    printer's candidate list and order. Three sources cannot exhaust four
+    candidates, so the `%rdx` fall-through is reached only when the sources are
+    exactly the other three. -/
+def cmovScratchNum (cn tn fn : Nat) : Nat :=
+  if cn != 0 && tn != 0 && fn != 0 then 0
+  else if cn != 3 && tn != 3 && fn != 3 then 3
+  else if cn != 1 && tn != 1 && fn != 1 then 1
+  else 2
+
+/-- The bytes of a branchless select whose destination is a `%rsp`-relative slot
+    at `off`. `CMOVcc` takes a register destination, so the select runs in a
+    borrowed scratch parked in the red zone and the result is stored to the
+    slot: `movq scr, -128(%rsp) ; mov f, scr ; test c, c ; cmovne t, scr ;
+    movq scr, off(%rsp) ; movq -128(%rsp), scr`.
+
+    This is `LprogAsmPrinter.renderLopn`'s `isMemOperand d` branch instruction
+    for instruction, so the two byte producers agree on the shape a spilled
+    destination takes. -/
+def encCmovSelectMem (w : Nat) (off : Int) (cn tn fn : Nat) : List (BitVec 8) :=
+  let scr := cmovScratchNum cn tn fn
+  encRspMem w 0x89 scr cmovRedZone
+    ++ encAluRRw w 0x89 scr fn
+    ++ encAluRRw w 0x85 cn cn
+    ++ enc0FRRw w 0x45 scr tn
+    ++ encRspMem w 0x89 scr off
+    ++ encRspMem w 0x8b scr cmovRedZone
+
 /-! ## 3d. Register-indexed (SIB) element access — the `LOADIDX`/`STOREIDX` arms
 
 `Com.toLprogPhysAbi` exports a runtime-index array access as an `.arrIdx base idx
@@ -1073,7 +1108,15 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
             | .reg dn, .reg cn, .reg tn, .reg fn =>
                 if isGpName dn && isGpName cn && isGpName tn && isGpName fn then
                   encCmovSelect w (gpNumU dn) (gpNumU cn) (gpNumU tn) (gpNumU fn)
-                else []
+                else
+                  -- A destination in a `%rsp`-relative slot, with register
+                  -- sources: the select runs in a borrowed scratch.
+                  match spillQsaveOff frame spillW dn qsaveB with
+                  | some off =>
+                      if isGpName cn && isGpName tn && isGpName fn then
+                        encCmovSelectMem w off (gpNumU cn) (gpNumU tn) (gpNumU fn)
+                      else []
+                  | none => []
             | _, _, _, _ => []
           else []
       | _, _ => []
