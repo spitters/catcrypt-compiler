@@ -80,14 +80,24 @@ tag_theorems_exist() {
 front_re='reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|translBB|FrontRoutePlan\.'
 
 # 0 iff EVERY `List (JInstr n) :=` definition in $1 has a front marker in its body. The
-# body runs from the definition line to the next top-level declaration.
+# body runs from the definition line to the next top-level declaration. Written with
+# grep and sed rather than awk: $pattern is a grep ERE, and an awk dynamic regex drops
+# its `\(` escapes -- mawk silently, gawk with a warning -- so the parenthesised group
+# stopped matching on CI while it matched here.
 front_generated() {
-  awk -v pat="$pattern" -v fr="$front_re" '
-    /^(def|theorem|lemma|abbrev|instance|end|@\[)/ { if (inbody) { if (!hit) { bad=1 } ; inbody=0 } }
-    $0 ~ pat { inbody=1; hit=0; seen=1; next }
-    inbody && $0 ~ fr { hit=1 }
-    END { if (inbody && !hit) bad=1; exit (seen && !bad) ? 0 : 1 }
-  ' "$1"
+  local f="$1" starts ln off body
+  starts="$(grep -nE "$pattern" "$f" | cut -d: -f1 || true)"
+  [ -n "$starts" ] || return 1
+  for ln in $starts; do
+    off="$(tail -n +"$((ln + 1))" "$f" | grep -nE '^(def|theorem|lemma|abbrev|instance|end|@\[)' | head -1 | cut -d: -f1 || true)"
+    if [ -n "$off" ]; then
+      body="$(sed -n "${ln},$((ln + off - 1))p" "$f")"
+    else
+      body="$(sed -n "${ln},\$p" "$f")"
+    fi
+    printf '%s\n' "$body" | grep -qE "$front_re" || return 1
+  done
+  return 0
 }
 
 fail=0
