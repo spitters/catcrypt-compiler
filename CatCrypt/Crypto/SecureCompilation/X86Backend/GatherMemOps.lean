@@ -315,6 +315,10 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
       if isGpName dn && isGpName sn then some [JInstr.adcx dn (.reg sn)] else none
   | .Lopn [.reg dn] "ADOX:64" [.reg sn] =>
       if isGpName dn && isGpName sn then some [JInstr.adox dn (.reg sn)] else none
+  | .Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2] =>
+      if isGpName dlN && isGpName dhN && isGpName s2 then
+        some [JInstr.mulx dhN dlN (.reg mulxMultiplier) (.reg s2)]
+      else none
   | .Lopn [.reg dlN, .reg dhN] "MULXMEM:64" [.reg mn] =>
       match memNameParts mn with
       | some (b, off) =>
@@ -322,7 +326,47 @@ def lowerMemOp (_frame _spillW : Nat) (i : LinstrR)
             some [JInstr.mulxMem dhN dlN (.reg mulxMultiplier) b off]
           else none
       | none => none
+  | .Lopn [.reg dn] "SETC:64" [] =>
+      if isGpName dn then some [JInstr.setc dn] else none
+  | .Lopn [.reg dn] "CMOVE:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.cmove dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "CMOVNE:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.cmovne dn (.reg sn)]
+      else none
+  | .Lopn [.reg dn] "CMOVB:64" [.reg an, .reg sn] =>
+      if an == dn && isGpName dn && isGpName sn then some [JInstr.cmovb dn (.reg sn)]
+      else none
   | _ => none
+
+/-- The `SETC:64` arm's output. The mnemonic takes no source: the flag it reads
+    is CF. -/
+theorem lowerMemOp_setc (frame spillW qsaveB : Nat) (dn : String)
+    (hd : isGpName dn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "SETC:64" []) qsaveB
+      = some [JInstr.setc dn] := by
+  simp [lowerMemOp, hd]
+
+/-- The `CMOVE:64` arm's output. -/
+theorem lowerMemOp_cmove (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVE:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.cmove dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `CMOVNE:64` arm's output. -/
+theorem lowerMemOp_cmovne (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVNE:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.cmovne dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
+
+/-- The `CMOVB:64` arm's output. -/
+theorem lowerMemOp_cmovb (frame spillW qsaveB : Nat) (dn sn : String)
+    (hd : isGpName dn = true) (hs : isGpName sn = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVB:64" [.reg dn, .reg sn]) qsaveB
+      = some [JInstr.cmovb dn (.reg sn)] := by
+  simp [lowerMemOp, hd, hs]
 
 /-- The `STORE:64` arm's output. -/
 theorem lowerMemOp_store (frame spillW qsaveB : Nat) (dn sn b : String) (off : Int)
@@ -396,6 +440,14 @@ theorem lowerMemOp_adox₁ (frame spillW qsaveB : Nat) (dn sn : String)
     lowerMemOp frame spillW (.Lopn [.reg dn] "ADOX:64" [.reg sn]) qsaveB
       = some [JInstr.adox dn (.reg sn)] := by
   simp [lowerMemOp, hd, hs]
+
+/-- The `MULX:64` arm's output. Like its memory-folded sibling, the destination
+    list is read low word first and the `JInstr` takes the high word first. -/
+theorem lowerMemOp_mulx (frame spillW qsaveB : Nat) (dlN dhN s2 : String)
+    (hl : isGpName dlN = true) (hh : isGpName dhN = true) (hs : isGpName s2 = true) :
+    lowerMemOp frame spillW (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB
+      = some [JInstr.mulx dhN dlN (.reg mulxMultiplier) (.reg s2)] := by
+  simp [lowerMemOp, hl, hh, hs]
 
 /-- The `MULXMEM:64` arm's output. The destination list is read low word first
     and the `JInstr` takes the high word first. -/
@@ -475,6 +527,28 @@ theorem lowerCov6_adcx_RSI_R9 :
 theorem lowerCov6_adox_RSI_R9 :
     lowerCov6 64 64 (.Lopn [.reg "RSI"] "ADOX:64" [.reg "RSI", .reg "R9"])
       = some [JInstr.adox "RSI" (.reg "R9")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the zero-source flag materialisation, so `lowerCov6`
+    reaches the new arm. -/
+theorem lowerCov6_setc_RSI :
+    lowerCov6 64 64 (.Lopn [.reg "RSI"] "SETC:64" [])
+      = some [JInstr.setc "RSI"] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the two-source conditional move: the chain's arm above
+    matches the three-source `CMOV:64` select, not the `CMOVcc` forms. -/
+theorem lowerCov6_cmovb_RSI_R9 :
+    lowerCov6 64 64 (.Lopn [.reg "RSI"] "CMOVB:64" [.reg "RSI", .reg "R9"])
+      = some [JInstr.cmovb "RSI" (.reg "R9")] := by
+  with_unfolding_all rfl
+
+/-- `lowerCov5` declines the register widening multiply, so `lowerCov6` reaches
+    the new arm: every arm of the chain below it matches a single-element
+    destination list. -/
+theorem lowerCov6_mulx_RCX_RSI_R9 :
+    lowerCov6 64 64 (.Lopn [.reg "RCX", .reg "RSI"] "MULX:64" [.reg "R9"])
+      = some [JInstr.mulx "RSI" "RCX" (.reg "RDX") (.reg "R9")] := by
   with_unfolding_all rfl
 
 /-- `lowerCov5` declines the mem-folded widening multiply, so `lowerCov6` reaches
@@ -642,6 +716,95 @@ theorem encodeLopn_adox64₁ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat
   dispatch_adx_one frame spillW 0xf3 "ADOX:64" "ADOX" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel)
+
+/-! ### The `0F`-map and flag-materialisation dispatch
+
+`twoByteOpcode` holds the conditional moves, reached on the two-source route
+below the shift and `aluOpcode` tables; `SETC` is matched by name on the
+zero-source route. Both sit under the `adxPrefix` branch. -/
+
+/-- **The two-source `0F`-map dispatch.** `Lopn [.reg dn] "<MNEM>:64" [_, .reg sn]`
+    over a `twoByteOpcode` mnemonic reduces to `enc0FRRw 1 op`; as on the
+    `aluOpcode` route the first source does not reach the bytes. -/
+theorem dispatch_2b_two (frame spillW op : Nat) (mnem base : String)
+    (dn an sn : String) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hw : rexW (mnemWidth mnem) = 1)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = none) (htag : tagShiftExt base = none)
+    (halu : aluOpcode base = none) (h2b : twoByteOpcode base = some op) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .reg sn]) qsaveB
+      = enc0FRRw 1 op (gpNumU dn) (gpNumU sn) := by
+  simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, htag, halu, h2b,
+    Bool.false_eq_true, if_false]
+
+/-- `CMOVE:64` (`0F 44`) two-source dispatch. -/
+theorem encodeLopn_cmove64 (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "CMOVE:64" [.reg an, .reg sn]) qsaveB
+      = enc0FRRw 1 0x44 (gpNumU dn) (gpNumU sn) :=
+  dispatch_2b_two frame spillW 0x44 "CMOVE:64" "CMOVE" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- `CMOVNE:64` (`0F 45`) two-source dispatch. -/
+theorem encodeLopn_cmovne64 (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "CMOVNE:64" [.reg an, .reg sn]) qsaveB
+      = enc0FRRw 1 0x45 (gpNumU dn) (gpNumU sn) :=
+  dispatch_2b_two frame spillW 0x45 "CMOVNE:64" "CMOVNE" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- `CMOVB:64` (`0F 42`) two-source dispatch. -/
+theorem encodeLopn_cmovb64 (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "CMOVB:64" [.reg an, .reg sn]) qsaveB
+      = enc0FRRw 1 0x42 (gpNumU dn) (gpNumU sn) :=
+  dispatch_2b_two frame spillW 0x42 "CMOVB:64" "CMOVB" dn an sn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel)
+
+/-- **The flag-materialisation dispatch.** A zero-source `SETC` reduces to the
+    `setc`/`movzbq` pair at the CF opcode `0x92`. -/
+theorem dispatch_setc (frame spillW : Nat) (mnem base : String) (dn : String)
+    (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base)
+    (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
+    (hadx : adxPrefix base = none) (hsetc : (base == "SETC") = true) :
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem []) qsaveB
+      = encSetccMovzx 0x92 (gpNumU dn) := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hsetc,
+    Bool.false_eq_true, if_false, if_true]
+
+/-- `SETC:64` dispatches to the CF materialisation pair. -/
+theorem encodeLopn_setc64 (frame spillW : Nat) (dn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SETC:64" []) qsaveB
+      = encSetccMovzx 0x92 (gpNumU dn) :=
+  dispatch_setc frame spillW "SETC:64" "SETC" dn qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+
+/-- **The register widening-multiply dispatch.** `MULX` is matched by name first
+    of all, on a two-destination `Lopn` with a single register source. As on the
+    memory-folded form the destination list is `[low, high]` and `encMulxRR` takes
+    the high word first, so the dispatch transposes them. -/
+theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
+    (dlN dhN s2 : String) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true) :
+    encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg s2]) qsaveB
+      = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, Bool.false_eq_true, if_false, if_true]
+
+/-- `MULX:64` dispatches to the VEX register-form widening multiply. -/
+theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB
+      = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) :=
+  dispatch_mulx frame spillW "MULX:64" "MULX" dlN dhN s2 qsaveB
+    (by decide +kernel) (by decide +kernel) (by decide +kernel)
 
 /-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
     above the ADX and ALU tables, on a two-destination `Lopn` with a single
@@ -899,6 +1062,100 @@ theorem adox64₁_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
   rw [lowerMemOp_adox₁ frame spillW qsaveB dn sn hd hs, Option.map_some,
     encodeJBlock_singleton, encodeLopn_adox64₁, jinstr_adox, hr, hsr]
 
+/-- `JInstr` `setc` reduces to the `ScalarEncoder` CF materialisation pair, which
+    is `LprogBytes.encSetccMovzx` at the CF opcode
+    (`LprogBytes.encSetccMovzx_setc_agree`). -/
+theorem jinstr_setc (alloc : GpAlloc) (d : String) :
+    encodeJInstr alloc (.setc d) = encSetccMovzx 0x92 (gpNum (regOf alloc d)) :=
+  (encSetccMovzx_setc_agree (gpNum (regOf alloc d))).symm
+
+/-- **The `SETC:64` byte agreement.** -/
+theorem setc64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn : String) (qsaveB : Nat) (hd : isGpName dn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "SETC:64" []) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW (.Lopn [.reg dn] "SETC:64" []) qsaveB) := by
+  rw [lowerMemOp_setc frame spillW qsaveB dn hd, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_setc64, jinstr_setc, hr]
+
+/-- `JInstr` `cmove` over a register source reduces to `enc0FRR 0x44`. -/
+theorem jinstr_cmove (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.cmove d (.reg r))
+      = enc0FRR 0x44 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- `JInstr` `cmovne` over a register source reduces to `enc0FRR 0x45`. -/
+theorem jinstr_cmovne (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.cmovne d (.reg r))
+      = enc0FRR 0x45 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- `JInstr` `cmovb` over a register source reduces to `enc0FRR 0x42`. -/
+theorem jinstr_cmovb (alloc : GpAlloc) (d r : String) :
+    encodeJInstr alloc (.cmovb d (.reg r))
+      = enc0FRR 0x42 (gpNum (regOf alloc d)) (gpNum (regOf alloc r)) := rfl
+
+/-- **The `CMOVE:64` byte agreement.** -/
+theorem cmove64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVE:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "CMOVE:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_cmove frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_cmove64, jinstr_cmove, enc0FRRw_one, hr, hsr]
+
+/-- **The `CMOVNE:64` byte agreement.** -/
+theorem cmovne64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVNE:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "CMOVNE:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_cmovne frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_cmovne64, jinstr_cmovne, enc0FRRw_one, hr, hsr]
+
+/-- **The `CMOVB:64` byte agreement.** -/
+theorem cmovb64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dn sn : String) (qsaveB : Nat)
+    (hd : isGpName dn = true) (hs : isGpName sn = true)
+    (hr : gpNum (regOf alloc dn) = gpNumU dn)
+    (hsr : gpNum (regOf alloc sn) = gpNumU sn) :
+    (lowerMemOp frame spillW (.Lopn [.reg dn] "CMOVB:64" [.reg dn, .reg sn]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dn] "CMOVB:64" [.reg dn, .reg sn]) qsaveB) := by
+  rw [lowerMemOp_cmovb frame spillW qsaveB dn sn hd hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_cmovb64, jinstr_cmovb, enc0FRRw_one, hr, hsr]
+
+/-- `JInstr` `mulx` over a register source reduces to `encMulxRR`. The multiplier
+    field is not read, as on the memory-folded form. -/
+theorem jinstr_mulx (alloc : GpAlloc) (dh dl r : String) (a : JOperand) :
+    encodeJInstr alloc (.mulx dh dl a (.reg r))
+      = encMulxRR (gpNum (regOf alloc dh)) (gpNum (regOf alloc dl))
+          (gpNum (regOf alloc r)) := rfl
+
+/-- **The `MULX:64` byte agreement.** The gathered `mulx` block encodes to the
+    bytes `encodeLopn` gives for the register widening multiply. -/
+theorem mulx64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
+    (dlN dhN s2 : String) (qsaveB : Nat)
+    (hl : isGpName dlN = true) (hh : isGpName dhN = true) (hs : isGpName s2 = true)
+    (hrh : gpNum (regOf alloc dhN) = gpNumU dhN)
+    (hrl : gpNum (regOf alloc dlN) = gpNumU dlN)
+    (hsr : gpNum (regOf alloc s2) = gpNumU s2) :
+    (lowerMemOp frame spillW
+        (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB).map
+        (encodeJBlock alloc)
+      = some (encodeLopn frame spillW
+          (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB) := by
+  rw [lowerMemOp_mulx frame spillW qsaveB dlN dhN s2 hl hh hs, Option.map_some,
+    encodeJBlock_singleton, encodeLopn_mulx64, jinstr_mulx, hrh, hrl, hsr]
+
 /-- `JInstr` `mulxMem` reduces to `encMulxMem` over its high-word, low-word and
     base numbers. The multiplier field is not read: `MULX` takes that operand
     implicitly in `%rdx`, so it contributes no bytes. -/
@@ -1083,6 +1340,29 @@ theorem encJAdcx_RSI_R9 :
 theorem encJAdox_RSI_R9 :
     encodeJBlock physAlloc [JInstr.adox "RSI" (.reg "R9")]
       = encodeLopn 64 64 (.Lopn [.reg "RSI"] "ADOX:64" [.reg "RSI", .reg "R9"]) := by
+  decide +kernel
+
+/-- The gathered `setc %sil; movzbq %sil, %rsi` pair byte-matches `encodeLopn`.
+    `%rsi` is in the band that takes a bare `REX` on the `SETcc`, so this pin
+    exercises the prefix case the two encoders had to be reconciled on. -/
+theorem encJSetc_RSI :
+    encodeJBlock physAlloc [JInstr.setc "RSI"]
+      = encodeLopn 64 64 (.Lopn [.reg "RSI"] "SETC:64" []) := by
+  decide +kernel
+
+/-- The gathered `cmovbq %r9, %rsi` byte-matches `encodeLopn`, the conditional
+    move a constant-time reduction step selects with. -/
+theorem encJCmovb_RSI_R9 :
+    encodeJBlock physAlloc [JInstr.cmovb "RSI" (.reg "R9")]
+      = encodeLopn 64 64 (.Lopn [.reg "RSI"] "CMOVB:64" [.reg "RSI", .reg "R9"]) := by
+  decide +kernel
+
+/-- The gathered `mulxq %r9, %rcx, %rsi` byte-matches `encodeLopn`. The register
+    pair is the one the mem-folded pin uses, so the two pins differ only in where
+    the second multiplicand comes from. -/
+theorem encJMulx_RCX_RSI_R9 :
+    encodeJBlock physAlloc [JInstr.mulx "RSI" "RCX" (.reg "RDX") (.reg "R9")]
+      = encodeLopn 64 64 (.Lopn [.reg "RCX", .reg "RSI"] "MULX:64" [.reg "R9"]) := by
   decide +kernel
 
 /-- The gathered `mulxq 160(%rdi), %rcx, %rsi` byte-matches `encodeLopn`, at the
