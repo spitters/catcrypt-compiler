@@ -44,6 +44,10 @@ descriptor for descriptor.
   The two wires step the flag machine to the same state
   (`fstepF_immShiftWire_eq`), so the body walk is the expansion image
   `immShiftExpand` of the renamed model chain (`loopBodyWalkNM_eq_expand`).
+  `expProg_immShiftExpand` is the `JasminLsemExportLower.ExpProg` certificate at
+  that expansion, and `lsemFuelMemF_immShiftExpand` the resulting run
+  correspondence, whose fuel bound is the source fuel because every instruction
+  expands to one instruction.
 * **The accumulator writeback.** The model writeback copies the return array into
   the accumulator slot with a `LOADIDX`/`STOREIDX` pair. The export writes back
   with the register copy `MOV acc, ret`, which leaves the array carrier unchanged
@@ -369,6 +373,15 @@ theorem immShiftExpand_structShift {m : String}
   show (if isShiftBase (stripWidthTag (withWidthTag w m)) then _ else _) = _
   rw [if_pos (isShiftBase_stripWidthTag hm w), shiftCountMnem_withWidthTag hm w n]
 
+/-- A two-source instruction whose mnemonic is not a shift base expands to
+    itself. -/
+theorem immShiftExpand_of_not_shiftBase (dst opn src : String) (n : Nat)
+    (h : isShiftBase (stripWidthTag opn) = false) :
+    immShiftExpand (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)
+      = [(.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)] := by
+  show (if isShiftBase (stripWidthTag opn) then _ else _) = _
+  rw [if_neg (by rw [h]; exact Bool.false_ne_true)]
+
 /-- An instruction that is not a structured immediate shift expands to
     itself. -/
 theorem immShiftExpand_of_not_shift (i : LinstrRM)
@@ -393,6 +406,116 @@ theorem immShiftExpand_opToLinstrR {op : JasminOp} (hop : OpPlain op) (dst : Str
     | rfl
     | exact immShiftExpand_of_not_shift _ (fun _ _ _ _ hcon => by
         simp [memTagOfOp] at hcon)
+
+/-! ### The two wires step the flag machine alike -/
+
+/-- The decoder reads the base mnemonic and the count back from the
+    count-in-mnemonic rendering at width `w`: at width `64` from the tagged
+    rendering, and at any other width from an untagged rendering that does not
+    itself end in `:64`. -/
+theorem immShiftMnem?_shiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w n : Nat) (hw : w = 64 ∨ hasSuffix (m ++ ":" ++ toString n) ":64" = false) :
+    JasminImmShiftMnem.immShiftMnem? (withWidthTag w (m ++ ":" ++ toString n))
+      = some (m, n) := by
+  have hm' : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" := by
+    rcases hm with rfl | rfl | rfl
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr rfl)
+  by_cases h64 : w = 64
+  · subst h64
+    exact JasminImmShiftMnem.immShiftMnem?_withWidthTag64 hm' n
+  · have hnt : withWidthTag w (m ++ ":" ++ toString n) = m ++ ":" ++ toString n := by
+      simp only [withWidthTag, if_neg h64]
+    rw [hnt]
+    exact JasminImmShiftMnem.immShiftMnem?_untagged hm' n (hw.resolve_left h64)
+
+/-- The structured two-source wire of an immediate shift, reduced to the
+    shift-aware step `lsemStepSh` over the register half. -/
+theorem fstepF_immShiftStruct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w n : Nat) (dst src : String) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n], MemTag.reg none) s zf
+      = (lsemStepSh (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n]) s.reg).map
+          (fun r => ({ s with reg := r }, zf)) := by
+  obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w m 'S'
+    (by rcases hm with rfl | rfl | rfl <;> rfl) (by decide) (by decide)
+  obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst] (withWidthTag w m)
+    [LOperand.reg src, LOperand.imm n] (.reg none) h1 h2
+  unfold fstepF
+  rw [hc, hmv]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
+    lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl]
+  simp only [Option.map_map]
+  cases lsemStepSh (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n]) s.reg <;> rfl
+
+/-- The register step of the count-in-mnemonic wire is the shift-aware step of
+    the structured wire of the same destination, source and count. -/
+theorem lsemStepN_immShiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w n : Nat) (dst src : String)
+    (hw : w = 64 ∨ hasSuffix (m ++ ":" ++ toString n) ":64" = false) (r : LstateN) :
+    lsemStepN (.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString n)) [.reg src]) r
+      = lsemStepSh (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n]) r := by
+  obtain ⟨hneg, hmov⟩ := stripWidthTag_immShift (m ++ ":")
+    (by rcases hm with rfl | rfl | rfl
+        · exact Or.inl rfl
+        · exact Or.inr (Or.inl rfl)
+        · exact Or.inr (Or.inr rfl)) w n
+  have hdec := immShiftMnem?_shiftCount hm w n hw
+  show (if _ = "NEG" then _ else if _ = "MOV" then _ else _) = _
+  rw [if_neg hneg, if_neg hmov, hdec]
+  rcases hm with rfl | rfl | rfl
+  · rw [lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne
+      (by rw [stripWidthTag_withWidthTag_SHR]; decide))]
+    show _ = (match readReg r (.reg src) with
+      | some ⟨wa, va⟩ =>
+          match evalOperandN r wa (LOperand.imm n) with
+          | some vb =>
+              match applyOpnN wa (stripWidthTag (withWidthTag w "SHR")) [va, vb] with
+              | some v => some ((r.setReg dst v).nextPc)
+              | none => none
+          | none => none
+      | none => none)
+    rw [stripWidthTag_withWidthTag_SHR]
+    cases readReg r (.reg src) <;> rfl
+  · rw [lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne
+      (by rw [stripWidthTag_withWidthTag_SHL]; decide))]
+    show _ = (match readReg r (.reg src) with
+      | some ⟨wa, va⟩ =>
+          match evalOperandN r wa (LOperand.imm n) with
+          | some vb =>
+              match applyOpnN wa (stripWidthTag (withWidthTag w "SHL")) [va, vb] with
+              | some v => some ((r.setReg dst v).nextPc)
+              | none => none
+          | none => none
+      | none => none)
+    rw [stripWidthTag_withWidthTag_SHL]
+    cases readReg r (.reg src) <;> rfl
+  · have hsar : sarStruct? (LinstrR.Lopn [LOperand.reg dst] (withWidthTag w "SAR")
+        [LOperand.reg src, LOperand.imm n]) = some (dst, src, n) := by
+      simp only [sarStruct?, stripWidthTag_withWidthTag_SAR, if_pos]
+    simp only [lsemStepSh, hsar]
+    cases readReg r (LOperand.reg src) <;> simp [applyImmShiftN]
+
+/-- **The two wires of an immediate shift step the flag machine alike.** The
+    count-in-mnemonic one-source wire the body walk emits, run as a straight
+    segment, takes the flag machine to the state the model chain's structured
+    two-source wire takes it to. -/
+theorem fstepF_immShiftWire_eq {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w n : Nat) (dst src : String)
+    (hw : w = 64 ∨ hasSuffix (m ++ ":" ++ toString n) ":64" = false)
+    (s : LstateM) (zf : Bool) :
+    runStraightF (immShiftExpand
+        (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n], MemTag.reg none)) s zf
+      = fstepF (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
+          MemTag.reg none) s zf := by
+  have hsingle : ∀ (j : LinstrRM) (u : LstateM) (b : Bool),
+      runStraightF [j] u b = fstepF j u b := by
+    intro j u b
+    rw [runStraightF_cons]
+    cases fstepF j u b <;> rfl
+  rw [immShiftExpand_structShift hm, hsingle,
+    fstepF_immShiftWire m hm w n dst src, fstepF_immShiftStruct hm w n dst src,
+    lsemStepN_immShiftCount hm w n dst src hw]
 
 /-- **The expanded chain equation.** For an update whose ops lie in the
     fragment's op set, the typed body walk of the export is the expansion image
@@ -457,6 +580,102 @@ theorem loopBodyWalkNM_eq_expand {σ : String → String} {d nInv : Nat} {accReg
           simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
           rw [← htag]
           exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
+
+/-! ### The expansion certificate
+
+`JasminLsemExportLower.ExpProg` is the certificate `lsemFuelMemF_expand`
+consumes. At `immShiftExpand` its per-instruction condition holds of a
+structured immediate shift by the step agreement above, and of every other
+instruction because the expansion is the identity on it. -/
+
+/-- Every instruction expands to one instruction. -/
+theorem immShiftExpand_length (i : LinstrRM) : (immShiftExpand i).length = 1 := by
+  unfold immShiftExpand
+  split
+  · split <;> rfl
+  · rfl
+
+/-- An `Lopn` whose expansion is a straight segment of `Lopn`s that runs to the
+    state of the instruction itself satisfies the per-instruction condition at
+    `JasminLsemExportLower.EqPc`. -/
+theorem instrOK_of_runStraightF_eq {expand : LinstrRM → List LinstrRM} {i : LinstrRM}
+    (hl : IsLopn i) (hex : ∀ j ∈ expand i, IsLopn j)
+    (heq : ∀ (s : LstateM) (zf : Bool), runStraightF (expand i) s zf = fstepF i s zf) :
+    JasminLsemExportLower.InstrOK JasminLsemExportLower.EqPc expand i :=
+  Or.inl ⟨hl, hex, fun s _ _ zf _ hE h =>
+    JasminLsemExportLower.runStraightF_eqPc (expand i) hE ((heq s zf).trans h)⟩
+
+/-- A structured immediate shift satisfies the per-instruction condition of the
+    immediate-shift expansion. -/
+theorem instrOK_immShiftExpand_struct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w n : Nat) (dst src : String)
+    (hw : w = 64 ∨ hasSuffix (m ++ ":" ++ toString n) ":64" = false) :
+    JasminLsemExportLower.InstrOK JasminLsemExportLower.EqPc immShiftExpand
+      (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n], MemTag.reg none) :=
+  instrOK_of_runStraightF_eq ⟨_, _, _, rfl⟩
+    (by rw [immShiftExpand_structShift hm]
+        intro j hj
+        obtain rfl : j = _ := by simpa using hj
+        exact ⟨_, _, _, rfl⟩)
+    (fun s zf => fstepF_immShiftWire_eq hm w n dst src hw s zf)
+
+/-- An instruction that is not a structured immediate shift satisfies the
+    per-instruction condition of the immediate-shift expansion: it expands to
+    itself. -/
+theorem instrOK_immShiftExpand_of_not_shift (i : LinstrRM)
+    (h : ∀ dst opn src n,
+      i ≠ (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none))
+    (hi : IsLopn i ∨ (∃ kd l, i.1 = LinstrR.Llabel kd l)
+      ∨ (∃ c l, i.1 = LinstrR.Lcond c l ∧ flagCondCC? i ≠ none)
+      ∨ (∃ tgt, i.1 = LinstrR.Lgoto tgt)) :
+    JasminLsemExportLower.InstrOK JasminLsemExportLower.EqPc immShiftExpand i := by
+  rcases hi with hl | hc
+  · exact JasminLsemExportLower.instrOK_self hl (immShiftExpand_of_not_shift i h)
+  · exact Or.inr ⟨immShiftExpand_of_not_shift i h, hc⟩
+
+/-- An `Lopn` whose mnemonic is not a shift base whenever its operands have the
+    structured-shift shape satisfies the per-instruction condition of the
+    immediate-shift expansion. -/
+theorem instrOK_immShiftExpand_of_isLopn {i : LinstrRM} (hl : IsLopn i)
+    (h : ∀ dst opn src n, i = (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none) →
+      isShiftBase (stripWidthTag opn) = false) :
+    JasminLsemExportLower.InstrOK JasminLsemExportLower.EqPc immShiftExpand i := by
+  refine JasminLsemExportLower.instrOK_self hl ?_
+  unfold immShiftExpand
+  split
+  · next dst opn src n =>
+      rw [if_neg (by rw [h dst opn src n rfl]; exact Bool.false_ne_true)]
+  · rfl
+
+/-- **The expansion certificate of the immediate-shift expansion.** Two programs
+    of the same name whose bodies stand in the `immShiftExpand` relation, with
+    every source instruction satisfying the per-instruction condition, form an
+    `ExpProg` at `EqPc`. -/
+theorem expProg_immShiftExpand {P P' : LprogM} (hfn : P'.lfn = P.lfn)
+    (hbody : P'.body = P.body.flatMap immShiftExpand)
+    (hinst : ∀ i ∈ P.body,
+      JasminLsemExportLower.InstrOK JasminLsemExportLower.EqPc immShiftExpand i) :
+    JasminLsemExportLower.ExpProg JasminLsemExportLower.EqPc immShiftExpand P P' where
+  lfn := hfn
+  body := hbody
+  inst := fun _ i hk => hinst i (List.mem_of_getElem? hk)
+  pc := fun _ _ p q h => JasminLsemExportLower.EqPc.setLpc h p q
+
+/-- **The flag machine under the immediate-shift expansion.** Every halting run
+    of a program whose instructions the expansion carries is matched, from a
+    state equal up to the program counter, by a halting run of the expanded
+    program of no greater fuel, into a state equal up to the program counter. -/
+theorem lsemFuelMemF_immShiftExpand {P P' : LprogM}
+    (hP : JasminLsemExportLower.ExpProg JasminLsemExportLower.EqPc immShiftExpand P P')
+    (fuel : Nat) {s s' t : LstateMF}
+    (hR : JasminLsemExportLower.RelX JasminLsemExportLower.EqPc immShiftExpand P s s')
+    (h : lsemFuelMemF P fuel s = some t) :
+    ∃ fuel' t', fuel' ≤ fuel ∧ lsemFuelMemF P' fuel' s' = some t'
+      ∧ JasminLsemExportLower.RelX JasminLsemExportLower.EqPc immShiftExpand P t t' := by
+  obtain ⟨f', t', hf', hrun, hRt⟩ :=
+    JasminLsemExportLower.lsemFuelMemF_expand hP
+      (m := 1) (fun i _ => le_of_eq (immShiftExpand_length i)) fuel hR h
+  exact ⟨f', t', by omega, hrun, hRt⟩
 
 /-! ## 5. Second difference: the accumulator writeback
 
