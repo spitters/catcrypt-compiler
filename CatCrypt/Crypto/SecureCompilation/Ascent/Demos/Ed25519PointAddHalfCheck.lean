@@ -258,4 +258,32 @@ theorem pa_part1b :
       (canonFromD shippedBank paCutState paHalf2) = true := by
   decide +kernel
 
+/-- The two halves carry the entry of part 1 to the map after it, across the canonical block
+    of the whole part. This is the conclusion `partCheck2_sound` draws from `pa_part1`, so
+    the two half checks can stand in for the whole-part check. -/
+theorem pa_part1_of_halves (ρ : Nat → BitVec 64) (hH : Holds ρ 57 paSl1)
+    (hK : ∀ j c, cK j = some c → ρ j = BitVec.ofNat 64 c)
+    (s : JState 64) (hin : MapHolds ρ paIn s) (hc : CfHolds ρ none s)
+    (hz : ZfHolds ρ none s) :
+    MapHolds ρ paMap1 (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) ∧
+      CfHolds ρ (some (aoWE (.v 238)))
+        (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) ∧
+      ZfHolds ρ none (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) := by
+  have hlen : paSl1a.length = 55 := by
+    simp only [paSl1a, List.length_take, paSl1_len]
+    omega
+  obtain ⟨h1, h2⟩ := (holds_append ρ paSl1a paSl1b 57).1 (by
+    rw [show paSl1a ++ paSl1b = paSl1 from List.take_append_drop 55 paSl1]
+    exact hH)
+  rw [hlen] at h2
+  obtain ⟨q1, c1, z1⟩ := partCheck2_sound 57 paSl1a paIn none none paCut paCutCarry paCutZero _
+    pa_part1a ρ h1 (fun j c _ hc => hK j c hc) s hin hc hz
+  obtain ⟨q2, c2, z2⟩ := partCheck2_sound 112 paSl1b paCut paCutCarry paCutZero paMap1
+    (some (aoWE (.v 238))) none _ pa_part1b ρ h2 (fun j c _ hc => hK j c hc) _ q1 c1 z1
+  have hpart : ed25519PointAddShippedPart01 = paHalf1 ++ paHalf2 := by
+    simp only [ed25519PointAddShippedPart01, paHalf1, paHalf2, List.append_assoc]
+  have hstate : runD shippedBank {} paHalf1 = paCutState := by decide +kernel
+  rw [hpart, canonFromD_append, hstate, runBlock_cat]
+  exact ⟨q2, c2, z2⟩
+
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof

@@ -1798,6 +1798,13 @@ theorem symStep_sound (E : Env) {T T' : Tb} {S S' : SSt} (s : JState 64) (i : JI
       exact ⟨g, (hR.grow hT g).setM b o x l _ v⟩
   all_goals simp [symStep] at h
 
+/-- Running a concatenation runs the first block, then the second from where it ends. -/
+theorem runBlock_cat (s : JState 64) (xs ys : List (JInstr 64)) :
+    runBlock s (xs ++ ys) = runBlock (runBlock s xs) ys := by
+  induction xs generalizing s with
+  | nil => rfl
+  | cons i is ih => exact ih (evalInstr s i)
+
 theorem symRun_sound (E : Env) : ∀ (blk : List (JInstr 64)) (T T' : Tb) (S S' : SSt)
     (s : JState 64), symRun T S blk = some (T', S') → T.WF → SRel E T S s.regs s.mem →
     Grows T T' ∧ SRel E T' S' (runBlock s blk).regs (runBlock s blk).mem
