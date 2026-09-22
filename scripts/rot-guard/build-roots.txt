@@ -591,6 +591,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChain
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChainLogic
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
@@ -1022,6 +1023,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelDialect
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelFlatten
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Dialects.PackedSlotState
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubOutFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BmiShift
