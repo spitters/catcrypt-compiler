@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddCompile
 
