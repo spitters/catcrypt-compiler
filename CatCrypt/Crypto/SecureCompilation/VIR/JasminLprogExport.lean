@@ -6654,6 +6654,27 @@ def ComL.loopArgBaseNames (nArgs : Nat) (immSlotMap : ImmSlotMap)
   | ComL.forLoopBlock _ _ init invs _ =>
       loopArgBasesOf curDepth nArgs immSlotMap init invs
 
+/-- The virtual-register index of each loop node's accumulator, in spine order.
+
+    A loop binds its final accumulator into scope for its continuation, and a
+    `var` binds its expression, so the register index of a node's accumulator is
+    the context depth at that node. Called with `depth := nArgs`, the head of the
+    result is `nArgs` — the name `ComL.toLfundefPhysAbi` has always aliased — and
+    the tail is the accumulators of the later loops of a continuation chain,
+    which carry the same array. A single-loop program yields a one-element list,
+    so nothing about its export changes. -/
+def ComL.loopAccRegs {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : ComL Γ t) (depth : Nat) : List Nat :=
+  match c with
+  | ComL.ret _ => []
+  | ComL.var _ body => ComL.loopAccRegs body (depth + 1)
+  | ComL.forLoop _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+  | ComL.forLoopN _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+  | ComL.forLoopNRt _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+  | ComL.forLoopNRtNested _ _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+  | ComL.whileNz _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+  | ComL.forLoopBlock _ _ _ _ body => depth :: ComL.loopAccRegs body (depth + 1)
+
 /-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel
     (`out[i] := f(in[i])`, the `mayo_encode` / `*_sign_rwhile` shape) — the
     loop-aware mirror of `comToLfundefPhysAbi` (§7f).
@@ -6703,7 +6724,14 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
   -- out-argument name, then collapse the in-place `STOREIDX`-result thread onto
   -- its SIB base. After this, every `STOREIDX` base is `outArg'` and every `LOADIDX`
   -- base is an `inArgs'` name — all argument names the qsave-reload map covers.
-  let accReg := regName nArgs
+  -- Every loop on the continuation spine carries the SAME output array, so each
+  -- node's accumulator is aliased onto the out-argument name. Aliasing one
+  -- register leaves the later loops of a chain outside the qsave-reload map,
+  -- holding the root-counted seed `resolveVar` gives them — the invariant
+  -- pointer — and an 8-layer NTT rendered that way stores into its read-only
+  -- zeta table. A single-loop program has a one-element `loopAccRegs`, so its
+  -- bytes are unchanged.
+  let accRegs := (ComL.loopAccRegs c nArgs).map regName
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
   -- head). Without the pin the linear-scan RA sees each scalar bound as "born
@@ -6721,7 +6749,8 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
             ((List.range abiArgs.length).map (fun j => (.reg (argName j) : LOperand)))⟩]
     else []
   let body1 := livePin
-    ++ canonicalizeMemrefThread (aliasRegBody accReg outArg' virt0.lfd_body)
+    ++ canonicalizeMemrefThread
+         (accRegs.foldl (fun b r => aliasRegBody r outArg' b) virt0.lfd_body)
   let virt := { virt0 with lfd_body := body1 }
   -- Output-liveness allocation table (`outStoreMap = []` ⇒ `physTable (bodyTrace …)`).
   let tbl := physTableOut virt.lfd_body []
