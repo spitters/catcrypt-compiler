@@ -951,7 +951,17 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       if base == "MULX" then
         match dsts, srcs with
         | [.reg dlN, .reg dhN], [.reg s2] =>
-            encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2)
+            -- Coincident destinations are refused. The IR asks for both halves of
+            -- the product; a plain `mulx` writes the high half last and loses the
+            -- low one, which is why `renderLopn` covers the case with a borrowed
+            -- scratch sequence. This encoder has no matching arm, so emitting
+            -- `encMulxRR` would place bytes in the object computing something the
+            -- rendered text does not. The empty list makes `encodableLinstrR`
+            -- false, so `encodeLcmdChecked` and every object built through it
+            -- decline the body. `ed25519_sc_reduce` and `ed25519_sc_muladd` both
+            -- contain the shape.
+            if dlN == dhN then []
+            else encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2)
         | _, _ => []
       else if base == "MULXMEM" then
         match dsts, srcs with

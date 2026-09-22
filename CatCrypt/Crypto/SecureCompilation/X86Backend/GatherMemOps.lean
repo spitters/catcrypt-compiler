@@ -794,17 +794,32 @@ theorem encodeLopn_setc64 (frame spillW : Nat) (dn : String) (qsaveB : Nat) :
 theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
     (dlN dhN s2 : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
-    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true) :
+    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true)
+    (hne : (dlN == dhN) = false) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg s2]) qsaveB
       = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) := by
-  simp only [encodeLopn, hbind, hstrip, hmulx, Bool.false_eq_true, if_false, if_true]
+  simp only [encodeLopn, hbind, hstrip, hmulx, hne, Bool.false_eq_true, if_false,
+    if_true]
+
+/-- The register widening multiply carries no bytes when its two destinations are
+    the same register: `mulx` keeps only the high half there, so the encoder
+    declines the shape instead of emitting bytes the rendered text disagrees
+    with. -/
+theorem encodeLopn_mulx_same (frame spillW : Nat) (mnem base : String)
+    (dN s2 : String) (qsaveB : Nat)
+    (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
+    (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true) :
+    encodeLopn frame spillW (.Lopn [.reg dN, .reg dN] mnem [.reg s2]) qsaveB = [] := by
+  simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, Bool.false_eq_true, if_false,
+    if_true]
 
 /-- `MULX:64` dispatches to the VEX register-form widening multiply. -/
-theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : Nat) :
+theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : Nat)
+    (hne : (dlN == dhN) = false) :
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB
       = encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2) :=
   dispatch_mulx frame spillW "MULX:64" "MULX" dlN dhN s2 qsaveB
-    (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) hne
 
 /-- **The mem-folded widening-multiply dispatch.** `MULXMEM` is matched by name
     above the ADX and ALU tables, on a two-destination `Lopn` with a single
@@ -1147,14 +1162,16 @@ theorem mulx64_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
     (hl : isGpName dlN = true) (hh : isGpName dhN = true) (hs : isGpName s2 = true)
     (hrh : gpNum (regOf alloc dhN) = gpNumU dhN)
     (hrl : gpNum (regOf alloc dlN) = gpNumU dlN)
-    (hsr : gpNum (regOf alloc s2) = gpNumU s2) :
+    (hsr : gpNum (regOf alloc s2) = gpNumU s2)
+    (hne : (dlN == dhN) = false) :
     (lowerMemOp frame spillW
         (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB).map
         (encodeJBlock alloc)
       = some (encodeLopn frame spillW
           (.Lopn [.reg dlN, .reg dhN] "MULX:64" [.reg s2]) qsaveB) := by
   rw [lowerMemOp_mulx frame spillW qsaveB dlN dhN s2 hl hh hs, Option.map_some,
-    encodeJBlock_singleton, encodeLopn_mulx64, jinstr_mulx, hrh, hrl, hsr]
+    encodeJBlock_singleton, encodeLopn_mulx64 frame spillW dlN dhN s2 qsaveB hne,
+    jinstr_mulx, hrh, hrl, hsr]
 
 /-- `JInstr` `mulxMem` reduces to `encMulxMem` over its high-word, low-word and
     base numbers. The multiplier field is not read: `MULX` takes that operand
