@@ -51,6 +51,9 @@ C_poly1305:6000
 C_aes128:25820
 C_sha256:257400
 C_keccak:154700
+C_ascon:124877
+C_mlkem_ntt:102667
+C_curve25519:332276
 "
 
 command -v "$LEAN_BIN" >/dev/null 2>&1 || { echo "kernel-cost: no lean binary ($LEAN_BIN)" >&2; exit 2; }
