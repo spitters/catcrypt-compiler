@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedCheck10
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksB
 
 /-!
 # Correctness of the shipped `ed25519_point_add` machine code
