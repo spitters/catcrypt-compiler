@@ -1487,6 +1487,7 @@ def pkgModules8 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelDialect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelFlatten,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelLoop,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.NatKernelRule110,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.Dialects.PackedSlotState,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.EcConvertFieldEmit,
