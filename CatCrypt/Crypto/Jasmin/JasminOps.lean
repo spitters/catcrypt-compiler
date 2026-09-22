@@ -27,8 +27,10 @@ Jasmin translation, focusing on the subset needed for the AES proof.
 ## Design
 
 Operations are modeled as pure functions on `BitVec` values.
-The AES S-Box is defined via concrete FIPS 197 lookup tables, with
-involution properties proved by `native_decide` over all 256 inputs.
+The AES S-Box is defined via concrete FIPS 197 lookup tables, read through
+their packed form: each table is one natural number with entry `i` at bits
+`8 * i`, tied to the table by `sboxPacked_eq` and `invSboxPacked_eq`. The
+involution properties are checked by the kernel over all 256 inputs.
 
 ## References
 
@@ -88,20 +90,41 @@ def invSboxArray : Array (BitVec 8) := #[
 @[simp] theorem sboxArray_size : sboxArray.size = 256 := by decide +kernel
 @[simp] theorem invSboxArray_size : invSboxArray.size = 256 := by decide +kernel
 
-/-- AES S-Box: SubBytes transformation on a single byte.
-    Concrete FIPS 197 lookup table (GF(2^8) inversion + affine map). -/
-def aesSBox (b : BitVec 8) : BitVec 8 :=
-  sboxArray[b.toNat]'(sboxArray_size ▸ BitVec.isLt b)
+/-- A byte table packed into one natural number, entry `i` at bits `8 * i`. -/
+def packByteTable (t : Array (BitVec 8)) : Nat :=
+  t.toList.foldr (fun v acc => (acc <<< 8) ||| v.toNat) 0
 
-/-- AES inverse S-Box. -/
-def aesInvSBox (b : BitVec 8) : BitVec 8 :=
-  invSboxArray[b.toNat]'(invSboxArray_size ▸ BitVec.isLt b)
+/-- `sboxArray` packed into one natural number: entry `i` at bits `8 * i`. -/
+def sboxPacked : Nat :=
+  2869618975290639062594974519597816386035077209210385677284518162336985023502962151465775969507961862820568736543004676439868535775640188584098917533413284844376797297285941524888791401501466624530423689326528054213168201056672989590893583853414110162539122864583953358348775951166211353578440977400428507475679327181038682772945817200201960445064847785221508011893952350688324234443749897213621340677040612747745615276448919507935121141307752692835344166708617454322778699219895865633266409040561742768581056182730443599545881830075941537620590442514083341749674612746994879540562701631131184186066652929592955206755
+
+/-- `invSboxArray` packed into one natural number. -/
+def invSboxPacked : Nat :=
+  15785769749828884342349381641981096363179738000380205650940338083111619982568718420166261191398703005748170232611805704157196303061330872280026969925224128193193768962594508714770967646139604422718174787315048227180018877623049221087186576642191304514338137614235628241783007805847129270530950856841486400764657112140097236091222567730363620332611309375046737430203438830593833719428588466121688739068564421474273450162064709239629809347626728710072303178617319436726577534667237755444692000788692193415136619289353224918429728194544458916874716857284226411602766869706570927007876872095880586785662942963508062062930
+
+/-- The packed literal is `sboxArray`. -/
+theorem sboxPacked_eq : sboxPacked = packByteTable sboxArray := by decide +kernel
+
+/-- The packed literal is `invSboxArray`. -/
+theorem invSboxPacked_eq : invSboxPacked = packByteTable invSboxArray := by decide +kernel
+
+/-- Entry `i` of a packed byte table. -/
+def packedByte (t i : Nat) : BitVec 8 := BitVec.ofNat 8 ((t >>> (8 * i)) % 256)
+
+/-- AES S-Box: SubBytes transformation on a single byte, read from the
+    FIPS 197 table `sboxArray` (GF(2^8) inversion + affine map). The table is
+    read through its packed form, a lookup the kernel reduces as one shift and
+    one modulus on a natural number. -/
+def aesSBox (b : BitVec 8) : BitVec 8 := packedByte sboxPacked b.toNat
+
+/-- AES inverse S-Box, read from `invSboxArray` through its packed form. -/
+def aesInvSBox (b : BitVec 8) : BitVec 8 := packedByte invSboxPacked b.toNat
 
 /-- S-Box inverse property: InvSBox(SBox(b)) = b for all bytes. -/
-theorem aesInvSBox_aesSBox : ∀ b, aesInvSBox (aesSBox b) = b := by native_decide
+theorem aesInvSBox_aesSBox : ∀ b, aesInvSBox (aesSBox b) = b := by decide +kernel
 
 /-- S-Box inverse property: SBox(InvSBox(b)) = b for all bytes. -/
-theorem aesSBox_aesInvSBox : ∀ b, aesSBox (aesInvSBox b) = b := by native_decide
+theorem aesSBox_aesInvSBox : ∀ b, aesSBox (aesInvSBox b) = b := by decide +kernel
 
 /-! ## AES State Operations -/
 
@@ -398,8 +421,8 @@ Proofs use three techniques:
 - **GF(2)-linearity**: Decomposition into single-byte inputs via distributivity of gf256Mul -/
 
 theorem range_16' : List.range 16 = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] := by
-  native_decide
-theorem range_4' : List.range 4 = [0,1,2,3] := by native_decide
+  decide
+theorem range_4' : List.range 4 = [0,1,2,3] := by decide
 
 -- Byte extraction through SubBytes
 set_option maxHeartbeats 4000000 in
