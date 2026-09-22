@@ -7,6 +7,7 @@ module
 
 public meta import Mathlib.Tactic.Ring
 public import Mathlib.Algebra.Group.Nat.Defs
+public import Mathlib.Data.List.Basic
 public import Mathlib.Data.Nat.Basic
 
 /-!
@@ -197,5 +198,63 @@ theorem pget_pset_ne (σ i j x : Nat) (h : i ≠ j) (hx : x + 1 < B) :
 /-- The empty state maps nothing. -/
 theorem pget_zero (i : Nat) : pget 0 i = none := by
   rw [pget, praw_eq, Nat.zero_div, Nat.zero_mod]
+
+/-! ## Representing a finite map
+
+A packed state stands for a map `α → Option Nat` through an enumeration
+`idx : α → Nat` of the locations a program touches. Nothing here bounds `idx`:
+the slot operations are total, so the enumeration's size does not enter, and
+the only side condition is on the stored value.
+
+The enumeration need be injective only on the locations in play, which is what
+`InjOnP` says. An enumeration built from a duplicate-free list has that
+property, by `injOnP_idxOf`.
+-/
+
+section Represents
+
+variable {α : Type}
+
+/-- `idx` is injective on the locations satisfying `P`. -/
+def InjOnP (idx : α → Nat) (P : α → Prop) : Prop :=
+  ∀ a b, P a → P b → idx a = idx b → a = b
+
+/-- The packed state `σ` represents `f` at every location satisfying `P`. -/
+def Represents (idx : α → Nat) (P : α → Prop) (σ : Nat) (f : α → Option Nat) : Prop :=
+  ∀ d, P d → f d = pget σ (idx d)
+
+/-- The empty state represents the everywhere-unmapped map. -/
+theorem represents_zero (idx : α → Nat) (P : α → Prop) :
+    Represents idx P 0 (fun _ => none) :=
+  fun d _ => (pget_zero (idx d)).symm
+
+/-- Writing one location through the enumeration represents updating the map at
+    that location. -/
+theorem Represents.set [DecidableEq α] {idx : α → Nat} {P : α → Prop}
+    (hinj : InjOnP idx P) {σ : Nat} {f : α → Option Nat}
+    (h : Represents idx P σ f) (d : α) (hd : P d) (x : Nat) (hx : x + 1 < B) :
+    Represents idx P (pset σ (idx d) x) (fun e => if e = d then some x else f e) := by
+  intro e he
+  by_cases hed : e = d
+  · subst hed
+    rw [pget_pset_self _ _ _ hx]
+    simp
+  · simp only [if_neg hed]
+    rw [pget_pset_ne σ (idx d) (idx e) x (fun hi => hed (hinj e d he hd hi.symm)) hx]
+    exact h e he
+
+/-- Reading a represented location. -/
+theorem Represents.get {idx : α → Nat} {P : α → Prop} {σ : Nat} {f : α → Option Nat}
+    (h : Represents idx P σ f) (d : α) (hd : P d) : pget σ (idx d) = f d :=
+  (h d hd).symm
+
+/-- A location's position in a list enumerates it injectively on that list's
+    members. Duplicates do no harm: the position is that of the first
+    occurrence. -/
+theorem injOnP_idxOf [BEq α] [LawfulBEq α] (locs : List α) :
+    InjOnP (fun a => locs.idxOf a) (fun a => a ∈ locs) :=
+  fun _ _ ha _ hab => (List.idxOf_inj ha).mp hab
+
+end Represents
 
 end CatCrypt.Crypto.SecureCompilation.VIR.PackedSlotState
