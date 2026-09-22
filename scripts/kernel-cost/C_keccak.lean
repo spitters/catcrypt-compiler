@@ -1,6 +1,6 @@
 set_option maxRecDepth 200000
 
--- OPS: 9100
+-- OPS: 154700
 
 /-! Keccak-f[1600] and SHA3-256 (FIPS 202) as a kernel-reduction cost sample.
 
@@ -10,9 +10,11 @@ set_option maxRecDepth 200000
     bindings; the state is packed once at the end of the round. The 24 round
     constants are a single packed `Nat`.
 
-    OPS: 9100
+    OPS: 154700 — 9100 per permutation over the 17 the file performs, one for
+    the published vector and 16 chained.
 
-    Operation count, counting each `Nat` shift, mask, or, xor, and and
+    Operation count for one permutation, counting each `Nat` shift, mask, or,
+    xor, and and
     subtraction the file performs. `rotl64` is five operations (the offset
     subtraction, two shifts, an or and a mask). Per round: 25 lane reads (50),
     the five column parities (20), the five theta terms (30), the 25 combined
@@ -148,3 +150,14 @@ theorem sha3_256_empty :
     decide (sha3Digest (keccakF sha3EmptyState)
       = 0xa7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a) = true :=
   rfl
+
+/-- Apply the permutation to its own output. The recursive call sits inside the
+    argument, so no accumulator is threaded through a tail position and the
+    kernel reduces each permutation as it is built. -/
+def perms : Nat → Nat → Nat
+  | 0, s => s
+  | n + 1, s => keccakF (perms n s)
+
+/-- Sixteen chained permutations, the reduction the operation count above
+    refers to. -/
+theorem keccak_chain : decide (perms 16 sha3EmptyState = 0) = false := rfl

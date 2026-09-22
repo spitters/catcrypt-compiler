@@ -1,6 +1,6 @@
 set_option maxRecDepth 200000
 
--- OPS: 7800
+-- OPS: 257400
 
 /-! SHA-256 (FIPS 180-4) as a kernel-reduction cost sample.
 
@@ -10,9 +10,11 @@ set_option maxRecDepth 200000
     working variables are unpacked once per compression round, the round runs on
     local bindings, and the state is packed once at the end of the round.
 
-    OPS: 7800
+    OPS: 257400 — 7800 per compression over the 33 the file performs, one for
+    the published vector and 32 chained.
 
-    Operation count, counting each `Nat` shift, mask, or, xor, add and
+    Operation count for one compression, counting each `Nat` shift, mask, or,
+    xor, add and
     subtraction the file performs. `rotr32` is five operations (the offset
     subtraction, two shifts, an or and a mask). Message schedule: 48 words,
     each four lane reads (8), four rotations (20), two right shifts (2), four
@@ -114,3 +116,14 @@ theorem sha256_abc :
     decide (digestBE (sha256Block initH msgAbc)
       = 0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad) = true :=
   rfl
+
+/-- Compress the same block against each chaining value in turn. The recursive
+    call sits inside the argument, so no accumulator is threaded through a tail
+    position and the kernel reduces each step as it is built. -/
+def chainH : Nat → Nat → Nat
+  | 0, hs => hs
+  | n + 1, hs => sha256Block (chainH n hs) msgAbc
+
+/-- Thirty-two chained compressions, the reduction the operation count above
+    refers to. -/
+theorem sha256_chain : decide (chainH 32 initH = 0) = false := rfl
