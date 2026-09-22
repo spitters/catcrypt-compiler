@@ -8,6 +8,8 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLift
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripCmp
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
 
 @[expose] public section
 
@@ -38,8 +40,10 @@ descriptor for descriptor.
 
 * **Immediate shifts.** The model chain emits a `shrImm`/`shlImm`/`sarImm` binding
   as the structured `Lopn [dst] "SHR[:64]" [src, #k]`; the body walk emits the
-  count-in-mnemonic form `Lopn [dst] "SHR:k[:64]" [src]` (`immShift_wire_ne`),
-  for which the flag machine has no step (`fstepF_immShift_none`).
+  count-in-mnemonic form `Lopn [dst] "SHR:k[:64]" [src]` (`immShift_wire_ne`).
+  The two wires step the flag machine to the same state
+  (`fstepF_immShiftWire_eq`), so the body walk is the expansion image
+  `immShiftExpand` of the renamed model chain (`loopBodyWalkNM_eq_expand`).
 * **The accumulator writeback.** The model writeback copies the return array into
   the accumulator slot with a `LOADIDX`/`STOREIDX` pair. The export writes back
   with the register copy `MOV acc, ret`, which leaves the array carrier unchanged
@@ -249,34 +253,210 @@ theorem stripWidthTag_immShift (m : String) (hm : m = "SHR:" ∨ m = "SHL:" ∨ 
     rw [hw] at this
     exact absurd this (by decide)
 
-/-- **The flag machine has no step for the exported immediate shift.** The body
-    walk's image of a `shrImm`/`shlImm`/`sarImm` binding over a register source,
-    under its descriptor, is stuck under `fstepF`: it is neither the flag compare
-    nor a register copy, and the delegated `lsemStepMem` reaches `lsemStepN`'s
-    one-source arm, which steps only `NEG` and `MOV`. -/
-theorem fstepF_immShift_none (op : JasminOp) (w k : Nat)
-    (hop : op = .shrImm w k ∨ op = .shlImm w k ∨ op = .sarImm w k)
-    (dst a : String) (s : LstateM) (zf : Bool) :
-    fstepF (opToLinstrR op dst [.reg a], memTagOfOp op) s zf = none := by
-  have hplain := opToLinstrR_plain op
-    (by rcases hop with rfl | rfl | rfl <;> trivial) dst [.reg a] (memTagOfOp op)
-  obtain ⟨_, hc, hm⟩ := hplain
-  obtain ⟨m, hm', hwire⟩ : ∃ m, (m = "SHR:" ∨ m = "SHL:" ∨ m = "SAR:")
-      ∧ opToLinstrR op dst [.reg a] = .Lopn [.reg dst] (withWidthTag w (m ++ toString k))
-          [.reg a] ∧ memTagOfOp op = .reg none := by
-    rcases hop with rfl | rfl | rfl
-    · exact ⟨"SHR:", Or.inl rfl, rfl, rfl⟩
-    · exact ⟨"SHL:", Or.inr (Or.inl rfl), rfl, rfl⟩
-    · exact ⟨"SAR:", Or.inr (Or.inr rfl), rfl, rfl⟩
-  obtain ⟨hwire, htag⟩ := hwire
-  obtain ⟨hN, hM⟩ := stripWidthTag_immShift m hm' w k
+/-- The count-in-mnemonic wire of an immediate shift, reduced to the base step
+    `lsemStepN` over the register half. -/
+theorem fstepF_immShiftWire (m : String) (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR")
+    (w k : Nat) (dst a : String) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString k)) [.reg a],
+        MemTag.reg none) s zf
+      = (lsemStepN (.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString k)) [.reg a])
+          s.reg).map (fun r => ({ s with reg := r }, zf)) := by
+  obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w (m ++ ":" ++ toString k) 'S'
+    (by rw [String.toList_append, String.toList_append]
+        rcases hm with rfl | rfl | rfl <;> rfl) (by decide) (by decide)
+  obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst]
+    (withWidthTag w (m ++ ":" ++ toString k)) [LOperand.reg a] (.reg none) h1 h2
   unfold fstepF
-  rw [hc, hm]
-  simp only []
-  rw [hwire, htag]
-  simp [lsemStepMem, lsemStepCast, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
-    sbbStruct?, sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN]
-  rw [if_neg (by simpa using hN), if_neg (by simpa using hM)]
+  rw [hc, hmv]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
+    lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
+  simp only [Option.map_map]
+  cases lsemStepN (.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString k)) [.reg a]) s.reg <;>
+    rfl
+
+/-! ### The expansion carrying the model chain to the body walk -/
+
+/-- Under the trivial immediate-slot map, every operand a variable vector
+    resolves to is a register. -/
+theorem exprArgs_go_isReg {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect} :
+    ∀ {tys : List JasminTy} (hv : HVector (fun ty => Ctxt.Var Γ ty) tys)
+      (o : LOperand), o ∈ exprArgs.go curDepth nArgs argName (fun _ => none) hv →
+      ∃ r, o = .reg r
+  | [], .nil => by
+      intro o ho
+      rw [show exprArgs.go curDepth nArgs argName (fun _ => none)
+          (HVector.nil (f := fun ty => Ctxt.Var Γ ty)) = ([] : List LOperand) from rfl] at ho
+      simp at ho
+  | _ :: _, .cons v rest => by
+      intro o ho
+      have hgo : exprArgs.go curDepth nArgs argName (fun _ => none) (HVector.cons v rest)
+          = resolveVar curDepth nArgs argName (fun _ => none) v
+            :: exprArgs.go curDepth nArgs argName (fun _ => none) rest := rfl
+      rw [hgo, List.mem_cons] at ho
+      rcases ho with rfl | ho
+      · exact ⟨_, resolveVar_isReg v⟩
+      · exact exprArgs_go_isReg rest o ho
+
+/-- Under the trivial immediate-slot map, every source operand of a model
+    binding is a register. -/
+theorem exprArgs_isReg {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (e : Expr jasminDialect Γ τ) :
+    ∀ o ∈ exprArgs curDepth nArgs argName (fun _ => none) e, ∃ r, o = .reg r :=
+  fun o ho => exprArgs_go_isReg e.args o ho
+
+/-- The three structured shift bases. -/
+def isShiftBase (m : String) : Bool := m == "SHR" || m == "SHL" || m == "SAR"
+
+/-- The count-in-mnemonic rendering of a structured shift mnemonic at count `n`,
+    keeping the width tag of the structured form. -/
+def shiftCountMnem (opn : String) (n : Nat) : String :=
+  if hasSuffix opn ":64" then withWidthTag 64 (stripWidthTag opn ++ ":" ++ toString n)
+  else opn ++ ":" ++ toString n
+
+/-- `shiftCountMnem` of a width-tagged shift base is the width-tagged
+    count-in-mnemonic rendering of the same base. -/
+theorem shiftCountMnem_withWidthTag {m : String}
+    (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR") (w n : Nat) :
+    shiftCountMnem (withWidthTag w m) n = withWidthTag w (m ++ ":" ++ toString n) := by
+  unfold shiftCountMnem
+  by_cases hw : w = 64
+  · subst hw
+    have h64 : withWidthTag 64 m = m ++ ":64" := rfl
+    rw [h64, if_pos (JasminImmShiftMnem.hasSuffix_append m ":64"),
+      JasminImmShiftMnem.stripWidthTag_append64]
+  · have hnt : ∀ s : String, withWidthTag w s = s := by
+      intro s; simp only [withWidthTag, if_neg hw]
+    rw [hnt, hnt, if_neg (by rcases hm with rfl | rfl | rfl <;> decide)]
+
+/-- `isShiftBase` accepts the stripped width-tagged shift bases. -/
+theorem isShiftBase_stripWidthTag {m : String}
+    (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR") (w : Nat) :
+    isShiftBase (stripWidthTag (withWidthTag w m)) = true := by
+  rcases hm with rfl | rfl | rfl
+  · rw [stripWidthTag_withWidthTag_SHR]; rfl
+  · rw [stripWidthTag_withWidthTag_SHL]; rfl
+  · rw [stripWidthTag_withWidthTag_SAR]; rfl
+
+/-- The instruction expansion from the model chain to the body walk: a
+    structured immediate shift `Lopn [dst] "SHR" [src, #n]` becomes the
+    count-in-mnemonic one-source form `Lopn [dst] "SHR:n" [src]`; every other
+    instruction expands to itself. -/
+def immShiftExpand (i : LinstrRM) : List LinstrRM :=
+  match i with
+  | (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none) =>
+      if isShiftBase (stripWidthTag opn) then
+        [(.Lopn [.reg dst] (shiftCountMnem opn n) [.reg src], MemTag.reg none)]
+      else [(.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)]
+  | i => [i]
+
+/-- An `Lopn` all of whose sources are registers expands to itself. -/
+theorem immShiftExpand_of_regs (dst opn : String) (srcs : List LOperand) (tag : MemTag)
+    (h : ∀ o ∈ srcs, ∃ r, o = LOperand.reg r) :
+    immShiftExpand (.Lopn [.reg dst] opn srcs, tag) = [(.Lopn [.reg dst] opn srcs, tag)] := by
+  rcases srcs with _ | ⟨a, _ | ⟨b, rest⟩⟩
+  · rfl
+  · cases a <;> rfl
+  · obtain ⟨rb, rfl⟩ := h b (by simp)
+    cases a <;> cases rest <;> rfl
+
+/-- The expansion of a structured immediate shift is the count-in-mnemonic
+    one-source instruction of the same destination, source and count. -/
+theorem immShiftExpand_structShift {m : String}
+    (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR") (w n : Nat) (dst src : String) :
+    immShiftExpand (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n], MemTag.reg none)
+      = [(.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString n)) [.reg src],
+          MemTag.reg none)] := by
+  show (if isShiftBase (stripWidthTag (withWidthTag w m)) then _ else _) = _
+  rw [if_pos (isShiftBase_stripWidthTag hm w), shiftCountMnem_withWidthTag hm w n]
+
+/-- An instruction that is not a structured immediate shift expands to
+    itself. -/
+theorem immShiftExpand_of_not_shift (i : LinstrRM)
+    (h : ∀ dst opn src n,
+      i ≠ (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)) :
+    immShiftExpand i = [i] := by
+  unfold immShiftExpand
+  split
+  · next dst opn src n => exact absurd rfl (h dst opn src n)
+  · rfl
+
+/-- A binding of the fragment's op set whose sources are registers expands to
+    itself: only the model chain's structured shift wire, whose count is an
+    immediate, is rewritten. -/
+theorem immShiftExpand_opToLinstrR {op : JasminOp} (hop : OpPlain op) (dst : String)
+    (srcs : List LOperand) (hsrc : ∀ o ∈ srcs, ∃ r, o = LOperand.reg r) :
+    immShiftExpand (opToLinstrR op dst srcs, memTagOfOp op)
+      = [(opToLinstrR op dst srcs, memTagOfOp op)] := by
+  cases op <;> first
+    | exact absurd hop id
+    | exact immShiftExpand_of_regs _ _ _ _ hsrc
+    | rfl
+    | exact immShiftExpand_of_not_shift _ (fun _ _ _ _ hcon => by
+        simp [memTagOfOp] at hcon)
+
+/-- **The expanded chain equation.** For an update whose ops lie in the
+    fragment's op set, the typed body walk of the export is the expansion image
+    of the model chain `straightOpsMem` under the loop renaming `σ`. -/
+theorem loopBodyWalkNM_eq_expand {σ : String → String} {d nInv : Nat} {accReg : String}
+    {invRegs : List String} (hσ : LoopRen σ d nInv accReg invRegs)
+    {Γ : Ctxt jasminDialect} {t : JasminTy} (com : Com jasminDialect Γ t)
+    (hcom : ComOpsPlain com) (curDepth : Nat) :
+    loopBodyWalkNM d accReg (loopIdx d) invRegs (fun _ => none) com curDepth
+      = ((straightOpsMem (nInv + 2) com curDepth).map (renRM σ)).flatMap immShiftExpand := by
+  induction com generalizing curDepth with
+  | ret v => rfl
+  | var e body ih =>
+      obtain ⟨hop, hbody⟩ := hcom
+      have hreg : ∀ o ∈ (exprArgs curDepth (nInv + 2) argName (fun _ => none) e).map
+          (renOperand σ), ∃ r, o = LOperand.reg r := by
+        intro o ho
+        obtain ⟨o', ho', rfl⟩ := List.mem_map.mp ho
+        obtain ⟨r, rfl⟩ := exprArgs_isReg e o' ho'
+        exact ⟨σ r, rfl⟩
+      simp only [loopBodyWalkNM, straightOpsMem, List.map_cons, List.flatMap_cons,
+        ih hbody]
+      rw [loopExprArgsN_eq_ren hσ, ← hσ.reg curDepth, ← List.singleton_append]
+      congr 1
+      split
+      · next w n h =>
+          rw [h] at hop ⊢
+          simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
+          exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
+      · next w n h =>
+          rw [h] at hop ⊢
+          simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
+          exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
+      · next w w' h =>
+          rw [h] at hop ⊢
+          simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
+          exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
+      · split
+        · next w n s h hs =>
+            obtain ⟨r, rfl⟩ := exprArgs_isReg e s (by rw [hs]; simp)
+            rw [hs, h]
+            simp only [renRM, renLinstrR, JasminLsemShift.shiftLinstr, List.map_cons,
+              List.map_nil, renOperand, immShiftExpand_structShift (Or.inl rfl),
+              opToLinstrR, memTagOfOp]
+            rfl
+        · next w n s h hs =>
+            obtain ⟨r, rfl⟩ := exprArgs_isReg e s (by rw [hs]; simp)
+            rw [hs, h]
+            simp only [renRM, renLinstrR, JasminLsemShift.shiftLinstr, List.map_cons,
+              List.map_nil, renOperand, immShiftExpand_structShift (Or.inr (Or.inl rfl)),
+              opToLinstrR, memTagOfOp]
+            rfl
+        · next w n s h hs =>
+            obtain ⟨r, rfl⟩ := exprArgs_isReg e s (by rw [hs]; simp)
+            rw [hs, h]
+            simp only [renRM, renLinstrR, JasminLsemShift.shiftLinstr, List.map_cons,
+              List.map_nil, renOperand, immShiftExpand_structShift (Or.inr (Or.inr rfl)),
+              opToLinstrR, memTagOfOp]
+            rfl
+        · have htag : memTagOfOp e.op = MemTag.reg none := by
+            unfold memTagOfOp; split <;> simp_all
+          simp only [renRM, renLinstrR_opToLinstrR σ _ hop]
+          rw [← htag]
+          exact (immShiftExpand_opToLinstrR hop _ _ hreg).symm
 
 /-! ## 5. Second difference: the accumulator writeback
 

@@ -8,6 +8,7 @@ import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
 
 /-!
 # A non-uniform-width linear machine and the widened `correct ∧ robust`
@@ -351,6 +352,16 @@ def zeroextLinstr (dst src : String) : LinstrR :=
 def movImmLinstr (w : Nat) (dst : String) (n : Nat) : LinstrR :=
   .Lopn [.reg dst] (JasminLprogExport.withWidthTag w "MOV") [.imm n]
 
+/-- The width-`w` word an immediate shift with base mnemonic `m` (`"SHL"`,
+    `"SHR"` or `"SAR"`) and compile-time count `k` writes. `"SHL"` and `"SHR"`
+    are the `applyOpnN` shifts at the count materialised as a width-`w` word;
+    `"SAR"` is the arithmetic right shift, which `applyOpnN` does not carry. Any
+    other mnemonic is `none`. -/
+def applyImmShiftN (w : Nat) (m : String) (k : Nat) (a : BitVec w) : Option (BitVec w) :=
+  if m = "SAR" then some (BitVec.sshiftRight a k)
+  else if m = "SHL" || m = "SHR" then applyOpnN w m [a, BitVec.ofNat w k]
+  else none
+
 /-- The base mnemonic `"NEG"` round-trips through
     `stripWidthTag ∘ withWidthTag`. -/
 theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
@@ -381,6 +392,10 @@ theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
       width `wₐ`, advance pc. This is the register-source counterpart of the
       nullary immediate `MOV` arm above (`[.imm n]`), and models the `MOV dst, src`
       copy the schoolbook column emits to route a materialised carry word.
+    * `Lopn [.reg dst] opn [.reg a]` with `immShiftMnem? opn = some (m, k)` — the
+      count-in-mnemonic immediate shift `opToLinstrR` emits for
+      `shrImm`/`shlImm`/`sarImm`: read the data width `wₐ` from `a`'s store tag,
+      apply `applyImmShiftN wₐ m k`, write `dst` at width `wₐ`, advance pc.
       A one-source `Lopn` under any other mnemonic returns `none`.
 
     The CMOV arm is matched *before* the generic binop arm (`select`'s mnemonic
@@ -437,7 +452,16 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
             | some v => some ((s.setReg dst v).nextPc)
             | none => none
         | none => none
-      else none
+      else
+        match JasminImmShiftMnem.immShiftMnem? opn with
+        | some (m, k) =>
+            match readReg s (.reg a) with
+            | some ⟨wₐ, va⟩ =>
+                match applyImmShiftN wₐ m k va with
+                | some v => some ((s.setReg dst v).nextPc)
+                | none => none
+            | none => none
+        | none => none
   | .Lopn _ _ _ => none
   | .Lalign => some s.nextPc
   | .Llabel _ _ => some s.nextPc

@@ -1273,7 +1273,16 @@ def stepEff (i : LinstrR) (s : LstateN) : Option (Option Cell) :=
               | some v => some (some (dst, ⟨wa, v⟩))
               | none => none
           | none => none
-        else none
+        else
+          match JasminImmShiftMnem.immShiftMnem? opn with
+          | some (m, k) =>
+              match readReg s (.reg a) with
+              | some ⟨wa, va⟩ =>
+                  match applyImmShiftN wa m k va with
+                  | some v => some (some (dst, ⟨wa, v⟩))
+                  | none => none
+              | none => none
+          | none => none
   | .Lopn _ _ _ => none
   | .Lalign => some none
   | .Llabel _ _ => some none
