@@ -43,6 +43,11 @@ F_struct_bv:12000
 F_struct_nat:12000
 G_bignat:3000
 M_modmul:5000
+C_chacha20:19520
+C_poly1305:6000
+C_aes128:25820
+C_sha256:7800
+C_keccak:9100
 "
 
 command -v "$LEAN_BIN" >/dev/null 2>&1 || { echo "kernel-cost: no lean binary ($LEAN_BIN)" >&2; exit 2; }

@@ -1,10 +1,15 @@
 # file<TAB>us_per_op — see scripts/kernel-cost-bench.sh
-N_nat	48
-U_uint64	327
-A_direct	263
-B_string	360
-E_wide	840
-F_struct_bv	508
-F_struct_nat	527
-G_bignat	47
-M_modmul	134
+N_nat	31
+U_uint64	224
+A_direct	206
+B_string	370
+E_wide	713
+F_struct_bv	418
+F_struct_nat	463
+G_bignat	90
+M_modmul	170
+C_chacha20	87
+C_poly1305	193
+C_aes128	84
+C_sha256	32
+C_keccak	31
