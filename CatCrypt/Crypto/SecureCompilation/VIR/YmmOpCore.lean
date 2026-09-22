@@ -125,6 +125,18 @@ def vpadddW (a b : BitVec 256) : BitVec 256 := yOfDwordsW (fun i => yDwordW a i.
     Verbatim copy of `Avx2Ymm.vpsubd`. -/
 def vpsubdW (a b : BitVec 256) : BitVec 256 := yOfDwordsW (fun i => yDwordW a i.val - yDwordW b i.val)
 
+/-- `VPMULLD a, b`: 8 × the low 32 bits of the 32-bit-lane products. The low
+    word is the same for a signed and an unsigned reading of the operands.
+    AVX2. -/
+def vpmulldW (a b : BitVec 256) : BitVec 256 := yOfDwordsW (fun i => yDwordW a i.val * yDwordW b i.val)
+
+/-- `VPSRAD a, imm8`: 8 × arithmetic shift right of each 32-bit lane by `imm8`,
+    replicating the sign bit. `BitVec.sshiftRight` saturates to all sign bits
+    once the count reaches the lane width, which is the x86 behaviour for
+    `imm8 ≥ 32`. AVX2. -/
+def vpsradW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfDwordsW (fun i => (yDwordW a i.val).sshiftRight imm)
+
 /-- `VPBLENDD a, b, imm8`: per-dword select. For each of the 8 dword lanes `i`,
     if bit `i` of `imm` is set the result dword is `b`'s, else `a`'s (Intel SDM
     `VPBLENDD`: `a` = src1 = `vvvv`, `b` = src2 = `ModRM.rm`).
@@ -324,6 +336,10 @@ inductive YmmOp where
   /-- `VPROLQ a, imm8` — 4×u64 rotate left (`imm8` baked in). Unary. AVX-512VL,
       so EVEX-encoded; the other ops here are VEX. -/
   | vprolq (imm : Nat)
+  /-- `VPMULLD a, b` — 8×u32 low-word product. Binary. AVX2. -/
+  | vpmulld
+  /-- `VPSRAD a, imm8` — 8×i32 arithmetic shift right (`imm8` baked in). Unary. AVX2. -/
+  | vpsrad (imm : Nat)
   deriving DecidableEq, Repr
 
 /-- Whether the op consumes one (`false`) or two (`true`) register operands.
@@ -353,6 +369,8 @@ def YmmOp.isBinary : YmmOp → Bool
   | .vpsllvd => true
   | .vpandn => true
   | .vprolq _ => false
+  | .vpmulld => true
+  | .vpsrad _ => false
 
 /-- The jasmin/x86 (gas / AT&T) mnemonic of a `YmmOp` for asm emit. The AT&T
     print is lower-case with operands in `src…, dst` order; the printer adds the
@@ -381,6 +399,8 @@ def YmmOp.attMnemonic : YmmOp → String
   | .vpsllvd => "vpsllvd"
   | .vpandn => "vpandn"
   | .vprolq _ => "vprolq"
+  | .vpmulld => "vpmulld"
+  | .vpsrad _ => "vpsrad"
 
 /-- The jasmin/Intel-SDM mnemonic of a `YmmOp` (upper-case, matching the
     `SimdOp.mnemonic` convention used by the dialect printer). -/
@@ -408,6 +428,8 @@ def YmmOp.jasminMnemonic : YmmOp → String
   | .vpsllvd => "VPSLLVD"
   | .vpandn => "VPANDN"
   | .vprolq n => "VPROLQ:" ++ toString n
+  | .vpmulld => "VPMULLD"
+  | .vpsrad n => "VPSRAD:" ++ toString n
 
 /-! ## 4. Per-arm denotation (mixed arity)
 
@@ -445,6 +467,8 @@ def YmmOp.denoteUnary : YmmOp → BitVec 256 → BitVec 256
   | .vpsllvd, a => vpsllvdW a a
   | .vpandn, a => vpandnW a a
   | .vprolq imm, a => vprolqW a imm
+  | .vpmulld, a => vpmulldW a a
+  | .vpsrad imm, a => vpsradW a imm
 
 /-- The binary-op denotation (`vpmuldq`/`vpsubq`/`vpaddd`/`vpsubd`/`vpblendd`).
     The unary arms ignore `b`. -/
@@ -472,6 +496,8 @@ def YmmOp.denoteBinary : YmmOp → BitVec 256 → BitVec 256 → BitVec 256
   | .vpsllvd, a, b => vpsllvdW a b
   | .vpandn, a, b => vpandnW a b
   | .vprolq imm, a, _ => vprolqW a imm
+  | .vpmulld, a, b => vpmulldW a b
+  | .vpsrad imm, a, _ => vpsradW a imm
 
 /-- The uniform per-arm denotation, reading two `BitVec 256` operands (the unary
     arms ignore the second). This is the single dispatch the `Com` integration

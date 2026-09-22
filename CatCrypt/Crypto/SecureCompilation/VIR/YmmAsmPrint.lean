@@ -165,6 +165,8 @@ def renderYmmInstr : YmmInstr → String
       -- imm8-carrying unary lane rotate (AVX-512VL): `\tvprolq\t$imm, src, dst`
       | .vprolq imm, [a] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      | .vpsrad imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       -- unary high-dup move: `\tvmovshdup\tsrc, dst`
       | .vmovshdup, [a] =>
           "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst

@@ -140,6 +140,18 @@ def lowering : BlockLoweringData jasminDialect jasminDialect where
     | ⟨.regArith .and 32, h, .cons a (.cons b .nil)⟩ =>
         congrArg widen8Ty h ▸
           Com.var ⟨.vymm .vpand, rfl, .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
+    | ⟨.regArith .sub 32, h, .cons a (.cons b .nil)⟩ =>
+        congrArg widen8Ty h ▸
+          Com.var ⟨.vymm .vpsubd, rfl, .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
+    | ⟨.regArith .mul 32, h, .cons a (.cons b .nil)⟩ =>
+        congrArg widen8Ty h ▸
+          Com.var ⟨.vymm .vpmulld, rfl, .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
+    | ⟨.regArith .andn 32, h, .cons a (.cons b .nil)⟩ =>
+        congrArg widen8Ty h ▸
+          Com.var ⟨.vymm .vpandn, rfl, .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
+    | ⟨.sarImm 32 n, h, .cons a .nil⟩ =>
+        congrArg widen8Ty h ▸
+          Com.var ⟨.vymm (.vpsrad n), rfl, .cons (mapVar a) .nil⟩ (.ret .here)
     | ⟨.shlImm 32 n, h, .cons a .nil⟩ =>
         congrArg widen8Ty h ▸
           Com.var ⟨.vymm (.vpslld n), rfl, .cons (mapVar a) .nil⟩ (.ret .here)
@@ -239,19 +251,26 @@ theorem ofNat_toNat_256 (x : BitVec 256) : BitVec.ofNat 256 x.toNat = x := by
 
 /-! ## 4. The covered fragment -/
 
-/-- The scalar ops `batch8` widens lane-preservingly: `add/xor/or/and` at width 32,
-    `shl/shr` at width 32, and rotate-right `rorImm 32 n` with `0 < n < 32`. -/
+/-- The scalar ops `batch8` widens lane-preservingly: `add/sub/mul/xor/or/and/andn`
+    at width 32, `shl/shr` at width 32, the immediate shifts including the
+    arithmetic `sarImm`, and rotate-right `rorImm 32 n` with `0 < n < 32`. The
+    subtract, low product, and-not and arithmetic shift are what per-coefficient
+    lattice arithmetic needs on top of the SHA fragment. -/
 def CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) : Prop :=
   match e.op with
   | .regArith .add w => w = 32
+  | .regArith .sub w => w = 32
+  | .regArith .mul w => w = 32
   | .regArith .xor w => w = 32
   | .regArith .or w => w = 32
   | .regArith .and w => w = 32
+  | .regArith .andn w => w = 32
   | .regArith .shl w => w = 32
   | .regArith .shr w => w = 32
   | .shlImm w _ => w = 32
   | .shrImm w _ => w = 32
+  | .sarImm w _ => w = 32
   | .rorImm w n => w = 32 ∧ 0 < n ∧ n < 32
   | .regConst w _ => w = 32
   | .stackLoad w _ => w = 32
@@ -352,8 +371,30 @@ theorem blockOpLane {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDia
               = (⟨.regArith .and 32, rfl, .cons a (.cons b .nil)⟩ :
                   Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
           erw [vpandW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | sub => simp only [CoveredExpr] at he
-      | mul => simp only [CoveredExpr] at he
+      | sub =>
+          simp only [CoveredExpr] at he; subst he
+          cases args; rename_i a rest
+          cases rest; rename_i b rest2
+          cases rest2
+          have LA := laneOf_lookup a W k
+          have LB := laneOf_lookup b W k
+          simp only [laneOfTy_reg32] at LA LB
+          show yDwordW (vpsubdW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
+              = (⟨.regArith .sub 32, rfl, .cons a (.cons b .nil)⟩ :
+                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
+          erw [vpsubdW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
+      | mul =>
+          simp only [CoveredExpr] at he; subst he
+          cases args; rename_i a rest
+          cases rest; rename_i b rest2
+          cases rest2
+          have LA := laneOf_lookup a W k
+          have LB := laneOf_lookup b W k
+          simp only [laneOfTy_reg32] at LA LB
+          show yDwordW (vpmulldW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
+              = (⟨.regArith .mul 32, rfl, .cons a (.cons b .nil)⟩ :
+                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
+          erw [vpmulldW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
       | shl =>
           simp only [CoveredExpr] at he; subst he
           cases args; rename_i a rest
@@ -380,7 +421,18 @@ theorem blockOpLane {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDia
               = (⟨.regArith .shr 32, rfl, .cons a (.cons b .nil)⟩ :
                   Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
           erw [vpsrlvdW_lane, LA, LB]; rfl
-      | andn => simp only [CoveredExpr] at he
+      | andn =>
+          simp only [CoveredExpr] at he; subst he
+          cases args; rename_i a rest
+          cases rest; rename_i b rest2
+          cases rest2
+          have LA := laneOf_lookup a W k
+          have LB := laneOf_lookup b W k
+          simp only [laneOfTy_reg32] at LA LB
+          show yDwordW (vpandnW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
+              = (⟨.regArith .andn 32, rfl, .cons a (.cons b .nil)⟩ :
+                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
+          erw [vpandnW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
   | shlImm w n =>
       simp only [CoveredExpr] at he; subst he
       cases args; rename_i a rest
@@ -448,7 +500,16 @@ theorem blockOpLane {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDia
   | mulhi w => simp only [CoveredExpr] at he
   | addCarryLo w => simp only [CoveredExpr] at he
   | addCarryHi w => simp only [CoveredExpr] at he
-  | sarImm w n => simp only [CoveredExpr] at he
+  | sarImm w n =>
+      simp only [CoveredExpr] at he; subst he
+      cases args; rename_i a rest
+      cases rest
+      have LA := laneOf_lookup a W k
+      simp only [laneOfTy_reg32] at LA
+      show BitVec.extractLsb' (32 * k.val) 32 (vpsradW ((mapVar a).lookup W) n)
+          = (⟨.sarImm 32 n, rfl, .cons a .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote
+              (laneOf k Γ W)
+      erw [vpsradW_uniform_lane, LA]; rfl
   | select w => simp only [CoveredExpr] at he
   | callN nm a r => simp only [CoveredExpr] at he
   | vymm op => simp only [CoveredExpr] at he

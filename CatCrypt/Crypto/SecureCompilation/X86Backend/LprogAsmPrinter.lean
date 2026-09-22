@@ -590,8 +590,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- count of 8/16 would otherwise be misread as a narrow width tag and the
       -- shift dropped. AT&T VEX order `vpslld $<n>, %ymm<a>, %ymm<d>`; the source
       -- operand `XMM<k>` resolves to `%ymm<k>` via `resolveName`.
-      if "VPSLLD".isPrefixOf opn || "VPSRLD".isPrefixOf opn then
-        let mn := if "VPSLLD".isPrefixOf opn then "vpslld" else "vpsrld"
+      if "VPSLLD".isPrefixOf opn || "VPSRLD".isPrefixOf opn || "VPSRAD".isPrefixOf opn then
+        let mn := if "VPSLLD".isPrefixOf opn then "vpslld"
+                  else if "VPSRLD".isPrefixOf opn then "vpsrld" else "vpsrad"
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
             [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
@@ -872,7 +873,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- swap is sound for them exactly as for the bitwise ops.
       else if opn == "VPADDD" || opn == "VPXOR" || opn == "VPOR"
               || opn == "VPAND" || opn == "VPADDQ" || opn == "VPMULDQ"
-              || opn == "VPMULUDQ" || opn == "VPMULLQ" then
+              || opn == "VPMULUDQ" || opn == "VPMULLQ" || opn == "VPMULLD" then
         let mn := if opn == "VPADDD" then "vpaddd"
                   else if opn == "VPXOR" then "vpxor"
                   else if opn == "VPOR" then "vpor"
@@ -880,6 +881,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
                   else if opn == "VPADDQ" then "vpaddq"
                   else if opn == "VPMULDQ" then "vpmuldq"
                   else if opn == "VPMULUDQ" then "vpmuludq"
+                  else if opn == "VPMULLD" then "vpmulld"
                   else "vpmullq"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
@@ -969,8 +971,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- (src2, first) may be memory and `a` (src1, second) and `d` must be
       -- registers — the same spill posture as `VPSLLVD`'s data/count split with
       -- `a` in the data (must-be-reg) role and `b` in the count (may-be-mem) role.
-      else if opn == "VPSUBD" || opn == "VPSUBQ" then
-        let mn := if opn == "VPSUBD" then "vpsubd" else "vpsubq"
+      else if opn == "VPSUBD" || opn == "VPSUBQ" || opn == "VPANDN" then
+        let mn := if opn == "VPSUBD" then "vpsubd"
+                  else if opn == "VPSUBQ" then "vpsubq" else "vpandn"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
             let bStr := resolveName frame spillW 32 bn qsaveB    -- b = src2 (first, may be mem)
@@ -1292,6 +1295,14 @@ binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
         = ["\tvpslld $7, %ymm1, %ymm0"]
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPSRLD:25" [.reg "XMM1"]
         = ["\tvpsrld $25, %ymm1, %ymm0"]
+-- Lattice-coefficient lanes: the arithmetic shift, the low-word product, and the
+-- non-commutative and-not (`d = ~a & b`, sources printed `b, a` like VPSUBD).
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPSRAD:23" [.reg "XMM1"]
+        = ["\tvpsrad $23, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPMULLD" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpmulld %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPANDN" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpandn %ymm2, %ymm1, %ymm0"]
 -- NTT butterfly arithmetic: signed/unsigned packed multiply, qword add, and the
 -- non-commutative packed subtract (`d = a - b`, sources printed `b, a`).
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPMULDQ" [.reg "XMM1", .reg "XMM2"]

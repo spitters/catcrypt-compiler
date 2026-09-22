@@ -107,6 +107,10 @@ theorem size_lowerExprBlock {Γ : Ctxt jasminDialect} {t : JasminTy}
     cases args with
     | cons a rest => cases rest with
       | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+  case sarImm w n =>
+    cases args with
+    | cons a rest => cases rest with
+      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
   case rorImm w n =>
     cases args with
     | cons a rest => cases rest with
@@ -463,6 +467,10 @@ theorem spliceHom_lowerExprBlock_here {Γ Δ : Ctxt jasminDialect} {t : JasminTy
     cases args with
     | cons a rest => cases rest with
       | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
+  case sarImm w n =>
+    cases args with
+    | cons a rest => cases rest with
+      | nil => simp only [CoveredExpr] at hcov; subst hcov; rfl
   case rorImm w n =>
     cases args with
     | cons a rest => cases rest with
@@ -658,6 +666,9 @@ theorem blockBody_eq (nA sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot
           case xor => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpxor
           case or => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpor
           case and => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpand
+          case sub => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsubd
+          case mul => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpmulld
+          case andn => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpandn
           case shl => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsllvd
           case shr => simp only [CoveredExpr] at hcov; subst hcov; exact close .vpsrlvd
           all_goals (simp only [CoveredExpr] at hcov)
@@ -679,6 +690,16 @@ theorem blockBody_eq (nA sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot
         show [(⟨0, opToLinstrR (.vymm (.vpsrld n)) (regName wDepth)
                 [operandOfVar nA sDepth immSlotMap endSlot a]⟩ : Linstr)]
           = [(⟨0, opToLinstrR (.vymm (.vpsrld n)) (regName wDepth)
+                [resolveVar wDepth nA argName immSlotMap (ρ (mapVar a))]⟩ : Linstr)]
+        rw [hop a]
+  case sarImm w n =>
+    cases args with
+    | cons a rest => cases rest with
+      | nil =>
+        simp only [CoveredExpr] at hcov; subst hcov
+        show [(⟨0, opToLinstrR (.vymm (.vpsrad n)) (regName wDepth)
+                [operandOfVar nA sDepth immSlotMap endSlot a]⟩ : Linstr)]
+          = [(⟨0, opToLinstrR (.vymm (.vpsrad n)) (regName wDepth)
                 [resolveVar wDepth nA argName immSlotMap (ρ (mapVar a))]⟩ : Linstr)]
         rw [hop a]
   case rorImm w n =>

@@ -4937,6 +4937,20 @@ def abiSaveOf (reg : String) : Option String :=
   else if reg == "RSI" then some abiSaveRsiName
   else none
 
+/-- The save slot an input load recovers its base pointer from: the slot of the
+    base register the `InLoadMap` entry names, and `qsave.RSI` for a base with no
+    save slot. A map that names only `RSI` gets `qsave.RSI`, so its loads are
+    unchanged; a map that also names `RDI` reads those inputs through the saved
+    `RDI`. -/
+def abiLoadSave (base : String) : String := (abiSaveOf base).getD abiSaveRsiName
+
+/-- A map naming `RSI` recovers its pointer from `qsave.RSI`, as every load did
+    before the base was honoured, so those callers' loads are unchanged. -/
+theorem abiLoadSave_rsi : abiLoadSave "RSI" = abiSaveRsiName := rfl
+
+/-- A map naming `RDI` recovers its pointer from `qsave.RDI`. -/
+theorem abiLoadSave_rdi : abiLoadSave "RDI" = abiSaveRdiName := rfl
+
 /-- The red-zone save-slot name for the 3rd+ SysV pointer-argument registers
     (`RDX`, `RCX`, `R8`, `R9`) used by the **multi-input looped** 2-pointer-ABI
     export (`ComL.toLfundefPhysAbi`). The straight-line export never sees these
@@ -5236,7 +5250,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
       | some fpos =>
           if fpos < arr.size then
             match inLoadMap s with
-            | some (_base, off) => arr := arr.set! fpos (arr[fpos]! ++ [(s, loadBase, off)])
+            | some (base, off) => arr := arr.set! fpos (arr[fpos]! ++ [(s, base, off)])
             | none => pure ()
       | none => pure ()
     return arr
@@ -5251,7 +5265,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
         let dst : LOperand := .reg phys
         let memSrc : LOperand := .reg (memName base off)
         let reloadIn : Linstr :=
-          ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRsiName]⟩
+          ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
         if dst.isSpill then
           [reloadIn,
            ⟨0, .Lopn [.reg reloadScratch] abiMovBuf [memSrc]⟩,
@@ -5427,7 +5441,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
       | some fpos =>
           if fpos == pos then
             match inLoadMap s with
-            | some (_base, off) => some (s, loadBase, off)
+            | some (base, off) => some (s, base, off)
             | none => none
           else none
       | none => none)
@@ -5443,7 +5457,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
       let dst : LOperand := .reg phys
       let memSrc : LOperand := .reg (memName base off)
       let reloadIn : Linstr :=
-        ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRsiName]⟩
+        ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
       if dst.isSpill then
         [reloadIn,
          ⟨0, .Lopn [.reg reloadScratch] abiMovBuf [memSrc]⟩,
@@ -5611,7 +5625,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
       | some fpos =>
           if fpos == pos then
             match inLoadMap s with
-            | some (_base, off) => some (s, loadBase, off)
+            | some (base, off) => some (s, base, off)
             | none => none
           else none
       | none => none)
@@ -5621,7 +5635,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
       let dst : LOperand := .reg phys
       let memSrc : LOperand := .reg (memName base off)
       let reloadIn : Linstr :=
-        ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRsiName]⟩
+        ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
       if dst.isSpill then
         [reloadIn,
          ⟨0, .Lopn [.reg reloadScratch] abiMovBuf [memSrc]⟩,

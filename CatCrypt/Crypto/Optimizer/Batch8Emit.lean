@@ -94,6 +94,17 @@ def blockBody (nArgs sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot : A
   | ⟨.regArith .and 32, _, .cons a (.cons b .nil)⟩ =>
       op1 (.vymm .vpand) [operandOfVar nArgs sDepth immSlotMap endSlot a,
                           operandOfVar nArgs sDepth immSlotMap endSlot b]
+  | ⟨.regArith .sub 32, _, .cons a (.cons b .nil)⟩ =>
+      op1 (.vymm .vpsubd) [operandOfVar nArgs sDepth immSlotMap endSlot a,
+                           operandOfVar nArgs sDepth immSlotMap endSlot b]
+  | ⟨.regArith .mul 32, _, .cons a (.cons b .nil)⟩ =>
+      op1 (.vymm .vpmulld) [operandOfVar nArgs sDepth immSlotMap endSlot a,
+                            operandOfVar nArgs sDepth immSlotMap endSlot b]
+  | ⟨.regArith .andn 32, _, .cons a (.cons b .nil)⟩ =>
+      op1 (.vymm .vpandn) [operandOfVar nArgs sDepth immSlotMap endSlot a,
+                           operandOfVar nArgs sDepth immSlotMap endSlot b]
+  | ⟨.sarImm 32 n, _, .cons a .nil⟩ =>
+      op1 (.vymm (.vpsrad n)) [operandOfVar nArgs sDepth immSlotMap endSlot a]
   | ⟨.shlImm 32 n, _, .cons a .nil⟩ =>
       op1 (.vymm (.vpslld n)) [operandOfVar nArgs sDepth immSlotMap endSlot a]
   | ⟨.shrImm 32 n, _, .cons a .nil⟩ =>

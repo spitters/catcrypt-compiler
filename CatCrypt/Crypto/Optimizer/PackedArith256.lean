@@ -46,7 +46,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Optimizer.PackedArith256
 
 open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
-  (vpadddW vpxorW vporW vpandW yDwordW yOfDwordsW)
+  (vpadddW vpxorW vporW vpandW vpsubdW vpmulldW vpandnW vpsradW yDwordW yOfDwordsW)
 
 /-- **Packed 8-lane dword add per lane.** Dword lane `k` of `vpadddW a b`
     (`VPADDD`, 8×`u32` wrapping add) is the sum of lane `k` of `a` and lane `k`
@@ -126,5 +126,45 @@ theorem vpandW_is_scalar_vmap₂ (a b : BitVec 256) :
   funext k
   rw [vpandW_lane]
   rfl
+
+/-! ## The arithmetic of lattice coefficients
+
+The lanes `batch8` needs to widen per-coefficient lattice arithmetic: subtract,
+the low-word product, the and-not of a mask, and the sign-replicating shift that
+Montgomery and Barrett reductions use. -/
+
+/-- **Packed dword subtract per lane.** Lane `k` of `vpsubdW a b` (`VPSUBD`) is
+    the wrapping difference of lane `k` of `a` and `b`. -/
+theorem vpsubdW_lane (a b : BitVec 256) (k : Fin 8) :
+    yDwordW (vpsubdW a b) k.val = yDwordW a k.val - yDwordW b k.val := by
+  fin_cases k <;>
+    simp only [vpsubdW, yOfDwordsW, yDwordW, Fin.foldl_succ, Fin.foldl_zero, Fin.isValue,
+      Fin.val_zero, Fin.val_succ] <;>
+    bv_decide
+
+/-- **Packed dword low product per lane.** Lane `k` of `vpmulldW a b` (`VPMULLD`)
+    is the low 32 bits of the product of lane `k` of `a` and `b`. -/
+theorem vpmulldW_lane (a b : BitVec 256) (k : Fin 8) :
+    yDwordW (vpmulldW a b) k.val = yDwordW a k.val * yDwordW b k.val := by
+  fin_cases k <;>
+    simp only [vpmulldW, yOfDwordsW, yDwordW, Fin.foldl_succ, Fin.foldl_zero, Fin.isValue,
+      Fin.val_zero, Fin.val_succ] <;>
+    bv_decide
+
+/-- **Packed and-not per lane.** Lane `k` of `vpandnW a b` (`VPANDN`) is the
+    complement of lane `k` of `a` AND-ed with lane `k` of `b`. -/
+theorem vpandnW_lane (a b : BitVec 256) (k : Fin 8) :
+    yDwordW (vpandnW a b) k.val = (~~~yDwordW a k.val) &&& yDwordW b k.val := by
+  fin_cases k <;> simp only [vpandnW, yDwordW] <;> bv_decide
+
+/-- **Packed arithmetic shift right per lane.** Lane `k` of `vpsradW a c`
+    (`VPSRAD`) is lane `k` of `a` shifted right by `c` with the sign replicated. -/
+theorem vpsradW_uniform_lane (a : BitVec 256) (c : Nat) (k : Fin 8) :
+    BitVec.extractLsb' (32 * k.val) 32 (vpsradW a c)
+      = (BitVec.extractLsb' (32 * k.val) 32 a).sshiftRight c := by
+  fin_cases k <;>
+    simp only [vpsradW, yOfDwordsW, yDwordW, Fin.foldl_succ, Fin.foldl_zero, Fin.isValue,
+      Fin.val_zero, Fin.val_succ] <;>
+    bv_decide
 
 end CatCrypt.Crypto.Optimizer.PackedArith256
