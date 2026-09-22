@@ -15,6 +15,11 @@ Each theorem states that the flag-aware symbolic executor of
 of `Imported.Ed25519PointAddShipped.ed25519PointAddShippedBlock` to its exit ones, under
 the slot values of the generated program `paG`. The checks are `pa_part1` … `pa_part5`, each by
 `decide +kernel`.
+
+Each check reduces a symbolic run of about 230 instructions in the kernel, and one of them
+alone reaches 4.84 GB resident. This module is listed in `scripts/ci-only-modules.txt`: its
+build belongs on a CI runner, and a module per check does not divide the cost, which is one
+declaration's reduction.
 -/
 
 @[expose] public section

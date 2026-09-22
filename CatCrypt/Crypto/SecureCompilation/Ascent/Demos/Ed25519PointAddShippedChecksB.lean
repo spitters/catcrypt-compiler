@@ -15,6 +15,9 @@ Each theorem states that the flag-aware symbolic executor of
 of `Imported.Ed25519PointAddShipped.ed25519PointAddShippedBlock` to its exit ones, under
 the slot values of the generated program `paG`. The checks are `pa_part6` … `pa_part10`, each by
 `decide +kernel`.
+
+`Ed25519PointAddShippedChecksA` carries the measured cost of a check and the reason both
+modules are listed in `scripts/ci-only-modules.txt`.
 -/
 
 @[expose] public section

@@ -143,6 +143,21 @@ bash scripts/check-build-cost.sh --record                   # build and record t
 `BUILD_COST_TIMEOUT`, `BUILD_COST_MEM_MB`, `BUILD_COST_CORES`, and `FRONT_RE`
 (the reflection/emit-front module regex) tune it.
 
+A few modules cost more than a development box has. `scripts/ci-only-modules.txt`
+records them, each line carrying the measurement that earned it: the peak resident
+memory of one `lean` process, or the `anon-rss` of the kernel's out-of-memory record
+when the process was killed before finishing. `check-build-cost.sh` reports a listed
+module instead of elaborating it, and fails on a line whose source file is gone.
+Lake reads nothing there, so a build that imports one of these still pays the cost —
+the list says where the cost is and keeps the gate from reproducing the kill. Add a
+line only with a figure behind it.
+
+`Ed25519PointAddShippedChecksA` and `ChecksB` are the present entries: ten
+`decide +kernel` part checks of `ed25519_point_add`, each reducing a symbolic run of
+about 230 instructions, one of which alone reaches 4.84 GB. Splitting them into a
+module per check was measured and does not divide the cost, which is one
+declaration's reduction rather than an accumulation across a module.
+
 A memory cap on a cgroup whose working set is `.olean` mmaps is a pressure source,
 not a bound: those mapped pages are clean and reclaimable, so a build near the cap
 refaults them and reclaim keeps making progress while the machine thrashes. The
