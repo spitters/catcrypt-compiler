@@ -184,6 +184,14 @@ jobs:
           restore-keys: |
             lake-build-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-
 
+      - name: The ed25519 part-check statements hold
+        # Evaluates the statements of the ed25519 part checks, whose kernel proofs
+        # cost gigabytes each and sit late in the build. It needs only the symbolic
+        # executor, the models and the part maps, so it runs before the full build
+        # and reports a statement that a re-imported block has made false even when
+        # the run ends before the build reaches the modules holding the checks.
+        run: bash scripts/ed25519-part-check-gate.sh
+
       - name: Build the compiler
         # Every module in scripts/rot-guard/build-roots.txt, 64 per lake invocation.
         # The import closure of that manifest is the whole library, so this builds

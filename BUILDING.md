@@ -143,6 +143,35 @@ bash scripts/check-build-cost.sh --record                   # build and record t
 `BUILD_COST_TIMEOUT`, `BUILD_COST_MEM_MB`, `BUILD_COST_CORES`, and `FRONT_RE`
 (the reflection/emit-front module regex) tune it.
 
+A few modules cost more than a development box has. `scripts/ci-only-modules.txt`
+records them, each line carrying the measurement that earned it: the peak resident
+memory of one `lean` process, or the `anon-rss` of the kernel's out-of-memory record
+when the process was killed before finishing. `check-build-cost.sh` reports a listed
+module instead of elaborating it, and fails on a line whose source file is gone.
+Lake reads nothing there, so a build that imports one of these still pays the cost —
+the list says where the cost is and keeps the gate from reproducing the kill. Add a
+line only with a figure behind it.
+
+The entries are the part checks of `ed25519_point_add`, `ed25519_sc_reduce` and
+`ed25519_sc_muladd`: `decide +kernel` over a symbolic run of a whole part, one of which
+alone reaches 4.84 GB. Splitting them into a module per check was measured and does not
+divide the cost, which is one declaration's reduction rather than an accumulation
+across a module; cutting a part into shorter runs at a boundary certificate does.
+
+A module that does not build locally still has to stay true. The part checks are
+statements about imported blocks, and a re-import can make one false with no build
+reporting it, since nothing elaborates the modules that hold them.
+`scripts/ed25519-part-check-gate.sh` evaluates all twenty-seven statements with the
+compiled evaluator, from the symbolic executor (`Ed25519SymExec`), the models and the
+part maps alone, and fails if any is false:
+
+```bash
+bash scripts/ed25519-part-check-gate.sh
+```
+
+CI runs it before the full build, so it reports even when the run ends before the build
+reaches the checks. It adds no trust; the kernel proofs remain the artefact.
+
 A memory cap on a cgroup whose working set is `.olean` mmaps is a pressure source,
 not a bound: those mapped pages are clean and reclaimable, so a build near the cap
 refaults them and reclaim keeps making progress while the machine thrashes. The
