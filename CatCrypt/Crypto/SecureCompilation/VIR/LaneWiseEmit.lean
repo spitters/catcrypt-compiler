@@ -171,7 +171,79 @@ def polyCaddqCom (groups : Nat) : Com jasminDialect (laneCtxt (groups + 1)) R32 
   lEach (fun g _ e k => lBin e .add g (.iw g) (.sl (tB g)) k) (List.range groups)
     e fun e2 => .ret (e2.slot (groups - 1))
 
-/-! ## 3. ABI maps and the owned render
+/-! ## 3. Every program the builder writes is in `batch8`'s covered fragment
+
+`Batch8.batch8_denote` holds for programs satisfying `Batch8Covered`. Every
+`JasminBinOp` at width 32 and `sarImm 32 n` are covered, so `lBin` and `lSar`
+preserve coverage for any continuation that does, and `lEach` does by induction
+on the list. A kernel written with the builder that ends in `.ret` is therefore
+covered for every size, and the lane-preservation theorem applies to it. -/
+
+open CatCrypt.Crypto.Optimizer.Batch8 (Batch8Covered CoveredExpr)
+
+/-- A continuation whose every instance is covered. -/
+abbrev ContCovered {s : JasminTy} (k : LCont s) : Prop :=
+  ∀ {Γ' : Ctxt jasminDialect} (e : LEnv Γ'), Batch8Covered (k e)
+
+theorem lBin_covered {Γ : Ctxt jasminDialect} {s : JasminTy} (e : LEnv Γ) (op : JasminBinOp)
+    (dst : Nat) (a b : LSrc) (k : LCont s) (hk : ContCovered k) :
+    Batch8Covered (lBin e op dst a b k) := by
+  refine ⟨?_, hk _⟩
+  cases op <;> rfl
+
+theorem lSar_covered {Γ : Ctxt jasminDialect} {s : JasminTy} (e : LEnv Γ) (dst : Nat)
+    (a : LSrc) (n : Nat) (k : LCont s) (hk : ContCovered k) :
+    Batch8Covered (lSar e dst a n k) :=
+  ⟨rfl, hk _⟩
+
+theorem lEach_covered {s : JasminTy}
+    (step : Nat → {Γ : Ctxt jasminDialect} → LEnv Γ → LCont s → Com jasminDialect Γ s)
+    (hstep : ∀ (x : Nat) {Γ : Ctxt jasminDialect} (e : LEnv Γ) (k : LCont s),
+      ContCovered k → Batch8Covered (step x e k)) :
+    ∀ (xs : List Nat) {Γ : Ctxt jasminDialect} (e : LEnv Γ) (k : LCont s),
+      ContCovered k → Batch8Covered (lEach step xs e k)
+  | [], _, e, _, hk => hk e
+  | x :: rest, _, e, k, hk => hstep x e _ (fun e1 => lEach_covered step hstep rest e1 k hk)
+
+theorem ret_covered {s : JasminTy} (f : ∀ {Γ' : Ctxt jasminDialect}, LEnv Γ' → Ctxt.Var Γ' s) :
+    ContCovered (fun e => Com.ret (f e)) := fun _ => trivial
+
+/-- **Coefficient add is covered**, for every number of groups. -/
+theorem polyAdd_covered (groups : Nat) : Batch8Covered (polyAddCom groups) :=
+  lEach_covered _ (fun _ _ e k hk => lBin_covered e _ _ _ _ k hk) _ _ _
+    (ret_covered (fun e => e.slot (groups - 1)))
+
+/-- **Coefficient subtract is covered**, for every number of groups. -/
+theorem polySub_covered (groups : Nat) : Batch8Covered (polySubCom groups) :=
+  lEach_covered _ (fun _ _ e k hk => lBin_covered e _ _ _ _ k hk) _ _ _
+    (ret_covered (fun e => e.slot (groups - 1)))
+
+/-- **`reduce32` is covered**, for every number of groups. -/
+theorem polyReduce_covered (groups : Nat) : Batch8Covered (polyReduceCom groups) := by
+  apply lEach_covered
+  · intro _ _ e k hk
+    apply lBin_covered; intro _ e1
+    apply lSar_covered; intro _ e2
+    exact lBin_covered e2 _ _ _ _ k hk
+  · intro _ e
+    apply lEach_covered
+    · intro _ _ e' k' hk'
+      exact lBin_covered e' _ _ _ _ k' hk'
+    · exact fun _ => trivial
+
+/-- **`caddq` is covered**, for every number of groups. -/
+theorem polyCaddq_covered (groups : Nat) : Batch8Covered (polyCaddqCom groups) := by
+  apply lEach_covered
+  · intro _ _ e k hk
+    apply lSar_covered; intro _ e1
+    exact lBin_covered e1 _ _ _ _ k hk
+  · intro _ e
+    apply lEach_covered
+    · intro _ _ e' k' hk'
+      exact lBin_covered e' _ _ _ _ k' hk'
+    · exact fun _ => trivial
+
+/-! ## 4. ABI maps and the owned render
 
 `RDI` points at the 256 coefficients, read and written in place; `RSI` points at
 the second operand (add, sub) or at the pre-broadcast constant table (reduce,
