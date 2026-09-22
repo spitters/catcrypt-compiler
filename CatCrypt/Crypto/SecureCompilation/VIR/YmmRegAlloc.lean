@@ -68,6 +68,7 @@ def ymmWrittenNames : YmmInstr → List String
   | .ymov dst _   => [dst]
   | .yload dst _  => [dst]
   | .ystore _ _   => []
+  | .ternlog _ d _ _ => [d]
 
 /-- The vector registers an instruction reads. The general-purpose base of a
     memory operand is excluded; see the module docstring. -/
@@ -76,6 +77,7 @@ def ymmReadNames : YmmInstr → List String
   | .ymov _ src   => [src]
   | .yload _ _    => []
   | .ystore _ src => [src]
+  | .ternlog _ d b c => [d, b, c]
 
 /-- **`MachineModel YmmInstr`**: the x86 vector file for the generic allocator.
     A spill is a `ystore` of the register to its frame cell and a reload is a
@@ -93,6 +95,75 @@ instance instMachineModelYmmInstr : MachineModel YmmInstr where
 def ymmSpillAlloc (pinned scratch : List String) (frameBase : Int)
     (block : List YmmInstr) : List (String × Slot) :=
   spillAlloc (I := YmmInstr) pinned scratch frameBase block ymmStride
+
+/-! ## Materializing the decisions
+
+`GenericRegAlloc.rewriteBlock` surrounds each instruction with its spill traffic
+and leaves renaming to the printer, which for the x86 GP file knows the
+decisions. `renderYmmInstr` prints register names verbatim, so a vector block
+must be renamed before it is printed: a resident name becomes its `%ymmN`, and
+a spilled name becomes a scratch register for the one instruction that touches
+it, loaded before and stored after.
+
+Scratch registers are assigned per instruction by the position of the name in
+that instruction's list of distinct spilled names, so two spilled operands of one
+instruction get distinct scratch registers while a name that is both read and
+written — the two-address form `vpxor x, x, y` — keeps one. The scratch
+registers are withheld from allocation by passing them as `scratch` to
+`ymmSpillAlloc`, so no resident value is ever assigned one. -/
+
+/-- Rename every vector register an instruction names. The base of a memory
+    operand is a general-purpose register and is left alone. -/
+def renameYmm (f : String → String) : YmmInstr → YmmInstr
+  | .alu op d srcs => .alu op (f d) (srcs.map f)
+  | .ymov d s      => .ymov (f d) (f s)
+  | .yload d m     => .yload (f d) m
+  | .ystore m s    => .ystore m (f s)
+  | .ternlog k d b c => .ternlog k (f d) (f b) (f c)
+
+/-- The distinct spilled names one instruction touches, in first-occurrence
+    order; a name's index here is its scratch register. -/
+def spilledNamesOf (decisions : List (String × Slot)) (i : YmmInstr) : List String :=
+  ((ymmReadNames i) ++ (ymmWrittenNames i)).eraseDups.filter
+    (fun n => (spillSlotOf decisions n).isSome)
+
+/-- One instruction with its reloads before and its stores after, every name
+    mapped onto a physical register. -/
+def ymmMaterializeInstr (decisions : List (String × Slot)) (scratch : List String)
+    (i : YmmInstr) : List YmmInstr :=
+  let spilled := spilledNamesOf decisions i
+  let scr : String → Option String := fun n =>
+    (spilled.findIdx? (· == n)).bind (fun k => scratch[k]?)
+  let phys : String → String := fun n =>
+    match residentReg decisions n with
+    | some r => r
+    | none   => (scr n).getD n
+  let reloads := (ymmReadNames i).eraseDups.filterMap (fun n =>
+    (spillSlotOf decisions n).bind (fun off =>
+      (scr n).map (fun s => YmmInstr.yload s ⟨ymmFrameBase, off⟩)))
+  let stores := (ymmWrittenNames i).eraseDups.filterMap (fun n =>
+    (spillSlotOf decisions n).bind (fun off =>
+      (scr n).map (fun s => YmmInstr.ystore ⟨ymmFrameBase, off⟩ s)))
+  reloads ++ renameYmm phys i :: stores
+
+/-- The materialized block: every instruction renamed and surrounded by its
+    spill traffic. -/
+def ymmMaterialize (decisions : List (String × Slot)) (scratch : List String)
+    (block : List YmmInstr) : List YmmInstr :=
+  block.flatMap (ymmMaterializeInstr decisions scratch)
+
+/-- The vector names an instruction mentions, read or written. -/
+def ymmNamesOf (i : YmmInstr) : List String := ymmReadNames i ++ ymmWrittenNames i
+
+/-- Every vector name in a block is one of the sixteen physical registers — the
+    property a materialized block must have before it is printed. -/
+def ymmAllPhysical (block : List YmmInstr) : Bool :=
+  block.all (fun i => (ymmNamesOf i).all (fun n => ymmFile.contains n))
+
+/-- The largest number of distinct spilled names any one instruction touches —
+    the number of scratch registers `ymmMaterialize` needs. -/
+def ymmScratchNeeded (decisions : List (String × Slot)) (block : List YmmInstr) : Nat :=
+  block.foldl (fun m i => max m (spilledNamesOf decisions i).length) 0
 
 /-! ## Static pins
 

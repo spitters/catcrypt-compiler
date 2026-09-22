@@ -80,6 +80,8 @@ def YmmOp.argTys : YmmOp → List JasminTy
   | .vpslld _ => [.reg 256]
   | .vpsrlvd => [.reg 256, .reg 256]
   | .vpsllvd => [.reg 256, .reg 256]
+  | .vpandn => [.reg 256, .reg 256]
+  | .vprolq _ => [.reg 256]
 
 /-- Result type: every `YmmOp` produces a single `reg 256`.
     (The SIMD→GPR `vpmovmskb` extract, which would return `reg 32`, is the

@@ -154,6 +154,7 @@ def evalXInst (s : XState) : XInst → XState
   | .yinst (.ymov dst src) => s.setY dst (s.y src)
   | .yinst (.yload _ _)   => s
   | .yinst (.ystore _ _)  => s
+  | .yinst (.ternlog _ _ _ _) => s
   | .vpcmpeqq dst a b     => s.setY dst (vpcmpeqq256 (s.y a) (s.y b))
   | .vpmovmskb _ src      => { s with gp := (vpmovmskb256 (s.y src)).setWidth 64 }
 

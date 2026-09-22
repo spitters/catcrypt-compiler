@@ -125,6 +125,11 @@ inductive YmmInstr where
   | yload (dst : String) (mem : YmmMem)
   /-- `vmovdqu src, disp(%base)` — a store. -/
   | ystore (mem : YmmMem) (src : String)
+  /-- `vpternlogq $imm, src2, src1, dst` — `dst := ternlogW imm dst src1 src2`.
+      It reads its destination as the high input, so it is three-input and is
+      kept out of `YmmOp`, whose denotation reads at most two operands.
+      AVX-512VL (EVEX). -/
+  | ternlog (imm : Nat) (dst src1 src2 : String)
 
 /-! ## 3. Per-instruction renderer
 
@@ -157,6 +162,9 @@ def renderYmmInstr : YmmInstr → String
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       | .vpslld imm, [a] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      -- imm8-carrying unary lane rotate (AVX-512VL): `\tvprolq\t$imm, src, dst`
+      | .vprolq imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       -- unary high-dup move: `\tvmovshdup\tsrc, dst`
       | .vmovshdup, [a] =>
           "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst
@@ -170,6 +178,8 @@ def renderYmmInstr : YmmInstr → String
   | .ymov dst src    => "\tvmovdqu\t" ++ src ++ ", " ++ dst
   | .yload dst mem   => "\tvmovdqu\t" ++ renderYmmMem mem ++ ", " ++ dst
   | .ystore mem src  => "\tvmovdqu\t" ++ src ++ ", " ++ renderYmmMem mem
+  | .ternlog imm d b c =>
+      "\tvpternlogq\t$" ++ toString imm ++ ", " ++ c ++ ", " ++ b ++ ", " ++ d
 
 /-- Print a whole block's instruction lines (one per `YmmInstr`). -/
 def renderYmmBlockBody (block : List YmmInstr) : List String :=

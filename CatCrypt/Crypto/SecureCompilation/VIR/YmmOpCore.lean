@@ -209,6 +209,29 @@ def vpsrlqW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
 def vpsllqW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
   yOfQwordsW (fun j => yQwordW a j.val <<< imm)
 
+/-- `VPANDN a, b`: bitwise AND of the complement of `a` with `b`. Lane-wise at
+    every granularity (see `vpandW`). AVX2 (VEX) spelling; EVEX
+    `VPANDND`/`VPANDNQ` denote the same function. -/
+def vpandnW (a b : BitVec 256) : BitVec 256 := (~~~a) &&& b
+
+/-- `VPROLQ a, imm8`: 4 × rotate left of each 64-bit lane by `imm8`. x86 takes
+    the count modulo 64, as `BitVec.rotateLeft` does. AVX-512VL (EVEX). -/
+def vprolqW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfQwordsW (fun j => (yQwordW a j.val).rotateLeft imm)
+
+/-- `VPTERNLOGQ a, b, c, imm8`: the bitwise three-input function whose truth
+    table is `imm8`. Result bit `i` is bit `4·aᵢ + 2·bᵢ + cᵢ` of `imm8`, with `a`
+    the destination (read as the high input), `b` the first source and `c` the
+    second. Written as the disjunction of the minterms `imm8` selects, so it is a
+    plain bitwise expression. AVX-512VL (EVEX). -/
+def ternlogW (imm : Nat) (a b c : BitVec 256) : BitVec 256 :=
+  (List.range 8).foldl (fun acc k =>
+    if imm.testBit k then
+      acc ||| ((if k.testBit 2 then a else ~~~a)
+           &&& (if k.testBit 1 then b else ~~~b)
+           &&& (if k.testBit 0 then c else ~~~c))
+    else acc) 0
+
 /-- `VPSRLD a, imm8`: 8 × logical shift right of each 32-bit lane by `imm8`
     (zero for `imm8 ≥ 32`, matching x86). AVX2. -/
 def vpsrldW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
@@ -296,6 +319,11 @@ inductive YmmOp where
   | vpsrlvd
   /-- `VPSLLVD a, b` — 8×u32 logical shift left by a per-lane count vector. Binary. -/
   | vpsllvd
+  /-- `VPANDN a, b` — bitwise AND of the complement of `a` with `b`. Binary. AVX2. -/
+  | vpandn
+  /-- `VPROLQ a, imm8` — 4×u64 rotate left (`imm8` baked in). Unary. AVX-512VL,
+      so EVEX-encoded; the other ops here are VEX. -/
+  | vprolq (imm : Nat)
   deriving DecidableEq, Repr
 
 /-- Whether the op consumes one (`false`) or two (`true`) register operands.
@@ -323,6 +351,8 @@ def YmmOp.isBinary : YmmOp → Bool
   | .vpslld _ => false
   | .vpsrlvd => true
   | .vpsllvd => true
+  | .vpandn => true
+  | .vprolq _ => false
 
 /-- The jasmin/x86 (gas / AT&T) mnemonic of a `YmmOp` for asm emit. The AT&T
     print is lower-case with operands in `src…, dst` order; the printer adds the
@@ -349,6 +379,8 @@ def YmmOp.attMnemonic : YmmOp → String
   | .vpslld _ => "vpslld"
   | .vpsrlvd => "vpsrlvd"
   | .vpsllvd => "vpsllvd"
+  | .vpandn => "vpandn"
+  | .vprolq _ => "vprolq"
 
 /-- The jasmin/Intel-SDM mnemonic of a `YmmOp` (upper-case, matching the
     `SimdOp.mnemonic` convention used by the dialect printer). -/
@@ -374,6 +406,8 @@ def YmmOp.jasminMnemonic : YmmOp → String
   | .vpslld n => "VPSLLD:" ++ toString n
   | .vpsrlvd => "VPSRLVD"
   | .vpsllvd => "VPSLLVD"
+  | .vpandn => "VPANDN"
+  | .vprolq n => "VPROLQ:" ++ toString n
 
 /-! ## 4. Per-arm denotation (mixed arity)
 
@@ -409,6 +443,8 @@ def YmmOp.denoteUnary : YmmOp → BitVec 256 → BitVec 256
   | .vpshufb, a => vpshufbW a a
   | .vpsrlvd, a => vpsrlvdW a a
   | .vpsllvd, a => vpsllvdW a a
+  | .vpandn, a => vpandnW a a
+  | .vprolq imm, a => vprolqW a imm
 
 /-- The binary-op denotation (`vpmuldq`/`vpsubq`/`vpaddd`/`vpsubd`/`vpblendd`).
     The unary arms ignore `b`. -/
@@ -434,6 +470,8 @@ def YmmOp.denoteBinary : YmmOp → BitVec 256 → BitVec 256 → BitVec 256
   | .vpslld imm, a, _ => vpslldW a imm
   | .vpsrlvd, a, b => vpsrlvdW a b
   | .vpsllvd, a, b => vpsllvdW a b
+  | .vpandn, a, b => vpandnW a b
+  | .vprolq imm, a, _ => vprolqW a imm
 
 /-- The uniform per-arm denotation, reading two `BitVec 256` operands (the unary
     arms ignore the second). This is the single dispatch the `Com` integration
