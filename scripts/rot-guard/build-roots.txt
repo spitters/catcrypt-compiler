@@ -236,8 +236,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519BytesLeafCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519CompressShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519FramedCalls
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddHalfCheck
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519GuardSat
@@ -593,7 +591,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChain
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChainLogic
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519LeafCalleesField
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
 
 /-!
 # The concatenation callee of the shipped `ed25519_madd` on the address machine

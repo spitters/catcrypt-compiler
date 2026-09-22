@@ -175,36 +175,11 @@ if [ -n "$MEM_MB" ]; then
   MEMARG=(-M "$MEM_MB")
 fi
 
-CI_ONLY="scripts/ci-only-modules.txt"
-
-# A module listed as CI-only is reported rather than built: its cost is recorded
-# there with the measurement that earned it the line, and building it on a
-# development box is the out-of-memory kill the list exists to prevent. A line
-# whose source file is gone fails, so the list cannot outlive what it describes.
-if [ -f "$CI_ONLY" ]; then
-  while IFS=$'\t' read -r cf _; do
-    case "$cf" in ''|'#'*) continue ;; esac
-    if [ ! -f "$cf" ]; then
-      echo "build-cost: FAIL -- $CI_ONLY lists $cf, which does not exist."
-      exit 1
-    fi
-  done < "$CI_ONLY"
-fi
-
-ci_only() {
-  [ -f "$CI_ONLY" ] || return 1
-  grep -qF "$(printf '%s\t' "$1")" "$CI_ONLY"
-}
-
 fail=0
 for m in "${mods[@]}"; do
   src="$(echo "$m" | tr '.' '/').lean"
   if [ ! -f "$src" ]; then
     echo "  (skip) $m -- no source file $src"
-    continue
-  fi
-  if ci_only "$src"; then
-    echo "  (CI only) $m -- $(grep -F "$(printf '%s\t' "$src")" "$CI_ONLY" | cut -f2-)"
     continue
   fi
   start=$(date +%s 2>/dev/null || echo 0)

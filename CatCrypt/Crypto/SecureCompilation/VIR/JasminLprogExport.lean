@@ -286,6 +286,27 @@ def hasSuffix (s pat : String) : Bool := List.isSuffixOf pat.toList s.toList
 /-- Prefix test over the character list, for the same reason as `hasSuffix`. -/
 def hasPrefix (s pat : String) : Bool := List.isPrefixOf pat.toList s.toList
 
+/-- Drop the first `k` characters of a string, over the character list. `String.drop`
+    iterates over `String.Pos` and does not reduce inside a module; the operand-name
+    parsers are computed through by `decide`. -/
+def strDrop (s : String) (k : Nat) : String := String.ofList (s.toList.drop k)
+
+/-- Split a character list at every occurrence of `sep`, keeping the empty groups:
+    a list with `n` occurrences of `sep` yields `n + 1` groups and the separators
+    are dropped. -/
+def splitChars (sep : Char) : List Char → List (List Char)
+  | [] => [[]]
+  | c :: rest =>
+      if c = sep then [] :: splitChars sep rest
+      else match splitChars sep rest with
+        | [] => [[c]]
+        | g :: gs => (c :: g) :: gs
+
+/-- Split a string at every occurrence of one separator character, over the
+    character list. -/
+def splitOnChar (sep : Char) (s : String) : List String :=
+  (splitChars sep s.toList).map String.ofList
+
 /-- Read a decimal digit list. `String.toNat?` does not reduce inside a module,
     and the operand-name parsers are computed through by `decide`. -/
 def natOfDigits? (cs : List Char) : Option Nat :=
@@ -1689,17 +1710,17 @@ def loopBodyCallLcmdClassed (dst : String) (dstIsVec : Bool) (sym : String)
     re-joined into the name (defensive — leaf names are `;`-free). -/
 def parseCallW (opn : String) : Option (Nat × List Nat × String) :=
   let body? :=
-    if opn.startsWith "CALLNW:" then some ((opn.drop 7).toString)
-    else if opn.startsWith "CALLW:" then some ((opn.drop 6).toString)
+    if hasPrefix opn "CALLNW:" then some (strDrop opn 7)
+    else if hasPrefix opn "CALLW:" then some (strDrop opn 6)
     else none
   match body? with
   | none => none
   | some s =>
-      match s.splitOn ";" with
+      match splitOnChar ';' s with
       | retStr :: argStr :: nameParts =>
           match strToNat? retStr with
           | some retW =>
-              let argWs := (argStr.splitOn ",").filterMap strToNat?
+              let argWs := (splitOnChar ',' argStr).filterMap strToNat?
               some (retW, argWs, String.intercalate ";" nameParts)
           | none => none
       | _ => none
@@ -2034,8 +2055,8 @@ def expandCallShadows (body : Lcmd) : Lcmd :=
             let classed := (argOps.zip argWs).map (fun ⟨op, w⟩ => (op, w > 64))
             loopBodyCallLcmdClassed dst (retW > 64) sym classed
         | none =>
-          if opn.startsWith "CALLN:" then loopBodyCallLcmd dst (opn.drop 6).toString argOps
-          else if opn.startsWith "CALL:" then loopBodyCallLcmd dst (opn.drop 5).toString argOps
+          if hasPrefix opn "CALLN:" then loopBodyCallLcmd dst (strDrop opn 6) argOps
+          else if hasPrefix opn "CALL:" then loopBodyCallLcmd dst (strDrop opn 5) argOps
           else [i]
     | _ => [i])
 
@@ -3447,7 +3468,16 @@ theorem mergeSortFuel_eq {α : Type} (le : α → α → Bool) :
 
 /-- `List.mergeSort` at the fuel its own argument supplies. `List.merge` and
     `List.mergeSort` are sealed to the kernel, so a closed application of either
-    has no normal form; `mergeSortFuel` recurses on a `Nat` and reduces. -/
+    has no normal form, and `mergeSortFuel` recurses on a `Nat` instead.
+
+    Recursion on a `Nat` is necessary and not sufficient. The recursion calls
+    `List.MergeSort.Internal.splitInTwo`, which the module system seals as well,
+    so inside a `module` a closed `kernelMergeSort` application still has no
+    normal form. A module stating an equation about one unseals it with
+    `import all Init.Data.List.Sort.Basic` and `import all Init.Data.List.Sort.Impl`.
+    `import all` exposes only the named module's own implementation section and
+    is not transitive, so each such module carries its own copy of both lines.
+    Measured on Lean 4.33.1. `physLiveData` sorts live intervals with this. -/
 def kernelMergeSort {α : Type} (le : α → α → Bool) (l : List α) : List α :=
   mergeSortFuel le l.length l
 
