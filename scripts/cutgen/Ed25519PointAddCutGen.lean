@@ -167,6 +167,72 @@ def diagnose (k : Nat) : IO Unit := do
         | some p => IO.println s!"-- first disagreement: {repr p.1} := {repr p.2}"
         | none => IO.println "-- every location agrees"
 
+/-- The ten part checks of `ed25519_point_add`, as the arguments each is given. -/
+def parts : List (Nat × List WE × List (Loc × WE) × Option WE × Option WE × DState ×
+    List (JInstr 64)) :=
+  [(57, paSl1, paIn, none, none, {}, ed25519PointAddShippedPart01),
+   (239, paSl2, paMap1, some (aoWE (.v 238)), none, paState 1, ed25519PointAddShippedPart02),
+   (499, paSl3, paMap2, none, none, paState 2, ed25519PointAddShippedPart03),
+   (762, paSl4, paMap3, some (.v 761), none, paState 3, ed25519PointAddShippedPart04),
+   (1020, paSl5, paMap4, some (.v 1019), none, paState 4, ed25519PointAddShippedPart05),
+   (1270, paSl6, paMap5, some (.v 1269), none, paState 5, ed25519PointAddShippedPart06),
+   (1495, paSl7, paMap6, some (aoWE (.v 1494)), none, paState 6, ed25519PointAddShippedPart07),
+   (1748, paSl8, paMap7, some (.v 1747), none, paState 7, ed25519PointAddShippedPart08),
+   (1996, paSl9, paMap8, none, none, paState 8, ed25519PointAddShippedPart09),
+   (2251, paSl10, paMap9, some (aoWE (.v 2250)), none, paState 9,
+      ed25519PointAddShippedPart10)]
+
+/-- The size of each part check: the entry map, the locations live at its exit, and the
+    node table it builds. A packed state indexes locations and holds node indices, so
+    these are what an enumeration and a slot width have to cover. -/
+def survey : IO Unit := do
+  let mut maxLocs := 0
+  let mut maxNodes := 0
+  for (p, i) in parts.zipIdx do
+    let (a, es, mIn, cIn, zIn, A, blk) := p
+    match enterF a Tb.empty {} mIn cIn zIn with
+    | none => IO.println s!"part {i+1}: no entry"
+    | some (T₀, S₀) =>
+      match internS a [] a T₀ es with
+      | none => IO.println s!"part {i+1}: no statements"
+      | some (T₁, σ) =>
+        match symRun2 T₁ S₀ (canonFromD shippedBank A blk) with
+        | none => IO.println s!"part {i+1}: the run did not complete"
+        | some (T₂, S₂) => do
+          let live := S₂.base.regs.length + S₂.base.mem.length
+          IO.println s!"part {i+1}: entry {mIn.length}, live {live}, nodes {T₂.size}, statements {es.length}"
+          maxLocs := max maxLocs (max live mIn.length)
+          maxNodes := max maxNodes T₂.size
+  IO.println s!"-- largest location set: {maxLocs}"
+  IO.println s!"-- largest node table: {maxNodes}  (slot width 32 holds up to {2 ^ 32 - 2})"
+
+/-- The instruction at which the symbolic run of part 10 stops, stepping one at a time.
+    `pa_part10` is proved, so a stop here is a disagreement between this harness and the
+    check rather than a property of the block. -/
+def firstFail : IO Unit := do
+  match enterF 2251 Tb.empty {} paMap9 (some (aoWE (.v 2250))) none with
+  | none => IO.println "-- part 10: no entry"
+  | some (T₀, S₀) =>
+    match internS 2251 [] 2251 T₀ paSl10 with
+    | none => IO.println "-- part 10: no statements"
+    | some (T₁, _σ) => do
+      let cb := canonFromD shippedBank (paState 9) ed25519PointAddShippedPart10
+      IO.println s!"-- part 10: {cb.length} instructions, {paSl10.length} statements"
+      let mut st : Option (Tb × SSt2) := some (T₁, S₀)
+      let mut i := 0
+      let mut stopped := false
+      for ins in cb do
+        if !stopped then
+          match st with
+          | none => stopped := true
+          | some (T, S) =>
+            match symStep2 T S ins with
+            | some r => st := some r; i := i + 1
+            | none =>
+              IO.println s!"-- stops at instruction {i}: {(repr ins).pretty 200}"
+              stopped := true
+      if !stopped then IO.println s!"-- completed all {i} instructions"
+
 /-- Print the certificate at a cut as Lean source. -/
 def report (k : Nat) : IO Unit := do
   match cutAt k with
@@ -184,6 +250,12 @@ def report (k : Nat) : IO Unit := do
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCutGen
 
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCutGen in
-#eval report half1.length
+#eval firstFail
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCutGen in
+#eval IO.println s!"-- pa_part10 as stated evaluates to: {partCheck2 2251 paSl10 paMap9 (some (aoWE (.v 2250))) none paOut none none (canonFromD shippedBank (paState 9) ed25519PointAddShippedPart10)}"
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCutGen in
+#eval IO.println s!"-- pa_part9 as stated evaluates to: {partCheck2 1996 paSl9 paMap8 none none paMap9 (some (aoWE (.v 2250))) none (canonFromD shippedBank (paState 8) ed25519PointAddShippedPart09)}"
 
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCutGen in

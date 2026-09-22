@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddCompile
 
@@ -373,6 +373,9 @@ def symStep2 (T : Tb) (S : SSt2) : JInstr 64 → Option (Tb × SSt2)
   | .storeMem b o (.reg r) =>
       match rdR T S.base r with
       | (T₁, x) => some (T₁, { S with base := S.base.setM (b, o) x })
+  | .storeMem b o (.imm n) =>
+      match T.addN (.lit n) with
+      | (T₁, x) => some (T₁, { S with base := S.base.setM (b, o) x })
   | .mulx hd ld (.reg a) (.reg b) =>
       if hd = ld then none else
         match rdR T S.base a with
@@ -567,7 +570,13 @@ theorem symStep2_sound (E : Env) {T T' : Tb} {S S' : SSt2} (s : JState 64) (i : 
     exact ⟨g, srel2_of_srel hT g hR ((hR.1.grow hT g).setR d x l _ v) rfl rfl⟩
   case storeMem b o src =>
     cases src with
-    | imm _ => simp [symStep2] at h
+    | imm n =>
+      rcases hp : T.addN (.lit n) with ⟨T₁, x⟩
+      simp only [symStep2, hp, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      obtain ⟨g, l, v⟩ := Tb.addN_spec E T (.lit n) hT trivial
+      rw [hp] at g l v
+      exact ⟨g, srel2_of_srel hT g hR ((hR.1.grow hT g).setM b o x l _ v) rfl rfl⟩
     | reg r =>
       rcases hp : rdR T S.base r with ⟨T₁, x⟩
       simp only [symStep2, hp, Option.some.injEq, Prod.mk.injEq] at h

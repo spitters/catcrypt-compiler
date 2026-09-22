@@ -1617,6 +1617,7 @@ def symStep (T : Tb) (S : SSt) : JInstr 64 → Option (Tb × SSt)
             | (T₄, hi) => some (T₄, (S.setR l lo).setR h hi)
   | .loadMem d b o => match rdM T S b o with | (T₁, x) => some (T₁, S.setR d x)
   | .storeMem b o (.reg r) => match rdR T S r with | (T₁, x) => some (T₁, S.setM (b, o) x)
+  | .storeMem b o (.imm n) => match T.addN (.lit n) with | (T₁, x) => some (T₁, S.setM (b, o) x)
   | _ => none
 
 /-- A block on the symbolic state. -/
@@ -1781,7 +1782,13 @@ theorem symStep_sound (E : Env) {T T' : Tb} {S S' : SSt} (s : JState 64) (i : JI
     exact ⟨g, (hR.grow hT g).setR d x l _ v⟩
   case storeMem b o src =>
     cases src with
-    | imm _ => simp [symStep] at h
+    | imm n =>
+      rcases hp : T.addN (.lit n) with ⟨T₁, x⟩
+      simp only [symStep, hp, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      obtain ⟨g, l, v⟩ := Tb.addN_spec E T (.lit n) hT trivial
+      rw [hp] at g l v
+      exact ⟨g, (hR.grow hT g).setM b o x l _ v⟩
     | reg r =>
       rcases hp : rdR T S r with ⟨T₁, x⟩
       simp only [symStep, hp, Option.some.injEq, Prod.mk.injEq] at h
