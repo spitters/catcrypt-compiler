@@ -7,6 +7,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Jasmin.JincToCom
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
@@ -45,9 +46,11 @@ iteration, so a body that reads a scalar it has not yet written in that
 iteration — a loop-carried counter — needs that scalar to ride the
 accumulator. `withCarried` puts it there: the accumulator is a state array
 with one cell per carried scalar, and the body opens by loading each name from
-its cell and closes by storing it back. The scalars a leaf's prologue
-initialises are its carried names, and the caller seeds the state array with
-their entry values.
+its cell and closes by storing it back. A leaf's carried names are the scalars
+its loop body reads before it writes them, and the caller seeds the state array
+with the entry values the source's pre-loop initialisations assign. A body that
+writes every scalar before reading it carries nothing and keeps the two-array
+ABI.
 
 ## Main definitions
 
@@ -57,7 +60,7 @@ their entry values.
   scalars.
 * `carryLoad` / `carryStore` / `withCarried`: a body's carried scalars read
   from and written back to the state array.
-* `carriedOf`: the scalars a prologue initialises.
+* `rbwGo` / `carriedOf`: the scalars a loop body reads before it writes them.
 * `renderFor2` / `renderWhile2`: a counted loop and a countdown loop through
   the front to owned AT&T x86.
 * `renderForCarried` / `renderWhileCarried`: the same two over the state-array
@@ -261,21 +264,45 @@ def isScalarInit (env : Env) : Stmt → Bool
   | .compound _ x _ => env.isScalar x
   | _ => false
 
-/-- The scalars a prologue initialises, in first-assignment order and without
-    repeats. These are the names that enter the loop with a value, so they are
-    the ones the loop carries. -/
-def carriedOf (env : Env) : List Stmt → List String
-  | [] => []
-  | s :: rest =>
-      let nm : Option String := match s with
-        | .assign x (.imm _) => if env.isScalar x then some x else none
-        | .assign x (.glob _) => if env.isScalar x then some x else none
-        | .compound _ x _ => if env.isScalar x then some x else none
-        | _ => none
-      let tail := carriedOf env rest
-      match nm with
-      | some x => if tail.contains x then tail else x :: tail
-      | none => tail
+/-- `r` extended with those of `vs` that are neither already written nor
+    already recorded as read. -/
+def addReads (w r : List String) (vs : List String) : List String :=
+  vs.foldl (fun r v => if w.contains v || r.contains v then r else r ++ [v]) r
+
+/-- One step of the read-before-write walk: the written names and the
+    read-before-written names after running `c` from the given pair.
+
+    Reads are the index and value slots of an array access, the free variables
+    of a scalar expression, and a guard or bound. Writes are the targets of a
+    scalar set and of an array load, plus a loop binder inside its own body. A
+    body that may not run — a loop body, an `RIfNz` branch — contributes its
+    reads and none of its writes, so a name it writes still counts as carried.
+
+    The arms are those `stmtsToLowCT` produces; any other constructor
+    contributes nothing. -/
+def rbwGo : LowCT → List String × List String → List String × List String
+  | .RSkip, st => st
+  | .RSeq a b, st => rbwGo b (rbwGo a st)
+  | .RScalarSet x _, (w, r) => (x :: w, r)
+  | .RScalarSetExpr x e, (w, r) => (x :: w, addReads w r e.freeVars)
+  | .RArrLoad dst _ idx, (w, r) => (dst.locVar :: w, addReads w r [idx])
+  | .RArrStore _ idx src, (w, r) => (w, addReads w r [idx, src.locVar])
+  | .RWhileNz g b, (w, r) => (w, (rbwGo b (w, addReads w r [g])).2)
+  | .RFor x _ b, (w, r) => (w, (rbwGo b (x :: w, r)).2)
+  | .RForRuntime x bd b, (w, r) =>
+      (w, (rbwGo b (x :: w, addReads w r bd.freeVars)).2)
+  | .RIfNz g t e, (w, r) =>
+      let r₁ := (rbwGo t (w, addReads w r [g])).2
+      (w, (rbwGo e (w, r₁)).2)
+  | _, st => st
+
+/-- The scalars `body` reads before it writes them, in first-read order, less
+    the loop binder `idxName`, which the loop supplies. These are the names
+    whose value has to reach the next iteration, so they are the ones the loop
+    carries. A scalar the body writes before reading is local to an iteration
+    and is not carried, whatever the source assigns it before the loop. -/
+def carriedOf (idxName : String) (body : LowCT) : List String :=
+  ((rbwGo body ([], [])).2).filter (fun x => x ≠ idxName)
 
 /-- Whether a statement is a loop. -/
 def isLoopStmt : Stmt → Bool
@@ -302,16 +329,16 @@ structure JLeaf where
     and the second read.
 
     `none` unless the body is a prologue of scalar initialisations, then one
-    loop, then `return`s. The prologue's scalars are the leaf's `carried` names:
-    they enter the loop with a value, and the state array carries them from one
-    iteration to the next. -/
+    loop, then `return`s. The leaf's `carried` names are the scalars the loop
+    body reads before it writes them; the prologue supplies their entry values.
+    A prologue that only zeroes slots the body overwrites leaves `carried`
+    empty, so such a leaf keeps the two-array ABI. -/
 def jfunLeaf (f : JFun) : Option JLeaf := do
   let env := envOfJFun f
   match f.params with
   | [⟨.arr _ nAcc, acc⟩, ⟨.arr _ nInv, inv⟩] =>
       let (pre, rest) := f.body.span (fun s => !isLoopStmt s)
       if !pre.all (isScalarInit env) then none else
-      let carried := carriedOf env pre
       match rest with
       | loop :: post =>
           if !post.all (fun s => match s with | .ret _ => true | _ => false) then none else
@@ -320,16 +347,19 @@ def jfunLeaf (f : JFun) : Option JLeaf := do
               let c ← stmtsToLowCT env b
               if lo = 0 then
                 pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
-                       idxName := v, body := c, trips := some hi, carried := carried }
+                       idxName := v, body := c, trips := some hi,
+                       carried := carriedOf v c }
               else
+                let c' : LowCT :=
+                  .RSeq (.RScalarSetExpr v (.SAdd (.SVar tripName) (.SLit lo))) c
                 pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
-                       idxName := tripName,
-                       body := .RSeq (.RScalarSetExpr v (.SAdd (.SVar tripName) (.SLit lo))) c,
-                       trips := some (hi - lo), carried := carried }
+                       idxName := tripName, body := c', trips := some (hi - lo),
+                       carried := carriedOf tripName c' }
           | .whileNz _ b => do
               let c ← stmtsToLowCT env b
               pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
-                     idxName := tripName, body := c, trips := none, carried := carried }
+                     idxName := tripName, body := c, trips := none,
+                     carried := carriedOf tripName c }
           | _ => none
       | [] => none
   | _ => none
