@@ -132,17 +132,38 @@ theorem segsRunA_exit (C : ACallModel) (s : AState) :
       = C mulSym (runBlockA s [.loadMem "%rdi" "%rsp" 128, .lea "%rsi" "%rsp" "%rsp" 0 32,
           .lea "%rdx" "%rsp" "%rsp" 0 0]) := rfl
 
+/-- The last segment, appended by the stack-clearing pass: a store of zero to the saved
+    output pointer at `128(%rsp)`. -/
+theorem segsRunA_clear (C : ACallModel) (s : AState) :
+    segsRunA C s Ed25519InvertShipped.ed25519InvertShippedSeg266
+      = runBlockA s [.storeMem "%rsp" 128 (.imm 0)] := rfl
+
+/-- A store of zero to `c(%rsp)` leaves the four limbs at `Q` unchanged when they are
+    disjoint from that word. -/
+theorem feO_clearSlot (c : Int) (hc : c % 8 = 0) {t : AState} {Q : BitVec 64}
+    (hq : RangeDisj Q 0 24 (t.regs "%rsp") c c) :
+    feO (runBlockA t [.storeMem "%rsp" c (.imm 0)]).mem Q 0 = feO t.mem Q 0 := by
+  simp only [runBlockA, evalInstrA, writeAddr]
+  refine feO_write64 _ _ _ _ _ fun j hj => ?_
+  have hr : 0 ≤ j ∧ j ≤ 24 ∧ j % 8 = 0 := by
+    simp only [limbOffs, List.mem_cons, List.not_mem_nil, or_false] at hj
+    rcases hj with rfl | rfl | rfl | rfl <;> decide
+  exact (hq (0 + j) c (by omega) (by omega) (by omega) le_rfl le_rfl hc).symm
+
 /-- **The shipped `ed25519_invert` over callees at their specifications.** For a state
-    whose input buffer is disjoint from the inversion frame and whose input is below
-    `2 ^ 255 - 19`, the four-limb value at the output pointer after the block is the
-    input raised to `2 ^ 255 - 21` modulo `2 ^ 255 - 19`. -/
+    whose input buffer is disjoint from the inversion frame, whose output buffer is disjoint
+    from the saved output pointer at `128(%rsp)` and whose input is below `2 ^ 255 - 19`,
+    the four-limb value at the output pointer after the block is the input raised to
+    `2 ^ 255 - 21` modulo `2 ^ 255 - 19`. -/
 theorem invertShipped_correct_addr {C : ACallModel} (hC : InvertCallees C) (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
-    (hz : feO sa.mem (sa.regs "%rsi") 0 < pM) :
+    (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128) :
     feO (segsRunA C sa Ed25519InvertShipped.ed25519InvertShippedBlock).mem
         (sa.regs "%rdi") 0
       = feO sa.mem (sa.regs "%rsi") 0 ^ (pM - 2) % pM := by
-  rw [invertBlock_eq, segsRunA_append, segsRunA_append]
+  rw [invertBlock_eq]
+  simp only [segsRunA_append]
   have h2 := chainRun hC hz hsep invertSteps invertEnv1 _ (invertEntry hC sa hsep)
   rw [invertEnv_final] at h2
   set s2 := segsRunA C (segsRunA C sa Ed25519InvertShipped.ed25519InvertShippedSeg001)
@@ -158,9 +179,12 @@ theorem invertShipped_correct_addr {C : ACallModel} (hC : InvertCallees C) (sa :
       exact srcBelowSep hsep (.buf .b1)
     · rw [hrdx, hrsp]
       exact srcBelowSep hsep (.buf .b0)
-  obtain ⟨hv, -, -, -⟩ := hC.mul sb hargs
+  obtain ⟨hv, -, hcsp, -⟩ := hC.mul sb hargs
+  have hq : RangeDisj (sa.regs "%rdi") 0 24 ((C mulSym sb).regs "%rsp") 128 128 := by
+    rw [hcsp, hrsp]; exact hout
   rw [hrdi, hrsi, hrdx, hm, feO_base, feO_base] at hv
-  rw [segsRunA_exit, ← hsb, hv, show (32 : Int) + 0 = bufOff Buf.b1 from rfl,
+  rw [segsRunA_exit, ← hsb, segsRunA_clear, feO_clearSlot 128 (by decide) hq, hv,
+    show (32 : Int) + 0 = bufOff Buf.b1 from rfl,
     show (0 : Int) + 0 = bufOff Buf.b0 from rfl,
     h2.vals Buf.b1 _ rfl, h2.vals Buf.b0 _ rfl, pow_mul_mod]
   norm_num [pM]
@@ -179,12 +203,13 @@ theorem pM_prime : Nat.Prime pM := by
 theorem invertShipped_inv_zmod {C : ACallModel} (hC : InvertCallees C) (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
     (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128)
     (hnz : feO sa.mem (sa.regs "%rsi") 0 ≠ 0) :
     ((feO (segsRunA C sa Ed25519InvertShipped.ed25519InvertShippedBlock).mem
           (sa.regs "%rdi") 0 : Nat) : ZMod pM)
       * (feO sa.mem (sa.regs "%rsi") 0 : ZMod pM) = 1 := by
   have : Fact (Nat.Prime pM) := ⟨pM_prime⟩
-  rw [invertShipped_correct_addr hC sa hsep hz, ZMod.natCast_mod, Nat.cast_pow]
+  rw [invertShipped_correct_addr hC sa hsep hz hout, ZMod.natCast_mod, Nat.cast_pow]
   set z : Nat := feO sa.mem (sa.regs "%rsi") 0 with hzdef
   have hne : (z : ZMod pM) ≠ 0 := by
     intro h
@@ -197,27 +222,30 @@ theorem invertShipped_inv_zmod {C : ACallModel} (hC : InvertCallees C) (sa : ASt
   rwa [hcard] at this
 
 /-- **The shipped `ed25519_invert` over the shipped callees.** For a state whose input
-    buffer is disjoint from the inversion frame and whose input is below `2 ^ 255 - 19`,
-    the four-limb value at the output pointer after the block, run with each callee symbol
+    buffer is disjoint from the inversion frame, whose output buffer is disjoint from
+    `128(%rsp)` and whose input is below `2 ^ 255 - 19`, the four-limb value at the output
+    pointer after the block, run with each callee symbol
     at the shipped block of that function, is the input raised to `2 ^ 255 - 21` modulo
     `2 ^ 255 - 19`. -/
 theorem invertShipped_correct (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
-    (hz : feO sa.mem (sa.regs "%rsi") 0 < pM) :
+    (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128) :
     feO (segsRunA invertCallModel sa
         Ed25519InvertShipped.ed25519InvertShippedBlock).mem (sa.regs "%rdi") 0
       = feO sa.mem (sa.regs "%rsi") 0 ^ (pM - 2) % pM :=
-  invertShipped_correct_addr invertCallees_invertCallModel sa hsep hz
+  invertShipped_correct_addr invertCallees_invertCallModel sa hsep hz hout
 
 /-- **The shipped `ed25519_invert` inverts in `ZMod (2 ^ 255 - 19)`.** -/
 theorem invertShipped_inv (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
     (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128)
     (hnz : feO sa.mem (sa.regs "%rsi") 0 ≠ 0) :
     ((feO (segsRunA invertCallModel sa
           Ed25519InvertShipped.ed25519InvertShippedBlock).mem (sa.regs "%rdi") 0 : Nat)
         : ZMod pM)
       * (feO sa.mem (sa.regs "%rsi") 0 : ZMod pM) = 1 :=
-  invertShipped_inv_zmod invertCallees_invertCallModel sa hsep hz hnz
+  invertShipped_inv_zmod invertCallees_invertCallModel sa hsep hz hout hnz
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519InvertShippedProof

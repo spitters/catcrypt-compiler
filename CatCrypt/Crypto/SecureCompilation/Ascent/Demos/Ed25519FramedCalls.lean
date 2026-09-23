@@ -470,14 +470,15 @@ structure PackSepF (sa : AState) : Prop where
 /-- **A call to the shipped `ed25519_pack_sign`.** When its buffers are pairwise disjoint
     and disjoint from its stack slots and the return-address slot, the call copies the four
     words at `%rsi` to `%rdi` and adds the low bit of the word at `%rdx` into the top bit of
-    the fourth. -/
+    the fourth, and returns `%rsp` at its value at the call. -/
 theorem packCall_spec (ra : BitVec 64) (sa : AState) (h : PackSepF sa) :
     (∀ j ∈ [(0 : Int), 8, 16],
         read64 (packCall ra sa).mem (sa.regs "%rdi" + BitVec.ofInt 64 j)
           = read64 sa.mem (sa.regs "%rsi" + BitVec.ofInt 64 j))
       ∧ read64 (packCall ra sa).mem (sa.regs "%rdi" + BitVec.ofInt 64 24)
         = read64 sa.mem (sa.regs "%rsi" + BitVec.ofInt 64 24)
-          + (read64 sa.mem (sa.regs "%rdx" + BitVec.ofInt 64 0) &&& 1) <<< 63 := by
+          + (read64 sa.mem (sa.regs "%rdx" + BitVec.ofInt 64 0) &&& 1) <<< 63
+      ∧ (packCall ra sa).regs "%rsp" = sa.regs "%rsp" := by
   have ent := entered [] 64 ra sa (by simp) (by simp)
   have hEsp : (entryState (framePro [] 64) ra sa).regs "%rsp"
       = sa.regs "%rsp" + BitVec.ofInt 64 (-72) := by
@@ -509,7 +510,7 @@ theorem packCall_spec (ra : BitVec 64) (sa : AState) (h : PackSepF sa) :
     (fun s => runBlockA s Ed25519PackSignShipped.ed25519PackSignShippedBlock) ra sa (by simp)
     (by simp) (by simp) hsp (fun k hk => absurd hk (by simp))
   rw [packCall, packFrame.1, packFrame.2, leafCall]
-  refine ⟨fun j hj => ?_, ?_⟩
+  refine ⟨fun j hj => ?_, ?_, P.rsp⟩
   · have hj' : j = 0 ∨ j = 8 ∨ j = 16 := by simpa using hj
     rw [P.mem, h0 j hj, hin _ 0 24 h.ir j (by omega) (by omega) (by omega)]
   · rw [P.mem, h24, hin _ 0 24 h.ir 24 (by omega) (by omega) (by omega),
@@ -829,15 +830,24 @@ theorem maddShippedF_correct_addr {C : ACallModel} (hC : MaddCalleesF C) (sa : A
   have hO : CrossOut (sa.regs "%rsp") (sa.regs "%rdi") :=
     fun o o' a b c d e f => djOS hsep o o' a b c d e f
   obtain ⟨s, hrun, hsp, hq, v10, v11, v12, v13⟩ := maddCallsRunF hC sa hX hb
-  rw [hrun, maddTailCopy]
+  obtain ⟨-, hsp', -, -⟩ := runOutSetup s
+  have hrsp : (runBlockA (runBlockA s
+      [JInstr.loadMem "%r10" "%rsp" 584, JInstr.lea "%r9" "%rsp" "%rsp" 0 448])
+        (copyBlk outOffs)).regs "%rsp" = sa.regs "%rsp" := by
+    rw [copyBlk_rsp, hsp', hsp]
+  rw [hrun, maddTailCopy, runBlockA_append]
   refine ⟨?_, ?_, ?_, ?_⟩
-  · rw [maddOutVal hO s hsp hq 0 (by omega), show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 0 (by omega), maddOutVal hO s hsp hq 0 (by omega),
+      show (448 : Int) + slotOff 0 = 448 by simp [slotOff]]
     exact v10
-  · rw [maddOutVal hO s hsp hq 1 (by omega), show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 1 (by omega), maddOutVal hO s hsp hq 1 (by omega),
+      show (448 : Int) + slotOff 1 = 480 by simp [slotOff]]
     exact v11
-  · rw [maddOutVal hO s hsp hq 2 (by omega), show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 2 (by omega), maddOutVal hO s hsp hq 2 (by omega),
+      show (448 : Int) + slotOff 2 = 512 by simp [slotOff]]
     exact v12
-  · rw [maddOutVal hO s hsp hq 3 (by omega), show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
+  · rw [maddZeroTail_feO hO _ hrsp 3 (by omega), maddOutVal hO s hsp hq 3 (by omega),
+      show (448 : Int) + slotOff 3 = 544 by simp [slotOff]]
     exact v13
 
 /-- **The shipped `ed25519_madd` computes the mixed addition over the framed shipped
@@ -1049,7 +1059,7 @@ theorem invertF_run (ra : BitVec 64) (sa : AState)
         = segsRunA (invertCallModelF ra) sa Ed25519InvertShipped.ed25519InvertShippedBlock
       ∧ ∀ r ∈ keptRegs, (segsRunA (invertCallModelF ra) sa
           Ed25519InvertShipped.ed25519InvertShippedBlock).regs r = sa.regs r := by
-  simp only [invertBlock_eq, segsRunA_append]
+  simp only [invertBlock_eq, segsRunA_append, segsRunA_clear]
   -- the first segment
   obtain ⟨-, hrsp, -, hrdi, hrsi⟩ := runEntryBody sa
   have hS1 : SqrSep (runBlockA sa
@@ -1105,12 +1115,13 @@ theorem invertF_run (ra : BitVec 64) (sa : AState)
       (invertSteps.map segOfStep) = s2 :=
     (congrArg (fun x => segsRunA (invertCallModelF ra) x (invertSteps.map segOfStep))
       e1).symm.trans (e2.symm.trans hs2)
-  refine ⟨?_, fun r hr => ?_⟩
+  refine ⟨congrArg (fun x => runBlockA x [.storeMem "%rsp" 128 (.imm 0)]) ?_, fun r hr => ?_⟩
   · exact (congrArg (fun x => segsRunA (invertCallModelP ra) x
       Ed25519InvertShipped.ed25519InvertShippedSeg265) hs2).trans
       (e3.trans (congrArg (fun x => segsRunA (invertCallModelF ra) x
         Ed25519InvertShipped.ed25519InvertShippedSeg265) e21.symm))
-  · refine (congrArg (fun x => (segsRunA (invertCallModelF ra) x
+  · refine (runBlockA_regs_of_all _ _ _ (by simp [dsts])).trans ?_
+    refine (congrArg (fun x => (segsRunA (invertCallModelF ra) x
       Ed25519InvertShipped.ed25519InvertShippedSeg265).regs r) e21).trans ?_
     refine (k3 r hr).trans ?_
     refine (congrArg (fun x => x.regs r) (hs2.symm.trans e2)).trans ?_
@@ -1120,14 +1131,16 @@ theorem invertF_run (ra : BitVec 64) (sa : AState)
 /-- **The shipped `ed25519_invert` over the framed shipped callees.** Each callee runs its
     shipped prologue, block and epilogue after the return address `ra` is pushed. For a
     state whose input buffer is disjoint from the inversion frame, whose input is below
-    `2 ^ 255 - 19` and whose output buffer lies outside the eighteen words below `%rsp`, the
-    four-limb value at the output pointer after the block is the input raised to
+    `2 ^ 255 - 19` and whose output buffer lies outside the eighteen words below `%rsp` and
+    the word at `128(%rsp)`, the four-limb value at the output pointer after the block is
+    the input raised to
     `2 ^ 255 - 21` modulo `2 ^ 255 - 19`; the block changes no byte outside the inversion
     frame and the output, and keeps `%rsp`, `%rbp` and `%r12` to `%r15`. -/
 theorem invertShippedF_correct (ra : BitVec 64) (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
     (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
-    (ho : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-144) (-8)) :
+    (ho : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-144) (-8))
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128) :
     feO (segsRunA (invertCallModelF ra) sa
         Ed25519InvertShipped.ed25519InvertShippedBlock).mem (sa.regs "%rdi") 0
         = feO sa.mem (sa.regs "%rsi") 0 ^ (pM - 2) % pM
@@ -1137,7 +1150,7 @@ theorem invertShippedF_correct (ra : BitVec 64) (sa : AState)
           Ed25519InvertShipped.ed25519InvertShippedBlock).regs r = sa.regs r := by
   obtain ⟨e, k⟩ := invertF_run ra sa hsep hz ho
   rw [← e]
-  exact ⟨invertShipped_correct_addr (invertCallees_invertCallModelP ra) sa hsep hz,
+  exact ⟨invertShipped_correct_addr (invertCallees_invertCallModelP ra) sa hsep hz hout,
     invertShipped_frame (invertCallees_invertCallModelP ra) sa hsep hz, by rw [e]; exact k⟩
 
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519CompressShippedProof
@@ -1213,7 +1226,12 @@ theorem invertCall_spec (ra : BitVec 64) (sa : AState) (h : InvSep sa)
     rw [hEsp, er _ (by decide)]
     exact rangeDisj_shift (-192) (by decide)
       (rangeDisj_narrow h.os (le_refl _) (le_refl _) (by omega) (by omega))
-  obtain ⟨hv, hf, hk⟩ := invertShippedF_correct ra _ hsepE hzE hoE
+  have hqE : RangeDisj ((entryState (framePro ["%rbx"] 176) ra sa).regs "%rdi") 0 24
+      ((entryState (framePro ["%rbx"] 176) ra sa).regs "%rsp") 128 128 := by
+    rw [hEsp, er _ (by decide)]
+    exact rangeDisj_shift (-192) (by decide)
+      (rangeDisj_narrow h.os (le_refl _) (le_refl _) (by omega) (by omega))
+  obtain ⟨hv, hf, hk⟩ := invertShippedF_correct ra _ hsepE hzE hoE hqE
   rw [er "%rdi" (by decide), er "%rsi" (by decide), hin] at hv
   rw [er "%rdi" (by decide), hEsp] at hf
   have hs : ∀ k, k < ["%rbx"].length →
@@ -1453,7 +1471,10 @@ theorem compressShippedF_correct_addr {C : ACallModel} (hC : CompressCalleesF C)
     · rw [rdx4, rsp4]
       exact rangeDisj_sameBase (p := sa.regs "%rsp") (d := 32) (e := 0) 0 0 (-8) (-8) rfl
         (eq_add_ofInt_zero _) fun o o' a1 a2 a3 b1 b2 b3 => ⟨by omega, by omega⟩
-  obtain ⟨hw, hw24⟩ := hC.pack b4 hpack
+  obtain ⟨hw, hw24, hwsp⟩ := hC.pack b4 hpack
+  have hq4 : RangeDisj (sa.regs "%rdi") 0 24 ((C packSignSym b4).regs "%rsp") 96 96 := by
+    rw [hwsp, rsp4]
+    exact rangeDisj_narrow hsep.os (le_refl _) (le_refl _) (by omega) (by omega)
   rw [rdi4, rsi4, rdx4, m4] at hw24
   rw [rdi4, rsi4, m4] at hw
   -- the value
@@ -1481,7 +1502,8 @@ theorem compressShippedF_correct_addr {C : ACallModel} (hC : CompressCalleesF C)
       < 2 ^ 255 := by
     rw [← feO_eq_limbsNat, hY]
     exact Nat.lt_of_lt_of_le (Nat.mod_lt _ pM_pos) (by unfold pM; omega)
-  rw [feO_eq_limbsNat, hw 0 (by simp), hw 8 (by simp), hw 16 (by simp), hw24,
+  rw [feO_clearSlot 96 (by decide) hq4, feO_eq_limbsNat, hw 0 (by simp), hw 8 (by simp),
+    hw 16 (by simp), hw24,
     limbsNat_packTop _ _ _ _ _ hlt, ← feO_eq_limbsNat, hY, hpar]
 
 /-- **The shipped `ed25519_compress` over the framed shipped callees.** Each callee runs its

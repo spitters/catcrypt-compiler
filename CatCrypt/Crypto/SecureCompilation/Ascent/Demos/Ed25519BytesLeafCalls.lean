@@ -857,7 +857,7 @@ theorem invertB_run (ra : BitVec 64) (sa : AState)
         = segsRunA (invertCallModelB ra) sa Ed25519InvertShipped.ed25519InvertShippedBlock
       ∧ ∀ r ∈ keptRegs, (segsRunA (invertCallModelB ra) sa
           Ed25519InvertShipped.ed25519InvertShippedBlock).regs r = sa.regs r := by
-  simp only [invertBlock_eq, segsRunA_append]
+  simp only [invertBlock_eq, segsRunA_append, segsRunA_clear]
   -- the first segment
   obtain ⟨-, hrsp, -, hrdi, hrsi⟩ := runEntryBody sa
   have hS1 : SqrSep (runBlockA sa
@@ -913,12 +913,13 @@ theorem invertB_run (ra : BitVec 64) (sa : AState)
       (invertSteps.map segOfStep) = s2 :=
     (congrArg (fun x => segsRunA (invertCallModelB ra) x (invertSteps.map segOfStep))
       e1).symm.trans (e2.symm.trans hs2)
-  refine ⟨?_, fun r hr => ?_⟩
+  refine ⟨congrArg (fun x => runBlockA x [.storeMem "%rsp" 128 (.imm 0)]) ?_, fun r hr => ?_⟩
   · exact (congrArg (fun x => segsRunA (invertCallModelPB ra) x
       Ed25519InvertShipped.ed25519InvertShippedSeg265) hs2).trans
       (e3.trans (congrArg (fun x => segsRunA (invertCallModelB ra) x
         Ed25519InvertShipped.ed25519InvertShippedSeg265) e21.symm))
-  · refine (congrArg (fun x => (segsRunA (invertCallModelB ra) x
+  · refine (runBlockA_regs_of_all _ _ _ (by simp [dsts])).trans ?_
+    refine (congrArg (fun x => (segsRunA (invertCallModelB ra) x
       Ed25519InvertShipped.ed25519InvertShippedSeg265).regs r) e21).trans ?_
     refine (k3 r hr).trans ?_
     refine (congrArg (fun x => x.regs r) (hs2.symm.trans e2)).trans ?_
@@ -929,14 +930,16 @@ theorem invertB_run (ra : BitVec 64) (sa : AState)
     `fe25519_sqr` and `fe25519_mul` runs `feSqrFramed`, resp. `feMulFramed`, the blocks the
     crate's shipped bytes decode to, after the return address `ra` is pushed. For a state
     whose input buffer is disjoint from the inversion frame, whose input is below
-    `2 ^ 255 - 19` and whose output buffer lies outside the eighteen words below `%rsp`, the
-    four-limb value at the output pointer after the block is the input raised to
+    `2 ^ 255 - 19` and whose output buffer lies outside the eighteen words below `%rsp` and
+    the word at `128(%rsp)`, the four-limb value at the output pointer after the block is
+    the input raised to
     `2 ^ 255 - 21` modulo `2 ^ 255 - 19`; the block changes no byte outside the inversion
     frame and the output, and keeps `%rsp`, `%rbp` and `%r12` to `%r15`. -/
 theorem invertShippedBytes_correct (ra : BitVec 64) (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp") (sa.regs "%rsi"))
     (hz : feO sa.mem (sa.regs "%rsi") 0 < pM)
-    (ho : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-144) (-8)) :
+    (ho : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-144) (-8))
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") 128 128) :
     feO (segsRunA (invertCallModelB ra) sa
         Ed25519InvertShipped.ed25519InvertShippedBlock).mem (sa.regs "%rdi") 0
         = feO sa.mem (sa.regs "%rsi") 0 ^ (pM - 2) % pM
@@ -946,7 +949,7 @@ theorem invertShippedBytes_correct (ra : BitVec 64) (sa : AState)
           Ed25519InvertShipped.ed25519InvertShippedBlock).regs r = sa.regs r := by
   obtain ⟨e, k⟩ := invertB_run ra sa hsep hz ho
   rw [← e]
-  exact ⟨invertShipped_correct_addr (invertCallees_invertCallModelPB ra) sa hsep hz,
+  exact ⟨invertShipped_correct_addr (invertCallees_invertCallModelPB ra) sa hsep hz hout,
     invertShipped_frame (invertCallees_invertCallModelPB ra) sa hsep hz, by rw [e]; exact k⟩
 
 /-! ## 4. The compression over the byte-decoded leaves -/
@@ -1003,7 +1006,12 @@ theorem invertCallB_spec (ra : BitVec 64) (sa : AState) (h : InvSep sa)
     rw [hEsp, er _ (by decide)]
     exact rangeDisj_shift (-192) (by decide)
       (rangeDisj_narrow h.os (le_refl _) (le_refl _) (by omega) (by omega))
-  obtain ⟨hv, hf, hk⟩ := invertShippedBytes_correct ra _ hsepE hzE hoE
+  have hqE : RangeDisj ((entryState (framePro ["%rbx"] 176) ra sa).regs "%rdi") 0 24
+      ((entryState (framePro ["%rbx"] 176) ra sa).regs "%rsp") 128 128 := by
+    rw [hEsp, er _ (by decide)]
+    exact rangeDisj_shift (-192) (by decide)
+      (rangeDisj_narrow h.os (le_refl _) (le_refl _) (by omega) (by omega))
+  obtain ⟨hv, hf, hk⟩ := invertShippedBytes_correct ra _ hsepE hzE hoE hqE
   rw [er "%rdi" (by decide), er "%rsi" (by decide), hin] at hv
   rw [er "%rdi" (by decide), hEsp] at hf
   have hs : ∀ k, k < ["%rbx"].length →

@@ -73,11 +73,13 @@ def body3 : List (JInstr 64) :=
 def body4 : List (JInstr 64) :=
   [.loadMem "%rdi" "%rsp" 96, .lea "%rsi" "%rsp" "%rsp" 0 64, .lea "%rdx" "%rsp" "%rsp" 0 32]
 
-/-- The block is its four bodies, each followed by its call. -/
+/-- The block is its four bodies, each followed by its call, and the store of zero
+    to the saved output pointer at `96(%rsp)` that the stack-clearing pass appends. -/
 theorem segsRunA_compress (C : ACallModel) (sa : AState) :
     segsRunA C sa Ed25519CompressShipped.ed25519CompressShippedBlock
-      = C packSignSym (runBlockA (C mulSym (runBlockA (C mulSym (runBlockA
-          (C invertSym (runBlockA sa body1)) body2)) body3)) body4) := rfl
+      = runBlockA (C packSignSym (runBlockA (C mulSym (runBlockA (C mulSym (runBlockA
+          (C invertSym (runBlockA sa body1)) body2)) body3)) body4))
+          [.storeMem "%rsp" 96 (.imm 0)] := rfl
 
 theorem runBody1 (sa : AState) :
     let s' := runBlockA sa body1
@@ -246,8 +248,13 @@ theorem compressShipped_correct_addr {C : ACallModel} (hC : CompressCallees C) (
     rw [rsp1, rsi1]
     exact (rangeDisj_shift (-192) (by decide)
       (rangeDisj_narrow hsep.zs (le_refl _) (le_refl _) (by omega) (by omega))).symm
+  have hq1 : RangeDisj (b1.regs "%rdi") 0 24 (b1.regs "%rsp") (-64) (-64) := by
+    rw [rdi1, rsp1]
+    intro o o' a1 a2 _ c1 c2 _
+    rw [addI]
+    exact djSS _ _ _ (by omega) (by omega)
   obtain ⟨hv1, hf1, k1rsp, k1rbx, k1r12⟩ :=
-    hC.inv b1 hcs (by rw [rsi1, wr _ hsep.zs]; exact hz)
+    hC.inv b1 hcs hq1 (by rw [rsi1, wr _ hsep.zs]; exact hz)
   set s1 := C invertSym b1 with hs1
   rw [rsi1, rdi1, wr _ hsep.zs, feO_base] at hv1
   rw [rsp1, rdi1] at hf1
@@ -328,7 +335,10 @@ theorem compressShipped_correct_addr {C : ACallModel} (hC : CompressCallees C) (
     · rw [rdx4, rsp4]
       exact rangeDisj_sameBase (p := sa.regs "%rsp") (d := 32) (e := 0) 0 0 (-80) (-16) rfl
         (eq_add_ofInt_zero _) fun o o' a1 a2 a3 b1 b2 b3 => ⟨by omega, by omega⟩
-  obtain ⟨hw, hw24⟩ := hC.pack b4 hpack
+  obtain ⟨hw, hw24, hwsp⟩ := hC.pack b4 hpack
+  have hq4 : RangeDisj (sa.regs "%rdi") 0 24 ((C packSignSym b4).regs "%rsp") 96 96 := by
+    rw [hwsp, rsp4]
+    exact rangeDisj_narrow hsep.os (le_refl _) (le_refl _) (by omega) (by omega)
   rw [rdi4, rsi4, rdx4, m4] at hw24
   rw [rdi4, rsi4, m4] at hw
   -- the value
@@ -356,7 +366,8 @@ theorem compressShipped_correct_addr {C : ACallModel} (hC : CompressCallees C) (
       < 2 ^ 255 := by
     rw [← feO_eq_limbsNat, hY]
     exact Nat.lt_of_lt_of_le (Nat.mod_lt _ pM_pos) (by unfold pM; omega)
-  rw [feO_eq_limbsNat, hw 0 (by simp), hw 8 (by simp), hw 16 (by simp), hw24,
+  rw [feO_clearSlot 96 (by decide) hq4, feO_eq_limbsNat, hw 0 (by simp), hw 8 (by simp),
+    hw 16 (by simp), hw24,
     limbsNat_packTop _ _ _ _ _ hlt, ← feO_eq_limbsNat, hY, hpar]
 
 /-- **The shipped `ed25519_compress` over the shipped callees.** For a state whose output

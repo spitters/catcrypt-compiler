@@ -118,7 +118,8 @@ theorem invertShipped_frame {C : ACallModel} (hC : InvertCallees C) (sa : AState
     InvertFrame sa.mem (segsRunA C sa Ed25519InvertShipped.ed25519InvertShippedBlock).mem
       (sa.regs "%rsp") (sa.regs "%rdi") := by
   intro x hx hop
-  rw [invertBlock_eq, segsRunA_append, segsRunA_append]
+  rw [invertBlock_eq]
+  simp only [segsRunA_append]
   have h1 := invertEntry hC sa hsep
   have h2 := chainRun hC hz hsep invertSteps invertEnv1 _ h1
   set s1 := segsRunA C sa Ed25519InvertShipped.ed25519InvertShippedSeg001 with hs1
@@ -137,9 +138,13 @@ theorem invertShipped_frame {C : ACallModel} (hC : InvertCallees C) (sa : AState
       exact srcBelowSep hsep (.buf .b1)
     · rw [hrdx, hrsp]
       exact srcBelowSep hsep (.buf .b0)
-  obtain ⟨-, hfr, -, -⟩ := hC.mul sb hargs
+  obtain ⟨-, hfr, hcsp, -⟩ := hC.mul sb hargs
   rw [hrdi, hrsp, hm] at hfr
-  rw [segsRunA_exit, ← hsb, hfr x hop (fun k hk => hx k (by omega)),
+  rw [segsRunA_exit, ← hsb, segsRunA_clear]
+  simp only [runBlockA, evalInstrA, writeAddr]
+  rw [write64_of_not_inRange _ _ _ _ (by
+      rw [hcsp, hrsp]; exact outsideInvFrame_word hx 128 34 (by omega) (by omega)),
+    hfr x hop (fun k hk => hx k (by omega)),
     hs2, chainRunFrame hC hz hsep x hx invertSteps invertEnv1 s1 h1]
   -- the first segment
   obtain ⟨hm1, hrsp1, -, hrdi1, -⟩ := runEntryBody sa

@@ -121,7 +121,7 @@ structure PackSep (sa : AState) : Prop where
   ds : RangeDisj (sa.regs "%rdx") 0 0 (sa.regs "%rsp") (-80) (-16)
 
 /-- The effect of a pack call at one state: the four words at `%rsi` at `%rdi`, with the
-    low bit of the word at `%rdx` added into the top bit of the fourth. -/
+    low bit of the word at `%rdx` added into the top bit of the fourth, and `%rsp` kept. -/
 def PackEffect (C : ACallModel) (f : String) (sa : AState) : Prop :=
   (∀ j ∈ [(0 : Int), 8, 16],
       read64 (C f sa).mem (sa.regs "%rdi" + BitVec.ofInt 64 j)
@@ -129,12 +129,15 @@ def PackEffect (C : ACallModel) (f : String) (sa : AState) : Prop :=
     ∧ read64 (C f sa).mem (sa.regs "%rdi" + BitVec.ofInt 64 24)
       = read64 sa.mem (sa.regs "%rsi" + BitVec.ofInt 64 24)
         + (read64 sa.mem (sa.regs "%rdx" + BitVec.ofInt 64 0) &&& 1) <<< 63
+    ∧ (C f sa).regs "%rsp" = sa.regs "%rsp"
 
 /-- The three callees of the compression at their specifications. -/
 structure CompressCallees (C : ACallModel) : Prop where
   /-- `ed25519_invert` inverts, at every state whose input is reduced and disjoint from
-      the inversion frame. -/
+      the inversion frame, and whose output is disjoint from the saved output pointer
+      64 bytes below `%rsp`. -/
   inv : ∀ sa, ChainSep (sa.regs "%rsp" + BitVec.ofInt 64 (-192)) (sa.regs "%rsi") →
+    RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-64) (-64) →
     feO sa.mem (sa.regs "%rsi") 0 < pM → InvEffect C invertSym sa
   /-- `fe25519_mul` multiplies modulo `pM`, at every state whose arguments lie outside
       the words below `%rsp`, and keeps `%r12`. -/
@@ -160,6 +163,7 @@ theorem callBlockSaved_saved (blk : List (JInstr 64)) (d : Int) (sa : AState)
 /-- **The shipped `ed25519_invert` meets the inversion specification of the compression.** -/
 theorem compressCallModel_inv (sa : AState)
     (hsep : ChainSep (sa.regs "%rsp" + BitVec.ofInt 64 (-192)) (sa.regs "%rsi"))
+    (hout : RangeDisj (sa.regs "%rdi") 0 24 (sa.regs "%rsp") (-64) (-64))
     (hz : feO sa.mem (sa.regs "%rsi") 0 < pM) : InvEffect compressCallModel invertSym sa := by
   set sb := atRsp sa (sa.regs "%rsp" + BitVec.ofInt 64 (-192)) with hsb
   have e_rsi : sb.regs "%rsi" = sa.regs "%rsi" := atRsp_regs _ _ _ (by decide)
@@ -167,7 +171,12 @@ theorem compressCallModel_inv (sa : AState)
   have hsep' : ChainSep (sb.regs "%rsp") (sb.regs "%rsi") := by
     rw [e_rsi, hsb, atRsp_rsp]; exact hsep
   have hz' : feO sb.mem (sb.regs "%rsi") 0 < pM := by rw [e_rsi, hsb, atRsp_mem]; exact hz
-  have hv := invertShipped_correct sb hsep' hz'
+  have hq : RangeDisj (sb.regs "%rdi") 0 24 (sb.regs "%rsp") 128 128 := by
+    rw [e_rdi, hsb, atRsp_rsp]
+    intro o o' a1 a2 a3 c1 c2 c3
+    rw [addI]
+    exact hout o (-192 + o') a1 a2 a3 (by omega) (by omega) (by omega)
+  have hv := invertShipped_correct sb hsep' hz' hq
   have hf := invertShipped_frame invertCallees_invertCallModel sb hsep' hz'
   rw [e_rsi, e_rdi, hsb, atRsp_mem] at hv
   rw [e_rdi, hsb, atRsp_mem, atRsp_rsp] at hf
@@ -216,9 +225,10 @@ theorem compressCallModel_pack (sa : AState) (hsep : PackSep sa) :
   obtain ⟨h0, h24, -, -⟩ := packSignShipped_correct_addr sb hs
   rw [e_rdi, e_rsi, hsb, atRsp_mem] at h0
   rw [e_rdi, e_rsi, e_rdx, hsb, atRsp_mem] at h24
-  refine ⟨?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
   · rw [compressCallModel_packSignSym, callBlockSaved_mem]; exact h0
   · rw [compressCallModel_packSignSym, callBlockSaved_mem]; exact h24
+  · rw [compressCallModel_packSignSym]; exact callBlockSaved_saved _ _ _ _ (by decide)
 
 /-- **The three shipped callees of the compression meet their specifications.** -/
 theorem compressCallees_compressCallModel : CompressCallees compressCallModel :=
