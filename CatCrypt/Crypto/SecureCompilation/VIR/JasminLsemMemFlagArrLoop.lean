@@ -253,7 +253,10 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
       (by unfold withWidthTag; split <;> decide)
   case castW w w' =>
     simp only [opToLinstrR]
-    split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
+    split
+    · unfold castWMnem
+      split_ifs <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
+    · split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
   case stackLoad w k =>
     simp only [opToLinstrR]
     split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)

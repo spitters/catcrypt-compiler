@@ -443,14 +443,21 @@ theorem decodeLinstr_jcc8 (cc : String) (d : Int) (rest : List (BitVec 8))
   have e4 : ¬ (0x70 + ccNibble cc = 0xc3) := by omega
   have e5 : (0x70 ≤ 0x70 + ccNibble cc ∧ 0x70 + ccNibble cc ≤ 0x7f) := by omega
   have e6 : ¬ (0x40 ≤ 0x70 + ccNibble cc ∧ 0x70 + ccNibble cc ≤ 0x4f) := by omega
-  simp [e1, e2, e3, e4, e5, e6]
+  have e7 : ¬ (0x70 + ccNibble cc = 0x0f) := by omega
+  simp [e1, e2, e3, e4, e5, e6, e7]
 
-/-- The `0F` escape followed by five bytes is read as a `jcc rel32`. -/
-theorem decodeLinstr_0f (o d0 d1 d2 d3 : BitVec 8) (r : List (BitVec 8)) :
+/-- The `0F` escape followed by five bytes, the second of which is not the `SETB`
+    opcode `92`, is read as a `jcc rel32`. -/
+theorem decodeLinstr_0f (o d0 d1 d2 d3 : BitVec 8) (r : List (BitVec 8)) (ho : o.toNat ≠ 0x92) :
     decodeLinstr (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r)
       = if 0x80 ≤ o.toNat ∧ o.toNat ≤ 0x8f then
           some (.jcc (o.toNat - 0x80) (sdisp32 d0 d1 d2 d3), r)
-        else none := rfl
+        else none := by
+  have h : decodeJ1 (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r) = none := by
+    show decodeSetcBare (o :: d0 :: d1 :: d2 :: d3 :: r) = none
+    simp [decodeSetcBare, ho]
+  simp only [decodeLinstr, h]
+  all_goals rfl
 
 /-- The value a `rel32` field carries for a displacement: its signed 32-bit
     wrap, the displacement itself in range. -/
@@ -477,7 +484,7 @@ theorem decodeLinstr_jcc32_wrap (cc : String) (d : Int) (rest : List (BitVec 8))
     rw [BitVec.toNat_ofNat]; omega
   simp only [encJcc32, disp32LE, imm32LE, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append]
-  rw [decodeLinstr_0f, hb, if_pos hr, sdisp32_imm32LE _ (BitVec.isLt (BitVec.ofInt 32 d)),
+  rw [decodeLinstr_0f _ _ _ _ _ _ (by rw [hb]; omega), hb, if_pos hr, sdisp32_imm32LE _ (BitVec.isLt (BitVec.ofInt 32 d)),
     BitVec.ofNat_toNat, BitVec.setWidth_eq]
   rfl
 
