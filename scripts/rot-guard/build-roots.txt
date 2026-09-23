@@ -99,6 +99,7 @@ CatCrypt.Crypto.Jasmin.MVCGenSmoke
 CatCrypt.Crypto.Jasmin.MarlinKZGProverReflect
 CatCrypt.Crypto.Jasmin.MemAbiReflect
 CatCrypt.Crypto.Jasmin.MldsaJincImportKat
+CatCrypt.Crypto.Jasmin.MldsaJincEmit
 CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
 CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound
