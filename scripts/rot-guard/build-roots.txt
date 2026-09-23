@@ -1039,3 +1039,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedRen
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd
