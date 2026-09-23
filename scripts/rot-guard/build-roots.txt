@@ -820,6 +820,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul4SchedFrontEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseArrMemN
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseCntScalarMemN
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519BytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
