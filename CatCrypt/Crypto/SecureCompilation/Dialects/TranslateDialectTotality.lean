@@ -282,8 +282,8 @@ theorem contJTotal_arrStoreCont {Γ : Ctx}
   split
   · split
     · exact ContJTotal.castCtx _ (ContJTotal.varBind rfl)
-    · exact ContJTotal.varBind rfl
-  · exact ContJTotal.varBind rfl
+    · exact ContJTotal.varBind (by cases dty <;> rfl)
+  · exact ContJTotal.varBind (by cases dty <;> rfl)
 
 /-- The eight-op word-select chain is a jasmin-lowerable prefix: each of its
     bindings (`bvConst`, `bvSub`, `bvOr`, `bvShiftR`, `bvXor`, `bvAnd`) lowers. -/

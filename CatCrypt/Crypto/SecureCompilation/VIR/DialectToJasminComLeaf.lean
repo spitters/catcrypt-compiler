@@ -93,17 +93,22 @@ theorem lookupArgs_toJArgsD {Γ : Ctx} :
       rfl
 
 /-- The jasmin oracle `jls` applied to transported arguments at the mapped types is the
-    transport of the dialect oracle `ls`. -/
+    transport of the dialect oracle `ls`, at every return type other than a
+    width-carrying array. The lowering declines an `extCall` returning
+    `.memrefW w n` (`toJExprD`), so agreement is never needed there; and at
+    `w = 16` the jasmin external semantics reads such a return as a lattice leaf
+    whatever the callee is named, so the default oracles would not agree. -/
 def LeafTransport (ls : SemLeafSpec) (jls : JLeafSem) : Prop :=
   ∀ (name : String) (argTys : List CryptoTy) (retTy : CryptoTy)
     (args : HVector (fun t => ⟦t⟧) argTys),
+    (∀ w n, retTy ≠ .memrefW w n) →
     jls name (argTys.map mapTy) (mapTy retTy) (ctMapHV args)
       = ctTransTy (ls name retTy (hvecSigmaList args))
 
 /-- The default oracles are related: `jasminExtSem` returns the jasmin default on every
     type `mapTy` produces, which is the transport of `CryptoTy.default`. -/
 theorem leafTransport_default : LeafTransport defaultLeaf jasminExtSem := by
-  intro name argTys retTy args
+  intro name argTys retTy args hne
   show _ = ctTransTy (CryptoTy.default retTy)
   rw [ctTransTy_default]
   cases retTy with
@@ -113,6 +118,7 @@ theorem leafTransport_default : LeafTransport defaultLeaf jasminExtSem := by
   | pair a b => exact jasminExtSem_reg _ _ _ _
   | sum a b => exact jasminExtSem_reg _ _ _ _
   | memref n => exact jasminExtSem_stackArr64 _ _ _ _
+  | memrefW w n => exact absurd rfl (hne w n)
 
 /-- Per-expression leaf agreement at the oracle pair `(ls, jls)`: an expression the
     lowering accepts denotes, lowered and under the transported valuation, to the
@@ -126,6 +132,19 @@ def DialectJasminLeafAgreesWith (ls : SemLeafSpec) (jls : JLeafSem) : Prop :=
     @Expr.denote jasminDialect _ _ (jasminDenoteWith jls) _ _ e' (ctMapValD V)
       = ctTransTy (@Expr.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ e V)
 
+/-- An `extCall` whose return type is not a width-carrying array lowers to the jasmin
+    `extCall` over the mapped types. -/
+theorem toJExprD_extCall {Γ : Ctx} {name : String} {argTys : List CryptoTy}
+    {retTy : CryptoTy}
+    {args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty) argTys}
+    (hne : ∀ w n, retTy ≠ .memrefW w n) :
+    toJExprD (Γ := Γ) ⟨CatCryptOp.extCall name argTys retTy, rfl, args⟩
+      = some { op := .extCall name (argTys.map mapTy) (mapTy retTy), retTy_eq := rfl,
+               args := toJArgsD (Γ := Γ) (tys := argTys) args } := by
+  cases retTy with
+  | memrefW w n => exact absurd rfl (hne w n)
+  | _ => rfl
+
 /-- Leaf agreement at an oracle pair related by `LeafTransport`. The `extCall` case is
     the transport hypothesis after `lookupArgs_toJArgsD`; on every other op both
     oracle denotations are the default ones, and the case is
@@ -137,13 +156,16 @@ theorem dialectJasminLeafAgreesWith_holds {ls : SemLeafSpec} {jls : JLeafSem}
   cases op
   case extCall name argTys retTy =>
     cases hop
-    simp only [toJExprD, Option.some.injEq] at he
+    have hne : ∀ w n, retTy ≠ .memrefW w n := by
+      intro w n hr; subst hr; simp only [toJExprD, reduceCtorEq] at he
+    rw [toJExprD_extCall hne] at he
+    simp only [Option.some.injEq] at he
     subst he
     show jls name (argTys.map mapTy) (mapTy retTy)
         (Expr.lookupArgs (toJArgsD args) (ctMapValD V))
       = ctTransTy (ls name retTy (hvecSigmaList (Expr.lookupArgs args V)))
     rw [lookupArgs_toJArgsD]
-    exact h name argTys retTy _
+    exact h name argTys retTy _ hne
   case vsimd sop =>
     cases hop
     have h0 := dialectJasminLeafAgrees_holds ⟨_, rfl, args⟩ V e' he

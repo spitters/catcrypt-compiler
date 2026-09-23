@@ -407,6 +407,7 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
         dsimp only at hT
         rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
         all_goals (rw [hen] at hT; dsimp only at hT)
+        case memrefW => exact absurd hT (by simp)
         iterate 5 (exact absurd hT (by simp))
         by_cases h : idx < n
         · rw [if_pos h] at hT; simp only [Option.some.injEq] at hT; subst hT
@@ -421,6 +422,7 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
         | unit => exact absurd hT (by simp)
         | pair _ _ => exact absurd hT (by simp)
         | sum _ _ => exact absurd hT (by simp)
+        | memrefW _ _ => exact absurd hT (by simp)
         | memref n =>
           simp only at hT
           by_cases h : idx < n
@@ -492,6 +494,7 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
         | unit => exact absurd hT (by simp)
         | pair _ _ => exact absurd hT (by simp)
         | sum _ _ => exact absurd hT (by simp)
+        | memrefW _ _ => exact absurd hT (by simp)
         | memref _ => exact absurd hT (by simp)
         | sword w =>
             cases hdt : translateDialectControl vm thenBr with
@@ -602,6 +605,7 @@ theorem rustStateInterp_weaken_word {Γ : Ctx} {vm : VarMap Γ} {rs : RustState}
     | unit => simp only [bindingOK]
     | pair _ _ => simp only [bindingOK]
     | sum _ _ => simp only [bindingOK]
+    | memrefW _ _ => simp only [bindingOK]
 
 /-- **Rust ↔ dialect-front simulation (`CProg`-free statement).**
     On the control-covered fragment `IsCoveredCtl`, if the `CProg`-free direct
@@ -975,6 +979,7 @@ theorem rustExecSimulatesDialect
         dsimp only at hTrans
         rcases hEnc : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
         all_goals (rw [hEnc] at hTrans; dsimp only at hTrans)
+        case memrefW => exact absurd hTrans (by simp)
         iterate 5 (exact absurd hTrans (by simp))
         by_cases h : idx < n
         · rw [if_pos h] at hTrans
@@ -995,6 +1000,7 @@ theorem rustExecSimulatesDialect
         | unit => exact absurd hTrans (by simp)
         | pair _ _ => exact absurd hTrans (by simp)
         | sum _ _ => exact absurd hTrans (by simp)
+        | memrefW _ _ => exact absurd hTrans (by simp)
         | memref n =>
           simp only at hTrans
           by_cases h : idx < n

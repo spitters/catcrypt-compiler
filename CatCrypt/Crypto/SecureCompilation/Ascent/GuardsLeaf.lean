@@ -435,6 +435,7 @@ inductive AVal where
 def vEnc : ((t : CryptoTy) × ⟦t⟧) → AVal
   | ⟨.sword 64, w⟩ => .word (wEnc w)
   | ⟨.memref n, av⟩ => .arr n (fun j => wEnc (av j))
+  | ⟨.memrefW 64 n, av⟩ => .arr n (fun j => wEnc (av j))
   | _ => .other
 
 /-- The abstraction of the argument name `x` on the abstract store: the element values of

@@ -359,6 +359,7 @@ def catToArith : CatCryptOp → Option MlirArithOp
   | .constUnit | .mkPair _ _ | .fst _ _ | .snd _ _ | .inl _ _ | .inr _ _
   | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
   | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ | .extCall _ _ _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _
   | .bvAdd64 _ | .bvAdc _
   | .bvRor _ _ | .bvRol _ _ | .bvShiftRA _ _ | .andn _
   | .bvShiftLV _ | .bvShiftRV _

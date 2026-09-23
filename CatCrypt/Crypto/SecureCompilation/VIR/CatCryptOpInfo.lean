@@ -56,7 +56,7 @@ class HasDialectOpInfo (opCode : Type) where
 Each op gets a tuple of the property structures it cares about. Ops
 without informative properties default to `Unit`.
 
-For now the buckets are: bit ops (CT + Pure + Linear), BitVec arithmetic
+The buckets are: bit ops (CT + Pure + Linear), BitVec arithmetic
 (CT + Pure + Overflow), memory ops (Pure only), extCall (none — semantics
 is supplied externally). -/
 
@@ -90,7 +90,8 @@ def CatCryptOp.propertiesOf : CatCryptOp → Type
       ConstantTimeProperties × PureProperties × LinearProperties
   -- Memory ops: Pure (functional store/load semantics) + CT iff index is static
   | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
-  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ =>
+  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ =>
       ConstantTimeProperties × PureProperties
   -- External call: properties are external; opaque here.
   | .extCall _ _ _ => Unit

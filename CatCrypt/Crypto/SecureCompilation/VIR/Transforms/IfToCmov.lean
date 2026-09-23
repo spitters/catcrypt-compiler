@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Regions
 /-!
 # `if`-to-`cmov` rewriter on `ComR catCryptDialect`
 
-This file implements the load-bearing constant-time mitigation for VIR:
+This file implements the constant-time mitigation for VIR:
 a verified rewrite that turns a `Secret`-tagged `ifBit` conditional
 (which `ctSafeComR` rejects) into a branch-free arithmetic chain
 (which `ctSafeComR` accepts).
@@ -252,6 +252,7 @@ def ifToCmov {Γ : Ctxt catCryptDialect} : {t : CryptoTy} →
   | .sum _ _, c => c
   | .sword _, c => ifToCmovSword c
   | .memref _, c => c
+  | .memrefW _ _, c => c
 
 /-! ## 4. Denotational correctness -/
 
@@ -306,6 +307,7 @@ theorem ifToCmov_denote_eq {Γ : Ctxt catCryptDialect} {t : CryptoTy}
   | sum _ _ => rfl
   | sword _ => exact ifToCmovSword_denote_eq c V
   | memref _ => rfl
+  | memrefW _ _ => rfl
 
 /-! ## 5. CT-safety of the rewritten form -/
 
@@ -388,6 +390,7 @@ theorem ifToCmov_ctSafe_or_unchanged
           left
           exact ifToCmov_makes_sword_secret_ifBits_ctSafe cond a b
   | memref _ => right; rfl
+  | memrefW _ _ => right; rfl
 
 /-! ## 6. Smoke test -/
 
@@ -409,7 +412,7 @@ example {Γ : Ctxt catCryptDialect}
 
 /-- Smoke test (sword): the rewriter turns a `Secret`-tagged
     `.sword n` `ifBit` into a CT-safe program. This is the
-    load-bearing case for real crypto code (constant-time selects on
+    case real crypto code exercises (constant-time selects on
     64-bit limbs, scalar reduction, point swap, etc.). -/
 example {Γ : Ctxt catCryptDialect} {n : Nat}
     (c : Ctxt.Var Γ .bit) (a b : Ctxt.Var Γ (.sword n)) :

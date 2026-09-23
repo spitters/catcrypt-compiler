@@ -132,6 +132,10 @@ theorem jvEnc_transport : ∀ {t : CryptoTy} (v : ⟦t⟧),
   | .pair _ _, _ => rfl
   | .sum _ _, _ => rfl
   | .memref _, _ => rfl
+  | .memrefW w _, _ => by
+      rcases eq_or_ne w 64 with rfl | hw
+      · rfl
+      · simp [jvEnc, vEnc, mapTy, ctTransTy, hw]
 
 /-- The abstractions of a transported argument vector are those of the vector. -/
 theorem jhvecSigmaList_ctMapHV : ∀ {tys : List CryptoTy} (args : HVector (fun t => ⟦t⟧) tys),
@@ -144,7 +148,7 @@ theorem jhvecSigmaList_ctMapHV : ∀ {tys : List CryptoTy} (args : HVector (fun 
 /-- `leafOfAbs fs` and `jleafOfAbs fs` are related by `LeafTransport`. -/
 theorem leafTransport_leafOfAbs (fs : String → List AVal → ZMod (2 ^ 64)) :
     LeafTransport (leafOfAbs fs) (jleafOfAbs fs) := by
-  intro name argTys retTy args
+  intro name argTys retTy args hne
   cases retTy with
   | sword w =>
       rcases eq_or_ne w 64 with rfl | hw
@@ -158,6 +162,7 @@ theorem leafTransport_leafOfAbs (fs : String → List AVal → ZMod (2 ^ 64)) :
   | pair a b => rfl
   | sum a b => rfl
   | memref n => rfl
+  | memrefW w n => exact absurd rfl (hne w n)
 
 /-! ## The worked kernel `leafK` -/
 

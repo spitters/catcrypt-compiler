@@ -64,6 +64,7 @@ def mapTy : CryptoTy → JasminTy
   | .bit => .reg 1
   | .unit => .reg 0
   | .memref n => .stackArr 64 n
+  | .memrefW w n => .stackArr w n
   | .pair _ _ => .reg 0
   | .sum _ _ => .reg 0
 

@@ -171,7 +171,8 @@ def CatCryptOp.toVeirOp : CatCryptOp → Veir.OpCode
   | .ite _ => .arith_select
   | .bitToSword _ => .llvm_zext
   | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
-  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ =>
+  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ =>
       .catcrypt_unknown
   | .extCall _ _ _ => .func_call
   | .sampleBit | .sampleBv _ => .catcrypt_unknown
@@ -230,8 +231,9 @@ def CatCryptOp.toArithOpCode : CatCryptOp → Veir.OpCode
   | .bitToSword _ => .arith_extui
   -- memory ops → registered MLIR `memref` dialect (Veir gained the block).
   | .memrefZero _ => .memref_alloca
-  | .memrefGet _ _ | .memrefGetDyn _ | .memrefGetDyn128 _ => .memref_load
-  | .memrefSet _ _ | .memrefSetDyn _ => .memref_store
+  | .memrefGet _ _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWGetDyn _ _ => .memref_load
+  | .memrefSet _ _ | .memrefSetDyn _ | .memrefWSetDyn _ _ => .memref_store
   | .extCall _ _ _ => .func_call
   | .sampleBit | .sampleBv _ => .catcrypt_unknown
   -- 128-bit SIMD ops: no registered `arith`/`memref` opcode, unregistered escape.
@@ -317,6 +319,7 @@ def CryptoTy.toVeirTy : CryptoTy → Veir.TypeAttr
   | .sum a b =>
       mkTextType s!"tuple<sum, {toVeirTy a}, {toVeirTy b}>"
   | .memref n => mkTextType s!"memref<{n}xi64>"
+  | .memrefW w n => mkTextType s!"memref<{n}xi{w}>"
 
 instance : ToVeirTy catCryptDialect where
   toTy := CryptoTy.toVeirTy

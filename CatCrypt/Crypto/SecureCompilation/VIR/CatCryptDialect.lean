@@ -160,6 +160,14 @@ inductive CatCryptOp where
   -- array has no single jasmin op — the honest byte-emit residual, as with the
   -- SHA-NI ops); it reaches the dialect with a faithful denote.
   | memrefGetDyn128 (n : Nat)
+  -- Dynamic-index access on a `.memrefW w n` array: an `n`-cell array of `w`-bit
+  -- words, indexed by a runtime `.sword 64`, loading or storing one `w`-bit cell.
+  -- The width-carrying twins of `memrefGetDyn`/`memrefSetDyn`, which fix `w = 64`.
+  -- They map onto jasmin `stackLoad w n` / `stackStore w n`, whose element width
+  -- is already a parameter, so an imported leaf over a `u32[n]` array addresses
+  -- 4-byte cells.
+  | memrefWSetDyn (w n : Nat)
+  | memrefWGetDyn (w n : Nat)
   -- External oracle call (e.g., `fp_mul`, `fp_add`). Signature is
   -- specified by the `argTys`/`retTy` fields. In MLIR this emits as
   -- `func.call @<name>(args) : (argTys) -> retTy`.
@@ -260,6 +268,24 @@ def memSetDyn {n : Nat} (arr : Fin n → BitVec 64) (k : Nat) (v : BitVec 64) :
 def memGetDyn128 {n : Nat} (arr : Fin n → BitVec 64) (k : Nat) : BitVec 128 :=
   (memGetDyn arr (2 * k)).setWidth 128 |||
     ((memGetDyn arr (2 * k + 1)).setWidth 128 <<< 64)
+
+/-- Read cell `k mod n` of a `w`-bit-cell memref; `0` for an empty memref. The
+    width-carrying twin of `memGetDyn`, defined identically to
+    `JasminDialect.stackGet`. -/
+def memWGetDyn {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) : BitVec w :=
+  match n, arr with
+  | 0, _ => 0
+  | (m + 1), arr => arr ⟨k % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩
+
+/-- Functionally update cell `k mod n` of a `w`-bit-cell memref; the
+    everywhere-`0` array for an empty memref. The width-carrying twin of
+    `memSetDyn`, defined identically to `JasminDialect.stackSet`. -/
+def memWSetDyn {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) (v : BitVec w) :
+    Fin n → BitVec w :=
+  match n, arr with
+  | 0, _ => fun _ => 0
+  | (m + 1), arr =>
+      fun j => if j = ⟨k % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩ then v else arr j
 
 /-! ### Bignum ALU word splits
 
@@ -402,6 +428,8 @@ instance : DialectSignature catCryptDialect where
     | .memrefSetDyn n => [.memref n, .sword 64, .sword 64]
     | .memrefGetDyn n => [.memref n, .sword 64]
     | .memrefGetDyn128 n => [.memref n, .sword 64]
+    | .memrefWSetDyn w n => [.memrefW w n, .sword 64, .sword w]
+    | .memrefWGetDyn w n => [.memrefW w n, .sword 64]
     | .extCall _ argTys _ => argTys
     | .sampleBit => []
     | .sampleBv _ => []
@@ -436,6 +464,8 @@ instance : DialectSignature catCryptDialect where
     | .memrefSetDyn n => .memref n
     | .memrefGetDyn _ => .sword 64
     | .memrefGetDyn128 _ => .sword 128
+    | .memrefWSetDyn w n => .memrefW w n
+    | .memrefWGetDyn w _ => .sword w
     | .extCall _ _ retTy => retTy
     | .sampleBit => .bit
     | .sampleBv n => .sword n
@@ -582,6 +612,15 @@ instance catCryptDenote : DialectDenote catCryptDialect where
         let arr : Fin _ → BitVec 64 := args.head
         let i : BitVec 64 := args.tail.head
         memGetDyn128 arr i.toNat
+    | .memrefWSetDyn w _ => fun args =>
+        let arr : Fin _ → BitVec w := args.head
+        let i : BitVec 64 := args.tail.head
+        let v : BitVec w := args.tail.tail.head
+        memWSetDyn arr i.toNat v
+    | .memrefWGetDyn w _ => fun args =>
+        let arr : Fin _ → BitVec w := args.head
+        let i : BitVec 64 := args.tail.head
+        memWGetDyn arr i.toNat
     | .extCall _ _ retTy => fun _ => CryptoTy.default retTy
     -- Pure compile interpretation of a sample = the deterministic zero-entropy leaf
     -- (`false` / `0`). The probabilistic meaning lives in `catCryptDenoteSP`; this

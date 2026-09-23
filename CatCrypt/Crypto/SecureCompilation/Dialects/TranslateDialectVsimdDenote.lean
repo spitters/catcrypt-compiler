@@ -125,6 +125,7 @@ theorem lookupReg128_bind {Γ : Ctx} (vm : VarMap Γ) (name s : String) :
         | pair a b => rfl
         | sum a b => rfl
         | memref n => rfl
+        | memrefW w n => rfl
         | sword n =>
             by_cases hn : n = 128
             · subst hn; rfl

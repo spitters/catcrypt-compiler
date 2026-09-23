@@ -79,7 +79,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect
-  (ctTransTy ctTransTy_sword ctTransTy_memref ctTransTy_default
+  (ctTransTy ctTransTy_sword ctTransTy_memref ctTransTy_memrefW ctTransTy_default
    jasminExtSem_reg jasminExtSem_stackArr64)
 
 /-! ## 1. The dialect valuation transport `ctMapValD`
@@ -229,16 +229,26 @@ theorem extCallD_denote_default
     (he : toJExprD (Γ := Γ)
       ⟨CatCryptOp.extCall name argTys retTy, rfl, args⟩ = some e') :
     e'.denote (ctMapValD V) = JasminTy.default (mapTy retTy) := by
-  simp only [toJExprD, Option.some.injEq] at he
-  subst he
-  show jasminExtSem name (argTys.map mapTy) (mapTy retTy) _ = _
   cases retTy with
-  | sword w => exact jasminExtSem_reg _ _ _ _
-  | bit => exact jasminExtSem_reg _ _ _ _
-  | unit => exact jasminExtSem_reg _ _ _ _
-  | pair a b => exact jasminExtSem_reg _ _ _ _
-  | sum a b => exact jasminExtSem_reg _ _ _ _
-  | memref n => exact jasminExtSem_stackArr64 _ _ _ _
+  | memrefW w n => simp only [toJExprD, reduceCtorEq] at he
+  | sword w =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_reg _ _ _ _
+  | bit =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_reg _ _ _ _
+  | unit =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_reg _ _ _ _
+  | pair a b =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_reg _ _ _ _
+  | sum a b =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_reg _ _ _ _
+  | memref n =>
+      simp only [toJExprD, Option.some.injEq] at he; subst he
+      exact jasminExtSem_stackArr64 _ _ _ _
 
 /-- The source dialect `extCall` denotes to the opaque canonical default
     `CryptoTy.default retTy` (the `catCryptDenote` leaf is the deterministic opaque
@@ -474,6 +484,29 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with
         | cons a t => cases t with | cons i t2 => cases t2 with | cons v t3 =>
           rw [stackSet_eq_memSetDyn]; rfl
+  | memrefWGetDyn w n =>
+      -- The width-carrying load lowers to `stackLoad w n`, whose jasmin
+      -- denotation is the same definitional match as the dialect's.
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminDialect.stackGet
+          ((toJVarD args.head).lookup (ctMapValD V))
+          (((toJVarD args.tail.head).lookup (ctMapValD V)) : BitVec 64).toNat = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_memrefW, ctTransTy_sword,
+        ctTransTy_sword]
+      cases args with | cons a t => cases t with | cons i t2 => rfl
+  | memrefWSetDyn w n =>
+      -- The width-carrying store lowers to `stackStore w n`, same argument.
+      cases hop
+      simp only [toJExprD] at he; cases he
+      show JasminDialect.stackSet
+          ((toJVarD args.head).lookup (ctMapValD V))
+          (((toJVarD args.tail.head).lookup (ctMapValD V)) : BitVec 64).toNat
+          ((toJVarD args.tail.tail.head).lookup (ctMapValD V)) = _
+      rw [ctMapValD_lookup, ctMapValD_lookup, ctMapValD_lookup, ctTransTy_memrefW,
+        ctTransTy_sword, ctTransTy_sword, ctTransTy_memrefW]
+      cases args with
+        | cons a t => cases t with | cons i t2 => cases t2 with | cons v t3 => rfl
   | bvShiftL w k =>
       -- Immediate logical left shift lowers to `shlImm w k`; the jasmin
       -- denotation `a <<< k` is definitionally the dialect denotation.

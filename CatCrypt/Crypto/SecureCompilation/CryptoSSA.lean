@@ -71,6 +71,9 @@ inductive CryptoTy where
       storage: a BLS12-381 Fp element is `memref 6` (6 × 64-bit limbs).
       Mirrors MLIR's `memref<n×i64>`. -/
   | memref (n : Nat)
+  /-- Fixed-size memref (array) of `n` cells, each a `w`-bit word. Mirrors
+      MLIR's `memref<n×iw>`. The `w = 64` cell width is `memref n`. -/
+  | memrefW (w n : Nat)
   deriving DecidableEq, Repr
 
 /-- Denotation of CryptoSSA types into Lean types.
@@ -82,6 +85,7 @@ inductive CryptoTy where
   | .sum a b => a.denote ⊕ b.denote
   | .sword n => BitVec n
   | .memref n => Fin n → BitVec 64
+  | .memrefW w n => Fin n → BitVec w
 
 instance : Nonempty CryptoTy.bit.denote := ⟨false⟩
 instance : Nonempty CryptoTy.unit.denote := ⟨()⟩
@@ -92,6 +96,7 @@ instance {a : CryptoTy} [Nonempty a.denote] {b : CryptoTy} :
     Nonempty (CryptoTy.sum a b).denote := ⟨.inl (Classical.arbitrary _)⟩
 instance {n : Nat} : Nonempty (CryptoTy.sword n).denote := ⟨0⟩
 instance {n : Nat} : Nonempty (CryptoTy.memref n).denote := ⟨fun _ => 0⟩
+instance {w n : Nat} : Nonempty (CryptoTy.memrefW w n).denote := ⟨fun _ => 0⟩
 
 /-- Recursive default witness for `CryptoTy.denote`. -/
 def CryptoTy.default : (t : CryptoTy) → t.denote
@@ -101,6 +106,7 @@ def CryptoTy.default : (t : CryptoTy) → t.denote
   | .sum a _ => Sum.inl (default a)
   | .sword _ => 0
   | .memref _ => fun _ => 0
+  | .memrefW _ _ => fun _ => 0
 
 instance {t : CryptoTy} : Nonempty t.denote := ⟨CryptoTy.default t⟩
 

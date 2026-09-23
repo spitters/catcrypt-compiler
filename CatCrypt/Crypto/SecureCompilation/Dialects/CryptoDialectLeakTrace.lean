@@ -124,6 +124,8 @@ def CatCryptOp.leakEvent : CatCryptOp → LeakEvent
   | .memrefSetDyn _ => .pureOp "memrefSetDyn"
   | .memrefGetDyn _ => .pureOp "memrefGetDyn"
   | .memrefGetDyn128 _ => .pureOp "memrefGetDyn128"
+  | .memrefWSetDyn _ _ => .pureOp "memrefWSetDyn"
+  | .memrefWGetDyn _ _ => .pureOp "memrefWGetDyn"
   | .extCall name _ _ => .pureOp ("extCall:" ++ name)
   | .sampleBit => .sampleOp
   | .sampleBv _ => .sampleOp

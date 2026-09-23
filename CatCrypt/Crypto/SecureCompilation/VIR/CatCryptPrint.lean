@@ -61,6 +61,7 @@ def printCryptoTy : CryptoTy → String
   | .unit => "i1"   -- erased
   | .sword n => "i" ++ toString n
   | .memref n => "memref<" ++ toString n ++ "xi64>"
+  | .memrefW w n => "memref<" ++ toString n ++ "xi" ++ toString w ++ ">"
   | .pair _ _ => "!llvm.struct<(...)>"   -- simplified
   | .sum _ _ => "!llvm.struct<(i1, ...)>"   -- tag + payload
 
@@ -123,6 +124,8 @@ def printCatCryptOp : CatCryptOp → String
   | .memrefGetDyn _ => "\"memref.load\""
   -- 128-bit dynamic-index gather (two-limb XMM load); same memref.load op, i128 result.
   | .memrefGetDyn128 _ => "\"memref.load\""
+  | .memrefWGetDyn _ _ => "\"memref.load\""
+  | .memrefWSetDyn _ _ => "\"memref.store\""
   | .extCall name _ _ => "\"func.call\""
   | .sampleBit => "\"crypto.sample_bit\""
   | .sampleBv n => s!"\"crypto.sample_bv {n}\""

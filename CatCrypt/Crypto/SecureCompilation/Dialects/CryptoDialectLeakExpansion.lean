@@ -519,6 +519,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
         dsimp only at h he
         rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
         all_goals (rw [hen] at h he; dsimp only at h he)
+        case memrefW => exact absurd h (by simp)
         iterate 5 (exact absurd h (by simp))
         by_cases hlt : idx < n
         · rw [if_pos hlt] at h he
@@ -535,6 +536,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
         rw [hty] at he
         rcases mt with _ | _ | _ | _ | _ | n
         all_goals (dsimp only at h he)
+        case memrefW => exact absurd h (by simp)
         iterate 5 (exact absurd h (by simp))
         by_cases hlt : idx < n
         · rw [dif_pos hlt] at h

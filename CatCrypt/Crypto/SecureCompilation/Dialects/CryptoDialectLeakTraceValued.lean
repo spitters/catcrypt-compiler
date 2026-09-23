@@ -29,13 +29,13 @@ true by `rfl`); a value-carrying trace makes CT a genuine proof obligation.
 This module is the honest **first step** of porting the RHP / CT-leakage
 framework off the deprecated `CProg` onto the dialect `Com`. It defines such a
 value-carrying trace and proves the property the trivial shadow *cannot* have:
-the trace genuinely distinguishes inputs.
+the trace distinguishes inputs.
 
 ## What is defined / proved
 
 * `valTag` — a total serialization `(t : CryptoTy) → t.denote → String` of a
   runtime value, used as the value-dependent payload of a leak event. On
-  `bit`/`sword`/`pair`/`sum` it serializes the value honestly; on `memref` it
+  `bit`/`sword`/`pair`/`sum` it serializes the value; on `memref` it
   returns a constant tag (the dialect's memref addresses are static `Fin n`
   indices, so the memory axis is constant-time by construction — see the
   `CryptoDialectLeakTrace` docstring).
@@ -49,7 +49,7 @@ the trace genuinely distinguishes inputs.
   a concrete `Com catCryptDialect` and two input valuations `V₁ ≠ V₂` with
   `Com.leakTraceV V₁ c ≠ Com.leakTraceV V₂ c`. This is exactly the property the
   valuation-free `Com.leakTrace` (and hence the `rfl`-shadow `Com.all_com_ct`)
-  *cannot* have: the value-carrying trace genuinely observes the input.
+  *cannot* have: the value-carrying trace observes the input.
 * `Com.isConstantTimeV` — the constant-time predicate over the *value-carrying*
   trace: the trace agrees on any two inputs that agree on the public part of the
   context. This is **not** `rfl` (it is a real ∀-quantified equality of
@@ -80,7 +80,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
 /-- Total serialization of a runtime dialect value to a `String`, used as the
     value-dependent payload of a leak event.
 
-    On `bit`/`sword` the value is serialized honestly (so the payload genuinely
+    On `bit`/`sword` the value is serialized (so the payload
     tracks the runtime value); on `pair`/`sum` it recurses; on `memref` it
     returns a constant tag, because the dialect's memref addresses are static
     `Fin n` indices (the memory axis is constant-time by construction — see the
@@ -96,6 +96,7 @@ def valTag : (t : CryptoTy) → t.denote → String
       | .inr y => "R" ++ valTag b y
   | .sword _, w => toString w.toNat
   | .memref _, _ => "mem"
+  | .memrefW _ _, _ => "mem"
 
 /-! ## 2. The value-carrying leak trace -/
 
@@ -142,7 +143,7 @@ def valFalse : Ctxt.Valuation (d := catCryptDialect) [CryptoTy.bit] :=
 def valTrue : Ctxt.Valuation (d := catCryptDialect) [CryptoTy.bit] :=
   .cons true .nil
 
-/-- **Key non-triviality lemma.** The value-carrying trace genuinely depends on
+/-- **Key non-triviality lemma.** The value-carrying trace depends on
     the input: on the concrete program `witnessProg`, the two input valuations
     `valFalse` and `valTrue` produce *different* traces.
 

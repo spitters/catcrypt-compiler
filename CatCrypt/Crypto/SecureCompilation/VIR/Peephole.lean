@@ -1288,6 +1288,7 @@ instance instInhabitedCryptoDenote : ∀ t : CryptoTy, Inhabited ⟦t⟧
   | .sum a _ => ⟨.inl (instInhabitedCryptoDenote a).default⟩
   | .sword n => ⟨(0 : BitVec n)⟩
   | .memref n => ⟨((fun _ => 0) : Fin n → BitVec 64)⟩
+  | .memrefW w n => ⟨((fun _ => 0) : Fin n → BitVec w)⟩
 
 /-- Observations for `catCryptDialect`: an operation is observable exactly when
 it reads a `memref`, so register arithmetic emits nothing. -/

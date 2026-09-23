@@ -80,6 +80,7 @@ def CatCryptOp.maskingLinear : CatCryptOp → Bool
   -- ite / memrefs / extCall: conservatively unsafe.
   | .ite _ | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
   | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _
   | .extCall _ _ _ => false
   -- Carry-arithmetic + sampling: non-linear over GF(2)-sharing / not maskable.
   | .bvAdd64 _ | .bvAdc _ | .sampleBit | .sampleBv _ => false

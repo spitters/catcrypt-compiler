@@ -207,6 +207,11 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
       have hr : mapTy t = JasminTy.reg w := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
       some (hr ▸ { op := .regConst w v.toNat, retTy_eq := rfl, args := .nil })
+  -- An `extCall` returning a width-carrying array is not lowered. The jasmin
+  -- external semantics reads a `stackArr 16` return as a lattice leaf whatever
+  -- the callee is named, so the opaque-default law the lowering relies on does
+  -- not hold at that width; declining the shape keeps the law unconditional.
+  | .extCall name argTys (.memrefW _ _) => none
   | .extCall name argTys retTy =>
       have hr : mapTy t = mapTy retTy := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
@@ -242,6 +247,32 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
         have a := e.args; rw [h] at a; exact a
       some (hr ▸
         { op := .stackStore 64 n, retTy_eq := rfl,
+          args := .cons (toJVarD args.head)
+            (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
+  -- **Width-carrying dynamic-index memref load.** `memrefWGetDyn w n` ↦ jasmin
+  -- `stackLoad w n`. The dialect op's `[.memrefW w n, .sword 64]` operands map
+  -- pointwise to `[.stackArr w n, .reg 64]`, the jasmin `stackLoad` signature.
+  -- `ret t = .sword w`, so `mapTy t = .reg w`.
+  | .memrefWGetDyn w n =>
+      have hr : mapTy t = JasminTy.reg w := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.memrefW w n, .sword 64] := by have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .stackLoad w n, retTy_eq := rfl,
+          args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+  -- **Width-carrying dynamic-index memref store.** `memrefWSetDyn w n` ↦ jasmin
+  -- `stackStore w n`. The dialect op's `[.memrefW w n, .sword 64, .sword w]`
+  -- (array, runtime index, value) maps to `[.stackArr w n, .reg 64, .reg w]`.
+  -- `ret t = .memrefW w n`, so `mapTy t = .stackArr w n`.
+  | .memrefWSetDyn w n =>
+      have hr : mapTy t = JasminTy.stackArr w n := by
+        have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
+      let args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty)
+          [.memrefW w n, .sword 64, .sword w] := by
+        have a := e.args; rw [h] at a; exact a
+      some (hr ▸
+        { op := .stackStore w n, retTy_eq := rfl,
           args := .cons (toJVarD args.head)
             (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
   -- **Word/crypto rotates and variable shifts.** These are the word-native

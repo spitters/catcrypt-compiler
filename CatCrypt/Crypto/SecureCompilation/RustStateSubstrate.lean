@@ -427,6 +427,15 @@ lemma bindingOK_sword_ne {n : Nat} (h : n ≠ 64) {Γ : Ctx}
   -- `memref _` arm doesn't match `sword`, fallthrough is `True`.
   split <;> simp_all
 
+/-- A binding at a width-carrying array type is unconstrained: `bindingOK` has an
+    arm for `.sword 64` and `.memref n` only, so at `.memrefW w n` it is `True`. -/
+lemma bindingOK_memrefW {w n : Nat} {Γ : Ctx}
+    (rs : RustState) (V : HVec Γ) (name : String)
+    (cv : CVar Γ (.memrefW w n)) :
+    bindingOK rs V name cv := by
+  unfold bindingOK
+  split <;> simp_all
+
 /-- An existing binding `bindingOK rs V name cv'` is preserved when we
     cons a fresh `.sword 64` onto both sides and `rsSetScalar` the
     rust state with a value at a *different* name. -/
@@ -453,6 +462,7 @@ lemma bindingOK_there_scalarSet
     · -- `bindingOK` for `sword n` with `n ≠ 64` is `True`.
       -- Manually expose this via `bindingOK_sword_ne`, below.
       exact bindingOK_sword_ne (n := n) h64 _ _ _ _
+  | memrefW w n => exact bindingOK_memrefW _ _ _ _
   | memref n =>
     simp only [bindingOK] at hOK ⊢
     have hT : (rsSetScalar rs x v).rsTower = rs.rsTower := by
@@ -499,6 +509,7 @@ lemma bindingOK_there_setTower
         funext n; simp [rsSetTower]
       simp [CVar.lookup, hScalar, hOK]
     · exact bindingOK_sword_ne (n := n) h64 _ _ _ _
+  | memrefW w n => exact bindingOK_memrefW _ _ _ _
   | memref n =>
     simp only [bindingOK] at hOK ⊢
     have hOther : (rsSetTower rs x rv).rsTower name = rs.rsTower name :=
@@ -839,6 +850,29 @@ lemma interp_cons_setTower_any
           exact bindingOK_there_setTower (s := .sword n) cv''
                   (CryptoTy.default _) tv hX
                   (hInv nm t' cv'' hOld)
+  | .memrefW w n =>
+    refine ⟨CryptoTy.default _, ?_, noAlias_bind hInv.noAlias cv⟩
+    intro nm t cv' hLook
+    simp only [VarMap.bind] at hLook
+    by_cases hX : nm = cv
+    · subst hX
+      rw [if_pos rfl] at hLook
+      simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
+      obtain ⟨ht, hcv⟩ := hLook
+      subst ht; cases hcv
+      exact bindingOK_memrefW _ _ _ _
+    · rw [if_neg hX] at hLook
+      cases hOld : vm.lookup nm with
+      | none => rw [hOld] at hLook; exact absurd hLook (by simp)
+      | some pair =>
+        rw [hOld] at hLook
+        obtain ⟨t', cv''⟩ := pair
+        simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
+        obtain ⟨ht, hcvE⟩ := hLook
+        subst ht; cases hcvE
+        exact bindingOK_there_setTower (s := .memrefW w n) cv''
+                (CryptoTy.default _) tv hX
+                (hInv nm t' cv'' hOld)
   | .memref n =>
     -- Pick witness based on whether `tv`'s type encodes to `.memref n`.
     obtain ⟨t', val⟩ := tv
@@ -1006,6 +1040,7 @@ lemma bindingOK_there_consonly
             = BitVec.ofNat 64 (rs.rsScalar name)
       simp [CVar.lookup, hOK]
     · exact bindingOK_sword_ne (n := n) h64 _ _ _ _
+  | memrefW w n => exact bindingOK_memrefW _ _ _ _
   | memref n =>
     simp only [bindingOK] at hOK ⊢
     cases hRsT : rs.rsTower name with
@@ -1138,6 +1173,9 @@ lemma interp_cons_any_unchanged
     · refine ⟨CryptoTy.default _, ?_⟩
       apply interp_cons_unchanged hInv x (s := .sword n) (CryptoTy.default _)
       exact bindingOK_sword_ne (n := n) hn _ _ _ _
+  | .memrefW w n =>
+    exact ⟨CryptoTy.default _,
+      interp_cons_unchanged hInv x (CryptoTy.default _) (bindingOK_memrefW _ _ _ _)⟩
   | .memref n =>
     cases hRsT : rs.rsTower x with
     | none => exact ⟨fun _ => 0, interp_cons_memref_fresh hInv x n hRsT⟩

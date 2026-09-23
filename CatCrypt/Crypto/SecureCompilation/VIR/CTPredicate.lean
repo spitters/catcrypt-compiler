@@ -69,7 +69,8 @@ def CatCryptOp.ctSafe : CatCryptOp → Bool
   -- only when the index is PUBLIC — that is the caller's obligation, discharged
   -- by the public-coins / labeling analysis (RejectionEnvelopeCT), not asserted
   -- here. Conservative `false` keeps `ctSafe` sound.
-  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ => false
+  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ => false
   | _ => true
 
 @[grind =]
@@ -150,7 +151,7 @@ this: a region whose `SecretLevel` tag is `.Public` (e.g., the
 conditional was sampled, or it's a measurement outcome) is CT-safe
 provided both branches are; a region tagged `.Secret` is **not**.
 
-This is the load-bearing predicate for the CT-preservation guarantee.
+The CT-preservation guarantee is stated over this predicate.
 The tag is caller-asserted (Phase J in `LowCT.lean` propagates the
 flow); this predicate just consumes it. -/
 

@@ -175,7 +175,8 @@ def catToMemref : CatCryptOp → Option MlirMemrefOp
   -- target — the dynamic ops lower to jasmin `stackLoad/stackStore` directly
   -- (DialectToJasminCom). Extending `MlirMemrefDialect` with dynamic load/store
   -- (MLIR's `memref.load/store` are inherently dynamic) is the follow-up.
-  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _ => none
+  | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
+  | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ => none
   | .constBit _ | .constUnit | .xor | .and | .or | .not | .eqBit
   | .mkPair _ _ | .fst _ _ | .snd _ _ | .inl _ _ | .inr _ _
   | .bvConst _ _ | .bvXor _ | .bvAnd _ | .bvOr _ | .bvNot _ | .bvAdd _

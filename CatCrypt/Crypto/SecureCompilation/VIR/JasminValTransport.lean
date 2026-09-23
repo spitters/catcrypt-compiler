@@ -59,6 +59,7 @@ open CatCrypt.Core
 def ctTransTy : {t : CryptoTy} → CryptoTy.denote t → ⟦mapTy t⟧
   | .sword _, v => v
   | .memref _, v => v
+  | .memrefW _ _, v => v
   | .bit, v => BitVec.ofBool v
   | .unit, _ => JasminTy.default (.reg 0)
   | .pair _ _, _ => JasminTy.default (.reg 0)
@@ -71,6 +72,10 @@ theorem ctTransTy_sword {w : Nat} (v : BitVec w) :
 /-- On a concrete memref type, `ctTransTy` is the identity. -/
 theorem ctTransTy_memref {n : Nat} (v : Fin n → BitVec 64) :
     ctTransTy (t := .memref n) v = v := rfl
+
+/-- On a width-carrying memref type, `ctTransTy` is the identity. -/
+theorem ctTransTy_memrefW {w n : Nat} (v : Fin n → BitVec w) :
+    ctTransTy (t := .memrefW w n) v = v := rfl
 
 /-! ## Type-level default alignment -/
 

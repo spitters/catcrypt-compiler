@@ -2691,6 +2691,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
         simp only [semScalarL, henv] at hsem
         rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
         all_goals (rw [hen] at htr hsem; dsimp only at htr hsem)
+        case memrefW => exact absurd htr (by simp)
         iterate 5 (exact absurd htr (by simp))
         by_cases hlt : idx < n
         · rw [if_pos hlt] at htr hsem
@@ -2716,6 +2717,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
           · exact hden.trans hden2
         · rw [if_neg hlt] at htr; simp at htr
       · rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
+        case memrefW => simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
@@ -3365,6 +3367,7 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
       · simp only [translateDialectFull, hlk] at htr
         rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
         all_goals (rw [hen] at htr; dsimp only at htr)
+        case memrefW => exact absurd htr (by simp)
         iterate 5 (exact absurd htr (by simp))
         by_cases hlt : idx < n
         · rw [if_pos hlt] at htr
@@ -3374,6 +3377,7 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
         · rw [if_neg hlt] at htr; simp at htr
       · obtain ⟨mt, arr⟩ := p
         rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
+        case memrefW => simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
