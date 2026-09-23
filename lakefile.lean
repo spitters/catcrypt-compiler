@@ -2809,6 +2809,11 @@ lean_exe «mldsa-jinc-import-kat» where
   -- Parse, elaboration and rendering checks on the ML-DSA `.jinc` leaf, run rather than elaborated.
   root := `CatCrypt.Crypto.Jasmin.MldsaJincImportKat
 
+lean_exe «mldsa-jinc-emit» where
+  -- Writes the imported ML-DSA leaves into bench/mldsa_compare/gen_com/; the
+  -- rendered text is checked by the bench Makefile and the C harness.
+  root := `CatCrypt.Crypto.Jasmin.MldsaJincEmit
+
 lean_exe «nasm-parse-kat» where
   -- NASM parser round-trip and coverage check on the CryptOpt carry_mul, run rather than elaborated.
   root := `CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
