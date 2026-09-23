@@ -231,6 +231,7 @@ def pkgModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.JincElab,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.JincParser,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.JincToCom,
+    Lake.Glob.one `CatCrypt.Crypto.Jasmin.JincToLowCT,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.JoltProverReflect,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.LeafOps,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.LeafSig,

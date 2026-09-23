@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Jasmin.MldsaJincImport
+public meta import CatCrypt.Crypto.Jasmin.JincToLowCT
+public import CatCrypt.Crypto.Jasmin.JincToLowCT
 
 /-!
 # Import-path checks on the ML-DSA `.jinc` leaves, as a program
@@ -93,4 +95,13 @@ def main : IO UInt32 := do
   let path : System.FilePath := System.FilePath.mk expandMaskOutDir / expandMaskOutFile
   IO.FS.writeFile path asm
   IO.println s!"mldsa-jinc-import-kat: wrote {path} ({instrLineCount asm} instruction lines)"
+  match (CatCrypt.Crypto.Jasmin.JincToCom.parseJincFun
+        CatCrypt.Crypto.Jasmin.JincToCom.mldsaExpandMaskSrc).toOption.bind
+      (CatCrypt.Crypto.Jasmin.JincToLowCT.renderJFunLeaf "mldsa_expand_mask_real") with
+  | some rolled =>
+      let pathR : System.FilePath :=
+        System.FilePath.mk expandMaskOutDir / "mldsa_expand_mask_rolled.s"
+      IO.FS.writeFile pathR rolled
+      IO.println s!"mldsa-jinc-import-kat: wrote {pathR} ({instrLineCount rolled} instruction lines)"
+  | none => IO.println "mldsa-jinc-import-kat: the LowCT route declined the ExpandMask leaf"
   return 0
