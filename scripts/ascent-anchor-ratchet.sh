@@ -51,6 +51,13 @@ mod_of() { printf '%s' "${1%.lean}" | tr '/' '.'; }
 descent_re='legWeld|keystone_[A-Za-z0-9_]+|rustToJasminCom_endToEnd|robustCompilation_source_to_x86|com_arm_e2e|com_riscv_e2e|transU_to_jasminCom_endToEnd|translateDialectGuarded_jasmin'
 bytes_re='encodeJBlock|decodeJStream|[A-Za-z0-9_]*Bytes_correct'
 
+# Modules that mention the byte route but carry the byte fact as a HYPOTHESIS (a theorem
+# of the form `decodeJStream … = some block → …`) state no result over the shipped bytes.
+# The text match cannot tell an assumed decode from a proved one, so they are listed
+# here with the missing lemma, and neither they nor the modules they import count as
+# anchored through them.
+conditional=scripts/ascent-anchor-conditional.txt
+
 # Code text only: drop block docstrings/comments and line comments, so a mention
 # in prose does not anchor a module. The content comes from HEAD, not the working
 # tree: the tree is shared with concurrent sessions, and reading a file mid-edit
@@ -116,6 +123,7 @@ for f in $files; do
   # match — timing-dependent, and it made the verdict flap run to run (2026-09-19).
   grep -qE "$descent_re" <<< "$code" && d=1
   grep -qE "$bytes_re" <<< "$code" && b=1
+  if [ "$b" = 1 ] && [ -f "$conditional" ] && grep -qxF "$m" <(grep -v '^#' "$conditional" | cut -f1); then b=0; fi
   if [ "$d$b" != "00" ]; then
     kind=$([ "$d$b" = "11" ] && echo both || { [ "$d" = 1 ] && echo descent || echo bytes; })
     printf '%s\t%s\n' "$m" "$kind" >> "$tmp/direct"
