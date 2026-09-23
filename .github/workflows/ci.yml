@@ -73,6 +73,9 @@ jobs:
       - name: No new native_decide or maxHeartbeats bump (proof cost)
         run: bash scripts/proof-cost-ratchet.sh
 
+      - name: No new known-answer test inside Lean
+        run: bash scripts/lean-kat-ratchet.sh
+
       - name: Authority documents are free of changelog prose
         run: bash scripts/lint-lean-prose.sh --docs
 
