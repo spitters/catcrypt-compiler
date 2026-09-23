@@ -587,7 +587,7 @@ def fheMontMulLprog : Lprog :=
       [64, 64])                             -- abiTyin (a, b)
 
 /-- The rendered owned-backend AT&T `.s` for `fhe_montmul` (no jasminc). -/
-def fheMontMulAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned fheMontMulLprog
+def fheMontMulAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned fheMontMulLprog
 
 /-! ## 6. Substring helper -/
 
@@ -606,7 +606,7 @@ def hasSub (hay needle : String) : Bool :=
 def emitMain : IO Unit := do
   let dir := "bench/fhe_ntt_compare/gen"
   IO.FS.createDirAll dir
-  IO.FS.writeFile (dir ++ "/fhe_montmul.s") fheMontMulAsm
+  IO.FS.writeFile (dir ++ "/fhe_montmul.s") (fheMontMulAsm ())
   IO.println "WROTE bench/fhe_ntt_compare/gen/fhe_montmul.s"
   IO.println "  (60-bit FHE-NTT Montgomery REDC fheMontMulThir through Com[thir] -> lowerThir ->"
   IO.println "   toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend, NO jasminc;"

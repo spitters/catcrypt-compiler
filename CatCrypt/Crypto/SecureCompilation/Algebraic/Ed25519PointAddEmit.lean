@@ -124,7 +124,7 @@ def pointAddLprog : Lprog :=
     `FieldLimbs.Curve25519.mulRowK` emits for the same pair of limbs into the
     printer's two-output `MULX`. The body is straight-line, so the pass runs in
     its default mode, in which `%rdx` carries no live value across a fused pair. -/
-def pointAddAsm : String :=
+def pointAddAsm (_ : Unit) : String :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedZeroized
     (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog pointAddLprog)
 
@@ -133,6 +133,6 @@ def hasUnhandled (s : String) : Bool :=
   (s.splitOn "UNHANDLED").length ≠ 1
 
 /-- The rendered addition contains no `UNHANDLED` marker. -/
-def pointAddAsmHandled : Prop := hasUnhandled pointAddAsm = false
+def pointAddAsmHandled : Prop := hasUnhandled (pointAddAsm ()) = false
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd

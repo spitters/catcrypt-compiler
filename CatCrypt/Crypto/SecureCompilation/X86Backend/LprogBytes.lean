@@ -1380,6 +1380,66 @@ def encodeLcmd (body : Lcmd) : List (BitVec 8) :=
       let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
       (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i qsaveB)) (0, [])).2
 
+/-- `encodeLcmd` with an array accumulator: the same fold, each instruction's bytes
+    pushed onto an `Array` and the list produced once at the end, so the cost is
+    linear in the output where the list fold's repeated append is quadratic. The
+    compiler runs this in place of `encodeLcmd` through `encodeLcmd_eq_arr`. -/
+def encodeLcmdArr (body : Lcmd) : List (BitVec 8) :=
+  let frame := frameSize body
+  let spillW := if bodyIsU64 body then 64 else 32
+  let qsaveB := qsaveBytesFor body
+  let tbl := labelOffsets frame spillW body qsaveB
+  (body.foldl (fun (acc : (Nat × Array (BitVec 8))) instr =>
+      let (off, bytes) := acc
+      let i := instr.li_i
+      let dispLong : LLabel → Int := fun l =>
+        Int.ofNat (lookupLabel tbl l)
+          - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+      let len := instrLenAt frame spillW dispLong i qsaveB
+      let instrEnd := off + len
+      let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
+      (instrEnd, bytes ++ (encodeLinstrR frame spillW dispOf i qsaveB).toArray)) (0, #[])).2.toList
+
+/-- The two folds agree from any pair of accumulators holding the same bytes. -/
+theorem encodeLcmd_fold_arr (frame spillW qsaveB : Nat) (tbl : List (LLabel × Nat)) :
+    ∀ (body : Lcmd) (off : Nat) (lst : List (BitVec 8)) (arr : Array (BitVec 8)),
+      arr.toList = lst →
+      (body.foldl (fun (acc : (Nat × List (BitVec 8))) instr =>
+          let (off, bytes) := acc
+          let i := instr.li_i
+          let dispLong : LLabel → Int := fun l =>
+            Int.ofNat (lookupLabel tbl l)
+              - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+          let len := instrLenAt frame spillW dispLong i qsaveB
+          let instrEnd := off + len
+          let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
+          (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i qsaveB)) (off, lst)).2
+        = ((body.foldl (fun (acc : (Nat × Array (BitVec 8))) instr =>
+          let (off, bytes) := acc
+          let i := instr.li_i
+          let dispLong : LLabel → Int := fun l =>
+            Int.ofNat (lookupLabel tbl l)
+              - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+          let len := instrLenAt frame spillW dispLong i qsaveB
+          let instrEnd := off + len
+          let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
+          (instrEnd, bytes ++ (encodeLinstrR frame spillW dispOf i qsaveB).toArray)) (off, arr)).2).toList := by
+  intro body
+  induction body with
+  | nil => intro off lst arr h; simpa using h.symm
+  | cons instr rest ih =>
+    intro off lst arr h
+    rw [List.foldl_cons, List.foldl_cons]
+    apply ih
+    simp [h]
+
+/-- `encodeLcmd` and its array form agree; the attribute makes the compiler run the
+    array form wherever `encodeLcmd` is called. -/
+@[csimp] theorem encodeLcmd_eq_arr : @encodeLcmd = @encodeLcmdArr := by
+  funext body
+  unfold encodeLcmd encodeLcmdArr
+  exact encodeLcmd_fold_arr _ _ _ _ body 0 [] #[] rfl
+
 /-! ## 5a. Encodability: which instructions carry bytes
 
 `encodeLinstrR` returns the empty byte list on every form it does not cover, and
@@ -1434,7 +1494,8 @@ def encodableLinstrR (frame spillW : Nat) (i : LinstrR)
 def encodableLcmd (body : Lcmd) : Bool :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  body.all fun instr => encodableLinstrR frame spillW instr.li_i (qsaveBytesFor body)
+  let qsaveB := qsaveBytesFor body
+  body.all fun instr => encodableLinstrR frame spillW instr.li_i qsaveB
 
 -- Static checks pinning the frame-extension directive's byte status: `FRAMEADD`
 -- and `FRAME` carry no bytes by construction, so a body laying scratch buffers or

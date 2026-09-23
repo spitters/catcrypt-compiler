@@ -103,7 +103,7 @@ def fe25519LeafSymbols : List String :=
     verbatim, so each leaf's `runBlock`-verified body and trusted SysV ABI framing
     is exactly as `Fe25519{Mul,Ops}Kernel.emitMain` writes it. This is the set of
     intra-object call targets the ladder driver's `call <leaf>` resolves against. -/
-def fe25519LeavesAsm : String :=
+def fe25519LeavesAsm (_ : Unit) : String :=
   String.intercalate "\n"
     [ Fe25519MulKernel.feMulAsm
     , Fe25519OpsKernel.feSqrAsm
@@ -112,19 +112,19 @@ def fe25519LeavesAsm : String :=
     , Fe25519OpsKernel.feMul121666Asm ]
 
 /- Each leaf symbol appears as a `.globl` in the concatenated leaf `.s`. -/
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) ".globl fe25519_mul_x86_from_lean")
 
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sqr_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) ".globl fe25519_sqr_x86_from_lean")
 
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_add_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) ".globl fe25519_add_x86_from_lean")
 
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sub_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) ".globl fe25519_sub_x86_from_lean")
 
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul121666_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) ".globl fe25519_mul121666_x86_from_lean")
 
 /- The faithful `mulx`/`adcx`/`adox` mnemonics survive into the concatenated leaf
     `.s` (the ADX schoolbook the `LinstrR`/byte path cannot represent). -/
-#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm "mulx") && (BignumMontMulKernel.hasSub fe25519LeavesAsm "adcx") && (BignumMontMulKernel.hasSub fe25519LeavesAsm "adox")
+#guard (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) "mulx") && (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) "adcx") && (BignumMontMulKernel.hasSub (fe25519LeavesAsm ()) "adox")
 
 /-! ## 2. The `JInstr → LinstrR` lift (layer 2: the FULL `Lcmd` lift)
 
@@ -987,26 +987,26 @@ rendered `.s`, so the RFC 7748 byte-KAT (`bench/x25519_ladder`,
 `make …scalarmult_owned_kat`) links against the same intra-object symbols. -/
 
 /-- The rendered `.s` of the front-generated whole-scalarmult body. -/
-def x25519ScalarmultAsm : String :=
+def x25519ScalarmultAsm (_ : Unit) : String :=
   LprogAsmPrinter.renderLfundef "x25519_scalarmult" x25519ScalarmultLcmd
 
 /- The generated body renders the 255-iteration ladder loop back-edge
     (`.L0:` … `jne .L0`) — the `.loop 0 "R13"` of the schedule. -/
-#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L0:") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm "jne .L0")
+#guard (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) ".L0:") && (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) "jne .L0")
 
 /- The generated body renders the sibling `call x25519_mono_step` inside the
     ladder loop (the byte-encoded add-and-double). -/
-#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call x25519_mono_step")
+#guard (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) "call x25519_mono_step")
 
 /- The generated body renders the inversion chain's field-brick sibling calls
     (`call fe25519_mul`/`call fe25519_sqr`), including the ones inside the counted
     squaring-run loops. -/
-#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_mul_x86_from_lean") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_sqr_x86_from_lean")
+#guard (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) "call fe25519_mul_x86_from_lean") && (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) "call fe25519_sqr_x86_from_lean")
 
 /- The generated body renders MULTIPLE counted-loop back-edges: the ladder loop
     (`.L0:`) plus the inversion squaring-run loops (`.L14:`, `.L15:`) — the
     multiple-sequential-loops the unifying front expresses. -/
-#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L14:") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L15:")
+#guard (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) ".L14:") && (BignumMontMulKernel.hasSub (x25519ScalarmultAsm ()) ".L15:")
 
 /-- The whole-function owned-RA `Lfundef`: `x25519_scalarmult(out,k,u)` with the SysV
     3-pointer ABI (`out→RDI, k→RSI, u→RDX`). The body bare-writes `RBX/R12/R13/R14`

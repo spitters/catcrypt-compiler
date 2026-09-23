@@ -112,7 +112,7 @@ def wholeProverWithEntryLprog : Lprog :=
     lp_funcs := wholeProverOrchLprog.lp_funcs ++ [("plonky3_prove", proveDriverFundef)] }
 
 /-- The emitted assembly text for the whole-prover object with the prove() entry. -/
-def wholeProverWithEntryAsm : String := renderLprogAtt wholeProverWithEntryLprog
+def wholeProverWithEntryAsm (_ : Unit) : String := renderLprogAtt wholeProverWithEntryLprog
 
 /-! ## 3. Structural pins (the emitted prove() entry + phase call order) -/
 
@@ -122,11 +122,11 @@ def occursIn (needle hay : String) : Bool := (hay.splitOn needle).length ≥ 2
 /- The rendered `plonky3_prove` entry calls the trace-gen, the Merkle / FRI loop
     drivers, the Fiat-Shamir leaves, and serialize — the whole prover orchestration
     as one owned function. (Substring checks on the rendered `.s`.) -/
-#guard (occursIn ".globl plonky3_prove" wholeProverWithEntryAsm)
-    && (occursIn "call fib_trace_gen_rc" wholeProverWithEntryAsm)
-    && (occursIn "call p3_merkle_compress_loop" wholeProverWithEntryAsm)
-    && (occursIn "call p3_fri_fold_loop" wholeProverWithEntryAsm)
-    && (occursIn "call p3_ser_digest_le" wholeProverWithEntryAsm)
+#guard (occursIn ".globl plonky3_prove" (wholeProverWithEntryAsm ()))
+    && (occursIn "call fib_trace_gen_rc" (wholeProverWithEntryAsm ()))
+    && (occursIn "call p3_merkle_compress_loop" (wholeProverWithEntryAsm ()))
+    && (occursIn "call p3_fri_fold_loop" (wholeProverWithEntryAsm ()))
+    && (occursIn "call p3_ser_digest_le" (wholeProverWithEntryAsm ()))
 
 /-! ## 4. The emitted call order IS the verified pipeline phase order
 
@@ -142,7 +142,7 @@ theorem prove_driver_phase_count : proveDriverBody.length = 27 := by native_deci
 
 /- The DEEP (extension-field) and quotient phases are present — the driver covers
     all five `prove()` phases, not just the commit/FRI skeleton. -/
-#guard (occursIn "call ext4_mul_c0_rc" wholeProverWithEntryAsm)
-    && (occursIn "call p3_pow_grind_loop" wholeProverWithEntryAsm)
+#guard (occursIn "call ext4_mul_c0_rc" (wholeProverWithEntryAsm ()))
+    && (occursIn "call p3_pow_grind_loop" (wholeProverWithEntryAsm ()))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit

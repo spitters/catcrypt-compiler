@@ -292,7 +292,7 @@ def wholeProverOrchLprog : Lprog :=
   { wholeProverLprog with
     lp_funcs := wholeProverLprog.lp_funcs ++ orchLoopFuncs }
 
-def wholeProverOrchAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned wholeProverOrchLprog
+def wholeProverOrchAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned wholeProverOrchLprog
 
 /-! ## 3b. Route the Merkle / FRI / FS / PoW permute call to the owned ZMM
     Poseidon2 leaf (the #647 Gap-2-item-1 lever, symbol-level wiring)
@@ -423,7 +423,7 @@ def wholeProverZmmLprog : Lprog :=
   { wholeProverLprog with
     lp_funcs := wholeProverLprog.lp_funcs ++ orchLoopFuncsZmm }
 
-def wholeProverZmmAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned wholeProverZmmLprog
+def wholeProverZmmAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned wholeProverZmmLprog
 
 /-! ## 4. Shape lemmas: the orchestration loops are the owned back-edge
 
@@ -521,13 +521,13 @@ theorem wholeProverZmm_func_count :
 def emitMain : IO Unit := do
   let dir := "bench/plonky3_compare/gen_com"
   IO.FS.createDirAll dir
-  IO.FS.writeFile (dir ++ "/plonky3_whole_prover_orch_owned.s") wholeProverOrchAsm
+  IO.FS.writeFile (dir ++ "/plonky3_whole_prover_orch_owned.s") (wholeProverOrchAsm ())
   IO.println "WROTE bench/plonky3_compare/gen_com/plonky3_whole_prover_orch_owned.s"
   IO.println "  ONE .s: 5 field leaves + 5 owned orchestration loops (Merkle/FRI/query/PoW)"
   IO.println "  prove path control flow is owned loopLcmd back-edges (.L:/cmp/jne), NO C for/while"
   -- ZMM-rerouted variant: the Poseidon2 permute call routed to the owned
   -- AVX-512 (ZMM) leaf (the #647 Gap-2-item-1 lever).
-  IO.FS.writeFile (dir ++ "/plonky3_whole_prover_zmm_owned.s") wholeProverZmmAsm
+  IO.FS.writeFile (dir ++ "/plonky3_whole_prover_zmm_owned.s") (wholeProverZmmAsm ())
   IO.println "WROTE bench/plonky3_compare/gen_com/plonky3_whole_prover_zmm_owned.s"
   IO.println "  ONE .s: field leaves + p3_poseidon2_perm_zmm (owned ZMM half-kernel calls)"
   IO.println "  Merkle/FRI-query/PoW permute -> owned AVX-512 ZMM Poseidon2 leaf (NOT scalar)"
