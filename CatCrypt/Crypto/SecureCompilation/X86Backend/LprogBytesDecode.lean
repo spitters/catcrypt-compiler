@@ -277,7 +277,8 @@ theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))
     decodeLinstr (encMovImmw 1 d v ++ rest)
       = some (.op (.mov (regName d) (.imm v)), rest) := by
   apply decodeLinstr_of_decodeJ1
-  simp only [encMovImmw, rexOpt_w1, imm32LE, List.map_cons, List.map_nil,
+  simp only [encMovImmw, if_neg (show ¬((1 : Nat) = 0) by decide),
+    rexOpt_w1, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
