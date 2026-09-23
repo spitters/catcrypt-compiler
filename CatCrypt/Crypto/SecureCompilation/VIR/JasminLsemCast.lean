@@ -36,7 +36,7 @@ bytes are exactly this. We do **not** invent a `"CASTW"` mnemonic, nor add a
 the increments-1–7 bytes plus this same `"ZEROEXT"/"TRUNC"` form the renderer
 (`LprogAsmPrinter`, `movzbl`) already consumes.
 
-The output width `w'` is genuinely absent from that wire. The renderer recovers
+The output width `w'` is absent from that wire. The renderer recovers
 nothing from a typed environment either — it hardcodes the byte-boundary cast
 (`LprogAsmPrinter` §ZEROEXT/TRUNC), so there is **no shared width-source** in the
 renderer to read (route 1 is unavailable). The faithful route is the **typed
@@ -76,7 +76,7 @@ identity-encoding witness (`relatedCastW`) for symmetry with `relatedStructShr` 
 `regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪ addCarryHi ∪
 castW` — the `ScalarCastN` predicate, which subsumes increment 7's
 `ScalarMulCarryN` (`ScalarCastN.of_scalarMulCarryN`). `castW` is the **third**
-genuinely width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
+width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
 output `BitVec w'`, in general `w ≠ w'`. Still deferred, with the same honest
 reasons as increments 5–7: `regConst` (string-baked width on the wire),
 `stackLoad`/`stackStore` (the memory/array carrier, an orthogonal state axis),
@@ -110,7 +110,7 @@ The typed cast step's value `(va).zeroExtend w'` is exactly the dialect's `castW
 denotation, so the representation square is `rfl`; we register it as a `Related`
 identity-encoding witness for symmetry with increments 6/7. The carrier crosses
 widths (`BitVec w → BitVec w'`), the first realizer whose source and target
-widths genuinely differ. -/
+widths differ. -/
 
 /-- **Representation square (ZEROEXT/TRUNC).** The typed cast realizer
     `(va).zeroExtend w'` equals the dialect's `castW` denotation (definitionally —
@@ -135,13 +135,18 @@ tie, `straightOpsCast_wire` below). -/
     it never enters the emitted bytes (`straightOpsCast_wire`). -/
 abbrev LinstrRT : Type := LinstrR × Option Nat
 
-/-- Recognise a structured `ZEROEXT`/`TRUNC` instruction `Lopn [.reg dst] opn
-    [.reg a]` (the real `castW` wire form) and return `(dst, a)`; `none`
-    otherwise. The mnemonic is the BARE `"ZEROEXT"`/`"TRUNC"` (`opToLinstrR`
-    applies no `withWidthTag`), so we match it directly — no tag to strip. -/
+/-- Recognise a structured cast instruction `Lopn [.reg dst] opn [.reg a]` (the
+    real `castW` wire form) and return `(dst, a)`; `none` otherwise. The mnemonic
+    is the BARE `"ZEROEXT"`/`"TRUNC"` of a byte-boundary cast, or the
+    width-carrying `castWMnem w w'` of a cast between 32- and 64-bit registers
+    (`opToLinstrR` applies no `withWidthTag` to either), so we match them
+    directly — no tag to strip. -/
 def castStruct? : LinstrR → Option (String × String)
   | .Lopn [.reg dst] opn [.reg a] =>
-      if opn = "ZEROEXT" ∨ opn = "TRUNC" then some (dst, a) else none
+      if opn = "ZEROEXT" ∨ opn = "TRUNC" ∨ opn = "CASTW_32_32" ∨ opn = "CASTW_32_64"
+          ∨ opn = "CASTW_64_32" ∨ opn = "CASTW_64_64" then
+        some (dst, a)
+      else none
   | _ => none
 
 /-- The typed single-step semantics for the width-cast fragment. On a cast-tagged
@@ -223,8 +228,23 @@ delegates them to `lsemStepMC`. -/
     ("ZEROEXT"/"TRUNC") [.reg a]`. -/
 theorem castStruct?_castW {w w' : Nat} (dst a : String) :
     castStruct? (opToLinstrR (JasminOp.castW w w') dst [.reg a]) = some (dst, a) := by
-  simp only [opToLinstrR, castStruct?]
-  split <;> simp
+  simp only [opToLinstrR]
+  by_cases h : castWCarriesWidths w w' = true
+  · rw [if_pos h]
+    simp only [castWMnem]
+    by_cases h1 : (w == 64) = true
+    · rw [if_pos h1]
+      by_cases h2 : (w' == 64) = true
+      · rw [if_pos h2]; simp [castStruct?]
+      · rw [if_neg h2]; simp [castStruct?]
+    · rw [if_neg h1]
+      by_cases h2 : (w' == 64) = true
+      · rw [if_pos h2]; simp [castStruct?]
+      · rw [if_neg h2]; simp [castStruct?]
+  · rw [if_neg h]
+    by_cases hle : w' ≥ w
+    · rw [if_pos hle]; simp [castStruct?]
+    · rw [if_neg hle]; simp [castStruct?]
 
 /-! ## 4. The typed emission `straightOpsCast` and the wire/byte tie
 
@@ -611,7 +631,7 @@ theorem lsemStepCast_addHi {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     widening-multiply / carry-chain trio, or a width cast `castW w w'`. This
     subsumes increment 7's `ScalarMulCarryN`. The `castW` arm binds a `.reg w'`
     (the **target** width, in general `≠` the source width `w`) into the body
-    context — the first genuinely width-*changing* binder. -/
+    context — the first width-*changing* binder. -/
 inductive ScalarCastN :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Prop where
   | ret {Γ : Ctxt jasminDialect} {w : Nat} (v : Ctxt.Var Γ (.reg w)) :
@@ -1027,7 +1047,7 @@ theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
     the emitted **bytes are unchanged**; the target width `w'` is the typed-step
     descriptor (the `ws'` jasmin's `exec_sopn` reads from the `Ozeroext` sopn),
     never a wire annotation. The first capstone covering `castW` — the **third**
-    genuinely width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
+    width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
     output `BitVec w'` (in general `w ≠ w'`) in one instruction. The `lsem→bytes`
     encoder and Sail tables remain the declared trusted base. -/
 theorem owned_lsem_correct_and_robust_cast {Γ : Ctxt jasminDialect} {t : JasminTy}

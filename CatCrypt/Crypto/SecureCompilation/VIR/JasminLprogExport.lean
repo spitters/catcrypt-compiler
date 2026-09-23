@@ -433,6 +433,33 @@ def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
       | _, _ => none
   | _ => none
 
+/-- The width-carrying mnemonic of a `castW w w'` between 32- and 64-bit GP
+    registers. The two widths are separated by `_`, not `:`, so the `:8`/`:16`/
+    `:64` width tags that `mnemWidth` / `stripAbiTag` / `parseImmShiftMnem` read
+    cannot collide with a carried width. -/
+def castWMnem (w w' : Nat) : String :=
+  if w == 64 then (if w' == 64 then "CASTW_64_64" else "CASTW_64_32")
+  else (if w' == 64 then "CASTW_32_64" else "CASTW_32_32")
+
+/-- Read the source and destination widths off a `castWMnem` mnemonic; `none`
+    for every other mnemonic, including the width-erased `ZEROEXT` / `TRUNC`. -/
+def parseCastWMnem (opn : String) : Option (Nat × Nat) :=
+  match opn.splitOn "_" with
+  | [tag, wStr, wDstStr] =>
+      if tag == "CASTW" then
+        match strToNat? wStr, strToNat? wDstStr with
+        | some w, some w' => some (w, w')
+        | _, _ => none
+      else none
+  | _ => none
+
+/-- Does a `castW w w'` carry its widths in the mnemonic? True exactly when both
+    widths are `32` or `64` — the pair the printer's `CASTW_` arm renders. Every
+    other pair keeps the width-erased `ZEROEXT` / `TRUNC`: the byte-boundary
+    casts `castW _ 8` / `castW 8 _`, and `castW 64 128`. -/
+def castWCarriesWidths (w w' : Nat) : Bool :=
+  (w == 32 || w == 64) && (w' == 32 || w' == 64)
+
 /-- The reserved `extCall` name prefix that designates a `.rodata` symbol-base
     load (`leaq sym(%rip), %dst`). An `extCall` whose `name` is
     `loadSymPrefix ++ sym` carries the link-time symbol `sym` in its name (the
@@ -511,8 +538,13 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
       | [.reg base, .reg idx, val] =>
           .Lopn [.reg dst] "STOREIDX" [.arrIdx base idx (w / 8), val]
       | _ => .Lopn [.reg dst] "STORE" srcs
+  -- A cast between 32- and 64-bit registers carries both widths in the mnemonic
+  -- (`castWMnem`, whose `_` separator cannot be read as a `:64` width tag),
+  -- because the printer's `ZEROEXT`/`TRUNC` arm assumes the cast crosses the byte
+  -- boundary and renders a byte mask. Every other cast keeps that mnemonic.
   | .castW w w' =>
-      .Lopn [.reg dst] (if w' ≥ w then "ZEROEXT" else "TRUNC") srcs
+      if castWCarriesWidths w w' then .Lopn [.reg dst] (castWMnem w w') srcs
+      else .Lopn [.reg dst] (if w' ≥ w then "ZEROEXT" else "TRUNC") srcs
   -- `extCall` is the opaque external-leaf op. Its `name` String is the only
   -- payload that can carry a *link-time symbol*, so the reserved name shape
   -- `loadSymPrefix ++ sym` (`"__loadsym:" ++ sym`) designates the `.rodata`

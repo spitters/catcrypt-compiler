@@ -27,7 +27,7 @@ globals). The op mapping is `(Wu)x → castW`, the binary ops
 literals → `regConst`, `tbl[idx] → stackLoad`, `out[k]=v → stackStore`, and the
 branchless conditional `c ? a : b → select` (constant-time control flow: renders
 to `test`/`cmovcc`, no PC divergence). A bare `lhs = src` is a register copy, in
-the dialect the width-preserving `castW w w`; `(Wu) arr[idx]` is `stackLoad` then
+the dialect the identity shift `shlImm w 0`; `(Wu) arr[idx]` is `stackLoad` then
 `castW`; `arr[idx] = rhs` at a general index and right-hand side binds the index
 and the value and then `stackStore`s. `for v = lo to hi { body }` is a bounded
 inline unroll: one `regConst` binding of the counter per iteration followed by
@@ -174,12 +174,12 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           return ⟨s, Com.var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.glob src) :: rest => do
-      -- a register copy `lhs = src`, expressed as the width-preserving cast
+      -- a register copy `lhs = src`, expressed as the identity shift `src <<< 0`
       let sTy ← typeOf env src
       match sTy with
       | .reg w =>
           let sv ← lookup Γ env src (.reg w)
-          let e : Expr jasminDialect Γ (.reg w) := ⟨.castW w w, rfl, .cons sv .nil⟩
+          let e : Expr jasminDialect Γ (.reg w) := ⟨.shlImm w 0, rfl, .cons sv .nil⟩
           let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
           return ⟨s, Com.var e body⟩
       | _ => none

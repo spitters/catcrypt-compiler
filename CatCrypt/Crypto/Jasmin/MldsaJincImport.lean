@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.Jasmin.JincElab
 public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 /-!
-# ML-DSA Montgomery-reduction leaf on the `.jinc` import path
+# ML-DSA leaves on the `.jinc` import path
 
 The per-coefficient Montgomery reduction at the ML-DSA parameters
 (`q = 8380417`, radix `R = 2^32`) as a straight-line Jasmin `.jinc` leaf, taken
@@ -29,11 +29,18 @@ The parse, the elaboration shape and the rendering are checked by the executable
 same reason the elaborated `Com`'s denotation is not tied to `mldsaMontRedWord` by a
 theorem: `mldsaMontRedCom?` reduces only through those `partial def`s.
 
+`ExpandMask` (`polyz_unpack`) is the second leaf taken through the same route.
+Its two parameters are arrays passed as SysV pointers and its body addresses them
+as `stackLoad`/`stackStore` bases, which is the export's 2-pointer memref ABI:
+`abiArgs = [RDI, RSI]` with an empty `InLoadMap` and `OutStoreMap`.
+
 ## Main definitions
 
 * `mldsaMontRedWord`: the 64-bit word computation the leaf performs.
 * `mldsaMontRedCom?`: the elaborated `Com jasminDialect` for the `.jinc` source.
 * `mldsaMontRedAsm`: the AT&T x86 rendering through `Com.toLprogPhysAbi`.
+* `expandMaskCom?`: the elaborated `Com jasminDialect` for `mldsa_expand_mask_real`.
+* `expandMaskAsm`: its AT&T x86 rendering through the owned backend.
 
 ## Main results
 
@@ -165,5 +172,33 @@ theorem mldsaMontRed_montgomery_law (t : BitVec 64) (ht : t.toNat < mldsaR * mld
     whichever register the allocator assigned. -/
 def mldsaMontRedAsm : String :=
   emitJincAsm mldsaMontRedSrc "mldsa_montgomery_reduce"
+
+/-! ## 5. The `ExpandMask` leaf -/
+
+/-- The parameter context of `mldsa_expand_mask_real`. `elabFun` reverses the
+    source parameter list, so the source-first parameter `out` is the deepest
+    `Ctxt.Var` (the list's last entry) and `buf` is the head. -/
+abbrev expandMaskCtxt : Ctxt jasminDialect :=
+  [.stackArr 32 640, .stackArr 32 256]
+
+/-- The elaborated `Com` for `mldsa_expand_mask_real` at its concrete type
+    (`[buf, out] → stackArr 32 256`). -/
+def expandMaskCom? : Option (Com jasminDialect expandMaskCtxt (.stackArr 32 256)) :=
+  match elabFun ((parseJincFun mldsaExpandMaskSrc).toOption.getD default) with
+  | some ⟨Γ, τ, com⟩ =>
+      if hΓ : Γ = expandMaskCtxt then
+        if hτ : τ = .stackArr 32 256 then some (hΓ ▸ hτ ▸ com) else none
+      else none
+  | none => none
+
+/-- The AT&T `.s` for `mldsa_expand_mask_real`, through `Com.toLprogPhysAbi` and
+    `LprogOptPipeline.renderOwned`. Both parameters are arrays, so both are SysV
+    pointers: `out` is the deepest `Ctxt.Var` and lands in `RDI`, `buf` in `RSI`,
+    matching `mldsa_expand_mask_real(uint32_t *out, uint32_t *buf)`. The body's
+    `stackLoad`/`stackStore` address those pointers directly, which is the
+    export's 2-pointer memref ABI (no `InLoadMap`, no `OutStoreMap`), and the
+    `stackStore`s write the result in place through `out`. -/
+def expandMaskAsm : String :=
+  emitJincAsm mldsaExpandMaskSrc "mldsa_expand_mask_real"
 
 end CatCrypt.Crypto.Jasmin.MldsaJincImport

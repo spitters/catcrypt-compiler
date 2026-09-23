@@ -148,9 +148,11 @@ def jasminKnownMnemonics : List String :=
 
 /-- Is this a known mnemonic emitted by `opToLinstrR` / the legalize stages?
     `CALL:<name>` external calls are treated as known here (Phase 2 will check
-    them against the architecture's syscall/extcall ABI). -/
+    them against the architecture's syscall/extcall ABI). A `castW` between 32-
+    and 64-bit registers carries its widths in the mnemonic, so it is recognised
+    by prefix rather than listed. -/
 def isJasminKnownMnemonic (opn : String) : Bool :=
-  opn ∈ jasminKnownMnemonics || "CALL:".isPrefixOf opn
+  opn ∈ jasminKnownMnemonics || "CALL:".isPrefixOf opn || "CASTW_".isPrefixOf opn
 
 /-- Shift-count check on the second source of a binop: when the mnemonic is
     `SHL` / `SHR`, the second-source operand list must start with at least one
