@@ -24,7 +24,7 @@ output of `translateDialectControl inVM3 jacAddBody` and `com` is `o.cont`
 applied to `Com.ret` at the slot `o.vm` resolves `out` to — the two matches
 `Secp256k1PointOpFront.jacAddFrontCom` is defined by. Rewriting that definition
 inside a proof forces the match scrutinee, the out-of-memory evaluation recorded
-in `Secp256k1PointOpFront.selfCheck`, so the two matches appear as the
+for a single whole-op `Com.denote` (over 11 GB), so the two matches appear as the
 hypotheses `hTrans` and `hName`.
 
 ## Main results

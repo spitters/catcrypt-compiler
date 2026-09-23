@@ -17,10 +17,8 @@ Writes the two front-generated owned `.s` kernels (`secp256k1_jac_dbl`,
 `lake exe secp256k1pointop`.
 
 The producer is `Secp256k1PointOpFrontEmit.emitProven`, which carries
-`denote = spec` by proof. `Secp256k1PointOpFront.emit` is the earlier route: it
-gates the write on the `selfCheck` KAT battery, whose own docstring measures a
-single whole-op `Com.denote` at over 11 GB on a 14 GB host, so that route is
-killed before it writes.
+`denote = spec` by proof. `Secp256k1PointOpFront.emit` writes the same kernels
+with no in-Lean check.
 -/
 
 @[expose] public section

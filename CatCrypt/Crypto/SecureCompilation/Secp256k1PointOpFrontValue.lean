@@ -14,14 +14,14 @@ public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
 `Com catCryptDialect` to the output frame the source semantics leaves at `out`,
 and `Secp256k1PointOpWholeBody.jacDblBody_cells` says what that frame holds.
 Composing them reads the point-op spec off the `Com`'s own denotation, without
-evaluating the flattened `Com` anywhere: `Secp256k1PointOpFront.selfCheck`
-records that a single `denote` of it peaks past this host's memory.
+evaluating the flattened `Com` anywhere: a single `denote` of it
+peaks past this host's memory (over 11 GB).
 
 The `Com` here is the front's `ret out` cap. Its two matches appear as the
 hypotheses `hTrans` and `hName` rather than by unfolding
 `Secp256k1PointOpFront.jacDblFrontCom`, because rewriting that definition inside
 a proof forces the match scrutinee `translateDialectControl inVM2 jacDblBody` —
-the evaluation `selfCheck` measured as infeasible.
+the evaluation measured as infeasible.
 
 ## Main results
 

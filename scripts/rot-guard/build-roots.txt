@@ -765,7 +765,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulReduceComplete
-CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulSecp256k1Complete
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Bls
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddAffine
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock

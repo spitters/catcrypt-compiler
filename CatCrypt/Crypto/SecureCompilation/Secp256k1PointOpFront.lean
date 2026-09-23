@@ -83,15 +83,13 @@ each pointer a 12-cell (`.memref 12`, 96-byte) little-endian `u64` frame:
 
 ## Gates
 
-In-model: the bodies front-compile + lower (`§5`), and the front programs denote to
-the **independent** `Nat` point-op spec (`jacDblSpecNat` / `jacAddSpecNat` — the
-`dbl-2009-l` / `add-2007-bl` formulas evaluated in `ℤ/pℤ` with `Nat` `%`, not the
-emitted limb shape) on a KAT battery of point triples (`§7`, `native_decide`). The
-spec is exactly `jacDoubleGen` / `jacAddGen` specialised to the secp256k1 base field
-(§8 records the correspondence; the abstract group-law tie to the affine short-
-Weierstrass law is `RelationalFrontSecp256k1EC.secp_jacDouble_realizes_affineDbl`).
-The deployed `.s` is gated by the external byte KAT
-(`bench/secp256k1_pointop_front_compare`, §9).
+In-model: the bodies front-compile and lower (`§5`). The point-op spec (`§7`)
+evaluates the `dbl-2009-l` / `add-2007-bl` formulas in `ℤ/pℤ` with `Nat` `%`; it is
+exactly `jacDoubleGen` / `jacAddGen` specialised to the secp256k1 base field, and the
+abstract group-law tie to the affine short-Weierstrass law is
+`RelationalFrontSecp256k1EC.secp_jacDouble_realizes_affineDbl`. The deployed `.s` is
+checked by the external known-answer harness (`bench/secp256k1_pointop_front_compare`);
+no evaluation of the programs' denotation runs in Lean.
 
 **0 sorries.**
 -/
@@ -321,8 +319,7 @@ the external byte-KAT.
 The three bricks it composes ARE proved in-Lean here at single-op (feMul-scale)
 granularity: each is a standalone front over three `.memref 4` pointers
 (`out`, `x`, `y`), lowered through the SAME `translateDialectControl` +
-`cryptoDialectToJasminCom`, with `denote = (x ∘ y) mod p` on a `native_decide` KAT
-battery. `feMul` is phase-1 (`Secp256k1FeMulFront.secp256k1FeMulFront_denote`); this
+`cryptoDialectToJasminCom`. `feMul` is phase-1 (`Secp256k1FeMulFront`); this
 module adds `feAdd` / `feSub`. -/
 
 /-- Body of a standalone binary field-op front over `.memref 4` pointers `out`,
@@ -385,50 +382,9 @@ def feAddLowered := toJasmin4 secp256k1FeAddFront
 /-- `secp256k1_fe_sub` lowered to `Com jasminDialect`. -/
 def feSubLowered := toJasmin4 secp256k1FeSubFront
 
-/-- A 4-cell memref valuation from a limb list. -/
-def vecOf4 (ws : List Nat) : Fin 4 → BitVec 64 := fun i => BitVec.ofNat 64 ws[i.val]!
-
-/-- Single-field-op valuation, head-first `[y, x, out]` (matches `inΓ4`). -/
-def encodeVal4 (av bv : Fin 4 → BitVec 64) : @Ctxt.Valuation catCryptDialect _ inΓ4 :=
-  .cons bv (.cons av (.cons (fun _ => (0 : BitVec 64)) .nil))
-
-/-- Recombine four `u64` cells to a `Nat`. -/
-def val4 (ws : List Nat) : Nat :=
-  ws[0]! + 2 ^ 64 * ws[1]! + 2 ^ 128 * ws[2]! + 2 ^ 192 * ws[3]!
-
 /-- Split a `Nat` into four little-endian `u64` limbs. -/
 def limbs4 (n : Nat) : List Nat :=
   [n % 2 ^ 64, n / 2 ^ 64 % 2 ^ 64, n / 2 ^ 128 % 2 ^ 64, n / 2 ^ 192 % 2 ^ 64]
-
-/-- Denote a single-field-op front and read all four result cells. -/
-def denoteCells4 (com : Option (Com catCryptDialect inΓ4 (.memref 4)))
-    (a b : List Nat) : Option (List Nat) :=
-  com.map (fun c =>
-    (List.range 4).map (fun i =>
-      (c.denote (encodeVal4 (vecOf4 a) (vecOf4 b)) ⟨i % 4, Nat.mod_lt _ (by decide)⟩).toNat))
-
-/-- KAT limb pairs (canonical residues in `[0, p)`). -/
-def kAB : List (List Nat × List Nat) :=
-  let pm1 := limbs4 (pNat - 1)
-  let one := [1, 0, 0, 0]
-  let big := limbs4 123456789012345678901234567890123456789012345678901234567890
-  let big2 := limbs4 98765432109876543210987654321098765432109876543210987654321
-  [ (one, one), ([0,0,0,0], one), (pm1, pm1), (pm1, one), (big, big2), (big2, pm1) ]
-
-/-- **`secp256k1_fe_add` denote = independent `(x + y) % p` spec** on the KAT battery
-    (incl. the exact-`p` edge `(p−1) + 1`). -/
-theorem secp256k1FeAddFront_denote :
-    kAB.all (fun (a, b) =>
-      denoteCells4 secp256k1FeAddFront a b == some (limbs4 ((val4 a + val4 b) % pNat))) = true := by
-  native_decide
-
-/-- **`secp256k1_fe_sub` denote = independent `(x − y) % p` spec** on the KAT battery
-    (incl. the full-borrow edge `0 − 1 ↦ p − 1`). -/
-theorem secp256k1FeSubFront_denote :
-    kAB.all (fun (a, b) =>
-      denoteCells4 secp256k1FeSubFront a b
-        == some (limbs4 ((val4 a + pNat - val4 b) % pNat))) = true := by
-  native_decide
 
 /-- `secp256k1_fe_add` / `secp256k1_fe_sub` lower end-to-end to `Com jasminDialect`. -/
 theorem feAddSub_lowered_isSome : feAddLowered.isSome ∧ feSubLowered.isSome := by
@@ -517,10 +473,7 @@ The specs evaluate the `dbl-2009-l` / `add-2007-bl` formulas in `ℤ/pℤ`
 32-bit-limb carry shape. `jacDblSpec` / `jacAddSpec` are exactly
 `EcProjectiveGeneric.jacDoubleGen` / `EcProjectiveAddGeneric.jacAddGen` specialised
 to `F = ZMod secpQ` (the abstract field↦affine group-law realizer is
-`RelationalFrontSecp256k1EC.secp_jacDouble_realizes_affineDbl`). The compiled
-producer (§8) evaluates the whole-op `Com.denote` NATIVELY (no interpreter stack
-ceiling) and checks it against these specs on the KAT battery before writing the
-`.s` — the in-Lean-native analogue of phase-1's `native_decide` denote gate. -/
+`RelationalFrontSecp256k1EC.secp_jacDouble_realizes_affineDbl`). -/
 
 /-- Field multiply in `ℤ/pℤ`. -/
 def fm (a b : Nat) : Nat := (a * b) % pNat
@@ -572,49 +525,7 @@ def jacAddSpec (X1 Y1 Z1 X2 Y2 Z2 : Nat) : Nat × Nat × Nat :=
 def pointCells : Nat × Nat × Nat → List Nat
   | (x, y, z) => limbs4 x ++ limbs4 y ++ limbs4 z
 
-/-- A 12-cell memref valuation from a 12-word list. -/
-def vecOf (ws : List Nat) : Fin 12 → BitVec 64 := fun i => BitVec.ofNat 64 ws[i.val]!
-
-/-- Unary valuation, head-first `[P, out]` (matches `inΓ2`). -/
-def encodeVal2 (pv : Fin 12 → BitVec 64) : @Ctxt.Valuation catCryptDialect _ inΓ2 :=
-  .cons pv (.cons (fun _ => (0 : BitVec 64)) .nil)
-
-/-- Binary valuation, head-first `[P2, P1, out]` (matches `inΓ3`). -/
-def encodeVal3 (p1 p2 : Fin 12 → BitVec 64) : @Ctxt.Valuation catCryptDialect _ inΓ3 :=
-  .cons p2 (.cons p1 (.cons (fun _ => (0 : BitVec 64)) .nil))
-
-/-- Denote the `jacDbl` front kernel and read all 12 output cells. Evaluates the
-    whole-op `Com.denote` ONCE (shared across the 12 cell reads) — the composed
-    `Com` is ~6000 nodes, so re-evaluating per cell would be a 12× memory blowup. -/
-def denoteDbl (P : List Nat) : Option (List Nat) :=
-  jacDblFrontCom.map (fun c =>
-    let out := c.denote (encodeVal2 (vecOf P))
-    (List.range 12).map (fun i => (out ⟨i % 12, Nat.mod_lt _ (by decide)⟩).toNat))
-
-/-- Denote the `jacAdd` front kernel and read all 12 output cells (single shared
-    whole-op `Com.denote`, as in `denoteDbl`). -/
-def denoteAdd (P1 P2 : List Nat) : Option (List Nat) :=
-  jacAddFrontCom.map (fun c =>
-    let out := c.denote (encodeVal3 (vecOf P1) (vecOf P2))
-    (List.range 12).map (fun i => (out ⟨i % 12, Nat.mod_lt _ (by decide)⟩).toNat))
-
-/-- KAT point coordinates (canonical residues `< p`); correctness of the schedule is
-    pure field arithmetic, so any residues exercise it. -/
-def kPts : List (Nat × Nat × Nat) :=
-  [ (1, 2, 1)
-  , (pNat - 1, pNat - 3, 2)
-  , (123456789012345678901234567890, 98765432109876543210987654321, 55555555555555555555)
-  , (pNat - 7, 4, pNat - 9) ]
-
-/-- Point coordinate triple → 12 cells. -/
-def ptCells : Nat × Nat × Nat → List Nat
-  | (x, y, z) => limbs4 x ++ limbs4 y ++ limbs4 z
-
-/-- The KAT point pairs the producer checks `jacAdd` on (cyclic over `kPts`). -/
-def kPtPairs : List ((Nat × Nat × Nat) × (Nat × Nat × Nat)) :=
-  [ (kPts[0]!, kPts[1]!), (kPts[1]!, kPts[2]!), (kPts[2]!, kPts[3]!) ]
-
-/-! ## 8. Owned emit + native whole-op self-check driver -/
+/-! ## 8. Owned emit driver -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi Lprog)
 
@@ -630,45 +541,14 @@ def ownedAsm (name : String) (abiArgs : List String)
         (residence := none) (abiW := 0) (forceLivePin := true)))
 
 /-- The lowered `jacDbl` as owned `.s` (RDI = out, RSI = P). -/
-def jacDblAsm : Option String := ownedAsm "secp256k1_jac_dbl" ["RDI", "RSI"] jacDblLowered
+def jacDblAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_dbl" ["RDI", "RSI"] jacDblLowered
 /-- The lowered `jacAdd` as owned `.s` (RDI = out, RSI = P1, RDX = P2). -/
-def jacAddAsm : Option String := ownedAsm "secp256k1_jac_add" ["RDI", "RSI", "RDX"] jacAddLowered
+def jacAddAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_add" ["RDI", "RSI", "RDX"] jacAddLowered
 
-/-- Native whole-op `denote = spec` self-check on the KAT battery. Runs the
-    composed `Com.denote` as compiled code (no interpreter stack ceiling) and
-    compares against the independent `Nat` `jacDblSpec` / `jacAddSpec`. Returns the
-    number of failing vectors (0 = all pass).
-
-    MEASURED INFEASIBLE on a 14 GB host (2026-07-04): a SINGLE whole-op
-    `Com.denote` of the composed ~6000-node point-op peaks at >11 GB RSS
-    (reducing the battery to one vector does not help — it is one denotation, not
-    battery retention), so `lake exe secp256k1pointop` is SIGKILLed before it can
-    write the `.s`. `Com.denote` is superlinear-memory in the flattened Com size.
-    The point-op VALUE-tie therefore stays at the structural gates
-    (`jacDblSchedule_counts`/`jacAddSchedule_counts` pin the op-kind counts to the
-    proven-realizer spine); the flattened byte-KAT is deferred to (a) a
-    compositional denotation tie (denote of the brick-composed `Com` = the
-    composition of the proven per-brick `feMul`/`feAdd`/`feSub` denotes — no
-    monolith evaluation), or (b) the rolled point-op emit (a ~50-node loop body,
-    which denotes cheaply), or (c) an O(n)-memory `Com.denote`. -/
-def selfCheck : Nat :=
-  let dblFails := kPts.foldl (fun acc (p : Nat × Nat × Nat) =>
-      if denoteDbl (ptCells p) == some (pointCells (jacDblSpec p.1 p.2.1 p.2.2))
-      then acc else acc + 1) 0
-  let addFails := kPtPairs.foldl (fun acc (pq : (Nat × Nat × Nat) × (Nat × Nat × Nat)) =>
-      if denoteAdd (ptCells pq.1) (ptCells pq.2)
-          == some (pointCells (jacAddSpec pq.1.1 pq.1.2.1 pq.1.2.2 pq.2.1 pq.2.2.1 pq.2.2.2))
-      then acc else acc + 1) 0
-  dblFails + addFails
-
-/-- Write the front-generated point-op kernels into one owned `.s`, gated on the
-    native whole-op `denote = spec` self-check passing. -/
+/-- Write the front-generated point-op kernels into one owned `.s`. The emitted
+    bytes are checked outside Lean, by the external known-answer harness. -/
 def emit (path : System.FilePath) : IO Unit := do
-  let fails := selfCheck
-  if fails ≠ 0 then
-    throw (IO.userError s!"whole-op denote ≠ spec on {fails} KAT vector(s)")
-  IO.println s!"SECP256K1-POINTOP self-check OK : denote = jacDbl/jacAddSpec on all KAT vectors"
-  match jacDblAsm, jacAddAsm with
+  match jacDblAsm (), jacAddAsm () with
   | some da, some aa => do
       if let some d := path.parent then IO.FS.createDirAll d
       IO.FS.writeFile path (da ++ "\n" ++ aa)

@@ -10,24 +10,15 @@ public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpJasminValue
 /-!
 # Emitting the front-generated secp256k1 point ops, gated on the proof
 
-`Secp256k1PointOpFront.emit` gates the write on `selfCheck`, a native
-`denote = spec` run over a KAT battery. Its own docstring records that gate as
-measured infeasible on a 14 GB host: one whole-op `Com.denote` of the composed
-~6000-node point-op peaks above 11 GB, so the producer is killed before it
-writes. `bench/secp256k1_pointop_front_compare/gen_com/` has stood empty since
-the directory was created.
-
-The gate was standing in for a proof. That proof now exists and is strictly
-stronger than the battery it replaces:
+The two point-op kernels are written only after the proved denotation results
 `Secp256k1PointOpJasminValue.jacDblFrontCom_denote_cells_total` and
-`jacAddFrontCom_denote_cells_total` give
-`(com.denote V) m = pointCells (jacDblSpec X Y Z) m` for **every** input
-satisfying `PrologueEntry`, not for the KAT vectors only, and with the source
-run discharged rather than assumed. `selfCheck`'s own docstring names this as
-the way out — "composition of the proven per-brick denotes, no monolith
-evaluation".
+`jacAddFrontCom_denote_cells_total`, which give
+`(com.denote V) m = pointCells (jacDblSpec X Y Z) m` for every input satisfying
+`PrologueEntry`, with the source run discharged rather than assumed. A single
+whole-op `Com.denote` of the composed ~6000-node point op peaks above 11 GB on a
+14 GB host, so no runtime denotation is part of this producer.
 
-So this producer writes the same two kernels with no runtime denotation. The
+The
 `#check`s below make the dependency on the two theorems a build-time fact: if
 either is renamed or weakened away, this module stops compiling rather than
 silently reverting to an unjustified emit.
@@ -39,7 +30,7 @@ obstacle is a different one. Measured 2026-08-09: `lake exe secp256k1pointop`
 built natively against this producer ran **25 minutes without completing**, at
 about 1.35 GB — the PSI guard declined to kill it, correctly, as being under its
 1500 MB selector floor. So this is throughput, not memory, and it is not the
->11 GB denotation `selfCheck` documents.
+>11 GB whole-op denotation.
 
 The cost is in the `cryptoDialectToJasminCom` LOWERING inside
 `jacDblLowered`/`jacAddLowered`, not in `toLprogPhysAbi`/`renderLprogAtt`.
@@ -69,7 +60,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
 
 open CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront (jacDblAsm jacAddAsm)
 
--- The two results that carry what `selfCheck` was checking. A rename or a
+-- The two results that carry the point-op denotation. A rename or a
 -- weakening breaks this module.
 #check @Secp256k1PointOpJasminValue.jacDblFrontCom_denote_cells_total
 #check @Secp256k1PointOpJasminValue.jacAddFrontCom_denote_cells_total
@@ -80,7 +71,7 @@ open CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront (jacDblAsm jacAddAs
     the entry scope, so the only failure this can report is the front itself
     declining to compile the body. -/
 def emitProven (path : System.FilePath) : IO Unit := do
-  match jacDblAsm, jacAddAsm with
+  match jacDblAsm (), jacAddAsm () with
   | some da, some aa => do
       if let some d := path.parent then IO.FS.createDirAll d
       IO.FS.writeFile path (da ++ "\n" ++ aa)

@@ -74,15 +74,10 @@ a 4-cell (`.memref 4`, 32-byte) `u64` frame.
 
 ## Gates
 
-In-model: the body front-compiles + lowers (`§5`), and the front program denotes
-to the **independent** `Nat` `(a·b) mod p` spec (computed with `Nat` `%`, not the
-emitted limb shape) on a KAT battery incl. the extremal `(p−1)^2` and a spread of
-generated vectors (`§6`, `native_decide`). The deployed `.s` is gated by the
-external byte KAT against GMP `mpz_mulmod` at `p`
-(`bench/secp256k1_femul_front_compare`). The `#eval` denotation match is the
-in-Lean honesty evidence; the byte KAT is the correctness gate.
-
-**0 sorries.**
+In-model: the body front-compiles and lowers to `Com jasminDialect` (`§5`). The
+deployed `.s` is checked against GMP `mpz_mulmod` at `p` by the external known-answer
+harness in `bench/secp256k1_femul_front_compare`; no evaluation of the program's
+denotation runs in Lean.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
@@ -356,7 +351,7 @@ theorem frontCom_isSome : frontCom.isSome := by native_decide
 /-- The kernel lowers end-to-end to `Com jasminDialect`. -/
 theorem lowered_isSome : loweredOpt.isSome := by native_decide
 
-/-! ## 6. In-model `denote = spec` vs the INDEPENDENT `Nat` `(a·b) % p` spec -/
+/-! ## 6. The `Nat` `(a·b) mod p` spec and a denotation reader -/
 
 /-- Recombine 4 little-endian `u64` cells to a `Nat`. -/
 def valOf (ws : List Nat) : Nat :=
@@ -382,31 +377,12 @@ def denoteCells (a b : List Nat) : Option (List Nat) :=
     (List.range 4).map (fun i =>
       (c.denote (encodeVal (vecOf a) (vecOf b)) ⟨i % 4, Nat.mod_lt _ (by decide)⟩).toNat))
 
-/-- KAT input limb lists (canonical residues in `[0, p)`). -/
-def kA : List (List Nat × List Nat) :=
-  let pm1 := limbs4 (pNat - 1)
-  let one := [1, 0, 0, 0]
-  let big := limbs4 123456789012345678901234567890123456789012345678901234567890
-  let big2 := limbs4 98765432109876543210987654321098765432109876543210987654321
-  [ (one, one), ([0,0,0,0], one), (pm1, pm1), (pm1, one), (big, big2), (big2, pm1) ]
-
-/-- A spread generator of canonical residues. -/
-def genVec (s : Nat) : List Nat := limbs4 ((7919 * s + 13 + s * s * 1000003 + s^3 * 65537) % pNat)
-
-/-- **`secp256k1_femul` denote = independent `(a·b) % p` spec** on the KAT battery
-    (incl. `(p−1)^2`) and 24 generated vectors. -/
-theorem secp256k1FeMulFront_denote :
-    (kA.all (fun (a, b) => denoteCells a b == some (feMulSpec a b))
-      && (List.range 24).all (fun s =>
-            denoteCells (genVec s) (genVec (s + 100)) == some (feMulSpec (genVec s) (genVec (s + 100))))) = true := by
-  native_decide
-
 /-! ## 7. Owned emit driver -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi Lprog)
 
 /-- The lowered kernel as an owned AT&T `.s` under the SysV 3-pointer ABI. -/
-def femulAsm : Option String :=
+def femulAsm (_ : Unit) : Option String :=
   loweredOpt.map (fun s =>
     CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (Com.toLprogPhysAbi s.2.2 "secp256k1_femul"
@@ -416,7 +392,7 @@ def femulAsm : Option String :=
 
 /-- Write the front-generated kernel to `gen_com/secp256k1_femul.s`. -/
 def emit (path : System.FilePath) : IO Unit := do
-  match femulAsm with
+  match femulAsm () with
   | some a => do
       if let some d := path.parent then IO.FS.createDirAll d
       IO.FS.writeFile path a

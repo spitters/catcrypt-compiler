@@ -30,7 +30,7 @@ of `translateDialectControl inVM2 jacDblBody` and `com` is `o.cont` applied to
 `Secp256k1PointOpFront.jacDblFrontCom` is defined by. Rewriting that definition
 inside a proof forces the match scrutinee
 `translateDialectControl inVM2 jacDblBody`, the measured out-of-memory
-evaluation recorded in `Secp256k1PointOpFront.selfCheck`, so the two matches
+evaluation of a single whole-op `Com.denote` (over 11 GB), so the two matches
 appear as the hypotheses `hTrans` and `hName` instead.
 
 **Step 2 — the source waist decomposes along the brick boundaries.**

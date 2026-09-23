@@ -27,8 +27,8 @@ COMPOSITIONALLY from a 19- / 23-entry field-op schedule:
 ```
 
 The whole-op `Com.denote = spec` byte-KAT is MEASURED INFEASIBLE: a single
-`denote` of the flattened Com peaks at >11 GB RSS on a 14 GB host (see
-`Secp256k1PointOpFront.selfCheck`'s docstring — `Com.denote` is
+`denote` of the flattened Com peaks at >11 GB RSS on a 14 GB host (as
+measured 2026-07-04 — `Com.denote` is
 superlinear-memory in the flattened Com size). This module ties the point op to
 its independent `Nat` spec (`jacDblSpec` / `jacAddSpec`) at the **schedule
 granularity** — WITHOUT ever denoting the flattened Com — by giving the schedule
