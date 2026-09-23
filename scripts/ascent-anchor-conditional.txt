@@ -1,3 +1,2 @@
 # Ascent modules whose byte-level theorem assumes the decode it needs. Tab-separated:
 # module, then the missing lemma. Read by scripts/ascent-anchor-ratchet.sh.
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddBytes	decodeJStream (encodeJBlock alloc ed25519PointAddShippedBlock) = some ed25519PointAddShippedBlock; needs decodeJ1 arms for bt, setc, test, adcxMem and an encodeJInstr arm for bt

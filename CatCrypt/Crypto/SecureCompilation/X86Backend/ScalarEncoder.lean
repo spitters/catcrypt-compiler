@@ -340,6 +340,19 @@ def encTestImm (d v : Nat) : List (BitVec 8) :=
 def encUnaryF7 (ext d : Nat) : List (BitVec 8) :=
   [ rex 1 0 0 (bit d 3), 0xf7, modRMReg ext d ].map (BitVec.ofNat 8)
 
+/-- `BT $imm8, %d` (`REX.W 0F BA /4 ib`): bit `imm` of `d` copied into `CF`. The
+    processor reads the `imm8` field modulo the 64-bit operand width, so the
+    low byte of `imm` selects the same bit as `imm` itself. Named apart from
+    `LprogBytes.encBtImm`, the width-aware form of the other byte route.
+    Gas-pinned: `btq $0,%rcx` = `48 0F BA E1 00`, `btq $0,%r10` = `49 0F BA E2 00`. -/
+def encBtImm8 (d imm : Nat) : List (BitVec 8) :=
+  [ rex 1 0 0 (bit d 3), 0x0f, 0xba, modRMReg 4 d, imm &&& 0xff ].map (BitVec.ofNat 8)
+
+/-- `BT %s, %d` (`REX.W 0F A3 /r`, `reg`=`s`, `rm`=`d`): bit `s mod 64` of `d`
+    copied into `CF`. Gas-pinned: `btq %rbx,%rax` = `48 0F A3 D8`. -/
+def encBtRR (d s : Nat) : List (BitVec 8) :=
+  [ rex 1 (bit s 3) 0 (bit d 3), 0x0f, 0xa3, modRMReg s d ].map (BitVec.ofNat 8)
+
 /-- `SETB %dl` (`0F 92 /0`, set-on-carry into the byte `r/m8`) followed by
     `MOVZBQ %dl, %rdx` (`REX.W 0F B6 /r`, zero-extend the byte into the full
     64-bit register). The `SETcc` opcode extension `reg` field is `/0` (the SDM
@@ -875,13 +888,19 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   | .bzhi d src idx =>
       encVex3RR 0b00010 0b00 0xf5 (gpNum (regOf alloc d))
         (gpNum (regOf alloc idx)) (gpNum (regOf alloc src))
-  -- Not yet encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
+  -- BT = REX.W 0F BA /4 ib immediate form, REX.W 0F A3 /r register form; the
+  -- operand order is the printer's `btq src, a`.
+  | .bt a b =>
+      match b with
+      | .imm v => encBtImm8 (gpNum (regOf alloc a)) v
+      | .reg r => encBtRR (gpNum (regOf alloc a)) (gpNum (regOf alloc r))
+  -- Not encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
   -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the sized `TEST` and
-  -- `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr` refuses them, so
+  -- `BTR`/`BTS`. They emit no bytes and `encodableJInstr` refuses them, so
   -- `encodeJInstr?` returns `none`; the text `AsmPrinter` path renders them.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
-  | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => []
+  | .testN _ _ _ | .btr _ _ | .bts _ _ => []
 
 /-- Encode a whole block: concatenate the byte encodings of its instructions. The
     contiguous machine-code stream a `.text` section / loader consumes. -/
@@ -1119,8 +1138,8 @@ the instructions not yet encoded, emits no bytes at all.
 * `CMOVcc`, `ADCX`, `ADOX` and `MULX`, which take no immediate operand at all
   and whose `.imm` arms fall back to register `0` (`%rax`).
 * `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the one-operand `IMUL`,
-  `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and `BT`/`BTR`/`BTS`, which are
-  not yet encoded and whose arms return no bytes.
+  `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and `BTR`/`BTS`, which are
+  not encoded and whose arms return no bytes.
 
 `encodableJInstr` decides membership of the faithful fragment and
 `encodeJInstr?` refuses outside it, so an emitter reaching an unencodable
@@ -1136,7 +1155,7 @@ def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
 /-- The instruction and immediate operand shapes `encodeJInstr` encodes faithfully.
     The instructions `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the
     one-operand `IMUL`, `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and
-    `BT`/`BTR`/`BTS` are not yet encoded and are outside the fragment. -/
+    `BTR`/`BTS` are not encoded and are outside the fragment. -/
 def encodableJInstr : JInstr 64 → Bool
   | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
   | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v)
@@ -1149,10 +1168,10 @@ def encodableJInstr : JInstr 64 → Bool
   -- fact of the allocation this gate does not see; the flag-free BMI2 form is
   -- the separate `.shlx`/`.shrx`/`.sarx`.
   | .shl _ (.reg _) | .shr _ (.reg _) | .sar _ (.reg _) => false
-  -- the instructions `encodeJInstr` does not yet encode.
+  -- the instructions `encodeJInstr` does not encode.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
-  | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => false
+  | .testN _ _ _ | .btr _ _ | .bts _ _ => false
   | _ => true
 
 /-- `encodeJInstr` restricted to the fragment it encodes faithfully. -/
