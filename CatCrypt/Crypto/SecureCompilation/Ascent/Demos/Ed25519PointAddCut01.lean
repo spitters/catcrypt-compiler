@@ -5,29 +5,23 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedParts
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddSegments
 
 /-!
-# The first part of the shipped point addition, checked in two halves
+# Part 1 of the shipped point addition, checked in two halves
 
-`pa_part1` checks the symbolic run of all sixteen segments of part 1 in one
-`decide +kernel`, and its kernel memory is the whole run at once. This module checks the
-same part as two runs of eight segments, joined at the boundary certificate `paCut232`.
-
-The certificate is produced by `scripts/cutgen/Ed25519PointAddCutGen.lean`, which runs the
-same executor outside the kernel and reads the symbolic state back as word expressions.
-Cut points are segment boundaries: the table is hash-consed, so a location holding a node
-inside a statement's expression reads back as the whole shared graph expanded into a
-tree, while at a segment boundary every live location holds the node of a statement slot
-and reads back as that slot.
-
-`canonFromD_append` splits the canonical block at the same point, with `paCutState232`
-the abstract state there.
+The part check of part 1 reduces a symbolic run of the whole part in `decide +kernel`;
+this module checks the part as two runs, split after segment 8 of `paSegs 1`, joined
+at the boundary certificate `paCut01`. The certificate is the symbolic state at the
+boundary, produced by `scripts/cutgen/Ed25519PointAddCutAll.lean` from the same executor
+outside the kernel. The second half starts at slot 112, one past the last slot the
+certificate mentions.
 
 ## Main results
 
-* `pa_part1a`: the first eight segments carry `paIn` to `paCut232`.
-* `pa_part1b`: the last eight carry `paCut232` to `paMap1`.
+* `pa_part01a`, `pa_part01b`: the two half checks.
+* `pa_part01_of_halves`: the conclusion `partCheck2_sound` draws from the whole-part
+  check, derived from the two halves.
 -/
 
 @[expose] public section
@@ -42,26 +36,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
 open CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
-open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-open CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
 
-/-- The first eight segments of part 1. -/
-def paHalf1 : List (JInstr 64) :=
-  ed25519PointAddShippedSeg001 ++ ed25519PointAddShippedSeg002 ++
-  ed25519PointAddShippedSeg003 ++ ed25519PointAddShippedSeg004 ++
-  ed25519PointAddShippedSeg005 ++ ed25519PointAddShippedSeg006 ++
-  ed25519PointAddShippedSeg007 ++ ed25519PointAddShippedSeg008
-
-/-- The last eight segments of part 1. -/
-def paHalf2 : List (JInstr 64) :=
-  ed25519PointAddShippedSeg009 ++ ed25519PointAddShippedSeg010 ++
-  ed25519PointAddShippedSeg011 ++ ed25519PointAddShippedSeg012 ++
-  ed25519PointAddShippedSeg013 ++ ed25519PointAddShippedSeg014 ++
-  ed25519PointAddShippedSeg015 ++ ed25519PointAddShippedSeg016
-
-
-def paCut : List (Loc × WE) :=
+/-- The locations of the symbolic state after segment 8 of part 1. -/
+def paCut01 : List (Loc × WE) :=
   [(CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.Loc.reg "%rax",
   CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.v 111),
  (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.Loc.reg "%rbx",
@@ -226,11 +204,17 @@ def paCut : List (Loc × WE) :=
   CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.v 26),
  (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.Loc.cell "%rsi" 0,
   CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.v 25)]
-def paCutCarry : Option WE := none
-def paCutZero : Option WE := some (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.and
+
+/-- The carry flag at the boundary. -/
+def paCut01Carry : Option WE := none
+
+/-- The zero flag at the boundary. -/
+def paCut01Zero : Option WE := some (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.and
   (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.v 96)
   (CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.WE.v 96))
-def paCutState : DState :=
+
+/-- The abstract state at the boundary. -/
+def paCut01State : DState :=
   ⟨true, [("%rcx", none),
  ("%r9", none),
  ("%r8", none),
@@ -238,52 +222,41 @@ def paCutState : DState :=
  ("%rsi", none),
  ("%r14", some (CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived.AVal.ptr "%rsi" 0))], [(("%rsp", 384), CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived.AVal.ptr "%rsi" 0),
  (("%rsp", 392), CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived.AVal.ptr "%rdi" 0)]⟩
-def paCutBase : Nat := 112
 
-/-- The statements of the first half: the slots below the base of the second. -/
-def paSl1a : List WE := paSl1.take 55
-
-/-- The statements of the second half. -/
-def paSl1b : List WE := paSl1.drop 55
-
-/-- The first eight segments carry the entry map of part 1 to the certificate. -/
-theorem pa_part1a :
-    partCheck2 57 paSl1a paIn none none paCut paCutCarry paCutZero
-      (canonFromD shippedBank {} paHalf1) = true := by
+/-- The first half carries the entry of part 1 to the certificate. -/
+theorem pa_part01a :
+    partCheck2 57 (paSl1.take 55) paIn none none paCut01
+      paCut01Carry paCut01Zero (canonFromD shippedBank {} ((paSegs 1).take 8).flatten) = true := by
   decide +kernel
 
-/-- The last eight segments carry the certificate to the map after part 1. -/
-theorem pa_part1b :
-    partCheck2 112 paSl1b paCut paCutCarry paCutZero paMap1 (some (aoWE (.v 238))) none
-      (canonFromD shippedBank paCutState paHalf2) = true := by
+/-- The second half carries the certificate to the exit of part 1. -/
+theorem pa_part01b :
+    partCheck2 112 (paSl1.drop 55) paCut01 paCut01Carry paCut01Zero paMap1
+      (some (aoWE (.v 238))) none (canonFromD shippedBank paCut01State ((paSegs 1).drop 8).flatten) = true := by
   decide +kernel
 
-/-- The two halves carry the entry of part 1 to the map after it, across the canonical block
-    of the whole part. This is the conclusion `partCheck2_sound` draws from `pa_part1`, so
-    the two half checks can stand in for the whole-part check. -/
-theorem pa_part1_of_halves (ρ : Nat → BitVec 64) (hH : Holds ρ 57 paSl1)
+/-- The two halves carry the entry of part 1 to its exit across the canonical block of
+    the whole part: the conclusion `partCheck2_sound` draws from the whole-part check. -/
+theorem pa_part01_of_halves (ρ : Nat → BitVec 64) (hH : Holds ρ 57 paSl1)
     (hK : ∀ j c, cK j = some c → ρ j = BitVec.ofNat 64 c)
     (s : JState 64) (hin : MapHolds ρ paIn s) (hc : CfHolds ρ none s)
     (hz : ZfHolds ρ none s) :
-    MapHolds ρ paMap1 (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) ∧
-      CfHolds ρ (some (aoWE (.v 238)))
-        (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) ∧
-      ZfHolds ρ none (runBlock s (canonFromD shippedBank {} ed25519PointAddShippedPart01)) := by
-  have hlen : paSl1a.length = 55 := by
-    simp only [paSl1a, List.length_take, paSl1_len]
+    MapHolds ρ paMap1 (runBlock s (canonFromD shippedBank {} (paPart 1))) ∧
+      CfHolds ρ (some (aoWE (.v 238))) (runBlock s (canonFromD shippedBank {} (paPart 1))) ∧
+      ZfHolds ρ none (runBlock s (canonFromD shippedBank {} (paPart 1))) := by
+  have hlen : (paSl1.take 55).length = 55 := by
+    simp only [List.length_take, paSl1_len]
     omega
-  obtain ⟨h1, h2⟩ := (holds_append ρ paSl1a paSl1b 57).1 (by
-    rw [show paSl1a ++ paSl1b = paSl1 from List.take_append_drop 55 paSl1]
+  obtain ⟨h1, h2⟩ := (holds_append ρ (paSl1.take 55) (paSl1.drop 55) 57).1 (by
+    rw [List.take_append_drop]
     exact hH)
   rw [hlen] at h2
-  obtain ⟨q1, c1, z1⟩ := partCheck2_sound 57 paSl1a paIn none none paCut paCutCarry paCutZero _
-    pa_part1a ρ h1 (fun j c _ hc => hK j c hc) s hin hc hz
-  obtain ⟨q2, c2, z2⟩ := partCheck2_sound 112 paSl1b paCut paCutCarry paCutZero paMap1
-    (some (aoWE (.v 238))) none _ pa_part1b ρ h2 (fun j c _ hc => hK j c hc) _ q1 c1 z1
-  have hpart : ed25519PointAddShippedPart01 = paHalf1 ++ paHalf2 := by
-    simp only [ed25519PointAddShippedPart01, paHalf1, paHalf2, List.append_assoc]
-  have hstate : runD shippedBank {} paHalf1 = paCutState := by decide +kernel
-  rw [hpart, canonFromD_append, hstate, runBlock_cat]
+  obtain ⟨q1, c1, z1⟩ := partCheck2_sound 57 _ paIn none none paCut01
+    paCut01Carry paCut01Zero _ pa_part01a ρ h1 (fun j c _ hc => hK j c hc) s hin hc hz
+  obtain ⟨q2, c2, z2⟩ := partCheck2_sound 112 _ paCut01 paCut01Carry paCut01Zero
+    paMap1 (some (aoWE (.v 238))) none _ pa_part01b ρ h2 (fun j c _ hc => hK j c hc) _ q1 c1 z1
+  have hstate : runD shippedBank {} ((paSegs 1).take 8).flatten = paCut01State := by decide +kernel
+  rw [paPart_cut 1 8 (by decide), canonFromD_append, hstate, runBlock_cat]
   exact ⟨q2, c2, z2⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof

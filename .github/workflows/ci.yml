@@ -34,6 +34,9 @@ jobs:
         # glob here would claim every module of a package that requires this one).
         run: bash scripts/gen-module-globs.sh --check
 
+      - name: No module outside the CI-only list imports one inside it
+        run: bash scripts/ci-only-import-gate.sh
+
       - name: Build roots cover every compiler module (rot guard)
         run: bash scripts/rot-guard-build.sh --check
 

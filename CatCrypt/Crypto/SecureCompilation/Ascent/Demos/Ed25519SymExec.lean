@@ -2065,4 +2065,67 @@ def scrMap5 : List (Loc × WE) :=
 def scrMap6 : List (Loc × WE) :=
   [rg "%rbp" (.v 268), sk 32 (.v 288), sk 48 (.v 248), sk 64 (.v 228)] ++ scrKeep
 
+
+/-! ## Memory footprint of a block -/
+
+/-- Every cell a block reads or writes is in `K`. -/
+def footOK (K : List (String × Int)) (blk : List (JInstr 64)) : Bool :=
+  blk.all fun i => (readKey i).all (fun k => decide (k ∈ K)) &&
+    (writeKey i).all (fun k => decide (k ∈ K))
+
+theorem footOK_append (K : List (String × Int)) (xs ys : List (JInstr 64)) :
+    footOK K (xs ++ ys) = (footOK K xs && footOK K ys) := by
+  simp [footOK, List.all_append]
+
+theorem footOK_reads {K : List (String × Int)} {blk : List (JInstr 64)}
+    (h : footOK K blk = true) : ∀ k ∈ blk.filterMap readKey, k ∈ K := by
+  intro k hk
+  obtain ⟨i, hi, hik⟩ := List.mem_filterMap.1 hk
+  have := List.all_eq_true.1 h i hi
+  simp only [hik, Bool.and_eq_true, Option.all_some, decide_eq_true_eq] at this
+  exact this.1
+
+theorem footOK_writes {K : List (String × Int)} {blk : List (JInstr 64)}
+    (h : footOK K blk = true) : ∀ k ∈ writeKeys blk, k ∈ K := by
+  intro k hk
+  obtain ⟨i, hi, hik⟩ := List.mem_filterMap.1 hk
+  have := List.all_eq_true.1 h i hi
+  simp only [hik, Bool.and_eq_true, Option.all_some, decide_eq_true_eq] at this
+  exact this.2
+
+/-- Every cell a block reads or writes satisfies `P`. The predicate form of `footOK`:
+    a check against a cell list costs a scan of that list per key, a check against a
+    predicate costs the predicate. -/
+def footOKP (P : String × Int → Bool) (blk : List (JInstr 64)) : Bool :=
+  blk.all fun i => (readKey i).all P && (writeKey i).all P
+
+/-- A predicate check gives the list check when the predicate implies membership. -/
+theorem footOK_of_footOKP {K : List (String × Int)} {P : String × Int → Bool}
+    {blk : List (JInstr 64)} (hP : ∀ k, P k = true → k ∈ K) (h : footOKP P blk = true) :
+    footOK K blk = true := by
+  simp only [footOKP, List.all_eq_true] at h
+  simp only [footOK, List.all_eq_true]
+  intro i hi
+  have hi' := h i hi
+  simp only [Bool.and_eq_true] at hi' ⊢
+  refine ⟨?_, ?_⟩
+  · cases hr : readKey i with
+    | none => simp
+    | some k =>
+      rw [hr] at hi'
+      simp only [Option.all_some] at hi' ⊢
+      exact decide_eq_true (hP k hi'.1)
+  · cases hw : writeKey i with
+    | none => simp
+    | some k =>
+      rw [hw] at hi'
+      simp only [Option.all_some] at hi' ⊢
+      exact decide_eq_true (hP k hi'.2)
+
+theorem absMem_shipped (P : String → BitVec 64) (m : AMem) (b : String) (o : Int)
+    (hb : shippedBank b = some b) :
+    absMem shippedBank P m b o = read64 m (P b + BitVec.ofInt 64 o) := by
+  simp [absMem, keyAddr, basePtr, hb]
+
+
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof

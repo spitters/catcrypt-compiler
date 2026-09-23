@@ -5,7 +5,17 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut01
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut02
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut03
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut04
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut05
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut06
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceCut07
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PartChain
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
 
 /-!
 # Correctness of the shipped `ed25519_sc_reduce` machine code
@@ -20,7 +30,7 @@ address machine `runBlockA`.
 The canonical block is checked part by part, over the eight parts of the imported block
 and the abstract states `AddrMemDerived.scrState` between them. `Ed25519SymExec` carries
 the symbolic executor, the part-check soundness theorem and the word model; the checks
-here are `decide +kernel`, one per part.
+here are `native_decide`, one per part.
 
 The global slot function is the run `wrun` of the statements from the input limbs; the
 statements read only earlier slots (`xStmts_wf`), so `wrun` satisfies them
@@ -57,45 +67,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMontMulCiosWordModel
 open CatCrypt.Util (Ed25519L ed25519L_eq)
 
 
-theorem scr_part1 :
-    partCheck 16 (xSlice 16 64) scrIn scrMap1
-      (canonFromD shippedBank {} ed25519ScReduceShippedPart01) = true := by
-  decide +kernel
-
-theorem scr_part2 :
-    partCheck 64 (xSlice 64 116) scrMap1 scrMap2
-      (canonFromD shippedBank (scrState 1) ed25519ScReduceShippedPart02) = true := by
-  decide +kernel
-
-theorem scr_part3 :
-    partCheck 116 (xSlice 116 169) scrMap2 scrMap3
-      (canonFromD shippedBank (scrState 2) ed25519ScReduceShippedPart03) = true := by
-  decide +kernel
-
-theorem scr_part4 :
-    partCheck 169 (xSlice 169 219) scrMap3 scrMap4
-      (canonFromD shippedBank (scrState 3) ed25519ScReduceShippedPart04) = true := by
-  decide +kernel
-
-theorem scr_part5 :
-    partCheck 219 (xSlice 219 269) scrMap4 scrMap5
-      (canonFromD shippedBank (scrState 4) ed25519ScReduceShippedPart05) = true := by
-  decide +kernel
-
-theorem scr_part6 :
-    partCheck 269 (xSlice 269 320) scrMap5 scrMap6
-      (canonFromD shippedBank (scrState 5) ed25519ScReduceShippedPart06) = true := by
-  decide +kernel
-
-theorem scr_part7 :
-    partCheck 320 (xSlice 320 354) scrMap6 scrOut
-      (canonFromD shippedBank (scrState 6) ed25519ScReduceShippedPart07) = true := by
-  decide +kernel
-
 theorem scr_part8 :
     partCheck 354 (xSlice 354 354) scrOut scrOut
       (canonFromD shippedBank (scrState 7) ed25519ScReduceShippedPart08) = true := by
-  decide +kernel
+  native_decide
 
 /-! ## 9. The canonical block -/
 
@@ -125,32 +100,20 @@ def rho0 (st : JState 64) (j : Nat) : BitVec 64 :=
 /-- The slot values of the reduction on the input cells of `st`. -/
 def rhoX (st : JState 64) : Nat → BitVec 64 := wrun 16 xStmts (rho0 st)
 
-theorem xStmts_wf : wfB 16 xStmts = true := by decide +kernel
+theorem xStmts_wf : wfB 16 xStmts = true := by native_decide
 
-theorem xStmts_length : xStmts.length = 338 := by decide +kernel
+theorem xStmts_length : xStmts.length = 338 := by native_decide
 
-theorem xOuts_eq : xOuts = [.v 350, .v 351, .v 352, .v 353] := by decide +kernel
+theorem xOuts_eq : xOuts = [.v 350, .v 351, .v 352, .v 353] := by native_decide
 
 theorem holds_rhoX (st : JState 64) : Holds (rhoX st) 16 xStmts :=
   holds_wrun _ _ _ xStmts_wf
 
-theorem holds_lits_get (ρ : Nat → BitVec 64) :
-    ∀ (l : List Nat) (n i c : Nat), Holds ρ n (l.map WE.lit) → l[i]? = some c →
-      ρ (n + i) = BitVec.ofNat 64 c
-  | [], _, _, _, _, h => by simp at h
-  | m :: l, n, 0, c, h, hc => by
-      simp only [List.getElem?_cons_zero, Option.some.injEq] at hc
-      subst hc
-      simpa [Holds, WE.eval] using h.1
-  | m :: l, n, i + 1, c, h, hc => by
-      simp only [List.getElem?_cons_succ] at hc
-      rw [show n + (i + 1) = (n + 1) + i by omega]
-      exact holds_lits_get ρ l (n + 1) i c h.2 hc
 
 theorem rhoX_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     rhoX st j = BitVec.ofNat 64 c := by
   have hH := holds_rhoX st
-  have hs : xStmts = constStmts ++ (xStmts.drop 9) := by decide +kernel
+  have hs : xStmts = constStmts ++ (xStmts.drop 9) := by native_decide
   rw [hs, holds_append] at hH
   have hc : constStmts = cLits.map WE.lit := by
     simp only [constStmts, cLits, List.map_append]
@@ -187,31 +150,33 @@ theorem scReduceCanon_correct (st : JState 64) :
     fun _ j c _ h => rhoX_const st j c h
   have hsl : ∀ a b, 16 ≤ a → a ≤ b → b ≤ 354 → Holds ρ a (xSlice a b) := fun a b h1 h2 h3 =>
     holds_slice ρ xStmts 16 a b hH h1 h2 (by rw [xStmts_length]; omega)
-  have h1 := partCheck_sound _ _ _ _ _ scr_part1 ρ (hsl _ _ le_rfl (by omega) (by omega))
-    (hK 16) st (scrIn_holds st)
-  have h2 := partCheck_sound _ _ _ _ _ scr_part2 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 64) _ h1
-  have h3 := partCheck_sound _ _ _ _ _ scr_part3 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 116) _ h2
-  have h4 := partCheck_sound _ _ _ _ _ scr_part4 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 169) _ h3
-  have h5 := partCheck_sound _ _ _ _ _ scr_part5 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 219) _ h4
-  have h6 := partCheck_sound _ _ _ _ _ scr_part6 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 269) _ h5
-  have h7 := partCheck_sound _ _ _ _ _ scr_part7 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 320) _ h6
-  have h8 := partCheck_sound _ _ _ _ _ scr_part8 ρ (hsl _ _ (by omega) le_rfl le_rfl)
-    (hK 354) _ h7
-  clear h1 h2 h3 h4 h5 h6 h7
-  simp only [← runBlock_cat, List.append_assoc] at h8
+  have hK' : ∀ j c, cK j = some c → ρ j = BitVec.ofNat 64 c := fun j c h => rhoX_const st j c h
+  have H := mapHolds_cat ρ
+    (fun s h => scr_part01_of_halves ρ (hsl _ _ le_rfl (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part02_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part03_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part04_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part05_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part06_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scr_part07_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (fun s h => partCheck_sound _ _ _ _ _ scr_part8 ρ (hsl _ _ (by omega) le_rfl le_rfl)
+      (hK 354) s h)))))))
+  have h8 := H st (scrIn_holds st)
+  simp only [scrPart] at h8
   rw [← canonD_scReduce] at h8
   generalize runBlock st (canonD shippedBank ed25519ScReduceShippedBlock) = out at h8 ⊢
   have hmem : ∀ i, i < 4 → out.mem "%rdi" ((8 * i : Nat) : Int) = ρ (350 + i) := by
     intro i hi
     have := h8 (.cell "%rdi" ((8 * i : Nat) : Int), .v (350 + i))
       (by interval_cases i <;> simp [scrOut, dk])
-    simpa only [Loc.val, WE.eval] using this
+    rw [Loc.val_cell, WE.eval_v] at this
+    exact this
   have hlhs : ((List.range 4).map fun i => out.mem "%rdi" ((8 * i : Nat) : Int)) =
       xOuts.map (WE.eval ρ) := by
     rw [xOuts_eq]
@@ -242,64 +207,35 @@ def scrCells : List (String × Int) :=
     (List.range 8).map (fun i => ("%rsi", ((8 * i : Nat) : Int))) ++
     (("%rsp", -128) :: (List.range 30).map (fun i => ("%rsp", ((8 * i : Nat) : Int))))
 
-/-- Every cell a block reads or writes is in `K`. -/
-def footOK (K : List (String × Int)) (blk : List (JInstr 64)) : Bool :=
-  blk.all fun i => (readKey i).all (fun k => decide (k ∈ K)) &&
-    (writeKey i).all (fun k => decide (k ∈ K))
-
-theorem footOK_append (K : List (String × Int)) (xs ys : List (JInstr 64)) :
-    footOK K (xs ++ ys) = (footOK K xs && footOK K ys) := by
-  simp [footOK, List.all_append]
-
-theorem footOK_reads {K : List (String × Int)} {blk : List (JInstr 64)}
-    (h : footOK K blk = true) : ∀ k ∈ blk.filterMap readKey, k ∈ K := by
-  intro k hk
-  obtain ⟨i, hi, hik⟩ := List.mem_filterMap.1 hk
-  have := List.all_eq_true.1 h i hi
-  simp only [hik, Bool.and_eq_true, Option.all_some, decide_eq_true_eq] at this
-  exact this.1
-
-theorem footOK_writes {K : List (String × Int)} {blk : List (JInstr 64)}
-    (h : footOK K blk = true) : ∀ k ∈ writeKeys blk, k ∈ K := by
-  intro k hk
-  obtain ⟨i, hi, hik⟩ := List.mem_filterMap.1 hk
-  have := List.all_eq_true.1 h i hi
-  simp only [hik, Bool.and_eq_true, Option.all_some, decide_eq_true_eq] at this
-  exact this.2
 
 theorem scr_foot1 : footOK scrCells (canonFromD shippedBank {} ed25519ScReduceShippedPart01) =
-    true := by decide +kernel
+    true := by native_decide
 theorem scr_foot2 :
     footOK scrCells (canonFromD shippedBank (scrState 1) ed25519ScReduceShippedPart02) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot3 :
     footOK scrCells (canonFromD shippedBank (scrState 2) ed25519ScReduceShippedPart03) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot4 :
     footOK scrCells (canonFromD shippedBank (scrState 3) ed25519ScReduceShippedPart04) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot5 :
     footOK scrCells (canonFromD shippedBank (scrState 4) ed25519ScReduceShippedPart05) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot6 :
     footOK scrCells (canonFromD shippedBank (scrState 5) ed25519ScReduceShippedPart06) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot7 :
     footOK scrCells (canonFromD shippedBank (scrState 6) ed25519ScReduceShippedPart07) = true := by
-  decide +kernel
+  native_decide
 theorem scr_foot8 :
     footOK scrCells (canonFromD shippedBank (scrState 7) ed25519ScReduceShippedPart08) = true := by
-  decide +kernel
+  native_decide
 
 theorem scr_foot : footOK scrCells (canonD shippedBank ed25519ScReduceShippedBlock) = true := by
   rw [canonD_scReduce]
   simp only [footOK_append, scr_foot1, scr_foot2, scr_foot3, scr_foot4, scr_foot5, scr_foot6,
     scr_foot7, scr_foot8, Bool.and_self]
-
-theorem absMem_shipped (P : String → BitVec 64) (m : AMem) (b : String) (o : Int)
-    (hb : shippedBank b = some b) :
-    absMem shippedBank P m b o = read64 m (P b + BitVec.ofInt 64 o) := by
-  simp [absMem, keyAddr, basePtr, hb]
 
 /-- **The shipped block computes `x mod L`.** When the cells of `scrCells` (the four output
     limbs at `%rdi`, the eight input limbs at `%rsi`, and the stack cells at `%rsp` offsets

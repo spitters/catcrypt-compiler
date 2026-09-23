@@ -5,7 +5,23 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedChecksB
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut01
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut02
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut03
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut04
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut05
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut06
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut07
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut08
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut09
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddCut10
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddFootprint
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddChain
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PartChain
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedParts
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
 
 /-!
 # Correctness of the shipped `ed25519_point_add` machine code
@@ -68,11 +84,11 @@ theorem bignumVal_pV : bignumVal pV = 2 ^ 255 - 19 := by
 
 theorem lit0_le_one (ρ : Nat → BitVec 64) : ((WE.lit 0).eval ρ).toNat ≤ 1 := by
   show (BitVec.ofNat 64 0).toNat ≤ 1
-  decide +kernel
+  native_decide
 
 theorem lit1_le_one (ρ : Nat → BitVec 64) : ((WE.lit 1).eval ρ).toNat ≤ 1 := by
   show (BitVec.ofNat 64 1).toNat ≤ 1
-  decide +kernel
+  native_decide
 
 /-- The split of a carry-chain result into its low limbs and its top limb. -/
 theorem split_top (l : List (BitVec 64)) (k : Nat) (hl : l.length = k + 1) :
@@ -129,7 +145,7 @@ theorem feCsubG_val (ρ : Nat → BitVec 64) (xs : List WE) (n : Nat)
   have hkl : (xs.map (WE.eval ρ)).length = kCV.length := by simp [h4, kCV]
   have hDval : bignumVal (addLimbs (xs.map (WE.eval ρ)) kCV 0)
       = bignumVal (xs.map (WE.eval ρ)) + (2 ^ 255 + 19) := by
-    rw [addLimbs_val' _ _ _ (by decide +kernel) hkl, bignumVal_kCV]
+    rw [addLimbs_val' _ _ _ (by native_decide) hkl, bignumVal_kCV]
     rfl
   have hDlen : (addLimbs (xs.map (WE.eval ρ)) kCV 0).length = 5 := by
     rw [addLimbs_length _ _ _ hkl]
@@ -201,7 +217,7 @@ theorem feAddG_val (ρ : Nat → BitVec 64) (xs ys : List WE) (n : Nat)
     simp [h4, h4']
   have hDval : bignumVal (addLimbs (xs.map (WE.eval ρ)) (ys.map (WE.eval ρ)) 0)
       = bignumVal (xs.map (WE.eval ρ)) + bignumVal (ys.map (WE.eval ρ)) := by
-    rw [addLimbs_val' _ _ _ (by decide +kernel) hml]
+    rw [addLimbs_val' _ _ _ (by native_decide) hml]
     rfl
   have hDlen : (addLimbs (xs.map (WE.eval ρ)) (ys.map (WE.eval ρ)) 0).length = 5 := by
     rw [addLimbs_length _ _ _ hml]
@@ -281,7 +297,7 @@ theorem feSubG_val (ρ : Nat → BitVec 64) (xs ys : List WE) (n : Nat)
     rw [List.length_dropLast, hDlen]; rfl
   have hEval : bignumVal (addLimbs D.dropLast pV 0)
       = bignumVal D.dropLast + (2 ^ 255 - 19) := by
-    rw [addLimbs_val' _ _ _ (by decide +kernel) hel2, bignumVal_pV]
+    rw [addLimbs_val' _ _ _ (by native_decide) hel2, bignumVal_pV]
     rfl
   have hElen : (addLimbs D.dropLast pV 0).length = 5 := by
     rw [addLimbs_length _ _ _ hel2, List.length_dropLast, hDlen]
@@ -329,7 +345,7 @@ theorem rowW_val : ∀ (xs : List (BitVec 64)) (w h c : BitVec 64), c.toNat ≤ 
     bignumVal (rowW xs w h c) = bignumVal xs * w.toNat + h.toNat + c.toNat
   | [], w, h, c, _, hb => by
       have hz : (h + BitVec.ofNat 64 0 + c).toNat = h.toNat + c.toNat := by
-        have h0 : (BitVec.ofNat 64 0).toNat = 0 := by decide +kernel
+        have h0 : (BitVec.ofNat 64 0).toNat = 0 := by native_decide
         rw [BitVec.toNat_add, BitVec.toNat_add, h0, Nat.add_zero,
           Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
       simp only [rowW, bignumVal, hz]
@@ -393,7 +409,7 @@ theorem feAccG_val (ρ : Nat → BitVec 64) (i : Nat) (xs : List WE) (y : WE) (a
   set A := (acc.drop i ++ [WE.lit 0]).map (WE.eval ρ) with hA
   set R := rowW (xs.map (WE.eval ρ)) (y.eval ρ) 0 0 with hR
   have hrw : bignumVal R = X * Y := by
-    rw [hR, rowW_val _ _ _ _ (by decide +kernel) (by decide +kernel)]
+    rw [hR, rowW_val _ _ _ _ (by native_decide) (by native_decide)]
     simp [hX, hY]
   have hsv := feAdcG_val ρ (acc.drop i ++ [.lit 0]) (feRowG xs y (.lit 0) (.lit 0) n).2
     (.lit 0) _ hs (lit0_le_one ρ)
@@ -413,7 +429,7 @@ theorem feAccG_val (ρ : Nat → BitVec 64) (i : Nat) (xs : List WE) (y : WE) (a
   have hAl : A.length = 5 := by rw [hA, List.length_map, hdl]
   have hRl : R.length = 5 := by rw [hR, rowW_length, List.length_map, h4]
   have hSv : bignumVal (addLimbs A R 0) = bignumVal A + bignumVal R := by
-    rw [addLimbs_val' _ _ _ (by decide +kernel) (by rw [hAl, hRl])]
+    rw [addLimbs_val' _ _ _ (by native_decide) (by rw [hAl, hRl])]
     rfl
   have hSl : (addLimbs A R 0).length = 6 := by
     rw [addLimbs_length _ _ _ (by rw [hAl, hRl]), hAl]
@@ -479,7 +495,7 @@ theorem feProdG_val (ρ : Nat → BitVec 64) (xs : List WE) (y0 y1 y2 y3 : WE) (
   have hr0 := feRowG_val ρ xs y0 (.lit 0) (.lit 0) n h0 (lit0_le_one ρ)
   rw [lit0_eval, ← hA0] at hr0
   have hv0 : bignumVal (A0.map (WE.eval ρ)) = X * (y0.eval ρ).toNat := by
-    rw [hr0, rowW_val _ _ _ _ (by decide +kernel) (by decide +kernel)]
+    rw [hr0, rowW_val _ _ _ _ (by native_decide) (by native_decide)]
     simp [hX]
   have hl0 : A0.length = 1 + 4 := by rw [hA0, feRowG_out_length _ _ _ _ _ h4]
   have hb1 : bignumVal (A0.map (WE.eval ρ))
@@ -522,7 +538,7 @@ theorem feProdG_val (ρ : Nat → BitVec 64) (xs : List WE) (y0 y1 y2 y3 : WE) (
 
 theorem lit38_toNat (ρ : Nat → BitVec 64) : ((WE.lit 38).eval ρ).toNat = 38 := by
   show (BitVec.ofNat 64 38).toNat = 38
-  decide +kernel
+  native_decide
 
 theorem feFoldG_length (S : List WE) (n : Nat) (h5 : S.length = 5) :
     (feFoldG S n).2.length = 4 := by
@@ -561,8 +577,8 @@ theorem selW_toNat (c : BitVec 64) :
     (selW c (BitVec.ofNat 64 38) (BitVec.ofNat 64 0)).toNat = if c.toNat = 0 then 0 else 38 := by
   simp only [selW]
   split
-  · decide +kernel
-  · decide +kernel
+  · native_decide
+  · native_decide
 
 theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
     (h : Holds ρ n (feFoldG S n).1) (h5 : S.length = 5)
@@ -587,7 +603,7 @@ theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
   have hMv := feRowG_val ρ (S.drop 4) (.lit 38) (.lit 0) (.lit 0) n hm (lit0_le_one ρ)
   rw [lit0_eval, ← hMg, List.map_drop] at hMv
   have hMval : bignumVal (Mg.map (WE.eval ρ)) = S4 * 38 := by
-    rw [hMv, rowW_val _ _ _ _ (by decide +kernel) (by decide +kernel), lit38_toNat]
+    rw [hMv, rowW_val _ _ _ _ (by native_decide) (by native_decide), lit38_toNat]
     simp [hS4]
   set Ug := (feAdcG (S.take 4) (Mg ++ [.lit 0, .lit 0]) (.lit 0) n3).2 with hUg
   set n4 := n3 + (feAdcG (S.take 4) (Mg ++ [.lit 0, .lit 0]) (.lit 0) n3).1.length with hn4
@@ -605,7 +621,7 @@ theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
     simp only [List.map_cons, List.map_nil, bignumVal, lit0_eval]
     simp
   have hUval : bignumVal (Ug.map (WE.eval ρ)) = Slo + S4 * 38 := by
-    rw [hUv, addLimbs_val' _ _ _ (by decide +kernel) (by
+    rw [hUv, addLimbs_val' _ _ _ (by native_decide) (by
       rw [List.length_take, List.length_map, h5, List.length_append, List.length_map,
         List.length_map, hMl]
       rfl), hMzeros, hSlo]
@@ -639,7 +655,7 @@ theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
   have hVl : Vg.length = 5 := by
     rw [hVg, (feAdcG_length _ _ _ _ hVlenIn).2, List.length_dropLast, hUl]
   have hVval : bignumVal (Vg.map (WE.eval ρ)) = U + (if cu = 0 then 0 else 38) := by
-    rw [hVv, addLimbs_val' _ _ _ (by decide +kernel) (by
+    rw [hVv, addLimbs_val' _ _ _ (by native_decide) (by
       rw [List.length_dropLast, List.length_map, hUl]
       rfl), ← hU, ← hmmv]
     simp only [List.map_cons, List.map_nil, bignumVal, lit0_eval]
@@ -719,7 +735,7 @@ theorem feRedG_val (ρ : Nat → BitVec 64) (ps : List WE) (n : Nat)
   have hRv := feRowG_val ρ (ps.drop 4) (.lit 38) (.lit 0) (.lit 0) n hr (lit0_le_one ρ)
   rw [lit0_eval, ← hRg, List.map_drop] at hRv
   have hRval : bignumVal (Rg.map (WE.eval ρ)) = H * 38 := by
-    rw [hRv, rowW_val _ _ _ _ (by decide +kernel) (by decide +kernel), lit38_toNat]
+    rw [hRv, rowW_val _ _ _ _ (by native_decide) (by native_decide), lit38_toNat]
     simp [hH]
   set Sg := (feAdcG (ps.take 4 ++ [.lit 0]) Rg (.lit 0) n1).2 with hSg
   have hSlenIn : (ps.take 4 ++ [WE.lit 0]).length = Rg.length := by
@@ -735,7 +751,7 @@ theorem feRedG_val (ρ : Nat → BitVec 64) (ps : List WE) (n : Nat)
     simp only [List.map_cons, List.map_nil, bignumVal, lit0_eval]
     simp [hL]
   have hSval : bignumVal (Sg.map (WE.eval ρ)) = L + H * 38 := by
-    rw [hSv, addLimbs_val' _ _ _ (by decide +kernel) (by
+    rw [hSv, addLimbs_val' _ _ _ (by native_decide) (by
       rw [List.length_append, List.length_take, List.length_map, h8, List.length_map,
         List.length_map, hRl]
       rfl), hAzeros, hRval]
@@ -1106,43 +1122,6 @@ theorem canonD_pointAdd :
     canonFromD_append, pointAdd_D_part07.2, canonFromD_append, pointAdd_D_part08.2,
     canonFromD_append, pointAdd_D_part09.2]
 
-/-- The cells the canonical block reads or writes: the sixteen output limbs at `%rdi`, the
-    thirty-two input limbs at `%rsi`, and the stack cells at `-128` and `0, 8, …, 392`. -/
-def paCells : List (String × Int) :=
-  (List.range 16).map (fun i => ("%rdi", ((8 * i : Nat) : Int))) ++
-  (List.range 32).map (fun i => ("%rsi", ((8 * i : Nat) : Int))) ++
-  (("%rsp", -128) :: (List.range 50).map (fun i => ("%rsp", ((8 * i : Nat) : Int))))
-
-theorem pa_foot1 :
-    footOK paCells (canonFromD shippedBank {} ed25519PointAddShippedPart01) = true := by
-  decide +kernel
-theorem pa_foot2 :
-    footOK paCells (canonFromD shippedBank (paState 1) ed25519PointAddShippedPart02)
-      = true := by decide +kernel
-theorem pa_foot3 :
-    footOK paCells (canonFromD shippedBank (paState 2) ed25519PointAddShippedPart03)
-      = true := by decide +kernel
-theorem pa_foot4 :
-    footOK paCells (canonFromD shippedBank (paState 3) ed25519PointAddShippedPart04)
-      = true := by decide +kernel
-theorem pa_foot5 :
-    footOK paCells (canonFromD shippedBank (paState 4) ed25519PointAddShippedPart05)
-      = true := by decide +kernel
-theorem pa_foot6 :
-    footOK paCells (canonFromD shippedBank (paState 5) ed25519PointAddShippedPart06)
-      = true := by decide +kernel
-theorem pa_foot7 :
-    footOK paCells (canonFromD shippedBank (paState 6) ed25519PointAddShippedPart07)
-      = true := by decide +kernel
-theorem pa_foot8 :
-    footOK paCells (canonFromD shippedBank (paState 7) ed25519PointAddShippedPart08)
-      = true := by decide +kernel
-theorem pa_foot9 :
-    footOK paCells (canonFromD shippedBank (paState 8) ed25519PointAddShippedPart09)
-      = true := by decide +kernel
-theorem pa_foot10 :
-    footOK paCells (canonFromD shippedBank (paState 9) ed25519PointAddShippedPart10)
-      = true := by decide +kernel
 
 theorem pa_foot : footOK paCells (canonD shippedBank ed25519PointAddShippedBlock) = true := by
   rw [canonD_pointAdd]
@@ -1162,18 +1141,18 @@ def rho0 (st : JState 64) (j : Nat) : BitVec 64 :=
 /-- The slot values of the addition on the input cells of `st`. -/
 def rhoPA (st : JState 64) : Nat → BitVec 64 := wrun 57 paStmts (rho0 st)
 
-theorem paStmts_wf : wfB 57 paStmts = true := by decide +kernel
+theorem paStmts_wf : wfB 57 paStmts = true := by native_decide
 
 
 
-theorem paC1_eq : paC1.2 = [.v 2352, .v 2353, .v 2354, .v 2355] := by decide +kernel
-theorem paC2_eq : paC2.2 = [.v 2356, .v 2357, .v 2358, .v 2359] := by decide +kernel
-theorem paC3_eq : paC3.2 = [.v 2360, .v 2361, .v 2362, .v 2363] := by decide +kernel
-theorem paC4_eq : paC4.2 = [.v 2364, .v 2365, .v 2366, .v 2367] := by decide +kernel
+theorem paC1_eq : paC1.2 = [.v 2352, .v 2353, .v 2354, .v 2355] := by native_decide
+theorem paC2_eq : paC2.2 = [.v 2356, .v 2357, .v 2358, .v 2359] := by native_decide
+theorem paC3_eq : paC3.2 = [.v 2360, .v 2361, .v 2362, .v 2363] := by native_decide
+theorem paC4_eq : paC4.2 = [.v 2364, .v 2365, .v 2366, .v 2367] := by native_decide
 
 theorem paOuts_eq : paOuts = [.v 2352, .v 2353, .v 2354, .v 2355, .v 2356, .v 2357,
     .v 2358, .v 2359, .v 2360, .v 2361, .v 2362, .v 2363, .v 2364, .v 2365, .v 2366,
-    .v 2367] := by decide +kernel
+    .v 2367] := by native_decide
 
 theorem holds_rhoPA (st : JState 64) : Holds (rhoPA st) 57 paStmts :=
   holds_wrun _ _ _ paStmts_wf
@@ -1188,7 +1167,7 @@ theorem rhoPA_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     · rw [List.getElem?_eq_none hc] at h
       cases h
   have hj25 : j < 25 := by
-    have : cLits.length = 9 := by decide +kernel
+    have : cLits.length = 9 := by native_decide
     omega
   have hgd : cLits.getD (j - 16) 0 = c := by
     rw [List.getD_eq_getElem?_getD, h]
@@ -1254,8 +1233,6 @@ theorem paCanon_correct (st : JState 64)
         = (paSpec (paInVal st 0) (paInVal st 1) (paInVal st 2) (paInVal st 3)
             (paInVal st 4) (paInVal st 5) (paInVal st 6) (paInVal st 7)).2.2.2 := by
   have hH := holds_rhoPA st
-  have hK : ∀ (a j c : Nat), j < a → cK j = some c → rhoPA st j = BitVec.ofNat 64 c :=
-    fun _ j c _ hc => rhoPA_const st j c hc
   have hsp : ∀ (l l1 l2 : List WE) (m n : Nat), l = l1 ++ l2 → l1.length = m →
       Holds (rhoPA st) n l → Holds (rhoPA st) n l1 ∧ Holds (rhoPA st) (n + m) l2 := by
     intro l l1 l2 m n he hm h
@@ -1283,74 +1260,29 @@ theorem paCanon_correct (st : JState 64)
   clear hsp r2 r3 r4 r5 r6 r7 r8 r9
   have znone : ∀ (s : JState 64), ZfHolds (rhoPA st) none s := fun _ e he => by cases he
   have cnone : ∀ (s : JState 64), CfHolds (rhoPA st) none s := fun _ e he => by cases he
-  obtain ⟨q1, c1, -⟩ := partCheck2_sound 57 paSl1 paIn none none paMap1
-    (some (aoWE (.v 238))) none _ pa_part1 (rhoPA st)
-    k1 (hK 57) st (paIn_holds st) (cnone st) (znone st)
-  obtain ⟨s1, hs1⟩ : ∃ s,
-      runBlock st (canonFromD shippedBank {} ed25519PointAddShippedPart01) = s := ⟨_, rfl⟩
-  rw [hs1] at q1 c1
-  obtain ⟨q2, c2, -⟩ := partCheck2_sound 239 paSl2 paMap1 (some (aoWE (.v 238)))
-    none paMap2 none none _ pa_part2 (rhoPA st)
-    k2 (hK 239) s1 q1 c1 (znone _)
-  obtain ⟨s2, hs2⟩ : ∃ s,
-      runBlock s1 (canonFromD shippedBank (paState 1) ed25519PointAddShippedPart02) = s :=
-    ⟨_, rfl⟩
-  rw [hs2] at q2 c2
-  obtain ⟨q3, c3, -⟩ := partCheck2_sound 499 paSl3 paMap2 none none paMap3
-    (some (.v 761)) none _ pa_part3 (rhoPA st)
-    k3 (hK 499) s2 q2 c2 (znone _)
-  obtain ⟨s3, hs3⟩ : ∃ s,
-      runBlock s2 (canonFromD shippedBank (paState 2) ed25519PointAddShippedPart03) = s :=
-    ⟨_, rfl⟩
-  rw [hs3] at q3 c3
-  obtain ⟨q4, c4, -⟩ := partCheck2_sound 762 paSl4 paMap3 (some (.v 761)) none
-    paMap4 (some (.v 1019)) none _ pa_part4 (rhoPA st)
-    k4 (hK 762) s3 q3 c3 (znone _)
-  obtain ⟨s4, hs4⟩ : ∃ s,
-      runBlock s3 (canonFromD shippedBank (paState 3) ed25519PointAddShippedPart04) = s :=
-    ⟨_, rfl⟩
-  rw [hs4] at q4 c4
-  obtain ⟨q5, c5, -⟩ := partCheck2_sound 1020 paSl5 paMap4 (some (.v 1019))
-    none paMap5 (some (.v 1269)) none _ pa_part5 (rhoPA st)
-    k5 (hK 1020) s4 q4 c4 (znone _)
-  obtain ⟨s5, hs5⟩ : ∃ s,
-      runBlock s4 (canonFromD shippedBank (paState 4) ed25519PointAddShippedPart05) = s :=
-    ⟨_, rfl⟩
-  rw [hs5] at q5 c5
-  obtain ⟨q6, c6, -⟩ := partCheck2_sound 1270 paSl6 paMap5 (some (.v 1269))
-    none paMap6 (some (aoWE (.v 1494))) none _ pa_part6 (rhoPA st)
-    k6 (hK 1270) s5 q5 c5 (znone _)
-  obtain ⟨s6, hs6⟩ : ∃ s,
-      runBlock s5 (canonFromD shippedBank (paState 5) ed25519PointAddShippedPart06) = s :=
-    ⟨_, rfl⟩
-  rw [hs6] at q6 c6
-  obtain ⟨q7, c7, -⟩ := partCheck2_sound 1495 paSl7 paMap6
-    (some (aoWE (.v 1494))) none paMap7 (some (.v 1747)) none _ pa_part7 (rhoPA st)
-    k7 (hK 1495) s6 q6 c6 (znone _)
-  obtain ⟨s7, hs7⟩ : ∃ s,
-      runBlock s6 (canonFromD shippedBank (paState 6) ed25519PointAddShippedPart07) = s :=
-    ⟨_, rfl⟩
-  rw [hs7] at q7 c7
-  obtain ⟨q8, c8, -⟩ := partCheck2_sound 1748 paSl8 paMap7 (some (.v 1747))
-    none paMap8 none none _ pa_part8 (rhoPA st)
-    k8 (hK 1748) s7 q7 c7 (znone _)
-  obtain ⟨s8, hs8⟩ : ∃ s,
-      runBlock s7 (canonFromD shippedBank (paState 7) ed25519PointAddShippedPart08) = s :=
-    ⟨_, rfl⟩
-  rw [hs8] at q8 c8
-  obtain ⟨q9, c9, -⟩ := partCheck2_sound 1996 paSl9 paMap8 none none paMap9
-    (some (aoWE (.v 2250))) none _ pa_part9 (rhoPA st)
-    k9 (hK 1996) s8 q8 c8 (znone _)
-  obtain ⟨s9, hs9⟩ : ∃ s,
-      runBlock s8 (canonFromD shippedBank (paState 8) ed25519PointAddShippedPart09) = s :=
-    ⟨_, rfl⟩
-  rw [hs9] at q9 c9
-  obtain ⟨q10, -, -⟩ := partCheck2_sound 2251 paSl10 paMap9
-    (some (aoWE (.v 2250))) none paOut none none _ pa_part10 (rhoPA st)
-    k10 (hK 2251) s9 q9 c9 (znone _)
-  clear q1 q2 q3 q4 q5 q6 q7 q8 q9 c1 c2 c3 c4 c5 c6 c7 c8 c9
-  rw [← hs9, ← hs8, ← hs7, ← hs6, ← hs5, ← hs4, ← hs3, ← hs2, ← hs1] at q10
-  simp only [← runBlock_cat, List.append_assoc] at q10
+  have hK' : ∀ j c, cK j = some c → rhoPA st j = BitVec.ofNat 64 c :=
+    fun j c hc => rhoPA_const st j c hc
+  have H := holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part01_of_halves (rhoPA st) k1 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part02_of_halves (rhoPA st) k2 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part03_of_halves (rhoPA st) k3 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part04_of_halves (rhoPA st) k4 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part05_of_halves (rhoPA st) k5 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part06_of_halves (rhoPA st) k6 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part07_of_halves (rhoPA st) k7 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part08_of_halves (rhoPA st) k8 hK' s hm hc hz)
+    (holds3_cat (rhoPA st)
+    (fun s hm hc hz => pa_part09_of_halves (rhoPA st) k9 hK' s hm hc hz)
+    (fun s hm hc hz => pa_part10_of_halves (rhoPA st) k10 hK' s hm hc hz)))))))))
+  obtain ⟨q10, -, -⟩ := H st (paIn_holds st) (cnone st) (znone st)
+  simp only [paPart] at q10
   rw [← canonD_pointAdd] at q10
   generalize runBlock st (canonD shippedBank ed25519PointAddShippedBlock) = out at q10 ⊢
   have hmem : ∀ j, j < 16 → out.mem "%rdi" ((8 * j : Nat) : Int) = rhoPA st (2352 + j) := by
@@ -1359,7 +1291,8 @@ theorem paCanon_correct (st : JState 64)
       simp only [paOut, List.mem_map, List.mem_range]
       exact ⟨j, hj, by rw [paOuts_eq]; interval_cases j <;> rfl⟩
     have := q10 _ hin
-    simpa only [Loc.val, WE.eval] using this
+    rw [Loc.val_cell, WE.eval_v] at this
+    exact this
   have hg : ∀ k, k < 4 → paOutVal out k
       = bignumVal ((List.range 4).map fun i => rhoPA st (2352 + (4 * k + i))) := by
     intro k hk
@@ -1493,7 +1426,7 @@ theorem cast_sub_p (x : Nat) (h : x ≤ 2 ^ 255 - 19) :
   ring
 
 theorem cast_twoDNat : ((twoDNat : Nat) : ZMod p25519) = ed25519D + ed25519D := by
-  decide +kernel
+  native_decide
 
 
 /-- **The natural-number coordinates are the coordinates of `addSpec`.** In `ZMod p25519`

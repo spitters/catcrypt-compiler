@@ -10,6 +10,3 @@
 # A module earns a line only with a measurement. Peak resident memory of one
 # `lean` process, from `/usr/bin/time -v`, or the `anon-rss` of the kernel's
 # out-of-memory record when the process was killed before finishing.
-CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedChecksA.lean	Five decide +kernel part checks of ed25519_point_add. Killed at 4.97 GB anon-rss on a 14 GB box, 2026-09-21; a lower bound, since the process had not finished. One check alone reaches 4.84 GB, so the cost is one declaration's kernel reduction and splitting the module does not divide it.
-CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedChecksB.lean	The remaining five part checks of the same census, of the same shape and cost as ChecksA.
-CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean	Eight decide +kernel part checks of ed25519_sc_reduce. Killed at 5.1 GB resident on a 14 GB box, 2026-09-22; under a 2.8 GB cap the overrun falls at scr_part7, a partCheck over a canonical part. The executor and word model it rests on cost 1.4 GB and live in Ed25519SymExec.

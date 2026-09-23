@@ -5,7 +5,21 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut01
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut02
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut03
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut04
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut05
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut06
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut07
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut08
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdCut09
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdModel
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PartChain
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdModel
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped
 
 /-!
 # Correctness of the shipped `ed25519_sc_muladd` machine code
@@ -22,7 +36,7 @@ The canonical block is checked part by part with the symbolic executor of
 block and the abstract states `AddrMemDerived.scmState` between them. The twelve input
 limbs are the slots `0 .. 11`, the constants of the reduction the slots `16 .. 24`, and the
 statements of the model the slots `16 .. 433`; each part check is closed by
-`decide +kernel`. The model and the part maps are in `Ed25519ScMuladdModel`.
+`native_decide`. The model and the part maps are in `Ed25519ScMuladdModel`.
 
 ## Main results
 
@@ -49,51 +63,6 @@ open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
 open CatCrypt.Util (Ed25519L ed25519L_eq)
 
-
-theorem scm_part1 :
-    partCheck 16 (mSlice 16 69) scmIn scmMap1
-      (canonFromD shippedBank {} ed25519ScMuladdShippedPart01) = true := by
-  decide +kernel
-
-theorem scm_part2 :
-    partCheck 69 (mSlice 69 114) scmMap1 scmMap2
-      (canonFromD shippedBank (scmState 1) ed25519ScMuladdShippedPart02) = true := by
-  decide +kernel
-
-theorem scm_part3 :
-    partCheck 114 (mSlice 114 165) scmMap2 scmMap3
-      (canonFromD shippedBank (scmState 2) ed25519ScMuladdShippedPart03) = true := by
-  decide +kernel
-
-theorem scm_part4 :
-    partCheck 165 (mSlice 165 219) scmMap3 scmMap4
-      (canonFromD shippedBank (scmState 3) ed25519ScMuladdShippedPart04) = true := by
-  decide +kernel
-
-theorem scm_part5 :
-    partCheck 219 (mSlice 219 269) scmMap4 scmMap5
-      (canonFromD shippedBank (scmState 4) ed25519ScMuladdShippedPart05) = true := by
-  decide +kernel
-
-theorem scm_part6 :
-    partCheck 269 (mSlice 269 319) scmMap5 scmMap6
-      (canonFromD shippedBank (scmState 5) ed25519ScMuladdShippedPart06) = true := by
-  decide +kernel
-
-theorem scm_part7 :
-    partCheck 319 (mSlice 319 369) scmMap6 scmMap7
-      (canonFromD shippedBank (scmState 6) ed25519ScMuladdShippedPart07) = true := by
-  decide +kernel
-
-theorem scm_part8 :
-    partCheck 369 (mSlice 369 416) scmMap7 scmMap8
-      (canonFromD shippedBank (scmState 7) ed25519ScMuladdShippedPart08) = true := by
-  decide +kernel
-
-theorem scm_part9 :
-    partCheck 416 (mSlice 416 434) scmMap8 scmOut
-      (canonFromD shippedBank (scmState 8) ed25519ScMuladdShippedPart09) = true := by
-  decide +kernel
 
 /-! ## 4. The canonical block -/
 
@@ -128,11 +97,11 @@ def rhoIn (st : JState 64) (j : Nat) : BitVec 64 :=
 /-- The slot values of the multiply-add on the input cells of `st`. -/
 def rhoM (st : JState 64) : Nat → BitVec 64 := wrun 16 mStmts (rhoIn st)
 
-theorem mStmts_wf : wfB 16 mStmts = true := by decide +kernel
+theorem mStmts_wf : wfB 16 mStmts = true := by native_decide
 
-theorem mStmts_length : mStmts.length = 418 := by decide +kernel
+theorem mStmts_length : mStmts.length = 418 := by native_decide
 
-theorem mOuts_eq : mOuts = [.v 430, .v 431, .v 432, .v 433] := by decide +kernel
+theorem mOuts_eq : mOuts = [.v 430, .v 431, .v 432, .v 433] := by native_decide
 
 theorem holds_rhoM (st : JState 64) : Holds (rhoM st) 16 mStmts :=
   holds_wrun _ _ _ mStmts_wf
@@ -140,7 +109,7 @@ theorem holds_rhoM (st : JState 64) : Holds (rhoM st) 16 mStmts :=
 theorem rhoM_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     rhoM st j = BitVec.ofNat 64 c := by
   have hH := holds_rhoM st
-  have hs : mStmts = constStmts ++ (mStmts.drop 9) := by decide +kernel
+  have hs : mStmts = constStmts ++ (mStmts.drop 9) := by native_decide
   rw [hs, holds_append] at hH
   have hc : constStmts = cLits.map WE.lit := by
     simp only [constStmts, cLits, List.map_append]
@@ -181,33 +150,34 @@ theorem scMuladdCanon_correct (st : JState 64) :
     fun _ j c _ h => rhoM_const st j c h
   have hsl : ∀ a b, 16 ≤ a → a ≤ b → b ≤ 434 → Holds ρ a (mSlice a b) := fun a b h1 h2 h3 =>
     holds_slice ρ mStmts 16 a b hH h1 h2 (by rw [mStmts_length]; omega)
-  have h1 := partCheck_sound _ _ _ _ _ scm_part1 ρ (hsl _ _ le_rfl (by omega) (by omega))
-    (hK 16) st (scmIn_holds st)
-  have h2 := partCheck_sound _ _ _ _ _ scm_part2 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 69) _ h1
-  have h3 := partCheck_sound _ _ _ _ _ scm_part3 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 114) _ h2
-  have h4 := partCheck_sound _ _ _ _ _ scm_part4 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 165) _ h3
-  have h5 := partCheck_sound _ _ _ _ _ scm_part5 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 219) _ h4
-  have h6 := partCheck_sound _ _ _ _ _ scm_part6 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 269) _ h5
-  have h7 := partCheck_sound _ _ _ _ _ scm_part7 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 319) _ h6
-  have h8 := partCheck_sound _ _ _ _ _ scm_part8 ρ (hsl _ _ (by omega) (by omega) (by omega))
-    (hK 369) _ h7
-  have h9 := partCheck_sound _ _ _ _ _ scm_part9 ρ (hsl _ _ (by omega) (by omega) le_rfl)
-    (hK 416) _ h8
-  clear h1 h2 h3 h4 h5 h6 h7 h8
-  simp only [← runBlock_cat, List.append_assoc] at h9
+  have hK' : ∀ j c, cK j = some c → ρ j = BitVec.ofNat 64 c := fun j c h => rhoM_const st j c h
+  have H := mapHolds_cat ρ
+    (fun s h => scm_part01_of_halves ρ (hsl _ _ le_rfl (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part02_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part03_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part04_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part05_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part06_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part07_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (mapHolds_cat ρ
+    (fun s h => scm_part08_of_halves ρ (hsl _ _ (by omega) (by omega) (by omega)) hK' s h)
+    (fun s h => scm_part09_of_halves ρ (hsl _ _ (by omega) (by omega) le_rfl) hK' s h))))))))
+  have h9 := H st (scmIn_holds st)
+  simp only [scmPart] at h9
   rw [← canonD_scMuladd] at h9
   generalize runBlock st (canonD shippedBank ed25519ScMuladdShippedBlock) = out at h9 ⊢
   have hmem : ∀ i, i < 4 → out.mem "%rdi" ((8 * i : Nat) : Int) = ρ (430 + i) := by
     intro i hi
     have := h9 (.cell "%rdi" ((8 * i : Nat) : Int), .v (430 + i))
       (by interval_cases i <;> simp [scmOut, dk])
-    simpa only [Loc.val, WE.eval] using this
+    rw [Loc.val_cell, WE.eval_v] at this
+    exact this
   have hlhs : ((List.range 4).map fun i => out.mem "%rdi" ((8 * i : Nat) : Int)) =
       mOuts.map (WE.eval ρ) := by
     rw [mOuts_eq]
@@ -265,31 +235,31 @@ def scmCells : List (String × Int) :=
 
 theorem scm_foot1 :
     footOK scmCells (canonFromD shippedBank {} ed25519ScMuladdShippedPart01) = true := by
-  decide +kernel
+  native_decide
 theorem scm_foot2 :
     footOK scmCells (canonFromD shippedBank (scmState 1) ed25519ScMuladdShippedPart02)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot3 :
     footOK scmCells (canonFromD shippedBank (scmState 2) ed25519ScMuladdShippedPart03)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot4 :
     footOK scmCells (canonFromD shippedBank (scmState 3) ed25519ScMuladdShippedPart04)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot5 :
     footOK scmCells (canonFromD shippedBank (scmState 4) ed25519ScMuladdShippedPart05)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot6 :
     footOK scmCells (canonFromD shippedBank (scmState 5) ed25519ScMuladdShippedPart06)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot7 :
     footOK scmCells (canonFromD shippedBank (scmState 6) ed25519ScMuladdShippedPart07)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot8 :
     footOK scmCells (canonFromD shippedBank (scmState 7) ed25519ScMuladdShippedPart08)
-      = true := by decide +kernel
+      = true := by native_decide
 theorem scm_foot9 :
     footOK scmCells (canonFromD shippedBank (scmState 8) ed25519ScMuladdShippedPart09)
-      = true := by decide +kernel
+      = true := by native_decide
 
 theorem scm_foot : footOK scmCells (canonD shippedBank ed25519ScMuladdShippedBlock) = true := by
   rw [canonD_scMuladd]
