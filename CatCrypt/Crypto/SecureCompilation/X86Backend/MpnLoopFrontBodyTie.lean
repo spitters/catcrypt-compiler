@@ -7,6 +7,8 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
 
 @[expose] public section
 

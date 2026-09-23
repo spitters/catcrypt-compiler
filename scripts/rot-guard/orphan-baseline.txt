@@ -4,5 +4,3 @@
 # added module in those namespaces must be imported by something, put in the
 # manifest, or recorded here with a reason. Regenerate with
 #   ROT_GUARD_WRITE_BASELINE=1 bash scripts/rot-guard-build.sh --check
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedRen	The mpn canon bridge instantiated at the shipped argument names; not yet built because JasminLsemMemFlagArrLoop.lean fails at HEAD (line 256), which its import closure needs. Becomes a root once that module compiles.
-CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie	Ties the hand transcription binLoopBody to the front output of the mpn and/xor/ior kernels; not yet built because LprogBytesDecode.lean fails at HEAD (line 278). Becomes a root once that module compiles.

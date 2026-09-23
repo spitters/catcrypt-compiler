@@ -53,6 +53,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped
 open CatCrypt.Crypto.SecureCompilation.VIR.LoopNameDistinct
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer (loopCtr_ne_argName head?_loopReg)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (ne_empty_of_head?)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype (N AN)
 
 variable (d : Nat)

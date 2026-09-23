@@ -112,6 +112,12 @@ theorem renLinstrR_opToLinstrR (σ : String → String) (op : JasminOp) (hop : O
     | (simp only [opToLinstrR]
        rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, rest⟩⟩⟩⟩ <;>
          (try cases a) <;> (try cases b) <;>
+         simp [renLinstrR, renOperand]
+       done)
+    | (simp only [opToLinstrR]
+       split <;>
+       rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, rest⟩⟩⟩⟩ <;>
+         (try cases a) <;> (try cases b) <;>
          simp [renLinstrR, renOperand])
 
 /-! ## 2. Variable resolution under the renaming -/
