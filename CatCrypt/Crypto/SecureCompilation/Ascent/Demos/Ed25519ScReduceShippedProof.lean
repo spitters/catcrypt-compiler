@@ -29,15 +29,14 @@ address machine `runBlockA`.
 
 The canonical block is checked part by part, over the eight parts of the imported block
 and the abstract states `AddrMemDerived.scrState` between them. `Ed25519SymExec` carries
-the symbolic executor, the part-check soundness theorem and the word model; the checks
-here are `native_decide`, one per part.
+the symbolic executor, the part-check soundness theorem and the word model. Parts 1 to 7
+are each cut in two at a generated boundary certificate, in `Ed25519ScReduceCut01` …
+`Cut07`, and joined through `mapHolds_cat`; part 8, one ten-instruction segment, is
+checked whole. The footprint checks run by `native_decide`.
 
 The global slot function is the run `wrun` of the statements from the input limbs; the
 statements read only earlier slots (`xStmts_wf`), so `wrun` satisfies them
 (`holds_wrun`).
-
-Each check reduces a symbolic run of a whole part in the kernel and costs gigabytes, so
-this module is listed in `scripts/ci-only-modules.txt`.
 
 ## Main results
 
@@ -70,7 +69,7 @@ open CatCrypt.Util (Ed25519L ed25519L_eq)
 theorem scr_part8 :
     partCheck 354 (xSlice 354 354) scrOut scrOut
       (canonFromD shippedBank (scrState 7) ed25519ScReduceShippedPart08) = true := by
-  native_decide
+  decide +kernel
 
 /-! ## 9. The canonical block -/
 
@@ -100,11 +99,11 @@ def rho0 (st : JState 64) (j : Nat) : BitVec 64 :=
 /-- The slot values of the reduction on the input cells of `st`. -/
 def rhoX (st : JState 64) : Nat → BitVec 64 := wrun 16 xStmts (rho0 st)
 
-theorem xStmts_wf : wfB 16 xStmts = true := by native_decide
+theorem xStmts_wf : wfB 16 xStmts = true := by decide +kernel
 
-theorem xStmts_length : xStmts.length = 338 := by native_decide
+theorem xStmts_length : xStmts.length = 338 := by decide +kernel
 
-theorem xOuts_eq : xOuts = [.v 350, .v 351, .v 352, .v 353] := by native_decide
+theorem xOuts_eq : xOuts = [.v 350, .v 351, .v 352, .v 353] := by decide +kernel
 
 theorem holds_rhoX (st : JState 64) : Holds (rhoX st) 16 xStmts :=
   holds_wrun _ _ _ xStmts_wf
@@ -113,7 +112,7 @@ theorem holds_rhoX (st : JState 64) : Holds (rhoX st) 16 xStmts :=
 theorem rhoX_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     rhoX st j = BitVec.ofNat 64 c := by
   have hH := holds_rhoX st
-  have hs : xStmts = constStmts ++ (xStmts.drop 9) := by native_decide
+  have hs : xStmts = constStmts ++ (xStmts.drop 9) := by decide +kernel
   rw [hs, holds_append] at hH
   have hc : constStmts = cLits.map WE.lit := by
     simp only [constStmts, cLits, List.map_append]

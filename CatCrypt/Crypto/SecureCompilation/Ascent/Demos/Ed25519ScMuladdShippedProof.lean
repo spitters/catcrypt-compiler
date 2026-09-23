@@ -35,8 +35,10 @@ The canonical block is checked part by part with the symbolic executor of
 `Ed25519SymExec` (`partCheck`, `partCheck_sound`), over the nine parts of the imported
 block and the abstract states `AddrMemDerived.scmState` between them. The twelve input
 limbs are the slots `0 .. 11`, the constants of the reduction the slots `16 .. 24`, and the
-statements of the model the slots `16 .. 433`; each part check is closed by
-`native_decide`. The model and the part maps are in `Ed25519ScMuladdModel`.
+statements of the model the slots `16 .. 433`. Each part check is cut in two at a
+generated boundary certificate, in `Ed25519ScMuladdCut01` … `Cut09`, and the halves are
+joined through `mapHolds_cat`; the footprint checks run by `native_decide`. The model and
+the part maps are in `Ed25519ScMuladdModel`.
 
 ## Main results
 
@@ -97,11 +99,11 @@ def rhoIn (st : JState 64) (j : Nat) : BitVec 64 :=
 /-- The slot values of the multiply-add on the input cells of `st`. -/
 def rhoM (st : JState 64) : Nat → BitVec 64 := wrun 16 mStmts (rhoIn st)
 
-theorem mStmts_wf : wfB 16 mStmts = true := by native_decide
+theorem mStmts_wf : wfB 16 mStmts = true := by decide +kernel
 
-theorem mStmts_length : mStmts.length = 418 := by native_decide
+theorem mStmts_length : mStmts.length = 418 := by decide +kernel
 
-theorem mOuts_eq : mOuts = [.v 430, .v 431, .v 432, .v 433] := by native_decide
+theorem mOuts_eq : mOuts = [.v 430, .v 431, .v 432, .v 433] := by decide +kernel
 
 theorem holds_rhoM (st : JState 64) : Holds (rhoM st) 16 mStmts :=
   holds_wrun _ _ _ mStmts_wf
@@ -109,7 +111,7 @@ theorem holds_rhoM (st : JState 64) : Holds (rhoM st) 16 mStmts :=
 theorem rhoM_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     rhoM st j = BitVec.ofNat 64 c := by
   have hH := holds_rhoM st
-  have hs : mStmts = constStmts ++ (mStmts.drop 9) := by native_decide
+  have hs : mStmts = constStmts ++ (mStmts.drop 9) := by decide +kernel
   rw [hs, holds_append] at hH
   have hc : constStmts = cLits.map WE.lit := by
     simp only [constStmts, cLits, List.map_append]

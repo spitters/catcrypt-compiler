@@ -1,4 +1,4 @@
-2172
+2129
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
@@ -70,9 +70,8 @@
 1	CatCrypt/Crypto/SecureCompilation/ARMBackend/SailNeonDecoder.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddDecode.lean
 10	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddFootprint.lean
-29	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedProof.lean
-13	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean
-13	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean
+9	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean
+8	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceLeaf.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceTower.lean
 3	CatCrypt/Crypto/SecureCompilation/AUCurvesImport/PilotImport.lean
@@ -198,8 +197,8 @@
 5	CatCrypt/Crypto/SecureCompilation/RISCVBackend/RiscvSha256Kernel.lean
 13	CatCrypt/Crypto/SecureCompilation/RISCVBackend/RiscvX25519FieldKernel.lean
 2	CatCrypt/Crypto/SecureCompilation/RISCVBackend/RvvLowering.lean
-3	CatCrypt/Crypto/SecureCompilation/Secp256k1FeMulFront.lean
-3	CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpFront.lean
+2	CatCrypt/Crypto/SecureCompilation/Secp256k1FeMulFront.lean
+1	CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpFront.lean
 5	CatCrypt/Crypto/SecureCompilation/SpeculativeCTFence.lean
 2	CatCrypt/Crypto/SecureCompilation/SpeculativeCT.lean
 8	CatCrypt/Crypto/SecureCompilation/SpeculativeCTMask.lean
@@ -403,7 +402,6 @@
 5	CatCrypt/Crypto/SecureCompilation/X86Backend/Curve4MontMulProvenEmit.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/Curve6LimbTierA.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/EcFeMulReduceComplete.lean
-2	CatCrypt/Crypto/SecureCompilation/X86Backend/EcFeMulSecp256k1Complete.lean
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/Ed25519PointKernel.lean
 7	CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519LazyOpsKernel.lean
 21	CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519LfundefBridge.lean
