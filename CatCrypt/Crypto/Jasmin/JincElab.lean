@@ -26,7 +26,14 @@ globals). The op mapping is `(Wu)x → castW`, the binary ops
 `a*b/a+b/a-b/a&b/a|b/a^b/a<<n/a>>n → regArith`, integer
 literals → `regConst`, `tbl[idx] → stackLoad`, `out[k]=v → stackStore`, and the
 branchless conditional `c ? a : b → select` (constant-time control flow: renders
-to `test`/`cmovcc`, no PC divergence).
+to `test`/`cmovcc`, no PC divergence). A bare `lhs = src` is a register copy, in
+the dialect the width-preserving `castW w w`; `(Wu) arr[idx]` is `stackLoad` then
+`castW`; `arr[idx] = rhs` at a general index and right-hand side binds the index
+and the value and then `stackStore`s. `for v = lo to hi { body }` is a bounded
+inline unroll: one `regConst` binding of the counter per iteration followed by
+the elaborated body, the same shape as the dialect front's `loopRForD`. A
+`while (c != 0)` loop is data-dependent and outside the fragment; it elaborates
+to `none`.
 
 A `Var Γ τ` is built by `mkVar` (a de-Bruijn lookup-with-type-check); each bound
 name extends the context. `ecDlog_elaborates` / `ecPowStore_elaborates` check the two leaves elaborate to a
@@ -158,6 +165,29 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
             (Stmt.assign lhs (Rhs.bin op a (Operand.var cName)) :: rest)
           return ⟨s, Com.var ce body⟩
       | _ => none
+  | Γ, env, Stmt.assign lhs (Rhs.imm n) :: rest => do
+      let lTy ← typeOf env lhs
+      match lTy with
+      | .reg w =>
+          let e : Expr jasminDialect Γ (.reg w) := ⟨.regConst w n, rfl, .nil⟩
+          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, Com.var e body⟩
+      | _ => none
+  | Γ, env, Stmt.assign lhs (Rhs.glob src) :: rest => do
+      -- a register copy `lhs = src`, expressed as the width-preserving cast
+      let sTy ← typeOf env src
+      match sTy with
+      | .reg w =>
+          let sv ← lookup Γ env src (.reg w)
+          let e : Expr jasminDialect Γ (.reg w) := ⟨.castW w w, rfl, .cons sv .nil⟩
+          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, Com.var e body⟩
+      | _ => none
+  | Γ, env, Stmt.assign lhs (Rhs.castLoad w arr idx) :: rest =>
+      -- `lhs = (Wu) arr[idx]`  ≡  `%l = arr[idx]; lhs = (Wu) %l`
+      let tName := "%l" ++ toString Γ.length
+      elabStmts Γ env (Stmt.assign tName (Rhs.load arr idx) ::
+        Stmt.assign lhs (Rhs.cast w tName) :: rest)
   | Γ, env, Stmt.compound op lhs operand :: rest =>
       -- `lhs op= operand`  ≡  `lhs = lhs op operand`
       elabStmts Γ env (Stmt.assign lhs (Rhs.bin op lhs operand) :: rest)
@@ -178,6 +208,41 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let ⟨s, body⟩ ← elabStmts (.stackArr w n :: Γ') ((arr, .stackArr w n) :: env') rest
           return ⟨s, Com.var ce (Com.var se body)⟩
       | _ => none
+  | Γ, env, Stmt.storeAt arr (Operand.lit k) val :: rest => do
+      -- bind the literal index, then store at the bound name
+      let iName := "%x" ++ toString Γ.length
+      let ce : Expr jasminDialect Γ (.reg 64) := ⟨.regConst 64 k, rfl, .nil⟩
+      let ⟨s, body⟩ ← elabStmts (.reg 64 :: Γ) ((iName, .reg 64) :: env)
+        (Stmt.storeAt arr (Operand.var iName) val :: rest)
+      return ⟨s, Com.var ce body⟩
+  | Γ, env, Stmt.storeAt arr (Operand.var idx) (Rhs.glob val) :: rest => do
+      let aTy ← typeOf env arr
+      match aTy with
+      | .stackArr w n =>
+          let av ← lookup Γ env arr (.stackArr w n)
+          let iv ← lookup Γ env idx (.reg 64)
+          let vv ← lookup Γ env val (.reg w)
+          let se : Expr jasminDialect Γ (.stackArr w n) :=
+            ⟨.stackStore w n, rfl, .cons av (.cons iv (.cons vv .nil))⟩
+          let ⟨s, body⟩ ← elabStmts (.stackArr w n :: Γ) ((arr, .stackArr w n) :: env) rest
+          return ⟨s, Com.var se body⟩
+      | _ => none
+  | Γ, env, Stmt.storeAt arr idx val :: rest =>
+      -- a computed right-hand side: bind it, then store the bound name
+      let vName := "%v" ++ toString Γ.length
+      elabStmts Γ env (Stmt.assign vName val ::
+        Stmt.storeAt arr idx (Rhs.glob vName) :: rest)
+  | Γ, env, Stmt.forTo v lo hi body :: rest =>
+      -- one unrolled iteration: the counter is a `regConst` binding, and the
+      -- remaining range is the same `forTo` with `lo` advanced
+      if lo < hi then do
+        let ce : Expr jasminDialect Γ (.reg 64) := ⟨.regConst 64 lo, rfl, .nil⟩
+        let ⟨s, cbody⟩ ← elabStmts (.reg 64 :: Γ) ((v, .reg 64) :: env)
+          (body ++ Stmt.forTo v (lo + 1) hi body :: rest)
+        return ⟨s, Com.var ce cbody⟩
+      else elabStmts Γ env rest
+  -- `Stmt.whileNz`: a data-dependent loop, outside the fragment this elaborator
+  -- covers.
   | _, _, _ => none
 
 /-! ## 3. Whole-function elaboration -/
@@ -202,7 +267,10 @@ def elabFun (f : JFun) :
   let params' := (f.params ++ globParams).reverse
   let body' := f.body.filter (fun s => (globName s).isNone)
   let Γ₀ : Ctxt jasminDialect := params'.map (fun p => toJ p.ty)
+  -- Declared locals sit past the end of `Γ₀`, so `typeOf` finds a declared type
+  -- for a name that is not yet bound while `lookup` still fails on it.
   let env₀ : Env := params'.map (fun p => (p.name, toJ p.ty))
+    ++ f.decls.map (fun d => (d.2, toJ d.1))
   let ⟨τ, com⟩ ← elabStmts Γ₀ env₀ body'
   return ⟨Γ₀, τ, com⟩
 
@@ -221,6 +289,17 @@ theorem ecPowStore_elaborates :
     (parseJincFun ecPowStoreSrc).toOption.bind (fun f =>
         (elabFun f).map (fun r => (r.1.length, r.2.1)))
       = some (3, .stackArr 8 2) := by native_decide
+
+/-! `mldsa_expand_mask_real` elaborates: its `for i = 0 to 128` loop unrolls into
+the straight-line `Com`, over the two source parameters, returning the updated
+`stackArr 32 256`. The unrolled program is 8207 bindings and elaborating it takes
+seconds, so it is checked where the artifact is produced rather than here. -/
+
+/-! `mldsa_expand_a_real` does not elaborate: its `while (cont != 0)` guard is a
+data-dependent loop, outside the fragment this elaborator covers. -/
+#guard
+  ((parseJincFun mldsaExpandASrc).toOption.map (fun f => (elabFun f).isNone))
+    == some true
 
 /-! ## 4b. Denotational self-check (parse → `Com` computes the leaf) -/
 

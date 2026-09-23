@@ -549,14 +549,14 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
              exact ⟨1, ComCont.varBind_leakFactors _⟩)
           | exact absurd h (by simp)
 
-/-- **The full control front's prefix leak-factors (non-`while` fragment).** On
-    every `IsCoveredCtl` `LowCT`, whenever `translateDialectControl` succeeds its
-    `ComCont` prefix leak-factors. The `ofCovered` case discharges via
+/-- **The full control front's prefix leak-factors.** On every `IsCoveredCtl`
+    `LowCT`, whenever `translateDialectControl` succeeds its `ComCont` prefix
+    leak-factors. The `ofCovered` case discharges via
     `translateDialectFull_cont_leakFactors`, the `RFor` case via
-    `loopRForD_leakFactors_cond`, and the `RIfNz` φ-merge via the branch IHs
+    `loopRForD_leakFactors_cond`, the `RIfNz` φ-merge via the branch IHs
     (pass-through `o₁`/`o₂` cont; the six-binding `ite`-chain at factor 6; the
-    re-translation `comp o₁.cont o₂'.cont`). This is the dialect-leak prefix
-    leak-factoring for the **entire non-`while` LowCT surface**. -/
+    re-translation `comp o₁.cont o₂'.cont`), and the `RWhileNz` case by the
+    context-invariant `ComCont.id` prefix at factor 0. -/
 theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) : ∃ k : Nat, ComCont.LeakFactors o.cont k := by
@@ -603,6 +603,17 @@ theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c 
                       exact ⟨k₁ + k₂', ComCont.comp_leakFactors hf₁ hf₂'⟩
                   · simp at h
           · simp at h
+      · simp at h
+  | @rWhileNz name body _hbody _ih =>
+      rw [translateDialectControl] at h
+      split at h
+      · cases hb : translateDialectControl vm body with
+        | none => rw [hb] at h; exact absurd h (by simp)
+        | some o' =>
+            rw [hb] at h
+            simp only [Option.map_some, Option.some.injEq] at h
+            subst h
+            exact ⟨0, ComCont.id_leakFactors⟩
       · simp at h
 
 /-- **Prefix leak-length constancy (dialect leak model).** A leak-factoring
@@ -1071,8 +1082,7 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
 /-- **The full control front's trace-factoring.** On every `IsCoveredCtl` `LowCT`,
     the front prefix prepends a fixed event list to any tail. The actual-prefix
     (not just length) dialect analogue of `LowCTLeakTrace.leakTrace_translate_factors`,
-    the leak-factoring `RHP_pipeline_labeled_leakage_NI` exposes — over the entire
-    non-`while` LowCT surface, CProg-free. -/
+    the leak-factoring `RHP_pipeline_labeled_leakage_NI` exposes, CProg-free. -/
 theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) :
@@ -1119,6 +1129,17 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
                       exact ⟨_, ComCont.comp_leakFactorsTrace hp₁ hp₂'⟩
                   · simp at h
           · simp at h
+      · simp at h
+  | @rWhileNz name body _hbody _ih =>
+      rw [translateDialectControl] at h
+      split at h
+      · cases hb : translateDialectControl vm body with
+        | none => rw [hb] at h; exact absurd h (by simp)
+        | some o' =>
+            rw [hb] at h
+            simp only [Option.map_some, Option.some.injEq] at h
+            subst h
+            exact ⟨_, ComCont.id_leakFactorsTrace⟩
       · simp at h
 
 /-- **Front-level RHP-pipeline leakage factoring (dialect).** For every

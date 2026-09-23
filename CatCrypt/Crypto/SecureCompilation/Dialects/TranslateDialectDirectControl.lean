@@ -260,8 +260,9 @@ def translateDialectControlTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
 /-! ## 3. The control-extended covered fragment and context agreement -/
 
 /-- The control-extended covered `LowCT` fragment: the leaf-call covered arms
-    (`TranslateDialectDirectArms.IsCovered`) plus `RFor` over covered bodies and
-    `RIfNz` over covered branches. -/
+    (`TranslateDialectDirectArms.IsCovered`) plus `RFor` over covered bodies,
+    `RIfNz` over covered branches, and the data-dependent `RWhileNz` over a
+    covered body. -/
 inductive IsCoveredCtl : LowCT → Prop
   | ofCovered {c : LowCT} : IsCovered c → IsCoveredCtl c
   | rFor {x : String} {N : Nat} {body : LowCT} :
@@ -269,6 +270,8 @@ inductive IsCoveredCtl : LowCT → Prop
   | rIfNz {name : String} {thenBr elseBr : LowCT} :
       IsCoveredCtl thenBr → IsCoveredCtl elseBr →
       IsCoveredCtl (.RIfNz name thenBr elseBr)
+  | rWhileNz {name : String} {body : LowCT} :
+      IsCoveredCtl body → IsCoveredCtl (.RWhileNz name body)
 
 /-- On the leaf-call covered fragment, `translateDialectControl` coincides with
     `translateDialectFull` (it delegates there for every non-`RFor`/`RIfNz`

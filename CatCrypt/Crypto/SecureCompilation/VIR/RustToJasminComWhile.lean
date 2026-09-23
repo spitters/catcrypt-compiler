@@ -16,8 +16,10 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 LowCT → `Com catCryptDialect` → `Com jasmin` value story over the *straight-line +
 `RFor` + `RIfNz`-φ* sublanguage `IsCoveredSCtl`, whose control-covered front is
 `translateDialectControl` and whose value waist is `semScalar`. That fragment does
-**not** contain a data-dependent `while`: `IsCoveredCtl`/`IsCoveredSCtl` exclude
-`RWhileNz`, and `translateDialectControl` has no runtime-loop arm.
+**not** contain a data-dependent `while`: `IsCoveredSCtl` excludes `RWhileNz`, and
+the value waist `semScalar` has no runtime-loop arm. (`IsCoveredCtl` — the
+operational-simulation coverage — does have an `rWhileNz` arm, matching
+`translateDialectControl`'s context-plumbing `RWhileNz` arm.)
 
 The `while`-carrying front already had its **front-preservation** proved —
 `TranslateDialectScalar.transU_denote`
@@ -67,8 +69,7 @@ transU fuel`, `semScalar → semU fuel`, `IsCoveredSCtl → IsCoveredSU`).
 `CryptoDialectRustSim.rustExecSimulatesDialect`. That simulation is stated for the
 control-covered front only: it requires `IsCoveredCtl c` and
 `translateDialectControl vm c = some o`; `IsCoveredSU` has no `toIsCoveredCtl`
-(data-dependent `while` sits outside `IsCoveredCtl` by construction) and `transU`
-is not `translateDialectControl`.
+and `transU` is not `translateDialectControl`.
 
 Bare existence of a post-state interpretation is in any case no constraint on the
 execution. `RustStateInterp vm rs V` pins `V` to `rs` on the bound names, so

@@ -37,19 +37,21 @@ which walks the rust state along `callNUpdate` one destination at a time.
 
 The coverage hypothesis `hCov : IsCoveredCtl c` is reverted into the induction:
 because the dialect front is *partial*, every `RustExec` constructor outside
-`IsCoveredCtl` (e.g. `RLetZero`, `RAssert`, `RWhileNz`, …) is discharged by
+`IsCoveredCtl` (e.g. `RLetZero`, `RAssert`, …) is discharged by
 inversion of `hCov` (`cases hCov`), and the recursive arms
 thread sub-coverage to their IHs.
 
-The `RIfNz` arms (`ifTrue` / `ifFalse`) close via `noAlias_canonical_witness`:
-the post-branch state's witness at `o.vm` is realised from `NoAliasVM o.vm`,
-which holds because the dialect front preserves `NoAliasVM`
+The `RIfNz` arms (`ifTrue` / `ifFalse`) and the `RWhileNz` arms (`whileFalse` /
+`whileTrue`) close via `noAlias_canonical_witness`: the post-branch / post-loop
+state's witness at `o.vm` is realised from `NoAliasVM o.vm`, which holds because
+the dialect front preserves `NoAliasVM`
 (`translateDialectControl_preserves_noAlias`).
 
 ## Fragment used
 
-`IsCoveredCtl` — the leaf-call covered arms plus `RFor` (bounded unroll) and
-`RIfNz` (φ-merge). Unbounded `RWhileNz` and not-yet-in-dialect ops are excluded.
+`IsCoveredCtl` — the leaf-call covered arms plus `RFor` (bounded unroll),
+`RIfNz` (φ-merge) and `RWhileNz` (data-dependent loop, context-invariant front
+output). Not-yet-in-dialect ops are excluded.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
@@ -463,8 +465,9 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
 
 /-- The control-flow (`IsCoveredCtl`) front preserves `NoAliasVM`: leaf-covered
     arms delegate to `translateDialectFull_preserves_noAlias`, `RFor` to
-    `loopRForD_preserves_noAlias`, and each `RIfNz` φ-merge case grows `vm` by
-    `bind`/`weaken` steps or a covered re-translation. -/
+    `loopRForD_preserves_noAlias`, each `RIfNz` φ-merge case grows `vm` by
+    `bind`/`weaken` steps or a covered re-translation, and `RWhileNz` returns the
+    entry `vm` unchanged. -/
 theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (hT : translateDialectControl vm c = some o) (hNA : NoAliasVM vm) : NoAliasVM o.vm := by
@@ -543,6 +546,17 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                           | some o₂' =>
                             rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
                             exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+  | @rWhileNz name body _hbody _ih =>
+      rw [translateDialectControl] at hT
+      split at hT
+      · cases hb : translateDialectControl vm body with
+        | none => rw [hb] at hT; exact absurd hT (by simp)
+        | some o' =>
+            rw [hb] at hT
+            simp only [Option.map_some, Option.some.injEq] at hT
+            subst hT
+            exact hNA
+      · exact absurd hT (by simp)
 
 /-- A 64-bit word pushed onto the valuation under the weakened map keeps the state
     interpretation: every binding of the map refers past the new slot. -/
@@ -670,9 +684,16 @@ theorem rustExecSimulatesDialect
   | ifFalse e ct cf rs0 rs2 _heval _hbranch ih =>
       exact ⟨_, noAlias_canonical_witness
         (translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias) rs2⟩
-  | whileFalse e body rs0 _heval => cases hCov with | ofCovered hc => cases hc
+  -- `RWhileNz` arms. The front's `RWhileNz` output is context-invariant
+  -- (`o.Γ' = Γ`, `o.vm = vm`), so the post-loop `VarMap` is alias-free and
+  -- `noAlias_canonical_witness` realises `RustStateInterp o.vm` at the post-state
+  -- — the same lever the `RIfNz` arms use, and it needs no trip-count argument.
+  | whileFalse e body rs0 _heval =>
+      exact ⟨_, noAlias_canonical_witness
+        (translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias) rs0⟩
   | whileTrue e body rs0 r1 rs2 v _heval _hne _hbody _hnext ih1 ih2 =>
-      cases hCov with | ofCovered hc => cases hc
+      exact ⟨_, noAlias_canonical_witness
+        (translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias) rs2⟩
   | forZero x body rs0 =>
       simp only [translateDialectControl, loopRForD, Option.some.injEq] at hTrans
       subst hTrans
@@ -1203,6 +1224,29 @@ theorem rustExecSimulatesDialect
           obtain ⟨V1, hInv1⟩ := ih1 vm _ hC1 ho1 V hInv
           obtain ⟨V', hInv'⟩ := ih2 (vm.bind dest1.locVar) _ hC2 ho2 V1 hInv1
           exact ⟨V', hInv'⟩
+
+/-- **Rust ↔ dialect simulation for the data-dependent loop `RWhileNz`.**
+    The `RWhileNz` specialization of `rustExecSimulatesDialect`, in the shape of
+    `RForPreservation.loopRForD_denotation_preserved`: for a loop whose body is
+    control-covered and whose front output is `o`, every `RustExec` run of the
+    loop lands a post-state valuation satisfying `RustStateInterp o.vm`.
+
+    The trip count is not a parameter and no fuel or termination hypothesis is
+    needed: `hExec` is a finite `RustExec` derivation, and the front's `RWhileNz`
+    output is context-invariant (`o.Γ' = Γ`, `o.vm = vm`), so the post-loop
+    interpretation is the alias-free canonical witness at the entry `VarMap`.
+    This is state-correspondence at the loop boundary, not a statement that the
+    dialect prefix recomputes the loop's result. -/
+theorem rustExecSimulatesDialect_RWhileNz {Γ : Ctx} (vm : VarMap Γ)
+    (name : String) (body : LowCT) (o : DTransOut Γ)
+    (N : Nat) (leafSpec : LeafSpec) (rs rs' : RustState)
+    (hCov : IsCoveredCtl body)
+    (hTrans : translateDialectControl vm (.RWhileNz name body) = some o)
+    (hExec : RustExec N leafSpec (.RWhileNz name body) rs rs')
+    (V : HVec Γ) (hInv : RustStateInterp vm rs V) :
+    ∃ V' : HVec o.Γ', RustStateInterp o.vm rs' V' :=
+  rustExecSimulatesDialect vm (.RWhileNz name body) o N leafSpec rs rs'
+    (.rWhileNz hCov) hTrans hExec V hInv
 
 /-- **Rust ↔ dialect simulation for the vector node `RVsimdSetExpr`.**
     `RVsimdSetExpr x tag args` is definitionally a reserved-tag `RCall`, so it is
