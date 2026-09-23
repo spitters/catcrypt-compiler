@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519LeafCalleesField
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExec
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PartChain
 
 /-!
 # The concatenation callee of the shipped `ed25519_madd` on the address machine
@@ -209,7 +209,8 @@ theorem join_foot :
 theorem join_wkList :
     writeKeys (canonD shippedBank Ed25519Join16Shipped.ed25519Join16ShippedBlock)
       = (joinRspOffs.map fun o => ("%rsp", o)) ++
-        ((List.range 16).map fun i => ("%rdi", ((8 * i : Nat) : Int))) := by decide +kernel
+        ((List.range 16).map fun i => ("%rdi", ((8 * i : Nat) : Int))) ++
+        (joinRspOffs.map fun o => ("%rsp", o)) := by decide +kernel
 
 /-- `m'` differs from `m` only in the 128 bytes at `a` and the stack slots the
     concatenation block uses. -/
@@ -250,7 +251,7 @@ theorem joinShipped_correct_addr (sa : AState)
     have h1 := hK ("%rdi", o) hc
     rw [absMem_shipped _ _ _ _ shippedBank_rdi] at h1
     have h2 := joinCanon_out (jOf shippedBank sa) (Loc.cell "%rdi" o, WE.v i) ho
-    simp only [Loc.val, WE.eval] at h2
+    rw [Loc.val_cell, WE.eval_v] at h2
     rw [h1, h2]
   have hv : ∀ (b : String) (_ : shippedBank b = some b) (o : Int),
       (jOf shippedBank sa).mem b o = read64 sa.mem (sa.regs b + BitVec.ofInt 64 o) := by
@@ -304,15 +305,20 @@ theorem joinShipped_correct_addr (sa : AState)
     refine runBlockA_mem_frameD shippedBank _ ed25519Join16_disciplinedD sa x
       (separated_of_subset (fun k hk => ?_) hsep) ?_
     · rw [join_wkList] at hk
-      rcases List.mem_append.1 hk with h | h
+      rcases List.mem_append.1 hk with hk | h
+      · rcases List.mem_append.1 hk with h | h
+        · exact List.mem_append_left _ (List.mem_append_left _ h)
+        · exact List.mem_append_left _ (List.mem_append_right _ h)
       · exact List.mem_append_left _ (List.mem_append_left _ h)
-      · exact List.mem_append_left _ (List.mem_append_right _ h)
     · intro k hk
       rw [join_wkList] at hk
-      rcases List.mem_append.1 hk with h | h
+      rcases List.mem_append.1 hk with hk | h
+      · rcases List.mem_append.1 hk with h | h
+        · obtain ⟨o, ho, rfl⟩ := List.mem_map.1 h
+          simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy o ho
+        · obtain ⟨i, hi, rfl⟩ := List.mem_map.1 h
+          simpa [keyAddr_shipped _ _ _ shippedBank_rdi] using hx i (List.mem_range.1 hi)
       · obtain ⟨o, ho, rfl⟩ := List.mem_map.1 h
         simpa [keyAddr_shipped _ _ _ shippedBank_rsp] using hy o ho
-      · obtain ⟨i, hi, rfl⟩ := List.mem_map.1 h
-        simpa [keyAddr_shipped _ _ _ shippedBank_rdi] using hx i (List.mem_range.1 hi)
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519LeafCallees
