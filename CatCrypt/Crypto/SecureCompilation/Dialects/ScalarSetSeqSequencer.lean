@@ -266,7 +266,7 @@ jasmin-lowerable program. It is closed under the three `ComCont` combinators
 (`id`, `varBind` of a covered op, `comp`), so it composes exactly as the
 sequencer's `ComCont` is built (`pushVarBindW` = `comp _ (varBind _)`,
 `seqOut` = `comp`). `lowerSExprW` emits only the covered word-op alphabet
-(`bvConst`/`bvAdd`/…/`bvShiftLV`/`bvShiftRV`), so `lowerSExprW_contJLowerable`
+(`bvConst`/`bvAdd`/…/`bvShiftLV`/`bvShiftRV`/`bvShiftRA`), so `lowerSExprW_contJLowerable`
 holds by induction on the `SExpr`; the whole-sequence
 `seqCovers_contJLowerable` then follows by induction on `SeqCovers`, and
 `seqProg_jasmin_isSome` lands the closed program on owned x86 via
@@ -430,37 +430,66 @@ theorem lowerSExprW_contJLowerable (w : Nat) (e : SExpr) :
       intro Γ vm cnt r resName cnt' h
       simp only [ScalarSExprWidth32Prototype.lowerSExprW] at h
       split at h
-      · simp at h
-      · next Ro hla =>
-        split at h
+      · split at h
         · simp at h
-        · next So hlb =>
+        · next Ro hla =>
           split at h
-          · next va vb =>
-            simp only [Option.some.injEq, Prod.mk.injEq] at h
+          · simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨hr, -, -⟩ := h; subst hr
-            exact ContJLowerable.pushVarBindW w
-              (ContJLowerable.seqOut (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla)
-                (ihb Ro.1.vm Ro.2.2 So.1 So.2.1 So.2.2 hlb)) (by split <;> rfl)
+            exact ContJLowerable.pushVarBindW w (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla) rfl
           · simp at h
+      · split at h
+        · simp at h
+        · next Ro hla =>
+          split at h
+          · simp at h
+          · next So hlb =>
+            split at h
+            · simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨hr, -, -⟩ := h; subst hr
+              exact ContJLowerable.pushVarBindW w
+                (ContJLowerable.seqOut (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla)
+                  (ihb Ro.1.vm Ro.2.2 So.1 So.2.1 So.2.2 hlb)) rfl
+            · simp at h
   | SShr a b iha ihb =>
       intro Γ vm cnt r resName cnt' h
       simp only [ScalarSExprWidth32Prototype.lowerSExprW] at h
       split at h
-      · simp at h
-      · next Ro hla =>
-        split at h
+      · split at h
         · simp at h
-        · next So hlb =>
+        · next Ro hla =>
           split at h
-          · next va vb =>
-            simp only [Option.some.injEq, Prod.mk.injEq] at h
+          · simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨hr, -, -⟩ := h; subst hr
-            exact ContJLowerable.pushVarBindW w
-              (ContJLowerable.seqOut (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla)
-                (ihb Ro.1.vm Ro.2.2 So.1 So.2.1 So.2.2 hlb)) (by split <;> rfl)
+            exact ContJLowerable.pushVarBindW w (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla) rfl
           · simp at h
-  | SLt a b _ _ | SAsr a b _ _ | SMulS a b _ _ | SMulHiU a b _ _
+      · split at h
+        · simp at h
+        · next Ro hla =>
+          split at h
+          · simp at h
+          · next So hlb =>
+            split at h
+            · simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨hr, -, -⟩ := h; subst hr
+              exact ContJLowerable.pushVarBindW w
+                (ContJLowerable.seqOut (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla)
+                  (ihb Ro.1.vm Ro.2.2 So.1 So.2.1 So.2.2 hlb)) rfl
+            · simp at h
+  | SAsr a b iha _ =>
+      intro Γ vm cnt r resName cnt' h
+      simp only [ScalarSExprWidth32Prototype.lowerSExprW] at h
+      split at h
+      · split at h
+        · simp at h
+        · next Ro hla =>
+          split at h
+          · simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨hr, -, -⟩ := h; subst hr
+            exact ContJLowerable.pushVarBindW w (iha vm cnt Ro.1 Ro.2.1 Ro.2.2 hla) rfl
+          · simp at h
+      · simp at h
+  | SLt a b _ _ | SMulS a b _ _ | SMulHiU a b _ _
   | SMulHiS a b _ _ =>
       intro Γ vm cnt r resName cnt' h
       simp [ScalarSExprWidth32Prototype.lowerSExprW] at h

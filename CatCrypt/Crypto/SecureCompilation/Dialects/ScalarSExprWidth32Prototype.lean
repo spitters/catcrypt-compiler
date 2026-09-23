@@ -31,7 +31,9 @@ lowering `mapTy (.sword w) = .reg w` is likewise width-generic. So the ONLY plac
 the width `64` is baked in is the FRONT lowering. This file adds a
 **width-parametric** copy of that lowering — `lowerSExprW (w : Nat)` — ADDITIVELY:
 the 64-bit `lowerSExpr` is untouched (byte-identical, everyone keeps building on
-it), and `lowerSExprW 64` is behaviourally the same function.
+it). `lowerSExprW 64` computes the same values; it differs in shape in that a
+shift by a literal binds no constant for its count, and it also lowers `SAsr` by
+a literal.
 
 It then PROTOTYPE-flips one representative cross-lane kernel: the ChaCha20
 quarter-round's first rotation step `d' = rotl32(d ^ (a + b), 16)` as a
@@ -39,7 +41,7 @@ front-generated `.sword 32` body, and checks computationally that
 
 1. it lowers (`isSome`) to a `Com catCryptDialect` at width 32;
 2. that program lowers on to a `Com jasminDialect` (reaches owned `.s`);
-3. it denotes with genuine 32-bit wrap to `rotl32(d ^ (a + b), 16)` on samples;
+3. it denotes with 32-bit wrap to `rotl32(d ^ (a + b), 16)` on samples;
 4. `rotl32` is faithfully expressed as `(x <<< k) ^ (x >>> (32-k))` — the two
    halves are disjoint, so the front-expressible `SXor`/`SShl`/`SShr` combination
    equals the native `BitVec.rotateLeft` (`bv_decide`, universal over all inputs).
@@ -79,9 +81,12 @@ def pushVarBindW (w : Nat) {Γ : Ctx} (o : DTransOut Γ)
 /-! ## 2. The width-parametric SExpr lowering
 
 Mirrors `TranslateDialectDirectArms.lowerSExpr` with `64 ↦ w` on every op and
-slot. Covers the straight-line arithmetic / bitwise / shift arms — exactly the
-alphabet the cross-lane kernels (ChaCha, SHA-256, BLAKE3) use. The signed /
-declined arms match the production front. -/
+slot. Covers the straight-line arithmetic / bitwise / shift arms — the alphabet
+the cross-lane kernels (ChaCha, SHA-256, BLAKE3) use — and the arithmetic shift
+right `SAsr` by a literal, which lowers to `bvShiftRA`. A shift whose count is a
+literal lowers to the immediate-count op and binds no constant for the count; a
+shift by any other operand lowers to the variable-count op. `SAsr` by a
+non-literal and the remaining signed arms decline. -/
 def lowerSExprW (w : Nat) {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) :
     SExpr → Option (DTransOut Γ × String × Nat)
   | .SVar x =>
@@ -163,41 +168,72 @@ def lowerSExprW (w : Nat) {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) :
               some (pushVarBindW w (seqOut r.1 s.1) e (tmpName s.2.2), tmpName s.2.2, s.2.2 + 1)
           | _, _ => none
   | .SShl a b =>
-      match lowerSExprW w vm cnt a with
-      | none => none
-      | some r =>
-        match lowerSExprW w r.1.vm r.2.2 b with
-        | none => none
-        | some s =>
-          match lookupUW w s.1.vm r.2.1, lookupUW w s.1.vm s.2.1 with
-          | some va, some vb =>
-              let e : Expr catCryptDialect s.1.Γ' (.sword w) :=
-                match b with
-                | .SLit k =>
-                    { op := .bvShiftL w k, retTy_eq := rfl, args := .cons (toVIRVar va) .nil }
-                | _ =>
+      match b with
+      | .SLit k =>
+          match lowerSExprW w vm cnt a with
+          | none => none
+          | some r =>
+            match lookupUW w r.1.vm r.2.1 with
+            | some va =>
+                let e : Expr catCryptDialect r.1.Γ' (.sword w) :=
+                  { op := .bvShiftL w k, retTy_eq := rfl, args := .cons (toVIRVar va) .nil }
+                some (pushVarBindW w r.1 e (tmpName r.2.2), tmpName r.2.2, r.2.2 + 1)
+            | none => none
+      | _ =>
+          match lowerSExprW w vm cnt a with
+          | none => none
+          | some r =>
+            match lowerSExprW w r.1.vm r.2.2 b with
+            | none => none
+            | some s =>
+              match lookupUW w s.1.vm r.2.1, lookupUW w s.1.vm s.2.1 with
+              | some va, some vb =>
+                  let e : Expr catCryptDialect s.1.Γ' (.sword w) :=
                     { op := .bvShiftLV w, retTy_eq := rfl,
                       args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) }
-              some (pushVarBindW w (seqOut r.1 s.1) e (tmpName s.2.2), tmpName s.2.2, s.2.2 + 1)
-          | _, _ => none
+                  some (pushVarBindW w (seqOut r.1 s.1) e (tmpName s.2.2), tmpName s.2.2,
+                    s.2.2 + 1)
+              | _, _ => none
   | .SShr a b =>
-      match lowerSExprW w vm cnt a with
-      | none => none
-      | some r =>
-        match lowerSExprW w r.1.vm r.2.2 b with
-        | none => none
-        | some s =>
-          match lookupUW w s.1.vm r.2.1, lookupUW w s.1.vm s.2.1 with
-          | some va, some vb =>
-              let e : Expr catCryptDialect s.1.Γ' (.sword w) :=
-                match b with
-                | .SLit k =>
-                    { op := .bvShiftR w k, retTy_eq := rfl, args := .cons (toVIRVar va) .nil }
-                | _ =>
+      match b with
+      | .SLit k =>
+          match lowerSExprW w vm cnt a with
+          | none => none
+          | some r =>
+            match lookupUW w r.1.vm r.2.1 with
+            | some va =>
+                let e : Expr catCryptDialect r.1.Γ' (.sword w) :=
+                  { op := .bvShiftR w k, retTy_eq := rfl, args := .cons (toVIRVar va) .nil }
+                some (pushVarBindW w r.1 e (tmpName r.2.2), tmpName r.2.2, r.2.2 + 1)
+            | none => none
+      | _ =>
+          match lowerSExprW w vm cnt a with
+          | none => none
+          | some r =>
+            match lowerSExprW w r.1.vm r.2.2 b with
+            | none => none
+            | some s =>
+              match lookupUW w s.1.vm r.2.1, lookupUW w s.1.vm s.2.1 with
+              | some va, some vb =>
+                  let e : Expr catCryptDialect s.1.Γ' (.sword w) :=
                     { op := .bvShiftRV w, retTy_eq := rfl,
                       args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) }
-              some (pushVarBindW w (seqOut r.1 s.1) e (tmpName s.2.2), tmpName s.2.2, s.2.2 + 1)
-          | _, _ => none
+                  some (pushVarBindW w (seqOut r.1 s.1) e (tmpName s.2.2), tmpName s.2.2,
+                    s.2.2 + 1)
+              | _, _ => none
+  | .SAsr a b =>
+      match b with
+      | .SLit k =>
+          match lowerSExprW w vm cnt a with
+          | none => none
+          | some r =>
+            match lookupUW w r.1.vm r.2.1 with
+            | some va =>
+                let e : Expr catCryptDialect r.1.Γ' (.sword w) :=
+                  { op := .bvShiftRA w k, retTy_eq := rfl, args := .cons (toVIRVar va) .nil }
+                some (pushVarBindW w r.1 e (tmpName r.2.2), tmpName r.2.2, r.2.2 + 1)
+            | none => none
+      | _ => none
   | _ => none
 
 /-! ## 3. Prototype: a 32-bit ChaCha20 quarter-round rotation step
@@ -253,7 +289,7 @@ theorem qrProg_lowers :
     (qrProg.bind DialectToJasminCom.cryptoDialectToJasminCom).isSome := by
   native_decide
 
-/-! ### 3b. `denote = spec` with genuine 32-bit wrap (the correctness gate) -/
+/-! ### 3b. `denote = spec` with 32-bit wrap -/
 
 -- A worked value: a=b=0x80000000 forces the 32-bit add to WRAP to 0 (a 64-bit
 -- add would give 0x1_00000000 and change the result), so this sample witnesses
@@ -268,7 +304,7 @@ example : qrDenote 0 0 0 = some (qrSpec 0 0 0) := by native_decide
 
 /-! ### 3c. `rotl32` is faithfully expressed — universal, not just on samples
 
-The load-bearing identity: the front-expressible `(x << k) ^ (x >> (32-k))` at
+The identity: the front-expressible `(x << k) ^ (x >> (32-k))` at
 width 32 equals the native `BitVec.rotateLeft k`, for every `x`. `bv_decide`
 proves it over all `2^32` inputs (SAT, not enumeration). Shown for the four
 ChaCha rotate constants 16/12/8/7. -/
