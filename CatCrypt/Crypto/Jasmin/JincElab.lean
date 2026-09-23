@@ -14,6 +14,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
 
 /-!
 # `.jinc` elaborator: untyped `JFun` → `Com jasminDialect` → owned x86
@@ -456,5 +458,24 @@ def emitJincAsm (src : String) (fname : String) : String :=
           let abiTyin := (Γ.map abiWidth).reverse
           CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
             (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))
+
+/-- The owned AT&T `.s` for a parsed `.jinc` function after `n` rounds of
+    register-copy coalescing, which computes a value in the register its copy
+    targets and drops the copy (`LprogCopyCoalesce.coalesceBody_stateStore`).
+    The elaborator binds every source statement to a fresh name, so an unrolled
+    loop carries one copy per binding for the printer to remove. -/
+def emitJincAsmCoalesced (src : String) (fname : String) (n : Nat) : String :=
+  match parseJincFun src with
+  | .error e => s!"; parse error: {e}"
+  | .ok f =>
+      match elabFun f with
+      | none => "; elaboration failed"
+      | some ⟨Γ, _, com⟩ =>
+          let abiArgs := sysvRegs.take Γ.length
+          let abiTyin := (Γ.map abiWidth).reverse
+          CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+            (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce.coalesceRounds n
+              (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.optimizeLprogBasicBlocks
+                (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))))
 
 end CatCrypt.Crypto.Jasmin.JincElab

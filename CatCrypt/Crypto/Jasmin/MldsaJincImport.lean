@@ -201,4 +201,11 @@ def expandMaskCom? : Option (Com jasminDialect expandMaskCtxt (.stackArr 32 256)
 def expandMaskAsm : String :=
   emitJincAsm mldsaExpandMaskSrc "mldsa_expand_mask_real"
 
+/-- The same leaf after two rounds of register-copy coalescing. The pass scans
+    backwards from each copy, so on the unrolled loop's 8207 bindings it is
+    quadratic and does not finish in the time the emit driver runs in; a rolled
+    loop in the elaborator is what makes it affordable. -/
+def expandMaskAsmCoalesced : String :=
+  emitJincAsmCoalesced mldsaExpandMaskSrc "mldsa_expand_mask_real" 2
+
 end CatCrypt.Crypto.Jasmin.MldsaJincImport

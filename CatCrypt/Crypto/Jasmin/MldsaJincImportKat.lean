@@ -53,13 +53,11 @@ def instrLineCount (asm : String) : Nat :=
     elaborates to a one-argument `Com` returning `reg 64`; and its rendering
     carries no parse or elaboration failure and exactly one
     `mldsa_montgomery_reduce:` label. The `ExpandMask` leaf elaborates to a
-    two-argument `Com` returning `stackArr 32 256`, and its rendering carries no
-    parse error, no elaboration failure, no `UNHANDLED` marker, exactly one
-    `mldsa_expand_mask_real:` label, and at least one instruction line. -/
+    two-argument `Com` returning `stackArr 32 256`; its rendered text is checked
+    where the artifact is consumed, by the bench Makefile and the C harness. -/
 def importChecks (_ : Unit) : List (String × Bool) :=
   let parsed := (parseJincFun mldsaMontRedSrc).toOption
   let asm := mldsaMontRedAsm
-  let mask := expandMaskAsm
   [ ("parse shape (1 param, 3 decls, 7 stmts)",
       parsed.map (fun f => (f.params.length, f.decls.length, f.body.length)) == some (1, 3, 7))
   , ("parsed return type reg u64", parsed.map (fun f => f.retTy) == some (JTy.reg 64))
@@ -68,14 +66,7 @@ def importChecks (_ : Unit) : List (String × Bool) :=
   , ("render has no elaboration failure", (asm.splitOn "elaboration failed").length == 1)
   , ("render has one export label", (asm.splitOn "mldsa_montgomery_reduce:").length == 2)
   , ("expand_mask elaborates to Com [stackArr 32 640, stackArr 32 256] (stackArr 32 256)",
-      expandMaskCom?.isSome)
-  , ("expand_mask render has no parse error", (mask.splitOn "; parse error").length == 1)
-  , ("expand_mask render has no elaboration failure",
-      (mask.splitOn "elaboration failed").length == 1)
-  , ("expand_mask render has no UNHANDLED marker", (mask.splitOn "UNHANDLED").length == 1)
-  , ("expand_mask render has one export label",
-      (mask.splitOn "mldsa_expand_mask_real:").length == 2)
-  , ("expand_mask render has instruction lines", 0 < instrLineCount mask) ]
+      expandMaskCom?.isSome) ]
 
 /-- The path the `ExpandMask` rendering is written to, relative to the workspace
     root the executable runs from. -/
