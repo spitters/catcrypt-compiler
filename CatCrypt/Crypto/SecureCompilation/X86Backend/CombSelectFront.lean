@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront
-public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
 public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
@@ -189,7 +189,7 @@ def combSelectLowered (N : Nat) :
 
 /-- The owned AT&T rendering under `f(tbl = RDI, d = RSI, out = RDX)`. -/
 def combSelectFrontAsmN (name : String) (N : Nat) : Option String :=
-  Secp256k1PointOpFront.ownedAsm name ["RDI", "RSI", "RDX"] (combSelectLowered N)
+  OwnedAsm.ownedAsm name ["RDI", "RSI", "RDX"] (combSelectLowered N)
 
 /-- The 16-entry (4-bit window) select, `ed25519_comb_select_x86_from_lean`. -/
 def combSelectFrontAsm : Option String :=
@@ -204,7 +204,7 @@ def combSelect6FrontAsm : Option String :=
   combSelectFrontAsmN "ed25519_comb6_select_x86_from_lean" 64
 
 /-- The exported `Lprog` of the lowered select under `f(tbl = RDI, d = RSI,
-    out = RDX)`, with the export arguments of `Secp256k1PointOpFront.ownedAsm`. -/
+    out = RDX)`, with the export arguments of `OwnedAsm.ownedAsm`. -/
 def combSelectLprog (name : String) (N : Nat) : Option JasminLprogExport.Lprog :=
   (combSelectLowered N).map (fun s =>
     JasminLprogExport.Com.toLprogPhysAbi s.2.2 name
@@ -1160,7 +1160,7 @@ theorem combSelectFrontAsm_isSome :
       (combSelectFrontAsmN name N).isSome := by
     intro N hN name
     obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (combSelectLowered_isSome N hN)
-    simp only [combSelectFrontAsmN, Secp256k1PointOpFront.ownedAsm, hx, Option.map_some,
+    simp only [combSelectFrontAsmN, OwnedAsm.ownedAsm, hx, Option.map_some,
       Option.isSome_some]
   exact ⟨h 16 (by norm_num) _, h 32 (by norm_num) _, h 64 (by norm_num) _⟩
 

@@ -2281,6 +2281,7 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel,
@@ -2459,9 +2460,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node3,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node4,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node5,
-    Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node6,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node6,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node7,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node8,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377P.Node9,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.IfBreak,
     Lake.Glob.one `CatCrypt.Hax.Ascent.LocalCalls,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Refines,
-    Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeLeaves,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeLeaves,
     Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeOps,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Square,
     Lake.Glob.one `CatCrypt.Hax.Ascent.SquareKleisli,

@@ -8,8 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
 public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
 
 @[expose] public section
 
@@ -529,16 +529,7 @@ def pointCells : Nat × Nat × Nat → List Nat
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi Lprog)
 
-/-- Render an owned AT&T `.s` for a lowered point-op under the SysV pointer ABI. -/
-def ownedAsm (name : String) (abiArgs : List String)
-    (j : Option (Σ Γj : Ctxt jasminDialect, Σ t : JasminTy, Com jasminDialect Γj t)) :
-    Option String :=
-  j.map (fun s =>
-    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
-      (Com.toLprogPhysAbi s.2.2 name
-        (fun _ => none) (fun _ => none) (fun _ => none) []
-        (abiArgs := abiArgs) (abiTyin := abiArgs.map (fun _ => 64))
-        (residence := none) (abiW := 0) (forceLivePin := true)))
+export CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm (ownedAsm)
 
 /-- The lowered `jacDbl` as owned `.s` (RDI = out, RSI = P). -/
 def jacDblAsm (_ : Unit) : Option String := ownedAsm "secp256k1_jac_dbl" ["RDI", "RSI"] jacDblLowered
