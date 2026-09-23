@@ -34,8 +34,8 @@ table of pre-broadcast words at a second pointer.
 * `LEnv`, `LSrc`, `lBin`, `lSar`, `lShr`: the builder.
 * `polyAddCom`, `polySubCom`, `polyReduceCom`, `polyCaddqCom`: the ML-DSA
   coefficient kernels over `groups` YMM words of eight coefficients each.
-* `polyDecomposeCom`, `polyMakeHintCom`, `polyChknormCom`: the signing
-  decisions, branch-free.
+* `polyDecomposeCom`, `polyMakeHintCom`, `polyChknormCom`, `polyUseHintCom`: the
+  signing decisions, branch-free.
 * `laneAsm`, `polyAsm`: the owned AT&T text of one kernel.
 -/
 
@@ -272,6 +272,45 @@ def polyChknormCom (groups : Nat) : Com jasminDialect (laneCtxt (groups + 2)) R3
       lBin e .or 0 (if g = 0 then .iw cacc else .sl 0) (.sl (tS 5 g)) k) (List.range groups)
     e fun e2 => .ret (e2.slot 0)
 
+/-- PQClean `use_hint`: `a₁` of `decompose a`, moved one step when the hint is
+    set — up when `a₀ > 0` and down otherwise — and reduced mod 16. The step is
+    `1 + 2·((a₀ - 1) >>ₛ 31)`, which is `1` when `a₀ > 0` and `-1` when
+    `a₀ ≤ 0`, multiplied by the hint. Inputs `0 .. groups-1` are `a`, the next
+    `groups` are the hints, each `0` or `1`, and inputs `2·groups .. 2·groups+7` are the
+    broadcast constants `127, 1025, 2²¹, 15, 2γ₂, (Q - 1) / 2, Q, 1`. The final
+    `groups` bindings are the corrected `a₁` of each group. -/
+def polyUseHintCom (groups : Nat) : Com jasminDialect (laneCtxt (2 * groups + 8)) R32 :=
+  let c127 := 2 * groups
+  let c1025 := 2 * groups + 1
+  let c21 := 2 * groups + 2
+  let c15 := 2 * groups + 3
+  let c2g2 := 2 * groups + 4
+  let chalf := 2 * groups + 5
+  let cq := 2 * groups + 6
+  let c1 := 2 * groups + 7
+  lEach (fun g _ e k =>
+      lBin e .add (tS 0 g) (.iw g) (.iw c127) fun e1 =>
+      lSar e1 (tS 1 g) (.sl (tS 0 g)) 7 fun e2 =>
+      lBin e2 .mul (tS 2 g) (.sl (tS 1 g)) (.iw c1025) fun e3 =>
+      lBin e3 .add (tS 3 g) (.sl (tS 2 g)) (.iw c21) fun e4 =>
+      lSar e4 (tS 4 g) (.sl (tS 3 g)) 22 fun e5 =>
+      lBin e5 .and (tS 5 g) (.sl (tS 4 g)) (.iw c15) fun e6 =>
+      lBin e6 .mul (tS 6 g) (.sl (tS 5 g)) (.iw c2g2) fun e7 =>
+      lBin e7 .sub (tS 7 g) (.iw g) (.sl (tS 6 g)) fun e8 =>
+      lBin e8 .sub (tS 8 g) (.iw chalf) (.sl (tS 7 g)) fun e9 =>
+      lSar e9 (tS 9 g) (.sl (tS 8 g)) 31 fun e10 =>
+      lBin e10 .and (tS 10 g) (.sl (tS 9 g)) (.iw cq) fun e11 =>
+      lBin e11 .sub (tS 11 g) (.sl (tS 7 g)) (.sl (tS 10 g)) fun e12 =>
+      lBin e12 .sub (tS 12 g) (.sl (tS 11 g)) (.iw c1) fun e13 =>
+      lSar e13 (tS 13 g) (.sl (tS 12 g)) 31 fun e14 =>
+      lBin e14 .add (tS 14 g) (.sl (tS 13 g)) (.sl (tS 13 g)) fun e15 =>
+      lBin e15 .add (tS 15 g) (.iw c1) (.sl (tS 14 g)) fun e16 =>
+      lBin e16 .mul (tS 16 g) (.sl (tS 15 g)) (.iw (groups + g)) fun e17 =>
+      lBin e17 .add (tS 17 g) (.sl (tS 5 g)) (.sl (tS 16 g)) k) (List.range groups)
+    (initLEnv (2 * groups + 7)) fun e =>
+  lEach (fun g _ e k => lBin e .and g (.sl (tS 17 g)) (.iw c15) k) (List.range groups)
+    e fun e2 => .ret (e2.slot (groups - 1))
+
 /-! ## 3. Every program the builder writes is in `batch8`'s covered fragment
 
 `Batch8.batch8_denote` holds for programs satisfying `Batch8Covered`. Every
@@ -397,6 +436,18 @@ theorem polyChknorm_covered (groups : Nat) : Batch8Covered (polyChknormCom group
       exact lBin_covered e' _ _ _ _ k' hk'
     · exact fun _ => trivial
 
+/-- **`use_hint` is covered**, for every number of groups. -/
+theorem polyUseHint_covered (groups : Nat) : Batch8Covered (polyUseHintCom groups) := by
+  apply lEach_covered
+  · intro _ _ e k hk
+    repeat lane_step
+    exact hk _
+  · intro _ e
+    apply lEach_covered
+    · intro _ _ e' k' hk'
+      exact lBin_covered e' _ _ _ _ k' hk'
+    · exact fun _ => trivial
+
 /-! ## 4. ABI maps and the owned render
 
 `RDI` points at the 256 coefficients, read and written in place; `RSI` points at
@@ -424,6 +475,13 @@ def storeOut (groups : Nat) : OutStoreMap := (List.range groups).map (fun g => (
     `RDI`, `a₁` from `RDI + 32·groups`, and the two constants from `RSI`. -/
 def hintIn (groups : Nat) : InLoadMap := fun slot =>
   let i := 2 * groups + 1 - slot
+  if i < 2 * groups then some ("RDI", 32 * i) else some ("RSI", 32 * (i - 2 * groups))
+
+/-- Load map for `use_hint`, whose context has `2·groups + 8` inputs: `a` from
+    `RDI`, the hints from `RDI + 32·groups`, and the eight constants from
+    `RSI`. -/
+def useHintIn (groups : Nat) : InLoadMap := fun slot =>
+  let i := 2 * groups + 7 - slot
   if i < 2 * groups then some ("RDI", 32 * i) else some ("RSI", 32 * (i - 2 * groups))
 
 /-- Load map for `chknorm`, whose context has `groups + 2` inputs: the
@@ -456,7 +514,7 @@ def polyAsm {Γ : Ctxt jasminDialect} (com : Com jasminDialect Γ R32) (name : S
     keep that under the fifteen allocatable vector registers. -/
 def dsaGroups : Nat := 4
 
-/-- The seven kernels, with their symbol names. -/
+/-- The eight kernels, with their symbol names. -/
 def dsaPolyKernels : List (String × String) :=
   [ ("mldsa_poly_add_x8", polyAsm (polyAddCom dsaGroups) "mldsa_poly_add_x8"
         (twoArrayIn dsaGroups) dsaGroups)
@@ -471,6 +529,8 @@ def dsaPolyKernels : List (String × String) :=
   , ("mldsa_make_hint_x8", polyAsm (polyMakeHintCom dsaGroups) "mldsa_make_hint_x8"
         (hintIn dsaGroups) dsaGroups)
   , ("mldsa_chknorm_x8", laneAsm (polyChknormCom dsaGroups) "mldsa_chknorm_x8"
-        (chknormIn dsaGroups) [("RDI", 0)]) ]
+        (chknormIn dsaGroups) [("RDI", 0)])
+  , ("mldsa_use_hint_x8", polyAsm (polyUseHintCom dsaGroups) "mldsa_use_hint_x8"
+        (useHintIn dsaGroups) dsaGroups) ]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
