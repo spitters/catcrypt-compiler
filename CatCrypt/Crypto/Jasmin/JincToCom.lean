@@ -7,20 +7,23 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# `.jinc` straight-line leaf parser (front: text → untyped AST)
+# `.jinc` leaf parser (front: text → untyped AST)
 
-Parses the straight-line fragment of a hand-written Jasmin `.jinc` leaf into an
-untyped AST (`JFun`). The fragment covers `inline fn`/`fn` headers with `reg`/
-`reg ptr` parameters, local `reg`/`reg ptr` declarations, width casts `(Wu)x`,
-binary `*`/`+`/`-`/`&`/`|`/`^`/`<<`/`>>` with a register or literal operand,
-compound `+=`, variable-indexed loads `tbl[idx]`, const-indexed stores
-`out[k] = v`, a global-table assignment
-`name = GLOBAL`, and `return name`. The elaborator (`JincToCom` §elab) turns a
-`JFun` into a `Com jasminDialect`; this module is the textual front.
+Parses a Jasmin leaf's text into an untyped AST (`JFun`). The fragment covers
+`inline fn`/`export fn`/`fn` headers with `reg`/`reg ptr` parameters,
+`reg`/`reg ptr` declarations binding several names at once, `inline int`
+counters, width casts `(Wu)x` and `(Wu)arr[idx]`, binary
+`*`/`+`/`-`/`&`/`|`/`^`/`<<`/`>>` with a register or literal operand, the
+compound assignments `+=`/`-=`/`*=`/`&=`/`|=`/`^=`/`<<=`/`>>=`, literal
+assignments `x = n`, variable-indexed loads `tbl[idx]`, stores `out[idx] = v`
+at a literal or variable index and with a cast right-hand side, a global-table
+assignment `name = GLOBAL`, `while (v != 0) { … }`, `for v = lo to hi { … }`,
+and `return name`. The elaborator (`JincElab`) turns a `JFun` into a
+`Com jasminDialect`; this module is the textual front.
 
-Targets the straight-line `ec_leaves.jinc` leaves (`ec_dlog`, `ec_pow_store`).
-Data-dependent `if`/`else`, runtime `while`, and inter-leaf calls are not in the
-fragment.
+Targets the straight-line `ec_leaves.jinc` leaves (`ec_dlog`, `ec_pow_store`)
+and the two loop forms of the `.jazz` printer's output. Data-dependent
+`if`/`else` and inter-leaf calls are not in the fragment.
 -/
 
 @[expose] public section
@@ -36,8 +39,9 @@ inductive Tok where
   | num (n : Nat)
   | lparen | rparen | lbrace | rbrace | lbrack | rbrack
   | semi | comma | assign | plus | minus | star | arrow | plusEq
-  | question | colon
+  | question | colon | neq
   | amp | pipe | caret | shl | shr
+  | minusEq | starEq | ampEq | pipeEq | caretEq | shlEq | shrEq
   deriving Repr, BEq, Inhabited
 
 abbrev Cs := List Char
@@ -65,6 +69,14 @@ partial def tokenize (s : String) : Except String (List Tok) := do
   let rec go (cs : Cs) (acc : List Tok) : Except String (List Tok) := do
     match skipWhite cs with
     | [] => return acc.reverse
+    | '!' :: '=' :: rest => go rest (.neq :: acc)
+    | '<' :: '<' :: '=' :: rest => go rest (.shlEq :: acc)
+    | '>' :: '>' :: '=' :: rest => go rest (.shrEq :: acc)
+    | '-' :: '=' :: rest => go rest (.minusEq :: acc)
+    | '*' :: '=' :: rest => go rest (.starEq :: acc)
+    | '&' :: '=' :: rest => go rest (.ampEq :: acc)
+    | '|' :: '=' :: rest => go rest (.pipeEq :: acc)
+    | '^' :: '=' :: rest => go rest (.caretEq :: acc)
     | '+' :: '=' :: rest => go rest (.plusEq :: acc)
     | '-' :: '>' :: rest => go rest (.arrow :: acc)
     | '<' :: '<' :: rest => go rest (.shl :: acc)
@@ -128,9 +140,11 @@ inductive Operand where
 inductive Rhs where
   | cast (w : Nat) (src : String)            -- `(Wu) src`
   | bin (op : BinKind) (a : String) (b : Operand)  -- `a * b`, `a + b`
-  | glob (name : String)                     -- `= GLOBAL`
+  | glob (name : String)                     -- a bare name: `= GLOBAL` or `= v`
   | load (arr : String) (idx : String)       -- `arr[idx]`
   | select (cond t f : String)               -- `cond ? t : f` (branchless cmov)
+  | imm (n : Nat)                            -- `= 0`
+  | castLoad (w : Nat) (arr : String) (idx : String)  -- `(Wu) arr[idx]`
   deriving Repr, BEq, Inhabited
 
 inductive Stmt where
@@ -138,6 +152,13 @@ inductive Stmt where
   | compound (op : BinKind) (lhs : String) (rhs : Operand)  -- `lhs += rhs`
   | store (arr : String) (idx : Nat) (val : String)         -- `arr[k] = val`
   | ret (name : String)
+  /-- `arr[idx] = rhs` at a variable or literal index and a general right-hand
+      side. -/
+  | storeAt (arr : String) (idx : Operand) (val : Rhs)
+  /-- `while (cond != 0) { body }`. -/
+  | whileNz (cond : String) (body : List Stmt)
+  /-- `for v = lo to hi { body }` over an `inline int` counter. -/
+  | forTo (v : String) (lo hi : Nat) (body : List Stmt)
   deriving Repr, BEq, Inhabited
 
 structure Param where
@@ -150,6 +171,8 @@ structure JFun where
   params : List Param
   retTy : JTy
   decls : List (JTy × String)
+  /-- The `inline int` counters declared in the body, in source order. -/
+  inlineInts : List String
   body : List Stmt
   deriving Repr, BEq, Inhabited
 
@@ -214,6 +237,45 @@ def parseOperand : P Operand := do
   | some (.num n) => return .lit n
   | other => throw s!"expected operand, got {repr other}"
 
+/-- A numeric literal. -/
+def number : P Nat := do
+  match ← advance with
+  | some (.num n) => return n
+  | other => throw s!"expected number, got {repr other}"
+
+/-- The binary operation a compound-assignment token denotes. -/
+def compoundKind : Tok → Option BinKind
+  | .plusEq => some .add
+  | .minusEq => some .sub
+  | .starEq => some .mul
+  | .ampEq => some .and
+  | .pipeEq => some .or
+  | .caretEq => some .xor
+  | .shlEq => some .shl
+  | .shrEq => some .shr
+  | _ => none
+
+/-- Parse a width-cast right-hand side with the opening `(` already consumed:
+    `Wu) src` or `Wu) arr[idx]`. -/
+def parseCastRhs : P Rhs := do
+  let w ← number
+  let _ ← ident                -- the `u` suffix tokenizes as ident "u"
+  expect .rparen
+  let src ← ident
+  match ← peek with
+  | some .lbrack =>
+      let _ ← advance
+      let idx ← ident
+      expect .rbrack
+      return .castLoad w src idx
+  | _ => return .cast w src
+
+/-- Parse the right-hand side of a store: a bare name or a width cast. -/
+def parseStoreRhs : P Rhs := do
+  match ← peek with
+  | some .lparen => let _ ← advance; parseCastRhs
+  | _ => return .glob (← ident)
+
 /-- Parse one statement (the token stream is positioned at the start of a
     statement inside the body; declarations are parsed separately). -/
 def parseBinTail (lhs a : String) (k : BinKind) : P Stmt := do
@@ -222,26 +284,47 @@ def parseBinTail (lhs a : String) (k : BinKind) : P Stmt := do
   expect .semi
   return .assign lhs (.bin k a b)
 
-def parseStmt : P Stmt := do
+mutual
+
+partial def parseStmt : P Stmt := do
   match ← advance with
   | some (.ident "return") =>
       let r ← ident
       expect .semi
       return .ret r
+  | some (.ident "while") =>
+      expect .lparen
+      let c ← ident
+      expect .neq
+      expect (.num 0)
+      expect .rparen
+      expect .lbrace
+      let body ← parseBody []
+      expect .rbrace
+      return .whileNz c body
+  | some (.ident "for") =>
+      let v ← ident
+      expect .assign
+      let lo ← number
+      expect (.ident "to")
+      let hi ← number
+      expect .lbrace
+      let body ← parseBody []
+      expect .rbrace
+      return .forTo v lo hi body
   | some (.ident lhs) =>
       match ← advance with
       | some .assign =>
           match ← peek with
           | some .lparen =>
               let _ ← advance
-              let w ← match ← advance with
-                | some (.num w) => pure w
-                | other => throw s!"expected cast width, got {repr other}"
-              let _ ← ident                -- the `u` suffix tokenizes as ident "u"
-              expect .rparen
-              let src ← ident
+              let r ← parseCastRhs
               expect .semi
-              return .assign lhs (.cast w src)
+              return .assign lhs r
+          | some (.num n) =>
+              let _ ← advance
+              expect .semi
+              return .assign lhs (.imm n)
           | some (.ident a) =>
               let _ ← advance
               match ← peek with
@@ -271,38 +354,57 @@ def parseStmt : P Stmt := do
                   return .assign lhs (.glob a)            -- bare `lhs = NAME;`
               | other => throw s!"unexpected token after RHS identifier: {repr other}"
           | other => throw s!"unexpected RHS start: {repr other}"
-      | some .plusEq =>
-          let b ← parseOperand
-          expect .semi
-          return .compound .add lhs b
       | some .lbrack =>
-          let k ← match ← advance with
-            | some (.num k) => pure k
-            | other => throw s!"expected store index, got {repr other}"
+          let idx ← parseOperand
           expect .rbrack
           expect .assign
-          let v ← ident
+          let v ← parseStoreRhs
           expect .semi
-          return .store lhs k v
-      | other => throw s!"unexpected token after lhs '{lhs}': {repr other}"
+          match idx, v with
+          | .lit k, .glob nm => return .store lhs k nm
+          | _, _ => return .storeAt lhs idx v
+      | some t =>
+          match compoundKind t with
+          | some k =>
+              let b ← parseOperand
+              expect .semi
+              return .compound k lhs b
+          | none => throw s!"unexpected token after lhs '{lhs}': {repr t}"
+      | none => throw s!"unexpected end of input after lhs '{lhs}'"
   | other => throw s!"expected statement, got {repr other}"
 
-/-- Parse the leading run of `reg …;` declarations of a body. -/
-partial def parseDecls (acc : List (JTy × String)) : P (List (JTy × String)) := do
-  match ← peek with
-  | some (.ident "reg") =>
-      let ty ← parseStorageTy
-      let nm ← ident
-      expect .semi
-      parseDecls ((ty, nm) :: acc)
-  | _ => return acc.reverse
-
-/-- Parse the body: declarations, then statements until `}`. -/
+/-- Parse statements until `}`. -/
 partial def parseBody (acc : List Stmt) : P (List Stmt) := do
   match ← peek with
   | some .rbrace => return acc.reverse
   | none => throw "unexpected end of input in body"
   | _ => let s ← parseStmt; parseBody (s :: acc)
+
+end
+
+/-- Parse the `,`-free name list of a declaration, up to its `;`. -/
+partial def parseNames (acc : List String) : P (List String) := do
+  let n ← ident
+  match ← peek with
+  | some .semi => let _ ← advance; return (n :: acc).reverse
+  | _ => parseNames (n :: acc)
+
+/-- Parse the leading run of declarations of a body: `reg [ptr] TYPE n₁ … nₖ;`
+    declares every listed name at that type, and `inline int n₁ … nₖ;` declares
+    compile-time counters. -/
+partial def parseDecls (acc : List (JTy × String)) (ints : List String) :
+    P (List (JTy × String) × List String) := do
+  match ← peek with
+  | some (.ident "reg") =>
+      let ty ← parseStorageTy
+      let nms ← parseNames []
+      parseDecls ((nms.map (fun n => (ty, n))).reverse ++ acc) ints
+  | some (.ident "inline") =>
+      let _ ← advance
+      expect (.ident "int")
+      let nms ← parseNames []
+      parseDecls acc (nms.reverse ++ ints)
+  | _ => return (acc.reverse, ints.reverse)
 
 /-- Parse one parameter `reg [ptr] TYPE name`. -/
 def parseParam : P Param := do
@@ -320,11 +422,11 @@ partial def parseParams (acc : List Param) : P (List Param) := do
       | some .comma => let _ ← advance; parseParams (p :: acc)
       | _ => return (p :: acc).reverse
 
-/-- Parse one `inline? fn name(params) -> ret { decls; body }`. -/
+/-- Parse one `(inline | export)? fn name(params) -> ret { decls; body }`. -/
 def parseFun : P JFun := do
-  -- optional `inline`
   match ← peek with
   | some (.ident "inline") => let _ ← advance
+  | some (.ident "export") => let _ ← advance
   | _ => pure ()
   expect (.ident "fn")
   let nm ← ident
@@ -334,10 +436,10 @@ def parseFun : P JFun := do
   expect .arrow
   let retTy ← parseStorageTy
   expect .lbrace
-  let decls ← parseDecls []
+  let (decls, ints) ← parseDecls [] []
   let body ← parseBody []
   expect .rbrace
-  return ⟨nm, params, retTy, decls, body⟩
+  return ⟨nm, params, retTy, decls, ints, body⟩
 
 /-- Parse a single `.jinc` function from a source string. -/
 def parseJincFun (src : String) : Except String JFun := do
@@ -475,5 +577,180 @@ theorem scalarShiftOps_parse :
       (parseJincFun s).toOption.map
         (fun f => (f.params.length, f.retTy, f.decls.length, f.body.length))
         == some (1, .reg 64, 1, 2)) = true := by native_decide
+
+/-! ## 7. The two loop forms of the emitted `.jazz` printer -/
+
+/-- `mldsa_expand_a_real` verbatim from
+    `bench/mldsa_compare/gen/mldsa_expand_a_real.jazz`: rejection sampling under a
+    `while (cont != 0)` guard. -/
+def mldsaExpandASrc : String :=
+  "// Auto-generated from CatCrypt Jasmin AST. Do not edit by hand.
+export fn mldsa_expand_a_real(reg ptr u32[256] out, reg ptr u32[2016] buf) -> reg ptr u32[256]
+{
+  reg u64 pp b0 b1 b2 t t1 q lt ctr pos cont;
+
+  pp = 0;
+  b0 = 0;
+  b1 = 0;
+  b2 = 0;
+  t = 0;
+  t1 = 0;
+  q = 0;
+  lt = 0;
+  ctr = 0;
+  pos = 0;
+  cont = ctr;
+  cont -= 256;
+  cont >>= 63;
+  while (cont != 0) {
+    b0 = (64u) buf[pos];
+    pp = pos;
+    pp += 1;
+    b1 = (64u) buf[pp];
+    pp = pos;
+    pp += 2;
+    b2 = (64u) buf[pp];
+    pos += 3;
+    t1 = b1;
+    t1 <<= 8;
+    t = b0;
+    t += t1;
+    t1 = b2;
+    t1 <<= 16;
+    t += t1;
+    t &= 8388607;
+    q = 8380417;
+    lt = t;
+    lt -= q;
+    lt >>= 63;
+    out[ctr] = (32u) t;
+    ctr += lt;
+    cont = ctr;
+    cont -= 256;
+    cont >>= 63;
+  }
+
+  return out;
+}
+"
+
+/-- `mldsa_expand_mask_real` verbatim from
+    `bench/mldsa_compare/gen/mldsa_expand_mask_real.jazz`: a `for` loop over an
+    `inline int` counter. -/
+def mldsaExpandMaskSrc : String :=
+  "// Auto-generated from CatCrypt Jasmin AST. Do not edit by hand.
+export fn mldsa_expand_mask_real(reg ptr u32[256] out, reg ptr u32[640] buf) -> reg ptr u32[256]
+{
+  reg u64 base oi oi1 p a0 a1 a2 a3 a4 f0 f1 t1 g c0 c1;
+  inline int i;
+
+  base = 0;
+  oi = 0;
+  oi1 = 0;
+  p = 0;
+  a0 = 0;
+  a1 = 0;
+  a2 = 0;
+  a3 = 0;
+  a4 = 0;
+  f0 = 0;
+  f1 = 0;
+  t1 = 0;
+  g = 0;
+  c0 = 0;
+  c1 = 0;
+  for i = 0 to 128 {
+    base = i;
+    base *= 5;
+    oi = i;
+    oi *= 2;
+    p = base;
+    a0 = (64u) buf[p];
+    p = base;
+    p += 1;
+    a1 = (64u) buf[p];
+    p = base;
+    p += 2;
+    a2 = (64u) buf[p];
+    p = base;
+    p += 3;
+    a3 = (64u) buf[p];
+    p = base;
+    p += 4;
+    a4 = (64u) buf[p];
+    f0 = a0;
+    t1 = a1;
+    t1 <<= 8;
+    f0 += t1;
+    t1 = a2;
+    t1 <<= 16;
+    f0 += t1;
+    f0 &= 1048575;
+    f1 = a2;
+    f1 >>= 4;
+    t1 = a3;
+    t1 <<= 4;
+    f1 += t1;
+    t1 = a4;
+    t1 <<= 12;
+    f1 += t1;
+    g = 524288;
+    c0 = g;
+    c0 -= f0;
+    c1 = g;
+    c1 -= f1;
+    out[oi] = (32u) c0;
+    oi1 = oi;
+    oi1 += 1;
+    out[oi1] = (32u) c1;
+  }
+
+  return out;
+}
+"
+
+/-- The statement count of a loop body, `0` for a statement that is not a loop. -/
+def loopBodyLength : Stmt → Nat
+  | .whileNz _ body => body.length
+  | .forTo _ _ _ body => body.length
+  | _ => 0
+
+/-- The guard variable of a `while (v != 0)` statement. -/
+def whileGuard : Stmt → Option String
+  | .whileNz c _ => some c
+  | _ => none
+
+/-- The counter and bounds of a `for v = lo to hi` statement. -/
+def forRange : Stmt → Option (String × Nat × Nat)
+  | .forTo v lo hi _ => some (v, lo, hi)
+  | _ => none
+
+/-! `mldsa_expand_a_real` parses: 2 params, `arr 32 256` return, 11 declarations,
+no `inline int` counter, 15 body statements. -/
+#guard
+  (parseJincFun mldsaExpandASrc).toOption.map (fun f =>
+      (f.params.length, f.retTy, f.decls.length, f.inlineInts.length, f.body.length))
+    == some (2, .arr 32 256, 11, 0, 15)
+
+/-! Body statement 13 of `mldsa_expand_a_real` is the `while` guarded by `cont`,
+with a 25-statement body. -/
+#guard
+  ((parseJincFun mldsaExpandASrc).toOption.bind (fun f => f.body[13]?)).map
+      (fun s => (whileGuard s, loopBodyLength s))
+    == some (some "cont", 25)
+
+/-! `mldsa_expand_mask_real` parses: 2 params, `arr 32 256` return, 15
+declarations, the `inline int` counter `i`, 17 body statements. -/
+#guard
+  (parseJincFun mldsaExpandMaskSrc).toOption.map (fun f =>
+      (f.params.length, f.retTy, f.decls.length, f.inlineInts, f.body.length))
+    == some (2, .arr 32 256, 15, ["i"], 17)
+
+/-! Body statement 15 of `mldsa_expand_mask_real` is the `for` loop `i = 0 to 128`,
+with a 43-statement body. -/
+#guard
+  ((parseJincFun mldsaExpandMaskSrc).toOption.bind (fun f => f.body[15]?)).map
+      (fun s => (forRange s, loopBodyLength s))
+    == some (some ("i", 0, 128), 43)
 
 end CatCrypt.Crypto.Jasmin.JincToCom

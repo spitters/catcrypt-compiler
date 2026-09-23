@@ -1033,3 +1033,5 @@ CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubOutFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BmiShift
 CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
+CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
