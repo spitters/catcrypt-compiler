@@ -237,6 +237,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519BytesLeafCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519CompressShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519FramedCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519SymExecPacked
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof

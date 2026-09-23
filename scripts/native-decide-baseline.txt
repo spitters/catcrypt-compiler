@@ -1,4 +1,4 @@
-2107
+2171
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
@@ -19,7 +19,7 @@
 7	CatCrypt/Crypto/Jasmin/Examples/JasminCoqSemMirrorDemo.lean
 4	CatCrypt/Crypto/Jasmin/Examples/JincParserDemo.lean
 3	CatCrypt/Crypto/Jasmin/InstrRReflect.lean
-20	CatCrypt/Crypto/Jasmin/JasminOps.lean
+16	CatCrypt/Crypto/Jasmin/JasminOps.lean
 12	CatCrypt/Crypto/Jasmin/JincElab.lean
 5	CatCrypt/Crypto/Jasmin/JincToCom.lean
 5	CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean
@@ -68,6 +68,10 @@
 6	CatCrypt/Crypto/SecureCompilation/ARMBackend/NeonModel.lean
 2	CatCrypt/Crypto/SecureCompilation/ARMBackend/SailArmDecoder.lean
 1	CatCrypt/Crypto/SecureCompilation/ARMBackend/SailNeonDecoder.lean
+10	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddFootprint.lean
+29	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedProof.lean
+13	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean
+13	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceLeaf.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceTower.lean
 3	CatCrypt/Crypto/SecureCompilation/AUCurvesImport/PilotImport.lean
@@ -432,6 +436,7 @@
 8	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddFrontEmit.lean
 29	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLinearKernels.lean
 11	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopEmit.lean
+3	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontBodyTie.lean
 8	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontEmit.lean
 6	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnSimdExtractEmit.lean
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/Mul48ProvenEmit.lean
