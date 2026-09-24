@@ -49,51 +49,14 @@ multiplication / squaring mod `p_25519` directly.
 
 ## Soundness
 
-The reflective evaluator's soundness theorem connects it to
-`bignumExecFuel` via the chain-step axioms:
+`invChain_eval_sound` and `powP58Chain_eval_sound` state that the two chains
+compute `a ^ (p - 2) % p` and `a ^ ((p - 5) / 8) % p` for every input `a`. The
+proof runs the chain on exponents (`Exp.eChain`), shows that the value chain
+agrees with the exponent run under `a ^ · % p` (`Exp.evalChain_init_read`), and
+checks the resulting exponent equality in the kernel.
 
-```
-chain_eval_sound :
-  ∀ chain s, evalChain chain s = some s' →
-    ∃ executable_body fuel,
-      bignumExecFuel registry fuel executable_body s = some s' ∧
-      memNat4_for_each_offset s'.cs corresponds to s'.mem
-```
-
-The soundness theorem is itself axiomatic (cited from the
-chain-step axioms in `ChainStepAxioms.lean`).
-
-## What this enables
-
-For concrete-input proofs:
-
-```
-example (a : Nat) :
-    -- Run pow_p58 chain on input a:
-    let cs0 := initChainState a
-    let cs_final := evalChain pow_p58_chain cs0
-    -- The output at OFF_op equals a^((p-5)/8) mod p_25519:
-    cs_final.read OFF_op = a^((p_25519 - 5) / 8) % p_25519 := by
-  native_decide  -- or vm_decide for smaller inputs
-```
-
-This is the fiat-crypto-style closure: spec computed by
-`vm_compute`, comparison by `decide`, no Hoare reasoning at
-proof time.
-
-## Trust set delta
-
-This file adds **0 new axioms** at the level of new claims
-beyond the existing chain-step axioms in `ChainStepAxioms.lean`.
-The reflective evaluator is purely a *computational refactoring*
-of those axioms' semantic content.
-
-The soundness theorem `chain_eval_sound` itself is currently
-**axiomatic** (citing the existing chain-step axioms); a
-discharge path would unfold the abstract `evalChainOp` against
-the corresponding `bignumExecFuel` walk via the chain-step
-axioms — pure plumbing, ~200 LoC of mvcgen-driven case analysis
-with `mvcgen`.
+The relation between `evalChain` and the SSA body walked by `bignumExecFuel` is
+not stated in this file.
 -/
 
 @[expose] public section
@@ -237,32 +200,113 @@ def invChainResult (a : Nat) : Nat :=
 def powP58ChainResult (a : Nat) : Nat :=
   (evalChain powP58Chain (initChainState a)).read OFF_op
 
-/-! ## §7  Soundness against `bignumExecFuel`
+/-! ## §7  Soundness of the chains
 
-Headline soundness: the reflective evaluator agrees with the
-SSA-level `bignumExecFuel` walk on any input.
+`Exp.eChain` runs a chain on exponents instead of values. `Exp.evalChain_init_read`
+states that the value chain run from `initChainState a` computes
+`a ^ e % p_25519` wherever the exponent run from `[(OFF_ap, 1)]` assigns `e`, so
+each chain's soundness is one equality of concrete exponents, checked by the
+kernel. -/
 
-This is currently axiomatic (citing the chain-step axioms in
-`ChainStepAxioms.lean`); a full discharge path is documented
-inline. -/
+namespace Exp
 
-/-- **Reflective-evaluator soundness for the inv chain.**
+/-- Exponent read: the exponent held at `off`, or `none` if unmapped. -/
+def eRead : List (Int × Nat) → Int → Option Nat
+  | [], _ => none
+  | (o, e) :: rest, off => if o = off then some e else eRead rest off
 
-    The reflective evaluator's output equals what
-    `bignumExecFuel` would compute on the same input via the
-    SSA `BignumInvP25519.body`.
+/-- Exponent semantics of one chain operation. -/
+def eOp (op : ChainOp) (es : List (Int × Nat)) : Option (List (Int × Nat)) :=
+  match op with
+  | .sqrStep dst src => (eRead es src).map fun e => ChainState.write es dst (e * 2)
+  | .mulStep dst x y =>
+      (eRead es x).bind fun ex => (eRead es y).map fun ey =>
+        ChainState.write es dst (ex + ey)
+  | .repeatedSqrThenMul dst src other n =>
+      (eRead es src).bind fun es_ => (eRead es other).map fun eo =>
+        ChainState.write es dst (es_ * 2 ^ n + eo)
 
-    Discharge path: by induction on `prefixChain ++ tail` against
-    `bignumExec_append`'s sequencing of the SSA body, applying
-    each chain-step axiom from `ChainStepAxioms.lean` at the
-    appropriate position.  ~200 LoC of mvcgen-driven case
-    analysis with `mvcgen`. -/
-axiom invChain_eval_sound (a : Nat) :
-    invChainResult a = a ^ (p_25519 - 2) % p_25519
+/-- Exponent semantics of a chain. -/
+def eChain : List ChainOp → List (Int × Nat) → Option (List (Int × Nat))
+  | [], es => some es
+  | op :: rest, es => (eOp op es).bind (eChain rest)
 
-/-- **Reflective-evaluator soundness for the pow_p58 chain.** -/
-axiom powP58Chain_eval_sound (a : Nat) :
-    powP58ChainResult a = a ^ ((p_25519 - 5) / 8) % p_25519
+/-- The value state denoted by an exponent state over base `a` mod `p_25519`. -/
+def denote (a : Nat) (es : List (Int × Nat)) : ChainState :=
+  es.map fun le => (le.1, a ^ le.2 % p_25519)
+
+theorem read_denote (a : Nat) :
+    ∀ (es : List (Int × Nat)) (off : Int) (e : Nat), eRead es off = some e →
+      (denote a es).read off = a ^ e % p_25519
+  | [], _, _, h => by simp [eRead] at h
+  | (o, e') :: rest, off, e, h => by
+    by_cases ho : o = off
+    · simp_all [eRead, denote, ChainState.read]
+    · simp only [eRead, ho, if_false] at h
+      simpa [denote, ChainState.read, ho] using read_denote a rest off e h
+
+theorem write_denote (a : Nat) (es : List (Int × Nat)) (off : Int) (e : Nat) :
+    (denote a es).write off (a ^ e % p_25519) = denote a (ChainState.write es off e) := by
+  simp [denote, ChainState.write, List.eraseP_map, Function.comp_def]
+
+/-- One chain step commutes with `denote`. -/
+theorem evalChainOp_denote (a : Nat) (op : ChainOp) (es es' : List (Int × Nat))
+    (h : eOp op es = some es') :
+    evalChainOp op (denote a es) = denote a es' := by
+  cases op with
+  | sqrStep dst src =>
+    simp only [eOp, Option.map_eq_some_iff] at h
+    obtain ⟨e, he, rfl⟩ := h
+    simp only [evalChainOp, read_denote a es src e he, ← write_denote]
+    rw [← Nat.mul_mod, ← Nat.pow_add, Nat.mul_two]
+  | mulStep dst x y =>
+    simp only [eOp, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ex, hx, ey, hy, rfl⟩ := h
+    simp only [evalChainOp, read_denote a es x ex hx, read_denote a es y ey hy,
+      ← write_denote, ← Nat.mul_mod, ← Nat.pow_add]
+  | repeatedSqrThenMul dst src other n =>
+    simp only [eOp, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨es_, hs, eo, ho, rfl⟩ := h
+    simp only [evalChainOp, read_denote a es src es_ hs, read_denote a es other eo ho,
+      ← write_denote]
+    rw [Nat.mul_mod_mod, ← Nat.mod_mul_mod, ← Nat.pow_mod, Nat.mod_mul_mod,
+      Nat.pow_add, Nat.pow_mul]
+
+/-- A chain commutes with `denote` whenever its exponent run succeeds. -/
+theorem evalChain_denote (a : Nat) :
+    ∀ (ops : List ChainOp) (es es' : List (Int × Nat)), eChain ops es = some es' →
+      evalChain ops (denote a es) = denote a es'
+  | [], es, es', h => by simp_all [eChain, evalChain]
+  | op :: rest, es, es', h => by
+    simp only [eChain, Option.bind_eq_some_iff] at h
+    obtain ⟨es1, h1, h2⟩ := h
+    simp only [evalChain, evalChainOp_denote a op es es1 h1]
+    exact evalChain_denote a rest es1 es' h2
+
+/-- Reading `off` after a chain run from `initChainState a` yields
+    `a ^ e % p_25519` when the exponent run from `[(OFF_ap, 1)]` assigns
+    exponent `e` to `off`. -/
+theorem evalChain_init_read (a : Nat) (ops : List ChainOp) (off : Int) (e : Nat)
+    (h : (eChain ops [(OFF_ap, 1)]).bind (eRead · off) = some e) :
+    (evalChain ops (initChainState a)).read off = a ^ e % p_25519 := by
+  simp only [Option.bind_eq_some_iff] at h
+  obtain ⟨es', h1, h2⟩ := h
+  have hinit : initChainState a = denote a [(OFF_ap, 1)] := by
+    simp [initChainState, denote]
+  rw [hinit, evalChain_denote a ops _ es' h1]
+  exact read_denote a es' off e h2
+
+end Exp
+
+/-- The Curve25519 inversion chain computes `a ^ (p_25519 - 2) % p_25519`. -/
+theorem invChain_eval_sound (a : Nat) :
+    invChainResult a = a ^ (p_25519 - 2) % p_25519 :=
+  Exp.evalChain_init_read a invChain OFF_op _ (by decide +kernel)
+
+/-- The Curve25519 `pow_p58` chain computes `a ^ ((p_25519 - 5) / 8) % p_25519`. -/
+theorem powP58Chain_eval_sound (a : Nat) :
+    powP58ChainResult a = a ^ ((p_25519 - 5) / 8) % p_25519 :=
+  Exp.evalChain_init_read a powP58Chain OFF_op _ (by decide +kernel)
 
 /-! ## §8  Concrete-input verification via `decide` / `native_decide`
 
@@ -297,7 +341,7 @@ Three concrete improvements:
 3. **Decoupling Layer A from Layer B**: the current Layer A in
    `PowP58Algo.lean` uses 12 per-block `decide` proofs; with
    the reflective evaluator, the *full chain* closure becomes
-   one application of the soundness axiom plus an `Eq.refl`
+   one application of `powP58Chain_eval_sound` plus an `Eq.refl`
    on the resulting `vm_compute`-able Nat expression.
 
 The reflective evaluator is the **fiat-crypto-style shortcut**

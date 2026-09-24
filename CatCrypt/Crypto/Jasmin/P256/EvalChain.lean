@@ -35,18 +35,18 @@ expresses the *generic shape* parametric in the chain literal;
 concrete chain literals are deferred to the libcrux-specific
 P-256 binding.
 
-## Trust set
+## Soundness
 
-Inherits the generic framework's evaluator and adds one axiom, the
-soundness of the libcrux inverse chain literal (analogous to
-`invChain_eval_sound` for Curve25519).
+Inherits the generic framework's evaluator and adds no axiom. The
+soundness of the libcrux inverse chain literal is proved as
+`invChain_eval_sound` is for Curve25519.
 
 ## What this file ships
 
 * P-256 modulus constants (already in `EvalChainGeneric`).
 * `P256.invChainResult`-style headline shape consuming a
   caller-supplied `List ChainOp` literal.
-* Soundness axiom for the headline.
+* Soundness theorem for the headline (`libcruxP256InvChain_sound`).
 -/
 
 @[expose] public section
@@ -107,7 +107,7 @@ def evalP256Chain (chain : List (ChainOp Loc)) (cs : ChainState Loc) :
 The exact addition chain for `a^(q − 2)` depends on the chosen
 implementation.  We expose the **shape** here as a parameter:
 callers supply their chain (e.g., from a libcrux binding); the
-framework + soundness axiom produces the result. -/
+framework and the chain's soundness theorem produce the result. -/
 
 /-- Run a P-256 inverse chain on input `a` and read the output. -/
 def p256InvResult (chain : List (ChainOp Loc)) (a : Nat) : Nat :=
@@ -118,7 +118,7 @@ def p256InvResult (chain : List (ChainOp Loc)) (a : Nat) : Nat :=
 Soundness is a property of one specific chain literal, never of the
 chain parameter: the evaluator is the identity on the empty chain, so
 only a named chain can satisfy the Fermat equation.  The soundness
-axiom for the libcrux `finv` chain literal is in §10. -/
+theorem for the libcrux `finv` chain literal is in §10. -/
 
 /-! ## §8  Worked examples — small concrete chains (✅ added 2026-05-01)
 
@@ -254,15 +254,15 @@ def libcruxP256InvChain : List (ChainOp Loc) :=
     blocks. Updates here should also update the table comment above. -/
 example : libcruxP256InvChain.length = 12 := by native_decide
 
-/-- **P-256 inverse chain soundness (libcrux `finv`)**: the transcribed
-    libcrux chain literal computes `a^(q − 2) mod q`.
-
-    The claim is verified upstream by libcrux's correctness audit
-    (HACL-derived `finv`).  Discharge path: compose the 12 per-block
-    instances of §11, mirroring `PerBlockInstances.lean`'s 13-block
-    Curve25519 closure. -/
-axiom libcruxP256InvChain_sound (a : Nat) :
-    p256InvResult libcruxP256InvChain a = a ^ (p256_q - 2) % p256_q
+/-- The libcrux P-256 inverse chain (`finv`) computes `a ^ (p256_q - 2) % p256_q`. -/
+theorem libcruxP256InvChain_sound (a : Nat) :
+    p256InvResult libcruxP256InvChain a = a ^ (p256_q - 2) % p256_q := by
+  have hinit : initChainState a = Exp.denote p256_q a [(OFF_ap, 1)] := by
+    simp [initChainState, Exp.denote]
+  have hexp : (Exp.eChain libcruxP256InvChain [(OFF_ap, 1)]).bind
+      (Exp.eRead · OFF_op) = some (p256_q - 2) := by decide +kernel
+  rw [p256InvResult, evalP256Chain, hinit]
+  exact Exp.evalChain_read _ _ _ _ _ _ hexp
 
 /-- The libcrux P-256 inverse chain computes the Fermat inverse. -/
 theorem libcruxP256InvChain_correct (a : Nat) :
@@ -284,7 +284,7 @@ the destination read of a `repeatedSqrThenMul` op equals
 respects).
 
 Without per-block instances, every soundness chain goes through the
-chain axiom `libcruxP256InvChain_sound`. Per-block instances allow
+chain theorem `libcruxP256InvChain_sound`. Per-block instances allow
 finer-grained alternative reasoning (e.g., for chains that diverge
 from libcrux's at one block: prove the divergent block separately
 and reuse the unchanged blocks). -/
@@ -358,8 +358,8 @@ named theorems is mechanical and not pursued here (each would be ~3 LoC). -/
   3. libcrux `finv` chain literal (§10)
   4. Per-block schematic lemmas (§11)
 * The libcrux chain's correctness reduces via the chain
-  soundness axiom `libcruxP256InvChain_sound`. The audit chain is:
-  Lean theorem → chain axiom → libcrux upstream correctness.
+  soundness theorem `libcruxP256InvChain_sound`, proved by the exponent
+  evaluator `EvalChainGeneric.Exp`.
 * Per-block schematic lemmas (§11) allow alternative finer-grained
   reasoning: e.g., for a chain that diverges from libcrux's at one
   block, prove the divergent block separately and reuse the
@@ -368,6 +368,6 @@ named theorems is mechanical and not pursued here (each would be ~3 LoC). -/
 Per-chain effort estimate (next-curve): ~50 LoC for chain literal
 (mirror of `libcruxP256InvChain` shape, transcribed from blst /
 mclbn / etc.) + ~50 LoC for soundness theorem (one-line via
-framework axiom). Per-block lemmas are optional refinement. -/
+`Exp.evalChain_read`). Per-block lemmas are optional refinement. -/
 
 end CatCrypt.Crypto.Jasmin.P256.EvalChain

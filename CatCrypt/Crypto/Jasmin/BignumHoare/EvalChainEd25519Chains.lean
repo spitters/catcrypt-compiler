@@ -46,13 +46,11 @@ so multiplying `pow_p58(x)` by `x` once more gives
 `x^((p − 5) / 8 + 1) = x^((p + 3) / 8)`.  This gives `sqrt(x)`
 when `x` is a QR.
 
-## Trust set
+## Soundness
 
-Inherits the chain-step soundness axioms from
-`LowCTReflectiveEval.lean`.  Each new chain adds **one new
-soundness axiom** (per-chain final exponent claim) — discharged
-identically to `invChain_eval_sound` and `powP58Chain_eval_sound`
-with `mvcgen`.
+`ed25519SqrtChain_eval_sound` is proved as `invChain_eval_sound` is: the chain
+runs on exponents (`Exp.evalChain_init_read`) and the final exponent equality is
+checked in the kernel. The file adds no axiom.
 -/
 
 @[expose] public section
@@ -90,13 +88,10 @@ def ed25519SqrtChain : List ChainOp :=
 def ed25519SqrtResult (a : Nat) : Nat :=
   (evalChain ed25519SqrtChain (initChainState a)).read OFF_op
 
-/-- **Soundness axiom for the Ed25519 sqrt chain.**
-
-    Discharge path: same as `powP58Chain_eval_sound` but with the
-    tail's exponent contribution summing to `(p + 3) / 8` rather
-    than `(p − 5) / 8`. -/
-axiom ed25519SqrtChain_eval_sound (a : Nat) :
-    ed25519SqrtResult a = a ^ ((p_25519 + 3) / 8) % p_25519
+/-- The Ed25519 square-root chain computes `a ^ ((p_25519 + 3) / 8) % p_25519`. -/
+theorem ed25519SqrtChain_eval_sound (a : Nat) :
+    ed25519SqrtResult a = a ^ ((p_25519 + 3) / 8) % p_25519 :=
+  Exp.evalChain_init_read a ed25519SqrtChain OFF_op _ (by decide +kernel)
 
 /-! ## §2  Ristretto255 `invsqrt` chain
 
@@ -176,7 +171,7 @@ def ed25519DecompressX (y d : Nat) : Nat :=
 /-! ## §5  Test-vector closures
 
 Per the `EvalChainTestVectors.lean` pattern, each new chain
-gets per-input test theorems via the soundness axiom + Nat
+gets per-input test theorems from its soundness theorem and Nat
 comparison. -/
 
 /-- Test vector for the Ed25519 sqrt chain: `√4 = 2 mod p_25519`.

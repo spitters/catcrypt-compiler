@@ -206,4 +206,104 @@ non-generic implementation that re-derives the framework.
   use cases.
 -/
 
+/-! ## Exponent semantics
+
+`Exp.eChain` runs a chain on exponents instead of values: square doubles,
+multiply adds, repeated square then multiply maps `(e, e')` to `e * 2^n + e'`.
+`Exp.evalChain_read` states that the value chain computes `a ^ e % p` wherever
+the exponent run assigns `e`, so a chain's soundness reduces to one equality of
+concrete exponents. -/
+
+namespace Exp
+
+/-- Exponent read: the exponent held at `loc`, or `none` if unmapped. -/
+def eRead {Loc : Type} [DecidableEq Loc] : List (Loc × Nat) → Loc → Option Nat
+  | [], _ => none
+  | (l, e) :: rest, loc => if l = loc then some e else eRead rest loc
+
+/-- Exponent semantics of one chain operation: square doubles, multiply
+    adds, repeated square then multiply maps `(e, e')` to `e * 2^n + e'`. -/
+def eOp {Loc : Type} [DecidableEq Loc] (op : ChainOp Loc) (es : List (Loc × Nat)) :
+    Option (List (Loc × Nat)) :=
+  match op with
+  | .sqrStep dst src => (eRead es src).map fun e => ChainState.write es dst (e * 2)
+  | .mulStep dst x y =>
+      (eRead es x).bind fun ex => (eRead es y).map fun ey =>
+        ChainState.write es dst (ex + ey)
+  | .repeatedSqrThenMul dst src other n =>
+      (eRead es src).bind fun es_ => (eRead es other).map fun eo =>
+        ChainState.write es dst (es_ * 2 ^ n + eo)
+
+/-- Exponent semantics of a chain. -/
+def eChain {Loc : Type} [DecidableEq Loc] :
+    List (ChainOp Loc) → List (Loc × Nat) → Option (List (Loc × Nat))
+  | [], es => some es
+  | op :: rest, es => (eOp op es).bind (eChain rest)
+
+/-- The value state denoted by an exponent state over base `a` mod `p`. -/
+def denote {Loc : Type} (p a : Nat) (es : List (Loc × Nat)) : ChainState Loc :=
+  es.map fun le => (le.1, a ^ le.2 % p)
+
+theorem read_denote {Loc : Type} [DecidableEq Loc] (p a : Nat) :
+    ∀ (es : List (Loc × Nat)) (loc : Loc) (e : Nat), eRead es loc = some e →
+      (denote p a es).read loc = a ^ e % p
+  | [], _, _, h => by simp [eRead] at h
+  | (l, e') :: rest, loc, e, h => by
+    by_cases hl : l = loc
+    · simp_all [eRead, denote, ChainState.read]
+    · simp only [eRead, hl, if_false] at h
+      simpa [denote, ChainState.read, hl] using read_denote p a rest loc e h
+
+theorem write_denote {Loc : Type} [DecidableEq Loc] (p a : Nat)
+    (es : List (Loc × Nat)) (loc : Loc) (e : Nat) :
+    (denote p a es).write loc (a ^ e % p) = denote p a (ChainState.write es loc e) := by
+  simp [denote, ChainState.write, List.filter_map, Function.comp_def]
+
+/-- One chain step commutes with `denote`. -/
+theorem evalChainOp_denote {Loc : Type} [DecidableEq Loc] (p a : Nat)
+    (op : ChainOp Loc) (es es' : List (Loc × Nat)) (h : eOp op es = some es') :
+    evalChainOp p op (denote p a es) = denote p a es' := by
+  cases op with
+  | sqrStep dst src =>
+    simp only [eOp, Option.map_eq_some_iff] at h
+    obtain ⟨e, he, rfl⟩ := h
+    simp only [evalChainOp, read_denote p a es src e he, ← write_denote]
+    rw [← Nat.mul_mod, ← Nat.pow_add, Nat.mul_two]
+  | mulStep dst x y =>
+    simp only [eOp, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ex, hx, ey, hy, rfl⟩ := h
+    simp only [evalChainOp, read_denote p a es x ex hx, read_denote p a es y ey hy,
+      ← write_denote, ← Nat.mul_mod, ← Nat.pow_add]
+  | repeatedSqrThenMul dst src other n =>
+    simp only [eOp, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨es_, hs, eo, ho, rfl⟩ := h
+    simp only [evalChainOp, read_denote p a es src es_ hs, read_denote p a es other eo ho,
+      ← write_denote]
+    rw [Nat.mul_mod_mod, ← Nat.mod_mul_mod, ← Nat.pow_mod, Nat.mod_mul_mod,
+      Nat.pow_add, Nat.pow_mul]
+
+/-- A chain commutes with `denote` whenever its exponent run succeeds. -/
+theorem evalChain_denote {Loc : Type} [DecidableEq Loc] (p a : Nat) :
+    ∀ (ops : List (ChainOp Loc)) (es es' : List (Loc × Nat)), eChain ops es = some es' →
+      evalChain p ops (denote p a es) = denote p a es'
+  | [], es, es', h => by simp_all [eChain, evalChain]
+  | op :: rest, es, es', h => by
+    simp only [eChain, Option.bind_eq_some_iff] at h
+    obtain ⟨es1, h1, h2⟩ := h
+    simp only [evalChain, evalChainOp_denote p a op es es1 h1]
+    exact evalChain_denote p a rest es1 es' h2
+
+/-- Reading `loc` after a chain yields `a ^ e % p` when the exponent run
+    assigns exponent `e` to `loc`. -/
+theorem evalChain_read {Loc : Type} [DecidableEq Loc] (p a : Nat)
+    (ops : List (ChainOp Loc)) (es : List (Loc × Nat)) (loc : Loc) (e : Nat)
+    (h : (eChain ops es).bind (eRead · loc) = some e) :
+    (evalChain p ops (denote p a es)).read loc = a ^ e % p := by
+  simp only [Option.bind_eq_some_iff] at h
+  obtain ⟨es', h1, h2⟩ := h
+  rw [evalChain_denote p a ops es es' h1]
+  exact read_denote p a es' loc e h2
+
+end Exp
+
 end CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
