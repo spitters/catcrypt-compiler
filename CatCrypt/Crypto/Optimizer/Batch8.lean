@@ -291,28 +291,6 @@ theorem ror32_synth (x : BitVec 32) (n : Nat) (h : n < 32) :
     x.rotateRight n = (x <<< (32 - n)) ||| (x >>> n) := by
   rw [BitVec.rotateRight_def, Nat.mod_eq_of_lt h, BitVec.or_comm]
 
-/-- **Variable packed left shift per lane.** Dword lane `k` of `vpsllvdW a b`
-    (`VPSLLVD`, 8×`u32` shift left by a per-lane count vector) is lane `k` of `a`
-    shifted left by the `.toNat` of lane `k` of `b`. -/
-theorem vpsllvdW_lane (a b : BitVec 256) (k : Fin 8) :
-    BitVec.extractLsb' (32 * k.val) 32 (vpsllvdW a b)
-      = (BitVec.extractLsb' (32 * k.val) 32 a) <<< (BitVec.extractLsb' (32 * k.val) 32 b).toNat := by
-  fin_cases k <;>
-    simp only [vpsllvdW, yOfDwordsW, yDwordW, Fin.foldl_succ, Fin.foldl_zero, Fin.isValue,
-      Fin.val_zero, Fin.val_succ] <;>
-    bv_decide
-
-/-- **Variable packed right shift per lane.** Dword lane `k` of `vpsrlvdW a b`
-    (`VPSRLVD`, 8×`u32` shift right by a per-lane count vector) is lane `k` of `a`
-    shifted right by the `.toNat` of lane `k` of `b`. -/
-theorem vpsrlvdW_lane (a b : BitVec 256) (k : Fin 8) :
-    BitVec.extractLsb' (32 * k.val) 32 (vpsrlvdW a b)
-      = (BitVec.extractLsb' (32 * k.val) 32 a) >>> (BitVec.extractLsb' (32 * k.val) 32 b).toNat := by
-  fin_cases k <;>
-    simp only [vpsrlvdW, yOfDwordsW, yDwordW, Fin.foldl_succ, Fin.foldl_zero, Fin.isValue,
-      Fin.val_zero, Fin.val_succ] <;>
-    bv_decide
-
 /-- **Per-op lane square.** For each covered op, the widened YMM block read at
     dword lane `k` computes the scalar op on lane `k` — from the committed packed
     lane lemmas. -/
