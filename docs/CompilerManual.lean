@@ -288,9 +288,8 @@ machine-code theorems.
 
 The trusted base includes the following. The package declares axioms, both
 uninterpreted types and operations of the reflection and Vale leaf modules and
-propositions about concrete computations and external tools, among them `bn254_pairing_correct_rocq`,
-`RustcExec_correct`, and the Jasmin compiler statements `x86CompilerCorrect`,
-`aarch64CompilerCorrect` and `riscvCompilerCorrect`. The hax export, the assembly
+propositions about concrete computations and external tools, among them
+`bn254_pairing_correct_rocq` and `RustcExec_correct`. The hax export, the assembly
 printers and the GNU assembler are trusted. A theorem depends on an axiom only if
 `#print axioms` lists it; the Scope section of `README.md` gives the command that
 lists the axioms.

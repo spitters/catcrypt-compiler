@@ -9,20 +9,18 @@ public import CatCrypt.Crypto.Primitives.SHAKE128
 public import CatCrypt.Crypto.Advantage
 
 /-!
-# Random Oracle Assumption for SHAKE-128
+# Random Oracle Game for SHAKE-128
 
-This file defines the **single cryptographic axiom** for the entire
-constructive primitive stack: SHAKE-128 is indistinguishable from a
-random oracle up to advantage `ε_ro`.
-
-All other primitives (AES-128, GF(2^128), Poly1305, Keccak) are
-constructive `def`s with no axioms. Security reductions for protocols
-using these primitives reduce to this single assumption.
+This file defines the random-oracle distinguishing game for SHAKE-128:
+the real game gives a distinguisher `shake128`, the ideal game a given
+random function, and `RO_Advantage` is the difference of the two
+probabilities of `true`. Protocols modelled in the random oracle model
+state their bounds in terms of `RO_Advantage`.
 
 ## Design
 
 The random oracle model (ROM) treats SHAKE-128 as a uniformly random
-function. The advantage `ε_ro` captures the distinguishing probability
+function. `RO_Advantage` is the distinguishing probability
 between the real SHAKE-128 and a lazy-sampled random function.
 
 This is standard in hash-based cryptography (SLH-DSA, XMSS, SPHINCS+)
@@ -79,25 +77,5 @@ noncomputable def RO_Advantage
     (randomOracle : List UInt8 → Nat → List UInt8)
     (D : RODistinguisher) : ℝ≥0∞ :=
   absDiff' (prTrue' (RO_Real D)) (prTrue' (RO_Ideal randomOracle D))
-
-/-! ## The Single Cryptographic Axiom -/
-
-/-- **SHAKE-128 Random Oracle Assumption**.
-
-    There exists an ideal random function such that no efficient
-    distinguisher can tell apart SHAKE-128 from this ideal function
-    with advantage greater than `ε_ro`.
-
-    This is the **only cryptographic axiom** in the constructive
-    primitive stack. All other primitives (AES-128, GF(2^128),
-    Poly1305, Keccak-f[1600]) are constructive definitions.
-
-    Anti-vacuity: the bound is universal over distinguishers,
-    so `ε_ro = 0` would mean SHAKE-128 IS a random oracle
-    (a non-trivial claim). In practice, `ε_ro` is negligible
-    in the security parameter. -/
-axiom shake128_is_random_oracle :
-  ∃ (idealRO : List UInt8 → Nat → List UInt8) (ε_ro : ℝ≥0∞),
-    ∀ (D : RODistinguisher), RO_Advantage idealRO D ≤ ε_ro
 
 end CatCrypt.Crypto.Primitives.RandomOracle

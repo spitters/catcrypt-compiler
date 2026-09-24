@@ -460,14 +460,6 @@ axiom ed_smul_distrib_add (a b : FpL25519) (P : EdPoint) :
 axiom ed_smul_assoc_left (a b : FpL25519) (P : EdPoint) :
     ed_smul (scalar_mul a b) P = ed_smul a (ed_smul b P)
 
-/-- The scalarmult-base helper from `Ed25519.lean` matches `ed_smul` on `B`.
-
-    **Discharged in Rocq:** by definition; `ed25519_scalarmult_base k`
-    is `ed_smul k ed_B`. The C-side `init_basepoint_table32` precomputes
-    the radix-32 table, but the algebraic semantics are unchanged. -/
-axiom ed25519_scalarmult_base_eq_smul_B (k : FpL25519) :
-    ed25519_scalarmult_base k = ed_smul k ed_B
-
 /-! ## 7. Sign/verify algebraic equivalence
 
     The key identity that links sign and verify: if `s = r + k·a` (the
@@ -611,22 +603,8 @@ theorem ed_compress_decompress_yields_on_curve_point
 
 /-! ## 8. Byte-reduction interpretation -/
 
-/-- A 64-byte digest interpreted as a little-endian integer mod L. -/
-axiom interp_reduce_bytes :
-    (digest : List UInt8) → digest.length = 64 → ZMod L
-
 /-- Spec-level scalar reducer. -/
 axiom scalar_reduce_64 : ByteBuf → FpL25519
-
-/-- The byte contents of a `ByteBuf`, as a list.  Opaque view relating
-    buffer-level and list-level statements. -/
-opaque byteBufBytes : ByteBuf → List UInt8
-
-/-- `scalar_reduce_64` on a buffer agrees with the little-endian
-    interpretation of that buffer's bytes. -/
-axiom interp_scalar_reduce_64 (bs : ByteBuf) (lst : List UInt8)
-    (hlen : lst.length = 64) (hbs : byteBufBytes bs = lst) :
-    interp (scalar_reduce_64 bs) = interp_reduce_bytes lst hlen
 
 /-! ## 9. Proved corollaries combining scalar + field side -/
 

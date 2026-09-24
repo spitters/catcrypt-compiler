@@ -37,9 +37,9 @@ P-256 binding.
 
 ## Trust set
 
-Inherits the generic framework's evaluator + adds **2 axioms**
-(soundness of the libcrux inverse chain literal and of the opaque
-sqrt chain, analogous to `invChain_eval_sound` for Curve25519).
+Inherits the generic framework's evaluator and adds one axiom, the
+soundness of the libcrux inverse chain literal (analogous to
+`invChain_eval_sound` for Curve25519).
 
 ## What this file ships
 
@@ -67,7 +67,7 @@ abbrev p256_q : Nat :=
 -- p256_q = 115792089210356248762697446949407573530086143415290314195533631308867097853951
 -- (The decide-form sanity check is omitted; native_decide would
 -- work in isolation but the upstream Sqr4Algebra WIP causes a
--- transitive `sorryAx` in the elaboration context.)
+-- transitive admission axiom in the elaboration context.)
 
 /-! ## §2  P-256 location type
 
@@ -119,30 +119,6 @@ Soundness is a property of one specific chain literal, never of the
 chain parameter: the evaluator is the identity on the empty chain, so
 only a named chain can satisfy the Fermat equation.  The soundness
 axiom for the libcrux `finv` chain literal is in §10. -/
-
-/-! ## §7  P-256 sqrt / non-residue check
-
-Beyond inverse, P-256 needs sqrt for point decompression and
-ECDSA-style signature recovery.  P-256's `q ≡ 3 mod 4`, so
-sqrt is `a^((q+1)/4) mod q`.
-
-This is a different chain (different exponent) but same
-framework shape.  Exposed for completeness. -/
-
-/-- Run a P-256 sqrt chain on input `a`. -/
-def p256SqrtResult (chain : List (ChainOp Loc)) (a : Nat) : Nat :=
-  ((evalP256Chain chain (initChainState a)).read OFF_op)
-
-/-- A P-256 square-root addition chain: computes `a^((q+1)/4) mod q`.
-    Opaque; stands for an implementation's concrete chain literal
-    (libcrux / openssl transcription, in the shape of §10's inverse
-    chain). -/
-opaque p256SqrtChain : List (ChainOp Loc)
-
-/-- **P-256 sqrt chain soundness**: `p256SqrtChain` computes
-    `a^((q+1)/4) mod q`. -/
-axiom p256SqrtChain_sound (a : Nat) :
-    p256SqrtResult p256SqrtChain a = a ^ ((p256_q + 1) / 4) % p256_q
 
 /-! ## §8  Worked examples — small concrete chains (✅ added 2026-05-01)
 
