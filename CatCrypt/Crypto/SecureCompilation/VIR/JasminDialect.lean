@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 
 /-!
-# Jasmin VIR dialect (spike)
+# Jasmin VIR dialect
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -57,12 +57,11 @@ loads/stores are modelled functionally (no separate memory effect). The
 `stackLoad` index is interpreted modulo `n` (via the `stackGet` / `stackSet`
 helpers) so the denotation is total even for `n = 0` (empty array).
 
-## Future work
+## Scope
 
-A `Com jasminDialect → CatCrypt.Crypto.Jasmin.LowCT.JasminProg` lowering
-(printed by `ppJasminProg`) is the next deliverable per phase (a) of the plan;
-it is intentionally not attempted in this spike, whose core is the dialect plus
-a `Com.denote` smoke test.
+This module defines the dialect and a `Com.denote` smoke test. The
+`Com jasminDialect → JasminProg` lowering `lowerComToProg` is in `JasminPrint.lean`,
+with its structural correctness in `JasminPrintCorrect.lean`.
 -/
 
 @[expose] public section
@@ -97,7 +96,7 @@ inductive JasminTy where
 
 /-- The two-address binary operators on registers `regArith` supports.
 
-    `shl`/`shr` are the **logical** left / right shifts (additive, 2026-05-25):
+    `shl`/`shr` are the **logical** left / right shifts:
     they let the dialect express the ARX rotate `(x <<< n) ||| (x >>> (w-n))`
     needed by ChaCha20 and other shift-using ciphers. The shift *amount* is the
     `.toNat` of the second register operand (jasmin's `<<` / `>>` over words).
@@ -137,7 +136,7 @@ def JasminBinOp.apply : JasminBinOp → {w : Nat} → BitVec w → BitVec w → 
   | .shr, _, a, b => a >>> b.toNat
   | .andn, _, a, b => (~~~a) &&& b
 
-/-! ### AVX-512 ZMM packed-lane semantics (task #286)
+/-! ### AVX-512 ZMM packed-lane semantics
 
 A `reg 512` ZMM register holds **8 × u64** lanes. The packed AVX-512 ops
 (`#VPADD_8u64`, `#VPSUB_8u64`, `#VPMULL_8u64`, `#VPSRL_8u64`, …) apply a
@@ -184,10 +183,10 @@ def zmmPackD (bop : JasminBinOp) (a b : BitVec 512) : BitVec 512 :=
 def zmmRorD (n : Nat) (a : BitVec 512) : BitVec 512 :=
   zmmOfLanes32 (fun k => (zmmLane32 a k).rotateRight n)
 
-/-! ### Parametrized 128-bit SIMD ops (SIMD-dialect-unification, Batch 1)
+/-! ### Parametrized 128-bit SIMD ops
 
 The waist holds the semantics of the target `x86vector` machine ops as KAT-pinned
-pure `BitVec` functions, copied verbatim from `X86Backend/Vec128Model.lean` (the
+pure `BitVec` functions, copied verbatim from the `x86vector` 128-bit model (the
 `W` suffix avoids a name clash with that model, which cannot be imported here —
 `JasminDialect` imports only `VIR.Core`). The 128-bit ops are gathered under a
 single inductive `SimdOp` so a *parametrized* `JasminOp.vsimd op` constructor
@@ -609,16 +608,16 @@ def SimdOp.denote : SimdOp → BitVec 128 → BitVec 128 → BitVec 128
   -- `vpshufd` is unary (`imm8` baked); the second operand is ignored.
   | .vpshufd imm => fun src _ => wVPSHUFDW src imm
 
-/-! ### Widening multiply + carry-chain primitives (task #477)
+/-! ### Widening multiply + carry-chain primitives
 
 The carry-FREE `JasminBinOp` alphabet (`add/sub/mul/and/or/xor/shl/shr`) cannot
 express a multi-limb Montgomery / pairing-field multiply: that idiom needs the
 **BMI2/ADX trio** `MULX` (64×64→128, two outputs) + the two **independent
-carry chains** `ADCX` (CF) / `ADOX` (OF). #474 was blocked on exactly this.
+carry chains** `ADCX` (CF) / `ADOX` (OF).
 
 The pure (flag-free, state-free) BitVec functions below are the *data* effect of
 those instructions, **ported byte-for-byte from the owned x86 model**
-(`X86Backend/Model.lean`, commit `25f61fe8`): `mulHiW` mirrors `Model.mulHi`
+(`X86Backend/Model.lean`): `mulHiW` mirrors `Model.mulHi`
 (= Jasmin `wumul`'s high word), and `addCarryWord` / `carryOutBit` mirror the
 `+ src + (if c then 1 else 0)` data result and the `addCarry` carry predicate of
 `Model.step`'s `.adcx`/`.adox` arms.
@@ -670,7 +669,7 @@ def subBorrowWord {w : Nat} (a b : BitVec w) (bin : BitVec 1) : BitVec w :=
 def borrowOutBit {w : Nat} (a b : BitVec w) (bin : BitVec 1) : BitVec 1 :=
   if a.toNat < b.toNat + bin.toNat then 1 else 0
 
-/-! ### Constant-time SELECT / cmov (task #594, E2)
+/-! ### Constant-time SELECT / cmov
 
 A branch-free conditional move: `selectW cond a b = if cond = 1 then a else b`,
 with the condition a 1-bit register (`reg 1`, the same `0`/`1` convention as the
@@ -743,7 +742,7 @@ theorem selectW_cmpBit {w v : Nat} (c : JasminCmp) (x y : BitVec v) (a b : BitVe
   unfold selectW cmpBit
   cases c.holds x y <;> simp
 
-/-! ### Native right-rotate (task #497)
+/-! ### Native right-rotate
 
 `rorImm` denotes `BitVec.rotateRight`, the **same** value the emit path currently
 spells as the three-op idiom `(src >>> n) ||| (src <<< (w - n))` (`emitRotr`'s
@@ -779,14 +778,13 @@ inductive JasminOp where
       `CatCryptDialect.extCall`. -/
   | extCall (name : String) (argTys : List JasminTy) (retTy : JasminTy)
   /-- Nullary compile-time constant `n : Nat` materialised as a `reg w` value
-      (= `BitVec.ofNat w n`). Mirrors `CryptoSSA.CExpr.bvConst` and lowers
-      one-to-one to jasmin's `Cassgn (Lvar dst) AT_none (sword w) (Pconst n)`
-      shape. Added 2026-05-28 to close the `RFor`-loop-counter gap (#203):
-      `CryptoSSA.loopRFor` emits `letBind (bvConst i)` per iteration, and
-      this arm is the matching `Com[jasminDialect]` image used by
-      `CryptoToJasminCom.toJExpr`. -/
+      (= `BitVec.ofNat w n`). Lowers one-to-one to jasmin's
+      `Cassgn (Lvar dst) AT_none (sword w) (Pconst n)` shape. It is the
+      `Com[jasminDialect]` image of the dialect's `bvConst w v`
+      (`DialectToJasminCom.toJExprD`), which carries the per-iteration
+      `RFor` loop-counter constants. -/
   | regConst (w : Nat) (n : Nat)
-  /-- AVX-512 ZMM packed 8×u64 lane op (task #286): two `reg 512` operands,
+  /-- AVX-512 ZMM packed 8×u64 lane op: two `reg 512` operands,
       one `reg 512` result, the per-64-bit-lane `bop` with no cross-lane
       carry. The verified-chain image of `#VPADD_8u64` / `#VPSUB_8u64` /
       `#VPMULL_8u64` / `#VPSRL_8u64` (`bop = .add/.sub/.mul/.shr`). -/
@@ -801,27 +799,27 @@ inductive JasminOp where
   | vpslldq (n : Nat)
   /-- `VPSRLDQ`: whole 128-bit register right byte-shift by `n` bytes (`src >>> n*8`). -/
   | vpsrldq (n : Nat)
-  /-- Parametrized 128-bit SIMD machine op (SIMD-dialect-unification, Batch 1):
+  /-- Parametrized 128-bit SIMD machine op:
       two `reg 128` operands, one `reg 128` result, dispatched by the inner
       `SimdOp`. Adding a SIMD op extends `SimdOp` (not `JasminOp`), so uniform
       `JasminOp` consumers match `| .vsimd _` once and never change. -/
   | vsimd (op : SimdOp)
   /-- High word of the widening multiply `a * b` (the `hi` output of `MULX`):
       two `reg w` operands, one `reg w` result (`mulHiW`). The low word is the
-      existing `regArith .mul w`; together they are MULX's `(hi, lo)`. (#477) -/
+      existing `regArith .mul w`; together they are MULX's `(hi, lo)`. -/
   | mulhi (w : Nat)
   /-- Carry-chain add **data** word `a + b + cin` (the data effect of `ADCX`/
-      `ADOX`): `[reg w, reg w, reg 1] → reg w` (`addCarryWord`). (#477) -/
+      `ADOX`): `[reg w, reg w, reg 1] → reg w` (`addCarryWord`). -/
   | addCarryLo (w : Nat)
   /-- Carry-chain add **carry-out** bit of `a + b + cin` (the propagated carry of
       `ADCX`/`ADOX`): `[reg w, reg w, reg 1] → reg 1` (`carryOutBit`). The
-      `reg 1` result threads into the next limb's carry-in. (#477) -/
+      `reg 1` result threads into the next limb's carry-in. -/
   | addCarryHi (w : Nat)
   /-- Native right-rotate by a compile-time immediate `n`: `[reg w] → reg w`,
       `out = src.rotateRight n`. Single-input, carry-free (does not read or write
       flags), so it threads in a data-flow chain exactly like the `shr`/`shl`
       `regArith` ops. The data effect of x86 `ROR r64, imm` (flag-clobbering) and
-      BMI2 `RORX r64, r64, imm` (flag-free). Added 2026-06-04 (#497) as the
+      BMI2 `RORX r64, r64, imm` (flag-free). It is the
       single-op image of the rotate idiom `(src >>> n) ||| (src <<< (w-n))`
       that SHA-512 Σ/σ and Keccak ρ emit as a `shr; shl; or` triple; the
       rotate insn-selection (`rorImm_denote_eq_shiftOr`) collapses the triple to
@@ -831,7 +829,7 @@ inductive JasminOp where
   /-- Native logical right-shift by a compile-time immediate `n`: `[reg w] → reg
       w`, `out = src >>> n`. Single-input (the shift amount is a dialect
       immediate, **not** a register-file read), so it threads in a data-flow
-      chain like `rorImm`. The data effect of x86 `SHR r, imm`. Added (#605) so
+      chain like `rorImm`. The data effect of x86 `SHR r, imm`. With it
       a constant shift (SHA-256/BLAKE2 `x >> 3` etc.) emits as an immediate-count
       shift `dst = src >> n;` — which jasminc x86 linearizes — instead of a
       variable shift `dst = src >> rcx;` (a `regArith .shr` reading the amount
@@ -841,19 +839,19 @@ inductive JasminOp where
       `[reg w] → reg w`, `out = src.sshiftRight n` (sign-extending). The
       sign-aware twin of `shrImm` — same single-input immediate-shift shape, but
       denoting `BitVec.sshiftRight` rather than `>>>`. The data effect of x86
-      `SAR r, imm`. Added (#606) so a constant **signed** shift emits as an
+      `SAR r, imm`. With it a constant **signed** shift emits as an
       immediate-count arithmetic shift `dst = (signed)src >> n;` (ML-DSA
       `reduce32`/`montgomery_reduce`/`decompose`/`make_hint`) — which jasminc x86
       linearizes — instead of a variable shift `regArith` reads from a register. -/
   | sarImm (w n : Nat)
   /-- Native logical left-shift by a compile-time immediate `n`: `[reg w] → reg
-      w`, `out = src <<< n`. The left-shift counterpart of `shrImm` (#605). -/
+      w`, `out = src <<< n`. The left-shift counterpart of `shrImm`. -/
   | shlImm (w n : Nat)
   /-- Constant-time SELECT / conditional move: `[reg 1, reg w, reg w] → reg w`,
       `out = if cond = 1 then a else b` (`selectW`). The condition is a 1-bit
       register; both operands are always evaluated, so the op is branch-free.
       The data effect of x86 `CMOVcc` (or the branchless mask idiom
-      `(a & mask) | (b & ~mask)`, `mask = 0 - cond`). Added (#594, E2) as the
+      `(a & mask) | (b & ~mask)`, `mask = 0 - cond`). It is the
       constant-time primitive for the canonical conditional-subtract, the
       ladder `cswap`, and a sampler's conditional core. -/
   | select (w : Nat)
@@ -958,7 +956,7 @@ their real (data-oblivious) semantics so the lowering is denotation-preserving
   `"poly_mul"`).
 
 Every other `extCall` keeps the opaque default (`JasminTy.default`), so an
-external leaf (e.g. a CryptoSSA `fp_*` intrinsic) is still treated as opaque —
+external leaf (e.g. an `fp_*` intrinsic) is treated as opaque —
 its agreement remains a separate obligation. -/
 /-- Offset `o` parsed from a `"slice@{o}"` leaf name (`0` if malformed). A
     sub-array-slice leaf `slice@{o} : [stackArr w n] → stackArr w m` is the

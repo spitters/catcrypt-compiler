@@ -28,17 +28,16 @@ The `lowCTToJasminComD` front composes
 `TranslateDialectDirectControl.translateDialectControlTop` with this map, taking
 `LowCT` to `Com jasminDialect` in one step.
 
-## Why it can reuse the template's maps verbatim
+## Shared type and context maps
 
 `catCryptDialect.Ty = CryptoTy` (by construction in `CatCryptDialect.lean`), so
 a `Com catCryptDialect`'s De Bruijn context `Γ : Ctxt catCryptDialect` is
-literally `List CryptoTy = CryptoSSA.Ctx` — the *same* context type `CProg` uses.
-Therefore the type map `mapTy`, context map `mapCtx`, and variable translation
-`toJVar` are exactly the ones `CryptoToJasminCom` already defines; we import and
-reuse them rather than re-deriving. The only new pieces are `toJExprD` (the
-`Expr catCryptDialect → Expr jasminDialect` op-level translation, the
-dialect-`Expr` analogue of the `CExpr`-shaped `toJExpr`) and the structural
-`Com` recursion.
+literally `List CryptoTy = CryptoSSA.Ctx`.
+Therefore the type map `mapTy` and context map `mapCtx` are the ones
+`CryptoToJasminCom` defines; we import and reuse them. This module defines
+the variable translation `toJVarD`, `toJExprD` (the
+`Expr catCryptDialect → Expr jasminDialect` op-level translation) and the
+structural `Com` recursion.
 
 ## Op coverage
 
@@ -60,7 +59,7 @@ dialect-`Expr` analogue of the `CExpr`-shaped `toJExpr`) and the structural
 | `bvEq w`                     | `cmp .eq w`            |
 | `ite (.sword w)`             | `select w`             |
 
-The arith/const/extCall/dynamic-memref rows are the original `CProg`-parity
+The arith/const/extCall/dynamic-memref rows are the base
 fragment; the rotate/variable-shift/`andn` rows are the word-native crypto
 extension (SHA/Keccak/ChaCha/bignum); the immediate-shift and bignum-ALU
 (`mulhi`/`addCarry*`) rows complete the word-native scalar op set, lowering
@@ -95,8 +94,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
 /-! ## 1. Variable and argument-vector translation (dialect `Expr` shape)
 
 A `Com catCryptDialect`/dialect `Expr` carries `Ctxt.Var (d := catCryptDialect)`
-variables (not the `CVar`s of `CProg`), so we cannot reuse `CryptoToJasminCom`'s
-`toJVar` (which is `CVar`-shaped). The structural insight is identical, though:
+variables, so we cannot reuse `CryptoToJasminCom`'s
+`toJVar` (which is `CVar`-shaped). The structure is the same:
 because `mapCtx (s :: Γ) = mapTy s :: mapCtx Γ` reduces (`mapCtx = List.map
 mapTy`), the dependent indices line up and the translation is the clean
 `here ↦ here`, `there ↦ there`. -/
@@ -276,7 +275,7 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
           args := .cons (toJVarD args.head)
             (.cons (toJVarD args.tail.head) (.cons (toJVarD args.tail.tail.head) .nil)) })
   -- **Word/crypto rotates and variable shifts.** These are the word-native
-  -- primitives (SHA/Keccak/ChaCha/bignum) that now lower instead of surviving
+  -- primitives (SHA/Keccak/ChaCha/bignum) that lower instead of surviving
   -- as opaque `extCall` leaves.
   --
   -- `bvRor w n` (rotate-right by immediate) ↦ jasmin `rorImm w n`. Single-input
@@ -346,7 +345,7 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
   -- `addCarryLo w`; `bvAddCarryHi w` (carry-out bit) ↦ jasmin `addCarryHi w`.
   -- The carry-chain ops take a third `.sword 1 ↦ .reg 1` carry-in operand; the
   -- denotations (`mulHiC`/`addCarryWordC`/`carryOutBitC`) are defined identically
-  -- to the jasmin twins (`mulHiW`/`addCarryWord`/`carryOutBit`). (#477)
+  -- to the jasmin twins (`mulHiW`/`addCarryWord`/`carryOutBit`).
   | .bvMulHi w =>
       have hr : mapTy t = JasminTy.reg w := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
@@ -508,14 +507,14 @@ def cryptoDialectToJasminCom {Γ : Ctx} {t : CryptoTy} :
           | none => none
       | none => none
 
-/-! ## 5. The composed `CProg`-free front
+/-! ## 5. The composed front
 
 `lowCTToJasminComD := translateDialectControlTop >=> cryptoDialectToJasminCom`.
 It is a `LowCT → Com jasminDialect` front. The front `translateDialectControlTop`
 emits a `Com catCryptDialect _ .unit` at some final context `Γ'`; we lower it,
 landing a `Com jasminDialect (mapCtx Γ') (.reg 0)` (`mapTy .unit = .reg 0`). -/
 
-/-- The composed `CProg`-free `LowCT → Com jasminDialect` front: run the direct
+/-- The composed `LowCT → Com jasminDialect` front: run the direct
     control-flow dialect front `translateDialectControlTop`, then lower its
     `Com catCryptDialect` to `Com jasminDialect` with `cryptoDialectToJasminCom`. -/
 def lowCTToJasminComD {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
@@ -553,9 +552,8 @@ theorem addComCD_isSome : (cryptoDialectToJasminCom addComCD).isSome := by
 def addComJ : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
   (cryptoDialectToJasminCom addComCD).get addComCD_isSome
 
-/- The lowered program emits a `+` in `.jazz`, end-to-end through the existing
-    `JasminPrint.emitJazz` printer — confirming the dialect front reaches the
-    same `.jazz` text as the `CProg` path. -/
+/- The lowered program emits a `+` in `.jazz`, end-to-end through the
+    `JasminPrint.emitJazz` printer. -/
 #guard (JasminPrint.strContains (JasminPrint.emitJazz "fp_add_arith_d" addComJ) "+")
 
 /-- Two parameters (the two `reg 64` inputs) and one body instruction. -/

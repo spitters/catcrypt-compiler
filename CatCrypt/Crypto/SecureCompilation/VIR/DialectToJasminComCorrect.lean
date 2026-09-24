@@ -16,16 +16,11 @@ This file proves that the lowering
 `cryptoDialectToJasminCom : Com catCryptDialect → Com jasminDialect` (from
 `DialectToJasminCom.lean`) preserves `Com.denote`.
 
-## Why this twin is structurally cleaner than the `CProg` one
+## Statement shape
 
-`CryptoToJasminComCorrect` carries an extra wrinkle: the `CProg` side denotes
-into the **monad** `SPComp` (`CProg.denote V : SPComp ⟦t⟧`), while the Jasmin
-`Com.denote` produces a **plain value**. That file therefore has to read off the
-pure value underneath each `SPComp.pure`, via `SPComp.pure_inj`.
-
-The dialect side has *no* such wrinkle: `Com catCryptDialect` denotes into a plain
-value (`catCryptDenote` is a pure `DialectDenote`), exactly like
-`Com jasminDialect`. So the statement is the clean plain-value commuting square
+`Com catCryptDialect` denotes into a plain value (`catCryptDenote` is a pure
+`DialectDenote`), exactly like `Com jasminDialect`. So the statement is the
+plain-value commuting square
 
     (cryptoDialectToJasminCom com).denote (ctMapValD V) = ctTransTy (com.denote V)
 
@@ -33,37 +28,36 @@ with **no** `SPComp` threading — the same shape as
 `LatticeToJasminDenote.lowerLatticeToJasmin_denote_eq` (which is the structural
 template followed here), specialised to the `Option`-valued front.
 
-## Reuse from the `CProg` twin
+## Shared pieces
 
 Because `catCryptDialect.Ty = CryptoTy`, a `Com catCryptDialect`'s De Bruijn
-context `Γ : Ctxt catCryptDialect` *is* `CryptoSSA.Ctx = List CryptoTy` — the same
-context type `CProg` uses, and the same `mapTy`/`mapCtx`. So the per-value
+context `Γ : Ctxt catCryptDialect` *is* `CryptoSSA.Ctx = List CryptoTy`, with
+the `mapTy`/`mapCtx` of `CryptoToJasminCom`. So the per-value
 transport `ctTransTy` (and `ctTransTy_sword`/`ctTransTy_memref`/`ctTransTy_default`)
-are imported verbatim from `CryptoToJasminComCorrect`. The new pieces are the
-**valuation** transport `ctMapValD` (over `Ctxt.Valuation`, not `CProg`'s `HVec`),
+is imported from `JasminValTransport` (namespace `CryptoToJasminComCorrect`). This
+module defines the **valuation** transport `ctMapValD` (over `Ctxt.Valuation`),
 its lookup/extend commute lemmas, and the dialect-`Expr`-shaped leaf-agreement
 predicate `DialectJasminLeafAgrees`.
 
 ## Scope
 
 * `ctMapValD` / `ctMapValD_lookup` / `ctMapValD_extend` — the dialect valuation
-  transport and its commute lemmas (the `Ctxt.Var`-shaped analogues of the
-  `CVar`-shaped `ctMapVal_lookup`/`ctMapVal_extend`).
+  transport and its commute lemmas over `Ctxt.Var`.
 * `DialectJasminLeafAgrees` — the per-`Expr` leaf-agreement predicate over
-  `toJExprD`, threaded through the induction (mirroring `JasminLeafAgrees`).
+  `toJExprD`, threaded through the induction.
 * `cryptoDialectToJasminCom_denote_eq` — the **general** parametric preservation
-  theorem, by induction on the `Com`. This is the must-have.
+  theorem, by induction on the `Com`.
 * `dialectJasminLeafAgrees_holds` — the *unconditional* discharge of the leaf
   predicate over the lowered fragment (arith/const leaves agree by computation;
   `extCall` leaves agree on the opaque canonical default via `ctTransTy_default`).
 * `cryptoDialectToJasminCom_denote_eq'` — the hypothesis-free corollary.
 * `regPassA1prime` — the result repackaged as a `DialectLoweringTransport`
-  `TransportSquare`, so it can join `CompilerLoweringRegistry` later.
+  `TransportSquare`, composable in `CompilerLoweringRegistry`.
 
-0 sorries. The deferred piece is identical to the template's: a concrete
-leaf-spec'd Jasmin `extCall` denotation (a *functional* leaf, carried
-per-protocol) is a separate, stronger discharge; the stub denotation the
-meta-theorem ships with is closed here on the opaque default.
+All proofs are complete. A concrete leaf-spec'd Jasmin `extCall` denotation (a
+*functional* leaf, carried per-protocol) is a separate, stronger discharge
+(`DialectToJasminComLeaf`); the stub denotation the meta-theorem uses is closed
+here on the opaque default.
 -/
 
 @[expose] public section
@@ -86,13 +80,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect
 
 We reuse the per-value transport `ctTransTy` from `CryptoToJasminComCorrect`
 verbatim (it is keyed on `CryptoTy`/`mapTy`, which `catCryptDialect` shares). The
-*valuation* transport, however, is over `Ctxt.Valuation` (the dialect's
-`HVector`-based valuation), not `CProg`'s `HVec`, so we define a fresh `ctMapValD`
+*valuation* transport is over `Ctxt.Valuation` (the dialect's
+`HVector`-based valuation), so we define `ctMapValD`
 — the `Ctxt.Valuation` analogue of `LatticeToJasminDenote.mapVal`. -/
 
 /-- Transport a `catCryptDialect` valuation to the `mapTy`-mapped Jasmin context,
-    applying `ctTransTy` per binding. The `Ctxt.Valuation` analogue of
-    `CryptoToJasminComCorrect.ctMapVal`. -/
+    applying `ctTransTy` per binding. -/
 def ctMapValD {Γ : Ctx} :
     Ctxt.Valuation (d := catCryptDialect) Γ →
     Ctxt.Valuation (d := jasminDialect) (mapCtx Γ)
@@ -132,18 +125,16 @@ theorem ctMapValD_extend {Γ : Ctx} {t : CryptoTy}
 For one dialect expression `e` in the lowered fragment (`toJExprD e = some e'`),
 the Jasmin lowering `e'` denotes (under the transported valuation) to the
 `ctTransTy`-transport of `e`'s denotation. Both sides are plain values (no
-`SPComp`), so the statement is the clean commuting square — no purity read-off.
+`SPComp`), so the statement is the commuting square — no purity read-off.
 
-This is the *parametric* hypothesis: the Jasmin `extCall` denotation is a stub
-today, so we abstract over the fact that it agrees with the dialect op. A
-concrete leaf-spec'd `extCall` semantics would discharge it (the deferred
-piece). -/
+This is the *parametric* hypothesis: the Jasmin `extCall` denotation here is a
+stub, so we abstract over the fact that it agrees with the dialect op. A
+concrete leaf-spec'd `extCall` semantics discharges it per leaf. -/
 
 /-- Per-expression leaf agreement, quantified over all
     contexts/types/expressions/valuations so it slots into the program
     induction. For any `e` the front lowers to `e'`, the lowered Jasmin
-    expression denotes to `ctTransTy` of `e`'s denotation. The dialect-`Expr`
-    analogue of `CryptoToJasminComCorrect.JasminLeafAgrees`. -/
+    expression denotes to `ctTransTy` of `e`'s denotation. -/
 def DialectJasminLeafAgrees : Prop :=
   ∀ {Γ : Ctx} {t : CryptoTy}
     (e : Expr catCryptDialect Γ t)
@@ -211,9 +202,7 @@ dialect op is outside the fragment (`toJExprD = none`), so the
 The dialect-`Expr` constructor `Expr.mk op retTy_eq args` carries its `op` in a
 field, and `toJExprD` matches `h : e.op`. So we case the proof on `e.op` (via the
 generic `Expr` destructured as `⟨op, hop, args⟩`) and reduce `toJExprD`
-accordingly. Unlike the `CExpr` template — where each `CExpr` constructor is its
-own inductive case and the denotation unfolds by `rfl` — the dialect denotation
-threads the `retTy_eq ▸ …` cast and the `DialectDenote.denote` instance, which we
+accordingly. The dialect denotation threads the `retTy_eq ▸ …` cast and the `DialectDenote.denote` instance, which we
 discharge with `simp [Expr.denote, …]` per op shape. -/
 
 /-- The lowered jasmin `extCall` for a leaf returning a `sword`/`memref`-mapped
@@ -350,8 +339,7 @@ theorem selectW_ofBool {w : Nat} (c : Bool) (a b : BitVec w) :
     computation (the lowering preserves the `BitVec` op), and `extCall` leaves
     agree on the opaque canonical default (`leafAgrees_extCallD`). Every other
     `CatCryptOp` is outside the fragment (`toJExprD = none`), so the
-    `toJExprD e = some e'` premise is unsatisfiable and the case is vacuous. The
-    dialect analogue of `CryptoToJasminComCorrect.jasminLeafAgrees_holds`. -/
+    `toJExprD e = some e'` premise is unsatisfiable and the case is vacuous. -/
 theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
   intro Γ t e V e' he
   obtain ⟨op, hop, args⟩ := e
@@ -732,10 +720,10 @@ mechanism as the lattice passes. The square is the
 its single field is exactly `cryptoDialectToJasminCom_denote_eq'`. -/
 
 /-- **The A1′ transport square.** For any source `com : Com catCryptDialect Γ t`
-    whose `CProg`-free lowering succeeds (`cryptoDialectToJasminCom com = some
+    whose lowering succeeds (`cryptoDialectToJasminCom com = some
     jcom`), the dialect-native pass is a `DialectLoweringTransport.TransportSquare`
     from `com.denote` to `jcom.denote` along `(ctMapValD, ctTransTy)`. The
-    `CProg`-free analogue of the lattice route's `pass2_lowering_transport`, ready
+    analogue of the lattice route's `pass2_lowering_transport`, ready
     to be composed via `TransportSquare.comp` and registered in
     `CompilerLoweringRegistry`. -/
 def regPassA1prime {Γ : Ctx} {t : CryptoTy}

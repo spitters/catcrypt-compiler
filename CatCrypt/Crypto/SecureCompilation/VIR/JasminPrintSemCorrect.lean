@@ -571,7 +571,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
         = vymmDenote op op.isBinary (Expr.lookupArgs args V)
       rw [lookupArgsStore_eq hS]
   | mulhi w =>
-      -- #477 widening-multiply high word: both sides are `mulHiW` on two
+      -- Widening-multiply high word: both sides are `mulHiW` on two
       -- looked-up `reg w` factors.
       cases args with
       | cons a rest =>
@@ -581,7 +581,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
             = mulHiW (a.lookup V) (b.lookup V)
           rw [hS _ a, hS _ b]
   | addCarryLo w =>
-      -- #477 carry-chain data word: `addCarryWord` on `[a, b, cin]`.
+      -- Carry-chain data word: `addCarryWord` on `[a, b, cin]`.
       cases args with
       | cons a rest =>
         cases rest with
@@ -593,7 +593,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
               = addCarryWord (a.lookup V) (b.lookup V) (cin.lookup V)
             rw [hS _ a, hS _ b, hS _ cin]
   | addCarryHi w =>
-      -- #477 carry-chain carry-out bit: `carryOutBit` on `[a, b, cin]`.
+      -- Carry-chain carry-out bit: `carryOutBit` on `[a, b, cin]`.
       cases args with
       | cons a rest =>
         cases rest with
@@ -605,7 +605,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
               = carryOutBit (a.lookup V) (b.lookup V) (cin.lookup V)
             rw [hS _ a, hS _ b, hS _ cin]
   | select w =>
-      -- #594 E2 constant-time select: `selectW` on `[cond, a, b]`.
+      -- Constant-time select: `selectW` on `[cond, a, b]`.
       cases args with
       | cons cond rest =>
         cases rest with
@@ -617,7 +617,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
               = selectW (cond.lookup V) (a.lookup V) (b.lookup V)
             rw [hS _ cond, hS _ a, hS _ b]
   | rorImm w n =>
-      -- #497 native right-rotate: both sides are `rotateRight n` on the single
+      -- Native right-rotate: both sides are `rotateRight n` on the single
       -- looked-up `reg w` source.
       cases args with
       | cons a rest =>
@@ -625,7 +625,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           = (a.lookup V).rotateRight n
         rw [hS _ a]
   | shrImm w n =>
-      -- #605 native immediate right-shift: both sides are `>>> n` on the single
+      -- Native immediate right-shift: both sides are `>>> n` on the single
       -- looked-up `reg w` source.
       cases args with
       | cons a rest =>
@@ -633,7 +633,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           = BitVec.ushiftRight (a.lookup V) n
         rw [hS _ a]
   | sarImm w n =>
-      -- #606 native immediate arithmetic right-shift: both sides are
+      -- Native immediate arithmetic right-shift: both sides are
       -- `sshiftRight … n` on the single looked-up `reg w` source.
       cases args with
       | cons a rest =>
@@ -641,7 +641,7 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           = BitVec.sshiftRight (a.lookup V) n
         rw [hS _ a]
   | shlImm w n =>
-      -- #605 native immediate left-shift: both sides are `<<< n` on the single
+      -- Native immediate left-shift: both sides are `<<< n` on the single
       -- looked-up `reg w` source.
       cases args with
       | cons a rest =>
