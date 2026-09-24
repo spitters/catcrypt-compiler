@@ -94,7 +94,18 @@ to the corresponding `Vec128Encoder.encodeVCryptInst` / `encodeVInst` arm:
 | `.packed .add 16`   | `encAvx2Alu 0xFD`                   | (AVX2 `VPADDW`)          |
 | `.packed .sub 16`   | `encAvx2Alu 0xF9`                   | (AVX2 `VPSUBW`)          |
 | `.packed .mul 16`   | `encAvx2Alu 0xD5`                   | (AVX2 `VPMULLW`)         |
+| `.packed .shl 32`   | `encVex3 … 0x47` (= `.varShift`)    | (AVX2 `VPSLLVD`)         |
+| `.packed .shr 32`   | `encVex3 … 0x45` (= `.varShift`)    | (AVX2 `VPSRLVD`)         |
+| `.packed .shl 64`   | `encVex3 … 0x47` W=1                | (AVX2 `VPSLLVQ`)         |
+| `.packed .shr 64`   | `encVex3 … 0x45` W=1                | (AVX2 `VPSRLVQ`)         |
+| `.varShift .shl/.shr 32/64` | same opcodes                | (AVX2 `VPS{LL,RL}V{D,Q}`)|
 | `.mulhi16`          | `encAvx2Alu 0xE5`                   | `.vpmulhw`               |
+
+A packed shift and the variable shift of the same width share their opcode
+because they share their denotation (`v128PackLanesW` and `simdVarShiftW` are the
+same per-lane fold). The uniform-count `VPSLLD`/`VPSRLD` encodes a different
+operation — its count is the low quadword of the source, not one count per lane —
+and is not reachable from `SimdOp`.
 
 The two byte-shift ops `vpslldq`/`vpsrldq` are `JasminOp` arms (not `SimdOp`), so
 they are encoded by `encodeVsimdShift` below. -/
@@ -136,6 +147,15 @@ def encodeVsimdInst : SimdOp → (d a b : Nat) → List (BitVec 8)
   | .packed .sub 32, d, a, b => encAvx2Alu 0xfa 0 d a b
   | .packed .sub 64, d, a, b => encAvx2Alu 0xfb 0 d a b
   | .packed .mul 16, d, a, b => encAvx2Alu 0xd5 0 d a b
+  -- The shift arms encode the VARIABLE-shift opcodes, matching
+  -- `VsimdAsmPrint.SimdOp.attMnemonic`: `packed bop laneW` and
+  -- `varShift bop laneW` share the per-lane denotation `v128PackLanesW`, whose
+  -- machine form is `VPSLLVD`/`VPSRLVD`. Routing them to the `encAvx2Alu`
+  -- catch-all below would encode a `VPADDD`.
+  | .packed .shl 32, d, a, b => encVex3 0b00010 0b01 0 0 0x47 d a b none
+  | .packed .shl 64, d, a, b => encVex3 0b00010 0b01 1 0 0x47 d a b none
+  | .packed .shr 32, d, a, b => encVex3 0b00010 0b01 0 0 0x45 d a b none
+  | .packed .shr 64, d, a, b => encVex3 0b00010 0b01 1 0 0x45 d a b none
   | .packed _ _,     d, a, b => encAvx2Alu 0xfe 0 d a b
   | .varShift .shl 32, d, a, b => encVex3 0b00010 0b01 0 0 0x47 d a b none
   | .varShift .shl 64, d, a, b => encVex3 0b00010 0b01 1 0 0x47 d a b none
@@ -245,6 +265,30 @@ bespoke byte output op-by-op. -/
 
 -- gas: `vpmulhw %xmm1, %xmm2, %xmm3`        →  c5 e9 e5 d9
 #guard encodeVsimdInst .mulhi16 3 2 1 == [0xc5,0xe9,0xe5,0xd9].map (BitVec.ofNat 8)
+
+/-- The four AVX2 variable shifts encode to the bytes gas assembles for
+    `vpsllvd`/`vpsrlvd`/`vpsllvq`/`vpsrlvq %xmm1, %xmm2, %xmm3`
+    (`c4 e2 69 47 d9`, `c4 e2 69 45 d9`, `c4 e2 e9 47 d9`, `c4 e2 e9 45 d9`). -/
+theorem encodeVsimdInst_varShift_bytes :
+    encodeVsimdInst (.varShift .shl 32) 3 2 1
+      = [0xc4,0xe2,0x69,0x47,0xd9].map (BitVec.ofNat 8) ∧
+    encodeVsimdInst (.varShift .shr 32) 3 2 1
+      = [0xc4,0xe2,0x69,0x45,0xd9].map (BitVec.ofNat 8) ∧
+    encodeVsimdInst (.varShift .shl 64) 3 2 1
+      = [0xc4,0xe2,0xe9,0x47,0xd9].map (BitVec.ofNat 8) ∧
+    encodeVsimdInst (.varShift .shr 64) 3 2 1
+      = [0xc4,0xe2,0xe9,0x45,0xd9].map (BitVec.ofNat 8) := by
+  decide
+
+/-- A packed shift encodes as the variable shift of the same width, at every
+    register assignment: the two ops share the per-lane denotation
+    `v128PackLanesW`, so they share the opcode. -/
+theorem encodeVsimdInst_packed_shift_eq_varShift (d a b : Nat) :
+    encodeVsimdInst (.packed .shl 32) d a b = encodeVsimdInst (.varShift .shl 32) d a b ∧
+    encodeVsimdInst (.packed .shr 32) d a b = encodeVsimdInst (.varShift .shr 32) d a b ∧
+    encodeVsimdInst (.packed .shl 64) d a b = encodeVsimdInst (.varShift .shl 64) d a b ∧
+    encodeVsimdInst (.packed .shr 64) d a b = encodeVsimdInst (.varShift .shr 64) d a b :=
+  ⟨rfl, rfl, rfl, rfl⟩
 
 -- gas: `vpslldq $0x8, %xmm2, %xmm3`         →  c5 e1 73 fa 08
 #guard encVpslldqU 0 3 2 0x08 == [0xc5,0xe1,0x73,0xfa,0x08].map (BitVec.ofNat 8)

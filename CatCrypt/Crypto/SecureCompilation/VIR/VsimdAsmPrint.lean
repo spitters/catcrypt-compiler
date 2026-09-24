@@ -89,10 +89,26 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-- The lowercase **AT&T/gas** mnemonic of a `SimdOp` (for the owned printer).
     `SimdOp.mnemonic` is the UPPERCASE jasmin-intrinsic name routed through
-    jasminc; this is the machine mnemonic gas assembles, matching the strings
-    `Vec128AsmPrinter.renderVCryptInst` emits byte-for-byte. The `clmul`/`affineqb`
+    jasminc; this is the machine mnemonic gas assembles. The `clmul`/`affineqb`
     immediates are NOT part of the mnemonic — they are rendered as a leading
-    `$imm` operand by `renderVsimdInstr`. -/
+    `$imm` operand by `renderVsimdInstr`.
+
+    **The shift arms of `packed` carry the VARIABLE-shift mnemonics.** Both
+    `packed bop laneW` and `varShift bop laneW` denote by the same per-lane fold
+    (`JasminDialect.v128PackLanesW` and `simdVarShiftW` are the same definition):
+    result lane `k` is lane `k` of the data shifted by the `.toNat` of lane `k`
+    of the second operand. The machine instruction implementing that is
+    `VPSLLVD`/`VPSRLVD` (AVX2, per-lane count), not `VPSLLD`/`VPSRLD`, whose
+    count is the single 64-bit value in the low quadword of the second operand.
+    The two disagree on every dword-broadcast count: a `.long n,n,n,n` operand is
+    the 64-bit count `n·2³² + n`, far above the lane width, so `VPSLLD` zeroes all
+    four lanes while the denotation shifts each by `n`. `laneW = 16` has no AVX2
+    per-lane shift (`VPSLLVW` is AVX-512BW), so it falls to the `vppacked`
+    sentinel that gas rejects rather than to an instruction with another meaning.
+
+    `SimdOp.argTys` gives `packed` two `reg 128` operands, so the immediate form
+    `vpslld $imm, src, dst` is not expressible here: an immediate count enters as
+    a broadcast constant in a register, which is exactly what `VPSLLVD` reads. -/
 def SimdOp.attMnemonic : SimdOp → String
   | .gf2p8mulb => "vgf2p8mulb"
   | .vpshufb => "vpshufb"
@@ -109,8 +125,10 @@ def SimdOp.attMnemonic : SimdOp → String
   | .packed .mul 16 => "vpmullw"
   | .packed .add 16 => "vpaddw"
   | .packed .sub 16 => "vpsubw"
-  | .packed .shl 32 => "vpslld"
-  | .packed .shr 32 => "vpsrld"
+  | .packed .shl 32 => "vpsllvd"
+  | .packed .shl 64 => "vpsllvq"
+  | .packed .shr 32 => "vpsrlvd"
+  | .packed .shr 64 => "vpsrlvq"
   | .packed _ _ => "vppacked"
   | .varShift .shl 32 => "vpsllvd"
   | .varShift .shl 64 => "vpsllvq"
@@ -122,6 +140,23 @@ def SimdOp.attMnemonic : SimdOp → String
   | .vaesenclast => "vaesenclast"
   | .vaeskeygen _ => "vaeskeygenassist"
   | .vpshufd _ => "vpshufd"
+
+/-- A packed shift prints as the variable shift of the same width, for both
+    directions and both AVX2 widths. The two ops denote by the same per-lane
+    fold, so they print identically; the uniform-count `VPSLLD`, whose count
+    operand has the other meaning, is not the mnemonic of either. -/
+theorem attMnemonic_packed_shift_eq_varShift :
+    SimdOp.attMnemonic (.packed .shl 32) = SimdOp.attMnemonic (.varShift .shl 32) ∧
+    SimdOp.attMnemonic (.packed .shr 32) = SimdOp.attMnemonic (.varShift .shr 32) ∧
+    SimdOp.attMnemonic (.packed .shl 64) = SimdOp.attMnemonic (.varShift .shl 64) ∧
+    SimdOp.attMnemonic (.packed .shr 64) = SimdOp.attMnemonic (.varShift .shr 64) ∧
+    SimdOp.attMnemonic (.packed .shl 32) = "vpsllvd" ∧
+    SimdOp.attMnemonic (.packed .shr 32) = "vpsrlvd" :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- A 16-bit packed shift has no AVX2 per-lane instruction (`VPSLLVW` is
+    AVX-512BW), so it prints as the sentinel gas rejects. -/
+theorem attMnemonic_packed_shl16 : SimdOp.attMnemonic (.packed .shl 16) = "vppacked" := rfl
 
 /-! ## 2. AT&T register/operand formatting (self-contained, no `Vec128*`)
 
