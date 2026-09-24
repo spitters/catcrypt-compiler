@@ -27,8 +27,25 @@ into a binding per iteration.
 
 `renderJFunLeaf` carries a leaf through
 `FrontRoutePlan.compileLoop` → `frontLoopBodyJ` → `cryptoDialectToJasminCom` →
-`ComL.toLprogPhysAbi` → `LprogOptPipeline.renderOwned`, the route
-`CatCrypt.Crypto.MLDSA.PolyLeafFrontEmit` uses.
+`ComL.toLprogPhysAbi` → `renderLeafLprog` → `LprogAsmPrinter.renderLprogAtt`.
+
+## Constant time of the rendered program
+
+§7 states constant time for the `Lprog` the printer receives, after the
+basic-block pipeline and copy coalescing. The observation model is
+`rolledLeak`: each instruction executed, the effective address
+`(base register value, scale · index register value)` of every register-indexed
+operand, and the direction of the counted loop's back-edge. `rolledLprogCheck`
+is a flow-sensitive public-register analysis of the program; when it accepts,
+`rolledLprog_pub_determined` states that the trace is the same from any two
+states that agree on the entry registers it was given, for any memory contents
+and any values in the other registers. Registers and memory evolve by
+`JasminLsem.lsemStep`. That model has no flags, so the back-edge's
+`CMP ctr, 0; jnz` is given its x86 meaning directly (branch while the counter is
+non-zero), and the model's memory is keyed by base register name, which the
+analysis never trusts: every loaded value is secret. The printer's rendering of
+the `qsave.*` spill registers as fixed stack slots, and the printer itself, are
+outside the statement.
 
 ## Representation
 
@@ -62,11 +79,15 @@ ABI.
 * `carryLoad` / `carryStore` / `withCarried`: a body's carried scalars read
   from and written back to the state array.
 * `rbwGo` / `carriedOf`: the scalars a loop body reads before it writes them.
-* `renderFor2` / `renderWhile2`: a counted loop and a countdown loop through
-  the front to owned AT&T x86.
-* `renderForCarried` / `renderWhileCarried`: the same two over the state-array
+* `for2Lprog` / `while2Lprog`: a counted loop and a countdown loop through
+  the front to the program the owned printer receives.
+* `forCarriedLprog` / `whileCarriedLprog`: the same two over the state-array
   ABI, for a loop with carried scalars.
-* `renderJFunLeaf`: `jfunLeaf` followed by the matching renderer.
+* `jfunLeafLprog` / `renderJFunLeaf`: `jfunLeaf` followed by the matching
+  compiler, and that program printed as AT&T x86.
+* `rolledLprogCheck` / `rolledLprog_pub_determined`: a public-register check of
+  a compiled rolled leaf, and the constant-time theorem it implies over the
+  address-leak trace of the program the printer receives.
 -/
 
 @[expose] public section
@@ -415,41 +436,45 @@ def withCarried (names : List String) (body : LowCT) : LowCT :=
 
 /-! ## 6. Owned x86 renders -/
 
-/-- The owned render of a leaf: the basic-block pipeline, then two rounds of
-    register-copy coalescing (`LprogCopyCoalesce.coalesceRounds`, which preserves
-    the stored state by `coalesceBody_stateStore`), then the printer. The front
+/-- The program the printer receives for a leaf: the basic-block pipeline, then
+    two rounds of register-copy coalescing (`LprogCopyCoalesce.coalesceRounds`,
+    which preserves the stored state by `coalesceBody_stateStore`). The front
     binds every source statement to a fresh name, so a rolled loop body carries a
     copy per binding that the basic-block pipeline alone leaves in place. -/
-def renderLeaf (p : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog) : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
-    (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce.coalesceRounds 2
-      (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.optimizeLprogBasicBlocks p))
+def renderLeafLprog (p : Lprog) : Lprog :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce.coalesceRounds 2
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.optimizeLprogBasicBlocks p)
 
-/-- A counted loop rendered to owned AT&T x86.
+/-- The owned render of a leaf: `renderLeafLprog`, then the printer. -/
+def renderLeaf (p : Lprog) : String :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+    (renderLeafLprog p)
+
+/-- A counted loop compiled to the program the owned printer receives.
 
     The accumulator is `%rdi` and the invariant input `%rsi`, matching
     `T *sym(uint64_t *acc, const uint64_t *inv)`. -/
-def renderFor2 (sym : String) (wAcc wInv : Nat) (accName idxName invName : String)
-    (trips : Nat) (body : LowCT) : Option String :=
+def for2Lprog (sym : String) (wAcc wInv : Nat) (accName idxName invName : String)
+    (trips : Nat) (body : LowCT) : Option Lprog :=
   (compileLoop (Γouter := [.stackArr 64 wAcc, .stackArr 64 wInv])
       (accCTy := .memref wAcc) (invCTys := [.memref wInv]) .plain (.static trips)
       (((VarMap.empty.bind (t := .memref wInv) invName).bind
           (t := .sword 64) idxName).bind (t := .memref wAcc) accName)
       accName body (init := .here) (invs := .cons (.there .here) .nil)).map
     (fun c =>
-      renderLeaf
+      renderLeafLprog
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1]
           (fun _ => none) (fun _ => none) ["RDI", "RSI"] [64, 64]))
 
-/-- A countdown loop rendered to owned AT&T x86.
+/-- A countdown loop compiled to the program the owned printer receives.
 
     `ComL.whileNz` reads its trip from an in-scope 64-bit seed register, so the
     rendered leaf takes it as a third argument: `%rdi` the accumulator, `%rsi`
     the invariant input, `%rdx` the countdown seed. The source guard variable is
     not the seed — it is a body scalar, and the loop the render performs is the
     seed's countdown. -/
-def renderWhile2 (sym : String) (wAcc wInv : Nat) (accName idxName invName : String)
-    (body : LowCT) : Option String :=
+def while2Lprog (sym : String) (wAcc wInv : Nat) (accName idxName invName : String)
+    (body : LowCT) : Option Lprog :=
   (compileLoop (Γouter := [.stackArr 64 wAcc, .stackArr 64 wInv, .reg 64])
       (accCTy := .memref wAcc) (invCTys := [.memref wInv]) .plain
       (.countdown (.there (.there .here)))
@@ -457,19 +482,20 @@ def renderWhile2 (sym : String) (wAcc wInv : Nat) (accName idxName invName : Str
           (t := .sword 64) idxName).bind (t := .memref wAcc) accName)
       accName body (init := .here) (invs := .cons (.there .here) .nil)).map
     (fun c =>
-      renderLeaf
+      renderLeafLprog
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 
-/-- A counted loop with loop-carried scalars rendered to owned AT&T x86.
+/-- A counted loop with loop-carried scalars compiled to the program the owned
+    printer receives.
 
     The accumulator is the state array in `%rdi`, and the two source arrays are
     loop invariants in `%rsi` and `%rdx`, matching
     `T *sym(uint64_t *state, uint64_t *acc, const uint64_t *inv)`. The caller
     seeds `state` with the carried scalars' entry values and reads their exit
     values from it. -/
-def renderForCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
-    (accName idxName invName : String) (trips : Nat) (body : LowCT) : Option String :=
+def forCarriedLprog (sym : String) (carried : List String) (wAcc wInv : Nat)
+    (accName idxName invName : String) (trips : Nat) (body : LowCT) : Option Lprog :=
   (compileLoop
       (Γouter := [.stackArr 64 carried.length, .stackArr 64 wAcc, .stackArr 64 wInv])
       (accCTy := .memref carried.length) (invCTys := [.memref wAcc, .memref wInv])
@@ -480,11 +506,12 @@ def renderForCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
       stateName (withCarried carried body) (init := .here)
       (invs := .cons (.there .here) (.cons (.there (.there .here)) .nil))).map
     (fun c =>
-      renderLeaf
+      renderLeafLprog
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 
-/-- A countdown loop with loop-carried scalars rendered to owned AT&T x86.
+/-- A countdown loop with loop-carried scalars compiled to the program the owned
+    printer receives.
 
     `ComL.whileNz` reads its trip from an in-scope 64-bit seed register, so the
     rendered leaf takes it as a fourth argument: `%rdi` the state array, `%rsi`
@@ -492,8 +519,8 @@ def renderForCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
     guard variable is a body scalar; the loop the render performs is the seed's
     countdown, so the seed is an iteration bound and the body's own guard is
     what stops the carried counters advancing past their target. -/
-def renderWhileCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
-    (accName idxName invName : String) (body : LowCT) : Option String :=
+def whileCarriedLprog (sym : String) (carried : List String) (wAcc wInv : Nat)
+    (accName idxName invName : String) (body : LowCT) : Option Lprog :=
   (compileLoop
       (Γouter := [.stackArr 64 carried.length, .stackArr 64 wAcc, .stackArr 64 wInv,
                   .reg 64])
@@ -505,24 +532,593 @@ def renderWhileCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
       stateName (withCarried carried body) (init := .here)
       (invs := .cons (.there .here) (.cons (.there (.there .here)) .nil))).map
     (fun c =>
-      renderLeaf
+      renderLeafLprog
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2, argName 3]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]))
 
-/-- A parsed leaf rendered to owned AT&T x86 under the symbol `sym`, `none` when
-    `jfunLeaf` rejects the shape or the body front declines the body.
+/-- The program the owned printer receives for a parsed leaf under the symbol
+    `sym`, `none` when `jfunLeaf` rejects the shape or the body front declines
+    the body.
 
-    A leaf whose prologue initialises no scalar has no carried value and renders
-    over the two-array ABI; one that does renders over the state-array ABI of
-    `renderForCarried` / `renderWhileCarried`. -/
-def renderJFunLeaf (sym : String) (f : JFun) : Option String := do
+    A leaf whose prologue initialises no scalar has no carried value and compiles
+    over the two-array ABI; one that does compiles over the state-array ABI of
+    `forCarriedLprog` / `whileCarriedLprog`. -/
+def jfunLeafLprog (sym : String) (f : JFun) : Option Lprog := do
   let l ← jfunLeaf f
   match l.carried, l.trips with
-  | [], some n => renderFor2 sym l.accWords l.invWords l.accName l.idxName l.invName n l.body
-  | [], none => renderWhile2 sym l.accWords l.invWords l.accName l.idxName l.invName l.body
+  | [], some n => for2Lprog sym l.accWords l.invWords l.accName l.idxName l.invName n l.body
+  | [], none => while2Lprog sym l.accWords l.invWords l.accName l.idxName l.invName l.body
   | c, some n =>
-      renderForCarried sym c l.accWords l.invWords l.accName l.idxName l.invName n l.body
+      forCarriedLprog sym c l.accWords l.invWords l.accName l.idxName l.invName n l.body
   | c, none =>
-      renderWhileCarried sym c l.accWords l.invWords l.accName l.idxName l.invName l.body
+      whileCarriedLprog sym c l.accWords l.invWords l.accName l.idxName l.invName l.body
+
+/-- A parsed leaf rendered to owned AT&T x86 under the symbol `sym`: the printer
+    applied to `jfunLeafLprog`. -/
+def renderJFunLeaf (sym : String) (f : JFun) : Option String :=
+  (jfunLeafLprog sym f).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+
+/-! ## 7. Constant time of a rolled render -/
+
+namespace RolledCT
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+
+/-! ### Operations `applyOpn` defines at every argument -/
+
+/-- The single-source mnemonics `applyOpn` matches by name before its
+    count-tagged shift arm. -/
+def unaryNamed : List String := ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX"]
+
+/-- The two-source word operations of `applyOpn`. -/
+def binaryOps : List String := ["ADD", "SUB", "MUL", "AND", "OR", "XOR"]
+
+/-- The stripped mnemonics whose `applyOpn` arm is defined at every source list
+    of the given length. -/
+def totalOp (op : String) : Nat → Bool
+  | 1 => (op == "MOV" || op == "MOVQ")
+      || (!decide (op ∈ unaryNamed) && (parseImmShiftMnem op).isSome)
+  | 2 => decide (op ∈ binaryOps)
+  | _ => false
+
+theorem shift_isSome {w : Nat} (op : String) (a : BitVec w)
+    (hn : op ∉ unaryNamed) (h : (parseImmShiftMnem op).isSome = true) :
+    (applyOpn op [a]).isSome := by
+  simp only [unaryNamed, List.mem_cons, List.not_mem_nil, or_false, not_or] at hn
+  obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hn
+  obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp h
+  unfold applyOpn
+  split <;> simp_all
+
+theorem totalOp_isSome {w : Nat} (op : String) (xs : List (BitVec w))
+    (h : totalOp op xs.length = true) : (applyOpn op xs).isSome := by
+  rcases xs with _ | ⟨a, _ | ⟨b, _ | ⟨c, rest⟩⟩⟩
+  · simp [totalOp] at h
+  · simp only [totalOp, List.length, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq,
+      Bool.not_eq_true', decide_eq_false_iff_not] at h
+    rcases h with (h | h) | ⟨hn, h⟩
+    · subst h; rfl
+    · subst h; rfl
+    · exact shift_isSome op a hn h
+  · simp only [totalOp, List.length, decide_eq_true_eq] at h
+    simp only [binaryOps, List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with h | h | h | h | h | h <;> subst h <;> rfl
+  · simp [totalOp] at h
+
+/-! ### The address-leak trace of a straight-line list -/
+
+/-- An observation of the address-leak model: the instruction executed, the
+    effective address `(base value, byte offset)` of a register-indexed memory
+    operand, or the direction of a conditional branch. -/
+inductive AddrEvent (w : Nat) where
+  | instr (i : LinstrR)
+  | mem (base : BitVec w) (off : Nat)
+  | branch (taken : Bool)
+
+/-- The effective address a register-indexed operand touches in state `s`. -/
+def operandAddr {w : Nat} (s : Lstate w) : LOperand → List (AddrEvent w)
+  | .arrIdx base idx scale => [.mem (s.lvm base) (scale * (s.lvm idx).toNat)]
+  | _ => []
+
+/-- The observations of executing `i` in state `s`: the instruction, then the
+    effective address of each register-indexed operand. -/
+def instrAddrLeak {w : Nat} (s : Lstate w) (i : LinstrR) : List (AddrEvent w) :=
+  .instr i :: (match i with
+    | .Lopn ds _ ss => (ds ++ ss).flatMap (operandAddr s)
+    | _ => [])
+
+/-- One straight-line step: `lsemStep`, with an instruction `lsemStep` does not
+    model (a flag-only compare) leaving registers and memory unchanged. -/
+def stepT {w : Nat} (i : LinstrR) (s : Lstate w) : Lstate w :=
+  (lsemStep i s).getD s.nextPc
+
+/-- The address-leak trace and final state of a straight-line instruction list. -/
+def runLeak {w : Nat} : List LinstrR → Lstate w → List (AddrEvent w) × Lstate w
+  | [], s => ([], s)
+  | i :: is, s =>
+      let r := runLeak is (stepT i s)
+      (instrAddrLeak s i ++ r.1, r.2)
+
+/-! ### The public-register analysis -/
+
+/-- Two states agree on the registers of `P`. -/
+def Agree {w : Nat} (P : List String) (s₁ s₂ : Lstate w) : Prop :=
+  ∀ r ∈ P, s₁.lvm r = s₂.lvm r
+
+/-- A source operand whose value is a function of the registers in `P`. -/
+def pubOperand (P : List String) : LOperand → Bool
+  | .reg r => decide (r ∈ P)
+  | .imm _ => true
+  | _ => false
+
+/-- A register-indexed operand whose base and index registers are in `P`. -/
+def addrOK (P : List String) : LOperand → Bool
+  | .arrIdx base idx _ => decide (base ∈ P) && decide (idx ∈ P)
+  | _ => true
+
+/-- `P` without the register `d`. -/
+def kill (P : List String) (d : String) : List String := P.filter (· != d)
+
+/-- The public-register transfer of one straight-line instruction: `none` when
+    it addresses memory through a register outside `P` or is a control-flow
+    instruction, otherwise the registers public after it. A destination becomes
+    public when every source is public and the operation writes it (or it was
+    public already); a loaded value is never public. -/
+def pubInstr (P : List String) : LinstrR → Option (List String)
+  | .Lopn ds op ss =>
+      if (ds ++ ss).all (addrOK P) then
+        match ds, ss with
+        | [.reg d], .arrIdx _ _ _ :: _ => if op = "STOREIDX" then some P else some (kill P d)
+        | [.reg d], ss =>
+            if ss.all (pubOperand P) && (decide (d ∈ P) || totalOp (stripWidthTag op) ss.length)
+            then some (d :: P) else some (kill P d)
+        | _, _ => some P
+      else none
+  | .Lalign => some P
+  | .Lret => some P
+  | _ => none
+
+/-- The public-register transfer of a straight-line list. -/
+def pubRun (P : List String) : List LinstrR → Option (List String)
+  | [] => some P
+  | i :: is => (pubInstr P i).bind (fun P' => pubRun P' is)
+
+theorem agree_of_lvm {w : Nat} {P : List String} {s₁ s₂ t₁ t₂ : Lstate w}
+    (h : Agree P s₁ s₂) (h₁ : t₁.lvm = s₁.lvm) (h₂ : t₂.lvm = s₂.lvm) : Agree P t₁ t₂ := by
+  intro r hr; rw [h₁, h₂]; exact h r hr
+
+theorem agree_mono {w : Nat} {P Q : List String} {s₁ s₂ : Lstate w}
+    (hPQ : ∀ r ∈ P, r ∈ Q) (h : Agree Q s₁ s₂) : Agree P s₁ s₂ :=
+  fun r hr => h r (hPQ r hr)
+
+theorem agree_kill {w : Nat} {P : List String} {s₁ s₂ t₁ t₂ : Lstate w} (d : String)
+    (h : Agree P s₁ s₂)
+    (h₁ : ∀ r, r ≠ d → t₁.lvm r = s₁.lvm r) (h₂ : ∀ r, r ≠ d → t₂.lvm r = s₂.lvm r) :
+    Agree (kill P d) t₁ t₂ := by
+  intro r hr
+  simp only [kill, List.mem_filter, bne_iff_ne, ne_eq] at hr
+  rw [h₁ r hr.2, h₂ r hr.2]; exact h r hr.1
+
+theorem agree_setReg {w : Nat} {P : List String} {s₁ s₂ : Lstate w} (d : String)
+    (v : BitVec w) (h : Agree P s₁ s₂) :
+    Agree (d :: P) (s₁.setReg d v).nextPc (s₂.setReg d v).nextPc := by
+  intro r hr
+  simp only [Lstate.nextPc, Lstate.lvm_setReg]
+  by_cases hrd : r = d
+  · simp [hrd]
+  · simp only [hrd, if_false]
+    exact h r (by simpa [hrd] using hr)
+
+theorem evalOperand_agree {w : Nat} {P : List String} {s₁ s₂ : Lstate w}
+    (h : Agree P s₁ s₂) (o : LOperand) (ho : pubOperand P o = true) :
+    evalOperand s₁ o = evalOperand s₂ o := by
+  cases o with
+  | reg r => simp only [pubOperand, decide_eq_true_eq] at ho; simp [evalOperand, h r ho]
+  | imm v => rfl
+  | arr _ _ => simp [pubOperand] at ho
+  | arrIdx _ _ _ => simp [pubOperand] at ho
+
+theorem operandAddr_agree {w : Nat} {P : List String} {s₁ s₂ : Lstate w}
+    (h : Agree P s₁ s₂) (o : LOperand) (ho : addrOK P o = true) :
+    operandAddr s₁ o = operandAddr s₂ o := by
+  cases o with
+  | arrIdx b ix sc =>
+      simp only [addrOK, Bool.and_eq_true, decide_eq_true_eq] at ho
+      simp [operandAddr, h b ho.1, h ix ho.2]
+  | _ => rfl
+
+theorem instrAddrLeak_agree {w : Nat} {P : List String} {s₁ s₂ : Lstate w}
+    (h : Agree P s₁ s₂) (ds : List LOperand) (op : String) (ss : List LOperand)
+    (hok : (ds ++ ss).all (addrOK P) = true) :
+    instrAddrLeak s₁ (.Lopn ds op ss) = instrAddrLeak s₂ (.Lopn ds op ss) := by
+  simp only [instrAddrLeak, List.cons.injEq, true_and]
+  apply List.flatMap_congr
+  intro o ho
+  exact operandAddr_agree h o (List.all_eq_true.mp hok o ho)
+
+/-- Over a source list not headed by a register-indexed operand, a
+    single-register-destination step writes `applyOpn`'s result, or nothing. -/
+theorem stepT_reg {w : Nat} (s : Lstate w) (d op : String) (ss : List LOperand)
+    (hss : ∀ b ix sc rest, ss ≠ .arrIdx b ix sc :: rest) :
+    stepT (.Lopn [.reg d] op ss) s
+      = match applyOpn (stripWidthTag op) (ss.map (evalOperand s)) with
+        | some v => (s.setReg d v).nextPc
+        | none => s.nextPc := by
+  rcases ss with _ | ⟨o, rest⟩
+  · simp only [stepT, lsemStep]
+    split <;> (rename_i h; simp only [h, Option.getD_some, Option.getD_none])
+  · cases o with
+    | arrIdx b ix sc => exact absurd rfl (hss b ix sc rest)
+    | _ =>
+        simp only [stepT, lsemStep]
+        split <;> (rename_i h; simp only [h, Option.getD_some, Option.getD_none])
+
+/-- A step headed by a register-indexed operand changes no register but `d`,
+    and changes none when the opcode is `STOREIDX`. -/
+theorem stepT_arrIdx_lvm {w : Nat} (s : Lstate w) (d op b ix : String) (sc : Nat)
+    (rest : List LOperand) :
+    (∀ r, r ≠ d → (stepT (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm r = s.lvm r)
+      ∧ (op = "STOREIDX" →
+          (stepT (.Lopn [.reg d] op (.arrIdx b ix sc :: rest)) s).lvm = s.lvm) := by
+  refine ⟨fun r hr => ?_, fun hop => ?_⟩
+  · simp only [stepT, lsemStep]
+    split_ifs
+    · simp [Lstate.nextPc, hr]
+    · split <;> rfl
+    · split <;> simp [Lstate.nextPc, hr]
+  · subst hop
+    simp only [stepT, lsemStep, if_neg (by decide : ("STOREIDX" : String) ≠ "LOADIDX"), if_true]
+    split <;> rfl
+
+/-- One accepted instruction leaks the same observations from two states that
+    agree on `P`, and leaves them agreeing on the transferred set. -/
+theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i : LinstrR)
+    (hi : pubInstr P i = some P') (h : Agree P s₁ s₂) :
+    instrAddrLeak s₁ i = instrAddrLeak s₂ i ∧ Agree P' (stepT i s₁) (stepT i s₂) := by
+  cases i with
+  | Lopn ds op ss =>
+      simp only [pubInstr] at hi
+      by_cases hok : (ds ++ ss).all (addrOK P) = true
+      · rw [if_pos hok] at hi
+        refine ⟨instrAddrLeak_agree h ds op ss hok, ?_⟩
+        by_cases hd : ∃ d, ds = [.reg d]
+        · obtain ⟨d, rfl⟩ := hd
+          by_cases hss : ∃ b ix sc rest, ss = .arrIdx b ix sc :: rest
+          · obtain ⟨b, ix, sc, rest, rfl⟩ := hss
+            obtain ⟨h₁a, h₁b⟩ := stepT_arrIdx_lvm s₁ d op b ix sc rest
+            obtain ⟨h₂a, h₂b⟩ := stepT_arrIdx_lvm s₂ d op b ix sc rest
+            by_cases hop : op = "STOREIDX"
+            · simp only [hop, if_true, Option.some.injEq] at hi; subst hi
+              exact agree_of_lvm h (h₁b hop) (h₂b hop)
+            · simp only [hop, if_false, Option.some.injEq] at hi; subst hi
+              exact agree_kill d h h₁a h₂a
+          · push Not at hss
+            have hi' : (if (ss.all (pubOperand P) &&
+                (decide (d ∈ P) || totalOp (stripWidthTag op) ss.length)) = true
+                then some (d :: P) else some (kill P d)) = some P' := by
+              rcases ss with _ | ⟨o, rest⟩
+              · exact hi
+              · cases o with
+                | arrIdx b ix sc => exact absurd rfl (hss b ix sc rest)
+                | _ => exact hi
+            rw [stepT_reg s₁ d op ss hss, stepT_reg s₂ d op ss hss]
+            by_cases hpub : (ss.all (pubOperand P) &&
+                (decide (d ∈ P) || totalOp (stripWidthTag op) ss.length)) = true
+            · rw [if_pos hpub, Option.some.injEq] at hi'; subst hi'
+              simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hpub
+              have hv : ss.map (evalOperand s₁) = ss.map (evalOperand s₂) :=
+                List.map_congr_left (fun o ho =>
+                  evalOperand_agree h o (List.all_eq_true.mp hpub.1 o ho))
+              rw [hv]
+              cases hR : applyOpn (stripWidthTag op) (ss.map (evalOperand s₂)) with
+              | some v => exact agree_setReg d v h
+              | none =>
+                  have hdP : d ∈ P := by
+                    rcases hpub.2 with hdP | htot
+                    · exact hdP
+                    · have := totalOp_isSome (stripWidthTag op) (ss.map (evalOperand s₂))
+                        (by rw [List.length_map]; exact htot)
+                      rw [hR] at this; exact absurd this (by simp)
+                  intro r hr
+                  rcases List.mem_cons.mp hr with rfl | hr
+                  · exact h r hdP
+                  · exact h r hr
+            · rw [if_neg hpub, Option.some.injEq] at hi'; subst hi'
+              refine agree_kill d h (fun r hr => ?_) (fun r hr => ?_) <;>
+                (split <;> simp [Lstate.nextPc, hr])
+        · push Not at hd
+          have hst : ∀ s : Lstate w, stepT (.Lopn ds op ss) s = s.nextPc := by
+            intro s
+            rcases ds with _ | ⟨o, _ | ⟨o2, rest⟩⟩
+            · rfl
+            · cases o with
+              | reg d => exact absurd rfl (hd d)
+              | _ => rfl
+            · cases o <;> rfl
+          have hP : P' = P := by
+            rcases ds with _ | ⟨o, _ | ⟨o2, rest⟩⟩
+            · simpa using hi.symm
+            · cases o with
+              | reg d => exact absurd rfl (hd d)
+              | _ => simpa using hi.symm
+            · simpa using hi.symm
+          rw [hst, hst, hP]
+          exact agree_of_lvm h rfl rfl
+      · rw [if_neg hok] at hi; exact absurd hi (by simp)
+  | Lalign =>
+      simp only [pubInstr, Option.some.injEq] at hi; subst hi
+      exact ⟨rfl, agree_of_lvm h rfl rfl⟩
+  | Lret =>
+      simp only [pubInstr, Option.some.injEq] at hi; subst hi
+      exact ⟨rfl, agree_of_lvm h rfl rfl⟩
+  | _ => simp [pubInstr] at hi
+
+/-- An accepted straight-line list leaks the same observations from two states
+    that agree on `P`, and leaves them agreeing on the transferred set. -/
+theorem pubRun_sound {w : Nat} :
+    ∀ (is : List LinstrR) {P P' : List String} {s₁ s₂ : Lstate w},
+      pubRun P is = some P' → Agree P s₁ s₂ →
+      (runLeak is s₁).1 = (runLeak is s₂).1 ∧ Agree P' (runLeak is s₁).2 (runLeak is s₂).2
+  | [], P, P', s₁, s₂, hr, h => by
+      simp only [pubRun, Option.some.injEq] at hr; subst hr; exact ⟨rfl, h⟩
+  | i :: is, P, P', s₁, s₂, hr, h => by
+      simp only [pubRun, Option.bind_eq_some_iff] at hr
+      obtain ⟨Q, hQ, hr⟩ := hr
+      obtain ⟨hl, hs⟩ := pubInstr_sound i hQ h
+      obtain ⟨hl', hs'⟩ := pubRun_sound is hr hs
+      simp only [runLeak]
+      exact ⟨by rw [hl, hl'], hs'⟩
+
+/-! ### The rolled counted loop -/
+
+/-- A function body split as a counted loop: a prologue, the loop label, the
+    loop body, the back-edge `CMP ctr, 0; jnz top`, and an epilogue. -/
+structure RolledShape where
+  pre : List LinstrR
+  top : LLabel
+  body : List LinstrR
+  ctr : String
+  post : List LinstrR
+
+/-- The back-edge compare of the counter against zero. -/
+def cmpZero (ctr : String) : LinstrR := .Lopn [.reg ctr] "CMP:64" [.reg ctr, .imm 0]
+
+/-- The back-edge branch. -/
+def backEdge (top : LLabel) : LinstrR := .Lcond (.reg "NZ") top
+
+/-- The instruction list a `RolledShape` denotes. -/
+def RolledShape.toBody (r : RolledShape) : List LinstrR :=
+  r.pre ++ .Llabel .internal r.top :: (r.body ++ cmpZero r.ctr :: backEdge r.top :: r.post)
+
+/-- The loop's address-leak trace with at most `fuel` iterations: each
+    iteration runs the body and the compare, then branches back exactly when
+    the counter register is non-zero (`CMP ctr, 0` sets the zero flag, `jnz`
+    reads it). -/
+def loopLeak {w : Nat} (r : RolledShape) : Nat → Lstate w → List (AddrEvent w) × Lstate w
+  | 0, s => ([], s)
+  | fuel + 1, s =>
+      let b := runLeak (r.body ++ [cmpZero r.ctr]) s
+      if b.2.lvm r.ctr ≠ 0 then
+        let q := loopLeak r fuel b.2
+        (b.1 ++ .instr (backEdge r.top) :: .branch true :: q.1, q.2)
+      else (b.1 ++ [.instr (backEdge r.top), .branch false], b.2)
+
+/-- The address-leak trace of the whole rolled function with at most `fuel`
+    loop iterations. -/
+def rolledLeak {w : Nat} (r : RolledShape) (fuel : Nat) (s : Lstate w) :
+    List (AddrEvent w) :=
+  let a := runLeak r.pre s
+  let b := loopLeak r fuel a.2
+  a.1 ++ b.1 ++ (runLeak r.post b.2).1
+
+/-- A candidate set of registers public at the loop head: `P0` intersected `k`
+    times with the set public after one iteration. -/
+def headSet (P0 : List String) (blk : List LinstrR) : Nat → List String
+  | 0 => P0
+  | k + 1 =>
+      let P := headSet P0 blk k
+      match pubRun P blk with
+      | some P1 => P.filter (fun x => decide (x ∈ P1))
+      | none => P
+
+/-- The public-register check of a rolled function from the entry set `Pin`:
+    the prologue is accepted; a loop-head set `H` contained in the prologue's
+    result is accepted by one iteration and contained in its result, which
+    also holds the counter; and the epilogue is accepted from `H`. -/
+def rolledCheck (Pin : List String) (r : RolledShape) : Bool :=
+  match pubRun Pin r.pre with
+  | none => false
+  | some P0 =>
+      let H := headSet P0 (r.body ++ [cmpZero r.ctr]) 4
+      match pubRun H (r.body ++ [cmpZero r.ctr]) with
+      | none => false
+      | some P1 => H.all (fun x => decide (x ∈ P0)) && H.all (fun x => decide (x ∈ P1))
+          && decide (r.ctr ∈ P1) && (pubRun H r.post).isSome
+
+theorem loopLeak_sound {w : Nat} (r : RolledShape) {P0 P1 : List String}
+    (h1 : pubRun P0 (r.body ++ [cmpZero r.ctr]) = some P1)
+    (hsub : ∀ x ∈ P0, x ∈ P1) (hctr : r.ctr ∈ P1) :
+    ∀ (fuel : Nat) {s₁ s₂ : Lstate w}, Agree P0 s₁ s₂ →
+      (loopLeak r fuel s₁).1 = (loopLeak r fuel s₂).1
+        ∧ Agree P0 (loopLeak r fuel s₁).2 (loopLeak r fuel s₂).2
+  | 0, s₁, s₂, h => ⟨rfl, h⟩
+  | fuel + 1, s₁, s₂, h => by
+      obtain ⟨hl, hs⟩ := pubRun_sound _ h1 h
+      have hc := hs r.ctr hctr
+      obtain ⟨hl', hs'⟩ := loopLeak_sound r h1 hsub hctr fuel (agree_mono hsub hs)
+      simp only [loopLeak]
+      rw [hc]
+      split
+      · simp only [hl, hl', true_and]; exact hs'
+      · simp only [hl, true_and]; exact agree_mono hsub hs
+
+/-- **Constant time of an accepted rolled function.** If `rolledCheck Pin r`
+    holds, the address-leak trace of the rolled function is the same from any two
+    states that agree on the registers `Pin`, for every iteration bound: the
+    instructions executed, every register-indexed effective address and every
+    branch direction are functions of the registers `Pin` alone, whatever the
+    memory holds. -/
+theorem rolledLeak_pub_determined {w : Nat} (Pin : List String) (r : RolledShape)
+    (hchk : rolledCheck Pin r = true) (fuel : Nat) {s₁ s₂ : Lstate w}
+    (h : Agree Pin s₁ s₂) : rolledLeak r fuel s₁ = rolledLeak r fuel s₂ := by
+  unfold rolledCheck at hchk
+  split at hchk
+  · exact absurd hchk (by simp)
+  rename_i P0 h0
+  dsimp only at hchk
+  split at hchk
+  · exact absurd hchk (by simp)
+  rename_i P1 h1
+  simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hchk
+  obtain ⟨⟨⟨hH0, hsub⟩, hctr⟩, hpost⟩ := hchk
+  obtain ⟨Q, hQ⟩ := Option.isSome_iff_exists.mp hpost
+  obtain ⟨ha, has⟩ := pubRun_sound _ h0 h
+  obtain ⟨hb, hbs⟩ := loopLeak_sound r h1 hsub hctr fuel (agree_mono hH0 has)
+  obtain ⟨hc, -⟩ := pubRun_sound _ hQ hbs
+  simp only [rolledLeak]
+  rw [ha, hb, hc]
+
+/-! ### Recognising the rolled shape of a compiled function -/
+
+/-- Split a list at its first internal label. -/
+def splitAtLabel : List LinstrR → Option (List LinstrR × LLabel × List LinstrR)
+  | [] => none
+  | .Llabel .internal top :: rest => some ([], top, rest)
+  | i :: rest => (splitAtLabel rest).map (fun x => (i :: x.1, x.2.1, x.2.2))
+
+theorem splitAtLabel_eq : ∀ (L : List LinstrR) {a : List LinstrR} {t : LLabel}
+    {b : List LinstrR}, splitAtLabel L = some (a, t, b) → L = a ++ .Llabel .internal t :: b
+  | [], _, _, _, h => by simp [splitAtLabel] at h
+  | i :: rest, a, t, b, h => by
+      by_cases hi : ∃ top, i = .Llabel .internal top
+      · obtain ⟨top, rfl⟩ := hi
+        simp only [splitAtLabel, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        rfl
+      · have hs : splitAtLabel (i :: rest)
+            = (splitAtLabel rest).map (fun x => (i :: x.1, x.2.1, x.2.2)) := by
+          cases i with
+          | Llabel k top =>
+              cases k
+              · exact absurd ⟨top, rfl⟩ hi
+              · rfl
+          | _ => rfl
+        rw [hs] at h
+        simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨a', t', b'⟩, hx, hy⟩ := h
+        simp only [Prod.mk.injEq] at hy
+        obtain ⟨rfl, rfl, rfl⟩ := hy
+        rw [splitAtLabel_eq rest hx]; rfl
+
+/-- Recognise `CMP ctr, 0; jnz top` at the head of `i :: rest`. -/
+def backEdgeAt? : LinstrR → List LinstrR → Option (String × LLabel × List LinstrR)
+  | .Lopn [.reg c] op [.reg c', .imm 0], .Lcond (.reg nz) t :: post =>
+      if op = "CMP:64" ∧ c' = c ∧ nz = "NZ" then some (c, t, post) else none
+  | _, _ => none
+
+theorem backEdgeAt?_eq {i : LinstrR} {rest : List LinstrR} {c : String} {t : LLabel}
+    {post : List LinstrR} (h : backEdgeAt? i rest = some (c, t, post)) :
+    i :: rest = cmpZero c :: backEdge t :: post := by
+  unfold backEdgeAt? at h
+  split at h
+  · split_ifs at h with hc
+    obtain ⟨rfl, rfl, rfl⟩ := hc
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    rfl
+  · simp at h
+
+/-- Split a list at its first counter back-edge. -/
+def splitAtBack : List LinstrR → Option (List LinstrR × String × LLabel × List LinstrR)
+  | [] => none
+  | i :: rest =>
+      match backEdgeAt? i rest with
+      | some (c, t, post) => some ([], c, t, post)
+      | none => (splitAtBack rest).map (fun x => (i :: x.1, x.2))
+
+theorem splitAtBack_eq : ∀ (L : List LinstrR) {a : List LinstrR} {c : String} {t : LLabel}
+    {p : List LinstrR}, splitAtBack L = some (a, c, t, p) →
+      L = a ++ cmpZero c :: backEdge t :: p
+  | [], _, _, _, _, h => by simp [splitAtBack] at h
+  | i :: rest, a, c, t, p, h => by
+      unfold splitAtBack at h
+      split at h
+      · rename_i c' t' post' hb
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+        exact backEdgeAt?_eq hb
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨a', x⟩, hx, hy⟩ := h
+        simp only [Prod.mk.injEq] at hy
+        obtain ⟨rfl, rfl⟩ := hy
+        rw [splitAtBack_eq rest hx]; rfl
+
+/-- Recognise a function body as a rolled counted loop. -/
+def rolledShape? (L : List LinstrR) : Option RolledShape := do
+  let (pre, top, rest) ← splitAtLabel L
+  let (body, c, t, post) ← splitAtBack rest
+  if t = top then some ⟨pre, top, body, c, post⟩ else none
+
+theorem rolledShape?_toBody {L : List LinstrR} {r : RolledShape}
+    (h : rolledShape? L = some r) : r.toBody = L := by
+  simp only [rolledShape?, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨pre, top, rest⟩, h1, ⟨body, c, t, post⟩, h2, h3⟩ := h
+  split_ifs at h3 with ht
+  subst ht
+  simp only [Option.some.injEq] at h3
+  subst h3
+  rw [splitAtLabel_eq L h1, splitAtBack_eq rest h2]
+  simp [RolledShape.toBody]
+
+/-- Every function of `p` is a rolled counted loop accepted by `rolledCheck`
+    from the entry set `Pin`. -/
+def rolledLprogCheck (Pin : List String) (p : Lprog) : Bool :=
+  p.lp_funcs.all fun f =>
+    match rolledShape? (f.2.lfd_body.map (·.li_i)) with
+    | some r => rolledCheck Pin r
+    | none => false
+
+/-- **Constant time of an accepted compiled program.** When
+    `rolledLprogCheck Pin p` holds, every function body of `p` is a rolled
+    counted loop `r`, and its address-leak trace `rolledLeak r` is the same from
+    any two states that agree on the registers `Pin`, at every word width and
+    every iteration bound. -/
+theorem rolledLprog_pub_determined (Pin : List String) (p : Lprog)
+    (hchk : rolledLprogCheck Pin p = true) :
+    ∀ f ∈ p.lp_funcs, ∃ r : RolledShape, r.toBody = f.2.lfd_body.map (·.li_i) ∧
+      ∀ (w fuel : Nat) (s₁ s₂ : Lstate w), Agree Pin s₁ s₂ →
+        rolledLeak r fuel s₁ = rolledLeak r fuel s₂ := by
+  intro f hf
+  have hf' := List.all_eq_true.mp hchk f hf
+  split at hf'
+  · rename_i r hr
+    exact ⟨r, rolledShape?_toBody hr, fun w fuel s₁ s₂ h =>
+      rolledLeak_pub_determined Pin r hf' fuel h⟩
+  · exact absurd hf' (by simp)
+
+/-! ### Non-vacuity -/
+
+/-- A rolled loop whose load index is the counter image `RBX`. -/
+def publicIndexLoop : RolledShape where
+  pre := [.Lopn [.reg "RBX"] "MOV:64" [.imm 0], .Lopn [.reg "RCX"] "MOV:64" [.imm 4]]
+  top := 1
+  body := [.Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RDI" "RBX" 8],
+           .Lopn [.reg "RBX"] "ADD:64" [.reg "RBX", .imm 1],
+           .Lopn [.reg "RCX"] "SUB:64" [.reg "RCX", .imm 1]]
+  ctr := "RCX"
+  post := [.Lret]
+
+/-- The same loop with a second load indexed by the loaded value `RAX`. -/
+def secretIndexLoop : RolledShape :=
+  { publicIndexLoop with
+    body := publicIndexLoop.body ++ [.Lopn [.reg "RDX"] "LOADIDX" [.arrIdx "RDI" "RAX" 8]] }
+
+/-- The analysis accepts the counter-indexed loop from the public pointer `RDI`. -/
+theorem publicIndexLoop_accepted : rolledCheck ["RDI"] publicIndexLoop = true := by decide
+
+/-- The analysis rejects a load indexed by a loaded (secret) value. -/
+theorem secretIndexLoop_rejected : rolledCheck ["RDI"] secretIndexLoop = false := by decide
+
+end RolledCT
 
 end CatCrypt.Crypto.Jasmin.JincToLowCT
