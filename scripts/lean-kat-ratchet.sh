@@ -26,8 +26,17 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 BASE=scripts/lean-kat-baseline.txt
 
+# The tracked Lean files that exist in the working tree. A path the index still lists
+# after its file was deleted would make awk abort the rest of its batch, so the
+# counts would depend on the state of the index.
+lean_files() {
+  git ls-files -z '*.lean' | while IFS= read -r -d '' f; do
+    [ -f "$f" ] && printf '%s\0' "$f"
+  done
+}
+
 list_thms() {
-  { git ls-files -z '*.lean' | xargs -0 awk '
+  { lean_files | xargs -0 -r awk '
     FNR == 1 { name = ""; stmt = ""; instmt = 0 }
     /^(private |protected )?(theorem|example|lemma)[ \n]/ {
       name = FILENAME ":" FNR; stmt = ""; instmt = 1 }
@@ -40,7 +49,7 @@ list_thms() {
 }
 
 list_evals() {
-  { git ls-files -z '*.lean' | xargs -0 grep -nE '^\s*#(guard|eval)\b' 2>/dev/null \
+  { lean_files | xargs -0 -r grep -nE '^\s*#(guard|eval)\b' 2>/dev/null \
       | grep -vE ':\s*#guard_msgs' | cut -d: -f1,2 || true; } | sort -u
 }
 
