@@ -53,6 +53,19 @@ that would otherwise arise once `JasminDialect` gains a `JasminOp.vymm` arm:
 | `vpsllq`   | unary   | 4 × u64, `imm8`     | logical shift left of each qword lane        |
 | `vpsrld`   | unary   | 8 × u32, `imm8`     | logical shift right of each dword lane       |
 | `vpslld`   | unary   | 8 × u32, `imm8`     | logical shift left of each dword lane        |
+| `vpaddw`/`vpsubw`/`vpmullw` | binary | 16 × u16 | wrapping add / subtract / low product   |
+| `vpmulhw`  | binary  | 16 × i16            | high word of the signed 16×16→32 product     |
+| `vpmaddwd` | binary  | 16 × i16 → 8 × i32  | sum of adjacent signed word products         |
+| `vpcmpgtw`/`vpcmpgtd`/`vpcmpeqd` | binary | 16 × i16 / 8 × i32 | all-ones mask of the comparison |
+| `vpsllw`/`vpsrlw`/`vpsraw` | unary | 16 × u16, `imm8` | logical / arithmetic shifts            |
+| `vpabsd`   | unary   | 8 × i32             | absolute value (`-2³¹` fixed)                |
+| `vpsignd`  | binary  | 8 × i32             | negate / zero / keep by the sign of src2     |
+| `vpacksswb`/`vpackssdw` | binary | per-128-lane | signed-saturating narrowing pack         |
+| `vpermd`   | binary  | 8 × u32             | cross-lane dword permute under an index vec  |
+| `vpunpck{l,h}{dq,qdq}` | binary | per-128-lane | interleave of the low / high elements     |
+| `vpblendw` | binary  | 16 × u16, `imm8`    | per-word select, `imm8` per 128-bit half     |
+| `vpsrldq`  | unary   | 2 × u128, `imm8`    | per-128-lane byte shift right                |
+| `vperm2i128` | binary | 2 × u128, `imm8`   | 128-bit half select from two sources         |
 
 ## The anchor
 
@@ -764,6 +777,29 @@ def YmmOp.denoteUnary : YmmOp → BitVec 256 → BitVec 256
   | .vprolq imm, a => vprolqW a imm
   | .vpmulld, a => vpmulldW a a
   | .vpsrad imm, a => vpsradW a imm
+  | .vpsllw imm, a => vpsllwW a imm
+  | .vpsrlw imm, a => vpsrlwW a imm
+  | .vpsraw imm, a => vpsrawW a imm
+  | .vpabsd, a => vpabsdW a
+  | .vpsrldq imm, a => vpsrldqW a imm
+  | .vpaddw, a => vpaddwW a a
+  | .vpsubw, a => vpsubwW a a
+  | .vpmullw, a => vpmullwW a a
+  | .vpmulhw, a => vpmulhwW a a
+  | .vpmaddwd, a => vpmaddwdW a a
+  | .vpcmpgtw, a => vpcmpgtwW a a
+  | .vpcmpgtd, a => vpcmpgtdW a a
+  | .vpcmpeqd, a => vpcmpeqdW a a
+  | .vpsignd, a => vpsigndW a a
+  | .vpacksswb, a => vpacksswbW a a
+  | .vpackssdw, a => vpackssdwW a a
+  | .vpermd, a => vpermdW a a
+  | .vpunpckldq, a => vpunpckldqW a a
+  | .vpunpckhdq, a => vpunpckhdqW a a
+  | .vpunpcklqdq, a => vpunpcklqdqW a a
+  | .vpunpckhqdq, a => vpunpckhqdqW a a
+  | .vpblendw imm, a => vpblendwW a a imm
+  | .vperm2i128 imm, a => vperm2i128W a a imm
 
 /-- The binary-op denotation (`vpmuldq`/`vpsubq`/`vpaddd`/`vpsubd`/`vpblendd`).
     The unary arms ignore `b`. -/
@@ -793,6 +829,29 @@ def YmmOp.denoteBinary : YmmOp → BitVec 256 → BitVec 256 → BitVec 256
   | .vprolq imm, a, _ => vprolqW a imm
   | .vpmulld, a, b => vpmulldW a b
   | .vpsrad imm, a, _ => vpsradW a imm
+  | .vpaddw, a, b => vpaddwW a b
+  | .vpsubw, a, b => vpsubwW a b
+  | .vpmullw, a, b => vpmullwW a b
+  | .vpmulhw, a, b => vpmulhwW a b
+  | .vpmaddwd, a, b => vpmaddwdW a b
+  | .vpcmpgtw, a, b => vpcmpgtwW a b
+  | .vpcmpgtd, a, b => vpcmpgtdW a b
+  | .vpcmpeqd, a, b => vpcmpeqdW a b
+  | .vpsllw imm, a, _ => vpsllwW a imm
+  | .vpsrlw imm, a, _ => vpsrlwW a imm
+  | .vpsraw imm, a, _ => vpsrawW a imm
+  | .vpabsd, a, _ => vpabsdW a
+  | .vpsignd, a, b => vpsigndW a b
+  | .vpacksswb, a, b => vpacksswbW a b
+  | .vpackssdw, a, b => vpackssdwW a b
+  | .vpermd, a, b => vpermdW a b
+  | .vpunpckldq, a, b => vpunpckldqW a b
+  | .vpunpckhdq, a, b => vpunpckhdqW a b
+  | .vpunpcklqdq, a, b => vpunpcklqdqW a b
+  | .vpunpckhqdq, a, b => vpunpckhqdqW a b
+  | .vpblendw imm, a, b => vpblendwW a b imm
+  | .vpsrldq imm, a, _ => vpsrldqW a imm
+  | .vperm2i128 imm, a, b => vperm2i128W a b imm
 
 /-- The uniform per-arm denotation, reading two `BitVec 256` operands (the unary
     arms ignore the second). This is the single dispatch the `Com` integration

@@ -552,6 +552,52 @@ def renderSetcc (frame spillW : Nat) (cc : String) (d : LOperand) (opn : String)
       [ "\tmov" ++ sizeSuffix dw ++ " $0, " ++ resolveOperand frame spillW dw d qsaveB,
         "\t" ++ cc ++ " " ++ resolveOperand frame spillW 8 d qsaveB ]
 
+/-- The AT&T mnemonic of a two-source 256-bit `YmmOp` rendered by the
+    operand-order-preserving arm of `renderLopn` (`src2, src1, dst`, with only
+    the first AT&T operand allowed in memory). Matching is on the exact jasmin
+    mnemonic, so no name is taken for a prefix of another. -/
+def ymmTwoSrcAtt? : String → Option String
+  | "VPADDW" => some "vpaddw"
+  | "VPSUBW" => some "vpsubw"
+  | "VPMULLW" => some "vpmullw"
+  | "VPMULHW" => some "vpmulhw"
+  | "VPMADDWD" => some "vpmaddwd"
+  | "VPCMPGTW" => some "vpcmpgtw"
+  | "VPCMPGTD" => some "vpcmpgtd"
+  | "VPCMPEQD" => some "vpcmpeqd"
+  | "VPSIGND" => some "vpsignd"
+  | "VPACKSSWB" => some "vpacksswb"
+  | "VPACKSSDW" => some "vpackssdw"
+  | "VPERMD" => some "vpermd"
+  | "VPUNPCKLDQ" => some "vpunpckldq"
+  | "VPUNPCKHDQ" => some "vpunpckhdq"
+  | "VPUNPCKLQDQ" => some "vpunpcklqdq"
+  | "VPUNPCKHQDQ" => some "vpunpckhqdq"
+  | _ => none
+
+/-- The AT&T mnemonic of a one-source 256-bit `YmmOp` whose immediate is carried
+    in its jasmin mnemonic as `<NAME>:<n>`, keyed on the exact `<NAME>`. -/
+def ymmImmUnaryAtt? : String → Option String
+  | "VPSLLD" => some "vpslld"
+  | "VPSRLD" => some "vpsrld"
+  | "VPSRAD" => some "vpsrad"
+  | "VPSLLW" => some "vpsllw"
+  | "VPSRLW" => some "vpsrlw"
+  | "VPSRAW" => some "vpsraw"
+  | "VPSRLDQ" => some "vpsrldq"
+  | _ => none
+
+/-- The AT&T mnemonic of a two-source 256-bit `YmmOp` whose immediate is carried
+    in its jasmin mnemonic as `<NAME>:<n>`, keyed on the exact `<NAME>`. -/
+def ymmImmBinaryAtt? : String → Option String
+  | "VPBLENDD" => some "vpblendd"
+  | "VPBLENDW" => some "vpblendw"
+  | "VPERM2I128" => some "vperm2i128"
+  | _ => none
+
+/-- The name part of a `<NAME>:<n>` mnemonic. -/
+def immOpName (opn : String) : String := (opn.splitOn ":").headD opn
+
 /-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
     AT&T line(s). Handles the three arities the owned-RA body produces:
 
@@ -590,9 +636,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- count of 8/16 would otherwise be misread as a narrow width tag and the
       -- shift dropped. AT&T VEX order `vpslld $<n>, %ymm<a>, %ymm<d>`; the source
       -- operand `XMM<k>` resolves to `%ymm<k>` via `resolveName`.
-      if "VPSLLD".isPrefixOf opn || "VPSRLD".isPrefixOf opn || "VPSRAD".isPrefixOf opn then
-        let mn := if "VPSLLD".isPrefixOf opn then "vpslld"
-                  else if "VPSRLD".isPrefixOf opn then "vpsrld" else "vpsrad"
+      if let some mn := ymmImmUnaryAtt? (immOpName opn) then
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
             [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
@@ -602,8 +646,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- `VPSHUFD:<n>` (in-lane dword shuffle) / `VPERMQ:<n>` (cross-lane qword
       -- permute), `d := perm s n`. The imm `<n>` is carried in the mnemonic
       -- exactly as the shifts above; AT&T order `vp… $<n>, %ymm<s>, %ymm<d>`.
-      else if "VPSHUFD".isPrefixOf opn || "VPERMQ".isPrefixOf opn then
-        let mn := if "VPSHUFD".isPrefixOf opn then "vpshufd" else "vpermq"
+      else if immOpName opn == "VPSHUFD" || immOpName opn == "VPERMQ" then
+        let mn := if immOpName opn == "VPSHUFD" then "vpshufd" else "vpermq"
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
             [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
@@ -611,10 +655,11 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **VMOVSHDUP** (NTT odd-lane duplicate): `d := dup_odd s`. Single-source
       -- two-operand VEX move, no immediate. AT&T `vmovshdup %ymm<s>, %ymm<d>`.
-      else if base == "VMOVSHDUP" then
+      else if base == "VMOVSHDUP" || base == "VPABSD" then
+        let mn := if base == "VMOVSHDUP" then "vmovshdup" else "vpabsd"
         match s, d with
         | .reg sn, .reg dn =>
-            [ "\tvmovshdup " ++ resolveName frame spillW 32 sn qsaveB
+            [ "\t" ++ mn ++ " " ++ resolveName frame spillW 32 sn qsaveB
                 ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **256-bit vector ABI move** (`VMOVDQU`, batch8 SoA ABI): the packed
@@ -868,7 +913,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- The materialised comparison `SET<cc>` is rendered by `renderSetcc`.
       if (setccAtt? (stripWidthTag opn)).isSome then
         renderSetcc frame spillW ((setccAtt? (stripWidthTag opn)).getD "") d opn a b qsaveB
-      else if "VPACK".isPrefixOf opn then
+      else if "VPACK8u64:".isPrefixOf opn || "VPACKD:".isPrefixOf opn then
         let mn := if (opn.splitOn "u32").length > 1 then "vpaddd" else "vpaddq"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
@@ -985,9 +1030,12 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- (src2, first) may be memory and `a` (src1, second) and `d` must be
       -- registers — the same spill posture as `VPSLLVD`'s data/count split with
       -- `a` in the data (must-be-reg) role and `b` in the count (may-be-mem) role.
-      else if opn == "VPSUBD" || opn == "VPSUBQ" || opn == "VPANDN" then
+      else if opn == "VPSUBD" || opn == "VPSUBQ" || opn == "VPANDN"
+              || (ymmTwoSrcAtt? opn).isSome then
         let mn := if opn == "VPSUBD" then "vpsubd"
-                  else if opn == "VPSUBQ" then "vpsubq" else "vpandn"
+                  else if opn == "VPSUBQ" then "vpsubq"
+                  else if opn == "VPANDN" then "vpandn"
+                  else (ymmTwoSrcAtt? opn).getD "vpandn"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
             let bStr := resolveName frame spillW 32 bn qsaveB    -- b = src2 (first, may be mem)
@@ -1018,10 +1066,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- select `dst[i] = imm[i] ? b[i] : a[i]`. NOT commutative (the immediate
       -- fixes the operand roles), so no spilled-operand swap. AT&T VEX order
       -- `vpblendd $<n>, <b>, <a>, <d>` (src2 = b, src1 = a, dst = d).
-      else if "VPBLENDD".isPrefixOf opn then
+      else if let some mn := ymmImmBinaryAtt? (immOpName opn) then
         match opn.splitOn ":", a, b, d with
         | [_, nStr], .reg an, .reg bn, .reg dn =>
-            [ "\tvpblendd $" ++ nStr ++ ", " ++ resolveName frame spillW 32 bn qsaveB
+            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 bn qsaveB
                 ++ ", " ++ resolveName frame spillW 32 an qsaveB
                 ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
@@ -1336,6 +1384,33 @@ binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
         = ["\tvmovshdup %ymm1, %ymm0"]
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPBLENDD:170" [.reg "XMM1", .reg "XMM2"]
         = ["\tvpblendd $170, %ymm2, %ymm1, %ymm0"]
+
+/-- Each 256-bit immediate op renders as its own instruction. A name that
+    extends another one (`VPSRLDQ` extends `VPSRLD`) is not taken for the shorter
+    one, whose meaning differs: `VPSRLDQ` shifts each 128-bit half by bytes,
+    `VPSRLD` each dword by bits. -/
+theorem renderLopn_ymm_imm_ops :
+    renderLopn 0 0 false [.reg "XMM0"] "VPSRLDQ:4" [.reg "XMM1"]
+      = ["\tvpsrldq $4, %ymm1, %ymm0"] ∧
+    renderLopn 0 0 false [.reg "XMM0"] "VPSRAW:3" [.reg "XMM1"]
+      = ["\tvpsraw $3, %ymm1, %ymm0"] ∧
+    renderLopn 0 0 false [.reg "XMM0"] "VPERM2I128:33" [.reg "XMM1", .reg "XMM2"]
+      = ["\tvperm2i128 $33, %ymm2, %ymm1, %ymm0"] ∧
+    renderLopn 0 0 false [.reg "XMM0"] "VPABSD" [.reg "XMM1"]
+      = ["\tvpabsd %ymm1, %ymm0"] := by
+  native_decide
+
+/-- The 256-bit signed packs render as themselves, not through the 512-bit
+    `VPACK8u64:` / `VPACKD:` packed-add arm whose name they extend; and a
+    two-source op keeps its operand order (`src2, src1, dst`). -/
+theorem renderLopn_ymm_two_src_ops :
+    renderLopn 0 0 false [.reg "XMM0"] "VPACKSSDW" [.reg "XMM1", .reg "XMM2"]
+      = ["\tvpackssdw %ymm2, %ymm1, %ymm0"] ∧
+    renderLopn 0 0 false [.reg "XMM0"] "VPMULHW" [.reg "XMM1", .reg "XMM2"]
+      = ["\tvpmulhw %ymm2, %ymm1, %ymm0"] ∧
+    renderLopn 0 0 false [.reg "XMM0"] "VPERMD" [.reg "XMM1", .reg "XMM2"]
+      = ["\tvpermd %ymm2, %ymm1, %ymm0"] := by
+  native_decide
 /- The materialised comparison and the forms the compare-and-select fusion emits;
    static pins of the printed text on single instructions. -/
 #guard renderLopn 0 0 false [.reg "RCX"] "SETNE:64" [.reg "R9", .imm 0]
