@@ -129,20 +129,6 @@ def ristrettoInvsqrtResult (a : Nat) : Nat :=
   let cs_after_inv := evalChain invChain cs_inv_input
   cs_after_inv.read OFF_op
 
-/-- **Soundness for ristretto invsqrt.**
-
-    `1 / √a = a^((p − 5) / 8 · (p − 2)) mod p` simplifies via
-    Fermat: `(a^k)^(p − 2) = a^k · (p − 1)^(...)` etc.  In QR
-    case, the simplest form is `a^((p − 5) / 8) · a^(−1)`.
-
-    The exact closed-form exponent depends on the QR /
-    non-residue case; see Ristretto255 spec for the details. -/
-axiom ristrettoInvsqrtResult_sound (a : Nat) (h : a ≠ 0)
-    (h_qr : ∃ r : Nat, (r * r) % p_25519 = a % p_25519) :
-    -- For QR a, the result is the modular inverse of √a.
-    (ristrettoInvsqrtResult a *
-     ((a ^ ((p_25519 + 3) / 8)) % p_25519)) % p_25519 = 1
-
 /-! ## §3  P-256 inverse chain (sketch)
 
 For comparison and to demonstrate the framework's reach: P-256
