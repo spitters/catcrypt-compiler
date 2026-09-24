@@ -242,11 +242,12 @@ jobs:
             .lake/packages/nominalLean/.lake/build
           key: lake-build-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ github.run_id }}
 
-      - name: Confirm the default target is complete
+      - name: Confirm both libraries are complete
         # Nothing left to elaborate after the step above; this checks that the
-        # package's own default target — the `CatCrypt` submodule glob — is what
-        # the batched build covered.
-        run: lake build
+        # package's two libraries — the default target `CatCryptCompiler` and
+        # the examples library `CatCryptCompilerExamples` — are what the batched
+        # build covered.
+        run: lake build CatCryptCompiler CatCryptCompilerExamples
 
       - name: Reproduce the axiom ledger
         run: lake env lean AxiomAudit.lean

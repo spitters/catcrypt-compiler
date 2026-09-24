@@ -958,7 +958,10 @@ CatCrypt.Hax.Ascent.AscendHaxDemo
 CatCrypt.Hax.Ascent.Coverage
 CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
+CatCrypt.Hax.ClassBuiltinsTest
 CatCrypt.Hax.PrimeirBuiltins
+CatCrypt.Hax.ReifyImpDecodeEndToEnd
+CatCrypt.Hax.ReifyImpEndToEnd
 CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
 CatCrypt.Hax.TypedToRawCode
