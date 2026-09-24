@@ -108,6 +108,32 @@ error. `scripts/sorry-gate.sh` covers a build that stops early: it reads the log
 the modules that build reached and compares per-file counts with the baseline
 `scripts/sorry-baseline.txt`, which allows no such declaration.
 
+## Import structure and rebuild fan-out
+
+An edit to a module rebuilds the modules that import it, directly or
+transitively. `scripts/import-fanout.sh` counts them from the import headers,
+without a build:
+
+```bash
+bash scripts/import-fanout.sh --top 20        # modules with the largest fan-out
+bash scripts/import-fanout.sh CatCrypt.Crypto.Jasmin.LowCT
+bash scripts/import-fanout.sh --importers CatCrypt.Crypto.Jasmin.LowCT
+```
+
+To shrink an import set, add `#min_imports` at the end of a module (from
+`Mathlib.Tactic.MinImports`); it prints the smallest import set that elaborates
+the module. `lake exe graph --to <Module> graph.dot` draws the import DAG of a
+slice. Narrow leaf modules first and build them one small batch at a time, with
+`LEAN_NUM_THREADS=1`; a large file split into parts behind a re-exporting root
+lowers fan-out only once its importers name the part they use.
+
+Library modules use the module system (`module`, `public import`,
+`@[expose]`). Proof bodies are private, so an edit inside a proof does not change
+what importers see. Definition bodies are exported where a file opens with
+`@[expose] public section`; a module whose definitions nothing downstream
+unfolds can drop `@[expose]`, and then an edit to a definition body does not
+change what importers see either.
+
 ## Diagnosing an out-of-memory kill
 
 An out-of-memory kill ends a build with a signal and names no module. To attribute

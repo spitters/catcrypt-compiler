@@ -7,3 +7,10 @@ BUILDING.md	web.tex	# leanblueprint build file the document states is absent
 BUILDING.md	print.tex	# leanblueprint build file the document states is absent
 bench/PROVENANCE.md	bench/keccak_compare/gen/keccak_f1600_x86_from_lean.s	# output path of `lake exe keccaklinear`, not tracked
 CatCrypt/Crypto/SecureCompilation/AGENTS.md	AutoVectorize/	# relative to MLIR/VectorDialect/, named in that row
+HAX_RUST.md	HaxLean/AST.lean	# file of the hax-lean package, named as such
+HAX_RUST.md	HaxLean/Semantics.lean	# file of the hax-lean package, named as such
+bench/p384_ecdsa_rust/PERF.md	p384-safe-rust/build.sh	# file of the AUCurves tree, named as such
+bench/p384_ecdsa_rust/PERF.md	bench/p384_safegcd_compare	# directory of the development repository, named as such
+bench/p384_ecdsa_rust/PERF.md	bench/AGENTS.md	# file of the development repository, named as such
+bench/p384_ecdsa_rust/PERF.md	bench/framework/geomean_ratios.tsv	# file of the development repository, named as such
+bench/p384_ecdsa_rust/PERF.md	bench/p384_fieldmul_compare/README.md	# file of the development repository, named as such
