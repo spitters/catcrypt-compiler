@@ -785,6 +785,7 @@ def impEq : ImpExpr → ImpExpr → Bool
   | .var x, .var y => decide (x = y)
   | .letBind x v b, .letBind y w c => decide (x = y) && impEq v w && impEq b c
   | .app f as, .app g bs => decide (f = g) && impEqList as bs
+  | .tuple as, .tuple bs => impEqList as bs
   | .proj a i, .proj b j => impEq a b && decide (i = j)
   | .ifThenElse c t e, .ifThenElse c' t' e' => impEq c c' && impEq t t' && impEq e e'
   | .match_ s as, .match_ s' bs => impEq s s' && impEqArms as bs
@@ -910,6 +911,10 @@ theorem impEq_sound (a : ImpExpr) : ∀ b, impEq a b = true → a = b := by
     cases b <;> simp only [impEq, Bool.false_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
     obtain ⟨⟨⟨rfl, h1⟩, h2⟩, h3⟩ := h
     rw [ihl _ h1, ihh _ h2, ihb _ h3]
+  | tuple es ih =>
+    intro b h
+    cases b <;> simp only [impEq, Bool.false_eq_true] at h
+    rw [impEqList_sound es ih _ h]
   | _ => intro b h; cases b <;> simp [impEq] at h
 
 /-- **The check.**  The frontend's reading `extracted` of the printed text of
