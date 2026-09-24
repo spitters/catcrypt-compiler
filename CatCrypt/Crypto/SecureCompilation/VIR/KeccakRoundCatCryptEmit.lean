@@ -64,7 +64,7 @@ at MCP heartbeats. Instead, mirroring `Chacha20BlockCatCryptEmit`:
    `keccakRound_catcrypt_eq` folds the per-step equalities through the round
    structure — NOT one monolithic `rfl`.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

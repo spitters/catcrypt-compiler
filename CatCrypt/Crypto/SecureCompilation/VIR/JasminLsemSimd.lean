@@ -96,7 +96,7 @@ subsumes increment 9's `ScalarLeafN` (`ScalarSimdN.of_scalarLeafN`). `vpackZMM`
 is the **first SIMD / packed-lane op**: input two `BitVec 512`, output a
 `BitVec 512`, the lane op selected by `bop`.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/

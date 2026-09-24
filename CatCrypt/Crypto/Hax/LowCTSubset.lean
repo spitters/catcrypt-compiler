@@ -413,8 +413,8 @@ Skeleton — to live in a sibling file `LowCTLowering.lean`:
 
 ```lean
 def lowerType : ImpType → Option TowerType := towerOfImpType
-def lowerExpr : ImpExpr → Option LowCT := sorry  -- see notes
-def lowerFn : ImpFn → Option LowCT := sorry
+def lowerExpr : ImpExpr → Option LowCT := fun _ => none  -- see notes
+def lowerFn : ImpFn → Option LowCT := fun _ => none
 ```
 
 Key challenges:

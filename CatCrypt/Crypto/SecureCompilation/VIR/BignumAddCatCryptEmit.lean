@@ -58,7 +58,7 @@ do lower. So the catCrypt-side `denote = spec` here is the result; the
 jasmin instructions binding the data word and the carry bit separately, mirroring
 the `bvAddCarryLo`/`bvAddCarryHi` split).
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

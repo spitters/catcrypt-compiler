@@ -122,7 +122,7 @@ the data-dependence partial order. We discharge:
   ChaCha20 quarter-round shape, the empty body, and a single-binder
   body.
 
-No `sorry`, no new axioms — the framework's Com-level rewrite is the
+No open goals, no new axioms — the framework's Com-level rewrite is the
 identity, so both preservation theorems reduce to `rfl`.
 
 ## Scope

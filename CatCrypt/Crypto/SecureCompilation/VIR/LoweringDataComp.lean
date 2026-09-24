@@ -43,7 +43,7 @@ This file defines the composition of lowerings: two 1-to-1 lowerings
 The composite transports `⟦t⟧ → ⟦L2.mapTy (L1.mapTy t)⟧` via
 `transTy2 ∘ transTy1` and valuations via `mapVal2 ∘ mapVal1`.
 
-The file contains no `sorry` and declares no axioms.
+The file contains no open goals and declares no axioms.
 -/
 
 @[expose] public section

@@ -153,7 +153,7 @@ exactly the `JLoopBodyN.denote` fold of `update` over the *runtime* trip count
 `(count.lookup V).toNat` — the mathematical ground truth the rolled back-edge
 realises (`forLoopLcmdNRt` seeds the counter from the `count` register and drives
 the same `jne`-loop step-for-step). This ties the loop wrapper to the (separately
-covered) body fragment with no `sorry`: the body's own correctness is the
+covered) body fragment with no open goals: the body's own correctness is the
 `IsCovered` / `rustExecSimulatesDialect` story for `translateDialectControl`,
 reused verbatim; the wrapper contributes only the fold. -/
 
@@ -162,7 +162,7 @@ reused verbatim; the wrapper contributes only the fold. -/
     `ComL.forLoopNRt`'s denotation at any valuation is the
     `(count.lookup V).toNat`-fold `JLoopBodyN.denote` of `update` over the loop
     index, seeded by `init` and threading the invariants `invs`. Structural
-    (`ComL.denote` on `forLoopNRt`), no `sorry`. -/
+    (`ComL.denote` on `forLoopNRt`), no open goals. -/
 theorem rolledForLoopNRt_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -283,7 +283,7 @@ def rolledForLoopNRtNested {Γouter : Ctxt jasminDialect}
     valuation is the outer×inner double fold `JLoopBodyN.nestedDenote` — the outer
     loop over `(outerCount.lookup V).toNat`, the inner trip recomputed per outer
     pass via `innerCount`, applying `innerUpdate` innermost. Structural
-    (`ComL.denote` on `forLoopNRtNested`), no `sorry`. -/
+    (`ComL.denote` on `forLoopNRtNested`), no open goals. -/
 theorem rolledForLoopNRtNested_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)

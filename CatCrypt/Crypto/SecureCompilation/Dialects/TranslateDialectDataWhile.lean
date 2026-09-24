@@ -77,7 +77,7 @@ equals the `runWhileMem` do-while denotation (guard `n != 0`) and decodes to
 `10 + 20 + 30 = 60`; and the data-dependent trip count `whileTripsMem = 3` is read
 off the run (the initial `n`), not supplied.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 -/
 

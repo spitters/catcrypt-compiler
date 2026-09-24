@@ -52,7 +52,7 @@ Replacing `z` by `a.there` throughout the body is therefore denotation-preservin
 
 The pass is conservative: it propagates **only** through a provably
 denotation-preserving copy (a variable-to-variable alias), never through an
-arbitrary expression. All goals closed; no `sorry`.
+arbitrary expression. All goals closed; no open goals.
 -/
 
 @[expose] public section

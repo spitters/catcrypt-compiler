@@ -18,7 +18,7 @@ the emitted op list, length / parent / chain invariants, and (later)
 preservation of `Com.denote` under interpretation.
 
 Stage 1 (this file): purely arithmetic / list-shape facts. Each
-theorem here is `True := trivial`-free and uses no `sorry` / `axiom`.
+theorem here is `True := trivial`-free and has no open goals and uses no `axiom`.
 
 Out of scope (future files):
 

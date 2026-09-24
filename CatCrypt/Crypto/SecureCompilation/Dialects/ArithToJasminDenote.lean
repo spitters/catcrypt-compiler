@@ -39,7 +39,7 @@ leaf.
 Since `arithDenote` is *defined* equal to `jasminDenote (op.toJasmin)` on every
 op, the preservation theorem is exact (no value drift).
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

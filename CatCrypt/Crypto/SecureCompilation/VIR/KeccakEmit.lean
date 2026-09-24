@@ -79,7 +79,7 @@ ladder (`X25519Ladder.lean`) keeps the per-iteration scalar bit inside the body
 while the loop theorem certifies the fixed-trip structure.
 
 All `regArith`-only; `StraightLine` is discharged structurally, so the loop
-theorem needs no semantic evaluation of the 1600-bit body. No `sorry`, no new
+theorem needs no semantic evaluation of the 1600-bit body. No open goals, no new
 axioms.
 
 ## Canonical-map: this file is the entry point for the Keccak emit chain

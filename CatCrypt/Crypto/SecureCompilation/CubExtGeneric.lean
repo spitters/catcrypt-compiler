@@ -65,13 +65,13 @@ ring axioms hold for *any* `ξ : K`, so we do not pin its value.
 We also give `CubExt K` a `CommRing` instance (schoolbook mul, componentwise
 add/sub/neg): every axiom is a componentwise `K`-identity closed by `ext`/`ring`.
 
-## Honesty boundary
+## Scope boundary
 
 This is the abstract algebra only — the construction `K[v]/(v³ − ξ)` and the
 Toom-3 optimization's correctness. It does **not** wire the multiply down to any
 emitted base kernel; that lift is per-instantiation
 (`RelationalFrontBls377Fp6`-style) and deliberately out of scope here, to keep
-the generic core focused and sorry-free. It also does not prove `CubExt K` is a
+the generic core focused and fully proved. It also does not prove `CubExt K` is a
 *field* (that needs `ξ` non-residuosity, a number-theoretic fact about the
 concrete base).
 -/

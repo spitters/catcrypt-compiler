@@ -41,7 +41,7 @@ holds by `field_simp; ring`.  This reuses the affine-side maps `ecAffineDbl` / `
 of `EcRealizationGeneric` verbatim — only the Jacobian side is generalized off the `Z = 1` chart.
 
 This is the **canonical parametric form** (`@canonical_parametric` — parametric over
-the base field).  0 sorries; no custom axioms; the field-algebra tie is unconditional given the
+the base field).  All goals closed; no custom axioms; the field-algebra tie is unconditional given the
 field structure plus the four numeral-nonvanishing hypotheses and `Z ≠ 0`, `Y ≠ 0`.
 -/
 

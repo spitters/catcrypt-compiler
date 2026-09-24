@@ -55,7 +55,7 @@ polynomial product into the ideal intersection `hfact`, given pairwise
 which holds because `ζ_i ≠ ζ_j` makes their difference a unit constant — an
 explicit Bézout witness. `Ideal.isCoprime_span_singleton_iff` then gives `hcop`.
 
-## What is proved (all goals closed; no `sorry`, no extra hypotheses)
+## What is proved (all goals closed, no extra hypotheses)
 
 * `mlkemZeta` — the concrete twiddle family.
 * `mlkemRoot_isPrimitiveRoot` — `17` is a primitive `256`-th root of unity.

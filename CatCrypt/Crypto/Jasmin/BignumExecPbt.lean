@@ -49,14 +49,14 @@ property-based testing because:
 
 ## Why `#eval Testable.check` (not `plausible`)
 
-The `plausible` *tactic* leaves a `sorry` in the proof term — it
-runs as a runtime test, not a compile-time proof. That's not what
-we want for an audit-clean PBT file: any `sorry` counted by
-sorry-checking tools would be a regression signal.
+The `plausible` *tactic* closes the goal with an admitted proof term;
+it runs as a runtime test, not a compile-time proof. An audit-clean
+PBT file needs every goal closed: an admitted term counted by the
+audit tools would be a regression signal.
 
 `#eval Plausible.Testable.check (∀ ...` runs the same property
-test at *elaboration time* (during `lake build`) without leaving a
-`sorry` in any term. If the property fails, build output shows the
+test at *elaboration time* (during `lake build`) without leaving an
+admitted proof in any term. If the property fails, build output shows the
 counter-example; if it passes, build output shows
 "Unable to find a counter-example".
 

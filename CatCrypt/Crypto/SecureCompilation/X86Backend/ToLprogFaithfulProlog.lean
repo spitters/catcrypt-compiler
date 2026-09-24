@@ -65,7 +65,7 @@ The RA-disjointness invariant `PrologueFrameDisjoint` (the renaming avoids the
 red-zone / reserved-scratch cells) is the register-allocator-correctness side
 condition, carried as an explicit named hypothesis (it is the same class as the
 `MemrefPtrsDistinct` / `hinj` RA invariants already carried by the whole-function
-theorem) — never `sorry`.
+theorem) — never an admitted proof.
 -/
 
 @[expose] public section

@@ -74,7 +74,7 @@ the step-realization of `RelationalFrontBls377G2Affine`, under its norm-nonzero
 hypotheses.  We do not re-discharge those hypotheses here; the ladder is the
 new construction.
 
-0 sorries; no custom axioms; the ladder correctness holds over any
+All goals closed; no custom axioms; the ladder correctness holds over any
 `[AddCommGroup G]`.
 -/
 

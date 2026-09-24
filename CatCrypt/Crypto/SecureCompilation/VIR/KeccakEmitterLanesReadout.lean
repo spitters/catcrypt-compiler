@@ -70,7 +70,7 @@ is the same template at 25× parallel scale.
 `[propext, Classical.choice, Quot.sound]` plus the `bv_decide` LRAT certs
 from `KeccakDiffuseExact` (inherited via
 `keccakClosedFullRound`/`keccak_round_bitexact`).
-No new custom axioms. No `sorry`. No `native_decide`.
+No new custom axioms. All goals closed. No `native_decide`.
 
 ## Canonical entry point
 
@@ -393,8 +393,8 @@ this module provides the **framework** and the **composition direction**.
 ## Axiom verification
 
 Run `lean_verify` on `lanesReadoutResidual_of_joint` to confirm:
-`[propext, Classical.choice, Quot.sound]` only. No new custom axioms. No
-`sorry`. No `native_decide`.
+`[propext, Classical.choice, Quot.sound]` only. No new custom axioms. All
+goals closed. No `native_decide`.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterLanesReadout

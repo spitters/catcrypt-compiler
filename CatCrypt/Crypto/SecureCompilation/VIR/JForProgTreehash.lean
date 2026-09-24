@@ -70,7 +70,7 @@ level's emitted single-level `loopRun` serially — equals
    the whole tree.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-level main theorem — no `sorry`, axiom-clean (`[propext, Quot.sound]` like
+single-level main theorem — no open goals, axiom-clean (`[propext, Quot.sound]` like
 `loop_denote_eq`).
 
 ## The Th tweakable-hash leaf (`PIECE 2`)
@@ -364,7 +364,7 @@ theorem thLeafExpr_denote {Γ : Ctxt jasminDialect} {n : Nat}
 /-- `Th` leaf agreement: on the `treehash_th` signature at node length `n`, the
     leaf semantics is `prims.th` of its packed `ADRS ‖ left ‖ right` input. The
     FAEST counterpart of `ShakeLeafAgrees` — opaque leaf, carried
-    agreement obligation, never a `sorry`. -/
+    agreement obligation, never an admitted proof. -/
 def ThLeafAgrees (prims : ThPrimitive) (leafSem : FaestLeafSem) : Prop :=
   ∀ (n : Nat) (args : HVector (fun t => ⟦t⟧) (thArgTys n)),
     leafSem thLeafName (thArgTys n) (thRetTy n) args

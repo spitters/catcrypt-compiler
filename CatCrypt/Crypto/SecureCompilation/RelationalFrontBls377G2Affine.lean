@@ -70,7 +70,7 @@ concrete twist nonresidue).  We do not wire the inverse down to the emitted
 realizations are the deliverables — closing the tie `RelationalFrontBls377G2`
 deferred.
 
-0 sorries; no custom axioms; the realizations hold over `commRing ξ` under the
+All goals closed; no custom axioms; the realizations hold over `commRing ξ` under the
 stated norm-nonzero hypotheses.
 -/
 

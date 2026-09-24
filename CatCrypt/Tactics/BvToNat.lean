@@ -21,7 +21,7 @@ set_option autoImplicit false
 The `bv_to_nat` simp set lifts BitVec-64 polynomial expressions into
 Nat with explicit modular reductions. It feeds into Layer B (carry-
 chain elimination) and ultimately Layer C+D
-(`five_limb_radix51_mul_spec`) for the F1 §3 sorry closure.
+(`five_limb_radix51_mul_spec`) for closing the F1 §3 goal.
 
 ## Coverage
 

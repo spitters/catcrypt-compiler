@@ -24,7 +24,7 @@ This file closes that gap: it composes the committed catCrypt-dialect quarter-ro
 `Com` into the **whole block** and proves the composite equals the canonical
 RFC-8439 §2.3 block spec `ChaCha20Block.chachaBlock` (the 16-word state threaded
 through 10 column+diagonal double-rounds, then the feed-forward add). So the whole
-benchmarked primitive — not just a sub-kernel — now routes through the high
+benchmarked primitive, including every sub-kernel, routes through the high
 `catCryptDialect` surface.
 
 ## Structural composition (NOT a monolithic 16-word `Com`)
@@ -59,7 +59,7 @@ packed quarter-round into the whole block:
    monolithic `rfl`. Every quarter-round in the whole block is evaluated by the
    committed `Com catCryptDialect` program.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

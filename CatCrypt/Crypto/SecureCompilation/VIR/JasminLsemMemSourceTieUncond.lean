@@ -48,7 +48,7 @@ the array-carrier decode:
    4-cell fill loop at runtime count 3 through `fillLoop_export_faithful_denote`,
    its array cells decoding to the source fold.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound} (+
+**All goals closed; axioms = {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the §8 concrete witnesses).** The `lsem→bytes` encoder
 + Sail tables remain the declared trusted base.
 -/

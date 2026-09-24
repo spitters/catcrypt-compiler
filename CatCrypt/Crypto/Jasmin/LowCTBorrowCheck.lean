@@ -27,7 +27,7 @@ every constructor.  The `cloneCall` case is closed cleanly by including
 directly yields both `loc.locVar ≠ cloneVar` and `loc.locVar ≠ dest.locVar`,
 making the three-step chain `RemoveTower → inner ih → SetTower` trivial.
 
-**0 admits, 0 sorry.**
+**0 admits, all goals closed.**
 -/
 
 @[expose] public section

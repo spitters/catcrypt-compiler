@@ -142,7 +142,7 @@ Per-protocol populators consume these via
 `CatCrypt/Crypto/<Protocol>/HaxBridge.lean` (or `SurfaceDeps.lean`)
 and supply the concrete decoder + axioms for each whitelisted leaf.
 
-**Build status**: 0 sorries, 0 axioms.
+**Build status**: All goals closed, 0 axioms.
 -/
 
 end CatCrypt.Crypto.Hax

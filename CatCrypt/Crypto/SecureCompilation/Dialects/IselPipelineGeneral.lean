@@ -242,7 +242,7 @@ induction via the **generated** `rorWalk.induct` (the refactor's payoff) pushes 
 preservation through the descent; the fire case is closed by the value
 lemma `mkRorOp_denote` plus body-congruence; the descend case by `Com.denote`'s
 own structure. No fixed-point-body hypothesis, no operand side condition, no
-`sorry`. -/
+open goals. -/
 
 /-- **Body-congruence for `mkRotrSubtree`.** Its denotation depends on its body only
     through the body's denotation on the three-extended valuation, so bodies that
@@ -258,7 +258,7 @@ theorem mkRotrSubtree_body_congr {Γ : Ctxt jasminDialect} {s : JasminTy} (w n :
 /-- **THE UNCONDITIONAL ISEL SOUNDNESS.** For **every** program `c` and valuation `V`,
     the refactored ROR pass `rorWalk` preserves the denotation:
     `(rorWalk c).denote V = c.denote V`. No fixed-point-body hypothesis, no operand
-    side condition (the recognizer is operand-sound via `RorSite.horig`), no `sorry`.
+    side condition (the recognizer is operand-sound via `RorSite.horig`), no open goals.
 
     Proof: structural induction via the generated `rorWalk.induct`. The fire case
     rewrites `c = mkRotrSubtree …` (the recognizer certificate `site.horig`), collapses

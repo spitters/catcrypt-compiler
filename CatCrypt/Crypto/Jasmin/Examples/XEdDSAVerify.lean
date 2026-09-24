@@ -304,8 +304,7 @@ theorem xeddsaVerify_panic_free
     the abstract `xeddsaSpec` predicate, given that the underlying
     leaves compute the correct algebra.  The proof is parametric
     bookkeeping (peeling off the two RCall constructors and propagating
-    the leaf-spec hypotheses); we leave the body as `sorry` per the
-    deliverable's allowance for multi-hour bookkeeping. -/
+    the leaf-spec hypotheses). -/
 theorem xeddsaVerify_functional_correctness
     (rs rs' : RustState)
     (hIn : inputsWellFormed rs)

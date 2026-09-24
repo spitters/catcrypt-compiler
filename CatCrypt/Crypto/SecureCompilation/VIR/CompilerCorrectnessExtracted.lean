@@ -93,7 +93,7 @@ Leaf agreement between the dialect and the jasmin lowering is proved
 unconditionally by `DialectToJasminComCorrect.dialectJasminLeafAgrees_holds`
 and is not a parametric edge of the front lowering.
 
-The file contains no `sorry`; the remaining gaps are the explicit hypotheses
+The file contains no open goals; the remaining gaps are the explicit hypotheses
 listed above.
 -/
 

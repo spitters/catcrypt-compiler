@@ -42,7 +42,7 @@ schedule, cf. the `pow249Spec` Fermat chain), not a one-op schedule, so it is a
 larger separate kernel — see `FieldDerivedOps.fieldPowF` for the op and its
 Horner recursion.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Classification (read `VIR/DIALECTS.md`)
 
 This is a **denote-preserving `fieldDialect` schedule**, NOT an emit-wired
 kernel.  Each schedule descends to jasmin/bytes through the certified
@@ -52,7 +52,7 @@ hypotheses, GMP-KAT-gated), exactly as `EcLineFieldEmit.ecLineJasmin_denote` —
 we cite that descent here, we do not wire it (these derived forms factor through
 the primitive `fAdd`/`fMul` emit kernels, `FieldEmitGoldenPath`).
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

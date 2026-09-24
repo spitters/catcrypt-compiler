@@ -44,7 +44,7 @@ materialization at the register-copy granularity that `lsemStep` does cover,
 exactly as `ToLprogFaithfulProbe.twoAddrExpand_lsem` models the two-address
 expansion).
 
-PROVED (zero `sorry`, over `Lstate`/`lsemStraight`):
+PROVED (all goals closed, over `Lstate`/`lsemStraight`):
 
 * `argMatStep` / `argMatStep_lsem`: one register materialization
   `mov physDst, abiReg` runs to `physDst ↦ s.lvm abiReg` (a single modeled
@@ -67,7 +67,7 @@ PROVED (zero `sorry`, over `Lstate`/`lsemStraight`):
   ABI argument value. This is precisely the precondition the body's `StoreRel`
   needs for each argument name.
 
-## Whole-function composition: stated as the goal, with the honest hypotheses
+## Whole-function composition: stated as the goal, with its hypotheses
 
 `toLprogPhysAbi_lsem_goal` states the whole-function target: running
 `comToLfundefPhysAbi com` from an ABI-conforming start `Lstate` yields an end
@@ -322,7 +322,7 @@ argument-materialization piece *proved* and the body piece reduced to
 `Com.denote` tie (which the body theorem states via `composeVSteps`) remain as
 the stated hypotheses, outside the modeled fragment. -/
 
-/-- **Whole-function composition (materialization ++ body), with the honest
+/-- **Whole-function composition (materialization ++ body), with its
     framing.** From a start state `s'`, run the argument-materialization sequence
     `argMatSeq pairs` (fresh sources, distinct destinations) and then the bare
     two-address body `physBody (fun _ => none) body`. The materialization

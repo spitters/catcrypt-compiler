@@ -54,7 +54,7 @@ The companion `affine → Jacobian` direction is the constant `Z = 1` store
 `(x, y) ↦ (x, y, 1)` (`EcConvertOps.affineToJacobianF`); it needs no field
 arithmetic, so it has no field schedule here.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Classification (read `VIR/DIALECTS.md`)
 
 This is a **denote-preserving `fieldDialect` schedule**, NOT an emit-wired
 kernel.  Each coordinate schedule descends to jasmin/bytes through the certified
@@ -65,7 +65,7 @@ hypotheses, GMP-KAT-gated), exactly as `EcPointAddFieldEmit.ecAddX3Jasmin_denote
 conversion still flows through the existing `affToPoint` / MSM-normalise
 `BatchInverse` kernels).
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

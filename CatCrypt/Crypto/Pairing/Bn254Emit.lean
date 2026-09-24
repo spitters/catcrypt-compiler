@@ -75,7 +75,7 @@ A BN254 base-field element `Fp` is 4 little-endian `u64` limbs = `32` bytes
   bytes;
 * the pairing output **GT = Fp12** is twelve `Fp`s = `12·FPSZ = 384` bytes.
 
-0 sorries; the only hypotheses are the opaque-leaf agreements
+All goals closed; the only hypotheses are the opaque-leaf agreements
 (`EcLeafAgrees` / `PairingLeavesAgree`) at the leaf-model parameter `leafSem`.
 -/
 

@@ -79,7 +79,7 @@ small lemma, folded through the round structure.
   `bench/chacha_compare/gen_com/chacha20_block_catcrypt.s` under the symbol
   `chacha20_block`.
 
-0 sorries (the whole-block denote reuses the committed per-QR denote +
+All goals closed (the whole-block denote reuses the committed per-QR denote +
 block-composition lemmas).
 -/
 

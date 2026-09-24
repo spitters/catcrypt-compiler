@@ -48,7 +48,7 @@ bit-exact permutation correctness is the scalar `keccakF1600Com` KAT (FIPS 202,
 `bench/keccak_compare/`). What this file adds is: (1) the SoA transpose with its
 round-trip identity, and (2) the proof that the batched 4-state result equals
 four independent scalar permutations of the transposed states — the wiring the
-PQC callers (ML-DSA ExpandA/ExpandMask, SLH-DSA FORS) consume. No `sorry`, no new
+PQC callers (ML-DSA ExpandA/ExpandMask, SLH-DSA FORS) consume. No open goals, no new
 axioms. -/
 
 @[expose] public section

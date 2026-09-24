@@ -52,7 +52,7 @@ is met by construction.
 
 ## Scope
 
-* **Demonstrated (sorry-free):** the generic `k`-limb `mlMulMod` and its value
+* **Demonstrated (fully proved):** the generic `k`-limb `mlMulMod` and its value
   correctness `mlMulMod_val` (composing `mulBignum_val` + `barrettReduce_val`,
   discharging the reduce's input-bound from `x,y < q ⇒ x·y < q²`); the `ZMod q` MUL
   commuting square `encMLK_mul_commutes` (via `mlMulMod_val` + `ZMod.val_mul`); the

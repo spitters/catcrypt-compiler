@@ -81,7 +81,7 @@ Scope:
   composed with §6's source-side tie here; the nested-call route (`calleeRunDN`)
   is covered via §5.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound} (+
+**All goals closed; axioms = {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the §7 concrete witness).** The `lsem→bytes` encoder +
 Sail tables remain the declared trusted base.
 -/
@@ -271,7 +271,7 @@ denotation. -/
     the seed decode (`hinit`) and the per-trip simulation (`hsim`, §3), the
     emitted counter loop's machine run halts at a state whose accumulator
     register decodes to **`JLoopBodyN.denote ⟨m, update⟩ invs acc0`** — the
-    source loop's `m`-fold denotation, not just the spec fold. -/
+    source loop's `m`-fold denotation, beyond the spec fold. -/
 theorem loopMem_export_faithful_denote {w : Nat}
     (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
       (JasminTy.reg w))

@@ -64,8 +64,8 @@ form (newest binding at the head of the context `Γ`), with input variables
 The crux is the De Bruijn bookkeeping relating `body : Com (tg :: tf :: Γ) s` to
 `body' : Com (tg :: Γ) s`. We make the concrete fusion case — `body = .ret here`,
 the literal `gen_matrix → matvec → ret` shape — fully precise and fully proven;
-the general body-shift relation is stated with a single clearly-labelled `sorry`
-and a precise note on what remains.
+the general case (§4) is proved under an explicit hypothesis on the consuming
+body.
 
 ## The fused-leaf spec
 

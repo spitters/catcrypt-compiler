@@ -231,7 +231,7 @@ This file lands the framework:
   `envAgreesRust_preserved_under_tower`, `envAgreesRustFull_extend_tower`
 * Leaf-agreement predicate — `LeafCallAgreesTower`
 
-**Build status**: 0 sorries, 0 axioms, 0 warnings.
+**Build status**: All goals closed, 0 axioms, 0 warnings.
 
 The two next steps (in separate files):
 

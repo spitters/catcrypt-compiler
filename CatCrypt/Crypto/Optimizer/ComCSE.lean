@@ -64,7 +64,7 @@ redirected to `v0` — and a later dead-code pass (`ComDCE`) removes it.
 * Self-contained validation: a program with an adjacent redundant binder has its
   later uses redirected, denotation preserved.
 
-All goals closed. No `sorry`. Axiom set inherited from `CopyProp` (the standard
+All goals closed. Axiom set inherited from `CopyProp` (the standard
 Lean/Mathlib `propext` / `Quot.sound` / `Classical.choice` trio).
 -/
 

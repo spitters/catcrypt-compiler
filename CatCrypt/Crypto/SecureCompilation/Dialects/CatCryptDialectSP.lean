@@ -26,7 +26,7 @@ here as a second, `SPComp`-valued interpretation of the very same dialect:
 * `Com.denoteSP` — the whole-program `SPComp` interpretation
   (`.ret → SPComp.pure`, `.var → bind`).
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

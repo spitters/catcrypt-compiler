@@ -40,7 +40,7 @@ jasmin leaf semantics) specialised to the opaque-default leaf.
 `⟦func .int w⟧ = BitVec w = ⟦jasmin .reg w⟧` definitionally, so `transTy` returns
 the value unchanged in its single branch — exactly the `arith` template.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

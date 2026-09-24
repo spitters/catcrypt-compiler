@@ -51,7 +51,7 @@ and is not described by this module.
 
 ## Scope
 
-The theorems here assume nothing beyond the imports and add no `sorry` or
+The theorems here assume nothing beyond the imports and add no admitted proof or
 `axiom`.  They say nothing about emitted machine bytes: no theorem here relates
 the realizer `LeafSpec` to the bytes of any kernel.
 

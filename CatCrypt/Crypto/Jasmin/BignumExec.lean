@@ -2392,7 +2392,7 @@ def mulx32Body : List InstrR :=
 example : (bignumExec mulx32Body initState).map (fun s => (s.regs "hi", s.regs "lo"))
             = some (2, 0xFFFFFFFA) := by native_decide
 
-/-- Axiom-cleanliness check: the smoke chain has no `sorryAx`. -/
+/-- Axiom-cleanliness check: the smoke chain has no admission axiom. -/
 example : mulx32 0xFFFFFFFE 3 = (2, 0xFFFFFFFA) := by native_decide
 
 end U32MulxSmoke

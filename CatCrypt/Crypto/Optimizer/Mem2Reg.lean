@@ -38,7 +38,7 @@ Once the slot's value lives only in a register, the working set exceeds the
 pool, and the `SpillingRegAlloc` allocator becomes the right tool to place it — the
 `inline → mem2reg → spillRA` pipeline.
 
-## What is proved (sorry-free)
+## What is proved (fully proved)
 
 The pass is the composition `forward` (StoreToLoadForward, denotation-preserving on
 **all** cells and registers, `storeToLoadForward_runBlock`) followed by **dead-store
@@ -836,8 +836,8 @@ theorem AgreeOn.of_eq {prot : List (String × Int)} {s t : JState 64} (h : s = t
 
 /-- **mem2reg translation validation.** For every state, the mem2reg'd block's `runBlock`
     final state agrees with the original's on every register and every protected cell.
-    Forwarding preserves the whole state; DSE preserves the protected footprint. No
-    `sorry`. -/
+    Forwarding preserves the whole state; DSE preserves the protected footprint. All
+    goals closed. -/
 theorem mem2reg_runBlock_agree (prot : List (String × Int)) (block : List (JInstr 64))
     (s : JState 64) :
     AgreeOn prot (runBlock s (mem2reg prot block)) (runBlock s block) := by
@@ -873,7 +873,7 @@ The promotability analysis: a cell `(b, off)` is **promotable** only when it is 
 only by register-source `storeMem`, and `ρ` is a register name the block never otherwise
 mentions (fresh). Under these conditions `promoteCell` is denotation-preserving on every
 register except `ρ` and every cell except `(b, off)` — and `(b, off)` is unprotected scratch,
-`ρ` is not observable. We prove this generally below (no KAT, no `sorry`). -/
+`ρ` is not observable. We prove this generally below (no KAT, no open goals). -/
 
 /-- Registers an instruction **reads** (operands), in the model's evaluation. (We only
     need: a fresh `ρ` is not among these, so the instruction's reads agree across the

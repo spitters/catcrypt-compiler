@@ -34,7 +34,7 @@ MAC-column unit as a front-generated `Com jasminDialect` (`denote = spec`), and 
 reduction algebra as a proven congruence, so a byte-level `fe25519_mul` can be assembled
 on the golden path (no hand-authored `Com`).
 
-## What is proved (0 sorries)
+## What is proved (all goals closed)
 
 ### The reduction algebra (the `2²⁵⁵ ≡ 19` fold)
 
@@ -111,7 +111,7 @@ on the golden path (no hand-authored `Com`).
   `feToNat51 a · feToNat51 b` mod `p`, under the radix-2⁵¹ output bound — the deployed-result
   correctness (`fe25519_mul_deployed_congr`) transferred through the array writeback.
 
-No `sorry`, no `native_decide`, no new axioms (beyond the `bv_decide`/`native_decide`
+No open goals, no `native_decide`, no new axioms (beyond the `bv_decide`/`native_decide`
 axioms the golden-path primitives it composes already carry).
 
 ### The word-level carry reduction as `Com` ops (§6)

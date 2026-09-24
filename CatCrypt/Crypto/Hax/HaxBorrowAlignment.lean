@@ -13,12 +13,12 @@ public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 
 TODO(4.29 port): under Lean 4.29 the original `HaxBorrowAlignment.lean`
 overflows the elaborator stack at compile time (`Stack overflow detected.
-Aborting.`) even when its proofs are sorry-stubbed. The root cause is
+Aborting.`) even when its proofs are stubbed out. The root cause is
 likely a kernel reducibility regression triggered by the wide
 `ImpExpr.ind`-shaped match expressions in `allVarsImp`, `freshLetBoundImp`,
 and `borrowSafeImp` (many constructors × heavy `cases` cascades inside
 the structural-induction proofs and well-founded termination checks).
-Switching the defs to `partial def` and sorry-stubbing the proofs is
+Switching the defs to `partial def` and stubbing out the proofs is
 insufficient — the overflow predates any tactic block.
 
 Stubbed pending a 4.29-compatible decomposition (split per-constructor

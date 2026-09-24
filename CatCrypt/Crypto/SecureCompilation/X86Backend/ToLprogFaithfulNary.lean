@@ -21,7 +21,7 @@ count** on the binop fragment.
 
 ## What this module proves
 
-PROVED (zero `sorry`, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`):
+PROVED (all goals closed, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`):
 
 * `UniformRegArith`: the inductive predicate — a `Com` all of whose bindings are
   non-shift, default-width (`w ≠ 64`) `regArith` binops, terminating at `.ret`.

@@ -62,7 +62,7 @@ the conditional add is the `bvAnd`/`bvSub`/`bvXor` mask idiom; every op is one o
   (`gf256mulW_kats`) and to the `xtimeW` ×x of the AES emit.
 * `gf256MacKernelW` — the closed-form MAC `acc ⊕ (a · b)`, the kernel spec.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

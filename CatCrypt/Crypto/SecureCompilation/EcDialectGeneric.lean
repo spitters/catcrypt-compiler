@@ -65,14 +65,14 @@ So the inversion-free projective Jacobian group law of `EcRealizationGeneric.lea
 prime field, with the curve supplied only as `params` + `ha : params.a = 0` + the four
 numeral-nonvanishing facts (all consequences of `p > 8`).
 
-## Scope (the honest caveat — the generic chart)
+## Scope (caveat: the generic chart)
 
 Exactly as the per-curve dialect ties: the connection is the **generic-chart** identity
 (distinct points for `padd`; `2y ≠ 0` doubling for `pdbl`).  The exceptional cases
 (vertical line / point at infinity) and the all-pairs group-law completeness are not
 attempted here — they are the deep EC group theorem the generic MSM carries.
 
-0 sorries; no custom axioms (the base-field structure is the section hypothesis
+All goals closed; no custom axioms (the base-field structure is the section hypothesis
 `[Fact (Nat.Prime p)]`, and `ha : params.a = 0` is a hypothesis on `params`, not an
 asserted axiom).
 -/

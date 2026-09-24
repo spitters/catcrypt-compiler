@@ -64,7 +64,7 @@ Field: `FpBLS = ZMod p` (`CatCrypt.Util.BLS12381Verified`), a Mathlib `Field`
 
 ## Proof status
 
-All theorems are proved without `sorry`. The symbolic parts mirror the Rocq
+All theorems are fully proved. The symbolic parts mirror the Rocq
 `field`/`fsatz`/`ring` proofs: `swuGxRatio` (the `gx₂ = t³·gx₁` field identity),
 the constant-nonzero lemmas, `swuZ_nonsquare` (`Z = 11` is a nonresidue, by
 `norm_num` on `jacobiSym 11 p` and `ZMod.euler_criterion`), `fpSqrt_correct`,

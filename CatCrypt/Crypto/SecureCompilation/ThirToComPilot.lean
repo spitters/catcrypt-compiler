@@ -15,7 +15,7 @@ Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 This module is a **design + pilot** for a *direct* lowering from a minimal
 subset of Rust's Typed-HIR (THIR — the typed AST that hax/charon expose) into
 CatCrypt's intrinsically-typed SSA IR `Com` (`VIR/Core.lean`), with a
-**denotation-preservation lemma proved (no `sorry`)** on the pilot fragment and
+**denotation-preservation lemma proved (no open goals)** on the pilot fragment and
 concrete pilot functions.
 
 ## Why this is distinct from the existing `haxpipeT` path
@@ -480,7 +480,7 @@ theorem unrollFor_denote (acc : String) (init : Atom) (n : Nat) (body : Rhs)
     succeeds, the THIR denotation equals the lowered `Com`'s denotation.
 
     Proved by induction following `thirToCom`'s own recursion (so the bounded
-    loop is handled through its unrolling). No `sorry`. -/
+    loop is handled through its unrolling). All goals closed. -/
 theorem thirToCom_denote (σ : Scope) (t : Thir) (ρ : TEnv)
     (V : Ctxt.Valuation (scopeCtxt σ)) (c : Com pilot (scopeCtxt σ) .u64)
     (hAg : Agree σ ρ V) (hc : thirToCom σ t = some c) :

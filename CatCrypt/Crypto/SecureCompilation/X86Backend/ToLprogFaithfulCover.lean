@@ -43,7 +43,7 @@ non-shift (`bop ∉ {shl,shr,andn}`), default-width (`w ≠ 64`) binding
 
 ## What this module proves
 
-PROVED (zero `sorry`, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`):
+PROVED (all goals closed, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`):
 
 * `comToBody_var_head`, `comToBody_var_head_eq`: the de-Bruijn → `Lopn` head
   identification (the literal `comToBody` head of a `regArith` binding is

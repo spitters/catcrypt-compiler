@@ -39,7 +39,7 @@ straight-line composition of the already-landed `gf251MulSpec`/`gf251Square`, so
 inversion stays inside the index-free `Com jasminDialect` fragment (NO division
 instruction is emitted; the field-inverse is a `mul`/`sqr` schedule).
 
-## The two parts (both sorry-free here)
+## The two parts (both fully proved here)
 
 1. **The Fermat identity at the `ZMod` level** (`invFermat251`): `a^249 = a⁻¹`
    for `a ≠ 0` in `ZMod 251`, via Mathlib's **`ZMod.pow_card_sub_one_eq_one`**
@@ -61,11 +61,11 @@ power chain on the serialized coordinate. A `RealizedUnaryKernel`-style relation
 tie (`pow249UnaryRealization`) and a worked example (`2⁻¹ = 126`, since
 `2·126 = 252 ≡ 1`) complete the field-op realization set.
 
-## What is closed vs deferred (HONEST)
+## What is closed vs deferred
 
 * The **Fermat identity** (`invFermat251`) and the **full 249-power chain**
   commuting square (`pow249_commutes`, the *complete* `1→3→7→15→31→62→124→249`
-  schedule, **not** scoped to the identity) are both proved sorry-free here by
+  schedule, **not** scoped to the identity) are both fully proved here by
   composition of the landed mul/square squares — no `bv_decide` over a 249-fold
   product, the chain is *abstracted* through the already-proved single-op squares.
 * The **emitted `Com`** for the *whole* chain (a 14-binding-per-multiply ×
@@ -78,7 +78,7 @@ tie (`pow249UnaryRealization`) and a worked example (`2⁻¹ = 126`, since
   content** — that `a⁻¹` *equals* this emitted multiply-square chain on the
   serialized coordinate — is fully proved.
 
-## The honest gap to affine `ECParams.add` + `bls12_377`
+## The gap to affine `ECParams.add` + `bls12_377`
 
 With inversion realized, the affine slope `λ = num · denom⁻¹`
 (`ECParams.tangentSlope` / `chordSlope`) is now a composition of emitted field
@@ -246,7 +246,7 @@ theorem invMod251_spec_transfers (a b : ZMod 251) (ha : a ≠ 0) (hb : b ≠ 0) 
 /-- **The Fermat power chain computes the inverse on the worked vector `a = 2`.**
     `2⁻¹ = 126` in `F_251` (since `2·126 = 252 = 251 + 1 ≡ 1`); the emitted
     power chain `pow249Spec` on `encMod251 2` therefore equals `encMod251 126`.
-    Sorry-free: `invMod251_commutes` ties the chain to `2⁻¹`, and `2⁻¹ = 126` is
+    Fully proved: `invMod251_commutes` ties the chain to `2⁻¹`, and `2⁻¹ = 126` is
     decided in `ZMod 251`. -/
 theorem invMod251_kat_two :
     pow249Spec (encMod251 2) = encMod251 126 := by

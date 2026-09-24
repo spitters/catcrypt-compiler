@@ -69,7 +69,7 @@ run halts at `bodyStep^[c+1]`) with `JForProgCT.loopRun_eq` /
 `jforprog_loop_lsem_correct_and_robust`: the literal emitted loop's `lsem` run
 decodes to `JForProg.denote`, and is public-counter constant-time.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge; no edit to `JasminLsem.lean`.**
 -/
 

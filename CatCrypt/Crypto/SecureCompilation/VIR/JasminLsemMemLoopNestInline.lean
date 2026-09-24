@@ -89,7 +89,7 @@ block); `ggmBlks_flat` checks the flattening is `ggmProg`'s body.
 SPEC fold `runIBsL`, which must equal `ggmNestedFold` (`= 14` at `num = 8`,
 `= 28` at `num = 16` — `ggm_depth3_num_sensitive`).
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound}** for the
+**All goals closed; axioms = {propext, Classical.choice, Quot.sound}** for the
 segment lemma and the closed theorems (+ `Lean.ofReduceBool` for the
 `native_decide` SPEC-fold evaluations in the validate).
 -/

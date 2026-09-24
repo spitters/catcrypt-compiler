@@ -328,8 +328,8 @@ theorem, mirroring `CryptoToJasminComCorrect.cryptoDialectToJasminCom_denote_eq`
 Only the arith fragment of `CatCryptOp` is in the domain of `catToArith`; the
 algebraic-datatype / memref / extCall ops are out of scope for an arith pass
 (they have no `arith.*` target), so the translation is partial (`Option`),
-exactly like the jasmin front. The general preservation theorem is left as a
-labelled `sorry` (a *sketch*); the agreement lemmas of §3 are the inputs that
+exactly like the jasmin front. The general preservation theorem is stated as a
+prose sketch and not proved; the agreement lemmas of §3 are the inputs that
 make its `.var` case discharge. -/
 
 /-- Semantic-level op correspondence: the arith fragment of `CatCryptOp`,

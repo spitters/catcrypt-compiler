@@ -88,7 +88,7 @@ divergences addressed — (1) here, (2) in `encodeLopn`'s `encTagShift` arm — 
 shift-free ALU core byte-matches `encodeLcmd` exactly (§4b′), and the shift op itself
 agrees per-op; the only whole-core residual is the gather's per-shift materialise `mov`.
 
-No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval`/byte-length
+No open goals, no axiom, no `native_decide` (the lemma proofs; the `#eval`/byte-length
 witnesses in §4 are interpreter evaluation, not part of any proof term).
 -/
 

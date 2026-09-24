@@ -36,11 +36,11 @@ defined here directly (the canonical BN254 base prime).
 
 ## BN254 instance scope
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
+* **ADD (fully proved):** the abstract `ZMod q` field add `a + b`, serialized by the
   4-limb encoding `encMLK q 4`, equals the emitted 4-limb reducing kernel `mlAddModK`
   on the serialized operands (with the `condSubLimbs` reduce) — read through
   `bignumVal`. This is `bn254_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
+* **MUL (fully proved):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 8-limb (`2k = 8`) Barrett-reducing kernel `mlMulMod`
   on the serialized operands — with the multi-limb Barrett reduce of the
   product (`mu = ⌊(2^64)^8 / q⌋`, defined *as its side-condition value* so no `2^512`

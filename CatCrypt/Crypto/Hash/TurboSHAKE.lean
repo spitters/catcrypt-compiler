@@ -63,7 +63,7 @@ a 4-round margin.
 * [NIST draft-irtf-cfrg-turbo-shake](https://www.ietf.org/archive/id/draft-irtf-cfrg-turbo-shake-01.html)
 * [RFC 9861 — KangarooTwelve and TurboSHAKE](https://www.rfc-editor.org/rfc/rfc9861)
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

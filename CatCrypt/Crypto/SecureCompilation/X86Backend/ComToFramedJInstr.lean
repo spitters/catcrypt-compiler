@@ -73,10 +73,10 @@ No new trust: the body bytes are `ScalarEncoder.encodeJBlock` (gas-pinned), the
 framing is `LeafBytes`'s trusted push/pop/ret scaffold (the same tier the Lprog
 framed path's `encodeLfundefBytes` carries — both reuse `LeafBytes.encPushReg /
 encPopReg / encRet`), and the ELF stitch is `ElfObject.buildElfObjectMulti`. This
-module only *composes* those plus the gather guard. No `sorry`, no axiom, no
+module only *composes* those plus the gather guard. No open goals, no axiom, no
 `native_decide`.
 
-## Honesty — what reconciliation remains
+## What reconciliation remains
 
 The `.text` *instruction-byte* agreement (§2) is the drop-in property. The
 **ELF section layout** of the two objects can still differ in non-`.text`

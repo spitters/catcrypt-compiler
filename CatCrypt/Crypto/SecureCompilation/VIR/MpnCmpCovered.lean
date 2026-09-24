@@ -43,7 +43,7 @@ false: the guard `ix != 0 && df == 0` stops the scan the moment a limb differs
 data-dependent trip count `scalarWhileTrips` reads off the run — the byte-level
 `cmp ; Jcc ; jmp` early-exit shape is the downstream back-edge emitter's job
 (`TranslateDialectDataWhile.rolledWhileNz`), and its value-level `{-1,0,+1}`
-correctness is the external libgmp `__gmpn_cmp` KAT (opaque-leaf honesty: the
+correctness is the external libgmp `__gmpn_cmp` KAT (opaque leaf: the
 per-limb sign carrier `rs := a[ix] - b[ix]` is the arithmetic waist; the
 `{-1,0,+1}` projection is the KAT obligation).
 
@@ -57,7 +57,7 @@ per-limb sign carrier `rs := a[ix] - b[ix]` is the arithmetic waist; the
   denote of the guard-driven `mpn_cmp` scan, via `rWhileNz_whole_denote` at the
   trip count read off the run.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 @[expose] public section

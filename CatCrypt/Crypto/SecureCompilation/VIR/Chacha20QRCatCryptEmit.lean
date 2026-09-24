@@ -64,7 +64,7 @@ program — which uses only seam-lowering ops — denotes to the RFC quarter-rou
   round's `#ROR_32`/`+`/`^` reach the printer) and the `(params, body) = (4, 12)`
   shape.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

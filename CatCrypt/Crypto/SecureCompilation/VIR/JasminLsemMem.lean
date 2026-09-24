@@ -96,7 +96,7 @@ out of scope of this syntactic leak model and is flagged, not hidden.
 addCarryHi ∪ castW ∪ stackLoad ∪ stackStore` — the `ScalarMemN` predicate, which
 subsumes increment 8's `ScalarCastN` (`ScalarMemN.of_scalarCastN`).
 `stackLoad`/`stackStore` are the **first memory ops**: they read/write the array
-carrier, the orthogonal state axis. Still deferred, with the same honest reasons:
+carrier, the orthogonal state axis. Still deferred, for the same reasons:
 `regConst` (string-baked width on the wire), `vpackZMM`/`extCall`/`callN` (SIMD /
 opaque-leaf axes), the secret-index address-leak residual (above).
 
@@ -116,7 +116,7 @@ This is what closes the memory axis of the `runBlock`↔`lsem` machine-model bri
 **additive** (defaulted), so the whole increment-1–9 register/array chain — none
 of which touch `lmem` — is unchanged.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/

@@ -48,7 +48,7 @@ The end-to-end concrete witness (front-compile → `ComL.whileNz` → rendered
 back-edge → machine run = `ComL.denote`) lives in
 `Dialects/TranslateDialectWhileNode.lean` (`native_decide` validates).
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound}.**
+**All goals closed; axioms = {propext, Classical.choice, Quot.sound}.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile

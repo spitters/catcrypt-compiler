@@ -95,8 +95,8 @@ All of this uses the existing taint machinery (`cmdCT`, `guardPublic`,
   by reduction to `cmdCT`.
 * The loop noninterference is proved **relative to**
   `BodyStepPreservesPublic`, a named hypothesis on the loop-body state
-  evolution (which a verified `LowCT.exec` would discharge); it is neither a
-  `sorry` nor an axiom.
+  evolution (which a verified `LowCT.exec` would discharge); it is neither an
+  admitted proof nor an axiom.
 * The bench (`bench/mpn_invert_safegcd_compare/vartime_invert_bench.c`) and
   KAT (`vartime_invert_kat.c`) live on the C side: the Lehmer inverse is
   checked byte-exact (5-way KAT: `Lehmer == EEA == BGCD == GMP mpz_invert == CT

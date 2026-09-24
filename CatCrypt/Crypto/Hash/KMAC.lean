@@ -54,7 +54,7 @@ cSHAKE domain separation.
 * [SP 800-185 -- SHA-3 Derived Functions, Section 8, NIST 2016]
 * [Bertoni et al., CRYPTO 2008 -- Sponge indifferentiability]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

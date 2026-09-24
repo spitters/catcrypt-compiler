@@ -259,7 +259,7 @@ giving each name's slot, and key that build on the body's runtime pointer so
 repeated calls over the same body reuse it. `@[implemented_by]` swaps these in
 for native execution; the pure spec is unchanged (the cache is an
 implementation detail behind a `@[implemented_by]` boundary — no new axiom and
-no `sorry` enters the spec side). -/
+no admitted proof enters the spec side). -/
 
 /-- The first-appearance distinct register-name list of a body, paired with the
     name→slot `HashMap`. Built in one `O(n)` pass. -/
@@ -1686,9 +1686,9 @@ def physBodyCalleeSave (shiftImm : ShiftImmOracle) (body : Lcmd) : Lcmd :=
     general the SysV call-arg register `callRegArgs[j]` (`[RDI, RSI, …]`).
     `comToLfundefPhys` declares `lfd_arg := callRegArgs.take n` but — unlike the
     pointer-out `comToLfundefPhysAbi`, which calls `buildArgPtrMaterialize` —
-    previously emitted **no** copy from `callRegArgs[j]` into `phys(aj)`. The body
-    then read whatever was in `phys(aj)` at entry (a callee-saved register it just
-    saved, hence a constant value independent of the argument). This emits, for
+    emits **no** copy from `callRegArgs[j]` into `phys(aj)` by itself. Without one
+    the body reads whatever was in `phys(aj)` at entry (a callee-saved register it
+    just saved, hence a constant value independent of the argument). This emits, for
     each in-range argument `j` whose name `aj` the body actually references, the
     entry copy `phys(aj) ← callRegArgs[j]`, sourcing the *live* SysV register
     directly (there is no red-zone save on this path):

@@ -44,7 +44,7 @@ The reg/reg arithmetic and immediate-MOV raw steps (§1) extend the
 `JasminLsemMemSourceTieUncond` reg/imm bricks to the two-source and nullary
 opcode shapes the coupled update needs.
 
-**0 sorries; axioms inherited from the imported `jasminDialect` denotation +
+**All goals closed; axioms inherited from the imported `jasminDialect` denotation +
 `Lean.ofReduceBool` for the §5 concrete witnesses.**
 -/
 

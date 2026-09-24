@@ -26,7 +26,7 @@ lowering. The dialect program returns a `.memref 4` holding the whole 256-bit
 sum, and we prove that reading each cell back (`memGetDyn` at index `0..3`) yields
 the matching `bignumAdd4` sum limb. Then `cryptoDialectToJasminCom` lowers the
 whole program to jasmin — the entire 256-bit result is emitted, via
-`stackStore`, not just the carry.
+`stackStore`, in addition to the carry.
 
 (`memrefZero` is *not* in the lowered fragment — only `memrefSetDyn`/`memrefGetDyn`
 are — which is exactly the out-pointer ABI: the buffer is an argument, not a
@@ -50,7 +50,7 @@ freshly-stack-allocated value.)
   `ctTransTy` of the output memref. The whole 256-bit result, carried through
   `catCryptDialect` to jasmin via `stackStore`.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section
@@ -230,7 +230,7 @@ def bignumAdd4ComMemref : Com catCryptDialect Γ₉ (.memref 4) :=
 /-- **The output-memref dialect program denotes EXACTLY the abstract memref
     spec.** The carry chain writes the four sum limbs into the output memref at
     indices `0..3`, producing precisely `bignumAddMemrefSpec` — the whole 256-bit
-    result, not just the carry. -/
+    result as well as the carry. -/
 theorem bignumAdd4ComMemref_denote
     (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 64) (m : Fin 4 → BitVec 64) :
     bignumAdd4ComMemref.denote

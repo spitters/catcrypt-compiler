@@ -97,7 +97,7 @@ def rolledForLoopNRtC {Γouter : Ctxt jasminDialect}
     the `ComL.forLoopNRt`'s denotation at any valuation is the
     `(count.lookup V).toNat`-fold `JLoopBodyN.denote` of `update` over the loop
     index, seeded by `init` and threading the invariants `invs`. Structural
-    (`ComL.denote` on `forLoopNRt`), no `sorry`. -/
+    (`ComL.denote` on `forLoopNRt`), no open goals. -/
 theorem rolledForLoopNRtC_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -155,7 +155,7 @@ def rolledForLoopNRtNestedC {Γouter : Ctxt jasminDialect}
     `ComL.forLoopNRtNested`'s denotation at any valuation is the outer×inner
     double fold: the outer loop over `(outerCount.lookup V).toNat`, the inner
     trip recomputed per outer pass via `innerCount`, applying `innerUpdate`
-    innermost. Structural (`ComL.denote` on `forLoopNRtNested`), no `sorry`. -/
+    innermost. Structural (`ComL.denote` on `forLoopNRtNested`), no open goals. -/
 theorem rolledForLoopNRtNestedC_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)

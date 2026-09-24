@@ -70,7 +70,7 @@ GHASH), exactly as `AesRoundCatCryptEmit` gives the GF(2⁸) single-multiply
 `xtime`/`mul3` rather than a 128-step unrolling. `gf128_mul` is then the
 straight-line composition (`Fin.foldl`) of these per-bit kernels.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

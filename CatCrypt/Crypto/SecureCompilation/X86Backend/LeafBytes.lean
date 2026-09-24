@@ -43,7 +43,7 @@ arg-marshal moves and the whole body are verified-encoder output.
 The encoder bytes are gas-pinned per `ScalarValidation` (`decode∘encode = id` on
 the GP-ALU subset, plus the differential KAT against the gas-assembled `.s`).
 The `pushq`/`popq`/`ret` framing bytes are the standard trusted leaf scaffold
-(no encoder arm), the same trust tier the demos already carry. No `sorry`, no
+(no encoder arm), the same trust tier the demos already carry. No open goals, no
 custom axiom is introduced here.
 -/
 

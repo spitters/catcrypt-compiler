@@ -90,7 +90,7 @@ real kernel.
 **Next step.** With the re-point proven byte-safe, the GoldenPath kernels' `def
 …_x86_elf : ByteArray := compileComToElf …` definitions can be re-pointed to
 `compileComToElfJInstrFull …` (each external byte-KAT passes unchanged), after which
-`encodeLprog` is deletable from the GoldenPath emit path. No `sorry`, no axiom, no
+`encodeLprog` is deletable from the GoldenPath emit path. No open goals, no axiom, no
 `native_decide`.
 -/
 

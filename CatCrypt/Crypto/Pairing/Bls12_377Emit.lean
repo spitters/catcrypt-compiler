@@ -69,7 +69,7 @@ parameter `leafSem`, denote each orchestration `Com` through
 realization over a mathematical `Fp` is stated; the values of the primitives
 themselves rest on the Rust KAT `bench/bls12_377_compare/bls377_kat.rs`.
 
-0 sorries; the only hypotheses are the opaque-leaf agreements
+All goals closed; the only hypotheses are the opaque-leaf agreements
 (`Bls377FieldLeavesAgree` / `Bls377PairingLeavesAgree`) at the leaf-model
 parameter `leafSem`.
 -/

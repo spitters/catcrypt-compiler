@@ -65,7 +65,7 @@ shift arm) detects the prefix with `JasminLprogExport.hasPrefix`, which is
 `List.isPrefixOf` on the character lists, and `shiftCountOf` recovers the count
 through `String.toList`/`drop`. The per-op theorems here (and in `GatherFullBody`
 §3) are the kernel-reducible constituents; the `#eval` confirms they compose on
-the real kernel. No `sorry`, no axiom, no `native_decide`.
+the real kernel. No open goals, no axiom, no `native_decide`.
 
 ## Net status — the milestone
 

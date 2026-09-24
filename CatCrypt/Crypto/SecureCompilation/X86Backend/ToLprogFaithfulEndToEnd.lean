@@ -22,7 +22,7 @@ explicit, computed value — the physical analogue of
 
 ## What this module proves
 
-PROVED (against the real `lsemStraight`, zero `sorry`):
+PROVED (against the real `lsemStraight`, all goals closed):
 
 * `composeVSteps_cons`: the single-binding reduction of `composeVSteps` —
   pushing one block-with-transformer pair through the fold rewrites the head

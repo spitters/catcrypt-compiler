@@ -94,7 +94,7 @@ whole-kernel `hbody` is the arg-marshal `hmar` gap (below).
    so `framedLeaqText_eq_lprog`'s `hmar : argMarshalBytes … = []` (empty marshal) is also
    **false** for the physical body — the recon's flagged default-ABI gap, confirmed here.
 
-No `sorry`, no axiom, no `native_decide` — every byte-level claim below is `decide +kernel`
+No open goals, no axiom, no `native_decide` — every byte-level claim below is `decide +kernel`
 on a closed mnemonic / `simp only` on the post-dispatch byte function, the kernel-clean
 route of `LprogJInstrMnemDispatch`.
 -/
@@ -282,8 +282,7 @@ rotations, SipHash, Sha512, …) emitted code SILENTLY MISSING its rotations.
 The fix (`LprogBytes.encTagShift` + the `tagShiftExt` arm in `encodeLopn`) closes it: the
 count-in-tag shift now emits the SAME `shr/shl r64, imm8` bytes (`C1 /ext ib`, or the
 `D1 /ext` 1-bit short form) the `.imm`-source shift arm produces for the same count. The
-lemmas below — previously the `*_nil` codification of the buggy `[]` — are now restated to
-the correct **emits-the-shift** form: `encodeLopn … "SHR:19:64" … = encTagShift 1 5 (gpNumU dn) "SHR:19"`.
+lemmas below state the **emits-the-shift** form: `encodeLopn … "SHR:19:64" … = encTagShift 1 5 (gpNumU dn) "SHR:19"`.
 
 The arm SELECTION is kernel-clean (`tagShiftExt` is the **prefix-only** `/ext` detector — no
 `String.toNat?`, so `decide +kernel` reduces it on a closed tag); the emitted count `n` stays

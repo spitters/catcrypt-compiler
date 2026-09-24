@@ -20,7 +20,7 @@ bridge:
 2. the **`Store ↔ Estate` value-encoding bijection** (`DynVal` words ↔ the
    psem-mirror `Value`) — *this* file (gap #2), over the register-word fragment.
 
-This file closes gap #2 for the register-word fragment, sorry-free.
+This file closes gap #2 for the register-word fragment, fully proved.
 
 ## The central finding: the register word is *not* byte-encoded
 
@@ -47,7 +47,7 @@ encodings (`Nat` width on the JasminPrint side, `WSize` tag on the mirror side)
 round-trip, and that this lifts to a register-level **state correspondence**
 preserved by writes, which a full state bijection extends.
 
-## What is proved (all sorry-free)
+## What is proved (fully proved)
 
 * `encodeWSize` / `decodeWSize` and `decodeWSize_encodeWSize` — the `Nat`-width ↔
   `WSize`-tag round-trip on the six machine widths (the only non-identity part of
@@ -86,7 +86,7 @@ Together with gap #1 (the AST translation) and operational adequacy
 that a full bijection extends; the arithmetic core (`denote_add_int_agree`) and
 the relational witness (`golden_add_bridge`) already live in `ComJasminBridge`.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

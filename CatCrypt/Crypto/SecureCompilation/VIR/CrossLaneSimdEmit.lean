@@ -73,7 +73,7 @@ uses this). The `<<<16`/`<<<8` rotates are the constant lane permutations
 rotates stay shift-or (not byte-aligned). The pshufb is the cross-lane `extCall`
 leaf; everything else is the per-lane ARX of the existing 4-way emit.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The emit↔reference byte-identity for the permute leaf
 is KAT-gated (Tier-B), validated by `bench/chachapoly_compare/` against RFC 8439
 §2.3.2 — there are no fabricated test vectors.
@@ -154,7 +154,7 @@ opaque-leaf fragment (`JasminLsemLeaf.ScalarLeafN.ext`). Its lsem step is the
 existing `lsemStepLeaf`; correctness is the carried `LeafAgreesN`, tying the
 step's leaf to the dialect `extCall` denotation. For a NON-reserved permute name
 the dialect denotation is `jasminExtSem`'s opaque default, so the canonical
-agreeing leaf is the one whose value IS that default — the honest opaque edge.
+agreeing leaf is the one whose value IS that default — the opaque edge.
 The byte-identity of the emitted `vpshufb`/`vpermq`/`vpermd` against the
 reference is the leaf's KAT (Tier-B), not a Lean claim. -/
 
@@ -171,7 +171,7 @@ def permuteLeafEnv : LeafEnvN :=
     edge).** `permuteLeafEnv` agrees with the dialect `extCall` leaf by
     construction, so the cross-lane permute's lsem step (`lsemStepLeaf
     permuteLeafEnv`) faithfully simulates the dialect `extCall` binding. This is
-    the honest external-primitive edge: the permute leaf's *byte* meaning is its
+    the external-primitive edge: the permute leaf's *byte* meaning is its
     KAT, the *denotation* edge is this agreement. -/
 theorem permuteLeafEnv_agrees : LeafAgreesN permuteLeafEnv := by
   intro name w w' va

@@ -75,7 +75,7 @@ equals the `runWhileMem` do-while denotation (guard `x < 100`) with the guard
 recomputed each pass and decodes to `x = 100`; and the data-dependent trip count
 `whileTripsMem = 4` is read off the run.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 -/
 

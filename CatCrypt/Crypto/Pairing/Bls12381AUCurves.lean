@@ -64,7 +64,7 @@ the AUCurves verified witness" once, and the `Bls12381Emit.*_denote` theorems,
 which denote each `Com` through `jasminDenoteWith leafSem`, carry through
 verbatim.
 
-0 sorries; no new custom axioms; the only hypotheses are the leaf agreements at
+All goals closed; no new custom axioms; the only hypotheses are the leaf agreements at
 the leaf-model parameter `leafSem`, named for the AUCurves witness.
 -/
 

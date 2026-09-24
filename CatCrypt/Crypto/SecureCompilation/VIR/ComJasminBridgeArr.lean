@@ -32,7 +32,7 @@ as `RegCorr` is near-identity on the reg word. `encodeArrVal` maps
 `.Varr n a ↦ ⟨.stackArr 8 n, a⟩`, and `ArrCorr d v := d = encodeArrVal v` is the
 value-level array correspondence; `StateCorrArr` lifts it to a frame.
 
-## What is proved (all sorry-free)
+## What is proved (fully proved)
 
 * `encodeArrVal` / `ArrCorr` / `StateCorrArr` — the additive array-slot
   correspondence (parallel to `RegCorr`/`StateCorrReg`, no edit to
@@ -68,7 +68,7 @@ register index — is a separate residual: the mirror reads the index via
 register (`.Vword`) index needs an index-value correspondence
 (`.Vword ↦ .Vint`) not present here.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

@@ -57,7 +57,7 @@ hypothesis exactly as `comAlgebraicPipeline_denote` requires. **Not `rfl`** —
 it inherits the inductive/saturation preservation proofs of the
 components.
 
-All goals closed. No `sorry`.
+All goals closed.
 -/
 
 @[expose] public section

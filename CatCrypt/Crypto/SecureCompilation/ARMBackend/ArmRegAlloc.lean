@@ -58,7 +58,7 @@ that removes the stack traffic.
      cell agree with `r`), `spillValid_runAMemBlock` (the block keeps that
      agreement) and `evalReload_noop` (a reload from an agreeing cell is a no-op).
 
-No `sorry`, no new custom axioms; the value identity of the applied SHA-256 body is
+No open goals, no new custom axioms; the value identity of the applied SHA-256 body is
 its runtime KAT vs the FIPS 180-4 digest (`bench/arm_compare`, qemu-aarch64).
 -/
 

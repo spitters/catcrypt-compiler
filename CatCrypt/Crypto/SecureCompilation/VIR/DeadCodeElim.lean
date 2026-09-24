@@ -74,7 +74,7 @@ residual.
 * Concrete sanity examples (`#eval`) exercising `analyzeDce` on small
   synthetic Com terms.
 
-No `sorry`, no new axioms — the framework's Com-level rewrite is the
+No open goals, no new axioms — the framework's Com-level rewrite is the
 identity, so both preservation theorems reduce to `rfl`.
 
 ## Residuals

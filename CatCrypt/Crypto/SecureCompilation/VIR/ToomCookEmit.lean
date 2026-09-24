@@ -74,12 +74,12 @@ Toom-3 over Karatsuba, documented as a future extension.
 
 ## Status
 
-* **`toomCook3_eq_schoolbook`** (algebraic identity, sorry-free, axiom-clean
+* **`toomCook3_eq_schoolbook`** (algebraic identity, fully proved, axiom-clean
   modulo the standard mathlib chain — proven by `ring` over the 6-unknown
   polynomial split).
 * **`emitToomCook3Coeffs`** (concrete jazz emit) — outputs an ABI-compatible
   jasmin program; one-level Toom-3 over schoolbook sub-products.
-* **Honest partial:** the FULL recursion to n=761 with 25 sub-products
+* **Partial:** the FULL recursion to n=761 with 25 sub-products
   overflows single-pass jasmin source. The current emit demonstrates the
   one-level top split + schoolbook leaves at parameters that compile cleanly;
   scaling to two-level Toom-3 is documented as a follow-up step.
@@ -282,16 +282,16 @@ jasmin source size. This module emits the **top-level Toom-3 wrapper**
 parametrically; the sub-product emit is a hook (`subProductEmit`) that can be
 threaded with a schoolbook or recursive Toom-3 sub-emitter.
 
-### Source-size note (honest partial)
+### Source-size note (partial)
 
 A faithful 2-level Toom-3 emit at n=761 with 25 schoolbook sub-products of
 m=85 produces > 200K jasmin source lines, exceeding what jasminc accepts in
 practice on the test platforms used.  At source-size scaling limits the
 recommended fallback is **Karatsuba over the production Barrett kernel** —
-giving an honest sub-quadratic improvement (~25% reduction in sub-products)
+giving a sub-quadratic improvement (~25% reduction in sub-products)
 while staying within single-pass jasmin source-size limits.
 
-This module ships **the algebraic proof** (sorry-free polynomial identity) and
+This module ships **the algebraic proof** (fully proved polynomial identity) and
 **a parametric emit framework** so the sub-product sizes can be tuned per
 target. The bench/sntrup_compare/ side ships the existing N=16 schoolbook
 emit; an updated Karatsuba/Toom-3 emit at a Karatsuba-feasible parameter

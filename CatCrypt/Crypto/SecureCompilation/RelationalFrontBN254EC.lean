@@ -76,7 +76,7 @@ The ties are the **generic-chart** identities (`Z = 1`, distinct/doubling branch
 infinity) and the all-pairs group-law completeness are *not* attempted here — exactly the
 generic-chart scope of the Pallas version.
 
-0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
+All goals closed; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
 

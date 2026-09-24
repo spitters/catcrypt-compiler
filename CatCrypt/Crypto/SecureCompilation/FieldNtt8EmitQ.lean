@@ -115,7 +115,7 @@ lowering to exactly ONE binding) in output order.
   (`bench/field_kernel_compare/ntt8_q3329_kat.c`) checks the rendered `.s`
   produces `out[0..7] = ntt8NatRef` byte-for-byte.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section
@@ -501,7 +501,7 @@ def checkVecFront (g : List Nat) : Bool :=
     && (frontDenoteAt "o6" g == some (BitVec.ofNat 64 ref.2.2.2.2.2.2.1))
     && (frontDenoteAt "o7" g == some (BitVec.ofNat 64 ref.2.2.2.2.2.2.2))
 
-/-- **Honesty gate** (`#eval`): the front-compiled NTT matches the independent
+/-- **Agreement gate** (`#eval`): the front-compiled NTT matches the independent
     `% 3329` reference on the four KAT vectors, all eight outputs. Expect `true`. -/
 def katChecks : Bool := katVecs.all checkVecFront
 

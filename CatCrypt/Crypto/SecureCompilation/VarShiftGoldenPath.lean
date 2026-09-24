@@ -86,7 +86,7 @@ full register-amount op (§2) is only needed for an unbounded public amount.
 * `boundedVarShr_denote` — the bounded-public variable right shift (amount `< 4`)
   equals the immediate-shift select-tree, `interval_cases` over the 4 cases.
 
-No `sorry`, no new `axiom`.
+No open goals, no new `axiom`.
 -/
 
 @[expose] public section

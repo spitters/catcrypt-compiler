@@ -42,7 +42,7 @@ constant table `"rc"`), we **prove**:
   bit-exact loop theorem — a sanity check, not the validation.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, which is
-**vacuous** here (the ι body has no `extCall`). No `sorry`, no new axioms, no
+**vacuous** here (the ι body has no `extCall`). No open goals, no new axioms, no
 `native_decide` for the bit-exactness.
 
 ## Corollaries for the other two per-round-constant primitives

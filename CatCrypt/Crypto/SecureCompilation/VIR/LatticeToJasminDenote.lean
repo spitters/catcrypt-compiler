@@ -59,7 +59,7 @@ mirroring `mapVarHV`. We prove `mapVal` commutes with variable lookup
 * `tgtCom_denote_preserved` / `srcCom_denote_preserved` — smoke instances on the
   canonical NTT-expanded `tgtCom` and the unexpanded `srcCom`, under `hLeaf`.
 
-0 sorries. The leaf-agreement hypothesis `hLeaf` is **discharged** in
+All goals closed. The leaf-agreement hypothesis `hLeaf` is **discharged** in
 `LatticeToJasminDenoteUncond.lean`: `JasminDialect.jasminExtSem` now gives the
 16-bit stack-array leaves their real (data-oblivious) semantics, so
 `lowerLatticeToJasmin_denote_eq_uncond` holds with no hypothesis.

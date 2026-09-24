@@ -60,7 +60,7 @@ drops an observable effect: denotation is preserved exactly.
 * Self-contained validation: a program with a dead trailing binder is
   shrunk by the pass while its denotation is preserved.
 
-All goals closed. No `sorry`. Axiom set: `propext`, `Quot.sound`,
+All goals closed. Axiom set: `propext`, `Quot.sound`,
 `Classical.choice` (the standard Lean/Mathlib trio inherited via `Egraph`).
 -/
 

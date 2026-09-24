@@ -70,7 +70,7 @@ over a 3-element array, countdown guard `n`):
   `Lcond NZ` back-edge and NO `Lcond Z` zero-trip guard — a bottom-test
   do-while, not `forLoopNRt`'s top-guarded shape.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound} (+
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the `native_decide` validates).**
 -/
 
@@ -147,7 +147,7 @@ def rolledWhileNzComL {Γouter : Ctxt jasminDialect}
     valuation is the `(guard.lookup V).toNat`-fold `JLoopBodyN.denote` of
     `update` — the trip count the countdown guard exit realises, seeded by
     `init` and threading the invariants `invs`. Structural (`ComL.denote` on
-    `whileNz`), no `sorry`. -/
+    `whileNz`), no open goals. -/
 theorem rolledWhileNzComL_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)

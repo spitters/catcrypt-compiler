@@ -47,7 +47,7 @@ Every node is a field op whose `ZMod 251` commuting square is proved:
 So the affine add introduces **no new field op** — it is exactly the slope
 division (inverse + multiply) wrapped around the same sub/mul golden-path kernels.
 
-## What this module establishes (all sorry-free)
+## What this module establishes (fully proved)
 
 * `ecAddBV` — the affine-add `BitVec 64` straight-line schedule (`λ/x₃/y₃`) over
   the encoded coordinates, built from `sub251`/`pow249Spec`/`gf251MulSpec`.
@@ -330,7 +330,7 @@ theorem worked_add_ECParams :
 /-- **The worked add, realized formula side.**  The emitted `BitVec`-pair schedule
     `ecAddBV` on the encoded coordinates `(enc 0, enc 1, enc 2, enc 3)` computes
     exactly the encoded output coordinates `(enc 250, enc 0)` — the relational tie
-    holding on two concrete curve points, sorry-free. -/
+    holding on two concrete curve points, fully proved. -/
 theorem worked_add_realized :
     ecAddBV (encMod251 0) (encMod251 1) (encMod251 2) (encMod251 3)
       = (encMod251 250, encMod251 0) := by

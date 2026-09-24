@@ -61,7 +61,7 @@ invariant.
       against `RespectsFootprint`.
     * `rustExec_preserves_arrays` — the frame along a `RustExec`, from the
       bridge theorem and a `StepSimulatesJasmin` witness.
-- **Hypothesis-discharge form** (no `sorry`): the operational arms
+- **Hypothesis-discharge form** (no open goals): the operational arms
   (`RCall`, `RIfNz`, `RWhileNz`, `RCloneCall`, `RLimbStore`) take
   the structural footprint shape (union for `RIfNz`, fixed-point for
   `RWhileNz`, inner-call equivalence for `RCloneCall`) as a
@@ -310,7 +310,7 @@ theorem rustExec_preserves_arrays
 
 /-! ## §6. Per-LowCT-arm structural decomposition
 
-The framing-level theorem above is fully proved (no `sorry`) because
+The framing-level theorem above is fully proved (no open goals) because
 it consumes the body's `RespectsFootprint` evidence as a hypothesis.
 The structural per-arm content — i.e. *how* one establishes that the
 specific Jasmin lowering of a `borrowOk` source command actually

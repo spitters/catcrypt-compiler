@@ -69,7 +69,7 @@ GMP-KAT-gated `.s`). The `modMul` square is discharged against the proven
 `montgomeryMul_correct` + `MultiLimbEmitBridge.montForm_zmod_eq`; the linear
 squares are pure `ZMod p` algebra.
 
-**0 sorries.** Target axiom set `{propext, Classical.choice, Quot.sound}` plus
+**All goals closed.** Target axiom set `{propext, Classical.choice, Quot.sound}` plus
 the `native_decide` LRAT certificates the secp256k1 prime/constant pins cite
 (`secp256k1Limbs_value`, `secp256k1_nprime`).
 -/

@@ -62,7 +62,7 @@ body reads the 24-element constant stream `RC[0..23]`, threaded by index and
 **proven**, for the full round (diffusion core + ι) rather than the isolated ι.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, **vacuous** here
-(the round body is pure `regArith` + `stackLoad`, no `extCall`). No `sorry`, no new
+(the round body is pure `regArith` + `stackLoad`, no `extCall`). No open goals, no new
 axioms, no `native_decide` for the bit-exactness.
 
 ## Canonical entry point

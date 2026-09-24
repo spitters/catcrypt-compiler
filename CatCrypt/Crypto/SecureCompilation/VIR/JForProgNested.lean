@@ -65,7 +65,7 @@ full — equals `NestedForProg.denote init`. The proof:
    the outer `outerN`-fold against `NestedForProg.denote`.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-level main theorem — no `sorry`, axiom-clean
+single-level main theorem — no open goals, axiom-clean
 (`[propext, Classical.choice, Quot.sound]`).
 
 ## A concrete validating kernel: the 2D accumulate

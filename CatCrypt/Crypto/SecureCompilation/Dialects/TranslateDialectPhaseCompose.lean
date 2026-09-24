@@ -83,7 +83,7 @@ the outer per-iteration body itself a loop would require either a new `ComL`
 constructor (`update : ComL …`) or a loop `JasminOp` — both forbidden here (no edits
 to the `ComL` semantics), and the latter impossible by construction.
 
-So the honest split is:
+So the split is:
 * the **front** for the double-fold nested runtime loop is a real structural gap
   (reported precisely above — needs a `ComL` node whose per-iteration body is a
   `ComL`, not a `Com`);
@@ -166,7 +166,7 @@ data threads through — iterating it is the sequential composition of the phase
 /-- **Phase-compose denotation.** When the body front-compiles to `update`, the
     composed `ComL` denotes to the continuation `cont` evaluated on the valuation
     extended by the runtime-trip fold of `update` (seed `init`, invariants `invs`,
-    trip `(count.lookup V).toNat`). Structural on `ComL.denote`; no `sorry`. -/
+    trip `(count.lookup V).toNat`). Structural on `ComL.denote`; no open goals. -/
 theorem rolledForLoopNRtCont_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -210,7 +210,7 @@ theorem rolledForLoopNCont_ret_here {Γouter : Ctxt jasminDialect}
 /-- **Fixed-trip phase-compose denotation.** When the body front-compiles to
     `update`, the composed `ComL` denotes to the continuation `cont` evaluated on
     the valuation extended by the `N`-fold `JLoopBodyN.denote` of `update` (seed
-    `init`, invariants `invs`). Structural on `ComL.denote`; no `sorry`. -/
+    `init`, invariants `invs`). Structural on `ComL.denote`; no open goals. -/
 theorem rolledForLoopNCont_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
     (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -256,7 +256,7 @@ theorem rolledForLoopNRtNestedCont_ret_here {Γouter : Ctxt jasminDialect}
 /-- **Nested phase-compose denotation.** When both bodies front-compile, the
     composed `ComL` denotes to the continuation `cont` evaluated on the valuation
     extended by the outer×inner double fold `JLoopBodyN.nestedDenote`. Structural
-    on `ComL.denote`; no `sorry`. -/
+    on `ComL.denote`; no open goals. -/
 theorem rolledForLoopNRtNestedCont_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)

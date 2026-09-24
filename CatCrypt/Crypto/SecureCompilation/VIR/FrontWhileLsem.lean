@@ -68,7 +68,7 @@ c+1`. The `FrontLoopEncodes` commuting square (one front iteration ↔ one `lsem
 `bodyStep`) is reused exactly. The front denotation side is the `n`-fold
 `Function.iterate` characterisation of `RWhileNz` proved here.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
 
@@ -99,7 +99,7 @@ guard `e` hits `0` (the public guard trajectory length). -/
 
     * the single-iteration body edge `hbody` — running `body` from `rs` lands in
       `frontStep rs` (the named front edge, the while analogue of `RFor`'s per-iteration
-      `hbody`, NOT a `sorry`);
+      `hbody`, NOT an admitted proof);
     * the **public guard trajectory** `hnz`/`hz` — the guard `e` is nonzero for the
       first `n` iterations and hits `0` at iteration `n`;
 

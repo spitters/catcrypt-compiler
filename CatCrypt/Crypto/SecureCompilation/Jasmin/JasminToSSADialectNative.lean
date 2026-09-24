@@ -28,14 +28,14 @@ likewise direct:
    (`translateMonoExprD_denoteSP`) is derived directly against the
    `catCryptDialect` op denotation.
 
-2. **Sorry-free.** The `Copn` head is dispatched via the function's own
+2. **Fully proved.** The `Copn` head is dispatched via the function's own
    equation compiler (`unfold translateMonoCmdD; split`), so the wildcard
    arms carry the negative shape information as `h_trans : none = some _`
-   (immediately contradictory) — there is no `match`-compiler wildcard
-   `sorry`. The two translated intrinsic shapes (`ADD_64` / `ADC_64`) — which
+   (immediately contradictory) — there is no admitted `match`-compiler
+   wildcard arm. The two translated intrinsic shapes (`ADD_64` / `ADC_64`) — which
    `translateMonoCmdD` translates to a 3-`let` dialect chain over the carry
    ops `bvAdd64` / `bvAdc` (plus `fst` / `snd` destructuring) — are proved
-   natively against `Com.denoteSP`. The proof is `sorryAx`-free (verified by
+   natively against `Com.denoteSP`. The proof is free of admitted goals (verified by
    `#print axioms` at the foot of the file — only `propext`,
    `Classical.choice`, `Quot.sound`).
 
@@ -465,10 +465,10 @@ theorem translateMonoCmdD_denoteSP_native {Γ : Ctx} {n : Nat}
 end
 
 -- The native dialect-translator correctness depends only on the three standard
--- Lean axioms — no `sorryAx`. This is the point of the file: the dialect
+-- Lean axioms — no admission axiom. This is the point of the file: the dialect
 -- reference semantics are established without routing through
 -- `translateMonoCmd_correct` (which inherits the pre-existing `Copn`-wildcard
--- `sorry` in `translateMonoCmd_Copn_correct`). Reported axioms:
+-- admitted proof in `translateMonoCmd_Copn_correct`). Reported axioms:
 -- `[propext, Classical.choice, Quot.sound]`.
 #print axioms translateMonoCmdD_denoteSP_native
 

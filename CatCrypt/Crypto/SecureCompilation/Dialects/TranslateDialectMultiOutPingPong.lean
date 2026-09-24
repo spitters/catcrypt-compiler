@@ -50,7 +50,7 @@ ping-pong front arm is the missing capability (gap 4).  `denote = spec` is pinne
 `native_decide` against a pure ping-pong reduction fold; the branch-free swap is
 proven faithful as a `BitVec` algebra lemma.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 
 Invoke:  lake env lean CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectMultiOutPingPong.lean

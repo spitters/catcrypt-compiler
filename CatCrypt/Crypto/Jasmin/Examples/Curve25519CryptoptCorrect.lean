@@ -267,7 +267,7 @@ Each step is mechanical bv/nat arithmetic; the difficulty is the
 sheer number of intermediate names and the carry-chain bookkeeping.
 
 The claim is stated as a `Prop`-level documented goal rather than a
-`sorry`-bearing theorem, so the file builds clean; discharging it is
+theorem with an admitted proof, so the file builds clean; discharging it is
 the §3 follow-up. -/
 def MulBodyCorrect : Prop :=
     ∀ (a b : Fin 5 → BitVec 64),

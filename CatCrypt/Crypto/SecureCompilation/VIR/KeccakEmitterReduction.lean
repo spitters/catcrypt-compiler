@@ -80,7 +80,7 @@ Verified by `lean_verify`:
 * `emitRotL_denote_pos`: `[propext, Quot.sound]`.
 * `emitRound_lanes_eq_fips_keccak`: `[propext, Classical.choice, Quot.sound]`
   plus the `bv_decide` LRAT certs from `KeccakDiffuseExact.keccak_round_bitexact`. No
-  `sorry`, no `native_decide`, no new custom axioms.
+  open goals, no `native_decide`, no new custom axioms.
 
 ## Canonical entry point
 

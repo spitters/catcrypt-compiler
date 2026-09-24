@@ -54,7 +54,7 @@ secret-dependent observations — even though it changes the full instruction
 list. Equivalently, if the source leakage trace is CT-free (no secret branch,
 no secret address), so is the rewritten one.
 
-## What is proved here (all non-vacuous, sorry-free, axiom-clean)
+## What is proved here (all non-vacuous, fully proved, axiom-clean)
 
 We work at the `GenericRegAlloc.MachineModel` level — the layer where the real
 RA decisions are made — so the theorems apply uniformly to the x86, A64, and

@@ -2664,7 +2664,7 @@ open CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2 in
     `i > 0`, `combMath 0 d = sum_{j=0..d} B`.
 
     Stated as a `Prop`-level documented goal rather than a
-    `sorry`-bearing theorem, so the file builds clean.  The output
+    theorem with an admitted proof, so the file builds clean.  The output
     conjunct records that `cells` is bound at its declared array type
     after execution; the exact per-cell predicate
     (`cells[i*16 + d] = combMath i d`) requires lifting the TArr

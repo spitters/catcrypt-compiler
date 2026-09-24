@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 `loopRun p bodyRun init = p.denote init` **modulo** an explicit per-iteration
 edge hypothesis `StepAgrees p bodyRun` — exactly the
 `JasminPrintSemCorrect.lean` discipline of carrying the single uncovered edge as
-a named hypothesis rather than a `sorry`. `JasminPrint.lean` §7 describes the
+a named hypothesis rather than an admitted proof. `JasminPrint.lean` §7 describes the
 printer's `Cfor` as a faithful *skeleton*; this module *discharges* `StepAgrees`
 against the emitted loop body.
 
@@ -59,7 +59,7 @@ every other emit-correctness theorem in this development carries).
   `for i = 0 to 255 { acc = x25519_ladder_iter(acc) }` denotes the 255-fold
   application of the ladder iteration.
 
-0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
+All goals closed; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
 edge carried throughout the emit-correctness theory.
 -/
 

@@ -24,7 +24,7 @@ simulation. `extCall` is an external primitive: its meaning is a
 **carried leaf** (an external function keyed by `name`), exactly like the
 existing opaque-leaf edge `JasminPrintSemCorrect.LeafAgrees` /
 `CryptoToJasminComCorrect.JasminLeafAgrees`. Its correctness is the leaf's own
-KAT, carried as a hypothesis — this is the honest, achievable target.
+KAT, carried as a hypothesis.
 
 ## What the op emits, and the fidelity route
 
@@ -51,7 +51,7 @@ tie** `straightOpsLeaf_wire`), and the descriptor slot is `none` on every
 extCall binding (the leaf needs no width descriptor: its result width is the
 op's `retTy`, read from the binding's typing).
 
-## The opaque leaf and the carried agreement (honest, external)
+## The opaque leaf and the carried agreement (external)
 
 We scope the `extCall` arm to the **single register argument, register result**
 shape `extCall name [.reg w] (.reg w')` — the call form a scalar straight-line
@@ -64,7 +64,7 @@ result of a **leaf function** `leaf name`, drawn from a carried leaf environment
         (leaf name w w' va : BitVec w') = jasminExtSem name [.reg w] (.reg w') ⟨va⟩
 
 i.e. the lsem step's leaf = the `Com` `extCall`'s denotation leaf. This is the
-honest external-primitive edge (the analogue of `JasminLeafAgrees`): nothing in
+external-primitive edge (the analogue of `JasminLeafAgrees`): nothing in
 this module *proves* the external primitive correct — its correctness is its own
 KAT, stated here as `LeafAgreesN`. (For a generic register `extCall`,
 `jasminExtSem` falls to the opaque default `0`; a real intrinsic supplies its
@@ -116,7 +116,7 @@ denotation but supplied by the carried leaf and tied back by `LeafAgreesN`.
   faked); the single-head projection it exposes is already an `extCall`-shaped
   opaque leaf, so the *head slot* is covered in spirit by this increment.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
@@ -147,7 +147,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
     straight-line kernel emits. -/
 abbrev LeafEnvN : Type := (name : String) → (w w' : Nat) → BitVec w → BitVec w'
 
-/-- **The carried leaf-agreement hypothesis (honest, external).** The lsem
+/-- **The carried leaf-agreement hypothesis (external).** The lsem
     step's leaf `leaf name w w'` equals the `Com` `extCall`'s denotation leaf
     `jasminExtSem name [.reg w] (.reg w')` on every single-register argument.
     This is the opaque external-primitive edge: its truth is the leaf's own KAT,
@@ -567,7 +567,7 @@ theorem exprArgs_extCall {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect} {w w' 
     reading the source `a` at the recovered input width `w` and writing the leaf
     result at the descriptor width `w'`. The denotation equality is the carried
     `LeafAgreesN` hypothesis: the lsem step's leaf = the dialect `extCall` leaf
-    (`jasminExtSem`). Faithful to `eval_instr`'s external `Lopn`; honest opaque
+    (`jasminExtSem`). Faithful to `eval_instr`'s external `Lopn`; an opaque
     external primitive. -/
 theorem lsemStepLeaf_ext {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
     {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
@@ -1214,7 +1214,7 @@ theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
 
     This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
     hypothesis, no `jasminc_preserves_ct`. The **only** carried hypothesis is
-    `LeafAgreesN leaf` — the external primitive's own KAT, which is *honest*: an
+    `LeafAgreesN leaf` — the external primitive's own KAT: an
     `extCall` is an external leaf, exactly like `JasminLeafAgrees`. Both
     conjuncts concern one and the same object — the opaque-leaf linearizer-emitted
     straight-line body run by `lsemStraightLeaf` (functional) and observed by

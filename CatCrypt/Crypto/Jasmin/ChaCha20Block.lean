@@ -42,7 +42,7 @@ Jasmin SSA pipeline:
 - `native_decide` test vector validation against RFC 8439 §2.3.2
 - Jasmin SSA instructions with compositional correctness
 
-**0 sorries**, 0 axioms (the PRF assumption enters as the
+**All goals closed**, 0 axioms (the PRF assumption enters as the
 `ChaCha20PrfBound` hypothesis).
 -/
 

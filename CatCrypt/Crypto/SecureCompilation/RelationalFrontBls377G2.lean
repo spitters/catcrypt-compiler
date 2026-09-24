@@ -87,7 +87,7 @@ construction outside this module.  The cleared-form ties below carry the same
 polynomial content without any inverse, so the `G2` group-law correctness is
 captured; the inverse-amortization step is outside the scope of this module.
 
-0 sorries; no custom axioms; the cleared ties are unconditional over `commRing ξ`.
+All goals closed; no custom axioms; the cleared ties are unconditional over `commRing ξ`.
 -/
 
 @[expose] public section

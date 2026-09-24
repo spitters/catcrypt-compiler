@@ -70,7 +70,7 @@ BLAKE2b G rotates *right*, so each rotate maps **directly** to `bvRor 64 n`
   `JasminPrint.emitJazz`, with a render smoke pinning the op shape (`#ROR_64`,
   `+`, `^` reach the printer) and the `(params, body) = (6, 14)` shape.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

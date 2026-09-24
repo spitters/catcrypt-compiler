@@ -66,7 +66,7 @@ and the whole schoolbook multiply lowers to jasmin. The program returns a single
 denotes to the matching spec limb but is not returned because the jasmin result
 must be a single word.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

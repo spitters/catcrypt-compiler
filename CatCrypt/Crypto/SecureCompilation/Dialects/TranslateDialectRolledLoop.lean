@@ -254,7 +254,7 @@ exactly the `JLoopBodyN.denote` fold of `update` over the trip count `N` — the
 mathematical ground truth the rolled back-edge realises (`forLoopLcmd`/
 `JLoopBodyN.denote_succ` prove the emitted `jne`-loop matches this fold
 step-for-step). This ties the loop wrapper to the (separately covered) body
-fragment with no `sorry`: the body's own correctness is the `IsCovered` /
+fragment with no open goals: the body's own correctness is the `IsCovered` /
 `rustExecSimulatesDialect` story for `translateDialectControl`, reused verbatim;
 the wrapper contributes only the fold. -/
 
@@ -262,7 +262,7 @@ the wrapper contributes only the fold. -/
     front-compiles to `update`, the rolled `ComL.forLoopN`'s denotation at any
     valuation is the `N`-fold `JLoopBodyN.denote` of `update` over the loop index,
     seeded by `init` and threading the invariants `invs`. Structural (`ComL.denote`
-    on `forLoopN`), no `sorry`. -/
+    on `forLoopN`), no open goals. -/
 theorem rolledForLoopN_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -389,7 +389,7 @@ def rolledForLoopNV {Γouter : Ctxt jasminDialect}
     body front-compiles to `update`, the rolled `ComL.forLoopN`'s denotation at any
     valuation is the `N`-fold `JLoopBodyN.denote` of `update` over the loop index,
     seeded by `init` and threading the invariants `invs`. Structural
-    (`ComL.denote` on `forLoopN`), no `sorry` — the vsimd twin of
+    (`ComL.denote` on `forLoopN`), no open goals — the vsimd twin of
     `rolledForLoopN_denote`. -/
 theorem rolledForLoopNV_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
@@ -514,7 +514,7 @@ def rolledForLoopNC {Γouter : Ctxt jasminDialect}
     carry-selecting body front-compiles to `update`, the rolled `ComL.forLoopN`'s
     denotation at any valuation is the `N`-fold `JLoopBodyN.denote` of `update`
     over the loop index, seeded by `init` and threading the invariants `invs`.
-    Structural (`ComL.denote` on `forLoopN`), no `sorry` — the carry-select twin
+    Structural (`ComL.denote` on `forLoopN`), no open goals — the carry-select twin
     of `rolledForLoopN_denote`. -/
 theorem rolledForLoopNC_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}

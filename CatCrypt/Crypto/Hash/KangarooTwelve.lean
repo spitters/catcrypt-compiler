@@ -61,7 +61,7 @@ K12 is designed for software speed:
 * [RFC 9861 — KangarooTwelve and TurboSHAKE](https://www.rfc-editor.org/rfc/rfc9861)
 * [Guido Bertoni et al. — Sakura: A Flexible Coding for Tree Hashing, ACNS 2014]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

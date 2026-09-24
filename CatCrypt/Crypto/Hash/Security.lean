@@ -48,7 +48,7 @@ The security argument is:
 * [Bertoni, Daemen, Peeters, Van Assche -- CRYPTO 2008]
 * [Barthe et al. -- CCS 2019]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

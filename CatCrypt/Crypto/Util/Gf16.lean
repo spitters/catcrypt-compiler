@@ -33,7 +33,7 @@ the MAYO reference implementation in `mayo-hax`.
 ## Field axioms
 
 Closed by `decide` / `native_decide` / `bv_decide` over the 16-element
-domain. No `sorry`, no axioms beyond Lean's kernel + Mathlib's standard
+domain. No open goals, no axioms beyond Lean's kernel + Mathlib's standard
 `BitVec` infrastructure.
 -/
 

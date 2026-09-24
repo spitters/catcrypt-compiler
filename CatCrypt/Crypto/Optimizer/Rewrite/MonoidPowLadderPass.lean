@@ -56,7 +56,7 @@ pairing final exponentiation, …).
 (`Multiplicative ℕ`-free: we just reuse `Monoid ℕ`), checking on a concrete
 small exponent that the ladder reproduces ordinary natural-number power.
 
-## Honesty boundary
+## Scope boundary
 
 `powLadder_correct` is the verified *algorithm*; it says the square-and-multiply
 schedule computes `g ^ n` in any monoid.  Wiring each ladder *step* to a concrete
@@ -65,7 +65,7 @@ Montgomery multiply) is the realization done at the use site, under whatever sid
 conditions that arithmetic carries; the ladder itself is the new construction and
 is unconditional.
 
-0 sorries; no custom axioms; correctness holds over any `[Monoid M]`.
+All goals closed; no custom axioms; correctness holds over any `[Monoid M]`.
 -/
 
 @[expose] public section

@@ -68,7 +68,7 @@ random pairs + corners (incl. `(p−1)²` and the `p−1`/`p−2` edges that str
 final conditional subtract). A runBlock-level *value* proof of the fused reduce is
 a separate task.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulReduceComplete

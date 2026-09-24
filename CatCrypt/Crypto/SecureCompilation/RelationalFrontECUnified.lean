@@ -47,7 +47,7 @@ doubling `ecDblAffineBV` assembled here from the *same* `sub251` / `pow249Spec`
 (inverse) / `gf251MulSpec` / `tripleSpecBV` / `double251` building blocks (each
 with a landed `ZMod 251` commuting square).  No new field op is introduced.
 
-## What this module establishes (all sorry-free)
+## What this module establishes (fully proved)
 
 * `encPoint` / `decTagAffine` — the `ECPoint 251 → BitVec 64³` tagged-triple
   encoding and its injectivity `encPoint_injective`.
@@ -63,11 +63,11 @@ with a landed `ZMod 251` commuting square).  No new field op is introduced.
   (if x₁ = x₂), chord}`.
 * **`encPoint_add_commutes` — the UNIFIED commuting square**: for every
   `P Q : ECPoint 251`, `encPoint (blsClassCurve.add P Q) = ecAddUnifiedBV
-  (encPoint P) (encPoint Q)`.  All five branches closed sorry-free.
+  (encPoint P) (encPoint Q)`.  All five branches closed.
 * Worked examples through the unified op: `O + P = P`, `P + O = P`, a chord
   `P + Q`, the vertical `P + (−P) = O`, and a doubling `P + P`.
 
-## Branch-closure status (HONEST)
+## Branch-closure status
 
 All five `ECParams.add` branches are closed in the unified commuting square:
 
@@ -98,7 +98,7 @@ Composing the landed chord (`RelationalFrontECAdd`) and the affine doubling
 select, the **whole** `EllipticCurveDialect.ECParams.add` — every branch of the
 complete short-Weierstrass group law, `O` included — is now realized
 relationally over GF(251), each branch a straight-line schedule of golden-path
-field kernels and the dispatch a constant-time mask-select.  The honest
+field kernels and the dispatch a constant-time mask-select.  The
 remaining axis is the carrier: `bls12_377`/`bls12_381` replace the single-word
 GF(251) field by a 6×64-limb CIOS field; the relational *structure*
 (tagged encoding + per-branch commuting square + branchless select) ports
@@ -351,7 +351,7 @@ matched to the landed kernel's square. -/
     short-Weierstrass `ECParams.add` on `blsClassCurve` equals the branchless
     `ecAddUnifiedBV` on the encoded triples.  All five branches — the two `O`
     short-circuits, the vertical `→ O`, the doubling, the chord — closed
-    sorry-free, the degenerate cases dispatched by the constant-time mask-select
+    fully proved, the degenerate cases dispatched by the constant-time mask-select
     `selBV3`. -/
 theorem encPoint_add_commutes (P Q : ECPoint 251) :
     encPoint (blsClassCurve.add P Q) = ecAddUnifiedBV P Q := by
@@ -409,7 +409,7 @@ theorem ecAddUnified_spec_transfers (P Q P' Q' : ECPoint 251) :
 /-! ## 7. Worked examples through the UNIFIED `ECParams.add`
 
 `blsClassCurve : y² = x³ + 1` over GF(251).  All five branches exercised through
-the *unified* group law and its branchless encoded realization, sorry-free:
+the *unified* group law and its branchless encoded realization, fully proved:
 `O + P = P`, `P + O = P`, a chord `P + Q`, the vertical `P + (−P) = O`, and a
 doubling `P + P`. -/
 

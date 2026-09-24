@@ -34,14 +34,14 @@ the composed norm is exactly what this module establishes generically.
   `MonoidHom` `normTowerMonoidHom`. This is the `2`-level instance of the
   full pairing norm chain; deeper towers iterate the same composition.
 
-## Honesty boundary
+## Scope boundary
 
 This is the abstract algebra only — the multiplicativity and composition of the
 generic `QuadExt` norm. As in `QuadExtConjGeneric`, the inner `commRing`
 instance makes `QuadExt K` a `CommRing` (so `QuadExt (QuadExt K)` is again a
 `CommRing` and the outer norm is well-typed); we do **not** wire any of this down
 to an emitted base kernel — that lift is per-instantiation and deliberately out
-of scope here, to keep the generic core focused and sorry-free.
+of scope here, to keep the generic core focused and fully proved.
 -/
 
 @[expose] public section

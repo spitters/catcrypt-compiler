@@ -62,7 +62,7 @@ On the real GoldenPath kernel `AsconLinear.asconSigma0Com` (`Σ₀ x`, 8 width-t
   ops are visible (each width-tagged op lowered into its two-address `JInstr` form,
   no `Lret`).
 
-## Honesty — this is step 1 only
+## Scope: step 1 only
 
 This closes the **gather** gap: the JInstr emit path can now *reach* a real kernel
 body where before it bailed to `none`. It does **not** yet give a byte-MATCH against
@@ -77,7 +77,7 @@ empty arg-marshal, and the resolver-discharged body byte agreement — discharge
 the physical body. That reconciliation is out of scope here; this module only proves
 the gather now succeeds.
 
-No `sorry`, no axiom, no `native_decide`.
+No open goals, no axiom, no `native_decide`.
 -/
 
 @[expose] public section
@@ -215,7 +215,7 @@ def asconSigma0Body : List Linstr :=
 -- kernel-computable form of the real-kernel coverage the entry-level `#eval`s witness.
 #eval (gatherJBlock2 asconSigma0Body).isSome
 
-/-! ### Honesty — why these are `#eval`s, not `rfl`/`decide` theorems
+/-! ### Why these are `#eval`s, not `rfl`/`decide` theorems
 
 The immediate-shift arm (`SHR:<n>:64`/`SHL:<n>:64`) is dispatched by
 `LoweringExtended.parseShiftMnem`, whose detection is `String.startsWith`. In Lean

@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
-# `lowerComToProg` is denotation-preserving — semantic (not just structural) half
+# `lowerComToProg` is denotation-preserving — semantic (as opposed to structural) half
 
 `JasminPrintCorrect.lean` proves the `Com[jasminDialect] → JasminProg` lowering
 (`JasminPrint.lowerComToProg`) only *structurally* faithful (op/instruction
@@ -73,7 +73,7 @@ valuation that `Com.denote` threads.
   handled by the same evaluator, but the end-to-end theorem below is stated for
   the `regArith`/`castW` (+ parametric `extCall`) fragment.
 
-0 sorries. The leaf edge is parametric (a hypothesis), never a `sorry`.
+All goals closed. The leaf edge is parametric (a hypothesis), never an admitted proof.
 -/
 
 @[expose] public section
@@ -713,7 +713,7 @@ toolchain's Lean core / Mathlib / Batteries** (verified: `exact?` and
 different function). Rather than reprove `Nat.repr` injectivity from the digit
 arithmetic (a substantial detour orthogonal to compiler correctness), we carry
 it as the single explicit hypothesis `hInj : Function.Injective freshName`. It
-is **not** a `sorry`: it is a true, named side-condition that any caller
+is **not** an admitted proof: it is a true, named side-condition that any caller
 discharges the moment a `Nat.repr`-injectivity lemma is available. Everything
 else in the freshness and preservation argument is closed unconditionally. -/
 
@@ -1014,7 +1014,7 @@ def runProg {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       `stackStore_aliases_source`);
     * `hInj` — the fresh-SSA-name function `freshName` is injective (a true
       naming fact bottoming out at `Nat.repr` injectivity, for which no toolchain
-      lemma exists — carried as a hypothesis, never a `sorry`);
+      lemma exists — carried as a hypothesis, never an admitted proof);
     * `hPinj` — the parameter resolver is injective (distinct parameters get
       distinct `"p…"` names; same `Nat.repr` provenance), making the seed store
       agree with `V`.

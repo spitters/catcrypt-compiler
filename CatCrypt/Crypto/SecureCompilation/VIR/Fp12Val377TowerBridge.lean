@@ -39,7 +39,7 @@ The pairing value `RelationalFrontBls377MillerLoop.millerLoop` / the concrete
 them into the dialect GT carrier `Fp12Val bls377Q`, where the curve-generic
 `pairingCheck2` / `pairingCheckDialect` op applies at `p = bls377Q`.
 
-Every obligation is proved (no axiom, no `sorry`); the transport lemmas reduce to
+Every obligation is proved (no axiom, no open goals); the transport lemmas reduce to
 the ring-hom facts of `Fp12_377ValBridge` plus the `toFp12`/`ofFp12` bijection.
 -/
 

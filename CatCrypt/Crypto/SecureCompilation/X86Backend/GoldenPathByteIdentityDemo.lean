@@ -49,7 +49,7 @@ certificates moved here. The `#eval`s below are the byte-match certificates (eac
 prints `true`), the same posture the chain modules recorded — interpreter
 evidence on the real kernels, not part of any proof term.
 
-No `sorry`, no axiom, no `native_decide`.
+No open goals, no axiom, no `native_decide`.
 -/
 
 @[expose] public section
@@ -227,7 +227,7 @@ def coreNoSpill : List Linstr :=
 
 /-! ## 8. `GatherImmForms` — the per-kernel byte-match across all surveyed kernels -/
 
--- The 10 previously-blocked kernels: each prints `true`.
+-- The 10 immediate-form kernels: each prints `true`.
 #eval matches6 (pbody asconY0Com "ascon_y0")          -- imm32-sign-ext MOV
 #eval matches6 (pbody fieldMulHiCom "field_mul_hi")   -- nil MULXHI
 #eval matches6 (pbody condNegCom "cond_neg")          -- all-ones MOV + shift-by-1

@@ -41,7 +41,7 @@ random permutation. The `RPAssumption` in `Security.lean` captures this.
 * [FIPS 202 -- SHA-3 Standard, NIST 2015]
 * [Keccak Reference, Bertoni-Daemen-Peeters-Van Assche, 2011]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

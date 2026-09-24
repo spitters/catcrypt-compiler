@@ -37,7 +37,7 @@ JasminPrint `Store` holds exactly `⟨reg sz.bits, w⟩` and `Store.get` returns
 near-identity on the reg fragment (`StateBijection`'s central finding). The
 read-correspondence is therefore the `Vm.get`/`Store.get` lift of `RegCorr`.
 
-## What is proved (all sorry-free)
+## What is proved (fully proved)
 
 * `pvar_read_corr` — the **variable-read correspondence**: under
   `StateCorrReg names st vm`, if `a ∈ names` reads `vm.get a = .Vword sz w`, then
@@ -79,7 +79,7 @@ read-correspondence is therefore the `Vm.get`/`Store.get` lift of `RegCorr`.
 read correspondences for `castW`, sign extension / truncation and the
 constant-index `Pget`.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

@@ -186,8 +186,8 @@ def add_3_4_mlir : String :=
   Com.printModule add_3_4_vir "add_3_4"
 
 -- Runtime check: `#eval!` prints the MLIR at elaboration.
--- Uses `#eval!` because `toVIRCom` has `@[reducible]` but needs some sorry-free
--- metaprogramming.
+-- Uses `#eval!` because plain `#eval` rejects this term (`toVIRCom` is
+-- `@[reducible]` and relies on metaprogramming).
 #eval! add_3_4_mlir
 
 end Test

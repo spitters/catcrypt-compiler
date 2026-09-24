@@ -74,8 +74,8 @@ three new arms to `encodeLopn` exactly.
 
 With `gatherJBlock6` + `encodeJBlock6`, every one of the 26 surveyed GoldenPath
 kernels has `encodeJBlock6 physAlloc (gatherJBlock6 physBody) = encodeLcmd
-physBody` (§3 `#eval`). The 10 previously-blocked kernels now match (the three
-peepholes close their gaps); the 16 already-matching kernels still match (the new
+physBody` (§3 `#eval`). The 10 immediate-form kernels match (the three
+peepholes close their gaps), and so do the 16 other kernels (the new
 encoder arms agree with the live one on every byte they produce). Every kernel
 re-points byte-safely — the precondition for deleting `encodeLprog` from the
 GoldenPath emit path.
@@ -85,7 +85,7 @@ free), mirroring `SpillSlotEncode` §2's `encJSpill_*` / `GatherFullBody` §3's
 `encJSh*DropMov_eq_lopn`. The whole-body `#eval`s rest on them the same way the
 prior modules' whole-body `#eval`s do (the `parseShiftMnem` `String.startsWith`
 dispatch blocks kernel reduction of the assembled gather; the `#eval` evaluator
-runs it). No `sorry`, no axiom, no `native_decide`.
+runs it). No open goals, no axiom, no `native_decide`.
 -/
 
 @[expose] public section
@@ -578,7 +578,7 @@ theorem encJ7XorImm1000_eq_lopn :
 
 With the three immediate-form peepholes (`gatherJBlock6` + `encodeJBlock6`), the
 gathered JInstr bytes of EACH surveyed GoldenPath kernel's physical body equal
-`encodeLcmd` of the same body, byte-for-byte. The 10 previously-blocked kernels
+`encodeLcmd` of the same body, byte-for-byte. The 10 immediate-form kernels
 (`asconY0`, `fieldMulHi`, `condNeg`, `fieldBorrow`, `shaCh`, `keccakRho1`,
 `keccakChi`, `sar1`, `ctSelect`, `boundedShr`) now match; the already-matching
 kernels still match (no regression). These are `#eval` interpreter certificates
@@ -605,7 +605,7 @@ def pbody {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 -- The per-kernel `#eval` byte-match certificates (`matches6 (pbody <kernelCom>
 -- <name>)` printing `true` across all 29 surveyed GoldenPath kernels — the 10
--- previously-blocked immediate-form kernels plus the already-matching ones) are
+-- immediate-form kernels plus the others) are
 -- re-homed in `GoldenPathByteIdentityDemo` (above the chain) so this file is
 -- GoldenPath-free. The kernel-independent `matches6` / `pbody` predicates stay here.
 

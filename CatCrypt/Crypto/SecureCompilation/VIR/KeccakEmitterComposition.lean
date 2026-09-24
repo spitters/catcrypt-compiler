@@ -70,7 +70,7 @@ budget. This module proves the denotation half and the via-residual bridges;
 the readout half is a hypothesis here, as in the SHA-2 analog
 `Sha2EmitterComposition`.
 
-No `sorry`, no `native_decide`, no new custom axioms in any final theorem.
+No open goals, no `native_decide`, no new custom axioms in any final theorem.
 
 ## Canonical entry point
 

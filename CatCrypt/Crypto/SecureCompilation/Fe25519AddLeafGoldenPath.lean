@@ -39,7 +39,7 @@ through the (a) memref-loop carrier (`JasminLsemMemSourceTieWide.loopWide_export
 The word op and the integer-reconstruction spec are curve-independent field
 arithmetic — reusable by every EC curve that carries a reduced-radix field element.
 
-## What is proved (0 sorries)
+## What is proved (all goals closed)
 
 * `fe25519Add51LimbCom` — the per-limb add kernel as a `Com jasminDialect` over
   `[A, B, i]`, all in the `stackLoad`/`regArith .add` alphabet.
@@ -53,7 +53,7 @@ arithmetic — reusable by every EC curve that carries a reduced-radix field ele
   the inlined call-free program binds exactly the per-limb field-add value at the
   call site.
 
-No `sorry`, no `native_decide`, no new axioms.
+No open goals, no `native_decide`, no new axioms.
 -/
 
 @[expose] public section

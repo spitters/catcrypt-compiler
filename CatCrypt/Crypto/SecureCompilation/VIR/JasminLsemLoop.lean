@@ -102,7 +102,7 @@ source-level CT fact that the back-edge tests a public counter.
      `StepAgrees` edge `JForProgCT.loopRun_eq` carries (discharged in §10 for
      `UniformRegArith` bodies).
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
 
@@ -204,7 +204,7 @@ structure LoopBodySpec (w : Nat) (body : List LinstrR) where
   bodyStep : Lstate w → Lstate w
   /-- Running `body` straight-line on `sb` computes `bodyStep sb` (on the base
       store; `lsemStraight` threads the pc). The named edge — discharged by the
-      functional body simulation, never a `sorry`. -/
+      functional body simulation, never an admitted proof. -/
   run : ∀ sb : Lstate w, lsemStraight body sb = some (bodyStep sb)
 
 /-! ## 3. A straight-line block runs, then control continues (the body lemma)
@@ -724,7 +724,7 @@ single-accumulator loop body. The result is that one run of the emitted loop bod
 on the *encoded* accumulator reads exactly `JForProg.step acc` at the return
 register — the `StepAgrees` edge `JForProgCT.loopRun_eq` carries. Composing the
 per-iteration edge with `JForProgCT.denote_eq_foldl` gives the whole-loop `n`-fold
-denotation for an arbitrary `Com` body, not just the counter-decrement witness.
+denotation for an arbitrary `Com` body, beyond the counter-decrement witness.
 
 The loop body context is the singleton `[.reg w]` (the loop-carried accumulator),
 so `nArgs = Γ.length = 1`, and the encoded accumulator is `encode (.cons acc .nil)`
@@ -832,7 +832,7 @@ theorem lsemBodyRunner_stepAgrees {w : Nat} (p : JForProg (.reg w))
     commutation edge `encode (Com.denote body v) = bodyStep (encode v)` (gap 2) is
     discharged by `lsemBodyRunner_stepAgrees` — the functional value bridge
     (`JasminLsemSimulation`) threaded through `bodyStep` — and the whole-loop fold
-    is `JForProgCT.loopRun_eq`. No `sorry`, no `bodyStep` hypothesis: the body edge
+    is `JForProgCT.loopRun_eq`. No open goals, no `bodyStep` hypothesis: the body edge
     is a theorem, not a carried assumption. -/
 theorem general_loopBody_lsem_faithful {w : Nat} (p : JForProg (.reg w))
     (hupd : UniformRegArith w p.update) (init : BitVec w) :

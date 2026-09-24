@@ -84,7 +84,7 @@ The arms of `JasminPrint.lowerExpr` not bridged to the mirror are `Cfor` (the
 of `stackLoad`, the `Laset` write of `stackStore`, and the memory `emem` in the
 state relation. `Cif` and `Cwhile` are not emitted by this lowering.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

@@ -48,10 +48,10 @@ reference `evalSop1 (Osignext …)` sign-extension (`BitVec.signExtend`). The
 slot, and `StateBijection.encodeRegVal` collapses every non-`Vword` value to the
 default `reg 0` `DynVal`, so `StateCorrReg`/`RegCorr` carries no array-cell
 correspondence — closing `Pget` needs a new array/memref-cell bijection, not a
-mechanical port. This matches the honest-scope note in `StateBijection`
+mechanical port. This matches the scope note in `StateBijection`
 (arrays/memory are out of the reg fragment).
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

@@ -51,7 +51,7 @@ by the trip `k`, and the denote holds per-`k` under the explicit termination
 hypothesis (the `fuel` the do-while halts within).  This is a fueled denote: an
 unbounded-nontermination denote is out of scope.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar

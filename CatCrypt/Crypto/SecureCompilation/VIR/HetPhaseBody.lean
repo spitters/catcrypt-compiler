@@ -91,7 +91,7 @@ module. What this file *does* add over
 `MultiPhaseBody` is the typed seam: the intermediate value changes type between
 phases, so the chain is dependent rather than a homogeneous `List`.
 
-0 sorries; the only carried hypotheses are `LeafAgrees` and the per-phase
+All goals closed; the only carried hypotheses are `LeafAgrees` and the per-phase
 `StraightLine` witnesses, the same edges carried throughout the emit theory.
 -/
 

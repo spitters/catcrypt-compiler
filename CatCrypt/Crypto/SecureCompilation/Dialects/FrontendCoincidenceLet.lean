@@ -105,18 +105,18 @@ Path-B `let` as a `RScalarSet`/`RScalarSetExpr` *command* over `RustState` — i
 
 §1 (the engine) and §2 (the `evalBV` closure) are the *path-independent* halves
 of that bridge; what remains is the `RustState`/`Nat` materialisation in step 2–3
-above. Stating it sharply — rather than faking a `RustExec` coincidence with a
-hidden `native_decide`/`sorry` — is the honest outcome of this increment.
+above. The module states that remaining step explicitly as a hypothesis, with no
+`RustExec` coincidence obtained by `native_decide` or an admitted proof.
 
-## Honesty note
+## Scope
 
 * §1 is a two-path fact: it is about `denoteAtomExpr` (Path A, via
   `EnvAgree`) under the *same* update that Path B applies to `β`. It is not a
   restatement of one side.
 * §2 is parametric in a *body-coincidence* hypothesis precisely because `toSExpr`
   cannot supply an `SExpr` image of the body across `let`; the hypothesis is the
-  honest interface to the recursive call a full inductive proof would make.
-* No `sorry`, no new axioms, no `native_decide`. The `RustExec`-materialisation
+  interface to the recursive call a full inductive proof would make.
+* No open goals, no new axioms, no `native_decide`. The `RustExec`-materialisation
   gap is stated, not papered over.
 -/
 

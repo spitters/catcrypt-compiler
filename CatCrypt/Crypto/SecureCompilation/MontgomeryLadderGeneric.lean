@@ -71,7 +71,7 @@ completeness out of scope — the EC-x-coordinate correctness is stated here as 
 boundary, not discharged.  The arithmetic core (these `ring` identities) is what the
 constant-time emitter and its leakage proofs consume.
 
-0 sorries; no custom axioms; the identities are unconditional given the field structure.
+All goals closed; no custom axioms; the identities are unconditional given the field structure.
 -/
 
 @[expose] public section

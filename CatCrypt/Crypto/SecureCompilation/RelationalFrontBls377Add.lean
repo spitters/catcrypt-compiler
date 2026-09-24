@@ -50,7 +50,7 @@ reduce), `bignumVal_dropLast` (drop the zero carry limb). Only the *encoding* an
 
 ## The `bls12_377` instance (scope)
 
-* **Demonstrated (sorry-free):** the `k`-limb generalization above, and its instance at
+* **Demonstrated (fully proved):** the `k`-limb generalization above, and its instance at
   the real `bls12_377` base-field prime
   `q = 0x1ae3a4617c510eac63b05c06ca1493b1a22d9f300f5138f1ef3622fba094800170b5d44300000008508c00000000001`
   (377-bit; `bls377Q`, with its 6×64 little-endian limb vector `bls377Limbs`). All three

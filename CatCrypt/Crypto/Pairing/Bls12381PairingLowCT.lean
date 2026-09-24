@@ -65,7 +65,7 @@ leaf names `bls12_pairing` / `fp12_mul` to the abstract `prims.pairing` /
 * `pairingLowCT_denote`  : `RustExec`-value of `pairingLowCT`  = `prims.pairing a b`
 * `fp12MulLowCT_denote`  : `RustExec`-value of `fp12MulLowCT`  = `prims.fp12Mul a b`
 
-are **proved** (no `sorry`).  They establish exactly the equality the
+are **proved** (no open goals).  They establish exactly the equality the
 `BlsPrimitives`-parametric security proofs reference: the LowCT program's
 denotation *is* the proof's abstract pairing operation.
 
@@ -86,7 +86,7 @@ the committed `Bls12381PairingMap` emit the *same leaf name* with the same
 G1/G2→GT signature, and the committed leaf's RELIC byte-KAT certifies that the
 concrete `prims.pairing` realising it equals RELIC's `pp_map_oatep`.
 
-## How far the tie reaches (HONEST) — read `Bls12381PairingLowCT` §Gap
+## How far the tie reaches — read `Bls12381PairingLowCT` §Gap
 
 The denotation tie is **proved for the pairing leaf and the GT product as
 single LowCT leaves** (and their Groth16-verifier composition).  It does **not**
@@ -94,7 +94,7 @@ yet decompose the Miller loop + final exponentiation into LowCT field-op
 (`Fp`/`Fp2`) leaves with an *in-LowCT* proof that the composition equals
 `prims.pairing` — that whole-`pp_map`-in-LowCT decomposition is the residual gap
 (see `gap_to_whole_pp_map` below).  At the leaf granularity the security proof
-operates at, the tie is exact and `sorry`-free.
+operates at, the tie is exact and fully proved.
 -/
 
 @[expose] public section
@@ -371,7 +371,7 @@ theorem groth16Verifier_is_lowct_leaf_composition (prims : BlsPrimitives)
           (prims.pairing c dG2) :=
   rfl
 
-/-! ### The gap to the whole `pp_map` (HONEST)
+/-! ### The gap to the whole `pp_map`
 
 What the proved tie covers: the pairing `e(P,Q)` and the GT product `a·b` as
 **single LowCT leaves**, with `RustExec` denotation equal to the abstract

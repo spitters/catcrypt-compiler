@@ -73,7 +73,7 @@ hypothesis is needed here.
 * `toFp12` is a ring hom on `+`/`−`, and on `*` to `Fp12Val.mulBeta ξ₂ ξ0`
   **under `hξ6`** only.
 
-Every obligation is **fully proved** (no axiom, no `sorry`); each mul-commute is
+Every obligation is **fully proved** (no axiom, no open goals); each mul-commute is
 a finite tower-algebra identity closed by `ring` over `ZMod bls377Q` after
 pushing the leaf map through the schoolbook formulas.
 

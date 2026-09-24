@@ -20,7 +20,7 @@ algorithm, `CatCrypt.Crypto.Bridges.CoqEAL.Karatsuba.karatsubaRec`
 `#eval`'d. This file re-expresses exactly the same algorithm over the
 **computable** array-backed representation `CompPoly.CPolynomial.Raw R`
 (`= Array R`), whose `mul`/`add`/`sub`/`mulPowX`/`divX`/`smul` operations are
-all executable (no `noncomputable`, no `sorry`).
+all executable (no `noncomputable`, no open goals).
 
 ## Representation
 

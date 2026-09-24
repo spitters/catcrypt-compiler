@@ -53,7 +53,7 @@ since the MDS multiply is the only non-ALU-trivial part of the round. SubBytes i
 the S-box table; its dialect handling is via `memrefGetDyn` (runtime-index table
 lookup) and is discussed in the final section.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

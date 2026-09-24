@@ -32,7 +32,7 @@ This module emits an **owned** (no jasminc, no rust leaf) function with the
 double-and-add field step, computed entirely in-Lean over the proven Curve25519
 field leaves (`Fe25519{Ops,LazyOps,Mul}Kernel`). It reuses the already-proven
 fused monolithic step `X25519MonoLadderKernel.monoLadderStepBlock` (denotation =
-`runBlock`, no `sorry`) operating on a single stack frame `fp`, wrapped with:
+`runBlock`, no open goals) operating on a single stack frame `fp`, wrapped with:
 
 * **copy-in** — read the four working coordinates `x2,z2,x3,z3` from `acc` and
   the differential base `x1` from the bundle's `base` slot (`acc + 160`) into the
@@ -55,7 +55,7 @@ bundle memory, so it composes with this body unchanged.
 * `bundleStepBlock_lowering_correct` — the whole copy-in ++ fused-step ++
   copy-out body lowers denotation-preservingly through the owned x86 backend
   (`lowerBlock_denote_closed`): on any incoming state the lowered
-  `Com (x86Dialect 64)` denotes exactly `runBlock`. No `sorry`.
+  `Com (x86Dialect 64)` denotes exactly `runBlock`. All goals closed.
 * The emitted `.s` is one function `x25519_ladder_step_rustcmd`, MULX-bearing,
   carrying the `$121666` `a24` immediate, with `out`/`acc` pinned to the
   System-V argument registers `%rdi`/`%rsi` and the frame pointer in a
@@ -171,7 +171,7 @@ copy-in/step/copy-out composition directly. -/
 
 /-- **Lowering correctness on the owned bundle-step body.** The whole body lowers
     denotation-preservingly through the owned x86 backend, on any incoming state.
-    No `sorry`. -/
+    All goals closed. -/
 theorem bundleStepBlock_lowering_correct (s : JState 64) :
     (lowerBlock (Γ := []) bundleStepBlock).denote (.cons s .nil)
       = runBlock s bundleStepBlock :=

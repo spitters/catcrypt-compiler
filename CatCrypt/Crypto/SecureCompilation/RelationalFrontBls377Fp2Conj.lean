@@ -49,7 +49,7 @@ exponentiation.
 This is the abstract `Fp2` conjugation and norm over the relational `bls12_377`
 base carrier. It does **not** wire conjugation/norm down to the emitted 6-limb
 base kernels (that is the `BaseSubstrate` lift, one further step, deliberately
-not attempted here to keep the pass focused and sorry-free), nor does it use the
+not attempted here to keep the pass focused and fully proved), nor does it use the
 norm to construct an inverse (which requires `norm x ≠ 0`, i.e. `ξ` a
 non-square — a number-theoretic fact about the concrete twist nonresidue, not
 proved here). The conjugation ring-hom facts and the norm's base-field landing

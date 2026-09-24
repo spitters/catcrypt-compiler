@@ -59,7 +59,7 @@ line / point at infinity) and all-pairs group-law completeness are out of scope 
 generic-chart scope of the per-curve versions.
 
 This is the **canonical parametric form** (`@canonical_parametric` — parametric over
-the base field).  0 sorries; no custom axioms; the field-algebra tie is unconditional given the
+the base field).  All goals closed; no custom axioms; the field-algebra tie is unconditional given the
 field structure plus `Z₁ ≠ 0`, `Z₂ ≠ 0`, `H ≠ 0`.  The add formula introduces no numerals (unlike
 the double's `2, 3, 4, 8`), so no numeral-nonvanishing hypotheses are needed.
 -/

@@ -96,7 +96,7 @@ extern void mldsa_mul(uint64_t *out, const uint64_t *inp);
   in-Lean cross-check (§7–8); the byte tie against the
   orchestrator's C harness is the real correctness gate.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

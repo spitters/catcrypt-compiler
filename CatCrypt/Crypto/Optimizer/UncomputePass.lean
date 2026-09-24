@@ -68,7 +68,7 @@ free reclamation of the slot.
 * `comLen_strengthenCom`, `comLen_uncompute_le` — the pass is binder-non-
   increasing (it frees, never grows).
 
-All goals closed. No `sorry`. `uncompute_denote` checks against only `propext`
+All goals closed. `uncompute_denote` checks against only `propext`
 and `Quot.sound`. -/
 
 @[expose] public section

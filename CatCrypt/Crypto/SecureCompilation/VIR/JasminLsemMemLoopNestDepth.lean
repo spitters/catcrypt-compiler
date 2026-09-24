@@ -59,7 +59,7 @@ labels) and denotes to the triple fold `ggmNestedFold` with the middle bound var
   (= `(8+4+2)*2`), NOT `14`: the middle trip is recomputed as `num>>(jd+1)`
   from the register per outer pass, not a baked-in `4,2,1`.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 -/
 

@@ -19,7 +19,7 @@ This file closes **gap #1** of `ComJasminBridge.lean`: the
 `Var.vtype` of everything else, hardcoding `.aword .U64`).
 
 Here we give a *real, total* `Option`-valued function `translateInstrR` and
-prove it **structure-preserving** on the emit-relevant fragment, sorry-free.
+prove it **structure-preserving** on the emit-relevant fragment, fully proved.
 
 ## The two ASTs (the catalogued differences, `InstrRReflect.lean` §9)
 
@@ -50,7 +50,7 @@ together with the constants `Pconst`/`Pbool` and the `Papp1` width casts
 `Ccall`, `Csyscall`; `Pget`/`Pload`/`PappN`/`Pif`; `Lmem`/`Laset`/`Lasub`/`Lnone`;
 the `U512` width; SIMD/wint `SOp1`/`SOp2` constructors) is mapped to `none`.
 
-## What is proved (all sorry-free)
+## What is proved (fully proved)
 
 * `translateWSize`, `translateSType`, `translateSOp1`, `translateSOp2`,
   `translateVar`, `translateVarI`, `translateGVar`, `translateLVal`,
@@ -76,7 +76,7 @@ byte-encoding bijection (gap #2) to lift this *syntactic* preservation to a
 *semantic* `SemIr-of-translate ↔ Com.denote` correspondence. We connect to the
 golden-path witness here at the value level only.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section
@@ -373,7 +373,7 @@ def goldenAddTgt : MInstrR :=
       (.Pconst 1))
 
 /-- **Worked example.** The golden-path `x := y + 1` translates to exactly the
-    expected `CoqSemMirror.InstrR` — sorry-free, by `rfl`. -/
+    expected `CoqSemMirror.InstrR` — fully proved, by `rfl`. -/
 theorem golden_translate : translateInstrR goldenAddSrc = some goldenAddTgt := by
   rfl
 
@@ -415,7 +415,7 @@ def goldenCastTgt : MPexpr :=
     (.Pvar (mkLvarM { v_var := { vname := "y", vtype := .aword .U64 } }))
 
 /-- **Worked `castW` example.** The register cast `(u64) y` translates to exactly
-    the expected `CoqSemMirror.Pexpr` — sorry-free, by `rfl`. -/
+    the expected `CoqSemMirror.Pexpr` — fully proved, by `rfl`. -/
 theorem golden_translate_castW : translatePExpr goldenCastSrc = some goldenCastTgt := by
   rfl
 

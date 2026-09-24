@@ -52,7 +52,7 @@ This module generalizes the loop layer so the body can see the loop counter `i`:
   index dimension closes by a fold congruence that threads `i`.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-uniform multi-op main theorem — no `sorry`, axiom-clean.
+uniform multi-op main theorem — no open goals, axiom-clean.
 -/
 
 @[expose] public section

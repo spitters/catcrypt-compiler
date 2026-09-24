@@ -45,7 +45,7 @@ the same `KLimbPrime`; only the kernel (`mlSubModK`) and its commuting square ar
 
 ## Scope
 
-* **Demonstrated (sorry-free):** the generic `k`-limb `mlSubModK` and its value law
+* **Demonstrated (fully proved):** the generic `k`-limb `mlSubModK` and its value law
   `mlSubModK_val` (composing `subLimbs_val` + `addLimbs_val` + `condSubLimbs_val`); the
   `ZMod q` bridge `ZMod.val_sub_borrow`; the SUB commuting square `encMLK_sub_commutes`;
   the `bls12_377` instance `bls377_sub_commutes` at the 377-bit prime; a

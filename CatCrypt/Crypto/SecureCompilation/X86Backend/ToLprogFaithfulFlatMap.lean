@@ -28,7 +28,7 @@ list `(bs.map (·.block)).flatten`.
 
 ## What this module proves
 
-PROVED (against the literal `physBody`, zero `sorry`):
+PROVED (against the literal `physBody`, all goals closed):
 
 * `physBodyStep_binopCollapse`: the **per-instruction `flatMap` step**. One source
   binop instruction in the two-address-collapse shape expands, under `physBody`,

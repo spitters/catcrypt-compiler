@@ -46,7 +46,7 @@ descending the leaves with `hgcongr` (`HGCongr.lean`). The head-pair key
   (`makeHGCongrLemma`), so the implicit `{p}` (which makes `modAddF a b` a 3-arg
   application) is irrelevant — the lemma fires on `modAddF`.
 
-* **Gap (3), `@[reducible]` head — sidestepped (with one honest caveat).** The
+* **Gap (3), `@[reducible]` head — sidestepped (with one caveat).** The
   head-pair key keys on the *pair* `(modNegF, modNegF)` / `(modAddF, modAddF)`,
   not on a single reducible head used for `RelatedBinOp` instance resolution, so
   it does not silently match the abstract `·+·` square with the wrong target.
@@ -74,7 +74,7 @@ remains a goal-shape prelude. The deliverable below is the `@[hgcongr]` lemmas
 (binary + unary) and a mixed binary/unary op-tree leaf discharged by `hgcongr`,
 including the real `fpOpLowerTransports` arms.
 
-**0 sorries**; ambient axiom set `{propext, Classical.choice, Quot.sound}`.
+**All goals closed**; ambient axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
 
 @[expose] public section
@@ -257,7 +257,7 @@ theorem fpComLowerTransports_via_hgcongr {Γ : Ctxt fpDialect} {t : FpTy}
   fundamental lowerFieldToModArith transTy mapVal
     fpVarTransports fpOpLowerTransports_by_hgcongr fpMapValExtends c
 
-/-! ## 4. The honest comparison: which gaps `hgcongr` closes that `rcongr` could not
+/-! ## 4. The comparison: which gaps `hgcongr` closes that `rcongr` could not
 
 | Gap (from `RcongrLeafAutomation` §4) | `rcongr` | `hgcongr` |
 |---|---|---|

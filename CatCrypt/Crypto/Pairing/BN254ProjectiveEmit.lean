@@ -63,7 +63,7 @@ the affine group law the bench KAT pins byte-identical to the EIP-196 add — i.
 the projective accumulation computes the same `G1` group element, with the
 inverse amortised.
 
-## AUCurves boundary (the honest caveat)
+## AUCurves boundary (caveat)
 
 The realization ties here are the *generic-chart* identities (`Z = 1`,
 distinct/doubling branches), which hold by `field_simp; ring`.  The exceptional
@@ -82,7 +82,7 @@ lowering and the optimizer residence the affine kernels carry.  They denote (via
 `bn254_padd_realized` and the dialect's tangent-branch group double.  CT: a fixed
 `fp_*` schedule, no secret branch/index.
 
-0 sorries; no new custom axioms; the field-algebra ties are unconditional, the
+All goals closed; no new custom axioms; the field-algebra ties are unconditional, the
 group-law all-pairs equivalence is the carried AUCurves/EIP-196 edge.
 -/
 

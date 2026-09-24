@@ -66,7 +66,7 @@ trusted emit-scaffolding is: (1) the load/store pointer ABI + leaf
 prologue/epilogue + modulus/`n'` constant materialisation; (2) the inter-step
 carry routing (the word shift-down folds); and (3) the final canonicalising
 conditional subtract (`< 2p → < p`). `AsmPrinter` + `gas` + the external GMP KAT
-are the syntactic/value trust boundary, exactly as the SM2 template. No `sorry`,
+are the syntactic/value trust boundary, exactly as the SM2 template. No open goals,
 no new `axiom`. The MULX/ADX legalizations and the verified spilling allocator
 are reused unchanged.
 

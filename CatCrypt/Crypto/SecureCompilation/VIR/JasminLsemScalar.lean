@@ -99,7 +99,7 @@ leak arm is increment 3's `linstrLeak` — a single `LLeak.opn` carrying the
 opcode + operand *structure* (`reg dst`, `imm n`), reading **no** register value,
 matching `MachineConstantTime.instrLeak`'s structural-only leak.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/

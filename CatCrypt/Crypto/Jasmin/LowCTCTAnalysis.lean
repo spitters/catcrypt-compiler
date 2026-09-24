@@ -1842,7 +1842,7 @@ def xeddsaVerify_lt : LevelTable := LevelTable.allPublic
 /-! ## §7.  Verification examples — Lean-side `decide` proofs
 
 These show that the analyser is decidable and the audit results are
-formally checked, not just `#eval`'d. -/
+formally checked rather than `#eval`'d. -/
 
 example :
     cmdCT CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert.fe25519InvertBody
@@ -1938,7 +1938,7 @@ theorem xeddsaVerifyBody_CMOV :
 /-! ## §8.  Axiom check -/
 
 -- Confirms `cmdCT_sound` depends on the stated assumptions only:
--- `[propext, Classical.choice, Quot.sound]` — no `sorryAx` (the proof uses
+-- `[propext, Classical.choice, Quot.sound]` — no admission axiom (the proof uses
 -- the `CMOVInvariant` hypothesis and the cross-branch `RSelect_CT_step`
 -- discharge).  These are
 -- standard mathlib classical-logic axioms used by `decide`/`Decidable`.

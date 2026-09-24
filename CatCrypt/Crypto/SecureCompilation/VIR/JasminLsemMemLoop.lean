@@ -82,7 +82,7 @@ lowering target for an `scf.for`-with-region-call.
 3-element buffer) through `lsemFuelMemL` and checks by `native_decide` that the
 result decodes to the expected fold, and that it agrees with `runBoundedLoopMem`.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validate).**  The `lsem→bytes` encoder and Sail tables
 remain the declared trusted base.
 -/

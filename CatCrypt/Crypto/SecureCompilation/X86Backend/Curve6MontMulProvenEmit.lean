@@ -61,7 +61,7 @@ emit scaffolding is: (1) the load/store pointer ABI + leaf prologue/epilogue +
 modulus/`n'` materialisation; (2) the inter-step carry routing (the word
 shift-down folds); and (3) the final canonicalising conditional subtract. The
 `AsmPrinter` + `gas` + the external GMP KAT (`x·y·R⁻¹ mod p`, `R = 2^384`) are
-the syntactic/value trust boundary, exactly as at 4 limbs. No `sorry`, no new
+the syntactic/value trust boundary, exactly as at 4 limbs. No open goals, no new
 `axiom`. The MULX/ADX legalizations and the verified spilling allocator are
 reused unchanged.
 

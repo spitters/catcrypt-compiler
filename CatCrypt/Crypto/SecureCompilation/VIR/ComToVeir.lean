@@ -54,7 +54,7 @@ file (`ComToVeirCorrect.lean`, future work).
 ## Status
 
 Scaffold + `Expr` lowering + `Com` lowering + smoke test compile
-clean. No `sorry`, no `axiom`.
+clean. No open goals, no `axiom`.
 -/
 
 @[expose] public section

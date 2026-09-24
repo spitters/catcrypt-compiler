@@ -63,7 +63,7 @@ The relation here is the lift for one *fixed* `(Γ, t)` (`Com d Γ t` and
 between them is well-formed), but `R_com` is defined by recursion across **all**
 indices simultaneously (the recursive `var` clause descends into `t :: Γ`).
 
-**0 sorries**; the derived transport is checked to share `fundamental`'s axiom
+**All goals closed**; the derived transport is checked to share `fundamental`'s axiom
 set (`{propext, Classical.choice, Quot.sound}`), with **no**
 `jasminc_preserves_ct`.
 -/

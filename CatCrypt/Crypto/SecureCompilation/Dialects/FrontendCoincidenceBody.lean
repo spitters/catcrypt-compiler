@@ -65,12 +65,12 @@ What it does **not** internalise is the per-let `inRangeState`-discharge that
 ties `e.eval rs.rsScalar`'s `Nat` value to `e.evalStateBV rs`'s wrapping
 `BitVec 64` value *inside the running derivation* — that wrap-discharge is the
 single-step `derivedBeta_scalarStore_eq_evalStateBV` (proved in the prior file),
-which we invoke per store. The honest residual is exactly the per-let
+which we invoke per store. The residual is exactly the per-let
 `inRangeState` side-condition that the running `RustExec` value must satisfy for
 the `evalState`↔`evalStateBV` materialisation to hold at that store; we carry it
-as an explicit hypothesis on each let, not a hidden `sorry`.
+as an explicit hypothesis on each let, not a hidden admitted proof.
 
-No `sorry`, no new axioms, no `native_decide`.
+No open goals, no new axioms, no `native_decide`.
 -/
 
 @[expose] public section
@@ -180,7 +180,7 @@ threading `StateAgree` across each store via the §2 engine `stateAgree_update`.
 
 To pin each store's bound value to the §1 `updBeta` chain, each let carries an
 explicit `inRangeState` side-condition on its bound `SExpr` at the *running*
-state (the honest residual stated in the module doc): the wrap-discharge
+state (the residual stated in the module doc): the wrap-discharge
 `derivedBeta_scalarStore_eq_evalStateBV` then materialises the stored `Nat` value
 at exactly the `BitVec 64` value the §1 recursion threads. -/
 

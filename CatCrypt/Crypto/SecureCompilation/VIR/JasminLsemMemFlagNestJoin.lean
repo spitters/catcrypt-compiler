@@ -90,7 +90,7 @@ SPEC fold, which equals `ComL.denote` = `ggmNestedFold` at the GGM small sizes
 (`num = 8 ↦ 14`, `num = 16 ↦ 28`), plus outer zero-trip (`D = 0`) and inner
 zero-trip (`num = 1`: every inner trip `0`) cases.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}** for the segment
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}** for the segment
 lemma and the closed theorems (+ `Lean.ofReduceBool` for the `native_decide`
 SPEC-fold evaluations in the validate).
 -/

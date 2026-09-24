@@ -90,7 +90,7 @@ output cell, on every incoming state — which is exactly what the protocol KAT 
 
 This module **composes** the four existing passes; it changes none of their
 algorithms (per the task constraint). Every lemma here is a `.trans`/instantiation of
-an already-proved component lemma. No `sorry`, no new axiom.
+an already-proved component lemma. No open goals, no new axiom.
 -/
 
 @[expose] public section

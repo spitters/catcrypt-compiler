@@ -58,7 +58,7 @@ forces `a = b = 0`) — a number-theoretic fact about the concrete `bls12_377`
 twist nonresidue, stated here as the remark `norm_ne_zero_iff_of_nonresidue`'s
 hypothesis, **not** proved. We also do not wire inversion down to the emitted
 6-limb base kernels (the `BaseSubstrate` lift, one further step, deliberately
-not attempted here to keep the pass focused and sorry-free). The conjugate-over-
+not attempted here to keep the pass focused and fully proved). The conjugate-over-
 norm inverse and its cancellation law are the deliverables.
 -/
 

@@ -81,7 +81,7 @@ no-`mapTy`-target / op-splitting obstruction stated).
   (`ext2Mul` denotes to `Fp2MulSchedule`), with `no_total_lowering_*` notes
   documenting why it is *not* a `LoweringData`.
 
-**0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
+**All goals closed**; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
 
 @[expose] public section
@@ -387,7 +387,7 @@ transport. We record it as exactly that. -/
 
 /-- **The extension fragment, as an op-level realisation.** `ext2Mul` denotes to
     its ModArith-leaf Karatsuba schedule `Fp2MulSchedule` (the L3→L2 extension
-    step). This is the honest shape of the extension lowering: a *value-level*
+    step). This is the shape of the extension lowering: a *value-level*
     realisation equality (`= ` between the op's denotation and a ModArith-leaf
     schedule), **not** a `TransportSquare`/`LoweringData` program transport —
     there is no single ModArith op, nor a ModArith type, to send `ext2Mul`/`fp2`

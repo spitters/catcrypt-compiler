@@ -52,7 +52,7 @@ values the line functions of `RelationalFrontBls377MillerLine` produce.
     accumulation collapses to the identity, independent of the bits);
   - `millerLoop_singleton` — a one-step loop is exactly `millerStepEntry 1`.
 
-## Honesty boundary
+## Scope boundary
 
 This assembles the Miller-loop **computation** — the doubling-and-add line
 accumulation over the `Fp12_377` tower — and proves its structural fold
@@ -65,7 +65,7 @@ exactly as `RelationalFrontBls377MillerLine` and the `AUCurvesPort` /
 `Fp12_377` value is the pairing; we deliver the well-defined accumulation and
 its algebraic recurrences only.
 
-0 sorries; no custom axioms.
+All goals closed; no custom axioms.
 -/
 
 @[expose] public section

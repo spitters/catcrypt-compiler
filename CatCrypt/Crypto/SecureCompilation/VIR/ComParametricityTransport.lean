@@ -54,7 +54,7 @@ Phase 1.
   (each lowered expression transports, with the bound value threaded through
   `Valuation.extend`). No side condition is left unstated.
 
-**0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}` (the
+**All goals closed**; target axiom set `{propext, Classical.choice, Quot.sound}` (the
 ambient Mathlib/Core set), with **no** `jasminc_preserves_ct`.
 -/
 

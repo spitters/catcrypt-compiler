@@ -33,7 +33,7 @@ digit determines `n % 10`, the prefix determines `n / 10` by the IH, and
 (`String.ofList ∘ Nat.toDigits 10`), and prefixing the constant `"v"` is
 left-cancellable, so `freshName n = "v" ++ toString n` is injective.
 
-This file proves `freshName_injective` cleanly (no `sorry`, no new axioms). Any
+This file proves `freshName_injective` cleanly (no open goals, no new axioms). Any
 caller of `execCom_eq` (in particular the multi-op loop theorem of
 `JForProgMultiOp.lean`) discharges the carried `hInj` with this lemma, removing
 the last side-condition from the straight-line whole-`Com` preservation path.

@@ -44,7 +44,7 @@ matching `fiat_p256_montgomery_domain_field_element` (`[u64;4]`). An affine **EC
 point** is `(x ‖ y)`, two `Fp`s = `2·FESZ = 64` bytes; a **scalar** is `32`
 bytes.
 
-0 sorries; the only hypotheses are the opaque EC-leaf agreements
+All goals closed; the only hypotheses are the opaque EC-leaf agreements
 (`EcLeafAgrees prims leafSem`) at the leaf-model parameter `leafSem`: each
 denotation theorem denotes its `Com` through `jasminDenoteWith leafSem`, and
 `p256Oracle_agrees` shows the agreement is satisfiable for every `prims`.

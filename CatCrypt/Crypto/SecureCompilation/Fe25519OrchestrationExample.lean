@@ -34,7 +34,7 @@ The `LowCT` leaf calls name their leaves by string (`"fe25519_mul"`,
 `func.call`. §3 makes that correspondence concrete and proves the `extCall` node
 denotes exactly the real add leaf.
 
-## What is built (0 sorries, no `native_decide`, no new axioms)
+## What is built (all goals closed, no `native_decide`, no new axioms)
 
 * `macAccumulate` — a `mac_accumulate`-style orchestration: an `RFor` loop whose
   body multiplies two field elements (`RCallN "fe25519_mul"`) then adds the

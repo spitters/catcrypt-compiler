@@ -46,7 +46,7 @@ per-curve EC structures entirely and re-export `ECAffPoint (ZMod bls377Q)` etc.,
 duplicated algebra.  Both are out of scope here (no committed file is touched); this witness
 records the redundancy.
 
-0 sorries; no custom axioms.  The numeral-nonvanishing facts are reused from the per-curve
+All goals closed; no custom axioms.  The numeral-nonvanishing facts are reused from the per-curve
 files (`bls377_two_ne_zero`, …), which are themselves consequences of the section hypothesis
 `[Fact (Nat.Prime ·Q)]` — not asserted axioms.
 -/

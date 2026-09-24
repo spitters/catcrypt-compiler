@@ -49,7 +49,7 @@ This file imports **only** the stable dialect (`JasminDialect.lean`); it is
 independent of the emitter (`JasminAbiEmit` / `JasmincSemAlignment` /
 `JasminPrint` / `GlueVectorization`) and builds standalone.
 
-0 sorries. The leaf edge is parametric (a hypothesis), never a `sorry`.
+All goals closed. The leaf edge is parametric (a hypothesis), never an admitted proof.
 -/
 
 @[expose] public section
@@ -128,7 +128,7 @@ structure FaestPrimitives where
 computes the abstract primitives `prims` on the two FAEST leaf names (at the
 leaf's declared signature). This is the FAEST counterpart of
 `LatticeToJasminDenote.LeafAgrees` / `JasminPrintSemCorrect.LeafAgrees`: opaque
-leaf, carried agreement obligation — never a `sorry`. -/
+leaf, carried agreement obligation — never an admitted proof. -/
 
 /-- AES-128 leaf agreement: on the `faest_aes128` signature, the leaf semantics
     is `prims.aes128` of its two `reg 128` arguments. -/

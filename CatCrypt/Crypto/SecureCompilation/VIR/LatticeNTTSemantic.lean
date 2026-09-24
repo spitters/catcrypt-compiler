@@ -136,7 +136,7 @@ with the emit-path leaves (which compute over `Fin n → BitVec 16`, not
 `jasminDialect` via `lowerLatticeToJasmin` (`VIR/LatticeToJasmin.lean`); this
 sibling dialect is the real-semantics witness those proofs are stated against.
 
-There are **no `sorry`s** in this file; see `#print axioms` at the end.
+There are **no open goals** in this file; see `#print axioms` at the end.
 
 ## Scope note
 
@@ -266,7 +266,7 @@ end Fits
 `invntt (basemul (ntt p) (ntt q))`, definitionally `fastMulImpl`. Under
 `Domain.fits` it computes the *cyclic* full product `p * q` in `CPolynomial`,
 and hence — via the ring hom `toPoly` — the product `p.toPoly * q.toPoly` in
-Mathlib's `R[X]`. This is honest convolution correctness (`fastMulImpl_eq_mul`),
+Mathlib's `R[X]`. This is convolution correctness (`fastMulImpl_eq_mul`),
 not a definitional collapse. -/
 
 section RealToPoly

@@ -779,7 +779,7 @@ verified-mechanical recursive `ffSampling` realization) are:
 * `JasminMulX_lo52_eq_specMul`: the `#MULX_64` + shift-merge in `fxp_mul`
   bottom 64 bits equal the spec's `fxpMul` truncated to 64 bits.
 
-Carried as named Props (no `sorry`); discharged by a future jasmin-CT pass
+Carried as named Props (no open goals); discharged by a future jasmin-CT pass
 + a BitVec equivalence pass. -/
 
 /-- The `fxp_add` jasmin body is constant-time under jasmin's standard

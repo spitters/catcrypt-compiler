@@ -46,7 +46,7 @@ The op's downstream correctness — that its Montgomery product with `x̃` is th
 unit `R = rInv⁻¹` — is `ModArithMontInverse.montInverse_spec` (over a prime
 modulus); here we only tie the field schedule to that op's leaf.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Classification (read `VIR/DIALECTS.md`)
 
 This is a **denote-preserving `fieldDialect` schedule**, NOT an emit-wired
 kernel.  It descends to jasmin/bytes through the certified
@@ -57,7 +57,7 @@ Bernstein–Yang reference), exactly as `EcLineFieldEmit.ecLineJasmin_denote` �
 cite that descent here, we do not wire it (the bytes-reaching field inverse still
 flows through the existing Fermat / divstep emit kernels).
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

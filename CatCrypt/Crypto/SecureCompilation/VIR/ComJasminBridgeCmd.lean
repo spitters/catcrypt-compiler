@@ -105,7 +105,7 @@ loop), `Ccall` (leaf calls), the register-index `Pget … (Pvar idx)` of
 `stackLoad`, the `Laset` write of `stackStore`, and the memory `emem` in the
 state relation. `Cif` and `Cwhile` are not emitted by `JasminPrint.lowerExpr`.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

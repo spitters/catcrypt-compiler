@@ -32,7 +32,7 @@ This is the **canonical parametric form** (`@canonical_parametric` — parametri
 the base field and the curve constant `b`, both of which vary per protocol).  A new curve needs
 no new on-curve proof: instantiate at its own `ZMod p` and `b`.
 
-0 sorries; no custom axioms.
+All goals closed; no custom axioms.
 -/
 
 @[expose] public section

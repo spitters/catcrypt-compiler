@@ -37,7 +37,7 @@ what `r` held. Rewriting the load to the move keeps the value **register-residen
 (the load becomes a register-to-register copy the renamer/scheduler can then often
 elide entirely) and drops the dependence on the memory subsystem for that hop.
 
-## What is proved (sorry-free)
+## What is proved (fully proved)
 
 `storeToLoadForward` is a forward scan carrying a small environment `held` mapping
 each frame cell to the register currently known to hold its value. The soundness

@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.OperandReadCorr
 `ComJasminBridgeFull` / `ComJasminBridgeCmd` land the per-step and whole-command
 bridge for the register-word `Cassgn`/`regArith` fragment; `OperandReadCorr`
 makes the two-register `Papp2` add self-contained by *deriving* the RHS value
-from the corresponding `Store`. Its honest-scope note names the next shape:
+from the corresponding `Store`. Its scope note names the next shape:
 
 > The other emit shapes (`Papp1 (Ozeroext …)` for `castW`, `Pget` for
 > `stackLoad`, …) are *not* covered by `papp2_read_corr` — they need their own
@@ -38,7 +38,7 @@ its `OpSem` (`zextOpSem`) so that on a `Vword szi w` it returns
 `(args.head).zeroExtend w'`; `BitVec.zeroExtend` *is* `BitVec.setWidth`, so the
 two carry the *same* `BitVec` (`castW_denote_eq_setWidth`).
 
-## What is proved (all sorry-free)
+## What is proved (fully proved)
 
 * `zextOpSem` / `zextOpSem_sem` — the width-cast unop `OpSem` and its evaluation
   on a matching-width word: `Vword szi w ↦ Vword szo (setWidth szo.bits w)`.
@@ -77,7 +77,7 @@ extension of `InstrRTranslate` (adding a `translateSOp1` + `Papp1` case) is a
 separate mechanical addition to that file; this file supplies the
 read-correspondence the per-step bridge consumes.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

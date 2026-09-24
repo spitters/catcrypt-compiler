@@ -62,7 +62,7 @@ This is the abstract algebra only — the construction `K[u]/(u² − ξ)` and t
 Karatsuba optimization's correctness. It does **not** wire the multiply down to
 any emitted base kernel; that lift is per-instantiation
 (`RelationalFrontBls377Fp2`-style) and deliberately out of scope here, to keep
-the generic core focused and sorry-free.
+the generic core focused and fully proved.
 -/
 
 @[expose] public section

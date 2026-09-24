@@ -103,7 +103,7 @@ as `BodyBytesAgree` and derives the whole-ELF identity from it. The per-op
 agreements above are the kernel-reducible certificate; the `#eval` confirms they
 compose on the real kernel.
 
-No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval` byte
+No open goals, no axiom, no `native_decide` (the lemma proofs; the `#eval` byte
 witnesses in §4 are interpreter evaluation, not part of any proof term).
 -/
 
@@ -763,7 +763,7 @@ whole-body qsave residual, and the `coreNoSpill` byte-match) are re-homed in
 The full-body lowering `gatherJBlock4` and the per-op drop-`mov` shift
 agreement theorems (§3) — all kernel-independent — stay here. -/
 
-/-! ## 5. The real-kernel byte-identity bridge: status (honest)
+/-! ## 5. The real-kernel byte-identity bridge: status
 
 `ComToFramedJInstrLeaq.framedLeaqText_eq_lprog` is the theorem that
 turns a body byte-agreement into a whole-`.text` byte identity: its `hbody`
@@ -788,7 +788,7 @@ the in-body `MOVQ` qsave spills to byte-match `encodeLcmd` — and §4c shows th
 **not**: the JInstr scalar encoder has no `off(%rsp)` spill-slot resolution, so the
 qsave reg↔mem stores diverge (3-byte reg-reg vs 5-byte `off(%rsp)` store).
 
-**Net status (honest).** With `gatherJBlock4` the whole physical body GATHERS, and
+**Net status.** With `gatherJBlock4` the whole physical body GATHERS, and
 the framing-free compute core (ALU + shift) plus the reg-reg arg-marshal byte-match
 `encodeLcmd` exactly (§4b, §4c `coreNoSpill`). The remaining gap to a literal
 whole-physical-body byte identity — hence to a clean `framedLeaqText_eq_lprog`

@@ -89,9 +89,9 @@ data-independence above.
    `n`-loop. The semantic agreement of the *emitted evaluator* with
    `JForProg.denote` factors through the per-iteration body semantics, carried
    as an explicit named hypothesis (`StepAgrees`) exactly as
-   `JasminPrintSemCorrect.lean` carries `LeafAgrees` — never a `sorry`.
+   `JasminPrintSemCorrect.lean` carries `LeafAgrees` — never an admitted proof.
 
-All goals closed; the leaf / step edges are explicit hypotheses, never `sorry`.
+All goals closed; the leaf / step edges are explicit hypotheses, never an admitted proof.
 -/
 
 @[expose] public section
@@ -305,8 +305,8 @@ structural facts unconditionally and characterise the `n`-fold semantics by an
 explicit fold-unfolding lemma; the semantic agreement of the *emitted
 evaluator* with `JForProg.denote` factors through the body's per-iteration
 semantics, which we carry as an explicit named hypothesis (`StepAgrees`),
-exactly as `JasminPrintSemCorrect.lean` carries `LeafAgrees` — never a
-`sorry`. -/
+exactly as `JasminPrintSemCorrect.lean` carries `LeafAgrees` — never an
+admitted proof. -/
 
 /-- The emitted loop body: the lowered `update` instructions followed by the
     `acc := <result>` write-back. This is exactly the `body` slot of
@@ -389,7 +389,7 @@ fact as the abstract hypothesis `StepAgrees` and prove the *whole-loop*
 agreement (`loopRun_eq`) parametric in it — exactly the
 `JasminPrintSemCorrect.lean` discipline: the inductive loop structure is closed
 unconditionally; only the single-iteration body edge is a named hypothesis,
-never a `sorry`. -/
+never an admitted proof. -/
 
 /-- An abstract per-iteration loop runner: `bodyRun acc` is the result of
     running the emitted loop body (lowering of `update`) once on accumulator
@@ -400,7 +400,7 @@ abbrev BodyRunner (accTy : JasminTy) : Type := ⟦accTy⟧ → ⟦accTy⟧
     `JForProg.step` of the dialect-level body. The loop analogue of
     `JasminPrintSemCorrect.LeafAgrees` — an explicit, named edge condition that
     any concrete body evaluator discharges via `JasminPrintSemCorrect.execCom_eq`
-    on the loop body, NOT a `sorry`. -/
+    on the loop body, NOT an admitted proof. -/
 def StepAgrees {accTy : JasminTy} (p : JForProg accTy)
     (bodyRun : BodyRunner accTy) : Prop :=
   ∀ acc : ⟦accTy⟧, bodyRun acc = p.step acc
@@ -431,7 +431,7 @@ theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
 
 /-- **Whole-loop emission consistency (parametric in the body edge).** Under the
     per-iteration agreement hypothesis `StepAgrees` (the named edge condition,
-    not a `sorry`), the emitted loop's `n`-fold run computes exactly
+    not an admitted proof), the emitted loop's `n`-fold run computes exactly
     `JForProg.denote`. The loop structure (the `n`-fold iteration) is closed
     unconditionally; only the single-iteration body semantics is the carried
     hypothesis — exactly the `JasminPrintSemCorrect.lean` discipline. -/

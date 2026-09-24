@@ -472,7 +472,7 @@ per-op **elementwise-agreement** lemmas (`§3`) certifying that each SIMD vector
 op denotes to the matching scalar `BitVec` op applied lane-by-lane, and the
 **verified vectorized poly add** proof of concept (`polyAdd_vectorized_eq`,
 `§4`) — the 256-wide coefficient add as `16 × vec 16 16` AVX2 adds equals the
-scalar add, with no `sorry` and no extra axioms.
+scalar add, with no open goals and no extra axioms.
 
 The **full result** (the follow-ons) is:
 

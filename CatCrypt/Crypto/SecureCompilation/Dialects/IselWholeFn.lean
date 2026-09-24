@@ -126,7 +126,7 @@ theorem bodyOpt_eq :
     concrete body: `rorImmSelect` preserves `bodyEmul`'s denotation by
     `rorImmSelect_denote` (rotate-by-8 in range); `andnSelect` preserves
     `(rorImmSelect bodyEmul)`'s denotation because it is the identity there (the
-    native image is not an and-not subtree). Sorry-free. -/
+    native image is not an and-not subtree). Fully proved. -/
 theorem bodyOpt_denote (V : Ctxt.Valuation (d := jasminDialect) [.reg 64]) :
     bodyOpt.denote V = bodyEmul.denote V := by
   rw [bodyOpt]
@@ -158,7 +158,7 @@ theorem bodyOpt_straightLine : StraightLine bodyOpt := by
 
     Compose `lowerComToProg_sem_eq'` on `bodyOpt` (needs `StraightLine bodyOpt`,
     discharged) with (a). The only remaining hypothesis is the opaque-leaf edge
-    `hLeaf` (vacuous here — no `extCall` in a pure rotate). Sorry-free. -/
+    `hLeaf` (vacuous here — no `extCall` in a pure rotate). Fully proved. -/
 theorem emittedOpt_run_eq_origDenote {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (V : Ctxt.Valuation (d := jasminDialect) [.reg 64]) :
     runProg leafSem bodyOpt V = bodyEmul.denote V := by

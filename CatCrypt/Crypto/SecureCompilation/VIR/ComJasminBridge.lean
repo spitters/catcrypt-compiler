@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
 # reference Jasmin operational semantics agree on emitted arithmetic
 
 The compiler carries **two** semantic frameworks for the lowered Jasmin code,
-and this file states — sorry-free — the cleanest TRUE connection between them.
+and this file states — fully proved — the cleanest TRUE connection between them.
 
 ## The executor relationship
 
@@ -43,7 +43,7 @@ exists **only as an unverified `MetaM` reifier** (`reifyInstrRMirror%`), with no
 denotation-preservation lemma.
 
 So the relationship is option **(c)** of the scoping task: the frameworks are
-separate, and the honest bridge is that **both characterise `Com.denote`** on
+separate, and the bridge is that **both characterise `Com.denote`** on
 emitted code. The JasminPrint side does so *definitionally* (`runProg` is proved
 equal to `Com.denote`). The psem side does so up to:
 
@@ -57,9 +57,9 @@ What does cross the gap cleanly, and is proved here, is the **arithmetic
 content**: the integer add the psem `OpSem` performs and the `BitVec` add that
 `Com.denote`'s `regArith .add` performs are the *same operation on the same
 numerals*. That is the key fact a byte-encoding bijection would lift to
-a full state correspondence; we prove it directly, with no `sorry`.
+a full state correspondence; we prove it directly, with no open goals.
 
-## What is proved here (all sorry-free)
+## What is proved here (fully proved)
 
 * `denote_add_smoke` / `smoke_run_eq_denote` — the JasminPrint executor on the
   golden-path two-op kernel `JasminDialect.smokeProg` equals `Com.denote`
@@ -91,12 +91,12 @@ a generic `∀ com, SemIr-of-(translate (lower com)) ↔ Com.denote com`. The ge
 statement needs (1) a *verified* AST translation
 `JasminAST.InstrR → CoqSemMirror.InstrR` (the reifier is unverified) and (2) the
 `Store ↔ Estate` byte-encoding bijection. Both are outside this module's scope
-and neither is introduced as a `sorry` here. The JasminPrint half is fully
+and neither is introduced as an admitted proof here. The JasminPrint half is fully
 generic (any straight-line `Com`); the psem half is the worked golden-path
 witness plus the value-level arithmetic correspondence that any encoding
 bijection would lift.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

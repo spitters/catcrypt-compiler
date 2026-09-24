@@ -88,7 +88,7 @@ operational invariant maintained by `analyzeCse` by construction.
   synthetic Com terms, including the headline duplicate-expression
   shape `v0 = acc + acc; v1 = acc + acc; ret v1`.
 
-No `sorry`, no new axioms — the framework's Com-level rewrite is the
+No open goals, no new axioms — the framework's Com-level rewrite is the
 identity, so both preservation theorems reduce to `rfl`.
 
 ## Residuals
@@ -618,8 +618,8 @@ optimisation steps plug. The expansion path:
 
 3. **Cross-loop / cross-function CSE.** Hoisting an invariant expression
    from a loop body to before the loop. This is the natural
-   continuation but requires interaction with the `JForProg` framework,
-   not just the body Com.
+   continuation but requires interaction with the `JForProg` framework
+   as well as the body Com.
 
 4. **Soundness extension to non-SSA aliasing ops.** The current hash
    assumes single-static-assignment: a `Ctxt.Var` reliably names one

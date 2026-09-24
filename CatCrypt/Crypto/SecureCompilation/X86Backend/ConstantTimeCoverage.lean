@@ -52,7 +52,7 @@ constant-time via `allDirect_constant_time`, and the roster below
 instantiates that across the carry/borrow/multiply kernels expressible in
 the `JInstr 64` model.
 
-What this sweep does **not** cover — the honest boundary:
+What this sweep does **not** cover:
 
 * **ZMM-layer kernels** (the AVX-512 / `ZOp` vector kernels — Poseidon2, the
   packed NTT/Frodo lanes). These live in the `ZOp`/`Lcmd`/`Com` IRs, not in
@@ -73,7 +73,7 @@ kernel that is (or can be expressed as) a straight-line `List (JInstr 64)` is
 covered here.
 
 **0 axioms beyond the `native_decide` KAT pins** (`propext`, `Quot.sound`,
-`Lean.ofReduceBool`), **0 sorries**.
+`Lean.ofReduceBool`), **all goals closed**.
 -/
 
 @[expose] public section

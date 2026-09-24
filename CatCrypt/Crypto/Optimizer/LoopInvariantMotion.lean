@@ -80,7 +80,7 @@ exactly the existing bounded-loop denotation machinery.
   form `pre`. The denotation-preservation content — the part a verified
   optimiser must discharge — is proved here.
 
-No `sorry`, no `native_decide`, no new axioms: `licm_denote` closes by induction
+No open goals, no `native_decide`, no new axioms: `licm_denote` closes by induction
 over `List.range n` (the same fold-congruence skeleton as
 `JForProgUnroll.foldl_step_congr`).
 -/

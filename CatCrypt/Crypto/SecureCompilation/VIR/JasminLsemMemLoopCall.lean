@@ -65,7 +65,7 @@ checks by `native_decide` that the result decodes to the fold `acc = 60`, and th
 it agrees with `runBoundedLoopMemC` (the fold using the concrete-leaf call step).
 This is the region-call harness `ConvertToVole` reuses.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validate).**
 -/
 

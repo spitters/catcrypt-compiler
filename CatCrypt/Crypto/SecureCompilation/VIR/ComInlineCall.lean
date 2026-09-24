@@ -40,7 +40,7 @@ dialect-generic block-splice primitive
 `FieldDialectBlockDescent.spliceCom` (the `Com` let-composition, `spliceCom_denote`) and
 `ComInline.argHom` (the call's args → formal substitution).
 
-## What is proved (`0` sorries)
+## What is proved (all goals closed)
 
 * `inlineCallCom` — splice a statically-known callee `Com` (renamed through the call's
   args) ahead of the continuation.
@@ -60,7 +60,7 @@ dialect-generic block-splice primitive
   `jasminExtSem` arm is the opaque default (where `inlineCalls_preserves_denote` is
   vacuous).
 
-All proofs are structural. No `sorry`, no `native_decide`, no new axioms.
+All proofs are structural. No open goals, no `native_decide`, no new axioms.
 -/
 
 @[expose] public section

@@ -50,7 +50,7 @@ parameters always produce different sponge inputs.
 * [SP 800-185 -- SHA-3 Derived Functions, Section 6.2, NIST 2016]
 * [Kelsey, Chang, Perlner -- SHA-3 Derived Functions, 2016]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

@@ -51,7 +51,7 @@ gate. Here the "gate" is a `regArith` op and the "classical operand" is a
   ops (`regConst` / `regArith .or` / `regArith .and`), so the branch-free
   invariant is maintained.
 
-All goals closed. No `sorry`. Axiom set inherited via `Egraph`
+All goals closed. Axiom set inherited via `Egraph`
 (`propext`, `Quot.sound`, `Classical.choice`).
 -/
 

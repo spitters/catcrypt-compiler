@@ -41,7 +41,7 @@ the head, then continue. That is `Com.spliceCom c k : Com d Γ s` for `c : Com d
 `Ctxt.Hom`/`Com.rename` renaming infrastructure of `MergeCom`; its correctness is the
 de Bruijn substitution law, ported dialect-generically here.
 
-## What is proved (dialect-generic, `0` sorries)
+## What is proved (dialect-generic, all goals closed)
 
 * `Com.spliceCom` + `Com.spliceCom_denote` — the block-splice primitive and its
   denotation law (from generic `Com.denote_rename`).

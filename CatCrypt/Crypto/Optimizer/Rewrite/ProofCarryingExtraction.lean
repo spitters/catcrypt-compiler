@@ -66,7 +66,7 @@ bridge's `relatedOfEq` so a validated extraction becomes a `Related` entry with
 no new proof content.
 
 All goals are closed. Axiom set: `propext`, `Quot.sound` (inherited from
-`Egraph.lean`; no new axioms, no `sorry`).
+`Egraph.lean`; no new axioms, no open goals).
 -/
 
 @[expose] public section

@@ -36,7 +36,7 @@ functional simulation runs — so the CT statement and the functional statement
 are about *one and the same* object: the linearizer-emitted straight-line body.
 No IR→x86 hypothesis, no `jasminc_preserves_ct`, appears anywhere below.
 
-## Fidelity (trust-critical): what `lsemLeak` leaks, and why it is honest
+## Fidelity (trust-critical): what `lsemLeak` leaks, and why it is faithful
 
 `lsemLeak` mirrors `MachineConstantTime.blockLeak` / the Barthe-et-al. (CCS 2014)
 constant-time leakage model: a cache/branch-predictor attacker observes
@@ -67,13 +67,13 @@ This is the linear-IR analogue of `MachineConstantTime.blockLeak_state_independe
 and `LowCTToJInstrCT.lowerSeq_constant_time`, and the `lsem`-level counterpart of
 `RHPVerifiedMiddle.all_cprog_ct`.
 
-## Scope (honest)
+## Scope
 
 The capstone is unconditional **for the uniform-width `regArith` straight-line
 fragment** (`UniformRegArith`/`UniformCtxt`), the same fragment increment 2's
 functional simulation covers. The `lsem→bytes` encoder and the Sail
 encode/decode tables remain the declared trusted base, as for every verified
-compiler. **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}**, no
+compiler. **All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}**, no
 `jasminc_preserves_ct`.
 -/
 

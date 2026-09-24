@@ -65,7 +65,7 @@ valLimbs y` and `emitMontRedcStep`'s `runBlock = montgomeryReduce` step
    per-step value spec (each step's `runBlock` value is a `montgomeryReduce`
    step, proven in `MontReduceRunBlock`).
 
-`AsmPrinter` + `gas` is the thin syntactic trust boundary. No `sorry`, no new
+`AsmPrinter` + `gas` is the thin syntactic trust boundary. No open goals, no new
 `axiom`. The MULX implicit-`%rdx` and ADX immediate legalizations
 (`mulxLegalize`/`adxLegalize`, mirrored from `Mul48ProvenEmit`) are the same
 fixed-register-encoding realisations the hardware requires.

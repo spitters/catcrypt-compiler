@@ -88,7 +88,7 @@ checks the flag machine runs it end to end: the accumulator decodes to
 `ComL.denote` (`3^(2²) = 81` at runtime count `2`), and at runtime count `0` the
 zero-trip guard skips the body (accumulator = seed).
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}** for every named
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}** for every named
 theorem (+ `Lean.ofReduceBool` for the `native_decide` validates).
 Scope: the generic re-tie takes a `CMP`-free, reg-`MOV`-free body (the fold side
 is `lsemStraightMem`, which steps neither); the invariant-touch compares
@@ -739,7 +739,7 @@ theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
 
     given the SAME counter schedule as `loopMem_runBounded` (back-edge taken after iterations
     `1..m-1`; the counter *reads zero* after the `m`-th body-fold — the emitted
-    `CMP` evaluates the counter, so the exit needs a zero read, not just
+    `CMP` evaluates the counter, so the exit needs a zero read, not only
     a read miss), the machine runs `m·(|body|+2)` steps and halts in a state
     whose base agrees with **the same fold `runBoundedLoopMem body m`** on the
     register store and the array carrier, with `zf = true` (the exit compare).

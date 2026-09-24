@@ -55,7 +55,7 @@ decodes to the doubly-nested fold; (c) a data-dependent `while (n != 0)` whose b
 does `n -= 1` and `acc += buf[i]` decodes to the fold, the trip determined by the
 initial `n`, and agrees with `runWhileMem`.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 
 ### Scope (arbitrary-depth mutual recursion)

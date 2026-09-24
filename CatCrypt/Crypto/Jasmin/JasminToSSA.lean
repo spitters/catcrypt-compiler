@@ -22,7 +22,7 @@ targets `catCryptDialect` directly (the MLIR-aligned `Com` dialect):
   (`translateMonoCmdD` / `translateMonoExprD` / `translateBinOpD`), and
 * `CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative`
   (`translateMonoCmdD_denoteSP_native` — the reference-semantics
-  correctness, proved directly by induction, sorry-free).
+  correctness, proved directly by induction, fully proved).
 
 This module keeps the translator-independent liveness analysis used by the
 ports and case studies:

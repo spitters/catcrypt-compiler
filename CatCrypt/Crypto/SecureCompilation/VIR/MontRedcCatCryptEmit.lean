@@ -90,7 +90,7 @@ pair ops (`mkPair`/`fst`/`snd`), which `DialectToJasminCom.toJExprD` declines. S
 `cryptoDialectToJasminCom` succeeds and the whole REDC step lowers to jasmin (the
 split-word ops are MULX/ADCX-covered).
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

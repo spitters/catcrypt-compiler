@@ -65,7 +65,7 @@ loop).
   sweep counts a public `row` down to zero each pass) and the front `transU`
   SUCCEEDS, so the denote's `semU … = some env'` premise is satisfiable.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 @[expose] public section

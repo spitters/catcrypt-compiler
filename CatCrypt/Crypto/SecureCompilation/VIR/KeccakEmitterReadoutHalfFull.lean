@@ -99,7 +99,7 @@ full closure requires the simp blast to scale to that size.
 `[propext, Classical.choice, Quot.sound]` plus the `bv_decide` LRAT certs
 from `KeccakDiffuseExact` (inherited through `keccak_round_bitexact`). No new
 custom axioms.
-No `sorry`, no `native_decide`.
+No open goals, no `native_decide`.
 
 ## Canonical entry point
 

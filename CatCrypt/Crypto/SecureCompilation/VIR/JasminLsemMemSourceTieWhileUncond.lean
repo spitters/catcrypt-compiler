@@ -57,7 +57,7 @@ with the counter register *equal to the guard register* — the `SUB gReg ← gR
    hypotheses (`hgseed`/`hpos`) via §3; the do-while fuel is pinned to the
    seed, so no fuel parameter remains on the statement surface.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound}.**
+**All goals closed; axioms = {propext, Classical.choice, Quot.sound}.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhileUncond

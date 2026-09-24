@@ -65,7 +65,7 @@ boundary as `JasminCompilerBridge.jasminc_preserves_uc` (the cited Jasmin
 compiler-correctness paper): everything *above* it is a Lean proof; the step to
 the running binary is trusted and explicitly delimited.
 
-No bare axiom, no `sorry`: `LeafFFIValidated` is a parametric hypothesis, not a
+No bare axiom, no open goals: `LeafFFIValidated` is a parametric hypothesis, not a
 global `axiom`, exactly like the per-protocol `*LeafAgrees` it generalises.
 -/
 

@@ -68,7 +68,7 @@ threaded into `gAt` as the two message-word selectors — it does NOT change whi
 `gAtCatCrypt_eq` rewrite fires at every (round, lane) regardless of which message
 words SIGMA chose. The fold is `round`-uniform; SIGMA is carried as a parameter.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

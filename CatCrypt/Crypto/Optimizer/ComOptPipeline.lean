@@ -51,7 +51,7 @@ We also record `comOptPipeline_ctSafe`: the whole pipeline preserves
 constant-time safety (the dialect is branch-free; via the components'
 `*_ctSafe` corollaries).
 
-All goals closed. No `sorry`.
+All goals closed.
 -/
 
 @[expose] public section

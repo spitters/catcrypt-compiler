@@ -60,7 +60,7 @@ function as the original. So unrolling commutes with the verified emit chain
   ChaCha `N=2` (10 column/diagonal pairs from 20 rounds), SHA-2 `N=4`
   (16 = 64/4), Keccak `N=4` (6 = 24/4).
 
-No `sorry`, no `native_decide`, no new axioms — the split lemmas are closed by
+No open goals, no `native_decide`, no new axioms — the split lemmas are closed by
 structural induction on the iteration count and standard `Nat`-arithmetic
 identities (`omega`, `Nat.div_mul_cancel`, `List.foldl_append`,
 `List.range_add`).

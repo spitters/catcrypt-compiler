@@ -81,7 +81,7 @@ descent of `lsemStepN` (an `Option` match on the `LinstrR` syntax, not an op-tre
 over a single carrier) and the de-Bruijn `StoreAgreesN` bookkeeping — those reuse
 increment 5's machinery directly, as noted at each use.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base.
 -/

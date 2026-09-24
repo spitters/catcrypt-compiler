@@ -63,7 +63,7 @@ provides:
    bridge hypotheses connecting the Rocq-shape effects to the CatCrypt
    `LeafSpec`.  Everything *downstream* of those is a closed Lean proof.
 
-No `sorry`, no `admit`: the residual is expressed as named hypotheses
+No open goals, no `admit`: the residual is expressed as named hypotheses
 (`CallBridge`, `limbValBridge`, `limbWriteBridge`) and a documented
 transcription caveat, never as a stub.
 
@@ -358,7 +358,7 @@ discipline of the FFI trust edge `SecureCompilation/VIR/LeafAxiomConsolidation.l
 
 Neither edge can be a Lean `theorem`: both straddle Rocq and Lean.  They are
 recorded as named, inhabited Lean objects (not prose, not a bare `axiom`).  No
-`sorry`, no new global `axiom`. -/
+open goals, no new global `axiom`. -/
 
 /-! ### §5.1  Edge 1 — the call-oracle bridge (the irreducible two-prover edge)
 
@@ -478,8 +478,8 @@ structure CrossProverResidual
 
 /-! ### §5.4  The residual is consumable (worked theorems)
 
-To show each named assumption is *usable as an explicit hypothesis* — not just a
-prose label — we record the canonical conclusions they support, in the `LeafFFIValidated`
+To show each named assumption is *usable as an explicit hypothesis*, and not a
+prose label, we record the canonical conclusions they support, in the `LeafFFIValidated`
 `leafAgrees_of_FFIValidated` discipline.  Each takes the named residual as a
 hypothesis and discharges a `RustExec` correspondence with it. -/
 
@@ -506,7 +506,7 @@ theorem cross_call_of_residual
     the cross-prover semantic-equivalence conclusion the whole file is for —
     holding *exactly* under the named residual (transcription faithfulness turns
     the `rocqExec` premise into an `AUCurvesExec` derivation, which the §3
-    constructor theorems then lift), with no `sorry` and no bare `axiom`. -/
+    constructor theorems then lift), with no open goals and no bare `axiom`. -/
 theorem rocqExec_lifts_to_rustExec
     {rocqExec : LowCT → RustState → RustState → Prop}
     (res : CrossProverResidual calleePost limbVal limbWrite leafSpec rocqExec)

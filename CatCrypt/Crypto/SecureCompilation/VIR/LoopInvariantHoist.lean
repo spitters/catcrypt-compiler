@@ -89,7 +89,7 @@ its inputs reads the loop-carried accumulator).
   synthetic Com terms (a `regConst` round constant in a body whose other
   binders compute `acc + acc`).
 
-No `sorry`, no new axioms — the framework's Com-level rewrite is the
+No open goals, no new axioms — the framework's Com-level rewrite is the
 identity, so both preservation theorems reduce to `rfl`.
 
 ## Scope

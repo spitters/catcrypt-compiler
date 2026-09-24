@@ -61,10 +61,10 @@ scaffold (the same tier the bytes-direct demos carry), and the ELF stitching +
 relocation records are `ElfObject.buildElfObjectMultiReloc` (whose container
 well-formedness — offset monotonicity, symbol count, reloc length — is already
 proved in `ElfObject`). This module only *composes* those, plus the offset-rebase
-arithmetic, which is checked by the worked examples below. No `sorry`, no axiom,
+arithmetic, which is checked by the worked examples below. No open goals, no axiom,
 no `native_decide`.
 
-## Scope / what remains (honesty)
+## Scope / what remains
 
 * Item 1 (framed single-function) is **complete**: `jinstrFramedEmit` is a proper
   one-symbol `.o`, structurally pinned by `jinstrFramedLeaf_text`.
@@ -221,7 +221,7 @@ def externCallees (fs : List JFunc) (relocs : List JCallReloc) : List String :=
     `externs`. The reloc still carries the callee NAME; `ElfObject.externSymIdx`
     would return `0` for a defined (non-extern) symbol, so for a faithful
     intra-object reloc the callee must appear in the symbol table — which it does,
-    as a defined func symbol. The honest residual (resolving a reloc's symbol index
+    as a defined func symbol. The residual (resolving a reloc's symbol index
     against the DEFINED symbols too, not only `externs`) is recorded at the end of
     this file; for the common case — calls to EXTERNAL helpers — `externCallees`
     captures exactly the right UNDEF set. -/

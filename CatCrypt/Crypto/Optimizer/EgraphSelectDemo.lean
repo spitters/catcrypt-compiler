@@ -45,7 +45,7 @@ model** `formCost : Target → FormTag → Nat` scores the families per target. 
 is the abstraction level at which an e-graph extraction operates: a
 *static* min-cost pick over a candidate e-class. We expose exactly that pick.
 
-## Headline results (all `decide`-checked, no `sorry`)
+## Headline results (all `decide`-checked, no open goals)
 
 * `gfniForm`, `pshufbForm`, `multtabForm` all denote `gf16mul`
   (`gfni_denote_eq`, `pshufb_denote_eq`, `multtab_denote_eq`, and the e-class
@@ -63,7 +63,7 @@ is the abstraction level at which an e-graph extraction operates: a
   exercised on a register-only `Com` (`real_gate_accepts_repr`), so selection
   stays *verified*. A bogus form is rejected (`gate_rejects_bogus`).
 
-## Honest caveat (static cost model — blind to RA/ILP/spill)
+## Caveat (static cost model — blind to RA/ILP/spill)
 
 The extraction uses a **static** cost model (per-form costs) that is blind to
 register allocation, instruction-level parallelism, and spills. It validates
@@ -202,7 +202,7 @@ theorem multtab_denote_eq : multtabForm.denote = gf16mul := rfl
 
 /-- Every member of the e-class denotes the same function — the saturation
 invariant. (`decide`d pointwise over the 256-point domain to exercise the actual
-`BitVec 4` semantics, not just definitional unfolding.) -/
+`BitVec 4` semantics, beyond definitional unfolding.) -/
 theorem eclass_all_equal :
     ∀ f ∈ eclass, ∀ a b : BitVec 4, f.denote a b = gf16mul a b := by
   intro f hf a b

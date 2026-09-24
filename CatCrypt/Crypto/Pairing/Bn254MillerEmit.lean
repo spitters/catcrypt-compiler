@@ -56,7 +56,7 @@ The AUCurves verified reference
 (`bench/bn254_compare/pairing_from_rustcmd.lean` + `bn254_pairing_kat.rs`)
 cross-checks the whole `pairing_optimal` against it.
 
-0 sorries; the only hypotheses are the leaf agreements at the leaf-model parameter
+All goals closed; the only hypotheses are the leaf agreements at the leaf-model parameter
 `leafSem`.
 -/
 

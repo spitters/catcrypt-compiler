@@ -40,7 +40,7 @@ Concretely, we:
 
 This is the **structural FIPS 202 diffusion identity**, closed by `bv_decide`
 per-lane (LRAT axiom) plus `rfl` for the index-only steps. No
-`native_decide`, no KAT, no `sorry`.
+`native_decide`, no KAT, no open goals.
 
 ## What ι contributes
 
@@ -63,7 +63,7 @@ content of this module.
 ## Axiom budget
 
 `keccak_round_bitexact` and the per-step identities use `bv_decide` per-lane.
-The carried axiom is the standard `Lean.ofReduceBool` (LRAT) edge. No `sorry`,
+The carried axiom is the standard `Lean.ofReduceBool` (LRAT) edge. No open goals,
 no `native_decide`, no new custom axioms.
 
 ## Canonical entry point
@@ -269,7 +269,7 @@ theorem cChi_eq_fChi (s : Lanes) : cChi s = fChi s := by
     to exactly the FIPS 202 Keccak round transformation. Closed by `bv_decide`
     (LRAT) for the per-amount rotation lemmas and the `χ` algebraic identity;
     `rfl` for the `π` index permutation; `funext` over the 25 lanes for the
-    state-level identity. No `native_decide`, no KAT, no `sorry`. -/
+    state-level identity. No `native_decide`, no KAT, no open goals. -/
 theorem keccak_diffuse_bitexact (s : Lanes) :
     keccakClosedForm s = keccakFipsRound s := by
   simp only [keccakClosedForm, keccakFipsRound,

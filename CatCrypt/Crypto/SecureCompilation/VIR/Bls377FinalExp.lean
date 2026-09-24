@@ -57,7 +57,7 @@ subgroup order (the Zexe / Aleo BLS12-377 `Fr` modulus,
 `Bls377MillerSteps` instantiates this at the fixed tower nonresidues
 `bls377Xi2, bls377Xi6` to obtain its `finalExp`, replacing the former axiom.
 
-## Honesty boundary
+## Scope boundary
 
 The deliverable is a **concrete schedule** for the final exponentiation: one
 fewer axiom-as-data in the pairing.  What is *constructed* here is the schedule —
@@ -77,7 +77,7 @@ It is stated above as a documented mathematical claim, **not** as an axiom and
 part and the `q²`-Frobenius are multiplicative monoid maps and fix `1`, and the
 cyclotomic conjugation is an involution.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 @[expose] public section

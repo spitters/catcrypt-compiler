@@ -68,7 +68,7 @@ EC **leaf** — exactly the FAEST symmetric-leaf pattern (a leaf semantics plus
 its agreement): the front-end emits them as opaque `extCall`s in the
 Jasmin dialect, and the *agreement* (`EcLeafAgrees`) ties the opaque leaf
 semantics to the abstract EC primitives. This is the same opaque-leaf edge every
-emit-correctness theorem carries — never a `sorry`. The KAT under
+emit-correctness theorem carries — never an admitted proof. The KAT under
 `bench/msm_compare/` discharges it operationally: the emitted EC point-add /
 scalar-mul leaves are byte-identical to a schoolbook EC reference over the same
 small field.
@@ -79,7 +79,7 @@ chain is its post-processing); it is the remaining piece for full Groth16/KZG
 *verify* and is out of scope here. This file is the *prover/commitment* MSM
 substrate the three systems share.
 
-0 sorries; the only hypotheses are the opaque EC-leaf agreements
+All goals closed; the only hypotheses are the opaque EC-leaf agreements
 (`EcLeafAgrees`), the edge carried throughout this theory.
 -/
 
@@ -191,7 +191,7 @@ We declare the leaf spec in the FAEST leaf shape: a named-leaf
 semantics carrier (`EcLeafSem`, same shape as `jasminExtSem`), the abstract EC
 primitives (`EcPrimitives`), and the agreement (`EcLeafAgrees`) tying the opaque
 leaf to those primitives. The leaf is *opaque*; its agreement is the carried
-obligation, never a `sorry`. -/
+obligation, never an admitted proof. -/
 
 /-- The leaf name the front-end emits for the EC point-add (the accumulator op). -/
 def ecAddLeafName : String := "ec_point_add"

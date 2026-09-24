@@ -37,7 +37,7 @@ The structure deliberately mirrors the `agree_*` style of the real
 induction style of `Mpn.AddPrototype.lean` (`bignumExecFuel_loop_step` + limb-list
 induction).
 
-## What is proved here (all axiom-clean, no `sorry`)
+## What is proved here (all axiom-clean, no open goals)
 
 * §1 `forN` denotation (region-carrying bounded loop), with the defining
   `forN_zero` / `forN_succ` unfold lemmas.

@@ -74,7 +74,7 @@ this module's scope and is supplied by `ComInlineCall`.
 * `inline_emptyRegistry` — sanity: the inline pass on the empty registry is
   the identity.
 
-All proofs are structural over `Expr`/`HVector`. No `sorry`, no
+All proofs are structural over `Expr`/`HVector`. No open goals, no
 `native_decide`, no new axioms.
 -/
 

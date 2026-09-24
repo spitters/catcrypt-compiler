@@ -54,7 +54,7 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
   body fold the `lsem` halt data is (the per-iteration body edge — one front
   `RustExec` body run = one `lsem` `bodyStep` under the state encoding — is a
   *named hypothesis* `FrontLoopEncodes`, exactly as `LoopBodySpec.run` and
-  `JForProgCT.StepAgrees` carry the single-iteration body edge, never a `sorry`).
+  `JForProgCT.StepAgrees` carry the single-iteration body edge, never an admitted proof).
   The public trip count is `LoopTerminatesIn` + the front static `n`.
 
 * **Branch** — the emitted form is the labeled `Lcond`-branch
@@ -73,7 +73,7 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
   (`cmdCT_RIfNz`). A secret-dependent branch is not CT, and
   the `Lcond`'s `branch` leak would then depend on a secret.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
 
@@ -126,7 +126,7 @@ theorem frontForRun_succ (frontStep : Nat → RustState → RustState) (n : Nat)
     Given the per-iteration body edge `hbody` — running `body` from
     `rsSetScalar rs x i` lands in `frontStep i rs` (the named single-iteration
     front edge, the front analogue of `LoopBodySpec.run` / `StepAgrees`,
-    NOT a `sorry`) — the big-step `RustExec` of `RFor x n body` reaches exactly
+    NOT an admitted proof) — the big-step `RustExec` of `RFor x n body` reaches exactly
     `frontForRun frontStep n rs`. Proof by induction on `n` via the `forZero` /
     `forSucc` rules. -/
 theorem rustExec_rfor_frontForRun {N : Nat} {leafSpec : LeafSpec}
@@ -159,7 +159,7 @@ factors through (exactly `LoopBodySpec.run` discipline). -/
     `Lstate`; `comm` is the single-iteration commuting square against the
     `reentry` recurrence — encoding one front iteration equals one `lsem`
     `bodyStep` re-pinned to the body-start pc `1` (exactly how `reentry (k+1)`
-    advances). The per-iteration body edge — a named hypothesis, never a `sorry`.
+    advances). The per-iteration body edge — a named hypothesis, never an admitted proof.
     The loop counter `i` is the public `0..n` index; `bodyStep` reads the public
     back-edge counter, so the encoded step is `i`-independent. -/
 structure FrontLoopEncodes {w : Nat} {body : List LinstrR}

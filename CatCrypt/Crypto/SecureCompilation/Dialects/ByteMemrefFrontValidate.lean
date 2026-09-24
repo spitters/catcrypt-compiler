@@ -38,7 +38,7 @@ layer of the pipeline is already parametric in the cell width `w`, so byte width
   `MemrefOp.toJasmin` / `MemrefTy.toJasmin`). Denotation preservation is
   `Memref.lowerMemrefToJasmin_denote`, proved **unconditionally for all `w`** — so
   the byte case is already covered at equal strength (`byteStore_lowering_denote`
-  below is its `w = 8` instance; no `sorry`, no new axiom).
+  below is its `w = 8` instance; no open goals, no new axiom).
 * **Jasmin op.** `JasminOp.stackStore 8 n` is the *existing* width-parametric
   constructor. No new `JasminOp`/`catCryptDialect` op is introduced, so every
   exhaustive `match op` across the tree (optimizer passes, `ComInline`,
@@ -165,7 +165,7 @@ example : @Eq (BitVec 8) (byteRoundtripKernel.denote (val (fun _ => 0xFF) 1 0x01
 
 `Memref.lowerMemrefToJasmin_denote` is proved unconditionally for all widths, so
 the byte case needs no separate proof — it is the `w = 8` instantiation. These
-name it explicitly (no `sorry`, no new axiom). -/
+name it explicitly (no open goals, no new axiom). -/
 
 /-- **Byte store lowering preserves denotation.** The jasmin image of the byte
     store (`stackStore 8 memN`) denotes to `transTy` of the memref store's

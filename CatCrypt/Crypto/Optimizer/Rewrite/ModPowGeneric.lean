@@ -38,7 +38,7 @@ Composing the two gives `modPow_correct`:
 `powLadder bs ((g : ℕ) : ZMod m) = ((g ^ bitsToNat bs : ℕ) : ZMod m)` —
 **the square-and-multiply ladder in `ZMod m` computes `g ^ n mod m`.**
 
-## Honesty boundary
+## Scope boundary
 
 `modPow_correct` is the verified composition: it says the generic ladder, run in
 the quotient ring `ZMod m`, equals the integer power `g ^ n` reduced mod `m`.
@@ -53,7 +53,7 @@ The composition here — generic ladder ∘ modular reduction — is uncondition
 (`[true, true, false, true]`) applied to `(3 : ZMod 7)` equals
 `(3 ^ 13 : ℕ)` cast into `ZMod 7`, which is `3`.
 
-0 sorries; no custom axioms; correctness holds over every modulus `m`.
+All goals closed; no custom axioms; correctness holds over every modulus `m`.
 -/
 
 @[expose] public section

@@ -48,7 +48,7 @@ norm inverse of `K[u]/(u² − ξ)`. The cancellation law is conditioned on
 (`a² − ξ·b² = 0` forces `a = b = 0`), a number-theoretic fact about the concrete
 nonresidue, recorded but not proved here. It does **not** wire conjugation/norm/
 inversion down to any emitted base kernel; that lift is per-instantiation and
-deliberately out of scope here, to keep the generic core focused and sorry-free.
+deliberately out of scope here, to keep the generic core focused and fully proved.
 -/
 
 @[expose] public section

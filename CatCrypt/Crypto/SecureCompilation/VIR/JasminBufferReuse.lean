@@ -112,7 +112,7 @@ if the head slot is dead after `body`, `body.denote` does not depend on the
 value bound there — `body.denote (V.extend a) = body.denote (V.extend b)`.
 
 We prove this by induction on `body`, generalised over an arbitrary dead buffer
-variable `B` (not just `here`) and two valuations that **agree off `B`**: equal
+variable `B` (not only `here`) and two valuations that **agree off `B`**: equal
 at every variable except possibly `B`. The structural reason `B` is unobserved
 is that no expression reads it; in the realistic emitted fragment the only op
 reading a `stackArr` source is `stackLoad` (`regArith`/`castW` take only
@@ -604,7 +604,7 @@ tolerates `stackStore`/`extCall` binders in the body), and build the
 The store-side (`execCom`) half — re-running the evaluator induction so that the
 in-place write's stale aliases are absorbed by full deadness — is carried as the
 single explicit hypothesis `hExec` of the theorem below. It is a precisely-stated
-side condition on the named evaluator (not a `sorry`): the residual store-level
+side condition on the named evaluator (not an admitted proof): the residual store-level
 agreement under full per-store deadness, which any caller discharges from the
 `execCom` semantics. Everything else — the `runProg`/seed-store wrapper, the
 `StraightLine` reduction to `lowerComToProg_sem_eq`, and all the denote-side

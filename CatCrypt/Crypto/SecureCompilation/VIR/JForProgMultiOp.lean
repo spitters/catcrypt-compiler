@@ -44,7 +44,7 @@ main theorem to **arbitrary straight-line multi-op `Com` bodies**:
   `JForProgTreehash.treehash_loop_denote_eq` but using the multi-op body runner.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-var main theorem — no `sorry`, axiom-clean.
+single-var main theorem — no open goals, axiom-clean.
 -/
 
 @[expose] public section

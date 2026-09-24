@@ -46,7 +46,7 @@ edges carried throughout the emit theory).
   drops into a `phasesRun` list as one element — a branch *inside* a sequence
   (`setup; if c then … else …; finalize`) is sound by `phasesRun_eq` for free.
 
-## Public condition ⇒ CT preserved (honest framing)
+## Public condition ⇒ CT preserved
 
 The condition `cond : Bool` here is a **public** bit (a loop bound, a message
 length, a protocol version, a Fiat-Shamir-public flag) — the case where
@@ -63,7 +63,7 @@ public inputs), not a predicate of secret accumulator state. (Contrast
 `σ → Bool` — that is the data- or transcript-dependent dispatch; here the bit
 is supplied as a public parameter.)
 
-## Honest gap: this is the `Phase`-level `ite` model, not a fused-CFG `Cif`
+## Gap: this is the `Phase`-level `ite` model, not a fused-CFG `Cif`
 
 The branch is composed at the **meta / semantic (`Phase`) level**: `run` is
 literally `if cond then thenPhase.run else elsePhase.run`, exactly as
@@ -80,7 +80,7 @@ observable result is `ite` — is the remaining gap; this file supplies the
 semantic `ite` law each arm of such a lowering must satisfy, and shows the public
 condition keeps it CT.
 
-0 sorries; the only carried hypotheses are each arm's (`LeafAgrees` and any
+All goals closed; the only carried hypotheses are each arm's (`LeafAgrees` and any
 `StraightLine` witness), supplied once when the arm `Phase`s are built by the
 `MultiPhaseBody` smart constructors.
 -/

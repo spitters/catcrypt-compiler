@@ -109,7 +109,7 @@ byte-KATs):
   way `select` is, and `LstateN` *can* carry them. They are deferred only to keep
   this increment to one representative width-mixing op (`select`); the same
   `LstateN` + `lsemStepN` machinery extends to them (read two `.reg w` and one
-  `.reg 1`, write `addCarryWord`/`carryOutBit`). Honest deferral: machinery
+  `.reg 1`, write `addCarryWord`/`carryOutBit`). Deferred: machinery
   present, arm not added.
 
 ## Fidelity (trust-critical)
@@ -126,7 +126,7 @@ byte-KATs):
   `select` this means the cond's **register name** leaks, never the 1-bit secret
   it holds: the branch-free CT property the task requires.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/

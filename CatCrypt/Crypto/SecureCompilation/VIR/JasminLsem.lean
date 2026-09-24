@@ -18,7 +18,7 @@ half of the Com→`lsem` faithfulness predicate `ComLsemExportFaithful`
 stated and proved. This file provides that model **for the straight-line
 fragment**.
 
-## Scope of increment 1 (honest statement)
+## Scope of increment 1
 
 Increment 1 models, *faithfully*, only the **straight-line** `linstr_r` cases —
 the ones whose Coq `eval_instr` semantics do not consult the program label table
@@ -175,7 +175,7 @@ def evalOperand {w : Nat} (s : Lstate w) : LOperand → BitVec w
     image of the dialect's `select`), denoted by the dialect's `selectW`.
 
     Returns `none` for any opcode outside the modeled straight-line word
-    fragment (e.g. `CALL:…`, `LOAD`/`STORE`) — honest partiality, not a
+    fragment (e.g. `CALL:…`, `LOAD`/`STORE`) — partiality, not a
     default value. -/
 def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "ADD", [a, b] => some (a + b)
@@ -400,9 +400,9 @@ def lsemStep {w : Nat} (i : LinstrR) (s : Lstate w) : Option (Lstate w) :=
         | _ => none
       else
         -- Any other opcode over an `.arrIdx`-headed source falls through to the
-        -- word-op path, byte-identical to the register arm below: the only new
-        -- behaviour of this arm is intercepting the two runtime-indexed memory
-        -- opcodes, so every previously modeled op keeps its meaning.
+        -- word-op path, byte-identical to the register arm below: the only
+        -- additional behaviour of this arm is intercepting the two runtime-indexed
+        -- memory opcodes, so every other modeled op keeps its meaning.
         match applyOpn (stripWidthTag opn)
             ((LOperand.arrIdx base idx scale :: rest).map (evalOperand s)) with
         | some v => some ((s.setReg dst v).nextPc)
@@ -700,7 +700,7 @@ This is the law a `Com.toLprog` simulation peels by (one binding at a time). -/
 /-- **Sequential composition** of straight-line execution: `lsemStraight` of a
     concatenation is the Kleisli composite of the two halves. The increment-1
     characterising law (faithful straight-line restriction of `lsem_trans`).
-    Sorry-free, proved by induction on the prefix. -/
+    Fully proved, proved by induction on the prefix. -/
 theorem lsemStraight_append {w : Nat} (xs ys : List LinstrR) (s : Lstate w) :
     lsemStraight (xs ++ ys) s = (lsemStraight xs s).bind (lsemStraight ys) := by
   induction xs generalizing s with

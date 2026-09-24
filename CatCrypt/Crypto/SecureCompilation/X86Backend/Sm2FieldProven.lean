@@ -48,7 +48,7 @@ obligation the repo elsewhere externalises to a GMP KAT:
 infeasible as one in-Lean `BitVec` identity. The **Goldilocks** field
 `p = 2^64 − 2^32 + 1` (`c = 2^32 − 1`, `k = 64`, `fuel = 2`) is the
 `k = 64`-class reduce that fits a **2-word** carry chain — small enough to
-discharge the `Com.denote = multiSolinasReduce` link in full, with NO `sorry`
+discharge the `Com.denote = multiSolinasReduce` link in full, with all goals closed
 and NO external KAT for the *reduce* arithmetic. It is the same `goldilocksMul`
 the broken `ModReduceSelect.goldilocksMulBlock` emits with only a value lemma;
 this file supplies the proof that block was missing.

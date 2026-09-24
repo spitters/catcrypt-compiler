@@ -41,7 +41,7 @@ structure is *identical* to `bls12_377`: only the prime literal and its limb vec
 change. We reuse `splitLimbsK` / `encMLK` / `mlAddModK` / `mlMulMod` / `KLimbPrime` /
 `KLimbPrimeMul` verbatim, and obtain both `bls12_381` base-field commuting squares.
 
-## What is demonstrated (sorry-free)
+## What is demonstrated (fully proved)
 
 * `bls381Q` — the 381-bit `bls12_381` base-field prime as a `Nat`.
 * `bls381Limbs` — its 6×64-bit little-endian limb vector; `bignumVal_bls381Limbs`

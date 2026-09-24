@@ -67,7 +67,7 @@ model `lsemFuelMemL[C]`, and discharges via the interpreters' `*_runBounded` /
 `whileMem_realizes` / `calleeRunDN` results (never re-proved here) composed with
 `decodeM_congr_reg_lvm`.
 
-**0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+
+**All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the concrete depth-3 non-vacuity witness).**  The
 `lsem→bytes` encoder + Sail tables remain the declared trusted base.
 -/

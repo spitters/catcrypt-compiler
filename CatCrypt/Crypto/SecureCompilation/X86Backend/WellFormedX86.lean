@@ -99,7 +99,7 @@ bypass the helper's routing.
   ABI wrapper preservation is assembled (`abiWrap_wf`, `toLprogPhysAbi_wf`):
   given the body's per-instruction WF, the full `Com.toLprogPhysAbi` export is
   `wfLprog`.
-* **Residuals carried as named hypotheses (not `sorry`, not axioms)**: two
+* **Residuals carried as named hypotheses (not admitted proofs, not axioms)**: two
   String-API round-trip facts the toolchain ships no lemma for — `SpillNameWF`
   (`("k." ++ toString k)` is a parseable spill) and `MemNameWF`
   (`mem.R14.<off>` resolves) — bundled and threaded; and the verified
@@ -1327,7 +1327,7 @@ theorem abiWrap_wf (prologue bws : Lcmd) (virt : Lfundef) (tbl : Array Nat)
     runs `wfLprog (Com.toLprogPhysAbi …)` as a **decidable gate** on each emitted
     leaf — which catches all three ChaCha bugs at lowering time. This `def` names
     the obligation so it is an explicit goal, not an implicit assumption (and is
-    **not** a `sorry`). -/
+    **not** an admitted proof). -/
 def toLprogPhysAbi_wf_goal : Prop :=
   ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)

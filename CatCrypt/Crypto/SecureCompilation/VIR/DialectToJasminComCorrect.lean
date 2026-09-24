@@ -254,7 +254,7 @@ theorem extCallD_src_denote
     denotation agrees with the opaque-leaf dialect `extCall` denotation on every
     leaf the front lowers: both are the canonical default, transported by
     `ctTransTy_default`. The dialect analogue of
-    `CryptoToJasminComCorrect.leafAgrees_extCall`. No axiom, no `sorry`. -/
+    `CryptoToJasminComCorrect.leafAgrees_extCall`. No axiom, no open goals. -/
 theorem leafAgrees_extCallD
     {Γ : Ctx} {retTy : CryptoTy} {argTys : List CryptoTy}
     (args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty) argTys)

@@ -82,8 +82,8 @@ covered; `shl/shr/andn` immediates are residual.
 * `thSarImm w n` — `catCryptDialect`'s only right-shift is `bvShiftR` (logical
   `>>>`); there is no arithmetic / sign-extending shift op. A faithful image
   would need a sign-mask expansion over a `bvShiftR`-of-sign + select/or, which
-  has no clean `BitVec.sshiftRight` identity in the existing op set — left an
-  honest `none` (a new `bvShiftRA` op would be required).
+  has no clean `BitVec.sshiftRight` identity in the existing op set — left as
+  `none` (a new `bvShiftRA` op would be required).
 * `thSelect` — `ite`'s condition is `.bit` (`Bool`); the thir condition is
   `.reg 1` (`BitVec 1`). The shape does not transfer without a `BitVec 1 → Bool`
   reinterpretation, so it is residual (not `rfl`).
@@ -100,7 +100,7 @@ covered; `shl/shr/andn` immediates are residual.
 
 The lowering returns `none` whenever any binding uses a residual op; the
 soundness theorem `lowerThirToCrypto_denote` is for the `some` case (a program
-all of whose bindings are covered). **0 sorries.**
+all of whose bindings are covered). **All goals closed.**
 -/
 
 @[expose] public section

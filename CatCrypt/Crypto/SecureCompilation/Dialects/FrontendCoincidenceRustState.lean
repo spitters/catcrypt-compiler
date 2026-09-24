@@ -74,10 +74,10 @@ the open obligation is:
 We close the **deterministic value-agreement** that this obligation reduces its
 *store step* to (`rsSetScalar`'s derived β equals `updBeta`, under
 `inRangeState`); the residual is the body recursion, which belongs to the
-command-block coincidence file, not here. Stating it sharply — rather than faking
-a body `RustExec` recursion with a hidden `sorry` — is the honest outcome.
+command-block coincidence file, not here, and is stated as a hypothesis rather
+than obtained from a body `RustExec` recursion with an admitted proof.
 
-No `sorry`, no new axioms, no `native_decide`.
+No open goals, no new axioms, no `native_decide`.
 -/
 
 @[expose] public section

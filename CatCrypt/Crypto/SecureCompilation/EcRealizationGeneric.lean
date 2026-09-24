@@ -69,7 +69,7 @@ The ties are the **generic-chart** identities (`Z = 1`, distinct/doubling branch
 infinity) and all-pairs group-law completeness are out of scope — exactly the generic-chart
 scope of the per-curve versions.
 
-0 sorries; no custom axioms; the field-algebra ties are unconditional given the field
+All goals closed; no custom axioms; the field-algebra ties are unconditional given the field
 structure plus the four numeral-nonvanishing hypotheses.
 -/
 

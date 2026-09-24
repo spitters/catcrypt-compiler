@@ -64,7 +64,7 @@ sequence (`shr`/`shl`/`or_`/`and`), the inter-limb carry routing of the fold, an
 the final canonicalising conditional subtract. That non-word-aligned split is the
 named `Fe25519ReduceRunBlock.splitBookkeepingGap`, gated by the external GMP KAT
 (`bench/x25519_fieldmul_compare`). `AsmPrinter` + `gas`
-+ the GMP KAT are the syntactic / value trust boundary. No `sorry`, no new
++ the GMP KAT are the syntactic / value trust boundary. No open goals, no new
 `axiom`. The MULX-`%rdx` legalization and the verified spilling allocator are
 reused unchanged from the Montgomery template.
 

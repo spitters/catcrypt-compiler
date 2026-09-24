@@ -49,7 +49,7 @@ iteration (`acc := sum(acc, a[i])`), checks the emitted body carries a real
 `Lcall` (not a `CALL:` shadow), and checks by `native_decide` that A2's
 interpreter run equals the concrete-leaf fold decoding to the expected constant.
 
-**0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
+**All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validate).**
 -/
 

@@ -47,13 +47,13 @@ non-square (stated as a hypothesis, **not** proved here — non-squareness of th
 `Fp2_377 ξ` is a field; we expose the algebraic facts (`mul_comm`, distributivity)
 that the schoolbook form satisfies.
 
-## Honesty boundary
+## Scope boundary
 
 This is the abstract `Fp2` field over the relational `bls12_377` base carrier and
 the Karatsuba optimization's correctness. It does **not** wire `Fp2` multiply down
 to the emitted 6-limb base kernels (that is the `Fp2Tower`-style `BaseSubstrate`
 lift, one further step, deliberately not attempted here to keep the pass focused
-and sorry-free). The base-field ADD relational tie lives in
+and fully proved). The base-field ADD relational tie lives in
 `RelationalFrontBls377Add`; this module is the field-algebra gateway above it.
 -/
 

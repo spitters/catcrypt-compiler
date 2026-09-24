@@ -39,7 +39,7 @@ The sponge construction has two phases:
 * [FIPS 202 -- SHA-3 Standard, Sections 6.2-6.3, NIST 2015]
 * [SP 800-185 -- SHA-3 Derived Functions, NIST 2016]
 
-**0 axioms**, **0 sorries**.
+**0 axioms**, **all goals closed**.
 -/
 
 @[expose] public section

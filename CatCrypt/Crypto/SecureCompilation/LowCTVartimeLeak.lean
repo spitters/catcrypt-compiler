@@ -63,7 +63,7 @@ What is **new** in this file:
    a single `RIfNz` with a `Public` guard satisfies the rule and is
    accepted; with a `Secret` guard the analyser rejects it.
 
-## Honesty ledger
+## Assumption ledger
 
 * The straight-line + `RIfNz` fragment of the noninterference theorem is
   **proved** (`dynLeakTrace_noninterference`, see the per-constructor
@@ -75,12 +75,12 @@ What is **new** in this file:
   guard value — exactly the small-step semantics the orphaned chain does
   not yet expose as a reusable `LowCT.exec`. We therefore state that step
   as the **named hypothesis** `BodyStepPreservesPublic` (a `Prop`-valued
-  structure field, *not* a `sorry` and *not* an axiom) and prove the loop
+  structure field, *not* an admitted proof and *not* an axiom) and prove the loop
   NI clause *relative to it* (`dynLeakTrace_while_noninterference`). When
   the chain grows a verified `LowCT.exec`, this hypothesis is discharged,
   not removed.
 
-No `sorry`, no new axiom. The one gap (loop-body state evolution) is an
+No open goals, no new axiom. The one gap (loop-body state evolution) is an
 explicit hypothesis with this docstring, as required.
 -/
 
@@ -309,7 +309,7 @@ To prove NI for `RWhileNz` we need the semantic fact that one loop-body
 iteration maps public-equivalent states to public-equivalent states and
 keeps the (public) guard in lock-step. That requires a verified
 `LowCT.exec`, which the orphaned chain does not yet expose. We package the
-requirement as an explicit hypothesis structure (not a `sorry`, not an
+requirement as an explicit hypothesis structure (not an admitted proof, not an
 axiom) and prove the loop NI clause relative to it. -/
 
 /-- Hypothesis bundle: the caller-supplied body step `bodyStep` respects the

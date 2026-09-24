@@ -70,7 +70,7 @@ allocator with a semantic theorem is `physScanSpill`
    unrolled-block program and the tail program are CT-safe when their
    emit-provided bodies are.
 
-The proofs are `rfl`, `Iff.rfl` or hypothesis lookup, with no `sorry`,
+The proofs are `rfl`, `Iff.rfl` or hypothesis lookup, with no open goals,
 `native_decide` or axioms beyond the standard ones.
 
 ## Related statements
