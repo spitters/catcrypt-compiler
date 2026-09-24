@@ -45,7 +45,8 @@ A right-hand side `v` of a binding or an assignment is one of:
 
 | `ImpExpr` | Rust | read as |
 |---|---|---|
-| `app f [var a₁, …]` | `f ( a₁ , … )` | `Call`, `app f` |
+| `app f [var a₁, …]` | `f ( a₁ , … )` | `Call`, `app f`; for `f = Some`, `Adt`, `app "Some"` |
+| `app "None" []` | `None` | `Adt`, `app "None"` |
 | `app "index" [var s, var i]` | `s [ i ]` | `Index`, `app "index"` |
 | `proj (var s) i` | `s . i` | `TupleField`, `proj` |
 | `lit (int k)` | `k` | `Literal`, `lit (int k)` |
@@ -223,7 +224,8 @@ def callToks (f : String) (args : List ImpExpr) : Option (List Tok) :=
 /-- The right-hand side of a binding or an assignment. -/
 def rhsToks : ImpExpr → Option (List Tok)
   | .app f args =>
-      if f = "scalar#Sub" then
+      if f = "None" ∧ args = [] then some ["None"]
+      else if f = "scalar#Sub" then
         match args with
         | [.var a, .var b] =>
             if validIdent a && validIdent b then some [a, ".", "saturating_sub", "(", b, ")"]
@@ -379,10 +381,17 @@ def parseArgs : List Tok → Option (List ImpExpr × List Tok)
             else if u = "," then (parseArgs r').map fun p => (.var t :: p.1, p.2)
             else none
 
+/-- A right-hand side of one token followed by `r`: an integer literal, or the
+    constructor `None`. -/
+def parseAtom (a : Tok) (r : List Tok) : Option (ImpExpr × List Tok) :=
+  match intOfTok a with
+  | some k => some (.lit (.int k), r)
+  | none => if a = "None" then some (.app "None" [], r) else none
+
 /-- A right-hand side. -/
 def parseRhs : List Tok → Option (ImpExpr × List Tok)
   | [] => none
-  | [a] => (intOfTok a).map fun k => (.lit (.int k), [])
+  | [a] => parseAtom a []
   | a :: t :: r =>
       if t = "(" then (parseArgs r).map fun p => (.app a p.1, p.2)
       else if t = "[" then
@@ -403,7 +412,7 @@ def parseRhs : List Tok → Option (ImpExpr × List Tok)
       else
         match symScalar t, r with
         | some f, b :: r' => some (.app f [.var a, .var b], r')
-        | _, _ => (intOfTok a).map fun k => (.lit (.int k), t :: r)
+        | _, _ => parseAtom a (t :: r)
 
 /-- A loop bound, with fuel. -/
 def parseBound : Nat → List Tok → Option (ImpExpr × List Tok)
@@ -790,6 +799,17 @@ theorem parseRhs_rhsToks (v : ImpExpr) (tv : List Tok) (h : rhsToks v = some tv)
   cases v
   case app f args =>
     unfold rhsToks at h
+    by_cases hnone : f = "None" ∧ args = []
+    · obtain ⟨rfl, rfl⟩ := hnone
+      simp only [and_self, if_true, Option.some.injEq] at h
+      subst h
+      have hn : intOfTok "None" = none := by decide
+      cases rest with
+      | nil => simp [parseRhs.eq_def, parseAtom, hn]
+      | cons t r =>
+        simp only [stmtStop] at hr
+        rcases hr with rfl | rfl <;> simp [parseRhs.eq_def, parseAtom, hn, symScalar]
+    simp only [hnone, if_false] at h
     by_cases hsub : f = "scalar#Sub"
     · subst hsub
       simp only [if_true] at h
@@ -849,11 +869,11 @@ theorem parseRhs_rhsToks (v : ImpExpr) (tv : List Tok) (h : rhsToks v = some tv)
       simp only [rhsToks, Option.some.injEq] at h
       subst h
       cases rest with
-      | nil => simp [parseRhs.eq_def, intOfTok_intTok]
+      | nil => simp [parseRhs.eq_def, parseAtom, intOfTok_intTok]
       | cons t r =>
         simp only [stmtStop] at hr
         rcases hr with rfl | rfl <;>
-          simp [parseRhs.eq_def, intOfTok_intTok, symScalar]
+          simp [parseRhs.eq_def, parseAtom, intOfTok_intTok, symScalar]
     all_goals simp [rhsToks] at h
   all_goals simp [rhsToks] at h
 
