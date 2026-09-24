@@ -25,8 +25,11 @@ at.
   leaf agreement `PairingLeavesAgree`, so the hypothesis of
   `Bn254Emit.eip197VerifyCom_denote` is satisfiable for every `prims`.
 * `eip197LeafOracle` / `eip197LeafOracle_agrees` — the leaf oracle for the
-  deployed primitives and its agreement, a named axiom (the leaf edge; a leaf
-  proof or a jasmin/AUCurves bridge would establish it).
+  deployed primitives, defined as `pairingOracle deployedPrims`, and its
+  agreement, a theorem that holds by construction of the oracle. It relates the
+  oracle to the primitives and says nothing about the emitted leaf code;
+  `Bn254PairingTransport` relates the deployed pairing and `fp12_mul` byte leaves
+  to the AUCurves specs through two named Rocq transport axioms.
 * `eip197VerifyCom_denote` — the deployed verifier at the deployed oracle.
 
 The bespoke evaluator `eip197DenoteWith` (+ `eip197DenoteWith_eq`) gives the same
@@ -80,21 +83,27 @@ instance : Inhabited Bn254Primitives :=
     targets. Opaque — uninterpreted for proofs. -/
 opaque deployedPrims : Bn254Primitives
 
-/-- The leaf oracle for the deployed primitives, `pairingOracle deployedPrims`
-    sealed as `opaque`; the seal keeps the agreement below a named hypothesis. -/
-opaque eip197LeafOracle : LeafSem := pairingOracle deployedPrims
+/-- The leaf oracle for the deployed primitives, `pairingOracle deployedPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque eip197LeafOracle.spec : { o : LeafSem // o = pairingOracle deployedPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the pairing primitives.
-    A named axiom. Establishing it means bridging the emitted leaf to the primitive
-    spec — a leaf proof, or a jasmin/AUCurves bridge — which this file does not do. -/
-axiom eip197LeafOracle_agrees :
-    PairingLeavesAgree deployedPrims eip197LeafOracle
+/-- The deployed leaf oracle, `pairingOracle deployedPrims`, read through the opaque `eip197LeafOracle.spec`. -/
+def eip197LeafOracle : LeafSem := eip197LeafOracle.spec.val
+
+/-- The deployed leaf oracle realises the pairing primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem eip197LeafOracle_agrees :
+    PairingLeavesAgree deployedPrims eip197LeafOracle := by
+  rw [show eip197LeafOracle = pairingOracle deployedPrims from eip197LeafOracle.spec.property]
+  exact pairingOracle_agrees _
 
 /-- **The deployed EIP-197 verifier at the deployed oracle.** The deployed
     `Bn254Emit.eip197VerifyCom`, denoted through `jasminDenoteWith eip197LeafOracle`,
     computes `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)` for the deployed
-    primitives. The orchestration is Lean-proven; the only assumption is the leaf
-    trust edge `eip197LeafOracle_agrees`. -/
+    primitives: what the orchestration computes when each leaf computes its
+    primitive. The statement carries no assumption; the leaf agreement
+    `eip197LeafOracle_agrees` holds by construction of the oracle. -/
 theorem eip197VerifyCom_denote
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :

@@ -25,8 +25,9 @@ oracles that parameter is instantiated at.
   leaf agreement `EcLeafAgrees`, so the hypothesis of
   `MsmReduce.msmTermCom_denote` is satisfiable for every `prims`.
 * `msmLeafOracle` / `msmLeafOracle_agrees` — the leaf oracle for the deployed
-  primitives and its agreement, a named axiom (the leaf edge; a leaf proof or a
-  jasmin/EC-reference bridge would establish it).
+  primitives, defined as `msmOracle msmDeployedPrims`, and its agreement, a
+  theorem that holds by construction of the oracle. It relates the oracle to the
+  primitives and says nothing about the emitted leaf code.
 * `msmTermCom_denote` — the deployed MSM step at the deployed oracle.
 -/
 
@@ -75,22 +76,27 @@ instance : Inhabited EcPrimitives :=
     Opaque — uninterpreted for proofs. -/
 opaque msmDeployedPrims : EcPrimitives
 
-/-- The leaf oracle for the deployed primitives, `msmOracle msmDeployedPrims`
-    sealed as `opaque`; the seal keeps the agreement below a named hypothesis. -/
-opaque msmLeafOracle : EcLeafSem := msmOracle msmDeployedPrims
+/-- The leaf oracle for the deployed primitives, `msmOracle msmDeployedPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque msmLeafOracle.spec : { o : EcLeafSem // o = msmOracle msmDeployedPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the EC primitives. A
-    named axiom. Establishing it means bridging the emitted leaf to the primitive
-    spec — a leaf proof, or a jasmin/EC-reference bridge — which this file does
-    not do. -/
-axiom msmLeafOracle_agrees :
-    EcLeafAgrees msmDeployedPrims msmLeafOracle
+/-- The deployed leaf oracle, `msmOracle msmDeployedPrims`, read through the opaque `msmLeafOracle.spec`. -/
+def msmLeafOracle : EcLeafSem := msmLeafOracle.spec.val
+
+/-- The deployed leaf oracle realises the EC primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem msmLeafOracle_agrees :
+    EcLeafAgrees msmDeployedPrims msmLeafOracle := by
+  rw [show msmLeafOracle = msmOracle msmDeployedPrims from msmLeafOracle.spec.property]
+  exact msmOracle_agrees _
 
 /-- **The deployed MSM step at the deployed oracle.** The deployed
     `MsmReduce.msmTermCom`, denoted through `jasminDenoteWith msmLeafOracle`,
-    computes `pointAdd acc (scalarMul k P)` for the deployed primitives. The
-    orchestration is Lean-proven; the only assumption is the leaf trust edge
-    `msmLeafOracle_agrees`. -/
+    computes `pointAdd acc (scalarMul k P)` for the deployed primitives: what the
+    orchestration computes when each leaf computes its primitive. The statement
+    carries no assumption; the leaf agreement `msmLeafOracle_agrees` holds by
+    construction of the oracle. -/
 theorem msmTermCom_denote
     (acc : Fin (2 * WSZ) → BitVec 8) (k : Fin WSZ → BitVec 8)
     (P : Fin (2 * WSZ) → BitVec 8) :

@@ -29,9 +29,11 @@ oracles that parameter is instantiated at.
   agreement `FieldLeafAgrees`, so the agreement hypothesis of the
   `BN254GroupEmit` denotation theorems is satisfiable for every `prims`.
 * `bn254GroupLeafOracle` / `bn254GroupLeafOracle_agrees` — the leaf oracle for
-  the deployed primitives and its agreement, a named axiom (the leaf edge;
-  establishing it means bridging the emitted `fp_*` leaves to the primitive spec
-  — a leaf proof or a jasmin/AUCurves bridge).
+  the deployed primitives, defined as `bn254FieldOracle bn254GroupDeployedPrims`,
+  and its agreement, a theorem that holds by construction of the oracle. It
+  relates the oracle to the primitives and says nothing about the emitted `fp_*`
+  leaf code; `FieldLeafBridge_BLS_BN254` proves the agreement for a concrete
+  codec-based primitive whose operations are the base-field operations.
 * `lamCom_denote` / `bn254AddxCom_denote` / `bn254AddyCom_denote` — the deployed
   kernels at the deployed oracle.
 
@@ -90,23 +92,27 @@ instance : Inhabited FieldPrimitives :=
     deployed code targets. Opaque — uninterpreted for proofs. -/
 opaque bn254GroupDeployedPrims : FieldPrimitives
 
-/-- The leaf oracle for the deployed primitives,
-    `bn254FieldOracle bn254GroupDeployedPrims` sealed as `opaque`; the seal keeps
-    the agreement below a named hypothesis. -/
-opaque bn254GroupLeafOracle : LeafSem := bn254FieldOracle bn254GroupDeployedPrims
+/-- The leaf oracle for the deployed primitives, `bn254FieldOracle bn254GroupDeployedPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque bn254GroupLeafOracle.spec : { o : LeafSem // o = bn254FieldOracle bn254GroupDeployedPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the BN254 base-field
-    primitives. A named axiom. Establishing it means bridging the emitted `fp_*`
-    leaves to the primitive spec — a leaf proof, or a jasmin/AUCurves bridge —
-    which this file does not do. -/
-axiom bn254GroupLeafOracle_agrees :
-    FieldLeafAgrees bn254GroupDeployedPrims bn254GroupLeafOracle
+/-- The deployed leaf oracle, `bn254FieldOracle bn254GroupDeployedPrims`, read through the opaque `bn254GroupLeafOracle.spec`. -/
+def bn254GroupLeafOracle : LeafSem := bn254GroupLeafOracle.spec.val
+
+/-- The deployed leaf oracle realises the BN254 base-field primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bn254GroupLeafOracle_agrees :
+    FieldLeafAgrees bn254GroupDeployedPrims bn254GroupLeafOracle := by
+  rw [show bn254GroupLeafOracle = bn254FieldOracle bn254GroupDeployedPrims from bn254GroupLeafOracle.spec.property]
+  exact bn254FieldOracle_agrees _
 
 /-- **The deployed slope kernel at the deployed oracle.** The deployed
     `BN254GroupEmit.lamCom`, denoted through `jasminDenoteWith bn254GroupLeafOracle`,
-    computes `mul (sub Qy Py) (inv (sub Qx Px))` for the deployed primitives. The
-    orchestration is Lean-proven; the only assumption is the leaf trust edge
-    `bn254GroupLeafOracle_agrees`. -/
+    computes `mul (sub Qy Py) (inv (sub Qx Px))` for the deployed primitives:
+    what the orchestration computes when each leaf computes its primitive. The
+    statement carries no assumption; the leaf agreement
+    `bn254GroupLeafOracle_agrees` holds by construction of the oracle. -/
 theorem lamCom_denote (Px Py Qx Qy : FpWire) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254GroupLeafOracle) _ _
         BN254GroupEmit.lamCom
@@ -119,8 +125,8 @@ theorem lamCom_denote (Px Py Qx Qy : FpWire) :
 /-- **The deployed `x₃` kernel at the deployed oracle.** The deployed
     `BN254GroupEmit.bn254AddxCom`, denoted through
     `jasminDenoteWith bn254GroupLeafOracle`, computes `sub (sub (mul lam lam) Px) Qx`
-    for the deployed primitives, on the leaf trust edge
-    `bn254GroupLeafOracle_agrees`. -/
+    for the deployed primitives. The statement carries no assumption; the leaf
+    agreement `bn254GroupLeafOracle_agrees` holds by construction of the oracle. -/
 theorem bn254AddxCom_denote (lam Px Qx : FpWire) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254GroupLeafOracle) _ _
         BN254GroupEmit.bn254AddxCom
@@ -133,8 +139,8 @@ theorem bn254AddxCom_denote (lam Px Qx : FpWire) :
 /-- **The deployed `y₃` kernel at the deployed oracle.** The deployed
     `BN254GroupEmit.bn254AddyCom`, denoted through
     `jasminDenoteWith bn254GroupLeafOracle`, computes `sub (mul lam (sub Px Rx)) Py`
-    for the deployed primitives, on the leaf trust edge
-    `bn254GroupLeafOracle_agrees`. -/
+    for the deployed primitives. The statement carries no assumption; the leaf
+    agreement `bn254GroupLeafOracle_agrees` holds by construction of the oracle. -/
 theorem bn254AddyCom_denote (lam Px Rx Py : FpWire) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254GroupLeafOracle) _ _
         BN254GroupEmit.bn254AddyCom

@@ -13,15 +13,16 @@ public import CatCrypt.Crypto.Pairing.BN254ProjectiveEmit
 # BN254 `G1` point-add leaf: the byte-level edge, closed by a PROOF
 
 `Bn254Denote.lean` closes the deployed BN254 `G1`/`G2`/pairing verifier `Com`s
-against an abstract leaf oracle, but the *deployed* leaf agreement
+against a leaf oracle. Its deployed leaf agreement
 (`bn254LeafOracle_ecAgrees : EcLeafAgrees bn254DeployedPrims bn254LeafOracle`) is
-a **named axiom** over an `opaque bn254DeployedPrims` / sealed `opaque`
-`bn254LeafOracle`. That axiom is the byte-level leaf edge: it asserts the emitted
-leaf realises the abstract group primitive, but says nothing about *what* the
-`g1_add` primitive computes.
+a theorem that holds by construction of the oracle
+`bn254Oracle bn254DeployedPrims`, over the uninterpreted constant
+`bn254DeployedPrims`. It says nothing about the emitted leaf code, nor about
+*what* the `g1_add` primitive computes.
 
-This module discharges that edge for the `G1` point-add leaf **as a theorem, for a
-concrete primitive whose `g1_add` is defined to be the abstract group law
+This module proves, for the `G1` point-add leaf, what the byte-level `g1_add`
+spec computes: **for a concrete primitive whose `g1_add` is the inversion-free
+projective byte computation, that computation is the abstract group law
 transported through a byte decode**. It is the BN254 twin of
 `Bls12381G1LeafBridge.lean` (BN254 `G1` is `y² = x³ + 3`, the same short-
 Weierstrass `a = 0` shape as BLS12-381 `G1`, only the base field changes:
@@ -41,8 +42,7 @@ Weierstrass `a = 0` shape as BLS12-381 `G1`, only the base field changes:
 4. `bn254G1Prims` — a concrete `Bn254Primitives` whose `g1Add := g1AddByteSpec`, and
    `bn254G1Prims_g1AddLeafAgrees : G1AddLeafAgrees bn254G1Prims (bn254Oracle
    bn254G1Prims)` — the `g1_add` leaf agreement **as a theorem** (via the proven
-   `Bn254Denote.bn254Oracle_ecAgrees`), so this primitive needs no deployed leaf
-   axiom.
+   `Bn254Denote.bn254Oracle_ecAgrees`) for this primitive.
 
 ## Scope
 
@@ -158,10 +158,10 @@ def bn254G1Prims : Bn254Primitives where
 /-- **The `G1`-add leaf agreement, as a theorem.** For the model oracle
     `bn254Oracle bn254G1Prims`, the `g1_add` leaf agrees with `bn254G1Prims.g1Add`
     (`= g1AddByteSpec`) — via the proven `Bn254Denote.bn254Oracle_ecAgrees`. It
-    discharges, without the deployed **axiom** `bn254LeafOracle_ecAgrees`, the
-    agreement for the concrete primitive whose `g1_add` is
-    (by `g1AddLeafSpec_correct`) the abstract group
-    law. -/
+    is the agreement for the concrete primitive whose `g1_add` is
+    (by `g1AddLeafSpec_correct`) the abstract group law;
+    `bn254LeafOracle_ecAgrees` is the same agreement for the uninterpreted
+    `bn254DeployedPrims`. -/
 theorem bn254G1Prims_g1AddLeafAgrees :
     G1AddLeafAgrees bn254G1Prims (bn254Oracle bn254G1Prims) :=
   (bn254Oracle_ecAgrees bn254G1Prims).1
@@ -191,6 +191,6 @@ result above. It is provable — each `Fp` element's canonical value is `< p < 2
 so its 32 little-endian base-256 digits recompose exactly — gated only on the
 digit-recomposition lemma `bytesToNat FPSZ (natToBytes FPSZ v) = v` for
 `v < 256^FPSZ`. It is named here to scope the residual precisely; its proof is the
-scoped honest gap (a base-256 recomposition, not a leaf/byte axiom). -/
+scoped gap (a base-256 recomposition, not a leaf/byte axiom). -/
 
 end CatCrypt.Crypto.Pairing.BN254G1LeafBridge

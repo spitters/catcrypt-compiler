@@ -30,9 +30,10 @@ instantiated at.
   agreement bundles, so the hypotheses of the `Bls12_377Emit` denotation
   theorems are satisfiable for every `prims`.
 * `bls377Prims` / `bls377LeafOracle` / `bls377LeafOracle_agrees` — the deployed
-  primitives, the leaf oracle for them, and the leaf agreement bundle, a named
-  axiom (the leaf edge; a leaf proof or a jasmin/AUCurves bridge would establish
-  it).
+  primitives, the leaf oracle for them (defined as `bls377Oracle bls377Prims`),
+  and the leaf agreement bundle, a theorem that holds by construction of the
+  oracle. It relates the oracle to the primitives and says nothing about the
+  emitted leaf code.
 * `<name>Com_denote` — each deployed `Com` at the deployed oracle.
 -/
 
@@ -104,21 +105,26 @@ instance : Inhabited Bls377Primitives :=
     targets. Opaque — uninterpreted for proofs. -/
 opaque bls377Prims : Bls377Primitives
 
-/-- The leaf oracle for the deployed primitives, `bls377Oracle bls377Prims`
-    sealed as `opaque`; the seal keeps the agreement below a named hypothesis. -/
-opaque bls377LeafOracle : LeafSem := bls377Oracle bls377Prims
+/-- The leaf oracle for the deployed primitives, `bls377Oracle bls377Prims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque bls377LeafOracle.spec : { o : LeafSem // o = bls377Oracle bls377Prims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the BLS12-377 field and
-    pairing primitives. A named axiom. Establishing it means bridging the emitted
-    leaf to the primitive spec — a leaf proof, or a jasmin/AUCurves bridge — which
-    this file does not do. -/
-axiom bls377LeafOracle_agrees :
+/-- The deployed leaf oracle, `bls377Oracle bls377Prims`, read through the opaque `bls377LeafOracle.spec`. -/
+def bls377LeafOracle : LeafSem := bls377LeafOracle.spec.val
+
+/-- The deployed leaf oracle realises the BLS12-377 field and pairing primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bls377LeafOracle_agrees :
     Bls377FieldLeavesAgree bls377Prims bls377LeafOracle ∧
-    Bls377PairingLeavesAgree bls377Prims bls377LeafOracle
+    Bls377PairingLeavesAgree bls377Prims bls377LeafOracle := by
+  rw [show bls377LeafOracle = bls377Oracle bls377Prims from bls377LeafOracle.spec.property]
+  exact ⟨bls377Oracle_fieldAgrees _, bls377Oracle_pairingAgrees _⟩
 
 /-- **The deployed field-add kernel at the deployed oracle.** Computes
-    `bls377Prims.fieldAdd x y`. The orchestration is Lean-proven; the only
-    assumption is the leaf trust edge `bls377LeafOracle_agrees`. -/
+    `bls377Prims.fieldAdd x y`: what the orchestration computes when the leaf
+    computes its primitive. The statement carries no assumption; the leaf
+    agreement `bls377LeafOracle_agrees` holds by construction of the oracle. -/
 theorem fieldAddCom_denote (x y : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldAddCom (.cons x (.cons y .nil))
@@ -175,8 +181,9 @@ theorem fp12MulCom_denote (a b : Fin GTSZ → BitVec 8) :
 
 /-- **The deployed pairing-product verifier at the deployed oracle.** Computes
     `bls377Prims.fp12Mul (bls377Prims.pairing P₁ Q₁) (bls377Prims.pairing P₂ Q₂)`
-    for the deployed primitives. The orchestration is Lean-proven; the only
-    assumption is the leaf trust edge `bls377LeafOracle_agrees`. -/
+    for the deployed primitives: what the orchestration computes when each leaf
+    computes its primitive. The statement carries no assumption; the leaf
+    agreement `bls377LeafOracle_agrees` holds by construction of the oracle. -/
 theorem pairingProductCom_denote
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :

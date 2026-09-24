@@ -26,8 +26,9 @@ oracles that parameter is instantiated at.
   it satisfies `Bn254MillerLeavesAgree`, so the hypothesis of the
   `Bn254MillerEmit` denotation theorems is satisfiable for every `prims`.
 * `bn254MillerLeafOracle` / `bn254MillerLeafOracle_agrees` — the leaf oracle for
-  the deployed primitives and its agreement, a named axiom (the leaf edge; a leaf
-  proof or a jasmin/AUCurves bridge would establish it).
+  the deployed primitives, defined as `bn254MillerOracle deployedMillerPrims`, and
+  its agreement, a theorem that holds by construction of the oracle. It relates
+  the oracle to the primitives and says nothing about the emitted leaf code.
 * `cycloPowStepCom_denote` / `finalExpEasyCom_denote` / `millerDoubleStepCom_denote`
   — each deployed kernel at the deployed oracle.
 -/
@@ -102,22 +103,27 @@ instance : Inhabited Bn254MillerPrimitives :=
     targets. Opaque — uninterpreted for proofs. -/
 opaque deployedMillerPrims : Bn254MillerPrimitives
 
-/-- The leaf oracle for the deployed primitives,
-    `bn254MillerOracle deployedMillerPrims` sealed as `opaque`; the seal keeps the
-    agreement below a named hypothesis. -/
-opaque bn254MillerLeafOracle : LeafSem := bn254MillerOracle deployedMillerPrims
+/-- The leaf oracle for the deployed primitives, `bn254MillerOracle deployedMillerPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque bn254MillerLeafOracle.spec : { o : LeafSem // o = bn254MillerOracle deployedMillerPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the BN254 tower
-    primitives. A named axiom. Establishing it means bridging the emitted leaf to
-    the primitive spec — a leaf proof, or a jasmin/AUCurves bridge — which this
-    file does not do. -/
-axiom bn254MillerLeafOracle_agrees :
-    Bn254MillerLeavesAgree deployedMillerPrims bn254MillerLeafOracle
+/-- The deployed leaf oracle, `bn254MillerOracle deployedMillerPrims`, read through the opaque `bn254MillerLeafOracle.spec`. -/
+def bn254MillerLeafOracle : LeafSem := bn254MillerLeafOracle.spec.val
+
+/-- The deployed leaf oracle realises the BN254 tower primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bn254MillerLeafOracle_agrees :
+    Bn254MillerLeavesAgree deployedMillerPrims bn254MillerLeafOracle := by
+  rw [show bn254MillerLeafOracle = bn254MillerOracle deployedMillerPrims from bn254MillerLeafOracle.spec.property]
+  exact bn254MillerOracle_agrees _
 
 /-- **The deployed cyclotomic pow-step at the deployed oracle.** Denoted through
     `jasminDenoteWith bn254MillerLeafOracle`, `cycloPowStepCom` computes
-    `fp12Mul (fp12CycloSquare r) base`. The orchestration is Lean-proven; the only
-    assumption is the leaf trust edge `bn254MillerLeafOracle_agrees`. -/
+    `fp12Mul (fp12CycloSquare r) base`: what the orchestration computes when each
+    leaf computes its primitive. The statement carries no assumption; the leaf
+    agreement `bn254MillerLeafOracle_agrees` holds by construction of the
+    oracle. -/
 theorem cycloPowStepCom_denote (r base : Fin GTSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254MillerLeafOracle) _ _
         cycloPowStepCom (.cons r (.cons base .nil))

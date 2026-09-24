@@ -34,21 +34,23 @@ concrete elementwise-sum semantics `fun j => a j + b j`. So:
   directly — no `jasminDenoteWith`, no abstract oracle), computes `polyAdd a b`.
   Its correctness is fully in-kernel: no leaf assumption appears.
 
-## Path 2 — an opaque leaf, agreement by named axiom (`Pairing.Eip197Denote`)
+## Path 2 — a leaf outside the fixed semantics, oracle defined from the primitive (`Pairing.Eip197Denote`)
 
-For a leaf the dialect keeps opaque — a pairing (`bn254_pairing`), a Keccak
-permutation, any leaf `jasminExtSem` sends to `JasminTy.default` — the fixed
-semantics does not realise it. There the kernel is denoted through
-`jasminDenoteWith leafSem` against an *abstract* leaf oracle, and the
-agreement `leafSem` ↔ the abstract primitive is a **named axiom**
-(`Eip197Denote.eip197LeafOracle_agrees`), discharged by a byte-KAT against the
-reference implementation (`bench/bn254_compare/`). The orchestration is
-Lean-proven; the single assumption is that leaf trust edge.
+For a leaf the fixed semantics does not compute — a pairing (`bn254_pairing`), a
+Keccak permutation, any leaf `jasminExtSem` sends to `JasminTy.default` — the
+kernel is denoted through `jasminDenoteWith leafSem` against a leaf oracle
+defined from an uninterpreted primitive, and the agreement `leafSem` ↔ the
+primitive (`Eip197Denote.eip197LeafOracle_agrees`) is a theorem that holds by
+construction of that oracle. The kernel theorem states what the orchestration
+computes when each leaf computes its primitive and carries no assumption; it
+says nothing about the emitted leaf code, which a byte-KAT against the reference
+implementation (`bench/bn254_compare/`) checks outside Lean.
 
 The kernel here is the same straight-line-`Com`-over-leaves shape as the EIP-197
 verifier — a `buildOrchCom` phase schedule, one leaf, threaded to `.ret` — but
-because its one leaf is width-16 `poly_add`, the trust edge that stays an axiom
-in Path 2 becomes the theorem `jasminExtSem_polyAdd_agrees` here.
+because its one leaf is width-16 `poly_add`, the agreement is a theorem about the
+dialect's own leaf semantics, `jasminExtSem_polyAdd_agrees`, rather than about an
+oracle defined from the primitive.
 -/
 
 @[expose] public section
@@ -84,8 +86,9 @@ def polyAdd (a b : Fin polyN → BitVec 16) : Fin polyN → BitVec 16 :=
   fun j => a j + b j
 
 /-- The leaf agreement: `leafSem` on the `poly_add` signature computes `polyAdd`
-    of its two operands. For an opaque pairing/Keccak leaf this is a named axiom
-    (Path 2); for `poly_add` it is discharged below (Path 1). -/
+    of its two operands. For a pairing/Keccak leaf the corresponding agreement
+    holds by construction of an oracle defined from the primitive (Path 2); for
+    `poly_add` it is proved below for the dialect's fixed semantics (Path 1). -/
 def PolyAddAgrees
     (leafSem : (name : String) → (argTys : List JasminTy) → (retTy : JasminTy) →
       HVector (fun t => ⟦t⟧) argTys → ⟦retTy⟧) : Prop :=

@@ -28,8 +28,11 @@ oracles that parameter is instantiated at.
   so the hypotheses of the `Bn254Emit` denotation theorems are satisfiable for
   every `prims`.
 * `bn254LeafOracle` / `bn254LeafOracle_ecAgrees` / `bn254LeafOracle_pairingAgrees`
-  — the leaf oracle for the deployed primitives and its agreements, named axioms
-  (the leaf edges; a leaf proof or a jasmin/AUCurves bridge would establish them).
+  — the leaf oracle for the deployed primitives, defined as
+  `bn254Oracle bn254DeployedPrims`, and its agreements, theorems that hold by
+  construction of the oracle. They relate the oracle to the primitives and say
+  nothing about the emitted leaf code; `BN254G1LeafBridge` proves the byte-level
+  projective `g1_add` spec equal to the encoded affine group law.
 * `pairingCom_denote` / `g1MsmTermCom_denote` — the deployed kernels at the
   deployed oracle.
 -/
@@ -95,30 +98,35 @@ instance : Inhabited Bn254Primitives :=
     targets. Opaque — uninterpreted for proofs. -/
 opaque bn254DeployedPrims : Bn254Primitives
 
-/-- The leaf oracle for the deployed primitives,
-    `bn254Oracle bn254DeployedPrims` sealed as `opaque`; the seal keeps the
-    agreements below named hypotheses. -/
-opaque bn254LeafOracle : LeafSem := bn254Oracle bn254DeployedPrims
+/-- The leaf oracle for the deployed primitives, `bn254Oracle bn254DeployedPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque bn254LeafOracle.spec : { o : LeafSem // o = bn254Oracle bn254DeployedPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the BN254 G1/G2 group
-    primitives. A named axiom. Establishing it means bridging the emitted leaf to
-    the primitive spec — a leaf proof, or a jasmin/AUCurves bridge — which this
-    file does not do. -/
-axiom bn254LeafOracle_ecAgrees :
-    EcLeafAgrees bn254DeployedPrims bn254LeafOracle
+/-- The deployed leaf oracle, `bn254Oracle bn254DeployedPrims`, read through the opaque `bn254LeafOracle.spec`. -/
+def bn254LeafOracle : LeafSem := bn254LeafOracle.spec.val
 
-/-- The leaf agreement: the deployed leaf oracle realises the BN254 pairing
-    primitives. A named axiom. Establishing it means bridging the emitted leaf to
-    the primitive spec — a leaf proof, or a jasmin/AUCurves bridge — which this
-    file does not do. -/
-axiom bn254LeafOracle_pairingAgrees :
-    PairingLeavesAgree bn254DeployedPrims bn254LeafOracle
+/-- The deployed leaf oracle realises the BN254 G1/G2 group primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bn254LeafOracle_ecAgrees :
+    EcLeafAgrees bn254DeployedPrims bn254LeafOracle := by
+  rw [show bn254LeafOracle = bn254Oracle bn254DeployedPrims from bn254LeafOracle.spec.property]
+  exact bn254Oracle_ecAgrees _
+
+/-- The deployed leaf oracle realises the BN254 pairing primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bn254LeafOracle_pairingAgrees :
+    PairingLeavesAgree bn254DeployedPrims bn254LeafOracle := by
+  rw [show bn254LeafOracle = bn254Oracle bn254DeployedPrims from bn254LeafOracle.spec.property]
+  exact bn254Oracle_pairingAgrees _
 
 /-- **The deployed single BN254 pairing at the deployed oracle.** The deployed
     `Bn254Emit.pairingCom`, denoted through `jasminDenoteWith bn254LeafOracle`,
-    computes `pairing P Q` for the deployed primitives. The orchestration is
-    Lean-proven; the only assumption is the leaf trust edge
-    `bn254LeafOracle_pairingAgrees`. -/
+    computes `pairing P Q` for the deployed primitives: what the orchestration
+    computes when the leaf computes its primitive. The statement carries no
+    assumption; the leaf agreement `bn254LeafOracle_pairingAgrees` holds by
+    construction of the oracle. -/
 theorem pairingCom_denote (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254LeafOracle) _ _
         Bn254Emit.pairingCom
@@ -129,9 +137,10 @@ theorem pairingCom_denote (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8
 
 /-- **The deployed G1 MSM step at the deployed oracle.** The deployed
     `Bn254Emit.g1MsmTermCom`, denoted through `jasminDenoteWith bn254LeafOracle`,
-    computes `g1Add acc (g1Mul k P)` for the deployed primitives. The
-    orchestration is Lean-proven; the only assumption is the leaf trust edge
-    `bn254LeafOracle_ecAgrees`. -/
+    computes `g1Add acc (g1Mul k P)` for the deployed primitives: what the
+    orchestration computes when each leaf computes its primitive. The statement
+    carries no assumption; the leaf agreement `bn254LeafOracle_ecAgrees` holds by
+    construction of the oracle. -/
 theorem g1MsmTermCom_denote
     (acc : Fin G1SZ → BitVec 8) (k : Fin FPSZ → BitVec 8) (P : Fin G1SZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bn254LeafOracle) _ _

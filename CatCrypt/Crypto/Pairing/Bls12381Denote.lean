@@ -28,8 +28,11 @@ oracles that parameter is instantiated at.
   for every `prims`.
 * `bls12381LeafOracle` / `bls12381LeafOracle_ecAgrees` /
   `bls12381LeafOracle_pairingAgrees` — the leaf oracle for the deployed
-  primitives and its agreements, named axioms (the leaf edges; a leaf proof or a
-  jasmin/AUCurves bridge would establish them).
+  primitives, defined as `bls12381Oracle deployedPrims`, and its agreements,
+  theorems that hold by construction of the oracle. They relate the oracle to the
+  primitives and say nothing about the emitted leaf code; `Bls12381G1LeafBridge`
+  proves the byte-level projective `g1_add` spec equal to the encoded affine
+  group law.
 * `*Com_denote` — each deployed `Com` at the deployed oracle.
 -/
 
@@ -95,23 +98,28 @@ instance : Inhabited BlsPrimitives :=
     targets. Opaque — uninterpreted for proofs. -/
 opaque deployedPrims : BlsPrimitives
 
-/-- The leaf oracle for the deployed primitives, `bls12381Oracle deployedPrims`
-    sealed as `opaque`; the seal keeps the agreements below named hypotheses. -/
-opaque bls12381LeafOracle : LeafSem := bls12381Oracle deployedPrims
+/-- The leaf oracle for the deployed primitives, `bls12381Oracle deployedPrims`. Opaque, so the kernel
+    does not unfold it; `spec` carries its defining equation. -/
+opaque bls12381LeafOracle.spec : { o : LeafSem // o = bls12381Oracle deployedPrims } := ⟨_, rfl⟩
 
-/-- The leaf agreement: the deployed leaf oracle realises the BLS12-381 EC group
-    primitives. A named axiom. Establishing it means bridging the emitted leaf to
-    the primitive spec — a leaf proof, or a jasmin/AUCurves bridge — which this
-    file does not do. -/
-axiom bls12381LeafOracle_ecAgrees :
-    EcLeafAgrees deployedPrims bls12381LeafOracle
+/-- The deployed leaf oracle, `bls12381Oracle deployedPrims`, read through the opaque `bls12381LeafOracle.spec`. -/
+def bls12381LeafOracle : LeafSem := bls12381LeafOracle.spec.val
 
-/-- The leaf agreement: the deployed leaf oracle realises the BLS12-381
-    pairing-side primitives. A named axiom. Establishing it means bridging the
-    emitted leaf to the primitive spec — a leaf proof, or a jasmin/AUCurves
-    bridge — which this file does not do. -/
-axiom bls12381LeafOracle_pairingAgrees :
-    PairingLeavesAgree deployedPrims bls12381LeafOracle
+/-- The deployed leaf oracle realises the BLS12-381 EC group primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bls12381LeafOracle_ecAgrees :
+    EcLeafAgrees deployedPrims bls12381LeafOracle := by
+  rw [show bls12381LeafOracle = bls12381Oracle deployedPrims from bls12381LeafOracle.spec.property]
+  exact bls12381Oracle_ecAgrees _
+
+/-- The deployed leaf oracle realises the BLS12-381 pairing-side primitives. It holds by
+    construction: the oracle is defined from the primitives. Relating the
+    emitted leaves to the primitives is a separate statement, not made here. -/
+theorem bls12381LeafOracle_pairingAgrees :
+    PairingLeavesAgree deployedPrims bls12381LeafOracle := by
+  rw [show bls12381LeafOracle = bls12381Oracle deployedPrims from bls12381LeafOracle.spec.property]
+  exact bls12381Oracle_pairingAgrees _
 
 /-- **The deployed G1 MSM step at the deployed oracle.** `Bls12381Emit.g1MsmTermCom`,
     denoted through `jasminDenoteWith bls12381LeafOracle`, computes

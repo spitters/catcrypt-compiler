@@ -11,19 +11,20 @@ public import CatCrypt.Crypto.Pairing.Eip197Denote
 /-!
 # BN254 pairing transport: AUCurves-anchored deployed primitives
 
-`Eip197Denote.lean` seals the deployed EIP-197 pairing leaf edge as an
-**abstract self-seal**: `opaque deployedPrims : Bn254Primitives` (uninterpreted)
-plus `axiom eip197LeafOracle_agrees`.  That axiom is content-free — it relates an
-opaque leaf oracle to an opaque primitive, with no reference to the mathematical
-pairing spec or to any external proof.
+`Eip197Denote.lean` denotes the deployed EIP-197 verifier against the leaf oracle
+`pairingOracle deployedPrims`, over the uninterpreted constant
+`opaque deployedPrims : Bn254Primitives`. Its agreement
+`eip197LeafOracle_agrees` is a theorem that holds by construction of that
+oracle; it makes no reference to the mathematical pairing spec or to any
+external proof.
 
-This module provides, in place of that self-seal, an **AUCurves-anchored cross-prover
-transport**, in the exact discipline of the curve25519 bedrock transport
+This module instantiates the same verifier at primitives given by an
+**AUCurves-anchored cross-prover transport**, in the exact discipline of the curve25519 bedrock transport
 (`KeyAgreement/X25519/BedrockX25519.lean`) and the trust registry
 (`TrustAxioms.lean` §4): a Rocq-`Qed`'d spec is carried into Lean as a *named*
 axiom with a provenance citation, and the deployed primitives are the concrete
 byte functions the axiom talks about — so the trust edge is a NAMED transport
-citing a real Rocq theorem, not an opaque agreement.
+citing a real Rocq theorem.
 
 ## The transport
 
@@ -184,8 +185,8 @@ axiom bn254_fp12mul_correct_rocq
     pairing / `Fp12`-multiply fields are the deployed byte kernels
     `bn254PairingLeaf` / `bn254Fp12MulLeaf` the transport axioms (§3) spec; the
     group fields are inert (not exercised by the EIP-197 verifier).  This is the
-    transport-anchored replacement for `Eip197Denote.deployedPrims` (an opaque
-    self-seal). -/
+    transport-anchored counterpart of the uninterpreted
+    `Eip197Denote.deployedPrims`. -/
 noncomputable def deployedBn254Prims : Bn254Primitives where
   g1Add := fun _ _ _ => 0
   g1Mul := fun _ _ _ => 0
@@ -216,8 +217,8 @@ theorem deployedBn254Prims_leavesAgree :
     `jasminDenoteWith (pairingOracle deployedBn254Prims)`, computes the deployed
     byte product `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)`.  Instantiation of
     the leaf-parametric `Bn254Emit.eip197VerifyCom_denote` at the leaf model
-    `pairingOracle deployedBn254Prims` and the Lean-proven agreement — no
-    `eip197LeafOracle_agrees` self-seal. -/
+    `pairingOracle deployedBn254Prims` and the Lean-proven agreement
+    `deployedBn254Prims_leavesAgree`. -/
 theorem eip197VerifyCom_denote_deployed
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
@@ -241,7 +242,7 @@ theorem eip197VerifyCom_denote_deployed
 
     The orchestration is Lean-proven; the *only* trust edges are the two NAMED
     transport axioms `bn254_pairing_correct_rocq` / `bn254_fp12mul_correct_rocq`
-    (each citing a real AUCurves Rocq `Qed`), NOT an opaque self-seal.  Run
+    (each citing a real AUCurves Rocq `Qed`).  Run
     `#print axioms eip197VerifyCom_denote_transport` to confirm the footprint. -/
 theorem eip197VerifyCom_denote_transport
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
