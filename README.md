@@ -355,7 +355,9 @@ front compiles Lean specifications directly.
 buildable example modules. [ASCENT.md](ASCENT.md) is the guide to the ascent
 (`CatCrypt/Crypto/SecureCompilation/Ascent/`), which proves that a program at one of
 the compiler's low levels (a LowCT command, an x86 or RV64 instruction list) computes
-a Lean specification.
+a Lean specification. [HAX_RUST.md](HAX_RUST.md) covers printing a LowCT program or a
+Lean function as Rust with a theorem about the Rust hax reads back, and the ascent on
+haxpipeT extractions.
 [CAPABILITIES.md](CAPABILITIES.md) indexes each shipped primitive to its emit module,
 its correctness theorem or KAT, and its provenance class; [bench.md](bench.md)
 reports performance ratios measured in the development repository, which cannot be
