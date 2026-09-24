@@ -19,7 +19,7 @@ printed body, with the parameter types and the local types given as inputs,
 since an `ImpExpr` carries no Rust slot types; `parse_ppImpRustFn` is its round
 trip.  A type is a single whitespace-free token, such as `&mut[u8;48]`.
 `ppImpRustFnRet` prints a `fn` with a return type, whose body is a statement
-sequence ending in a variable — the returned local.
+sequence ending in a variable or a tuple of variables — the returned value.
 
 The printer covers the statement fragment below, which contains every shape
 in the table of `lowCTToImp` (`CatCrypt.Crypto.Hax.LowCTToHax`); every other
@@ -39,6 +39,7 @@ the Rust form as, and the normalisation that relates it to the printed node.
 | `whileLoop (var c) b` | `while c { b }` | `Loop`, `whileLoop` |
 | `forFold x lo hi b` | `for x in lo .. hi { b }` | `forLoop` (`reconstructForLoops`), `forFold` after `functionalizeLoops` |
 | `match_ (f(args)) [((x, y), b)]` | `match f ( args ) { ( x , y ) => { b } }` | `Match`, `match_` with a `tuplePat` |
+| `tuple [var a₁, var a₂, …]`, two or more components | `( a₁ , a₂ , … )` | `Tuple`, `tuple` |
 
 A right-hand side `v` of a binding or an assignment is one of:
 
@@ -320,6 +321,7 @@ def ppToks (ty : String → Option Tok) : ImpExpr → Option (List Tok)
             some (["match"] ++ tc ++ ["{", "(", x, ",", y, ")", "=>", "{"] ++ tb ++ ["}", "}"])
         | _, _ => none
       else none
+  | .tuple (a :: b :: cs) => (argToks (a :: b :: cs)).map fun t => "(" :: t
   | _ => none
 
 /-! ## §4  Rendering and lexing -/
@@ -426,7 +428,12 @@ def parseStmt (p : List Tok → Option (ImpExpr × List Tok)) :
     List Tok → Option (ImpExpr × List Tok)
   | [] => none
   | t :: r =>
-    if t = "(" then (expects [")"] r).map fun r' => (.unitVal, r')
+    if t = "(" then
+      match r with
+      | u :: r' =>
+          if u = ")" then some (.unitVal, r')
+          else (parseArgs r).map fun q => (.tuple q.1, q.2)
+      | [] => none
     else if t = "if" then
       match r with
       | c :: r1 => do
@@ -700,6 +707,30 @@ theorem parseArgs_argToks (args : List ImpExpr) (ta : List Tok) (h : argToks arg
         · simp at h
     all_goals simp [argToks] at h
 
+theorem argToks_cons_head (a : ImpExpr) (as : List ImpExpr) (ta : List Tok)
+    (h : argToks (a :: as) = some ta) : ∃ x r, ta = x :: r ∧ validIdent x = true := by
+  cases a
+  case var x =>
+    cases as with
+    | nil =>
+      simp only [argToks] at h
+      split at h
+      · rename_i hx
+        simp only [Option.some.injEq] at h
+        exact ⟨x, _, h.symm, hx⟩
+      · simp at h
+    | cons b bs =>
+      simp only [argToks] at h
+      split at h
+      · rename_i hx
+        cases ht : argToks (b :: bs) with
+        | none => simp [ht] at h
+        | some t =>
+          simp only [ht, Option.map_some, Option.some.injEq] at h
+          exact ⟨x, _, h.symm, hx⟩
+      · simp at h
+  all_goals simp [argToks] at h
+
 /-- The right-hand-side follow set: end of input, `;` or `}`. -/
 def stmtStop : List Tok → Prop
   | [] => True
@@ -889,7 +920,12 @@ section Steps
 variable (p : List Tok → Option (ImpExpr × List Tok))
 
 theorem parseStmt_unit (r : List Tok) : parseStmt p ("(" :: ")" :: r) = some (.unitVal, r) := by
-  simp [parseStmt, expects]
+  simp [parseStmt]
+
+theorem parseStmt_tuple (x : String) (r r' : List Tok) (args : List ImpExpr) (hx : x ≠ ")")
+    (ha : parseArgs (x :: r) = some (args, r')) :
+    parseStmt p ("(" :: x :: r) = some (.tuple args, r') := by
+  simp [parseStmt, hx, ha]
 
 theorem parseStmt_if (c : String) (r1 r2 r3 : List Tok) (t e : ImpExpr)
     (ht : p r1 = some (t, "}" :: "else" :: "{" :: r2)) (he : p r2 = some (e, "}" :: r3)) :
@@ -1281,6 +1317,28 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
         all_goals simp [ppToks] at h
       all_goals simp [ppToks] at h
     all_goals simp [ppToks] at h
+  case tuple es _ =>
+    intro ts h
+    rcases es with _ | ⟨a, _ | ⟨b, cs⟩⟩
+    · simp [ppToks] at h
+    · simp [ppToks] at h
+    · simp only [ppToks] at h
+      cases hta : argToks (a :: b :: cs) with
+      | none => simp [hta] at h
+      | some ta =>
+        simp only [hta, Option.map_some, Option.some.injEq] at h
+        subst h
+        obtain ⟨x, r, rfl, hx⟩ := argToks_cons_head a (b :: cs) _ hta
+        have hx' := validIdent_ne x hx
+        have hs : ∀ n rest, ("(" :: x :: r).length ≤ n → stmtStop rest →
+            parseStmt (parseSeq n) (("(" :: x :: r) ++ rest) =
+              some (.tuple (a :: b :: cs), rest) := by
+          intro n rest _ _
+          have ha := parseArgs_argToks _ _ hta rest
+          simp only [List.cons_append] at ha ⊢
+          exact parseStmt_tuple _ x _ rest _ hx'.2.1 ha
+        have hh : StmtHead ("(" :: x :: r) := by simp [StmtHead, hx'.2.2.2.2.1]
+        exact both _ _ hh hs
   all_goals intro ts h; simp [ppToks] at h
 
 /-! ## §9  Function signatures -/
