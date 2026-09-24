@@ -74,7 +74,7 @@ carry no store guard.
 
 On the decidable straight-line fragments (`isAscendableB`, `isAscendableExprB`)
 `ascendG` emits no guard and its transformer is `asemW` / `asemWExpr`
-(`ascendG_isAscendableB`, `ascendG_isAscendableExprB`), so the existing `ascend!` /
+(`ascendG_isAscendable`, `ascendG_isAscendableExprB`), so the existing `ascend!` /
 `ascend_expr!` demos are instances of `ascendG_sound`.
 
 ## Main definitions

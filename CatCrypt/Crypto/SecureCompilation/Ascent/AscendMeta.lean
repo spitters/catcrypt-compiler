@@ -335,7 +335,7 @@ def keccakXY : List (Nat × Nat) :=
 def keccakCols : List Nat := [0, 1, 2, 3, 4]
 
 /-- A statement list as a right-nested `RSeq` chain ending in `RSkip`. -/
-def seqAll (cs : List LowCT) : LowCT := cs.foldr .RSeq .RSkip
+def seqAllSkip (cs : List LowCT) : LowCT := cs.foldr .RSeq .RSkip
 
 /-- θ, column parities: `cx := ax0 ^^^ ax1 ^^^ ax2 ^^^ ax3 ^^^ ax4`. -/
 def keccakThetaC : List LowCT := keccakCols.map fun x =>
@@ -372,7 +372,7 @@ def keccakIota : LowCT := .RScalarSetExpr "a00" (.SXor (.SVar "a00") (.SLit 0x80
 /-- One Keccak-f[1600] round as a straight-line bitwise kernel: 86 `RScalarSetExpr`
     terminals in a right-nested `RSeq` chain. -/
 def keccakRoundBody : LowCT :=
-  seqAll (keccakThetaC ++ keccakThetaD ++ keccakThetaApply ++ keccakRhoPi ++ keccakChi ++
+  seqAllSkip (keccakThetaC ++ keccakThetaD ++ keccakThetaApply ++ keccakRhoPi ++ keccakChi ++
     [keccakIota])
 
 /-- The Keccak round is in the bitwise fragment, by the syntax walk. -/

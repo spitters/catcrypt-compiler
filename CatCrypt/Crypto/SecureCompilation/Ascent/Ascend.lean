@@ -230,8 +230,10 @@ theorem ascend_bitwise_sound {c : LowCT} (h : IsAscendableBitwise c) :
   | rScalarSetExpr x e he => exact corres_setExprBitwise x e he
 
 /-- The `ascend_expr` tactic: as `ascend`, over the arithmetic-expression fragment.
-    Closes fully when every terminal is a literal `RScalarSet`; an `RScalarSetExpr`
-    terminal leaves its `IsArithClean` cleanliness as a residual goal. -/
+    Closes the goal when every terminal is a literal `RScalarSet`. On an
+    `RScalarSetExpr` terminal the constructor search does not prove `IsArithClean`
+    (a variable leaf needs `¬ isTmpName x`) and the tactic fails with unsolved goals;
+    `ascend_expr!` decides that condition. -/
 macro "ascend_expr" : tactic => `(tactic| exact ascend_expr_sound (by repeat' constructor))
 
 /-- The `ascend_bitwise` tactic: as `ascend`, over the bitwise-expression fragment. -/

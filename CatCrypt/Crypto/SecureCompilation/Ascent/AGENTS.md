@@ -229,7 +229,7 @@ These modules are not imported by any module above and are not part of the calcu
 |---|---|---|
 | `Corres` at `asemW c`, `asemWExpr c` or `asemWBV c` for a small concrete kernel | `ascend!`, `ascend_expr!`, `ascend_bitwise!`, `ascend_unified!` | membership by one `decide` over the whole kernel |
 | the same goal for a large or generated kernel (`def`-bound, built by `List.foldr` or `List.map`) | `ascend_meta` | walks the term; `decide` only on single names and literals |
-| the same goal when every terminal is a literal `RScalarSet` | `ascend`, `ascend_expr`, `ascend_bitwise` | constructor search; leaves the `IsArithClean` / `IsWordClean` side conditions of expression terminals open |
+| the same goal when every terminal is a literal `RScalarSet` | `ascend`, `ascend_expr`, `ascend_bitwise` | constructor search; fails with unsolved goals on an expression terminal, whose `IsArithClean` / `IsWordClean` condition it does not prove (use the `!` form) |
 | `Corres SRwordBV (fun _ => True) fold c` for a straight-line `RSeq` / `RScalarSetExpr` kernel mixing arithmetic and bitwise nodes | `corres_sym_scalar`, or the macro `corres_solve_scalar` | synthesises the `wordStep` fold; the only leaf is `corres_setExprWord` |
 | a kernel with loops, conditionals, range side conditions or unsupported nodes | `ascendG_sound`, `ascendG_sound_scalar`, `tsLowCT_sound` (terms) | inspect `(ascendG fuel c).1` first; an `unsupported` guard makes the precondition unsatisfiable |
 | a kernel with `RArrLoad`, `RArrStore` or `RLimbStore` | `ascendGL_sound_scalar`, `tsLowCTL_sound_scalar` over the array layout (terms) | pass the layout listing each array with its length; `arrSelK` is the template |

@@ -31,7 +31,29 @@ The modules are in `CatCrypt/Crypto/SecureCompilation/Ascent/`, namespace
 map, naming conventions and the choice of tactic, is
 [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md).
 
-## Status, 2026-09-15
+A specification reached by the tactics `ascend*` and `corres_sym*` is the kernel's own
+abstract denotation (`asemW c`, `asemWExpr c`, `asemWBV c`, or a `wordStep` fold); relating it to a
+standard (FIPS 202, RFC 8032) is a separate theorem. The results that do reach such a
+statement on shipped code are listed in [Shipped blocks](#shipped-blocks).
+
+## Shipped blocks
+
+Four theorems state what a block linked into a crate computes, over the Jasmin x86
+semantics with addresses (`runBlockA`) or over the exported Jasmin function:
+
+| Kernel | Theorem | Statement | Hypotheses |
+|---|---|---|---|
+| `ed25519_point_add` | `Demos.Ed25519PointAddBytes.paShippedBytes_correct` | the bytes `encodeJBlock s2nAlloc` of the 4909-instruction block decode to a block that leaves at `%rdi + 32k` the Edwards sum `paSpec` (tied to the addition law by `paSpec_addSpec`) | cells pairwise disjoint; inputs below `2^255 − 19` |
+| `ed25519_sc_reduce` | `Demos.Ed25519ScReduceShippedProof.scReduceShipped_correct_addr` | the imported block stores the limbs of `x mod L` at `%rdi` | cells pairwise disjoint |
+| `ed25519_sc_muladd` | `Demos.Ed25519ScMuladdShippedProof.scMuladdShipped_correct_addr` | the imported block stores `(a·b + c) mod L` at `%rdi` | cells pairwise disjoint |
+| `mpn_and_n` | `VIR.JasminLsemExportShippedAnd.binAnd_export_machine_shipped` | the renamed export node of the and-loop body halts with the array at `argName 0` decoding to `JLoopBodyN.denote` | register renaming and count-register side conditions |
+
+The proofs cut each block at a boundary certificate produced by a generator and check
+each half in its own module; the footprint checks use `native_decide`. The
+`sc_reduce` and `sc_muladd` results are stated over the imported block, not over the
+bytes the encoder writes.
+
+## Results at the source and leaf boundaries
 
 The following statements concern the source and leaf boundaries of the ascent; the
 section [Scope](#scope) gives their hypotheses.
@@ -71,13 +93,9 @@ Not covered by any theorem in the package:
   the scalar store; the `RustExec` counterparts of `RCallSwap` and `RCallN` when a
   destination is also an argument; and the ascent of `RArrLoadLit` into a layout-array
   destination;
-- hax programs with renaming aliases or tower-bound conditions (a source-level renaming
-  pass and its simulation exist only in the dev tree), loops whose bounds are
+- hax programs with renaming aliases or tower-bound conditions, loops whose bounds are
   expressions other than literals and variables, and a composition of the hax
-  simulations with the front and the jasmin lowering (the dev tree carries one for the
-  extracted SHA-256 `maj` and one for `big_sigma0`, the latter through the literal-slot
-  arm of the front: an `RLimbStore` into an unbound `.TFp` slot emits `bvConst` and the
-  leaf `limbLit:idx`, which binds the slot);
+  simulations with the front and the jasmin lowering;
 - a weld of `corresU_whileFun` to the rolled loop: the `Com jasminDialect` of
   `corresU_whileFun_jasminDenote` is the front's unrolling of the `RWhileNz` node at
   the entry environment's trip count (`transU`), and no theorem relates it to the
@@ -94,7 +112,7 @@ relative to `CatCrypt/Crypto/SecureCompilation/Ascent/`.
 | Value abstraction | `Corres`, `ExprLeaf`, `HeapAbs`, `StoreRefinement`, `MultiLimb`, `MlkemFieldLeaf`, `Width32Leaf`, `Phases` | `wEnc : BitVec 64 → ZMod 2^64` and the ParamTransfer squares `wEncAdd`, `wEncSub`, `wEncMul`; `SRword`, `SRwordNT`, `SRwordBV`; `ValueAbs` with `SRof`, `SRcarryOf` and the instance theorems `srwordNT_iff_srof`, `srcarry_iff_srcarryOf`; `fqEnc` and `CorresH`; `corres_WA`, `AbsProg` |
 | Leaves over `LowCT` | `Corres`, `ExprLeaf`, `CorresScalar`, `BitwiseOrNot`, `RotateLeaf`, `SelectLeaf`, `ArrStoreLeaf`, `ArrLoadLeaf`, `MlkemFieldLeaf` | `corres_setScalar`, `corres_setScalar_NT`, `corres_setExpr` (arithmetic into `ZMod 2^64`), `corres_setExprBitwise`, `corres_setExprWord` (the `srcClean` word algebra over `BitVec 64`), `corres_setExprOr`, `corres_rotl`, `corres_ctSelect`, `corres_arrStore`, `corres_arrLoad`, `corres_setExpr_fqAdd` |
 | Control and early exit | `Control`, `While`, `WhileTop`, `WhileFun`, `WhileFunEmit`, `MlkemPolyFoldCorres`, `Exit` | `corres_for`, `corres_if`, `corres_for_indexed`, `polyAdd_fold_corres`, `corres_while`, `corresU_while`, `corresU_whileFun`, `corresU_whileFun_total`, `corresU_whileFun_jasminDenote`, `pipeline_exceptProg`, `whileExit_sim`, `corresU_while_exit` |
-| Automation and total abstraction | `Ascend`, `AscendDecide`, `AscendMeta`, `Guards`, `GuardsLeaf`, `Strengthen`, `CorresSolver`, `CorresAttr`, `CorresX86Solver`, `CorresRiscvLeaves`, `CorresRiscvSolver`, `CorresScalar`, `MontBounds`, `InvariantSchemas` | `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound` and the tactics `ascend!`, `ascend_meta`; `ascendG`, `ascendG_sound`; `ascendGLL`, `ascendGLL_sound`; `tsLowCT_sound`, `tsHax_sound`, `Kernel.tsLevel`; the solvers `corres_solve`, `corres_solve_x86`, `corres_solve_rv`, `corres_solve_scalar`; `mont_bound` |
+| Automation and total abstraction | `Ascend`, `AscendDecide`, `AscendMeta`, `Guards`, `GuardsLeaf`, `Strengthen`, `CorresSolver`, `CorresAttr`, `CorresX86Solver`, `CorresRiscvLeaves`, `CorresRiscvSolver`, `CorresScalar`, `MontBounds`, `InvariantSchemas` | `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound` and the tactics `ascend!`, `ascend_meta`; `ascendG`, `ascendG_sound`; `ascendGLL`, `ascendGLL_sound`; `tsLowCT_sound`, `tsHax_sound`, `Kernel.tsLevel`; the symbolic-execution tactics `corres_sym`, `corres_sym_rv`, `corres_sym_scalar` and the macro solvers `corres_solve`, `corres_solve_x86`, `corres_solve_rv`, `corres_solve_scalar`; `mont_bound` |
 | Machine-level leaves and value results | `RunBlockCorres`, `EcMultiLimbCapstone`, `EcMultiLimbMul`, `MpnAdxCorres`, `FieldReduce`, `CorresX86Solver`, `CorresRiscvLeaves`, `Capstone`, `CapstoneField`, `EcMultiLimbEmit` | `corresJ_sbb`, `corresJ_adc`, `srcarryLimbs_recompose`; `sbbLimbs_spec`, `corresJ_sbbChain`; `mulLimbs_spec`, `corresJ_adxBlock`; `mpnAdd_runBlock`, `mpnSub_runBlock`; `montRedc_spec`, `corresJ_montRedc4Block`; `corresJ_movX` … `corresJ_mulxX`; `corresR_add` … `corresR_slli`; `sbbChain_emit_realizes_abstract_CF` |
 | Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `JasminMirrorTie`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `forFold_eq_loopStep`, `mulhiLoop_mirror_runBlock`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
 | Descent contracts in the ascent's shape | `CorresDescent`, `CorresDescentX86`, `CorresDescentRiscv`, `XrunRunBlockTie` | `frefines_ret`; `CorresMPost`, `corres_of_refines_x86`; `corresR_of_refines`; `corres_of_refines_x86_runBlock` |
@@ -143,7 +161,7 @@ The demonstrations under `Ascent/Demos/` each state a small route end to end:
 |---|---|---|
 | [Demos/Decide](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Decide.lean) | a `LowCT` kernel to `asemWExpr` / `asemWBV` by the deciding tactics | `arithK_expr`, `bitK_bitwise`, `bitK_solve` |
 | [Demos/Scalar](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Scalar.lean) | `corres_solve_scalar` over word kernels, and the weld to the front's `Com catCryptDialect` | `qrFrag_refines`, `xor_rotl_refines`, `qrClosed_frontDenote` |
-| [Demos/X86StraightLine](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/X86StraightLine.lean) | `corres_solve_x86` over carry chains and over `x86Target.compile` output | `sbb3_refines`, `mulx_adcx_refines`, `compiled_refines` |
+| [Demos/X86StraightLine](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/X86StraightLine.lean) | `corres_sym` over carry chains and over `x86Target.compile` output | `sbb3_refines`, `mulx_adcx_refines`, `compiled_refines` |
 | [Demos/Riscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Riscv.lean) | `corres_solve_rv` over an add with materialised carry | `addCarry_ascends` |
 | [Demos/LeanSourceX86](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceX86.lean) | a Lean function through the descent to x86, and the same block through the solver | `add_descent_x86`, `add_descent_solver` |
 | [Demos/LeanSourceRiscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscv.lean) | the RV64 twin | `add_descent_riscv` |
