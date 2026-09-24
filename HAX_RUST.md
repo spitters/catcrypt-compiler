@@ -79,8 +79,18 @@ two templates do.
    a complete example.
 
 For class-generic extractions, a builtins table built from a class instance
-(`Builtins.ofClass`, development repository `CatCrypt/Hax/ClassCertified.lean`)
-certifies each literal at every instance by `ascend_reified`.
+(`Table.toBuiltins` over the instance's methods) certifies each literal at every
+instance by `ascend_reified`. `CatCrypt/Hax/ClassBuiltinsTest.lean` does this for a
+two-method class; the development repository's `CatCrypt/Hax/ClassCertified.lean`
+does it for the ristretto255 extraction.
+
+The typed literals (`_texpr`) are checked by the judgement of
+`CatCrypt/Hax/TExprTypingCore.lean`: `check` with `check_sound`, stability under
+type-variable instantiation (`HasType.instTypes`, with `TExpr.instTypes` and
+`erase_instTypes` from `ClassBuiltins.lean`), and `HasType.sound`, which states
+that a well-typed expression evaluates to a value of its type or an error.
+Integer literals annotated at `usize` do not check, since `lit` types them as
+`int`.
 
 The ascent on machine code, `LowCT` and Jasmin is described in `ASCENT.md`.
 
