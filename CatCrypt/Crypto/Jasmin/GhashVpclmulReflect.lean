@@ -90,14 +90,16 @@ GHASH operates on 16-byte (128-bit) blocks: the running tag `Y`, the
 hash subkey `H`, and the input block `X` all share this shape. We
 encode one block as `.TBytes 16` (`memref 2`, two `u64` limbs). -/
 
+opaque GhashBlock.Impl : NonemptyType.{0}
 /-- A single 128-bit GHASH block (running tag, hash subkey, or input
     block). Opaque; concrete leaves implement the GF(2^128) field
     multiply via VPCLMULQDQ. -/
-axiom GhashBlock : Type
+def GhashBlock : Type := GhashBlock.Impl.type
+instance : Nonempty GhashBlock := GhashBlock.Impl.property
 /-- Axiomatic inhabitant. -/ axiom GhashBlock.default : GhashBlock
 noncomputable instance : Inhabited GhashBlock := ⟨GhashBlock.default⟩
 
-/-! ## 2. GHASH leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. GHASH leaves (opaque constants = jasmin function symbols) -/
 
 /-- The fused 128×128 carry-less multiply over GF(2^128) with the AES-GCM
     field polynomial `x^128 + x^7 + x^2 + x + 1`. Implemented by the
@@ -105,7 +107,7 @@ noncomputable instance : Inhabited GhashBlock := ⟨GhashBlock.default⟩
     `#VPCLMULQDQ_256`s) plus the Karatsuba assembly and Montgomery-style
     reduction. The pure-Lean semantics is the GF(2^128) multiply itself;
     the SIMD intrinsic structure is documented in `VPClmulEmit`. -/
-axiom vpclmul_qdq_carryless_mul : GhashBlock → GhashBlock → GhashBlock
+noncomputable opaque vpclmul_qdq_carryless_mul : GhashBlock → GhashBlock → GhashBlock
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

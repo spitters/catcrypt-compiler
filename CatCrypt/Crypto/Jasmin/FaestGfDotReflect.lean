@@ -68,26 +68,30 @@ The vector operands are L = 8 × 16-byte GF(2^128) elements = 128 bytes
 each. We encode as `.TBytes 128` (`memref 16`). The dot-product result
 is a single GF(2^128) element = 16 bytes = `.TBytes 16` (`memref 2`). -/
 
+opaque FaestGfVec8.Impl : NonemptyType.{0}
 /-- A length-8 vector of GF(2^128) elements (FAEST's standard inner-loop
     width). 128 bytes total. Opaque; the leaf `faest_gf_dot_vec` runs
     the PCLMUL-Karatsuba dot product. -/
-axiom FaestGfVec8 : Type
+def FaestGfVec8 : Type := FaestGfVec8.Impl.type
+instance : Nonempty FaestGfVec8 := FaestGfVec8.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FaestGfVec8.default : FaestGfVec8
 noncomputable instance : Inhabited FaestGfVec8 := ⟨FaestGfVec8.default⟩
 
+opaque FaestGf128.Impl : NonemptyType.{0}
 /-- A single GF(2^128) element (the dot-product result). 16 bytes. -/
-axiom FaestGf128 : Type
+def FaestGf128 : Type := FaestGf128.Impl.type
+instance : Nonempty FaestGf128 := FaestGf128.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FaestGf128.default : FaestGf128
 noncomputable instance : Inhabited FaestGf128 := ⟨FaestGf128.default⟩
 
-/-! ## 2. FAEST gf_dot leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. FAEST gf_dot leaves (opaque constants = jasmin function symbols) -/
 
 /-- The length-8 GF(2^128) dot product:
     `out = Σ_{i=0}^{7} a_i · b_i` in GF(2^128) (XOR-accumulated).
     Implemented by the jasmin shim issuing 8 × 3 = 24 `#PCLMULQDQ_128`
     invocations (Karatsuba's three half-products per pair), plus XOR
     folding and one final GF(2^128) reduction. -/
-axiom faest_gf_dot_vec : FaestGfVec8 → FaestGfVec8 → FaestGf128
+noncomputable opaque faest_gf_dot_vec : FaestGfVec8 → FaestGfVec8 → FaestGf128
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

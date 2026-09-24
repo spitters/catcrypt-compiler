@@ -112,15 +112,18 @@ open Lean Meta Elab
 
 /-! ## 1. Opaque surface types + field-op symbols
 
-Axiomatized so the reifier can intercept calls before Lean unfolds them. -/
+Opaque constants and axioms, so the reifier can intercept calls before Lean
+unfolds them. -/
 
+opaque Fp25519.Impl : NonemptyType.{0}
 /-- Opaque `Fp25519` element. Users write Lean source against this type;
     the reifier produces `LowCT`. Programs over this type are never
     evaluated — they're extracted to MLIR. -/
-axiom Fp25519 : Type
+def Fp25519 : Type := Fp25519.Impl.type
+instance : Nonempty Fp25519 := Fp25519.Impl.property
 
-/-- Axiomatic inhabitant so Lean can typecheck programs over `Fp25519`. -/
-axiom Fp25519.default : Fp25519
+/-- An inhabitant so Lean can typecheck programs over `Fp25519`. -/
+noncomputable opaque Fp25519.default : Fp25519
 
 noncomputable instance : Inhabited Fp25519 := ⟨Fp25519.default⟩
 
@@ -147,27 +150,27 @@ let-chain walker sees each one as a regular `fp_*` leaf.
   (Ed25519 decompression / Ristretto-style). Signals "no root" by
   the canonical encoding; callers in CT contexts branch via cmov. -/
 /-- Repeated squaring `x^(2^n)` — fixed chain length baked into the leaf. -/
-axiom fp_sq2   : Fp25519 → Fp25519
-axiom fp_sq4   : Fp25519 → Fp25519
-axiom fp_sq8   : Fp25519 → Fp25519
+noncomputable opaque fp_sq2   : Fp25519 → Fp25519
+noncomputable opaque fp_sq4   : Fp25519 → Fp25519
+noncomputable opaque fp_sq8   : Fp25519 → Fp25519
 
 /-- Inverse square root: `out = 1/sqrt(v)` via `pow_p58 · glue` addition
     chain, mirroring `curve25519-dalek/src/backend/serial/u64/field.rs`. -/
-axiom fp_invsqrt : Fp25519 → Fp25519
+noncomputable opaque fp_invsqrt : Fp25519 → Fp25519
 
 /-- Square root mod p via `sqrt(u/v) = u · v^((p-5)/8)` trick. -/
-axiom fp_sqrt_ratio_i : Fp25519 → Fp25519 → Fp25519
+noncomputable opaque fp_sqrt_ratio_i : Fp25519 → Fp25519 → Fp25519
 
 /-- Multiplicative inverse (Fermat's little theorem; ~265 fp_sqr + ~11 fp_mul). -/
-axiom fp_inv : Fp25519 → Fp25519
+noncomputable opaque fp_inv : Fp25519 → Fp25519
 
 /-- CT conditional move: `sel` is a byte mask encoded into low limb of Fp25519. -/
-axiom fp_cmov : Fp25519 → Fp25519 → Fp25519 → Fp25519
+noncomputable opaque fp_cmov : Fp25519 → Fp25519 → Fp25519 → Fp25519
 
 /-- Extract sign bit of canonical encoding of `x`, returned in low limb. -/
-axiom fp_is_neg  : Fp25519 → Fp25519
+noncomputable opaque fp_is_neg  : Fp25519 → Fp25519
 /-- Test whether `x` is zero, low limb holds 1 / 0. -/
-axiom fp_is_zero : Fp25519 → Fp25519
+noncomputable opaque fp_is_zero : Fp25519 → Fp25519
 
 /-! ### Scalar field (Curve25519 order `L`) ops
 
@@ -176,8 +179,10 @@ axiom fp_is_zero : Fp25519 → Fp25519
 fiat-crypto's 4-limb Montgomery representation (`curve25519_scalar_64.c`).
 The reifier sees `FpL25519` values as having TowerType `.TFpL25519`. -/
 
-axiom FpL25519 : Type
-axiom FpL25519.default : FpL25519
+opaque FpL25519.Impl : NonemptyType.{0}
+def FpL25519 : Type := FpL25519.Impl.type
+instance : Nonempty FpL25519 := FpL25519.Impl.property
+noncomputable opaque FpL25519.default : FpL25519
 noncomputable instance : Inhabited FpL25519 := ⟨FpL25519.default⟩
 
 /-- Scalar addition mod L. -/ axiom scalar_add : FpL25519 → FpL25519 → FpL25519
@@ -185,7 +190,7 @@ noncomputable instance : Inhabited FpL25519 := ⟨FpL25519.default⟩
 /-- Scalar multiplication mod L. -/ axiom scalar_mul : FpL25519 → FpL25519 → FpL25519
 /-- Scalar negation. -/ axiom scalar_neg : FpL25519 → FpL25519
 /-- Multiplicative inverse mod L (uses Bernstein's addition chain). -/
-axiom scalar_inv : FpL25519 → FpL25519
+noncomputable opaque scalar_inv : FpL25519 → FpL25519
 
 /-! ### NIST P-256 base field
 
@@ -195,20 +200,22 @@ Backed by fiat-crypto's 4-limb saturated-Montgomery representation
 `memref<4xi64>`. Demonstrates the pipeline's curve-agnosticism: same
 authoring shape, different curve, different shim. -/
 
-axiom FpP256 : Type
-axiom FpP256.default : FpP256
+opaque FpP256.Impl : NonemptyType.{0}
+def FpP256 : Type := FpP256.Impl.type
+instance : Nonempty FpP256 := FpP256.Impl.property
+noncomputable opaque FpP256.default : FpP256
 noncomputable instance : Inhabited FpP256 := ⟨FpP256.default⟩
 
 /-- P-256 field add (Montgomery domain). -/
-axiom fp256_add : FpP256 → FpP256 → FpP256
+noncomputable opaque fp256_add : FpP256 → FpP256 → FpP256
 /-- P-256 field sub. -/
-axiom fp256_sub : FpP256 → FpP256 → FpP256
+noncomputable opaque fp256_sub : FpP256 → FpP256 → FpP256
 /-- P-256 field mul (Montgomery, saturated). -/
-axiom fp256_mul : FpP256 → FpP256 → FpP256
+noncomputable opaque fp256_mul : FpP256 → FpP256 → FpP256
 /-- P-256 field square. -/
-axiom fp256_sqr : FpP256 → FpP256
+noncomputable opaque fp256_sqr : FpP256 → FpP256
 /-- P-256 field opp (negation). -/
-axiom fp256_opp : FpP256 → FpP256
+noncomputable opaque fp256_opp : FpP256 → FpP256
 
 /-! ### BLS-style base field `Fp` and quadratic extension `Fp2`
 
@@ -219,17 +226,21 @@ are authored over a generic prime field `Fp` and its degree-2 extension
 surface), distinct from the curve25519 `Fp25519` surface.  The leaf
 names match the `g1*`/`g2*` `RCall`s (`fp_mul`, `fp_add`, `fp_sub`,
 `fp_sqr`, `fp2_mul`, `fp2_add`, `fp2_sub`). -/
-axiom Fp : Type
-axiom Fp.default : Fp
+opaque Fp.Impl : NonemptyType.{0}
+def Fp : Type := Fp.Impl.type
+instance : Nonempty Fp := Fp.Impl.property
+noncomputable opaque Fp.default : Fp
 noncomputable instance : Inhabited Fp := ⟨Fp.default⟩
 
 /-- `Fp` mul. -/ axiom bls_fp_mul : Fp → Fp → Fp
 /-- `Fp` add. -/ axiom bls_fp_add : Fp → Fp → Fp
 /-- `Fp` sub. -/ axiom bls_fp_sub : Fp → Fp → Fp
+opaque Fp2.Impl : NonemptyType.{0}
 /-- `Fp` sqr. -/ axiom bls_fp_sqr : Fp → Fp
 
-axiom Fp2 : Type
-axiom Fp2.default : Fp2
+def Fp2 : Type := Fp2.Impl.type
+instance : Nonempty Fp2 := Fp2.Impl.property
+noncomputable opaque Fp2.default : Fp2
 noncomputable instance : Inhabited Fp2 := ⟨Fp2.default⟩
 
 /-- `Fp2` mul. -/ axiom bls_fp2_mul : Fp2 → Fp2 → Fp2
@@ -401,7 +412,8 @@ def LowCTPattern.taggedDecls : Lean.MetaM (Array Lean.Name) := do
 
 The default `@[rust_cmd_pattern]` workflow associates the Lean name `fnHead`
 with the emitted LowCT leaf-name string. The associated Lean decl is almost
-always an `axiom` — opaque on the Lean side, with semantics supplied externally
+always an `axiom` or an `opaque` constant — uninterpreted on the Lean side, with
+semantics supplied externally
 (by the jasmin shim that implements the leaf), as in the rustcmd-emit
 consumers MAYO, UOV, SNOVA, MQOM, Plonky3, ….
 
@@ -470,8 +482,8 @@ to `rfl`-based proofs in any module that imports the `def`.
   the computable set; only the small set of `@[rust_cmd_pattern_computable]`
   heads gets the "match-before-whnf" treatment.
 - The downstream chain (`translate → cryptoDialectToJasminCom → emitAbiOrch…`) sees
-  the same `RCall` shape regardless of whether the leaf is a `def` or an
-  `axiom` — the leaf name is just a string at that layer.
+  the same `RCall` shape regardless of whether the leaf is a `def`, an
+  `opaque` constant or an `axiom` — the leaf name is just a string at that layer.
 
 #### Bridge consequence (the headline win)
 
@@ -578,8 +590,10 @@ so the reifier's let-chain walker handles them like the `fp_*` leaves. This is
 the ML-KEM analogue of the X25519 field surface — the verified Lean→LowCT lift
 for the lattice layer. -/
 
+opaque MlPoly.Impl : NonemptyType.{0}
 /-- Opaque ML-KEM polynomial (NTT-or-coefficient form, `Z_3329[X]/(X^256+1)`). -/
-axiom MlPoly : Type
+def MlPoly : Type := MlPoly.Impl.type
+instance : Nonempty MlPoly := MlPoly.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlPoly.default : MlPoly
 noncomputable instance : Inhabited MlPoly := ⟨MlPoly.default⟩
 /-- Forward NTT. -/      axiom mlk_ntt     : MlPoly → MlPoly
@@ -587,23 +601,27 @@ noncomputable instance : Inhabited MlPoly := ⟨MlPoly.default⟩
 /-- NTT-domain basemul.-/axiom mlk_basemul : MlPoly → MlPoly → MlPoly
 /-- Pointwise add. -/    axiom mlk_poly_add : MlPoly → MlPoly → MlPoly
 
+opaque MlVec.Impl : NonemptyType.{0}
 /-- ML-KEM-768 polynomial vector `(MlPoly)^3` (`TPolyVec 3329 256 3`). -/
-axiom MlVec : Type
+def MlVec : Type := MlVec.Impl.type
+instance : Nonempty MlVec := MlVec.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlVec.default : MlVec
 noncomputable instance : Inhabited MlVec := ⟨MlVec.default⟩
+opaque MlMat.Impl : NonemptyType.{0}
 /-- ML-KEM-768 polynomial matrix `(MlPoly)^{3×3}` (`TPolyMat 3329 256 3 3`). -/
-axiom MlMat : Type
+def MlMat : Type := MlMat.Impl.type
+instance : Nonempty MlMat := MlMat.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlMat.default : MlMat
 noncomputable instance : Inhabited MlMat := ⟨MlMat.default⟩
 /-- Vector forward NTT (apply NTT to each of the 3 polynomials). -/
-axiom pv_ntt    : MlVec → MlVec
+noncomputable opaque pv_ntt    : MlVec → MlVec
 /-- Vector inverse NTT. -/
-axiom pv_invntt : MlVec → MlVec
+noncomputable opaque pv_invntt : MlVec → MlVec
 /-- NTT-domain matrix-vector product `t̂ = Â ∘ ŝ` (per row: 3 basemuls accumulated),
     the core of ML-KEM keygen/encaps. -/
-axiom mlk_matvec : MlMat → MlVec → MlVec
+noncomputable opaque mlk_matvec : MlMat → MlVec → MlVec
 /-- Pointwise polyvec addition. -/
-axiom pv_add : MlVec → MlVec → MlVec
+noncomputable opaque pv_add : MlVec → MlVec → MlVec
 
 /-! #### Coefficient-form ML-KEM arithmetic surface (Stage-L kernels).
 
@@ -615,76 +633,89 @@ the bridge / lowering passes bind.  Heterogeneous argument types
 (`mat_vec_mul : MlMat → MlVec → MlVec`, `polyvec_dot : MlVec → MlVec →
 MlPoly`) are threaded per-argument by the reifier. -/
 /-- Coeff-form poly multiply (schoolbook / Karatsuba, leaf `poly_mul`). -/
-axiom mlk_poly_mul_c : MlPoly → MlPoly → MlPoly
+noncomputable opaque mlk_poly_mul_c : MlPoly → MlPoly → MlPoly
 /-- Coeff-form poly subtract (leaf `poly_sub`). -/
-axiom mlk_poly_sub_c : MlPoly → MlPoly → MlPoly
+noncomputable opaque mlk_poly_sub_c : MlPoly → MlPoly → MlPoly
 /-- Coeff-form polyvec add (leaf `polyvec_add`). -/
-axiom mlk_polyvec_add_c : MlVec → MlVec → MlVec
+noncomputable opaque mlk_polyvec_add_c : MlVec → MlVec → MlVec
 /-- Coeff-form polyvec dot product `⟨a, b⟩` → poly (leaf `polyvec_dot`). -/
-axiom mlk_polyvec_dot_c : MlVec → MlVec → MlPoly
+noncomputable opaque mlk_polyvec_dot_c : MlVec → MlVec → MlPoly
 /-- Coeff-form matrix·vector product (leaf `mat_vec_mul`). -/
-axiom mlk_mat_vec_mul_c : MlMat → MlVec → MlVec
+noncomputable opaque mlk_mat_vec_mul_c : MlMat → MlVec → MlVec
 
+opaque MlSeed.Impl : NonemptyType.{0}
 /-- 32-byte ML-KEM keygen randomness `d` (`TBytes 32`). -/
-axiom MlSeed : Type
+def MlSeed : Type := MlSeed.Impl.type
+instance : Nonempty MlSeed := MlSeed.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlSeed.default : MlSeed
 noncomputable instance : Inhabited MlSeed := ⟨MlSeed.default⟩
+opaque MlRhoSigma.Impl : NonemptyType.{0}
 /-- `G(d) = ρ‖σ` (`TBytes 64`, SHA3-512 output: public seed ‖ noise seed). -/
-axiom MlRhoSigma : Type
+def MlRhoSigma : Type := MlRhoSigma.Impl.type
+instance : Nonempty MlRhoSigma := MlRhoSigma.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlRhoSigma.default : MlRhoSigma
 noncomputable instance : Inhabited MlRhoSigma := ⟨MlRhoSigma.default⟩
+opaque MlEncVec.Impl : NonemptyType.{0}
 /-- ByteEncode'd polyvec (`TBytes 1152` = k·384, the public-key body). -/
-axiom MlEncVec : Type
+def MlEncVec : Type := MlEncVec.Impl.type
+instance : Nonempty MlEncVec := MlEncVec.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlEncVec.default : MlEncVec
 noncomputable instance : Inhabited MlEncVec := ⟨MlEncVec.default⟩
 /-- Seed expansion `ρ‖σ = G(d)` (SHA3-512 of the 32-byte randomness). -/
-axiom mlk_hash_g : MlSeed → MlRhoSigma
+noncomputable opaque mlk_hash_g : MlSeed → MlRhoSigma
 /-- Matrix expansion `Â = gen_matrix(ρ)` (SHAKE128 rejection sampling; reads `ρ`
     = first 32 bytes of `ρ‖σ`). -/
-axiom mlk_gen_matrix : MlRhoSigma → MlMat
+noncomputable opaque mlk_gen_matrix : MlRhoSigma → MlMat
 /-- Secret vector `s = CBD_η(PRF(σ, nonces 0..2))` (reads `σ` = bytes 32..64). -/
-axiom mlk_cbd_s : MlRhoSigma → MlVec
+noncomputable opaque mlk_cbd_s : MlRhoSigma → MlVec
 /-- Error vector `e = CBD_η(PRF(σ, nonces 3..5))`. -/
-axiom mlk_cbd_e : MlRhoSigma → MlVec
+noncomputable opaque mlk_cbd_e : MlRhoSigma → MlVec
 /-- NTT-domain matrix-vector product with Montgomery normalization `frommont`
     (per row: `pointwise_acc` then `_poly_frommont`), as in formosa keypair —
     the result stays in the NTT domain (t̂ is stored NTT-domain, no invntt). -/
-axiom mlk_matvec_mont : MlMat → MlVec → MlVec
+noncomputable opaque mlk_matvec_mont : MlMat → MlVec → MlVec
 /-- Barrett reduce each coefficient to `[0, q)`. -/
-axiom mlk_pv_reduce : MlVec → MlVec
+noncomputable opaque mlk_pv_reduce : MlVec → MlVec
 /-- ByteEncode a polyvec to its serialized form (`__polyvec_tobytes`). -/
-axiom mlk_encode_vec : MlVec → MlEncVec
+noncomputable opaque mlk_encode_vec : MlVec → MlEncVec
 
 /-! #### ML-KEM-768 encaps / decaps (K-PKE Encrypt / Decrypt cores).
 Modelled on formosa `__indcpa_enc` / `__indcpa_dec`. The byte-serialization
 leaves (decode/compress/decompress) are opaque here; for the KAT they need
 stack-array reimplementations (formosa's are raw-memory-pointer ABIs). -/
+opaque MlPubKey.Impl : NonemptyType.{0}
 /-- ML-KEM-768 public key `ek = ByteEncode(t̂)‖ρ` (`TBytes 1184`). -/
-axiom MlPubKey : Type
+def MlPubKey : Type := MlPubKey.Impl.type
+instance : Nonempty MlPubKey := MlPubKey.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlPubKey.default : MlPubKey
 noncomputable instance : Inhabited MlPubKey := ⟨MlPubKey.default⟩
+opaque MlMsg.Impl : NonemptyType.{0}
 /-- 32-byte message (`TBytes 32`). -/
-axiom MlMsg : Type
+def MlMsg : Type := MlMsg.Impl.type
+instance : Nonempty MlMsg := MlMsg.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlMsg.default : MlMsg
 noncomputable instance : Inhabited MlMsg := ⟨MlMsg.default⟩
+opaque MlCipher.Impl : NonemptyType.{0}
 /-- ML-KEM-768 ciphertext `c = Compress_du(u)‖Compress_dv(v)` (`TBytes 1088`). -/
-axiom MlCipher : Type
+def MlCipher : Type := MlCipher.Impl.type
+instance : Nonempty MlCipher := MlCipher.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlCipher.default : MlCipher
 noncomputable instance : Inhabited MlCipher := ⟨MlCipher.default⟩
 
 -- Encaps (K-PKE.Encrypt) leaves:
 /-- Decode `t̂` from the public key (`__polyvec_frombytes` of `ek[0:1152]`). -/
-axiom mlk_pk_decode : MlPubKey → MlVec
+noncomputable opaque mlk_pk_decode : MlPubKey → MlVec
 /-- Transposed matrix `Âᵀ = gen_matrix(ρ, transposed=1)` (ρ = `ek[1152:1184]`). -/
-axiom mlk_gen_matrix_T : MlPubKey → MlMat
+noncomputable opaque mlk_gen_matrix_T : MlPubKey → MlMat
 /-- Message to poly `k = Decompress_1(m)` (`_i_poly_frommsg`). -/
-axiom mlk_frommsg : MlMsg → MlPoly
+noncomputable opaque mlk_frommsg : MlMsg → MlPoly
 /-- Encaps noise `r = CBD(coins, nonces 0..2)`. -/
-axiom mlk_cbd_enc_r : MlSeed → MlVec
+noncomputable opaque mlk_cbd_enc_r : MlSeed → MlVec
 /-- Encaps error `e1 = CBD(coins, nonces 3..5)`. -/
-axiom mlk_cbd_enc_e1 : MlSeed → MlVec
+noncomputable opaque mlk_cbd_enc_e1 : MlSeed → MlVec
 /-- Encaps error `e2 = CBD(coins, nonce 6)` (single poly). -/
-axiom mlk_cbd_enc_e2 : MlSeed → MlPoly
+noncomputable opaque mlk_cbd_enc_e2 : MlSeed → MlPoly
+opaque MlNoiseEnc.Impl : NonemptyType.{0}
 /-- Bundle of all encaps CBD noise `(r‖e1‖e2)` = 7 polys (`TPolyVec 3329 256 7`).
     `mlk_cbd_enc_all coins` samples nonces 0..6 in a SINGLE leaf. On the AVX2
     backend this is **two** 4-way SHAKE256 permutations (nonces {0,1,2,3} and
@@ -692,61 +723,64 @@ axiom mlk_cbd_enc_e2 : MlSeed → MlPoly
     `_poly_getnoise_eta1_4x` calls (nonces {0..3},{3..6},{6..9}) the unfused
     `cbd_enc_{r,e1,e2}` triple emits — the same 2-call batching formosa's own
     avx2 `__indcpa_enc` uses. -/
-axiom MlNoiseEnc : Type
+def MlNoiseEnc : Type := MlNoiseEnc.Impl.type
+instance : Nonempty MlNoiseEnc := MlNoiseEnc.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlNoiseEnc.default : MlNoiseEnc
 noncomputable instance : Inhabited MlNoiseEnc := ⟨MlNoiseEnc.default⟩
 /-- Sample all encaps noise (r,e1,e2) in one batched leaf. -/
-axiom mlk_cbd_enc_all : MlSeed → MlNoiseEnc
+noncomputable opaque mlk_cbd_enc_all : MlSeed → MlNoiseEnc
 /-- Split `r` (polyvec, nonces 0..2) out of the noise bundle. -/
-axiom mlk_noise_r : MlNoiseEnc → MlVec
+noncomputable opaque mlk_noise_r : MlNoiseEnc → MlVec
 /-- Split `e1` (polyvec, nonces 3..5) out of the noise bundle. -/
-axiom mlk_noise_e1 : MlNoiseEnc → MlVec
+noncomputable opaque mlk_noise_e1 : MlNoiseEnc → MlVec
 /-- Split `e2` (single poly, nonce 6) out of the noise bundle. -/
-axiom mlk_noise_e2 : MlNoiseEnc → MlPoly
+noncomputable opaque mlk_noise_e2 : MlNoiseEnc → MlPoly
 /-- `u = invntt(Âᵀ ∘ r̂)` (pointwise_acc + invntt per row, coefficient domain). -/
-axiom mlk_matvec_invntt : MlMat → MlVec → MlVec
+noncomputable opaque mlk_matvec_invntt : MlMat → MlVec → MlVec
 /-- **Fused** `gen_matrix(ρ,1)` then `invntt(Âᵀ ∘ r̂)`: samples the transposed matrix
     `Â` into a leaf-local buffer and consumes it directly in the pointwise product, so
     the 2304-coefficient matrix never round-trips through an orchestration buffer (the
     single largest copy in the per-leaf budget). Semantically `mlk_matvec_invntt
     (mlk_gen_matrix_T pk) r̂`; emitted as one leaf, so the matrix copy is gone. -/
-axiom mlk_gen_matvec : MlPubKey → MlVec → MlVec
+noncomputable opaque mlk_gen_matvec : MlPubKey → MlVec → MlVec
 /-- `invntt(t̂ᵀ ∘ r̂)` (polyvec dot + invntt → single poly). -/
-axiom mlk_polyvec_dot : MlVec → MlVec → MlPoly
+noncomputable opaque mlk_polyvec_dot : MlVec → MlVec → MlPoly
 -- (single-poly add reuses the existing `mlk_poly_add`)
 /-- Barrett reduce a single poly (`__poly_reduce`). -/
-axiom mlk_poly_reduce : MlPoly → MlPoly
+noncomputable opaque mlk_poly_reduce : MlPoly → MlPoly
 /-- Compress + concat the ciphertext `Compress_du(u)‖Compress_dv(v)`. -/
-axiom mlk_compress_cipher : MlVec → MlPoly → MlCipher
+noncomputable opaque mlk_compress_cipher : MlVec → MlPoly → MlCipher
 
 -- Decaps (K-PKE.Decrypt) leaves:
 /-- `u = Decompress_du(c1)` (`__polyvec_decompress`). -/
-axiom mlk_decompress_u : MlCipher → MlVec
+noncomputable opaque mlk_decompress_u : MlCipher → MlVec
 /-- `v = Decompress_dv(c2)` (`_poly_decompress`). -/
-axiom mlk_decompress_v : MlCipher → MlPoly
+noncomputable opaque mlk_decompress_v : MlCipher → MlPoly
 /-- Decode `ŝ` from the secret key (`__polyvec_frombytes`). -/
-axiom mlk_sk_decode : MlEncVec → MlVec
+noncomputable opaque mlk_sk_decode : MlEncVec → MlVec
 /-- Single-poly subtraction `v - t` (`_poly_sub`). -/
-axiom mlk_poly_sub : MlPoly → MlPoly → MlPoly
+noncomputable opaque mlk_poly_sub : MlPoly → MlPoly → MlPoly
 /-- `m = Compress_1(mp)` (`_i_poly_tomsg`). -/
-axiom mlk_tomsg : MlPoly → MlMsg
+noncomputable opaque mlk_tomsg : MlPoly → MlMsg
 /-- **Fused** encaps v-path `reduce(invntt(t̂ᵀ∘r̂) + e2 + k)` — the
     `mlk_polyvec_dot` + two `mlk_poly_add` + `mlk_poly_reduce` chain as ONE leaf, so
     the 256-coeff poly never crosses an orchestration buffer between the four steps
     (3 inter-leaf copies + 3 calls removed). Verified-fusion-backed (`JasminLeafFusion`). -/
-axiom mlk_v_acc : MlVec → MlVec → MlPoly → MlPoly → MlPoly
+noncomputable opaque mlk_v_acc : MlVec → MlVec → MlPoly → MlPoly → MlPoly
 /-- **Fused** decaps decrypt `tomsg(reduce(v − invntt(ŝᵀ∘û)))` — the `mlk_polyvec_dot`
     + `mlk_poly_sub` + `mlk_poly_reduce` + `mlk_tomsg` chain as ONE leaf. -/
-axiom mlk_decrypt : MlVec → MlVec → MlPoly → MlMsg
+noncomputable opaque mlk_decrypt : MlVec → MlVec → MlPoly → MlMsg
+opaque MlUV.Impl : NonemptyType.{0}
 /-- `u‖v` bundle (3-poly `u` ++ 1-poly `v` = `TPolyVec 3329 256 4`), the encaps
     arith-core output; the C harness splits + compresses it. -/
-axiom MlUV : Type
+def MlUV : Type := MlUV.Impl.type
+instance : Nonempty MlUV := MlUV.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlUV.default : MlUV
 noncomputable instance : Inhabited MlUV := ⟨MlUV.default⟩
 /-- `Âᵀ = gen_matrix(ρ, transposed=1)` taking ρ as a bare 32-byte seed. -/
-axiom mlk_gen_matrix_T_rho : MlSeed → MlMat
+noncomputable opaque mlk_gen_matrix_T_rho : MlSeed → MlMat
 /-- Concatenate `u` (polyvec) and `v` (poly) into the `u‖v` bundle. -/
-axiom mlk_uv_concat : MlVec → MlPoly → MlUV
+noncomputable opaque mlk_uv_concat : MlVec → MlPoly → MlUV
 
 /-! #### ML-KEM-768 FO transform (full KEM = INDCPA core + Fujisaki–Okamoto).
 Faithful to formosa `__crypto_kem_enc_jazz` / `__crypto_kem_dec_jazz` (`kem.jinc`).
@@ -758,57 +792,69 @@ DECAPS:  m' = INDCPA_dec(ct, sk[0:1152]);  H = sk[2336:2368];
          cnd = verify(ct, ctpc);  Kbar = SHAKE256(z=sk[2368:2400] ‖ ct, 32);
          K = cnd ? kr[0:32] : Kbar. -/
 
+opaque MlSharedSecret.Impl : NonemptyType.{0}
 /-- 32-byte FO shared secret `K` (`TBytes 32`). -/
-axiom MlSharedSecret : Type
+def MlSharedSecret : Type := MlSharedSecret.Impl.type
+instance : Nonempty MlSharedSecret := MlSharedSecret.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlSharedSecret.default : MlSharedSecret
 noncomputable instance : Inhabited MlSharedSecret := ⟨MlSharedSecret.default⟩
+opaque MlSecKeyFull.Impl : NonemptyType.{0}
 /-- Full ML-KEM-768 secret key `sk = sk_pke‖pk‖H(pk)‖z` (`TBytes 2400`). -/
-axiom MlSecKeyFull : Type
+def MlSecKeyFull : Type := MlSecKeyFull.Impl.type
+instance : Nonempty MlSecKeyFull := MlSecKeyFull.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlSecKeyFull.default : MlSecKeyFull
 noncomputable instance : Inhabited MlSecKeyFull := ⟨MlSecKeyFull.default⟩
+opaque MlKr.Impl : NonemptyType.{0}
 /-- SHA3-512 digest `kr = K‖r'` (`TBytes 64`). -/
-axiom MlKr : Type
+def MlKr : Type := MlKr.Impl.type
+instance : Nonempty MlKr := MlKr.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlKr.default : MlKr
 noncomputable instance : Inhabited MlKr := ⟨MlKr.default⟩
+opaque MlHash32.Impl : NonemptyType.{0}
 /-- 32-byte hash `H = SHA3-256(pk)` (`TBytes 32`). -/
-axiom MlHash32 : Type
+def MlHash32 : Type := MlHash32.Impl.type
+instance : Nonempty MlHash32 := MlHash32.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlHash32.default : MlHash32
 noncomputable instance : Inhabited MlHash32 := ⟨MlHash32.default⟩
+opaque MlCond.Impl : NonemptyType.{0}
 /-- Constant-time selector `cnd ∈ {0,1}` from `verify` (`TBytes 8`, a `u64`). -/
-axiom MlCond : Type
+def MlCond : Type := MlCond.Impl.type
+instance : Nonempty MlCond := MlCond.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlCond.default : MlCond
 noncomputable instance : Inhabited MlCond := ⟨MlCond.default⟩
+opaque MlKemEnc.Impl : NonemptyType.{0}
 /-- Bundled FO encaps output `K‖ct` (`TBytes 1120`); the C harness splits it. -/
-axiom MlKemEnc : Type
+def MlKemEnc : Type := MlKemEnc.Impl.type
+instance : Nonempty MlKemEnc := MlKemEnc.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MlKemEnc.default : MlKemEnc
 noncomputable instance : Inhabited MlKemEnc := ⟨MlKemEnc.default⟩
 
 -- FO encaps leaves:
 /-- `H = SHA3-256(pk[0:1184])` (`_isha3_256`). -/
-axiom mlk_hash_h : MlPubKey → MlHash32
+noncomputable opaque mlk_hash_h : MlPubKey → MlHash32
 /-- `kr = SHA3-512(m‖H)` (`_sha3_512_64`; concats `m` and `H` into a 64-byte buf). -/
-axiom mlk_hash_g_kem : MlMsg → MlHash32 → MlKr
+noncomputable opaque mlk_hash_g_kem : MlMsg → MlHash32 → MlKr
 /-- `K = kr[0:32]` (the shared secret). -/
-axiom mlk_kr_k : MlKr → MlSharedSecret
+noncomputable opaque mlk_kr_k : MlKr → MlSharedSecret
 /-- `r' = kr[32:64]` (the INDCPA-enc coins). -/
-axiom mlk_kr_r : MlKr → MlSeed
+noncomputable opaque mlk_kr_r : MlKr → MlSeed
 /-- Bundle `K‖ct` into the 1120-byte encaps output. -/
-axiom mlk_kem_pack : MlSharedSecret → MlCipher → MlKemEnc
+noncomputable opaque mlk_kem_pack : MlSharedSecret → MlCipher → MlKemEnc
 
 -- FO decaps leaves (the INDCPA decode/encode happen via the existing leaves
 -- against slices of the full secret key):
 /-- INDCPA secret key `sk_pke = sk[0:1152]` (decoded by `mlk_sk_decode`'s leaf). -/
-axiom mlk_sk_pke : MlSecKeyFull → MlEncVec
+noncomputable opaque mlk_sk_pke : MlSecKeyFull → MlEncVec
 /-- Embedded public key `pk = sk[1152:2336]` (1184 bytes). -/
-axiom mlk_sk_pk : MlSecKeyFull → MlPubKey
+noncomputable opaque mlk_sk_pk : MlSecKeyFull → MlPubKey
 /-- `H = sk[2336:2368]` (hash of the public key, stored at keygen). -/
-axiom mlk_sk_h : MlSecKeyFull → MlHash32
+noncomputable opaque mlk_sk_h : MlSecKeyFull → MlHash32
 /-- `Kbar = SHAKE256(z=sk[2368:2400] ‖ ct, 32)` (`_shake256_1120_32`). -/
-axiom mlk_hash_j : MlSecKeyFull → MlCipher → MlSharedSecret
+noncomputable opaque mlk_hash_j : MlSecKeyFull → MlCipher → MlSharedSecret
 /-- `cnd = verify(ct, ctpc)` — `1` iff the re-encryption matches (`__verify`). -/
-axiom mlk_verify : MlCipher → MlCipher → MlCond
+noncomputable opaque mlk_verify : MlCipher → MlCipher → MlCond
 /-- `K = cnd ? Kgood : Kbar` (constant-time `__cmov`). -/
-axiom mlk_select : MlCond → MlSharedSecret → MlSharedSecret → MlSharedSecret
+noncomputable opaque mlk_select : MlCond → MlSharedSecret → MlSharedSecret → MlSharedSecret
 
 /-! ### ML-DSA (Dilithium) NTT poly surface (`Z_8380417[X]/(X^256+1)`)
 
@@ -827,21 +873,24 @@ factors exactly as dilithium's own `poly_pointwise_montgomery` composition:
 `invntt_tomont` multiplies by `R`, so the factors cancel and the result is the
 normal-domain negacyclic product mod `q`. -/
 
+opaque MldsaPoly.Impl : NonemptyType.{0}
 /-- Opaque ML-DSA polynomial (`Z_8380417[X]/(X^256+1)`, 256 `u32` coeffs). -/
-axiom MldsaPoly : Type
+def MldsaPoly : Type := MldsaPoly.Impl.type
+instance : Nonempty MldsaPoly := MldsaPoly.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldsaPoly.default : MldsaPoly
 noncomputable instance : Inhabited MldsaPoly := ⟨MldsaPoly.default⟩
 /-- Forward NTT (`ntt_avx2`/`fft`; no extra scaling). -/
-axiom mld_ntt : MldsaPoly → MldsaPoly
+noncomputable opaque mld_ntt : MldsaPoly → MldsaPoly
 /-- Inverse NTT to Montgomery domain (`invntt_tomont_avx2`/`ifft_to_mont`; ×R). -/
-axiom mld_invntt : MldsaPoly → MldsaPoly
+noncomputable opaque mld_invntt : MldsaPoly → MldsaPoly
 /-- NTT-domain pointwise Montgomery multiply (`poly_pointwise_montgomery`; ×R⁻¹). -/
-axiom mld_pointwise : MldsaPoly → MldsaPoly → MldsaPoly
+noncomputable opaque mld_pointwise : MldsaPoly → MldsaPoly → MldsaPoly
 /-- Coefficientwise add (`poly_add`; no scale change). Domain-agnostic: adding two
     `×R⁻¹`-domain pointwise products keeps them in the `×R⁻¹` domain, so a chain of
     `mld_pointwise` results may be accumulated before the single `mld_invntt`. -/
-axiom mld_poly_add : MldsaPoly → MldsaPoly → MldsaPoly
+noncomputable opaque mld_poly_add : MldsaPoly → MldsaPoly → MldsaPoly
 
+opaque MldsaPolyVecL.Impl : NonemptyType.{0}
 /-- Opaque ML-DSA length-`l=5` polyvec (`5 × MldsaPoly`, contiguous `u32[1280]`).
     The lattice-signature analogue of the ML-KEM bundled polyvec the
     `polyvec_dot3` emit uses: ML-DSA's matrix-vector dot needs `out + 10`
@@ -852,19 +901,20 @@ axiom mld_poly_add : MldsaPoly → MldsaPoly → MldsaPoly
     `.TArr 1280 .TU32 → memref 640` (1280 coeffs × 4 bytes = 5120 bytes = 640 u64
     limbs), so `mldsaDotWidthOf` lowers it to `stack u32[1280]`, slicing
     into the `stack u32[256]` poly leaves with no width mismatch. -/
-axiom MldsaPolyVecL : Type
+def MldsaPolyVecL : Type := MldsaPolyVecL.Impl.type
+instance : Nonempty MldsaPolyVecL := MldsaPolyVecL.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldsaPolyVecL.default : MldsaPolyVecL
 noncomputable instance : Inhabited MldsaPolyVecL := ⟨MldsaPolyVecL.default⟩
 /-- Component-`0` window `v[0:256]` of a length-5 polyvec (`slice@0`). -/
-axiom mld_vl_get0 : MldsaPolyVecL → MldsaPoly
+noncomputable opaque mld_vl_get0 : MldsaPolyVecL → MldsaPoly
 /-- Component-`1` window `v[256:256]` (`slice@256`). -/
-axiom mld_vl_get1 : MldsaPolyVecL → MldsaPoly
+noncomputable opaque mld_vl_get1 : MldsaPolyVecL → MldsaPoly
 /-- Component-`2` window `v[512:256]` (`slice@512`). -/
-axiom mld_vl_get2 : MldsaPolyVecL → MldsaPoly
+noncomputable opaque mld_vl_get2 : MldsaPolyVecL → MldsaPoly
 /-- Component-`3` window `v[768:256]` (`slice@768`). -/
-axiom mld_vl_get3 : MldsaPolyVecL → MldsaPoly
+noncomputable opaque mld_vl_get3 : MldsaPolyVecL → MldsaPoly
 /-- Component-`4` window `v[1024:256]` (`slice@1024`). -/
-axiom mld_vl_get4 : MldsaPolyVecL → MldsaPoly
+noncomputable opaque mld_vl_get4 : MldsaPolyVecL → MldsaPoly
 
 /-! ### ML-DSA-65 kernel surface (`TPolyMod`/`TPolyVec`/`TPolyMat` slots)
 
@@ -884,25 +934,35 @@ fixed entry in `knownOps`.  The
 result tower type is a function of the argument sizes, realized through
 the dependent return type of the concat axioms. -/
 
+opaque MldBytes.Impl : Nat → NonemptyType.{0}
 /-- Size-indexed ML-DSA byte buffer (`MldBytes n ↦ .TBytes n`). -/
-axiom MldBytes : Nat → Type
+def MldBytes (x : Nat) : Type := (MldBytes.Impl x).type
+instance (x : Nat) : Nonempty (MldBytes x) := (MldBytes.Impl x).property
 /-- Axiomatic inhabitant. -/ axiom MldBytes.default (n : Nat) : MldBytes n
 noncomputable instance (n : Nat) : Inhabited (MldBytes n) := ⟨MldBytes.default n⟩
 
+opaque MldPoly.Impl : NonemptyType.{0}
 /-- ML-DSA-65 polynomial (`Z_8380417[X]/(X^256+1)`, `.TPolyMod 8380417 256`). -/
-axiom MldPoly : Type
+def MldPoly : Type := MldPoly.Impl.type
+instance : Nonempty MldPoly := MldPoly.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldPoly.default : MldPoly
 noncomputable instance : Inhabited MldPoly := ⟨MldPoly.default⟩
+opaque MldVecL.Impl : NonemptyType.{0}
 /-- Length-`l = 5` polyvec (`.TPolyVec 8380417 256 5`). -/
-axiom MldVecL : Type
+def MldVecL : Type := MldVecL.Impl.type
+instance : Nonempty MldVecL := MldVecL.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldVecL.default : MldVecL
 noncomputable instance : Inhabited MldVecL := ⟨MldVecL.default⟩
+opaque MldVecK.Impl : NonemptyType.{0}
 /-- Length-`k = 6` polyvec (`.TPolyVec 8380417 256 6`). -/
-axiom MldVecK : Type
+def MldVecK : Type := MldVecK.Impl.type
+instance : Nonempty MldVecK := MldVecK.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldVecK.default : MldVecK
 noncomputable instance : Inhabited MldVecK := ⟨MldVecK.default⟩
+opaque MldMat.Impl : NonemptyType.{0}
 /-- `k × l = 6 × 5` matrix (`.TPolyMat 8380417 256 6 5`). -/
-axiom MldMat : Type
+def MldMat : Type := MldMat.Impl.type
+instance : Nonempty MldMat := MldMat.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MldMat.default : MldMat
 noncomputable instance : Inhabited MldMat := ⟨MldMat.default⟩
 
@@ -910,7 +970,7 @@ noncomputable instance : Inhabited MldMat := ⟨MldMat.default⟩
 
 /-- Concatenate two byte buffers; result size is the sum (the
     dependent return type carries the summed `TBytes`). -/
-axiom mld_bytes_concat_2 {m n : Nat} : MldBytes m → MldBytes n → MldBytes (m + n)
+noncomputable opaque mld_bytes_concat_2 {m n : Nat} : MldBytes m → MldBytes n → MldBytes (m + n)
 /-- Concatenate three byte buffers. -/
 axiom mld_bytes_concat_3 {m n p : Nat} :
   MldBytes m → MldBytes n → MldBytes p → MldBytes (m + n + p)
@@ -923,7 +983,7 @@ axiom mld_bytes_concat_6 {m n p r s t : Nat} :
     reified term emits the same bytes the hand-authored slice leaf does;
     the erasure is applied by the reifier's per-leaf typing hook, keyed
     on the `bytes_slice` leaf name. -/
-axiom mld_bytes_slice {m : Nat} (len : Nat) : MldBytes m → UInt64 → MldBytes len
+noncomputable opaque mld_bytes_slice {m : Nat} (len : Nat) : MldBytes m → UInt64 → MldBytes len
 
 /-! #### Hash / KDF leaves (fixed-size outputs) -/
 
@@ -947,18 +1007,18 @@ axiom mld_bytes_slice {m : Nat} (len : Nat) : MldBytes m → UInt64 → MldBytes
 /-- Per-component inverse NTT (length-`l`). -/ axiom mld_polyvec_l_invntt : MldVecL → MldVecL
 /-- Componentwise add (length-`l`). -/ axiom mld_polyvec_l_add : MldVecL → MldVecL → MldVecL
 /-- `dst[i] = c · a[i]` (poly scalar × length-`l` vec). -/
-axiom mld_polyvec_l_scalar_poly : MldPoly → MldVecL → MldVecL
+noncomputable opaque mld_polyvec_l_scalar_poly : MldPoly → MldVecL → MldVecL
 /-- ∞-norm check (length-`l`) → `u64`. -/
-axiom mld_polyvec_l_norm_check : MldVecL → UInt64 → UInt64
+noncomputable opaque mld_polyvec_l_norm_check : MldVecL → UInt64 → UInt64
 /-- Per-component NTT (length-`k`). -/ axiom mld_polyvec_k_ntt : MldVecK → MldVecK
 /-- Per-component inverse NTT (length-`k`). -/ axiom mld_polyvec_k_invntt : MldVecK → MldVecK
 /-- Componentwise add (length-`k`). -/ axiom mld_polyvec_k_add : MldVecK → MldVecK → MldVecK
 /-- Componentwise subtract (length-`k`). -/ axiom mld_polyvec_k_sub : MldVecK → MldVecK → MldVecK
 /-- Negate every component (length-`k`). -/ axiom mld_polyvec_k_neg : MldVecK → MldVecK
 /-- `dst[i] = c · a[i]` (poly scalar × length-`k` vec). -/
-axiom mld_polyvec_k_scalar_poly : MldPoly → MldVecK → MldVecK
+noncomputable opaque mld_polyvec_k_scalar_poly : MldPoly → MldVecK → MldVecK
 /-- ∞-norm check (length-`k`) → `u64`. -/
-axiom mld_polyvec_k_norm_check : MldVecK → UInt64 → UInt64
+noncomputable opaque mld_polyvec_k_norm_check : MldVecK → UInt64 → UInt64
 /-- `t₁ · 2^d` fused NTT (verify-side). -/ axiom mld_polyvec_k_t1_shifted_ntt : MldVecK → MldVecK
 
 /-! #### Decomposition (per-polyvec, length-`k`) -/
@@ -990,10 +1050,10 @@ axiom mld_polyvec_k_norm_check : MldVecK → UInt64 → UInt64
 /-! #### Accept / compare pseudo-leaves (→ `u64`) -/
 
 /-- `accept = z_ok ∧ r0_ok ∧ h_wt ≤ ω`. -/
-axiom mld_sign_accept : UInt64 → UInt64 → UInt64 → UInt64
+noncomputable opaque mld_sign_accept : UInt64 → UInt64 → UInt64 → UInt64
 /-- Truncation-aware `c̃' == c̃` AND `z_ok`.  The two byte arguments are
     size-erased (reflect as `.TBytes 0`) like the slice source. -/
-axiom mld_verify_compare : MldBytes 64 → MldBytes 48 → UInt64 → UInt64
+noncomputable opaque mld_verify_compare : MldBytes 64 → MldBytes 48 → UInt64 → UInt64
 
 /-- Known field-op symbols recognized by the reifier. -/
 meta def knownOps : List (Name × String × Nat × TowerType) :=

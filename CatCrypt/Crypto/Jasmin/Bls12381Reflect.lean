@@ -31,7 +31,7 @@ Three downstream drivers consume this surface:
 
 ## BLS12-381 width table
 
-| Lean axiom              | Bytes | TowerType    | encodeTy (memref u64 limbs) |
+| Lean name               | Bytes | TowerType    | encodeTy (memref u64 limbs) |
 |-------------------------|------:|--------------|----------------------------:|
 | `BlsFp` (Fp scalar)     |    48 | `TBytes 48`  | 6                           |
 | `BlsScalar` (Fr scalar) |    32 | `TBytes 32`  | 4                           |
@@ -96,51 +96,59 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## 1. Opaque BLS12-381 surface types
 
 All BLS12-381 computations decompose into opaque on-wire byte blobs of the
-widths above. We surface one axiomatic type per width; the reifier encodes
+widths above. We surface one opaque type per width; the reifier encodes
 each as `TBytes n` (per the width table), and `encodeTy` lays them out as
 `memref ((n+7)/8)`. -/
 
+opaque BlsScalar.Impl : NonemptyType.{0}
 /-- A BLS12-381 `Fr` scalar (32 bytes, little-endian Montgomery). -/
-axiom BlsScalar : Type
+def BlsScalar : Type := BlsScalar.Impl.type
+instance : Nonempty BlsScalar := BlsScalar.Impl.property
 /-- Axiomatic inhabitant. -/ axiom BlsScalar.default : BlsScalar
 noncomputable instance : Inhabited BlsScalar := ⟨BlsScalar.default⟩
 
+opaque BlsG1Point.Impl : NonemptyType.{0}
 /-- A BLS12-381 G1 point in the AUCurves on-wire layout (96 bytes:
     two `Fp` coordinates × 48 bytes). -/
-axiom BlsG1Point : Type
+def BlsG1Point : Type := BlsG1Point.Impl.type
+instance : Nonempty BlsG1Point := BlsG1Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom BlsG1Point.default : BlsG1Point
 noncomputable instance : Inhabited BlsG1Point := ⟨BlsG1Point.default⟩
 
+opaque BlsG2Point.Impl : NonemptyType.{0}
 /-- A BLS12-381 G2 point in the AUCurves on-wire layout (192 bytes:
     two `Fp2` coordinates × 96 bytes). -/
-axiom BlsG2Point : Type
+def BlsG2Point : Type := BlsG2Point.Impl.type
+instance : Nonempty BlsG2Point := BlsG2Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom BlsG2Point.default : BlsG2Point
 noncomputable instance : Inhabited BlsG2Point := ⟨BlsG2Point.default⟩
 
+opaque BlsFp12.Impl : NonemptyType.{0}
 /-- A BLS12-381 `Fp12` (GT) element (576 bytes: twelve `Fp` coordinates × 48
     bytes). The pairing output / `fp12_mul` operand. -/
-axiom BlsFp12 : Type
+def BlsFp12 : Type := BlsFp12.Impl.type
+instance : Nonempty BlsFp12 := BlsFp12.Impl.property
 /-- Axiomatic inhabitant. -/ axiom BlsFp12.default : BlsFp12
 noncomputable instance : Inhabited BlsFp12 := ⟨BlsFp12.default⟩
 
-/-! ## 2. BLS12-381 leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. BLS12-381 leaves (opaque constants = jasmin function symbols)
 
 The five canonical leaves of the BLS12-381 pairing-based-verifier suite —
 the same set carried by `Bls12381Emit.EcLeafAgrees` / `PairingLeavesAgree`. -/
 
 /-- `bls_g1_scalar_mul k P = k · P` over the BLS12-381 G1 group. AUCurves-adjacent:
     the affine group law over the verified `Fp` ops (group-law trusted edge). -/
-axiom bls_g1_scalar_mul : BlsScalar → BlsG1Point → BlsG1Point
+noncomputable opaque bls_g1_scalar_mul : BlsScalar → BlsG1Point → BlsG1Point
 
 /-- `bls_g1_add P Q = P + Q` over the BLS12-381 G1 group. AUCurves-adjacent. -/
-axiom bls_g1_add : BlsG1Point → BlsG1Point → BlsG1Point
+noncomputable opaque bls_g1_add : BlsG1Point → BlsG1Point → BlsG1Point
 
 /-- `bls12_pairing P Q = e(P, Q) ∈ Fp12` — the BLS12-381 optimal-Ate pairing
     (`miller_loop` then `final_exp`). VERIFIED in AUCurves. -/
-axiom bls12_pairing : BlsG1Point → BlsG2Point → BlsFp12
+noncomputable opaque bls12_pairing : BlsG1Point → BlsG2Point → BlsFp12
 
 /-- `bls_fp12_mul a b = a · b` over `Fp12` (the GT product). VERIFIED in AUCurves. -/
-axiom bls_fp12_mul : BlsFp12 → BlsFp12 → BlsFp12
+noncomputable opaque bls_fp12_mul : BlsFp12 → BlsFp12 → BlsFp12
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 

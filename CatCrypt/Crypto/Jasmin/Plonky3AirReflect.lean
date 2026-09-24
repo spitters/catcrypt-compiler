@@ -85,23 +85,27 @@ transition output as a single u64 OK byte (we use `TBytes 8`). The
 field-arithmetic body lives in the leaf; the orchestration is what we
 verify here. -/
 
+opaque Plonky3Trace.Impl (W H : Nat) : NonemptyType.{0}
 /-- An opaque Plonky3 trace buffer of `W` columns × `H` rows of BabyBear
     field elements (8 bytes each). Opaque on the Lean side; the leaf
     `plonky3_air_transition_W_H` consumes a width-`W * H * 8`-byte buffer. -/
-axiom Plonky3Trace (W H : Nat) : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3Trace.default (W H : Nat) : Plonky3Trace W H
+def Plonky3Trace (W H : Nat) : Type := (Plonky3Trace.Impl W H).type
+instance (W H : Nat) : Nonempty (Plonky3Trace W H) := (Plonky3Trace.Impl W H).property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3Trace.default (W H : Nat) : Plonky3Trace W H
 noncomputable instance (W H : Nat) : Inhabited (Plonky3Trace W H) :=
   ⟨Plonky3Trace.default W H⟩
 
+opaque Plonky3AirOk.Impl : NonemptyType.{0}
 /-- The OK flag bundle returned by one AIR transition sweep — opaque 8-byte
     blob holding the accumulated u64 OK status. -/
-axiom Plonky3AirOk : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3AirOk.default : Plonky3AirOk
+def Plonky3AirOk : Type := Plonky3AirOk.Impl.type
+instance : Nonempty Plonky3AirOk := Plonky3AirOk.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3AirOk.default : Plonky3AirOk
 noncomputable instance : Inhabited Plonky3AirOk := ⟨Plonky3AirOk.default⟩
 
-/-! ## 2. AIR leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. AIR leaves (opaque constants and axioms = jasmin function symbols)
 
 `plonky3_air_transition_W_H` consumes the trace buffer (containing W columns,
 H rows) and returns the accumulated OK flag (= 1 iff every transition holds).

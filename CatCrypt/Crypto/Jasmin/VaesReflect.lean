@@ -90,26 +90,28 @@ VAES at 2-way YMM operates on 256-bit packed registers: two 128-bit AES
 states (or two round keys) per call. We encode one packed YMM operand
 as `.TBytes 32` (`memref 4`, four `u64` limbs). -/
 
+opaque Vaes2Block.Impl : NonemptyType.{0}
 /-- A 2-way VAES packed operand: two 128-bit AES states (or two 128-bit
     round keys) packed into one YMM register. Opaque; concrete leaves
     implement the EVEX-encoded `#VAESENC_256` / `#VAESDEC_256`. -/
-axiom Vaes2Block : Type
+def Vaes2Block : Type := Vaes2Block.Impl.type
+instance : Nonempty Vaes2Block := Vaes2Block.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Vaes2Block.default : Vaes2Block
 noncomputable instance : Inhabited Vaes2Block := ⟨Vaes2Block.default⟩
 
-/-! ## 2. VAES leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. VAES leaves (opaque constants = jasmin function symbols) -/
 
 /-- The 2-way VAES encryption round: `(state, rk) ↦ #VAESENC_256 state rk`
     lanewise over the two 128-bit halves of state and rk. Per-lane
     semantics is one AES encryption round (SubBytes ∘ ShiftRows ∘
     MixColumns ∘ AddRoundKey). Implemented by the jasmin shim issuing
     one `#VAESENC_256`. -/
-axiom vaesenc_2way : Vaes2Block → Vaes2Block → Vaes2Block
+noncomputable opaque vaesenc_2way : Vaes2Block → Vaes2Block → Vaes2Block
 
 /-- The 2-way VAES decryption round: `(state, rk) ↦ #VAESDEC_256 state rk`
     lanewise. Per-lane semantics is one AES decryption round
     (InvShiftRows ∘ InvSubBytes ∘ InvMixColumns ∘ AddRoundKey). -/
-axiom vaesdec_2way : Vaes2Block → Vaes2Block → Vaes2Block
+noncomputable opaque vaesdec_2way : Vaes2Block → Vaes2Block → Vaes2Block
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

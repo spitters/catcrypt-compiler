@@ -95,24 +95,30 @@ The reflect surface treats one FRI evaluation layer as an opaque byte buffer
 of `8 · N` bytes (`N` BabyBear field elements, 8 bytes per element).
 Commitments are 32-byte digests. -/
 
+opaque Plonky3FriEvals.Impl (N : Nat) : NonemptyType.{0}
 /-- A buffer of `N` packed BabyBear evaluations (8 bytes per field element).
     The `plonky3_fri_fold_layer_N` leaf consumes a `Plonky3FriEvals (2·N)`
     plus the per-x challenge inputs and produces a `Plonky3FriEvals N`. -/
-axiom Plonky3FriEvals (N : Nat) : Type
+def Plonky3FriEvals (N : Nat) : Type := (Plonky3FriEvals.Impl N).type
+instance (N : Nat) : Nonempty (Plonky3FriEvals N) := (Plonky3FriEvals.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom Plonky3FriEvals.default (N : Nat) : Plonky3FriEvals N
 noncomputable instance (N : Nat) : Inhabited (Plonky3FriEvals N) :=
   ⟨Plonky3FriEvals.default N⟩
 
+opaque Plonky3FriDigest.Impl : NonemptyType.{0}
 /-- A 32-byte FRI-layer Merkle digest (same byte-shape as
     `Plonky3Digest` in `Plonky3Reflect.lean`, kept FRI-local for clean reflect-surface
     namespacing). -/
-axiom Plonky3FriDigest : Type
+def Plonky3FriDigest : Type := Plonky3FriDigest.Impl.type
+instance : Nonempty Plonky3FriDigest := Plonky3FriDigest.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3FriDigest.default : Plonky3FriDigest
 noncomputable instance : Inhabited Plonky3FriDigest := ⟨Plonky3FriDigest.default⟩
 
+opaque Plonky3FriChallenge.Impl : NonemptyType.{0}
 /-- An 8-byte Fiat-Shamir challenge (one BabyBear element produced by
     the challenger sponge). -/
-axiom Plonky3FriChallenge : Type
+def Plonky3FriChallenge : Type := Plonky3FriChallenge.Impl.type
+instance : Nonempty Plonky3FriChallenge := Plonky3FriChallenge.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3FriChallenge.default : Plonky3FriChallenge
 noncomputable instance : Inhabited Plonky3FriChallenge :=
   ⟨Plonky3FriChallenge.default⟩

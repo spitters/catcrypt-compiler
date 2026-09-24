@@ -52,7 +52,7 @@ changes `gp` flips the returned proof digest.
 
 We model each major step as one opaque leaf (matching the FRI reflect surface):
 
-| Lean axiom                       | Leaf name (.jazz)             | TowerType    |
+| Lean name                        | Leaf name (.jazz)             | TowerType    |
 |----------------------------------|-------------------------------|--------------|
 | `jolt_commit_witness`            | `jolt_commit_witness`         | `TBytes 32`  |
 | `jolt_round_poly N`              | `jolt_round_poly_N`           | `TBytes (8·N)` |
@@ -84,57 +84,67 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## 1. Opaque Jolt prover surface types -/
 
+opaque JoltWitness.Impl : NonemptyType.{0}
 /-- The Jolt witness (execution trace + memory polynomials, opaque handle). -/
-axiom JoltWitness : Type
+def JoltWitness : Type := JoltWitness.Impl.type
+instance : Nonempty JoltWitness := JoltWitness.Impl.property
 /-- Axiomatic inhabitant. -/ axiom JoltWitness.default : JoltWitness
 noncomputable instance : Inhabited JoltWitness := ⟨JoltWitness.default⟩
 
+opaque JoltRoundPoly.Impl (N : Nat) : NonemptyType.{0}
 /-- A univariate round polynomial, `N = d+1` packed Baby Bear coefficients. -/
-axiom JoltRoundPoly (N : Nat) : Type
+def JoltRoundPoly (N : Nat) : Type := (JoltRoundPoly.Impl N).type
+instance (N : Nat) : Nonempty (JoltRoundPoly N) := (JoltRoundPoly.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom JoltRoundPoly.default (N : Nat) : JoltRoundPoly N
 noncomputable instance (N : Nat) : Inhabited (JoltRoundPoly N) :=
   ⟨JoltRoundPoly.default N⟩
 
+opaque JoltLookups.Impl (N : Nat) : NonemptyType.{0}
 /-- The Lasso lookup multiset (opaque buffer of `N` packed elements). -/
-axiom JoltLookups (N : Nat) : Type
+def JoltLookups (N : Nat) : Type := (JoltLookups.Impl N).type
+instance (N : Nat) : Nonempty (JoltLookups N) := (JoltLookups.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom JoltLookups.default (N : Nat) : JoltLookups N
 noncomputable instance (N : Nat) : Inhabited (JoltLookups N) :=
   ⟨JoltLookups.default N⟩
 
+opaque JoltDigest.Impl : NonemptyType.{0}
 /-- A 32-byte commitment digest. -/
-axiom JoltDigest : Type
+def JoltDigest : Type := JoltDigest.Impl.type
+instance : Nonempty JoltDigest := JoltDigest.Impl.property
 /-- Axiomatic inhabitant. -/ axiom JoltDigest.default : JoltDigest
 noncomputable instance : Inhabited JoltDigest := ⟨JoltDigest.default⟩
 
+opaque JoltFelt.Impl : NonemptyType.{0}
 /-- An 8-byte Baby Bear field element (challenge / evaluation / fingerprint). -/
-axiom JoltFelt : Type
+def JoltFelt : Type := JoltFelt.Impl.type
+instance : Nonempty JoltFelt := JoltFelt.Impl.property
 /-- Axiomatic inhabitant. -/ axiom JoltFelt.default : JoltFelt
 noncomputable instance : Inhabited JoltFelt := ⟨JoltFelt.default⟩
 
-/-! ## 2. Jolt prover leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. Jolt prover leaves (opaque constants = jasmin function symbols) -/
 
 /-- Commit to the Jolt witness. -/
-axiom jolt_commit_witness : JoltWitness → JoltDigest
+noncomputable opaque jolt_commit_witness : JoltWitness → JoltDigest
 /-- Compute round `k`'s univariate round polynomial. -/
-axiom jolt_round_poly (N : Nat) : JoltWitness → JoltRoundPoly N
+noncomputable opaque jolt_round_poly (N : Nat) : JoltWitness → JoltRoundPoly N
 /-- Commit to a round polynomial. -/
-axiom jolt_commit_round (N : Nat) : JoltRoundPoly N → JoltDigest
+noncomputable opaque jolt_commit_round (N : Nat) : JoltRoundPoly N → JoltDigest
 /-- Fiat–Shamir challenger squeeze. -/
-axiom jolt_challenger_squeeze : JoltDigest → JoltFelt
+noncomputable opaque jolt_challenger_squeeze : JoltDigest → JoltFelt
 /-- Evaluate a round polynomial at the challenge (Horner round). -/
-axiom jolt_sumcheck_round_eval (N : Nat) : JoltRoundPoly N → JoltFelt → JoltFelt
+noncomputable opaque jolt_sumcheck_round_eval (N : Nat) : JoltRoundPoly N → JoltFelt → JoltFelt
 /-- Lasso grand-product fingerprint `∏_{x ∈ M} (τ − x)` over the verified
     field kernels (`bbGrandProduct`, tied to `multisetPoly.eval` in
     `Jolt/EmittedSumCheckRealization.lean`). -/
-axiom jolt_grand_product (N : Nat) : JoltLookups N → JoltFelt → JoltFelt
+noncomputable opaque jolt_grand_product (N : Nat) : JoltLookups N → JoltFelt → JoltFelt
 /-- Open the polynomial commitment. -/
-axiom jolt_pcs_open : JoltWitness → JoltDigest → JoltDigest
+noncomputable opaque jolt_pcs_open : JoltWitness → JoltDigest → JoltDigest
 /-- Fold the Lasso grand-product fingerprint into the proof digest, binding the
     returned proof to the multiset: `out[i] = open[i] + gp · cᵢ` over the
     verified Baby Bear field (distinct nonzero `cᵢ`), injective in `gp` per
     limb. This binds the orchestration output to the grand-product (multiset):
     a multiset-only tamper changes the returned proof. -/
-axiom jolt_fold_gp : JoltDigest → JoltFelt → JoltDigest
+noncomputable opaque jolt_fold_gp : JoltDigest → JoltFelt → JoltDigest
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (n=3 rounds, |M|=8 lookups) -/
 

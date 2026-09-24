@@ -126,14 +126,18 @@ A 48-byte octet string (DH output, `prk`, shared secret) uses `P384Scalar` from
 `P384Reflect` as its opaque 48-byte carrier, as the ECDSA front does for the
 digest and the affine `x`. -/
 
+opaque P384Sec1.Impl : NonemptyType.{0}
 /-- A 97-byte SEC1 uncompressed P-384 point encoding `0x04 ‖ x ‖ y`, with `x`
     and `y` 48-byte big-endian. Opaque. -/
-axiom P384Sec1 : Type
+def P384Sec1 : Type := P384Sec1.Impl.type
+instance : Nonempty P384Sec1 := P384Sec1.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P384Sec1.default : P384Sec1
 noncomputable instance : Inhabited P384Sec1 := ⟨P384Sec1.default⟩
 
+opaque P384KemContext.Impl : NonemptyType.{0}
 /-- A 194-byte DHKEM(P-384) KEM context `enc ‖ pkRm`. Opaque. -/
-axiom P384KemContext : Type
+def P384KemContext : Type := P384KemContext.Impl.type
+instance : Nonempty P384KemContext := P384KemContext.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P384KemContext.default : P384KemContext
 noncomputable instance : Inhabited P384KemContext := ⟨P384KemContext.default⟩
 
@@ -152,7 +156,7 @@ def p384KemContextTowerType : TowerType := .TBytes 194
     `p384_sec1_valid` yields `1` it returns that point; on any other input it
     returns some 144-byte value without faulting; and it is constant time, its
     execution time and memory-access trace independent of the operand. -/
-axiom p384_sec1_decode : P384Sec1 → P384Point
+noncomputable opaque p384_sec1_decode : P384Sec1 → P384Point
 
 /-- SEC1 validity test: `1` when the 97-byte operand has prefix byte `0x04`,
     both 48-byte big-endian coordinates are below the P-384 field prime `p`,
@@ -163,7 +167,7 @@ axiom p384_sec1_decode : P384Sec1 → P384Point
     Requirements on the implementation: it compares the coordinates against
     `p` rather than reducing them; and it is constant time, its execution time
     and memory-access trace independent of the operand. -/
-axiom p384_sec1_valid : P384Sec1 → UInt64
+noncomputable opaque p384_sec1_valid : P384Sec1 → UInt64
 
 /-- SEC1 encoding: a 144-byte projective point to the 97-byte uncompressed
     encoding `0x04 ‖ x ‖ y` of its affine coordinates, each 48-byte big-endian.
@@ -173,7 +177,7 @@ axiom p384_sec1_valid : P384Sec1 → UInt64
     non-identity point correctly; its output on the identity is unspecified;
     and it is constant time, its execution time and memory-access trace
     independent of the operand, since in `Encap` the operand is `skE · G`. -/
-axiom p384_sec1_encode : P384Point → P384Sec1
+noncomputable opaque p384_sec1_encode : P384Point → P384Sec1
 
 /-- DH output: the affine `x` coordinate of a 144-byte projective point as a
     48-byte big-endian octet string, which RFC 9180 §7.1 takes as the
@@ -182,14 +186,14 @@ axiom p384_sec1_encode : P384Point → P384Sec1
     Requirements on the implementation: it is correct on every non-identity
     point, and it is constant time, its execution time and memory-access trace
     independent of the operand. -/
-axiom p384_dh_x_be : P384Point → P384Scalar
+noncomputable opaque p384_dh_x_be : P384Point → P384Scalar
 
 /-- KEM context: the 194-byte concatenation `enc ‖ pkRm` of RFC 9180 §4.1, the
     first operand at offsets `0..96` and the second at `97..193`.
 
     Requirements on the implementation: a byte copy with no branch on either
     operand. -/
-axiom p384_kem_context : P384Sec1 → P384Sec1 → P384KemContext
+noncomputable opaque p384_kem_context : P384Sec1 → P384Sec1 → P384KemContext
 
 /-- `LabeledExtract("", "eae_prk", dh)` of RFC 9180 §4 and §4.1 for
     DHKEM(P-384, HKDF-SHA384): `HKDF-Extract` over SHA-384 with the empty salt
@@ -201,7 +205,7 @@ axiom p384_kem_context : P384Sec1 → P384Sec1 → P384KemContext
     Requirements on the implementation: SHA-384 per FIPS 180-4 and HMAC per
     RFC 2104, and constant time in `dh`, its execution time and memory-access
     trace independent of the operand. -/
-axiom dhkem_p384_extract : P384Scalar → P384Scalar
+noncomputable opaque dhkem_p384_extract : P384Scalar → P384Scalar
 
 /-- `LabeledExpand(eae_prk, "shared_secret", kem_context, 48)` of RFC 9180 §4
     and §4.1 for DHKEM(P-384, HKDF-SHA384): `HKDF-Expand` over SHA-384 with
@@ -213,7 +217,7 @@ axiom dhkem_p384_extract : P384Scalar → P384Scalar
     Requirements on the implementation: SHA-384 per FIPS 180-4 and HMAC per
     RFC 2104, and constant time in `eae_prk`, its execution time and
     memory-access trace independent of that operand. -/
-axiom dhkem_p384_expand : P384Scalar → P384KemContext → P384Scalar
+noncomputable opaque dhkem_p384_expand : P384Scalar → P384KemContext → P384Scalar
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 

@@ -40,7 +40,7 @@ OpenSSL SHA-256 both build on.
 We model each intrinsic as one opaque leaf at `TBytes 16` (128-bit
 packed `xmm`-resident state half / message-schedule quad):
 
-| Lean axiom            | Leaf name (.jazz)             | TowerType   |
+| Lean name             | Leaf name (.jazz)             | TowerType   |
 |-----------------------|-------------------------------|-------------|
 | `shani_sha256_rnds2`  | `shani_sha256_rnds2`          | `TBytes 16` |
 | `shani_sha256_msg1`   | `shani_sha256_msg1`           | `TBytes 16` |
@@ -88,26 +88,28 @@ open CatCrypt.Crypto.Jasmin.LowCT
 All SHA-NI intrinsics operate on 128-bit packed XMM operands. We encode
 each as `.TBytes 16` (`memref 2`). -/
 
+opaque ShaNiBlock.Impl : NonemptyType.{0}
 /-- A 128-bit packed XMM operand: either a SHA-256 state half
     (`a b e f` or `c d g h`) or a message-schedule quad (four `Wi`
     words). Opaque; concrete leaves implement the SHA-NI intrinsics. -/
-axiom ShaNiBlock : Type
+def ShaNiBlock : Type := ShaNiBlock.Impl.type
+instance : Nonempty ShaNiBlock := ShaNiBlock.Impl.property
 /-- Axiomatic inhabitant. -/ axiom ShaNiBlock.default : ShaNiBlock
 noncomputable instance : Inhabited ShaNiBlock := ⟨ShaNiBlock.default⟩
 
-/-! ## 2. SHA-NI leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. SHA-NI leaves (opaque constants = jasmin function symbols) -/
 
 /-- `#SHA256RNDS2`: two SHA-256 compression rounds. Inputs: previous
     state half (`c d g h`), current state half (`a b e f`), and the
     packed `W + K` quad for these two rounds. Output: the next pair of
     state-half updates. -/
-axiom shani_sha256_rnds2 : ShaNiBlock → ShaNiBlock → ShaNiBlock → ShaNiBlock
+noncomputable opaque shani_sha256_rnds2 : ShaNiBlock → ShaNiBlock → ShaNiBlock → ShaNiBlock
 
 /-- `#SHA256MSG1`: message schedule helper 1. -/
-axiom shani_sha256_msg1 : ShaNiBlock → ShaNiBlock → ShaNiBlock
+noncomputable opaque shani_sha256_msg1 : ShaNiBlock → ShaNiBlock → ShaNiBlock
 
 /-- `#SHA256MSG2`: message schedule helper 2. -/
-axiom shani_sha256_msg2 : ShaNiBlock → ShaNiBlock → ShaNiBlock
+noncomputable opaque shani_sha256_msg2 : ShaNiBlock → ShaNiBlock → ShaNiBlock
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

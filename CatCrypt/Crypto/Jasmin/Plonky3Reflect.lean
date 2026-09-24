@@ -18,9 +18,9 @@ BabyBear leaves) as an orchestration over axiomatized leaves: a pure Lean
 let-chain per tree size, and a hand-written `LowCT` body with the same call
 sequence, which the front lowers to jasmin.
 
-The surface types and leaf functions are Lean `axiom`s (9 declarations: three
-types, their three default inhabitants, and three leaf functions); they have
-no Lean semantics. No theorem relates a body to its let-chain. The `#guard`
+The three surface types are opaque types, and their three default inhabitants
+and the three leaf functions are Lean `axiom`s (9 declarations); they have no
+Lean semantics. No theorem relates a body to its let-chain. The `#guard`
 checks in §7 constrain the dataflow of each body: every call argument is
 defined before it is read, and every computed slot other than the result is
 read by a later call.
@@ -82,26 +82,32 @@ The reflect surface treats one Merkle level as an opaque byte buffer of
 per-leaf hash are taken as leaf calls; the verified pipeline emits the
 orchestration. -/
 
+opaque Plonky3Digest.Impl : NonemptyType.{0}
 /-- A 32-byte Plonky3 Merkle digest (matches `Digest = [u8; 32]` in
     `plonky3-hax/src/specs/merkle.rs`). Opaque on the Lean side; the leaf
     `plonky3_poseidon2_compress` implements the byte-mixing under the hood. -/
-axiom Plonky3Digest : Type
+def Plonky3Digest : Type := Plonky3Digest.Impl.type
+instance : Nonempty Plonky3Digest := Plonky3Digest.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3Digest.default : Plonky3Digest
 noncomputable instance : Inhabited Plonky3Digest := ⟨Plonky3Digest.default⟩
 
+opaque Plonky3Leaves.Impl (N : Nat) : NonemptyType.{0}
 /-- A buffer of `N` packed leaf values (8 bytes per BabyBear field element).
     The `plonky3_merkle_hash_leaves_N` leaf consumes `N · 8` bytes and produces
     `N` digests = `N · 32` bytes. Opaque; the actual byte-layout is the leaf's
     business. -/
-axiom Plonky3Leaves (N : Nat) : Type
+def Plonky3Leaves (N : Nat) : Type := (Plonky3Leaves.Impl N).type
+instance (N : Nat) : Nonempty (Plonky3Leaves N) := (Plonky3Leaves.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom Plonky3Leaves.default (N : Nat) : Plonky3Leaves N
 noncomputable instance (N : Nat) : Inhabited (Plonky3Leaves N) :=
   ⟨Plonky3Leaves.default N⟩
 
+opaque Plonky3DigestArr.Impl (M : Nat) : NonemptyType.{0}
 /-- A buffer of `M` packed digests (`32 · M` bytes). Used to type the per-level
     arrays; one `plonky3_merkle_level_M` call consumes a `Plonky3DigestArr (2·M)`
     and produces a `Plonky3DigestArr M`. -/
-axiom Plonky3DigestArr (M : Nat) : Type
+def Plonky3DigestArr (M : Nat) : Type := (Plonky3DigestArr.Impl M).type
+instance (M : Nat) : Nonempty (Plonky3DigestArr M) := (Plonky3DigestArr.Impl M).property
 /-- Axiomatic inhabitant. -/ axiom Plonky3DigestArr.default (M : Nat) : Plonky3DigestArr M
 noncomputable instance (M : Nat) : Inhabited (Plonky3DigestArr M) :=
   ⟨Plonky3DigestArr.default M⟩

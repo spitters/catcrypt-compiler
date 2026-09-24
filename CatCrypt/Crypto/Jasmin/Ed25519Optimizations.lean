@@ -30,7 +30,7 @@ The four optimizations:
 | 4 | Scalar-field verify path | `sign_verify_correct_25519` (we re-prove the abstract version) |
 
 Each Rocq citation pins the file/line so a Lean re-port has a target.
-Total in this file: **4 cited axioms + 8 proved theorems**.
+Total in this file: **10 cited axioms + 29 proved theorems**.
 -/
 
 @[expose] public section
@@ -54,21 +54,23 @@ then prove that scalarmult through a Niels-form window is equivalent
 to direct scalarmult — this is the "wrapping" correctness our
 `init_basepoint_table` would rely on. -/
 
+opaque NielsPt.Impl : NonemptyType.{0}
 /-- A precomputed Edwards point in Niels form: three field elements
     `(half(y+x), half(y-x), x·y·d)`. -/
-axiom NielsPt : Type
+def NielsPt : Type := NielsPt.Impl.type
+instance : Nonempty NielsPt := NielsPt.Impl.property
 
 /-- Convert an `EdPoint` to Niels form (requires Z ≠ 0; in practice the
     basepoint table is built from on-curve points where Z = 1, so this
     always holds). -/
-axiom niels_of : EdPoint → NielsPt
+noncomputable opaque niels_of : EdPoint → NielsPt
 
 /-- Lift a Niels-form point back to an `EdPoint` (sets Z = 1). -/
-axiom niels_to_pt : NielsPt → EdPoint
+noncomputable opaque niels_to_pt : NielsPt → EdPoint
 
 /-- Mixed add: `EdPoint + NielsPt → EdPoint`. Concretely emitted as
     `ed25519_madd_*` in `ed25519_madd.mlir`. -/
-axiom ed_madd_niels : EdPoint → NielsPt → EdPoint
+noncomputable opaque ed_madd_niels : EdPoint → NielsPt → EdPoint
 
 /-- **Discharged in Rocq:** `m1add_precomputed_coordinates_correct` at
     `fiat-crypto/src/Curves/Edwards/XYZT/Precomputed.v:126`.
@@ -118,10 +120,12 @@ stores `(Y+X, Y-X, Z, T·2d)`, allowing repeated additions to amortize
 the inverse computation. Useful for batch verify (multiple sigs against
 the same accumulator). -/
 
-axiom CachedPt : Type
-axiom cached_of : EdPoint → CachedPt
-axiom cached_to_pt : CachedPt → EdPoint
-axiom ed_readd : EdPoint → CachedPt → EdPoint
+opaque CachedPt.Impl : NonemptyType.{0}
+def CachedPt : Type := CachedPt.Impl.type
+instance : Nonempty CachedPt := CachedPt.Impl.property
+noncomputable opaque cached_of : EdPoint → CachedPt
+noncomputable opaque cached_to_pt : CachedPt → EdPoint
+noncomputable opaque ed_readd : EdPoint → CachedPt → EdPoint
 
 /-- **Discharged in Rocq:** `readd_correct` at
     `fiat-crypto/src/Curves/Edwards/XYZT/Readdition.v:128`. -/
@@ -235,11 +239,13 @@ We capture the abstract-correctness statement here: for a scalar `k`
 decomposed into 64 radix-16 digits `d_i`, the windowed scalarmult
 equals `k · B`. -/
 
+opaque Radix16Digits.Impl : NonemptyType.{0}
 /-- A radix-16 signed-digit decomposition: 64 digits `d_i ∈ [-8, 8]`
-    such that `k = Σ d_i · 16^i`. We axiomatize this representation. -/
-axiom Radix16Digits : Type
-axiom radix16_decompose : FpL25519 → Radix16Digits
-axiom radix16_recompose : Radix16Digits → FpL25519
+    such that `k = Σ d_i · 16^i`. The representation is an opaque type. -/
+def Radix16Digits : Type := Radix16Digits.Impl.type
+instance : Nonempty Radix16Digits := Radix16Digits.Impl.property
+noncomputable opaque radix16_decompose : FpL25519 → Radix16Digits
+noncomputable opaque radix16_recompose : Radix16Digits → FpL25519
 /-- Roundtrip: decomposing then recomposing gives the original scalar. -/
 axiom radix16_roundtrip (k : FpL25519) :
     radix16_recompose (radix16_decompose k) = k
@@ -247,7 +253,7 @@ axiom radix16_roundtrip (k : FpL25519) :
 /-- Abstract "evaluate windowed scalarmult through the Niels-form table".
     Concretely: walk 64 digits, each contributing one mixed-add of a
     table-entry. -/
-axiom windowed_scalarmult_base : Radix16Digits → EdPoint
+noncomputable opaque windowed_scalarmult_base : Radix16Digits → EdPoint
 
 /-- **Discharged in Rocq + by construction:** the windowed scalarmult
     computes `k · B` where `k` is the recomposed scalar. This is the
@@ -274,13 +280,13 @@ theorem ed_sign_fast_scalarmult_correct (a : FpL25519) :
 
 These mirror the pieces of fiat-crypto's
 `edwards_curve_commutative_group` (`AffineProofs.v:86`) that *we can*
-state in Lean given our existing axiom set (`ed_add`, `ed_add_assoc`,
+state in Lean given our existing opaque constants and axioms (`ed_add`, `ed_add_assoc`,
 `ed_smul_distrib_add`, `ed_smul_assoc_left`, `ed_smul_resp_interp`,
 `ed_smul_neg_inv`, `ed_identity`).
 
 We do **not** introduce additional ed_add commutativity / left-identity
-axioms; instead we state the theorems we *can* prove from what's
-already axiomatized, so the open obligations are exactly what's still
+axioms; instead we state the theorems we *can* prove from what is
+already declared, so the open obligations are exactly what's still
 missing (commutativity + identity). -/
 
 /-- **Proved.** A two-step Niels-form chain via `ed_add_assoc`:
@@ -336,7 +342,7 @@ axiom ed_add_comm (A B : EdPoint) : ed_add A B = ed_add B A
 
 /-- **Open** (cited Rocq: `Extended.zero` definition).
     Left identity. The Coq `Extended.zero` is by-construction the
-    identity; in our axiomatic form we need this as a cited axiom. -/
+    identity; with `ed_add` opaque we need this as a cited axiom. -/
 axiom ed_add_left_id (P : EdPoint) : ed_add ed_identity P = P
 
 /-- **Proved (using new ed_add_left_id + comm axioms).** Right identity. -/

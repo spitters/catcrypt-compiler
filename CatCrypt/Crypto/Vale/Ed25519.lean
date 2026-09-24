@@ -168,36 +168,44 @@ Three buffer shapes appear in the Ed25519 leaf C signatures:
   opaque at the leaf surface; the verified front passes a pointer-
   plus-length pair through the LowCT extCall ABI).
 
-All four are opaque axiomatic types; the concrete leaves at link
+All four are opaque types; the concrete leaves at link
 time are the HACL\* C symbols. -/
 
+opaque Ed25519Priv.Impl : NonemptyType.{0}
 /-- A 32-byte Ed25519 private seed.  Opaque; concrete leaf is the
     HACL\* Vale-verified `Hacl_Ed25519_sign` consumed buffer. -/
-axiom Ed25519Priv : Type
-/-- Axiomatic inhabitant. -/
-axiom Ed25519Priv.default : Ed25519Priv
+def Ed25519Priv : Type := Ed25519Priv.Impl.type
+instance : Nonempty Ed25519Priv := Ed25519Priv.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Ed25519Priv.default : Ed25519Priv
 noncomputable instance : Inhabited Ed25519Priv :=
   ⟨Ed25519Priv.default⟩
 
+opaque Ed25519Pub.Impl : NonemptyType.{0}
 /-- A 32-byte Ed25519 compressed public key. -/
-axiom Ed25519Pub : Type
-/-- Axiomatic inhabitant. -/
-axiom Ed25519Pub.default : Ed25519Pub
+def Ed25519Pub : Type := Ed25519Pub.Impl.type
+instance : Nonempty Ed25519Pub := Ed25519Pub.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Ed25519Pub.default : Ed25519Pub
 noncomputable instance : Inhabited Ed25519Pub :=
   ⟨Ed25519Pub.default⟩
 
+opaque Ed25519Sig.Impl : NonemptyType.{0}
 /-- A 64-byte detached Ed25519 signature `R ‖ S`. -/
-axiom Ed25519Sig : Type
-/-- Axiomatic inhabitant. -/
-axiom Ed25519Sig.default : Ed25519Sig
+def Ed25519Sig : Type := Ed25519Sig.Impl.type
+instance : Nonempty Ed25519Sig := Ed25519Sig.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Ed25519Sig.default : Ed25519Sig
 noncomputable instance : Inhabited Ed25519Sig :=
   ⟨Ed25519Sig.default⟩
 
+opaque Ed25519Msg.Impl : NonemptyType.{0}
 /-- An Ed25519 message buffer (variable length; opaque at the leaf
     surface). -/
-axiom Ed25519Msg : Type
-/-- Axiomatic inhabitant. -/
-axiom Ed25519Msg.default : Ed25519Msg
+def Ed25519Msg : Type := Ed25519Msg.Impl.type
+instance : Nonempty Ed25519Msg := Ed25519Msg.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Ed25519Msg.default : Ed25519Msg
 noncomputable instance : Inhabited Ed25519Msg :=
   ⟨Ed25519Msg.default⟩
 

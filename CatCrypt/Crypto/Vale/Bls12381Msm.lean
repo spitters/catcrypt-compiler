@@ -77,20 +77,22 @@ wire). Opaque: the leaf treats G1 addition, the identity, and scalar
 multiplication as external operations, matching the abstract `g1_add_spec`
 / `g1_double_spec` / `g1_identity` over which the AUCurves theorem is
 parametric. -/
-axiom Bls12381G1 : Type
+opaque Bls12381G1.Impl : NonemptyType.{0}
+def Bls12381G1 : Type := Bls12381G1.Impl.type
+instance : Nonempty Bls12381G1 := Bls12381G1.Impl.property
 
-/-- Axiomatic inhabitant. -/
-axiom Bls12381G1.default : Bls12381G1
+/-- An inhabitant. -/
+noncomputable opaque Bls12381G1.default : Bls12381G1
 noncomputable instance : Inhabited Bls12381G1 := ⟨Bls12381G1.default⟩
 
 /-- The G1 identity (point at infinity `O`). -/
-axiom Bls12381G1.zero : Bls12381G1
+noncomputable opaque Bls12381G1.zero : Bls12381G1
 
 /-- G1 point addition `P + Q`. -/
-axiom Bls12381G1.add : Bls12381G1 → Bls12381G1 → Bls12381G1
+noncomputable opaque Bls12381G1.add : Bls12381G1 → Bls12381G1 → Bls12381G1
 
 /-- G1 scalar multiplication `k · P`. -/
-axiom Bls12381G1.smul : Nat → Bls12381G1 → Bls12381G1
+noncomputable opaque Bls12381G1.smul : Nat → Bls12381G1 → Bls12381G1
 
 /-! ## §2. Leaf denotation — the naive multi-scalar sum `Σ kᵢ · Pᵢ`
 

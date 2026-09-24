@@ -140,12 +140,14 @@ The 72-byte NIST P-521 base-field element (9×u64 saturated LE on the
 wire). Opaque — the concrete leaf at link time is the AUCurves Rust
 symbol `safegcd_p521_invert`. -/
 
+opaque P521FieldElt.Impl : NonemptyType.{0}
 /-- A 72-byte NIST P-521 `Fp` field element (9×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `p521_invert_divstep_sat`. -/
-axiom P521FieldElt : Type
-/-- Axiomatic inhabitant. -/
-axiom P521FieldElt.default : P521FieldElt
+def P521FieldElt : Type := P521FieldElt.Impl.type
+instance : Nonempty P521FieldElt := P521FieldElt.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque P521FieldElt.default : P521FieldElt
 noncomputable instance : Inhabited P521FieldElt :=
   ⟨P521FieldElt.default⟩
 
@@ -167,7 +169,7 @@ axiom AUCurves_safegcd_p521_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `p521_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom AUCurves_safegcd_p521_invert_leak (x : P521FieldElt) : LeafLeak
+noncomputable opaque AUCurves_safegcd_p521_invert_leak (x : P521FieldElt) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     `p521_invert_divstep_sat` leaf is the same at every operand `x`. The

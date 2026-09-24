@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Jasmin.MsmReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Bulletproofs inner-product-argument prover orchestration over axiomatized leaves
+# Bulletproofs inner-product-argument prover orchestration over opaque leaves
 
 The Bulletproofs prover's hot path is the inner-product-argument (IPA)
 reduction: each round computes two cross commitments `L`, `R` from the current
@@ -21,9 +21,9 @@ witness collapses to a scalar and the prover sends it.
 This file states that orchestration at `n = 8` (three rounds) as a pure Lean
 function `ipaProverLean8` over leaf functions, and supplies a hand-written
 `LowCT` body `ipaProverBody8` with the same call sequence, which the front
-lowers to jasmin. The surface types and leaf functions are Lean `axiom`s
-(11 declarations: two vector types, their two default inhabitants, and seven
-leaf functions); they have no Lean semantics, so nothing in this file states
+lowers to jasmin. The two vector types and the seven leaf functions are opaque constants, and
+the two default inhabitants are Lean `axiom`s (11 declarations); they have no
+Lean semantics, so nothing in this file states
 what a commitment, a fold or a challenge computes. No theorem relates
 `ipaProverBody8` to `ipaProverLean8`. The `#guard` checks in §6 constrain the
 dataflow of the body: every call argument is defined before it is read, and
@@ -63,44 +63,48 @@ namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
-/-! ## 1. Axiomatized IPA surface types
+/-! ## 1. Opaque IPA surface types
 
 The witness and generator vectors are opaque types indexed by their length;
 an IPA challenge or final scalar is an `MsmEcScalar` (1 byte on the wire) and a
 commitment is an `MsmEcPoint` (2 bytes on the wire). -/
 
-/-- The IPA witness vector `a` of length `N` (an axiomatized type). -/
-axiom IpaWitnessVec (N : Nat) : Type
+opaque IpaWitnessVec.Impl (N : Nat) : NonemptyType.{0}
+/-- The IPA witness vector `a` of length `N` (an opaque type). -/
+def IpaWitnessVec (N : Nat) : Type := (IpaWitnessVec.Impl N).type
+instance (N : Nat) : Nonempty (IpaWitnessVec N) := (IpaWitnessVec.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom IpaWitnessVec.default (N : Nat) : IpaWitnessVec N
 noncomputable instance (N : Nat) : Inhabited (IpaWitnessVec N) :=
   ⟨IpaWitnessVec.default N⟩
 
-/-- The IPA generator vector `G` of length `N` (an axiomatized type). -/
-axiom IpaGenVec (N : Nat) : Type
+opaque IpaGenVec.Impl (N : Nat) : NonemptyType.{0}
+/-- The IPA generator vector `G` of length `N` (an opaque type). -/
+def IpaGenVec (N : Nat) : Type := (IpaGenVec.Impl N).type
+instance (N : Nat) : Nonempty (IpaGenVec N) := (IpaGenVec.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom IpaGenVec.default (N : Nat) : IpaGenVec N
 noncomputable instance (N : Nat) : Inhabited (IpaGenVec N) :=
   ⟨IpaGenVec.default N⟩
 
-/-! ## 2. IPA leaves (axioms, lowered as opaque jasmin function symbols)
+/-! ## 2. IPA leaves (opaque constants, lowered as jasmin function symbols)
 
 `ipa_commit`, `ipa_cross_L`, `ipa_cross_R` return an `MsmEcPoint`;
 `ipa_squeeze` and `ipa_final` return an `MsmEcScalar`. The declarations fix
 only the types; the jasmin implementations are supplied at link time. -/
 
 /-- Initial commitment `P` to the witness under the generators. -/
-axiom ipa_commit (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
+noncomputable opaque ipa_commit (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
 /-- Left cross commitment `L` of a round. -/
-axiom ipa_cross_L (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
+noncomputable opaque ipa_cross_L (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
 /-- Right cross commitment `R` of a round. -/
-axiom ipa_cross_R (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
+noncomputable opaque ipa_cross_R (N : Nat) : IpaWitnessVec N → IpaGenVec N → MsmEcPoint
 /-- Fiat–Shamir challenge `u` squeezed from `(L, R)`. -/
-axiom ipa_squeeze : MsmEcPoint → MsmEcPoint → MsmEcScalar
+noncomputable opaque ipa_squeeze : MsmEcPoint → MsmEcPoint → MsmEcScalar
 /-- Fold of the witness vector by the challenge, halving its length `2N → N`. -/
-axiom ipa_fold_wit (N : Nat) : IpaWitnessVec (2 * N) → MsmEcScalar → IpaWitnessVec N
+noncomputable opaque ipa_fold_wit (N : Nat) : IpaWitnessVec (2 * N) → MsmEcScalar → IpaWitnessVec N
 /-- Fold of the generator vector by the challenge, halving its length `2N → N`. -/
-axiom ipa_fold_gen (N : Nat) : IpaGenVec (2 * N) → MsmEcScalar → IpaGenVec N
+noncomputable opaque ipa_fold_gen (N : Nat) : IpaGenVec (2 * N) → MsmEcScalar → IpaGenVec N
 /-- Final prover scalar read from a witness vector of length `N`. -/
-axiom ipa_final (N : Nat) : IpaWitnessVec N → MsmEcScalar
+noncomputable opaque ipa_final (N : Nat) : IpaWitnessVec N → MsmEcScalar
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (n = 8, log2 n = 3 rounds) -/
 
@@ -138,7 +142,7 @@ def ipaFinalPattern : LowCTPattern where
 three (L, R, squeeze, fold-wit, fold-gen) rounds, each reading the vectors the
 previous round folded, and the final scalar of the length-1 witness. -/
 
-/-- The `n = 8` Bulletproofs IPA prover over the axiomatized leaves. Round `k`
+/-- The `n = 8` Bulletproofs IPA prover over the opaque leaves. Round `k`
     computes its cross commitments and folds from the round-`k-1` fold outputs
     (the inputs `a`, `G` for round 0); the result is `ipa_final` of the round-2
     witness fold. -/

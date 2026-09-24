@@ -98,13 +98,15 @@ The reflect surface treats one BabyBear vector as an opaque byte buffer of
 forward/inverse NTTs, the zero-extension, and the coset twist are all taken as
 leaf calls. The orchestration is the flat 4-step chain. -/
 
+opaque Plonky3BabyBearVec.Impl (N : Nat) : NonemptyType.{0}
 /-- A BabyBear vector of length `N` (`8·N` bytes, packed). Opaque on the Lean
     side; the leaves implement the canonical canonical-residue layout
     internally. The size index is the *trace length* (`N`) or the *coset
     domain size* (`k·N`) depending on context. -/
-axiom Plonky3BabyBearVec (N : Nat) : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3BabyBearVec.default (N : Nat) : Plonky3BabyBearVec N
+def Plonky3BabyBearVec (N : Nat) : Type := (Plonky3BabyBearVec.Impl N).type
+instance (N : Nat) : Nonempty (Plonky3BabyBearVec N) := (Plonky3BabyBearVec.Impl N).property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3BabyBearVec.default (N : Nat) : Plonky3BabyBearVec N
 noncomputable instance (N : Nat) : Inhabited (Plonky3BabyBearVec N) :=
   ⟨Plonky3BabyBearVec.default N⟩
 

@@ -164,12 +164,14 @@ open CatCrypt.Crypto.Vale.LeafLeakage
 The 32-byte Pallas `Fp` element (4×u64 saturated LE on the wire).
 Opaque — the concrete leaf at link time is the AUCurves Rust symbol. -/
 
+opaque PallasFp.Impl : NonemptyType.{0}
 /-- A 32-byte Pallas `Fp` field element (4×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `pallas_invert_divstep_sat`. -/
-axiom PallasFp : Type
-/-- Axiomatic inhabitant. -/
-axiom PallasFp.default : PallasFp
+def PallasFp : Type := PallasFp.Impl.type
+instance : Nonempty PallasFp := PallasFp.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque PallasFp.default : PallasFp
 noncomputable instance : Inhabited PallasFp :=
   ⟨PallasFp.default⟩
 
@@ -194,7 +196,7 @@ axiom Safegcd_Pallas_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `pallas_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom Safegcd_Pallas_invert_leak (x : PallasFp) : LeafLeak
+noncomputable opaque Safegcd_Pallas_invert_leak (x : PallasFp) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     Pallas `Fp` inverter is the same at every operand `x`. The Bernstein-Yang

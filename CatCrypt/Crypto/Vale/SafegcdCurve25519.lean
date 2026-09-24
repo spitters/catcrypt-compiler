@@ -170,12 +170,14 @@ matching AUCurves' `Fe25519`). Opaque — the concrete leaf at link
 time is the AUCurves Rust `fe25519_invert_divstep_sat` re-exported
 through the bench-harness shim crate. -/
 
+opaque SafegcdFe25519Buf.Impl : NonemptyType.{0}
 /-- A 32-byte Curve25519 field element (input or output of the BY
     inverter). Opaque; the concrete leaf is the AUCurves-verified
     `safegcd25519::fe25519_invert_divstep_sat`. -/
-axiom SafegcdFe25519Buf : Type
-/-- Axiomatic inhabitant. -/
-axiom SafegcdFe25519Buf.default : SafegcdFe25519Buf
+def SafegcdFe25519Buf : Type := SafegcdFe25519Buf.Impl.type
+instance : Nonempty SafegcdFe25519Buf := SafegcdFe25519Buf.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque SafegcdFe25519Buf.default : SafegcdFe25519Buf
 noncomputable instance : Inhabited SafegcdFe25519Buf :=
   ⟨SafegcdFe25519Buf.default⟩
 
@@ -196,7 +198,7 @@ axiom Vale_safegcd25519_fe25519_inv_denote
 
 /-- **Leakage function**: the observable trace the `safegcd25519`
     `fe25519` inverter emits on operand `x`. -/
-axiom Vale_safegcd25519_fe25519_inv_leak (x : SafegcdFe25519Buf) : LeafLeak
+noncomputable opaque Vale_safegcd25519_fe25519_inv_leak (x : SafegcdFe25519Buf) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves-verified
     `safegcd25519` `fe25519` inverter is the same at every operand `x`. The

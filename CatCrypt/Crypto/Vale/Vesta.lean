@@ -150,12 +150,14 @@ open CatCrypt.Crypto.Vale.LeafLeakage
 The 32-byte Vesta `Fp` element (4×u64 saturated LE on the wire).
 Opaque — the concrete leaf at link time is the AUCurves Rust symbol. -/
 
+opaque VestaFp.Impl : NonemptyType.{0}
 /-- A 32-byte Vesta `Fp` field element (4×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `vesta_invert_divstep_sat`. -/
-axiom VestaFp : Type
-/-- Axiomatic inhabitant. -/
-axiom VestaFp.default : VestaFp
+def VestaFp : Type := VestaFp.Impl.type
+instance : Nonempty VestaFp := VestaFp.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque VestaFp.default : VestaFp
 noncomputable instance : Inhabited VestaFp :=
   ⟨VestaFp.default⟩
 
@@ -180,7 +182,7 @@ axiom Safegcd_Vesta_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `vesta_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom Safegcd_Vesta_invert_leak (x : VestaFp) : LeafLeak
+noncomputable opaque Safegcd_Vesta_invert_leak (x : VestaFp) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     Vesta `Fp` inverter is the same at every operand `x`. The Bernstein-Yang

@@ -90,14 +90,16 @@ so the surface type is a 16-`u64` block (128 bytes). The same `TBytes 128`
 encoding serves all four variants — Montgomery vs canonical state form is a
 denotation-irrelevant refinement at the leaf-shim level. -/
 
+opaque Poseidon2BbState.Impl : NonemptyType.{0}
 /-- A 16-lane Poseidon2-BabyBear state (16 × `u64` = 128 bytes). Opaque; the
     leaves implement scalar / Montgomery / lane-resident / YMM-direct variants.
     The reifier encodes this as `.TBytes 128` (`memref 16` under `encodeTy`). -/
-axiom Poseidon2BbState : Type
+def Poseidon2BbState : Type := Poseidon2BbState.Impl.type
+instance : Nonempty Poseidon2BbState := Poseidon2BbState.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Poseidon2BbState.default : Poseidon2BbState
 noncomputable instance : Inhabited Poseidon2BbState := ⟨Poseidon2BbState.default⟩
 
-/-! ## 2. Poseidon2 leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. Poseidon2 leaves (opaque constants = jasmin function symbols)
 
 Each variant is one opaque permutation leaf. The four leaves share the same
 *denotation* — the BabyBear-field Poseidon2 permutation — but each variant's
@@ -108,7 +110,7 @@ machinery. The verified front sees only the leaf name and tower-type signature. 
     arithmetic on canonical `u64` representation. Body: 10-fold BabyBear reduce
     + `x^7` S-box + external/internal MDS layers + canonical RC-add. Matches
     `poseidon2Jazz` exactly (scalar baseline). -/
-axiom poseidon2_bb_baseline : Poseidon2BbState → Poseidon2BbState
+noncomputable opaque poseidon2_bb_baseline : Poseidon2BbState → Poseidon2BbState
 
 /-- Montgomery single-pass Poseidon2 permutation. State carried in Montgomery
     form (`phi(x) = x · R`) across the whole permutation; canonical↔Montgomery
@@ -116,14 +118,14 @@ axiom poseidon2_bb_baseline : Poseidon2BbState → Poseidon2BbState
     Montgomery form at compile time. Each S-box multiply is a single MontReduce
     on top of an AVX2 `#VPMULUDQ_256` packed 32×32 → 64 mul. Denotation matches
     baseline via `Poseidon2Montgomery.MontIso.montPerm_sandwich_eq`. -/
-axiom poseidon2_bb_montgomery : Poseidon2BbState → Poseidon2BbState
+noncomputable opaque poseidon2_bb_montgomery : Poseidon2BbState → Poseidon2BbState
 
 /-- Lane-resident single-pass Montgomery Poseidon2. State pinned to 4 named YMM
     registers `vS0..vS3` across the 4 initial + 4 terminal external rounds.
     RC-add, csub, S-box quartets all act reg-to-reg on `vS0..vS3` — no stack
     round-trip through `s[]` between rounds. Same denotation as the Montgomery
     single-pass variant (storage class is a denotation-irrelevant refinement). -/
-axiom poseidon2_bb_montgomery_resident : Poseidon2BbState → Poseidon2BbState
+noncomputable opaque poseidon2_bb_montgomery_resident : Poseidon2BbState → Poseidon2BbState
 
 /-- Lane-resident + YMM-direct internal_mat single-pass Montgomery Poseidon2.
     State pinned to `vS0..vS3` across the FULL 4 + 13 + 4 = 21-round schedule;
@@ -132,7 +134,7 @@ axiom poseidon2_bb_montgomery_resident : Poseidon2BbState → Poseidon2BbState
     Montgomery-form `DIAGV_MONT` table). No stack `s[]` spill between partial
     rounds. Same denotation as the lane-resident variant via
     `MontIso.montInternalMDS_vec_eq`. -/
-axiom poseidon2_bb_montgomery_resident_partial : Poseidon2BbState → Poseidon2BbState
+noncomputable opaque poseidon2_bb_montgomery_resident_partial : Poseidon2BbState → Poseidon2BbState
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

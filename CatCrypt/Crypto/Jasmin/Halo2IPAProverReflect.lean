@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Jasmin.MsmReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Halo2 IPA prover orchestration over axiomatized leaves
+# Halo2 IPA prover orchestration over opaque leaves
 
 Halo2's polynomial-commitment layer is the inner-product argument (IPA) over
 the Pasta cycle. The prover commits to the witness polynomial, evaluates the
@@ -22,9 +22,9 @@ folds both vectors by `u`/`u⁻¹`, halving their length.
 This file states that orchestration at `n = 8` (three rounds) as a pure Lean
 function `halo2IPAProverLean8` over leaf functions, and supplies a hand-written
 `LowCT` body `halo2IPAProverBody8` with the same call sequence, which the front
-lowers to jasmin. The surface types and leaf functions are Lean `axiom`s
-(12 declarations: two vector types, their two default inhabitants, and eight
-leaf functions); they have no Lean semantics, so nothing in this file states
+lowers to jasmin. The two vector types and the eight leaf functions are opaque constants, and
+the two default inhabitants are Lean `axiom`s (12 declarations); they have no
+Lean semantics, so nothing in this file states
 what a commitment, a gate round, a fold or a challenge computes. No theorem
 relates `halo2IPAProverBody8` to `halo2IPAProverLean8`. The `#guard` checks in
 §6 constrain the dataflow of the body: every call argument is defined before it
@@ -66,25 +66,29 @@ namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
-/-! ## 1. Axiomatized Halo2 IPA surface types
+/-! ## 1. Opaque Halo2 IPA surface types
 
 The coefficient and generator vectors are opaque types indexed by their
 length; an IPA challenge or opening scalar is an `MsmEcScalar` (1 byte on the
 wire) and a commitment is an `MsmEcPoint` (2 bytes on the wire). -/
 
-/-- The Halo2 coefficient vector of length `N` (an axiomatized type). -/
-axiom Halo2CoeffVec (N : Nat) : Type
+opaque Halo2CoeffVec.Impl (N : Nat) : NonemptyType.{0}
+/-- The Halo2 coefficient vector of length `N` (an opaque type). -/
+def Halo2CoeffVec (N : Nat) : Type := (Halo2CoeffVec.Impl N).type
+instance (N : Nat) : Nonempty (Halo2CoeffVec N) := (Halo2CoeffVec.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom Halo2CoeffVec.default (N : Nat) : Halo2CoeffVec N
 noncomputable instance (N : Nat) : Inhabited (Halo2CoeffVec N) :=
   ⟨Halo2CoeffVec.default N⟩
 
-/-- The Halo2 generator vector `G` of length `N` (an axiomatized type). -/
-axiom Halo2GenVec (N : Nat) : Type
+opaque Halo2GenVec.Impl (N : Nat) : NonemptyType.{0}
+/-- The Halo2 generator vector `G` of length `N` (an opaque type). -/
+def Halo2GenVec (N : Nat) : Type := (Halo2GenVec.Impl N).type
+instance (N : Nat) : Nonempty (Halo2GenVec N) := (Halo2GenVec.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom Halo2GenVec.default (N : Nat) : Halo2GenVec N
 noncomputable instance (N : Nat) : Inhabited (Halo2GenVec N) :=
   ⟨Halo2GenVec.default N⟩
 
-/-! ## 2. Halo2 IPA leaves (axioms, lowered as opaque jasmin function symbols)
+/-! ## 2. Halo2 IPA leaves (opaque constants, lowered as jasmin function symbols)
 
 `halo2_commit`, `halo2_ipa_L`, `halo2_ipa_R` return an `MsmEcPoint`;
 `halo2_gate_round`, `halo2_squeeze` and `halo2_ipa_open` return an
@@ -92,21 +96,21 @@ noncomputable instance (N : Nat) : Inhabited (Halo2GenVec N) :=
 are supplied at link time. -/
 
 /-- Witness commitment `cmt` to the coefficients under the generators. -/
-axiom halo2_commit (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
+noncomputable opaque halo2_commit (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
 /-- Batched permutation/gate-identity evaluation for the transcript round. -/
-axiom halo2_gate_round (N : Nat) : Halo2CoeffVec N → MsmEcScalar
+noncomputable opaque halo2_gate_round (N : Nat) : Halo2CoeffVec N → MsmEcScalar
 /-- Left cross commitment `L` of an IPA round. -/
-axiom halo2_ipa_L (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
+noncomputable opaque halo2_ipa_L (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
 /-- Right cross commitment `R` of an IPA round. -/
-axiom halo2_ipa_R (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
+noncomputable opaque halo2_ipa_R (N : Nat) : Halo2CoeffVec N → Halo2GenVec N → MsmEcPoint
 /-- Fiat–Shamir challenge `u` squeezed from `(L, R)`. -/
-axiom halo2_squeeze : MsmEcPoint → MsmEcPoint → MsmEcScalar
+noncomputable opaque halo2_squeeze : MsmEcPoint → MsmEcPoint → MsmEcScalar
 /-- Fold of the coefficient vector by the challenge, halving its length `2N → N`. -/
-axiom halo2_fold_coeffs (N : Nat) : Halo2CoeffVec (2 * N) → MsmEcScalar → Halo2CoeffVec N
+noncomputable opaque halo2_fold_coeffs (N : Nat) : Halo2CoeffVec (2 * N) → MsmEcScalar → Halo2CoeffVec N
 /-- Fold of the generator vector by the challenge, halving its length `2N → N`. -/
-axiom halo2_fold_gens (N : Nat) : Halo2GenVec (2 * N) → MsmEcScalar → Halo2GenVec N
+noncomputable opaque halo2_fold_gens (N : Nat) : Halo2GenVec (2 * N) → MsmEcScalar → Halo2GenVec N
 /-- Final IPA opening scalar read from a coefficient vector of length `N`. -/
-axiom halo2_ipa_open (N : Nat) : Halo2CoeffVec N → MsmEcScalar
+noncomputable opaque halo2_ipa_open (N : Nat) : Halo2CoeffVec N → MsmEcScalar
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (n = 8, log2 n = 3 rounds) -/
 
@@ -149,7 +153,7 @@ commitment, gate/permutation transcript round, three (L, R, squeeze,
 fold-coeffs, fold-gens) rounds, each reading the vectors the previous round
 folded, and the opening of the length-1 coefficient vector. -/
 
-/-- The `n = 8` Halo2 IPA prover over the axiomatized leaves. Round `k`
+/-- The `n = 8` Halo2 IPA prover over the opaque leaves. Round `k`
     computes its cross commitments and folds from the round-`k-1` fold outputs
     (the inputs `coeffs`, `G` for round 0); the result is `halo2_ipa_open` of
     the round-2 coefficient fold. -/

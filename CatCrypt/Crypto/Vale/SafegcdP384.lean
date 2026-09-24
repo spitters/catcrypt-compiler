@@ -130,12 +130,14 @@ The 48-byte NIST P-384 base-field element (6×u64 saturated LE on the
 wire). Opaque — the concrete leaf at link time is the AUCurves Rust
 symbol `safegcd_p384_invert`. -/
 
+opaque P384FieldElt.Impl : NonemptyType.{0}
 /-- A 48-byte NIST P-384 `Fp` field element (6×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `p384_invert_divstep_sat`. -/
-axiom P384FieldElt : Type
-/-- Axiomatic inhabitant. -/
-axiom P384FieldElt.default : P384FieldElt
+def P384FieldElt : Type := P384FieldElt.Impl.type
+instance : Nonempty P384FieldElt := P384FieldElt.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque P384FieldElt.default : P384FieldElt
 noncomputable instance : Inhabited P384FieldElt :=
   ⟨P384FieldElt.default⟩
 
@@ -159,7 +161,7 @@ axiom AUCurves_safegcd_p384_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `p384_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom AUCurves_safegcd_p384_invert_leak (x : P384FieldElt) : LeafLeak
+noncomputable opaque AUCurves_safegcd_p384_invert_leak (x : P384FieldElt) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     `p384_invert_divstep_sat` leaf is the same at every operand `x`. The

@@ -153,46 +153,58 @@ The four ML-KEM-768 buffer shapes (public key 1184 B, private key
 randomness shapes (keygen 64 B, encaps 32 B). Opaque — the
 concrete leaves at link time are the libcrux C symbols. -/
 
+opaque MlKem768PubKey.Impl : NonemptyType.{0}
 /-- ML-KEM-768 public key (1184 bytes). Opaque; the concrete leaf
     at link time consumes the libcrux `MlKemPublicKey_30` struct. -/
-axiom MlKem768PubKey : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768PubKey.default : MlKem768PubKey
+def MlKem768PubKey : Type := MlKem768PubKey.Impl.type
+instance : Nonempty MlKem768PubKey := MlKem768PubKey.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768PubKey.default : MlKem768PubKey
 noncomputable instance : Inhabited MlKem768PubKey := ⟨MlKem768PubKey.default⟩
 
+opaque MlKem768PrivKey.Impl : NonemptyType.{0}
 /-- ML-KEM-768 private key (2400 bytes). Opaque; the concrete leaf
     at link time consumes the libcrux `MlKemPrivateKey_d9` struct. -/
-axiom MlKem768PrivKey : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768PrivKey.default : MlKem768PrivKey
+def MlKem768PrivKey : Type := MlKem768PrivKey.Impl.type
+instance : Nonempty MlKem768PrivKey := MlKem768PrivKey.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768PrivKey.default : MlKem768PrivKey
 noncomputable instance : Inhabited MlKem768PrivKey := ⟨MlKem768PrivKey.default⟩
 
+opaque MlKem768Ct.Impl : NonemptyType.{0}
 /-- ML-KEM-768 ciphertext (1088 bytes). Opaque; the concrete leaf
     at link time consumes the libcrux `MlKem768Ciphertext` struct. -/
-axiom MlKem768Ct : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768Ct.default : MlKem768Ct
+def MlKem768Ct : Type := MlKem768Ct.Impl.type
+instance : Nonempty MlKem768Ct := MlKem768Ct.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768Ct.default : MlKem768Ct
 noncomputable instance : Inhabited MlKem768Ct := ⟨MlKem768Ct.default⟩
 
+opaque MlKem768Ss.Impl : NonemptyType.{0}
 /-- ML-KEM-768 shared secret (32 bytes — the `MlKemSharedSecret`). -/
-axiom MlKem768Ss : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768Ss.default : MlKem768Ss
+def MlKem768Ss : Type := MlKem768Ss.Impl.type
+instance : Nonempty MlKem768Ss := MlKem768Ss.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768Ss.default : MlKem768Ss
 noncomputable instance : Inhabited MlKem768Ss := ⟨MlKem768Ss.default⟩
 
+opaque MlKem768KeygenRand.Impl : NonemptyType.{0}
 /-- ML-KEM-768 key-generation randomness (64 bytes — `d ‖ z` per
     FIPS-203). -/
-axiom MlKem768KeygenRand : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768KeygenRand.default : MlKem768KeygenRand
+def MlKem768KeygenRand : Type := MlKem768KeygenRand.Impl.type
+instance : Nonempty MlKem768KeygenRand := MlKem768KeygenRand.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768KeygenRand.default : MlKem768KeygenRand
 noncomputable instance : Inhabited MlKem768KeygenRand :=
   ⟨MlKem768KeygenRand.default⟩
 
+opaque MlKem768EncapsRand.Impl : NonemptyType.{0}
 /-- ML-KEM-768 encapsulation randomness (32 bytes — `m` per
     FIPS-203). -/
-axiom MlKem768EncapsRand : Type
-/-- Axiomatic inhabitant. -/
-axiom MlKem768EncapsRand.default : MlKem768EncapsRand
+def MlKem768EncapsRand : Type := MlKem768EncapsRand.Impl.type
+instance : Nonempty MlKem768EncapsRand := MlKem768EncapsRand.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MlKem768EncapsRand.default : MlKem768EncapsRand
 noncomputable instance : Inhabited MlKem768EncapsRand :=
   ⟨MlKem768EncapsRand.default⟩
 

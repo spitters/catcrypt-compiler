@@ -162,7 +162,7 @@ modular inverse as a `LowCT` body and emits it through the front
 `mpz_invert` by a known-answer harness that is not part of this package; no
 theorem in this module states its correctness.
 
-Consequently, for the **k=4 path the three leaf axioms below are unused**:
+Consequently, for the **k=4 path the leaf axioms and the leakage function below are unused**:
 there is no `RCall "mpn_invert_safegcd_k4"` extCall in the
 emitted kernel — the divstep loop is straight-line/looped CatCrypt-owned
 arithmetic (`SMulS`/`SAsr`/`SAnd`/…), so neither
@@ -170,7 +170,7 @@ arithmetic (`SMulS`/`SAsr`/`SAnd`/…), so neither
 (the leaf CT), nor the k=4 symbol-identity are needed to state what the
 k=4 emitted code computes. The correctness witness for k=4 is the C KAT vs
 libgmp (the same check the ML-DSA NTT emit uses), not the
-opaque axiom.
+leaf axiom.
 
 **Axioms in use for the other sizes:**
 
@@ -266,12 +266,14 @@ A general-modulus bignum buffer (`n`×u64 saturated LE). Opaque — the
 concrete leaf at link time is the AUCurves Rust symbol. The size `n`
 is carried in the tower type (`TBytes (8 * n)`) at the front-end. -/
 
+opaque MpnBignum.Impl : NonemptyType.{0}
 /-- An `n`×u64 saturated LE bignum (the value, the modulus, or the
     output share the shape). Opaque; the concrete leaf is the
     AUCurves verified-CT `mpn_invert_safegcd`. -/
-axiom MpnBignum : Type
-/-- Axiomatic inhabitant. -/
-axiom MpnBignum.default : MpnBignum
+def MpnBignum : Type := MpnBignum.Impl.type
+instance : Nonempty MpnBignum := MpnBignum.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MpnBignum.default : MpnBignum
 noncomputable instance : Inhabited MpnBignum :=
   ⟨MpnBignum.default⟩
 
@@ -291,7 +293,7 @@ axiom MpnInvert_Safegcd_denote
 
 /-- **Leakage function**: the observable trace the `mpn_invert_safegcd`
     leaf emits on modulus `m` and operand `a`. -/
-axiom MpnInvert_Safegcd_leak (m : MpnBignum) (a : MpnBignum) : LeafLeak
+noncomputable opaque MpnInvert_Safegcd_leak (m : MpnBignum) (a : MpnBignum) : LeafLeak
 
 /-- **Constant-time axiom**: at each fixed modulus `m`, the leakage trace of
     the AUCurves `mpn_invert_safegcd` leaf is the same at every operand `a`.

@@ -204,13 +204,15 @@ summary"). The type is declared so the `LowCTPattern` /
 `LeafSig` registration below typechecks and the bench harness can
 target a stable C symbol name. -/
 
+opaque MpnBuf.Impl : NonemptyType.{0}
 /-- A heap-allocated unsigned bignum buffer (length-tagged on the C
     side via a separate `size_t`). Opaque; the concrete leaf is the
     *currently-missing* `mpn_gcd_safegcd` AUCurves entry point
     documented in the file header. -/
-axiom MpnBuf : Type
-/-- Axiomatic inhabitant. -/
-axiom MpnBuf.default : MpnBuf
+def MpnBuf : Type := MpnBuf.Impl.type
+instance : Nonempty MpnBuf := MpnBuf.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque MpnBuf.default : MpnBuf
 noncomputable instance : Inhabited MpnBuf := ⟨MpnBuf.default⟩
 
 /-! ## §2. Placeholder axiom (the gap marker)

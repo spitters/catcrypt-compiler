@@ -38,7 +38,7 @@ square/opp` + Bernstein–Yang `fp_inv`). The Pairing.Secp256k1Emit theory
 proves `MsmReduce.msm_eq_scalarFold` over the production secp256k1 group;
 this module carries that into the verified front-end.
 
-| Lean axiom              | Leaf name (.jazz)         | TowerType    |
+| Lean name               | Leaf name (.jazz)         | TowerType    |
 |------------------------|---------------------------|--------------|
 | `secp256k1_scalar_mul`  | `secp256k1_scalar_mul`    | `TBytes 64`  |
 | `secp256k1_point_add`   | `secp256k1_point_add`     | `TBytes 64`  |
@@ -89,23 +89,27 @@ matching the fiat-crypto `[u64;4]` Montgomery layout. On the wire an
 affine **EC point** is `(x ‖ y)`, two `Fp`s = 64 bytes; a **scalar** (an
 `Fn` element mod the group order `n`) is also 32 bytes. -/
 
+opaque Secp256k1Scalar.Impl : NonemptyType.{0}
 /-- A secp256k1 scalar (an element of `Fn`, `Fn = ZMod n` where `n` is the
     secp256k1 group order). 32 bytes on the wire. Opaque on the Lean side;
     the leaf `secp256k1_scalar_mul` reads 32 bytes for the scalar input.
     The reifier encodes this as `TBytes 32` (memref 4 u64-limbs). -/
-axiom Secp256k1Scalar : Type
+def Secp256k1Scalar : Type := Secp256k1Scalar.Impl.type
+instance : Nonempty Secp256k1Scalar := Secp256k1Scalar.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Secp256k1Scalar.default : Secp256k1Scalar
 noncomputable instance : Inhabited Secp256k1Scalar := ⟨Secp256k1Scalar.default⟩
 
+opaque Secp256k1Point.Impl : NonemptyType.{0}
 /-- A secp256k1 affine point `(x ‖ y)`. 64 bytes on the wire (two 32-byte
     field elements). Opaque; the leaves implement the group law over the
     AUCurves verified field tower. The reifier encodes this as `TBytes 64`
     (memref 8 u64-limbs). -/
-axiom Secp256k1Point : Type
+def Secp256k1Point : Type := Secp256k1Point.Impl.type
+instance : Nonempty Secp256k1Point := Secp256k1Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Secp256k1Point.default : Secp256k1Point
 noncomputable instance : Inhabited Secp256k1Point := ⟨Secp256k1Point.default⟩
 
-/-! ## 2. secp256k1 leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. secp256k1 leaves (opaque constants = jasmin function symbols)
 
 The two leaves are the secp256k1 group law primitives. The trusted
 edge: the **field arith** (`fp_add/sub/mul/square/inv/opp`) is AUCurves
@@ -116,13 +120,13 @@ the trusted leaf edge (same honest stance as `Bls12381Emit`). -/
 /-- secp256k1 scalar multiplication `R = k · P` (standard double-and-add /
     Montgomery ladder). Opaque here — the jasmin shim issues the actual
     ladder over the AUCurves-verified field leaves. -/
-axiom secp256k1_scalar_mul : Secp256k1Scalar → Secp256k1Point → Secp256k1Point
+noncomputable opaque secp256k1_scalar_mul : Secp256k1Scalar → Secp256k1Point → Secp256k1Point
 
 /-- secp256k1 point addition `R = P + Q` (the standard short-Weierstrass
     affine point-add formula, with the special-case logic for `P = Q`,
     `P = -Q`, and the point-at-infinity). Opaque; the jasmin shim
     implements the formula over the AUCurves-verified field leaves. -/
-axiom secp256k1_point_add : Secp256k1Point → Secp256k1Point → Secp256k1Point
+noncomputable opaque secp256k1_point_add : Secp256k1Point → Secp256k1Point → Secp256k1Point
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

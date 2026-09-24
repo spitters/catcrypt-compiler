@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 High-level specification of RFC 8032 Ed25519 signing and verification.
 
 The field-layer and scalar-layer primitives live in `LowCTReflect.lean`
-as reifier-visible axioms. SHA-512 is *not* reifier-visible because its
+as reifier-visible opaque constants and axioms. SHA-512 is *not* reifier-visible because its
 variable-length `ByteBuf` input does not match the fixed-size `memref<Nxi64>`
 encoding that pipeline (1a) emits for field operations. Instead, SHA-512
 runs as a `libjade`-linked symbol from the outer C wrapper in
@@ -80,33 +80,35 @@ open CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-! ## 1. SHA-512 interface (not reifier-visible)
 
-Opaque byte-buffer type + hash axiom. The implementation is
+Opaque byte-buffer type + opaque hash function. The implementation is
 `jade_hash_sha512_amd64_ref` from libjade, pre-verified and linked via
 `catcrypt-bench/src/jade_sha512.s`. KATs live in `bench_sha512.c`
 (FIPS 180-4 empty, "abc", 896-bit, million-'a'). -/
 
+opaque ByteBuf.Impl : NonemptyType.{0}
 /-- Opaque variable-length byte buffer. The reifier does not handle
     `ByteBuf` — instead, SHA-512 is invoked from the C wrapper and
     its output (which *is* fixed-size) is threaded into the field/scalar
     compute as one or two `FpL25519` values (via `scalar_reduce_64`). -/
-axiom ByteBuf : Type
-axiom ByteBuf.default : ByteBuf
+def ByteBuf : Type := ByteBuf.Impl.type
+instance : Nonempty ByteBuf := ByteBuf.Impl.property
+noncomputable opaque ByteBuf.default : ByteBuf
 noncomputable instance : Inhabited ByteBuf := ⟨ByteBuf.default⟩
 
 /-- SHA-512 hash — 64-byte output, variable-length input. -/
-axiom jade_sha512 : ByteBuf → ByteBuf
+noncomputable opaque jade_sha512 : ByteBuf → ByteBuf
 
 /-- Reduce a 64-byte SHA-512 output to a scalar mod L. The wrapper
     implementation splits the 64 bytes into two halves, interprets
     them as two `FpL25519` Montgomery-domain scalars, and recombines
     via `scalar_add` on `low + high · 2^256 mod L`. -/
-axiom scalar_reduce_64 : ByteBuf → FpL25519
+noncomputable opaque scalar_reduce_64 : ByteBuf → FpL25519
 
 /-! ## 2. Ed25519 reference specification
 
 These are spec-only Lean functions that mirror RFC 8032 step-by-step,
 intended for future correctness proofs. They use the reifier-visible
-axioms for all arithmetic, so the spec is definitionally close to the
+opaque constants and axioms for all arithmetic, so the spec is definitionally close to the
 deployed MLIR. Byte-level plumbing (clamping, 32-byte splits, sign-bit
 packing) stays in the C wrapper. -/
 
@@ -122,18 +124,18 @@ noncomputable instance : Inhabited EdPoint :=
 
 /-- Ed25519 base point `B`. Wired to the fiat-crypto-derived constant
     in `curve25519_64.c` via the C wrapper; spec value is abstract. -/
-axiom basepoint : EdPoint
+noncomputable opaque basepoint : EdPoint
 
 /-- Curve parameter `d = -121665/121666 mod p`, threaded through all
     Edwards-addition calls as the `two_d`/`d_const` argument. -/
-axiom curve_d      : Fp25519
+noncomputable opaque curve_d      : Fp25519
 /-- `2·d` for extended-Edwards addition. -/
-axiom curve_two_d  : Fp25519
+noncomputable opaque curve_two_d  : Fp25519
 
 /-- Fixed-base scalar multiplication `k · B`. Implementation is a
     windowed precomputed-table routine in C that drives the MLIR-emitted
     `ed25519_madd_*` functions. -/
-axiom ed25519_scalarmult_base : FpL25519 → EdPoint
+noncomputable opaque ed25519_scalarmult_base : FpL25519 → EdPoint
 
 /-- Variable-base double-scalar `s·B + k·A`. Implementation uses
     Shamir's trick in variable time (only on public values during
@@ -186,7 +188,7 @@ and `R = decompress(R_bytes)`. -/
 
 /-- Point equality — the wrapper compresses both sides to 32 bytes and
     does a constant-time `memcmp`. Abstract in Lean. -/
-axiom point_eq : EdPoint → EdPoint → Bool
+noncomputable opaque point_eq : EdPoint → EdPoint → Bool
 
 /-- Ed25519 verify, spec form. All decompression and byte-assembly is in
     the wrapper; Lean sees the parsed point/scalar triple + SHA-512 output. -/
@@ -204,13 +206,14 @@ where
       or implements via `fp_opp` on `X` and `T` coordinates. -/
   neg_point : EdPoint → EdPoint := fun P => P
 
-/-! ## 3. Axiom ↔ implementation correspondence
+/-! ## 3. Constant ↔ implementation correspondence
 
-This section maps each axiom in this spec file to the concrete
+This section maps each uninterpreted constant (opaque constant or axiom)
+in this spec file to the concrete
 artifact that implements it downstream. Together these establish
 the TCB (trusted computing base) of our Ed25519 deployment:
 
-| Spec axiom | Implementation | Status |
+| Spec constant | Implementation | Status |
 |------------|----------------|--------|
 | `Fp25519` (type) | `uint64_t[5]` in `fiat_shim.c` + `curve25519_64.c` | Trusted: fiat-crypto proved correct |
 | `FpL25519` (type) | `uint64_t[4]` Montgomery in `curve25519_scalar_64_exp.c` | Trusted: fiat-crypto proved correct |

@@ -20,7 +20,7 @@ precompile) can be lifted through the verified compiler chain
 
 ## BN254 width table
 
-| Lean axiom              | Bytes | TowerType    | encodeTy (memref u64 limbs) |
+| Lean name               | Bytes | TowerType    | encodeTy (memref u64 limbs) |
 |-------------------------|------:|--------------|----------------------------:|
 | `Bn254Fr` (Fr scalar)   |    32 | `TBytes 32`  | 4                           |
 | `Bn254G1Point`          |    64 | `TBytes 64`  | 8                           |
@@ -67,42 +67,50 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## 1. Opaque BN254 surface types -/
 
+opaque Bn254Fr.Impl : NonemptyType.{0}
 /-- A BN254 `Fr` scalar (32 bytes, big-endian per EIP-197 convention; the leaf
     converts to the AUCurves internal Montgomery form). -/
-axiom Bn254Fr : Type
+def Bn254Fr : Type := Bn254Fr.Impl.type
+instance : Nonempty Bn254Fr := Bn254Fr.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254Fr.default : Bn254Fr
 noncomputable instance : Inhabited Bn254Fr := ⟨Bn254Fr.default⟩
 
+opaque Bn254G1Point.Impl : NonemptyType.{0}
 /-- A BN254 G1 point in the EIP-196 on-wire layout (64 bytes:
     two `Fp` coordinates × 32 bytes). -/
-axiom Bn254G1Point : Type
+def Bn254G1Point : Type := Bn254G1Point.Impl.type
+instance : Nonempty Bn254G1Point := Bn254G1Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254G1Point.default : Bn254G1Point
 noncomputable instance : Inhabited Bn254G1Point := ⟨Bn254G1Point.default⟩
 
+opaque Bn254G2Point.Impl : NonemptyType.{0}
 /-- A BN254 G2 point in the EIP-197 on-wire layout (128 bytes:
     two `Fp2` coordinates × 64 bytes). -/
-axiom Bn254G2Point : Type
+def Bn254G2Point : Type := Bn254G2Point.Impl.type
+instance : Nonempty Bn254G2Point := Bn254G2Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254G2Point.default : Bn254G2Point
 noncomputable instance : Inhabited Bn254G2Point := ⟨Bn254G2Point.default⟩
 
+opaque Bn254Fp12.Impl : NonemptyType.{0}
 /-- A BN254 `Fp12` (GT) element (384 bytes: twelve `Fp` coordinates × 32 bytes). -/
-axiom Bn254Fp12 : Type
+def Bn254Fp12 : Type := Bn254Fp12.Impl.type
+instance : Nonempty Bn254Fp12 := Bn254Fp12.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254Fp12.default : Bn254Fp12
 noncomputable instance : Inhabited Bn254Fp12 := ⟨Bn254Fp12.default⟩
 
 /-! ## 2. BN254 leaves -/
 
 /-- `bn254_g1_scalar_mul k P = k · P` over BN254 G1 (group-law trusted edge). -/
-axiom bn254_g1_scalar_mul : Bn254Fr → Bn254G1Point → Bn254G1Point
+noncomputable opaque bn254_g1_scalar_mul : Bn254Fr → Bn254G1Point → Bn254G1Point
 
 /-- `bn254_g1_add P Q = P + Q` over BN254 G1 (group-law trusted edge). -/
-axiom bn254_g1_add : Bn254G1Point → Bn254G1Point → Bn254G1Point
+noncomputable opaque bn254_g1_add : Bn254G1Point → Bn254G1Point → Bn254G1Point
 
 /-- `bn254_pairing P Q = e(P, Q) ∈ Fp12` — the optimal-Ate pairing. VERIFIED. -/
-axiom bn254_pairing : Bn254G1Point → Bn254G2Point → Bn254Fp12
+noncomputable opaque bn254_pairing : Bn254G1Point → Bn254G2Point → Bn254Fp12
 
 /-- `bn254_fp12_mul a b = a · b` over `Fp12` (the GT product). VERIFIED. -/
-axiom bn254_fp12_mul : Bn254Fp12 → Bn254Fp12 → Bn254Fp12
+noncomputable opaque bn254_fp12_mul : Bn254Fp12 → Bn254Fp12 → Bn254Fp12
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 
@@ -264,25 +272,31 @@ extension) cross-checks against the same AUCurves verified reference. -/
 
 /-! ### 8a. Opaque mid-tower surface types -/
 
+opaque Bn254Fp.Impl : NonemptyType.{0}
 /-- A BN254 base-field element `Fp` (32 bytes, 4 little-endian `u64` limbs,
     Montgomery form), matching the AUCurves `Fp([u64;4])` on-wire layout. -/
-axiom Bn254Fp : Type
+def Bn254Fp : Type := Bn254Fp.Impl.type
+instance : Nonempty Bn254Fp := Bn254Fp.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254Fp.default : Bn254Fp
 noncomputable instance : Inhabited Bn254Fp := ⟨Bn254Fp.default⟩
 
+opaque Bn254Fp2.Impl : NonemptyType.{0}
 /-- A BN254 quadratic-twist field element `Fp2 = Fp[u]/(u²+1)` (64 bytes, two
     `Fp` components: real ‖ imaginary). -/
-axiom Bn254Fp2 : Type
+def Bn254Fp2 : Type := Bn254Fp2.Impl.type
+instance : Nonempty Bn254Fp2 := Bn254Fp2.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254Fp2.default : Bn254Fp2
 noncomputable instance : Inhabited Bn254Fp2 := ⟨Bn254Fp2.default⟩
 
+opaque Bn254Fp6.Impl : NonemptyType.{0}
 /-- A BN254 cubic-over-quadratic field element `Fp6 = Fp2³` (192 bytes, three
     `Fp2` components c0 ‖ c1 ‖ c2). -/
-axiom Bn254Fp6 : Type
+def Bn254Fp6 : Type := Bn254Fp6.Impl.type
+instance : Nonempty Bn254Fp6 := Bn254Fp6.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Bn254Fp6.default : Bn254Fp6
 noncomputable instance : Inhabited Bn254Fp6 := ⟨Bn254Fp6.default⟩
 
-/-! ### 8b. Field-tower leaves (axioms = opaque jasmin function symbols)
+/-! ### 8b. Field-tower leaves (opaque constants and axioms = jasmin function symbols)
 
 The AUCurves verified `Fp` word leaves + the mid-tower `Fp2`/`Fp6` leaves the
 tower op bodies chain over. The `Fp` leaves (`bn254_add`/`mul`/`sub`) are the
@@ -292,40 +306,40 @@ same reg-ptr orchestration (the tower is built leaf-over-leaf). -/
 
 /-- `bn254_add a b = a + b` over the BN254 base field `Fp`. VERIFIED (AUCurves
     fiat-crypto Montgomery leaf). -/
-axiom bn254_add : Bn254Fp → Bn254Fp → Bn254Fp
+noncomputable opaque bn254_add : Bn254Fp → Bn254Fp → Bn254Fp
 /-- `bn254_sub a b = a − b` over `Fp`. VERIFIED. -/
-axiom bn254_sub : Bn254Fp → Bn254Fp → Bn254Fp
+noncomputable opaque bn254_sub : Bn254Fp → Bn254Fp → Bn254Fp
 /-- `bn254_mul a b = a · b` over `Fp` (Montgomery multiply). VERIFIED. -/
-axiom bn254_mul : Bn254Fp → Bn254Fp → Bn254Fp
+noncomputable opaque bn254_mul : Bn254Fp → Bn254Fp → Bn254Fp
 
 /-- `bn254_Fp2_add a b = a + b` over `Fp2`. VERIFIED (AUCurves extracted tower). -/
-axiom bn254_Fp2_add : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_add : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_sub a b = a − b` over `Fp2`. VERIFIED. -/
-axiom bn254_Fp2_sub : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_sub : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_mul a b = a · b` over `Fp2` (Karatsuba). VERIFIED. -/
-axiom bn254_Fp2_mul : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_mul : Bn254Fp2 → Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_mul_xi a = ξ · a` — multiply by the cubic non-residue. VERIFIED. -/
-axiom bn254_Fp2_mul_xi : Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_mul_xi : Bn254Fp2 → Bn254Fp2
 
 /-- `bn254_Fp6_add a b = a + b` over `Fp6`. VERIFIED. -/
-axiom bn254_Fp6_add : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
+noncomputable opaque bn254_Fp6_add : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
 /-- `bn254_Fp6_sub a b = a − b` over `Fp6`. VERIFIED. -/
-axiom bn254_Fp6_sub : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
+noncomputable opaque bn254_Fp6_sub : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
 /-- `bn254_Fp6_mul a b = a · b` over `Fp6` (Toom/Karatsuba). VERIFIED. -/
-axiom bn254_Fp6_mul : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
+noncomputable opaque bn254_Fp6_mul : Bn254Fp6 → Bn254Fp6 → Bn254Fp6
 /-- `bn254_Fp6_mul_by_v a = v · a` — multiply by the `Fp12` non-residue. VERIFIED. -/
-axiom bn254_Fp6_mul_by_v : Bn254Fp6 → Bn254Fp6
+noncomputable opaque bn254_Fp6_mul_by_v : Bn254Fp6 → Bn254Fp6
 
 /-- `bn254_Fp6_get_c{0,1,2} x` — the `i`-th `Fp2` component of an `Fp6` (byte
     offset `64·i` of the `u64[24]` buffer). Structural view; keeps the `Fp6`
     op exports within the x86-64 SysV 6-pointer-argument ABI (whole-`Fp6`
     operands instead of six per-component args). -/
-axiom bn254_Fp6_get_c0 : Bn254Fp6 → Bn254Fp2
+noncomputable opaque bn254_Fp6_get_c0 : Bn254Fp6 → Bn254Fp2
 /-- The c1 `Fp2` component of an `Fp6`. -/ axiom bn254_Fp6_get_c1 : Bn254Fp6 → Bn254Fp2
 /-- The c2 `Fp2` component of an `Fp6`. -/ axiom bn254_Fp6_get_c2 : Bn254Fp6 → Bn254Fp2
 /-- `bn254_Fp6_from_c012 a b c` — assemble an `Fp6` from its three `Fp2`
     components (inverse of `get_c{0,1,2}`). -/
-axiom bn254_Fp6_from_c012 : Bn254Fp2 → Bn254Fp2 → Bn254Fp2 → Bn254Fp6
+noncomputable opaque bn254_Fp6_from_c012 : Bn254Fp2 → Bn254Fp2 → Bn254Fp2 → Bn254Fp6
 
 /-! ### 8c. `@[rust_cmd_pattern]` registrations -/
 
@@ -589,36 +603,36 @@ conjugation / line-evaluation leaves, mirroring the AUCurves verified reference
 
 /-- `bn254_Fp2_square a = a²` over `Fp2` (Karatsuba squaring). VERIFIED
     (AUCurves `bn254_Fp2_square`). -/
-axiom bn254_Fp2_square : Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_square : Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_inv a = a⁻¹` over `Fp2`. VERIFIED (`bn254_Fp2_inv`). -/
-axiom bn254_Fp2_inv : Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_inv : Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_opp a = −a` over `Fp2`. VERIFIED (`bn254_Fp2_opp`). -/
-axiom bn254_Fp2_opp : Bn254Fp2 → Bn254Fp2
+noncomputable opaque bn254_Fp2_opp : Bn254Fp2 → Bn254Fp2
 /-- `bn254_Fp2_mul_fp a s = a · s` (`Fp2` times an `Fp` scalar, component-wise).
     VERIFIED (`bn254_Fp2_mul_fp`). -/
-axiom bn254_Fp2_mul_fp : Bn254Fp2 → Bn254Fp → Bn254Fp2
+noncomputable opaque bn254_Fp2_mul_fp : Bn254Fp2 → Bn254Fp → Bn254Fp2
 
 /-- `bn254_Fp12_square a = a²` over `Fp12` (the GT squaring). VERIFIED
     (`bn254_Fp12_square`). -/
-axiom bn254_Fp12_square : Bn254Fp12 → Bn254Fp12
+noncomputable opaque bn254_Fp12_square : Bn254Fp12 → Bn254Fp12
 /-- `bn254_Fp12_conjugate a` — the `Fp12/Fp6` conjugate `(a.c0, −a.c1)`, which on
     the cyclotomic subgroup realises the inverse. VERIFIED (`bn254_Fp12_conjugate`). -/
-axiom bn254_Fp12_conjugate : Bn254Fp12 → Bn254Fp12
+noncomputable opaque bn254_Fp12_conjugate : Bn254Fp12 → Bn254Fp12
 /-- `bn254_Fp12_cyclotomic_square a = a²` for `a` in the cyclotomic subgroup —
     the compressed (Granger–Scott) squaring used inside the final-exp `pow_u`
     chain. Agrees with `bn254_Fp12_square` on the cyclotomic subgroup; the
     cheaper schedule is the L3 win. VERIFIED-equivalent (the AUCurves reference
     final-exp uses `bn254_Fp12_square`; the compressed form is the standard
     optimisation realising the same GT value on `G_{Φ₆}`). -/
-axiom bn254_Fp12_cyclotomic_square : Bn254Fp12 → Bn254Fp12
+noncomputable opaque bn254_Fp12_cyclotomic_square : Bn254Fp12 → Bn254Fp12
 /-- `bn254_Fp12_frobenius a = a^p` — the `p`-power Frobenius on `Fp12`. VERIFIED
     (`bn254_Fp12_frobenius`, with the precomputed γ constants folded in). -/
-axiom bn254_Fp12_frobenius : Bn254Fp12 → Bn254Fp12
+noncomputable opaque bn254_Fp12_frobenius : Bn254Fp12 → Bn254Fp12
 
 /-- `bn254_make_line lam tx ty px py = ℓ ∈ Fp12` — the sparse line element of the
     tangent/chord at `T` evaluated at the affine `G1` point `P=(px,py)`. The
     line-evaluation leaf the Miller step fuses. VERIFIED (`bn254_make_line_corrected`). -/
-axiom bn254_make_line : Bn254Fp2 → Bn254Fp2 → Bn254Fp2 → Bn254Fp → Bn254Fp → Bn254Fp12
+noncomputable opaque bn254_make_line : Bn254Fp2 → Bn254Fp2 → Bn254Fp2 → Bn254Fp → Bn254Fp → Bn254Fp12
 
 /-! ### `@[rust_cmd_pattern]` registrations -/
 

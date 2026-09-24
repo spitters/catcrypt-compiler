@@ -76,15 +76,17 @@ ChaCha 4-way XMM-resident operates on a 4 × 16 × 32-bit packed state
 (four parallel ChaCha20 blocks). The full 256-byte packed state encodes
 as `.TBytes 256` (`memref 32`, 32 × `u64` limbs). -/
 
+opaque Chacha4WayState.Impl : NonemptyType.{0}
 /-- A packed 4-way ChaCha20 state: four parallel 64-byte ChaCha blocks
     packed into 16 XMM registers (lane k of register i holds state word
     i of block k). 256 bytes total. Opaque; the leaf
     `chacha_4way_xmm_block` runs the canonical 20-round schedule. -/
-axiom Chacha4WayState : Type
+def Chacha4WayState : Type := Chacha4WayState.Impl.type
+instance : Nonempty Chacha4WayState := Chacha4WayState.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Chacha4WayState.default : Chacha4WayState
 noncomputable instance : Inhabited Chacha4WayState := ⟨Chacha4WayState.default⟩
 
-/-! ## 2. ChaCha-4way leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. ChaCha-4way leaves (opaque constants = jasmin function symbols) -/
 
 /-- The 4-way ChaCha20 block kernel: run 20 rounds (10 double-rounds) on
     the packed 4-block state, return the packed 4-block keystream
@@ -92,7 +94,7 @@ noncomputable instance : Inhabited Chacha4WayState := ⟨Chacha4WayState.default
     the jasmin shim issuing 320 SIMD ops (the canonical XMM-resident
     body, see `bench/chacha_compare/chacha_4way_xmm_emit.lean` for the
     explicit op sequence). -/
-axiom chacha_4way_xmm_block : Chacha4WayState → Chacha4WayState
+noncomputable opaque chacha_4way_xmm_block : Chacha4WayState → Chacha4WayState
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

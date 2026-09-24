@@ -47,7 +47,7 @@ tied to `UnivariatePoly.eval` in `EmittedSumCheckRealization`).
 
 We model each major step as one opaque leaf (matching the FRI reflect surface):
 
-| Lean axiom                          | Leaf name (.jazz)                  | TowerType    |
+| Lean name                           | Leaf name (.jazz)                  | TowerType    |
 |-------------------------------------|------------------------------------|--------------|
 | `spartan_commit_witness`            | `spartan_commit_witness`           | `TBytes 32`  |
 | `spartan_round_poly N`              | `spartan_round_poly_N`             | `TBytes (8·(d+1))` |
@@ -77,42 +77,50 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## 1. Opaque Spartan sum-check surface types -/
 
+opaque SpartanWitness.Impl : NonemptyType.{0}
 /-- The multilinear witness polynomial (opaque byte buffer; the prover commits
     and opens it). -/
-axiom SpartanWitness : Type
+def SpartanWitness : Type := SpartanWitness.Impl.type
+instance : Nonempty SpartanWitness := SpartanWitness.Impl.property
 /-- Axiomatic inhabitant. -/ axiom SpartanWitness.default : SpartanWitness
 noncomputable instance : Inhabited SpartanWitness := ⟨SpartanWitness.default⟩
 
+opaque SpartanRoundPoly.Impl (N : Nat) : NonemptyType.{0}
 /-- A univariate round polynomial, `d+1` packed Baby Bear coefficients. -/
-axiom SpartanRoundPoly (N : Nat) : Type
+def SpartanRoundPoly (N : Nat) : Type := (SpartanRoundPoly.Impl N).type
+instance (N : Nat) : Nonempty (SpartanRoundPoly N) := (SpartanRoundPoly.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom SpartanRoundPoly.default (N : Nat) : SpartanRoundPoly N
 noncomputable instance (N : Nat) : Inhabited (SpartanRoundPoly N) :=
   ⟨SpartanRoundPoly.default N⟩
 
+opaque SpartanDigest.Impl : NonemptyType.{0}
 /-- A 32-byte commitment digest. -/
-axiom SpartanDigest : Type
+def SpartanDigest : Type := SpartanDigest.Impl.type
+instance : Nonempty SpartanDigest := SpartanDigest.Impl.property
 /-- Axiomatic inhabitant. -/ axiom SpartanDigest.default : SpartanDigest
 noncomputable instance : Inhabited SpartanDigest := ⟨SpartanDigest.default⟩
 
+opaque SpartanFelt.Impl : NonemptyType.{0}
 /-- An 8-byte Fiat–Shamir challenge / round evaluation (one Baby Bear element). -/
-axiom SpartanFelt : Type
+def SpartanFelt : Type := SpartanFelt.Impl.type
+instance : Nonempty SpartanFelt := SpartanFelt.Impl.property
 /-- Axiomatic inhabitant. -/ axiom SpartanFelt.default : SpartanFelt
 noncomputable instance : Inhabited SpartanFelt := ⟨SpartanFelt.default⟩
 
-/-! ## 2. Sum-check prover leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. Sum-check prover leaves (opaque constants and axioms = jasmin function symbols) -/
 
 /-- Commit to the multilinear witness polynomial (multilinear-IPA / Hyrax). -/
-axiom spartan_commit_witness : SpartanWitness → SpartanDigest
+noncomputable opaque spartan_commit_witness : SpartanWitness → SpartanDigest
 
 /-- Compute round `k`'s univariate round polynomial from the witness.
     Indexed by the round-polynomial coefficient count `N = d+1`. -/
-axiom spartan_round_poly (N : Nat) : SpartanWitness → SpartanRoundPoly N
+noncomputable opaque spartan_round_poly (N : Nat) : SpartanWitness → SpartanRoundPoly N
 
 /-- Commit to a round polynomial. -/
-axiom spartan_commit_round (N : Nat) : SpartanRoundPoly N → SpartanDigest
+noncomputable opaque spartan_commit_round (N : Nat) : SpartanRoundPoly N → SpartanDigest
 
 /-- Fiat–Shamir challenger squeeze: next round challenge from the transcript. -/
-axiom spartan_challenger_squeeze : SpartanDigest → SpartanFelt
+noncomputable opaque spartan_challenger_squeeze : SpartanDigest → SpartanFelt
 
 /-- Evaluate a round polynomial at the challenge by the **Horner round**.
     The leaf's internal semantics are `bbHornerEval`, tied to
@@ -121,7 +129,7 @@ axiom spartan_sumcheck_round_eval (N : Nat) :
     SpartanRoundPoly N → SpartanFelt → SpartanFelt
 
 /-- Open the multilinear polynomial commitment (multilinear-IPA opening). -/
-axiom spartan_pcs_open : SpartanWitness → SpartanDigest → SpartanDigest
+noncomputable opaque spartan_pcs_open : SpartanWitness → SpartanDigest → SpartanDigest
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 

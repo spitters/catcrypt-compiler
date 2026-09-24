@@ -36,7 +36,7 @@ the existing `bench/x25519_ladder/x25519_ladder_iter.jinc` uses); the
 verified front sees only the opaque leaf name and the 24-u64-limb tower
 type.
 
-| Lean axiom              | Leaf name (.jazz)      | TowerType    |
+| Lean name               | Leaf name (.jazz)      | TowerType    |
 |------------------------|------------------------|--------------|
 | `x25519_ladder_iter`    | `x25519_ladder_iter`   | `TBytes 192` |
 
@@ -85,15 +85,17 @@ The X25519 ladder carries a 24-word `u64` accumulator bundle:
 this as one opaque type `X25519LadderState` of `TBytes 192` (24 × 8 = 192
 bytes). -/
 
+opaque X25519LadderState.Impl : NonemptyType.{0}
 /-- A Curve25519 ladder accumulator bundle: the 24-u64-word state
     `[x2 | z2 | x3 | z3 | scalar | base]`. Opaque on the Lean side; the
     leaf `x25519_ladder_iter` reads and writes one full bundle per step.
     The reifier encodes this as `TBytes 192` (memref 24 u64-limbs). -/
-axiom X25519LadderState : Type
+def X25519LadderState : Type := X25519LadderState.Impl.type
+instance : Nonempty X25519LadderState := X25519LadderState.Impl.property
 /-- Axiomatic inhabitant. -/ axiom X25519LadderState.default : X25519LadderState
 noncomputable instance : Inhabited X25519LadderState := ⟨X25519LadderState.default⟩
 
-/-! ## 2. X25519 leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. X25519 leaves (opaque constants = jasmin function symbols)
 
 The single leaf is the per-iteration body of the Montgomery ladder. -/
 
@@ -103,7 +105,7 @@ The single leaf is the per-iteration body of the Montgomery ladder. -/
     `2²⁵⁵ − 19`, and writes the next bundle. Opaque here — the jasmin
     body wraps formosa-25519's ref4 ladder-step over the 24-word bundle.
     The 255-fold iteration of this leaf is the full X25519 scalarmult. -/
-axiom x25519_ladder_iter : X25519LadderState → X25519LadderState
+noncomputable opaque x25519_ladder_iter : X25519LadderState → X25519LadderState
 
 /-! ## 3. `@[rust_cmd_pattern]` registration -/
 

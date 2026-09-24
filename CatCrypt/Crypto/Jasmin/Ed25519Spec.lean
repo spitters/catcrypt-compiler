@@ -15,8 +15,8 @@ public import Mathlib.FieldTheory.Finite.Basic
 /-!
 # Ed25519 spec alignment — the proved correctness slice
 
-`Ed25519Iface.lean` names the sign/verify interface via axioms. This file
-discharges those axioms against `ZMod p` / `ZMod L` arithmetic where
+`Ed25519Iface.lean` names the sign/verify interface via opaque constants and axioms. This
+file discharges that interface against `ZMod p` / `ZMod L` arithmetic where
 possible, building up to a sign/verify *equivalence lemma* that
 captures the algebraic correctness of the RFC 8032 verification check.
 
@@ -109,7 +109,7 @@ instance : NeZero fpModulus := ⟨fpModulus_ne_zero⟩
     implements `Z/LZ` Montgomery-domain arithmetic; correctness is given
     by `Crypto/Arithmetic/WordByWordMontgomery.v` `mul_correct`,
     `add_correct`, etc. with the appropriate prime ≡ L. -/
-axiom interp : FpL25519 → ZMod L
+noncomputable opaque interp : FpL25519 → ZMod L
 
 /-- **Discharged in Rocq:** `WordByWordMontgomery.v` `add_correct`. -/
 axiom interp_scalar_add (x y : FpL25519) :
@@ -223,7 +223,7 @@ theorem response_scalar_add_r
 
     Same shape as the scalar side. The basic add/sub/mul/sqr/opp axioms
     are discharged by fiat-crypto's machine-checked proofs of
-    `curve25519_64.c`. The `fp_inv` axiom is the open obligation
+    `curve25519_64.c`. The `fp_inv` correctness axiom is the open obligation
     discharged by walking the 254-sqr + 11-mul Fermat chain. -/
 
 /-- Interpretation of `Fp25519` as `ZMod p` where `p = 2^255 - 19`.
@@ -232,7 +232,7 @@ theorem response_scalar_add_r
     implements `F p` arithmetic in unsaturated radix-51 form;
     correctness is given by `Crypto/Arithmetic/Saturated/UnsaturatedSolinas.v`
     `mul_correct`, `add_correct`, `square_correct`, etc. -/
-axiom interp_fe : Fp25519 → ZMod fpModulus
+noncomputable opaque interp_fe : Fp25519 → ZMod fpModulus
 
 /- Each axiom below is *discharged in Rocq* by a fiat-crypto theorem.
    The Rocq citations are named
@@ -403,7 +403,7 @@ noncomputable def affine (P : EdPoint) (hZ : interp_fe P.Z ≠ 0) :
     constant; `AffineProofs.v` proves it makes the Edwards equation
     `-x² + y² = 1 + d·x²·y²` define a complete Edwards curve over
     `F p`. -/
-axiom curve_d : ZMod fpModulus
+noncomputable opaque curve_d : ZMod fpModulus
 
 /-- The on-curve predicate (extended-coords form): an extended point
     `(X, Y, T, Z)` is on the curve iff `T·Z = X·Y` (extended-coords
@@ -421,7 +421,7 @@ def OnCurve (P : EdPoint) : Prop :=
     `to_affine_m1add` proves that the dalek extended-coords formula
     (Bernstein–Lange `m1` formula for `a = -1`) computes the same point
     as the affine Edwards addition `E.add` from `Spec/CompleteEdwardsCurve.v`. -/
-axiom ed_add : EdPoint → EdPoint → EdPoint
+noncomputable opaque ed_add : EdPoint → EdPoint → EdPoint
 
 /-- Scalar-multiplication action: `n · P` for `n : FpL25519` (mod L)
     and `P : EdPoint`.
@@ -429,14 +429,14 @@ axiom ed_add : EdPoint → EdPoint → EdPoint
     **Discharged in Rocq:** `XYZT/Basic.v` line 125, `Z.iter`-based
     scalar mul is proved equivalent to the additive group's `mul_S`
     via `isomorphic_commutative_group_m1`. -/
-axiom ed_smul : FpL25519 → EdPoint → EdPoint
+noncomputable opaque ed_smul : FpL25519 → EdPoint → EdPoint
 
 /-- The basepoint `B`.
 
     **Discharged in Rocq:** `Crypto/Spec/Curve25519.v` defines `B` with
     its compressed form `0x582166...666666` (matches our
     `BASEPOINT_COMPRESSED` in C). -/
-axiom ed_B : EdPoint
+noncomputable opaque ed_B : EdPoint
 
 /-- Distributivity of scalar mul over scalar addition.
 
@@ -506,7 +506,7 @@ theorem sign_verify_equation (r a k s : FpL25519)
   rw [interp_scalar_add, interp_scalar_mul, h_s]
 
 /-- The Edwards group identity element. -/
-axiom ed_identity : EdPoint
+noncomputable opaque ed_identity : EdPoint
 
 /-- Z-module zero: any scalar with `interp s = 0` (mod L) yields the
     identity under scalarmult.
@@ -561,7 +561,7 @@ axiom ed_compress_spec : (P : EdPoint) → (hZ : interp_fe P.Z ≠ 0) →
     **Discharged in Rocq**: `Crypto/Curves/Edwards/AffineProofs.v`
     `decompress` (returns `option point`). The `Some`/`None` cases
     are characterized by `decompress_Some` and `decompress_None`. -/
-axiom ed_decompress_spec : ZMod fpModulus → Bool → Option EdPoint
+noncomputable opaque ed_decompress_spec : ZMod fpModulus → Bool → Option EdPoint
 
 /-- **Discharged in Rocq** (cite:
     `AUCurves/src/Bedrock/End2End/Ed25519/EdwardsCompressDecompress.v`
@@ -604,7 +604,7 @@ theorem ed_compress_decompress_yields_on_curve_point
 /-! ## 8. Byte-reduction interpretation -/
 
 /-- Spec-level scalar reducer. -/
-axiom scalar_reduce_64 : ByteBuf → FpL25519
+noncomputable opaque scalar_reduce_64 : ByteBuf → FpL25519
 
 /-! ## 9. Proved corollaries combining scalar + field side -/
 

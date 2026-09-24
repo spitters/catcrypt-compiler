@@ -18,18 +18,18 @@ Elligator2 / hash-to-curve / `fp_sqrt_ratio_i` machinery.
 
 ## What this file ships
 
-* `fp_pow_p58 : Fp25519 → Fp25519` — opaque function (axiom).
+* `fp_pow_p58 : Fp25519 → Fp25519` — opaque function.
 * `interp_fp_pow_p58` — chain-correctness axiom:
   `interp_fe (fp_pow_p58 x) = (interp_fe x)^((p−5)/8)`.
 * `fp_sqrt_ratio_via_pow_p58` — the dalek formula
   `fp_sqrt_ratio_i u v = u · v · (u · v³ · (u · v⁷)^((p−5)/8))²`-shape
-  identity, connecting `fp_sqrt_ratio_i` (an existing axiom) to
+  identity, connecting `fp_sqrt_ratio_i` (an existing opaque function) to
   `fp_pow_p58` modulo the canonicalisation post-processing.
 
 ## Trust set delta
 
-This file adds **two new axioms** (`fp_pow_p58` itself, and the
-chain-correctness `interp_fp_pow_p58`) — same shape as
+This file adds **one opaque function** (`fp_pow_p58`) and **one axiom**
+(the chain-correctness `interp_fp_pow_p58`) — same shape as
 `fp_inv` + `interp_fp_inv_pow` for the `(p−2)` exponent.
 
 Both are discharged in Rocq:
@@ -39,7 +39,7 @@ Both are discharged in Rocq:
 * `interp_fp_pow_p58` — Rocq-side via the `exp_by_squaring_correct`
   lemma instantiated at exponent `(p−5)/8 = 2²⁵² − 3`.
 
-Once `bignum_pow_p25519_p58` lands as a Hoare triple, both axioms
+Once `bignum_pow_p25519_p58` lands as a Hoare triple, both declarations
 become unnecessary — the exponent's correctness is proved through
 the verified pipeline.
 
@@ -79,7 +79,7 @@ open scoped ENNReal
 /-- `x^((p−5)/8) = x^(2²⁵² − 3)` for Curve25519.  Implemented by the
     dalek-style `fpPowP58Chain` (see `Ed25519AddChainsDSL.lean`):
     251-operation chain (249 sqrs + 2 sqrs + 1 mul). -/
-axiom fp_pow_p58 : Fp25519 → Fp25519
+noncomputable opaque fp_pow_p58 : Fp25519 → Fp25519
 
 /-- Chain-correctness axiom for `fp_pow_p58`.  Asserts the
     interpretation of the chain output equals the abstract
@@ -180,7 +180,7 @@ theorem sqrt_via_pow_p58_qr_case_statement
 
 When `bignum_pow_p25519_p58` ships as a Hoare-verified leaf:
 
-1. Replace the `axiom fp_pow_p58 : Fp25519 → Fp25519` here with a
+1. Replace the opaque `fp_pow_p58 : Fp25519 → Fp25519` here with a
    `noncomputable def fp_pow_p58 : Fp25519 → Fp25519 := bignumPowP58.evalChain`.
 2. Replace `axiom interp_fp_pow_p58` with a theorem whose proof
    walks the `fpPowP58Chain` Hoare triple structure.

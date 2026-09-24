@@ -67,7 +67,7 @@ either `RFor` in `LowCT` or a per-block-count specialisation. This file's
 design is the **specialisation route**: one leaf per fixed `N`, today `N = 4`
 (the canonical NIST GCM TC4 / `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` 64-byte
 shape). Adding `N = 16` or `N = 256` is a copy of the `@[rust_cmd_pattern]` +
-axiom.
+opaque leaf.
 
 ## Reflection→front gap (same as MAYO / Falcon)
 
@@ -117,37 +117,47 @@ All five are opaque on the Lean side; the leaf `aesgcm_chain_n4` implements the
 concrete byte layout (matches `hax-specs/aesgcm-hax/src/gcm.rs` and the existing
 `bench/aesgcm_compare/aesgcm_kat.c` ABI). -/
 
+opaque AesKey.Impl : NonemptyType.{0}
 /-- AES-128 key (16 bytes). Opaque on the Lean side; the chain leaf reads it as
     the AES master key for the 11-round key schedule. -/
-axiom AesKey : Type
+def AesKey : Type := AesKey.Impl.type
+instance : Nonempty AesKey := AesKey.Impl.property
 /-- Axiomatic inhabitant. -/ axiom AesKey.default : AesKey
 noncomputable instance : Inhabited AesKey := ⟨AesKey.default⟩
 
+opaque GcmNonce.Impl : NonemptyType.{0}
 /-- AES-GCM 96-bit nonce (12 bytes). Opaque; the chain leaf uses it to derive
     `J0 = nonce ‖ 0x00000001` per SP 800-38D §7.1. -/
-axiom GcmNonce : Type
+def GcmNonce : Type := GcmNonce.Impl.type
+instance : Nonempty GcmNonce := GcmNonce.Impl.property
 /-- Axiomatic inhabitant. -/ axiom GcmNonce.default : GcmNonce
 noncomputable instance : Inhabited GcmNonce := ⟨GcmNonce.default⟩
 
+opaque GcmAad.Impl : NonemptyType.{0}
 /-- AES-GCM AAD: one 16-byte block (matches the canonical NIST GCM TC4 / the
     `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` AAD shape). Opaque. -/
-axiom GcmAad : Type
+def GcmAad : Type := GcmAad.Impl.type
+instance : Nonempty GcmAad := GcmAad.Impl.property
 /-- Axiomatic inhabitant. -/ axiom GcmAad.default : GcmAad
 noncomputable instance : Inhabited GcmAad := ⟨GcmAad.default⟩
 
+opaque GcmPt4.Impl : NonemptyType.{0}
 /-- AES-GCM plaintext: 4 AES blocks = 64 bytes (matches the `hax-specs/aesgcm-hax`
     fixed-size `gcm_encrypt` test case and the legacy
     `bench/aesgcm_compare/aesgcm_kat.c` ABI). Opaque; the chain leaf
     encrypts it via AES-CTR keystream. -/
-axiom GcmPt4 : Type
+def GcmPt4 : Type := GcmPt4.Impl.type
+instance : Nonempty GcmPt4 := GcmPt4.Impl.property
 /-- Axiomatic inhabitant. -/ axiom GcmPt4.default : GcmPt4
 noncomputable instance : Inhabited GcmPt4 := ⟨GcmPt4.default⟩
 
+opaque GcmCt4Tag.Impl : NonemptyType.{0}
 /-- AES-GCM ciphertext ‖ tag bundle: 64 bytes of ciphertext + 16 bytes of
     authentication tag = 80 bytes, packaged as one opaque type so the chain
     leaf has a single output region (the front-end ABI uses one `__result`
     pointer per export). Opaque. -/
-axiom GcmCt4Tag : Type
+def GcmCt4Tag : Type := GcmCt4Tag.Impl.type
+instance : Nonempty GcmCt4Tag := GcmCt4Tag.Impl.property
 /-- Axiomatic inhabitant. -/ axiom GcmCt4Tag.default : GcmCt4Tag
 noncomputable instance : Inhabited GcmCt4Tag := ⟨GcmCt4Tag.default⟩
 
@@ -164,19 +174,19 @@ decomposition** of the chain and so callers that want a finer-grained surface
     `aesBlockCom : Com jasminDialect [.reg 128, .reg 128] (.reg 128)`
     emits to (see `bench/aesgcm_compare/aesgcm_emit.lean`). Surfaced here as
     an opaque leaf so the conceptual chain decomposition is documented. -/
-axiom aesgcm_round_step : AesKey → BitVec 128 → BitVec 128
+noncomputable opaque aesgcm_round_step : AesKey → BitVec 128 → BitVec 128
 
 /-- One GHASH per-block GF(2^128) multiply by the hash subkey `H = AES_K(0^128)`.
     The committed lsb-first `gf_clmul128` + `gf_reduce` kernel + the GCM
     reflect-mul-reflect bridge (Gueron–Kounavis), as in
     `aesgcm_emit.lean`'s `ghashMulFn`. Surfaced here as an opaque leaf for the
     conceptual decomposition. -/
-axiom ghash_mul64 : BitVec 128 → BitVec 128 → BitVec 128
+noncomputable opaque ghash_mul64 : BitVec 128 → BitVec 128 → BitVec 128
 
 /-- AES-128 key-schedule (master key → 11 round keys). Real implementations
     use AES-NI `AESKEYGENASSIST`. Surfaced as an opaque leaf for the
     conceptual decomposition; the chain leaf rolls this in. -/
-axiom aes_expand_key : AesKey → AesKey
+noncomputable opaque aes_expand_key : AesKey → AesKey
 
 /-! ## 3. The chain leaf (the orchestration this file emits)
 
@@ -197,7 +207,7 @@ opaque jasmin function symbol. The per-round Com substrate
     Constant-time per NIST SP 800-38D Algorithm 4: no secret-dependent branch;
     the AES round step, GHASH multiply, and counter increment are all
     register-arith / pclmul, no table-lookup dependent on key material. -/
-axiom aesgcm_chain_n4 : AesKey → GcmNonce → GcmAad → GcmPt4 → GcmCt4Tag
+noncomputable opaque aesgcm_chain_n4 : AesKey → GcmNonce → GcmAad → GcmPt4 → GcmCt4Tag
 
 /-! ## 4. `@[rust_cmd_pattern]` registration -/
 

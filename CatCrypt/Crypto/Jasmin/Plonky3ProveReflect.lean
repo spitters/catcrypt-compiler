@@ -64,7 +64,7 @@ orchestrator emit self-contained: a downstream change to the per-sub-layer
 leaf shape does NOT break the orchestrator's verified front (only the
 end-link in `.jinc` includes change). The per-orchestrator leaves are:
 
-| Lean axiom                       | Leaf name (.jazz)              | TowerType         |
+| Lean name                        | Leaf name (.jazz)              | TowerType         |
 |----------------------------------|--------------------------------|-------------------|
 | `plonky3_trace_lde`              | `plonky3_trace_lde_H`          | `TBytes (32 · H)` |
 | `plonky3_merkle_commit_orch`     | `plonky3_merkle_commit_orch_H` | `TBytes 32`       |
@@ -102,54 +102,68 @@ The orchestrator's reflect surface treats each whole layer's output as an
 opaque byte buffer of fixed size (parameterised by the trace height `H`).
 The internal byte-layouts are the leaves' business. -/
 
+opaque Plonky3LdeTrace.Impl (H : Nat) : NonemptyType.{0}
 /-- LDE-extended trace (blowup·H rows × W columns). Opaque on the Lean side;
     the leaf `plonky3_trace_lde_H` materialises the LDE bytes. -/
-axiom Plonky3LdeTrace (H : Nat) : Type
+def Plonky3LdeTrace (H : Nat) : Type := (Plonky3LdeTrace.Impl H).type
+instance (H : Nat) : Nonempty (Plonky3LdeTrace H) := (Plonky3LdeTrace.Impl H).property
 /-- Axiomatic inhabitant. -/ axiom Plonky3LdeTrace.default (H : Nat) : Plonky3LdeTrace H
 noncomputable instance (H : Nat) : Inhabited (Plonky3LdeTrace H) :=
   ⟨Plonky3LdeTrace.default H⟩
 
+opaque Plonky3Commit.Impl : NonemptyType.{0}
 /-- A 32-byte trace commitment (Merkle root of the LDE-extended trace). -/
-axiom Plonky3Commit : Type
+def Plonky3Commit : Type := Plonky3Commit.Impl.type
+instance : Nonempty Plonky3Commit := Plonky3Commit.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3Commit.default : Plonky3Commit
 noncomputable instance : Inhabited Plonky3Commit := ⟨Plonky3Commit.default⟩
 
+opaque Plonky3Alpha.Impl : NonemptyType.{0}
 /-- An 8-byte Fiat-Shamir challenge α produced by squeezing the transcript. -/
-axiom Plonky3Alpha : Type
+def Plonky3Alpha : Type := Plonky3Alpha.Impl.type
+instance : Nonempty Plonky3Alpha := Plonky3Alpha.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3Alpha.default : Plonky3Alpha
 noncomputable instance : Inhabited Plonky3Alpha := ⟨Plonky3Alpha.default⟩
 
+opaque Plonky3Quotient.Impl (H : Nat) : NonemptyType.{0}
 /-- The composition polynomial / quotient (size selector-inclusive degree 2).
     Opaque; the `plonky3_quotient_compose_H` leaf materialises bytes. -/
-axiom Plonky3Quotient (H : Nat) : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3Quotient.default (H : Nat) : Plonky3Quotient H
+def Plonky3Quotient (H : Nat) : Type := (Plonky3Quotient.Impl H).type
+instance (H : Nat) : Nonempty (Plonky3Quotient H) := (Plonky3Quotient.Impl H).property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3Quotient.default (H : Nat) : Plonky3Quotient H
 noncomputable instance (H : Nat) : Inhabited (Plonky3Quotient H) :=
   ⟨Plonky3Quotient.default H⟩
 
+opaque Plonky3OodDeep.Impl (H : Nat) : NonemptyType.{0}
 /-- The DEEP / OOD batched evaluations. Opaque. -/
-axiom Plonky3OodDeep (H : Nat) : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3OodDeep.default (H : Nat) : Plonky3OodDeep H
+def Plonky3OodDeep (H : Nat) : Type := (Plonky3OodDeep.Impl H).type
+instance (H : Nat) : Nonempty (Plonky3OodDeep H) := (Plonky3OodDeep.Impl H).property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3OodDeep.default (H : Nat) : Plonky3OodDeep H
 noncomputable instance (H : Nat) : Inhabited (Plonky3OodDeep H) :=
   ⟨Plonky3OodDeep.default H⟩
 
+opaque Plonky3Proof.Impl : NonemptyType.{0}
 /-- The full Plonky3 proof (FRI commits + queries + grind). 32-byte digest
     surface; the proof's expanded byte form is the leaf's internal layout. -/
-axiom Plonky3Proof : Type
+def Plonky3Proof : Type := Plonky3Proof.Impl.type
+instance : Nonempty Plonky3Proof := Plonky3Proof.Impl.property
 /-- Axiomatic inhabitant. -/ axiom Plonky3Proof.default : Plonky3Proof
 noncomputable instance : Inhabited Plonky3Proof := ⟨Plonky3Proof.default⟩
 
+opaque Plonky3ProveTrace.Impl (W H : Nat) : NonemptyType.{0}
 /-- An opaque execution-trace input for the prover.  Same shape as
     `Plonky3Trace W H` from `Plonky3AirReflect.lean` but named distinctly so
     the orchestrator's reflect-surface namespace is self-contained. -/
-axiom Plonky3ProveTrace (W H : Nat) : Type
-/-- Axiomatic inhabitant. -/
-axiom Plonky3ProveTrace.default (W H : Nat) : Plonky3ProveTrace W H
+def Plonky3ProveTrace (W H : Nat) : Type := (Plonky3ProveTrace.Impl W H).type
+instance (W H : Nat) : Nonempty (Plonky3ProveTrace W H) := (Plonky3ProveTrace.Impl W H).property
+/-- An inhabitant. -/
+noncomputable opaque Plonky3ProveTrace.default (W H : Nat) : Plonky3ProveTrace W H
 noncomputable instance (W H : Nat) : Inhabited (Plonky3ProveTrace W H) :=
   ⟨Plonky3ProveTrace.default W H⟩
 
-/-! ## 2. Per-orchestrator opaque leaves (axioms = jasmin function symbols)
+/-! ## 2. Per-orchestrator opaque leaves (opaque constants and axioms = jasmin function symbols)
 
 Each leaf is one whole-layer call in the prover orchestration. The sub-layer
 internals are emitted by the layer-N reflect files; the orchestrator only
@@ -157,13 +171,13 @@ calls the top-level entry of each layer (e.g. `lde_coset_fft` for the whole
 LDE, not the per-stage NTT butterfly). -/
 
 /-- The whole LDE layer: `trace_lde = lde(trace)` (4× blowup factor). -/
-axiom plonky3_trace_lde (W H : Nat) : Plonky3ProveTrace W H → Plonky3LdeTrace H
+noncomputable opaque plonky3_trace_lde (W H : Nat) : Plonky3ProveTrace W H → Plonky3LdeTrace H
 
 /-- The whole Merkle layer: `commit = merkle_commit(trace_lde)`. -/
-axiom plonky3_merkle_commit_orch (H : Nat) : Plonky3LdeTrace H → Plonky3Commit
+noncomputable opaque plonky3_merkle_commit_orch (H : Nat) : Plonky3LdeTrace H → Plonky3Commit
 
 /-- Challenger / Fiat-Shamir squeeze: `α = squeeze(commit)`. -/
-axiom plonky3_challenger_squeeze_orch : Plonky3Commit → Plonky3Alpha
+noncomputable opaque plonky3_challenger_squeeze_orch : Plonky3Commit → Plonky3Alpha
 
 /-- Quotient / composition polynomial (SELECTOR-INCLUSIVE degree 2). -/
 axiom plonky3_quotient_compose (H : Nat) :
@@ -174,7 +188,7 @@ axiom plonky3_ood_deep (H : Nat) :
     Plonky3Quotient H → Plonky3Alpha → Plonky3OodDeep H
 
 /-- The whole FRI prover: commit + query + grind. -/
-axiom plonky3_fri_prove (H : Nat) : Plonky3OodDeep H → Plonky3Alpha → Plonky3Proof
+noncomputable opaque plonky3_fri_prove (H : Nat) : Plonky3OodDeep H → Plonky3Alpha → Plonky3Proof
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 

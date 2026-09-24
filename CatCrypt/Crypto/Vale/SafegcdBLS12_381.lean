@@ -139,12 +139,14 @@ open CatCrypt.Crypto.Vale.LeafLeakage
 The 48-byte BLS12-381 `Fp` element (6×u64 saturated LE on the wire).
 Opaque — the concrete leaf at link time is the AUCurves Rust symbol. -/
 
+opaque BLS12_381_Fp.Impl : NonemptyType.{0}
 /-- A 48-byte BLS12-381 `Fp` field element (6×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `bls12_invert_divstep_sat`. -/
-axiom BLS12_381_Fp : Type
-/-- Axiomatic inhabitant. -/
-axiom BLS12_381_Fp.default : BLS12_381_Fp
+def BLS12_381_Fp : Type := BLS12_381_Fp.Impl.type
+instance : Nonempty BLS12_381_Fp := BLS12_381_Fp.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque BLS12_381_Fp.default : BLS12_381_Fp
 noncomputable instance : Inhabited BLS12_381_Fp :=
   ⟨BLS12_381_Fp.default⟩
 
@@ -167,7 +169,7 @@ axiom Safegcd_BLS12_381_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `bls12_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom Safegcd_BLS12_381_invert_leak (x : BLS12_381_Fp) : LeafLeak
+noncomputable opaque Safegcd_BLS12_381_invert_leak (x : BLS12_381_Fp) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     BLS12-381 `Fp` inverter is the same at every operand `x`. The

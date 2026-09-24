@@ -62,14 +62,18 @@ A P-256 field element `Fp` is 4 little-endian `u64` limbs = 32 bytes
 (matching fiat-crypto `[u64;4]` Montgomery layout). On the wire an affine
 point is `(x ‖ y)` = 64 bytes; a scalar is 32 bytes. -/
 
+opaque P256Scalar.Impl : NonemptyType.{0}
 /-- A P-256 scalar (an element of `Fn`, mod the P-256 group order). 32
     bytes on the wire. Opaque. -/
-axiom P256Scalar : Type
+def P256Scalar : Type := P256Scalar.Impl.type
+instance : Nonempty P256Scalar := P256Scalar.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P256Scalar.default : P256Scalar
 noncomputable instance : Inhabited P256Scalar := ⟨P256Scalar.default⟩
 
+opaque P256Point.Impl : NonemptyType.{0}
 /-- A P-256 affine point `(x ‖ y)`. 64 bytes on the wire. Opaque. -/
-axiom P256Point : Type
+def P256Point : Type := P256Point.Impl.type
+instance : Nonempty P256Point := P256Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P256Point.default : P256Point
 noncomputable instance : Inhabited P256Point := ⟨P256Point.default⟩
 
@@ -77,12 +81,12 @@ noncomputable instance : Inhabited P256Point := ⟨P256Point.default⟩
 
 /-- P-256 scalar multiplication `R = k · P`. Opaque; the jasmin shim
     issues the ladder over the AUCurves-verified field leaves. -/
-axiom p256_scalar_mul : P256Scalar → P256Point → P256Point
+noncomputable opaque p256_scalar_mul : P256Scalar → P256Point → P256Point
 
 /-- P-256 point addition `R = P + Q`. Opaque; the jasmin shim implements
     the short-Weierstrass affine point-add formula over the AUCurves-
     verified field leaves. -/
-axiom p256_point_add : P256Point → P256Point → P256Point
+noncomputable opaque p256_point_add : P256Point → P256Point → P256Point
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

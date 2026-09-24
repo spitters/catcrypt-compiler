@@ -138,12 +138,14 @@ The 32-byte BN254 base-field element (4×u64 saturated LE on the wire).
 Opaque — the concrete leaf at link time is the AUCurves Rust symbol
 `safegcd_bn254_invert` (re-export of `bn254_invert_divstep_sat`). -/
 
+opaque BN254SafegcdFieldElt.Impl : NonemptyType.{0}
 /-- A 32-byte BN254 `Fp` field element (4×u64 saturated LE).
     Opaque; the concrete leaf is the AUCurves verified-CT
     `bn254_invert_divstep_sat`. -/
-axiom BN254SafegcdFieldElt : Type
-/-- Axiomatic inhabitant. -/
-axiom BN254SafegcdFieldElt.default : BN254SafegcdFieldElt
+def BN254SafegcdFieldElt : Type := BN254SafegcdFieldElt.Impl.type
+instance : Nonempty BN254SafegcdFieldElt := BN254SafegcdFieldElt.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque BN254SafegcdFieldElt.default : BN254SafegcdFieldElt
 noncomputable instance : Inhabited BN254SafegcdFieldElt :=
   ⟨BN254SafegcdFieldElt.default⟩
 
@@ -167,7 +169,7 @@ axiom AUCurves_safegcd_bn254_invert_denote
 
 /-- **Leakage function**: the observable trace the
     `bn254_invert_divstep_sat` leaf emits on operand `x`. -/
-axiom AUCurves_safegcd_bn254_invert_leak (x : BN254SafegcdFieldElt) : LeafLeak
+noncomputable opaque AUCurves_safegcd_bn254_invert_leak (x : BN254SafegcdFieldElt) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     `bn254_invert_divstep_sat` leaf is the same at every operand `x`. The

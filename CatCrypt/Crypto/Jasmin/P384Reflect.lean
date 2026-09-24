@@ -70,7 +70,7 @@ hypothesis to `callFreePlusCall c = true` and takes leaf oracles
 `hLimb` and `hClone`. Instantiating it for these kernels requires a
 `LeafSpec` and a `TransEnv` in which `p384_scalar_mul` and `p384_point_add`
 are implemented and agree; neither is supplied here, and the leaves are
-axioms.
+opaque constants.
 
 No constant-time property and no security property is claimed. The leaves are
 opaque, and the only P-384 `GroupParam` in this workspace is degenerate.
@@ -91,15 +91,19 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## 1. Opaque P-384 surface types -/
 
+opaque P384Scalar.Impl : NonemptyType.{0}
 /-- A P-384 scalar, an element of `Fn` modulo the P-384 group order. Six
     little-endian 64-bit limbs, 48 bytes on the wire. Opaque. -/
-axiom P384Scalar : Type
+def P384Scalar : Type := P384Scalar.Impl.type
+instance : Nonempty P384Scalar := P384Scalar.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P384Scalar.default : P384Scalar
 noncomputable instance : Inhabited P384Scalar := ⟨P384Scalar.default⟩
 
+opaque P384Point.Impl : NonemptyType.{0}
 /-- A P-384 projective point `X ‖ Y ‖ Z`, three Montgomery-form base-field
     elements of 48 bytes each, 144 bytes on the wire. Opaque. -/
-axiom P384Point : Type
+def P384Point : Type := P384Point.Impl.type
+instance : Nonempty P384Point := P384Point.Impl.property
 /-- Axiomatic inhabitant. -/ axiom P384Point.default : P384Point
 noncomputable instance : Inhabited P384Point := ⟨P384Point.default⟩
 
@@ -107,7 +111,7 @@ noncomputable instance : Inhabited P384Point := ⟨P384Point.default⟩
 
 /-- P-384 scalar multiplication `R = k · P`. Opaque; the shim issues the
     windowed ladder of `p384-safe-rust` `g1_scalar_mul`. -/
-axiom p384_scalar_mul : P384Scalar → P384Point → P384Point
+noncomputable opaque p384_scalar_mul : P384Scalar → P384Point → P384Point
 
 /-- P-384 fixed-base scalar multiplication `R = k · G`, with `G` the P-384
     generator of FIPS 186-4 D.1.2.4. The generator is fixed in the leaf, so a
@@ -118,11 +122,11 @@ axiom p384_scalar_mul : P384Scalar → P384Point → P384Point
     trace depending on neither the value of `k` nor the table entries it
     selects; and the precomputed multiples of `G` it reads are for that same
     generator. Opaque here. -/
-axiom p384_scalar_mul_base : P384Scalar → P384Point
+noncomputable opaque p384_scalar_mul_base : P384Scalar → P384Point
 
 /-- P-384 point addition `R = P + Q`. Opaque; the shim issues the complete
     projective addition of `p384-safe-rust` `g1_add`. -/
-axiom p384_point_add : P384Point → P384Point → P384Point
+noncomputable opaque p384_point_add : P384Point → P384Point → P384Point
 
 /-- P-384 two-term linear combination `R = u₁ · G + u₂ · Q`, with `G` the
     generator of FIPS 186-4 D.1.2.4 fixed in the leaf, so a caller passes the
@@ -151,7 +155,7 @@ axiom p384_point_add : P384Point → P384Point → P384Point
     interleaved pass against two separate ladders and an addition. The shim
     crate's differential test of the leaf against that two-multiply form is
     what ties them; no agreement between them is proved here. Opaque. -/
-axiom p384_lincomb : P384Scalar → P384Scalar → P384Point → P384Point
+noncomputable opaque p384_lincomb : P384Scalar → P384Scalar → P384Point → P384Point
 
 /-! ## 3. Tower-type abbreviations -/
 

@@ -31,7 +31,7 @@ compiler chain `LowCT → catCryptDialect → Com → jasmin`, **without** editi
 We model each major step as one opaque leaf call, working over the
 `TPolyMod 12289 512` tower type (`encodeTy ↦ memref 128`):
 
-| Lean axiom                  | Leaf name (.jazz)             | TowerType                |
+| Lean name                   | Leaf name (.jazz)             | TowerType                |
 |----------------------------|-------------------------------|--------------------------|
 | `falcon_decode_pk`          | `falcon_decode_pk_12289_512`  | `TPolyMod 12289 512`    |
 | `falcon_hash_to_point`      | `falcon_hash_to_point_12289_512` | `TPolyMod 12289 512` |
@@ -74,75 +74,85 @@ so they share the tower type `TPolyMod 12289 512`. The `decode_*` leaves abstrac
 away the byte-layer (Falcon's sig/pk wire formats are Huffman/Golomb-coded byte
 strings; the verified front sees only their decoded polynomial form). -/
 
+opaque FalconPoly.Impl : NonemptyType.{0}
 /-- Falcon-512 polynomial in `ℤ_{12289}[X]/(X^512 + 1)` (512 coeffs × 14 bits ≈
     1024 bytes = `memref 128`). Opaque on the Lean side; the leaves
     `falcon_*_12289_512` implement the concrete byte-layout under the hood. -/
-axiom FalconPoly : Type
+def FalconPoly : Type := FalconPoly.Impl.type
+instance : Nonempty FalconPoly := FalconPoly.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconPoly.default : FalconPoly
 noncomputable instance : Inhabited FalconPoly := ⟨FalconPoly.default⟩
 
+opaque FalconPubKey.Impl : NonemptyType.{0}
 /-- Falcon-512 public key: the polynomial `h ∈ R_q` plus 1-byte header.
     Wire size: 897 bytes (FIPS 206 draft §5.2). Opaque; `decode_pk` recovers
     the polynomial body. -/
-axiom FalconPubKey : Type
+def FalconPubKey : Type := FalconPubKey.Impl.type
+instance : Nonempty FalconPubKey := FalconPubKey.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconPubKey.default : FalconPubKey
 noncomputable instance : Inhabited FalconPubKey := ⟨FalconPubKey.default⟩
 
+opaque FalconSig.Impl : NonemptyType.{0}
 /-- Falcon-512 signature: 40-byte nonce + 666 bytes of compressed `s` poly.
     Wire size: 666+40+1 = 707 (compact; spec max 752 B). Opaque. -/
-axiom FalconSig : Type
+def FalconSig : Type := FalconSig.Impl.type
+instance : Nonempty FalconSig := FalconSig.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconSig.default : FalconSig
 noncomputable instance : Inhabited FalconSig := ⟨FalconSig.default⟩
 
+opaque FalconMsgPlusNonce.Impl : NonemptyType.{0}
 /-- Message-with-nonce surface: `r ‖ m` where `r` is the 40-byte nonce drawn
     from the signature header and `m` is the message. The `hash_to_point` leaf
     consumes the bundled bytes; we present it as a single opaque type to keep
     the verify-body let-chain homogeneous. -/
-axiom FalconMsgPlusNonce : Type
+def FalconMsgPlusNonce : Type := FalconMsgPlusNonce.Impl.type
+instance : Nonempty FalconMsgPlusNonce := FalconMsgPlusNonce.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconMsgPlusNonce.default : FalconMsgPlusNonce
 noncomputable instance : Inhabited FalconMsgPlusNonce := ⟨FalconMsgPlusNonce.default⟩
 
+opaque FalconAccept.Impl : NonemptyType.{0}
 /-- Verify result: `1` (accept) or `0` (reject), packaged as an 8-byte word so
     the front can treat it as a single-`u64` return value. -/
-axiom FalconAccept : Type
+def FalconAccept : Type := FalconAccept.Impl.type
+instance : Nonempty FalconAccept := FalconAccept.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconAccept.default : FalconAccept
 noncomputable instance : Inhabited FalconAccept := ⟨FalconAccept.default⟩
 
-/-! ## 2. Verify leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. Verify leaves (opaque constants = jasmin function symbols) -/
 
 /-- `h = decode_pk(pk)`: parses the 897-byte public key into the polynomial `h`. -/
-axiom falcon_decode_pk : FalconPubKey → FalconPoly
+noncomputable opaque falcon_decode_pk : FalconPubKey → FalconPoly
 
 /-- `c = HashToPoint(r ‖ m)`: SHAKE256 reject-sampler producing a uniform poly
     in `R_q`. Constant-time per Falcon spec (the reject-loop trip count is a
     public function of the seed only, not of secret material). -/
-axiom falcon_hash_to_point : FalconMsgPlusNonce → FalconPoly
+noncomputable opaque falcon_hash_to_point : FalconMsgPlusNonce → FalconPoly
 
 /-- `s2 = decode_sig(sig)`: decompresses the Huffman/Golomb-coded `s` polynomial
     from the signature header. The signature wire format also implicitly
     provides the nonce `r` (via `falcon_sig_nonce` below). -/
-axiom falcon_decode_sig : FalconSig → FalconPoly
+noncomputable opaque falcon_decode_sig : FalconSig → FalconPoly
 
 /-- `t = s2 · h mod (X^N + 1, q)`: the ring multiplication. Implementation-wise
     a forward-NTT pair, NTT-domain pointwise, inverse-NTT round trip — see the
     `polymul_from_rustcmd.lean` pattern. Opaque here to keep the verify body
     flat. -/
-axiom falcon_poly_mul_modq : FalconPoly → FalconPoly → FalconPoly
+noncomputable opaque falcon_poly_mul_modq : FalconPoly → FalconPoly → FalconPoly
 
 /-- `s1 = c − t mod q`: coefficientwise subtraction with mod-`q` correction.
     This is the lane-map kernel of the legacy FN-DSA emit (`fndsa_512_verify`),
     here lifted to the polynomial-level operation. -/
-axiom falcon_poly_sub_modq : FalconPoly → FalconPoly → FalconPoly
+noncomputable opaque falcon_poly_sub_modq : FalconPoly → FalconPoly → FalconPoly
 
 /-- `ok = ‖(s1, s2)‖² ≤ ⌊β²⌋`: norm-bound check. Returns 1 (accept) iff the
     sum of squared signed-canonical coefficients is within the spec bound
     (`⌊β²⌋ = 34034726` for Falcon-512). -/
-axiom falcon_norm_bound_check : FalconPoly → FalconPoly → FalconAccept
+noncomputable opaque falcon_norm_bound_check : FalconPoly → FalconPoly → FalconAccept
 
 /-- Helper: extract the message-plus-nonce bundle from the (sig, msg) pair.
     Real implementations concatenate `sig.r ‖ msg`; modelled here as one
     opaque leaf. -/
-axiom falcon_sig_msg_bundle : FalconSig → FalconMsgPlusNonce
+noncomputable opaque falcon_sig_msg_bundle : FalconSig → FalconMsgPlusNonce
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 
@@ -354,46 +364,52 @@ implementation handles the loop internally).
 The compressed-encode step is one opaque leaf `falcon_comp_encode_512`. The
 nonce-draw is one opaque leaf `falcon_draw_nonce`. -/
 
+opaque FalconSecKey.Impl : NonemptyType.{0}
 /-- Falcon-512 secret key: `(f, g, F, G)` plus 1-byte header. Wire size 1281
     bytes (FIPS 206 draft §5.2). Opaque on the Lean side; the leaves operate
     on the byte form, with the basis fields recovered internally. -/
-axiom FalconSecKey : Type
+def FalconSecKey : Type := FalconSecKey.Impl.type
+instance : Nonempty FalconSecKey := FalconSecKey.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconSecKey.default : FalconSecKey
 noncomputable instance : Inhabited FalconSecKey := ⟨FalconSecKey.default⟩
 
+opaque FalconNonce.Impl : NonemptyType.{0}
 /-- Fresh 40-byte sign nonce drawn from the system randomness. Opaque; the
     `falcon_draw_nonce` leaf realizes the rejection-free byte draw. -/
-axiom FalconNonce : Type
+def FalconNonce : Type := FalconNonce.Impl.type
+instance : Nonempty FalconNonce := FalconNonce.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconNonce.default : FalconNonce
 noncomputable instance : Inhabited FalconNonce := ⟨FalconNonce.default⟩
 
+opaque FalconShortPair.Impl : NonemptyType.{0}
 /-- Pair of short polynomials `(s1, s2) ∈ R_q × R_q` produced by `ffSampling`
     against the secret basis. The Falcon sampler's primary product; the sign
     body keeps `s2` and encodes the difference of `s1` against `c − s2·h`. -/
-axiom FalconShortPair : Type
+def FalconShortPair : Type := FalconShortPair.Impl.type
+instance : Nonempty FalconShortPair := FalconShortPair.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconShortPair.default : FalconShortPair
 noncomputable instance : Inhabited FalconShortPair := ⟨FalconShortPair.default⟩
 
-/-! ### Sign leaves (axioms = opaque jasmin function symbols) -/
+/-! ### Sign leaves (opaque constants = jasmin function symbols) -/
 
 /-- `nonce = draw_nonce()`: 40-byte system-RNG draw, opaque seed for sign. -/
-axiom falcon_draw_nonce : Unit → FalconNonce
+noncomputable opaque falcon_draw_nonce : Unit → FalconNonce
 
 /-- `bundle = nonce ‖ msg`: glue nonce and msg into the SHAKE256 hash input. -/
-axiom falcon_bundle_nonce_msg : FalconNonce → FalconMsgPlusNonce → FalconMsgPlusNonce
+noncomputable opaque falcon_bundle_nonce_msg : FalconNonce → FalconMsgPlusNonce → FalconMsgPlusNonce
 
 /-- `(s1, s2) = ffSampling(sk, c)`: the secret-basis Gaussian sampler. Opaque
     leaf — the FFT-tree recursion is the BIG residual; LowCT can't express
     it natively. Implementation handles the reject-loop internally. -/
-axiom falcon_ffsampling : FalconSecKey → FalconPoly → FalconShortPair
+noncomputable opaque falcon_ffsampling : FalconSecKey → FalconPoly → FalconShortPair
 
 /-- `s2 = project_s2(pair)`: extract the s2 component the signature carries. -/
-axiom falcon_project_s2 : FalconShortPair → FalconPoly
+noncomputable opaque falcon_project_s2 : FalconShortPair → FalconPoly
 
 /-- `sig = comp_encode(nonce, s2)`: Golomb-Huffman compress `s2`, prepend the
     nonce header byte and the nonce, output the 752-byte ceiling signature.
     Opaque leaf — the bit-packed codec is byte-layer detail. -/
-axiom falcon_comp_encode : FalconNonce → FalconPoly → FalconSig
+noncomputable opaque falcon_comp_encode : FalconNonce → FalconPoly → FalconSig
 
 /-! ### Sign `@[rust_cmd_pattern]` registrations -/
 
@@ -544,40 +560,44 @@ consumes) is folded into the secret-key encoding for simplicity (the encoded
 sk carries the basis, and the sampler re-derives the LDL tree on each sign
 call — matching PQClean's tree-on-demand layout). -/
 
+opaque FalconNTRUBasis.Impl : NonemptyType.{0}
 /-- NTRU basis pair `(f, g)`: two short polynomials, Gaussian-tail. Opaque
     packaging; the leaves read it via the same byte-form interface. -/
-axiom FalconNTRUBasis : Type
+def FalconNTRUBasis : Type := FalconNTRUBasis.Impl.type
+instance : Nonempty FalconNTRUBasis := FalconNTRUBasis.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconNTRUBasis.default : FalconNTRUBasis
 noncomputable instance : Inhabited FalconNTRUBasis := ⟨FalconNTRUBasis.default⟩
 
+opaque FalconFullBasis.Impl : NonemptyType.{0}
 /-- Full NTRU-solved basis `(f, g, F, G)`. Opaque. -/
-axiom FalconFullBasis : Type
+def FalconFullBasis : Type := FalconFullBasis.Impl.type
+instance : Nonempty FalconFullBasis := FalconFullBasis.Impl.property
 /-- Axiomatic inhabitant. -/ axiom FalconFullBasis.default : FalconFullBasis
 noncomputable instance : Inhabited FalconFullBasis := ⟨FalconFullBasis.default⟩
 
-/-! ### Keygen leaves (axioms = opaque jasmin function symbols) -/
+/-! ### Keygen leaves (opaque constants = jasmin function symbols) -/
 
 /-- `(f, g) = NTRUGen()`: sample a short NTRU basis pair. -/
-axiom falcon_ntru_gen : Unit → FalconNTRUBasis
+noncomputable opaque falcon_ntru_gen : Unit → FalconNTRUBasis
 
 /-- `(F, G) = NTRUSolve(f, g)`: complete the basis (inhomogeneous NTRU). -/
-axiom falcon_ntru_solve : FalconNTRUBasis → FalconFullBasis
+noncomputable opaque falcon_ntru_solve : FalconNTRUBasis → FalconFullBasis
 
 /-- `h_inv = f⁻¹ mod q`: modular inverse of `f` in `R_q`. (Distinct from the
     multiply leaf already registered; this is the inversion step.) -/
-axiom falcon_poly_inv_modq : FalconNTRUBasis → FalconPoly
+noncomputable opaque falcon_poly_inv_modq : FalconNTRUBasis → FalconPoly
 
 /-- `h = g · f⁻¹ mod q`: public-key polynomial. Re-uses
     `falcon_poly_mul_modq`'s contract; this wrapper packages the
     NTRU-basis argument shape so the orchestration is uniform. -/
-axiom falcon_derive_h : FalconNTRUBasis → FalconPoly → FalconPoly
+noncomputable opaque falcon_derive_h : FalconNTRUBasis → FalconPoly → FalconPoly
 
 /-- `pk = encode_pk(h)`: pack `h` into the 897-byte public key wire form. -/
-axiom falcon_encode_pk : FalconPoly → FalconPubKey
+noncomputable opaque falcon_encode_pk : FalconPoly → FalconPubKey
 
 /-- `sk = encode_sk(fullbasis)`: pack `(f, g, F, G)` into the 1281-byte
     secret key wire form. -/
-axiom falcon_encode_sk : FalconFullBasis → FalconSecKey
+noncomputable opaque falcon_encode_sk : FalconFullBasis → FalconSecKey
 
 /-! ### Keygen `@[rust_cmd_pattern]` registrations -/
 
@@ -706,7 +726,7 @@ def falconKeygenReified : ReifiedFunc :=
 
 /-! ## 9. Opaque-leaf correctness hypotheses
 
-The leaves above are opaque axioms in Lean. The emit's correctness lifts to
+The leaves above are opaque constants in Lean. The emit's correctness lifts to
 the full spec only if the leaves' jasmin implementations match their
 intended semantics. We name those obligations explicitly here so downstream
 files can quote them (they are NOT proven; the leaves are linked against

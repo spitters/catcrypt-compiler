@@ -133,23 +133,23 @@ together with the group-law leaves `p384_scalar_mul`, `p384_scalar_mul_base`,
 The Rust shim implements these over fiat-crypto's `p384_scalar_64.rs`. -/
 
 /-- Inverse mod the P-384 group order `n`, constant time. -/
-axiom p384_scalar_inv : P384Scalar → P384Scalar
+noncomputable opaque p384_scalar_inv : P384Scalar → P384Scalar
 
 /-- Multiplication mod the P-384 group order `n`. -/
-axiom p384_scalar_muln : P384Scalar → P384Scalar → P384Scalar
+noncomputable opaque p384_scalar_muln : P384Scalar → P384Scalar → P384Scalar
 
 /-- Addition mod the P-384 group order `n`. -/
-axiom p384_scalar_addn : P384Scalar → P384Scalar → P384Scalar
+noncomputable opaque p384_scalar_addn : P384Scalar → P384Scalar → P384Scalar
 
 /-- Reduction of a 384-bit value mod the P-384 group order `n`. -/
-axiom p384_scalar_reduce : P384Scalar → P384Scalar
+noncomputable opaque p384_scalar_reduce : P384Scalar → P384Scalar
 
 /-- The affine `x` coordinate of a projective point, as a 48-byte value. -/
-axiom p384_point_affine_x : P384Point → P384Scalar
+noncomputable opaque p384_point_affine_x : P384Point → P384Scalar
 
 /-- Equality test on scalars: `1` when the two operands are equal, `0`
     otherwise. -/
-axiom p384_scalar_is_eq : P384Scalar → P384Scalar → UInt64
+noncomputable opaque p384_scalar_is_eq : P384Scalar → P384Scalar → UInt64
 
 /-! ## 2b. Validity leaves
 
@@ -165,7 +165,7 @@ the curve other than the identity. -/
     reducing modulo `n`, so a value at or above `n` yields `0`; it yields `0`
     on zero; and it is constant time, its execution time and memory-access
     trace independent of the operand. -/
-axiom p384_scalar_in_range : P384Scalar → UInt64
+noncomputable opaque p384_scalar_in_range : P384Scalar → UInt64
 
 /-- Point validity test: `1` when the 144-byte projective triple decodes to a
     point satisfying the P-384 curve equation and that point is not the
@@ -175,14 +175,14 @@ axiom p384_scalar_in_range : P384Scalar → UInt64
     decoded coordinates; it yields `0` for the identity, including the `Z = 0`
     encoding of it; and it is constant time, its execution time and
     memory-access trace independent of the operand. -/
-axiom p384_point_valid : P384Point → UInt64
+noncomputable opaque p384_point_valid : P384Point → UInt64
 
 /-- Bitwise conjunction of two flags. On operands each `0` or `1` the result is
     `1` exactly when both are `1`.
 
     Requirements on the implementation: a single `u64` bitwise `and`, with no
     branch on either operand. -/
-axiom p384_flag_and : UInt64 → UInt64 → UInt64
+noncomputable opaque p384_flag_and : UInt64 → UInt64 → UInt64
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 

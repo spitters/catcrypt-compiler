@@ -124,13 +124,15 @@ The 32-byte secp256k1 base-field element (saturated 4×u64
 little-endian). Opaque — the concrete leaf at link time is the
 AUCurves-extracted Rust function `safegcd_secp256k1_invert`. -/
 
+opaque Secp256k1FieldElt.Impl : NonemptyType.{0}
 /-- A 32-byte secp256k1 base-field element (4×u64 saturated radix-2^64,
     little-endian). Opaque; the concrete leaf is the AUCurves
     Bernstein–Yang verified inverter
     `safegcd_secp256k1::secp_invert_divstep_sat`. -/
-axiom Secp256k1FieldElt : Type
-/-- Axiomatic inhabitant. -/
-axiom Secp256k1FieldElt.default : Secp256k1FieldElt
+def Secp256k1FieldElt : Type := Secp256k1FieldElt.Impl.type
+instance : Nonempty Secp256k1FieldElt := Secp256k1FieldElt.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Secp256k1FieldElt.default : Secp256k1FieldElt
 noncomputable instance : Inhabited Secp256k1FieldElt :=
   ⟨Secp256k1FieldElt.default⟩
 
@@ -154,7 +156,7 @@ axiom AUCurves_safegcd_secp256k1_invert_denote
 /-- **Leakage function**: the observable trace the
     `safegcd_secp256k1::secp_invert_divstep_sat` leaf emits on operand
     `x`. -/
-axiom AUCurves_safegcd_secp256k1_invert_leak (x : Secp256k1FieldElt) : LeafLeak
+noncomputable opaque AUCurves_safegcd_secp256k1_invert_leak (x : Secp256k1FieldElt) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the AUCurves verified-CT
     `secp256k1_invert_divstep_sat` leaf is the same at every operand `x`. The

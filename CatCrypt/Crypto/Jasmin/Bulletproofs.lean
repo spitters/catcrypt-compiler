@@ -52,10 +52,10 @@ crypto; C handles the protocol loop.
 
 2. **`ip_fold_point`** — not reifiable (requires `x⁻¹` which
    uses the 253-bit Fermat chain over scalar field, expensive at
-   reification time) — documented as a future axiom.
+   reification time) — stated as the opaque signature `ip_fold_G` (§2).
 
-3. **`Bulletproofs` namespace** — opaque types and a `verify_prover_step`
-   axiom that the C driver calls after Fiat-Shamir challenge generation.
+3. **`Bulletproofs` namespace** — opaque types and the opaque verifier
+   `ip_verify` that the C driver calls after Fiat-Shamir challenge generation.
 
 ## Next-step expansions (not in this file)
 
@@ -101,7 +101,7 @@ noncomputable def ip_fold_b
 def ipFoldAReified : ReifiedFunc := reifyLowCT% ip_fold_a
 def ipFoldBReified : ReifiedFunc := reifyLowCT% ip_fold_b
 
-/-! ## 2. Point-side fold (axiomatic)
+/-! ## 2. Point-side fold (opaque)
 
 The point fold `G_new = x⁻¹ · G_L + G_R` requires `x⁻¹ mod L` which is
 a 253-bit addition-chain; reifying it per-element would emit hundreds
@@ -114,7 +114,7 @@ and `ed25519_dbl_*` through `ed_scalarmult_wnaf` directly. -/
 
 /-- Abstract signature for the per-element MSM: `G_new_i = xi_inv · G_L_i + G_R_i`.
     Wrapper-implemented via ed_scalarmult_wnaf on each side. -/
-axiom ip_fold_G : FpL25519 → FpL25519 → Unit
+noncomputable opaque ip_fold_G : FpL25519 → FpL25519 → Unit
 
 /-! ## 3. Protocol-level API (spec-only)
 
@@ -144,7 +144,7 @@ structure IPProof where
   b_final  : FpL25519
 
 /-- Spec-level soundness claim. The actual proof (`reduction_to_DL` in
-    [BBBPWM18]) is out of scope; this axiom stands in as the interface. -/
-axiom ip_verify : IPStatement → IPProof → Bool
+    [BBBPWM18]) is out of scope; this opaque constant stands in as the interface. -/
+noncomputable opaque ip_verify : IPStatement → IPProof → Bool
 
 end CatCrypt.Crypto.Jasmin.Bulletproofs

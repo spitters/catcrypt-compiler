@@ -116,12 +116,14 @@ open CatCrypt.Crypto.Vale.LeafLeakage
 The 32-byte X25519 buffer (scalar / point / output share the shape).
 Opaque — the concrete leaf at link time is the HACL\* C symbol. -/
 
+opaque Curve25519Buf.Impl : NonemptyType.{0}
 /-- A 32-byte Curve25519 buffer (scalar, point, or output). Opaque;
     the concrete leaf is the HACL\* Vale-verified
     `Hacl_Curve25519_64_scalarmult`. -/
-axiom Curve25519Buf : Type
-/-- Axiomatic inhabitant. -/
-axiom Curve25519Buf.default : Curve25519Buf
+def Curve25519Buf : Type := Curve25519Buf.Impl.type
+instance : Nonempty Curve25519Buf := Curve25519Buf.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Curve25519Buf.default : Curve25519Buf
 noncomputable instance : Inhabited Curve25519Buf :=
   ⟨Curve25519Buf.default⟩
 

@@ -189,7 +189,7 @@ noncomputable def Vale_aes128_keyhash_init_denote
 /-- **Leakage function**: the observable trace the Vale-verified
     `aes128_keyhash_init` leaf emits on the expanded round-key
     schedule `keys`. -/
-axiom Vale_aes128_keyhash_init_leak (keys : ValeGhashAesKeys) : LeafLeak
+noncomputable opaque Vale_aes128_keyhash_init_leak (keys : ValeGhashAesKeys) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the Vale-verified
     `aes128_keyhash_init` leaf is the same at every expanded round-key

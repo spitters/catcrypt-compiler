@@ -89,7 +89,7 @@ and return `MlMsg` (`.TBytes 32`) for the 32-byte digest. -/
     `z` is the 32-byte rejection seed and `ct` the 1088-byte ciphertext. Lowered
     to the all-`reg u64` formosa leaf `_shake256_1120_32` via the memory-pointer
     ABI emit mode. -/
-axiom mlk_jhash_mem : MlSeed → MlCipher → MlMsg
+noncomputable opaque mlk_jhash_mem : MlSeed → MlCipher → MlMsg
 
 /-! ## 2. `@[rust_cmd_pattern]` registration
 

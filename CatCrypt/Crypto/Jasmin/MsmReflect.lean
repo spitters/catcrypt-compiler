@@ -30,7 +30,7 @@ that *validates* the "MSM = scalarFold over the EC AddCommMonoid"
 reduction (`Pairing.MsmReduce.msm_eq_scalarFold`) at a field where the EC
 ops are schoolbook modular arithmetic.
 
-| Lean axiom              | Leaf name (.jazz)      | TowerType    |
+| Lean name               | Leaf name (.jazz)      | TowerType    |
 |------------------------|------------------------|--------------|
 | `ec_scalar_mul`         | `ec_scalar_mul`        | `TBytes 2`   |
 | `ec_point_add`          | `ec_point_add`         | `TBytes 2`   |
@@ -80,14 +80,18 @@ The toy EC group lives over `Fp = ZMod 23` (a single byte, low 5 bits
 used; one byte holds one Fp element). A point is `(x ‖ y)` = 2 bytes; a
 scalar is 1 byte. -/
 
+opaque MsmEcScalar.Impl : NonemptyType.{0}
 /-- A toy-EC scalar (one byte, the Z/23 representative). Opaque. -/
-axiom MsmEcScalar : Type
+def MsmEcScalar : Type := MsmEcScalar.Impl.type
+instance : Nonempty MsmEcScalar := MsmEcScalar.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MsmEcScalar.default : MsmEcScalar
 noncomputable instance : Inhabited MsmEcScalar := ⟨MsmEcScalar.default⟩
 
+opaque MsmEcPoint.Impl : NonemptyType.{0}
 /-- A toy-EC affine point `(x ‖ y)` over Z/23. 2 bytes. The identity is
     the on-wire sentinel `(0xff, 0xff)`. Opaque. -/
-axiom MsmEcPoint : Type
+def MsmEcPoint : Type := MsmEcPoint.Impl.type
+instance : Nonempty MsmEcPoint := MsmEcPoint.Impl.property
 /-- Axiomatic inhabitant. -/ axiom MsmEcPoint.default : MsmEcPoint
 noncomputable instance : Inhabited MsmEcPoint := ⟨MsmEcPoint.default⟩
 
@@ -95,12 +99,12 @@ noncomputable instance : Inhabited MsmEcPoint := ⟨MsmEcPoint.default⟩
 
 /-- Toy-EC scalar multiplication `R = k · P` over Z/23. Opaque; the
     jasmin shim implements double-and-add over `ZMod 23`. -/
-axiom ec_scalar_mul : MsmEcScalar → MsmEcPoint → MsmEcPoint
+noncomputable opaque ec_scalar_mul : MsmEcScalar → MsmEcPoint → MsmEcPoint
 
 /-- Toy-EC point addition `R = P + Q` over Z/23. Opaque; the jasmin
     shim implements the short-Weierstrass affine point-add formula over
     `ZMod 23`, with the on-wire `(0xff, 0xff)` identity sentinel. -/
-axiom ec_point_add : MsmEcPoint → MsmEcPoint → MsmEcPoint
+noncomputable opaque ec_point_add : MsmEcPoint → MsmEcPoint → MsmEcPoint
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

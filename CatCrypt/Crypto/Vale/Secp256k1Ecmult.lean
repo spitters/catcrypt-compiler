@@ -121,21 +121,25 @@ A secp256k1 scalar (32-byte big-endian, reduced mod the group order
 big-endian). Opaque — the concrete leaves at link time are
 libsecp256k1's `secp256k1_ecmult_const` / `secp256k1_ecmult`. -/
 
+opaque Secp256k1Scalar.Impl : NonemptyType.{0}
 /-- A secp256k1 scalar (32-byte big-endian, reduced mod the group
     order `n = 2^256 − 432420386565659656852420866394968145599`).
     Opaque. -/
-axiom Secp256k1Scalar : Type
-/-- Axiomatic inhabitant. -/
-axiom Secp256k1Scalar.default : Secp256k1Scalar
+def Secp256k1Scalar : Type := Secp256k1Scalar.Impl.type
+instance : Nonempty Secp256k1Scalar := Secp256k1Scalar.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Secp256k1Scalar.default : Secp256k1Scalar
 noncomputable instance : Inhabited Secp256k1Scalar :=
   ⟨Secp256k1Scalar.default⟩
 
+opaque Secp256k1Point.Impl : NonemptyType.{0}
 /-- A secp256k1 affine point (64 bytes: x ‖ y, each 32-byte
     big-endian), or the point at infinity (encoded as all-zero by the
     shim). Opaque. -/
-axiom Secp256k1Point : Type
-/-- Axiomatic inhabitant. -/
-axiom Secp256k1Point.default : Secp256k1Point
+def Secp256k1Point : Type := Secp256k1Point.Impl.type
+instance : Nonempty Secp256k1Point := Secp256k1Point.Impl.property
+/-- An inhabitant. -/
+noncomputable opaque Secp256k1Point.default : Secp256k1Point
 noncomputable instance : Inhabited Secp256k1Point :=
   ⟨Secp256k1Point.default⟩
 

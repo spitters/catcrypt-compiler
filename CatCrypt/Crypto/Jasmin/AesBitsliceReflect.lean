@@ -71,21 +71,23 @@ AES-bitslice at 32-way operates on 32 × 16 = 512-byte packed states
 (one state byte k holds the (k-th) bit of all 128 AES state bits across
 all 32 blocks). We encode as `.TBytes 512` (`memref 64`). -/
 
+opaque AesBitslice32.Impl : NonemptyType.{0}
 /-- A 32-block-wide packed AES state (or round key): 32 × 16 = 512
     bytes. Opaque; the leaf `aes_bitslice_round32` runs the canonical
     bitsliced AES round. -/
-axiom AesBitslice32 : Type
+def AesBitslice32 : Type := AesBitslice32.Impl.type
+instance : Nonempty AesBitslice32 := AesBitslice32.Impl.property
 /-- Axiomatic inhabitant. -/ axiom AesBitslice32.default : AesBitslice32
 noncomputable instance : Inhabited AesBitslice32 := ⟨AesBitslice32.default⟩
 
-/-! ## 2. AES-bitslice leaves (axioms = opaque jasmin function symbols) -/
+/-! ## 2. AES-bitslice leaves (opaque constants = jasmin function symbols) -/
 
 /-- The 32-block-wide bitsliced AES encryption round:
     `(state, rk) ↦ AddRoundKey(MixColumns(ShiftRows(SubBytes state)), rk)`
     in bitsliced form, running 32 AES blocks in parallel.
     Implemented by the jasmin shim issuing the Boyar-Peralta S-box +
     ShiftRows permutation + MixColumns XOR-tree + AddRoundKey. -/
-axiom aes_bitslice_round32 : AesBitslice32 → AesBitslice32 → AesBitslice32
+noncomputable opaque aes_bitslice_round32 : AesBitslice32 → AesBitslice32 → AesBitslice32
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/
 

@@ -81,19 +81,23 @@ of `N` G1 points; a KZG commitment / opening witness is one G1 point
 (`Bn254G1Point`, reused from `Bn254Reflect`); a sum-check challenge is one `Fr`
 scalar; the pairing check produces an `Fp12` (GT) element. -/
 
+opaque MarlinCoeffVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The Marlin AHP coefficient vector (opaque buffer of `N` BN254 `Fr` scalars). -/
-axiom MarlinCoeffVec (N : Nat) : Type
+def MarlinCoeffVec (N : Nat) : Type := (MarlinCoeffVec.Impl N).type
+instance (N : Nat) : Nonempty (MarlinCoeffVec N) := (MarlinCoeffVec.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom MarlinCoeffVec.default (N : Nat) : MarlinCoeffVec N
 noncomputable instance (N : Nat) : Inhabited (MarlinCoeffVec N) :=
   ⟨MarlinCoeffVec.default N⟩
 
+opaque MarlinSRS.Impl (N : Nat) : NonemptyType.{0}
 /-- The KZG structured reference string `srs` (opaque buffer of `N` G1 points). -/
-axiom MarlinSRS (N : Nat) : Type
+def MarlinSRS (N : Nat) : Type := (MarlinSRS.Impl N).type
+instance (N : Nat) : Nonempty (MarlinSRS N) := (MarlinSRS.Impl N).property
 /-- Axiomatic inhabitant. -/ axiom MarlinSRS.default (N : Nat) : MarlinSRS N
 noncomputable instance (N : Nat) : Inhabited (MarlinSRS N) :=
   ⟨MarlinSRS.default N⟩
 
-/-! ## 2. Marlin KZG leaves (axioms = opaque jasmin function symbols)
+/-! ## 2. Marlin KZG leaves (opaque constants = jasmin function symbols)
 
 `marlin_kzg_commit` / `marlin_kzg_open` produce G1 points (`Bn254G1Point`,
 reused from `Bn254Reflect` — the runtime wires them to
@@ -103,17 +107,17 @@ reused from `Bn254Reflect` — the runtime wires them to
 accept/reject `Fr` digest. -/
 
 /-- KZG commitment `cmt = ⟨coeffs, srs⟩` (a G1 MSM over the SRS). -/
-axiom marlin_kzg_commit (N : Nat) : MarlinCoeffVec N → MarlinSRS N → Bn254G1Point
+noncomputable opaque marlin_kzg_commit (N : Nat) : MarlinCoeffVec N → MarlinSRS N → Bn254G1Point
 /-- One sum-check (rowcheck/lincheck) transcript round → Fiat–Shamir `Fr`. -/
-axiom marlin_sumcheck_round : Bn254G1Point → Bn254Fr
+noncomputable opaque marlin_sumcheck_round : Bn254G1Point → Bn254Fr
 /-- Batched KZG opening witness `W` at the challenge point (a G1 MSM). -/
-axiom marlin_kzg_open (N : Nat) : MarlinCoeffVec N → Bn254Fr → Bn254G1Point
+noncomputable opaque marlin_kzg_open (N : Nat) : MarlinCoeffVec N → Bn254Fr → Bn254G1Point
 /-- Serialize the Marlin proof transcript into the proof buffer (laid over the
     coefficient-width region): the prover writes its commitments / opening
     witness / evaluation proof into the output proof buffer. The batched
     pairing-check `Fp12` (`e(C,H)·e(W,[τ]H−H)`, the KZG verification equation's
     combined product) is threaded as the consumed verifier-side check input. -/
-axiom marlin_proof_serialize (N : Nat) : MarlinCoeffVec N → Bn254Fp12 → MarlinCoeffVec N
+noncomputable opaque marlin_proof_serialize (N : Nat) : MarlinCoeffVec N → Bn254Fp12 → MarlinCoeffVec N
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (n = 3 sum-check rounds)
 
