@@ -2676,6 +2676,15 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.CTypeValue,
     Lake.Glob.one `CatCrypt.Hax.FoldRange,
     Lake.Glob.one `CatCrypt.Hax.PrimeirBuiltins,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImp,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpBridge,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpDecode,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpDecodeEndToEnd,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpDecodeExtracted,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpDriver,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpEmit,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpEndToEnd,
+    Lake.Glob.one `CatCrypt.Hax.ReifyImpPilotExtracted,
     Lake.Glob.one `CatCrypt.Hax.ReprBridge,
     Lake.Glob.one `CatCrypt.Hax.Runtime,
     Lake.Glob.one `CatCrypt.Hax.RustM,
@@ -2794,6 +2803,10 @@ require «doc-gen4» from git
 
 lean_exe karatsuba_bench where
   root := `CatCrypt.Crypto.Bridges.CoqEAL.KaratsubaBenchExe
+
+lean_exe «reify-emit» where
+  -- Writes the printed Rust function and the leaf stubs of each reifyImp% pilot.
+  root := `CatCrypt.Hax.ReifyImpEmit
 
 lean_exe «optimizer-smoke-kat» where
   -- Tier-3 rewrite smoke test, run rather than elaborated.

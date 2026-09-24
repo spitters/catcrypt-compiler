@@ -46,8 +46,8 @@ comparison false.
 
 ## 2. Pure Lean → Rust
 
-The reifier and the driver live in the CatCrypt development repository, under
-`CatCrypt/Hax/`:
+The reifier and the driver are in `CatCrypt/Hax/`, with the driver's inputs in
+`bench/reify_roundtrip/`:
 
 | Step | Entry point |
 |---|---|

@@ -1,0 +1,34 @@
+pub fn edwards_add ( p : (Fe,Fe,Fe,Fe) , q : (Fe,Fe,Fe,Fe) ) -> (Fe,Fe,Fe,Fe) {
+let mut dd = d ( ) ;
+let mut p1 = p . 1 ;
+let mut p0 = p . 0 ;
+let mut t = sub ( p1 , p0 ) ;
+let mut q1 = q . 1 ;
+let mut q0 = q . 0 ;
+let mut t_1 = sub ( q1 , q0 ) ;
+let mut a = mul ( t , t_1 ) ;
+let mut p1_1 = p . 1 ;
+let mut p0_1 = p . 0 ;
+let mut t_2 = add ( p1_1 , p0_1 ) ;
+let mut q1_1 = q . 1 ;
+let mut q0_1 = q . 0 ;
+let mut t_3 = add ( q1_1 , q0_1 ) ;
+let mut b = mul ( t_2 , t_3 ) ;
+let mut p3 = p . 3 ;
+let mut t_4 = double ( dd ) ;
+let mut t_5 = mul ( p3 , t_4 ) ;
+let mut q3 = q . 3 ;
+let mut c = mul ( t_5 , q3 ) ;
+let mut p2 = p . 2 ;
+let mut t_6 = double ( p2 ) ;
+let mut q2 = q . 2 ;
+let mut dz = mul ( t_6 , q2 ) ;
+let mut e = sub ( b , a ) ;
+let mut f = sub ( dz , c ) ;
+let mut g = add ( dz , c ) ;
+let mut h = add ( b , a ) ;
+let mut t_7 = mul ( e , f ) ;
+let mut t_8 = mul ( g , h ) ;
+let mut t_9 = mul ( f , g ) ;
+let mut t_10 = mul ( e , h ) ;
+( t_7 , t_8 , t_9 , t_10 ) }
