@@ -801,15 +801,15 @@ theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
   simp only [encodeLopn, hbind, hstrip, hmulx, hne, Bool.false_eq_true, if_false,
     if_true]
 
-/-- The register widening multiply carries no bytes when its two destinations are
-    the same register: `mulx` keeps only the high half there, so the encoder
-    declines the shape instead of emitting bytes the rendered text disagrees
-    with. -/
+/-- The register widening multiply with coincident destinations encodes the
+    printer's scratch sequence `encMulxSameDst`: the high half lands in the
+    destination and the low half in a red-zone-saved scratch. -/
 theorem encodeLopn_mulx_same (frame spillW : Nat) (mnem base : String)
     (dN s2 : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base) (hmulx : (base == "MULX") = true) :
-    encodeLopn frame spillW (.Lopn [.reg dN, .reg dN] mnem [.reg s2]) qsaveB = [] := by
+    encodeLopn frame spillW (.Lopn [.reg dN, .reg dN] mnem [.reg s2]) qsaveB
+      = encMulxSameDst (gpNumU dN) (gpNumU s2) := by
   simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, Bool.false_eq_true, if_false,
     if_true]
 

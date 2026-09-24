@@ -763,9 +763,14 @@ theorem lsemStepLeaf_cast {leaf : LeafEnvN} {nArgs curDepth : Nat} {Γ : Ctxt ja
         ((⟨JasminOp.castW w w', heq, args⟩ : Expr jasminDialect Γ (.reg w')).denote V)).nextPc) := by
   rw [lsemStepLeaf_of_delegate _ _ _ (Or.inl ?_)]
   · exact lsemStepCast_cast heq args hagree
-  · -- the cast wire is a `ZEROEXT`/`TRUNC`, never a `CALL:` head, so `callStruct? = none`
-    simp only [opToLinstrR, callStruct?]
-    split <;> rename_i h <;> first | rfl | (injection h with _ ho _; subst ho; split <;> rfl)
+  · -- the cast wire is a `CASTW_*`, `ZEROEXT` or `TRUNC`, never a `CALL:` head, so
+    -- `callStruct? = none`
+    simp only [opToLinstrR]
+    split
+    all_goals
+      simp only [callStruct?, castWMnem]
+      split <;> rename_i h <;> first | rfl |
+        (injection h with _ ho _; subst ho; repeat' (first | rfl | split))
 
 /-! ## 5. The opaque-leaf source fragment `ScalarLeafN` -/
 

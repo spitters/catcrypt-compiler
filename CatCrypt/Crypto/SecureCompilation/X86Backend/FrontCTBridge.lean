@@ -121,6 +121,10 @@ theorem opToLinstrR_direct {op : JasminOp} {dst : String} {srcs : List LOperand}
       unfold opToLinstrR
       dsimp only
       split <;> exact linstrRDirect_Lopn_mk (by simp) hs
+  | castW w w' =>
+      unfold opToLinstrR
+      dsimp only
+      split <;> exact linstrRDirect_Lopn_mk (by simp) hs
   | regConst w n => exact linstrRDirect_Lopn_mk (by simp) (by simp)
   | cmpImm c w n =>
       refine linstrRDirect_Lopn_mk (by simp) (fun o ho => ?_)

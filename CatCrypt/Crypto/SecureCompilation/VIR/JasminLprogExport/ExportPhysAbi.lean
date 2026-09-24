@@ -605,7 +605,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
       let loads : Lcmd := (loadsByPos[virtIdx]!).flatMap (fun ⟨_s, base, off⟩ =>
         let phys := physNameForBody body tbl (argName _s)
         let dst : LOperand := .reg phys
-        let memSrc : LOperand := .reg (memName base off)
+        let memSrc : LOperand := .reg (memName loadBase off)
         let reloadIn : Linstr :=
           ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
         if dst.isSpill then
@@ -797,7 +797,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     let loads : Lcmd := (loadsAtPos virtIdx).flatMap (fun ⟨s, base, off⟩ =>
       let phys := physNameForBody body tbl (argName s)
       let dst : LOperand := .reg phys
-      let memSrc : LOperand := .reg (memName base off)
+      let memSrc : LOperand := .reg (memName loadBase off)
       let reloadIn : Linstr :=
         ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
       if dst.isSpill then
@@ -975,7 +975,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
     let loads : Lcmd := (loadsAtPos virtIdx).flatMap (fun ⟨s, base, off⟩ =>
       let phys := physNameForBody body tbl (argName s)
       let dst : LOperand := .reg phys
-      let memSrc : LOperand := .reg (memName base off)
+      let memSrc : LOperand := .reg (memName loadBase off)
       let reloadIn : Linstr :=
         ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg (abiLoadSave base)]⟩
       if dst.isSpill then

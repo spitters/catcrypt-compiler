@@ -784,6 +784,21 @@ def encCmovSelect (w dn cn tn fn : Nat) : List (BitVec 8) :=
     arguments, never that deep. -/
 def cmovRedZone : Int := -128
 
+/-- The scratch a widening multiply with coincident destinations routes its low
+    half to: the first of `%rcx, %rsi, %rdi, %r8 … %r11, %rax, %rbx` that is
+    neither the destination `h`, the source `s`, nor `%rdx` (the implicit
+    multiplicand), in the order `renderLopn` searches. -/
+def mulxSameScratch (h s : Nat) : Nat :=
+  ([1, 6, 7, 8, 9, 10, 11, 0, 3].find? (fun r => r != h && r != s && r != 2)).getD 11
+
+/-- The bytes of `renderLopn`'s coincident-destination `mulx` sequence:
+    `movq scr, -128(%rsp)`, `mulx s, scr, h`, `movq -128(%rsp), scr`. The high
+    half lands in `h`; the low half goes to the scratch, whose value the red-zone
+    save and restore preserve. -/
+def encMulxSameDst (h s : Nat) : List (BitVec 8) :=
+  let scr := mulxSameScratch h s
+  encRspMem 1 0x89 scr cmovRedZone ++ encMulxRR h scr s ++ encRspMem 1 0x8b scr cmovRedZone
+
 /-- The scratch register a spilled-destination select borrows: the first of
     `%rax`, `%rbx`, `%rcx`, `%rdx` that is none of the three sources, as the
     printer's candidate list and order. Three sources cannot exhaust four
@@ -951,16 +966,12 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       if base == "MULX" then
         match dsts, srcs with
         | [.reg dlN, .reg dhN], [.reg s2] =>
-            -- Coincident destinations are refused. The IR asks for both halves of
-            -- the product; a plain `mulx` writes the high half last and loses the
-            -- low one, which is why `renderLopn` covers the case with a borrowed
-            -- scratch sequence. This encoder has no matching arm, so emitting
-            -- `encMulxRR` would place bytes in the object computing something the
-            -- rendered text does not. The empty list makes `encodableLinstrR`
-            -- false, so `encodeLcmdChecked` and every object built through it
-            -- decline the body. `ed25519_sc_reduce` and `ed25519_sc_muladd` both
-            -- contain the shape.
-            if dlN == dhN then []
+            -- Coincident destinations: the low word of this shape is already
+            -- computed by a separate multiply, so the high half is the one to
+            -- keep. `encMulxSameDst` encodes `renderLopn`'s sequence, which
+            -- routes the low half to a scratch saved in the red zone, so the
+            -- bytes and the rendered text are the same instructions.
+            if dlN == dhN then encMulxSameDst (gpNumU dhN) (gpNumU s2)
             else encMulxRR (gpNumU dhN) (gpNumU dlN) (gpNumU s2)
         | _, _ => []
       else if base == "MULXMEM" then
