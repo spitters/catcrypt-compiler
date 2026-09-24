@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import Transfer
+public import Mathlib.Data.BitVec
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 
 /-!
