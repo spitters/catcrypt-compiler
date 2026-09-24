@@ -51,7 +51,7 @@ output env, so the two models disagree at a zero entry guard. §5 proves the arm
 under a nonzero entry guard (`agreeWhileNzU`) and states the unconditional form as
 `RWhileNzUnifiedAgreement_Statement`, with the reason it does not hold.
 
-**0 sorries; no new axioms.**
+**All goals closed; no new axioms.**
 -/
 
 @[expose] public section

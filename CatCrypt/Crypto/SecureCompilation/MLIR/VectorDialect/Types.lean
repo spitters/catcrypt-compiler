@@ -26,13 +26,11 @@ over the heavier Mathlib `Vector α n` (`List`-backed) because:
 * downstream lowerings that target `BitVec`-shaped lanes can specialise
   `α := BitVec w` without touching the type structure.
 
-A future Phase-2 may swap in Mathlib `Vector` if a particular consumer needs
-list-style operations; the current ops do not.
+The ops do not need list-style operations, so Mathlib `Vector` is not used.
 
-This is the first file of the new MLIR-style **VectorDialect** scaffolding
-(task #183). See `README.md` in the same directory for the progressive-lowering
-plan and the relationship with the existing `VIR/MlirVectorDialect.lean`
-(BitVec-lane, already-denoting analogue).
+This module is the base of the MLIR-style **VectorDialect**. See `AGENTS.md` in
+the same directory for the module index and the relationship with
+`VIR/MlirVectorDialect.lean` (BitVec-lane, denoting analogue).
 -/
 
 @[expose] public section

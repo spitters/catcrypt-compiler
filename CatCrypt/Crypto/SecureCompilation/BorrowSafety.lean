@@ -13,23 +13,22 @@ public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 set_option autoImplicit false
 
 /-!
-# Borrow-check ↔ no-alias bridge (#269 Part (a)) over the `CProg`-free front
+# Borrow-check ↔ no-alias bridge over the `catCryptDialect` front
 
 `NoAliasVM vm` (in `RustStateSubstrate.lean`) is the *semantic*
-no-aliasing-of-CryptoSSA-variables property: `vm.lookup` is injective on source
+no-aliasing-of-`CryptoSSA`-variables property: `vm.lookup` is injective on source
 names. It is the side condition the dialect-front simulation theorem
 `rustExecSimulatesDialect` silently carries inside the `noAlias` field of its
 `hInv : RustStateInterp vm rs V` hypothesis. This file discharges that hypothesis
 at its source, over the `catCryptDialect` front `translateDialectControl`.
 
-## Finding
+## Independence from `borrowOk`
 
 `NoAliasVM` is a structural invariant of *translator-built VarMaps* and is
 **independent of `borrowOk`**. The dialect front extends the VarMap only through
 `VarMap.bind` / `VarMap.weaken`, both of which preserve `NoAliasVM`
 (`noAlias_bind`, `noAlias_weaken`), starting from the empty VarMap
-(`noAlias_empty`). It never performs an aliasing construction. The carrier is the
-Wave-1 dialect twin
+(`noAlias_empty`). It never performs an aliasing construction. The carrier is
 `Dialects.CryptoDialectRustSim.translateDialectControl_preserves_noAlias`
 (built by structural recursion on `IsCoveredCtl`, with no `borrowOk`
 precondition). Therefore:
@@ -43,7 +42,7 @@ aliasing checker that feeds the **memory**-model frame story in
 from args; non-overlapping slice copies). The two no-aliasing notions are
 orthogonal:
 
-* `NoAliasVM` rules out two *source names* resolving to one CryptoSSA variable
+* `NoAliasVM` rules out two *source names* resolving to one `CryptoSSA` variable
   (a compile-time VarMap property, needed for the byte-layout simulation).
 * `borrowOk` rules out two *mutable references at one call site* pointing at the
   same backing store (a source property, needed for the `array64` memory frame).
@@ -54,9 +53,6 @@ orthogonal:
 (its `noAlias` field is `noAlias_empty`). For a top-level program the entry
 `hInv` is exactly that, so the `NoAliasVM` side condition is discharged with no
 assumption (`entry_interp`).
-
-Neither the statements nor the proofs below name `CProg` / `CExpr` / `TransOut`
-/ `translate`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.BorrowSafety
@@ -93,7 +89,7 @@ theorem entry_interp (rs : RustState) :
 /-! ## Borrow-check ↔ no-alias: orthogonality (documentation lemma)
 
 `borrowOk` does **not** appear as a hypothesis of
-`noAlias_of_translateDialect_empty` — it is genuinely unnecessary for
+`noAlias_of_translateDialect_empty` — it is unnecessary for
 `NoAliasVM`. The lemma below records this by deriving `NoAliasVM o.vm` from a
 `borrowOk` program *via the borrowOk hypothesis being unused* (`_hBorrow`),
 making the independence explicit for readers and for the audit. -/
@@ -124,7 +120,7 @@ side condition is discharged here. -/
 /-- **Top-level byte-layout simulation, `NoAliasVM` discharged (dialect front).**
     From a top-level dialect translation (`translateDialectControl VarMap.empty c
     = some o`) over a control-covered `c` and a front `RustExec` starting at
-    `rs`, there is a CryptoSSA valuation `V'` satisfying the byte-layout
+    `rs`, there is a `CryptoSSA` valuation `V'` satisfying the byte-layout
     invariant at the post-state. The `NoAliasVM` side condition of
     `rustExecSimulatesDialect` is discharged internally via `entry_interp`
     (built on `noAlias_empty`); the caller supplies no aliasing hypothesis. -/

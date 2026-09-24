@@ -82,7 +82,7 @@ def binOpStr : SOp2 → Option String
   | .Olor  .U64 => some "|"
   | .Olsl  .U64 => some "<<"
   | .Olsr  .U64 => some ">>"
-  -- Signed-arith extension (#257): arithmetic (sign-preserving) shift right.
+  -- Signed-arith extension: arithmetic (sign-preserving) shift right.
   -- Jasmin surface token `>>s`; compound form `>>s=` (cf. the plonky3 /
   -- poseidon2 / mlkem signed-Montgomery leaves).
   | .Oasr  .U64 => some ">>s"
@@ -106,7 +106,7 @@ def binOpStr : SOp2 → Option String
     Returns `none` for leaf-function names (`poly_add`, `mat_vec_mul`,
     …), which fall through to the regular function-call emit. This mirrors
     the `RustEmitJazz.jasminBinOp` rewrite that lives in the deprecated
-    Rust-shaped path; the AST-direct path now recognises the same set. -/
+    Rust-shaped path; the AST-direct path recognises the same set. -/
 def binOpNameStr (f : String) : Option String :=
   match f with
   | "Add" | "add" | "wrapping_add" => some "+"
@@ -186,7 +186,7 @@ partial def regForcedNames : List InstrR → List String
       -- additionally be reg are array *index* expressions (a stack-indexed
       -- `arr[stack_i]` is not a legal address mode here) — those are
       -- collected by `rhsIndexVars` (and `lvIdx` for the store side).
-      -- #262: a binop with a *constant* operand (e.g. `0 - x`, `2 - x`) lowers
+      -- A binop with a *constant* operand (e.g. `0 - x`, `2 - x`) lowers
       -- to a form jasminc's asmgen cannot encode with the variable operand in
       -- memory (`reg = imm OP mem` is not a legal addressing mode — it raises
       -- `asmgen: (compile_arg) not compatible asm_arg`).  Force the `Pvar`
@@ -199,7 +199,7 @@ partial def regForcedNames : List InstrR → List String
       let operandNames := rhsIndexVars rhs ++ constBinopOperand
       lvName ++ lvIdx ++ operandNames ++ regForcedNames rest
   | .Copn lvs _ _ es :: rest =>
-      -- #262: an asm intrinsic (`#IMUL` / `#MULX` / `#ADC` / `#CMOV` …) has
+      -- An asm intrinsic (`#IMUL` / `#MULX` / `#ADC` / `#CMOV` …) has
       -- implicit register outputs (e.g. RDX:RAX for the widening multiply) and
       -- register operands.  jasminc's `forced_registers` pass (regalloc.ml)
       -- asserts that every such operand is an `Lvar`/`Pvar` allocated to a
@@ -253,7 +253,7 @@ def dedup : List String → List String :=
                  else go (x :: seen) (x :: acc) xs
   go [] []
 
-/-- **E1.5 (arithmetic-expression renderer, 2026-05-30).** Render a `PExpr`
+/-- **Arithmetic-expression renderer.** Render a `PExpr`
     as a parenthesised Jasmin arithmetic expression.  This is the
     expression-position counterpart of `emitInstr` (which only handles a
     fixed set of flat `Cassgn` shapes): it recurses through the nested
@@ -312,7 +312,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
   -- comment marker rather than an explicit zero (which Jasmin doesn't
   -- have a clean syntax for at the `reg u64` level). This keeps the
   -- emit going for protocols like K3 Lizard that declare locals via
-  -- `rc_let` (added 2026-05-01).
+  -- `rc_let`.
   | .Cassgn (.Lvar x) _ _ (.Parr_init _) =>
       some (ind ++ "// " ++ x.var.vname ++ " : zero-init array (omitted)")
   | .Cassgn (.Lvar x) _ _ (.Pconst z) =>
@@ -383,7 +383,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
         else
           some (ind ++ xn ++ " = " ++ yn ++ ";\n" ++
                 ind ++ xn ++ " " ++ opS ++ "= " ++ toString k ++ ";")
-  -- #262: `x = k OP y` with the *constant on the left*.  jasminc's asmgen
+  -- `x = k OP y` with the *constant on the left*.  jasminc's asmgen
   -- cannot encode `dst = imm OP src` in one instruction (`reg = imm - reg`
   -- raises `(compile_arg) not compatible asm_arg`), so split into
   -- `x = k; x OP= y;` (load the immediate, then accumulate the variable).
@@ -549,7 +549,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
       else
         let lhs := String.intercalate ", " lvStrs
         some (ind ++ lhs ++ " = " ++ fn.name ++ "(" ++ argStr ++ ");")
-  -- Phase DD (2026-05-28): literal-index array element load/store.
+  -- Literal-index array element load/store.
   -- `Cassgn (Laset _ ws arr (Pconst i)) _ _ (Pvar src)`  ↦  `arr[i] = src;`
   -- `Cassgn (Lvar dst) _ _ (Pget _ ws arr (Pconst i))`   ↦  `dst = arr[i];`
   -- These are the literal-index array slots emitted by
@@ -562,7 +562,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
   | .Cassgn (.Lvar dst) _ _ (.Pget _ _ arr (.Pconst i)) =>
       some (ind ++ dst.var.vname ++ " = " ++ arr.gv.var.vname ++ "[" ++
             toString i ++ "];")
-  -- Phase RND (2026-05-30): dynamic-index array store / load.  The bracket
+  -- Dynamic-index array store / load.  The bracket
   -- holds a register expression (a loop counter, possibly with arithmetic
   -- offset) rather than a `Pconst`.  Emitted by `LowCTToJasmin`'s
   -- `RArrStore`/`RArrLoad` arms.  jasminc scales the (`AAscale`) index by the
@@ -579,7 +579,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
   | .Cassgn (.Lvar dst) _ _ (.Pget .AAscale _ arr idx) => do
       let is ← ppArithExpr idx
       some (ind ++ dst.var.vname ++ " = " ++ arr.gv.var.vname ++ "[" ++ is ++ "];")
-  -- Phase RND (2026-05-30): runtime-scalar arithmetic assignment.  The RHS is
+  -- Runtime-scalar arithmetic assignment.  The RHS is
   -- a nested arithmetic `PExpr` (`Papp2`/`Papp1`/`Pget`/`Pvar`/`Pconst`)
   -- produced by `sexprToPExpr`.  Render it via the recursive `ppArithExpr`.
   -- This arm is placed LAST among the `Cassgn (.Lvar _)` arms so the
@@ -607,12 +607,12 @@ Three pre-emission optimizations:
    `Passes/DeadCode.lean`). Drops `Cassgn`s whose LHS is not live
    afterwards. Cheap liveness analysis.
 3. **BSWAP_64 intrinsic path.** When a port uses `Copn` with `Oasm`
-   name `"BSWAP_64"` (or any such intrinsic), `emitInstr` now emits
+   name `"BSWAP_64"` (or any such intrinsic), `emitInstr` emits
    the Jasmin source form `x = #BSWAP_64(y);`. `jasminc` lowers this
    to a single `bswap` — matching s2n's hand-written `word_bytereverse`.
 
 The three compose cleanly: `peepholeArith` feeds into `deadCodeElim`
-(which cleans up the now-dead producer assignment), and both run over
+(which cleans up the dead producer assignment), and both run over
 the input to `emitBody`. -/
 
 /-- Count how many instructions in `body` read the variable named `x`. -/
@@ -1388,18 +1388,17 @@ partial def collectDeclWidths : List InstrR → List (String × WSize)
 def declWidthOf (wmap : List (String × WSize)) (name : String) : WSize :=
   (wmap.find? (·.1 = name)).map (·.2) |>.getD .U64
 
-/-! ### E1: stack-array local declarations
+/-! ### Stack-array local declarations
 
 `RLetZero "x" (TBytes N)` in the LowCT front lowers to a Jasmin
 `Cassgn (.Lvar { vname := "x", vtype := .sarr N }) _ (.sarr N) (.Parr_init N)`.
 
-Before E1, every local — including the array-typed ones — was declared as
-`reg u64 x;` because `lvarSwordWidth` returned `none` on `.sarr` types and
-the width fallback defaulted to `U64`.  Jasmin's frontend rejected the
-emitted code whenever the local needed to be passed to a kernel expecting
-`stack u64[N]`.
+`lvarSwordWidth` returns `none` on `.sarr` types and the width fallback is
+`U64`, so declaring every local through it would give `reg u64 x;` for an
+array-typed local, which Jasmin's frontend rejects whenever the local is
+passed to a kernel expecting `stack u64[N]`.
 
-E1 collects the array-typed locals separately and emits a `stack uNN[k] x;`
+This pass collects the array-typed locals separately and emits a `stack uNN[k] x;`
 declaration line via the layout table `tbytesStackLayout` (N ↦ (U64, N/8)
 when N ≡ 0 mod 8; (U8, N) otherwise).  See the layout doc in
 `LowCTToJasmin.tbytesStackLayout`. -/
@@ -1409,9 +1408,9 @@ when N ≡ 0 mod 8; (U8, N) otherwise).  See the layout doc in
 def tbytesStackLayout (n : Nat) : WSize × Nat :=
   if n % 8 == 0 then (.U64, n / 8) else (.U8, n)
 
-/-! ### #253: Keccak-f1600 u64-ptr-array layout case
+/-! ### Keccak-f1600 u64-ptr-array layout case
 
-The #251 leaf-ABI pass renders an `.sarr n` buffer as `reg ptr u32[n/4]`
+The leaf-ABI pass renders an `.sarr n` buffer as `reg ptr u32[n/4]`
 (the ML-DSA u32-packed poly layout, 4 bytes / coefficient).  The SHAKE sponge
 that drives the ML-DSA seed schedule (ExpandA's SHAKE128, ExpandMask's
 SHAKE256, the H(tr‖M) / c̃ digests) calls the real `keccak_f1600` permutation,
@@ -1421,8 +1420,8 @@ n` carries no element width) cannot tell a 200-byte Keccak state apart from a
 50-coefficient u32 poly buffer, so the layout decision keys on the two
 Keccak-f1600 ABI array sizes, which are the only u64-packed `reg ptr` arrays in
 the ML-DSA composition: the 25-lane state (200 bytes) and the 113-lane absorb
-buffer (904 bytes).  This is the single additive u64-layout case the #251
-residual flagged.
+buffer (904 bytes).  This is the single u64-layout case of the leaf-ABI
+pass.
 
 A `.sarr n` whose byte count is a Keccak-f1600 array size renders
 `reg ptr u64[n/8]` (param/result) and `stack u64[n/8]` (call-site slot);
@@ -1447,11 +1446,10 @@ def lvarSarrSize : LVal → Option (String × Nat)
   | _ => none
 
 /-- `(name, n)` for a `Pvar` whose `vtype = .sarr n` — a poly buffer passed by
-    reference as a `Ccall` argument to a `reg ptr u32[N]` leaf (`#251`
-    composition).  Such a buffer needs a `stack` slot declaration even when it
+    reference as a `Ccall` argument to a `reg ptr u32[N]` leaf
+    (dst-threaded composition).  Such a buffer needs a `stack` slot declaration even when it
     is *only* an argument (never an lval), e.g. the `mldsa_ntt_4way(wbuf, nbuf)`
-    input `nbuf`.  Additive: the `#244`/`#247` leaves pass only scalar `Pvar`s,
-    so this never fires for them. -/
+    input `nbuf`.  Leaves that pass only scalar `Pvar`s never reach it. -/
 def pvarSarrSize : PExpr → Option (String × Nat)
   | .Pvar gv => match gv.gv.var.vtype with
       | .sarr n => some (gv.gv.var.vname, n)
@@ -1483,7 +1481,7 @@ partial def collectArrayLocals : List InstrR → List (String × Nat)
         | .sarr n => [(x.var.vname, n)]
         | _ => []
       acc ++ collectArrayLocals rest
-  -- #258: a dynamic-index array store `arr[i] = …` (`.Laset .AAscale`) whose
+  -- A dynamic-index array store `arr[i] = …` (`.Laset .AAscale`) whose
   -- `Parr_init` declaration was dropped by DCE (the slot is fully overwritten
   -- before any read).  The `.sarr n` type is preserved on the `Laset` var, so
   -- recover the slot size here; without this a stack-array output kernel emits
@@ -1507,7 +1505,7 @@ partial def collectArrayLocals : List InstrR → List (String × Nat)
       collectArrayLocals th ++ collectArrayLocals el ++ collectArrayLocals rest
   | _ :: rest => collectArrayLocals rest
 
-/-- **Phase RND (2026-05-30): u32-access detection.**  Collect the names of
+/-- **u32-access detection.**  Collect the names of
     array slots that are read or written through a `.AAscale .U32` access
     (`Pget`/`Laset`/`Lasub`/`Psub`).  Such slots must be declared
     `stack u32[N/4]` rather than the default packed `stack u64[N/8]`, because
@@ -1531,15 +1529,14 @@ partial def u32AccessedArrays : List InstrR → List String
         | .Laset .AAscale .U32 x idx => x.var.vname :: exprU32 idx
         | .Lasub .AAscale .U32 _ x idx => x.var.vname :: exprU32 idx
         | _ => []
-      -- E1 (2026-05-30): a poly buffer threaded through a `reg ptr u32[N]`
+      -- A poly buffer threaded through a `reg ptr u32[N]`
       -- leaf appears as a `Ccall` lval/arg as a bare `.sarr`-typed `Lvar`/
       -- `Pvar` (no in-orchestrator `.AAscale` index — the indexing happens
       -- inside the callee).  Such a buffer must still be declared
       -- `stack u32[N/4]` to match the callee's ptr-array param ABI, so a
       -- `.sarr`-typed `Ccall` operand counts as a u32 access.  This only fires
-      -- for the dst-threaded composition orchestrator (`#251`); the `#244`/
-      -- `#247` leaves index their buffers directly and never reach this arm,
-      -- so their emit is unchanged.
+      -- for the dst-threaded composition orchestrator; leaves that index
+      -- their buffers directly never reach this arm.
       let lvSarrU32 : LVal → List String
         | .Lvar x => match x.var.vtype with | .sarr _ => [x.var.vname] | _ => []
         | _ => []
@@ -1557,7 +1554,7 @@ partial def u32AccessedArrays : List InstrR → List String
       | .Cwhile cb c ca => u32AccessedArrays cb ++ exprU32 c ++ u32AccessedArrays ca
     here ++ u32AccessedArrays rest
 
-/-- **#262: u64-access detection.**  Collect the names of array slots that are
+/-- **u64-access detection.**  Collect the names of array slots that are
     read or written through a `.AAscale .U64` access (`Pget`/`Laset`).  Such a
     slot is a u64-packed array (`reg ptr u64[N/8]` param / `stack u64[N/8]`
     local), as opposed to the default u32-poly layout.  This is the access-based
@@ -1600,7 +1597,7 @@ partial def u64AccessedArrays : List InstrR → List String
     the slot is declared `stack u32[n/4]` (the ML-DSA poly-buffer layout);
     otherwise the default packed-u64 / byte-wise `tbytesStackLayout` applies. -/
 def stackArrDeclW (u32Packed : Bool) (name : String) (n : Nat) : String :=
-  -- #253: a Keccak-f1600 ABI array size declares a u64-packed `stack u64[n/8]`
+  -- A Keccak-f1600 ABI array size declares a u64-packed `stack u64[n/8]`
   -- slot to match the `reg ptr u64[n/8]` callee param.  Takes precedence over
   -- the u32-poly case so the sponge state buffer is not mis-declared u32.
   let (w, k) := if keccakU64ArrayBytes n then (WSize.U64, n / 8)
@@ -1634,23 +1631,22 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
   let optBody := expandFlagCaptures limbWS gprUsed optBody0
   let body ← emitBody "  " optBody
   let declWidths := collectDeclWidths optBody
-  -- E1/E2 (2026-05-30): a parameter or result typed `sarr n` (an array slot)
+  -- A parameter or result typed `sarr n` (an array slot)
   -- is a *pointer-array* buffer passed by reference — the leaf-ABI shape the
   -- composed ML-DSA sign uses to thread poly buffers between leaves
   -- (`out = mldsa_ntt_4way(out, inp)`).  It renders `reg ptr u32[n/4]` (the
   -- ML-DSA u32-packed poly layout: 4 bytes / coefficient) when `n % 4 = 0`,
-  -- else `reg ptr u8[n]`.  Scalar (`sword`) params keep the existing
-  -- `reg uNN` form byte-identically, so the #244/#247/#248 leaves are
-  -- unchanged.  This is the dst-threaded `Ccall` ABI's caller-side contract:
+  -- else `reg ptr u8[n]`.  Scalar (`sword`) params keep the
+  -- `reg uNN` form.  This is the dst-threaded `Ccall` ABI's caller-side contract:
   -- the buffer slot is `stack u32[N]` at the call site (via `Parr_init` +
   -- `u32AccessedArrays`) and `reg ptr u32[N]` in the callee signature.
-  -- #253: a Keccak-f1600 ABI array size (200 B state, 904 B absorb buffer)
+  -- A Keccak-f1600 ABI array size (200 B state, 904 B absorb buffer)
   -- renders the u64-packed `reg ptr u64[n/8]` shape; every other `.sarr n`
-  -- keeps the existing u32-poly / u8 layout byte-identically.
-  -- #262: name-aware ptr-array element width.  A `.sarr`-typed param/result
+  -- keeps the u32-poly / u8 layout.
+  -- Name-aware ptr-array element width.  A `.sarr`-typed param/result
   -- that is u64-accessed (the safegcd limb / matrix / scratch arrays threaded
-  -- between the divstep subroutines) renders `reg ptr u64[n/8]`; the existing
-  -- Keccak-size and u32-poly cases are unchanged.  `u64Names` is the set of
+  -- between the divstep subroutines) renders `reg ptr u64[n/8]`, alongside
+  -- the Keccak-size and u32-poly cases.  `u64Names` is the set of
   -- array names this function accesses with a `.U64`-scaled `Pget`/`Laset`,
   -- plus the `.sarr`-typed (byte%8==0) Ccall operands that are NOT u32-accessed
   -- (a u64 array threaded through a `Ccall` appears as a bare `.sarr` operand
@@ -1659,7 +1655,7 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
   -- (the real u32-poly buffers).  A u64 array threaded through a `Ccall` is
   -- never *also* u32-scaled, so this set disambiguates the bare-`.sarr` Ccall
   -- operand: if a `.sarr` (byte%8==0) operand is NOT in this set, it is the
-  -- u64-packed limb/matrix array (the #262 case), not a u32 poly buffer.
+  -- u64-packed limb/matrix array, not a u32 poly buffer.
   let u32Scaled : List String :=
     let rec exprS : PExpr → List String
       | .Pget .AAscale .U32 arr idx => arr.gv.var.vname :: exprS idx
@@ -1729,7 +1725,7 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
   let carryByteTmps := carryRegs.map carryByteTmp
   let loopIdxNames := dedup (collectLoopIdxNames optBody)
   let tmpNames := carryFlagTmps ++ carryByteTmps
-  -- E1: array-typed locals (`stack uNN[k]`) are partitioned out of the
+  -- Array-typed locals (`stack uNN[k]`) are partitioned out of the
   -- regular `reg uNN` declaration list.  An array name comes from a
   -- `Cassgn (.Lvar x) _ _ (.Parr_init n)` — the lowering shape produced
   -- by `LowCTToJasmin.toJasminCmd`'s `RLetZero loc (TBytes N)` arm.
@@ -1770,10 +1766,10 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
       mkGroups "reg " regKeep ++ mkGroups "stack " stackSpill
     else
       mkGroups "reg " locals
-  -- E1: render each array local as `stack uNN[k] name;` using the layout
+  -- Render each array local as `stack uNN[k] name;` using the layout
   -- table.  Look up the byte count by name from `arrayLocalsAll` (first
   -- occurrence wins for repeated names).
-  -- #262: a name that is u64-accessed (or threaded as a u64 ptr-array Ccall
+  -- A name that is u64-accessed (or threaded as a u64 ptr-array Ccall
   -- operand) is declared `stack u64[n/8]`, even though its bare `.sarr` Ccall
   -- operand also matched the u32 heuristic.  u64 detection wins.
   let u32Arrays := dedup (u32AccessedArrays optBody) |>.filter
@@ -1818,14 +1814,12 @@ def fnKindPrefix : FnKind → String
   | .Export => "export fn "
   | .SubroutineRastack => "#[returnaddress=stack]\nfn "
 
-/-! ### E3 — require-line emit (2026-05-29)
+/-! ### Require-line emit
 
 Bench drivers that issue a `Ccall` to a kernel shipped in an
 `include/` shim need a `require "..."` prologue at the top of the
-`.jazz` so jasminc can resolve the symbol.  Before E3 the verified
-emit produced a shape-correct body that the hand-edited bench
-bridges then prefixed with a manual `require` line; E3 makes the
-emit produce the line directly.
+`.jazz` so jasminc can resolve the symbol.  The emit produces that
+line directly.
 
 The mapping from kernel name to include path is a registered table
 populated below for the five per-protocol bench bridges.  Kernels
@@ -1856,7 +1850,7 @@ def kernelRequireMap : String → Option String
   -- ML-DSA: `mldsa_ntt_4way` uses the sibling-emit path
   -- (`gen/mldsa_ntt_4way.jazz`), not a central include.
   | "mldsa_ntt_4way"               => some "../gen/mldsa_ntt_4way.jazz"
-  -- #253: the ML-DSA seed-schedule sponge calls the real FIPS-202 `keccak_f1600`
+  -- The ML-DSA seed-schedule sponge calls the real FIPS-202 `keccak_f1600`
   -- permutation, emitted at `bench/keccak_compare/gen/keccak_f1600.jazz`.
   | "keccak_f1600"                 => some "../../keccak_compare/gen/keccak_f1600.jazz"
   | _                              => none
@@ -1895,11 +1889,10 @@ def emitRequires (body : List InstrR) : String :=
     suitable as a `Ccall` target whose caller wants to force non-inlining
     (e.g., the mul_basecase Cwhile cascade's inner blocked-addmul kernel).
 
-    **E3 (2026-05-29)**: prepends `require "..."` lines for every
-    `Ccall` target name registered in `kernelRequireMap`.  This makes
-    the verified emit's `.jazz` directly jasminc-compilable for the
-    five per-protocol bench bridges that previously hand-edited the
-    prologue. -/
+    It prepends `require "..."` lines for every `Ccall` target name
+    registered in `kernelRequireMap`, which makes the verified emit's
+    `.jazz` directly jasminc-compilable for the five per-protocol bench
+    bridges. -/
 def emitFunDeclWithKind (kind : FnKind) (fd : FunDecl)
     (spillScalars : Bool := false) : Option String := do
   let (header, _decls, bodyBlock, _body) ← emitFunDeclCore fd spillScalars
@@ -1944,7 +1937,7 @@ def emitFunDeclRastack (fd : FunDecl) : Option String :=
 /-- Emit a `#[returnaddress=stack] fn` whose scalar locals are stack-spilled
     (`stack uNN` instead of `reg uNN`).  This is the subroutine analogue of
     `emitFunDeclSpill`: a non-inlined helper whose own live-scalar set still
-    exceeds the GPR budget.  Used by the #262 safegcd-divstep62 split, where
+    exceeds the GPR budget.  Used by the safegcd-divstep62 split, where
     each lifted phase subroutine (`update_de` / `update_fg`) carries the i128
     accumulators plus the `#IMUL` RAX/RDX reserve. -/
 def emitFunDeclRastackSpill (fd : FunDecl) : Option String :=

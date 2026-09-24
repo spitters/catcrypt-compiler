@@ -15,14 +15,13 @@ public meta import CatCrypt.Crypto.Util.Sha256Verified
 public import CatCrypt.Crypto.Util.Sha256Verified
 
 /-!
-# SHA-256 compression-round components as a genuine `catCryptDialect → jasmin → x86` path
+# SHA-256 compression-round components as a `catCryptDialect → jasmin → x86` path
 
 The FIPS 180-4 §6.2 SHA-256 compression round is a *benchmarked* word primitive
 (HACL*-class; the THIR / owned-emit pipelines emit it at `bench/sha2_compare/`
-and `bench/thir_front_sha256*/`). Until now the high algebraic crypto-SSA surface
-`catCryptDialect` carried only the ChaCha20 quarter-round
-(`Chacha20QRCatCryptEmit.lean`); the SHA-256 round body had no `catCryptDialect`
-coverage. This file broadens the catCrypt arm beyond the ChaCha QR: it builds the
+and `bench/thir_front_sha256*/`). Alongside the ChaCha20 quarter-round
+(`Chacha20QRCatCryptEmit.lean`), this module gives the high algebraic crypto-SSA
+surface `catCryptDialect` coverage of the SHA-256 round body: it builds the
 four SHA-256 round-component logical functions — `Σ₀`, `Σ₁`, `Ch`, `Maj` (FIPS
 180-4 §4.1.2) — *natively* as straight-line `Com catCryptDialect` programs over the
 dialect's word ops (`bvRor`/`bvXor`/`bvAnd`/`andn`), proves each denotes to the
@@ -73,7 +72,7 @@ non-trivial word-mixing pieces; the surrounding additions are dialect `bvAdd`.
   text through `JasminPrint.emitJazz`, with smokes pinning the op shape (`#ROR_32`,
   `^`) reaching the printer and the `(params, body)` count.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

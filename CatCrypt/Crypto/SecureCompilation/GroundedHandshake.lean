@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
-# Grounded TRANSPORT-HANDSHAKE key-schedule backbones — whole-pipeline
+# Grounded TRANSPORT-HANDSHAKE key-schedule cores — whole-pipeline
   emit-realization with ZERO assumed per-kernel hypotheses, over the PROVED
   Keccak concrete realizer
 
@@ -16,7 +16,7 @@ A transport handshake (TLS 1.3, Noise, WireGuard, Signal) is, at the
 computational level, a structured chain of HKDF / hash steps over a running
 key-schedule state.  Once the underlying PRF permutation's per-iteration
 realization is a *theorem* — and it is, `ConcreteHashRealizer.keccak_realizes_concrete`
-— the whole handshake key-schedule **backbone** is grounded with **zero
+— the whole handshake key-schedule **core** is grounded with **zero
 `KernelRealizesT` hypotheses**.
 
 This module reuses the carrier-`.TBytes 200` (1600-bit) Keccak-sponge grounding
@@ -24,13 +24,13 @@ already proved in-repo — `GroundedHashProtocol.keccakSponge_realized` +
 `pipeNT_realizes`, every per-iteration realization the **proved**
 `keccak_realizes_concrete` (whose codec round-trip `decodeKbytes_encodeKbytes` is
 proved per-bit, *axiom-clean*: `{propext, Classical.choice, Quot.sound}` only) —
-to ground the **SHA-3 / Keccak-sponge key-schedule backbones of real transport
+to ground the **SHA-3 / Keccak-sponge key-schedule cores of real transport
 handshakes**.  Each handshake's key schedule is, at the leaf level, a chain of
 the *same* permutation iterated on a running sponge/extract state; the whole
-backbone is therefore a `pipeNT (.TBytes 200)` chain whose every step is
+core is therefore a `pipeNT (.TBytes 200)` chain whose every step is
 discharged by the proved realizer.
 
-## The three grounded handshake key-schedule backbones (all SHA-3 / Keccak)
+## The three grounded handshake key-schedule cores (all SHA-3 / Keccak)
 
 * **`grounded_tls13_key_schedule_realizes`** — the TLS 1.3 key schedule (RFC 8446
   §7.1): the cascade `Early Secret → Handshake Secret → Master Secret`, each an
@@ -61,9 +61,9 @@ discharged by the proved realizer.
   realization discharged by the proved `keccak_realizes_concrete`.  **ZERO
   `KernelRealizesT` hypotheses.**
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
-* **The COMPUTATIONAL BACKBONE is grounded, NOT the handshake's SECURITY.**  What
+* **The COMPUTATIONAL CORE is grounded, NOT the handshake's SECURITY.**  What
   these theorems establish is that the *emitted HKDF / Keccak-sponge kernel
   pipeline* of each handshake key schedule **computes its arithmetic / hash
   spec** — the per-step permutation chain decodes to the composite of its
@@ -75,7 +75,7 @@ discharged by the proved realizer.
   the Keccak sponge.
 
 * **Grounded (unconditional Lean theorem):** every per-step realization of all
-  three backbones.  Each is the proved `keccak_realizes_concrete` (in turn the
+  three cores.  Each is the proved `keccak_realizes_concrete` (in turn the
   verified codec round-trip `decodeKbytes_encodeKbytes`), with no KAT, no abstract
   section assumption, and no per-kernel hypothesis.  Each whole `pipeNT` pipeline
   decodes to the composite of its per-step specs.
@@ -87,9 +87,9 @@ discharged by the proved realizer.
   round-trip `decodeSbytes_encodeSbytes` is proved by a `bv_decide` LRAT
   certificate, which introduces a certificate axiom.  To keep every theorem in
   this file strictly axiom-clean (`{propext, Classical.choice, Quot.sound}` only)
-  we ground the handshake key-schedule backbones on the **Keccak** permutation,
+  we ground the handshake key-schedule cores on the **Keccak** permutation,
   whose codec round-trip is proved per-bit with no `bv_decide` axiom.  This is a
-  genuine substitution: TLS 1.3 as specified is HMAC-SHA-256; we ground the SHA-3
+  substitution: TLS 1.3 as specified is HMAC-SHA-256; we ground the SHA-3
   / KMAC-HKDF instantiation of the same Extract/Expand ladder structure, and say
   so.  (NIST SP 800-56C Rev. 2 admits SHA-3/KMAC as an HKDF PRF; Noise and
   WireGuard are PRF-agnostic over their HKDF.)
@@ -100,7 +100,7 @@ discharged by the proved realizer.
   per kernel, explicitly not one of the per-step realizations this file discharges
   (nor a KAT).  The non-hash handshake arithmetic (X25519 / P-256 DH shared-secret
   computation, AEAD record protection) is likewise out of scope: only the
-  hash/sponge key-schedule backbone is grounded here.
+  hash/sponge key-schedule core is grounded here.
 
 ## References
 * RFC 8446 §7.1 (TLS 1.3 key schedule: Early/Handshake/Master Secret, HKDF-Extract,
@@ -149,7 +149,7 @@ def tls13KeyScheduleSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED TLS 1.3 key-schedule backbone — UNCONDITIONAL.**
+/-- **GROUNDED TLS 1.3 key-schedule core — UNCONDITIONAL.**
 
     The TLS 1.3 key schedule (RFC 8446 §7.1) in its SHA-3 / KMAC-HKDF
     instantiation: the `Early Secret → Handshake Secret → Master Secret` cascade
@@ -162,7 +162,7 @@ def tls13KeyScheduleSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by the carrier-generalized `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational KDF backbone** — that the
+    Scope: this grounds the **computational KDF core** — that the
     emitted Keccak-sponge pipeline of the key schedule computes its hash spec.  It
     does **NOT** ground any TLS 1.3 *security* property (key-indistinguishability,
     forward secrecy, the SIGMA-style authenticated-key-exchange guarantee) — those
@@ -222,7 +222,7 @@ def noiseMixKeySpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational KDF backbone** — that the
+    Scope: this grounds the **computational KDF core** — that the
     emitted Keccak-sponge pipeline of the Noise mix ladder computes its hash spec.
     It does **NOT** ground Noise's *security* (the channel-binding / AKE
     guarantees of `Noise_XX`).  Noise is PRF-agnostic over its HKDF; we instantiate
@@ -230,7 +230,7 @@ def noiseMixKeySpecs (steps : KeccakStepMappings) (n : ℕ) :
     residual is the owned-emit obligation for the `"keccak_f1600"` leaf — NOT a
     per-step hypothesis (and NOT a KAT).  The Diffie-Hellman shared-secret inputs
     to each `MixKey` (X25519) and the AEAD payload encryption are out of scope —
-    only the hash/sponge mix backbone is grounded. -/
+    only the hash/sponge mix core is grounded. -/
 theorem grounded_noise_mixkey_realizes (steps : KeccakStepMappings)
     (limbStore : LimbStoreSpec) (n : ℕ)
     (oldDest xVal : RustVal (.TBytes 200)) :
@@ -268,7 +268,7 @@ def wireguardKdfChainSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED WireGuard / Signal KDF-chain backbone — UNCONDITIONAL.**
+/-- **GROUNDED WireGuard / Signal KDF-chain core — UNCONDITIONAL.**
 
     The WireGuard handshake KDF chain (Donenfeld, NDSS 2017, §5.4; Noise_IKpsk2)
     and the Signal double-ratchet symmetric-key chain: successive keys are derived
@@ -280,14 +280,14 @@ def wireguardKdfChainSpecs (steps : KeccakStepMappings) (n : ℕ) :
     `keccak_realizes_concrete` (in turn the verified 200-byte codec round-trip
     `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational KDF backbone** — that the
+    Scope: this grounds the **computational KDF core** — that the
     emitted Keccak-sponge ratchet pipeline computes its hash spec.  It does **NOT**
     ground WireGuard's or Signal's *security* (forward secrecy, post-compromise
     security / the ratchet's healing guarantee).  We instantiate the HKDF PRF with
     the Keccak sponge to stay strictly axiom-clean.  The only machine-code residual
     is the owned-emit obligation for the `"keccak_f1600"` leaf — NOT a per-step
     hypothesis (and NOT a KAT).  The X25519 DH inputs mixed into each ratchet step
-    are out of scope — only the hash/sponge chain backbone is grounded. -/
+    are out of scope — only the hash/sponge chain core is grounded. -/
 theorem grounded_wireguard_kdf_chain_realizes (steps : KeccakStepMappings)
     (limbStore : LimbStoreSpec) (n : ℕ)
     (oldDest xVal : RustVal (.TBytes 200)) :
@@ -303,18 +303,18 @@ theorem grounded_wireguard_kdf_chain_realizes (steps : KeccakStepMappings)
     (wireguardKdfChainLeaves n) (wireguardKdfChainSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §4  The combined HANDSHAKE headline — all three backbones grounded
+/-! ## §4  The combined HANDSHAKE headline — all three cores grounded
 
 The transport-handshake portfolio is its three grounded SHA-3 key-schedule
-backbones conjoined: the TLS 1.3 Early→Handshake→Master HKDF ladder, the Noise
+cores conjoined: the TLS 1.3 Early→Handshake→Master HKDF ladder, the Noise
 `MixKey` / `MixHash` ladder, and the WireGuard / Signal KDF ratchet chain.  All
 three drive the 1600-bit Keccak sponge (carrier `.TBytes 200`), so the
 conjunction is over one carrier; each conjunct is unconditional in its kernels. -/
 
-/-- **THE HANDSHAKE HEADLINE — three grounded SHA-3 key-schedule backbones, ZERO
+/-- **THE HANDSHAKE HEADLINE — three grounded SHA-3 key-schedule cores, ZERO
     kernel hypotheses.**
 
-    The SHA-3 transport-handshake key-schedule backbones conjoined, each an
+    The SHA-3 transport-handshake key-schedule cores conjoined, each an
     `n`-step `pipeNT (.TBytes 200)` Keccak-permutation pipeline decoding to the
     composite of `n` `keccak_f steps` specs:
 
@@ -328,7 +328,7 @@ conjunction is over one carrier; each conjunct is unconditional in its kernels. 
     verified codec round-trip `decodeKbytes_encodeKbytes`).  All three are
     axiom-clean (`{propext, Classical.choice, Quot.sound}`).
 
-    HONEST scope: only the **computational KDF backbones** (the emitted
+    Scope: only the **computational KDF cores** (the emitted
     Keccak-sponge pipelines compute their hash specs) are grounded — NOT the
     handshakes' *security* (key-indistinguishability, forward secrecy, the
     authenticated-key-exchange guarantee of TLS 1.3 / Noise / WireGuard), which are

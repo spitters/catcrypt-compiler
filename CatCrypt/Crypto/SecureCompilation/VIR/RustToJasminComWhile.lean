@@ -21,17 +21,17 @@ the value waist `semScalar` has no runtime-loop arm. (`IsCoveredCtl` — the
 operational-simulation coverage — does have an `rWhileNz` arm, matching
 `translateDialectControl`'s context-plumbing `RWhileNz` arm.)
 
-The `while`-carrying front already had its **front-preservation** proved —
+The **front-preservation** of the `while`-carrying front is
 `TranslateDialectScalar.transU_denote`
 (`Dialects/TranslateDialectUnifiedDenote.lean`), the homomorphism for the unified
 coverage predicate `IsCoveredSU` (closed under `RSeq`/`RBlock`/`RCond`/`RWhileNz`/
 `RFor`, all shapes nesting all shapes) over the unified waist `semU` and the
 env-threaded front descent `transU`. But that homomorphism stops at the
-`catCryptDialect` `Com`; it was never composed through
-`DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'` (A1) to a jasmin
-`Com`.
+`catCryptDialect` `Com`.
 
-This file closes exactly that composition. `transU_denote` was built to expose the
+This module composes it with
+`DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'` (A1) down to a jasmin
+`Com`. `transU_denote` exposes the
 *same* output triple as `translateDialectControl_denote_ctl`
 (a post-valuation `V'` with `ConsistentS o.vm V' env'` and, for any tracked tail,
 a `com` with `o.cont tail = some com ∧ com.denote V = tail.denote V'`), so the
@@ -49,8 +49,8 @@ transU fuel`, `semScalar → semU fuel`, `IsCoveredSCtl → IsCoveredSU`).
   emitted jasmin program computes `val`:
   `jcom.denote (ctMapValD V) = ctTransTy val`. This composes `transU_denote`
   (front homomorphism, with `while`) with `cryptoDialectToJasminCom_denote_eq'` (A1,
-  leaf agreement discharged internally by `dialectJasminLeafAgrees_holds`). No
-  `sorry`; no new axiom.
+  leaf agreement discharged internally by `dialectJasminLeafAgrees_holds`). All
+  goals closed; no new axiom.
 
 * **Value semantics — `semU`, as in the straight-line case.** The value leg is
   stated over `semU fuel` (the machine-word-faithful unified waist: `semScalar`
@@ -97,7 +97,7 @@ the body while `semU`'s `semScalarWhile` waist is a do-while, and the two disagr
 at a zero entry guard. `RustExecSimulatesUnified.RWhileNzUnifiedAgreement_Statement`
 records that edge.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 @[expose] public section

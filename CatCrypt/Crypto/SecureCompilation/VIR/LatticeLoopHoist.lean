@@ -44,7 +44,7 @@ honest `Com latticeDialect` (the source body is exactly `srcCom`'s
 `polyMulC`-shaped multiply threaded through an accumulator add; the target body
 is the NTT-domain `basemul` add). We expose those bodies and prove their
 `Com.denote` equals the foldl step functions (`rfl`), so the loop denotation is
-genuinely a fold over `Com`-level iterations — then state and discharge the
+a fold over `Com`-level iterations — then state and discharge the
 hoist over the loop denotations by reusing `latticeHoist_eq`.
 
 ## What is modelled vs. represented as a fold

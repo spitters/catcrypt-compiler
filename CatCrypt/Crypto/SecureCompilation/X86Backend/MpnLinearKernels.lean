@@ -16,7 +16,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at n ≥ 16 through the owned x86 backend (#351)
+# `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at n ≥ 16 through the owned x86 backend
 
 `BignumMontMulKernel.lean` lowers s2n-bignum's `bignum_mul_4_8` dual-carry-chain
 idiom through the owned in-Lean x86 backend (no jasminc). This module does the
@@ -363,7 +363,7 @@ GPR-budget fallback.
    `r[i+j]` for `i ∈ 0..j-1`, threading the running high word through `hc` and
    the column carry through `CF` (the proven `sqrInnerStep` machinery, restricted
    to the strict lower triangle `i < j`). After the row, the final high carry is
-   stored into `r[2j]`. The result accumulator now holds
+   stored into `r[2j]`. The result accumulator then holds
    `t = Σ_{i<j} a_i a_j · B^{i+j}` in `r[0..2n-1]` (`r[0] = 0`).
 
 2. **Double.** `r := 2·t`, an `ADCX` self-add chain across all `2n` limbs:

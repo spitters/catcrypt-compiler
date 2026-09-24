@@ -63,9 +63,9 @@ to `Z^(p − 2)` via `bernsteinInvChain_eq_pow_p_minus_2`.
   `ed25519_compress_cmd`, would close the full chain.  We capture the
   decomposition as a *structural lemma* (`compress_emit_structure`).
 
-For now, byte-for-byte difftesting against `dalek_compress` (running on
-80/80 RFC vectors via `bench/dalek/src/compress_difftest.rs`) is the
-empirical witness for the deferred piece.
+Byte-for-byte difftesting against `dalek_compress` (running on 80/80 RFC
+vectors via `bench/dalek/src/compress_difftest.rs`) is the empirical
+witness for the piece this module does not prove.
 
 ## References
 

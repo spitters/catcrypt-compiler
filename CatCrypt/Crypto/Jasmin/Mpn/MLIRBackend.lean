@@ -21,12 +21,12 @@ counterpart of the Jasmin-path prototype
 `CatCrypt/Crypto/Jasmin/Mpn/AddPrototype.lean`.  Where that file
 chose the Jasmin `Cwhile` route (option (b)) because the emitter, a
 validated example, and a loop-aware interpreter already existed, this
-file prototypes the previously-rejected option (a): emit a real
+file prototypes option (a): emit a real
 runtime-length loop as MLIR `scf.while` so the kernel can flow
 `MLIR → LLVM → {x86_64, AArch64}`.  That is the backend that earns the
 Lean-TCB claim across architectures (the Jasmin backend is x86-64 only).
 
-## What is delivered here (honest scope)
+## Scope
 
 * **(A) A textual MLIR `scf.while` emitter** (`emitMpnAddNScfWhile`) that
   produces the runtime loop analogue of the committed Jasmin
@@ -47,13 +47,13 @@ Lean-TCB claim across architectures (the Jasmin backend is x86-64 only).
 
 Exactly like `LowCTToMLIR.lean`, the emitter here is an unverified
 `String` formatter.  It is NOT routed through the verified
-`LowCT → CryptoSSA → Com → Veir/MLIR` chain, and it CANNOT be: that
+`LowCT → Com catCryptDialect → Veir/MLIR` chain, and it CANNOT be: that
 chain's IR (`Com`, in
 `CatCrypt/Crypto/SecureCompilation/VIR/Core.lean`) is, by its own
 docstring, *"A program in A-normal form … and no regions."*  `scf.while`
 *is* a region-carrying op.  Emitting it verified would require a
 region-carrying loop construct in the in-tree VIR `Com` plus a denoting
-loop op in a dialect — neither exists today (see §"Dynamic-memref +
+loop op in a dialect — neither exists in the IR (see §"Dynamic-memref +
 loop scoping" below).
 
 `Examples/` is never imported by `Crypto`, so nothing security-relevant
@@ -103,7 +103,7 @@ inductive MlirMemrefDynOp where
 with signatures taking the index as an *operand* (a `.sword 64`/`index`
 SSA value) rather than an op parameter, and denotations
 `loadDyn : (arr, i) ↦ if h : i.toNat < len then arr ⟨i.toNat, h⟩ else 0`.
-The `agree_*`-style lemma can no longer close by `rfl`: the source op
+The `agree_*`-style lemma cannot close by `rfl`: the source op
 (`CatCryptOp.memrefGet n (i : Fin n)`) carries the bound *statically*,
 the dynamic op carries it as a runtime value, so the agreement lemma must
 assume `i.toNat < n` and rewrite the static `Fin n` access to the dynamic
@@ -150,7 +150,7 @@ NOT the full kernel.  The honest first milestone is:
   dialect, with `agree_forN` proved by `Nat.rec`, for a body that does
   ONE `loadDyn`/`storeDyn`/`addi` (no carry, no aliasing).**
 
-That isolates the two genuinely new proof obligations (regions in the IR;
+That isolates the two new proof obligations (regions in the IR;
 conditional dynamic-memref agreement) from the bignum-specific carry
 chain (already proved on the Jasmin side, reusable verbatim).
 -/
@@ -197,7 +197,7 @@ def mpnAddNCmd (n : Nat) : LowCT :=
 
 A direct `String` writer for the runtime loop.  Parameterised only by the
 function name; the limb count is the runtime `index` argument `%n` so the
-emitted text is genuinely length-generic (`memref<?xi64>`), unlike the
+emitted text is length-generic (`memref<?xi64>`), unlike the
 unrolled X25519 path.  This text was validated with `mlir-opt-20`. -/
 
 /-- Emit `mpn_add_n` as MLIR `scf.while` over `memref<?xi64>`.  Loop-carried

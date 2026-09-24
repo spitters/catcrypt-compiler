@@ -591,7 +591,7 @@ def emitMldsaNttFull8wayJazz (name : String) : String :=
     ++ String.intercalate "\n" renderMldsaNttFull8wayBody
     ++ "\n\n  return r;\n}"
 
-/-! ## 6c-bis. Packed-dual-zeta deep levels (#420)
+/-! ## 6c-bis. Packed-dual-zeta deep levels
 
 The §6c body above keeps the three deepest layers (`len = 4, 2, 1`) as
 **within-vector** butterflies: each `for v = 0 to 32` loop does ONE `dmont`
@@ -635,14 +635,14 @@ def renderDmont2 : List String :=
   , "  return res;"
   , "}" ]
 
-/-- A self-contained one-vector packed-dual-zeta butterfly demonstrator (#420):
+/-- A self-contained one-vector packed-dual-zeta butterfly demonstrator:
     a `len = 4` deep-level butterfly (cross-128 partner via `#VPERMQ`) carrying
     TWO zetas — the low-128 sub-group (lanes 0..3) uses `(zlo, zh_lo)`, the
     high-128 sub-group (lanes 4..7) uses `(zhi, zh_hi)` — through ONE `dmont`
     (6 `VPMULDQ`).  The two zetas are packed into the zeta vectors by 128-bit
     half: `zl` holds `zlo` in lanes 0..3 and `zhi` in lanes 4..7 (likewise
     `zh`), so the single 6-mul Montgomery multiply twiddles BOTH sub-butterfly
-    groups at once.  This is the packed-dual-zeta emit primitive #405 named
+    groups at once.  This is the packed-dual-zeta emit primitive
     (one 6-mul call, two zeta groups) — the same per-vector dual-zeta packing
     the §6c `len = 2` layer uses.  Agreement with a lane-by-lane scalar
     two-zeta butterfly reference was checked outside Lean on sampled inputs; the
@@ -667,7 +667,7 @@ def renderMldsaDualZetaButterflyBody : List String :=
   , "  c    = #VPBLEND_8u32(radd, rsub, 0xF0);"
   , "  r[:u256 0] = c;" ]
 
-/-- Emit a standalone packed-dual-zeta butterfly `.jazz` (#420 primitive demo):
+/-- Emit a standalone packed-dual-zeta butterfly `.jazz` (primitive demo):
     `dmont` + a one-vector `len = 4` two-zeta butterfly export, where the zeta
     vector carries one zeta per 128-bit half.  It isolates the dual-zeta
     multiply used by the deep layers (one 6-mul call, two zeta groups). -/
@@ -1234,7 +1234,7 @@ def mldsaNttFull8wayJazz : String := emitMldsaNttFull8wayJazz "dsa_ntt_proto"
     && (strContains mldsaNttFull8wayJazz "// len = 2")
     && (strContains mldsaNttFull8wayJazz "// len = 1")
 
-/-- The #420 packed-dual-zeta butterfly demonstrator export. -/
+/-- The packed-dual-zeta butterfly demonstrator export. -/
 def mldsaDualZetaButterflyJazz : String :=
   emitMldsaDualZetaButterflyJazz "dsa_dualzeta_bfly"
 

@@ -23,7 +23,7 @@ no division op, so the hazard cannot be expressed and therefore never fires.
 That is fragile — adding a `div`/`mod`/`vshift` op later would silently slip a
 variable-time leak past the analyser. This module makes the rule **explicit**,
 so any future op addition that is variable-time must be classified here (and the
-keystone below then forbids it on secret operands by construction).
+main theorem below then forbids it on secret operands by construction).
 
 ## What this module establishes
 
@@ -33,9 +33,9 @@ secrecy levels (`SecretLevel`) of its operands, plus:
 * `VOp.varTime` — the classification: which operations are variable-time.
 * A leakage / timing model `VInstr.timing`: a variable-time op leaks (a function
   of) its operand values; a constant-time op has fixed timing.
-* **Keystone** `varTimeOp_secret_not_ct`: an instruction whose op is variable-
+* **Main theorem** `varTimeOp_secret_not_ct`: an instruction whose op is variable-
   time and at least one operand is `Secret` is **not** constant-time — its
-  timing is value-dependent on a secret. Stated as a genuine non-CT witness:
+  timing is value-dependent on a secret. Stated as a non-CT witness:
   two operand assignments that agree on all public slots can still differ in the
   observed timing (`¬ VInstr.ctSafe`, and a concrete leaking pair).
 * **Public-accepted dual** `varTimeOp_public_accepted`: a variable-time op with
@@ -51,11 +51,10 @@ secrecy levels (`SecretLevel`) of its operands, plus:
 This is an **abstract** instruction model (op tag + operand levels + an abstract
 value→timing leakage function), in the negative-witness style of
 `CTPredicate.lean` and the accept/reject duals of `VartimeBignumInverse.lean`.
-It is *not yet wired into* `catCryptDialect`/`LowCT` (those IRs have no var-time
-op to classify — which is precisely the gap this hardens against). When a
-variable-time op is added to either IR, route its classification through
-`VOp.varTime` and discharge its CT obligation via `varTimeOp_secret_not_ct` /
-`varTimeOp_public_accepted`. Dialect wiring is the follow-up.
+It is not connected to `catCryptDialect`/`LowCT`, which have no var-time op to
+classify. A variable-time op added to either IR routes its classification
+through `VOp.varTime` and discharges its CT obligation via
+`varTimeOp_secret_not_ct` / `varTimeOp_public_accepted`.
 -/
 
 @[expose] public section
@@ -102,7 +101,7 @@ inductive VOp where
 
 /-- The variable-time classification: `true` for ops whose latency depends on
 operand *values*. **This is the single point of truth** — any op added to `VOp`
-that is value-time-dependent must return `true` here, and the keystone then
+that is value-time-dependent must return `true` here, and the main theorem then
 forbids it on a secret operand by construction. -/
 def VOp.varTime : VOp → Bool
   | .div => true
@@ -159,7 +158,7 @@ abbrev ValAssign := Nat → Nat
 * Constant-time ops: fixed latency `1`, **independent** of `vals`.
 * Variable-time ops: latency `1 + (sum of operand values)` — the canonical
   "latency is a function of the operand values" leakage shape. The exact
-  function is immaterial; what matters (and what the keystone uses) is that it
+  function is immaterial; what matters (and what the main theorem uses) is that it
   is *not constant* in the operand values. -/
 def VInstr.timing (i : VInstr) (vals : ValAssign) : Nat :=
   if i.op.varTime then
@@ -192,7 +191,7 @@ same observable timing. -/
 def VInstr.ctSafe (i : VInstr) : Prop :=
   ∀ v1 v2 : ValAssign, PublicAgree i v1 v2 → i.timing v1 = i.timing v2
 
-/-! ## §5. Keystone: a variable-time op with a secret operand is NOT CT -/
+/-! ## §5. Main theorem: a variable-time op with a secret operand is NOT CT -/
 
 /-- A CT op (any op that is not variable-time) is always `ctSafe`: its timing is
 the constant `1`, hence trivially independent of operands. -/
@@ -239,7 +238,7 @@ theorem varTimeOp_public_accepted (i : VInstr)
     exact this i.argLevels.length (le_refl _)
   · simp only [hvt, if_neg, Bool.not_eq_true] at *
 
-/-- **KEYSTONE — a variable-time op with a secret operand is NOT constant-time.**
+/-- **A variable-time op with a secret operand is NOT constant-time.**
 
 If the op is variable-time and some operand slot is `Secret`, then the
 instruction is not `ctSafe`: we exhibit two operand-value assignments that agree

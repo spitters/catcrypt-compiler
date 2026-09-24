@@ -35,7 +35,7 @@ number; we therefore reuse the Barrett file's proven base-256 `ℕ`↔bytes code
 
 We exhibit:
 
-* a genuine `RustVal .TFp` (= `JArray 48`, the `.TBytes 48` byte carrier) base-256
+* a concrete `RustVal .TFp` (= `JArray 48`, the `.TBytes 48` byte carrier) base-256
   `ℤ` codec `encodeZ`/`decodeZ` — no constructor-wrapping of a function, no
   `axiom`;
 * a **proved** round-trip `decodeZ_encodeZ : decodeZ width (encodeZ width x) = x`
@@ -61,19 +61,19 @@ We exhibit:
   decode-equals-`montMul` fact is a theorem here, not a test vector.  The
   Montgomery-multiply *encoding* KAT (the `decode ∘ encode = id` assumption of
   `montMulKernelRealizes_canonical`) is discharged.
-* **NOT proved (the remaining residual):** that the *jasmin-emitted machine bytes*
+* **NOT proved (outside the scope):** that the *jasmin-emitted machine bytes*
   of the real Montgomery-multiply kernel equal this realizer.  That equality —
-  emitted assembly ≡ the realizer `LeafSpec` — is the owned-machine-code route and
-  is a separate follow-up.  This file removes the *encoding* KAT for the
+  emitted assembly ≡ the realizer `LeafSpec` — is the owned-machine-code route,
+  outside this module.  This module removes the *encoding* KAT for the
   Montgomery-domain multiply family; it does **not** remove the *machine-code*
   obligation.
 
 This covers the **Montgomery-domain multiply** primitive used across lattice/curve
 crypto (ML-KEM/ML-DSA coefficient Montgomery multiply, RSA/EC field multiply).
 
-## Honesty: side-conditions are codec-fit + Montgomery parameter conditions
+## Side-conditions are codec-fit + Montgomery parameter conditions
 
-The side hypotheses are of two honestly-distinct kinds, **neither** a hypothesis
+The side hypotheses are of two distinct kinds, **neither** a hypothesis
 on the realizer/kernel:
 
 1. **Codec-fit** (`width ≤ 48`, and the per-call range
@@ -196,7 +196,7 @@ theorem montMul_realizes_concrete (N R N' : ℤ) (width : ℕ) (hw : width ≤ 4
     `montMul_realizes_concrete` *is* the localized
     `MontgomeryMulEmitValue.MontMulEmitRealizes` predicate — via the
     `montMul_iff_kernel2` seam (`Iff.rfl`) — with its abstract `encode`/`decode`
-    section now a *theorem* (`decodeZ_encodeZ`) rather than the assumed
+    section a *theorem* (`decodeZ_encodeZ`) rather than the assumed
     `hsection`. -/
 theorem montMul_emit_realizes_concrete (N R N' : ℤ) (width : ℕ) (hw : width ≤ 48)
     (leaf : String) (limbStore : LimbStoreSpec)
@@ -209,11 +209,11 @@ theorem montMul_emit_realizes_concrete (N R N' : ℤ) (width : ℕ) (hw : width 
     (montMulLeafSpec N R N' width leaf limbStore)).mpr
     (montMul_realizes_concrete N R N' width hw leaf limbStore hfit)
 
-/-! ## §4  The correctness corollary via the proven Montgomery keystone
+/-! ## §4  The correctness corollary via the proven Montgomery lemma
 
 Threading the Montgomery parameter condition `N * N' ≡ -1 [ZMOD R]` (the
 defining precondition of the algorithm — it forces `gcd(R, N) = 1` and makes the
-reduction exact) through the proven keystone `montMul_emit_correct`
+reduction exact) through the proven lemma `montMul_emit_correct`
 (`MontgomeryMulEmitValue`, itself reusing `montMul_mul_R_modEq`) gives the full
 correctness congruence: the decoded output of the concrete realizer satisfies
 `decode(leaf …) * R ≡ (decode a) * (decode b) [ZMOD N]`, i.e. it is a correct
@@ -229,7 +229,7 @@ precondition on `N`, `R`, `N'`, **not** a hypothesis on the emitted kernel. -/
 
     i.e. it is `≡ a*b*R⁻¹ mod N`.  The "decode = montMul" content is the proven
     `decodeZ_encodeZ`; the "montMul is a correct product" content is the proven
-    keystone `montMul_mul_R_modEq` (reused via `montMul_emit_correct`). -/
+    key lemma `montMul_mul_R_modEq` (reused via `montMul_emit_correct`). -/
 theorem montMul_realizes_correct (N R N' : ℤ) (width : ℕ) (hw : width ≤ 48)
     (hN' : N * N' ≡ -1 [ZMOD R])
     (leaf : String) (limbStore : LimbStoreSpec)

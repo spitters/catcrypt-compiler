@@ -32,15 +32,15 @@ by a two-instruction **carry-materialise** gadget:
   `OF := 0`).
 
 After the gadget, `hi = macHi` (a single word) and both flags are `0`, so the
-next column re-enters `emitColumn_eq_mulAddc`'s precondition exactly. This is the
-genuine x86 idiom (each `ADCX`/`ADOX imm0` touches only its own flag); it trades
+next column re-enters `emitColumn_eq_mulAddc`'s precondition exactly. This is a
+standard x86 idiom (each `ADCX`/`ADOX imm0` touches only its own flag); it trades
 the persistent dual chain for one extra `ADCX`/`ADOX` pair per column — a
 flag-reset variant that is marginally slower than the full persistent-flag ADX
 schedule, but lets the multi-column `runBlock` value be proven by a clean
 induction over the limb list, each step `emitColumn_eq_mulAddc` on a fresh
 flags-reset state.
 
-## What is proven (genuine `runBlock(emitted) = spec`)
+## What is proven (`runBlock(emitted) = spec`)
 
 * `materialiseCarry_value` — the gadget reconstructs `macHi` into `hi` and resets
   both flags, over `runBlock`.
@@ -61,22 +61,22 @@ flags-reset state.
   `emitScalarMul_runBlock_value`), fed to the proven 4-word Montgomery reduction
   (`montRedc4`, `n' = 1`), lands `< 2·p_sm2` and `≡ V·(2^256)⁻¹ (mod p_sm2)`.
 
-## What is NOT covered (the named remainder)
+## Scope
 
 The single emitted *row* `t += x·c` over `runBlock` is proven equal to `addmul1`
-(the genuine flag-resetting multi-column assembly the column layer deferred). The
-full N×N schoolbook product `mulLimbs x y` over a *single* `runBlock` needs the
+(the flag-resetting multi-column assembly outside the scope of the column layer).
+The full N×N schoolbook product `mulLimbs x y` over a *single* `runBlock` needs the
 inter-row combine (`Cios4LimbProven.addLimbs`, the ripple-add of successive rows)
 emitted as well — a second multi-block induction with its own register routing.
-That is not done here, so the SM2 headline (`sm2_emit_montmul_runBlock`) is stated
-over an abstract `runBlock`-produced value `V`, with the *scalar-row* instance
-(`sm2_emit_scalarRow_montmul_runBlock`) the proven witness that such a `V` is a
-genuine emitted-block product. The 4-row product as one emitted `runBlock` is the
-remaining increment.
+That is outside this module, so the SM2 theorem (`sm2_emit_montmul_runBlock`) is
+stated over an abstract `runBlock`-produced value `V`, with the *scalar-row*
+instance (`sm2_emit_scalarRow_montmul_runBlock`) the proven witness that such a
+`V` is an emitted-block product. The 4-row product as one emitted `runBlock` is
+proved in `SchoolbookProductRunBlock.lean`.
 
 The persistent-flag / full-ILP ADX schedule (no per-column reset, marginally
-faster) is a separate *perf-equivalence* increment, not done here; it does not
-change the value spec.
+faster) is a separate *perf-equivalence* question outside this module; it does
+not change the value spec.
 -/
 
 @[expose] public section
@@ -252,7 +252,7 @@ theorem selectMulxMac_macLo_macHi (s : JState 64) (acc a b cy hi lo : String)
 
     The value is the proven per-column bridge `emitColumn_eq_mulAddc`
     (`selectMulxMac_macLo_macHi`); the carry word is assembled by the gadget
-    (`materialiseCarry_value`) over the genuine `runBlock` semantics. The carry
+    (`materialiseCarry_value`) over the `runBlock` semantics. The carry
     register `cy` and the `MULX` high register `hi` are distinct (`hCyHi`), so the
     `MOV cy, hi` routing does not clobber the live carry. -/
 theorem emitColumnReset_value (s : JState 64) (acc a b cy hi lo : String)
@@ -548,7 +548,7 @@ recombined result limbs plus the carry register equal `valLimbs t + valLimbs x·
     out of `cy`, the recombined value equals `valLimbs t + valLimbs x · c + carry`
     (with `t` the accumulator the registers held on entry). This is
     `emitRowBlock_runBlock_value` composed with the proven `addmul1_reconstruct`
-    (the schoolbook-row `Nat` identity), now anchored to `runBlock` of the emitted
+    (the schoolbook-row `Nat` identity), anchored to `runBlock` of the emitted
     instruction list. -/
 theorem emitRowBlock_valLimbs
     (accs as : List String) (x t : List (BitVec 64)) (c : BitVec 64)
@@ -571,7 +571,7 @@ theorem emitRowBlock_valLimbs
 With the accumulator registers cleared (`t = 0`) and the carry `cy` cleared, one
 emitted row computes the full scalar-multiply product `x · c` (a 256×64→320 row,
 the schoolbook building block). The result limbs in `accs` together with the
-carry word in `cy`, recombined little-endian, equal `valLimbs x · c` — a genuine
+carry word in `cy`, recombined little-endian, equal `valLimbs x · c` — a
 `runBlock(emitted) = product` statement for one multiplier limb. -/
 
 /-- **The emitted scalar-multiply row `x · c` over `runBlock` = the product.**
@@ -621,17 +621,17 @@ emitted block computes*, read out of `runBlock`. The SM2 headline below feeds
 this `runBlock`-anchored value to the proven 4-word Montgomery reduction
 (`Cios4LimbProven.montRedc4_correct`, `n' = 1`).
 
-### Scope (honest)
+### Scope
 
 `emitScalarMul_runBlock_value` proves `runBlockRowValue (emitted scalar row) =
-valLimbs x · c` for ONE multiplier limb (a 256×64→320 row). This is a genuine
+valLimbs x · c` for ONE multiplier limb (a 256×64→320 row). This is a
 `runBlock(emitted) = product` statement. The SM2 Montgomery-multiply consumes a
 full 256×256 product `x · y`; assembling that as ONE emitted block over a single
 `runBlock` requires emitting the inter-row combine (`Cios4LimbProven.addLimbs`,
-the ripple-add of successive rows) — the **named remainder**. The theorem below
-is therefore stated over an *abstract* emitted value `V` carried by `runBlock`,
-with the scalar-row instance (`emitScalarMul_runBlock_value`) the proven witness
-that such a `V` is genuinely produced by an emitted block; it does NOT yet claim
+the ripple-add of successive rows), which `SchoolbookProductRunBlock.lean` does.
+The theorem below is therefore stated over an *abstract* emitted value `V` carried
+by `runBlock`, with the scalar-row instance (`emitScalarMul_runBlock_value`) the
+proven witness that such a `V` is produced by an emitted block; it does not claim
 the full 4-row product is a single emitted `runBlock`. -/
 
 /-- The little-endian value the emitted row leaves in its output registers: the
@@ -651,7 +651,7 @@ def runBlockRowValue (accs as : List String) (cReg cy hi lo : String)
     * `· 2^256 ≡ V (mod p_sm2)`, i.e. `≡ V · (2^256)⁻¹ (mod p_sm2)`.
 
     The reduction law is `Cios4LimbProven.sm2_montmul_correct`; the *value* `V` is
-    the genuine recombination of the emitted block's output registers
+    the recombination of the emitted block's output registers
     (`runBlockRowValue`). The proven witness that such a `V` equals a product
     over `runBlock` is `emitScalarMul_runBlock_value` (one multiplier limb). -/
 theorem sm2_emit_montmul_runBlock (V : Nat) (hV : V < 2 ^ 64 * valLimbs sm2Limbs) :
@@ -663,11 +663,11 @@ theorem sm2_emit_montmul_runBlock (V : Nat) (hV : V < 2 ^ 64 * valLimbs sm2Limbs
     emitted 256×64 scalar-multiply row over `runBlock` (cleared accumulator and
     carry, `RowFresh` register layout) produces, in its output registers, the
     value `valLimbs x · c`; fed to the SM2 Montgomery reduction it lands
-    `< 2·p_sm2` and `≡ (valLimbs x · c)·(2^256)⁻¹ (mod p_sm2)`. This is a genuine
+    `< 2·p_sm2` and `≡ (valLimbs x · c)·(2^256)⁻¹ (mod p_sm2)`. This is a
     `runBlock(emitted) = product` value (via `emitScalarMul_runBlock_value`)
     threaded through the proven reduction — the scalar-limb instance of the SM2
-    tie. The full 256×256 product as one emitted `runBlock` is the named
-    remainder (the `addLimbs` row-combine emit). -/
+    tie. The full 256×256 product as one emitted `runBlock` (the `addLimbs`
+    row-combine emit) is in `SchoolbookProductRunBlock.lean`. -/
 theorem sm2_emit_scalarRow_montmul_runBlock
     (accs as : List String) (x : List (BitVec 64)) (c : BitVec 64)
     (cReg cy hi lo : String) (s : JState 64)

@@ -9,19 +9,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
 
 /-!
-# Sum of MLIR `arith` and `scf` dialects — Phase 6d Cif closure
+# Sum of MLIR `arith` and `scf` dialects — `Cif` lowering
 
 > **STATUS — MLIR-CORRESPONDENCE LAYER, NOT THE EMIT PATH.** The `arith ⊕ scf`
 > agreement sum; NO lowering out, ZERO emit traffic. Composes the `mlirArith` and
 > `mlirScf` correspondence layers, both of which duplicate the real
 > `jasminDialect` substrate. See `CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md`.
 
-This file constructs the dialect
+This module constructs the dialect
 `mlirArithScfDialect = mlirArithDialect ⊕ mlirScfDialect`, whose `Op` is
 a tagged sum `MlirArithScfOp = arith MlirArithOp ∣ scf MlirScfOp` and
 whose `Ty` is the shared `CryptoTy`.
 
-The motivation is the **Phase 6d `Cif` deferral**. `scfIf` requires a
+The motivation is lowering **`Cif`**. `scfIf` requires a
 `CryptoTy.bit` condition operand, but the source DSL holds the
 condition as `sword 1`. Bridging requires an intervening
 `arith.cmpi 1 != 0` (technically: we use `extui`-style bit extraction

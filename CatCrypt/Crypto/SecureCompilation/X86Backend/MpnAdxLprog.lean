@@ -15,7 +15,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
 
 /-!
-# ADX `mpn_add_n` / `mpn_sub_n` limb schedules as a physical `Linear.lprog` (#500)
+# ADX `mpn_add_n` / `mpn_sub_n` limb schedules as a physical `Linear.lprog`
 
 Definitions, by section:
 
@@ -203,7 +203,7 @@ def subAsm (n : Nat) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.Lp
     into the bench harness directory.
 
     **Both deployed symbols `mpn_add_n_adx_owned_{n}` and
-    `mpn_sub_n_adx_owned_{n}` are FRONT-generated** (#477 closed): each `.s` is
+    `mpn_sub_n_adx_owned_{n}` are FRONT-generated**: each `.s` is
     the RA-legalized `catCryptDialect` `Com` chain (`MpnAddFrontEmit.toAsm`
     / the sub complement-add path, no hand `Com`/`Lcmd`/`.s`) — these are the
     emits the conform KAT (`make -C bench/mpn_adx_owned_compare conform`,

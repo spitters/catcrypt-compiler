@@ -14,16 +14,16 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-A `VIR.Dialect` whose `Op`/`Ty` mirror CryptoSSA's `CExpr`/`CryptoTy`.
-Target for `CProg → Com` structural translation.
+`catCryptDialect`, a `VIR.Dialect` over `Com` with types `CryptoTy`: the
+crypto-SSA IR, lowered to Jasmin by
+`VIR.DialectToJasminCom.cryptoDialectToJasminCom`.
 
-## Pure-only
+## Denotations
 
-VIR's current denotation is pure (no `SPComp`). So the dialect here is
-restricted to CryptoSSA's *pure* subset: `sampleBit`/`sampleBv` are
-excluded. The translation `CryptoToVIR.lean` returns `none` on those.
-
-Later: extend VIR with effectful denotation to cover the full CryptoSSA.
+The compile denotation `catCryptDenote` is pure (no `SPComp`): it treats the
+sampling ops `sampleBit`/`sampleBv` as deterministic zero-entropy leaves. Their
+probabilistic meaning is the separate `SPComp`-valued interpretation
+`catCryptDenoteSP`.
 -/
 
 @[expose] public section
@@ -36,8 +36,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (SimdOp)
 
 /-! ## 1. Op tags -/
 
-/-- Operation tags for the CatCrypt dialect. Each constructor corresponds
-    to a pure `CExpr` case from `CryptoSSA.lean`. Ops with static data
+/-- Operation tags for the CatCrypt dialect. Ops with static data
     (constants, indices) carry it as a parameter. -/
 inductive CatCryptOp where
   -- Bit operations
@@ -96,8 +95,8 @@ inductive CatCryptOp where
   -- Add-with-carry-out (multi-output ADD/ADC). `bvAdd64 w` takes `(a, b)`
   -- and returns the pair `(cout, sum)` where `cout : BitVec w` is `1` on
   -- carry-out else `0`. `bvAdc w` additionally takes a carry-in
-  -- `cin : BitVec w` (non-zero ↦ true). These mirror `CExpr.bvAdd64`/
-  -- `CExpr.bvAdc` exactly (Jasmin's `#ADD_64`/`#ADC_64`), and their pure
+  -- `cin : BitVec w` (non-zero ↦ true). These are Jasmin's
+  -- `#ADD_64`/`#ADC_64`, and their pure
   -- denotation is the full `BitVec.adc` carry chain — the central op for
   -- the bignum ALU spine over `runBlock`/`Com`.
   | bvAdd64 (w : Nat)
@@ -139,8 +138,7 @@ inductive CatCryptOp where
   -- `stackLoad`/`stackStore` ops (which carry a `reg 64` index register). The
   -- access is total (index reduced modulo `n`, `0`-array on `n = 0`), matching
   -- the byte-offset machine model the x86 SIB `(%base,%idx,scale)` effective
-  -- address realises after the in-range mask. The dialect-native images of
-  -- `CExpr.memrefGetDyn`/`CExpr.memrefSetDyn`; they unblock per-iteration matrix
+  -- address realises after the in-range mask. They support per-iteration matrix
   -- selection (MAYO/UOV/ML-KEM) where the index is a loop variable.
   | memrefSetDyn (n : Nat)
   | memrefGetDyn (n : Nat)
@@ -172,8 +170,8 @@ inductive CatCryptOp where
   -- specified by the `argTys`/`retTy` fields. In MLIR this emits as
   -- `func.call @<name>(args) : (argTys) -> retTy`.
   | extCall (name : String) (argTys : List CryptoTy) (retTy : CryptoTy)
-  -- Sampling (the probabilistic / security ops, folded in from `CryptoSSA` so the
-  -- crypto dialect is the single SSA IR — DR collapse). The dialect carries TWO
+  -- Sampling (the probabilistic / security ops, so the crypto dialect is the
+  -- single SSA IR). The dialect carries TWO
   -- interpretations: the pure compile denotation (`catCryptDenote`, below) treats a
   -- sample as a deterministic zero-entropy leaf (the real deterministic-RNG-leaf
   -- meaning is `RngLeaf`); the probabilistic meaning is the separate `SPComp`-valued
@@ -181,7 +179,7 @@ inductive CatCryptOp where
   -- an interpretation, not a compile-path op.
   | sampleBit
   | sampleBv (n : Nat)
-  -- 128-bit SIMD ops (SIMD Tier-3 FRONT gap). The front dialect carries a 128-bit
+  -- 128-bit SIMD ops. The front dialect carries a 128-bit
   -- vector value as `.sword 128` (`mapTy .sword 128 = .reg 128`), and reuses the
   -- backend `SimdOp` alphabet (`JasminDialect`) directly: `SimdOp.denote` IS the
   -- lane semantics (no new `CryptoTy.vec` type needed). These lower 1:1 through

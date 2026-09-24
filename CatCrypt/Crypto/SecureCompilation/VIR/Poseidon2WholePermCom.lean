@@ -18,27 +18,27 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExac
 public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 
 /-!
-# Poseidon2-BabyBear whole permutation as a flat `Com jasminDialect` (#479)
+# Poseidon2-BabyBear whole permutation as a flat `Com jasminDialect`
 
-This is the owned-RA producer prerequisite for the Poseidon2 bench (#476). The
+This module supplies the input of the owned-RA producer for the Poseidon2 bench. The
 owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`) consumes a **whole-function
 flat `Com jasminDialect`** — the same shape `Sha2Emit.compressCom` /
-`Plonky3CompressEmit.compressCom` / the Keccak permutation Com take. Poseidon2
-previously had only:
+`Plonky3CompressEmit.compressCom` / the Keccak permutation Com take. The other
+Poseidon2 artifacts are:
 
 * a **text** `.jazz` emit (`Poseidon2Emit.poseidon2Jazz`, a `String`),
 * opaque-leaf reflect bodies (`Jasmin/Poseidon2Reflect.lean`, one `RCall`),
-* round-loop / single-round keystones with a **modeled** mixing core
+* round-loop / single-round theorems with a **modeled** mixing core
   (`Poseidon2Bitexact.pos2Diffuse`, `Poseidon2DiffuseExact.pos2InternalRoundClosed`).
 
-None of these is a whole-permutation flat `Com`. This file builds that `Com` and
+None of these is a whole-permutation flat `Com`. This module builds that `Com` and
 ties it to a closed-form BitVec permutation, reusing the **field-correct** Baby
 Bear seams already proven elsewhere:
 
 * `Poseidon2Emit.bbAdd_correct` / `bbCsub_correct` / `bbMul_correct` — the
   `regArith`-only reductions are exactly `+ mod p` / `· mod p` on canonical reps;
 * `Poseidon2BbMulFieldExact.bbMul_eq_mod_p` — the `bbMul_field_correct_residual`
-  seam from `Poseidon2DiffuseExact` is **closed** (no longer a named residual).
+  seam from `Poseidon2DiffuseExact` is **proved**.
 
 ## Construction (mirrors `Plonky3CompressEmit.compressCom`)
 
@@ -64,29 +64,30 @@ nullary `regConst` op (denoting `BitVec.ofNat 64 n`) — no immediate-operand ha
   These establish that the `Com`'s binding arithmetic *is* the Baby Bear field
   arithmetic (`bbFold`/`bbCsub`/`bbAdd`), not a placeholder — and `bbAdd`/`bbMul`
   are themselves proven field-correct (`Poseidon2Emit.bbAdd_correct`,
-  `Poseidon2BbMulFieldExact.bbMul_eq_mod_p`), so the add layer genuinely computes
+  `Poseidon2BbMulFieldExact.bbMul_eq_mod_p`), so the add layer computes
   `+ mod p`.
 * **The closed-form whole permutation** `poseidon2BBPermClosed` composes the
   proven `Poseidon2DiffuseExact` round forms (`pos2SboxClosed`,
   `pos2InternalRoundClosed`, an external-MDS spelled with `bbAdd`) over the
-  genuine Plonky3 schedule (pre-mix + 4 external + 13 partial + 4 external).
+  Plonky3 schedule (pre-mix + 4 external + 13 partial + 4 external).
 * **The field bridge** `poseidon2BBPermClosed_eq_spec_residual` names the one
   remaining step: that the closed-form BitVec permutation on canonical reps
   equals `BabyBear.poseidon2BabyBearPermute` lifted through the `bbX = mod p`
   identities. The `bbX`-correctness lemmas it rests on are all proved; the
   residual is the lane-by-lane `ZMod ↔ BitVec` transport bookkeeping over the
-  full 21-round schedule, factored as a named `Prop` (the pattern #128/#133 used).
+  full 21-round schedule, factored as a named `Prop` (the pattern of the SHA-2 and Poseidon2 readout
+  halves).
 * **The whole-perm `Com` denotation** `poseidon2_perm_com_denote_residual` names
   the structural `Com.denote = poseidon2BBPermClosed` reduction over the full
   binding tree (≈ several-thousand bindings) — too large to `rfl` in one build,
   factored as a named `Prop` exactly as `Poseidon2DiffuseExact.emitter_denote_eq
   _closed_form_residual` does for the single-round case.
 
-## Consumability by the owned-RA producer (#476)
+## Consumability by the owned-RA producer
 
 `(poseidon2PermCom ())` is a `Com jasminDialect permCtxt r64`, so it is directly
 consumable by `Com.toLprogPhysAbi`; `poseidon2PermLprog` is the witness
-application. This is the missing #476 prerequisite.
+application.
 -/
 
 @[expose] public section
@@ -328,8 +329,8 @@ theorem emitCsub_denote_ret {Γ : Ctxt jasminDialect}
 /-- **`emitFold` computes `bbFold` at `dst`** (read by a `ret dst` continuation),
     when `src` is distinct from the scratch slots `sc0`,`sc1`,`sc2` and from
     `dst`. The destination lane denotes exactly `bbFold (slotVal src)` — i.e. the
-    7-binding chain genuinely realizes the Baby Bear fold-reduction step
-    `(src >>> 31) * C + (src & M)`, not a placeholder. Proved by reducing the
+    7-binding chain realizes the Baby Bear fold-reduction step
+    `(src >>> 31) * C + (src & M)`. Proved by reducing the
     binding denotations (`emitConst_denote`/`emitBin_denote`) and the slot
     lookups (`headVar_lookup`/`there_lookup`), with the scratch-slot
     disjointness resolved by `decide`. -/
@@ -668,7 +669,7 @@ def applyMat4Closed (x0 x1 x2 x3 : BitVec 64) : Fin 4 → BitVec 64
     before write-back, so the four input lanes stay live until all rows are
     computed. The `2·x`/`3·x` products use the **dedicated** product temporary
     `prod0` and `prod1` is the running row accumulator — both disjoint from the
-    reduction scratch `sc0,sc1,sc2`. (The previous staging in `sc1,sc2` was
+    reduction scratch `sc0,sc1,sc2`. (Staging in `sc1,sc2` would be
     clobbered by the inner `emitMul`/`emitAdd` reduction chains of the later
     rows, corrupting output lane `4b+2`.) -/
 def emitApplyMat4 {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -839,9 +840,9 @@ def initBState : BState inCtxt where
 /-- **The whole Poseidon2-BabyBear permutation as a flat `Com jasminDialect`.**
     Built entirely from `regArith` / `regConst` bindings (no `extCall` / opaque
     leaf) — the BabyBear field arithmetic, the `x^7` S-box, the Plonky3
-    external/internal MDS layers, and the genuine round-constant schedule, over
+    external/internal MDS layers, and the round-constant schedule, over
     the full 21-round (pre-mix + 4 + 13 + 4) Poseidon2 schedule. Consumable by
-    `JasminLprogExport.Com.toLprogPhysAbi` (the #476 owned-RA producer). -/
+    `JasminLprogExport.Com.toLprogPhysAbi` (the owned-RA producer). -/
 def poseidon2PermCom (_ : Unit) : Com jasminDialect inCtxt r64 :=
   emitPermBody initBState (fun {_} s => .ret (s.cur (laneSlot 0)))
 
@@ -1149,7 +1150,7 @@ def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | _, _, .ret _ => 0
   | _, _, .var _ body => 1 + comBindings body
 
-/-! ## 14b. Logical-slot trace for register-residence (#476 RA recovery)
+/-! ## 14b. Logical-slot trace for register-residence
 
 The owned-RA producer (`JasminLprogExport.Com.toLprogPhysAbi`) names each binding
 of `(poseidon2PermComOut ())` with a **fresh** SSA register `r{depth}` and runs a
@@ -1167,7 +1168,7 @@ invariant the builder maintains by construction — e.g. `emitFold s1 dst dst`,
 same logical slot onto one live range, it scans **25** ranges, of which ≤17 are
 simultaneously live, so the working state stays register-**resident** across the
 13 partial rounds and the 8 external rounds — exactly the X25519 monolithic
-register-residence move (#411/#412), at the 17× headroom Poseidon2 offers.
+register-residence move, at the 17× headroom Poseidon2 offers.
 
 `(slotTrace ())` records, in program order, the logical `Fin 25` slot each binding
 writes. It mirrors the emit structure of `emitPermBody`/`emitOutStage16`
@@ -1306,7 +1307,7 @@ def residenceSlots : Nat := 25
 /-! ## 15. The closed-form whole permutation (BitVec)
 
 The closed-form whole permutation on the 16 Baby Bear lanes (`BBState =
-Fin 16 → BitVec 64`), composing the round forms over the genuine Plonky3
+Fin 16 → BitVec 64`), composing the round forms over the Plonky3
 schedule. Internal rounds reuse `Poseidon2DiffuseExact.pos2InternalRoundClosed`
 (the proven-bit-exact-to-spec internal round); external rounds use the S-box
 layer + the `applyMat4Closed`/`colSumClosed` external MDS spelled here. This is
@@ -1392,11 +1393,11 @@ def readLanes {Γ : Ctxt jasminDialect} (st : BState Γ)
     (the composition over the full binding tree is the structural residual; the
     per-binding content is the `emit*_denote` / `bbX` correspondence).
 
-    This `Prop` is no longer left ignored: `poseidon2_perm_com_denote_of_rounds`
+    `poseidon2_perm_com_denote_of_rounds`
     (below) proves it from the explicit per-round denote steps
     (`externalMDS_denote_step`, `externalRound_denote_step r`,
     `internalRound_denote_step r`), folding them through the 21-round schedule.
-    The genuinely-remaining obligation is exactly those per-round lane-tracking
+    The remaining obligation is exactly those per-round lane-tracking
     `Com.denote` reductions (one round's binding block at a time). -/
 def poseidon2_perm_com_denote_residual : Prop :=
   ∀ (V : Ctxt.Valuation inCtxt),
@@ -1416,7 +1417,7 @@ lanes — leaving the continuation's own context/valuation otherwise untouched.
 
 This is the continuation-general form of the `emit*_denote_ret` lemmas already
 proved for the atomic field ops (`emitAdd_denote_ret`, `emitFold_denote_ret`,
-`emitCsub_denote_ret`); the genuinely-remaining obligation is exactly these three
+`emitCsub_denote_ret`); the remaining obligation is exactly these three
 per-round steps (the lane-tracking `Com.denote` reduction through one round's
 binding block), which we name explicitly instead of burying them. -/
 
@@ -1459,7 +1460,7 @@ def internalRound_denote_step (r : Fin 13) : Prop :=
 
     The proof folds the per-round denote steps through `emitPermBody`'s CPS chain
     (each step rewrites the denote into the continuation on a post-state whose
-    lanes are the closed round of the input lanes), so the only genuinely-open
+    lanes are the closed round of the input lanes), so the only open
     content is the per-round lane-tracking reductions named above. -/
 theorem poseidon2_perm_com_denote_of_rounds
     (hmds : externalMDS_denote_step)
@@ -1563,19 +1564,19 @@ def poseidon2BBPermClosed_eq_spec_residual : Prop :=
       = reprF (CatCrypt.Crypto.Hash.Poseidon2.BabyBear.poseidon2BabyBearPermute
           input i))
 
-/-! ## 18. Consumability by the owned-RA producer (#476)
+/-! ## 18. Consumability by the owned-RA producer
 
 `(poseidon2PermCom ())` is a `Com jasminDialect inCtxt r64`. The owned-RA producer
 `JasminLprogExport.Com.toLprogPhysAbi` consumes exactly such a value (as
 `Sha256LinearMain` / `KeccakLinearMain` do for SHA-256 / Keccak). Below is the
-witness application — proof that the whole-perm `Com` is now consumable, the
-missing #476 prerequisite. (We use a custom 16+1-input SysV ABI: the export
+witness application — proof that the whole-perm `Com` is consumable by the
+producer. (We use a custom 16+1-input SysV ABI: the export
 takes one input/output buffer pointer; the 16 lanes are loaded/stored by the
 `inLoadMap` / `outStoreMap`. For this prerequisite step we wire the default
 two-pointer ABI; the bench harness supplies the concrete load/store maps.) -/
 
 /-- **The owned-RA `Lprog` for the whole Poseidon2 permutation.** This is the
-    witness that `(poseidon2PermCom ())` is consumable by the #476 owned-RA producer
+    witness that `(poseidon2PermCom ())` is consumable by the owned-RA producer
     `Com.toLprogPhysAbi`: it elaborates iff the whole-perm `Com` has the right
     `Com jasminDialect inCtxt r64` shape the producer expects. -/
 noncomputable def poseidon2PermLprog :
@@ -1584,8 +1585,8 @@ noncomputable def poseidon2PermLprog :
     (poseidon2PermCom ()) "poseidon2_bb_permute"
 
 /-- **Consumability witness**: the owned-RA producer emits exactly one function
-    named `poseidon2_bb_permute` from the whole-perm `Com`. This certifies the
-    #476 prerequisite — the producer accepts the whole-permutation flat `Com`. -/
+    named `poseidon2_bb_permute` from the whole-perm `Com`. This certifies that
+    the producer accepts the whole-permutation flat `Com`. -/
 theorem poseidon2PermLprog_one_func :
     poseidon2PermLprog.lp_funcs.length = 1
       ∧ poseidon2PermLprog.lp_funcs.head?.map Prod.fst

@@ -12,13 +12,13 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
 # Nested counted-loop lowering: the emitted outer-over-inner loop denotes the
 # two-level `Function.iterate` `((body.denote)^[m])^[n]` (= `(body.denote)^[n*m]`)
 
-This file is the **iterate-form** capstone over the nested-loop emission layer.
-It extends keystone #4 (single counted loop, `LoopLowering.loopN` /
+This module is the **iterate-form** layer over the nested-loop emission layer.
+It extends the single counted-loop theorem (`LoopLowering.loopN` /
 `loopN_lower_denote_iterate`) to **two levels**: a counted outer loop whose body
 is a counted inner loop over the same accumulator, with the whole thing's
-denotation stated in the roadmap's `Function.iterate` (`f^[·]`) form.
+denotation stated in `Function.iterate` (`f^[·]`) form.
 
-## What was already there (reused, not re-proved)
+## Reused results
 
 * `LoopLowering.loopN n body` — the single-op counted loop constructor, and
   `LoopLowering.foldl_range_eq_iterate` / `denote_eq_iterate` — the
@@ -26,17 +26,17 @@ denotation stated in the roadmap's `Function.iterate` (`f^[·]`) form.
 * `JForProgNested.NestedForProg` — the two-level structure (outer trip count
   `outerN`, inner single-level `JForProg`), its emission `toCfor`/`toProg`
   (outer `for j` over inner `for i`), the evaluator-side `nestedLoopRun`, and the
-  **nested keystone** `nested_loop_denote_eq` (emitted nested run =
+  **nested loop theorem** `nested_loop_denote_eq` (emitted nested run =
   `NestedForProg.denote` = outer-fold of `inner.denote`). Reused verbatim — this
   file does not touch it.
 * `Function.iterate_mul : f^[m * n] = f^[m]^[n]` (Mathlib) — the flattening.
 
-## What is genuinely new here
+## Contents
 
 1. **`loopNested n m body`** — a `NestedForProg` whose inner level is exactly
-   `LoopLowering.loopN m body`. This is the clean "outer `n`, inner `m`, single
-   single-op body, one accumulator" surface the roadmap names. Because its inner
-   `update` is, by construction, a `SingleVarBody`, the nested keystone
+   `LoopLowering.loopN m body`. This is the "outer `n`, inner `m`, single
+   single-op body, one accumulator" surface. Because its inner
+   `update` is, by construction, a `SingleVarBody`, the nested loop theorem
    `nested_loop_denote_eq` applies verbatim (single-leaf inner body).
 
 2. **`loopNested_denote_iterate_nested`** — the nested denotation in two-level
@@ -54,32 +54,31 @@ denotation stated in the roadmap's `Function.iterate` (`f^[·]`) form.
 4. **`loopNested_lower_denote_iterate{_nested,_flat}`** — the packaged
    soundness theorems: the **emitted** nested loop's evaluator run
    (`JForProgNested.nestedLoopRun`) equals `((step)^[m])^[n] init` resp.
-   `step^[n*m] init`. These compose the nested keystone `nested_loop_denote_eq`
-   (emitted run = `NestedForProg.denote`) with the new iterate-form denotation
+   `step^[n*m] init`. These compose the nested loop theorem `nested_loop_denote_eq`
+   (emitted run = `NestedForProg.denote`) with the iterate-form denotation
    lemmas. Fully discharged for single-op bodies; the only hypothesis is the
-   opaque-leaf edge `LeafAgrees`, exactly as the single-level and nested
-   keystones.
+   opaque-leaf edge `LeafAgrees`, exactly as for the single-level and nested
+   loop theorems.
 
 5. A worked, **concrete** example: `loopNested 3 2 doubleBody` — outer 3, inner 2
    doublings (`acc := acc + acc`), iterate-form denote proved, and a `n=3,m=2`,
-   `init=1` ⇒ `64` KAT (six doublings). SORRY-FREE.
+   `init=1` ⇒ `64` KAT (six doublings).
 
 ## Did the nesting flatten?
 
 **Yes.** With a single accumulator and a single-op body, the two-level run is the
-flattened `step^[n*m]` (`loopNested_denote_iterate_flat`); the genuinely
+flattened `step^[n*m]` (`loopNested_denote_iterate_flat`); the
 two-level `((step)^[m])^[n]` form is also available
 (`loopNested_denote_iterate_nested`), and `Function.iterate_mul` bridges them.
 
-## Scope (honest)
+## Scope
 
 Counted outer loop whose body is a counted inner loop over **one** accumulator
-with a **single-op** body — the keystone-#4-nested landable scope. It does **not**
-cover: multi-accumulator nesting (would pack into a product `accTy` and re-prove
-the inner keystone there), inner bodies with several binders, or runtime/`while`
-outer/inner bounds. Those remain the whole-function / runtime-loop roadmap work.
+with a **single-op** body. It does **not** cover: multi-accumulator nesting
+(would pack into a product `accTy` and re-prove the inner loop theorem there),
+inner bodies with several binders, or runtime/`while` outer/inner bounds.
 
-0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`.
+All goals closed; the only hypothesis is the opaque-leaf edge `LeafAgrees`.
 -/
 
 @[expose] public section
@@ -117,7 +116,7 @@ def loopNested {accTy : JasminTy} (n m : Nat) (body : LoopBody accTy) :
     (body : LoopBody accTy) : (loopNested n m body).inner = loopN m body := rfl
 
 /-- The inner loop's `update` is, by construction, a `SingleVarBody` — so the
-    nested keystone `nested_loop_denote_eq` applies (single-leaf inner body). -/
+    nested loop theorem `nested_loop_denote_eq` applies (single-leaf inner body). -/
 theorem loopNested_inner_update {accTy : JasminTy} (n m : Nat)
     (body : LoopBody accTy) :
     (loopNested n m body).inner.update = SingleVarBody body :=
@@ -161,7 +160,7 @@ theorem loopNested_denote_iterate_flat {accTy : JasminTy} (n m : Nat)
       = (fun a => body.denote (.cons a .nil))^[m * n] init := by
   rw [loopNested_denote_iterate_nested, ← Function.iterate_mul]
 
-/-! ## 3. The lowering and its iterate-form soundness (the packaged keystone) -/
+/-! ## 3. The lowering and its iterate-form soundness (the packaged loop theorem) -/
 
 /-- The lowering of a nested counted loop to a single-function `JasminProg` with
     an outer `for j` over an inner `for i`. Definitionally
@@ -170,12 +169,12 @@ def loopNested_lower {accTy : JasminTy} (name : String) (n m : Nat)
     (body : LoopBody accTy) : CatCrypt.Crypto.Jasmin.JasminProg :=
   (loopNested n m body).toProg name
 
-/-- **Keystone (packaged, nested iterate form — the roadmap statement).** The
+/-- **Main theorem (packaged, nested iterate form).** The
     *emitted* nested loop, run by the evaluator (`nestedLoopRun`: iterate the
     outer body runner `n` times, each outer step running the emitted inner loop
     in full), equals `((step)^[m])^[n] init` where
     `step acc = body.denote (.cons acc .nil)` is the body's denotation. Combines
-    the nested keystone `nested_loop_denote_eq` (emitted run = abstract nested
+    the nested loop theorem `nested_loop_denote_eq` (emitted run = abstract nested
     denote) with `loopNested_denote_iterate_nested` (abstract nested denote =
     two-level iterate). Fully discharged for single-op bodies; only the
     opaque-leaf edge `LeafAgrees` is carried. -/
@@ -188,7 +187,7 @@ theorem loopNested_lower_denote_iterate_nested {accTy : JasminTy} {leafSem : Lea
         (loopNested_inner_update n m body) init,
      loopNested_denote_iterate_nested]
 
-/-- **Keystone (packaged, flattened iterate form).** The emitted nested loop's
+/-- **Main theorem (packaged, flattened iterate form).** The emitted nested loop's
     evaluator run equals the single `(n*m)`-fold of the body, `step^[n*m] init`.
     `loopNested_lower_denote_iterate_nested` flattened by `Function.iterate_mul`. -/
 theorem loopNested_lower_denote_iterate_flat {accTy : JasminTy} {leafSem : LeafSem}
@@ -231,7 +230,7 @@ theorem doubleNested_iterate_flat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSe
 /-- **Worked example (concrete KAT).** At seed `init = 1`, the emitted nested
     doubling loop computes `64` — byte-for-byte the unrolled reference of six
     doublings `1 → 2 → 4 → 8 → 16 → 32 → 64`. Ties the iterate-form nested
-    keystone to a concrete value. -/
+    loop theorem to a concrete value. -/
 theorem doubleNested_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     nestedLoopRun leafSem doubleNested (1 : BitVec 64) = (64 : BitVec 64) := by
   rw [doubleNested_iterate_flat hLeaf]

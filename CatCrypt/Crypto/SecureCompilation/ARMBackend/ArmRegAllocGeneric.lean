@@ -9,11 +9,11 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc
 public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
-# The A64 `AInst`/`AState` allocator fits the generic `MachineModel` (#552, validation)
+# The A64 `AInst`/`AState` allocator fits the generic `MachineModel` (validation)
 
-`ArmRegAlloc` (#551) is the A64 spilling register allocator, monomorphized to
-`AInst`/`AState`. `Optimizer.GenericRegAlloc` (#552) abstracted that allocator (and the
-x86 one) into a `MachineModel`-parameterized validated pass with the soundness keystones
+`ArmRegAlloc` is the A64 spilling register allocator, monomorphized to
+`AInst`/`AState`. `Optimizer.GenericRegAlloc` abstracts that allocator (and the
+x86 one) into a `MachineModel`-parameterized validated pass with the soundness theorems
 proved **once**. This module **validates the abstraction against the existing ARM
 instance**: it exhibits `MachineModel AInst` / `RegMachine AInst AState` / `MemMachine
 AMemState` instances built from the *already-proved* `ArmRegAlloc` facts
@@ -25,9 +25,9 @@ This is the "do the generic lemmas, specialized, recover the hand-proved ones?" 
 the answer is yes, with no re-proof — the instance wiring is pure plumbing over the
 existing ArmRegAlloc theorems (which are **not** edited). Together with the fresh RISC-V
 instantiation (`RISCVBackend.RiscvRegAlloc`), this confirms the `MachineModel` abstraction
-is faithful on the two landed backends. (x86 `SpillingRegAlloc` is a follow-on: its `JInstr`
+is faithful on these two backends. (x86 `SpillingRegAlloc` is not instantiated: its `JInstr`
 two-destination `mulx` needs a multi-written-name generalization of the single-`writtenName`
-shape; the monomorphic x86 soundness already stands in `SpillingRegAlloc`.)
+shape; the monomorphic x86 soundness is proved in `SpillingRegAlloc`.)
 
 No `sorry`; the per-read-name `instVal_rename` is by `cases` over `AInst`, the rest is the
 existing ArmRegAlloc/ArmModel laws.
@@ -132,7 +132,7 @@ instance instMemMachineAMemState : MemMachine AMemState where
           funext r'
           by_cases h : r' = r <;> simp [h]
 
-/-! ## 3. The abstraction validated: the generic keystones recover the ARM ones
+/-! ## 3. The abstraction validated: the generic theorems recover the ARM ones
 
 The generic `renameBlock_runBlock` / `spillStore_establishes` / `reload_sandwich`,
 instantiated at the A64 types, give `ArmRegAlloc.renameABlock_runABlock`,

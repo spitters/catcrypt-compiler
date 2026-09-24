@@ -8,12 +8,12 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 
 /-!
-# EllipticCurve-dialect optimization rewrites (#482-3)
+# EllipticCurve-dialect optimization rewrites
 
 The EC-level optimization passes of the layered crypto-IR stack
 (`VIR/DIALECTS.md`), each attached at the dialect level where it is stated:
-**MSM bucketing (Straus/Pippenger, #452/#487), comb tables (#451), and
-wNAF (#459)** become **EllipticCurve-dialect rewrites** here, each
+**MSM bucketing (Straus/Pippenger), comb tables, and
+wNAF** become **EllipticCurve-dialect rewrites** here, each
 *denotation-preserving* against the abstract `ECPoint` group spec.
 
 Each pass is a rewrite of the **schedule** that realises a scalar-dependent op

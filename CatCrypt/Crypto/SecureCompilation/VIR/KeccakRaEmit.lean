@@ -152,7 +152,7 @@ theorem keccak_ra_emit_denotation_preserves_identity (init : ⟦St⟧) :
       = keccakRoundJForProg.denote init :=
   keccak_ra_emit_denotation_preserves _ identity_WellFormed init
 
-/-- **Concrete corollary for the unrolled-Com-domain RA (#158).**
+/-- **Concrete corollary for the unrolled-Com-domain RA.**
 `UnrolledComRA.unrolledSlotRAKeccak` is the linear-scan allocation over the
 slot-index domain of `keccakF1600Com` (the unrolled permutation body), not over
 the binder domain of the JForProg wrapper. Its live-range non-overlap is
@@ -182,7 +182,7 @@ theorem keccakRaRoundDstName_identity_eq (j : Nat) :
     keccakRaRoundDstName RegisterAllocation.identity j = keccakRoundDstName j := by
   simp [keccakRaRoundDstName, keccakRoundDstName, RegisterAllocation.identity]
 
-/-! ## 5. Two-address coalescing audit (Phase B+)
+/-! ## 5. Two-address coalescing audit
 
 `UnrolledComRA.lean` §8 ships `unrolledSlotRAofItersCoalesce`: a
 coalesce-aware variant of the cross-iter RA that fuses `dst` and `src1`
@@ -212,8 +212,8 @@ The cross-iter + coalesce RA `keccakRA_coalesce` is well-formed by
 `unrolledSlotRAofItersCoalesce_WellFormed`; its denotation theorem holds
 because `applyRA` is the identity. -/
 
-/-- **The cross-iter + coalesce-aware Keccak register allocation
-(Phase B+).** Built over `UnrolledComRA.kSlotTrace` and `kIterChunks`
+/-- **The cross-iter + coalesce-aware Keccak register allocation.**
+Built over `UnrolledComRA.kSlotTrace` and `kIterChunks`
 (24 copies of `kRoundTrace`). Equivalent to `unrolledSlotRAKeccak` plus a
 two-address coalescing pass that fuses `dst`/`src1` pairs where `src1`
 dies at the event (the θ-D `mov ← C[x+1]`, χ `mov ← B[x+1,y]`, and
@@ -250,9 +250,9 @@ theorem keccak_coalesce_candidate_count_pos :
     UnrolledComRA.coalesceCandidateCount UnrolledComRA.kSlotTrace > 0 := by
   rw [keccak_coalesce_candidate_count]; decide
 
-/-! ## 6. Per-round `chiScr` renaming (Phase C step 1)
+/-! ## 6. Per-round `chiScr` renaming
 
-On `UnrolledComRA.kSlotTrace`, the seven Phase B+ coalesce candidates
+On `UnrolledComRA.kSlotTrace`, the seven coalesce candidates of §5
 all centre on slot `56` (`chiScr`) — the χ/θ-D scratch. Each is rejected
 by `tryMergeOne` because the conservative live range of slot `56` spans
 the **whole 24-round permutation** (it is rewritten once per round, so
@@ -266,7 +266,7 @@ per-round variants**. Each round writes its own `chiScr_i` (logical
 slot `57 + i` for round `i ∈ {0..23}`), so the per-round live range
 shrinks from the whole permutation to one round — a window narrow
 enough that `tryMergeOne`'s no-collision check passes against the
-column parities `25..29` and B-lanes `30..54` it would now overlap.
+column parities `25..29` and B-lanes `30..54` it merges with.
 
 The renaming is mechanical: within each iter chunk (`kRoundTrace`),
 replace every occurrence of slot `56` (as `wr` or in `rds`) with the
@@ -319,10 +319,10 @@ def kSlotTraceRenamed : List UnrolledComRA.SlotEvent :=
     [UnrolledComRA.kEpilogue]
 
 /-- **The cross-iter + coalesce-aware Keccak RA over the per-round-renamed
-trace (Phase C step 1).** Built from `kSlotTraceRenamed` and
+trace.** Built from `kSlotTraceRenamed` and
 `kIterChunksRenamed`; the per-round-narrowed `chiScr` live ranges
 allow `tryMergeOne` to accept the seven θ-D / χ scratch-load merges
-that Phase B+ rejected on the unrenamed trace. -/
+that it rejects on the unrenamed trace. -/
 def keccakRA_coalesce_renamed : RegisterAllocation :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce
     kSlotTraceRenamed kIterChunksRenamed
@@ -408,7 +408,7 @@ transitive-physical-slot collision:
 * `tryMergeOne` for `(dst=80, src1=29)` looks up `phDst = 56`,
   `phS1 = 29`, and rewrites **every logical slot mapped to `phDst=56`**
   (i.e. all 24 chiScrs `57..80`) to physical slot 29 in one go.
-* The remapped chiScr_0 (logical 57, live range `≈[100, 350]`) now
+* The remapped chiScr_0 (logical 57, live range `≈[100, 350]`) then
   shares physical 29 with C[4] (logical 29, live range `[16, 6214]`).
   Their ranges overlap on multiple events → no-collision check fails →
   merge rejected.

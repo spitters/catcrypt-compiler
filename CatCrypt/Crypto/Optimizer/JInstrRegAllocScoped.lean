@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.JInstrRegAllocValidated
 
 /-!
-# Name-scoped register-allocation simulation for the x86 (`JInstr`) backend (#386, x86 X2)
+# Name-scoped register-allocation simulation for the x86 (`JInstr`) backend
 
 `RandomizedRegAlloc.evalInstr_renameInstr_rel` proves the `JState` register-rename
 simulation assuming the renaming `ρ` is **globally** injective. The decidable

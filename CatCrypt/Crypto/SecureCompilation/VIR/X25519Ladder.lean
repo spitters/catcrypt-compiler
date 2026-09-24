@@ -104,21 +104,21 @@ directly. Two distinct lowerings produce it:
   `loopLcmd` (`Llabel top ; body ; SUB n,1 ; CMP ; Lcond NZ → top`). The X25519
   ladder `JForProg` lowers through it: the loop skeleton (label + back-edge) emits
   and byte-encodes byte-identically to gas (`bench/lprog_bytes_looped`).
-* **field-leaf lowering (the `JInstr`-leaf → call-target bridge, now PRESENT)** —
+* **field-leaf lowering (the `JInstr`-leaf → call-target bridge, PRESENT)** —
   the field ops are the owned `Fe25519{Mul,Ops}Kernel`s, straight-line
   `List (JInstr 64)` kernels. `X86Backend.Fe25519LfundefBridge` bridges them to
   call targets two ways: (1) the verified `renderSysVLeafFn` path emits each as a
   `.globl` leaf `.s` symbol (`fe25519_{mul,sqr,add,sub,mul121666}_x86_from_lean`),
   the faithful ADX/MULX schoolbook; (2) `jinstrBlockToLfundef` lifts each block to
   an owned-RA `Lfundef`. A field-op call becomes a real `LinstrR.Lcall` rendering
-  to `call <leaf>` (the new `LprogAsmPrinter` `Lcall` arm), resolved intra-object
+  to `call <leaf>` (the `LprogAsmPrinter` `Lcall` arm), resolved intra-object
   (`R_X86_64_PLT32`) by gas/`ld` — the text-path analogue of
   `LprogBytes.encodeLcmdReloc`'s intra-object resolution; the byte encoder
   (`encodeLcmdReloc`) emits the same `E8 00000000` + reloc. The end-to-end bridge
   KAT is `bench/x25519_ladder/fieldcall_kat.c` (owned dispatcher thunks `call` the
   verified leaves; each dispatched op == s2n-bignum over 50k vectors, no jasminc).
 
-  **The remaining residual is now narrow and precise**: the field leaves' ADX
+  **Scope of the byte route**: the field leaves' ADX
   schoolbook (`mulx`/`mulxMem`/`adcx`/`adox`, in `mul`/`sqr`/`mul121666`) has NO
   faithful `LinstrR`/byte-encoder image — the `LinstrR` MULX model renders a
   2-operand `imul` and `encodeLopn` has no MULX/ADCX/ADOX opcode — so those leaves
@@ -129,10 +129,10 @@ directly. Two distinct lowerings produce it:
   route fully needs ADX/MULX opcode bytes in `LprogBytes.encodeLopn`.
 
 So (a) the `JForProg`/`Cfor` → `Lcmd` loop lowering is present (`cforToLcmd`);
-(b) the fe25519 leaves are now owned-RA `Lfundef`s / verified `.s` symbols and the
-ladder's field calls are real `Lcall`s resolved intra-object (bridge + KAT landed).
+(b) the fe25519 leaves are owned-RA `Lfundef`s / verified `.s` symbols and the
+ladder's field calls are `Lcall`s resolved intra-object (bridge + KAT).
 
-**The whole function is now off gas as ONE emitted `.o` (milestone closed).**
+**The whole function is ONE emitted `.o`, assembled without gas.**
 `X86Backend.Fe25519LfundefBridge.x25519ScalarmultLcmd` folds the entire RFC 7748
 `x25519_scalarmult(out,k,u)` — the little-endian decode, the clamp (`k[0]&=248`,
 `k[31]&=127|64`, byte-ops correctly lifted to the limb masks), the 255-iteration
@@ -159,7 +159,7 @@ def x25519Ladder_prog := JForProg.toProg "x25519_ladder" x25519Ladder
     ladder iteration 255 times". -/
 theorem x25519Ladder_n : x25519Ladder.n = 255 := rfl
 
-/-! ## Emitted-loop denotation preservation (the keystone, ladder instance) -/
+/-! ## Emitted-loop denotation preservation (the loop theorem, ladder instance) -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect in
 /-- `ladderIterBody` is a single-leaf body (one `extCall` then `.ret .here`). -/
@@ -172,7 +172,7 @@ theorem ladderIterBody_singleVar :
 open CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect (LeafSem LeafAgrees)
 
-/-- **Keystone — the emitted X25519 ladder loop denotes the 255-fold step.**
+/-- **Main theorem — the emitted X25519 ladder loop denotes the 255-fold step.**
     Running the emitted `for i = 0 to 255 { acc = x25519_ladder_iter(acc) }` by
     iterating the word-level body evaluator 255 times from `init`, threading the
     bundled ladder-state accumulator, equals `x25519Ladder.denote init` — the

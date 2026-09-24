@@ -15,17 +15,17 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha512RoundCatCryptEmit
 FIPS 180-4 §4.1.3 SHA-512 round-mixing functions — `Σ₀`, `Σ₁`, `Ch`, `Maj` —
 natively as straight-line `Com catCryptDialect` programs and proves each denotes
 to the matching `BitVec 64`-native FIPS reference in `CatCrypt.Util.Sha512Verified`.
-But the round-mixing functions are *sub*-kernels; the **benchmarked** primitive
+The round-mixing functions are *sub*-kernels; the **benchmarked** primitive
 (`bench/sha2_compare`, vs HACL*) is the whole 80-round SHA-512 compression
 function `compress(H, M)`.
 
-This file closes that gap, mirroring `Sha256CompressCatCryptEmit.lean`: it composes
+This module, mirroring `Sha256CompressCatCryptEmit.lean`, composes
 the committed catCrypt-dialect round-mixing `Com`s into the **whole 80-round
 compression** and proves the composite equals the FIPS 180-4 §6.4 whole-compress
 reference (the message schedule `W[0..79]`, the 80 round updates over the eight
 working words `(a..h)` driven by `T1`/`T2`, then the feed-forward add). So the
-whole benchmarked SHA-512 primitive — not just a sub-kernel — now routes through
-the high `catCryptDialect` surface.
+whole benchmarked SHA-512 primitive routes through the high `catCryptDialect`
+surface.
 
 ## Structural composition (NOT a monolithic 80-round `rfl`)
 
@@ -56,7 +56,7 @@ mirroring `Sha256CompressCatCryptEmit.lean`:
    W[t-16]`, the 80-round fold, and the feed-forward add — all driven by the
    catCrypt wrappers.
 
-4. **`sha512Compress_catcrypt_denote`** (`§4`) — the keystone: the whole catCrypt
+4. **`sha512Compress_catcrypt_denote`** (`§4`) — the main theorem: the whole catCrypt
    compression equals the FIPS 180-4 §6.4 reference compression (the SAME
    structure over the `Sha512Verified` reference mixing functions), proved by
    folding the six per-mixing-function `*_eq` lemmas through the round/schedule/
@@ -64,7 +64,7 @@ mirroring `Sha256CompressCatCryptEmit.lean`:
    round-mixing application in the whole compression is evaluated by the committed
    `Com catCryptDialect` program.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section
@@ -308,12 +308,12 @@ def sha512CompressSpec (k : RoundConst) (s0 : Sha512Working) (m : Fin 16 → Bit
 
 /-! ## 4. The whole catCrypt compression equals the FIPS 180-4 §6.4 reference
 
-The keystone. The schedule equality (`wScheduleCat_eq`) and the 80-round fold
+The main theorem. The schedule equality (`wScheduleCat_eq`) and the 80-round fold
 equality (`runRoundsCat_eq`) compose: the whole catCrypt compression equals the
 FIPS reference compression. Every round-mixing application is evaluated by the
 committed `Com catCryptDialect` program. -/
 
-/-- **Whole-compression keystone.** The whole SHA-512 compression computed over the
+/-- **Whole-compression theorem.** The whole SHA-512 compression computed over the
     committed catCrypt-dialect round-mixing `Com`s equals the FIPS 180-4 §6.4
     reference compression. Every `Σ₀/Σ₁/Ch/Maj/σ₀/σ₁` application in the message
     schedule and the 80 rounds is evaluated by the committed `Com catCryptDialect`

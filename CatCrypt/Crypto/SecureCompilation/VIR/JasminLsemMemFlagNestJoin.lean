@@ -15,17 +15,18 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
 set_option autoImplicit false
 
 /-!
-# Inline-nest regions on the FLAG machine (B5 ∩ B2 join)
+# Inline-nest regions on the FLAG machine
 
-`JasminLsemMemLoopNestInline` (B5) closes the arbitrary-depth INLINE nest, but
+`JasminLsemMemLoopNestInline` closes the arbitrary-depth INLINE nest, but
 its regions are guarded by the **counter register** (`Lcond (.reg nReg) top` —
-A1's `loopLinstrRM` back-edge) and its machine is the call-resolving
+the `loopLinstrRM` back-edge) and its machine is the call-resolving
 `lsemFuelMemLC`.  The EMITTED nested shape (`forLoopLcmdNRtNested`) guards each
 level with the **flag idiom** — `CMP ctr,#0 ; Lcond NZ top` back-edge plus the
 `CMP ctr,#0 ; Lcond Z endL … Llabel endL` zero-trip top guard — which only the
-flag machine `lsemFuelMemF` (`JasminLsemMemFlagGuard`, B2) steps, and B2 closed
-only the SINGLE loop.  This module joins the two: `IBlock`-style region blocks
-over the flag machine, at both region shapes B2 pinned to the lowering.
+flag machine `lsemFuelMemF` (`JasminLsemMemFlagGuard`) steps, and
+`JasminLsemMemFlagGuard` covers only the SINGLE loop.  This module joins the two:
+`IBlock`-style region blocks over the flag machine, at both region shapes
+`JasminLsemMemFlagGuard` pins to the lowering.
 
 ## The flag block grammar (`FBlock`)
 
@@ -35,8 +36,8 @@ over the flag machine, at both region shapes B2 pinned to the lowering.
   and the invariant-touch `CMP ctr, invBase` the lowering emits inside loop
   bodies all step here (they have no `lsemStepMem` arm).
 * `region top nReg body` — the bare flag-guarded loop `flagLoopLinstrRM`
-  (`Llabel top :: flat ++ [CMP nReg,#0 ; Lcond NZ top]` — B2's pinned back-edge
-  idiom, one `CMP` more than B5's counter-register region).
+  (`Llabel top :: flat ++ [CMP nReg,#0 ; Lcond NZ top]` — the pinned flag back-edge
+  idiom, one `CMP` more than the counter-register region).
 * `guarded top endL nReg body` — the zero-trip-guarded region
   `guardedFlagLoopLinstrRM` (`CMP nReg,#0 ; Lcond Z endL` forward-skip in front,
   `Llabel endL` behind) — the FULL per-level skeleton `forLoopLcmdNRtNested`
@@ -45,18 +46,18 @@ over the flag machine, at both region shapes B2 pinned to the lowering.
 Regions nest to arbitrary depth (the block tree is the depth index), and the
 spec fold (`runFB`/`runFBsL`/`runFRegionF`) runs a region as a data-dependent
 do-while whose back-edge decision is a **counter read** (`getW`) — the
-emitted `CMP` evaluates its operand, so the guard-equivalence direction of B2
+emitted `CMP` evaluates its operand, so the guard-equivalence direction
 (`zf`-after-`CMP` = ¬`condNZ`) is used per taken/exit decision.
 
 ## The closed theorems
 
 * `segFCore` / `segFBlocks` — the control-flow-aware segment lemma over
   `lsemFuelMemF`: a **fresh strong induction on the back-edge budget**
-  mirroring B5's `segCore` with the `CMP` step absorbed into each back-edge
-  (a transport from B5's theorem is not available: the flag programs are
+  mirroring the inline nest's `segCore` with the `CMP` step absorbed into each
+  back-edge (a transport from `segCore` is not available: the flag programs are
   syntactically different instruction streams — two extra guard instructions
   and one extra back-edge instruction per region — so there is no state-level
-  simulation of B5's machine run to transport; the per-region guard REWRITE is
+  simulation of the counter-register machine run to transport; the per-region guard REWRITE is
   exactly `zf_after_cmp_eq_not_condNZ`, applied at every back-edge decision).
 * `flagNest_closed` — the whole-program closed theorem: the singleton program
   whose body IS the flattened block tree (the emitted nest), run from pc `0`,
@@ -72,8 +73,8 @@ emitted `CMP` evaluates its operand, so the guard-equivalence direction of B2
   shifted base (pc 3), halting past the skip label with `zf = true`.  The fold
   is `runBoundedStraightF` (passes of the extended step `fstepF`), so the body
   may contain the feedback reg-copy `MOV` and the invariant-touch `CMP` —
-  B2's `flagLoop_runBounded` covered neither (its body-fold is A1's
-  `lsemStraightMem`) and sat at loop-offset 0 without the guard.
+  `flagLoop_runBounded` covers neither (its body-fold is
+  `lsemStraightMem`) and sits at loop-offset 0 without the guard.
 
 ## Validate: the REAL rendered `forLoopLcmdNRtNested` stream
 
@@ -108,8 +109,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 
 /-! ## 1. The extended straight step: `Lopn ∪ reg-copy MOV ∪ flag-CMP`
 
-B2's segment lemma (`lsemFuelMemF_seg`) covers only `PlainLopnBody` segments —
-plain `Lopn`s stepped by the A1 delegate.  The emitted loop bodies also carry
+The flag segment lemma (`lsemFuelMemF_seg`) covers only `PlainLopnBody` segments —
+plain `Lopn`s stepped by the counter-register delegate.  The emitted loop bodies also carry
 the reg-copy `MOV`s (seeds/feedback) and the invariant-touch `CMP ctr,invBase`,
 which the flag machine steps through its two additive arms.  `fstepF` is the
 per-instruction spec of the flag machine on an arbitrary `Lopn`: the flag-`CMP`
@@ -118,7 +119,7 @@ straight-step function the generic fold ties below run over. -/
 
 /-- One extended straight step over the bundled base + flag: the flag-`CMP`
     (sets `zf`, store untouched), the reg-copy `MOV` (writes `dst := src`), or
-    the A1 straight-line/memory delegate (`zf` threaded).  Mirrors the three
+    the straight-line/memory delegate (`zf` threaded).  Mirrors the three
     non-jump arms of `evalInstrPMemF` exactly. -/
 def fstepF (i : LinstrRM) (s : LstateM) (zf : Bool) : Option (LstateM × Bool) :=
   match cmpArgs? i with
@@ -223,7 +224,7 @@ theorem runStraightF_lpc :
           omega
 
 /-- On a `PlainLopnBody` segment (no flag-`CMP`, no reg-copy `MOV`) the
-    extended fold IS A1's body-fold with the flag threaded unchanged — the
+    extended fold IS the straight-line body-fold with the flag threaded unchanged — the
     conservativity of the extension. -/
 theorem runStraightF_plain :
     ∀ (seg : List LinstrRM), PlainLopnBody seg →
@@ -246,7 +247,7 @@ theorem runStraightF_plain :
           exact ih his b zf
 
 /-- **Extended straight-line segment run with continuation fuel.**  The
-    `Lopn ∪ MOV ∪ CMP` extension of B2's `lsemFuelMemF_seg`: an all-`Lopn`
+    `Lopn ∪ MOV ∪ CMP` extension of `lsemFuelMemF_seg`: an all-`Lopn`
     segment (reg-copy `MOV`s and flag-`CMP`s allowed) at positions
     `lpc .. lpc+|seg|-1` executes the extended fold `runStraightF` and
     continues with `f` fuel. -/
@@ -297,9 +298,9 @@ theorem lsemFuelMemF_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
 
 /-! ## 2. The flag block grammar: straight segments and flag-guarded regions
 
-`FBlock` is the flag-machine analogue of B5's `IBlock`: a straight all-`Lopn`
+`FBlock` is the flag-machine analogue of the inline nest's `IBlock`: a straight all-`Lopn`
 segment (reg-copy `MOV`s and flag-`CMP`s included — stepped by `fstepF`), a
-bare flag-guarded loop region (`flagLoopLinstrRM` — B2's pinned back-edge
+bare flag-guarded loop region (`flagLoopLinstrRM` — the pinned flag back-edge
 idiom), or a zero-trip-guarded region (`guardedFlagLoopLinstrRM` — the full
 per-level `forLoopLcmdNRtNested` skeleton).  Regions nest to arbitrary depth
 (the block tree is the depth index). -/
@@ -635,7 +636,7 @@ theorem runFBsL_lpc :
 
 /-! ## 4. Position and label facts for the two region shapes
 
-The bare shape's positions are B2's `flagLoop_body_pos`/`flagLoop_cmp_pos`/
+The bare shape's positions are `flagLoop_body_pos`/`flagLoop_cmp_pos`/
 `flagLoop_cond_pos`; the guarded shape peels its two-instruction guard and its
 trailing skip label onto them. -/
 
@@ -680,7 +681,7 @@ theorem findInstrMemF_self (P : LprogM) (x : LstateM) :
   unfold findInstrMem
   rw [if_pos rfl]
 
-/-- The flag machine steps a label as the A1 delegate: pc bump, flag unchanged. -/
+/-- The flag machine steps a label as the counter-register delegate: pc bump, flag unchanged. -/
 theorem evalInstrPMemF_label (P : LprogM) (lk : LabelKind) (lbl : LLabel)
     (tag : MemTag) (s : LstateMF) :
     evalInstrPMemF P (.Llabel lk lbl, tag) s
@@ -705,9 +706,9 @@ theorem LstateM.setLpc_nextPc' (x : LstateM) (a : Nat) :
 /-! ## 6. The control-flow-aware segment lemma over the flag machine (`segFCore`)
 
 The joint statement at back-edge budget `wf`, proved by a fresh strong
-induction on `wf` mirroring B5's `segCore` — the CMP step is absorbed into each
+induction on `wf` mirroring the inline nest's `segCore` — the CMP step is absorbed into each
 back-edge decision (fetch the `CMP`, materialise `zf = (counter == 0)`, then
-the `Lcond NZ`/`Z` reads it; B2's `zf_after_cmp_eq_not_condNZ` content, applied
+the `Lcond NZ`/`Z` reads it; `zf_after_cmp_eq_not_condNZ` content, applied
 here as the two `by_cases` arms on the counter read). -/
 
 /-- The block-list segment lemma at budget `wf` (the induction carrier). -/
@@ -1346,7 +1347,7 @@ def runBoundedFBs (wf : Nat) (body : List FBlock) (q : Nat) :
 its counter schedule (the converse of a reconstruction); composed with
 `flagNest_closed` at a single guarded region over a straight body it yields the
 general theorem for the full `forLoopLcmdNRt` skeleton — guard at pc 0–1, loop
-at pc-offset 2 — at a NONZERO runtime count, which B2 validated only
+at pc-offset 2 — at a NONZERO runtime count, which `JasminLsemMemFlagGuard` validates only
 concretely. -/
 
 /-- **Schedule → do-while.**  If the bounded `m`-fold of the region body runs
@@ -1467,9 +1468,9 @@ theorem findLabelMem_guarded_top (top endL : LLabel) (nReg : String)
     in a state agreeing with the fold on the register store and the array
     carrier, with `zf = true`.  The per-pass fold is `runStraightF`, so the
     body may contain the feedback reg-copy `MOV` and the invariant-touch
-    `CMP ctr,invBase` (the two emitted forms B2's `flagLoop_runBounded`, whose
-    fold is A1's `lsemStraightMem`, could not step) — B2 validated this shape
-    only concretely (`rtLoopRM`). -/
+    `CMP ctr,invBase` (the two emitted forms `flagLoop_runBounded`, whose
+    fold is `lsemStraightMem`, cannot step) — `JasminLsemMemFlagGuard` validates
+    this shape only concretely (`rtLoopRM`). -/
 theorem guardedFlagLoop_runBounded_general (fn : String) (top endL : LLabel)
     (nReg : String) (body : List LinstrRM)
     (hlopn : ∀ i ∈ body, IsLopn i) (hne : top ≠ endL)

@@ -9,12 +9,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
 
 /-!
 # Tying the front `RWhileNz` (PUBLIC-guard while loop) to the program-level `lsem`
-loop simulation — increment 4e
+loop simulation
 
-Increment 4d (`FrontControlLsem.lean`) tied the front *counted* loop `RFor x n body`
+`FrontControlLsem.lean` ties the front *counted* loop `RFor x n body`
 — a loop with a **static** trip count `n` — to the program-level `lsem` loop run
-(4c, `JasminLsemLoop.lean`). This module is **increment 4e**: it covers the
-remaining front loop construct `RWhileNz x body` — a `while` loop whose trip count
+(`JasminLsemLoop.lean`). This module covers the other
+front loop construct `RWhileNz x body` — a `while` loop whose trip count
 is **not statically fixed** but is the length of the *public guard's trajectory*
 (the number of body iterations until the guard scalar `x` hits `0`).
 
@@ -31,19 +31,19 @@ and the whole loop's post-state is the **`n`-fold iterate** `frontStep^[n] rs`, 
 That iteration count `n` is **data-determined but PUBLIC**: it is fixed by the
 trajectory of the guard scalar `e`, and the CT analysis (`cmdCT_RWhileNz`) admits the
 loop precisely when `lt e = .Public`. The public-guard hypothesis here is the exact
-analogue of 4d's public *static* trip count.
+analogue of the public *static* trip count of `FrontControlLsem`.
 
 Note: A
 `RWhileNz` whose guard `e` is *secret*-classified leaks the iteration count `n`
 through the back-edge decision trace (the number of `branch` leaks = the number of
-iterations), and is therefore genuinely **not** constant-time. We do not model or
+iterations), and is therefore **not** constant-time. We do not model or
 claim CT for that case; `cmdCT_RWhileNz`'s `lt e = .Public` requirement excludes it,
 and our robustness conjunct is stated only under the public-guard discipline. The
 deliverable is exactly the **public-guard** while loop.
 
 ## How the iteration count is bounded by the public guard trajectory
 
-The "public trip count" of `RFor` (4d) was the static `n`. Here it is supplied as a
+The "public trip count" of `RFor` is the static `n`. Here it is supplied as a
 hypothesis on the front trajectory:
 
 * `hguard_nz : ∀ k < n, ((frontStep^[k]) rs).rsScalar e ≠ 0` — the guard is nonzero
@@ -52,20 +52,20 @@ hypothesis on the front trajectory:
   `n` (fires `RustExec.whileFalse`, terminating the loop).
 
 `n` is the **public trajectory length**: it is determined by the (public) guard
-scalar `e`'s evolution, never by a secret. This is the public-guard analogue of 4c's
+scalar `e`'s evolution, never by a secret. This is the public-guard analogue of
 `LoopTerminatesIn` (the back-edge counter `"NZ"` being a public count).
 
-## Reuse of the 4c / 4d machinery
+## Reuse of the `JasminLsemLoop` / `FrontControlLsem` machinery
 
-The emitted loop side is **unchanged from 4c/4d**: the real emitted form is `loopProg`
+The emitted loop side is the one of `FrontControlLsem`: the real emitted form is `loopProg`
 / `loopLR` (the `loopLcmd` shape modulo the dropped flag-`CMP`,
 `loopLR_eq_loopLcmd_dropCmp`), driven by the labeled `lsemFuel`, with the public
-back-edge `Lcond (.reg "NZ") top`. We reuse 4d's `front_loop_lsem_correct` verbatim —
+back-edge `Lcond (.reg "NZ") top`. We reuse `front_loop_lsem_correct` verbatim —
 instantiating its *indexed* per-iteration transformer `frontStep' : Nat → RustState →
 RustState` at the **index-ignoring** `fun _ rs => frontStep rs` (the while body takes
-no counter), and 4d's static trip count `c+1` at the public trajectory length `n =
+no counter), and its static trip count `c+1` at the public trajectory length `n =
 c+1`. The `FrontLoopEncodes` commuting square (one front iteration ↔ one `lsem`
-`bodyStep`) is reused exactly. The front denotation side is the new `n`-fold
+`bodyStep`) is reused exactly. The front denotation side is the `n`-fold
 `Function.iterate` characterisation of `RWhileNz` proved here.
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
@@ -98,7 +98,7 @@ guard `e` hits `0` (the public guard trajectory length). -/
     iterate.** Given:
 
     * the single-iteration body edge `hbody` — running `body` from `rs` lands in
-      `frontStep rs` (the named front edge, the while analogue of 4d's per-iteration
+      `frontStep rs` (the named front edge, the while analogue of `RFor`'s per-iteration
       `hbody`, NOT a `sorry`);
     * the **public guard trajectory** `hnz`/`hz` — the guard `e` is nonzero for the
       first `n` iterations and hits `0` at iteration `n`;
@@ -142,19 +142,19 @@ theorem rustExec_rwhilenz_iterate {N : Nat} {leafSpec : LeafSpec}
       · rw [← Function.iterate_succ_apply]
         exact hz
 
-/-! ## 2. Bridging the `n`-fold iterate to 4d's `frontForRun` fold
+/-! ## 2. Bridging the `n`-fold iterate to the `frontForRun` fold
 
-4d's loop simulation (`enc_frontForRun_eq_reentry`, `front_loop_lsem_correct`) is
+The `RFor` loop simulation (`enc_frontForRun_eq_reentry`, `front_loop_lsem_correct`) is
 phrased over the *indexed* fold `frontForRun frontStep' n` (the `RFor` shape, where
 each iteration is handed the loop counter `i`). The `RWhileNz` body takes no counter,
 so its per-iteration transformer is index-free; the index-ignoring fold
 `frontForRun (fun _ acc => frontStep acc) n` is exactly the `n`-fold iterate
-`frontStep^[n]`. This bridge lets us drive the (unchanged) 4c/4d emitted-loop
+`frontStep^[n]`. This bridge lets us drive the `RFor` emitted-loop
 simulation from the while-loop's iterate denotation. -/
 
 /-- The index-ignoring `frontForRun` fold is the `n`-fold `Function.iterate`: when the
     per-iteration transformer discards the loop counter (as the `RWhileNz` body does),
-    4d's `frontForRun` collapses to `frontStep^[n]`. -/
+    `frontForRun` collapses to `frontStep^[n]`. -/
 theorem frontForRun_const_eq_iterate (frontStep : RustState → RustState) (n : Nat)
     (rs : RustState) :
     frontForRun (fun _ acc => frontStep acc) n rs = (frontStep^[n]) rs := by
@@ -171,7 +171,7 @@ We combine, for a front `while` loop `RWhileNz e body` with public guard `e`:
   the `n`-fold iterate `frontStep^[n] rs`, where `n = c+1` is the **public guard
   trajectory length** (the guard nonzero for the first `c+1` iterations, zero at the
   `(c+1)`-th);
-* the unchanged 4c/4d emitted-loop simulation `front_loop_lsem_correct`, instantiated
+* the `RFor` emitted-loop simulation `front_loop_lsem_correct`, instantiated
   at the index-ignoring transformer `fun _ rs => frontStep rs` (the while body takes no
   counter). Its `lsem`-run half does not depend on the front construct being `RFor`
   rather than `RWhileNz` — it is the real emitted loop `loopProg` (the `loopLcmd`
@@ -179,13 +179,14 @@ We combine, for a front `while` loop `RWhileNz e body` with public guard `e`:
   `frontForRun_const_eq_iterate` is the encoded iterate `frontStep^[c+1] rs`.
 
 The public-guard CT hypothesis is the trajectory length being public (`n = c+1` fixed
-by the public guard `e`), the analogue of 4d's public static trip count and of
-`cmdCT_RWhileNz`'s `lt e = .Public`. A SECRET guard leaks `n` and is genuinely NOT
+by the public guard `e`), corresponding to `RFor`'s public static trip count and to
+`cmdCT_RWhileNz`'s `lt e = .Public`. A SECRET guard leaks `n` and is NOT
 constant-time — excluded by construction (out of scope). -/
 
 /-- **`front_while_lsem_correct`.** For a front `while` loop `RWhileNz e body` with a
     **public guard** `e`, single-iteration body edge `frontStep` (`hbody`), encoded
-    into 4c's loop simulation (`E : FrontLoopEncodes spec (fun _ rs => frontStep rs)`,
+    into the `JasminLsemLoop` loop simulation
+    (`E : FrontLoopEncodes spec (fun _ rs => frontStep rs)`,
     starting at the loop entry data `enc rs = { sb with lpc := 1 }`), whose **public
     guard trajectory** has length `c+1` (`hnz`: the guard is nonzero for the first
     `c+1` iterations; `hz`: the guard hits `0` at the `(c+1)`-th) and whose emitted
@@ -203,7 +204,7 @@ constant-time — excluded by construction (out of scope). -/
     (`hnz`/`hz`), never a secret. No `JasminIRToX86` edge, no `jasminc_preserves_ct`.
 
     Note: a SECRET guard `e` leaks `c+1` through the back-edge decision trace and is
-    genuinely not constant-time; that case is out of scope — `cmdCT_RWhileNz`'s
+    not constant-time; that case is out of scope — `cmdCT_RWhileNz`'s
     `lt e = .Public` excludes it. -/
 theorem front_while_lsem_correct {N : Nat} {leafSpec : LeafSpec}
     (e : String) (body : LowCT) (frontStep : RustState → RustState)
@@ -227,14 +228,14 @@ theorem front_while_lsem_correct {N : Nat} {leafSpec : LeafSpec}
       ∧ t.lvm = (E.enc ((frontStep^[c + 1]) rs)).lvm
       ∧ t.lmem = (E.enc ((frontStep^[c + 1]) rs)).lmem) := by
   refine ⟨rustExec_rwhilenz_iterate e body frontStep hbody (c + 1) rs hnz hz, ?_⟩
-  -- the lsem run reuses the unchanged 4c/4d emitted-loop machinery: the real emitted
+  -- the lsem run reuses the `RFor` emitted-loop machinery: the real emitted
   -- loop `loopProg` halts at the encoded reentry data (`loop_lsem_correct`), and the
   -- encoding of the front `frontForRun` post-state is that reentry data
   -- (`enc_frontForRun_eq_reentry`). The front fold here is the index-ignoring
   -- `frontForRun (fun _ rs => frontStep rs)`, which collapses to the `n`-fold iterate
   -- `frontStep^[c+1]` (`frontForRun_const_eq_iterate`). The while body takes no
   -- counter, so this does NOT require the (RFor-specific, here-unprovable) indexed
-  -- body edge — only the genuinely shared lsem-run lemmas.
+  -- body edge — only the shared lsem-run lemmas.
   refine ⟨{ spec.bodyStep ((reentry spec sb c).base) with lpc := 2 + lbody.length },
     loop_lsem_correct fn top spec sb c hterm, ?_, ?_⟩
   · rw [← frontForRun_const_eq_iterate frontStep (c + 1) rs,
@@ -245,7 +246,7 @@ theorem front_while_lsem_correct {N : Nat} {leafSpec : LeafSpec}
 /-! ### While-loop CT (robust): the front `RWhileNz`'s emitted leak is
 state-independent — for a PUBLIC guard
 
-The emitted loop's constant-time verdict is **unchanged from 4c/4d**: the back-edge
+The emitted loop's constant-time statement is the one for `RFor`: the back-edge
 `Lcond (.reg "NZ") top` tests only the public counter (its leak is the constant
 `branch`), and the body leaks only syntax — so the whole `loopLR` leak is the same
 from any two states (`front_loop_lsem_robust` / `loopLR_lsemLeak_state_independent`).
@@ -254,12 +255,12 @@ This realises the source-level fact that the `while`-loop's guard is **public**
 (`cmdCT_RWhileNz`'s `lt e = .Public`): the public guard makes the trip count, and the
 per-iteration back-edge decision, a public observation. A SECRET guard would make the
 number of back-edge `branch` leaks (= the iteration count `c+1`) secret-dependent —
-genuinely not constant-time, and out of scope. -/
+not constant-time, and out of scope. -/
 
 /-- **`front_while_lsem_robust`.** The front `while` loop's emitted leak is
     state-independent (constant-time): the real emitted loop `loopLR` leaks the same
     trace from any two `lsem` states, given the body's leak is state-independent
-    (`hbodyLeak`) and always completes (`hbodySucc`). This is 4c/4d's
+    (`hbodyLeak`) and always completes (`hbodySucc`). This is
     `loopLR_lsemLeak_state_independent` — the back-edge tests only the public guard
     counter. CT holds **precisely because the guard is public** (`cmdCT_RWhileNz`); a
     secret guard leaks the iteration count and is out of scope. -/
@@ -273,11 +274,11 @@ theorem front_while_lsem_robust {w : Nat} (top : LLabel) (lbody : List LinstrR)
 /-! ## 4. Combined capstone: the front `RWhileNz` — correct AND robust (constant-time)
 for a PUBLIC guard
 
-A single statement packaging the functional tie (§3) and the constant-time verdict:
+A single statement packaging the functional tie (§3) and the constant-time statement:
 the front `while` loop `RWhileNz e body`'s emitted control flow, run by the real
 labeled `lsem`, realises its `RustExec` source meaning AND is constant-time **under
 the public-guard hypothesis** (the guard trajectory length `c+1` is public, the
-analogue of 4d's public static trip count and of `cmdCT_RWhileNz`'s `lt e = .Public`),
+analogue of `RFor`'s public static trip count and of `cmdCT_RWhileNz`'s `lt e = .Public`),
 with no `JasminIRToX86` edge and no `jasminc_preserves_ct`. -/
 
 /-- **`front_while_lsem_correct_and_robust`.** The front `while`-loop control-flow
@@ -290,7 +291,7 @@ with no `JasminIRToX86` edge and no `jasminc_preserves_ct`. -/
        **public guard trajectory** (`hnz`: guard nonzero for the first `c+1` runs;
        `hz`: guard `0` at the `(c+1)`-th);
     2. *(robust / constant-time)* the emitted loop's leak is state-independent
-       (`front_while_lsem_robust` / 4c/4d) — the back-edge tests only the public guard
+       (`front_while_lsem_robust`) — the back-edge tests only the public guard
        counter.
 
     Both reuse the REAL emitted form (`loopLR` / `loopProg` = `loopLcmd` modulo the
@@ -298,7 +299,7 @@ with no `JasminIRToX86` edge and no `jasminc_preserves_ct`. -/
     trajectory length `c+1` (`LoopTerminatesIn` + `hnz`/`hz` on the public guard `e`).
 
     Note: A SECRET guard `e` leaks the iteration
-    count `c+1` through the back-edge `branch` decision trace and is genuinely **not**
+    count `c+1` through the back-edge `branch` decision trace and is **not**
     constant-time; `cmdCT_RWhileNz`'s `lt e = .Public` requirement excludes it, and the
     robustness conjunct is asserted only under the public-guard discipline. No
     `JasminIRToX86` edge, no `jasminc_preserves_ct`. -/

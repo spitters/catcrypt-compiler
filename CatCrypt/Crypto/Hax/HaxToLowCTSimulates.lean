@@ -12,17 +12,17 @@ public import HaxLean.Value
 public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
-# H3: Hax → LowCT Semantic Simulation
+# Hax → LowCT Semantic Simulation
 
-States and progressively closes the semantic-preservation theorem for
-`haxToLowCT : ImpExpr → Option LowCT`.
+States the semantic-preservation theorem for
+`haxToLowCT : ImpExpr → Option LowCT` and proves its structural cases.
 
 `HaxToLowCT.lean` provides the syntactic side (representability
-biconditionals).  This file adds the **dynamics**: when `haxToLowCT
+biconditionals).  This module adds the **dynamics**: when `haxToLowCT
 e = some c`, the LowCT `c` denotes the same thing as the source
 ImpExpr `e`.
 
-## Closing this theorem completes the chain
+## Position in the chain
 
 ```
    cargo hax json
@@ -30,19 +30,19 @@ ImpExpr `e`.
    ImpExpr     —— denote (StateM Env Outcome) ——
         ↓ haxToLowCT                                ← BRIDGED HERE
    LowCT     —— RustExec (relational) ——
-        ↓ rustExecSimulatesCryptoSSA / rustExecSimulates
-   CryptoSSA / Jasmin
+        ↓ rustExecSimulatesDialect
+   catCryptDialect / Jasmin
 ```
 
-## Phase plan (mirrors CryptoSSA closure trail B1.*)
+## Case split
 
-| Phase | Cases | Status |
-|---|---|---|
-| **H3.bis** | `var`, `unitVal`, `seq`, lit-let | structural; this commit closes the dispatcher |
-| **H3.tertia** | scalar-typed leaf calls (u64, TFpL25519) | pending |
-| **H3.quarta** | tower/byte leaf calls (TFp, TFp2, TFp25519, TBytes) | pending |
-| **H3.sexta** | `ifThenElse`, `whileLoop` | pending |
-| **H3.septa** | H1/H2-rejected unreachable arms (mechanical) | pending |
+| Cases | Module |
+|---|---|
+| `var`, `unitVal`, `seq`, rejected arms | this module |
+| lit-let, scalar assign | `HaxToLowCTSim_Agreement`, `HaxToLowCTSim_AssignMatch` |
+| leaf calls (u64, TFp, TFp2, TFp25519, TBytes) | `HaxToLowCTSim_Call`, `HaxToLowCTSim_Quarta*` |
+| `ifThenElse`, `whileLoop` | `HaxToLowCTSim_If`, `HaxToLowCTSim_While` |
+| assembly | `HaxToLowCTSim_Main` |
 
 ## Structural-recursion note
 
@@ -51,29 +51,17 @@ in the `tuple` and `app` arms, and `List (ImpPat × ImpExpr)` in
 `match_`).  Lean's `induction` tactic does not produce induction
 hypotheses for nested-inductive sub-terms in nested positions.
 
-The CryptoSSA simulation works around this with explicit recursion
-on `RustExec` (an extra-syntactic relational input).  Here, the
-cleanest analogue is to recur on the *fuel-bounded denotation* —
-since `denote` is total in `fuel`, every successful evaluation has
-a finite trace, and the simulation can be stated as a recursive
-function rather than an induction.
+The simulation proofs use the custom induction principle
+`ImpExpr.ind` (hax-lean `HaxLean/AST.lean`) under
+`induction ... using`.
 
-This file defers the choice between (a) custom `ImpExpr` induction
-principle, (b) recursion on `sizeOf e`, and (c) recursion on `fuel`
-to the H3.bis closure work.  The current commit lands the agreement
-predicate, the source-side evaluation alias, and the theorem
-statement; the per-case dispatch is the H3.bis closure target.
+## Contents
 
-## Status
-
-* §1 Agreement predicate — landed
-* §2 Source-side `evalImp` alias — landed
-* §3 Main theorem statement — landed (as `def` returning `Prop`;
-  the proof is the work plan above)
-* §4 Demo lemmas validating the predicate setup — landed
-
-The file deliberately does **NOT** appear in `CatCrypt.lean`'s import
-graph yet; closing the phases gates inclusion in the main build.
+* §1 Agreement predicate
+* §2 Source-side `evalImp` alias
+* §3 Main theorem statement (as `def` returning `Prop`)
+* §4 Demo lemmas validating the predicate setup
+* §5 Unreachable arms
 -/
 
 @[expose] public section
@@ -88,11 +76,11 @@ open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
    rsSetTower rsSetScalar)
 
-/-! ## §1  Environment/state agreement predicate (H3.A1)
+/-! ## §1  Environment/state agreement predicate
 
-Phase H3.bis covers scalar bindings only.  Tower-typed agreement
-(content-bearing, byte-layout transport per CryptoSSA's `bindingOK`)
-is added in H3.quarta. -/
+This predicate covers scalar bindings only.  Tower-typed agreement
+(content-bearing, byte-layout transport in the style of `bindingOK`)
+is `envAgreesRustFull` in `HaxToLowCTSim_Quarta.lean`. -/
 
 /-- Decode a Hax `Value` to a LowCT scalar: `int n` (when `n ≥ 0`),
     the width-indexed `uint _ n`, `bool`, and `unit`.  Signed and array
@@ -112,8 +100,8 @@ def nameAgreesScalar (env : Env) (rs : RustState) (name : String) : Prop :=
     ∀ n, valueToScalar v = some n →
       rs.rsScalar name = n
 
-/-- Top-level agreement: scalar-only.  Extended in H3.quarta to cover
-    tower and byte bindings. -/
+/-- Top-level agreement: scalar-only.  `envAgreesRustFull` in
+    `HaxToLowCTSim_Quarta.lean` covers tower and byte bindings. -/
 def envAgreesRust (env : Env) (rs : RustState) : Prop :=
   ∀ name, nameAgreesScalar env rs name
 
@@ -249,24 +237,24 @@ theorem haxToLowCT_simulates
 Per-clause proof obligations (one per arm of `haxToLowCT` that
 returns `some _`):
 
-| Source pattern | Target LowCT | Phase |
-|---|---|---|
-| `var _` | `RSkip` | H3.bis |
-| `unitVal` | `RSkip` | H3.bis |
-| `seq a b` | `RSeq aC bC` | H3.bis |
-| `letBind _ (lit (uintLit _ _)) body` | `RLetU64Zero + RSeq (RScalarSet ..) bodyC` | H3.bis |
-| `letBind _ (lit (int n)) body`, `n ≥ 0` | same | H3.bis |
-| `letBind _ (app f args) body` | `RLetZero _ (RSeq (RCall ..) bodyC)` | H3.tertia |
-| `assign _ (lit (int n))`, `n ≥ 0` | `RScalarSet _ n.toNat` | H3.tertia |
-| `assign _ (lit (uintLit _ n))` | `RScalarSet _ n` | H3.tertia |
-| `assign _ (app f args)` | `RCall f _ args'` | H3.tertia |
-| `ifThenElse (var v) t e` | `RIfNz v tC eC` | H3.sexta |
-| `whileLoop (var v) body` | `RWhileNz v bodyC` | H3.sexta |
-| `match_ (app f args) [(tuplePat ..)]` | `RLetZero + RLetZero + RCallSwap` | H3.tertia (H2.1) |
+| Source pattern | Target LowCT |
+|---|---|
+| `var _` | `RSkip` |
+| `unitVal` | `RSkip` |
+| `seq a b` | `RSeq aC bC` |
+| `letBind _ (lit (uintLit _ _)) body` | `RLetU64Zero + RSeq (RScalarSet ..) bodyC` |
+| `letBind _ (lit (int n)) body`, `n ≥ 0` | same |
+| `letBind _ (app f args) body` | `RLetZero _ (RSeq (RCall ..) bodyC)` |
+| `assign _ (lit (int n))`, `n ≥ 0` | `RScalarSet _ n.toNat` |
+| `assign _ (lit (uintLit _ n))` | `RScalarSet _ n` |
+| `assign _ (app f args)` | `RCall f _ args'` |
+| `ifThenElse (var v) t e` | `RIfNz v tC eC` |
+| `whileLoop (var v) body` | `RWhileNz v bodyC` |
+| `match_ (app f args) [(tuplePat ..)]` | `RLetZero + RLetZero + RCallSwap` |
 
 All other arms of `haxToLowCT` return `none`, so the hypothesis
 `haxToLowCT e = some c` is `False`; these cases discharge
-mechanically in H3.septa.
+by contradiction (§5).
 -/
 
 /-! ## §4  Demo lemmas validating the predicate setup
@@ -355,10 +343,10 @@ theorem rustExec_RIfNz_dispatch_true
     RustExec N leafSpec (.RIfNz cond ct cf) rs rs' :=
   RustExec.ifTrue cond ct cf rs rs' n hCond hNz hThen
 
-/-! ### §4.7  H3.bis: var and unitVal simulation instances
+/-! ### §4.7  var and unitVal simulation instances
 
-These are the first two productive (non-contradiction) closures of
-the main theorem.  Both reduce to `RSkip` on the LowCT side, with
+These are two productive (non-contradiction) cases of the main
+theorem.  Both reduce to `RSkip` on the LowCT side, with
 env / rs both unchanged. -/
 
 theorem haxToLowCT_simulates_var
@@ -397,7 +385,7 @@ theorem rustExec_RIfNz_dispatch_false
 
 Every `ImpExpr` constructor whose `haxToLowCT` arm returns `none`
 contributes a vacuously-true per-case obligation: the hypothesis
-`haxToLowCT e = some c` is `False`.  These are the H3.septa
+`haxToLowCT e = some c` is `False`.  These are the
 "closure-by-contradiction" cases.
 
 The template (one per constructor) is:
@@ -408,7 +396,7 @@ theorem haxToLowCT_simulates_<ctor> ... :
   fun h _ _ => by simp [haxToLowCT] at h
 ```
 
-Twelve such cases.  Mechanical; populated in H3.septa. -/
+§5.5 instantiates it for each rejected constructor. -/
 
 /-! ### §5.1  Sample: `lit` at tail position is unreachable -/
 
@@ -680,7 +668,7 @@ theorem haxToLowCT_forFold_eq_none
     (h_not_lit : ¬ ∃ n : Int, lo = .lit (.int 0) ∧ hi = .lit (.int n) ∧ n ≥ 0)
     (h_not_uint : ¬ ∃ (w : Hax.IntWidth) (n : Nat),
         lo = .lit (.int 0) ∧ hi = .lit (.uintLit w n))
-    -- Stage 1a (2026-07-01): the runtime-bound arm fires when
+    -- The runtime-bound arm fires when
     -- `lo = .lit (.int 0)` and `impBoundToSExpr hi` succeeds; exclude it.
     (h_not_runtime : impBoundToSExpr hi = none) :
     haxToLowCT (.forFold v lo hi body) = none := by
@@ -807,7 +795,7 @@ theorem haxToLowCT_cfBreakContinue_eq_none (e : ImpExpr) :
     haxToLowCT (.cfBreakContinue e) = none := by
   simp [haxToLowCT]
 
-/-! ## §5.5  H3.septa: unreachable-arm simulation instances
+/-! ## §5.5  Unreachable-arm simulation instances
 
 Each of these is a `HaxToLowCTSimulates` instance whose closure
 follows from the corresponding `haxToLowCT_*_eq_none` lemma —
@@ -925,8 +913,8 @@ theorem haxToLowCT_simulates_forLoopRev
 /-- Source-side: `.forFold` is a post-phase constructor whose `denote`
     always yields `Outcome.err`, so `evalImp` returns `none`.
 
-    This is what unblocks the literal-bounded forFold simulation cases:
-    even though the translator now produces `some (.RFor ..)` for the two
+    This closes the literal-bounded forFold simulation cases:
+    although the translator produces `some (.RFor ..)` for the two
     literal shapes, the source-side evaluation hypothesis is vacuous, and
     the simulation conclusion follows by `False.elim`. -/
 theorem evalImp_forFold_eq_none (bi : Builtins) (fuel : Nat)
@@ -1002,15 +990,15 @@ theorem haxToLowCT_simulates_cfBreakContinue
 
 /-! ## §6  Summary
 
-* §1 Agreement predicate (scalar-only) — landed
-* §2 `evalImp` alias — landed
-* §3 Main theorem statement as `def HaxToLowCTSimulates` — landed
-* §4 Per-case LowCT-side structural lemmas — landed:
+* §1 Agreement predicate (scalar-only)
+* §2 `evalImp` alias
+* §3 Main theorem statement as `def HaxToLowCTSimulates`
+* §4 Per-case LowCT-side structural lemmas:
   * `rustExec_RSkip_refl` (var / unitVal)
   * `rustExec_RSeq_chain` (seq)
   * `rustExec_RLetU64Zero_ScalarSet` (lit-let; uses `rsSetScalar_collapse`)
   * `rustExec_RIfNz_dispatch_{true,false}` (if dispatcher)
-* §5 + §5.5 H3.septa — **complete**: per-constructor
+* §5 + §5.5: per-constructor
   `haxToLowCT_*_eq_none` lemmas + `haxToLowCT_simulates_*` instances
   covering every ImpExpr constructor that `haxToLowCT` rejects (`lit`,
   `proj`, `borrow`, `deref`, `forLoop`/`forLoopRev`,
@@ -1020,29 +1008,17 @@ theorem haxToLowCT_simulates_cfBreakContinue
 * `tuple` closes productively: the all-`var` tuple tail lowers to
   `RSkip` with env and state unchanged (`haxToLowCT_simulates_tuple`
   via `evalImp_tuple_vars_inv`); non-`var` tuples contradict.
-* **H3.bis (this commit)**: var, unitVal closed end-to-end as
-  `haxToLowCT_simulates_{var,unitVal}` via `evalImp_{var,unitVal}_inv`.
-  Recursion principle solved: `ImpExpr.ind` (custom recursor in
-  `Hax/AST.lean:109`) works under `induction ... using`.
-* **H3.bis (later commit)**: `seq` closed end-to-end as
-  `haxToLowCT_simulates_seq` via `evalImp_seq_inv` and
+* `var`, `unitVal`: `haxToLowCT_simulates_{var,unitVal}` via
+  `evalImp_{var,unitVal}_inv`, by induction with `ImpExpr.ind`
+  (hax-lean `HaxLean/AST.lean`).
+* `seq`: `haxToLowCT_simulates_seq` via `evalImp_seq_inv` and
   `haxToLowCT_seq_some`, threading sub-IHs through
-  `rustExec_RSeq_chain`.  The `letBind lit` source-side inverse
-  `evalImp_letBind_lit_inv` is in place; the full simulation instance
-  still needs an agreement-extension lemma
-  `envAgreesRust_extend_scalar` to discharge the body IH.
-* Remaining work — H3.bis: `letBind lit` simulation instance using
-  `evalImp_letBind_lit_inv` + `rustExec_RLetU64Zero_ScalarSet` +
-  the missing `envAgreesRust_extend_scalar` lemma.
-* Remaining work — H3.tertia / H3.quarta / H3.sexta: per the plan
-  doc.  Each phase has its own source-side decomposition lemma
-  (`evalImp_letBind_inv`, `evalImp_assign_inv`, `evalImp_ifThenElse_inv`,
-  `evalImp_whileLoop_inv`) plus its own target-side dispatcher.
-
-**Build status**: zero sorries, zero axioms, zero warnings.
-Not yet wired into `CatCrypt.lean`'s import graph; closure of the
-remaining phases gates inclusion in the main build (and the audit
-script).
+  `rustExec_RSeq_chain`.
+* `letBind lit`: the source-side inverse `evalImp_letBind_lit_inv`;
+  the simulation instance, which also uses
+  `envAgreesRust_extend_scalar`, is in `HaxToLowCTSim_Agreement.lean`.
+* The remaining productive cases are in the `HaxToLowCTSim_*` modules
+  listed in the header.
 -/
 
 /-! ## §7  Source-side decomposition: `seq` -/

@@ -14,23 +14,24 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 `LoweringExtended.lean` builds two `Linstr → Option (List (JInstr 64))` lowerings:
 the POC `lowerLinstrExt` (ALU/`MOV` + constant-offset `LOAD`/`STORE`) and its
 supported-op superset `lowerLinstrExt2` (which adds the two-source `regArith`
-exports, `MULXHI:64`, and the immediate shifts `SHR:<n>`/`SHL:<n>`). Both still
+exports, `MULXHI:64`, and the immediate shifts `SHR:<n>`/`SHL:<n>`). Both
 return `none` on the carry-chain ADX exports (`ADCX:64`/`ADCXHI:64`) and on the
 register-indexed (SIB) memory exports (`LOADIDX`/`STOREIDX`) — so a real
 bignum/field kernel that uses `addCarry`/`mulhi`-fed carry threads, or a
-runtime-indexed `stackLoad`/`stackStore`, still cannot reach the `JInstr` path.
+runtime-indexed `stackLoad`/`stackStore`, does not reach the `JInstr` path
+through them.
 
 This module adds a **strict-superset** lowering `lowerLinstrExtCov` that delegates
 every shape `lowerLinstrExt2` already covers (its catch-all arm is
-`lowerLinstrExt2 i` verbatim) and adds arms for the dropped high-value shapes —
-the encoder-maturation step toward the `JInstr` path covering the real owned
-kernels (D4 collapse). The existing two lowerings are untouched (a separate
-function, like the `lowerLinstrExt2`-vs-`lowerLinstrExt` precedent).
+`lowerLinstrExt2 i` verbatim) and adds arms for the dropped high-value shapes, so
+that the `JInstr` path covers more of the owned kernels. The two other
+lowerings are separate functions (as `lowerLinstrExt2` is separate from
+`lowerLinstrExt`).
 
 ## What the exporter actually emits (the shapes this superset adds)
 
 From `opToLinstrR` (`JasminLprogExport.lean`), the carry-chain / widening-multiply
-ops (`#477`) and the register-indexed memory ops export as:
+ops and the register-indexed memory ops export as:
 
 * `mulhi w`      → `Lopn [reg dst] "MULXHI:64" [s0, s1]`   — high word of `MULX`
   (**already** covered by `lowerLinstrExt2` → `mulx`; re-delegated here);
@@ -329,7 +330,7 @@ theorem lowerLinstrExtCov_storeidx_denote (base idx : String) (scale : Nat)
       = x86_MOV (src.eval s) := by
   simp only [runBlock, evalInstr, JState.loadIdx_storeIdx_same]
 
-/-! ## 7. Worked demo: previously-`none` shapes now lowering
+/-! ## 7. Worked demo: shapes `lowerLinstrExt2` drops, lowered here
 
 `demoAdcx` is the carry-chain data binding `r := r + a + carry` a bignum add
 emits (`addCarryLo`); `demoLoadIdx`/`demoStoreIdx` are the runtime-indexed
@@ -337,18 +338,18 @@ gather/scatter `t := m[idx]` / `m[idx] := v` (`stackLoad`/`stackStore`). All
 three are dropped to `none` by `lowerLinstrExt`/`lowerLinstrExt2`; the coverage
 superset lowers them, with the right `runBlock` effect. The `_cov` facts (each
 `rfl`) are the strict-superset witnesses: `lowerLinstrExtCov`'s literal-mnemonic
-head patterns fire before the delegate, so each previously-dropped shape now
+head patterns fire before the delegate, so each shape the older lowerings drop
 lowers. (For `demoAdcx` the `lowerLinstrExt2 = none` side is also proved by
 `demoAdcx_ext2_none`; for the SIB demos the `none` side needs unreducible
 `String.endsWith` — see §4 — so only the `_cov` gain is stated.) -/
 
-/-- A previously-`none` carry-chain data binding `r := r0 + a + carry`. -/
+/-- A carry-chain data binding `r := r0 + a + carry`. -/
 def demoAdcx : LinstrR := .Lopn [.reg "r"] "ADCX:64" [.reg "r0", .reg "a", .reg "c1"]
 
-/-- A previously-`none` register-indexed gather `t := m[idx*8]`. -/
+/-- A register-indexed gather `t := m[idx*8]`. -/
 def demoLoadIdx : LinstrR := .Lopn [.reg "t"] "LOADIDX" [.arrIdx "m" "idx" 8]
 
-/-- A previously-`none` register-indexed scatter `m[idx*8] := v`. -/
+/-- A register-indexed scatter `m[idx*8] := v`. -/
 def demoStoreIdx : LinstrR := .Lopn [.reg "m'"] "STOREIDX" [.arrIdx "m" "idx" 8, .reg "v"]
 
 /-- `lowerLinstrExt2` drops `demoAdcx` (the three-source ADX data binding) to

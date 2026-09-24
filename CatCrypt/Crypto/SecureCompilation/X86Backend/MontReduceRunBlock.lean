@@ -22,7 +22,7 @@ structurally the same row, plus a digit and a shift:
   low limb cancels).
 
 `Cios4LimbProven.ciosWord_eq` already proves that this triple equals one
-`Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` (the genuine
+`Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` (the
 per-word REDC), via `mulScalar`/`addLimbs`. This file realises the *accumulate*
 half over `runBlock` of an emitted `List (JInstr 64)`, reusing
 `emitRowBlock_runBlock_value` (the row `= addmul1`) for the `m·p` accumulate, and
@@ -31,7 +31,7 @@ ties the recombined `runBlock` value of the emitted reduce-step to the abstract
 `Number.montgomeryReduce_comp` in `Cios4LimbProven.montRedc4_correct` — into the
 full-radix `R = 2^256` reduction `montRedc4`.
 
-## What is PROVEN (genuine `runBlock(emitted) = montgomeryReduce`)
+## What is PROVEN (`runBlock(emitted) = montgomeryReduce`)
 
 * **`emitMontDigit` / `emitMontDigit_runBlock`** — the Montgomery digit `m`
   emitted as one `emitColumnReset` over `T₀·n'` with cleared accumulator and
@@ -42,7 +42,7 @@ full-radix `R = 2^256` reduction `montRedc4`.
   word-step over `runBlock`: the digit emit followed by the `m·p` accumulate row
   (`emitRowBlock`). Its recombined `runBlock` value (result limbs in `accs`, carry
   word in `cy`, divided by `2^64` for the shift) equals
-  `Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` — one genuine
+  `Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` — one
   Montgomery reduction word-step, the accumulate produced by an emitted
   instruction list under faithful `runBlock` semantics. The accumulate row is
   `emitRowBlock_runBlock_value` (= `addmul1`); the numerator-to-`montgomeryReduce`
@@ -60,10 +60,10 @@ full-radix `R = 2^256` reduction `montRedc4`.
 one `montgomeryReduce` step. `emitMontRedc4_value` chains four such values into
 `montRedc4`. The four steps as a *single* `runBlock` trace — routing the
 shifted-down accumulator limbs of step `i` into step `i+1`'s input registers
-across one fused emitted block, with the inter-step register renaming — is the
-remaining increment (the same multi-block register-routing the schoolbook's
-`SchoolbookRunBlock` named for its inter-row combine). It does not change the
-value spec: each step's value IS a genuine `runBlock`-of-emitted reduction step.
+across one fused emitted block, with the inter-step register renaming — is
+outside this module (the same multi-block register-routing the schoolbook's
+`SchoolbookRunBlock` names for its inter-row combine). It does not change the
+value spec: each step's value IS a `runBlock`-of-emitted reduction step.
 -/
 
 @[expose] public section
@@ -136,7 +136,7 @@ def emitMontRedcStep (mReg t0Reg npReg dcy dhi dlo : String)
     in `accs` and the carry word in `rcy`; their little-endian recombination is
     `valLimbs T + valLimbs p · m` (= `addmul1`, via `emitRowBlock_runBlock_value`
     and `addmul1_reconstruct`), and dividing by `2^64` (the shift-down) yields
-    `Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` — one genuine
+    `Number.montgomeryReduce (valLimbs p) (2^64) n' (valLimbs T)` — one
     per-word REDC, the accumulate produced by an emitted `List (JInstr 64)` under
     `runBlock`.
 

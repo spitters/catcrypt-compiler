@@ -16,8 +16,8 @@ ML-KEM convention `"mul_reduce"`) to `RCall s!"mont_mul_{q}_{R}"` when
 both the modulus `q` and the Montgomery radix `R = 2^k` are
 statically known.
 
-Per the verified-compiler plan: Tier 1.2 (local arithmetic).  Estimated
-speedup: 3-5× on lattice multiplication.
+A local-arithmetic pass.  Estimated speedup: 3-5× on lattice
+multiplication.
 
 ## Soundness
 
@@ -39,22 +39,21 @@ LeafSpec's implementation of `mont_mul_{q}_{R}`, mirroring the way
 Barrett's `barrettName` leaf absorbs the Barrett-reduction
 constant-time bit tricks.
 
-This is the **compact** Strategy A from the verified-compiler plan: by
+This is the **compact** strategy: by
 treating the multiplication-with-Montgomery-conversion as an atomic
 leaf, the pass avoids the proof burden of fresh-name analysis at the
 LowCT AST level while still exposing the Montgomery code path to the
 backend code generator (which dispatches on the leaf name).
 
-A follow-up **Strategy B** (per-variable Montgomery-form tracking, with
-explicit `to_mont` / `from_mont` calls hoisted across chains of
-multiplications) could amortise the conversion overhead.  That requires
-a flow-sensitive analysis at the LowCT AST level and is left as a
-separate pass.
+Per-variable Montgomery-form tracking (explicit `to_mont` / `from_mont`
+calls hoisted across chains of multiplications) would amortise the
+conversion overhead; it requires a flow-sensitive analysis at the LowCT
+AST level and is outside the scope of this pass.
 
 ## Composition
 
 Pipeline composition: this pass is `pass_montgomery` in the optimizer
-orchestrator (Tier 4.1).  Composes with `pass_barrett` via the per-pass
+orchestrator (`Optimizer/Pipeline.lean`).  Composes with `pass_barrett` via the per-pass
 equivalence theorems.
 -/
 

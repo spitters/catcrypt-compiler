@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHmac
 public import CatCrypt.Crypto.SecureCompilation.VIR.HmacHkdfEmit
 
 /-!
-# #607 fan-out: functional tie — verified-compiler HMAC/HKDF bodies = the hand-emit word forms
+# Functional tie — verified-compiler HMAC/HKDF bodies = the hand-emit word forms
 
 This module wires the committed **compile-from-hax HMAC/HKDF leaves**
 (`CompileFromHaxHmac.{xorPad4,xorPad4W64,expandSkel}_compiles`) onto the
@@ -21,7 +21,7 @@ This module wires the committed **compile-from-hax HMAC/HKDF leaves**
 * the HKDF-Expand T-chaining skeleton's three-op `add`/`xor`/`or` chain
   (`HmacHkdfEmit.expandSkelBody`).
 
-## What this is — and what it is NOT (honest framing)
+## What this is — and what it is NOT
 
 This is a **functional-equality** tie, not a security claim.
 
@@ -34,7 +34,7 @@ This is a **functional-equality** tie, not a security claim.
 - HMAC is a PRF / MAC and HKDF a KDF; this file makes **no** PRF/KDF security
   claim — only `<emit-form> = <hand-emit word form>`.
 
-## Slice/width note (honest)
+## Slice/width note
 
 The leaf models the HMAC pad as a representative **4-word slice** returning
 `K[3] ⊕ pad` (vs. the 16-word `xorPadCom`'s `K[15] ⊕ pad`) and the HKDF skeleton

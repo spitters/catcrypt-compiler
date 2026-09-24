@@ -22,8 +22,8 @@ and a multi-pass route is pasted with iterated `TransportSquare.comp`
 op-tree must be walked by the prover (the `cases`/`rfl` per node), and for a
 multi-pass route the squares must be `comp`-chained adjacency-by-adjacency.
 
-This file moves that **op-tree descent** and **pass chaining** from the hand
-composition to the **`Param` engine's `param_solve`** (`Bridges/Transfer/ParamSolve.lean`):
+This module performs that **op-tree descent** and **pass chaining** with the
+**`Param` engine's `param_solve`** (ParamTransfer, `Transfer/Congruence/ParamSolve.lean`):
 the cross-head congruence descent of `rcongr` with the saturating closure of
 `param_cc` as the leaf discharger. We
 
@@ -48,30 +48,30 @@ the cross-head congruence descent of `rcongr` with the saturating closure of
   (modSubF c d)`, depth ≥ 2, multiple heads) **and** chains a context pass —
   with no per-op `cases`/`rfl` and no `TransportSquare.comp`. The op-tree walk
   and the pass adjacency are both synthesized.
-* **Manual (the honest setup).** The three `RelatedBinOp` registrations
+* **Manual (the setup).** The three `RelatedBinOp` registrations
   themselves — each one `RelatedBinOp.mk` whose `comm` is `rfl` (the leaf
   definitional equality `fAddF = modAddF`, …). This is the *same* content as the
   hand proof's per-op leaf, but registered **once** as a reusable engine witness
   rather than re-walked per goal.
 
-### Documented boundary (worked within, not fought)
+### Documented boundary
 
 The synthesis here is on the **prime-field, same-carrier fragment** — the exact
-fragment `FieldToModArithLowering` identifies as the genuine 1:1 transport. The
+fragment `FieldToModArithLowering` identifies as the 1:1 transport. The
 `Related`-engine carrier is a **single type** `ZMod p` with the **identity
 encoding** (`Related (id : ZMod p → ZMod p)`), which is the engine's diagonal /
-same-carrier mode. This is *not* a limitation we hit by accident: the README's
+same-carrier mode. The README's
 "`TransferDom` domains are diagonal" boundary and `FieldToModArithLowering`'s
 "the extension fragment is **not** a program transport (no `mapTy` target,
-one-op-to-many)" verdict are the **same** boundary. The extension ops
+one-op-to-many)" result are the **same** boundary. The extension ops
 (`ext2Mul → Fp2MulSchedule`, one op → a schedule of several) are **out of scope
 for `param_solve`'s op-tree descent** for the identical reason they are out of
 scope for `LoweringData`: there is no single target op / single carrier to
-descend to. We therefore deliver the prime-field arm (which genuinely
-synthesizes) and state precisely that the extension arm is the documented
+descend to. The module therefore covers the prime-field arm (which
+synthesizes) and states precisely that the extension arm is the documented
 non-diagonal / op-splitting boundary, shared verbatim with the hand framework.
 
-**0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
+All goals closed; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
 
 @[expose] public section

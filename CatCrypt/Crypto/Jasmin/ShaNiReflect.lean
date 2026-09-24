@@ -14,8 +14,8 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the SHA-256 hardware-extension analogue of `UovReflect.lean`:
 it adds Intel SHA-NI specific opaque leaves and `LowCTPattern`
 registrations so that a pure-Lean SHA-256 compression round can be
-lifted through the verified compiler chain `LowCT → CryptoSSA → Com →
-jasmin`, **without** editing `LowCTReflect.lean`'s `knownOps` table.
+lifted through the verified compiler chain `LowCT → Com catCryptDialect →
+Jasmin`, **without** editing `LowCTReflect.lean`'s `knownOps` table.
 
 ## SHA-256 compression with SHA-NI
 
@@ -56,7 +56,8 @@ documented SHA-256 function — is the hardware-leaf trust assumption,
 denotes *definitionally* (`rfl`) to the FIPS-180-4 SHA-256 round and
 message-schedule body — see `HardwareISA.shaNi_discharge`. This is the
 strongest validation tier (pinned to the cryptographic standard itself),
-so these leaves are anchored, not merely SDM-prose / KAT-pinned.
+so these leaves are anchored to the standard in addition to SDM prose and
+KATs.
 
 ## Reflection→front gap (same as `UovReflect` / `FalconReflect`)
 
@@ -69,10 +70,10 @@ register each leaf via `@[rust_cmd_pattern]`, then **hand-build the
 
 * Intel SDM Vol. 2 — `SHA256RNDS2`, `SHA256MSG1`, `SHA256MSG2`
 * NIST FIPS-180-4 §6.2 — SHA-256 compression function
-* `bench/sha2_compare/sha2_emit.lean` — sibling Tier B emit
+* `bench/sha2_compare/sha2_emit.lean` — sibling emit
   (single-block SHA-256 compression Com, hand-built, verified emit)
-* `bench/hmac_shani_compare/hmac_shani_emit.lean` — legacy Tier C
-  string-templated emit (superseded by this leaf-shim pattern)
+* `bench/hmac_shani_compare/hmac_shani_emit.lean` — string-templated
+  emit outside the verified chain
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

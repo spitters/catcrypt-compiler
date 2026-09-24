@@ -11,40 +11,40 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
 
 /-!
-# w7-mem: the FULL supported fragment in one program type — scalar + mulx + loop + select + memory
+# The FULL supported fragment in one program type — scalar + mulx + loop + select + memory
 
-`LowCTUnified` (w7) folded the four **all-`IsDirect`** construct families
+`LowCTUnified` folds the four **all-`IsDirect`** construct families
 (scalar arith, two-output widening multiply, branchless select, bounded loop)
 into **one** source statement type `UStmt`, with **one** lowering
 (`lowerUProg`), **one** denotation (`uProgDenote`), **one** functional
 `compile_correct` (`lowerUProg_denoteAll`), and **one** constant-time theorem
-(`lowerUProg_constant_time`).  Its honest boundary (the closing docstring
-§"Excluded: memory operands") was the **memory fragment**: array load/store
+(`lowerUProg_constant_time`).  Its boundary (the closing docstring
+§"Excluded: memory operands") is the **memory fragment**: array load/store
 lower to the register-INDEXED machine ops `loadMemIdx`/`storeMemIdx`, which are
 **not** `IsDirect`; their CT guarantee has a *different shape*
-(`CTAddressed`/public-index `agreePub`, see `LowCTMemCT`), so they did not fit
+(`CTAddressed`/public-index `agreePub`, see `LowCTMemCT`), so they do not fit
 the unconditional `allDirect` unification.
 
-This module closes that boundary.  `UMStmt` is **one** statement type ranging
-over the **full** supported fragment — the w7 families **plus** memory load and
-store — with one lowering, one denotation, **one uniform constant-time
+This module covers the memory fragment.  `UMStmt` is **one** statement type
+ranging over the **full** supported fragment — the `LowCTUnified` families
+**plus** memory load and store — with one lowering, one denotation, **one uniform constant-time
 theorem**, and the unified functional-correctness threading for the memory
 cases.
 
 ## The uniform CT shape: everything is `CTAddressed`
 
-The w7 CT used the strict `allDirect`/`blockLeak_state_independent` keystone
+The `LowCTUnified` CT uses the strict `allDirect`/`blockLeak_state_independent` theorem
 ("the trace is the same from *any* two states").  Memory cannot use it: a
 `storeMemIdx`/`loadMemIdx` reads its index register's value, so its trace is the
 same only across states **agreeing on the public index**.  The standard CT
-keystone `MachineConstantTime.blockLeak_pub_determined` is exactly this weaker,
+theorem `MachineConstantTime.blockLeak_pub_determined` is exactly this weaker,
 more general form — leakage determined by the **public** registers under
 `agreePub`.
 
-The unifying observation is that the standard keystone subsumes the strict one
+The unifying observation is that the standard theorem subsumes the strict one
 **uniformly**, under a frame/data register discipline:
 
-* every **non-memory** instruction the w7 families emit is `IsDirect`, hence has
+* every **non-memory** instruction the `LowCTUnified` families emit is `IsDirect`, hence has
   `idxReg = none` (the `CTAddressed` index conjunct is vacuous), so it is
   `CTAddressed pub` whenever each register it writes is a *data* register
   (`pub dst = false`) — `isDirect_CTAddressed`;
@@ -58,7 +58,7 @@ lowering is `CTAddressed pub`, and `blockLeak_pub_determined` delivers CT for
 the whole fragment at once.  This is the single uniform CT theorem
 (`lowerUMProg_constant_time`) covering scalar + mulx + loop + select + memory.
 
-## The WF discipline (stated honestly, not derived)
+## The WF discipline (stated as a hypothesis, not derived)
 
 The CT theorem is parametric in the discipline `BlockFrameWF pub body` (every
 emitted index register is public; every emitted destination register is a data
@@ -71,7 +71,7 @@ registers satisfies it; we record it as the WF side condition, exactly as
 
 ## Functional correctness for the memory cases
 
-`uMStmtDenote` dispatches the non-memory statements to `uStmtDenote` (w7) and
+`uMStmtDenote` dispatches the non-memory statements to `uStmtDenote` (`LowCTUnified`) and
 the memory statements to the concrete byte-offset value semantics of
 `LowCTMemDenote` (`byteOffsetLeafSpec`, `arrElem`/`arrSetElem`).  The unified
 functional threading uses **both** `StateMatch` (scalar registers) and
@@ -80,15 +80,15 @@ functional threading uses **both** `StateMatch` (scalar registers) and
 
 ## Realistic kernel: array-based multi-limb schoolbook multiply
 
-`bignumMulKernel` is a genuine array-based bignum multiply step: **load** an
+`bignumMulKernel` is an array-based bignum multiply step: **load** an
 input limb from an array (`loadMemIdx`), **mulx** it against a scalar,
-**accumulate** with the w7 `schoolbookStep` arith ops, and **store** the result
+**accumulate** with the `LowCTUnified``schoolbookStep` arith ops, and **store** the result
 limb back to an output array (`storeMemIdx`).  It mixes memory + mulx + arith in
 **one** `UMProg`, carrying functional correctness (the memory cell value
 matches), the uniform CT (`lowerUMProg_constant_time`), and a one-vector value
 KAT through the FULL unified pipeline.
 
-## Honest scope
+## Scope
 
 * The kernel is a single-limb load–mulx–accumulate–store cell (the 1×1 inner
   step of schoolbook), array-addressed at both ends.  The full multi-limb
@@ -96,7 +96,7 @@ KAT through the FULL unified pipeline.
   statements) and the uniform CT covers it unconditionally; the per-cell
   *functional* threading is what the value KAT pins.  A whole multi-limb loop
   kernel needs a `MemMatch`-fold invariant across iterations (each iteration
-  touches a distinct output cell) — recorded as the remaining work, not claimed.
+  touches a distinct output cell), which is outside the scope of this module.
 * The memory CT uses `CTAddressed`/`agreePub` under the stated `BlockFrameWF`
   discipline, not the unconditional `allDirect` shape — that is the correct
   (and necessary) CT shape for value-indexed memory.
@@ -121,11 +121,11 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## 1. The `IsDirect ⇒ CTAddressed` bridge (the uniformity lemma)
 
-The w7 families all lower to `IsDirect` instructions.  An `IsDirect`
+The `LowCTUnified` families all lower to `IsDirect` instructions.  An `IsDirect`
 instruction has `idxReg = none`, so the `CTAddressed` index conjunct is
 vacuous; it is therefore `CTAddressed pub` exactly when each register it writes
 is a data register (`pub dst = false`).  This lets the strict-CT families and
-the public-index memory ops share the **single** `CTAddressed` keystone. -/
+the public-index memory ops share the **single** `CTAddressed` theorem. -/
 
 /-- An `IsDirect` instruction names no memory index register. -/
 theorem isDirect_idxReg_none {w : Nat} (i : JInstr w) (h : IsDirect i) :
@@ -147,12 +147,12 @@ theorem isDirect_CTAddressed {w : Nat} (pub : PubPred) (i : JInstr w)
 /-! ## 2. The unified-with-memory statement type -/
 
 /-- **The full unified source statement.**  One type ranging over the entire
-    supported fragment: the w7 families (`stmt : UStmt` — scalar arith, widening
+    supported fragment: the `LowCTUnified` families (`stmt : UStmt` — scalar arith, widening
     multiply, branchless select, bounded loop) **plus** array memory load and
     store, **plus** a memory-containing bounded loop (`forM`) whose body is a
     `List UMStmt`. -/
 inductive UMStmt where
-  /-- A w7 statement (scalar arith / mulx / select / loop), lifted verbatim. -/
+  /-- A `LowCTUnified` statement (scalar arith / mulx / select / loop), lifted verbatim. -/
   | base (st : UStmt)
   /-- An array load `dst := arr[idx]`. -/
   | memLoad (m : MemLoadSrc)
@@ -168,9 +168,9 @@ abbrev UMProg := List UMStmt
 
 mutual
 /-- **The unified-with-memory lowering, per statement.**  Non-memory statements
-    dispatch to the w7 `lowerUStmt`; memory statements to
+    dispatch to the `LowCTUnified``lowerUStmt`; memory statements to
     `lowerMemLoad`/`lowerMemStore`; the memory-loop is unrolled exactly as the
-    w7 loop is. -/
+    `LowCTUnified` loop is. -/
 def lowerUMStmt (ρ : RegMap) : UMStmt → List (JInstr 64)
   | .base st => lowerUStmt ρ st
   | .memLoad m => [lowerMemLoad ρ m]
@@ -198,7 +198,7 @@ register is a public (frame) register and every emitted destination is a data
 register.  Under it every instruction of the lowering is `CTAddressed` — the
 non-memory ones via `isDirect_CTAddressed`, the memory ones because the index is
 public (and stores write nothing / loads write a data register) — so the
-standard keystone `blockLeak_pub_determined` delivers CT for the WHOLE
+standard theorem `blockLeak_pub_determined` delivers CT for the WHOLE
 fragment, memory included.  This is the single uniform CT theorem covering
 scalar + mulx + loop + select + memory. -/
 
@@ -214,7 +214,7 @@ def BlockFrameWF (pub : PubPred) (body : List (JInstr 64)) : Prop :=
     ∧ (∀ i ∈ body, ∀ d ∈ dstRegs i, pub d = false)
 
 /-- Under the frame/data discipline, **every** instruction of a lowered block is
-    `CTAddressed` — regardless of whether it is a strict-`IsDirect` w7 op or a
+    `CTAddressed` — regardless of whether it is a strict-`IsDirect` `LowCTUnified` op or a
     public-index memory op.  (No `IsDirect` case split is even needed at the
     block level: `CTAddressed` is literally the conjunction the discipline
     states per instruction.) -/
@@ -233,8 +233,8 @@ theorem blockFrameWF_CTAddressed (pub : PubPred) (body : List (JInstr 64))
     the public inputs alone (frame bases/indices/counters), leaking nothing
     about the secret data.
 
-    This is the single uniform CT theorem the w7 fragment lacked for memory: it
-    uses `blockLeak_pub_determined` (the public-index `agreePub` keystone memory
+    This is the single uniform CT theorem covering memory: it
+    uses `blockLeak_pub_determined` (the public-index `agreePub` theorem memory
     needs), applied uniformly — every instruction, memory or not, is
     `CTAddressed` under the one discipline. -/
 theorem lowerUMProg_constant_time (pub : PubPred) (ρ : RegMap) (p : UMProg)
@@ -246,7 +246,7 @@ theorem lowerUMProg_constant_time (pub : PubPred) (ρ : RegMap) (p : UMProg)
 
 /-! ## 5. A realistic array-based multi-limb bignum multiply kernel
 
-`bignumMulKernel` is a genuine array-addressed bignum multiply cell:
+`bignumMulKernel` is an array-addressed bignum multiply cell:
 
 ```
   ai   := a[i]            -- load input limb from an array (memLoad → loadMemIdx)
@@ -358,13 +358,13 @@ theorem bignumKernel_kat2 :
 /-! ## 6. Unified functional correctness for the memory cases
 
 The unified denotation `uMStmtDenote` dispatches the non-memory statements to
-the w7 `uStmtDenote` and the memory statements to the concrete byte-offset value
+the `LowCTUnified``uStmtDenote` and the memory statements to the concrete byte-offset value
 semantics of `LowCTMemDenote`.  The store/load value-correctness threads BOTH
 `StateMatch` (scalar registers) and `MemMatch` (array memory); the per-statement
 memory cases are discharged by `lowerMemStore_denote_cell` / `lowerMemLoad_denote`.
 
 We expose the two memory cases as the unified `compile_correct` content for the
-fragment the w7 file excluded; the non-memory cases are already covered by
+fragment `LowCTUnified` excludes; the non-memory cases are covered by
 `lowerUStmt_denoteAll`. -/
 
 /-- **Memory store, unified functional correctness.**  Under the concrete
@@ -412,7 +412,7 @@ theorem lowerUMStmt_memLoad_denote (scale : Nat) (arrBase : String → String)
 
 /-! ## 7. Non-memory functional correctness lifts verbatim
 
-The `base` statements reuse the w7 `uStmtDenote`/`lowerUStmt`, so their
+The `base` statements reuse the `LowCTUnified``uStmtDenote`/`lowerUStmt`, so their
 functional correctness is exactly `lowerUStmt_denoteAll` (`StateMatch`-threaded,
 loops included) — no re-proof needed.  We expose the lift as the unified
 `compile_correct` content for the non-memory fragment. -/
@@ -429,7 +429,7 @@ def uMStmtScalarDenote : UMStmt → RustState → RustState
   | .forM _ _ _, rs => rs  -- loop scalar effect folded per body; see cell lemmas
 
 /-- **Non-memory functional correctness, unified.**  A `base` statement's
-    unified lowering tracks the w7 denotation under `StateMatch`, via
+    unified lowering tracks the `LowCTUnified`denotation under `StateMatch`, via
     `lowerUStmt_denoteAll`.  This is the unified `compile_correct` content for
     the non-memory fragment, lifted verbatim. -/
 theorem lowerUMStmt_base_denote (ρ : RegMap) (hρ : Function.Injective ρ)

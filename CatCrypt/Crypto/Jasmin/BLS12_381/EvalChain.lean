@@ -232,7 +232,7 @@ theorem bls12_381_final_exp_correctness (a : Nat) :
       a ^ bls12_381_final_exp_hard_exponent % (bls12_381_p ^ 12) :=
   bls12_381FinalExpHard_sound a
 
-/-! ## §7  Worked examples — small concrete chains (✅ added 2026-05-01)
+/-! ## §7  Worked examples — small concrete chains
 
 Demonstrates that the generic evaluator computes correctly on
 the BLS12-381 base field with real (small) chains. Mirrors the
@@ -302,7 +302,6 @@ The chain's length manifests as compile-time pressure on the
 list-walk, not as a per-block proof complication.
 
 ## §9  blst BLS12-381 `Fp` inverse — setup window
-    (✅ added 2026-05-01)
 
 Transcribed from `blst/src/recip-addchain.h` (Bos-Coster window=4
 addition chain, Apache 2.0, Supranational LLC; generated via
@@ -391,21 +390,20 @@ Total chain length: 17 (setup) + 84 (consumption) = 101 ChainOps.
 The consumption phase is **mechanical to transcribe** from
 `blst/src/recip-addchain.h` lines 47-489. Each `sqr_n_mul(t[0],
 t[0], n, t[k])` becomes one
-`repeatedSqrThenMul OFF_t0 OFF_t0 OFF_tk n`. Skipped here because:
+`repeatedSqrThenMul OFF_t0 OFF_t0 OFF_tk n`. It is not transcribed here:
 
 1. 84 lines of mechanical transcription with no semantic content
    beyond what the setup phase demonstrates.
 2. The opaque `bls12_381FpInvChain` constant with its soundness
    axiom `bls12_381FpInvChain_sound` is the interface for the full
-   chain; the transcription replaces the opaque constant with the
-   literal without changing the soundness statement's shape.
+   chain; a transcription would substitute the literal for the opaque
+   constant without changing the soundness statement's shape.
 3. Per-block lemmas (mirror of P-256's `libcruxP256_block_*`) would
    total 84 × 5 = 420 LoC, dominated by mechanical pattern-matching
    on the 12-bit window bits.
 
-A future PR can complete the transcription if needed (e.g., for a
-performance audit comparing Lean-evaluated chain vs blst-emitted
-asm). The framework is ready to host it.
+The framework can host the transcription (e.g., for a performance
+audit comparing the Lean-evaluated chain with blst-emitted asm).
 
 /-- The full blst chain (concept-level): the setup window followed
     by the 84-op consumption phase. Concretely, this would be
@@ -417,29 +415,28 @@ def blstBLS12_381InvChain_target_size : Nat := 101
 example : blstBLS12_381InvChain_target_size =
     blstBLS12_381InvSetup.length + 84 := by native_decide
 
-## §11  Status and follow-ups
+## §11  Contents and scope
 
-* This file ships:
+* This module contains:
   1. Generic framework instantiation (§§1-3)
   2. Inverse + Final-exp axiomatic interfaces (§§4-5)
   3. Use-case headlines (§6)
   4. Small worked examples (§7)
   5. Per-block discharge pattern docs (§8)
-  6. **blst BLS12-381 inverse — setup window literal** (§9, ✅ added)
+  6. **blst BLS12-381 inverse — setup window literal** (§9)
   7. **Window-consumption phase** documented (§10, target documented)
-* Final exponentiation (Fp12) chain is sketched in §5 with the
-  `bls12_381FinalExpHardResult` headline + soundness axiom; a
-  concrete chain literal lands when an implementation source is
-  selected (BoringSSL, blst, or a paper-cited chain like
+* The final exponentiation (Fp12) chain is sketched in §5 with the
+  `bls12_381FinalExpHardResult` headline + soundness axiom; it has no
+  concrete chain literal, which would come from an implementation
+  source (BoringSSL, blst, or a paper-cited chain like
   Aranha-Karabina-Longa-Gebotys).
 
-Per-chain effort estimate: setup window (~50 LoC, this file) +
+Size of the full inverse: setup window (~50 LoC, this module) +
 84-op consumption phase transcription (~150 LoC, mechanical) +
 soundness theorem (~5 LoC, framework axiom application) = ~200
-LoC for full inverse. Final-exp is ~10× larger.
+LoC. Final-exp is ~10× larger.
 
-The framework's pay-off here is amortisation: future BLS12-377,
-BLS24-315, BW6-761, and other pairing-friendly curve chains
-follow the same shape with different moduli. -/
+BLS12-377, BLS24-315, BW6-761, and other pairing-friendly curve
+chains follow the same shape with different moduli. -/
 
 end CatCrypt.Crypto.Jasmin.BLS12_381.EvalChain

@@ -10,18 +10,18 @@ public import Mathlib.Data.String.Defs
 public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
-# `LowCT → Jasmin` direct emit (Phase L follow-up, 2026-05-22)
+# `LowCT → Jasmin` direct emit
 
 Parallel emit path to `RustEmit.lean` (Rust source) and
 `LowCTToMLIR.lean` (MLIR `func.func`) — produces a `.jazz`-style
 string directly from a `LowCT`, with tower-type-aware lowering for
-the Phase-L polynomial types (`TPolyMod`, `TPolyVec`, `TPolyMat`).
+the polynomial types (`TPolyMod`, `TPolyVec`, `TPolyMat`).
 
 ### Why a direct emit instead of going through `FunDecl`?
 
 The existing `JasminEmit.emitFunDecl` (in `JasminEmit.lean`) only
 handles `reg u64`-typed SSA shapes (its body type, `List InstrR`,
-is the SSA form used by the bignum/field kernels).  The Phase-L
+is the SSA form used by the bignum/field kernels).  The polynomial
 kernels in `MlkemLowCT.lean` / `MldsaLowCT.lean` live in
 `TPolyMod q n` etc., which don't map cleanly to that SSA — each
 polynomial slot is naturally a `stack u16[n]` allocation (Jasmin's
@@ -118,7 +118,7 @@ partial def jasminTowerType : TowerType → String
       match t with
       | .TBytes m => s!"stack u8[{n * m}]"
       | _         => s!"stack u8[{n * t.storageBytes}]"
-  -- Phase L (2026-05-22): polynomial-mod-q slots.
+  -- Polynomial-mod-q slots.
   | .TPolyMod q n         => s!"stack {coeffWordSize q}[{n}]"
   | .TPolyVec q n k       => s!"stack {coeffWordSize q}[{k * n}]"
   | .TPolyMat q n k m     => s!"stack {coeffWordSize q}[{k * m * n}]"
@@ -137,7 +137,7 @@ def TowerType.elemStride : TowerType → Nat
 
 /-- Total number of `u8`/`u16` cells in a stack-array `TowerType`, or
     `none` for scalar (`reg`) slots.  Used to size the zeroing prologue
-    for accumulator slots whose `repeat(0, n)` initialiser was dropped
+    for accumulator slots whose `repeat(0, n)` initialiser is not emitted
     (Jasmin stack slots are *not* implicitly zeroed). -/
 def TowerType.arrayCellCount : TowerType → Option Nat
   | .TPolyMod _q n        => some n

@@ -17,18 +17,17 @@ The FIPS-202 SHAKE256 sponge is a **multi-phase kernel**: an absorb loop over th
 input rate blocks, the `pad10*1` domain pad, and a squeeze loop over the output
 rate blocks — `absorb ; pad ; squeeze`. Each phase is a counted loop (`RFor`)
 over the opaque Keccak-f[1600] permutation, or a straight-line pad leaf, and the
-three phases are sequenced with `RSeq`. This is exactly the shape the canonical
-front now accepts after the `RSeq`-of-control increment: `translateDialectControl`
-closes under `RSeq`-sequencing of control blocks, so the whole sponge descends
+three phases are sequenced with `RSeq`. The canonical front accepts this shape:
+`translateDialectControl` closes under `RSeq`-sequencing of control blocks, so
+the whole sponge descends
 through the canonical front and carries a **whole-program machine denote**.
 
-This re-sources the sponge from a high-level `LowCT` term
+This sources the sponge from a high-level `LowCT` term
 (`shake256LowCT = RSeq absorbLoop (RSeq padPhase squeezeLoop)`) through the
-**existing covered-fragment front** — no new front — and banks the whole-program
-denote homomorphism for it, the same recipe as
-`Fe25519ScalarmultCovered.fullScalarmultCovered_denote`. It strengthens the hand
-`Shake256SpongeFront` `SpStep` schedule (a verified-DSL step schedule with no
-machine denote) to a genuine high-level-source descent.
+**covered-fragment front** and proves the whole-program denote homomorphism for
+it, the same recipe as `Fe25519ScalarmultCovered.fullScalarmultCovered_denote`.
+Compared with the hand `Shake256SpongeFront` `SpStep` schedule (a verified-DSL
+step schedule with no machine denote), it is a high-level-source descent.
 
 Keccak-f[1600] is an **opaque leaf** (`RCall "keccakf1600"`) — its permutation
 correctness is the separate FIPS-202 KAT obligation, exactly as `x25519_ladder_iter`
@@ -126,7 +125,7 @@ def squeezeLoop : LowCT :=
 def shake256LowCT : LowCT :=
   .RSeq absorbLoop (.RSeq padPhase squeezeLoop)
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the structural proofs -/
 
 /-- The absorb-block body is straight-line covered. -/
 theorem absorbBlockBody_coveredS : IsCoveredS absorbBlockBody :=
@@ -174,7 +173,7 @@ def spongeArgVM : VarMap spongeArgCtx where
     else none
 
 /-- **The covered front fires on the whole SHAKE256 sponge.** The two bounded
-    `RFor` loops unroll `CProg`-free through `loopRForD`, the pad leaf and permute
+    `RFor` loops unroll through `loopRForD`, the pad leaf and permute
     leaves resolve their state/input/output arguments, the `RSeq` spine composes
     the phase prefixes, and the top-level terminator closes. -/
 theorem shake256_front_fires :
@@ -184,7 +183,7 @@ theorem shake256_front_fires :
 /-! ## 4. `transCtlSeq` coincides with the canonical front on this term
 
 The control-sequencing front `transCtlSeq` folds `translateDialectControl` along
-the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl` now
+the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl`
 does the *same* (its `RSeq` arm recurses into itself). On leaves (`RFor`, `RCall`)
 `transCtlSeq` delegates to `translateDialectControl` through its wildcard. So on
 this pure `RSeq`-of-leaves term the two fronts coincide, letting the

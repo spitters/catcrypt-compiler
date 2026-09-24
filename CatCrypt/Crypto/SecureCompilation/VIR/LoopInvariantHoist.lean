@@ -15,14 +15,13 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
 /-!
 # Verified loop-invariant code motion (LICM) for `JForProg` — analysis-as-decision pass
 
-This file extends the verified-optimizer suite (`JForProgUnroll.lean` (#139),
-`RegisterAllocation.lean` (#141 / #143), `DeadCodeElim.lean` (post-#146)) with
+This module extends the verified-optimizer suite (`JForProgUnroll.lean`,
+`RegisterAllocation.lean`, `DeadCodeElim.lean`) with
 **loop-invariant code motion (LICM)** at the `Com` level.
 
 LICM hoists computations whose result does not depend on the loop-carried
 accumulator out of the loop body, so they execute once before the loop rather
-than `n` times inside it. This is one of the highest-leverage `-O2` passes
-missing from the verified compiler: crypto loops frequently re-derive round
+than `n` times inside it. It is a standard `-O2` pass: crypto loops frequently re-derive round
 constants, twiddle factors, or other invariants every iteration, and LICM
 moves them out.
 
@@ -34,8 +33,8 @@ change the intrinsic type of the body — every subsequent `.there` index would
 need to shift, *and* the new pre-loop binder would need to land in a wider
 outer context. Doing that in a type-safe `Com → Com` rewrite is possible but
 requires substantial De Bruijn renumbering — exactly the same architectural
-gap `RegisterAllocation.lean` (#143) and `DeadCodeElim.lean` (post-#146)
-resolved by factoring the heavy lifting out of the Com rewrite.
+gap `RegisterAllocation.lean` and `DeadCodeElim.lean`
+resolve by factoring the heavy lifting out of the Com rewrite.
 
 We follow the same factoring: **the heavy lifting is the analysis (which
 binders are loop-invariant); the `Com → Com` rewrite itself is the identity
@@ -61,7 +60,7 @@ The two preservation theorems
 
 are by-construction `rfl`. The analysis correctness theorem
 (`licmInvariantPositions_sound`) is the actual content — it says that a
-binder flagged invariant by `analyzeLicm` is genuinely loop-invariant
+binder flagged invariant by `analyzeLicm` is loop-invariant
 (its computed value does not change across iterations because none of
 its inputs reads the loop-carried accumulator).
 
@@ -110,7 +109,7 @@ identity, so both preservation theorems reduce to `rfl`.
 ## Residuals
 
 The intrinsic-De-Bruijn correctness statement
-`∀ p i, i ∈ invariantPositions (analyzeLicm p) → <binder i is genuinely
+`∀ p i, i ∈ invariantPositions (analyzeLicm p) → <binder i is
 loop-invariant in p>` is partially discharged here (on the empty-body and
 nullary-op shapes). The full statement requires reasoning about closed-
 under-substitution argument resolution across iterations; the framework
@@ -183,7 +182,7 @@ is invariant iff (i) `hvectorMaxDepth e.args < pos` (no arg reads `acc`)
 and (ii) **every depth in the range `[0, argDepth]`** corresponds to a
 previously-flagged-invariant binder. This is a conservative
 over-approximation (mirrors `computeLastUse`); it never flags a
-non-invariant binder, but may miss some genuinely-invariant binders
+non-invariant binder, but may miss some invariant binders
 whose `argDepth` happens to span a non-invariant earlier binder.
 
 For nullary ops (`regConst`, in particular), `e.args = .nil`, so
@@ -481,8 +480,8 @@ theorem analyzeLicm_applyLicm_preserves {accTy : JasminTy} (p : JForProg accTy)
 
 /-! ## 8. Composition with the existing optimisation passes
 
-LICM composes with `JForProgUnroll.lean` (#139) and `RegisterAllocation.lean`
-(#141 / #143) cleanly: each pass is the identity at the Com level (or, for
+LICM composes with `JForProgUnroll.lean` and `RegisterAllocation.lean`
+cleanly: each pass is the identity at the Com level (or, for
 unrolling, produces a new Com whose denotation matches), and their
 denotation- and CT-preservation theorems compose. The canonical Com-level
 optimisation order is:

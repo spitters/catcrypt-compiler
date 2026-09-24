@@ -17,20 +17,20 @@ compiler emits the machine block with no per-kernel backend proof. This file is 
 verified bounded-counter loop — with the whole loop proven to compute a recognizable
 *mathematical* spec (not a restatement of its own `denote`).
 
-The loop machinery already exists and is proved generically:
+The loop machinery is proved generically:
 
 * `ComToArm.regToBOp` / `ComToArm.armTarget` — the AArch64 `ScalarTarget` instance: a
   source `RegProg` compiles to a `BOp` block whose lowered machine run computes the
   source denotation `armTarget.denote p` (`ComToArm.regToBOp_denote`, the straight-line
-  waist keystone, proved once);
-* `ComToArmLoop.loop_waist_denote` — the **loop ∘ waist** keystone: an `n`-trip bounded
+  waist theorem, proved once);
+* `ComToArmLoop.loop_waist_denote` — the **loop ∘ waist** theorem: an `n`-trip bounded
   counter loop whose body is the compiled+lowered block `lowerBBlock (regToBOp p)`
   denotes the `n`-fold iteration `iterTimes (armTarget.denote p) n` of the source
   semantics, for **every** trip count `n`. No new per-loop backend proof.
 
-## What this file adds (the genuine, non-vacuous content)
+## What this module proves
 
-We instantiate the generic loop keystone on a concrete, recognizable iterated kernel:
+We instantiate the generic loop theorem on a concrete, recognizable iterated kernel:
 the single-statement accumulate body `acc := acc + step` (`accStepProg`, one
 `RegStmt.add` — the iterated step of a sum/scalar-multiply). Two facts are then proved:
 
@@ -45,16 +45,16 @@ the single-statement accumulate body `acc := acc + step` (`accStepProg`, one
    form of an `n`-fold accumulate. This is the actual iterated function (a scalar
    multiply by the iteration count), NOT a restatement of the loop's own `denote`.
 
-So the golden path emits a genuinely iterated kernel: one compiled body, the verified
+So the golden path emits an iterated kernel: one compiled body, the verified
 loop wraps it, and the whole loop is pinned to `acc + n·step` for every `n`.
 
-## Honest scope
+## Scope
 
 * **Covered**: the *control-flow + waist composition* end to end — the compiled,
   lowered accumulate body, run by the verified bounded-counter loop semantics
   (`runBoundedLoopB`), computes the closed-form scalar-multiply value `acc + n·step`
   for every `n`, with no per-loop backend proof (it rides `loop_waist_denote`, the
-  AArch64 `ScalarTarget` keystone, and the loop-unroll equality).
+  AArch64 `ScalarTarget` theorem, and the loop-unroll equality).
 * **Not claimed here**: the byte-level encoder round-trip (`encodeBBlock`) and the
   *constant-emitted-size* looped back-edge (`loopABlock`/`CBNZ`) are the encoder /
   control-flow-emission layers proved elsewhere (`ArmEncoder`, `ArmControlFlow`,
@@ -93,7 +93,7 @@ theorem accStep_denote (acc step : String) (s : BState) :
 /-! ## 2. A register-disjointness helper (local, self-contained) -/
 
 /-- A write to a *different* register leaves the read unchanged. (Proved locally so the
-    file depends only on the loop keystone import.) -/
+    module depends only on the loop theorem import.) -/
 theorem get_set_ne (s : BState) (r r' : String) (v : X64) (h : r ≠ r') :
     (s.set r' v).get r = s.get r := by
   by_cases hr' : r' = "xzr"
@@ -141,7 +141,7 @@ theorem iter_accStep_spec (acc step : String) (hne : acc ≠ step) (hacc : acc �
 
 /-- **The iterated kernel is emitted by the verified compiler.** The accumulate body is
     compiled (`regToBOp`) and lowered (`lowerBBlock`); the verified bounded-counter loop
-    runs it `n` times. By the loop ∘ waist keystone the whole loop denotes the `n`-fold
+    runs it `n` times. By the loop ∘ waist theorem the whole loop denotes the `n`-fold
     iteration of the source semantics — no per-loop backend proof. -/
 theorem accLoop_denote (acc step : String) (n : Nat) (s : BState) :
     runBoundedLoopB s n (lowerBBlock (regToBOp (accStepProg acc step)))
@@ -154,7 +154,7 @@ theorem accLoop_denote (acc step : String) (n : Nat) (s : BState) :
     `n`-fold accumulate (a scalar multiply by the trip count). This is the loop analogue
     of `FieldEmitGoldenPath.fieldAddCom_arm_e2e`: the whole *iterated* emitted kernel
     pinned to a recognizable mathematical spec, for every `n`, with no per-loop backend
-    proof (it composes `accLoop_denote` — the loop ∘ waist keystone — with the
+    proof (it composes `accLoop_denote` — the loop ∘ waist theorem — with the
     closed-form `iter_accStep_spec`). -/
 theorem accLoop_spec (acc step : String) (hne : acc ≠ step) (hacc : acc ≠ "xzr")
     (n : Nat) (s : BState) :

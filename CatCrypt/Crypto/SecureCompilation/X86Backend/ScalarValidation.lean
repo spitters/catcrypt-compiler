@@ -24,8 +24,8 @@ The right-hand byte strings below are the **exact output of `gas`** (binutils
 `as --64`, decoded with `objdump -d -M att`) for the matching `AsmPrinter`-rendered
 mnemonic. Each `example` checks `encodeJInstr` reproduces those bytes. The trusted
 edge shrinks from "the text printer is correct AT&T *and* `gas` encodes per the SDM"
-to "our encoder matches `gas`'s bytes" — and, once #441's Sail-x86 decoder shims
-land, to nothing (a `decode (encode i) ≡ i` round-trip).
+to "our encoder matches `gas`'s bytes"; a Sail-x86 decoder would remove it
+(a `decode (encode i) ≡ i` round-trip).
 
 ## The allocation under test
 

@@ -15,7 +15,7 @@ This file is the EC/pairing analogue of `FalconReflect.lean` / `UovReflect.lean`
 it adds BLS12-381 specific opaque surface types and `@[rust_cmd_pattern]`
 registrations so that pure-Lean BLS12-381 G1 MSM orchestration, Groth16
 pairing-product verification, and KZG opening verification can be lifted
-through the verified compiler chain `LowCT → CryptoSSA → Com → jasmin`,
+through the verified compiler chain `LowCT → catCryptDialect → Com → jasmin`,
 **without** editing `LowCTReflect.lean`'s `knownOps` table.
 
 Three downstream drivers consume this surface:
@@ -39,7 +39,7 @@ Three downstream drivers consume this surface:
 | `BlsG2Point`            |   192 | `TBytes 192` | 24                          |
 | `BlsFp12`               |   576 | `TBytes 576` | 72                          |
 
-These widths match the legacy Tier C emit (`bench/bls12381_compare/bls12381_emit.lean`)
+These widths match the string-templated emit (`bench/bls12381_compare/bls12381_emit.lean`)
 and the AUCurves crate's on-wire layout.
 
 ## What's verified / what's trusted
@@ -68,10 +68,10 @@ front.
 loop is not expressible inside one `LowCT` body without a `for`-construct.
 We emit ONE iteration of the MSM step (scalar-mul + G1-add) as the
 compiler-traced body; the outer `for i = 0 to L` loop sits in the calling
-.jazz alongside the include. This is the same scope the legacy Tier C
-emit's `g1MsmLoopBody` had — one body per iteration — but the body is now
-the image of a pure-Lean function under the verified front, instead of
-hand-typed string text.
+.jazz alongside the include. This is the same scope as the string-templated
+emit's `g1MsmLoopBody` — one body per iteration — but the body is the image
+of a pure-Lean function under the verified front, not hand-typed string
+text.
 
 ## References
 
@@ -79,7 +79,7 @@ hand-typed string text.
 * `CatCrypt/Crypto/Pairing/Bls12381Emit.lean` — abstract `BlsPrimitives`,
   `EcLeafAgrees`, `PairingLeavesAgree`, `msmFold_eq_msm`, `groth16VerifyRhsCom_denote`
 * `CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean` — AUCurves-symbol binding
-* `bench/bls12381_compare/bls12381_emit.lean` — legacy Tier C emit (superseded)
+* `bench/bls12381_compare/bls12381_emit.lean` — string-templated emit
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — canonical leaf-shim reference
 * Hax bridge: a BLS12-381 hax tree exists (`bls-hax/`, `EUDIW/`); the bridge
   is mechanizable but kept as a named hypothesis here (the AUCurves

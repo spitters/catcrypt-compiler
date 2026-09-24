@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax UOV GF(2⁸) multiply leaf realizes the
+# Security tie: the compile-from-hax UOV GF(2⁸) multiply leaf realizes the
   abstract `Gf256` field multiply the security reference reasons over
 
 `CompileFromHaxUovGf256` proves the verified compiler *emits* a jasmin `Com`
@@ -35,7 +35,7 @@ equality to `tie_transfer` so that **any** property the security layer proves of
 the abstract field multiply transfers verbatim to the compiler-emitted leaf,
 with no new axioms.
 
-## Why this is parametric-correct for UOV (honest scope)
+## Why this is parametric-correct for UOV (scope)
 
 UOV's `OV-Ip` public map is parametric over the binary field `GF(2⁸)` and reasons
 over it *abstractly* through the field multiply `Gf256.mul` (and the
@@ -46,12 +46,12 @@ The compiled leaf computes exactly that field multiply
 **carryless-multiply = field-multiply** equation, the binary-field sibling of the
 GF(251)/GF(127) prime-field ties. Therefore the tie is at the **arithmetic
 building block** the parametric proof quantifies over: the realization equality
-`toMulDeps = mulDepsSpec` is genuine and `tie_transfer` carries any field-multiply
+`toMulDeps = mulDepsSpec` holds and `tie_transfer` carries any field-multiply
 property onto the compiled artifact. It does **not** discharge the UOV (oil–vinegar
 / MQ) trapdoor assumption, nor instantiate the public-map dimensions `(m, n, v)`
 — those remain the parametric hypotheses of `UOV/Security.lean`; this ties the
 *emitted arithmetic* to the *abstract arithmetic* the proof uses, which is the
-scope of #607.
+scope of this module.
 -/
 
 @[expose] public section

@@ -13,13 +13,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Optimizer
 Runs a canonical set of test programs through the **`catCryptDialect`** SSA
 backend and verifies they produce the expected outputs (KAT-style).
 
-Migrated 2026-06-18 off the deprecated `CProg`/`CExpr` IR: the harness used to
-run programs through the pre-MLIR CryptoSSA backend (`CProg.denote`) and compare
-against the VIR `Com` obtained via `toVIRCom`.  With CryptoSSA deprecated in
-favour of `catCryptDialect` (the MLIR-aligned `Com` dialect), the test programs
-are now authored **directly** as `Com catCryptDialect` and run through
-`Com.denote` — no `CProg` dependency.  Each case asserts `denote input =
-expected` by `rfl`; failures surface as Lean type-check / `rfl` errors.
+The test programs are authored **directly** as `Com catCryptDialect` (the
+MLIR-aligned `Com` dialect) and run through `Com.denote`.  Each case asserts
+`denote input = expected` by `rfl`; failures surface as Lean type-check / `rfl`
+errors.
 
 ## Harness shape
 

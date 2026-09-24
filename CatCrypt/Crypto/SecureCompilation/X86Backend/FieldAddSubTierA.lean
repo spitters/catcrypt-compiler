@@ -15,12 +15,12 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterfly
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
 
 /-!
-# Tier-A modular field add/sub: limb/`runBlock` value = `(a ± b) mod p`
+# Modular field add/sub: limb/`runBlock` value = `(a ± b) mod p`
 
 The curve add/sub kernels (`PastaFieldAddSubKernel`, the 6-limb BLS/P384 add/sub)
-carry only a `*_lowering_correct` theorem (the lowered `Com` denotes the source
-block) and an external GMP KAT; the link "the block computes `(a ± b) mod p`" was
-never a Lean theorem. This file supplies that value link at the **multi-limb
+carry a `*_lowering_correct` theorem (the lowered `Com` denotes the source
+block) and an external GMP KAT. This module supplies the value link "the block
+computes `(a ± b) mod p`" at the **multi-limb
 carry-chain** level, the add/sub analogue of `Cios4LimbProven`'s Montgomery
 reconstruction.
 
@@ -50,7 +50,7 @@ For canonical inputs `a, b ∈ [0, p)` the sum is `< 2p` and the difference is i
    to the proven `Cios4LimbProven.addLimbs_reconstruct`.
 4. `<curve>_modadd_value` / `<curve>_modsub_value` — instantiations at the Pasta
    (Pallas/Vesta, 4-limb) and BLS12-381 / P384 (6-limb) curve moduli: the emitted
-   add/sub recombined value = `(a ± b) mod p`. Tier A for the add/sub kernels.
+   add/sub recombined value = `(a ± b) mod p`, the value theorem for the add/sub kernels.
 5. `babybear_fpadd_runBlock` / `babybear_fpsub_runBlock` — the single-word BabyBear
    / Barrett-butterfly add/sub (`p = 2^31 − 2^27 + 1` fits one word): the emitted
    butterfly's stored output words equal `(a + ω·b) mod p` and `(a + p − ω·b) mod p`,
@@ -163,7 +163,7 @@ carry-in `0`, each subsequent `.adc` reads the carry from `CF`) is the real
 `List (JInstr 64)` the curve add kernels run. Reading each result limb out of its
 destination register `dᵢ` and the final carry out of `CF` over `runBlock`, the
 chain produces exactly the proven abstract `Cios4LimbProven.addLimbs` output (sum
-limbs + final carry), so its recombined value is `addChainVal` — the genuine
+limbs + final carry), so its recombined value is `addChainVal` — the
 `runBlock`-of-emitted anchor for the add primitive. -/
 
 /-- One emitted ADD step writes the wrapped-sum limb into `dst`. -/
@@ -507,7 +507,7 @@ theorem vestaLimbs_value :
       = 28948022309329048855892746252171976963363056481941647379679742748393362948097 := by
   native_decide
 
-/-- **Pallas modular add over the carry chain = `(a + b) mod p` (Tier A, 4-limb).**
+/-- **Pallas modular add over the carry chain = `(a + b) mod p` (4-limb).**
     For reduced 4-limb inputs the emitted `ADD`/`ADC` + trial `SUB`/`SBB` + `CMOVB`
     select recombined value is `(valLimbs a + valLimbs b) mod p`. -/
 theorem pallas_modadd_value (a b : List (BitVec 64))
@@ -516,22 +516,22 @@ theorem pallas_modadd_value (a b : List (BitVec 64))
     modAddVal (valLimbs pallasLimbs) a b = (valLimbs a + valLimbs b) % valLimbs pallasLimbs :=
   modAddVal_eq_mod (valLimbs pallasLimbs) a b hb ha_red hb_red
 
-/-- **Pallas modular sub over the borrow chain = `(a + p − b) mod p` (Tier A,
-    4-limb).** -/
+/-- **Pallas modular sub over the borrow chain = `(a + p − b) mod p`
+    (4-limb).** -/
 theorem pallas_modsub_value (a b : List (BitVec 64))
     (ha_red : valLimbs a < valLimbs pallasLimbs) (hb_red : valLimbs b < valLimbs pallasLimbs) :
     modSubVal (valLimbs pallasLimbs) a b
       = (valLimbs a + valLimbs pallasLimbs - valLimbs b) % valLimbs pallasLimbs :=
   modSubVal_eq_mod (valLimbs pallasLimbs) a b ha_red hb_red
 
-/-- **Vesta modular add = `(a + b) mod q` (Tier A, 4-limb).** -/
+/-- **Vesta modular add = `(a + b) mod q` (4-limb).** -/
 theorem vesta_modadd_value (a b : List (BitVec 64))
     (hb : b.length = a.length)
     (ha_red : valLimbs a < valLimbs vestaLimbs) (hb_red : valLimbs b < valLimbs vestaLimbs) :
     modAddVal (valLimbs vestaLimbs) a b = (valLimbs a + valLimbs b) % valLimbs vestaLimbs :=
   modAddVal_eq_mod (valLimbs vestaLimbs) a b hb ha_red hb_red
 
-/-- **Vesta modular sub = `(a + q − b) mod q` (Tier A, 4-limb).** -/
+/-- **Vesta modular sub = `(a + q − b) mod q` (4-limb).** -/
 theorem vesta_modsub_value (a b : List (BitVec 64))
     (ha_red : valLimbs a < valLimbs vestaLimbs) (hb_red : valLimbs b < valLimbs vestaLimbs) :
     modSubVal (valLimbs vestaLimbs) a b
@@ -548,28 +548,28 @@ radix-generic, so the 6-limb instance is the same `modAddVal_eq_mod` /
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
   (bls12381Limbs p384Limbs)
 
-/-- **BLS12-381 base-field modular add = `(a + b) mod p` (Tier A, 6-limb).** -/
+/-- **BLS12-381 base-field modular add = `(a + b) mod p` (6-limb).** -/
 theorem bls12381_modadd_value (a b : List (BitVec 64))
     (hb : b.length = a.length)
     (ha_red : valLimbs a < valLimbs bls12381Limbs) (hb_red : valLimbs b < valLimbs bls12381Limbs) :
     modAddVal (valLimbs bls12381Limbs) a b = (valLimbs a + valLimbs b) % valLimbs bls12381Limbs :=
   modAddVal_eq_mod (valLimbs bls12381Limbs) a b hb ha_red hb_red
 
-/-- **BLS12-381 base-field modular sub = `(a + p − b) mod p` (Tier A, 6-limb).** -/
+/-- **BLS12-381 base-field modular sub = `(a + p − b) mod p` (6-limb).** -/
 theorem bls12381_modsub_value (a b : List (BitVec 64))
     (ha_red : valLimbs a < valLimbs bls12381Limbs) (hb_red : valLimbs b < valLimbs bls12381Limbs) :
     modSubVal (valLimbs bls12381Limbs) a b
       = (valLimbs a + valLimbs bls12381Limbs - valLimbs b) % valLimbs bls12381Limbs :=
   modSubVal_eq_mod (valLimbs bls12381Limbs) a b ha_red hb_red
 
-/-- **P384 modular add = `(a + b) mod p` (Tier A, 6-limb).** -/
+/-- **P384 modular add = `(a + b) mod p` (6-limb).** -/
 theorem p384_modadd_value (a b : List (BitVec 64))
     (hb : b.length = a.length)
     (ha_red : valLimbs a < valLimbs p384Limbs) (hb_red : valLimbs b < valLimbs p384Limbs) :
     modAddVal (valLimbs p384Limbs) a b = (valLimbs a + valLimbs b) % valLimbs p384Limbs :=
   modAddVal_eq_mod (valLimbs p384Limbs) a b hb ha_red hb_red
 
-/-- **P384 modular sub = `(a + p − b) mod p` (Tier A, 6-limb).** -/
+/-- **P384 modular sub = `(a + p − b) mod p` (6-limb).** -/
 theorem p384_modsub_value (a b : List (BitVec 64))
     (ha_red : valLimbs a < valLimbs p384Limbs) (hb_red : valLimbs b < valLimbs p384Limbs) :
     modSubVal (valLimbs p384Limbs) a b
@@ -656,9 +656,9 @@ theorem bbMul_lt_p (w b : BitVec 64) (hw : w < bbP) (hb : b < bbP) : bbMul w b <
   rw [CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit.bbMul_correct w b hw hb]
   exact BitVec.umod_lt _ (by decide)
 
-/-- **BabyBear / Barrett-butterfly modular add over `runBlock` (Tier A,
-    single-word).** For canonical residues `a, b, w < p`, the emitted butterfly's
-    stored low output word equals the field add `(a + ω·b) mod p` — a genuine
+/-- **BabyBear / Barrett-butterfly modular add over `runBlock`
+    (single-word).** For canonical residues `a, b, w < p`, the emitted butterfly's
+    stored low output word equals the field add `(a + ω·b) mod p` — a
     `runBlock`-of-emitted tie (`butterfly_out0_spec` + the proven branch-free
     field-add law `bbAdd_correct`), in the modular add shape with the canonical
     field product `c = bbMul w b`. -/
@@ -668,8 +668,8 @@ theorem babybear_fpadd_runBlock (a b w : BitVec 64)
   rw [butterfly_out0_spec a b w ha hb hw]
   exact bbAdd_correct a (bbMul w b) ha (bbMul_lt_p w b hw hb)
 
-/-- **BabyBear / Barrett-butterfly modular sub over `runBlock` (Tier A,
-    single-word).** For canonical residues `a, b, w < p`, the emitted butterfly's
+/-- **BabyBear / Barrett-butterfly modular sub over `runBlock`
+    (single-word).** For canonical residues `a, b, w < p`, the emitted butterfly's
     stored high output word equals the field sub `(a + p − ω·b) mod p` — the
     conditional add-back of `p` on borrow, tied to the `runBlock` output by
     `butterfly_out1_spec`. -/

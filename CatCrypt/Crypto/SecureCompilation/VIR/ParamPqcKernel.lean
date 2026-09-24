@@ -50,7 +50,7 @@ We:
    (`*_matches_hand`, `rfl`/defeq) — the engine synthesis is the hand result, not
    a weaker corollary.
 
-### The applicability verdict (the question answered)
+### Applicability of the engine
 
 * **Where the engine applies.** `param_solve` synthesizes the PQC kernel's
   lowering transport on the **same-carrier modular-arithmetic fragment** — the
@@ -64,7 +64,7 @@ We:
 * **Where it hits the boundary — the *same* boundary as the general dialect
   transport, not a PQC-specific one.** The carrier-**changing** part of the PQC
   lowering is out of `param_solve`'s op-tree descent, for the identical reason
-  the Field extension fragment was in `ParamDialectTransport`:
+  the Field extension fragment is in `ParamDialectTransport`:
 
   - **Montgomery domain change.** The real hardware butterfly runs in the
     Montgomery domain: `t·ζ` is a `montMul` (`a·b·R⁻¹`), and entering/leaving
@@ -87,7 +87,7 @@ We:
     — the same op-splitting / no-single-target-op boundary that put `ext2Mul →
     Fp2MulSchedule` out of scope for `LoweringData` and `param_solve` alike.
 
-So the verdict: **yes, the Param engine applies to PQC kernels at the
+So the result: **yes, the Param engine applies to PQC kernels at the
 same-carrier modular-arithmetic fragment (the NTT butterfly's
 `modAdd`/`modSub`/`modMul` op-tree at the PQC prime); the boundary is the
 carrier-changing part (Montgomery-domain re-coordinatisation via the ternary
@@ -95,13 +95,13 @@ carrier-changing part (Montgomery-domain re-coordinatisation via the ternary
 the *same* diagonal / same-carrier boundary the general dialect transport hits,
 not a PQC-specific one.**
 
-We deliver the same-carrier butterfly arm (which genuinely synthesizes) and
-state the carrier-changing arm precisely as the shared boundary, with
+The module covers the same-carrier butterfly arm (which synthesizes) and
+states the carrier-changing arm precisely as the shared boundary, with
 `CarrierTransferDom`'s non-diagonal `lo32` `TransferDom` named as the path for
-the carrier-changing Montgomery/reduce part. We do **not** claim whole-PQC-kernel
-synthesis: only the modular-arithmetic op-tree synthesizes here.
+the carrier-changing Montgomery/reduce part. Whole-PQC-kernel synthesis is
+outside its scope: only the modular-arithmetic op-tree synthesizes here.
 
-**0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
+All goals closed; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
 
 @[expose] public section
@@ -251,12 +251,12 @@ theorem butterflyUpper_synth_is_rfl_realisation {p : Nat} (a t ζ : ZMod p) :
       = (rfl : a + t * ζ = modAddF a (modMulF t ζ)) :=
   rfl
 
-/-! ## 5. The carrier-changing boundary, recorded honestly (NOT synthesized)
+/-! ## 5. The carrier-changing boundary (NOT synthesized)
 
-The same-carrier butterfly arm above genuinely synthesizes. The carrier-changing
+The same-carrier butterfly arm above synthesizes. The carrier-changing
 part of the PQC lowering — the Montgomery-domain twiddle multiply — is out of
 `param_solve`'s op-tree descent, for the *same* reason the Field extension
-fragment was in `ParamDialectTransport`: it is not a same-carrier binary
+fragment is in `ParamDialectTransport`: it is not a same-carrier binary
 `RelatedBinOp`. We record it as exactly that.
 
 The real hardware butterfly's twiddle multiply is a `montMul` carrying the

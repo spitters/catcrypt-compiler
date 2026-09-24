@@ -13,57 +13,38 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectA
 set_option autoImplicit false
 
 /-!
-# Control-flow arms of the `CProg`-free direct front (`RIfNz` + `RFor`)
+# Control-flow arms of the direct front (`RIfNz`, `RFor`, `RWhileNz`)
 
-`TranslateDialectDirectArms.translateDialectFull` fuses the core straight-line
-arms plus the leaf-call multi-binding arms into a `CProg`-free
-`Com catCryptDialect` recursion, with context agreement to `translate` on
-`IsCovered`. The two arms it still declined were the *intricate* control-flow
-ones:
+`TranslateDialectDirectArms.translateDialectFull` lowers the core straight-line
+arms plus the leaf-call multi-binding arms to a `Com catCryptDialect` recursion
+on `IsCovered`. This module adds the control-flow arms, building
+`Com catCryptDialect` nodes through `ComCont`:
 
-* **`RFor x N body`** — the bounded inline unroll. `translate` lowers it via
-  `loopRFor`, a pure `Nat`-recursion that, per iteration `i ∈ [0..N)`, emits one
-  `letBind (bvConst (BitVec.ofNat 64 i))` then threads `translate vm body`
-  through the growing `VarMap`.
+* **`RFor x N body`** — the bounded inline unroll. `loopRForD` is a
+  `Nat`-recursion that, per iteration `i ∈ [0..N)`, emits one
+  `ComCont.varBind` of `bvConst (BitVec.ofNat 64 i)` then threads the body
+  translation through the growing `VarMap` (same shape as
+  `TranslateDialectDirectArms.loopCallNDestsD`).
 
-* **`RIfNz name thenBr elseBr`** — the φ-merge. `translate` translates both
-  branches in the entry context and merges by final-context shape: cases (A)
-  (both non-extending) and (B) (one extends) pass through one branch's
-  `⟨Γ', vm⟩`; case (C′) — both branches a `RScalarSet` on the *same* name —
-  materialises a six-binding `CExpr.ite` chain (`thenV; elseV; zero; cond_eq;
-  cond_bit; merged`); case (C-otherwise) re-translates `elseBr` from the
-  post-then `VarMap`.
+* **`RIfNz name thenBr elseBr`** — the φ-merge. Both branches are translated in
+  the entry context and merged by final-context shape: cases (A) (both
+  non-extending) and (B) (one extends) pass through one branch's `⟨Γ', vm⟩`;
+  case (C′) — both branches a `RScalarSet` on the *same* name — composes six
+  `ComCont.varBind`s (`thenV; elseV; zero; cond_eq; cond_bit; merged`); case
+  (C-otherwise) re-translates `elseBr` from the post-then `VarMap`.
 
-This file fuses **both** arms `CProg`-free, mirroring `translate`'s exact
-control flow but building `Com catCryptDialect` nodes through `ComCont`:
+* **`RWhileNz name body`** — the data-dependent loop, gated on the guard being
+  a bound scalar and on the body front-compiling, emitting a context-invariant
+  region.
 
-* `loopRForD` — the `Nat`-recursion twin of `loopRFor` (same shape as
-  `TranslateDialectDirectArms.loopCallNDestsD`, but the per-iteration body
-  translator is `translateDialectFull vm' body`).
-* the `RIfNz` arm builds the **same** final `Γ'`/`VarMap` as `translate` in
-  every case; the (C′) φ-merge composes six `ComCont.varBind`s — the
-  `toVIRExprT`-images of the six `CExpr`s `translate` emits — so no `CProg.ite`
-  chain is named.
+Every other arm delegates to `translateDialectFull`.
 
-## Context agreement (`translateDialectControl_ctx_agree`)
+## Covered fragment
 
-Exactly as for the leaf-call arms, `translateTop` discards the prefix and emits
-the `constUnit; ret` terminator at the final context, so what the downstream
-proofs consume is **context agreement**: `translateDialectControl` and `translate` succeed
-together and emit the *same* `⟨Γ', vm⟩`. We prove it on the extended fragment
-`IsCoveredCtl` (the covered arms of `TranslateDialectDirectArms.IsCovered` plus
-`RFor` over covered bodies and `RIfNz` over covered branches), reusing the
-`loopCallNDestsD_ctx_agree` fold pattern for `RFor` (`loopRForD_ctx_agree`) and a
-case split mirroring `translate`'s (A)/(B)/(C′)/(C-otherwise) for `RIfNz`.
-
-## Coverage
-
-With `RIfNz` and `RFor` fused, the `CProg`-free front now covers the full
-**non-`while`** `LowCT` (the core + leaf-call + control arms); only `RWhileNz`
-(unbounded loops, a `CProg.cwhile` region) and the not-yet-in-dialect
-ops (`bvAdd64`/`bvAdc`, dynamic memref, sampling) remain declined.
-That is the coverage half of the `CProg`-deletion result (DR collapse)
-for everything but unbounded `while`.
+`IsCoveredCtl` is the covered arms of `TranslateDialectDirectArms.IsCovered`
+plus `RFor` over covered bodies, `RIfNz` over covered branches and `RWhileNz`
+over a covered body. On `IsCovered`, `translateDialectControl` coincides with
+`translateDialectFull` (`translateDialectControl_eq_full_of_covered`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
@@ -77,19 +58,18 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec Located TowerType)
 
-/-! ## 1. Fused dialect `RFor` twin (`loopRForD`)
+/-! ## 1. The `RFor` unroll (`loopRForD`)
 
-`loopRForD` is the `Nat`-recursion twin of `loopRFor`: per iteration it emits one
-`ComCont.varBind` of the fused `bvConst (BitVec.ofNat 64 i)` then threads the
-direct body translator. Mirrors `loopCallNDestsD` (whose recursion was over the
-destination list); here the recursion is over `Nat`, and the body translator is
-the dialect front `translateDialectFull`. -/
+`loopRForD` is a `Nat`-recursion: per iteration it emits one `ComCont.varBind`
+of `bvConst (BitVec.ofNat 64 i)` then threads the direct body translator. It
+has the shape of `loopCallNDestsD` (whose recursion is over the destination
+list); here the recursion is over `Nat`. -/
 
-/-- Dialect twin of `loopRFor`: a left-to-right `Nat`-fold of one
+/-- The `RFor` unroll: a left-to-right `Nat`-fold of one
     `bvConst (BitVec.ofNat 64 i)` binding plus the direct body translation per
-    iteration, building `ComCont` prefixes. `CProg`-free. The body translator
-    `translateBody` is passed in (as in `loopRFor`), so this def can be used
-    before `translateDialectControl` is in scope. -/
+    iteration, building `ComCont` prefixes. The body translator
+    `translateBody` is passed in, so this def can be used before
+    `translateDialectControl` is in scope. -/
 def loopRForD {Γ : Ctx}
     (translateBody : ∀ {Γ'' : Ctx}, VarMap Γ'' → Option (DTransOut Γ''))
     (vm : VarMap Γ) (x : String) :
@@ -112,13 +92,12 @@ def loopRForD {Γ : Ctx}
 
 /-! ## 2. The fused control-flow front `translateDialectControl`
 
-Mirrors `translate`'s control flow on `RFor`/`RIfNz`; every other arm delegates
-to `translateDialectFull`. The `RIfNz` φ-merge builds the six fused expressions
-(`toVIRExprT`-images of `translate`'s six `CExpr`s) inline as a chain of
-`ComCont.varBind`s — no `CProg.ite` is named. -/
+Lowers `RSeq`, `RFor`, `RIfNz` and `RWhileNz`; every other arm delegates to
+`translateDialectFull`. The `RIfNz` φ-merge builds its six expressions inline
+as a chain of `ComCont.varBind`s. -/
 
 /-- Direct `LowCT → catCryptDialect` translation extended to the control-flow
-    arms `RFor` and `RIfNz`. `CProg`-free: every prefix is a `ComCont`. -/
+    arms. Every prefix is a `ComCont`. -/
 def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
     LowCT → Option (DTransOut Γ)
   | .RFor x N body =>
@@ -140,8 +119,7 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
                   match asSingleScalarSet thenBr, asSingleScalarSet elseBr with
                   | some thenSet, some elseSet =>
                       if thenSet.name = elseSet.name then
-                        -- (C′) φ-merge: build the six fused expressions —
-                        -- the `toVIRExprT`-images of `translate`'s six `CExpr`s.
+                        -- (C′) φ-merge: build the six merge expressions.
                         let Γ₁ : Ctx := .sword 64 :: Γ
                         let Γ₂ : Ctx := .sword 64 :: Γ₁
                         let Γ₃ : Ctx := .sword w :: Γ₂
@@ -245,7 +223,7 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
       | none => none
   | c => translateDialectFull vm c
 
-/-- Direct `CProg`-free top-level front over the control-extended arm set.
+/-- Direct top-level front over the control-extended arm set.
     Mirrors `translateDialectFullTop`: emits the `constUnit; ret` terminator at
     the final context `o.Γ'`. -/
 def translateDialectControlTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
@@ -257,7 +235,7 @@ def translateDialectControlTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
       some ⟨o.Γ', term⟩
   | none => none
 
-/-! ## 3. The control-extended covered fragment and context agreement -/
+/-! ## 3. The control-extended covered fragment -/
 
 /-- The control-extended covered `LowCT` fragment: the leaf-call covered arms
     (`TranslateDialectDirectArms.IsCovered`) plus `RFor` over covered bodies,
@@ -281,7 +259,7 @@ theorem translateDialectControl_eq_full_of_covered {Γ : Ctx} (vm : VarMap Γ)
     translateDialectControl vm c = translateDialectFull vm c := by
   induction hc generalizing Γ with
   | rSeq _ _ ih1 ih2 =>
-      -- `translateDialectControl`'s `RSeq` arm now recurses into itself; on a
+      -- `translateDialectControl`'s `RSeq` arm recurses into itself; on a
       -- straight-line (`IsCovered`) `RSeq` it still agrees with
       -- `translateDialectFull` by the two child IHs (the `transCtlSeq` fold).
       simp only [translateDialectControl, translateDialectFull]
@@ -336,8 +314,8 @@ theorem translateDialectControl_rWhileNz_ctx_invariant {Γ : Ctx} (vm : VarMap �
 
 /-! ## 4. Worked examples -/
 
-/-- A bounded loop over a covered body is control-covered and lowers `CProg`-free
-    via `loopRForD`. -/
+/-- A bounded loop over a covered body is control-covered and lowers via
+    `loopRForD`. -/
 example (x : String) (N : Nat) :
     IsCoveredCtl (.RFor x N .RSkip) := .rFor (.ofCovered .rSkip)
 
@@ -346,12 +324,10 @@ example (name : String) :
     IsCoveredCtl (.RIfNz name .RSkip .RSkip) :=
   .rIfNz (.ofCovered .rSkip) (.ofCovered .rSkip)
 
-/-- **The RSeq-over-control wall is gone.** A bounded loop *sequenced* with
-    further work — `RSeq (RFor …) …`, the top-level shape of a multi-phase kernel
-    (X25519 `ladder; invert; encode`, sponge `absorb; squeeze`, MAYO phases) —
-    now descends through the canonical front. The old `RSeq` arm delegated both
-    children to the straight-line `translateDialectFull`, whose `| _ => none`
-    declined the `RFor` child, so this returned `none`. It is now `isSome`. -/
+/-- A bounded loop *sequenced* with further work — `RSeq (RFor …) …`, the
+    top-level shape of a multi-phase kernel (X25519 `ladder; invert; encode`,
+    sponge `absorb; squeeze`, MAYO phases) — descends through the front: the
+    `RSeq` arm recurses into `translateDialectControl` on both children. -/
 example :
     (translateDialectControl (Γ := []) VarMap.empty
       (.RSeq (.RFor "i" 4 .RSkip) .RSkip)).isSome := by native_decide

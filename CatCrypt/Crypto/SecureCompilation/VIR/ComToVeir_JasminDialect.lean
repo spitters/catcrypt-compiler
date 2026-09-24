@@ -15,7 +15,7 @@ import all Veir.IR.Attribute
 public import Veir.Properties
 
 /-!
-# Path (b) Tier 1.3: `jasminDialect` → Veir op/type wiring
+# `jasminDialect` → Veir op/type wiring
 
 This file provides the `ToVeirOp jasminDialect _` and
 `ToVeirTy jasminDialect` instances that let the generic `ComToVeir`
@@ -23,11 +23,11 @@ lowering target the **jasmin** VIR dialect (the register/stack/two-address
 fragment used by `RustEmitJazz` and the ChaCha20, x25519, lattice, etc.
 EMIT files).
 
-Status: ACTIVE — instances defined; each op-to-MLIR-dialect mapping is a
-`rfl` definitional check against the named `Veir.OpCode` constructor.
+Each op-to-MLIR-dialect mapping is a `rfl` definitional check against the
+named `Veir.OpCode` constructor.
 
-**Trust scope (read carefully).** The `rfl` examples below verify only
-that the mapping function I wrote agrees with its definition — i.e. that
+**Trust scope.** The `rfl` examples below verify only
+that the mapping function agrees with its definition — i.e. that
 `toMlirOpCode (.regArith .add w) = .arith_addi` holds because that is how
 the function was defined. They do NOT prove:
 
@@ -42,23 +42,22 @@ the function was defined. They do NOT prove:
    byte-identical ChaCha RFC 8439 §2.3.2 output through that pipeline is
    end-to-end testing through a black-box toolchain — KAT, not a proof.
 
-Concretely, this backend stands in the same place as the LLVM-IR
-backend (#140): the rfl table + the named hypothesis
+Concretely, the rfl table + the named hypothesis
 `MlirToolchainSemanticsAgrees` (see below) together state the trust
-shape. The shape mirrors `LlvmIRSemanticsAgrees` from #140 exactly.
+shape of this backend, the same shape as the LLVM IR backend's trust in `llc`.
 
-The downstream `Section` of this file (`denoteVeirOpScaffold`) starts
-discharging the gap for a small initial set (`arith_addi`, `arith_subi`,
+The downstream `Section` of this file (`denoteVeirOpScaffold`)
+discharges the gap for a small set (`arith_addi`, `arith_subi`,
 `arith_muli` over `iW` types) — a partial discharge of obligation 2
-above. The full closure is tracked by #148 (lean-mlir migration).
+above.
 
-## Goal — unify Tier 2 (jasmin-linear) and Tier 3 (LLVM IR) emit backends
+## Purpose — one MLIR target for the jasmin-linear and LLVM IR emit backends
 
 Routes `Com jasminDialect` through MLIR. `mlir-opt --canonicalize --cse`
 operates on the emitted text, and `mlir-translate --mlir-to-llvmir`
-provides the LLVM lowering. The lprog and direct-LLVM paths become
-downstream lowerings of this canonical MLIR target — and inherit the
-same trust hypothesis on the MLIR toolchain.
+provides the LLVM lowering. The lprog and direct-LLVM paths are then
+downstream lowerings of this MLIR target, and carry the same trust
+hypothesis on the MLIR toolchain.
 
 ## Op inventory
 
@@ -86,7 +85,7 @@ same trust hypothesis on the MLIR toolchain.
 | `inlineInt`      | `index` (textual)                 |
 | `bool`           | `IntegerType.mk 1`                |
 
-Every arithmetic / memory / cast op now routes to a registered MLIR
+Every arithmetic / memory / cast op routes to a registered MLIR
 dialect. The only escape hatches are:
 * `castW w w` (identity-width cast) → `catcrypt_unknown` since MLIR's
   `arith.extui`/`arith.trunci` reject equal-width operands. A
@@ -161,24 +160,24 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- AVX2 256-bit vector op: a per-lane vector machine op with no single
   -- registered scalar `arith.*`; kept opaque here, like `vsimd`.
   | .vymm _ => .catcrypt_unknown
-  -- Widening multiply + carry chain (#477): the high word is still a multiply,
+  -- Widening multiply + carry chain: the high word is a multiply,
   -- the carry-data / carry-out are adds. These scalar `arith.*` codes capture
   -- the closest registered op; the full two-output / carry semantics is the
   -- jasmin-backend route (read_linear MULX/ADCX/ADOX), not the MLIR route.
   | .mulhi _ => .arith_muli
   | .addCarryLo _ => .arith_addi
   | .addCarryHi _ => .arith_addi
-  -- Native right-rotate (#497): no single registered scalar `arith.*` op for a
+  -- Native right-rotate: no single registered scalar `arith.*` op for a
   -- rotate (the upstream `arith` dialect has no rotate); kept opaque here. The
   -- rotate's real meaning is the jasmin-backend `#ROR_w` route (and its
   -- `rotateRight` denotation in `jasminDenote`), not the MLIR route.
   | .rorImm _ _ => .catcrypt_unknown
-  -- Native immediate shifts (#605): same registered scalar shift codes as the
+  -- Native immediate shifts: same registered scalar shift codes as the
   -- `regArith .shr`/`.shl` ops — the only difference (immediate vs register
   -- shift amount) is a jasmin-backend instruction-selection detail, not an MLIR
   -- op distinction.
   | .shrImm _ _ => .arith_shrui
-  -- Native immediate arithmetic right-shift (#606): the registered scalar
+  -- Native immediate arithmetic right-shift: the registered scalar
   -- SIGNED shift code `arith.shrsi` — the sign-extending twin of `shrImm`'s
   -- `arith.shrui`. Immediate vs register shift-amount is a jasmin-backend
   -- detail, not an MLIR op distinction.
@@ -338,9 +337,9 @@ example : Com jasminDialect [.reg 32, .reg 32] (.reg 32) → IO String :=
 
 end SmokeTestJasmin
 
-/-! ## Trust statement (mirrors `LlvmIRSemanticsAgrees` from #140)
+/-! ## Trust statement
 
-The full semantic-equivalence theorem this backend WOULD WANT to ship is:
+The full semantic-equivalence theorem for this backend has the form:
 
 ```
 ∀ {Γ t} (com : Com jasminDialect Γ t),
@@ -353,21 +352,21 @@ Closing it requires (a) a denotation function for `Veir.OpCode.arith_*` /
 `memref_*` / `func_*` that matches MLIR's reference semantics and (b) a
 proof that `mlir-opt → mlir-translate → llc` is denotation-preserving.
 (a) is partially scaffolded below; (b) is the same trust-boundary shape
-as #140's LLVM backend has for `llc`.
+as the LLVM IR backend has for `llc`.
 
-Until both are discharged, the emit-correctness statement is BOUNDED BY
-a named Prop hypothesis, exactly like #140's `LlvmIRSemanticsAgrees`:
+The emit-correctness statement is therefore bounded by a named Prop
+hypothesis:
 -/
 
 /-- Named Prop hypothesis: the MLIR toolchain (`mlir-opt` canonicalize/cse +
     `mlir-translate --mlir-to-llvmir` + `llc`) is denotation-preserving on
     the subset of MLIR text this backend emits.
 
-    This is the analog of #140's `LlvmIRSemanticsAgrees` for the MLIR
-    intermediate path. It is a TRUST BOUNDARY, not a proof: closing it
-    would require either a Lean re-implementation of the MLIR toolchain
-    (the #148 tracker — replace jasmin's lprog→x86 with lean-mlir-verified
-    Lean) or an external certification of the MLIR passes (out of scope).
+    This is the MLIR-path counterpart of the LLVM IR backend's trust in
+    `llc`. It is a TRUST BOUNDARY, not a proof: closing it would require
+    either a Lean re-implementation of the MLIR toolchain (lean-mlir-verified
+    Lean in place of jasmin's lprog→x86) or an external certification of the
+    MLIR passes (out of scope).
 
     Every emit-correctness theorem that routes through this backend
     carries this as an explicit parameter — the trust shape is visible
@@ -407,13 +406,11 @@ for the three arms, modulo the implicit trust that
 which is the EXTERNALLY-OBSERVABLE definition that's stable across MLIR
 versions per the dialect spec.
 
-What's NOT in this scaffold yet:
-* `arith_andi / ori / xori / shli / shrui` (5 remaining arith ops);
+Outside this scaffold:
+* `arith_andi / ori / xori / shli / shrui` (the other 5 arith ops);
 * `memref_load / memref_store` (require a memory model);
 * `func_call` (requires a calling-convention model);
-* `arith_extui / arith_trunci` (require width-extension semantics).
-
-These extensions are mechanical follow-ons. Tracked by #148. -/
+* `arith_extui / arith_trunci` (require width-extension semantics). -/
 
 /-- The MLIR `arith` binary ops we discharge here. Covers every arm of
     `JasminBinOp`: integer add/sub/mul, bitwise and/or/xor, logical shifts

@@ -123,7 +123,8 @@ i.e. `inLoadMap s = ("RSI", 8 * (3 − s))`. Outputs: `X'` → `out[0]` (offset 
   `native_decide` value check (`fheBfly_kat0`/`_kat1`) ties the Com denotation to
   an independent `Nat`-level Harvey reference `bflyRef` on 2 vectors (one with
   `X ∈ [2q, 4q)` exercising the X-normalize and `Tlazy ∈ [q, 2q)` exercising the
-  T-reduction; one with `X < 2q`). Vectors kept tiny (REV-12 wall).
+  T-reduction; one with `X < 2q`). Vectors kept tiny; bulk value checks run
+  in the external KAT harness.
 * **Trusted (thin)**: `renderLfundef` / `as`/`cc` / the SysV leaf ABI frame; the
   byte-identity `fhe_bfly(inp) == (X', Y')` is the orchestrator's external GMP
   KAT on the emitted `.s` (no jasminc).
@@ -268,7 +269,7 @@ theorem fheBfly_via_thirDialect (X Y omega omegaprime : BitVec 64) :
   (lowerThir_denote fheBflyThir (.cons X (.cons Y (.cons omega (.cons omegaprime .nil))))).trans
     (fheBflyThir_denote X Y omega omegaprime)
 
-/-! ## 4. Independent `Nat` Harvey reference + value KAT (tiny vectors, REV-12 wall)
+/-! ## 4. Independent `Nat` Harvey reference + value KAT (tiny vectors)
 
 `bflyRef` is the Harvey lazy CT butterfly over `Nat`, all arithmetic mod `2^64`
 (mirrors `FheNttButterflyProbe.shoupRefBF`). The KATs tie ONLY the `.ret` (`Y'`)

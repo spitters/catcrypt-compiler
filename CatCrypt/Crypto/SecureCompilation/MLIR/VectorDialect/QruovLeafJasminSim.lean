@@ -26,33 +26,33 @@ jasmin operational semantics in
 `UovLeafJasminSim.lean` has the same structure for the UOV scalar multiply
 step.
 
-## Scope (limited per fallback gate)
+## Scope
 
 The full `qruov_block_dot_b4_l3` body is a nested `for k = 0 to 3 ;
 for J = 0 to 4 ; for ll = 0 to 3` loop (36 iterations) calling the
 inline `gf127_mul` and `gf127_add` bodies, plus a packing step. Two
-structural gaps in the current `JasminCoqSemMirror` block a full
-simulation through the OPAQUE rustcmd `qruov_block_dot_b4_l3` symbol:
+structural gaps in `JasminCoqSemMirror` rule out a full simulation through
+the OPAQUE rustcmd `qruov_block_dot_b4_l3` symbol:
 
-* The `Cfor` *relational* rule is deferred (the functional executor
-  handles `Cfor`, but the relational `SemIr` constructor is not yet
-  ported); this lets us run smoke tests through `execCmd` but not yet prove a relational
-  simulation theorem.
-* The `Ccall` / `inline fn` table (`fnDef`) is deferred; this is what
+* `JasminCoqSemMirror` has no `Cfor` *relational* rule (the functional
+  executor handles `Cfor`, but there is no relational `SemIr` constructor
+  for it); smoke tests run through `execCmd`, and no relational
+  simulation theorem is stated.
+* `JasminCoqSemMirror` has no `Ccall` / `inline fn` table (`fnDef`), which
   would tie the opaque rustcmd `qruov_block_dot_b4_l3` symbol to its
   body.
 
-What we CAN do at this batch:
+This module:
 
-  * Hand-author **the scalar `gf127_mul` body** as a
+  * Hand-authors **the scalar `gf127_mul` body** as a
     `JasminCoqSemMirror.Cmd` (straight-line + 1 `Cif`, which fits
-    inside the functional executor's current coverage). The body is
+    inside the functional executor's coverage). The body is
     bit-pattern manipulation at u16 width: `p = a*b; p = (p & 127) +
     (p >> 7); p = (p & 127) + (p >> 7); if p >= 127 then p -= 127`.
-  * Plug in a minimal `OpSem` instance for `u16` arithmetic
+  * Plugs in a minimal `OpSem` instance for `u16` arithmetic
     (`Oadd .U16`, `Omul .U16`, `Oland .U16`, `Olsr .U16`, `Osub .U16`,
     `Oge (.Cmp_w .Unsigned .U16)`, `Oword_of_int .U16`).
-  * Prove that executing this Cmd from a `Estate` initialised with
+  * Proves that executing this Cmd from a `Estate` initialised with
     `a, b ∈ [0..126]` produces a post-state whose `p` matches the
     verified `(Zq127.fromNat a * Zq127.fromNat b).asNat`.
 

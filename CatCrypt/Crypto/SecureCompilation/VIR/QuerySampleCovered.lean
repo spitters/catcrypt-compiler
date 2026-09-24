@@ -16,11 +16,11 @@ set_option autoImplicit false
 # The Plonky3 DuplexChallenger query sampler as one `IsCoveredSU` program
 
 `Plonky3QuerySampleEmit` deploys the `DuplexChallenger<16,8>` sample/observe
-wrapper as owned `Lcmd` control flow; the prior wall analysis showed its CONTROL
+wrapper as owned `Lcmd` control flow. Its CONTROL
 shape — `observe = if trigger { call duplex; store }`, `sample = if trigger {
 call duplex_n; store }`, and the runtime absorb loop — needs an `RCond` (a
 guarded forward branch, NOT the φ-merge) and a runtime `RWhileNz`, SEQUENCED,
-which sits outside any single one of the five landed control fragments.
+which sits outside any single one of the five control fragments.
 
 `TranslateDialectUnifiedDenote.IsCoveredSU` is exactly the closure that covers
 it: an `RSeq` whose children may be `RCond`/`RWhileNz`.  This module models the
@@ -59,7 +59,7 @@ What the covered fragment DOES express is the natural nonzero guard `guardNz nam
 The CONTROL shape (`RSeq` of two `RCond`s and one `RWhileNz`) — the unification's
 whole point — is delivered in full; only the compare-in-guard is the residual.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's set.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleCovered
@@ -115,7 +115,7 @@ def duplexN : LowCT := .RCall "p3_fs_duplex_n" ⟨"st", .TU64⟩ []
     The conditionals are `RCond` (guarded forward branch, NOT the φ-merge — the
     block does NOT run when the guard is zero); the absorb is a data-dependent
     `RWhileNz`.  The whole is one `RSeq` spine of two `RCond`s and one `RWhileNz`
-    — outside any single one of the five landed fragments, inside `IsCoveredSU`.
+    — outside any single one of the five fragments, inside `IsCoveredSU`.
     (The `!= 0` guards are the covered stand-in for the exact `== 8` /
     disjunctive triggers — see the module residual.) -/
 def querySampleLowCT : LowCT :=
@@ -150,7 +150,7 @@ theorem querySample_coveredU : IsCoveredSU querySampleLowCT := by
     guards, the absorb loop counts down within `fuel`), the emitted `Com`-prefix
     denotes exactly the `semU` waist.  A direct instantiation of `transU_denote`
     at `querySample_coveredU`: the sampler descends through the unified
-    homomorphism that COMPOSES the five landed control-fragment lemmas. -/
+    homomorphism that COMPOSES the five control-fragment lemmas. -/
 theorem querySampleCovered_denote (fuel : Nat) {Γ : Ctx} (vm : VarMap Γ)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env env' : SEnvScalar)
     (o : DTransOut Γ)

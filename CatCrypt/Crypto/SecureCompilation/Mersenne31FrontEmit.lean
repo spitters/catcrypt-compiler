@@ -21,7 +21,7 @@ set_option autoImplicit false
 
 The deployed Mersenne-31 (`p = 2³¹ − 1 = 2147483647`, the CircleSTARK /
 Plonky3-M31 / Stwo base field) scalar field kernels, sourced end-to-end through
-the verified `CProg`-free front — NO hand-built `Com` / `Lcmd` anywhere in the
+the verified dialect front — NO hand-built `Com` / `Lcmd` anywhere in the
 emit path (the same straight-line route as the GF-MQ
 `KernelFromRustcmdFrontEmit` fleet):
 
@@ -162,7 +162,7 @@ def inVM2 : VarMap inΓ2 :=
 
 /-! ## 3. The front-emitted dialect programs (each returns the stored `out`) -/
 
-/-- Push a body through the `CProg`-free control front at context `Γ`/`vm` and
+/-- Push a body through the dialect control front at context `Γ`/`vm` and
     cap with `ret out` (the post-store memref). `none` if the front declines. -/
 def frontCom {Γ : Ctx} (vm : VarMap Γ) (body : LowCT) :
     Option (Com catCryptDialect Γ (.memref 1)) :=

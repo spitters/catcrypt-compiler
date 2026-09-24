@@ -13,46 +13,40 @@ public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
 set_option autoImplicit false
 
 /-!
-# DR — randomness: the `sample` op as a deterministic entropy-read leaf
+# Deterministic randomness: the `sample` op as a deterministic entropy-read leaf
 
-This file is the "DR (deterministic randomness) phase" of the MLIR-dialect-
-alignment restructure. Its purpose is to keep **probability off** the
-deterministic SSA stack.
+This module keeps **probability off** the deterministic SSA stack of the MLIR
+dialect alignment.
 
-The two CryptoSSA sampling expressions
+The two sampling ops of the crypto dialect
 
-* `CExpr.sampleBit : CExpr Γ .bit`            (probabilistic denote `SPComp.sample Bool`)
-* `CExpr.sampleBv n : CExpr Γ (.sword n)`     (probabilistic denote `SPComp.sample (BitVec n)`)
+* `sampleBit` (result `.bit`, probabilistic meaning `SPComp.sample Bool`)
+* `sampleBv n` (result `.sword n`, probabilistic meaning `SPComp.sample (BitVec n)`)
 
-are *probabilistic* in `CExpr.denote` (`CryptoSSA.lean`). When the pure lowering
-`toVIRExpr` (`VIR/CryptoToVIR.lean`) meets them it **drops to `none`**
-(`| .sampleBit => none` and `| .sampleBv _ => none`, at
-`CryptoToVIR.lean:86,118`) because "sampling isn't representable in the
-pure-only VIR denotation".
+are *probabilistic*, so a pure, deterministic denotation cannot represent them.
 
-The DR principle says we can lower them after all, *deterministically*, by
+Deterministic randomness lowers them *deterministically* by
 modelling a sample as **"read `w` entropy bits"** — a total, deterministic
 leaf over an externally-supplied entropy source `η`. The probabilistic meaning
-is then a *separate interpretation*: it is recovered later by pushing a uniform
+is a *separate interpretation*, recovered by pushing a uniform
 distribution forward through this deterministic op (the "realization theorem",
-left as the next step — see the module-end note).
+`RngRealization.lean`).
 
-Concretely this file provides:
+Concretely this module provides:
 
 1. `Entropy` — a deterministic infinite bit stream `Nat → Bool` with a read
    offset, plus `readBit`/`readBv`/`advance`.
 2. `SampleTy` / `sampleDet` — a deterministic, **total** denotation of exactly
    the two sample leaves as entropy reads (`sampleBit ↦ readBit`,
    `sampleBv n ↦ readBv n`). Totality is by construction (it is a function),
-   which is the honest content of "does not drop to `none`".
-3. Correctness lemmas that a later uniform-entropy realization will use:
+   which is the content of "does not drop to `none`".
+3. Correctness lemmas used by the uniform-entropy realization:
    determinism, the `readBv … 0 = 0#0` and `readBv` range bound
    (`(readBv η n).toNat < 2^n`), agreement of the leaf with the underlying
    reads, and a few `rfl`/`decide` computed examples.
 
-Nothing here imports probability; `SPComp`/`SDistr` are untouched. This is the
-deterministic counterpart of the drop-to-`none` arms, in its own file, with no
-modification to the existing lowering.
+Nothing here imports probability; `SPComp`/`SDistr` are not used. This is the
+deterministic counterpart of the sample ops, in its own module.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Rng
@@ -114,8 +108,8 @@ def readBv (η : Entropy) (n : Nat) : BitVec n :=
 @[simp] theorem readBv_zero (η : Entropy) : η.readBv 0 = 0#0 :=
   Subsingleton.elim _ _
 
-/-- **Range correctness.**  A length-`n` entropy read is a genuine `n`-bit word,
-    so its natural-number value is `< 2^n`.  This is the seam a later uniform-
+/-- **Range correctness.**  A length-`n` entropy read is an `n`-bit word,
+    so its natural-number value is `< 2^n`.  This is the seam the uniform-
     entropy realization uses to match the support of `SPComp.sample (BitVec n)`. -/
 theorem readBv_toNat_lt (η : Entropy) (n : Nat) :
     (η.readBv n).toNat < 2 ^ n :=
@@ -145,21 +139,21 @@ end Entropy
 
 /-! ## The deterministic sample leaf
 
-    `SampleTy` enumerates exactly the two CryptoSSA sampling leaves; `toCryptoTy`
+    `SampleTy` enumerates exactly the two sampling ops; `toCryptoTy`
     maps each to its result type so that the deterministic image lands in the
-    SAME `CryptoTy.denote` as the probabilistic `CExpr.denote`. -/
+    SAME `CryptoTy.denote` as the probabilistic meaning. -/
 
 /-- The result-shape of a sampling op: a single bit, or an `n`-bit word.
-    These are precisely `CExpr.sampleBit` and `CExpr.sampleBv n`. -/
+    These are precisely `sampleBit` and `sampleBv n`. -/
 inductive SampleTy where
-  /-- `CExpr.sampleBit`. -/
+  /-- `sampleBit`. -/
   | bit
-  /-- `CExpr.sampleBv n`. -/
+  /-- `sampleBv n`. -/
   | bv (n : Nat)
   deriving DecidableEq, Repr
 
-/-- The CryptoSSA result type of a sampling op — matching the `CExpr` indices
-    `CExpr Γ .bit` and `CExpr Γ (.sword n)`. -/
+/-- The `CryptoTy` result type of a sampling op: `.bit` for `sampleBit`,
+    `.sword n` for `sampleBv n`. -/
 def SampleTy.toCryptoTy : SampleTy → CryptoTy
   | .bit => .bit
   | .bv n => .sword n
@@ -167,9 +161,8 @@ def SampleTy.toCryptoTy : SampleTy → CryptoTy
 /-- **The deterministic entropy-read denotation of the sample leaves.**
 
     Total and deterministic: every `SampleTy` maps to a defined value in the
-    same `CryptoTy.denote` that the probabilistic `CExpr.denote` targets
-    (`Bool` for `.bit`, `BitVec n` for `.sword n`).  Contrast the pure lowering
-    `toVIRExpr`, which sends both leaves to `none`.  Here there is no `none`:
+    same `CryptoTy.denote` that the probabilistic meaning targets
+    (`Bool` for `.bit`, `BitVec n` for `.sword n`).  There is no `none`:
     the function is total by construction. -/
 def sampleDet (η : Entropy) : (s : SampleTy) → s.toCryptoTy.denote
   | .bit => η.readBit
@@ -183,20 +176,19 @@ def sampleDet (η : Entropy) : (s : SampleTy) → s.toCryptoTy.denote
 
 /-! ## Lowerability: the sample leaves have a total deterministic image
 
-    The honest statement of "is lowerable / does not drop to `none`": for every
+    The statement of "is lowerable / does not drop to `none`": for every
     entropy source and every sampling shape, `sampleDet` returns a value (it is
-    total).  We phrase it via the `Option`-lowering twin to make the contrast
-    with `toVIRExpr`'s `none` explicit. -/
+    total).  We phrase it via an `Option`-valued lowering, the shape of a
+    partial lowering pass. -/
 
-/-- An `Option`-valued lowering of the sample leaves, mirroring the *shape* of
-    `toVIRExpr` (which returns `Option …` and chooses `none`).  Here we always
-    return `some (sampleDet …)` — i.e. the DR lowering never drops. -/
+/-- An `Option`-valued lowering of the sample leaves, in the *shape* of a
+    partial lowering pass.  It always returns `some (sampleDet …)` — i.e. the
+    deterministic lowering never drops. -/
 def lowerSample (η : Entropy) (s : SampleTy) : Option s.toCryptoTy.denote :=
   some (sampleDet η s)
 
-/-- **Lowerability theorem.**  Unlike `toVIRExpr` — which sends `sampleBit` and
-    `sampleBv _` to `none` (`CryptoToVIR.lean:86,118`) — the deterministic
-    entropy lowering is defined on *both* sample shapes, for *every* source. -/
+/-- **Lowerability theorem.**  The deterministic entropy lowering is defined on
+    *both* sample shapes, for *every* source. -/
 theorem lowerSample_isSome (η : Entropy) (s : SampleTy) :
     (lowerSample η s).isSome := rfl
 

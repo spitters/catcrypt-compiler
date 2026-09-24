@@ -16,7 +16,7 @@ public import Mathlib.Data.ZMod.Basic
 
 `RelationalFrontBls377Add` realizes the `bls12_377` base-field **ADD** relationally:
 the abstract `ZMod q` add `a + b`, serialized by the 6-limb encoding `encMLK q 6`,
-equals the emitted 6-limb reducing kernel `mlAddModK` (with the genuine
+equals the emitted 6-limb reducing kernel `mlAddModK` (with the
 `condSubLimbs` reduce). Its docstring flags the remaining op: the multi-limb
 **MUL** modular reduce — Barrett *of the product* at the `ZMod` value level — as the
 larger piece for the full `bls12_377` EC group law.
@@ -31,7 +31,7 @@ kernels from `MultiLimbKernel`:
   input `x` and `W`-limb prime `p`, under the precondition that `mu` is the
   precomputed reciprocal `⌊(2^64)^W / bignumVal p⌋`.
 
-into a `ZMod q` MUL commuting square at the genuine 377-bit `bls12_377` base-field
+into a `ZMod q` MUL commuting square at the 377-bit `bls12_377` base-field
 prime `q`, reusing `bls377Q`/`bls377Limbs`/`encMLK`/`splitLimbsK`/`KLimbPrime`
 from `RelationalFrontBls377Add`.
 
@@ -50,13 +50,13 @@ quotient-error bound `barrett_bound` holds for any `m` with `x < 2^m`.)
 product `< (2^64)^(2k)`), so the `barrettReduce` length precondition `x.length = W`
 is met by construction.
 
-## Honest scope
+## Scope
 
 * **Demonstrated (sorry-free):** the generic `k`-limb `mlMulMod` and its value
   correctness `mlMulMod_val` (composing `mulBignum_val` + `barrettReduce_val`,
   discharging the reduce's input-bound from `x,y < q ⇒ x·y < q²`); the `ZMod q` MUL
   commuting square `encMLK_mul_commutes` (via `mlMulMod_val` + `ZMod.val_mul`); the
-  `bls12_377` instance at the genuine 377-bit prime `q = bls377Q`, with the Barrett
+  `bls12_377` instance at the 377-bit prime `q = bls377Q`, with the Barrett
   reciprocal `bls377Mu = ⌊2^768 / q⌋` computed as a `Nat` literal and discharged
   axiom-cleanly (`norm_num` on the `Nat.div`); a `RealizedKernel` / `EndoOpRealization`
   for the MUL; and a worked example.
@@ -207,7 +207,7 @@ theorem mlMul_seamK (Q : KLimbPrimeMul) (a b : ZMod Q.q) :
 /-- **The `k`-limb `F_q` MUL commuting square.** The abstract field multiply `a * b`
     (in `F_q`), serialized by the injective-not-surjective `k`-limb encoding `encMLK`,
     equals the emitted multi-limb Barrett-reducing kernel `mlMulMod` on the serialized
-    operands, read through `bignumVal` — with the genuine multi-limb Barrett reduce. The
+    operands, read through `bignumVal` — with the multi-limb Barrett reduce. The
     MUL sibling of `encMLK_add_commutes`. -/
 theorem encMLK_mul_commutes (Q : KLimbPrimeMul) (a b : ZMod Q.q) :
     (a * b).val = bignumVal (mlMulMod Q.k Q.muTwo Q.ql (encMLK Q.q Q.k a) (encMLK Q.q Q.k b)) := by
@@ -223,7 +223,7 @@ theorem mlMulK_spec_transfers (Q : KLimbPrimeMul) (a a' b b' : ZMod Q.q) :
   rw [← encMLK_mul_commutes Q, ← encMLK_mul_commutes Q]
   exact ⟨fun h => by rw [h], fun h => (mulModRealizationK Q.q).enc_inj h⟩
 
-/-! ## 5. The `bls12_377` instance: the genuine 377-bit base-field prime, `k = 6`
+/-! ## 5. The `bls12_377` instance: the 377-bit base-field prime, `k = 6`
 
 The Barrett reciprocal at the product width `2k = 12` (so `m = 768`):
 `bls377Mu = ⌊2^768 / bls377Q⌋`, a ~391-bit `Nat`, computed as a literal and
@@ -276,10 +276,10 @@ def bls377KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The `bls12_377` base-field MUL commuting square — the user's target field.** The
-    abstract `bls12_377` base-field multiply `a * b` (in `ZMod q` for the genuine 377-bit
+    abstract `bls12_377` base-field multiply `a * b` (in `ZMod q` for the 377-bit
     prime `q = bls377Q`), serialized by the 6-limb encoding `encMLK q 6`, equals the
     emitted 12-limb Barrett-reducing kernel `mlMulMod` on the serialized operands, read
-    through `bignumVal` — with the genuine multi-limb Barrett modular reduce of the
+    through `bignumVal` — with the multi-limb Barrett modular reduce of the
     product. The MUL sibling of `bls377_add_commutes`, completing the `bls12_377`
     field-op set. -/
 theorem bls377_mul_commutes (a b : ZMod bls377Q) :

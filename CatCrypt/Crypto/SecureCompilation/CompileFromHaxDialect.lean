@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
-# C6 dialect-routing: compile the THIR front *through* `thirDialect` (#616)
+# Dialect routing: compile the THIR front *through* `thirDialect`
 
 `ThirToComFront.lean` lowers the THIR-ANF surface **directly** to
 `Com jasminDialect` (`thirToJasmin`). That skips the MLIR `thirDialect`
@@ -430,7 +430,7 @@ theorem thirToJasminViaThir_denote {w nIn : Nat} (locals : List String)
 
 /-! ## §7  σ₀ DEMO: SHA-256 `small_sigma0`, routed end-to-end
 
-The same σ₀ THIR the direct front compiles (`ThirToComFront.sigma0Thir`), now
+The same σ₀ THIR the direct front compiles (`ThirToComFront.sigma0Thir`),
 routed through `thirDialect`. We reuse the front's `sigma0Thir`, `sigma0Spec`,
 `inputValuation`, and `initAgree`. The lowering succeeds, and the routed jasmin
 `Com` denotes the FIPS σ₀ reference for every input word. -/

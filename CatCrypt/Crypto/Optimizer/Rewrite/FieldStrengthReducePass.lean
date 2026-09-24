@@ -30,7 +30,7 @@ denotationally-equal one. The rewrites are:
 * `sub e (const 0) ↦ e` — subtract-zero identity;
 * `sub e e ↦ const 0` — self-subtraction is zero (`sub_self`).
 
-The keystone is `strengthReduce_denote`: the pass is *denotation-preserving*
+The main theorem is `strengthReduce_denote`: the pass is *denotation-preserving*
 under any environment `env : Nat → R`, so it is a sound optimizer pass — no
 value is ever changed, only the operations used to compute it. The proof is by
 structural induction; each rewrite is discharged by the ring axioms

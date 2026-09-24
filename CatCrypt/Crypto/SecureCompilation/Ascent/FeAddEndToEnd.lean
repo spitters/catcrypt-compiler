@@ -38,7 +38,7 @@ public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
 /-!
 # `feAdd` end-to-end: the second closed source→bytes ascend capstone
 
-This module closes the ascent-plan capstone for a real `feAdd`-shape kernel
+This module proves the source→bytes ascent end to end for a real `feAdd`-shape kernel
 `r := a + b` over a *closed* straight-line program (the two source words are
 first written as literals, then added). It is the addition analogue of
 `FeSubEndToEnd` / `FeSubSourceTower`: every leg is discharged with no leftover

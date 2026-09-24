@@ -30,9 +30,9 @@ without deciding the embedded `toString q`/`toString n`: the two literal-named
 leaves settle it by `decide`, and `ntt_basemul_*` by the length argument of
 `leafName_basemul_ne_polyAdd`.
 
-0 sorries. The remaining parametric edge on the jasmin path is
+All goals are closed. The parametric edge on the jasmin path is
 `CryptoToJasminComCorrect.JasminLeafAgrees` for external leaves
-(e.g. CryptoSSA `fp_*` intrinsics), which keep the opaque default by design.
+(e.g. `fp_*` field intrinsics), which keep the opaque default by design.
 -/
 
 @[expose] public section

@@ -10,11 +10,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 /-!
 # ML-KEM-768 matrix-vector product as a verified nested bounded loop (R3)
 
-The previous ML-KEM emits (`bench/mlkem_compare/*_from_rustcmd.lean`) drove the
-*straight-line* arithmetic core through the verified front and carried only the
-structural `front_fires` / `emits_*_leaves` facts plus the Stage-2/3/7 closure of
-`rustExecSimulatesCryptoSSA`. The R1 multi-op loop keystone
-(`JForProgMultiOp.nested_loop_denote_eq_multiOp`) lets us additionally carry a
+The ML-KEM emits (`bench/mlkem_compare/*_from_rustcmd.lean`) drive the
+*straight-line* arithmetic core through the verified front and carry the
+structural `front_fires` / `emits_*_leaves` facts. The multi-op loop theorem
+(`JForProgMultiOp.nested_loop_denote_eq_multiOp`) additionally gives a
 **denotation-preservation proof for the protocol's REAL loop structure** at the
 full `k = 3` parameter set: ML-KEM-768's matrix-vector product
 
@@ -22,7 +21,7 @@ full `k = 3` parameter set: ML-KEM-768's matrix-vector product
 
 is a nested loop: an outer loop over the `k` rows, each running an inner
 `k`-iteration `polyvec_pointwise_acc` (basemul-then-accumulate) over the dot. The
-inner per-iteration body is a genuine **two-op straight-line `Com`**
+inner per-iteration body is a **two-op straight-line `Com`**
 
   `prod := basemul(acc, acc) ;  sum := poly_add(acc, prod) ;  ret sum`
 
@@ -31,8 +30,8 @@ over the ML-KEM poly type `stackArr 16 256` (256 coefficients, u16 each — the
 (pointwise **product** in `jasminExtSem`) and `poly_add` (pointwise **sum**); both
 have their data-oblivious semantics in `JasminDialect.jasminExtSem`, so the leaf
 agreement `LeafAgrees` is the dialect's own (no new opaque primitive). Because the
-inner body binds *two* fresh SSA names, this is exactly the case the single-leaf
-keystone could not cover and the R1 multi-op keystone does:
+inner body binds *two* fresh SSA names, this is the case the single-leaf
+loop theorem does not cover and the multi-op loop theorem does:
 
 * `mlkem768InnerStep` — the two-op inner body (basemul + poly_add accumulate).
 * `mlkem768InnerStep_straightLine` — its `StraightLine` discharge (both binders
@@ -42,10 +41,10 @@ keystone could not cover and the R1 multi-op keystone does:
 * `mlkem768_matvec_denote_eq` — **the verified-front nested loop denotes the
   `k×k` matrix-vector semantics**, via `nested_loop_denote_eq_multiOp`. The only
   carried hypothesis is the opaque-leaf edge `LeafAgrees`; fresh-name injectivity
-  is discharged inside the R1 keystone by `freshName_injective`.
+  is discharged inside the multi-op loop theorem by `freshName_injective`.
 
-This is the full-parameter (`k = 3` = ML-KEM-768) loop keystone for the lattice
-matrix-vector product, routed through R1's multi-op nested-loop lemma.
+This is the full-parameter (`k = 3` = ML-KEM-768) loop theorem for the lattice
+matrix-vector product, routed through the multi-op nested-loop lemma.
 -/
 
 @[expose] public section
@@ -85,7 +84,7 @@ def polyAddLeaf : String := "poly_add"
 
 One iteration of `polyvec_pointwise_acc`: form the NTT-domain pointwise product
 and add it into the running dot accumulator. As a `Com jasminDialect [PolyAcc]
-PolyAcc` this binds two fresh names, so it needs the multi-op keystone. -/
+PolyAcc` this binds two fresh names, so it needs the multi-op loop theorem. -/
 
 /-- The NTT basemul leaf `Expr` at the poly signature
     `[stackArr 16 256, stackArr 16 256] → stackArr 16 256`. Reads the two operands
@@ -122,16 +121,16 @@ def mlkem768InnerLevel : JForProg PolyAcc :=
     update := mlkem768InnerBody }
 
 /-- **The inner body binds two fresh SSA names** (`prod`, then `sum`). This is the
-    load-bearing fact that the matvec loop routes through the R1 *multi-op*
-    keystone (`numBinders = 2`), not the single-leaf one (`numBinders = 1`,
-    `SingleVarBody`): the single-var keystone of `JForProgSemCorrect` cannot cover
+    fact that the matvec loop routes through the*multi-op*
+    loop theorem (`numBinders = 2`), not the single-leaf one (`numBinders = 1`,
+    `SingleVarBody`): the single-var loop theorem of `JForProgSemCorrect` cannot cover
     this body. -/
 theorem mlkem768InnerBody_numBinders : Com.numBinders mlkem768InnerBody = 2 := rfl
 
 /-! ## 3. Straight-line discharge
 
 Both binders are `extCall` ops, never `stackStore`, so the inner body is
-`StraightLine` — the hypothesis the multi-op keystone consumes. -/
+`StraightLine` — the hypothesis the multi-op loop theorem consumes. -/
 
 /-- The inner body is straight-line: both let-binders carry an `extCall` op
     (basemul, then poly_add), so neither is the aliasing `stackStore`. -/
@@ -141,7 +140,7 @@ theorem mlkem768InnerBody_straightLine : StraightLine mlkem768InnerBody := by
   · intro w n; exact JasminOp.noConfusion
   · trivial
 
-/-- The inner level's `update` is straight-line (the keystone's hypothesis). -/
+/-- The inner level's `update` is straight-line (the loop theorem's hypothesis). -/
 theorem mlkem768InnerLevel_straightLine : StraightLine mlkem768InnerLevel.update :=
   mlkem768InnerBody_straightLine
 
@@ -154,12 +153,12 @@ def mlkem768Matvec : NestedForProg PolyAcc :=
   { outerN := mlkemK
     inner := mlkem768InnerLevel }
 
-/-! ## 5. The denotation-preservation keystone (R1 multi-op nested loop)
+/-! ## 5. The denotation-preservation loop theorem (multi-op nested loop)
 
 The emitted nested `for j = 0 to 3 { for i = 0 to 3 { prod = basemul(acc,acc);
 acc = poly_add(acc,prod) } }` denotes the two-level `k×k`-fold semantics —
-discharged via the R1 multi-op nested-loop lemma, whose inner level uses the
-multi-op single-level keystone (so the two fresh SSA names per iteration are
+discharged via the multi-op nested-loop lemma, whose inner level uses the
+multi-op single-level loop theorem (so the two fresh SSA names per iteration are
 handled by `freshName_injective`, NOT carried). The only hypothesis is the
 opaque-leaf edge `LeafAgrees`, the dialect's own NTT/poly-add leaf agreement. -/
 
@@ -169,10 +168,10 @@ opaque-leaf edge `LeafAgrees`, the dialect's own NTT/poly-add leaf agreement. -/
     body `prod = basemul(acc,acc); acc = poly_add(acc,prod)`) by iterating the
     outer body runner from `init` equals `mlkem768Matvec.denote init` — the
     `outerN`-fold of the inner loop's `n`-fold `JForProg.step`. The inner body
-    binds two fresh SSA names, so this routes through the R1 multi-op nested-loop
-    keystone `JForProgMultiOp.nested_loop_denote_eq_multiOp` (NOT the single-leaf
+    binds two fresh SSA names, so this routes through the multi-op nested-loop
+    loop theorem `JForProgMultiOp.nested_loop_denote_eq_multiOp` (NOT the single-leaf
     `JForProgNested.nested_loop_denote_eq`). Fresh-name injectivity is discharged
-    inside R1; the only carried hypothesis is the opaque lattice-leaf agreement
+    inside that lemma; the only carried hypothesis is the opaque lattice-leaf agreement
     `LeafAgrees`. -/
 theorem mlkem768_matvec_denote_eq {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : ⟦PolyAcc⟧) :

@@ -44,7 +44,7 @@ obligation, NOT a per-kernel hypothesis and NOT a KAT.
 * **`grounded_poly_eval_realizes` (multi-step field Horner / polynomial eval).**
   A full Horner chain of length `n` over the *unary* add-by-`c`-and-fixed-coeff
   steps: `n` copies of one proved Horner-by-constants step, assembled into a
-  `ProtocolKernels` and run by `runRealizes` — a genuine multi-step field
+  `ProtocolKernels` and run by `runRealizes` — a multi-step field
   pipeline, unconditional.
 * **`grounded_inner_product_step_realizes` (field multiply-accumulate).**  One
   multiply-accumulate `x ↦ x + a * b` over the binary concrete kernels, proved

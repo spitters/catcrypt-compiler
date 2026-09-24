@@ -10,18 +10,18 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
-# A 4×4→8 schoolbook 256-bit multiply, lowered through the owned AArch64 backend (#549)
+# A 4×4→8 schoolbook 256-bit multiply, lowered through the owned AArch64 backend
 
-`ArmBignumKernel.lean` (#547) lowered s2n-bignum's `bignum_add_p256` — the
+`ArmBignumKernel.lean` lowers s2n-bignum's `bignum_add_p256` — the
 **ADD-class** carry-chain kernel — through the 64-bit `X`-register bignum model
-(`ArmModel.BState`/`evalBInst`). This module is the **MULTIPLY-class** keystone:
+(`ArmModel.BState`/`evalBInst`). This module is the **MULTIPLY-class** instance:
 it lowers a full `bignum_mul_4_8`-shaped 4×4→8 schoolbook multiply
 (`z[8] := x[4] · y[4]`, the 256×256→512 widening product) through the SAME owned
 backend, exercising the widening `MUL`/`UMULH` (64×64→128 low/high) together with
 the `ADDS`/`ADCS`/`ADC` multi-precision accumulation carry chain that AArch64 —
 unlike x86's MULX/ADX-only ceiling — exposes as plain flag-setting adds. It is the
 A64 analogue of `X86Backend/BignumMontMulKernel.lean` and the multiply core that
-`fe25519_mul` (#550's X25519 field path) and a 4×64 Montgomery mul both ride.
+`fe25519_mul` (the X25519 field path) and a 4×64 Montgomery mul both ride.
 
 ## The schoolbook (operand-scanning, two-carry accumulation)
 
@@ -56,7 +56,7 @@ pseudocode does (`ArmModel.addWithCarry`), so the lowered block computes the tru
 
 The full all-inputs correctness (`⟦z0..z7⟧ = ⟦x⟧·⟦y⟧`) is the s2n proof
 obligation (`arm/proofs/bignum_mul_4_8.ml`); as an in-Lean close it is a 512-bit
-multiply identity gated by the GMP/s2n cross-check KAT, the same REV-12 posture as
+multiply identity gated by the GMP/s2n cross-check KAT, the same treatment as
 the x86 multiply kernels. Here we pin worked vectors (incl. the maximal
 `(2⁶⁴-1)`-limbed inputs that exercise every carry) under `native_decide`.
 -/
@@ -117,7 +117,7 @@ def mul48Block : List BOp :=
     (List.range 4).flatMap (fun j =>
       addProduct ("x" ++ toString i) ("y" ++ toString j) (i + j)))
 
-/-! ## 2. Lowering correctness (the multiply keystone instantiated) -/
+/-! ## 2. Lowering correctness (the multiply lowering theorem instantiated) -/
 
 /-- **Lowering correctness on the 4×4→8 schoolbook.** Running the lowered body on
     the 64-bit model equals the direct machine fold — `bignumBlock_lowering_denote`

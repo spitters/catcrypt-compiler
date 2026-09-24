@@ -266,7 +266,7 @@ def hawkMulCom : Com jasminDialect inCtxt r32 :=
 /-! ## 5. The deployed emit, FRONT-COMPILED
 
 The straight-line `LowCT` body of the same negacyclic schoolbook, pushed
-through the `CProg`-free front (`translateDialectControl` →
+through the dialect front (`translateDialectControl` →
 `cryptoDialectToJasminCom`) — NO hand-built `Com` in the deployed path. -/
 
 /-- Sequence a list of `LowCT` into an `RSeq` chain. -/
@@ -324,7 +324,7 @@ def srcCtx : Ctx := List.replicate 33 (.sword 64)
 /-- The source `VarMap` (word 0 = `a[0]` at the head). -/
 def srcVM : VarMap srcCtx := bindAll wordNames
 
-/-- Push `mulBody` through the `CProg`-free control front and cap with
+/-- Push `mulBody` through the dialect control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM mulBody with

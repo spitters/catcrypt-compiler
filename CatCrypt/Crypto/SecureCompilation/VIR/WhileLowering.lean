@@ -11,14 +11,13 @@ public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 /-!
 # A runtime-bound (`while`) loop lowering: emitted `Cwhile` run = condition-driven iteration
 
-The landed counted-loop lowering (`VIR/LoopLowering.lean`, `loopN`) covers
+The counted-loop lowering (`VIR/LoopLowering.lean`, `loopN`) covers
 **static-count** loops: the iteration number is a `Nat` fixed at compile time
-and the emitted `Cfor` run equals `step^[n]`. Its own scope note ends with
-"It does **not** yet cover: … runtime/`while` bounds." This file closes that
-loop gap.
+and the emitted `Cfor` run equals `step^[n]`. This module covers loops with a
+runtime/`while` bound.
 
 A runtime-bound loop iterates *while a run-time condition holds* — the iteration
-count is determined by the data, not a static `Nat`. The honest, terminating
+count is determined by the data, not a static `Nat`. The terminating
 shape (an arbitrary-predicate `while` need not terminate) is a **fuel-bounded /
 decreasing-condition while**: iterate while `cond acc` holds, with a fuel `Nat`
 bounding the recursion. We prove the **emitted while-loop run equals exactly
@@ -27,8 +26,8 @@ that fuel-bounded conditional iteration of the body**.
 ## What substrate we reuse (a *real* `Cwhile` run-semantics already exists)
 
 We do **not** invent a semantic while model in a vacuum. `JasminCoqSemMirror`
-is the mechanical Lean port of Jasmin's Coq `psem.v`, and it already carries the
-genuine Jasmin while construct:
+is the mechanical Lean port of Jasmin's Coq `psem.v`, and it carries the
+Jasmin while construct:
 
 * `InstrR.Cwhile (al) (cbefore) (cond) (ii) (cafter)` — the AST node
   (`expr.v` mirror).
@@ -38,20 +37,20 @@ genuine Jasmin while construct:
 * The **functional** fuel-bounded executor `execInstrR`'s `.Cwhile` branch,
   which drives the same judgement (its `Cfor`/`Cif`/`Ccall` branches are the
   ones smoke-tested in `Examples/JasminCoqSemMirrorDemo.lean`; the `.Cwhile`
-  branch had **no** test or theorem — that is the gap).
+  branch is covered by the theorems of this module).
 
 So the route here is *not* a fuel-bounded stand-in for a missing instruction
 semantics; it is the run-correctness theorem for the **existing** `Cwhile`
 executor, stated against a clean accumulator-level conditional iteration.
 
-## What is genuinely new
+## Contents
 
 1. **`whileExec`** — a fuel-recursive, condition-driven iteration over the
    executor's own state (`Estate`): evaluate `cond`; if it holds run the body
    and recurse on less fuel; else stop. This is the accumulator-level "iterate
-   while the condition holds" semantics the gap names.
+   while the condition holds" semantics.
 
-2. **`execInstrR_Cwhile_eq_whileExec`** — the keystone: the emitted `Cwhile`
+2. **`execInstrR_Cwhile_eq_whileExec`** — the main theorem: the emitted `Cwhile`
    executor (with empty `cbefore`, which is the idiomatic guard-after-step
    shape) **equals** `whileExec`, for every fuel. This ties the real Jasmin
    `Cwhile` run to the condition-driven iteration. Proved by fuel induction;
@@ -62,7 +61,7 @@ executor, stated against a clean accumulator-level conditional iteration.
    **`whileFuel_eq_iterate_of_count`**: when the condition first fails after
    exactly `k ≤ fuel` steps, the fuel-bounded while collapses to the *static*
    `step^[k]` — i.e. a runtime-bound loop whose data fixes the count `k`
-   reduces to the counted-loop keystone at that `k`. This is the precise bridge
+   reduces to the counted-loop theorem at that `k`. This is the precise bridge
    "the dynamic count reduces to a static one".
 
 4. A **worked, concrete example**: *decrement a counter to 0*. The emitted
@@ -73,17 +72,17 @@ executor, stated against a clean accumulator-level conditional iteration.
    - and that abstract while equals `(· - 1)^[5] 5 = 0` via the static-count
      collapse (`decTo0_whileFuel_eq_iterate`). All goals closed.
 
-## Scope (honest)
+## Scope
 
 This is a runtime-bound while over a **single accumulator** with empty
 `cbefore` (guard-after-body shape) and a body run by the executor's own
 `execCmd`. The `whileExec`/`whileFuel` equivalence is fuel-bounded: we prove
 the executor's *functional* fuel-bounded run equals the conditional iteration.
 A true **unbounded** `Cwhile` lowering — closing the *relational*
-`SemIr.Ewhile_*` (which has no fuel and so models genuine non-termination)
+`SemIr.Ewhile_*` (which has no fuel and so models non-termination)
 against an unbounded fixpoint, plus a termination-measure side-condition
-discharging "the executor's fuel suffices" — is the remaining gap; it is noted
-in the deliverable, not papered over.
+discharging "the executor's fuel suffices" — is outside the scope of this
+module.
 
 All goals are closed; no opaque-leaf hypothesis is needed (the executor and `whileExec`
 are both concrete functional definitions).
@@ -123,7 +122,7 @@ def whileExec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
       else
         .ok s
 
-/-! ## 2. Keystone: the emitted `Cwhile` run equals the condition-driven iteration
+/-! ## 2. Main theorem: the emitted `Cwhile` run equals the condition-driven iteration
 
 `execInstrR`'s `.Cwhile` branch, instantiated with **empty `cbefore`** (the
 idiomatic guard-after-body shape: the body is `cafter`, run before the guard
@@ -156,9 +155,9 @@ theorem execInstrR_Cwhile_eq_whileExec
 
 /-! ## 3. Abstract conditional iteration and the static-count collapse
 
-We now lift the picture to a *pure* accumulator `α`, so the runtime-bound loop
-can be stated independently of the executor state, and connect it to the
-counted-loop keystone (`step^[k]`). -/
+This section lifts the picture to a *pure* accumulator `α`, so the runtime-bound
+loop can be stated independently of the executor state, and connects it to the
+counted-loop theorem (`step^[k]`). -/
 
 /-- `whileFuel cond step fuel acc` is the pure, fuel-bounded conditional
     iteration of `step` on accumulator `acc`: iterate `step` while `cond` holds,
@@ -210,7 +209,7 @@ theorem whileFuel_eq_iterate_of_count {α : Type} {cond : α → Bool} {step : �
       have hcond0 : cond acc = true := by
         have := hk 0 (by omega); simpa using this
       rw [whileFuel_succ, if_pos hcond0]
-      -- Now run the inner while on `step acc` for `k` steps.
+      -- Run the inner while on `step acc` for `k` steps.
       have hk' : ∀ i, i < k → cond (step^[i] (step acc)) = true := by
         intro i hi
         have := hk (i+1) (by omega)
@@ -229,7 +228,7 @@ runtime-bound loop `while 0 < c { c := c - 1 }`. Starting from `c = 5`:
 * the **emitted** `Cwhile` run drives `c` to `0` (`decTo0_emitted_kat`);
 * that emitted run **equals** the abstract conditional iteration
   `whileFuel (0 < ·) (· - 1)` started at `5` (`decTo0_emitted_eq_whileFuel`),
-  via the §2 keystone;
+  via the §2 theorem;
 * and that abstract while collapses to the **static** counted loop
   `(· - 1)^[5] 5 = 0` (`decTo0_whileFuel_eq_iterate`), via the §3 bridge.
 
@@ -294,7 +293,7 @@ theorem decTo0_emitted_kat :
 
 /-- **Run-correctness instance.** The emitted runtime-bound loop run equals
     the condition-driven iteration `whileExec` of its body — a direct instance
-    of the §2 keystone `execInstrR_Cwhile_eq_whileExec`. -/
+    of the §2 theorem `execInstrR_Cwhile_eq_whileExec`. -/
 theorem decTo0_emitted_eq_whileExec (fuel : Nat) :
     execInstrR (Mem := TrivialMem) decAsmSem decOpSem [] fuel startState decWhile
       = whileExec (Mem := TrivialMem) decAsmSem decOpSem [] guard body

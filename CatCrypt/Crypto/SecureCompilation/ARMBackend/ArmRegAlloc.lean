@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
-# A verified linear-scan spilling register allocator for the A64 `AInst` block (#551)
+# A verified linear-scan spilling register allocator for the A64 `AInst` block
 
 The owned AArch64 backend's printer (`ArmAsmPrinter.allocGp`) is a *non-spilling*
 linear scan: when the 18-register pool is exhausted it truncates the overflow to
@@ -25,11 +25,11 @@ gives **every** name a stack slot and materialises each verified `AInst` as
 llvm-mca-neoverse-n1 estimate is 3435 cyc vs clang-O3's 634 (5.4×).
 
 This module is the A64 analogue of the x86 verified spilling allocator
-(`Optimizer.SpillingRegAlloc` #413, applied in `X86Backend.X25519SpilledLadderKernel`):
+(`Optimizer.SpillingRegAlloc`, applied in `X86Backend.X25519SpilledLadderKernel`):
 it keeps the hot values in the 31 GP registers and spills to the stack frame only
-under pressure. Unlike the x86 X25519 body — which was *frame-resident by
+under pressure. Unlike the x86 X25519 body — which is *frame-resident by
 construction* (cross-op state flowing through `fp`'s memory slots), so the spilling
-RA had nothing register-resident to keep — the SHA-256 `AOp` body is **already
+RA has nothing register-resident to keep — the SHA-256 `AOp` body is **already
 straight-line SSA** (`a..h`, the sliding schedule window `w0..w63`, fresh scratch
 `s{n}`): every value flows through a register *name*. That is exactly the
 prerequisite the X25519 body lacked, so on this body the spilling RA is the lever

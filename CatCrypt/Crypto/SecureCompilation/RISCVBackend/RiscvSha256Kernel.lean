@@ -10,16 +10,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 
 /-!
-# The whole SHA-256 block compression, lowered through the owned RV64 backend (#550)
+# The whole SHA-256 block compression, lowered through the owned RV64 backend
 
-`RiscvLowering.lean` (#535) lowered the ChaCha quarter-round through the 32-bit
-`*W` GP-ALU subset; `RiscvBignumKernel`/`RiscvMontMulKernel` (#549) lowered the
-64-bit s2n bignum path. This module is the first **whole-primitive** RV64
+`RiscvLowering.lean` lowers the ChaCha quarter-round through the 32-bit
+`*W` GP-ALU subset; `RiscvBignumKernel`/`RiscvMontMulKernel` lower the
+64-bit s2n bignum path. This module is a **whole-primitive** RV64
 functional rebench: the complete SHA-256 (FIPS 180-4 §6.2) block compression
 `f(H, M) = H'` — the 64-round transformation over the eight chaining words with
 the message schedule `W[0..63]` and the round constants `K[0..63]` — built as a
 single register-named `ROp` block, lowered through the verified
-`riscvBlock_lowering_denote` keystone, run on the `RState` 32-bit machine, and
+`riscvBlock_lowering_denote` theorem, run on the `RState` 32-bit machine, and
 pinned **byte-identical to the official FIPS 180-4 KAT** (the `"abc"` one-block
 digest `ba7816bf…f20015ad`). It is the RISC-V twin of
 `ARMBackend.ArmSha256Kernel` (the same x86 `Sha2Emit` Com body, cross-ISA).
@@ -310,7 +310,7 @@ def compressBlock : List ROp :=
   let st := emitFeed st
   st.ops.reverse
 
-/-! ## 8. Lowering correctness (the keystone instantiated)
+/-! ## 8. Lowering correctness (the block-lowering theorem instantiated)
 
 `riscvBlock_lowering_denote` on the whole SHA-256 body: running the lowered
 `RInst` block on the `RState` model equals the direct machine fold, for every

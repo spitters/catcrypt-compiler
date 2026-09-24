@@ -10,11 +10,11 @@ public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-!
-# The x86 multi-write `MachineModel`/`RegMachine` data (the D3 `writtenNames` payoff, #552)
+# The x86 multi-write `MachineModel`/`RegMachine` data (multi-output `writtenNames`)
 
-`GenericRegAlloc.RegMachine` was generalized (D3) from a single-output
-`evalInst s i = set (writtenName i) (instVal s i)` shape to a **multi-write,
-register-observable** interface: `writes : S → I → List (String × Val)` (one pair
+`GenericRegAlloc.RegMachine` is a **multi-write, register-observable** interface,
+more general than a single-output
+`evalInst s i = set (writtenName i) (instVal s i)` shape: `writes : S → I → List (String × Val)` (one pair
 per destination) and a *register-projected* step law
 
 ```
@@ -499,9 +499,9 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
 
 The `MachineModel (JInstr 64)` instance — the *syntactic* interface — is total and
 unconditional. The multi-write *semantic* data (`writesJ`, `evalInst_eq_setJ`,
-`writesJ_names`) is exactly what `GenericRegAlloc.RegMachine` needs, and the D3
+`writesJ_names`) is exactly what `GenericRegAlloc.RegMachine` needs, and the
 `writtenNames`-as-`List` generalization makes the `mulx`/`mulxMem` two-register writes
-expressible (the payoff that the old single-output shape blocked) and the `adcx`/`adox`
+expressible (a single-output shape cannot express them) and the `adcx`/`adox`
 flag-write invisible to the register-observable `evalInst_eq_set`.
 
 **The one field that does not specialize to x86 is `RegMachine.writes_rename`.** Its
@@ -518,7 +518,7 @@ hypothesis is *register* read-agreement only (`get t (ρ a) = get s a` for
 
 `writesJ_rename` above carries exactly those two extra hypotheses (`hflag`, `hmem`) and
 proves **every constructor** with them — including the `mulx`/`mulxMem` two-register
-writes, the central payoff of the multi-output `writtenNames` (D3) generalization. The
+writes that the multi-output `writtenNames` generalization exists to express. The
 generic field, lacking `hflag`/`hmem`, is *not* provable for those eleven arms over
 arbitrary register-related `s t`. This is the same non-register state the ARM `BInst`
 register allocator threads through its **bespoke** `Reindexed` theorem (`t.cf = s.cf`),
@@ -544,7 +544,7 @@ instance instMachineModelJInstr : MachineModel (JInstr 64) where
     (`writesJ_names`). Holds **unconditionally** for every constructor — including the
     `mulx` two-register write and the `adcx`/`adox` flag-bearing write, which the
     register-projected `evalInst_eq_set` admits. This is the part of the `RegMachine`
-    interface the multi-output `writtenNames` generalization (D3) unblocks for x86. -/
+    interface the multi-output `writtenNames` generalization makes available for x86. -/
 theorem jinstr_regmachine_step_data :
     (∀ (s : JState 64) (i : JInstr 64), (writesJ s i).map Prod.fst = writtenNames i) ∧
     (∀ (s : JState 64) (i : JInstr 64) (r : String),

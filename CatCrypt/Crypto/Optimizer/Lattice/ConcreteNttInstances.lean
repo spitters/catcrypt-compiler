@@ -29,10 +29,10 @@ order `3328 = 2⁸·13`, whose `2`-part is only `2⁸ = 256`: **there is no elem
 order `512` in `ZMod 3329`**. Hence ML-KEM has no primitive `512`-th root and uses
 an *incomplete* NTT (splitting only down to degree-2 factors). The `256`-th root
 `17` we do have gives the **cyclic** (`X²⁵⁶−1`) convolution statement below; the
-negacyclic identity is genuinely **not** instantiable at the ML-KEM modulus.
+negacyclic identity is **not** instantiable at the ML-KEM modulus.
 
 ML-DSA operates in `Z_8380417[X]/(X²⁵⁶+1)` and `8380417 − 1 = 2¹³·…` **does** have
-an order-`512` element (`ζ = 1753`), so ML-DSA gets the genuine **negacyclic**
+an order-`512` element (`ζ = 1753`), so ML-DSA gets the **negacyclic**
 diagonalization (`mldsa_ndft_negaConv`) — the real ML-DSA NTT operation — as well
 as the cyclic statement at `n = 512`.
 -/
@@ -60,7 +60,7 @@ theorem mlkem_nttMul_eq_cyclicConv (x y : Fin 256 → ZMod 3329) :
     nttMul 256 (17 : ZMod 3329) x y = cyclicConv 256 x y :=
   nttMul_eq_cyclicConv' isPrimitiveRoot_17_256 n_ne_zero_3329 x y
 
-/-! ## ML-DSA (`ZMod 8380417`) — the genuine negacyclic operation -/
+/-! ## ML-DSA (`ZMod 8380417`) — the negacyclic operation -/
 
 /-- The twist root `ψ = 1753` has order `512`, so `ψ² = 1753²` is a primitive
 `256`-th root — the `ω` of the negacyclic transform. Derived from
@@ -72,7 +72,7 @@ theorem isPrimitiveRoot_1753sq_256 :
 /-- **ML-DSA negacyclic NTT-multiply.** The twisted transform `ndft` (with twist
 root `ψ = 1753`) diagonalizes the negacyclic convolution at the ML-DSA parameters
 (`ZMod 8380417`, `n = 256`): `ndft ψ (negaConv ψ x y) = ndft ψ x · ndft ψ y`. This
-is the genuine ML-DSA `Z_8380417[X]/(X²⁵⁶+1)` operation. A pure instantiation of
+is the ML-DSA `Z_8380417[X]/(X²⁵⁶+1)` operation. A pure instantiation of
 `ndft_negaConv` at `isPrimitiveRoot_1753sq_256`. -/
 theorem mldsa_ndft_negaConv (x y : Fin 256 → ZMod 8380417) (k : Fin 256) :
     ndft (1753 : ZMod 8380417) (negaConv (1753 : ZMod 8380417) x y) k

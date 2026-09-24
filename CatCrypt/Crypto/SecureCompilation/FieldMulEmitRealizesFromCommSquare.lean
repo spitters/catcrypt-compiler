@@ -25,7 +25,7 @@ MUL value law.
   (a * b).val = bignumVal (mlMulMod Q.k Q.muTwo Q.ql (encMLK Q.q Q.k a) (encMLK Q.q Q.k b))
 ```
 
-for every `KLimbPrimeMul Q` (`encMLK_mul_commutes`).  This is the genuine
+for every `KLimbPrimeMul Q` (`encMLK_mul_commutes`).  This is the
 multi-limb Barrett-reducing kernel for the *product* (`mulBignum` re-limbed +
 `barrettReduce` at product width `2k`).  We use it to *discharge*
 `FieldEmitRealizes` for `op = (· * ·)`, **conditioned only on the narrower "leaf
@@ -64,17 +64,17 @@ The bridge `FieldEmitRealizes` is then discharged from **two narrow facts**:
 
 Given these two, the field-op value content
 `klimbDecode (leaf-call) = klimbDecode aVal * klimbDecode bVal` is **proved**,
-*because* `encMLK_mul_commutes` proves the commuting square.  The residual that
-survives is no longer "the leaf computes the abstract field value" but the much
-narrower "the leaf's bytes are `mlMulMod`'s bytes" (kernel-realization) plus the
-input convention — exactly the Tier-2 narrowing this module is for.
+*because* `encMLK_mul_commutes` proves the commuting square.  The remaining
+residual is "the leaf's bytes are `mlMulMod`'s bytes" (kernel-realization) plus
+the input convention, narrower than "the leaf computes the abstract field
+value".
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the `ZMod`-value content of `mul_realizes`.  Given
   the kernel-realization and operand-encoding hypotheses, the leaf-call value
   decodes to the field product — discharged by `encMLK_mul_commutes` (our proved
-  commuting square), *not* assumed.  This is the genuine narrowing: the Barrett
+  commuting square), *not* assumed.  This is the narrowing: the Barrett
   reduce of the product and the `(a*b).val` law come from a theorem.
 * **Localized (narrowed residual):** `readLimbs (leafSpec.call …) = mlMulMod …`
   — that the leaf's emitted bytes are the limb kernel's bytes.  This is the KAT
@@ -232,7 +232,7 @@ theorem klimbMulKernelRealizes_canonical (Q : KLimbPrimeMul)
 
 /-- **Non-vacuity for the full bridge.**  Threading the canonical limb-kernel
     realizer through `fieldEmitRealizes_mul_of_kernel` (under the operand-encoding
-    convention) yields a genuine `FieldEmitRealizes` inhabitant — so the
+    convention) yields a `FieldEmitRealizes` inhabitant — so the
     relational MUL commuting square does deliver the `GenericFieldEmitValue`
     hypothesis. -/
 theorem fieldEmitRealizes_mul_canonical (Q : KLimbPrimeMul)
@@ -252,7 +252,7 @@ theorem fieldEmitRealizes_mul_canonical (Q : KLimbPrimeMul)
 Composing §3 with `GenericFieldEmitValue.emitFieldBinop_realizes_value` gives the
 end-to-end statement: *running* the emitted `emitFieldBinop` program writes into
 `dest` a value that decodes to the field product
-`klimbDecode aVal * klimbDecode bVal` — with the *only* cross-prover residual now
+`klimbDecode aVal * klimbDecode bVal` — with the *only* cross-prover residual
 the narrowed limb-kernel fact (§2), the `ZMod`-value content supplied by
 `encMLK_mul_commutes`. -/
 

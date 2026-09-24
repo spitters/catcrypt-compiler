@@ -8,10 +8,10 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.ThirCTSafe
 
 /-!
-# D5: the reusable constant-time-by-construction trait
+# The reusable constant-time-by-construction trait
 
-This file is the **D5 phase** of the MLIR dialect-alignment restructure: the
-verification overlay's *constant-time-by-construction* trait.
+This module defines the verification overlay's *constant-time-by-construction*
+trait for the MLIR dialect alignment.
 
 The in-tree CT-by-construction mechanism — the `thir` front whose
 well-formedness *is* constant-time (`VIR.ThirCTSafe`), and more generally the
@@ -28,7 +28,7 @@ LowCT "no secret-dependent addressing" invariant — always has the same shape:
 the whole content is the soundness arrow `ctSafe t → publicLeakage (leakageOf t)`.
 That is the only thing every CT overlay shares, and it is enough to compose.
 
-We then **instantiate it on the real `thir` mechanism**: the load-bearing
+We then **instantiate it on the real `thir` mechanism**: the main
 instance wires
   * `ctSafe   := jComNoMem c = true`   (the THIR-front CT-by-construction
     invariant: the lowered Jasmin `Com` contains no memory op — see
@@ -37,7 +37,7 @@ instance wires
     the label context the program is linked under),
   * `publicLeakage ℓ := ∀ L, ℓ L = true`   (the leakage is public iff CT-safe
     under *every* labelling — the robust-CT reading), and
-  * `ct_sound := ThirCTSafe.noMem_ctSafeJasmin`   (the genuine, proven soundness
+  * `ct_sound := ThirCTSafe.noMem_ctSafeJasmin`   (the proven soundness
     lemma of the THIR front).
 
 So the abstraction is demonstrated by a real instance backed by the real proven
@@ -93,10 +93,10 @@ theorem ctSafe_leakage_public {T : Type} [ConstantTimeTrait T] (t : T)
     ConstantTimeTrait.publicLeakage (ConstantTimeTrait.leakageOf (T := T) t) :=
   ConstantTimeTrait.ct_sound t h
 
-/-! ## 3. The load-bearing instance: the THIR (`thir`) front CT mechanism
+/-! ## 3. The main instance: the THIR (`thir`) front CT mechanism
 
 We instantiate `ConstantTimeTrait` on Jasmin `Com`s — the targets of the THIR
-front's `lowerThir` — using the genuinely-proven no-memory-op invariant
+front's `lowerThir` — using the proven no-memory-op invariant
 `jComNoMem` and its soundness `noMem_ctSafeJasmin`. The instance is parametric
 in the binding context `Γ` and result type `t` of the `Com`; every `lowerThir`
 output is `ctSafe` here via `lowerThir_noMem`. -/
@@ -132,8 +132,8 @@ theorem lowerThir_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-- **Generic CT-by-construction for the THIR front via the trait.** Composing
     the abstract derived lemma `ctSafe_leakage_public` with the construction
     fact `lowerThir_ctSafe` recovers `lowerThir`'s robust constant-time
-    guarantee — its addressing leakage is public under every labelling — but now
-    routed entirely through the reusable D5 trait rather than the front-specific
+    guarantee — its addressing leakage is public under every labelling — routed
+    entirely through the reusable trait rather than the front-specific
     soundness lemma directly. Unfolding `publicLeakage`/`leakageOf` this is
     exactly `lowerThir_ctSafeJasmin`. -/
 theorem lowerThir_leakage_public {Γ : Ctxt jasminDialect} {t : JasminTy}

@@ -34,7 +34,7 @@ the op names re-pointed to the neutral `arith` op set (`.addi`/`.xori`/`.andi`/`
 * `denote = <expr>` reduces structurally (`arith_denote` / `unfold; rfl`), and the
   recognizable `_spec` (select true/false, `BitVec.sshiftRight`, the u32
   `setWidth`/`rotateLeft` ties, the AES S-box `= T[i]`) is the **same** `BitVec`
-  proof as the jasmin twin (`arithDenote` was *defined* equal to the jasmin image);
+  proof as the jasmin twin (`arithDenote` is *defined* equal to the jasmin image);
 * `ArithOK64` (mechanical) ⇒ `lowerArithToJasmin_ComOK` ⇒ the lowered jasmin kernel
   is `ComOK`, so it rides the existing `com_arm_e2e` / `com_riscv_e2e` emit;
 * `lowerArithToJasmin_denote` carries the spec down: the emitted code computes the
@@ -305,7 +305,7 @@ theorem add32ArithCom_denote (a b : BitVec 64) :
       = (b + a) &&& BitVec.ofNat 64 4294967295 := by
   simp only [add32ArithCom]; arith_denote
 
-/-- **Recognizable u32 `_spec`.** The masked-u64 add equals the genuine 32-bit add. -/
+/-- **Recognizable u32 `_spec`.** The masked-u64 add equals the 32-bit add. -/
 theorem add32ArithCom_spec (a b : BitVec 64) :
     Com.denote add32ArithCom (.cons a (.cons b .nil))
       = (a.setWidth 32 + b.setWidth 32).setWidth 64 := by
@@ -353,7 +353,7 @@ theorem xor32ArithCom_denote (a b : BitVec 64) :
       = (b ^^^ a) &&& BitVec.ofNat 64 4294967295 := by
   simp only [xor32ArithCom]; arith_denote
 
-/-- **Recognizable u32 `_spec`.** The masked-u64 xor equals the genuine 32-bit xor. -/
+/-- **Recognizable u32 `_spec`.** The masked-u64 xor equals the 32-bit xor. -/
 theorem xor32ArithCom_spec (a b : BitVec 64) :
     Com.denote xor32ArithCom (.cons a (.cons b .nil))
       = (a.setWidth 32 ^^^ b.setWidth 32).setWidth 64 := by
@@ -662,7 +662,7 @@ def aesSboxHead (n : Nat) : BitVec 64 :=
   else BitVec.ofNat 64 0x7b
 
 /-- **The non-vacuous correctness result.** For any public index `i < 4`, the emitted
-    constant-time gather computes the genuine table value `T[i] = AES S-box[i]`. -/
+    constant-time gather computes the table value `T[i] = AES S-box[i]`. -/
 theorem ctTableLookupArithCom_spec (i : BitVec 64) (h : i.toNat < 4) :
     Com.denote ctTableLookupArithCom (.cons i .nil) = aesSboxHead i.toNat := by
   rw [ctTableLookupArithCom_denote]

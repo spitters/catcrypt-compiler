@@ -166,7 +166,7 @@ def gpFreeSlots (pinned : GpAlloc) : Nat :=
 /-- `none` iff `allocGp` assigns every required name a distinct pool register;
     `some overflow` lists the names that `allocGp` would leave unmapped (because
     the free pool is exhausted), which `regOf` would then silently alias onto
-    `%rax` — the #380-class collision. A budget-aware emitter must check this is
+    `%rax`, a register collision. A budget-aware emitter must check this is
     `none` before trusting the rendered block. -/
 def allocOverflow {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) :
     Option (List String) :=
@@ -181,7 +181,7 @@ def allocOverflow {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) :
     `allocOverflow ≠ none`, i.e. the pool was exhausted) returns the explicit
     sentinel `<UNALLOCATED:n>` rather than silently aliasing onto a live `%rax`:
     the assembler then rejects the emitted text, so a budget overflow can never
-    pass as valid code (the #380 silent-`%rax`-alias bug). Callers that have
+    pass as valid code through a silent `%rax` alias. Callers that have
     verified `allocOverflow = none` never hit the sentinel. -/
 def regOf (alloc : GpAlloc) (n : String) : String :=
   (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")
@@ -439,7 +439,7 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
 def renderBlockBody {w : Nat} (alloc : GpAlloc) (block : List (JInstr w)) : List String :=
   block.map (renderJInstr alloc)
 
-/-! ## 2b. Spill-aware rendering (#416) — consume `SpillingRegAlloc.Slot` decisions
+/-! ## 2b. Spill-aware rendering — consume `SpillingRegAlloc.Slot` decisions
 
 The first-fit `allocGp` / `regOf` path above is non-spilling: on a body with more
 distinct names than the GP pool it leaves the overflow names unmapped and `regOf`
@@ -519,17 +519,17 @@ def mulxSrc1Reg : String := "%rdx"
 
     The model's `JInstr.mulx dh dl a b` reads `a` **by name** (`a.eval s`), so the
     gas realisation must put `a`'s value into the hardware `%rdx` that the `mulx`
-    encoding reads. The bare `renderJInstr` only *commented* `# src1=%rdx=a`,
-    silently assuming `a` was pinned to `%rdx`; under spilling RA that pin is gone,
-    so the materialisation must be explicit. An immediate `a` needs no move (it
+    encoding reads. The bare `renderJInstr` only *comments* `# src1=%rdx=a`,
+    assuming `a` is pinned to `%rdx`; spilling RA gives no such pin, so the
+    materialisation must be explicit. An immediate `a` needs no move (it
     cannot be a `mulx` src1 here).
 
-    **Pin-aware elision (#426).** When the pin-aware allocator already binds the
+    **Pin-aware elision.** When the pin-aware allocator already binds the
     multiplier `a` to `%rdx` (`SpillingRegAlloc.spillAllocPinned`), `regOf alloc r`
     is already `mulxSrc1Reg` and the move would be a redundant `movq %rdx, %rdx`.
     We elide it: `a`'s value is already live in `%rdx` (set once when the multiplier
-    name was loaded), exactly mirroring s2n's MULX schedule. This removes the per-
-    multiply `movq → %rdx` the #418 printer inserted for all 193 multiplies. The
+    name was loaded), exactly mirroring s2n's MULX schedule. This avoids a per-
+    multiply `movq → %rdx` on each of the 193 multiplies. The
     elision is semantics-preserving: a `movq %rdx, %rdx` writes `%rdx` the value it
     already holds, so dropping it leaves the hardware `mulx` reading the same src1. -/
 def mulxRdxSetup (alloc : GpAlloc) : JInstr 64 → List String
@@ -583,14 +583,14 @@ def renderLeafFn (name : String) (prologue bodyLines epilogue : List String) : S
   let footer := [ "\t.section .note.GNU-stack,\"\",@progbits" ]
   String.intercalate "\n" (header ++ prologue ++ bodyLines ++ epilogue ++ footer) ++ "\n"
 
-/-! ## 4. The System V AMD64 ABI layer (#464)
+/-! ## 4. The System V AMD64 ABI layer
 
-The per-kernel emitters (`Fe25519MulKernel.feMulAsm`, `BignumMontMulKernel.mul48Asm`,
-…) used to hand-write their prologue/epilogue: an unconditional `pushq` of every
-callee-saved register and a manual `movq %rdx, <reg>` to free `%rdx` for `MULX`.
-That glue was both **over-conservative** (it saved registers the body never
-touches) and **uncomputed** (no check that the saves match what the allocation
-actually clobbers, no stack-alignment discipline). This section is the owned
+A hand-written prologue/epilogue for the per-kernel emitters
+(`Fe25519MulKernel.feMulAsm`, `BignumMontMulKernel.mul48Asm`, …), an unconditional
+`pushq` of every callee-saved register plus a manual `movq %rdx, <reg>` to free
+`%rdx` for `MULX`, is both **over-conservative** (it saves registers the body
+never touches) and **uncomputed** (no check that the saves match what the
+allocation clobbers, no stack-alignment discipline). This section is the owned
 backend's principled System V AMD64 ABI layer: given a function *signature* (the
 ordered argument names + their class) and a register allocation, it computes the
 argument-register moves, the *minimal* callee-saved save/restore set (exactly the
@@ -598,7 +598,7 @@ callee-saved registers the allocation uses), and the 16-byte stack-alignment pad
 and emits the framed leaf with `renderLeafFn`.
 
 The ABI glue remains trusted scaffolding *outside* the `runBlock`-verified body —
-but it is now **derived from the allocation by a single function**, not copied by
+but it is **derived from the allocation by a single function**, not copied by
 hand per kernel, so the save set provably covers exactly the clobbered
 callee-saved registers and the alignment is computed, not assumed.
 
@@ -620,8 +620,8 @@ callee-saved registers and the alignment is computed, not assumed.
   single `movq %reg, -8*(i+1)(%rsp)` into the red zone and reload it on exit. This
   leaves `%rsp` untouched (so it stays the entry-aligned `≡ 8 (mod 16)`, fully
   ABI-conformant and re-callable), saves only the registers the body clobbers,
-  and is leaner than both the old `pushq`/`popq`+pad scaffold and jasmin's
-  `lea/and` realign idiom — closing the #466 `bignum_mul_4_8` prologue overhead.
+  and is leaner than both a `pushq`/`popq`+pad scaffold and jasmin's
+  `lea/and` realign idiom (the prologue overhead of `bignum_mul_4_8`).
   (A kernel containing a `call` is not a leaf and needs an `%rsp`-moving frame;
   the word kernels here never call.) -/
 
@@ -677,8 +677,8 @@ def intArgHome (i : Nat) : Option String := intArgRegs[i]?
     home this is still a single straight move because the allocator pins arguments
     to distinct registers (no overlap cycle); the canonical use is the `MULX`
     multiplier living in `%rdx` while the third pointer argument (also `%rdx` on
-    entry) is moved out to a free register — exactly the hand-written
-    `movq %rdx, <yreg>` the kernels used to write by hand. -/
+    entry) is moved out to a free register — the computed form of a hand-written
+    `movq %rdx, <yreg>`. -/
 def argMarshalMoves (alloc : GpAlloc) (args : List AbiArg) : List String :=
   let indexed := args.zipIdx
   indexed.filterMap (fun (a, i) =>
@@ -709,9 +709,9 @@ def redZoneSlotOff (i : Nat) : Int := -8 * (Int.ofNat i + 1)
     (`abiRestore`) is its exact mirror — the same slot offsets reloaded.
 
     This is the same red-zone save discipline the VIR Jasmin export already uses
-    for the callee-saved GPRs (`JasminLprogExport.abiSave*`); here it replaces the
-    heavier `pushq … ; subq $8` prologue that cost the owned `bignum_mul_4_8`
-    ~6% over jasmin (#466 finding #4). -/
+    for the callee-saved GPRs (`JasminLprogExport.abiSave*`); it avoids the
+    heavier `pushq … ; subq $8` prologue, which costs the owned `bignum_mul_4_8`
+    ~6% over jasmin. -/
 def abiSave (alloc : GpAlloc) : List String :=
   (usedCalleeSaved alloc).zipIdx.map (fun (r, i) =>
     "\tmovq " ++ r ++ ", " ++ toString (redZoneSlotOff i) ++ "(%rsp)")

@@ -54,12 +54,12 @@ shape (like secp256k1 / x25519): `(x·y) mod p`, validated against GMP `mod p`.
   so its machine leakage trace is state-independent (via
   `ConstantTimeCoverage.allDirect_constant_time`).
 * `sm2FieldMulAlloc_no_overflow`: the first-fit allocator maps every register
-  name to a distinct pool register (no silent `%rax`-alias, the #380 class).
+  name to a distinct pool register (no silent `%rax`-alias).
 * `sm2FieldMul_residue_eq_multiSolinas`: the residue the kernel computes —
   `(high·2^256 + low) % p_sm2`, the value the KAT pins byte-for-byte — equals
   `multiSolinasReduce multiSm2 high low`, tying the emit to the value-level
-  theorem (`ModReduceSelect.reduceSm2_eq_mod`), not merely cross-checking GMP.
-* `sm2FieldMul_kat_corners`: an in-Lean `runBlock` honesty gate — the generated
+  theorem (`ModReduceSelect.reduceSm2_eq_mod`) in addition to the GMP cross-check.
+* `sm2FieldMul_kat_corners`: an in-Lean `runBlock` corner-vector check — the generated
   block computes `(x·y) mod p_sm2` on the corner vectors `(p−1)²`,
   `(2^256−1)²`, and the SM2 generator-coordinate product `Gx·Gy`
   (GB/T 32918.5). This catches a wrong schedule before the external KAT; it is
@@ -162,7 +162,7 @@ The kernel reduces the 512-bit product `P = high·2^256 + low` (`high`,`low` the
 four-word halves, each `< 2^256`) to its residue mod `p_sm2`. The lemma below
 records, at the value level, that this residue is precisely the multi-term
 Solinas reduce proved correct in `ModReduceSelect` — i.e. the kernel realises
-`multiSolinasReduce multiSm2`, not merely "some" reduction. This is the SM2
+`multiSolinasReduce multiSm2` specifically. This is the SM2
 analogue of `P256FieldKernel.p256Kernel_residue_eq_multiSolinas`. The
 all-inputs byte-identity that the emitted instruction stream computes exactly
 `P mod p_sm2` is the external KAT (`bench/sm2_compare/sm2_field_kat.c`, vs
@@ -223,7 +223,7 @@ theorem sm2FieldMul_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ sm2FieldMul = blockLeak s₂ sm2FieldMul :=
   allDirect_constant_time sm2FieldMul sm2FieldMul_allDirect s₁ s₂
 
-/-! ## 7. In-Lean `runBlock` honesty gate (corner vectors — NOT the final gate)
+/-! ## 7. In-Lean `runBlock` corner-vector check (the byte KAT is separate)
 
 The generated schedule is executed by `runBlock` on corner inputs and compared
 against `(x·y) mod p_sm2` computed independently over `Nat`. Vectors: the
@@ -254,7 +254,7 @@ def sm2Gx : Nat := 0x32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334
 /-- The SM2 generator y-coordinate (GB/T 32918.5). -/
 def sm2Gy : Nat := 0xBC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0
 
-/-- **Corner-vector honesty gate on the generated schedule**: `(p−1)²`,
+/-- **Corner-vector check on the generated schedule**: `(p−1)²`,
     `(2^256−1)²`, and the generator product `Gx·Gy` all reduce correctly under
     `runBlock`. -/
 theorem sm2FieldMul_kat_corners :
@@ -283,8 +283,7 @@ def sm2FieldMulPinned : GpAlloc :=
 /-- First-fit allocation over the full block. -/
 def sm2FieldMulAlloc : GpAlloc := allocGp sm2FieldMulPinned sm2FieldMul
 
-/-- The allocation maps every name to a distinct pool register (no `%rax`-alias,
-    the #380 class). -/
+/-- The allocation maps every name to a distinct pool register (no `%rax`-alias). -/
 theorem sm2FieldMulAlloc_no_overflow :
     allocOverflow sm2FieldMulPinned sm2FieldMul = none := by native_decide
 

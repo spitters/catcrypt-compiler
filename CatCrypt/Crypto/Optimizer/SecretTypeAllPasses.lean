@@ -11,10 +11,10 @@ public import CatCrypt.Crypto.Optimizer.SecretTypeScheduler
 public import CatCrypt.Crypto.Optimizer.SecretTypeX86
 
 /-!
-# Compositional CT, consolidated: every committed pass is declassify-monotone (#594 capstone)
+# Compositional CT, consolidated: every committed pass is declassify-monotone
 
-This is the **capstone** of the #594 compositional-CT arc. The earlier files each
-proved, for one optimizer pass, that it never raises the program's overall
+This module consolidates the compositional-CT results. The per-pass modules each
+prove, for one optimizer pass, that it never raises the program's overall
 secrecy level (its taint summary). They live at three *different* program
 representations and so cannot be stated against a single Lean type:
 
@@ -188,7 +188,7 @@ any two same-representation passes compose to a declassify-monotone pass — whi
 is the formal meaning of "CT-preservation is a *compositional* typing invariant
 across all passes". -/
 
-/-- **The #594 capstone bundle.** Every committed optimizer pass is
+/-- **The all-passes bundle.** Every committed optimizer pass is
 declassify-monotone w.r.t. its representation's secrecy summary. The fields are
 the five committed per-pass facts (§2), recorded in the common
 `IsDeclassifyMonotone` shape. Parameterised over the `Com`-pass data (`Γ`, `t`,
@@ -217,10 +217,10 @@ structure AllPassesMonotone {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fun E b => blockMaxTaintX E.1 E.2 b)
     (fun b => CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline.optimizeX86Block b)
 
-/-- **The capstone bundle is inhabited: every committed pass is
+/-- **The all-passes bundle is inhabited: every committed pass is
 declassify-monotone.** Each field is exactly the corresponding committed lemma
 (via the §2 witnesses). This is the consolidated statement of "CT-preservation
-as a compositional typing invariant across all passes" (#594). -/
+as a compositional typing invariant across all passes". -/
 theorem allPassesMonotone {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (k : KEnv Γ) : AllPassesMonotone (Γ := Γ) (t := t) fuel k where
   peephole := peepCom_monotone

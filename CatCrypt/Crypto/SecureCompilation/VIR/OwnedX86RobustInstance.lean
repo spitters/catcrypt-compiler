@@ -181,7 +181,7 @@ def ownedJasminVerifiedCompiler (leafSem : LeafSem) :
 /-! ## 5. Capstone application: `jvc` discharged for the owned route
 
 The capstone `robustCompilation_source_to_x86` is applied with the owned instance,
-so the `jvc` hypothesis is no longer a free parameter. The conclusion holds; its
+so the `jvc` hypothesis is discharged rather than a free parameter. The conclusion holds; its
 value conjunct on the capstone's `extCall` programs is the definitional decode
 (`ownedX86Behaviour`), not the owned machine — the owned machine's guarantee is on
 the disjoint scalar fragment (`ownedX86_machine_realizes`). -/

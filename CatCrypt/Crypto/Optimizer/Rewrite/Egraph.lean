@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
-# Verified bounded equality-saturation rewrite engine for `Com` (#274, Pass 1)
+# Verified bounded equality-saturation rewrite engine for `Com`
 
 This is a structural `Com → Com` rewrite engine over the typed VIR
 `jasminDialect` (`CatCrypt/Crypto/SecureCompilation/VIR/JasminDialect.lean`),
@@ -45,7 +45,7 @@ this is the documented residual.
 Operating on `Expr jasminDialect Γ (.reg w)` with a per-position
 *known-constant environment* `KEnv` (which binders are `regConst`):
 
-* **mul-by-power-of-two → shift** (strength reduction, cf #152/#160):
+* **mul-by-power-of-two → shift** (strength reduction):
   `x * 2^k  ↦  x <<< k`.  Lemma: `mul_pow2_eq_shl`.
 * **mul-by-one → identity**: `x * 1 ↦ x` (move-collapse). Lemma `mul_one`.
 * **add-zero / xor-zero / or-zero → identity**: `x ⊕ 0 ↦ x`, etc.
@@ -417,7 +417,7 @@ with `rewriteExpr` (threading the known-constant env), descending into the body.
 saturation. Because each rewrite is confluent toward a normal form (collapse to
 `or`/`and`, never re-introducing a `mul`/`add`/`xor` that a rule fires on), one
 pass already reaches the local fixpoint for this rule set; the fuel bound is the
-honest cap (we do not prove global cost-minimality — the documented residual). -/
+cap (global cost-minimality is not proved). -/
 
 /-- Extend a known-constant env with the constant materialised by `e` (if any),
 mirroring the binder that `Com.var e body` introduces. -/
@@ -432,7 +432,7 @@ def rewriteCom {Γ : Ctxt jasminDialect} {t : JasminTy} :
   | .var e body, k => .var (rewriteExpr e k) (rewriteCom body (extendK e k))
 
 /-- The bounded equality-saturation engine: iterate `rewriteCom` `fuel` times.
-For this confluent rule set one pass suffices; the fuel bound is the honest cap
+For this confluent rule set one pass suffices; the fuel bound is the cap
 on iteration (no global-minimum claim). -/
 def saturateCom {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (c : Com jasminDialect Γ t) (k : KEnv Γ) :

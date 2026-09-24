@@ -28,8 +28,8 @@ produced by them.  They can only unroll an inner sweep straight-line.
 is a **recursive** `ComL (accTy :: .reg 64 :: invTys) accTy` — so one iteration may
 itself carry an inner loop NODE to arbitrary depth.  The node, its denotation, and
 its lowering (`forLoopBlockLcmd` → `comLLoopBodyWalk`, one body copy + real
-back-edges) already exist; what was missing is the **lowering that puts a nested
-LowCT loop into it**: a `LowCT → ComL.forLoopBlock` front whose outer arm emits an
+back-edges) are defined elsewhere; this module supplies the **lowering that puts a
+nested LowCT loop into it**: a `LowCT → ComL.forLoopBlock` front whose outer arm emits an
 inner loop node instead of unrolling.
 
 This module builds that lowering — `lowerNestedLoop` — and proves it denotes to the

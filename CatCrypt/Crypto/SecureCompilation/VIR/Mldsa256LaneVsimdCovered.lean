@@ -77,7 +77,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT)
 
 /-! ## 0. The 256-bit `VPMULHW` reference semantics (16 × `i16` signed high-multiply)
 
-`vpmulhw256W` is the genuine 256-bit AVX2 `VPMULHW`: 16 independent signed 16-bit
+`vpmulhw256W` is the 256-bit AVX2 `VPMULHW`: 16 independent signed 16-bit
 high-multiplies across the whole `ymm`, the natural extension of the 128-bit
 `vpmulhw16W` fold (8 lanes) to 16 lanes. Each lane `k` reads bits `[16k, 16k+16)`
 of both operands — no cross-lane dependency. -/
@@ -167,7 +167,7 @@ theorem mldsa256LaneVsimdCovered_denote :
 The 256-bit `VPMULHW` reference `vpmulhw256W` equals the concatenation of the two
 128-bit `vpmulhw16W` half-ops the front emits: the low 128 bits are `VPMULHW` on
 the low input halves, the high 128 bits are `VPMULHW` on the high input halves.
-This is the load-bearing lane-independence fact that makes the 128-bit re-sourcing
+This is the lane-independence fact that makes the 128-bit re-sourcing
 of the 256-bit op exact — `BitVec` `x ++ y` places `x` (here the high lane) in the
 top 128 bits. -/
 

@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
-# Poseidon2 lane bundles through the structured VectorDialect (task #275, pure reuse)
+# Poseidon2 lane bundles through the structured VectorDialect (pure reuse)
 
 The Poseidon2 BabyBear permutation, when lane-bundled across a 4-slot `__m256i`
 packed-u64 tile (`VIR/Poseidon2SimdReduce`), uses two lane-parallel phases:
@@ -25,7 +25,7 @@ packed-u64 tile (`VIR/Poseidon2SimdReduce`), uses two lane-parallel phases:
 This is **pure reuse** of the dialect alphabet (`add`/`mul`/`shiftR`) — no new
 op needed. This file pins the Poseidon2 lane-bundle meaning against the dialect
 ops and grounds its denotation in the proven `LaneMap.poseidon2_sbox_lane_map`
-keystone. All reused ops lower with proven denotation preservation
+theorem. All reused ops lower with proven denotation preservation
 (`lower_add_correct`, `lower_mul`-shape, `lower_shiftR_correct`).
 
 The existing Poseidon2 emit (`VIR/Poseidon2Emit` / `Poseidon2SimdReduce`) is
@@ -70,7 +70,7 @@ theorem add_denote (v w : VectorTy (BitVec 64) poseidon2LaneN) :
 /-! ## 3. The S-box `x^5` as a dialect `mul` chain (reuse)
 
 `x^5 = ((x·x)·(x·x))·x`. Each `·` is a pointwise `VectorOp.mul`. We pin the
-chain's per-lane denotation and ground it in the proven S-box keystone. -/
+chain's per-lane denotation and ground it in the proven S-box lane-map theorem. -/
 
 /-- The dialect `mul` op carrying `pmul` denotes the per-lane multiply. -/
 theorem mul_denote (v w : VectorTy (BitVec 64) poseidon2LaneN) :
@@ -79,7 +79,7 @@ theorem mul_denote (v w : VectorTy (BitVec 64) poseidon2LaneN) :
 
 /-- The lane-wise `x^5` S-box, written as the `mul`-chain `x²·x²·x` the dialect
     realizes, equals the scalar per-lane `x·x·x·x·x`. Grounded in the proven
-    `poseidon2_sbox_lane_map` keystone (per-slot independence). -/
+    `poseidon2_sbox_lane_map` theorem (per-slot independence). -/
 theorem sbox_denotation_preserves (state : VectorTy (BitVec 64) poseidon2LaneN) :
     poseidon2SBoxStub state =
       (fun i => let x := state i; x * x * x * x * x) :=
@@ -111,7 +111,7 @@ theorem fold_shr_denote (m : Nat) (v : VectorTy (BitVec 64) poseidon2LaneN) :
 
 /-- The Poseidon2 lane-bundle ops (`add` for the linear layer / RC-add / fold
     combine, `mul` for the S-box chain, `shiftR` for the fold shift) all lower
-    to proven per-lane scalar expansions (the dialect keystones at the
+    to proven per-lane scalar expansions (the dialect lowering theorems at the
     Poseidon2 lane instance). -/
 theorem poseidon2_ops_lower_correct (v w : VectorTy (BitVec 64) poseidon2LaneN) (m : Nat) :
     (lower (0 : BitVec 64) (.add padd v w)).map (·.denote)

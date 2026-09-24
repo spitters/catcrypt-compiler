@@ -24,8 +24,8 @@ are passed by the linked leaves (AUCurves / blst) **by pointer**, not by value.
 Lowering them through the per-word ABI surfaced `# UNHANDLED-OP CALL:<leaf>` in
 the printer (the `CALL:` mnemonic had no operand marshaling).
 
-This module adds the missing **orchestration-level array-ABI**: the gather/scatter
-glue around the now-landed `LEA`/`call` printer arms. For a straight-line `Com`
+This module defines the **orchestration-level array-ABI**: the gather/scatter
+glue around the `LEA`/`call` printer arms. For a straight-line `Com`
 whose every binding is an `.extCall` over `.stackArr` operands (the EC/pairing
 verifier-equation + MSM-term shape), `comToLfundefArrAbi` emits, per leaf call:
 
@@ -264,7 +264,7 @@ def emitSave (binBytes : List Nat) : Lcmd :=
     orchestration `Com` to a 2-pointer-SysV `Lfundef`: a `FRAME` directive sizing
     the scratch + saved-pointer frame, the save prologue, one gather/`call` per
     leaf, and the scatter epilogue. The body issues only `LEA`/`MOVQ`/`call`
-    (and the inert `FRAME`), all handled by the landed printer arms — no
+    (and the inert `FRAME`), all handled by the printer arms — no
     `UNHANDLED-OP`.
 
     `schedOffs` (call order) threads each leaf call's per-operand byte offsets
@@ -475,7 +475,7 @@ theorem savedPointerSlots_in_frame (frameBase : UInt64) (binBytes : List Nat)
 
 /-! ### 8.3 The framing-level memory-safety theorem (first-class citizen)
 
-We now state the array-ABI gather/scatter as a `RespectsFootprint` consumer of
+We state the array-ABI gather/scatter as a `RespectsFootprint` consumer of
 the **existing** `array64_preserved_by_disjoint_step` frame closure: if a step
 respects `arrAbiWriteFootprint` (the B4 obligation — the printed
 `LEA`/`MOVQ`/`call` body writes only the frame + the out-buffer) and the

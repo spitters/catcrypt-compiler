@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 /-!
 # A verified byte encoder for the x86 crypto-extension instruction families
 
-`ScalarEncoder.lean` (#438) byte-encodes the scalar GP-ALU `JInstr` set and
+`ScalarEncoder.lean` byte-encodes the scalar GP-ALU `JInstr` set and
 `Avx512Encoder.lean` the AVX-512 packed-integer EVEX subset. Neither covers the
 **crypto-extension instruction families** that several benched primitives emit:
 
@@ -38,14 +38,14 @@ construction below, auditable against the SDM, and:
 * **differentially** — each encoder output is pinned (`CryptoExtValidation.lean`)
   to the exact bytes `gas` produces for the same mnemonic.
 
-A *stronger* Sail-x86 decode round-trip (`decode (encode i) ≡ i`, as #444 did for
+A *stronger* Sail-x86 decode round-trip (`decode (encode i) ≡ i`, as proved for
 the GP-ALU forms) is **not possible** for these families' *byte encodings*: the
 ACL2/Sail-x86 model has no SHA-NI / VAES / GFNI / PCLMUL decode tables (the same
-ceiling #444 hit for MULX/ADCX/ADOX). The *byte encoders* here therefore stay at
-the **gas-pinned validation tier**, which is the honest status for them.
+limit applies to MULX/ADCX/ADOX). The *byte encoders* here therefore stay at
+the **gas-pinned validation tier**.
 
-The instruction *semantics* (value-level), by contrast, now do have a Sail-x86
-anchor: `model/cryptoext_spec.sail` (#492) transcribes the AES-NI / PCLMUL / GFNI
+The instruction *semantics* (value-level), by contrast, do have a Sail-x86
+anchor: `model/cryptoext_spec.sail` transcribes the AES-NI / PCLMUL / GFNI
 operations from the Intel SDM + FIPS 197 and `SailX86Lean.lean` proves the owned
 model reproduces them (`aesenc_eq_sail`, `clmul_eq_sail*`, `gf256_mul_eq_sail*`,
 …). That covers the *meaning* of the instructions; this module covers their

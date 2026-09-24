@@ -38,7 +38,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
 /-!
 # `feSub` end-to-end: the ascent leg welded to the emit leg, no free hypotheses
 
-This module closes the ascent-plan capstone for a real `feSub`-shape kernel
+This module proves the source→bytes ascent end to end for a real `feSub`-shape kernel
 `r := a - b` over a *closed* straight-line program (the two source words are
 first written as literals, then subtracted). Both legs of the pipeline are
 discharged with no leftover `Corres`/`RustExec` hypothesis:

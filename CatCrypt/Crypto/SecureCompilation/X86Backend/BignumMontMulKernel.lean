@@ -14,7 +14,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# s2n-bignum's `bignum_mul_4_8` fast idiom, lowered through the in-Lean x86 backend (#312)
+# s2n-bignum's `bignum_mul_4_8` fast idiom, lowered through the in-Lean x86 backend
 
 `BarrettButterflyKernel.lean` is the first full hot kernel lowered end-to-end
 through the in-Lean x86 backend, but it is a *scalar* (MOV/IMUL/SHR/SUB/…) body.
@@ -50,10 +50,10 @@ routing, same zero-extend folds at the end of each row, **and** the same
 memory-operand `MULX`. The backend's `mulxMem` arm (`JasminModel.JInstr.mulxMem`)
 reads the multiplicand straight from `[x + 8·i]` — `mulxq 8i(%rsi), %dstLo,
 %dstHi`, exactly s2n's `mulxq 8*\arg2(x), %rax, %rbx` — with no separate
-multiplicand load. The earlier `loadMem`-based emit (commit bb7ffcb5) needed one
-extra `movq 8i(%rsi), %r..` per product (16 total) because the reg-operand `mulx`
-could not fold the read; the memory-operand form (#314) closes that residual, so
-the emitted stream now matches s2n's exactly.
+multiplicand load. A `loadMem`-based emit needs one extra
+`movq 8i(%rsi), %r..` per product (16 total) because the reg-operand `mulx`
+cannot fold the read; with the memory-operand form the emitted stream matches
+s2n's exactly.
 
 ## What is proved here
 
@@ -70,7 +70,7 @@ The full value identity — the eight stored words, read as a little-endian 512-
 integer, equal `x * y` — is the all-inputs 4×4 product. As an in-Lean close it is
 either a 512-bit `bv_decide` SAT instance or a single `omega` over the DECARRY
 system (measured non-terminating within 600 s; the file's >5400 s wall), both
-infeasible. Per REV-12 it is gated end-to-end by
+infeasible. It is therefore gated end-to-end by
 the GMP + s2n cross-check KAT in `bench/s2n_montmul_compare/` (20000 random +
 corner vectors), the standard gate for these word kernels.
 
@@ -81,7 +81,7 @@ is `Com (x86Dialect 64) → runBlock → evalInstr`, the faithful transcription 
 Jasmin's Rocq x86 semantics (`x86_MULX_lo_hi`/`x86_ADCX`/… , validated in
 `TranslationValidation.lean`); `AsmPrinter` + `gas` is the thin syntactic trust
 boundary, and the System-V leaf prologue/epilogue is trusted ABI scaffolding
-outside the verified body. No `sorry`; axioms are `[propext, Quot.sound,
+outside the verified body. All goals closed; axioms are `[propext, Quot.sound,
 Lean.ofReduceBool]` (the last for the `native_decide` numeric/shape pins).
 -/
 
@@ -124,8 +124,8 @@ def mul48Block : List (JInstr 64) :=
   [ -- clear CF/OF for the first chain *and* materialise the zero register: a
     -- single `xor zr, zr` both zeroes `zr` and clears the carry/overflow flags,
     -- so no preceding `mov $0, zr` is needed (the redundant zeroing jasmin's
-    -- pipeline also omits — it cost a wasted instruction on the critical path
-    -- before the first ADCX chain, #511).
+    -- pipeline also omits — it costs a wasted instruction on the critical path
+    -- before the first ADCX chain).
     .xor_ "zr" (.reg "zr")
     -- ── Row 0 (multiplier y0) ───────────────────────────────────────────────
   , .loadMem "yd" "y" 0
@@ -244,7 +244,7 @@ The fully-general `∀ limbs, outProduct = x*y` is a 256×256→512 bignum-multi
 identity; discharging it in Lean would either bit-blast ~16 64×64 partial
 products into one 512-bit SAT instance (`bv_decide`) or feed the DECARRY system
 to `omega` (measured non-terminating within 600 s — see §4d), both infeasible.
-Per REV-12, the general product correctness is established at runtime by the KAT in
+The general product correctness is established at runtime by the KAT in
 `bench/s2n_montmul_compare/` against GMP and s2n-bignum's own `bignum_mul_4_8`
 over random + corner inputs — the standard gate for these word kernels. -/
 
@@ -273,7 +273,7 @@ def mul48Computes (x0 x1 x2 x3 y0 y1 y2 y3 : BitVec 64) : Prop :=
   outProduct (finalState x0 x1 x2 x3 y0 y1 y2 y3)
     = fromLimbs x0 x1 x2 x3 * fromLimbs y0 y1 y2 y3
 
-/-! **Value semantics (REV-12 externalized).** The block's all-inputs functional
+/-! **Value semantics (externalized).** The block's all-inputs functional
 correctness (`outProduct = x·y`) is gated end-to-end by the external byte-identity
 KAT (`bench/s2n_montmul_compare`, GMP + s2n over 20000 random + corner vectors).
 The in-Lean side provides the algebraic ingredients in the `BignumCarryDecomp`
@@ -337,7 +337,7 @@ output word as the expected closed `wumul`/`waddcarry` carry-chain form.
   (eleven carry-chain nodes blended with the `2^64` radix literals; the file's
   >5400 s elaboration wall). The `set`+`clear_value`
   abstraction and generalizing the radix to an opaque `B` do not bring it under
-  budget. Per REV-12 the value close is **externalized** to the GMP + s2n KAT
+  budget. The value close is **externalized** to the GMP + s2n KAT
   (`bench/s2n_montmul_compare/mul48_compare.c`), which is the standard gate for
   these word kernels and already cross-checks the *emitted* 4-limb kernel over
   20000 random + corner vectors.
@@ -347,7 +347,7 @@ The 4-limb `mul48Block` reuses the identical forward-step discipline
 all-inputs value close is the same shape at ~4× the node count — likewise gated
 by the KAT above rather than an even-larger `omega`. -/
 
-/-! ### 4c. The forward generalize-driven all-inputs proof (SB-4b, #333)
+/-! ### 4c. The forward generalize-driven all-inputs proof
 
 The all-inputs functional correctness is proved by a *forward* symbolic
 execution that keeps the symbolic state small at every step. The naive
@@ -404,14 +404,14 @@ an opaque prior state in a single `simp only` pass — no `native_decide`, no
 `bv_decide`, no `whnf` blowup (each word reduces in ~0.5 s; see the witnesses
 below). The 4-limb kernel reuses the identical step discipline (§4e).
 
-**Value-correctness gate (REV-12).** The all-inputs *arithmetic* close —
-`Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)` — was a single `omega` over the DECARRY system
-(`c0..c6` + `d00..d11` + `schoolbook_eq_mul2`). Measured, that `omega` does **not**
-terminate within 600 s (the file's >5400 s elaboration wall): the carry-chain
+**Value-correctness gate.** For the all-inputs *arithmetic* close —
+`Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)` — a single `omega` over the DECARRY system
+(`c0..c6` + `d00..d11` + `schoolbook_eq_mul2`) does **not**
+terminate within 600 s (measured; >5400 s elaboration for the file): the carry-chain
 projection atoms blended with the `2^64` radix literals make the linear system superlinear for `omega`, and the
 abstraction tricks (`set` + `clear_value`, generalizing the radix to an opaque
 `B`) either don't shrink the cost or drop the `B·B` weight relation `omega`
-needs. Per REV-12, this heavy value-arithmetic close is **externalized**: the
+needs. This heavy value-arithmetic close is therefore **externalized**: the
 emitted kernel's full 256×256→512 product correctness is gated end-to-end by the
 GMP + s2n cross-check KAT in `bench/s2n_montmul_compare/mul48_compare.c` (20000
 random + corner vectors per run). What stays *in Lean* is (a) the
@@ -496,10 +496,10 @@ macro "step_mul24" : tactic =>
     the same way for every output word; the remaining stored words reduce to the
     analogous dual-chain `waddcarry` accumulations.
 
-    The all-inputs *value* identity (`Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)`) was a
-    single `omega` over the DECARRY system; measured, that `omega` does not
-    terminate within 600 s (the file's >5400 s wall),
-    so per REV-12 the kernel's product correctness is gated externally by the
+    For the all-inputs *value* identity (`Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)`), a
+    single `omega` over the DECARRY system does not terminate within 600 s
+    (measured),
+    so the kernel's product correctness is gated externally by the
     GMP + s2n cross-check KAT in `bench/s2n_montmul_compare/mul48_compare.c`. -/
 theorem twolimb_z0' : (finalState2 x0 x1 y0 y1).load "z" 0 = (wumul y0 x0).2 := by
   step_mul24
@@ -569,7 +569,7 @@ attribute [local irreducible] evalInstr runBlock
 
 /-- **The forward driver tames the full 64-instruction trace.** `z[0]` of the
     4-limb kernel resolves to the low half of `x0·y0` — the same single-pass
-    forward stepping as the 2-limb stone, now over all 63 instructions, with no
+    forward stepping as the 2-limb case, over all 63 instructions, with no
     `whnf` blowup (the scoped `irreducible evalInstr` above is what keeps it
     linear). -/
 theorem mul48_z0 : (finalState x0 x1 x2 x3 y0 y1 y2 y3).load "z" 0 = (wumul y0 x0).2 := by
@@ -612,7 +612,7 @@ def mul48Args : List AbiArg :=
     first-fit allocation binds (`abiSave` + 16-byte alignment pad) then marshals the
     third pointer argument out of `%rdx`; the epilogue restores them and returns.
     The body is `runBlock`-verified; the ABI glue is trusted scaffolding outside it,
-    now *derived from the allocation* rather than hand-written. -/
+    *derived from the allocation* rather than hand-written. -/
 def mul48Asm : String :=
   renderSysVLeafFn "bignum_mul_4_8_x86_from_lean" mul48Alloc mul48Args mul48AsmBody []
 

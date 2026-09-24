@@ -13,20 +13,20 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# P-256 field-multiply kernel, lowered through the in-Lean x86 backend (#407)
+# P-256 field-multiply kernel, lowered through the in-Lean x86 backend
 
-`ModReduceSelect.lean` §10–11 (#403) proved the *value-level* multi-term Solinas
+`ModReduceSelect.lean` §10–11 proves the *value-level* multi-term Solinas
 reduce `multiSolinasReduce multiP256` computes the P-256 residue
-`(high·2^256 + low) % p256` for `p256 = 2^256 − 2^224 + 2^192 + 2^96 − 1`. That
-landed the correctness skeleton (iterated fold + two conditional subtracts) but
-did **not** emit an x86 kernel. This module emits the kernel.
+`(high·2^256 + low) % p256` for `p256 = 2^256 − 2^224 + 2^192 + 2^96 − 1`
+(iterated fold + two conditional subtracts) and emits no x86 kernel. This
+module emits the kernel.
 
 ## The reduce emitted, and why the §8.1/§12 idiom does not transcribe
 
 The single-`mov yd,$c` + `MULX` fold idiom of §8.1 (secp256k1) / §12 (Goldilocks)
 folds the high half by a constant `c` that fits a 64-bit immediate. For P-256
 `c = 2^224 − 2^192 − 2^96 + 1 ≈ 2^224` does **not** fit 64 bits, so that idiom
-does not transcribe — the precise reason #403 left the kernel as named work. The
+does not transcribe. The
 realisation here is the classic NIST/FIPS-186-4 Solinas reduction: the fold `q·c`
 needs **no multiply**, because every term of `c` is a pure power of two
 (`multiP256.terms = [−2^224, +2^192, +2^96, −1]`). The eight 64-bit product words
@@ -67,10 +67,10 @@ slot), exactly as `Fe25519MulKernel` recovers a slot via `zr`→`%rbp`.
 ## What is proved / gated here
 
 * `p256MulAlloc_no_overflow`: the first-fit allocator maps every register name to
-  a distinct pool register (no silent `%rax`-alias, the #380 class).
+  a distinct pool register (no silent `%rax`-alias).
 * `p256Kernel_residue_eq_multiSolinas`: the residue the kernel computes —
   `(high·2^256 + low) % p256`, the value the KAT pins byte-for-byte — equals
-  `multiSolinasReduce multiP256 high low`, tying the emit to #403's value-level
+  `multiSolinasReduce multiP256 high low`, tying the emit to the value-level
   theorem (`ModReduceSelect.reduceP256_eq_mod`), rather than cross-checking GMP.
 * The all-inputs byte-identity that the emitted instruction stream computes
   `(x·y) mod p256` is the external KAT (`bench/p256_fieldmul_compare`, vs GMP
@@ -213,7 +213,7 @@ def p256Limbs : List Nat :=
     `m & p256[i]` are precomputed into the term scratch slot `termOff` **before**
     the add chain (the `and`s would otherwise clear `CF` mid-chain), then a single
     uninterrupted four-word ADD/ADC chain (+ carry into the sign word) folds them
-    in. `termOff` is the (now-dead) per-term scratch. -/
+    in. `termOff` is the (unused) per-term scratch. -/
 def condAddP (accOff termOff : Nat) : List (JInstr 64) :=
   [ .loadMem "hi" "sp" (accOff+32), .mov "y" (.reg "hi"), .sar "y" (.imm 63)   -- y = mask
   , .mov "lo" (.imm (p256Limbs[0]!)), .and_ "lo" (.reg "y"), .storeMem "sp" termOff (.reg "lo")
@@ -334,25 +334,26 @@ theorem p256MulBlock_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ p256MulBlock = blockLeak s₂ p256MulBlock :=
   allDirect_constant_time p256MulBlock p256MulBlock_allDirect s₁ s₂
 
-/-! ## 6. Value tie to #403's multi-term Solinas theorem
+/-! ## 6. Value tie to the multi-term Solinas theorem
 
 The kernel reduces the 512-bit product `P = high·2^256 + low` (with `high`,`low`
 the four-word halves, each `< 2^256`) to its residue mod
 `p256 = 2^256 − 2^224 + 2^192 + 2^96 − 1`. The all-inputs byte-identity that the
 emitted instruction stream computes exactly `P mod p256` is the external KAT
 (`bench/p256_fieldmul_compare`, vs GMP). The lemma below records, at the value
-level, that *that residue* is precisely the multi-term Solinas reduce #403 proved
-correct — i.e. the kernel realises `multiSolinasReduce multiP256`, rather than
+level, that *that residue* is precisely the multi-term Solinas reduce proved
+correct in `ModReduceSelect` — i.e. the kernel realises
+`multiSolinasReduce multiP256`, rather than
 "some" reduction. This is the P-256 analogue of §7's
 `fusedReduce_at_25519_eq_feMulReduce` value tie. -/
 
 open CatCrypt.Crypto.Optimizer.ModReduceSelect (multiSolinasReduce multiP256 reduceP256_eq_mod)
 
-/-- **The kernel's residue is #403's multi-term Solinas reduce.** For well-formed
+/-- **The kernel's residue is the multi-term Solinas reduce.** For well-formed
     product halves (`high, low < 2^256`), the residue the emitted P-256 kernel
     computes — `(high·2^256 + low) % p256`, the value the KAT pins byte-for-byte —
     equals `multiSolinasReduce multiP256 high low`, the iterated-fold reduce proved
-    correct in `ModReduceSelect.reduceP256_eq_mod` (#403). The emit is thus tied to
+    correct in `ModReduceSelect.reduceP256_eq_mod`. The emit is thus tied to
     the verified value-level theorem, not just cross-checked against GMP. -/
 theorem p256Kernel_residue_eq_multiSolinas {high low : Nat}
     (hh : high < 2 ^ 256) (hl : low < 2 ^ 256) :

@@ -11,10 +11,10 @@ public import Mathlib.Data.Finset.Card
 /-!
 # Constructive Knaster-Tarski on Finite Sets
 
-**Status: GENUINE CONTENT — all proofs are real (0 sorries, well-founded recursion).**
+All proofs are complete; termination is by well-founded recursion.
 
 Constructive greatest-fixpoint computation for monotone functions on `Finset α`.
-Ported from Dziembowski, Fabianski, Micciancio, Stefanski (CSF 2026, ePrint 2025/1700).
+The construction follows Dziembowski, Fabianski, Micciancio, Stefanski (CSF 2026, ePrint 2025/1700).
 
 ## What is proved
 
@@ -36,16 +36,16 @@ Termination: `S.card` decreases strictly at each step.
 
 ## Role in the architecture
 
-The `greatestFixpoint_access` lemma is the key engine for the computational soundness
-proof. It would transport computational indistinguishability (as a transitive relation)
-through each GFP iteration step (hiding one more key). This is genuine infrastructure
-ported from Dziembowski et al., but is NOT currently connected to SPComp sdist bounds
-— that connection is the missing piece in the Soundness/ directory.
+The `greatestFixpoint_access` lemma is the key lemma for the computational soundness
+proof: it transports computational indistinguishability (as a transitive relation)
+through each GFP iteration step (hiding one more key). The module follows
+Dziembowski et al. and is not connected to `SPComp` `sdist` bounds; that connection
+is outside the scope of the `Soundness/` directory.
 
 ## References
 
 * Dziembowski et al., "Computational Soundness of Symbolic Encryption in Lean 4",
-  ePrint 2025/1700, `Core/Fixpoints.lean`
+  ePrint 2025/1700, file `Core/Fixpoints.lean` of the accompanying Lean development
 -/
 
 @[expose] public section

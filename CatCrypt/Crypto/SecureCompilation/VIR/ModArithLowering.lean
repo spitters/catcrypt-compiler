@@ -9,20 +9,19 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 
 /-!
-# ModArith lowering (#482-1) — the L2 → {Vector | LowCT} step
+# ModArith lowering — the L2 → {Vector | LowCT} step
 
 The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
-    ModArith → {Vector  if redundant-limb-vectorizable (#442)
+    ModArith → {Vector  if redundant-limb-vectorizable
               | LowCT/Com scalar otherwise}
 
-proven **denotation-preserving** and **CT-preserving**. This is the step that
-resolves the dialect gate that blocked pairing/bignum owned register-allocation
-and caused the #440 carry tax: the carry/widening ops (`mulHi`/`addCarry*`) now
-have a typed home (`ModArithDialect`), and their lowering target is selected by
-the **#442 redundant-limb rule** rather than re-decided per primitive.
+proven **denotation-preserving** and **CT-preserving**. The carry/widening ops
+(`mulHi`/`addCarry*`), which pairing/bignum owned register allocation needs, have
+a typed home (`ModArithDialect`), and their lowering target is selected by the
+**redundant-limb rule** rather than re-decided per primitive.
 
-## The #442 redundant-limb routing rule
+## The redundant-limb routing rule
 
 Only **pseudo-Mersenne / Solinas** primes (low-Hamming-weight, e.g.
 `2^255 − 19`, the NIST P-curves) admit the *redundant-limb representation* that
@@ -34,8 +33,7 @@ multiply is an inherently sequential CIOS carry chain, so it lowers to the
 
 This is the single home of the routing decision: `vectorizable p` below. The
 Vector dialect's own lowering (`MLIR/VectorDialect/Lowering.lean`) is *gated by
-this same predicate* (per the plan's "Vector: …gated by the redundant-limb rule
-(#442)" row), so the choice is made once, at L2, not rediscovered.
+this same predicate*, so the choice is made once, at L2, not rediscovered.
 
 ## What is proven here
 
@@ -66,7 +64,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 
-/-! ## 1. The #442 redundant-limb routing predicate
+/-! ## 1. The redundant-limb routing predicate
 
 `vectorizable p` is `true` exactly for the pseudo-Mersenne / Solinas primes that
 admit the redundant-limb (reduced-radix) representation. We model the predicate
@@ -81,7 +79,7 @@ canonical generic counterexample (Pasta/BN254 base) discharged below. -/
     iff it is a pseudo-Mersenne / Solinas prime: `p = 2^k − c` for a small `c`
     (low Hamming weight). We expose the structural witness `(k, c)` so the
     predicate is checkable per prime; `c ≤ bound` keeps the inter-lane carry
-    bounded (the #442 condition). The default `bound` is `2^32` (covers
+    bounded (the redundant-limb condition). The default `bound` is `2^32` (covers
     `2^255−19`, the NIST Solinas primes; excludes the dense generic primes whose
     nearest power-of-two distance is `≈ p`). -/
 def vectorizable (p : Nat) : Prop :=
@@ -102,7 +100,7 @@ theorem vectorizable_25519 : vectorizable (2 ^ 255 - 19) := by
 
 /-! ## 2. The routing target -/
 
-/-- The lowering target the #442 rule selects for a ModArith op at modulus `p`:
+/-- The lowering target the redundant-limb rule selects for a ModArith op at modulus `p`:
 
     * `vector` — the redundant-limb SIMD path (Vector dialect), chosen when
       `vectorizable p`;
@@ -141,7 +139,7 @@ noncomputable def routeOf (op : ModArithOp) : LowerTarget :=
 
 /-- The Barrett-reduce / generic CIOS ops at a non-vectorizable prime route to
     `scalar` — the L2 statement of "Pasta/BN254 base lower to ModArith→LowCT
-    scalar instead" (the #442 row of the plan). Stated as: if the modulus is not
+    scalar instead". Stated as: if the modulus is not
     vectorizable, the route is `scalar`. -/
 theorem routeOf_scalar_of_not_vectorizable (op : ModArithOp) (p : Nat)
     (hp : op.modulus? = some p) (hv : ¬ vectorizable p) :
@@ -205,7 +203,7 @@ theorem lower_denote_montMul {p : Nat} (rInv a b : ZMod p)
   subst ha hb; rfl
 
 /-- Specialised to the widening `mulHi`: the scalar route realises exactly the
-    owned x86 model's `mulHi` — the #477 op lowered to its kernel function with
+    owned x86 model's `mulHi` — the widening op lowered to its kernel function with
     no value change. -/
 theorem lower_denote_mulHi {w : Nat} (a b : BitVec w)
     (args : HVector (fun (t : ModArithTy) => ⟦t⟧)
@@ -249,7 +247,7 @@ theorem lower_ctSafeCom_preserved {Γ : Ctxt modArithDialect} {t : ModArithTy}
     ctSafeCom c = true ∧ (∀ op : ModArithOp, (routeOf op).ctSafe = true) := by
   exact ⟨ctSafeCom_all c, fun op => LowerTarget.ctSafe_all _⟩
 
-/-! ## 5. Smoke test: the routing decision is the #442 rule
+/-! ## 5. Smoke test: the routing decision is the redundant-limb rule
 
 `montMul` at `2^255−19` routes to `vector` (redundant-limb); at a generic
 non-vectorizable prime it routes to `scalar`. We check the second on a small

@@ -21,7 +21,7 @@ This module is the **Poly-dialect** analogue of `RelationalCompileHigh.lean`
 extension-tower op set (`FieldOp`), this engine assembles the same proofs over
 the **polynomial-ring op set** (`PolyDialect.PolyOp`: `ntt`/`intt`/`basemul`/
 `polyAdd`/`polySub`/`polySMul`/`nttMul`), whose denotation is the abstract
-polynomial-ring value (the genuine CompPoly NTT operations over
+polynomial-ring value (the CompPoly NTT operations over
 `CPolynomial (ZMod q)` / `Array (ZMod q)`).
 
 This unlocks the largest *authorable* crypto family: the lattice NTT kernels
@@ -41,7 +41,7 @@ instantiation. The Poly engine below is therefore the **same** De-Bruijn
 valuation-threading layer, re-instantiated at `polyDialect`:
 
 * `PView Γ := Ctxt.Valuation Γ` — the abstract machine state is the valuation
-  (now of polynomial-ring values).
+  (of polynomial-ring values).
 * `PStateStep Γ Δ := PView Γ → PView Δ` — a step pushes the poly value computed
   by one op.
 * `PRefines spec frag` says the CPS fragment `frag` denotes its continuation
@@ -77,7 +77,7 @@ authored through the **FieldDialect** engine (`RelationalCompileHigh.bindOp`/
 denotes to the abstract butterfly spec `ctButterfly`, with a SMALL `#eval`-safe
 single-residue check.
 
-This split is the honest architecture: the Poly engine refines whole-NTT
+The architecture splits as follows: the Poly engine refines whole-NTT
 *polynomial-ring* programs; the butterfly is the *scalar leaf* below them,
 authored at the field level. The two engines share the same dialect-polymorphic
 substrate.
@@ -216,7 +216,7 @@ Input context `Γ₀ = [polyC q n, polyC q n]` holding `a, b` at De Bruijn indic
 `0, 1`. We (1) build it with the engine's `bindOp`, (2) show it refines the
 composite poly-op state-step assembled from `polyOp`+`seq`, and (3) prove the
 program denotes exactly to `intt (basemul (ntt a) (ntt b))` (= `realNttMul`,
-the genuine negacyclic ring product the dialect ties to convolution). -/
+the negacyclic ring product the dialect ties to convolution). -/
 
 namespace NttMulDemo
 
@@ -277,7 +277,7 @@ theorem nttMulFrag_refines (q n : Nat) :
 
 /-- **Closed-form denotation lemma.** On coefficient-form inputs `a, b`, the
     relationally-compiled program denotes exactly the NTT round-trip
-    `intt (basemul (ntt a) (ntt b))` — i.e. the genuine negacyclic ring product
+    `intt (basemul (ntt a) (ntt b))` — i.e. the negacyclic ring product
     `realNttMul` (CompPoly's `fastMulImpl`), the value the dialect's
     `nttMul_negacyclic_coeff` ties to the explicit negacyclic convolution. This
     is the deep tie: authoring the rewrite through the engine yields exactly the

@@ -28,9 +28,8 @@ inputs never enter the definition.
   predicate is the proposition that the program's leakage is fixed by the program
   structure alone.
 * `Com.leakTrace_input_independent` — the raw structural fact: for any two input
-  contexts, `Com.leakTrace c` is the same `LeakTrace`. This is the meaningful
-  content of "input-independent"; it holds by `rfl` precisely because
-  `Com.leakTrace` is valuation-free.
+  contexts, `Com.leakTrace c` is the same `LeakTrace`; it holds by `rfl`
+  because `Com.leakTrace` is valuation-free.
 * `Com.all_com_ct` — **every** straight-line dialect program is constant-time,
   proved natively.
 * `Com.isConstantTime_of_translatable` — every dialect program (in particular any
@@ -43,7 +42,7 @@ With `Com.all_com_ct` the dialect leak/CT view is self-contained: the statement
 "the `catCryptDialect` program leaks input-independently" is a theorem about
 `catCryptDialect` alone, with no separate leakage IR in scope.
 
-**0 axioms**, **0 sorries**.
+**0 axioms**; all goals closed.
 -/
 
 @[expose] public section
@@ -63,8 +62,8 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
     trace `Com.leakTrace c` is the same `LeakTrace` for any two input contexts
     `V₁ V₂ : HVec Γ`.
 
-    This is the meaningful "constant-time" content stated without the `CProg`
-    detour. It holds by `rfl`: `Com.leakTrace` (from `CryptoDialectLeakTrace`)
+    The statement is the reflexive equation `Com.leakTrace c = Com.leakTrace c`
+    and holds by `rfl`: `Com.leakTrace` (from `CryptoDialectLeakTrace`)
     takes no valuation argument at all — it recurses purely over the
     `Com.ret`/`Com.var` skeleton — so neither side can mention `V₁` or `V₂`. The
     leakage is therefore a function of the program structure alone. -/
@@ -80,20 +79,17 @@ theorem Com.leakTrace_input_independent {Γ : Ctx} {t : CryptoTy}
     context entry: for every value of that secret and every remaining input
     context, the leak trace is unchanged.
 
-    Mirrors `SSALeakage.isConstantTime` (the `CProg` version) one-for-one, but is
-    stated entirely on `Com catCryptDialect` with no `CProg` in sight. Since
-    `Com.leakTrace` is valuation-free, the body is the input-independence
-    statement for the dialect program. -/
+    Since `Com.leakTrace` is valuation-free, the body is the reflexive equation
+    `Com.leakTrace c = Com.leakTrace c`, so the predicate holds of every program. -/
 def Com.isConstantTime {secret : CryptoTy} {Γ : Ctx} {t : CryptoTy}
     (c : Com catCryptDialect (secret :: Γ) t) : Prop :=
   ∀ (_s₁ _s₂ : secret.denote) (_V : HVec Γ),
     Com.leakTrace c = Com.leakTrace c
 
 /-- **Every straight-line dialect program is constant-time (native).** Proved
-    directly from the valuation-freedom of `Com.leakTrace` — no `CProg`, no
-    `all_cprog_ct`, no transport across `toVIRComT`. This is the native analogue
-    of `all_cprog_ct`: constant-time is structural in this dialect because there
-    is no data-dependent branching and the leak trace ignores all inputs. -/
+    directly from the valuation-freedom of `Com.leakTrace`: constant-time is
+    structural in this dialect because there is no data-dependent branching and
+    the leak trace ignores all inputs. -/
 theorem Com.all_com_ct {secret : CryptoTy} {Γ : Ctx} {t : CryptoTy}
     (c : Com catCryptDialect (secret :: Γ) t) :
     Com.isConstantTime c :=
@@ -104,7 +100,7 @@ theorem Com.all_com_ct {secret : CryptoTy} {Γ : Ctx} {t : CryptoTy}
 /-- Every straight-line dialect program is constant-time. This holds for *every*
     `Com catCryptDialect` program — in particular for any that arose by
     translation from a front-end IR — as an instance of the native
-    `Com.all_com_ct`, with no CryptoSSA leak trace or transport in scope. -/
+    `Com.all_com_ct`. -/
 theorem Com.isConstantTime_of_translatable {secret : CryptoTy} {Γ : Ctx}
     {t : CryptoTy} (c' : Com catCryptDialect (secret :: Γ) t) :
     Com.isConstantTime c' :=

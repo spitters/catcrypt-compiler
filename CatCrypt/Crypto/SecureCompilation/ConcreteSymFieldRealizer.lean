@@ -25,7 +25,7 @@ This module makes those sections **concrete and proved**, mirroring
 `decodeP_encodeP` proved for all inputs, then an UNCONDITIONAL realization).  We
 exhibit, for AES and for field add/mul:
 
-* a genuine `RustVal .TFp = JArray 48 = Fin 48 → BitVec 8` byte carrier with a
+* a concrete `RustVal .TFp = JArray 48 = Fin 48 → BitVec 8` byte carrier with a
   concrete `encode`/`decode` pair (no constructor-wrapping of a function, no
   `axiom`), and
 * a **proved** round-trip `decode (encode x) = x` for **all** inputs (the
@@ -48,17 +48,17 @@ exhibit, for AES and for field add/mul:
   `width` bytes back base-256 mod `q`.  The round-trip is the base-256
   digit-reconstruction fact, valid whenever `q < 2^(8·width)`.
 
-## HONEST scope — what this proves and what it does NOT
+## Scope — what this proves and what it does NOT
 
 * **Proved (unconditional Lean theorem):** there are *concrete*, round-trip
   -verified byte codecs and *concrete*, spec-computing realizer `LeafSpec`s under
   which the AES / field-add / field-mul row realizations hold for **all** inputs
   — strictly stronger than *assuming* a KAT, because the byte-level
   decode-equals-spec fact is a theorem here, not a test vector.
-* **NOT proved (the remaining residual):** that the *jasmin-emitted machine bytes*
+* **NOT proved (outside the scope):** that the *jasmin-emitted machine bytes*
   of the real AES / field-op kernels equal these realizers.  That equality —
   actual emitted assembly ≡ the realizer `LeafSpec` — is the owned-machine-code
-  route and is a separate follow-up.  This file removes the *encoding* KAT (the
+  route, outside this module.  This module removes the *encoding* KAT (the
   `decode ∘ encode = id` assumption) for these families; it does **not** remove
   the *machine-code* obligation.
 
@@ -141,7 +141,7 @@ theorem aes_realizes_concrete (key : Key128) (leaf : String)
   rw [decodeA_encodeA]
 
 /-- The AES realization is a row of the generic `AesKernelRealizes` seam — by
-    `Iff.rfl` (`aes_iff_kernel`), with the encoding section now a *theorem*
+    `Iff.rfl` (`aes_iff_kernel`), with the encoding section a *theorem*
     rather than an assumed KAT. -/
 theorem aes_realizes_concrete' (key : Key128) (leaf : String)
     (limbStore : LimbStoreSpec) :
@@ -274,7 +274,7 @@ theorem fieldMul_realizes_concrete (q : ℕ) [NeZero q] (width : ℕ)
 
 /-- The field-add realization is also an instance of the generic
     `FieldEmitRealizes` seam (`KernelRealizes2` is defeq to it), with the encoding
-    section now a *theorem*. -/
+    section a *theorem*. -/
 theorem fieldAdd_realizes_FieldEmit (q : ℕ) [NeZero q] (width : ℕ)
     (hw : width ≤ 48) (hq : q < 2 ^ (8 * width))
     (leaf : String) (limbStore : LimbStoreSpec) :

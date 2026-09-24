@@ -72,12 +72,12 @@ def ComLsemExportFaithfulCallN (leaf : LeafEnvCN) {Γ : Ctxt jasminDialect} {t :
     ∧ decodeN st' (comRetReg Γ.length argName com Γ.length) w
         = some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the multi-result-call fragment.** Any `Com`
+/-- **The export gate is discharged for the multi-result-call fragment.** Any `Com`
     over `{regArith, select, immediate shifts, mulhi, addCarryLo/Hi, castW, extCall, callN}`
     satisfies `ComLsemExportFaithfulCallN` for any leaf environment whose external primitives
     agree with the dialect (`LeafAgreesN leaf` for `extCall`, `LeafAgreesCN leaf` for the
     `callN` head) — assembled from `comToLprog_faithful_callN` + the `lsemFuelCallN_straightline`
-    bridge. The `callN` arm is the genuinely external multi-result leaf; `LeafAgreesCN` is its
+    bridge. The `callN` arm is the external multi-result leaf; `LeafAgreesCN` is its
     own KAT, carried alongside `LeafAgreesN`. -/
 theorem comLsemExportFaithfulCallN_of_callN {leaf : LeafEnvCN}
     (hleafN : JasminLsemLeaf.LeafAgreesN leaf) (hleafCN : LeafAgreesCN leaf)

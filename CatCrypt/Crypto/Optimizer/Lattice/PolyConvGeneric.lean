@@ -13,12 +13,12 @@ public import Mathlib.Algebra.BigOperators.Fin
 /-!
 # Polynomial multiplication as a convolution (generic `CommRing`)
 
-This file gives the *generic spec* that an NTT-based polynomial multiply
+This module defines the *generic spec* that an NTT-based polynomial multiply
 implements: multiplying two polynomials, represented low-first as coefficient
 lists over a `CommRing R`, is a convolution, and the convolution corresponds to
 the product of the evaluations of the operands.
 
-The keystone is the **evaluation homomorphism**
+The main theorem is the **evaluation homomorphism**
 
   `eval (conv a b) x = eval a x * eval b x`,
 
@@ -31,7 +31,7 @@ spec.
 
 We map coefficient lists to Mathlib's `Polynomial R` via `toPoly`, define `conv`
 on lists so that `toPoly (conv a b) = toPoly a * toPoly b`, and define `eval` so
-that it agrees with `Polynomial.eval`. The keystone then falls out of
+that it agrees with `Polynomial.eval`. The main theorem then follows from
 `Polynomial.eval_mul`.
 
 * `toPoly l`   — the polynomial `∑ i, l[i] • X^i` encoded by a low-first list.
@@ -110,7 +110,7 @@ theorem toPoly_conv (a b : List R) :
   unfold conv
   rw [toPoly_coeffList]
 
-/-- **Keystone (evaluation homomorphism).** Evaluating the convolution of two
+/-- **Main theorem (evaluation homomorphism).** Evaluating the convolution of two
 coefficient lists equals the product of the two evaluations:
 
   `eval (conv a b) x = eval a x * eval b x`.
@@ -133,7 +133,7 @@ theorem eval_triple (a₀ a₁ a₂ x : R) :
 
 /-- Worked example over `ℤ`: convolving the coefficient lists of `1 + X` with
 itself evaluates, at every point, to `(1 + X)(1 + X) = 1 + 2X + X²`. This is the
-keystone `eval_conv` made concrete: the convolution of `[1, 1]` with `[1, 1]`
+theorem `eval_conv` made concrete: the convolution of `[1, 1]` with `[1, 1]`
 agrees pointwise with the polynomial `1 + 2X + X²` (list `[1, 2, 1]`). -/
 example (x : ℤ) :
     eval (conv [1, 1] [1, 1]) x = eval ([1, 2, 1] : List ℤ) x := by

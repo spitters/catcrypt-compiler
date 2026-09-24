@@ -10,7 +10,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# #606 fan-out: the verified compiler emits a `Z/8192Z` (NTRU-HRSS) ring multiply
+# Fan-out: the verified compiler emits a `Z/8192Z` (NTRU-HRSS) ring multiply
 
 This module extends the **C4** step of the verified-compiler plan to the
 **power-of-two ring** coefficient multiply of **NTRU-HRSS-701**:
@@ -87,7 +87,7 @@ theorem ring8192Mul_compileFromHax_isSome :
     form).** There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] ring8192MulSrc = some c`, and `c`'s `BitVec 64`
     denotation (under `![a, b]`) is the closed mask emit form `ring8192MulMask`.
-    A #606 fan-out to the power-of-two coefficient ring `Z/2¹³Z`. The abstract
+    A fan-out to the power-of-two coefficient ring `Z/2¹³Z`. The abstract
     `(a*b) % 8192` tie is `ring8192MulMask_eq_mod`. -/
 theorem ring8192Mul_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 64 2 []) (rW 64)),

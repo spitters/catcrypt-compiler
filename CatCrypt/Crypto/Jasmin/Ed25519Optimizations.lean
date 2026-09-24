@@ -197,7 +197,7 @@ sign/verify equation is proved correct. Our `sign_verify_equation` proves
 the abstract version; this section stitches in the curve-specific
 specialization. -/
 
-/-- **Proved (was axiom).** Cited Rocq: `sign_verify_correct_25519` at
+/-- **Proved.** Cited Rocq: `sign_verify_correct_25519` at
     `AUCurves/src/Spec/XEdDSA_Curve25519.v:107`. The Curve25519-specialized
     version of `sign_verify_equation`. The `M` parameter is unused at
     the algebraic level (the message contributes only via `interp s` /
@@ -349,7 +349,7 @@ theorem ed_smul_neg_inv_left (k : FpL25519) (P : EdPoint) :
     ed_add (ed_smul (scalar_neg k) P) (ed_smul k P) = ed_identity := by
   rw [ed_add_comm]; exact ed_smul_neg_inv k P
 
-/-! ## 8. Further derived theorems via the now-axiomatized
+/-! ## 8. Further derived theorems via the
     commutativity + identity axioms. These are pure group theory
     consequences and need no additional axioms beyond §7. -/
 
@@ -373,7 +373,7 @@ theorem ed_add_sub_cancel (k : FpL25519) (P : EdPoint) :
   rw [ed_add_assoc, ed_smul_neg_inv, ed_add_right_id]
 
 /-- **Proved.** Z-module homomorphism shape: `ed_smul a (P + (b)·P)
-    = (a)·P + (a·b)·P`. Genuinely needs distrib and assoc together. -/
+    = (a)·P + (a·b)·P`. Needs distrib and assoc together. -/
 theorem ed_smul_distrib_smul (a b : FpL25519) (P : EdPoint) :
     ed_smul (scalar_add a (scalar_mul a b)) P
       = ed_add (ed_smul a P) (ed_smul a (ed_smul b P)) := by

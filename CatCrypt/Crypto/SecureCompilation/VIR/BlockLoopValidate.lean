@@ -24,7 +24,7 @@ This file exercises the node on two shapes:
   the corresponding `forLoopNRt` (the `comLLoopBodyWalk`/`blockLoopFrame` pair
   degenerates to `loopBodyWalkN`/`forLoopLcmdNRt` on a `.var`/`.ret` body), so
   every existing `forLoopNRt` kernel is a special case;
-* **genuine 2-deep nesting** — a block body that is itself an inner `forLoopNRt`
+* **2-deep nesting** — a block body that is itself an inner `forLoopNRt`
   emits **two** real `Lcond NZ` back-edges (outer + inner), denotes to the double
   fold, and builds through `ComL.toLprogPhys` to a single well-formed `Lfundef`.
 
@@ -96,7 +96,7 @@ theorem blockSqrPhys_all_real_registers :
           (srcs.filterMap LOperand.regName?).all isRealGPName
       | _ => true) = true := by native_decide
 
-/-! ## 2. Genuine 2-deep nesting: an inner `forLoopNRt` in the block body
+/-! ## 2. 2-deep nesting: an inner `forLoopNRt` in the block body
 
 The block body is itself an inner runtime loop `acc := acc + acc` run `m` times
 (`m` an invariant of the outer loop). `forLoopNRt`'s `update` cannot express this
@@ -111,7 +111,7 @@ def innerDblBody : Com jasminDialect [JasminTy.reg 64, JasminTy.reg 64] (.reg 64
 /-- The outer block **body**: over `[reg 64 (acc), reg 64 (idx), reg 64 (m)]`, run
     the inner doubling loop a **runtime** `m` times (`m = .there (.there .here)`,
     the deepest binder = the outer loop's invariant), seeded from the accumulator
-    (`.here`), returning the inner result. A recursive `ComL` carrying a genuine
+    (`.here`), returning the inner result. A recursive `ComL` carrying an
     inner back-edge — the field `forLoopNRt` could not hold. -/
 def nestBlockBody : ComL [JasminTy.reg 64, JasminTy.reg 64, JasminTy.reg 64] (.reg 64) :=
   .forLoopNRt innerDblBody (.there (.there .here)) .here .nil (.ret .here)
@@ -136,7 +136,7 @@ theorem nestBlockProg_denote :
 /-- The lowered nested body. -/
 def nestBlockLowered : Lcmd := comLToBody 3 argName (fun _ => none) nestBlockProg 3
 
-/-- **Two genuine back-edges:** the nested lowering has exactly **two** `Lcond NZ`
+/-- **Two back-edges:** the nested lowering has exactly **two** `Lcond NZ`
     conditional jumps — the outer loop's back-edge and the inner loop's back-edge.
     This is real nested control flow, not an unrolled chain. -/
 theorem nestBlock_two_backedges :

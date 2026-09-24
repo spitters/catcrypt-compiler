@@ -430,7 +430,7 @@ def pSmulLeaf (p : Nat) (C : ECParams p) :
 /-! ## The value ties
 
 The `point_add` leaf denotes to the dialect group law `ECParams.add`, and — on
-**on-curve** points — to the genuine Mathlib-transported group operation
+**on-curve** points — to the Mathlib-transported group operation
 (`EcPointGroup.ecCurvePoint_add_val`). -/
 
 /-- **The recognized `EcGroup::point_add` call ties to the dialect group law.**
@@ -441,7 +441,7 @@ theorem primeir_ecgroup_point_add_recognized_denote (p : Nat) (C : ECParams p)
     (P Q : ECPoint p) :
     (pAddLeaf p C).denote (.cons P (.cons Q .nil)) = C.add P Q := rfl
 
-/-- **The recognized `point_add` ties to the genuine group law on on-curve
+/-- **The recognized `point_add` ties to the group law on on-curve
     points.** For on-curve points `a b : EcCurvePoint C`, the `pAddLeaf` leaf on
     their underlying `ECPoint` values denotes to `(a + b).val` — the
     Mathlib-transported Weierstrass point addition (`EcPointGroup`'s

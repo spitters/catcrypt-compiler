@@ -11,25 +11,24 @@ public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 /-!
 # A fused two-way branch lowering: emitted `Cif` run = `ite` of the two arms' runs
 
-The landed `VIR/BranchLowering.lean` builds a public-condition two-way branch at
+`VIR/BranchLowering.lean` builds a public-condition two-way branch at
 the **meta / semantic (`Phase`) level**: its `run` is *literally*
 `if cond then thenPhase.run else elsePhase.run`, a `Bool`-parameter `ite` of the
-two arms' emit denotations. Its own scope note flags the gap explicitly:
+two arms' emit denotations. Its scope note states what that level does not give:
 
 > It is **not** a single fused control-flow graph emitted as one Jasmin `Cif`
 > instruction … with a real conditional-jump … the verified-emit *denotation*
-> theory … has **no** `Cif` `denote = ite` keystone tied to the … evaluator.
-> Proving that fused `Cif` lowering … is the remaining gap.
+> theory … has **no** `Cif` `denote = ite` theorem tied to the … evaluator.
 
-This file closes that gap, exactly as `VIR/WhileLowering.lean` closed the
-matching `Cwhile` one: by stating and proving the run-correctness theorem for
-the **existing** `Cif` instruction against the **real** Jasmin operational
-semantics — *not* a re-modeled `Phase`-level `ite`.
+This module proves that fused lowering, as `VIR/WhileLowering.lean` does for
+`Cwhile`: it states and proves the run-correctness theorem for the **existing**
+`Cif` instruction against the **real** Jasmin operational semantics — *not* a
+re-modeled `Phase`-level `ite`.
 
-## What substrate we reuse (a *real* `Cif` run-semantics already exists)
+## What substrate we reuse (the `Cif` run-semantics of the Jasmin mirror)
 
 `JasminCoqSemMirror` is the mechanical Lean port of Jasmin's Coq `psem.v`, and
-it already carries the genuine Jasmin branch construct:
+it carries the Jasmin branch construct:
 
 * `InstrR.Cif (cond) (cthen) (celse)` — the AST node (`expr.v:440` mirror).
 * The **relational** operational semantics `SemIr.Eif_true` / `SemIr.Eif_false`
@@ -42,7 +41,7 @@ it already carries the genuine Jasmin branch construct:
 So the route here is the run-correctness theorem for the **existing** `Cif`
 executor, stated against the executor's own arm runs (`execCmd`).
 
-## What is genuinely new
+## What this module adds
 
 1. **`ifExec`** — the condition-driven branch over the executor's own state
    (`Estate`): evaluate `cond`, project it to a `Bool` via `Value.toBool`, then
@@ -52,7 +51,7 @@ executor, stated against the executor's own arm runs (`execCmd`).
    computed from the state by the real `semPexpr`/`toBool`, identically to the
    executor.
 
-2. **`execInstrR_Cif_eq_ifExec`** — the keystone: the emitted `Cif` executor
+2. **`execInstrR_Cif_eq_ifExec`** — the main theorem: the emitted `Cif` executor
    equals `ifExec`, for every (positive) fuel. Proved by the same
    `conv_lhs => rw [execInstrR]` peeling used for `Cwhile`.
 
@@ -68,7 +67,7 @@ executor, stated against the executor's own arm runs (`execCmd`).
    **both** condition truth values — `5 + 5 = 10` on the true side and
    `5 - 5 = 0` (the int analogue of the prompt's `x ^^^ x`) on the false side —
    on the executor (`native_decide` KAT), plus the symbolic `ite` instance via
-   the keystone.
+   the main theorem.
 
 5. **`branchPhase`-bridge** (optional, §5): `execInstrR_Cif_eq_ite` discharges
    exactly the semantic `ite` law each arm of `BranchLowering.branchPhase` must
@@ -136,7 +135,7 @@ def ifExec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
       if b then execCmd (Mem := Mem) aS opS gd fuel' s cthen prog
       else execCmd (Mem := Mem) aS opS gd fuel' s celse prog
 
-/-! ## 2. Keystone: the emitted `Cif` run equals the condition-driven branch
+/-! ## 2. Main theorem: the emitted `Cif` run equals the condition-driven branch
 
 `execInstrR`'s `.Cif` branch unfolds — at every positive fuel level — to exactly
 `ifExec`. This is the run-correctness theorem for the real Jasmin `Cif`
@@ -166,7 +165,7 @@ theorem execInstrR_Cif_eq_ifExec
 When the condition evaluates to a definite **public** boolean `b`
 (`semPexpr … cond = .ok (.Vbool b)`), the emitted `Cif` run collapses to the
 plain `if b then … else …` of the two branch runs. This is the structural
-`denote = ite` keystone the `BranchLowering` scope note named as missing — here
+`denote = ite` theorem the `BranchLowering` scope note refers to, stated
 against the **real** `execInstrR` executor. -/
 
 /-- **`Cif` denote-correctness (the `ite` law).** If `cond` evaluates at `s` to
@@ -220,7 +219,7 @@ int analogue of the prompt's `x ^^^ x`). Started from `x = 5`:
 * a **false-side** instance (with a `0 < x` guard that is false, started at
   `x = 0`) zeroes `x` (`doubleOrZero_false_kat`, by `native_decide`);
 * and both are the structural `ite` of the two `execCmd` runs via the §3
-  keystone — the run equals the taken branch's `execCmd`, for both `c` values. -/
+  theorem — the run equals the taken branch's `execCmd`, for both `c` values. -/
 
 namespace DoubleOrZeroExample
 
@@ -303,7 +302,7 @@ theorem guard_eval (n : Int) :
 /-- **Run-correctness instance (`ite` form, symbolic in the seed).** For any
     seed `n` and ample fuel, the emitted branch run is exactly the `ite` of the
     two arms' `execCmd` runs, selected by the public guard `0 < n` — a direct
-    instance of the §3 keystone `execInstrR_Cif_eq_ite`. -/
+    instance of the §3 theorem `execInstrR_Cif_eq_ite`. -/
 theorem doubleOrZero_run_eq (n : Int) (fuel' : Nat) :
     execInstrR (Mem := TrivialMem) ifAsmSem ifOpSem [] (fuel'+1) (startState n)
         doubleOrZero
@@ -332,7 +331,7 @@ public condition value. -/
 /-- **Executor `Cif` matches the `Phase`-level `ite` shape.** With the condition
     value `b` supplied as the public selecting bit, the emitted `Cif` run is the
     `if b then thenRun else elseRun` of the two arm runs — definitionally the
-    same `ite` `BranchLowering.branchPhase.run` uses, now realised on the real
+    same `ite` `BranchLowering.branchPhase.run` uses, realised on the real
     `execInstrR`. -/
 theorem execInstrR_Cif_matches_branchPhase_ite
     (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)

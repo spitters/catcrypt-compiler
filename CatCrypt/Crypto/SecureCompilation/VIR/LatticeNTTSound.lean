@@ -12,7 +12,7 @@ public import CompPoly.Univariate.NTT.Forward
 public import CompPoly.Univariate.NTT.Inverse
 
 /-!
-# Lattice dialect NTT-mul: real-convolution soundness (Phase 4)
+# Lattice dialect NTT-mul: real-convolution soundness
 
 The lattice VIR dialect (`SecureCompilation/VIR/LatticeDialect.lean`) proves the
 rewrite
@@ -30,10 +30,10 @@ not a statement about a real NTT.
 
 The general soundness theorem
 `LatticeDialect.nttMul_rewrite_denote_eq_general` instead takes the agreement
-as a hypothesis `hAgree`. **This file discharges that agreement shape against a
-genuine NTT semantics**, where:
+as a hypothesis `hAgree`. **This module discharges that agreement shape against a
+real NTT semantics**, where:
 
-* `polyMulC` is genuine canonical polynomial multiplication `(· * ·)` in
+* `polyMulC` is canonical polynomial multiplication `(· * ·)` in
   `CPolynomial R` (the schoolbook / negacyclic-convolution product, *not*
   defined via NTT);
 * `ntt` / `basemul` / `invntt` are the *actual* CompPoly NTT operations
@@ -70,8 +70,8 @@ here is the plumbing that pins the lattice-dialect agreement shape onto it.
 * A **concrete** `PolyEncoding 3329 256` (ML-KEM-768) / `PolyEncoding 8380417
   256` (ML-DSA-65): the byte-layout decision (little-endian packing,
   Montgomery vs. plain domain, NTT-domain caching) belongs to the protocol
-  bridge, not the soundness framework. Stage F
-  (`NTTPolyMul_CompPolyConcrete.lean`) deliberately deferred it; we keep the
+  bridge, not the soundness framework, and
+  `NTTPolyMul_CompPolyConcrete.lean` does not fix it either; we keep the
   encoding as a *parameter* so the theorem is statable and provable without
   inventing a layout.
 * The **negacyclic fold** (ML-KEM/ML-DSA work mod `X^n + 1`, CompPoly's cyclic
@@ -79,10 +79,10 @@ here is the plumbing that pins the lattice-dialect agreement shape onto it.
   domain of size `≥ 2·n` and folding `X^n ≡ -1` after `Domain.fits` is met.
   This is again a per-parameter encoding obligation, not a framework one.
 
-The honest scope here is therefore a **plumbing theorem**: it certifies that
+The scope is therefore a **plumbing theorem**: it certifies that
 the lattice rewrite's soundness obligation, read against real NTT operations,
-*reduces to the genuine convolution theorem* rather than to a definitional
-collapse. The concrete byte-layout instance is the one remaining step.
+*reduces to the convolution theorem* rather than to a definitional
+collapse. The concrete byte-layout instance is outside this module.
 -/
 
 @[expose] public section
@@ -111,7 +111,7 @@ canonical polynomial. Their composition is `realNttMul`, which we show equals
 `fastMulImpl` definitionally. -/
 
 /-- Real forward NTT: CompPoly's `Forward.forwardImpl`, taking a coefficient
-    polynomial to its evaluation array. This is a genuine transform, not `id`. -/
+    polynomial to its evaluation array. This is a nontrivial transform, not `id`. -/
 @[reducible] def realNtt (D : Domain R) (p : CPolynomial R) : Array R :=
   forwardImpl D p.val
 
@@ -132,7 +132,7 @@ canonical polynomial. Their composition is `realNttMul`, which we show equals
   ⟨(Domain.truncate (Domain.requiredLength p.val q.val) (inverseImpl D cHat)).trim,
     CPolynomial.Raw.Trim.isCanonical_trim _⟩
 
-/-- The real NTT-based multiply, defined as the genuine composite
+/-- The real NTT-based multiply, defined as the composite
     `invntt (basemul (ntt p) (ntt q))`. This is **definitionally equal** to
     `CompPoly.…FastMul.fastMulImpl D p q` — see `realNttMul_eq_fastMulImpl`. -/
 @[reducible] def realNttMul (D : Domain R) (p q : CPolynomial R) : CPolynomial R :=
@@ -164,13 +164,13 @@ theorem realNttMul_eq_fastMulImpl (D : Domain R) (p q : CPolynomial R) :
 /-! ## 3. Soundness = the real convolution theorem
 
 The lattice rewrite's soundness obligation, instantiated at the real NTT
-operations and with `polyMulC` being genuine canonical multiplication, is
+operations and with `polyMulC` being canonical multiplication, is
 *exactly* CompPoly's `fastMulImpl_eq_mul`. The agreement is **not** `rfl`: the
 `schoolbook = invntt (basemul (ntt a) (ntt b))` step is the deep statement that
 NTT-domain pointwise multiply, sandwiched by the transforms, computes the
 convolution product. -/
 
-/-- **Headline soundness.** Under `Domain.fits`, genuine schoolbook polynomial
+/-- **Headline soundness.** Under `Domain.fits`, schoolbook polynomial
     multiplication agrees with the real NTT round-trip, in the lattice
     dialect's exact rewrite shape:
 
@@ -200,7 +200,7 @@ end RealOps
 
 For a protocol bridge carrying a `PolyEncoding q n R` (encode/decode between the
 `RustVal (.TPolyMod q n)` byte layout and `CPolynomial R`), the same soundness
-reads at the encoded level. This reuses Stage F's
+reads at the encoded level. This reuses
 `Optimizer.Lattice.NTTPolyMul.polyMul_leaf_agreement` — itself a one-step
 transport through `fastMulImpl_eq_mul` — so the encoded real NTT multiply
 equals the encoded schoolbook product.
@@ -217,8 +217,8 @@ variable {q n : Nat} {R : Type*} [Field R] [BEq R] [LawfulBEq R]
 
 /-- **Encoded plumbing soundness.** Given a `PolyEncoding`, a `Domain` large
     enough (`Domain.fits` on the decoded operands), the encoded real NTT
-    multiply (`realNttMul` on the decoded operands) equals the encoded genuine
-    schoolbook product. Reuses `polyMul_leaf_agreement` (Stage F), which routes
+    multiply (`realNttMul` on the decoded operands) equals the encoded
+    schoolbook product. Reuses `polyMul_leaf_agreement`, which routes
     through `fastMulImpl_eq_mul`.
 
     This is the shape a concrete ML-KEM/ML-DSA bridge would discharge once it
@@ -230,7 +230,7 @@ theorem polyEncoded_agrees_schoolbook
     enc.encode (realNttMul D (enc.decode a) (enc.decode b)) =
       enc.encode (enc.decode a * enc.decode b) := by
   -- `realNttMul = fastMulImpl` definitionally, then transport through `encode`
-  -- using Stage F's `polyMul_leaf_agreement`.
+  -- using `polyMul_leaf_agreement`.
   show enc.encode (fastMulImpl D (enc.decode a) (enc.decode b)) =
     enc.encode (enc.decode a * enc.decode b)
   exact polyMul_leaf_agreement D enc a b hfits

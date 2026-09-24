@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Primitives.GF128
 /-!
 # AES-GCM end-to-end composition (VAES + VPCLMULQDQ + CTR + GHASH)
 
-Pipeline 2's first full AEAD demonstrator: compose the three already-landed
+A full AEAD demonstrator for Pipeline 2: compose the three existing
 denotation pieces (`VAESEmit.denoteVAES`, `VPClmulEmit.polyMul64`, the
 counter-mode loop, the GHASH reduction) into a single AES-GCM denotation
 and prove the end-to-end correctness identity `decrypt . encrypt = id`
@@ -23,7 +23,7 @@ The denotation here is the *abstract* spec model: it composes the
 `Primitives.AES128.aes128_encrypt` (sealed, FIPS-197) with the
 `Primitives.GF128.gf128_mul` (sealed, SP 800-38D Algorithm 1) and the
 CTR keystream + GHASH dot from this development. The VAES / VPCLMULQDQ
-dialect ops are tied to these primitives via the already-landed
+dialect ops are tied to these primitives via
 `vaesenc_eq_aesRound` (round-step bridge) and `vpclmulqdq_eq_polyMul`
 (unreduced 128-bit product bridge). The composition theorem is at the
 spec level — the round-by-round AES rebuild and the unreduced-vs-reduced
@@ -318,7 +318,7 @@ theorem aes_gcm_tag_consistent
 
 /-! ## 9. The algebraic composition residual
 
-This residual is the bytewise framing — the load-bearing identities the
+This residual is the bytewise framing — the key identities the
 VAES + VPCLMULQDQ implementation must preserve to be byte-equal to the
 spec. Each line is one of:
 * a CTR keystream block (one AES leaf + one XOR);
@@ -340,7 +340,7 @@ emitter's straight-line jazz instantiates. -/
     This theorem pins the structural decomposition: `aes_gcm_encrypt`
     is the composition of `aesEnc`, `ctrEncrypt`, `ghash`, and
     `gcmTag`, none of which are unfolded. The VAES + VPCLMULQDQ emit
-    implements each piece via the already-landed bridges. -/
+    implements each piece via the existing bridges. -/
 theorem aes_gcm_composition_residual
     (key : Key) (nonce : Nonce96)
     (aad pt : List Block) (lenblk : Block) :
@@ -354,7 +354,7 @@ theorem aes_gcm_composition_residual
 
 /-! ## 10. Bridge lemmas to VAES + VPCLMULQDQ denotation
 
-These restate the already-landed bridges in the consumer's name, so a
+These restate the existing bridges in the consumer's name, so a
 proof carrying `aes_gcm_composition_residual` can pin the CTR keystream
 block to a `denoteVAES`-sequence and the GHASH multiplication to a
 `vpclmulqdq_lane`-sequence. The proofs are restatements of the upstream

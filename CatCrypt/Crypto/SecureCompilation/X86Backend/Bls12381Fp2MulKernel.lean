@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# BLS12-381 `Fp2` (quadratic extension) multiply + square, owned x86 leaf (#602/#219)
+# BLS12-381 `Fp2` (quadratic extension) multiply + square, owned x86 leaf
 
 **Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
@@ -24,10 +24,10 @@ RELIC-transcribed and AUCurves-generated variants can be compared.
 
 The BLS12-381 pairing tower bottoms out at `Fp2 = Fp[u]/(u² + 1)` (`u² = −1`):
 an element is `a + b·u` with `a, b ∈ Fp` (each a Montgomery-form 6×u64 limb
-bundle). This module emits the **first real owned tower leaf** — the `Fp2`
-multiply and square — by *composing* the committed owned base-field kernels:
+bundle). This module emits the base owned tower leaf — the `Fp2`
+multiply and square — by *composing* the owned base-field kernels:
 
-* `bls12381_mont_mul_x86_from_lean` (#490, the in-Lean x86 CIOS Montgomery
+* `bls12381_mont_mul_x86_from_lean` (the in-Lean x86 CIOS Montgomery
   multiply, MULX + dual ADCX/ADOX) — the verified `Fp` multiply;
 * `bls12381_fp_add_x86_from_lean` / `bls12381_fp_sub_x86_from_lean` — the
   six-limb `Fp` add / sub emitted **here** through the same owned backend
@@ -35,15 +35,12 @@ multiply and square — by *composing* the committed owned base-field kernels:
   widened from four to six limbs, with the trial difference staged into a small
   stack scratch frame so the body stays inside the 14-GP pool).
 
-This **replaces the structural stub** flagged by the RELIC bench
-(`bench/relic_compare`, README §"Owned kernels"): the prior BN254/BLS `Fp2_mul`
-emit was a skeleton (0–1 multiply instructions, undefined leaf labels) and the
-jasminc reg-ptr tower hit jasminc's register-allocator wall (#241) on the
-pairing wrappers. The owned `Fp2` driver below carries **three real
-`Fp`-multiply calls** plus `Fp` add/sub, with the Karatsuba live values
-(`t0=ac`, `t1=bd`, `t2=(a+b)(c+d)`) held in a caller-owned stack frame rather
-than fought through a fixed register file — the owned frame-spilling discipline
-clears the #241 wall the jasminc path hit.
+The jasminc reg-ptr tower hits jasminc's register-allocator limit on the pairing
+wrappers (see the RELIC bench, `bench/relic_compare`, README §"Owned kernels").
+The owned `Fp2` driver below carries **three `Fp`-multiply calls** plus `Fp`
+add/sub, with the Karatsuba live values (`t0=ac`, `t1=bd`, `t2=(a+b)(c+d)`) held
+in a caller-owned stack frame rather than fought through a fixed register file;
+this owned frame-spilling discipline avoids that register-allocator limit.
 
 ## The `Fp2` multiply (Karatsuba, 3 `Fp`-muls)
 
@@ -84,7 +81,7 @@ So one `Fp2` sqr = **2 `Fp` muls + 2 `Fp` adds + 1 `Fp` sub**.
   backend (`*Block_lowering_correct`, the denotation-preserving lowering), the
   same standard as `Bls12381MontMulKernel.blsMontMulBlock` and the Pasta
   add/sub leaves; their first-fit allocation is overflow-free
-  (`*Alloc_no_overflow`). The `Fp` **mul** body is the committed #490 kernel.
+  (`*Alloc_no_overflow`). The `Fp` **mul** body is the `Bls12381MontMulKernel` kernel.
 * The `Fp2` mul / sqr **driver** is a sequence of `call`s into those verified
   leaves over a stack-frame layout (`re`/`im`/scratch felems). The driver's
   call-and-frame scaffolding is **trusted ABI glue** (it makes calls, so it
@@ -94,8 +91,8 @@ So one `Fp2` sqr = **2 `Fp` muls + 2 `Fp` adds + 1 `Fp` sub**.
 * Value-level correctness — that the emitted driver computes the `Fp2` product
   / square — is the **external KAT** (`bench/bls12381_fp2_compare`, vs RELIC
   `fp2_mul`/`fp2_sqr` and GMP over the same canonical prime), the standard gate
-  for these word kernels (per REV-12). This is the `Fp2` **leaf**; the
-  `Fp6`/`Fp12`/Miller/final-exp layers above it are the documented follow-on.
+  for these word kernels. This is the `Fp2` **leaf**; the
+  `Fp6`/`Fp12`/Miller/final-exp layers above it are separate modules.
 
 ## Trust story
 
@@ -284,7 +281,7 @@ def fpAddSubPinned : GpAlloc :=
   [("z", "%rdi"), ("a", "%rsi"), ("b", "%rdx"), ("sp", "%rbp")]
 
 /-- The `Fp` add allocation maps every name to a distinct pool register (no
-    silent `%rax`-alias, the #380 class). -/
+    silent `%rax`-alias). -/
 theorem fpAddAlloc_no_overflow :
     allocOverflow fpAddSubPinned fpAddBlock = none := by native_decide
 
@@ -329,8 +326,8 @@ from the saved bases (held in callee-saved registers across the calls).
 
 This is the owned **frame-spilling** discipline: the Karatsuba live values
 `t0=ac`, `t1=bd`, `t2=(a+b)(c+d)` are caller-owned stack felems, not values
-fought through a fixed register file — which is exactly what blew jasminc's
-register allocator (#241) on the pairing wrappers. -/
+fought through a fixed register file, which exceeds jasminc's register allocator
+on the pairing wrappers. -/
 
 /-- Helper: emit a `call leaf(z=zoff(%rbx), x=xoff(%r12), y=yoff(%r13))`,
     where `%rbx`/`%r12`/`%r13` hold the saved `z`/`x`/`y` bases (and the
@@ -459,8 +456,8 @@ theorem fp2SqrAsm_two_real_muls :
 /-! ## 10. Emit driver -/
 
 /-- Emit driver: write the in-Lean-backend-emitted `Fp` add/sub leaves and the
-    `Fp2` mul/sqr drivers for the bench harness. The committed `Fp` mul leaf
-    (`bls12381_mont_mul_x86_from_lean.s`, #490) is referenced read-only by the
+    `Fp2` mul/sqr drivers for the bench harness. The `Fp` mul leaf
+    (`bls12381_mont_mul_x86_from_lean.s`) is referenced read-only by the
     harness and is **not** re-emitted here. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/bls12381_fp2_compare/gen_com"

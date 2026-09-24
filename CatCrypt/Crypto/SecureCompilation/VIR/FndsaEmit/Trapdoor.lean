@@ -29,8 +29,8 @@ The reference Falcon implementation runs `ffSampling` over an emulated IEEE-754
 `binary64` (`fpr = uint64_t` in PQClean, 53-bit mantissa). The floating-point
 inner loop is the historical source of the floating-point-determinism /
 side-channel concerns. The FPU-free variant (FN-DSA-FPU-free, FIPS 206 draft
-Appendix A) replaces the float with a **64-bit fixed-point sign-magnitude**
-number.
+Appendix A) uses a **64-bit fixed-point sign-magnitude** number in place of
+the float.
 
 We use the **Q11.52 sign-magnitude** format:
 
@@ -59,7 +59,7 @@ it is the reference mantissa width carried as an integer fixed-point scale.
 Every arithmetic step (`fxpAdd`, `fxpMul`, `fxpDiv`) and every node of the
 `ffSampling` recursion processes its operands unconditionally; the recursion
 trip count is fixed by the static tree depth `log2 N`, not by any
-secret-dependent value. The leaf calls the #157 `Sampler.fixedPointCDTGaussian`,
+secret-dependent value. The leaf calls `Sampler.fixedPointCDTGaussian`,
 which itself runs the full 19-entry RCDT loop with no early exit. There is no
 branch on a secret value anywhere in the path.
 
@@ -293,7 +293,7 @@ def fxpButterfly (ω a b : Fxp) : Fxp × Fxp :=
 abbrev FfTowerLane (L : Nat) := Fin L → Fxp
 
 /-- The per-lane block of one tower-FFT stage, parameterized by an abstract
-    per-lane block function (the lane-map keystone is parametric over it; the
+    per-lane block function (the lane-map theorem is parametric over it; the
     concrete butterfly content lives in `fxpButterfly`). -/
 abbrev FfTowerBundle (W L : Nat) := Fin W → FfTowerLane L
 
@@ -327,21 +327,21 @@ theorem fxpButterfly_snd_toRat (ω a b : Fxp) :
 At each internal node it splits the target into even/odd FFT halves, recurses
 on the two children with the LDL-shifted targets, and merges. At a leaf it
 draws an integer sample from the discrete Gaussian centered at the (real)
-target with the node's standard deviation — here via the #157
+target with the node's standard deviation — here via the
 `Sampler.fixedPointCDTGaussian` base sampler, re-centered by the leaf target.
 
 We model the sampler structurally: the tree is a static binary tree of depth
 `log2 N`; the recursion trip count is fixed by the depth (CT). The output is a
 short vector `(s1, s2)` of `N` fixed-point integers each. The leaf draw
-consumes the random stream through the #157 sampler; the parametricity of the
-#157 correctness lemma over *how* the stream is consumed is what lets the sign
+consumes the random stream through the base sampler; the parametricity of the
+sampler's correctness lemma over *how* the stream is consumed is what lets the sign
 denotation transport. -/
 
 /-- The static FF-sampling tree depth at degree `N` (`= log2 N`). For `N = 512`
     this is `9`. -/
 def ffTreeDepth (logN : Nat) : Nat := logN
 
-/-- A leaf draw: re-center the #157 base sampler at the (rounded) leaf target
+/-- A leaf draw: re-center the base sampler at the (rounded) leaf target
     `t` and consume `BYTES_PER_SAMPLE` random bytes. The center shift is a
     fixed-point add of the integer sample to the rounded target; CT because the
     base sampler reads its 10 bytes unconditionally. -/
@@ -363,7 +363,7 @@ theorem ffSampling_ct_fixed_depth (d : Nat) :
 
 /-- The leaf sample lands in `[t̄ − 19, t̄ + 19]` where `t̄` is the rounded
     leaf target: the base sampler's `[-19, 19]` range shifts the center by an
-    integer. (Structural range fact inherited from #157.) -/
+    integer. (Structural range fact of the base sampler.) -/
 theorem ffLeafSample_range (t : Fxp) (bs : Vector UInt8 9) (sb : UInt8) :
     (t.signed / (FXP_SCALE : Int)) - (Sampler.RCDT_LEN : Int)
         ≤ ffLeafSample t bs sb ∧
@@ -379,7 +379,7 @@ theorem ffLeafSample_range (t : Fxp) (bs : Vector UInt8 9) (sb : UInt8) :
 After `ffSampling` returns `(s1, s2)`, the verify equation requires
 `s1 = c − s2·h` over `R_q`. The deterministic structural part of correctness
 is that the sampler returns the `s1` slot computed as exactly this coset
-difference — the same subtraction the #157 verify emit denotes
+difference — the same subtraction the verify emit denotes
 (`fndsaVerifyBlockSpec : (a,b) ↦ a − b`). We capture that the sampler's `s1`
 is *defined* as the coset difference, so coset membership holds by definition;
 only the *shortness* of the resulting vector is probabilistic.
@@ -391,7 +391,7 @@ per-coefficient difference — the lane-map shape from `FndsaEmit`. -/
 abbrev Zq := ZMod 12289
 
 /-- The coset slot `s1[k] = c[k] − (s2·h)[k]` the sampler fills. This is the
-    same per-coefficient subtraction the #157 verify emit denotes. -/
+    same per-coefficient subtraction the verify emit denotes. -/
 def cosetS1 (N : Nat) (c s2h : Fin N → Zq) : Fin N → Zq :=
   fun k => c k - s2h k
 
@@ -699,8 +699,8 @@ theorem trapdoor_walks_tree_iteratively :
   native_decide
 
 /- **Sanity: the leaf loop actually moves data through `tree[]`, `target[]`,
-    and `out[]` (the stub-back-to-no-op detector). If a future agent
-    replaces the body with `return out;` this theorem fails. -/
+    and `out[]` (the stub-back-to-no-op detector). A body reduced to
+    `return out;` fails this check. -/
 #guard (strContains trapdoorJazz "tree[base + 0]")
     && (strContains trapdoorJazz "target[k]")
     && (strContains trapdoorJazz "out[k] = ")
@@ -770,7 +770,7 @@ theorem kat_outputs_in_spec_range :
 
 /-! ### 7.5 Hypothesis Props for residuals carried over Stage 2
 
-The two genuine residuals the iterative emit defers (relative to a
+The two residual obligations of the iterative emit (relative to a
 verified-mechanical recursive `ffSampling` realization) are:
 
 * `JasminFxpAddCT`: the `fxp_add` body's `if (same_sign == 0)` and

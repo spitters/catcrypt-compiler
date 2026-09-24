@@ -18,11 +18,10 @@ public import Mathlib.Tactic.NormNum
 /-!
 # `bbMul` is field multiplication on canonical Baby Bear reps
 
-This file closes the `bbMul_field_correct_residual` seam stated in
-`Poseidon2DiffuseExact` (`bbMul`-as-field-multiplication identity), which the
-emitter-side file factored out because a monolithic `bv_decide` on the full
-10-fold + 2-csub `bbReduce` chain at 64-bit width over a 62-bit product was
-SAT-heavy enough to time out (>600s).
+This module proves the `bbMul_field_correct_residual` seam stated in
+`Poseidon2DiffuseExact` (`bbMul`-as-field-multiplication identity). A monolithic
+`bv_decide` on the full 10-fold + 2-csub `bbReduce` chain at 64-bit width over a
+62-bit product times out (>600s).
 
 The strategy here is to **decompose the chain** instead of hitting it with one
 SAT shot:
@@ -76,15 +75,15 @@ This file's headline theorems `bbMul_eq_mod_p` and `bbMul_field_correct` carry
 only the standard kernel axioms (`propext`, `Classical.choice`, `Quot.sound`)
 plus the LRAT certificate from a small number of per-step `bv_decide` calls
 used (specifically, only at the `bbCsub` canonical/identity edges, which
-`Poseidon2DiffuseExact` already cites for #100). No `sorry`, no
+`Poseidon2DiffuseExact` already cites). All goals closed, no
 `native_decide`, no new custom axioms.
 
-## Consequence for #113
+## Consequence for `Poseidon2DiffuseExact`
 
-With `bbMul_eq_mod_p` proven, `pos2_internal_round_bitexact` in
-`Poseidon2DiffuseExact` (which currently states a bit-level identity via `rfl`
+With `bbMul_eq_mod_p`, `pos2_internal_round_bitexact` in
+`Poseidon2DiffuseExact` (which states a bit-level identity via `rfl`
 on both sides of the `bbAdd`/`bbMul` chain) lifts to a per-lane identity over
-`ZMod babyBearPrime`: the chain genuinely computes the field operations the
+`ZMod babyBearPrime`: the chain computes the field operations the
 Plonky3 spec specifies, not just a syntactically identical BitVec computation.
 The KAT for Poseidon2-BabyBear is then a corollary of a structurally proven
 field identity, matching the Keccak / SHA-2 emitter pipelines' strength.
@@ -247,7 +246,7 @@ lemma bbFold10_mod_p (x : BitVec 64) (hx : x.toNat < 4611686018427387904) :
 /-! ## 6. `bbCsub`: canonicalisation and identity at toNat level -/
 
 /-- **`bbCsub` canonicalises `< 2p` to `< p` at the toNat level.** Re-export of
-    `bbCsub_correct` (#100) pushed through `BitVec.toNat_umod`. -/
+    `bbCsub_correct` pushed through `BitVec.toNat_umod`. -/
 lemma bbCsub_toNat_of_lt_2p (r : BitVec 64) (hr : r.toNat < 2 * 2013265921) :
     (bbCsub r).toNat = r.toNat % 2013265921 := by
   have hr' : r < (2 * 2013265921 : BitVec 64) := by
@@ -353,8 +352,8 @@ lemma bbMul_toNat (a b : BitVec 64) (ha : a.toNat < 2013265921)
     * `bbMul a b = (a * b) % bbP` at the BitVec level (i.e. the BitVec product
       reduced modulo `bbP`).
 
-    This closes the `bbMul_field_correct_residual` seam stated in
-    `Poseidon2DiffuseExact`: the 10-fold + 2-csub `bbReduce` chain genuinely
+    This discharges the `bbMul_field_correct_residual` seam stated in
+    `Poseidon2DiffuseExact`: the 10-fold + 2-csub `bbReduce` chain
     computes the field reduction. -/
 theorem bbMul_eq_mod_p (a b : BitVec 64) (ha : a < bbP) (hb : b < bbP) :
     bbMul a b < bbP ∧ bbMul a b = (a * b) % bbP := by

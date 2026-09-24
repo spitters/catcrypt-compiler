@@ -8,9 +8,9 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
-# DR-collapse Phase 2 — the crypto dialect's `SPComp` security interpretation
+# The crypto dialect's `SPComp` security interpretation
 
-`catCryptDialect` (in `VIR/CatCryptDialect.lean`) now carries the sample ops
+`catCryptDialect` (in `VIR/CatCryptDialect.lean`) carries the sample ops
 (`sampleBit` / `sampleBv`) alongside the pure fragment, but its registered
 `DialectDenote` (`catCryptDenote`) is the *pure compile* interpretation: a
 sample denotes to its deterministic zero-entropy leaf (`false` / `0`). That is
@@ -23,11 +23,8 @@ here as a second, `SPComp`-valued interpretation of the very same dialect:
 * `catCryptDenoteSP` — the op-level interpretation. Every **pure** op denotes to
   `SPComp.pure` of its `catCryptDenote.denote` value; `sampleBit` denotes to
   `SPComp.sample Bool` and `sampleBv n` to `SPComp.sample (BitVec n)`.
-* `Com.denoteSP` — the whole-program `SPComp` interpretation, mirroring the
-  structure of `CryptoSSA.CProg.denote` (`.ret → SPComp.pure`, `.var → bind`).
-
-The full agreement `CProg.denote ≅ Com.denoteSP` (sample ops included) lives in
-`CryptoSSAToCryptoDialectFull.lean`; this file is the interpretation it targets.
+* `Com.denoteSP` — the whole-program `SPComp` interpretation
+  (`.ret → SPComp.pure`, `.var → bind`).
 
 **0 axioms**, **0 sorries**.
 -/
@@ -84,8 +81,8 @@ theorem catCryptDenoteSP_pure
 
 /-! ## 3. The whole-program `SPComp` interpretation `Com.denoteSP`
 
-The `Com catCryptDialect` interpretation under `catCryptDenoteSP`. Mirrors
-`CryptoSSA.CProg.denote`'s structure: `.ret v → SPComp.pure (v.lookup V)`,
+The `Com catCryptDialect` interpretation under `catCryptDenoteSP`:
+`.ret v → SPComp.pure (v.lookup V)`,
 `.var e body → SPComp.bind` of the expr's `SPComp` value into the body. -/
 
 /-- `SPComp`-valued interpretation of an `Expr catCryptDialect`: resolve the
@@ -98,8 +95,7 @@ noncomputable def Expr.denoteSP
 
 /-- `SPComp`-valued (security) interpretation of a whole `Com catCryptDialect`
     program. `.ret v` returns `v.lookup V` purely; `.var e body` binds the
-    expression's `SPComp` value into the body, extending the valuation — exactly
-    the structure of `CryptoSSA.CProg.denote`. -/
+    expression's `SPComp` value into the body, extending the valuation. -/
 noncomputable def Com.denoteSP :
     {Γ : Ctxt catCryptDialect} → {t : CryptoTy} →
     Com catCryptDialect Γ t → Ctxt.Valuation Γ → SPComp ⟦t⟧

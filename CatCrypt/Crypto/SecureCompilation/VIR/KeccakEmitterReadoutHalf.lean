@@ -9,13 +9,13 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterComposition
 
 /-!
-# Keccak emitter readout half — closing `EmitRoundDenotesClosedFormFaithful`
+# Keccak emitter readout half — toward `EmitRoundDenotesClosedFormFaithful`
 
-Task #128 (Keccak side): close the readout half of the Keccak emitter
-composition that #118 named as the residual. The denotation half was proven
-by #118; the per-sub-block per-helper rewrite lemmas come from #116
-(`KeccakEmitterReduction`). What remained was the ~600-binding chain's
-readout-half — pushing `readSlot (envAfterOp_chain) (V.extend_chain) (aSlot x y)`
+This module addresses the readout half of the Keccak emitter composition,
+the residual named in `KeccakEmitterComposition`. The denotation half is
+proved there; the per-sub-block per-helper rewrite lemmas come from
+`KeccakEmitterReduction`. The readout half of the ~600-binding chain consists
+of pushing `readSlot (envAfterOp_chain) (V.extend_chain) (aSlot x y)`
 through every layer to the original `(bs, V)` reads, then matching against
 `keccakClosedFullRound (lanesOfBState bs V) (RC round)` slot-by-slot.
 
@@ -32,16 +32,14 @@ heartbeat budget and apply the same simp-blast strategy as SHA-2.
 
 ## Status
 
-This module discharges as much of the chain as the heartbeat budget
-allows. Per the task's "HONEST PARTIAL OK" criterion: if Keccak's longer
-chain can't close within budget, we state precisely which sub-blocks
-closed and which remain. The substrate (#116) provides every per-step
-rewrite.
+This module proves the θ-C column and ι sub-block readouts; §5 lists which
+sub-blocks are closed and which are residual. The substrate
+(`KeccakEmitterReduction`) provides every per-step rewrite.
 
 ## Axiom budget
 
 `[propext, Classical.choice, Quot.sound]` plus the `bv_decide` LRAT
-certs from #113 (`keccak_round_bitexact`). No new custom axioms.
+certs from `KeccakDiffuseExact` (`keccak_round_bitexact`). No new custom axioms.
 -/
 
 @[expose] public section
@@ -58,7 +56,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterComposition
 
-/-! ## 1. Status note — Keccak readout-half attempt
+/-! ## 1. Scope of the Keccak readout half
 
 The Keccak round chain is ~5× longer than SHA-2's, with two complications
 that make the simp blast harder than the SHA-2 analog:
@@ -77,16 +75,16 @@ that make the simp blast harder than the SHA-2 analog:
 
 We expose the unconditional-bridge **shape** here and document the
 sub-blocks whose per-helper `_denote` rewrites compose by `rfl` (the
-denotation half of #118) versus those needing the heartbeat-budget
-simp blast for the readout half. The bookkeeping residual through the
-full ~600-layer chain is left as the next-milestone task; the substrate
-from #116 plus the SHA-2 template from §1–§2 of `Sha2EmitterReadoutHalf`
-is the recipe.
+denotation half of `KeccakEmitterComposition`) versus those needing the
+heartbeat-budget simp blast for the readout half. The bookkeeping residual
+through the full ~600-layer chain is outside the scope of this module; the
+substrate of `KeccakEmitterReduction` plus the SHA-2 template from §1–§2 of
+`Sha2EmitterReadoutHalf` is the recipe.
 
 ## Composition with the FIPS bridge
 
-Once `EmitRoundDenotesClosedForm round bs immV V` is inhabited as a
-theorem, `KeccakEmitterReduction.emitRound_lanes_eq_fips_keccak` gives
+Given a proof of `EmitRoundDenotesClosedForm round bs immV V`,
+`KeccakEmitterReduction.emitRound_lanes_eq_fips_keccak` gives
 the unconditional FIPS 202 bit-exact identity. We re-export the
 conditional form for downstream consumers of the bridge, parallel to
 the SHA-2 conditional-form re-export in `Sha2EmitterComposition`.
@@ -94,7 +92,8 @@ the SHA-2 conditional-form re-export in `Sha2EmitterComposition`.
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #128 (Keccak side) in that chain: 2/5 sub-block readouts. -/
+module is the chain step after `KeccakEmitterComposition`: 2/5 sub-block
+readouts. -/
 
 /-- Re-export: the Keccak FIPS 202 bridge in conditional form. -/
 theorem emitRound_lanes_eq_fips_keccak_via_residual_uncond (round : Nat)
@@ -221,18 +220,19 @@ theorem emitIota_lanes_after {Γ : Ctxt jasminDialect}
 
 The full `emitRound` chain composition is the residual: thread the 5 per-
 sub-block readout closures through `emitTheta_C` / `_D` / `emitRhoPi` /
-`emitChi` / `emitIota`, then apply `keccak_round_bitexact` (#113) to
-get the FIPS 202 bridge.
+`emitChi` / `emitIota`, then apply `keccak_round_bitexact`
+(`KeccakDiffuseExact`) to get the FIPS 202 bridge.
 
-Status per-sub-block:
+Status per sub-block (denotation halves proved in `KeccakEmitterComposition`;
+the three residual readouts are proved in `KeccakEmitterReadoutHalfExt`):
 
 | Sub-block | Denotation half | Readout half               |
 |-----------|-----------------|----------------------------|
-| θ-C col   | proven (#118)   | **proven** here (per-column) |
-| θ-D col   | proven (#118)   | residual (per-column, 8 writes) |
-| ρπ lane   | proven (#118)   | residual (per-lane, ≤4 writes)  |
-| χ lane    | proven (#118)   | residual (per-lane, 4 writes)   |
-| ι         | proven (#118)   | **proven** here                  |
+| θ-C col   | proven          | **proven** here (per-column) |
+| θ-D col   | proven          | residual (per-column, 8 writes) |
+| ρπ lane   | proven          | residual (per-lane, ≤4 writes)  |
+| χ lane    | proven          | residual (per-lane, 4 writes)   |
+| ι         | proven          | **proven** here                  |
 
 The θ-C and ι closures demonstrate the template; the remaining three
 sub-block readout closures + the chain composition through `emitTheta_C

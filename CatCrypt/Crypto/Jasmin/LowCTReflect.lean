@@ -98,7 +98,7 @@ instance : Lean.ToExpr TowerType where
 
 deriving instance Lean.ToExpr for Located
 deriving instance Lean.ToExpr for SExpr
--- #267: derive on the canonical inductive `LowCT` (`LowCT` is now an abbrev).
+-- Derive on the canonical inductive `LowCT`.
 deriving instance Lean.ToExpr for LowCT
 
 end            -- meta section
@@ -236,12 +236,12 @@ noncomputable instance : Inhabited Fp2 := ⟨Fp2.default⟩
 /-- `Fp2` add. -/ axiom bls_fp2_add : Fp2 → Fp2 → Fp2
 /-- `Fp2` sub. -/ axiom bls_fp2_sub : Fp2 → Fp2 → Fp2
 
-/-! ## 2.0  Phase B — extensible pattern registry
+/-! ## 2.0  Extensible pattern registry
 
-The legacy `knownOps : List (Name × String × Nat × TowerType)` table
+The `knownOps : List (Name × String × Nat × TowerType)` table
 below is monolithic: every new field-op head requires an edit here.
-**Phase B (2026-05-03)** adds an attribute-based registry that lets
-external modules contribute patterns without touching this file.
+The attribute-based registry lets external modules contribute patterns
+without touching this file.
 
 Workflow for a downstream user:
 
@@ -255,13 +255,10 @@ def myCustomOpPattern : LowCTPattern where
 ```
 
 The reifier consults the registry **after** `knownOps` (so explicit
-in-file entries still take precedence).  Migrating each `knownOps`
-entry to its own `instance : LowCTPattern` declaration is Phase B.1,
-mechanical (~50 small instances).  The current commit lands the API
-surface and the consultation path; downstream modules can register
-new patterns immediately. -/
+in-file entries take precedence).  Downstream modules register
+patterns through this API without editing `knownOps`. -/
 
-/-- Phase B: a single pattern recogniser.  Maps a Lean constant
+/-- A single pattern recogniser.  Maps a Lean constant
     name (the function head) to its LowCT leaf-call lowering.
 
     Multi-arg variants (e.g. tower-type families) can be registered as
@@ -333,7 +330,7 @@ def LowCTPattern.lookup? (cn : Name) : IO (Option LowCTPattern) := do
 def LowCTPattern.snapshot : IO (List LowCTPattern) :=
   rustCmdPatternRegistry.get
 
-/-! ### `@[rust_cmd_pattern]` attribute (Phase B.1, 2026-05-03)
+/-! ### `@[rust_cmd_pattern]` attribute
 
 The attribute reads the marked `def`'s value (must reduce to a
 `LowCTPattern`), evaluates it, and calls
@@ -398,15 +395,15 @@ def LowCTPattern.taggedDecls : Lean.MetaM (Array Lean.Name) := do
   pure (rustCmdPatternExt.getState env)
 
 /-! ### Computable-body leaves: the `@[rust_cmd_pattern_computable]` sibling
-    attribute (2026-05-28)
+    attribute
 
-#### Problem (the L3-bridge agent's "typeclass-arity issue")
+#### Problem
 
 The default `@[rust_cmd_pattern]` workflow associates the Lean name `fnHead`
 with the emitted LowCT leaf-name string. The associated Lean decl is almost
 always an `axiom` — opaque on the Lean side, with semantics supplied externally
-(by the jasmin shim that implements the leaf). This is what every existing
-rustcmd-emit consumer does today (MAYO, UOV, SNOVA, MQOM, Plonky3, …).
+(by the jasmin shim that implements the leaf), as in the rustcmd-emit
+consumers MAYO, UOV, SNOVA, MQOM, Plonky3, ….
 
 The bridge-side cost: the L3 correctness identity between the rustcmd leaf
 and the Lean-level verified spec is a *cross-side axiom* (e.g.
@@ -414,9 +411,8 @@ and the Lean-level verified spec is a *cross-side axiom* (e.g.
 is no shared Lean body that both sides reduce to, so the bridge cannot be
 closed by `rfl`.
 
-Path B (the L3 bridge agent attempted): "define the leaf as a Lean `def`
-whose body IS the verified expression; then the bridge identity is `rfl`."
-This sounds clean but tripped on a subtle reifier interaction:
+Defining the leaf as a Lean `def` whose body IS the verified expression
+would make the bridge identity `rfl`, but the plain reifier defeats it:
 
 > When `reifyLowCT%` walks a let-chain, every let-value is normalised
 > by `Lean.Meta.whnf` *before* the pattern table is consulted (see
@@ -426,15 +422,14 @@ This sounds clean but tripped on a subtle reifier interaction:
 > `mayoScalarOfGf16 (MqEvalVerified.mqEvalN8 …)` — the head is not
 > the registered name, so the pattern match fails.
 
-That is *the* issue. The phrase "typeclass-arity" in the agent's note was
-a misdiagnosis (`LowCTPattern` is not a typeclass; the structure carries
-an explicit `arity` field that is unaffected by `def` vs `axiom`).
+The obstruction is transparency, not arity: `LowCTPattern` is not a
+typeclass, and its explicit `arity` field is unaffected by `def` vs `axiom`.
 
 #### Solution (this section)
 
 Two co-operating changes:
 
-1. **A new attribute `@[rust_cmd_pattern_computable]`** records the *same*
+1. **The attribute `@[rust_cmd_pattern_computable]`** records the *same*
    `LowCTPattern` shape as `@[rust_cmd_pattern]` but *additionally* marks
    the head name as "match-before-whnf". The persistent extension storing
    tagged decls is shared with the regular `@[rust_cmd_pattern]` (so all
@@ -461,10 +456,10 @@ def mayoQuadFormN8Pattern : LowCTPattern where
   towerType := .TBytes 1
 ```
 
-and have the bridge identity become provable by `rfl`. The hand-built
-`LowCT` consumers (which name the leaf as a string) are unchanged; the
-verified front sees the same `extCall "mayo_quadform_n8"` it always did. The
-only difference is at the Lean equational layer: the def's body is visible
+and prove the bridge identity by `rfl`. The hand-built
+`LowCT` consumers (which name the leaf as a string) and the verified front
+see the same `extCall "mayo_quadform_n8"` in both cases. The
+difference is at the Lean equational layer: the def's body is visible
 to `rfl`-based proofs in any module that imports the `def`.
 
 #### Invariants
@@ -494,7 +489,7 @@ are one-sided byte-ABI claims, not leaf semantics). -/
     touching the regular pattern flow.
 
     Defined BEFORE the attribute below (forward references would fail).
-    Uses the same `SimplePersistentEnvExtension` mechanism the legacy
+    Uses the same `SimplePersistentEnvExtension` mechanism the regular
     `rustCmdPatternExt` uses — no second `IO.Ref` `initialize` block
     (Lean rejects multi-`IO.Ref`-init blocks in the same module with
     `cannot evaluate [init] declaration ... in the same module`). -/
@@ -535,7 +530,7 @@ initialize Lean.registerBuiltinAttribute {
     `whnf` is still recognised as a leaf head.
 
     Backed by a `SimplePersistentEnvExtension` (same mechanism as the
-    legacy `rustCmdPatternExt`) — no `IO.Ref` for the new registry.
+    regular `rustCmdPatternExt`) — no `IO.Ref` for this registry.
 
     Wrapped via `unsafe` + `@[implemented_by]` opaque so consumers in
     the *same* module (e.g. the `#eval halfstepReified` smoke tests
@@ -618,7 +613,7 @@ the NTT-form `mlk_basemul` / `mlk_matvec` leaves above.  The leaf
 strings are the bare `poly_*` / `polyvec_*` / `mat_vec_mul` names that
 the bridge / lowering passes bind.  Heterogeneous argument types
 (`mat_vec_mul : MlMat → MlVec → MlVec`, `polyvec_dot : MlVec → MlVec →
-MlPoly`) are now threaded per-argument by the reifier. -/
+MlPoly`) are threaded per-argument by the reifier. -/
 /-- Coeff-form poly multiply (schoolbook / Karatsuba, leaf `poly_mul`). -/
 axiom mlk_poly_mul_c : MlPoly → MlPoly → MlPoly
 /-- Coeff-form poly subtract (leaf `poly_sub`). -/
@@ -855,7 +850,7 @@ axiom mld_poly_add : MldsaPoly → MldsaPoly → MldsaPoly
     into their 5 component polys inside the body — exactly how ML-KEM's
     `polyvec_dot3` sidesteps the same blocker for `k=3`. Encodes as
     `.TArr 1280 .TU32 → memref 640` (1280 coeffs × 4 bytes = 5120 bytes = 640 u64
-    limbs), so the new `mldsaDotWidthOf` lowers it to `stack u32[1280]`, slicing
+    limbs), so `mldsaDotWidthOf` lowers it to `stack u32[1280]`, slicing
     into the `stack u32[256]` poly leaves with no width mismatch. -/
 axiom MldsaPolyVecL : Type
 /-- Axiomatic inhabitant. -/ axiom MldsaPolyVecL.default : MldsaPolyVecL
@@ -871,13 +866,13 @@ axiom mld_vl_get3 : MldsaPolyVecL → MldsaPoly
 /-- Component-`4` window `v[1024:256]` (`slice@1024`). -/
 axiom mld_vl_get4 : MldsaPolyVecL → MldsaPoly
 
-/-! ### ML-DSA-65 kernel surface (Phase-L `TPolyMod`/`TPolyVec`/`TPolyMat` slots)
+/-! ### ML-DSA-65 kernel surface (`TPolyMod`/`TPolyVec`/`TPolyMat` slots)
 
 The reification surface for the three top-level ML-DSA-65 kernels
 (`mldsa_keygen_kernel` / `mldsa_sign_kernel` / `mldsa_verify_kernel`).
 Distinct from the NTT-word `MldsaPoly` surface above (which maps to
 `.TArr 256 .TU32` for the libjade NTT leaves): these map to the
-Phase-L `.TPolyMod 8380417 256` / `.TPolyVec 8380417 256 k` /
+`.TPolyMod 8380417 256` / `.TPolyVec 8380417 256 k` /
 `.TPolyMat 8380417 256 6 5` tower types the hand-authored kernels use,
 so the reified term emits the *same* `stack u32[…]` ABI the emit test
 pins.  ML-DSA-65: `q = 8380417`, `n = 256`, `k = 6`, `l = 5`.
@@ -885,7 +880,7 @@ pins.  ML-DSA-65: `q = 8380417`, `n = 256`, `k = 6`, `l = 5`.
 `MldBytes n` is a *size-indexed* byte buffer: the size travels in the
 Lean type, so `bytes_concat_*`'s result type (`TBytes (m+n+…)`) is read
 directly from the result let-binder's Lean type by the reifier, with no
-fixed entry in `knownOps`.  This is the Tier-2 generalization: the
+fixed entry in `knownOps`.  The
 result tower type is a function of the argument sizes, realized through
 the dependent return type of the concat axioms. -/
 
@@ -913,7 +908,7 @@ noncomputable instance : Inhabited MldMat := ⟨MldMat.default⟩
 
 /-! #### Byte-side plumbing: concat (size-additive) + slice (size-erasing) -/
 
-/-- Concatenate two byte buffers; result size is the sum (Tier-2:
+/-- Concatenate two byte buffers; result size is the sum (the
     dependent return type carries the summed `TBytes`). -/
 axiom mld_bytes_concat_2 {m n : Nat} : MldBytes m → MldBytes n → MldBytes (m + n)
 /-- Concatenate three byte buffers. -/
@@ -923,7 +918,7 @@ axiom mld_bytes_concat_3 {m n p : Nat} :
 axiom mld_bytes_concat_6 {m n p r s t : Nat} :
   MldBytes m → MldBytes n → MldBytes p → MldBytes r → MldBytes s → MldBytes t →
   MldBytes (m + n + p + r + s + t)
-/-- Slice `src[off..off+len]`.  Tier-3: the source argument is
+/-- Slice `src[off..off+len]`.  The source argument is
     size-erased (reflects as `.TBytes 0` regardless of `m`) so the
     reified term emits the same bytes the hand-authored slice leaf does;
     the erasure is applied by the reifier's per-leaf typing hook, keyed
@@ -1120,12 +1115,12 @@ meta def knownOps : List (Name × String × Nat × TowerType) :=
   , (``mld_vl_get2,        "slice@512",            1, .TArr 256 .TU32)
   , (``mld_vl_get3,        "slice@768",            1, .TArr 256 .TU32)
   , (``mld_vl_get4,        "slice@1024",           1, .TArr 256 .TU32)
-  -- ML-DSA-65 kernel surface (Phase-L slots). For every entry the dest
+  -- ML-DSA-65 kernel surface (polynomial slots). For every entry the dest
   -- tower type is recovered from the result let-binder's Lean type
   -- (`leanTypeToTowerType`); the `tt` here is the natural result type used
   -- only as the fallback default for non-binder dests.  The two concat
   -- families and the slice are size-dependent: their dest type is read from
-  -- the binder (Tier-2), and the slice source is size-erased (Tier-3).
+  -- the binder, and the slice source is size-erased.
   -- Byte-side plumbing:
   , (``mld_bytes_concat_2, "bytes_concat_2",       2, .TBytes 0)
   , (``mld_bytes_concat_3, "bytes_concat_3",       3, .TBytes 0)
@@ -1217,7 +1212,7 @@ def fvarDisplayName (fvarId : FVarId) : MetaM String := do
     and the various ML-KEM / ML-DSA surfaces to their `TPoly*` / `TBytes`
     / `TArr` forms.  The single-curve `Fp` / `Fp2` surfaces (BLS-style
     field) map to `TFp` / `TFp2`.  Anything else defaults to `TFp25519`
-    (legacy X25519 surface). -/
+    (the X25519 surface). -/
 def leanTypeToTowerType (t : Expr) : MetaM TowerType := do
   -- Size-indexed ML-DSA byte buffer `MldBytes n ↦ .TBytes n`: the size
   -- `n` travels in the Lean type, so the reified result tower type of a
@@ -1247,7 +1242,7 @@ def leanTypeToTowerType (t : Expr) : MetaM TowerType := do
   else if t.isConstOf ``MlKemEnc then return .TBytes 1120
   else if t.isConstOf ``MldsaPoly then return .TArr 256 .TU32
   else if t.isConstOf ``MldsaPolyVecL then return .TArr 1280 .TU32
-  -- ML-DSA-65 kernel surface (Phase-L slots):
+  -- ML-DSA-65 kernel surface (polynomial slots):
   else if t.isConstOf ``MldPoly then return .TPolyMod 8380417 256
   else if t.isConstOf ``MldVecL then return .TPolyVec 8380417 256 5
   else if t.isConstOf ``MldVecK then return .TPolyVec 8380417 256 6
@@ -1269,7 +1264,7 @@ def argTowerType (a : Expr) (default : TowerType) : MetaM TowerType := do
   else
     pure default
 
-/-- Tier-3 byte-size-erasure hook.  A handful of leaves take a byte
+/-- Byte-size-erasure hook.  A handful of leaves take a byte
     buffer whose size must be *erased* in the emitted `LowCT` (reflect as
     `.TBytes 0`) to match the hand-authored ABI the emit test pins:
 
@@ -1361,7 +1356,7 @@ def patternArgMismatch? (p : LowCTPattern) (args : Array Expr)
                  {tys[j]!}")
     return none
 
-/-- Phase B: match a fully-applied op against the dynamic
+/-- Match a fully-applied op against the dynamic
     `LowCTPattern` registry **and** the persistent
     `@[rust_cmd_pattern]`-tagged declarations.  Consulted *after*
     `matchOp?` fails, so in-file `knownOps` entries take precedence
@@ -1476,11 +1471,11 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
           let nm ← fvarDisplayName fvarId
           acc := .RSeq acc (.RSeq (.RLetU64Zero nm .RSkip) (.RScalarSet nm n))
           continue
-        -- (2026-05-28) Try the legacy `whnf`-then-`matchOp?` path FIRST,
-        -- so the in-file `knownOps` table (and existing `#eval` smoke
-        -- tests in this module) never touch the new computable-pattern
+        -- Try the `whnf`-then-`matchOp?` path FIRST,
+        -- so the in-file `knownOps` table (and the `#eval` smoke
+        -- tests in this module) never touch the computable-pattern
         -- registry — that avoids forcing same-module `[init]` evaluation
-        -- of `rustCmdPatternComputableExt` on legacy consumers.
+        -- of `rustCmdPatternComputableExt` on table consumers.
         --
         -- Only if `matchOp?` fails do we consult the dynamic registry,
         -- and only then do we check `isComputablePatternHead?` (BEFORE
@@ -1492,7 +1487,7 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
         let matchResult ← match legacyMatch with
           | some r => pure (some r)
           | none =>
-              -- Legacy match failed.  Check the new registry.  If the
+              -- Table match failed.  Check the computable registry.  If the
               -- head is a registered computable leaf, match on the
               -- *un-whnf'd* `v` (so the head isn't unfolded); otherwise
               -- fall back to the dynamic registry on the whnf'd value.
@@ -1505,7 +1500,7 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
         match matchResult with
         | some (leafName, argExprs, tt, argTys?) =>
             -- Convert each argExpr to its bound variable's string name,
-            -- giving each its *own* surface tower type: the Tier-3 erasure
+            -- giving each its *own* surface tower type: the byte-size erasure
             -- hook first (specific `(leaf, argIdx)` positions at
             -- `.TBytes 0`), then the pattern's declared per-argument type
             -- when it carries one, then the Lean binder type, and the op's
@@ -1524,10 +1519,10 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
               pure ({ locVar := n, locSrc := argTT } : Located)
             let destName ← fvarDisplayName fvarId
             let args : List Located := argLocs.toList
-            -- Tier-2: the dest tower type is read from the *result
+            -- The dest tower type is read from the *result
             -- binder's* Lean type (so size-additive concat dests get the
             -- summed `.TBytes`), falling back to the op's registered `tt`
-            -- when the binder type doesn't map to a surface (legacy ops).
+            -- when the binder type doesn't map to a surface (table ops).
             let destTT ← do
               let bt ← leanTypeToTowerType decl.type
               pure (if bt == .TFp25519 ∧ tt != .TFp25519 then tt else bt)
@@ -1562,8 +1557,8 @@ partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
   -- Handle the final expression: either a bound variable (return it
   -- directly) or a call (emit one last RCall binding a fresh result
   -- name "__result"). Same computable-head fallback pattern as in the
-  -- let-binder path above: legacy matchOp? FIRST (so existing #eval
-  -- smoke tests never touch the new registry), then the new
+  -- let-binder path above: table matchOp? FIRST (so the #eval
+  -- smoke tests never touch the computable registry), then the
   -- computable check only if matchOp? failed.
   if finalReducedDefault.isFVar then
     let retName ← fvarDisplayName finalReducedDefault.fvarId!
@@ -2301,7 +2296,7 @@ The lattice analogue of `halfstepLean` — the negacyclic poly product
 `a ·  b = invntt(basemul(ntt a, ntt b))` over `Z_3329[X]/(X^256+1)`, written as a
 pure Lean function over the opaque `MlPoly` surface, lifted to `LowCT` by the
 same verified `reifyLowCT%`. This is the ML-KEM core arithmetic op entering the
-Lean→LowCT→CryptoSSA→Com→jasmin pipeline, like the X25519 field step. -/
+Lean → LowCT → `Com catCryptDialect` → Jasmin pipeline, like the X25519 field step. -/
 noncomputable def polyMulLean (a b : MlPoly) : MlPoly :=
   let ah := mlk_ntt a
   let bh := mlk_ntt b
@@ -2316,7 +2311,7 @@ def polyMulReified : ReifiedFunc := reifyLowCT% polyMulLean
 ML-KEM-768 key generation (`t̂ = Â ∘ ŝ`). Written as natural Lean over the
 opaque `MlVec`/`MlMat` surface; reified to a `LowCT` whose leaves are the
 polyvec NTT + matrix-vector-accumulate primitives. This is the vector-level
-analogue of `polyMulLean`, exercising the Stage-3 `TPolyVec`/`TPolyMat`
+analogue of `polyMulLean`, exercising the `TPolyVec`/`TPolyMat`
 encodings (`memref 192` / `memref 576`) through the verified front. -/
 noncomputable def matvecLean (A : MlMat) (s : MlVec) : MlVec :=
   let sh := pv_ntt s
@@ -2328,8 +2323,8 @@ def matvecReified : ReifiedFunc := reifyLowCT% matvecLean
 /-! ### ML-KEM-768 key generation (indcpa core)
 
 The full keygen lattice pipeline written in natural Lean over the byte+poly+matrix
-surface, composing the hash/CBD/encode leaves (now lowerable through the verified
-front via the Stage-7 `TBytes` support) with the Stage-3/4 matrix-vector core:
+surface, composing the hash/CBD/encode leaves (lowerable through the verified
+front via its `TBytes` support) with the matrix-vector core:
 
   Â = gen_matrix(ρ);  s,e = cbd(σ);  t̂ = Â∘ntt(s) + ntt(e);  pk = encode(t̂).
 
@@ -2470,7 +2465,7 @@ noncomputable def encapsKemLean (pk : MlPubKey) (msg : MlMsg) : MlKemEnc :=
   -- INDCPA_enc(m, pk, r)  (== encapsLean body with coins := r)
   let tHat := mlk_pk_decode pk
   let k    := mlk_frommsg msg
-  let nz   := mlk_cbd_enc_all r            -- batched noise: 2 4-way perms (was 3 calls)
+  let nz   := mlk_cbd_enc_all r            -- batched noise: 2 4-way perms
   let rv   := mlk_noise_r nz
   let e1   := mlk_noise_e1 nz
   let e2   := mlk_noise_e2 nz
@@ -2505,7 +2500,7 @@ noncomputable def decapsKemLean (c : MlCipher) (sk : MlSecKeyFull) : MlSharedSec
   let pk    := mlk_sk_pk sk
   let tHat  := mlk_pk_decode pk
   let kpoly := mlk_frommsg mp
-  let nz    := mlk_cbd_enc_all r           -- batched noise: 2 4-way perms (was 3 calls)
+  let nz    := mlk_cbd_enc_all r           -- batched noise: 2 4-way perms
   let rv    := mlk_noise_r nz
   let e1    := mlk_noise_e1 nz
   let e2    := mlk_noise_e2 nz

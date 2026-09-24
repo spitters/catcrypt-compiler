@@ -38,8 +38,8 @@ result byte-for-byte against the published RFC vectors.
 * **HKDF-Extract** (RFC 5869): `PRK = HMAC-SHA256(salt, IKM)` — one HMAC call.
 * **HKDF-Expand** (RFC 5869): `T(0) = ""`, `T(i) = HMAC-SHA256(PRK, T(i-1) ‖ info
   ‖ byte(i))`, `OKM = T(1) ‖ T(2) ‖ … ` truncated to `L`. The `T(i)` chaining is
-  a bounded loop over the (one HMAC per step) body — routed through the R1
-  multi-op keystone `JForProgMultiOp.loop_denote_eq_multiOp` (`§4`).
+  a bounded loop over the (one HMAC per step) body — routed through the
+  multi-op loop theorem `JForProgMultiOp.loop_denote_eq_multiOp` (`§4`).
 
 ## What is emitted vs. what is the wrapper
 
@@ -48,15 +48,15 @@ result byte-for-byte against the published RFC vectors.
 | SHA-256 block compression `f(H,M)=H'` | **reused-emitted** (`Sha2Emit.sha256Jazz`, pure `regArith`, no leaf) |
 | HMAC `K⊕ipad` / `K⊕opad` pad | **emitted** here (`hmacXorPadJazz`, 16 `regArith xor`, no leaf) |
 | key zero-pad, `‖` concatenations, MD block loop, byte (de)serialise | C harness (data-oblivious wrapper) |
-| HKDF-Expand `T(i)` chaining loop | **verified loop** via R1 keystone (`§4`) |
+| HKDF-Expand `T(i)` chaining loop | **verified loop** via multi-op loop theorem (`§4`) |
 
 So the *cryptographic core* (SHA-256 + the XOR-pad) is entirely emitted through
 the verified front; the harness contributes only the standard data-independent
 message plumbing.
 
-## The dialect gap that shapes the Expand loop body (tracked as #104)
+## The dialect gap that shapes the Expand loop body
 
-The R1 keystone `loop_denote_eq_multiOp` requires a single-accumulator body
+The multi-op loop theorem `loop_denote_eq_multiOp` requires a single-accumulator body
 `Com [accTy] accTy` whose only free variable is the loop-carried accumulator
 (de Bruijn `.here`). The real HKDF-Expand step `T(i) = HMAC(PRK, T(i-1) ‖ info ‖
 i)` needs, inside the body, the **per-iteration counter byte `i`** and the
@@ -66,13 +66,13 @@ in-body literal-constant op** — `regArith`'s `shl`/`shr` take their amount fro
 a `JForProg` body's only variable is the accumulator. So a constant-free body
 cannot synthesise the counter byte the recurrence consumes. This is exactly the
 gap documented for the SHA-2 schedule loop (`Sha2Emit.lean` §7b, the missing
-`regConst`/`regShiftImm` op) and is tracked as **#104**.
+`regConst`/`regShiftImm` op).
 
-We therefore route the Expand loop through the keystone two ways, mirroring the
+We therefore route the Expand loop through the loop theorem two ways, mirroring the
 SHA-2 schedule treatment:
 
 * `expandSkelLoop_denote_eq` — a pure-`regArith` wide-block multi-op body (the
-  T-chaining skeleton), **axiom-clean, no `LeafAgrees`**, showing the keystone
+  T-chaining skeleton), **axiom-clean, no `LeafAgrees`**, showing the loop theorem
   fires for a leaf-free HKDF-shaped wide accumulator body;
 * `expandLoop_denote_eq` — the *full* HKDF-Expand recurrence with one
   `hkdf_expand_step` `extCall` leaf (the ML-KEM matvec / SHA-2 sched-loop
@@ -101,7 +101,7 @@ byte-for-byte against the RFC 4231 HMAC-SHA-512 vectors.
 ## HMAC-SHA384 (the SHA-384 truncation, `§7`)
 
 HMAC-SHA384 shares the SHA-512 *compression* but with the SHA-384 IV and a
-truncated (48-byte) output. `Sha2Emit.Truncated.sha384Variant` now lands that
+truncated (48-byte) output. `Sha2Emit.Truncated.sha384Variant` is that
 SHA-384 wrapper: its emitted core is **byte-identical** to `sha512Jazz`
 (`sha384_reuses_sha512_core`), differing only in the FIPS 180-4 §5.3.4 initial
 hash value (`iv384`) and the §6.5 truncation to 6 of the 8 chaining words (48
@@ -292,7 +292,7 @@ The Expand output is `T(1) ‖ T(2) ‖ …`, with `T(i) = HMAC(PRK, T(i-1) ‖ 
 byte(i))`. The chaining `T(i-1) ↦ T(i)` is a fixed-trip loop over a single
 loop-carried accumulator (the running 32-byte block `T`, packed as one wide
 register `reg (8·32)` = the 8 `u32` words of an HMAC-SHA256 output). We route the
-loop through the R1 multi-op keystone `JForProgMultiOp.loop_denote_eq_multiOp`:
+loop through the multi-op loop theorem `JForProgMultiOp.loop_denote_eq_multiOp`:
 the emitted `for i = 1 to N { T = step(T) }` denotes the `N`-fold chaining. -/
 
 /-- The wide-register HKDF-Expand accumulator: the 8 `u32` words of a 32-byte
@@ -303,8 +303,8 @@ abbrev TAcc : JasminTy := .reg (8 * hw)
 
 A multi-op straight-line `Com [TAcc] TAcc` from pure `regArith` over the wide
 accumulator — the shape of the T-chaining block-combine skeleton, leaf-free. It
-routes through the multi-op keystone with **no** `LeafAgrees` hypothesis,
-axiom-clean. This shows the bounded-loop keystone fires for a leaf-free
+routes through the multi-op loop theorem with **no** `LeafAgrees` hypothesis,
+axiom-clean. This shows the bounded-loop theorem fires for a leaf-free
 HKDF-shaped wide accumulator body — the loop machinery needs no opaque
 primitive. Mirrors `Sha2Emit.schedSkelBody`. -/
 
@@ -316,7 +316,7 @@ def accOp {Γ : Ctxt jasminDialect}
 
 /-- A leaf-free multi-op straight-line body over the wide T accumulator: a
     three-op `regArith` chain (`v0 = T + T; v1 = v0 ^ T; v2 = v1 | v0`), binding
-    three fresh SSA names — exactly the multi-op shape the R1 keystone covers. -/
+    three fresh SSA names — exactly the multi-op shape the multi-op loop theorem covers. -/
 def expandSkelBody : Com jasminDialect [TAcc] TAcc :=
   .var (accOp .add .here .here)
     (.var (accOp .xor .here (.there .here))
@@ -342,9 +342,9 @@ def expandSkelLoop (n : Nat) : JForProg TAcc :=
     semantics — axiom-clean, no `LeafAgrees`.** Running the emitted
     `for i = 0 to n { T = body(T) }` `n` times from `init` equals
     `expandSkelLoop.denote init`, via `loop_denote_eq_multiOp`. The body is pure
-    `regArith` over the wide accumulator, so the keystone's `LeafAgrees` is
+    `regArith` over the wide accumulator, so the loop theorem's `LeafAgrees` is
     satisfied vacuously (no `extCall`): **any** `leafSem` works, and the result
-    is axiom-clean. The bounded-loop keystone for a leaf-free HKDF-shaped wide
+    is axiom-clean. The bounded-loop theorem for a leaf-free HKDF-shaped wide
     accumulator body. -/
 theorem expandSkelLoop_denote_eq (n : Nat) {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : ⟦TAcc⟧) :
@@ -364,7 +364,7 @@ cannot synthesise the counter byte the recurrence consumes. We therefore
 encapsulate one Expand step as a single `extCall` leaf `hkdf_expand_step`,
 exactly the ML-KEM matvec / SHA-2 sched-loop precedent: the loop **structure** is
 verified, with the leaf's data-oblivious recurrence semantics as the carried
-`LeafAgrees` edge. This is the documented #104 limitation, reported not patched. -/
+`LeafAgrees` edge. This is the documented missing-immediate-op limitation. -/
 
 /-- The HKDF-Expand step leaf name (one `T(i) = HMAC(PRK, T(i-1) ‖ info ‖ i)`
     step). -/
@@ -392,8 +392,8 @@ def expandLoop (n : Nat) : JForProg TAcc :=
     `expandLoop.denote init` — the loop structure is verified end to end. The
     sole carried edge is the leaf agreement `LeafAgrees` (the `hkdf_expand_step`
     leaf's data-oblivious recurrence semantics), required only because of the
-    missing in-body immediate op (#104); fresh-name injectivity is discharged
-    inside the R1 keystone. -/
+    missing in-body immediate op; fresh-name injectivity is discharged
+    inside the multi-op loop theorem. -/
 theorem expandLoop_denote_eq (n : Nat) {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : ⟦TAcc⟧) :
     loopRun (expandLoop n) (bodyStepRun leafSem (expandLoop n)) init
@@ -439,7 +439,7 @@ pure `regArith` over `u64`, no leaf). The block is **128 bytes = 16 `u64` words*
 (vs SHA-256's 64-byte / 16-`u32` block), and the pad constants are the `u64`
 replications `0x3636363636363636` / `0x5c5c5c5c5c5c5c5c`. The XOR-pad is the only
 word arithmetic HMAC adds; it is `blockWords = 16` independent `regArith xor`
-bindings exactly as for SHA-256, now at width `64`. We give a
+bindings exactly as for SHA-256, at width `64`. We give a
 width-parameterized XOR-pad `Com` so HMAC-SHA512 reuses the SHA-256 machinery
 verbatim. -/
 

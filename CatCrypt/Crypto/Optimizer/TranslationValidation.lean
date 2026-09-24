@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
-# Verified translation validation for the `Com jasminDialect` optimiser (#591)
+# Verified translation validation for the `Com jasminDialect` optimiser
 
 A **verified translation-validation (TV) checker** for the typed VIR
 `jasminDialect`. The intended use is an *untrusted* optimizer oracle — an
@@ -38,15 +38,15 @@ the existential intermediate type at each `var` binder, handled by deciding
 
 ## What is proved
 
-* `comEqB_sound` — `comEqB c c' = true → ∀ V, c'.denote V = c.denote V`. A
-  genuine induction over the `Com` let-chain; **not** `rfl`.
+* `comEqB_sound` — `comEqB c c' = true → ∀ V, c'.denote V = c.denote V`. An
+  induction over the `Com` let-chain; **not** `rfl`.
 * `tvCheck_sound` — the headline soundness theorem:
   `tvCheck c c' = true → ∀ V, c'.denote V = c.denote V`. Composes
   `comEqB_sound` with the verified `Peephole.peepCom_denote`. The checker is
   *incomplete* (it certifies only this conservative relation), but it is
   **sound**: it never certifies a candidate that changes the denotation.
 
-This is the #591 verified-TV seed: a global-minimum optimisation path in which
+This is the base verified-TV checker: a global-minimum optimisation path in which
 the search/rewrite is delegated to an untrusted oracle and only the equivalence
 check is trusted. Widening the accepted relation (more verified rewrites, an
 equality-saturation witness, observational refinement) extends the checker
@@ -154,7 +154,7 @@ def comEqB {Γ : Ctxt jasminDialect} {t : JasminTy} :
   | _, _ => false
 
 /-- **Soundness of `comEqB`.** If `comEqB c c' = true` then `c'` denotes the
-same function as `c`, for every valuation. A genuine induction over the let
+same function as `c`, for every valuation. An induction over the let
 chain — **not** `rfl`. -/
 theorem comEqB_sound {Γ : Ctxt jasminDialect} {t : JasminTy} :
     ∀ (c c' : Com jasminDialect Γ t),
@@ -193,10 +193,10 @@ def tvCheck {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c c' : Com jasminDialect Γ t) : Bool :=
   comEqB c c' || comEqB (peepCom c) c'
 
-/-- **Soundness of the TV checker (#591).** If `tvCheck c c' = true`, the
+/-- **Soundness of the TV checker.** If `tvCheck c c' = true`, the
 candidate `c'` denotes the same function as the input `c`, for every valuation.
 The optimizer that produced `c'` is *not* trusted: this theorem certifies the
-candidate purely from the checker's `true` verdict, by composing `comEqB_sound`
+candidate purely from the checker's `true` result, by composing `comEqB_sound`
 with the verified `Peephole.peepCom_denote`. Incomplete (only the conservative
 relation is accepted) but never unsound. -/
 theorem tvCheck_sound {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -224,7 +224,7 @@ example :
       (Com.var (binE .xor (Ctxt.Var.here) (Ctxt.Var.here)) (.ret .here)) = true := by
   decide
 
-/-- The accepted peephole candidate genuinely denotes the same function as the
+/-- The accepted peephole candidate denotes the same function as the
 input (both map `x` to `0`) — the soundness theorem applied to the demo. -/
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (Com.var (binE .xor (Ctxt.Var.here) (Ctxt.Var.here)) (.ret .here)).denote V

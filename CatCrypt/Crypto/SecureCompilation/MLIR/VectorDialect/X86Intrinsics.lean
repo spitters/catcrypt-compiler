@@ -20,8 +20,7 @@ appear in CatCrypt's `.jinc` leaf bodies. Each intrinsic is given a
 total-function denotation `BitVec _ → BitVec _ → BitVec _` (binary case) or
 similar.
 
-This file is part of the MLIR VectorDialect scaffolding (tasks #183, #185,
-#187) and is consumed by `MayoLeafProof.lean` to give a Lean meaning to the
+This module is part of the MLIR VectorDialect scaffolding and is consumed by `MayoLeafProof.lean` to give a Lean meaning to the
 PSHUFB-based GF(16) lookup tables in `bench/mayo_compare/include/mayo_leaves.jinc`.
 
 ## What the semantics are pinned against

@@ -15,24 +15,20 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
 
 This file builds `translateMonoCmdD`, a Jasmin → SSA translator that emits
 a `Com catCryptDialect Γ (.sword n)` **directly** from the Jasmin
-`MonoCmd`/`InstrR` head. There is no `CProg` (the `CryptoSSA` inductive)
-detour: each `InstrR`/`PExpr` head is mapped straight to the corresponding
-`catCryptDialect` op (`bvAdd64`/`bvXor`/`bvConst`/shift/…), so the
-definition references neither `CExpr`/`CProg` nor the `CExpr→dialect`
-translators `toVIRExprT`/`toVIRComT`.
+`MonoCmd`/`InstrR` head: each `InstrR`/`PExpr` head is mapped straight to the
+corresponding `catCryptDialect` op (`bvAdd64`/`bvXor`/`bvConst`/shift/…).
 
-The only `CryptoSSA`/VIR carry-overs are the *variable* translation
-`CryptoToVIR.toVIRVar` (the de-Bruijn relabelling, kept because the
-`MonoVarMap` records `CVar`s) and the `MonoVarMap`/`monoAgrees`/
-`pureEvalMonoCmd` reference layer from `JasminMonoSem`.
+The translator also uses the *variable* translation
+`DialectVarBridge.toVIRVar` (the de-Bruijn relabelling of the `CVar`s that the
+`MonoVarMap` records) and the `MonoVarMap`/`monoAgrees`/`pureEvalMonoCmd`
+reference layer from `JasminMonoSem`.
 
 The reference-semantics correctness of this translator
 (`Com.denoteSP (translateMonoCmdD …) = SPComp.pure (pureEvalMonoCmd …)`)
-is proved natively by induction in
-`JasminToSSADialectNative.lean` (`translateMonoCmdD_denoteSP_native`),
-with no `CProg`/`toVIRComT` dependence.
+is proved by induction in
+`JasminToSSADialectNative.lean` (`translateMonoCmdD_denoteSP_native`).
 
-## Coverage (honest)
+## Coverage
 
 `translateMonoCmdD` covers, directly:
 
@@ -88,11 +84,10 @@ def translateBinOpD {Γ : Ctx} {n : Nat}
 /-- Translate a Jasmin expression directly to a `catCryptDialect` `Expr`.
 
     Emits the dialect op for each supported `PExpr` head straight from the
-    Jasmin AST — no `CExpr`/`toVIRExprT` detour. Returns `none` on the heads
+    Jasmin AST. Returns `none` on the heads
     `JasminToSSA.translateMonoExpr` declines (unsupported expression shapes,
     or operands not in the variable map). Mirrors `translateMonoExpr` arm for
-    arm, but the image is a `catCryptDialect` op record rather than a
-    `CExpr`. -/
+    arm; the image is a `catCryptDialect` op record. -/
 def translateMonoExprD {Γ : Ctx} {n : Nat}
     (m : MonoVarMap Γ n) : PExpr → Option (Expr catCryptDialect Γ (.sword n))
   | .Pconst z =>
@@ -124,7 +119,7 @@ def translateMonoExprD {Γ : Ctx} {n : Nat}
     Covers the straight bignum ALU spine (return / copy / op-assignment) and
     the `ADD_64`/`ADC_64` carry intrinsics (`bvAdd64`/`bvAdc` + `fst`/`snd`
     destructuring); declines all control flow and other `Copn` heads, as
-    `none`. No `CProg`/`toVIRComT` detour. -/
+    `none`. -/
 def translateMonoCmdD {Γ : Ctx} {n : Nat}
     (m : MonoVarMap Γ n) (retVar : Var) :
     List InstrR → Option (Com catCryptDialect Γ (.sword n))

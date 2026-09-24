@@ -40,15 +40,15 @@ ImpExpr-compiled leaves equal that spec; this file shows the **typed**-compiled
 leaves equal the *same* spec. Since both realization instances are equal to
 `roundDepsSpec`, the abstract security layer is identical in both cases:
 `appliesToCompiledT P (h : P roundDepsSpec) : P toRoundDepsT` is the same
-connective principle as `appliesToCompiled`, now sourced from the typed leaves.
+connective principle as `appliesToCompiled`, sourced from the typed leaves.
 
-Concretely this is **step 4 of the ImpExpr-removal plan**: nothing in the
-security layer changes when the front pivots from untyped `ImpExpr` to typed
-`Hax.TExpr` — the same `RoundDeps` / `roundDepsSpec` abstraction is realized by
-the typed-compiled leaves exactly as it was by the ImpExpr-compiled ones, with
-no new axioms (just `▸` on `toRoundDepsT_eq_spec`).
+Concretely, nothing in the security layer depends on whether the front is the
+untyped `ImpExpr` or the typed `Hax.TExpr`: the same `RoundDeps` /
+`roundDepsSpec` abstraction is realized by the typed-compiled leaves exactly as
+by the ImpExpr-compiled ones, with no new axioms (just `▸` on
+`toRoundDepsT_eq_spec`).
 
-## Honest scope
+## Scope
 
 Like the ImpExpr tie, this pins down the **connective principle** on the
 round primitives: a typed-compiled leaf (a `Com jasmin` proven equal to its

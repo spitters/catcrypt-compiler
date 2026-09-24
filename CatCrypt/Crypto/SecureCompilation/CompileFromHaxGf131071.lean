@@ -11,9 +11,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
-# #606 fan-out: the verified compiler emits a GF(131071) Mersenne-fold multiply
+# The verified compiler emits a GF(131071) Mersenne-fold multiply
 
-This module extends the **C4** step of the verified-compiler plan to the
+This module applies the verified compile-from-hax front to the
 **prime-field** primitive `GF(131071)`. `131071 = 2¹⁷ - 1` is a **Mersenne**
 prime, so `2¹⁷ ≡ 1 (mod 131071)`: multiply is integer `a·b` followed by a
 `2¹⁷ ≡ 1` double-fold and a branch-free conditional subtract — the same Mersenne
@@ -103,8 +103,8 @@ theorem gf131071Mul_compileFromHax_isSome :
 /-- **GF(131071) Mersenne multiply emitted by the verified compiler (fold
     form).** There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] gf131071MulSrc = some c`, and `c`'s `BitVec 64`
-    denotation (under `![a, b]`) is the closed Mersenne-fold emit form. A #606
-    fan-out to the Mersenne prime field `GF(2¹⁷-1)`. The abstract `(a*b) % 131071`
+    denotation (under `![a, b]`) is the closed Mersenne-fold emit form, over
+    the Mersenne prime field `GF(2¹⁷-1)`. The abstract `(a*b) % 131071`
     tie is `gf131071MulFold_eq_mod`. -/
 theorem gf131071Mul_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 64 2 []) (rW 64)),

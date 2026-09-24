@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
 public import CatCrypt.Crypto.Optimizer.RedundantReloadElim
 
 /-!
-# The composed owned x86-`Com` optimizer driver (#555 core)
+# The composed owned x86-`Com` optimizer driver
 
 The owned x86 backend has several verified `List (JInstr 64) → List (JInstr 64)`
 passes, each with its own translation-validation theorem.  This module is the
@@ -45,7 +45,7 @@ with both shapes are:
 
 | pass | transform | `runBlock`-eq theorem | `allDirect` theorem |
 |---|---|---|---|
-| **store-to-load forward (#372/#412)** | `StoreToLoadForward.storeToLoadForward` | `storeToLoadForward_runBlock` | `storeToLoadForward_allDirect` (§1) |
+| **store-to-load forward** | `StoreToLoadForward.storeToLoadForward` | `storeToLoadForward_runBlock` | `storeToLoadForward_allDirect` (§1) |
 | **identity-mov drop** | `GraphColoringCoalesce.dropIdMovs` | `runBlock_dropIdMovs` | `allDirect_dropIdMovs` |
 | **redundant spill-reload elimination** | `RedundantReloadElim.dropReloads` | `dropReloads_runBlock` | `dropReloads_allDirect` |
 | **flag-liveness-guarded MUL→MULX fusion** | `JInstrFlagLiveness.fuseMulxGuarded` | `fuseMulxGuarded_runBlock` | `fuseMulxGuarded_allDirect` |
@@ -81,17 +81,17 @@ These have real, proved translation-validation theorems, but **not** of the
 unconditional full-equality shape, so they cannot be dropped into the
 transitive chain without threading a hypothesis:
 
-* **mem2reg / dead-store elimination (#445, `Mem2Reg.mem2reg_runBlock_agree`)** —
+* **mem2reg / dead-store elimination (`Mem2Reg.mem2reg_runBlock_agree`)** —
   the certificate is `AgreeOn prot` (agreement on a *protected footprint*), not
   full-state equality.  A whole-program full equality holds only when the
   promoted/dead cells are outside the observable footprint; that is a per-kernel
   obligation, so this pass is gated behind a `prot` precondition.
-* **randomized register allocation (#386, `RandomizedRegAlloc.regalloc_runBlock_sound`)** —
+* **randomized register allocation (`RandomizedRegAlloc.regalloc_runBlock_sound`)** —
   the certificate is a `StateRel ρ` *simulation* under `Function.Injective ρ`
   (and it acts on a *renamed* input state `renameState σ s`), not an identity on
   the same state.  It needs the injectivity/acceptance side-conditions, so it is
   gated.
-* **randomized schedule search (#385, `RandomizedScheduleSearch`)** — the
+* **randomized schedule search (`RandomizedScheduleSearch`)** — the
   all-states `runBlock`-equality is proved **per concrete block** (e.g.
   `hoisted_runBlock_eq_input`, and the `feMulBlock_legal_swaps = 8` legality
   count), reusing `legalSwap` disjoint-footprint reasoning; there is no single
@@ -120,8 +120,8 @@ are discharged per kernel.  The reusable *unconditional* driver and the hooks
 * `optimizeX86Block_allDirect` — the composed constant-time-class certificate.
 * `optimizeX86Block_lowering` — the dialect/`Com`-level form, via
   `X86Dialect.lowerBlock_denote_closed`.
-* `optimizeFeMulBlock_*` — the #555 pilot's bespoke `storeToLoadForward feMulBlock`
-  wiring (and its denotation equality) collapses to a **single
+* `optimizeFeMulBlock_*` — the bespoke `storeToLoadForward feMulBlock` wiring of
+  `Fe25519MulOptimized.lean` (and its denotation equality) collapses to a **single
   `optimizeX86Block feMulBlock` call**, demonstrating the driver on a real kernel.
 -/
 
@@ -221,7 +221,7 @@ def idPass : X86Pass where
   runBlock_eq := fun _ _ => rfl
   allDirect_pres := fun _ h => h
 
-/-- **Store-to-load forwarding as an `X86Pass`** (#372/#412).  Semantics by
+/-- **Store-to-load forwarding as an `X86Pass`**.  Semantics by
     `storeToLoadForward_runBlock`, constant time by `storeToLoadForward_allDirect`. -/
 def storeToLoadForwardPass : X86Pass where
   run := storeToLoadForward
@@ -321,7 +321,7 @@ theorem applyX86Pipeline_lowering (passes : List X86Pass)
 kernel routes through.  The order is forced by what each stage consumes and
 produces:
 
-1. **store-to-load forwarding** (#372/#412) recovers register-residence on
+1. **store-to-load forwarding** recovers register-residence on
    frame-resident bodies and is the identity on already register-resident
    schoolbooks.  It is length-preserving, and it turns a reload of a
    just-spilled register into the self-move `mov d (.reg d)`.
@@ -351,11 +351,11 @@ def defaultX86Pipeline : List X86Pass :=
 
 /-- **The reusable owned-x86 `Com→Com` optimizer driver.**  Route an owned-emit
     block through the default unconditional pipeline.  This is the single entry
-    point that replaces per-kernel hand-wiring of the individual passes. -/
+    point, in place of per-kernel hand-wiring of the individual passes. -/
 def optimizeX86Block (blk : List (JInstr 64)) : List (JInstr 64) :=
   applyX86Pipeline defaultX86Pipeline blk
 
-/-- **The composed driver translation-validation theorem (#555 core).**  For every
+/-- **The composed driver translation-validation theorem.**  For every
     block and every state, the optimized block has the same `runBlock` final state
     as the input.  This is the `x86Dialect` analogue of
     `Optimizer.Pipeline.optPipelineJ_denote`: every owned-emit kernel calls *this*
@@ -383,13 +383,13 @@ theorem optimizeX86Block_lowering (blk : List (JInstr 64)) (s : JState 64) :
 /-! ## §4.5  Gated passes: mem2reg / spilling RA wrapped with their *real* certificates
 
 The mem2reg (`Mem2Reg`) and spilling-register-allocation (`SpillingRegAlloc`)
-passes are now build-fixed for the `loadMemIdx`/`storeMemIdx` SIB constructors
-(commit `fba8d4a8d`), so they are available to wire in here.  But — exactly as the
+passes cover the `loadMemIdx`/`storeMemIdx` SIB constructors, so they are
+available to wire in here.  But — exactly as the
 module docstring's gated-pass table records — neither carries the *unconditional*
 all-blocks/all-states full `runBlock`-equality that `X86Pass.runBlock_eq`
 requires:
 
-* `mem2reg prot` removes the now-dead scratch stores after forwarding, so its
+* `mem2reg prot` removes the dead scratch stores after forwarding, so its
   final state differs from the input's precisely on those eliminated cells.  Its
   proved translation-validation certificate (`mem2reg_runBlock_agree`) is
   `AgreeOn prot` — agreement on the register file and the *protected* footprint —
@@ -443,8 +443,7 @@ def X86GatedPass.toX86Pass (g : X86GatedPass)
   runBlock_eq := fun blk s => g.runBlock_eq_of blk s (hpre blk s)
   allDirect_pres := hct
 
-/-- **mem2reg / scalar-replacement as a gated pass** (#445, build-fixed in
-    `fba8d4a8d`).  The gate is exactly the proved footprint-agreement obligation:
+/-- **mem2reg / scalar-replacement as a gated pass**.  The gate is exactly the proved footprint-agreement obligation:
     `mem2reg prot`'s output must equal the input's `runBlock` final state — which
     holds when the dead-store footprint dropped by DSE is unobservable for this
     block.  The TV field is discharged trivially because the precondition *is* the
@@ -472,8 +471,8 @@ theorem mem2regGatedPass_agree (prot : List (String × Int))
 
 /-! ## §5  Demonstration on a real kernel: `fe25519_mul`
 
-The #555 pilot (`Fe25519MulOptimized.lean`) wired `storeToLoadForward feMulBlock`
-by hand and proved its `runBlock`/lowering equality directly from
+`Fe25519MulOptimized.lean` wires `storeToLoadForward feMulBlock`
+by hand and proves its `runBlock`/lowering equality directly from
 `storeToLoadForward_runBlock`.  With the driver, that whole bespoke wiring
 collapses to a **single `optimizeX86Block feMulBlock` call**, and the equality
 theorems are instances of the composed driver theorems above.  This is the
@@ -482,12 +481,12 @@ intended usage every owned-emit kernel adopts. -/
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel (feMulBlock)
 
 /-- The Curve25519 field-multiply block routed through the **driver** (one call,
-    replacing the pilot's hand-wired `storeToLoadForward feMulBlock`). -/
+    in place of the hand-wired `storeToLoadForward feMulBlock`). -/
 def optimizeFeMulBlock : List (JInstr 64) := optimizeX86Block feMulBlock
 
 /-- **Driver-optimized `fe25519_mul` = hand kernel, on every state.**  An instance
-    of `optimizeX86Block_runBlock` — the pilot's bespoke `runBlock` certificate is
-    now a one-liner through the composed driver. -/
+    of `optimizeX86Block_runBlock` — the bespoke `runBlock` certificate is
+    a one-liner through the composed driver. -/
 theorem optimizeFeMulBlock_runBlock (s : JState 64) :
     runBlock s optimizeFeMulBlock = runBlock s feMulBlock :=
   optimizeX86Block_runBlock feMulBlock s
@@ -574,32 +573,30 @@ theorem dropReloads_twoCellReload_fires :
       (optimizeX86Block twoCellReloadBlock).length = 3 := by
   constructor <;> rfl
 
-/-! ## §6  Remaining passes to fold in (the #555 generalisation work)
+/-! ## §6  Passes outside the unconditional core
 
 To grow the unconditional core, each gated pass needs its translation-validation
 theorem re-phrased (or specialised) into the side-condition-free all-blocks
 `runBlock`-equality shape `X86Pass` requires:
 
-* **mem2reg / DSE (#445)** — currently `AgreeOn prot`; a full-state-equality
-  corollary holds when the promoted/dead footprint is unobservable.  Wrapping it
-  as a `gated` pass (carrying `prot` + a footprint-unobservability obligation) is
-  the next step.
-* **register allocation (#386)** — currently a `StateRel ρ` simulation under
+* **mem2reg / DSE** — certified by `AgreeOn prot`; a full-state-equality
+  corollary holds when the promoted/dead footprint is unobservable, which a
+  `gated` pass carries as `prot` + a footprint-unobservability obligation.
+* **register allocation** — certified by a `StateRel ρ` simulation under
   `Injective ρ`; folding it in requires an output-equality corollary (the
   identity renaming, or a renaming whose observable outputs coincide) plus the
   acceptance check.
-* **schedule search (#385)** — currently per-block; folding it in requires a
+* **schedule search** — certified per block; folding it in requires a
   generic `searchBest`-output legality certificate (`legalSwap`-disjointness ⇒
   `runBlock`-equality for the chosen winner).
-* **move coalescing (`GraphColoringCoalesce.coalesce`)** — currently a `StateRel`
+* **move coalescing (`GraphColoringCoalesce.coalesce`)** — certified by a `StateRel`
   simulation under injectivity of `subst d s`; folding it in requires an
   output-equality corollary (the merged register's value read back under the
   substitution), on top of the already-proved `coalesce_allDirect`.
 
-The bigger #555 lever the pilot identified is **instruction selection** (the
-fused-quotient-estimate reduce): it is upstream of schedule/RA and is *not* a
-`JInstr → JInstr` reorder/rename, so it does not fit the `X86Pass` shape at all
-and needs a distinct (selection) pass with its own value-semantics certificate.
-That unblocks the #568 perf bar. -/
+**Instruction selection** (the fused-quotient-estimate reduce) is upstream of
+schedule/RA and is *not* a `JInstr → JInstr` reorder/rename, so it does not fit
+the `X86Pass` shape at all and needs a distinct (selection) pass with its own
+value-semantics certificate. -/
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline

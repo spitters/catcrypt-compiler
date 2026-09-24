@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
 
 /-!
 # A fourth pass for the compositional-CT taint story: the owned-x86 store-to-load
-  forwarding / mem2reg block rewrite (#594 ↔ #555)
+  forwarding / mem2reg block rewrite
 
 `Optimizer/SecretType.lean` seeds *constant-time as a compositional typing
 invariant* — a secret/public taint qualifier flows along the typed
@@ -22,7 +22,7 @@ monotonically*). `Optimizer/SecretTypeScheduler.lean` adds a third pass — the
 ILP scheduler over `List BBStmt` — which *exactly* preserves the block taint
 summary `blockMaxTaint`.
 
-This file adds the **owned-x86 backend pass** (#555-C): the
+This module adds the **owned-x86 backend pass**: the
 store-to-load-forwarding / mem2reg block rewrite `optimizeX86Block`
 (`X86ComPipeline`), which operates on the owned `List (JInstr 64)` machine-IR
 the field/bignum leaves emit. Like the egraph pass it is *not* a pure reorder,
@@ -69,8 +69,8 @@ three stages — the identity-mov drop, redundant spill-reload elimination, and 
 guarded MUL→MULX fusion — each delete an instruction whose contribution to the
 running join is dropped while the threaded envs stay fixed, so each is stated in
 the `⊑ₛ` form. The headline `optimizeX86Block_blockMaxTaintX_le` (≤, the
-declassification form shared with the egraph and the `#555` driver's gated
-nature) chains the four: the driver never **raises** the block taint summary.
+declassification form shared with the egraph and the gated optimizer
+driver) chains the four: the driver never **raises** the block taint summary.
 
 All goals closed.
 -/
@@ -553,7 +553,7 @@ theorem forwardAux_blockMaxTaintX_eq :
 /-- **The store-to-load forwarding pass preserves the block taint summary
 exactly.** Started from the empty (vacuously valid) held env. The owned-x86
 analogue of `peepCom_wellTainted` / `scheduleBlock_blockMaxTaint_eq`: the fourth,
-#555 backend pass of the compositional-CT story preserves taint *exactly*. -/
+backend pass of the compositional-CT story preserves taint *exactly*. -/
 theorem storeToLoadForward_blockMaxTaintX_eq (R : RegTaint) (C : CellTaint)
     (block : List (JInstr 64)) :
     blockMaxTaintX R C (storeToLoadForward block) = blockMaxTaintX R C block :=
@@ -744,13 +744,13 @@ theorem fuseMulxGuarded_blockMaxTaintX_le (body : List (JInstr 64)) :
 i.e. store-to-load forwarding, the identity-mov drop, redundant spill-reload
 elimination, and the guarded MUL→MULX fusion. The first preserves the summary
 exactly and the other three lower it, so the driver never **raises** it — the `≤`
-(declassification) form shared with the egraph pass and the gated `#555` driver,
+(declassification) form shared with the egraph pass and the gated driver,
 the compositional-CT guarantee at the owned-x86 layer. -/
 
 /-- **The owned-x86 optimizer driver never raises the block taint summary.** The
 declassification (`⊑ₛ`) form of the compositional-CT invariant at the owned-x86
 backend layer, matching the egraph pass's `saturateCom_comMaxTaint_le` and the
-#555 driver's gated nature. -/
+gated nature of the driver. -/
 theorem optimizeX86Block_blockMaxTaintX_le (R : RegTaint) (C : CellTaint)
     (block : List (JInstr 64)) :
     blockMaxTaintX R C

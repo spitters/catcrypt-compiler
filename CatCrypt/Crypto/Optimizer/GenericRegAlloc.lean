@@ -7,10 +7,10 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# A generic `MachineModel`-parameterized validated register allocator (#552)
+# A generic `MachineModel`-parameterized validated register allocator
 
-`Optimizer.SpillingRegAlloc` (#413, x86, monomorphized to `JInstr 64`/`JState 64`)
-and `ARMBackend.ArmRegAlloc` (#551, A64, the `AInst`/`AState` analogue) are *the
+`Optimizer.SpillingRegAlloc` (x86, monomorphized to `JInstr 64`/`JState 64`)
+and `ARMBackend.ArmRegAlloc` (A64, the `AInst`/`AState` analogue) are *the
 same allocator written twice*. Both work over a straight-line block of string-named
 SSA values with a read/write interface (`writtenName(s)`/`readNames`), a fixed pool
 of physical registers, and a spill/reload rendering against a frame memory; only
@@ -24,7 +24,7 @@ typeclass over `(I S : Type)` (the instruction and register-state types) abstrac
 exactly the differences, and the ~6 core register-allocation lemmas stated **once**
 over `[MachineModel I S]`. The allocator is untrusted (a pure linear scan, totally
 reusable); the **checker** — the renaming/spill soundness — is the verified artifact,
-in the translation-validation discipline of our #541 egraph validator.
+in the translation-validation discipline of the e-graph validator `EgraphOracle.gate`.
 
 ## The abstraction (what x86/ARM/RISC-V have in common)
 
@@ -312,7 +312,7 @@ class RegMachine (I : Type) (S : Type) extends MachineModel I where
     (writes s i).map Prod.fst = MachineModel.writtenNames i
   /-- Source-locality + destination-renaming, bundled: under a value-preserving rename
       of the read-names, the renamed instruction writes the SAME values to the
-      `ρ`-renamed destinations. (Generalizes the old `instVal_rename` +
+      `ρ`-renamed destinations. (Generalizes `ArmRegAlloc.instVal_rename` +
       `writtenName_rename`; proved per-backend by `cases i`.) -/
   writes_rename : ∀ (ρ : String → String) (s t : S) (i : I),
     (∀ a ∈ MachineModel.readNames i, get t (ρ a) = get s a) →

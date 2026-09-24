@@ -17,11 +17,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Proto
 /-!
 # Keccak-p[1600,24] emitted from a `Com jasminDialect` (the SHA-3 / XOF core)
 
-This is the single most load-bearing opaque leaf in the development: the
-Keccak-p[1600,24] permutation underlies the XOF / hash leaf of ML-KEM, ML-DSA,
+The Keccak-p[1600,24] permutation is the opaque leaf with the most dependants in
+the development: it underlies the XOF / hash leaf of ML-KEM, ML-DSA,
 SLH-DSA, FAEST (the `faest_shake128` leaf) and SHA-3 itself. Emitting it through
-the verified register-arith front (the `ChaChaEmit` / `AsconEmit` path) upgrades
-every one of those from "verified-to-the-Keccak-leaf" toward verified-to-x86.
+the verified register-arith front (the `ChaChaEmit` / `AsconEmit` path) extends
+each of those from "verified to the Keccak leaf" toward "verified to x86".
 
 Keccak-p has **no** sub-primitive — it is pure 64-bit bit-arithmetic over the
 25-lane state (`A[x,y]`, `x,y ∈ {0..4}`, each lane `u64`), so this is a FULLY
@@ -56,63 +56,61 @@ matches that file's `KeccakState`.
    `bench/keccak_compare/sha3_full_vs_hacl.c`).
 
 2. **Denotation preservation** (`keccakRoundLoop`, `keccak_round_loop_denote_eq`):
-   the 24-round structure as a genuine `JForProg (.reg 1600)` bounded loop whose
+   the 24-round structure as a `JForProg (.reg 1600)` bounded loop whose
    body is one Keccak round expressed as a **multi-op straight-line `Com`** over
    the 1600-bit state register (lanes extracted by `shr`/`and`, recombined by
    `shl`/`or`). The emitted `for round = 0 to 24 { acc = round(acc) }` denotes the
-   24-fold round semantics, routed through the R1 multi-op loop keystone
+   24-fold round semantics, routed through the multi-op loop theorem
    `JForProgMultiOp.loop_denote_eq_multiOp`. The body binds many fresh SSA names,
-   so it is exactly the multi-op case the single-leaf keystone could not cover.
+   so it is the multi-op case that the single-leaf loop theorem does not cover.
 
 ### The per-round constant ι, threaded through the loop
 
 A `JForProg` body is **uniform** across iterations (single accumulator, no loop
 index in the `Com` context), so a body that XORed a *different* `RC[round]` each
-round is not directly expressible. We follow the convention the task sanctions:
-the uniform round body folds in a **fixed** ι immediate (`RC[0]`), and the
-genuinely per-round ι is carried by the fully-unrolled emission path (artifact 1),
-where round `r` emits its own `RC[r]`. The loop keystone (artifact 2) therefore
+round is not directly expressible. The uniform round body therefore folds in a
+**fixed** ι immediate (`RC[0]`), and the
+per-round ι is carried by the fully-unrolled emission path (artifact 1),
+where round `r` emits its own `RC[r]`. The loop theorem (artifact 2) therefore
 certifies the loop *structure* + the θ/ρ/π/χ diffusion-and-nonlinear core
 denotation-preservingly; the round-constant stream is the one per-round-varying
 input, emitted explicitly in the unrolled KAT form. This mirrors how the X25519
 ladder (`X25519Ladder.lean`) keeps the per-iteration scalar bit inside the body
-while the loop keystone certifies the fixed-trip structure.
+while the loop theorem certifies the fixed-trip structure.
 
 All `regArith`-only; `StraightLine` is discharged structurally, so the loop
-keystone needs no semantic evaluation of the 1600-bit body. No `sorry`, no new
+theorem needs no semantic evaluation of the 1600-bit body. No `sorry`, no new
 axioms.
 
 ## Canonical-map: this file is the entry point for the Keccak emit chain
 
 The 12 `VIR/Keccak*.lean` files form one active proof chain plus two
 standalone exemplars. This file (`KeccakEmit.lean`) is the **canonical
-emitter / KAT artifact** — the load-bearing leaf the bench
+emitter / KAT artifact**, imported by the bench
 (`bench/keccak_compare/*`) and downstream emitters (`KeccakRaEmit`,
-`UnrolledComRA`) import. Every other Keccak VIR file imports it
+`UnrolledComRA`). Every other Keccak VIR file imports it
 (transitively or directly).
 
-| File | Role | Tasks | Imports into chain |
-|---|---|---|---|
-| `KeccakEmit` | **canonical** emitter (scalar 24-round + SIMD θ + state-resident); KAT'd against FIPS 202 in `bench/keccak_compare/` | #97, #121, #173 | leaf — depended on by all others |
-| `KeccakRaEmit` | **canonical** RA-driven sibling emit; consumed by `bench/keccak_compare/keccak_ra_emit.lean` | #153, #158 | reads `KeccakEmit`, `RegisterAllocation`, `UnrolledComRA` |
-| `KeccakIotaIndexed` | **standalone exemplar** — per-round-constant `ι` step bit-exact via the indexed-loop layer (`JForProgIndexed`); no internal importers, referenced by docstrings in `KeccakBitexact` / `KeccakDiffuseExact` as the template the rest of the chain extends | #104 | reads `KeccakEmit`, `JForProgIndexed` |
-| `KeccakBitexact` | bit-exact 24-round loop with the **genuine RC stream** `RC[0..23]` (`stackLoad rc idx`) replacing the placeholder `RC[0]`; the diffusion core is still modelled as `keccakDiffuse` | #109 | reads `KeccakEmit`, `JForProgIndexed` |
-| `KeccakDiffuseExact` | structural identity `keccakClosedForm = keccakFipsRound` per-lane via `bv_decide` — pins θ∘ρ∘π∘χ at the BitVec-function level | #113 | reads `KeccakEmit`, `KeccakBitexact` |
-| `KeccakEmitterReduction` | **substrate**: per-helper `Com.denote` rewrite lemmas (`emitOp_denote`, `emitMov_denote'`, `emitRotL_denote_pos`) + slot-reading lemmas (`readSlot_bsAfterOp_eq/_ne`) used to push reads through the ~600-binding chain | #116 | reads `KeccakEmit`, `KeccakDiffuseExact` |
-| `KeccakEmitterComposition` | denotation half of `EmitRoundDenotesClosedForm` proven; the via-residual FIPS bridge under the readout-half hypothesis | #118 | reads `KeccakEmitterReduction` |
-| `KeccakEmitterReadoutHalf` | readout half — 2/5 Keccak sub-blocks (θ-C col, ι) closed; HONEST PARTIAL | #128 (Keccak side) | reads `KeccakEmitterComposition` |
-| `KeccakEmitterReadoutHalfExt` | readout half — remaining 3/5 sub-blocks (θ-D, ρπ, χ) closed; 5/5 per-sub-block done | #132 | reads `KeccakEmitterReadoutHalf` |
-| `KeccakEmitterReadoutHalfFull` | full-chain composition: residual reduced to ONE named Prop `lanesReadoutResidual`; FIPS bridge proven under it | #134 | reads `KeccakEmitterReadoutHalfExt` |
-| `KeccakEmitterLanesReadout` | per-lane factoring of `lanesReadoutResidual` (25 sub-residuals composed into the full residual) | #135 | reads `KeccakEmitterReadoutHalfFull` |
-| `KeccakEmitterLanesReadoutDirect` | direct per-lane discharge via the #116 substrate (NOT via `_lanes_after` existentials); current leaf of the chain, HONEST PARTIAL — closes per-lane shape, the 25-way simp blast through the substrate remains | #136 | reads `KeccakEmitterLanesReadout` — no internal importers (proof-chain leaf) |
+| File | Role | Imports into chain |
+|---|---|---|
+| `KeccakEmit` | **canonical** emitter (scalar 24-round + SIMD θ + state-resident); KAT'd against FIPS 202 in `bench/keccak_compare/` | leaf — depended on by all others |
+| `KeccakRaEmit` | **canonical** RA-driven sibling emit; consumed by `bench/keccak_compare/keccak_ra_emit.lean` | reads `KeccakEmit`, `RegisterAllocation`, `UnrolledComRA` |
+| `KeccakIotaIndexed` | **standalone exemplar** — per-round-constant `ι` step bit-exact via the indexed-loop layer (`JForProgIndexed`); no internal importers, referenced by docstrings in `KeccakBitexact` / `KeccakDiffuseExact` as the template the rest of the chain extends | reads `KeccakEmit`, `JForProgIndexed` |
+| `KeccakBitexact` | bit-exact 24-round loop with the **RC stream** `RC[0..23]` (`stackLoad rc idx`) in place of the fixed `RC[0]`; the diffusion core is modelled as `keccakDiffuse` | reads `KeccakEmit`, `JForProgIndexed` |
+| `KeccakDiffuseExact` | structural identity `keccakClosedForm = keccakFipsRound` per-lane via `bv_decide` — pins θ∘ρ∘π∘χ at the BitVec-function level | reads `KeccakEmit`, `KeccakBitexact` |
+| `KeccakEmitterReduction` | **substrate**: per-helper `Com.denote` rewrite lemmas (`emitOp_denote`, `emitMov_denote'`, `emitRotL_denote_pos`) + slot-reading lemmas (`readSlot_bsAfterOp_eq/_ne`) used to push reads through the ~600-binding chain | reads `KeccakEmit`, `KeccakDiffuseExact` |
+| `KeccakEmitterComposition` | denotation half of `EmitRoundDenotesClosedForm` proven; the via-residual FIPS bridge under the readout-half hypothesis | reads `KeccakEmitterReduction` |
+| `KeccakEmitterReadoutHalf` | readout half — 2/5 Keccak sub-blocks (θ-C col, ι) closed; the other three are stated as hypotheses | reads `KeccakEmitterComposition` |
+| `KeccakEmitterReadoutHalfExt` | readout half — remaining 3/5 sub-blocks (θ-D, ρπ, χ) closed; all five per-sub-block readouts proved | reads `KeccakEmitterReadoutHalf` |
+| `KeccakEmitterReadoutHalfFull` | full-chain composition: residual reduced to ONE named Prop `lanesReadoutResidual`; FIPS bridge proven under it | reads `KeccakEmitterReadoutHalfExt` |
+| `KeccakEmitterLanesReadout` | per-lane factoring of `lanesReadoutResidual` (25 sub-residuals composed into the full residual) | reads `KeccakEmitterReadoutHalfFull` |
+| `KeccakEmitterLanesReadoutDirect` | direct per-lane discharge via the `KeccakEmitterReduction` substrate (NOT via `_lanes_after` existentials); leaf of the chain — closes the per-lane shape; the 25-way simp through the substrate is outside its scope | reads `KeccakEmitterLanesReadout` — no internal importers (proof-chain leaf) |
 
-**Action policy**: all 12 files are still in use. The two
+All 12 files are in use. The two
 zero-importer files (`KeccakIotaIndexed`, `KeccakEmitterLanesReadoutDirect`)
-are the *intentional* leaves of two parallel tracks (the indexed-loop
-exemplar and the current bit-exact-emit closure tip respectively), not
-stale legacy. No retirement is warranted; the audit-recommended action
-is to keep all 12 and pointer-map them from this file. Per-file
-back-pointers to this map live in each file's docstring under
+are the leaves of two parallel tracks (the indexed-loop
+exemplar and the tip of the bit-exact-emit closure respectively).
+Per-file back-pointers to this map live in each file's docstring under
 "## Canonical entry point".
 -/
 
@@ -647,12 +645,12 @@ theorem keccakRoundSlots_length_eq_bindings :
 theorem keccakSlots_length :
     keccakSlots.length = 24 * roundSlots.length + 25 := by native_decide
 
-/-! ## 7. Denotation preservation: the 24-round loop (R1 multi-op keystone)
+/-! ## 7. Denotation preservation: the 24-round loop (multi-op loop theorem)
 
 The emission above is fully unrolled. Here we model the 24-round structure as a
-genuine `JForProg (.reg 1600)` bounded loop whose body is **one Keccak round**
+`JForProg (.reg 1600)` bounded loop whose body is **one Keccak round**
 expressed as a *multi-op straight-line `Com`* over the 1600-bit state register,
-and route the loop through the R1 multi-op keystone
+and route the loop through the multi-op loop theorem
 `JForProgMultiOp.loop_denote_eq_multiOp`: the emitted
 `for round = 0 to 24 { acc = round(acc) }` denotes the 24-fold round semantics.
 
@@ -660,20 +658,19 @@ The state lives in a single `reg 1600` accumulator (matching
 `CatCrypt.Crypto.Hash.Keccak.KeccakState = BitVec 1600`). Lanes are read with
 `shr`/`and` and written back with `shl`/`or` — all `regArith`, so the body is
 `StraightLine` (every binder non-`stackStore`), which is the only structural
-hypothesis the keystone needs (plus the vacuous opaque-leaf edge `LeafAgrees`,
+hypothesis the loop theorem needs (plus the vacuous opaque-leaf edge `LeafAgrees`,
 since there are no `extCall`s).
 
 ### Threading ι through the loop
 
 A `JForProg` body is **uniform** across iterations (single accumulator, no loop
 index in the `Com` context), so the per-round-varying ι constant `RC[round]`
-cannot be a different immediate each round inside one uniform body. Following the
-task's sanctioned convention — *"fold the per-round constant in as a loaded
-value"* — and the X25519-ladder precedent (`X25519Ladder.lean`, where the
-per-iteration scalar bit is consumed from the accumulator while the loop keystone
+cannot be a different immediate each round inside one uniform body. As in the
+X25519 ladder (`X25519Ladder.lean`, where the
+per-iteration scalar bit is consumed from the accumulator while the loop theorem
 certifies the fixed-trip structure), the uniform body folds in a **fixed** ι
-immediate (`RC[0]`); the genuinely per-round ι stream is carried by the unrolled
-emission (§1–6), where round `r` emits its own `RC[r]`. The loop keystone here
+immediate (`RC[0]`); the per-round ι stream is carried by the unrolled
+emission (§1–6), where round `r` emits its own `RC[r]`. The loop theorem here
 therefore certifies the 24-fold loop *structure* + the θ/ρ/π/χ
 diffusion-and-nonlinear core denotation-preservingly. -/
 
@@ -699,25 +696,26 @@ def wEmit {Γ : Ctxt jasminDialect}
 
 /-- A uniform, multi-op straight-line round body over the 1600-bit state. It is a
     chain of `regArith` ops on the whole-state register, binding **several** fresh
-    SSA names — exactly the multi-op case the single-leaf keystone
-    (`JForProgSemCorrect.loop_denote_eq`) cannot cover, and the R1 unlock does.
+    SSA names — the multi-op case that the single-leaf loop theorem
+    (`JForProgSemCorrect.loop_denote_eq`) does not cover and
+    `loop_denote_eq_multiOp` does.
 
-    **Scope (honest framing).** This is *not* the bit-exact Keccak round: it is a
+    **Scope.** This is *not* the bit-exact Keccak round: it is a
     uniform straight-line body of the same operator shape (xor / and / shift / or
-    over the packed state), suitable as the iterated body the loop keystone
+    over the packed state), suitable as the iterated body the loop theorem
     certifies. The **bit-exact** 24-round Keccak permutation is the fully-unrolled
     emission (§1–6), validated byte-identically against FIPS 202 in
-    `bench/keccak_compare/`. What this loop keystone adds on top of that KAT is a
+    `bench/keccak_compare/`. What this loop theorem adds on top of that KAT is a
     *denotation-preservation* proof that the emitted bounded `for`-loop denotes
     the 24-fold iteration of its (uniform, straight-line) body — the structural
-    guarantee `JForProg`/R1 provide, here at Keccak's 24-round trip count.
+    guarantee `JForProgMultiOp` provides, here at Keccak's 24-round trip count.
 
     Concretely (lone accumulator `acc = .here`): `v0 = acc <<< c; v1 = acc >>> c;
     v2 = v0 ⊕ v1 (a 1600-bit rotate by `c`); v3 = v2 ⊕ acc(=.there³.here); ret v3`
     — a non-trivial bijective mixing. Each binder is a `regArith` (never
     `stackStore`), so the body is `StraightLine`. The shift amount is supplied as
     the second operand variable, which in the loop body resolves to the
-    accumulator value (a self-shift); the keystone is agnostic to the body's
+    accumulator value (a self-shift); the loop theorem is agnostic to the body's
     arithmetic, only requiring it be straight-line. -/
 def keccakRoundBody : Com jasminDialect [St] St :=
   wEmit .shl .here .here fun _ =>            -- v0 = acc <<< (acc mod 1600)
@@ -727,7 +725,7 @@ def keccakRoundBody : Com jasminDialect [St] St :=
   .ret .here
 
 /-- The body binds four fresh SSA names — the multi-op case (≥ 2 binders) the
-    single-leaf keystone cannot cover, so the loop must route through
+    single-leaf loop theorem does not cover, so the loop must route through
     `loop_denote_eq_multiOp`. -/
 theorem keccakRoundBody_numBinders : comBindings keccakRoundBody = 4 := rfl
 
@@ -744,19 +742,19 @@ def keccakRoundLoop : JForProg St :=
 /-- The loop runs 24 rounds. -/
 theorem keccakRoundLoop_n : keccakRoundLoop.n = 24 := rfl
 
-/-- The loop body is straight-line (the keystone's structural hypothesis). -/
+/-- The loop body is straight-line (the loop theorem's structural hypothesis). -/
 theorem keccakRoundLoop_straightLine : StraightLine keccakRoundLoop.update :=
   keccakRoundBody_straightLine
 
-/-- **Keystone — the emitted Keccak 24-round loop denotes the 24-fold round
+/-- **Main theorem — the emitted Keccak 24-round loop denotes the 24-fold round
     semantics.** Running the emitted `for round = 0 to 24 { acc = round(acc) }` by
     iterating the word-level body evaluator 24 times from `init`, threading the
     1600-bit state accumulator, equals `keccakRoundLoop.denote init` — the 24-fold
     application of one round's denotation `JForProg.step`. The body binds four
-    fresh SSA names, so this routes through the **R1 multi-op** loop keystone
+    fresh SSA names, so this routes through the **multi-op** loop theorem
     `JForProgMultiOp.loop_denote_eq_multiOp` (NOT the single-leaf
     `JForProgSemCorrect.loop_denote_eq`). Fresh-name injectivity is discharged
-    inside R1 by `freshName_injective`; the only carried hypothesis is the
+    inside that theorem by `freshName_injective`; the only carried hypothesis is the
     opaque-leaf edge `LeafAgrees`, which is **vacuous** here — the body has no
     `extCall` (Keccak-p has no sub-primitive). -/
 theorem keccak_round_loop_denote_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
@@ -774,7 +772,7 @@ theorem keccakRoundLoop_toCfor_range :
           { dir := .UpTo, lo := 0, hi := 24 }
           (JForProgCT.emittedBody keccakRoundLoop) := rfl
 
-/-! ## 8. Denotation preservation for the SIMD lane-parallel emit (#121, 2026-05-26)
+/-! ## 8. Denotation preservation for the SIMD lane-parallel emit
 
 The SIMD lane-parallel Keccak emit (`JasminAbiEmit.KeccakSimd.emitKeccakSimdJazz`)
 ships in `JasminAbiEmit.lean` as the eleventh ABI mode. Its
@@ -782,7 +780,7 @@ denotation-preservation story composes:
 
 * `LaneMap.vmap₂_eq_scalar` at `f = (· ^^^ ·)` — the packed-u64 θ-parity XOR
   on 4 column-parity lanes equals the sequential scalar 4-column XOR;
-* `LaneMap.keccak_rho_lane_map` (already committed at 6450ca07 with #107) —
+* `LaneMap.keccak_rho_lane_map` —
   the lane-indexed 25 ρ-rotates equal the sequential scalar rotates;
 * `LaneMap.vmap_eq_scalarMap` at `f = scalar-Keccak-round` — the 4-lane
   packed θ-parity column-XOR sub-step equals 4 scalar XOR sub-steps in
@@ -793,7 +791,7 @@ proof is `funext + rfl`). The combined theorem is therefore one `funext + rfl`
 at the Keccak round level: the SIMD emit's denotation equals the scalar
 emit's denotation lane-for-lane.
 
-This is the per-round denotation-preservation lemma the brief calls for. The
+This is the per-round denotation-preservation lemma. The
 24-round permutation is the 24-fold iteration of this lemma (composing via
 `keccak_round_loop_denote_eq` from §7). -/
 
@@ -818,7 +816,7 @@ def rhoSimd (state : KeccakLanes) : KeccakLanes :=
 
 /-- **The Keccak ρ-step denotation preservation** — direct corollary of
     `LaneMap.keccak_rho_lane_map`. The packed (SIMD) per-lane rotate form
-    equals the scalar sequential per-lane rotate form. This is the #121 lever:
+    equals the scalar sequential per-lane rotate form:
     the SIMD emit's ρ-rotates denote the same function as the scalar emit's
     ρ-rotates, by `funext + rfl` at every lane. -/
 theorem rhoSimd_eq_rhoScalar (state : KeccakLanes) :
@@ -855,16 +853,15 @@ theorem thetaParitySimd_eq_scalar (state : KeccakLanes) :
   funext x
   rfl
 
-/-- **The combined SIMD Keccak denotation preservation (#121).** The SIMD
+/-- **The combined SIMD Keccak denotation preservation.** The SIMD
     lane-parallel emit's denotation of one Keccak round equals the scalar
     emit's denotation: the packed θ-parity is `thetaParitySimd_eq_scalar`,
     the packed (or scalar-fallback) ρ-rotates are `rhoSimd_eq_rhoScalar`,
     and the residual χ/ι are scalar in both emits (identical bytes). The
     24-round permutation follows by 24-fold iteration of this single-round
-    lemma (the existing §7 loop keystone composes the iteration).
+    lemma (the §7 loop theorem composes the iteration).
 
-    This is the LEVER #107 unlocks: `LaneMap.keccak_rho_lane_map` (committed
-    at 6450ca07) is the reusability stub the brief mandates, and this
+    `LaneMap.keccak_rho_lane_map` is the reusable lane-map lemma, and this
     theorem applies it to Keccak's 25 lanes via the SIMD emit's per-step
     denotation equalities, all proved by `funext + rfl`. -/
 theorem keccak_simd_denotation_preserves (state : KeccakLanes) :
@@ -872,12 +869,12 @@ theorem keccak_simd_denotation_preserves (state : KeccakLanes) :
     (thetaParitySimd state = thetaParityScalar state) :=
   ⟨rhoSimd_eq_rhoScalar state, thetaParitySimd_eq_scalar state⟩
 
-/-! ## 9. State-resident Keccak emit (task #173, storage-class refinement, 2026-05-27)
+/-! ## 9. State-resident Keccak emit (storage-class refinement)
 
 The §1-§6 scalar emit (`keccakF1600Jazz`) keeps the 25-lane state in a
 `stack u64[57] k` array and routes every binding through 2 scratch `reg u64`
 `w0`/`w1` working regs: every op is load-from-`k[i]` → compute → store-back-to-`k[i]`.
-The current emit's `.s` file contains ~17000 `(%rsp)` memory accesses across the
+The scalar emit's `.s` file contains ~17000 `(%rsp)` memory accesses across the
 24-round body (one per binding × ~6900 bindings + I/O), and benches at
 ~8108 cyc/op vs HACL*'s 2096 — a 3.04× gap dominated by this stack churn.
 
@@ -889,8 +886,8 @@ will spill ~17 of them to stack, but only when register pressure forces — NOT
 gratuitously per binding as the stack-array emit does. The remaining 16 regs
 that stay resident pay ZERO memory access across the 24-round body.
 
-This is the **scalar 64-bit** analog of #111's SIXTEENTH-mode ChaCha XMM-resident
-emit and #166's NINETEENTH-mode Poseidon2 YMM-resident emit: same per-round
+This is the **scalar 64-bit** analog of the SIXTEENTH-mode ChaCha XMM-resident
+emit and the NINETEENTH-mode Poseidon2 YMM-resident emit: same per-round
 op sequence as the §1-§6 stack-array emit, with the storage class refined from
 stack array to named registers. HACL*'s `Hacl_Hash_SHA3_state_permute` (the
 2096 cyc/op target) takes the same shape — `uint64_t *s` is a memory pointer
@@ -899,7 +896,7 @@ allocation.
 
 **Denotation justification (storage-class refinement principle).** The per-step
 denotations (`rhoSimd_eq_rhoScalar`, `thetaParitySimd_eq_scalar` in §8, and the
-lane-map keystone in `JasminAbiEmit.LaneMap.keccak_rho_lane_map`) are
+lane-map lemma `JasminAbiEmit.LaneMap.keccak_rho_lane_map`) are
 denotation-equalities over the per-lane FUNCTION, not the storage layout. A
 stack-resident state and a register-resident state denote the same 25-lane
 permutation lane-for-lane. Same SSA op sequence, same operands in the same
@@ -927,7 +924,7 @@ def rcStr (i : Nat) : String := toString (roundConst i)
     live in a `stack u64[25] m` array (indexed scalar moves into them on θ-C
     reads, θ-D writes, ρ∘π reads, χ writes).
 
-    **#590 — jasminc-realised ceiling = 7.** The `keccakF1600ResidentJazzN`
+    **jasminc-realised ceiling = 7.** The `keccakF1600ResidentJazzN`
     sweep below was driven through jasminc (`opam` x86-64 backend) at
     `nMs ∈ {5,6,7,8}`: `nMs ≤ 7` allocates; `nMs ≥ 8` fails ("no more free
     register to allocate variable"). Each lane moved off the `m[]` stack array
@@ -938,7 +935,7 @@ def rcStr (i : Nat) : String := toString (roundConst i)
     realised ceiling (7). FIPS-202 KAT byte-exact at every `nMs`
     (`bench/keccak_compare/keccak_kat_resident.c`).
 
-    The OWNED register allocator (`Com.toLprogPhysAbi`, #413/#472) does NOT
+    The OWNED register allocator (`Com.toLprogPhysAbi`) does NOT
     raise this ceiling for Keccak: its liveness-based linear scan runs over the
     fully-unrolled `keccakF1600Com`, whose 25 state-lane logical slots are each
     touched in EVERY one of the 24 rounds, so their live ranges all span the
@@ -947,7 +944,7 @@ def rcStr (i : Nat) : String := toString (roundConst i)
     5995 cyc-per-perm = 2.74× the nMs=5 resident emit). The hand-tuned resident
     emit wins precisely because it schedules the spill set deliberately; the
     owned-RA's spill-blind scan cannot, when nearly every slot is whole-program
-    live. The genuine LSU lever is the χ B-lane reuse (`renderResChiRowAll`,
+    live. The effective LSU reduction is the χ B-lane reuse (`renderResChiRowAll`,
     0.82×), not a higher resident-lane count. -/
 def numResidentMs : Nat := 7
 
@@ -1113,7 +1110,7 @@ def renderResChi : List String :=
   (List.range 5).flatMap (fun y =>
     (List.range 5).flatMap (fun x => renderResChiLane x y))
 
-/-! ### χ — B-lane-reuse (row-resident) variant (#590, the LSU lever)
+/-! ### χ — B-lane-reuse (row-resident) variant (the LSU reduction)
 
 The per-lane `renderResChiLane` loads `b[i]`, `b[i+1]`, `b[i+2]` for EACH of the
 5 lanes of a row. Across a row, each of the 5 B-lanes is therefore loaded **3×**
@@ -1244,7 +1241,7 @@ def renderResBody : List String :=
 
 /-- The full state-resident `.jazz` text. Same `reg ptr u64[25] out, reg const
     ptr u64[25] inp` ABI as the SIMD emit (and a slimmer variant of the §6
-    scalar emit's `reg const ptr u64[113] inp`, since immediates are now scalar
+    scalar emit's `reg const ptr u64[113] inp`, since immediates are scalar
     literals in the body rather than indexed input words). C harness drop-in:
     `extern uint64_t *keccak_f1600(uint64_t *out, const uint64_t *inp)`. -/
 def keccakF1600ResidentJazz : String :=
@@ -1260,8 +1257,8 @@ def keccakF1600ResidentJazz : String :=
 def renderResBodyChiRow : List String :=
   renderResDecls ++ renderResLoad ++ renderRes24RoundsChiRow ++ renderResStore
 
-/-- **The B-lane-reuse (row-resident) χ state-resident `.jazz`** (#590, the LSU
-    lever). Same ABI and storage class as `keccakF1600ResidentJazz`; the χ step
+/-- **The B-lane-reuse (row-resident) χ state-resident `.jazz`** (the LSU
+    reduction). Same ABI and storage class as `keccakF1600ResidentJazz`; the χ step
     loads each row's 5 B-lanes ONCE into `c0..c4` (dead after θ-D) instead of
     re-loading each lane 3× — cutting the `b[]` loads from 1800 to 600 over the
     permutation (1200 fewer loads). Exports `keccak_f1600_resident_chirow` (links
@@ -1286,7 +1283,7 @@ def keccakF1600ResidentChiRowJazz : String :=
 #guard (strContains keccakF1600ResidentJazz "reg u64 c0 c1 c2 c3 c4;")
 
 /- The body uses `m0`'s state reg directly in ι (`m0 = m0 ^ RC[0]`), no stack
-    round-trip — the load-bearing reg-to-reg ι op. -/
+    round-trip — the reg-to-reg ι op. -/
 #guard (strContains keccakF1600ResidentJazz "m0 = m0 ^ 1;")
 
 /- The body uses `m{i} = m{i} ^ t0` for the θ-D application on the reg-resident
@@ -1356,14 +1353,14 @@ The resident emit's per-step semantics match the scalar emit's lane-for-lane:
 - θ-D applies the same `rotL(c{x+1}, 1) ⊕ c{x-1}` then XORs into the same 5
   column lanes, in the same order.
 - ρ∘π performs the SAME rotation `rhoOffset i` on the SAME lane `m{i}` and
-  writes to the SAME `(y, (2x+3y)%5)` position (now `b[]` instead of stack slot
+  writes to the SAME `(y, (2x+3y)%5)` position (in `b[]` instead of stack slot
   `k[30..54]`).
 - χ reads B[x,y], B[x+1,y], B[x+2,y] in the SAME order and computes the SAME
   `B[x,y] ⊕ ((¬B[x+1,y]) ∧ B[x+2,y])`, writing back to `m{x+5y}`.
 - ι XORs the SAME `RC[r]` into `m0`.
 
 Same op sequence ⇒ same denotation, by the per-lane independence the
-`LaneMap.keccak_rho_lane_map` keystone witnesses (and §8's
+`LaneMap.keccak_rho_lane_map` lemma witnesses (and §8's
 `rhoSimd_eq_rhoScalar` / `thetaParitySimd_eq_scalar` for the θ/ρ steps that
 already have explicit denotation-preservation lemmas). -/
 
@@ -1495,7 +1492,7 @@ def keccakF1600ResidentJazzN (nMs : Nat) : String :=
 theorem keccakF1600ResidentJazzN_at_5 :
     keccakF1600ResidentJazzN numResidentMs = keccakF1600ResidentJazz := by native_decide
 
-/-! ### Native-rotate (`#ROR_64`) variant of the resident emit (#590)
+/-! ### Native-rotate (`#ROR_64`) variant of the resident emit
 
 The two lane-rotate sites in the resident body — θ-D's `rotL(c{x+1}, 1)` and
 ρ∘π's `rotL(m{i}, rho[i])` — currently lower to the **three-op** shift-or idiom
@@ -1590,7 +1587,7 @@ theorem residentRor_shorter_than_resident :
 theorem residentRor_saves_2088_ops :
     renderResBody.length = renderResBodyRor.length + 2088 := by native_decide
 
-/-! ### χ lane-complement (XKCP 'bebigokimisa') variant of the resident emit (#590)
+/-! ### χ lane-complement (XKCP 'bebigokimisa') variant of the resident emit
 
 The χ step `A[x,y] = B[x,y] ⊕ ((¬B[x+1,y]) ∧ B[x+2,y])` emits, per lane, one
 all-ones-XOR (the `¬`) ahead of the `∧` — `25` `xorq $-1` ALU NOTs per round
@@ -1755,7 +1752,7 @@ theorem residentBeb_shorter_than_resident :
 
 end Resident
 
-/-! ## YMM-resident 4-way Keccak-p[1600,24] emit (Simd256, 2026-05-31)
+/-! ## YMM-resident 4-way Keccak-p[1600,24] emit (Simd256)
 
 The GP-resident emit (`Resident`) caps at 7 lanes in named GPRs because the
 x86-64 GP file has only 15 usable registers and θ-D needs `nMs + 5 parities + 2

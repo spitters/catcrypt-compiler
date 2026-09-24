@@ -22,7 +22,7 @@ the s2n-bignum `sm2` analogue) base-field Montgomery multiply
 through the SAME owned x86 backend (`JasminModel.runBlock` /
 `X86Dialect.lowerBlock_denote` / `AsmPrinter`, no jasminc) used for the
 BN254 (`Bn254MontMulKernel`), BLS12-381, `bignum_mul_4_8`, and `fe25519`
-kernels, framed by the principled SysV ABI layer (`renderSysVLeafFn`, #464).
+kernels, framed by the principled SysV ABI layer (`renderSysVLeafFn`).
 It is the SM2 analog of the BN254 field-multiply: four CIOS iterations over a
 256-bit prime.
 
@@ -71,14 +71,14 @@ the accumulator — the `montreds` macro of the vendored `bignum_montmul_sm2.S`.
   `loadMem`/`mulxMem`/`adcx`/`adox`/`shl`/`shr`/`add`/`adc`/`sub`/`sbb`/`cmovb`/
   `storeMem` mix.
 * `sm2MontMulAlloc_no_overflow`: the first-fit allocator assigns every register
-  name a distinct pool register (no silent `%rax`-alias, the #380 class).
+  name a distinct pool register (no silent `%rax`-alias).
 * `sm2MontMulBlock_constant_time`: the body is straight-line all-direct
   addressing (no secret-indexed memory), so its machine leakage trace is
   state-independent by `ConstantTimeCoverage.allDirect_constant_time`.
 * The all-inputs byte-identity that the emitted stream computes
   `a·b·R⁻¹ (mod p_sm2)` is the external KAT (`bench/sm2_compare`, vs GMP
   `mod p_sm2` — the canonical-arithmetic oracle): the standard gate for these
-  word kernels (per REV-12), over corner + random vectors. CIOS Montgomery's
+  word kernels, over corner + random vectors. CIOS Montgomery's
   value-level correctness is a generic Montgomery identity; in-Lean it is a
   256×256→512 SAT instance, infeasible, hence the external gate.
 
@@ -294,8 +294,7 @@ def sm2MontMulPinned : GpAlloc :=
 /-- First-fit allocation over the full block. -/
 def sm2MontMulAlloc : GpAlloc := allocGp sm2MontMulPinned sm2MontMulBlock
 
-/-- The allocation maps every name to a distinct pool register (no `%rax`-alias,
-    the #380 class). -/
+/-- The allocation maps every name to a distinct pool register (no `%rax`-alias). -/
 theorem sm2MontMulAlloc_no_overflow :
     allocOverflow sm2MontMulPinned sm2MontMulBlock = none := by native_decide
 

@@ -147,7 +147,7 @@ theorem sha2_ra_emit_denotation_preserves_identity (sp : Sha2Spec)
       = (sha2RoundJForProg sp).denote init :=
   sha2_ra_emit_denotation_preserves sp _ identity_WellFormed init
 
-/-- **Concrete corollary for the unrolled-Com-domain RA (#158).**
+/-- **Concrete corollary for the unrolled-Com-domain RA.**
 `UnrolledComRA.unrolledSlotRASha sp` is the linear-scan allocation over the
 slot-index domain of `compressCom sp` (the unrolled body), not over the binder
 domain of the JForProg wrapper, and the allocation the bench emit passes. Its
@@ -238,7 +238,7 @@ theorem sha256_working_state_carried :
         (sha2Iters sha256Spec)) = true := by
   native_decide
 
-/-! ## 6. Two-address coalescing (Phase B+)
+/-! ## 6. Two-address coalescing
 
 `UnrolledComRA.lean` §8 ships `unrolledSlotRAofItersCoalesce`: a
 coalesce-aware variant of the cross-iter RA that fuses `dst` and `src1`

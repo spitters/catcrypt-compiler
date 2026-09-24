@@ -19,7 +19,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 is one black box, the carried trusted edge (`EcLeafAgrees`). That leaves the
 AUCurves-verified field tower (`bn254-safe-rust` `fp_add/sub/mul` + the Fermat
 inverse) *disconnected* from the emitted group op — `Util/BN254Verified.lean`
-and `BN254/EmittedFieldRealization.lean` realize the field kernels and the
+and `Pairing/BN254EmittedFieldRealization.lean` realize the field kernels and the
 affine coordinate maps, but the tie did not reach the emitted full group op.
 
 This module closes that gap **the way P-256 / X25519 do it**: it controls the
@@ -107,12 +107,10 @@ abbrev FpWire : Type := Fin FESZ → BitVec 8
     `bn254_mont_mul_x86_from_lean`
     (`SecureCompilation/X86Backend/Bn254MontMulKernel.lean`, a 4-iteration CIOS
     MULX + dual ADCX/ADOX kernel through the OWNED x86 backend, the BN254 analog
-    of the BLS12-381 `Bls12381MontMulKernel` #490), **replacing the adopted
-    fiat-crypto/bedrock2 WBW Montgomery tower** (`bn254-safe-rust`) that BN254
-    was the last production curve to still adopt for its `Fp` multiply (#489
-    cross-curve audit).  With the divstep
-    inverse already own-routed (`invLeafName`, #489), this lifts the BN254 `G1`
-    base-field group law to own-emitted end-to-end down to `fp_mul`/`fp_sub`/
+    of the BLS12-381 `Bls12381MontMulKernel`), in place of the adopted
+    fiat-crypto/bedrock2 WBW Montgomery tower (`bn254-safe-rust`).  Together
+    with the own-routed divstep inverse (`invLeafName`), the BN254 `G1`
+    base-field group law is own-emitted end-to-end down to `fp_mul`/`fp_sub`/
     `fp_inv`.  The emitted block is `runBlock`-verified
     (`bn254MontMulBlock_lowering_correct`) and overflow-free
     (`bn254MontMulAlloc_no_overflow`); value-level correctness
@@ -125,15 +123,13 @@ def subLeafName : String := "bn254_fp_sub"
 def addLeafName : String := "bn254_fp_add"
 /-- Leaf name for the AUCurves BN254 base-field inverse.
 
-    **#489 safegcd-uniform wiring:** this routes to the AUCurves verified-CT
+    **Safegcd-uniform wiring:** this routes to the AUCurves verified-CT
     Bernstein–Yang safegcd **divstep** inverter `bn254_invert_divstep_sat`
     (`Vale/SafegcdBN254.lean`, 10 outer × 59 = 590 divsteps over 5-limb
-    Signed62), replacing the prior Fermat `a^{p−2}` addition-chain
-    (`bn254_inv`, `Vale/BN254.lean`).  BN254 was the one production curve whose
-    `Fp` inverse was still Fermat while the sibling P-curves and BLS12-381
-    already routed through the divstep leaf; the cross-curve audit (#489)
-    flipped it onto the same recipe that put the BLS12-381 inverse at ~1.10×
-    blst's own divstep (#488).  The C symbol that resolves at link time is
+    Signed62), in place of the Fermat `a^{p−2}` addition-chain
+    (`bn254_inv`, `Vale/BN254.lean`).  It is the same divstep recipe as the
+    sibling P-curves and BLS12-381, whose inverse measures ~1.10× blst's own
+    divstep.  The C symbol that resolves at link time is
     `safegcd_bn254_invert` (AUCurves staticlib re-exporting
     `bn254_invert_divstep_sat`).  Value-level correctness is the AUCurves
     `x · invert(x) ≡ 1 (mod p)` round-trip KAT
@@ -581,7 +577,7 @@ Converting a batch of `G1` points to affine, or computing a batch of chord
 denominators `(x₂ − x₁)` for a multi-point add / table precompute, needs one
 field inverse **per point**. The naive path emits `n` `bn254_invert_divstep_sat`
 leaves (each a Bernstein–Yang safegcd `divstep` chain over this 254-bit prime,
-10 outer × 59 = 590 divsteps, ~9× a field multiply per the #488 BLS12-381
+10 outer × 59 = 590 divsteps, ~9× a field multiply per the BLS12-381
 measurement). **Montgomery's trick** (`Pairing/BatchInverse`) emits **one**
 `fp_inv` leaf plus `fp_mul` leaves and recovers each `aᵢ⁻¹`.
 

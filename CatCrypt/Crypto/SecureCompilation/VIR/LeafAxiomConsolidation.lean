@@ -9,13 +9,13 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
-# Cross-side leaf-axiom consolidation (#200, #232)
+# Cross-side leaf-axiom consolidation
 
-The load-bearing trust edge of the whole emit-correctness chain is the
+The central trust edge of the whole emit-correctness chain is the
 **cross-side leaf agreement**: the claim that the emitted jasmin/x86 *leaf*
 binary computes the Lean leaf *spec* it is supposed to implement.  Across the
 development this edge shows up under several names — `DialectJasminLeafAgrees`
-(`DialectToJasminComCorrect`, the `CProg`-free front-lowering edge), `LeafAgrees`
+(`DialectToJasminComCorrect`, the front-lowering edge), `LeafAgrees`
 (`JasminPrintSemCorrect`, the named-evaluator edge), and the per-protocol
 forms (`FAEST.Leaves.FaestLeafAgrees`, `Pairing.Bls12381AUCurves.*Backed`,
 `LatticeToJasminDenote.LeafAgrees`).
@@ -38,8 +38,8 @@ docstring prose and becomes a citable Lean object.
 
 2. **Differential-validation path.** For a *concrete emitted* leaf, the leaf's
    machine semantics is differentially validated against Jasmin's Rocq reference
-   and against KAT/NIST vectors (the pattern used for NOT/NEG #202, the ADX trio
-   `25f61fe8`, the ZMM packed op #286, the AUCurves pairing tower #260, and the
+   and against KAT/NIST vectors (the pattern used for NOT/NEG, the ADX trio,
+   the ZMM packed op, the AUCurves pairing tower, and the
    FAEST AES-NI/SHAKE128 libjade leaves). That validation is what *earns* the
    claim "the emitted binary's modelled leaf semantics equals the model leaf
    `jasminExtSem`". We package that earned claim as the named predicate
@@ -53,10 +53,10 @@ theorem `leafAgrees_of_FFIValidated` derives the named-evaluator
 has validated its leaves gets the full evaluator-preservation chain
 (`execCom_eq`, `lowerComToProg_sem_eq`) with **no** bare leaf axiom.
 
-## The irreducible residual (the genuine FFI trust edge)
+## The irreducible residual (the FFI trust edge)
 
-`LeafFFIValidated leafSem` is the **only** remaining assumption, and it is the
-honest one: it is the FFI boundary to an externally compiled leaf binary.  Lean
+`LeafFFIValidated leafSem` is the **only** remaining assumption: it is the FFI
+boundary to an externally compiled leaf binary.  Lean
 has no operational model of the produced machine code, so "the binary computes
 the modelled `leafSem`" cannot be a Lean theorem — it is established *outside*
 Lean by the differential validation + KAT and *named* here, scoped to the
@@ -103,7 +103,7 @@ def LeafFFIValidated (leafSem : LeafSem) : Prop :=
     interpretation `jasminExtSem` validates against itself.  This shows the
     residual edge is **non-vacuous** — there is a concrete `leafSem` satisfying
     it (the one a stub-bound emitter produces), and `LeafFFIValidated` reduces to
-    a genuine pointwise-equality obligation discharged per concrete leaf by the
+    a pointwise-equality obligation discharged per concrete leaf by the
     differential KAT. -/
 theorem leafFFIValidated_jasminExtSem : LeafFFIValidated jasminExtSem :=
   fun _ _ _ _ => rfl
@@ -146,7 +146,7 @@ residual `hVal`.  So the residual trust surface of the cross-side leaf axiom is
 *exactly* `LeafFFIValidated` — the FFI boundary to the externally compiled leaf
 — and nothing more. -/
 
-/-- **Two-path corroboration of the cross-side leaf edge (#200).** Under the
+/-- **Two-path corroboration of the cross-side leaf edge.** Under the
     single scoped residual `LeafFFIValidated leafSem` (the FFI trust edge to the
     externally compiled leaf), both leaf-agreement obligations hold:
 

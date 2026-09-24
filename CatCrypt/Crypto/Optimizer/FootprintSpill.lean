@@ -20,8 +20,8 @@ the pool is full, it spills the farthest-ending live interval to a frame cell.
 This module adds the **IR-level lever that minimizes peak pressure itself** — the
 classical analogue of reversible pebbling. A spill decision does not just relocate
 a value; by storing a value right after its definition and reloading it only
-immediately before its next use, the value is **no longer live** at the
-intermediate positions, so it is no longer counted toward the simultaneous-live
+immediately before its next use, the value is **not live** at the
+intermediate positions, so it is not counted toward the simultaneous-live
 footprint there. Iterating this *footprint spill* over a chosen eviction set drives
 `peakPressure` down. We work directly on the structural `List LiveRange` object
 (the footprint), independent of any `MachineModel` instance — the live ranges are
@@ -187,7 +187,7 @@ element maps back to a surviving original element), then lift it to the peak via
 
 /-- **Pointwise pressure non-increase.** For a well-formed live-range list, the
     register pressure at every position after footprint-spilling is at most the
-    pressure before. The keystone for `footprintSpill_peak_le`. -/
+    pressure before. The key lemma for `footprintSpill_peak_le`. -/
 theorem footprintSpill_pressure_le (ev : List String) (lrs : List LiveRange)
     (hwf : WellFormed lrs) (i : Nat) :
     lrPressureAt (footprintSpill ev lrs) i ≤ lrPressureAt lrs i := by

@@ -57,7 +57,7 @@ small constants `2`, `3`, `6`:
 Because interpolation divides by `2`, `3`, `6`, the clean statement lives over a
 field where those are invertible. We provide **two** verified forms:
 
-* `toom3Coeffs` / `toom3_eq_schoolbook` over `[Field R]`: the genuine
+* `toom3Coeffs` / `toom3_eq_schoolbook` over `[Field R]`: the
   evaluate-multiply-interpolate coefficients (with division), reassembled to the
   schoolbook product, closed by `field_simp; ring`.
 * `toom3Coeffs6` / `toom3_eq_schoolbook6` over a bare `[CommRing R]`: the
@@ -102,7 +102,7 @@ five-coefficient result `(c4, c3, c2, c1, c0)`. -/
 def evalLimbs5 (B : R) (p : R × R × R × R × R) : R :=
   p.1 * B ^ 4 + p.2.1 * B ^ 3 + p.2.2.1 * B ^ 2 + p.2.2.2.1 * B + p.2.2.2.2
 
-/-- The schoolbook assembly equals the genuine ring product
+/-- The schoolbook assembly equals the ring product
 `(a2*B^2+a1*B+a0)*(b2*B^2+b1*B+b0)`. -/
 theorem evalLimbs5_schoolbookMul3 (B a2 a1 a0 b2 b1 b0 : R) :
     evalLimbs5 B (schoolbookMul3 B a2 a1 a0 b2 b1 b0)
@@ -113,7 +113,7 @@ theorem evalLimbs5_schoolbookMul3 (B a2 a1 a0 b2 b1 b0 : R) :
 /-! ## Denominator-cleared Toom-3 over a bare commutative ring
 
 Each coefficient is presented scaled by `6 = lcm(2, 3, 6)`, so no division is
-needed. The five products `w0, w1, wm1, w2, winf` are the genuine Toom-3
+needed. The five products `w0, w1, wm1, w2, winf` are the Toom-3
 evaluate-multiply values (five multiplications). -/
 
 set_option linter.unusedVariables false in
@@ -170,7 +170,7 @@ theorem toom3Coeffs6_eq_schoolbook (B a2 a1 a0 b2 b1 b0 : R) :
 
 end CommRing
 
-/-! ## Field form: genuine Toom-3 interpolation with division by `2, 3, 6`
+/-! ## Field form: Toom-3 interpolation with division by `2, 3, 6`
 
 Over a field the small constants `2, 3, 6` are invertible, so the five
 coefficients can be presented directly (each is `1/6` of the cleared form). -/
@@ -179,7 +179,7 @@ section Field
 variable [Field R]
 
 set_option linter.unusedVariables false in
-/-- Genuine Toom-3 coefficients `(c4, c3, c2, c1, c0)` over a field, obtained by
+/-- Toom-3 coefficients `(c4, c3, c2, c1, c0)` over a field, obtained by
 evaluate–multiply–interpolate at the points `0, 1, -1, 2, ∞`. The interpolation
 divides by `2, 3, 6`, hence the field requirement. Each coefficient is `1/6` of
 the corresponding `toom3Coeffs6` entry. -/

@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 
 /-!
-# Structured-control-flow (`scf`) dialect over the owned x86 machine (#566)
+# Structured-control-flow (`scf`) dialect over the owned x86 machine
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 

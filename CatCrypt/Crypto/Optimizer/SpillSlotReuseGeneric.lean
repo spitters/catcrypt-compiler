@@ -11,24 +11,24 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 
 /-!
-# Spill-slot **reuse**, generic over `MachineModel` (P6, D3 phase)
+# Spill-slot **reuse**, generic over `MachineModel`
 
-`Optimizer.SpillSlotReuse` (P6) packs non-overlapping spilled names onto shared frame
+`Optimizer.SpillSlotReuse` packs non-overlapping spilled names onto shared frame
 cells, but is written against the x86-specific `JInstr 64` / `JState 64`: its slot-reuse
 *decision* logic operates on the ISA-neutral `LiveRange` interval, yet its one
 state-level soundness lemma (`reuseReload_noop`, `singleReuse_noClobber_runBlock`) is
 phrased over the concrete x86 `JState 64` and `runBlock`.
 
-This module is the **D3-phase generalization**: the slot-reuse pass proved *once* over
+This module is the **generalization**: the slot-reuse pass proved *once* over
 the machine abstraction (`GenericRegAlloc.LiveRange` for the decision, `[MemMachine M]`
 for the soundness), so **any** backend with a `MemMachine` instance — x86 `JState`, A64
-`AMemState`, RV64 `RMemState`, … — inherits spill-slot reuse for free. It is **additive**:
-the `JInstr`-specific `SpillSlotReuse.lean` is untouched; this file builds the same pass
+`AMemState`, RV64 `RMemState`, … — inherits spill-slot reuse for free. The
+`JInstr`-specific `SpillSlotReuse.lean` stays separate; this module builds the same pass
 on the generic `GenericRegAlloc` framework.
 
 ## What is generalized (and what is not)
 
-The two halves of P6 generalize cleanly:
+The two halves of spill-slot reuse generalize cleanly:
 
 1. **The reuse decision over `LiveRange`** (§1–§2) — already ISA-neutral in
    `SpillSlotReuse.lean`. Restated over `GenericRegAlloc.LiveRange`:
@@ -39,10 +39,10 @@ The two halves of P6 generalize cleanly:
      non-interference). Carried over verbatim onto the generic `LiveRange`.
 
 2. **The state-level soundness** (§3) — the crux of `SpillSlotReuse.reuseReload_noop`
-   was that a reload of a reused cell *still holding its value* is a no-op. That is
+   is that a reload of a reused cell *still holding its value* is a no-op. That is
    **exactly** `GenericRegAlloc.reload_sandwich` (`evalReload m r off = m` under
    `SpillValid`): once the current occupant's store re-establishes `SpillValid` for its
-   value at the shared cell, the reload is transparent — the prior (now-dead) occupant's
+   value at the shared cell, the reload is transparent — the prior (dead) occupant's
    value is irrelevant. Sharing the cell with an earlier-dead name changes nothing in
    the argument, only `SpillValid` at the reload, which the matching store provides. So
    the generic `reload_sandwich`/`evalReload_noop` over `[MemMachine M]` *is* the generic
@@ -53,7 +53,7 @@ The `runBlock`-level sandwich (`singleReuse_noClobber_runBlock`) and the operati
 depend on the concrete x86 `runBlock` left fold over `JInstr` (the generic `MemMachine`
 exposes the per-cell/per-register algebra `get`/`load`/`setReg`/`store`, not a block
 evaluator threading `evalSpillStore`/`evalReload` against a backend's instruction
-semantics). The reload-no-op atom — the load-bearing soundness fact, the only one whose
+semantics). The reload-no-op atom — the key soundness fact, the only one whose
 proof inspects machine state — generalizes; the block-threading wrapper stays per-backend
 (it is one line on top of the atom in each backend's own file). §4 instantiates the
 generic atom at RV64 `RMemState` to demonstrate the pass fires.
@@ -167,13 +167,13 @@ theorem slotReuseValid_shareable {assign : List (String × Int)} {lrs : List Liv
 
 /-! ## 3. Generic soundness: a reused slot never clobbers a still-needed value
 
-The crux of P6 correctness, now over `[MemMachine M]`. A frame cell shared by a now-dead
+The crux of slot-reuse correctness, over `[MemMachine M]`. A frame cell shared by a dead
 name and the new occupant `r` is only ever read back while `r` is its current occupant:
 the rewrite emits, for `r`, a `store` at its def and a `load`/reload before each use, and
 that store **re-establishes** `SpillValid off r` at the shared cell, overwriting whatever
 (dead) value the prior occupant left. So `r`'s reload is a no-op — *exactly*
 `GenericRegAlloc.reload_sandwich`, instantiated at the shared offset. Sharing the offset
-with a previously-dead name changes nothing in the argument: the only precondition is
+with an earlier dead name changes nothing in the argument: the only precondition is
 that the cell holds `r`'s value at `r`'s reload, which `r`'s own store provides.
 
 `slotReuseValid` (§2) is what makes this applicable: it guarantees the earlier occupant
@@ -183,7 +183,7 @@ old name straddles `r`'s store — the only way reuse could go wrong. -/
 variable {M : Type}
 
 /-- **The reload of a reused cell is a no-op (generic).** At a frame cell `off` shared by
-    a now-dead name and the current name `r`, once `r`'s store has put its value into the
+    a dead name and the current name `r`, once `r`'s store has put its value into the
     cell (`SpillValid off r m`), reloading `r` from `off` is semantics-transparent —
     `evalReload m r off = m`. The shared-offset reuse never clobbers `r`, because `r`'s own
     store owns the cell from its def onward; the prior occupant's value is irrelevant. This
@@ -208,10 +208,11 @@ theorem reuseStore_establishes [MemMachine M] (m : M) (off : Int) (r : String) :
     the shared cell `off` and immediately reloading it returns the post-store state
     unchanged. Composing `reuseStore_establishes` (the store sets `SpillValid`) with
     `reusedReload_noop` (the reload is then a no-op), this is the per-cell soundness atom
-    of P6, over `[MemMachine M]` — the prior dead occupant is never read across `r`'s
+    of spill-slot reuse, over `[MemMachine M]` — the prior dead occupant is never read
+    across `r`'s
     store. (`SpillSlotReuse.singleReuse_noClobber_runBlock` is this atom threaded through a
     concrete `runBlock`-with-`mid` for x86; the cell-level fact it rests on is exactly
-    this, now backend-agnostic.) -/
+    this, stated backend-agnostically.) -/
 theorem singleReuse_noClobber [MemMachine M] (m : M) (off : Int) (r : String) :
     evalReload (evalSpillStore m off r) r off = evalSpillStore m off r :=
   reusedReload_noop (evalSpillStore m off r) off r (reuseStore_establishes m off r)
@@ -234,7 +235,7 @@ theorem riscv_reusedReload_noop (m : RMemState) (off : Int) (r : String)
 
 /-- **RV64 single-reuse no-clobber** — `singleReuse_noClobber` at `RMemState`: storing the
     current occupant to a reused RV64 frame cell and reloading it is transparent. The
-    generic P6 soundness core, specialized to show the pass fires on RV64. -/
+    generic spill-slot-reuse soundness core, specialized to show the pass fires on RV64. -/
 theorem riscv_singleReuse_noClobber (m : RMemState) (off : Int) (r : String) :
     evalReload (evalSpillStore m off r) r off = evalSpillStore m off r :=
   singleReuse_noClobber m off r

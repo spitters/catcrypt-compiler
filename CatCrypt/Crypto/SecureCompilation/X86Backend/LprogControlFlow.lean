@@ -18,19 +18,19 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
-# Looped (non-unrolled) control-flow lowering for the owned backend (task #538)
+# Looped (non-unrolled) control-flow lowering for the owned backend
 
 `LoopUnroll.lean` lowers a bounded counter loop by **unrolling** it to a
 straight-line block (`unrollBounded n body`) and reduces to `lowerBlock_denote`;
-`LprogAsmPrinter.lean` (#537) renders that straight-line `Lcmd` to AT&T `.s`.
+`LprogAsmPrinter.lean` renders that straight-line `Lcmd` to AT&T `.s`.
 That is correct, but unrolling is the dominant *compiler-internal* cost — an
 `n`-iteration loop produces an `n`-copy `Com` / `Lcmd` tree, so the emitted `.s`
-grows linearly in the trip count and every primitive with a runtime-N loop or a
-branch had to stay on jasminc.
+grows linearly in the trip count, and a primitive with a runtime-N loop or a
+branch cannot be emitted that way.
 
 This module adds the **looped** lowering: a bounded counter loop is emitted as a
 single body copy wrapped in a `Llabel … ; body ; SUB n,1 ; Lcond NZ → top`
-back-edge (the owned-backend control-flow shape `LprogAsmPrinter` now renders as
+back-edge (the owned-backend control-flow shape `LprogAsmPrinter` renders as
 `.L: … ; subq $1,%n ; jne .L`). The emitted `Lcmd` is **constant-size** in the
 trip count, so the `.s` is `O(1)` body copies instead of `O(n)` — cutting both
 the emitted code size and the compiler's peak `Com`/`Lcmd` memory.
@@ -45,7 +45,7 @@ the emitted code size and the compiler's peak `Com`/`Lcmd` memory.
   emitted through the same `Lcond`/`Lgoto` renderer arms (`LprogAsmPrinter`'s
   `attCC` Jcc map). Its denotation is `Cond.condBlock_lowering_denote`.
 
-## What is NOT lowered (the residual)
+## What is NOT lowered by the counted core
 
 A **general `RWhile`** with a *runtime* (non-counter, data-dependent) guard is
 *not* lowered to a looped emission here. The denotation core we reuse
@@ -53,7 +53,8 @@ A **general `RWhile`** with a *runtime* (non-counter, data-dependent) guard is
 compile-time / loaded limb count; a general `RWhile` would need a fixpoint
 denotation (iterate-until-guard-false) which the framework's pure A-normal
 `Com` does not carry. We lower the bounded-for layer and the public forward
-branch; the unbounded `RWhile` residual is reported, not claimed.
+branch; the unbounded `RWhile` is outside the counted core (§7 gives a
+fuel-bounded `whileLcmd`).
 
 ## What is proved about the loop
 
@@ -80,7 +81,7 @@ back-edge while `ZF` is clear. The proved facts are:
 No theorem relates the `Linstr` form of the body inside `loopLcmd` to the `JInstr`
 body of an `XLoop`.
 
-## Constant-time note (cmdCT is ISA-agnostic; #460 vartime policy)
+## Constant-time note (cmdCT is ISA-agnostic; vartime policy)
 
 The loop counter `n` and the branch condition are **public** (a limb / length /
 configuration count), so the back-edge `jne .L` is a public branch: the number
@@ -90,7 +91,7 @@ what the public trip count reveals. A *secret*-dependent loop bound or branch is
 forbidden in the constant-time subset — those compile to `CMOVcc` (no PC
 divergence; `JasminModel.evalInstr`'s `.cmove`/`.cmovne`/`.cmovb` arms). This is
 the `cmdCT` discipline (ISA-agnostic: the CT judgement is on the source `cmdCT`
-term, not the emitted ISA) and the `#460` vartime policy: a looped emission is
+term, not the emitted ISA) and the vartime policy: a looped emission is
 CT **iff** its trip count / guard is public. The bounded-for layer here is
 public-counter by construction, so it is CT-admissible.
 -/
@@ -455,22 +456,21 @@ def occursIn (needle hay : String) : Bool := (hay.splitOn needle).length ≥ 2
 -- the emitted `.s` with `gas` and run it. In-Lean `native_decide` string-shape
 -- checks are deliberately kept out of this hot module per the project convention
 -- of externalizing KATs to the gas/C harness (each would compile to C on every
--- rebuild). The same shape is still asserted in-Lean for the QRUOV leaves, which
+-- rebuild). The same shape is asserted in-Lean for the QRUOV leaves, which
 -- are off this module's rebuild path.
 
 /-! ## 5. `cforToLcmd`: the `JForProg`/`Cfor` → looped `Lcmd` lowering (the core lever)
 
 `loopLcmd` (§1) wraps a **hand-built** body `Lcmd` in the owned-backend back-edge.
-Every looped kernel `LprogBytes.encodeLprog` consumes today (Keccak, SHA-256-linear,
-the `mpn` passes) supplies that body by hand at the `Lcmd` level. The **front**, by
-contrast, produces a bounded loop as a `JForProg accTy` — a static trip count `n`
-plus an accumulator-update `update : Com jasminDialect [accTy] accTy` whose
-`JForProg.toCfor` is a `Cfor` `InstrR`. There was no path from that `Com`-bodied
-loop into the byte encoder: `JasminLprogExport.Com.toLprogPhys` register-allocates
-only a *straight-line* SSA `Com` (it has no `Cfor` arm), and the `Lcmd`-level loop
-skeleton was only ever assembled by hand.
+The hand-built looped kernels `LprogBytes.encodeLprog` consumes (Keccak,
+SHA-256-linear, the `mpn` passes) supply that body at the `Lcmd` level. The
+**front**, by contrast, produces a bounded loop as a `JForProg accTy` — a static
+trip count `n` plus an accumulator-update `update : Com jasminDialect [accTy] accTy`
+whose `JForProg.toCfor` is a `Cfor` `InstrR`. `JasminLprogExport.Com.toLprogPhys`
+register-allocates only a *straight-line* SSA `Com` (it has no `Cfor` arm), so it
+gives no path from that `Com`-bodied loop into the byte encoder.
 
-`cforToLcmd` closes that gap. The body of a `JForProg` is **straight-line by
+`cforToLcmd` provides that path. The body of a `JForProg` is **straight-line by
 construction** (one `Com [accTy] accTy` with no nested loop — the loop is the
 `JForProg` wrapper, not the body), so we can reuse the existing straight-line
 register allocator verbatim:
@@ -490,7 +490,7 @@ register allocator verbatim:
    `encodeLcmd` / `renderLfundef` already encode.
 
 The counter register `nReg` is the loop trip counter materialised by the caller's
-prologue (`MOV nReg, #n`); it is a public configuration count (`#460` vartime
+prologue (`MOV nReg, #n`); it is a public configuration count (vartime
 policy — the bound is the static iteration count `p.n`, never a secret), so the
 back-edge is a CT-admissible public branch.
 
@@ -499,7 +499,8 @@ of `JasminLprogExport`'s `Com.toLprogPhys_wf`; the straight-line semantic
 faithfulness is the proved `ComLsemExportFaithful[MC]` predicate, with this loop
 wrapper's control flow outside the modeled fragments and tied physically), and
 the loop wrapper's shape is the same `loopLcmd` whose constant size
-and rendered control-flow shape §1–4 already pin. No new `sorry`/axiom enters. -/
+and rendered control-flow shape §1–4 pin. No axiom enters and all goals are
+closed. -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminTy jasminDialect)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (JForProg)
@@ -615,7 +616,7 @@ independent reference, so a register-pin mismatch is caught by the denotation
 KAT, not assumed away).
 
 Constant-size in the trip count (one body copy, `loopLcmd`). CT-admissible: the
-counter is a public trip count (`#460` vartime policy), the back-edge is a
+counter is a public trip count (vartime policy), the back-edge is a
 public branch. Reused by the PQC sign rejection-loop spines
 (`uov/mldsa/fndsa/hawk/mayo_sign_rwhile`). -/
 def cforIdxToLprogAbiBody {accTy : JasminTy} (w : Nat) (top : LLabel)
@@ -707,7 +708,7 @@ registers (vs §5b's two):
   (decoupled from the index — the index ascends while the counter descends).
 
 Emitted shape (`ZeroAcc` prologue: `XOR accReg, accReg` for a from-`0` reduction;
-the array base is still read from `RSI`):
+the array base is read from `RSI`):
 
 ```
    XOR  accReg, accReg     -- acc = 0
@@ -736,8 +737,8 @@ C-harness byte-KAT, the same discipline §5b uses.
 
 Constant-size in the trip count (one body copy, `loopLcmd`). CT-admissible: the
 trip count is a public bound, the back-edge a public branch, the index ascends
-data-independently. This is the missing array-base + scaled-indexed-load splice
-named as the residual in `LoopReduceDemo`. -/
+data-independently. This is the array-base + scaled-indexed-load splice that
+`LoopReduceDemo` leaves outside its scope. -/
 def cforIdxToLprogAbiBodyArr {accTy : JasminTy} {nRC : Nat} (w : Nat) (top : LLabel)
     (nReg idxReg ptrReg : String) (n : Nat)
     (body : Com jasminDialect [accTy, .reg 64, .stackArr 64 nRC] accTy)
@@ -754,9 +755,9 @@ def cforIdxToLprogAbiBodyArr {accTy : JasminTy} {nRC : Nat} (w : Nat) (top : LLa
   --   a1 = loop index,
   --   a2 = accumulator (the `accTy` head entry).
   -- So the SysV-arg names are the *reverse* of the De-Bruijn slot order: the
-  -- accumulator is `a2` (last arg) and the array base is `a0` (first arg). The
-  -- earlier `a0`=acc / `a2`=ptr reading was inverted — it zeroed `a0`'s register
-  -- (the array base) in the `XOR accReg, accReg` prologue, clobbering the array.
+  -- accumulator is `a2` (last arg) and the array base is `a0` (first arg). Reading
+  -- `a0` as the accumulator would zero the array base in the `XOR accReg, accReg`
+  -- prologue, clobbering the array.
   let accReg := physRegName (physMapTabled tbl
     (nameSlot virt.lfd_body ((virt.lfd_arg[2]?).getD "a2")))
   let idxArgReg := physRegName (physMapTabled tbl
@@ -917,7 +918,7 @@ theorem cforToLcmd_last {accTy : JasminTy} (w : Nat) (top : LLabel)
   rw [List.getLast?_append_of_ne_nil _ (by simp)]
   rfl
 
-/-! ## 6. Composable NESTED counted-loop combinator (#81)
+/-! ## 6. Composable NESTED counted-loop combinator
 
 `loopLcmd` (§1) wraps a **single** body in one back-edge; `cforToLprogAbiNestedBody`
 (§5) splices a **fixed 2-deep** nest behind a `u64→u64` ABI. Neither is a reusable
@@ -946,7 +947,7 @@ back-edge per level, so that the whole nest is the owned-backend control-flow sh
 
 This is the **same** nested-back-edge shape the proven `FheNttLoopEmit`
 three-loop nest emits by hand (`.L0` m-layer / `.L1` i-group / `.L2` j-butterfly,
-each `cmpq $0,%c ; jne`), now produced by one composable helper. Each level reuses
+each `cmpq $0,%c ; jne`), produced by one composable helper. Each level reuses
 `loopLcmd` verbatim, so every per-level shape fact (`loopLcmd_length`, the
 back-edge / label arms) lifts. The combinator is constant-size in **every** trip
 count (one inner-body copy + a fixed 5 instrs per level — `nestLoopLcmd_length_cons`),
@@ -956,7 +957,7 @@ Disjoint labels and counter registers **across levels** are the caller's
 responsibility (distinct `top` and `reg` per `LoopLevel`); the outermost counter is
 initialised by the caller's prologue (`MOV c₀, #trip₀`), each inner counter is
 re-initialised at the top of its enclosing iteration. All counters are **public**
-configuration trip counts (`#460` vartime policy), so every back-edge is a
+configuration trip counts (vartime policy), so every back-edge is a
 CT-admissible public branch — the nested generalisation of the §1 CT note. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
@@ -1185,7 +1186,7 @@ example (w : Nat) (l0 l1 l2 : LoopLevel) (i : Linstr) :
 `loopLcmd` (§1), `cforToLcmd` (§5) and `nestLoopLcmd` (§6) all emit **counted**
 loops: the trip count is materialised at entry (`MOV nReg, #n`) and the back-edge
 tests a **down-counter** (`SUB nReg,#1 ; CMP nReg,#0 ; jne`). That is exactly what
-the §"What is NOT lowered" residual excluded — a general `RWhile` whose guard is a
+the §"What is NOT lowered" section excludes — a general `RWhile` whose guard is a
 **runtime, data-dependent** value the loop itself produces, so the trip count is
 not known at entry and termination depends on a value computed inside the loop.
 
@@ -1266,8 +1267,8 @@ theorem whileLcmd_last (w : Nat) (top : LLabel) (gReg : String) (guard body : Lc
 
 /-! ### 7.2 The fuel-bounded `runWhile` denotation + the lowering-denote bridge
 
-The pure A-normal `Com` substrate has no label/jump denotation (that is precisely
-why a general `RWhile` was the residual): we therefore give the data-dependent
+The pure A-normal `Com` substrate has no label/jump denotation (which is why a
+general `RWhile` is outside the counted-loop core): we therefore give the data-dependent
 loop a **fuel-bounded total** machine semantics `runWhile` and bridge it to the
 already-proven counted-loop core. The bridge is the §3 strategy generalised:
 a `while` that halts within `fuel` runs `body` a **determined** number of times
@@ -1399,17 +1400,15 @@ unbounded search cannot be.
 
 This file's combinators are **plain `Lcmd` data**: `whileLcmd` does not route
 through any constant-time / leakage-NI obligation (exactly as `loopLcmd` does
-not), so no CT proof is claimed or faked for it here, and it does not pretend to
-be data-oblivious. A *typed* public-while marker that the leakage framework
-(`Com.leakTrace` / `all_com_ct`) recognises — classifying a `whileLcmd` site as
-`public-while` so it is admitted while a secret-guarded one is rejected — is a
-**framework change to the leakage IR**, reported as the residual: the current
-`all_com_ct` is the structurally-trivial dialect shadow (`rfl`, per the project's
-CProg/CT note), and giving data-dependent control flow a first-class
-public/secret guard classification in the leakage trace is a larger leakage-IR
-extension, not a one-file additive edit. We classify `whileLcmd` as `public-while`
-in this documentation and keep it off the CT obligation rather than fabricate a
-constant-time proof for a non-constant-time loop. -/
+not), so no CT proof is stated for it here, and it is not data-oblivious. A
+*typed* public-while marker that the leakage framework (`Com.leakTrace` /
+`all_com_ct`) recognises — classifying a `whileLcmd` site as `public-while` so it
+is admitted while a secret-guarded one is rejected — is a **framework change to
+the leakage IR** outside this module: `all_com_ct` is a tautology (`rfl`) and is
+not CT evidence, and giving data-dependent control flow a first-class
+public/secret guard classification in the leakage trace is a leakage-IR
+extension. `whileLcmd` is classified as `public-while` in this documentation and
+kept off the CT obligation. -/
 
 /-! ### 7.4 In-file witness of the data-dependent guard shape
 

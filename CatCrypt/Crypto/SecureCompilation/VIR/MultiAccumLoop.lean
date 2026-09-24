@@ -10,19 +10,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MultiBinderLoopBody
 /-!
 # Counted loop over a **multi-accumulator** (product) state: `loopNAccum`
 
-`MultiBinderLoopBody.loopNMulti` packages the counted-loop keystone for a
+`MultiBinderLoopBody.loopNMulti` packages the counted-loop theorem for a
 multi-binder straight-line body over **one** accumulator cell `accTy`. Real
 crypto loops carry **several** live values across iterations: a sponge state
 (Keccak's 25 lanes), a Montgomery / X25519 ladder's `(x₂, z₂, x₃, z₃)`, a
-running `(carry, digit)` pair, a Fibonacci-style `(a, b)` recurrence. This file
-closes that gap.
+running `(carry, digit)` pair, a Fibonacci-style `(a, b)` recurrence. This module
+covers those loops.
 
 ## The packing route (why, and what it costs)
 
 `JForProg`'s accumulator is a single `JasminTy`, and `JasminTy`'s alphabet
 (`reg w` / `stackArr w n` / `inlineInt` / `bool`) has **no product/pair
 constructor** — the single-accumulator `JForProg` shape is hard-wired (flagged in
-`MultiBinderLoopBody`'s scope note). The honest, sorry-free route the existing
+`MultiBinderLoopBody`'s scope note). The fully proved route the existing
 types support is therefore **packing**: model `k` accumulator cells of width `w`
 as one **wide** `reg (k*w)` register, with each cell occupying a `w`-bit lane.
 The loop body is then an arbitrary straight-line `Com jasminDialect [reg (k*w)]
@@ -32,20 +32,20 @@ and`) and reassembles the updated lanes — exactly the AVX-lane discipline
 accumulator-state level.
 
 Under this packing, a multi-accumulator loop **is** a special case of the
-multi-binder loop `loopNMulti` at `accTy = reg (k*w)`: the keystone
+multi-binder loop `loopNMulti` at `accTy = reg (k*w)`: the theorem
 `loopNMulti_lower_denote_iterate` applies **verbatim** — the emitted counted
 loop's run equals `step^[n]` over the packed `BitVec (k*w)` state, where `step`
 is the body's denotation. No new loop machinery is needed.
 
-## What is genuinely new here
+## Contents
 
 1. **`packLanes` / `lane`** — the lane (un)packing for a `k`-cell × `w`-bit
    packed accumulator, with `lane_packLanes` proving the projection of cell `i`
    recovers exactly the `i`-th input cell. This is the *faithfulness* witness:
-   a packed `reg (k*w)` is a genuine product of `k` cells, not a lossy encoding.
+   a packed `reg (k*w)` is a product of `k` cells, not a lossy encoding.
 
 2. **`loopNAccum`** — the multi-accumulator counted-loop constructor: a thin,
-   documented specialisation of `loopNMulti` to `accTy = reg (k*w)`. Its keystone
+   documented specialisation of `loopNMulti` to `accTy = reg (k*w)`. Its theorem
    `loopNAccum_lower_denote_iterate` is `loopNMulti_lower_denote_iterate` —
    reused, not re-proved.
 
@@ -54,12 +54,12 @@ is the body's denotation. No new loop machinery is needed.
    cell 1 = high 64 = `b`), run `n` times. We give its emitted-loop denotation in
    `step^[n]` form *and* a concrete `n = 5` KAT computing
    `(1, 1) → (1, 2) → (2, 3) → (3, 5) → (5, 8) → (8, 13)` — i.e. the packed
-   state `(8, 13)` — byte-for-byte. SORRY-FREE.
+   state `(8, 13)` — byte-for-byte.
 
-## Conditioned scope (honest)
+## Conditioned scope
 
-The soundness inherits exactly the two hypotheses of the multi-binder keystone,
-neither a `sorry`:
+The soundness inherits exactly the two hypotheses of the multi-binder loop
+theorem:
 
 * `hLeaf : LeafAgrees leafSem` — the opaque-leaf edge, carried throughout the
   emit theory.
@@ -69,14 +69,14 @@ neither a `sorry`:
 What this does **not** cover: a true **heterogeneous** product `JasminTy`
 (cells of *different* types, or arrays mixed with registers). The packing models
 `k` cells of a **common** width `w` (the homogeneous register-lane case); a
-genuine heterogeneous product would need a `JasminTy.prod` constructor (a
-`JForProg`-shape change, out of scope here and explicitly avoided — we do not
-touch `JForProg`). For the ladder/sponge/recurrence loops that motivate this, the
-cells are uniform-width registers, so the packed `reg (k*w)` model is faithful
+heterogeneous product would need a `JasminTy.prod` constructor (a
+`JForProg`-shape change, outside the scope of this module). For the
+ladder/sponge/recurrence loops that motivate this, the cells are uniform-width
+registers, so the packed `reg (k*w)` model is faithful
 (`lane_packLanes`).
 
-0 sorries; the only carried hypotheses are `LeafAgrees` and `StraightLine body`,
-inherited verbatim from `loopNMulti`.
+All goals closed; the only carried hypotheses are `LeafAgrees` and
+`StraightLine body`, inherited verbatim from `loopNMulti`.
 -/
 
 @[expose] public section
@@ -101,7 +101,7 @@ open CatCrypt.Crypto.Jasmin (JasminProg)
 A packed accumulator state is a `BitVec (k*w)` carrying `k` cells, cell `i` in
 bit-window `[i*w, i*w + w)`. `lane i` projects cell `i`; `packLanes` assembles a
 state from a cell-indexed family. `lane_packLanes` proves projection inverts
-packing — the faithfulness witness that the packed `reg (k*w)` is a genuine
+packing — the faithfulness witness that the packed `reg (k*w)` is a
 `k`-fold product of `w`-bit cells. -/
 
 /-- The packed-accumulator type carrying `k` cells of `w` bits each. -/
@@ -136,7 +136,7 @@ theorem extractLsb'_zero_self {w : Nat} (x : BitVec w) :
 
 /-- **Faithfulness.** Projecting cell `i` of a packed state recovers exactly the
     `i`-th input cell: `lane (packLanes f) i = f i`. So the packed `reg (k*w)`
-    accumulator is a genuine `k`-fold product of `w`-bit cells — packing loses no
+    accumulator is a `k`-fold product of `w`-bit cells — packing loses no
     information. By induction on `k`, splitting on whether `i` is cell 0 (the low
     `w`-bit append slice) or a higher cell (the recursive `rest`). -/
 theorem lane_packLanes {k w : Nat} (f : Fin k → BitVec w) (i : Fin k) :
@@ -174,7 +174,7 @@ theorem lane_packLanes {k w : Nat} (f : Fin k → BitVec w) (i : Fin k) :
 A `MultiAccumBody k w` is an arbitrary straight-line `Com` over the packed
 accumulator `reg (k*w)` — it reads input lanes and reassembles updated lanes.
 `loopNAccum n body` runs it `n` times. It is **definitionally** `loopNMulti` at
-`accTy = PackedTy k w`, so the multi-binder keystone applies verbatim. -/
+`accTy = PackedTy k w`, so the multi-binder loop theorem applies verbatim. -/
 
 /-- A multi-accumulator loop body: an arbitrary straight-line `Com` over the
     packed `k`-cell × `w`-bit accumulator. -/
@@ -197,7 +197,7 @@ theorem loopNAccum_eq {k w : Nat} (n : Nat) (body : MultiAccumBody k w) :
     (acc : BitVec (k * w)) :
     (loopNAccum n body).step acc = body.denote (.cons acc .nil) := rfl
 
-/-! ## 3. The lowering and its soundness (the multi-accumulator keystone)
+/-! ## 3. The lowering and its soundness (the multi-accumulator loop theorem)
 
 `loopNAccum` lowers via `JForProg.toProg`; the emitted loop is run by
 `bodyStepRun`. Soundness: the emitted run equals `step^[n]` over the packed
@@ -209,7 +209,7 @@ def loopNAccum_lower {k w : Nat} (name : String) (n : Nat)
     (body : MultiAccumBody k w) : JasminProg :=
   (loopNAccum n body).toProg name
 
-/-- **Keystone (multi-accumulator, iterate form).** The emitted counted loop over
+/-- **Main theorem (multi-accumulator, iterate form).** The emitted counted loop over
     the packed `k`-cell state, run `n` times, equals `step^[n] init`, where
     `step` is the body's denotation on the packed state. This is
     `MultiBinderLoopBody.loopNMulti_lower_denote_iterate` at the packed accumulator
@@ -224,7 +224,7 @@ theorem loopNAccum_lower_denote_iterate {k w : Nat} {leafSem : LeafSem}
 
 /-! ## 4. Worked example: a 2-accumulator **Fibonacci** loop in one `reg 128`
 
-The Fibonacci recurrence `(a, b) ↦ (b, a + b)` is the minimal genuine
+The Fibonacci recurrence `(a, b) ↦ (b, a + b)` is the minimal
 *multi-accumulator* loop: two live values, each updated from both. We pack it
 into one `reg 128` — cell 0 (low 64 bits) = `a`, cell 1 (high 64 bits) = `b` —
 and emit the body as a straight-line `Com [reg 128] (reg 128)`:

@@ -10,9 +10,9 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# C4 fan-out: the verified compiler emits the FrodoKEM LWE multiply-accumulate step
+# The verified compiler emits the FrodoKEM LWE multiply-accumulate step
 
-This module extends the **C4** step of the verified-compiler plan to the
+This module applies the verified compile-from-hax front to the
 inner-loop body of FrodoKEM's dense-LWE matrix–vector product
 (`Frodo/FrodoMatmulVerified.lean`). FrodoKEM is the conservative,
 no-ring-structure lattice KEM; its core arithmetic is the dense integer
@@ -53,7 +53,7 @@ single mask because `2^16 ∣ 2^64`.
 `frodoMacSrc` is the let-normalized `ImpExpr` (one op per `letBind`, all args
 atoms or earlier locals); `frodoMacForm` is the explicit closed **emit form**
 the source denotes to; the `_compiles` theorem routes the form source-spec
-(`frodoMacSrc_denoteScalar`, a `rfl`) through the C3 per-primitive obligation
+(`frodoMacSrc_denoteScalar`, a `rfl`) through the per-primitive obligation
 `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by the
 verified compiler* and proven equal to the emit form.
 
@@ -125,8 +125,8 @@ theorem frodoMac_compileFromHax_isSome :
     `compileFromHax ["acc","a","b"] frodoMacSrc = some c`, and for every
     `(acc, a, b)`, `c`'s `BitVec 64` denotation (under the input valuation
     `![acc, a, b]`) is exactly the closed emit form `frodoMacForm`. Routed through
-    the C3 per-primitive obligation `compileFromHax_meets_spec`. This is a C4
-    fan-out to the **power-of-two-modulus** lattice core of FrodoKEM (the LWE
+    the per-primitive obligation `compileFromHax_meets_spec`. The target is
+    the **power-of-two-modulus** lattice core of FrodoKEM (the LWE
     matrix–vector inner step `acc + a·b mod 2^16`), reusing the
     SHA-256/Keccak/BLAKE2/GF(127) `wrapping_mul`/`wrapping_add`/`BitAnd`
     recognizers with no front change. The abstract `Zq65536` field tie is

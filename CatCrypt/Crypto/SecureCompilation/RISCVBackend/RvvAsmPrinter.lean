@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
 
 /-!
-# GAS RV64 RVV printer for the packed-u32 RVV machine instructions (#549 RVV residual)
+# GAS RV64 RVV printer for the packed-u32 RVV machine instructions
 
 `ARMBackend/NeonAsmPrinter.lean` prints the AArch64 NEON packed-u32 subset to GAS
 ASIMD asm; this is its **RISC-V RVV** counterpart: it prints a `RvvModel.VInst`

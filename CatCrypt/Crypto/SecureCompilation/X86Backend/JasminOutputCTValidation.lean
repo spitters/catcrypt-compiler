@@ -9,15 +9,15 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 
 /-!
-# U1 — per-output translation validation of jasminc's constant-time
+# Per-output translation validation of jasminc's constant-time
 
-`CompilableCT.lean` proves the **machine-level** constant-time keystone:
+`CompilableCT.lean` proves the **machine-level** constant-time theorem:
 a straight-line `List (JInstr 64)` all of whose instructions use direct
 (base + compile-time-constant) addressing has a leakage trace independent of the
 initial state (`allDirect_constant_time`). `SailX86Decoder.lean` proves the
 byte-level round-trip `decode (encode i) ≡ i` for the register-direct GP forms.
 
-This module composes the two into the U1 deliverable: a **per-output constant-time
+This module composes the two into a **per-output constant-time
 validator**. The point is a trust reduction.
 
 * The compile-correctness story would otherwise carry a *global* assumption — call
@@ -37,26 +37,26 @@ That is exactly translation validation: do not trust the translator, check the
 translation. Here the property validated is constant-time and the check is
 `allDirect` on the decoded program.
 
-## Scope achieved
+## Scope
 
 The validator and its soundness are over the **straight-line direct-addressing
-fragment** (`isCTChecked := allDirect`). This is the fragment the keystone
+fragment** (`isCTChecked := allDirect`). This is the fragment the machine theorem
 covers: the `MachineConstantTime` leakage model (`MLeak`, `instrLeak`,
 `blockLeak`) models the memory-address channel for `List (JInstr 64)` and the
 branch channel as empty for the straight-line subset, and `allDirect` rejects the
 register-indexed memory forms — the only `JInstr` arms whose address leak reads a
 register value. Direct control-flow forms (jmp/call/jcc to fixed targets, whose
 targets are also value-independent and hence constant-time) are handled by the CF
-decoder (`SailX86CFDecoder`) at the byte level, but `blockLeak` does not yet
-carry a jump-target leakage event for them, so the CF extension is recorded as
-the next step rather than claimed here (see §5).
+decoder (`SailX86CFDecoder`) at the byte level; `blockLeak` carries no
+jump-target leakage event for them, so the CF extension is outside the scope of
+this module (see §5).
 
 ## What this does and does not establish (trust delta)
 
 This validates the constant-time of a **decoded binary in our x86 leakage model**.
 It does **not** establish semantic equivalence of that binary to any source
-program — that is the separate security-transport obligation. The trust delta U1
-delivers is:
+program — that is the separate security-transport obligation. The trust delta the
+validator delivers is:
 
 * **from** "jasminc preserves constant-time for all programs" (a global,
   unexamined property of the production compiler),
@@ -91,25 +91,25 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 **recovered from a binary**. It is exactly `ConstantTimeCoverage.allDirect`: a
 binary-only check (it inspects the instruction sequence, never the source), and
 `allDirect` rejects the register-indexed memory forms that are the only
-value-dependent address leaks in the straight-line subset. So a `true` verdict is
+value-dependent address leaks in the straight-line subset. So a `true` result is
 a binary-only certificate that the program is constant-time. -/
 
 /-- **The per-output CT checker.** `true` iff every instruction of the decoded
     program `p` uses direct (base + compile-time-constant) addressing — the
     decidable constant-time analysis run on the recovered instruction sequence.
-    This is the binary-only check that replaces trusting a global
+    This is the binary-only check used in place of a global
     compiler-preserves-CT assumption: it looks at the binary's instructions, not
     at the source. -/
 def isCTChecked (p : List (JInstr 64)) : Bool := allDirect p
 
 /-! ## 2. Soundness — a passed check is a concrete constant-time theorem
 
-`isCTChecked_sound` is the heart of U1: it turns the *result* of running the
+`isCTChecked_sound` turns the *result* of running the
 checker on a specific decoded program into a *concrete* constant-time guarantee
 about that program — the leakage trace is the same from any two initial states.
 It is `allDirect_constant_time` under the validator name. Crucially its
 dependency cone does not mention any "compiler preserves CT" assumption: the
-guarantee comes from the program text via the keystone, not from trusting the
+guarantee comes from the program text via `allDirect_constant_time`, not from trusting the
 translator. -/
 
 /-- **Soundness of the per-output CT validator.** If the decidable check passes on
@@ -162,11 +162,11 @@ theorem validateDecodedCT_sound {decoded : List (JInstr 64)}
     blockLeak s₁ decoded = blockLeak s₂ decoded :=
   isCTChecked_sound h s₁ s₂
 
-/-! ## 4. A worked demo — non-vacuity, going genuinely through the decoder
+/-! ## 4. A worked demo — non-vacuity, going through the decoder
 
 The roster in `ConstantTimeCoverage` already shows real bignum/field kernels pass
 `allDirect`; here the emphasis is the **decode connection**, demonstrating that
-the validator's input is genuinely a program recovered from bytes. We take a
+the validator's input is a program recovered from bytes. We take a
 small reg-reg ALU block (a couple of direct ALU ops — the shape of decoded
 jasminc output), and:
 
@@ -192,14 +192,14 @@ theorem demoBlock_isCTChecked : isCTChecked demoBlock = true := by decide
 /-- **Demo: the block is constant-time, from the passed check.** A passed
     `isCTChecked` on the concrete block yields its concrete constant-time theorem
     via `isCTChecked_sound` — non-vacuous: a real instruction sequence, a real
-    decidable verdict, a real leakage-equality conclusion. -/
+    decidable result, a real leakage-equality conclusion. -/
 theorem demoBlock_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ demoBlock = blockLeak s₂ demoBlock :=
   isCTChecked_sound demoBlock_isCTChecked s₁ s₂
 
 /-- **The decode connection, on the demo's first instruction.** Encoding
     `add %rcx, %rax` and decoding the bytes back (Sail-x86 decode discipline)
-    rebuilds exactly that instruction: the validator's input is genuinely a
+    rebuilds exactly that instruction: the validator's input is a
     program *recovered from bytes*, not a hand-asserted block. Instantiates
     `SailX86Decoder.roundtrip_jinstr_add` at the demo allocation. -/
 theorem demo_decode_roundtrip (alloc : GpAlloc) (d s : String)
@@ -229,18 +229,19 @@ theorem demo_decode_then_validate :
   · intro s₁ s₂
     exact isCTChecked_sound (by decide) s₁ s₂
 
-/-! ## 5. The CF (control-flow) extension — recorded as next step
+/-! ## 5. The CF (control-flow) extension
 
 The CF decoder (`SailX86CFDecoder.decodeCF`, `roundtrip_jmp32`/`call32`/`jcc32`)
 recovers the **fixed rel32 targets** of `jmp`/`call`/`jcc`. Such targets are
 value-independent, hence constant-time: a jump to a compile-time-fixed label
-leaks nothing about a secret. To extend the validator over them we would
-* add a jump-target leakage event to `MLeak` (a `MLeak.jump (target : Int)` say),
-* thread it through `instrLeak`/`blockLeak` for the CF `JInstr` arms, and
-* re-prove the keystone, observing the fixed target is state-independent.
+leaks nothing about a secret. Extending the validator over them requires
+* a jump-target leakage event in `MLeak` (a `MLeak.jump (target : Int)` say),
+* threading it through `instrLeak`/`blockLeak` for the CF `JInstr` arms, and
+* re-proving `allDirect_constant_time`, observing the fixed target is
+  state-independent.
 
-Until `blockLeak` carries that event, the straight-line `allDirect` validator is
-the honest achievable scope, and `isCTCheckedCF` is left for that follow-up. -/
+`blockLeak` carries no such event, so the scope of this module is the
+straight-line `allDirect` validator; a CF-aware `isCTCheckedCF` is outside it. -/
 
 /-! ## 6. The remaining offline harness wiring (out of this Lean file)
 

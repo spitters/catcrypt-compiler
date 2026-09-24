@@ -95,13 +95,14 @@ The 24 Keccak rounds are an `RFor` (`IsCoveredAdeq.rFor`, `N = 24 ≤ 2^64`) ove
 round body, tracked by the loop bridge `agreeFor`; the closed-kernel empty-entry-env
 argument is unchanged because the unrolled body stays closed.
 
-## Residual
+## Scope
 
 The whole-round / 24-round `emitted = RustExec` for a NON-closed round routes
 through the closed-kernel argument, as the ARX layer requires: the general
-open-kernel jasmin leg still hits `RustExecKernelAdeq.entry_trio_unsat_empty`
-(the `EnvRel`/`ConsistentS`/`NoAliasVM` clash at any finite entry), the standing
-`P3`-composition residual, orthogonal to the per-lane coverage settled here.
+open-kernel jasmin leg meets `RustExecKernelAdeq.entry_trio_unsat_empty`
+(the `EnvRel`/`ConsistentS`/`NoAliasVM` clash at any finite entry). That
+open-kernel composition is outside this module and independent of the per-lane
+coverage proved here.
 -/
 
 @[expose] public section
@@ -133,8 +134,8 @@ namespace CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKeccakAdeq
 Keccak's nonlinear step is `A'[x] = A[x] ⊕ ((¬A[x+1]) ∧ A[x+2])`. Rewriting the
 `NOT`/`AND` as `(¬b1) ∧ b2 = b2 ⊕ (b1 ∧ b2)` gives the `NOT`-free bitwise form
 `b0 ⊕ b2 ⊕ (b1 ∧ b2)` — purely `∧`/`⊕`, so — exactly like `Maj` — the `inRange`
-obligation is the hoisted all-`u64` one with no side condition. Lands in
-`IsCoveredAdeq`. The inputs are honest `u64` lane words. -/
+obligation is the hoisted all-`u64` one with no side condition. Lies in
+`IsCoveredAdeq`. The inputs are `u64` lane words. -/
 
 /-- One chi lane in `NOT`-free form: `A = b0 ⊕ b2 ⊕ (b1 ∧ b2)`. -/
 def chiE : SExpr :=
@@ -297,7 +298,7 @@ theorem thetaC_covered : IsCoveredSCtl thetaC := .ofStraight thetaC_coveredS
 /-! ### The concrete-bound `inRange` discharge — the reusable rotate-arm pattern
 
 Under a concrete per-kernel lane bound `σ "cm1" < 2^32 ∧ σ "cp1" < 2^32` — the
-honest `u64` Keccak lane discipline (a rotate written as disjoint `≪`/`≫` keeps
+`u64` Keccak lane discipline (a rotate written as disjoint `≪`/`≫` keeps
 its top-bit-free half in range) — the `SShl` overflow side condition the hoisted
 all-`u64` arm cannot meet is provable. This is the `RustExecARXAdeq.arxE`
 template instantiated on the theta rotate, the `rho`/`theta` per-lane obligation. -/

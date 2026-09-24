@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Util.Sha256Verified
 # Hash-composition tie: the SLH-DSA WOTS+ chain-step combiners = the FIPS-180-4 round engine
 
 This module is the **hash-composition** companion tie to `CompileFromHaxSlhdsaChain`
-— the genuinely-new Category-C shape that **composes** the already-tied SHA-256
+— the Category-C shape that **composes** the already-tied SHA-256
 round-component leaves (rather than tying a single arithmetic reduce, as the
 Frodo/NTRU/sntrup MAC ties do).
 

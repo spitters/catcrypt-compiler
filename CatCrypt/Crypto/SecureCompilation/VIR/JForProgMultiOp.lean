@@ -12,20 +12,20 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
 public import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
 
 /-!
-# The bounded-loop keystone for arbitrary multi-op straight-line bodies
+# The bounded-loop main theorem for arbitrary multi-op straight-line bodies
 
-`JForProgSemCorrect.loop_denote_eq` (task #60) proves the bounded-loop keystone —
+`JForProgSemCorrect.loop_denote_eq` proves the bounded-loop main theorem —
 "the emitted `for i = 0 to n { acc = body(acc) }` denotes the `n`-fold
 semantics" — **only** for `SingleVarBody e = Com.var e (Com.ret .here)`: one op,
 one binding. Its proof (`execCom_singleVar` / `bodyStepRun_singleVar_eq`)
 sidesteps the whole-`Com` preservation theorem `JasminPrintSemCorrect.execCom_eq`
 and so needs no fresh-name injectivity.
 
-Real hash-leaf inner bodies (a Merkle compression, a Keccak round) bind several
+Hash-leaf inner bodies (a Merkle compression, a Keccak round) bind several
 fresh SSA names `v0, v1, …` and so need the full `execCom_eq` path, which carries
-`hInj : Function.Injective freshName`. That hypothesis is now a **theorem**
-(`FreshNameInjective.freshName_injective`, task #R1a), so this file lifts the
-keystone to **arbitrary straight-line multi-op `Com` bodies**:
+`hInj : Function.Injective freshName`. That hypothesis is a **theorem**
+(`FreshNameInjective.freshName_injective`), so this module lifts the
+main theorem to **arbitrary straight-line multi-op `Com` bodies**:
 
 * `accVM_FreshFor` — the accumulator resolver `accVM` is `FreshFor … 0`: its only
   name `"acc"` begins with `'a'`, while every `freshName k = "v…"` begins with
@@ -35,16 +35,16 @@ keystone to **arbitrary straight-line multi-op `Com` bodies**:
   with `hInj := freshName_injective`. **No carried injectivity hypothesis
   remains.**
 * `stepAgrees_multiOp` / `loop_denote_eq_multiOp` — hence `StepAgrees` and the
-  whole-loop keystone for multi-op bodies (composing with
+  whole-loop main theorem for multi-op bodies (composing with
   `JForProgCT.loopRun_eq` exactly as the single-var version does).
 * `outerBodyRun_eq_multiOp` / `nested_loop_denote_eq_multiOp` and
   `levelRun_eq_multiOp` / `treehash_loop_denote_eq_multiOp` — the nested and
-  treehash keystones lifted to multi-op inner / level bodies, mirroring
+  treehash main theorems lifted to multi-op inner / level bodies, mirroring
   `JForProgNested.nested_loop_denote_eq` and
   `JForProgTreehash.treehash_loop_denote_eq` but using the multi-op body runner.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-var keystone — no `sorry`, axiom-clean.
+single-var main theorem — no `sorry`, axiom-clean.
 -/
 
 @[expose] public section
@@ -95,7 +95,7 @@ theorem accVM_FreshFor {accTy : JasminTy} : FreshFor (accVM accTy) 0 := by
 For any body with `StraightLine`, the concrete body runner `bodyStepRun` computes
 `JForProg.step` — the per-iteration ground truth — via the whole-`Com`
 preservation theorem `JasminPrintSemCorrect.execCom_eq`, supplied with
-`hInj := freshName_injective` (now a theorem). Unlike `bodyStepRun_singleVar_eq`,
+`hInj := freshName_injective` (a theorem). Unlike `bodyStepRun_singleVar_eq`,
 the body may bind several fresh SSA names `v0, v1, …`; the freshness machinery
 (`FreshFor.extend_v`, under `freshName` injectivity) keeps them distinct from the
 accumulator `"acc"` and from each other. **No carried injectivity hypothesis
@@ -128,14 +128,14 @@ theorem stepAgrees_multiOp {accTy : JasminTy} {leafSem : LeafSem}
     StepAgrees p (bodyStepRun leafSem p) :=
   fun acc => bodyStepRun_multiOp_eq hLeaf p hSL acc
 
-/-! ## 3. The keystone, lifted to multi-op bodies
+/-! ## 3. The main theorem, lifted to multi-op bodies
 
 Composing the discharged multi-op `StepAgrees` with `JForProgCT.loopRun_eq` gives
 the whole-loop result for **arbitrary straight-line bodies**, with no carried
 per-iteration hypothesis (only the opaque-leaf edge). This is the core unlock for
 real hash-leaf inner bodies. -/
 
-/-- **Keystone (multi-op) — the emitted bounded loop denotes the `n`-fold
+/-- **Main theorem (multi-op) — the emitted bounded loop denotes the `n`-fold
     semantics, for ANY straight-line body.** Running the emitted
     `for i = 0 to n { acc = body(acc) }` `n` times from `init`, threading the
     named accumulator, equals `p.denote init` — the `n`-fold application of
@@ -152,19 +152,19 @@ theorem loop_denote_eq_multiOp {accTy : JasminTy} {leafSem : LeafSem}
 
 /-- A `SingleVarBody e` is `StraightLine` exactly when `e` is non-`stackStore`
     (the single binder's freshness obligation). This bridges the single-var
-    keystone's `SingleVarBody` shape into the multi-op keystone's `StraightLine`
+    main theorem's `SingleVarBody` shape into the multi-op main theorem's `StraightLine`
     hypothesis. -/
 theorem straightLine_singleVar {accTy : JasminTy}
     {e : Expr jasminDialect [accTy] accTy} (he : ExprNotStackStore e) :
     StraightLine (SingleVarBody e) :=
   ⟨he, trivial⟩
 
-/-! ## 4. The nested keystone, lifted to multi-op inner bodies
+/-! ## 4. The nested main theorem, lifted to multi-op inner bodies
 
 The nested layer (`JForProgNested.nested_loop_denote_eq`) bakes in a single-leaf
 inner body (`hInner : p.inner.update = SingleVarBody e`). We mirror it with the
 multi-op inner-body runner: the outer body runner is the emitted inner loop run,
-which equals `inner.denote` by the multi-op single-level keystone above. The
+which equals `inner.denote` by the multi-op single-level main theorem above. The
 outer level closes by the same `foldl` congruence the single-var version uses. -/
 
 /-- A `foldl` of two functions that agree everywhere over the same list and seed
@@ -189,7 +189,7 @@ theorem outerBodyRun_eq_multiOp {accTy : JasminTy} {leafSem : LeafSem}
   unfold JForProgNested.outerBodyRun JForProgNested.NestedForProg.outerStep
   exact loop_denote_eq_multiOp hLeaf p.inner hInner acc
 
-/-- **Nested keystone (multi-op inner body).** Running the emitted nested loop
+/-- **Nested main theorem (multi-op inner body).** Running the emitted nested loop
     (outer `for` over inner `for`) by iterating the outer body runner `outerN`
     times — each outer step running the emitted inner loop in full — equals
     `NestedForProg.denote init`, for an arbitrary straight-line inner body. The
@@ -207,7 +207,7 @@ theorem nested_loop_denote_eq_multiOp {accTy : JasminTy} {leafSem : LeafSem}
     (fun acc _ => outerBodyRun_eq_multiOp hLeaf p hInner acc)
     (List.range p.outerN) init
 
-/-! ## 5. The treehash keystone, lifted to multi-op level bodies
+/-! ## 5. The treehash main theorem, lifted to multi-op level bodies
 
 The treehash layer (`JForProgTreehash.treehash_loop_denote_eq`) bakes in
 `AllSingleVar` (every level body is `SingleVarBody`). We mirror it with the
@@ -230,7 +230,7 @@ theorem levelRun_eq_multiOp {accTy : JasminTy} {leafSem : LeafSem}
   unfold JForProgTreehash.levelRun JForProgTreehash.levelStep
   exact loop_denote_eq_multiOp hLeaf lvl hLvl acc
 
-/-- **Treehash keystone (multi-op level bodies).** Running the emitted
+/-- **Treehash main theorem (multi-op level bodies).** Running the emitted
     `h`-`Cfor` sequence (each level a real `for`) by composing the per-level
     emitted single-level loop runners serially equals `TreehashProg.denote init`,
     for arbitrary straight-line level bodies. Each level reuses

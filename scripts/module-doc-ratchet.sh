@@ -5,8 +5,8 @@
 # Why: what a module offers is described in its docstring, and the per-file
 # `Main results` section is the one index that cannot rot — the commit that adds
 # a theorem edits the file that describes it. A standalone index drifts, because
-# nothing ties its update to the edit it describes. 36 of the 1868 files over the
-# line threshold carry the section today; this ratchet grows that forward on new
+# nothing ties its update to the edit it describes. A minority of the files over
+# the line threshold carry the section; this ratchet grows that forward on new
 # files only, with no retrofit.
 #
 # Usage: module-doc-ratchet.sh <NewFile.lean> [...]

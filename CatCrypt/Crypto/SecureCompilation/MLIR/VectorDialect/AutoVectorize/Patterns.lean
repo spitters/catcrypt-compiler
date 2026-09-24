@@ -8,12 +8,12 @@ module
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
 
 /-!
-# Auto-Vectorize — Vectorizable pattern alphabet (task #108)
+# Auto-Vectorize — Vectorizable pattern alphabet
 
-This is the first file of the *auto-vectorize-by-default* pass scaffolded on
-top of the new MLIR-style `VectorDialect` (`Types.lean` / `Ops.lean` /
-`Denote.lean` / `Lowering.lean`, #183) and the `LoweringChoice` selector
-abstraction (#187).
+This module is the base of the *auto-vectorize-by-default* pass built on
+top of the MLIR-style `VectorDialect` (`Types.lean` / `Ops.lean` /
+`Denote.lean` / `Lowering.lean`) and the `LoweringChoice` selector
+abstraction.
 
 The pass detects *vectorizable shapes* inside the surface Com IR and rewrites
 them to `VectorOp` ops directly. Detection itself is unverified glue
@@ -31,9 +31,9 @@ scalar program — is what carries the proof obligation.
 | `broadcast`     | replicate a scalar to `n` lanes: `result i = x`                    |
 
 These four shapes cover the bulk of straight-line SIMD-able code in the
-crypto kernels CatCrypt emits today (`#VPADD_*`, `#VPMUL_*`, MAC chains,
-`vbroadcastss`-style splats). More shapes (lane-wise FMA, dot-product over
-strided memory, reduction folds) follow in Phase-2.
+crypto kernels CatCrypt emits (`#VPADD_*`, `#VPMUL_*`, MAC chains,
+`vbroadcastss`-style splats). Lane-wise FMA, dot-product over strided
+memory and reduction folds are outside the pattern set.
 
 ## Carrier polymorphism
 
@@ -52,18 +52,18 @@ Surface Com IR        ─ Detection.lean ─▶  VectorizablePattern
        ▼                                              ▼
    Fin n → α                                    VectorOp α n
                                                       │
-                                                      │ Lowering.lean (#183)
+                                                      │ Lowering.lean
                                                       ▼
                                               ScalarExpansion
                                                       │
-                                                      │ Phase-2 → Com
+                                                      │ → Com
                                                       ▼
                                                 LLVM / x86vector / neon
 ```
 
-The keystone in `Vectorize.lean` is `lanewiseAdd_vectorize_denotation_preserves`,
-which composes `laneMap_eq_scalarMap` (`VIR/LaneMap.lean` from #150) with the
-abstract denotation `denote_add` (`Denote.lean` from #183).
+The main theorem in `Vectorize.lean` is `lanewiseAdd_vectorize_denotation_preserves`,
+which composes `laneMap_eq_scalarMap` (`VIR/LaneMap.lean`) with the
+abstract denotation `denote_add` (`Denote.lean`).
 -/
 
 @[expose] public section
@@ -87,7 +87,7 @@ namespace CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize
 
     Carrier-polymorphic in `α`: lanes can be `BitVec w` (the SIMD case), `ZMod p`
     (lattice / field arithmetic case), or any element type whatsoever — the
-    keystone equivalence theorem holds at every carrier. -/
+    main equivalence theorem holds at every carrier. -/
 inductive VectorizablePattern (α : Type) : Type where
   /-- `n` independent additions: lane `i` computes `op (lhs i) (rhs i)`. -/
   | lanewiseAdd (n : Nat) (op : α → α → α) (lhs rhs : Fin n → α)
@@ -127,10 +127,8 @@ namespace VectorizablePattern
     For vector-result patterns (`lanewiseAdd`/`lanewiseMul`/`broadcast`) the
     denotation is a `Fin n → α` lane function; for `dotProduct` it is a
     single scalar wrapped in the constant lane function (so the shape is
-    uniform). Phase-2 will split this into a sum type that mirrors
-    `VectorOp.Result`. For the first landing, the constant-lane wrapper is
-    enough because the proven equivalence is for `lanewiseAdd` which is
-    vector-shaped. -/
+    uniform). The constant-lane wrapper suffices because the proven
+    equivalence is for `lanewiseAdd`, which is vector-shaped. -/
 def scalarDenote {α : Type} [Add α] [Mul α] :
     (p : VectorizablePattern α) → (Fin p.laneCount → α)
   | .lanewiseAdd _ op lhs rhs => fun i => op (lhs i) (rhs i)

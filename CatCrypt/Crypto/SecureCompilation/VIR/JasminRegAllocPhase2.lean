@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase1
 /-!
 # Verified register allocation — Phase 2 (general whole-body theorem)
 
-Phase 1 (`JasminRegAllocPhase1.lean`) proved the whole-body denotation equality
-two ways:
+`JasminRegAllocPhase1.lean` proves the whole-body denotation equality two
+ways:
 
 * `runKernel_allocKernel` — **general** over any kernel and any `ρ`, but assuming
   `Function.Injective ρ`. That assumption is unsatisfiable for the interesting
@@ -21,8 +21,7 @@ two ways:
 * `mds4Rho_outputs_eq` — the **concrete** 7-slot collapsing allocation of the MDS
   kernel, discharged by direct symbolic evaluation of the two seven-binop runs.
 
-This module closes the gap named by the Phase-1 agent: lift the concrete
-collapsing result to an **arbitrary** straight-line body and **any**
+This module lifts the concrete collapsing result to an **arbitrary** straight-line body and **any**
 slot-assignment `ρ` accepted by the Phase-0 checker `interferenceOkB`, with `ρ`
 allowed to be non-injective (collapse slots).
 
@@ -172,8 +171,8 @@ theorem agreeOnLive_step {w : Nat} (L0 : List Nat) (ρ : Nat → Nat)
     runs agree through `ρ` on the seed `L0` (the kept-live output slots).
     `ρ` is **not** assumed injective — the slot-reducing case is the target.
 
-    This is the `#555` general-allocator capstone: it retires the per-kernel
-    whole-body `native_decide`, replacing global injectivity with the
+    This is the general-allocator theorem: it needs no per-kernel whole-body
+    `native_decide`, and it replaces global injectivity with the
     per-program-point live-class injectivity supplied by the interference
     checker. -/
 theorem runKernel_allocKernel_live {w : Nat} (L0 : List Nat) (ρ : Nat → Nat)
@@ -236,9 +235,9 @@ The MDS kernel's observable outputs are slots `7,8,9,10`. Seed liveness with the
 output set so they stay live to the end; the seeded interference certificate is a
 finite Boolean table over the seven-binop kernel (`native_decide`, not a
 denotation fold), and the per-binop no-clobber is Phase-1's `mds4_noClobberB`.
-The general theorem then yields the four output equalities — the exact statement
-Phase 1 proved by direct symbolic evaluation, now a corollary of the general
-induction. -/
+The general theorem then yields the four output equalities — the statement that
+`JasminRegAllocPhase1` proves by direct symbolic evaluation, as a corollary of
+the general induction. -/
 
 /-- The MDS output set kept live by the sink. -/
 def mds4Outputs : List Nat := [7, 8, 9, 10]

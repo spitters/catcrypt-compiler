@@ -15,11 +15,11 @@ The scalar-ANF source fragment bridged in `LowCTToJInstrCT.lean` (`ArithSrc`,
 `lowerArith`) covers only **single-output** scalar arithmetic — `add`/`and`/
 `xor`/`imul`, each writing one destination register.  The **two-output widening
 multiply** (`MULX`: `(hi, lo) := a · b`, the full 128-bit product split into two
-64-bit words) was outside that fragment (audit point 4): the generic
+64-bit words) is outside that fragment: the generic
 `MachineModel` per-statement denote writes a single named destination, which
 does not fit an instruction that defines *two* registers at once.
 
-This module closes that gap.  It introduces a source-level widening-multiply
+This module covers the widening multiply.  It introduces a source-level widening-multiply
 statement `MulxSrc` (`(hi, lo) := widening_mul a b`), its source denotation
 `mulxDenote` (two scalar updates — the high and low 64-bit words of the `Nat`
 product), the lowering `lowerMulx` to the single machine `JInstr.mulx`, and the
@@ -29,7 +29,7 @@ two guarantees:
   allocation well-formedness (`ρ` injective, `hi ≠ lo`, operands disjoint from
   the destinations) and the state relation `StateMatch ρ`, after running the
   lowered block the machine register `ρ lo` holds the low word and `ρ hi` the
-  high word, matching the source `mulxDenote`.  The load-bearing step is the
+  high word, matching the source `mulxDenote`.  The key step is the
   **widening-multiply Nat↔BitVec identity** `wumul_split` — that the `wumul`
   `(hi, lo)` pair of the truncated operands equals the `Nat` product split at
   `2⁶⁴`.
@@ -52,8 +52,8 @@ value KAT (`a = b = 2⁶⁴−1 ⟹ lo = 1, hi = 2⁶⁴−2`).
 **Note (cross-construct unification, separate).** Composing `MulxSrc`
 statements with the scalar `lowerSeq` into a *unified* multi-statement program
 type — a single source command type ranging over both single- and two-output
-statements, lowered by one `lowerSeq` — is the cross-construct unification (w7),
-out of scope here.
+statements, lowered by one `lowerSeq` — is the cross-construct unification
+(`LowCTUnified`), out of scope here.
 -/
 
 @[expose] public section
@@ -72,7 +72,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 `wumul` (`JasminModel.lean`) is `wumul x y = (high_bits (x.toNat * y.toNat),
 BitVec.ofNat 64 (x.toNat * y.toNat))` with `high_bits n = BitVec.ofNat 64
-(n / 2⁶⁴)`.  The load-bearing identity is that, for source `Nat` operands
+(n / 2⁶⁴)`.  The key identity is that, for source `Nat` operands
 `x, y < 2⁶⁴`, the `wumul` pair of the truncated operands is exactly the `Nat`
 product `x * y` split into its low and high 64-bit words.  This is what ties the
 source `Nat` semantics (`mulxDenote`) to the machine `BitVec` semantics
@@ -139,7 +139,7 @@ theorem lowerMulx_allDirect (ρ : RegMap) (m : MulxSrc) :
     statement produces the **same** machine leakage trace from any two initial
     states: its observable control-flow + memory-address sequence is a function
     of the program text alone, leaking nothing about the (possibly secret)
-    operand values.  Delivered by the machine keystone `allDirect_constant_time`
+    operand values.  Delivered by the machine theorem `allDirect_constant_time`
     from the trivial `allDirect` check — `MULX` is `IsDirect`, so CT is free. -/
 theorem lowerMulx_constant_time (ρ : RegMap) (m : MulxSrc) (s₁ s₂ : JState 64) :
     blockLeak s₁ (lowerMulx ρ m) = blockLeak s₂ (lowerMulx ρ m) :=

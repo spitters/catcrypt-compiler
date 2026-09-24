@@ -14,13 +14,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# Ed25519 twisted-Edwards point add/double + fixed-base scalarmul, owned x86 backend (#414)
+# Ed25519 twisted-Edwards point add/double + fixed-base scalarmul, owned x86 backend
 
-`Fe25519MulKernel.feMulBlock` (#391), `Fe25519OpsKernel.{feAdd,feSub,feMul121666,
-feSqr}Block` (#408, all KAT'd vs s2n + GMP), and `CombSelectKernel.combSelectBlock`
-(#387, the CT comb-window select, KAT'd) emit every Curve25519 *field* operation
+`Fe25519MulKernel.feMulBlock`, `Fe25519OpsKernel.{feAdd,feSub,feMul121666,
+feSqr}Block` (all KAT'd vs s2n + GMP), and `CombSelectKernel.combSelectBlock`
+(the CT comb-window select, KAT'd) emit every Curve25519 *field* operation
 through the owned x86 backend (`Com (x86Dialect 64) → runBlock → AsmPrinter`, no
-jasminc). This module composes those landed field-op leaves into the **group**
+jasminc). This module composes those field-op leaves into the **group**
 layer: extended-twisted-Edwards (X:Y:Z:T) point add and double over the Ed25519
 curve, and the fixed-base scalar-multiply `s·B` that Ed25519 signing needs.
 
@@ -49,16 +49,16 @@ X₃ = EE·F;  Y₃ = G·H;  T₃ = EE·H;  Z₃ = F·G
 
 `2d` is the curve constant `2·d mod p`. Each line is one field op
 (`feMul`/`feSqr`/`feAdd`/`feSub`), so each point op is a **fixed sequence of the
-landed field-op leaves** over a scratch frame.
+field-op leaves** over a scratch frame.
 
 ## Frame-relative composition (single base pointer)
 
-Each landed field-op block was hard-wired to bases `"x"`/`"y"`/`"z"`. To compose
+Each field-op block is hard-wired to bases `"x"`/`"y"`/`"z"`. To compose
 many field ops into one straight-line point op without exhausting the GP pool
 with one pointer per intermediate, every field element lives in a single
 **frame** buffer `"f"` at a compile-time-constant byte offset (one slot = 32
 bytes = four limbs). The parameterized generators `feMulAt`/`feSqrAt`/`feAddAt`/
-`feSubAt` are the landed idioms with `loadMem`/`storeMem`/`mulxMem`
+`feSubAt` are the idioms with `loadMem`/`storeMem`/`mulxMem`
 re-based to `"f"` at the slot offset — **line-for-line identical instruction
 streams**, only the addressing changed. Register pressure stays per-field-op
 (one frame pointer + the MULX multiplier/zero), so the GP budget holds for the
@@ -76,9 +76,9 @@ offsets), so the whole point op is one verified straight-line block.
   and denoting on the init frame equals `runBlock` on the source block — the
   owned backend's straight-line lowering is denotation-preserving across the
   composed field-op instruction mix.
-* `feMulAt_length` etc.: each frame-relative generator emits exactly the landed
+* `feMulAt_length` etc.: each frame-relative generator emits exactly the
   field-op instruction count, the structural witness that the arithmetic (and
-  hence the value semantics, KAT'd in the field-op kernels) is the landed
+  hence the value semantics, KAT'd in the field-op kernels) is the field-op
   kernel's re-based (no new arithmetic to re-verify).
 * `combWindowStep_lowering_correct`: the assembled fixed-base scalarmul window
   step (comb CT-select + the Edwards add) lowers denotation-preservingly; the
@@ -88,7 +88,7 @@ The point-op and scalarmul value identities (`P₃ == P₁+P₂` on the curve;
 `acc == s·B`) and the Ed25519 sign vectors are the runtime KAT in
 `bench/ed25519_point_compare/` against RFC 8032 §7.1 (the basepoint multiples,
 the sign test vectors) + dalek `EdwardsPoint` + GMP-modeled field reference —
-the standard external gate for these kernels (per REV-12, no heavy in-Lean
+the standard external gate for these kernels (no heavy in-Lean
 `native_decide` value pin; the in-Lean guarantee is denotation-preservation,
 the all-inputs identity is the external KAT).
 
@@ -98,7 +98,7 @@ Identical to `Fe25519MulKernel` / `Fe25519OpsKernel` / `CombSelectKernel`: the
 verified artifact is `Com (x86Dialect 64) → runBlock → evalInstr`, the faithful
 transcription of Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the
 syntactic boundary, and the System-V leaf prologue/epilogue is trusted ABI
-scaffolding. No `sorry`.
+scaffolding. All goals are closed.
 -/
 
 @[expose] public section
@@ -130,14 +130,14 @@ def slotOff (i : Nat) (k : Nat) : Int := slotBytes * Int.ofNat i + 8 * Int.ofNat
 
 /-! ## 2. Frame-relative field-op generators
 
-Each generator emits the **identical instruction stream** of the landed field-op
+Each generator emits the **identical instruction stream** of the field-op
 kernel, with the three hard-wired bases (`"z"` output, `"x"`/`"y"` inputs)
 re-based to the single frame `"f"` and the per-buffer offset `8·k` shifted to the
 slot offset `slotOff o k` / `slotOff a k` / `slotOff b k`. The arithmetic is unchanged, so each
-generator's value semantics is the landed kernel's (`feMulAt_is_feMul` records
+generator's value semantics is the kernel's (`feMulAt_is_feMul` records
 the structural identity below). -/
 
-/-- `f[o] := (f[a] · f[b]) mod p` — the landed `feMulBlock` re-based to the
+/-- `f[o] := (f[a] · f[b]) mod p` — the `feMulBlock` re-based to the
     frame. `yd`/`zr`/`t0..t7`/`lo`/`hi`/`y` are working registers (per field op).
     `yd` is the running MULX multiplier (`%rdx`), `zr` the zero register. -/
 def feMulAt (o a b : Nat) : List (JInstr 64) :=
@@ -226,7 +226,7 @@ def feMulAt (o a b : Nat) : List (JInstr 64) :=
   , .storeMem "f" (slotOff o 2) (.reg "t2")
   , .storeMem "f" (slotOff o 3) (.reg "t3") ]
 
-/-- `f[o] := (f[a]²) mod p` — the landed `feSqrBlock` re-based to the frame. -/
+/-- `f[o] := (f[a]²) mod p` — the `feSqrBlock` re-based to the frame. -/
 def feSqrAt (o a : Nat) : List (JInstr 64) :=
   [ .mov "zr" (.imm 0)
   , .xor_ "zr" (.reg "zr")
@@ -312,7 +312,7 @@ def feSqrAt (o a : Nat) : List (JInstr 64) :=
   , .storeMem "f" (slotOff o 2) (.reg "t2")
   , .storeMem "f" (slotOff o 3) (.reg "t3") ]
 
-/-- `f[o] := (f[a] + f[b]) mod p` — the landed `feAddBlock` re-based. -/
+/-- `f[o] := (f[a] + f[b]) mod p` — the `feAddBlock` re-based. -/
 def feAddAt (o a b : Nat) : List (JInstr 64) :=
   [ .loadMem "d0" "f" (slotOff a 0)
   , .loadMem "lo" "f" (slotOff b 0),  .add "d0" (.reg "lo")
@@ -338,7 +338,7 @@ def feAddAt (o a b : Nat) : List (JInstr 64) :=
   , .storeMem "f" (slotOff o 2) (.reg "d2")
   , .storeMem "f" (slotOff o 3) (.reg "d3") ]
 
-/-- `f[o] := (f[a] − f[b]) mod p` — the landed `feSubBlock` re-based. -/
+/-- `f[o] := (f[a] − f[b]) mod p` — the `feSubBlock` re-based. -/
 def feSubAt (o a b : Nat) : List (JInstr 64) :=
   [ .loadMem "d0" "f" (slotOff a 0)
   , .loadMem "lo" "f" (slotOff b 0),  .sub "d0" (.reg "lo")
@@ -397,7 +397,7 @@ def sG : Nat := 19
 def sH : Nat := 20
 
 /-- **Unified extended-twisted-Edwards add** `P₃ := P₁ + P₂` (HWCD'08 §3.1,
-    `a = −1`). A composition of the landed field-op leaves over the frame:
+    `a = −1`). A composition of the field-op leaves over the frame:
 
     `A=(Y₁−X₁)(Y₂−X₂); B=(Y₁+X₁)(Y₂+X₂); C=T₁·2d·T₂; D=Z₁·2Z₂;`
     `E=B−A; F=D−C; G=D+C; H=B+A; X₃=EF; Y₃=GH; T₃=EH; Z₃=FG`.
@@ -497,13 +497,13 @@ theorem edwardsDblBlock_lowering_correct (fr : Nat → Fin 4 → BitVec 64) :
       = runBlock (initFrame fr) edwardsDblBlock :=
   lowerBlock_denote_closed edwardsDblBlock (initFrame fr)
 
-/-! ## 6. Structural identity: each frame-relative generator IS the landed kernel
+/-! ## 6. Structural identity: each frame-relative generator IS the kernel
 
-The frame-relative generators are the landed field-op blocks with the bases
+The frame-relative generators are the field-op blocks with the bases
 re-based and offsets shifted; the arithmetic (and hence the value semantics,
 KAT'd vs s2n + GMP in `Fe25519OpsKernel` / `Fe25519MulKernel`) is unchanged.
 We pin the structural sanity checks by length (each generator emits exactly the
-landed instruction count). -/
+field-op kernel's instruction count). -/
 
 theorem feMulAt_length (o a b : Nat) : (feMulAt o a b).length = 95 := by
   unfold feMulAt; rfl
@@ -581,8 +581,8 @@ Ed25519 signing computes `A = a·B` and `R = r·B`, both fixed-base. The fast pa
 is a **signed 4-bit comb**: for each of the 64 windows `i`, CT-select the Niels
 point `d·16^i·B` from the precomputed table (`CombSelectKernel.combSelectBlock`)
 and mixed-add it into the running accumulator. Here we assemble the **structural
-driver**: one comb select per window (the landed CT-select kernel, frame-relative
-into the `P₂` input slots) followed by the landed `edwardsAddBlock`, repeated.
+driver**: one comb select per window (the CT-select kernel, frame-relative
+into the `P₂` input slots) followed by the `edwardsAddBlock`, repeated.
 
 To keep the verified block tractable we expose the **single-window step** — one
 CT select + one Edwards add — as the unit of composition; the full 64-window
@@ -594,7 +594,7 @@ the whole scalarmul by composition of `runBlock` over the windows. -/
     `P₂` input slots (slots 4–7 hold the selected X₂/Y₂/Z₂/T₂), then Edwards-add
     it into the accumulator (`P₁ += selected`, output to `P₃`). The select reads
     the table base `"tbl"`/secret index reg `"d"` and writes into the frame's
-    `sX2` slot via base `"f"`; this is the landed `combSelectBlock` re-targeted to
+    `sX2` slot via base `"f"`; this is the `combSelectBlock` re-targeted to
     write the four selected limbs to the `sX2` slot (one coordinate per call in
     the full Niels select; here the structural single-coordinate select). -/
 def combWindowStep : List (JInstr 64) :=
@@ -667,23 +667,23 @@ the reused scratch names `t0..t7`/`lo`/`hi`/`y`/`d0..d3`/`c0..c3`/`m`/`c`)
 exceeds the **14-register** GP pool if every name is forced register-resident at
 once: `allocOverflow` is therefore deliberately **not** asserted `none` for the
 monolithic block — the register-budget wall this self-emit line documents
-(closed by the verified spill/inline/mem2reg passes #410–#418 for the X25519
+(closed by the verified spill/inline/mem2reg passes for the X25519
 ladder). The overflow-free emission — and the one the brief's
 own model names ("each point op is a fixed sequence of field-op leaves") — keeps
-each field op as its **own** leaf (the landed `Fe25519MulKernel.feMulAsm` /
+each field op as its **own** leaf (the `Fe25519MulKernel.feMulAsm` /
 `Fe25519OpsKernel.fe{Add,Sub,Sqr}Asm`, each `allocOverflow = none`, each
 `runBlock`-verified), and the point op is the composition over the frame.
 
-The point op's **call sequence** — which landed field-op leaf runs on which
+The point op's **call sequence** — which field-op leaf runs on which
 frame slots, in order — is the structural emission artifact. The runtime
-realisation (the C driver in `bench/ed25519_point_compare/`) calls the landed
+realisation (the C driver in `bench/ed25519_point_compare/`) calls the
 `.s` leaves in this order; each call is a `runBlock`-verified, overflow-free
 leaf, and the whole point op's lowering correctness is `edwards*Block_lowering_
 correct` above (one straight-line `runBlock` over the spliced bodies). -/
 
 /-- A field-op call in a point op's composition: the op tag, output slot, and the
     one or two input slots (over the single frame). The runtime emission is the
-    matching landed leaf `.s` run on `f+32·out`, `f+32·in0`, `f+32·in1`. -/
+    matching leaf `.s` run on `f+32·out`, `f+32·in0`, `f+32·in1`. -/
 inductive FieldCall where
   | mul (out in0 in1 : Nat)
   | sqr (out in0 : Nat)
@@ -723,7 +723,7 @@ theorem edwardsAddCalls_mul_count :
   rfl
 
 /-- Pin the frame pointer, MULX multiplier, and zero register for a single
-    field-op leaf within the frame; identical to the landed per-leaf pins. -/
+    field-op leaf within the frame; identical to the per-leaf pins. -/
 def fieldLeafPinned : GpAlloc := [("f", "%rdi"), ("yd", "%rdx"), ("zr", "%rbp")]
 
 /-- **No overflow for the per-field-op leaves** — a single `feMulAt`/`feSqrAt`/
@@ -754,7 +754,7 @@ def feMulLeafAsm (o a b : Nat) : String :=
 
 /-- Emit driver: write the in-Lean-backend-emitted field-op leaf `.s` for the
     bench harness, plus a manifest of the point-op call sequences (the structural
-    composition the C driver realises). The deployed per-op leaves are the landed
+    composition the C driver realises). The deployed per-op leaves are the
     `Fe25519{Mul,Ops}Kernel` `.s` files. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/ed25519_point_compare/gen_com"

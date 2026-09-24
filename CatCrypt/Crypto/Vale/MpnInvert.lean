@@ -172,17 +172,17 @@ k=4 emitted code computes. The correctness witness for k=4 is the C KAT vs
 libgmp (the same check the ML-DSA NTT emit uses), not the
 opaque axiom.
 
-**Still required (NOT retired):**
+**Axioms in use for the other sizes:**
 
 * `MpnInvert_Safegcd_denote` / `MpnInvert_Safegcd_CT` for the **k=8 / 16 /
-  32** paths (`mpn_invert_safegcd_k8` and the larger sizes) — those remain
+  32** paths (`mpn_invert_safegcd_k8` and the larger sizes) — those are
   leaf-adopted via the `@[rust_cmd_pattern]` registrations in §3/§7. Only
-  k=4 has been emitted field-correctly. Emitting k=8 reuses the same
+  k=4 is emitted. Emitting k=8 would reuse the same
   `SafegcdDivstepEmit` machinery with `N9 = 17` limbs and a larger outer
-  count; it is not done in this pilot.
-* The symbol-identity trust for any path that still links the Rust leaf.
+  count; it is outside this pilot.
+* The symbol-identity trust for any path that links the Rust leaf.
 
-**Honest residual (perf):** the emitted k=4 kernel is a *first cut* — it is
+**Performance:** the emitted k=4 kernel is
 **~4.4–4.8× slower than s2n-bignum `bignum_modinv`** and ~9–10× slower than
 libgmp `mpz_invert` (`bench/.../divstep_emit_bench.c`, MIN-of-REPS rdtsc).
 The slowness is structural: limb vectors live in `stack u32[9]` arrays (every
@@ -190,11 +190,11 @@ limb touch is a load/store), the radix is 30-bit (9 limbs vs s2n's 4×64-bit
 words), every nested arithmetic RHS is flattened to single-binop statements
 (jasminc asmgen constraint), and the inner limb passes are runtime loops.
 This pilot establishes field-correctness through the verified pipeline and
-retires the k=4 leaf axioms — it is **not** yet a perf win over s2n.
+retires the k=4 leaf axioms.
 
-## #261: widening-multiply primitive + 62-bit-radix re-emit
+## Widening-multiply primitive and 62-bit-radix re-emit
 
-The emit DSL provides the wider radix the perf residual called for:
+The emit DSL provides the wider radix through
 a **widening-multiply primitive** (`SMulHiU` / `SMulHiS` in
 `CatCrypt/Crypto/Jasmin/LowCT.lean` — the high 64 bits of the unsigned /
 signed 64×64→128 product, lowering to the Jasmin `#MULX` / `#IMUL` intrinsics).
@@ -206,27 +206,27 @@ it: 5 limbs of 62 bits with i128 accumulators held as (hi,lo) pairs.  The
 algorithm is validated correct in C vs libgmp (`bench/.../divstep62_ref.c`,
 `modinv62_k4`: 4104 OK / 0 FAIL).
 
-## #262: subroutine split — the 62-bit kernel now assembles, KATs, and benches
+## Subroutine split: the 62-bit kernel assembles, passes its KAT, and benches
 
-The monolithic 62-bit kernel passed Jasmin typing but jasminc's *per-function*
-register allocator overflowed on it (the whole-function live set of ~60
-`reg`/`stack` locals tripped the `regalloc.ml` capacity assertion).  The fix
-(`#262`) factors the dense phases into separate Jasmin `fn` subroutines via the
+A monolithic 62-bit kernel passes Jasmin typing but jasminc's *per-function*
+register allocator overflows on it (the whole-function live set of ~60
+`reg`/`stack` locals trips the `regalloc.ml` capacity assertion).  The kernel
+factors the dense phases into separate Jasmin `fn` subroutines via the
 front's `RFnDef`/`RFnCall` (lowered to sibling `#[returnaddress=stack] fn`
 declarations + `Ccall .DoNotInline`), so each function's live set fits the
 x86-64 GPR budget:
 
 * `sg62_divsteps` — 62-step word loop, matrix register-resident → `marr`;
 * `sg62_update_de_prod` / `sg62_update_de_proe` — the d-half / e-half
-  prologues, one i128 accumulator each (the two-accumulator prologue overflowed
+  prologues, one i128 accumulator each (the two-accumulator prologue overflows
   RAX);
 * `sg62_update_de1` / `sg62_update_de2` — the cd-pass / ce-pass loops (the 2×2 matrix
   is stashed into the `tarr` scratch so each pass drops the `marr` pointer
-  param — six pointer args saturated the argument registers);
+  param — six pointer args saturate the argument registers);
 * `sg62_update_fg`, `sg62_normalize`.
 
 The limb vectors / matrix / scratch are threaded between subroutines as
-`reg ptr u64[N]` by-reference params (the emitter gained access-based
+`reg ptr u64[N]` by-reference params (the emitter has access-based
 u64-array detection so a `.sarr` of these sizes renders `reg ptr u64[N]`, not
 the default u32-poly shape).  The result is a single jasminc-compilable
 `.jazz`.
@@ -242,8 +242,8 @@ the default u32-poly shape).  The result is a single jasminc-compilable
   reach the leaf-adopt point (1.13–1.56× s2n); the residual is the
   stack-resident limb arrays (every limb touch is a load/store, since the
   subroutine ABI forces the vectors onto the stack) and the runtime inner
-  loops.  Honest status: a real perf improvement over the 30-bit emit and a
-  field-correct verified-pipeline artifact, still behind the hand-written
+  loops.  The kernel improves on the 30-bit emit and is a
+  field-correct verified-pipeline artifact, slower than the hand-written
   s2n-bignum reference.
 
 Consequently the **k=4 62-bit-path leaf axioms are retired on the same basis as

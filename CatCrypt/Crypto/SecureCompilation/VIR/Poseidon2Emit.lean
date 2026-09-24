@@ -46,7 +46,7 @@ identity `2^31 ≡ C (mod p)` with `C = 2^31 − p = 2^27 − 1 = 134217727`:
 
 The **fold reduction is itself a uniform bounded loop** with a multi-op
 straight-line `regArith` body over a `reg 64` accumulator — exactly the shape
-the R1 multi-op keystone `JForProgMultiOp.loop_denote_eq_multiOp` covers (`#R1`).
+the multi-op loop theorem `JForProgMultiOp.loop_denote_eq_multiOp` covers.
 The **MDS linear layer's row reduction** (`sumAll` = sum of the 16 lanes over the
 Baby Bear additive group) is a sequential scalar fold equal to the horizontal
 reduction `∑`, the verified-vectorizer core
@@ -139,16 +139,16 @@ def bbMul (a b : BitVec 64) : BitVec 64 := bbReduce (a * b)
 /-- Baby Bear add on canonical reps: one csub suffices (`a + b < 2p`). -/
 def bbAdd (a b : BitVec 64) : BitVec 64 := bbCsub (a + b)
 
-/-! ## 3. The round-count loop through the R1 multi-op keystone
+/-! ## 3. The round-count loop through the multi-op loop theorem
 
 Poseidon2's `partialRounds = 13` internal rounds are a bounded loop whose body
 is a multi-op straight-line `regArith` chain over a `reg 64` lane — the shape
-`JForProgMultiOp.loop_denote_eq_multiOp` (`#R1`) covers. We exhibit the loop on
+`JForProgMultiOp.loop_denote_eq_multiOp` covers. We exhibit the loop on
 the **doubling-chain body** `acc ↦ (acc + acc) + (acc + acc)` (`= 4·acc` over
-`BitVec 64`): two fresh SSA binders, so it is a genuine *multi-op* body (not the
+`BitVec 64`): two fresh SSA binders, so it is a *multi-op* body (not the
 single-leaf `SingleVarBody` shape), built only from `regArith add` ops over the
 accumulator — no opaque leaf. This is the linear-arithmetic core the MDS layer's
-repeated additions reuse, and it instantiates the keystone on Baby Bear's
+repeated additions reuse, and it instantiates the loop theorem on Baby Bear's
 `reg 64` arithmetic with the partial-round count `n = 13`. -/
 
 /-- **The multi-op round-loop body** as a `Com jasminDialect [r64] r64`. Binds
@@ -163,8 +163,8 @@ def roundLoopBody : Com jasminDialect [r64] r64 :=
 
 `roundLoopBody` above is retained as the **proven-equal reference shadow** (its
 `numBinders`/`straightLine` facts stay `rfl`, and `CompileFromHaxPoseidon2Tie`
-ties it to the extracted source). The value the partial-round keystone actually
-iterates (`roundLoop.update`) is now the front-generated Com: the accumulator
+ties it to the extracted source). The value the partial-round loop theorem
+iterates (`roundLoop.update`) is the front-generated Com: the accumulator
 doubling `v0 = x+x; v1 = v0+v0` is expressed as `RScalarSetExpr` `LowCT`, pushed
 through `translateDialectControl`, and lowered by `cryptoDialectToJasminCom` — no
 de-Bruijn `Com` chain hand-authored. It denotes the same `4·x` (KAT below). -/
@@ -225,8 +225,8 @@ def roundLoop : JForProg r64 :=
   { n := CatCrypt.Crypto.Hash.Poseidon2.BabyBear.partialRounds
     update := roundLoopBodyFront }
 
-/-- The body binds **two** fresh SSA names — the load-bearing fact that this
-    routes through the R1 *multi-op* keystone (not the single-leaf one). -/
+/-- The body binds **two** fresh SSA names — the fact that routes this through
+    the *multi-op* loop theorem (not the single-leaf one). -/
 theorem roundLoopBody_numBinders : Com.numBinders roundLoopBody = 2 := rfl
 
 /-- The reference shadow body is straight-line: both binders carry a `regArith`
@@ -237,19 +237,19 @@ theorem roundLoopBody_straightLine : StraightLine roundLoopBody := by
   · intro w n; exact JasminOp.noConfusion
   · trivial
 
-/-- The loop's `update` (the front body) is straight-line (the keystone's
+/-- The loop's `update` (the front body) is straight-line (the loop theorem's
     hypothesis). -/
 theorem roundLoop_straightLine : StraightLine roundLoop.update :=
   roundLoopBodyFront_straightLine
 
 /-- **Round-count loop — the emitted bounded loop denotes the `13`-fold
-    semantics, routed through the R1 multi-op keystone.** Running the emitted
+    semantics, routed through the multi-op loop theorem.** Running the emitted
     `for i = 0 to 13 { acc = body(acc) }` (body: the two-binder `regArith add`
     chain) `partialRounds = 13` times from `init` equals `roundLoop.denote init`
     — the 13-fold application of `JForProg.step`. The multi-op body binds two
     fresh SSA names, so this uses `JForProgMultiOp.loop_denote_eq_multiOp` (NOT
     the single-leaf `loop_denote_eq`); fresh-name injectivity is discharged by
-    `FreshNameInjective.freshName_injective` inside R1. The only carried
+    `FreshNameInjective.freshName_injective` inside that theorem. The only carried
     hypothesis is the opaque-leaf edge `LeafAgrees` — vacuous here, the body has
     no leaf (pure `regArith`). -/
 theorem roundLoop_denote_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
@@ -399,7 +399,7 @@ theorem bbAdd_correct (a b : BitVec 64)
 
 The product reduction `bbMul a b = bbReduce (a * b)` (10 folds then 2 csubs)
 equals the field product `(a * b) % p`. Monolithic `bv_decide` times out on
-the 10 nested folds + 64-bit `umod` (#117); we instead use a structured proof:
+the 10 nested folds + 64-bit `umod`; we instead use a structured proof:
 
 * `bbFold_toNat` — the fold's `.toNat` is exactly `(n / 2^31) * C + (n % 2^31)`
   (no 64-bit overflow as long as `n < 2^62`);
@@ -652,8 +652,8 @@ theorem bbReduce_correct (x : BitVec 64) (hx : x.toNat < 2 ^ 62) :
 
 /-- **`bbMul` is the Baby Bear field product on canonical reps.** For `a, b < p`,
     the product `a * b < p^2 < 2^62`, so the 10-fold + 2-csub reduction lands on
-    `(a * b) % p`. This discharges the multiplicative-reduction law that was
-    previously only KAT-witnessed (the `bv_decide`-timed-out seam, #117). -/
+    `(a * b) % p`. This discharges the multiplicative-reduction law, a seam on
+    which a monolithic `bv_decide` times out. -/
 theorem bbMul_correct (a b : BitVec 64)
     (ha : a < bbP) (hb : b < bbP) :
     bbMul a b = (a * b) % bbP := by
@@ -681,7 +681,7 @@ verified definitions of this module exactly:
 
 * the BabyBear reduction `reduce` is the **10-fold loop** whose body is
   `x = (x>>31)*BBC + (x&MM)` — the `bbFold` step (`roundLoopBody` is the
-  multi-op `regArith` analogue routed through the R1 keystone), followed by two
+  multi-op `regArith` analogue routed through the loop theorem), followed by two
   `csub` (`bbCsub`);
 * `fadd`/`fmul`/`fsub`/`sbox` compose those;
 * the MDS layer (`mds`) and internal layer (`internal_mat`) are the Plonky3
@@ -819,7 +819,7 @@ theorem rc_table_sizes :
     && (JasminPrint.strContains poseidon2Jazz "hi >>= 31; hi *= BBC;")
     && !(JasminPrint.strContains poseidon2Jazz "extCall")
 
-/-! ## SIMD-vectorized variant: emit the FIFTEENTH ABI mode (#138) -/
+/-! ## SIMD-vectorized variant: emit the FIFTEENTH ABI mode -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit.Poseidon2Simd
@@ -841,10 +841,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit.Poseidon2Simd
     + `mds` are then bytewise identical to the scalar emit (same helpers,
     same call order), so the per-output denotation matches the scalar
     Poseidon2 BabyBear permutation. The `LaneMap.poseidon2_sbox_lane_map`
-    theorem (committed 6450ca07 with #107) is the structural sibling that
-    licences future emit variants where the S-box itself runs lane-parallel
-    (deferred — the current emit keeps the proven-byte-identical scalar
-    S-box for KAT robustness). -/
+    theorem is the structural sibling that licences emit variants where the
+    S-box itself runs lane-parallel; this emit keeps the byte-identical scalar
+    S-box. -/
 def poseidon2SimdJazz : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), SIMD-vectorized\n" ++
   " * emit (FIFTEENTH ABI mode, #138) by CatCrypt's verified front\n" ++
@@ -921,14 +920,14 @@ def poseidon2SimdJazz : String :=
     && (JasminPrint.strContains poseidon2SimdJazz "#VPADD_4u64")
     && !(JasminPrint.strContains poseidon2SimdJazz "extCall")
 
-/-! ## Denotation preservation: SIMD emit equals scalar emit (#138)
+/-! ## Denotation preservation: SIMD emit equals scalar emit
 
 The FIFTEENTH ABI mode runs the round-constant ADD as a packed-u64 lane-add
 across 4 BabyBear slots simultaneously. By
 `LaneMap.vmap₂_eq_scalar` instantiated at the binary lane op
 `f a b = a + b` (BitVec 64), the packed lane-add denotes the same per-slot
 addition as the scalar emit's straight-line `s[i] = s[i] + rc[i]` chain. The
-follow-up `csub`/`sbox`/`mds` helpers are bytewise identical to the scalar
+subsequent `csub`/`sbox`/`mds` helpers are bytewise identical to the scalar
 emit's helpers, so for every input state the SIMD emit produces the same
 output state — the Plonky3 reference KAT (`test_default_babybear_poseidon2_
 width_16`) passes byte-identically. -/
@@ -939,9 +938,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
     round's RC-add phase (lane 0..3, lane 4..7, lane 8..11, lane 12..15):
     the packed-u64 `__m256i` lane-add `vmap₂ (· + ·) state rc` over each
     4-slot quartet equals the scalar sequential per-slot addition. This is
-    the load-bearing structural equality the SIMD emit's per-round body
+    the structural equality the SIMD emit's per-round body
     instantiates. Proved by `LaneMap.vmap₂_eq_scalar` at `f = (· + ·)`
-    on `BitVec 64`. The follow-up per-slot canonicalising `csub` and the
+    on `BitVec 64`. The subsequent per-slot canonicalising `csub` and the
     S-box run with the scalar helpers, so they trivially preserve KAT
     byte-identity to the scalar emit. -/
 theorem poseidon2_simd_lane_add_preserves_scalar

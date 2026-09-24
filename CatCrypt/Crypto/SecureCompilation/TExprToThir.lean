@@ -16,16 +16,14 @@ public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 This module is the **production** typed-front for removing the deprecated untyped
 `ImpExpr` from CatCrypt's compile-from-hax front. It roots the front directly on
 the **canonical** typed AST from the `hax-lean` dependency — `Hax.TExpr`
-(`Hax/TExpr.lean`), where **every node carries its
+(`HaxLean/TExpr.lean` in `hax-lean`), where **every node carries its
 `ty : Hax.ImpType`** annotation from the Rust compiler — and shows that this lets
 SHA-256 σ₀ compile to the FIPS formula **without any of the string-tag pre-passes**
 the untyped front needs.
 
-The earlier pilot used a local *mirror* of `TExpr` under `CatCrypt/Hax/`. That
-mirror is deleted: depending on `hax-lean` directly makes the typed AST a
-**single source of truth** (mirror-drift is exactly what caused the deprecated
-`ImpExpr` mess). The front now consumes the real `Hax.TExpr` / `Hax.ImpType` /
-`Hax.ImpLit` from the dependency.
+Depending on `hax-lean` directly makes the typed AST a **single source of truth**:
+the front consumes the dependency's `Hax.TExpr` / `Hax.ImpType` / `Hax.ImpLit`,
+with no local mirror that could drift from it.
 
 ## The payoff vs. the untyped front (`ImpExprToThir.lean`)
 
@@ -64,7 +62,7 @@ So the whole `texprToThir` is a single typed elaboration with no pre-pass stage.
 * `sigma0_texpr_compiles` — σ₀, compiled from the **typed** σ₀ through the
   committed `Thir → Com` path, denotes to the FIPS formula
   `ROTR⁷(x) ⊕ ROTR¹⁸(x) ⊕ SHR³(x)`, **with no `anfLift`/`strip64`/`desugarNot`/
-  `castStrip` in the pipeline** — the gate's claim, now on the real dependency.
+  `castStrip` in the pipeline** — the gate's claim, on the `hax-lean` AST.
 * The **full SHA-256 round-component op-set** (§6) — `ch_texpr_compiles`,
   `maj_texpr_compiles`, `big_sigma0_texpr_compiles`, `big_sigma1_texpr_compiles`,
   `small_sigma1_texpr_compiles` — each built in typed form and compiled through
@@ -683,7 +681,7 @@ theorem sigma0_texpr_compiles :
 
 This section is the **typed analog** of the deprecated-ImpExpr
 `CompileFromHaxLeaves` round-component set (`ch`/`maj`/`bigSigma0`/`bigSigma1`/…),
-now compiled through the *typed* front `texprToThir` — reading **types** from
+compiled through the *typed* front `texprToThir` — reading **types** from
 each node's `ty : Hax.ImpType`, with the `ImpExpr` front's string-tag pre-passes
 deleted by construction:
 

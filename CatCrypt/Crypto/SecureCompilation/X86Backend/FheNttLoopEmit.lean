@@ -22,8 +22,8 @@ under a public-counter loop over an in-memory coefficient buffer, reading the
 bit-reversed psi-power twiddles + their Shoup constants from a `.rodata` table.
 NO jasminc anywhere; every op is the owned scalar `JInstr 64` machine
 (`JasminModel.evalInstr`) plus the `.rodata`/RIP-relative seam
-(`JInstr.loadSym`, #581) and the register-indexed gather/scatter
-(`JInstr.loadMemIdx`/`storeMemIdx`, #581).
+(`JInstr.loadSym`) and the register-indexed gather/scatter
+(`JInstr.loadMemIdx`/`storeMemIdx`).
 
 This matches `bench/fhe_ntt_compare/fhe_ntt_kat.c` — the existing C reference
 that composes the emitted scalar butterfly `fhe_bfly` into a full `N = 2^13`
@@ -68,7 +68,7 @@ We model the transform at three matching granularities:
 * **Group + layer nest**: the `m`/`i` walk drives the twiddle index `m+i` and the
   group base `j1 = 2·i·t`. These are public address-arithmetic counters; the C
   driver supplies them, and here they are the public schedule the in-Lean value
-  check enumerates (and the residual the orchestrator's C harness still drives —
+  check enumerates (and the residual the orchestrator's C harness drives —
   see "scope").
 
 ## What is validated at small N (the value check)
@@ -416,7 +416,7 @@ theorem ntt_machine_eq_ref_logN3 :
 
 /-! ## 8. The three nested loop bodies (`m` layer / `i` group / `j` butterfly)
 
-The whole CT-DIT NTT is now emitted as **three nested down-counter loops**, each
+The whole CT-DIT NTT is emitted as **three nested down-counter loops**, each
 the owned-backend `loopLcmd` shape (`Llabel ; body ; cmpq $0,%c ; jne .L`). Every
 loop variable, stride, twiddle index and group base is computed **in-asm** from
 the counters; the only external input is the data pointer `a` (`%rdi`).
@@ -541,7 +541,7 @@ def nttFullBlock : List (JInstr 64) :=
 
 /-! ## 9. Validating the EMITTED nested machine at small N (the headline check)
 
-We now drive the **emitted instruction-list bodies** through the loop semantics
+This section drives the **emitted instruction-list bodies** through the loop semantics
 `RejectLoop.runGuardedLoop` — three nested calls (m-loop runs the i-loop runs the
 j-loop) over exactly the `jLoopBody`/`iSetupBody`/`iTailBody`/`mSetupBody`/
 `mTailBody` blocks defined in §8 — and check the resulting buffer equals `nttRef`.

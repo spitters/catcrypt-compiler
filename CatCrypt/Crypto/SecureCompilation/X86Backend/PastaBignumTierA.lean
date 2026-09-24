@@ -9,9 +9,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 
 /-!
-# Tier-A: the Pasta curves' Montgomery multiply + the bare `bignum_mul_4_8` product
+# The Pasta curves' Montgomery multiply + the bare `bignum_mul_4_8` product
 
-Two Tier-A completions reusing the proven 4-limb `runBlock` product template of
+Two `runBlock` value theorems reusing the proven 4-limb `runBlock` product template of
 `SchoolbookProductRunBlock`/`Curve4LimbTierA`:
 
 1. **Pasta (Pallas / Vesta) full Montgomery multiply over `runBlock`.** The exact
@@ -27,7 +27,7 @@ Two Tier-A completions reusing the proven 4-limb `runBlock` product template of
    prime-parametric Montgomery reduction (`Number.montgomeryReduce`/
    `montgomeryMul` at the full radix `R = 2^256` with the curve `Nprime256`),
    giving `runBlock(emitted) = <curve> mont-mul spec`: `< 2·p` and
-   `· 2^256 ≡ valLimbs x · valLimbs y (mod p)`. Tier A.
+   `· 2^256 ≡ valLimbs x · valLimbs y (mod p)`.
 
 2. **`bignum_mul_4_8`: the bare 256×256→512 product over `runBlock`.** This is the
    s2n-bignum `bignum_mul_4_8` (and GMP-overlap) spec: the *full* 8-word product
@@ -36,9 +36,9 @@ Two Tier-A completions reusing the proven 4-limb `runBlock` product template of
    `emitProductBlock_runBlock_mulLimbs` at four limbs — the product half of the
    curve headline, with the reduction dropped.
 
-## The moduli are canonical (NOT fabricated)
+## The moduli are canonical
 
-The 4-limb little-endian moduli are pinned by `native_decide` to the genuine
+The 4-limb little-endian moduli are pinned by `native_decide` to the
 Pasta primes, and match the limb constants in
 `PastaFieldAddSubKernel.{pallasLimbs, vestaLimbs}` (the AUCurves
 `pallas_modulus` / `vesta_modulus`):
@@ -51,15 +51,16 @@ Pasta primes, and match the limb constants in
 (The `PastaFieldAddSubKernel`/`PastaMontMulKernel` limbs are `List Nat`; here we
 take the `BitVec 64` form required by `valLimbs`, with identical word values.)
 
-## Scope (honest)
+## Scope
 
-These are **flag-resetting** Tier-A instantiations of the proven SM2/secp256k1
+These are **flag-resetting** instantiations of the proven SM2/secp256k1
 template (each emitted schoolbook row re-enters `CF = OF = 0`). The persistent-flag
-/ full-ILP ADX schedule is a separate *perf-equivalence* increment; it does not
-change the value spec proven here. The full-radix Montgomery constant `Nprime256`
+/ full-ILP ADX schedule is a separate *perf-equivalence* question outside this
+module; it does not change the value spec proven here. The full-radix Montgomery
+constant `Nprime256`
 is threaded as a parameter with the hypothesis `(p · Nprime256) % 2^256 = 2^256 − 1`
 (exactly as in the SM2/secp256k1 headlines). The only `native_decide` step per
-curve is the constant pin `<curve>Limbs_value` against its genuine prime.
+curve is the constant pin `<curve>Limbs_value` against its prime.
 -/
 
 @[expose] public section
@@ -97,20 +98,20 @@ theorem vestaLimbs_value :
       = 2 ^ 254 + 0x224698fc0994a8dd8c46eb2100000001 := by
   native_decide
 
-/-! ## 2. Pallas full Montgomery-multiply over `runBlock` (Tier A) -/
+/-! ## 2. Pallas full Montgomery-multiply over `runBlock` -/
 
-/-- **Pallas full Montgomery-multiply over `runBlock` (Tier A).** With reduced
+/-- **Pallas full Montgomery-multiply over `runBlock`.** With reduced
     4-limb inputs (`valLimbs x, valLimbs y < p_pallas`), a cleared accumulator
     file, the `ProdFresh` register layout, matching lengths, and the full-radix
     Pallas Montgomery constant `Nprime256` (`p · Nprime256 ≡ −1 mod 2^256`):
 
     * the emitted product block's `runBlock` value is exactly
       `valLimbs x · valLimbs y` (`emitProductBlock_runBlock_value`); and
-    * `montgomeryReduce p_pallas (2^256) Nprime256` of that genuine `runBlock`
+    * `montgomeryReduce p_pallas (2^256) Nprime256` of that `runBlock`
       value (= `montgomeryMul …`) lies in `[0, 2·p)` and
       `· 2^256 ≡ valLimbs x · valLimbs y (mod p_pallas)`.
 
-    The full `runBlock(emitted) = Pallas mont-mul spec` — Tier A. The exact Pallas
+    The full `runBlock(emitted) = Pallas mont-mul spec`. The exact Pallas
     instance of `Curve4LimbTierA.secp256k1_emit_montmul_runBlock`. -/
 theorem pallas_emit_montmul_runBlock
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
@@ -147,7 +148,7 @@ theorem pallas_emit_montmul_runBlock
     rw [hval]
     simpa only [Number.montgomeryMul] using hcong
 
-/-- **Pallas Tier-A headline, 4-limb instance.** The concrete 4-limb shape of
+/-- **Pallas Montgomery multiply, 4-limb instance.** The concrete 4-limb shape of
     `pallas_emit_montmul_runBlock` over `emitProductBlock4`. -/
 theorem pallas_emit_montmul_runBlock4
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
@@ -174,9 +175,9 @@ theorem pallas_emit_montmul_runBlock4
     (by omega) (by omega) (by omega) hfresh hx hy hacc0 hcf hof hx_red hy_red hNprime
   simpa only [emitProductBlock4, runBlockProductValue] using this
 
-/-! ## 3. Vesta full Montgomery-multiply over `runBlock` (Tier A) -/
+/-! ## 3. Vesta full Montgomery-multiply over `runBlock` -/
 
-/-- **Vesta full Montgomery-multiply over `runBlock` (Tier A).** As
+/-- **Vesta full Montgomery-multiply over `runBlock`.** As
     `pallas_emit_montmul_runBlock`, at the canonical Vesta base-field prime
     (`vestaLimbs`). The full `runBlock(emitted) = Vesta mont-mul spec`. -/
 theorem vesta_emit_montmul_runBlock
@@ -214,7 +215,7 @@ theorem vesta_emit_montmul_runBlock
     rw [hval]
     simpa only [Number.montgomeryMul] using hcong
 
-/-- **Vesta Tier-A headline, 4-limb instance.** The concrete 4-limb shape of
+/-- **Vesta Montgomery multiply, 4-limb instance.** The concrete 4-limb shape of
     `vesta_emit_montmul_runBlock` over `emitProductBlock4`. -/
 theorem vesta_emit_montmul_runBlock4
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
@@ -247,10 +248,10 @@ The s2n-bignum `bignum_mul_4_8(z, x, y)` (and GMP-overlap) spec is the *full*
 8-word product `z = x · y`, with **no** modular reduction. This is exactly
 `emitProductBlock_runBlock_value` at four limbs / 8 accumulator words — the
 product half of the curve headlines above, with the Montgomery reduction step
-dropped. No new proof obligation: the bare product was already the genuine
+dropped. No new proof obligation: the bare product is the
 `runBlock(emitted) = valLimbs x · valLimbs y` from `SchoolbookProductRunBlock`. -/
 
-/-- **`bignum_mul_4_8` over `runBlock` (Tier A).** The emitted 4-limb (256×256)
+/-- **`bignum_mul_4_8` over `runBlock`.** The emitted 4-limb (256×256)
     schoolbook product (`emitProductBlock4`, 4 `x`-limbs, 4 `y`-limbs, 8-word
     accumulator file), starting from a cleared accumulator file and the
     `ProdFresh` register layout with both carry flags clear, leaves the
@@ -274,7 +275,7 @@ theorem bignum_mul_4_8_runBlock
     (by omega) (by omega) (by omega) hfresh hx hy hacc0 hcf hof
   simpa only [emitProductBlock4, runBlockProductValue] using this
 
-/-- **`bignum_mul_4_8` over `runBlock`, recombined to `mulLimbs` (Tier A).** The
+/-- **`bignum_mul_4_8` over `runBlock`, recombined to `mulLimbs`.** The
     same emitted 4-limb product, stated against the proven `Cios4LimbProven`
     schoolbook `mulLimbs x yv` (the canonical limb-product), via
     `mulLimbs_reconstruct`. Direct from

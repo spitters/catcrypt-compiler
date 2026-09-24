@@ -1130,7 +1130,7 @@ def regCallBody :
 
 /-- Analyse `src`, select the route, and dispatch it.
 
-    The caller still supplies everything the source cannot name: the outer
+    The caller supplies everything the source cannot name: the outer
     context `Γouter`, the accumulator seed and loop-invariant variables, the
     body `VarMap`, and — for a runtime or countdown trip — the count or guard
     variable. The choice of combinator comes from the plan, and the result

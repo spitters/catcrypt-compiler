@@ -13,18 +13,17 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# P-384 field-multiply kernel, lowered through the in-Lean x86 backend (#409)
+# P-384 field-multiply kernel, lowered through the in-Lean x86 backend
 
-`ModReduceSelect.lean` §10–11 (#403) proved the *value-level* multi-term Solinas
+`ModReduceSelect.lean` §10–11 proves the *value-level* multi-term Solinas
 reduce `multiSolinasReduce multiP384` computes the P-384 residue
 `(high·2^384 + low) % p384` for `p384 = 2^384 − 2^128 − 2^96 + 2^32 − 1`
-(`reduceP384_eq_mod`, fuel 2). This module emits the x86 kernel. It is the
-sibling that #407 deferred: P-384 needs a fresh 6×6 schoolbook (12-word
-product) and the FIPS-186-4 D.2.4 signed Solinas table is error-prone (the #407
-first transcription failed all random tests). We therefore *derived* the signed
-table from the relation `2^384 ≡ 2^128 + 2^96 − 2^32 + 1 (mod p384)`, folded to
-fixpoint, and validated it byte-for-byte against GMP before emitting any Lean
-(`bench/p384_fieldmul_compare`, the de-risk gate).
+(`reduceP384_eq_mod`, fuel 2). This module emits the x86 kernel. P-384 needs a
+6×6 schoolbook (12-word product), and a direct transcription of the FIPS-186-4
+D.2.4 signed Solinas table is error-prone. The signed table is therefore
+*derived* from the relation `2^384 ≡ 2^128 + 2^96 − 2^32 + 1 (mod p384)`, folded to
+fixpoint, and validated byte-for-byte against GMP
+(`bench/p384_fieldmul_compare`).
 
 ## The reduce emitted
 
@@ -57,8 +56,7 @@ through the verified `loadMem`/`storeMem` arms, so the reduce holds only a small
 working window (`w0..w5`,`lo`,`hi`,`y`,`yd`). The frame base lives in `%rbp`
 (excluded from `gpPool`, costing no pool slot), as `Fe25519MulKernel` recovers a
 slot via `zr`→`%rbp`. `p384MulAlloc_no_overflow` proves the first-fit allocator
-maps every name to a distinct pool register (no silent `%rax`-alias, the #380
-class).
+maps every name to a distinct pool register (no silent `%rax`-alias).
 
 ## What is proved / gated here
 
@@ -66,7 +64,7 @@ class).
   distinct pool register.
 * `p384Kernel_residue_eq_multiSolinas`: the residue the kernel computes —
   `(high·2^384 + low) % p384` — equals `multiSolinasReduce multiP384 high low`,
-  tying the emit to #403's value-level theorem (`reduceP384_eq_mod`).
+  tying the emit to the value-level theorem (`reduceP384_eq_mod`).
 * The all-inputs byte-identity that the emitted stream computes `(x·y) mod p384`
   is the external KAT (`bench/p384_fieldmul_compare`, vs GMP `mod p384`):
   6×6 corner pairs + 50000 random vectors.
@@ -384,23 +382,23 @@ theorem p384MulBlock_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ p384MulBlock = blockLeak s₂ p384MulBlock :=
   allDirect_constant_time p384MulBlock p384MulBlock_allDirect s₁ s₂
 
-/-! ## 6. Value tie to #403's multi-term Solinas theorem
+/-! ## 6. Value tie to the multi-term Solinas theorem
 
 The kernel reduces the 768-bit product `P = high·2^384 + low` (with `high`,`low`
 the six-word halves, each `< 2^384`) to its residue mod
 `p384 = 2^384 − 2^128 − 2^96 + 2^32 − 1`. The all-inputs byte-identity that the
 emitted stream computes exactly `P mod p384` is the external KAT
 (`bench/p384_fieldmul_compare`, vs GMP). The lemma below records, at the value
-level, that *that residue* is precisely the multi-term Solinas reduce #403 proved
-correct — the kernel realises `multiSolinasReduce multiP384`. -/
+level, that *that residue* is precisely the multi-term Solinas reduce proved
+correct in `ModReduceSelect` — the kernel realises `multiSolinasReduce multiP384`. -/
 
 open CatCrypt.Crypto.Optimizer.ModReduceSelect (multiSolinasReduce multiP384 reduceP384_eq_mod)
 
-/-- **The kernel's residue is #403's multi-term Solinas reduce.** For well-formed
+/-- **The kernel's residue is the multi-term Solinas reduce.** For well-formed
     product halves (`high, low < 2^384`), the residue the emitted P-384 kernel
     computes — `(high·2^384 + low) % p384` — equals `multiSolinasReduce multiP384
     high low`, the iterated-fold reduce proved correct in
-    `ModReduceSelect.reduceP384_eq_mod` (#403). The emit is thus tied to the
+    `ModReduceSelect.reduceP384_eq_mod`. The emit is thus tied to the
     verified value-level theorem, not just cross-checked against GMP. -/
 theorem p384Kernel_residue_eq_multiSolinas {high low : Nat}
     (hh : high < 2 ^ 384) (hl : low < 2 ^ 384) :

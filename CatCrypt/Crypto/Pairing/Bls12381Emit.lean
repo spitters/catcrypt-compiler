@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 `MsmReduce.lean` validated the **MSM = `scalarFold` over the EC group** reduction
 on a *toy* curve (`ZMod 23`), with the EC point-add / scalar-mul as opaque
 `extCall` leaves (`MsmReduce.EcLeafAgrees`). This file is its **production
-analogue at BLS12-381**: the same `VectorReduce.scalarFold_eq_hsum` core, now over
+analogue at BLS12-381**: the same `VectorReduce.scalarFold_eq_hsum` core, over
 the production G1 additive group, the same opaque-leaf edge, plus the
 **pairing** (Miller loop + final exponentiation) as a *separate* opaque leaf —
 the piece `MsmReduce`'s docstring flagged as out of scope there. With the pairing
@@ -165,7 +165,7 @@ end MSM
 The G1/G2 point-add and scalar-mul are the **EC leaf** (`MsmReduce.EcLeafAgrees`
 shape, at production widths). The Miller-loop + final-exp **pairing** is a
 *separate* opaque leaf (`PairingLeafAgrees`). Both are declared in the exact
-`FAEST/Leaves.lean` / `MsmReduce` shape: a named-leaf semantics carrier
+`MsmReduce` named-leaf shape: a named-leaf semantics carrier
 (reusing `MsmReduce.EcLeafSem`), the abstract primitives, and the agreement
 tying the opaque leaf to those primitives. The leaves are *opaque*; their
 agreements are the carried obligation, never a `sorry`. -/

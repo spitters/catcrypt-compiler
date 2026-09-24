@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Optimizer.Rewrite.Toom3GenericPass
 /-!
 # Tying the verified multiplication methods: method-selection is sound
 
-The optimizer has, by now, three verified ways to compute the product of two
+The optimizer has three verified ways to compute the product of two
 multi-limb integers split at a base element `B` of a commutative ring `R`:
 
 * **schoolbook** — the naive expansion (four multiplications for two limbs,
@@ -22,9 +22,9 @@ multi-limb integers split at a base element `B` of a commutative ring `R`:
 
 Each method `M` comes with its own assembly: a tuple of coefficients and an
 `evalLimbs` (resp. `evalLimbs5`) function that reads the tuple back as a ring
-element `hi·B^k + … + lo`. Each was individually proved equal to its schoolbook
-reference. This file **ties the hierarchy together**: it proves that, on the
-same inputs, every method evaluates to the *same genuine ring product*
+element `hi·B^k + … + lo`. Each is proved equal to its schoolbook
+reference. This module **ties the hierarchy together**: it proves that, on the
+same inputs, every method evaluates to the *same ring product*
 ```
 (a1·B + a0)·(b1·B + b0)        -- two-limb / Karatsuba
 (a2·B^2 + a1·B + a0)·(b2·B^2 + b1·B + b0)   -- three-limb / Toom-3
@@ -57,7 +57,7 @@ open CatCrypt.Crypto.Optimizer.Rewrite.Toom3Generic
 
 /-! ## Two-limb arity: schoolbook ↔ Karatsuba
 
-Both Karatsuba and the two-limb schoolbook evaluate to the genuine product
+Both Karatsuba and the two-limb schoolbook evaluate to the product
 `(a1·B + a0)·(b1·B + b0)`. The per-method facts `evalLimbs_karatsubaMul` and
 `evalLimbs_schoolbookMul` are imported from `KaratsubaGenericPass.lean`; here we
 phrase them as a *value*-level statement and a dispatch over a method selector.
@@ -79,7 +79,7 @@ def evalMethod2 : Mul2Method → R → R → R → R → R → R
   | .schoolbook, B, a1, a0, b1, b0 => evalLimbs B (schoolbookMul B a1 a0 b1 b0)
   | .karatsuba,  B, a1, a0, b1, b0 => evalLimbs B (karatsubaMul  B a1 a0 b1 b0)
 
-/-- **Every two-limb method computes the genuine ring product.** Whatever method
+/-- **Every two-limb method computes the ring product.** Whatever method
 the optimizer picks, the assembled value is `(a1·B + a0)·(b1·B + b0)`. -/
 theorem evalMethod2_eq_product (m : Mul2Method) (B a1 a0 b1 b0 : R) :
     evalMethod2 m B a1 a0 b1 b0 = (a1 * B + a0) * (b1 * B + b0) := by
@@ -87,14 +87,14 @@ theorem evalMethod2_eq_product (m : Mul2Method) (B a1 a0 b1 b0 : R) :
   | schoolbook => simpa [evalMethod2] using evalLimbs_schoolbookMul B a1 a0 b1 b0
   | karatsuba  => simpa [evalMethod2] using evalLimbs_karatsubaMul  B a1 a0 b1 b0
 
-/-- **The Karatsuba value equals the genuine ring product.** (Re-exported from
+/-- **The Karatsuba value equals the ring product.** (Re-exported from
 `evalLimbs_karatsubaMul` under the method-selection naming so the tie reads
 uniformly.) -/
 theorem karatsuba_value_eq_product (B a1 a0 b1 b0 : R) :
     evalLimbs B (karatsubaMul B a1 a0 b1 b0) = (a1 * B + a0) * (b1 * B + b0) :=
   evalLimbs_karatsubaMul B a1 a0 b1 b0
 
-/-- **The schoolbook value equals the genuine ring product** (two-limb). -/
+/-- **The schoolbook value equals the ring product** (two-limb). -/
 theorem schoolbook2_value_eq_product (B a1 a0 b1 b0 : R) :
     evalLimbs B (schoolbookMul B a1 a0 b1 b0) = (a1 * B + a0) * (b1 * B + b0) :=
   evalLimbs_schoolbookMul B a1 a0 b1 b0
@@ -111,7 +111,7 @@ end TwoLimb
 /-! ## Three-limb arity: schoolbook ↔ Toom-3
 
 The three-limb schoolbook evaluates (via `evalLimbs5_schoolbookMul3`) to the
-genuine product. The Toom-3 field form `toom3Coeffs` evaluates to the same
+product. The Toom-3 field form `toom3Coeffs` evaluates to the same
 product whenever `6` is invertible (`toom3_eq_schoolbook`); the
 denominator-cleared form `toom3Coeffs6` evaluates to `6 ×` the product over a
 bare ring (`toom3_eq_schoolbook6`).
@@ -135,7 +135,7 @@ def evalMethod3 : Mul3Method → R → R → R → R → R → R → R → R
   | .toom3, B, a2, a1, a0, b2, b1, b0 =>
       evalLimbs5 B (toom3Coeffs B a2 a1 a0 b2 b1 b0)
 
-/-- **The Toom-3 (field-form) value equals the genuine ring product**, given
+/-- **The Toom-3 (field-form) value equals the ring product**, given
 `6 ≠ 0`. (Re-exported from `toom3_eq_schoolbook` under the method-selection
 naming.) -/
 theorem toom3_value_eq_product (h6 : (6 : R) ≠ 0) (B a2 a1 a0 b2 b1 b0 : R) :
@@ -143,13 +143,13 @@ theorem toom3_value_eq_product (h6 : (6 : R) ≠ 0) (B a2 a1 a0 b2 b1 b0 : R) :
       = (a2 * B ^ 2 + a1 * B + a0) * (b2 * B ^ 2 + b1 * B + b0) :=
   toom3_eq_schoolbook h6 B a2 a1 a0 b2 b1 b0
 
-/-- **The schoolbook value equals the genuine ring product** (three-limb). -/
+/-- **The schoolbook value equals the ring product** (three-limb). -/
 theorem schoolbook3_value_eq_product (B a2 a1 a0 b2 b1 b0 : R) :
     evalLimbs5 B (schoolbookMul3 B a2 a1 a0 b2 b1 b0)
       = (a2 * B ^ 2 + a1 * B + a0) * (b2 * B ^ 2 + b1 * B + b0) :=
   evalLimbs5_schoolbookMul3 B a2 a1 a0 b2 b1 b0
 
-/-- **Every three-limb method computes the genuine ring product** (given
+/-- **Every three-limb method computes the ring product** (given
 `6 ≠ 0`, required by the Toom-3 interpolation). -/
 theorem evalMethod3_eq_product (h6 : (6 : R) ≠ 0)
     (m : Mul3Method) (B a2 a1 a0 b2 b1 b0 : R) :
@@ -182,7 +182,7 @@ section ThreeLimbCleared
 
 variable {R : Type*} [CommRing R]
 
-/-- **The cleared Toom-3 value equals `6 ×` the genuine ring product**, over any
+/-- **The cleared Toom-3 value equals `6 ×` the ring product**, over any
 commutative ring (no invertibility needed). -/
 theorem toom3_cleared_value_eq_six_product (B a2 a1 a0 b2 b1 b0 : R) :
     evalLimbs5 B (toom3Coeffs6 B a2 a1 a0 b2 b1 b0)

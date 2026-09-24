@@ -19,7 +19,7 @@ set_option autoImplicit false
 # Plonky3 BabyBear radix-2 NTT butterfly, FRONT-COMPILED
 
 The radix-2 decimation-in-time NTT butterfly over BabyBear
-(`p = 2013265921 = 2³¹ − 2²⁷ + 1`), sourced through the verified `CProg`-free
+(`p = 2013265921 = 2³¹ − 2²⁷ + 1`), sourced through the verified
 front — NO hand-built `Com` anywhere:
 
 ```
@@ -56,8 +56,8 @@ The DEPLOYED butterfly `.s` is the in-Lean x86-backend emit
 `BarrettButterflyKernel` (`gen_com/ntt_butterfly_x86_from_lean.s`, proven
 `butterfly_out0_spec`/`butterfly_out1_spec`, KAT
 `make plonky3-ntt-butterfly-rustcmd-kat` under the `plonky3_ntt_butterfly_rc`
-symbol). This module is the jasmin-dialect butterfly `Com` — now
-front-generated, denote-gated against the independent field spec.
+symbol). This module is the jasmin-dialect butterfly `Com`,
+front-generated and denote-gated against the independent field spec.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttButterflyEmit
@@ -142,7 +142,7 @@ def srcVM : VarMap srcCtx :=
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `butterflyBody` through the `CProg`-free control front and cap with
+/-- Push `butterflyBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM butterflyBody with

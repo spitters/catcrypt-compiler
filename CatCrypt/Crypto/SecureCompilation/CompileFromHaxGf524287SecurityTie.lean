@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf524287Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax GF(524287) multiply leaf realizes the
+# Security tie: the compile-from-hax GF(524287) multiply leaf realizes the
   abstract `Zq524287` Mersenne-19 base-field multiply
 
 `CompileFromHaxGf524287` proves the verified compiler *emits* a jasmin `Com` whose
@@ -31,14 +31,14 @@ to `tie_transfer` so that **any** property a parametric field-arithmetic securit
 argument proves of the abstract multiply transfers verbatim to the
 compiler-emitted leaf, with no new axioms.
 
-## Honest scope
+## Scope
 
 `Zq524287 = GF(2¹⁹−1)` is a small Mersenne prime field; this tie is at the
 **field-arithmetic-building-block** level — it exhibits the verified-compiled
 Mersenne-19 multiply leaf as a faithful realization of the abstract `Zq524287`
 field product over which a parametric proof reasons. It is a generic building
 block (`MulDeps Zq524287`) rather than wired to one named protocol's hardness
-assumption; the realization equality `toMulDeps = mulDepsSpec` is genuine on the
+assumption; the realization equality `toMulDeps = mulDepsSpec` holds on the
 residue domain (`encF` produces canonical residues `< 524287`), the domain on
 which `gf524287MulFold_eq_field` is stated.
 -/

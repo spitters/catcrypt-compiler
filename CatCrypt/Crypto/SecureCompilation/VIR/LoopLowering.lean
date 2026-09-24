@@ -10,15 +10,15 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 /-!
 # A first-class counted-loop lowering pass: `loopN n body` denotes `step^[n]`
 
-This file packages the existing bounded-for-loop emit infrastructure
+This module packages the bounded-for-loop emit infrastructure
 (`JForProg`, `JForProgCT.loopRun_eq`, `JForProgSemCorrect.loop_denote_eq`) as a
-clean, reusable **loop-lowering pass** in the shape the compiler roadmap
-(keystone #4, "loops / control flow") asks for:
+reusable **loop-lowering pass** with the "loops / control flow" statement of the
+compiler roadmap:
 
 > a counted loop construct whose lowering's denotation equals the
 > `n`-fold composition of the body's denotation.
 
-## What was already there (reused, not re-proved)
+## Reused infrastructure (not re-proved)
 
 * `JForProg accTy = { n, update }` — a static-count loop over one accumulator.
 * `JForProg.step p acc = p.update.denote (.cons acc .nil)` — the body's denote.
@@ -28,29 +28,28 @@ clean, reusable **loop-lowering pass** in the shape the compiler roadmap
   `Cfor` body, and `JForProgCT.loopRun_eq` proving `loopRun = denote` modulo the
   per-iteration `StepAgrees` edge.
 * `JForProgSemCorrect.bodyStepRun` / `loop_denote_eq` — the concrete word-level
-  body runner and the keystone `loopRun p (bodyStepRun …) init = p.denote init`,
+  body runner and the loop theorem `loopRun p (bodyStepRun …) init = p.denote init`,
   fully discharged for single-leaf bodies (only the opaque-leaf edge
   `LeafAgrees` is carried, exactly as the rest of the emit-correctness theory).
 
-## What is genuinely new here
+## Contents
 
 1. **`loopN n body`** — a constructor that builds the loop program directly from
    an iteration count `n` and a single-op accumulator body expression
-   `body : Expr jasminDialect [accTy] accTy` (a `loopBody`). This is the clean
+   `body : Expr jasminDialect [accTy] accTy` (a `loopBody`). This is the
    surface the roadmap names; it is definitionally a `JForProg` whose `update` is
-   a `JForProgSemCorrect.SingleVarBody`, so the keystone applies verbatim.
+   a `JForProgSemCorrect.SingleVarBody`, so the loop theorem applies verbatim.
 
 2. **`foldl_range_eq_iterate`** — the bridge that puts the `n`-fold semantics in
    the canonical **`Function.iterate` (`f^[n]`)** form the roadmap states the
    pass against (`loop denote = n-fold composition of body denote`). The repo's
    `JForProg.denote` is the `List.range … foldl` form; this lemma proves
    `(List.range n).foldl (fun a _ => f a) init = f^[n] init`, by induction on `n`.
-   No such bridge existed in the repo.
 
 3. **`loopN_lower_denote_iterate`** — the packaged soundness theorem in iterate
    form: running the *emitted* counted loop `n` times equals `step^[n] init`,
    where `step` is the body's denotation. This is `loop_denote_eq` (the emitted
-   evaluator agrees with the abstract fold) composed with the new
+   evaluator agrees with the abstract fold) composed with
    `foldl_range_eq_iterate` (the abstract fold = `step^[n]`). Fully discharged
    for single-op bodies; the only hypothesis is the same `LeafAgrees` opaque-leaf
    edge.
@@ -60,19 +59,18 @@ clean, reusable **loop-lowering pass** in the shape the compiler roadmap
    emitted-loop denotation is proved to equal `step^[n] init` *and*, at concrete
    `n = 4`, to compute `init + 4·step₀` byte-for-byte (`addStepLoop_kat`).
 
-## Scope (honest)
+## Scope
 
 This is a *first-class counted loop over a single accumulator with a single-op
 body*. It covers the fixed-iteration straight-line-body kernels (running sums /
-Horner / doubling / X25519's per-round ladder step), which is the keystone-#4
-landable scope. It does **not** yet cover: multi-accumulator loop bodies
+Horner / doubling / X25519's per-round ladder step). Outside its scope are:
+multi-accumulator loop bodies
 (packable into a product `accTy`, see `JForProgCT` §8 scope note), multi-binder
 straight-line bodies (would re-introduce the `freshName` injectivity carried by
 `JasminPrintSemCorrect.execCom_eq`), nested loops (`JForProgNested` is a separate
-layer), or runtime/`while` bounds. Those are the remaining whole-function /
-nested-loop work in the roadmap.
+layer), or runtime/`while` bounds.
 
-0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
+All goals are closed; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
 edge carried throughout the emit-correctness theory.
 -/
 
@@ -94,8 +92,8 @@ open CatCrypt.Crypto.Jasmin (JasminProg)
 
 `JForProg.denote` (the repo's `n`-fold semantics) is written as
 `(List.range n).foldl (fun a _ => f a) init`. The compiler roadmap states the
-loop keystone against the `n`-fold *composition* `f^[n]`. This section is the
-missing bridge between the two forms — proved generically by induction on `n`,
+loop theorem against the `n`-fold *composition* `f^[n]`. This section is the
+bridge between the two forms — proved generically by induction on `n`,
 independent of any loop machinery. -/
 
 /-- **`range`/`foldl` = `Function.iterate`.** Folding a self-map `f` over
@@ -125,7 +123,7 @@ theorem denote_eq_iterate {accTy : JasminTy} (p : JForProg accTy)
 A `loopBody` is a single-op accumulator transform `acc ↦ e(acc)`. `loopN n body`
 is the counted loop running it `n` times — a `JForProg` whose `update` is the
 `SingleVarBody` of `JForProgSemCorrect` (one op, then return its result), so the
-keystone `loop_denote_eq` applies to it verbatim. -/
+loop theorem `loop_denote_eq` applies to it verbatim. -/
 
 /-- A single-op loop body: a `acc ↦ e(acc)` accumulator transform expressed as
     one dialect op over the singleton accumulator context. -/
@@ -135,7 +133,7 @@ abbrev LoopBody (accTy : JasminTy) : Type :=
 /-- **The counted-loop constructor.** `loopN n body` is the bounded loop that
     runs the single-op body `body` exactly `n` times over one accumulator. Its
     `update` is `SingleVarBody body` (one op, return its result), so it is a
-    single-leaf `JForProg` to which the emit keystone applies directly. -/
+    single-leaf `JForProg` to which the emit loop theorem applies directly. -/
 def loopN {accTy : JasminTy} (n : Nat) (body : LoopBody accTy) :
     JForProg accTy :=
   { n := n, update := SingleVarBody body }
@@ -153,7 +151,7 @@ theorem loopN_update {accTy : JasminTy} (n : Nat) (body : LoopBody accTy) :
     (acc : ⟦accTy⟧) :
     (loopN n body).step acc = body.denote (.cons acc .nil) := rfl
 
-/-! ## 3. The lowering and its soundness (the keystone, packaged)
+/-! ## 3. The lowering and its soundness (the main theorem, packaged)
 
 `loopN n body` lowers via the existing `JForProg.toProg` (a single-function
 program with a `Cfor` over `0..n` whose body emits `body`). The emitted loop is
@@ -166,11 +164,11 @@ def loopN_lower {accTy : JasminTy} (name : String) (n : Nat)
     (body : LoopBody accTy) : JasminProg :=
   (loopN n body).toProg name
 
-/-- **Keystone (packaged, fold form).** The emitted counted loop, run `n` times
+/-- **Main theorem (packaged, fold form).** The emitted counted loop, run `n` times
     by the word-level body evaluator threading the named accumulator, equals the
     loop's `n`-fold denotation `JForProg.denote`. This is exactly
     `JForProgSemCorrect.loop_denote_eq` specialised to the `loopN` constructor —
-    no new proof obligation, just the clean surface. The only hypothesis is the
+    no new proof obligation. The only hypothesis is the
     opaque-leaf edge `LeafAgrees`. -/
 theorem loopN_lower_denote {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (n : Nat) (body : LoopBody accTy)
@@ -179,10 +177,10 @@ theorem loopN_lower_denote {accTy : JasminTy} {leafSem : LeafSem}
       = (loopN n body).denote init :=
   loop_denote_eq hLeaf body (loopN n body) (loopN_update n body) init
 
-/-- **Keystone (packaged, iterate form — the roadmap statement).** The emitted
+/-- **Main theorem (packaged, iterate form — the roadmap statement).** The emitted
     counted loop's `n`-fold run equals `step^[n] init`, where
     `step acc = body.denote (.cons acc .nil)` is the body's denotation. This is
-    the compiler-roadmap keystone-#4 statement (`loop denote = n-fold
+    the compiler-roadmap loop statement (`loop denote = n-fold
     composition of body denote`) for the first-class `loopN` construct: the
     emitted loop's denotation is the `n`-fold composition of the body's
     denotation. Combines `loopN_lower_denote` (emitted run = abstract fold) with
@@ -227,7 +225,7 @@ theorem doubleBody_loop_iterate {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 
 /-- **Worked example (concrete KAT).** At seed `init = 1`, the emitted counted
     loop computes `16` — byte-for-byte the unrolled reference
-    `1 → 2 → 4 → 8 → 16`. Ties the iterate-form keystone to a concrete value. -/
+    `1 → 2 → 4 → 8 → 16`. Ties the iterate-form theorem to a concrete value. -/
 theorem doubleBody_loop_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     loopRun (loopN 4 doubleBody) (bodyStepRun leafSem (loopN 4 doubleBody))
         (1 : BitVec 64)

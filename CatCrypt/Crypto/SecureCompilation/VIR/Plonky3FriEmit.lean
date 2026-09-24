@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # Plonky3 FRI (commit + query) emitted through the verified front
 
-This is **layer 3** of the full Plonky3 STARK prover chain (task #154): the FRI
+This is **layer 3** of the full Plonky3 STARK prover chain: the FRI
 low-degree test — the fold (commit) phase and the query phase. It composes
 layer 1 (`Plonky3MerkleEmit`, the per-layer commitment + query openings) and
 layer 2 (`Plonky3LdeEmit`, the Baby Bear field arithmetic + coset domain).
@@ -148,7 +148,7 @@ abbrev FriFoldLayer (L : ℕ) := Fin L → FriFoldLane
     scalar sequential per-coset fold. Routed through
     `LaneMap.laneMap_eq_scalarMap` at `α = β = FriFoldLane → BitVec 64`;
     structural, axioms `[propext, Quot.sound]` only. This composes layer 2's
-    field arithmetic (the fold body) under the lane-map keystone of layer 1. -/
+    field arithmetic (the fold body) under the lane-map theorem of layer 1. -/
 theorem friFoldLayer_denotation_preserves {L : ℕ} (alpha : BitVec 64)
     (layer : FriFoldLayer L) :
     LaneMap.laneMap (friFoldLaneFn alpha) layer =

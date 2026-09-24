@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 
 /-!
-# Memory (`memref`) dialect over the owned x86 machine (#566)
+# Memory (`memref`) dialect over the owned x86 machine
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 

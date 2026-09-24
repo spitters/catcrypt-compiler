@@ -51,14 +51,14 @@ The meaningful value-content theorem is the **downstream correctness corollary**
 `montMul_emit_correct`: if the emitted leaf realizes `montMul`, then the decoded
 output satisfies `decode(leaf …) * R ≡ (decode a)*(decode b) [ZMOD N]` — i.e.
 the emitted leaf computes a *correct Montgomery product* (`≡ a*b*R⁻¹ mod N` in
-the `R`-free `*R ≡ ab` form).  This is proved by reusing the source's keystone
+the `R`-free `*R ≡ ab` form).  This is proved by reusing the source's key lemma
 `montMul_mul_R_modEq`.
 
 ## Non-vacuity
 
 `montMulEmitRealizes_canonical` exhibits a concrete `LeafSpec` (built from a
 `montMul`-returning realizer) under which `MontMulEmitRealizes` holds, so the
-hypotheses are satisfiable, not an unsatisfiable over-constraint.  The genuine
+hypotheses are satisfiable, not an unsatisfiable over-constraint.  The
 cross-prover content is the gap between this canonical realizer and the emitted
 Montgomery-multiply kernel's real byte semantics, which lives outside Lean.
 -/
@@ -102,7 +102,7 @@ def MontMulEmitRealizes (N R N' : ℤ) (decode : RustVal .TFp → ℤ)
     as in Barrett), the kernel residual and the value residual
     (`MontMulEmitRealizes`) are the *same* proposition.  The commuting square
     therefore degenerates to the identity (`montMulEmitRealizes_of_kernel`), and
-    the genuine value content is exposed downstream by `montMul_emit_correct`. -/
+    the value content is exposed downstream by `montMul_emit_correct`. -/
 def MontMulKernelRealizes (N R N' : ℤ) (decode : RustVal .TFp → ℤ)
     (leaf : String) (leafSpec : LeafSpec) : Prop :=
   ∀ (aVal bVal oldDest : RustVal .TFp),
@@ -133,7 +133,7 @@ theorem montMulEmitRealizes_of_kernel
 
 The meaningful "the emitted Montgomery-multiply leaf is correct mod `N`"
 statement.  Under the Montgomery constant condition `N*N' ≡ -1 [ZMOD R]`, the
-proven keystone `montMul_mul_R_modEq` gives `montMul N R N' a b * R ≡ a*b [ZMOD
+proven key lemma `montMul_mul_R_modEq` gives `montMul N R N' a b * R ≡ a*b [ZMOD
 N]`.  Composed with a leaf realizing `montMul`, the decoded output of the
 emitted leaf satisfies the same defining Montgomery congruence — i.e. the
 emitted leaf computes a value `≡ a*b*R⁻¹ mod N`, a correct Montgomery product. -/
@@ -148,7 +148,7 @@ emitted leaf computes a value `≡ a*b*R⁻¹ mod N`, a correct Montgomery produ
 
     i.e. it is `≡ a*b*R⁻¹ mod N` — a correct Montgomery product of its inputs.
 
-    Reuses the proven keystone `montMul_mul_R_modEq` from `MontgomeryMulGeneric`
+    Reuses the proven key lemma `montMul_mul_R_modEq` from `MontgomeryMulGeneric`
     /`MontgomeryRedcGeneric` for the congruence; the rest is rewriting by the
     realization. -/
 theorem montMul_emit_correct
@@ -207,7 +207,7 @@ def montMulKernelCallSpec (N R N' : ℤ) (decode : RustVal .TFp → ℤ)
 /-- **Non-vacuity witness for `MontMulKernelRealizes`.**  For the canonical
     `LeafSpec` built from `montMulKernelCallSpec` with a decoder section `encode`
     (`decode ∘ encode = id`), the kernel-realization holds — so the localized
-    hypothesis is satisfiable.  The genuine cross-prover content is precisely the
+    hypothesis is satisfiable.  The cross-prover content is precisely the
     gap between this canonical realizer and the emitted Montgomery kernel's real
     byte semantics (the leaf-bytes KAT), which lives outside Lean. -/
 theorem montMulKernelRealizes_canonical

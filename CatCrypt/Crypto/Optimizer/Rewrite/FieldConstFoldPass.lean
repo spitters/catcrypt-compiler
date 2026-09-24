@@ -26,7 +26,7 @@ The pass `constFold` performs two kinds of bottom-up rewrites:
 * **algebraic identities** — `add e (const 0) ↦ e`, `mul e (const 1) ↦ e`,
   `mul e (const 0) ↦ const 0` and their symmetric variants.
 
-The keystone is `constFold_denote`: the pass is *denotation-preserving* under any
+The main theorem is `constFold_denote`: the pass is *denotation-preserving* under any
 environment `env : Nat → R`, so it is a sound optimizer pass — no value is ever
 changed, only its representation is shrunk. The proof is by structural induction;
 each fold case is discharged by the ring axioms (`add_zero`, `mul_one`,

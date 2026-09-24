@@ -16,7 +16,7 @@ public import Lean
 This module provides a small, composable, proof-producing framework for the
 recurring obligation "the emitted `Com jasminDialect` program denotes its
 spec." It is the reusable generalization of the per-primitive
-emit-denotes-closed-form proofs (#110-#136): instead of writing a bespoke
+emit-denotes-closed-form proofs: instead of writing a bespoke
 ~70-line / 46-step `Com.denote` blast per kernel, a kernel's denotes-spec
 proof is **assembled** from a fixed set of compilation lemmas, driven by a
 structural tactic.
@@ -61,7 +61,7 @@ the `rupicola` driver apply them by structural decomposition (§6).
 ## Validation
 
 `Sha2RoundRupicola.lean` re-derives the SHA-2 round emit's denotes-spec
-result (the fact #128's `EmitRoundDenotesClosedFormFaithful_holds`
+result (the fact `EmitRoundDenotesClosedFormFaithful_holds`
 establishes) through this framework, and measures the proof-size delta.
 -/
 
@@ -393,8 +393,8 @@ goal `Refines ?spec (fun {Γ} e k => HEAD … (fun {Γ'} e' => REST))` it:
 2. opens the continuation `cont = fun {Γ'} e' => REST`;
 3. builds the tail fragment `tail := fun {Γ'} e' kt => REST[k ↦ kt]` — i.e. the
    continuation with the *outer* `k` re-abstracted as the tail's own
-   continuation argument. This is the re-association the unifier could not
-   guess, now produced explicitly;
+   continuation argument. This is the re-association the unifier cannot
+   guess, produced explicitly;
 4. `refine`s `Refines.consOp op dst a b (tail := tail) ?_`, leaving the tail
    `Refines ?specTail tail` as the single subgoal (`specTail`/`spec` stay
    metavariables, synthesized as the recursion unwinds).

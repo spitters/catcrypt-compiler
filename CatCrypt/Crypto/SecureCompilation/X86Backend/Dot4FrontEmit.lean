@@ -19,7 +19,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256Sigma1ThirEmit
 /-!
 # `dot4` (fixed-width unsigned inner product, `w = 64`) through the OWNED x86 backend
 
-The Substrate FRONT-lane pilot scalar crypto fn `dot4` (#568) — the fixed-width
+The Substrate FRONT-lane pilot scalar crypto fn `dot4` — the fixed-width
 unsigned inner product / schoolbook MAC step
 
     dot4(a, b) = Σ_{i<4} a[i] * b[i]        (wrapping u64)

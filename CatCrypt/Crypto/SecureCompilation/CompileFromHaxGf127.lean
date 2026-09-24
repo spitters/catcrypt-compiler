@@ -12,9 +12,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
-# C4 fan-out: the verified compiler emits a GF(127) Mersenne-fold multiply
+# The verified compiler emits a GF(127) Mersenne-fold multiply
 
-This module extends the **C4** step of the verified-compiler plan to the
+This module applies the verified compile-from-hax front to the
 **prime-field** primitive shared by **QR-UOV** and **CROSS**: the `GF(127)`
 base-field multiply. `127 = 2⁷ - 1` is a **Mersenne** prime, so `2⁷ ≡ 1
 (mod 127)`: multiply is integer `a·b` followed by a `128 ≡ 1` double-fold and a
@@ -57,14 +57,14 @@ So the conditional subtract lands the residue in `[0, 126]`.
 `gf127MulSrc` is the let-normalized `ImpExpr` (one op per `letBind`, all args
 atoms or earlier locals); `gf127MulFold` is the explicit closed Mersenne-fold
 **emit form** the source denotes to; the `_compiles` theorem routes the FOLD-FORM
-source-spec (`gf127MulSrc_denoteScalar`, a `rfl`) through the C3 per-primitive
+source-spec (`gf127MulSrc_denoteScalar`, a `rfl`) through the per-primitive
 obligation `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by
 the verified compiler* and proven equal to the Mersenne-fold form.
 
 The abstract `(a*b) % 127` tie is stated and proved **separately**
 (`gf127MulFold_eq_mod`) over the constrained domain `a, b < 127`, the
-mod-reduce arithmetic identity (the prime-field analogue of the `#117` Barrett
-seam, here phrased in pure `BitVec` so `bv_decide` bitblasts the fold).
+mod-reduce arithmetic identity (the prime-field analogue of the Barrett
+reduce identity, here phrased in pure `BitVec` so `bv_decide` bitblasts the fold).
 -/
 
 @[expose] public section
@@ -142,8 +142,8 @@ theorem gf127Mul_compileFromHax_isSome :
     There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] gf127MulSrc = some c`, and for every `(a, b)`, `c`'s
     `BitVec 64` denotation (under the input valuation `![a, b]`) is exactly the
-    closed Mersenne-fold emit form `gf127MulFold`. Routed through the C3
-    per-primitive obligation `compileFromHax_meets_spec`. This is a C4 fan-out to
+    closed Mersenne-fold emit form `gf127MulFold`. Routed through the
+    per-primitive obligation `compileFromHax_meets_spec`. The target is
     the **prime-field** core shared by **QR-UOV** and **CROSS** (GF(127) = 2⁷-1
     Mersenne reduce), reusing the SHA-256/Keccak/BLAKE2
     `wrapping_mul`/`shr`/`BitAnd`/`add`/`sub` recognizers with no front change.

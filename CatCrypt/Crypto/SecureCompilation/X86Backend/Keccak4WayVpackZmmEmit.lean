@@ -84,7 +84,7 @@ distinct (equivalent) encoding, and `gas` assembles both.
 (χ's `¬b` is `b ^ ALLONES` for the same broadcast-constant reason — there is no
 packed-NOT `vpackZMM` arm; `ALLONES` is the lane-uniform all-ones broadcast.)
 
-## Value-correctness grounding (REV-12 safe)
+## Value-correctness grounding
 
 Per-step ZMM value correctness is grounded by (1) the small `denote = spec`
 characterizations below (each `rfl`: a sub-step `Com.denote` unfolds through the

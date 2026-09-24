@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Refinement
 # Mathlib-anchored refinement spine for the curve field multiplies
 
 This file re-anchors the curve field-multiply correctness at **Mathlib's `ZMod p`
-field** (the genuine prime field, `Mathlib.Data.ZMod.Basic`) and proves the
+field** (the prime field, `Mathlib.Data.ZMod.Basic`) and proves the
 emitted asm **refines** that field through the canonical `Refines` relation of
 `VIR.Refinement` (the relation designed to match upstream Veir's
 `Interpreter/Refinement`). The source of truth is native Lean — Mathlib's `ZMod p`
@@ -54,7 +54,7 @@ multiply carries, so the decoded kernel output is the **true** `ZMod p` field
 product `feval x · feval y` of the decoded inputs — Mathlib's `*` on `ZMod p`, not
 the Montgomery-domain `a·b·R⁻¹`. (The undecoded register value is the
 Montgomery-domain residue; the source/target here live *after* the `feval`
-decode, so the source is the genuine field product. The to/from-Montgomery
+decode, so the source is the field product. The to/from-Montgomery
 conversions are the identity in the decoded view.) This is exactly the `Refines`
 restatement of `CurveFieldRefinement.<curve>_emit_refines_field`.
 
@@ -66,8 +66,8 @@ doubling formulae out of `ZMod p` field `+`, `-`, `*`, and `⁻¹`. Re-anchoring
 multiply leaf at Mathlib's `ZMod p` (this file) is the field-level rung of the
 same `Refines.trans` chain that — composing the curve group law's field-op leaves —
 reaches the `WeierstrassCurve.Affine.add` / `EllipticCurve` group spec. That curve
-group law over `ZMod p` is the genuine high-level mathematical anchor; the
-field-multiply refinement here is its load-bearing leaf. (The group-law rung is
+group law over `ZMod p` is the high-level mathematical anchor; the
+field-multiply refinement here is its leaf. (The group-law rung is
 stated here as the documented path, not proved: it needs the point-addition
 schedule's `Refines` against `WeierstrassCurve.Affine.add`, which composes these
 field-op refinements via `Refines.congr_postcomp`/`Refines.trans`.)
@@ -159,7 +159,7 @@ congruence `montred(vx·vy)·R ≡ vx·vy` lifted into `ZMod p`); the **lower ru
 `Refines specMid emitTgt` is the Tier-A `runBlockProductValue = vx·vy` value
 (`feval∘montred` applied to both sides). -/
 
-/-- The Mathlib `ZMod p` field-product source: the genuine field multiply of the
+/-- The Mathlib `ZMod p` field-product source: the field multiply of the
     decoded inputs. The spec object is Mathlib's `ZMod (valLimbs limbs)` and its `*`. -/
 noncomputable def fieldSrc {limbs : List (BitVec 64)} {radix : Nat} :
     LeafRun limbs radix → ZMod (valLimbs limbs) :=

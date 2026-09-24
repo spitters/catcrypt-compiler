@@ -10,15 +10,14 @@ public import CatCrypt.Crypto.Optimizer.CopyProp
 public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
-# The full `Com → Com` optimizer pipeline (#555/#566 consolidation)
+# The full `Com → Com` optimizer pipeline
 
-This file composes **all** the committed denotation-preserving `Com → Com`
+This module composes **all** the denotation-preserving `Com → Com`
 clean-up passes over the typed VIR `jasminDialect` into a single full
 pipeline, with one end-to-end denotation-preservation meta-theorem. It is the
-round-out of the #566 "wire the passes" goal and the generic optimizer #555
-wants kernels to flow through.
+generic optimizer that kernels flow through.
 
-The composed passes (each already carries its own genuine, non-`rfl`
+The composed passes (each already carries its own non-`rfl`
 preservation proof; we reuse those lemmas verbatim and do **not** restate
 them):
 
@@ -32,14 +31,14 @@ them):
   register aliases (`let z = a ||| a` redirects uses of `z` to `a`). Lemma
   `copyProp_denote`.
 * `comDCE`   (`Optimizer/ComDCE.lean`) — trailing dead-let elimination (drops
-  the now-dead copy bindings). Lemma `comDCE_denote`.
+  the dead copy bindings). Lemma `comDCE_denote`.
 
 ## The pipeline
 
 `comFullOpt fuel k := comDCE ∘ copyProp ∘ (comAlgebraicPipeline fuel · k)`:
 algebraic-canonicalise first (peephole + equality saturation), then
-copy-propagate (which redirects uses of register copies past their now-dead
-binders), then drop the dead copy bindings with DCE. This subsumes the
+copy-propagate (which redirects uses of register copies past their binders,
+which become dead), then drop the dead copy bindings with DCE. This subsumes the
 peephole-only front of `Optimizer/ComOptPipeline.lean`'s `comOptPipeline` by
 running the full equality-saturation engine in the canonicalisation stage.
 
@@ -55,7 +54,7 @@ reindex adapter.
 = c.denote V`, obtained by `Eq.trans`-chaining the three component `*_denote`
 lemmas. The `comAlgebraicPipeline` arm consumes the `KEnv.Consistent k V`
 hypothesis exactly as `comAlgebraicPipeline_denote` requires. **Not `rfl`** —
-it inherits the genuine inductive/saturation preservation proofs of the
+it inherits the inductive/saturation preservation proofs of the
 components.
 
 All goals closed. No `sorry`.
@@ -92,7 +91,7 @@ For every valuation `V` consistent with the known-constant environment `k`,
 `(comFullOpt fuel k c).denote V = c.denote V`. Obtained by transitively chaining
 the three component preservation lemmas (`comDCE_denote`, `copyProp_denote`,
 `comAlgebraicPipeline_denote`) — the last consumes the `KEnv.Consistent k V`
-hypothesis, and each component is itself a genuine induction / equality
+hypothesis, and each component is itself an induction / equality
 saturation over the `Com` let-chain, **not** `rfl`. -/
 theorem comFullOpt_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (k : KEnv Γ) (c : Com jasminDialect Γ t)
@@ -106,7 +105,7 @@ theorem comFullOpt_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-! ## 3. Self-contained validation
 
 We exercise the full pipeline on the same program as
-`Optimizer/ComOptPipeline.lean`'s demo, but now under the known-constant
+`Optimizer/ComOptPipeline.lean`'s demo, under the known-constant
 environment of `Egraph.demoMulZero` / `CopyProp.demoCopy` style — here using a
 trivial empty-constant environment that is consistent with every valuation, so
 the algebraic stage's saturation simply finds no constants to fire and the

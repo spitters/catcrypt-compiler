@@ -42,7 +42,7 @@ while Coq Jasmin's `pexpr` has
 ```
 
 — Lean splits the address into `(base, offset)`; Coq has a single
-expression. The two ASTs diverged historically. So per-rule citation
+expression. The two ASTs differ in this form. So per-rule citation
 against `psem.v` is **informative documentation**, not formal
 correspondence.
 
@@ -50,7 +50,8 @@ Correctness grounds at the **Jasmin-source level** via differential
 testing: the same body, run via this interpreter and via
 `JasminEmit ∘ jasminc ∘ link`, agrees on KAT inputs.
 
-The differential gate is in `Test/BignumExecDiffTest.lean`.
+The differential gate is in SSProve-lean's
+`CatCrypt/Crypto/Jasmin/BignumExecDiffTest.lean`.
 
 ## Coverage (only what `bignum_mod_p25519_4` needs)
 
@@ -258,15 +259,14 @@ def evalPExpr (s : BignumState) : PExpr → Option (BitVec 64)
       -- `!=` returns 1 if unequal, 0 otherwise (nonzero iff the comparison
       -- holds).  This is the loop guard `n != 0` of the bignum `Cwhile`.
       some (if va = vb then 0 else 1)
-  -- **(Shift, additive 2026-05-27)** Word-level left/right logical shifts.
+  -- **(Shift)** Word-level left/right logical shifts.
   -- These are the `Papp2`-form shifts emitted by frontend `<<=` / `>>=` /
   -- `<<` / `>>` operators (distinct from the `#SHL_64` / `#SHR_64` / `#SHLD`
   -- / `#SHRD` x86 intrinsics handled in `execInstr`).  Without these arms,
-  -- any kernel using `tmp <<= k` in a prologue was provably unrunnable under
+  -- any kernel using `tmp <<= k` in a prologue would be unrunnable under
   -- `bignumExecFuel` (the wildcard `_ => none` would fire, then the chain
-  -- short-circuits to `none`).  Witnessed by YY2 in `bodyDivRemSingle` —
-  -- the workaround was three additive doublings; this arm restores the
-  -- natural `tmp <<= 3` form.
+  -- short-circuits to `none`); `bodyDivRemSingle` uses the `tmp <<= 3`
+  -- form.
   --
   -- We follow the canonical `shl64` / `shr64` shape: `va <<< (vb.toNat % 64)`
   -- (the x86 6-bit `cl` mask, also baked into Jasmin's denotation for u64
@@ -411,8 +411,8 @@ example :
 
 Backs the verified `mpn_lshift` / `mpn_rshift` kernels (`Mpn.ShiftSpec.lean`).
 The algorithm-level toNat correctness theorems (`mpnShiftLeft_spec`,
-`mpnShiftRight_spec`) already prove that the cross-limb `|||` merge is an
-honest addition (`nat_lor_eq_add_of_disjoint`) — that's why the
+`mpnShiftRight_spec`) prove that the cross-limb `|||` merge is an
+addition (`nat_lor_eq_add_of_disjoint`) — that's why the
 single-instruction `SHLD` / `SHRD` idiom is denotation-preserving:
 `SHLD(w, last_w, r)` computes `(w <<< r) ||| (last_w >>> (64-r))`, exactly
 the merge `bitShiftLeftAux` performs.
@@ -948,7 +948,7 @@ side-steps this. With fuel set to a safe upper bound (1000 in the
 diff-test driver) the interpreter never aborts in practice — the
 tallest call chain we ship is a single-level Ccall.
 
-Non-void-return support (added 2026-05-26, additive): if the call site's
+Non-void-return support: if the call site's
 `lvs` is non-empty and the callee declares `results`, we read each
 declared result variable out of the callee's final register file and
 bind it into the corresponding caller LVal (a `Lvar`, a `Lmem .U64`
@@ -993,7 +993,7 @@ def unrollFor (v : VarI) (range : Range) (body : List InstrR) : List InstrR :=
     (List.range n).flatMap fun k =>
       mkSetVarConst v (range.hi - 1 - k) :: body
 
-/-! ### Ccall result binding (added 2026-05-26, additive)
+/-! ### Ccall result binding
 
 Bind a single value from the callee's final register file into one
 caller LVal.  The value is read by name from `sCallee.regs`; the
@@ -1047,7 +1047,7 @@ def bindResults : BignumState → BignumState → List LVal → List VarI →
     envelope to be ≥ 1. The diff-test driver passes 1000 — comfortable
     for every body in `S2NBignumSSA.lean`.
 
-    `Cif`/`Cfor`/`Cwhile` cases (added 2026-05-01) work by
+    `Cif`/`Cfor`/`Cwhile` cases work by
     unrolling/unfolding the control-flow construct into a flat
     instruction sequence and re-entering with `fuel` (decreased)
     rather than `fuel + 1` so the lex-order's first component drops.
@@ -1079,7 +1079,7 @@ def bignumExecFuel (registry : BignumRegistry) :
               -- arm): inherit callee memory; caller regs unchanged.
               bignumExecFuel registry (fuel + 1) is { s with mem := calleeFinal.mem }
             else
-              -- Non-void return (added 2026-05-26, additive): inherit
+              -- Non-void return: inherit
               -- callee memory, then bind each callee `results[i]`
               -- (read from `calleeFinal.regs`) into caller `lvs[i]`
               -- (interpreted against the caller's continuing state).
@@ -1115,7 +1115,7 @@ def bignumExecFuel (registry : BignumRegistry) :
       | none => none
 termination_by fuel body _ => (fuel, body.length)
 
-/-! ## §8.6. Fuel-less control-flow wrapper (added 2026-05-01)
+/-! ## §8.6. Fuel-less control-flow wrapper
 
 `bignumExecCF` (Control Flow) is a fuel-less wrapper around
 `bignumExecFuel emptyRegistry` with a fixed large fuel constant
@@ -1883,7 +1883,7 @@ theorem bignumExecFuel_seq
 A 2-instruction body that loads a u64 and stores it elsewhere.
 Verifies that `bignumExec` runs to completion (`isSome`) on a
 straight-line body. The full differential gate against compiled
-output lives in `Test/BignumExecDiffTest.lean`. -/
+output lives in SSProve-lean's `CatCrypt/Crypto/Jasmin/BignumExecDiffTest.lean`. -/
 
 /-- Initial state: `ap` register points at address 16; memory holds
     a 64-bit value `0x42` packed at bytes 16..23. -/
@@ -1970,9 +1970,9 @@ example :
 
 end CcallSmoke
 
-/-! ## §11.5. Ccall result-binding smoke test (added 2026-05-26)
+/-! ## §11.5. Ccall result-binding smoke test
 
-Validates the new non-void `Ccall` branch: a callee that produces a
+Validates the non-void `Ccall` branch: a callee that produces a
 single `reg u64` return value, called from a caller that binds that
 result into its own LVal.  Callee:
 
@@ -2435,7 +2435,7 @@ example : (bignumExec sbbIn32Body initState).map (fun s => (s.regs "bf", s.regs 
 
 end U32SbbSmoke
 
-/-! ## §12.5. Smoke tests for control-flow constructs (added 2026-05-01)
+/-! ## §12.5. Smoke tests for control-flow constructs
 
 Validates that `Cif`, `Cfor`, and `Cwhile` are interpreted correctly
 by `bignumExecFuel`. Each test exercises one construct on a tiny
@@ -2514,12 +2514,11 @@ example :
 
 end ControlFlowSmoke
 
-/-! ## §13. Monadic shape (Phase 1 of the mvcgen integration plan)
+/-! ## §13. Monadic shape for mvcgen
 
 The functional `bignumExec : List InstrR → BignumState → Option BignumState`
-above is the original definition that all of `BignumHoare.lean` proofs
-depend on. It is **kept untouched** — the additions below are purely
-additive.
+above is the definition that all of `BignumHoare.lean` proofs depend on.
+The monadic form below is a separate definition with a bridge lemma to it.
 
 `Std.Tactic.Do.mvcgen` walks `do`-shaped programs in standard monads
 (`StateM`, `StateT _ Option`, etc.). To plug bignum bodies into mvcgen
@@ -2527,7 +2526,7 @@ we re-cast the same operational behavior into a `StateT BignumState
 Option Unit` shape, with a bridge lemma to the functional form.
 
 See the toy smoke test
-in `MVCGenSmoke.lean` (Phase 0). -/
+in `MVCGenSmoke.lean`. -/
 
 /-- The bignum interpreter monad: state-and-failure over `BignumState`. -/
 abbrev BignumM := StateT BignumState Option
@@ -2576,7 +2575,7 @@ theorem bignumExecM_append (r : BignumRegistry) (xs ys : List InstrR) :
 
 /-! ### `bignum_kernel_simp_set` — the canonical simp set for kernel proofs
 
-Bundles the simp arguments used in the Phase 3 closure recipe:
+Bundles the simp arguments used in the kernel-proof closure recipe:
 - mvcgen recursion lemmas (`bignumExecM_cons/_nil`, `stepInstrM`)
 - structural unfolds (`execInstr`, `evalPExpr`, `resolveAddr`,
   `setReg`, intrinsics)
@@ -2636,7 +2635,7 @@ theorem wp_aux_apply_option {α : Type} (x : Option α)
         | none => Q.2.1 PUnit.unit) := by
   rcases x <;> rfl
 
-/-- Convenience tactic that runs the wp-unfolding stage of the Phase 3
+/-- Convenience tactic that runs the wp-unfolding stage of the kernel-proof
     closure recipe. After this tactic, the goal is a pure term-level
     chain ready for hypothesis substitution and `bv_normalize`. -/
 syntax "bignum_wp_unfold" : tactic
@@ -2678,16 +2677,14 @@ theorem triple_apply_run {α : Type}
   simp only [StateT.run, h_run] at this
   exact this
 
-/-! ### `bv_normalize` simp set — Phase 3 closure pattern
+/-! ### `bv_normalize` simp set — kernel-proof closure pattern
 
 After `mvcgen + simp` walks a body, the residual goal embeds BitVec
 operations as Nat-with-mod (e.g., `(2^64 - x.toNat) % 2^64`). The
 reverse-direction `BitVec.toNat_*` lemmas re-fold this back to
 clean BitVec form so `bv_decide` and BitVec-level helpers apply.
 
-Use as: `simp [..., bv_normalize_set]` or `simp_all [bv_normalize_set]`.
-
-The simp set for Phase 4 ports. -/
+Use as: `simp [..., bv_normalize_set]` or `simp_all [bv_normalize_set]`. -/
 
 /-- Reverse-direction simp lemmas converting Nat-encoded BitVec ops
     back to BitVec form. -/
@@ -2753,7 +2750,7 @@ theorem bignumExecM_iff_bignumExec (body : List InstrR) (s s' : BignumState) :
       rw [lhs_eq, rhs_eq]
       exact ih s1
 
-/-! ## §14. mvcgen smoke test (Phase 1 deliverable)
+/-! ## §14. mvcgen smoke test
 
 A 2-instruction body with simple `Cassgn` shapes, written as a literal
 `do`-block in `BignumM`. Verifies that `mvcgen` walks through
@@ -2803,8 +2800,7 @@ example :
 /-- The same body, but written via `bignumExecM` (i.e., `forM` over a
     literal list). The `bignumExecM_cons` / `bignumExecM_nil` simp
     lemmas unroll the literal list into an explicit `do`-chain before
-    mvcgen runs. This is the recipe Phase 3 will use for real bignum
-    bodies. -/
+    mvcgen runs. This is the recipe for real bignum bodies. -/
 example :
     ⦃fun s => ⌜s = initState⌝⦄
       bignumExecM emptyRegistry [setRTo42, copyRToT]
@@ -2841,21 +2837,21 @@ example :
           subRTo58, execInstr, evalPExpr, writeSubBundle,
           subBorrow, setReg, initState2, lvN, lvCf, lvR]
 
-/-! ### Pload limitation (Phase 3 finding)
+/-! ### Pload limitation
 
 Direct mvcgen + simp does NOT close a `Pload` step against a literal
 `Mem.empty.store64 ...` state. The wp goal retains a chain of 8
 `Mem.loadByte` calls which simp can't reduce without per-byte simp
 lemmas connecting `loadByte ∘ store64`.
 
-Phase 3 implication: the kernel's `Hoare`-triple form must take the
+Consequently, the kernel's `Hoare`-triple form must take the
 load values as preconditions (e.g., `load64Mem s.mem (base_a + 0) =
 some a0`) rather than starting from a literal `Mem` state. mvcgen
 then walks only the post-load register-manipulation portion of the
 body. This matches the existing `bodyComputesAlgoNat` framing where
 `memNat4 base_a s.mem = some a_val` is given by hypothesis. -/
 
-/-! ### Stress test: 8-instruction body (Phase 3 scaling probe)
+/-! ### Stress test: 8-instruction body (scaling check)
 
 Mirrors the first 8 instructions of `BignumModP25519_4.body`: 1
 zero-init + 4 const-loads + 3 const limbs of `p`. All `Cassgn`-with-

@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMacTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax FrodoKEM MAC leaf realizes the
+# Security tie: the compile-from-hax FrodoKEM MAC leaf realizes the
   abstract `Zq65536` ring multiply-accumulate the security reference reasons over
 
 `CompileFromHaxFrodoMac` proves the verified compiler *emits* a jasmin `Com`
@@ -21,7 +21,7 @@ ring multiply-accumulate `accZ + aZ · bZ`
 
 This module performs the **security-tie composition** (the
 `CompileFromHaxSecurityTie.tie_transfer` mechanism, as the ML-KEM/ML-DSA
-Category-B wiring did): it packages that ring multiply-accumulate as a one-field
+Category-B wiring does): it packages that ring multiply-accumulate as a one-field
 abstract `MacDeps` dependency record, exhibits the *spec* instance (the abstract
 ring MAC the FrodoKEM matrix–vector reference `Frodo/FrodoMatmulVerified.matmulRow`
 is built from) and the *compiled-realization* instance (the function the
@@ -30,7 +30,7 @@ equal field-by-field, and feeds that equality to `tie_transfer` so that **any**
 property the security layer proves of the abstract ring MAC transfers verbatim to
 the compiler-emitted leaf, with no new axioms.
 
-## Why this is parametric-correct for FrodoKEM (honest scope)
+## Why this is parametric-correct for FrodoKEM (scope)
 
 FrodoKEM's `SurfaceDeps` is `@canonical_parametric`: the security predicate
 `FrodoSecure` is parametric over the plain-LWE parameters and reasons over the
@@ -38,11 +38,11 @@ ring `Zq65536` *abstractly* (through `matmulVerified`/`matmulRow`, themselves
 `Finset.sum`s of the ring MAC `acc + a·b`). The compiled leaf computes exactly
 that ring MAC (`frodoMacForm_eq_field`). Therefore the tie is at the **arithmetic
 building block** the parametric proof quantifies over: the realization equality
-`toMacDeps = macDepsSpec` is genuine and `tie_transfer` carries any ring-MAC
+`toMacDeps = macDepsSpec` holds unconditionally and `tie_transfer` carries any ring-MAC
 property onto the compiled artifact. It does **not** discharge the LWE assumption
 or instantiate the matrix dimension — those remain the parametric hypotheses of
 `Frodo/Security.lean`; this ties the *emitted arithmetic* to the *abstract
-arithmetic* the proof uses, which is the scope of #607.
+arithmetic* the proof uses.
 -/
 
 @[expose] public section

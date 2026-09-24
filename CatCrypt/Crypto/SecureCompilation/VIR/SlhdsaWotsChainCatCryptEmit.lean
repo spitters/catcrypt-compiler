@@ -46,13 +46,13 @@ the `Function.iterate` of the committed-hash step `F`:
    `sha256CompressSpec`) applied to the chain's working-word value with the
    chain's fixed tweak `(k, m)`. The single point where the high dialect does the
    hash; `wotsF_eq` collapses it to the reference step by the committed
-   `sha256Compress_catcrypt_denote` keystone.
+   `sha256Compress_catcrypt_denote` theorem.
 
 2. **`wotsChainCat` / `wotsChainSpec`** (`§2`) — the chain `chain(x, s) = F^s(x)`
    as `wotsF^[s]` (resp. `wotsFSpec^[s]`), the FIPS 205 §4.1 iterated chain. The
    trip count `s` is the (public) Winternitz digit.
 
-3. **`wotsChainCat_denote`** (`§3`) — the keystone: the catCrypt chain equals the
+3. **`wotsChainCat_denote`** (`§3`) — the main theorem: the catCrypt chain equals the
    reference chain, for **every** position `s`, proved by structural induction on
    `s` (the `Function.iterate` fold), composing the committed step equality
    `wotsF_eq` — NOT a monolithic `rfl` over `s` copies of the compression.
@@ -100,7 +100,7 @@ def wotsFSpec (k : RoundConst) (m : Fin 16 → BitVec 32) (x : Sha256Working) : 
   sha256CompressSpec k x m
 
 /-- **The catCrypt chain step equals the FIPS reference step.** The committed
-    whole-compression keystone `sha256Compress_catcrypt_denote`. -/
+    whole-compression theorem `sha256Compress_catcrypt_denote`. -/
 theorem wotsF_eq (k : RoundConst) (m : Fin 16 → BitVec 32) (x : Sha256Working) :
     wotsF k m x = wotsFSpec k m x :=
   sha256Compress_catcrypt_denote k x m
@@ -131,20 +131,20 @@ def wotsChainSpec (k : RoundConst) (m : Fin 16 → BitVec 32) (s : Nat)
     (x : Sha256Working) : Sha256Working :=
   (wotsFSpec k m)^[s] x
 
-/-! ## 3. The keystone: the catCrypt chain equals the reference chain
+/-! ## 3. The main theorem: the catCrypt chain equals the reference chain
 
 The deliverable. The catCrypt chain `F^s` equals the reference chain at **every**
 position `s`, proved by composing the committed step equality `wotsF_eq_fun`
 through the iterate (`Function.iterate_congr`), NOT a monolithic `rfl` over `s`
 copies of the 64-round compression. Mirrors `chachaCoreCatCrypt_eq`. -/
 
-/-- **WOTS+ chain keystone** (`wotsChainCat_denote`). The WOTS+ hash chain
+/-- **WOTS+ chain theorem** (`wotsChainCat_denote`). The WOTS+ hash chain
     `chain(x, s) = F^s(x)` computed over the committed catCryptDialect SHA-256
     compression equals the FIPS reference chain, for **every** chain position
     `s ∈ [0, w-1]`. Every chain step is evaluated by the committed
     `Com catCryptDialect` SHA-256 compression `sha256CompressCat`, so the whole
     WOTS+ hash chain — the iterated committed hash — routes through the high
-    dialect. Proved by folding the per-step keystone `sha256Compress_catcrypt_denote`
+    dialect. Proved by folding the per-step theorem `sha256Compress_catcrypt_denote`
     through the `Function.iterate` (`congrArg (·^[s] x)`), not by unrolling. -/
 theorem wotsChainCat_denote (k : RoundConst) (m : Fin 16 → BitVec 32) (s : Nat)
     (x : Sha256Working) :

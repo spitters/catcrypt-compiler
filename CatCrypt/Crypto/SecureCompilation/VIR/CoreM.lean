@@ -20,17 +20,15 @@ denotation by an effect monad `M`:
 * `Com.denoteM` — propagates `M` through the let-binding chain via
   `Monad.bind`.
 
-This unblocks two long-standing gaps:
+This covers two classes of effectful ops:
 
-1. **Classical sampling** (`CryptoSSA.CExpr.sampleBit`/`sampleBv`) —
-   currently `CryptoToVIR.toVIRExpr` returns `none` for these because
-   their denotation lives in `SPComp`, not `Id`. With `M = SPComp` they
-   become first-class VIR ops.
+1. **Classical sampling** — sampling ops (bit and bit-vector samples) denote
+   into `SPComp`, not `Id`. With `M = SPComp` they are first-class VIR ops.
 
-2. **Quantum effects** — a future `quantumDialect` whose denotation
+2. **Quantum effects** — a quantum dialect whose denotation
    lives in `Quantum.State → Quantum.State` (or `QComp n Unit`).
-   Reformulating `CatCrypt/Quantum/QuantumSSA.lean` on top of VIR was
-   gated on exactly this — see the Track 4 exploration agent's report.
+   Reformulating `CatCrypt/Quantum/QuantumSSA.lean` on top of VIR requires
+   exactly this.
 
 ## Compatibility with existing pure path
 
@@ -38,8 +36,8 @@ This unblocks two long-standing gaps:
 ```
 Com.denoteM (M := Id) c V = Com.denote c V
 ```
-(see `denoteM_id_eq_denote` below). Existing CryptoSSA→VIR proofs that
-reason about `Com.denote` continue to work; new effectful ops use
+(see `denoteM_id_eq_denote` below). Proofs that reason about
+`Com.denote` carry over unchanged; effectful ops use
 `Com.denoteM` with the appropriate monad.
 
 ## Reference

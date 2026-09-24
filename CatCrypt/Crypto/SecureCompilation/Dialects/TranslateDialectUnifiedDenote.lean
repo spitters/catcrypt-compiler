@@ -17,7 +17,7 @@ set_option autoImplicit false
 /-!
 # Unifying the five control-fragment coverages: one nesting predicate + one denote
 
-The control-fragment coverage now spans five whole-program denote sidecars, each
+The control-fragment coverage spans five whole-program denote sidecars, each
 proved SEPARATELY against `semScalar`/`translateDialectControl_denote_ctl`:
 
 * `translateDialectControl_denote_ctl` — the base `IsCoveredSCtl` (straight-line
@@ -46,10 +46,9 @@ This module unifies them:
   covered — the closure `IsCoveredSCtlSeq` lacks — and the `rFor` closure descends
   its body through the unified engine, so a counted phase may contain a
   data-dependent `RWhileNz` sweep (MAYO's echelon shape).  Every closure —
-  `rSeq`/`rBlock`/`rFor`/`rCond`/`rWhile` — now nests ANY `IsCoveredSU` body: the
-  `rCond`/`rWhile` bodies were lifted from `IsCoveredSCtl` to full `IsCoveredSU`
-  via the env-threaded `condSkipDEnv_denote`/`loopWhileDEnv`, so ALL shapes nest
-  ALL shapes and `IsCoveredSU` is the complete nesting keystone
+  `rSeq`/`rBlock`/`rFor`/`rCond`/`rWhile` — nests ANY `IsCoveredSU` body: the
+  `rCond`/`rWhile` bodies range over full `IsCoveredSU` via the env-threaded
+  `condSkipDEnv_denote`/`loopWhileDEnv`, so ALL shapes nest ALL shapes
   (`RWhileNz`-over-`RWhileNz`, `RCond`-over-`RSeq`, …).
 * `semU fuel` — the unified whole-program waist model. It is `semScalar` on the
   leaves, `bind` on `RSeq`, `semScalarCond` on the guarded conditional (NOT the
@@ -61,7 +60,7 @@ This module unifies them:
   threads the intermediate env through `semU`). On the leaves it is
   `translateDialectControl`.
 * `transU_denote` — the unified homomorphism, by induction on `IsCoveredSU`. It
-  COMPOSES the landed lemmas: `translateDialectControl_denote_ctl` on the
+  COMPOSES the per-fragment lemmas: `translateDialectControl_denote_ctl` on the
   leaf, the `ComCont.comp` fold (the `transCtlSeq_denote_seq` `RSeq` pattern,
   re-applied over `semU`'s `bind`) on `RSeq`, `condSkipDEnv_denote` on the guarded
   conditional (with the coverage IH as the block homomorphism, so the block is any
@@ -70,22 +69,20 @@ This module unifies them:
   the loop body is any `IsCoveredSU` shape — a nested `RWhileNz` included).
 
 `IsCoveredSU` is ADDITIVE: `IsCoveredSCtl`, `IsCoveredSCtlSeq`, `IsCoveredSWhile`,
-`IsCoveredSCond` are all untouched, so their existing `*Covered` consumers keep
-building.
+`IsCoveredSCond` remain separate predicates with their own `*Covered` consumers.
 
-## The guard model (a residual sub-wall the unification exposes)
+## The guard model
 
 The guard on the unified conditional/loop is `guardNz name` — "the bound word
 `name` is nonzero". That covers the loop trip counter (`counter != 0` countdown)
 and a boolean-flag conditional, but NOT the sampler's literal `inlen == 8` or the
 disjunctive `inlen > 0 || outlen == 0` triggers: those need an equality/OR word
 op the `SExpr` alphabet lacks (it carries `SLt` only). Modeling them as
-`guardNz g` for a precomputed flag `g` requires an `SExpr` `==`/`||`. This is the
-named residual — the unification and the sampler's `RSeq`-of-`RCond`/`RWhileNz`
-CONTROL shape are delivered; the exact trigger predicates are the follow-on
-`SExpr`-op gap.
+`guardNz g` for a precomputed flag `g` requires an `SExpr` `==`/`||`. The module
+covers the sampler's `RSeq`-of-`RCond`/`RWhileNz` control shape; the exact
+trigger predicates are outside its scope.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
@@ -103,7 +100,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT)
 /-! ## 1. The unified guard, semantics, and front descent -/
 
 /-- The unified guard predicate: the bound word `name` is nonzero on the env
-    (the `RWhileNz`/guarded-`RIfNz` `name != 0` guard, the same shape the landed
+    (the `RWhileNz`/guarded-`RIfNz` `name != 0` guard, the same shape the per-fragment
     `while`/`cond` witnesses use). -/
 def guardNz (name : String) : SEnvScalar → Bool :=
   fun e => decide ((envReadU64 e name).getD 0 ≠ 0)
@@ -113,7 +110,7 @@ def guardNz (name : String) : SEnvScalar → Bool :=
     `IsCoveredSU.ofCtl` excludes these so an `IsCoveredSCtl` leaf routes to the
     `semScalar`/`translateDialectControl` fallback — never to the guarded
     `semScalarCond` (which is a DIFFERENT model: the leaf `RIfNz` is a φ-merge, the
-    combinator `RIfNz … RSkip` is a genuine forward branch).  `RFor` is seq-like so
+    combinator `RIfNz … RSkip` is a forward branch).  `RFor` is seq-like so
     the `rFor` closure descends its body through the unified engine (`semU`/`transU`
     per trip), opening a body that is itself `RWhileNz`/`RCond`/nested `RFor` —
     which the `ofCtl` leaf's `IsCoveredSCtl`-`RFor` cannot. -/
@@ -415,9 +412,9 @@ theorem loopWhileDEnv_denote (fuel : Nat) (body : LowCT)
             · rw [hden, hdenB]
 
 /-- **Unified whole-program denote.** For any `IsCoveredSU`-covered body — the
-    five landed control fragments unified and NESTED (a sequence of conditionals
+    five control fragments unified and NESTED (a sequence of conditionals
     and loops included) — the `transU`-emitted `Com`-prefix denotes exactly the
-    body's `semU` waist.  Induction on `IsCoveredSU` COMPOSES the five landed
+    body's `semU` waist.  Induction on `IsCoveredSU` COMPOSES the five per-fragment
     lemmas:
 
     * `ofCtl` → `translateDialectControl_denote_ctl` (after the leaf reductions);
@@ -503,7 +500,7 @@ theorem transU_denote (fuel : Nat) {c : LowCT} (hcov : IsCoveredSU c) :
 /-! ## 5. Worked witnesses (past every single-fragment boundary) -/
 
 /-- A guarded conditional followed by a runtime loop — `RSeq (RCond) (RWhileNz)` —
-    is NOT expressible in any single one of the five landed fragments
+    is NOT expressible in any single one of the five fragments
     (`IsCoveredSCtlSeq`'s `RSeq` forbids `RCond`/`RWhileNz` children; the `while`
     and `cond` predicates are single-node), yet is covered here. -/
 example (name₁ name₂ : String) (blk body : LowCT)
@@ -525,22 +522,22 @@ example (g₁ g₂ ctr : String) :
     (.rSeq (.rCond (.ofCtl (.ofStraight (.rCall _ _ _)) rfl))
       (.rWhile (.ofCtl (.ofStraight (.rScalarSet "acc" 5)) rfl)))
 
-/-- A counted `RFor` now descends its body through the unified engine (the `rFor`
+/-- A counted `RFor` descends its body through the unified engine (the `rFor`
     closure), so its body may itself be a data-dependent runtime loop — the shape
     the `ofCtl` leaf's `IsCoveredSCtl`-`RFor` (straight-line body only) cannot
     express.  `RFor "pcol" N (RWhileNz "r" body)` is the MAYO echelon phase with its
-    inner sweep opened as a genuine `RWhileNz`. -/
+    inner sweep opened as an `RWhileNz`. -/
 example (x r : String) (N : Nat) (body : LowCT)
     (hbody : IsCoveredSCtl body) (hbodyS : isSeqLike body = false) :
     IsCoveredSU (.RFor x N (.RWhileNz r body)) :=
   .rFor (.rWhile (.ofCtl hbody hbodyS))
 
-/-- A straight-line counted loop is still covered (now via the `rFor` closure over
+/-- A straight-line counted loop is covered (via the `rFor` closure over
     an `ofCtl` body). -/
 example (x : String) (N : Nat) : IsCoveredSU (.RFor x N .RSkip) :=
   .rFor (.ofCtl (.ofStraight .rSkip) rfl)
 
-/-! ### The `rCond`/`rWhile` bodies now nest ANY `IsCoveredSU` shape -/
+/-! ### The `rCond`/`rWhile` bodies nest ANY `IsCoveredSU` shape -/
 
 /-- **`RWhileNz`-over-`RWhileNz` — a nested data-dependent loop.**  The `rWhile`
     body is itself an `RWhileNz` (a second runtime loop), which the previous

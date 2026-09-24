@@ -20,7 +20,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 # SHA-256 `small_sigma0` (`w = 32`) through the OWNED x86 backend (no jasminc)
 
 The FIPS 180-4 §4.1.2 lowercase-`σ₀` message-schedule function, the pilot ARX
-leaf of `bench/thir_front_sigma0/` (#605 Phase 1, Step 4), routed onto the OWNED
+leaf of `bench/thir_front_sigma0/`, routed onto the OWNED
 x86 backend instead of through jasminc:
 
     small_sigma0(x) = ROTR⁷(x) ⊕ ROTR¹⁸(x) ⊕ SHR³(x)        (FIPS 180-4 §4.1.2)

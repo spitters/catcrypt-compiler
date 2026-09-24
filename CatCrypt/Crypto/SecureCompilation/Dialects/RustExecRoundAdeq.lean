@@ -54,7 +54,7 @@ as the `T2` half of its round update. It is **purely bitwise** (`∧`, `⊕`), s
 its covered-fragment `inRange` obligation holds for ALL `u64` inputs with **no**
 side condition — `SXor`/`SAnd` carry only their operand conditions. The
 nonlinear layer is therefore the largest SHA-2 fragment expressible in the
-covered word alphabet: see §"Residual".
+covered word alphabet: see §"Scope".
 
 The kernel writes the three inputs as literals (the SHA-256 IV words `a,b,c`),
 then computes `maj`. It is closed, so `semScalar` runs it from the empty entry
@@ -64,7 +64,7 @@ The companion `Ch(e,f,g) = (e ∧ f) ⊕ (¬e ∧ g)` (with `¬x = x ⊕ 0xFFFF�
 covered identically — same `∧`/`⊕` alphabet, same all-`u64` hoisted `inRange` —
 and composes into the same closed-kernel route unchanged (§"Generalization").
 
-## Residual — why the ARX layer (`Σ`, `σ`, the additions) is NOT covered
+## Scope — why the ARX layer (`Σ`, `σ`, the additions) is NOT covered
 
 The SHA-2 `Σ`/`σ` functions use **rotations** `ror(x,k) = (x ≫ k) ⊕ (x ≪ (w−k))`
 and the round core uses **modular additions**. Both hit an input-dependent
@@ -79,7 +79,7 @@ and the round core uses **modular additions**. Both hit an input-dependent
   the hoisted bound.
 
 So the covered round is precisely the `∧`/`⊕`/`¬` layer; the `Σ`/`σ`/`+` layer
-needs a per-kernel input bound (the `#250` `inRange` reconciliation), out of
+needs a per-kernel input bound (the `inRange` reconciliation), out of
 scope for the input-agnostic hoisted arm.
 
 ## Generalization to the whole compression
@@ -95,12 +95,12 @@ per-arm coverage:
   slot reuses this file's `.get`/`rfl` scaffold verbatim.
 * **The message schedule** — the `W[t]` recurrence's `⊕`/`≫` (logical
   right-shift by a literal `< 64`) parts are covered; its `≪`-rotations and `+`
-  accumulations are the §"Residual" arms and need the per-kernel input bound.
+  accumulations are the §"Scope" arms and need the per-kernel input bound.
 * **Round iteration** — 64 rounds is an `RFor` (`IsCoveredAdeq.rFor`, `N ≤ 2^64`)
   over the round body, tracked by the loop bridge `agreeFor`; the closed-kernel
   empty-entry-env argument is unchanged because the unrolled body stays closed.
 
-The remaining wall is the `Σ`/`σ`/`+` ARX layer (§"Residual"): closing it needs
+The `Σ`/`σ`/`+` ARX layer (§"Scope") needs
 the per-kernel `SExpr.inRange` reconciliation (a concrete input bound feeding
 `SExpr.evalBV_eq_ofNat_eval`), not the input-agnostic hoisted arm used here.
 -/

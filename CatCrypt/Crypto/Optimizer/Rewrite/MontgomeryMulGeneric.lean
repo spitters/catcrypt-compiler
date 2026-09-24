@@ -17,7 +17,7 @@ set_option autoImplicit false
 
 This file builds on the generic Montgomery reduction
 (`CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric`), reusing its
-keystone reduction law
+main reduction law
 
 ```
 redc N R N' T * R ≡ T [ZMOD N]        (redc_mul_R_modEq)

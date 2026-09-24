@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Transpose
 
 /-!
-# 4-way batched Keccak-f1600 as a bounded loop over the scalar permutation (#587)
+# 4-way batched Keccak-f1600 as a bounded loop over the scalar permutation
 
 The scalar Keccak permutation is the single most expensive leaf in the PQC
 suite (ML-DSA / SLH-DSA / ML-KEM all bottleneck on SHA-3 / SHAKE). The 4-way
@@ -19,31 +19,30 @@ against HACL's `Simd256` path. This file makes that batch a verified Lean-emit
 entry, with denotation reusing **only proven machinery**:
 
 * the scalar 24-round permutation as the proven `JForProg` loop
-  `KeccakEmit.keccakRoundLoop` (its `keccak_round_loop_denote_eq` keystone routes
+  `KeccakEmit.keccakRoundLoop` (its `keccak_round_loop_denote_eq` theorem routes
   through `JForProgMultiOp.loop_denote_eq_multiOp`);
 * the SoA ↔ four-scalar-state transpose round-trip
   (`KeccakX4Transpose.x4_soa_to_scalar_scalar_to_x4_soa`);
 * a *fresh* bounded `JForProg` of trip count **4** (one iteration per batched
   state) whose loop structure is certified by the **same** multi-op loop
-  keystone — no new axioms, no SIMD-denotation proof.
+  theorem — no new axioms, no SIMD-denotation proof.
 
-## Why a loop over the scalar body (per the #587 plan)
+## Why a loop over the scalar body
 
-Following the #587 plan — emit x4/x8 as repeated scalar calls in a bounded
-JForProg loop, reusing the proven multi-op loop keystone with no new axioms —
-the batched permutation is the **four-fold
+Emitting x4/x8 as repeated scalar calls in a bounded JForProg loop reuses the
+proven multi-op loop theorem with no new axioms: the batched permutation is the **four-fold
 application of the scalar permutation to the four transposed lanes**. The
 batch's *denotation* is therefore the 4-fold map of `keccakRoundLoop.denote`
 over the four scalar states recovered from the SoA buffer; the SoA transpose is
 O(100) bookkeeping, negligible vs the O(10⁴) permutation work.
 
-The 4-trip loop *structure* is a genuine `JForProg` (trip count 4) whose body is
+The 4-trip loop *structure* is a `JForProg` (trip count 4) whose body is
 the proven straight-line scalar round body, certified denotation-preserving by
 `JForProgMultiOp.loop_denote_eq_multiOp` exactly as the scalar 24-round loop is.
 
-## Honest framing
+## Scope
 
-As with the scalar `keccak_round_loop_denote_eq`, the loop keystone certifies the
+As with the scalar `keccak_round_loop_denote_eq`, the loop theorem certifies the
 *loop structure* (the fixed-trip `for` denotes the fold of its body), while the
 bit-exact permutation correctness is the scalar `keccakF1600Com` KAT (FIPS 202,
 `bench/keccak_compare/`). What this file adds is: (1) the SoA transpose with its
@@ -75,7 +74,7 @@ the per-state transform the batch applies four times. -/
 
 /-- The scalar Keccak permutation as the denotation of the proven 24-round
     `JForProg` loop on the 1600-bit packed state. This is exactly the function
-    the loop keystone `KeccakEmit.keccak_round_loop_denote_eq` certifies the
+    the loop theorem `KeccakEmit.keccak_round_loop_denote_eq` certifies the
     emitted scalar `for round = 0 to 24 { … }` computes. -/
 def keccakScalarPerm (st : ⟦St⟧) : ⟦St⟧ := keccakRoundLoop.denote st
 
@@ -96,9 +95,9 @@ def keccakF1600X4 (b : BatchSt) : BatchSt := fun i => keccakScalarPerm (b i)
 /-! ## 3. The 4-trip loop structure over the scalar body
 
 The batched kernel's *control structure* is a bounded loop of trip count 4 (one
-iteration per batched state). We expose it as a genuine `JForProg`, reusing the
+iteration per batched state). We expose it as a `JForProg`, reusing the
 scalar straight-line round body `KeccakEmit.keccakRoundBody`, and certify it with
-the same multi-op loop keystone. Its `denote` is the 4-fold fold of the body's
+the same multi-op loop theorem. Its `denote` is the 4-fold fold of the body's
 `step` — the structural object the emitted `for i = 0 to 4 { … }` denotes. -/
 
 /-- The 4-iteration loop over the (proven straight-line) scalar round body. Trip
@@ -120,15 +119,15 @@ theorem keccakF1600X4Com_straightLine : StraightLine keccakF1600X4Com.update :=
 `keccakF1600X4_denote`: running the emitted batch loop (the bounded `for i = 0 to
 4`) by iterating the word-level body evaluator four times equals
 `keccakF1600X4Com.denote` — the 4-fold application of the body's `step`. This is
-the **R1 multi-op** loop keystone at trip count 4, the direct analogue of the
+the **multi-op** loop theorem at trip count 4, the direct analogue of the
 scalar `KeccakEmit.keccak_round_loop_denote_eq`. -/
 
-/-- **Keystone — the emitted 4-trip batch loop denotes its 4-fold body
+/-- **Main theorem — the emitted 4-trip batch loop denotes its 4-fold body
     semantics.** Running the emitted `for i = 0 to 4 { acc = body(acc) }` by
     iterating the body evaluator four times from `init` equals
-    `keccakF1600X4Com.denote init`. Routes through the R1 multi-op keystone
+    `keccakF1600X4Com.denote init`. Routes through the multi-op loop theorem
     `JForProgMultiOp.loop_denote_eq_multiOp` (the body binds four fresh SSA
-    names, so the single-leaf keystone does not apply); the only hypothesis is
+    names, so the single-leaf loop theorem does not apply); the only hypothesis is
     the opaque-leaf edge `LeafAgrees`, vacuous here (no `extCall`). -/
 theorem keccakF1600X4_denote {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (init : ⟦St⟧) :

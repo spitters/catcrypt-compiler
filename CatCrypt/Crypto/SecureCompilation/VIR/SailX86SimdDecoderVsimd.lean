@@ -59,7 +59,7 @@ the mandatory-prefix or vector-length bits the encoder wrote are recoverably
 present in the byte stream, even though a real decoder relies on `pp` to pick
 the SIMD-prefix-selected opcode table and on `L` for 128- vs 256-bit width.
 
-## Honest residual (the crypto-ext decode ceiling, #444 — stays gas-pinned)
+## Scope (the crypto-ext decode ceiling, gas-pinned)
 
 The VAES (`vaesenc`/`vaesenclast`/`vaeskeygen`), PCLMUL (`clmul`) and GFNI
 (`gf2p8mulb`/`affineqb`) `SimdOp` arms are 3-byte-VEX *encodable*, but their
@@ -67,7 +67,7 @@ The VAES (`vaesenc`/`vaesenclast`/`vaeskeygen`), PCLMUL (`clmul`) and GFNI
 authors' external, not-vendored `sail-x86-from-acl2` checkout — see
 `SailX86Validation.lean`) only as *execute* clauses, never a byte-decode
 operand parse — so their byte forms stay gas-pinned, exactly as
-`VsimdByteEncoder`'s per-arm gas pins and the #444 ceiling record. The proved
+`VsimdByteEncoder`'s per-arm gas pins and ceiling record. The proved
 set here is the unified byte path's SIMD *body* off the gas pin (field
 placement only — opcode legality is unchecked, as `SailX86Decoder.lean`
 records for the GP-ALU decoder, and the VEX-3 forms additionally leave `pp`/`L`

@@ -34,6 +34,14 @@ certificate `ThreadCert`. This module supplies both for the `mpn_and_n`,
 * **§3** `and_canon_machine_val`, `ior_canon_machine_val`,
   `xor_canon_machine_val`: the canonicalised node of each kernel halts with the
   cells at `out` the elementwise operation on the two source arrays.
+* **§4** `logicSigma`, `logicSigma_loopRen`, `logicSigma_comp_canonRen`: the
+  exporter's loop renaming and its composition with a canonicalisation renaming.
+
+The renamings and certificates of §1 are parametric in the loop depth, the store
+slot and the output register, so they carry over to any chain of the same
+argument layout whatever its limb count and slot names;
+`JasminLsemExportCanonLogicShipped` instantiates them at the shipped
+`mpn_and_n_loop_owned` body.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic

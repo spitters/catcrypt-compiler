@@ -40,8 +40,8 @@ the standard in-place pointer ABI:
 Stub leaf bodies (`return a0;`) are emitted so the orchestration compiles
 self-contained; replacing them with real NTT leaves (e.g. formosa) is the link
 step for a full bench. This closes the "verified pipeline's own text compiles
-through jasminc" gap for the NTT-multiply route; the general printer upgrade
-(folding this ABI into `ppJasminProg` + SSA liveness) is the follow-up.
+through jasminc" gap for the NTT-multiply route; folding this ABI into
+`ppJasminProg` + SSA liveness is outside the scope of this module.
 -/
 
 @[expose] public section
@@ -313,7 +313,7 @@ def emitBodyRegPtr {Γ : Ctxt jasminDialect} (vm : VarMap Γ) (next : Nat) :
           let (decls, stmts, res) := emitBodyRegPtr (vm.extend (t := tEx) fresh) (next + 1) body
           (stackDeclOf tEx fresh :: decls, callLine :: stmts, res)
       | .regConst w n =>
-          -- Loop-counter constants from `RFor` (Stage L, #203). The counter
+          -- Loop-counter constants from `RFor`. The counter
           -- variable doesn't need a stack buffer: it's a `reg u{w}` scalar.
           -- Emit `reg u{w} i{next}; i{next} = n;`.
           let fresh := "i" ++ toString next
@@ -562,7 +562,7 @@ def renderRegArith (bop : JasminBinOp) (dst a b : String) : List String :=
 /-- Render one native right-rotate `rorImm w n` binding `dst = ror(a, n)` as a
     load / single-rotate / store sequence over the scratch register `w0`. Emits
     the x86 rotate asm op `#ROR_{w}` (one instruction) instead of the
-    `shr; shl; or` triple `renderRegArith` would need (#497). `JasminToRustEmit`
+    `shr; shl; or` triple `renderRegArith` would need. `JasminToRustEmit`
     renders `#ROR_32`/`#ROR_64` as `(a).rotate_right((n) as u32)`. -/
 def renderRotr (w n : Nat) (dst a : String) : List String :=
   -- jasminc's `#ROR_w` intrinsic produces three lvalues: the OF / CF flags
@@ -575,7 +575,7 @@ def renderRotr (w n : Nat) (dst a : String) : List String :=
     as a load / single-shift / store sequence over the scratch register `w0`.
     The count `n` is rendered as a **literal immediate** (`w0 = w0 >> 3;`), which
     jasminc x86 linearizes — unlike a `regArith .shr` whose second operand is a
-    register, producing `w0 = w0 >> w1;` that jasminc rejects (#605). `inf` is
+    register, producing `w0 = w0 >> w1;` that jasminc rejects. `inf` is
     `>>` (`shrImm`) or `<<` (`shlImm`). -/
 def renderShiftImm (inf : String) (n : Nat) (dst a : String) : List String :=
   ["w0 = " ++ a ++ ";",
@@ -585,7 +585,7 @@ def renderShiftImm (inf : String) (n : Nat) (dst a : String) : List String :=
 /-- Render one width-cast `castW w w'` binding `dst = (w'u) a` as a load /
     single-cast / store sequence over the scratch register `w0`. The dialect op
     denotes `BitVec.zeroExtend w' a`; jasmin's `(w'u) e` expression is exactly
-    that zero-extend (widening) or truncate (narrowing) (#605, Step 5b). The
+    that zero-extend (widening) or truncate (narrowing). The
     `dst`/scratch width must match `w'`; the register-arith front uses the
     same-width case `w' = w` (a zero-extend that is the identity, so `dst` stays
     in the homogeneous `w`-bit register file), while the cross-width cast is
@@ -596,10 +596,10 @@ def renderCast (w' : Nat) (dst a : String) : List String :=
    dst ++ " = wc;"]
 
 /-- Render one indexed array store `stackStore w n` binding into a jasmin element
-    assignment `arr[(uint)idx] = val;` (#605, Step 5a). The dialect op denotes the
+    assignment `arr[(uint)idx] = val;`. The dialect op denotes the
     functional update `stackSet arr idx.toNat val`; jasmin's `arr[(uint)idx] = val`
     on a `stack`/`reg ptr` array is that destructive element write. `arr`/`idx`/
-    `val` are the op's three arguments; the result *is* the (now-updated) array
+    `val` are the op's three arguments; the result *is* the updated array
     `arr`, so the producer binds `dst := arr` (in-place). The index goes through a
     `reg u64` scratch `wi` (jasmin array subscripts want a register/`int`). -/
 def renderStackStore (arr idx val : String) : List String :=
@@ -608,8 +608,8 @@ def renderStackStore (arr idx val : String) : List String :=
    arr ++ "[(uint)wi] = w0;"]
 
 /-- Render one runtime-indexed array LOAD `stackLoad w n` binding
-    `dst = arr[idx]` into a jasmin element read `dst = arr[(uint)idx];` (#619,
-    E4 — the dual of `renderStackStore`). The dialect op denotes the total read
+    `dst = arr[idx]` into a jasmin element read `dst = arr[(uint)idx];` (the
+    dual of `renderStackStore`). The dialect op denotes the total read
     `stackGet arr idx.toNat` (= `arr[idx % n]`); jasmin's `arr[(uint)idx]` on a
     `stack`/`reg ptr` array is that element read. `arr`/`idx` are the op's two
     arguments; the loaded `w`-bit value is bound into `dst`. The index goes
@@ -617,7 +617,7 @@ def renderStackStore (arr idx val : String) : List String :=
     `int`), exactly as the store. **Constant-time obligation:** the index `idx`
     MUST be a PUBLIC value (`JasminCTPredicate.opIndexPublic` flags `stackLoad`
     CT-safe iff the index reg is `.Public`); a secret-indexed load is a
-    cache-timing leak and is rejected by the #594 CT predicate (the
+    cache-timing leak and is rejected by the CT predicate (the
     Argon2 / bitsliced-AES precedent). The demonstrator (`zetaLookupCom`, ThIR
     front §20) uses a public NTT loop-counter index. -/
 def renderStackLoad (dst arr idx : String) : List String :=
@@ -627,7 +627,7 @@ def renderStackLoad (dst arr idx : String) : List String :=
 
 /-- Render one widening-multiply HIGH word `mulhi w` binding `dst = mulHiW a b`
     (the `hi` output of `MULX`) as a load / `#MULX` / store sequence over the two
-    scratch registers `w0`,`w1` (#616, E1a). jasmin's BMI2 `#MULX(a, b)` produces
+    scratch registers `w0`,`w1`. jasmin's BMI2 `#MULX(a, b)` produces
     the pair `(hi, lo)` (flag-free, no fixed-register pinning), so `w0, w1 =
     #MULX(w0, w1);` writes the high word to `w0` (the low word `w1` is discarded —
     the LOW word is the separate `regArith .mul` program). `dst` receives the high
@@ -640,7 +640,7 @@ def renderMulHi (dst a b : String) : List String :=
    dst ++ " = w0;"]
 
 /-- Render one carry-chain add **data** word `addCarryLo w` binding
-    `dst = (a + b + cin) mod 2^w` (#616, E1a). The carry-in `cin` is the front's
+    `dst = (a + b + cin) mod 2^w`. The carry-in `cin` is the front's
     explicit `reg 1` value held in a register-file slot (0 or 1), not a hidden x86
     flag. The render converts it to the hardware carry flag with the
     value→flag idiom `_, cf, _, _, _, wb = #ADD_w(wb, -1);` (sets `cf = (cin != 0)`,
@@ -656,7 +656,7 @@ def renderAddCarryLo (w : Nat) (dst a b cin : String) : List String :=
    dst ++ " = w0;"]
 
 /-- Render one carry-chain add **carry-out** bit `addCarryHi w` binding
-    `dst = carryOutBit a b cin` (#616, E1a). Same value→flag conversion of the
+    `dst = carryOutBit a b cin`. Same value→flag conversion of the
     explicit `reg 1` carry-in and the same `#ADC_w(a, b, cf)`, but this time the
     output is the propagated carry: after the ADC, `cf` holds the carry-OUT, which
     is materialised back into a `reg w` value (0 or 1) with `0 + 0 + cf` via
@@ -675,7 +675,7 @@ def renderAddCarryHi (w : Nat) (dst a b cin : String) : List String :=
 
 /-- Render one constant-time SELECT `select w` binding
     `dst = if cond = 1 then a else b` (`selectW`) as a **branchless mask-select**
-    over the scratch registers (#594, E2). The condition is the front's explicit
+    over the scratch registers. The condition is the front's explicit
     `reg 1` value held in a register-file slot (0 or 1). The render builds the
     full-width mask `mask = 0 - cond` (all-ones when `cond = 1`, all-zero when
     `cond = 0`) and computes `b ^ ((a ^ b) & mask)` — a data-oblivious
@@ -721,7 +721,7 @@ def renderCmp (w : Nat) (c : JasminCmp) (dst a b : String) : List String :=
    | .ule => below b a ++ mat ++ flip) ++ [dst ++ " = wb;"]
 
 /-- Render one single-result `extCall name` binding `dst = name(arg0, arg1, …)`
-    as a jasmin function call over the scratch registers (#616 E5a — function
+    as a jasmin function call over the scratch registers (function
     calls / kernel-to-kernel composition). The callee is a single-result
     `inline fn name(reg u{w} a0, …) -> reg u{w}` (emitted alongside the caller by
     `emitAbiOrchRegWithCallees`); each argument routes through a fresh scratch
@@ -800,7 +800,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .rorImm w n =>
-          -- Native right-rotate (#497): one `#ROR_w` op instead of the
+          -- Native right-rotate: one `#ROR_w` op instead of the
           -- `shr; shl; or` triple. The single source is `args 0`.
           let a := argName vm e.args 0
           let dst := dstName next
@@ -809,7 +809,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .shrImm _ n =>
-          -- Native immediate right-shift (#605): one `w0 = w0 >> n;` (literal
+          -- Native immediate right-shift: one `w0 = w0 >> n;` (literal
           -- count) instead of the variable-shift `regArith .shr` jasminc rejects.
           let a := argName vm e.args 0
           let dst := dstName next
@@ -818,7 +818,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .sarImm _ n =>
-          -- Native immediate arithmetic right-shift (#606): one `w0 = w0 >>s n;`
+          -- Native immediate arithmetic right-shift: one `w0 = w0 >>s n;`
           -- (literal count, signed). jasmin's `>>s` is the sign-extending shift,
           -- the textual twin of `shrImm`'s `>>`.
           let a := argName vm e.args 0
@@ -828,7 +828,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .shlImm _ n =>
-          -- Native immediate left-shift (#605): one `w0 = w0 << n;`.
+          -- Native immediate left-shift: one `w0 = w0 << n;`.
           let a := argName vm e.args 0
           let dst := dstName next
           let lines := renderShiftImm "<<" n dst a
@@ -847,7 +847,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .castW _ w' =>
-          -- Width cast (#605, Step 5b): one `dst = (w'u) src;` over the scratch
+          -- Width cast: one `dst = (w'u) src;` over the scratch
           -- `wc`. `BitVec.zeroExtend w'` = jasmin `(w'u)` (zero-extend / truncate).
           let a := argName vm e.args 0
           let dst := dstName next
@@ -856,11 +856,11 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .stackLoad _ _ =>
-          -- Runtime-indexed array LOAD (#619, E4): `dst = arr[(uint)idx];`, the
+          -- Runtime-indexed array LOAD: `dst = arr[(uint)idx];`, the
           -- read dual of the store. The op's result is the loaded `reg w` value,
           -- so it binds a fresh `dstName next` slot. Two inputs `arr` (args 0),
           -- `idx` (args 1). Index MUST be public (`opIndexPublic`); secret index
-          -- = cache-timing leak, rejected by the #594 CT predicate.
+          -- = cache-timing leak, rejected by the CT predicate.
           let arr := argName vm e.args 0
           let idx := argName vm e.args 1
           let dst := dstName next
@@ -869,7 +869,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .stackStore _ _ =>
-          -- Indexed array store (#605, Step 5a): `arr[(uint)idx] = val;` in place.
+          -- Indexed array store: `arr[(uint)idx] = val;` in place.
           -- The op's result is the updated array, so this binding is named by
           -- the array operand `arr` (arg0), not a fresh `dstName` slot — every
           -- later read of the array sees the destructive update.
@@ -881,7 +881,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) arr) (next + 1) body
           (arr :: names, lines ++ stmts, cnt)
       | .mulhi _ =>
-          -- Widening-multiply HIGH word (#616, E1a): one `#MULX` op yielding the
+          -- Widening-multiply HIGH word: one `#MULX` op yielding the
           -- hi word `mulHiW a b`. Two inputs `a` (args 0), `b` (args 1).
           let a := argName vm e.args 0
           let b := argName vm e.args 1
@@ -891,7 +891,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .addCarryLo w =>
-          -- Carry-chain add DATA word (#616, E1a): `dst = (a + b + cin) mod 2^w`
+          -- Carry-chain add DATA word: `dst = (a + b + cin) mod 2^w`
           -- via the value→flag `#ADD` + `#ADC` idiom. Three inputs `a`,`b`,`cin`.
           let a := argName vm e.args 0
           let b := argName vm e.args 1
@@ -902,7 +902,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .addCarryHi w =>
-          -- Carry-chain add CARRY-OUT bit (#616, E1a): `dst = carryOutBit a b cin`
+          -- Carry-chain add CARRY-OUT bit: `dst = carryOutBit a b cin`
           -- materialised back to a `reg w` 0/1 value. Three inputs `a`,`b`,`cin`.
           let a := argName vm e.args 0
           let b := argName vm e.args 1
@@ -913,7 +913,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .select _ =>
-          -- Constant-time SELECT / cmov (#594, E2): branchless mask-select
+          -- Constant-time SELECT / cmov: branchless mask-select
           -- `dst = if cond then a else b` via `(a & mask) | (b & ~mask)`,
           -- `mask = 0 - cond`. Three inputs `cond` (args 0), `a` (args 1),
           -- `b` (args 2). No secret-dependent branch.
@@ -943,7 +943,7 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
       | .extCall name argTys _ =>
-          -- Single-result function call (#616 E5a): `dst = name(arg0, …);`, a
+          -- Single-result function call: `dst = name(arg0, …);`, a
           -- jasmin call to an already-verified single-result `inline fn`
           -- (emitted alongside the caller by `emitAbiOrchRegWithCallees`). The
           -- args are register-file operands routed through `wa{j}` scratch regs;
@@ -1085,9 +1085,9 @@ def emitAbiOrchReg {Γ : Ctxt jasminDialect} {t : JasminTy}
   let paramStrs := [ptrTy ++ " out", inPtrTy ++ " inp"]
   -- the state file (`regDecls`, a `stack u{w}[…]` array) plus the scratch
   -- working registers every load/compute/store routes through: `w0`,`w1` (the
-  -- two `w`-bit ALU temporaries), `wc` (the `w`-bit cast temporary, #605 5b),
-  -- and `wi` (the `reg u64` array-subscript temporary, #605 5a).
-  -- plus `wb` (the `w`-bit carry-value temporary, #616 E1a — holds the explicit
+  -- two `w`-bit ALU temporaries), `wc` (the `w`-bit cast temporary),
+  -- and `wi` (the `reg u64` array-subscript temporary).
+  -- plus `wb` (the `w`-bit carry-value temporary — holds the explicit
   -- `reg 1` carry as a 0/1 word and is the ADD/ADC scratch for the carry-chain
   -- add) and `cf` (the `reg bool` hardware carry flag the `#ADD`/`#ADC` idiom
   -- threads through).
@@ -1110,7 +1110,7 @@ def emitAbiOrchReg {Γ : Ctxt jasminDialect} {t : JasminTy}
     ++ String.intercalate ", " paramStrs ++ ") -> " ++ ptrTy ++ " {\n  "
     ++ String.intercalate "\n  " bodyLines ++ "\n  return out;\n}"
 
-/-! ## Function-call orchestration (#616, E5a — `extCall` kernel composition)
+/-! ## Function-call orchestration (`extCall` kernel composition)
 
 `emitAbiOrchReg` above renders a leaf-free, straight-line `regArith` body. This
 variant additionally hosts single-result **function calls** (`extCall` bindings,
@@ -1167,7 +1167,7 @@ def emitInlineLeaf (name : String) (w arity : Nat)
     ++ toString w ++ " {\n  " ++ String.intercalate "\n  " bodyLines
     ++ "\n  return " ++ retName ++ ";\n}"
 
-/-! ## Width-cast pilot orchestration (#605, Step 5b — `castW` cross-width)
+/-! ## Width-cast pilot orchestration (`castW` cross-width)
 
 `emitAbiOrchReg` above runs over a single homogeneous register width `w`, so its
 wired `castW` arm only renders the same-width (identity) zero-extend. The
@@ -1195,11 +1195,11 @@ def emitAbiOrchCast (name : String) (w w' : Nat) : String :=
   "export fn " ++ name ++ "(" ++ ptrTy ++ " out, " ++ inPtrTy ++ " inp) -> "
     ++ ptrTy ++ " {\n  " ++ String.intercalate "\n  " body ++ "\n  return out;\n}"
 
-/-! ## Indexed array-store pilot orchestration (#605, Step 5a — `stackStore`)
+/-! ## Indexed array-store pilot orchestration (`stackStore`)
 
 The dialect's `stackStore w n` op (`[stackArr w n, reg 64, reg w] → stackArr w n`,
-denoting `stackSet arr idx.toNat val`) was already in the dialect but unrendered
-by the register-arith emit; the `emitBodyReg` arm above now renders it as an
+denoting `stackSet arr idx.toNat val`) is rendered by the `emitBodyReg` arm
+above as an
 in-place `arr[(uint)idx] = val;`. This focused orchestration exercises that store
 op end-to-end: it copies an input `u{w}[n]` array into an owned stack buffer,
 writes `buf[idx] = val` at a runtime index, and copies the updated buffer out —
@@ -1221,11 +1221,11 @@ def emitAbiOrchStore (name : String) (w n : Nat) : String :=
     ++ "reg u64 idx, reg u" ++ toString w ++ " val) -> " ++ arrTy ++ " {\n  "
     ++ String.intercalate "\n  " body ++ "\n  return out;\n}"
 
-/-! ## Indexed array-LOAD pilot orchestration (#619, E4 — `stackLoad`)
+/-! ## Indexed array-LOAD pilot orchestration (`stackLoad`)
 
 The dialect's `stackLoad w n` op (`[stackArr w n, reg 64] → reg w`, denoting the
-total read `stackGet arr idx.toNat`) was already in the dialect but unrendered
-by the register-arith emit; the `emitBodyReg` arm above now renders it as an
+total read `stackGet arr idx.toNat`) is rendered by the `emitBodyReg` arm
+above as an
 element read `dst = arr[(uint)idx];`. This focused orchestration exercises that
 load op end-to-end (a public-indexed table lookup): it copies an input `u{w}[n]`
 table into an owned stack buffer, reads `buf[idx]` at a runtime index, and copies
@@ -1234,7 +1234,7 @@ the loaded scalar out — the array-READ dual of the `arr[idx] = val` store.
 **Constant-time:** the index `idx` is a PUBLIC scalar param (a loop counter, e.g.
 the NTT twiddle index `zeta[i]`); `opIndexPublic` admits the load only when the
 index reg is `.Public`. A secret-indexed table lookup is a cache-timing leak and
-is rejected by the #594 CT predicate. -/
+is rejected by the CT predicate. -/
 
 /-- Emit a focused runtime-indexed table lookup `out[0] = inp[idx];` over a
     length-`n` `u{w}` table, with the runtime (PUBLIC) index `idx` passed as a
@@ -1289,7 +1289,7 @@ def memDemoAbiJazz : String :=
 
 -- Emit-text KATs for `memDemoAbiJazz` moved to `JasminAbiEmitKat`.
 
-/-! ## Register-accumulator EMIT-computation mode (ADDITIVE)
+/-! ## Register-accumulator EMIT-computation mode
 
 `emitAbiOrchReg`/`emitBodyReg`/`renderRegArith` (above) route **every** binding
 through a `load / compute / store` over the stack-array state `k[..]`, so an
@@ -1495,7 +1495,7 @@ def emitAbiOrchRegAcc {Γ : Ctxt jasminDialect} {t : JasminTy}
     ++ String.intercalate ", " paramStrs ++ ") -> " ++ ptrTy ++ " {\n  "
     ++ String.intercalate "\n  " bodyLines ++ "\n  return out;\n}"
 
-/-! ## Packed-`u16` AVX2 vector EMIT mode (the FIFTH ABI mode — VECTORIZED, ADDITIVE)
+/-! ## Packed-`u16` AVX2 vector EMIT mode (the FIFTH ABI mode — VECTORIZED)
 
 The four modes above are SCALAR: every reduction-row term is a separate
 `regArith mul`/`add` rendered as a `load / compute / store`. A length-`L` matmul
@@ -1601,7 +1601,7 @@ def emitFrodoVecJazz (name : String) (N : Nat) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u16[16] {\n  "
     ++ String.intercalate "\n  " bodyLines ++ "\n  return out;\n}"
 
-/-! ## GF(2^128) AVX2 vector EMIT mode (the SIXTH ABI mode — VECTORIZED, ADDITIVE)
+/-! ## GF(2^128) AVX2 vector EMIT mode (the SIXTH ABI mode — VECTORIZED)
 
 The FrodoKEM VV mode above vectorizes a dot product over `Z/2^16` (one
 `#VPMULL_16u16` packs 16 lanes, then a horizontal XOR-free integer sum). FAEST's
@@ -1803,7 +1803,7 @@ def emitGFDotJazzLazy (name : String) (L : Nat) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u128[1] {\n  "
     ++ String.intercalate "\n  " bodyLines ++ "\n  return out;\n}"
 
-/-! ## GF(16) PSHUFB AVX2 vector EMIT mode (the SEVENTH ABI mode — VECTORIZED, ADDITIVE)
+/-! ## GF(16) PSHUFB AVX2 vector EMIT mode (the SEVENTH ABI mode — VECTORIZED)
 
 The Frodo (`Z/2^16`, `#VPMULL_16u16`) and FAEST (`GF(2^128)`, `#VPCLMULQDQ`) VV
 modes vectorize a dot over their lane ring with a single SIMD field-multiply.
@@ -1965,7 +1965,7 @@ def emitMayoVecJazz (name : String) : String :=
     ++ "-> reg ptr u8[1] {\n  "
     ++ String.intercalate "\n  " renderMayoVecBody ++ "\n  return out;\n}"
 
-/-! ## GF(127) packed-u16 AVX2 vector EMIT mode (the EIGHTH ABI mode — VECTORIZED, ADDITIVE)
+/-! ## GF(127) packed-u16 AVX2 vector EMIT mode (the EIGHTH ABI mode — VECTORIZED)
 
 QR-UOV's hot kernel is a block matmul over the **odd-characteristic prime** field
 `GF(127)` (residues `0..126`, one `u16` each; add `= + mod 127`, mul `= · mod
@@ -2074,7 +2074,7 @@ def emitQruovVecJazz (name : String) : String :=
     ++ "-> reg ptr u16[3] {\n  "
     ++ String.intercalate "\n  " renderQruovVecBody ++ "\n  return out;\n}"
 
-/-! ## ChaCha 4-way lane-parallel-map AVX2 EMIT mode (the NINTH ABI mode — VECTORIZED, ADDITIVE)
+/-! ## ChaCha 4-way lane-parallel-map AVX2 EMIT mode (the NINTH ABI mode — VECTORIZED)
 
 The five vectorized modes above (`emitFrodoVecJazz`, the two GF(2^128) variants,
 `emitMayoVecJazz`, `emitQruovVecJazz`) all vectorize a **horizontal reduction**
@@ -2285,7 +2285,7 @@ def emitChacha4wayJazz (name : String) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
     ++ String.intercalate "\n  " renderChacha4wayBody ++ "\n  return out;\n}"
 
-/-! ## ChaCha 4-way XMM-RESIDENT EMIT mode (the SIXTEENTH ABI mode — REG-RESIDENT 4-WAY, ADDITIVE, 2026-05-26)
+/-! ## ChaCha 4-way XMM-RESIDENT EMIT mode (the SIXTEENTH ABI mode — REG-RESIDENT 4-WAY)
 
 The stack-resident 4-way emit above (`emitChacha4wayJazz`, the NINTH ABI mode)
 keeps the 16 state words in a `stack u128[16] m` array and routes every ARX op
@@ -2299,7 +2299,7 @@ HACL*'s `Hacl_Chacha20_Vec256` (`Hacl_Chacha20_Vec256.c`) instead pins the 16
 locals) across the whole 20-round body — AVX2 has 16 XMM (XMM0..XMM15), exactly
 the budget. Every quarter-round op becomes a SINGLE packed instruction acting
 register-to-register (`m_d = _mm_xor_si128(m_d, m_a);`); no spills, no
-load/store flanking. The audit at #137 measured the gap: stack-resident ~612
+load/store flanking. The measured gap: stack-resident ~612
 cyc/block, HACL* Vec256 ~131 cyc/block (the 4.6× factor).
 
 This SIXTEENTH mode reproduces the HACL* Vec256 design point as a parallel
@@ -2557,10 +2557,10 @@ def renderChacha4wayXmmBody : List String :=
   -- its 16 vec256 locals across the round body — `Hacl_Chacha20_Vec256.c`
   -- explicitly comments on the spill in its 16-locals C body).
   --
-  -- The dominant speedup vs the #107 stack-array emit: the OTHER 14
+  -- The dominant speedup vs the stack-array emit: the OTHER 14
   -- state words pay ZERO memory accesses across the 20 rounds (320 ARX ops
   -- × ~14/16 reg-resident = ~280 ops with no load/store flanking vs all 320
-  -- ops flanked in #107). Roughly: #107 pays ~4 memory accesses per ARX add
+  -- ops flanked there). Roughly: the stack-array emit pays ~4 memory accesses per ARX add
   -- + ~6 per rotate = ~1760 mem-acc / block. This emit pays ~80 (spills) +
   -- ~16 (load) + ~16 (store) ≈ ~120 mem-acc / block. ~14× fewer memory
   -- accesses, the cyc/op target.
@@ -2585,7 +2585,7 @@ def renderChacha4wayXmmBody : List String :=
     storage-class-agnostic — applying the scalar ChaCha block function to
     each of 4 lanes in parallel equals running it sequentially on each lane,
     REGARDLESS of whether the lane state lives on the stack or in named
-    registers. The two emits (stack-resident #107, XMM-resident this mode)
+    registers. The two emits (stack-resident, XMM-resident this mode)
     therefore have the SAME denotation; the storage refinement only affects
     cycle count, not bytes-on-output. -/
 def emitChacha4wayXmmJazz (name : String) : String :=
@@ -2619,9 +2619,9 @@ The masks live as file-scope `u8[16]` constants `CHACHA_ROT16_MASK` /
 `CHACHA_ROT8_MASK` and are loaded once into `stack u128` cells
 `rot16_mask`/`rot8_mask` at the top of the body. Per rotate use, one of the
 two scratch XMM regs `w0`/`w1` loads the mask from the stack cell then the
-PSHUFB applies it — register pressure stays unchanged from `#111`
-(still 14 state regs + 2 scratch = 16 XMM). The reused `w1` is now also a
-mask-loading scratch (it was already touched by the 3-op rotates).
+PSHUFB applies it — register pressure is that of `emitChacha4wayXmmJazz`
+(14 state regs + 2 scratch = 16 XMM). The reused `w1` is also a
+mask-loading scratch (the 3-op rotates use it as well).
 
 Per-rotate cost change:
 
@@ -2737,8 +2737,8 @@ def renderChacha4wayXmmPshufbDoubleRounds : Nat → List String
     2. A `reg ptr u8[16] mp` for the constant-array pointer used during the
        one-shot mask load.
 
-    The state-register file (`m0..m13` + spills + scratches) is unchanged
-    from `#111` — the PSHUFB rotates reuse the existing `w0`/`w1` scratches
+    The state-register file (`m0..m13` + spills + scratches) is the one of
+    `emitChacha4wayXmmJazz` — the PSHUFB rotates reuse the existing `w0`/`w1` scratches
     for the mask load + apply sequence, so register pressure is identical. -/
 def renderChacha4wayXmmPshufbBody : List String :=
   let decls :=
@@ -2777,7 +2777,7 @@ def renderChacha4wayXmmPshufbBody : List String :=
     The `<<<12` and `<<<7` rotates remain as the 3-op packed-shift-or pattern
     (their bit count is not a multiple of 8). The KAT against RFC 8439 §2.3.2
     (4 lanes × 16 u32 = 64 u32 in/out) cross-checks this byte-for-byte
-    against the `#111` baseline. -/
+    against the `emitChacha4wayXmmJazz` baseline. -/
 def emitChacha4wayXmmPshufbJazz (name : String) : String :=
   let paramStrs := ["reg ptr u32[64] out", "reg const ptr u32[64] inp"]
   chachaRot16MaskDecl ++ "\n" ++ chachaRot8MaskDecl ++ "\n\n" ++
@@ -2787,7 +2787,7 @@ def emitChacha4wayXmmPshufbJazz (name : String) : String :=
 
 -- Emit-text KATs for `emitChacha4wayXmmPshufbJazz` moved to `JasminAbiEmitKat`.
 
-/-! ## GF(16) TABLE-LOOKUP EMIT mode (the TENTH ABI mode — DATA-INDEXED, ADDITIVE)
+/-! ## GF(16) TABLE-LOOKUP EMIT mode (the TENTH ABI mode — DATA-INDEXED)
 
 The SIMD-PSHUFB GF(16) lane multiply (mode #7, `emitMayoVecJazz`) wins for MAYO
 (0.34x) and UOV (1.16x) because their hot kernels are *flat* `GF(16)^k` row dots
@@ -2812,8 +2812,8 @@ already supports it: `JasminOp.stackLoad w n` takes a DYNAMIC register index
 `stackGet arr i.toNat`). So the 256-byte multtab lives as a `stackArr 8 256`
 constant in the emitted jazz; the GF(16) mul `(a, b) → multtab[a·16 + b]` is
 *one* `stackLoad` after a two-step index compute (no new dialect ops needed —
-just a new emit pattern, the SNOVA precedent that #114's bench-confirmed gap
-demands).
+just a new emit pattern, the SNOVA precedent that the benchmarked gap
+calls for).
 
 The protected scalar/VV/lane-map modes above are untouched. The denotation of
 the table-lookup multiply is `gf16TabMul a b = gf16MulSlow a b` for every
@@ -2937,7 +2937,7 @@ schoolbook bit-serial multiply `gf16MulSlow a b` agree on every
 (`multtab[i] = gf16MulSlow (i/16) (i%16)`), the identity holds by construction.
 We pin it as a 256-entry decidable equality (`by decide`), the SAME precedent
 as the GF(16) PSHUFB-mul = bit-mask-mul identity (the `gf16PshufbMul_eq_clmul`
-shape #106 used). This is the *correctness* of the new emit pattern. -/
+shape). This is the *correctness* of the new emit pattern. -/
 
 /-- The table-lookup GF(16) multiply (Lean model of `gf16_mul_tab`'s
     denotation): read entry `(a &&& 0xf)*16 + (b &&& 0xf)` of the 256-byte
@@ -2958,13 +2958,13 @@ theorem gf16TabMul_eq_slow :
 
 end Gf16Tab
 
-/-! ## Keccak-p[1600,24] SIMD lane-parallel θρ EMIT mode (the ELEVENTH ABI mode — VECTORIZED, ADDITIVE, 2026-05-26)
+/-! ## Keccak-p[1600,24] SIMD lane-parallel θρ EMIT mode (the ELEVENTH ABI mode — VECTORIZED)
 
 The scalar Keccak emit (`KeccakEmit.keccakF1600Jazz`) renders the 24-round
 permutation as ~6900 straight-line `regArith` bindings — pure 64-bit scalar
 xor/and/shl/shr/or over a `stack u64[57]` slot file. The bench gap vs HACL*
 verified-CT (3.70x, ~7891 / ~2132 cyc/op) comes from HACL* doing the two SIMD
-wins this mode now captures:
+wins this mode captures:
 
 * **θ-parity columns parallel.** The five column parities `C[x] = ⊕_y A[x,y]`
   (each is an XOR of 5 u64 lanes — `aSlot x 0 ⊕ aSlot x 1 ⊕ ... ⊕ aSlot x 4`)
@@ -2983,11 +2983,11 @@ wins this mode now captures:
   lanes by their `r[i]`) gives ~7 packed groups of ~3-4 lanes each. We pick
   the simpler approach of "pack any 4 lanes that need the same shift, ship
   the residual lanes as scalar rotates" — the ρ ratio improves toward 4x,
-  which combined with θ-parity SIMD gives the >1.5x speedup the brief
-  targets.
+  which combined with θ-parity SIMD gives the targeted >1.5x
+  speedup.
 
 The denotation-preservation story is **the existing `LaneMap.keccak_rho_lane_map`
-theorem** (committed at 6450ca07 with #107): the packed (SIMD) per-lane rotate
+theorem**: the packed (SIMD) per-lane rotate
 form `keccakRotStub rotConst state` equals the scalar sequential
 `fun i => (state i) <<< (rotConst i) ||| (state i) >>> (64 - rotConst i)`,
 proved by `funext + rfl`. The packed-u64 lane XOR for θ-parity is the same
@@ -3240,11 +3240,10 @@ def renderKeccakSimdBody : List String :=
     to 4 lanes at once for θ-parity columns 0..3 (column 4 remains scalar
     because 5 doesn't pack into 4).
 
-    Speedup story (re #121): the θ-parity SIMD compresses ~25 scalar XORs/round
+    Speedup story: the θ-parity SIMD compresses ~25 scalar XORs/round
     to ~10 (≈2.5x on that phase); HACL* uses essentially the same trick
     (Hacl_Hash_SHA3 packs the parity columns via lane-wise XOR). The residual
-    ρ/χ/ι remain scalar in this mode (the conservative choice the brief
-    sanctions); the win comes from θ-parity. -/
+    ρ/χ/ι remain scalar in this mode (the conservative choice); the win comes from θ-parity. -/
 def emitKeccakSimdJazz (name : String) : String :=
   let paramStrs := ["reg ptr u64[25] out", "reg const ptr u64[25] inp"]
   "export fn " ++ name ++ "("
@@ -3255,7 +3254,7 @@ def emitKeccakSimdJazz (name : String) : String :=
 
 end KeccakSimd
 
-/-! ## SHA-2 N-block batched register-resident EMIT mode (the TWELFTH ABI mode — ADDITIVE)
+/-! ## SHA-2 N-block batched register-resident EMIT mode (the TWELFTH ABI mode)
 
 The committed scalar `sha256_compress` / `sha512_compress` emits (Sha2Emit) go
 through `emitAbiOrchReg`, which puts every intermediate scalar binding in a
@@ -3286,7 +3285,7 @@ ABI:
     — same shape at 64-bit width; 80 round constants, 80 rounds per block.
 
 Denotation: N batched blocks denote N invocations of the committed single-block
-`compressCom` composed via `JForProgMultiOp`'s loop lemma (#92). The
+`compressCom` composed via `JForProgMultiOp`'s loop lemma. The
 structural sanity checks below — the working words appear as `reg` (not `stack`),
 the body emits 4 feed-forward block boundaries, no skips — are the
 string-containment companions that `KeccakSimd` ships.
@@ -3644,7 +3643,7 @@ def renderSha256BatchedBody : List String :=
 
     Denotation: 4 invocations of the committed single-block compression
     `Sha2Emit.compressCom` composed via the `JForProgMultiOp.loop_denote_eq_multiOp`
-    lemma (#92), instantiated at N=4. Per-block: 64 rounds in working
+    lemma, instantiated at N=4. Per-block: 64 rounds in working
     registers (no spill) + feed-forward; inter-block: chaining state stays in
     `S` and is reloaded into `a..h` at the start of the next block.
 
@@ -4089,7 +4088,7 @@ theorem sha2_multibuf_denotation_preserves
 
 end Sha2MultiBuf
 
-/-! ## GF(256) TABLE-LOOKUP EMIT mode (the THIRTEENTH ABI mode — DATA-INDEXED, ADDITIVE, 2026-05-26)
+/-! ## GF(256) TABLE-LOOKUP EMIT mode (the THIRTEENTH ABI mode — DATA-INDEXED)
 
 The existing UOV GF(256) emit (`bench/uov_compare/uov_kernel_emit.lean`) renders
 the field multiply as a schoolbook **bit-serial** shift-and-add (8 steps, reduced
@@ -4102,7 +4101,7 @@ fitting in 2-3 cache lines, with the multiply collapsing to:
 
     gf256_mul(a, b) = mask(a,b) & exp_tab[log_tab[a] + log_tab[b]]
 
-This is the GF(256) analog of #123's GF(16) `multtab` mode (the TENTH ABI mode
+This is the GF(256) analog of the GF(16) `multtab` mode (the TENTH ABI mode
 above), at a different field width. Where GF(16) fits a full 256-byte mul
 table (`a*16 + b` index), GF(256) would need 64KB for a full table — too big
 for a single jasmin `u8[65536]` stackArr (the dialect's stackArr lengths must
@@ -4131,7 +4130,7 @@ Tables and primitives:
 | XOR-accumulate (`acc ^= …`)       | `Ox86 (VPXOR …)`/`wxor` byte (= §7 `gf16_xoracc_agrees_jasmin`)        |
 
 All of these rows are *already discharged* by §1 (regArith), §3 (`castW`),
-§4 (`stackLoad`-by-runtime-index — made psem-total by R4 #95), and §7 (byte
+§4 (`stackLoad`-by-runtime-index — psem-total), and §7 (byte
 XOR for the GF(256) additive monoid). So the new emit introduces NO new
 lane-level psem row; the §13 alignment bundle in `JasmincSemAlignment` is a
 recap.
@@ -4386,11 +4385,11 @@ theorem gf256TabMul_eq_slow :
 
 end Gf256Tab
 
-/-! ## Bitsliced AES S-box EMIT mode (the FOURTEENTH ABI mode — BIT-PARALLEL, ADDITIVE, 2026-05-26)
+/-! ## Bitsliced AES S-box EMIT mode (the FOURTEENTH ABI mode — BIT-PARALLEL)
 
 The remaining opaque hardware leaf in the AEAD cluster (`#AESENC` in AES-GCM /
-AES-CCM / AES-SIV / AES-GCM-SIV / AEGIS) and in FAEST (`faest_aes128` in
-`CatCrypt/Crypto/FAEST/Leaves.lean`) is the AES round transform. This section
+AES-CCM / AES-SIV / AES-GCM-SIV / AEGIS) and in FAEST (the `faest_aes128`
+leaf) is the AES round transform. This section
 adds the **bitsliced AES S-box** as a pure-boolean emit — the
 primitive whose removal collapses the entire AES extCall leaf to a fully-emitted
 sequence of XOR/AND/NOT ops on bit-plane registers, the same trick HACL*'s
@@ -4787,8 +4786,8 @@ def emitAesSboxBitsliceFn : String :=
     that drives it on a packed 64-byte input (8 lanes × 8 bytes per plane).
 
     Pure-boolean: every line of the emitted body is `xor`/`and`/`not` —
-    NO `#AESENC`, NO `extCall`. This is the AES analogue of #123 GF(16)
-    `multtab` mode and #125 GF(256) `multtab` mode: a NIST-spec'd byte
+    NO `#AESENC`, NO `extCall`. This is the AES analogue of the GF(16)
+    `multtab` mode and the GF(256) `multtab` mode: a NIST-spec'd byte
     transform realized as a verified pure-boolean kernel.
 
     Correctness anchor: `aesSboxBitslice_eq_sbox` (256-entry `native_decide`).
@@ -4817,7 +4816,7 @@ def emitAes128SboxKernelJazz : String :=
 
 end AesBitslice
 
-/-! ## Poseidon2 BabyBear width-16 SIMD lane-parallel EMIT mode (the FIFTEENTH ABI mode — VECTORIZED, ADDITIVE, 2026-05-26)
+/-! ## Poseidon2 BabyBear width-16 SIMD lane-parallel EMIT mode (the FIFTEENTH ABI mode — VECTORIZED)
 
 The committed scalar Poseidon2 emit (`Poseidon2Emit.poseidon2Jazz`) renders the
 24-round (8 full + 13 partial) BabyBear permutation as ~16-slot-wide scalar
@@ -4831,7 +4830,7 @@ Plonky3 AVX2 production reference.
 This mode emits a **lane-parallel** Poseidon2 BabyBear permutation where the
 16 state slots are packed into 4 × `__m256i` registers (4 u64 lanes each).
 Each round's S-box (`x ↦ x^7` on all 16 slots) parallelizes across the 16
-lanes by `LaneMap.poseidon2_sbox_lane_map` (committed at 6450ca07 with #107):
+lanes by `LaneMap.poseidon2_sbox_lane_map`:
 the packed `vmap (· ^ 7)` denotes the same per-slot map as the scalar
 sequential form. The MDS layer also vectorizes lane-wise (linear within each
 4-block of slots), and `fadd`/`csub`/`reduce` all factor through
@@ -4898,7 +4897,7 @@ inductive Poseidon2LaneOp where
     SIMD lane-add: no carry across lanes, native AVX2 instruction.
 
     The load → packed-add → store happens via the `tbuf` u64-stack scratch
-    plus two `reg u256` lane regs (`vlo`, `vhi`). The follow-up canonicalising
+    plus two `reg u256` lane regs (`vlo`, `vhi`). The subsequent canonicalising
     `csub` runs scalar (since the fanned-out scalar `fadd`/`csub` helpers
     handle each slot individually). -/
 def renderLaneAddRc (table : String) (r g : Nat) : List String :=
@@ -4984,8 +4983,8 @@ def renderPoseidon2SimdBody : List String :=
     `poseidon2_bb`, so the C KAT harness is drop-in compatible.
 
     Denotation: each output slot equals the scalar Poseidon2 BabyBear
-    permutation, by `LaneMap.poseidon2_sbox_lane_map` (committed at 6450ca07
-    with #107) instantiated at the BabyBear S-box `x ↦ x^7` (the lemma's
+    permutation, by `LaneMap.poseidon2_sbox_lane_map`
+    instantiated at the BabyBear S-box `x ↦ x^7` (the lemma's
     `x ↦ x^5` stub generalizes structurally to any per-slot independent
     function); per-slot `fadd`/`csub`/`reduce`/multiply are independent and
     dispatched by `LaneMap.vmap_eq_scalarMap` / `vmap₂_eq_scalar`. The
@@ -4995,14 +4994,14 @@ def renderPoseidon2SimdBody : List String :=
     round per lane, just applied to 4 lanes at once for the 4 outer-quartet
     groups `{0..3}, {4..7}, {8..11}, {12..15}`.
 
-    Speedup story (re #138): the lane-parallel S-box compresses 16 scalar
+    Speedup story: the lane-parallel S-box compresses 16 scalar
     BabyBear-reduce chains per external round into 4 packed-u64
     BabyBear-reduce chains (4x on that phase; per-round work is dominated
     by the S-box reduction, so the overall speedup approaches 4x on the
     external rounds, ~unchanged on the 13 partial rounds whose body only
     touches `s[0]`). The MDS round-trip cost between scalar and SoA limits
     the practical win to ~2.5-4x — comfortably within the 5-10x Plonky3 gap
-    the brief targets, since Plonky3's AVX2 production is also ~4-5x faster
+    targeted, since Plonky3's AVX2 production is also ~4-5x faster
     than its scalar baseline.
 
     The `mds` / `internal_mat` / `csub` / `reduce` / `fmul` / `fadd` /

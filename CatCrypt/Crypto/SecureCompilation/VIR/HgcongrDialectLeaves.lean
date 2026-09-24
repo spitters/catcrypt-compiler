@@ -15,8 +15,8 @@ public import Transfer.Congruence.HGCongr
 
 `RcongrLeafAutomation.lean` automated the **binary** arms of the
 prime-field → ModArith op-lowering leaf `fpOpLowerTransports` with the
-`Related`/`RelatedBinOp` cross-head rule `rcongrBinOp`, and documented — honestly
-— four dispatch gaps it could **not** close (its "Lessons" / §4):
+`Related`/`RelatedBinOp` cross-head rule `rcongrBinOp`, and documents
+four dispatch gaps it could **not** close (its "Lessons" / §4):
 
 1. the dependent `Expr`/`HVector` peel (`rcases e; cases op; match args`) is not
    relational congruence — it precedes any op-tree goal;
@@ -52,7 +52,7 @@ descending the leaves with `hgcongr` (`HGCongr.lean`). The head-pair key
   it does not silently match the abstract `·+·` square with the wrong target.
   The caveat: because the leaf functions are `@[reducible]`, on the **diagonal,
   bare-variable** case (`modNegF a = modNegF a`) `gcongr` *also* succeeds (it
-  unfolds to `Neg.neg` and its own homogeneous congruence fires). The genuine
+  unfolds to `Neg.neg` and its own homogeneous congruence fires). The
   separation from `gcongr` is the **differing-argument** dialect-leaf shape
   (`modNegF (transported-lookup) = modNegF (source-lookup)`): there `gcongr`
   makes **no progress** (no leaf to align under the unfolded head), while
@@ -173,7 +173,7 @@ example {p : Nat} (f : ZMod p → ZMod p) (a b c : ZMod p)
 /-! ## 3. Discharging the real `fpOpLowerTransports` arms — unary AND binary — by
 `hgcongr`
 
-The genuine dialect leaf, after the (manual, non-automatable — gap (1)) `Expr`
+The dialect leaf, after the (manual, non-automatable — gap (1)) `Expr`
 peel + a body-`show`, is an equation
 `lowered-op (mapVar-lookups) = source-op (source-lookups)`. For the **unary**
 `fpNeg` arm:
@@ -247,7 +247,7 @@ example : OpLowerTransports lowerFieldToModArith transTy mapVal :=
   fpOpLowerTransports_by_hgcongr
 
 /-- **The whole-program transport, re-derived through the `hgcongr`-automated op
-    leaf.** Feeding `fpOpLowerTransports_by_hgcongr` (now **all five** arms by the
+    leaf.** Feeding `fpOpLowerTransports_by_hgcongr` (**all five** arms by the
     head-pair descent, including the two unary ones `rcongr` could not reach) to
     `fundamental` alongside the existing variable / binding coherences yields the
     same `Com`-level denotation-preservation the hand leaf does. -/
@@ -266,9 +266,9 @@ theorem fpComLowerTransports_via_hgcongr {Γ : Ctxt fpDialect} {t : FpTy}
 | (3) `@[reducible]` head defeats instance keying | square never fires | **sidestepped** (keys on the head *pair*, not a single reducible head for instance resolution) |
 | (4) **unary** `fpNeg`/`fpInv` — no `RelatedUnaryOp` | **no rule — hand `rw`** | **closed** (arity-generic `@[hgcongr]` lemma) |
 
-The genuine win over `rcongr` is gap (4): the two unary arms of
-`fpOpLowerTransports`, which `fpOpLowerTransports_by_rcongr` had to leave to a
-hand `rw [mapVar_lookup]`, are now first-class head-pair descents
+The gain over `rcongr` is gap (4): the two unary arms of
+`fpOpLowerTransports`, which `fpOpLowerTransports_by_rcongr` leaves to a
+hand `rw [mapVar_lookup]`, are first-class head-pair descents
 (`fpOpLowerTransports_by_hgcongr`, §3). Gaps (2)/(3) are sidestepped by keying on
 the head pair rather than a `getAppNumArgs`/reducible-head heuristic. Gap (1) —
 the dependent peel — is a goal-shape obstruction shared by `gcongr`/`rcongr`/
@@ -279,7 +279,7 @@ the dependent peel — is a goal-shape obstruction shared by `gcongr`/`rcongr`/
 -- `gcongr` cannot align a leaf even after unfolding `modNegF` to `Neg.neg`, so it
 -- fails — this is the boundary `hgcongr` crosses with its head-pair unary descent.
 -- (On the *diagonal bare-variable* case `modNegF a = modNegF a`, `gcongr` does
--- succeed via reducible unfolding; the genuine separation is this
+-- succeed via reducible unfolding; the separation is this
 -- differing-argument shape, which is the dialect leaf.)
 /-- error: gcongr did not make progress -/
 #guard_msgs in

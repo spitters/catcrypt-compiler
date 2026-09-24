@@ -14,7 +14,7 @@ public import Mathlib.Tactic.Ring
 /-!
 # Montgomery REDC law for a 60-bit FHE NTT modmul
 
-This is the load-bearing correctness law for the FHE-sized NTT modular multiply.
+This is the main correctness law for the FHE-sized NTT modular multiply.
 It mirrors the structure of `Plonky3BarrettLaw.lean`: an estimate is bounded into
 `[0, 2q)`, then a single conditional subtract canonicalises it into `[0, q)`.
 

@@ -7,12 +7,12 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# A Lean RV64 64-bit bignum/field machine model (#549)
+# A Lean RV64 64-bit bignum/field machine model
 
-`RiscvModel.lean` (#535) is the owned RV64 machine layer for the scalar 32-bit-word
+`RiscvModel.lean` is the owned RV64 machine layer for the scalar 32-bit-word
 GP-ALU subset a ChaCha20 quarter-round needs (`addw`/`xor`/`slliw`/`srliw`/`or`).
 This module is its **64-bit bignum/field** sibling — the RISC-V analogue of
-`ARMBackend/ArmModel.lean`'s `BState` layer (#547) and `X86Backend`'s ADX
+`ARMBackend/ArmModel.lean`'s `BState` layer and `X86Backend`'s ADX
 carry-chain layer — at the `X`-register width the s2n-bignum-class kernels
 (256-bit add-mod-p, 4×64 Montgomery multiply) run on.
 
@@ -34,7 +34,7 @@ instructions) in the general add-with-carry-in case, and each `SBCS` likewise.
 And RV64 has **no conditional-select** (`CSEL`); the constant-time
 conditional-subtract reduce is a **branch-free mask select**
 `mask := 0 - cond ; z := (x_sub &&& mask) ||| (x &&& ~~~mask)`. We document this
-cost honestly — the RISC-V `bignum_add_p256` lowers to materially more
+cost — the RISC-V `bignum_add_p256` lowers to materially more
 instructions than the A64 one — and this is exactly the price of the missing
 flag register, not a backend inefficiency.
 

@@ -22,14 +22,14 @@ from the verified control-flow combinators (`pipeline` / `scfRepeat` / `scfWhile
 instantiated with the p3-interop fixed-config loop counts, and proves the skeleton's
 denotation is the explicit phase sequence — each loop the n-fold iterate of its body.
 
-**Honest scope.** This proves the *orchestration sequencing* is correct: the phase
+**Scope.** This proves the *orchestration sequencing* is correct: the phase
 BODIES are parameters (`ProverLeaves`), the slots the owned-emitted leaves plug into
-— the Poseidon2 permutation / 2-to-1 compressor (already single owned `.s`), the
-NTT/LDE column step, the FRI fold, the per-query opening. What this is NOT: the
-phases are not yet instantiated with those emitted leaves, the AIR/trace-generation
-front is not owned-emitted, and there is no single-`.s` emit + KAT of the composite.
-Those are the remaining Gap-2 work. What IS delivered: the prover's loop/sequence
-structure is now a composition of verified combinators with a denotation, so plugging
+— the Poseidon2 permutation / 2-to-1 compressor (a single owned `.s`), the
+NTT/LDE column step, the FRI fold, the per-query opening. Outside the scope: the
+instantiation of the phases with those emitted leaves, an owned emit of the
+AIR/trace-generation front, and a single-`.s` emit + KAT of the composite.
+Within the scope: the prover's loop/sequence
+structure is a composition of verified combinators with a denotation, so plugging
 in the emitted leaf bodies yields a prover whose orchestration is correct by
 construction (`fibProver_denote`), and a looped phase is provably the iterate of its
 emitted body (via `LoopEmitBridge.loopEmit_denote_iterate`, on the machine side).
@@ -54,7 +54,7 @@ the counted-loop combinator (`scfRepeat`) needs.
 
 **Faithfulness.** These counts are read off the working crate's prover
 (`crates/catcrypt-plonky3/src/prover.rs`), whose `prove()` is byte-identical to and
-accepted by the genuine p3 0.5.3 prover/verifier — not guessed:
+accepted by the upstream p3 0.5.3 prover/verifier:
 `trace = [[_;2];8]` ⇒ width 2, height 8; `lde/ctrace = [[_;2];32]` ⇒ committed width
 2 over a domain of 32 rows; the Merkle tree is "up to 32 leaves"; FRI folds the
 size-32 (log 5) codeword down to `log_final_poly_len = 2` (final length 4), i.e.

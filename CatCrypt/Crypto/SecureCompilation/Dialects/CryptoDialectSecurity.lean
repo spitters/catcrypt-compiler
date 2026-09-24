@@ -21,17 +21,15 @@ XOR-bijection and `bvAnd`-self peephole images, and the `*_dialect_secure_native
 distance-`0` theorems), computing the `SPComp` distance through `Com.denoteSP`
 and the uniform-sample-XOR bijection. This module re-exports that native layer.
 
-**0 axioms**, **0 sorries**.
+**0 axioms**; all goals closed.
 
 ## Observational equivalence and statistical distance on the dialect
 
 This module also carries the dialect-side `comEquiv` / `comSdist` pseudometric
-on `Com catCryptDialect` programs (computed through `Com.denoteSP`). These are
-the equal-strength successors of `CryptoSSA.progEquiv` / `CryptoSSA.progSdist`
-(which were defined over the deprecated bespoke `CProg`): `comSdist_of_equiv`,
-`comSdist_symm` and `comSdist_triangle` give the reflexivity-at-0, symmetry and
-triangle-inequality structure of a pseudometric, mirroring the `CProg` proofs
-but over the MLIR-aligned dialect's own `SPComp` interpretation.
+on `Com catCryptDialect` programs (computed through `Com.denoteSP`):
+`comSdist_of_equiv`, `comSdist_symm` and `comSdist_triangle` give the
+reflexivity-at-0, symmetry and triangle-inequality structure of a pseudometric
+over the MLIR-aligned dialect's own `SPComp` interpretation.
 -/
 
 @[expose] public section
@@ -51,8 +49,7 @@ open scoped ENNReal
 /-! ## Observational equivalence of dialect programs -/
 
 /-- Observational equivalence of `catCryptDialect` programs: equal `SPComp`
-    denotation for all valuations. Dialect-side successor of
-    `CryptoSSA.progEquiv`. -/
+    denotation for all valuations. -/
 def comEquiv {Γ : Ctxt catCryptDialect} {t : CryptoTy}
     (p q : Com catCryptDialect Γ t) : Prop :=
   ∀ V : Ctxt.Valuation Γ, Com.denoteSP p V = Com.denoteSP q V
@@ -75,8 +72,7 @@ theorem comEquiv_trans {Γ : Ctxt catCryptDialect} {t : CryptoTy}
 /-! ## Statistical distance between dialect programs -/
 
 /-- Statistical distance between `catCryptDialect` programs: supremum over all
-    valuations of the `SPComp` `sdist`. Dialect-side successor of
-    `CryptoSSA.progSdist`. -/
+    valuations of the `SPComp` `sdist`. -/
 noncomputable def comSdist {Γ : Ctxt catCryptDialect} {t : CryptoTy}
     (p q : Com catCryptDialect Γ t) : ℝ≥0∞ :=
   ⨆ V : Ctxt.Valuation Γ,

@@ -16,11 +16,10 @@ This file scopes the AVX2 integer-vector op family in the FRONT dialect and
 prototypes the representative op (`vpxor`, 128-bit lane-wise xor), mirroring the
 `SimdFrontPilot` `gf2p8mulb` template.
 
-## Headline finding (supersedes this task's stated premise)
+## The AVX2 integer family in `SimdOp`
 
-The task brief assumed the front `SimdOp` alphabet still had **only**
-`{gf2p8mulb, vpshufb}`. That is stale. The core `SimdOp` inductive
-(`JasminDialect.lean`) now already carries the whole AVX2 integer family through
+The front `SimdOp` alphabet is larger than `{gf2p8mulb, vpshufb}`. The core
+`SimdOp` inductive (`JasminDialect.lean`) carries the whole AVX2 integer family through
 **two parametric constructors** plus one specialised one:
 
   * `bitwise (bop : JasminBinOp)` — the carry-free 128-bit bitwise ops. Covers
@@ -44,17 +43,17 @@ both operands `.sword 128`) denotes via the backend `SimdOp.denote` waist
 front body already translates, lowers, and denotes **with zero core edits** —
 this file proves it for `vpxor`.
 
-**What is NOT yet complete is the BYTE ENCODER, and one missing op.**
+**The BYTE ENCODER and one op are outside this front coverage.**
 `VsimdByteEncoder.encodeVsimdInst` has correct VEX bytes for bitwise
 and/or/xor and packed add/sub/mullw/mulhi, but the packed SHIFT arms and
 `.bitwise .andn` fall through to WRONG catch-all bytes, and `VPMULUDQ`
 (Poly1305) has no `SimdOp` at all. See the worklist at the end.
 
-## The op family the brief asked about, and what it unlocks
+## The op family and what it covers
 
 `vpaddd/vpaddq/vpxor/vpand/vpor/vpsub + vpslld/vpsrld/vpsllvq/vpsrlvq/vporq`
 is exactly the alphabet of the ARX + NTT + Keccak-SIMD + Poly1305 group. All of
-it is representable in the front dialect TODAY; the residual work is byte-level.
+it is representable in the front dialect; the remaining work is byte-level.
 -/
 
 @[expose] public section
@@ -163,7 +162,7 @@ ChaCha/BLAKE/Keccak/SHA-mb rotation.
 
 ### Per-primitive coverage summary
 
-| primitive        | op set needed                                    | front-expressible now? | byte-blocked on |
+| primitive        | op set needed                                    | front-expressible?     | byte-blocked on |
 |------------------|--------------------------------------------------|------------------------|-----------------|
 | ChaCha / BLAKE   | VPADDD + VPXOR + rotate(VPSLLD∨VPSRLD∨VPOR)       | yes                    | VPSLLD/VPSRLD bytes |
 | Keccak-avx2      | VPXOR + VPANDN + rotate(VPSLLVQ∨VPSRLVQ∨VPORQ)    | yes                    | VPANDN + VPSLLVQ/VPSRLVQ bytes |
@@ -173,7 +172,7 @@ ChaCha/BLAKE/Keccak/SHA-mb rotation.
 
 **ML-KEM NTT is already fully wired end-to-end (semantics + lowering + bytes).**
 
-## Core-wiring worklist (to land the residual byte/op gaps for real)
+## Core-wiring worklist (byte/op gaps)
 
 Two constructors are NOT needed (bitwise/packed already cover the family). The
 precise remaining edits, all in files this prototype does NOT own:

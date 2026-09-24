@@ -23,7 +23,7 @@ register allocation collapses everything onto the reused `k[]` / physical-regist
 file the freedom is gone).
 
 This is the `Lprog`-IR sibling of
-`CatCrypt/Crypto/Optimizer/SchedulerPass.lean` (the #273 `LowCT` scheduler) and
+`CatCrypt/Crypto/Optimizer/SchedulerPass.lean` (the `LowCT` scheduler) and
 `CatCrypt/Crypto/Optimizer/RandomizedScheduleSearch.lean` (the x86 `JInstr`
 CryptOpt loop). It follows the same discipline: every reorder move is an
 **adjacent transposition of two footprint-disjoint instructions**, the only

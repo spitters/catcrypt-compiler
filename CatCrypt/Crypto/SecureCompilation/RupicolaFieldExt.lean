@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.RupicolaField
 
 `RupicolaField.lean` gives the index-free authoring combinators (`mul`/`add`/
 `sub`/`neg`, `FRef`/`FBuilder`) over the high `fieldDialect`, and demonstrates
-them on a flat 4- and 8-input dot product. This module closes its three honest
+them on a flat 4- and 8-input dot product. This module closes its three
 gaps to authoring a **full** kernel:
 
 1. **Missing op combinators.** `RupicolaField` only exposes the four prime-field
@@ -38,7 +38,7 @@ gaps to authoring a **full** kernel:
 
 ## The real-kernel demonstration (§4)
 
-We re-author a genuine kernel slice — the **Poseidon2 `x⁷` S-box fused with one
+We re-author a kernel slice — the **Poseidon2 `x⁷` S-box fused with one
 MDS-matrix row** over `ZMod p` — over `GBuilder`, using *only* the combinators:
 no hand `bindOp`, no `.there`. The S-box `x² = s·s; x³ = x²·s; x⁶ = (x³)²;
 x⁷ = x⁶·s` is a 4-deep multiply chain whose input `s` recurs at De Bruijn depth
@@ -169,7 +169,7 @@ def FBuilder.retHead {Γ : Ctxt fieldDialect} {s : FieldTy}
     **Scope.** The handle `letBind` delivers is portable from the *post-bind*
     context, so it is shift-free only while it stays the freshest binding. If the
     continuation binds further ops and then reads this value again, the value is
-    no longer at index `0` and the author must weaken it — `letBind` alone does
+    not at index `0` and the author must weaken it — `letBind` alone does
     not auto-rehome a captured result past later binds. The base-portable
     `GBuilder` (§3) closes this for inputs and the running accumulator; a fully
     rehoming *result* handle is the named residual (see §3's note). -/
@@ -202,7 +202,7 @@ Each binder (`mulI`/`addI`/`mulAccI`/`sqAcc`/`addAccI`/`fmaI`) extends the store
 hom by one `weakenOne` automatically. So the S-box chain and the products in an
 MDS row are **fully index-free** — no `.there`, no `FRef.shift`.
 
-### Residual (the honest gap that remains)
+### Residual scope
 
 A *general* multi-term sum `Σ pᵢ` must read a value that is **not** the freshest
 binding: forming `pᵢ = sᵢ·mᵢ` pushes the running sum one slot down, so `acc + pᵢ`
@@ -213,9 +213,9 @@ as a **checked-depth** witness (`g.fb.Δ = a :: s :: rest`, discharged by `rfl`)
 A *fully* shift-free general accumulator would require base-portable handles on
 **intermediate results** (not just inputs): each result ref would carry its home
 context plus an on-resolve weakening to the builder's current `Δ`. That is the
-one capability `letBind` (§2) cannot yet deliver — see its note — and the natural
-next extension of this layer (a `GRef` result handle re-homing through the stored
-hom). It is not needed for any kernel whose reuse is input-dominated. -/
+one capability `letBind` (§2) does not deliver — see its note; it would take a
+`GRef` result handle re-homing through the stored hom. It is not needed for any
+kernel whose reuse is input-dominated. -/
 
 /-- A base-portable builder: an `FBuilder` from the fixed input context `Γ₀`,
     paired with the accumulated weakening `hom : Γ₀ → Δ` so that any input
@@ -307,7 +307,7 @@ def GBuilder.fmaI {Γ₀ : Ctxt fieldDialect} {p : Nat} (g : GBuilder Γ₀)
     (x y : FRef Γ₀ (FieldTy.fp p))
     (hAcc : g.fb.Δ = FieldTy.fp p :: g.fb.Δ.tail := by rfl) : GBuilder Γ₀ :=
   let gp := g.bindStep (.fMul p) (.cons (g.resolve x) (.cons (g.resolve y) .nil))
-  -- now: gp.fb.Δ = (x·y) :: acc :: …; read acc via head1, prod via head
+  -- here gp.fb.Δ = (x·y) :: acc :: …; read acc via head1, prod via head
   gp.bindStep (.fAdd p)
     (.cons gp.head
       (.cons (gp.head1 (a := FieldTy.fp p) (s := FieldTy.fp p)

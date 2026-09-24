@@ -22,7 +22,7 @@ primitive that enables it:
 * a **RIP-relative base load** `leaq <name>(%rip), %reg`
   (`AsmPrinter.JInstr.loadSym`, semantics `JasminModel.evalInstr`), which puts the
   table base into a register so the existing register-indexed gather
-  (`JInstr.loadMemIdx`, `mov (%base,%idx,scale),%dst`, #581) can read `table[i]`.
+  (`JInstr.loadMemIdx`, `mov (%base,%idx,scale),%dst`) can read `table[i]`.
 
 ## The demo kernel `table_get(out, inp)`
 

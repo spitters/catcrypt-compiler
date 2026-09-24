@@ -17,7 +17,7 @@ set_option autoImplicit false
 Companion to `LowCTBorrowCheck.lean`. Adds `LeafSig`, a per-leaf
 metadata record that names which argument positions may legally alias
 the destination. Used by the generalized `borrowOk'` check (in
-`LowCTBorrowCheck.lean` after this lands) to admit space-optimized
+`LowCTBorrowCheck.lean`) to admit space-optimized
 routines like `bignum_double_p25519` (where input and output are the
 same buffer).
 

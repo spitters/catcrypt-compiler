@@ -9,15 +9,14 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
-# A native-Lean x86-64 target model for the emitted scalar subset (task #148/#281)
+# A native-Lean x86-64 target model for the emitted scalar subset
 
-This is the **proof-of-concept first step** toward owning the verified back-end
-(#148): a Lean-checked `lprog → x86` lowering on the small scalar instruction
-subset our kernels actually emit. It is *not* the full verified backend (which
-is CompCert-for-the-backend research scale); it establishes the framework and
-de-risks it.
+This module is a proof-of-concept of an owned verified back-end: a Lean-checked
+`lprog → x86` lowering on the small scalar instruction subset our kernels
+actually emit. It is *not* the full verified backend (which is
+CompCert-for-the-backend research scale); it establishes the framework.
 
-## Trust story (#281 — read this first)
+## Trust story (read this first)
 
 This model's instruction semantics are **not self-evidently authoritative**.
 Their faithfulness rests on **agreement with Jasmin's Rocq x86 model**
@@ -47,8 +46,8 @@ The correspondence is recorded and machine-checked in
   paper and not as a machine-checked equivalence, so neither constrains what is
   proved here. A **second independent machine-checked anchor**, the Sail x86
   model derived from the ACL2 `x86isa` model
-  (`rems-project/sail-x86-from-acl2`), is wired in `SailX86Validation.lean`
-  (#437): the owned `step`/`evalInstr` are pinned to the Sail spec functions'
+  (`rems-project/sail-x86-from-acl2`), is wired in `SailX86Validation.lean`:
+  the owned `step`/`evalInstr` are pinned to the Sail spec functions'
   exact data + flag outputs on the same concrete inputs used against Jasmin.
 
 What is **assumed by inspection** (not differentially validated) and what is
@@ -113,10 +112,9 @@ header below). `PF` is not modeled, and `OF`/`ZF`/`SF` are **modeled inert**
 on every arm other than `ADD`/`SUB`/`ADOX`, and stated so.
 `DIV`/`IDIV`, rotates, `LEA`, `SETcc`, `TEST`/`CMP`, memory
 operands + addressing modes, SIMD/AVX, calls/jumps and the byte encoder are
-deliberately **out of scope** — see `README.md` for the path to the full
-backend and the #260 cross-object-call story.
+deliberately **out of scope** of this model.
 
-## Honesty
+## Validation of each arm
 
 * `MOV`, `ADD`, `SUB`, `AND`, `OR`, `XOR`, `MUL`, `IMUL`, `SHL`, `SHR`, `CMOV`
   data-result preservation against the source `lprog` op denotation

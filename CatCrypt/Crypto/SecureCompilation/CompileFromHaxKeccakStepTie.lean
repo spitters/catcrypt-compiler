@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.Primitives.Keccak
 public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
-# #607 Phase 3b: DIRECT functional ties — Keccak ι and ρ compile-from-hax leaves = FIPS-202 steps
+# Direct functional ties — Keccak ι and ρ compile-from-hax leaves = FIPS-202 steps
 
 This module is the **ι / ρ** companion to `CompileFromHaxSha2KeccakTie` (which ties the
 Keccak χ and θ leaves). It wires two committed **compile-from-hax Keccak leaves**
@@ -25,7 +25,7 @@ onto the **abstract FIPS-202 step functions** the rest of CatCrypt reasons over:
 * Keccak ι → `CatCrypt.Crypto.Primitives.Keccak.iota a (roundConstant 0)` at cell `(0,0)`;
 * Keccak ρ → `CatCrypt.Crypto.Primitives.Keccak.rho a` at cell `(0,1)`.
 
-## What this is — and what it is NOT (honest framing)
+## What this is — and what it is NOT
 
 This is a **functional-equality** tie, not a security claim.
 
@@ -39,7 +39,7 @@ This is a **functional-equality** tie, not a security claim.
   the emitted code. Keccak is an unkeyed permutation; there is no CR/PRF claim here, only
   `<emit-form> = <FIPS-202 step fn>` at the modeled lane.
 
-## Granularity (honest, per-cell)
+## Granularity (per-cell)
 
 The committed leaves are **single-lane**: ι is modeled on lane `(0,0)` (the only lane ι
 touches, with the first round constant `RC₀ = roundConstant 0 = 1`), ρ on lane `(0,1)`
@@ -56,7 +56,7 @@ per-round constant varies (`roundConstant r`); the full ρ step rotates every la
 whole-step functional tie is claimed — the modeled lanes scale by replication (ρ) / round
 (ι), as documented in the leaf file.
 
-## Round-constant / offset notes (honest)
+## Round-constant / offset notes
 
 * `roundConstant 0 = 1` (FIPS-202 RC₀ = `0x0000000000000001`); the ι leaf hard-codes this
   first constant as the materialized register `RC₀ = 1`. Later rounds use a different

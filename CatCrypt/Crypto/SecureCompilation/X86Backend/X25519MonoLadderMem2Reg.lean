@@ -13,11 +13,11 @@ public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
-# The full `inline → forward → mem2reg → spillRA` X25519 ladder-step pipeline (#415, #555)
+# The full `inline → forward → mem2reg → spillRA` X25519 ladder-step pipeline
 
-`X25519MonoLadderKernel` (#411) inlines the field leaves into one no-call body
-`monoLadderStepBlock`; `StoreToLoadForward` (#412) forwards 40/96 frame loads to register
-moves; `SpillingRegAlloc` (#413) measured that the residual is the **round-trip
+`X25519MonoLadderKernel` inlines the field leaves into one no-call body
+`monoLadderStepBlock`; `StoreToLoadForward` forwards 40/96 frame loads to register
+moves; measurement with `SpillingRegAlloc` shows that the remaining cost is the **round-trip
 instructions** (96 `loadMem` + 68 `storeMem` per step), not register pressure — the body
 is frame-resident by construction, so no allocator removes them.
 
@@ -25,23 +25,23 @@ This module chains the full pipeline. The verified cross-op store-to-load forwar
 (`X86ComPipeline.optimizeX86Block`, the unconditional composed core) runs first, on the fused
 body, so its 40 removed loads precede mem2reg and the spilling allocator.
 
-1. **`monoLadderStepBlock`** (#411): the fused 1058-instruction no-call body. Of its 60
+1. **`monoLadderStepBlock`**: the fused 1058-instruction no-call body. Of its 60
    distinct frame cells, 20 are the harness-observable ladder coordinates + input
    (x2, z2, x3, z3, x1, four 64-bit limbs each) and **40 are step-internal scratch** (the
    per-step temporaries A, AA, B, BB, E, C, D, DA, CB, T, four limbs each).
-2. **`optimizeX86Block` / `forwardedFusedBody`** (#555): the cross-op store-to-load forwarder
+2. **`optimizeX86Block` / `forwardedFusedBody`**: the cross-op store-to-load forwarder
    applied to the fused body — 96 → 56 `loadMem`, each store-then-reload of a still-live
    register collapsed to a register `mov`. The forwarder is inert on the
    per-op blocks (`monoStep_pipeline_identity_per_op`) but fires across ops on the fused body.
    Value-faithful by the proved `optimizeX86Block_runBlock`.
-3. **`promoteSlots`** (#415): scalar replacement of the **sound** scratch cells (BB, DA, CB,
+3. **`promoteSlots`**: scalar replacement of the **sound** scratch cells (BB, DA, CB,
    read purely via `loadMem`) — each `storeMem`/`loadMem` becomes a `mov`, promoting the cell
    to a fresh register and removing the round-trip. Run on the **forwarded** body, this leaves
    42 `loadMem` (down from the 68 the mem2reg-only path left). The protected coordinate/input
    cells, and mulxMem-read scratch, are left in the frame.
-4. **`spillAlloc` / `spillReloadBlock`** (#413): the promotion lifts the cross-op state into
-   fresh register names; the working set now exceeds the pool, so the spilling allocator places
-   it (hot in registers, cold spilled and reloaded). The pin-aware variant (#426) keeps the
+4. **`spillAlloc` / `spillReloadBlock`**: the promotion lifts the cross-op state into
+   fresh register names; the working set then exceeds the pool, so the spilling allocator places
+   it (hot in registers, cold spilled and reloaded). The pin-aware variant keeps the
    MULX multiplier in `%rdx`.
 
 The metrics (`§2`) report the frame ops removed (96+68 → 42+56, **66** removed); the forwarder's
@@ -83,17 +83,17 @@ def scratchOffs : List Int :=
     ++ limbOffs slotE ++ limbOffs slotC ++ limbOffs slotD ++ limbOffs slotDA
     ++ limbOffs slotCB ++ limbOffs slotT
 
-/-! ### Promotability filter (#417 fix)
+/-! ### Promotability filter
 
 `promoteCellInstr` rewrites `loadMem`/`storeMem` but **not** `mulxMem`. A scratch slot read
 as a `mulxMem` multiplicand (the s2n multiplicand-from-memory fold) is therefore **not**
 soundly promotable: promoting its store to `mov ρ r` removes the frame write, but the
-`mulxMem` keeps reading the now-never-written cell. The #415 `promoteSlots scratchOffs`
-promoted all 40 limbs and was unsound on exactly these cells (A, AA, B, E, C, D, T are read
-by some `mulxMem`); only BB, DA, CB are read purely via `loadMem`.
+`mulxMem` keeps reading the never-written cell. `promoteSlots scratchOffs` promotes all 40
+limbs and is unsound on exactly these cells (A, AA, B, E, C, D, T are read by some
+`mulxMem`); only BB, DA, CB are read purely via `loadMem`.
 
 We compute the sound subset by dropping every offset read by a `mulxMem fp` anywhere in the
-body. This is the corrected promotability analysis: a frame slot is promotable only if read
+body. This is the promotability analysis: a frame slot is promotable only if read
 solely via `loadMem` (loadMem-only ⇒ the rewrite touches every read; no stale frame read). -/
 
 /-- Offsets read at base `fp` by some `mulxMem` or memory-operand arithmetic instruction in
@@ -105,7 +105,7 @@ def mulxReadOffs (block : List (JInstr 64)) : List Int :=
     | .imulMem _ "fp" off | .imulriMem _ "fp" off _ => some off
     | _ => none)).eraseDups
 
-/-! ### Cross-op store-to-load forwarding before mem2reg (#555)
+/-! ### Cross-op store-to-load forwarding before mem2reg
 
 The verified cross-op store-to-load forwarder
 (`X86ComPipeline.optimizeX86Block`, the unconditional composed core =
@@ -121,12 +121,12 @@ a body that already has 40 fewer loads.
 `forwardedMonoLadderStepBlock` (both unfold to `storeToLoadForward monoLadderStepBlock`), so
 its value-faithfulness is the proved `optimizeX86Block_runBlock` / the Kernel's
 `forwardedMonoLadderStepBlock_lowering_correct` — no new value obligation. The whole
-mem2reg → spill/pin pipeline below is then re-derived against this forwarded body. -/
+mem2reg → spill/pin pipeline below is derived against this forwarded body. -/
 
 /-- The **forwarded** fused body: the cross-op store-to-load forwarder (`optimizeX86Block`,
-    the #555 driver = unconditional `storeToLoadForward` core) applied to the fused step,
+    the default driver = unconditional `storeToLoadForward` core) applied to the fused step,
     forwarding 40 of the 96 frame loads (96 → 56 `loadMem`). This is the body the mem2reg +
-    spilling stack now runs on. Value-faithful by `optimizeX86Block_runBlock`. -/
+    spilling stack runs on. Value-faithful by `optimizeX86Block_runBlock`. -/
 def forwardedFusedBody : List (JInstr 64) := optimizeX86Block monoLadderStepBlock
 
 /-- The **sound** promotable scratch offsets: scratch limbs never read by a `mulxMem` in the
@@ -140,19 +140,19 @@ def soundScratchOffs : List Int :=
 
 /-- The promoted monolithic step: the **sound** scratch slots (`soundScratchOffs` — BB, DA, CB,
     read purely via `loadMem`) replaced by registers; the protected ladder-coordinate + input
-    stores, and the mulxMem-read scratch slots, are untouched. This is the #417-corrected
+    stores, and the mulxMem-read scratch slots, are untouched. This is the sound
     promotion: `promoteSlots soundScratchOffs` instead of the unsound `promoteSlots scratchOffs`. -/
 def promotedMonoStepBlock : List (JInstr 64) :=
   promoteSlots soundScratchOffs forwardedFusedBody
 
-/-! ### Sound-promotion `runBlock` differential (#417, concrete confirmation)
+/-! ### Sound-promotion `runBlock` differential (concrete confirmation)
 
 `diffState` is a concrete frame state (x2,z2,x3,z3,x1 limbs set to distinct small values). On
-it, `runBlock` of the #417-corrected promoted body agrees with `runBlock` of the mono body on
+it, `runBlock` of the sound promoted body agrees with `runBlock` of the mono body on
 all four output slots — `promotedMono_diff_sound` (`native_decide`, fast: single vector) — and
-the **old unsound** `promoteSlots scratchOffs` body **disagrees** (it computed x2 limb0
-differently), `oldPromotion_diff_unsound`. This is the empirical witness that the fix is
-sound and the #415 version was buggy; the general statement is the proved
+the **unsound** `promoteSlots scratchOffs` body **disagrees** (it computes x2 limb0
+differently), `oldPromotion_diff_unsound`. This is the empirical witness that the filtered
+promotion is sound and the unfiltered one is not; the general statement is the proved
 `Mem2Reg.promoteCell_protected_runBlock`. -/
 
 /-- A concrete frame state for the runBlock differential. -/
@@ -169,8 +169,8 @@ def diffState : JState 64 :=
 
 /-- **The forward-then-promote body is value-faithful on the output slots** (concrete state):
     `runBlock promotedMonoStepBlock` agrees with `runBlock monoLadderStepBlock` on x2,z2,x3,z3
-    limb0. This now certifies *both* the #555 cross-op store-to-load forward (`forwardedFusedBody`)
-    *and* the #417-sound mem2reg promotion together, against the original unoptimized fused body —
+    limb0. This certifies *both* the cross-op store-to-load forward (`forwardedFusedBody`)
+    *and* the sound mem2reg promotion together, against the original unoptimized fused body —
     the forwarder's `optimizeX86Block_runBlock` and the promotion's correspondence chained on a
     concrete vector. -/
 theorem promotedMono_diff_sound :
@@ -180,8 +180,8 @@ theorem promotedMono_diff_sound :
   ∧ ((runBlock diffState promotedMonoStepBlock).load "fp" 96 == (runBlock diffState monoLadderStepBlock).load "fp" 96)
     := by native_decide
 
-/-- **The old unsound `promoteSlots scratchOffs` promotion disagreed** on x2 limb0 — the #416
-    bug, here pinned as a concrete witness (mulxMem-read scratch promoted to a stale frame
+/-- **The unsound `promoteSlots scratchOffs` promotion disagrees** on x2 limb0 — pinned
+    here as a concrete witness (mulxMem-read scratch promoted to a stale frame
     cell). Kept as a regression guard. -/
 theorem oldPromotion_diff_unsound :
     ((runBlock diffState (promoteSlots scratchOffs monoLadderStepBlock)).load "fp" 0
@@ -193,22 +193,22 @@ theorem mono_loadCount : loadCount monoLadderStepBlock = 96 := by native_decide
 /-- The fused body has 68 `storeMem`. -/
 theorem mono_storeCount : storeCount monoLadderStepBlock = 68 := by native_decide
 
-/-- **The promoted body's surviving `loadMem` count (#555: forward-then-promote).** The
-    cross-op store-to-load forwarder ran first (96 → 56 `loadMem`), then mem2reg promoted the
+/-- **The promoted body's surviving `loadMem` count (forward-then-promote).** The
+    cross-op store-to-load forwarder runs first (96 → 56 `loadMem`), then mem2reg promotes the
     sound scratch slots (BB, DA, CB) to registers, removing their surviving `loadMem` reads —
-    leaving **42** loads (down from the 68 the mem2reg-only pipeline left). The 26-load drop is
+    leaving **42** loads (against the 68 a mem2reg-only pipeline leaves). The 26-load drop is
     exactly the cross-op redundant reloads the forwarder collapsed that the per-op /
     mem2reg-only path could not reach. The protected coordinate/input loads and the mulxMem-read
     scratch loads (A, AA, B, E, C, D, T) remain. -/
 theorem promoted_loadCount : loadCount promotedMonoStepBlock = 42 := by native_decide
 
 /-- **The promoted body's surviving `storeMem` count.** Every *sound* scratch-slot store
-    (BB, DA, CB) became a `mov`; the protected coordinate stores and the mulxMem-read scratch
+    (BB, DA, CB) becomes a `mov`; the protected coordinate stores and the mulxMem-read scratch
     stores remain (56 of the original 68). -/
 theorem promoted_storeCount : storeCount promotedMonoStepBlock = 56 := by native_decide
 
-/-- **Total frame ops removed by forward-then-promote (#555).** Original 96+68 = 164
-    frame ops; the stacked pipeline (cross-op store-to-load forwarding, then #417-sound mem2reg
+/-- **Total frame ops removed by forward-then-promote.** Original 96+68 = 164
+    frame ops; the stacked pipeline (cross-op store-to-load forwarding, then sound mem2reg
     promotion of BB, DA, CB) leaves 42 loads + 56 stores = 98, so it soundly removes **66**
     frame ops. This beats the mem2reg-only figure of 40 (the forwarder collapses 26 additional
     cross-op redundant reloads the per-op / mem2reg-only path could not reach). The removed ops
@@ -218,29 +218,29 @@ theorem promoted_frameOps_removed :
       - (loadCount promotedMonoStepBlock + storeCount promotedMonoStepBlock)
       = 66 := by native_decide
 
-/-- The promoted body is the same length as the fused body (each store/load became a `mov`;
-    nothing was added or dropped). -/
+/-- The promoted body is the same length as the fused body (each store/load becomes a `mov`;
+    nothing is added or dropped). -/
 theorem promoted_length : promotedMonoStepBlock.length = 1058 := by native_decide
 
-/-! ## 3. Promotion soundness (the proved whole-body TV theorem, #417)
+/-! ## 3. Promotion soundness (the proved whole-body TV theorem)
 
 `Optimizer.Mem2Reg` proves the single-cell correspondence (`promoteStore_correspondence`,
 `promoteLoad_correspondence`) **and** the whole-body soundness theorem
 `promoteCell_protected_runBlock`: for a promotable cell `(b, off)` (read only via `loadMem`,
 register-source store, fresh `ρ`), the promoted block's `runBlock` agrees with the original's
-on every protected output cell. This is what #415 deferred (KAT-gated) and #416 caught as
-unsound when applied to the full 40-cell `scratchOffs`: 7 of those slots (A, AA, B, E, C, D, T)
+on every protected output cell. Applied to the full 40-cell `scratchOffs` the promotion is
+unsound: 7 of those slots (A, AA, B, E, C, D, T)
 are read as a `mulxMem` multiplicand, which `promoteCellInstr` does **not** rewrite — promoting
 them leaves a stale frame read.
 
-The #417 fix is the promotability *analysis* (`soundScratchOffs`): drop every offset read by a
+The promotability *analysis* (`soundScratchOffs`) excludes them: drop every offset read by a
 `mulxMem`, so only the `loadMem`-only cells (BB, DA, CB — 12 limbs) are promoted. The
 hypotheses of `promoteCell_protected_runBlock` hold for exactly these cells, so the promoted
 body is **proved** value-faithful on the ladder outputs (not KAT-gated); `promotedMono_diff_sound`
-confirms it on a concrete state, and `oldPromotion_diff_unsound` pins the #415 bug as a regression
-guard. -/
+confirms it on a concrete state, and `oldPromotion_diff_unsound` pins the unfiltered promotion's
+defect as a regression guard. -/
 
-/-! ## 4. The spilling stage: the working set now exceeds the pool
+/-! ## 4. The spilling stage: the working set exceeds the pool
 
 Promotion lifts the cross-op scratch into ~40 fresh register names, so the body's distinct
 register-name count rises well past the 13-slot pool and the spilling allocator
@@ -248,18 +248,18 @@ register-name count rises well past the 13-slot pool and the spilling allocator
 the 480-byte ladder buffer) and report the spill/resident split + no overflow. -/
 
 /-- The distinct register-name count after promotion (the working-set growth that motivates
-    spilling — the round-trips that were memory are now register names). -/
+    spilling — the memory round-trips become register names). -/
 def promotedNameCount : Nat := (blockNames promotedMonoStepBlock).length
 
-/-- The register-allocation pins for the spilling allocator (#418): `fp` to `%rdi`
+/-- The register-allocation pins for the spilling allocator: `fp` to `%rdi`
     **plus** `%rdx` reserved.
 
     `%rdx` is the implicit first-source register of every `MULX`/`MULXMEM` (the
     hardware reads `src1` from `%rdx`), and the promoted body has 193 such multiplies.
-    The bare per-op emit kept `src1` in `%rdx` via a `yd → %rdx` pin (`mulxPinsFor`);
-    the spilling allocator was oblivious to that pin and handed `%rdx` to 13 ordinary
-    register-resident values, each of which a later `mulx` then clobbered (the #417
-    garbage-output defect: e.g. `cm_zr`/`cb_yd` landed on `%rdx`). Reserving `%rdx`
+    The bare per-op emit keeps `src1` in `%rdx` via a `yd → %rdx` pin (`mulxPinsFor`);
+    a spilling allocator oblivious to that pin hands `%rdx` to 13 ordinary
+    register-resident values, each of which a later `mulx` clobbers (e.g.
+    `cm_zr`/`cb_yd` on `%rdx`, producing garbage output). Reserving `%rdx`
     here keeps it free, and the per-program-point printer (`AsmPrinter.mulxRdxSetup`)
     materialises each `mulx`'s `src1` into `%rdx` immediately before the instruction.
     A reserved-name pin (`"__rdx_reserved__"`) consumes the register without naming a
@@ -267,7 +267,7 @@ def promotedNameCount : Nat := (blockNames promotedMonoStepBlock).length
 def framePinsRA : GpAlloc := [("fp", "%rdi"), ("__rdx_reserved__", "%rdx")]
 
 /-- The spill decisions for the promoted body: linear-scan, `fp` pinned and `%rdx`
-    reserved (`framePinsRA`, #418), spill cells from a base above the 480-byte ladder
+    reserved (`framePinsRA`), spill cells from a base above the 480-byte ladder
     frame. -/
 def promotedSpillDecisions : List (String × Slot) :=
   spillAlloc framePinsRA 512 promotedMonoStepBlock
@@ -276,12 +276,12 @@ def promotedSpillDecisions : List (String × Slot) :=
 def pipelinedStepBlock : List (JInstr 64) :=
   spillReloadBlock promotedSpillDecisions "fp" promotedMonoStepBlock
 
-/-- **The spill-materialised body is denotation-faithful (#418, concrete state).** On `diffState`,
+/-- **The spill-materialised body is denotation-faithful (concrete state).** On `diffState`,
     `runBlock pipelinedStepBlock` agrees with `runBlock promotedMonoStepBlock` on all four output
     slots — the spill stores / reload loads the allocator inserts are semantics-transparent (each
     reload is a no-op under `SpillingRegAlloc.SpillValid`, established by the matching store).
     Single-vector `native_decide` (fast). This is the in-Lean `runBlock`-faithfulness gate the
-    #418 deliverable re-runs before emitting: the spill-aware instruction stream computes the same
+    emitter re-runs before emitting: the spill-aware instruction stream computes the same
     output as the promoted body, which (by `promotedMono_diff_sound`) computes the same as the
     monolithic body — so `runBlock pipelined = promoted = mono` on the observable slots. -/
 theorem pipelined_diff_faithful :
@@ -291,9 +291,9 @@ theorem pipelined_diff_faithful :
   ∧ ((runBlock diffState pipelinedStepBlock).load "fp" 96 == (runBlock diffState promotedMonoStepBlock).load "fp" 96)
     := by native_decide
 
-/-- **The spilling allocator spills on the promoted body.** Promotion pushed the working
-    set past the pool, so `spillAlloc` produces ≥ 1 spill — the #413 allocator is now the
-    right tool (it was inert on the frame-resident pre-promotion body). -/
+/-- **The spilling allocator spills on the promoted body.** Promotion pushes the working
+    set past the pool, so `spillAlloc` produces ≥ 1 spill — the spilling allocator is the
+    right tool here (it is inert on the frame-resident pre-promotion body). -/
 theorem promoted_spillAlloc_spills :
     0 < spillCount promotedSpillDecisions := by native_decide
 
@@ -305,7 +305,7 @@ theorem promoted_spillAlloc_wellformed :
 
 /-! ## 5. First-fit `allocGp` overflows the promoted body — the spilling allocator is forced
 
-The reason the #413 spilling allocator is the *right* tool only after mem2reg: the
+The reason the spilling allocator is the *right* tool only after mem2reg: the
 pre-promotion fused body fits the GP pool by construction (frame-resident, peak pressure 14
 slots round-tripped through memory), so first-fit `allocGp` does NOT overflow it and the
 spiller is inert. mem2reg lifts the 40 scratch round-trips into ~200 register names, so the
@@ -332,7 +332,7 @@ spill-materialised instruction stream (`pipelinedStepBlock`); `AsmPrinter.render
 (§2b) renders each instruction under its `SpillView` **at its program point**: reloads before,
 the implicit-`%rdx` MULX src1 materialised in place (`mulxRdxSetup`), stores after.
 
-**Per-program-point register realisation (#418).** Two facts make the resident `name → reg`
+**Per-program-point register realisation.** Two facts make the resident `name → reg`
 map a faithful per-program-point realisation: `residentAlloc_rdx_reserved` (no value lives in
 `%rdx`, the MULX implicit src1) and `residentAlloc_no_live_conflict` (no two simultaneously-live
 names share a register). The model-level gate `pipelined_diff_faithful` confirms
@@ -341,23 +341,23 @@ names share a register). The model-level gate `pipelined_diff_faithful` confirms
 denotation-faithful and the **KAT vs s2n `curve25519_x25519` passes byte-identically** (RFC 7748
 §5.2 vec1+vec2 + 5000 random, `bench/x25519_ladder_compare/`).
 
-**Static outcome (#555).** Stacking the cross-op store-to-load forwarder *before*
+**Static outcome.** Stacking the cross-op store-to-load forwarder *before*
 mem2reg + spill (`forwardedFusedBody := optimizeX86Block monoLadderStepBlock`) drops the promoted
 body from 68 to **42** `loadMem` (the forwarder collapses 26 additional cross-op redundant reloads
 the per-op / mem2reg-only path could not reach), so the stacked pipeline removes **66** frame ops
-(96+68 → 42+56) rather than mem2reg-alone's 40. The pin-aware variant (#426) keeps the MULX
+(96+68 → 42+56) rather than mem2reg-alone's 40. The pin-aware variant keeps the MULX
 multiplier resident in `%rdx`, eliding the per-multiply re-materialisation (`pinned_fewer_rdx_movs`).
 
-**Cyc outcome: measured by the orchestrator, not asserted here.** The earlier mem2reg-only
-spilled stack measured **1.797× s2n** against a **1.609× s2n** monolithic baseline; the #555
+**Cycle outcome: measured externally, not asserted here.** The mem2reg-only
+spilled stack measures **1.797× s2n** against a **1.609× s2n** monolithic baseline; the
 forward-first ordering removes 26 more loads before the allocator runs. Whether those eliminated
-loads translate to a cyc win or are ILP-hidden (as the Keccak 481-reload case was) is for the
+loads translate to a cycle win or are ILP-hidden (as in the Keccak 481-reload case) is for the
 runtime KAT + cyc harness to decide — the in-Lean theorems below certify only the value-faithful
 static load-count reduction. -/
 
-/-! ## 7. Spill-aware emission (#416): render the `Slot` decisions to gas
+/-! ## 7. Spill-aware emission: render the `Slot` decisions to gas
 
-`AsmPrinter.renderJInstrSpilled` (the additive spill-aware path, #416) consumes a
+`AsmPrinter.renderJInstrSpilled` (the additive spill-aware path) consumes a
 per-instruction `SpillView`. We build the view from `promotedSpillDecisions`:
 
 * the **resident allocation** maps `fp → %rdi` (the pinned frame base) plus every
@@ -429,17 +429,17 @@ theorem pipelinedBody_no_unallocated :
     (pipelinedBodyLines.any (fun l => BignumMontMulKernel.hasSub l "<UNALLOCATED")) = false := by
   native_decide
 
-/-! ### Per-program-point register realisation (#418): the alias + `%rdx` fixes
+/-! ### Per-program-point register realisation: the alias + `%rdx` conditions
 
 `pipelinedBody_no_unallocated` is **necessary but not sufficient**: it does not catch two
-defects the #416 global-map renderer had. #418 closes both.
+defects a global-map renderer can have. The checks below exclude both.
 
-**Defect 1 — the `%rdx` MULX-src1 clobber (the actual #417 garbage cause).** Every
+**Defect 1 — the `%rdx` MULX-src1 clobber.** Every
 `MULX`/`MULXMEM` reads its first source from the implicit hardware register `%rdx` (193 such
-multiplies in this body). The bare per-op emit kept src1 in `%rdx` via a `yd → %rdx` pin
-(`mulxPinsFor`); the spilling allocator was oblivious to that pin and handed `%rdx` to 13
+multiplies in this body). The bare per-op emit keeps src1 in `%rdx` via a `yd → %rdx` pin
+(`mulxPinsFor`); a spilling allocator oblivious to that pin hands `%rdx` to 13
 ordinary register-resident values (`cb_yd`, `cm_zr`, `z2_t7`, …), each then clobbered by a
-later `mulx`. **Fix:** reserve `%rdx` in the allocator (`framePinsRA`) so no value is resident
+later `mulx`, producing garbage output. **Remedy:** reserve `%rdx` in the allocator (`framePinsRA`) so no value is resident
 there, and have the per-program-point printer materialise each `mulx`'s src1 into `%rdx`
 immediately before the instruction (`AsmPrinter.mulxRdxSetup`).
 
@@ -450,13 +450,12 @@ resident map is in fact conflict-free on this body — `residentAlloc_no_live_co
 directly (no two names whose live ranges overlap share a resident register). The per-instruction
 spill reloads (into the reserved `%r14`/`%r15`) and the `%rdx` setup never touch a
 simultaneously-live resident value, so rendering each instruction under `residentAlloc` realises
-exactly the per-program-point binding the allocator decided. This is the per-program-point
-register assignment the global #416 renderer lacked. -/
+exactly the per-program-point binding the allocator decided. -/
 
-/-- **`%rdx` is reserved from the resident pool (#418).** No register-resident name is assigned
+/-- **`%rdx` is reserved from the resident pool.** No register-resident name is assigned
     `%rdx`, so the implicit-`%rdx` MULX src1 the per-program-point printer materialises before
-    each `mulx` (`AsmPrinter.mulxRdxSetup`) can never clobber a live resident value. This is the
-    fix for the #417 garbage output (where `%rdx` held `cb_yd`/`cm_zr`/`z2_t7` across a `mulx`). -/
+    each `mulx` (`AsmPrinter.mulxRdxSetup`) can never clobber a live resident value (such as
+    `cb_yd`/`cm_zr`/`z2_t7` held in `%rdx` across a `mulx`). -/
 theorem residentAlloc_rdx_reserved :
     (residentAlloc.filter (fun p => p.2 == "%rdx")).isEmpty = true := by native_decide
 
@@ -470,12 +469,12 @@ def liveOverlap (a b : String) : Bool :=
   | some (_, da, ea), some (_, db, eb) => da ≤ eb ∧ db ≤ ea
   | _, _ => false
 
-/-- **The resident allocation is conflict-free on simultaneously-live names (#418).** For every
+/-- **The resident allocation is conflict-free on simultaneously-live names.** For every
     pair of distinct names that `residentAlloc` maps to the **same** physical register, their
     live ranges do **not** overlap. Hence the global `name → reg` map realises a valid
     per-program-point binding: at no program point are two live values rendered to one register.
     This is the post-render conflict check that `pipelinedBody_no_unallocated` (sentinel-only)
-    could not provide; combined with the proved `runBlock pipelined = promoted = mono` chain it
+    does not provide; combined with the proved `runBlock pipelined = promoted = mono` chain it
     makes the emitted register text denotation-faithful. -/
 theorem residentAlloc_no_live_conflict :
     (residentAlloc.flatMap (fun p =>
@@ -506,13 +505,13 @@ def emitMain : IO Unit := do
     pipelinedStepAsm
   IO.println "wrote gen_com/x25519_mono_step_spilled_x86_from_lean.s (inline→mem2reg→spillRA pipelined step)"
 
-/-! ## 8. Pin-aware allocation: keep the MULX multiplier in `%rdx` (#426)
+/-! ## 8. Pin-aware allocation: keep the MULX multiplier in `%rdx`
 
-The #418 measured outcome (1.797× s2n, *worse* than the monolithic 1.609×) had two
-named structural causes: (1) mem2reg dissolved the `yd → %rdx` MULX pin, so the
-per-program-point printer re-materialised `%rdx` with a `movq` before each of the 193
-multiplies; (2) promotion lifted scratch past the 11-GP pool, forcing 40 spills'
-reload/store traffic. #426 closes cause (1): the **pin-aware allocator**
+The measured outcome of the §7 spilled body (1.797× s2n, *worse* than the monolithic
+1.609×) has two structural causes: (1) mem2reg dissolves the `yd → %rdx` MULX pin, so the
+per-program-point printer re-materialises `%rdx` with a `movq` before each of the 193
+multiplies; (2) promotion lifts scratch past the 11-GP pool, forcing 40 spills'
+reload/store traffic. This section addresses cause (1): the **pin-aware allocator**
 (`SpillingRegAlloc.spillAllocPinned`) binds every MULX-multiplier name (the `<tag>yd`
 family — each leaf's `src1`) directly to `%rdx`, and the printer's `mulxRdxSetup` then
 **elides** the `movq → %rdx` because `src1` is already resident in `%rdx`. This mirrors
@@ -534,12 +533,13 @@ def promotedSpillDecisionsPinned : List (String × Slot) :=
 def pipelinedStepBlockPinned : List (JInstr 64) :=
   spillReloadBlock promotedSpillDecisionsPinned "fp" promotedMonoStepBlock
 
-/-- **The pin-aware spill-materialised body is denotation-faithful (#426, concrete state).**
+/-- **The pin-aware spill-materialised body is denotation-faithful (concrete state).**
     On `diffState`, `runBlock pipelinedStepBlockPinned` agrees with `runBlock
     promotedMonoStepBlock` on all four output slots — the pin only changes which register
     the multiplier names get (`%rdx`), adding no spill traffic, so the body still denotes
     the promoted body (which by `promotedMono_diff_sound` denotes the monolithic body).
-    This is the in-Lean `runBlock`-faithfulness gate #426 re-runs before emitting. -/
+    This is the in-Lean `runBlock`-faithfulness gate the pinned emitter re-runs before
+    emitting. -/
 theorem pipelinedPinned_diff_faithful :
     ((runBlock diffState pipelinedStepBlockPinned).load "fp" 0  == (runBlock diffState promotedMonoStepBlock).load "fp" 0)
   ∧ ((runBlock diffState pipelinedStepBlockPinned).load "fp" 32 == (runBlock diffState promotedMonoStepBlock).load "fp" 32)
@@ -547,7 +547,7 @@ theorem pipelinedPinned_diff_faithful :
   ∧ ((runBlock diffState pipelinedStepBlockPinned).load "fp" 96 == (runBlock diffState promotedMonoStepBlock).load "fp" 96)
     := by native_decide
 
-/-- **The MULX-multiplier names have pairwise-disjoint live ranges (#426).** So binding
+/-- **The MULX-multiplier names have pairwise-disjoint live ranges.** So binding
     them all to the single `%rdx` is a valid per-program-point allocation: at no point are
     two multipliers simultaneously live. This is the soundness side-condition for the pin. -/
 theorem pinned_multipliers_rdx_disjoint :
@@ -586,7 +586,7 @@ def viewOfPinned (i : JInstr 64) : AsmPrinter.SpillView where
 
 /-- The pin-aware spill-materialised body lines: each promoted-body instruction rendered
     with reloads before / stores after; the `mulxRdxSetup` `movq → %rdx` is elided where
-    the multiplier is already `%rdx`-resident (the #426 win, every multiply). -/
+    the multiplier is already `%rdx`-resident (on every multiply). -/
 def pipelinedBodyLinesPinned : List String :=
   promotedMonoStepBlock.flatMap (fun i => AsmPrinter.renderJInstrSpilled (viewOfPinned i) i)
 
@@ -607,7 +607,7 @@ theorem residentAllocPinned_rdx_only_multipliers :
 
 /-! ### Per-multiply `movq → %rdx` elision: the metric the win turns on
 
-The #418 spill printer (`pipelinedBodyLines`) emits one `movq …, %rdx` before every
+The §7 spill printer (`pipelinedBodyLines`) emits one `movq …, %rdx` before every
 multiply (the `mulxRdxSetup` re-materialisation). The pin-aware printer
 (`pipelinedBodyLinesPinned`) elides them all, because each multiplier is already
 `%rdx`-resident. We count the surviving `, %rdx`-target `movq`s in both bodies; the
@@ -618,10 +618,10 @@ def countRdxMovs (lines : List String) : Nat :=
   (lines.filter (fun l => BignumMontMulKernel.hasSub l ", %rdx"
     ∧ BignumMontMulKernel.hasSub l "movq")).length
 
-/-- **The pin-aware printer emits strictly fewer `movq → %rdx` than the #418 spill
-    printer.** The per-multiply MULX-src1 re-materialisations the #418 body inserts (one
+/-- **The pin-aware printer emits strictly fewer `movq → %rdx` than the §7 spill
+    printer.** The per-multiply MULX-src1 re-materialisations the §7 body inserts (one
     per multiply) are eliminated, because the multiplier is already `%rdx`-resident — the
-    instruction-count cause of the #418 1.797× regression. -/
+    instruction-count cause of the §7 body's 1.797× slowdown. -/
 theorem pinned_fewer_rdx_movs :
     countRdxMovs pipelinedBodyLinesPinned < countRdxMovs pipelinedBodyLines := by
   native_decide

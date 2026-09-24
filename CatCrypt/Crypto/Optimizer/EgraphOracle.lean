@@ -12,10 +12,10 @@ public import Mathlib.Data.Fintype.Prod
 public import Mathlib.Data.BitVec
 
 /-!
-# Untrusted rewrite oracle with a verified denotation-equivalence gate (#541)
+# Untrusted rewrite oracle with a verified denotation-equivalence gate
 
-This file adds an **oracle-driven** `Com → Com` optimisation stage on top of the
-verified `#274` equality-saturation / peephole engines, with a hard separation
+This module adds an **oracle-driven** `Com → Com` optimisation stage on top of
+the verified equality-saturation (`Egraph`) / peephole engines, with a hard separation
 between *search* (untrusted) and *acceptance* (verified):
 
 * **Search (untrusted, NOT in the TCB).** A `RewriteOracle` is *any* function
@@ -47,8 +47,8 @@ register return type (`t = .reg w'`), the valuation domain
 `Ctxt.Valuation Γ = HVector (BitVec ·) Γ` is a `Fintype`, and `⟦t⟧ = BitVec w'`
 has `DecidableEq`; hence equality of the two denoted functions is decidable
 (`Fintype.decidableEqPiFintype`). The gate therefore *reproves* the very
-`Com.denote lhs = Com.denote rhs` obligation the `#274` passes discharge by hand
-— but now for an *arbitrary* proposed `Com`, not a fixed rule set.
+`Com.denote lhs = Com.denote rhs` obligation the `Egraph` passes discharge by hand,
+for an *arbitrary* proposed `Com` in place of a fixed rule set.
 
 ## What is proved
 
@@ -58,7 +58,7 @@ has `DecidableEq`; hence equality of the two denoted functions is decidable
   `o` and valuation `V` — the headline preservation theorem.
 * `oracleOpt_ctSafe` : CT-safety preserved (the dialect is branch-free, so any
   `Com` the oracle could produce is straight-line).
-* Re-derivation: the `#274` saturation engine, used *as an untrusted oracle*,
+* Re-derivation: the `Egraph` saturation engine, used *as an untrusted oracle*,
   produces the fused `x * 0 ↦ 0` rewrite, the gate accepts it (same denotation),
   and the accepted result is strictly cheaper (`comCost 5 → 2`). This shows
   (a) the oracle finds the rewrite, (b) the verified gate passes, (c) the output
@@ -150,7 +150,7 @@ noncomputable def gate {Γ : Ctxt jasminDialect} {w' : Nat} (hΓ : RegCtxt Γ)
   haveI : Fintype (Ctxt.Valuation Γ) := regCtxtFintypeValuation hΓ
   if h : cand.denote = input.denote then some ⟨h⟩ else none
 
-/-- **Gate soundness.** Any proof the gate returns is a genuine denotation
+/-- **Gate soundness.** Any proof the gate returns is a denotation
 equality. (Immediate from the gate returning the witness of its own decision —
 the point is that this is the *only* exit through which a rewrite is admitted.) -/
 theorem gate_sound {Γ : Ctxt jasminDialect} {w' : Nat} (hΓ : RegCtxt Γ)
@@ -245,13 +245,13 @@ theorem oracleOpt_ctSafe {Γ : Ctxt jasminDialect} {w' : Nat} (hΓ : RegCtxt Γ)
     ctSafeComJ (oracleOpt hΓ o c) = ctSafeComJ c := by
   rw [ctSafeComJ_true (oracleOpt hΓ o c), ctSafeComJ_true c]
 
-/-! ## 5. A concrete oracle built from the #274 engines (untrusted)
+/-! ## 5. A concrete oracle built from the `Egraph` engines (untrusted)
 
-We package the `#274` bounded equality-saturation engine (under a fixed
+We package the `Egraph` bounded equality-saturation engine (under a fixed
 known-constant env builder) and the peephole as an *oracle*. Crucially we do
 **not** rely on their preservation theorems here — they are used purely as a
 heuristic proposer, and the gate re-verifies. This demonstrates the architecture:
-the same engine that #274 proves correct by hand is, here, an untrusted search
+the same engine that `Egraph` proves correct by hand is, here, an untrusted search
 component whose output is independently checked. -/
 
 /-- Build the all-`none` known-constant env for a register-only context (the safe
@@ -260,7 +260,7 @@ def emptyKEnv : {Γ : Ctxt jasminDialect} → RegCtxt Γ → KEnv Γ
   | [], .nil => .nil
   | (.reg _ :: _), .cons hΓ => .cons none (emptyKEnv hΓ)
 
-/-! ## 6. Re-derivation of the `#274` `x * 0 ↦ 0` kernel through the oracle
+/-! ## 6. Re-derivation of the `Egraph` `x * 0 ↦ 0` kernel through the oracle
 
 `Egraph.demoMulZero` is `x ↦ x * 0` via an explicit `regConst 0` binder. We run an
 oracle (here a direct wiring of the saturation engine) and gate its proposal.
@@ -290,7 +290,7 @@ def oracleProposal : Com jasminDialect [.reg 32] (.reg 32) :=
 
 /-- **(a) The oracle finds the rewrite.** The proposal's cost is strictly below the
 input's (the `mul`, cost 4, became an `and`, cost 1) — the search produced a
-genuinely different, cheaper `Com`. -/
+different, cheaper `Com`. -/
 theorem oracle_finds_rewrite : comCost oracleProposal < comCost demoMulZero := by
   decide
 
@@ -372,7 +372,7 @@ theorem demo_oracleOpt_ctSafe :
 
 /-! ## 7. A negative case: a bogus oracle is rejected, input is kept
 
-To show the gate genuinely filters: an oracle that proposes a *non-equivalent*
+To show the gate filters: an oracle that proposes a *non-equivalent*
 `Com` (e.g. `x ↦ x`, the identity copy `or x x`, which on `x = 42` gives `42`, not
 `0`) is rejected, and the pass falls back to the input unchanged. This is the
 "untrusted search can be wrong; the checker catches it" guarantee. -/

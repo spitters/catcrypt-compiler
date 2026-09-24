@@ -17,7 +17,7 @@ safegcd-62 divstep modular inverse
 (`CatCrypt/Crypto/Vale/SafegcdDivstep62Emit.lean`, READ-ONLY — we apply
 the pass here, we do not edit the kernel).
 
-The hot path that #209 / the bench README (#264) flag as the residual
+The hot path that the bench README flags as the residual
 cost is `accAddProd`: an open-coded i128 multiply-accumulate.  Each
 `accAddProd acc a b` is a straight-line run of `RScalarSetExpr`s:
 
@@ -44,7 +44,7 @@ the second issues in the latency shadow of the first.
    fuelled schedule doesn't reduce in the kernel), showing the two
    `#IMUL` high-word multiplies (`phi1`, `phi2`) are pulled to the front;
    `accBlock_schedule_reorders` confirms the order changed.  The two
-   load-bearing theorems below (`acc_schedule_denote_eq`,
+   main theorems below (`acc_schedule_denote_eq`,
    `acc_schedule_isCT_eq`) are NOT `decide`/`native_decide` — they are
    axiom-clean instances of the proven pass theorems.
 
@@ -61,7 +61,7 @@ the second issues in the latency shadow of the first.
 
 The companion C micro-bench (`bench/mpn_invert_safegcd_compare/
 sched_microbench.c`) measures the two issue orders' cyc/op; see the
-honest read-out in this file's closing docstring and the bench output.
+read-out in this module's closing docstring and the bench output.
 -/
 
 @[expose] public section
@@ -190,8 +190,8 @@ answered by the C micro-bench:
 **Measured result** (`bench/mpn_invert_safegcd_compare/sched_microbench.c`,
 Ryzen 7 PRO 7840U / Zen4, MIN-of-REPS rdtsc): scheduled and unscheduled
 issue orders tie at ~3 cyc/op (ratio 1.000), with KAT byte-identity
-(0 mismatch / 100000).  This is an **informative negative result** in the
-spirit of #209: the static ILP schedule is a free, verified transform but
+(0 mismatch / 100000).  This is a **negative result**: the static ILP schedule
+is a free, verified transform but
 yields no measurable speedup on this wide-OoO core, because the hardware
 already reorders the two independent multiplies.  Static scheduling of
 this shape pays on narrow-OoO / in-order targets, not Zen4-class CPUs. -/

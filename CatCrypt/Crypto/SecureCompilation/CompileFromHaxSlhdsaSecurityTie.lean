@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie
 
 /-!
-# #607 security tie: the compile-from-hax SLH-DSA (`sha2-*`) WOTS+ chain leaves
+# Security tie: the compile-from-hax SLH-DSA (`sha2-*`) WOTS+ chain leaves
   realize the FIPS-180-4 round engine the tweakable-hash chain step `F` runs
 
 `CompileFromHaxSlhdsaChain` proves the verified compiler *emits* the two WOTS+
@@ -30,7 +30,7 @@ instance (the FIPS-180-4 engine `Sha256Verified.sha256RoundVerified`) and the
 proving them equal field-by-field via `chain_combiners_eq_round_a`, and feeding
 that equality to `tie_transfer`.
 
-## Honest scope — this is the SHA-256 family, and a functional-engine tie
+## Scope — this is the SHA-256 family, and a functional-engine tie
 
 * **Family.** This ties the **`sha2-*` SLH-DSA parameter sets** (FIPS 205
   §10.2/§11.2), whose WOTS+/FORS tweakable hashes run the SHA-256 compression

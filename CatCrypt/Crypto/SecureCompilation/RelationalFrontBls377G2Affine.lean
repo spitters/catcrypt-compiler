@@ -30,7 +30,7 @@ denominators).
 **explicit** conjugate-over-norm inverse `inv ξ x` (built *over* the `commRing ξ`
 instance — no `Field` instance, no diamond) together with the cancellation law
 `mul_inv (hx : norm ξ x ≠ 0) : x * inv ξ x = 1`.  This module uses that explicit
-inverse to genuinely close the deferred `G2` affine group-law tie.
+inverse to close the deferred `G2` affine group-law tie.
 
 ## What this module proves
 
@@ -58,7 +58,7 @@ from `mul_inv`/`inv_mul` by uniqueness of two-sided inverses, **not** from a
 `Field` instance).  All multiplications stay opaque over `commRing ξ`; the
 cancellation is the pure-algebra `c·b·inv b = c·(b·inv b) = c·1 = c` shape.
 
-## Honesty boundary
+## Scope
 
 The realization is conditioned on the slope denominator's norm being nonzero
 (`norm ξ (2y) ≠ 0` for the double, `norm ξ (x₂−x₁) ≠ 0` for the add).  That is

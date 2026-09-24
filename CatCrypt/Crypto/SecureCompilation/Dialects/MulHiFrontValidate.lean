@@ -25,7 +25,7 @@ needed for the BabyBear-field rolled loop bodies.
 
 A Barrett-style body combining the high word and the low word,
 `(a *hi b) ^ (a * b)`, is assigned via `RScalarSetExpr` and pushed through the
-`CProg`-free front. This file confirms, computationally:
+dialect front. This module confirms, computationally:
 
 1. the body **translates** (`translateDialectControlTop … = some`);
 2. the body **lowers** to a `Com jasminDialect` (via `cryptoDialectToJasminCom`),
@@ -33,7 +33,7 @@ A Barrett-style body combining the high word and the low word,
 3. the front's emitted dialect program **denotes to the same value** as the
    `SExpr`'s pure-Lean wrapping-`u64` evaluator `SExpr.evalBV` on sample inputs
    (`denote = spec`) — the front-arm correctness gate — including inputs whose
-   high word is non-zero, so the `mulhi` leg is genuinely exercised.
+   high word is non-zero, so the `mulhi` leg is exercised.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
@@ -61,7 +61,7 @@ def testVM : VarMap testΓ := (VarMap.empty.bind "b").bind "a"
 def testE : SExpr :=
   .SXor (.SMulHiU (.SVar "a") (.SVar "b")) (.SMul (.SVar "a") (.SVar "b"))
 
-/-- A pure high-multiply body `a *hi b` (isolates the new arm). -/
+/-- A pure high-multiply body `a *hi b` (isolates the `SMulHiU` arm). -/
 def testHi : SExpr := .SMulHiU (.SVar "a") (.SVar "b")
 
 /-- The whole `LowCT` leaf: `out := (a *hi b) ^ (a * b)`. -/
@@ -89,7 +89,7 @@ def frontDenote (e : SExpr) (av bv : BitVec 64) : Option (BitVec 64) :=
 /-! ## 1. The body translates and lowers -/
 
 /-- The `RScalarSetExpr` body (with the `SMulHiU` leg) translates through the
-    `CProg`-free control front. -/
+    dialect control front. -/
 theorem testC_translates : (translateDialectControlTop testVM testC).isSome := by
   native_decide
 

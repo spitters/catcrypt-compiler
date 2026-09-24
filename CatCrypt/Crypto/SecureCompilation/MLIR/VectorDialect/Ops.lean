@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 /-!
 # MLIR `vector` dialect — Ops
 
-Abstract operation alphabet for the new MLIR-style VectorDialect (task #183).
+Abstract operation alphabet for the MLIR-style VectorDialect.
 
 The constructors mirror MLIR's `vector` / `arith`-at-vector-type alphabet but
 remain **carrier-polymorphic** in the element type `α` and length `n`. This is
@@ -23,9 +23,9 @@ the deliberate contrast with `VIR/MlirVectorDialect.lean`, which pins lanes to
   (`VectorOp → CatCrypt Com → x86vector / arm_neon`) can specialise `α` at
   the *lowering* layer, not the *op* layer — same shape as MLIR's design.
 
-## First-landing op subset
+## Core op subset
 
-We declare a minimal viable set (cf. the task spec):
+The core ops:
 
 | op            | per-lane meaning                                          |
 |---------------|-----------------------------------------------------------|
@@ -38,9 +38,8 @@ We declare a minimal viable set (cf. the task spec):
 | `shuffle`     | `fun i => v (π i)`                                        |
 | `reduce`      | left fold over lanes                                      |
 
-`fma`, `shuffle`, `reduce` are declared but only `broadcast`, `extract`,
-`insert`, `add`, `mul` are exercised in `Lowering.lean` for the first
-landing. The remainder ride along for free; their lowerings are Phase-2.
+`fma`, `shuffle`, `reduce` are declared but have no lowering in
+`Lowering.lean`.
 -/
 
 @[expose] public section

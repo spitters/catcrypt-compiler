@@ -31,7 +31,7 @@ arrays, with the loop counter as the array index) into the
 loop-counter variable feeds `RArrLoad`/`RArrStore` as a per-trip dynamic index
 (`memrefGetDyn`/`memrefSetDyn` → `stackLoad`/`stackStore` SIB `LOADIDX`/`STOREIDX`
 at the runtime trip counter), exactly the `N = 4` PoC pattern of
-`MAYO/KernelFromRustcmdFrontEmit.lean` — only now the index is the *loop binder*,
+`MAYO/KernelFromRustcmdFrontEmit.lean`, except that the index is the *loop binder*,
 not a materialised constant, and the trip is a real counted loop.
 
 ```
@@ -48,7 +48,7 @@ The rolled-loop structure is an **export-level** `ComL.forLoopN` wrapper (the
 loop nodes live in `ComL`, an extension of `Com jasminDialect`, not in `LowCT` or
 `catCryptDialect`). Every existing rolled emit (QRUOV/SDitH/MAYO `*RolledEmit`)
 is built by hand-authoring exactly such a `ComL.forLoopN` over a hand-built body
-`Com`. This module replaces the *hand-built body* with the **verified front**:
+`Com`. In this module the body is produced by the **verified front** instead:
 the loop body is plain covered LowCT, front-compiled by the existing
 `translateDialectControl`, so:
 
@@ -293,7 +293,7 @@ the `vsimd.*` / `vpsrldq.*` / `clmul.*` intercepts, and *delegates every
 non-vsimd arm* (including `RArrLoad`/`memrefGetDyn` at the loop counter, the
 array indexing that feeds the SIMD op) to `translateDialectControl` unchanged.
 So the loop body's covered fragment is a strict *superset* of the scalar body's:
-scalar arms behave identically, plus the SIMD arms are now caught.
+scalar arms behave identically, and the SIMD arms are caught as well.
 
 Everything downstream is shared verbatim with the scalar path: the front output
 is capped with `ret accName` (`frontLoopBodyCDV`), lowered by the SAME verified
@@ -307,7 +307,7 @@ rolled loop with ONE body copy and a real `jne` back-edge. -/
     returning the `Com catCryptDialect` that ends with `ret accName`. Identical to
     `frontLoopBodyCD` except the front is `translateDialectControlV`, so a body
     that is (or contains) a `.sword 128` `vsimd`-tagged op at the loop index is
-    now covered; a purely scalar body front-compiles identically (the vsimd front
+    covered; a purely scalar body front-compiles identically (the vsimd front
     delegates every non-vsimd arm to `translateDialectControl`). -/
 def frontLoopBodyCDV {Γbody : Ctx} {accCTy : CryptoTy}
     (vmBody : VarMap Γbody) (accName : String) (body : LowCT) :

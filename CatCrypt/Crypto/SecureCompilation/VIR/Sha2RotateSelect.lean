@@ -10,17 +10,17 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
 public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
 
 /-!
-# Native-rotate instruction selection for SHA-2 Σ/σ (#497)
+# Native-rotate instruction selection for SHA-2 Σ/σ
 
 SHA-2's four sigma functions `Σ0, Σ1, σ0, σ1` (FIPS 180-4 §4.1) are built from
-right-rotations `rotr(x, n)`. `Sha2Emit.emitRotr` currently lowers each as the
+right-rotations `rotr(x, n)`. `Sha2Emit.emitRotr` lowers each as the
 **three-op** shift-or idiom
 
     scA = src >>> n;   scB = src <<< (w-n);   out = scA ||| scB
 
 (two shifts + an or, plus two scratch slots). x86 has `ROR r{w}, imm` (one op,
 clobbers flags) and BMI2 `RORX r{w}, r{w}, imm` (one op, flag-free); the jasmin
-dialect now carries `JasminOp.rorImm` (#497) denoting `BitVec.rotateRight`.
+dialect carries `JasminOp.rorImm` denoting `BitVec.rotateRight`.
 
 This module is the **rotate insn-selection** for SHA-2: `emitRotrNative` emits a
 single `rorImm w n` op in place of the three-op chain, and
@@ -134,7 +134,7 @@ theorem emitRotrNative_value_eq_emitRotr_value {w : Nat} {Γ : Ctxt jasminDialec
 
 `compressComRor` is `Sha2Emit.compressCom` with every `emitRotr` (3-op
 shift-or) swapped for `emitRotrNative` (single `rorImm`). It is the `Com` the
-native-rotate bench driver emits; `JasminAbiEmit.emitBodyReg` now renders the
+native-rotate bench driver emits; `JasminAbiEmit.emitBodyReg` renders the
 `rorImm` op as a single `#ROR_w`. The sigma/sched/round builders below mirror
 `Sha2Emit.emitSigma`/`emitSched`/`emitRound`/`emitRounds` exactly, differing
 only in the rotate emitter. -/

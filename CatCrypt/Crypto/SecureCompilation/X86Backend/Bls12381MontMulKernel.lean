@@ -13,7 +13,7 @@ public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 
 /-!
-# BLS12-381 `Fp` Montgomery field-multiply, lowered through the in-Lean x86 backend (#490)
+# BLS12-381 `Fp` Montgomery field-multiply, lowered through the in-Lean x86 backend
 
 This module emits the BLS12-381 base-field (`p = 0x1a0111ea…aaab`, 381 bits,
 six 64-bit limbs) Montgomery multiply
@@ -23,8 +23,8 @@ six 64-bit limbs) Montgomery multiply
 through the SAME owned x86 backend (`JasminModel.runBlock` /
 `X86Dialect.lowerBlock_denote` / `AsmPrinter`, no jasminc) used for the
 `bignum_mul_4_8` / `fe25519` kernels, framed by the principled SysV ABI layer
-(`renderSysVLeafFn`, #464). It is the field-multiply leg of the BLS-vs-blst
-program (#487).
+(`renderSysVLeafFn`). It is the field-multiply leg of the BLS-vs-blst
+comparison.
 
 Unlike fe25519 (`2^255−19`, a Solinas prime with a cheap fold) and P-384 (a
 Solinas prime with a signed multi-term reduce), the BLS12-381 base field is a
@@ -67,11 +67,11 @@ lands the result in `[0, p)`. The six output words are stored to `z[0..5]`.
   owned backend's straight-line lowering is denotation-preserving across the
   `loadMem`/`mulxMem`/`adcx`/`adox`/`imul`/`add`/`sbb`/`cmovb`/`storeMem` mix.
 * `blsMontMulAlloc_no_overflow`: the first-fit allocator assigns every register
-  name a distinct pool register (no silent `%rax`-alias, the #380 class).
+  name a distinct pool register (no silent `%rax`-alias).
 * The all-inputs byte-identity that the emitted stream computes
   `a·b·R⁻¹ (mod p)` is the external KAT (`bench/bls12381_fieldmul_compare`, vs
   blst `blst_fp_mul` and GMP `mod p` — the canonical-arithmetic oracle): the
-  standard gate for these word kernels (per REV-12), over corner + random
+  standard gate for these word kernels, over corner + random
   vectors. CIOS Montgomery's value-level correctness is a generic Montgomery
   identity; in-Lean it is a 384×384→768 SAT instance, infeasible, hence the
   external gate.
@@ -333,8 +333,7 @@ def blsMontMulPinned : GpAlloc :=
 /-- First-fit allocation over the full block. -/
 def blsMontMulAlloc : GpAlloc := allocGp blsMontMulPinned blsMontMulBlock
 
-/-- The allocation maps every name to a distinct pool register (no `%rax`-alias,
-    the #380 class). -/
+/-- The allocation maps every name to a distinct pool register (no `%rax`-alias). -/
 theorem blsMontMulAlloc_no_overflow :
     allocOverflow blsMontMulPinned blsMontMulBlock = none := by native_decide
 
@@ -382,8 +381,8 @@ The hand-authored CIOS body keeps `z`/`x`/`yd`/`sp` pinned and the seven-word ac
 window `t0..t6` plus the `lo`/`hi`/`zr` scratch in registers. It has **11 distinct value
 names whose PEAK SIMULTANEOUS liveness is 11** (all eleven are live together during the
 carry-chain — verified by `blsMontMul_pressure_exceeds_pool`): this is the
-register-pressure-bound BLS12-381 `Fp`-multiply leg of the pairing tower, the documented
-#259/#474 regalloc wall. (Contrast BN254 — peak 9, fits — and the 4×4 schoolbook
+register-pressure-bound BLS12-381 `Fp`-multiply leg of the pairing tower, the register-allocation
+wall. (Contrast BN254 — peak 9, fits — and the 4×4 schoolbook
 `bignum_mul_4_8` — peak 8, fits — which are pure no-ops for any spiller.)
 
 **Production fit vs the spilling-discipline win.** The shipped leaf (`blsMontMulAsm`,
@@ -463,7 +462,7 @@ def peakLive : Nat :=
 /-- **Peak simultaneous register pressure is 11** — all eleven value names of the CIOS
     body are live together at some program point (the carry-chain), so no spill-free
     allocation exists in fewer than 11 registers. This is the pairing-tower
-    register-pressure wall (#259/#474): the shipped first-fit leaf fits because it uses
+    register-pressure wall: the shipped first-fit leaf fits because it uses
     the full 11-register GP allocation (no reserved working registers); the verified
     spilling discipline reserves `%r14`/`%r15` (→ 8-register pool) and so FORCES a 3-name
     spill, the case on which graph coloring beats linear scan. (Contrast BN254 peak 9,

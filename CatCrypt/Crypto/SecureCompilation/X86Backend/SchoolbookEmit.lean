@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 # Schoolbook multiply: per-column `runBlock` ties + the `Nat`-level product
 
 The curve field-multiply kernels (SM2, secp256k1) carry their value-correctness
-at two layers that, until now, did not meet:
+at two separate layers:
 
 * `MulxSelect.lean` proves the **emitted** dual-carry-chain `MULX`/`ADCX`/`ADOX`
   block computes one multiply-accumulate column *value* under the faithful
@@ -22,8 +22,8 @@ at two layers that, until now, did not meet:
   but over a `Nat`/`BitVec` carry-chain function, not over `runBlock` of an
   emitted instruction list.
 
-The promotion of SM2/secp256k1 from Tier B (KAT-only) to Tier A
-(`runBlock(emitted) = spec` proven) needs the bridge: the emitted instruction
+A proof of `runBlock(emitted) = spec` for SM2/secp256k1, beyond a known-answer
+check, needs the bridge: the emitted instruction
 list, evaluated through `runBlock`, realises the schoolbook product.
 
 This file builds that bridge bottom-up:
@@ -37,34 +37,34 @@ This file builds that bridge bottom-up:
 3. `emitSchoolbook_value` — the full N-limb product, the emitted realisation of
    `mulLimbs_reconstruct`: `runBlock`-anchored at the per-MAC level, value-level
    `= valLimbs x * valLimbs y`.
-4. SM2 instance: combine with `Cios4LimbProven.sm2_montmul_correct` to land
+4. SM2 instance: combine with `Cios4LimbProven.sm2_montmul_correct` to obtain
    `sm2_emit_montmul_value` — the schoolbook product, emitted, feeding the
-   genuine Montgomery reduction.
+   Montgomery reduction.
 
 ## What is tied to `runBlock`
 
 The *value* of each emitted column is pinned to `runBlock` via
-`selectMulxMac_value` (the genuine x86 `MULX`/`ADCX`/`ADOX` semantics):
+`selectMulxMac_value` (the x86 `MULX`/`ADCX`/`ADOX` semantics):
 
 * `emitMac_value` / `emitMac_compose_value` — one column over `runBlock`, and
-  one column reading the state a prior block leaves (the genuine routing step);
+  one column reading the state a prior block leaves (the routing step);
 * `emitColumn_eq_mulAddc` — the two carry conventions (the emitted dual
   `CF`/`OF` chain vs. the abstract single-`macHi` carry) reconstruct the *same*
-  two-word value `a·b + add + cin`, the load-bearing bridge between the emitted
+  two-word value `a·b + add + cin`, the key lemma bridging the emitted
   block and the proven `Nat`-schoolbook;
 * `emit_singleLimb_valLimbs` — the base column end-to-end (`runBlock` →
   `valLimbs` of the two output words = `va·vb`).
 
-The multi-column accumulation is then carried at the `Nat`-value level by the
-already-proven `addmul1`/`mulLimbs` schoolbook (`emitRow_value`,
-`emitSchoolbook_value`), with the per-column realisations above the genuine
-tie. A wrong product spec would be vacuous, so the target is pinned to
+The multi-column accumulation is carried at the `Nat`-value level by the
+proven `addmul1`/`mulLimbs` schoolbook (`emitRow_value`,
+`emitSchoolbook_value`), with the per-column realisations above as the
+`runBlock` tie. A wrong product spec would be vacuous, so the target is pinned to
 `Cios4LimbProven.valLimbs x * valLimbs y` and to the proven
 `mulLimbs_reconstruct` — not a fresh, possibly-wrong restatement.
 
-## What is NOT yet covered
+## Scope
 
-The full N-column row over a *single* `runBlock` trace is not assembled here.
+The full N-column row over a *single* `runBlock` trace is outside this module.
 The ADX idiom threads BOTH the low-word adds (`ADCX`/`CF` chain) and the
 carry-word adds (`ADOX`/`OF` chain) through *persistent* flags across all
 columns — column `j+1`'s incoming `CF`/`OF` are column `j`'s outgoing ones,
@@ -73,7 +73,7 @@ carry *word*. These agree at the per-column level (`emitColumn_eq_mulAddc`,
 with flags reset) and at row completion, but the equivalence of the two
 accumulation schemes *mid-row* — a symbolic induction over the nested
 `runBlock` with persistent `CF`/`OF` flag state and growing register
-distinctness — is the remaining increment. It does not affect the product spec
+distinctness — is not proved here. It does not affect the product spec
 (`emitSchoolbook_value`), which is pinned to the proven `mulLimbs`.
 -/
 
@@ -116,14 +116,14 @@ multi-column accumulation at the proven `Nat`-schoolbook level
 (`addmul1_reconstruct` / `mulLimbs_reconstruct`).
 
 The probe below confirms the column-`j` MAC's `runBlock` value composes with the
-column-`(j+1)` MAC reading the first's output state — the genuine carry routing,
+column-`(j+1)` MAC reading the first's output state — the carry routing,
 demonstrated concretely for two columns. -/
 
-/-- **Two-column emitted accumulate (genuine `runBlock` routing).** Running the
+/-- **Two-column emitted accumulate (`runBlock` routing).** Running the
     concatenation of two `selectMulxMac` blocks, the second reading the state the
     first leaves, accumulates the second column's partial product over the first's
     output. The value of column 1 is `selectMulxMac_value` on the post-state
-    `runBlock s blk0`. This is the load-bearing routing step that, iterated, is
+    `runBlock s blk0`. This is the routing step that, iterated, is
     the full emitted row. -/
 theorem emitMac_compose_value (s : JState 64)
     (acc1 x y1 cy1 hi1 lo1 : String) (blk0 : List (JInstr 64))
@@ -150,7 +150,7 @@ to that value:
            (`selectMulxMac_value_fullProduct`)
 
 so the two carry conventions agree on the full two-word product. This is the
-genuine tie between the proven `Nat`-schoolbook (`mulLimbs_reconstruct`, built
+tie between the proven `Nat`-schoolbook (`mulLimbs_reconstruct`, built
 on `mulAddc`) and the emitted x86 block. -/
 
 /-- **Column bridge.** The emitted dual-carry-chain MAC (`selectMulxMac`, via
@@ -194,7 +194,7 @@ at the base column, with the multi-limb fold carried by the proven schoolbook. -
     emitted MAC (`selectMulxMac`) into a cleared accumulator and carry yields, in
     `acc` (low word) and the `MULX` high register `hi` (high word), the limbs of
     `va·vb`: `valLimbs [acc_new, hi] = va·vb` over `runBlock`. The emitted base
-    column realises one little-endian product, in genuine `runBlock` semantics. -/
+    column realises one little-endian product, in `runBlock` semantics. -/
 theorem emit_singleLimb_valLimbs (a b cy hi lo : String)
     (va vb : BitVec 64)
     (hAccLo : "acc" ≠ lo) (hAccHi : "acc" ≠ hi)
@@ -220,7 +220,7 @@ theorem emit_singleLimb_valLimbs (a b cy hi lo : String)
 carry chain whose per-column arithmetic is realised by `emitColumn_eq_mulAddc`
 (emitted dual-carry MAC = abstract `mulAddc` column). `emitSchoolbook x y` is the
 full N-limb product `mulLimbs x y`. We re-export the proven `Nat`-level
-reconstructions, now anchored to the emitted column via §3. -/
+reconstructions, anchored to the emitted column via §3. -/
 
 /-- One emitted schoolbook row `t += x · c`: the `addmul1` carry chain, whose
     per-column step is the emitted dual-carry MAC (`emitColumn_eq_mulAddc`). -/
@@ -251,11 +251,11 @@ def emitSchoolbook (x y : List (BitVec 64)) : List (BitVec 64) :=
     nonempty multiplier `y`, the recombined value of the schoolbook product limbs
     equals `valLimbs x * valLimbs y` — `mulLimbs_reconstruct`. This is the
     `Nat`-level product spec each emitted column is tied to per-column
-    (`emitColumn_eq_mulAddc` / `selectMulxMac_value`, the genuine `runBlock`
+    (`emitColumn_eq_mulAddc` / `selectMulxMac_value`, the `runBlock`
     `MULX`/`ADCX`/`ADOX` semantics). The multi-column accumulation over a single
-    `runBlock` trace (persistent `CF`/`OF` flags) is the remaining increment (see
-    the module header's "What is NOT yet covered"); this theorem itself is the
-    `Nat`-level fold, not yet a statement about `runBlock` of an emitted block. The
+    `runBlock` trace (persistent `CF`/`OF` flags) is outside its scope (see
+    the module header's "Scope"); this theorem is the `Nat`-level fold, not a
+    statement about `runBlock` of an emitted block. The
     target is pinned to `valLimbs x * valLimbs y`, not a fresh restatement. -/
 theorem emitSchoolbook_value (x y : List (BitVec 64)) (hy : y ≠ []) :
     valLimbs (emitSchoolbook x y) = valLimbs x * valLimbs y :=
@@ -275,9 +275,9 @@ The emitted schoolbook product `valLimbs x · valLimbs y` (value-correct over th
 emitted dual-carry MACs by `emitSchoolbook_value`) is the input to the SM2
 Montgomery reduction. We tie the two: the emitted product, fed to
 `Number.montgomeryMul` at the full radix `R = 2^256`, lands in `[0, 2·p_sm2)` and
-is `≡ x·y·R⁻¹ (mod p_sm2)` — the genuine `mont_mul(x,y) = x·y·R⁻¹ mod p_sm2`.
+is `≡ x·y·R⁻¹ (mod p_sm2)` — the `mont_mul(x,y) = x·y·R⁻¹ mod p_sm2` law.
 
-Honest note on the Montgomery constant. The per-word CIOS loop runs with
+Note on the Montgomery constant. The per-word CIOS loop runs with
 `n' = 1` (`Cios4LimbProven.sm2_nprime_one`, since `p_sm2 ≡ −1 mod 2^64`); the
 *full-radix* `2^256` constant `Nprime256` (with `p_sm2 · Nprime256 ≡ −1 mod
 2^256`) is what the separated product-then-reduce form
@@ -298,11 +298,10 @@ the canonical SM2 prime; the value fed in is the emitted schoolbook product. -/
 
     The reduction law is `Number.montgomeryMul_correct` at the canonical SM2
     prime; the product spec is `emitSchoolbook_value`. Each schoolbook column is
-    tied to the genuine `runBlock` `MULX`/`ADCX`/`ADOX` semantics per-column
+    tied to the `runBlock` `MULX`/`ADCX`/`ADOX` semantics per-column
     (`emitColumn_eq_mulAddc` / `selectMulxMac_value`). This statement is at the
-    `Nat`/product level; it is NOT yet `runBlock(emitted) = spec` — the
-    multi-column single-`runBlock` assembly (persistent `CF`/`OF` flags) is the
-    remaining step before SM2 is fully Tier A. -/
+    `Nat`/product level, not `runBlock(emitted) = spec`; the multi-column
+    single-`runBlock` assembly (persistent `CF`/`OF` flags) is outside its scope. -/
 theorem sm2_emit_montmul_value (x y : List (BitVec 64)) (Nprime256 : Nat)
     (hy : y ≠ [])
     (hx_red : valLimbs x < valLimbs sm2Limbs)

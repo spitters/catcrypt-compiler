@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
-# H3.bis-final: agreement-extension + letBind lit simulation
+# Agreement extension and letBind-literal simulation
 
 Extends the H3 simulation theorem with the agreement-extension lemma
 `envAgreesRust_extend_scalar` and the productive letBind-lit simulation

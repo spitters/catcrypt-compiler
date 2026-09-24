@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.Jasmin.JasminMonoSem
 public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
 
 /-!
-# Native dialect-translator correctness (no `CProg` detour)
+# Native dialect-translator correctness
 
 This file proves `translateMonoCmdD_denoteSP_native`: the
 dialect-targeting Jasmin → SSA translator `translateMonoCmdD` denotes
@@ -18,15 +18,13 @@ the Jasmin reference semantics `pureEvalMonoCmd`. It is proved **directly by
 induction on the command**, computing `Com.denoteSP` through each translated
 arm's dialect-op denotation.
 
-`translateMonoCmdD` already emits `Com catCryptDialect` ops directly from the
+`translateMonoCmdD` emits `Com catCryptDialect` ops directly from the
 Jasmin AST (see `JasminToSSADialect.lean`), so this correctness proof is
 likewise direct:
 
-1. **`CProg`-free.** The proof references only `translateMonoCmdD`,
+1. **Dialect-only.** The proof references only `translateMonoCmdD`,
    `Com.denoteSP`, and the per-op dialect denotation facts
-   (`catCryptDenoteSP`, `toVIRVar_lookup`). It mentions neither the
-   `CryptoSSA` inductive `CProg` / `CExpr` nor the `CExpr→dialect`
-   translators `toVIRExprT` / `toVIRComT`. The per-expression agreement
+   (`catCryptDenoteSP`, `toVIRVar_lookup`). The per-expression agreement
    (`translateMonoExprD_denoteSP`) is derived directly against the
    `catCryptDialect` op denotation.
 
@@ -34,7 +32,7 @@ likewise direct:
    equation compiler (`unfold translateMonoCmdD; split`), so the wildcard
    arms carry the negative shape information as `h_trans : none = some _`
    (immediately contradictory) — there is no `match`-compiler wildcard
-   `sorry`. The two genuine intrinsic shapes (`ADD_64` / `ADC_64`) — which
+   `sorry`. The two translated intrinsic shapes (`ADD_64` / `ADC_64`) — which
    `translateMonoCmdD` translates to a 3-`let` dialect chain over the carry
    ops `bvAdd64` / `bvAdc` (plus `fst` / `snd` destructuring) — are proved
    natively against `Com.denoteSP`. The proof is `sorryAx`-free (verified by
@@ -54,10 +52,10 @@ The covered fragment is exactly the `some`-image of `translateMonoCmdD`:
 
 Every other `Copn` head and all control flow (`Cif` / `Cfor` / `Cwhile` /
 `Ccall`) are declined to `none` by `translateMonoCmdD`, so the hypothesis
-`translateMonoCmdD m retVar cmd = some dprog` rules them out. The keystone is
+`translateMonoCmdD m retVar cmd = some dprog` rules them out. The main result is
 that the full bignum ALU spine + carry intrinsics — everything the
 `S2NBignumSSA` ports use — denotes to the Jasmin reference semantics on
-`catCryptDialect` **without** a `CProg` detour, and sorry-free.
+`catCryptDialect`, with all goals closed.
 -/
 
 @[expose] public section
@@ -87,8 +85,7 @@ simulation invariant `monoAgrees`. Proved **directly** on the dialect side: we
 unfold `translateMonoExprD` per Jasmin-expression head to the concrete
 `catCryptDialect` op it emits, then evaluate `Expr.denoteSP` through that op's
 `catCryptDenoteSP` interpretation and the argument-lookup bridge
-(`lookupArgs_one` / `lookupArgs_two`, `toVIRVar_lookup`). No `CExpr` /
-`toVIRExprT` denotation fact is used. -/
+(`lookupArgs_one` / `lookupArgs_two`, `toVIRVar_lookup`). -/
 
 /-- **Native per-expression correctness.** If `translateMonoExprD m e = some
     dexpr`, then `Expr.denoteSP dexpr (toVIRVal V) = SPComp.pure
@@ -227,7 +224,7 @@ theorem translateMonoExprD_denoteSP {Γ : Ctx} {n : Nat}
 /-- The valuation bridge `toVIRVal` commutes with extension: extending an
     `HVec` and then bridging equals bridging then extending the VIR valuation.
     Holds by `rfl` (`HVec.extend` / `toVIRVal` / `Ctxt.Valuation.extend` are all
-    the matching `.cons`). The keystone that aligns the IH's bridged-extended
+    the matching `.cons`). The key lemma that aligns the IH's bridged-extended
     valuation with the `Com.denoteSP_var` bind continuation. -/
 theorem toVIRVal_extend {Γ : Ctx} {n : Nat} (V : HVec Γ) (val : BitVec n) :
     toVIRVal (HVec.cons (t := .sword n) val V) = (toVIRVal V).extend val := rfl
@@ -242,11 +239,9 @@ theorem toVIRVal_extend {Γ : Ctx} {n : Nat} (V : HVec Γ) (val : BitVec n) :
     `monoAgrees`.
 
     Proved **directly** by induction on `cmd`, computing `Com.denoteSP` through
-    each translated arm — *not* by routing through the `CProg` translator
-    `toVIRComT` / `translateMonoCmd_correct`. Consequently it neither mentions
-    `CProg` nor inherits the `sorry` in that translator's `Copn`-wildcard arm:
-    `translateMonoCmdD` declines every `Copn` head to `none`, so the hypothesis
-    rules those arms out before the wildcard is ever reached. -/
+    each translated arm. `translateMonoCmdD` declines every `Copn` head other
+    than `ADD_64` / `ADC_64` to `none`, so the hypothesis rules those arms
+    out. -/
 theorem translateMonoCmdD_denoteSP_native {Γ : Ctx} {n : Nat}
     (m : MonoVarMap Γ n) (V : HVec Γ) (env : Var → BitVec n)
     (retVar : Var) (cmd : List InstrR)

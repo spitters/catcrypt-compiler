@@ -9,14 +9,14 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 
 /-!
-# Grounded ADVANCED-PROTOCOL backbones — whole-pipeline emit-realization with
+# Grounded ADVANCED-PROTOCOL cores — whole-pipeline emit-realization with
   ZERO assumed per-kernel hypotheses
 
-This module grounds the **computational backbones** of three advanced
+This module grounds the **computational cores** of three advanced
 cryptographic protocols **unconditionally** — every per-step realization is a
 *theorem* (a proved concrete realizer), so each headline carries **zero
 `KernelRealizesT` / `KernelRealizes2` hypotheses** (only codec-fit side
-conditions, honestly flagged).  It reuses only realizers already proved in-repo:
+conditions, stated explicitly).  It reuses only realizers already proved in-repo:
 
 * `GroundedHashProtocol.keccakSponge_realized` + `pipeNT_realizes` — the
   carrier-`.TBytes 200` (1600-bit) Keccak sponge chain, every per-iteration
@@ -28,9 +28,9 @@ conditions, honestly flagged).  It reuses only realizers already proved in-repo:
   theorem (in turn `ConcreteSymFieldRealizer.fieldAdd/Mul_realizes_concrete` +
   the codec round-trip `decodeF_encodeF`).
 
-## The grounded backbones
+## The grounded cores
 
-* **`grounded_ecvrf_hashchain_realizes`** — the ECVRF hash backbone (the
+* **`grounded_ecvrf_hashchain_realizes`** — the ECVRF hash core (the
   ECVRF-EDWARDS25519-SHA512-… / draft-irtf-cfrg-vrf ciphersuites build on a
   hash sponge): `hash_to_curve`'s expand-message squeeze, the challenge
   `c = H(...)`, and the proof-hash `β = H(proof)` are sponge applications — `n`
@@ -40,7 +40,7 @@ conditions, honestly flagged).  It reuses only realizers already proved in-repo:
   kernel hypotheses.**
 
 * **`grounded_oprf_2hashdh_realizes`** — the 2HashDH / VOPRF (RFC 9497) hash
-  backbone: the two hash invocations `H₁ = hash_to_group(input)` (the input
+  core: the two hash invocations `H₁ = hash_to_group(input)` (the input
   blinding hash) and `H₂ = H(input ‖ N)` (the finalize hash) are sponge
   applications.  The two-hash chain is modeled as the `pipeNT (.TBytes 200)`
   Keccak chain; every per-block realization is the proved
@@ -61,16 +61,16 @@ conditions, honestly flagged).  It reuses only realizers already proved in-repo:
   leafSpec — grounded from `combined_realizes_mul` / `combined_realizes_add`.
   **ZERO kernel hypotheses** (only codec fit).
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
 * **Grounded (unconditional Lean theorems):** every per-step realization of all
-  backbones — each a proved concrete realizer (`keccak_realizes_concrete` for
-  the three hash backbones, `combined_realizes_add/mul` for the threshold
+  cores — each a proved concrete realizer (`keccak_realizes_concrete` for
+  the three hash cores, `combined_realizes_add/mul` for the threshold
   field step), with no KAT and no per-kernel hypothesis.  Each whole pipeline
   decodes to the composite of its per-step specs.
 
-* **Only the HASH / FIELD BACKBONE is grounded — NOT the protocol property.**
-  We ground the *computational backbone* — the Keccak / field KERNEL PIPELINE
+* **Only the HASH / FIELD CORE is grounded — NOT the protocol property.**
+  We ground the *computational core* — the Keccak / field KERNEL PIPELINE
   realized by emitted code — NOT the cryptographic security of the
   construction.  Concretely, this file does **not** prove VRF
   pseudorandomness / uniqueness, OPRF obliviousness / pseudorandomness,
@@ -82,19 +82,19 @@ conditions, honestly flagged).  It reuses only realizers already proved in-repo:
   exponentiation / scalar multiplication at the heart of ECVRF, 2HashDH-OPRF,
   and SPAKE2/OPAQUE (and the threshold-signature group combination) is the
   abstract elliptic-curve group law — it has no concrete base-field codec here
-  and is the honest residual, exactly as in `ConcreteEcScalarRealizer`.  Only
-  the hash sponge backbone (and, for threshold combination, the scalar-FIELD
+  and is the residual, exactly as in `ConcreteEcScalarRealizer`.  Only
+  the hash sponge core (and, for threshold combination, the scalar-FIELD
   mul-then-add) is grounded.
 
 * **Why Keccak / field and not SHA-256 / SHA-512.**  The Keccak sponge codec
   round-trip and the field codec round-trip are proved per-bit / by digit-sum
-  (axiom-clean).  Several of these ciphersuites historically specify SHA-512
+  (axiom-clean).  Several of these ciphersuites specify SHA-512
   (ECVRF) or SHA-256/512 (RFC 9497 has a Ristretto255-SHA512 suite); the
   Merkle–Damgård SHA-2 codec round-trip is proved by a `bv_decide` LRAT
   certificate, which leaks a certificate axiom — so we ground on the Keccak /
   SHAKE sponge instantiation (the same permutation primitive, the actual NIST
-  FIPS 202 sponge) to keep every theorem axiom-clean.  The grounding is honestly
-  for the sponge backbone, not the specific SHA-2 transform of a given suite.
+  FIPS 202 sponge) to keep every theorem axiom-clean.  The grounding is
+  for the sponge core, not the specific SHA-2 transform of a given suite.
 
 * **The only machine-code residual (NOT a per-kernel hypothesis):** that the
   *jasmin-emitted machine bytes* of the real `keccak_f1600` / `field_add` /
@@ -126,7 +126,7 @@ open CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
 open CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 open CatCrypt.Crypto.Hash.Keccak
 
-/-! ## §1  ECVRF hash-to-challenge / proof-hash backbone — UNCONDITIONAL
+/-! ## §1  ECVRF hash-to-challenge / proof-hash core — UNCONDITIONAL
 
 An ECVRF proof (draft-irtf-cfrg-vrf; RFC 9381) is built around several hash
 invocations: `hash_to_curve` expands the input to a curve point, the challenge
@@ -150,9 +150,9 @@ def ecvrfHashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED ECVRF hash-to-challenge / proof-hash backbone — UNCONDITIONAL.**
+/-- **GROUNDED ECVRF hash-to-challenge / proof-hash core — UNCONDITIONAL.**
 
-    The hash backbone of an ECVRF proof (draft-irtf-cfrg-vrf; RFC 9381) in its
+    The hash core of an ECVRF proof (draft-irtf-cfrg-vrf; RFC 9381) in its
     SHAKE / Keccak instantiation: `hash_to_curve`'s expand-message squeeze, the
     challenge `c = H(...)`, and the VRF output `β = H(proof)` are `n`
     applications of the permutation `keccak_f steps` to the 1600-bit sponge
@@ -163,11 +163,11 @@ def ecvrfHashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     `decodeKbytes_encodeKbytes`), assembled by the carrier-generalized
     `pipeNT_realizes`.
 
-    HONEST scope: this grounds only the **Keccak / SHAKE hash backbone** of the
+    Scope: this grounds only the **Keccak / SHAKE hash core** of the
     VRF.  It does NOT prove VRF UNIQUENESS / PSEUDORANDOMNESS / collision
     resistance, and the ECVRF Diffie–Hellman scalar multiplication / curve group
     law (`hash_to_curve`, `γ = x·H`) is NOT grounded — that abstract EC group
-    operation is the honest residual.  The only machine-code residual is the
+    operation is the residual.  The only machine-code residual is the
     owned-emit obligation for the `"keccak_f1600"` leaf — NOT a per-block
     hypothesis (and NOT a KAT). -/
 theorem grounded_ecvrf_hashchain_realizes (steps : KeccakStepMappings)
@@ -185,7 +185,7 @@ theorem grounded_ecvrf_hashchain_realizes (steps : KeccakStepMappings)
     (ecvrfHashLeaves n) (ecvrfHashSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §2  OPRF 2HashDH / VOPRF two-hash backbone — UNCONDITIONAL
+/-! ## §2  OPRF 2HashDH / VOPRF two-hash core — UNCONDITIONAL
 
 A 2HashDH / VOPRF (RFC 9497) evaluates `F_k(x) = H₂(x ‖ (H₁(x))^k)`: the first
 hash `H₁ = hash_to_group(x)` maps the input into the group (blinded before the
@@ -208,9 +208,9 @@ def oprfHashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED OPRF 2HashDH / VOPRF two-hash backbone — UNCONDITIONAL.**
+/-- **GROUNDED OPRF 2HashDH / VOPRF two-hash core — UNCONDITIONAL.**
 
-    The hash backbone of a 2HashDH / VOPRF (RFC 9497) `F_k(x) = H₂(x ‖ H₁(x)^k)`
+    The hash core of a 2HashDH / VOPRF (RFC 9497) `F_k(x) = H₂(x ‖ H₁(x)^k)`
     in its SHAKE / Keccak instantiation: the input-blinding hash
     `H₁ = hash_to_group(x)` and the finalize hash `H₂` are `n` applications of
     the permutation `keccak_f steps` to the 1600-bit sponge state.  Its entire
@@ -220,11 +220,11 @@ def oprfHashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds only the **two Keccak hash invocations** of the
+    Scope: this grounds only the **two Keccak hash invocations** of the
     OPRF.  It does NOT prove OPRF OBLIVIOUSNESS / PSEUDORANDOMNESS, and the
     central DH exponentiation `H₁(x)^k` — the elliptic-curve scalar
     multiplication / group law — is NOT grounded; that abstract EC group
-    operation is the honest residual.  The only machine-code residual is the
+    operation is the residual.  The only machine-code residual is the
     owned-emit obligation for the `"keccak_f1600"` leaf — NOT a per-block
     hypothesis (and NOT a KAT). -/
 theorem grounded_oprf_2hashdh_realizes (steps : KeccakStepMappings)
@@ -242,7 +242,7 @@ theorem grounded_oprf_2hashdh_realizes (steps : KeccakStepMappings)
     (oprfHashLeaves n) (oprfHashSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §3  SPAKE2 / OPAQUE PAKE transcript-hash backbone — UNCONDITIONAL
+/-! ## §3  SPAKE2 / OPAQUE PAKE transcript-hash core — UNCONDITIONAL
 
 A balanced/augmented PAKE (SPAKE2, RFC 9382; OPAQUE, draft-irtf-cfrg-opaque)
 derives its key-confirmation MAC and session key by hashing the protocol
@@ -265,7 +265,7 @@ def pakeTranscriptSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED SPAKE2 / OPAQUE PAKE transcript-hash backbone — UNCONDITIONAL.**
+/-- **GROUNDED SPAKE2 / OPAQUE PAKE transcript-hash core — UNCONDITIONAL.**
 
     The transcript / key-confirmation hash of a PAKE (SPAKE2, RFC 9382; OPAQUE,
     draft-irtf-cfrg-opaque) in its SHAKE / Keccak instantiation: absorbing the
@@ -278,11 +278,11 @@ def pakeTranscriptSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds only the **Keccak transcript hash backbone** of
+    Scope: this grounds only the **Keccak transcript hash core** of
     the PAKE.  It does NOT prove PAKE PASSWORD-HIDING / mutual AUTHENTICATION /
     forward secrecy, and the SPAKE2 / OPAQUE Diffie–Hellman exchange (the
     elliptic-curve scalar multiplication / group law producing the shared
-    secret) is NOT grounded; that abstract EC group operation is the honest
+    secret) is NOT grounded; that abstract EC group operation is the
     residual.  The only machine-code residual is the owned-emit obligation for
     the `"keccak_f1600"` leaf — NOT a per-block hypothesis (and NOT a KAT). -/
 theorem grounded_pake_transcript_realizes (steps : KeccakStepMappings)
@@ -337,12 +337,12 @@ def thresholdStepValue (q : ℕ) [NeZero q] (width : ℕ) (v c : ZMod q)
     (`combined_realizes_mul` / `combined_realizes_add` + codec round-trip
     `decodeF_encodeF`).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted scalar
+    Scope: this grounds the *computational core* — the emitted scalar
     `field_mul` / `field_add` kernel pipeline computes the Lagrange-combination
     arithmetic.  It does NOT prove threshold / blind-signature UNFORGEABILITY,
     ROBUSTNESS, or BLINDNESS, and the elliptic-curve group combination
     (`Σ λᵢ · σᵢ` is over scalars here, but the BLS group exponentiation
-    `σ = Σ σᵢ` over the group is NOT grounded) is the honest residual.  The only
+    `σ = Σ σᵢ` over the group is NOT grounded) is the residual.  The only
     machine-code residual is the owned-emit obligation for the combined
     `field_mul` / `field_add` arms. -/
 theorem grounded_threshold_lagrange_realizes (q : ℕ) [NeZero q] (width : ℕ)
@@ -355,20 +355,20 @@ theorem grounded_threshold_lagrange_realizes (q : ℕ) [NeZero q] (width : ℕ)
   rw [combined_realizes_mul q width hw hq limbStore xVal (encodeF width v) oldDest]
   rw [decodeF_encodeF width hw hq, decodeF_encodeF width hw hq]
 
-/-! ## §5  The combined ADVANCED-PROTOCOL headline — all four backbones grounded
+/-! ## §5  The combined ADVANCED-PROTOCOL headline — all four cores grounded
 
-The advanced-protocol portfolio is its four grounded backbones conjoined: the
+The advanced-protocol portfolio is its four grounded cores conjoined: the
 ECVRF hash chain, the OPRF 2HashDH two-hash chain, the SPAKE2/OPAQUE transcript
 hash (all three over the 1600-bit Keccak carrier `.TBytes 200`), and the
 threshold / blind-signature Lagrange field step (over the scalar-field carrier
 `.TFp`).  Each conjunct is unconditional in its kernels; each grounds a
-*computational backbone*, not a protocol-level security property, and none
+*computational core*, not a protocol-level security property, and none
 grounds the EC group operation. -/
 
-/-- **THE ADVANCED-PROTOCOL HEADLINE — four grounded backbones, ZERO kernel
+/-- **THE ADVANCED-PROTOCOL HEADLINE — four grounded cores, ZERO kernel
     hypotheses.**
 
-    The four advanced-protocol backbones conjoined:
+    The four advanced-protocol cores conjoined:
 
     * the ECVRF hash-to-challenge / proof-hash Keccak sponge,
     * the OPRF 2HashDH / VOPRF two-hash Keccak sponge,
@@ -377,19 +377,19 @@ grounds the EC group operation. -/
       `x ↦ x·v + c` (combined `field_mul` / `field_add` arms),
 
     each with **ZERO kernel hypotheses** — every per-step realization is a proved
-    concrete realizer (`keccak_realizes_concrete` for the three hash backbones,
+    concrete realizer (`keccak_realizes_concrete` for the three hash cores,
     `combined_realizes_mul/add` for the field step), in turn a verified codec
     round-trip.  All four conjuncts are strictly axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    HONEST scope: each conjunct grounds the *computational backbone* — that the
+    Scope: each conjunct grounds the *computational core* — that the
     emitted Keccak / field kernel pipeline computes its arithmetic spec.  It does
     NOT prove the protocol-level security (VRF pseudorandomness/uniqueness, OPRF
     obliviousness/pseudorandomness, PAKE password-hiding/authentication,
     threshold/blind-signature unforgeability/blindness), which are separate
     assumption-bearing results.  The EC group operations (the Diffie–Hellman
     exponentiation / scalar multiplication / group combination at the heart of
-    all four protocols) are NOT grounded — they are the honest residual.  The
+    all four protocols) are NOT grounded — they are the residual.  The
     only machine-code residuals are the per-kernel machine-code obligations
     (owned-emit route). -/
 theorem grounded_advanced_protocol_portfolio (steps : KeccakStepMappings)

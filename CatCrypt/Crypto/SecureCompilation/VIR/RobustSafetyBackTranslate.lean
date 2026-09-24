@@ -21,15 +21,15 @@ types (`stackLoad`, `reg 64`, `stackArr w n`) that the whole-poly lattice
 dialect cannot express, so a literal back-translation
 `ComCtx jasmin → ComCtx lattice` cannot exist for *all* target contexts.
 
-This file builds the back-translation for the class of target contexts that
-genuinely *do* arise from source contexts — the **image class** of the
+This module builds the back-translation for the class of target contexts that
+*do* arise from source contexts — the **image class** of the
 context-level lowering `lowerCtx : ComCtx lattice → ComCtx jasmin` — and
 discharges the back-translation step for that class. Because in any real linking
 scenario you only ever link against contexts you can *build* — and every context
 you build in the source and then lower lands in this image — the image-class
 result is the meaningful robust-compilation guarantee.
 
-## What is in scope, and what is genuinely impossible
+## What is in scope, and what is impossible
 
 * **In scope (proved here, no hypothesis).** For every target context that is
   `lowerCtx C₀` for some source context `C₀`, CT-safety of the linked target
@@ -41,15 +41,15 @@ result is the meaningful robust-compilation guarantee.
   back-translation step that `backTranslates` packages
   (`backTranslates_image_step`).
 
-* **Genuinely impossible (and why).** A *non-image* target context — one whose
+* **Impossible (and why).** A *non-image* target context — one whose
   prefix binds a Jasmin-only op (`stackLoad`/`stackStore`) or a Jasmin-only type
   (`reg w`) — has no `tau`-pre-image at all, so no source context lowers to it.
   The full `backTranslates c` quantifies over *all* target contexts including
   these; it therefore cannot be discharged unconditionally, exactly as
-  `RobustSafetyContext` documents. This file does not attempt the impossible: it
-  proves the strongest fully-closed statement, the image-class RSP.
+  `RobustSafetyContext` documents. This module proves the strongest
+  unconditional statement, the image-class RSP.
 
-## The load-bearing lemmas
+## The key lemmas
 
 * `plug_lowerCtx` — **commutation**: plugging the lowered context with the
   lowered program equals lowering the plugged source program. The
@@ -180,7 +180,7 @@ implication is the commutation identity `ctSafeJasmin_plug_lowerCtx`. -/
     lowering `lowerCtx C₀` of some source context `C₀`, then the
     `backTranslates`-style existential is satisfiable for `C`: the source
     witness is `C₀`, the source labelling is the same `L`, and the realisation
-    implication holds by `ctSafeJasmin_plug_lowerCtx`. This is the genuine
+    implication holds by `ctSafeJasmin_plug_lowerCtx`. This is the
     back-translation for the image class — the part `tau`-surjectivity would be
     needed for in general, here provided because the context *is* a source
     context's image. -/
@@ -208,7 +208,7 @@ theorem backTranslates_image_step
 The full `backTranslates c` quantifies over *all* target contexts, including
 non-image ones built from Jasmin-only ops/types. The following exhibits a
 concrete such context — the hostile `stackLoad` prefix from
-`RobustSafetyContext.hostileCtx` — to witness that target contexts genuinely
+`RobustSafetyContext.hostileCtx` — to witness that target contexts
 exist outside the image of `lowerCtx`: it binds a `stackLoad`, which `lowerCtx`
 *never* emits (the lattice dialect has no addressed access; the lowering emits
 only `extCall`s). So an unconditional back-translation cannot exist, and the

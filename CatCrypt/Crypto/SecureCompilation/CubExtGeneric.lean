@@ -54,7 +54,7 @@ then `c0 = v0 + ξ·c12`, `c1 = c01 + ξ·v2`, `c2 = c02 + v1` — six base mult
 (three diagonal + three cross) instead of nine. Trading the off-diagonal base
 products for the cross-term recoveries is **semantics-preserving**
 (`mulKaratsuba_eq_schoolbook`) — `ext` then `ring` on each component. Because the
-base `K` is a genuine abstract `CommRing`, `ring` closes the component identities
+base `K` is an abstract `CommRing`, `ring` closes the component identities
 **directly**: there is no opaque-multiply dance (no `simp`-then-`ring` on an
 uninterpreted `mul`), unlike a `Fp2`-specialized phrasing where the base
 operations are a concrete schoolbook product.
@@ -194,7 +194,7 @@ identities directly. -/
     Trading the off-diagonal base products `a₁b₂+a₂b₁`, `a₀b₁+a₁b₀`, `a₀b₂+a₂b₀`
     for the cross-term recoveries `(aᵢ+aⱼ)(bᵢ+bⱼ) − aᵢbᵢ − aⱼbⱼ` is
     denotation-preserving for any nonresidue `ξ` over any `CommRing K`: each output
-    coordinate agrees by `ring`. This is the load-bearing correctness fact for
+    coordinate agrees by `ring`. This is the key correctness fact for
     emitting a 6-mul cubic-extension multiply. -/
 theorem mulKaratsuba_eq_schoolbook [CommRing K] (ξ : K) (x y : CubExt K) :
     mulKaratsuba ξ x y = mulSchoolbook ξ x y := by

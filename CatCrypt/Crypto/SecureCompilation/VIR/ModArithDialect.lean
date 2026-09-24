@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
 public import Mathlib.Data.ZMod.Basic
 
 /-!
-# ModArith VIR dialect (#482-1 — the L2 algebraic layer)
+# ModArith VIR dialect (the L2 algebraic layer)
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -21,10 +21,10 @@ between the abstract field math and the IR backends:
 
     EllipticCurve(L4) → Field(L3) → **ModArith(L2)** → {Vector | LowCT} → {jasmin | x86}
 
-Today Montgomery is *re-derived per primitive* (fe25519, Pasta, BN254, P-256,
-ML-KEM — 6+ separate derivations), and the #261/#477 widening-multiply +
-carry-chain ops have no single home — they live ad hoc in `JasminDialect`. This
-dialect gives the whole algebraic layer **one** verified home:
+Montgomery arithmetic is otherwise derived per primitive (fe25519, Pasta, BN254,
+P-256, ML-KEM), and the widening-multiply + carry-chain ops are otherwise
+scattered in `JasminDialect`. This dialect gives the whole algebraic layer **one**
+verified home:
 
 * `mod add/sub/neg/mul/reduce` — the residue-ring ops, denoting into `ZMod p`;
 * **Montgomery** (`montMul`, `montReduce`), parametric over modulus `p` and the
@@ -34,7 +34,7 @@ dialect gives the whole algebraic layer **one** verified home:
   for special-form / generic primes, denoting to `· % p`;
 * **Bernstein–Yang / safegcd inverse** (`byInverse`) — the divstep field inverse,
   denoting to `ZMod`'s native inverse `a⁻¹`;
-* **batch inverse** (`batchInverse`, Montgomery's trick #481) — `n` inverses with
+* **batch inverse** (`batchInverse`, Montgomery's trick) — `n` inverses with
   one inversion + `3n` mults, denoting pointwise to `aᵢ⁻¹`;
 * **Montgomery-domain inverse** (`montInverse`) — `x ↦ x⁻¹ · R²`, the residue
   whose Montgomery product with `x̃` is the Montgomery unit `R`;
@@ -42,7 +42,7 @@ dialect gives the whole algebraic layer **one** verified home:
   `residueEncode`, `residueDecode`) — the coefficient-vector ↔ tensor and
   residue ↔ fixed-width-bits maps, carrying no arithmetic;
 * the **widening-multiply + carry-chain** ops (`mulHi`, `addCarryLo`,
-  `addCarryHi` — the #261/#477 ops) — their single verified home, with the
+  `addCarryHi`) — their single verified home, with the
   `BitVec` semantics **reused from the owned x86 model**
   (`X86Backend.mulHi` / `.addCarry`).
 
@@ -144,7 +144,7 @@ equality, not a re-derivation. -/
 
 /-- Nullary residue-ring constant: the fixed element `c : ZMod p`, independent of
     any input. This is the L2 home of a field/round constant — the single
-    constant-producing op the residue-ring layer previously lacked (every other
+    constant-producing op of the residue-ring layer (every other
     ModArith op takes at least one `fp`/`word` argument). -/
 @[reducible] def modConstF {p : Nat} (c : ZMod p) : ZMod p := c
 
@@ -169,7 +169,7 @@ equality, not a re-derivation. -/
   t * rInv
 
 /-- Bernstein–Yang / safegcd field inverse, denoted into `ZMod p` as `ZMod`'s
-    native inverse `a⁻¹`. The divstep schedule (#258) is a *realisation* of this
+    native inverse `a⁻¹`. The divstep schedule is a *realisation* of this
     spec; the dialect op is the spec. -/
 @[reducible] def byInverseF {p : Nat} (a : ZMod p) : ZMod p := a⁻¹
 
@@ -199,13 +199,13 @@ equality, not a re-derivation. -/
 @[reducible] def residueDecodeF (p w : Nat) (b : BitVec w) : ZMod p :=
   (b.toNat : ZMod p)
 
-/-- Batch inverse (Montgomery's trick, #481): invert all `n` lanes. Denoted
+/-- Batch inverse (Montgomery's trick): invert all `n` lanes. Denoted
     pointwise to `aᵢ⁻¹` — the abstract spec the prefix-product schedule (one
     inversion + `3n` mults) realises. -/
 @[reducible] def batchInverseF {p n : Nat} (a : Fin n → ZMod p) : Fin n → ZMod p :=
   fun i => (a i)⁻¹
 
-/-! ### Machine layer — reused from the owned x86 model (#261/#477)
+/-! ### Machine layer — reused from the owned x86 model
 
 These are the **single verified home** for the widening-multiply + carry-chain
 ops. The denotations are `X86Backend.mulHi` / `.addCarry` *unchanged* —
@@ -214,18 +214,18 @@ the same functions the CIOS Montgomery kernels run on — so the lowering tie
 
 /-- High word of the widening product `a * b` (the `hi` output of `MULX`),
     reused verbatim from the owned x86 model. The low word is `modMul`-at-`word`
-    (`a * b`); together they are MULX's `(hi, lo)`. (#477) -/
+    (`a * b`); together they are MULX's `(hi, lo)`. -/
 @[reducible] def mulHiF {w : Nat} (a b : BitVec w) : BitVec w :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.mulHi a b
 
 /-- The data word of one carry-chain add `a + b + cin` (the data effect of
-    `ADCX`/`ADOX`): `a + b + cin`. The carry-in is a 1-bit word. (#477) -/
+    `ADCX`/`ADOX`): `a + b + cin`. The carry-in is a 1-bit word. -/
 @[reducible] def addCarryLoF {w : Nat} (a b : BitVec w) (cin : BitVec 1) : BitVec w :=
   a + b + BitVec.ofNat w cin.toNat
 
 /-- The carry-out bit of one carry-chain add `a + b + cin` (the propagated carry
     of `ADCX`/`ADOX`): reuses the owned model's `addCarry` predicate, packaged as
-    a `BitVec 1` so it threads into the next limb's carry-in. (#477) -/
+    a `BitVec 1` so it threads into the next limb's carry-in. -/
 @[reducible] def addCarryHiF {w : Nat} (a b : BitVec w) (cin : BitVec 1) : BitVec 1 :=
   if CatCrypt.Crypto.SecureCompilation.X86Backend.addCarry a b (cin = 1)
   then 1 else 0
@@ -235,7 +235,7 @@ the same functions the CIOS Montgomery kernels run on — so the lowering tie
 /-- Operation tags for the ModArith dialect. The algebraic ops (`modAdd` …
     `batchInverse`) live at `fp`/`fpVec` and denote into `ZMod p`; the machine
     ops (`mulHi`/`addCarryLo`/`addCarryHi`) live at `word`/`carry` and denote
-    into `BitVec` (the #261/#477 ops, here getting their single home). -/
+    into `BitVec` (their single home). -/
 inductive ModArithOp where
   /-- Modular add `a + b : fp p`. -/
   | modAdd (p : Nat)
@@ -267,34 +267,30 @@ inductive ModArithOp where
   | barrettReduce (p w : Nat)
   /-- Bernstein–Yang / safegcd field inverse `a⁻¹ : fp p`. -/
   | byInverse (p : Nat)
-  /-- Batch inverse `(aᵢ⁻¹)ᵢ : fpVec p n` (Montgomery's trick, #481). -/
+  /-- Batch inverse `(aᵢ⁻¹)ᵢ : fpVec p n` (Montgomery's trick). -/
   | batchInverse (p n : Nat)
   /-- Montgomery-domain inverse `x⁻¹ · R² : fp p`, carrying the radix-inverse
-      `rInv` (prime-ir `mod_arith.mont_inverse`). Folded in from
-      `montInverseDialect` rather than kept as a dialect of its own: a `Com`
+      `rInv` (prime-ir `mod_arith.mont_inverse`). An op of this dialect
+      rather than of a dialect of its own: a `Com`
       carries ops from one dialect only, so an op in a separate dialect can
-      never appear beside `montMul`. A coproduct
-      `modArithDialect ⊕ montInverseDialect` with an injection was the
-      alternative; the carriers already coincide (`MontInverseTy.fp p` and
+      never appear beside `montMul`. A dialect coproduct with an injection is
+      the alternative; the carriers coincide (`MontInverseTy.fp p` and
       `ModArithTy.fp p` both denote `ZMod p`). -/
   | montInverse (p : Nat) (rInv : ZMod p)
   /-- Coefficient-vector-to-tensor reinterpret `fpVec p n → fpVec p n`
-      (prime-ir `poly.to_tensor`). Folded in from `structDialect`, whose four
-      types all land in `ModArithTy`; the one-dialect indexing of `Com` is what
-      rules out keeping it separate, and a dialect coproduct with an injection
-      was the alternative. -/
+      (prime-ir `poly.to_tensor`). The structural reinterprets' four types all
+      land in `ModArithTy`; the one-dialect indexing of `Com` rules out a
+      separate dialect, and a dialect coproduct with an injection is the
+      alternative. -/
   | polyToTensor (p n : Nat)
   /-- Tensor-to-coefficient-vector reinterpret `fpVec p n → fpVec p n`
-      (prime-ir `poly.from_tensor`), folded in from `structDialect` with
-      `polyToTensor`. -/
+      (prime-ir `poly.from_tensor`), the reverse direction of `polyToTensor`. -/
   | polyFromTensor (p n : Nat)
   /-- Residue-to-bits reinterpret `fp p → word w` (prime-ir `field.bitcast` /
-      `mod_arith.bitcast`, encode direction), folded in from `structDialect`
-      (`StructTy.residue p` is `fp p`, `StructTy.bits w` is `word w`). -/
+      `mod_arith.bitcast`, encode direction). -/
   | residueEncode (p w : Nat)
   /-- Bits-to-residue reinterpret `word w → fp p` (prime-ir `field.bitcast` /
-      `mod_arith.bitcast`, decode direction), folded in from `structDialect`
-      with `residueEncode`.
+      `mod_arith.bitcast`, decode direction), the reverse direction of `residueEncode`.
 
       It shares `modReduce`'s signature and denotation, and is distinct for the
       reason `solinasReduce` and `barrettReduce` are: the spec coincides while the
@@ -303,13 +299,13 @@ inductive ModArithOp where
       under that range condition. -/
   | residueDecode (p w : Nat)
   /-- High word of the widening multiply (the `hi` of `MULX`): `[word w, word w]
-      → word w`. (#477) -/
+      → word w`. -/
   | mulHi (w : Nat)
   /-- Carry-chain add **data** word `a + b + cin` (`ADCX`/`ADOX` data):
-      `[word w, word w, carry] → word w`. (#477) -/
+      `[word w, word w, carry] → word w`. -/
   | addCarryLo (w : Nat)
   /-- Carry-chain add **carry-out** bit (`ADCX`/`ADOX` carry):
-      `[word w, word w, carry] → carry`. (#477) -/
+      `[word w, word w, carry] → carry`. -/
   | addCarryHi (w : Nat)
   deriving DecidableEq
 
@@ -471,7 +467,7 @@ theorem byInverse_denote {p : Nat} (a : ZMod p) :
 theorem batchInverse_denote {p n : Nat} (a : Fin n → ZMod p) (i : Fin n) :
     modArithDenote.denote (.batchInverse p n) (.cons a .nil) i = (a i)⁻¹ := rfl
 
-/-- `mulHi` denotes to the owned x86 model's `mulHi` — the #477 widening op's
+/-- `mulHi` denotes to the owned x86 model's `mulHi` — the widening op's
     single home, tied directly to the kernel-level function. -/
 theorem mulHi_denote {w : Nat} (a b : BitVec w) :
     modArithDenote.denote (.mulHi w) (.cons a (.cons b .nil))

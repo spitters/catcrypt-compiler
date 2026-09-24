@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 set_option autoImplicit false
 
 /-!
-# P4.2 — deterministic compiler correctness as an `mvcgen`-driven unary Hoare logic
+# Deterministic compiler correctness as an `mvcgen`-driven unary Hoare logic
 
 This module recasts the backend's deterministic **compiler-correctness** theorem
 (`LowCTToJInstrCT.lowerSeq_denote`: the machine block run tracks the folded source
@@ -30,8 +30,8 @@ against the source post-state).  The Hoare logic itself is the ordinary *unary*
 one over machine states `JState 64` — no relational/product program is built.
 
 This is the deterministic counterpart to the probabilistic security layer, where
-the source≈target relation is instead carried by a genuine **relational** Hoare
-logic, the pRHL `rHoare` judgement (used in P4.3/P4.4).  Here, because the backend
+the source≈target relation is instead carried by a **relational** Hoare
+logic, the pRHL `rHoare` judgement (used in `LowCTITreePRHL`/`LowCTSecPreserve`).  Here, because the backend
 is deterministic, the relation collapses into a unary triple whose assertions are
 `StateMatch`.
 

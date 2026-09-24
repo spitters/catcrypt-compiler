@@ -25,7 +25,7 @@ emitted block's `runBlock` output, read out of the accumulator registers,
 recombines (`valLimbs`) to `valLimbs x · valLimbs y` — and hence to
 `valLimbs (mulLimbs x y)` via the proven `mulLimbs_reconstruct`.
 
-## The offset-accumulation emit (genuine inter-row combine over `runBlock`)
+## The offset-accumulation emit (inter-row combine over `runBlock`)
 
 The schoolbook product is `T := 0; for each y-limb j: T[j ..] += x · y_j`. Each
 inner `T[j ..] += x · y_j` is exactly one emitted row (`emitRowBlock`), entered
@@ -43,25 +43,26 @@ The accumulation invariant proven is
 
 so after all `|y|` rows the accumulator holds `valLimbs x · valLimbs y`.
 
-## What is proven (genuine `runBlock(emitted) = spec`)
+## What is proven (`runBlock(emitted) = spec`)
 
 * `emitProductBlock` / `emitProductBlock_runBlock_value` — the full schoolbook
   product as one emitted `List (JInstr 64)`; its `runBlock` output, read out of
   the accumulator registers, recombines to `valLimbs x · valLimbs y`
-  (= `valLimbs (mulLimbs x y)` by `mulLimbs_reconstruct`). The genuine full
+  (= `valLimbs (mulLimbs x y)` by `mulLimbs_reconstruct`). The full
   multiply over `runBlock`.
 * `sm2_emit_montmul_runBlock_full` — with reduced 4-limb inputs, the emitted
   256×256 product over `runBlock` fed to the proven SM2 4-word Montgomery
   reduction (`montRedc4`, `n' = 1`) lands `< 2·p_sm2` and
   `· 2^256 ≡ valLimbs x · valLimbs y (mod p_sm2)` — the full
-  `runBlock(emitted) = SM2 mont-mul spec` (Tier A for SM2).
+  `runBlock(emitted) = SM2 mont-mul spec`.
 
-## Scope (honest)
+## Scope
 
 This is the **flag-resetting** full product (each row re-enters `CF = OF = 0`,
 one `ADCX`/`ADOX imm0` pair per column). The persistent-flag / full-ILP ADX
 schedule (no per-column reset, marginally faster) is a separate
-*perf-equivalence* increment; it does not change the value spec proven here.
+*perf-equivalence* question outside this module; it does not change the value
+spec proven here.
 -/
 
 @[expose] public section
@@ -543,7 +544,7 @@ def runBlockProductValue (accs as ys : List String) (hi lo : String)
     words, the `ProdFresh` register layout, and both carry flags clear, the emitted
     product block leaves the accumulator registers holding the value
     `valLimbs x · valLimbs yv` (= `valLimbs (mulLimbs x yv)` by the proven
-    `mulLimbs_reconstruct`). This is the genuine full 256×256 multiply over
+    `mulLimbs_reconstruct`). This is the full 256×256 multiply over
     `runBlock` of a real emitted `List (JInstr 64)`. -/
 theorem emitProductBlock_runBlock_value
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
@@ -585,32 +586,31 @@ theorem emitProductBlock_runBlock_mulLimbs
   rw [emitProductBlock_runBlock_value accs as ys x yv hi lo s haslen hyslen hcap hfresh
     hx hy hacc0 hcf hof, mulLimbs_reconstruct x yv hyne]
 
-/-! ## 6. SM2 full Tier A: the emitted product over `runBlock` into the reduction
+/-! ## 6. SM2: the emitted product over `runBlock` into the reduction
 
 `emitProductBlock_runBlock_value` proves the emitted product block computes
 `valLimbs x · valLimbs y` over `runBlock` (a real emitted `List (JInstr 64)`).
-Feeding that genuine `runBlock`-produced value to the proven SM2 Montgomery
+Feeding that `runBlock`-produced value to the proven SM2 Montgomery
 reduction (`Number.montgomeryMul`/`montgomeryReduce` at the full radix
 `R = 2^256`, the SM2 constant `Nprime256`) gives the full
 `runBlock(emitted) = SM2 mont-mul spec`: the result lands `< 2·p_sm2` and
-`· 2^256 ≡ valLimbs x · valLimbs y (mod p_sm2)`. This is Tier A for SM2 — the
-256×256 product is a single emitted `runBlock`, not a `Nat` alias. -/
+`· 2^256 ≡ valLimbs x · valLimbs y (mod p_sm2)`. The 256×256 product is a
+single emitted `runBlock`, not a `Nat` alias. -/
 
-/-- **SM2 full Montgomery-multiply over `runBlock` (Tier A).** With reduced
+/-- **SM2 full Montgomery-multiply over `runBlock`.** With reduced
     4-limb inputs (`valLimbs x, valLimbs y < p_sm2`), a cleared accumulator file,
     the `ProdFresh` register layout, matching lengths, and the full-radix SM2
     Montgomery constant `Nprime256` (`p_sm2 · Nprime256 ≡ -1 mod 2^256`):
 
     * the emitted product block's `runBlock` value is exactly
       `valLimbs x · valLimbs y` (`emitProductBlock_runBlock_value`); and
-    * `montgomeryReduce p_sm2 (2^256) Nprime256` of that genuine `runBlock` value
+    * `montgomeryReduce p_sm2 (2^256) Nprime256` of that `runBlock` value
       (= `montgomeryMul p_sm2 (2^256) Nprime256 (valLimbs x) (valLimbs y)`) lies in
       `[0, 2·p_sm2)` and `· 2^256 ≡ valLimbs x · valLimbs y (mod p_sm2)`.
 
     The product is a single emitted `runBlock` of a real `List (JInstr 64)`; the
     reduction law is the prime-parametric `Number.montgomeryMul_correct` at the
-    canonical SM2 prime. This is the full `runBlock(emitted) = SM2 mont-mul spec`
-    — Tier A. -/
+    canonical SM2 prime. This is the full `runBlock(emitted) = SM2 mont-mul spec`. -/
 theorem sm2_emit_montmul_runBlock_full
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
     (s : JState 64) (Nprime256 : Nat)
@@ -629,7 +629,7 @@ theorem sm2_emit_montmul_runBlock_full
     (Number.montgomeryReduce (valLimbs sm2Limbs) (2 ^ 256) Nprime256
         (runBlockProductValue accs as ys hi lo s)) * 2 ^ 256
       ≡ valLimbs x * valLimbs yv [MOD valLimbs sm2Limbs] := by
-  -- the genuine runBlock product value
+  -- the runBlock product value
   have hval : runBlockProductValue accs as ys hi lo s = valLimbs x * valLimbs yv :=
     emitProductBlock_runBlock_value accs as ys x yv hi lo s haslen hyslen hcap hfresh
       hx hy hacc0 hcf hof
@@ -653,7 +653,7 @@ theorem sm2_emit_montmul_runBlock_full
 
 For the SM2/secp256k1 layout the multiplicand and multiplier are four 64-bit
 limbs and the product file is eight words. `emitProductBlock4` names that
-instance; `sm2_emit_montmul_runBlock_full4` is the SM2 Tier A headline at the
+instance; `sm2_emit_montmul_runBlock_full4` is the SM2 main theorem at the
 concrete 4-limb shape. -/
 
 /-- The 4-limb (256×256) emitted schoolbook product: 8 accumulator words
@@ -662,7 +662,7 @@ concrete 4-limb shape. -/
 def emitProductBlock4 (accs as ys : List String) (hi lo : String) : List (JInstr 64) :=
   emitProductBlock accs as ys hi lo
 
-/-- **SM2 full Montgomery-multiply over `runBlock`, 4-limb instance (Tier A).**
+/-- **SM2 full Montgomery-multiply over `runBlock`, 4-limb instance.**
     The 256×256 emitted product (`emitProductBlock4`, 4 `x`-limbs, 4 `y`-limbs,
     8-word file) over `runBlock` fed to the proven SM2 reduction at `R = 2^256`:
     the product value is `valLimbs x · valLimbs y` and its reduction lands

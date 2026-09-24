@@ -18,8 +18,8 @@ FIPS-204 §7.4 `Decompose` (`q = 8380417`, `γ2 = (q−1)/32 = 261888`,
 `α = 2·γ2 = 523776`, `(q−1)/2 = 4190208`). It is the sibling of the
 `reduce32`/`montgomery_reduce` Barrett/Montgomery leaves
 (`CompileFromHaxMldsaReduce32`, `CompileFromHaxMldsaMontgomery`); like them it
-hinges on the new front op `arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`,
-denoting `BitVec.sshiftRight`, commit #606/#605).
+hinges on the front op `arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`,
+denoting `BitVec.sshiftRight`).
 
 `decompose` splits a standard representative `a ∈ [0, q)` into `(a1, a0)` with
 `a ≡ a1·α + a0 (mod q)`, `a0` centered. The PQClean body (verbatim from
@@ -177,7 +177,7 @@ theorem mldsaDecomposeA0_compileFromHax_isSome :
     closed `decompose` low-part emit form `mldsaDecomposeA0Form`. Routed through
     the C3 per-primitive obligation `compileFromHax_meets_spec`. A C4 fan-out
     using the **arithmetic** shift op (`arith_shift_right` ↦ `Rhs.sarImm` ↦
-    `BitVec.sshiftRight`, #606/#605): the branchless boundary fix-up
+    `BitVec.sshiftRight`): the branchless boundary fix-up
     `a0 −= (((q−1)/2 − a0) >>ₐ 63) & q` of ML-DSA-65's `decompose`
     (`q = 8380417`, `α = 523776`), whose signed `>>` the logical `shift_right`
     cannot realise. -/

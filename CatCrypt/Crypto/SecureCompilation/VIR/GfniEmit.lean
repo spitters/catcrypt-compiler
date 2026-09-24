@@ -38,11 +38,11 @@ This module:
 3. Carries the bridge theorem `gfniMul_eq_gf28Mul` showing the GFNI
    multiply equals the existing schoolbook `AesBitslice.gfMul` on every
    byte (the GFNI ceiling closes against the committed AES-polynomial
-   GF(2^8) field, so any caller previously denoting against `gfMul` can
+   GF(2^8) field, so any caller denoting against `gfMul` can
    re-emit through GFNI and keep its proof carry);
 4. Structural sanity theorems + alignment lemma (`gfniMul_lane_map`)
    reusing `LaneMap.vmap₂_eq_scalar` so per-lane independence is closed by
-   the existing keystone, not duplicated.
+   the existing lemma, not duplicated.
 
 ## What this is NOT
 
@@ -58,9 +58,9 @@ This module:
 * The 256-bit / 512-bit (`ymm`/`zmm`) widths are lane-wise extensions —
   same per-byte semantics, more lanes. We pin the `xmm` (128-bit / 16
   lanes) shape since (a) it's what `_mm_gf2p8mul_epi8` (the GFNI ceiling
-  the #174 audit measured, ~18.5 cyc/op vs our ~40 cyc/op table-lookup
+  measured at ~18.5 cyc/op vs our ~40 cyc/op table-lookup
   emit) consumes, and (b) it's the granularity at which the lane-map
-  keystone applies cleanly.
+  lemma `vmap₂_eq_scalar` applies cleanly.
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.GfniEmit`
 -/
@@ -165,7 +165,7 @@ def byteOf (v : BitVec 128) (k : Fin 16) : BitVec 8 :=
   BitVec.extractLsb' (8 * k.val) 8 v
 
 /-- The 16-lane `BitVec 8` view of a `BitVec 128` — exactly the
-    `LaneMap.Vec 16 8` shape the lane-map keystone consumes. -/
+    `LaneMap.Vec 16 8` shape the lane-map lemmas consume. -/
 def lanesOf (v : BitVec 128) : Vec 16 8 := fun k => byteOf v k
 
 /-- Reassemble 16 `BitVec 8` lanes into a `BitVec 128` little-endian.
@@ -235,8 +235,8 @@ def denoteGfni (op : GfniOp) (a b : BitVec 128) : BitVec 128 :=
 
 `denoteGfni .vgf2p8mulb a b` equals the abstract "lane-wise schoolbook
 `gfMul` packed into a `BitVec 128`" — the connection any caller needs
-to re-emit through GFNI while keeping a proof carry that previously
-denoted against `AesBitslice.gfMul`. -/
+to re-emit through GFNI while keeping a proof carry that
+denotes against `AesBitslice.gfMul`. -/
 
 /-- The abstract reference: lane-wise schoolbook `gfMul` packed into a
     `BitVec 128`. This is what `Gf256Tab`/`AesBitslice` callers denote
@@ -258,7 +258,7 @@ theorem gfniMul_eq_gf28Mul (a b : BitVec 128) :
   -- the two functions collapses to the byte-level
   -- `gfniMul8_eq_gfMul'` identity (`∀ x y : BitVec 8, …`).
   unfold denoteGfni packedGf28Mul vmap₂ denoteGfniByte
-  -- Both sides are now `packBytes (fun k => f (lanesOf a k) (lanesOf b k))`
+  -- Both sides are `packBytes (fun k => f (lanesOf a k) (lanesOf b k))`
   -- with `f = gfniMul8` on the LHS, `gfMul` on the RHS. The byte-level
   -- exhaustive identity makes the two pointwise equal, hence the packs.
   have hfun : (fun k : Fin 16 => gfniMul8 (lanesOf a k) (lanesOf b k))
@@ -269,7 +269,7 @@ theorem gfniMul_eq_gf28Mul (a b : BitVec 128) :
 /-! ## 6. Structural alignment lemma — the lane-map shape -/
 
 /-- The GFNI packed-byte multiply is a `LaneMap.vmap₂` at lane width 8,
-    lane count 16. Reuses the keystone `vmap₂_eq_scalar`: per-lane the
+    lane count 16. Reuses the lemma `vmap₂_eq_scalar`: per-lane the
     op is byte-independent (no cross-lane carry, no horizontal sum), so
     the packed form equals the scalar per-lane form. Reusable for
     every other byte-independent GFNI op (the affine pair). -/
@@ -285,11 +285,8 @@ theorem gfniOp_complete (op : GfniOp) :
     op = .vgf2p8mulb ∨ op = .vgf2p8affineqb ∨ op = .vgf2p8affineinvqb := by
   cases op <;> simp
 
-/-- The multiply is symmetric. Discharged via the byte-level
-    `gfniMul8_eq_gfMul` (so the symmetry of `gfMul` lifts). Not
-    used yet by any consumer — recorded for completeness, since
-    `gf(2^8)` field multiply is commutative and consumers may use
-    the symmetry to commute operands in scheduling. -/
+/-- `0` is a left zero of the byte multiply `gfniMul8`, checked over
+    all bytes. -/
 theorem gfniMul8_zero_left (a : BitVec 8) : gfniMul8 0 a = 0 := by
   -- `gfniMul8 0 a` unfolds to a chain that accumulates `(0 &&& mask)`
   -- starting from `0` — every step contributes `0`, so the result is `0`.
@@ -305,11 +302,10 @@ theorem gfniMul8_zero_right (a : BitVec 8) : gfniMul8 a 0 = 0 := by
 /-! ## 8. Render helpers for the emitted jazz
 
 These are pure string emitters — they live alongside `denoteGfni` so
-the demonstrator consumers (and the next consumer that wires GFNI into
-AES bitslice, etc.) can render the intrinsic line without re-deriving
+the demonstrator consumers can render the intrinsic line without re-deriving
 the spelling. The jasmin surface name is `#VGF2P8MULB_128` /
-`#VGF2P8AFFINEQB_128` / `#VGF2P8AFFINEINVQB_128` (per the GFNI patch
-that landed in `jasmin/compiler` in early 2024). -/
+`#VGF2P8AFFINEQB_128` / `#VGF2P8AFFINEINVQB_128` (per the GFNI
+surface of `jasmin/compiler`, early 2024). -/
 
 /-- Jasmin surface mnemonic for each `GfniOp` (the intrinsic name
     `jasminc` consumes after the `#`). -/

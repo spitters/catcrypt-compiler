@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
 
 /-!
-# Wiring a register-named scalar op alphabet to the A64 machine model (#533)
+# Wiring a register-named scalar op alphabet to the A64 machine model
 
 This module lowers the **AArch64 scalar** ChaCha20 quarter-round: a
 register-named op alphabet `AOp`, the one-rule-per-constructor lowering `toAInst`
@@ -185,7 +185,7 @@ theorem qr_rfc_kat :
     (qrRun.get "c" = 0x4581472e) ∧ (qrRun.get "d" = 0x5881c4bb) := by
   native_decide
 
-/-! ## 6. The 64-bit bignum/field op alphabet and its lowering (#547)
+/-! ## 6. The 64-bit bignum/field op alphabet and its lowering
 
 The A64 analogue of `BOp → BInst`, for the bignum/field hot path. The lowering is
 one-rule-per-constructor (no instruction selection), so the block-lowering

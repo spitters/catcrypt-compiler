@@ -10,10 +10,10 @@ public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# C4 fan-out: the verified compiler emits the HMAC/HKDF scalar bodies from extracted source
+# The verified compiler emits the HMAC/HKDF scalar bodies from extracted source
 
-This module extends the **C4** step of the verified-compiler plan to the
-**HMAC/HKDF** scalar-bitwise loop/array bodies that `HmacHkdfEmit.lean` currently
+This module applies the verified compile-from-hax front to the
+**HMAC/HKDF** scalar-bitwise loop/array bodies that `HmacHkdfEmit.lean`
 authors *by hand* as `Com jasminDialect` terms. Each of those bodies is pure
 scalar ALU (XOR / wrapping-add / OR) over the register width, so it is squarely in
 the front's scalar fragment — exactly the `recogBin` family the SHA-256
@@ -41,17 +41,17 @@ front change.
   `w = 32` (the original packs `8·hw = reg 256`; the body is width-uniform, so a
   scalar slice exercises the identical `add`/`xor`/`or` recognizer chain).
 
-## Out of scope (reclassified to C8 = leaf-linking)
+## Out of scope (leaf-linking)
 
 * **`expandLeafBody`** (`§4b`) — its single binder is an `extCall`
-  `hkdf_expand_step` to an *opaque* leaf (the documented #104 dialect gap: no
-  in-body immediate op to synthesise the per-iteration counter byte). An
-  `extCall` is **not** in the front's scalar ALU fragment — it is a leaf-link
-  (C8), not a body the compiler emits. Reported, not forced.
+  `hkdf_expand_step` to an *opaque* leaf (the dialect has no in-body immediate
+  op to synthesise the per-iteration counter byte). An `extCall` is **not** in
+  the front's scalar ALU fragment — it is a leaf-link (`CompileFromHaxLink`),
+  not a body the compiler emits.
 
 ## Method (mirrors `CompileFromHaxLeaves` / `CompileFromHaxBlake2`)
 
-Each in-scope body follows the C3 obligation pattern exactly:
+Each in-scope body follows the per-primitive obligation pattern exactly:
 
 1. A let-normalized `ImpExpr` source (`*Src`), one operator per `letBind`.
 2. A source-spec lemma (`*_denoteScalar`) proving the source `denoteScalar`
@@ -59,7 +59,7 @@ Each in-scope body follows the C3 obligation pattern exactly:
    `*_denote` lemma in `HmacHkdfEmit.lean` targets.
 3. A `*_isSome` lemma (`native_decide`): the compile succeeds.
 4. The leaf theorem (`*_compiles`): the emitted jasmin `Com` denotes to that
-   closed form, routed through the C3 obligation `compileFromHax_meets_spec`.
+   closed form, routed through the obligation `compileFromHax_meets_spec`.
 -/
 
 @[expose] public section
@@ -112,9 +112,9 @@ theorem xorPad4_compileFromHax_isSome :
     `Com jasminDialect` `c` with
     `compileFromHax ["k0","k1","k2","k3","pad"] xorPad4Src = some c`, and for every
     `(k0,k1,k2,k3,pad)`, `c`'s `BitVec 32` denotation is exactly `K[3] ⊕ pad` —
-    the word-level pad fact `HmacHkdfEmit.xorPadCom_denote` records, now emitted by
+    the word-level pad fact `HmacHkdfEmit.xorPadCom_denote` records, emitted by
     the compiler from extracted source rather than hand-authored. Routed through
-    the C3 obligation `compileFromHax_meets_spec`. -/
+    the obligation `compileFromHax_meets_spec`. -/
 theorem xorPad4_compiles :
     ∃ (c : Com jasminDialect (frontCtxt 32 5 []) (rW 32)),
       compileFromHax (w := 32) (nIn := 5) ["k0", "k1", "k2", "k3", "pad"] xorPad4Src = some c ∧
@@ -155,7 +155,7 @@ theorem xorPad4W64_compileFromHax_isSome :
   native_decide
 
 /-- **Width-64 HMAC XOR-pad slice emitted by the verified compiler.** The same
-    `K[3] ⊕ pad` slice as `§1`, now at `w = 64` — the width HMAC-SHA512/384 use
+    `K[3] ⊕ pad` slice as `§1`, at `w = 64` — the width HMAC-SHA512/384 use
     over the 128-byte / 16-`u64` block. Re-derives `HmacHkdfEmit.xorPadComW_denote`'s
     word-level fact at width 64 through the compiler. Routed through
     `compileFromHax_meets_spec`. -/
@@ -222,9 +222,9 @@ theorem expandSkel_compileFromHax_isSome :
     There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["t"] expandSkelSrc = some c`, and for every `t`, `c`'s
     `BitVec 32` denotation is exactly `((t+t) ^ t) | (t+t)` — the closed form of
-    `HmacHkdfEmit.expandSkelBody`'s three-op `regArith` chain, now emitted by the
+    `HmacHkdfEmit.expandSkelBody`'s three-op `regArith` chain, emitted by the
     compiler from extracted source rather than hand-authored. Routed through the
-    C3 obligation `compileFromHax_meets_spec`. -/
+    obligation `compileFromHax_meets_spec`. -/
 theorem expandSkel_compiles :
     ∃ (c : Com jasminDialect (frontCtxt 32 1 []) (rW 32)),
       compileFromHax (w := 32) (nIn := 1) ["t"] expandSkelSrc = some c ∧

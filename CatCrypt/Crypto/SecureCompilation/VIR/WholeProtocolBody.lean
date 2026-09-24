@@ -15,17 +15,17 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
 `WholeFnLowering.lean` lowers a fixed-length **straight-line** body
 (`runProg leafSem com V = com.denote V`, naming side-conditions discharged).
 `LoopLowering.lean` lowers a **counted loop** over a single accumulator
-(`loopRun (loopN n body) (bodyStepRun …) init = step^[n] init`). The
-whole-function work flagged the missing piece as the *interleaving*: a real
-protocol body runs a straight-line prefix that produces the loop's initial
-accumulator, then runs the counted loop over it. This file composes the two
-landed keystones into ONE function body and proves its denote-correctness is the
+(`loopRun (loopN n body) (bodyStepRun …) init = step^[n] init`). A protocol
+body *interleaves* the two: it runs a straight-line prefix that produces the
+loop's initial accumulator, then runs the counted loop over it. This module
+composes the two theorems into ONE function body and proves its
+denote-correctness is the
 **function composition** `loop_semantics ∘ straightline_semantics`.
 
-## What was already there (reused, not re-proved)
+## Reused results
 
 * `WholeFnLowering.lowerComToProg_sem_eq'` — the straight-line whole-function
-  keystone with **both** SSA-naming side-conditions discharged: for a
+  theorem with **both** SSA-naming side-conditions discharged: for a
   `StraightLine` `com`, `runProg leafSem com V = com.denote V`, conditioned only
   on the opaque-leaf edge `LeafAgrees`.
 * `LoopLowering.loopN n body` / `loopN_lower_denote_iterate` — the counted-loop
@@ -35,7 +35,7 @@ landed keystones into ONE function body and proves its denote-correctness is the
 * `JasminPrintSemCorrect.StraightLine` / `runProg`, and
   `JForProgSemCorrect.bodyStepRun` / `loopRun`.
 
-## What is genuinely new here
+## Contents
 
 1. **`SetupThenLoop`** — the composed body: a straight-line setup
    `setup : Com jasminDialect Γ accTy` (whose `denote` produces the loop's
@@ -58,19 +58,19 @@ landed keystones into ONE function body and proves its denote-correctness is the
    opaque-leaf edge `LeafAgrees` (and the setup being straight-line). The proof
    rewrites the loop's `init` with `lowerComToProg_sem_eq'` (setup run =
    `setup.denote V`) and then closes the loop with `loopN_lower_denote_iterate`.
-   The composition is the new wiring; both halves are reused verbatim.
+   Both halves are reused verbatim.
 
 5. A worked, **concrete** example: setup `acc := a + b` (a single `regArith add`
    over `[reg 64, reg 64]`, producing `reg 64`) feeding the doubling loop
    `acc := acc + acc` `n` times. The composed run is proved to equal
    `(fun a => a + a)^[n] (a + b)`, and at `a = 3, b = 4, n = 4` to compute
-   `(3 + 4) · 2^4 = 112` byte-for-byte (`addThenDouble_kat`). SORRY-FREE.
+   `(3 + 4) · 2^4 = 112` byte-for-byte (`addThenDouble_kat`).
 
-## Conditioned scope (honest)
+## Conditioned scope
 
 The composed body is exactly *straight-line setup → single counted loop over one
-single-op-body accumulator → single return*, the union of the two landed
-keystones' scopes. The only carried hypothesis is the opaque-leaf edge
+single-op-body accumulator → single return*, the union of the two theorems'
+scopes. The only carried hypothesis is the opaque-leaf edge
 `LeafAgrees` (plus the setup being `StraightLine`), the same edge carried
 throughout the emit-correctness theory.
 
@@ -80,9 +80,9 @@ under `LeafAgrees`; this composes the two emitted runs at the meta level, not a
 single fused control-flow graph), several loops in sequence, a loop body that is
 itself a multi-binder straight-line `Com` (would re-introduce `freshName`
 injectivity), nested loops (`NestedLoopLowering`), or the instruction-selection
-pass applied to the fused body. Those are the remaining whole-protocol-body work.
+pass applied to the fused body.
 
-0 sorries; the only hypotheses are `LeafAgrees` and `StraightLine setup`.
+All goals are closed; the only hypotheses are `LeafAgrees` and `StraightLine setup`.
 -/
 
 @[expose] public section
@@ -146,9 +146,9 @@ def SetupThenLoop.semantics {Γ : Ctxt jasminDialect} {accTy : JasminTy}
 
 The run equals the semantics — `loop ∘ setup` — conditioned only on the shared
 opaque-leaf edge `LeafAgrees`. Rewrite the loop's `init` with the straight-line
-keystone (`setup` run = `setup.denote V`), then discharge the loop with the
-counted-loop keystone. Both halves are reused verbatim; the composition (the
-two semantics threaded through one accumulator) is the new content. -/
+theorem (`setup` run = `setup.denote V`), then discharge the loop with the
+counted-loop theorem. Both halves are reused verbatim; the composition threads
+the two semantics through one accumulator. -/
 
 /-- **Composed whole-protocol-body denote-correctness (`loop ∘ setup`).** For a
     straight-line setup feeding a counted loop, the composed evaluator run equals
@@ -156,8 +156,8 @@ two semantics threaded through one accumulator) is the new content. -/
     to the setup's denotation of the inputs. The only carried hypothesis is the
     opaque-leaf edge `LeafAgrees`; the setup-is-straight-line side-condition lives
     in the body record. Proof: rewrite the loop's initial accumulator with the
-    straight-line keystone `lowerComToProg_sem_eq'`, then close the loop with the
-    counted-loop keystone `loopN_lower_denote_iterate`. -/
+    straight-line theorem `lowerComToProg_sem_eq'`, then close the loop with the
+    counted-loop theorem `loopN_lower_denote_iterate`. -/
 theorem setupThenLoop_run_eq {Γ : Ctxt jasminDialect} {accTy : JasminTy}
     {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (P : SetupThenLoop Γ accTy) (V : Ctxt.Valuation Γ) :
@@ -214,7 +214,7 @@ theorem addThenDouble_run_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 
 /-- **Worked example (concrete KAT).** On inputs `a = 3, b = 4` with `n = 4`, the
     composed body computes `(3 + 4) · 2^4 = 112` byte-for-byte — the unrolled
-    reference `7 → 14 → 28 → 56 → 112`. Ties the composition keystone to a
+    reference `7 → 14 → 28 → 56 → 112`. Ties the composition theorem to a
     concrete value: the straight-line prefix runs first (`3 + 4 = 7`), then the
     counted loop doubles four times. -/
 theorem addThenDouble_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :

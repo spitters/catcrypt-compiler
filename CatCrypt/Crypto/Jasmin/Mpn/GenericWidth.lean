@@ -41,8 +41,8 @@ The width-parametric story splits into two layers:
   a recursive `storeBytesLE` / `loadBytesLE` and prove read-back + frame by
   **induction on the byte list** — the per-step address inequalities are
   single-byte `UInt64` facts (concrete width, `bv_decide`-friendly), but
-  the induction over the *count* replaces the whole-word bitblast. This is
-  the genuinely new technique that makes the memory layer width-generic.
+  the induction over the *count* takes the place of the whole-word
+  bitblast. This technique makes the memory layer width-generic.
 
 The limb-decompose bridge (`storeWLimb` / `loadWLimb` over `k = w / 8`
 bytes) connects a `BitVec w` limb to its `k` little-endian bytes and is

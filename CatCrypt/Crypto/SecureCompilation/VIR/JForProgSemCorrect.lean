@@ -10,22 +10,21 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
-# The emitted bounded loop denotes the `n`-fold semantics (`JForProg` keystone)
+# The emitted bounded loop denotes the `n`-fold semantics (`JForProg` main theorem)
 
 `JForProgCT.lean` (§7) proves the *whole-loop* agreement
 `loopRun p bodyRun init = p.denote init` **modulo** an explicit per-iteration
 edge hypothesis `StepAgrees p bodyRun` — exactly the
 `JasminPrintSemCorrect.lean` discipline of carrying the single uncovered edge as
-a named hypothesis rather than a `sorry`. The remaining gap (flagged at
-`JasminPrint.lean` §7 — "the printer's `Cfor` is a faithful *skeleton*") was the
-absence of a theorem that *discharges* `StepAgrees` against the actual emitted
-loop body.
+a named hypothesis rather than a `sorry`. `JasminPrint.lean` §7 describes the
+printer's `Cfor` as a faithful *skeleton*; this module *discharges* `StepAgrees`
+against the emitted loop body.
 
-This file closes that gap. It builds a **concrete** body runner from the
+It builds a **concrete** body runner from the
 word-level evaluator of `JasminPrintSemCorrect.lean` — running the lowering of
 `p.update` once through the named accumulator slot `"acc"` — and **proves**
 `StepAgrees` for it. Composing with `JForProgCT.loopRun_eq` then yields the
-keystone, fully discharged (no carried `StepAgrees`):
+main theorem, fully discharged (no carried `StepAgrees`):
 
 > running the emitted `for i = 0 to n { acc = body(acc) }` `n` times, threading
 > the named accumulator, equals `p.denote init` = the `n`-fold application of the
@@ -54,7 +53,7 @@ every other emit-correctness theorem in this development carries).
   `p.step` (the per-iteration ground truth), `hInj`-free.
 * `stepAgrees_singleVar` — hence `StepAgrees p (bodyStepRun …)` for single-leaf
   bodies.
-* `loop_denote_eq` — **the keystone**: the emitted loop's `n`-fold run equals
+* `loop_denote_eq` — **the main theorem**: the emitted loop's `n`-fold run equals
   `JForProg.denote`. Stated for single-leaf bodies, fully discharged.
 * The X25519 ladder instance (`x25519Ladder_loop_denote_eq`): the emitted
   `for i = 0 to 255 { acc = x25519_ladder_iter(acc) }` denotes the 255-fold
@@ -176,15 +175,15 @@ theorem bodyStepRun_singleVar_eq {accTy : JasminTy} {leafSem : LeafSem}
   rfl
 
 /-- **`StepAgrees` for a single-leaf body, discharged.** The concrete body runner
-    satisfies the per-iteration edge condition of `JForProgCT.loopRun_eq` — it is
-    no longer a hypothesis but a theorem, modulo the opaque-leaf edge. -/
+    satisfies the per-iteration edge condition of `JForProgCT.loopRun_eq` — as a
+    theorem, modulo the opaque-leaf edge. -/
 theorem stepAgrees_singleVar {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (e : Expr jasminDialect [accTy] accTy)
     (p : JForProg accTy) (hp : p.update = SingleVarBody e) :
     StepAgrees p (bodyStepRun leafSem p) :=
   fun acc => bodyStepRun_singleVar_eq hLeaf e p hp acc
 
-/-! ## 4. The keystone: emitted loop run = `n`-fold denotation
+/-! ## 4. The main theorem: emitted loop run = `n`-fold denotation
 
 Composing the discharged `StepAgrees` with `JForProgCT.loopRun_eq` gives the
 whole-loop result with **no carried per-iteration hypothesis** (only the
@@ -192,7 +191,7 @@ opaque-leaf edge): running the emitted `for i = 0 to n { acc = body(acc) }`
 `n` times equals `JForProg.denote` = the `n`-fold application of the body's
 denotation. This is the for-loop layer's `lowerComToProg`-analogue. -/
 
-/-- **Keystone — the emitted bounded loop denotes the `n`-fold semantics.** For a
+/-- **Main theorem — the emitted bounded loop denotes the `n`-fold semantics.** For a
     single-leaf body, running the emitted `Cfor` (`p.toProg`) by iterating the
     word-level body evaluator `p.n` times from `init`, threading the named
     accumulator, equals `p.denote init` — the `n`-fold application of
@@ -207,7 +206,7 @@ theorem loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
     loopRun p (bodyStepRun leafSem p) init = p.denote init :=
   loopRun_eq p (stepAgrees_singleVar hLeaf e p hp) init
 
-/-- Per-iteration unfolding of the keystone: the emitted loop of `n+1` iterations
+/-- Per-iteration unfolding of the main theorem: the emitted loop of `n+1` iterations
     applies one extra emitted body step *after* the `n`-iteration loop — the
     evaluator-side recurrence matching `JForProgCT.denote_succ`. -/
 theorem loop_denote_succ {accTy : JasminTy} {leafSem : LeafSem}
@@ -223,8 +222,8 @@ theorem loop_denote_succ {accTy : JasminTy} {leafSem : LeafSem}
 
 The simplest bounded-loop kernel: a running double `acc := acc + acc` for `n`
 iterations (a `regArith add` body — a single leaf). Its emitted-loop run equals
-`n`-fold doubling = the `denote` the keystone covers. This is exactly the
-`JasminPrint.doubleLoop` example, now with a *discharged* (not hypothesised)
+`n`-fold doubling = the `denote` the main theorem covers. This is exactly the
+`JasminPrint.doubleLoop` example, with a *discharged* (not hypothesised)
 `StepAgrees`. The leaf agreement is vacuous (no `extCall`), so any `leafSem`
 works. -/
 
@@ -245,10 +244,10 @@ theorem doubleLoop_loop_denote_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSe
       = JasminPrint.doubleLoop.denote init :=
   loop_denote_eq hLeaf _ JasminPrint.doubleLoop doubleLoop_singleVar init
 
-/-- The discharged-`StepAgrees` keystone, instantiated at the concrete count
+/-- The discharged-`StepAgrees` main theorem, instantiated at the concrete count
     `n = 4` and seed `init = 1`, computes `16` — byte-for-byte the unrolled
     reference (`1 → 2 → 4 → 8 → 16`). This ties the emitted-loop semantics the
-    keystone proves to the concrete KAT validated end-to-end in
+    main theorem proves to the concrete KAT validated end-to-end in
     `bench/loop_layer/`. -/
 theorem doubleLoop_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     loopRun JasminPrint.doubleLoop (bodyStepRun leafSem JasminPrint.doubleLoop)

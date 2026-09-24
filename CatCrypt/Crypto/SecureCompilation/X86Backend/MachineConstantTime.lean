@@ -11,11 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 /-!
 # Machine-level constant-time for the emitted x86 subset
 
-`SSALeakage.lean` proves the *source-level* constant-time property: every
-CryptoSSA program has a leakage trace fixed by its syntax, so it leaks nothing
-about secret inputs (`CProg.leakTrace_constant`, `all_cprog_ct`). That argument
-lives at the CryptoSSA IR, above code generation. This module lifts the same
-guarantee to the **emitted machine code**: a real straight-line x86 leaf
+A source-level constant-time property states that a program's leakage trace is
+fixed by its syntax, so it leaks nothing about secret inputs; such an argument
+lives at the IR, above code generation. This module states the constant-time
+guarantee for the **emitted machine code**: a real straight-line x86 leaf
 (`List (JInstr w)` in the `JasminModel` semantics) and its *machine* leakage
 trace — the sequence of control-flow decisions and **memory-access addresses**.
 
@@ -52,7 +51,7 @@ addressing, rather than holding of every program because "there are no branches.
 This is the machine-level analogue of `SSALeakage.leakTrace_constant`.
 
 **0 axioms** (`native_decide` is used only for the concrete leaf value pin),
-**0 sorries**.
+all goals closed.
 
 ## References
 
@@ -194,7 +193,7 @@ This is the machine-level analogue of `SSALeakage.leakTrace_constant`. -/
     Proved by induction over the block. The head's leak is state-independent by
     `instrLeak_state_independent`; the tails run from `evalInstr s₁ i` resp.
     `evalInstr s₂ i`, but the inductive hypothesis closes them since *every*
-    instruction is direct, so no later leak inspects the (now diverged) states
+    instruction is direct, so no later leak inspects the (diverged) states
     either. -/
 theorem blockLeak_state_independent {w : Nat} (body : List (JInstr w))
     (hbody : ∀ i ∈ body, IsDirect i) (s₁ s₂ : JState w) :

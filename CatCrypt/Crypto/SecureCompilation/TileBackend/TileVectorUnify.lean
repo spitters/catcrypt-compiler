@@ -39,7 +39,7 @@ theorem tile_eq_vectorTy (n w : Nat) : Tile n w = VectorTy (BitVec w) n := rfl
 theorem lane_add_eq_map₂ {n w : Nat} (a b : Tile n w) :
     (fun i => a i + b i) = VectorTy.map₂ (· + ·) a b := rfl
 
-/-- The same for multiply (the load-bearing field-lane op). -/
+/-- The same for multiply (the main field-lane op). -/
 theorem lane_mul_eq_map₂ {n w : Nat} (a b : Tile n w) :
     (fun i => a i * b i) = VectorTy.map₂ (· * ·) a b := rfl
 

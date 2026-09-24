@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect
 # The Curve25519 Solinas `·19` reduce over the proven carry-chain primitives
 
 `Fe25519TierA.fe25519_emit_mul_runBlock` ties the Curve25519 field-multiply at
-two levels: the 4×4 schoolbook product is a genuine emitted `runBlock`
+two levels: the 4×4 schoolbook product is an emitted `runBlock`
 (`SchoolbookProductRunBlock.emitProductBlock_runBlock_value`), and the Solinas
 reduction is the *value-proven* residue (`ModReduceSelect.solinasReduce` /
 `solinasReduce_eq_mod`). The remainder named there, `Fe25519TierA.emittedReduceGap`,
@@ -51,14 +51,14 @@ Composed, the two folds plus the conditional subtract reconstruct to
   `Fe25519TierA.emittedReduceGap` only asserted it.
 
 * **`fe25519_emit_fieldmul_runBlock`** ⭐ — composing with
-  `Fe25519TierA.fe25519_emit_mul_runBlock`: on reduced 4-limb inputs the genuine
+  `Fe25519TierA.fe25519_emit_mul_runBlock`: on reduced 4-limb inputs the
   emitted product over `runBlock`, fed to the primitive-reconstructed Solinas
   reduce (= `solinasReduce`, = the residue), equals
   `(valLimbs x · valLimbs y) mod (2^255 − 19)`. The full Curve25519 field-multiply
   value is `runBlock(emitted product) → (proven `· 19` Solinas reduce) → (x · y)
   mod p25519`.
 
-## Scope (honest): the named split-bookkeeping remainder
+## Scope: the named split-bookkeeping remainder
 
 `Fe25519TierA.emittedReduceGap` is stated over `runBlock s fusedReduce25519`: it
 asks for the result words `z[0..3]` of the *concrete bit-255 fold block* — the
@@ -71,8 +71,8 @@ verbatim is the **non-word-aligned bit-255 split bookkeeping**: mapping the
 `fusedReduce25519` block's `shr 63`/`shl 1`/`and` mask sequence to the
 `(P / 2^255, P % 2^255)` split this file's reduce consumes. That is the
 255-bit-vs-64-bit-word mismatch the repo externalises to the GMP KAT
-(`bench/x25519_fieldmul_compare`, the REV-12 discipline); it is named precisely
-below as `splitBookkeepingGap`. The fold arithmetic and the reduce are now
+(`bench/x25519_fieldmul_compare`); it is named precisely
+below as `splitBookkeepingGap`. The fold arithmetic and the reduce are
 theorems (no axiom); the bit-255 split mask is the remainder.
 -/
 
@@ -120,7 +120,7 @@ def foldMul19 (high low : List (BitVec 64)) : List (BitVec 64) :=
 
 /-- **The `· 19` fold reconstructs to the exact `Nat` value.** The recombined
     value of `foldMul19 high low` equals `valLimbs high · 19 + valLimbs low` — the
-    genuine fold arithmetic, over the proven MULX/ADD/ADC reconstruction layer.
+    fold arithmetic, over the proven MULX/ADD/ADC reconstruction layer.
     Requires the `low` half to be at least as long as the `high · 19` row (i.e. the
     `addLimbs` truncation against `low` is exact); for the Curve25519 layout both
     halves are 4-limb and the row is 5-limb, so we pad `low` to the row length. -/
@@ -155,7 +155,7 @@ For a low half below the `2^255` Solinas boundary, `high · 19 + low` is exactly
 `solinasFold solinasParams25519 (high · 2^255 + low)`: the fold splits its input
 at `2^255` (`solinasParams25519.k = 255`), and when `low < 2^255` that split
 returns `(high, low)`, so the fold computes `high · 19 + low`. This is the 255-bit
-analogue of `Sm2FieldProven.fold_matches_solinas` (proven at `k = 64`), now over
+analogue of `Sm2FieldProven.fold_matches_solinas` (proven at `k = 64`), here over
 the 4-limb `valLimbs` layer with `c = 19`. -/
 
 /-- **The `· 19` fold value equals `solinasFold` at `(255, 19)`.** With the low
@@ -224,7 +224,7 @@ theorem solinasReduce_grounded_fold (highL lowL : List (BitVec 64))
 
 /-! ## 5. Tier-A composition: emitted product → grounded Solinas reduce → residue
 
-`Fe25519TierA.fe25519_emit_mul_runBlock` gives the genuine emitted product over
+`Fe25519TierA.fe25519_emit_mul_runBlock` gives the emitted product over
 `runBlock` (`runBlockProductValue = valLimbs x · valLimbs y`) and the value-proven
 Solinas reduce of its `2^255` split. This file's `· 19` fold over the proven
 carry-chain primitives grounds the *arithmetic* of that reduce's leading fold.
@@ -239,7 +239,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
     reduce's `· 19` fold grounded in the proven carry-chain primitives.** With
     reduced 4-limb inputs and the schoolbook register layout (the
     `fe25519_emit_mul_runBlock` hypotheses), and a `(highL, lowL)` limb-vector
-    split of the product matching the genuine `runBlock` product value:
+    split of the product matching the `runBlock` product value:
 
     * the emitted product block's `runBlock` value is `valLimbs x · valLimbs yv`
       (`emitProductBlock_runBlock_value`, a real emitted `List (JInstr 64)`);
@@ -249,8 +249,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
       `valLimbs (foldMul19 highL lowL)` the proven MULX-by-`19` + ADD/ADC carry
       chain computes (`foldMul19_is_solinasFold`).
 
-    The multiply is a genuine emitted `runBlock`; the `2^255 − 19` reduction is the
-    value-proven residue whose `· 19` fold is now itself a theorem over the proven
+    The multiply is an emitted `runBlock`; the `2^255 − 19` reduction is the
+    value-proven residue whose `· 19` fold is itself a theorem over the proven
     register-arithmetic primitives, not a docstring claim. The remaining gap to
     discharging `Fe25519TierA.emittedReduceGap` verbatim is the bit-255,
     non-word-aligned split bookkeeping (`splitBookkeepingGap`). -/
@@ -281,7 +281,7 @@ theorem fe25519_emit_fieldmul_runBlock
     fe25519_emit_mul_runBlock accs as ys x yv hi lo s haslen hyslen hcap hfresh
       hxr hyr hacc0 hcf hof hx_red hy_red
   refine ⟨hprod, hres, ?_⟩
-  -- the high/low halves of the genuine product are both < 2^255 (reduced inputs)
+  -- the high/low halves of the product are both < 2^255 (reduced inputs)
   obtain ⟨hhi_lt, hlo_lt⟩ := product_halves_lt x yv hx_red hy_red
   have hl : valLimbs lowL < 2 ^ 255 := by rw [hlL, hprod]; exact hlo_lt
   rw [← hhL, ← hlL]
@@ -298,7 +298,7 @@ the `runBlock`-level identity for the concrete `fusedReduce25519` block, with it
 mapping that mask sequence to the `(P / 2^255, P % 2^255)` split this file's
 reduce consumes. `splitBookkeepingGap` states precisely that obligation. It is the
 255-bit-vs-64-bit-word mismatch the repo externalises to the GMP KAT
-(`bench/x25519_fieldmul_compare`, the REV-12 discipline). A `Prop` (no axiom). -/
+(`bench/x25519_fieldmul_compare`). A `Prop` (no axiom). -/
 
 /-- The named bit-255 split-bookkeeping remainder: that the concrete bit-255 fold
     sequence of `fusedReduce25519` (the `shr 63` / `shl 1` / `and 0x7fff…ff` mask)

@@ -39,17 +39,17 @@ inversion `(·)⁻¹` over `Fp25519 := ZMod p25519`, whose `mul` is
 `Fp25519` multiplication, etc., would close
 `compress_byte_spec compressMathPkg = compress_spec` via the chain
 correctness theorem `compress_emit_correct`.  However, CatCrypt does
-not currently expose a byte ↔ `Fp25519` bridge (`Fp25519.toBytes` /
+not expose a byte ↔ `Fp25519` bridge (`Fp25519.toBytes` /
 `fromBytes`) — `encodeFp25519` in `CompressEmitCorrect.lean` is the
 only direction (and it lands in `Vector UInt8 32`, not the 40-byte
 `JArray` slot encoding used at the `LowCT` level).
 
-Adding that bridge is genuinely a separate piece of work: the
-40-byte slot is dalek's internal representation (five 51-bit limbs +
-padding), whereas `Fp25519` is `ZMod p25519`.  We therefore stop at
-the byte-spec level and leave the `Fp25519`-bridge headline theorem
-as future work; the empirical witness for the bridge is the
-80/80-vector difftest against dalek in `bench/dalek/`.
+That bridge is a separate development: the 40-byte slot is dalek's
+internal representation (five 51-bit limbs + padding), whereas
+`Fp25519` is `ZMod p25519`.  This module therefore stops at the
+byte-spec level; the `Fp25519`-bridge theorem is outside its scope, and
+the empirical witness for the bridge is the 80/80-vector difftest
+against dalek in `bench/dalek/`.
 -/
 
 @[expose] public section

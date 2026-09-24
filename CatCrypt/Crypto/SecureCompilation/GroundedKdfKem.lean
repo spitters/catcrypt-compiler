@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
-# Grounded KDF / KEM backbones — whole-pipeline emit-realization with ZERO
+# Grounded KDF / KEM cores — whole-pipeline emit-realization with ZERO
   assumed per-kernel hypotheses, over the PROVED Keccak concrete realizer
 
 `GroundedHashProtocol` grounds a Keccak sponge from the **proved**, unconditional
@@ -19,13 +19,13 @@ theorem, proved per-bit, *axiom-clean*: only `propext` / `Classical.choice` /
 
 This module reuses that proved realizer — through the same carrier-parametric
 composition law `GroundedHashProtocol.pipeNT_realizes` — to ground the
-**SHA-3 / Keccak hash-iteration backbones of real KDF / KEM constructions**.  A
+**SHA-3 / Keccak hash-iteration cores of real KDF / KEM constructions**.  A
 KDF or a KEM key schedule is, at the leaf level, a chain of the *same* permutation
 iterated on a running sponge state; once that permutation's per-iteration
 realization is a theorem (it is — `keccak_realizes_concrete`), the whole KDF / KEM
-backbone is grounded with **zero `KernelRealizesT` hypotheses**.
+core is grounded with **zero `KernelRealizesT` hypotheses**.
 
-## The three grounded backbones (all SHA-3 / Keccak)
+## The three grounded cores (all SHA-3 / Keccak)
 
 * **`grounded_sha3_hkdf_realizes`** — a SHA-3-based HKDF Extract→Expand chain
   (the KMAC / cSHAKE realization of HKDF; NIST SP 800-56C Rev. 2 admits
@@ -46,16 +46,16 @@ backbone is grounded with **zero `KernelRealizesT` hypotheses**.
   hypotheses.**
 
 * **`grounded_kem_decaps_backbone_realizes`** — the KEM session-key derivation
-  backbone of an FO-transform KEM (e.g. ML-KEM `Decaps` / `Encaps`, FIPS 203):
+  core of an FO-transform KEM (e.g. ML-KEM `Decaps` / `Encaps`, FIPS 203):
   the shared secret is hashed and a key schedule is squeezed from a Keccak sponge.
-  The backbone is `n` iterations of `keccak_f steps` on the 1600-bit hash/sponge
+  The core is `n` iterations of `keccak_f steps` on the 1600-bit hash/sponge
   state, every per-iteration realization discharged by the proved
   `keccak_realizes_concrete`.  **ZERO `KernelRealizesT` hypotheses.**
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
 * **Grounded (unconditional Lean theorem):** every per-block / per-iteration
-  realization of all three backbones.  Each is the proved
+  realization of all three cores.  Each is the proved
   `keccak_realizes_concrete` (in turn the verified codec round-trip
   `decodeKbytes_encodeKbytes`), with no KAT, no abstract section assumption, and
   no per-kernel hypothesis.  Each whole `pipeNT` pipeline decodes to the composite
@@ -69,7 +69,7 @@ backbone is grounded with **zero `KernelRealizesT` hypotheses**.
   SHA-256 compression codec round-trip `decodeSbytes_encodeSbytes` is proved by a
   `bv_decide` LRAT certificate (`wordOfBytes_split`), which introduces a
   certificate axiom.  To keep every theorem in this file axiom-clean
-  (`{propext, Classical.choice, Quot.sound}` only) we ground the KDF/KEM backbones
+  (`{propext, Classical.choice, Quot.sound}` only) we ground the KDF/KEM cores
   on the **Keccak** permutation, whose codec round-trip is proved per-bit with no
   `bv_decide` axiom and which is also the actual PRF of SP 800-56C's SHA-3/KMAC
   KDF and of ML-KEM's hash/sponge key schedule.
@@ -79,7 +79,7 @@ backbone is grounded with **zero `KernelRealizesT` hypotheses**.
   realizer leaf-spec — the owned-machine-code route, a single global obligation
   per kernel, explicitly not one of the per-iteration realizations this file
   discharges (nor a KAT).  The KEM's lattice arithmetic (NTT, sampling,
-  re-encryption check) is likewise out of scope: only the hash/sponge backbone is
+  re-encryption check) is likewise out of scope: only the hash/sponge core is
   grounded here.
 
 ## References
@@ -133,7 +133,7 @@ def sha3HkdfSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by the carrier-generalized `pipeNT_realizes`.
 
-    Honest scope: this grounds HKDF in its **SHA-3 / Keccak-permutation**
+    Scope: this grounds HKDF in its **SHA-3 / Keccak-permutation**
     realization.  The classical HMAC-SHA-256 realization is NOT grounded here —
     `hmacSha256` has no proved concrete realizer in-repo, and the SHA-256 codec
     round-trip uses a `bv_decide` certificate axiom; grounding on Keccak keeps
@@ -207,17 +207,17 @@ theorem grounded_sha3_kdf_squeeze_realizes (steps : KeccakStepMappings)
     (sha3KdfLeaves n) (sha3KdfSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §3  KEM Decaps / Encaps session-key backbone — UNCONDITIONAL
+/-! ## §3  KEM Decaps / Encaps session-key core — UNCONDITIONAL
 
 An FO-transform KEM (e.g. ML-KEM, FIPS 203) derives the session key in `Decaps` /
 `Encaps` by hashing the shared secret and squeezing a key schedule from a Keccak
 sponge: `K = KDF(shared_secret ‖ …)`, the SHA-3 hash/sponge advanced one
-permutation per absorbed/squeezed block.  The session-key backbone is therefore
+permutation per absorbed/squeezed block.  The session-key core is therefore
 `n` iterations of `keccak_f steps` over the 1600-bit hash/sponge state — exactly
 the same proved-`keccak_realizes_concrete` skeleton, here named for the KEM key
 schedule.  **ZERO `KernelRealizesT` hypotheses.** -/
 
-/-- The `n`-block KEM session-key backbone leaf list: `n` copies of
+/-- The `n`-block KEM session-key core leaf list: `n` copies of
     `"keccak_f1600"` (the SHA-3 hash/sponge of the KEM key schedule). -/
 def kemDecapsLeaves (n : ℕ) : List String :=
   keccakSpongeLeaves n
@@ -228,9 +228,9 @@ def kemDecapsSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED KEM Decaps / Encaps session-key backbone — UNCONDITIONAL.**
+/-- **GROUNDED KEM Decaps / Encaps session-key core — UNCONDITIONAL.**
 
-    The session-key derivation backbone of an FO-transform KEM (ML-KEM `Decaps` /
+    The session-key derivation core of an FO-transform KEM (ML-KEM `Decaps` /
     `Encaps`, FIPS 203): the shared secret is hashed and a key schedule is
     squeezed from a Keccak sponge, `n` permutation applications of
     `keccak_f steps` on the 1600-bit hash/sponge state.  Its entire
@@ -240,11 +240,11 @@ def kemDecapsSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    Honest scope: this grounds the **SHA-3 hash/sponge backbone** of the KEM key
+    Scope: this grounds the **SHA-3 hash/sponge core** of the KEM key
     schedule (the FIPS-203 `H` / `J` / `G` / `KDF` calls are all Keccak-permutation
     chains).  It does NOT model the lattice arithmetic of the KEM (NTT, sampling,
     re-encryption check) — those are separate, non-hash kernels with their own
-    realizers; only the hash/sponge backbone is grounded here.
+    realizers; only the hash/sponge core is grounded here.
 
     The only residual is the machine-code obligation for the `"keccak_f1600"`
     leaf — the owned-machine-code route, NOT a per-block hypothesis (and NOT a
@@ -264,24 +264,24 @@ theorem grounded_kem_decaps_backbone_realizes (steps : KeccakStepMappings)
     (kemDecapsLeaves n) (kemDecapsSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §4  The combined KDF/KEM headline — all three backbones grounded
+/-! ## §4  The combined KDF/KEM headline — all three cores grounded
 
-The KDF/KEM portfolio is its three grounded SHA-3 backbones conjoined: the HKDF
+The KDF/KEM portfolio is its three grounded SHA-3 cores conjoined: the HKDF
 Extract→Expand chain, the SHAKE KDF squeeze, and the KEM Decaps/Encaps session-key
-backbone.  All three drive the 1600-bit Keccak sponge (carrier `.TBytes 200`), so
+core.  All three drive the 1600-bit Keccak sponge (carrier `.TBytes 200`), so
 the conjunction is over one carrier; each conjunct is unconditional in its
 kernels. -/
 
-/-- **THE KDF/KEM HEADLINE — three grounded SHA-3 backbones, ZERO kernel
+/-- **THE KDF/KEM HEADLINE — three grounded SHA-3 cores, ZERO kernel
     hypotheses.**
 
-    The SHA-3 KDF/KEM hash backbones conjoined, each an `n`-block
+    The SHA-3 KDF/KEM hash cores conjoined, each an `n`-block
     `pipeNT (.TBytes 200)` Keccak-permutation pipeline decoding to the composite
     of `n` `keccak_f steps` specs:
 
     * the SHA-3 HKDF Extract→Expand chain,
     * the SHA-3/SHAKE KDF squeeze, and
-    * the KEM Decaps/Encaps session-key backbone,
+    * the KEM Decaps/Encaps session-key core,
 
     each with **ZERO `KernelRealizesT` hypotheses** — every per-step realization
     is the proved concrete realizer `keccak_realizes_concrete` (in turn the
@@ -289,9 +289,9 @@ kernels. -/
     axiom-clean (`{propext, Classical.choice, Quot.sound}`).
 
     The only residual is the per-kernel machine-code obligation for
-    `"keccak_f1600"` (the owned-machine-code route).  Honest scope: the HMAC
+    `"keccak_f1600"` (the owned-machine-code route).  Scope: the HMAC
     keyed-hash wrapper of the classical HKDF and the lattice arithmetic of the KEM
-    are NOT grounded here — only the SHA-3 hash/sponge backbones are. -/
+    are NOT grounded here — only the SHA-3 hash/sponge cores are. -/
 theorem grounded_kdf_kem_portfolio (steps : KeccakStepMappings)
     (limbStore : LimbStoreSpec) (n : ℕ)
     (hkdfOldDest hkdfXVal kdfOldDest kdfXVal kemOldDest kemXVal :
@@ -312,7 +312,7 @@ theorem grounded_kdf_kem_portfolio (steps : KeccakStepMappings)
           (sha3KdfLeaves n) kdfOldDest kdfXVal)
       = composeSpecs (sha3KdfSpecs steps n) (decodeKbytes kdfXVal)
     ∧
-    -- KEM Decaps/Encaps session-key backbone: grounded, no kernel hypotheses.
+    -- KEM Decaps/Encaps session-key core: grounded, no kernel hypotheses.
     decodeKbytes
         (pipeNT (.TBytes 200)
           (specLeafSpecT (.TBytes 200) decodeKbytes encodeKbytes (keccak_f steps)

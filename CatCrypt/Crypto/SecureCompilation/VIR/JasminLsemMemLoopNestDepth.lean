@@ -13,24 +13,24 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
 set_option autoImplicit false
 
 /-!
-# Arbitrary-depth nesting and per-outer-recomputed inner trips (capabilities 1a + 1b)
+# Arbitrary-depth nesting and per-outer-recomputed inner trips
 
-A3 (`JasminLsemMemLoopNestWhile`) closed **depth-2** nested region calls
-(`callee_run2`: a callee whose body itself calls a leaf) and validated a **depth-2**
-inline nested loop (`nestedLoop_validate`).  Its stated residual was *arbitrary-depth*
-nesting (the closed cost/denote accounting was depth-2-bounded) and an inline nested
-loop whose inner trip is **recomputed from the outer index each pass**.  This module
-closes both, additively on A1–A3 (imported directly, dodging the cone).
+`JasminLsemMemLoopNestWhile` proves **depth-2** nested region calls
+(`callee_run2`: a callee whose body itself calls a leaf) and validates a **depth-2**
+inline nested loop (`nestedLoop_validate`); its closed cost/denote accounting is
+depth-2-bounded.  This module covers *arbitrary-depth* nesting and an inline nested
+loop whose inner trip is **recomputed from the outer index each pass**, additively on
+the loop, call and while interpreters (imported directly, dodging the cone).
 
 ## 1a — ARBITRARY-DEPTH NESTED CALLS (`callee_run_n`, depth-indexed)
 
 `NestBodyOK env P d` is the depth-indexed body predicate: a depth-0 body is
 straight-line (`IsLopn`); a depth-`(d+1)` body may call a callee whose own body is
 depth-`d`.  `lsemStraightMemDN d` is the matching depth-`d` spec fold — its call arm
-recurses at depth `d-1` (so it resolves nested calls all the way down, unlike A2's
+recurses at depth `d-1` (so it resolves nested calls all the way down, unlike
 `lsemStraightMemC`, which resolves exactly one call level).  `fuelCostDN d` is the
-call-aware, depth-indexed fuel.  `nestSegDN` (the depth-indexed generalisation of A3's
-`segCallG`) and `calleeRunDN` (the depth-indexed generalisation of A3's `callee_run` /
+call-aware, depth-indexed fuel.  `nestSegDN` (the depth-indexed generalisation of
+`segCallG`) and `calleeRunDN` (the depth-indexed generalisation of `callee_run` /
 `callee_run2`) are proved together by induction on `d`: entering a depth-`(d+1)` callee
 runs the depth-`d` body-fold then `Lret`-pops, in `fuelCostDN d body + 1 + f` steps.
 `calleeRun_depth3` is the concrete depth-3 instance (a callee calling a callee calling a
@@ -49,14 +49,14 @@ from the recomputed value, not baked in.
 
 A **depth-3** inline nested loop matching the GGM Phase-3 shape (outer `jd ∈ 0..D`,
 middle `idx ∈ 0..(num>>(jd+1))` — per-outer-halved, inner `t ∈ 0..outlen`) front-forms
-to genuine nested `loopLinstrRM` loops (real back-edges at each of three distinct
+to nested `loopLinstrRM` loops (real back-edges at each of three distinct
 labels) and denotes to the triple fold `ggmNestedFold` with the middle bound varying per
 `jd`:
 
 * `ggm_depth3_validate` — interpreter `acc = ggmNestedFold D num outlen` (D=3, num=8,
   outlen=2 ⇒ middle trips 4,2,1 ⇒ acc = 14).
 * `ggm_recompute_reads_num` — with `num = 16` the interpreter gives `28`
-  (= `(8+4+2)*2`), NOT `14`: the middle trip is genuinely recomputed as `num>>(jd+1)`
+  (= `(8+4+2)*2`), NOT `14`: the middle trip is recomputed as `num>>(jd+1)`
   from the register per outer pass, not a baked-in `4,2,1`.
 
 **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
@@ -77,9 +77,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
 /-! ## Part 1a — arbitrary-depth nested calls (depth-indexed spec + fuel)
 
 `lsemStraightMemDN env d` is the depth-`d` straight-line-with-calls fold: at depth `0`
-it is A1's straight-line `lsemStraightMem` (no calls); at depth `d+1` each call resolves
+it is the straight-line `lsemStraightMem` (no calls); at depth `d+1` each call resolves
 the callee's body-fold **at depth `d`** — so it resolves nested calls all the way down,
-unlike A2's `lsemStraightMemC`, which resolves exactly one call level. -/
+unlike `lsemStraightMemC`, which resolves exactly one call level. -/
 
 /-- Depth-indexed straight-line-with-calls fold. -/
 def lsemStraightMemDN (env : LeafEnvM) : Nat → List LinstrRM → LstateM → Option LstateM
@@ -214,13 +214,13 @@ theorem lsemStraightMemDN_lpc (env : LeafEnvM) :
               have h2 := ih s' b h
               rw [h2, h1, List.length_cons]; omega
 
-/-! ### All-`Lopn` reconciliation (depth-0 ↔ A2's one-level fold)
+/-! ### All-`Lopn` reconciliation (depth-0 ↔ the one-level fold)
 
-At depth `0` the call-aware fold and cost collapse to A1's straight-line fold and the
-segment length, so the depth-`0` case of the segment lemma is A3's `segCallG` restricted
+At depth `0` the call-aware fold and cost collapse to the straight-line fold and the
+segment length, so the depth-`0` case of the segment lemma is `segCallG` restricted
 to an all-`Lopn` segment. -/
 
-/-- On an all-`Lopn` segment, the one-level call fold `lsemStraightMemC` is A1's
+/-- On an all-`Lopn` segment, the one-level call fold `lsemStraightMemC` is the
     straight-line fold `lsemStraightMem` (no calls to resolve). -/
 theorem lsemStraightMemC_allLopn (env : LeafEnvM) :
     ∀ (seg : List LinstrRM), (∀ i ∈ seg, IsLopn i) → ∀ (s : LstateM),
@@ -255,7 +255,7 @@ theorem stepDN_lopn (env : LeafEnvM) (d : Nat) (i : LinstrRM) (s : LstateM) (hi 
 
 /-! ### `calleeEnterDN` — a depth-`d` callee run (parameterised by the depth-`d` segment lemma)
 
-`calleeEnterDN` is the depth-indexed generalisation of A2's `callee_run` / A3's
+`calleeEnterDN` is the depth-indexed generalisation of `callee_run` /
 `callee_run2`: entering a callee whose body is depth-`d` runs the depth-`d` body-fold then
 `Lret`-pops.  It takes the depth-`d` segment lemma `hsegd` as a hypothesis — inside
 `nestSegDN`'s `succ` case that hypothesis is the induction hypothesis at depth `d`. -/
@@ -340,7 +340,7 @@ theorem calleeEnterDN_none (env : LeafEnvM) (P : LprogM) (d : Nat) (hsegd : SegL
 
 By induction on `d`: at depth `0` it is `segCallG` on an all-`Lopn` segment; at depth
 `d+1` each call is discharged by `calleeEnterDN` at depth `d` (the induction hypothesis).
-This is the closed, arbitrary-depth generalisation of A3's `segCallG` + `callee_run2`. -/
+This is the closed, arbitrary-depth generalisation of `segCallG` + `callee_run2`. -/
 theorem nestSegDN (env : LeafEnvM) (P : LprogM) : ∀ (d : Nat), SegLemmaDN env P d := by
   intro d
   induction d with
@@ -447,7 +447,7 @@ theorem nestSegDN (env : LeafEnvM) (P : LprogM) : ∀ (d : Nat), SegLemmaDN env 
 /-- **`calleeRunDN` — the closed depth-`d` nested-call denote.**  Entering a callee whose
     body is depth-`d` (may call depth-`(d-1)` callees, recursively) runs the depth-`d`
     body-fold `lsemStraightMemDN env d calleeBody` then `Lret`-pops — the arbitrary-depth
-    generalisation of A3's `callee_run2` (depth-2), with the depth-indexed cost
+    generalisation of `callee_run2` (depth-2), with the depth-indexed cost
     `fuelCostDN env d calleeBody + 1`. -/
 theorem calleeRunDN (env : LeafEnvM) (P : LprogM) (d : Nat)
     (sym callerFn : String) (retPc : Nat) (calleeBody : List LinstrRM)
@@ -467,7 +467,7 @@ theorem calleeRunDN (env : LeafEnvM) (P : LprogM) (d : Nat)
 
 A three-level call tower over the shared `LstateM`: `l3` (body all-`Lopn`) is a
 depth-0 leaf; `l2` calls `l3` (depth-1 body); `l1` calls `l2` (depth-2 body).  Entering
-`l1` is a genuine depth-3 nested call, discharged by `calleeRunDN` at depth `2`. -/
+`l1` is a depth-3 nested call, discharged by `calleeRunDN` at depth `2`. -/
 
 /-- The three-level environment: `l1 → l2 → l3`, `l3` adds `t` to `acc`. -/
 def depth3Env : LeafEnvM := fun name =>
@@ -506,7 +506,7 @@ theorem depth3_l1_body_ok :
 /-- **Closed depth-3 nested call.**  Entering `l1` (which calls `l2`, which calls `l3`)
     from a state with `acc = 5`, `t = 7` runs the three-level tower and pops back with
     `acc = 12`, in `fuelCostDN depth3Env 2 l1Body + 1 = 6` steps — the interpreter
-    followed a genuine depth-3 region-call chain, `denote = spec` closed via
+    followed a depth-3 region-call chain, `denote = spec` closed via
     `calleeRunDN` (no `native_decide`). -/
 theorem calleeRun_depth3 :
     let l1Body := [(LinstrR.Lcall none ("l2", (0 : LLabel)), MemTag.reg none)]
@@ -584,7 +584,7 @@ def ggmOuterBody : List LinstrRM :=
 
 /-- The depth-3 GGM program: the outer loop (top label `0`, counter `oc`) over
     `ggmOuterBody`, which contains the middle loop (label `1`), which contains the inner
-    loop (label `2`) — three genuine back-edges over the shared `LstateM`. -/
+    loop (label `2`) — three back-edges over the shared `LstateM`. -/
 def ggmProg : LprogM := singletonProgM "g" (loopLinstrRM 0 "oc" ggmOuterBody)
 
 /-- The start state for `D = 3`, `num` supplied, `outlen = 2` (as the immediate `2` in
@@ -600,7 +600,7 @@ def ggmStart (num : Nat) : LstatePMC :=
     nested loop (outer `jd ∈ 0..3`, middle `idx ∈ 0..(num>>(jd+1))` per-outer-halved,
     inner `t ∈ 0..2`) run by `lsemFuelMemLC` decodes `acc` to the pure triple fold
     `ggmNestedFold 3 8 2 = 14` (middle trips `4, 2, 1`).  The interpreter followed three
-    genuine nested back-edges (labels `0`/`1`/`2`) over the shared `LstateM`. -/
+    nested back-edges (labels `0`/`1`/`2`) over the shared `LstateM`. -/
 theorem ggm_depth3_validate :
     (lsemFuelMemLC (fun _ => none) ggmProg 4000 (ggmStart 8)).map
         (fun t => decodeM t.base "acc" 64)

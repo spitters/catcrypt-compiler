@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
-# SoA ↔ AoS transpose for the 4-way Keccak-f1600 batch (#587)
+# SoA ↔ AoS transpose for the 4-way Keccak-f1600 batch
 
 The verified scalar Keccak permutation (`KeccakEmit.keccakF1600Com`, KAT'd
 byte-identical to FIPS 202) operates on a single 25-lane state. The 4-way
@@ -21,7 +21,7 @@ soa[lane*4 + i] = state_i[lane]      (lane ∈ {0..24}, i ∈ {0..3})
 ```
 
 so that lane `lane` of all four states sits contiguously in one `__m256i` and a
-single packed instruction advances all four at once. This file gives the pure
+single packed instruction advances all four at once. This module defines the pure
 index-arithmetic transpose between the four scalar 25-lane states and that SoA
 layout, plus the round-trip identity that lets the batched emit
 (`KeccakX4Emit.lean`) reason about the SoA buffer as four independent scalar

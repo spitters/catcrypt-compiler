@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax HAWK MAC leaf realizes the
+# Security tie: the compile-from-hax HAWK MAC leaf realizes the
   abstract `Zq1024` negacyclic-ring multiply-accumulate the security reference
   reasons over
 
@@ -23,7 +23,7 @@ ring: reading the leaf's output back as a `Zq1024 = ZMod 1024` element via
 
 This module performs the **security-tie composition** (the
 `CompileFromHaxSecurityTie.tie_transfer` mechanism, as the
-FrodoKEM/NTRU/sntrup SecurityTie modules did): it packages that ring
+FrodoKEM/NTRU/sntrup SecurityTie modules do): it packages that ring
 multiply-accumulate as a one-field abstract `MacDeps` dependency record over
 `Zq1024`, exhibits the *spec* instance (the abstract ring MAC the HAWK
 negacyclic-convolution reference `HAWK/RingMul4WayVerified.ringMulCoeff` is
@@ -33,7 +33,7 @@ equal field-by-field, and feeds that equality to `tie_transfer` so that **any**
 property the security layer proves of the abstract ring MAC transfers verbatim
 to the compiler-emitted leaf, with no new axioms.
 
-## Why this is parametric-correct for HAWK (honest scope)
+## Why this is parametric-correct for HAWK (scope)
 
 HAWK's security is parametric over the negacyclic lattice ring `Zq1024` and
 reasons over it *abstractly* (through `ringMulCoeff`/`ringMul`, themselves
@@ -43,12 +43,12 @@ divides `2^64`, so the `& 0x3FF` mask is exactly `% 1024` and handles full
 `Z/1024` wraparound for any 64-bit inputs — no domain restriction, unlike the
 prime-field GF(127)/sntrup ties). Therefore the tie is at the **arithmetic
 building block** the parametric proof quantifies over: the realization equality
-`toMacDeps = macDepsSpec` is genuine and `tie_transfer` carries any ring-MAC
+`toMacDeps = macDepsSpec` holds unconditionally and `tie_transfer` carries any ring-MAC
 property onto the compiled artifact. It does **not** discharge the
 NTRU/module-lattice (one-more-SIS / NTRU) assumption HAWK rests on, nor the
 negacyclic index permutation `b[(k-i) mod N]` — those remain the parametric
 hypotheses of `HAWK/Security.lean`; this ties the *emitted arithmetic* to the
-*abstract arithmetic* the proof uses, which is the scope of #607.
+*abstract arithmetic* the proof uses.
 -/
 
 @[expose] public section

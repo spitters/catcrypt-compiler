@@ -19,8 +19,8 @@ u32`/`reg u64` parameters plus one out-pointer. On the x86-64 SysV ABI a functio
 gets only **six** integer-register arguments, so jasminc rejects that signature
 (`"too many parameters"` in register allocation): 32 reg words do not fit.
 
-This file closes that residual by reading the input state **from an input memref
-pointer** instead of register arguments. The whole block now lives in a context of
+This module reads the input state **from an input memref
+pointer** instead of register arguments. The whole block lives in a context of
 **just two memref pointers**:
 
 ```
@@ -279,10 +279,10 @@ def chacha20BlockFullMemrefJasmin :
 /-- **The export-fn signature witness.** The lowered jasmin program's parameter
     context is EXACTLY the two pointer-array memrefs `[stackArr 64 16, stackArr 64
     16]` — i.e. two `reg ptr u64[16]` arguments `(out, in)` and ZERO `reg u32`
-    word arguments. The 32-reg-arg version's context was `List.replicate 32 T64 ++
-    [.memref 16]` (33 params, 32 of them scalar words) which blows the x86-64 SysV
-    6-register limit; this two-pointer context fits it, so jasminc compiles the
-    emitted `export fn`. -/
+    word arguments. The 32-reg-arg context `List.replicate 32 T64 ++
+    [.memref 16]` of `Chacha20BlockMemrefEmit` (33 params, 32 of them scalar
+    words) exceeds the x86-64 SysV 6-register limit; this two-pointer context
+    fits it, so jasminc compiles the emitted `export fn`. -/
 theorem chacha20BlockFullMemref_param_ctx :
     mapCtx inCtxtFull = [JasminTy.stackArr 64 16, JasminTy.stackArr 64 16] := rfl
 

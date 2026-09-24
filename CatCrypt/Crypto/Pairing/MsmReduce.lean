@@ -43,7 +43,7 @@ reassociate/reorder). So:
 * the **Frodo matmul** row (`VectorReduce.vmul_hsum_eq_scalarFold`) is it at the
   `BitVec 16` *ring* lane;
 * the **MSM** here is the *same theorem* at the EC-*group* lane — the "7th lane"
-  is now an additive group, the per-term op is scalar-multiply `k_i • P_i` rather
+  is an additive group, the per-term op is scalar-multiply `k_i • P_i` rather
   than a ring product. `msm_eq_scalarFold` below is that instantiation; it carries
   **no new proof obligation** beyond the committed core.
 
@@ -64,8 +64,8 @@ reference are byte-identical (`bench/msm_compare/`).
 ## The EC leaf
 
 The per-term scalar-multiply and the accumulating point-add are the protocol's
-EC **leaf** — exactly the FAEST symmetric-leaf pattern (`FAEST/Leaves.lean`,
-`LeafSem` / `LeafAgrees`): the front-end emits them as opaque `extCall`s in the
+EC **leaf** — exactly the FAEST symmetric-leaf pattern (a leaf semantics plus
+its agreement): the front-end emits them as opaque `extCall`s in the
 Jasmin dialect, and the *agreement* (`EcLeafAgrees`) ties the opaque leaf
 semantics to the abstract EC primitives. This is the same opaque-leaf edge every
 emit-correctness theorem carries — never a `sorry`. The KAT under
@@ -187,7 +187,7 @@ theorem msm_lanewise {a b : Fp} {L : ℕ} (k : Fin L → ℕ) (P : Fin L → ECP
 /-! ## 3. The EC leaf spec (opaque `extCall`, carried agreement)
 
 The per-term scalar-multiply and the accumulating point-add are the EC **leaf**.
-We declare the leaf spec in the exact `FAEST/Leaves.lean` shape: a named-leaf
+We declare the leaf spec in the FAEST leaf shape: a named-leaf
 semantics carrier (`EcLeafSem`, same shape as `jasminExtSem`), the abstract EC
 primitives (`EcPrimitives`), and the agreement (`EcLeafAgrees`) tying the opaque
 leaf to those primitives. The leaf is *opaque*; its agreement is the carried

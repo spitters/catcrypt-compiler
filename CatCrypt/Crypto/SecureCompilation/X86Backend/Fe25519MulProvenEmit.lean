@@ -63,7 +63,7 @@ arithmetic over the register words: the bit-255 (non-word-aligned) split mask
 sequence (`shr`/`shl`/`or_`/`and`), the inter-limb carry routing of the fold, and
 the final canonicalising conditional subtract. That non-word-aligned split is the
 named `Fe25519ReduceRunBlock.splitBookkeepingGap`, gated by the external GMP KAT
-(`bench/x25519_fieldmul_compare`, the REV-12 discipline). `AsmPrinter` + `gas`
+(`bench/x25519_fieldmul_compare`). `AsmPrinter` + `gas`
 + the GMP KAT are the syntactic / value trust boundary. No `sorry`, no new
 `axiom`. The MULX-`%rdx` legalization and the verified spilling allocator are
 reused unchanged from the Montgomery template.

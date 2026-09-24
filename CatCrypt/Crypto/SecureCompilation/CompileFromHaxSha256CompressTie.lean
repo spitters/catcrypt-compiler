@@ -74,7 +74,7 @@ abstract `TweakableHashParams`).
 **Front recognizer scope (differential discipline, honest).** The compile-from-hax
 front emits **single-output scalar** programs (`Com … (rW w)`, one `BitVec w`
 register). The message schedule fits this exactly — each `schedProgram N` returns
-the single word `W[N-1]` — so the whole schedule recurrence is genuinely
+the single word `W[N-1]` — so the whole schedule recurrence is
 front-emittable (and proven so for all `N`). The 64-round **compression loop**,
 by contrast, accumulates the **8-word working state** `(a..h)`; a single
 front-emitted scalar `Com` returns one word, so the *fold over the 8-word struct*
@@ -239,7 +239,7 @@ theorem wholeCompress_rounds_eq_chain_leaves
 We package the per-round working-variable `a`-update — the engine iterated 64
 times in `sha256Compress` — as the abstract round dependency, with the
 compiled-realization instance the emitted chain-leaf sum, and prove they agree.
-This is the same `RoundEngineDeps` shape as the single-round tie, now used as the
+This is the same `RoundEngineDeps` shape as the single-round tie, used here as the
 iterated body of the whole-compression fold. -/
 
 /-- The function the emitted WOTS+ chain leaves compute for one fold step's

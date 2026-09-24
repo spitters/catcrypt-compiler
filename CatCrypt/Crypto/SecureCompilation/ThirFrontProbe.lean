@@ -41,7 +41,7 @@ The real edge (a `LoweringData thirDialect catCryptDialect` over the whole
 work this probe scopes; that pass would then chain into the existing certified
 `fieldComToJasmin` / `DialectLoweringChain` descent. The shift/rotate/cast/select
 `ThirOp`s have direct `catCryptDialect` images (`bvShiftR`, `bvShiftL`, …); the
-genuinely new obligations are the carry/mul-hi/vpack ops without a 1:1
+new obligations are the carry/mul-hi/vpack ops without a 1:1
 `CatCryptOp`, and `thBinLit` (op-expansion, exactly as in `lowerThir`).
 -/
 

@@ -23,7 +23,7 @@ This is the end-to-end witness for the runtime-trip rolled-loop front capability
 (`TranslateDialectRuntimeLoop`). It authors the array sum
 `out[0] = Σ_{i<n} a[i]` as a **LowCT loop body** (the covered fragment:
 `RArrLoad`/`RScalarSetExpr`/`RArrStore`, with the loop counter `idx` as the array
-index) and front-compiles it to a genuine `ComL.forLoopNRt` — ONE body copy + a
+index) and front-compiles it to a `ComL.forLoopNRt` — ONE body copy + a
 real back-edge — whose trip count `n` is a **RUNTIME argument** (read from a
 register), NOT a compile-time `N`. This is the shape FAEST `ConvertToVole` needs:
 its `num`/`depth`/`nblk` trip counts come from a runtime `cfg`.
@@ -113,7 +113,7 @@ def vmBody : VarMap Γbody :=
   (((VarMap.empty.bind (t := .memref paramN) "a").bind
       (t := .sword 64) "idx").bind (t := .memref 1) "out")
 
-/-! ## 3. The outer program: front body → genuine `ComL.forLoopNRt`
+/-! ## 3. The outer program: front body → `ComL.forLoopNRt`
 
 Outer context `[count, a, out]` (newest-first; jasmin types `[.reg 64,
 .stackArr 64 N, .stackArr 64 1]`): `count` is the runtime trip-count seed
@@ -137,7 +137,7 @@ def sumComL : Option (ComL Γouter (.stackArr 64 1)) :=
 
 /-! ## 4. Gate: the front succeeds -/
 
-/-- The array-sum loop body front-compiles to a genuine `ComL.forLoopNRt`. -/
+/-- The array-sum loop body front-compiles to a `ComL.forLoopNRt`. -/
 theorem sumComL_isSome : sumComL.isSome := by native_decide
 
 /-! ## 5. denote = independent sum spec (at TWO runtime counts) -/
@@ -161,7 +161,7 @@ theorem sumComL_denote_count5 :
       = some (natSumRt sampleA 5) := by native_decide
 
 /-- **denote = sum spec at runtime count 8 (SAME program, different count).** The
-    trip count is genuinely read from the valuation, not baked into the emit — the
+    trip count is read from the valuation, not baked into the emit — the
     whole point of the runtime-trip capability. -/
 theorem sumComL_denote_count8 :
     (sumComL.map (fun c =>
@@ -222,7 +222,7 @@ def physBody : Option Lcmd :=
       (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]).lfd_body)
 
 /-- **Real back-edge preserved through RA:** the physical body has both an internal
-    `Llabel` and a `Lcond` (`jne .L<d>`) — a genuine counted loop, NOT an unrolled
+    `Llabel` and a `Lcond` (`jne .L<d>`) — a counted loop, NOT an unrolled
     chain. -/
 theorem physBody_has_backedge :
     physBody.map (fun b =>

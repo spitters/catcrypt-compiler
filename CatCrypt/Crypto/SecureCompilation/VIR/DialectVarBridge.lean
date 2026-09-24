@@ -8,22 +8,17 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
-# CProg-free variable / valuation bridge (substrate ↔ `catCryptDialect`)
+# Variable / valuation bridge (substrate ↔ `catCryptDialect`)
 
-This module collects the **`CProg`/`CExpr`-free** helper defs and lemmas that
+This module collects the helper defs and lemmas that
 relate the CryptoSSA *substrate* (`CVar`, `CHVector`, `HVec`, `CryptoTy`) to the
-`catCryptDialect` `Var`/`Valuation`/`lookupArgs` layer. None of these mention
-`CExpr`, `CProg`, or the `CExpr→dialect` translators (`toVIRExprT`/`toVIRComT`):
-they only relabel de-Bruijn variables and reinterpret heterogeneous valuations.
-
-They were previously housed in `VIR/CryptoToVIR.lean` (the `toVIRVar` /
-`toVIRArgs` variable translators) and `Dialects/CryptoSSAToCryptoDialectFull.lean`
-(`toVIRVal`, `toVIRVar_lookup`, `lookupArgs_one`/`_two`/`_three`, `argLookup`,
-`lookupArgs_toVIRArgs`). Both of those files belong to the `CProg`-bridge cluster
-that is being retired; the dialect-targeting Jasmin front
-(`Jasmin/JasminToSSADialect*.lean`, `Jasmin/S2NBignumSSADialect.lean`) only ever
-used these variable/valuation helpers, so they live here in a `CProg`-free
-support module that imports nothing from the retiring cluster.
+`catCryptDialect` `Var`/`Valuation`/`lookupArgs` layer: the variable translators
+`toVIRVar` / `toVIRArgs`, `toVIRVal`, `toVIRVar_lookup`,
+`lookupArgs_one`/`_two`/`_three`, `argLookup` and `lookupArgs_toVIRArgs`. They
+only relabel de-Bruijn variables and reinterpret heterogeneous valuations.
+`VIR/CryptoToVIR.lean` re-exports the translators, and the dialect-targeting
+Jasmin front (`Jasmin/JasminToSSADialect*.lean`, `Jasmin/S2NBignumSSADialect.lean`)
+uses these helpers.
 
 Imports only the substrate + dialect (`CatCryptDialect`, which itself re-exports
 `VIR/Core` and `CryptoSSA`).

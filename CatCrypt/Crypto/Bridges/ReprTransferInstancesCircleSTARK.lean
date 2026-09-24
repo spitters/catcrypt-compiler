@@ -50,21 +50,20 @@ the generic transfer layer:
   **unconditionally** (the Baby Bear `bbFieldMul_eq` analogue), so it installs as
   a `@[csimp]` verified runtime implementation of the M31 multiply.
 
-This **closes the residual** flagged in earlier revisions ("no emitted M31
-kernel"): the M31 base-field multiply is now realized by the proven Com-compiled
-`m31MulFold`, not a named hypothesis.
+The M31 base-field multiply is realized by the proven Com-compiled `m31MulFold`,
+not a named hypothesis.
 
-## The legacy parametric realization (retained)
+## The parametric realization
 
 `M31FieldRealization` (a named byte↔field square over an abstract carrier `γ`,
-with `add` included) is retained as a **parametric** form — the field analogue of
+with `add` included) is a **parametric** form — the field analogue of
 the elliptic-curve group bridges (`ReprTransferInstancesBulletproofs`/`IVC`/
 `Halo2IPA`). It is still useful for the field-add lane (`m31MulFold` realizes
 only the multiply) and for callers wanting the equality-reflecting
-`EndoOpRealization` / composite-`OpExpr` transfer. It is no longer the headline:
-the headline is the proven `circlestark_field_layer_connected`.
+`EndoOpRealization` / composite-`OpExpr` transfer. The headline is the proven
+`circlestark_field_layer_connected`.
 
-## Residual reached here (HONEST)
+## Scope
 
 The M31 **base-field multiply** layer is CONNECTED via the proven Com-compiled
 `m31MulFold` (`m31MulFold_eq_field`); no hypothesis and no custom axiom is used
@@ -102,10 +101,10 @@ instance : Fact (Nat.Prime m31Prime) := ⟨by native_decide⟩
     `CompileFromHaxMersenne31Tie.Zm31`, the field the emitted kernel is tied to. -/
 abbrev M31 : Type := ZMod m31Prime
 
-/-! ## 2. The parametric realization (retained, named byte↔field hypothesis)
+/-! ## 2. The parametric realization (named byte↔field hypothesis)
 
 The proven, headline connection is in §3 below. This parametric structure is
-retained as a reusable form for the field-add lane and for the
+a reusable form for the field-add lane and for the
 equality-reflecting `EndoOpRealization` / composite-`OpExpr` transfer (the
 emitted `m31MulFold` realizes only the multiply). It is the field analogue of the
 elliptic-curve group bridges, which carry their group law as a parametric square. -/
@@ -193,7 +192,7 @@ theorem circlestark_field_expr_transfer (R : M31FieldRealization γ bmul badd)
 
 /-! ## 3. The PROVEN realization via the emitted, Com-compiled `m31MulFold`
 
-This is the headline (residual closed). The emitted Mersenne-fold multiply
+This is the headline. The emitted Mersenne-fold multiply
 `m31MulFold` realizes the M31 base-field multiply, discharged directly by the
 proven field commuting square `CompileFromHaxMersenne31Tie.m31MulFold_eq_field`
 — no named hypothesis. This mirrors the Baby Bear `starkPoseidon2MulHom` /
@@ -257,12 +256,12 @@ theorem m31FieldMul_eq (a b : Zm31) : m31FieldMul a b = a * b := by
   rw [circlestarkM31MulHom.realizes (m31Encode_lt a) (m31Encode_lt b),
     m31Decode_m31Encode, m31Decode_m31Encode]
 
-/-- **The M31 field layer is CONNECTED (residual closed).** Encoding two `Zm31`
+/-- **The M31 field layer is CONNECTED.** Encoding two `Zm31`
     field elements into the canonical range and running the emitted Com-compiled
     `m31MulFold`, the decoded output is exactly the `Zm31` field product. This is
-    the proven field-layer connection that replaces the former named-hypothesis
-    residual — discharged via `m31MulFold_eq_field`, the proven field commuting
-    square of the emitted kernel. -/
+    the proven field-layer connection, with no named hypothesis — discharged via
+    `m31MulFold_eq_field`, the proven field commuting square of the emitted
+    kernel. -/
 theorem circlestark_field_layer_connected (a b : Zm31) :
     m31Decode (m31MulFold (m31Encode a) (m31Encode b)) = a * b :=
   m31FieldMul_eq a b

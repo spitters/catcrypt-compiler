@@ -21,7 +21,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 set_option autoImplicit false
 
 /-!
-# FRONT-sourced runtime-N GMP mpn loop kernels (task #20)
+# FRONT-sourced runtime-N GMP mpn loop kernels
 
 The runtime-N looped GMP mpn kernels, front-compiled end-to-end — covered
 `LowCT` loop bodies through `TranslateDialectRuntimeLoop.rolledForLoopNRt`

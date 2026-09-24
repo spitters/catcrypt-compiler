@@ -13,12 +13,12 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_If
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
 
 /-!
-# H3.final: Assembly of the Hax → LowCT simulation theorem
+# Assembly of the Hax → LowCT simulation theorem
 
 Wires together the per-case lemmas from `HaxToLowCTSim_*.lean` into
 the main theorem.  Dispatches via `ImpExpr.ind` (the custom induction
-principle for nested-inductive `ImpExpr` at
-`CatCrypt/Hax/AST.lean:109`).
+principle for nested-inductive `ImpExpr` in hax-lean's
+`HaxLean/AST.lean`).
 
 ## Architecture
 
@@ -31,47 +31,44 @@ Each constructor case dispatches to its per-file lemma:
 | `unitVal` | `haxToLowCT_simulates_unitVal` | `HaxToLowCTSimulates.lean` |
 | `seq a b` | `haxToLowCT_simulates_seq` | `HaxToLowCTSimulates.lean` |
 | `letBind _ (lit _) _` | `haxToLowCT_simulates_letBind_lit` | `HaxToLowCTSim_Agreement.lean` |
-| `letBind _ (app _ _) _` | **DEFERRED** (H3.quarta) | parametric hyp `Hyp_letBindApp` |
+| `letBind _ (app _ _) _` | **DEFERRED** (tower-typed) | parametric hyp `Hyp_letBindApp` |
 | `letBind _ (proj (var _) _) _` | parametric hyp `Hyp_letBindProj` | closure in `Main_Full` |
 | `letBind _ _ _` (other) | contradiction | inline `simp [haxToLowCT]` |
 | `assign _ (lit (uintLit ..))` | `haxToLowCT_simulates_assign_lit_uintLit` | `HaxToLowCTSim_AssignMatch.lean` |
 | `assign _ (lit (int n))`, n≥0 | `haxToLowCT_simulates_assign_lit_int` | `HaxToLowCTSim_AssignMatch.lean` |
 | `assign _ (lit (bool _))` | `haxToLowCT_simulates_assign_lit_bool` | `HaxToLowCTSim_AssignMatch.lean` |
 | `tuple es` (all `var`s → `RSkip`) | `haxToLowCT_simulates_tuple` | `HaxToLowCTSimulates.lean` |
-| `assign _ (app _ _)` | **DEFERRED** (H3.quarta) | parametric hyp `Hyp_assignApp` |
+| `assign _ (app _ _)` | **DEFERRED** (tower-typed) | parametric hyp `Hyp_assignApp` |
 | `assign _ _` (other) | contradiction | inline |
 | `ifThenElse (var _) _ _` | `haxToLowCT_simulates_ifThenElse_var` | `HaxToLowCTSim_If.lean` |
 | `ifThenElse _ _ _` (other) | contradiction | inline |
 | `whileLoop (var _) _` | `haxToLowCT_simulates_whileLoop_var` | `HaxToLowCTSim_While.lean` |
 | `whileLoop _ _` (other) | contradiction | inline |
-| `match_ (app _ _) [(tuplePat [varPat _, varPat _], _)]` | **DEFERRED** (H3.quarta, H2.1) | parametric hyp `Hyp_matchTuple` |
+| `match_ (app _ _) [(tuplePat [varPat _, varPat _], _)]` | **DEFERRED** (tower-typed) | parametric hyp `Hyp_matchTuple` |
 | `match_ _ _` (other) | contradiction | inline |
-| All other rejected arms | `haxToLowCT_simulates_*` (H3.septa) | `HaxToLowCTSimulates.lean` |
+| All other rejected arms | `haxToLowCT_simulates_*` | `HaxToLowCTSimulates.lean` |
 
 ## Parametric form vs full theorem
 
-This file ships **two** statements:
+`haxToLowCT_simulates_param` is the parametric main theorem, taking
+the deferred-case hypotheses (`Hyp_letBindApp`, `Hyp_assignApp`,
+`Hyp_match`, `Hyp_whileLoop`, `Hyp_letBindVarAlias`, `Hyp_letBindProj`)
+as inputs; it contains the full dispatch.  This module states no
+unconditional form: discharging the hypotheses needs tower-typed
+`envAgreesRust` and `LeafCallAgrees` instances, which
+`HaxToLowCTSim_Main_Full.lean` and the `HaxToLowCTSim_Quarta*` modules
+develop.
 
-1. `haxToLowCT_simulates_param` — the parametric main theorem,
-   taking the three deferred-case hypotheses (`Hyp_letBindApp`,
-   `Hyp_assignApp`, `Hyp_matchTuple`) as inputs.  This compiles
-   today and contains the full dispatch.
+## Why the tower-typed cases are hypotheses
 
-2. `haxToLowCT_simulates` — the unconditional main theorem,
-   obtained by discharging the three hypotheses once H3.quarta lands
-   (tower-typed `envAgreesRust` + `LeafCallAgrees` instances).
-   **Not yet stated** — pending H3.quarta.
+The deferred cases share a root cause: `RustExec.call` updates the
+*tower* slot via `locatedUpdate`, not the *scalar* slot.  The
+`envAgreesRust` predicate covers only scalar bindings.
 
-## H3.quarta blocker (Agent B's finding)
+Discharging the `Hyp_*` parameters takes three steps:
 
-The three deferred cases share a root cause: `RustExec.call` updates
-the *tower* slot via `locatedUpdate`, not the *scalar* slot.  The
-current `envAgreesRust` predicate covers only scalar bindings.
-
-To discharge the three `Hyp_*` parameters, H3.quarta must:
-
-* Extend `envAgreesRust` to cover tower bindings (parallel to
-  CryptoSSA's `bindingOK` byte-layout transport).
+* Extend `envAgreesRust` to cover tower bindings (a byte-layout
+  transport in the style of `bindingOK`).
 * Add `valueToTowerVal : Value → (dt : TowerType) → Option (RustVal dt)`.
 * Provide per-leaf `LeafCallAgrees` instances grounded in the
   extracted leaf-call semantics.
@@ -91,12 +88,12 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## §1  Deferred-case hypotheses
 
-These three hypotheses parameterise the main theorem over the
-H3.quarta-pending arms. -/
+These three hypotheses parameterise the main theorem over the arms
+that need tower-typed agreement. -/
 
-/-- Hypothesis: `letBind name (app f args) body` simulates.  Discharged
-    by H3.quarta once tower-typed agreement + per-leaf
-    `LeafCallAgrees` are in place. -/
+/-- Hypothesis: `letBind name (app f args) body` simulates.  Its
+    discharge needs tower-typed agreement and per-leaf
+    `LeafCallAgrees` instances. -/
 abbrev Hyp_letBindApp
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
   ∀ (name : String) (f : String) (args : List ImpExpr) (body : ImpExpr)
@@ -106,7 +103,8 @@ abbrev Hyp_letBindApp
     HaxToLowCTSimulates bi fuel N leafSpec
       (.letBind name (.app f args) body) c env env' rs v
 
-/-- Hypothesis: `assign name (app f args)` simulates.  Same blocker. -/
+/-- Hypothesis: `assign name (app f args)` simulates.  Its discharge
+    needs the same tower-typed agreement. -/
 abbrev Hyp_assignApp
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
   ∀ (name : String) (f : String) (args : List ImpExpr)
@@ -115,7 +113,8 @@ abbrev Hyp_assignApp
       (.assign name (.app f args)) c env env' rs v
 
 /-- Hypothesis: `match_` 2-tuple destructure of an `app` simulates.
-    Blocked on H2.1 + H3.quarta. -/
+    Its discharge needs the tuple-destructure lowering and tower-typed
+    agreement. -/
 abbrev Hyp_matchTuple
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
   ∀ (f : String) (args : List ImpExpr) (n1 n2 : String) (body : ImpExpr)
@@ -126,12 +125,12 @@ abbrev Hyp_matchTuple
       (.match_ (.app f args) [(.tuplePat [.varPat n1, .varPat n2], body)])
       c env env' rs v
 
-/-! ## §2  Plan-text for the main theorem
+/-! ## §2  Outline of the dispatch
 
-The full dispatch via `ImpExpr.ind` has the following structure.  We
-include it as a documented plan rather than a closed term — the actual
-term requires careful case-handling for the `letBind`/`assign`/`match_`
-arms (which have inner sub-cases on the RHS / scrutinee shape).
+An outline of the dispatch via `ImpExpr.ind`, over the three hypotheses
+of §1.  It is not elaborated; the proved theorem in §4 follows this
+structure, with `Hyp_match`, `Hyp_whileLoop`, `Hyp_letBindVarAlias` and
+`Hyp_letBindProj` in place of `Hyp_matchTuple`.
 
 ```
 theorem haxToLowCT_simulates_param
@@ -212,23 +211,18 @@ theorem haxToLowCT_simulates_param
   | cfBreakContinue e _ => exact haxToLowCT_simulates_cfBreakContinue bi fuel N leafSpec e c env env' rs v
 ```
 
-This dispatch is correct in shape but needs minor adjustments for:
+The elaborated proof differs from this outline in:
 * The exact constructor-argument count of `ImpExpr.ind`'s cases (each
   recursive sub-term provides one IH argument).
-* The `cases l with | int n => if hn : 0 ≤ n` shape — Lean's
-  `cases` doesn't easily integrate with the conditional, so this
-  needs a `by_cases hn : 0 ≤ n` or a helper.
+* The `cases l with | int n => if hn : 0 ≤ n` shape, which the proof
+  handles with a `by_cases hn : 0 ≤ n`.
 * The `match arms with | ...` inside the `match_` case — only the
   specific 2-tuple shape is accepted; all other shapes contradict.
-
-Closing this in a single commit is the H3.final landing step.  The
-proof body above is ~40 lines plus the cases that need tactical
-clean-up — total ~60–80 lines for the full dispatch.
 -/
 
 /-! ## §3  Hypothesis: whileLoop simulation
 
-Agent E's `haxToLowCT_simulates_whileLoop_var` closes under two
+`haxToLowCT_simulates_whileLoop_var` closes under two
 extra hypotheses (`ihBody` fuel-quantified + `hBodyAlwaysVal`).
 Discharging those in the dispatcher requires either:
 * strengthening the induction motive to be fuel-polymorphic (impacts
@@ -249,10 +243,10 @@ abbrev Hyp_whileLoop
       (.whileLoop (.var cond) body) c env env' rs v
 
 /-- Hypothesis: `match_` with any scrutinee/arms simulates.  The broad
-    form simplifies the dispatcher; internally, all but the H2.1
+    form simplifies the dispatcher; internally, all but the
     tuple-destructure shape contradict via `haxToLowCT` returning
-    `none`.  Discharged in a follow-up that case-splits on
-    scrut/arms shapes. -/
+    `none`.  A discharge case-splits on the scrutinee and arm
+    shapes. -/
 abbrev Hyp_match
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
   ∀ (scrut : ImpExpr) (arms : List (Hax.ImpPat × ImpExpr))
@@ -303,8 +297,8 @@ abbrev Hyp_letBindProj
 
 /-! ## §4  Parametric main theorem
 
-This is the H3.final closure modulo the four `Hyp_*` hypotheses for
-deferred cases.  All other cases (var, unitVal, seq, letBind lit,
+The main theorem, modulo the six `Hyp_*` hypotheses for deferred
+cases.  All other cases (var, unitVal, seq, letBind lit,
 assign lit (uintLit / int n≥0), ifThenElse var, whileLoop (handled
 by hypothesis), all 22 unreachable arms) are closed inline. -/
 
@@ -320,7 +314,7 @@ theorem haxToLowCT_simulates_param
     ∀ (c : LowCT) (env env' : Env) (rs : RustState) (v : Value),
       HaxToLowCTSimulates bi fuel N leafSpec e c env env' rs v := by
   induction e using ImpExpr.ind with
-  -- ─── Trivial / unreachable arms (H3.septa) ────────────────────────
+  -- ─── Trivial / unreachable arms ──────────────────────────────────
   | lit l => intro c env env' rs v
              exact haxToLowCT_simulates_lit bi fuel N leafSpec l c env env' rs v
   | tuple elems _ => intro c env env' rs v
@@ -388,7 +382,7 @@ theorem haxToLowCT_simulates_param
   | app f args _ => intro c env env' rs v hHax _ _; simp [haxToLowCT] at hHax
   -- ─── `lam` (first-class closure, rejected — lowers to none) ───────────
   | lam _ _ _ => intro c env env' rs v hHax _ _; simp [haxToLowCT] at hHax
-  -- ─── Productive arms (H3.bis / H3.tertia / H3.sexta) ──────────────
+  -- ─── Productive arms ──────────────────────────────────────────────
   | var name => intro c env env' rs v
                 exact haxToLowCT_simulates_var bi fuel N leafSpec name c env env' rs v
   | unitVal => intro c env env' rs v
@@ -402,7 +396,7 @@ theorem haxToLowCT_simulates_param
       | lit l => exact haxToLowCT_simulates_letBind_lit bi fuel N leafSpec name l body c env env' rs v ihBody
       | app f args => exact hLetBindApp name f args body c env env' rs v ihBody
       | var src =>
-          -- After the 2026-05 extension, `letBind _ (.var src) body` is a
+          -- `letBind _ (.var src) body` is a
           -- parameter-alias that lowers to `haxToLowCT body`.  The
           -- closure is delegated to the `hLetBindVarAlias` hypothesis,
           -- which deployers discharge syntactically via the

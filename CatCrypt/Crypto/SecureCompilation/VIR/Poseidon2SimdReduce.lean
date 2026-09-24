@@ -17,14 +17,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 This module is an **additive companion** to `Poseidon2Emit` /
 `JasminAbiEmit.Poseidon2Simd`. It re-emits the Poseidon2 width-16 BabyBear
 permutation jazz with a **second** layer of SIMD vectorization on top of
-#138's round-constant lane-add: the Barrett-style 10-fold field reduce
+the FIFTEENTH-mode round-constant lane-add: the Barrett-style 10-fold field reduce
 inside `fmul` runs **lane-parallel over a 4-slot `__m256i` packed-u64 tile**,
 instead of as 16 independent scalar reduce chains per external round.
 
-## Why this matters: where the cycles actually go (#138 finding)
+## Where the cycles go
 
-#138's honest bench measured the FIFTEENTH-mode SIMD-add emit at
-~20100 cyc/op — a slight regress from the 18500 cyc/op scalar baseline.
+The bench measures the FIFTEENTH-mode SIMD-add emit at
+~20100 cyc/op — slightly slower than the 18500 cyc/op scalar baseline.
 The lane-add wins on the RC-add phase (4 packed-u64 adds per round vs 16
 scalar) but the round-trip cost (stack tbuf load/pack/unpack across two
 `reg u256` registers per quartet) very slightly exceeds the 12-add saving.
@@ -59,7 +59,7 @@ register) this maps to four AVX2 ops:
   * `× BBC` realised by **lane-spreading via the u64[4] tbuf stack alias**
     to the lane register: store `vhi → tbuf`, do 4 scalar `tbuf[i] *= BBC`,
     reload `tbuf → vhi`. AVX2 has no native packed-u64-by-scalar multiply,
-    so this is the honest jasmin engineering boundary. The 3 *other* fold
+    so this is the jasmin engineering boundary. The 3 *other* fold
     ops remain fully packed → ~1.5-2× net win on the reduce per fold step
     (one packed shift + packed AND + packed add saves 3 of 4 instructions
     over the 4 lanes; the mul is unavoidable serial work);
@@ -75,13 +75,13 @@ The proof side is **constant work**: each lane independently runs the same
 Barrett chain over `BitVec 64`. By `LaneMap.vmap₂_eq_scalar` at the binary
 op `bbMul`, the packed lane-wise application equals the scalar per-lane
 application. Composing with `Poseidon2BbMulFieldExact.bbMul_eq_mod_p` (the
-verified `bbMul` correctness, #117) gives the SIMD packed-u64 `bbMul`
+verified `bbMul` correctness) gives the SIMD packed-u64 `bbMul`
 correctness across the 4 lanes.
 
 ## What's **byte-unchanged**
 
 This module is additive. It does **not** edit `JasminAbiEmit`, the existing
-`renderPoseidon2SimdBody` (#138 FIFTEENTH ABI), the scalar `poseidon2Jazz`,
+`renderPoseidon2SimdBody` (FIFTEENTH ABI), the scalar `poseidon2Jazz`,
 nor any of the other protected emits (mayo / frodo / uov / qruov / gf_dot /
 chacha / snova / sha256 / sha512 / keccak / aes — they live in
 `JasminAbiEmit` and are referenced only via the existing exports).
@@ -100,9 +100,9 @@ parallelism on the reduce chain is the dominant lever.
 
 * Scalar emit: `Poseidon2Emit.poseidon2Jazz` (FIFTEENTH precursor).
 * RC-add SIMD: `JasminAbiEmit.Poseidon2Simd.emitPoseidon2SimdBodyJazz`.
-* `bbMul` correctness: `Poseidon2BbMulFieldExact.bbMul_eq_mod_p` (#117).
-* Lane-map structural law: `LaneMap.vmap₂_eq_scalar` (proven, #107).
-* S-box lane-map: `LaneMap.poseidon2_sbox_lane_map` (proven, #107).
+* `bbMul` correctness: `Poseidon2BbMulFieldExact.bbMul_eq_mod_p`.
+* Lane-map structural law: `LaneMap.vmap₂_eq_scalar` (proven).
+* S-box lane-map: `LaneMap.poseidon2_sbox_lane_map` (proven).
 -/
 
 @[expose] public section
@@ -184,12 +184,12 @@ computes the true mod-`bbP` product. -/
 
 /-- **Headline theorem**: the packed-u64 4-lane `bbMul` denotes the same
     per-lane field product as the scalar `bbMul`. Composes
-    `vmap₂_eq_scalar` (lane-map structural law, #107) with
-    `bbMul_eq_mod_p` (per-lane field-mul correctness, #117).
+    `vmap₂_eq_scalar` (lane-map structural law) with
+    `bbMul_eq_mod_p` (per-lane field-mul correctness).
 
     For any two packed 4-lane BabyBear vectors `(a, b)`, with each lane in
     `[0, bbP)`, the packed lane-wise `bbMul a b` equals the lane-wise
-    `(a · b) % bbP`. This is the load-bearing denotation-preservation for
+    `(a · b) % bbP`. This is the denotation-preservation statement for
     the SIXTEENTH ABI mode emit. -/
 theorem bbMul_simd_eq_scalar_lanemap (a b : Vec 4 64) :
     vmap₂ bbMul a b = (fun i => bbMul (a i) (b i)) :=
@@ -206,7 +206,7 @@ theorem bbMul_simd_eq_scalar_lanemap (a b : Vec 4 64) :
     * `bbMul_eq_mod_p` discharges per-lane: `bbMul (a i) (b i) < bbP ∧
       bbMul (a i) (b i) = (a i * b i) % bbP`.
 
-    No new axioms, no `sorry`: the proof is a `funext` + `bbMul_eq_mod_p`. -/
+    No new axioms, all goals closed: the proof is a `funext` + `bbMul_eq_mod_p`. -/
 theorem bbMul_simd_field_correct (a b : Vec 4 64)
     (ha : ∀ i, a i < bbP) (hb : ∀ i, b i < bbP) :
     (∀ i, (vmap₂ bbMul a b) i < bbP) ∧
@@ -306,7 +306,7 @@ the FIFTEENTH-mode packed-u64 lane-add. -/
     `renderSimdSboxQuartet base` calls (each quartet does its full
     `x^7` chain across 4 packed-u64 lanes). The RC-add lane-add tile and
     the canonicalising `csub` happen as in FIFTEENTH mode; the S-box
-    itself now runs SIMD-reduce. -/
+    itself runs SIMD-reduce. -/
 def renderPoseidon2SimdReduceBody : List String :=
   let decls :=
     [ "stack u64[16] s;"
@@ -328,7 +328,7 @@ def renderPoseidon2SimdReduceBody : List String :=
       "x = [inp + 8 * " ++ toString i ++ "]; s[" ++ toString i ++ "] = x;")
   let initialMds := [ "s = mds(s);" ]
   -- Render the RC-add quartet (FIFTEENTH-mode packed lane-add, unchanged):
-  -- 4 packed-u64 adds per external round (vs 16 scalar). Reused from #138.
+  -- 4 packed-u64 adds per external round (vs 16 scalar), as in FIFTEENTH mode.
   let renderLaneAddRc' (table : String) (r g : Nat) : List String :=
     let b := 4 * g
     let rcb := r * 16 + 4 * g
@@ -511,7 +511,7 @@ def poseidon2SimdReduceJazz : String :=
 /- The SIMD-reduce emit lane-spreads `× BBC` into 4 scalar multiplies on
     the `u64[4]` `tbuf` stack alias to the `__m256i` lane register (AVX2
     has no native packed-u64-by-scalar multiply, so the lane-spread is the
-    honest engineering boundary; the 3 *other* fold-step ops remain fully
+    engineering boundary; the 3 *other* fold-step ops remain fully
     packed). -/
 #guard (strContains poseidon2SimdReduceJazz "r0 *= bbc_r;")
 

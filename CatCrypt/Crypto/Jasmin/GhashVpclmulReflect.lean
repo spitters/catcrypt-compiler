@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the SIMD-extension analogue of `UovReflect.lean`: it adds a
 GHASH-specific opaque leaf and a `LowCTPattern` registration so that a
 pure-Lean GHASH inner kernel can be lifted through the verified compiler
-chain `LowCT → CryptoSSA → Com → jasmin`, **without** editing
+chain `LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## GHASH inner equation
@@ -73,8 +73,8 @@ Sail-x86 `clmul64_spec` on GHASH-style known-answer vectors
 * Intel SDM Vol. 2 — `VPCLMULQDQ` (EVEX promotion of `PCLMULQDQ`)
 * `CatCrypt/Crypto/SecureCompilation/VIR/VPClmulEmit.lean` — per-lane
   intrinsic semantics + `vpclmulqdq_eq_polyMul` bridge
-* `bench/ghash_vpclmul_compare/ghash_vpclmul_emit.lean` — legacy Tier C
-  string-templated emit (superseded by this leaf-shim pattern)
+* `bench/ghash_vpclmul_compare/ghash_vpclmul_emit.lean` —
+  string-templated emit of the same kernel
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

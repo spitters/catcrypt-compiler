@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
-# SLOTHY-grade x86 instruction cost model (#376 companion)
+# SLOTHY-grade x86 instruction cost model
 
 A reusable per-instruction cost model for the `JInstr 64` subset, structured
 after the SLOTHY scheduler's cost representation (Banegas, Bernstein, Campos,

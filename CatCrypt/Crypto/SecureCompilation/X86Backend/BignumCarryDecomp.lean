@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 public import Mathlib.Tactic.Ring
 
 /-!
-# Structured carry-decomposition for bignum schoolbook multiplies (#325, SB-4)
+# Structured carry-decomposition for bignum schoolbook multiplies
 
 The s2n-bignum word kernels (`bignum_mul_4_8`, montmul, add/sub) compute their
 results through interleaved carry chains built from the word primitives
@@ -381,7 +381,7 @@ theorem runBlock_append (s : JState w) (l₁ l₂ : List (JInstr w)) :
 
 end Stepping
 
-/-! ## 5. The genuine-reasoning bignum lemma library (SB-finish, #340)
+/-! ## 5. The bignum reasoning lemma library
 
 The s2n-bignum-bench "reasoning fraction" (the ~16 % of obligations that a blunt
 `bv_decide`/`omega`/`grind` cascade does **not** close on its own — see

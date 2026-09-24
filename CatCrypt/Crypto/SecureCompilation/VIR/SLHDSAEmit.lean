@@ -14,25 +14,25 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.XMSSEmit
 
 This is the **deepest hash-based signature** emitted through the committed
 loop + treehash spine. There is **no new emit core**: SLH-DSA's full tree
-structure is the just-validated XMSS pieces (`XMSSEmit`, `#83`) and the
-level-composition keystone (`JForProgTreehash`, `#89`) *composed further*:
+structure is the XMSS pieces (`XMSSEmit`) and the
+level-composition loop theorem (`JForProgTreehash`) *composed further*:
 
 * **the HYPERTREE** — `d` XMSS-tree layers stacked: each layer's root signs the
   next layer up. Each layer is one XMSS Merkle treehash (the committed
-  `TreehashProg`, `#89`); the `d`-layer hypertree is those `d` per-layer
+  `TreehashProg`); the `d`-layer hypertree is those `d` per-layer
   treehashes composed, threading the root up. Because `TreehashProg` is a *list*
   of per-level loops and its denotation is the serial `foldl` over that list,
   the `d`-layer composition is itself a single `TreehashProg` (the `d` layers'
   levels concatenated), so the whole hypertree is covered in one application of
-  `treehash_loop_denote_eq` (`#89`) — `loop_denote_eq` composed `d · h'` times.
+  `treehash_loop_denote_eq` — `loop_denote_eq` composed `d · h'` times.
 * **FORS** (the few-time signature) — `k` independent Merkle treehashes over the
   message-hash indices, then a `k`-into-1 root compression. Each FORS tree is a
-  `TreehashProg` (`#89`); the `k` trees plus the compression are again one
+  `TreehashProg`; the `k` trees plus the compression are again one
   flattened `TreehashProg`, covered in one `treehash_loop_denote_eq`.
 
 The node / leaf hash is the committed `Th` tweakable-hash leaf
-(`JForProgTreehash.thLeafExpr`, `#89`, backed by the committed SHAKE leaf
-`#62`) — the single-op, packed `ADRS ‖ left ‖ right` leaf, the *same*
+(`JForProgTreehash.thLeafExpr`, backed by the committed SHAKE leaf) — the
+single-op, packed `ADRS ‖ left ‖ right` leaf, the *same*
 single-var-body coverage as XMSS. This file **imports and composes** the
 committed kernels; it modifies none of them.
 
@@ -53,26 +53,26 @@ the structure (stacked XMSS treehashes + parallel FORS treehashes) is exactly
 FIPS 205's. The `f`/`s` parameter sets only change the counts `d, h', k, a`
 (and the node-byte length `n`), not the structure the spine emits.
 
-## What the keystones cover, and the honest residual
+## What the loop theorems cover, and scope
 
 The hypertree's per-layer Merkle combine and FORS's per-tree combine are
 **single-accumulator, single-leaf loop bodies** over a fixed-width word slot —
-exactly the shape `loop_denote_eq` (`#60`) / `treehash_loop_denote_eq` (`#89`)
+exactly the shape `loop_denote_eq` / `treehash_loop_denote_eq`
 cover (`SingleVarBody` / `AllSingleVar`). So SLH-DSA's full *tree structure* —
 `d` stacked XMSS treehashes for the hypertree, `k` parallel treehashes for FORS
-— is carried by the two keystones with the single `Th` hash leaf, axiom-clean.
+— is carried by the two loop theorems with the single `Th` hash leaf, axiom-clean.
 
-The residual flagged by `#83` / `#89` carries unchanged and is **not**
-discharged: the full `Th` materialises an `ADRS` tweak (here, per layer / per
+The scope limit of `XMSSEmit` / `JForProgTreehash` carries over unchanged: the
+full `Th` materialises an `ADRS` tweak (here, per layer / per
 FORS tree, the layer/tree address) and slices each node into its `left ‖ right`
 halves *inside* the body (a multi-op body over byte arrays), and packs a
 fixed-size node accumulator. The single-op `Th`-leaf abstraction takes the
 already-packed `ADRS ‖ left ‖ right` (`JForProgTreehash.thLeafExpr`), so the
-per-node ADRS plumbing / byte slicing is **outside** the single-var keystone.
+per-node ADRS plumbing / byte slicing is **outside** the single-var loop theorem.
 We emit the **structural skeleton** (the `d`-layer hypertree composition + the
 `k`-fold FORS, both via the committed treehash spine) and carry the proof
-through the keystones; the ADRS-plumbing / node-packing residual is noted, not
-hidden.
+through the loop theorems; ADRS plumbing and node packing are outside the
+proved statement.
 
 ## KAT modelling
 
@@ -80,26 +80,26 @@ As in `XMSSEmit`, we instantiate the hash leaf with a **fast, deterministic
 word-mixing leaf** (`regArith`, a single op) so the emitted *structure* is
 validated byte-for-byte end-to-end (`bench/slhdsa_compare/`): the hypertree
 combine is one `reg 64` doubling (`acc := acc + acc`, the XMSS Merkle combine,
-identical to `#83`), and the FORS combine is one `reg 64` squaring
+identical to `XMSSEmit`), and the FORS combine is one `reg 64` squaring
 (`acc := acc * acc`, distinct from the hypertree's `add` so the KAT exercises a
-genuine two-component composition). Because SLH-DSA is ~100% hashing, swapping
+two-component composition). Because SLH-DSA is ~100% hashing, swapping
 this fast leaf for the real `Th` / SHAKE leaf changes only the leaf, not the
 loop / treehash structure — so emit-parity is automatic (the leaf is the only
 opaque edge, carried by `ThLeafAgrees`). The emitted `.jazz` is the *actual*
-level sequence the keystones reason about.
+level sequence the loop theorems reason about.
 
 ## The carried proof
 
-* hypertree: `JForProgTreehash.treehash_loop_denote_eq` (`#89`) on the
-  `d`-layer-concatenated `TreehashProg` — equivalently `loop_denote_eq` (`#60`,
-  via `#83`'s `merkleTree`) composed `d · h'` times.
-* FORS: `JForProgTreehash.treehash_loop_denote_eq` (`#89`) on the `k`-tree FORS
+* hypertree: `JForProgTreehash.treehash_loop_denote_eq` on the
+  `d`-layer-concatenated `TreehashProg` — equivalently `loop_denote_eq` (via
+  `XMSSEmit.merkleTree`) composed `d · h'` times.
+* FORS: `JForProgTreehash.treehash_loop_denote_eq` on the `k`-tree FORS
   `TreehashProg`.
 * the hash leaf: `JForProgTreehash.ThLeafAgrees` (the single opaque-leaf edge;
   vacuous for the fast `regArith` KAT leaf).
 
-No `sorry`, axiom-clean (`[propext, Quot.sound]`, the same closure as the two
-keystones and `XMSSEmit`).
+All goals closed, axiom-clean (`[propext, Quot.sound]`, the same closure as the two
+loop theorems and `XMSSEmit`).
 -/
 
 @[expose] public section
@@ -138,24 +138,24 @@ def slhForsA : Nat := 2
 /-- Sanity: the per-layer height matches XMSS's, and `h' = 3 ⇒ counts `4,2,1`. -/
 theorem slhHPrime_eq : slhHPrime = 3 := rfl
 
-/-! ## 2. The HYPERTREE: `d` XMSS treehashes stacked (`#83` per layer, `#89`)
+/-! ## 2. The HYPERTREE: `d` XMSS treehashes stacked (`XMSSEmit` per layer)
 
 The SLH-DSA hypertree signs `d` XMSS-tree layers: layer `0`'s root is signed by
 layer `1`'s WOTS leaf, whose tree root is signed by layer `2`, … up to the
 top-level root (the public key). Each layer is one XMSS Merkle treehash — the
-committed `XMSSEmit.merkleTree` (`TreehashProg`, `#89`, halving counts `4,2,1`).
+committed `XMSSEmit.merkleTree` (`TreehashProg`, halving counts `4,2,1`).
 
 The `d`-layer hypertree threads the root *up* through the layers: layer 0's
 treehash output is the input to layer 1's treehash, etc. Because
 `TreehashProg.denote` is the serial `foldl` over the level list, **stacking `d`
 layers is concatenating their level lists into one `TreehashProg`** — so the
-whole hypertree is one `treehash_loop_denote_eq` (`#89`). -/
+whole hypertree is one `treehash_loop_denote_eq`. -/
 
 /-- The hypertree as a single `TreehashProg`: the `d` per-layer XMSS treehashes
     (each the committed `XMSSEmit.merkleTree`, counts `4,2,1`) **concatenated**.
     `TreehashProg.denote` folds over the whole list, so this threads layer 0's
     root into layer 1's treehash, …, up to the top root — the FIPS 205 hypertree
-    composition, carried by one keystone application. -/
+    composition, carried by one loop theorem application. -/
 def hyperTree : TreehashProg (.reg 64) :=
   (List.range slhD).flatMap (fun _ => XMSSEmit.merkleTree)
 
@@ -170,8 +170,8 @@ theorem hyperTree_eq :
   rfl
 
 /-- Every level of the hypertree has a single-leaf body (one `regArith add` — the
-    XMSS Merkle combine), so the keystone's `AllSingleVar` hypothesis holds: a
-    hypertree level is a `merkleTree` level, and those are single-var (`#83`). -/
+    XMSS Merkle combine), so the loop theorem's `AllSingleVar` hypothesis holds: a
+    hypertree level is a `merkleTree` level, and those are single-var. -/
 theorem hyperTree_allSingleVar : AllSingleVar hyperTree := by
   intro lvl hmem
   refine ⟨.mk (.regArith .add 64) rfl (.cons .here (.cons .here .nil)), ?_⟩
@@ -194,9 +194,9 @@ theorem hyperTree_allSingleVar : AllSingleVar hyperTree := by
     treehash composition.** Running the emitted hypertree (`d` XMSS treehashes
     back to back, each a real halving `for`-sequence) by composing the per-level
     runners serially equals `hyperTree.denote` = layer 0's treehash fed into
-    layer 1's, … up to the top root. Instance of the level-composition keystone
-    `treehash_loop_denote_eq` (`#89`); per-layer this is `XMSSEmit.merkleTree`
-    (`#83`). The only edge is the opaque hash leaf (vacuous for the fast
+    layer 1's, … up to the top root. Instance of the level-composition loop theorem
+    `treehash_loop_denote_eq`; per-layer this is `XMSSEmit.merkleTree`.
+    The only edge is the opaque hash leaf (vacuous for the fast
     `regArith` KAT leaf). -/
 theorem hyperTree_treehash_denote_eq {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : BitVec 64) :
@@ -214,23 +214,23 @@ theorem hyperTree_denote_two_layers (x : BitVec 64) :
   -- `(a ++ b).denote = b.denote ∘ a.denote`: foldl over append.
   simp only [TreehashProg.denote, List.foldl_append]
 
-/-! ## 3. FORS: `k` independent treehashes + a `k`-into-1 root compression (`#89`)
+/-! ## 3. FORS: `k` independent treehashes + a `k`-into-1 root compression
 
 FORS (forest of random subsets) is the SLH-DSA few-time signature: the message
 hash selects one leaf in each of `k` Merkle trees of height `a`; the `k` tree
 roots are then compressed into the FORS public-key root. Each FORS tree is one
-Merkle treehash (`TreehashProg`, `#89`, halving counts for `a = 2`: `2, 1`); the
+Merkle treehash (`TreehashProg`, halving counts for `a = 2`: `2, 1`); the
 `k`-into-1 compression is one more combine loop of trip count `k - 1`.
 
 As with the hypertree, the `k` FORS trees plus the root compression are one
 flattened `TreehashProg`, covered by a single `treehash_loop_denote_eq`. The
 FORS combine leaf is one `reg 64` squaring (`acc := acc * acc`, `regArith mul`)
-— distinct from the hypertree's `add` so the KAT exercises a genuine two-part
+— distinct from the hypertree's `add` so the KAT exercises a two-part
 composition. -/
 
 /-- One FORS combine loop of trip count `cnt`: `acc := acc * acc` for `cnt`
     iterations (one `regArith mul` leaf — the FORS node hash). A single-leaf
-    body, so the keystone applies per level. -/
+    body, so the loop theorem applies per level. -/
 def forsLevel (cnt : Nat) : JForProg (.reg 64) :=
   { n := cnt
     update :=
@@ -266,7 +266,7 @@ theorem forsSubtree_eq : forsSubtree = [forsLevel 2, forsLevel 1] := by
     **concatenated**, then a final `k - 1`-step root-compression level folding
     the `k` subtree roots into the FORS public-key root. `TreehashProg.denote`
     folds over the whole list, so this runs subtree 0, then subtree 1, …, then
-    compresses — the FIPS 205 FORS root, carried by one keystone. -/
+    compresses — the FIPS 205 FORS root, carried by one loop theorem. -/
 def forsTree : TreehashProg (.reg 64) :=
   (List.range slhForsK).flatMap (fun _ => forsSubtree) ++ [forsLevel (slhForsK - 1)]
 
@@ -280,7 +280,7 @@ theorem forsTree_eq :
   rfl
 
 /-- Every level of the FORS tree has a single-leaf body (one `regArith mul`), so
-    the keystone's `AllSingleVar` hypothesis holds. -/
+    the loop theorem's `AllSingleVar` hypothesis holds. -/
 theorem forsTree_allSingleVar : AllSingleVar forsTree := by
   intro lvl hmem
   refine ⟨.mk (.regArith .mul 64) rfl (.cons .here (.cons .here .nil)), ?_⟩
@@ -303,7 +303,7 @@ theorem forsTree_allSingleVar : AllSingleVar forsTree := by
     compression.** Running the emitted FORS treehash (`k` subtrees back to back,
     then the root compression, each a real `for`) by composing the per-level
     runners serially equals `forsTree.denote` = the `k` subtree folds then the
-    `k`-into-1 compression. Instance of `treehash_loop_denote_eq` (`#89`). The
+    `k`-into-1 compression. Instance of `treehash_loop_denote_eq`. The
     only edge is the opaque hash leaf (vacuous for the fast `regArith` KAT
     leaf). -/
 theorem forsTree_treehash_denote_eq {leafSem : LeafSem}
@@ -318,20 +318,20 @@ layer; the signature root threads up: the FORS root is the input to the
 hypertree, which produces the top-level public-key root. The end-to-end ground
 truth on a `reg 64` slot is: run the FORS treehash on the message-hash seed,
 feed its root through the `d`-layer hypertree. Both stages are single-leaf
-treehashes, so each is carried by `#89`; their composition is the structure
+treehashes, so each is carried by `treehash_loop_denote_eq`; their composition is the structure
 SLH-DSA computes. -/
 
 /-- The composed SLH-DSA-root denotation on a `reg 64` slot: FORS treehash
-    (`#89`) then the `d`-layer hypertree (`#89`, per layer `#83`). This is the
+    then the `d`-layer hypertree (per layer `XMSSEmit.merkleTree`). This is the
     math definition the KAT references. -/
 def slhRootDenote (seed : BitVec 64) : BitVec 64 :=
   hyperTree.denote (forsTree.denote seed)
 
-/-- **The composed SLH-DSA root, carried by the keystone (twice).** Running the
+/-- **The composed SLH-DSA root, carried by the loop theorem (twice).** Running the
     emitted FORS treehash then the emitted hypertree, both via the
     evaluator-side runner, equals `slhRootDenote seed`. The FORS stage and the
-    hypertree stage are each `treehash_loop_denote_eq` (`#89`); the hypertree is
-    additionally `XMSSEmit.merkleTree` (`#83`) composed `d`-fold. The only edge
+    hypertree stage are each `treehash_loop_denote_eq`; the hypertree is
+    additionally `XMSSEmit.merkleTree` composed `d`-fold. The only edge
     is the opaque hash leaf (vacuous for the fast `regArith` KAT leaf). -/
 theorem slhRoot_emit_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (seed : BitVec 64) :
@@ -372,7 +372,7 @@ theorem slhRootDenote_three :
 # sequence
 
 We render two self-contained jasminc `export fn`s, each the *actual* emitted
-level sequence the keystone covers (NOT unrolled):
+level sequence the loop theorem covers (NOT unrolled):
 
 * `slhdsa_hypertree` — the `d = 2`-layer hypertree (`2 ·` the `4,2,1` halving
   level sequence, each `acc = acc + acc`),
@@ -383,12 +383,12 @@ The composition is validated by the KAT driver (run FORS, feed into the
 hypertree). -/
 
 /-- The emitted `export fn` for the `d = 2`-layer hypertree: the two XMSS
-    treehashes back to back, via `TreehashProg.toJazzExport` (`#89`). -/
+    treehashes back to back, via `TreehashProg.toJazzExport`. -/
 def hyperTreeExportJazz : String :=
   TreehashProg.toJazzExport "slhdsa_hypertree" hyperTree
 
 /-- The emitted `export fn` for the `k = 3`-tree FORS treehash + root
-    compression, via `TreehashProg.toJazzExport` (`#89`). -/
+    compression, via `TreehashProg.toJazzExport`. -/
 def forsTreeExportJazz : String :=
   TreehashProg.toJazzExport "slhdsa_fors" forsTree
 

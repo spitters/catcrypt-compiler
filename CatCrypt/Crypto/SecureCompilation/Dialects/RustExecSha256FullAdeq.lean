@@ -74,7 +74,7 @@ and the `⊕`-mixes threading state) meets `hir` for ALL `u64` inputs with no si
 condition (`SAnd`/`SXor` carry only their operand conditions). The `Σ`/`σ`
 rotations (`SShl`) and the `T1`/`T2` modular adds (`SAdd`) do NOT — a left-shift or
 an add of two full-range `u64`s overflows the saturating-`Nat` model, so the
-input-agnostic `hir` fails on those arms (the `RustExecARXAdeq` §Residual wall).
+input-agnostic `hir` fails on those arms (see `RustExecARXAdeq`).
 So the threading round loop `bodyB` here is the maximal iterated SHA-256
 round expressible on the symbolic leg: the nonlinear `Ch`/`Maj` layer plus the
 `⊕`-state mixing. The ARX `Σ`/`σ`/`+` arms reconcile only under a per-kernel
@@ -82,9 +82,9 @@ concrete input bound (`RustExecSha256Adeq.t1E_inRange_of_bound` /
 `RustExecARXAdeq.arxE_inRange_of_bound`), which the closed-kernel `decide` leg
 discharges concretely — as the whole round STEP does in `RustExecSha256Adeq`.
 
-## The remaining scaling (the exact residual)
+## Scope: the threading full-ARX compression
 
-Three walls keep the *threading full-ARX 64-round* compression off a single
+Three obstructions keep the *threading full-ARX 64-round* compression off a single
 theorem; each is orthogonal and documented here:
 
 1. **Threading × closed-bytes.** The closed jasmin-bytes leg needs an
@@ -100,9 +100,9 @@ theorem; each is orthogonal and documented here:
    must be pre-initialised into the entry-bound set `B`). So the composed
    `rustToJasminCom_endToEnd_rustexec_adeq_topLevel` cannot track a bare top-level
    `RFor` output. The pre-loop `RScalarSet` that would seed `B` cannot be sequenced
-   before the loop, by wall 3.
+   before the loop, by obstruction 3.
 
-3. **`RSeq`-then-`RFor` front wall.** `translateDialectControl` handles `RFor` only
+3. **`RSeq`-then-`RFor` front shape.** `translateDialectControl` handles `RFor` only
    as a top-level node; an `RSeq setup (RFor …)` delegates the whole `RSeq` to
    `translateDialectFull`, which declines every `RFor` (`| _ => none`). So a
    setup-before-loop kernel is not front-translatable; the loop must stand alone.
@@ -110,9 +110,9 @@ theorem; each is orthogonal and documented here:
 The ARX round STEP is carried concretely by
 `RustExecSha256Adeq.sha256C_emitted_eq_rustexec` (whole round, one `decide`); the
 round LOOP is carried on the closed leg (`§A`, self-contained body, bytes) and the
-symbolic leg (`§B`, threading body, any `M`); closing all three walls at once — a
-threading full-ARX loop to bytes with symbolic `M` — is the standing composition
-residual, orthogonal to the round arms and loop bridge established here.
+symbolic leg (`§B`, threading body, any `M`). A threading full-ARX loop to bytes
+with symbolic `M`, which needs all three obstructions removed at once, is outside
+this module and independent of the round arms and loop bridge established here.
 -/
 
 @[expose] public section
@@ -284,7 +284,7 @@ noncomputable def loopAJcom : Com jasminDialect (mapCtx ([] : Ctx)) (mapTy (.swo
 theorem loopAHCom : cryptoDialectToJasminCom loopACom = some loopAJcom :=
   (Option.some_get loopAComSome).symm
 
-/-- **The round loop's `#250` reconciliation, concrete leg.** The word `semScalar`
+/-- **The round loop's `inRange` reconciliation, concrete leg.** The word `semScalar`
     leaves in `mj` after two trips of the self-contained `Maj` round is the
     `ofNat 64` image of the `RustExec` reference output `rsFA.rsScalar "mj"`. Both
     concrete words on literal inputs; equality by `decide`. -/

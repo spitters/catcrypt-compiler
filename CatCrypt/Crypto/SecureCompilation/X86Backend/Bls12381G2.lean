@@ -19,7 +19,7 @@ emitted `bench/bls12381_g2_compare/gen_com/bls12381_g2_{add,dbl}.s` and
 line lists / epilogue joined with `++`), with no single verified-printer descent
 for the whole file. The `native_decide` shape checks are `countSub`/`hasSub`
 substring assertions. The composed `Fp` add/sub leaves are `runBlock`-verified
-in `Bls12381Fp2MulKernel` and the `Fp` mul is the #490 CIOS kernel (block
+in `Bls12381Fp2MulKernel` and the `Fp` mul is the CIOS kernel of `Bls12381MontMulKernel` (block
 model); the `Fp2`/`G2` drivers here are hand-written SysV call-frame
 scaffolding. It is a bench/interop reference. The verified emit path is the
 FRONT-SOURCED descent.
@@ -44,8 +44,8 @@ so the `G2` group law is the first Miller-loop prerequisite and is
 This module emits `bls12381_g2_add` and `bls12381_g2_dbl` as **owned drivers**
 that *compose* the committed owned `Fp2` leaves (`Bls12381Fp2MulKernel`):
 
-* `bls12381_fp2_mul_x86_from_lean` (#602, Karatsuba, 3 real `Fp`-muls);
-* `bls12381_fp2_sqr_x86_from_lean` (#602, complex squaring, 2 real `Fp`-muls);
+* `bls12381_fp2_mul_x86_from_lean` (Karatsuba, 3 real `Fp`-muls);
+* `bls12381_fp2_sqr_x86_from_lean` (complex squaring, 2 real `Fp`-muls);
 * the `Fp` add/sub leaves it emits (`bls12381_fp_add/sub_x86_from_lean`);
 
 and the `Fp2` add / sub / dbl / copy drivers emitted *here* (each `Fp2` add/sub
@@ -101,7 +101,7 @@ runtime `b'` operand.
 
 This is the `G2` group-law **leaf** toward the Miller loop. The bodies of the
 `Fp` add/sub leaves are `runBlock`-verified (`Bls12381Fp2MulKernel`); the `Fp`
-mul is the committed #490 CIOS kernel. The `Fp2`/`G2` **drivers** are trusted
+mul is the CIOS kernel of `Bls12381MontMulKernel`. The `Fp2`/`G2` **drivers** are trusted
 SysV call-frame scaffolding over those leaves (same status as the committed
 `Fp2` mul/sqr drivers — a driver makes `call`s, so it is not a leaf). Value
 correctness is the external KAT (`bench/bls12381_g2_compare`) against RELIC
@@ -359,7 +359,8 @@ theorem g2DblAsm_op_counts :
 
 /-- Emit the owned `Fp2` add/sub/dbl/copy drivers and the `G2` add/dbl drivers
     for the bench harness. The committed `Fp` mul/add/sub and `Fp2` mul/sqr
-    leaves are referenced read-only (emitted by `Bls12381Fp2MulKernel` and #490). -/
+    leaves are referenced read-only (emitted by `Bls12381Fp2MulKernel` and
+    `Bls12381MontMulKernel`). -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/bls12381_g2_compare/gen_com"
   IO.FS.writeFile "bench/bls12381_g2_compare/gen_com/bls12381_fp2_add_x86_from_lean.s"  fp2AddAsm

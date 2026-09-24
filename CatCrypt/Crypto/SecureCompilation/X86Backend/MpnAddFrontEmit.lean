@@ -17,16 +17,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
 public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
 
 /-!
-# `mpn_add_n` through the owned-RA ADX path, FRONT-GENERATED (#477 closed)
+# `mpn_add_n` through the owned-RA ADX path, FRONT-GENERATED
 
 `MpnAdxLprog` supplies a *hand-authored* physical `Lprog` (raw `ADCX`
-strings, pinned SysV registers, `mem.<base>.<off>` accesses) because the #477
-note recorded that the `Com → Lprog` register allocator legalized only the
-two-source binop alphabet, leaving the three-source flag-coupled `ADCX`/`ADOX`
-carry chain unreachable from a source `Com`.
+strings, pinned SysV registers, `mem.<base>.<off>` accesses). This module
+generates the same kernels from a source `Com`.
 
-That gap is **closed**: the `Com → Lprog` RA (`JasminLprogExport.physBody` /
-`physBodyWithStores`, driven by `Com.toLprogPhysAbi`) already legalizes the
+The `Com → Lprog` RA (`JasminLprogExport.physBody` /
+`physBodyWithStores`, driven by `Com.toLprogPhysAbi`) legalizes the
 three-source `ADCX`/`ADOX` ops. A three-source `Lopn [d] ADCX [a, s, cin]`
 falls through `physBodyRmap`'s two-source arm to the general operand-remap arm
 (**all** operands remapped, never truncated), the owned printer expands it to
@@ -360,7 +358,7 @@ theorem sub4_denote_spec :
 
 /-- Write the front-generated owned-RA ADX `.s` for `mpn_add_n` / `mpn_sub_n` at
     `n = 4, 8, 16, 32` into the bench harness directory. FRONT-GENERATED (no
-    hand `Com`/`Lcmd`/`.s`; the #477 RA gap is closed — both the add carry chain
+    hand `Com`/`Lcmd`/`.s`; both the add carry chain
     and the sub complement-add borrow chain lower to `ADCX` through the RA). -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/mpn_adx_owned_compare/gen_com"

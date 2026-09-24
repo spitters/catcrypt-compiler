@@ -12,21 +12,21 @@ public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
 public import CatCrypt.Crypto.Optimizer.ModReduceSelect
 
 /-!
-# Tier-A Curve25519 field-multiply over `runBlock` (Solinas `2^255 − 19`)
+# Curve25519 field-multiply value over `runBlock` (Solinas `2^255 − 19`)
 
-The 4-limb curve mont-mul kernels are Tier A via the Montgomery radix
-(`Curve4LimbTierA`, `sm2_emit_montmul_runBlock_full`). The Curve25519
-field-multiply is the last 4-limb *multiply* whose reduction is **Solinas**
+The 4-limb curve mont-mul kernels have a value theorem over `runBlock` via the
+Montgomery radix (`Curve4LimbTierA`, `sm2_emit_montmul_runBlock_full`). The
+Curve25519 field-multiply is a 4-limb *multiply* whose reduction is **Solinas**
 (`2^255 − 19`), not Montgomery: `fe25519_mul(z, x, y) = (x · y) mod (2^255 − 19)`
 with the high half folded back via `· 19` rather than a Montgomery `n' = 1`
-reduction. This file makes it Tier A by the same recipe — the genuine emitted
-product over `runBlock` composed with the proven reduction — but with the
+reduction. This module proves its value theorem by the same recipe — the emitted
+product over `runBlock` composed with the proven reduction — with the
 Solinas residue (`ModReduceSelect.solinasReduce`/`solinasReduce_eq_mod`) as the
 reduction spec.
 
 ## The two proven pieces and their composition
 
-* **Product (genuine emit over `runBlock`).**
+* **Product (emitted block over `runBlock`).**
   `SchoolbookProductRunBlock.emitProductBlock_runBlock_value` proves the emitted
   4×4 schoolbook product block's `runBlock` value, read out of the accumulator
   file, is exactly `valLimbs x · valLimbs y` (axiom-clean, a real emitted
@@ -50,23 +50,23 @@ reduction spec.
         (runBlockProductValue accs as ys hi lo s % 2^255)
         = (valLimbs x · valLimbs y) % (2^255 − 19).
 
-  The multiply is a genuine emitted `runBlock`; the Solinas reduction is the
-  value-proven residue. This is Tier A for the Curve25519 field-multiply value:
+  The multiply is an emitted `runBlock`; the Solinas reduction is the
+  value-proven residue. This is the value theorem for the Curve25519 field-multiply:
   `runBlock(emitted product) → Solinas-reduce → (x·y) mod (2^255 − 19)`.
 
-## Scope (honest): the named emitted-reduce remainder
+## Scope: the named emitted-reduce remainder
 
 The reduction here is tied at the **value** level (`solinasReduce …`), fed the
-genuine `runBlock` product. What is *not* tied in-file is the emitted Solinas
+`runBlock` product. What is *not* tied in-file is the emitted Solinas
 *reduce block* (`ModReduceSelect.fusedReduce25519`, the `· 38`/`· 19` MULX/ADD
 carry chain over the four words `t4..t7 → t0..t3` with the bit-255 fold) matching
 `solinasReduce` over its own `runBlock`. That `runBlock(fusedReduce25519) =
 solinasReduce` identity is the 255-bit, non-64-bit-aligned fold whose 4-limb
 carry-chain reconstruction is the obligation `Sm2FieldProven` discharges only at
 the 2-word (`k = 64`) Goldilocks scale and which the repo externalises to the GMP
-KAT (`bench/x25519_fieldmul_compare`) at 256-bit (the REV-12 discipline). It is
+KAT (`bench/x25519_fieldmul_compare`) at 256-bit. It is
 named precisely below as `Fe25519TierA.emittedReduceGap` (a `Prop` statement, no
-axiom) so the remainder is explicit. The product is fully Tier A;
+axiom) so the remainder is explicit. The product is proved over `runBlock`;
 the reduce is value-proven; the emitted-reduce-over-`runBlock` block is the
 remainder.
 -/
@@ -85,7 +85,7 @@ open CatCrypt.Crypto.Optimizer.ModReduceSelect
 
 /-! ## 1. The Curve25519 modulus `p25519 = 2^255 − 19`
 
-Pinned by `native_decide` to the genuine prime. `solinasParams25519.modulus`
+Pinned by `native_decide` to the prime. `solinasParams25519.modulus`
 (from `ModReduceSelect`) is `2^255 − 19` by definition; we re-export the value
 and the canonical little-endian 4-limb representation. -/
 
@@ -97,7 +97,7 @@ def p25519Limbs : List (BitVec 64) :=
   , BitVec.ofNat 64 (2 ^ 64 - 1)
   , BitVec.ofNat 64 (2 ^ 63 - 1) ]
 
-/-- The 4-limb representation recombines to the genuine prime `2^255 − 19`,
+/-- The 4-limb representation recombines to the prime `2^255 − 19`,
     which is `solinasParams25519.modulus`. Pinned by `native_decide`. -/
 theorem p25519Limbs_value :
     valLimbs p25519Limbs = solinasParams25519.modulus := by
@@ -114,7 +114,7 @@ The single-fold `solinasReduce` is exact only when the high half is `< 2^255`
 2^255`, the canonical inputs to a field multiply) the product `P < 2^510`, so
 `P / 2^255 < 2^255` and `P % 2^255 < 2^255` — both halves are well-formed and
 `reduce25519_eq_mod` applies. (This is the standard reduced-input hypothesis the
-Montgomery Tier-A headlines also carry: `valLimbs x < p`, `valLimbs yv < p`.) -/
+Montgomery value headlines also carry: `valLimbs x < p`, `valLimbs yv < p`.) -/
 
 /-- For reduced inputs (`valLimbs x, valLimbs yv < 2^255`), the full product
     `P = valLimbs x · valLimbs yv < 2^510`, so its high half `P / 2^255 < 2^255`
@@ -149,15 +149,15 @@ theorem solinasReduce_split_eq_mod (P : Nat) (hP : P < 2 ^ 255 * 2 ^ 255) :
     rw [Nat.mul_comm]; exact Nat.div_add_mod P (2 ^ 255)
   rw [reduce25519_eq_mod hhi hlo, hrecon]
 
-/-! ## 4. Tier A for the Curve25519 field-multiply over `runBlock`
+/-! ## 4. The Curve25519 field-multiply value over `runBlock`
 
 The emitted product over `runBlock` (`emitProductBlock_runBlock_value`,
 axiom-clean), reduced by the value-proven Solinas reduce, equals
-`(valLimbs x · valLimbs y) mod (2^255 − 19)`. This is Tier A for the Curve25519
-field-multiply value: a genuine emitted `runBlock` multiply composed with the
+`(valLimbs x · valLimbs y) mod (2^255 − 19)`. This is the Curve25519
+field-multiply value: an emitted `runBlock` multiply composed with the
 proven `2^255 − 19` residue. -/
 
-/-- **Tier A: Curve25519 field-multiply over `runBlock`.** With reduced 4-limb
+/-- **Curve25519 field-multiply over `runBlock`.** With reduced 4-limb
     inputs (`valLimbs x, valLimbs y < 2^255`), a cleared accumulator file, the
     `ProdFresh` register layout, matching lengths, enough accumulator words, and
     both carry flags clear:
@@ -166,12 +166,12 @@ proven `2^255 − 19` residue. -/
       `valLimbs x · valLimbs y` (`emitProductBlock_runBlock_value`, a real emitted
       `List (JInstr 64)`); and
     * the value-proven Solinas reduce (`solinasReduce solinasParams25519`) of that
-      genuine `runBlock` product value, split at the `2^255` Solinas boundary,
+      `runBlock` product value, split at the `2^255` Solinas boundary,
       equals `(valLimbs x · valLimbs y) mod (2^255 − 19)`.
 
-    The multiply is a genuine emitted `runBlock`; the `2^255 − 19` reduction is the
+    The multiply is an emitted `runBlock`; the `2^255 − 19` reduction is the
     value-proven residue (`solinasReduce_eq_mod`). This is
-    `runBlock(emitted product) → Solinas-reduce → fe25519_mul spec` — Tier A for
+    `runBlock(emitted product) → Solinas-reduce → fe25519_mul spec` for
     the Curve25519 field-multiply value. The emitted Solinas *reduce block* over
     its own `runBlock` is the named remainder (`emittedReduceGap`). -/
 theorem fe25519_emit_mul_runBlock
@@ -197,19 +197,19 @@ theorem fe25519_emit_mul_runBlock
   exact solinasReduce_split_eq_mod (valLimbs x * valLimbs yv)
     (Nat.mul_lt_mul'' hx_red hy_red)
 
-/-! ## 5. The named emitted-reduce remainder (honest partial Tier A)
+/-! ## 5. The named emitted-reduce remainder
 
 `fe25519_emit_mul_runBlock` ties the multiply at the `runBlock` level and the
-Solinas reduction at the value level. The remaining gap to a *fully* emitted
-Tier-A kernel is that the emitted Solinas reduce block
+Solinas reduction at the value level. The remaining obligation for a *fully*
+emitted kernel is that the emitted Solinas reduce block
 (`ModReduceSelect.fusedReduce25519`, the `· 38`/`· 19` MULX/ADD carry chain over
 the four high words with the bit-255 fold and conditional subtract) computes
 `solinasReduce solinasParams25519` over its own `runBlock`. `emittedReduceGap`
 states exactly that obligation. It is the 255-bit, non-64-bit-aligned fold whose
 4-limb carry-chain reconstruction `Sm2FieldProven` discharges only at the 2-word
 (`k = 64`) Goldilocks scale (`fold_matches_solinas`, `condsub_word`) and which the
-repo externalises to the GMP / s2n KAT at 256-bit (`bench/x25519_fieldmul_compare`,
-the REV-12 discipline). Stated as a `Prop` (no axiom); proving it is
+repo externalises to the GMP / s2n KAT at 256-bit (`bench/x25519_fieldmul_compare`).
+Stated as a `Prop` (no axiom); proving it is
 the 4-limb generalisation of `Sm2FieldProven`'s 2-word fold reconstruction. -/
 
 /-- Read four 64-bit words little-endian as a `Nat`. -/

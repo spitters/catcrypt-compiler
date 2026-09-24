@@ -24,7 +24,7 @@ equal our `R32` op applied to the low 32 bits of the operands. This is exactly t
 of the 32-bit-word abstraction `RiscvModel` currently *trusts* (the docstring's "auditable by
 eye"): here it is *proven* against the transcribed 64-bit Sail clauses below.
 
-Genuine lemmas (vs plumbing): `lo32_signExtend` (truncation undoes `*W` sign-extension),
+Substantive lemmas (vs plumbing): `lo32_signExtend` (truncation undoes `*W` sign-extension),
 `lo32_eq_setWidth` + `BitVec.setWidth_{and,or,xor}` (low-32 distributes over the 64-bit logical
 ops our model treats as 32-bit), and `rotateRight_eq_shift_or` (L3, the rotate = shift-or fact
 behind `RORIW`). Provenance/simplifications as in the 64-bit file (verbatim clauses from
@@ -148,7 +148,7 @@ def execute_RORIW (shamt : BitVec 5) (rs1 rd : regidx) : SailM ExecutionResult :
       (rotate_bits_right (Sail.BitVec.extractLsb (← (rX_bits rs1)) 31 0) shamt)))
   (pure RETIRE_SUCCESS)
 
-/-! ## The genuine BitVec lemmas -/
+/-! ## The substantive BitVec lemmas -/
 
 /-- Low 32 bits of a 64-bit value = `setWidth 32` (definitional via `toNat`). -/
 theorem lo32_eq_setWidth (x : BitVec 64) : x.extractLsb 31 0 = x.setWidth 32 :=

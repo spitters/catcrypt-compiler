@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
-# Direct merge translator (D2.1 approach #3)
+# Direct merge translator
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -31,9 +31,8 @@ Lockstep walk. At each step:
   c2's tail with all variable references shifted to skip over c1's
   freshly-bound ones, then return `(v1, v2)` (with v1 weakened).
 
-Requires `DecidableEq d.Op` and `DecidableEq d.Ty`. `CatCryptOp` was
-given `deriving DecidableEq` in `CatCryptDialect.lean`; `CryptoTy`
-already had it.
+Requires `DecidableEq d.Op` and `DecidableEq d.Ty`. `CatCryptOp` has
+`deriving DecidableEq` in `CatCryptDialect.lean`, as does `CryptoTy`.
 
 ## Naming pitfall
 
@@ -237,7 +236,7 @@ with `CatCryptPrint.lean` (which provides the `DialectPrint`
 instance for `catCryptDialect`) from a downstream file and call
 `MultiReturnCom.printModule merged "merge_smoke"`. We don't render
 here to avoid a circular dependency with `CatCryptPrint` (which
-already imports `CryptoToVIR`, which now imports this file).
+imports `CryptoToVIR`, which imports this file).
 
 The expected output of merging `prog1` (using `bvAdd`) and `prog2`
 (using `bvSub`), both prefixed by `let a = 3; let b = 4`, is:

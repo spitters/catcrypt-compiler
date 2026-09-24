@@ -15,7 +15,7 @@ set_option autoImplicit false
 set_option maxRecDepth 100000
 
 /-!
-# A GENUINE whole-kernel ChaCha20 double-round, front-sourced without `native_decide`
+# A whole-kernel ChaCha20 double-round, front-sourced without `native_decide`
 
 This module front-sources the FULL ChaCha20 double-round (RFC 8439 §2.3 — the
 eight quarter-rounds of one inner-loop iteration: four column rounds then four
@@ -27,7 +27,7 @@ canonical `a += b; d ^= a; d <<<= 16; …` op sequence — not a representative
 fragment.
 
 The whole double round is 96 primitive statements. Its dialect `isSome` closes
-through the keystone `ScalarSetSeqSequencer.lowerScalarSetSeqW_isSome` fed a
+through the lemma `ScalarSetSeqSequencer.lowerScalarSetSeqW_isSome` fed a
 `SeqCovers` derivation (a chain of one-statement `rfl`s, built here by a
 `refine .cons _ _ _ rfl ?_` loop). Its jasmin `isSome` — reaching owned x86 —
 closes through `ScalarSetSeqSequencer.seqProg_jasmin_isSome`, i.e. the
@@ -107,7 +107,7 @@ theorem dblRound_covers : SeqCovers 32 chachaVM 0 dblRound := by
 /-! ## 3. The whole double-round `isSome` — dialect AND jasmin, no `native_decide` -/
 
 /-- The WHOLE 96-statement double round lowers to a `Com catCryptDialect` prefix,
-    through the keystone `lowerScalarSetSeqW_isSome` — composing the per-statement
+    through the lemma `lowerScalarSetSeqW_isSome` — composing the per-statement
     `rfl` facts by INDUCTION over `dblRound_covers`. NO `native_decide`. -/
 theorem dblRound_isSome : (lowerScalarSetSeqW 32 chachaVM 0 dblRound).isSome :=
   lowerScalarSetSeqW_isSome 32 chachaVM 0 dblRound dblRound_covers

@@ -48,29 +48,29 @@ control flow and no value-dependent addressing.
   width, value-deterministic, and its leak (`LLeak.opn "MOV" [reg dst]
   [imm n]`) carries only the public constant — never a register value.
 
-This is a genuine op-set widening of the unconditional simulation: the first
-non-`regArith` op (a nullary constant materialiser) brought into the functional ∧
+This widens the op set of the unconditional simulation: `regConst` is the first
+non-`regArith` op (a nullary constant materialiser) in the functional ∧
 constant-time `lsem` simulation, with no new hypothesis and no `jasminc`/IR→x86
 edge.
 
-## Deferred ops, with the honest technical reason for each
+## Deferred ops and the technical reason for each
 
-The remaining `JasminOp`s are **not faked**; each is deferred with the concrete
-obstruction it hits against the single-width `Lstate w` model:
+The remaining `JasminOp`s are outside this module's scope; each hits a concrete
+obstruction against the single-width `Lstate w` model:
 
-* **Non-uniform width** — break the single-width store, so they need the
-  *next* (multi-width) increment, not this one:
+* **Non-uniform width** — break the single-width store, so they need a
+  multi-width store model:
   - `select w`   — its condition operand is `.reg 1` (a 1-bit register), while
     the data operands/result are `.reg w`. A single-width store cannot hold a
-    `BitVec 1` cond and a `BitVec w` datum at once. (The CT story the task wants
+    `BitVec 1` cond and a `BitVec w` datum at once. (The intended CT leak
     — leak the cond *register name*, never its value — is exactly what the
     multi-width leak arm will do; `linstrLeak` already leaks only `regShape`.)
   - `stackLoad w n` / `stackStore w n` — operate on `.stackArr w n` (a function
     type, not `BitVec w`) with a `.reg 64` index; `stackStore` even *returns* a
     `.stackArr w n`. The single-`BitVec w` store has no array cell, and the
     index is width 64 ≠ w. Needs the memory/array + multi-width increment.
-  - `castW w w'` (`w ≠ w'`)  — input `.reg w`, output `.reg w'`; genuinely
-    width-changing.
+  - `castW w w'` (`w ≠ w'`)  — input `.reg w`, output `.reg w'`; it changes
+    the width.
   - `mulhi` / `addCarryLo` / `addCarryHi` — double-width / flag-coupled
     (`addCarryHi` returns `.reg 1`); the carry thread is width 1.
 * **Immediate baked into the opcode mnemonic** — `rorImm w n` / `shrImm w n` /
@@ -329,7 +329,7 @@ theorem lsemStep_const_succeeds {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialec
     stripWidthTag_withWidthTag_MOV, evalOperand, applyOpn]
   exact ⟨_, rfl⟩
 
-/-- **Robustness / constant-time keystone (unconditional), widened.** The
+/-- **Robustness / constant-time main theorem (unconditional), widened.** The
     linear-IR leakage trace of the widened linearizer-emitted `.var`-chain
     `straightOps` is the **same from any two initial states**: every head is an
     `Lopn` whose `linstrLeak` reads only syntax (never `s.lvm`) and `lsemStep`s

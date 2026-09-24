@@ -15,7 +15,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 
 /-!
-# The Plonky3 BabyBear NTT butterfly, lowered through the in-Lean x86 backend (#281)
+# The Plonky3 BabyBear NTT butterfly, lowered through the in-Lean x86 backend
 
 `Plonky3NttButterflyEmit` emits the radix-2 decimation-in-time NTT butterfly
 *body* as a `Com jasminDialect` of `regArith mul/shr/sub/and/add` bindings,
@@ -61,7 +61,7 @@ same shape with no leading `− p`.
 Identical to `JasminModel` / `X86Dialect` / `AsmPrinter`: the verified artifact
 is `Com (x86Dialect 64) → runBlock → evalInstr`, the faithful transcription of
 Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the thin syntactic trust
-boundary. No `sorry`; axioms are `[propext, Quot.sound]` (+ `Lean.ofReduceBool`
+boundary. All goals closed; axioms are `[propext, Quot.sound]` (+ `Lean.ofReduceBool`
 for the `native_decide` numeric pins), matching the rest of the backend.
 -/
 

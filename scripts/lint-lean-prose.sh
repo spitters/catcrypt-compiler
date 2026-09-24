@@ -16,9 +16,9 @@
 # a real prose smell, not a false positive. Judgment-call filler (robust,
 # powerful, comprehensive, previously, "not just") is NOT hard-gated here.
 #
-# SCOPE: this is a per-file lint, not a tree-wide gate. 913 of the 1984 tracked
-# `.lean` files in this package carry at least one hit, so running it over the
-# whole tree would be permanently red and therefore ignored. CI runs it on files a
+# SCOPE: this is a per-file lint, not a tree-wide gate. Many tracked `.lean` files
+# in this package carry at least one hit, so running it over the whole tree would
+# be permanently red and therefore ignored. CI runs it on files a
 # change ADDS, and the pre-commit hook runs it on staged files; both are ratchets
 # that clean the tree forward.
 #

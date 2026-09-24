@@ -24,7 +24,7 @@ permutation `keccak_f1600(out u64[25], inp u64[25])` through CatCrypt's owned x8
 backend, with the θ column-parity packed into ONE `__m256i` (4 columns at once)
 and the rest of the round (ρ, π, χ, ι, the θ-D apply, and column-4 parity) kept
 scalar in GP `u64` lanes — the exact hybrid shape of the verified front's SIMD
-emit `bench/keccak_compare/gen/keccak_f1600_simd.jazz` (#121).
+emit `bench/keccak_compare/gen/keccak_f1600_simd.jazz`.
 
 KAT-flippable against `bench/keccak_compare/keccak_kat_simd.c` (FIPS 202).
 

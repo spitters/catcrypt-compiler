@@ -18,21 +18,21 @@ set_option autoImplicit false
 /-!
 # Generic-prime CIOS/SOS Montgomery field multiply, FRONT-COMPILED (P-256 instance)
 
-DRAFT (bucket-A keystone). The phase-1 `Secp256k1FeMulFront` front-generates a
+`Secp256k1FeMulFront` front-generates a
 4-limb field multiply for the **Solinas** prime `p = 2^256 − 2^32 − 977` via the
 cheap fold `2^256 ≡ 2^32 + 977`. That trick only works for pseudo-Mersenne primes
 (secp256k1, Ed25519 `2^255−19`). The pairing / P-256 field-leaves
 (`Pairing/{P256,Bls12381,Bn254}Emit.lean`) are over **generic** primes with no
-such fold, so their `extCall` field/point leaves have never had a front-generated
-body.
+such fold, so the Solinas front does not produce their `extCall` field/point
+leaves.
 
 This module front-generates a **Separated-Operand-Scanning (SOS) Montgomery**
 multiply `out = a · b · R⁻¹ mod p` (`R = 2^256`) for an arbitrary odd prime,
 instantiated at the NIST P-256 base field
 `p = 2^256 − 2^224 + 2^192 + 2^96 − 1`, reusing the SAME verified front
 (`translateDialectControl` + `cryptoDialectToJasminCom`) and the SAME 32-bit
-half-limb operand-scanning generators (`genMul`/`genAdd`/`genSub`) that phase 1
-proved. NO hand-built `Com`/`Lcmd`/`JInstr`.
+half-limb operand-scanning generators (`genMul`/`genAdd`/`genSub`) that
+`Secp256k1FeMulFront` uses. NO hand-built `Com`/`Lcmd`/`JInstr`.
 
 ```
   montMulBody (LowCT)
@@ -43,8 +43,8 @@ proved. NO hand-built `Com`/`Lcmd`/`JInstr`.
 
 ## The algorithm (32-bit words, carry-free through the covered `SExpr` alphabet)
 
-Both operands are 8 little-endian 32-bit half-limbs held in 64-bit words (phase-1
-representation — every column accumulator stays `< 2^64`, so `SMul/SAdd/SSub/SAnd/
+Both operands are 8 little-endian 32-bit half-limbs held in 64-bit words (the
+`Secp256k1FeMulFront` representation — every column accumulator stays `< 2^64`, so `SMul/SAdd/SSub/SAnd/
 SShr/SShl/SXor` never truncates).
 
 * `T = A × B` — 16-limb operand-scanning product (`genMul`).
@@ -54,7 +54,7 @@ SShr/SShl/SXor` never truncates).
     aligned with `i` leading zero limbs, added with `genAdd`. This zeroes `T[i]`.
 * After 8 steps `T[0..7] = 0`; the reduced value is `T ⁄ 2^256` in the high limbs
   (`< 2p`). One branch-free conditional subtract of `p` canonicalises into `[0, p)`
-  (a 9-limb trial subtract that includes the top carry limb, as in phase-2 `feAdd`).
+  (a 9-limb trial subtract that includes the top carry limb, as in `feAdd`).
 
 ## ABI
 
@@ -64,12 +64,12 @@ extern void p256_fe_mont_mul(uint64_t *out, const uint64_t *a, const uint64_t *b
 ```
 `RDI = out`, `RSI = a`, `RDX = b`. Each pointer a 4-cell (`.memref 4`) `u64` frame.
 
-## Status
+## Scope
 
-Front-compile + lower gates (`§4`). The Montgomery VALUE-tie (`denote =
-a·b·R⁻¹ mod p`) is byte-KAT-pending against a GMP reference (`§5` plan) — this is
-a DRAFT establishing the front CAN express generic Montgomery; the in-Lean
-`native_decide` denote proof (phase-1 style) is the next step.
+Front-compile + lower gates (`§4`). The module shows that the front expresses
+generic Montgomery multiplication. The Montgomery VALUE-tie (`denote =
+a·b·R⁻¹ mod p`) is the subject of a byte KAT against a GMP reference (`§5`); an
+in-Lean denote proof is outside the scope of this module.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.P256FieldMulMontFront
@@ -225,11 +225,10 @@ theorem frontCom_isSome : frontCom.isSome := by native_decide
 /-- The kernel lowers end-to-end to `Com jasminDialect`. -/
 theorem lowered_isSome : loweredOpt.isSome := by native_decide
 
-/-! ## 5. Byte-KAT plan (value-tie, deferred)
+/-! ## 5. Byte KAT (value-tie)
 
-The Montgomery denote-tie `denote a b = limbs4 (a·b·R⁻¹ mod p)` is checked, phase-1
-style, by `native_decide` on a KAT battery (§6 stub below) once memory permits, and
-externally by a byte KAT: assemble `p256_fe_mont_mul.s`, and for random `a,b < p`
+The Montgomery denote-tie `denote a b = limbs4 (a·b·R⁻¹ mod p)` is the subject of an
+external byte KAT (§6 below is a stub): assemble `p256_fe_mont_mul.s`, and for random `a,b < p`
 compare against GMP:  `r = a*b*R^{-1} mod p` with `R = 2^256`,
 `R^{-1} = mpz_invert(2^256, p)`. -/
 

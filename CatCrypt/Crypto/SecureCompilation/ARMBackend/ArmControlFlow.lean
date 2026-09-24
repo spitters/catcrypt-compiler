@@ -10,16 +10,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
-# Looped (non-unrolled) control-flow lowering for the owned AArch64 backend (#551)
+# Looped (non-unrolled) control-flow lowering for the owned AArch64 backend
 
-`ArmLowering.lean` (#533/#547) lowers a straight-line `AOp` block to the A64
-machine `AInst`s with `armBlock_lowering_denote`; `ArmSha256Kernel.lean` (#550)
+`ArmLowering.lean` lowers a straight-line `AOp` block to the A64
+machine `AInst`s with `armBlock_lowering_denote`; `ArmSha256Kernel.lean`
 uses that for the 64-round SHA-256 compression. A straight-line lowering emits an
 `n`-iteration loop as an `n`-copy `AInst` block, so the `.s` grows linearly in the
 trip count.
 
 This module is the **AArch64 analogue of the x86 owned-backend loop emission**
-(`X86Backend/LprogControlFlow.lean`, #538): a bounded counter loop is emitted as a
+(`X86Backend/LprogControlFlow.lean`): a bounded counter loop is emitted as a
 single body copy wrapped in an A64 back-edge
 
 ```

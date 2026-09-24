@@ -10,14 +10,14 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 public import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
 
 /-!
-# Grounded SNARK / STARK proof-system computational backbones — whole-pipeline
+# Grounded SNARK / STARK proof-system computational cores — whole-pipeline
   emit-realization with ZERO assumed per-kernel hypotheses
 
-This module grounds the **computational backbones** of modern SNARK / STARK
+This module grounds the **computational cores** of modern SNARK / STARK
 proof systems **unconditionally** — every per-step realization is a *theorem* (a
 proved concrete realizer), so each headline carries **zero
 `KernelRealizesT` / `KernelRealizes` / `KernelRealizes2` hypotheses** (only
-codec-fit side conditions, honestly flagged).  The three backbones are the ones
+codec-fit side conditions, stated explicitly).  The three cores are the ones
 that dominate a PLONK / Groth16 / STARK / FRI prover and verifier:
 
 1. the **Fiat–Shamir transcript / challenge derivation** — a Keccak (SHA-3 /
@@ -47,7 +47,7 @@ Each reuses the proved concrete realizers already in-repo:
 * `ProtocolEmitRealizes.pipeNT` / `composeSpecs` — the carrier-generic
   composition law for the transcript sponge chain.
 
-## The grounded backbones
+## The grounded cores
 
 * **`grounded_fiat_shamir_transcript_realizes`** — the Fiat–Shamir transcript /
   challenge-derivation sponge.  A PLONK / Groth16 / STARK verifier squeezes its
@@ -76,16 +76,16 @@ Each reuses the proved concrete realizers already in-repo:
   Keccak-tree variant grounds an `n`-block sponge commitment from
   `keccak_realizes_concrete`.  **ZERO kernel hypotheses.**
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
 * **Grounded (unconditional Lean theorems):** every per-step realization of all
-  backbones — each a proved concrete realizer (`keccak_realizes_concrete`,
+  cores — each a proved concrete realizer (`keccak_realizes_concrete`,
   `combined_realizes_add/mul`, `poseidon2_compress_realizes_concrete`), with no
   KAT and no per-kernel hypothesis.  Each whole pipeline decodes to the
   composite of its per-step specs.
 
 * **The PROOF-SYSTEM SECURITY property is NOT what is grounded here.**  We ground
-  the *computational backbone* — the field / hash / NTT KERNEL PIPELINE realized
+  the *computational core* — the field / hash / NTT KERNEL PIPELINE realized
   by emitted code — NOT the cryptographic security of the proof system.
   Concretely: SNARK / STARK **knowledge-soundness** and **completeness**, the
   Fiat–Shamir transform's **soundness** in the random-oracle model, **FRI
@@ -95,7 +95,7 @@ Each reuses the proved concrete realizers already in-repo:
   Keccak / field / Poseidon2 kernel pipeline computes its arithmetic spec*,
   unconditionally.
 
-* **Why Keccak / field / Poseidon2 and not SHA-256.**  Each backbone here has a
+* **Why Keccak / field / Poseidon2 and not SHA-256.**  Each core here has a
   proved concrete realizer whose codec round-trip is proved *per-bit* /
   *digit-sum* (axiom-clean).  The SHA-256 route is avoided because its codec
   round-trip uses a `bv_decide` LRAT certificate, which leaks a certificate
@@ -169,7 +169,7 @@ def fsTranscriptSpecs (steps : KeccakStepMappings) (n : ℕ) :
     concrete realizer `keccak_realizes_concrete` (in turn the verified 200-byte
     codec round-trip `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted Keccak
+    Scope: this grounds the *computational core* — the emitted Keccak
     permutation chain computes its arithmetic spec.  It does NOT prove the
     Fiat–Shamir transform's SOUNDNESS in the random-oracle model (that the
     derived challenges are sound, i.e. a cheating prover cannot grind the
@@ -225,7 +225,7 @@ def foldStepValue (q : ℕ) [NeZero q] (width : ℕ) (v c : ZMod q)
     `combined_realizes_mul` / `combined_realizes_add`; the encoded challenge and
     coefficient collapse by the proved `decodeF_encodeF`.  No assumed kernel
     fact; the only residual is the machine-code obligation for the two combined
-    arms.  This is the common backbone of a sum-check Horner step and a FRI
+    arms.  This is the common core of a sum-check Horner step and a FRI
     fold. -/
 theorem grounded_foldStep_realizes (q : ℕ) [NeZero q] (width : ℕ)
     (hw : width ≤ 48) (hq : q < 2 ^ (8 * width)) (v c : ZMod q)
@@ -249,7 +249,7 @@ theorem grounded_foldStep_realizes (q : ℕ) [NeZero q] (width : ℕ)
     realizations are theorems (`combined_realizes_mul` / `combined_realizes_add` +
     codec round-trip).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted field
+    Scope: this grounds the *computational core* — the emitted field
     mul/add kernel pipeline computes the sum-check fold arithmetic.  It does NOT
     prove sum-check SOUNDNESS (the round-by-round Schwartz–Zippel bound that a
     cheating prover is caught with probability `≥ 1 - d/|F|` per round) — that is
@@ -269,11 +269,11 @@ theorem grounded_sumcheck_round_realizes (q : ℕ) [NeZero q] (width : ℕ)
     `f_{i+1}(x) = f_i^{even}(x) + r · f_i^{odd}(x)`.  Expressed as the step
     `x ↦ x · r + c` with `x = f_i^{odd}(x)`, `c = f_i^{even}(x)`, it decodes to
     exactly `decodeF width xVal · r + c`, with **ZERO kernel hypotheses** — the
-    same grounded mul-then-add backbone.  Both per-kernel realizations are
+    same grounded mul-then-add core.  Both per-kernel realizations are
     theorems (`combined_realizes_mul` / `combined_realizes_add` + codec
     round-trip).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted field
+    Scope: this grounds the *computational core* — the emitted field
     kernel pipeline computes the FRI-fold affine combination.  It does NOT prove
     FRI LOW-DEGREE-TESTING SOUNDNESS (that an oracle far from low-degree is
     rejected with high probability), which is a separate result.  The only
@@ -311,7 +311,7 @@ def hornerFoldSpec (q : ℕ) (r : ZMod q) (coeffs : List (ZMod q))
     is the grounded `grounded_foldStep_realizes` (in turn the proved
     `combined_realizes_mul` / `combined_realizes_add` + codec round-trip).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted field
+    Scope: this grounds the *computational core* — the emitted field
     mul/add chain computes the Horner polynomial evaluation.  It does NOT prove
     sum-check / FRI SOUNDNESS.  The only residual is the machine-code obligation
     for the combined arms. -/
@@ -354,7 +354,7 @@ the `n` committed leaves into the 1600-bit sponge, grounded as the
     `decodeF_encodeF` at `width = 4`, `q = babyBearPrime`); strictly axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
+    Scope: this grounds the *computational core* — the emitted
     Poseidon2 compression kernel computes `poseidon2BabyBearCompress`.  It does
     NOT prove the vector commitment's BINDING (collision-resistance of Poseidon2)
     nor the STARK / FRI verifier's knowledge-soundness — separate cryptographic
@@ -387,7 +387,7 @@ def keccakVectorCommitSpecs (steps : KeccakStepMappings) (n : ℕ) :
     `keccak_realizes_concrete` (in turn the verified 200-byte codec round-trip
     `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted Keccak
+    Scope: this grounds the *computational core* — the emitted Keccak
     permutation chain computes its arithmetic spec.  It does NOT prove the vector
     commitment's BINDING (collision-resistance of Keccak) or the proof system's
     knowledge-soundness, which are separate assumptions.  The only residual is the
@@ -408,19 +408,19 @@ theorem grounded_keccak_vector_commitment_realizes (steps : KeccakStepMappings)
     (keccakVectorCommitLeaves n) (keccakVectorCommitSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §4  The combined SNARK / STARK headline — all backbones grounded
+/-! ## §4  The combined SNARK / STARK headline — all cores grounded
 
-The proof-system portfolio is its grounded backbones conjoined: the Fiat–Shamir
+The proof-system portfolio is its grounded cores conjoined: the Fiat–Shamir
 transcript sponge, the sum-check / FRI field fold, and the Poseidon2 Merkle
 vector-commitment node.  Each conjunct is unconditional in its kernels; each
-grounds a *computational backbone*, not a proof-system security property.  The
+grounds a *computational core*, not a proof-system security property.  The
 portfolio uses the strictly axiom-clean Poseidon2 2-to-1 compression node and the
 strictly axiom-clean field fold, plus the Keccak transcript chain, so it stays
 within `{propext, Classical.choice, Quot.sound}`. -/
 
-/-- **THE SNARK / STARK HEADLINE — grounded backbones, ZERO kernel hypotheses.**
+/-- **THE SNARK / STARK HEADLINE — grounded cores, ZERO kernel hypotheses.**
 
-    The SNARK / STARK proof-system backbones conjoined:
+    The SNARK / STARK proof-system cores conjoined:
 
     * the Fiat–Shamir transcript / challenge derivation (`pipeNT (.TBytes 200)`
       Keccak sponge chain),
@@ -435,7 +435,7 @@ within `{propext, Classical.choice, Quot.sound}`. -/
     All conjuncts are strictly axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    HONEST scope: each conjunct grounds the *computational backbone* — that the
+    Scope: each conjunct grounds the *computational core* — that the
     emitted Keccak / field / Poseidon2 kernel pipeline computes its arithmetic
     spec.  It does NOT prove the proof-system security (SNARK / STARK
     KNOWLEDGE-SOUNDNESS and COMPLETENESS, FIAT–SHAMIR SOUNDNESS in the ROM, FRI

@@ -16,11 +16,11 @@ set_option autoImplicit false
 /-!
 # Curve25519 CryptOpt-tuned `carry_mul` / `carry_square` — JasminAST leaves
 
-Pipeline (2) (LowCT → CryptoSSA → Jasmin → x86-64) needs JasminAST entries
+Pipeline (2) (LowCT → catCryptDialect → Jasmin → x86-64) needs JasminAST entries
 for the CryptOpt-tuned radix-2^51 unsaturated 5-limb multiplication and squaring on the
-Curve25519 base field. The bench wire-up (commits `cae8ccb`, `7e9023d`)
-already routes pipeline-(1) callers through the asm under
-`-DUSE_CRYPTOPT_25519_MUL`; this file adds the parallel pipeline-(2)
+Curve25519 base field. The bench wire-up routes pipeline-(1) callers
+through the asm under `-DUSE_CRYPTOPT_25519_MUL`; this module adds the
+parallel pipeline-(2)
 declaration so the verified Jasmin chain emits the same leaf.
 
 ## Source
@@ -67,14 +67,13 @@ the benchmark harness) supplies the body at link time.
 
 ## Future tightening
 
-If we want a fully in-tree Lean audit of the asm itself (rather than
-trusting CryptOpt's equivalence theorem), the natural next step is to
-extend `BignumExec.lean` with operational semantics for the missing
-intrinsics, then write the body as a `List InstrR` that mirrors the
-asm line-by-line. That replaces "trust CryptOpt + linker" with "trust
-`BignumExec`'s instruction semantics + a Lean-level proof that the
-sequence equals fiat-crypto's `carry_mul`". Estimated ~1 week
-additional effort. Tracked but out of scope here.
+An in-tree Lean audit of the asm itself (in place of trusting CryptOpt's
+equivalence theorem) needs operational semantics for the intrinsics the
+body uses (`Curve25519CryptoptOps.lean`) and a Lean-level proof that the
+`List InstrR` sequence, which mirrors the asm line-by-line, equals
+fiat-crypto's `carry_mul`. That would change the trust base from "trust
+CryptOpt + linker" to "trust `BignumExec`'s instruction semantics". The
+proof is outside the scope of this module.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
@@ -101,9 +100,9 @@ def varI (s : String) : VarI :=
 Each helper produces one `InstrR` tagged with the matching x86 mnemonic
 in `Oasm`. Operational semantics for the new opcodes (`BZHI_64`,
 `SHRD_64_imm`, `SHLX_64`, `IMUL_imm_64`, `ADCX_64`, `ADOX_64`, `AND_64`)
-are not yet provided in `BignumExec.lean` — the JasminAST representation
-exists for emit-correctness; runtime/inductive semantics is the
-follow-up tightening described in the file docstring.
+are not in `BignumExec.lean` — the JasminAST representation exists for
+emit-correctness; `Curve25519CryptoptOps.lean` gives their operational
+semantics.
 
 Convention: register names from the asm (`rax`, `rbx`, `rcx`, `rdx`,
 `rsi`, `rdi`, `r8`–`r15`) are used verbatim as variable names. Spill
@@ -294,7 +293,7 @@ Synthetic locals introduced:
 The asm clobbers `rdx` repeatedly to feed `MULX`'s implicit multiplier
 and to thread `imul rdx, _, imm` results forward; the body shadows
 `rdx`'s name across writes (legal in our JasminAST since downstream
-LowCT→CryptoSSA SSA-renames). -/
+translation to SSA renames). -/
 
 def sqrBody : List InstrR :=
   [ -- 4:  mov rax, 0x1

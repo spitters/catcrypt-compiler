@@ -22,7 +22,7 @@ decoded with `objdump -d -M intel`) for the matching mnemonic. Each `#guard`
 checks the encoder reproduces those bytes. The trusted edge shrinks from "`gas`
 encodes each mnemonic per the SDM" to "our encoder matches `gas`'s bytes".
 
-Unlike the GP-ALU forms (#444), there is **no Sail-x86 decode round-trip** for
+Unlike the GP-ALU forms, there is **no Sail-x86 decode round-trip** for
 these families — the ACL2/Sail-x86 model has no SHA-NI / VAES / GFNI / PCLMUL
 decode tables — so they remain at this gas-pinned validation tier.
 

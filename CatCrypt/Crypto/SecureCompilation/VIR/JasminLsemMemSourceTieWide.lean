@@ -208,7 +208,7 @@ theorem runBoundedLoopMemWide_decodes_denote {accTy : JasminTy}
           exact hdec'
 
 /-- **The carrier-agnostic export theorem, tied to the source denotation.** For
-    an arbitrary accumulator type `accTy`, under the A1 counter schedule plus the
+    an arbitrary accumulator type `accTy`, under the counter-loop schedule plus the
     carrier seed decode and the per-trip simulation (both at `decodeCarrier`), the
     emitted counter loop's machine run halts at a state whose carrier decodes to
     `JLoopBodyN.denote ⟨m, update⟩ invs acc0`. The `.reg w` and `.stackArr w n`

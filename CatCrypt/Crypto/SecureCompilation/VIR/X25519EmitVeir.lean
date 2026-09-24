@@ -21,7 +21,7 @@ program is wrapped in a `func.func` op via `lowerClosedComToFunc`:
 inputs become block arguments, the body lowers into the entry block,
 and a `func.return` terminator carries the final value.
 
-The lowering now emits real `func.call` ops (with `callee = @<name>`
+The lowering emits `func.call` ops (with `callee = @<name>`
 symbol-ref attributes) for `extCall`, and a `catcrypt.unknown`
 dialect tag for ops with no Veir-side counterpart. `mlir-opt`
 accepts the output under `--allow-unregistered-dialect` once the

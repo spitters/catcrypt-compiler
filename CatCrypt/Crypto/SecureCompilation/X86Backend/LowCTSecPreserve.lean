@@ -9,11 +9,11 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
 public import CatCrypt.Crypto.SDist
 
 /-!
-# P4.3: cryptographic-security preservation by composition (not a fresh proof)
+# Cryptographic-security preservation by composition
 
-This module discharges **P4.3** — cryptographic/UC-security preservation across
-our `LowCT → JInstr` compiler on the call-free scalar-arith fragment — by
-**composing two results we already have**, rather than building a fresh
+This module proves cryptographic/UC-security preservation across
+the `LowCT → JInstr` compiler on the call-free scalar-arith fragment by
+**composing two results**, rather than building a fresh
 probabilistic-RHL IND-CCA argument:
 
 1. **`interpSP_callfree`** (from `LowCTITreePRHL.lean`): deterministic
@@ -22,30 +22,26 @@ probabilistic-RHL IND-CCA argument:
    *pure* computation `SPComp.pure (srcDenote ps rs)`.  Two programs whose
    big-step `srcDenote` agree therefore have **equal `SPComp` denotation**.
 
-2. **`uc_is_secure_compilation`** (from `SCIO.lean`): the generic robust-
-   compilation / RrHP fact that *equal denotation ⇒ equal `sdist` ⇒ same
-   security bound*.  Its proof body is the one-line "rewrite the equal
-   computations under `sdist`" argument — there phrased for `CProg`/`progSdist`.
+2. **`spDenote_eq_preserves_sdist`**: the generic robust-compilation / RrHP
+   fact that *equal denotation ⇒ equal `sdist` ⇒ same security bound*, proved
+   by the one-line "rewrite the equal computations under `sdist`" argument.
 
-The thesis (P4.3): **cryptographic-security preservation here follows from our
-robust-compilation/SCIO result given `progEquiv`, and `progEquiv` *is*
+So **cryptographic-security preservation here follows from the
+robust-compilation fact given `progEquiv`, and `progEquiv` *is*
 `compile_correct`.**  The paper's bespoke RHL is one route to the security-
-preservation obligation; *ours* is the SCIO RrHP result composed with the
+preservation obligation; this module composes the RrHP fact with the
 deterministic-to-pure lift `interpSP_callfree`.
 
 ## What lives here
 
-* `spDenote_eq_preserves_sdist` — the **generic `SPComp` core fact**, restated
-  free of `CProg`: equal computations have the same `sdist`-bound to an ideal.
-  This is exactly the body of `uc_is_secure_compilation` lifted off `CProg`
-  (`uc_is_secure_compilation` is `CProg`-locked: it quantifies over `progSdist`
-  / `CProg Γ t`, so it cannot be invoked directly on a raw `SPComp` pair).  The
-  restatement is a 1-line `rw [← h_eq]`.
+* `spDenote_eq_preserves_sdist` — the **generic `SPComp` core fact**, stated
+  for plain `SPComp`: equal computations have the same `sdist`-bound to an
+  ideal.  The proof is a 1-line `rw [← h_eq]`.
 * `interpSP_progEquiv` — the **`progEquiv`-at-the-`SPComp`-level** lemma from
   `compile_correct`: if two call-free programs have equal big-step `srcDenote`,
   their `interpSP` interpretations are *equal* `SPComp` computations.  Proved by
   rewriting both sides with `interpSP_callfree`.
-* `compiled_preserves_security` — **the headline P4.3 theorem**.  For our
+* `compiled_preserves_security` — **the main theorem**.  For the
   call-free compiled kernel, a `sdist ≤ ε` security bound to an ideal transfers
   from the source program to the compiled program, by composing
   `interpSP_progEquiv` (denotation equality) with `spDenote_eq_preserves_sdist`
@@ -57,18 +53,15 @@ deterministic-to-pure lift `interpSP_callfree`.
   call-free program is denotationally invariant, so the bound is preserved
   trivially by `sdist_self`-style reasoning.
 
-## Relation to the existing SCIO result
+## Relation to robust compilation
 
-`compiled_preserves_security` is the `SPComp`-level shadow of
-`uc_is_secure_compilation` / `progEquiv_gives_RrHP` (`SCIO.lean`).  Security
-preservation here is **not** a fresh IND-CCA RHL proof: it is `compile_correct`
-(⇒ `progEquiv` at the `SPComp` level via `interpSP_callfree`) composed with the
-existing robust-compilation result (`uc_is_secure_compilation` / RrHP).  The
-paper's RHL is one route; the SCIO RrHP + deterministic-to-pure lift is ours.
+Security preservation here is **not** a fresh IND-CCA RHL proof: it is
+`compile_correct` (⇒ `progEquiv` at the `SPComp` level via `interpSP_callfree`)
+composed with the robust-compilation (RrHP) fact `spDenote_eq_preserves_sdist`.
 
 ## Iris-free
 
-Imports only `LowCTITreePRHL` (the iris-free P4.1/P4.3 ITree+pRHL layer) and
+Imports only `LowCTITreePRHL` (the iris-free ITree+pRHL layer) and
 `CatCrypt.Crypto.SDist` (the `sdist` API).  Nothing under `Bridges/` or
 `IrisBridge/`: no guarded ITrees, no step-indexing, no separation logic.
 -/
@@ -87,18 +80,14 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
 open scoped ENNReal
 
-/-! ## 1. The generic `SPComp` core fact (restated off `CProg`)
+/-! ## 1. The generic `SPComp` core fact
 
-`SCIO.uc_is_secure_compilation` is `CProg`-locked — it is stated over
-`progSdist` and `CProg Γ t`, so it cannot be applied to a bare `SPComp` pair.
-Its *proof body* is the generic "equal computations ⇒ equal `sdist` ⇒ same
-bound" argument.  We restate exactly that body for plain `SPComp`: it is a
-one-line rewrite by the denotation equality. -/
+The generic "equal computations ⇒ equal `sdist` ⇒ same bound" argument, for
+plain `SPComp`: a one-line rewrite by the denotation equality. -/
 
 /-- **Generic security-preservation core (plain `SPComp`).**  If two `SPComp`
     computations `c`, `c'` are equal, then any `sdist`-bound to an ideal
-    computation transfers from `c` to `c'`.  This is the `CProg`-free
-    restatement of the body of `SCIO.uc_is_secure_compilation`: equal
+    computation transfers from `c` to `c'`: equal
     computations have equal `sdist`, hence the same security bound.  The proof
     is the single rewrite `rw [← h_eq]` — the point being that `sdist` is a
     *function* of its two arguments, so propositionally-equal computations are
@@ -132,14 +121,14 @@ theorem interpSP_progEquiv
     interpSP h (itreeDenoteArith ps rs₁) = interpSP h (itreeDenoteArith qs rs₂) := by
   rw [interpSP_callfree, interpSP_callfree, hsrc]
 
-/-! ## 3. The headline P4.3 theorem
+/-! ## 3. The main theorem
 
 Compose §2 (denotation equality from `compile_correct`) with §1 (equal
 denotation ⇒ same `sdist`-bound).  The hypothesis is the compile-correctness
 `srcDenote` agreement between source and compiled program; the conclusion is the
 security bound on the compiled kernel. -/
 
-/-- **P4.3: compiled kernel preserves cryptographic security.**
+/-- **Compiled kernel preserves cryptographic security.**
 
     Let `srcP` be a source call-free scalar-arith program and `tgtP` its
     compilation (modelled here as a call-free program — the compiled block's
@@ -150,11 +139,10 @@ security bound on the compiled kernel. -/
 
     Security preservation is obtained **by composition**: `interpSP_progEquiv`
     (compile_correct ⇒ equal `SPComp` denotation, §2) feeds
-    `spDenote_eq_preserves_sdist` (equal denotation ⇒ same bound, §1, the
-    `SPComp`-restated body of `SCIO.uc_is_secure_compilation`).  No fresh
+    `spDenote_eq_preserves_sdist` (equal denotation ⇒ same bound, §1).  No fresh
     probabilistic-RHL IND-CCA argument is needed.
 
-    `(secure compilation via SCIO RrHP + deterministic-to-pure lift)` -/
+    `(secure compilation via RrHP + deterministic-to-pure lift)` -/
 theorem compiled_preserves_security {α : Type}
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (srcP tgtP : List ArithSrc) (rs : RustState)
@@ -182,29 +170,23 @@ theorem compiled_preserves_security_self {α : Type}
           (fun _ : α => ideal) ≤ ε :=
   compiled_preserves_security h ps ps rs ideal rfl hsec
 
-/-! ## 4. Note: this is the SCIO result composed, not a fresh RHL proof
+/-! ## 4. The composition
 
 The theorem below records the conceptual tie in Lean form.  It states the
 *shape* of the composition: for the call-free fragment, the `progEquiv`
-hypothesis that drives `SCIO.uc_is_secure_compilation` / `progEquiv_gives_RrHP`
-is, at the `SPComp` level, exactly `interpSP_progEquiv` (i.e.
-`compile_correct`).  Plugging that into the generic equal-denotation-⇒-same-
-bound core (`spDenote_eq_preserves_sdist`) yields `compiled_preserves_security`.
-
-Cryptographic-security preservation here is therefore **not** a fresh IND-CCA
-RHL proof; it is `compile_correct` (⇒ `progEquiv` at the `SPComp` level via
-`interpSP_callfree`) composed with the existing robust-compilation result
-(`uc_is_secure_compilation` / RrHP).  The paper's RHL is one route; the SCIO
-RrHP + deterministic-to-pure lift is ours. -/
+hypothesis of robust compilation is, at the `SPComp` level, exactly
+`interpSP_progEquiv` (i.e. `compile_correct`).  Plugging that into the generic
+equal-denotation-⇒-same-bound core (`spDenote_eq_preserves_sdist`) yields
+`compiled_preserves_security`. -/
 
 /-- **The composition, spelled out.**  Given the `compile_correct` `srcDenote`
     agreement (`progEquiv` at the `SPComp` level) *and* the source security
     bound, the compiled bound follows by feeding the former (as denotation
-    equality, via `interpSP_progEquiv`) into the latter (`SCIO`'s
-    equal-denotation-⇒-same-bound core, restated as
+    equality, via `interpSP_progEquiv`) into the latter (the
+    equal-denotation-⇒-same-bound core
     `spDenote_eq_preserves_sdist`).  This is definitionally
     `compiled_preserves_security`; stated here to make the two-result
-    composition explicit as the P4.3 derivation. -/
+    composition explicit. -/
 theorem P4_3_security_preservation_by_composition {α : Type}
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (srcP tgtP : List ArithSrc) (rs : RustState)

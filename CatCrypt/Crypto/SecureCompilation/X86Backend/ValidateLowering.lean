@@ -272,7 +272,7 @@ def validateLowering (p : Lprog) (virtFor : String → Lcmd × Array Nat)
   p.lp_funcs.all (fun e =>
     validateLfundefWith (virtFor e.1).1 (virtFor e.1).2 e.2 nPtr framePerSlot)
 
-/-- The validator is genuinely runnable (decidable as `= true`). -/
+/-- The validator is runnable (decidable as `= true`). -/
 example (p : Lprog) (virtFor : String → Lcmd × Array Nat) (nPtr framePerSlot : Nat) :
     Decidable (validateLowering p virtFor nPtr framePerSlot = true) := inferInstance
 
@@ -406,7 +406,7 @@ net `Lstate` effect establishing the body's argument registers. That bridge live
 *outside* the modeled straight-line fragment (the prologue uses the `MOVQ` mnemonic
 `lsemStep` does not model; `toLprogPhysAbi_lsem` carries it as the explicit
 `hProlog`/`hrel` hypotheses). We therefore state the decidable→semantic bridge as an
-explicit named goal — not a `sorry` — and prove the decidable direction the checker
+explicit named goal and prove the decidable direction the checker
 gives. -/
 
 /-- The decidable materialization fact the validator discharges: if a function
@@ -422,8 +422,8 @@ theorem validate_argsMaterialized_decidable {virtBody : Lcmd} {fd : Lfundef}
   intro r hr
   exact (List.all_eq_true.mp ham) r hr
 
-/-- **The explicit decidable→semantic bridge goal for clause (c)** (stated, not
-    `sorry`). The decidable `materializedBeforeUse` check (proved discharged above)
+/-- **The explicit decidable→semantic bridge goal for clause (c)** (a stated
+    `Prop`). The decidable `materializedBeforeUse` check (proved discharged above)
     should entail the *semantic* materialization premise of `argMatSeq_reads`: that
     there is a materialization pair list with fresh sources and distinct
     destinations (`SourcesFresh`/`DestsDistinct`) whose run establishes the argument

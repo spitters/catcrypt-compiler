@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 # The SHA-2 compression round loop is bit-exact in its per-round constants `K[t]`
 
 `Sha2Emit.schedLoop_denote_eq` (committed) certifies the SHA-2 message-schedule
-loop *structure*, but routes the genuine per-round shift amounts / constants
+loop *structure*, but routes the per-round shift amounts / constants
 through an opaque `extCall` leaf (`sha2_sched_step`), because the jasmin dialect
 has **no in-body literal-constant op** and a uniform `JForProg` body's only free
 variable is the accumulator (its module header documents this gap precisely).
@@ -41,16 +41,16 @@ We split the round body into:
 
 * the round-constant-**independent** core (the Σ/Ch/Maj mixing + working-word
   shift), modeled as a **real `regArith` map** `shaDiffuse : BitVec w → BitVec w`
-  on the round accumulator — a genuine word-level mixing, the denotation of a
+  on the round accumulator — a word-level mixing, the denotation of a
   straight-line `regArith` sub-`Com`, *fixed* across all rounds (so no per-round
   choice / KAT to pin "which mixing at round `t`"; it is the same map every round,
   as the Σ/Ch/Maj structure is);
 * the round-**dependent** constant: read `K[idx]` by `stackLoad rc idx`, then
-  `acc + K[idx]` by a real `regArith add`. This is the genuine FIPS 180-4 round
+  `acc + K[idx]` by a real `regArith add`. This is the FIPS 180-4 round
   constant `K[t]` — the part the indexed-loop machinery certifies as a real input.
 
 The reference the loop denotes is `shaRound shaDiffuse t acc = shaDiffuse acc +
-K[t]` (the modeled core followed by the genuine `K[t]` addition), iterated
+K[t]` (the modeled core followed by the `K[t]` addition), iterated
 `rounds` times. **The round-constant stream `K[0..rounds-1]` is proven
 bit-exact**; the concrete bit-level identity of the Σ/Ch/Maj core with FIPS 180-4
 (rather than the modeled `shaDiffuse`) is the residual carried by the
@@ -58,13 +58,14 @@ fully-unrolled KAT emission `Sha2Emit.compressCom` (`bench/sha2_compare/`).
 
 ## What this delivers over `Sha2Emit.schedLoop_denote_eq`
 
-`Sha2Emit`'s loop keystones either (a) use a leaf-free *skeleton* body
-(`schedSkelLoop`, no genuine constant) or (b) hide the per-round constants behind
-an opaque `sha2_sched_step` leaf (carried by `LeafAgrees`). This file threads the
-genuine `K[t]` constant stream as a **certified, proven input** — no opaque leaf
+`Sha2Emit`'s loop theorems either (a) use a leaf-free *skeleton* body
+(`schedSkelLoop`, no per-round constant) or (b) hide the per-round constants behind
+an opaque `sha2_sched_step` leaf (carried by `LeafAgrees`). This module threads the
+FIPS `K[t]` constant stream as a **certified, proven input** — no opaque leaf
 for the constant, no fixed `K[0]`. The only carried hypothesis is the opaque-leaf
 edge `LeafAgrees`, **vacuous** here (the round body is pure `regArith`/`stackLoad`,
-no `extCall`). No `sorry`, no new axioms, no `native_decide` for the bit-exactness.
+no `extCall`). All goals closed; no new axioms, no `native_decide` for the
+bit-exactness.
 -/
 
 @[expose] public section
@@ -86,7 +87,7 @@ We carry the round constants `K[0..rounds-1]` in a `stackArr 64 rounds` table
 (width 64 covers both SHA-256's 32-bit and SHA-512's 64-bit constants; the round
 accumulator is also `reg 64`, with SHA-256 values living in the low 32 bits). The
 abstract table is left as a parameter `kConst : Fin rounds → BitVec 64` — the
-genuine FIPS 180-4 `K[t]` values — so the bit-exactness statement is independent
+FIPS 180-4 `K[t]` values — so the bit-exactness statement is independent
 of the concrete numeric literals (which the bench KAT pins). -/
 
 /-- The round accumulator type: a single `reg 64` word carrying the round value
@@ -109,11 +110,11 @@ def wEmit {Γ : Ctxt jasminDialect}
   .var (.mk (.regArith op 64) rfl (.cons a (.cons b .nil))) (k .here)
 
 /-- The round-constant-independent core as a mathematical map on the round word:
-    `acc ↦ (acc <<< acc.toNat) + acc`. A genuine word-level mixing (the modeled
+    `acc ↦ (acc <<< acc.toNat) + acc`. A word-level mixing (the modeled
     Σ/Ch/Maj + shift), realized by a `regArith shl` then a `regArith add` — fixed
     across all rounds. The shift amount is the accumulator itself (a self-shift),
     since the dialect has no in-body literal-constant op (the gap documented in
-    `Sha2Emit.lean`); the keystone is agnostic to the core's exact arithmetic. -/
+    `Sha2Emit.lean`); the main theorem is agnostic to the core's exact arithmetic. -/
 def shaDiffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) + acc
 
 /-! ## 3. The round body over `[acc, idx, rc]`, parametric in the round count
@@ -123,8 +124,8 @@ def shaDiffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) + acc
 
 1. `s0 = acc <<< acc.toNat`   (a `regArith shl`, modeled core);
 2. `s1 = s0 + acc`            (a `regArith add`, → `shaDiffuse acc`);
-3. `k = stackLoad rc idx`     (the genuine per-round constant `K[idx]`);
-4. `s2 = s1 + k`              (the genuine round-constant add: `shaDiffuse acc + K[t]`).
+3. `k = stackLoad rc idx`     (the per-round constant `K[idx]`);
+4. `s2 = s1 + k`              (the round-constant add: `shaDiffuse acc + K[t]`).
 
 Every binder is a `regArith` / `stackLoad` — never the aliasing `stackStore` — so
 the body is `StraightLine`. The per-round variation is exactly `K[idx]` read from
@@ -134,11 +135,11 @@ the table at the threaded index. -/
 abbrev rctx (rounds : Nat) : Ctxt jasminDialect := tabCtxt AccTy rounds
 
 /-- The SHA-2 compression round body (round count `rounds`): the modeled core then
-    the genuine `K[t]` add. -/
+    the `K[t]` add. -/
 def shaRoundBody (rounds : Nat) : Com jasminDialect (rctx rounds) AccTy :=
   -- s0 = acc <<< acc.toNat
   wEmit (Γ := rctx rounds) .shl .here .here fun _ =>
-  -- s1 = s0 + acc      (acc is now `.there .here`)
+  -- s1 = s0 + acc      (acc is at `.there .here`)
   .var (.mk (.regArith .add 64) rfl (.cons .here (.cons (.there .here) .nil)))
     -- k = stackLoad rc idx   (rc = `.there³ (.there .here)` → idx/rc under lifts)
     (.var (.mk (.stackLoad 64 rounds) rfl
@@ -165,11 +166,11 @@ def shaRoundLoop (rounds : Nat) (kConst : Fin rounds → BitVec 64) :
 
 For a valid round `t < rounds` (so `(ofNat 64 t).toNat = t` and the `% rounds`
 reduction is the identity), the body denotation is `shaDiffuse acc + K[t]` — the
-modeled core followed by the genuine `K[t]` add, NOT a fixed `K[0]`. -/
+modeled core followed by the `K[t]` add, NOT a fixed `K[0]`. -/
 
 /-- **The round body's per-iteration step is bit-exactly `shaDiffuse acc + K[t]`**
     (for a valid round `t < rounds`): the modeled round-constant-independent core
-    `shaDiffuse` followed by the genuine FIPS 180-4 round constant `K[t]` (read
+    `shaDiffuse` followed by the FIPS 180-4 round constant `K[t]` (read
     from the table at the threaded index), NOT a fixed `K[0]`. -/
 theorem shaRoundStep_eq {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
     {kConst : Fin rounds → BitVec 64}
@@ -188,20 +189,20 @@ theorem shaRoundStep_eq {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
       show stackGet kConst t = kConst ⟨t, h⟩ from by rw [← stackGet_id kConst ⟨t, h⟩]]
   rfl
 
-/-! ## 5. The bit-exact reference: `rounds`-fold compression with the genuine K stream
+/-! ## 5. The bit-exact reference: `rounds`-fold compression with the K stream
 
-`shaRound` is the modeled core `shaDiffuse` followed by the genuine `K[t]` add;
+`shaRound` is the modeled core `shaDiffuse` followed by the `K[t]` add;
 `shaCompressionRef` folds it over `range rounds`, threading the actual FIPS 180-4
 round-constant stream `K[0..rounds-1]`. -/
 
-/-- The reference compression round: the modeled core `shaDiffuse` then the genuine
+/-- The reference compression round: the modeled core `shaDiffuse` then the
     `K[t]` add, with `t` clamped (the `% rounds` reduction inside `stackGet`). -/
 def shaRound (rounds : Nat) (kConst : Fin rounds → BitVec 64) (t : Nat)
     (acc : BitVec 64) : BitVec 64 :=
   shaDiffuse acc + stackGet kConst t
 
 /-- The bit-exact `rounds`-round compression reference: fold `shaRound` over
-    `t = 0 .. rounds-1` with the genuine FIPS 180-4 round constants. -/
+    `t = 0 .. rounds-1` with the FIPS 180-4 round constants. -/
 def shaCompressionRef (rounds : Nat) (kConst : Fin rounds → BitVec 64)
     (init : BitVec 64) : BitVec 64 :=
   (List.range rounds).foldl (fun acc t => shaRound rounds kConst t acc) init
@@ -232,15 +233,15 @@ theorem denoteT_eq_ref {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
   show shaDiffuse acc + kConst ⟨t, htr⟩ = shaDiffuse acc + stackGet kConst t
   rw [stackGet_id kConst ⟨t, htr⟩]
 
-/-! ## 6. The keystone: the emitted SHA-2 compression loop is bit-exact (a THEOREM) -/
+/-! ## 6. The main theorem: the emitted SHA-2 compression loop is bit-exact (a THEOREM) -/
 
-/-- **Keystone — the emitted SHA-2 compression `rounds`-round loop denotes the
+/-- **Main theorem — the emitted SHA-2 compression `rounds`-round loop denotes the
     bit-exact FIPS 180-4 compression, with the ACTUAL per-round constants `K[t]`.**
     Running the emitted `for t = 0 to rounds { acc = core(acc) + K[t] }` on the
     word-level evaluator (the round body run once per round, reading `K[t]` from
     the table at the threaded index register), equals
     `shaCompressionRef rounds kConst init` — the bit-exact `rounds`-fold
-    compression with the genuine FIPS 180-4 round-constant stream
+    compression with the FIPS 180-4 round-constant stream
     `K[0..rounds-1]`.
 
     This is a **proof** (via `JForProgIndexed.loopRunT_eq_denoteT`, routed through
@@ -261,7 +262,7 @@ theorem sha2_round_loop_bitexact {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
 /-! ### Specialized to SHA-256 (64 rounds) and SHA-512 (80 rounds)
 
 The two algorithms differ only in the round count (`sha256Spec.rounds = 64`,
-`sha512Spec.rounds = 80`). The keystone fires for each, parametric in the genuine
+`sha512Spec.rounds = 80`). The main theorem fires for each, parametric in the
 `K[t]` table. -/
 
 /-- **SHA-256 (64-round) compression loop is bit-exact in `K[0..63]`.** -/
@@ -282,23 +283,23 @@ theorem sha512_round_loop_bitexact (kConst : Fin sha512Spec.rounds → BitVec 64
 theorem round_counts : sha256Spec.rounds = 64 ∧ sha512Spec.rounds = 80 :=
   ⟨rfl, rfl⟩
 
-/-! ## 7. The FIPS 180-4 KAT is now a corollary
+/-! ## 7. The FIPS 180-4 KAT as a corollary
 
 With the bit-exact loop theorem in hand, a concrete compression KAT (e.g. from
-`init = 0` with the genuine `K[t]` table) is a **corollary**: the loop output is
-the reference `shaCompressionRef`, so a concrete value is `rw` the keystone then
+`init = 0` with the `K[t]` table) is a **corollary**: the loop output is
+the reference `shaCompressionRef`, so a concrete value is `rw` the main theorem then
 evaluate the reference, not a `native_decide` validation of the loop. The FIPS
 180-4 digests in `bench/sha2_compare/` are this compression composed with the
 (data-oblivious) padding / message-schedule wrapper. -/
 
-/-- The loop output from `init = 0` (with a given genuine `K[t]` table), as the
+/-- The loop output from `init = 0` (with a given `K[t]` table), as the
     reference compression value. -/
 def shaZeroOut (rounds : Nat) (kConst : Fin rounds → BitVec 64) : BitVec 64 :=
   shaCompressionRef rounds kConst 0
 
 /-- **KAT (corollary).** Running the emitted SHA-2 compression loop from
     `init = 0` yields `shaZeroOut rounds kConst` — the reference `rounds`-round
-    compression under the genuine FIPS 180-4 round-constant stream `K[t]`. Derived
+    compression under the FIPS 180-4 round-constant stream `K[t]`. Derived
     from the bit-exact loop theorem `sha2_round_loop_bitexact`, not a
     `native_decide` validation. The FIPS 180-4 digests in `bench/sha2_compare/`
     sit on top of this compression. -/
@@ -309,7 +310,7 @@ theorem sha2_round_loop_kat {rounds : Nat} (hr : rounds ≤ 2 ^ 64)
       = shaZeroOut rounds kConst := by
   rw [sha2_round_loop_bitexact hr hLeaf]; rfl
 
-/-- The genuine round-constant stream is threaded: each `stepT t` adds in
+/-- The round-constant stream is threaded: each `stepT t` adds in
     `K[t] = kConst ⟨t, _⟩` (the actual FIPS 180-4 constant, not a fixed `K[0]`).
     Witnessed at every round `t < rounds` — the certified per-round-varying input. -/
 theorem sha2_kt_stream_genuine {rounds : Nat} (hr : rounds ≤ 2 ^ 64)

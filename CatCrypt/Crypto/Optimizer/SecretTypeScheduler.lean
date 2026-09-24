@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Optimizer.SchedulerPass
 public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
-# A third pass for the compositional-CT taint story: the ILP scheduler (#594)
+# A third pass for the compositional-CT taint story: the ILP scheduler
 
 `Optimizer/SecretType.lean` seeds *constant-time as a compositional typing
 invariant*: a secret/public taint qualifier flows along the A-normal-form
@@ -24,7 +24,7 @@ different optimizer passes are shown to keep it well-formed —
   monotonically* (`saturateCom_comMaxTaint_le`), because its algebraic
   collapses only ever *drop* an input variable.
 
-This file adds a **third, structurally-different pass**: the #525/#593
+This module adds a **third, structurally-different pass**: the
 intra-block instruction **scheduler** (`Optimizer/SchedulerPass.lean`,
 `scheduleBlock`). The scheduler is unlike both predecessors: it neither
 rewrites an op (peephole) nor drops an argument (egraph). It only ever
@@ -260,7 +260,7 @@ assignment `T`, `blockMaxTaint T (scheduleBlock b) = blockMaxTaint T b`. Every
 reorder move is an adjacent independent swap, which leaves the threaded taint
 environment and each statement's read-taint unchanged (`stepTaint_comm`), so the
 running join — the program's overall secrecy level — is invariant. The third,
-*reorder*, pass of the #594 compositional-CT story, and the only one that
+*reorder*, pass of the compositional-CT story, and the only one that
 preserves the summary *exactly*. -/
 theorem scheduleBlock_blockMaxTaint_eq (T : BBTaint) (b : List BBStmt) :
     blockMaxTaint T (scheduleBlock b) = blockMaxTaint T b := by

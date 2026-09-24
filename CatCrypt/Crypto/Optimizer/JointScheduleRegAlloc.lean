@@ -372,7 +372,7 @@ def randomInjectiveRename (pinned : GpAlloc) (block : List (JInstr 64))
     - `RandomizedRegAlloc.accept [] (renameToAlloc ren block) block` is the
       GP-overflow / physical-distinctness guard — it rejects any rename that
       would spill past `AsmPrinter.gpPool` or alias two virtuals onto one
-      physical (the #380 collision). Only moves passing both are candidates;
+      physical. Only moves passing both are candidates;
       the chosen winner is still TV-gated downstream (the joint search only
       *widens* the candidate space, never bypasses translation validation). -/
 def searchJointStep

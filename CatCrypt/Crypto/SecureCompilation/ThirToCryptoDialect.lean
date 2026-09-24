@@ -694,7 +694,7 @@ theorem smokeSrc_lowers (w : Nat) :
 
 /-- **End-to-end through the pass.** For the `some` result `comC` of the pass on
     `smokeSrc`, the lowered program denotes (on the transported valuation) to the
-    transport of the source — the probe's preservation, now via the op-set pass
+    transport of the source — the probe's preservation, via the op-set pass
     and the whole-program soundness theorem rather than a hand-built target. -/
 theorem smokeSrc_denote (w : Nat)
     (comC : Com catCryptDialect (mapCtx [JasminTy.reg w, JasminTy.reg w]) (mapTy (.reg w)))

@@ -83,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 
-/-! ## 1. CryptoSSA encoding + arg context (mirrors `fp_tower_from_rustcmd`) -/
+/-! ## 1. `Com` encoding + arg context (mirrors `fp_tower_from_rustcmd`) -/
 
 /-- `Fp` felem: `TBytes 32 → memref 4`. -/
 abbrev MFp : CryptoTy := CryptoTy.memref 4

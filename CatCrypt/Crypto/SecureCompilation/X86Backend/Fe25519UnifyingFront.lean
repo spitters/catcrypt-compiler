@@ -25,13 +25,13 @@ The deployed `Fe25519LfundefBridge.x25519ScalarmultLcmd` is the whole RFC 7748
 scalar and base point, a **255-iteration** Montgomery-ladder loop (constant-time
 `cswap` mask arithmetic + a sibling `call x25519_mono_step`), the `z^(p-2)`
 inversion addition chain (several **counted squaring-run loops** interleaved with
-sibling `call fe25519_{mul,sqr}`), and the little-endian encode. It was assembled
+sibling `call fe25519_{mul,sqr}`), and the little-endian encode. It is assembled
 as a raw `List Linstr` through the ad-hoc smart constructors `w64`/`st64`/
-`callLeaf` — i.e. hand-authored, below every landed step-language front.
+`callLeaf` — i.e. hand-authored, below every existing step-language front.
 
-## What the landed fronts already provide (the assessment)
+## What the existing fronts provide
 
-Three step-languages landed before this one:
+Three step-languages precede this one:
 
 * **`OrchFront.OrchStep`** — `call`/`movRR`/`movImm`/`addImm`/`subImm`, wrapped by
   ONE `loopLcmd`. The sibling `.Lcall`-in-a-loop is its native shape
@@ -43,14 +43,13 @@ Three step-languages landed before this one:
 * **`Shake256SpongeFront.SpStep`** — `BStep` (as `.ctrl`) plus `frame`/`lea`/
   `goto`/word-and-byte memory XOR/`subRR`, and threads **two** runtime loops.
 
-So the two pieces the prior finding flagged as "missing vs a plain `BStep`" are in
-fact ALREADY structurally expressible: (a) a **sequence of loops** is just several
+Two pieces a plain `BStep` might seem to lack are structurally expressible: (a) a **sequence of loops** is just several
 `.loop` steps in the flat schedule (`bband`/`spband` flatten a list, and each
 `.loop` is an independent `loopLcmd`), and nesting is a `.loop` whose inner
 `Lcmd` is itself a rendered `.loop`; (b) a **sibling `.Lcall` inside a loop** is
 `BStep.call`/`OrchStep.call` placed in a `.loop` body. Neither is a new capability.
 
-The ONE thing the landed fronts do not match is the deployed x25519 kernel's
+The ONE thing the existing fronts do not match is the deployed x25519 kernel's
 **operand convention**: it uses the *two-address destructive* ALU/shift forms
 `[dst] OP [src]` (`andq %rax, %r8`, `adcq %r9, %r9`, `subq %r14, %rcx`) and
 `[dst] OP [imm]` (`addq $k, %rdi`, `shrq $63, %rbp`), whereas `BStep`/`SpStep`
@@ -61,7 +60,7 @@ sibling `.call` — is the unifying language `UStep` here.
 
 ## The unifying language
 
-`UStep` is the union of the landed control alphabet (the leaf `call` and the
+`UStep` is the union of the existing control alphabet (the leaf `call` and the
 counted `loop` — the SAME `loopLcmd` back-edge `BStep.loop`/`OrchStep` render, see
 `ustepToLcmd_call_eq_bstep` / `ustepToLcmd_loop_eq_bstep`) with the word
 `load`/`store` and the two-slot destructive ALU/shift forms the x25519 kernel's
@@ -146,7 +145,7 @@ inductive UStep where
 /-- Render one `UStep` to an owned-backend `Lcmd` at op width `w`. Every mnemonic
     carries `withWidthTag w`; the two-slot ALU/shift arms produce exactly the
     `[dst] OP [src]` / `[dst] OP [imm]` form the deployed `w64` builder writes;
-    `call`/`loop` reuse the SAME `.Lcall` / `loopLcmd` the landed fronts emit. -/
+    `call`/`loop` reuse the SAME `.Lcall` / `loopLcmd` the existing fronts emit. -/
 def ustepToLcmd (w : Nat) : UStep → Lcmd
   | .movRR d s      => [⟨0, .Lopn [.reg d] (withWidthTag w "MOV") [.reg s]⟩]
   | .movImm d v     => [⟨0, .Lopn [.reg d] (withWidthTag w "MOV") [.imm v]⟩]
@@ -178,11 +177,11 @@ def uband (w : Nat) (steps : List UStep) : Lcmd := steps.flatMap (ustepToLcmd w)
     uband w (a ++ b) = uband w a ++ uband w b := by
   simp [uband, List.flatMap_append]
 
-/-! ## 2. Composition witnesses: the control core coincides with the landed fronts
+/-! ## 2. Composition witnesses: the control core coincides with the existing fronts
 
-`UStep`'s control ops (`call`, `loop`) reuse — do not reinvent — the exact
+`UStep`'s control ops (`call`, `loop`) reuse the exact
 owned-backend forms `QuerySampleBranchFront.BStep` renders, so the unifying front
-is a genuine SUPERSET of the landed control alphabet. The genuinely new part is
+is a SUPERSET of the existing control alphabet. The part it adds is
 the two-slot destructive ALU/shift convention (§3). -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront (BStep bstepToLcmd)
@@ -216,7 +215,7 @@ theorem ustepToLcmd_store_eq_bstep (w : Nat) (base : String) (off : Nat) (s : St
 
 /-- The two-slot destructive `addImm` is DISTINCT from `BStep.addImm`: the x25519
     kernel writes `[dst] ADD [imm]` (`addq $k, %rdi`), `BStep` writes the three-slot
-    `[dst] ADD [dst, imm]`. This is the genuine convention gap the unifying front
+    `[dst] ADD [dst, imm]`. This is the convention gap the unifying front
     closes (documented, not an equality). -/
 theorem ustepToLcmd_addImm_two_slot (w : Nat) (d : String) (v : Nat) :
     ustepToLcmd w (.addImm d v) = [⟨0, .Lopn [.reg d] (withWidthTag w "ADD") [.imm v]⟩] := rfl

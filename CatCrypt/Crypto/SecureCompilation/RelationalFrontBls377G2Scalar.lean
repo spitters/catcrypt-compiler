@@ -61,10 +61,10 @@ not form a total `AddCommGroup` on the bare coordinate pair `Bls377G2Point`
 The *ladder's* correctness is a statement about the abstract group's `nsmul`,
 which `g2AffineDbl`/`g2AffineAdd` *realize step-by-step* (that realization is
 the content of `RelationalFrontBls377G2Affine`).  Keeping the ladder generic
-over `[AddCommGroup G]` is therefore both the honest altitude and the reusable
+over `[AddCommGroup G]` is therefore both the correct altitude and the reusable
 one: the same theorem covers `G1`, `G2`, and the scalar field's additive group.
 
-## Honesty boundary
+## Scope
 
 `binaryLadder_correct` is the verified *algorithm*; it says the double-and-add
 schedule computes `n • P` in any abelian group.  Wiring each ladder *step* to

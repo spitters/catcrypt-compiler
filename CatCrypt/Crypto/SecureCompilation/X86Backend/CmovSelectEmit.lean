@@ -46,7 +46,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.EmitCtGate
 
 /-!
-# Constant-time conditional-move / select primitive for the owned backend (#581)
+# Constant-time conditional-move / select primitive for the owned backend
 
 The multivariate-signature **sign** path (MAYO / UOV / SNOVA) solves a linear
 system over GF(2⁴)/GF(2⁸) by Gaussian elimination. The GE pivot search performs a
@@ -120,8 +120,8 @@ differing only in the condition register whose leakage traces differ, and
 `MachineConstantTime.nonCT_storeMemIdx_leaks_value` draws for the indexed
 scatter, at the condition register of this kernel.
 
-This is the **backend primitive** that unblocks the MAYO/UOV/SNOVA GE-solve sign
-emit; wiring it into the per-protocol GE-solve loop is the follow-on (#581/#582).
+This is the **backend primitive** the MAYO/UOV/SNOVA GE-solve sign emit needs;
+the per-protocol GE-solve loop that calls it is outside this module.
 -/
 
 @[expose] public section
@@ -331,7 +331,7 @@ def cmovSwapAsm : String := renderLfundef "ge_solve_cswap_cmov_owned" cmovSwapLc
 /-! ## 4b. The mask conditional-swap, FRONT-COMPILED (no hand-built `Com`/`Lcmd`)
 
 The `0 − cond` XOR-swap is pure `SExpr` arithmetic (`SSub`/`SXor`/`SAnd`), so the
-deployed mask kernel is GENERATED through the verified `CProg`-free front — NOT
+deployed mask kernel is GENERATED through the verified front — NOT
 hand-authored as `Lcmd`:
 
 ```
@@ -375,7 +375,7 @@ def maskSrcCtx : Ctx := List.replicate 3 (.sword 64)
 /-- Source `VarMap` (word 0 = `x` at the head). -/
 def maskSrcVM : VarMap maskSrcCtx := bindAll maskWordNames
 
-/-- Push `maskSwapBodyLCT` through the `CProg`-free front and cap with
+/-- Push `maskSwapBodyLCT` through the verified front and cap with
     `ret <name>`. `none` if the front declines. -/
 def maskFrontComAt (name : String) : Option (Com catCryptDialect maskSrcCtx (.sword 64)) :=
   match translateDialectControl maskSrcVM maskSwapBodyLCT with

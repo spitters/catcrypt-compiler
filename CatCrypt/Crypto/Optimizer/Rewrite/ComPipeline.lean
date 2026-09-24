@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 
 /-!
-# `Com jasminDialect` rewrite pipeline: peephole then equality-saturation (#274)
+# `Com jasminDialect` rewrite pipeline: peephole then equality-saturation
 
 The two verified algebraic `Com → Com` passes over the typed VIR
 `jasminDialect` —
@@ -35,7 +35,7 @@ The pipeline runs **peephole first, then equality-saturation**:
 This is the *algebraic-canonicalisation* stage of the dual-IR optimiser.
 The complementary *instruction-scheduling* stage runs one IR down, on the
 `LowCT` block representation (`Optimizer.Pipeline.scheduleThenPipeline`,
-which wires in the #273 ILP list scheduler): the VIR `Com jasminDialect`
+which wires in the ILP list scheduler): the VIR `Com jasminDialect`
 is canonicalised here, and the lowered `LowCT` block is scheduled there.
 
 ## What is proved
@@ -44,7 +44,7 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
   the composed (peephole then saturate) `Com → Com` transform, under a
   known-constant environment consistent with the valuation.  Chains
   `Peephole.peepCom_denote` with `Egraph.saturateCom_denote`.  **Not**
-  `rfl` — the peephole and the saturation engine genuinely rewrite the
+  `rfl` — the peephole and the saturation engine rewrite the
   `Com` term.
 * `comAlgebraicPipeline_ctSafe` — end-to-end constant-time preservation.
   `jasminDialect` is branch-free, so the composed transform produces only
@@ -129,7 +129,7 @@ The composed pipeline (peephole then saturation) preserves its denotation
 not fire on this kernel (no `sub a a` / `and a a`), and the saturation
 half collapses the `mul`-by-zero to `b &&& b`; the composition therefore
 realises the same denotation-preserving rewrite as the saturation engine
-alone, now through the canonical two-pass entry point. -/
+alone, through the canonical two-pass entry point. -/
 
 /-- The composed pipeline (fuel 4) preserves the demo's denotation. -/
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :

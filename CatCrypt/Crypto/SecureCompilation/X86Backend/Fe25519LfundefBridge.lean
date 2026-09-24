@@ -20,7 +20,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingF
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront
 
 /-!
-# The fe25519-leaf → owned-RA `Lfundef`/`.s`-symbol bridge (task #656, half b)
+# The fe25519-leaf → owned-RA `Lfundef`/`.s`-symbol bridge
 
 `Fe25519{Mul,Ops}Kernel` emit each Curve25519 field op (`mul`/`sqr`/`add`/`sub`/
 `mul121666`) as a straight-line `List (JInstr 64)` — the verified word-kernel IR
@@ -52,16 +52,16 @@ the one faithful for the ADX/MULX schoolbook is stated per layer:
    the same-object `STT_FUNC` symbol — the text-path analogue of
    `LprogBytes.encodeLcmdReloc`'s intra-object resolution).
 
-2. **`Lfundef`/`Lcmd` lift (now FULL — including the ADX schoolbook).** Each
+2. **`Lfundef`/`Lcmd` lift (FULL — including the ADX schoolbook).** Each
    `JInstr` lifts to a faithful `LinstrR`: the two-address ALU alphabet
    (`ADD/SUB/ADC/SBB/AND/OR/XOR/SHL/SHR/MOV/LOAD/STORE/IMUL`) AND the BMI2/ADX trio
-   `MULX`/`MULXMEM`/`ADCX`/`ADOX` (#656-residual). The ADX arms lift to faithful
+   `MULX`/`MULXMEM`/`ADCX`/`ADOX`. The ADX arms lift to faithful
    `Lopn` forms the byte encoder (`LprogBytes.encodeLopn`) delegates to
    `ScalarEncoder`'s `encMulxRR`/`encMulxMem`/`encAdxCarry` (the same 3-operand
    `mulx` / `66`/`F3 0F38 F6` carry-chain encoders the straight-line `JInstr` path
    uses), and the text path (`renderLprogAtt`) renders verbatim. So a field op
-   built on the ADX schoolbook (`mul`/`sqr`/`mul121666`) IS now byte-encoded by
-   `encodeLprogReloc` — the residual the prior version recorded is closed. The
+   built on the ADX schoolbook (`mul`/`sqr`/`mul121666`) IS byte-encoded by
+   `encodeLprogReloc`. The
    `hasUnrepAdx` predicate is `false` for every fe25519 leaf (see §2a), and the
    byte-encoder `.o` route carries the whole field-op set (the `.s`+gas route is a
    comparison artifact for the field leaves).
@@ -69,7 +69,7 @@ the one faithful for the ADX/MULX schoolbook is stated per layer:
 ## The multi-function ladder `Lcall`
 
 The ladder loop Lprog's field-op calls render to `call <leaf>` through the
-`renderLinstrR` `Lcall` arm (added in `LprogAsmPrinter`, #656): a
+`renderLinstrR` `Lcall` arm (in `LprogAsmPrinter`): a
 `LinstrR.Lcall ra (f, l)` with `f` a leaf symbol emits `call f`.
 `ladderCallSite name` builds that `Lcall`. The bridge therefore turns the
 ladder's opaque field-op `extCall` into a real call to a sibling owned leaf.
@@ -136,7 +136,7 @@ Lift one `JInstr 64` to its owned-RA `LinstrR` over a resolved physical-register
 
 The lift is faithful for the WHOLE field-op alphabet: the two-address
 ALU/move/load/store/shift subset AND the BMI2/ADX trio
-`mulx`/`mulxMem`/`adcx`/`adox` (#656-residual), which lift to the faithful
+`mulx`/`mulxMem`/`adcx`/`adox`, which lift to the faithful
 `MULX`/`MULXMEM`/`ADCX`/`ADOX` `Lopn` forms the byte encoder
 (`LprogBytes.encodeLopn`) delegates to `ScalarEncoder`'s
 `encMulxRR`/`encMulxMem`/`encAdxCarry`. No `UNREP-ADX:…` sentinel form is
@@ -171,7 +171,7 @@ def memOperand (alloc : GpAlloc) (base : String) (off : Int) : LOperand :=
 /-- Lift one `JInstr 64` to its `LinstrR` over a resolved `GpAlloc`. The U64 width
     tag is attached to every op (the field kernels are uniform U64). The ADX/MULX
     arms lift to the faithful `MULX`/`MULXMEM`/`ADCX`/`ADOX` `Lopn` forms the byte
-    encoder and text path both consume (#656-residual; see module header). The
+    encoder and text path both consume (see module header). The
     instructions outside the field-op alphabet, among them `inc`, `dec`, `clc`,
     `stc`, `xchg`, `imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`,
     `cmovcc`, `setcc`, `testN`, `bt`, `btr` and `bts`, lift to mnemonics the
@@ -213,7 +213,7 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
                              [memOperand alloc base off]
   | .storeMem base off s => .Lopn [memOperand alloc base off] (withWidthTag 64 "STORE")
                               [resolveJOp alloc s]
-  -- BMI2/ADX byte-direct lift (#656-residual): `MULX`/`MULXMEM`/`ADCX`/`ADOX` now
+  -- BMI2/ADX byte-direct lift: `MULX`/`MULXMEM`/`ADCX`/`ADOX`
   -- carry faithful `LinstrR` `Lopn` forms the text path (`LprogAsmPrinter`) and the
   -- byte encoder (`LprogBytes.encodeLopn`, delegating to `ScalarEncoder`'s
   -- `encMulxRR`/`encMulxMem`/`encAdxCarry`) BOTH consume. The implicit `MULX` src1
@@ -332,7 +332,7 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
 def jinstrBlockToLcmd (alloc : GpAlloc) (block : List (JInstr 64)) : Lcmd :=
   block.map (fun i => (⟨0, jinstrToLinstrR alloc i⟩ : Linstr)) ++ [⟨0, .Lret⟩]
 
-/-! ### 2c. SysV argument marshalling for the leaf `Lfundef` (#656-residual fix)
+/-! ### 2c. SysV argument marshalling for the leaf `Lfundef`
 
 A leaf's `GpAlloc` may bind an argument name to a register **different** from its
 SysV home register — canonically `feMul`'s `y` pointer (the 3rd arg, home `%rdx`)
@@ -415,15 +415,15 @@ theorem feMul_argMarshal_renders :
 theorem feAdd_argMarshal_empty :
     (argMarshalLinstrs Fe25519OpsKernel.feAddAlloc feLeafArgs).length = 0 := by native_decide
 
-/-! ### 2a. Which field ops are byte-encodable (residual CLOSED, #656-residual)
+/-! ### 2a. Which field ops are byte-encodable
 
 A field op's lifted `Lcmd` is byte-encodable by `LprogBytes.encodeLprogReloc`
 **iff** it carries no `UNREP-ADX:…` sentinel `Lopn` — i.e. every op has a faithful
-`LinstrR`/byte image. As of the #656-residual work the BMI2/ADX trio
+`LinstrR`/byte image. The BMI2/ADX trio
 (`MULX`/`MULXMEM`/`ADCX`/`ADOX`) lifts to faithful `Lopn` forms the byte encoder
 delegates to `ScalarEncoder`'s `encMulxRR`/`encMulxMem`/`encAdxCarry`, so the whole
 fe25519 field-op set — `feAdd`/`feSub` (pure GP-ALU) AND `feMul`/`feSqr`/
-`feMul121666` (the ADX schoolbook) — is now byte-direct: NO sentinels remain, the
+`feMul121666` (the ADX schoolbook) — is byte-direct: NO sentinels remain, the
 `.o` byte route carries the whole family; the verified `.s`+gas route is a
 comparison artifact for the field leaves. -/
 
@@ -445,8 +445,8 @@ theorem feSub_lift_byteEncodable :
     hasUnrepAdx (jinstrBlockToLcmd Fe25519OpsKernel.feSubAlloc Fe25519OpsKernel.feSubBlock)
       = false := by native_decide
 
-/-- `feMul` lifts with NO ADX sentinel (#656-residual closed): the schoolbook's
-    `mulx`/`adcx`/`adox` now carry faithful `LinstrR`/byte images, so the
+/-- `feMul` lifts with NO ADX sentinel: the schoolbook's
+    `mulx`/`adcx`/`adox` carry faithful `LinstrR`/byte images, so the
     byte-encoder `.o` route carries the field multiply. -/
 theorem feMul_lift_byteEncodable :
     hasUnrepAdx (jinstrBlockToLcmd Fe25519MulKernel.feMulAlloc Fe25519MulKernel.feMulBlock)
@@ -457,15 +457,15 @@ theorem feSqr_lift_byteEncodable :
     hasUnrepAdx (jinstrBlockToLcmd Fe25519OpsKernel.feSqrAlloc Fe25519OpsKernel.feSqrBlock)
       = false := by native_decide
 
-/-- `feMul121666` likewise lifts with no ADX sentinel (`mulxMem` now faithful). -/
+/-- `feMul121666` likewise lifts with no ADX sentinel (`mulxMem` is faithful). -/
 theorem feMul121666_lift_byteEncodable :
     hasUnrepAdx
       (jinstrBlockToLcmd Fe25519OpsKernel.feMul121666Alloc Fe25519OpsKernel.feMul121666Block)
       = false := by native_decide
 
-/-! ### 2b. The byte encoder produces real ADX/MULX bytes (#656-residual)
+/-! ### 2b. The byte encoder produces real ADX/MULX bytes
 
-The lifted field bodies are now driven all the way to machine bytes by
+The lifted field bodies are driven all the way to machine bytes by
 `LprogBytes.encodeLcmd` (the `MULX`/`MULXMEM`/`ADCX`/`ADOX` arms delegate to
 `ScalarEncoder`'s `encMulxRR`/`encMulxMem`/`encAdxCarry`). These theorems pin that
 the encoder's bytes are NON-EMPTY and carry the faithful BMI2/ADX opcodes — the
@@ -500,7 +500,7 @@ theorem feMulEncodedBytes_nonempty : feMulEncodedBytes ≠ [] := by
 /-! ## 3. The ladder's field-op call site (`Lcall` to a sibling leaf)
 
 The ladder body's opaque field-op `extCall name` becomes a real
-`LinstrR.Lcall` to the sibling owned leaf `name`. `renderLinstrR` (#656) renders
+`LinstrR.Lcall` to the sibling owned leaf `name`. `renderLinstrR` renders
 `Lcall ra (f, l)` to `call f`. -/
 
 /-- A direct near-`call` to the owned fe25519 leaf symbol `name` — the `LinstrR`
@@ -523,9 +523,9 @@ theorem ladderCallSite_renders_sqr :
     LprogAsmPrinter.renderLinstrR 0 64 (ladderCallSite "fe25519_sqr_x86_from_lean")
       = ["\tcall fe25519_sqr_x86_from_lean"] := by native_decide
 
-/-! ## 4. The WHOLE add-and-double step as ONE byte-encoded `Lfundef` (the milestone)
+/-! ## 4. The WHOLE add-and-double step as ONE byte-encoded `Lfundef`
 
-`X25519MonoLadderKernel.monoLadderStepBlock` (#411) is the entire RFC 7748
+`X25519MonoLadderKernel.monoLadderStepBlock` is the entire RFC 7748
 Montgomery double-and-add step — all five field ops (`add`/`sub`/`sqr`/`mul`/
 `mul121666`) **inlined** into one straight-line, no-`call` `List (JInstr 64)`
 (1058 instructions) over the frame base `fp` (= `%rdi`), with `runBlock`-verified
@@ -542,8 +542,8 @@ text path uses (`X25519MonoLadderKernel.stepOps` / `renderOpBlock`), so the lift
 `Lcmd` allocates exactly as `monoStepAsm`.
 
 The whole add-and-double step is therefore off gas: the field ops are NOT separate
-call targets here (they are inlined into the one step body — the call-tax win of
-#411), and the resulting body byte-encodes with **zero** uncovered instructions
+call targets here (they are inlined into the one step body — which removes the
+call overhead), and the resulting body byte-encodes with **zero** uncovered instructions
 (every `Lopn` — `MOV`/`ADD`/`SUB`/`ADC`/`SBB`/`AND`/`OR`/`SHL`/`SHR`/`LOAD`/
 `STORE` AND `MULX`/`MULXMEM`/`ADCX`/`ADOX` — has a faithful byte image; see
 `monoStepLcmd_fully_byteEncodable`). -/
@@ -565,8 +565,8 @@ def stepOpLcmd (e : GpAlloc × List (JInstr 64)) : Lcmd :=
 
 /-- The whole add-and-double step lifted to ONE owned-RA `Lcmd` (the concatenated
     per-op bodies, frame-resident in `fp` = `%rdi`), ending with the function-level
-    `Lret`. This is the `monoLadderStepBlock` of #411, lifted op-by-op through the
-    §2 `JInstr → LinstrR` bridge — the verified add-and-double, now in the form
+    `Lret`. This is `monoLadderStepBlock`, lifted op-by-op through the
+    §2 `JInstr → LinstrR` bridge — the verified add-and-double, in the form
     `encodeLprogReloc` byte-encodes. -/
 def monoStepLcmd : Lcmd :=
   stepOps.flatMap stepOpLcmd ++ [⟨0, .Lret⟩]
@@ -637,12 +637,12 @@ theorem monoStepEncoded_has_mulx :
     0 < countByte (BitVec.ofNat 8 0xc4)
       (LprogBytes.encodeLfundefBytes monoStepLcmd) := by native_decide
 
-/-! ## 5. The WHOLE `x25519_scalarmult` folded into one owned `Lcmd` (the milestone)
+/-! ## 5. The WHOLE `x25519_scalarmult` folded into one owned `Lcmd`
 
 The prior sections byte-encode the *field-arithmetic surface* (`x25519_mono_step` +
 the fe25519 leaves); the RFC 7748 *scaffolding* — the 8-bit clamp/decode, the per-bit
 `cswap` on the frame words, the 255-iteration ladder loop driver, the inversion
-addition chain, and the little-endian pack/encode — was driven from C
+addition chain, and the little-endian pack/encode — is otherwise driven from C
 (`bench/x25519_ladder/scalarmult_owned_kat.c::x25519_owned`). This section folds that
 scaffolding into ONE owned-RA `Lcmd` so the whole `x25519_scalarmult(out,k,u)` is a
 single byte-encoded function, with NO C scaffolding on the artifact path.
@@ -670,13 +670,13 @@ The whole function is expressible in the byte-encodable `LinstrR` alphabet
 
 All control flow is public (the 255 trip count and the squaring-run counts are
 configuration constants, never secret), so every back-edge is a CT-admissible public
-branch (`#460` vartime policy); the only scalar-bit dependence is inside the `cswap`,
+branch (vartime policy); the only scalar-bit dependence is inside the `cswap`,
 which is branchless mask arithmetic.
 
 The whole function byte-encodes through `LprogBytes.encodeLprogReloc` together with
 `x25519_mono_step` and the five field leaves as sibling symbols in ONE `.o`, the
 field-op `call`s resolved intra-object. The end-to-end correctness gate is the RFC
-7748 §5.2 KAT (`bench/x25519_ladder/scalarmult_owned_kat.c`), now over the
+7748 §5.2 KAT (`bench/x25519_ladder/scalarmult_owned_kat.c`), run over the
 single-entry `.o` with NO C scaffolding. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow (loopLcmd)
@@ -1016,11 +1016,11 @@ def x25519ScalarmultFundef : Lfundef :=
   { lfd_tyin := [64, 64, 64], lfd_arg := ["RDI", "RSI", "RDX"]
     lfd_body := x25519ScalarmultLcmd, lfd_tyout := [], lfd_res := [] }
 
-/-- **The single-entry whole-scalarmult `Lprog`** (the milestone): the folded
+/-- **The single-entry whole-scalarmult `Lprog`**: the folded
     `x25519_scalarmult` orchestrator PLUS its sibling byte-encoded leaves
     `x25519_mono_step` and the five fe25519 field ops, all in ONE multi-symbol `.o`.
     Every cross-function `call` resolves intra-object. The whole RFC 7748 function —
-    scaffolding included — is now byte-encoded by `encodeLprogReloc` with no C
+    scaffolding included — is byte-encoded by `encodeLprogReloc` with no C
     scaffolding and no gas instruction selection on the artifact path. -/
 def x25519ScalarmultFullLprog : Lprog :=
   { lp_funcs :=

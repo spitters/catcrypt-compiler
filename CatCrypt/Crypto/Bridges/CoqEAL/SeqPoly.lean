@@ -33,7 +33,7 @@ developments requiring MathComp-grade matrix/polynomial infrastructure (mostly n
 yet in Mathlib in the needed form), and are NOT ported here. Polynomial/matrix
 *multiplication* (convolution / row-col fold) is a `foldl`-shaped refinement
 reachable via `Trocq.foldl_transfer`; the fast algorithms (Karatsuba/Strassen) and
-the normal-form/determinant developments are the genuine library tail.
+the normal-form/determinant developments are outside the scope of this port.
 -/
 
 @[expose] public section

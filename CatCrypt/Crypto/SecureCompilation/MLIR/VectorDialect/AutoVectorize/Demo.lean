@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Vectorize
 
 /-!
-# Auto-Vectorize — Worked demo on the HMAC `K ⊕ pad` step (task #108)
+# Auto-Vectorize — Worked demo on the HMAC `K ⊕ pad` step
 
 A worked example wiring the auto-vectorize pass into a tiny inline crypto
 kernel — the **HMAC `K ⊕ ipad` / `K ⊕ opad` XOR-pad**.
@@ -16,7 +16,7 @@ kernel — the **HMAC `K ⊕ ipad` / `K ⊕ opad` XOR-pad**.
 The XOR-pad is a 16-word independent XOR over `BitVec 32` (sometimes 16
 `BitVec 64` words for `BLOCK = 128`). The existing emit
 `Sha2Emit / HmacHkdfEmit.hmacXorPadJazz` puts down 16 inline jasmin
-`regArith xor` instructions today. This is a textbook `lanewiseAdd`
+`regArith xor` instructions. This is a textbook `lanewiseAdd`
 pattern — N independent same-shape same-op binary ops — with the per-lane
 operator instantiated as `BitVec.xor`.
 
@@ -35,9 +35,8 @@ operator instantiated as `BitVec.xor`.
 
 This is a *worked example* — the demo does **not** rewrite
 `HmacHkdfEmit.lean`; it only shows the equivalence on a freestanding model
-of the kernel step. A Phase-2 rewrite would have to thread this through the
-`Com`-level emit, which is a parallel-agent territory (the `Sha2*Emit`
-files are reserved to the #179 agent).
+of the kernel step. A rewrite of the emit would have to thread this through
+the `Com`-level emit in the `Sha2*Emit` files.
 
 ## Why HMAC XOR-pad?
 
@@ -103,7 +102,7 @@ theorem hmacXorPad_vectorOp_eq_add (K pad : HmacBlock) :
     hmacXorPad_vectorOp K pad
       = .add (fun x y => x ^^^ y) K pad := rfl
 
-/-! ## 3. The equivalence theorem (the proven demo keystone) -/
+/-! ## 3. The equivalence theorem -/
 
 /-- **Worked equivalence.** The vectorized HMAC XOR-pad denotes to exactly
     the scalar reference: the abstract `VectorOp.add` (with `BitVec.xor`
@@ -117,7 +116,7 @@ theorem hmacXorPad_vectorOp_eq_add (K pad : HmacBlock) :
 theorem hmacXorPad_vectorize_correct (K pad : HmacBlock) :
     denoteVectorOp (hmacXorPad_vectorOp K pad)
       = VectorOp.Result.vec (hmacXorPad_scalar K pad) := by
-  -- Reduce to the keystone proof.
+  -- Reduce to the main theorem of `Vectorize.lean`.
   have h := lanewiseAdd_vectorize_denotation_preserves
               16 (fun x y => x ^^^ y) K pad
   -- `h` reduces both sides; the only remaining gap is the definitional
@@ -151,15 +150,15 @@ theorem kXorOpad_vectorize_correct (K : HmacBlock) :
 
 /-! ## 5. Conclusion
 
-If a Phase-2 rewrite replaces the 16 inline `regArith xor` instructions in
+If a rewrite replaces the 16 inline `regArith xor` instructions in
 `HmacHkdfEmit.hmacXorPadJazz` with a single
 `VectorOp.add (· ^^^ ·) K ipad`-shaped op (then lowered back to the same
 16 scalar XORs by `Lowering.lower`), then:
 
 * `hmacXorPad_vectorize_correct` proves the rewrite preserves the
   cryptographic meaning (the XOR-pad is the same function);
-* `denoteVectorOp_eq_lower_add` in `Lowering.lean` would prove that the
-  Phase-2 lowering of the `VectorOp.add` back into per-lane scalar XORs
+* `denoteVectorOp_eq_lower_add` in `Lowering.lean` proves that the
+  lowering of the `VectorOp.add` back into per-lane scalar XORs
   matches the abstract denotation — which is exactly the chain the verified
   pipeline needs.
 

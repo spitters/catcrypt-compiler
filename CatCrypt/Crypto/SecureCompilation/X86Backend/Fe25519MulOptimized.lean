@@ -16,7 +16,7 @@ public meta import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-!
-# `fe25519_mul` through the GENERIC owned `Com→Com` optimizer pipeline (#555 pilot)
+# `fe25519_mul` through the GENERIC owned `Com→Com` optimizer pipeline
 
 `Fe25519MulKernel.feMulBlock` is the **hand-tuned** Curve25519 field-multiply —
 hand-scheduled (dual ADCX/ADOX schoolbook) and hand-allocated (the `feMulPinned`
@@ -24,11 +24,11 @@ GP map). It is emitted by the owned x86 backend, but its instruction schedule an
 register allocation are hand-written: it **bypasses** the verified owned
 `Com→Com` optimizer passes.
 
-This module is the **#555 pilot**: route that same kernel through the GENERIC
+This module routes that same kernel through the GENERIC
 owned optimizer pipeline — the verified, kernel-agnostic `JInstr → JInstr`
-transforms — and check whether the generic-optimized output is byte-for-byte the
-emit the hand path produces, hence the same measured `cyc/op`. It is the
-lynchpin dry-run for replacing per-kernel hand-tuning with the generic pipeline.
+transforms — and checks whether the generic-optimized output is byte-for-byte the
+emit the hand path produces, hence the same measured `cyc/op`. It is a test case
+for replacing per-kernel hand-tuning with the generic pipeline.
 
 ## The owned optimizer passes that apply at the `JInstr 64` block level
 
@@ -39,14 +39,14 @@ theorem proved for *all* blocks / all states:
 
 | pass | transform | TV theorem | effect on `feMulBlock` |
 |---|---|---|---|
-| **store-to-load forward (#372)** | `StoreToLoadForward.storeToLoadForward` | `storeToLoadForward_runBlock` (all blocks) | identity — the schoolbook keeps the product register-resident (no store-then-reload to forward) |
-| **schedule search (#385)** | `RandomizedScheduleSearch.searchBest` (disjoint-footprint transposition neighbourhood) | `RandomizedScheduleSearch.feMulBlock_legal_swaps = 8` | **null** — 8 legal swaps, all `scheduleCost`-neutral; no reschedule beats the hand schedule |
-| **randomized regalloc (#386)** | `RandomizedRegAlloc.searchAssign` + `accept` | `RandomizedRegAlloc.regalloc_runBlock_sound` (all injective renamings) | **rejected** — fe25519 has ZERO GP headroom (`gpFreeSlots` fully consumed; s2n itself reuses `%rax`), so no spreading renaming is *accepted* |
+| **store-to-load forward** | `StoreToLoadForward.storeToLoadForward` | `storeToLoadForward_runBlock` (all blocks) | identity — the schoolbook keeps the product register-resident (no store-then-reload to forward) |
+| **schedule search** | `RandomizedScheduleSearch.searchBest` (disjoint-footprint transposition neighbourhood) | `RandomizedScheduleSearch.feMulBlock_legal_swaps = 8` | **null** — 8 legal swaps, all `scheduleCost`-neutral; no reschedule beats the hand schedule |
+| **randomized regalloc** | `RandomizedRegAlloc.searchAssign` + `accept` | `RandomizedRegAlloc.regalloc_runBlock_sound` (all injective renamings) | **rejected** — fe25519 has ZERO GP headroom (`gpFreeSlots` fully consumed; s2n itself reuses `%rax`), so no spreading renaming is *accepted* |
 
 So on this specific kernel the generic pipeline reduces to **store-to-load
 forwarding** (the one unconditional pass), which is the **identity** here because
-the schoolbook never stores then reloads — and the other two are the documented
-#385/#386 nulls already proved against `feMulBlock` verbatim in their pass files.
+the schoolbook never stores then reloads — and the other two are the schedule-search
+and regalloc nulls proved against `feMulBlock` verbatim in their pass files.
 
 ## What is proved here
 
@@ -63,19 +63,19 @@ the schoolbook never stores then reloads — and the other two are the documente
   forwarding is the identity on a store-free schoolbook). The emit is therefore
   byte-identical, so the measured `cyc/op` is the hand-tuned baseline.
 
-## The #555 finding (predicted; the orchestrator measures)
+## Predicted performance
 
 The generic owned optimizer, applied to `fe25519_mul`, **reproduces the
 hand-tuned schedule and allocation exactly** — because on this kernel each
 generic pass is provably identity / null / rejected. So the generic-optimized
 emit is byte-identical to the hand-tuned `.s`, and the predicted `cyc/op` is the
-**hand-tuned 26.41** (parity, not a regression). The honest reading: this kernel
-is *already at the generic-pipeline fixpoint* — there is no hand-tuning here for
+**hand-tuned 26.41** (parity). This kernel
+is *at the generic-pipeline fixpoint* — there is no hand-tuning here for
 the generic pipeline to lose, because the hand schedule/alloc coincide with what
-the generic passes would (and provably cannot improve on, per #385/#386). The
-real #555 generalisation work is the kernels where the hand path does something
-the generic passes do **not** yet express (instruction *selection* — the
-fused-quotient-estimate reduce — which is upstream of schedule/RA and not a
+the generic passes would produce (and provably cannot improve on, per the
+schedule-search and regalloc nulls). The generalisation question lies in the
+kernels where the hand path does something the generic passes do **not** express
+(instruction *selection* — the fused-quotient-estimate reduce — which is upstream of schedule/RA and not a
 `JInstr→JInstr` reorder/rename); see the module-end note.
 -/
 
@@ -96,8 +96,8 @@ open CatCrypt.Crypto.Optimizer.StoreToLoadForward (storeToLoadForward storeToLoa
 
 `optimizedFeMulBlock` is `Fe25519MulKernel.feMulBlock` run through the GENERIC
 owned optimizer pipeline. At the `JInstr 64` block level that pipeline is the
-single unconditional pass `storeToLoadForward` (the #372 store-to-load forward),
-followed by the #385 schedule search and #386 regalloc search — both of which
+single unconditional pass `storeToLoadForward` (store-to-load forwarding),
+followed by the schedule search and the regalloc search — both of which
 are provable no-ops on this kernel (the schedule search finds only cost-neutral
 swaps, `RandomizedScheduleSearch.feMulBlock_legal_swaps = 8`; the regalloc search
 is rejected for lack of GP headroom). We therefore *define* the optimized block
@@ -106,7 +106,7 @@ prove below it is the identity here. -/
 
 /-- The Curve25519 field-multiply block after the GENERIC owned optimizer
     pipeline (store-to-load forwarding; the schedule + regalloc searches are the
-    documented #385/#386 nulls on this kernel). -/
+    nulls on this kernel). -/
 def optimizedFeMulBlock : List (JInstr 64) :=
   storeToLoadForward feMulBlock
 

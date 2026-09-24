@@ -11,12 +11,13 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
 
 /-!
-# H3.quarta: Tower-typed agreement framework
+# Tower-typed agreement framework
 
-Extends the simulation theorem with tower-typed agreement, unblocking
-the four `Hyp_*` parameters in `HaxToLowCTSim_Main.lean`.
+Extends the simulation theorem with tower-typed agreement, the
+ingredient the tower-typed `Hyp_*` parameters in
+`HaxToLowCTSim_Main.lean` need.
 
-## What this file adds
+## Contents
 
 * **`ValueTowerBridge`**: a per-protocol relation linking Hax `Value`s
   to LowCT `RustVal dt` instances.  Parametric so each protocol
@@ -49,20 +50,19 @@ The bridge is **deliberately parametric**: closing the framework here
 doesn't require committing to a single concrete encoding.  Per-leaf
 agreement instances supply the concrete decoding per primitive.
 
-## H3.quarta closure path
+## Module structure
 
-1. **This file** — landed: framework + structural lemmas.
-2. **`HaxToLowCTSim_Quarta_LeafAgrees.lean`** (next agent) — per-leaf
+1. **This module** — framework + structural lemmas.
+2. **`HaxToLowCTSim_Quarta_LeafAgrees.lean`** — constructors for per-leaf
    `LeafCallAgreesTower` instances for the haxToLowCT-whitelisted
    leaves (`fp_*`, `fp25519_*`, `scalar25519_*`, `fpP256_*`, `u64_*`).
-3. **`HaxToLowCTSim_Quarta_Discharge.lean`** (next agent) — discharge
-   `Hyp_letBindApp` and `Hyp_assignApp` from this file's framework +
+3. **`HaxToLowCTSim_Quarta_Discharge.lean`** — the app cases behind
+   `Hyp_letBindApp` and `Hyp_assignApp`, from this module's framework +
    the per-leaf instances.
 
-The other two `Hyp_*` (Hyp_match, Hyp_whileLoop) need separate work
-(H2.1 tuple-destructure mechanics for match; fuel-polymorphic IH +
-`AnfShaped` syntactic lemma for whileLoop).  Out of scope for this
-file.
+`Hyp_match` and `Hyp_whileLoop` are outside the scope of this module
+(they need tuple-destructure mechanics for match, and a fuel-polymorphic
+IH + an `AnfShaped` syntactic lemma for whileLoop).
 -/
 
 @[expose] public section

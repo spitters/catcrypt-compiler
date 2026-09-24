@@ -15,7 +15,7 @@ This file is the FAEST-QuickSilver-VOLE SIMD-extension analogue of
 `UovReflect.lean`: it adds a FAEST-gf_dot-specific opaque leaf and a
 `LowCTPattern` registration so that a pure-Lean GF(2^128) dot-product
 kernel can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## FAEST gf_dot_vec kernel
@@ -51,8 +51,8 @@ established pattern.
 * Karatsuba, "Multiplication of Multi-digit Numbers on Automata"
   (1962) — three-half-product multiplication
 * Intel SDM Vol. 2 — `PCLMULQDQ` (carry-less multiply over GF(2))
-* `bench/faest_glue/gf_dot_vec_emit.lean` — legacy Tier C string-
-  templated emit (superseded by this leaf-shim pattern)
+* `bench/faest_glue/gf_dot_vec_emit.lean` — string-templated
+  emit of the same kernel
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

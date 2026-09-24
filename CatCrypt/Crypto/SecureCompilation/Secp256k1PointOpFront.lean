@@ -18,8 +18,7 @@ set_option autoImplicit false
 /-!
 # secp256k1 Jacobian point-op step (`jacDbl` / `jacAdd`), FRONT-COMPILED to owned x86
 
-Phase 2 of the field-arith LowCT front.
-Phase 1 (`Secp256k1FeMulFront`) front-generated a single 4-limb secp256k1 field
+`Secp256k1FeMulFront` front-generates a single 4-limb secp256k1 field
 multiply `feMul = (a·b) mod p`. This module COMPOSES that brick — together with
 front-generated framed field add/sub over the same 32-bit-limb operand-scanning
 alphabet — along the `dbl-2009-l` / `add-2007-bl` Jacobian schedules to
@@ -91,7 +90,7 @@ abstract group-law tie to the affine short-Weierstrass law is
 checked by the external known-answer harness (`bench/secp256k1_pointop_front_compare`);
 no evaluation of the programs' denotation runs in Lean.
 
-**0 sorries.**
+**All goals closed.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront

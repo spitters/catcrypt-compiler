@@ -50,7 +50,7 @@ x / q - 1 ≤ t ≤ x / q          (i.e.   barrettQuot_le  and  barrettQuot_ge).
   *undershoots* by at most one: `x / q ≤ t + 1`.  Hence
   `barrett x < x % q + 2q`, and in fact `barrett x ≤ x % q + q`.
 
-Assembling the two bounds (`barrett_bounds`) gives the genuine Barrett-error
+Assembling the two bounds (`barrett_bounds`) gives the Barrett-error
 statement
 
 ```
@@ -58,7 +58,7 @@ x % q ≤ barrett x ∧ barrett x ≤ x % q + q.
 ```
 
 The estimate is *tight*: `barrett x` can equal `x % q + q` exactly (the
-quotient error is genuinely `1`, e.g. `q = 5`, `k = 6`, `x = 5`).  Consequently
+quotient error is exactly `1`, e.g. `q = 5`, `k = 6`, `x = 5`).  Consequently
 `barrett x` reduces to `x % q` after **at most one** conditional subtraction of
 `q` (`barrettCondsub_eq_mod`): the corrected value `barrettCondsub x` equals
 `x % q` on the nose.
@@ -155,7 +155,7 @@ theorem barrettQuot_ge (hq : 0 < q) (x : ℕ) (hx : x < 2 ^ k) :
 
 /-! ## §3  The Barrett-error bound and the corrected reduction -/
 
-/-- **Barrett error bound** (the genuine Barrett correctness statement): the
+/-- **Barrett error bound** (the Barrett correctness statement): the
     pre-condsub estimate satisfies `x % q ≤ barrett x ≤ x % q + q`.  In words,
     `barrett x` is congruent to `x` modulo `q` and overshoots the true residue
     by at most one multiple of `q`.  The upper endpoint is attained, so this is

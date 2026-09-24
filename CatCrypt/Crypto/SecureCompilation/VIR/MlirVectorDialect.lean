@@ -32,7 +32,7 @@ op denotes to the *elementwise* scalar op. That is exactly the fact a sound
 
 Official MLIR dialect attribution: element-wise integer arithmetic on a vector
 type IS the `arith` dialect (`arith.addi : vector<16xi16>` — arith ops are
-shaped-type-polymorphic; there is no `vector.addi`). Only `splat` is a genuine
+shaped-type-polymorphic; there is no `vector.addi`). Only `splat` is a
 `vector`-dialect op here. AVX target: `x86vector` + `-convert-vector-to-llvm`.
 
 | upstream MLIR op | denotation (`a b : Fin lanes → BitVec w`) | per-lane meaning |
@@ -126,7 +126,7 @@ self-contained as a reference for the per-lane scalar operation. -/
     holds the SIMD data-movement ops (`vector.splat`/`broadcast`, `shuffle`,
     `transpose`, `fma`, `reduction`, `transfer_read/write`). So below: the
     lane-parallel binary ops ARE `arith.*` at vector type; only `vsplat` is a
-    genuine `vector.*` op. (Full NTT vectorisation additionally needs
+    `vector.*` op. (Full NTT vectorisation additionally needs
     `vector.shuffle`/`transpose`/`fma`; AVX target via `x86vector` +
     `-convert-vector-to-llvm`.) -/
 inductive VecOp where
@@ -149,7 +149,7 @@ inductive VecOp where
   /-- `arith.shrui : vector<lanes x iw>` (logical right-shift) by a static
       shift amount `n` broadcast across all lanes. -/
   | vshri (lanes w : Nat) (n : Nat)
-  -- genuine `vector` dialect ops
+  -- `vector` dialect ops
   /-- `vector.splat`: broadcast a scalar `iw` to all `lanes`. -/
   | vsplat (lanes w : Nat)
   /-- `vector.extract`: project lane `idx` of a `vec lanes w` to a scalar
@@ -392,7 +392,7 @@ example :
 
 /-! ## 4. The verified vectorized poly add (proof of concept)
 
-We now demonstrate the payoff on an ML-KEM-shaped operation: coefficient-wise
+This section applies the dialect to an ML-KEM-shaped operation: coefficient-wise
 addition of two 256-coefficient polynomials (`Fin 256 → BitVec 16`, the ML-KEM
 `R_q` representation). The scalar version is the obvious pointwise add. The
 *vectorized* version splits the 256 coefficients into `16` chunks of `16`
@@ -497,9 +497,9 @@ The **full result** (the follow-ons) is:
    of `§4`), so the *vectorized* NTT denotes to the *scalar* NTT, and the
    existing negacyclic proof transfers verbatim.
 
-Honestly scoped: this file is the **dialect + the elementwise agreement + the
+Scope: this module is the **dialect + the elementwise agreement + the
 poly-add PoC**. The full vectorized-NTT *emit* and the `mlir-opt` AVX *pass* are
-the follow-on work — but every semantic obligation they rest on (the
+outside it; the semantic obligation they rest on (the
 "vector op = elementwise scalar op" agreement) is discharged here. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MlirVectorDialect

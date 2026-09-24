@@ -14,14 +14,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
 
 /-!
-# A verified `Lprog → bytes` encoder for the LOOPED owned backend (task #658)
+# A verified `Lprog → bytes` encoder for the LOOPED owned backend
 
 `ScalarEncoder.lean` (`encodeJInstr`/`encodeJBlock`) byte-encodes the *straight-line*
 `JInstr` block — it has **no control-flow arm**. The looped / scheduled kernels
 (Keccak, SHA-256/512-linear, Poseidon2, the `mpn` inner passes) are emitted as an
-owned-RA `Lprog`/`Lcmd` carrying labels + `Lcond`/`Lgoto` back-edges (#538's
-`loopLcmd`), and the **only** consumer of that form is `LprogAsmPrinter.renderLprogAtt`
-→ AT&T text → `gas`. That keeps every looped kernel on the text+`gas` critical path.
+owned-RA `Lprog`/`Lcmd` carrying labels + `Lcond`/`Lgoto` back-edges
+(`loopLcmd`), and the text consumer of that form is `LprogAsmPrinter.renderLprogAtt`
+→ AT&T text → `gas`, which puts a looped kernel on the text+`gas` critical path.
 
 This module is the byte analogue of `LprogAsmPrinter`: it encodes a looped owned-RA
 `Lcmd`/`Lprog` directly to x86-64 machine bytes, with the control-flow arms
@@ -47,7 +47,7 @@ This module is the byte analogue of `LprogAsmPrinter`: it encodes a looped owned
 
 The whole looped body's bytes are then wrapped by `LeafBytes`/`ElfObject` into a
 linkable `.o` (`encodeLfundefObject`) — the same multi-symbol stitcher the
-straight-line leaves use, now over a body with internal control flow.
+straight-line leaves use, over a body with internal control flow.
 
 ## Indexed operands
 
@@ -138,7 +138,7 @@ def gpNumU (r : String) : Nat :=
 theorem gpNumU_lt_16 (r : String) : gpNumU r < 16 := by
   unfold gpNumU; split <;> omega
 
-/-! ## 1b. Width-aware REX with elision (task #660)
+/-! ## 1b. Width-aware REX with elision
 
 The `ScalarEncoder` shape encoders (`encAluRR`/`encMemMov`/`encMovImm`/…) hardcode
 `rex 1 …` (always `REX.W=1`, the 64-bit operand size) because the straight-line
@@ -323,10 +323,10 @@ def parseMemNameGp (n : String) : Option (Nat × Int) :=
   else none
 
 /-- A `%rsp`-relative spill (`k.N`) or ABI save (`qsave.X`) operand name. These ARE
-    memory operands (`[%rsp + frameOffset]`). They are now byte-encoded (the frame
+    memory operands (`[%rsp + frameOffset]`). They are byte-encoded (the frame
     size + body-uniform spill width are threaded through `encodeLcmd`), via
     `spillQsaveOff` + the RSP-SIB memory encoder `encRspMem`. A name that is neither a
-    recognised spill/qsave NOR a `mem.*` NOR a bare GP register is still NOT covered;
+    recognised spill/qsave NOR a `mem.*` NOR a bare GP register is NOT covered;
     `encTwoAddr` keeps the visible-empty guard for those residual forms only. -/
 def isSpillOrQsave (n : String) : Bool :=
   hasPrefix n "k." || hasPrefix n "qsave."
@@ -356,7 +356,7 @@ def spillQsaveOff (frame spillW : Nat) (n : String)
     SIB under its `needSib` branch. `op` = `0x8B` (load `r ← m`) or
     `0x89` (store `m ← r`); `r` is the register operand. The `mod`/disp selection is
     the same as `encMemMov` (disp0 / signed disp8 / disp32), but with the SIB byte
-    inserted after the ModRM. (`off = 0` still emits a `mod=00` SIB form, which is a
+    inserted after the ModRM. (`off = 0` emits a `mod=00` SIB form, which is a
     valid `[%rsp]` no-displacement address; the frame offsets here are always
     positive and non-zero, but the arm is kept total.) -/
 def encRspMem (w op r : Nat) (off : Int) : List (BitVec 8) :=
@@ -415,7 +415,7 @@ def encAdxRspMem (pfx d : Nat) (off : Int) : List (BitVec 8) :=
     `mem.*` source/dest uses `encMemMov`, and a spill/qsave source/dest uses the
     RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). An
     uncovered shape (mem-mem, or a name that is neither reg / `mem.*` / spill / qsave)
-    still returns `[]` (visible, KAT-catchable) rather than mis-resolving. The arm only
+    returns `[]` (visible, KAT-catchable) rather than mis-resolving. The arm only
     encodes the **move** opcode for a memory operand (`op` is `0x89`/`0x8b` for
     `STORE`/`LOAD`); an ALU op against a spill (`add k.N, %rN`) is not produced by the
     owned bodies (the reload is materialised first) and is left to the residual. -/
@@ -756,7 +756,7 @@ survives the select and can be reused. -/
     cases, and in the disjoint branch the defaulting `mov` overwrites `cond`
     before the `test` reads it. The invariant said to exclude it is a claim
     about the register allocator carrying no theorem; no emitted artifact
-    contains the pattern (measured 2026-09-21 over every `.s` under `bench/`,
+    contains the pattern (measured over every `.s` under `bench/`,
     `crates/` and `gen/`), and `LoweringCoverageCmovSar.lowerLinstrExtCov2`
     declines the shape when `cn == dst`, so the JInstr route is guarded where
     this one is not. Hoisting `tst` above the `mov` fixes it at no cost in the
@@ -1499,7 +1499,7 @@ def encodableLcmd (body : Lcmd) : Bool :=
 
 -- Static checks pinning the frame-extension directive's byte status: `FRAMEADD`
 -- and `FRAME` carry no bytes by construction, so a body laying scratch buffers or
--- fixing its frame still reaches the byte stream.
+-- fixing its frame reaches the byte stream.
 #guard carriesNoBytes (.Lopn [] "FRAMEADD" [.imm 128]) = true
 #guard encodableLinstrR 0 64 (.Lopn [] "FRAMEADD" [.imm 128]) = true
 #guard encodableLcmd
@@ -1508,7 +1508,7 @@ def encodableLcmd (body : Lcmd) : Bool :=
 #guard carriesNoBytes (.Lopn [] "FRAME" [.imm 64]) = true
 #guard encodableLinstrR 0 64 (.Lopn [] "FRAME" [.imm 64]) = true
 -- The identity self-shift carries no bytes and its encoding is empty; a shift by a
--- nonzero count, and a by-0 shift between two registers, still carry bytes.
+-- nonzero count, and a by-0 shift between two registers, carry bytes.
 #guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R15"]) = true
 #guard (encodeLinstrR 128 64 (fun _ => 0) (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R15"])).isEmpty
 #guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:3:64" [.reg "R15"]) = false
@@ -1842,7 +1842,6 @@ theorem encCmovSelect_pin_disjoint :
   [⟨0, .Lopn [.reg "RAX"] "CMOV:64" [.reg "k.0", .reg "RBX", .reg "RAX"]⟩]
 
 /-! ## 5b. Cross-function calls: intra-object direct resolution + external relocations
-   (task #658-continuation)
 
 `encodeLcmd` resolves only *intra-function* labels (`Lgoto/Lcond/Lcall ("", l)` whose
 target is in THIS body's label table). A **remote** `Lgoto/Lcall (f, l)` with `f ≠ ""`
@@ -2027,7 +2026,7 @@ Two passes over the functions:
 1. **layout** — encode each function (with intra-object calls resolved against a
    running base map) to get its `.text` byte length, accumulating each function's base
    offset within `.text`;
-2. **emit** — re-encode with the now-complete base map, collecting any external
+2. **emit** — re-encode with the complete base map, collecting any external
    relocations (offset shifted by the function's prologue length + its `.text` base),
    and stitch the leaves + externs + relocs via `buildElfObjectMultiReloc`. -/
 
@@ -2166,7 +2165,7 @@ theorem encodeLinstrR_Lopn_length_const (frame spillW : Nat) (f g : LLabel → I
     (encodeLinstrR frame spillW f (.Lopn dsts opn srcs)).length
       = (encodeLinstrR frame spillW g (.Lopn dsts opn srcs)).length := rfl
 
-/-! ## 7b. Cross-function reloc length invariants (#658-continuation)
+/-! ## 7b. Cross-function reloc length invariants
 
 A remote `call`/`jmp` is always the fixed 5-byte rel32 form regardless of whether it
 resolves intra-object or via a relocation, so a function's `.text` LENGTH (and hence
@@ -2209,10 +2208,9 @@ theorem encSetccMovzx_length (op d : Nat) :
 /-- The generalised pair at the `SETC` opcode `0x92` is byte-identical to
     `ScalarEncoder.encSetcMovzx` — the `JInstr .setc` byte image — for **every**
     `d`, so the looped and straight-line paths' `setc` materialisations coincide
-    everywhere. The theorem used to exclude the bare-REX band `4 ≤ d < 8`
-    (`%spl/%bpl/%sil/%dil`), because `encSetcMovzx` emitted no `REX` there and so
-    encoded `SETB AH/CH/DH/BH` against a `MOVZBQ` reading `SPL/BPL/SIL/DIL`;
-    `ScalarEncoder` now emits the same bare `0x40` this encoder does, and the two
+    everywhere, including the bare-REX band `4 ≤ d < 8` (`%spl/%bpl/%sil/%dil`):
+    both encoders emit the bare `0x40` there (without it `SETB` would address
+    `AH/CH/DH/BH` against a `MOVZBQ` reading `SPL/BPL/SIL/DIL`), and the two
     definitions coincide syntactically. -/
 theorem encSetccMovzx_setc_agree (d : Nat) : encSetccMovzx 0x92 d = encSetcMovzx d := rfl
 
@@ -2292,9 +2290,9 @@ theorem encodeLopn_adoxhi (frame spillW : Nat) (dn : String) (srcs : List LOpera
     show carryOutSetccOp (stripWidthTag "ADOXHI:64") = 0x90 from by decide +kernel,
     Bool.true_or, reduceIte]
 
-/-- The `MULXHI` high-word binding still encodes to NO bytes (the fused body's
-    two-output `mulx` already wrote the high word) — the carry-out
-    materialisation did not disturb the `MULXHI` nil arm. -/
+/-- The `MULXHI` high-word binding encodes to NO bytes (the fused body's
+    two-output `mulx` already wrote the high word), with the carry-out
+    materialisation present. -/
 theorem encodeLopn_mulxhi_nil (frame spillW : Nat) (dsts srcs : List LOperand) :
     encodeLopn frame spillW (.Lopn dsts "MULXHI:64" srcs) = [] := by
   simp only [encodeLopn,

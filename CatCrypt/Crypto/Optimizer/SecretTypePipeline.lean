@@ -9,9 +9,9 @@ public import CatCrypt.Crypto.Optimizer.SecretType
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
-# Compositional CT across the whole canonicalize pipeline (#594 capstone)
+# Compositional CT across the whole canonicalize pipeline
 
-`SecretType.lean` proved the two algebraic `Com → Com` passes' secret-taint
+`SecretType.lean` proves the two algebraic `Com → Com` passes' secret-taint
 facts in isolation:
 
 * `peepCom_wellTainted` — the local peephole **preserves** the taint-typing
@@ -47,8 +47,8 @@ two-point lattice — see the `SecretType.lean` §8 header). We bridge them at
 * compose that equality with `saturateCom_comMaxTaint_le` (and reflexivity /
   `SecretLevel.leq` rewriting) to get the pipeline bound.
 
-The result is non-vacuous: peephole contributes a genuine equality (binder
-taints are preserved, not trivially) and saturate a genuine `⊑ₛ` (it can
+The result is non-vacuous: peephole contributes an equality (binder
+taints are preserved, not trivially) and saturate a `⊑ₛ` (it can
 strictly drop a binder from `sec` to `pub`, as the `demoMulZero` validation
 shows), composed by transitivity of the lattice order.
 
@@ -95,7 +95,7 @@ theorem peepCom_comMaxTaint {Γ : Ctxt jasminDialect} {t : JasminTy} :
 Composing the peephole's exact `comMaxTaint`-preservation (§1) with the
 saturation engine's `comMaxTaint`-non-increase (`saturateCom_comMaxTaint_le`):
 the composed `comAlgebraicPipeline` (peephole then bounded saturation) never
-raises the program's overall secrecy level. The compositional-CT invariant now
+raises the program's overall secrecy level. The compositional-CT invariant
 spans the entire algebraic-canonicalisation stage of the optimiser. -/
 
 /-- **The whole canonicalize pipeline is declassify-monotone.**
@@ -107,7 +107,7 @@ Proof: `comAlgebraicPipeline fuel c k = saturateCom fuel (peepCom c) k`. The
 saturation engine does not raise the level of `peepCom c`
 (`saturateCom_comMaxTaint_le`), and the peephole preserves the level of `c`
 exactly (`peepCom_comMaxTaint`); rewriting the latter equality into the former
-bound gives the result. The capstone of the #594 compositional-CT arc: peephole
+bound gives the result. Peephole
 *preserves* taint, the egraph engine *declassifies monotonically*, and the
 composition stays within the program's taint budget. -/
 theorem comAlgebraicPipeline_comMaxTaint_le {Γ : Ctxt jasminDialect} {t : JasminTy}

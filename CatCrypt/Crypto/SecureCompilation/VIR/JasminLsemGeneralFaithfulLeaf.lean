@@ -70,11 +70,11 @@ def ComLsemExportFaithfulLeaf (leaf : LeafEnvN) {Γ : Ctxt jasminDialect} {t : J
     ∧ decodeN st' (comRetReg Γ.length argName com Γ.length) w
         = some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the opaque-leaf fragment.** Any `Com` over
+/-- **The export gate is discharged for the opaque-leaf fragment.** Any `Com` over
     `{regArith, select, immediate shifts, mulhi, addCarryLo/Hi, castW, extCall}` satisfies
     `ComLsemExportFaithfulLeaf` for any leaf environment whose external primitives agree
     with the dialect (`LeafAgreesN leaf`) — assembled from `comToLprog_faithful_leaf` + the
-    `lsemFuelLeaf_straightline` bridge. The `extCall` arm is the genuinely external leaf;
+    `lsemFuelLeaf_straightline` bridge. The `extCall` arm is the external leaf;
     `LeafAgreesN` is its own KAT, the only carried hypothesis. -/
 theorem comLsemExportFaithfulLeaf_of_leaf {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy}

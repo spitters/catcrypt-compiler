@@ -10,10 +10,10 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonLowering
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonLowering
 
 /-!
-# GAS AArch64 ASIMD printer for the packed-u32 NEON machine instructions (#548)
+# GAS AArch64 ASIMD printer for the packed-u32 NEON machine instructions
 
-`Vec128AsmPrinter.lean` prints the XMM packed-u32 subset to AT&T AVX asm; this is
-its **AArch64 NEON/ASIMD** counterpart: it prints a `NeonModel.NInst` block — the
+The x86 backend prints the XMM packed-u32 subset to AT&T AVX asm; this module is
+the **AArch64 NEON/ASIMD** counterpart: it prints a `NeonModel.NInst` block — the
 packed-u32 ASIMD set of `NeonModel.lean`, the same set lowered to the NEON model
 by `NeonLowering.lowerNBlock` / `neonBlock_lowering_denote` — to GAS-syntax
 AArch64 ASIMD assembly text (`add`/`sub`/`mul` `.4s`, `and`/`orr`/`eor` `.16b`,

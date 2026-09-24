@@ -88,13 +88,13 @@ front combinators — no hand-authored `Com`/`Lcmd`/`JInstr`/`.s`:
   digests the spine itself built.  `denote` = the pin's layer-0 block
   (`layer_denote_block`) and the pin's layer-1 codeword (`layer_denote_fold`).
 
-## What still blocks the whole-artifact flip (precise; the row stays `# L`)
+## Scope: conditions for the whole-artifact render (the row stays `# L`)
 
 1. **Whole-spine assembly breadth.**  A full `plonky3_fri_prove_obj` is ~50
    chained phases (4 layers × (leaf-hash ; nested Merkle ; 3 queries × (opening
-   ; 2 path walks) ; fold) + remainder).  Every phase family is now
-   front-compiled AND chained for one whole layer (§6c); the remaining assembly
-   is the 4-layer fan-out — per-layer constants (`n = 32 >> L`, flat bases,
+   ; 2 path walks) ; fold) + remainder).  Every phase family is
+   front-compiled AND chained for one whole layer (§6c); the assembly outside
+   this module is the 4-layer fan-out — per-layer constants (`n = 32 >> L`, flat bases,
    `qb = 136·L + …`) and the layer-`L` codeword hand-off — mechanical breadth,
    not a front gap.
 2. **Multi-written-buffer physAbi render.**  The §6c layer spine writes THREE
@@ -117,7 +117,7 @@ front combinators — no hand-authored `Com`/`Lcmd`/`JInstr`/`.s`:
    the rendered fragments against the C oracle is the orchestrator's asm-gate
    (in-model `denote = spec` is NOT the asm-KAT).
 
-No `sorry`, no new axiom.
+All goals closed; no new axiom.
 
 Invoke (in-model gate):
   lake env lean CatCrypt/Crypto/SecureCompilation/VIR/Plonky3FriProofFrontEmit.lean

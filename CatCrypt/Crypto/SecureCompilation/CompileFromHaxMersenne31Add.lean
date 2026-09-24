@@ -10,7 +10,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 
 /-!
-# #606 fan-out: the verified compiler emits the Mersenne-31 field ADD and REDUCE
+# The verified compiler emits the Mersenne-31 field ADD and REDUCE
 
 This module completes the Mersenne-31 (`p = 2³¹ − 1 = 2147483647`, the
 CircleSTARK / Plonky3-M31 base field) compile-from-hax leaf family: the
@@ -50,10 +50,10 @@ accept them, so **no change to the verified front is required**.
 
 `m31AddSrc`/`m31ReduceSrc` are the let-normalized `ImpExpr`s; `m31AddFold`/
 `m31ReduceFold` the explicit closed emit forms they denote to; the `_compiles`
-theorems route the source-spec `rfl`s through the C3 per-primitive obligation
+theorems route the source-spec `rfl`s through the per-primitive obligation
 `compileFromHax_meets_spec`. The abstract `% p` ties (`m31AddFold_eq_mod`,
 `m31ReduceFold_eq_mod`) are closed by `Nat` arithmetic on `toNat` (no
-`bv_decide` bitblast — the #117 Barrett seam SAT-times-out at `2³¹`), and the
+`bv_decide` bitblast, which SAT-times-out at `2³¹`), and the
 `Zm31 = ZMod 2147483647` field ties (`m31AddFold_eq_field`,
 `m31ReduceFold_eq_field`) lift them to the Mathlib field, the add/reduce
 analogues of `CompileFromHaxMersenne31Tie.m31MulFold_eq_field`.

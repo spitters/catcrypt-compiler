@@ -28,7 +28,7 @@ of `y² = x³ + b` with the curve is again on the curve.  They are pure field id
 the curve relations** `hP : P.y² = P.x³ + b` (and `hQ` for the add), closed by `field_simp`
 followed by a `linear_combination` against those relations.
 
-This is the **canonical parametric form** (`@canonical_parametric` — genuinely parametric over
+This is the **canonical parametric form** (`@canonical_parametric` — parametric over
 the base field and the curve constant `b`, both of which vary per protocol).  A new curve needs
 no new on-curve proof: instantiate at its own `ZMod p` and `b`.
 

@@ -58,7 +58,7 @@ carries no root-namespace `main`.
   flow owned (`.L:/cmp/jne`), no jasminc, no C `for`. This is the part of
   Spartan/Jolt that uses the same owned regArith backend as Plonky3.
 * RESIDUAL (not owned-emittable here): the **PCS commitment MSM** — Spartan's
-  Hyrax 4×4 Ed25519/Ristretto commit + dot-product-opening IPA (#429/#431/#435),
+  Hyrax 4×4 Ed25519/Ristretto commit + dot-product-opening IPA,
   Jolt's PCS commit. That is curve-group arithmetic, not BabyBear regArith; the
   existing whole-prover benches (`bench/spartan_compare/spartan_prover_prod_kat.c`)
   run it over the verified-field/trusted-group curve leaf (HACL* / GMP C), NOT
@@ -230,7 +230,7 @@ theorem sumcheckLoopFundef_eq_buildOrchLoop (n strideOut strideIn : Nat) :
     sumcheckLoopFundef n strideOut strideIn
       = buildOrchLoop (sumcheckSpec n strideOut strideIn) := rfl
 
-/-- Spartan two-phase R1CS sum-check (#431): phase 1 is `num_rounds_x = 4` cubic
+/-- Spartan two-phase R1CS sum-check: phase 1 is `num_rounds_x = 4` cubic
     rounds, phase 2 `num_rounds_y = 5` quad rounds — 9 rounds total. Each round
     writes a 1-word folded evaluation (8-byte output advance); the round-poly row
     is 4 coefficients = 32 bytes. -/

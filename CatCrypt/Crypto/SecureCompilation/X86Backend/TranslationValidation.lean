@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 public import Std.Tactic.BVDecide
 
 /-!
-# Translation validation against Jasmin's Rocq x86 model (#281)
+# Translation validation against Jasmin's Rocq x86 model
 
 This module records the **correspondence** between our native-Lean x86 `step`
 semantics (`Model.lean`) and Jasmin's authoritative Rocq x86 instruction
@@ -96,19 +96,19 @@ Each `#guard` checks a numeric output of `step` against the Jasmin value.
   preservation theorems in `Preservation.lean` carry the all-inputs proof for
   the `lprog` opcodes; for `ADC`/`SBB` the all-inputs equality to
   `add_carry`/`sub_borrow = wrepr (x±y±c)` is argued by reading the Rocq
-  definitions (quoted below), not yet a ported all-inputs Lean theorem against
+  definitions (quoted below); there is no ported all-inputs Lean theorem against
   a Lean model of `wrepr`.
 * **Shift-count precondition (not papered over):** Jasmin `x86_SHL/SHR/SAR`
   mask the count by `& 63` (`U64`) before shifting; our `step` shifts by the
   raw `(src.eval).toNat`. They agree **iff count `< w`** — the only case our
   compiler emits. Counterexample at count `68`: Jasmin `SHL 1 68 = 16`, our
   model `1 <<< 68 = 0` (recorded in `shl_count_ge_width_differs`).
-* **Sail-x86 / ACL2 cross-check (now wired, #437):** the owned model is also
+* **Sail-x86 / ACL2 cross-check:** the owned model is also
   differentially validated against the *second, independent* authoritative
   semantics `rems-project/sail-x86-from-acl2` (the ACL2 `x86isa` model in Sail)
-  in `SailX86Validation.lean`. The ADX/BMI2 trio is absent from that model and
-  remains anchored only here, against Jasmin.
-* **Not yet wired:** the SIMD/AVX subset, control flow, the byte encoder, the
+  in `SailX86Validation.lean`. The ADX/BMI2 trio is absent from the upstream
+  model; its Sail counterpart is in `SailX86Lean.lean`.
+* **Outside the scope of this module:** the SIMD/AVX subset, control flow, the byte encoder, the
   whole-block simulation against jasmin `lsem`, and the CT-CompCert / K-x86
   independent cross-checks.
 
@@ -541,9 +541,9 @@ theorem neg_preservesOF {w : Nat} (s : State w) (dst : Reg) :
     (step s (.neg dst)).flags.of = s.flags.of := by
   simp only [step, State.setCF_flags_of]
 
-/-! ## Signed wide-multiply via `#MULX` + branchless correction (#359)
+/-! ## Signed wide-multiply via `#MULX` + branchless correction
 
-The owned backend's signed `64×64 → 128` high word was `#IMUL`, which pins its
+A signed `64×64 → 128` high word computed by `#IMUL` pins its
 high word to RDX and clobbers CF/OF — so it cannot issue between two `#ADOX`s of
 an ADX dual carry chain.  s2n-bignum's safegcd instead threads its chain through
 the **unsigned, flag-free, arbitrary-GPR `#MULX`** and recovers the signed high
@@ -611,7 +611,7 @@ def corrected64 (a b : Nat) : Nat :=
     corrected64 (ofI64 (2 ^ 63 - 1)) (ofI64 (2 ^ 63 - 1))
       == mulHiS64 (ofI64 (2 ^ 63 - 1)) (ofI64 (2 ^ 63 - 1))
 
-/-! # Part A — Faithful transcription validation (`JasminModel.lean`, #281)
+/-! # Part A — Faithful transcription validation (`JasminModel.lean`)
 
 `JasminModel.lean` is the line-for-line transcription of Jasmin's Rocq x86
 semantics — full five-flag state (`CF, PF, ZF, SF, OF` as `JFlag = Option Bool`,
@@ -842,11 +842,11 @@ the representatives by `#guard` on a shared state to avoid restating the
     (step (stCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))).get "a"
       == (evalInstr (jstCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))).get "a"
 
-/-! ## The remaining emitted-kernel arms: `CMOVcc` variants, `MULX`-mem, `MOV`-mem (#281)
+/-! ## The remaining emitted-kernel arms: `CMOVcc` variants, `MULX`-mem, `MOV`-mem
 
-The session's owned-backend kernels (`Fe25519MulKernel`/`Fe25519OpsKernel`/
+The owned-backend kernels (`Fe25519MulKernel`/`Fe25519OpsKernel`/
 `P256FieldKernel`/`P384FieldKernel`/`Ed25519PointKernel`/`X25519MonoLadderKernel`)
-emit five `JInstr` arms that the earlier pins did not cover directly:
+emit five `JInstr` arms that the pins above do not cover directly:
 `cmovne`/`cmovb` (the conditional-swap/conditional-subtract selects of the
 constant-time field carry-fixups and the X25519 cswap), `mulxMem` (s2n-bignum's
 fold of the multiplicand load into the `#MULX`), and `loadMem`/`storeMem` (the

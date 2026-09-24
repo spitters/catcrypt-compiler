@@ -42,7 +42,7 @@ live in the `SimdOp` alphabet already carried by `translateDialectControlV`, so 
 new front constructor and no shape outside `IsCoveredV` is needed. The GHASH block
 is UNREDUCED (the hand emit is too), so no `vpsrldq`/`vpslldq` reduction shifts
 appear; a fully reduced GF(2^128) product would add those (also in the alphabet)
-but would no longer byte-match the hand `ghashBlockSpec`.
+but would not byte-match the hand `ghashBlockSpec`.
 
 ## What is banked
 

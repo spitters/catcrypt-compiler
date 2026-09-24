@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
-# H3.tertia: leaf-call simulation cases
+# Leaf-call simulation cases
 
 Handles `letBind _ (app _ _) _` and `assign _ (app _ _)` arms of
 `haxToLowCT`.  The key piece is `LeafCallAgrees`, a per-leaf
@@ -158,10 +158,10 @@ def LeafCallAgrees (bi : Builtins) (leafSpec : LeafSpec)
 
 The full `haxToLowCT_simulates_letBind_app` and
 `haxToLowCT_simulates_assign_app` instances require two pieces
-beyond what this file lands:
+beyond what this module defines:
 
-1. **Agreement-extension lemma `envAgreesRust_extend_scalar`** — already
-   landed in `HaxToLowCTSim_Agreement.lean` (and duplicated `private`
+1. **Agreement-extension lemma `envAgreesRust_extend_scalar`** — proved
+   in `HaxToLowCTSim_Agreement.lean` (and duplicated `private`
    in `HaxToLowCTSim_AssignMatch.lean`).  Lifts
    `envAgreesRust env rs` to `envAgreesRust (env.extend name v)
    (rsSetScalar rs name n)` given `valueToScalar v = some n`.
@@ -174,21 +174,20 @@ beyond what this file lands:
    pre-call `RScalarSet` or because the post-state's scalar was
    already `n`), or (b) the value is one of the "constant decode"
    cases (`.unit → 0`, `.bool _ → {0,1}`) where the leaf's scalar
-   side-effect is incidental.  In practice, scalar-returning leaves
-   in CryptoSSA's u64 fragment (`u64_add`, etc.) use a parallel
-   scalar oracle — that oracle is not part of the current `LeafSpec`
-   structure (which only has `call`, `limbStore`, etc., all on tower
-   values).
+   side-effect is incidental.  Scalar-returning leaves such as
+   `u64_add` need a scalar oracle, which is not part of the
+   `LeafSpec` structure (which only has `call`, `limbStore`, etc.,
+   all on tower values).
 
-The cleanest way to close the simulation instances is to extend
-`LeafSpec` with a scalar-call oracle and broaden `LeafCallAgrees`
-to dispatch on whether `dt = .TU64` (scalar leaf) or otherwise
-(tower leaf, where `envAgreesRust`'s scalar predicate is vacuous on
-the new binding).  That refactor is out of scope for the current
-file; we leave the two simulation instances open as a documented
-follow-up rather than commit half-proofs with sorries.
+Closing the simulation instances requires extending `LeafSpec` with a
+scalar-call oracle and broadening `LeafCallAgrees` to dispatch on
+whether `dt = .TU64` (scalar leaf) or otherwise (tower leaf, where
+`envAgreesRust`'s scalar predicate is vacuous on the new binding).
+The two simulation instances are outside the scope of this module;
+`HaxToLowCTSim_Main.lean` carries them as the hypotheses
+`Hyp_letBindApp` and `Hyp_assignApp`.
 
-The two essential pieces — the source-side inverse and the
-per-leaf agreement predicate — are landed and verified here. -/
+This module proves the source-side inverse and defines the per-leaf
+agreement predicate. -/
 
 end CatCrypt.Crypto.Hax

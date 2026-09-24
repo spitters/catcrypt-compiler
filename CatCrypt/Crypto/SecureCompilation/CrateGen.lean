@@ -13,7 +13,7 @@ public import Mathlib.Data.List.Basic
 set_option autoImplicit false
 
 /-!
-# Verified Rust-crate packaging descriptor (#557 seed)
+# Verified Rust-crate packaging descriptor
 
 This module is the descriptor layer of the deployment enabler: it captures, as
 plain Lean data plus a well-formedness predicate, what it means to package an

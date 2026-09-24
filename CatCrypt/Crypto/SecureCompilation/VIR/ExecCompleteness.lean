@@ -33,7 +33,7 @@ the reference relational semantics (the ∃-fuel form `… = .ok s' ↔ SemIr �
 
 Completeness needs two ingredients:
 
-1. **Fuel monotonicity** (§2, the workhorse). The executor's result is preserved
+1. **Fuel monotonicity** (§2, the main lemma). The executor's result is preserved
    when fuel grows:
 
      `execInstrR … fuel s i prog = .ok s' → execInstrR … (fuel+1) s i prog = .ok s'`
@@ -51,7 +51,7 @@ Completeness needs two ingredients:
    sub-derivations' `∃ fuel_k` witnesses; we take `fuel = max … + 1`, use
    monotonicity to lift each sub-run to that common fuel, and the executor's own
    branch returns `.ok` by its `_eq` characterisation (the `OpSemCoverage` /
-   `CifLowering` / `WhileLowering` / `CallLowering` / `CmdRun` keystones, reused
+   `CifLowering` / `WhileLowering` / `CallLowering` / `CmdRun` lemmas, reused
    in the forward direction here).
 
 ## Constructor coverage (honest)
@@ -101,7 +101,7 @@ theorem bind_ok_of {α β : Type} {r : JResult α} {f : α → JResult β} {a : 
     (hr : r = .ok a) (hf : f a = .ok c) : JResult.bind r f = .ok c := by
   subst hr; exact hf
 
-/-! ## §2. Fuel monotonicity (the workhorse)
+/-! ## §2. Fuel monotonicity (the main lemma)
 
 The executor's result is preserved when fuel grows. We prove the **single-step**
 bundle `monoStepAt n` (each entry point at fuel `n` succeeding implies it
@@ -352,7 +352,7 @@ Proved by mutual induction on the `Sem`/`SemI`/`SemIr`/`SemFor`/`SemCall`
 derivation, via the joint recursor `SemIr.rec`. The five motives are the
 ∃-fuel reachability predicates; each constructor's sub-derivations hand us their
 fuel witnesses, we take `max … + 1`, and `*_mono` lifts every sub-run to that
-common bound so the executor's own branch (`_eq` keystones) returns `.ok`. -/
+common bound so the executor's own branch (`_eq` lemmas) returns `.ok`. -/
 
 /-- The five-way completeness bundle, packaged as the result of one application
     of the joint recursor `SemIr.rec`. Each component is the ∃-fuel reachability

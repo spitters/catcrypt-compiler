@@ -16,13 +16,13 @@ public meta import CatCrypt.Crypto.Optimizer.ComCanonical
 public import CatCrypt.Crypto.Optimizer.ComCanonical
 
 /-!
-# MLIR backend — Stage 2 scalar translation skeleton (task #183)
+# MLIR backend — scalar and vector text translation
 
 `Com → lean-mlir.Module` for the *scalar* subset of Jasmin's `Cmd` /
 `InstrR` / `PExpr`. The output is MLIR text in the registered `arith` /
 `func` dialects.
 
-## Scope (this stage)
+## Scope
 
 | Source                   | Target                                      |
 |--------------------------|---------------------------------------------|
@@ -39,23 +39,22 @@ public import CatCrypt.Crypto.Optimizer.ComCanonical
 | `Papp2 (Olsr ws) e1 e2`  | `arith.shrui`                               |
 | Anything else            | `catcrypt.opaque` (escape hatch)            |
 
-`Cif`, `Cfor`, `Cwhile` now lower into the `scf` dialect (Phase 5) —
+`Cif`, `Cfor`, `Cwhile` lower into the `scf` dialect —
 they recurse into their nested `Cmd` bodies via mutual recursion with
-`emitCmd`. `Ccall`, `Copn` are still deferred to Phase 6 / 8 and lower
-as `catcrypt.opaque` for now so the emitter is total.
+`emitCmd`. `Ccall`, `Copn` lower as `catcrypt.opaque` so the emitter is
+total.
 
 ## Trust scope
 
 This file produces **MLIR text**. The text is consumed by `mlir-opt`
 downstream — there is no proof at this layer that the text matches the
-`Cmd`'s denotation. `Denote.lean` (Stage 4) provides the
-`denoteCmd_eq_denoteMlirEmit` proof obligation; this file is the
+`Cmd`'s denotation. `Denote.lean` states the shape- and
+denotation-agreement lemmas for the emitter; this module is the
 *emitter*, not the *equivalence*.
 
-We deliberately stay text-based (rather than building a `Veir.IRContext`)
-so the Stage-2 lowering is straightforward to read and audit. A future
-stage may swap to a proper `IRContext` construction; the existing
-`VIR/ComToVeir.lean` is the template.
+The emitter is text-based (rather than building a `Veir.IRContext`)
+so the scalar lowering is straightforward to read and audit;
+`VIR/ComToVeir.lean` is the `IRContext`-building counterpart.
 -/
 
 @[expose] public section
@@ -101,7 +100,7 @@ plus a counter for fresh `%N` ids and an accumulator for emitted lines.
 This is intentionally the same shape as `LowCTToMLIR.State` so the two
 emitters can share `mlir-opt` downstream tooling. -/
 
-/-- Stage-2 emit state. -/
+/-- Emit state. -/
 structure EmitState where
   /-- Mapping from Jasmin var name → current MLIR SSA id (e.g. `"%3"`). -/
   names : List (String × String)
@@ -147,7 +146,7 @@ end EmitState
 constructors return `none` (caller emits an opaque marker). -/
 
 /-- Translate a Jasmin `SOp2` to an `arith.*` mnemonic, if it is one of
-    the eight scalar binops Stage 2 supports. Returns `none` for ops that
+    the eight supported scalar binops. Returns `none` for ops that
     are outside the scalar arith subset (comparison, vector ops, etc.). -/
 def sOp2ToArithMnemonic : SOp2 → Option String
   | .Oadd _  => some "arith.addi"
@@ -164,18 +163,16 @@ example : sOp2ToArithMnemonic (.Oadd .U32) = some "arith.addi" := rfl
 example : sOp2ToArithMnemonic (.Olxor .U64) = some "arith.xori" := rfl
 example : sOp2ToArithMnemonic .Obeq = none := rfl
 
-/-! ### Stage-3 vector arith subset
+/-! ### Vector arith subset
 
 Vector arith in MLIR is just `arith.*i` lifted to `vector<n × iM>` types
 — there is no separate `vector.addi` op. So we share the mnemonic table
 with the scalar case and only widen the type the op is emitted at.
 
-The Stage-3 lowering target for x86 is reached via `mlir-opt
---convert-vector-to-llvm` (or the more aggressive
-`--convert-vector-to-x86vector` pass once we wire it). The
-`vector.broadcast` / `vector.shuffle` / `vector.fma` / `vector.load` /
-`vector.store` ops that the `VectorDialect/` pre-#183 directory models
-abstractly route through that same lowering. -/
+The vector lowering target for x86 is reached via `mlir-opt
+--convert-vector-to-llvm`. The `vector.broadcast` / `vector.shuffle` /
+`vector.fma` / `vector.load` / `vector.store` ops that the `VectorDialect/`
+directory models abstractly route through that same lowering. -/
 
 /-- Translate a vector-shaped `SOp2` to the `arith.*` mnemonic it
     becomes when lifted to `vector<n × iM>`. Returns `none` for
@@ -232,8 +229,8 @@ with a fresh result id. -/
 
 /-- Combine two already-emitted operand SSA ids with a binary op into a
     single MLIR line. Non-recursive helper used by `emitPExpr` for the
-    `Papp2` case. Stage-2 scalar arith first; then Stage-3 vector arith;
-    otherwise an opaque marker. -/
+    `Papp2` case. Scalar arith first; then vector arith; otherwise an
+    opaque marker. -/
 def emitPapp2Combine (op : SOp2) (id1 id2 : String) (s : EmitState) :
     String × EmitState :=
   match sOp2ToArithMnemonic op with
@@ -243,7 +240,7 @@ def emitPapp2Combine (op : SOp2) (id1 id2 : String) (s : EmitState) :
     let line := s!"  {id} = {mnemonic} {id1}, {id2} : {ty}"
     (id, s.emit line)
   | none =>
-    -- Try Stage-3 vector arith.
+    -- Try vector arith.
     match sOp2ToVectorArithMnemonic op, sOp2VectorWidths op with
     | some mnemonic, some (ve, ws) =>
       let ty := renderVectorType ve ws
@@ -283,12 +280,11 @@ def emitPExpr (e : PExpr) (s : EmitState) : String × EmitState :=
     let line := s!"  {id} = \"catcrypt.opaque\"() : () -> i64  // {repr e}"
     (id, s.emit line)
 
-/-- Translate a binary application. Stage-2 scalar arith first; if the
-    op is a vector binop (Stage-3 pilot), emit the `arith.*` mnemonic at
-    a `vector<n × iM>` type; otherwise emit an opaque marker.
+/-- Translate a binary application. Scalar arith first; if the op is a
+    vector binop, emit the `arith.*` mnemonic at a `vector<n × iM>` type;
+    otherwise emit an opaque marker.
 
-    Defined in terms of `emitPExpr` + `emitPapp2Combine`; this preserves
-    the original public API of the file (Stage 2 / 3 callers, examples). -/
+    Defined in terms of `emitPExpr` + `emitPapp2Combine`. -/
 def emitPapp2 (op : SOp2) (e1 e2 : PExpr) (s : EmitState) :
     String × EmitState :=
   let (id1, s) := emitPExpr e1 s
@@ -297,8 +293,8 @@ def emitPapp2 (op : SOp2) (e1 e2 : PExpr) (s : EmitState) :
 
 /-! ## §5. Instruction / command translation
 
-`InstrR → EmitState → EmitState`. Stage-2 handles `Cassgn` (with `Lvar`
-or `Lnone`); Phase 5 adds the `scf` dialect for `Cif` / `Cfor` /
+`InstrR → EmitState → EmitState`. Handles `Cassgn` (with `Lvar`
+or `Lnone`), and uses the `scf` dialect for `Cif` / `Cfor` /
 `Cwhile`. Mutually recursive with `emitCmd` because the control-flow
 constructors carry nested `List InstrR` bodies that need recursive
 emission.
@@ -355,7 +351,7 @@ def emitInstrR (i : InstrR) (s : EmitState) : EmitState :=
     { sElse with lines := newLines }
   | .Cfor v range body =>
     -- Emit `scf.for %ivar = %lo to %hi step %1 { body }`.
-    -- For Stage 5 we ignore loop direction (UpTo only; DownTo would need
+    -- Loop direction is ignored (UpTo only; DownTo would need
     -- explicit `step -1`) and don't model iter_args (carried state).
     let outerLines := s.lines
     -- Allocate three fresh SSA ids: %lo, %hi, %step.
@@ -421,8 +417,8 @@ Wrap a `Cmd` body inside a `func.func @<name>(...) -> i64 { ... func.return ... 
 shell, with each parameter pre-bound to a `%argN`-style SSA name.
 
 The function returns a single `i64` whose value is bound to the first
-result variable, if any. Multi-return is deferred — the existing #145
-`MultiReturnCom.lean` is the future target. -/
+result variable, if any. Multi-return is outside this emitter's scope
+(`VIR/MultiReturnCom.lean` models multi-return `Com`). -/
 
 /-- Bind a list of parameter names to `%arg0`, `%arg1`, ... in the
     starting state. Returns the rendered MLIR parameter list and the
@@ -456,7 +452,7 @@ def emitFunc (name : String) (params : List String) (cmd : Cmd)
 /-! ## §7. Sanity tests / examples
 
 A two-instruction `Cmd` that adds two parameters and binds the result, to
-check the Stage-2 emitter produces well-shaped MLIR. -/
+check the scalar emitter produces well-shaped MLIR. -/
 
 /-- Sample Jasmin variable. -/
 def mkVar (name : String) : VarI :=
@@ -490,21 +486,21 @@ def exampleAddMulFuncMLIR : String :=
 
 #eval exampleAddMulFuncMLIR
 
-/-! ### Stage-3 vector example: 16xi16 lane-wise add
+/-! ### Vector example: 16xi16 lane-wise add
 
 A single `Ovadd U16 U256` over two 256-bit registers, modelled as
-`vector<16xi16>` SIMD add. This is the canonical Stage-3 pilot: the same
+`vector<16xi16>` SIMD add. This is the canonical vector example: the same
 op shape used by every 16-lane SIMD primitive (ChaCha20 quarter-round
 lane-wise add, ML-KEM polynomial coefficient add, lattice-arith
 coefficient add, etc.).
 
-### End-to-end validation (2026-05-28)
+### End-to-end validation
 
 The vector body is taken end-to-end through the MLIR toolchain at
 `mlir-opt-20` / `llc-18` (system LLVM 20 / 18 respectively):
 
 ```
-arith.addi %a, %b : vector<16xi16>      -- Stage-3 emit
+arith.addi %a, %b : vector<16xi16>      -- vector emit
   ↓  mlir-opt-20 --convert-vector-to-llvm --convert-arith-to-llvm
                  --convert-func-to-llvm --reconcile-unrealized-casts
 llvm.add %a, %b : vector<16xi16>        -- LLVM dialect
@@ -554,7 +550,7 @@ def exampleVmuladd8x32MLIR : String :=
 
 #eval exampleVmuladd8x32MLIR
 
-/-! ### Phase-5 control-flow example: `scf.for` over a four-element vector add
+/-! ### Control-flow example: `scf.for` over a four-element vector add
 
 A canonical pre-vectoriser shape: a length-4 loop that updates a single
 output variable. Emits an `scf.for` with three preamble constants
@@ -613,7 +609,7 @@ def exampleWhileFuncMLIR : String :=
 
 /-! ## §8. Translation coverage summary
 
-| Source constructor      | Stage 2 handling                  |
+| Source constructor      | Handling                          |
 |-------------------------|-----------------------------------|
 | `Cmd = List InstrR`     | sequential fold via `emitCmd`     |
 | `Cassgn (Lvar _) _ _ e` | translate `e`, bind RHS to LHS    |
@@ -637,12 +633,12 @@ def exampleWhileFuncMLIR : String :=
 | `Papp2 (Ovlsl ve ws)`   | `arith.shli` at `vector<n×iM>`    |
 | `Papp2 (Ovasr ve ws)`   | `arith.shrsi` at `vector<n×iM>`   |
 | `Papp2 _ _ _` other     | opaque marker                     |
-| `Cif cond cthen celse`  | `scf.if %cond { ... } else { ... }` (Phase 5) |
-| `Cfor v range body`     | `scf.for %v = %lo to %hi step %1 { ... }` (Phase 5) |
-| `Cwhile cb cond ca`     | `scf.while { ... cb ; scf.condition(cond) } do { ... ca ; scf.yield }` (Phase 5) |
-| `Copn / Ccall`          | opaque marker (deferred Stage 3+) |
-| `Papp1 / PappN`         | opaque marker (deferred)          |
-| `Pget / Psub / Pload`   | opaque marker (deferred Stage 3+) |
+| `Cif cond cthen celse`  | `scf.if %cond { ... } else { ... }` |
+| `Cfor v range body`     | `scf.for %v = %lo to %hi step %1 { ... }` |
+| `Cwhile cb cond ca`     | `scf.while { ... cb ; scf.condition(cond) } do { ... ca ; scf.yield }` |
+| `Copn / Ccall`          | opaque marker                     |
+| `Papp1 / PappN`         | opaque marker                     |
+| `Pget / Psub / Pload`   | opaque marker                     |
 
 Eight `Papp2` constructors and three `PExpr` head shapes map to
 registered `arith.*` ops. Everything else routes to `catcrypt.opaque`,

@@ -10,7 +10,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
 
 /-!
-# A verified machine-code byte encoder for the scalar RV64 `RInst` (#535 sub-2)
+# A verified machine-code byte encoder for the scalar RV64 `RInst`
 
 `RiscvAsmPrinter.lean` prints a `RiscvModel.RInst` block to GAS RV64 *text*, which
 is then handed to `riscv64-linux-gnu-as` to be encoded into machine bytes — that
@@ -174,7 +174,7 @@ def reg5 (r : String) : BitVec 5 := BitVec.ofNat 5 (regNum r)
     the RV64 `±4KiB` B-type range. If the caller narrows a wider offset (e.g. an
     `Int`) to `BitVec 13` *before* calling this, an out-of-range target wraps
     silently to a nearby in-range offset with no error; only offsets that
-    genuinely fit `BitVec 13` (`roundtrip_bcc`'s domain) are round-trip-safe. -/
+    fit `BitVec 13` (`roundtrip_bcc`'s domain) are round-trip-safe. -/
 def encodeBccWord (c : BCmp) (rs1 rs2 : String) (off : BitVec 13) : BitVec 32 :=
   encB off (reg5 rs2) (reg5 rs1) (BitVec.ofNat 3 c.funct3) 0x63
 
@@ -307,7 +307,7 @@ the transcribed sail-riscv `encdec` field split (`SailRiscvDecoder.lean`). -/
 -- byte that leads the LE word in `.text`).
 #guard (encodeRInst (.addw "a0" "a0" "a1")).head? == some 0x3b
 
-/-! ### 5b. B-type branch encoder: structure + gas differential pins (#552)
+/-! ### 5b. B-type branch encoder: structure + gas differential pins
 
 Each `bcc` branch is one 4-byte word (a `label` is 0 bytes); the words are pinned
 to `riscv64-linux-gnu-as` for the looped back-edge offsets — the high-risk spot is

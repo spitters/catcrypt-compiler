@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# BN254 `Fp2` add / sub, owned x86 leaves + component-wise driver (#222 tower)
+# BN254 `Fp2` add / sub, owned x86 leaves + component-wise driver
 
 The BN254 pairing tower's `Fp2 = Fp[u]/(u² + 1)` additive group: `Fp2_add` and
 `Fp2_sub` are **component-wise** modular add/sub on the two `Fp` halves

@@ -45,7 +45,7 @@ the carry-in `cin : sword w` is first narrowed to a `sword 1` "nonzero" bit by
 (`carryOutBitC cin (2^w-1) 0 = if cin.toNat ≥ 1 then 1 else 0`), matching
 `bvAdc`'s own `cin.toNat ≠ 0` reading; again only lowering ops.
 
-## What is proved (`0` sorries)
+## What is proved (all goals closed)
 
 * `adc64Block` / `adcBlock` + their `_denote` reconciliation lemmas — the two
   twin blocks denote exactly to the pair `bvAdd64`/`bvAdc` compute.
@@ -70,9 +70,9 @@ the single-return `BlockLoweringData` cannot express).
 Note this is a *different* pipeline from `MpnLoopEmit`: that module's carry
 loops are hand-authored `JInstr 64` / `Com (x86Dialect 64)` at the machine level
 (open-coded GPR carry, block-unrolled `adc`), never routed through
-`catCryptDialect`, so this pass does not — and need not — re-source them. This
-pass unblocks the `SExpr → catCryptDialect` FRONT carry class, whose pair ops
-were previously unlowerable.
+`catCryptDialect`, so this pass does not re-source them. This
+pass makes the pair ops of the `SExpr → catCryptDialect` FRONT carry class
+lowerable.
 -/
 
 @[expose] public section
@@ -337,7 +337,7 @@ theorem pairElim_blockOp : BlockOpTransports pairElimLowering idTransTy idMapVal
     running the pair-eliminated program equals running the original — obtained from the
     three leaves by `blockFundamental`, with no per-program induction. Each `bvAdd64`/
     `bvAdc` pair node is replaced by its `bvAddCarryLo`/`bvAddCarryHi` twin block (all
-    lowering ops), so the carry class now flows through the already-proven single-output
+    lowering ops), so the carry class flows through the proven single-output
     twins to the jasmin `addCarryLo`/`addCarryHi` backend. -/
 theorem pairElim_denote {Γ : Ctxt catCryptDialect} {t : CryptoSSA.CryptoTy}
     (c : Com catCryptDialect Γ t) (V : Ctxt.Valuation Γ) :
@@ -368,7 +368,7 @@ theorem sampleCarryProg_pairElim
 (and the two projections reading it), and `CryptoToJasminCom.mapTy (.pair _ _) =
 .reg 0` — the lowering refuses any expression touching a `.pair`. This section
 supplies the peephole that clears that residue: forward each `fst`/`snd` of a
-freshly-built `mkPair` to the component word it selects, and drop the now-dead
+freshly-built `mkPair` to the component word it selects, and drop the resulting dead
 `mkPair` binding, leaving a `.pair`-free `Com` over the twin words alone
 (`bvAddCarryLo`/`bvAddCarryHi`), which lower 1:1 through `DialectToJasminCom`.
 
@@ -395,7 +395,7 @@ def sndE {Γ : Ctxt catCryptDialect} {α β : CryptoSSA.CryptoTy}
 /-- **fst-of-mkPair strip (denotation-neutral).** A `fst` reading the just-built
     pair `mkPair a b` is forwarded to the first component word `a`: the projection
     binding is replaced by a copy-forward of `a` (via `substHeadHom (.there a)`),
-    keeping the `mkPair` binding (now dead) in place. Denotation is preserved —
+    keeping the `mkPair` binding (dead afterwards) in place. Denotation is preserved —
     both sides bind `a.lookup V` at the projection slot. -/
 theorem fst_of_mkPair_strip {Γ : Ctxt catCryptDialect} {α β s : CryptoSSA.CryptoTy}
     (a : Var Γ α) (b : Var Γ β)

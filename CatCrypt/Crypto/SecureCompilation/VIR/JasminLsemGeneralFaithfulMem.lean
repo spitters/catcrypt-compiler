@@ -293,7 +293,7 @@ def ComLsemExportFaithfulMem {Γ : Ctxt jasminDialect} {t : JasminTy}
     ∧ decodeM st' (comRetReg Γ.length argName com Γ.length) w
         = some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the stack-memory fragment.**
+/-- **The export gate is discharged for the stack-memory fragment.**
     Any `Com` over `{regArith, select, regConst, immediate shifts, mulhi,
     addCarryLo/Hi, castW, stackLoad, stackStore}` (`ScalarMemN`) satisfies
     `ComLsemExportFaithfulMem` — the real, non-`True` content of the
@@ -312,9 +312,10 @@ theorem comLsemExportFaithfulMem_of_mem {Γ : Ctxt jasminDialect} {t : JasminTy}
   simp
 
 /-- **Stack-memory export faithfulness specialises to the width-cast fragment.**
-    Every increment-8 `ScalarCastN` program is in `ScalarMemN`
-    (`ScalarMemN.of_scalarCastN`), so the increment-9 export gate covers the whole
-    register tower (increments 2–8) as a special case. -/
+    Every `ScalarCastN` program (`JasminLsemCast`) is in `ScalarMemN`
+    (`ScalarMemN.of_scalarCastN`), so the stack-memory export gate covers the whole
+    register tower (`JasminLsemSimulation` through `JasminLsemCast`) as a special
+    case. -/
 theorem comLsemExportFaithfulMem_of_scalarCastN {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarCastN com) {w : Nat} (hw : t = .reg w)
     (fn : String) : ComLsemExportFaithfulMem com fn hw :=

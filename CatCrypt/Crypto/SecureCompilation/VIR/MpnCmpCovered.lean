@@ -27,8 +27,8 @@ new front — and banks the **whole-program machine denote** for it, the same
 recipe as `Fe25519ScalarmultCovered` / `Shake256Covered`, but over the
 data-dependent `RWhileNz` waist rather than the counted `RFor` / `RSeq` waist.
 
-It replaces the hand-authored `SpStep` schedule `MpnCmpEarlyExitFront` (a
-verified-DSL step schedule with no machine denote) with a genuine high-level
+It strengthens the hand-authored `SpStep` schedule `MpnCmpEarlyExitFront` (a
+verified-DSL step schedule with no machine denote) to a high-level
 source descent whose loop region carries a fueled whole-program denote.
 
 ## Why the body is straight-line and the early exit is in the guard
@@ -52,7 +52,7 @@ per-limb sign carrier `rs := a[ix] - b[ix]` is the arithmetic waist; the
 * `mpnCmpBody` — the straight-line per-limb scan step; `mpnCmpLowCT = RWhileNz "ix"`.
 * `mpnCmp_coveredSWhile : IsCoveredSWhile mpnCmpLowCT` — the structural coverage.
 * `mpnCmp_front_fires` — the covered front accepts the `RWhileNz` node (`isSome`).
-* `mpnCmp_region_descends` — the trip-unrolled loop region descends `CProg`-free.
+* `mpnCmp_region_descends` — the trip-unrolled loop region descends through the front.
 * `mpnCmpCovered_denote` — **the deliverable**: the fueled whole-program machine
   denote of the guard-driven `mpn_cmp` scan, via `rWhileNz_whole_denote` at the
   trip count read off the run.
@@ -131,7 +131,7 @@ def mpnCmpGuard : SEnvScalar → Bool :=
   fun e =>
     decide ((envReadU64 e "ix").getD 0 ≠ 0) && decide ((envReadU64 e "df").getD 0 = 0)
 
-/-! ## 2. Coverage — the load-bearing structural proofs
+/-! ## 2. Coverage — the structural proofs
 
 The per-limb body is straight-line covered (`IsCoveredS`); the whole kernel is a
 data-dependent `while` over that straight-line body (`IsCoveredSWhile`, via the
@@ -166,7 +166,7 @@ theorem mpnCmpBody_coveredSCtl : IsCoveredSCtl mpnCmpBody :=
 
 /-- **The whole `mpn_cmp` scan is data-dependent-`while` covered**
     (`IsCoveredSWhile`): an `RWhileNz` over the straight-line covered limb step.
-    This is the load-bearing fact that feeds the whole-program `RWhileNz`
+    This is the fact that feeds the whole-program `RWhileNz`
     denote. -/
 theorem mpnCmp_coveredSWhile : IsCoveredSWhile mpnCmpLowCT :=
   .rWhileNz mpnCmpBody_coveredSCtl
@@ -194,7 +194,7 @@ theorem mpnCmp_front_fires :
     (translateDialectControlTop mpnCmpArgVM mpnCmpLowCT).isSome := by
   native_decide
 
-/-- **The trip-unrolled loop region descends `CProg`-free.** The `3`-fold copy of
+/-- **The trip-unrolled loop region descends through the front.** The `3`-fold copy of
     the limb step — the loop region run for `3` trips — descends through
     `loopWhileD` (the twin of the counted `loopRForD` unroll), the witness that
     the data-dependent scan region, run for any concrete trip count, is exactly

@@ -22,7 +22,7 @@ representation — the carrier underneath every concrete bignum / `encMLK` /
 limbs (repeated divmod by `base`), and recomposes (Horner evaluation in
 `base`) to the original value whenever it fits in `numLimbs` digits.
 
-The keystone is `fromLimbs_toLimbs`:
+The main theorem is `fromLimbs_toLimbs`:
 `n < base ^ numLimbs → fromLimbs base (toLimbs base n numLimbs) = n`,
 i.e. `bignumVal ∘ splitLimbs = id` on bounded values, abstractly.
 
@@ -88,7 +88,7 @@ theorem toLimbs_lt_base (base : ℕ) (hbase : 1 < base) (n numLimbs : ℕ)
       · subst h; exact Nat.mod_lt _ (lt_of_lt_of_le Nat.zero_lt_one (le_of_lt hbase))
       · exact ih (n / base) h
 
-/-- **Keystone round-trip.** A value that fits in `numLimbs` base-`base` limbs
+/-- **Round-trip.** A value that fits in `numLimbs` base-`base` limbs
 recomposes from its limb decomposition to itself:
 `fromLimbs base (toLimbs base n numLimbs) = n` when `n < base ^ numLimbs`. -/
 theorem fromLimbs_toLimbs (base : ℕ) (n numLimbs : ℕ)

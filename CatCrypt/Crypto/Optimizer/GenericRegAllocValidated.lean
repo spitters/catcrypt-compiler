@@ -18,7 +18,7 @@ uses is typically *not* globally injective (e.g. it returns distinct
 What an aliasing-free allocation actually guarantees is injectivity on the **register
 names the block uses**.
 
-This file weakens the soundness keystone to that hypothesis, **once**, over any
+This module weakens the soundness theorem to that hypothesis, **once**, over any
 `[RegMachine I S]` — so every backend with a `RegMachine` instance (ARM `AInst`,
 RISC-V `RInst`, …) inherits it — and adds a **decidable no-alias checker**
 (`noAliasOn`) whose `= true` result discharges the hypothesis. The result is the
@@ -29,7 +29,7 @@ CompCert/Jasmin, realised generically:
 * `ReindexedOn I ns ρ s t` — the rename relation scoped to `ns`;
 * `renameBlock_runBlock_on` — soundness needing only `RenInjOn` over the block names;
 * `noAliasOn ρ block` — the decidable checker; `renameBlock_runBlock_checked`
-  combines it with the keystone.
+  combines it with `renameBlock_runBlock_on`.
 
 The `RegMachine.instVal_rename` law is already stated with a *per-read-name*
 hypothesis, so the class is set up for exactly this scoping.
@@ -61,7 +61,7 @@ def bNamesG [MachineModel I] (i : I) : List String :=
 def blockNamesG [MachineModel I] (block : List I) : List String :=
   block.flatMap bNamesG
 
-/-! ## 2. The scoped rename relation and soundness keystone -/
+/-! ## 2. The scoped rename relation and soundness theorem -/
 
 /-- `Reindexed` scoped to a name list `ns`: the renamed state agrees at `ρ n` with the
     source at `n`, for every `n ∈ ns` whose image is not a discard register. -/
@@ -153,7 +153,7 @@ theorem evalInst_rename_preservesOn (I : Type) [RegMachine I S] (ns : List Strin
 
 /-- **Scoped resident-path soundness.** For `ρ` injective on a name list `ns` that
     contains every name the block mentions, running the renamed block preserves
-    `ReindexedOn` — the validated-renaming keystone needing only the *no-alias on the
+    `ReindexedOn` — the validated-renaming theorem needing only the *no-alias on the
     block's names* property, recovered once for every `RegMachine` backend. -/
 theorem renameBlock_runBlock_on (I : Type) [RegMachine I S] (ns : List String)
     (ρ : String → String) (hinj : RenInjOn ns ρ)

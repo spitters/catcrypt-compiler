@@ -26,7 +26,7 @@ The carrier is abstract: a `decode : RustVal .TFp → (Fin n → R)` reading the
 `.TFp` slot as a length-`n` coefficient vector over a field `R`, with a `2n`-th
 twist root `ψ` (so `ψ² = ω` is the underlying primitive `n`-th root).
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the structural-emit ↔ operational-denotation
   composition `emitNttNegaMul_realizes_value` — a direct specialization of the
@@ -56,7 +56,7 @@ twist root `ψ` (so `ψ² = ω` is the underlying primitive `n`-th root).
 
 `nttNegaEmitRealizes_canonical` exhibits a concrete `LeafSpec` (built from a
 `negaConv`-returning realizer) under which `NttNegaKernelRealizes` — hence
-`NttNegaEmitRealizes` — holds, so the hypotheses are satisfiable.  The genuine
+`NttNegaEmitRealizes` — holds, so the hypotheses are satisfiable.  The
 cross-prover content is the gap between this canonical realizer and the emitted
 negacyclic NTT kernel's real byte semantics, which lives outside Lean.
 -/
@@ -219,7 +219,7 @@ noncomputable def nttNegaKernelCallSpec {n : ℕ} [NeZero n] (ψ : R)
 /-- **Non-vacuity witness for `NttNegaKernelRealizes`.**  For the canonical
     `LeafSpec` built from `nttNegaKernelCallSpec` with a decoder section `encode`
     (`decode ∘ encode = id`), the kernel-realization holds — so the localized
-    hypothesis is satisfiable.  The genuine cross-prover content is the gap
+    hypothesis is satisfiable.  The cross-prover content is the gap
     between this canonical realizer and the emitted negacyclic NTT kernel's real
     byte semantics, which lives outside Lean. -/
 theorem nttNegaKernelRealizes_canonical
@@ -272,7 +272,7 @@ closing what the cyclic seam (`GenericNttEmitValue`) could not. -/
     The discharge instantiates `nttNegaEmitRealizes_of_negaConv` at the concrete
     ML-DSA root `isPrimitiveRoot_1753sq_256 : IsPrimitiveRoot ((1753)² ) 256`
     (= the `IsPrimitiveRoot (ψ²) n` hypothesis with `ψ = 1753`, `n = 256`) and
-    `n_ne_zero_8380417 : (256 : ZMod 8380417) ≠ 0`.  The genuine residual is now
+    `n_ne_zero_8380417 : (256 : ZMod 8380417) ≠ 0`.  The residual is
     a single concrete leaf-bytes KAT at the ML-DSA `Z_8380417[X]/(X²⁵⁶+1)`
     kernel — the negacyclic compiler leaf the cyclic seam could not close. -/
 theorem mldsa_nttNegaEmitRealizes_of_kernel

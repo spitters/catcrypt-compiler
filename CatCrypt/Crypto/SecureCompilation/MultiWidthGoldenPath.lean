@@ -20,11 +20,11 @@ SHA-256's `Σ`/`σ`, ML-DSA's `reduce32` — are **32-bit**, so this file pushes
 width-32 frontier as far as the *current* architecture allows from a single
 additive file (it edits no shared file).
 
-## What is proven here (all genuine, non-vacuous, dialect-level)
+## What is proven here (non-vacuous, dialect-level)
 
 The `jasminDialect` denotation is **width-generic**: `regArith bop w` acts over
 `BitVec w` for any `w`, and `TyDenote (.reg w) = BitVec w`. So a width-32 `Com`
-denotes to a genuine `BitVec 32` value. We build and prove:
+denotes to a `BitVec 32` value. We build and prove:
 
 * `add32` — `.regArith .add 32` over `[.reg 32, .reg 32]`; `Com.denote = a + b`
   (`BitVec 32`), by `rfl`.
@@ -32,10 +32,10 @@ denotes to a genuine `BitVec 32` value. We build and prove:
 * `rotr32 k` — the ChaCha20/SHA-256 right-rotate idiom `(a >>> k) ||| (a <<< (32-k))`
   built from `.shrImm 32 k`, `.shlImm 32 (32-k)`, `.regArith .or 32`;
   `Com.denote = a.rotateRight k` (`BitVec 32`) for the concrete amounts ChaCha20
-  uses (`16, 12, 8, 7`), proven by `bv_decide` (an honest in-range bit identity,
+  uses (`16, 12, 8, 7`), proven by `bv_decide` (an in-range bit identity,
   the width-32 instance of `JasminDialect.rorImm_denote_eq_shiftOr`).
 
-These hold purely at the dialect denotation and are the genuine width-32 content
+These hold purely at the dialect denotation and are the width-32 content
 the architecture supports today.
 
 ## The documented gap: why the BACKEND emit stays width-64
@@ -120,7 +120,7 @@ def rotr32 (k : Nat) : Com jasminDialect [.reg 32] (.reg 32) :=
           args := .cons (.there .here) (.cons .here .nil) }
     (.ret .here)))
 
-/-! ## 2. Dialect-level denote/spec theorems (genuine `BitVec 32`)
+/-! ## 2. Dialect-level denote/spec theorems (`BitVec 32`)
 
 `Com.denote` reduces structurally through the width-generic `jasminDenote`. -/
 
@@ -138,7 +138,7 @@ theorem xor32_denote (a b : BitVec 32) :
 theorem rotr32_denote (k : Nat) (a : BitVec 32) :
     Com.denote (rotr32 k) (.cons a .nil) = (a >>> k) ||| (a <<< (32 - k)) := rfl
 
-/-- **`rotr32 k` computes a genuine 32-bit right-rotate** for an in-range amount
+/-- **`rotr32 k` computes a 32-bit right-rotate** for an in-range amount
     `0 < k < 32`: `Com.denote (rotr32 k) ⟨a⟩ = a.rotateRight k`. The width-32
     instance of `JasminDialect.rorImm_denote_eq_shiftOr` (the `BitVec` rotate law
     `rotateRight_def` specialised to `k % 32 = k`). -/
@@ -187,7 +187,7 @@ theorem add32_zext_eq_mask (a b : BitVec 32) :
       = (((a.zeroExtend 64) + (b.zeroExtend 64)) &&& (0xFFFFFFFF : BitVec 64)) := by
   rw [add32_denote]; bv_decide
 
-/-- **The mask is genuinely load-bearing, not cosmetic.** The 64-bit register add
+/-- **The mask is required.** The 64-bit register add
     of two zero-extended 32-bit values can carry into bit 32 (e.g. `a = b =
     2^32-1` gives `2^33 - 2`, with bit 32 set), so the unmasked 64-bit add does
     **not** in general equal the zero-extended width-32 result — the `&&&

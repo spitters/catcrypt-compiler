@@ -22,7 +22,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 A COMPLETE 8-point radix-2 decimation-in-time (DIT) forward NTT over the ML-KEM
 prime field `F_q`, `q = 3329`, built by composing **twelve** Cooley-Tukey
 butterflies (3 layers × 4 butterflies, 36 field ops) — sourced through the
-verified `CProg`-free front (NO hand-built `Com` anywhere) and rendered to AT&T
+verified front (NO hand-built `Com` anywhere) and rendered to AT&T
 x86-64 `.s` through the owned linear backend with NO jasminc and NO
 hand-authored assembly:
 
@@ -109,7 +109,7 @@ lowering to exactly ONE binding) in output order.
   field-op realization under the canonical encoding `mkEnc` (§6).
 * `ntt8_denote_spec_sample` — the front program capped at the final output copy
   `o7` denotes the INDEPENDENT plain-`Nat` `% 3329` reference `ntt8NatRef` on a
-  KAT vector; the `#eval` honesty battery (§8) extends this to all eight outputs
+  KAT vector; the `#eval` check battery (§8) extends this to all eight outputs
   over the four KAT vectors + 100 generated vectors.
 * The full whole-program tie is KAT-gated: the orchestrator's C harness
   (`bench/field_kernel_compare/ntt8_q3329_kat.c`) checks the rendered `.s`

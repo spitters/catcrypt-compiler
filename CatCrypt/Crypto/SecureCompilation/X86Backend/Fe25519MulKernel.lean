@@ -14,7 +14,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# Curve25519 field-multiply `fe25519_mul`, lowered through the in-Lean x86 backend (#380)
+# Curve25519 field-multiply `fe25519_mul`, lowered through the in-Lean x86 backend
 
 `BignumMontMulKernel.lean` emits the bare 4×4→8 schoolbook (`bignum_mul_4_8`)
 through the owned x86 backend (MULX + dual ADCX/ADOX, no jasminc), at s2n parity
@@ -53,9 +53,9 @@ cross-checks against both.
    separate carry-recapture). A final canonical conditional subtract of `p` —
    amount `= 19` iff the sign bit of `t₃ − (q&1)·2⁶³` is set, else `0`, then
    clear bit 255 — brings the result into `[0, p)`, the canonical residue GMP
-   and s2n produce. This replaces the prior straight Solinas fold +
-   carry-recapture + two `shr/imul/and` rounds + explicit add-19 subtract (the
-   reduce drops from 64 to 39 instructions). It uses only the owned backend's
+   and s2n produce. The reduce is 39 instructions, against 64 for a straight
+   Solinas fold + carry-recapture + two `shr/imul/and` rounds + explicit add-19
+   subtract. It uses only the owned backend's
    modelled instructions (`mulx`/`adcx`/`adox`/`add`/`adc`/`imul`/`shl`/`shr`/
    `sub`/`sbb`/`and`); s2n's `bt`/`lea`/`cmovns`/`btr` are expressed with the
    supported `shr`/`shl`/`imul` + sign-bit-of-difference idiom.
@@ -100,7 +100,7 @@ Identical to `BignumMontMulKernel` / `JasminModel` / `X86Dialect` / `AsmPrinter`
 the verified artifact is `Com (x86Dialect 64) → runBlock → evalInstr`, the
 faithful transcription of Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is
 the syntactic trust boundary, and the System-V leaf prologue/epilogue is trusted
-ABI scaffolding outside the verified body. No `sorry`.
+ABI scaffolding outside the verified body. All goals are closed.
 -/
 
 @[expose] public section
@@ -127,7 +127,7 @@ Register names:
 * `t0..t7` — the eight schoolbook product words, register-resident.
 * `lo`/`hi` — `MULX` product scratch.
 * `zr` — a zero register (zero-extend folds and CF/OF clearing), pinned to `%rbp`.
-* The reduction's fold-carry / quotient / mask scratch reuses the now-dead
+* The reduction's fold-carry / quotient / mask scratch reuses the dead
   schoolbook scratch names `lo`/`hi` (no fresh names) to stay within the GP pool.
 
 The schoolbook half is `mul48Block` with the eight final stores replaced by
@@ -310,8 +310,8 @@ def feMulComputes (x0 x1 x2 x3 y0 y1 y2 y3 : BitVec 64) : Prop :=
 gated by the external byte-identity KAT in `bench/x25519_fieldmul_compare`
 (GMP `mpz` mod `p`, s2n `bignum_mul_p25519`, and dalek serial, over random +
 corner vectors); `feMulBlock_lowering_correct` is the in-Lean
-denotation-preservation guarantee.  The former per-input `native_decide` pin
-over the symbolic `runBlock` has been removed per the REV-12 discipline: it
+denotation-preservation guarantee.  The module has no per-input `native_decide`
+pin over the symbolic `runBlock`: such a pin
 symbolically executed the 91-instruction body over the `String → BitVec`
 closure state, compiling to a large nested term under `native_decide` for no
 guarantee the external all-inputs KAT does not already provide. -/
@@ -349,7 +349,7 @@ def feMulArgs : List AbiArg :=
     (`renderSysVLeafFn`): the prologue saves exactly the callee-saved registers the
     allocation binds (`abiSave` + alignment pad) then marshals the third pointer
     argument out of `%rdx`; the epilogue restores them and returns. The body is
-    `runBlock`-verified; the ABI glue is trusted scaffolding outside it, but is now
+    `runBlock`-verified; the ABI glue is trusted scaffolding outside it, but is
     *derived from the allocation*, not hand-written. -/
 def feMulAsm : String :=
   renderSysVLeafFn "fe25519_mul_x86_from_lean" feMulAlloc feMulArgs feMulAsmBody []

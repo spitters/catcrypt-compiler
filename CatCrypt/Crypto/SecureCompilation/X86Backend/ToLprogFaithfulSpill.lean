@@ -65,25 +65,25 @@ derived from `isSpill`, so the lemmas state the *semantic* non-interference
 requirement directly), then package the constant disequalities `R15 ≠ R14` and
 `(spill) ≠ R15/R14` as standing facts.
 
-## Residual (named honestly — out of scope here)
+## Scope
 
 * The `physMap` register-renaming pass (`remapOperand`/`physBody`): renaming a
   virtual operand to its physical slot preserves the `lsem` read only relative
   to an `lvm` re-indexed along the same renaming. That is a `StoreAgrees`-style
-  refinement (the `RegMachineSim` keystone `jinstr_renameBlock_sound` proves the
-  analogue for the `JInstr`/`JState` machine); it is **not** proved here because
+  refinement (the `RegMachineSim` main theorem `jinstr_renameBlock_sound` proves the
+  analogue for the `JInstr`/`JState` machine); it is outside this module because
   `physBody` is not a *uniform* renaming — it interleaves the two-address `mov`s
   and these spill reloads. We record below only the *pointwise read-refinement*
   shape it must satisfy (`evalOperand_remap_shape`), as a documented obligation.
 * The ABI prologue/epilogue (`buildPrologue`/`buildEpilogue`) and the `Lret`
-  terminator: control flow, for which `lsemStep` is honestly `none` (out of the
-  straight-line increment-1 scope). **Not** modeled, **not** faked.
+  terminator: control flow, for which `lsemStep` is `none` (outside the
+  straight-line scope). Not modeled.
 
 So this module proves the *semantic core* of `legalizeBinop`'s spill branches
 against the real `lsemStraight`; together with the probe's no-spill case it
 covers every branch of `legalizeBinop` ∘ `lowerTwoAddr`'s binop emission. The
-`physMap` renaming refinement and the ABI/`Lret` control flow remain explicit
-residual.
+`physMap` renaming refinement and the ABI/`Lret` control flow are outside its
+scope.
 -/
 
 @[expose] public section
@@ -297,17 +297,17 @@ the *virtual* `resolveVar` naming; here it is stated for the *physical*
 `remapOperand` renaming. We prove it for register operands — exactly the
 read-refinement the binop fragment (the two-address spill lemmas above) needs.
 
-This is **not** the full `physBody` faithfulness step. The residual it leaves:
+This is **not** the full `physBody` faithfulness step. Outside its scope:
 * `arr` / `arrIdx` operands are passed through unrenamed by `remapOperand`, so
   their reads are governed by a *memory* agreement, not this register relation
   (the `StoreAgreesM` analogue, `JasminLsemMem.lean`); out of scope here.
 * establishing the store relation `s'.lvm ∘ ρ = s.lvm` is itself an
   RA-correctness obligation (`ρ` must be injective on the live set for the
-  relation to be *maintained* across writes — the `RegMachineSim` keystone
+  relation to be *maintained* across writes — the `RegMachineSim` main theorem
   `jinstr_renameBlock_sound` proves the maintenance for a uniform renaming, but
-  `physBody` interleaves the two-address `mov`s and spill reloads, so the
-  keystone does not transfer directly). We prove the *read* side; the
-  *maintenance* side is the documented residual. -/
+  `physBody` interleaves the two-address `mov`s and spill reloads, so that
+  theorem does not transfer directly). We prove the *read* side; the
+  *maintenance* side is outside this module. -/
 
 /-- The physical RA renaming `remapOperand` applies to register names: a logical
     name `n` maps to its physical slot's register/spill name. (The abbreviation
@@ -347,14 +347,14 @@ What this composes — and what it does **not**:
 * it IS the faithfulness of the `legalizeBinop` pass in isolation: whatever the
   spill classification, the emitted sequence writes `applyOpn opn [dst,src]` at
   the binop's destination register;
-* it is NOT yet `physBody` faithfulness — `physBody` first *renames* operands
+* it is not `physBody` faithfulness — `physBody` first *renames* operands
   through the RA map (§4) and emits a leading two-address `mov dst, s0` (the
   `lowerTwoAddr` collapse) before `legalizeBinop`; wiring §4's read-refinement
   and the probe's `mov` step in front of this needs the store-relation
-  *maintenance* (the documented residual), and the whole-function step further
+  *maintenance* (outside this module), and the whole-function step further
   needs the ABI prologue/epilogue + the `Lret` terminator, which are control
   flow outside `lsemStraight`'s straight-line scope (`lsemStep .Lret = none`,
-  honestly **not** modeled). -/
+  not modeled). -/
 
 /-- **`legalizeBinop` faithfulness — all four spill branches.** For register-named
     operands `dst`, `src`, running `legalizeBinop (.reg dst) (.reg src) opn`

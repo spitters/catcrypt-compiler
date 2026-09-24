@@ -11,27 +11,27 @@ import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
-# B3 physical-path acceptance witness: data-dependent `while` export (`ComL.whileNz`)
+# Physical-path acceptance witness: data-dependent `while` export (`ComL.whileNz`)
 
 This module is the acceptance witness for the physical byte-deployment path of a
-**data-dependent `while`** — the last control-flow shape B3 wired into the front
-(`translateDialectControl`'s `RWhileNz` arm). The abstract A3 arm landed the
-`whileNz` node; `JasminLprogExport` then added:
+**data-dependent `while`**, the control-flow shape handled by the front's
+`translateDialectControl` `RWhileNz` arm. The abstract arm provides the
+`whileNz` node; `JasminLprogExport` provides:
 
 * the `ComL.whileNz` export node (the countdown do-while `while (n != 0) { body; n -= 1 }`),
 * its `ComL.denote` fold (the run-halting trip count = the countdown seed),
-* the per-node do-while lowering `whileLcmdNz` (the `Lcmd` image of A3's
+* the per-node do-while lowering `whileLcmdNz` (the `Lcmd` image of
   `whileLinstrRM`: `MOV`-seed the counter, one body copy, bottom-test back-edge
   `CMP Lctr,0 ; Lcond NZ → top`, **no** zero-trip top guard),
 * the `comLToBody` / `comLRetReg` / `ComL.loopArgBaseNames` arms, so the full
   `ComL.toLprog{Phys,PhysAbi}` export reaches bytes through the node,
 
-all **additively**: every existing `ComL` node (`forLoop`/`forLoopN`/`forLoopNRt`/
-`forLoopNRtNested`) is byte-unchanged; only a constructor and its lowering case
-were added.
+all **additively**: the other `ComL` nodes (`forLoop`/`forLoopN`/`forLoopNRt`/
+`forLoopNRtNested`) are unaffected by the `whileNz` constructor and its lowering
+case.
 
 This file exercises a concrete countdown `while (n != 0) { acc := acc·acc; n -= 1 }`
-end-to-end: it denotes to the expected fold, its lowered body carries the genuine
+end-to-end: it denotes to the expected fold, its lowered body carries the
 do-while back-edge (the `whileLcmd`/`whileLcmdNz` skeleton — one `Lcond NZ`, no
 top-guard skip), the trip counter is seeded from a runtime register (not an
 immediate), the body is emitted **once** (rolled, not unrolled), and the physical

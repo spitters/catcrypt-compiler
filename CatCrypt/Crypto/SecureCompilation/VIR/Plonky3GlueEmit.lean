@@ -22,12 +22,12 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 set_option autoImplicit false
 
 /-!
-# Plonky3 prover-orchestration glue (REV-11 A7), FRONT-COMPILED
+# Plonky3 prover-orchestration glue, FRONT-COMPILED
 
 The three single-element prover-orchestration leaves of the emitted plonky3
 prover — the **Fiat–Shamir challenger squeeze**, the **quotient composition**
 element, and the **OOD/DEEP** element — sourced through the verified
-`CProg`-free front, NO hand-built `Com` anywhere in the emit path:
+front, NO hand-built `Com` anywhere in the emit path:
 
 ```
   {chal,quot,ood}Body (LowCT: RScalarSetExpr u64 word math over 16 input slots)
@@ -269,7 +269,7 @@ def chalVM : VarMap srcCtx :=
 
 /-! ## 6. The front-emitted programs -/
 
-/-- Push a body through the `CProg`-free control front under a leaf `VarMap`
+/-- Push a body through the control front under a leaf `VarMap`
     and cap with `ret <name>`. `none` if the front declines. -/
 def frontComWith (vm : VarMap srcCtx) (body : LowCT) (name : String) :
     Option (Com catCryptDialect srcCtx (.sword 64)) :=
@@ -435,13 +435,13 @@ def chalValOf (d0 d1 d2 d3 : Nat) :
     (.cons ((63 : BitVec 64)) (.cons ((1 : BitVec 64))
     (.cons ((0 : BitVec 64)) (.cons ((0 : BitVec 64)) .nil)))))))))))))))
 
-/-! ### Correctness gate (external KAT, per REV-12)
+/-! ### Correctness gate (external KAT)
 
 The quotient / OOD-DEEP / challenger-squeeze elements' `denote = spec`
 correctness is gated by the external C byte-KAT on the emitted `.s`
 (`plonky3-glue-rustcmd-kat`), which tests the *deployed bytes* against the
 independent reference — strictly stronger than an in-model sample check.
-The in-Lean sample `native_decide` denote gates were dropped (REV-12):
+The module has no in-Lean sample `native_decide` denote gates; they are
 heavy to elaborate, redundant with the KAT, and only sample-based. The
 `refQuotElem`/`refOodElem`/`refChalSqueeze` reference folds + the
 `quot`/`ood`/`chal` sample sets remain as executable documentation of the

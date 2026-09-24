@@ -9,12 +9,11 @@ public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
-# A Lean AArch64 NEON/ASIMD machine model, 128-bit V-register, 4 × u32 lane shape (#548)
+# A Lean AArch64 NEON/ASIMD machine model, 128-bit V-register, 4 × u32 lane shape
 
-`X86Backend/Vec128Model.lean` is the **128-bit XMM, 4 × u32-lane** owned x86 SIMD
-machine layer (the AVX analogue of `ArmModel`'s scalar GP file), and the ChaCha
-4-way kernel rides it end-to-end. This module is its **AArch64 NEON/ASIMD**
-analogue: a named 128-bit `V`-register file (`NState`) over the A64 vector
+The owned x86 backend has a **128-bit XMM, 4 × u32-lane** SIMD machine layer (the
+AVX analogue of `ArmModel`'s scalar GP file) that runs the ChaCha 4-way kernel
+end-to-end. This module is its **AArch64 NEON/ASIMD** analogue: a named 128-bit `V`-register file (`NState`) over the A64 vector
 registers (`v0 … v31`), and the per-instruction semantics
 (`evalNInst` / `runNBlock`) of the packed ASIMD ops the ChaCha 4-way
 quarter-round emits — the V-register sibling of `ArmModel`'s scalar `AState` /
@@ -29,7 +28,7 @@ block to GAS AArch64 ASIMD assembly text with a linear-scan V allocator;
 `decode64` ASIMD clauses (upstream is not vendored in this repo and the
 transcription is not machine-checked).
 
-## The honest anchor (same posture as the x86 Vec128 model)
+## The anchor (same posture as the x86 XMM model)
 
 As with the XMM model, there is no ported authoritative model for the packed-u32
 ASIMD ALU semantics here; the faithfulness of `evalNInst` rests on **differential
@@ -39,8 +38,8 @@ under qemu-aarch64 in `bench/arm_compare/`). The semantics is written to be
 `map₁imm` over `BitVec 32` lanes), auditable against the Arm ARM by eye. The
 **lowering** `NOp → NInst → NState transform` is verified down to this model
 (`NeonLowering.neonBlock_lowering_denote`, no new custom axioms); the model's
-lane semantics is differential-validated, exactly the trust shape documented in
-`Vec128Model.lean`.
+lane semantics is differential-validated, the same trust shape as the x86 XMM
+model.
 
 ## The packed-u32 ASIMD ops we model (the NEON subset ChaCha 4-way emits)
 
@@ -81,8 +80,7 @@ carries that word across the 4 parallel blocks. -/
 /-- A 128-bit A64 `V` register as 4 × u32 lanes (the ChaCha 4-way packed view). -/
 abbrev Vec128 : Type := VectorTy (BitVec 32) 4
 
-/-- The A64 `V` register file: a name → `Vec128` function. The NEON analogue of
-    `Vec128Model.VState`. An absent name reads as the all-zero register. -/
+/-- The A64 `V` register file: a name → `Vec128` function. An absent name reads as the all-zero register. -/
 structure NState where
   /-- The `v` register file (`v0 … v31`, named by string). -/
   vregs : String → Vec128
@@ -137,7 +135,7 @@ against the Arm ARM ASIMD descriptions by eye. -/
 
 The packed-u32 ASIMD subset the ChaCha 4-way kernel emits. Each arm names its
 destination + source `v` registers (or an immediate count, for the shifts). The
-machine-level analogue of `Vec128Model.VInst`, at 4 × u32 / 16 × u8 lane shape. -/
+lane shapes are 4 × u32 and 16 × u8. -/
 
 /-- A single packed-u32 NEON instruction over named `V` registers. -/
 inductive NInst where
@@ -162,7 +160,7 @@ inductive NInst where
   deriving Repr, DecidableEq
 
 /-- The semantics of one NEON instruction: read source register(s), apply the
-    per-lane op, write the destination. The analogue of `Vec128Model.evalVInst`. -/
+    per-lane op, write the destination. -/
 def evalNInst (s : NState) : NInst → NState
   | .add d a b  => s.setV d (VectorTy.map₂ laneAdd (s.get a) (s.get b))
   | .sub d a b  => s.setV d (VectorTy.map₂ laneSub (s.get a) (s.get b))
@@ -174,8 +172,7 @@ def evalNInst (s : NState) : NInst → NState
   | .ushr d a m => s.setV d (VectorTy.map₁imm laneUshr m (s.get a))
   | .mov d s'   => s.setV d (s.get s')
 
-/-- `runNBlock`: a straight-line fold of `evalNInst`, the NEON analogue of
-    `Vec128Model.runVBlock`. -/
+/-- `runNBlock`: a straight-line fold of `evalNInst`. -/
 def runNBlock (s : NState) : List NInst → NState
   | [] => s
   | i :: is => runNBlock (evalNInst s i) is
@@ -221,8 +218,8 @@ half up to the architectural doubling/rounding (the mlkem-native AArch64 kernel
 uses `SQRDMULH` with pre-scaled twiddle constants). We model the **mathematical
 signed high-half** `mulhs.8h` directly — identical to `laneMulHiS16` — so the
 `tileMontMulS16` lowering (`TileS16HighMul §4b`) is a first-class bridge of the
-`ninst_is_tile_lowering` shape, with the instruction-selection note above honest
-about the realizing A64 sequence. -/
+`ninst_is_tile_lowering` shape, with the instruction-selection note above stating
+the realizing A64 sequence. -/
 
 /-- A 128-bit A64 `V` register in the **8 × i16** view (`Tile 8 16`), the ML-KEM
     NTT lane shape. Disjoint from the `4 × u32` `Vec128` view. -/

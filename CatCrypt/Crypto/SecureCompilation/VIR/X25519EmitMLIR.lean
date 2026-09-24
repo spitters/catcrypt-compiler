@@ -16,10 +16,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 Authors the ladder step's VIR `Com` directly using `CatCryptOp.extCall`,
-as a ground-truth reference for what the `CryptoSSA → VIR` translation
-should produce. Post-2026-05-14 the translation works (see
-`X25519Program.ladderStepX2_mlir`); this file remains as a hand-written
-benchmark and a target to diff against.
+as a ground-truth reference for what the translation to VIR should produce
+(the translated program is `X25519Program.ladderStepX2_mlir`); this module
+is a hand-written benchmark and a target to diff against.
 
 The emitted MLIR is linked against externally-supplied `fp_add`/`fp_sub`/
 `fp_mul`/`fp_sqr` funcs.
@@ -151,7 +150,7 @@ def fullStep_x2p : Com catCryptDialect FullCtx Fp25519Ty :=
     (.var (fpSubExpr (lift1 x2) (lift1 z2))    -- %1: B
       (.var (fpSqrExpr (lift1 .here))   -- %2: AA (over %0)
         (.var (fpSqrExpr (lift1 .here))  -- %3: BB (over %1, shifted)
-          -- Now: AA at .there .here, BB at .here
+          -- Here: AA at .there .here, BB at .here
           (.var (fpMulExpr (.there .here) .here)   -- %4: x2' = AA*BB
             (.ret .here)))))
 
@@ -228,7 +227,7 @@ def fullStepMLIR : String :=
     Com.printModuleArgs fullStep_z3p "x25519_step_z3"
   String.intercalate nl allExterns ++ nl ++ nl ++ body
 
-/-! ## Multi-return fullstep (D2.4): a single program emitting all four
+/-! ## Multi-return fullstep: a single program emitting all four
 outputs `(x2', z2', x3', z3')` from one shared computation of A, B, C, D,
 AA, BB, DA, CB. Eliminates the writeup §5.5 CSE-trap that the four
 single-return funcs above hit. -/
@@ -255,7 +254,7 @@ def fullStep_multi :
   -- Step 1: A = x2 + z2  [Γ size grows by 1; A goes to .here, all original
   -- depths increase by 1]
   .var (fpAddExpr (.there .here) (.there (.there .here)))     -- %0: A
-  -- Now depths: A=0, x1=1, x2=2, z2=3, x3=4, z3=5
+  -- Depths here: A=0, x1=1, x2=2, z2=3, x3=4, z3=5
   -- Step 2: B = x2 - z2
   (.var (fpSubExpr (.there (.there .here))                    -- x2 at depth 2
                    (.there (.there (.there .here))))          -- z2 at depth 3

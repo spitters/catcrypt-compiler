@@ -31,10 +31,10 @@ stages already assembled and proven** at the tower level:
 * the composed pairing `e = finalExp ∘ miller` —
   `BLS12381PairingTowerEmit.pairingEmit` (`pairingEmit_realizes`).
 
-What was missing — and what this dialect supplies — is the **final GT-equality
-decision**: `FieldDialect.Fp12Val` had no `One`/`DecidableEq` and no
-`Bool`-returning equality op, so `∏ e == 1` could not be stated at the dialect
-level.  `Fp12Gt.lean` adds the GT identity, decidable equality, and `gtIsOneF`;
+This dialect supplies the **final GT-equality
+decision**: `FieldDialect.Fp12Val` carries no `One`/`DecidableEq` and no
+`Bool`-returning equality op, so `∏ e == 1` cannot be stated in `fieldDialect`
+alone.  `Fp12Gt.lean` adds the GT identity, decidable equality, and `gtIsOneF`;
 this file folds the per-pairing GT values with `Fp12Val.mul ξ₀` and tests the
 product against `1`.  The GT inputs are the per-pairing `pairingEmit` outputs; the
 **GT product lowers onto the proven `FieldOp.ext12Mul` chain**
@@ -61,9 +61,9 @@ verification value (the usual case: signature verification compares public
 group elements) is admitted CT; a secret-operand GT comparison is **flagged**,
 never silently accepted.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Classification (see `VIR/DIALECTS.md`)
 
-The GT **product** rides the genuine `ext12Mul` lowering chain (→ `Fp6` schedule
+The GT **product** uses the `ext12Mul` lowering chain (→ `Fp6` schedule
 → `ModArith` → bytes), tied in `EcPairingCheckLowering.lean`.  The **equality
 tail** (`gtIsOne`) is a `cmp`-style predicate (bit/sword layer), not a new field
 emit.  The Miller-loop + final-exp that *produce* the GT inputs are the proven
@@ -180,7 +180,7 @@ instance : DialectSignature pairingCheckDialect where
     | .gtIsOne _ _ => .bool
     | .pairingCheck2 _ _ _ => .bool
 
-/-! ## 7. Op denotation (into the genuine GT-equality `Bool`) -/
+/-! ## 7. Op denotation (into the GT-equality `Bool`) -/
 
 instance pairingCheckDenote : DialectDenote pairingCheckDialect where
   denote op := match op with

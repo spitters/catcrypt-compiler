@@ -48,14 +48,13 @@ return-type-preserving, never unioning two classes because their children
 became equal). There is therefore no "children became equal ⇒ parents become
 equal" step that would need a recursively-built child witness.
 
-We still expose the *building block* such a scheme would compose — a single
+The module exposes the *building block* such a scheme would compose — a single
 congruence step `congrStep` lifting two child equalities through a binary
-constructor — so that if a genuine congruence-closure engine is ever added, its
-recursive child explanations fold through the same `RewriteWitness` API. But the
-recursive merge machinery itself is intentionally absent: there is no union-find
-here to drive it, and fabricating one would be dishonest. The refinement becomes
-live only once a genuine congruence-closure engine (with a flat-children
-representation, union, and a rebuild step) is added.
+constructor — so that the recursive child explanations of a congruence-closure
+engine fold through the same `RewriteWitness` API. The recursive merge machinery
+itself is absent: there is no union-find here to drive it. That refinement
+requires a congruence-closure engine with a flat-children representation, union,
+and a rebuild step.
 
 ## Relation to the existing certificate bridge
 
@@ -119,7 +118,7 @@ inductive RewriteChain {α : Type u} {β : Type v} (f : α → β) :
 /-- A rewrite witness from `start` to `finish`: an ordered list of steps whose
 endpoints chain up (`start → … → finish`). The `chain` field enforces that the
 steps are *contiguous* — each step's target is the next step's source — so the
-fold below is a genuine transitivity chain, not an unordered bag of equations. -/
+fold below is a transitivity chain, not an unordered bag of equations. -/
 structure RewriteWitness {α : Type u} {β : Type v} (f : α → β) (start finish : α) where
   /-- The ordered rewrite steps. -/
   steps : List (RewriteStep f)
@@ -194,7 +193,7 @@ that applies)
 The recursive congruence-merge machinery does not apply to this engine (no
 union-find; see the module docstring). But the *building block* a congruence
 scheme would compose — lifting two child equalities through a binary
-constructor `g` — is honest to provide, and is exactly what a recursive child
+constructor `g` — is provided here, and is exactly what a recursive child
 explanation would call at each node. We give it over an arbitrary binary
 operation that commutes with the denotation. -/
 

@@ -311,7 +311,7 @@ Each test verifies the unroll produces the expected number of AST nodes. -/
 /-- Counts the total number of LowCT constructor applications (a
     rough "unrolled LoC" metric).
 
-    Migrated to `LowCT.fold` (#350): every leaf node contributes `1`,
+    Defined by `LowCT.fold`: every leaf node contributes `1`,
     every recursive node contributes `1 +` the sum of its children's sizes.
     `seqLike a b = 1 + a + b` covers the two-child constructors
     (`RSeq`/`RIfNz`/`RFnDef`) and `wrap1 c = 1 + c` the one-child ones

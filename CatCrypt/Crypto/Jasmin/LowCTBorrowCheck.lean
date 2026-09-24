@@ -49,8 +49,8 @@ def borrowOk : LowCT → Bool :=
   LowCT.fold (seqLike := (· && ·)) (wrap1 := id)
     (leaf := borrowOkLeaf)
 where
-  /-- Per-leaf borrow-check condition (#350 migration).  This is exactly the
-      former open-match body for the *non-recursive* constructors; the eight
+  /-- Per-leaf borrow-check condition for the *non-recursive*
+      constructors; the eight
       recursive constructors are handled structurally by `LowCT.fold`
       (`seqLike = (· && ·)` for `RSeq`/`RIfNz`/`RFnDef`, `wrap1 = id` for the
       single-child wrappers `RLetZero`/`RLetU64Zero`/`RWhileNz`/`RFor`/
@@ -66,39 +66,39 @@ where
         && !callAliases dest2 args
   | .RCloneCall _ _ _ _ dest args => !callAliases dest args
   | .RLimbStore _ _ _           => true
-  -- Phase R5: runtime-valued limb store.  Same as `RLimbStore` — writes
+  -- Runtime-valued limb store.  Same as `RLimbStore` — writes
   -- one limb of `loc`, reads scalar slots in `e`; no aliasing concern.
   | .RLimbStoreExpr _ _ _       => true
-  -- Phase G: dests must be mutually distinct and disjoint from args.  The
+  -- `RCallN`: dests must be mutually distinct and disjoint from args.  The
   -- distinctness is over VARIABLE NAMES, as in `RCallSwap` above: a tower slot
   -- is keyed by `locVar` alone, so `[⟨"x", TU64⟩, ⟨"x", TFp⟩]` is `Nodup` as a
   -- list of `Located` while both writes land on `x` and the second shadows the
   -- first.
   | .RCallN _ dests args        =>
       (dests.map (·.locVar)).Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase H: dst, src0, src1 base vars distinct (for the simple
+  -- `RSelect`: dst, src0, src1 base vars distinct (for the simple
   -- discipline; cmov-with-aliased-src is a future refinement).
   | .RSelect dst _ src0 src1    =>
       (dst.locVar != src0.locVar) && (dst.locVar != src1.locVar)
-  -- Phase L: assertion has no destination, no args.
+  -- Assertion has no destination, no args.
   | .RAssert _                  => true
-  -- Phase C: function-call same shape as RCallN, distinctness over names.
+  -- Function-call same shape as RCallN, distinctness over names.
   | .RFnCall _ dests args       =>
       (dests.map (·.locVar)).Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase I: tuple component load — single destination, no aliasing concern.
+  -- Tuple component load — single destination, no aliasing concern.
   | .RTupleLoad dst src _       => dst.locVar != src.locVar
-  -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
+  -- Runtime array load/store + scalar expression assign.
   -- Conservative defaults: array load/store require dst.locVar ≠ src.locVar
   -- (the scalar `idxVar` is read-only, no aliasing concern with tower locs).
   -- RScalarSetExpr is always borrowOk (writes only a scalar; reads scalars).
   | .RArrStore arr _ src        => arr.locVar != src.locVar
   | .RArrLoad dst src _         => dst.locVar != src.locVar
-  -- Phase DD (2026-05-28): literal-index variants — same constraint as their
+  -- Literal-index variants — same constraint as their
   -- dynamic-index siblings (dst/arr distinct from src).  No idxVar to consider.
   | .RArrStoreLit arr _ src     => arr.locVar != src.locVar
   | .RArrLoadLit dst src _      => dst.locVar != src.locVar
   | .RScalarSetExpr _ _         => true
-  -- Phase E2 (2026-05-29): dst-threaded leaf call.  Same alias
+  -- Dst-threaded leaf call.  Same alias
   -- discipline as `RCall`: dst must not appear in args (the kernel
   -- reads its own threaded dst from the first arg slot then writes;
   -- the borrow checker treats dst as a write-only output for the
@@ -138,19 +138,19 @@ def destsOf : LowCT → List String
   | .RSelect dst _ _ _           => [dst.locVar]
   | .RAssert _                   => []
   | .RBlock body                 => destsOf body
-  -- Phase C: function-def's writes are body ∪ cont (under static analysis).
+  -- Function-def's writes are body ∪ cont (under static analysis).
   | .RFnDef _ _ _ body cont      => destsOf body ++ destsOf cont
   | .RFnCall _ dests _           => dests.map (·.locVar)
-  -- Phase I: tuple component load — single destination.
+  -- Tuple component load — single destination.
   | .RTupleLoad dst _ _          => [dst.locVar]
-  -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
+  -- Runtime array load/store + scalar expression assign.
   | .RArrStore arr _ _           => [arr.locVar]  -- mutates the array variable
   | .RArrLoad dst _ _            => [dst.locVar]
-  -- Phase DD (2026-05-28): literal-index variants — same dst as their siblings.
+  -- Literal-index variants — same dst as their siblings.
   | .RArrStoreLit arr _ _        => [arr.locVar]
   | .RArrLoadLit dst _ _         => [dst.locVar]
   | .RScalarSetExpr _ _          => []           -- writes a scalar, not in destsOf
-  -- Phase E2 (2026-05-29): dst-threaded leaf call writes its threaded dst.
+  -- Dst-threaded leaf call writes its threaded dst.
   | .RCallDstThreaded _ dst _    => [dst.locVar]
 
 /-! ## §3  callAliases ↔ ∉ lemma -/
@@ -171,8 +171,8 @@ lemma callAliases_false_ne (dest : Located) (args : List Located)
 /-- **seqFrame**: if `loc.locVar ∉ destsOf c`, then any execution of `c`
     preserves `locatedLookup rs loc`.
 
-    This replaces ~400 lines of per-function separation-logic frame proofs
-    with a single structural induction, proved once here. -/
+    A single structural induction, proved once here, in place of
+    per-function separation-logic frame proofs. -/
 theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     (c : LowCT) (rs rs' : RustState) (loc : Located)
     (hExec : RustExec N leafSpec c rs rs')
@@ -250,7 +250,7 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     have hDestsRCall : destsOf (.RCall innerF dest args) = [dest.locVar] := rfl
     have hInner : loc.locVar ∉ destsOf (.RCall innerF dest args) := by
       rw [hDestsRCall]; simp [hne_dest]
-    -- two-step chain: inner call → initial SetTower (no Remove now)
+    -- two-step chain: inner call → initial SetTower (no Remove)
     exact (ih hInner).trans (hClone ▸ locatedLookup_rsSetTower_other _ _ _ _ hne)
 
   | callSwap f dest1 dest2 args rs0 rs1 rs2 _h1 _h2 ih1 ih2 =>
@@ -269,53 +269,53 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     rw [List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase R5: runtime-valued limb store — same frame as `limbStore`.
+  -- Runtime-valued limb store — same frame as `limbStore`.
   | limbStoreExpr _ _ _ _ =>
     simp only [destsOf] at hNotIn
     rw [List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase G: the N-output call writes exactly `dests`; `destsOf` is that list
+  -- The N-output call writes exactly `dests`; `destsOf` is that list
   -- of names, so the fold's frame lemma applies directly.
   | callN f dests args rs argList _ _ _ =>
     simp only [destsOf] at hNotIn
     exact locatedLookup_callNUpdate_other leafSpec f (args.map (·.locDst)) argList
       dests 0 rs loc hNotIn
 
-  -- Phase H — selectFalse: dst gets updated, others untouched.
+  -- selectFalse: dst gets updated, others untouched.
   | selectFalse dst _ _ _ _ _ _ _ _ =>
     simp only [destsOf] at hNotIn
     rw [List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase H — selectTrue: same as selectFalse.
+  -- selectTrue: same as selectFalse.
   | selectTrue dst _ _ _ _ _ _ _ _ _ _ =>
     simp only [destsOf] at hNotIn
     rw [List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase L: assertion is a state no-op.
+  -- Assertion is a state no-op.
   | assert _ _ => rfl
 
-  -- Phase M: scope wraps body identity-fully; lift via the body IH.
+  -- Scope wraps body identity-fully; lift via the body IH.
   | block _ _ _ _ ih =>
     simp only [destsOf] at hNotIn
     exact ih hNotIn
 
-  -- Phase I.1 (2026-05-04): tuple load writes to dst → use
+  -- Tuple load writes to dst → use
   -- locatedUpdate_other to preserve other locations' lookups.
   | tupleLoad dst _ _ _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase Ext (2026-05-12): array store/load update a single dst → use locatedUpdate_other.
+  -- Array store/load update a single dst → use locatedUpdate_other.
   | arrStore arr _ _ _ _ _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
   | arrLoad dst _ _ _ _ _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
-  -- Phase DD (2026-05-28): literal-index array store/load — same frame proof.
+  -- Literal-index array store/load — same frame proof.
   | arrStoreLit arr _ _ _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)

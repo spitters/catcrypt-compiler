@@ -26,7 +26,7 @@ pure (inr c)`, because `(· ⊕ m)` is a bijection on `Bool`.
 
 The security view therefore lives on `catCryptDialect` alone.
 
-**0 axioms**, **0 sorries**.
+**0 axioms**; all goals closed.
 -/
 
 @[expose] public section

@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
-# The x86 backend as a VIR/MLIR `Com` dialect (#281)
+# The x86 backend as a VIR/MLIR `Com` dialect
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -81,7 +81,7 @@ dialect. The emitted subset includes word-granular memory operands (the reg-ptr
 ABI's `loadMem`/`storeMem` and the memory-source `mulxMem`); control flow and the
 SIMD/AVX subset are out of scope (the source `JInstr` is the straight-line
 scalar+ADX subset); a general lowering from jasmin's `Linear.lprog` with control
-flow into a multi-block `Com` is the stated next increment (not modeled here).
+flow into a multi-block `Com` is outside this module's scope (§10).
 -/
 
 @[expose] public section
@@ -273,7 +273,7 @@ example :
   rw [lowerBlock_denote_closed block s0]
   native_decide
 
-/-! ## 10. General lowering — the stated next increment (not modeled here)
+/-! ## 10. General lowering — outside this module's scope
 
 `lowerBlock` covers the straight-line scalar+ADX subset: a `List (JInstr w)`
 threaded through the single `machine w` value. Two control-flow cases reduce to
@@ -282,8 +282,7 @@ it: `LoopUnroll.lean` (bounded counter loops, by unrolling) and `Cond.lean`
 **general** lowering from jasmin's `Linear.lprog` with *unstructured* CFG
 (backward jumps / arbitrary labels) and calls into a multi-block `Com` — i.e.
 extending `x86Dialect` with region-carrying control-flow ops (the analogue of
-lean-mlir's `Com` regions) and proving preservation across blocks — is a later
-increment. No `sorry` stands in for it; it is a future extension of the
-dialect. -/
+lean-mlir's `Com` regions) and proving preservation across blocks — is not
+modeled here; no declaration in this module assumes it. -/
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect

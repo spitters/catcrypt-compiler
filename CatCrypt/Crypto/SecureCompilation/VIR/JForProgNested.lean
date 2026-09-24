@@ -13,12 +13,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 # Nested bounded loops: the emitted outer-`for`-over-inner-`for` denotes the
 # two-level `n`-fold semantics (`NestedForProg`)
 
-This file is the **additive nesting layer** on top of the single-level loop
-keystone (`JForProgSemCorrect.loop_denote_eq`, `JForProgCT.loopRun_eq`). It does
-**not** modify the single-level layer (`JForProgSemCorrect.lean`,
-`JasminPrint.JForProg` / `toCfor` / `toProg`, `JForProgCT.lean`) — it imports
-them and composes their results. The single-level keystone (task #60) stays
-exactly as shipped.
+This module is the **additive nesting layer** on top of the single-level loop
+theorem (`JForProgSemCorrect.loop_denote_eq`, `JForProgCT.loopRun_eq`). It
+imports the single-level layer (`JForProgSemCorrect.lean`,
+`JasminPrint.JForProg` / `toCfor` / `toProg`, `JForProgCT.lean`) and composes
+its results without modifying it.
 
 ## The nested construct
 
@@ -46,7 +45,7 @@ state in the accumulator.
 
 `NestedForProg.toCfor` emits an **outer `for` whose body contains an inner
 `for`** — the structural target. The inner `for` is the *actual* emitted
-`JForProg.toCfor` of `inner` (the verified single-level loop the keystone
+`JForProg.toCfor` of `inner` (the verified single-level loop the main theorem
 covers), wrapped in an outer `Cfor` over `0..outerN`. The shared `ppInstrR`
 already prints a `Cfor` body recursively, so the emitted `.jazz` is literally an
 inner `for` indented inside an outer `for`.
@@ -66,7 +65,7 @@ full — equals `NestedForProg.denote init`. The proof:
    the outer `outerN`-fold against `NestedForProg.denote`.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-level keystone — no `sorry`, axiom-clean
+single-level main theorem — no `sorry`, axiom-clean
 (`[propext, Classical.choice, Quot.sound]`).
 
 ## A concrete validating kernel: the 2D accumulate
@@ -121,7 +120,7 @@ def NestedForProg.denote {accTy : JasminTy} (p : NestedForProg accTy)
 
 /-- Emit the nested loop as an **outer `Cfor` whose body is the inner `Cfor`**.
     The inner `for` is the *actual* emitted single-level loop
-    `inner.toCfor` (the verified loop the keystone covers); the outer `for`
+    `inner.toCfor` (the verified loop the main theorem covers); the outer `for`
     runs `0..outerN` with the inner loop as its sole body instruction. The
     shared `ppInstrR` prints the inner `for` recursively-indented inside the
     outer `for`. The outer loop index is `j` (the inner loop's index is `i`,
@@ -191,7 +190,7 @@ theorem denote_outer_zero {accTy : JasminTy} (p : NestedForProg accTy)
 The outer loop's per-iteration body runner is *the whole emitted inner loop run*.
 We package it as the single-level `loopRun` of the inner program with the inner
 body runner. For a single-leaf inner body, this equals `inner.denote` by the
-already-proven single-level keystone `loop_denote_eq` — so the outer body runner
+already-proven single-level main theorem `loop_denote_eq` — so the outer body runner
 is exactly `NestedForProg.outerStep`. -/
 
 /-- The outer body runner: running the emitted inner loop in full on accumulator
@@ -205,7 +204,7 @@ def outerBodyRun {accTy : JasminTy} (leafSem : LeafSem) (p : NestedForProg accTy
 /-- **The outer body runner computes `outerStep` (= `inner.denote`).** For a
     single-leaf inner body, running the emitted inner loop in full equals the
     inner loop's `n`-fold denotation — by the *already-proven* single-level
-    keystone `JForProgSemCorrect.loop_denote_eq` (reused, not re-derived). Hence
+    main theorem `JForProgSemCorrect.loop_denote_eq` (reused, not re-derived). Hence
     the outer body runner is exactly the outer step function. The only carried
     hypothesis is the opaque-leaf edge `LeafAgrees`. -/
 theorem outerBodyRun_eq {accTy : JasminTy} {leafSem : LeafSem}
@@ -214,10 +213,10 @@ theorem outerBodyRun_eq {accTy : JasminTy} {leafSem : LeafSem}
     (hInner : p.inner.update = SingleVarBody e) (acc : ⟦accTy⟧) :
     outerBodyRun leafSem p acc = p.outerStep acc := by
   unfold outerBodyRun NestedForProg.outerStep
-  -- Reuse the single-level keystone for the inner loop.
+  -- Reuse the single-level main theorem for the inner loop.
   exact loop_denote_eq hLeaf e p.inner hInner acc
 
-/-! ## 6. The keystone: emitted nested loop run = two-level `n`-fold denotation
+/-! ## 6. The main theorem: emitted nested loop run = two-level `n`-fold denotation
 
 The outer level cannot route through `JForProgCT.loopRun_eq`: that lemma
 compares against `JForProg.denote`, whose per-iteration step is *one* `Com`
@@ -245,12 +244,12 @@ def nestedLoopRun {accTy : JasminTy} (leafSem : LeafSem) (p : NestedForProg accT
     (init : ⟦accTy⟧) : ⟦accTy⟧ :=
   (List.range p.outerN).foldl (fun acc _ => outerBodyRun leafSem p acc) init
 
-/-- **Keystone — the emitted nested loop denotes the two-level `n`-fold
+/-- **Main theorem — the emitted nested loop denotes the two-level `n`-fold
     semantics.** For a single-leaf inner body, running the emitted nested loop
     (outer `for` over inner `for`) by iterating the outer body runner `outerN`
     times — each outer step running the emitted inner loop in full — equals
     `NestedForProg.denote init` = the outer-`outerN`-fold of the
-    inner-`inner.n`-fold. The inner level reuses the single-level keystone
+    inner-`inner.n`-fold. The inner level reuses the single-level main theorem
     `loop_denote_eq`; the outer level is closed by induction (the `foldl`
     congruence). The only hypothesis is the opaque-leaf edge `LeafAgrees`. -/
 theorem nested_loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
@@ -260,7 +259,7 @@ theorem nested_loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
     nestedLoopRun leafSem p init = p.denote init := by
   unfold nestedLoopRun NestedForProg.denote
   -- Both sides fold over `List.range outerN`; the per-element functions agree on
-  -- every accumulator by `outerBodyRun_eq` (the inner keystone).
+  -- every accumulator by `outerBodyRun_eq` (the inner main theorem).
   exact foldl_congr_fun
     (fun acc _ => outerBodyRun leafSem p acc)
     (fun acc _ => p.outerStep acc)
@@ -343,7 +342,7 @@ def grid2D : NestedForProg (.reg 64) :=
   { outerN := 3, inner := grid2DInner }
 
 /-- The inner body is a single-leaf body (one `regArith add` then `.ret .here`),
-    so the inner keystone applies. -/
+    so the inner main theorem applies. -/
 theorem grid2DInner_singleVar :
     grid2DInner.update
       = SingleVarBody (accTy := .reg 64)
@@ -364,10 +363,10 @@ theorem grid2D_nested_denote_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     nestedLoopRun leafSem grid2D init = grid2D.denote init :=
   nested_loop_denote_eq hLeaf grid2D _ grid2DInner_singleVar init
 
-/-- The discharged nested keystone, instantiated at the concrete counts and seed
+/-- The discharged nested main theorem, instantiated at the concrete counts and seed
     `init = 1`, computes `64` — byte-for-byte the unrolled/reference
     (`1 → 64` after six doublings). This ties the emitted nested-loop semantics
-    the keystone proves to the concrete KAT validated end-to-end in
+    the main theorem proves to the concrete KAT validated end-to-end in
     `bench/nested_loop/`. -/
 theorem grid2D_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     nestedLoopRun leafSem grid2D (1 : BitVec 64) = (64 : BitVec 64) := by

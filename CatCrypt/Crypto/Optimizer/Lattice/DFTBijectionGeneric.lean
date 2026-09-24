@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
 # DFT bijection: the synthesis half `dft ∘ idft = id`
 
 `NTTFullInversionGeneric.idft_dft` proves the analysis-then-synthesis direction
-`idft n ω (dft n ω x) = x`. This file closes the *other* composition,
+`idft n ω (dft n ω x) = x`. This module proves the *other* composition,
 `dft n ω (idft n ω X) = X`, so that over a field with a primitive `n`-th root of
-unity `ω` (and `(n : R) ≠ 0`) the pair `(dft, idft)` is a genuine bijection.
+unity `ω` (and `(n : R) ≠ 0`) the pair `(dft, idft)` is a bijection.
 
-## The keystone
+## The main theorem
 
 `dft_idft : dft n ω (idft n ω X) = X`. Expanding both maps gives the double sum
 

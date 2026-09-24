@@ -9,82 +9,77 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterLanesReadout
 
 /-!
-# Keccak emitter lanes-readout — direct per-lane discharge via the substrate (task #136)
+# Keccak emitter lanes-readout — direct per-lane discharge via the substrate
 
-Task #136: close `lanesReadoutJoint` from `KeccakEmitterLanesReadout` (#135) by
-running per-lane simp through the **primitive substrate** of #116
+This module targets `lanesReadoutJoint` from `KeccakEmitterLanesReadout` by
+running per-lane simp through the **primitive substrate**
 (`KeccakEmitterReduction` — `readSlot_bsAfterOp_eq/_ne`, `readImm_immVarAfter`,
 `srcVar_lookup`, `emitOp_denote`, `emitRotL_denote_pos`, `emitMov_denote'`),
-**not** through the higher-level `_lanes_after` existentials that #134/#135
-tried.
+**not** through the higher-level `_lanes_after` existentials of
+`KeccakEmitterReadoutHalfFull` / `KeccakEmitterLanesReadout`.
 
-## Why this is different from #135
+## Difference from `KeccakEmitterLanesReadout`
 
-Task #135 attempted to factor the residual through the per-sub-block
+`KeccakEmitterLanesReadout` factors the residual through the per-sub-block
 existentials (`emitThetaCCol_lanes_after`, ..., `emitIota_lanes_after`).
 Those existentials *hide* the chain-final concrete `bsF, VF` triple behind
 an opaque witness picker, so the lanes equation cannot be evaluated at the
 final state.
 
-The substrate of #116 is different: its `@[simp]` lemmas rewrite each
+The substrate of `KeccakEmitterReduction` is different: its `@[simp]` lemmas rewrite each
 `Com.denote` step DIRECTLY, exposing the chain-final reads as closed-form
 `BitVec` expressions in the original `(bs, V)` valuation. Running per-lane
 simp through the chain produces a *concrete* witness whose lanes-equation
 can be checked.
 
-## Heartbeat-budget reality
+## Heartbeat budget
 
-The full per-lane simp blast through the ~266 bindings of `emitRound` for
-each of 25 lanes is still at the elaborator-budget edge. This file delivers
-the **shape**: each per-lane discharge follows the SHA-2 #128 template, with
-concrete witnesses extracted from the chain via the substrate.
+The full per-lane simp through the ~266 bindings of `emitRound` for
+each of 25 lanes is at the elaborator-budget edge. This module gives
+the **shape**: each per-lane discharge follows the `Sha2EmitterReadoutHalf`
+template, with concrete witnesses extracted from the chain via the substrate.
 
-Concretely, we provide:
+Contents:
 
-* §1 — `lanesReadoutJoint_holds`: the joint Prop, stated with the
-  composition recipe documented. The actual proof composes
-  `emitRound_denote_exists_chain` (for the denotation half) with the
-  per-lane equations (for the lanes half), under the SHA-2 #128 substrate
-  template applied at 25-way scale. Until the 25-way simp blast lands
-  within budget, this remains a `Prop`-level structural fact factored
-  through the substrate.
+* §1 — `lanePostChainEqDirect` / `allLanesPostChainEqDirect`: the per-lane
+  sub-residuals and the per-lane simp recipe.
 
-* §2 — `emitRound_lanes_eq_fips_keccak_unconditional`: the FIPS 202
-  unconditional bridge, available the moment `lanesReadoutJoint_holds`
-  closes.
+* §2 — `lanesReadoutJoint_of_allLanesDirect`: the joint Prop from a single
+  chain witness satisfying all 25 lane equations.
 
-* §3 — `keccak_round_loop_bitexact_unconditional`: the 24-round loop
-  bridge composing with #109.
+* §3 — `emitRound_lanes_eq_fips_keccak_unconditional_under_joint` and
+  `keccak_round_loop_bitexact_unconditional_under_joint`: the FIPS 202
+  per-round bridge under `lanesReadoutJoint`, the form composed with
+  `KeccakBitexact.keccak_round_loop_bitexact` for the 24-round loop.
 
 * §4 — `keccak_second_fully_closed_hash`: the headline corollary stating
   the round-body identity through the emitter, KAT-free, no env
-  hypothesis, conditional on the joint being discharged.
+  hypothesis, under the joint hypothesis.
 
-## HONEST PARTIAL STATUS
+* §7 — `emitThetaCCol_cSlot_readout`: the substrate-direct readout of one
+  θ-C column, proved in default heartbeats.
 
-This file delivers the **structural shape** of the direct per-lane discharge.
-The per-lane simp blast through the substrate is documented as the remaining
-work — same heartbeat-budget reality as #134/#135. The substrate of #116
-is the closure recipe; this file factors the work per-lane and exposes the
-headline corollary conditional on the joint.
+## Scope
 
-The headline `keccak_second_fully_closed_hash` is therefore conditional on
-`lanesReadoutJoint` — exactly the form that closes once the per-lane simp
-blasts land within budget. Same shape as the SHA-2 #128 closure but at
-25-way scale.
+The theorems of §2–§4 assume `lanesReadoutJoint`. The per-lane simp through
+the substrate that would discharge it is outside the scope of this module;
+the heartbeat budget limits it, as for `KeccakEmitterReadoutHalfFull` and
+`KeccakEmitterLanesReadout`. The substrate of `KeccakEmitterReduction` is the
+closure recipe; this module factors the work per lane. The shape matches the
+`Sha2EmitterReadoutHalf` closure at 25-way scale.
 
 ## Axiom budget
 
 `[propext, Classical.choice, Quot.sound]` plus inherited `bv_decide` LRAT
-certs from #113. No new custom axioms, all goals closed via the substrate.
+certs from `KeccakDiffuseExact`. No new custom axioms.
 
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #136 — the **current leaf** of the chain (no internal importers);
-the direct per-lane discharge via the #116 substrate. HONEST PARTIAL: the
-per-lane discharge framework is laid down here; the 25-way simp blast through
-the substrate is the documented residual.
+module is the **leaf** of the chain (no internal importers): the direct
+per-lane discharge via the `KeccakEmitterReduction` substrate. It lays down
+the per-lane discharge framework; the 25-way simp through the substrate is
+the residual hypothesis.
 -/
 
 @[expose] public section
@@ -154,7 +149,7 @@ def allLanesPostChainEqDirect (round : Nat)
 
 /-! ## 2. Composition: all-lanes direct ⇒ joint ⇒ full residual ⇒ FIPS
 
-The composition direction is the structural backbone. The per-lane
+The composition runs from the per-lane equations to the joint. The per-lane
 direct-discharge sub-residuals share the chain's denotation witnesses
 (they all factor through the same `emitRound_denote_exists_chain`
 existential), so a joint witness exists if every per-lane equation does
@@ -185,9 +180,9 @@ theorem lanesReadoutJoint_of_allLanesDirect (round : Nat)
 
 /-! ## 3. Conditional unconditional bridges
 
-These are the bridges that become unconditional in the FIPS 202 sense the
-moment `lanesReadoutJoint` is discharged — i.e., the moment the per-lane
-simp blast lands within heartbeat budget. -/
+These bridges hold under `lanesReadoutJoint`; a proof of the joint (the
+per-lane simp within heartbeat budget) makes them unconditional in the
+FIPS 202 sense. -/
 
 /-- **FIPS 202 bit-exact bridge under joint.** The emitted Keccak round
     denotes bit-exactly to `keccakFullRound` on lanes, under
@@ -207,11 +202,11 @@ theorem emitRound_lanes_eq_fips_keccak_unconditional_under_joint
             (BitVec.ofNat 64 (roundConst round)) :=
   emitRound_lanes_eq_fips_keccak_of_joint round bs immV V h k
 
-/-- **24-round loop bit-exact under joint** (conditional on the joint for
-    each round). The loop keystone of `KeccakBitexact.keccak_round_loop_bitexact`
-    composes with the per-round bridge to give the full 24-round Keccak-p
-    permutation bit-exact with FIPS 202 — unconditional once each round's
-    joint is discharged. -/
+/-- **Per-round bridge for the 24-round loop, under joint.** The statement is
+    the per-round FIPS 202 identity under `lanesReadoutJoint`; composed with
+    the loop theorem `KeccakBitexact.keccak_round_loop_bitexact` it gives the
+    full 24-round Keccak-p permutation bit-exact with FIPS 202, given the
+    joint for each round. -/
 theorem keccak_round_loop_bitexact_unconditional_under_joint
     (round : Nat)
     {Γ : Ctxt jasminDialect}
@@ -228,23 +223,19 @@ theorem keccak_round_loop_bitexact_unconditional_under_joint
 
 /-! ## 4. Headline corollary — Keccak as the second fully-closed hash
 
-If `lanesReadoutJoint` lands, Keccak joins SHA-2 (#128) as the SECOND hash
-primitive with a fully-closed bit-exact bridge through the verified
-emitter (KAT-free, no env hypothesis). The headline corollary states the
-round-body identity unconditionally **modulo the joint hypothesis** —
-which is the form that becomes a pure theorem the moment the substrate's
-25-way simp blast lands. -/
+With a proof of `lanesReadoutJoint`, Keccak joins SHA-2
+(`Sha2EmitterReadoutHalf`) as a hash primitive with a fully-closed bit-exact
+bridge through the verified emitter (KAT-free, no env hypothesis). The
+headline corollary states the round-body identity **under the joint
+hypothesis**. -/
 
-/-- **Keccak as the second fully-closed hash primitive** (under the joint
+/-- **Keccak round-body identity through the emitter** (under the joint
     hypothesis). The round-body identity through the emitter equals
     `keccakFullRound` on lanes, KAT-free, no env hypothesis. The joint
     hypothesis is the structural residual that the substrate's per-lane
-    simp blast discharges; the moment that lands, this becomes the
-    unconditional headline result, mirroring SHA-2 (#128) and Poseidon2
-    (#133).
-
-    Status: framework + composition delivered; the joint discharge via
-    the 25-way substrate simp blast is the remaining work. -/
+    simp would discharge; with it discharged, the statement is unconditional,
+    in the form of the results for SHA-2 (`Sha2EmitterReadoutHalf`) and Poseidon2
+    (`Poseidon2EmitterReadoutHalf`). -/
 theorem keccak_second_fully_closed_hash
     (round : Nat)
     {Γ : Ctxt jasminDialect}
@@ -259,11 +250,10 @@ theorem keccak_second_fully_closed_hash
             (BitVec.ofNat 64 (roundConst round)) :=
   emitRound_lanes_eq_fips_keccak_unconditional_under_joint round bs immV V h k
 
-/-! ## 5. Per-lane closure attempt — HONEST PARTIAL
+/-! ## 5. Per-lane closure status
 
 The substrate-direct per-lane closure for each `(x, y) ∈ Fin 5 × Fin 5`
-follows the structural recipe of §1. Below we document the 5×5 grid status,
-matching task #136's reporting requirement.
+follows the structural recipe of §1. The 5×5 grid status:
 
 | (x, y) | Status                | Notes                                |
 |--------|----------------------|--------------------------------------|
@@ -294,33 +284,33 @@ matching task #136's reporting requirement.
 | (4, 4) | residual (substrate)  | ρ amount 14                          |
 
 All 25 lanes follow the SAME substrate-simp recipe (§1). The substrate of
-#116 provides every per-step rewrite; the algebraic identities of #113
-(`crotl_eq_frotl`, `cchi_eq_fchi`) close the per-lane closed-form. The
-heartbeat budget for the 25-way simp blast is the remaining gap, same as
-documented in #134/#135.
+`KeccakEmitterReduction` provides every per-step rewrite; the algebraic
+identities of `KeccakDiffuseExact` (`crotl_eq_frotl`, `cchi_eq_fchi`) close
+the per-lane closed form. The heartbeat budget for the 25-way simp is the
+limit, as in `KeccakEmitterReadoutHalfFull` / `KeccakEmitterLanesReadout`.
 
-This file's contribution: the **direct-substrate framework**, the
+This module provides the **direct-substrate framework**, the
 **composition** (§2), the **conditional bridges** (§3), and the
-**HEADLINE** (§4) — all in place, conditional on the substrate simp blast
-landing. The same shape as the SHA-2 #128 closure.
+**headline** (§4), all under the joint hypothesis. The shape matches the
+`Sha2EmitterReadoutHalf` closure.
 
-## Comparison with SHA-2 (#128) and Poseidon2 (#133)
+## Comparison with SHA-2 and Poseidon2
 
-| Aspect                  | SHA-2 (#128)               | Poseidon2 (#133)              | Keccak (#128/132/134/135/136)   |
+| Aspect                  | SHA-2                      | Poseidon2                     | Keccak (readout chain)           |
 |-------------------------|----------------------------|-------------------------------|----------------------------------|
 | Chain length            | 46                         | ~60                           | ~266                             |
 | Sub-blocks              | 1 monolithic               | 1 monolithic                  | 5 (θC, θD, ρπ, χ, ι)            |
 | Output slots            | 4 working                  | 3 lanes                       | 25 lanes                         |
-| Substrate simp blast    | Closed (16M HB)            | Closed (16M HB)               | Per-lane (this file) — pending   |
-| FIPS bridge             | Unconditional              | Unconditional                 | Unconditional under joint        |
-| Headline                | First fully-closed         | Third fully-closed            | Second fully-closed (under joint)|
+| Substrate simp          | Closed (16M HB)            | Closed (16M HB)               | Per-lane (this file) — residual  |
+| FIPS bridge             | Unconditional              | Unconditional                 | Under joint                      |
+| Headline                | Fully closed               | Fully closed                  | Under joint                      |
 
 ## Axiom verification
 
 Run `lean_verify` on `keccak_second_fully_closed_hash` to confirm:
 `[propext, Classical.choice, Quot.sound]` only, plus the `bv_decide` LRAT
-certs from #113 inherited via `keccak_round_bitexact`. No new custom
-axioms, all goals closed structurally.
+certs from `KeccakDiffuseExact` inherited via `keccak_round_bitexact`. No
+new custom axioms, all goals closed structurally.
 -/
 
 /-! ## 6. Substrate trial — minimal direct simp probe
@@ -337,18 +327,18 @@ example (round : Nat)
       (emitRound bs immV round k).denote V = (k bsF immVF).denote VF :=
   emitRound_denote_exists_chain round bs immV V k
 
-/-! ## 7. First proven building block — single-column C-parity in closed form (task #136)
+/-! ## 7. Proven building block — single-column C-parity in closed form
 
-The first concrete substrate-direct closure: `emitThetaCCol bs immV x k` for
+A concrete substrate-direct closure: `emitThetaCCol bs immV x k` for
 column `x ∈ {0..4}` rewrites by the substrate `@[simp]` set + the slot
 disjointness lemma `aSlot_ne_cSlot` to expose the post-chain read at
 `cSlot x` as the explicit XOR fold of the five `aSlot x y` reads in the
 ORIGINAL `(bs, V)` valuation. This is the **proven** substrate-direct
 discharge for one of the five θ-C columns, demonstrating that the
-substrate of #116 closes one sub-block of the chain inside default
-heartbeats.
+substrate of `KeccakEmitterReduction` closes one sub-block of the chain
+inside default heartbeats.
 
-This is the **first** of the per-sub-block closed-form lemmas that, when
+This is one of the per-sub-block closed-form lemmas that, when
 assembled across all 5 sub-blocks and 25 lanes, would yield
 `lanesReadoutJoint`. The shape mirrors the proof recipe of §1.
 
@@ -383,13 +373,14 @@ theorem emitThetaCCol_cSlot_readout {Γ : Ctxt jasminDialect}
   simp only [readSrc_st, readSlot_bsAfterOp_eq,
     readSlot_bsAfterOp_ne _ _ _ _ _ (aSlot_ne_cSlot _ _ _)]
 
-/-! ## 8. Status table — what closes today, what's residual (task #136)
+/-! ## 8. Status table — proved and residual readouts
 
 The §7 building block demonstrates the substrate-direct closure of ONE
 column's C-parity within default heartbeats (no `set_option
 maxHeartbeats` override). Composing 5 such across `emitTheta_C 5 0`, plus
 analogous closures for θ-D / ρπ / χ / ι, would yield the per-lane joint —
-the structural recipe is the substrate of #116 applied at scale.
+the structural recipe is the substrate of `KeccakEmitterReduction` applied
+at scale.
 
 ### Per-sub-block closed-form readout status
 
@@ -404,40 +395,38 @@ the structural recipe is the substrate of #116 applied at scale.
 | χ (one lane)   | (analogous)                    | residual             | `emitMov` + 3 `emitOp` (+ `cchi_eq_fchi` for FIPS) |
 | χ (25 lanes)   | (compose ×25)                  | residual             | inductive over `emitChi`                           |
 | ι              | (analogous)                    | residual             | 1 `emitOp`                                         |
-| Joint (25-lane readout) | `lanesReadoutJoint_holds` | residual          | composes the above through `emitRound`             |
-| Headline       | `keccak_second_fully_closed_hash_unconditional` | residual | drops joint hyp on the above                  |
+| Joint (25-lane readout) | `lanesReadoutJoint` (hypothesis) | residual   | composes the above through `emitRound`             |
+| Headline       | `keccak_second_fully_closed_hash` without the joint | residual | drops joint hyp on the above              |
 
 ### Per-lane (FIPS 202 ρ table) entries kept conditional
 
-The 25 per-lane closed-form lemmas `lane_xy_eq_closedFormAt` (the form
-requested by task #136) reduce to picking the ρ rotation amount from the
+The 25 per-lane closed-form lemmas (one per lane `(x, y)`) reduce to picking
+the ρ rotation amount from the
 FIPS 202 table — same 25 rows the table in §5 documents — and applying
-the per-sub-block closures above. Each row is a single substrate simp blast.
-The cited bv_decide LRAT certs from #113 (`crotl_eq_frotl` for the ρ
-amount, `cchi_eq_fchi` for χ) close the algebraic identities.
+the per-sub-block closures above. Each row is a single substrate simp.
+The cited bv_decide LRAT certs from `KeccakDiffuseExact` (`crotl_eq_frotl`
+for the ρ amount, `cchi_eq_fchi` for χ) close the algebraic identities.
 
 The §7 proof establishes that the substrate `@[simp]` set + slot
 disjointness lemma closes ONE column inside default heartbeats. Iterating
 this template gives the lane-level closures; the joint composition needs
 the chain witnesses tied together via the inductive aggregates.
 
-## Final headline assessment (task #136)
+## Headline scope
 
-KECCAK is **not yet** the second fully-closed hash primitive. The
-substrate-direct closure has been demonstrated as a building block (§7,
-`emitThetaCCol_cSlot_readout`), proving the technique works in default
-heartbeats. The 25-lane joint composition through the full ~270-binding
-`emitRound` chain remains the budget-limited residual — same wall as
-#134/#135 documented, just attacked from the substrate-direct side rather
-than the existential-lift side. The headline `keccak_second_fully_closed_hash`
-remains **conditional on `lanesReadoutJoint`** (§4).
+The Keccak bit-exact bridge through the emitter is conditional: the headline
+`keccak_second_fully_closed_hash` assumes `lanesReadoutJoint` (§4). The
+substrate-direct closure is proved as a building block (§7,
+`emitThetaCCol_cSlot_readout`) in default heartbeats. The 25-lane joint
+composition through the full ~270-binding `emitRound` chain is the
+budget-limited residual, the same limit as in `KeccakEmitterReadoutHalfFull`
+/ `KeccakEmitterLanesReadout`, approached here from the substrate-direct side
+instead of the existential-lift side.
 
-What this task contributes beyond the §1–§6 baseline (commit `36941552`):
-- §7 — a PROVEN substrate-direct readout closure for one θ-C column,
-  validating the route in default heartbeats and demonstrating the
-  closed-form value exposure that the joint composition would iterate.
-- §8 — precise residual accounting per sub-block, showing exactly where
-  the chain-composition wall sits.
+- §7 — a proved substrate-direct readout closure for one θ-C column,
+  in default heartbeats, exposing the closed-form value that the joint
+  composition would iterate.
+- §8 — residual accounting per sub-block.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterLanesReadoutDirect

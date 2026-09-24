@@ -60,7 +60,7 @@ at MCP heartbeats. Instead, mirroring `Chacha20BlockCatCryptEmit`:
 2. The round-level steps (`thetaCat`, `rhoCat`, `piCat`, `chiCat`, `iotaCat`)
    are `KState → KState` functions driven by those committed `Com` denotations,
    each proven equal to its `Primitives.Keccak` counterpart.
-3. `keccakRoundCat` composes them as `ι ∘ χ ∘ π ∘ ρ ∘ θ`; the keystone
+3. `keccakRoundCat` composes them as `ι ∘ χ ∘ π ∘ ρ ∘ θ`; the main theorem
    `keccakRound_catcrypt_eq` folds the per-step equalities through the round
    structure — NOT one monolithic `rfl`.
 
@@ -321,7 +321,7 @@ theorem iotaCat_eq (a : KState) (rc : BitVec 64) : iotaCat a rc = iota a rc := b
 /-! ## 8. The whole round, composed structurally
 
 `keccakRoundCat = ι ∘ χ ∘ π ∘ ρ ∘ θ`, each step the committed catCrypt `Com`.
-The keystone `keccakRound_catcrypt_eq` folds the five per-step `_eq` lemmas
+The main theorem `keccakRound_catcrypt_eq` folds the five per-step `_eq` lemmas
 through the composition (NOT a monolithic `rfl` over the whole 25-lane round). -/
 
 /-- One Keccak round over the committed catCrypt-dialect sub-step `Com`s:
@@ -329,7 +329,7 @@ through the composition (NOT a monolithic `rfl` over the whole 25-lane round). -
 def keccakRoundCat (a : KState) (rc : BitVec 64) : KState :=
   iotaCat (chiCat (piCat (rhoCat (thetaCat a)))) rc
 
-/-- **Keystone: the whole catCrypt round equals the FIPS-202 reference round.**
+/-- **Main theorem: the whole catCrypt round equals the FIPS-202 reference round.**
     Every per-lane word operation in the round (the θ XOR/rotate diffusion, the ρ
     rotates, the χ `andn`/XOR mixing, the ι round-constant XOR) is computed by a
     committed `Com catCryptDialect` program, so the whole benchmarked Keccak round

@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512
 public import CatCrypt.Crypto.Util.Sha512Verified
 
 /-!
-# #607 Phase 3b: DIRECT functional ties — SHA-512 compile-from-hax leaves = FIPS spec fns
+# DIRECT functional ties — SHA-512 compile-from-hax leaves = FIPS spec fns
 
 This module is the **width-64** companion to `CompileFromHaxSha2KeccakTie` (which ties the
 SHA-256 / width-32 round components). It wires the committed **compile-from-hax SHA-512

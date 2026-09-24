@@ -24,20 +24,21 @@ D[x]`), ρ ∘ π (per-lane left-rotate by the FIPS 202 ρ offset, placed at the
 π-permuted destination), χ (`A[x,y] = B[x,y] ⊕ ((¬B[x+1,y]) ∧ B[x+2,y])`, with
 `¬e` realized as `e ^^^ allOnes`), and ι (`A[0,0] ⊕= RC[round]`).
 
-`KeccakDiffuseExact.keccakClosedFullRound s rc` (committed task #113) is the
+`KeccakDiffuseExact.keccakClosedFullRound s rc` is the
 same round spelled directly as `BitVec` operations over `Lanes := Fin 25 →
 BitVec 64`, and is proven bit-exactly equal to the FIPS 202
 `keccakFullRound` by `bv_decide` + `rfl` per-lane (`keccak_round_bitexact`).
 
-This file delivers the **substrate** for the structural denotation reduction
+This module provides the **substrate** for the structural denotation reduction
 of the ~600-binding `emitRound` chain to `keccakClosedFullRound`: per-helper
 `Com.denote` rewrite lemmas (`emitOp_denote`, `emitMov_denote`,
 `emitMov_denote'`, `emitRotL_denote`) and slot-reading lemmas that let one
 push reads of the final builder state back to reads of the original `(bs,
-immV, V)`. Combined with `keccak_round_bitexact` (#113), these compose to a
-bit-exact identity of the emitted Keccak round with FIPS 202 — KAT-free.
+immV, V)`. Combined with `keccak_round_bitexact` (`KeccakDiffuseExact`), these
+compose to a bit-exact identity of the emitted Keccak round with FIPS 202 —
+KAT-free.
 
-This is the lattice analog of `Sha2EmitterReduction` (task #112) for the
+This is the lattice analog of `Sha2EmitterReduction` for the
 SHA-2 emitter; the discharge plan mirrors that file exactly.
 
 ## What is proven here (§1–§3)
@@ -61,15 +62,16 @@ The full ~600-step composition of these helper lemmas through `emitRound` is
 the residual structural fact: `EmitRoundDenotesClosedForm round bs immV V`
 (§4) records its shape as a `Prop`. Granting this residual, the bridge
 `emitRound_lanes_eq_fips_keccak` (§5) closes the bit-exact identity with FIPS
-202 by composing with `KeccakDiffuseExact.keccak_round_bitexact` (#113,
-`bv_decide` LRAT per-lane + `rfl` for `π`). The §6 corollary
-`keccak_round_loop_bitexact_via_fips` records how the bridge upgrades #109's
-placeholder `keccakDiffuse` to the genuine FIPS 202 round.
+202 by composing with `KeccakDiffuseExact.keccak_round_bitexact`
+(`bv_decide` LRAT per-lane + `rfl` for `π`). The §6 corollary
+`keccak_round_loop_bitexact_via_fips` records how the bridge replaces the
+abstract diffusion model `keccakDiffuse` of `KeccakBitexact` by the FIPS 202
+round.
 
 The residual `EmitRoundDenotesClosedForm` is **not** an axiom — it is a
-`Prop` witnessing the structural reduction. The file is axiom-clean
+`Prop` witnessing the structural reduction. The module is axiom-clean
 (`[propext, Classical.choice, Quot.sound]` plus the standard `bv_decide`
-LRAT certs inherited from #113 for the FIPS bridge).
+LRAT certs inherited from `KeccakDiffuseExact` for the FIPS bridge).
 
 ## Axiom budget
 
@@ -77,13 +79,14 @@ Verified by `lean_verify`:
 * `emitOp_denote`: `[propext, Quot.sound]`.
 * `emitRotL_denote_pos`: `[propext, Quot.sound]`.
 * `emitRound_lanes_eq_fips_keccak`: `[propext, Classical.choice, Quot.sound]`
-  plus the `bv_decide` LRAT certs from #113's `keccak_round_bitexact`. No
+  plus the `bv_decide` LRAT certs from `KeccakDiffuseExact.keccak_round_bitexact`. No
   `sorry`, no `native_decide`, no new custom axioms.
 
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #116 in that chain: the per-helper `Com.denote` substrate.
+module is the chain step after `KeccakDiffuseExact`: the per-helper
+`Com.denote` substrate.
 -/
 
 @[expose] public section
@@ -137,7 +140,7 @@ the `Com.denote` of each helper is definitionally an application of the
 continuation `k` to an explicit extended builder state + valuation. The
 `cases _ <;> rfl` discharges the `Src` case split (`.st` vs `.imm`). -/
 
-/-- The post-`emitOp` builder state: slot `dst` is now the freshly-bound
+/-- The post-`emitOp` builder state: slot `dst` is the freshly-bound
     `.here` in the extended context; every other slot is lifted by
     `.there`. -/
 def bsAfterOp {Γ : Ctxt jasminDialect}
@@ -341,17 +344,18 @@ final builder state's reads at slots `aSlot x y` are exactly the 25 lanes of
 The full composition is straight-line but verbose (~600 helper invocations
 and their side conditions, then 25 closed-form per-slot reads). Below we
 state the **shape** of the headline identity, which is the substrate the
-`KeccakBitexact` loop keystone consumes — but we do **not** discharge the
-full chain in this file, to keep it within scope. The lemmas in §1–§3 are
+`KeccakBitexact` loop theorem consumes; the discharge of the full chain is
+outside the scope of this module. The lemmas in §1–§3 are
 exactly the pieces needed to build that proof: `emitOp_denote` for the
 arithmetic operations, `emitRotL_denote_pos` / `_zero` for the rotates, and
 the slot-reading lemmas to chain them.
 
-This file's contribution is the **substrate**: the per-helper `Com.denote`
-rewrites that any future `emitRound_denote_eq_keccakClosedFullRound` proof
-must use. Combined with `KeccakDiffuseExact.keccak_round_bitexact`, the
-substrate is what closes the bit-exact identity of the emitted Keccak round
-with FIPS 202. This is the lattice analog of #112's SHA-2 substrate. -/
+This module's content is the **substrate**: the per-helper `Com.denote`
+rewrites that a proof of the full `emitRound` denotation identity uses.
+Combined with `KeccakDiffuseExact.keccak_round_bitexact`, the
+substrate closes the bit-exact identity of the emitted Keccak round
+with FIPS 202. This is the lattice analog of the SHA-2 substrate
+`Sha2EmitterReduction`. -/
 
 /-- Read out the 25 working-slot values (`aSlot x y` for `(x, y) ∈ {0..4}²`)
     into a `Lanes` record (the round-state representation consumed by
@@ -392,15 +396,15 @@ def EmitRoundDenotesClosedForm (round : Nat)
         = keccakClosedFullRound (lanesOfBState bs V)
             (BitVec.ofNat 64 (roundConst round))
 
-/-! ## 5. Bridge to FIPS 202: composition with #113
+/-! ## 5. Bridge to FIPS 202: composition with `KeccakDiffuseExact`
 
 Assuming the structural reduction `EmitRoundDenotesClosedForm` (the residual
 fact above), the bit-exact identity of the emitter with FIPS 202 follows
-immediately from `KeccakDiffuseExact.keccak_round_bitexact` (task #113,
-proven by `bv_decide` + `rfl` per-lane). -/
+immediately from `KeccakDiffuseExact.keccak_round_bitexact` (proven by
+`bv_decide` + `rfl` per-lane). -/
 
 /-- **FIPS 202 bridge**: `EmitRoundDenotesClosedForm` for a given `(bs,
-    immV, V)` plus #113's `keccak_round_bitexact` gives the bit-exact
+    immV, V)` plus `KeccakDiffuseExact.keccak_round_bitexact` gives the bit-exact
     identity of the emitted round with the FIPS 202 spec. No KAT, no
     `native_decide`. -/
 theorem emitRound_lanes_eq_fips_keccak (round : Nat)
@@ -419,22 +423,22 @@ theorem emitRound_lanes_eq_fips_keccak (round : Nat)
   refine ⟨Γ', bsF, immVF, VF, hDen, ?_⟩
   rw [hLanes, keccak_round_bitexact]
 
-/-! ## 6. Composition with `KeccakBitexact.keccak_round_loop_bitexact` (#109)
+/-! ## 6. Composition with `KeccakBitexact.keccak_round_loop_bitexact`
 
 `KeccakBitexact.keccak_round_loop_bitexact` proves the Keccak compression-round
-loop bit-exact with a placeholder `keccakDiffuse` modelling the diffusion.
-With the above bridge in hand, the placeholder `keccakDiffuse` in #109 can be
-upgraded to the genuine FIPS 202 round on a per-round step: the emitter's
+loop bit-exact with an abstract `keccakDiffuse` modelling the diffusion.
+With the above bridge, the abstract `keccakDiffuse` of `KeccakBitexact` is
+replaced by the FIPS 202 round on a per-round step: the emitter's
 `emitRound` for round `round` denotes (under the residual structural fact) to
 `keccakFullRound (lanesOfBState bs V) (RC round)`, matching FIPS 202
 bit-for-bit. The corollary `keccak_round_loop_bitexact_via_fips` records this
-upgrade. -/
+replacement. -/
 
-/-- **Composition with #109**: if the structural reduction holds for a
-    given builder state / valuation, the `emitRound` denotation equals
+/-- **Composition with `KeccakBitexact`**: if the structural reduction holds
+    for a given builder state / valuation, the `emitRound` denotation equals
     `keccakFullRound` on lanes. This is the form
     `KeccakBitexact.keccak_round_loop_bitexact` would use to replace
-    `keccakDiffuse` with the genuine FIPS 202 round. -/
+    `keccakDiffuse` with the FIPS 202 round. -/
 theorem keccak_round_loop_bitexact_via_fips (round : Nat)
     {Γ : Ctxt jasminDialect}
     (bs : BState Γ) (immV : Nat → Ctxt.Var Γ r64) (V : Ctxt.Valuation Γ)

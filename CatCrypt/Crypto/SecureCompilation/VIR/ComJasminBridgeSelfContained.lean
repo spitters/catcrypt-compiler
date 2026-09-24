@@ -53,7 +53,7 @@ The RHS value `wa + wb` is then *derived* (via `papp2_word_add_corr`), not
 carried. The cons recurses on the tail at the **post-write** triple `(Store.set
 …, s.withVm (s.evm.set …), dst :: names)` with the grown name list — so the next
 step's operand reads are stated against the state reached after this write, and a
-later step may read `dst` (it is now in the frame `dst :: names`). The genuine
+later step may read `dst` (it is in the frame `dst :: names`). The
 threading: a step's operand can be the register a *previous* step wrote.
 
 ## The self-contained whole-command bridge (§2–§3)

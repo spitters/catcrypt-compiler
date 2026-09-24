@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvEncoder
 public import Mathlib.Tactic.FinCases
 
 /-!
-# sail-riscv RVV decoder round-trip: `decode (encode i) ≡ i` (#549 RVV residual)
+# sail-riscv RVV decoder round-trip: `decode (encode i) ≡ i`
 
 `RvvEncoder.lean` is the owned `VInst → machine-byte` encoder for the packed-u32
 RVV OPIVV/OPIVI subset. Its bench trust edge is *differential*: each emitted 32-bit
@@ -21,7 +21,7 @@ word is pinned to what `riscv64-linux-gnu-as -march=rv64gcv` produces (an
 untracked local checkout/harness, not vendored in this repo, plus the qemu RVV
 KAT). That makes `as`'s unverified encoder part of the trusted base.
 
-This module replaces the differential edge with a **round-trip** against the
+This module discharges the differential edge by a **round-trip** against the
 RISC-V RVV *decoder* discipline: a Lean decoder `rvvDecode` that recovers the OP-V
 fields `(funct6, vm, vs2, vs1/simm, funct3, vd, opcode)` from a 32-bit instruction
 word, following the

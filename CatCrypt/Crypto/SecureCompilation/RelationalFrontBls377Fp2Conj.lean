@@ -30,12 +30,12 @@ The headline facts about `conj (a + b·u) = a − b·u`:
    conj 1 = 1,  conj 0 = 0                 -- units
 ```
 
-The multiplicative fact is the load-bearing one: both `conj (x*y)` and
+The multiplicative fact is the key one: both `conj (x*y)` and
 `conj x * conj y` equal `(c0·c0' + ξ·c1·c1') − (c0·c1' + c1·c0')·u`, i.e. the
 sign flip on the `u`-component commutes with the schoolbook product (the `ξ`
 reduction is invariant under it because `(−b)(−d)ξ = bdξ`). Together these say
 `conj` is a **ring endomorphism of `Fp2_377` that fixes the base field
-pointwise** — the genuine nontrivial element of `Gal(Fp2 / Fp)`.
+pointwise** — the nontrivial element of `Gal(Fp2 / Fp)`.
 
 We then form the **field norm** `norm x = (x · conj x).c0`, the product of an
 element with its conjugate. Because `x · conj x = (a + b·u)(a − b·u) =
@@ -44,7 +44,7 @@ element with its conjugate. Because `x · conj x = (a + b·u)(a − b·u) =
 block for `Fp2` inversion (`x⁻¹ = conj x / norm x`) and for the pairing's final
 exponentiation.
 
-## Honesty boundary
+## Scope
 
 This is the abstract `Fp2` conjugation and norm over the relational `bls12_377`
 base carrier. It does **not** wire conjugation/norm down to the emitted 6-limb
@@ -113,7 +113,7 @@ the structure multiply as `mulSchoolbook ξ` (the opaque-mul `show` trick from
 closes each component. -/
 
 /-- **`conj` is multiplicative** (`conj (x * y) = conj x * conj y`) over the
-    `commRing ξ` instance — the load-bearing ring-homomorphism fact. The sign
+    `commRing ξ` instance — the key ring-homomorphism fact. The sign
     flip on the `u`-component commutes with the schoolbook product because the
     `ξ`-reduction `(−b)(−d)·ξ = b·d·ξ` is invariant under conjugation. -/
 theorem conj_mul (ξ : FpBLS377) (x y : Fp2_377) :
@@ -127,7 +127,7 @@ theorem conj_mul (ξ : FpBLS377) (x y : Fp2_377) :
 
 The norm is the product of an element with its conjugate, projected to the base
 field. Because `(a + b·u)(a − b·u) = (a² − ξ·b²) + 0·u`, the `u`-component of
-`x · conj x` vanishes — the norm genuinely lands in `FpBLS377`. -/
+`x · conj x` vanishes — the norm lands in `FpBLS377`. -/
 
 /-- The **`u`-component of `x · conj x` vanishes** — the field norm lands in the
     base field `FpBLS377`. (`(a + b·u)(a − b·u) = (a² − ξ·b²) + 0·u`.) -/

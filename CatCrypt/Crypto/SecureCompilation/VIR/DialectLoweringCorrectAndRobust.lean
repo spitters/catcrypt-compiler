@@ -30,7 +30,7 @@ Param-engine synthesis in `ParamDialectTransport`.
 ## What each capstone is about, and at what level
 
 * `modArith_lowering_correct_and_robust` — the **ModArith → {Vector | LowCT}**
-  (`#442`) lowering. Functional (`lower_denote_preserved`) and CT
+  redundant-limb lowering. Functional (`lower_denote_preserved`) and CT
   (`lower_ctSafe_preserved`) are **op-level**; we additionally expose the
   **whole-program / `Com`-level** CT statement (`lower_ctSafeCom_preserved`).
   The functional preservation in `ModArithLowering` is op-level only, so the
@@ -76,14 +76,14 @@ open Transfer
 
 /-! ## 1. ModArith → {Vector | LowCT} : functionally correct ∧ constant-time
 
-The `#442` redundant-limb lowering. We pair op-level denotation preservation
+The redundant-limb lowering. We pair op-level denotation preservation
 with op-level CT preservation, and additionally expose the whole-program (`Com`)
 CT statement. The functional preservation that `ModArithLowering` proves is
 op-level (the realisation equals the op's abstract denotation), so the
 whole-program conjunct here is CT-only — stated explicitly. -/
 
 /-- **ModArith lowering is functionally correct AND constant-time (op-level).**
-    For every `ModArithOp` and any well-typed arguments, the `#442` lowering's
+    For every `ModArithOp` and any well-typed arguments, the lowering's
     realisation **computes the op's abstract value** (`lower_denote_preserved`)
     **and** the op together with its chosen route is constant-time
     (`lower_ctSafe_preserved`). Both conjuncts are op-level; the lift to programs

@@ -27,7 +27,7 @@ Com jasminDialect  (vsimd fragment)  ──renderVsimdCom──▶  AT&T .s line
 ```
 
 with **zero** dependency on `Vec128Lowering` / `Vec128Model` / `Vec128AsmPrinter`.
-The only crypto-SIMD import is `VIR.VsimdAsmPrint` (the committed owned AT&T
+The only crypto-SIMD import is `VIR.VsimdAsmPrint` (the owned AT&T
 renderer, whose `.vaesenc`/`.vaesenclast`/`.vaeskeygen`/`.vpshufd`/`vpslldq`/
 `.bitwise .xor` arms are byte-identical to `renderVCryptInst`).
 
@@ -54,7 +54,7 @@ the SAME AES as the bespoke `aesCtrBlk`.
 `aes128_ctr_owned(out=%rdi, outlen=%rsi, key=%rdx, keylen=%rcx)` (with the WEAK
 `AES_128_CTR_owned` drop-in alias), written to the SAME path
 `bench/aes_compare/gen/aes128_ctr_owned.s` as the bespoke driver, with the SAME
-export symbol. The verified key schedule and the 4-wide / 1-wide ECB bodies are now
+export symbol. The verified key schedule and the 4-wide / 1-wide ECB bodies are
 rendered by `renderVsimdCom` (the owned AT&T `vsimd` printer); the CTR
 sequencing (the +1 increment, the loop, the in-register `VPSHUFB` byteswap, the
 tail copy) is the SAME straight-line ABI glue as the bespoke driver.

@@ -36,8 +36,9 @@ a statement sequence to the right and drops a `unitVal` on the left of `;`; the
 check compares the two sides in that form.
 
 The frontend suffixes the bit-sensitive operators with the operand width, so
-`BitAnd` and `BitXor` read as `BitAnd#64` and `BitXor#64` on `u64` operands and as
-`BitAnd#size` and `BitXor#size` on `usize` operands.
+`BitAnd`, `BitXor`, `Shr` and `Shl` read as `BitAnd#64`, `BitXor#64`, `Shr#64` and
+`Shl#64` on `u64` operands and as `BitAnd#size`, `BitXor#size`, `Shr#size` and
+`Shl#size` on `usize` operands.
 A call to a free function of the crate reads as its unqualified name.  A
 comparison binding has the Rust type `bool` in the printed text; its reading is
 the same `app` node.  rustc desugars `while c { b }` to a `loop` with an inner
@@ -113,7 +114,8 @@ open _root_.Hax (ImpExpr ImpLit ImpPat Value Env Outcome Builtins denote denoteA
 def haxOpPairs : List (String × String) :=
   [("Add", "scalar#Add"), ("Mul", "scalar#Mul"), ("BitAnd#64", "scalar#BitAnd"),
    ("BitAnd#size", "scalar#BitAnd"), ("BitXor#64", "scalar#BitXor"),
-   ("BitXor#size", "scalar#BitXor"), ("Lt", "scalar#Lt"), ("Gt", "scalar#Gt"),
+   ("BitXor#size", "scalar#BitXor"), ("Shr#64", "scalar#Shr"), ("Shr#size", "scalar#Shr"),
+   ("Shl#64", "scalar#Shl"), ("Shl#size", "scalar#Shl"), ("Lt", "scalar#Lt"), ("Gt", "scalar#Gt"),
    ("Le", "scalar#Le"), ("Ge", "scalar#Ge"), ("Eq", "scalar#Eq"), ("Ne", "scalar#Ne"),
    ("saturating_sub", "scalar#Sub")]
 

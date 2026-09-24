@@ -83,7 +83,7 @@ needed, no cross-lane permute).
 The **value** correctness (each ZMM lane = scalar SHA-512 σ0) is established by
 the external C KAT harness (`bench/sha2_compare/sha512_x8_kat.c`, eight
 independent messages, each lane's digest compared against a reference SHA-512),
-NOT by an in-kernel multi-vector `native_decide` (REV-12). This module pins the
+NOT by an in-kernel multi-vector `native_decide`. This module pins the
 `Com` denotation against `zmmPackQ` (`sigma0Com_denote`).
 
 The rendered text of the kernel (the nine body lines, the export label, the

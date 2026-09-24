@@ -9,17 +9,17 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipeline
 public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 
 /-!
-# Connecting the ISel optimizer (#1) to the whole-function emit (#5)
+# Connecting the ISel optimizer to the whole-function emit
 
-`IselPipeline.lean` lands the multi-selection ISel pass `iselPipeline`
+`IselPipeline.lean` defines the multi-selection ISel pass `iselPipeline`
 (`andnSelect ∘ rorImmSelect`) on `Com jasminDialect`, with a composed
 denote-preservation result `iselPipeline_denote_of` (conditioned on the two
-per-pass guards). `WholeFnLowering.lean` lands `lowerComToProg_sem_eq'`: for a
+per-pass guards). `WholeFnLowering.lean` proves `lowerComToProg_sem_eq'`: for a
 **straight-line** body, *running the emitted single-function `JasminProg`* equals
 `Com.denote`, with both SSA-naming side-conditions discharged (only the
 opaque-leaf edge `LeafAgrees` remains).
 
-This file ties the two ends together — the end-to-end statement a real compiler
+This module ties the two ends together — the end-to-end statement a real compiler
 makes:
 
 > **front emits an emulation → ISel selects the native op → whole-function emit →
@@ -27,7 +27,7 @@ makes:
 
 Concretely, for a whole-function body `bodyEmul` carrying a canonical rotate
 emulation (`shr; shl; or`), let `bodyOpt := iselPipeline bodyEmul` be the
-optimized body — with the native `rorImm` selected. We prove, sorry-free:
+optimized body — with the native `rorImm` selected. We prove:
 
 * **(a) ISel preserves the denotation** — `bodyOpt.denote V = bodyEmul.denote V`,
   via `iselPipeline_denote_of` with the two per-pass guards discharged for this
@@ -39,7 +39,7 @@ optimized body — with the native `rorImm` selected. We prove, sorry-free:
   the native `rorImm` and its two kept shift carriers are all non-`stackStore`, so
   the optimized body stays straight-line).
 
-## The worked example (the whole point)
+## The worked example
 
 `bodyEmul = mkRotrSubtree 64 8 .here (ret .here)` over `Γ = [reg 64]`: a
 rotate-by-8 at width 64 (a SHA-512 `Σ` / Keccak `ρ` amount), `ret out`. The
@@ -49,22 +49,21 @@ exactly the original `(shr; shl; or)` rotate emulation's denotation. The ISel gu
 `8 < 64` is discharged by `decide`; `StraightLine bodyOpt` by `simp` on the three
 non-`stackStore` ops.
 
-## Scope (honest)
+## Scope
 
 This is the *single-fire-site, straight-line* end-to-end tie: one canonical rotate
 emulation subtree, optimized and emitted as a whole function. It is the composition
-of two landed keystones, not new optimizer/emit machinery. It does **not** yet cover
-optimizing an **arbitrary** whole body: that needs the *recursive* ISel descent
+of two existing main theorems, not new optimizer/emit machinery. Optimizing an
+**arbitrary** whole body is outside its scope: that needs the *recursive* ISel descent
 (`iselPipeline_denote_of`'s two guards turned into the unconditional
 `∀ c V, (iselPipeline c).denote V = c.denote V` by structural induction — see
 `IselPipeline.lean` §4) and bodies with **multiple** fire sites (each rotate /
-and-not subtree selected and the descent threaded through). The only genuine
-residual value-side guard is ROR's `n < w` (out of range the rotate and the
-shift-or form differ); it stays a side condition on the rotate sites, never a
-`sorry`. The emit side additionally carries the opaque-leaf edge `LeafAgrees`, the
+and-not subtree selected and the descent threaded through). The one residual
+value-side guard is ROR's `n < w` (out of range the rotate and the
+shift-or form differ); it stays a side condition on the rotate sites. The emit side additionally carries the opaque-leaf edge `LeafAgrees`, the
 same edge carried throughout the emit-correctness theory.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

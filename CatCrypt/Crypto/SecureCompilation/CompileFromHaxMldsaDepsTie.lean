@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecomposeFull
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 Phase 3c (repr-bridge): the verified compiler emits ML-DSA's per-coefficient
+# Representation bridge: the verified compiler emits ML-DSA's per-coefficient
 # reduce primitives, tied to an abstract per-coefficient `Dependencies` record
 
 This module is the **ML-DSA instance** of the compile-from-hax security-tie

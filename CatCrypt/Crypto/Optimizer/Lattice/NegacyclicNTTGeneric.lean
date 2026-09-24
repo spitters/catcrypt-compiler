@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
 /-!
 # Negacyclic convolution / NTT for `R[X]/(Xⁿ+1)` (generic `CommRing`)
 
-This file gives the *generic spec* that an NTT-based multiply in the
+This module defines the *generic spec* that an NTT-based multiply in the
 ML-KEM / ML-DSA setting implements: multiplication in the **negacyclic** ring
 `R[X]/(Xⁿ + 1)`, represented by low-first coefficient lists over a `CommRing R`.
 
@@ -38,7 +38,7 @@ modulo it is `Polynomial.modByMonic` (`%ₘ`). We define
 * `toQuot n` — the image of a coefficient list in the quotient ring
   `AdjoinRoot (Xⁿ+1)` (i.e. `R[X]/(Xⁿ+1)`).
 
-The keystone
+The main theorem
 
   `negaConv_eq_mul : toQuot n (negaConv a b n) = toQuot n a * toQuot n b`
 
@@ -102,7 +102,7 @@ abbrev NegaQuot (R : Type*) [CommRing R] (n : ℕ) : Type _ :=
 noncomputable def toQuot (n : ℕ) (l : List R) : NegaQuot R n :=
   AdjoinRoot.mk (negaModulus n) (toPoly l)
 
-/-- **Keystone (quotient-ring multiplication).** The negacyclic convolution is
+/-- **Main theorem (quotient-ring multiplication).** The negacyclic convolution is
 multiplication in `R[X]/(Xⁿ+1)`:
 
   `toQuot n (negaConv a b n) = toQuot n a * toQuot n b`.

@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
 /-!
 # LowCT → CryptoSSA substrate
 
-The `CProg`-free substrate shared by both `LowCT → CryptoSSA` fronts: the
+The substrate of the `LowCT → catCryptDialect` front: the
 `TowerType → CryptoTy` encoding (`encodeTy`), the name-to-De-Bruijn map
 (`VarMap`), the single-scalar-branch view (`SingleScalarSet` /
 `asSingleScalarSet`) used by the `RIfNz` φ-merge, and the argument
@@ -35,10 +35,9 @@ open CatCrypt.Crypto.Jasmin.LowCT
     whose length is the number of 64-bit limbs. -/
 def encodeTy : TowerType → CryptoTy
   | .TU64     => .sword 64
-  -- Phase L.1: u8 / u32 scalars.  These only arise in byte-packing
-  -- kernels that bail to `none` in `translate`, so the CryptoSSA
-  -- encoding never carries meaning — we map them to small memrefs
-  -- (1 / 4 bytes) so the memref-uniform witness lemmas apply.
+  -- u8 / u32 scalars.  These only arise in byte-packing kernels; they
+  -- map to small memrefs (1 / 4 bytes) so the memref-uniform witness
+  -- lemmas apply.
   | .TU8      => .memref 1
   | .TU32     => .memref 4
   | .TFp      => .memref 6      -- 48 bytes = 6 limbs  (BLS12-381)
@@ -47,7 +46,7 @@ def encodeTy : TowerType → CryptoTy
   | .TFp12    => .memref 72     -- 576 bytes = 72 limbs
   | .TFp25519 => .memref 5      -- 40 bytes = 5 limbs (Curve25519, radix-2^51)
   | .TFp25519_64 => .memref 4   -- 32 bytes = 4 limbs (Curve25519, saturated)
-  -- Phase D/E/I/K (2026-05-03): byte-encoded refs.
+  -- Byte-encoded refs.
   | .TFpL25519 => .memref 4
   | .TFpP256 => .memref 4
   | .TFp25519_4Bounded _ => .memref 4
@@ -56,9 +55,9 @@ def encodeTy : TowerType → CryptoTy
   | .TFp2Gen _ n => .memref ((n + 7) / 8)
   | .TTuple a b => .memref ((a.storageBytes + b.storageBytes + 7) / 8)
   | .TBytes n => .memref ((n + 7) / 8)
-  -- Phase Ext (2026-05-14): array type — flatten to a byte-encoded memref.
+  -- Array type — flatten to a byte-encoded memref.
   | .TArr n t => .memref ((n * t.storageBytes + 7) / 8)
-  -- Phase L (2026-05-22): polynomial-mod-q — flatten to byte-encoded memref.
+  -- Polynomial-mod-q — flatten to byte-encoded memref.
   | .TPolyMod q n => .memref ((n * ((Nat.log2 q + 1 + 7) / 8) + 7) / 8)
   | .TPolyVec q n k => .memref ((k * (n * ((Nat.log2 q + 1 + 7) / 8)) + 7) / 8)
   | .TPolyMat q n k m =>

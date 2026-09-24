@@ -39,7 +39,7 @@ arm's behavior is *defeq* to a proved-unconditional realizer.  We then prove the
   `if_neg`, then the second `if_pos rfl`, reducing to `fieldMul_realizes_concrete`.
 
 The headline `grounded_multikernel_realizes` then grounds a **mixed-kernel**
-pipeline — alternating `field_add` and `field_mul` leaves (genuinely distinct
+pipeline — alternating `field_add` and `field_mul` leaves (two distinct
 kernels, not one repeated) — through the single combined leafSpec, with **ZERO
 `KernelRealizes`/`KernelRealizes2` hypotheses**.  Every per-step realization is a
 theorem (`combined_realizes_add` / `combined_realizes_mul`, in turn the proved
@@ -213,7 +213,7 @@ theorem combinedMulByConst_realizes (q : ℕ) [NeZero q] (width : ℕ)
   rw [combined_realizes_mul q width hw hq limbStore xVal (encodeF width v) oldDest,
     decodeF_encodeF width hw hq]
 
-/-! ### A genuinely mixed two-step pipeline: `x ↦ (x + a) * v`
+/-! ### A mixed two-step pipeline: `x ↦ (x + a) * v`
 
 One add step (leaf `"field_add"`, spec `(· + a)`) followed by one mul step (leaf
 `"field_mul"`, spec `(· * v)`) — DISTINCT kernels of the SAME combined leafSpec.
@@ -252,9 +252,9 @@ theorem grounded_addThenMul_realizes (q : ℕ) [NeZero q] (width : ℕ)
 
 /-! ### The headline: a longer alternating mixed-kernel `pipeN` pipeline
 
-Now the genuine `pipeN`/`composeSpecs` form (the `ProtocolKernels.runRealizes`
+The `pipeN`/`composeSpecs` form (the `ProtocolKernels.runRealizes`
 shape) over a leaf list that **alternates** `"field_add"` and `"field_mul"` — so
-the pipeline genuinely uses two distinct kernels of the single combined leafSpec.
+the pipeline uses two distinct kernels of the single combined leafSpec.
 
 Because `pipeN` invokes every leaf through ONE `leafSpec`, but our two steps need
 different per-step constants AND different dispatch arms, we use the combined
@@ -306,7 +306,7 @@ theorem alternating_realizes_mul (q : ℕ) [NeZero q] (width : ℕ)
   exact combinedMulByConst_realizes q width hw hq v limbStore xVal oldDest
 
 /-- The alternating leaf list `["field_add", "field_mul", "field_add",
-    "field_mul"]` — genuinely interleaving the two distinct kernels. -/
+    "field_mul"]` — interleaving the two distinct kernels. -/
 def alternatingLeaves : List String :=
   ["field_add", "field_mul", "field_add", "field_mul"]
 
@@ -344,7 +344,7 @@ def alternatingProtocol (q : ℕ) [NeZero q] (width : ℕ)
 
 /-- **THE HEADLINE — grounded VARYING-kernel pipeline, ZERO kernel hypotheses.**
     The alternating `["field_add", "field_mul", "field_add", "field_mul"]`
-    pipeline — genuinely two DISTINCT kernels of the single combined leafSpec —
+    pipeline — two DISTINCT kernels of the single combined leafSpec —
     has its whole `pipeN` computation decode to the composite of its per-step
     specs `[(· + a), (· * v), (· + a), (· * v)]`, with **ZERO `KernelRealizes` /
     `KernelRealizes2` hypotheses**.  Every per-step realization is a theorem

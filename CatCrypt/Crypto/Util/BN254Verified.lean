@@ -142,9 +142,9 @@ distinct points `P = (x₁, y₁)`, `Q = (x₂, y₂)` is
 The two coordinate maps `x₃`, `y₃` are *polynomial* in `λ` and the inputs
 (built only from `FpBN254`'s `*`/`−`); `λ` itself carries the one field
 inverse. The emitted BN254 `G1` group leaf computes this formula on top of
-the AUCurves-verified `bn254-safe-rust` field ops; the realization tie
-(`BN254/EmittedFieldRealization.lean`) shows the emitted residue field
-kernels realize exactly the `*`/`−` these maps consume. -/
+the AUCurves-verified `bn254-safe-rust` field ops. The statement that emitted
+residue field kernels realize exactly the `*`/`−` these maps consume is made
+per curve in the `EmittedFieldRealization` modules; BN254 has no such module. -/
 
 /-- The BN254 curve constant `a = 0`. -/
 def bn254A : FpBN254 := 0

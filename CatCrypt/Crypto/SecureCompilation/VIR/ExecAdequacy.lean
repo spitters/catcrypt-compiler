@@ -25,24 +25,21 @@ operational core:
 * the *functional fuel-bounded executor* `execInstrR` / `execInstr` /
   `execCmd` / `execFor` / `execCall`, used for `#eval` smoke tests.
 
-Every just-landed operational file (`CifLowering`, `WhileLowering`,
-`CallLowering`, `OpSemCoverage`, `CmdRun`) characterises the executor's
+The operational files (`CifLowering`, `WhileLowering`,
+`CallLowering`, `OpSemCoverage`, `CmdRun`) characterise the executor's
 *branch* result (e.g. `execInstrR_Cassgn_eq`, `execInstrR_Cif_eq_ite`,
-`execCmd_cons`) but none ties the executor back to the **reference relational
-semantics** itself. The mirror's §7 header records this as the shared residual:
+`execCmd_cons`); this module ties the executor to the **reference relational
+semantics** itself (the mirror's §7 header: "the functional and relational
+definitions agree by construction on straight-line code").
 
-  > "The functional and relational definitions agree by construction on
-  >  straight-line code (Phase C: prove this as `semCmd_sound`)."
-
-This file discharges that residual in the **soundness** direction (the natural
-one): *if the executor succeeds (`= .ok s'`), the relational judgement holds*.
+This module proves the **soundness** direction (the natural one): *if the executor succeeds (`= .ok s'`), the relational judgement holds*.
 
   `execInstrR … (fuel'+1) s i prog = .ok s' → SemIr … s i s'`
   `execCmd    … (fuel'+1) s c prog = .ok s' → Sem   … s c s'`
 
 This lifts the operational layer from "functional executor" to "agrees with
 the reference relational semantics": any `#eval`/`native_decide` KAT on
-`execCmd`/`execInstrR` now *witnesses* the corresponding `Sem`/`SemIr`
+`execCmd`/`execInstrR` *witnesses* the corresponding `Sem`/`SemIr`
 derivation in `psem.v`'s ported inductive.
 
 ## What is proved
@@ -83,7 +80,8 @@ tree (a separate strong induction *on the derivation*, with a fuel-monotonicity
 lemma `execInstrR … fuel = .ok → execInstrR … (fuel+1) = .ok`). The executor
 is deterministic, so soundness already pins the *result* of any successful run
 to the unique relational image; completeness would additionally show every
-relational step is *reachable* at some fuel. That is left for a follow-up.
+relational step is *reachable* at some fuel; that direction is proved in
+`ExecCompleteness.lean`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
@@ -422,7 +420,7 @@ def assignXY_post : Estate Unit TrivialMem :=
   | _ => startState 5
 
 /-- The executor's `x := y + 1` run from `y = 5` succeeds and lands in
-    `assignXY_post`. Reduced via the landed `Cassgn` keystone, then `rfl`. -/
+    `assignXY_post`. Reduced via `OpSemCoverage.execInstrR_Cassgn_eq`, then `rfl`. -/
 theorem assignXY_run_ok :
     execInstrR (Mem := TrivialMem) addAsmSem addOpSem [] 1 (startState 5) assignXY
       = .ok assignXY_post := by

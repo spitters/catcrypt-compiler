@@ -16,22 +16,19 @@ import all Veir.IR.Attribute
 public import Veir.Properties
 
 /-!
-# Path (b) Tier 1.1: `CatCryptDialect` → Veir op/type wiring
+# `CatCryptDialect` → Veir op/type wiring
 
 This file provides the `ToVeirOp catCryptDialect _` and
 `ToVeirTy catCryptDialect` instances that let the generic `ComToVeir`
 lowering (`lowerClosedCom`, `lowerCom`, `lowerExpr` in
 `ComToVeir.lean`) target real CatCrypt programs.
 
-## Status: ACTIVE (instances defined; smoke test compiles)
+## Dependency
 
-Previously blocked on a name-collision between Veir's
-`Veir/ForLean.lean` and Lean Init / Mathlib over `List.getElem?_idxOf`.
-Resolved upstream by Veir PR #626 (rename to `List.getElem_idxOf`).
-
-The lakefile pins Veir at `main` (bumped 2026-05-22) which includes
-the fix. Once a Veir release post-PR-#626 is tagged, the dep can be
-pinned to that tag instead.
+The instances require a Veir revision in which the lemma in
+`Veir/ForLean.lean` is named `List.getElem_idxOf`, so that it does not collide
+with `List.getElem?_idxOf` from Lean Init / Mathlib. The lakefile pins Veir at
+`main`, which has that name.
 
 ## Goal 1: CatCrypt op inventory
 
@@ -191,8 +188,8 @@ def CatCryptOp.toVeirOp : CatCryptOp → Veir.OpCode
 
     Coverage: every BitVec/bit/`ite`/`extCall` op → an `arith`/`func` opcode, and
     the memory ops → the registered MLIR **`memref`** dialect (`memref.alloca/
-    load/store`), now that Veir's `OpCode` enum carries a `Memref` block. The only
-    ops still WITHOUT a registered counterpart are the algebraic-datatype ops
+    load/store`), which Veir's `OpCode` enum carries as a `Memref` block. The only
+    ops WITHOUT a registered counterpart are the algebraic-datatype ops
     (pair/sum/`constUnit`) → `catcrypt.unknown` (would need an MLIR `tuple`/`index`
     lowering or a richer `catcrypt` dialect). All mappings `rfl`-checked below. -/
 def CatCryptOp.toArithOpCode : CatCryptOp → Veir.OpCode
@@ -401,9 +398,9 @@ def lowerCatCryptComToMLIRText {t : CryptoTy} (com : Com catCryptDialect [] t) :
     | .blockArgument _ => default
   VeirPrinterShim.printModuleToString ctx rootOp
 
-/-- Smoke check that the printer wiring type-checks. We do NOT
-    `#eval` it — that would require Veir's printer to actually run
-    against the lowered shape, which is left as follow-up. -/
+/-- Smoke check that the printer wiring type-checks. It is not
+    evaluated: running Veir's printer against the lowered shape is outside
+    this check. -/
 example : Com catCryptDialect [] (CryptoTy.sword 32) → IO String :=
   lowerCatCryptComToMLIRText
 

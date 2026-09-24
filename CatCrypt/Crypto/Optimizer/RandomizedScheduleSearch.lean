@@ -15,7 +15,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquiva
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
 
 /-!
-# Verified CryptOpt: randomized schedule search with in-Lean translation validation (#376)
+# Verified CryptOpt: randomized schedule search with in-Lean translation validation
 
 CryptOpt (Kuepper, Erbsen, Gross, Conoly, Sun, Tindall, Coronado, Mues, Erbsen,
 Philipoom, Chlipala, Chuengsatiansup, Genkin, Wagner, Yarom — PLDI'23) finds
@@ -83,8 +83,8 @@ register allocation our linear-scan pass already gives. -/
 
 -- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
 -- schedule-search pass; this module emits no deployed `.s` artifact.
-/-- The naive (strict product-by-product interleave) schedule — the baseline our
-    #273/#274/#143 passes emit. -/
+/-- The naive (strict product-by-product interleave) schedule — the baseline the
+    scheduler, e-graph and emit passes produce. -/
 def inputBlock : List (JInstr 64) :=
   [ .mulx "h0" "l0" (.reg "di0") (.reg "m0")
   , .add  "acc_lo" (.reg "l0")
@@ -408,7 +408,8 @@ theorem mulx_adc_commute (s : JState 64) :
 `hoistedBlock` (the schedule `searchBest` converges to) is `runBlock`-equal to
 `inputBlock` for **all** machine states — proved by transposing the second
 `MULX` two slots left, each step justified by a §5 commute lemma. This is the
-in-Lean equivalence certificate that **replaces** CryptOpt's external checker. -/
+in-Lean equivalence certificate that takes the place of CryptOpt's external
+checker. -/
 
 /-- **Winner TV (machine-state level).** For every machine state `s`, running the
     mulx-hoisted winner schedule yields the *same* `JState` as the naive input —
@@ -427,13 +428,13 @@ theorem hoisted_runBlock_eq_input (s : JState 64) :
           (JInstr.mulx "h0" "l0" (JOperand.reg "di0") (JOperand.reg "m0")))
           (JInstr.add "acc_lo" (JOperand.reg "l0")))]
 
-/-! ## 7. Lifted to the dialect: equal `Com` denotation (reuse of #372)
+/-! ## 7. Lifted to the dialect: equal `Com` denotation
 
 Through `X86Dialect.lowerBlock_denote_closed`, the machine-state equality above
 becomes equality of the *lowered `Com`s' denotations*: the backend lowering of
 the winner schedule denotes to the same `JState → JState` transformer as the
-lowering of the input. This is the denotation-preserving statement #372 supplies
-the machinery for. -/
+lowering of the input. This is the denotation-preserving statement that
+`lowerBlock_denote_closed` supplies the machinery for. -/
 
 /-- **Winner TV (dialect/`Com` level).** The lowered `Com` of the hoisted winner
     and the lowered `Com` of the naive input have *equal denotation* on every
@@ -459,11 +460,11 @@ prefers and (b) TV-equivalent to the input. -/
 theorem hoisted_cost_lt_input : scheduleCost hoistedBlock < scheduleCost inputBlock := by
   native_decide
 
-/-! ## 9. Scaling the search to the Curve25519 field-multiply block (#385)
+/-! ## 9. Scaling the search to the Curve25519 field-multiply block
 
-The §1–§8 pilot was the safegcd single-CF accumulate (residency-bound: §13a's
+The §1–§8 pilot is the safegcd single-CF accumulate (residency-bound: §13a's
 serial `add→adc→add→adc` chain dominates, so the MULX-hoist the search prefers is
-~3-5% *slower* on a wide-OoO core — the `bench/cryptopt_safegcd` null). #385 runs
+~3-5% *slower* on a wide-OoO core — the `bench/cryptopt_safegcd` null). This section runs
 the *same* loop against the favourable target: the dual-ADCX/ADOX schoolbook
 field-mul `fe25519_mul` (`Fe25519MulKernel.feMulBlock`), CryptOpt's home turf,
 which sits at 1.34× s2n.
@@ -650,7 +651,7 @@ def countLegalSwaps (block : List (JInstr 64)) : Nat :=
     | a :: b :: _ => legalSwap' a b
     | _ => false)).length
 
-/-- **#385 search finding (machine-checked).** The Curve25519 field-multiply
+/-- **Field-multiply search result (machine-checked).** The Curve25519 field-multiply
     schoolbook admits exactly 8 legal disjoint-footprint adjacent transpositions.
     The reschedules they generate are all *cost-neutral* under `scheduleCost`
     (the search finds no static improvement) and, when benched on-CPU
@@ -660,12 +661,12 @@ def countLegalSwaps (block : List (JInstr 64)) : Nat :=
     within-block instruction schedule: the block reuses the `hi`/`lo` mul-output
     register names across every product, which serialises the schedule by name,
     so unlocking the real parallelism (front-loading all four column multiplies)
-    requires *renaming* those outputs — register allocation (#386), not scheduling. -/
+    requires *renaming* those outputs — register allocation, not scheduling. -/
 theorem feMulBlock_legal_swaps : countLegalSwaps feMulBlock = 8 := by native_decide
 
-/-! ## 10. The full divstep ACCUMULATE body — the three-product step (#530)
+/-! ## 10. The full divstep ACCUMULATE body — the three-product step
 
-The §1–§8 pilot was the *two*-product single-CF accumulate. The actual safegcd
+The §1–§8 pilot is the *two*-product single-CF accumulate. The actual safegcd
 divstep accumulate body the bench flags as the 1.5×-s2n residual is
 `SafegcdDivstep62Emit.innerPassStep ... (addRed = true)` (the `update_de` cd/ce
 passes): it accumulates **three** signed products into the **same** i128
@@ -707,7 +708,7 @@ of static order, so front-loading buys nothing and the live-range bloat hurts.
 This is direct, machine-checked-plus-measured evidence that the safegcd
 1.5×-s2n divstep residual is **not** in the within-block instruction schedule —
 it is instruction-selection (the dual-CF ADCX/ADOX chain, signed-MULX) and
-residency / subroutine-call ABI, exactly as #371/#373/#363/#385 found. A
+residency / subroutine-call ABI, consistent with §9. A
 within-block reschedule of the accumulate cannot close it. -/
 
 /-- The three-product divstep accumulate, strict product-by-product interleave
@@ -808,7 +809,7 @@ theorem hoisted3_runBlock_eq_input (s : JState 64) :
 /-- **Winner TV (dialect/`Com` level), three-product divstep accumulate.** The
     lowered `Com` of the hoisted winner and of the baseline have equal denotation
     on every incoming state — the schedule change preserves denotation against
-    the validated x86 model. The in-Lean certificate that replaces CryptOpt's
+    the validated x86 model. The in-Lean certificate that stands in for CryptOpt's
     external equivalence checker. -/
 theorem hoisted3_lowering_denote_eq_input (s : JState 64) :
     (lowerBlock (Γ := []) hoist3Block).denote (.cons s .nil)
@@ -820,14 +821,14 @@ theorem hoisted3_lowering_denote_eq_input (s : JState 64) :
     (it removes three adjacent multiply→accumulate stalls under `scheduleCost`):
     the search has a reason to converge here. The on-CPU bench
     (`bench/cryptopt_safegcd/cost_eval_3prod.c`) then **overturns** that
-    preference (1.21–1.30× *slower*), which is exactly the #530 finding: the
+    preference (1.21–1.30× *slower*), which is the measured result: the
     static port-pressure proxy mismodels the register-pressure cost of six live
     mul-output temporaries on a wide-OoO core, and the real critical path is the
     serial `acc_lo`/`acc_hi` carry chain, not multiply latency. -/
 theorem hoist3_cost_lt_input : scheduleCost hoist3Block < scheduleCost input3Block := by
   native_decide
 
-/-- **#530 search finding (machine-checked).** The strict-interleave
+/-- **Three-product search result (machine-checked).** The strict-interleave
     three-product divstep accumulate admits no legal disjoint-footprint adjacent
     transposition that the proxy alone would take blindly: every legal swap is a
     MULX/accumulate reorder whose only effect is the (proxy-preferred,
@@ -860,7 +861,7 @@ becomes legal); it **never** bypasses TV. The winner it returns is re-gated:
   certificate**: decompose the reorder into `indepJ`-certified adjacent
   transpositions and run `checkAdjTranspositions`. A pass is a machine-checked,
   all-states `runBlock`-equality (`runBlock_perm_eq`), the same soundness gate
-  the §6 winner-TV uses — only now reached through the wider joint move space.
+  the §6 winner-TV uses, reached through the wider joint move space.
 
 ### The decidable TV certificate
 
@@ -878,7 +879,7 @@ def tvCertifiesSwaps (swaps : List Nat) (block : List (JInstr 64)) : Bool :=
 
 /-- **TV certificate soundness.** A passing `tvCertifiesSwaps` yields an
     all-states `runBlock`-equality between the rescheduled block and the input —
-    this is the in-Lean equivalence checker that replaces CryptOpt's external
+    this is the in-Lean equivalence checker that stands in for CryptOpt's external
     one. Direct corollary of `runBlock_perm_eq`. -/
 theorem tvCertifiesSwaps_sound (s : JState 64) (swaps : List Nat)
     (block : List (JInstr 64)) (h : tvCertifiesSwaps swaps block = true) :

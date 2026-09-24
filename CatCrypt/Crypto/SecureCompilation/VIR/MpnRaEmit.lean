@@ -14,10 +14,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 /-!
 # Bignum ADCX/ADOX/MULX dual-chain `mpn_addmul_1` with live-range-aware RA
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
-framework; `UnrolledComRA.lean` adds cross-iteration carry analysis (#153)
-and two-address coalescing (#158). `Sha2RaEmit.lean`, `KeccakRaEmit.lean`,
-`ChachaRaEmit.lean`, `Poseidon2RaEmit.lean`, and `MlkemRaEmit.lean` wired
+`RegisterAllocation.lean` provides the verified linear-scan RA
+framework; `UnrolledComRA.lean` adds cross-iteration carry analysis
+and two-address coalescing. `Sha2RaEmit.lean`, `KeccakRaEmit.lean`,
+`ChachaRaEmit.lean`, `Poseidon2RaEmit.lean`, and `MlkemRaEmit.lean` wire
 the framework into the SHA-2, Keccak, ChaCha20, Poseidon2, and ML-KEM-768
 4-way NTT emits.
 
@@ -28,7 +28,7 @@ inner loop: `MULX`, `ADCX`, `ADOX`).
 
 ## Why bignum bites hard
 
-The four prior `*RaEmit` consumers showed the framework on either
+The other `*RaEmit` consumers apply the framework to either
 *homogeneously-carried* (ChaCha — every state slot is touched in every
 double-round) or *partial-carry* (ML-KEM butterfly — three carried, two
 pure-sink, one read-only) traces. Bignum is structurally different:
@@ -42,8 +42,8 @@ pure-sink, one read-only) traces. Bignum is structurally different:
    aliases the destinations. This is the FIRST consumer where the
    two-address coalescing infrastructure (`coalescePairsNoSeed`) is
    expected to find a non-empty candidate set on the trace itself
-   (ChaCha/Poseidon2 had zero candidates by encoding; SHA-2/Keccak/ML-KEM
-   had candidates but coalescing was blocked by overlap).
+   (ChaCha/Poseidon2 have zero candidates by encoding; SHA-2/Keccak/ML-KEM
+   have candidates but coalescing is blocked by overlap).
 3. **Heterogeneous carry**: `cf` and `of` flow across every limb
    boundary; `hi_i` flows from limb `i` to limb `i+1` via the ADOX of
    limb `i+1`'s third instruction; `t_i, lo_i, r_i` are per-limb. The

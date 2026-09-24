@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
 
 /-!
-# Loop-carried-value emit — additive accumulator (task #538, wall #2)
+# Loop-carried-value emit — additive accumulator
 
 `CounterLoopDemo.lean` lowers the smallest **counter-reading** loop body
 `(acc, ctr) ↦ acc XOR ctr` through `cforIdxToLprogAbiBodyZeroAcc` (one body copy
@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
 That demonstrates the loop *control-flow* path with an idempotent-algebra (XOR)
 loop-carried value.
 
-This module advances to a **non-idempotent, order-insensitive additive**
+This module treats a **non-idempotent, order-insensitive additive**
 loop-carried value through the *same* verified x86 emit path. The body is
 
 ```
@@ -38,27 +38,27 @@ so `cforIdxDenote n sumCtrBody 0` folds `acc := acc + ctr` over the live counter
    `CounterLoopDemo` uses) to lower `sumCtrBody` to a callable parameterless
    `void → u64` owned `.s`, computing the same fold from `acc = 0`.
 
-## Why this is a genuine increment over the XOR demo
+## How this differs from the XOR demo
 
 The XOR demo's algebra is idempotent and self-inverse; the only thing it
 exercises is the counter-reading *plumbing*. The additive accumulator is a
 distinct fold algebra: the loop-carried value strictly *grows* each iteration
 (`acc` depends on every prior `ctr`), and the closed form is the Gauss sum
 `n(n+1)/2 mod 2^64`. The reference/loop reconciliation is the same AC-fold
-re-indexing argument, but the value carried is now a true running reduction —
+re-indexing argument, but the value carried is a true running reduction —
 the shape every "fold `f` over `0..n` into one register" inner pass uses
 (checksum/length-prefixed accumulation, the additive case of a `Σ`-reduction).
 
-## What this is NOT (the honest residual, see report)
+## Scope
 
 The loop-carried value here is fed by the **loop counter** (`ctr = n-i`), not by
-a value loaded from a caller-supplied **array** `mem[i]`. A genuine
+a value loaded from a caller-supplied **array** `mem[i]`. A
 `v := v + mem[base + i]` array-sum needs the body to carry an array/pointer slot
 (the `[acc, idx, table]` shape of `JForProgIndexed.JForProgTab`, whose abstract
 `execCom` denotation tie is `JForProgIndexed.loopRunT_eq_denoteT`) wired into the
-x86 `cforIdxToLprogAbiBody` register-pin splice — that wiring is the named
-residual, not claimed here. This module pins the additive loop-carried value
-through the counter-reading path; the array-indexed memref body is the next wall.
+x86 `cforIdxToLprogAbiBody` register-pin splice; that wiring is outside this
+module (`LoopReduceDemo` treats the array-indexed memref body). This module pins
+the additive loop-carried value through the counter-reading path.
 -/
 
 @[expose] public section

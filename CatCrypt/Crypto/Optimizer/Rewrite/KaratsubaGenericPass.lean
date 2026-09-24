@@ -94,13 +94,13 @@ theorem karatsuba_eq_schoolbook (B a1 a0 b1 b0 : R) :
   ring
 
 /-- Evaluated form: the Karatsuba assembly equals the schoolbook assembly, both
-equal to the genuine ring product `(a1*B+a0)*(b1*B+b0)`. -/
+equal to the ring product `(a1*B+a0)*(b1*B+b0)`. -/
 theorem evalLimbs_karatsubaMul (B a1 a0 b1 b0 : R) :
     evalLimbs B (karatsubaMul B a1 a0 b1 b0) = (a1 * B + a0) * (b1 * B + b0) := by
   simp only [evalLimbs, karatsubaMul]
   ring
 
-/-- The schoolbook assembly also equals the genuine ring product. -/
+/-- The schoolbook assembly also equals the ring product. -/
 theorem evalLimbs_schoolbookMul (B a1 a0 b1 b0 : R) :
     evalLimbs B (schoolbookMul B a1 a0 b1 b0) = (a1 * B + a0) * (b1 * B + b0) := by
   simp only [evalLimbs, schoolbookMul]

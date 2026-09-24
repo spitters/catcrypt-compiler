@@ -13,13 +13,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 /-!
 # Keccak ι as a bit-exact index-parameterized loop (the per-round-constant exemplar)
 
-`KeccakEmit.keccak_round_loop_denote_eq` (committed) certifies the 24-round
-Keccak loop *structure* — but with a **uniform** body that folds in a *fixed*
-`RC[0]`; the genuinely per-round ι constant stream lived only in the
-fully-unrolled emission, whose bit-exactness rested on the FIPS 202 KAT, NOT on
+`KeccakEmit.keccak_round_loop_denote_eq` certifies the 24-round
+Keccak loop *structure* with a **uniform** body that folds in a *fixed*
+`RC[0]`; there, the per-round ι constant stream is carried by the
+fully-unrolled emission, whose bit-exactness rests on the FIPS 202 KAT, NOT on
 the loop denotation theorem.
 
-This file closes that hole for the cleanest per-round-constant primitive, the
+This module certifies the per-round constant for the simplest
+per-round-constant primitive, the
 Keccak **ι** step (a single per-round XOR of `RC[round]` into lane 0). Using the
 index-parameterized loop layer `JForProgIndexed` (the `JForProgTab` form: the
 body context carries the loop index register `"idx"` and the loop-invariant
@@ -31,13 +32,13 @@ constant table `"rc"`), we **prove**:
 * `keccakIotaStep_eq` — the body's per-iteration step is **bit-exactly**
   `acc ^^^ RC[i]` (the FIPS 202 ι), the actual per-round constant `RC[i]` read
   from the table — NOT a fixed `RC[0]`.
-* `keccak_iota_loop_bitexact` — **the keystone**: the emitted indexed loop
+* `keccak_iota_loop_bitexact` — **the main theorem**: the emitted indexed loop
   `for i = 0 to 24 { acc = acc ⊕ RC[i] }`, run on the word-level evaluator,
   denotes the bit-exact 24-fold ι fold `keccakIotaRef` — a THEOREM via
   `JForProgIndexed.loopRunT_eq_denoteT` (routed through `freshName_injective`),
   **not** `native_decide` / KAT.
 * `keccak_iota_kat` — the FIPS 202 KAT for the ι stream (the cumulative XOR of all
-  24 round constants from `init = 0`) is now derived as a **corollary** of the
+  24 round constants from `init = 0`) is derived as a **corollary** of the
   bit-exact loop theorem — a sanity check, not the validation.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, which is
@@ -55,7 +56,7 @@ The same mechanism applies verbatim to:
   baked into the per-`t` body family `JForProgIdx.update t`); the indexed loop
   `for t = 0 to 64 { state = round(state, K[t]) }` denotes the bit-exact 64-round
   compression by `loopRunT_eq_denoteT`. See `keccak_iota_loop_bitexact` for the
-  pattern; `Sha2Emit.lean` is the committed unrolled artifact the corollary
+  pattern; `Sha2Emit.lean` is the unrolled artifact the corollary
   re-derives.
 * **Poseidon2** (`Poseidon2Emit`): each (full / partial) round adds its per-round
   constant vector `RC[r]`. Realize the round body over `[stateTy, reg 64,
@@ -70,10 +71,10 @@ constant becomes a certified input rather than a KAT-validated unrolled stream.
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #104 in that chain — a **standalone exemplar** (no internal
+module is a **standalone exemplar** in that chain (no internal
 importers; referenced by docstrings in `KeccakBitexact` / `KeccakDiffuseExact`
-as the template the rest of the chain extends). Closes the isolated-ι
-per-round-constant primitive bit-exactly.
+as the template the rest of the chain extends). It proves the isolated-ι
+per-round-constant primitive bit-exact.
 -/
 
 @[expose] public section
@@ -117,7 +118,7 @@ def vRc : Ctxt.Var ictx (.stackArr 64 24) := .there (.there .here)
 def keccakIotaBody : Com jasminDialect ictx (.reg 64) :=
   -- v0 = stackLoad rc idx  (= RC[idx])
   .var (.mk (.stackLoad 64 24) rfl (.cons vRc (.cons vIdx .nil)))
-    -- v1 = regArith xor acc v0   (acc is now `.there .here`, v0 is `.here`)
+    -- v1 = regArith xor acc v0   (acc is `.there .here` after v0, v0 is `.here`)
     (.var (.mk (.regArith .xor 64) rfl
             (.cons (.there vAcc) (.cons .here .nil)))
       (.ret .here))
@@ -169,7 +170,7 @@ theorem keccakIotaStep_eq {i : Nat} (h : i < 24) (acc : BitVec 64) :
 
 `keccakIotaRef init` folds in the **actual** per-round constants `RC[0], …,
 RC[23]`: `init ⊕ RC[0] ⊕ … ⊕ RC[23]`. This is the bit-exact 24-round ι
-permutation on lane 0 (each round XORs the genuine `RC[round]`). -/
+permutation on lane 0 (each round XORs its own `RC[round]`). -/
 
 /-- The bit-exact 24-round ι reference: fold `acc ↦ acc ⊕ RC[i]` over
     `i = 0 .. 23` with the actual FIPS 202 round constants. -/
@@ -203,21 +204,21 @@ theorem denoteT_eq_ref (init : BitVec 64) :
   exact foldl_congr_mem _ _ (List.range 24)
     (fun i hi acc => keccakIotaStep_eq (List.mem_range.mp hi) acc) init
 
-/-! ## 5. The keystone: the emitted ι loop is bit-exact (a THEOREM, not a KAT) -/
+/-! ## 5. The main theorem: the emitted ι loop is bit-exact (a THEOREM, not a KAT) -/
 
-/-- **Keystone — the emitted Keccak ι loop denotes the bit-exact 24-round ι
+/-- **Main theorem — the emitted Keccak ι loop denotes the bit-exact 24-round ι
     permutation, with the ACTUAL per-round constants.** Running the emitted
     `for i = 0 to 24 { acc = acc ⊕ RC[i] }` on the word-level evaluator (the ι
     body run once per round, reading `RC[i]` from the table at the threaded index
     register), threading the lane accumulator, the index `"idx"` and the
     loop-invariant constant table `"rc"`, equals `keccakIotaRef init` — the
-    bit-exact 24-fold XOR of the genuine FIPS 202 round constants
+    bit-exact 24-fold XOR of the FIPS 202 round constants
     `RC[0..23]`.
 
     This is a **proof** (via `JForProgIndexed.loopRunT_eq_denoteT`, routed through
     `freshName_injective`), NOT a `native_decide`/KAT check. The per-round
-    constant `RC[i]` is now a certified input to the loop denotation — closing the
-    "uniform `RC[0]` skeleton" hole of `KeccakEmit.keccak_round_loop_denote_eq`.
+    constant `RC[i]` is a certified input to the loop denotation, in contrast to
+    the uniform `RC[0]` body of `KeccakEmit.keccak_round_loop_denote_eq`.
     The only hypothesis is the opaque-leaf edge `LeafAgrees`, **vacuous** here (the
     ι body has no `extCall`). -/
 theorem keccak_iota_loop_bitexact {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
@@ -226,11 +227,11 @@ theorem keccak_iota_loop_bitexact {leafSem : LeafSem} (hLeaf : LeafAgrees leafSe
   rw [loopRunT_eq_denoteT hLeaf keccakIotaLoop keccakIotaBody_straightLine init,
       denoteT_eq_ref]
 
-/-! ## 6. The FIPS 202 KAT is now a corollary
+/-! ## 6. The FIPS 202 KAT as a corollary
 
-With the bit-exact loop theorem in hand, a concrete ι KAT — e.g. running the loop
+Given the bit-exact loop theorem, a concrete ι KAT — e.g. running the loop
 from `init = 0` yields the cumulative XOR of all 24 round constants — is a
-**corollary** (`rw` the keystone, then evaluate the reference fold), NOT the
+**corollary** (`rw` the main theorem, then evaluate the reference fold), NOT the
 validation. -/
 
 /-- The cumulative XOR of all 24 FIPS 202 round constants (the ι loop output from

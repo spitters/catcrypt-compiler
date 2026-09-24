@@ -13,19 +13,19 @@ public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 
 /-!
-# BLAKE2b G as a genuine `catCryptDialect → jasmin → x86` path
+# BLAKE2b G as a `catCryptDialect → jasmin → x86` path
 
 The RFC 7693 §3.1 BLAKE2b G mixing function is a *benchmarked* primitive
 (`bench/blake3_compare` / HACL* BLAKE2). It is the width-64 ARX sibling of the
-ChaCha20 quarter-round, and until now it routed to owned x86 only through the
+ChaCha20 quarter-round; besides this module it reaches owned x86 through the
 compile-from-hax front (`CompileFromHaxBlake2b.lean`, which emits the four G
-output words via `compileFromHax`). The high algebraic crypto-SSA surface
-`catCryptDialect` carried no BLAKE2b coverage. This file closes that gap,
-mirroring `Chacha20QRCatCryptEmit.lean`: it builds the G mixing function
-*natively* as a straight-line `Com catCryptDialect` program over the dialect's
-width-64 word ops (`bvAdd`/`bvXor`/`bvRor`), proves it denotes to the canonical
-RFC-7693 spec (`CompileFromHaxBlake2b.blake2bG{a,b,c,d}Spec`), and lowers it
-through the committed `catCryptDialect → jasminDialect` seam
+output words via `compileFromHax`). This module gives BLAKE2b coverage in the
+high algebraic crypto-SSA surface `catCryptDialect`, mirroring
+`Chacha20QRCatCryptEmit.lean`: it builds the G mixing function *natively* as a
+straight-line `Com catCryptDialect` program over the dialect's width-64 word ops
+(`bvAdd`/`bvXor`/`bvRor`), proves it denotes to the canonical RFC-7693 spec
+(`CompileFromHaxBlake2b.blake2bG{a,b,c,d}Spec`), and lowers it through the
+committed `catCryptDialect → jasminDialect` seam
 (`DialectToJasminCom.cryptoDialectToJasminCom`), composing the seam's
 denote-preservation so the *lowered jasmin program* denotes to the same RFC spec.
 The lowered jasmin `Com` then emits to `.jazz`/x86 via `JasminPrint.emitJazz`.
@@ -56,7 +56,7 @@ BLAKE2b G rotates *right*, so each rotate maps **directly** to `bvRor 64 n`
 (`32/24/16/63`) — no rotate-direction bridge is needed; `bvRor` denotes to
 `BitVec.rotateRight` and lowers to jasmin `rorImm`.
 
-## Deliverables
+## Contents
 
 * `blake2bGCatCrypt{A,B,C,D}` — the four output words of G as native
   `Com catCryptDialect` programs over the shared 14-op block.

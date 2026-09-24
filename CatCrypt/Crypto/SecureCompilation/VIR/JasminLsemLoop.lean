@@ -13,12 +13,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
-# The first COUNTED-LOOP program-level `lsem` simulation — increment 4c
+# The COUNTED-LOOP program-level `lsem` simulation
 
-Increments 4a/4b (`JasminLsemLabeled.lean`) built the *labeled, program-indexed,
+`JasminLsemLabeled.lean` defines the *labeled, program-indexed,
 fuel-bounded* linear semantics (`lsemStepP`/`lsemFuel`/`lsem`, with `findLabel`,
 the `Lgoto`/`Lcond`/`Llabel` arms, and the conservative-extension bridge
-`lsemFuel_straightline`). This module is **increment 4c**: the first *loop*
+`lsemFuel_straightline`). This module proves the *loop*
 simulation — the program-level `lsem` trace of the **real emitted looped form**
 (`X86Backend.LprogControlFlow.loopLcmd`) equals the source loop's `n`-fold
 denotation, plus the loop's constant-time property.
@@ -44,7 +44,7 @@ that *sets ZF* followed by `jne` to the top label, with no semantic role for a
 separate value-producing instruction between them. We relate it structurally to
 the literal `loopLcmd` (`loopLR_eq_loopLcmd_dropCmp`): the two differ only by the
 flag-materialising `CMP nReg,#0` instruction, whose word-level effect the
-increment-1 model `JasminLsem.applyOpn` does not carry (it has no `"CMP"`/flag
+word model `JasminLsem.applyOpn` does not carry (it has no `"CMP"`/flag
 arm — `applyOpn "CMP" _ = none`). The *trip count and the taken/not-taken
 decision are identical* in both forms, since both test the same public counter
 `nReg` against `0`; the explicit `CMP` only recomputes the ZF the `SUB` already
@@ -58,9 +58,9 @@ The simulation (`loopLR_lsem_iterate`, §3) is by induction on the public trip
 count `n`. The loop program is the singleton-function program whose body is
 `loopLR`. From the loop entry (pc 0 = the `Llabel`), one iteration:
 
-1. **`Llabel`** (pc 0): a pc bump (delegated to increment 1's straight-line
+1. **`Llabel`** (pc 0): a pc bump (delegated to the straight-line
    `lsemStep`).
-2. **`body`** (pc 1 … |body|): straight-line, run via the increment-4a/4b bridge
+2. **`body`** (pc 1 … |body|): straight-line, run via the labeled-semantics bridge
    `JasminLsemLabeled.lsemFuel_straightline_suffix` applied to the body suffix;
    the per-iteration transformer `bodyStep` decrements the counter register.
 3. **back-edge `Lcond (.reg nReg) top`** (pc |body|+1): the public counter test.
@@ -69,7 +69,7 @@ count `n`. The loop program is the singleton-function program whose body is
    `Llabel`), re-entering the body; if it is `0` it falls through past the body
    end and the machine **halts** (`findInstr = none` — Coq `lsem_final`).
 
-The counter starts at `n` (public, static — `#460` vartime policy: the bound is
+The counter starts at `n` (public, static — vartime policy: the bound is
 the iteration count, never a secret), is decremented once per body, so after
 exactly `n` body runs the test fails and the loop halts at `bodyStep^[n]` of the
 entry state — the `n`-fold fold the source loop `JForProg.denote` /
@@ -86,20 +86,21 @@ alone, hence **state-independent** (`loopLR_lsemLeak_state_independent`, §5),
 provided the body is. We reuse `JForProgCT.RobustlyCTSafeJForProg` for the
 source-level CT fact that the back-edge tests a public counter.
 
-## Scope (honest)
+## Scope
 
 * **Covered**: the concrete `loopLcmd` shape (`loopLR`) with a *straight-line*
   body characterised by a counter-decrementing per-iteration transformer
-  `bodyStep` (the representative case the task names). The `n`-fold loop
-  simulation and the CT property are unconditional in `n`.
-* **Documented gaps** (§6, not faked):
+  `bodyStep`. The `n`-fold loop simulation and the CT property are
+  unconditional in `n`.
+* **Gaps of the straight-line model** (§6):
   1. the literal-`CMP` back-edge needs a `CMP`/flag arm in `applyOpn` +
-     `Lstate`;
+     `Lstate` (supplied by `JasminLsemLoopFlag`);
   2. a fully general `JForProg accTy` (arbitrary `Com` body, value encoding on
-     `Lstate`) needs the increment-2 functional value bridge
+     `Lstate`) needs the functional value bridge
      (`JasminLsemSimulation`) threaded *through* `bodyStep`, i.e. the per-body
      edge `bodyStep acc = JForProg.step acc` under the encoding — exactly the
-     `StepAgrees` edge `JForProgCT.loopRun_eq` already carries.
+     `StepAgrees` edge `JForProgCT.loopRun_eq` carries (discharged in §10 for
+     `UniformRegArith` bodies).
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
@@ -130,7 +131,7 @@ flag-materialising `CMP nReg,#0`). -/
 /-- The runnable looped program (the real `loopLcmd` back-edge in `dec; jnz`
     form): the top label, the straight-line body (whose trailing op decrements
     `counter` and sets ZF), and the conditional back-edge `Lcond (.reg counter)
-    top` (loop while `counter ≠ 0`). A `List LinstrR` — the increment-4a/4b
+    top` (loop while `counter ≠ 0`). A `List LinstrR` — the labeled-semantics
     `lsemFuel` runs exactly this. -/
 def loopLR (counter : String) (top : LLabel) (body : List LinstrR) : List LinstrR :=
   (.Llabel .internal top) :: body ++ [.Lcond (.reg counter) top]
@@ -149,7 +150,7 @@ def loopLcmdLR (w : Nat) (counter : String) (top : LLabel) (body : List LinstrR)
     the back-edge condition off the **same `"NZ"` register** the emitted loop
     uses; they differ only by the `CMP` that recomputes the ZF the body's
     trailing `SUB nReg,#1` already set. That `CMP`/flag arm is the single piece
-    the increment-1 word model does not carry (`applyOpn "CMP" _ = none`; §6, gap
+    the word model does not carry (`applyOpn "CMP" _ = none`; §6, gap
     1) — the trip count and the taken/not-taken decision are identical in both
     forms (same public counter tested against `0`). -/
 theorem loopLR_eq_loopLcmd_dropCmp (w : Nat) (top : LLabel) (body : List LinstrR) :
@@ -203,7 +204,7 @@ structure LoopBodySpec (w : Nat) (body : List LinstrR) where
   bodyStep : Lstate w → Lstate w
   /-- Running `body` straight-line on `sb` computes `bodyStep sb` (on the base
       store; `lsemStraight` threads the pc). The named edge — discharged by the
-      increment-1/2 functional body simulation, never a `sorry`. -/
+      functional body simulation, never a `sorry`. -/
   run : ∀ sb : Lstate w, lsemStraight body sb = some (bodyStep sb)
 
 /-! ## 3. A straight-line block runs, then control continues (the body lemma)
@@ -420,7 +421,7 @@ theorem reentry_base_setpc {w : Nat} {body : List LinstrR} (spec : LoopBodySpec 
 /-- **One loop iteration.** From the reentry state at iteration `k` (with `k < n`,
     so the back-edge counter is nonzero), running `|body| + 1` fuel reaches the
     reentry state at iteration `k+1`. Combines `loop_body_run` (body straight-line
-    via the 4a/4b bridge) with `backedge_taken` (the public-counter back-edge). -/
+    via the labeled-semantics bridge) with `backedge_taken` (the public-counter back-edge). -/
 theorem loop_one_iter (fn : String) {w : Nat} (top : LLabel) {body : List LinstrR}
     (spec : LoopBodySpec w body) (sb : Lstate w) (k : Nat) (restFuel : Nat)
     (hne : (spec.bodyStep (loopData spec sb k)).lvm "NZ" ≠ 0) :
@@ -448,7 +449,7 @@ theorem loop_one_iter (fn : String) {w : Nat} (top : LLabel) {body : List Linstr
 
     This is the loop trace of the **real emitted loop form** (`loopProg = loopLR`,
     the `loopLcmd` shape modulo the dropped `CMP`): each iteration runs the body
-    straight-line (`loop_body_run`, via the 4a/4b bridge `lsemFuel_straight_block`)
+    straight-line (`loop_body_run`, via the labeled-semantics bridge `lsemFuel_straight_block`)
     then the back-edge `Lcond` (`backedge_taken` while the public counter is
     nonzero, `backedge_fallthrough` when it hits zero). Proof by induction on the
     remaining iteration count. -/
@@ -524,7 +525,7 @@ that iterate (each `reentry (k+1)` applies one `bodyStep` to `reentry k`), so th
 body composite — the `n`-fold body fold the source loop `JForProg.denote`
 computes (the `foldl`-of-`step` characterisation `JForProgCT.denote_eq_foldl`,
 with the per-iteration edge `bodyStep ↔ JForProg.step` the `StepAgrees` /
-increment-2 functional bridge supplies; §"Scope" gap 2). -/
+functional value bridge supplies; §"Scope" gap 2). -/
 
 /-- The reentry sequence is the `bodyStep`-iterate (modulo the loop-invariant
     `lpc := 1` re-pin): `reentry (k+1)` applies one more `bodyStep` than
@@ -563,7 +564,7 @@ theorem lsemLeak_append {w : Nat} (xs ys : List LinstrR) (s : Lstate w) :
     (`JasminLsemRobust.linstrLeak`, never `s.lvm`) and the back-edge `Lcond` leaks
     the constant `LLeak.branch` — so the whole leak is a function of the (public)
     instruction list and the public trip count, never of a register value. The
-    trip count `c+1` is the public static loop bound (`#460` vartime policy), so
+    trip count `c+1` is the public static loop bound (vartime policy), so
     the back-edge decision leaks nothing beyond the public count. The body-leak
     hypothesis is exactly `JasminLsemRobust.lsemLeak_straightOps_state_independent`
     for a straight-line `regArith` body; the source-level CT fact (no secret-indexed
@@ -601,11 +602,11 @@ theorem loopLR_lsemLeak_state_independent {w : Nat} (top : LLabel) (body : List 
     1. *(correct)* the program-level `lsemFuel` trace from the loop entry halts at
        the `(c+1)`-fold body fold — the source loop's `n`-fold denotation
        (`JForProgCT.denote_eq_foldl`; the per-iteration `bodyStep ↔ JForProg.step`
-       edge is the increment-2 functional bridge / `StepAgrees`); and
+       edge is the functional value bridge / `StepAgrees`); and
     2. *(robust / constant-time)* the loop's leak `lsemLeak` is the **same from any
        two states** — the back-edge `Lcond` tests only the public counter, leaking
        a state-independent `branch`, and the body leaks only syntax. The public
-       trip count `c + 1` is the loop bound (`#460` vartime policy); the
+       trip count `c + 1` is the loop bound (vartime policy); the
        source-level CT is `JForProgCT.RobustlyCTSafeJForProg`.
 
     **No `JasminIRToX86` edge, no `jasminc_preserves_ct`**: both conjuncts concern
@@ -709,13 +710,13 @@ Sections 1–9 proved the loop simulation for a **straight-line** body character
 by a hand-specified per-iteration transformer `bodyStep` (`LoopBodySpec`). This
 section discharges **gap 2** (§"Scope"): a fully general `JForProg (.reg w)` whose
 body `update` is an arbitrary straight-line-provable `Com` — the uniform-width
-`regArith` fragment increment 1 models (`JasminLsemSimulation.UniformRegArith`).
+`regArith` fragment the word model covers (`JasminLsemSimulation.UniformRegArith`).
 
 The per-iteration commutation edge gap 2 names is
 
   `encode (Com.denote body v) = bodyStep (encode v)`   (under the value encoding),
 
-read at the body's return register. We discharge it by threading the increment-2
+read at the body's return register. We discharge it by threading the
 functional value bridge (`JasminLsemSimulation.comToLprog_lsem_straightline`)
 **through** the loop's per-iteration transformer `bodyStep := lsemStraight
 bodyChain`, where `bodyChain` is the `.var`-chain the linearizer emits for the
@@ -739,7 +740,7 @@ def singleVal {w : Nat} (acc : BitVec w) : Ctxt.Valuation (d := jasminDialect) [
     body: `straightOps 1 update 1` (the loop body context `[.reg w]` has length 1,
     so `nArgs = curDepth = 1`). This is the per-iteration `LinstrR` list the emitted
     `Cfor` runs, minus the control-flow terminator — exactly the chain the
-    increment-2 bridge `comToLprog_lsem_straightline` simulates. -/
+    functional value bridge `comToLprog_lsem_straightline` simulates. -/
 def loopBodyChain {w : Nat} (update : Com jasminDialect [JasminTy.reg w] (.reg w)) :
     List LinstrR :=
   straightOps 1 update 1
@@ -753,7 +754,7 @@ def loopBodyRetReg {w : Nat} (update : Com jasminDialect [JasminTy.reg w] (.reg 
 
 /-- The loop body context `[.reg w]` is uniform-width: its one variable (the
     loop-carried accumulator, de Bruijn `.here`) has type `.reg w`. The
-    `UniformCtxt` side condition of the increment-2 bridge, discharged for the
+    `UniformCtxt` side condition of the functional value bridge, discharged for the
     single-accumulator loop shape. -/
 theorem uniformCtxt_singleton (w : Nat) : UniformCtxt w [JasminTy.reg w] := by
   intro τ v
@@ -783,7 +784,7 @@ theorem loopBody_run_denote {w : Nat}
     return register after one emitted-body run on the encoded accumulator equals
     `p.step acc` = the source loop's per-iteration ground truth
     (`p.update.denote (.cons acc .nil)`). This is precisely the `StepAgrees` edge
-    `JForProgCT.loopRun_eq` carries, now realised on the *linear machine*: the
+    `JForProgCT.loopRun_eq` carries, realised on the *linear machine*: the
     emitted body chain, run on the encoding, computes one `JForProg.step`. -/
 theorem loopBody_run_step {w : Nat} (p : JForProg (.reg w))
     (hupd : UniformRegArith w p.update) (acc : BitVec w) :
@@ -806,9 +807,9 @@ def lsemBodyRunner {w : Nat} (p : JForProg (.reg w)) : JForProgCT.BodyRunner (.r
 /-- **`StepAgrees` for a general (`UniformRegArith`) loop body — discharged on the
     linear machine.** The lsem body runner (emitted body chain on the encoded
     accumulator, decoded at the return register) computes `p.step` for every
-    accumulator. This is the per-iteration edge of `JForProgCT.loopRun_eq`, no
-    longer hypothesised but *proved* through the increment-2 value bridge — gap 2,
-    threaded through `bodyStep`. -/
+    accumulator. This is the per-iteration edge of `JForProgCT.loopRun_eq`,
+    *proved* through the functional value bridge threaded through `bodyStep`
+    (gap 2). -/
 theorem lsemBodyRunner_stepAgrees {w : Nat} (p : JForProg (.reg w))
     (hupd : UniformRegArith w p.update) :
     JForProgCT.StepAgrees p (lsemBodyRunner p) := by
@@ -829,7 +830,7 @@ theorem lsemBodyRunner_stepAgrees {w : Nat} (p : JForProg (.reg w))
     This lifts §1–9's loop simulation from a hand-specified straight-line
     `bodyStep` (`LoopBodySpec`) to a **general `Com` loop body**: the per-iteration
     commutation edge `encode (Com.denote body v) = bodyStep (encode v)` (gap 2) is
-    discharged by `lsemBodyRunner_stepAgrees` — the increment-2 value bridge
+    discharged by `lsemBodyRunner_stepAgrees` — the functional value bridge
     (`JasminLsemSimulation`) threaded through `bodyStep` — and the whole-loop fold
     is `JForProgCT.loopRun_eq`. No `sorry`, no `bodyStep` hypothesis: the body edge
     is a theorem, not a carried assumption. -/

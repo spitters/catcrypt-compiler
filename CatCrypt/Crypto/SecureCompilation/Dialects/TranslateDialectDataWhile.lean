@@ -32,10 +32,9 @@ denotation over `LstateM` (guard read off the out-state), `whileLinstrRM` is the
 emitted guard-driven back-edge (`Llabel; body; guardCompute; Lcond gReg top`), and
 `whileMem_realizes` / `whileMem_runWhile` prove the emitted counter-loop run by
 `lsemFuelMemLC` realises `runWhileMem` — the trip *read off the run*, the consumer
-supplying only a fuel/variant bound. The gap was the **front**:
-`translateDialectControl` declined `RWhileNz` (it is not a straight-line `ComCont`).
+supplying only a fuel/variant bound. `RWhileNz` is not a straight-line `ComCont`.
 
-This module closes the front gap, mirroring `TranslateDialectRuntimeLoop`'s
+This module supplies the front for it, mirroring `TranslateDialectRuntimeLoop`'s
 structure but targeting `whileLinstrRM` (guard-driven) instead of `forLoopNRt`
 (count-driven):
 
@@ -200,7 +199,7 @@ theorem rolledWhileNz_realizes (nArgs : Nat) (leafGen : LeafGen)
 
 Reuse `TranslateDialectLoopCallLink`'s validate body (`acc := sum(acc, a[i])`, the
 leaf `RCall sum`) and its front lowering (`validateLoopBody` = the front body
-`Lcall` + the accumulator feedback / `idx += 1` / `n -= 1` counter tail), only now
+`Lcall` + the accumulator feedback / `idx += 1` / `n -= 1` counter tail), here
 wrapped in A3's **data-dependent** `whileLinstrRM 0 "n" []` (guard `n != 0`) rather
 than the fixed-trip `loopLinstrRM`. The trip is fixed at run time by the initial
 `n = 3` (the body decrements it), matched against `runWhileMem`. -/
@@ -208,7 +207,7 @@ than the fixed-trip `loopLinstrRM`. The trip is fixed at run time by the initial
 /-- The owned data-dependent-while program: the front body + counter tail wrapped in
     the guard-driven `whileLinstrRM 0 "n" []`. Note `whileLinstrRM 0 "n" []
     validateLoopBody = loopLinstrRM 0 "n" (validateLoopBody ++ [])` — the same real
-    `Lcond (.reg "n") 0` back-edge, now *interpreted* as the data-dependent `while`
+    `Lcond (.reg "n") 0` back-edge, *interpreted* as the data-dependent `while`
     whose trip is read off the run. -/
 def whileValidateProg : LprogM :=
   singletonProgM "f" (whileLinstrRM 0 "n" [] validateLoopBody)
@@ -222,7 +221,7 @@ def hasBackEdge (body : List LinstrRM) : Bool :=
   body.any (fun i => match i.fst with | .Lcond _ _ => true | _ => false)
 
 /-- **(b) The emitted program carries a REAL `Lcond` back-edge and a REAL leaf
-    `Lcall`** — a genuine guard-driven loop over a real linked leaf, not a
+    `Lcall`** — a guard-driven loop over a real linked leaf, not a
     straight-line unroll or an opaque `CALL:` shadow. -/
 theorem whileValidate_realBackEdge_realCall :
     hasBackEdge whileValidateProg.body = true

@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
 
 /-!
-# Wiring a register-named scalar op alphabet to the RV64 machine model (#535)
+# Wiring a register-named scalar op alphabet to the RV64 machine model
 
 `ARMBackend.ArmLowering` lowers a register-named scalar op alphabet (`AOp`) to
 the A64 machine `AInst` with the block-lowering denotation theorem
@@ -132,8 +132,9 @@ def toRInstZbb : ROp → List RInst
     is eliminated. -/
 def lowerRBlockZbb (block : List ROp) : List RInst := block.flatMap toRInstZbb
 
-/-- Each `Zbb`-lowered op is exactly **one** `RInst` (the rotate is no longer a
-    3-instruction macro). Hence the whole `Zbb`-lowered block has length equal to
+/-- Each `Zbb`-lowered op is exactly **one** `RInst` (the rotate is a single
+    `Zbb` instruction, not a 3-instruction macro). Hence the whole `Zbb`-lowered
+    block has length equal to
     the source `ROp` count. -/
 theorem toRInstZbb_length (op : ROp) : (toRInstZbb op).length = 1 := by
   cases op <;> rfl
@@ -209,7 +210,7 @@ theorem roriw_run_denote (s : RState) (dst a tmp : String) (m : Nat)
   simp only [toRInstZbb, runRBlock, evalRInst, opRoriw_eq_opRor]
   rw [RState.get_set_same _ _ _ hdst]
 
-/-! ## 3. The block-lowering denotation theorem (the RV64 keystone)
+/-! ## 3. The block-lowering denotation theorem (RV64)
 
 The RV64 analogue of `ARMBackend.armBlock_lowering_denote`: lowering a
 straight-line `ROp` block to machine `RInst`s and running it on the RV64 model
@@ -218,7 +219,7 @@ equals the direct machine fold of the per-op lowering — for **all** blocks and
 
 Because each `ROp` lowers to a *list* of `RInst`, the per-op machine effect is
 `fun st op => runRBlock st (toRInst op)` (run the op's expansion), and the
-keystone says running the flattened block equals folding that. -/
+theorem says running the flattened block equals folding that. -/
 
 /-- A helper: running a concatenation of `RInst` lists is the left-fold of
     running each piece. -/
@@ -252,7 +253,7 @@ theorem riscvBlock_lowering_denote_single (op : ROp) (s : RState) :
     runRBlock s (lowerRBlock [op]) = runRBlock s (toRInst op) := by
   simp [lowerRBlock]
 
-/-- **The `Zbb` block-lowering denotation theorem.** The RV64 keystone for the
+/-- **The `Zbb` block-lowering denotation theorem.** The RV64 main theorem for the
     `Zbb` (single-instruction-rotate) lowering: running the `Zbb`-lowered `ROp`
     block on the model equals the fold of each op's `Zbb` expansion run on the
     model, for all blocks and states, by induction. No new custom axioms. -/

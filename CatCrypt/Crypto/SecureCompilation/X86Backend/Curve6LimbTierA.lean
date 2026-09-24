@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunB
 /-!
 # Tier-A Montgomery multiply over `runBlock` for the 6-limb curves
 
-This file instantiates the proven Tier-A template — the genuine
+This file instantiates the proven Tier-A template — the
 `runBlock(emitted product block) = valLimbs x · valLimbs y` over a real emitted
 `List (JInstr 64)` (`SchoolbookProductRunBlock.emitProductBlock_runBlock_value`,
 axiom-clean, *general `N`*), fed to the prime-parametric Montgomery reduction
@@ -24,20 +24,20 @@ the **6-limb radix `R = 2^384`** for the two 6-limb curves:
   `p = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f624`
   `1eabfffeb153ffffb9feffffffffaaab`.
 
-Both `emitProductBlock_runBlock_value` (the genuine multiply over `runBlock`) and
+Both `emitProductBlock_runBlock_value` (the multiply over `runBlock`) and
 `Number.montgomeryMul_correct` (the reduction law) are radix-parametric: the
 radix `R` is a free `Nat` parameter constrained only by `0 < R`, `N ≤ R`, and
 `(N · Nprime) % R = R − 1`. So `R = 2^384` works identically to the 4-limb
 `R = 2^256` — no new multiply proof and no new reduction proof is needed; only
 the modulus and the reduced-input bounds are curve-specific. The single
 `native_decide` step per curve is the constant pin `<curve>Limbs_value` against
-its genuine prime; the `R = 2^384` Montgomery path is `native_decide`-free
+its prime; the `R = 2^384` Montgomery path is `native_decide`-free
 (exactly as at `R = 2^256`).
 
 For each curve we give
 
 1. `<curve>Limbs` + `<curve>Limbs_value` — the canonical little-endian 6-limb
-   representation of the modulus, pinned by `native_decide` to the genuine prime;
+   representation of the modulus, pinned by `native_decide` to the prime;
 2. `<curve>_emit_montmul_runBlock` — the 6-limb analogue of the SM2/4-limb
    headline `sm2_emit_montmul_runBlock_full`: with reduced 6-limb inputs and the
    curve's full-radix Montgomery constant `Nprime384` (hypothesis
@@ -49,7 +49,7 @@ For each curve we give
 3. `<curve>_emit_montmul_runBlock6` — the concrete 6-limb shape of (2) over
    `emitProductBlock6` (6 `x`-limbs, 6 `y`-limbs, a 12-word accumulator file).
 
-## Scope (honest)
+## Scope
 
 These are **flag-resetting** Tier-A instantiations of the same template (each
 emitted schoolbook row re-enters `CF = OF = 0`). The persistent-flag / full-ILP
@@ -147,7 +147,7 @@ theorem p384Limbs_value :
 
     * the emitted product block's `runBlock` value is exactly
       `valLimbs x · valLimbs y` (`emitProductBlock_runBlock_value` at 6 limbs); and
-    * `montgomeryReduce p384 (2^384) Nprime384` of that genuine `runBlock` value
+    * `montgomeryReduce p384 (2^384) Nprime384` of that `runBlock` value
       (= `montgomeryMul …`) lies in `[0, 2·p384)` and
       `· 2^384 ≡ valLimbs x · valLimbs y (mod p384)`.
 

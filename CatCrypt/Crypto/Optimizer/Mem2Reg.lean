@@ -11,14 +11,14 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.Optimizer.StoreToLoadForward
 
 /-!
-# Verified mem2reg / scalar-replacement: promote frame-slot scratch to registers (#415)
+# Verified mem2reg / scalar-replacement: promote frame-slot scratch to registers
 
-`StoreToLoadForward.lean` (#412) recovers register *residence* on the frame-resident
-X25519 ladder body (#411): a frame cell stored from a register and then reloaded
+`StoreToLoadForward.lean` recovers register *residence* on the frame-resident
+X25519 ladder body: a frame cell stored from a register and then reloaded
 becomes a register move (`loadMem d fp off → mov d (.reg r)`), so the value stays in a
 register over that hop. But forwarding **keeps every instruction**: the rewritten
-load is still an instruction (now a `mov`), and — crucially — the *store* that filled
-the cell is still there. #413 measured that the residual on the fused body is the
+load is still an instruction (a `mov`), and the *store* that filled
+the cell remains. On the fused body the measured residual is the
 **round-trip instructions themselves**: 96 `loadMem` + 68 `storeMem` per ladder step,
 not register pressure (peak GP pressure is only 14, fitting the pool by construction
 because every inlined op round-trips its operands through the frame).
@@ -35,7 +35,7 @@ register in disguise. mem2reg
   instruction reads that cell and the cell is not a live output: the store is dead.
 
 Once the slot's value lives only in a register, the working set exceeds the
-pool, and the #413 spilling allocator becomes the right tool to place it — the
+pool, and the `SpillingRegAlloc` allocator becomes the right tool to place it — the
 `inline → mem2reg → spillRA` pipeline.
 
 ## What is proved (sorry-free)
@@ -241,7 +241,7 @@ preserves the cell↦ρ binding) by a promoted load denotes the same `runBlock` 
 unpromoted store/load — on the observable footprint that does NOT include `ρ` (a fresh
 register) nor the promoted cell (an unprotected scratch slot). This is the `runBlock`
 companion to `StoreToLoadForward.storeToLoadForward_runBlock` and
-`SpillingRegAlloc.spillReload_sandwich_runBlock`, now for *full* promotion (both the store
+`SpillingRegAlloc.spillReload_sandwich_runBlock`, for *full* promotion (both the store
 and the use leave the frame). -/
 
 /-- `PromoteValid b off ρ s`: the promoted register `ρ` holds the cell `(b, off)`'s value
@@ -856,19 +856,19 @@ theorem mem2reg_lowering_agree (prot : List (String × Int)) (block : List (JIns
   rw [lowerBlock_denote_closed (mem2reg prot block) s, lowerBlock_denote_closed block s]
   exact mem2reg_runBlock_agree prot block s
 
-/-! ## 8. Whole-body soundness of full scalar replacement `promoteCell` (#417)
+/-! ## 8. Whole-body soundness of full scalar replacement `promoteCell`
 
-§3 proved the single-instruction correspondences (`promoteStore_correspondence`,
-`promoteLoad_correspondence`). What #415 left as a KAT assumption — and what #416 caught
-as an *unsound* gap — is the **whole-body** identity: `runBlock (promoteCell b off ρ block)`
-vs `runBlock block`. The gap is real: the naive `promoteSlots` promoted scratch cells that
+§3 proves the single-instruction correspondences (`promoteStore_correspondence`,
+`promoteLoad_correspondence`). This section proves the **whole-body** identity:
+`runBlock (promoteCell b off ρ block)` vs `runBlock block`. It needs a side condition:
+promoting every scratch cell (`promoteSlots`) is unsound for cells that
 are read by a `mulxMem` (the s2n multiplicand-from-memory fold). `promoteCellInstr` rewrites
 only `loadMem`/`storeMem`, **never** `mulxMem`, so a promoted store (`storeMem → mov ρ r`)
 removes the frame write while the `mulxMem` still reads the now-never-written frame cell —
 the promoted body reads stale memory. (Concretely on the X25519 ladder: the slots A, AA, B,
 E, C, D, T are each read as a `mulxMem` multiplicand.)
 
-The corrected analysis: a cell `(b, off)` is **promotable** only when it is read solely via
+The promotability analysis: a cell `(b, off)` is **promotable** only when it is read solely via
 `loadMem` (never `mulxMem`, never as a `mulxMem`/load base from another base alias), written
 only by register-source `storeMem`, and `ρ` is a register name the block never otherwise
 mentions (fresh). Under these conditions `promoteCell` is denotation-preserving on every
@@ -1602,7 +1602,7 @@ theorem PromoteRel.promoteCellInstr_step {b : String} {off : Int} {ρ : String} 
 A block is **promotable** for `(b, off, ρ)` when every instruction is `PromotableInstr`. We
 require the **freshness** of `ρ` and the **no-mulxMem / loadMem-only / register-source-store**
 discipline through `InstrTransparent` (which forbids reading `(b, off)` by anything other than
-the rewritten `loadMem`, in particular forbids a `mulxMem` at `(b, off)` — the #416 bug). -/
+the rewritten `loadMem`, in particular forbids a `mulxMem` at `(b, off)`). -/
 def BlockPromotable (b : String) (off : Int) (ρ : String) (block : List (JInstr 64)) : Prop :=
   ∀ i ∈ block, PromotableInstr b off ρ i
 

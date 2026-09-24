@@ -20,7 +20,7 @@ This module is the **SHAKE-128f** companion tie to `CompileFromHaxSlhdsaShakeCha
 `slhTweakHash = SHAKE-128(seed ‖ tweak ‖ block, 16)`, whose engine is the
 **Keccak-f[1600]** permutation `Primitives.Keccak.keccakF = 24× keccakRound`.
 
-The genuinely-new shape here (vs the `sha2-*` round-engine tie, which composed
+The shape here (vs the `sha2-*` round-engine tie, which composed
 two SHA-256 round-component leaves `t1`/`t2` into the round's `a`-update) is that
 this tie **composes the four tied Keccak step leaves** into one full FIPS-202
 round `keccakRound = ι ∘ χ ∘ π ∘ ρ ∘ θ`:
@@ -57,7 +57,7 @@ ADRS byte-encoding and the `0x1F`/`0x80` domain-separation padding. The verified
 front recognizes only straight-line scalar word ops, so the sponge's
 variable-length padding loop, the multi-block `keccakF` iteration, the ADRS byte
 layout, and the domain-separation bytes are **not** expressible as compile-from-hax
-leaves. Exactly as the `sha2-*` tie landed at the SHA-256 *round* engine (not the
+leaves. Exactly as the `sha2-*` tie sits at the SHA-256 *round* engine (not the
 message-schedule loop), this SHAKE tie lands at the **Keccak round** engine: the
 four step leaves compose one `keccakRound` (the per-round transform `keccakF`
 iterates 24×), and the absorb-prep lane XOR is the chain step's pre-permute mix.

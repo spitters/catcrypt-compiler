@@ -13,7 +13,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# Curve25519 field-OP kernels `feAdd`/`feSub`/`feMul121666`/`feSqr`, lowered through the in-Lean x86 backend (#408)
+# Curve25519 field-OP kernels `feAdd`/`feSub`/`feMul121666`/`feSqr`, lowered through the in-Lean x86 backend
 
 `Fe25519MulKernel.lean` emits the Curve25519 **field-multiply** (4×4 schoolbook +
 `2^255-19` Solinas reduce) through the owned x86 backend (MULX + dual ADCX/ADOX,
@@ -58,7 +58,7 @@ The all-inputs value identity (`z = (x ⊙ y) mod p25519`) is the runtime KAT in
 `bench/x25519_fieldops_compare/` against s2n-bignum's own
 `bignum_{add,sub,cmul,sqr}_p25519` AND GMP (`mpz` (op) mod `p`), over corner +
 random inputs — the standard gate for these word kernels (mirrors `feMulBlock`'s
-KAT discipline; per REV-12 the per-input `native_decide` value pin is omitted).
+KAT discipline; the module has no per-input `native_decide` value pin).
 
 ## Trust story
 
@@ -67,7 +67,7 @@ Identical to `Fe25519MulKernel` / `BignumMontMulKernel` / `JasminModel` /
 `Com (x86Dialect 64) → runBlock → evalInstr`, the faithful transcription of
 Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the syntactic trust
 boundary, and the System-V leaf prologue/epilogue is trusted ABI scaffolding
-outside the verified body. No `sorry`.
+outside the verified body. All goals are closed.
 -/
 
 @[expose] public section

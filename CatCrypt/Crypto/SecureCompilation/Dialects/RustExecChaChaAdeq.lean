@@ -37,12 +37,12 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 /-!
 # A real ChaCha20 quarter-round through the closed-kernel `emitted = RustExec` route
 
-`RustExecRoundAdeq.roundC_emitted_eq_rustexec` proved `emitted jasmin = RustExec
+`RustExecRoundAdeq.roundC_emitted_eq_rustexec` proves `emitted jasmin = RustExec
 reference` for the SHA-2 `Maj` round — the **bitwise** (`∧`/`⊕`/`¬`) layer, whose
 `inRange` obligation holds for ALL `u64` inputs with no side condition.
-`RustExecARXAdeq.arxC_emitted_eq_rustexec` extended the pattern to the ARX layer
+`RustExecARXAdeq.arxC_emitted_eq_rustexec` extends the pattern to the ARX layer
 (one rotate + one modular add) through the closed-kernel `decide` route, and its
-`arxE_inRange_of_bound` supplied the reusable ARX-arm `inRange` template under a
+`arxE_inRange_of_bound` supplies the reusable ARX-arm `inRange` template under a
 per-kernel lane bound. This module applies both to the ChaCha20 quarter-round.
 
 ## The quarter-round
@@ -63,15 +63,15 @@ Four modular additions (`+= mod 2^32`), four XORs, four 32-bit rotations.
 * **`qrXorC` — the bitwise XOR sub-part (`d ^= a; b ^= c`), axiom-free.** The two
   XOR steps are purely bitwise, so — exactly like `Maj` — their covered-fragment
   `inRange` obligation holds for ALL `u64` inputs with **no** side condition. This
-  kernel lands in the STRONG `IsCoveredAdeq` fragment (`.rScalarSetExpr` with the
+  kernel lies in the STRONG `IsCoveredAdeq` fragment (`.rScalarSetExpr` with the
   hoisted all-`u64` `inRange`) and yields `emitted = RustExec` through the
   closed-kernel `topLevel_unconditional` route, axiom-free — the bitwise fragment,
   identical to `RustExecRoundAdeq`.
 
 * **`qrC` — the full quarter-round, through the ARX closed-kernel route.** The
   `+=` and `rotl32` steps are the ARX layer: `SAdd` and `SShl` hit an input-dependent
-  overflow condition that the hoisted all-`u64` bound cannot discharge (the
-  `RustExecRoundAdeq` §Residual wall). For a CLOSED kernel this is irrelevant — the
+  overflow condition that the hoisted all-`u64` bound cannot discharge (see
+  `RustExecRoundAdeq` §Scope). For a CLOSED kernel this is irrelevant — the
   route needs only `IsCoveredSCtl` (whose `RScalarSetExpr` arm asks for `srcClean`,
   NOT `inRange`) and the value reconciliation is `decide` on the concrete literal
   inputs, on which no `+`/`<<` overflows `u64`. This is exactly `RustExecARXAdeq`'s
@@ -93,14 +93,15 @@ then feed them to `RustExecSemScalarBridge.sexprTransfer` to get the wrapping-`u
 evaluator = `ofNat` image of the saturating-`Nat` evaluator on every lane-bounded
 input — showing the ChaCha ARX arms reconcile symbolically, not just concretely.
 
-## Residual
+## Scope
 
 The full-quarter-round `emitted = RustExec` (`qrC_emitted_eq_rustexec`) routes
 through the closed-kernel argument, as the ARX layer requires (the general open-kernel
-jasmin leg still hits `RustExecKernelAdeq.entry_trio_unsat_empty`, the standing
-`P3`-composition residual). The symbolic ARX arms (`§"symbolic ARX arms"`) reconcile
-the `semScalar` value with the `RustExec` value for ChaCha's add/rotate; fusing that
-with the jasmin denotation leg for an OPEN quarter-round is the same `P3` residual.
+jasmin leg meets `RustExecKernelAdeq.entry_trio_unsat_empty`). The symbolic ARX arms
+(`§"symbolic ARX arms"`) reconcile the `semScalar` value with the `RustExec` value
+for ChaCha's add/rotate; fusing that with the jasmin denotation leg for an OPEN
+quarter-round (the end-to-end composition of `RustExecSemScalarBridge`) is outside
+this module.
 -/
 
 @[expose] public section
@@ -146,7 +147,7 @@ def xorE (x y : String) : SExpr := .SXor (.SVar x) (.SVar y)
 def rotlE (n : Nat) (x : String) : SExpr :=
   .SXor (.SAnd (.SShl (.SVar x) (.SLit n)) (.SLit M)) (.SShr (.SVar x) (.SLit (32 - n)))
 
-/-- ChaCha20 sigma constants (`"expand 32-byte k"`), the honest 32-bit inputs. -/
+/-- ChaCha20 sigma constants (`"expand 32-byte k"`), the 32-bit inputs. -/
 def av : Nat := 1634760805   -- 0x61707865
 def bv : Nat := 857760878    -- 0x3320646e
 def cv : Nat := 2036477234   -- 0x79622d32
@@ -301,7 +302,7 @@ theorem qrXorC_emitted_eq_rustexec (N : Nat) (leafSpec : LeafSpec) :
 
 The `+=` and `rotl32` arms hit the `SAdd`/`SShl` overflow conditions the hoisted
 all-`u64` bound cannot discharge. Under the per-kernel 32-bit lane bound `σ x < 2^32`
-— the honest ChaCha word discipline — they are provable. This is
+— the ChaCha word discipline — they are provable. This is
 `RustExecARXAdeq.arxE_inRange_of_bound` instantiated on ChaCha's add and rotate. -/
 
 /-- **ChaCha add arm `inRange`.** `(x + y) & 0xFFFFFFFF` under `σ x, σ y < 2^32`:
@@ -505,7 +506,7 @@ noncomputable def qJcom : Com jasminDialect (mapCtx ([] : Ctx)) (mapTy (.sword 6
 theorem qHCom : cryptoDialectToJasminCom qCom = some qJcom :=
   (Option.some_get qComSome).symm
 
-/-- **The `#250` reconciliation for the whole quarter-round, concrete leg.** The word
+/-- **The `inRange` reconciliation for the whole quarter-round, concrete leg.** The word
     `semScalar` leaves in `b4` — computed through the four adds, four XORs, four rotates
     by the wrapping-`u64` evaluator — is the `ofNat 64` image of the `RustExec`
     saturating-`Nat` reference output. Concrete literal inputs, on which no `+`/`<<`

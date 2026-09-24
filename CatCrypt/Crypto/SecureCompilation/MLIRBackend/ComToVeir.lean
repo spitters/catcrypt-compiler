@@ -11,21 +11,18 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithScfSum
 
 /-!
-# MLIR backend — Phase 6′ AST-direct translation (task #183)
+# MLIR backend — AST-direct translation
 
-`Jasmin.Cmd → VIR.Com mlirArithDialect` — the **AST-direct** path that
-replaces the text-emit `ComToMLIR.lean` as the canonical translation. The
-text emit stays as a secondary debug/interop path; this file is the
-canonical lowering, with denotation preservation proved end-to-end in
-`VeirDenote.lean`.
+`Jasmin.Cmd → VIR.Com mlirArithDialect` — the **AST-direct** path, the
+canonical MLIR lowering. The text emit `ComToMLIR.lean` is a secondary
+debug/interop path. Denotation preservation is proved in this module
+(`compileProg_denote`, `compileScfProg_denote`).
 
-## Stage 6a — Veir API survey (read before reading the code)
+## Veir API survey (read before reading the code)
 
-The original Phase 6′ framing assumed `opencompl/veir` provides a typed-SSA
-AST in the shape `Com` / `Expr` / `Ctxt` / `HVector` / `TyDenote` /
-`DialectSignature` / `DialectDenote`. The actual landscape on
-`leanprover/lean4:v4.29.1` (`Veir@v4.29.0`, the only release branch
-consumable by our toolchain — `main` is on a 2025-12 nightly):
+`opencompl/veir` does not provide a typed-SSA AST in the shape `Com` /
+`Expr` / `Ctxt` / `HVector` / `TyDenote` / `DialectSignature` /
+`DialectDenote`. The components are distributed as follows:
 
 | Component                | Provided by                                                           |
 |--------------------------|-----------------------------------------------------------------------|
@@ -36,33 +33,20 @@ consumable by our toolchain — `main` is on a 2025-12 nightly):
 | Denoting MLIR arith dialect | `VIR/MlirArithDialect.lean` (in-tree)                               |
 | `Com catCryptDialect → Com mlirArithDialect` with denote-preservation | `VIR/MlirArithDialect.lean` (`translate` + `translate_denote_eq`) |
 
-So upstream `Veir` is **not** the typed-SSA framework the task spec
-described — its IR is the pointer-based untyped layer that text emits
-into. The typed-SSA framework lives **in-tree**, in the local
-`VIR/Core.lean` mirror of `opencompl/lean-mlir` (whose own docstring
-says it is "API-compatible with `opencompl/lean-mlir` so we can migrate
-later once a v4.29.x-compatible upstream release exists").
+Upstream `Veir`'s IR is the pointer-based untyped layer that text emits
+into. The typed-SSA framework is the in-tree `VIR/Core.lean`, a
+reimplementation of `opencompl/lean-mlir`'s core framework, and this module
+uses it. The name `ComToVeir` refers to the `VIR` namespace of the
+user-facing types (`VIR.Com`, `VIR.Expr`, etc.).
 
-Per the task's fall-back guidance ("If Veir's dialect coverage is too
-thin: pivot — use the in-tree `VIR/Core.lean` API"), this file uses the
-in-tree typed-SSA framework. **The file name** retains `ComToVeir`
-because:
-
-1. The in-tree `VIR` namespace is what the user-facing types use
-   (`VIR.Com`, `VIR.Expr`, etc.) — calling the file `ComToVIR` would be
-   accurate but obscure the lineage.
-2. When CatCrypt's toolchain bumps to a Lean 4 nightly and we swap the
-   in-tree mirror for upstream `opencompl/lean-mlir`, the import root
-   changes one line and the file name stays.
-
-### What we got from Veir (the package)
+### What Veir (the package) provides
 
 * `Veir.OpCode` — for the smoke-test naming check in `Smoke.lean`.
 * The pointer-based `Operation` / `Block` / `Region` AST — used by the
   existing `VIR/CatCryptPrint.lean` chain for text emission; **not used
   here**.
 
-### What we got from in-tree VIR (the typed-SSA framework)
+### What in-tree VIR (the typed-SSA framework) provides
 
 * `VIR.Dialect` / `VIR.Com` / `VIR.Expr` / `VIR.Ctxt` / `VIR.Var` /
   `VIR.HVector` — the typed-SSA AST.
@@ -71,19 +55,16 @@ because:
 * `VIR.Com.denote` — the denotation function (a pure Lean function: no
   external interpreter).
 * `MlirArithDialect.mlirArithDialect` — the target dialect, with the
-  standard MLIR `arith.*` integer semantics already proved equivalent to
+  standard MLIR `arith.*` integer semantics proved equivalent to
   the catCrypt source semantics (per-op `agree_*` lemmas, `translate` +
   `translate_denote_eq` for `Com → Com`).
 
-### What we'd have wanted but didn't get
+### What neither provides
 
 * A VIR `Com` with **control-flow regions** (analogue of MLIR's `scf.if`
   / `scf.for` / `scf.while`). The in-tree `VIR/Core.lean` is straight-line
-  ANF only — no regions. Upstream `opencompl/lean-mlir` does have regions
-  (via the `Com.var` body recursion); the in-tree mirror was scoped down
-  to "what CatCrypt needs" and regions are still on the TODO list. So
-  Phase 6′ closes scalar straight-line; control-flow is honestly deferred
-  (still routes through the text-emit path).
+  ANF only — no regions. Control flow is handled by the `ScfProg` DSL,
+  whose scf ops carry their branches / bodies as Lean closures (§6–§8).
 * A **typed Jasmin source** to translate from. Jasmin `Cmd` is a
   named-variable imperative-style AST; VIR `Com` is intrinsically-typed
   De Bruijn SSA. Bridging requires name resolution, type inference for
@@ -92,12 +73,12 @@ because:
   `none` on out-of-scope input. The denotation theorem is conditional on
   successful translation.
 * A **denoting MLIR `vector` dialect** in VIR. `MlirArithDialect.lean`
-  covers scalar `iN` only. Phase 6′ scalar deliverable lands without
-  this; vector arith denotation is left as a clearly-stated follow-up.
+  covers scalar `iN` only, so vector arith denotation is outside this
+  module's scope.
 
-## Stage 6b–6e — coverage matrix
+## Coverage matrix
 
-| Source constructor                | Phase 6′ AST-direct handling                          |
+| Source constructor                | AST-direct handling                                   |
 |-----------------------------------|-------------------------------------------------------|
 | `Pconst z` (at `sword w`)         | `MlirArithOp.constant w (BitVec.ofInt w z)`           |
 | `Pvar gv` (resolved)              | `Com.var` lookup → `VIR.Var`                          |
@@ -110,17 +91,17 @@ because:
 | `Papp2 (Olsl w) e1 e2`            | `MlirArithOp.shli w k` (k extracted from `Pconst`)    |
 | `Papp2 (Olsr w) e1 e2`            | `MlirArithOp.shrui w k`                               |
 | `Cassgn (Lvar x) tag (sword w) e` | A new `.var` binding in the VIR `Com`                 |
-| `Cif` / `Cfor` / `Cwhile`         | **out of scope** (VIR has no regions; text-emit path) |
-| `Ccall` / `Copn`                  | **out of scope** (deferred per plan doc Phase 8)      |
+| `Cif` / `Cfor` / `Cwhile`         | `ScfProg` DSL via `compileScfProg` (§6–§8)            |
+| `Ccall` / `Copn`                  | **out of scope**                                      |
 | vector arith (`Ov*`)              | **out of scope** (no denoting MLIR vector dialect)    |
 
 For the in-scope arms, translation success ⇒ Lean-side denotational
 equality; no external trust hypothesis required (the dialect denotation
 IS Lean computation).
 
-For the out-of-scope arms, the existing text-emit path (with its
-`MlirBackendSemanticsAgrees` external hypothesis) remains the bridge.
-This is documented in `Denote.lean` after Phase 6′ closure.
+For the out-of-scope arms, the text-emit path (with its
+`MlirBackendSemanticsAgrees` external hypothesis, documented in
+`Denote.lean`) is the bridge.
 -/
 
 @[expose] public section
@@ -159,7 +140,7 @@ example : sTypeToCryptoTy .sbool = none := rfl
 `SOp2 → MlirArithOp` for the eight scalar arith arms. Width-carrying ops
 become the matching `MlirArithOp` constructor at the right `CryptoTy.sword`
 width. Shifts that need a static amount (`shli` / `shrui`) carry it as a
-`Nat`; for now we expose a constructor that takes the amount as a
+`Nat`; the constructor takes the amount as a
 parameter — the consumer extracts it from a `Pconst` operand at call time
 (matching how MLIR's `arith.shli` / `arith.shrui` consume their shift
 amount as an SSA operand, but our `MlirArithDialect` definition pins it
@@ -266,9 +247,8 @@ Jasmin `Cmd` is already ANF-ish (each `Cassgn`'s RHS denotes to a single
 does not ship `Com.weaken` / `Var.weaken` machinery, so transposing
 nested `Cmd` arms into a single `Com` body requires only the per-Expr
 encoding we provide here. Treating tree-shaped expressions inline (e.g.
-`(a + b) * c`) requires a flattening pre-pass — that pre-pass is
-mechanical and is left as a Phase 6′ follow-up. The current
-deliverable handles the *flat* shape that exactly matches the
+`(a + b) * c`) requires a mechanical flattening pre-pass, which is outside
+this module's scope. The module handles the *flat* shape that exactly matches the
 single-op-per-`Cassgn` granularity of `JasminAST.InstrR.Cassgn`.
 
 ### Why a DSL instead of `Jasmin.Cmd → Com` directly
@@ -281,8 +261,8 @@ intrinsically-typed De Bruijn SSA. A direct `Cmd → Com` lowering needs:
 * bail-out on every out-of-scope constructor.
 
 The DSL below skips all three by encoding the in-scope subset
-*typedly* up front. A `Cmd → DSL` pre-pass is the mechanical
-name-resolution layer (Phase 6′ follow-up). -/
+*typedly* up front. A `Cmd → DSL` pre-pass would be the mechanical
+name-resolution layer; it is outside this module's scope. -/
 
 namespace ScalarDSL
 
@@ -378,7 +358,7 @@ def Prog.eval {Γ : List Nat} {w : Nat} (V : Valuation Γ) :
   | .ret _ _ i h => V i w h
   | .bind _ _ _ e body => body.eval (Valuation.cons (e.eval V) V)
 
-/-! ### Control-flow DSL (CHES Sprint 1 / item H)
+/-! ### Control-flow DSL
 
 A *separate* inductive `ScfProg` carries the three control-flow
 constructors (`Cif`, `Cfor`, `Cwhile`). It is intentionally NOT mixed
@@ -518,7 +498,7 @@ def compileProg : {Γ : List Nat} → {w : Nat} → ScalarDSL.Prog Γ w →
   | _, _, .bind _ _ _ e body =>
       Com.var (compileExpr e) (compileProg body)
 
-/-! ## §5. Denotation preservation (Stage 6e)
+/-! ## §5. Denotation preservation
 
 The ScalarDSL is a *typed* surface for the MLIR scalar arith subset; its
 `Expr.eval` / `Prog.eval` are the source semantics. The compiled VIR `Com`
@@ -638,7 +618,7 @@ theorem cryptoCtxtValuation_cons {Γ : List Nat} {w : Nat}
   rw [htail]
   rfl
 
-/-- **Stage 6e keystone**: a compiled DSL `Prog` denotes via VIR's
+/-- **Main theorem**: a compiled DSL `Prog` denotes via VIR's
     `Com.denote` to the same `BitVec` as the source `Prog.eval`. By
     structural induction on the `Prog`:
 
@@ -663,7 +643,7 @@ theorem compileProg_denote : {Γ : List Nat} → {w : Nat} →
       rw [compileExpr_denote V e, cryptoCtxtValuation_cons V (e.eval V)]
       exact compileProg_denote (ScalarDSL.Valuation.cons (e.eval V) V) body
 
-/-! ## §6. Control-flow AST-direct (CHES Sprint 1, item H — H2/H3)
+/-! ## §6. Control-flow AST-direct
 
 The control-flow DSL `ScfProg` compiles to a single `VIR.Com` over
 `mlirScfDialect`, with the branches / body packaged as Lean closures
@@ -677,13 +657,9 @@ trust hypothesis enters, because each scf op's denotation literally
 **is** the supplied Lean closure (we packaged the source's `Prog.eval`
 of the body as the closure at compile time).
 
-### Restriction (honest)
-
-The `Cif` constructor's compile + denotation theorems are stated for the
-homogeneous case `w = w_in` (both branches produce the same width as
-the condition input). The general case `w ≠ w_in` would need a more
-elaborate scf op signature than `scfWhile`'s (which has matching
-operand/result widths). We document this as an explicit follow-up. -/
+This section compiles `Cfor` and `Cwhile` over `mlirScfDialect`; `Cif`
+needs an arith predecessor and is compiled over the arith ⊕ scf sum
+dialect in §7. -/
 
 /-- Lift a typed De Bruijn index into a `Ctxt.Var` over `mlirScfDialect`.
     Identical structure to `liftVar` (both dialects share `Ty`). -/
@@ -754,7 +730,7 @@ def compileCwhile (Γ : List Nat) (w : Nat) (fuel : Nat)
     (HVector.cons (liftVarScf Γ initIdx w hinit) HVector.nil))
   (Com.ret Ctxt.Var.here)
 
-/-! ### §6.3 Compile `ScfProg.Cif` — **deferred** to sum-dialect follow-up
+/-! ### §6.3 Why `ScfProg.Cif` is not compiled over `mlirScfDialect`
 
 The scf op `scfIf` requires a `[.bit, .sword w]` operand list — a
 `CryptoTy.bit` (`Bool`) condition. Our DSL holds the condition as a
@@ -763,36 +739,22 @@ The scf op `scfIf` requires a `[.bit, .sword w]` operand list — a
 which lives in `mlirArithDialect`, not `mlirScfDialect`. A clean
 encoding therefore requires the **sum-dialect** `mlirArithDialect ⊕
 mlirScfDialect` whose `Com.var` can interleave arith and scf ops in a
-single program.
+single program; §7 compiles `Cif` there. The `Cfor` and `Cwhile`
+compiles over `mlirScfDialect` are `compileCfor`, `compileCwhile`.
 
-Building that sum-dialect with its `DialectSignature` and
-`DialectDenote` instances is straightforward but tedious (every
-constructor / instance has a left / right case); we ship it as the
-follow-up to H4 / H5. For this batch we keep the source `ScfProg.Cif`
-constructor + its `eval` semantics in place (so `ScfProg.Cif` denotes
-correctly at the source level), and document the target-side compile
-as deferred. `Cfor` and `Cwhile` denoting compiles are shipped
-(`compileCfor`, `compileCwhile`).
-
-### Why this is honest
-
-The `Cif` source denotation is fully encoded in Lean (`ScfProg.eval`'s
-`Cif` case is a real `if/then/else` over `BitVec.getLsbD`). What's
-missing is the **compile** to a `Com` over a single dialect — the
+The `Cif` source denotation is encoded in Lean (`ScfProg.eval`'s `Cif`
+case is an `if/then/else` over `BitVec.getLsbD`); the
 `Com.var (Expr.mk scfIf …)` shape needs a `.bit`-typed operand, which
-requires an `arith.cmpi` predecessor in the same `Com`. The
-denotation-preservation gap is therefore at the **target lowering**
-(a few lines of sum-dialect plumbing), not at the semantics. -/
+requires an `arith.cmpi` predecessor in the same `Com`. -/
 
-/-! ### §6.4 Denotation preservation for `Cfor` and `Cwhile` — H3
+/-! ### §6.4 Denotation preservation for `Cfor` and `Cwhile`
 
 The `Cfor` / `Cwhile` compiles bake the source's `Prog.eval` (over a
 singleton valuation) directly into the scf op's body closure. The
 denotation of the compiled `Com` then matches `ScfProg.eval` by
 unfolding the scf op's denote and computation reduction.
 
-Note we deliberately don't claim a denotation theorem for `Cif`: see
-the docstring on `compileCifIdAccBranch` for the honest deferral. -/
+The denotation theorem for `Cif` is `compileCif_denote` in §7. -/
 
 /-- `compileCfor` is denotation-preserving. -/
 theorem compileCfor_denote (Γ : List Nat) (w_acc : Nat) (lo hi step : Nat)
@@ -832,8 +794,8 @@ theorem compileCwhile_denote (Γ : List Nat) (w : Nat) (fuel : Nat)
 
 /-! ## §7. Control-flow `Cif` AST-direct via the arith ⊕ scf sum dialect
 
-The `compileCif` deferral from §6.3 — `scfIf` needs a `.bit` condition
-but the DSL holds it as `sword 1` — is closed here using the
+`scfIf` needs a `.bit` condition but the DSL holds it as `sword 1`
+(§6.3); `compileCif` bridges the two using the
 `mlirArithDialect ⊕ mlirScfDialect` sum dialect from
 `VIR/MlirArithScfSum.lean`. The compiled program is three operations:
 
@@ -855,9 +817,7 @@ input flowing into the branches has width `w_in`, the branch outputs
 have width `w`. The implementation uses `scfIfHetero w w_in` from
 `MlirScfDialect.lean` — a sibling of `scfIf` whose signature
 `[.bit, .sword w_in] → .sword w` pins the two widths independently.
-The homogeneous case `w_in = w` is recovered by instantiating with
-`w_in = w` (we keep a `compileCifHomo` thin wrapper for callers that
-want the old shape, if needed). -/
+The homogeneous case is the instance `w_in = w`. -/
 
 /-- Lift a typed De Bruijn index into a `Ctxt.Var` over
     `mlirArithScfDialect`. Identical structure to `liftVar` /
@@ -913,7 +873,7 @@ def compileCif (Γ : List Nat) (w w_in : Nat)
     (MlirArithScfOp.arith (.constant 1 (1 : BitVec 1)))
     rfl HVector.nil) <|
   -- let condBit : bit = arith.cmpi 1 (cond_lifted, one)
-  -- Ctxt is now `sword 1 :: cryptoCtxt Γ`; `cond_lifted` is the lifted
+  -- Ctxt is `sword 1 :: cryptoCtxt Γ`; `cond_lifted` is the lifted
   -- variable shifted by one binder; `one` is `.here`.
   Com.var (Expr.mk (d := mlirArithScfDialect)
     (Γ := CryptoTy.sword 1 :: cryptoCtxt Γ) (t := CryptoTy.bit)
@@ -922,7 +882,7 @@ def compileCif (Γ : List Nat) (w w_in : Nat)
     (HVector.cons (Ctxt.Var.there (liftVarSum Γ condIdx 1 hcond))
       (HVector.cons Ctxt.Var.here HVector.nil))) <|
   -- let result : sword w = scf.if condBit (thenF, elseF) input_lifted
-  -- Ctxt is now `bit :: sword 1 :: cryptoCtxt Γ`; `condBit` is `.here`;
+  -- Ctxt is `bit :: sword 1 :: cryptoCtxt Γ`; `condBit` is `.here`;
   -- `input_lifted` is shifted by two binders. We use `scfIfHetero` so
   -- the output width `w` is independent of the input width `w_in`.
   Com.var (Expr.mk (d := mlirArithScfDialect)

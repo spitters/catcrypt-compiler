@@ -9,15 +9,15 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
-# Jasmin source `Expr._uprog` value-level producer (Phase A.1)
+# Jasmin source `Expr._uprog` value-level producer
 
-Source-level analogue of `JasminLprogExport` (#142/#155/#161/#169). This module
+Source-level analogue of `JasminLprogExport`. This module
 turns a typed `Com jasminDialect` into a value-level mirror of jasmin's
 `Expr._uprog`, the **source-AST** uprog *before* any of the middle-end passes
 have run (live-range splitting, register allocation, stack allocation,
-linearization). The companion OCaml reader is
-`Read_uprog.load_marshal_file` (`patches/jasmin/read_uprog.ml.patch`), and the
-driver consuming the produced blob is `drive_uprog` (`patches/jasmin/drive_uprog.patch`).
+linearization). The companion OCaml reader is `Read_uprog.load_marshal_file`
+(SSProve-lean `patches/jasmin/read_uprog.ml.patch`), and the driver consuming the
+produced blob is `drive_uprog` (SSProve-lean `patches/jasmin/drive_uprog.patch`).
 
 ## How this differs from `JasminLprogExport`
 
@@ -87,7 +87,7 @@ lands) can reconstruct an OCaml `_uprog` from the same bytes.
 
 Semantic preservation (the exported `_uprog` denotes the same function as
 the source `Com` under jasmin's source semantics `sem`) is stated as the
-named hypothesis `UprogExportFaithful` — the source-`sem` analogue of #145's
+named hypothesis `UprogExportFaithful` — the source-`sem` analogue of
 `MlirToolchainSemanticsAgrees` and of the linear-`lsem` predicate
 `ComLsemExportFaithful` (proved over `lsem` for its modeled fragments).
 Closing it requires a Lean model of jasmin's source `sem`, which is not
@@ -195,8 +195,8 @@ structure Ufundef where
   /-- `f_info : fun_info` (opaque source-location tag). -/
   f_info : Nat := 0
   /-- `f_contract` is an optional pre/post `fun_contract`; the producer
-      defaults to absent (mirrored as the empty string list — Phase 2 may
-      reify the actual contract carrier). -/
+      defaults to absent (mirrored as `false`; the contract carrier is not
+      reified). -/
   f_contract : Bool := false
   /-- `f_tyin : seq atype`: parameter widths. -/
   f_tyin : List Nat := []
@@ -504,7 +504,7 @@ def Uprog.toText (p : Uprog) : String :=
      ++ p.p_funcs.map (fun (n, f) => f.toText n))
 
 /-- The OCaml-side magic header, prefixed to the serialized blob. Matches
-    `Read_uprog.magic` exactly (`patches/jasmin/read_uprog.ml.patch`). -/
+    `Read_uprog.magic` exactly (SSProve-lean `patches/jasmin/read_uprog.ml.patch`). -/
 def magic : String := "JASMIN-UPROG-MARSHAL-v1\n"
 
 /-- Serialize a `Com` to the textual uprog representation (magic + text). -/
@@ -576,7 +576,7 @@ theorem Uprog.toBinary_magic (p : Uprog) :
 
     `UprogExportFaithful com fname` asserts that the exported `_uprog`
     denotes the same function as the source `Com` under jasmin's source
-    semantics `sem`. The source-`sem` analogue of #145's
+    semantics `sem`. The source-`sem` analogue of
     `MlirToolchainSemanticsAgrees`: stated as a hypothesis rather than proved
     because there is no Lean model of jasmin's `sem` (the linear-semantics
     `lsem` analogue is proved as `ComLsemExportFaithful` in `LsemPortAll`).

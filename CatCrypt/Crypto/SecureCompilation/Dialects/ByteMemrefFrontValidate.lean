@@ -71,7 +71,7 @@ byte `CryptoTy`) is the large blast radius — the byte cell instead lives in th
 standalone width-parametric `Memref` dialect, whose `MemrefTy`/`MemrefOp` are
 matched in only a handful of files. This is the byte-capable front arm.
 
-Invoke (in-model gate only, REV-12 — cheap; the correctness gate is the C KAT):
+Invoke (cheap in-model gate only; the correctness gate is the C KAT):
   lake env lean CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefFrontValidate.lean
 -/
 
@@ -232,8 +232,8 @@ no-overrun check is the C KAT below.) -/
 
 /-! ## 7. Bench KAT harness sketch — the no-overrun `movb` test
 
-The binding correctness gate is a byte-identity KAT against a C reference (REV-12:
-in-Lean gates stay cheap; the C KAT is the ground truth). The distinguishing test
+The binding correctness gate is a byte-identity KAT against a C reference
+(in-Lean gates stay cheap; the C KAT is the ground truth). The distinguishing test
 is **no overrun**: a byte store at index `i` must leave bytes `i-1` and `i+1`
 untouched; a bug that emits `movq`/`movl` instead of `movb` would clobber the
 7 / 3 neighbouring bytes and the test fails.

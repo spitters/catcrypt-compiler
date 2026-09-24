@@ -8,13 +8,12 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 
 /-!
-# Tier-A modular field SUBTRACT: the emitted SBB borrow chain over `runBlock`
+# Modular field SUBTRACT: the emitted SBB borrow chain over `runBlock`
 
 `FieldAddSubTierA` proves the modular **add** is a `runBlock`-of-emitted
 statement (`emitAdcChain` over `runBlock` = `addLimbs`, recombined and
-canonicalised by `condSubP`), but leaves the emitted SUB/SBB borrow chain as the
-named remainder for the 4-limb / 6-limb curves. This file discharges that
-remainder: the SBB borrow-chain analogue of `emitAdcChain_runBlock`.
+canonicalised by `condSubP`); the emitted SUB/SBB borrow chain for the
+4-limb / 6-limb curves is proved here: the SBB borrow-chain analogue of `emitAdcChain_runBlock`.
 
 The arithmetic is the modular subtract over `Nat`: for canonical inputs
 `a, b ∈ [0, p)` the difference `a − b` lies in `(−p, p)`, so a single conditional
@@ -499,7 +498,7 @@ def runBlockSubBorrow (ds ss : List String) (s : JState 64) : Bool :=
 /-- **The emitted SBB chain reconstructs `u − v` over `runBlock`.** For reduced
     inputs the difference limbs and the final borrow satisfy
     `runBlockSubDiffValue + valLimbs v = valLimbs u + borrow · 2^{64·|ds|}` —
-    the borrow-chain reconstruction (`subLimbs_reconstruct`) read off the genuine
+    the borrow-chain reconstruction (`subLimbs_reconstruct`) read off the
     emitted `runBlock`, entered with `CF = 0`. -/
 theorem emitSbbChain_runBlock_reconstruct (ds ss : List String) (u v : List (BitVec 64))
     (s : JState 64)
@@ -596,7 +595,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
   (bls12381Limbs p384Limbs)
 
-/-- **Pallas modular sub over `runBlock` = `(a − b) mod p` (Tier A, 4-limb).** The
+/-- **Pallas modular sub over `runBlock` = `(a − b) mod p` (4-limb).** The
     `hp` hypothesis `p < (2^64)^|ds|` holds for the 4-limb register layout
     (`|ds| = 4`, `p < 2^255 < 2^256`). -/
 theorem pallas_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
@@ -612,7 +611,7 @@ theorem pallas_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
   modSub_runBlock (valLimbs pallasLimbs) ds ss a b s hda hsb hab hfresh hdmap hsmap hcf0
     hp ha_red hb_red
 
-/-- **Vesta modular sub over `runBlock` = `(a − b) mod q` (Tier A, 4-limb).** -/
+/-- **Vesta modular sub over `runBlock` = `(a − b) mod q` (4-limb).** -/
 theorem vesta_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
     (s : JState 64)
     (hda : ds.length = a.length) (hsb : ss.length = b.length) (hab : a.length = b.length)
@@ -627,7 +626,7 @@ theorem vesta_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
     hp ha_red hb_red
 
 /-- **BLS12-381 base-field modular sub over `runBlock` = `(a − b) mod p`
-    (Tier A, 6-limb).** `hp` holds for the 6-limb layout (`p < 2^381 < 2^384`). -/
+    (6-limb).** `hp` holds for the 6-limb layout (`p < 2^381 < 2^384`). -/
 theorem bls12381_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
     (s : JState 64)
     (hda : ds.length = a.length) (hsb : ss.length = b.length) (hab : a.length = b.length)
@@ -641,7 +640,7 @@ theorem bls12381_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
   modSub_runBlock (valLimbs bls12381Limbs) ds ss a b s hda hsb hab hfresh hdmap hsmap hcf0
     hp ha_red hb_red
 
-/-- **P384 modular sub over `runBlock` = `(a − b) mod p` (Tier A, 6-limb).** -/
+/-- **P384 modular sub over `runBlock` = `(a − b) mod p` (6-limb).** -/
 theorem p384_modsub_runBlock (ds ss : List String) (a b : List (BitVec 64))
     (s : JState 64)
     (hda : ds.length = a.length) (hsb : ss.length = b.length) (hab : a.length = b.length)

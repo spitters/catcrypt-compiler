@@ -12,18 +12,18 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 # The verified `Com[thir] → Com[catCrypt]` lowering (the HIGH-stack edge)
 
 `ThirDialect.lean` lowers `Com thirDialect` **down** to `Com jasminDialect`
-(flat, register/two-address). This file builds the complementary edge that
+(flat, register/two-address). This module defines the complementary edge that
 lifts a THIR-front body **up** into `catCryptDialect` — the dialect whose `Op`
-set is the high algebraic crypto-SSA surface (`bvAdd`/`bvMul`/…/`extCall`,
-the de-Bruijn `Com` mirror of `CExpr`). With this edge a hax-extracted body —
-which today lands flat at `jasminDialect` — can instead descend the *high*
+set is the high algebraic crypto-SSA surface (`bvAdd`/`bvMul`/…/`extCall`).
+With this edge a hax-extracted body — which otherwise lands flat at
+`jasminDialect` — can instead descend the *high*
 algebraic stack (`catCryptDialect → … → jasmin → ELF`), where the algebraic
 optimizer, the relational-compile passes, and the field/limb rewrites live.
 
-This is the structural unlock: it proves the `thir → catCrypt` edge **exists**
-and is denotation-preserving for the common scalar-arith + let/var case.
+The module proves that the `thir → catCrypt` edge **exists** and is
+denotation-preserving for the common scalar-arith + let/var case.
 
-## The type translation (the new ingredient vs `ThirDialect.lean`)
+## The type translation (the ingredient absent from `ThirDialect.lean`)
 
 `thirDialect.Ty = JasminTy` whereas `catCryptDialect.Ty = CryptoTy`, so unlike
 the flat `lowerThir` (which shared `Ty` and reused contexts verbatim) this edge
@@ -36,7 +36,7 @@ The denotations agree *definitionally* (`⟦.reg w⟧` and `⟦.sword w⟧` both
 to `BitVec w`), so the per-entry valuation transport `tcEntry` is the identity
 on the covered (`reg`) fragment, and the variable-lookup lemma `vTc_lookup` is
 **cast-free**. The non-`reg` JasminTy arms (`inlineInt`, `stackArr`, `bool`)
-never appear in a covered THIR scalar body, so they map to a placeholder and
+never appear in a covered THIR scalar body, so they map to a default type and
 carry a default valuation entry; the soundness theorem is stated over the
 `reg`-typed fragment where transport is exact.
 
@@ -257,7 +257,7 @@ def lowerThirToCatCrypt : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | _, _, .var (Expr.mk op hret args) body =>
       match lowerThirToCatCrypt body with
       | some bodyC =>
-          -- `body : Com (ret op :: Γ) t` was lowered to
+          -- `body : Com (ret op :: Γ) t` is lowered to
           -- `Com (tcTy (ret op) :: tcCtx Γ) (tcTy t)` (using `hret : ret op = t`
           -- transported to the binding type), feed it to the op step.
           lowerVarStepTc (t' := tcTy _) op args (hret ▸ bodyC)
@@ -468,9 +468,9 @@ theorem lowerThirToCatCrypt_denote : {Γ : Ctxt jasminDialect} → {t : JasminTy
 /-! ## 6. Smoke demonstrator: a scalar `add` kernel climbs to `catCryptDialect`
 
 `let s = a + b; ret s` over `[reg 64, reg 64]`, the THIR-front image of a hax
-scalar body that today lands flat at `jasminDialect`. We lower it **up** to
+scalar body that otherwise lands flat at `jasminDialect`. We lower it **up** to
 `catCryptDialect` (a `bvAdd` over `[sword 64, sword 64]`) and confirm the edge
-both *succeeds* (`isSome`) and is denotation-preserving — so the body now reaches
+both *succeeds* (`isSome`) and is denotation-preserving — so the body reaches
 the high algebraic stack. -/
 
 /-- THIR-front `add` kernel: `let s = a + b; ret s` over two `reg 64` inputs. -/

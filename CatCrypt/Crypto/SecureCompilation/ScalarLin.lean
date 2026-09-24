@@ -13,8 +13,8 @@ The `regArith` fragment of `Com jasminDialect`, in named-SSA straight-line form,
 shared by *every* backend. Each ISA backend (AArch64, RISC-V, x86, the GPU tile
 thread-body) provides a `ScalarTarget` instance — an instruction selection
 `RegStmt → List Op`, a machine run, and a one-line per-statement correctness
-proof — and gets the **whole-program denotation keystone for free** from the
-single generic `ScalarTarget.compile_denote` here. So the keystone is proved
+proof — and gets the **whole-program denotation theorem for free** from the
+single generic `ScalarTarget.compile_denote` here. So the theorem is proved
 ONCE and factored over the four backends, rather than copy-pasted per ISA.
 
 This is the narrow waist of the architecture: one `Com jasminDialect → RegProg`
@@ -56,7 +56,7 @@ inductive RegStmt where
 /-- A straight-line program. -/
 abbrev RegProg := List RegStmt
 
-/-! ## 2. The backend interface + the one generic keystone
+/-! ## 2. The backend interface + the one generic denotation theorem
 
 A `ScalarTarget` is everything a backend must supply to compile this IR with a
 correctness proof: a machine op type `Op`, a state `St`, a machine run of a
@@ -94,7 +94,7 @@ def compile (T : ScalarTarget) (p : RegProg) : List T.Op := p.flatMap T.toOps
 /-- The source denotation on the backend's state. -/
 def denote (T : ScalarTarget) (p : RegProg) (s : T.St) : T.St := p.foldl T.step s
 
-/-- **The generic keystone.** For any backend, the compiled machine block computes
+/-- **The generic denotation theorem.** For any backend, the compiled machine block computes
     the source program's denotation, by induction on the program — proved once,
     instantiated per ISA. -/
 theorem compile_denote (T : ScalarTarget) (p : RegProg) (s : T.St) :

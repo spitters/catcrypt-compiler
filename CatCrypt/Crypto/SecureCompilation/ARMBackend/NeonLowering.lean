@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
 
 /-!
-# Wiring a register-named packed-u32 op alphabet to the NEON machine model (#548)
+# Wiring a register-named packed-u32 op alphabet to the NEON machine model
 
 This module is the **AArch64 NEON/ASIMD** lowering: a register-named op alphabet
 `NOp`, the one-rule-per-constructor lowering `toNInst` to `NeonModel.NInst`, and
@@ -25,7 +25,7 @@ NOp (RFC 8439 quarter-rounds)  --lowerNBlock-->  NInst (NEON register machine)
                                --renderNInst (NeonAsmPrinter)-->  GAS AArch64 ASIMD
 ```
 
-The trust boundary is the same shape as the x86 Vec128 path: the lowering is
+The trust boundary is the same shape as the x86 packed-u32 path: the lowering is
 verified down to the model; the model's lane semantics is differential-validated
 (the RFC 8439 KAT below + the qemu-aarch64 emitted-kernel KAT in
 `bench/arm_compare/`).
@@ -65,7 +65,7 @@ inductive NOp where
   deriving Repr, DecidableEq
 
 /-- Lower a register-named packed op to the machine `NInst` — the one-rule-per-
-    constructor lowering pass, the NEON analogue of `Vec128.toVInst`. -/
+    constructor lowering pass. -/
 def toNInst : NOp → NInst
   | .add dst a b => .add dst a b
   | .sub dst a b => .sub dst a b
@@ -102,7 +102,7 @@ theorem shl_evalNInst_denote (s : NState) (dst a : String) (imm : Nat) :
 
 /-! ## 3. The block-lowering denotation theorem
 
-The NEON analogue of `Vec128Lowering.vec128Block_lowering_denote`: lowering a
+Lowering a
 straight-line `NOp` block to machine `NInst`s and running it on the NEON model
 equals the direct machine fold — for **all** blocks and **all** register states,
 by induction. No new custom axioms. -/

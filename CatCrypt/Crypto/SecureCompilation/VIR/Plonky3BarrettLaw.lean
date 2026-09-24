@@ -19,12 +19,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
   t  = x − q·p                -- t ∈ [0, 2p)
   wb = csub(t)                -- one branchless conditional subtract
 ```
-This file gives that emitted sequence a standalone Lean definition
+This module gives that emitted sequence a standalone Lean definition
 (`barrettReduceMU`) matching the word arithmetic exactly, and proves it equals
 the field reduction `x % p` for any `x < 2^62` (`barrettReduceMU_correct`), and
 hence that the butterfly's `bbMul` step (`a · b` for canonical `a, b < p`) is the
 field product (`barrettMul_correct`). This discharges the Barrett-reduction law
-that `Plonky3NttButterflyEmit` previously left KAT-witnessed.
+of `Plonky3NttButterflyEmit` by proof rather than by KAT.
 
 ## The Barrett quotient bound (the classic `t ∈ [0, 2p)`)
 

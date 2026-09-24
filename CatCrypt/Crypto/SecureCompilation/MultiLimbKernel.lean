@@ -84,7 +84,7 @@ theorem add2Prog_value (env : Env) :
   have h5 := (env "alo" + env "blo").isLt
   rw [hshi]; omega
 
-/-- The 128-bit add compiles to AArch64 (generic keystone). -/
+/-- The 128-bit add compiles to AArch64 (instance of the generic `regToBOp_denote`). -/
 theorem add2Prog_arm (s : BState) :
     runBBlock s (lowerBBlock (regToBOp add2Prog)) = armTarget.denote add2Prog s :=
   regToBOp_denote add2Prog s

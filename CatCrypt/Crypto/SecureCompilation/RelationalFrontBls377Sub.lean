@@ -43,12 +43,12 @@ pieces are the composite `mlSubModK` and its value law, plus the `ZMod`-side bri
 `encMLK`, `splitLimbsK`, `bignumVal_encMLK` are all reused. The `bls12_377` instance is
 the same `KLimbPrime`; only the kernel (`mlSubModK`) and its commuting square are new.
 
-## Honest scope
+## Scope
 
 * **Demonstrated (sorry-free):** the generic `k`-limb `mlSubModK` and its value law
   `mlSubModK_val` (composing `subLimbs_val` + `addLimbs_val` + `condSubLimbs_val`); the
   `ZMod q` bridge `ZMod.val_sub_borrow`; the SUB commuting square `encMLK_sub_commutes`;
-  the `bls12_377` instance `bls377_sub_commutes` at the genuine 377-bit prime; a
+  the `bls12_377` instance `bls377_sub_commutes` at the 377-bit prime; a
   `subModRealizationK` / `EndoOpRealization` for the field sub; and a worked wrapping
   example (a difference that borrows, so the conditional add-back fires).
 * With **ADD** + **MUL** + **SUB** all realized over the 6-limb carrier, the `bls12_377`
@@ -171,7 +171,7 @@ theorem mlSub_seamK (Q : KLimbPrime) (a b : ZMod Q.q) :
 /-- **The `k`-limb `F_q` SUB commuting square.** The abstract field subtract `a - b` (in
     `F_q`), serialized by the injective-not-surjective `k`-limb encoding `encMLK`, equals
     the emitted multi-limb borrow-corrected kernel `mlSubModK` on the serialized operands,
-    read through `bignumVal` — with the genuine multi-limb conditional add-back and reduce.
+    read through `bignumVal` — with the multi-limb conditional add-back and reduce.
     The SUB sibling of `encMLK_add_commutes`. -/
 theorem encMLK_sub_commutes (Q : KLimbPrime) (a b : ZMod Q.q) :
     (a - b).val = bignumVal (mlSubModK Q.ql (encMLK Q.q Q.k a) (encMLK Q.q Q.k b)) := by
@@ -187,16 +187,16 @@ theorem mlSubK_spec_transfers (Q : KLimbPrime) (a a' b b' : ZMod Q.q) :
   rw [← encMLK_sub_commutes Q, ← encMLK_sub_commutes Q]
   exact ⟨fun h => by rw [h], fun h => (subModRealizationK Q.q).enc_inj h⟩
 
-/-! ## 5. The `bls12_377` instance: the genuine 377-bit base-field prime, `k = 6`
+/-! ## 5. The `bls12_377` instance: the 377-bit base-field prime, `k = 6`
 
 Reuses `bls377KLimbPrime` from `RelationalFrontBls377Add` verbatim; only the kernel
 (`mlSubModK`) and its commuting square are new for the SUB op. -/
 
 /-- **The `bls12_377` base-field SUBTRACT commuting square — the user's target field.**
-    The abstract `bls12_377` base-field subtraction `a - b` (in `ZMod q` for the genuine
+    The abstract `bls12_377` base-field subtraction `a - b` (in `ZMod q` for the
     377-bit prime `q = bls377Q`), serialized by the 6-limb encoding `encMLK q 6`, equals
     the emitted 6×64-bit borrow-corrected kernel `mlSubModK` on the serialized operands,
-    read through `bignumVal` — with the genuine 6-limb conditional add-back / reduce. The
+    read through `bignumVal` — with the 6-limb conditional add-back / reduce. The
     SUB sibling of `bls377_add_commutes`, completing the `bls12_377` field-op set. -/
 theorem bls377_sub_commutes (a b : ZMod bls377Q) :
     (a - b).val

@@ -15,7 +15,7 @@ This file is the bitsliced-AES SIMD-extension analogue of
 `UovReflect.lean`: it adds AES-bitslice-specific opaque leaves and
 `LowCTPattern` registrations so that a pure-Lean 32-block-wide AES
 round can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## AES-bitslice equation
@@ -54,8 +54,8 @@ established pattern.
 * Boyar-Peralta, "A New Combinational Logic Minimization Technique"
   (WEA 2010) — 113-op S-box
 * NIST FIPS-197 §5 — AES round
-* `bench/aes_compare/aes_bitslice_emit.lean` — legacy Tier C string-
-  templated emit (superseded by this leaf-shim pattern)
+* `bench/aes_compare/aes_bitslice_emit.lean` — the string-templated
+  emit of the same round
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

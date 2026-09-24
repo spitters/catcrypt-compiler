@@ -125,7 +125,7 @@ example : cAsm.any (fun l => strContains l "72623859790382856") = true := by
   native_decide
 
 /-- (3c) Nothing rendered as the scalar-GP `# <unsupported …>` fragment-boundary
-    comment — the const genuinely lowered, it was not declined. -/
+    comment — the const lowered and was not declined. -/
 example : cAsm.any (fun l => strContains l "unsupported") = false := by
   native_decide
 

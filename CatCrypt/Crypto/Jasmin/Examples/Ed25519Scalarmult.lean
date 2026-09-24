@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.Jasmin.LowCTDSL
 # Ed25519 variable-base scalar multiplication in the LowCT DSL
 
 **Prototype.** Lean-side alternative to AUCurves' missing bedrock2
-`ed25519_scalarmult` (the Phase 1 audit blocker noted in
+`ed25519_scalarmult` (the audit gap noted in
 `CatCrypt/Crypto/Jasmin/Ed25519/CoqAxioms.lean`'s `ed_smul` row). This
-file demonstrates that the program can be expressed naturally in our
-existing LowCT DSL — so when Phase 1 is done debating which Coq path
-to take, we have a Lean fallback whose verification story is `mvcgen`.
+module demonstrates that the program can be expressed in the LowCT
+DSL, giving a Lean alternative to a Coq path whose verification story
+is `mvcgen`.
 
 ## Why this is a prototype, not a finished port
 
@@ -26,7 +26,7 @@ What this file proves:
   `fp_opp` plus a `cmov_fp` constant-time selector) is a finite,
   documented set — six leaves cover the full scalarmult.
 
-What this file does **not** yet provide:
+What this module does **not** provide:
 - Functional-correctness proof against the abstract `ed_smul` axiom in
   `Ed25519Spec.lean`. The `mvcgen` attachment is sketched in
   `mvcgenSketch` below; closing it requires:
@@ -38,10 +38,9 @@ What this file does **not** yet provide:
   (c) An induction over the 256 unrolled iterations to lift bit-level
       double-and-add to `n · P`.
 
-This is the same proof shape that AUCurves Phase 1.3 / 1.4 would
-discharge in Coq; the Lean version trades AUCurves' `ToSafeRustString`
-verified extraction for `LowCTToCryptoSSA.translate` (already
-proved-correct in our pipeline).
+This is the proof shape AUCurves would discharge in Coq; the Lean
+version trades AUCurves' `ToSafeRustString` verified extraction for
+the verified front `translateDialectControl`.
 
 ## Edwards extended-coords doubling formula
 
@@ -187,7 +186,7 @@ def scalarmult256 : LowCT := rustcmd| do
   rc_let "PT" TFp25519
   rc_let "two_d" TFp25519
   rc_let "k" TFpL25519
-  -- Per-iteration scratch (rebound each round; CryptoSSA shadows).
+  -- Per-iteration scratch (rebound each round; the SSA translation shadows).
   rc_let "A" TFp25519; rc_let "B" TFp25519; rc_let "C" TFp25519
   rc_let "D" TFp25519; rc_let "Zsq" TFp25519
   rc_let "XplusY" TFp25519; rc_let "XYsq" TFp25519

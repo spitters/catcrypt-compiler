@@ -10,15 +10,15 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNa
 /-!
 # More peephole-security results, native on `Com catCryptDialect`
 
-This file states and proves three peephole-security results **directly on
+This module states and proves three peephole-security results **directly on
 `catCryptDialect`**, computing the `SPComp` distance through `Com.denoteSP` /
-`catCryptDenoteSP`. It continues phase C.3 of the CProg-retirement plan,
-joining the OTP/peephole results of `CryptoDialectSecurityNative.lean`:
+`catCryptDenoteSP`, alongside the OTP/peephole results of
+`CryptoDialectSecurityNative.lean`:
 
 * `xor_sample_bij` — **THE OTP security argument as a peephole**:
   `let k = sampleBit; let c = xor(k, m); ret c  ≡  let c = sampleBit; ret c`.
-  The XOR-with-`m` bijection makes the ciphertext distribution uniform. This is
-  re-pointed at the native `xor_sample_bij_dialect_secure_native`.
+  The XOR-with-`m` bijection makes the ciphertext distribution uniform. It is
+  proved from the native `xor_sample_bij_dialect_secure_native`.
 * `bvXor_sample_bij n` — the `BitVec n` analogue of the above (the BitVec OTP).
 * `sample_dce_bit` — dead-code elimination of an unused sample:
   `let x = sampleBit; ret v  ≡  ret v`.
@@ -36,12 +36,12 @@ The security view therefore lives on `catCryptDialect` alone.
 
 ## Anti-vacuity
 
-Each ported theorem genuinely relates *distinct* programs (the `lhs` of each
+Each theorem relates *distinct* programs (the `lhs` of each
 rewrite binds an extra `xor`/`sample`, the `rhs` does not), so none is `0 = 0`;
 none routes through the valuation-free `Com.all_com_ct` shadow.
 
-**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`,
-**0 sorries**.
+**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`;
+all goals closed.
 -/
 
 @[expose] public section
@@ -82,7 +82,7 @@ theorem sample_bind_const {α : Type} [Fintype α] [Nonempty α] {β : Type} (v 
 
 `xor_sample_bij` is the bit OTP security argument phrased as a peephole over
 `[.bit]`: its `lhs` samples a key and XORs with the message, its `rhs` samples
-the ciphertext directly. It is re-pointed at the native version proved in
+the ciphertext directly. It is an alias of the native version proved in
 `CryptoDialectSecurityNative.lean`. -/
 
 /-- The XOR-bijection rewrite's *real* side

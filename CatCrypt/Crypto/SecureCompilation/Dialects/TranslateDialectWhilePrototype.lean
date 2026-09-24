@@ -194,7 +194,7 @@ theorem demoWhile_frontArm_ctx_invariant
 
 /-- **(c) The emitted loop carries a real back-edge.** Wrapping a one-instruction
     countdown body (`SUB n,1` stand-in) in `translateWhileLcmd` ends with the
-    conditional back-edge `Lcond NZ → top` — a genuine `jne .L`, not an unroll. -/
+    conditional back-edge `Lcond NZ → top` — a `jne .L`, not an unroll. -/
 theorem demoWhile_backEdge_last :
     (translateWhileLcmd 64 0 "n" [⟨0, .Lopn [.reg "n"] "SUB" [.reg "n", .imm 1]⟩]).getLast?
       = some ⟨0, .Lcond (.reg "NZ") 0⟩ :=

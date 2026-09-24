@@ -29,13 +29,13 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 `Plonky3WholeProverEmit` composes the five owned phase-leaf `Lprog`s into
 ONE `.s` carrying every field-arithmetic kernel (compress, hash_leaf, ntt_layer,
-fri_fold, bb_inv). Its docstring records the precise residual: the orchestration
-LOOPS that *route* those leaves — the Merkle tree-level loop, the FRI fold chain,
-the FRI query loop, and the proof-of-work grind `while` — stayed hand-written C
-control flow in the driver (`bench_prove_emitted_a7.c`).
+fri_fold, bb_inv). The orchestration LOOPS that *route* those leaves — the
+Merkle tree-level loop, the FRI fold chain, the FRI query loop, and the
+proof-of-work grind `while` — are hand-written C control flow in that module's
+driver (`bench_prove_emitted_a7.c`).
 
-This module closes that residual. Each orchestration loop is emitted as an
-**owned-backend looped `Lcmd`** through `LprogControlFlow.loopLcmd` (#538): a
+This module emits those loops. Each orchestration loop is emitted as an
+**owned-backend looped `Lcmd`** through `LprogControlFlow.loopLcmd`: a
 single body copy wrapped in the back-edge shape `.L<top>: … ; subq $1,%n ;
 jne .L<top>`, constant-size in the trip count. The loop *body* is an
 `LinstrR.Lcall` to the emitted phase leaf (the same intra-object `call <leaf>`
@@ -196,7 +196,7 @@ per-iteration body:
 * `SUB <nReg>, 1`            — decrement the loop counter
 
 `loopLcmd` then wraps it in the back-edge. The counter register is a callee
-configuration count (`%r8`), public by construction (#460 vartime policy), so the
+configuration count (`%r8`), public by construction (vartime policy), so the
 back-edge `jne` is a CT-admissible public branch. -/
 
 /-- A direct near-`call` to the emitted phase-leaf symbol `name` — the loop body's
@@ -270,7 +270,7 @@ def powGrindLoop : Lfundef := orchLoopFundef "plonky3_merkle_hash_leaf_rc" 256 3
 
 /-! ## 3. The composed whole-prover `Lprog`: field leaves + orchestration loops
 
-The whole-prover object now carries BOTH the five owned field-kernel leaves
+The whole-prover object carries BOTH the five owned field-kernel leaves
 (`wholeProverLprog.lp_funcs` — compress, hash_leaf, ntt_layer, fri_fold, bb_inv)
 AND the five orchestration-loop driver functions. One `.s`: the prove entry's
 control flow is the owned looped orchestration, the field arithmetic the called
@@ -295,7 +295,7 @@ def wholeProverOrchLprog : Lprog :=
 def wholeProverOrchAsm (_ : Unit) : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned wholeProverOrchLprog
 
 /-! ## 3b. Route the Merkle / FRI / FS / PoW permute call to the owned ZMM
-    Poseidon2 leaf (the #647 Gap-2-item-1 lever, symbol-level wiring)
+    Poseidon2 leaf (symbol-level wiring)
 
 The single emitted whole-prover object inlines the **scalar** Poseidon2 permutation
 (the `plonky3_merkle_{hash_leaf,compress}_rc` / `fri_fold_rc` leaves are scalar
@@ -375,7 +375,7 @@ def p3PermZmmBody : Lcmd := bandLcmd 64 p3PermZmmSteps
 
 /-- The owned ZMM Poseidon2-permute driver function (`p3_poseidon2_perm_zmm`):
     the 16-lane `(out, in)` permute, ABI-identical to the scalar `hp_perm16` /
-    `poseidon2_bb_permute` it replaces (SysV `%rdi` = out, `%rsi` = in). Generated
+    `poseidon2_bb_permute` it stands in for (SysV `%rdi` = out, `%rsi` = in). Generated
     by the no-loop arm of the loop-over-call front (`buildOrchCallSeq`) from the
     `poseidon2_bb_avx512_mont` call schedule. -/
 def p3PermZmmFundef : Lfundef := buildOrchCallSeq 64 p3PermZmmSteps
@@ -401,7 +401,7 @@ def merkleCompressLoopZmm : Lfundef := orchLoopFundef p3PermZmmSym 16 32 120
 def friQueryLoopZmm : Lfundef := orchLoopFundef p3PermZmmSym 8 32 120
 def powGrindLoopZmm : Lfundef := orchLoopFundef p3PermZmmSym 256 32 64
 
-/-- The rerouted orchestration-loop driver set: the four permute-driven loops now
+/-- The rerouted orchestration-loop driver set: the four permute-driven loops
     call the owned ZMM permute, the FRI fold loop unchanged. Plus the owned ZMM
     permute driver itself (`p3_poseidon2_perm_zmm`). -/
 def orchLoopFuncsZmm : List (String × Lfundef) :=
@@ -416,7 +416,7 @@ def orchLoopFuncsZmm : List (String × Lfundef) :=
     The five field-leaf functions (compress / hash_leaf / ntt_layer / fri_fold /
     bb_inv — the scalar leaves the rerouted loops do not call for hashing, kept
     so the per-kernel KATs still relink) PLUS the rerouted orchestration loops
-    (whose permute call now targets the owned ZMM leaf) PLUS the owned ZMM
+    (whose permute call targets the owned ZMM leaf) PLUS the owned ZMM
     permute driver. One emitted object whose Poseidon2 hashing runs on the owned
     AVX-512 ZMM kernels, the dominant prover lever. -/
 def wholeProverZmmLprog : Lprog :=
@@ -487,7 +487,7 @@ theorem wholeProverOrch_func_count :
 
 The rerouted object (`wholeProverZmmLprog`) carries the owned ZMM Poseidon2
 permute driver (`p3_poseidon2_perm_zmm`), whose body `call`s the four owned
-ZMM half-kernels, and the Merkle / FRI-query / PoW orchestration loops now call
+ZMM half-kernels, and the Merkle / FRI-query / PoW orchestration loops call
 that owned ZMM permute instead of the scalar mixers. -/
 
 /-- The owned ZMM permute body is the `poseidon2_bb_avx512_mont` schedule of
@@ -526,7 +526,7 @@ def emitMain : IO Unit := do
   IO.println "  ONE .s: 5 field leaves + 5 owned orchestration loops (Merkle/FRI/query/PoW)"
   IO.println "  prove path control flow is owned loopLcmd back-edges (.L:/cmp/jne), NO C for/while"
   -- ZMM-rerouted variant: the Poseidon2 permute call routed to the owned
-  -- AVX-512 (ZMM) leaf (the #647 Gap-2-item-1 lever).
+  -- AVX-512 (ZMM) leaf.
   IO.FS.writeFile (dir ++ "/plonky3_whole_prover_zmm_owned.s") (wholeProverZmmAsm ())
   IO.println "WROTE bench/plonky3_compare/gen_com/plonky3_whole_prover_zmm_owned.s"
   IO.println "  ONE .s: field leaves + p3_poseidon2_perm_zmm (owned ZMM half-kernel calls)"

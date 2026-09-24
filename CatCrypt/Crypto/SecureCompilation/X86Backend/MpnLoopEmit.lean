@@ -21,14 +21,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
-# Runtime-N `mpn_*` loop kernels through the OWNED guarded-loop backend (#500)
+# Runtime-N `mpn_*` loop kernels through the OWNED guarded-loop backend
 
 `MpnLinearKernels.lean` / `MpnAdxLprog.lean` emit the elementary `mpn_*`
 kernels **fully unrolled at a fixed compile-time limb count** `n` (the unrolled
-straight-line body, one register window, no back-edge). That is exactly what the
-*owned* fixed-N twins provide, and it is why the trivial-tier jasmin benches
-(`bench/integration`, `bench/gmp_bench`, `bench/gmp_diff`) could *not* flip to
-the owned backend: their GMP-ABI `mpn_*` kernels are **runtime-N** — a
+straight-line body, one register window, no back-edge). Those fixed-N twins do
+not cover the jasmin benches (`bench/integration`, `bench/gmp_bench`,
+`bench/gmp_diff`): their GMP-ABI `mpn_*` kernels are **runtime-N** — a
 `while (i < n) { … }` loop whose limb count `n` is a *runtime argument*, not a
 compile-time constant. A fixed-N unrolled body cannot stand in for a kernel the
 caller invokes at an arbitrary `n`.
@@ -49,7 +48,7 @@ control-flow backend:
 * the **emission** is the *looped* owned-backend control-flow shape
   (`LprogControlFlow.loopLcmd`: `.L: body ; cmpq $0,%n ; jne .L`), **constant-size
   in the runtime trip count** — exactly the runtime-N artifact the jasmin `mpn_*`
-  produces, now from the owned front (`renderLfundef`, no jasminc).
+  produces, from the owned front (`renderLfundef`, no jasminc).
 
 ## Kernels emitted (and which are KAT-ready)
 
@@ -64,19 +63,19 @@ limbs is harmless):
   FRONT-sourced via the `SpStep` schedule (`MpnCmpEarlyExitFront`, see below);
   the full-scan `Lcmd` stub is retained as the bench-perf twin.
 
-**Carry-chain family — now runtime-N, looped, and KAT-ready via the open-coded
-GPR carry** (#560, the `SETcc` primitive):
+**Carry-chain family — runtime-N, looped, and KAT-ready via the open-coded
+GPR carry** (the `SETcc` primitive):
 
 * `mpn_add_n`, `mpn_sub_n` — a runtime-N looped form cannot keep the carry in `CF`
   across the back-edge (the pointer-advance `add` and the counter-decrement `sub`
   *clobber `CF`* before the next iteration reads it). GMP/jasmin solve this with the
   **open-coded carry** idiom: thread the carry as a *GPR* value. Each limb does
   `t += cy` ⇒ carry `c1` (`setc`), `t += b` ⇒ carry `c2` (`setc`), `cy = c1 ||| c2`,
-  with the carry held in a GPR across the back-edge. This is now expressible because
-  the `JInstr`/owned-printer subset grew the flag-to-GPR materialisation primitive
+  with the carry held in a GPR across the back-edge. This is expressible because
+  the `JInstr`/owned-printer subset has the flag-to-GPR materialisation primitive
   `SETcc` (`JasminModel.JInstr.setc`, rendered as `setb %d8 ; movzbq %d8, %d`). So
   add/sub are emitted as the open-coded-carry looped body (lowering-correct for
-  every `n`), and the *cross-limb* carry is now exercised by the value vectors
+  every `n`), and the *cross-limb* carry is exercised by the value vectors
   below (`addLoop_value`/`subLoop_value`) — the carry crosses the back-edge in the
   GPR. The all-`n` identity is the external GMP KAT (`bench/integration`).
 
@@ -87,7 +86,7 @@ GPR carry** (#560, the `SETcc` primitive):
   `n` (`*_lowering_correct`, instances of `boundedLoop_lowering_denote_closed`); the
   per-limb value semantics is pinned by a *single* small `native_decide` vector
   through the full `evalInstr`/`x86_*` chain (the all-`n` KAT is the external GMP
-  harness, not a heavy multi-vector `native_decide` — REV-12); the **looped**
+  harness, not a heavy multi-vector `native_decide`); the **looped**
   emission renders with the owned back-edge control-flow shape
   (`.L`/`cmpq`/`jne`), constant-size in the runtime trip count.
 * **Trusted (thin)**: `LprogAsmPrinter.renderLfundef` / `gas` / the SysV leaf ABI
@@ -98,14 +97,13 @@ is established for the **no-carry families** by the byte-exact KAT vs `libgmp`'s
 `__gmpn_*` in `bench/integration/gen_com/` (the `mpn_loop_owned_kat.c` harness
 this module's `emitMain` writes the `.s` for).
 
-## The compare kernel — FRONT-sourced early-exit (was a backend gap)
+## The compare kernel — FRONT-sourced early-exit
 
 `mpn_cmp(a, b, n)` returns one of `+1`, `0`, `-1` and GMP scans **MSB-first with
 an early exit** on the first differing limb. The rolled counted-loop front
 (`rolledForLoopNRt`, back-edge on one *public counter*) has no data-dependent
-**forward** exit out of the loop body and no small-set return, so `mpn_cmp` was
-the last hand-authored owned-emit output (a full-scan void-leaf stub). It is now
-FRONT-sourced through the `SpStep` schedule language (`MpnCmpEarlyExitFront` — the
+**forward** exit out of the loop body and no small-set return, so `mpn_cmp` is
+FRONT-sourced instead through the `SpStep` schedule language (`MpnCmpEarlyExitFront` — the
 same front that generates the SHAKE256 sponge and the Plonky3 query sampler): a
 top-tested runtime scan loop (`goto` back-edge) whose body `condFwd`-breaks OUT of
 the loop to a `{-1,0,+1}` sign block on the first differing limb
@@ -141,7 +139,7 @@ the pointers by 8 bytes and decrements the counter `n`. Because the loop runs
 runtime-N operand. The register window is constant: `{r, a, b, t0, t1, n}` (a
 pure-bitwise body drops a scratch), independent of the limb count. -/
 
-/-- The carry-chain add loop body, **open-coded carry as a GPR** (#560). The carry
+/-- The carry-chain add loop body, **open-coded carry as a GPR**. The carry
     is held in the callee-stable register `cy` (0 or 1) across the back-edge, so the
     flag-clobbering pointer-advance `add`s and counter `sub` between limbs are
     harmless (the carry does not ride `CF`). Per limb:
@@ -171,7 +169,7 @@ def addLoopBody : List (JInstr 64) :=
   , .add "a" (.imm 8), .add "b" (.imm 8), .add "r" (.imm 8)
   , .sub "n" (.imm 1) ]
 
-/-- The borrow-chain sub loop body, **open-coded borrow as a GPR** (#560). The
+/-- The borrow-chain sub loop body, **open-coded borrow as a GPR**. The
     borrow is held in `cy` (0 or 1) across the back-edge. Per limb:
 
     ```
@@ -238,7 +236,7 @@ def zeroLoopBody : List (JInstr 64) :=
   , .add "r" (.imm 8)
   , .sub "n" (.imm 1) ]
 
-/-! ### 1c. Block-unrolled carry chain — CF kept live across `k` limbs (#500)
+/-! ### 1c. Block-unrolled carry chain — CF kept live across `k` limbs
 
 The open-coded `addLoopBody` / `subLoopBody` above thread the carry as a GPR on
 **every** limb (two `add`s + two `setc`s + an `or` per limb), because a
@@ -270,7 +268,7 @@ back. The amortised cost is `2/k` reseed ops + `1` `adc` per limb — at `k = 4`
 `2.5` GP-ALU ops/limb vs the open-coded `5`/limb, with the `CF` chain held in
 the flag register exactly as s2n-bignum's `bignum_add` block.
 
-The loop counter `n` now counts **`k`-limb blocks** (`n = limbs / k`); the
+Here the loop counter `n` counts **`k`-limb blocks** (`n = limbs / k`); the
 caller supplies the block count for a limb total that is a multiple of `k` (the
 GMP-ABI driver picks `k | limbs`, the standard block-unroll convention). -/
 
@@ -313,9 +311,9 @@ def subBlkLoopBody (k : Nat) : List (JInstr 64) :=
     ++ [ .add "a" (.imm (8 * k)), .add "b" (.imm (8 * k))
        , .add "r" (.imm (8 * k)), .sub "n" (.imm 1) ]
 
-/-! ### 1b. Routing each loop body through the verified `optimizeX86Block` (#555)
+/-! ### 1b. Routing each loop body through the verified `optimizeX86Block`
 
-Per #555, every owned-emit `List (JInstr 64)` kernel routes its hand-built body
+Every owned-emit `List (JInstr 64)` kernel routes its hand-built body
 through the single verified optimizer driver
 `X86ComPipeline.optimizeX86Block : List (JInstr 64) → List (JInstr 64)` before
 lowering, reusing its translation-validation certificate
@@ -345,7 +343,7 @@ theorem runBoundedLoop_congr_body (n : Nat) (s : JState 64)
   | succ k ih => simp only [runBoundedLoop_succ, h s, ih]
 
 /-- Each optimized loop body: the hand-built body routed through the verified
-    `optimizeX86Block` driver. These are what the lowering/emission now consume. -/
+    `optimizeX86Block` driver. These are what the lowering/emission consume. -/
 def addLoopBodyOpt  : List (JInstr 64) := optimizeX86Block addLoopBody
 def subLoopBodyOpt  : List (JInstr 64) := optimizeX86Block subLoopBody
 def andLoopBodyOpt  : List (JInstr 64) := optimizeX86Block andLoopBody
@@ -374,8 +372,8 @@ def seed4 (aFn bFn : Nat → BitVec 64) : JState 64 :=
                           then bFn (off / 8).toNat else 0)
       else 0 }
 
-/-- **add loop value — now exercises a *cross-iteration* carry** (the open-coded
-    GPR carry, #560). The `JInstr` model keys memory by `(base name, offset)`, and
+/-- **add loop value — exercises a *cross-iteration* carry** (the open-coded
+    GPR carry). The `JInstr` model keys memory by `(base name, offset)`, and
     every iteration's `loadMem "a" 0` / `storeMem "r" 0` hit the *same* cell — so a
     runtime-N operand pair is modeled as the same limb re-processed, with the
     cross-iteration state living in the **registers** (the carry GPR `cy`, the
@@ -398,7 +396,7 @@ theorem addLoop_value :
   native_decide
 
 /-- **sub loop value — exercises a *cross-iteration* borrow** (the open-coded GPR
-    borrow, #560). Same memory-model caveat as `addLoop_value`: the borrow threads
+    borrow). Same memory-model caveat as `addLoop_value`: the borrow threads
     through the GPR `cy`. With `a[0] = 0`, `b[0] = 1`, **iteration 0** computes
     `0 - 0(cy) = 0` then `0 - 1 = 2^64-1` (borrow) and sets `cy := 1`; **iteration 1**
     reads the borrow GPR — `0 - 1(cy) = 2^64-1` then `... - 1 = 2^64-2` — so the
@@ -590,7 +588,7 @@ theorem zeroLoop_lowering_correct (n : Nat) (s : JState 64) :
       = runBoundedLoop s n zeroLoopBody :=
   boundedLoop_lowering_denote_closed n zeroLoopBody s
 
-/-! ### 3b. Optimizer translation validation (the `#555` certificate, paste-through)
+/-! ### 3b. Optimizer translation validation (the optimizer certificate, paste-through)
 
 For each kernel the optimized body runs to the same per-iteration result as the
 hand-built body (`*_opt_runBlock`, the body-level certificate
@@ -764,7 +762,7 @@ theorem cmpLoop_opt_lowering_correct (n : Nat) (s : JState 64) :
 Each runtime-N kernel emits as the **looped** owned-backend control-flow shape:
 the per-limb body wrapped once in `loopLcmd` (`.L: body ; cmpq $0,%n ; jne .L`),
 **constant-size in the runtime trip count** — the runtime-N artifact the jasmin
-`mpn_*` produces, now from the owned front. We build the body at the
+`mpn_*` produces, from the owned front. We build the body at the
 `LinstrR.Lopn` level (the form `renderLfundef` consumes), mirroring
 `LprogControlFlow.mpnAddmul1LcmdBody`. -/
 
@@ -780,15 +778,15 @@ def mov64L (d : String) (s : LOperand) : Linstr :=
     `Lopn [d] SETC:64 []` — one destination, **zero** data sources (the carry-in
     is the implicit `CF`). The owned printer renders it as `setb %d8 ; movzbq
     %d8, %d64`. This is the flag-to-GPR materialisation the open-coded carry chain
-    uses (#560). -/
+    uses. -/
 def setc64L (d : String) : Linstr :=
   ⟨0, .Lopn [.reg d] (withWidthTag 64 "SETC") []⟩
 
 /-- Memory cell `[base + 0]` as the `mem.<base>.0` operand the printer resolves. -/
 def memCell (base : String) : LOperand := .reg (memName base 0)
 
-/-- The runtime-N add loop body at the `Lcmd` level, **open-coded carry as a GPR**
-    (#560). SysV pins `r`→`RDI`, `a`→`RSI`, `b`→`RDX`, `n`→`RCX`; scratch `R8` (the
+/-- The runtime-N add loop body at the `Lcmd` level, **open-coded carry as a GPR**.
+    SysV pins `r`→`RDI`, `a`→`RSI`, `b`→`RDX`, `n`→`RCX`; scratch `R8` (the
     limb), `R10` the carry GPR `cy`, `R11` the second-carry scratch. The carry rides
     `R10` across the back-edge (not `CF`), so the pointer-advance `ADD`s and the
     counter `SUB` that clobber `CF` between iterations are harmless. Per limb:
@@ -806,8 +804,8 @@ def addLoopLcmdBody : Lcmd :=
   , binop64L "RDI" "ADD" (.imm 8)
   , binop64L "RCX" "SUB" (.imm 1) ]                           -- n (RCX) -= 1
 
-/-- The runtime-N sub loop body at the `Lcmd` level, **open-coded borrow as a GPR**
-    (#560). Same register pinning as the add body; the borrow rides `R10` across
+/-- The runtime-N sub loop body at the `Lcmd` level, **open-coded borrow as a GPR**.
+    Same register pinning as the add body; the borrow rides `R10` across
     the back-edge. Per limb: `t := [a] ; t -= cy ; cy := CF ; t -= [b] ; s1 := CF ;
     cy |= s1 ; [r] := t`. `SUB`/`SBB` set `CF` as the unsigned borrow, so `setc`
     captures each sub's borrow-out. The caller clears `R10` before the loop. -/
@@ -1031,7 +1029,7 @@ back-edge is the guarded loop `.L…: body ; cmpq $0,%… ; jne .L…`.
 The hand-authored `Lcmd` bodies (`addLoopLcmdBody` … above) are **retained as
 the bench-perf twin** (`*_handtwin.s`): the open-coded GPR-carry single-limb
 loop and the block-unrolled `blk4` `CF`-chain variants are the perf reference,
-not the deployed artifact. `mpn_cmp` is now FRONT-sourced too — the MSB-first
+not the deployed artifact. `mpn_cmp` is FRONT-sourced too — the MSB-first
 early-exit compare returning `{-1,0,+1}` is generated by the `SpStep` schedule
 front `MpnCmpEarlyExitFront` (a top-tested runtime scan loop whose body
 `condFwd`-breaks OUT of the loop to a `{-1,0,+1}` sign block on the first
@@ -1062,7 +1060,7 @@ def normAsmFront : String := (MpnLoopFrontEmit.normLprogFront.map CatCrypt.Crypt
 -- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
 -- re-evaluate the optimizing back-end renderOwned at elaboration.
 
-/-- **`mpn_cmp` is now FRONT-sourced too** (the last residual). The MSB-first
+/-- **`mpn_cmp` is FRONT-sourced too.** The MSB-first
     early-exit compare returning `{-1,0,+1}` is generated by the `SpStep` schedule
     front `MpnCmpEarlyExitFront` (the same schedule language that generates the
     SHAKE256 sponge and the Plonky3 query sampler): a top-tested runtime scan loop

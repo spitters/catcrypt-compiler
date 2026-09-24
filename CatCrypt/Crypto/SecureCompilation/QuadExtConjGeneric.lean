@@ -35,12 +35,12 @@ inversion modules instantiate:
 
 Factoring through `QuadExt` proves the conjugation ring-hom facts, the norm's
 base-ring landing, and the field cancellation law **once**, generically, instead
-of re-deriving them per tower level. Because the base is a genuine abstract
+of re-deriving them per tower level. Because the base is an abstract
 `CommRing`/`Field`, `ring` closes the component identities **directly** — no
 opaque-multiply `show` dance, unlike the `ZMod`-specialized phrasings where the
 base operations are concrete.
 
-## Honesty boundary
+## Scope
 
 This is the abstract algebra only — conjugation, norm, and the conjugate-over-
 norm inverse of `K[u]/(u² − ξ)`. The cancellation law is conditioned on
@@ -105,10 +105,10 @@ The key identity: `conj` commutes with the schoolbook product. Both
 `conj (x · y)` and `conj x · conj y` equal
 `(c0·c0' + ξ·c1·c1') − (c0·c1' + c1·c0')·u`. The `ξ`-reduced real component is
 unchanged (`(−b)(−d)·ξ = b·d·ξ`); the imaginary component flips sign. Because the
-base `K` is a genuine `CommRing`, `ring` closes each component **directly**. -/
+base `K` is a `CommRing`, `ring` closes each component **directly**. -/
 
 /-- **`conj` is multiplicative** (`conj (x * y) = conj x * conj y`) over the
-    `commRing ξ` instance — the load-bearing ring-homomorphism fact. The sign
+    `commRing ξ` instance — the key ring-homomorphism fact. The sign
     flip on the `u`-component commutes with the schoolbook product because the
     `ξ`-reduction `(−b)(−d)·ξ = b·d·ξ` is invariant under conjugation. -/
 theorem conj_mul [CommRing K] (ξ : K) (x y : QuadExt K) :
@@ -122,7 +122,7 @@ theorem conj_mul [CommRing K] (ξ : K) (x y : QuadExt K) :
 
 The norm is the product of an element with its conjugate, projected to the base
 ring. Because `(a + b·u)(a − b·u) = (a² − ξ·b²) + 0·u`, the `u`-component of
-`x · conj x` vanishes — the norm genuinely lands in `K`. -/
+`x · conj x` vanishes — the norm lands in `K`. -/
 
 /-- The **`u`-component of `x · conj x` vanishes** — the field norm lands in the
     base ring `K`. (`(a + b·u)(a − b·u) = (a² − ξ·b²) + 0·u`.) -/
@@ -185,7 +185,7 @@ theorem norm_mul [CommRing K] (ξ : K) (x y : QuadExt K) :
 Over a base **field** `[Field K]`, the norm (a base-ring element) is invertible
 whenever nonzero, so we can invert via the classical formula `x⁻¹ = conj x /
 norm x`: scale the conjugate `conj x` by the base-field inverse of the norm,
-injected into `QuadExt K` on the `c0` component. Because `K` is a genuine
+injected into `QuadExt K` on the `c0` component. Because `K` is a
 `Field`, `mul_inv_cancel₀` closes the cancellation directly. -/
 
 /-- The **base-ring embedding** `K → QuadExt K`, `n ↦ n + 0·u`. The norm
@@ -220,7 +220,7 @@ noncomputable def inv [Field K] (ξ : K) (x : QuadExt K) : QuadExt K :=
     as `(x · conj x) · ⟨(norm x)⁻¹, 0⟩`, the inner factor is the base-ring-valued
     `⟨norm ξ x, 0⟩` (`mul_conj_eq`), so the whole product is the base-ring product
     `⟨norm x · (norm x)⁻¹, 0⟩ = ⟨1, 0⟩ = 1` by `mul_inv_cancel₀`. This is the
-    operation that makes `QuadExt K` a genuine field over a base field `K`. -/
+    operation that makes `QuadExt K` a field over a base field `K`. -/
 theorem mul_inv [Field K] (ξ : K) (x : QuadExt K) (hx : norm ξ x ≠ 0) :
     letI := commRing ξ
     x * inv ξ x = 1 := by

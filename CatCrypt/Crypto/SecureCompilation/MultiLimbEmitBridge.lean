@@ -49,7 +49,7 @@ theorem montForm_zmod (p R out x y : Nat) [NeZero p]
   rwa [Nat.cast_mul, Nat.cast_mul] at hcast
 
 /-- When `R` is a unit mod `p` (the Montgomery radix, coprime to the prime), the
-    emitted output is pinned to the genuine field product `x · y · R⁻¹`. -/
+    emitted output is pinned to the field product `x · y · R⁻¹`. -/
 theorem montForm_zmod_eq (p R out x y : Nat) [NeZero p]
     (hR : IsUnit (R : ZMod p)) (h : out * R ≡ x * y [MOD p]) :
     (out : ZMod p) = (x : ZMod p) * (y : ZMod p) * (↑(hR.unit⁻¹) : ZMod p) := by

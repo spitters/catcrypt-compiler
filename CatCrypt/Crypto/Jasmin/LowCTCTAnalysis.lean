@@ -20,7 +20,7 @@ public meta import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 public import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 
 /-!
-# Phase J — `cmdCT` constant-time analyser for `LowCT`
+# `cmdCT` constant-time analyser for `LowCT`
 
 The `SecretLevel` / `LevelTable` infrastructure in `LowCT.lean` classifies
 slots; this module enforces the classification at the *body* level.
@@ -129,15 +129,15 @@ def SExpr.freeVars : SExpr → List String
   | .SAnd a b => a.freeVars ++ b.freeVars
   | .SXor a b => a.freeVars ++ b.freeVars
   | .SLt  a b => a.freeVars ++ b.freeVars
-  -- Signed-arith extension (#257): the signed binary ops read the union of
+  -- Signed-arith extension: the signed binary ops read the union of
   -- their operands' free variables, exactly as the unsigned binary ops.
   | .SAsr  a b => a.freeVars ++ b.freeVars
   | .SMulS a b => a.freeVars ++ b.freeVars
-  -- Widening-multiply extension (#261): the high-word multiplies read the
+  -- Widening-multiply extension: the high-word multiplies read the
   -- union of their operands' free variables, exactly as the other binary ops.
   | .SMulHiU a b => a.freeVars ++ b.freeVars
   | .SMulHiS a b => a.freeVars ++ b.freeVars
-  -- Tower-limb read extension (#354): `SLimb v i` reads (a limb of) the tower
+  -- Tower-limb read extension: `SLimb v i` reads (a limb of) the tower
   -- slot `v`, so the slot name `v` is the expression's free variable.  A
   -- Secret-classified tower slot flowing into a stored limb is thereby caught
   -- by `isPublic` (the limb value would otherwise leak via the STORE64 operand).
@@ -173,9 +173,8 @@ def SExpr.isPublic (e : SExpr) (lt : LevelTable) : Bool :=
     would *override* `lt x` to `.Public` for the body's recursive
     call; both are sound.) -/
 def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
-  -- **Structural fold (task #360).**  `cmdCT` is the `LowCT.foldNode`
-  -- whose `leaf` discharges every non-recursive constructor exactly as the
-  -- old open match did, and whose node-aware `seqNode`/`wrapNode` combiners
+  -- **Structural fold.**  `cmdCT` is the `LowCT.foldNode`
+  -- whose `leaf` discharges every non-recursive constructor, and whose node-aware `seqNode`/`wrapNode` combiners
   -- re-introduce the per-node guards that make the analysis NON-UNIFORM:
   -- the `lt cond == .Public &&` guard on `RIfNz`/`RWhileNz`.  All the other
   -- two-child / one-child nodes (`RSeq`/`RFnDef`, `RLetZero`/`RLetU64Zero`/
@@ -231,11 +230,11 @@ def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
       | .RCallDstThreaded f dst args  =>
           leafCT f && lt dst.locVar == .Public &&
             args.all (fun a => lt a.locVar == .Public)
-      -- Stage 1a (2026-07-01): `RForRuntime` is NOT in `foldNode`'s recursive
+      -- `RForRuntime` is NOT in `foldNode`'s recursive
       -- descent list, so it reaches `leaf` and the body is NOT analysed here.
       -- Returning `true` would be UNSOUND (fail-open on an un-analysed body);
-      -- classify the runtime loop OUT of the certified-CT fragment (fail
-      -- CLOSED) until the A2–A5 backend teaches `foldNode` to descend.
+      -- the runtime loop is classified OUT of the certified-CT fragment (fail
+      -- CLOSED).
       | .RForRuntime _ _ _            => false
       -- The recursive constructors never reach `leaf` (`foldNode` descends
       -- into them through `seqNode`/`wrapNode`); give a fail-closed default.
@@ -257,11 +256,10 @@ def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
 
 /-! ### `cmdCT` per-constructor reduction lemmas
 
-These `@[simp]` equations reproduce the old open-match RHS verbatim, each by
-`rfl` through the `foldNode` reduction lemmas.  Soundness proofs use
-`simp only [cmdCT_R…, Bool.and_eq_true] at hCT` exactly where they used
-`simp only [cmdCT, …]` before; the resulting `&&` structure — and hence the
-`.1`/`.2` projections — is unchanged. -/
+These `@[simp]` equations give the per-constructor right-hand side of
+`cmdCT`, each by `rfl` through the `foldNode` reduction lemmas.  Soundness
+proofs use `simp only [cmdCT_R…, Bool.and_eq_true] at hCT`; the resulting
+`&&` structure fixes the `.1`/`.2` projections. -/
 
 @[simp] theorem cmdCT_RSkip (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT .RSkip lt leafCT = true := rfl
@@ -302,7 +300,7 @@ These `@[simp]` equations reproduce the old open-match RHS verbatim, each by
     (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT (.RFor x n body) lt leafCT = cmdCT body lt leafCT := rfl
 
--- Stage 1a (2026-07-01): `RForRuntime` reaches the `foldNode` leaf, which
+-- `RForRuntime` reaches the `foldNode` leaf, which
 -- classifies it OUT of the certified-CT fragment (fail-closed `false`).
 @[simp] theorem cmdCT_RForRuntime (x : String) (b : SExpr) (body : LowCT)
     (lt : LevelTable) (leafCT : LeafCTTable) :
@@ -603,13 +601,13 @@ theorem SExpr.eval_eq_of_isPublic {lt : LevelTable} {rs1 rs2 : RustState}
       simpa [SExpr.isPublic] using hp.2
     simp [SExpr.eval, ih_a hpA, ih_b hpB]
   | SLimb v i =>
-    -- Tower-limb read extension (#354): the SCALAR `eval` gives `SLimb` a
+    -- Tower-limb read extension: the SCALAR `eval` gives `SLimb` a
     -- constant default of `0` (it cannot see the tower heap), so both sides
     -- are `0` regardless of the environment.  (The tower-aware variant
     -- `evalState_eq_of_isPublic` below handles the faithful limb read.)
     rfl
 
-/-- **Tower-aware publicness ⇒ determinism (#356).**  If every free var in
+/-- **Tower-aware publicness ⇒ determinism.**  If every free var in
     `e` is Public, then the *tower-aware* `SExpr.evalState` produces the same
     value on Public-equivalent states.  This is the faithful analogue of
     `eval_eq_of_isPublic`: where the scalar `eval` discharges the `SLimb` arm
@@ -950,8 +948,7 @@ lemma RCloneCall_CT_step
 
 /-- `RArrLoad` preserves `PublicEquiv` if the array slot, source slot,
     destination slot, and index variable are all Public-classified.
-    The strengthened `cmdCT` (2026-05-13) now provides these per-slot
-    obligations syntactically. -/
+    `cmdCT` provides these per-slot obligations syntactically. -/
 lemma RArrLoad_CT_step
     {leafSpec : LeafSpec} {lt : LevelTable}
     {N : Nat} {dst src : Located} {idxVar : String}
@@ -1277,8 +1274,7 @@ lemma RLimbStoreExpr_CT_step
             rw [← hLookup1, ← hLookup2]
           · simp [hT'] at hLookup1
       subst hOldV
-      -- The stored word is now `BitVec.ofNat 64 (e.evalState rs)` (#356,
-      -- tower-aware): `e` Public ⇒ the tower-aware eval (hence the word)
+      -- The stored word is `BitVec.ofNat 64 (e.evalState rs)` (tower-aware): `e` Public ⇒ the tower-aware eval (hence the word)
       -- agrees on the two Public-equiv states, INCLUDING any `SLimb` tower
       -- reads (the slot name is a free var, so Public-classified).
       have hVal : e.evalState rs1 = e.evalState rs2 :=
@@ -1816,9 +1812,9 @@ def xeddsaVerify_lt : LevelTable := LevelTable.allPublic
 * `Scalar25519Ops` × 6 — each is a single CT leaf call.
 * `montUToEdwardsBody` — 6 sequential RCalls, 4 RLetZero locals.
 * `combTableInitArrV2Body` — `RFor` + `RArrLoad`/`RArrStore` with
-   `k := i*16 + d` built from PUBLIC loop counters.  This is the AST
-   whose RUNTIME LOOKUP (Rust shim, SECRET digit index) was the P0 CT
-   leak fixed on 2026-05-13 — the build itself is purely public.
+   `k := i*16 + d` built from PUBLIC loop counters.  The build itself is
+   purely public; the runtime lookup (Rust shim, SECRET digit index) is a
+   separate kernel.
 * `xeddsaVerifyBody` — `RLetZero` + 2 sequential RCalls.
 -/
 
@@ -1942,9 +1938,9 @@ theorem xeddsaVerifyBody_CMOV :
 /-! ## §8.  Axiom check -/
 
 -- Confirms `cmdCT_sound` depends on the stated assumptions only:
--- `[propext, Classical.choice, Quot.sound]` — no `sorryAx` after the
--- Phase J CT-analyser strengthening (`CMOVInvariant` hypothesis +
--- cross-branch `RSelect_CT_step` discharge, 2026-05-13).  These are
+-- `[propext, Classical.choice, Quot.sound]` — no `sorryAx` (the proof uses
+-- the `CMOVInvariant` hypothesis and the cross-branch `RSelect_CT_step`
+-- discharge).  These are
 -- standard mathlib classical-logic axioms used by `decide`/`Decidable`.
 #print axioms cmdCT_sound
 

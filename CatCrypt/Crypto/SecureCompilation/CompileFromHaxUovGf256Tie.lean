@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.Util.Gf256
 public import CatCrypt.Crypto.Util.Gf256
 
 /-!
-# #606 fan-out: the emitted GF(2⁸) carryless multiply leaf EQUALS the abstract field op
+# Field tie: the emitted GF(2⁸) carryless multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxUovGf256.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 32` denotation is `gf256MulSpec` — the bit-serial
@@ -46,7 +46,7 @@ namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256Tie
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
 open CatCrypt.Util
 
-/-- **GF(2⁸) carryless-mul = field-mul tie (#606 fan-out).** Feeding two field
+/-- **GF(2⁸) carryless-mul = field-mul tie.** Feeding two field
     bytes `a, b : BitVec 8` (zero-extended into the width-32 emit form), the
     emitted bit-serial leaf `gf256MulSpec` — whose low byte the compiled jasmin
     `Com` computes — equals the abstract `GF(2)[x]/(x⁸+x⁴+x³+x+1)` field multiply

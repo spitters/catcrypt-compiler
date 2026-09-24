@@ -15,16 +15,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.PilotImport
 set_option autoImplicit false
 
 /-!
-# AUCurves Fp2 tower ops → CatCrypt-compiler round-trip (CONN-3j, task #341)
+# AUCurves Fp2 tower ops → CatCrypt-compiler round-trip
 
-This file scales the AUCurves→CatCrypt `rust_cmd_ed`→`LowCT` round-trip
-(established for the Ed25519 field ops in
-`SecureCompilation/AUCurvesImport/PilotImport.lean`, #354) up to the
+This module extends the AUCurves→CatCrypt `rust_cmd_ed`→`LowCT` round-trip
+(defined for the Ed25519 field ops in
+`SecureCompilation/AUCurvesImport/PilotImport.lean`) to the
 **BN254/BLS Fp2 pairing-tower** layer: the Fp2 add and Fp2 mul *op bodies*.
 
-CONN-3i tied the Fp2 tower at the *realization* level; this file brings the Fp2
-op **bodies** through the same structural round-trip the field ops use, which
-unblocks #349 (Halo2/Marlin T3, gated on the pairing tower).
+The Fp2 tower is also related at the *realization* level; this module brings the
+Fp2 op **bodies** through the same structural round-trip the field ops use, as
+required by the Halo2/Marlin pairing check.
 
 ## The Fp2 op bodies (AUCurves side)
 
@@ -45,15 +45,15 @@ Qed-pinned as `bn254_fp2_add_sexpr_value` / `bn254_fp2_mul_sexpr_value`
 (mirroring `fe25519_add_sexpr_value`).  The byte-exact strings are reproduced
 below and consumed by the importer.
 
-## What this file delivers (honest scoping)
+## Scope
 
 * **Structural correspondence** — `importedFp2Add_eq` / `importedFp2Mul_eq`:
   the parsed Fp2 op bodies equal, constructor-by-constructor, the `LowCT`
   the IR-correspondence map dictates.  `Seq → RSeq`, `LetZero → RLetZero`,
   `Call → RCall`, `loc → Located`, `(Bytes 32) → TBytes 32`, with the Fp leaf
   names and component slot names recovered verbatim.  The parser needs no
-  extension beyond #354's (`Seq`/`LetZero`/`Call`/`loc`/`Bytes` already
-  covered — the Fp2 bodies are pure `REdCall`-per-leaf chains).
+  extension beyond the field-op pilot's (`Seq`/`LetZero`/`Call`/`loc`/`Bytes`
+  are covered — the Fp2 bodies are pure `REdCall`-per-leaf chains).
 * **Jasmin limb-store / call-graph cross-check** — `importedFp2Add_jasmin_eq`
   / `importedFp2Mul_jasmin_eq`: routing the imported Fp2 op body through
   CatCrypt's owned front (`toJasminCmd`) reproduces the Fp leaf call graph
@@ -62,28 +62,26 @@ below and consumed by the importer.
   destination-then-args ordering, with the scratch felems materialized as the
   `RLetZero` zero-init prologue.
 
-## Residual (named, not papered over)
+## Limits
 
 This is the **structural** correspondence + the backend call-graph
-cross-check, at the same granularity #354 delivered for `fe25519_add`.  The
-fully machine-checked **cross-prover semantic** equivalence (Rocq
-`rust_exec_ed` ⇔ Lean `RustExec`, proven constructor-by-constructor) is the
-gold-standard residual shared by *any* two-prover bridge; it is not delivered
-here.
+cross-check, at the same granularity as the pilot for `fe25519_add`.  The
+machine-checked **cross-prover semantic** equivalence (Rocq
+`rust_exec_ed` ⇔ Lean `RustExec`, proven constructor-by-constructor) is
+outside the scope of this module, as for any two-prover bridge.
 
-The faithful *tower-heap-aware* `RustExec` realization — the named #354 / #356
-residual — is now **landed**: `RustExec.limbStoreExpr` evaluates an
+The `RustExec` realization is tower-heap-aware: `RustExec.limbStoreExpr` evaluates an
 `SLimb`-valued store via the tower-aware `SExpr.evalState`, which reads limb
 `i` of a tower slot at byte offset `i*8` (`rsTowerLimb`/`towerLimb`) rather
 than giving `SLimb` a scalar-only `0` default.  An Fp2-component store into
 `out_im` therefore reads the imaginary half's bytes faithfully instead of
-treating the two halves as independent opaque slots.  The CryptoSSA-correctness
-and constant-time analyses were re-discharged against the faithful semantics
+treating the two halves as independent opaque slots.  The correctness and
+constant-time analyses hold against this semantics
 (`SExpr.evalState_eq_of_isPublic` carries the `SLimb` arm: the slot name is the
 expression's free variable, so a Public-classified tower slot agrees on
 Public-equivalent states).  The round-trip theorems below remain at the
 structural / call-graph level (`parseLowCT`/`toJasminCmd`), which is
-orthogonal to the runtime semantics and unaffected by the change.
+independent of the runtime semantics.
 -/
 
 namespace CatCrypt.Crypto.Pairing.Fp2TowerImport
@@ -210,8 +208,8 @@ theorem importedFp2Mul_jasmin_eq :
 
 /-- The Fp2 add and Fp2 mul op bodies both round-trip: AUCurves' certified
     serializations parse to the IR-map `LowCT`s and lower through CatCrypt's
-    owned front in one step.  The pairing-tower Fp2 layer is now connected at
-    the structural / call-graph level. -/
+    owned front in one step.  The pairing-tower Fp2 layer is connected at the
+    structural / call-graph level. -/
 theorem fp2Tower_roundtrip :
     (parseLowCT fp2AddSexpr).map toJasminCmd = some (toJasminCmd fp2AddExpected)
     ∧ (parseLowCT fp2MulSexpr).map toJasminCmd = some (toJasminCmd fp2MulExpected) :=

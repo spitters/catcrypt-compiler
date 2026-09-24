@@ -99,7 +99,7 @@ theorem leaf128_marshals_arg_into_xmm0 :
       | .Lopn [.reg d] opn [.reg _] => d == "XMM0" && opn == "VMOVDQU"
       | _ => false) = true := by native_decide
 
-/-- A **real** `Lcall leaf128` is emitted (the leaf is genuinely called). -/
+/-- A **real** `Lcall leaf128` is emitted (the leaf is called). -/
 theorem leaf128_has_real_call :
     leaf128Expanded.any (fun i =>
       match i.li_i with

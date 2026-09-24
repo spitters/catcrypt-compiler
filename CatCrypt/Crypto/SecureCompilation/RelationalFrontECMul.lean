@@ -54,13 +54,13 @@ with `RelationalFrontEC.tripleMod251Realization` — the **`E = 3·X²` step at 
 the emitted square then tripling. That closes the squaring leg of the Jacobian
 doubling, advancing the EC-curve relational instance toward `bls12_377`.
 
-## The honest gap to full doubling + `bls12_377`
+## The gap to full doubling + `bls12_377`
 
-The full Jacobian doubling schedule still needs the *remaining* field steps
+The full Jacobian doubling schedule needs the *remaining* field steps
 wired at the `ZMod` level (`B = Y²`, `C = B²`, `D`, `F = E²`, `X₃`, `Y₃`,
 `Z₃ = 2·Y·Z`) — each is a `gf251MulRealizedKernel`/`addMod251RealizedKernel`
 instance plus the straight-line `ZMod` algebra `dbl-2009-l` specifies; the
-*structure* is now all in hand (mul-square + triple-numerator + add all have
+*structure* is all in hand (mul-square + triple-numerator + add all have
 their `ZMod` commuting squares), so the remaining work is composing them, not
 new infrastructure. `ECParams.add` over `ECPoint = Option (ZMod p × ZMod p)`
 (the sum type with `O`) and the `bls12_377` 377-bit **multi-limb** carrier
@@ -172,7 +172,7 @@ def gf251MulRealization :
 /-- **The relationally-emitted GF(251)-multiply kernel.** Its abstract source is
     the `ZMod 251` field multiply, its computational side is the emitted reducing
     kernel `gf251MulBuilt` (two `imul`s + two Solinas folds + condsub), and its
-    encoding is the genuine injective-not-surjective coordinate serialization.
+    encoding is the injective-not-surjective coordinate serialization.
     The multiply sibling of `addMod251RealizedKernel`; the field-square steps of
     the Jacobian doubling are this kernel applied diagonally (`B = A`). -/
 def gf251MulRealizedKernel : RealizedKernel (fun A B : ZMod 251 => A * B) where
@@ -205,7 +205,7 @@ case). `RelationalFrontEC.tripleMod251_commutes` carries `3·A` at the `ZMod`
 level; `gf251Square_commutes` carries `X²`. Composing gives `E = 3·X²` at the
 `ZMod` level — the inversion-free Jacobian doubling-slope numerator, fully tied to
 the two emitted field kernels (`gf251MulBuilt` then `tripleMod251Built`). The
-`tripleOfSquare_denote` analogue, now at the **`ZMod` value** level rather than
+`tripleOfSquare_denote` analogue at the **`ZMod` value** level rather than
 the emit level. -/
 
 /-- **`E = 3·X²` at the `ZMod 251` level.** The abstract inversion-free Jacobian

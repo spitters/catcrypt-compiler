@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the ZK-hash analogue of `UovReflect.lean`. It adds Poseidon2-BabyBear
 specific opaque types and `LowCTPattern` registrations so a pure-Lean Poseidon2
 permutation can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → Com catCryptDialect → Jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## Four variants — same opaque-leaf shape, different leaf bodies
@@ -32,13 +32,13 @@ All four implement the same *field permutation* `Poseidon2.permute_16` over Baby
 they are byte-identical on the canonical wire format — denotation differences live
 **only** at the leaf-shim level (Montgomery vs canonical state, scalar vs SIMD).
 
-## Why opaque-leaf? — SIMD-as-opaque-leaf pattern from UOV (#179)
+## Why opaque-leaf? — SIMD-as-opaque-leaf pattern from UOV
 
-The UOV GFNI variant established the pattern: **SIMD speed at Tier A is preserved
-by registering SIMD primitives as opaque leaves + linking via a leaf-shim inline
-fn**, not by extending `LowCT` with a vector dialect. UOV's GFNI variant landed
-at 0.80× the hand-rolled ceiling — closing the SIMD perf gap **without** adding
-SIMD machinery to the verified front.
+The UOV GFNI variant uses the pattern: **SIMD speed in the verified front is
+obtained by registering SIMD primitives as opaque leaves + linking via a
+leaf-shim inline fn**, not by extending `LowCT` with a vector dialect. UOV's
+GFNI variant runs at 0.80× the hand-rolled ceiling **without** SIMD machinery
+in the verified front.
 
 Poseidon2's SIMD variants need `#VPMULUDQ_256`, `#VPADD_4u64`, etc. None of these
 are arithmetic leaves `LowCT` already supports. We **do not** extend `LowCT`
@@ -107,7 +107,7 @@ machinery. The verified front sees only the leaf name and tower-type signature. 
 /-- Baseline Poseidon2 permutation over BabyBear (width 16). Pure scalar field
     arithmetic on canonical `u64` representation. Body: 10-fold BabyBear reduce
     + `x^7` S-box + external/internal MDS layers + canonical RC-add. Matches
-    legacy `poseidon2Jazz` exactly (scalar baseline). -/
+    `poseidon2Jazz` exactly (scalar baseline). -/
 axiom poseidon2_bb_baseline : Poseidon2BbState → Poseidon2BbState
 
 /-- Montgomery single-pass Poseidon2 permutation. State carried in Montgomery

@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 *unconditionally* — it has no op that can branch or index on data. The next IR
 down, `jasminDialect`, is **not** unconditionally CT: it adds two
 data-indexed memory ops, `stackLoad` / `stackStore` (scalar-indexed element
-access into a stack array). A *secret* index into those is a genuine
+access into a stack array). A *secret* index into those is an
 address/timing channel.
 
 This file makes that boundary precise:
@@ -119,7 +119,7 @@ theorem ComJasminCTByConstruction.var_of {Γ : Ctxt jasminDialect}
     ComJasminCTByConstruction (.var e body) :=
   ⟨he, hbody⟩
 
-/-! ## 3. Non-vacuity: jasmin genuinely can express an addressing surface -/
+/-! ## 3. Non-vacuity: jasmin can express an addressing surface -/
 
 /-- **The obligation is real.** Unlike `thirDialect` (where CT-by-construction
     holds for *every* program), `jasminDialect` has an op the classifier rejects:

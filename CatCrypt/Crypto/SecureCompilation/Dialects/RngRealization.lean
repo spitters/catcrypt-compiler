@@ -13,16 +13,16 @@ public import CatCrypt.Core.Code
 set_option autoImplicit false
 
 /-!
-# DR — the realization theorem: deterministic entropy read ↔ uniform `SPComp.sample`
+# The realization theorem: deterministic entropy read ↔ uniform `SPComp.sample`
 
-`RngLeaf.lean` gave the **deterministic** entropy-read denotation of the two
-CryptoSSA sampling leaves: `sampleDet η (.bv n) = η.readBv n : BitVec n`, a
+`RngLeaf.lean` gives the **deterministic** entropy-read denotation of the two
+sampling ops: `sampleDet η (.bv n) = η.readBv n : BitVec n`, a
 total function of an externally-supplied source `η`.  The probabilistic meaning
-is the *separate* `CExpr.denote` interpretation, where
-`CExpr.sampleBv n` denotes `SPComp.sample (BitVec n)` — uniform sampling
+is a *separate* interpretation, where
+`sampleBv n` denotes `SPComp.sample (BitVec n)` — uniform sampling
 (`Code.lean`, `SPComp.sample`).
 
-This file ties the two together: **running the deterministic op over uniform
+This module ties the two together: **running the deterministic op over uniform
 entropy realizes the probabilistic sample.**  It does so by proving the
 component facts that compose into that statement, against the actual `SDistr`
 (= `PMF ∘ Option`) sub-distribution monad.
@@ -57,7 +57,7 @@ support, and every point of that support carries equal uniform mass `(2 ^ n)⁻�
 — i.e. *the deterministic entropy read, fed uniform entropy, realizes
 `SPComp.sample`.*
 
-## The honest remaining gap to the full measure-theoretic equality
+## Scope: the full measure-theoretic equality
 
 The fully-quantitative headline would be a measure pushforward:
 `SPComp.sample (BitVec n) = map (fun η => readBv η n) μ`, where `μ` is the
@@ -75,13 +75,13 @@ require:
   that product measure along `readBv · n` is finitely supported with mass
   `(2 ^ n)⁻¹` per fibre.
 
-That machinery is genuine infinite-product-measure theory and is **not**
-present on the `SDistr` (`PMF (Option ·)`) side used by `SPComp`.  Rather than
-fabricate it, we prove the strongest *finite* realization the `SDistr` API
+That machinery is infinite-product-measure theory and is **not**
+present on the `SDistr` (`PMF (Option ·)`) side used by `SPComp`.  This module
+proves the strongest *finite* realization the `SDistr` API
 supports: support agreement (image = support) **plus** the explicit uniform
 fibre weight `(2 ^ n)⁻¹`.  These pin down the pushforward on every measurable
-atom; only the outer "the infinite-stream measure pushes forward to this" wrapper
-is deferred to the product-measure layer.
+atom; the outer "the infinite-stream measure pushes forward to this" wrapper
+belongs to a product-measure layer outside this module.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Rng

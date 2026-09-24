@@ -10,8 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
 
 /-!
-# ML-DSA-65 / ML-KEM-768 4-way NTT through the structured VectorDialect (task #275)
-
+# ML-DSA-65 / ML-KEM-768 4-way NTT through the structured VectorDialect
 The lattice 4-way emit (`VIR/LatticeNttEmit.renderMldsaNtt4wayStage` /
 `renderMlkemNtt4wayStage`) renders each batched Cooley–Tukey butterfly stage into
 packed mnemonic strings (`#VPMULL`, `#VPADD`, `#VPSUB`). This file expresses the
@@ -211,7 +210,7 @@ theorem shiftRA_denote (m : Nat) (v : VectorTy (BitVec 16) 8) :
       = .vec (fun i => shiftRA16 (v i) m) := rfl
 
 /-- The two NEW ops both lower to a proven per-lane scalar expansion. This
-    bundles the `Lowering.lean` keystones at the lattice-lane instances, so the
+    bundles the `Lowering.lean` lowering theorems at the lattice-lane instances, so the
     abstract → per-lane-scalar leg is covered for the reduction ops too. -/
 theorem newOps_lower_correct (v w : VectorTy (BitVec 16) 8) (m : Nat) :
     (lower (0 : BitVec 16) (.mulHi mulHi16 v w)).map (·.denote)

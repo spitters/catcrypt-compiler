@@ -43,7 +43,7 @@ The reference choice: **use libjade's SHA-512 as a single `extCall`
 leaf** for Ed25519 interop (1 leaf, 1 block-size boundary, trust the
 Jasmin proof). This file demonstrates the *alternative* — author
 SHA-512 at the LowCT level — in case you want the whole thing
-through the CryptoSSA→VIR→MLIR pipeline.
+through the catCryptDialect→VIR→MLIR pipeline.
 -/
 
 @[expose] public section

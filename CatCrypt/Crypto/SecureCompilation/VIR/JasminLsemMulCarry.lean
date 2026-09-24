@@ -11,27 +11,22 @@ public import Transfer.Base.Related
 
 /-!
 # Faithful `lsem` for the widening-multiply / carry-chain fragment
-# — increment 7 of porting jasmin's `lsem`
 
-Increments 1–6 brought `regArith`, `regConst`, the width-mixing `select`, and the
+The modules `JasminLsemSimulation`, `JasminLsemRobust`, `JasminLsemWidthN` and
+`JasminLsemShift` bring `regArith`, `regConst`, the width-mixing `select`, and the
 immediate shifts (`shrImm`/`shlImm`/`sarImm`) into the unconditional functional ∧
-constant-time `lsem` simulation. Increment 5's deferral list named, among the
-width-mixing ops it *could* carry but left out "to keep this increment to one
-representative width-mixing op (`select`)", the widening-multiply / carry-chain
-trio:
+constant-time `lsem` simulation. This module adds the widening-multiply /
+carry-chain trio:
 
-> **`mulhi w`** — `[reg w, reg w] → reg w`: uniform width, already expressible in
-> the single-width store; … left to an op-set increment.
-> **`addCarryLo w` / `addCarryHi w`** — carry-coupled: the carry-in is `.reg 1`
-> and `addCarryHi` *returns* `.reg 1`. … `LstateN` *can* carry them. They are
-> deferred only to keep this increment to one representative width-mixing op …
-> the same `LstateN` + `lsemStepN` machinery extends to them (read two `.reg w`
-> and one `.reg 1`, write `addCarryWord`/`carryOutBit`). Honest deferral:
-> machinery present, arm not added.
+* **`mulhi w`** — `[reg w, reg w] → reg w`: uniform width, expressible in the
+  single-width store;
+* **`addCarryLo w` / `addCarryHi w`** — carry-coupled: the carry-in is `.reg 1`
+  and `addCarryHi` *returns* `.reg 1`; the width-tagged `LstateN` carries both
+  (read two `.reg w` and one `.reg 1`, write `addCarryWord`/`carryOutBit`).
 
-This module **adds those arms**. The increment-5 `LstateN` (width-tagged store),
-`StoreAgreesN` invariant, `encodeN`/`decodeN`, and the increment-2/5 induction
-skeleton are reused verbatim; only the step function gains three arms.
+The `JasminLsemWidthN` `LstateN` (width-tagged store), `StoreAgreesN` invariant,
+`encodeN`/`decodeN`, and the induction skeleton of `JasminLsemSimulation` /
+`JasminLsemWidthN` are reused verbatim; only the step function gains three arms.
 
 ## The three roles, faithful to the wire form `opToLinstrR` already emits
 
@@ -51,7 +46,7 @@ here**; the model reads exactly what the emit path already produces:
 * **`addCarryHi w`** ↦ `Lopn [.reg dst] (withWidthTag w "ADCXHI") [a, b, cin]` —
   same three sources but a **`.reg 1` result** (the propagated carry-out). The
   step writes `carryOutBit a b cin = (addCarryHi w).denote …`, a `BitVec 1`. This
-  is the second genuinely **width-mixing** op (after `select`): two `BitVec w`
+  is the second **width-mixing** op (after `select`): two `BitVec w`
   data words and a `BitVec 1` carry in *and* out, all in one instruction — the
   width-tagged store carries the `BitVec 1` destination alongside the `BitVec w`
   data without strain.
@@ -63,7 +58,7 @@ two independent CF/OF accumulators an `ADCX`-only / `ADOX`-only sequence realise
 
 ## Trocq (`Related`) where it helps, and where it does not
 
-Like increment 6's structured shifts, the per-op denotation equality is a
+Like the structured shifts of `JasminLsemShift`, the per-op denotation equality is a
 *representation* fact: the value the structured linear step computes (read sources
 at their store widths, run the pure `BitVec` function) *realizes* the abstract
 dialect denotation. Here the realization is **definitional** — the step writes
@@ -71,20 +66,21 @@ exactly `mulHiW`/`addCarryWord`/`carryOutBit`, which *are* the `.denote` arms �
 each square is `rfl`, registered as a `Trocq.Related` identity-encoding witness
 (`relatedMulHi`/`relatedAddCarryWord`/`relatedCarryOut`) for symmetry with
 `relatedStructShr` and `CompilerRegistry`'s op-leaf realizers. Where Trocq does
-**not** fit (as increment 6 noted): the `Option`-partiality descent of the step
+**not** fit (as in `JasminLsemShift`): the `Option`-partiality descent of the step
 over the `LinstrR` syntax and the de-Bruijn `StoreAgreesN` bookkeeping reuse
-increment 5's machinery directly.
+the `JasminLsemWidthN` machinery directly.
 
-## Op set now covered
+## Op set covered
 
 `regArith ∪ regConst ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
-addCarryHi` — the `ScalarMulCarryN` predicate, which subsumes increment 6's
+addCarryHi` — the `ScalarMulCarryN` predicate, which subsumes
 `ScalarShiftN` (`ScalarMulCarryN.of_scalarShiftN`). The `regConst` arm carries the
 immediate-`MOV` image `Lopn [.reg dst] (withWidthTag w "MOV") [.imm n]`; its output
 width `w` is recovered from the width tag (`widthFromTag`), which pins it on the two
 wire-distinguished widths `w ∈ {64, 32}` (the `const` constructor's `hwn`
-hypothesis). Still deferred, with the same honest frozen-wire reasons as increment
-5/6: `castW` (output width not recoverable from the wire), `stackLoad`/`stackStore`
+hypothesis). Outside this op set, for the same frozen-wire reasons as in
+`JasminLsemWidthN`/`JasminLsemShift`: `castW` (output width not recoverable from
+the wire), `stackLoad`/`stackStore`
 (the memory/array carrier, an orthogonal state axis), `vpackZMM`/`extCall`/`callN`
 (SIMD / opaque-leaf axes).
 
@@ -114,13 +110,13 @@ open Transfer (Related)
 Each structured instruction's linear step computes a pure `BitVec` function of the
 sources read out of the width-tagged store. For the trio that function is exactly
 the dialect denotation (`mulHiW` / `addCarryWord` / `carryOutBit`), so each
-representation square is `rfl`; we still register it as a `Related` identity-
-encoding witness for symmetry with increment 6's `relatedStructShr`. -/
+representation square is `rfl`; it is registered as a `Related` identity-
+encoding witness for symmetry with `relatedStructShr`. -/
 
 /-- **Representation square (MULXHI).** The structured high-word realizer
     `mulHiW a b` equals the dialect's `mulhi` denotation (definitionally — the
     step writes exactly `mulHiW`). Registered as a `Related` identity-encoding
-    witness, the increment's analogue of `relatedStructShr`. -/
+    witness, this module's analogue of `relatedStructShr`. -/
 instance relatedMulHi {w : Nat} (a b : BitVec w) :
     Related (id : BitVec w → BitVec w) (mulHiW a b) (mulHiW a b) where
   rel := rfl
@@ -166,9 +162,9 @@ theorem stripWidthTag_withWidthTag_SBBHI (w : Nat) :
 
 `lsemStepMC` adds exactly three arms — the structured `MULXHI`, `ADCX`, `ADCXHI`
 instructions — and delegates **everything else** (control flow, `regArith`,
-`select`, the structured shift forms, `regConst`) verbatim to increment 6's
+`select`, the structured shift forms, `regConst`) verbatim to
 `lsemStepSh` (which itself adds the `SAR` arm and delegates the rest to
-increment 5's `lsemStepN`). (None of the trio is reachable through `lsemStepSh`:
+`JasminLsemWidthN`'s `lsemStepN`). (None of the trio is reachable through `lsemStepSh`:
 `MULXHI` has the `[a,b]` shape but is not `SAR` / in `applyOpnN`; `ADCX`/`ADCXHI`
 have the `[a,b,cin]` shape but are not `SAR`/`CMOV` — so `lsemStepSh` returns
 `none` on all three, and the three arms are the faithful semantics.) Each arm
@@ -221,7 +217,7 @@ def sbbhiStruct? : LinstrR → Option (String × String × String × String)
       `addCarryWord a b cin` at `wₐ`;
     * a structured `ADCXHI` reads the same, writes `carryOutBit a b cin` at width
       **1** (the width-mixing carry-out);
-    * everything else delegates to increment 5's `lsemStepN`.
+    * everything else delegates to `JasminLsemWidthN`'s `lsemStepN`.
 
     The recognizers are checked in the order `MULXHI`, `ADCX`, `ADCXHI`; they are
     pairwise disjoint (distinct stripped mnemonics) and disjoint from every
@@ -274,7 +270,7 @@ def lsemStepMC (i : LinstrR) (s : LstateN) : Option LstateN :=
   | none => lsemStepSh i s
 
 /-- On any instruction recognised by none of the three structured recognizers,
-    `lsemStepMC` is exactly increment 6's `lsemStepSh`. (So increment 5/6's
+    `lsemStepMC` is exactly `JasminLsemShift`'s `lsemStepSh`. (So the
     `regArith`/`select`/shift steps transfer unchanged.) -/
 theorem lsemStepMC_of_delegate (i : LinstrR) (s : LstateN)
     (hm : mulhiStruct? i = none) (ha : adcxStruct? i = none) (hh : adcxhiStruct? i = none)
@@ -300,7 +296,7 @@ def lsemStraightMC : List LinstrR → LstateN → Option LstateN
         | some s' => lsemStraightMC is s'
         | none => none) := rfl
 
-/-- Mul/carry-aware leakage trace: `linstrLeak` (increment 3) is reused verbatim —
+/-- Mul/carry-aware leakage trace: `linstrLeak` (`JasminLsemRobust`) is reused verbatim —
     it reads only the `LinstrR` syntax (the source register *names*, never a
     register value: the carry-in's *name* leaks, never its 1-bit secret). -/
 def lsemLeakMC : List LinstrR → LstateN → List JasminLsemRobust.LLeak
@@ -468,7 +464,7 @@ theorem sbbStruct?_sbbhi {w : Nat} (dst a b c : String) :
     sbbStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c]) = none :=
   sbbStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBBHI]; decide)
 
-/-! ### The trio is disjoint from the increment-5/6 instruction images
+/-! ### The trio is disjoint from the width-mixed and shift instruction images
 
 `regArith` emits a `binOpName` mnemonic, `select` emits `CMOV`, the shifts emit
 `SHR`/`SHL`/`SAR` — none is `MULXHI`/`ADCX`/`ADCXHI`, so all three recognizers are
@@ -699,10 +695,10 @@ theorem lsemStepMC_addCarryHi {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
 
 `opToLinstrR (regArith …)` / `opToLinstrR (select …)` and the structured shifts
 are recognised by none of the three trio recognizers, so `lsemStepMC` delegates
-them to increment 6's `lsemStepSh` and the increment-6 per-binding steps
+them to `JasminLsemShift`'s `lsemStepSh` and its per-binding steps
 transfer. -/
 
-/-- The `regArith` binding steps via `lsemStepMC` to its denotation (increment 6's
+/-- The `regArith` binding steps via `lsemStepMC` to its denotation (`JasminLsemShift`'s
     `lsemStepSh_var`, transferred through `lsemStepMC = lsemStepSh`). -/
 theorem lsemStepMC_var {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat} (bop : JasminBinOp)
@@ -739,7 +735,7 @@ theorem lsemStepMC_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_sel heq args hagree
 
-/-- The `regConst` binding steps via `lsemStepMC` to its denotation (increment 6's
+/-- The `regConst` binding steps via `lsemStepMC` to its denotation (`JasminLsemShift`'s
     `lsemStepSh_const`, transferred through `lsemStepMC = lsemStepSh`). The `hwn`
     hypothesis pins the constant's width on the two wire-distinguished widths
     `{64, 32}` — the only width information the nullary const carries on the wire. -/
@@ -814,7 +810,7 @@ theorem lsemStepMC_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 7. The mul/carry emission `straightOpsMC` and source predicate `ScalarMulCarryN`
 
-`straightOpsMC` extends increment 6's `straightOpsShift` with the three trio
+`straightOpsMC` extends `JasminLsemShift`'s `straightOpsShift` with the three trio
 bindings, each emitting the structured `opToLinstrR` instruction (the trio carries
 no string-baked count, so — unlike the shifts — it routes through the *default*
 `opToLinstrR` arm; `straightOpsMC` makes the dispatch explicit for the unfold
@@ -822,7 +818,7 @@ lemmas). `regArith`/`select`/shift bindings reuse `straightOpsShift`'s emission
 verbatim. -/
 
 /-- The straight-line `LinstrR` chain a `Com` emits in the mul/carry fragment:
-    like increment 6's `straightOpsShift`, but the `mulhi`/`addCarryLo`/
+    like `JasminLsemShift`'s `straightOpsShift`, but the `mulhi`/`addCarryLo`/
     `addCarryHi` bindings emit their structured `opToLinstrR` instruction (the
     `MULXHI`/`ADCX`/`ADCXHI` role form). All other bindings reuse the shift
     fragment's emission. -/
@@ -843,7 +839,7 @@ def straightOpsMC (nArgs : Nat) :
 /-- The straight-line **mul/carry-fragment** scalar source: every binding is a
     `regArith`, a width-mixing `select`, an in-range immediate shift, or one of
     the widening-multiply / carry-chain trio `mulhi`/`addCarryLo`/`addCarryHi`.
-    This subsumes increment 6's `ScalarShiftN`. Note the `addCarryHi` arm binds a
+    This subsumes `JasminLsemShift`'s `ScalarShiftN`. Note the `addCarryHi` arm binds a
     **`.reg 1`** into the body context (width-mixing carry-out). -/
 inductive ScalarMulCarryN :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Prop where
@@ -914,8 +910,8 @@ inductive ScalarMulCarryN :
       (hbody : ScalarMulCarryN body) :
       ScalarMulCarryN (.var ⟨JasminOp.addCarryHi w, heq, args⟩ body)
 
-/-- `ScalarMulCarryN` subsumes `ScalarShiftN`: every increment-6 shift-fragment
-    program is in the mul/carry fragment. So the increment-6 results are special
+/-- `ScalarMulCarryN` subsumes `ScalarShiftN`: every shift-fragment
+    program is in the mul/carry fragment. So the `JasminLsemShift` results are special
     cases. -/
 theorem ScalarMulCarryN.of_scalarShiftN {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (h : ScalarShiftN com) : ScalarMulCarryN com := by
@@ -1074,7 +1070,7 @@ theorem straightOpsMC_const {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 9. The core mul/carry straight-line simulation
 
-Same induction skeleton as increment 6's `lsemStraightShift_straightOps`, with the
+Same induction skeleton as `JasminLsemShift`'s `lsemStraightShift_straightOps`, with the
 three new trio arms closed by `lsemStepMC_mulhi`/`addCarryLo`/`addCarryHi` +
 `StoreAgreesN.step`, and the `regArith`/`select`/shift arms by the delegating
 `lsemStepMC_*`. The `addCarryHi` arm steps a `.reg 1` binding, so the
@@ -1209,7 +1205,7 @@ theorem lsemStraightMC_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-! ## 10. Faithfulness, leak state-independence, and the capstone
 
-`encodeN`/`decodeN`/`encodeN_StoreAgreesN` are reused verbatim from increment 5
+`encodeN`/`decodeN`/`encodeN_StoreAgreesN` are reused verbatim from `JasminLsemWidthN`
 (the start-state encoding is op-agnostic). -/
 
 /-- **Straight-line linearizer simulation, mul/carry fragment.** Running the
@@ -1357,9 +1353,9 @@ theorem lsemLeakMC_straightOps_state_independent {Γ : Ctxt jasminDialect}
     mul/carry linearizer-emitted straight-line body run by `lsemStraightMC`
     (functional) and observed by `lsemLeakMC` (CT). The widening multiply and carry
     adds are read **structurally** from the role mnemonics `MULXHI`/`ADCX`/`ADCXHI`
-    and their `.reg` operands the byte renderer already consumes (no wire change),
+    and their `.reg` operands the byte renderer consumes (no wire change),
     so the emitted **bytes are unchanged**. The first capstone covering the
-    widening-multiply / carry-chain trio — `addCarryHi` being the second genuinely
+    widening-multiply / carry-chain trio — `addCarryHi` being the second
     **width-mixing** op (after `select`): `BitVec w` data words and a `BitVec 1`
     carry-out in one instruction. The `lsem→bytes` encoder and Sail tables remain
     the declared trusted base. -/
@@ -1380,15 +1376,15 @@ theorem owned_lsem_correct_and_robust_mulcarry {Γ : Ctxt jasminDialect} {t : Ja
   exact lsemLeakMC_straightOps_state_independent hcom (encodeN V₁) (encodeN V₂)
     rfl le_rfl (encodeN_StoreAgreesN V₁) (encodeN_StoreAgreesN V₂)
 
-/-! ## 12. Tie-back: the increment-6 shift fragment is subsumed
+/-! ## 12. Tie-back: the shift fragment is subsumed
 
 `ScalarMulCarryN.of_scalarShiftN` shows every `ScalarShiftN` program is a
 `ScalarMulCarryN` program. The mul/carry capstone therefore specialises to the
 shift fragment (and, transitively via `ScalarShiftN.of_scalarArithN`, to the
-increment-5 width-mixed and increment-2/3 `regArith` fragments). -/
+`JasminLsemWidthN` width-mixed and `JasminLsemSimulation` `regArith` fragments). -/
 
-/-- Every increment-6 shift-fragment program satisfies the mul/carry capstone:
-    the increment-6 results are special cases of the increment-7 ones. -/
+/-- Every shift-fragment program satisfies the mul/carry capstone:
+    the `JasminLsemShift` results are special cases of the ones proved here. -/
 theorem owned_lsem_correct_and_robust_mulcarry_of_scalarShiftN {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : ScalarShiftN com)
     {w : Nat} (hw : t = .reg w) (V : Ctxt.Valuation Γ) :

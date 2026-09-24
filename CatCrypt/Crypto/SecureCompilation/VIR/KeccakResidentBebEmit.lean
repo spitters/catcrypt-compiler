@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
 /-!
 # Owned-backend (no-jasminc) χ-LANE-COMPLEMENT ('bebigokimisa') resident Keccak-p[1600,24]
 
-The owned twin of the verified front's `gen/keccak_f1600_resident_beb.jazz`
-(#590-continuation), re-emitted through CatCrypt's owned x86 backend (no jasminc).
+The owned twin of the verified front's `gen/keccak_f1600_resident_beb.jazz`,
+re-emitted through CatCrypt's owned x86 backend (no jasminc).
 
 A SINGLE state-resident Keccak-p[1600,24] permutation
 `keccak_f1600_resident_beb(out u64[25], inp u64[25])`.
@@ -100,9 +100,8 @@ def complementLanes : List Nat := [1, 2, 8, 12, 17, 20]
 
 This self-check models the EMITTED dataflow directly — `load → 24 plain rounds →
 store` over the `k[57]` frame — and checks it equals the independent scalar
-FIPS-202 `Lanes` reference, lane-for-lane. (The previous version compared the
-plain `modelResult` to the plain reference, which never exercised the load/store
-and so silently passed while the emitted asm was wrong.) -/
+FIPS-202 `Lanes` reference, lane-for-lane, so the load and store steps are
+part of the checked dataflow. -/
 
 /-- The lanes produced by the emitted kernel: seed the `k` frame from `s`
     (plain load), run the full 24-round plain permutation, read lanes `0..24`

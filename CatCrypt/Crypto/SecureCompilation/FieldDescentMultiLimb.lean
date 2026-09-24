@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 squares (`hOpJ` at a `modMul`/`modAdd`/`modSub` node) for the **single-word**
 BabyBear prime (`p < 2^32`): there `modMul ↦ bbMul` is one `regArith mul` plus
 the 10-fold `bbReduce`, all inside a single 64-bit register, and the value
-identity `bbMul a b = (a*b) % p` is in-Lean provable (`bbMul_eq_mod_p`, #117).
+identity `bbMul a b = (a*b) % p` is in-Lean provable (`bbMul_eq_mod_p`).
 
 Curve and MAC fields (secp256k1 / P256 / BN254 / BLS / Pasta, 254–256-bit;
 Poly1305, 130-bit) are **multi-limb**: a field element is four 64-bit limbs, and
@@ -28,7 +28,7 @@ file is the **multi-limb analogue** of `FieldDescentBabyBear`: it discharges the
 three Stage-2 leaves against the already-proven multi-limb Montgomery value
 arithmetic, for the secp256k1 base-field prime.
 
-## What rides the compiler, and what stays GMP-KAT-gated (REV-12)
+## What rides the compiler, and what stays GMP-KAT-gated
 
 The discharged leaf for `modMul` is the **proven** value-level Montgomery
 multiply `Number.montgomeryMul N R Nprime` (the `Cios4LimbProven.montRedc4` of
@@ -39,12 +39,12 @@ This is the multi-limb analogue of BabyBear's `bbMul_eq_mod_p`.
 The single multi-limb *byte-identity* of the emitted `.s`
 (`secp256k1_montmul_proven`, `Curve4MontMulProvenEmit`) stays **GMP-KAT-gated**
 (`bench/secp256k1_compare/secp256k1_montmul_owned_kat.c`, 20000 cases) — it is a
-256×256→256 field multiply, **never** `#eval`'d in Lean (REV-12: that OOMs the
+256×256→256 field multiply, **never** `#eval`'d in Lean (that OOMs the
 shared LSP). What is *provable* and rides the compiler is the **composition**:
 the field-op tree (`a·b + c·d` over `Fp`) over the proven leaf — the `Com fieldDialect`
 `RelationalCompileHigh.Demo.dotProg`, the same composition `FieldDescent`'s
 `fieldComToJasmin` descends to `Com jasminDialect` (each `fMul` node's Stage-2
-`hOpJ` leaf is the `mmMul_realizes` square below, now for a 256-bit prime).
+`hOpJ` leaf is the `mmMul_realizes` square below, here for a 256-bit prime).
 
 The descent transport `fieldComToJasmin` (`FieldDescent.lean`) is *not* imported
 here: it transitively pulls the `Bridges.Transfer` engine, and these three
@@ -64,7 +64,7 @@ A multi-limb field element is carried in **Montgomery form** `enc x = x · R mod
   `mmAdd_realizes` / `mmSub_realizes`.
 
 Each `*_realizes` is the commuting square `enc (op_p a b) = wordOp (enc a) (enc b)`
-read into `ZMod p` (the honest abstract field; the byte realization is the
+read into `ZMod p` (the abstract field; the byte realization is the
 GMP-KAT-gated `.s`). The `modMul` square is discharged against the proven
 `montgomeryMul_correct` + `MultiLimbEmitBridge.montForm_zmod_eq`; the linear
 squares are pure `ZMod p` algebra.
@@ -125,7 +125,7 @@ lemma R_isUnit {p R nP : Nat} (hp : 0 < R) (hNprime : (p * nP) % R = R - 1)
 
 The encoding `mmEnc x = x · R` (in `ZMod p`) is the Montgomery form: the residue
 the CIOS kernel actually stores and operates on. The three squares are stated
-into `ZMod p` — the honest abstract field — with the proven Montgomery value
+into `ZMod p` — the abstract field — with the proven Montgomery value
 arithmetic as the realized word op (`montgomeryMul` for `modMul`; `+`/`-` for the
 linear ops, which on Montgomery reps are the same plain canonical add/sub the
 emitted kernel runs).

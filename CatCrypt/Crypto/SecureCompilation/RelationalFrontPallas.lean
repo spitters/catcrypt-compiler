@@ -31,18 +31,18 @@ laid out in **`k = 4`** 64-bit limbs. Pallas is one half of the Pasta cycle
 (Pallas / Vesta) used by Halo2 (Zcash Orchard), Mina (kimchi), and Aleo's SnarkVM for
 IPA-based SNARKs with no trusted setup. The repo's `Vale/Pallas.lean` declares the
 field leaves as *opaque axioms* (the AUCurves Bernstein–Yang safegcd inversion leaf),
-not as a `Nat` modulus, so there was no reusable `Nat` literal; `pallasQ` is defined
+not as a `Nat` modulus, so there is no reusable `Nat` literal; `pallasQ` is defined
 here directly (the canonical Pasta Pallas base prime).
 
-## Pallas instance scope (HONEST)
+## Pallas instance scope
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
+* **ADD (fully proved):** the abstract `ZMod q` field add `a + b`, serialized by the
   4-limb encoding `encMLK q 4`, equals the emitted 4-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce) — read through
+  on the serialized operands (with the `condSubLimbs` reduce) — read through
   `bignumVal`. This is `pallas_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
+* **MUL (fully proved):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 8-limb (`2k = 8`) Barrett-reducing kernel `mlMulMod`
-  on the serialized operands — with the genuine multi-limb Barrett reduce of the
+  on the serialized operands — with the multi-limb Barrett reduce of the
   product (`mu = ⌊(2^64)^8 / q⌋`, defined *as its side-condition value* so no `2^512`
   literal is evaluated). This is `pallas_mul_commutes`.
 * The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^4`, `bignumVal pallasLimbs = q`)
@@ -110,10 +110,10 @@ def pallasKLimbPrime : KLimbPrime where
   two_q_le := by unfold pallasQ; norm_num
 
 /-- **The Pallas base-field ADD commuting square.** The abstract Pallas base-field
-    addition `a + b` (in `ZMod q` for the genuine 255-bit prime `q = pallasQ`),
+    addition `a + b` (in `ZMod q` for the 255-bit prime `q = pallasQ`),
     serialized by the 4-limb encoding `encMLK q 4`, equals the emitted 4×64-bit reducing
     kernel `mlAddModK` on the serialized operands, read through `bignumVal` — with the
-    genuine 4-limb conditional-subtract modular reduce. The Pallas sibling of
+    4-limb conditional-subtract modular reduce. The Pallas sibling of
     `bls377_add_commutes`. -/
 theorem pallas_add_commutes (a b : ZMod pallasQ) :
     (a + b).val
@@ -189,10 +189,10 @@ def pallasKLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The Pallas base-field MUL commuting square.** The abstract Pallas base-field
-    multiply `a * b` (in `ZMod q` for the genuine 255-bit prime `q = pallasQ`),
+    multiply `a * b` (in `ZMod q` for the 255-bit prime `q = pallasQ`),
     serialized by the 4-limb encoding `encMLK q 4`, equals the emitted 8-limb
     Barrett-reducing kernel `mlMulMod` on the serialized operands, read through
-    `bignumVal` — with the genuine multi-limb Barrett modular reduce of the product. The
+    `bignumVal` — with the multi-limb Barrett modular reduce of the product. The
     Pallas sibling of `bls377_mul_commutes`, completing the Pallas field-op set. -/
 theorem pallas_mul_commutes (a b : ZMod pallasQ) :
     (a * b).val

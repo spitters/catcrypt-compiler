@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 /-!
 # POC: a non-optimizing verified lowering of a Rust subset to LowCT (`LowCT`)
 
-**Status: proof-of-concept (#270, first step).** This module establishes the
+**Status: proof-of-concept.** This module establishes the
 *skeleton* of a faithful, non-optimizing verified lowering from a restricted
 Rust subset to LowCT (= the `LowCT` IR of
 `CatCrypt/Crypto/Jasmin/LowCT.lean`), and proves the lowering correct for
@@ -23,10 +23,10 @@ full lowering; §"Scope report" below states what the full thing needs.
 
 ## What this connects (the security-front / perf-front seam)
 
-CatCrypt currently bridges hax-extracted Rust to the compiled (Jasmin/asm)
+CatCrypt bridges hax-extracted Rust to the compiled (Jasmin/asm)
 artifact via a *per-protocol* `LeafAgrees` / `FrontValueAgrees` hypothesis: an
 *assumed* agreement between the abstract spec's leaf and the compiled leaf. A
-verified `Rust-subset → LowCT` lowering replaces that assumption, *for the code
+verified `Rust-subset → LowCT` lowering discharges that assumption, *for the code
 it covers*, with a proved fact: the LowCT program the back-end compiles is the
 denotational image of the very same Rust the UC spec reads. The same Rust
 artifact becomes both the UC spec source and the compiled source, joined by a
@@ -35,7 +35,7 @@ proved lowering — closing the seam for cold/glue code.
 ## §0  Subset representation chosen — and why
 
 The **canonical Rust frontend** is hax-lean's typed AST `Hax.ImpExpr`
-(`CatCrypt/Hax/AST.lean`): an expression-oriented Rust subset with `letBind`,
+(hax-lean `HaxLean/AST.lean`): an expression-oriented Rust subset with `letBind`,
 `app`, `ifThenElse`, `forFold`, `assign`, fixed-width scalar literals, and
 tuples. We do **not** re-parse Rust — that frontend is the trusted reader.
 
@@ -347,7 +347,7 @@ recursion drive the same compilation lemmas (no CPS-continuation elaborator
 needed).
 
 The `ifNz` arm is handled by a separate compilation lemma `RRefines.ifNz`
-(§3.4) carrying its honest side condition (guard-slot freshness); see the scope
+(§3.4) carrying its side condition (guard-slot freshness); see the scope
 report for why the recursive driver excludes it. The representative program
 (§4) lives in this `if`-free fragment, which is precisely the
 straight-line-arithmetic + bounded-loop fragment the POC targets. -/
@@ -389,12 +389,12 @@ theorem lowerRefines : ∀ (src : RustSrc), src.ifFree = true → src.limbFree �
       refine ⟨rs', hex, ?_⟩
       rw [hsc, forStepFold_exec]
 
-/-! ### §3.4  The `if` compilation lemma (with its honest guard-write spec)
+/-! ### §3.4  The `if` compilation lemma (with its guard-write spec)
 
 The `ifNz` lowering materialises the guard into a fresh slot
 (`RScalarSetExpr guardSlot c ; RIfNz guardSlot …`), then branches on that slot.
 The lowering really does **clobber** `guardSlot` (it is a materialised
-temporary), so the *honest* refinement spec pre-composes the branch step with
+temporary), so the refinement spec pre-composes the branch step with
 the guard write `σ ↦ σ[guardSlot := c.eval σ]` — we carry that explicitly in the
 conclusion rather than pretending the temporary is invisible.
 
@@ -496,7 +496,7 @@ theorem exampleProg_exec_denotes (N : Nat) (leafSpec : LeafSpec) (rs : RustState
     — the proved equation pins `acc` to a concrete result, not an opaque term. -/
 example : RustSrc.exec exampleSrc (fun _ => 0) "acc" = 26 := by native_decide
 
-/-! ## §5  Scope report — what the full lowering needs (honest)
+/-! ## §5  Scope report — what the full lowering needs
 
 This module is the **POC skeleton + one proved representative lowering**. It is
 **not** a verified Rust frontend. What it *is*: a verified lowering
@@ -537,7 +537,7 @@ trusted base (one frontend, not one bridge hypothesis per protocol).
 * **Function calls.** `f(args)` → `RCall` / `RCallN` / `RFnCall`; correctness is a
   *modular* `RRefines` over the callee's spec (a Hoare-style frame rule), the LowCT
   analogue of the VIR framework's leaf-call lemma `Refines.leafRotr`.
-* **`if` guard framing.** §3.4 proves the `if` lowering against the *honest*
+* **`if` guard framing.** §3.4 proves the `if` lowering against the
   guard-clobbering spec. The residual is choosing `guardSlot` fresh (a gensym
   threaded through `lower`) and **framing it out** of the observable post-state,
   recovering the clean `if c then specThn else specEls` spec. This is the LowCT

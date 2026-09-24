@@ -176,7 +176,7 @@ open CatCrypt.Crypto.Jasmin.Curve25519CryptoptOps
 
 For every instruction shape that `execInstrPlus` handles, if the
 instruction doesn't write to register `r`, the post-state's `r` register
-equals the pre-state's. Stating-form for now; the proof case-splits on
+equals the pre-state's. The proof case-splits on
 the instruction shape (matching the BignumStep simp lemmas). -/
 
 /-! ### Per-bundle preservation helpers
@@ -759,7 +759,7 @@ theorem execInstrPlus_preserves_reg (i : InstrR) (s s' : BignumState) (r : Strin
         rw [execInstrPlus_Cassgn_Lmem_eq] at h_exec
         exact execInstr_Cassgn_Lmem_U64_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U8 =>
-        -- (U8, additive) U8 byte store now succeeds; it preserves regs.
+        -- (U8, additive) A U8 byte store succeeds; it preserves regs.
         rw [execInstrPlus_Cassgn_Lmem_eq] at h_exec
         exact execInstr_Cassgn_Lmem_U8_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U16 =>
@@ -769,7 +769,7 @@ theorem execInstrPlus_preserves_reg (i : InstrR) (s s' : BignumState) (r : Strin
             at h_exec
         cases h_exec
       | U32 =>
-        -- (U32, additive) U32 memory store now succeeds; it preserves regs.
+        -- (U32, additive) A U32 memory store succeeds; it preserves regs.
         rw [execInstrPlus_Cassgn_Lmem_eq] at h_exec
         exact execInstr_Cassgn_Lmem_U32_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U128 =>
@@ -1572,7 +1572,7 @@ theorem execInstr_preserves_reg (i : InstrR) (s s' : BignumState) (r : String)
       | U64 =>
         exact execInstr_Cassgn_Lmem_U64_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U8 =>
-        -- (U8, additive) U8 byte store now succeeds; it preserves regs.
+        -- (U8, additive) A U8 byte store succeeds; it preserves regs.
         exact execInstr_Cassgn_Lmem_U8_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U16 =>
         rw [execInstr_Cassgn_Lmem_nonU64_eq_none _ _ _ _ _ _ _
@@ -1580,7 +1580,7 @@ theorem execInstr_preserves_reg (i : InstrR) (s s' : BignumState) (r : String)
           at h_exec
         cases h_exec
       | U32 =>
-        -- (U32, additive) U32 memory store now succeeds; it preserves regs.
+        -- (U32, additive) A U32 memory store succeeds; it preserves regs.
         exact execInstr_Cassgn_Lmem_U32_preserves_regs _ _ _ _ _ _ _ _ h_exec
       | U128 =>
         rw [execInstr_Cassgn_Lmem_nonU64_eq_none _ _ _ _ _ _ _

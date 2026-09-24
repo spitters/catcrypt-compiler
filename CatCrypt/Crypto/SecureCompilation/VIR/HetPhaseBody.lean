@@ -13,15 +13,15 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 # semantics
 
 `MultiPhaseBody.lean` composes a `List (Phase accTy)` where every phase is a
-*self-map* of one fixed accumulator type (`run sem : ⟦accTy⟧ → ⟦accTy⟧`). Its
-flagged next step: a phase whose live set grows/shrinks (a typed seam
+*self-map* of one fixed accumulator type (`run sem : ⟦accTy⟧ → ⟦accTy⟧`). A
+phase whose live set grows/shrinks (a typed seam
 `accTy₁ → accTy₂`) needs a **dependent / heterogeneous** phase list — a
 length-indexed dependent fold.
 
 Real protocols change their live set between phases: a key schedule **expands** a
 seed into round keys (`seed → keySchedule`), a sponge **contracts** a wide state
 into a digest (`state → digest`), an AEAD packs several registers into a wider
-SIMD word. The composed object is no longer a `List` of self-maps but a **typed
+SIMD word. The composed object is then not a `List` of self-maps but a **typed
 chain** `phase₁ : a → b`, `phase₂ : b → c`, … whose adjacent endpoints must
 agree — exactly a GADT-style heterogeneous sequence.
 
@@ -42,12 +42,12 @@ own already-discharged soundness:
 
 * `run  : ⟦a⟧ → ⟦b⟧` — the emitted evaluator run as a typed transform.
 * `sem  : ⟦a⟧ → ⟦b⟧` — the reference semantics.
-* `sound : run = sem` — the per-phase soundness, supplied at construction by a
-  landed keystone.
+* `sound : run = sem` — the per-phase soundness, supplied at construction by an
+  existing lemma.
 
 Two smart constructors discharge `sound` with no new proof obligation:
 
-* `straightHetPhase` — the **genuinely heterogeneous** case: a type-changing
+* `straightHetPhase` — the **heterogeneous** case: a type-changing
   straight-line block `com : Com jasminDialect [a] b` (input type `a`, output
   type `b`, `a ≠ b` in general). `sound` is
   `WholeFnLowering.lowerComToProg_sem_eq'` instantiated at the singleton
@@ -67,13 +67,13 @@ induction on the chain.
   `lowerComToProg_sem_eq'`, `loopN_lower_denote_iterate`. The smart constructors
   thread them into the `sound` field. The straight-line constructor reuses
   `MultiPhaseBody`'s machinery directly (it is the *same* `lowerComToProg_sem_eq'`
-  edge, now used at a type-changing context `[a] → b`).
+  edge, used at a type-changing context `[a] → b`).
 * **Newly proved**: `HetPhase a b` (the typed phase), the GADT `HetChain a b`,
   `chainRun`/`chainSem` (recursion on the chain), and `chainRun_eq` (the composed
-  soundness, by induction on the GADT — the genuinely new content: threading
+  soundness, by induction on the GADT — the new content: threading
   per-phase soundness through a type-changing dependent chain).
 
-## Conditioned scope (honest)
+## Scope
 
 Each phase carries its own `sound`, so the carried hypotheses are exactly the
 union of the per-phase hypotheses: every phase needs `LeafAgrees leafSem`, and
@@ -86,8 +86,8 @@ between phases as a single fused control-flow graph** (this composes the phases'
 emitted runs at the meta level over a shared *value* of the intermediate type,
 exactly as `MultiPhaseBody`/`WholeProtocolBody` compose phases — the `extCall`
 leaf stays opaque under `LeafAgrees`, it is not a fused CFG with a real `call`
-instruction threading the intermediate type through registers). Those are the
-remaining whole-protocol-body work. What this file *does* add over
+instruction threading the intermediate type through registers). Both are outside the scope of this
+module. What this file *does* add over
 `MultiPhaseBody` is the typed seam: the intermediate value changes type between
 phases, so the chain is dependent rather than a homogeneous `List`.
 
@@ -116,14 +116,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBinderLoopBody
 A `HetPhase a b` is a typed transform `⟦a⟧ → ⟦b⟧` — its live state may change
 type from `a` (incoming) to `b` (outgoing). It bundles the emitted evaluator
 run, the reference semantics, and a proof that they agree. The proof is
-discharged at construction by a landed keystone, so a het-phase is *by
+discharged at construction by an existing lemma, so a het-phase is *by
 construction* a verified type-changing transform. The homogeneous `Phase accTy`
 of `MultiPhaseBody` is the diagonal case `HetPhase accTy accTy`. -/
 
 /-- **A single verified heterogeneous phase.** A typed transform `⟦a⟧ → ⟦b⟧` (the
     live state changes type from `a` to `b`) packaging the emitted evaluator
     `run`, the reference `sem`antics, and the per-phase soundness
-    `sound : run = sem` (discharged at construction by a landed keystone). The
+    `sound : run = sem` (discharged at construction by an existing lemma). The
     unit of composition for a type-changing multi-phase protocol body. -/
 structure HetPhase (a b : JasminTy) where
   /-- The emitted evaluator run, as a typed transform `⟦a⟧ → ⟦b⟧`. -/
@@ -131,18 +131,18 @@ structure HetPhase (a b : JasminTy) where
   /-- The reference semantics, as a typed transform `⟦a⟧ → ⟦b⟧`. -/
   sem : ⟦a⟧ → ⟦b⟧
   /-- The per-phase soundness: the emitted run equals the reference semantics.
-      Supplied by an existing keystone at construction. -/
+      Supplied by an existing lemma at construction. -/
   sound : run = sem
 
-/-! ## 2. Smart constructors — each discharges `sound` from a landed keystone -/
+/-! ## 2. Smart constructors — each discharges `sound` from an existing lemma -/
 
-/-- **A type-changing straight-line block phase (the genuinely heterogeneous
+/-- **A type-changing straight-line block phase (the heterogeneous
     case).** `straightHetPhase hLeaf com hSL` runs the straight-line block
     `com : Com jasminDialect [a] b` (input type `a`, output type `b`, in general
     `a ≠ b`) over the incoming value; `sem` is its `Com.denote`. `sound` is
     `WholeFnLowering.lowerComToProg_sem_eq'` instantiated at the singleton
     valuation `V = .cons init .nil` (no new obligation — the *same* edge
-    `MultiPhaseBody.straightPhase` uses, now at a type-changing context). Requires
+    `MultiPhaseBody.straightPhase` uses, at a type-changing context). Requires
     the block to be `StraightLine`. -/
 def straightHetPhase {a b : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (com : Com jasminDialect [a] b)
@@ -240,13 +240,13 @@ theorem chainSem_cons {a b c : JasminTy} (p : HetPhase a b) (rest : HetChain b c
 The validating heterogeneous kernel: a straight-line **widen** phase
 `reg 64 → reg 128` (a single `castW 64 128`, the seed-to-wider-state expansion),
 then a **doubling loop** `reg 128 → reg 128` (`acc := acc + acc`, `n` times) over
-the *widened* state. The first phase genuinely changes the live-state type
+the *widened* state. The first phase changes the live-state type
 (`reg 64 ⇒ reg 128`); the second is the diagonal loop. The composed semantics is
 `double^[n] (zeroExtend 128 init)`. -/
 
 /-- The straight-line **widen** block `reg 64 → reg 128`: a single `castW 64 128`
     (zero-extend) over the singleton context `[reg 64]`, returning `reg 128`. The
-    simplest genuine *type-changing* straight-line `Com` — input type `reg 64`,
+    simplest *type-changing* straight-line `Com` — input type `reg 64`,
     output type `reg 128`. Denotes `x ↦ x.zeroExtend 128`. -/
 def widenBlock : Com jasminDialect [JasminTy.reg 64] (.reg 128) :=
   .var (.mk (.castW 64 128) rfl (.cons .here .nil))
@@ -280,7 +280,7 @@ def widenThenDouble {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) (n : Nat) :
 /-- **Worked example (composition form).** The composed run of the heterogeneous
     2-phase protocol equals `double^[n] (init.zeroExtend 128)` — the widen phase
     expands `reg 64 → reg 128`, then the loop doubles `n` times at width 128.
-    Instance of `chainRun_eq`, exercising a genuine type change across the seam. -/
+    Instance of `chainRun_eq`, exercising a type change across the seam. -/
 theorem widenThenDouble_run_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (n : Nat) (init : BitVec 64) :
     chainRun (widenThenDouble hLeaf n) init
@@ -293,7 +293,7 @@ theorem widenThenDouble_run_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 /-- **Worked example (concrete KAT).** On seed `init = 5` with `n = 3`: the widen
     phase zero-extends `5 : reg 64 → 5 : reg 128`, then the loop doubles thrice
     `5 → 10 → 20 → 40`, i.e. `40`. Ties the heterogeneous-chain composition
-    keystone to a concrete value across a real type change `reg 64 → reg 128`. -/
+    theorem to a concrete value across a real type change `reg 64 → reg 128`. -/
 theorem widenThenDouble_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     chainRun (widenThenDouble hLeaf 3) (5 : BitVec 64) = (40 : BitVec 128) := by
   rw [widenThenDouble_run_eq hLeaf]

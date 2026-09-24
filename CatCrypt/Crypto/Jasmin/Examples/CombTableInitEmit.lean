@@ -7,6 +7,12 @@ module
 
 public import CatCrypt.Crypto.Jasmin.Examples.CombTableInit
 
+/-!
+# Emit driver for the comb-table initialisation
+
+`main` runs `CombTableInit.runEmit`, which writes the Rust rendering of
+`build_comb_table_emitted` to `/tmp/build_comb_table.rs`.
+-/
 
 @[expose] public section
 /-- Driver: `lake env lean --run …/CombTableInitEmit.lean`. -/

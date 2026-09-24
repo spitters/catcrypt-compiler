@@ -64,8 +64,8 @@ command of a stated length whose calls carry the stated leaf names.
 
 The bodies contain `RCall` nodes, so `LowCTToJasmin.rustExecSimulates`, whose
 hypothesis is `callFree c = true`, does not apply to them. The applicable
-statement is `LowCTToJasmin.rustExecSimulates_withCalls`, which replaces that
-hypothesis with `callFreePlusCall c = true` and takes leaf oracles
+statement is `LowCTToJasmin.rustExecSimulates_withCalls`, which weakens that
+hypothesis to `callFreePlusCall c = true` and takes leaf oracles
 `hLeafN : ∀ fuel' ≥ 2, LeafImplOkNewSid leafSpec env fuel'` together with
 `hLimb` and `hClone`. Instantiating it for these kernels requires a
 `LeafSpec` and a `TransEnv` in which `p384_scalar_mul` and `p384_point_add`

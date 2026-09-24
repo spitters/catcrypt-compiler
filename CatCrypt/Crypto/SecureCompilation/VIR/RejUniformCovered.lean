@@ -21,7 +21,7 @@ so this is a *data-dependent* loop — not a fixed unroll and not a counted
 `RWhileNz` models.
 
 This re-sources that loop from a high-level `LowCT` term through the **canonical
-front**, using the `RWhileNz` waist denote landed in
+front**, using the `RWhileNz` waist denote of
 `TranslateDialectWhileDenote` (`rWhileNz_whole_denote` / `IsCoveredSWhile` /
 `semScalarWhile`). It is the `RWhileNz` twin of the counted-loop re-sourcings
 `Fe25519ScalarmultCovered` (X25519 ladder, `RFor`) and `Shake256Covered`
@@ -58,7 +58,7 @@ canonical front, with a whole-program machine denote.
 `cand < q` decision, and the buffer-full guard are public by construction
 (FIPS-203 §Algorithm 13). The `RWhileNz` guard `remaining` and the `RIfNz` flag
 `lt` therefore leak nothing secret: this is the `RejectLoop.lean` public-guard
-discipline (#460). A *secret*-dependent loop guard or accept branch would be a CT
+discipline. A *secret*-dependent loop guard or accept branch would be a CT
 violation (rejected by the `LowCT` `isCT` check); `rej_uniform`'s is admitted.
 The buffer index is a public counter, not a secret address.
 -/

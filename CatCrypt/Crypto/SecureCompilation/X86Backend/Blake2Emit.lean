@@ -16,8 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 /-!
 # BLAKE2 compression (BLAKE2b + BLAKE2s) emitted through the OWNED x86 backend
 
-A clean pipeline-coverage gap: until now the bench had **no** BLAKE2 emit of any
-kind. This module emits the BLAKE2 compression function `F` — the round loop over
+This module emits the BLAKE2 compression function `F` — the round loop over
 the mixing function `G` on the 16-word work vector `v` — as a straight-line
 `List (JInstr w)` block in the **owned** x86 backend
 (`X86Backend/{JasminModel, X86Dialect, AsmPrinter}`), *not* through the
@@ -65,7 +64,7 @@ In `BitVec w` it is precisely `BitVec.rotateRight` (`blake2_ror_synth`).
   (`blake2_ror_synth`); one emitted `G` block, lowered through
   `X86Dialect.lowerBlock` and run via `runBlock`, computes the reference `gSpec`
   on concrete words at both widths (`blake2s_G_computes_spec`,
-  `blake2b_G_computes_spec`, `native_decide` — a single G, REV-12-safe, not a
+  `blake2b_G_computes_spec`, `native_decide` — a single G, cheap, not a
   whole-message KAT); `lowerBlock` of the whole body denotes `runBlock`
   (`blake2s_lower_denote` / `blake2b_lower_denote`, the `X86Dialect` tie).
   The whole-message known-answer test against the official BLAKE2 vectors is an
@@ -222,7 +221,7 @@ def gInitSt (w : Nat) : St w := fun i => BitVec.ofNat w (i.val + 1)
 
 /-- **One emitted BLAKE2s `G` computes the reference `gSpec`** (width 32, rotations
     `16,12,8,7`). On a concrete input the four updated slots of the run-`G`
-    machine state equal `gSpec`. `native_decide` over a single G (REV-12-safe). -/
+    machine state equal `gSpec`. `native_decide` over a single G (cheap). -/
 theorem blake2s_G_computes_spec :
     let mx : BitVec 32 := 0x11111111
     let my : BitVec 32 := 0x22222222
@@ -233,7 +232,7 @@ theorem blake2s_G_computes_spec :
   native_decide
 
 /-- **One emitted BLAKE2b `G` computes the reference `gSpec`** (width 64, rotations
-    `32,24,16,63`). `native_decide` over a single G (REV-12-safe). -/
+    `32,24,16,63`). `native_decide` over a single G (cheap). -/
 theorem blake2b_G_computes_spec :
     let mx : BitVec 64 := 0x1111111111111111
     let my : BitVec 64 := 0x2222222222222222

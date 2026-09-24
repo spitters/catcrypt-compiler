@@ -20,12 +20,12 @@ VIR's `Com` (see `Core.lean`) is straight-line: it has only `ret` and `var`.
 That suffices for `select`-style conditionals (where both arms are values,
 not nested sub-programs), but it can't model
 
-1. CryptoSSA's `CExpr.ite` translated to *real* nested branches (today
-   `CryptoToVIR` degrades it to a non-region `.ite` op), or
+1. a crypto-SSA conditional as *real* nested branches (`catCryptDialect`'s
+   `.ite` op is a non-region select over two values), or
 2. the quantum island's `QSProg.ifBit` (its QSSA-to-VIR lowering, outside this
    package, defers it because there is no region construct).
 
-This file adds an additive region wrapper `ComR` that extends `Com` with a
+This module defines an additive region wrapper `ComR` that extends `Com` with a
 single nested-branch constructor `ifBit cond lvl thenBr elseBr`. The
 `lvl : SecretLevel` is a *caller-asserted* tag — the CT predicate uses it
 to decide whether the branch is constant-time-safe.
@@ -41,26 +41,26 @@ to decide whether the branch is constant-time-safe.
   one-method typeclass `HasBitType` exposes the chosen bit type. Instances
   for both dialects are provided.
 
-* **`SecretLevel` on the conditional**, not the bit variable. Per the
-  prompt: "Caller-asserted: the constructor expects you to know whether
-  the scrutinee's value flow is public or secret." This keeps the
+* **`SecretLevel` on the conditional**, not the bit variable. The tag is
+  caller-asserted: the constructor expects the caller to know whether
+  the scrutinee's value flow is public or secret. This keeps the
   bit-type clean and avoids re-encoding flow on every dialect's type
-  alphabet (Phase J in `LowCT.lean` tracks variable-level flow; that's
-  a separate concern).
+  alphabet (variable-level flow is tracked in `LowCT.lean`, a separate
+  concern).
 
 * **Translation `Com → ComR`** is total (structural). The reverse
   `ComR → Option Com` is partial (returns `none` on any `ifBit` node).
 
-* **CT bridge** is in `CTPredicate.lean` (this file's sibling). We
-  re-export the new `ctSafeComR` predicate as a `Bool`-returning function
+* **CT bridge** is in `CTPredicate.lean` (this module's sibling). We
+  re-export the `ctSafeComR` predicate as a `Bool`-returning function
   so it composes with the existing `ctSafeCom`.
 
-## What this file is NOT
+## Scope
 
-* Not a wiring of `ComR` into `CryptoToVIR.lean` (follow-up).
-* Not a translation of `QSProg.ifBit` into `ComR` (Phase 5 plan).
-* Not a Phase-J information-flow type system. We accept the `SecretLevel`
-  tag as caller-asserted; propagating it through ops is a separate task.
+* `ComR` is not wired into `CryptoToVIR.lean`.
+* `QSProg.ifBit` is not translated into `ComR`.
+* This is not an information-flow type system. The `SecretLevel` tag is
+  caller-asserted; propagating it through ops is outside this module.
 -/
 
 @[expose] public section

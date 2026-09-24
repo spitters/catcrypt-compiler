@@ -11,17 +11,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 
 /-!
-# Generic graph-coloring register allocation + move-coalescing (P4) over `MachineModel`
+# Generic graph-coloring register allocation + move-coalescing over `MachineModel`
 
 `Optimizer.GraphColoringRegAlloc` (the Chaitin–Briggs graph-coloring global allocator)
-and `Optimizer.GraphColoringCoalesce` (the P4 conservative move-coalescing post-pass)
-are written, like their linear-scan siblings were before #552, **monomorphized to the
-x86 `JInstr 64` / `JState 64` types**. But neither pass touches anything x86-specific:
+and `Optimizer.GraphColoringCoalesce` (the conservative move-coalescing post-pass)
+are written **monomorphized to the x86 `JInstr 64` / `JState 64` types**. But neither pass touches anything x86-specific:
 the interference graph is built purely from `LiveRange` intervals, the spill metric
 from `writtenNames`/`readNames` use counts, the coloring from the adjacency relation,
 and coalescing is *a rename* whose soundness is exactly the generic resident-path
-result `GenericRegAlloc.renameBlock_runBlock`. This module is the **D3 phase** for
-those two passes: lift them off `JInstr 64` and state them once over the generic
+result `GenericRegAlloc.renameBlock_runBlock`. This module is the **generic form** of
+those two passes: it lifts them off `JInstr 64` and state them once over the generic
 `MachineModel`/`RegMachine` abstraction, additive to (and leaving untouched) the
 x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
 
@@ -45,7 +44,7 @@ x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
    `selectColors_slotsSeparated` / `graphColorAlloc_slotsSeparated` — at a stride at least
    the byte width of one allocated value, the assigned slots cover pairwise-disjoint byte
    ranges (`GenericRegAlloc.SlotsSeparated`).
-3. **Move-coalescing generically** (§4, P4): a small `MoveMachine` extension exposing
+3. **Move-coalescing generically** (§4): a small `MoveMachine` extension exposing
    copy detection (`asMove`) and the identity-move `runBlock`-no-op law, then
    `coalesceInterfereOk`/`subst`/`firstCoalescable`/`coalesceStep`/`dropIdMoves`/`coalesce`
    over `[MoveMachine I S]`. The VERIFIED content ports cleanly:
@@ -334,7 +333,7 @@ theorem graphColorAlloc_slotsSeparated [MachineModel I] (width : Nat)
     SlotsSeparated width (graphColorAlloc (I := I) pinned scratch frameBase block stride) :=
   selectColors_slotsSeparated width _ _ frameBase _ stride hw
 
-/-! ## 4. Generic move-coalescing (P4)
+/-! ## 4. Generic move-coalescing
 
 Coalescing a copy `dst ← src` is the renaming `dst ↦ src` applied to the whole block,
 after which the copy has become the identity `src ← src` and is dropped:
@@ -568,7 +567,7 @@ def rv64Coalesce (block : List RInst) : List RInst :=
 
 /-- **Generic identity-move drop is sound at RV64** — `runBlock_dropIdMoves` specializing
     through the RV64 instance: dropping identity `.mv r r` self-moves preserves the run.
-    The generic analogue of the x86 `runBlock_dropIdMovs`, now firing at a fresh ISA. -/
+    The generic analogue of the x86 `runBlock_dropIdMovs`, instantiated at RV64. -/
 theorem rv64_dropIdMoves_sound (block : List RInst) (s : RState) :
     runRBlock s (dropIdMoves (S := RState) block) = runRBlock s block :=
   runBlock_dropIdMoves (S := RState) block s

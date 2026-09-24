@@ -13,26 +13,25 @@ public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 /-!
 # Compiler / IR pipeline map  (START HERE before building front-end work)
 
-NOTE (updated 2026-06-18): the MLIR-dialect-alignment restructure has largely
-LANDED. The mid-level is now the upstream-named denoting dialects in
+The mid-level of the compiler is the upstream-named denoting dialects in
 `VIR/` — `MlirArithDialect` (`arith`), `MlirMemrefDialect` (`memref`),
 `MlirVectorDialect` (`vector`), `MlirScfDialect` (`scf`), `MlirPolynomialDialect`
 — with a verified `Com→Com` lowering chain (`DialectLoweringChain`,
 `DialectToJasminCom`) down to `jasminDialect`, and a generic machine layer
 (`RegMachineSim` / `GenericRegAllocSim` + the x86 `JInstrRegMachineSim` instance)
-below it.  The two **physical IRs were collapsed** (`encodeLprog = encodeJBlock`
-on the covered fragment; GoldenPath kernels emit via the JInstr path).
+below it.  The two **physical IRs coincide** on the covered fragment
+(`encodeLprog = encodeJBlock`; GoldenPath kernels emit via the JInstr path).
 The crypto-SSA IR for kernels is `catCryptDialect` (`Com catCryptDialect`, aligned
-with MLIR); new kernels do not use `CProg`/`CExpr` or the `Lprog` kernel-emit path.
-The `llvm` waist (D2) is veir-deferred (no in-tree LLVM dialect by design).  The **frontend ingestion** below is
+with MLIR, lowered by `cryptoDialectToJasminCom`); kernels do not use the `Lprog`
+kernel-emit path.
+The `llvm` waist is veir-deferred (no in-tree LLVM dialect by design).  The **frontend ingestion** below is
 the two ingestion paths, whose scalar denotations coincide by the DF result (`Dialects/FrontendCoincidence*` —
 base, shifts, let-engine, whole-body, RustState bridge).
 
 A discoverability index for the hax→Lean compiler IRs.  The EMIT side is indexed
-per primitive in `CAPABILITIES.md`; this is the COMPILER side.  It exists because
-the same capability kept getting re-planned/rebuilt for want of a map — see the `#check`s at the bottom: if any
-referenced entry point is renamed, this file fails to build, so the map cannot
-silently rot.
+per primitive in `CAPABILITIES.md`; this is the COMPILER side.  The `#check`s at the
+bottom name each referenced entry point, so a rename or removal stops this module
+from building.
 
 ## There are TWO hax-ingestion pipelines.  Do not conflate them.
 
@@ -42,7 +41,7 @@ silently rot.
                   (ANF core; C3 meta-thm + ~64 leaf value proofs)
 
                          (B) whole-function loops + arrays
-  hax ImpExpr ──haxToLowCT──▶ LowCT ──translate──▶ CryptoSSA ──▶ Com latticeDialect
+  hax ImpExpr ──haxToLowCT──▶ LowCT ──translateDialectFull──▶ Com catCryptDialect
                   (loops, dynamic opaque arrays, while/if)         └▶ LowCTToJasmin
 ```
 
@@ -56,7 +55,7 @@ silently rot.
   proofs.  Its denotation (`ImpExpr.denoteScalar`) is PURE SCALAR — no heap.
 * **`haxToLowCT`** (`Crypto/Hax/HaxToLowCT.lean`): the capable whole-function
   path.  Targets `LowCT` (which has a memory model via `RustExec`), then
-  `LowCTToCryptoSSA.translate` and `LowCTToJasmin` downstream.  Value
+  `translateDialectFull` and `LowCTToJasmin` downstream.  Value
   preservation is in `HaxToLowCTSimulates.lean`.
 
 ## Capability matrix  (✓ handled · ✗ none · ~ partial)
@@ -74,7 +73,7 @@ silently rot.
 | array-valued `forFold` body       | ✗              | ✗          | —                      |
 | nested 2-D `array_update`         | ✗              | ✗          | —                      |
 
-Key `file:line` (verified 2026-08-03, against the `haxToLowCT` translator at
+Key `file:line` (against the `haxToLowCT` translator at
 `HaxToLowCT.lean:477`; the typed `haxToLowCTEnv` at `:713` repeats the same arms):
 * `haxToLowCT`: `array_update→RArrStore` HaxToLowCT.lean:502; `index→RArrLoad`
   :512; `whileLoop→RWhileNz` :577; `forFold (lit n)→RFor` :641/:648;
@@ -82,13 +81,14 @@ Key `file:line` (verified 2026-08-03, against the `haxToLowCT` translator at
   (offset-start); `forFold` otherwise / `forLoop` → `none` :679/:626.
 * `substConsts` + `mlkemConstTable` (K=3,N=256,Q=3329) / `mldsaConstTable`:
   `HaxToLowCT_ConstFold.lean` — turns `forFold _ _ (.var "K")` into the literal
-  form the line-641 arm accepts.  This is now an optimization, not a
+  form the line-641 arm accepts.  This is an optimization, not a
   prerequisite: a bound `impBoundToSExpr` accepts reaches `RForRuntime` unfolded.
 * dynamic-array CT discipline: `cmdCT` requires the index `Public`
   (`cmdCT_RArrLoad`/`cmdCT_RArrStore`); soundness `cmdCT_sound`
   (`LowCTCTAnalysis.lean`).  The same `cmdCT` rejects a SECRET index.
-* `RArrLoad`/`RArrStore` now translate through CryptoSSA (`translate`,
-  `LowCTToCryptoSSA.lean`) — opaque-value, index-as-arg (branch work, 2026-06-14).
+* `RArrLoad`/`RArrStore` translate through `translateDialectFull`
+  (`Dialects/TranslateDialectDirectArms.lean`) to `memrefGetDyn` / `memrefSetDyn` —
+  opaque-value, index-as-arg.
 
 ## Decision table — "I want to ingest X, which path?"
 
@@ -104,19 +104,17 @@ Key `file:line` (verified 2026-08-03, against the `haxToLowCT` translator at
 ## The `LowCT → catCryptDialect` arm (`translateDialectFull`)
 
 The matrix above maps the two hax-ingestion FRONTS. Downstream of `haxToLowCT`, the
-`LowCT → catCryptDialect` arm is `translateDialectFull` (the MLIR-aligned successor to
-the `LowCT → CryptoSSA` `translate`; `catCryptDialect` is the canonical crypto-SSA IR,
-lowered to jasmin via `cryptoDialectToJasminCom`). Recording its CURRENT gaps here so the
-FRONT map — not just the private roadmap — tracks them:
+`LowCT → catCryptDialect` arm is `translateDialectFull` (`catCryptDialect` is the
+crypto-SSA IR, lowered to jasmin via `cryptoDialectToJasminCom`). Its coverage:
 
 | arm construct                       | `translateDialectFull` status |
 |-------------------------------------|-------------------------------|
-| scalar `SExpr` arithmetic (`RScalarSetExpr`) | **landing** (2026-06-30 — the scalar-arith arm is being added) |
+| scalar `SExpr` arithmetic (`RScalarSetExpr`) | ✓ (the scalar-arith arm, § 1b of `TranslateDialectDirectArms`) |
 | SIMD ext ops (`gf2p8mulb` / `vpshufb` / `pclmulqdq` / `aesenc`) | ✗ NOT in the high front (SIMD/vectorization concern, not scalar-front) |
 | whole-protocol orchestration        | ✗ NOT (multi-session spines stay hand-authored / linked) |
 
-The scalar-arith arm closes the common `haxToLowCT → catCryptDialect` path for scalar
-bodies; the SIMD-ext and orchestration rows are the named residual that keeps the
+The scalar-arith arm covers the common `haxToLowCT → catCryptDialect` path for scalar
+bodies; the SIMD-ext and orchestration rows are outside the arm, which keeps the
 hand-authored owned-emit fleet on hand-`Com` (listed in
 `scripts/handcom-provenance-baseline.txt`).
 
@@ -130,8 +128,8 @@ This matrix is the cross-cutting view; the per-file docstrings are the
 authoritative detail.  When you extend a translator, update both its docstring
 and the row above.
 
-## Known remaining gaps (as of 2026-06-14)
-ML-KEM `sample_ntt_poly` still fails `haxToLowCT (substConsts mlkemConstTable …)`
+## Constructs outside `haxToLowCT`
+ML-KEM `sample_ntt_poly` fails `haxToLowCT (substConsts mlkemConstTable …)`
 on: (1) a `forFold` body that *returns an array* (only statement-form
 `let _ = array_update …; body` is handled), and (2) nested 2-D
 `array_update(a, i, array_update(index(a,i), j, …))`.  These are narrow

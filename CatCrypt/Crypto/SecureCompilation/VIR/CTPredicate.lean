@@ -48,7 +48,7 @@ exactly the Track 3b benchmark target.
 * Address-aware leakage (cache, branch prediction) — outside VIR scope.
 
 A more refined predicate that flags `ite` as CT-safe when its condition
-is annotated `@public` is a Track-3a-v2 follow-up.
+is annotated `@public` is outside this module's scope.
 -/
 
 @[expose] public section

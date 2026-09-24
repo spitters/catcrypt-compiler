@@ -15,27 +15,21 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 set_option autoImplicit false
 
 /-!
-# SIMD (`vsimd`) arm of the `CProg`-free direct front (`translateDialectControlV`)
+# SIMD (`vsimd`) arm of the direct front (`translateDialectControlV`)
 
-`TranslateDialectDirectControl.translateDialectControl` fuses the whole
-non-`while` scalar `LowCT` (`RScalarSetExpr`, the leaf-call arms, `RFor`,
-`RIfNz`) into a `CProg`-free `Com catCryptDialect` recursion. Its coverage
-fragment `IsCoveredCtl` is proved to **coincide with the deprecated `translate`
-(CProg) front** on `⟨Γ', vm⟩` — every op it emits is one `CProg` already had.
+`TranslateDialectDirectControl.translateDialectControl` lowers the scalar
+`LowCT` (`RScalarSetExpr`, the leaf-call arms, `RFor`, `RIfNz`, `RWhileNz`) to a
+`Com catCryptDialect` recursion over the coverage fragment `IsCoveredCtl`.
 
 The **128-bit SIMD** ops (`gf2p8mulb`/`vpshufb`/`clmul`/`affineqb`/`bitwise`/…,
-plus the whole-register byte-shifts `vpsrldq`/`vpslldq`) are a genuinely **new**
-front capability: they thread a `.sword 128` register value (`mapTy .sword 128 =
-.reg 128`), and CryptoSSA's `CProg`/`translate` never carried a `.sword 128`
-binding (`encodeTy` has no `.sword 128` image). So — exactly like the divergent
-`RLetZero` dead-init elision, which `translateDialectFull` also handles outside
-`IsCovered` — the SIMD arm cannot join the `translate`-agreeing fragment without
-extending the deprecated `CProg` IR (forbidden). It is instead handled here, in
-an isolated wrapper front `translateDialectControlV`, whose end-to-end guarantee
-is the **concrete pilot's `denote = spec`** composed with the already-proved
-generic lowering preservation `cryptoDialectToJasminCom_denote_eq'` — NOT the
-`rustExecSimulatesDialect` / leak-factoring lemmas (which are stated relative to
-the `CProg` front and cannot mention an op `CProg` lacks).
+plus the whole-register byte-shifts `vpsrldq`/`vpslldq`) thread a `.sword 128`
+register value (`mapTy .sword 128 = .reg 128`), and `encodeTy` has no
+`.sword 128` image, so — like the `RLetZero` dead-init elision, which
+`translateDialectFull` handles outside `IsCovered` — the SIMD arm lies outside
+`IsCoveredCtl`. It is handled here, in an isolated wrapper front
+`translateDialectControlV`, whose end-to-end guarantee is the **concrete
+pilot's `denote = spec`** composed with the generic lowering preservation
+`cryptoDialectToJasminCom_denote_eq'`.
 
 ## Source shape (no new `LowCT` constructor)
 
@@ -213,7 +207,7 @@ and delegates every other arm to `translateDialectControl`. `RSeq`/`RBlock`/
 caught; all other structural arms (`RFor`, `RIfNz`, the scalar leaf calls) fall
 through to `translateDialectControl` unchanged. -/
 
-/-- SIMD-aware `CProg`-free front. Structural recursion on `LowCT`. -/
+/-- SIMD-aware direct front. Structural recursion on `LowCT`. -/
 def translateDialectControlV {Γ : Ctx} (vm : VarMap Γ) :
     LowCT → Option (DTransOut Γ)
   | .RSkip => some { Γ' := Γ, cont := ComCont.id, vm := vm }
@@ -333,11 +327,9 @@ def translateDialectControlVTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
 
 `IsCoveredV` marks the SIMD `RCall` arms this front adds on top of
 `translateDialectControl`. It is deliberately **separate** from `IsCoveredCtl`:
-the SIMD ops are the divergent-from-`CProg` capability (see the module
-docstring), so — unlike `IsCoveredCtl` — there is no context-agreement lemma to
-the `translate` front (`CProg` has no `.sword 128` binding to agree with). The
-guarantee is instead the concrete `denote = spec` pin at the pilot, composed
-with the verified `cryptoDialectToJasminCom` lowering. -/
+the SIMD ops bind `.sword 128` values, which `encodeTy` has no image for (see
+the module docstring). The guarantee is the concrete `denote = spec` pin at the
+pilot, composed with the verified `cryptoDialectToJasminCom` lowering. -/
 
 /-- The SIMD-covered arms: a `vsimd`-tagged binary/unary `RCall` over `.sword 128`
     operands, plus straight-line `RSeq`/`RBlock`/`RSkip` closure. -/

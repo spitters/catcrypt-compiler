@@ -47,8 +47,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
 public import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
--- DR collapse phase 2: the crypto dialect's SPComp security interpretation + the
--- full CryptoSSA ≅ crypto agreement (sample ops included).
+-- The crypto dialect's SPComp security interpretation, its security and leak-trace
+-- layers, and the direct dialect front.
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
 public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurity
@@ -65,7 +65,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDi
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
--- Item 1 (crypto kernels lifted to the neutral arith dialect): the emit-legality
+-- Crypto kernels lifted to the neutral arith dialect: the emit-legality
 -- foundation (ArithOK64 + lowerArithToJasmin_ComOK) + the ~50 lifted kernels, each
 -- denote=spec + ArithOK64 + lowered ComOK + arm/riscv e2e through the proven lowering.
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
@@ -90,7 +90,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefCtGoldenPath
 public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefCtGoldenPath
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport
--- D4 collapse encoder-maturation (rot-guarded here to avoid the churning
+-- Encoder modules (rot-guarded here rather than in the
 -- SecureCompilationAll manifest): the encodeLprog≡encodeJBlock byte-agreement +
 -- its native_decide-free mnemonic dispatch, the additive framed/reloc JInstr emit
 -- path, and the Linstr→JInstr lowering-coverage superset (ADX + indexed memory).
@@ -146,10 +146,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNa
 public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
 
 /-!
-# The upstream-aligned neutral dialects (D0 manifest / rot-guard)
+# The upstream-aligned neutral dialects (manifest / rot-guard)
 
-The MLIR dialect-alignment restructure's D0 phase: the target-neutral
-dialects defined CatCrypt-side (in `Dialects/`, NOT in vendored `VIR/`), each with a
+The target-neutral dialects of the MLIR dialect alignment, defined CatCrypt-side (in `Dialects/`, NOT in vendored `VIR/`), each with a
 verified `Com <dialect> → Com jasmin` lowering AND a denotation-preservation proof
 (the `transTy` framework, mirroring `LatticeToJasminDenote`).
 
@@ -162,26 +161,25 @@ Each import pulls the full triple (dialect + lowering + denote-preservation):
 
 All four are denotation-preserving and axiom-clean (`propext`, `Quot.sound`). This
 module forces the whole set so a `Dialect`/`JasminDialect`/framework change can't
-silently rot any of them. The neutral op/type names mirror Veir's `OpCode`/`TypeAttr`
-(migration contract, plan §0.3).
+silently rot any of them. The neutral op/type names mirror Veir's `OpCode`/`TypeAttr`.
 
 `cf`/`scf` (control flow) are NOT ANF `Com` ops — the VIR `Com` is region-free,
 single-return — so they are handled by the bounded-loop-unroll / branch-lowering
-machinery, not as dialect-op triples here. `crypto`/`thir`/`tile` front dialects
-already exist (plan §2c).
+machinery, not as dialect-op triples here. The `crypto`/`thir`/`tile` front dialects
+are defined elsewhere.
 
-Two further D0/DR results ship alongside the dialect triples:
+Further results ship alongside the dialect triples:
 
-* `ArithLegality` — the D0 firewall bridge `SupportedOp op ↔ ∃ aop, aop.toJasmin = op
+* `ArithLegality` — the firewall bridge `SupportedOp op ↔ ∃ aop, aop.toJasmin = op
   ∧ aop.width = 64`: the neutral `SupportedOp` jasmin fragment IS exactly the width-64
-  image of the `arith` dialect, so "the `SupportedOp` firewall re-points to `arith`"
-  (plan D0/D1) is a *theorem*, robust to firewall refactors.
-* `ComLegality` — the D0 verified legality helper: a decidable `comAllSupported :
+  image of the `arith` dialect, so the coincidence of the `SupportedOp` firewall with
+  `arith` is a *theorem*, robust to firewall refactors.
+* `ComLegality` — the verified legality helper: a decidable `comAllSupported :
   Com jasminDialect → Bool` proved equivalent (`comAllSupported_iff`) to the
   propositional `ComSupported` ("every op is in the `SupportedOp` legal set"),
-  generalizing the old `gatherJBlock`-returns-`none` guard into a typed, proven check
+  generalizing the `gatherJBlock`-returns-`none` guard into a typed, proven check
   (`isSupportedOp_iff` + `DecidablePred SupportedOp`).
-* `ArithEmulations` — the D1 neutral-arith emulation / conformance suite: the
+* `ArithEmulations` — the neutral-arith emulation / conformance suite: the
   branchless idioms `and-not`, `select`-by-mask, and `rotate-right`-by-immediate built
   as derived `Com arithDialect` programs over the neutral op set, each with a
   machine-checked `Com.denote` correctness proof (symbolic width; the `rotateRight`
@@ -193,19 +191,17 @@ Two further D0/DR results ship alongside the dialect triples:
   `BitVec` semantics on the shared 9-op integer fragment (`addi`/…/`xori`,
   immediate shifts, constant) — proved extensionally (no HEq), so the two `arith`
   dialects are one semantics at two layers, not divergent duplicates.
-* `FrontendCoincidence` — the DF keystone (base cases): the two frontend denotations
+* `FrontendCoincidence` — the frontend-coincidence base cases: the two denotations
   of a pure-scalar Rust `ImpExpr` — Path A `denoteScalar` (scalar-THIR-direct) and
   Path B `SExpr.evalBV` (the LowCT scalar evaluator) — COINCIDE at `w = 64` under an
   `EnvAgree` predicate, on the full variable/literal/binary-ALU fragment
-  (`add/sub/mul/and/xor`). The `.letBind` extension and the shift/rotate arms
-  (Path A immediate vs `SExpr` dynamic, no rotate node) are the analyzed next
-  increments — the two ingestion paths become one meaning on the heap-free leaf.
-* `RngLeaf` — the DR-randomness deterministic entropy-read leaf: CryptoSSA's
+  (`add/sub/mul/and/xor`). The `.letBind` arm and the shift/rotate arms
+  (Path A immediate vs `SExpr` dynamic, no rotate node) are outside this fragment.
+* `RngLeaf` — the deterministic entropy-read leaf: the crypto dialect's
   `sampleBit`/`sampleBv n` modeled as total deterministic reads over an `Entropy`
-  stream (range + determinism lemmas proved), the lowerable counterpart to the
-  drop-to-`none` at `CryptoToVIR.lean:86,118`. The probabilistic `SPComp.sample`
-  meaning stays a *separate* security interpretation (the uniform-entropy realization
-  theorem is the next DR step).
+  stream (range + determinism lemmas proved), a lowerable counterpart to the
+  sample ops. The probabilistic `SPComp.sample` meaning stays a *separate* security
+  interpretation (the uniform-entropy realization is in `RngRealization`).
 -/
 
 @[expose] public section

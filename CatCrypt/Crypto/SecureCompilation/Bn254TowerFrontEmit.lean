@@ -34,7 +34,7 @@ same straight-line route as `Mersenne31FrontEmit`):
 
 ```
   body (LowCT: RArrLoad / RScalarSetExpr carry-chain field math / RArrStore)
-    --(translateDialectCarrySelect: the C6 carry-chain instruction-selection
+    --(translateDialectCarrySelect: the carry-chain instruction-selection
        front — the bSltu carry/borrow windows become bvAddCarryLo/bvAddCarryHi
        ADC-class chains; everything else falls through to
        translateDialectControl)--> Com catCryptDialect inΓ (.memref 8)

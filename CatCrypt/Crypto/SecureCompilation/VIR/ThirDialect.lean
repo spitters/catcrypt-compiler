@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
 public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 
 /-!
-# THIR VIR dialect and the verified `Com[thir] → Com[jasmin]` lowering (#616)
+# THIR VIR dialect and the verified `Com[thir] → Com[jasmin]` lowering
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -82,7 +82,7 @@ inductive ThirOp where
   | thShrImm (w n : Nat)
   /-- Native **arithmetic** right-shift by a compile-time `n`, `[reg w] → reg w`,
       denoting `BitVec.sshiftRight`. Lowers 1:1 to `sarImm w n`. The signed twin
-      of `thShrImm` (#606). -/
+      of `thShrImm`. -/
   | thSarImm (w n : Nat)
   /-- Native logical left-shift by a compile-time `n`, `[reg w] → reg w`. Lowers
       1:1 to `shlImm w n`. -/
@@ -564,10 +564,10 @@ example :
   show ((5 : BitVec 32) ^^^ BitVec.ofNat 32 255) = (5 : BitVec 32) ^^^ BitVec.ofNat 32 255
   rfl
 
-/-! ## 9. The bounded FOR-loop front construct (#618, E3)
+/-! ## 9. The bounded FOR-loop front construct
 
 The front's straight-line surface (`ThirOp` cascade) has no loop. This section
-adds the **bounded for-loop** front construct as a thin wrapper over a THIR-dialect
+defines the **bounded for-loop** front construct as a thin wrapper over a THIR-dialect
 loop body, lowered to the **existing** jasmin for-loop layer (`JForProg`,
 `JasminPrint.lean` §7) — NOT a new `JasminOp`. A `ThirForProg` is the THIR analogue
 of `JForProg`: a static public trip count `n` plus a loop-carried-accumulator

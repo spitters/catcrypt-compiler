@@ -71,7 +71,7 @@ So the projective group law, projected back to affine via *one* inverse, equals 
 short-Weierstrass group law — the projective accumulation computes the same `G1` group
 element, with the inverse amortized to the final conversion.
 
-## Scope (the honest caveat)
+## Scope
 
 The ties are the **generic-chart** identities (`Z = 1`, distinct/doubling branches, nonzero
 `y`), which hold by `field_simp; ring`.  The exceptional cases (vertical line / point at

@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
-# Spartan sum-check prover reflect surface — Tier 1 full-emit (ZK honesty roadmap)
+# Spartan sum-check prover reflect surface
 
 The Spartan zkSNARK prover's hot path is a multi-round sum-check: each round the
 prover commits a univariate round polynomial, the verifier (Fiat–Shamir)
@@ -21,10 +21,10 @@ opened. `EmittedSumCheckRealization.lean` already proves the *round evaluator*
 realizes `UnivariatePoly.eval` of the concrete Baby Bear `SumCheckParams`, so
 the sum-check soundness bound lands on the emitted round (Axis B).
 
-This file supplies the deferred **Axis-A** piece (README.md §"What is
-DEFERRED", item 1): the *prover orchestration* — the per-round
-(commit, squeeze, eval) loop plus the closing PCS open — reflected through the
-verified compiler chain `LowCT → CryptoSSA → Com → jasmin`, the same chain
+This module supplies the **Axis-A** piece: the *prover orchestration* — the
+per-round (commit, squeeze, eval) loop plus the closing PCS open — reflected
+through the verified compiler chain `LowCT → Com catCryptDialect → Jasmin`,
+the same chain
 `bench/plonky3_compare/fri_from_rustcmd.lean` runs for the Plonky3 FRI prover.
 Every byte of the emitted `.jazz` goes through the verified front; the field
 arithmetic of the round evaluator lives inside the opaque
@@ -40,7 +40,7 @@ tied to `UnivariatePoly.eval` in `EmittedSumCheckRealization`).
       rpoly_k = round_poly(witness_poly, k)       -- (folded inside the leaf)
       cm_k    = commit_round(rpoly_k)             -- commit the round polynomial
       alpha_k = squeeze(cm_k)                      -- Fiat–Shamir challenge
-      v_k     = round_eval(rpoly_k, alpha_k)       -- Horner round evaluator (#347)
+      v_k     = round_eval(rpoly_k, alpha_k)       -- Horner round evaluator
     open = pcs_open(witness_poly, c0)             -- multilinear-IPA opening
     return open
 ```
@@ -114,7 +114,7 @@ axiom spartan_commit_round (N : Nat) : SpartanRoundPoly N → SpartanDigest
 /-- Fiat–Shamir challenger squeeze: next round challenge from the transcript. -/
 axiom spartan_challenger_squeeze : SpartanDigest → SpartanFelt
 
-/-- Evaluate a round polynomial at the challenge by the **Horner round** (#347).
+/-- Evaluate a round polynomial at the challenge by the **Horner round**.
     The leaf's internal semantics are `bbHornerEval`, tied to
     `UnivariatePoly.eval` in `EmittedSumCheckRealization.lean`. -/
 axiom spartan_sumcheck_round_eval (N : Nat) :

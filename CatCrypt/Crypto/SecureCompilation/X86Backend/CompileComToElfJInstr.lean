@@ -24,7 +24,7 @@ the result as a single-`STT_FUNC` ELF object via the SAME
 `ElfObject.buildElfObjectMulti`, returning a `ByteArray` — drop-in shape for the
 GoldenPath kernels' `def …_x86_elf : ByteArray := …` definitions.
 
-## Why the swap is byte-preserving (full ELF, not merely `.text`)
+## Why the swap preserves the bytes of the whole ELF object
 
 Both single-function entries factor through **the same** ELF stitcher on **one**
 leaf:
@@ -39,7 +39,7 @@ leaf:
 objects are byte-identical **iff the two leaves are** — i.e. iff the names match
 and the two `.text` streams agree. The `.text` agreement is exactly
 `ComToFramedJInstrLeaq.framedLeaqText_eq_lprog`: with the frame-open / frame-close
-`leaq` pair now carried by the JInstr framing too, and under the framing /
+`leaq` pair carried by the JInstr framing too, and under the framing /
 frame-size / body agreement (the resolver-discharged `LprogJInstrBytesAgree` block
 agreement `encodeJBlock ≡ encodeLcmd body`, the matched saved-register push/pop, the
 empty arg-marshal), `jinstrFramedLeaqText f F = encodeLfundefBytes body` **byte for
@@ -53,12 +53,12 @@ swap unchanged.
   single-function `ElfObject.Leaf`, `none` outside the `gatherJBlock`-covered
   fragment), `compileLeafToElf` (one leaf → `ByteArray` via `buildElfObjectMulti`),
   and `compileComToElfJInstr` (the drop-in entry — JInstr object when covered,
-  honest fall-back to `compileComToElf` when not, so the entry is TOTAL and never
+  fall-back to `compileComToElf` when not, so the entry is TOTAL and never
   silently emits wrong bytes).
 
 * **§2 — the byte-equality the swap relies on.**
   `compileLeafToElf_eq_of_text` (equal-name + equal-`.text` leaves ⇒ equal ELF
-  `ByteArray`), and `jinstrElf_eq_lprogElf` — the load-bearing theorem: the JInstr
+  `ByteArray`), and `jinstrElf_eq_lprogElf` — the main theorem: the JInstr
   entry's ELF bytes equal the `Lprog` entry's `compileLprogToElf` bytes on a
   single-function `Lprog` whose body is the matched `body`, composing
   `framedLeaqText_eq_lprog`.
@@ -74,9 +74,10 @@ framing `leaq` pair is `LprogBytes.encLeaRspFrame` (the SAME trusted leaf-ABI
 `leaq` the `Lprog` framed path already emits), the prologue/epilogue is
 `LeafBytes`'s trusted push/pop/ret, and the ELF stitch is the SAME
 `ElfObject.buildElfObjectMulti` both entries already use. This module only
-*composes* and *reconciles* those. No `sorry`, no axiom, no `native_decide`.
+*composes* and *reconciles* those. All goals are closed, with no axiom and no
+`native_decide`.
 
-## Honesty — the ELF wrapper is the SAME, the residual is upstream of it
+## Scope — the ELF wrapper is the SAME, the residual is upstream of it
 
 The two entries use the **identical** ELF stitcher (`buildElfObjectMulti`) on a
 single leaf, so once the leaves' `.text` agrees (`framedLeaqText_eq_lprog`) the

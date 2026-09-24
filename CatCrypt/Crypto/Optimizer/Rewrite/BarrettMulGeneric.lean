@@ -23,7 +23,7 @@ Building on the generic Barrett reduction
 barrettModMul a b = barrettCondsub (a * b)
 ```
 
-— the workhorse of constant-time modular exponentiation and NTT butterflies —
+— the core step of constant-time modular exponentiation and NTT butterflies —
 and proves it computes the true modular product `(a * b) % q`.
 
 The reduction core (`barrettCondsub_eq_mod`) requires its input to lie in the

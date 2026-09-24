@@ -17,7 +17,7 @@ The Spartan/Jolt sum-check prover hot path is a **multi-phase counted-round
 kernel**: seed the Fiat–Shamir transcript with the claimed sum, then run the
 per-round loop — each round folds the round polynomial into the accumulator
 (`round_eval`, a BabyBear Horner fold) and squeezes the next challenge from the
-Poseidon2 transcript. Spartan's R1CS sum-check (#431) is two-phase:
+Poseidon2 transcript. Spartan's R1CS sum-check is two-phase:
 `num_rounds_x = 4` cubic rounds followed by `num_rounds_y = 5` quad rounds. Its
 top-level control is therefore a *sequence of a straight-line FS-init prologue
 and two counted round loops*:
@@ -70,7 +70,7 @@ Keccak-f's permutation correctness is the FIPS-202 KAT.
   `RFor` round loops, each looping a straight-line `RSeq` of two leaf calls).
 * `zkSumCheck_front_fires` — the covered front fires on the whole prover
   (`native_decide`).
-* `zkSumCheckCovered_denote` — **the deliverable**: the whole-program machine
+* `zkSumCheckCovered_denote` — **the main theorem**: the whole-program machine
   denote of the sum-check prover through the canonical front, via
   `transCtlSeq_denote_seq` and the `zkSumCheck_front_eq` bridge
   (`transCtlSeq = translateDialectControl` on this `RSeq`-of-leaves term, via the
@@ -109,7 +109,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 
-/-! ## 0. Spartan sum-check parameters (the `#431` two-phase R1CS schedule) -/
+/-! ## 0. Spartan sum-check parameters (the two-phase R1CS schedule) -/
 
 /-- Phase-1 round count `num_rounds_x = 4` (the cubic rounds over the R1CS `x`
     variables) — the `MOV r8, #4` seed of the hand emit's Spartan loop. -/
@@ -207,7 +207,7 @@ def proverArgVM : VarMap proverArgCtx where
 
 /-- **The covered front fires on the whole Spartan sum-check prover.** The FS-init
     leaf resolves its transcript/claim arguments, the two bounded `RFor` round
-    loops unroll `CProg`-free through `loopRForD` (each round body a two-leaf
+    loops unroll through `loopRForD` (each round body a two-leaf
     `RSeq` threading `acc`/`tr`), the `RSeq` spine composes the phase prefixes,
     and the top-level terminator closes. -/
 theorem zkSumCheck_front_fires :
@@ -251,7 +251,7 @@ theorem zkSumCheck_front_eq {Γ : Ctx} (vm : VarMap Γ) :
     transCtlSeq vm zkSumCheckLowCT = translateDialectControl vm zkSumCheckLowCT :=
   transCtlSeq_rseq_congr (fun _ => rfl) (fun _ => inner_front_eq _) vm
 
-/-! ## 5. THE DELIVERABLE — the whole-program denote homomorphism
+/-! ## 5. MAIN THEOREM — the whole-program denote homomorphism
 
 For the Spartan sum-check prover, the descended `Com catCryptDialect` prefix
 denotes exactly the kernel's `semScalar` waist — the three-phase whole-program

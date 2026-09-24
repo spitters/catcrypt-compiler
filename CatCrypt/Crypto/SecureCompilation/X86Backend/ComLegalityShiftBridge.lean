@@ -10,12 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGatherFu
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
 
 /-!
-# D4 shift-family bridge: the immediate shifts lower under `lowerLinstrExt2`
+# Shift-family bridge: the immediate shifts lower under `lowerLinstrExt2`
 
-The prior step (`ComLegalityToGatherFull.lean`) completed the supported-op →
+`ComLegalityToGatherFull.lean` gives the supported-op →
 gather bridge for the **closed-mnemonic** majority of the legal set —
-`regArith` / `mulhi` / `regConst` — but left the two immediate-shift families
-`shrImm 64 n` / `shlImm 64 n` out. It recorded, honestly, *why*: their SSA
+`regArith` / `mulhi` / `regConst` — without the two immediate-shift families
+`shrImm 64 n` / `shlImm 64 n`. The obstacle for the shifts: their SSA
 export mnemonic is `withWidthTag 64 ("SHR:" ++ toString n)` — a string whose
 content depends on the symbolic count `n`. Lean 4.29's `String` pattern API
 (`startsWith` / `endsWith`) is `Slice` / UTF-8-iterator-backed and carries no
@@ -156,8 +156,8 @@ on a *closed* mnemonic. `ShiftMnemSymbolic` closes them for **every** `n`,
 routing the `parseShiftMnem` prefix detection through the `List Char` /
 `String.Slice.copy` view instead of the (symbolically-stuck) `Slice`-backed
 `String.startsWith`. This lifts the shift `isSome` from the concrete in-range
-family to the **fully symbolic** shift count — the residual the prior step
-recorded as the one open String-API gap is now closed. -/
+family to the **fully symbolic** shift count, which covers the String-API gap
+described in the module header. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
 
@@ -212,7 +212,7 @@ dispatcher extended to the immediate shifts at **any** count `n`: for any op in
 `lowerLinstrExt2_isSome_of_supportedRed`) **plus** `shrImm 64 n` / `shlImm 64 n`
 for symbolic `n` — the front's SSA export `opToLinstrR e.op dst (exprArgs … e)`
 lowers under `lowerLinstrExt2`. This is the whole reduction-tractable supported-op
-set bridged, with the symbolic-`n` shifts no longer a residual. -/
+set bridged, including the symbolic-`n` shifts. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGatherFull in
 /-- **The full supported-op (incl. symbolic-`n` shifts) export → gather bridge.**

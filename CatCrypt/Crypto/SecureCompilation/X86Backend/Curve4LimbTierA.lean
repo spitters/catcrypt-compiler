@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunB
 /-!
 # Tier-A Montgomery multiply over `runBlock` for the 4-limb curves
 
-`SchoolbookProductRunBlock.lean` proves the genuine
+`SchoolbookProductRunBlock.lean` proves the
 `runBlock(emitted product block) = valLimbs x · valLimbs y`
 (`emitProductBlock_runBlock_value`, axiom-clean, general `N`) and feeds it to
 the proven prime-parametric Montgomery reduction
@@ -31,7 +31,7 @@ This file *instantiates* that exact template for the remaining 4-limb curves:
 For each curve we give
 
 1. `<curve>Limbs` + `<curve>Limbs_value` — the canonical little-endian 4-limb
-   representation of the modulus, pinned by `native_decide` to the genuine
+   representation of the modulus, pinned by `native_decide` to the
    prime (secp256k1 reuses the existing `Cios4LimbProven` definition);
 2. `<curve>_emit_montmul_runBlock(4)` — the curve analogue of
    `sm2_emit_montmul_runBlock_full(4)`: with reduced 4-limb inputs and the
@@ -42,7 +42,7 @@ For each curve we give
    `· 2^256 ≡ valLimbs x · valLimbs y (mod p)`. This is
    `runBlock(emitted) = <curve> mont-mul spec` — Tier A for that curve.
 
-## Scope (honest)
+## Scope
 
 These are **flag-resetting** Tier-A instantiations of the SM2 template (each
 emitted schoolbook row re-enters `CF = OF = 0`). The persistent-flag / full-ILP
@@ -55,7 +55,7 @@ headline `sm2_emit_montmul_runBlock_full`); the reduction law is the
 prime-parametric `Number.montgomeryMul_correct` instantiated at each curve's
 canonical prime. Only the modulus + reduced-input bounds are curve-specific, so
 the same proof skeleton closes all three. The only `native_decide` step per
-curve is the constant pin `<curve>Limbs_value` against its genuine prime.
+curve is the constant pin `<curve>Limbs_value` against its prime.
 -/
 
 @[expose] public section
@@ -81,7 +81,7 @@ The limbs already exist as `Cios4LimbProven.secp256k1Limbs`
 
     * the emitted product block's `runBlock` value is exactly
       `valLimbs x · valLimbs y` (`emitProductBlock_runBlock_value`); and
-    * `montgomeryReduce p_secp256k1 (2^256) Nprime256` of that genuine `runBlock`
+    * `montgomeryReduce p_secp256k1 (2^256) Nprime256` of that `runBlock`
       value (= `montgomeryMul …`) lies in `[0, 2·p)` and
       `· 2^256 ≡ valLimbs x · valLimbs y (mod p_secp256k1)`.
 

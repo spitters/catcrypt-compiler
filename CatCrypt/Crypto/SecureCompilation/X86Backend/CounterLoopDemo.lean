@@ -9,14 +9,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
-# Counter-reading loop emit — end-to-end demo (task #538, STEP 5)
+# Counter-reading loop emit — end-to-end demo
 
-`LprogControlFlow.lean` authored the **counter-reading** loop lowering
+`LprogControlFlow.lean` defines the **counter-reading** loop lowering
 (`cforIdxToLprogAbiBody` / `cforIdxToLprogAbiBodyZeroAcc` / `cforIdxDenote`): a
 two-input body `Com jasminDialect [accTy, .reg 64] accTy` over `(acc, ctr)`
 whose `ctr`-arg register is pinned to the live loop counter, emitting the
-back-edge `… ; SUB nReg,#1 ; CMP nReg,#0 ; jne .L0`. That lowering's end-to-end
-use was never demonstrated. This module is that demonstration.
+back-edge `… ; SUB nReg,#1 ; CMP nReg,#0 ; jne .L0`. This module demonstrates
+that lowering end to end.
 
 We take the smallest counter-reading body —
 

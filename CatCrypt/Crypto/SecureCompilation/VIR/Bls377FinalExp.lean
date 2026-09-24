@@ -67,7 +67,7 @@ proved is the *algebraic correctness* equality
 
     finalExp377 ξ₂ ξ₆ f = f ^ ((bls377Q¹² − 1) / bls377R)
 
-i.e. that this schedule computes the genuine `(q¹²−1)/r` power map landing the
+i.e. that this schedule computes the `(q¹²−1)/r` power map landing the
 Miller value in the order-`r` target group.  That equality rests on
 `conj12 = (·)^(q⁶)` (the structural conjugation being the `p⁶`-Frobenius), the
 tower Frobenius identities, and the easy/hard factorisation of the exponent —

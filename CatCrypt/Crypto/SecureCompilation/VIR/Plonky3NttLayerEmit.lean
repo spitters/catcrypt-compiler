@@ -19,7 +19,7 @@ set_option autoImplicit false
 # Plonky3 BabyBear NTT layer (n = 8, last layer), FRONT-COMPILED (`plonky3_ntt_layer8_rc`)
 
 One full radix-2 Cooley–Tukey NTT layer over BabyBear
-(`p = 2013265921 = 2³¹ − 2²⁷ + 1`), sourced through the verified `CProg`-free
+(`p = 2013265921 = 2³¹ − 2²⁷ + 1`), sourced through the verified
 front — NO hand-built `Com` anywhere in the emit path:
 
 ```
@@ -177,7 +177,7 @@ def srcVM : VarMap srcCtx :=
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push a `LowCT` body through the `CProg`-free control front and cap with
+/-- Push a `LowCT` body through the control front and cap with
     `ret <name>` (a `u64` slot of the final `VarMap`). `none` if the front
     declines. (Also used by `Plonky3NttLayerInlineEmit` on the fused body.) -/
 def frontComOf (body : LowCT) (name : String) :

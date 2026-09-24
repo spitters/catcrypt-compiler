@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
 # Carrier bridge: the dialect GT value `Fp12Val bls377Q` ↔ the relational-front `Fp12_377`
 
 CatCrypt carries the `bls12_377` pairing target group `GT = Fp12` in **two**
-encodings, both over the genuine 377-bit base prime `bls377Q`
+encodings, both over the 377-bit base prime `bls377Q`
 (`FpBLS377 = ZMod bls377Q`):
 
 * the **dialect** carrier `FieldDialect.Fp12Val p` (the denotation target of the
@@ -22,7 +22,7 @@ encodings, both over the genuine 377-bit base prime `bls377Q`
   default `Mul (Fp2Val p)` fixes the **quadratic** non-residue at `u² = −1`
   (correct for BLS12-381/BN254), but it also exposes the **β-parametric** tower
   multiplies `Fp2Val.mulBeta β` / `Fp6Val.mulBeta β ξ0` / `Fp12Val.mulBeta β ξ0`
-  for the tower `u² = β` (`β = −5` is the genuine BLS12-377 quadratic
+  for the tower `u² = β` (`β = −5` is the BLS12-377 quadratic
   non-residue).  The **cubic** non-residue is carried as a *single scalar*
   `ξ₀ : ZMod p` encoding `ξ = ξ₀ + u` (`Fp6Val.mulXiBeta β ξ0`); the **dodecic**
   non-residue is the `Fp6` generator `v` itself (`Fp12Val.mulByVBeta`, `w² = v`).
@@ -51,10 +51,10 @@ the pairing-check op is curve-generic, and the bridge instantiates it at the
 the relational-front leaf is **definitionally** the dialect leaf `ZMod p` at
 `p = bls377Q`.  The leaf map is therefore the identity.
 
-## What is PROVED — the bridge targets the genuine BLS12-377 non-residue
+## What is PROVED — the bridge targets the BLS12-377 non-residue
 
 The bridge maps the relational-front multiply to the dialect's **β-parametric**
-tower multiply at `β = ξ₂` — the genuine quadratic non-residue the relational
+tower multiply at `β = ξ₂` — the quadratic non-residue the relational
 front carries — so the `Fp2`-level commute holds **unconditionally in `ξ₂`** (no
 `ξ₂ = −1` convention). The only cubic-shape requirement is:
 
@@ -77,12 +77,12 @@ Every obligation is **fully proved** (no axiom, no `sorry`); each mul-commute is
 a finite tower-algebra identity closed by `ring` over `ZMod bls377Q` after
 pushing the leaf map through the schoolbook formulas.
 
-## The genuine BLS12-377 GT carrier
+## The BLS12-377 GT carrier
 
 `toFp12_mul_bls377` instantiates the parametric mul-commute at the TRUE
 BLS12-377 non-residues: `ξ₂ = −5` (`Fp2 = Fp[u]/(u² + 5)`, `bls377Beta`) and
 `ξ₆ = u = ⟨0, 1⟩` (`Fp6 = Fp2[v]/(v³ − u)`, `bls377Xi6`, `ξ₀ = 0`). The dialect's
-β-parametric `Fp12Val.mulBeta (−5) 0` *is* the genuine BLS12-377 GT multiply, so
+β-parametric `Fp12Val.mulBeta (−5) 0` *is* the BLS12-377 GT multiply, so
 the bridge transports the relational-front pairing value into the real field —
 the additive β-parametrization meets the curve's actual quadratic non-residue,
 with no `ξ₂ = −1` caveat. The default `Mul (Fp2Val p)` (and `Fp6Val.mul` /
@@ -172,7 +172,7 @@ theorem toFp2_neg (x : Fp2_377) : toFp2 (-x) = -toFp2 x := by
 
 /-- The leaf map carries the `Fp2_377` schoolbook multiply (non-residue `ξ₂`) to
     the dialect β-parametric multiply `Fp2Val.mulBeta ξ₂` — **unconditionally** in
-    `ξ₂` (the additive β-parametrization meets the genuine non-residue, so no
+    `ξ₂` (the additive β-parametrization meets the BLS12-377 non-residue, so no
     `ξ₂ = −1` convention is forced). -/
 theorem toFp2_mul (ξ₂ : FpBLS377) (x y : Fp2_377) :
     toFp2 (Fp2_377.mulSchoolbook ξ₂ x y) = Fp2Val.mulBeta ξ₂ (toFp2 x) (toFp2 y) := by
@@ -221,7 +221,7 @@ theorem toFp6_sub (x y : Fp6_377) :
 
 /-- `toFp6` carries the relational-front cubic multiply to the dialect
     β-parametric cubic multiply, given `ξ₆ = ⟨ξ₀, 1⟩` — unconditionally in `ξ₂`
-    (the β-parametrization carries the genuine quadratic non-residue `ξ₂`). -/
+    (the β-parametrization carries the quadratic non-residue `ξ₂`). -/
 theorem toFp6_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (ξ0 : ZMod bls377Q)
     (hξ6 : ξ₆ = ⟨ξ0, 1⟩) (x y : Fp6_377) :
     toFp6 (Fp6_377.mulSchoolbook ξ₂ ξ₆ x y)
@@ -254,11 +254,11 @@ theorem toFp6_mulByV (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (ξ0 : ZMod bls377Q)
     simp only [toFp6_a0, toFp6_a1, toFp6_a2, Fp6_377.mulByV, Fp12Val.mulByVBeta,
       toFp2_xiFold_r ξ₂ ξ₆ ξ0 hξ6]
 
-/-- **The load-bearing mul-commute.** `toFp12` carries the relational-front
+/-- **The main mul-commute.** `toFp12` carries the relational-front
     `Fp12_377` Karatsuba/schoolbook multiply (structured `(ξ₂, ξ₆)`) to the
     dialect β-parametric `Fp12Val.mulBeta ξ₂ ξ0` multiply, given `ξ₆ = ⟨ξ₀, 1⟩`
     (`hξ6`) — **unconditionally in the quadratic non-residue `ξ₂`**. The β-tower
-    carries the genuine non-residue, so this hits the TRUE BLS12-377 GT field at
+    carries the BLS12-377 non-residue, so this hits the TRUE BLS12-377 GT field at
     `ξ₂ = −5` (`toFp12_mul_bls377`) with no false `ξ₂ = −1` convention. Fully
     proved by reduction to `toFp6`'s ring-hom laws. -/
 theorem toFp12_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (ξ0 : ZMod bls377Q)
@@ -270,22 +270,22 @@ theorem toFp12_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (ξ0 : ZMod bls377Q)
       Fp12_377.mul₆, toFp6_add, toFp6_mul ξ₂ ξ₆ ξ0 hξ6,
       toFp6_mulByV ξ₂ ξ₆ ξ0 hξ6]
 
-/-! ## 6. The genuine BLS12-377 GT carrier (β = −5, ξ₀ = 0) -/
+/-! ## 6. The BLS12-377 GT carrier (β = −5, ξ₀ = 0) -/
 
-/-- The genuine BLS12-377 quadratic non-residue: `Fp2 = Fp[u]/(u² + 5)`, `u² = −5`. -/
+/-- The BLS12-377 quadratic non-residue: `Fp2 = Fp[u]/(u² + 5)`, `u² = −5`. -/
 def bls377Beta : ZMod bls377Q := -5
 
-/-- The genuine BLS12-377 cubic non-residue scalar `ξ₀ = 0` (`Fp6 = Fp2[v]/(v³ − u)`,
+/-- The BLS12-377 cubic non-residue scalar `ξ₀ = 0` (`Fp6 = Fp2[v]/(v³ − u)`,
     i.e. `v³ = u`, so `ξ = u = 0 + u`). -/
 def bls377Xi0 : ZMod bls377Q := 0
 
-/-- The genuine BLS12-377 cubic non-residue `ξ₆ = u = ⟨0, 1⟩ : Fp2_377`. -/
+/-- The BLS12-377 cubic non-residue `ξ₆ = u = ⟨0, 1⟩ : Fp2_377`. -/
 def bls377Xi6 : Fp2_377 := ⟨bls377Xi0, 1⟩
 
-/-- **The genuine BLS12-377 GT mul-commute.** `toFp12` carries the relational-front
+/-- **The BLS12-377 GT mul-commute.** `toFp12` carries the relational-front
     `Fp12_377` multiply at the TRUE BLS12-377 non-residues (`ξ₂ = −5`, `ξ₆ = u`)
     to the dialect β-parametric `Fp12Val.mulBeta (−5) 0` multiply — the dialect
-    GT carrier under the genuine quadratic non-residue, with no `ξ₂ = −1` caveat. -/
+    GT carrier under the quadratic non-residue, with no `ξ₂ = −1` caveat. -/
 theorem toFp12_mul_bls377 (x y : Fp12_377) :
     toFp12 (Fp12_377.mulSchoolbook bls377Beta bls377Xi6 x y)
       = Fp12Val.mulBeta bls377Beta bls377Xi0 (toFp12 x) (toFp12 y) :=

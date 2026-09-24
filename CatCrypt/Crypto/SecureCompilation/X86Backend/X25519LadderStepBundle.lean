@@ -64,13 +64,13 @@ bundle memory, so it composes with this body unchanged.
   differential add-and-double) is provided in §6 for the runtime KAT to compare
   against; `feOf` reads a 4-limb output back as a `Nat`.
 
-## Scope — value identity is C/GMP-KAT-gated (REV-12), not in-Lean
+## Scope — value identity is C/GMP-KAT-gated, not in-Lean
 
 The full field-arithmetic *value* identity (the `runBlock` of the 1058-`JInstr`
 field step = `ladderRef` mod `p`) is **not** discharged in Lean: it is the
 256×256→512 bignum identity that `Fe25519{Mul,Ops}Kernel` / `BignumMontMulKernel`
 already establish is `#eval`/`native_decide`-infeasible (interpreter-deep
-string-keyed memory + SAT-scale carry chains — the documented REV-12 boundary;
+string-keyed memory + SAT-scale carry chains;
 `Fe25519MulKernel`/`BignumMontMulKernel` gate the same identity at runtime, NOT
 in-Lean). What is owned and proven **in Lean** here is the **composition + ABI
 shape**: the copy-in/step/copy-out body is emitted `JInstr`, lowers
@@ -183,7 +183,7 @@ A from-scratch differential add-and-double over `Nat` — no machine model, no
 field leaves, just `Nat` arithmetic mod `p`. This is the **independent
 reference** the runtime C/GMP KAT (`x25519_ladder_step_owned_kat.c`'s `ref_step`)
 mirrors limb-for-limb; the KAT compares it against the owned `.s` output (the
-REV-12-mandated runtime gate, since the in-Lean `runBlock` value identity is
+runtime gate, since the in-Lean `runBlock` value identity is
 infeasible to discharge). Kept here so the Lean source and the C oracle share one
 written spec. -/
 

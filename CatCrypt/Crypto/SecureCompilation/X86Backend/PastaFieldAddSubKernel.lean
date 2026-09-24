@@ -17,9 +17,9 @@ This module re-emits the Pasta-cycle base-field add and subtract through the
 SAME owned x86 backend (`JasminModel.runBlock` / `X86Dialect.lowerBlock_denote`
 / `AsmPrinter`, no jasminc) used for the BLS12-381 / BN254 Montgomery
 field-multiply kernels — but with **hardware ADD/ADC carry chains + CMOV** for
-the conditional modular reduction, replacing the **branchless carry synthesis**
-the #440 emit used (the per-limb `and`/`xor`/`shr $63` carry-bit computation,
-~10 instructions per carry where a single `adc`/`sbb` suffices).
+the conditional modular reduction, in place of a **branchless carry synthesis**
+(the per-limb `and`/`xor`/`shr $63` carry-bit computation, ~10 instructions per
+carry where a single `adc`/`sbb` suffices).
 
 Both Pasta primes are 255-bit, four 64-bit limbs:
 
@@ -67,14 +67,14 @@ backend with the denotation-preserving lowering proved
   denotation-preserving across the `loadMem`/`mov`/`add`/`adc`/`sub`/`sbb`/
   `cmovb`/`and_`/`storeMem` mix.
 * `*Alloc_no_overflow`: the first-fit allocator assigns every register name a
-  distinct pool register (no silent `%rax`-alias, the #380 class).
+  distinct pool register (no silent `%rax`-alias).
 * `*Asm_shape`: the emitted text contains hardware `addq`/`adcq`/`sbbq`/`cmovb`
-  and **no** `shrq $63` carry-synthesis idiom — the witness that the #440
-  branchless synthesis is gone.
+  and **no** `shrq $63` carry-synthesis idiom — the witness that no
+  branchless carry synthesis is emitted.
 * The all-inputs byte-identity that the emitted stream computes `(a±b) mod p`
   is the external KAT (`bench/halo2_compare/pasta_field_addsub_kat`, vs GMP
   `(a±b) mod p`): corners + max + random vectors. The value-level field tie is
-  `ZK.Halo2PastaFieldEmit.{pastaAdd,pastaSub}_realizes_{add,sub}` (#440), proved
+  `ZK.Halo2PastaFieldEmit.{pastaAdd,pastaSub}_realizes_{add,sub}`, proved
   over `Fp = ZMod p`; this module re-emits those operations with hardware
   carries.
 
@@ -347,7 +347,7 @@ def hasSub (hay needle : String) : Bool :=
 
 /- Shape check: the emitted Pallas add uses the hardware ADD/ADC carry chain +
     `cmovb` select, and contains **no** `shrq $63` carry-synthesis idiom (the
-    #440 branchless form) — the witness that hardware carries replaced it. -/
+    branchless form) — the witness that the carries are hardware carries. -/
 #guard (hasSub pallasAddAsm "addq") && (hasSub pallasAddAsm "adcq") && (hasSub pallasAddAsm "sbbq") && (hasSub pallasAddAsm "cmovb") && (hasSub pallasAddAsm "(%rdi)") && !(hasSub pallasAddAsm "shrq $63")
 
 /- Shape check: the emitted Pallas sub uses the hardware SUB/SBB borrow chain +
@@ -356,7 +356,7 @@ def hasSub (hay needle : String) : Bool :=
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness.
     Pallas leaves use the bench's `pasta_field_{add,sub}` symbol names (drop-in
-    over the #440 branchless `.s`); Vesta leaves are emitted alongside. -/
+    for the branchless `.s`); Vesta leaves are emitted alongside. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/halo2_compare/gen_com"
   IO.FS.writeFile

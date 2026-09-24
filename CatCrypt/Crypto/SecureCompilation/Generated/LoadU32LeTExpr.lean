@@ -7,11 +7,15 @@ public import HaxLean.TExpr
 Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
+-/
 
-GENERATED (path-b piece C) by scripts/texpr_codegen_spike.lean from the REAL
-chacha20poly1305-hax/hax_frontend_export.json (hax-lean parseHaxFileWithTExpr +
-tPipelineFull). Reducible TExpr literal for load_u32_le; consumed by texprToThir.
-Regenerate, do not hand-edit.
+/-!
+# Typed hax expression for `load_u32_le`
+
+`loadU32LeTexpr` is the reducible `Hax.TExpr` literal of the ChaCha20-Poly1305
+`load_u32_le` function, generated from `chacha20poly1305-hax/hax_frontend_export.json` by
+hax-lean's `parseHaxFileWithTExpr` and `tPipelineFull`. `texprToThir` consumes it.
+The file is generated; regenerate it rather than editing it by hand.
 -/
 def loadU32LeTexpr : Hax.TExpr :=
 Hax.TExpr.mk

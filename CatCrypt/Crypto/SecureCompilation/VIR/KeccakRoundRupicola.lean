@@ -18,7 +18,7 @@ development (the XOF / hash leaf of ML-KEM, ML-DSA, SLH-DSA, FAEST, SHA-3).
 
 ## Ground truth and what the framework discharges
 
-The bespoke #116/#118/#128/#132/#134/#135/#136 chain
+The bespoke chain
 (`KeccakEmitterReduction.lean` … `KeccakEmitterLanesReadout*.lean`) records the
 ~600-binding `emitRound` denotation reduction as a **residual `Prop`**
 (`KeccakEmitterReduction.EmitRoundDenotesClosedForm`): the per-helper
@@ -27,7 +27,7 @@ The bespoke #116/#118/#128/#132/#134/#135/#136 chain
 through `emitRound` (threading `bsAfterOp` extensions and pushing every read
 back to the original `(bs, immVar, V)` through ~600 slot-disjointness side
 conditions) is stated as a granted hypothesis, then bridged to FIPS 202 via
-#113's `keccak_round_bitexact`.
+`keccak_round_bitexact`.
 
 The framework's Keccak instance (`RelationalCompile.lean` §7:
 `KRefines`/`kArithStep`/`KRefines.arith`/`.seq`/`.consOp`/`.skip` and the
@@ -138,7 +138,7 @@ theorem emitIota_KRefines (round : Nat) :
 /-! ## 7. The full Keccak round, lowered by `rupicola_keccak` in one call
 
 This is the payoff: the entire FIPS 202 round — θ (parities + D), ρ∘π, χ, ι;
-the ~600-binding chain the bespoke #118/#128 residual records — is lowered to a
+the ~600-binding chain the bespoke residual records — is lowered to a
 synthesized `KStateStep` spec by the `SCont` splitter in a single
 `rupicola_keccak` invocation. The proof writes neither the spec, any
 `KRefines.seq`/`consOp` composition, any `Com.denote` rewrite, nor any

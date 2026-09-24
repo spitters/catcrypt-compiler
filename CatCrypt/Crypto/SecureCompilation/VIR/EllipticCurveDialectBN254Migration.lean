@@ -9,9 +9,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
 public import CatCrypt.Crypto.Pairing.BN254GroupEmit
 
 /-!
-# EllipticCurve-dialect BN254 `G1` migration tie (#482-3, step 4 — additive)
+# EllipticCurve-dialect BN254 `G1` migration tie (additive)
 
-Connects the new **EllipticCurve Veir-dialect** group law
+Connects the **EllipticCurve Veir-dialect** group law
 (`EllipticCurveDialect.padd`, denoting the abstract `ECPoint` group add) to the
 **verified emitted BN254 `G1` group-law kernel** (`Pairing/BN254GroupEmit.lean`:
 `emittedAffineAdd`, `emittedAffineAdd_realizes`), the field-leaf composition the
@@ -59,11 +59,11 @@ of per-primitive.  In this module:
 
 The `pdbl`/`pmadd`/`psmul`/`pmsm` (Pippenger/Straus) emitted-kernel ties for
 BN254, and the migrations of the other curves (BLS12-381 `G1`/`G2`, P-256,
-secp256k1, Pasta, Ristretto, Ed25519), are deferred: the EllipticCurve dialect
-already *denotes* the full group law + MSM (`EllipticCurveDialect.lean`), and the
-same `bnToEC`-style structural embedding lifts each curve's emitted group/MSM
-kernel onto the dialect.  Only the `padd` tie is landed here as the
-proof-of-concept of the one-tie-per-level structure.
+secp256k1, Pasta, Ristretto, Ed25519), are outside this module: the
+EllipticCurve dialect *denotes* the full group law + MSM
+(`EllipticCurveDialect.lean`), and the same `bnToEC`-style structural embedding
+lifts each curve's emitted group/MSM kernel onto the dialect.  This module
+proves the `padd` tie, an instance of the one-tie-per-level structure.
 -/
 
 @[expose] public section

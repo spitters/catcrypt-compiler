@@ -29,8 +29,8 @@ Demonstrates that adding a new curve to the pipeline is mechanical:
 4. Author a reified Lean function over the new opaque type.
 5. Emit MLIR via `LowCTToMLIR.emitFunc` or `emitFuncOutParam`.
 
-This file does steps 4 + 5; the C-side bench harness wiring is left
-as a follow-up (the shim is auto-generated and ready).
+This module does steps 4 + 5; the C-side bench harness wiring is
+outside its scope (the shim is auto-generated).
 -/
 
 @[expose] public section

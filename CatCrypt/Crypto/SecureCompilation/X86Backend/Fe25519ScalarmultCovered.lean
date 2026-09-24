@@ -26,8 +26,8 @@ semantics, with `x25519_ladder_iter` an opaque leaf (the Poseidon2-tier leaf
 model; the leaf's field-arithmetic correctness is the separate RFC 7748 §5.2
 KAT obligation).
 
-This replaces the hand-authored `UStep` schedule
-(`Fe25519UnifyingFront` / `Fe25519LfundefBridge`), which carried **no** machine
+The hand-authored `UStep` schedule
+(`Fe25519UnifyingFront` / `Fe25519LfundefBridge`) carries **no** machine
 denote. Here the denote is the image of the verified homomorphism
 `TranslateDialectScalar.translateDialectControl_denote_ctl`, applied to the
 structural coverage proof `x25519LadderLoop_covered`.
@@ -38,7 +38,7 @@ The single counted loop (the 255-fold ladder) is banked whole via the
 covered-fragment homomorphism `translateDialectControl_denote_ctl` over
 `IsCoveredSCtl` (`x25519LadderLoopCovered_denote`).
 
-The canonical front `translateDialectControl` now closes under **sequencing**
+The canonical front `translateDialectControl` closes under **sequencing**
 control blocks with `RSeq` (its `RSeq` arm recurses into itself), so the *full*
 scalarmult `RSeq (RFor ladder) (RCall encode)` — a top-level `RSeq` of an `RFor`
 with subsequent work — also descends and carries a whole-program denote
@@ -46,7 +46,7 @@ with subsequent work — also descends and carries a whole-program denote
 control-sequencing-closed `IsCoveredSCtlSeq`, definitionally the canonical front
 on this `RSeq`-of-leaves term). The inversion chain `z^(p−2)` is itself a
 sequence of squaring-runs (`RFor`) interleaved with `RCall fe25519_mul`, the
-same `RSeq`-of-control shape, now equally coverable.
+same `RSeq`-of-control shape, equally coverable.
 -/
 
 @[expose] public section
@@ -78,7 +78,7 @@ def loc (n : String) : Located := { locVar := n, locSrc := bundleTy }
 /-- One Montgomery-ladder step, threaded on the accumulator `acc`:
     `acc := x25519_ladder_iter(acc)`. Reuses the shape of
     `X25519Reflect.x25519LadderStepReified.body` (`RSeq RSkip (RCall …)`), but
-    with `dest = arg = "acc"` so the counted loop genuinely folds the
+    with `dest = arg = "acc"` so the counted loop folds the
     accumulator. Straight-line (`IsCoveredS`): `RSeq` of `RSkip` and one
     `RCall`. -/
 def ladderStepBody : LowCT :=
@@ -91,7 +91,7 @@ def ladderStepBody : LowCT :=
 def x25519LadderLoopLowCT : LowCT :=
   .RFor "i" 255 ladderStepBody
 
-/-! ## 2. Coverage — the load-bearing structural proof
+/-! ## 2. Coverage — the structural proof
 
 `x25519LadderLoopLowCT ∈ IsCoveredSCtl`, by the constructors: `rFor` over the
 straight-line ladder step (`ofStraight` of an `IsCoveredS` `RSeq`/`RSkip`/`RCall`
@@ -102,7 +102,7 @@ theorem ladderStepBody_coveredS : IsCoveredS ladderStepBody :=
   .rSeq .rSkip (.rCall "x25519_ladder_iter" (loc "acc") [loc "acc"])
 
 /-- **The 255-fold ladder loop is Stage-2 covered** (`IsCoveredSCtl`): a bounded
-    `RFor` over the straight-line ladder step. This is the load-bearing fact —
+    `RFor` over the straight-line ladder step. This is the key lemma —
     it feeds *both* the whole-program denote homomorphism
     (`translateDialectControl_denote_ctl`) and the operational front. -/
 theorem x25519LadderLoop_covered : IsCoveredSCtl x25519LadderLoopLowCT :=
@@ -119,7 +119,7 @@ def ladderArgVM : VarMap ladderArgCtx where
     if s = "acc" then some ⟨encodeTy bundleTy, .here⟩ else none
 
 /-- **The covered front fires on the whole 255-fold ladder loop.** The bounded
-    `RFor` unrolls `CProg`-free through `loopRForD`, threading the accumulator
+    `RFor` unrolls through `loopRForD`, threading the accumulator
     `acc` across all 255 iterations, and the top-level terminator closes. -/
 theorem x25519LadderLoop_front_fires :
     (translateDialectControlTop ladderArgVM x25519LadderLoopLowCT).isSome := by
@@ -156,7 +156,7 @@ theorem x25519LadderLoopCovered_denote :
 
 /-! ## 5. Sequencing control blocks — the full scalarmult descends
 
-The canonical front `translateDialectControl` now closes under **sequencing**
+The canonical front `translateDialectControl` closes under **sequencing**
 control blocks with `RSeq` (its `RSeq` arm recurses into itself rather than
 delegating to the straight-line `translateDialectFull`). So the *full*
 scalarmult `RSeq (RFor ladder) (RCall encode)` — a counted loop sequenced with
@@ -192,9 +192,9 @@ theorem fullScalarmult_coveredSeq : IsCoveredSCtlSeq fullScalarmultLowCT :=
   .rSeq (.ofCtl x25519LadderLoop_covered)
     (.ofCtl (.ofStraight (.rCall "fe25519_encode" (loc "out") [loc "acc"])))
 
-/-- **The RSeq-over-control wall is gone.** The full scalarmult `RSeq (RFor …) …`
-    now descends through the canonical front (it returned `none` before, when
-    `RSeq` delegated its `RFor` child to `translateDialectFull`). -/
+/-- **The front descends through `RSeq` over control.** The full scalarmult
+    `RSeq (RFor …) …` descends through the canonical front: `RSeq` translates its
+    `RFor` child with `translateDialectControl`, not `translateDialectFull`. -/
 theorem fullScalarmult_sequences_control_fires :
     (translateDialectControlTop ladderArgVM fullScalarmultLowCT).isSome := by
   native_decide
@@ -211,7 +211,7 @@ theorem fullScalarmult_front_eq {Γ : Ctx} (vm : VarMap Γ) :
   have hchild : transCtlSeq vm x25519LadderLoopLowCT
       = translateDialectControl vm x25519LadderLoopLowCT := rfl
   simp only [fullScalarmultLowCT, transCtlSeq, translateDialectControl, hchild]
-  -- Both sides are now the same `RSeq` fold over the folded `RFor` translation;
+  -- Both sides are the same `RSeq` fold over the folded `RFor` translation;
   -- case-split the shared scrutinee so the two (per-def) matchers iota-reduce.
   rcases translateDialectControl vm x25519LadderLoopLowCT with _ | o₁
   · rfl

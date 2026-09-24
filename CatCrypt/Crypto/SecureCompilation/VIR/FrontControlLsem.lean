@@ -11,18 +11,17 @@ public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Tying the `LowCT` FRONT control flow to the emitted control flow + labeled `lsem`
-— increment 4d
 
-Increments 4a/4b (`JasminLsemLabeled.lean`) built the labeled, program-indexed,
+`JasminLsemLabeled.lean` defines the labeled, program-indexed,
 fuel-bounded linear semantics (`lsemFuel`/`evalInstrP`/`evalJump`/`findLabel`,
-with the `Lgoto`/`Lcond`/`Llabel` arms). Increment 4c (`JasminLsemLoop.lean`) gave
-the first *counted-loop* program-level `lsem` simulation: the real emitted loop
+with the `Lgoto`/`Lcond`/`Llabel` arms). `JasminLsemLoop.lean` gives
+the *counted-loop* program-level `lsem` simulation: the real emitted loop
 form `loopLR` (= `LprogControlFlow.loopLcmd` modulo the dropped flag-`CMP`,
 `loopLR_eq_loopLcmd_dropCmp`) runs in `n`-fold lockstep with a per-iteration body
 transformer `bodyStep`, with a public trip count, and its leak is
 state-independent (constant-time).
 
-This module is **increment 4d**: it ties the **`LowCT` FRONT** control-flow
+This module ties the **`LowCT` FRONT** control-flow
 constructs — `RFor`/`RWhileNz` (the counted loops) and `RIfNz` (the branch) — to
 the emitted control flow and the labeled `lsem`.
 
@@ -48,18 +47,18 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 * **Counted loops** — the emitted backend form is `loopLR` / `loopProg`
   (`JasminLsemLoop`), the `loopLcmd` shape (`loopLR_eq_loopLcmd_dropCmp`) that
   `LprogControlFlow.cforToLcmd` produces from a `JForProg`
-  (`cforToLcmd_eq_loopLcmd`). We **reuse 4c's `loop_lsem_correct` /
+  (`cforToLcmd_eq_loopLcmd`). We **reuse `loop_lsem_correct` /
   `loop_lsem_correct_and_robust` unchanged** — the program-level `lsem` run is the
   real `loopLR` driven by `lsemFuel`. The front tie is the structural
   correspondence: the front loop's `RustExec` post-state is the *same* `n`-fold
   body fold the `lsem` halt data is (the per-iteration body edge — one front
   `RustExec` body run = one `lsem` `bodyStep` under the state encoding — is a
-  *named hypothesis* `FrontLoopEncodes`, exactly as 4c's `LoopBodySpec.run` and
+  *named hypothesis* `FrontLoopEncodes`, exactly as `LoopBodySpec.run` and
   `JForProgCT.StepAgrees` carry the single-iteration body edge, never a `sorry`).
-  The public trip count is `LoopTerminatesIn` (4c) + the front static `n`.
+  The public trip count is `LoopTerminatesIn` + the front static `n`.
 
 * **Branch** — the emitted form is the labeled `Lcond`-branch
-  `ifLR cond Lthen Lend cf ct` run by **4a/4b's `evalInstrP`/`lsemFuel`** (the real
+  `ifLR cond Lthen Lend cf ct` run by **`evalInstrP`/`lsemFuel`** (the real
   `Lcond` arm: nonzero scrutinee ⇒ `evalJump` to the taken label, zero ⇒ fall
   through). The `Lcond` reads the SAME scrutinee register the front `RIfNz` tests;
   its leak is the constant `LLeak.branch` (`linstrLeak (.Lcond …) = [.branch]`) —
@@ -68,7 +67,7 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 ## Public-control-flow CT hypotheses (stated, not hidden)
 
 * Loop: `LoopTerminatesIn spec sb c` — the back-edge counter `"NZ"` is the public
-  static trip count (`#460` vartime policy). Note: a secret trip count is not
+  static trip count (vartime policy). Note: a secret trip count is not
   CT.
 * Branch: `lt cond = .Public` — `RIfNz`'s scrutinee must be public-classified
   (`cmdCT_RIfNz`). A secret-dependent branch is not CT, and
@@ -98,12 +97,12 @@ iteration `i`. We capture one iteration's *effect on the front state* by a
 per-iteration transformer `frontStep : Nat → RustState → RustState` (the named
 body edge: `frontStep i rs` is the post-state of running `body` from
 `rsSetScalar rs x i`). The whole loop's post-state is then the `n`-fold fold of
-`frontStep` over `0..n` — exactly the shape `JForProg.denote` / `loopRun` (4c)
+`frontStep` over `0..n` — exactly the shape `JForProg.denote` / `loopRun` (`JasminLsemLoop`)
 computes, and the shape the `lsem` halt data has. -/
 
 /-- The front loop's `n`-fold post-state: fold the per-iteration front transformer
     `frontStep` over `List.range n` from `rs`. The structural analogue of
-    `JForProgCT.loopRun` / 4c's `reentry`-iterate, at the *front* (`RustState`)
+    `JForProgCT.loopRun` / `reentry`-iterate, at the *front* (`RustState`)
     level. -/
 def frontForRun (frontStep : Nat → RustState → RustState) (n : Nat)
     (rs : RustState) : RustState :=
@@ -126,7 +125,7 @@ theorem frontForRun_succ (frontStep : Nat → RustState → RustState) (n : Nat)
 /-- **The front `RFor`'s `RustExec` denotation is the `n`-fold `frontStep` fold.**
     Given the per-iteration body edge `hbody` — running `body` from
     `rsSetScalar rs x i` lands in `frontStep i rs` (the named single-iteration
-    front edge, the front analogue of 4c's `LoopBodySpec.run` / `StepAgrees`,
+    front edge, the front analogue of `LoopBodySpec.run` / `StepAgrees`,
     NOT a `sorry`) — the big-step `RustExec` of `RFor x n body` reaches exactly
     `frontForRun frontStep n rs`. Proof by induction on `n` via the `forZero` /
     `forSucc` rules. -/
@@ -153,11 +152,11 @@ A `FrontLoopEncodes` packages the encoding `enc : RustState → Lstate w` togeth
 with the single-iteration *commutation* edge: encoding the front post-state of one
 iteration equals one `lsem` `bodyStep` of the encoded pre-state. This is the
 front-to-`lsem` per-iteration body edge — the named hypothesis the whole-loop tie
-factors through (exactly 4c's `LoopBodySpec.run` discipline). -/
+factors through (exactly `LoopBodySpec.run` discipline). -/
 
 /-- The encoding tie between the front per-iteration transformer `frontStep` and
-    the `lsem` loop simulation (4c). `enc` maps a front `RustState` to an `lsem`
-    `Lstate`; `comm` is the single-iteration commuting square against 4c's
+    the `lsem` loop simulation (`JasminLsemLoop`). `enc` maps a front `RustState` to an `lsem`
+    `Lstate`; `comm` is the single-iteration commuting square against the
     `reentry` recurrence — encoding one front iteration equals one `lsem`
     `bodyStep` re-pinned to the body-start pc `1` (exactly how `reentry (k+1)`
     advances). The per-iteration body edge — a named hypothesis, never a `sorry`.
@@ -168,13 +167,13 @@ structure FrontLoopEncodes {w : Nat} {body : List LinstrR}
   /-- Encode a front `RustState` into the `lsem` `Lstate`. -/
   enc : RustState → Lstate w
   /-- One front iteration, encoded, equals one `lsem` `bodyStep` re-pinned to the
-      body-start pc `1` — the `reentry`-recurrence step (4c). -/
+      body-start pc `1` — the `reentry`-recurrence step (`JasminLsemLoop`). -/
   comm : ∀ (i : Nat) (rs : RustState),
       enc (frontStep i rs) = { spec.bodyStep (enc rs) with lpc := 1 }
 
-/-- **The encoding lands on 4c's `reentry` data.** If the encoded front start
+/-- **The encoding lands on `reentry` data.** If the encoded front start
     `enc rs` is the loop start data `{ sb with lpc := 1 }`, then encoding the
-    front loop's `k`-fold post-state equals 4c's reentry data after `k` body runs
+    front loop's `k`-fold post-state equals the reentry data after `k` body runs
     (`(reentry spec sb k).base`). The structural lift of the single-iteration
     `comm` to the whole loop, by induction on `k` against `reentry_succ_data`. -/
 theorem enc_frontForRun_eq_reentry {w : Nat} {body : List LinstrR}
@@ -190,26 +189,26 @@ theorem enc_frontForRun_eq_reentry {w : Nat} {body : List LinstrR}
 /-! ## 4. Capstone (loop): the front `RFor`'s lsem run = its `RustExec` denotation
 + constant-time
 
-We now combine three pieces — each the REAL artifact, none reconstructed:
+We combine three pieces — each the REAL artifact, none reconstructed:
 
 * `rustExec_rfor_frontForRun` (§1): the front `RFor x (c+1) body`'s big-step
   `RustExec` post-state is the `(c+1)`-fold `frontStep` fold
   `frontForRun frontStep (c+1) rs`;
-* `enc_frontForRun_eq_reentry` (§3): that front post-state, encoded, is 4c's
+* `enc_frontForRun_eq_reentry` (§3): that front post-state, encoded, is the
   reentry data `(reentry spec sb (c+1)).base` — i.e. on lvm/lmem, the `lsem` halt
   data `spec.bodyStep ((reentry spec sb c).base)` (they differ only by the loop
   re-pin `lpc := 1` vs the halt `lpc := 2 + |body|`);
-* `loop_lsem_correct` (4c): the **real emitted loop** `loopProg = loopLR`
+* `loop_lsem_correct` (`JasminLsemLoop`): the **real emitted loop** `loopProg = loopLR`
   (`loopLcmd` modulo the dropped flag-`CMP`, `loopLR_eq_loopLcmd_dropCmp`; the
   `cforToLcmd` image, `cforToLcmd_eq_loopLcmd`) runs in `lsemFuel` to that halt
   data over the public trip count `c+1`.
 
 `LoopTerminatesIn spec sb c` is the **public-trip-count** hypothesis (stated, not
-hidden): the back-edge counter `"NZ"` is the public static `c+1` (`#460` vartime
+hidden): the back-edge counter `"NZ"` is the public static `c+1` (vartime
 policy). -/
 
 /-- **`front_loop_lsem_correct`.** For a front counted loop `RFor x (c+1) body`
-    with per-iteration front edge `frontStep` (`hbody`) encoded into 4c's loop
+    with per-iteration front edge `frontStep` (`hbody`) encoded into the lsem loop
     simulation (`E : FrontLoopEncodes spec frontStep`, starting at the loop entry
     data `enc rs = { sb with lpc := 1 }`), over a **public trip count** `c+1`
     (`hterm : LoopTerminatesIn spec sb c`):
@@ -252,7 +251,7 @@ theorem front_loop_lsem_correct {N : Nat} {leafSpec : LeafSpec}
 
 /-! ### Loop CT (robust): the front loop's emitted leak is state-independent
 
-4c's `loopLR_lsemLeak_state_independent` is the loop's constant-time statement: the
+`loopLR_lsemLeak_state_independent` is the loop's constant-time statement: the
 back-edge `Lcond` tests only the public counter `"NZ"` (its leak is a constant
 `branch`), and the body leaks only syntax — so the whole `loopLR` leak is the same
 from any two states. The front `RFor`'s public counter (`cmdCT (.RFor …)` adds no
@@ -261,7 +260,7 @@ guard) is exactly the source-level fact this realises. -/
 /-- **`front_loop_lsem_robust`.** The front counted loop's emitted leak is
     state-independent (constant-time): the real emitted loop `loopLR` leaks the
     same trace from any two `lsem` states, given the body's leak is
-    state-independent (`hbody`) and always completes (`hsucc`). This is 4c's
+    state-independent (`hbody`) and always completes (`hsucc`). This is
     `loopLR_lsemLeak_state_independent` — the back-edge tests only the public
     static trip count. -/
 theorem front_loop_lsem_robust {w : Nat} (top : LLabel) (lbody : List LinstrR)
@@ -286,7 +285,7 @@ labeled-`Lcond` forward branch:
  .Lend:
 ```
 
-run by **4a/4b's `evalInstrP`/`lsemFuel`** (the real `Lcond` arm: nonzero ⇒
+run by **`evalInstrP`/`lsemFuel`** (the real `Lcond` arm: nonzero ⇒
 `evalJump` to `findLabel .Lthen + 1` = the then-block start; zero ⇒ fall through to
 the else block). The `Lcond` reads the SAME scrutinee register the front `RIfNz`
 tests. -/
@@ -470,7 +469,7 @@ theorem ifLR_lsemLeak_state_independent {w : Nat} (fn : String) (cond : String)
 source decision, and is constant-time for a public scrutinee -/
 
 /-- **`front_if_lsem_correct`.** The **real emitted** labeled-`Lcond` branch
-    `ifProg cond` (run by 4a/4b's `evalInstrP`/`lsemFuel`) realises the source
+    `ifProg cond` (run by `evalInstrP`/`lsemFuel`) realises the source
     two-branch decision of `RIfNz cond ct cf`, reading the SAME scrutinee register
     `cond` the front `RIfNz` tests:
 
@@ -553,7 +552,7 @@ with no `JasminIRToX86` edge and no `jasminc_preserves_ct`. -/
        the `(c+1)`-fold front fold, and the real emitted loop `loopProg`'s `lsem`
        run halts at the `lsem` data encoding it (`front_loop_lsem_correct`);
     2. *(loop, robust / CT)* the emitted loop's leak is state-independent over a
-       public trip count (`front_loop_lsem_robust` / 4c);
+       public trip count (`front_loop_lsem_robust`);
     3. *(branch, correct)* the front `RIfNz cond ct cf`'s decision is realised by
        the real emitted `Lcond` branch — THEN on nonzero, ELSE on zero
        (`front_if_lsem_correct`);

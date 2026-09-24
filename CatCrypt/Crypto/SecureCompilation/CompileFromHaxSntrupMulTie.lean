@@ -42,7 +42,7 @@ wraps. On this domain the `BitVec` ops are the integer ops, and projecting into
 generous: a `width = 16` schoolbook column sums 16 products each `< 4591²`, so
 the true accumulator never exceeds `16 · 4591² ≈ 3.4·10^8 < 2^63`.
 
-No `decide`/`native_decide` — it is the genuine prime-field reduce identity,
+No `decide`/`native_decide` — it is the prime-field reduce identity,
 lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
 

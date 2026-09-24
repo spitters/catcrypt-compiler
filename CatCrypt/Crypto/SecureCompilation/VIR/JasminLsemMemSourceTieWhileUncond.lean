@@ -14,12 +14,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
 set_option autoImplicit false
 
 /-!
-# Unconditional A3-while source tie (`whileMem_export_faithful_comL_uncond`)
+# Unconditional while source tie (`whileMem_export_faithful_comL_uncond`)
 
 `JasminLsemMemSourceTieWhile` ties the emitted data-dependent while to the
 source node `ComL.whileNz`, but carries the per-trip simulation `hsim` as a
 hypothesis. This file discharges it, the way
-`JasminLsemMemSourceTieUncond` (R1) discharges the counter-loop `hsim`: the
+`JasminLsemMemSourceTieUncond` discharges the counter-loop `hsim`: the
 committed countdown idiom `while (n != 0) { …; n -= 1 }` iterates exactly the
 counter loop's emitted `chain ++ writeback` body `loopBodyFullMN update gReg`
 with the counter register *equal to the guard register* — the `SUB gReg ← gReg,
@@ -34,7 +34,8 @@ with the counter register *equal to the guard register* — the `SUB gReg ← gR
    theorem — same conclusion as the conditional form (the machine run of the
    emitted `whileLinstrRM top gReg [] (loopBodyFullMN update gReg)` decodes at
    the accumulator argument to `ComL.whileNz`'s `ComL.denote`), with `hsim`
-   REPLACED by the R1 hypothesis class: the update-shape `hupd : ScalarMemN
+   REPLACED by the hypothesis class of `JasminLsemMemSourceTieUncond`: the
+   update-shape `hupd : ScalarMemN
    update`, the guard-register name hygiene (`hna`/`hnr`), the seed agreement
    (`hseed`/`hn0`), and the run schedule (`hhalt`/`htrip` — unchanged from the
    conditional form; `htrip` is the countdown-idiom trip identification, part
@@ -101,8 +102,8 @@ theorem runBoundedLoopMemC_allLopn (env : LeafEnvM) (body : List LinstrRM)
 
 /-! ## 2. The unconditional export theorem -/
 
-/-- **A3 export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip.** The
-    `whileMem_export_faithful_comL` upgrade for the countdown idiom: the body
+/-- **While export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip.** The
+    `hsim`-free form of `whileMem_export_faithful_comL` for the countdown idiom: the body
     is the emitted `chain ++ writeback` pass `loopBodyFullMN update gReg` with
     the counter register equal to the guard register (its `SUB gReg ← gReg, #1`
     writeback is the countdown), and the per-trip simulation `hsim` is
@@ -248,7 +249,7 @@ theorem runWhileMem_countdown_halts_trips {w : Nat} (env : LeafEnvM)
 
 /-! ## 4. The export corollaries: run schedule replaced by the seed value -/
 
-/-- **A3 export at `ComL.denote` for the countdown body, run schedule
+/-- **While export at `ComL.denote` for the countdown body, run schedule
     discharged, per-trip simulation carried.** `whileMem_export_faithful_comL`
     specialized to the countdown body `loopBodyFullMN update gReg`, with the
     run-schedule pair `hhalt`/`htrip` REPLACED by the seed-value hypotheses:
@@ -296,7 +297,7 @@ theorem whileMem_export_faithful_comL_trips {Γ : Ctxt jasminDialect} {w : Nat}
     s hfn hpc (guardV.lookup V).toNat bfin hhalt htrips accReg hinit hsim
   exact ⟨t, htrips ▸ ht, hdec⟩
 
-/-- **A3 export at `ComL.denote`, UNCONDITIONAL, run schedule discharged.**
+/-- **While export at `ComL.denote`, UNCONDITIONAL, run schedule discharged.**
     `whileMem_export_faithful_comL_uncond` with the run-schedule pair
     `hhalt`/`htrip` REPLACED by the seed-value hypotheses via §3 (and `hn0`
     absorbed into `hgseed`): the remaining hypotheses are the update shape

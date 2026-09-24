@@ -31,18 +31,18 @@ laid out in **`k = 4`** 64-bit limbs. BN254 (alt_bn128 / Barreto–Naehrig at 25
 is the pairing-friendly curve of Ethereum's precompiles (EIP-196/197), Groth16/PLONK
 verifiers, and Tornado-style ZK rollups. The repo's `Vale/BN254.lean` declares the
 field leaves as *opaque axioms* (`BN254Fp`/`BN254Fp2`/`BN254Fp12`), not as a `Nat`
-modulus, so there was no reusable `Nat` literal for the relational front; `bn254Q` is
+modulus, so they supply no `Nat` literal for the relational front; `bn254Q` is
 defined here directly (the canonical BN254 base prime).
 
-## BN254 instance scope (HONEST)
+## BN254 instance scope
 
 * **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
   4-limb encoding `encMLK q 4`, equals the emitted 4-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce) — read through
+  on the serialized operands (with the `condSubLimbs` reduce) — read through
   `bignumVal`. This is `bn254_add_commutes`.
 * **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 8-limb (`2k = 8`) Barrett-reducing kernel `mlMulMod`
-  on the serialized operands — with the genuine multi-limb Barrett reduce of the
+  on the serialized operands — with the multi-limb Barrett reduce of the
   product (`mu = ⌊(2^64)^8 / q⌋`, defined *as its side-condition value* so no `2^512`
   literal is evaluated). This is `bn254_mul_commutes`.
 * The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^4`, `bignumVal bn254Limbs = q`)
@@ -108,10 +108,10 @@ def bn254KLimbPrime : KLimbPrime where
   two_q_le := by unfold bn254Q; norm_num
 
 /-- **The BN254 base-field ADD commuting square.** The abstract BN254 base-field
-    addition `a + b` (in `ZMod q` for the genuine 254-bit prime `q = bn254Q`),
+    addition `a + b` (in `ZMod q` for the 254-bit prime `q = bn254Q`),
     serialized by the 4-limb encoding `encMLK q 4`, equals the emitted 4×64-bit reducing
     kernel `mlAddModK` on the serialized operands, read through `bignumVal` — with the
-    genuine 4-limb conditional-subtract modular reduce. The BN254 sibling of
+    4-limb conditional-subtract modular reduce. The BN254 sibling of
     `bls377_add_commutes`. -/
 theorem bn254_add_commutes (a b : ZMod bn254Q) :
     (a + b).val
@@ -187,10 +187,10 @@ def bn254KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The BN254 base-field MUL commuting square.** The abstract BN254 base-field
-    multiply `a * b` (in `ZMod q` for the genuine 254-bit prime `q = bn254Q`),
+    multiply `a * b` (in `ZMod q` for the 254-bit prime `q = bn254Q`),
     serialized by the 4-limb encoding `encMLK q 4`, equals the emitted 8-limb
     Barrett-reducing kernel `mlMulMod` on the serialized operands, read through
-    `bignumVal` — with the genuine multi-limb Barrett modular reduce of the product. The
+    `bignumVal` — with the multi-limb Barrett modular reduce of the product. The
     BN254 sibling of `bls377_mul_commutes`, completing the BN254 field-op set. -/
 theorem bn254_mul_commutes (a b : ZMod bn254Q) :
     (a * b).val

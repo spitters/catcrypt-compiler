@@ -41,7 +41,7 @@ The capstone is a **real orchestration**: a Montgomery-ladder step
 (`ladderStep`, the X25519 double-and-add shape — the conditional `cswap`,
 `fe25519_add`/`fe25519_sub`/`fe25519_mul` field temporaries) written in the
 surface and proven `rfl`-equal to its raw `LowCT` AST (`ladderStep_eq_raw`).
-This witnesses that a genuine program — not just a toy loop — is writable in
+This witnesses that a full program, beyond a toy loop, is writable in
 `orch%`.
 
 ## Note on statement scope

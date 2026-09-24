@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInst
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
 
 /-!
-# Closing the D4 framed byte-residual: the `leaq` open/close pair
+# The framed byte-residual between `JInstr` and `Lprog`: the `leaq` open/close pair
 
 `ComToFramedJInstr.framedText_agree_of_body_agree` reconciles the framed `JInstr`
 `.text` with the framed `Lprog` `.text` on the `gatherJBlock`-covered fragment
@@ -21,8 +21,8 @@ body, and `encLeaRspFrame` is **not** guarded on a zero frame — even at
 path (`jinstrFramedLeaf`) has no `leaq` at all, so the two `.text` streams differ
 by exactly those two 5-byte `leaq` instructions.
 
-This module closes that residual on the **literal byte level** (Route 1). It is
-ADDITIVE — it touches no existing file, builds on top of `ComToFramedJInstr`.
+This module closes that residual on the **literal byte level**, on top of
+`ComToFramedJInstr`.
 
 ## What is built
 
@@ -32,20 +32,20 @@ ADDITIVE — it touches no existing file, builds on top of `ComToFramedJInstr`.
   `prologue ++ argMarshal ++ leaq(-F) ++ body ++ leaq(F) ++ epilogue`. Its
   structure lemma `jinstrFramedLeafLeaq_text` pins the six glued segments.
 
-* **§2 — the literal match.** `framedLeaqText_eq_lprog` is the load-bearing
+* **§2 — the literal match.** `framedLeaqText_eq_lprog` is the main
   theorem: given that the JInstr leaf's framing segments equal the `Lprog` leaf's
   framing segments (prologue = push, empty arg-marshal, epilogue = pop+ret), the
   frame size matches (`F = frameSize body`), and the two **body** byte streams
   agree (`encodeJBlock ≡ encodeLcmd body`, the `LprogJInstrBytesAgree` block
   agreement), the `leaq`-including JInstr framed `.text` is **LITERALLY equal**
   to the `Lprog` framed `.text` `encodeLfundefBytes body`. No residual remains —
-  the `leaq` pair is now present on BOTH sides.
+  the `leaq` pair is present on BOTH sides.
 
 * **§3 — the residual, isolated.** `framedLeaqText_eq_no_leaq_with_leaq` and
   `leaqPair_isolated` exhibit the difference between the two JInstr framings
   (`jinstrFramedText_no_leaq` without the pair, `jinstrFramedLeafLeaq` with it)
-  as *exactly* the two `encLeaRspFrame` segments — the precise byte residual the
-  D4 collapse had to reconcile, now factored out.
+  as *exactly* the two `encLeaRspFrame` segments — the precise byte residual
+  between the two framed paths, factored out.
 
 * **§4 — the zero-frame no-op characterisation.** `encLeaRspFrame_zero` pins that
   at `F = 0` the inserted pair is two literal `leaq 0(%rsp), %rsp` (`0x48 0x8d
@@ -60,13 +60,14 @@ No new trust: the inserted bytes are `LprogBytes.encLeaRspFrame` (the same
 trusted leaf-ABI `leaq` the `Lprog` framed path `encodeLfundefBytes` already
 emits), the body bytes are `ScalarEncoder.encodeJBlock` (gas-pinned), and the
 prologue/epilogue is `LeafBytes`'s trusted push/pop/ret. This module only
-*composes* and *reconciles* those. No `sorry`, no axiom, no `native_decide`.
+*composes* and *reconciles* those. All goals are closed, with no axiom and no
+`native_decide`.
 
 ## Conclusion
 
 With `framedLeaqText_eq_lprog` the framed `JInstr` path (with the `leaq`-pair
 framing) is a **literal whole-`.text` byte match** for the framed `Lprog` path on
-the covered fragment — the D4 framed byte-residual is closed.
+the covered fragment, with no framed byte-residual.
 -/
 
 @[expose] public section
@@ -129,11 +130,11 @@ theorem jinstrFramedLeaqText_segments (f : JFunc) (F : Nat) :
 Given framing-segment agreement (the same hypotheses `framedText_agree_of_body_agree`
 takes — prologue / empty marshal / epilogue equal the `Lprog` push / pop+ret), a
 matched frame size, and body agreement, the `leaq`-including JInstr `.text` is
-LITERALLY `encodeLfundefBytes body`. The `leaq` pair is now on both sides, so no
+LITERALLY `encodeLfundefBytes body`. The `leaq` pair is on both sides, so no
 residual is left. -/
 
-/-- **The literal whole-`.text` match (Route 1 — the D4 residual closed).** With
-    the `leaq` pair now carried by the JInstr framing too, and under the framing /
+/-- **The literal whole-`.text` match.** With
+    the `leaq` pair carried by the JInstr framing too, and under the framing /
     frame-size / body agreement, the `leaq`-including framed JInstr `.text` equals
     the `Lprog` framed `.text` `encodeLfundefBytes body` **byte for byte**:
 
@@ -165,7 +166,7 @@ theorem framedLeaqText_eq_lprog
 `jinstrFramedText_no_leaq` is the leaq-free JInstr `.text` (`prologue ++ body ++
 epilogue`, empty marshal). `jinstrFramedLeaqText` adds the `encLeaRspFrame` pair.
 The difference is EXACTLY those two `leaq` segments, in their body-flanking
-positions — the precise byte residual the D4 collapse had to reconcile. -/
+positions — the precise byte residual between the two framed paths. -/
 
 /-- The `leaq`-including framing is the leaq-free framing with the two
     `encLeaRspFrame` segments spliced in around the body. Concretely, with an
@@ -188,8 +189,7 @@ theorem leaqPair_isolated (f : JFunc) (F : Nat)
     (`jinstrFramedText_no_leaq`) is `prologue ++ body ++ epilogue`; the
     `leaq`-including `.text` is the SAME with `encLeaRspFrame (-F)` and
     `encLeaRspFrame F` inserted immediately around the body. This pins the
-    residual the D4 framed reconciliation had to factor out as exactly the two
-    `leaq` segments. -/
+    framed residual as exactly the two `leaq` segments. -/
 theorem framedLeaqText_eq_no_leaq_with_leaq (f : JFunc) (F : Nat)
     (hmar : argMarshalBytes f.alloc f.args = []) :
     jinstrFramedLeaqText f F

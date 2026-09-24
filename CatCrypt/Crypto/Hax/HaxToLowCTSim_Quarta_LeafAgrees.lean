@@ -8,11 +8,11 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 
 /-!
-# H3.quarta-LeafAgrees: per-leaf agreement scaffolding
+# Per-leaf tower agreement constructors
 
 Provides reusable constructors for `LeafCallAgreesTower` instances.
 Concrete per-leaf instances (e.g., for `fp25519_add`, `scalar25519_mul`)
-are populated by per-protocol wiring; this file gives the shape.
+are populated by per-protocol wiring; this module defines their shape.
 -/
 
 @[expose] public section

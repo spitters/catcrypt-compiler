@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
 
 /-!
-# Wiring a 64-bit bignum op alphabet to the RV64 model, with SLTU carry macros (#549)
+# Wiring a 64-bit bignum op alphabet to the RV64 model, with SLTU carry macros
 
 `ArmLowering.lean` lowers a 64-bit `BOp` alphabet to the A64 `BInst` *one rule per
 constructor*, because AArch64's `ADCS`/`SBCS`/`CSEL` are single instructions. This
@@ -24,7 +24,7 @@ ROp64 (bignum_add_p256)  --lowerRBlock64-->  RInst64 (RV64 register machine)
                          --renderRInst64 (RiscvAsmPrinter64)-->  GAS RV64 asm
 ```
 
-## The carry macros (the honest RISC-V instruction-count cost)
+## The carry macros (the RISC-V instruction-count cost)
 
 | `ROp64`            | meaning                              | RV64 expansion |
 |--------------------|--------------------------------------|----------------|
@@ -40,7 +40,7 @@ instructions becomes materially more on RV64 — the documented price of the mis
 flag register, not a backend inefficiency.
 
 All macros are verified down to the model: `lowerRBlock64` is a `flatMap`, the
-block keystone `riscvBlock64_lowering_denote` is a clean induction, and each macro's
+block theorem `riscvBlock64_lowering_denote` is a clean induction, and each macro's
 denotation is pinned by `native_decide` KATs (the carry/borrow bits are the
 `SLTU` outputs).
 -/
@@ -137,7 +137,7 @@ def toRInst64 : ROp64 → List RInst64
     since the carry macros expand one op to several). -/
 def lowerRBlock64 (block : List ROp64) : List RInst64 := block.flatMap toRInst64
 
-/-! ## 2. The block-lowering denotation theorem (the RV64 bignum keystone)
+/-! ## 2. The block-lowering denotation theorem (RV64 bignum)
 
 The 64-bit analogue of `riscvBlock_lowering_denote`: lowering a straight-line
 `ROp64` block and running it on the model equals the direct fold of each op's

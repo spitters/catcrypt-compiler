@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.Util.ZMod1024
 public import CatCrypt.Crypto.Util.ZMod1024
 
 /-!
-# C4 fan-out: the emitted HAWK MAC leaf EQUALS the abstract `Zq1024` ring op
+# The emitted HAWK MAC leaf EQUALS the abstract `Zq1024` ring op
 
 `CompileFromHaxHawkMul.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `hawkMacForm` — the integer multiply-accumulate
@@ -29,7 +29,7 @@ multiply-accumulate `accZ + aZ · bZ` of the elements the inputs encode.
 Because the modulus `1024 = 2^10` is a power of two dividing `2^64`, the `&
 0x3FF` mask is *exactly* `% 1024` and projecting `(acc + a*b) % 1024` into
 `ZMod 1024` is the ring MAC `↑acc + ↑a · ↑b`. No `decide`/`native_decide` here —
-it is the genuine power-of-two reduce identity, lifted to the Mathlib ring
+it is the power-of-two reduce identity, lifted to the Mathlib ring
 through `ZMod.natCast_*`. Like the FrodoKEM (`2^16`) and NTRU-HRSS (`2^13`) ties
 (and unlike the prime-field GF(127)/sntrup ties) there is **no domain
 restriction**: the mask handles full `Z/1024` wraparound for any 64-bit inputs.
@@ -44,7 +44,7 @@ namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMulTie
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMul
 open CatCrypt.Util
 
-/-- **HAWK MAC emit-form ↔ abstract `Zq1024` ring tie (C4 fan-out).** The
+/-- **HAWK MAC emit-form ↔ abstract `Zq1024` ring tie.** The
     emitted MAC leaf `hawkMacForm` — read back as a `Zq1024 = ZMod 1024` ring
     element via `Zq1024.fromNat ∘ toNat` — equals the `Zq1024` ring
     multiply-accumulate `accZ + aZ · bZ` of the elements the inputs encode, with

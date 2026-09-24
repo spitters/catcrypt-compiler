@@ -10,16 +10,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
-# The whole SHA-256 block compression, lowered through the owned AArch64 backend (#550)
+# The whole SHA-256 block compression, lowered through the owned AArch64 backend
 
-`ArmLowering.lean` (#533) lowered the ChaCha quarter-round through the 32-bit
-`W`-register GP-ALU subset; `ArmBignumKernel.lean` (#547) lowered s2n's
-`bignum_add_p256` through the 64-bit `X`-register path. This module is the first
-**whole-primitive** A64 functional rebench: the complete SHA-256 (FIPS 180-4
+`ArmLowering.lean` lowers the ChaCha quarter-round through the 32-bit
+`W`-register GP-ALU subset; `ArmBignumKernel.lean` lowers s2n's
+`bignum_add_p256` through the 64-bit `X`-register path. This module is a
+**whole-primitive** A64 functional benchmark: the complete SHA-256 (FIPS 180-4
 §6.2) block compression `f(H, M) = H'` — the 64-round transformation over the
 eight chaining words with the message schedule `W[0..63]` and the round constants
 `K[0..63]` — built as a single register-named `AOp` block, lowered through the
-verified `armBlock_lowering_denote` keystone, run on the `AState` 32-bit machine,
+verified `armBlock_lowering_denote` theorem, run on the `AState` 32-bit machine,
 and pinned **byte-identical to the official FIPS 180-4 KAT** (the `"abc"`
 one-block digest `ba7816bf…f20015ad`).
 
@@ -299,7 +299,7 @@ def compressBlock : List AOp :=
   let st := emitFeed st
   st.ops.reverse
 
-/-! ## 8. Lowering correctness (the keystone instantiated)
+/-! ## 8. Lowering correctness (the lowering theorem instantiated)
 
 `armBlock_lowering_denote` on the whole SHA-256 body: running the lowered `AInst`
 block on the `AState` model equals the direct machine fold, for every initial

@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 /-!
 # A verified two-way branch over the emit `Phase` substrate: run = `ite` of arms
 
-Every landed control-flow keystone above the straight-line backend assumes a
+Every other control-flow lowering above the straight-line backend assumes a
 **counted** or **straight-line** body: `LoopLowering.loopN` (counted loop =
 `step^[n]`), `WholeFnLowering` (whole straight-line function), `MultiPhaseBody`
 (a *fixed* left-to-right **sequence** of phases). The one structural shape none
@@ -27,7 +27,7 @@ case-splitting on `cond` and reusing **each arm's own** `sound` field — no new
 proof obligation beyond the two arms' (the same `LeafAgrees` / `StraightLine`
 edges carried throughout the emit theory).
 
-## What is genuinely new here
+## What this module adds
 
 * `branchPhase cond thenPhase elsePhase` — a `Phase` whose `run`/`sem` are
   `if cond then thenPhase.{run,sem} else elsePhase.{run,sem}`. This is the
@@ -74,7 +74,7 @@ instruction (`JasminAST.InstrR.Cif`) with a real conditional-jump and a merge
 block. The Jasmin AST *has* a `Cif` constructor (and a printer / CT analysis for
 it), but the verified-emit *denotation* theory (`JForProgSemCorrect` covers only
 `Cfor`; the typed `Com jasminDialect` emit framework is straight-line) has **no**
-`Cif` `denote = ite` keystone tied to the `runProg`/`bodyStepRun` evaluator.
+`Cif` `denote = ite` theorem tied to the `runProg`/`bodyStepRun` evaluator.
 Proving that fused `Cif` lowering — the evaluator running one merged CFG whose
 observable result is `ite` — is the remaining gap; this file supplies the
 semantic `ite` law each arm of such a lowering must satisfy, and shows the public

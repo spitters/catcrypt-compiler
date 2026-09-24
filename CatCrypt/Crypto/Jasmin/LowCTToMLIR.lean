@@ -13,26 +13,18 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 
 Walks a `LowCT` tree and produces textual MLIR in generic-op syntax
 compatible with the existing `catcrypt-bench/src/x25519_*.mlir`
-pipeline. Bypasses the CryptoSSA/VIR layer.
+pipeline. Bypasses the `Com` / VIR layer.
 
-**Status (2026-05-23): superseded.** This emitter exists to answer one
-concrete question: *does the DSL source produce the same runtime
-performance as the hand-authored VIR path?* The emitter itself is not
-verified — it's a text formatter over the `LowCT` AST.
+This emitter answers one concrete question: *does the DSL source produce
+the same runtime performance as the hand-authored VIR path?* The emitter
+itself is not verified — it is a text formatter over the `LowCT` AST.
 
-The original blocker that motivated this shortcut — the
-`extCall` arg-shape mismatch in the verified `LowCT → CryptoSSA →
-Com → MLIR` chain — has been **closed**. The 2026-05-14 refactor moved
-`CExpr.extCall` to carry `args : CHVector (CVar Γ ·) argTys`
-(intrinsically typed), and `CryptoToVIR.toVIRArgs` translates that into
-a VIR `HVector` indexed by the same `argTys`. The full chain
-`LowCT → CryptoSSA → Com → Veir/MLIR` now threads a leaf `extCall`
-end-to-end — see
-`CatCrypt/Crypto/SecureCompilation/VIR/ExtCallVeirSmoke.lean`. This file
-is therefore a **redundant, debug-only** text formatter: prefer the
-verified chain (`LowCTToCryptoSSA.translate` →
-`CryptoToVIR.toVIRCom` → `ComToVeir` / `CatCryptPrint`) for any
-emission whose correctness matters.
+The verified chain `LowCT → Com catCryptDialect → Veir/MLIR` threads a leaf
+`extCall` end-to-end (see
+`CatCrypt/Crypto/SecureCompilation/VIR/ExtCallVeirSmoke.lean`), so this
+module is a **redundant, debug-only** text formatter: prefer the verified
+chain (`CryptoToVIR` → `ComToVeir` / `CatCryptPrint`) for any emission whose
+correctness matters.
 
 ## Scope
 
@@ -70,7 +62,6 @@ def towerTypeToMLIR : TowerType → String
   | .TU32     => "i32"
   | .TFp25519 => "memref<5xi64>"
   | .TFp25519_64 => "memref<4xi64>"
-  -- Phase D/E/I/K (2026-05-03):
   | .TFpL25519 => "memref<4xi64>"
   | .TFpP256 => "memref<4xi64>"
   | .TFp25519_4Bounded _ => "memref<4xi64>"
@@ -78,12 +69,10 @@ def towerTypeToMLIR : TowerType → String
   | .TFp2Gen _ n => s!"memref<{n}xi8>"
   | .TTuple _ _ => "memref<?xi8>"  -- tuple lowered as raw byte array
   | .TBytes n => s!"memref<{n}xi8>"
-  -- Phase Ext (2026-05-12): runtime-indexed array type — placeholder
+  -- Runtime-indexed array type, as a flat byte memref
   -- (the X25519 benchmark path doesn't exercise TArr).
   | .TArr n _ => s!"memref<{n}xi8>"
-  -- Phase L (2026-05-22): polynomial-mod-q types lowered as flat memref byte
-  -- arrays.  Downstream MLIR passes may refine these into structured
-  -- representations once the polynomial dialect lands.
+  -- Polynomial-mod-q types lowered as flat memref byte arrays.
   | .TPolyMod _ n => s!"memref<{n}xi64>"
   | .TPolyVec _ n k => s!"memref<{k * n}xi64>"
   | .TPolyMat _ n k m => s!"memref<{k * m * n}xi64>"
@@ -168,11 +157,11 @@ partial def emitCmd (c : LowCT) (s : State) : State :=
   | .RFnDef _ _ _ body cont => emitCmd cont (emitCmd body s)
   | .RFnCall _ _ _        => s.emit "  // <RFnCall: not emitted>"
   | .RTupleLoad _ _ _     => s.emit "  // <RTupleLoad: not emitted>"
-  -- Phase Ext (2026-05-12) / Ext2 (2026-05-13): not used in X25519 benchmark.
+  -- Not used in the X25519 benchmark.
   | .RArrStore _ _ _      => s.emit "  // <RArrStore: not emitted>"
   | .RArrLoad _ _ _       => s.emit "  // <RArrLoad: not emitted>"
   | .RScalarSetExpr _ _   => s.emit "  // <RScalarSetExpr: not emitted>"
-  -- Phase DD/E2 (2026-05-29): literal-index array ops + dst-threaded
+  -- Literal-index array ops + dst-threaded
   -- leaf call.  Not used in the X25519 benchmark subset this emitter
   -- targets; emit the same placeholder comment as the other
   -- unsupported shapes.

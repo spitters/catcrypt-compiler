@@ -56,18 +56,18 @@ the verified compiler* and proven equal to the mask-blend form.
 The abstract `= a % q` (canonical-rep) tie is stated and proved **separately**
 (`mldsaCaddqFold_eq_centeredCanonical`) over the centered domain `−q < a.toInt < q`
 via pure-BitVec `bv_decide` — the prime-field reduce identity (the SDitH lesson),
-the analogue of the `#117` Barrett seam.
+of the same shape as the Barrett seam.
 
-## Remaining `PolyEmit` bodies (follow-up)
+## The other `PolyEmit` bodies
 
 `PolyEmit.lean` carries four owned per-coefficient bodies:
-`poly_add`, `poly_sub` (pure two's-complement add/sub — easy follow-ups, but they
-read **two** parameters and emit no reduce), `poly_reduce` (Barrett `reduce32`)
+`poly_add`, `poly_sub` (pure two's-complement add/sub, reading **two**
+parameters and emitting no reduce), `poly_reduce` (Barrett `reduce32`)
 and `poly_pointwise_montgomery` (signed Montgomery). The latter two use the
-**arithmetic** shift `sar` (`>>23` / `>>32` on signed values), which the front
-does **not** yet recognise — they need an `.sar` / `Rhs.sarImm` recognizer
-(`ASR`) added to `ImpExprToThir` before they can be derived here. `caddq` is the
-cleanest single-output body that compiles unchanged.
+**arithmetic** shift `sar` (`>>23` / `>>32` on signed values), expressed through
+the `arith_shift_right` recognizer (`Rhs.sarImm`); they are derived in
+`CompileFromHaxMldsaReduce32` and `CompileFromHaxMldsaMontgomery`. `caddq` is the
+single-output body that compiles unchanged.
 -/
 
 @[expose] public section
@@ -162,7 +162,7 @@ theorem mldsaCaddq_compiles :
 The mask-blend emit form `mldsaCaddqFold` equals abstract `a.toInt % q` over the
 centered ML-DSA domain `−q < a.toInt < q` (every centered base-field residue, the
 output range of the Barrett `reduce32`). This is the conditional-reduce
-identity — the analogue of the `#117` Barrett seam, not an ARX `rfl`. -/
+identity, of the same shape as the Barrett seam, not an ARX `rfl`. -/
 
 /-- **ML-DSA `caddq` mask-blend = canonical `a mod q`** on the centered domain
     `−q < a.toInt < q`. Ties the emitted closed mask-blend form `mldsaCaddqFold`

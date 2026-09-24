@@ -11,8 +11,6 @@ public import CatCrypt.Crypto.Symbolic.Attacker
 /-!
 # Coinductive Attacker Knowledge
 
-**Status: GENUINE CONTENT — all proofs are real (0 sorries, non-trivial).**
-
 Coinductive (greatest-fixpoint) characterization of Dolev-Yao attacker knowledge.
 The existing `AttackerKnows` is inductive (least fixpoint). For computational
 soundness, coinductive is essential — it handles circular key dependencies without
@@ -30,10 +28,10 @@ restrictions.
 
 ## Role in the architecture
 
-This is a genuine building block for a future Dziembowski et al.-style bridge.
-It is NOT currently used by the protocol-specific proofs (which use direct
-computational arguments), but would be needed if the `Fixpoints.lean` GFP
-iteration were connected to actual SPComp sdist bounds.
+This is a building block for a Dziembowski et al.-style bridge. The
+protocol-specific proofs do not use it (they use direct computational arguments);
+it is the piece needed to connect the `Fixpoints.lean` GFP iteration to SPComp
+sdist bounds.
 
 ## References
 

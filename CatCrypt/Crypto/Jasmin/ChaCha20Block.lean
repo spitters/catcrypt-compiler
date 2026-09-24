@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Jasmin.ISA
 # ChaCha20 Full Block Function (RFC 8439)
 
 Extends the quarter-round case study to the full 20-round ChaCha20 block function
-with Jasmin SSA compilation and CryptoSSA translation. The UC wrappers and
+with Jasmin SSA compilation and `catCryptDialect` translation. The UC wrappers and
 ISA-parametric UC security live in `JasminSecurity/ChaCha20PRF.lean` (the
 compiler-boundary cut keeps this file free of the `Crypto.UC` dependency).
 
@@ -185,7 +185,7 @@ Note: `native_decide` validation of all 16 words is possible but takes several
 minutes due to the deeply nested `Function.update` closures from 80 quarter-rounds.
 -/
 
-/-! ## Section 7: CryptoSSA Connection -/
+/-! ## Section 7: Purity -/
 
 /-- The ChaCha20 block function is pure (no heap operations). -/
 theorem chachaBlock_isPure (s : ChaChaState) :

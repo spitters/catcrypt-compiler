@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 
 /-!
-# A verified machine-code byte encoder for the NEON/ASIMD `NInst` instructions (#548)
+# A verified machine-code byte encoder for the NEON/ASIMD `NInst` instructions
 
 `NeonAsmPrinter.lean` prints an `NInst` block to GAS AArch64 ASIMD assembly *text*,
 handed to `as`/`clang` to be encoded — that last step trusts the assembler's
@@ -34,7 +34,7 @@ arithmetically and reuse the scalar `wordLE` little-endian splitter.
 ## The narrowed trust boundary (same posture as the scalar encoder)
 
 `NeonAsmPrinter` → `as` trusts (printer is correct GAS ASIMD syntax) ∧ (`as`
-encodes each mnemonic per the Arm ARM). This encoder replaces both with a *Lean*
+encodes each mnemonic per the Arm ARM). This encoder substitutes for both a *Lean*
 function whose every output word is determined by the fixed ASIMD field
 construction below — auditable field by field against the Arm ARM C7 (Advanced
 SIMD) tables. The remaining trusted edge shrinks to *this encoder matches the

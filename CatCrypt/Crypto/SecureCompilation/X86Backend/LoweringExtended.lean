@@ -12,9 +12,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# Closing the lowering COVERAGE gap: constant-offset memory load/store (P2)
+# Lowering coverage for constant-offset memory load/store
 
-`Lowering.lean`'s proof-of-concept `lowerLinstrR` (#148) lowers a
+`Lowering.lean`'s proof-of-concept `lowerLinstrR` lowers a
 `LinstrR.Lopn` into the **register/flag-only** machine `Instr w`
 (`Model.lean`), and matches *only* the nine ALU/`MOV` mnemonics
 `ADD/SUB/MUL/AND/OR/XOR/SHL/SHR/MOV`. Every other instruction shape — in
@@ -23,9 +23,8 @@ particular the **memory** pseudo-ops `LOAD`/`STORE` (and `LOADIDX`/`STOREIDX`,
 falls to the `_ => none` arm and is then **silently dropped** by `lowerLcmd`'s
 `filterMap`. A generic `Com` that uses those shapes therefore cannot be lowered.
 
-This module (P2) extends coverage to the highest-value uncovered shape we
-already have a machine
-model **and** byte encoder for: **constant-offset memory load/store**. We target
+This module extends coverage to the highest-value uncovered shape that has a
+machine model **and** a byte encoder: **constant-offset memory load/store**. We target
 the memory-capable `JInstr 64` model (`JasminModel.lean`, namespace `Jasmin`) —
 whose `loadMem`/`storeMem` constructors `Model.lean`'s `Instr` lacks — and reuse
 its `runBlock` denotation and the `ConstantTimeCoverage` `allDirect` result.
@@ -43,8 +42,8 @@ these constructors stays inside the encodable subset.
 ## Coverage delta
 
 `lowerLinstrExt` is a **strict superset** of the POC coverage. The POC mnemonic
-table `{ADD,SUB,MUL,AND,OR,XOR,SHL,SHR,MOV}` is re-covered (now as one-element
-`JInstr 64` blocks), and the following are **newly covered**:
+table `{ADD,SUB,MUL,AND,OR,XOR,SHL,SHR,MOV}` is re-covered (as one-element
+`JInstr 64` blocks), and the following are **added**:
 
 * `LOAD`  with a constant-offset source `[.arr base off]` →
   `[loadMem dst base off]`  (`movq off(%base), %dst`);
@@ -75,28 +74,27 @@ block is `IsDirect` by the catch-all and passes `allDirect`.
 * `lowerLinstrExt_superset_alu` — on every ALU/`MOV` shape the POC lowered
   (`lowerLinstrR` returned `some`), `lowerLinstrExt` also returns `some`
   (strict-superset witness for the arithmetic arms).
-* `lowerLinstrExt_load` / `lowerLinstrExt_store` — the new arms return `some`
+* `lowerLinstrExt_load` / `lowerLinstrExt_store` — the memory arms return `some`
   on the constant-offset memory shapes the POC dropped.
 * `lowerLinstrExt_load_denote` / `lowerLinstrExt_store_denote` — **denotation
-  preservation** for the new arms, against `JInstr`'s `runBlock`: a lowered load
+  preservation** for the memory arms, against `JInstr`'s `runBlock`: a lowered load
   leaves `dst` holding the memory word `[base + off]`; a lowered store leaves the
   cell `[base + off]` holding the stored value. Proved in general (not demo-only)
   from the `JState.load_store_same` / `JState.get_setReg_same` model lemmas.
-* `lowerLinstrExt_load_allDirect` / `lowerLinstrExt_store_allDirect` — the new
+* `lowerLinstrExt_load_allDirect` / `lowerLinstrExt_store_allDirect` — the memory
   arms produce `allDirect` blocks (constant-offset memory is `IsDirect`), so they
   are constant-time **by construction** via `allDirect_constant_time`.
-* A worked **demo** (`demoStore`/`demoLoad`): a `LinstrR` whose `lowerLinstr`
-  returned `none` now lowers under `lowerLinstrExt`, with the right `runBlock`
+* A worked **demo** (`demoStore`/`demoLoad`): a `LinstrR` for which `lowerLinstr`
+  returns `none` lowers under `lowerLinstrExt`, with the right `runBlock`
   effect (`decide`/`native_decide`) and `allDirect = true`.
 
-## Deferred merge-time integration
+## Relation to `lowerLinstrR`
 
-At merge time these arms fold into `Lowering.lean`'s `lowerLinstrR`: replace the
+These arms can fold into `Lowering.lean`'s `lowerLinstrR` by replacing the
 `| _ => none` (and the `Lopn` `opn` fallthrough) for the `LOAD`/`STORE` mnemonics
 with the bodies of `lowerLoad`/`lowerStore` here. Because the memory ops live in
-`JInstr` (not `Instr w`), that fold also migrates the POC lowering target from
-`Instr w` to `JInstr 64` (the union model) — tracked as the next step in the
-perf-review P2 item.
+`JInstr` (not `Instr w`), that fold would also move the POC lowering target from
+`Instr w` to `JInstr 64` (the union model).
 -/
 
 @[expose] public section
@@ -131,7 +129,7 @@ def lowerJOperand : LOperand → JOperand
 /-! ## 2. The ALU/`MOV` arms (the POC coverage, lifted to `JInstr 64`)
 
 Each maps the two-address `Lopn [reg dst] OP [src]` to the matching `JInstr 64`
-arm — the same mnemonic table `lowerLinstrR` covers, now into the memory-capable
+arm — the same mnemonic table `lowerLinstrR` covers, into the memory-capable
 union model. `MUL` lowers to `imul` (the low-word multiply `JInstr` carries). -/
 
 /-- Lower one ALU/`MOV` mnemonic over a single source to the matching
@@ -164,7 +162,7 @@ def lowerLoad (dst base : String) (off : Nat) : JInstr 64 :=
 def lowerStore (base : String) (off : Nat) (src : JOperand) : JInstr 64 :=
   .storeMem base (off : Int) src
 
-/-! ### 3b. The supported-op ALU forms the SSA exporter actually emits (D4)
+/-! ### 3b. The supported-op ALU forms the SSA exporter actually emits
 
 `opToLinstrR` (`JasminLprogExport.lean`) exports the legal `SupportedOp` set in
 shapes the POC single-source ALU arm does **not** match:
@@ -316,7 +314,7 @@ def lowerShiftImmJ (dst : String) (opn : String) (src : JOperand) :
 
 `lowerLinstrExt` strictly extends the POC `lowerLinstrR`: every shape the POC
 lowered returns `some` here (as a one-element block), and the constant-offset
-`LOAD`/`STORE` shapes the POC dropped now lower too. Everything else stays
+`LOAD`/`STORE` shapes the POC drops lower too. Everything else stays
 `none` — the remainder of THIS function, which the module header separates from
 what the gather chain accepts. -/
 
@@ -339,7 +337,7 @@ def lowerLinstrExt : LinstrR → Option (List (JInstr 64))
 def lowerLinstrExtL (i : Linstr) : Option (List (JInstr 64)) :=
   lowerLinstrExt i.li_i
 
-/-! ### 4b. The D4 supported-op superset (`lowerLinstrExt2`)
+/-! ### 4b. The supported-op superset (`lowerLinstrExt2`)
 
 `lowerLinstrExt2` is a **strict superset** of `lowerLinstrExt`: it lowers
 everything `lowerLinstrExt` does (delegating verbatim — `lowerLinstrExt2_of_ext`)
@@ -472,7 +470,7 @@ theorem lowerLinstrExt_store_constant_time (base : String) (off : Nat) (src : JO
     blockLeak s₁ [lowerStore base off src] = blockLeak s₂ [lowerStore base off src] :=
   allDirect_constant_time _ (lowerLinstrExt_store_allDirect base off src) s₁ s₂
 
-/-! ## 8. Worked demo: a previously-`none` shape now lowering
+/-! ## 8. Worked demo: a shape the POC drops, lowered here
 
 `demoStore` is the `lprog` instruction `STORE op[1] := v` (the result-store of a
 reg-ptr ABI: write register `v` to `op[1]`, i.e. `[op + 1]`). `lowerLinstr`
@@ -481,10 +479,10 @@ operand, are both outside the POC table. `lowerLinstrExt` lowers it to a single
 `storeMem`, with the right `runBlock` effect and `allDirect = true`. `demoLoad`
 is the dual argument-load `LOAD t := ap[2]`. -/
 
-/-- A previously-`none` `STORE op[1] := v`. -/
+/-- The memory store `STORE op[1] := v` (`none` under the POC). -/
 def demoStore : LinstrR := .Lopn [.reg "rout"] "STORE" [.arr "op" 1, .reg "v"]
 
-/-- A previously-`none` `LOAD t := ap[2]`. -/
+/-- The memory load `LOAD t := ap[2]` (`none` under the POC). -/
 def demoLoad : LinstrR := .Lopn [.reg "t"] "LOAD" [.arr "ap" 2]
 
 /-- The POC drops `demoStore` (returns `none`). -/

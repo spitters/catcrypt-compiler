@@ -8,9 +8,9 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 
 /-!
-# A verified multi-symbol ELF64 relocatable-object stitcher (#556)
+# A verified multi-symbol ELF64 relocatable-object stitcher
 
-`bench/bytes_direct_pilot/bytes_direct_emit.lean` (the #556 pilot) wraps the
+`bench/bytes_direct_pilot/bytes_direct_emit.lean` (the pilot) wraps the
 verified-encoder `.text` bytes of ONE leaf into a single-symbol ELF64 `.o` — the
 `gas -o foo.o` analogue with the assembler removed from the object-build path.
 This module lifts that stitcher into the owned-backend library and generalises it
@@ -147,7 +147,7 @@ def symtabBytes (leaves : List Leaf) : List (BitVec 8) :=
     ++ (leaves.zipIdx.map (fun (l, k) =>
         elf64Sym (symNameOff leaves k) 0x12 0 1 (symValue leaves k) l.text.length)).flatten
 
-/-! ## 3b. External (undefined) symbols + `.rela.text` relocations (#658)
+/-! ## 3b. External (undefined) symbols + `.rela.text` relocations
 
 A looped leaf that `call`s / `jmp`s a function which is NOT one of the object's own
 `leaves` cannot be resolved at encode time — the target's address is only known at
@@ -582,8 +582,8 @@ theorem symCount_eq (leaves : List Leaf) :
 
 /-! ## 6. A worked two-leaf stitch (the multi-symbol offset check)
 
-The single-symbol case (`#444`, the pilot) places one function at `.text` offset
-0. The new property is that with *several* leaves, leaf `k`'s symbol records the
+The single-symbol case (the pilot) places one function at `.text` offset
+0. The multi-symbol property is that with *several* leaves, leaf `k`'s symbol records the
 correct running offset. Here is the smallest concrete witness: two leaves whose
 `.text` blocks have lengths 5 and 3. The first symbol sits at offset 0, the
 second at offset 5 (= the first leaf's length), and `.text` is 8 bytes total. The
@@ -611,7 +611,7 @@ example : (textBytes demoLeaves).length = 8 := by
 example : (symtabBytes demoLeaves).length / 24 = 3 := by
   rw [symCount_eq]; simp [demoLeaves]
 
-/-! ### A worked relocation example (#658)
+/-! ### A worked relocation example
 
 One leaf `caller` that `call`s an external symbol `callee`: the rel32 field of the
 `E8 cd` call sits at `.text` offset 1 (after the `E8` opcode), so the relocation is

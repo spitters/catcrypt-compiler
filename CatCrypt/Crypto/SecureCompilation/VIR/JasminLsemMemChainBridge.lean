@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
 set_option autoImplicit false
 
 /-!
-# Lifting the A1–A3 control-flow interpreters into the export-faithfulness chain (B3)
+# Lifting the control-flow interpreters into the export-faithfulness chain
 
 The straight-line export gate `ComLsemExportFaithfulMem`
 (`JasminLsemGeneralFaithfulMem`) states the real content of "the emitted bytes
@@ -23,29 +23,29 @@ trusted `lsem→bytes` encoder turns into bytes) under the memref machine model
 `lsemFuelMem` over `LstateM` from the encoded inputs, and the result register
 `decodeM`s to `Com.denote`.  That gate is **straight-line only**.
 
-The A1–A3 interpreter capabilities extended the machine model with control flow,
-all over the **same** `LstateM` substrate:
+Three interpreters extend the machine model with control flow, all over the
+**same** `LstateM` substrate:
 
-* **A1** (`JasminLsemMemLoop.lsemFuelMemL`): `Llabel`/`Lcond`/`Lgoto` back-edges —
+* **counter loop** (`JasminLsemMemLoop.lsemFuelMemL`): `Llabel`/`Lcond`/`Lgoto` back-edges —
   counter loops over `LstateM`.  `loopMem_runBounded`: the emitted counter loop
   `loopLinstrRM` run by `lsemFuelMemL` realises the `m`-fold `runBoundedLoopMem`.
-* **A2** (`JasminLsemMemLoopCall.lsemFuelMemLC`): a loop body may `Lcall` a linked
+* **loop with call** (`JasminLsemMemLoopCall.lsemFuelMemLC`): a loop body may `Lcall` a linked
   owned leaf.  `loopCall_runBounded`: the emitted loop-with-call realises the
   call-resolving fold `runBoundedLoopMemC`.
-* **A3** (`JasminLsemMemLoopNestWhile`): a data-dependent `while (nReg ≠ 0)`.
+* **while** (`JasminLsemMemLoopNestWhile`): a data-dependent `while (nReg ≠ 0)`.
   `whileMem_realizes`: the emitted `whileLinstrRM` realises the do-while
   `runWhileMem`, the trip read off the run.
 * **depth-N** (`JasminLsemMemLoopNestDepth.calleeRunDN`): arbitrary-depth nested
   region calls, `denote = spec` closed depth-indexed.
 
-## What B3 is (the honest assessment)
+## What the lift is
 
 `lsemFuelMemL`/`lsemFuelMemLC` are **conservative extensions** of the
 straight-line `lsemFuelMem` the export gate is stated over: same `LstateM` base,
 same `encodeM`/`decodeM`, same `singletonProgM`, same `findInstrMem[C]` fetch
 (`body[lpc]?`) — only the *eval* arm gains control transfer / region calls.  So
-there is **no genuine `LstateM` ↔ machine-model gap**: the export lift is a
-**wrapper** that (a) re-expresses each A1–A3 run result in the export gate's
+there is **no `LstateM` ↔ machine-model gap**: the export lift is a
+**wrapper** that (a) re-expresses each interpreter's run result in the export gate's
 observable form — `decodeM t.base retReg w` at the result register — and (b)
 records that the observed value is the source fold's denotation
 (`runBoundedLoopMem` / `runBoundedLoopMemC` / `runWhileMem` /
@@ -55,7 +55,7 @@ directly to `JForProg` — that tie is `general_loopBody_lsem_faithful`, a separ
 theorem).
 
 The single bridge brick is `decodeM_congr_reg_lvm`: `decodeM` reads only
-`reg.lvm` (via `LstateN.getW`), and every A1–A3 run result already proves the
+`reg.lvm` (via `LstateN.getW`), and every interpreter run result proves the
 halt state agrees with the source fold on `reg.lvm` (and on the array carrier).
 So the emitted control-flow form's machine execution **observes the source fold
 denotation** at the result register — the export statement, instantiated at the
@@ -63,7 +63,7 @@ loop / loop-with-call / data-dependent-while / arbitrary-depth-nest shapes.
 
 These are NOT `rfl` shadows: each quantifies over the emitted instruction list
 `singletonProgM fn (loopLinstrRM …)` / `whileLinstrRM …` executed by the machine
-model `lsemFuelMemL[C]`, and discharges via the A1–A3 `*_runBounded` /
+model `lsemFuelMemL[C]`, and discharges via the interpreters' `*_runBounded` /
 `whileMem_realizes` / `calleeRunDN` results (never re-proved here) composed with
 `decodeM_congr_reg_lvm`.
 
@@ -89,7 +89,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
 /-- **`decodeM` depends only on `reg.lvm`.**  `decodeM st r w = st.reg.getW r w`,
     and `LstateN.getW` reads only the register value map `lvm`.  So two states
     agreeing on `reg.lvm` decode identically at every register / width.  This is
-    the single brick turning each A1–A3 raw-state agreement (`t.base.reg.lvm =
+    the single brick turning each interpreter's raw-state agreement (`t.base.reg.lvm =
     bfin.reg.lvm`) into the export gate's observable `decodeM`-agreement. -/
 theorem decodeM_congr_reg_lvm (s1 s2 : LstateM) (h : s1.reg.lvm = s2.reg.lvm)
     (r : String) (w : Nat) : decodeM s1 r w = decodeM s2 r w := by
@@ -102,7 +102,7 @@ theorem decodeM_setLpc (s : LstateM) (pc : Nat) (r : String) (w : Nat) :
     decodeM (s.setLpc pc) r w = decodeM s r w :=
   decodeM_congr_reg_lvm (s.setLpc pc) s (LstateM.reg_lvm_setLpc s pc) r w
 
-/-! ## 1. A1 — the counter loop, lifted to the export gate
+/-! ## 1. The counter loop, lifted to the export gate
 
 `loopMem_runBounded` gives the emitted counter loop's `lsemFuelMemL` run and its
 agreement with the `m`-fold `runBoundedLoopMem` on `reg.lvm` + the array carrier.
@@ -110,13 +110,13 @@ Wrapping the `reg.lvm` half with `decodeM_congr_reg_lvm` gives the export
 statement: the emitted loop's machine execution `decodeM`s at the result register
 to the source loop's `m`-fold denotation. -/
 
-/-- **A1 export faithfulness — the counter loop.**  For the emitted counter-loop
+/-- **Export faithfulness — the counter loop.**  For the emitted counter-loop
     program `singletonProgM fn (loopLinstrRM top nReg body)` with an all-`Lopn`
     body, run by the memref machine model `lsemFuelMemL` from the loop top
     (`lpc = 1`), under the public counter schedule (`hprev`/`hlast`/`hbfin`/
     `htaken`/`hhalt`), there is a halt state `t` whose result register `decodeM`s
     to the source loop's `m`-fold denotation `runBoundedLoopMem body m s.base =
-    some bfin`.  Discharged by A1's `loopMem_runBounded` (never re-proved) +
+    some bfin`.  Discharged by `loopMem_runBounded` (never re-proved) +
     `decodeM_congr_reg_lvm`. -/
 theorem loopMem_export_faithful (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hlopn : ∀ i ∈ body, IsLopn i)
@@ -137,15 +137,15 @@ theorem loopMem_export_faithful (fn : String) (top : LLabel) (nReg : String)
     bprev blast bfin hprev hlast hbfin htaken hhalt
   exact ⟨t, ht, decodeM_congr_reg_lvm t.base bfin hreg retReg w⟩
 
-/-! ## 2. A2 — the loop-with-region-call, lifted to the export gate -/
+/-! ## 2. The loop-with-region-call, lifted to the export gate -/
 
-/-- **A2 export faithfulness — the loop that CALLS a linked leaf.**  For the
+/-- **Export faithfulness — the loop that CALLS a linked leaf.**  For the
     emitted loop-with-call program `singletonProgM fn (loopLinstrRM top nReg
     body)` (body `BodyStepOK` — `Lopn ∪ call-to-a-linked-leaf`), run by the
     region-call machine model `lsemFuelMemLC` from the loop top, under the counter
     schedule, there is a halt state `t` whose result register `decodeM`s to the
     concrete-leaf fold `runBoundedLoopMemC env body m s.base = some bfin`.
-    Discharged by A2's `loopCall_runBounded` + `decodeM_congr_reg_lvm`. -/
+    Discharged by `loopCall_runBounded` + `decodeM_congr_reg_lvm`. -/
 theorem loopCall_export_faithful (env : LeafEnvM) (fn : String) (top : LLabel)
     (nReg : String) (body : List LinstrRM)
     (hok : ∀ i ∈ body, BodyStepOK env (singletonProgM fn (loopLinstrRM top nReg body)) i)
@@ -166,18 +166,17 @@ theorem loopCall_export_faithful (env : LeafEnvM) (fn : String) (top : LLabel)
     bprev blast bfin hprev hlast hbfin htaken hhalt
   exact ⟨t, ht, decodeM_congr_reg_lvm t.base bfin hreg retReg w⟩
 
-/-! ## 3. A3 — the data-dependent `while`, lifted to the export gate
+/-! ## 3. The data-dependent `while`, lifted to the export gate
 
-This is the PRIORITY lift (unblocks the `honest_prove` consumer per the plan):
-the trip count is decided by the values the body produces, not a proof
-parameter. -/
+This is the lift the `honest_prove` consumer uses: the trip count is decided by
+the values the body produces, not a proof parameter. -/
 
-/-- **A3 export faithfulness — the data-dependent `while (nReg ≠ 0)`.**  For the
+/-- **Export faithfulness — the data-dependent `while (nReg ≠ 0)`.**  For the
     emitted `whileLinstrRM top nReg [] body` run by `lsemFuelMemLC` from the loop
     top, if the do-while denotation `runWhileMem (condNZ nReg) body fuel` halts
     within `fuel` to `bfin`, there is a halt state `t` — reached in
     `whileTripsMem … * (fuelCostC body + 1)` steps, the trip **read off the run**,
-    not supplied — whose result register `decodeM`s to `bfin`.  Discharged by A3's
+    not supplied — whose result register `decodeM`s to `bfin`.  Discharged by
     `whileMem_realizes` + `decodeM_congr_reg_lvm`.  The consumer supplies only a
     termination/variant `fuel`; the loop trip is data-dependent. -/
 theorem whileMem_export_faithful (env : LeafEnvM) (fn : String) (top : LLabel)
@@ -197,8 +196,8 @@ theorem whileMem_export_faithful (env : LeafEnvM) (fn : String) (top : LLabel)
 
 /-! ## 4. depth-N — arbitrary-depth nested calls, lifted to the export gate
 
-`calleeRunDN` is the closed depth-indexed nested-call denote (the C1/B4 residual
-of A3, done at the interpreter level).  We lift it into a whole-run export
+`calleeRunDN` is the closed depth-indexed nested-call denote at the interpreter
+level (`JasminLsemMemLoopNestDepth`).  We lift it into a whole-run export
 statement: entering a depth-`d` callee and running to a halted caller `decodes` at
 the result register to the depth-`d` spec fold `lsemStraightMemDN env d
 calleeBody`.  This is the lift that carries the arbitrary-depth nesting
@@ -237,7 +236,7 @@ The depth-3 tower `l1 → l2 → l3` (`JasminLsemMemLoopNestDepth.depth3Env`) ru
 from `acc = 5`, `t = 7`: the machine model runs the full depth-3 region-call
 chain to a halt (the loop function `g` has an empty body, so the return frame
 halts at fuel 0) and `decodeM`s `acc = 12`.  A concrete inhabitant of
-`calleeRunDN_export_faithful` — the export lift is non-vacuous at a genuine
+`calleeRunDN_export_faithful` — the export lift is non-vacuous at a
 depth-3 nest. -/
 
 /-- The depth-3 entry base: `acc = 5`, `t = 7`. -/
@@ -253,7 +252,7 @@ theorem depth3_fold_isSome :
 
 /-- **Concrete depth-3 export witness (unconditional).**  Entering `l1` (which
     calls `l2`, which calls `l3`) over the shared `LstateM`, the machine model runs
-    the genuine depth-3 region-call chain to a halt state `t` whose result register
+    the depth-3 region-call chain to a halt state `t` whose result register
     `acc` decodes to the depth-3 spec fold `b`'s `acc` (= `12`).  The spec fold
     reaches `some b` (`depth3_fold_isSome`), so the existence is unconditional —
     `calleeRunDN_export_faithful` is inhabited by a real arbitrary-depth nest, not

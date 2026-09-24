@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKerne
 /-!
 # Pasta (Pallas/Vesta) `Fp` Montgomery field-multiply, owned x86 backend
 
-The stretch companion to `PastaFieldAddSubKernel` (#480): a full 4×64 CIOS
+The companion to `PastaFieldAddSubKernel`: a full 4×64 CIOS
 Montgomery multiply for the Pasta-cycle base fields, emitted through the SAME
 owned x86 backend (`runBlock` / `lowerBlock_denote` / `AsmPrinter`, no jasminc)
 as the BLS12-381 (`Bls12381MontMulKernel`) and BN254 (`Bn254MontMulKernel`)
@@ -21,11 +21,10 @@ field-mul kernels. It is the four-iteration CIOS analog of those, parameterised
 over the modulus limbs and the Montgomery constant `n′ = −p⁻¹ mod 2^64`, and
 instantiated for both Pasta primes.
 
-This replaces the #440 product-then-CIOS-reduce *split* (`pasta_emit_mul_4_8`
-product + `pasta_mont_redc_4` reduce) with a single fused CIOS body using the
-MULX + dual ADCX/ADOX carry-chain idiom — the same machinery the BN254/BLS
-kernels use — landing the whole `a·b·R⁻¹ mod p` field multiply in one
-own-emitted leaf.
+In place of a product-then-CIOS-reduce *split* (`pasta_emit_mul_4_8` product +
+`pasta_mont_redc_4` reduce) it emits a single fused CIOS body using the MULX +
+dual ADCX/ADOX carry-chain idiom — the same machinery the BN254/BLS kernels use
+— computing the whole `a·b·R⁻¹ mod p` field multiply in one own-emitted leaf.
 
 ## The Montgomery constants (canonical sources)
 
@@ -43,12 +42,12 @@ own-emitted leaf.
   `storeMem` mix.
 * `*Alloc_no_overflow`: the first-fit allocator assigns distinct pool registers.
 * The all-inputs byte-identity (`emitted == a·b·R⁻¹ mod p`) is the external KAT
-  vs GMP — the standard gate for these word kernels (per REV-12); CIOS value
+  vs GMP — the standard gate for these word kernels; CIOS value
   correctness is a generic Montgomery identity, a 256×256→512 SAT instance
   in-Lean, hence the external oracle. KAT
   (`bench/halo2_compare/pasta_owned_montmul_kat`): 50000 random + corner vectors,
   byte-identical to GMP, for both Pallas and Vesta. Bench: ~46 cyc/op (the fused
-  CIOS), vs ~100 cyc for the #440 product-then-reduce split and ~201 cyc for GMP
+  CIOS), vs ~100 cyc for the product-then-reduce split and ~201 cyc for GMP
   `mpz_mul`+`mpz_mod`.
 
 ## Trust story

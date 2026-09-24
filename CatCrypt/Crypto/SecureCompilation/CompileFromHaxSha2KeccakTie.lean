@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.Util.Sha256Verified
 public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
-# #607 Phase 3b: DIRECT functional ties — SHA-2 & Keccak compile-from-hax leaves = FIPS spec fns
+# DIRECT functional ties — SHA-2 & Keccak compile-from-hax leaves = FIPS spec fns
 
 This module wires the committed **compile-from-hax SHA-256 round-component leaves**
 (`CompileFromHaxLeaves.{bigSigma0,bigSigma1,maj,ch}_compiles`) and the committed
@@ -248,7 +248,7 @@ theorem theta_spec_decomp (a : CatCrypt.Crypto.Primitives.Keccak.KState) (x y : 
     programs `cC` (θ column parity) and `cD` (θ diffusion) emitted by the verified compiler,
     such that for every state `a` and cell `(x,y)`: XORing `a x y` with `cD` applied to the
     two column parities `C[x−1] = cC(a[x−1,·])` and `C[x+1] = cC(a[x+1,·])` reconstructs
-    `theta a x y` exactly. This is the genuine compose of the two single-lane compile-from-hax
+    `theta a x y` exactly. This is the composite of the two single-lane compile-from-hax
     leaves onto the FIPS-202 θ step. Functional equality, not a security claim. -/
 theorem thetaCompose_eq_spec :
     ∃ (cC : Com jasminDialect (frontCtxt 64 5 []) (rW 64))

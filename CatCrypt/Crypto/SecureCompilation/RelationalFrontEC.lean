@@ -24,7 +24,7 @@ it carries the relational front through a step of the **EC group law** — the
 `bls12_377`-class target named in the `RelationalFront` docstring — using
 **Jacobian (inversion-free) coordinates**, so the realized operation is a pure
 sequence of field `mul`/`add` (no field inversion), and so it is a `Com
-jasminDialect` exactly like the landed `gf256MulBuilt` / `gf251MulBuilt`.
+jasminDialect` exactly like `gf256MulBuilt` / `gf251MulBuilt`.
 
 ## Why Jacobian, and which sub-step
 
@@ -44,7 +44,7 @@ F = E² ; X₃ = F − 2D ; Y₃ = E·(D − X₃) − 8C ; Z₃ = 2·Y·Z
 the golden path already emits as a `Com` (`gf251MulBuilt`, `modDoubleCom`, the
 `fieldAddMod251Com` add). For a `bls12_377`/`bls12_381`-class curve the curve
 coefficient is **`a = 0`**, so the doubling slope collapses to `E = 3·A` with
-`A = X²` (the `a·Z⁴` term vanishes) — the cleanest genuine, fully-provable
+`A = X²` (the `a·Z⁴` term vanishes) — the simplest fully-provable
 sub-step of the group law.
 
 **This module realizes the `a = 0` doubling-slope numerator `E = 3·A`** — a named
@@ -53,7 +53,7 @@ numerator at `a = 0`, `3·x² + a = 3·A`) — as an emitted `Com jasminDialect`
 field kernel over **GF(251)**, with the full relational tie (injective-not-onto
 encoding + commuting square) to the abstract `ZMod 251` field operation `A ↦ 3·A`.
 
-## The realized operation, honestly
+## The realized operation
 
 * **Field**: `F_251 = ZMod 251` (the small Solinas prime whose `mul`/`add`/`condsub`
   the golden path already emits; small enough that the `Com`'s denotation is a
@@ -75,7 +75,7 @@ realization tie, the emitted `Com` and its denotation seam — for a unary op) a
 its transfer corollary `spec_eq_transfers_to_emit`, additively, without touching
 `RelationalFront`.
 
-## What this demonstrates vs the honest gap
+## What this demonstrates, and its scope
 
 `spec_eq_transfers_to_emit` instantiated here decides an **abstract `F_251`
 group-law-step equation** (`3·A = 3·A'` in `ZMod 251`, the doubling-slope
@@ -84,7 +84,7 @@ the *serialized* (canonical-residue) coordinate — through the injective,
 not-onto `encMod251`. That is the relational front carrying one step of the EC
 group law end-to-end.
 
-The honest gap to **full `ECParams.add`** (and thus to `bls12_377`):
+The gap to **full `ECParams.add`** (and thus to `bls12_377`):
 
 * **The whole doubling schedule** needs the remaining field steps (`B = Y²`,
   `C = B²`, `D`, `F = E²`, `X₃`, `Y₃`, `Z₃ = 2·Y·Z`). The field **multiply**
@@ -107,7 +107,7 @@ The honest gap to **full `ECParams.add`** (and thus to `bls12_377`):
   kernels are a separate (large) emit effort.
 
 This module establishes the **EC-group-law leg** of the relational front on the
-smallest honest spec: a genuine, fully-provable Jacobian-doubling field sub-step
+smallest spec: a fully-provable Jacobian-doubling field sub-step
 over a small field, with the full injective-not-onto encoding tie.
 -/
 
@@ -319,7 +319,7 @@ def tripleMod251Realization :
 /-- **The relationally-emitted EC-doubling-slope-numerator kernel.** Its abstract
     source is the Jacobian point-doubling slope numerator `E = 3·A` (`a = 0`,
     BLS-class) over `ZMod 251`, its computational side is the emitted field kernel
-    `tripleMod251Built`, and its encoding is a genuine injective-not-surjective
+    `tripleMod251Built`, and its encoding is an injective-not-surjective
     coordinate serialization. The EC-group-law sibling of `addMod251RealizedKernel`. -/
 def tripleMod251RealizedKernel : RealizedUnaryKernel (fun A : ZMod 251 => 3 * A) where
   bop := tripleSpecBV

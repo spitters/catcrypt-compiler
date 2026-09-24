@@ -71,13 +71,12 @@ open CatCrypt.Crypto.Jasmin
 def borrowOk' (sigDb : SigDb) : LowCT → Bool :=
   LowCT.fold (seqLike := (· && ·)) (wrap1 := id) (leaf := borrowOk'Leaf sigDb)
 where
-  /-- Per-leaf sig-aware borrow check (#350 migration).  Identical to
+  /-- Per-leaf sig-aware borrow check.  Identical to
       `borrowOk.borrowOkLeaf` except that `RCall`/`RCloneCall` use the
       sig-aware `callAliasesSig (sigDb f)`.  The eight recursive
       constructors are handled structurally by `LowCT.fold`
-      (`seqLike = (· && ·)`, `wrap1 = id`), so this migration also closes
-      the pre-existing missing-cases gap for `RArrStoreLit`/`RArrLoadLit`/
-      `RCallDstThreaded` — a concrete instance of the #350 cascade tax. -/
+      (`seqLike = (· && ·)`, `wrap1 = id`); every leaf constructor, including
+      `RArrStoreLit`/`RArrLoadLit`/`RCallDstThreaded`, has an arm. -/
   borrowOk'Leaf (sigDb : SigDb) : LowCT → Bool
   | .RSkip                          => true
   | .RScalarSet _ _                 => true
@@ -89,7 +88,6 @@ where
   | .RCloneCall _ _ _ f dest args   => !callAliasesSig (sigDb f) dest args
   | .RLimbStore _ _ _               => true
   | .RLimbStoreExpr _ _ _           => true
-  -- Phase F/G/H/L/M (2026-05-03):
   | .RCallN _ dests args            =>
       dests.Nodup && dests.all (fun d => !callAliases d args)
   | .RSelect dst _ src0 src1        =>
@@ -97,15 +95,14 @@ where
   | .RAssert _                      => true
   | .RFnCall _ dests args           =>
       dests.Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase I: tuple component load — single destination.
+  -- Tuple component load — single destination.
   | .RTupleLoad dst src _           => dst.locVar != src.locVar
-  -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
+  -- Runtime array load/store + scalar expression assign.
   | .RArrStore arr _ src            => arr.locVar != src.locVar
   | .RArrLoad dst src _             => dst.locVar != src.locVar
   | .RScalarSetExpr _ _             => true
-  -- Phase DD/E2: literal-index array ops + dst-threaded call.  Same alias
-  -- discipline as their dynamic siblings / RCall (these arms previously
-  -- caused a missing-cases compile error — closed by this migration).
+  -- Literal-index array ops + dst-threaded call.  Same alias
+  -- discipline as their dynamic siblings / RCall.
   | .RArrStoreLit arr _ src         => arr.locVar != src.locVar
   | .RArrLoadLit dst src _          => dst.locVar != src.locVar
   | .RCallDstThreaded _ dst args    => !callAliases dst args

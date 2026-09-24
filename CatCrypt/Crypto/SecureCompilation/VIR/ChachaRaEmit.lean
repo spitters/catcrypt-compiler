@@ -26,7 +26,7 @@ module does the same for the ChaCha20 4-way XMM-resident kernel.
 
 ## Why the XMM emit needs RA more than SHA-2 / Keccak
 
-`ChaChaEmit.chacha4wayXmmBlockJazz` (#111) renders the ChaCha20 4-way kernel
+`ChaChaEmit.chacha4wayXmmBlockJazz` renders the ChaCha20 4-way kernel
 with the 16 state words pinned to the AVX2 XMM file. The 16-XMM cap forces
 **2 spills** (16 state words + 2 rotate scratches = 18 XMM live, exceeding
 the file's 16). The current emit's spill choice is **fixed**: slots 14 and
@@ -81,7 +81,7 @@ slip-difference vs HACL*'s gcc-allocated body.
 `[propext, Quot.sound]` only. The denotation theorem composes
 `LaneMap.chacha4way_lane_map` (storage-class-agnostic by construction),
 exactly as `ChaChaEmit.chacha_xmm_denotation_preserves` does for the
-current #111 emit. The slot-remap is a string-level relabeling and
+baseline XMM-resident emit. The slot-remap is a string-level relabeling and
 does not enter any theorem statement.
 -/
 
@@ -411,12 +411,12 @@ def renderRaBody (ra : RegisterAllocation) : List String :=
   decls ++ renderRaLoad ra ++ renderRaDoubleRounds ra 10 ++ renderRaStore ra
 
 /-- **The RA-driven ChaCha20 4-way XMM-resident `.jazz`.**
-Same ABI as `ChaChaEmit.chacha4wayXmmBlockJazz` (#111): 4 ChaCha blocks
+Same ABI as `ChaChaEmit.chacha4wayXmmBlockJazz`: 4 ChaCha blocks
 in (AoS) and 4 out. The body assigns each logical state slot 0..15 to a
 physical destination (one of `m0..m13` register-resident, or `m14s`/`m15s`
 stack-spilled) according to the RA's `seqOf`. For
-`RegisterAllocation.identity` this is byte-identical to the existing #111
-emit; for `chachaXmmRA` it spills the two LIGHTEST-used slots instead of
+`RegisterAllocation.identity` this is byte-identical to the baseline
+`chacha4wayXmmBlockJazz` emit; for `chachaXmmRA` it spills the two LIGHTEST-used slots instead of
 14 and 15, reducing spill-flank traffic by ~240 ops per block. -/
 def emitChacha4wayXmmRaJazz (ra : RegisterAllocation) (name : String) : String :=
   let paramStrs := ["reg ptr u32[64] out", "reg const ptr u32[64] inp"]
@@ -429,7 +429,7 @@ def emitChacha4wayXmmRaJazz (ra : RegisterAllocation) (name : String) : String :
 The denotation of the RA-driven 4-way XMM kernel equals the
 lane-parallel-map of the scalar ChaCha block function across the 4 lanes
 — exactly the SAME denotation as both the canonical 4-way and the
-#111 XMM-resident emit. The proof composes `LaneMap.chacha4way_lane_map`,
+baseline XMM-resident emit. The proof composes `LaneMap.chacha4way_lane_map`,
 which is parametric over the per-lane block function and lane bundling
 with no dependence on the lane's register layout — i.e.
 storage-class-agnostic by construction. The RA only changes WHICH slots
@@ -447,7 +447,7 @@ theorem chacha_xmm_ra_emit_denotation_preserves (state : ChaCha4Way) :
 
 For `ra = RegisterAllocation.identity` (`seqOf k = k`), the RA-driven
 slot-name function reduces pointwise to `chacha4wayXmmSlotName`. The
-full-text byte-identity to the current #111 emit follows from this
+full-text byte-identity to the baseline emit follows from this
 pointwise equality together with the determinism of the rendering
 helpers. -/
 
@@ -481,7 +481,7 @@ theorem chachaXmmRA_slot0_spilled :
 theorem chachaXmmRA_slot1_spilled :
     chachaXmmRA.seqOf 1 = 15 := by native_decide
 
-/-- Under `chachaXmmRA`, the formerly-spilled logical slot 14 now lives
+/-- Under `chachaXmmRA`, logical slot 14 (spilled in the baseline) lives
 in register `m0` (the freed XMM position). -/
 theorem chachaXmmRA_slot14_unspilled :
     chachaXmmRA.seqOf 14 = 0 := by native_decide
@@ -564,7 +564,7 @@ scan then places them in firstTouch order. With seed-pinning (every state
 slot is read by `a += b` of QR(0,4,8,12) before any state slot is yet
 written by the body), the resulting `seqOf` is the identity on
 `{0..15}` — i.e. the cross-iter RA produces the SAME storage layout as
-the #111 baseline emit (spill slots 14, 15).
+the baseline emit (spill slots 14, 15).
 
 Phase B-2 wires this through but the `lightestPair` hand-rolled RA above
 (`chachaXmmRA`, spill slots 0, 1 — light a-role) remains the
@@ -605,7 +605,7 @@ For ChaCha20's slot trace `chachaTrace`, every multi-read event has
 So the analysis observes **zero coalesce candidates** on ChaCha — the
 trace is already in coalesced two-address form. The cross-iter +
 coalesce RA produces the SAME jazz as the cross-iter RA alone (which
-itself was within run-to-run noise of the #111 baseline).
+itself is within run-to-run noise of the baseline).
 
 This is the architecturally-honest finding: ChaCha's quarter-round
 arithmetic is already two-address by design (`a += b`, `d ^= a`), so

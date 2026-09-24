@@ -70,7 +70,7 @@ distinct/doubling branches), which hold by `field_simp; ring`.  The exceptional
 cases (vertical/identity) and the all-pairs group-law equivalence are discharged
 **operationally** by the EIP-196/EIP-197 byte-identity KAT
 (`bench/bn254_group_compare/`) — exactly the operational discharge the affine
-keystone (`BN254GroupEmit.emittedAffineAdd_realizes`) carries.
+main theorem (`BN254GroupEmit.emittedAffineAdd_realizes`) carries.
 
 ## Dialect connection
 
@@ -179,7 +179,7 @@ inverse amortised to the final conversion. -/
 /-- **The projective add realizes the affine add (distinct points).**  Converting
     the `add-2007-bl` Jacobian add of two affine-embedded distinct points back to
     affine (one inverse) yields exactly `bn254AffineAdd` at the chord slope — the
-    affine keystone the bench KAT pins byte-identical to the EIP-196 `bn256Add`. -/
+    affine add the bench KAT pins byte-identical to the EIP-196 `bn256Add`. -/
 theorem bn254JacAdd_realizes_affineAdd (P Q : BN254Point) (hx : Q.x - P.x ≠ 0) :
     jacToAffine (jacAddZ1 (JacPoint.ofAffine P) (JacPoint.ofAffine Q))
       = bn254AffineAdd ((Q.y - P.y) * (Q.x - P.x)⁻¹) P Q := by
@@ -197,7 +197,7 @@ theorem bn254JacAdd_realizes_affineAdd (P Q : BN254Point) (hx : Q.x - P.x ≠ 0)
     `dbl-2009-l` Jacobian double of the affine-embedded `(x, y)` back to affine
     (one inverse) yields exactly the short-Weierstrass tangent double
     `(λ²−2x, λ(x−x₃)−y)` with `λ = 3x²/(2y)` (the `a = 0` tangent slope) — the
-    affine keystone the bench KAT pins byte-identical to the EIP-196 doubling. -/
+    affine double the bench KAT pins byte-identical to the EIP-196 doubling. -/
 theorem bn254JacDouble_realizes (P : BN254Point) (hy : P.y ≠ 0) :
     jacToAffine (jacDouble (JacPoint.ofAffine P))
       = (let lam := (3 * (P.x * P.x)) * (2 * P.y)⁻¹

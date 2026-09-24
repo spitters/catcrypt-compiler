@@ -22,7 +22,7 @@ termination criterion (buffer full) is the `while (name != 0)` shape `RWhileNz`
 models.
 
 This re-sources that loop from a high-level `LowCT` term through the **canonical
-front**, using the `RWhileNz` waist denote landed in
+front**, using the `RWhileNz` waist denote of
 `TranslateDialectWhileDenote` (`rWhileNz_whole_denote` / `IsCoveredSWhile` /
 `semScalarWhile`). It is the ML-DSA twin of the ML-KEM re-sourcing
 `RejUniformCovered` (both are the `rej_uniform` control structure; ML-DSA reads a
@@ -60,7 +60,7 @@ canonical front, with a whole-program machine denote.
 every `cand < q` decision, and the buffer-full guard are public by construction
 (FIPS-204 §Algorithm 7). The `RWhileNz` guard `remaining` and the `RIfNz` flag
 `lt` therefore leak nothing secret: this is the `RejectLoop.lean` public-guard
-discipline (#460). A *secret*-dependent loop guard or accept branch would be a CT
+discipline. A *secret*-dependent loop guard or accept branch would be a CT
 violation (rejected by the `LowCT` `isCT` check); `ExpandA`'s `rej_uniform` is
 admitted (it is the fully-public sampler — unlike `ExpandS`'s `rej_eta`, which
 expands the secret vectors and only leaks the public rejection *count*). The
@@ -138,7 +138,7 @@ theorem rejAdvanceExtract_coveredS : IsCoveredS rejAdvanceExtract :=
 theorem acceptBranch_coveredS : IsCoveredS acceptBranch :=
   .rSeq (.rCall "rej_store" (loc "out") [loc "out", loc "cand"]) rejAdvanceExtract_coveredS
 
-/-- **The window body is Stage-2 covered** (`IsCoveredSCtl`): an `RIfNz` over two
+/-- **The window body is control-covered** (`IsCoveredSCtl`): an `RIfNz` over two
     straight-line branches. This is the central fact — it feeds the
     `RWhileNz` whole-program denote (`rWhileNz_whole_denote`). -/
 theorem rejBody_covered : IsCoveredSCtl rejBody :=

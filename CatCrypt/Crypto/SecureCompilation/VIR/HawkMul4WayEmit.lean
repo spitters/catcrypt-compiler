@@ -44,19 +44,19 @@ the per-lane block sequentially. It is **parametric over the per-lane block** an
 proves nothing about the ring multiply.
 
 In particular it does **NOT** establish that the per-lane block computes the HAWK
-negacyclic product. The block `hawkRingMulSpec` in this file is a **placeholder**
+negacyclic product. The block `hawkRingMulSpec` in this file is **constant zero**
 (`:= fun _ _ => fun _ => 0`, the constant-zero function — *not* the negacyclic
-schoolbook product mod `x^N+1`). The genuine per-lane negacyclic multiply is built
+schoolbook product mod `x^N+1`). The per-lane negacyclic multiply is built
 as a `Com jasminDialect` in `HawkMulEmit.lean`; it is **not wired to this file**.
 The ring-multiply correctness of the emitted 4-way kernel is carried by the
 **external byte-KAT** `bench/hawk_compare/hawk_mul_4way_kat.c` (which checks the
 emitted `.jazz` against a lane-by-lane scalar HAWK reference), not by the Lean
 theorem here.
 
-So: the emit↔reference ring-multiply byte-identity is **KAT-gated (Tier-B)**; the
+So: the emit↔reference ring-multiply byte-identity is **KAT-gated**; the
 Lean contribution is the batching's lane-independence, not the multiply's
-correctness. Wiring the real negacyclic product (from `HawkMulEmit`) into this
-theorem to make it a non-vacuous Lean denotation statement is open follow-up.
+correctness. The negacyclic product of `HawkMulEmit` is not an input to this
+theorem.
 
 ## Bench / KAT
 
@@ -94,26 +94,25 @@ abbrev HawkLane := Fin N → Zq1024
     coefficient at one of the 16 positions. -/
 abbrev Hawk4Way := Fin 4 → HawkLane
 
-/-! ## 2. The per-lane block — a PLACEHOLDER, not the genuine ring multiply
+/-! ## 2. The per-lane block — constant zero, not the ring multiply
 
 The lane-map theorem is parametric over the per-lane block, so its proof is the
 same for any block. The definition below is deliberately the **constant-zero
-placeholder** (`:= fun _ _ => fun _ => 0`) — it is *not* the negacyclic schoolbook
-product mod `x^N+1` (that genuine multiply is built as a `Com jasminDialect` in
+block** (`:= fun _ _ => fun _ => 0`) — it is *not* the negacyclic schoolbook
+product mod `x^N+1` (that multiply is built as a `Com jasminDialect` in
 `HawkMulEmit.lean`, and is not wired here). Consequently the theorem instantiated
 at it says nothing about the multiply; it asserts only lane-independence of the
-batching (see the module header). The genuine per-lane multiply is checked by the
-external byte-KAT `bench/hawk_compare/hawk_mul_4way_kat.c`. Replacing this
-placeholder with the real negacyclic product is the open follow-up.
+batching (see the module header). The per-lane multiply of the emitted kernel is
+checked by the external byte-KAT `bench/hawk_compare/hawk_mul_4way_kat.c`.
 
-**The genuine spec now exists** in `HawkMul4WayRealization.lean`:
+**The negacyclic spec** is in `HawkMul4WayRealization.lean`:
 `hawkNegacyclicMul` (the real `x^N=-1` negacyclic product over `Zq1024`), with the
 non-vacuous `hawk_negacyclic_shift` (multiplying by the monomial `X` rotates with the
-minus-sign wrap — false for this `:= 0` placeholder and for a cyclic convolution) and
+minus-sign wrap — false for this `:= 0` block and for a cyclic convolution) and
 `hawk_mul_4way_lane_map_genuine` (the lane-map at the *real* block). The 4-way lanes
-are INDEPENDENT, so the per-lane frame is correct here; the genuine spec lives
+are INDEPENDENT, so the per-lane frame is correct here; the negacyclic spec lives
 downstream (importing it back would cycle), and the emit↔`hawkNegacyclicMul` byte tie
-stays the KAT-gated residual. -/
+is KAT-gated. -/
 
 /-- Placeholder per-lane block for the HAWK 4-way kernel. **`:= fun _ _ => fun _ => 0`
     (constant zero), not the negacyclic product** — present only so the parametric
@@ -151,7 +150,7 @@ theorem hawk_mul_4way_lane_map (mul : HawkLane × HawkLane → HawkLane)
 /-- **Lane-independence of the HAWK 4-way batching** (NOT ring-multiply
     correctness). `LaneMap.laneMap hawkRingMulPair lanes` equals the sequential
     per-lane evaluation `fun b => hawkRingMulPair (lanes b)`. Holds for any block;
-    here the block is the placeholder constant-zero `hawkRingMulPair`, so this says
+    here the block is the constant-zero `hawkRingMulPair`, so this says
     the batching introduces no cross-lane interference — it does *not* say the lane
     computes the negacyclic product. Structural, `[propext, Quot.sound]` only. -/
 theorem hawk_mul_4way_denotation_preserves (lanes : Hawk4WayInputs) :

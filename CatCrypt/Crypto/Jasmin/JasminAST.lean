@@ -32,8 +32,8 @@ namespace CatCrypt.Crypto.Jasmin
 /-- Jasmin machine word sizes (in bits).
 
     `U8`..`U256` are exactly the six widths of upstream Jasmin's scalar word
-    model (`proofs/lang/wsize.v`). `U512` is a **CatCrypt extension** (task
-    #286) for the AVX-512 `zmm` register width: it lets a 512-bit SIMD register
+    model (`proofs/lang/wsize.v`). `U512` is a **CatCrypt extension**
+    for the AVX-512 `zmm` register width: it lets a 512-bit SIMD register
     (`reg u512`) be declared and typed in the AST and the verified `jasminDialect`
     so AVX-512 packed kernels (Poseidon2 `#VPADD_8u64`, mpn 8×u64 blocks) route
     through the verified jasmin chain rather than only the owned x86 backend.

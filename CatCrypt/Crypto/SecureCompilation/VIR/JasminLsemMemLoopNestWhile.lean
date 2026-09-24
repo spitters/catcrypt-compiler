@@ -13,19 +13,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopCall
 set_option autoImplicit false
 
 /-!
-# Nested region-calls and a data-dependent `while` over `LstateM` (capability A3)
+# Nested region-calls and a data-dependent `while` over `LstateM`
 
-A1 (`JasminLsemMemLoop`) ran a **straight-line** loop body over the memref state
-`LstateM`; A2 (`JasminLsemMemLoopCall`) let the loop body **call a linked owned
-leaf** (all-`Lopn`) via `Lcall`, giving `loopCall_runBounded` — the `n`-fold of a
-call-containing body for a **fixed** trip `m` supplied (with its counter schedule)
-by the consumer.  This module (A3) closes the backend loop machinery with the two
-remaining shapes:
+The loop interpreter (`JasminLsemMemLoop`) runs a **straight-line** loop body over
+the memref state `LstateM`; the call interpreter (`JasminLsemMemLoopCall`) lets the
+loop body **call a linked owned leaf** (all-`Lopn`) via `Lcall`, giving
+`loopCall_runBounded` — the `n`-fold of a call-containing body for a **fixed** trip
+`m` supplied (with its counter schedule) by the consumer.  This module adds two
+further shapes to the backend loop machinery:
 
 ## 1. NESTING (depth-2 region calls)
 
-A2's `callee_run` requires the callee body to be **all-`Lopn`**.  Here `segCallG`
-generalises A2's `segCallC` to run a straight-line-with-calls segment of **any**
+`callee_run` requires the callee body to be **all-`Lopn`**.  Here `segCallG`
+generalises `segCallC` to run a straight-line-with-calls segment of **any**
 current function (the loop function *or* an env-fetched callee), and `callee_run2`
 uses it to run a callee whose **own body may contain a region call** (`BodyStepOK`
 — `Lopn ∪ call-to-a-linked-leaf`).  So a call to a depth-2 callee (a leaf whose
@@ -41,7 +41,7 @@ holds* — the trip count is **determined by the values the body produces** (the
 counter register `nReg` the body decrements), not a fixed proof parameter.
 `whileTripsMem` is that data-dependent trip count, and `runWhileMem_halts_schedule`
 proves a terminating `runWhileMem` **reconstructs** the fixed-`m` counter schedule
-A2's `loopCall_runBounded` consumes.  `whileMem_runWhile` composes the two: the
+`loopCall_runBounded` consumes.  `whileMem_runWhile` composes the two: the
 emitted counter-loop (`whileLinstrRM = loopLinstrRM`) run by `lsemFuelMemLC`
 realises `runWhileMem` — the consumer supplies only the fuel (a
 decreasing-measure/variant bound) and the fact that the guard goes false within
@@ -58,16 +58,16 @@ initial `n`, and agrees with `runWhileMem`.
 **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validates).**
 
-### Reported residual (arbitrary-depth mutual recursion)
+### Scope (arbitrary-depth mutual recursion)
 
 `callee_run2` gives depth-2 nesting with the **correct** callee cost
 (`fuelCostC env calleeBody`, a call-aware fold).  Composing a depth-2 callee back
-*into* A2's loop-with-calls bridge at the theorem level is the residual: A2's
-per-call cost `stepCostC = |env sym| + 1` assumes an all-`Lopn` callee (each
+*into* the loop-with-calls bridge at the theorem level is outside this module: the
+bridge's per-call cost `stepCostC = |env sym| + 1` assumes an all-`Lopn` callee (each
 instruction one step), so it undercounts a callee whose body itself calls.  A
 fully general (arbitrary-depth) nested-loop/nested-call bridge needs a
 depth-indexed / well-founded `fuelCost` recursing on call-graph depth; the
-interpreter already *runs* arbitrary nesting (validated below), only the closed
+interpreter *runs* arbitrary nesting (validated below), only the closed
 cost accounting is depth-2-bounded.  Likewise an *inline* nested loop realises the
 doubly-nested fold at run time (validated), but a closed inline-nested-loop theorem
 needs a control-flow-aware (not `Lopn ∪ call`) segment lemma.
@@ -85,7 +85,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopCall
 
 /-! ## 1. `segCallG` — the straight-line-with-calls segment for ANY current function
 
-A2's `segCallC` runs a `BodyStepOK` segment of the **loop function** (`s.lfn =
+`segCallC` runs a `BodyStepOK` segment of the **loop function** (`s.lfn =
 P.lfn`, body `P.body`).  `segCallG` generalises the current function to an
 arbitrary `cf` with body `curBodyC env P cf` — so it applies both to the loop
 function *and* to an env-fetched callee, the enabler for a callee whose body itself
@@ -121,7 +121,7 @@ theorem segCallG (env : LeafEnvM) (P : LprogM) (cf : String) :
         rw [hb, show s.base.lpc + 1 + k = s.base.lpc + (k + 1) from by omega, hp]; simp
       rw [fuelCostC_cons]
       rcases hii with hlopn | ⟨ra, sym, lbl, hcall, hcOK⟩
-      · -- `Lopn`: cost 1, mirror A2.
+      · -- `Lopn`: cost 1, mirror the call interpreter.
         have hcost : stepCostC env i = 1 := by
           obtain ⟨d, o, src, hd⟩ := hlopn; unfold stepCostC; rw [hd]
         rw [hcost, show 1 + fuelCostC env is + f = (fuelCostC env is + f) + 1 from by omega,
@@ -137,7 +137,7 @@ theorem segCallG (env : LeafEnvM) (P : LprogM) (cf : String) :
             have hfn' : ({ s with base := b } : LstatePMC).lfn = cf := hfn
             have := ih { s with base := b } f hfn' his (hpostail b hb_lpc)
             simpa using this
-      · -- region call: cost `|env sym| + 1`, discharged by A2's `callee_run`.
+      · -- region call: cost `|env sym| + 1`, discharged by `callee_run`.
         obtain ⟨hne, leafOps, hsym, hleafLopn⟩ := hcOK
         have hcost : stepCostC env i = leafOps.length + 2 := by
           unfold stepCostC; rw [hcall]
@@ -184,7 +184,7 @@ theorem segCallG (env : LeafEnvM) (P : LprogM) (cf : String) :
 
 /-! ## 2. `callee_run2` — a callee whose body itself calls (depth-2 nesting)
 
-The A2 `callee_run` is the all-`Lopn` callee sub-run.  `callee_run2` relaxes the
+`callee_run` is the all-`Lopn` callee sub-run.  `callee_run2` relaxes the
 callee body to `BodyStepOK` (its instructions may be region calls to linked
 leaves), giving the **depth-2 nested denote**: entering a callee whose body itself
 calls a leaf runs the call-resolving fold `lsemStraightMemC env calleeBody` then
@@ -232,12 +232,12 @@ theorem callee_run2 (env : LeafEnvM) (P : LprogM) (sym callerFn : String) (retPc
 
 `runWhileMem env guard body fuel s` runs the do-while
 `repeat { s := body-fold s } while (guard on the out-state)` for at most `fuel`
-iterations, resolving each body-fold via A2's call-aware `lsemStraightMemC` and
-resetting the pc to `1` (the loop top) after each taken back-edge.  Unlike A2's
+iterations, resolving each body-fold via the call-aware `lsemStraightMemC` and
+resetting the pc to `1` (the loop top) after each taken back-edge.  Unlike
 `runBoundedLoopMemC` (a *fixed* trip count), the trip is decided by `guard` on the
 values the body produces — the data-dependent `while (nReg != 0)` shape.  `fuel = 0`
 returns `none` (the do-while runs the body at least once when entered), so any
-`some` result is a genuine termination within `fuel`. -/
+`some` result is a termination within `fuel`. -/
 def runWhileMem (env : LeafEnvM) (guard : LstateM → Bool) (body : List LinstrRM) :
     Nat → LstateM → Option LstateM
   | 0, _ => none
@@ -274,8 +274,8 @@ theorem whileTripsMem_succ (env : LeafEnvM) (guard : LstateM → Bool) (body : L
 /-- The emitted **data-dependent** counter-loop back-edge over `LstateM`: label;
     body; the (possibly empty) guard-compute segment materialising the predicate
     into `gReg`; the conditional back-edge `Lcond (.reg gReg) top`.  Folding the
-    guard-compute into the loop-body tail, this is exactly A2's `loopLinstrRM` on
-    the extended body — so all the A2 loop machinery (`loopCall_runBounded`,
+    guard-compute into the loop-body tail, this is exactly `loopLinstrRM` on
+    the extended body — so all the call interpreter's loop machinery (`loopCall_runBounded`,
     `segCallC`) applies.  The `LstateM`/`LinstrRM` analogue of
     `X86Backend.LprogControlFlow.whileLcmd`. -/
 def whileLinstrRM (top : LLabel) (gReg : String) (guardCompute body : List LinstrRM) :
@@ -303,13 +303,13 @@ theorem runBoundedLoopMemC_succ_shift (env : LeafEnvM) (body : List LinstrRM)
   rw [runBoundedLoopMemC_succ, hb, Option.bind_some]
 
 /-! ## 5. `runWhileMem_halts_schedule` — a terminating do-while reconstructs the
-    fixed-`m` counter schedule A2's `loopCall_runBounded` consumes
+    fixed-`m` counter schedule `loopCall_runBounded` consumes
 
 This is the data-dependent core: a `runWhileMem` that halts within `fuel` yields
 its trip count `m = whileTripsMem …` and *proves* the counter schedule
 (`0 < m`, the `(m-1)`-fold `bprev` whose last body-fold is the result, the `m`-fold,
 and "guard true after each of the first `m-1` iterations") — the very hypotheses
-A2's `loopCall_runBounded` requires, but here **derived** from the run, not
+`loopCall_runBounded` requires, but here **derived** from the run, not
 supplied. -/
 theorem runWhileMem_halts_schedule (env : LeafEnvM) (guard : LstateM → Bool)
     (body : List LinstrRM) (hgpc : ∀ (b : LstateM) (pc : Nat), guard (b.setLpc pc) = guard b) :
@@ -382,7 +382,7 @@ theorem runWhileMem_halts_schedule (env : LeafEnvM) (guard : LstateM → Bool)
 
 /-! ## 6. `whileMem_runWhile` — the emitted loop realises `runWhileMem`
 
-Composing §5 with A2's `loopCall_runBounded`: for the emitted counter-loop
+Composing §5 with `loopCall_runBounded`: for the emitted counter-loop
 `loopLinstrRM top nReg body` run by `lsemFuelMemLC`, starting at the loop top, if
 the data-dependent do-while `runWhileMem (condNZ nReg) body fuel` halts within
 `fuel` to `bfin`, then the interpreter — given `whileTripsMem … * (fuelCostC + 1)`
@@ -481,7 +481,7 @@ theorem nestLoop_validate :
 An outer loop (counter `n`) whose body resets an inner counter `m := 3`, runs an
 **inline** inner loop (counter `m`, distinct top label `1`) that does `acc += 1`
 each inner pass, then `n -= 1`.  The interpreter's label resolution
-(`findLabelMem`) picks the correct (inner vs outer) label, so a genuine nested
+(`findLabelMem`) picks the correct (inner vs outer) label, so a nested
 inline loop runs over `LstateM`.  Outer trip `2` × inner trip `3` ⇒ `acc = 6`. -/
 
 /-- The inner loop body: `acc += 1`, `m -= 1`. -/
@@ -507,7 +507,7 @@ def nestedLoopStart : LstatePMC :=
 
 /-- **Validate (b).**  The true inline nested loop (outer `n = 2` × inner `m = 3`,
     distinct labels `0`/`1`) decodes `acc = 2 * 3 = 6` — the interpreter ran a
-    genuine doubly-nested inline loop over `LstateM`, its label resolution keeping
+    doubly-nested inline loop over `LstateM`, its label resolution keeping
     the inner and outer back-edges distinct. -/
 theorem nestedLoop_validate :
     (lsemFuelMemLC (fun _ => none) nestedLoopProg 200 nestedLoopStart).map

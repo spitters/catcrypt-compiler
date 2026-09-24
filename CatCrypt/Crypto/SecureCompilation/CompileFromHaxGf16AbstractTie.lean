@@ -16,16 +16,16 @@ public meta import CatCrypt.Crypto.Util.Gf256
 public import CatCrypt.Crypto.Util.Gf256
 
 /-!
-# #607 Phase 3d: the emitted GF(16) multiply leaf EQUALS the abstract field op
+# The emitted GF(16) multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxMayoGf16.lean` proves that the verified compiler *emits* a jasmin
 `Com` whose `BitVec 32` denotation is `gf16MulSpec` — the bit-serial straight
 line the extracted source computes (per-step `xtime` reduction by the constant
 `poly = 0x3 = x+1`, since `x⁴ ≡ x+1` in `GF(2)[x]/(x⁴+x+1)`). That file ties the
-leaf to its own closed form, but the field-product agreement was checked only on
-two **sample** KAT vectors (`gf16MulSpec_kat`: `7·11=4`, `3·6=0xa`).
+leaf to its own closed form and checks the field product on two **sample** KAT
+vectors (`gf16MulSpec_kat`: `7·11=4`, `3·6=0xa`).
 
-This module closes the gap to a **universal** abstract-spec tie. The abstract
+This module proves a **universal** abstract-spec tie. The abstract
 GF(16) field multiply is `CatCrypt.Util.Gf16.mul : BitVec 4 → BitVec 4 → BitVec 4`
 (`Gf16 := BitVec 4`), defined by lifting to a `BitVec 8` polynomial product and
 reducing **at the end** by `0x13 = x⁴+x+1` (`Gf16.mulAux`). The emit-form
@@ -90,12 +90,12 @@ theorem gf16MulCore_eq_field (a b : BitVec 4) :
     gf16MulCore a b = Gf16.mul a b := by
   revert a b; decide
 
-/-- **Universal GF(16) emit-form ↔ abstract-field tie (#607 Phase 3d).**
+/-- **Universal GF(16) emit-form ↔ abstract-field tie.**
     For every `a b : BitVec 32`, the emitted leaf's spec `gf16MulSpec`, read on
     the low nibble, equals the abstract GF(16) field multiply `Gf16.mul`
-    (`CatCrypt.Util.Gf16`) on the truncated nibbles. This upgrades the leaf from
-    KAT-only (`gf16MulSpec_kat`, two sample vectors) to a genuine universal tie
-    to the field op the MAYO/SNOVA spec uses. Composed with
+    (`CatCrypt.Util.Gf16`) on the truncated nibbles: a universal tie, beyond the
+    two sample vectors of `gf16MulSpec_kat`, to the field op the MAYO/SNOVA spec
+    uses. Composed with
     `CompileFromHaxMayoGf16.gf16Mul_compiles`, the verified compiler's emitted
     jasmin `Com` therefore computes the abstract GF(16) field product. -/
 theorem gf16MulSpec_eq_field (a b : BitVec 32) :
@@ -105,15 +105,15 @@ theorem gf16MulSpec_eq_field (a b : BitVec 32) :
 
 /-- The KAT vectors of `CompileFromHaxMayoGf16.gf16MulSpec_kat`, re-derived as a
     special case of the universal field tie: `7 · 11 = 4` and `3 · 6 = 0xa` over
-    `GF(2)[x]/(x⁴+x+1)`, now via `Gf16.mul`. -/
+    `GF(2)[x]/(x⁴+x+1)`, via `Gf16.mul`. -/
 theorem gf16MulSpec_kat_via_field :
     Gf16.mul (0x7 : BitVec 4) (0xb : BitVec 4) = (0x4 : BitVec 4)
       ∧ Gf16.mul (0x3 : BitVec 4) (0x6 : BitVec 4) = (0xa : BitVec 4) := by
   decide
 
-/-! ## GF(256) follow-up: the UOV/AES field multiply leaf tie
+/-! ## GF(256): the UOV/AES field multiply leaf tie
 
-The same upgrade for the GF(256) = `GF(2)[x]/(x⁸+x⁴+x³+x+1)` (AES / UOV Rijndael
+The same universal tie for the GF(256) = `GF(2)[x]/(x⁸+x⁴+x³+x+1)` (AES / UOV Rijndael
 field, poly `0x11b`, reduce constant `0x1b`) leaf of
 `CompileFromHaxUovGf256.lean`. The emit-form `gf256MulSpec : BitVec 32 → BitVec 32
 → BitVec 32` runs eight bit-steps over the low byte with a per-step `(0−carry) &&&
@@ -145,8 +145,8 @@ theorem gf256MulCore_eq_field (a b : BitVec 8) :
     gf256MulCore a b = Gf256.mul a b := by
   revert a b; native_decide
 
-/-- **Universal GF(256) emit-form ↔ abstract-field tie (#607 Phase 3d, AES /
-    UOV field).** For every `a b : BitVec 32`, the emitted leaf's spec
+/-- **Universal GF(256) emit-form ↔ abstract-field tie (AES / UOV
+    field).** For every `a b : BitVec 32`, the emitted leaf's spec
     `gf256MulSpec`, read on the low byte, equals the abstract GF(256) field
     multiply `Gf256.mul` (`CatCrypt.Util.Gf256`) on the truncated bytes.
     Composed with `CompileFromHaxUovGf256.gf256Mul_compiles`, the verified

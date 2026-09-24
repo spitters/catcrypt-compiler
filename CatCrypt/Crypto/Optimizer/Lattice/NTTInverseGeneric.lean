@@ -15,7 +15,7 @@ public import Mathlib.Algebra.BigOperators.Ring.Finset
 The forward NTT (`NTTRecursionPass.dft`, and the convolution theorem's forward
 direction in `NttMultiplyGeneric`) is a pure algebraic identity needing **no**
 relation on the twiddle `ω`. The *inverse* — recovering the coefficients from the
-evaluation-domain samples — is the genuinely harder direction: it needs `ω` to be
+evaluation-domain samples — is the harder direction: it needs `ω` to be
 a **primitive `n`-th root of unity**, and the whole proof turns on
 **root-of-unity orthogonality**.
 
@@ -36,7 +36,7 @@ forces the sum to vanish. The off-diagonal vanishing is exactly the content of
 ## Inversion
 
 `idft n ω X k = (n)⁻¹ · ∑_j X j · (ω⁻¹)^(j·k)` is the synthesis map (a `Field`,
-where `n ≠ 0`, is assumed so that both `ω⁻¹` and `(n)⁻¹` exist). The keystone
+where `n ≠ 0`, is assumed so that both `ω⁻¹` and `(n)⁻¹` exist). The main theorem
 `idft_dft` then states `idft n ω (dft n ω x) = x`: swap the two sums, apply
 orthogonality to collapse the inner one to `n · [l = k]`, and cancel `(n)⁻¹ · n`.
 The DFT is invertible — this closes the inverse/synthesis half that the forward

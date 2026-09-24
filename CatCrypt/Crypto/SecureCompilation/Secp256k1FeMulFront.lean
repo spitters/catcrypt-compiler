@@ -23,7 +23,7 @@ set_option autoImplicit false
 
 This module sources a full 4-limb secp256k1 field multiply
 `out = (a · b) mod p`, `p = 2^256 − 2^32 − 977`, end-to-end through the verified
-`CProg`-free front — NO hand-built `Com` / `Lcmd` / `JInstr` anywhere in the emit
+front — NO hand-built `Com` / `Lcmd` / `JInstr` anywhere in the emit
 path (the framed straight-line route of `Bn254TowerFrontEmit`, scaled from a
 4-limb add/sub to the 4-limb schoolbook multiply + Solinas reduce):
 

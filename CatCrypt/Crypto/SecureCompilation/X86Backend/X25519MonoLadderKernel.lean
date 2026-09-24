@@ -17,14 +17,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
 
 /-!
-# Monolithic X25519 Montgomery-ladder step: inlined field leaves, one no-call body (#411)
+# Monolithic X25519 Montgomery-ladder step: inlined field leaves, one no-call body
 
 `Fe25519{Mul,Ops,LazyOps}Kernel` emit the X25519 field operations as **separately
 callable** leaf functions. The owned-backend X25519 ladder (`bench/x25519_ladder_compare/`)
 calls them one per field op: 17–18 distinct `call`/`ret` symbols per Montgomery
-ladder step × ~255 steps. #410 measured that this **per-leaf C-call / ABI / spill
-tax** — not redundant reductions — is the bulk of the owned ladder's 1.75× gap to
-s2n's monolithic `curve25519_x25519`: each leaf pushes/pops its callee-saves, pays
+ladder step × ~255 steps. Measurement of the per-leaf ladder attributes the bulk of
+its 1.75× gap to s2n's monolithic `curve25519_x25519` to this **per-leaf C-call /
+ABI / spill tax**, not to redundant reductions: each leaf pushes/pops its callee-saves, pays
 `call`/`ret`, and the C compiler spills and reloads all live ladder state across
 each opaque external `.s` boundary because it cannot see into the leaf.
 
@@ -35,25 +35,25 @@ each field op is its leaf's word arithmetic with its `loadMem`/`storeMem` retarg
 to slots in that frame; intermediates flow op-to-op **inside one function** — zero
 inter-op `call`/`ret`, no copy-out/copy-in across leaf boundaries.
 
-This is the same inlining lever as `InlinedNttKernel` (#304/W4) Part B
+This is the same inlining lever as `InlinedNttKernel` Part B
 (`butterflyBody` chained register-to-register, proved via `lowerBlock_denote_closed`
 + `runBlock` KAT), scaled from a two-butterfly toy to the full X25519 ladder step.
 
 ## Why not the `ComInline.lean` pass
 
-`VIR/ComInline.inline` (#210/#304) is a **wrapper-leaf** inliner: it removes a
+`VIR/ComInline.inline` is a **wrapper-leaf** inliner: it removes a
 single `extCall` boundary whose registered body is itself a single `extCall`
 (`SingleExprBody`). It does NOT compose multi-binding leaf `Com` blocks into one
 register-resident body — its own docstring defers that ("general inlining … requires
 Com-level splicing through `Com.foldVar` … not needed for the single-expression
-case"). The W4 NTT demo confirms this: Part A inlines a wrapper that forwards to a
+case"). The `InlinedNttKernel` demo confirms this: Part A inlines a wrapper that forwards to a
 primitive (both opaque `extCall`s with identical `jasminExtSem`), while the actual
 register-residence win is demonstrated at the `List (JInstr 64)` level (Part B). The
 field-op leaves here (`feMulBlock`, `feSqrBlock`, the lazy add/sub/cmadd) are
 multi-binding straight-line blocks, so the inlining that removes their call boundary
 lives at the `JInstr` level — exactly where this module operates.
 
-## What is proved (sorry-free)
+## What is proved (fully proved)
 
 * `rebase_*` correctness is structural: `rebaseInstr`/`rebaseBlock` only rename
   register names and shift memory base/offset, so they produce a well-formed block.
@@ -72,7 +72,7 @@ lives at the `JInstr` level — exactly where this module operates.
 The end-to-end **value identity** (the monolithic ladder = RFC 7748 §5.2 = s2n
 `curve25519_x25519`) is the runtime KAT in
 `bench/x25519_ladder_compare/x25519_ladder_mono.c`, the same gate the per-leaf and
-lazy ladders use. No `sorry`.
+lazy ladders use. All goals closed.
 -/
 
 @[expose] public section
@@ -269,7 +269,7 @@ def opInline1 (tag : String) (xOff zOff : Int) (body : List (JInstr 64)) :
 
 One straight-line block computing the RFC 7748 Montgomery double-and-add step on
 frame state, op-by-op, with NO `call`/`ret` between ops. Mirrors the lazy ladder's
-arithmetic (so the value identity is the same one already KAT'd in #410), but inlined:
+arithmetic (so the value identity is the one the lazy ladder's KAT checks), but inlined:
 
 ```
   A  = x2 + z2     (lazy add)        AA = A^2
@@ -326,8 +326,8 @@ def monoLadderStepBlock : List (JInstr 64) :=
 /-! ## 5. Inter-op call count: the tax the inlining drove to zero -/
 
 /-- `JInstr` has no call/ret constructor; the fused body is one straight-line block,
-    so the inter-op call boundary count is `0` by construction (was 17 separate leaf
-    calls per step in the per-leaf ladder). -/
+    so the inter-op call boundary count is `0` by construction (against 17 separate
+    leaf calls per step in the per-leaf ladder). -/
 def monoLadderStep_callcount : Nat := 0
 
 theorem monoLadderStep_callcount_eq : monoLadderStep_callcount = 0 := rfl
@@ -348,34 +348,34 @@ is parametric in the block, so it applies to the fused body directly. -/
 /-- **Lowering correctness on the monolithic ladder step.** The fused, inlined,
     no-call body lowers denotation-preservingly through the owned x86 backend, on any
     incoming frame state. This is the inlined analogue of each leaf's
-    `feXBlock_lowering_correct`, now over the single composed body. -/
+    `feXBlock_lowering_correct`, over the single composed body. -/
 theorem monoLadderStepBlock_lowering_correct (s : JState 64) :
     (lowerBlock (Γ := []) monoLadderStepBlock).denote (.cons s .nil)
       = runBlock s monoLadderStepBlock :=
   lowerBlock_denote_closed monoLadderStepBlock s
 
-/-! ## 6b. Register-residence: verified store-to-load forwarding over the fused body (#412)
+/-! ## 6b. Register-residence: verified store-to-load forwarding over the fused body
 
-#411 closed the per-leaf call/ABI tax (1.86× → 1.61× s2n), but the fused body is
+Fusion removes the per-leaf call/ABI tax (1.86× → 1.61× s2n), but the fused body is
 **frame-resident**: each inlined field op stores its result to a frame slot and the
 next consumer reloads it — the cross-op working set lives in memory, round-tripped
 op-to-op. The probe `(blockNames monoLadderStepBlock).length = 176` against the
 13-slot GP pool (`gpFreeSlots framePins = 13`) shows why a *renaming* register
-allocator (`Optimizer.RandomizedRegAlloc`, #386) cannot attack this: a renaming is a
+allocator (`Optimizer.RandomizedRegAlloc`) cannot attack this: a renaming is a
 bijection, not a spiller, so a whole-body rename overflows by 162 names
 (`allocOverflow framePins monoLadderStepBlock = some <162 names>`); a per-op rename
 leaves each op's `loadMem`/`storeMem` in place, so the round-trip survives. The
-residual is the **memory traffic** (96 `loadMem` + 68 `storeMem` per step), not the
-allocation — the wrong lever for a renaming pass (contrast #386's toy `add2`/`add_n`,
-where the out-of-order renaming win was hidden because those kernels have ample GP
+remaining cost is the **memory traffic** (96 `loadMem` + 68 `storeMem` per step), not the
+allocation — the wrong lever for a renaming pass (contrast the toy `add2`/`add_n` kernels,
+where the out-of-order renaming win is hidden because those kernels have ample GP
 headroom and no cross-op frame traffic at all).
 
-The right lever is **store-to-load forwarding** (`Optimizer.StoreToLoadForward`,
-#412): when a frame cell is stored from a register and then reloaded with the holding
+The right lever is **store-to-load forwarding** (`Optimizer.StoreToLoadForward`):
+when a frame cell is stored from a register and then reloaded with the holding
 register still live, the reload becomes a register move (`mov d ← r`), recovering
 residence for that hop. Applied to the fused body it forwards **40 of the 96 frame
 loads** (96 → 56 `loadMem`, +40 `mov`), eliminating 24% of the 164 per-step frame
-accesses, with no `sorry`:
+accesses, fully proved:
 `StoreToLoadForward.storeToLoadForward_runBlock` proves the forwarded body has the
 same `runBlock` denotation on **every** state (the in-Lean translation-validation
 certificate, companion to `RandomizedRegAlloc.regalloc_runBlock_sound`), and the
@@ -398,7 +398,7 @@ theorem forwardedMonoLadderStepBlock_length :
     has exactly the same `runBlock` final state as the fused body, on every incoming
     frame state — so the lowered `Com` of the forwarded body denotes the lowered `Com`
     of the original. Register-residence is recovered without changing the function
-    computed (the value identity stays the #410/#411 KAT). No `sorry`. -/
+    computed (the value identity stays the ladder KAT). All goals closed. -/
 theorem forwardedMonoLadderStepBlock_lowering_correct (s : JState 64) :
     (lowerBlock (Γ := []) forwardedMonoLadderStepBlock).denote (.cons s .nil)
       = runBlock s monoLadderStepBlock := by
@@ -500,12 +500,12 @@ full GP pool (minus `fp`) is sound — the only inter-op state is in the frame. 
 
 /-- Render one rebased op block with `fp` pinned and a per-op MULX pin set, **routed
     through the default owned-x86 optimizer pipeline** (`X86ComPipeline.optimizeX86Block`,
-    the #555 driver) before allocation and rendering. The op's scratch names are already
+    the default driver) before allocation and rendering. The op's scratch names are already
     `tag`-prefixed, so they never collide across ops; we allocate within the pool, pinning
     `fp`, and (for MULX ops) the tagged `yd`/`zr`.
 
     Routing the per-op block through `optimizeX86Block` (the composed store-to-load
-    forwarding core) is the generic #555 default in place of per-op hand-wiring. Its
+    forwarding core) is the generic default in place of per-op hand-wiring. Its
     `optimizeX86Block_runBlock` certificate guarantees the rendered body is value-equivalent
     to the unoptimized one on every state, so the emitted `.s` stays KAT-correct with no
     new proof obligation. On a **single** field-op block the pass is the identity (a leaf op
@@ -551,7 +551,7 @@ theorem monoStep_alloc_no_overflow :
     stepOps.all (fun e => allocOverflow (framePins ++ e.1) e.2 == none) = true := by
   native_decide
 
-/-- **The default optimizer pipeline is the identity on every per-op block (#555).**
+/-- **The default optimizer pipeline is the identity on every per-op block.**
     `renderOpBlock` routes each op block through `X86ComPipeline.optimizeX86Block` (the
     composed store-to-load-forwarding driver) as the generic default. On a *single* field-op
     block the pass is the identity: a leaf op loads its inputs at the start and stores its

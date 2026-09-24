@@ -19,7 +19,7 @@ For the scalar `arith` fragment at a fixed width `w` (ops that lower to `regArit
 `regConst` — `addi`/`subi`/`muli`/`andi`/`ori`/`xori`/`constant`, excluding
 `mului_extended_hi` and the immediate shifts, which lower to the `LstateN` N-state ops),
 the `toJasmin` lowering lands in `UniformScalarArith w`. Composed with
-`JasminLsemGeneralFaithful.comLsemExportFaithful_of_scalar`, this gives the genuine
+`JasminLsemGeneralFaithful.comLsemExportFaithful_of_scalar`, this gives the
 `lsem` export faithfulness `ComLsemExportFaithful` for scalar-`arith`-lowered programs —
 the real (non-`True`) content of the export gate for that fragment.
 -/
@@ -67,7 +67,7 @@ theorem lowerArithToJasmin_uniformScalar {w : Nat} {Γ : Ctxt arithDialect}
       | shrui_imm w' n => simp [isScalarOp] at hsc
       | shli_imm w' n => simp [isScalarOp] at hsc
 
-/-- **Genuine `lsem` export faithfulness for a scalar-`arith` program.** With the lowered
+/-- **`lsem` export faithfulness for a scalar-`arith` program.** With the lowered
     argument context uniform-width `w`, the `toJasmin`-lowered scalar-`arith` `Com`
     satisfies `ComLsemExportFaithful`: its emitted singleton program, run under the labeled
     program-indexed `lsem` from the encoded inputs, decodes to `Com.denote` for every

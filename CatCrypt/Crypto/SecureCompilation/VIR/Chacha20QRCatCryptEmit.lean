@@ -16,14 +16,14 @@ public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 /-!
 # ChaCha20 quarter-round as a `catCryptDialect → jasmin → x86` path
 
-The RFC-8439 §2.1 ChaCha20 quarter-round is a *benchmarked* primitive. Until now
-it routed to owned x86 only through the THIR front
-(`X86Backend/ChaChaQRThirEmit.lean`); the high algebraic crypto-SSA surface
-`catCryptDialect` carried no quarter-round coverage. This file closes that gap:
-it builds the quarter-round *natively* as a straight-line `Com catCryptDialect`
-program over the dialect's word ops (`bvAdd`/`bvXor`/`bvRor`), proves it denotes
-to the canonical RFC spec `Jasmin.ChaCha20QR.quarterRound`, and lowers it through
-the committed `catCryptDialect → jasminDialect` seam
+The RFC-8439 §2.1 ChaCha20 quarter-round is a *benchmarked* primitive. Besides this
+module it reaches owned x86 through the THIR front
+(`X86Backend/ChaChaQRThirEmit.lean`). This module gives quarter-round coverage in
+the high algebraic crypto-SSA surface `catCryptDialect`: it builds the
+quarter-round *natively* as a straight-line `Com catCryptDialect` program over
+the dialect's word ops (`bvAdd`/`bvXor`/`bvRor`), proves it denotes to the canonical
+RFC spec `Jasmin.ChaCha20QR.quarterRound`, and lowers it through the committed
+`catCryptDialect → jasminDialect` seam
 (`DialectToJasminCom.cryptoDialectToJasminCom`), composing the seam's
 denote-preservation (`cryptoDialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'`)
 so the *lowered jasmin program* denotes to the same RFC spec. The lowered jasmin
@@ -49,7 +49,7 @@ identity `rotl(x, n) = rotr(x, 32 - n)`:
 Each rotate-left equals the corresponding `bvRor` denotation, so the dialect
 program — which uses only seam-lowering ops — denotes to the RFC quarter-round.
 
-## Deliverables
+## Contents
 
 * `chacha20QRCatCrypt{A,B,C,D}` — the four output words of the quarter-round as
   native `Com catCryptDialect` programs over the 12-op block.

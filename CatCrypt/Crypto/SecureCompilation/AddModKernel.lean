@@ -145,7 +145,7 @@ theorem submodProg_riscv (p : Nat) (s : RState64) :
 /-! ## High-level spec link: the kernel computes `ZMod p` field addition
 
 Tying the compiled kernel to Mathlib's prime field `ZMod p` — the result register
-holds the `val` of the genuine field sum, not merely a `Nat` modulus. This is the
+holds the `val` of the field sum in `ZMod p`. This is the
 high-level mathlib-linked specification the kernel realises. -/
 
 theorem addmodProg_zmod (p : Nat) [NeZero p] (env : Env) (hp64 : p < 2 ^ 63)

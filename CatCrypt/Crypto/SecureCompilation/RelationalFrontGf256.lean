@@ -39,7 +39,7 @@ GF(2⁸) golden-path emit (`FieldEmitGoldenGf256.gf256MulBuilt`) unchanged as th
     when the target width is larger);
   * **NOT surjective**: every image is `< 256`, so e.g. `(256 : BitVec 64)` (let
     alone `2^63`) has no preimage. The image is the 256-element subset
-    `{0,…,255}` of the `2^64`-element register carrier — the genuine
+    `{0,…,255}` of the `2^64`-element register carrier — the
     injective-not-onto regime (`map4` level: equality-reflecting embedding, no
     surjectivity, no Type-equivalence).
 * **Operator** `bop = gf256Ref` (`FieldEmitGoldenGf256.gf256Ref`): the bit-serial
@@ -66,7 +66,7 @@ through an injective, not-onto byte encoding, over a **characteristic-2** field.
 That is the relational front carrying the AES/FAEST binary-field structure end-to-
 end, the char-2 sibling of the `ZMod 251` prime-field instance.
 
-## HONEST scope
+## Scope
 
 * The abstract spec `A = BitVec 8` with `op = gf256MulByte` is the **byte-level**
   Rijndael multiply, *defined as the golden-path reference truncated to the byte*.
@@ -74,7 +74,7 @@ end, the char-2 sibling of the `ZMod 251` prime-field instance.
   quotient — that needs a `Field`/`GaloisField` isomorphism (the obstruction the
   `ReprTransferInstancesBinius` docstring flags), not provided here. The spec is
   thus the operation-on-bytes, not the abstract algebraic field object; this is
-  the same honesty level as the golden path itself (validated as the bit-serial
+  the same specification level as the golden path itself (validated as the bit-serial
   multiply by FIPS-197 KATs, `gf256Ref_kats` / `gf256MulBuilt_kats`).
 * `com_denotes_bop` is the **all-inputs** seam `Com.denote gf256MulBuilt = gf256Ref`
   (`gf256MulBuilt_denote_gf256Ref`), *not* a closed-vector KAT — the golden path's
@@ -100,7 +100,7 @@ open CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
 The golden path validates `gf256MulBuilt` against FIPS-197 vectors by
 `native_decide` (`gf256MulBuilt_kats`). The `RealizedKernel` contract needs the
 stronger **all-inputs** identity `Com.denote gf256MulBuilt = gf256Ref x1 x0`. The
-generated `Com` was laid out binding-for-binding to match `gf256Step`/`gf256Ref`
+generated `Com` is laid out binding-for-binding to match `gf256Step`/`gf256Ref`
 (see the `FieldEmitGoldenGf256` table), so this is a symbolic `rfl`. -/
 
 set_option maxRecDepth 8000 in
@@ -132,7 +132,7 @@ def encByte (a : BitVec 8) : BitVec 64 := BitVec.setWidth 64 a
 /-- **`encByte` is injective** (equality-reflecting): zero-extension to a wider
     width preserves the low byte, so distinct bytes have distinct images. The
     `map4`-level `enc_inj` — note it is **not** surjective (`(256 : BitVec 64)`
-    has no preimage), the genuine injective-not-onto case. -/
+    has no preimage), the injective-not-onto case. -/
 theorem encByte_injective : Function.Injective encByte := by
   intro a b hab
   have h : (encByte a).toNat = (encByte b).toNat := congrArg BitVec.toNat hab
@@ -166,7 +166,7 @@ def gf256MulRealization :
 /-- **The relationally-emitted `GF(2^8)`-multiply kernel — the characteristic-2
     customer.** Its abstract source is the Rijndael field byte multiply
     (`BitVec 8`), its computational side is the emitted bit-serial GF(2⁸) kernel
-    `gf256MulBuilt`, and its encoding is a genuine injective-not-surjective byte
+    `gf256MulBuilt`, and its encoding is an injective-not-surjective byte
     serialization. The binary-field sibling of `addMod251RealizedKernel`. -/
 def gf256MulRealizedKernel : RealizedKernel gf256MulByte where
   bop := gf256Ref

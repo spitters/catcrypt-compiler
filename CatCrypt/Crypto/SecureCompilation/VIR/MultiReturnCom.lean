@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# Multi-return VIR (D2 skeleton)
+# Multi-return VIR
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -16,19 +16,19 @@ Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 type `⟦t⟧`. That single-return shape forces shared work across multiple
 "final" outputs to land in *separate* `func.func` boundaries downstream, which
 is the CSE trap documented in writeup §5.5: LLVM cannot DCE shared work across
-function boundaries, so a `CProg` that wants to emit two correlated values
-ends up doing the work twice.
+function boundaries, so a program that emits two correlated values
+does the work twice.
 
-This file introduces the structural skeleton of a multi-return VIR
+This module defines the structural skeleton of a multi-return VIR
 (`MultiReturnCom d Γ ts`) which returns a heterogeneous vector of variables
 indexed by a `List d.Ty`. The single-return `Com d Γ t` is recovered as the
 `ts = [t]` special case, and the equivalence is proved here.
 
-Strategy: **(A) side-by-side**. We do not modify `Core.lean`; the existing
-single-return `Com` keeps working. New code can opt into `MultiReturnCom` when
-it needs to emit multiple correlated outputs from a single SSA region.
+`MultiReturnCom` sits side by side with the single-return `Com` of `Core.lean`,
+which it leaves unchanged. Code opts into `MultiReturnCom` when it emits
+multiple correlated outputs from a single SSA region.
 
-Follow-ups (D2.1 – D2.4) are listed at the bottom of this file.
+The scope of the skeleton is recorded at the bottom of this file.
 -/
 
 @[expose] public section
@@ -211,35 +211,32 @@ end SmokeTest
 end CatCrypt.Crypto.SecureCompilation.VIR
 
 /-!
-## Follow-ups (D2.1 – D2.4)
+## Scope
 
-This file is the structural skeleton. The remaining work is:
+This file is the structural skeleton.
 
-* **D2.1 — `CryptoToVIR.lean`**: extend with a `toMultiReturnCom` translation
-  for `CProg`s that should produce multiple outputs. Currently impossible
-  because `CProg` itself is also single-return; that may need a parallel
-  `MultiReturnCProg` (or a `List CProg` glue layer) before this file's
-  multi-return target becomes reachable from the source language.
+* **Source language**: no translation into `MultiReturnCom` exists from the
+  crypto-SSA IR `catCryptDialect`, whose programs are single-return `Com`s; the
+  multi-return target is reachable only from code that builds a
+  `MultiReturnCom` directly.
 
-* **D2.2 ✅ AUDITED**: `CatCryptDialect.lean`'s 24 ops
+* **Op level**: `CatCryptDialect.lean`'s 24 ops
   (`constBit`/`xor`/`and`/`or`/`not`/`mkPair`/`fst`/`snd`/`inl`/`inr`/
   `bvConst`/`bvXor`/`bvAnd`/`bvOr`/`bvNot`/`bvAdd`/`bvSub`/`bvMul`/
   `bvEq`/`bvShiftL`/`bvShiftR`/`ite`/`memrefZero`/`memrefSet`/
   `memrefGet`/`extCall`) are all **single-return** at the op level.
   No `bvAdd64`/`bvAdc` (multi-output ALU ops are bundled at the
-  CryptoSSA-source level via `pair` types and projected after the
+  dialect level via `pair` types and projected after the
   call, not exposed as multi-return Expr ops). The CSE trap is at
   the *program*-level `func.func` boundary, not the *op* level —
   `MultiReturnCom` (this file) addresses the program-level concern,
   and no `DialectSignature.ret : d.Op → List d.Ty` change is needed.
 
-* **D2.3 ✅ LANDED** (commit `6fcea0c6`, 2026-04-30):
-  `Print.lean` extended with `MultiReturnCom.printModule` emitting
+* **Printing**: `Print.lean` provides `MultiReturnCom.printModule`, emitting
   `func.func @f() -> (T1, T2)` signatures with multi-value return
-  statements. Three new defs: `lookupNames`, `printBody`, `printModule`.
+  statements, through `lookupNames` and `printBody`.
 
-* **D2.4 — `X25519EmitMLIR.lean`**: retrofit to use `MultiReturnCom` where
-  the CSE trap currently kicks in (the writeup §5.5 motivating example).
-  Concretely: identify which emitted programs share work across separate
-  current `func.func`s and merge them into a single multi-return program.
+* **Emitters**: `X25519EmitMLIR.lean` builds the ladder full-step as one
+  multi-return program, `fullStep_multi` (the writeup §5.5 example), next to
+  its four single-return functions.
 -/

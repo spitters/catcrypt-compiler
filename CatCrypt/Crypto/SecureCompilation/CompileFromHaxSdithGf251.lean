@@ -61,8 +61,8 @@ the verified compiler* and proven equal to the Solinas-fold form.
 
 The abstract `(a*b) % 251` tie is stated and proved **separately**
 (`gf251MulFold_eq_mod`) over the constrained domain `a, b < 251`, the
-mod-reduce arithmetic identity (the hard part — the prime-field analogue of the
-`#117` Barrett seam).
+mod-reduce arithmetic identity (the hard part — the prime-field counterpart of the
+Barrett seam).
 -/
 
 @[expose] public section

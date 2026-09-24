@@ -9,17 +9,16 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorre
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
-# SIMD ext-op FRONT: inlined `vsimd` op validate (Route B — now reachable)
+# SIMD ext-op FRONT: inlined `vsimd` op validate (Route B)
 
-The scalar-only front wall the earlier probe located (`CryptoTy` has no vector
-type, `CatCryptOp` has no SIMD op, `toJExprD` has no `.vsimd` arm) is now closed:
+The front carries vector values and SIMD ops:
 `CatCryptOp.vsimd (op : SimdOp)` (binary) + the unary `vpshufdC`/`vaeskeygenC`/
 `vpsrldqC`/`vpslldqC` front ops carry a 128-bit vector value as `.sword 128`
 (`mapTy → reg 128`), denote via the backend `SimdOp.denote` waist, and lower 1:1
 through `DialectToJasminCom.toJExprD` to the matching `JasminOp.vsimd`/`vpsrldq`/
 `vpslldq` — the same owned x86 backend the 128-bit vsimd kernels render through.
 
-This file validates the OWNED route the probe said was unreachable: a real
+This module validates the OWNED route: a
 `.vsimd .gf2p8mulb` op in a `Com catCryptDialect` body that
 
   1. TRANSLATES + LOWERS: `cryptoDialectToJasminCom` returns `some`

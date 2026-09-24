@@ -24,7 +24,7 @@ the THIR front equates two such functions (a `Com.denote`, a `JForProg.denote`,
 or an `n`-fold accumulator map). `Refines src tgt` reads "`tgt` denotes exactly
 as `src` on all inputs".
 
-## Relation to upstream Veir (PR #703 / #704)
+## Relation to upstream Veir
 
 This anticipates opencompl/veir's `Interpreter/Refinement/Basic.lean`
 (the relation) and `Interpreter/Refinement/Lemmas.lean` (its reflexivity and

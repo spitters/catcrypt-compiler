@@ -36,7 +36,7 @@ case-splitting and the agreement closes structurally — exactly as for the latt
 leaves, but with the scalar `BitVec` op in place of the pointwise stack-array
 leaf.
 
-Since `arithDenote` was *defined* equal to `jasminDenote (op.toJasmin)` on every
+Since `arithDenote` is *defined* equal to `jasminDenote (op.toJasmin)` on every
 op, the preservation theorem is exact (no value drift).
 
 0 sorries.
@@ -92,7 +92,7 @@ For one `arith` expression `e`, the jasmin lowering `lowerExpr e` denotes (under
 the transported valuation) to `transTy` of `e`'s denotation. Proved by casing on
 `e.op` and destructuring its argument `HVector`.
 
-The technique (the keystone the dialect fan-out reuses): `cases op` reduces the
+The technique (the one the dialect fan-out reuses): `cases op` reduces the
 propositional `toJasmin_sig`/`toJasmin_ret` casts in `lowerExpr`/`Expr.denote` to
 `rfl` (so the `▸`s vanish), and `simp only [..., DialectDenote.denote, arithDenote,
 jasminDenote, JasminBinOp.apply, mulHiW, ...]` unfolds the class-projection denote

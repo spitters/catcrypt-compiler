@@ -14,7 +14,7 @@ public meta import CatCrypt.Crypto.Jasmin.JasminEmit
 public import CatCrypt.Crypto.Jasmin.JasminEmit
 
 /-!
-# Bernstein-Yang safegcd divstep modular inverse — 62-bit-radix re-emit (#261)
+# Bernstein-Yang safegcd divstep modular inverse — 62-bit-radix re-emit
 
 The 62-bit-radix (`libsecp256k1 modinv64`) Bernstein-Yang divstep modular
 inverter, authored as a `LowCT` body and emitted through the verified front
@@ -22,13 +22,13 @@ to a jasminc-compilable `.jazz`.  This is the perf-closure re-emit of the
 30-bit `SafegcdDivstepEmit` kernel: 5 limbs of 62 bits (i64) instead of 9
 limbs of 30 bits (i32), with the matrix-vector accumulators held as i128.
 
-## Why 62-bit needs the #261 widening-multiply primitive
+## Why 62-bit needs the widening-multiply primitive
 
 The `update_de_62` / `update_fg_62` accumulators are `int128_t`:
 `cd = (int128)t.u * d.v[0] + (int128)t.v * e.v[0] + …`, with each product
 reaching ~2^124.  The accumulator is held here as a **(hi, lo) int64 limb
 pair**; each product `(int128) t * limb` contributes a signed hi:lo pair via
-the #261 primitives `SMulHiS` (high word → Jasmin `#IMUL`) and `SMulS` (low
+the primitives `SMulHiS` (high word → Jasmin `#IMUL`) and `SMulS` (low
 word → Jasmin `*`).  The 128-bit accumulate is open-coded:
 
   lo' = lo + plo  (mod 2^64)         -- SAdd
@@ -232,7 +232,7 @@ def allOnes64 : Nat := 18446744073709551615   -- 2^64 − 1
 
 /-- Emit the **signed** high word of the `64×64 → 128` product `a * b` into the
     scalar named `dst`, via the **flag-free, non-RDX-pinned** unsigned `#MULX`
-    plus the branchless signed high-word correction (#359):
+    plus the branchless signed high-word correction:
 
 ```
   hi_u = mulHiU(a, b)                 // SMulHiU → #MULX (BMI2): no flag, hi → any GPR
@@ -254,15 +254,12 @@ def allOnes64 : Nat := 18446744073709551615   -- 2^64 − 1
     (un-hoisted) §13b ADCX/ADOX dual chain — `#IMUL` clobbers CF/OF and pins its
     high word to RDX, so it cannot issue between two `#ADOX`s.
 
-    **Status (#359):** wired and differentially validated, but *not yet* the
-    accumulator's high-word path.  Two measured facts gate it:
-    (1) used in the single-CF path (no dual chain) it is a **net regression**
-    (1.80× s2n vs `#IMUL`'s ~1.51×) — the ~7-op correction is unamortised
-    without the dual chain; and (2) the dual chain that *would* amortise it is
-    still RA-blocked by the hoisting `+2` (see `dualChainAccumulator`).  Kept
-    here, validated, for when the inline-`#MULX` `fuseCarry` rewrite lands; the
-    accumulators currently keep `SMulHiS` (`#IMUL`), the faster single-CF
-    choice. -/
+    **Scope:** differentially validated; the accumulator's high-word path
+    (`accAddProd`) uses `SMulHiS` (`#IMUL`) instead.  Two measured facts decide
+    this: (1) in the single-CF path (no dual chain) `signedHi` is slower
+    (1.80× s2n vs `#IMUL`'s ~1.51×), since the ~7-op correction is unamortised
+    without the dual chain; and (2) the dual chain that would amortise it is
+    RA-blocked by the hoisting `+2` (see `dualChainAccumulator`). -/
 def signedHi (dst a b : String) : List LowCT :=
   [ setE dst (.SMulHiU (v a) (v b))                       -- hi_u = #MULX(a,b)
     -- corr1 := [a<0]·b = (a >>s 63) & b, folded into a single scratch `_c`
@@ -283,7 +280,7 @@ def signedHi (dst a b : String) : List LowCT :=
   , setE dst (.SAdd (v dst) (lit 2)) ]
 
 /-- `acc += sext128(a * b)` where `a`, `b` are signed i64 scalar names.
-    Uses `SMulS` (low word) + signed `#MULX` (high word, see `signedHi`) and an
+    Uses `SMulS` (low word) + `SMulHiS` (signed high word, `#IMUL`) and an
     open-coded 128-bit signed add.  The carry-out of `nlo = acc_lo + plo` (mod
     2^64) is
     materialised as a u64 0/1 via the branchless bit-trick
@@ -446,14 +443,14 @@ def modinv62Body : LowCT :=
 
 /-- One divstep, written with **single-binop-over-atoms** statements so the
     `setFlat` flattener spawns ZERO `_e{n}` scratch temps (every RHS is already
-    flat: `dst op= atom` or `dt = atom op atom`).  Cutting the SSA-style fresh
-    temp per node (the original used `setFlat` on nested `cmn` expressions →
-    four live `_e0.._e3` per statement) shrinks the loop-body live set enough
-    that jasminc's per-function allocator keeps the matrix `dq`/`dr` and the
-    masks `c1`/`mask1` **register-resident** instead of spilling them to the
-    `stack u64 dq dr c1 mask1` slots — the hottest loop (590 invocations under
-    the δ₀=1/2 start) was paying a stack load/store on every matrix touch.  `dt` is the one shared
-    scratch register reused across the three `(x^c1-c1)&c2` reductions. -/
+    flat: `dst op= atom` or `dt = atom op atom`).  Without the SSA-style fresh
+    temp per node (`setFlat` on nested `cmn` expressions gives four live
+    `_e0.._e3` per statement), the loop-body live set is small enough that
+    jasminc's per-function allocator keeps the matrix `dq`/`dr` and the
+    masks `c1`/`mask1` **register-resident** instead of spilling them to
+    `stack u64` slots, which would cost a stack load/store on every matrix touch
+    in the hottest loop (590 invocations under the δ₀=1/2 start).  `dt` is the
+    one shared scratch register reused across the three `(x^c1-c1)&c2` reductions. -/
 def divstepStep : LowCT :=
   -- dst += ((src ^ c1) - c1) & c2, using the single scratch `dt`.
   let accCmn (dst src : String) : List LowCT :=
@@ -564,7 +561,7 @@ def updateDEproE : LowCT :=
     , ldM 3, storeLimb tarr "mt" (matrixTarrCell 3)
     ]
 
-/-! ### Inner-pass residency lever (#264)
+/-! ### Inner-pass residency by unrolling
 
 The cd/ce/cf/cg passes have a **statically-known** trip count (`n5 - 1 = 4`):
 limb `ii` runs `1 … n5-1`.  Emitting them as `RWhileNz` runtime loops costs,
@@ -714,7 +711,7 @@ def normalize : LowCT :=
                , setLimbE darr i (.SAnd (v "di") (lit m62)) ]))
     ]
 
-/-! ## §11. Subroutine split (#262)
+/-! ## §11. Subroutine split
 
 The monolithic kernel passes jasminc typing but its whole-function live-register
 set (every `reg`/`stack` local persists for the entire body) overflows jasminc's
@@ -853,14 +850,14 @@ def declScalar (x : String) : InstrR :=
 
 def ioParam (name : String) : Located := io8 name
 
-/-! ## §13a. ADCX/ADOX dual-carry-chain fusion (#345)
+/-! ## §13a. ADCX/ADOX dual-carry-chain fusion
 
 `accAddProd acc a b` open-codes the 128-bit signed accumulate
 `(acc_hi:acc_lo) += sext128(a*b)` as a 10-instruction tail: a 64-bit add
 `nlo = acc_lo + plo`, a five-op branchless carry-out detection
 `cyy = ((acc_lo & plo) | ((acc_lo ^ plo) & ~nlo)) >> 63`, and two `acc_hi +=`
 folds.  s2n's safegcd uses a *hardware* carry chain for exactly this step;
-the residual ~1.7× s2n gap (after #264/#343) is dominated by this bit-trick
+the residual ~1.7× s2n gap is dominated by this bit-trick
 (≈9 surplus ops per 64×64→128 product, ×~590 divsteps' worth of accumulates).
 
 This pass rewrites every `accAddProd` tail to the x86 add-with-carry pair the
@@ -988,7 +985,7 @@ def adcCarryPair (accLo accHi plo phi : String) : List InstrR :=
   , .Copn [lnoneBool, lnoneBool, lnoneBool, lnoneBool, lnoneBool, u64L accHi]
           .AT_none (.Oasm ⟨"ADC_64"⟩) [u64V accHi, u64V phi, boolV "cf"] ]
 
-/-! ## §13b. ADCX/ADOX dual-carry-chain fusion (#358)
+/-! ## §13b. ADCX/ADOX dual-carry-chain fusion
 
 §13a folds each `accAddProd` into a *single* hardware carry chain: `#ADD_64`
 threads CF from the low add into the `#ADC_64` high add.  Within a run of
@@ -1000,7 +997,7 @@ own low add's CF.  s2n's safegcd instead threads **two** independent carries
 (the Intel ADX `coreihwl` idiom): ADCX accumulates the low halves through CF,
 ADOX accumulates the high halves through OF, so two adds retire per cycle.
 
-This pass rewrites a run of `K ≥ 2` same-accumulator `accAddProd` tails to the
+This pass, when enabled, rewrites a run of `K ≥ 2` same-accumulator `accAddProd` tails to the
 dual chain the verified backend already validates (ADCX→CF only, ADOX→OF only,
 2-LVal `[flag_out, dst]` bundles, same `x86_ADCX = waddcarry` semantics for
 both — `Model.lean` §`adcx`/`adox`):
@@ -1014,16 +1011,12 @@ both — `Model.lean` §`adcx`/`adox`):
 ```
 
 **Lo→hi carry crossing.**  Each `#ADCX(acc_lo, plo_j, cf)` adds `acc_lo +
-plo_j + CF_in` (CF_in ∈ {0,1}); the sum of two u64 plus one bit fits in 65
-bits, so CF_out is again a single bit — the running low-overflow.  After the
-run, CF holds the *total* low carry `⌊(acc_lo₀ + Σ plo_j)/2^64⌋`, which is
-exactly the bit the i128 result needs to carry into `acc_hi`.  The ADOX chain
-independently computes `acc_hi₀ + Σ phi_j (mod 2^64)`, routing its own
-overflow through OF (discarded — the i128 wraps mod 2^128).  The closing
-`#ADCX(acc_hi, zero, cf)` adds that residual low carry into `acc_hi`,
-reconstructing `acc_hi₀ + Σ phi_j + ⌊(acc_lo₀ + Σ plo_j)/2^64⌋` — the same
-value §13a's serial CF chain produces, term-for-term.  Arithmetically
-identical, KAT-validated against gmp `mpz_invert`.
+plo_j + CF_in` (CF_in ∈ {0,1}) and threads CF_out into the next add on the same
+chain, which targets the same word `acc_lo`; likewise the ADOX chain threads OF
+into the next `acc_hi` add instead of discarding it.  In a sum of products into
+one accumulator the threaded carry is therefore reinjected into the word it
+came out of, so the schedule does not compute the i128 sum in general.
+`dualChainAccumulator` gives the analysis and disables this rewrite.
 
 The two chains are flag-disjoint (ADCX writes only CF, ADOX only OF), so
 `#ADCX(acc_lo)_j` and `#ADOX(acc_hi)_{j}` issue on the same cycle, and across
@@ -1032,12 +1025,10 @@ independent dependency strands of length `K` instead of one of length `2K`. -/
 
 /-- The dual chain's flag-seed / carry-fold scratch GPR.
 
-    The §13b hoisted form reused `idx` (the array-index register), valid because
-    all limb loads were hoisted *before* the seed, leaving `idx` dead through the
-    chain.  The inline-`#MULX` form (#363) issues the per-product limb loads
-    *inside* the chain (`idx := c; di := arr[idx]` between the seed and the
-    fold), so `idx` does not hold 0 at the fold — it must be a **dedicated**
-    zero register.  `azero` is self-XOR-zeroed by the seed and read only by the
+    The inline-`#MULX` form issues the per-product limb loads *inside* the chain
+    (`idx := c; di := arr[idx]` between the seed and the fold), so `idx` does not
+    hold 0 at the fold and the zero operand is a **dedicated** register.
+    `azero` is self-XOR-zeroed by the seed and read only by the
     two closing folds (`#ADOX`/`#ADCX(acc_hi, azero)`), so its live range is the
     chain interior and it costs one GPR (declared in `mainScalars` / banked by
     the helper auto-decl). -/
@@ -1045,21 +1036,16 @@ def adxScratch : String := "azero"
 def xorL : LVal := u64L adxScratch
 def xorV : PExpr := u64V adxScratch
 
-/-- Seed an ADCX/ADOX dual chain: `_,_,_,_,_, di := #XOR_64(di, di)` clears
-    both CF and OF (the two carry-in flags) and zeroes the `di` scratch GPR
-    (the second operand of the closing carry folds).  `di` is live (loaded for
-    the last product's multiply) and dead afterwards, so the self-XOR is a safe
-    in-place zero.  6-LVal flag bundle so the emitter banks `cf`/`of` as
-    `reg bool`. -/
+/-- Seed an ADCX/ADOX dual chain: `_,_,_,_,_, azero := #XOR_64(azero, azero)`
+    clears both CF and OF (the two carry-in flags) and zeroes the `adxScratch`
+    GPR (the second operand of the closing carry folds).  6-LVal flag bundle so
+    the emitter banks `cf`/`of` as `reg bool`. -/
 def adxSeed : InstrR :=
   .Copn [boolL "of", boolL "cf", lnoneBool, lnoneBool, lnoneBool, xorL]
         .AT_none (.Oasm ⟨"XOR_64"⟩) [xorV, xorV]
 
--- (§13b's hoisted-`#IMUL` dual-chain helpers — `adxProductPair`,
--- `renameExpr`/`renameLVal`/`renameInstr`, `phiEvac`, `renameProductPreamble`,
--- and the OF-folding `adxFold` — were superseded by the #363 inline-`#MULX`
--- rewrite below.  The OF-fold in particular was *unsound* for unsigned `#MULX`
--- high words; see `dualChainAccumulator` for the full analysis.)
+-- (An OF-folding carry fold is unsound for unsigned `#MULX` high words; see
+-- `dualChainAccumulator` for the analysis.)
 
 /-- Does a `PExpr` mention `accLo`/`accHi` as a variable? -/
 partial def exprMentions (accLo accHi : String) : PExpr → Bool
@@ -1104,14 +1090,14 @@ def instrTouches (accLo accHi : String) : InstrR → Bool
       || es.any (exprMentions accLo accHi)
   | _ => true  -- conservatively block runs across loops/branches/calls
 
-/-! ### Inline-`#MULX` dual chain (#363)
+/-! ### Inline-`#MULX` dual chain
 
-The §13b hoisting shape (above) keeps `K` product temporaries
+A hoisting shape keeps `K` product temporaries
 (`plo{j}`/`phs{j}`) live across the flag seed — `+2` over the single-CF peak —
 which overflows jasminc RA in the dense passes (see `dualChainAccumulator`).
-The fix, matching s2n-bignum's `coreihwl` schedule, is to issue a *flag-free,
+This schedule, matching s2n-bignum's `coreihwl`, instead issues a *flag-free,
 two-output* `#MULX` **inline** inside the chain (one product's `plo`/`phu` live
-at a time, exactly the single-CF peak) and **defer** the signed high-word
+at a time, exactly the single-CF peak) and **defers** the signed high-word
 correction to a single post-chain `acc_hi -= corrSum`.
 
 `#MULX(a, b)` writes the unsigned `(hi, lo)` pair in one flag-free instruction
@@ -1145,9 +1131,10 @@ within one product's `#ADCX`/`#ADOX` window, never accumulating.  This is the
 *together with* its carry tail (`matchProductFull`), so all `K` products'
 `#MULX`es are emitted inline by `fuseCarry`, none hoisted.
 
-Arithmetically identical to the §13a serial CF chain (the lo→hi carry crossing
-analysis of §13b applies verbatim — CF carries the low overflow into the high
-fold, OF residual provably 0); KAT-validated against gmp `mpz_invert`. -/
+The schedule fits jasminc RA but is not arithmetically equal to the §13a serial
+CF chain on negative products (the unsigned `#MULX` high word makes the
+threaded OF carry nonzero); `dualChainAccumulator` gives the analysis and
+disables it. -/
 
 /-- The two's-complement subtraction `acc := acc − corrSum`, open-coded as the
     wrapping add `acc + (~corrSum) + 1` (the emit model's `SSub` arm is
@@ -1181,9 +1168,7 @@ def corrAccum (corrSum a b : String) (first : Bool) : List InstrR :=
   ++ [ sar "_cs" b, andd "_cs" "_cs" a           -- _cs = [b<0]·a
      , add corrSum corrSum "_cs" ]               -- corrSum += _cs
 
-/-- Close an inline-`#MULX` dual chain (two instructions).  Unlike the §13b
-    `adxFold` (which assumed the *signed* `#IMUL` high word, sign-extended and
-    small, so the OF chain never overflowed and OF could be folded back), the
+/-- Close an inline-`#MULX` dual chain (two instructions).  The
     unsigned `#MULX` high word is ≈ 2^64 for a negative product, so the OF chain
     **does** carry out of bit 64.  That OF carry is the overflow into bit 128 of
     the i128 accumulator and must be **discarded** (the i128 wraps mod 2^128) —
@@ -1257,22 +1242,19 @@ def maxExtraProducts : Nat := 1
 /-- Whether an accumulator (named by its `*_lo` half) may carry a dual chain.
 
     **`false` — the inline-`#MULX` dual chain is arithmetically incompatible
-    with summing into a *single* i128 accumulator (#363).**
+    with summing into a *single* i128 accumulator.**
 
-    History: §13a fuses each i128 multiply-accumulate to a single-CF
-    `#ADD_64`/`#ADC_64` pair (1.49× s2n).  §13b/§359 built the hoisted ADCX/ADOX
-    dual chain + signed `#MULX` (`signedHi`) but could not open the gate: the
-    hoist kept `K` product temps live across the seed (`+2` GPRs), overflowing
-    jasminc RA.  #363 removed that RA obstacle with a **look-behind inline-`#MULX`
-    rewrite** (`matchProductFull` + `peelHeadLoads` + `collectMulxRun` +
-    `mulxProductInline` + deferred `corrSum`): the `#MULX`es issue *inside* the
-    chain, one product's `plo`/`phu` live at a time, the signed correction
-    deferred to a post-chain `acc_hi −= corrSum`.  That **does survive jasminc
-    RA** (`jasminc -arch x86-64` exits 0 on every pass — 48 `#ADCX` + 48 `#ADOX`
-    + 32 `#MULX`, no fallback).  The register-pressure blocker is *solved*.
+    §13a fuses each i128 multiply-accumulate to a single-CF `#ADD_64`/`#ADC_64`
+    pair (1.49× s2n).  The **look-behind inline-`#MULX` rewrite**
+    (`matchProductFull` + `peelHeadLoads` + `collectMulxRun` +
+    `mulxProductInline` + deferred `corrSum`) issues the `#MULX`es *inside* the
+    chain, one product's `plo`/`phu` live at a time, with the signed correction
+    deferred to a post-chain `acc_hi −= corrSum`.  It fits jasminc RA
+    (`jasminc -arch x86-64` exits 0 on every pass — 48 `#ADCX` + 48 `#ADOX`
+    + 32 `#MULX`, no fallback).
 
-    But the dual chain is then **arithmetically wrong** on negative products,
-    and this is fundamental, not fixable by scheduling:
+    The dual chain is **arithmetically wrong** on negative products, for a
+    reason no scheduling removes:
 
     * `#ADOX` *threads* the high chain's inter-product carry (OF) between the two
       `#ADOX(acc_hi, phu_j)`s.  When two products' high words are summed into the
@@ -1282,11 +1264,11 @@ def maxExtraProducts : Nat := 1
       adds OF into the next `#ADOX`.
     * For the *signed* `#IMUL` high word (small, sign-extended) the sum
       `phu0 + phu1` never overflows bit 64, so OF stays 0 and the spurious
-      threading is a no-op — exactly §13b's "OF provably 0" assumption.  The
+      threading is a no-op.  The
       *unsigned* `#MULX` high word is ≈ 2^64 for a **negative** product, so
       `acc_hi + phu0` overflows, OF = 1, and threading it bumps `acc_hi` by 1.
       The deferred signed correction fixes the *value* of each high word but not
-      this spurious carry.  Confirmed by a Lean model of both schedules: with
+      this spurious carry.  A Lean model of both schedules exhibits it: with
       `a0 = b0 = −1` (`2^64−1`), `hi0 = 5`, the serial accumulate gives high word
       5, the threaded dual chain gives 6 — off by exactly the OF carry.  The KAT
       fails on **every** input (`0 OK / 4132 FAIL` vs gmp `mpz_invert`).
@@ -1297,11 +1279,10 @@ def maxExtraProducts : Nat := 1
     Summing `K` products into one i128 needs the high words pre-reduced to the
     *signed* (small) form before `#ADOX`, which requires the flag-clobbering
     `signedHi` correction *inside* the chain — defeating the flag-free `#MULX`
-    that made the inline schedule possible in the first place.  No reordering
-    escapes this: it is the dual-chain idiom meeting a single-accumulator sum.
+    that makes the inline schedule possible.  No reordering avoids this.
 
-    **#371 — two further escapes ruled out by an arithmetic model (off-by-one
-    at the ±1 level, not a scheduling artefact).**  The obstruction above is the
+    **Two further alternatives fail in an arithmetic model (off by ±1).**  The
+    obstruction above is the
     *same-word accumulation* defect: `#ADCX`/`#ADOX` thread a carry from one add
     to the *next add on the same chain*, but in a single-accumulator sum the
     next same-chain add targets the **same** word (`acc_lo += plo_j` then
@@ -1317,28 +1298,27 @@ def maxExtraProducts : Nat := 1
       `acc_lo`.  A 2-million-trial C model of the threaded schedule vs the serial
       `__int128` accumulate fails ~50% of inputs, off by `±1` in the low word.
     * **(B) hoist the *signed* (`signedHi`) high words** (what freeing 2 GPRs by
-      spilling the cold pointer params would enable).  This was §13b's "OF
-      provably 0" premise — empirically **false**: a 3-million-trial model of the
-      hoisted signed-high-word dual chain fails ~64% of inputs, off by `±1` in
-      the high word (the OF chain threads non-zero inter-product carries even on
-      small signed high words).  Register pressure was never the soundness
-      blocker — #363 already showed the inline path fits RA — so freeing GPRs
-      cannot change the arithmetic.
+      spilling the cold pointer params would enable).  The premise that OF stays
+      0 on signed high words is false: a 3-million-trial model of the hoisted
+      signed-high-word dual chain fails ~64% of inputs, off by `±1` in the high
+      word (the OF chain threads non-zero inter-product carries even on small
+      signed high words).  Register pressure is not the obstruction — the inline
+      path fits RA — so freeing GPRs cannot change the arithmetic.
 
     The ADX dual-chain idiom needs consecutive same-chain adds to target
     *staggered* word lanes (the schoolbook diagonal); a sum-of-products into one
     accumulator has none.
 
-    **#373 — the two remaining paths (D schoolbook-diagonal restructure, C
-    signed-`#MULX`-with-carry primitive) both ruled out by C-models, confirmed
-    against the s2n-bignum reference.**
+    **Two more alternatives (D, a schoolbook-diagonal restructure; C, a
+    signed-`#MULX`-with-carry primitive) fail in C models, consistent with the
+    s2n-bignum reference.**
 
     The s2n-bignum modular inverter (`x86/generic/bignum_modinv.S`,
     `word_divstep59.S`) uses **zero** `#ADCX`/`#ADOX`/`#MULX`: its matrix-vector
     update (`Lbignum_modinv_congloop`/`crossloop`) sums exactly two products per
     output limb with plain `mulq` + a *single CF chain* (`adcq d, h1`), rolling a
     128-bit `(h1:l1)` accumulator across the limb loop.  That is **exactly §13a**
-    — the current 1.49× path.  s2n's ADX lives only in its *schoolbook* multiply
+    — the 1.49× path.  s2n's ADX lives only in its *schoolbook* multiply
     kernels (curve25519/p256/p521), where same-chain adds target staggered lanes.
 
     * **(D) schoolbook-diagonal restructure.**  The update accumulate is a *dot
@@ -1353,36 +1333,37 @@ def maxExtraProducts : Nat := 1
       product's carry into `acc_hi` per product is correct but serially dependent
       (degenerates to §13a, no dual-chain parallelism); threading it forward to
       the next low add keeps an independent strand but reinjects the carry into
-      the same word (the #371 defect, 2.5 M / 3 M FAIL).  No op achieves both
+      the same word (the same-word defect above, 2.5 M / 3 M FAIL).  No op achieves both
       independence and correct placement, because the `K` low words share lane
       `2^0`.
 
-    The wall is fundamental and identical for both: a sum of products into ONE
+    The obstruction is the same for both: a sum of products into ONE
     accumulator has no second word lane for a threaded carry, so the schoolbook
-    ADX idiom cannot apply.  s2n-bignum — which also avoids ADX here — confirms
-    it.  The throwaway C-models are not retained.
+    ADX idiom does not apply; s2n-bignum also avoids ADX here.  The C models
+    are not part of the repository.
 
-    So the accumulators keep `SMulHiS` (`#IMUL`) on the §13a single-CF chain —
-    the correct, 1.49×-s2n choice.  The inline-`#MULX` machinery
+    The accumulators therefore use `SMulHiS` (`#IMUL`) on the §13a single-CF
+    chain (1.49× s2n).  The inline-`#MULX` machinery
     (`matchProductFull`/`peelHeadLoads`/`collectMulxRun`/`mulxProductInline`/
-    `corrAccum`/`deferredCorrSub`/`mulxChainFold`) is retained, RA-validated and
+    `corrAccum`/`deferredCorrSub`/`mulxChainFold`) is RA-validated and
     KAT-bisected (`maxExtraProducts = 0` ⇒ the run-1 `#IMUL` path KATs 4132 OK),
-    documenting the explored path and the precise obstruction. -/
+    and is disabled by this gate. -/
 def dualChainAccumulator (_accLo : String) : Bool :=
   false
 
 /-- Rewrite `accAddProd` open-coded carry tails to hardware add-with-carry.
 
-    * A run of `K ≥ 2` consecutive same-accumulator products (the cd/ce/cf/cg
-      inner-pass `acc += Σ m·limb` steps) is lowered to the inline-`#MULX`
-      ADCX/ADOX **dual** carry chain (#363): a deferred-correction preamble, a
+    * When `dualChainAccumulator` holds (it is `false`), a run of `K ≥ 2`
+      consecutive same-accumulator products (the cd/ce/cf/cg inner-pass
+      `acc += Σ m·limb` steps) is lowered to the inline-`#MULX`
+      ADCX/ADOX **dual** carry chain: a deferred-correction preamble, a
       flag seed, `K` inline `#MULX`+`#ADCX`(CF)/`#ADOX`(OF) products, a low-carry
       fold, and the post-chain signed correction.  The multiplies are issued
       *inside* the chain (flag-free `#MULX`), so no product temporaries are
       hoisted — register pressure stays flat (only `corrSum` + the renamed
       head-operand survive the seed).
-    * An isolated product (run length 1 — e.g. the prologue `cd += mod0·md`)
-      keeps the §13a single `#ADD_64`/`#ADC_64` pair (`#IMUL` high word; no
+    * Otherwise each product (including an isolated one, e.g. the prologue
+      `cd += mod0·md`) uses the §13a single `#ADD_64`/`#ADC_64` pair (`#IMUL` high word; no
       overlap to exploit, and no `signedHi` correction to amortise).
 
     The look-behind `matchProductFull` consumes the head product's multiply
@@ -1413,7 +1394,7 @@ partial def fuseCarry : List InstrR → List InstrR
               -- Run length 1: no overlap to exploit.  Fall back to the §13a
               -- single-CF `#ADD_64`/`#ADC_64` pair, re-emitting the head
               -- product's load + `#IMUL` multiply (cheaper than `#MULX`+correction
-              -- when unamortised — see #359 reason (2)).  The head load + preamble
+              -- when unamortised — see `signedHi`).  The head load + preamble
               -- were peeled / consumed, so we re-materialise them.
               lead0 ++
               [ .Cassgn (u64L "plo") .AT_none (.sword .U64)
@@ -1535,10 +1516,9 @@ where
 /-- The split program: lift every `RFnDef` to a sibling `#[returnaddress=stack]
     fn` (spilled) and emit the driver as the `export fn`, concatenated into one
     `.jazz`.  Each function body is post-processed by `fuseCarry`, replacing
-    the open-coded i128 carry-bit-trick with hardware add-with-carry: an
-    ADCX(CF)/ADOX(OF) dual chain for runs of `K ≥ 2` same-accumulator products
-    (§13b, #358 — gated by `dualChainAccumulator`), the single
-    `#ADD_64`/`#ADC_64` pair for isolated ones (§13a, #345). -/
+    the open-coded i128 carry-bit-trick with hardware add-with-carry: the single
+    `#ADD_64`/`#ADC_64` pair (§13a) for every product, since the ADCX(CF)/ADOX(OF)
+    dual chain of §13b is disabled by `dualChainAccumulator`. -/
 def emitSplit : Option String := do
   let (helperFds, residual) := LowCT.extractFnDefs bodyK4
   let helperFds := helperFds.map (fun fd => { fd with body := fuseCarry fd.body })
@@ -1554,8 +1534,8 @@ def emitSplit : Option String := do
 
 -- #eval (LowCT.extractFnDefs bodyK4).1.length   -- number of lifted helpers
 
--- `signedHi` (#359): flag-free `#MULX` + branchless signed correction, ready
--- for the inline-MULX dual chain (see `dualChainAccumulator`).  10 LowCT
+-- `signedHi`: flag-free `#MULX` + branchless signed correction, for use
+-- in the inline-MULX dual chain (see `dualChainAccumulator`).  10 LowCT
 -- statements; lowers to one `#MULX` + arithmetic-shift / and / xor / add ops,
 -- no `#IMUL`, no wide-immediate `xor`.
 -- #eval (signedHi "phi" "mt" "di").length          -- = 10

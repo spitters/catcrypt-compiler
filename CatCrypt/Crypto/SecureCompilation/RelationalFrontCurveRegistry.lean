@@ -57,7 +57,7 @@ new `KLimbPrimeMul` record plus a one-line application of the generic theorem �
 
 * `registry_add_commutes` / `registry_mul_commutes` — the generic commuting
   squares, **named as the registry interface**. These are definitional aliases
-  of `encMLK_add_commutes` / `encMLK_mul_commutes` (the genuinely parametric
+  of `encMLK_add_commutes` / `encMLK_mul_commutes` (the parametric
   theorems, which already existed): each is parametric over a `KLimbPrime` /
   `KLimbPrimeMul` *datum* — i.e. over a row of the curve table.
 * `curveTable : List KLimbPrimeMul` — the registry datum table: the nine
@@ -91,7 +91,7 @@ open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-! ## 1. The registry interface: the generic, datum-parametric commuting squares
 
-`KLimbPrime` / `KLimbPrimeMul` are the registry data. The genuinely parametric
+`KLimbPrime` / `KLimbPrimeMul` are the registry data. The parametric
 commuting-square theorems `encMLK_add_commutes` / `encMLK_mul_commutes` already
 exist (in `RelationalFrontBls377{Add,Mul}`); here we name them as the registry
 interface so a new curve's correctness is *exactly* one application. -/
@@ -177,7 +177,7 @@ construction. -/
     definitionally the registry interface applied to that curve's `KLimbPrimeMul`
     row — exhibited here for bls12_377 and Pallas (ADD and MUL). Because the
     proofs are equal *by `rfl`*, the per-curve files (`RelationalFrontPallas`,
-    `RelationalFrontBls377Mul`, …) are genuinely instances of one parametric
+    `RelationalFrontBls377Mul`, …) are instances of one parametric
     construction: a new curve needs only a new table row, not a new proof. -/
 theorem instances_are_registry_applications :
     (∀ a b : ZMod bls377Q,

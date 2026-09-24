@@ -173,8 +173,8 @@ def catToMemref : CatCryptOp → Option MlirMemrefOp
   -- Dynamic (runtime-index) memref ops: the static `MlirMemrefOp` (Fin-indexed
   -- store/load) cannot represent a runtime index, so this correspondence has no
   -- target — the dynamic ops lower to jasmin `stackLoad/stackStore` directly
-  -- (DialectToJasminCom). Extending `MlirMemrefDialect` with dynamic load/store
-  -- (MLIR's `memref.load/store` are inherently dynamic) is the follow-up.
+  -- (DialectToJasminCom). `MlirMemrefDialect` has no dynamic load/store
+  -- (MLIR's `memref.load/store` are inherently dynamic).
   | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
   | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ => none
   | .constBit _ | .constUnit | .xor | .and | .or | .not | .eqBit

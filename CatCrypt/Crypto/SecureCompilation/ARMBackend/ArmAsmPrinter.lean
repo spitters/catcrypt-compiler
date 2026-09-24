@@ -10,10 +10,10 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
-# GAS AArch64 asm printer for the scalar A64 machine instructions (#533)
+# GAS AArch64 asm printer for the scalar A64 machine instructions
 
-`Vec128AsmPrinter.lean` prints the XMM packed-u32 subset to AT&T AVX asm; this is
-its **AArch64 scalar** counterpart: it prints an `ArmModel.AInst` block — the
+The x86 backend prints the XMM packed-u32 subset to AT&T AVX asm; this module is
+the **AArch64 scalar** counterpart: it prints an `ArmModel.AInst` block — the
 scalar 32-bit-`W` GP-ALU set of `ArmModel.lean`, the same set lowered to the A64
 machine model by `ArmLowering.lowerABlock` / `armBlock_lowering_denote` — to
 GAS-syntax AArch64 assembly text (`add`/`sub`/`and`/`orr`/`eor`/`lsl`/`lsr`/
@@ -29,10 +29,10 @@ assignment, no instruction selection / scheduling / optimization), and `as`
 performs only assembly. So the trusted edge is: (the printer is correct GAS
 AArch64 syntax for each mnemonic) ∧ (`as` encodes each mnemonic per the Arm ARM).
 The machine-code byte encoder + `decode(encode)=i` against `rems-project/sail-arm`
-**landed in sub-2** (`ArmEncoder.lean` + `SailArmDecoder.lean`, the A64 analogue
-of `SailX86Decoder`): for the whole emitted GP-ALU subset the encoder's words are
-proved to decode back to the same instruction, so this printer + `as` is no longer
-the only byte-level trust edge.
+(`ArmEncoder.lean` + `SailArmDecoder.lean`, the A64 analogue of
+`SailX86Decoder`) covers the whole emitted GP-ALU subset: the encoder's words are
+proved to decode back to the same instruction, so this printer + `as` is not the
+only byte-level route.
 
 ## Register allocation
 
@@ -73,7 +73,7 @@ abbrev GpAlloc := List (String × String)
     same discipline as the x86 `regOf`). -/
 def gpOf (alloc : GpAlloc) (n : String) : String :=
   if n = "wzr" then "wzr"
-  else if n = "xzr" then "xzr"  -- the 64-bit zero register (bignum path, #547)
+  else if n = "xzr" then "xzr"  -- the 64-bit zero register (bignum path)
   else (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")
 
 /-- The index of the last instruction that *reads* `n` (its last use), or 0. -/
@@ -131,7 +131,7 @@ def renderAInst (alloc : GpAlloc) : AInst → String
 def renderABlockBody (alloc : GpAlloc) (block : List AInst) : List String :=
   block.map (renderAInst alloc)
 
-/-! ### 1b. Branch / control-flow renderer (the looped-emission lines, #551)
+/-! ### 1b. Branch / control-flow renderer (the looped-emission lines)
 
 GAS AArch64 label syntax is `.L<name>:`; the branches are `b .L<name>`,
 `b.<cond> .L<name>`, `cbnz wN, .L<name>` / `cbz wN, .L<name>`. The counter
@@ -233,12 +233,12 @@ example : renderABranch [] (.bcond .ne "loop0") = "\tb.ne .Lloop0" := by native_
 example : renderABranch [("ctr","w9")] (.cbnz "ctr" "loop0")
     = "\tcbnz w9, .Lloop0" := by native_decide
 
-/-! ## 5. The 64-bit bignum/field GAS printer (#547)
+/-! ## 5. The 64-bit bignum/field GAS printer
 
 The `BInst` (`X`-register) counterpart of `renderAInst`. GAS order is `op Xd, Xn,
 Xm` (dst first); `CSEL` takes the condition last (`csel Xd, Xn, Xm, cc`); `MOVZ`/
 `MOVK` take the `#imm` (and `LSL #(16·hw)` for `MOVK`). The register names are
-resolved through the same `gpOf` allocation (now an `xN` assignment); `gpOf`
+resolved through the same `gpOf` allocation (here an `xN` assignment); `gpOf`
 passes the 64-bit zero register `xzr` through. -/
 
 /-- Print the condition suffix of a `CSEL`. -/

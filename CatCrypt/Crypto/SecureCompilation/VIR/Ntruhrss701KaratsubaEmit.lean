@@ -23,7 +23,7 @@ degree-`N = 16` cyclic ring multiply `Z/8192[x]/(x^N − 1)` by plain schoolbook
 accumulation (`N² = 256` coefficient multiplies), this module emits the **same
 ring multiply** with one level of 2-way Karatsuba over the linear product,
 dropping the multiply count to `3·(N/2)² = 192`. The deployed `Com` is sourced
-through the verified `CProg`-free front — NO hand-built `Com`:
+through the verified front — NO hand-built `Com`:
 
 ```
   karaBody (LowCT: RScalarSetExpr Karatsuba word math over the coeff slots)
@@ -183,7 +183,7 @@ def karaBody : LowCT := seqAll (
 The source context + `VarMap` are shared with the schoolbook sibling
 (`Ntruhrss701MulEmit.srcCtx`/`srcVM` — 33 head-first `u64` words `a | b | pad`). -/
 
-/-- Push `karaBody` through the `CProg`-free control front and cap with
+/-- Push `karaBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def karaFrontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM karaBody with

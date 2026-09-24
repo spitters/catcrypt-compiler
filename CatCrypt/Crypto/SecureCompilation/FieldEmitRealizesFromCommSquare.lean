@@ -61,17 +61,17 @@ The bridge `FieldEmitRealizes` is then discharged from **two narrow facts**:
 
 Given these two, the field-op value content
 `klimbDecode (leaf-call) = klimbDecode aVal + klimbDecode bVal` is **proved**,
-*because* `encMLK_add_commutes` proves the commuting square.  The residual that
-survives is no longer "the leaf computes the abstract field value" but the much
-narrower "the leaf's bytes are `mlAddModK`'s bytes" (kernel-realization) plus the
-input convention — exactly the Tier-2 narrowing this module is for.
+*because* `encMLK_add_commutes` proves the commuting square.  The remaining
+residual is "the leaf's bytes are `mlAddModK`'s bytes" (kernel-realization) plus
+the input convention, narrower than "the leaf computes the abstract field
+value".
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the `ZMod`-value content of `add_realizes`.  Given
   the kernel-realization and operand-encoding hypotheses, the leaf-call value
   decodes to the field sum — discharged by `encMLK_add_commutes` (our proved
-  commuting square), *not* assumed.  This is the genuine narrowing: the modular
+  commuting square), *not* assumed.  This is the narrowing: the modular
   reduce and the `(a+b).val` law come from a theorem.
 * **Localized (narrowed residual):** `readLimbs (leafSpec.call …) = mlAddModK …`
   — that the leaf's emitted bytes are the limb kernel's bytes.  This is the KAT
@@ -241,7 +241,7 @@ theorem klimbKernelRealizes_canonical (Q : KLimbPrime)
 
 /-- **Non-vacuity for the full bridge.**  Threading the canonical limb-kernel
     realizer through `fieldEmitRealizes_add_of_kernel` (under the operand-encoding
-    convention) yields a genuine `FieldEmitRealizes` inhabitant — so the relational
+    convention) yields a `FieldEmitRealizes` inhabitant — so the relational
     commuting square does deliver the `GenericFieldEmitValue` hypothesis. -/
 theorem fieldEmitRealizes_add_canonical (Q : KLimbPrime)
     (readLimbs : RustVal .TFp → List (BitVec 64))
@@ -260,7 +260,7 @@ theorem fieldEmitRealizes_add_canonical (Q : KLimbPrime)
 Composing §3 with `GenericFieldEmitValue.emitFieldBinop_realizes_value` gives the
 end-to-end statement: *running* the emitted `emitFieldBinop` program writes into
 `dest` a value that decodes to the field sum `klimbDecode aVal + klimbDecode bVal`
-— with the *only* cross-prover residual now the narrowed limb-kernel fact (§2),
+— with the *only* cross-prover residual the narrowed limb-kernel fact (§2),
 the `ZMod`-value content supplied by `encMLK_add_commutes`. -/
 
 /-- **The emit→field-VALUE bridge with the residual narrowed to the limb kernel.**

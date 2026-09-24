@@ -8,15 +8,15 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
-# Source→machine constant-time bridge, Phase 2: the MEMORY/ARRAY fragment
+# Source→machine constant-time bridge: the MEMORY/ARRAY fragment
 
-`LowCTToJInstrCT.lean` (Phase 1) bridged the **memory-free** scalar-arith
-fragment.  There the source CT verdict (`cmdCT`) was *not* load-bearing for
-machine CT: the lowering emitted only register `mov`/ALU ops, which are always
-`IsDirect`, so the leaf was constant-time **unconditionally** — the `cmdCT`
-hypothesis was carried for contract shape only.
+`LowCTToJInstrCT.lean` bridges the **memory-free** scalar-arith
+fragment.  There the source CT result (`cmdCT`) is *not* needed for
+machine CT: the lowering emits only register `mov`/ALU ops, which are always
+`IsDirect`, so the leaf is constant-time **unconditionally** — the `cmdCT`
+hypothesis is carried for contract shape only.
 
-This module builds the fragment where the source analysis genuinely *drives*
+This module builds the fragment where the source analysis *drives*
 machine constant-time: **array element load/store** (`arr[idx] := src`,
 `dst := arr[idx]`).  These lower to the register-INDEXED machine ops
 `storeMemIdx`/`loadMemIdx`, whose effective address reads the **value** in the
@@ -29,7 +29,7 @@ So here the source-side guarantee is essential: the source CT analyser forces
 the index slot `.Public` (`cmdCT` arm for `RArrStore`/`RArrLoad`,
 `LowCTCTAnalysis.lean` §214–219), and — provided the register allocator places
 public slots in frame registers (`FrameWF`) — that supplies the
-`pub (ρ idx) = true` premise the machine keystone
+`pub (ρ idx) = true` premise the machine theorem
 (`MachineConstantTime.blockLeak_pub_determined`) needs.  `cmdCT` does real work.
 
 ## The source signatures this bridges (quoted from the real `LowCT`)
@@ -47,7 +47,7 @@ public slots in frame registers (`FrameWF`) — that supplies the
       lt idxVar == .Public && lt dst.locVar == .Public && lt src.locVar == .Public
 ```
 The index slot is forced `.Public` in **both** arms — exactly the
-public-index guarantee that drives the machine keystone.
+public-index guarantee that drives the machine theorem.
 
 The machine indexed ops (`JasminModel.lean` §640/§644):
 ```
@@ -63,18 +63,18 @@ with `dstRegs (.storeMemIdx ..) = []`, `dstRegs (.loadMemIdx d ..) = [d]`,
 
 * `MemSrc` / `MemSrc.toLowCT` — the array store/load fragment as a faithful
   subset of `LowCT`, embedded into the **real** `RArrStore`/`RArrLoad` node, so
-  the source CT verdict analysed is the genuine `cmdCT`.
+  the source CT result analysed is the real `cmdCT`.
 * `lowerMemStore_CTAddressed` / `lowerMemLoad_CTAddressed` — each lowering is
   `CTAddressed` w.r.t. `pub`, **given** `pub (ρ idx) = true` (and, for the load,
   the result-register-is-data convention `pub (ρ dst) = false`).  For the store
   this reduces to the index premise alone (`dstRegs = []` — the second conjunct
   is vacuous).
 * block versions over `List MemSrc` + `lowerMemSeq_constant_time` via the
-  machine keystone `blockLeak_pub_determined` under `agreePub`.
+  machine theorem `blockLeak_pub_determined` under `agreePub`.
 * `FrameWF` + `cmdCT_supplies_storeIdx_pub` / `cmdCT_supplies_loadIdx_pub` —
-  **the characteristic Phase-2 tie**: the source `cmdCT = true` verdict, routed
+  **the characteristic tie**: the source `cmdCT = true` result, routed
   through a frame-consistent register map, supplies the `pub (ρ idx) = true`
-  premise.  This is where `cmdCT` is genuinely consumed for machine CT.
+  premise.  This is where `cmdCT` is consumed for machine CT.
 * `lowerMem_source_to_machine_CT` (single) and `lowerMemSeq_source_to_machine_CT`
   (block) — end-to-end: `cmdCT = true → FrameWF → agreePub → blockLeak s₁ … =
   blockLeak s₂ …`.
@@ -90,9 +90,9 @@ with `dstRegs (.storeMemIdx ..) = []`, `dstRegs (.loadMemIdx d ..) = [d]`,
   (`LeafSpec.arrStore`/`arrLoad`, which is parametric/identity by default).
   Closing that requires pinning `leafSpec` to a concrete byte-offset memory
   model and an array↦(base, scale) memory correspondence, mirroring
-  `lowerArith_denote` for the scalar fragment.  That is the next step; here we
-  deliver the CT half only (the genuine "source public-index analysis ⇒ machine
-  CT" content, which the memory-free fragment did not need).
+  `lowerArith_denote` for the scalar fragment.  This module delivers the CT half
+  only (the "source public-index analysis ⇒ machine CT" content, which the
+  memory-free fragment does not need).
 -/
 
 @[expose] public section
@@ -135,26 +135,26 @@ structure MemLoadSrc where
 
 /-! ## 2. Embedding into real `LowCT` -/
 
-/-- **The store embedding into real `LowCT`.**  A `MemStoreSrc` is the genuine
-    `LowCT` command `RArrStore ⟨arr⟩ idx ⟨src⟩`, so the source CT verdict
+/-- **The store embedding into real `LowCT`.**  A `MemStoreSrc` is the
+    `LowCT` command `RArrStore ⟨arr⟩ idx ⟨src⟩`, so the source CT result
     analysed is the real `cmdCT`. -/
 def MemStoreSrc.toLowCT (m : MemStoreSrc) : LowCT :=
   .RArrStore ⟨m.arr, m.arrTy⟩ m.idx ⟨m.src, m.srcTy⟩
 
-/-- **The load embedding into real `LowCT`.**  A `MemLoadSrc` is the genuine
+/-- **The load embedding into real `LowCT`.**  A `MemLoadSrc` is the
     `LowCT` command `RArrLoad ⟨dst⟩ ⟨arr⟩ idx`. -/
 def MemLoadSrc.toLowCT (m : MemLoadSrc) : LowCT :=
   .RArrLoad ⟨m.dst, m.dstTy⟩ ⟨m.arr, m.arrTy⟩ m.idx
 
-/-- The store source CT verdict, via the **real** `cmdCT`: `true` iff the index,
+/-- The store source CT result, via the **real** `cmdCT`: `true` iff the index,
     array, and source slots are all `Public`.  (The index-slot being forced
-    `Public` is the public-index guarantee Phase 2 consumes.) -/
+    `Public` is the public-index guarantee this module consumes.) -/
 theorem MemStoreSrc.cmdCT_iff (m : MemStoreSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT m.toLowCT lt leafCT = true ↔
       (lt m.idx == .Public) ∧ (lt m.arr == .Public) ∧ (lt m.src == .Public) := by
   simp [MemStoreSrc.toLowCT, cmdCT_RArrStore, Bool.and_eq_true, and_assoc]
 
-/-- The load source CT verdict, via the **real** `cmdCT`: `true` iff the index,
+/-- The load source CT result, via the **real** `cmdCT`: `true` iff the index,
     destination, and array slots are all `Public`. -/
 theorem MemLoadSrc.cmdCT_iff (m : MemLoadSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT m.toLowCT lt leafCT = true ↔
@@ -183,7 +183,7 @@ def lowerMemLoad (ρ : RegMap) (m : MemLoadSrc) : JInstr 64 :=
     writes no register (`dstRegs (.storeMemIdx ..) = []`), so `CTAddressed`'s
     second conjunct is **vacuous**; the whole condition reduces to
     `pub (ρ idx) = true` for the single index register `idxReg = some (ρ idx)`.
-    This `pub (ρ idx) = true` premise is exactly what the source `cmdCT` verdict
+    This `pub (ρ idx) = true` premise is exactly what the source `cmdCT` result
     supplies (via `FrameWF`, §6) — for the store, nothing else is required. -/
 theorem lowerMemStore_CTAddressed (pub : PubPred) (ρ : RegMap) (m : MemStoreSrc)
     (hidx : pub (ρ m.idx) = true) :
@@ -217,7 +217,7 @@ theorem lowerMemLoad_CTAddressed (pub : PubPred) (ρ : RegMap) (m : MemLoadSrc)
 
 A leaf is a sequence of array ops.  We allow a heterogeneous sequence by
 tagging each statement as a store or a load.  `lowerMemSeq` lowers the block;
-`memSeqCTAddressed` is the per-statement `CTAddressed` hypothesis; the keystone
+`memSeqCTAddressed` is the per-statement `CTAddressed` hypothesis; the theorem
 `blockLeak_pub_determined` then gives machine CT under `agreePub`. -/
 
 /-- A single array statement: a store or a load. -/
@@ -270,11 +270,11 @@ theorem lowerMemSeq_CTAddressed (pub : PubPred) (ρ : RegMap) (ms : List MemSrc)
   obtain ⟨m, hm, rfl⟩ := hi
   exact lowerMem_CTAddressed pub ρ m (h m hm)
 
-/-- **Machine constant-time, block-level (the genuine half).**  A lowered array
+/-- **Machine constant-time, block-level.**  A lowered array
     leaf whose every index register is public (and every load result is a data
     register) produces the **same** machine leakage trace from any two states
     that **agree on the public registers** — even if they differ arbitrarily on
-    the secret data.  Delivered by the machine keystone
+    the secret data.  Delivered by the machine theorem
     `blockLeak_pub_determined`.  Unlike the memory-free fragment this is *not*
     unconditional: it requires the public-index premises (`storeMemIdx`/
     `loadMemIdx` are `¬ IsDirect`; a secret index would leak — cf.
@@ -286,14 +286,14 @@ theorem lowerMemSeq_constant_time (pub : PubPred) (ρ : RegMap) (ms : List MemSr
   blockLeak_pub_determined pub (lowerMemSeq ρ ms)
     (lowerMemSeq_CTAddressed pub ρ ms h) s₁ s₂ hag
 
-/-! ## 6. The characteristic Phase-2 tie: source `cmdCT` supplies the index premise
+/-! ## 6. The characteristic tie: source `cmdCT` supplies the index premise
 
 A register map is **frame-consistent** when every source slot the analyser
 typed `.Public` is placed in a public (frame) machine register.  Under that
-condition the source CT verdict `cmdCT = true` — which forces the index slot
-`.Public` — supplies the `pub (ρ idx) = true` premise the machine keystone
+condition the source CT result `cmdCT = true` — which forces the index slot
+`.Public` — supplies the `pub (ρ idx) = true` premise the machine theorem
 needs.  This is where `cmdCT` does real work for machine CT: the memory-free
-fragment never used it, the array fragment cannot do without it. -/
+fragment does not use it, and the array fragment requires it. -/
 
 /-- **Frame well-formedness of a register map.**  Every source slot typed
     `.Public` by the analyser is mapped to a public (frame) machine register.
@@ -321,9 +321,9 @@ theorem cmdCT_supplies_loadIdx_pub (lt : LevelTable) (leafCT : LeafCTTable)
   exact hframe m.idx (level_beq_public_iff.mp hsrc.1)
 
 /-- **Single-statement source CT ⇒ machine CT.**  For a store, the source
-    `cmdCT` verdict through a frame-consistent `ρ` is *sufficient* for machine
+    `cmdCT` result through a frame-consistent `ρ` is *sufficient* for machine
     constant-time: it supplies the public-index premise, and the store writes no
-    register.  This is the genuine source-analysis ⇒ machine-CT tie — `cmdCT` is
+    register.  This is the source-analysis ⇒ machine-CT tie — `cmdCT` is
     consumed, not carried. -/
 theorem lowerMemStore_source_to_machine_CT (lt : LevelTable) (leafCT : LeafCTTable)
     (ρ : RegMap) (pub : PubPred) (m : MemStoreSrc)
@@ -381,7 +381,7 @@ theorem loadResultsAreData_mem (pub : PubPred) (ρ : RegMap) :
         | store _ => exact loadResultsAreData_mem pub ρ ms hdata m hm'
         | load _ => exact loadResultsAreData_mem pub ρ ms hdata.2 m hm'
 
-/-- The source CT verdict on a statement supplies its `ctPremise`, given a
+/-- The source CT result on a statement supplies its `ctPremise`, given a
     frame-consistent `ρ` and (for loads) the result-data side condition. -/
 theorem cmdCT_supplies_ctPremise (lt : LevelTable) (leafCT : LeafCTTable)
     (ρ : RegMap) (pub : PubPred) (m : MemSrc)
@@ -399,10 +399,10 @@ theorem cmdCT_supplies_ctPremise (lt : LevelTable) (leafCT : LeafCTTable)
     is constant-time: any two states agreeing on the public registers produce the
     same machine leakage trace — even differing arbitrarily on the secret data.
 
-    This is the genuine Phase-2 result: the source public-index analysis
+    This is the main result of the module: the source public-index analysis
     (`cmdCT` forcing each index `.Public`), routed through the frame-consistent
     register map, is what makes the register-indexed machine accesses
-    constant-time.  `cmdCT` is load-bearing — a secret index would lower to a
+    constant-time.  `cmdCT` is necessary — a secret index would lower to a
     leaking `storeMemIdx`/`loadMemIdx` (cf. `nonCT_storeMemIdx_leaks_value`). -/
 theorem lowerMemSeq_source_to_machine_CT (lt : LevelTable) (leafCT : LeafCTTable)
     (ρ : RegMap) (pub : PubPred) (ms : List MemSrc)

@@ -105,7 +105,7 @@ def aesBody : LowCT :=
   (.RSeq (LowCT.RVsimdSetExpr "s9" "vsimd.vaesenc" ["s8", "rk9"])
         (LowCT.RVsimdSetExpr "out" "vsimd.vaesenclast" ["s9", "rk10"]))))))))))
 
-/-! ## 2. Coverage — the load-bearing structural proof -/
+/-! ## 2. Coverage — the main structural proof -/
 
 /-- **The AES-NI block is `IsCoveredV`**: an `RSeq` spine of eleven `vsimd`-tagged
     `RVsimdSetExpr` nodes (`vsimd.xor`, `vsimd.vaesenc`×9, `vsimd.vaesenclast`),

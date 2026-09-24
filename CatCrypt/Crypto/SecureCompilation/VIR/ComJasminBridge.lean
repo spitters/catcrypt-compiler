@@ -10,16 +10,16 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
 
 /-!
-# The keystone semantic bridge: the compiler's `Com` denotation and the
+# The semantic bridge: the compiler's `Com` denotation and the
 # reference Jasmin operational semantics agree on emitted arithmetic
 
 The compiler carries **two** semantic frameworks for the lowered Jasmin code,
 and this file states — sorry-free — the cleanest TRUE connection between them.
 
-## The executor relationship (the central finding)
+## The executor relationship
 
 There are two distinct executors, running over two distinct ASTs and two
-distinct state representations. They are **genuinely separate frameworks**, not
+distinct state representations. They are **separate frameworks**, not
 the same executor:
 
 | | JasminPrint side | psem.v mirror side |
@@ -56,7 +56,7 @@ equal to `Com.denote`). The psem side does so up to:
 What does cross the gap cleanly, and is proved here, is the **arithmetic
 content**: the integer add the psem `OpSem` performs and the `BitVec` add that
 `Com.denote`'s `regArith .add` performs are the *same operation on the same
-numerals*. That is the load-bearing fact a byte-encoding bijection would lift to
+numerals*. That is the key fact a byte-encoding bijection would lift to
 a full state correspondence; we prove it directly, with no `sorry`.
 
 ## What is proved here (all sorry-free)
@@ -73,7 +73,7 @@ a full state correspondence; we prove it directly, with no `sorry`.
   i.e. `((a + b : Int)).toNat'-into-BitVec = (a : BitVec w) + (b : BitVec w)`
   for representable inputs. (Stated and proved on the concrete golden-path
   witness `5, 1` and generically for representable numerals.)
-* `golden_add_bridge` — the **keystone**: on the golden-path add witness, *both*
+* `golden_add_bridge` — the **main theorem**: on the golden-path add witness, *both*
   frameworks agree. The psem side: the executor run of the emitted `Cassgn`
   `x := y + 1` from `y = 5` *witnesses* the reference relational step `SemIr`
   and lands `x = 6` (from `ExecAdequacy`). The JasminPrint / `Com.denote` side:
@@ -84,17 +84,17 @@ a full state correspondence; we prove it directly, with no `sorry`.
   statement: the compiler's IR denotation and the reference operational
   semantics agree on the golden-path emitted arithmetic.
 
-## Honest scope / the precise gap
+## Scope
 
 This bridge is **value-level and worked-example-concrete on the add kernel**, not
-a generic `∀ com, SemIr-of-(translate (lower com)) ↔ Com.denote com`. The two
-missing pieces for the generic statement are exactly (1) a *verified* AST
-translation `JasminAST.InstrR → CoqSemMirror.InstrR` (currently only the
-unverified reifier) and (2) the `Store ↔ Estate` byte-encoding bijection. Both
-are catalogued above and pre-existing deferrals; neither is introduced as a
-`sorry` here. The JasminPrint half is fully generic (any straight-line `Com`);
-the psem half is the worked golden-path witness plus the value-level arithmetic
-correspondence that any encoding bijection would lift.
+a generic `∀ com, SemIr-of-(translate (lower com)) ↔ Com.denote com`. The generic
+statement needs (1) a *verified* AST translation
+`JasminAST.InstrR → CoqSemMirror.InstrR` (the reifier is unverified) and (2) the
+`Store ↔ Estate` byte-encoding bijection. Both are outside this module's scope
+and neither is introduced as a `sorry` here. The JasminPrint half is fully
+generic (any straight-line `Com`); the psem half is the worked golden-path
+witness plus the value-level arithmetic correspondence that any encoding
+bijection would lift.
 
 0 sorries.
 -/
@@ -188,7 +188,7 @@ theorem golden_add_value_agree :
       = BitVec.ofNat 32 (((5 : Int) + 1).toNat) := by
   decide
 
-/-! ## 4. The keystone bridge — both frameworks agree on the emitted add
+/-! ## 4. The bridge — both frameworks agree on the emitted add
 
 On the golden-path add operation `x := y + 1` (`y = 5`):
 
@@ -201,7 +201,7 @@ The two reference semantics — the compiler's `Com` denotation and the jasminc
 `psem.v` mirror — coincide on this emitted operation: same op, same numerals,
 same result `6`. -/
 
-/-- **Keystone bridge (golden-path add).** Both semantic frameworks agree on the
+/-- **Bridge (golden-path add).** Both semantic frameworks agree on the
     emitted golden-path addition:
 
     * the reference `psem.v` run of the emitted `Cassgn` `x := y + 1` from

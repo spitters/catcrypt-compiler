@@ -14,9 +14,9 @@ public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 /-!
 # The AFFINE short-Weierstrass point ADD over GF(251) — closing the EC group law
 
-`RelationalFrontECDouble.lean` realized the inversion-free Jacobian point
+`RelationalFrontECDouble.lean` realizes the inversion-free Jacobian point
 **doubling** (`dbl-2009-l`, all three coordinates) at the `ZMod 251` level, and
-`RelationalFrontECInv.lean` landed the last missing field-op building block — the
+`RelationalFrontECInv.lean` realizes the field-op building block the affine add needs — the
 GF(251) **inverse**, realized as a Fermat multiply-square power chain
 `pow249Spec` (`invMod251_commutes : encMod251 a⁻¹ = pow249Spec (encMod251 a)` for
 `a ≠ 0`). With inversion in hand the **affine** short-Weierstrass add
@@ -36,7 +36,7 @@ x₃ = affRx λ x₁ x₂ = λ² − x₁ − x₂
 y₃ = affRy λ x₁ x₃ y₁ = λ·(x₁ − x₃) − y₁
 ```
 
-Every node is a field op whose `ZMod 251` commuting square is already landed:
+Every node is a field op whose `ZMod 251` commuting square is proved:
 
 | step | `ZMod` building block (commuting square) |
 |------|------------------------------------------|
@@ -63,11 +63,11 @@ division (inverse + multiply) wrapped around the same sub/mul golden-path kernel
   GF(251)), added, with the result verified **on the curve** and the realized
   `BitVec` formula computing exactly the encoded output coordinates.
 
-## What is closed vs deferred (HONEST)
+## Scope
 
 This module realizes the **generic chord branch only** (`P₁ ≠ P₂`, both affine,
-`x₁ ≠ x₂`). That is the non-degenerate case the prompt scopes to. The remaining
-branches of the full `ECParams.add` are the **honest gap**:
+`x₁ ≠ x₂`), the non-degenerate case. The remaining branches of the full
+`ECParams.add` are outside its scope:
 
 * **`x₁ = x₂` degenerate branches** — `P₁ = P₂` (→ doubling, the *tangent* slope,
   realized inversion-free in `RelationalFrontECDouble`) and `P₁ = −P₂` (→ `O`).
@@ -315,7 +315,7 @@ theorem worked_add_abstract :
 
 /-- **The sum is on the curve.**  `P + Q = (250, 0)` lies on `blsClassCurve`
     (`0² = 250³ + 1`, since `250 = −1` and `(−1)³ + 1 = 0`).  Confirms the realized
-    affine add lands a genuine curve point. -/
+    affine add lands a curve point. -/
 theorem worked_sum_onCurve : blsClassCurve.onCurve (250 : ZMod 251) (0 : ZMod 251) := by
   unfold ECParams.onCurve blsClassCurve; decide
 

@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 
 /-!
-# H3.quarta-Discharge: discharge Hyp_letBindApp / Hyp_assignApp
+# App-call simulation cases under tower-typed agreement
 
 Uses the tower-agreement framework from `HaxToLowCTSim_Quarta.lean`
 to prove the two app-simulation hypotheses from `HaxToLowCTSim_Main.lean`.
@@ -99,7 +99,7 @@ let-of-call arm. -/
     arm.  Yields the translated body, the translated argument list, the
     destination's tower type, and the assembled shape.
 
-    After the 2026-05 extension of `haxToLowCT`, two special call names
+    In `haxToLowCT`, two special call names
     (`"array_update"` and `"index"`) trigger array store / load lowering
     instead of the generic `RCall` shape.  This lemma covers only the
     generic shape; the guards `hf_not_arr` / `hf_not_idx` rule out those
@@ -294,8 +294,8 @@ We therefore state the simulation with the args-bound hypothesis as an
 explicit precondition.  In a full pipeline run, the caller's invariant
 (e.g. a strengthened bridge that asserts "if env has a value at name n
 of tower-typeable shape, then rs has a tower binding at n") discharges
-this.  This stratification is the same pattern used in CryptoSSA's
-`bindingOK` (tower binding existence is tracked alongside agreement).
+this.  This stratification is the same pattern used in `bindingOK`
+(tower binding existence is tracked alongside agreement).
 
 Note on `hLeafScalar`: the leaf's return value `vRes` must decode to
 `none` as a scalar — this is the tower-only case, matching the
@@ -558,10 +558,9 @@ The cleanest path to a true discharge is therefore:
    `haxToLowCT_simulates_letBind_app_full` and
    `haxToLowCT_simulates_assign_app_full`.
 
-That refactor is invasive to `Main.lean` and outside this file's
-scope (per the constraint not to modify existing files).  We therefore
-land Goals 1–4 here and document the residual integration step as a
-follow-up for the next agent who can invasively refactor `Main.lean`.
+That change to `Main.lean` is outside the scope of this module, which
+proves Goals 1–4; the integration into `haxToLowCT_simulates_param`
+is not part of it.
 -/
 
 end CatCrypt.Crypto.Hax

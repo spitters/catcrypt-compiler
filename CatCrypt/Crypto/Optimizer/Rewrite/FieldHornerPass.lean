@@ -27,7 +27,7 @@ Two evaluators:
   `c₀ + x·(c₁ + x·(c₂ + …))`, a single `List.foldr`. It uses exactly `n`
   multiplications and `n` additions and no auxiliary powers.
 
-The keystone is `evalHorner_eq_evalNaive`: the Horner rewrite is
+The main theorem is `evalHorner_eq_evalNaive`: the Horner rewrite is
 *value-preserving*, so it is a sound optimizer rewrite — only the evaluation
 schedule changes, never the result. This is the classical polynomial-evaluation
 strength reduction and shows up throughout the field layer: NTT twiddle
@@ -100,7 +100,7 @@ theorem evalNaive_cons (c : R) (cs : List R) (x : R) :
   simp only [Function.comp_apply, pow_succ]
   ring
 
-/-! ## The keystone: Horner ≡ naive -/
+/-! ## The main theorem: Horner ≡ naive -/
 
 /-- **Soundness of the Horner rewrite.** The Horner schedule evaluates a
 coefficient list to the same value as the naive monomial sum, over *any*
@@ -120,7 +120,7 @@ theorem evalHorner_eq_evalNaive (coeffs : List R) (x : R) :
 /-! ## Worked example
 
 For `coeffs = [a, b, c]`, i.e. the polynomial `a + b·x + c·x²`, both evaluators
-agree by the keystone, and each reduces to the expected closed form. -/
+agree by the main theorem, and each reduces to the expected closed form. -/
 
 /-- Naive evaluation of `[a, b, c]` is `a + b·x + c·x²`. -/
 theorem evalNaive_three (a b c x : R) :
@@ -136,7 +136,7 @@ theorem evalHorner_three (a b c x : R) :
   ring
 
 /-- The two forms of `[a, b, c]` coincide: `a + x·(b + x·c) = a + b·x + c·x²`.
-A specialization of the keystone, exhibiting the Horner strength reduction on a
+A specialization of the main theorem, exhibiting the Horner strength reduction on a
 concrete degree-2 polynomial. -/
 theorem horner_eq_naive_three (a b c x : R) :
     a + x * (b + x * c) = a + b * x + c * x ^ 2 := by

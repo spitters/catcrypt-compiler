@@ -35,11 +35,11 @@ For v1 we compose the passes **without** fixed-point iteration:
 * `optimize := peephole` on `Com` (one application).
 * `optimizeR c := ifToCmov c` on `ComR`. (Lifting the inner `Com`-level
   peephole through `ComR` requires walking under `ifBit`, which is
-  follow-up work; the `ifToCmov` pass produces `ComR` whose result is
-  region-free, so a follow-up can compose `peephole ∘ toCom?` on the
-  region-free output.)
+  outside v1; the `ifToCmov` pass produces `ComR` whose result is
+  region-free, so `peephole ∘ toCom?` composes on the region-free
+  output.)
 
-Fuel-based fixed-point iteration is documented as v2 — both passes are
+Fuel-based fixed-point iteration is outside v1 — both passes are
 idempotent in practice on the patterns they recognise (re-applying
 `peephole` to `bvConst 0` is a no-op; re-applying `ifToCmov` to a
 `cmov`-chain is a no-op since the chain has no `ifBit`), so a single
@@ -49,11 +49,10 @@ pass discharges all currently-recognised patterns in one go.
 
 `CompressJazzEmit.lean` operates on `LowCT`, not on `Com catCryptDialect`,
 so there is no `compressVIR : Com catCryptDialect _ _` value to plug
-the optimizer into. The wiring is documented here as **deferred** until
-`CompressJazzEmit` (or a sibling file) exposes a `Com`-level
-representation. Once it does, an `optimizedCompressVIR := optimize
-compressVIR` definition with a `_denote_eq` corollary is a two-line
-addition.
+the optimizer into. The wiring requires a `Com`-level representation of
+`CompressJazzEmit` (or a sibling module); given one, an
+`optimizedCompressVIR := optimize compressVIR` definition with a
+`_denote_eq` corollary is a two-line addition.
 -/
 
 @[expose] public section
@@ -78,9 +77,9 @@ def optimize {Γ : Ctxt catCryptDialect} {t : CryptoTy} :
   Peephole.peephole
 
 /-- One-pass optimization on `ComR catCryptDialect`. v1 applies
-    `ifToCmov` to the top of the region tree. A future revision should
-    walk under `ifBit` arms and lift `Com`-level peephole through them;
-    see the file docstring for the fuel-based fixed-point follow-up. -/
+    `ifToCmov` to the top of the region tree; it does not walk under
+    `ifBit` arms. See the module docstring on fuel-based fixed-point
+    iteration. -/
 def optimizeR {Γ : Ctxt catCryptDialect} {t : CryptoTy} :
     ComR catCryptDialect Γ t → ComR catCryptDialect Γ t :=
   Transforms.ifToCmov

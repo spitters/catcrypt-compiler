@@ -22,7 +22,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # Plonky3 end-to-end prover orchestration emitted through the verified front
 
-This is the **cross-layer orchestration** (task #162) that fuses the four #154
+This is the **cross-layer orchestration** that fuses the four
 prover-chain kernels — Merkle commitment (`Plonky3MerkleEmit`, layer 1), coset-FFT
 LDE (`Plonky3LdeEmit`, layer 2), FRI commit+query (`Plonky3FriEmit`, layer 3), and
 the AIR constraint evaluator (`Plonky3AirEmit`, layer 4) — into a single
@@ -52,11 +52,11 @@ not individually carry:
 ```
 commit-trace (LDE → Merkle)  →  derive FS challenges (transcript)
   →  quotient (SELECTOR-INCLUSIVE degree)  →  OOD sample + eval
-  →  DEEP batch  →  FRI commit + query (per-round, #81 nested-loop shape)
+  →  DEEP batch  →  FRI commit + query (per-round, nested-loop shape)
   →  PoW grind
 ```
 
-## DEGREE-2 GUARD (selector-inclusive quotient sizing — load-bearing)
+## DEGREE-2 GUARD (selector-inclusive quotient sizing)
 
 `airMaxDegree fibTransitionDegrees = 1` reports the **bare** Fibonacci
 transition degree. The quotient sizing must use the **selector-inclusive**
@@ -87,8 +87,8 @@ is the trace commitment + transcript seed for the fixed Fibonacci traces:
 The transcript seed (head edge with no FRI mixins) is pinned in-Lean. The
 height-8 / height-16 trace commitment byte-identity claims do not fit the
 per-file build budget — the `bbIntt → coset-twist → bbNtt → row-fold →
-merkleBuildRoot k = 5` computation under `native_decide` exceeds 2 minutes
-(#168); see the build-budget note at section 8 below. The in-Lean theorems pin
+merkleBuildRoot k = 5` computation under `native_decide` exceeds 2 minutes;
+see the build-budget note at section 8 below. The in-Lean theorems pin
 the **structural shape** of the commitment (`digestBytes` length 32 +
 determinism), and the byte-identity cross-check is delegated to the bench
 harness which runs the Rust reference directly (`bench/plonky3_compare/`,
@@ -399,7 +399,7 @@ The orchestration is a **sequence** of the four kernel phases; the prover
 preserves denotation iff each phase's vectorized (lane-parallel) form denotes
 its scalar form. We bundle the four kernel `*_denotation_preserves` theorems
 into one `plonky3_prove_denotation_preserves`. Because each kernel theorem is
-already routed through the lane-map keystone (`LaneMap.laneMap_eq_scalarMap` /
+routed through the lane-map theorem (`LaneMap.laneMap_eq_scalarMap` /
 `laneMapIdx_eq_scalar`), the composition carries the same `[propext, Quot.sound]`
 axioms — no new theory. -/
 
@@ -412,7 +412,7 @@ axioms — no new theory. -/
     the scalar prover. This is the conjunction of the four kernel denotations,
     composed; structural, axioms `[propext, Quot.sound]` only.
 
-    `(composition plumbing)` — the per-phase content is the four #154 kernel
+    `(composition plumbing)` — the per-phase content is the four kernel
     theorems; this lemma threads them through the prover phase sequence. -/
 theorem plonky3_prove_denotation_preserves
     {mLevels : ℕ} (children : Plonky3MerkleEmit.Level mLevels)
@@ -466,7 +466,7 @@ The reachable end-to-end byte-identity claim for the trace commitment of the
 fixed Fibonacci traces — the head of the Fiat-Shamir transcript. These run
 through the entire commit-trace phase (LDE engine + row-fold + Merkle).
 
-### Build-budget note (#168)
+### Build-budget note
 
 The full `digestBytes (fibTraceCommitment 8 3) = [<32 bytes>]` and `= [<32 bytes>]`
 byte-identity `native_decide`s **do not** fit the per-file build budget: each
@@ -486,7 +486,7 @@ byte-identity cross-check is delegated to the bench harness against
     (see `plonky3-hax/tests/kat_vectors.rs`). The full byte-identity check
     `digestBytes (fibTraceCommitment 8 3) = [<32 bytes>]` runs the entire
     commit-trace phase (intt → coset-twist → ntt → row-fold → Merkle) under
-    `native_decide` and exceeds the per-file build budget (#168); the bench
+    `native_decide` and exceeds the per-file build budget; the bench
     harness checks it against the Rust reference directly. The in-Lean theorem
     pins the **structural shape**: the commitment is a 32-byte digest produced
     by `fibTraceCommitment`, and the function is deterministic in its inputs. -/
@@ -553,7 +553,7 @@ theorem kat_ood_point_off_subgroup :
     the first six steps using a **trivial commitment seed** (`fun _ => 0`)
     in place of `fibTraceCommitment 8 3`: the latter would force the entire
     intt → coset-twist → ntt → row-fold → Merkle pipeline under `native_decide`
-    and exceed the per-file build budget (#168). The soundness witness is
+    and exceed the per-file build budget. The soundness witness is
     independent of the commitment seed — both `cur` and `next` come from the
     trace, and the transition constraint vanishes pointwise on the trace
     regardless of which linear combination is taken. -/
@@ -580,7 +580,7 @@ theorem kat_deep_beta_deterministic :
 /-! ## 10. Emitting the `.jazz`: the full Fibonacci-AIR prover orchestration
 
 The orchestrating `.jazz` calls the four kernel exports in the prover phase
-order. It does NOT re-emit their bodies (those are the four #154 `.jazz` files);
+order. It does NOT re-emit their bodies (those are the four kernel `.jazz` files);
 it declares the `export fn plonky3_prove_fib` driver that:
 
 1. commits the trace LDE (calls `lde_coset_fft` per column, then
@@ -589,7 +589,7 @@ it declares the `export fn plonky3_prove_fib` driver that:
 3. sizes + commits the quotient (SELECTOR-INCLUSIVE degree 2),
 4. samples the OOD point and evaluates,
 5. batches the DEEP polynomial,
-6. runs `fri_fold_layer` + `fri_query_verify` per round (the #81 nested-loop
+6. runs `fri_fold_layer` + `fri_query_verify` per round (the nested-loop
    sequencing),
 7. grinds the PoW nonce.
 
@@ -611,7 +611,7 @@ def renderChallenger : String :=
 
 /-- Render the orchestrating prover driver `plonky3_prove_fib`: the phase
     sequence that calls the four kernel exports. The bodies of the kernels are
-    the four #154 `.jazz` files (referenced, not re-emitted). The per-round FRI /
+    the four kernel `.jazz` files (referenced, not re-emitted). The per-round FRI /
     query loop is the nested-loop sequencing (outer = layers, inner = queries). -/
 def renderProveDriver : String :=
   "export fn plonky3_prove_fib(reg const ptr u64[32] trace, reg u64 trace_log2,\n" ++
@@ -645,7 +645,7 @@ def renderProveDriver : String :=
 
 /-- The full emitted `.jazz` for the Plonky3 prover orchestration: the
     Fiat-Shamir Challenger plus the phase-sequencing driver that composes the
-    four #154 kernel exports. The kernel bodies live in the four `gen/*.jazz`
+    four kernel exports. The kernel bodies live in the four `gen/*.jazz`
     files; this driver sequences them in the `plonky3_prove` phase order. -/
 def proveJazz : String :=
   "/* Plonky3 end-to-end prover orchestration (#162), emitted by CatCrypt's\n" ++

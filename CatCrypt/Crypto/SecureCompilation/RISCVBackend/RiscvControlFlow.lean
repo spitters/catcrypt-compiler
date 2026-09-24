@@ -10,15 +10,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinte
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
 
 /-!
-# Looped (non-unrolled) control-flow lowering for the owned RV64 backend (#552)
+# Looped (non-unrolled) control-flow lowering for the owned RV64 backend
 
-`RiscvLowering.lean` (#535) lowers a straight-line `ROp` block to the RV64 machine
+`RiscvLowering.lean` lowers a straight-line `ROp` block to the RV64 machine
 `RInst`s with `riscvBlock_lowering_denote`; `RiscvSha256Kernel.lean` rode that for
 the SHA-256 compression. A straight-line lowering emits an `n`-iteration loop as
 an `n`-copy `RInst` block, so the `.s` grows linearly in the trip count.
 
 This module is the **RV64 analogue of the ARM owned-backend loop emission**
-(`ARMBackend/ArmControlFlow.lean`, #551) and the original x86 #538
+(`ARMBackend/ArmControlFlow.lean`) and of the x86 one
 (`X86Backend/LprogControlFlow.lean`): a bounded counter loop is emitted as a
 single body copy wrapped in an RV64 back-edge
 

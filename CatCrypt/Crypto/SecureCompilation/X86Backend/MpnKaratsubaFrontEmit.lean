@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 # Integer Karatsuba multiply as a front-compiled straight-line scalar-word kernel
 
 A single-level (2-way) Karatsuba integer multiply of two `n = 2m`-word inputs
-into a `4m`-word product, sourced through the verified `CProg`-free front — no
+into a `4m`-word product, sourced through the verified control front — no
 hand-built `Com`. Every intermediate is a named `u64` word slot and every
 binding is pure scalar arithmetic (`RScalarSetExpr`): the schoolbook leaves,
 the half sums, the cross-term subtraction and the windowed recombination all
@@ -73,14 +73,14 @@ anchor is that the kernel front-compiles and lowers. The external GMP
 conformance check on the emitted `.s` is the correctness gate, and the formal
 front-denote proof (via `karatsuba_3mul_identity`) is the follow-on.
 
-## Status: WIP — the emitted kernel is NOT yet numerically correct
+## Scope: the emitted kernel is NOT numerically correct on the cross-term path
 
 The generators, the front lowering, and the owned render all succeed (the `.s`
 assembles, `mulx` present, no `UNHANDLED`), and the algorithm is correct
 (checked against an independent C model). Single-limb and two-limb products are
 GMP-correct. The full cross-term path (`z1 = zs − z0 − z2` and the windowed
 recombination) is WRONG: the emitted `out[j]` do not match the schoolbook
-reference. The defect was localised to the OUTPUT-BINDING EXTRACTION, not the
+reference. The defect lies in the OUTPUT-BINDING EXTRACTION, not the
 arithmetic — with the recombination diagnostics exposed, every intermediate
 (`z0`, `z2`, `sa`, `sb`, `zs`, the low words of `zt`/`z1`) computes correctly,
 but the fixed value read out for a given result word depends on which slots are
@@ -293,7 +293,7 @@ def srcCtx : Ctx := List.replicate (4 * M + 1) (.sword 64)
 /-- The source `VarMap` (word `0 = a[0]` at the head). -/
 def srcVM : VarMap srcCtx := bindAll wordNames
 
-/-- Push `karaBodyLowCT M` through the `CProg`-free control front and cap with
+/-- Push `karaBodyLowCT M` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def karaFrontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM (karaBodyLowCT M) with

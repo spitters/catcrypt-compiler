@@ -65,16 +65,16 @@ infrastructure: both reuse `csub251` (`RelationalFrontInstances`).
   251`, each tied to a `BitVec 64` straight-line formula over the encoded input
   coordinates `(encMod251 X, encMod251 Y, encMod251 Z)`, with the full commuting
   square per coordinate.  `RealizedKernel`/`RealizedUnaryKernel` are
-  single-output; this is the genuine multi-output point op the group law needs.
+  single-output; this is the multi-output point op the group law needs.
 * **The abstract straight-line doubling** `dbl2009l : JacPoint → JacPoint`
   (`dbl-2009-l` as an explicit `ZMod 251` expression), and **all three output
-  coordinates' `ZMod 251` commuting squares closed sorry-free**
+  coordinates' `ZMod 251` commuting squares fully proved**
   (`dblX3_commutes`, `dblY3_commutes`, `dblZ3_commutes`).
 * **A worked example**: a concrete point on `blsClassCurve` (`y² = x³ + 1` over
   GF(251)), doubled, with the realized `BitVec` formulas computing exactly the
   encoded output coordinates.
 
-## The honest gap
+## Scope
 
 * **`ECParams.add` over `ECPoint = Option (ZMod p × ZMod p)`** (affine, the sum
   type with `O`, needs a field **inversion** for the final normalisation) is
@@ -316,7 +316,7 @@ structure RealizedJacobianOp (op : JacPoint → JacPoint) where
     JacPoint`, its computational side is the `BitVec`-triple straight-line formula
     `dbl2009lBV`, and its commuting square is the conjunction of the three
     per-coordinate squares (`dblX3_commutes`, `dblY3_commutes`, `dblZ3_commutes`),
-    all closed sorry-free.  This is the FULL Jacobian point-doubling group-law step
+    all fully proved.  This is the FULL Jacobian point-doubling group-law step
     realized end-to-end at the `ZMod 251` level. -/
 def dbl2009lRealized : RealizedJacobianOp dbl2009l where
   bop := dbl2009lBV
@@ -386,7 +386,7 @@ theorem worked_dbl_abstract :
 /-- **The worked doubling, realized formula side.**  The emitted `BitVec`-triple
     formula `dbl2009lBV` on the encoded coordinates `(enc 0, enc 1, enc 1)`
     computes exactly the encoded output coordinates `(enc 0, enc 243, enc 2)` — the
-    relational tie holding on a concrete curve point, sorry-free. -/
+    relational tie holding on a concrete curve point, fully proved. -/
 theorem worked_dbl_realized :
     dbl2009lBV (encMod251 0) (encMod251 1) (encMod251 1)
       = (encMod251 0, encMod251 243, encMod251 2) := by

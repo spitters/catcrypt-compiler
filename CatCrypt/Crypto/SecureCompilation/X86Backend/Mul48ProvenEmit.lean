@@ -19,13 +19,11 @@ public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 # `bignum_mul_4_8` emitted from the PROVEN product block (`emitProductBlock4`)
 
 `BignumMontMulKernel.mul48Block` is the **hand-written** dual-carry-chain
-schoolbook that currently ships as the owned `bignum_mul_4_8` artifact; its
-all-inputs value identity is gated only by the external GMP + s2n KAT (REV-12),
-because the in-Lean close (a 512-bit `bv_decide`/`omega`) is infeasible. The
-hand-written block is the prototype; the canonical artifact should be **emitted
-by the verified pipeline**.
+schoolbook for the owned `bignum_mul_4_8` artifact; its all-inputs value
+identity is gated only by the external GMP + s2n KAT, because the in-Lean close
+(a 512-bit `bv_decide`/`omega`) is infeasible.
 
-This module is that "generate from a proven pipeline" step. The computational
+This module emits the same artifact **from the verified pipeline**. The computational
 core is `SchoolbookProductRunBlock.emitProductBlock4` — the 4×4 schoolbook
 product whose `runBlock` output is proven to equal `valLimbs x · valLimbs y`
 (`emitProductBlock_runBlock_value` / `sm2_emit_montmul_runBlock_full4`,
@@ -49,7 +47,7 @@ GP pool. The non-spilling first-fit `allocGp` therefore overflows
 spilling allocator** (`Optimizer.SpillingRegAlloc.spillAllocPinned`,
 translation-validated in `SpillingRegAlloc.lean`) exactly as the X25519
 monolithic ladder does: the MULX-multiplier names go to `%rdx`, the rest run
-the linear scan against the pool, and the genuinely-spilled values round-trip
+the linear scan against the pool, and the spilled values round-trip
 through frame cells. `AsmPrinter.renderJInstrSpilled` realises each instruction
 at its program point (reloads before, stores after, `%rdx` setup for `mulx`).
 
@@ -61,7 +59,7 @@ Identical to the other word kernels: the verified artifact is
 reload/store insertion is denotation-preserving (`SpillingRegAlloc` §2/§4). The
 load/store pointer framing and the System-V leaf prologue/epilogue are trusted
 ABI scaffolding outside the verified body. `AsmPrinter` + `gas` is the thin
-syntactic trust boundary. No `sorry`, no new `axiom`.
+syntactic trust boundary. All goals closed, no new `axiom`.
 -/
 
 @[expose] public section
@@ -135,8 +133,8 @@ def storeOutputs : List (JInstr 64) :=
     `emitProductBlock4` (the verified 256×256 product, `runBlock = x·y`) ++
     `storeOutputs` (pointer ABI). The computational core is exactly
     `emitProductBlock4 accNames xNames yNames hiName loName`; the wrapper is
-    load/store only. This replaces the hand-written `BignumMontMulKernel.mul48Block`
-    as the artifact emitted by the verified pipeline. -/
+    load/store only. It is the artifact the verified pipeline emits in place of
+    the hand-written `BignumMontMulKernel.mul48Block`. -/
 def mul48ProvenBlock : List (JInstr 64) :=
   loadInputs
     ++ clearAccs
@@ -178,10 +176,10 @@ unchanged upstream.
 After legalization the *only* mulx-`src1` name is the single `mulxRdxName`
 (`mulxMultiplierNames` returns `[mulxRdxName]`); its live range is exactly each
 `mov;mulx` adjacent pair, so it is never live across two multiplies — the
-`multipliersDisjoint` side-condition the `%rdx` pin needs now holds by
+`multipliersDisjoint` side-condition the `%rdx` pin needs holds by
 construction. `%rdx` is therefore **dead-on-arrival** at each `mov` (no other
 value resides in it — the allocator reserves it) and is consumed by the very next
-`mulx`. The original `src1` registers (`xⱼ`) are now ordinary pool/spill values,
+`mulx`. The original `src1` registers (`xⱼ`) are ordinary pool/spill values,
 not pinned to `%rdx`. -/
 
 /-- The single dedicated register name that funnels every `MULX` `src1` through
@@ -336,10 +334,10 @@ theorem mul48ProvenBody_no_unallocated :
     `.mov mulxRdxName ← src1`. Equivalently: scanning back from each `mulx`, the
     first `%rdx`-writing line is the legalization's `movq`, with only spill-reload
     lines (which target the `%r14`/`%r15` working registers, never `%rdx`) possibly
-    in between. This is exactly the gap whose absence made the earlier emit compute
-    wrong products (the GMP KAT `1 × X = 0`): the pin-aware `mulxRdxSetup` elided
-    the `%rdx` move because every `xⱼ` was (unsoundly) pinned to the single `%rdx`,
-    so a stale `%rdx` was read; after legalization the lone `mulxRdxName` funnel
+    in between. Without this move an emit computes wrong products (the GMP KAT
+    `1 × X = 0`): if every `xⱼ` is (unsoundly) pinned to the single `%rdx`, the
+    pin-aware `mulxRdxSetup` elides the `%rdx` move and a stale `%rdx` is read;
+    after legalization the lone `mulxRdxName` funnel
     (`mulxMultiplierNames mul48ProvenBlockLegal = [mulxRdxName]`) carries `src1`
     into `%rdx` immediately before each multiply, never live across two of them. -/
 theorem mul48ProvenBody_mulx_rdx_legalized :

@@ -51,11 +51,11 @@ ring atom) — `ring` operates purely through the `CommRing` axioms, never unfol
 For the affine-embedded input `(x, y, 1)`, the `dbl-2009-l` output `Z'` is `2y`,
 so the Jacobian→affine conversion `X'/Z'²`, `Y'/Z'³` is governed by *one* `Fp2`
 inverse, of `Z' = 2y`.  Rather than carry that inverse (which needs `Fp2_377` to
-be a `Field`, blocked by an instance diamond — see "Honesty boundary"), we state
+be a `Field`, blocked by an instance diamond — see "Scope"), we state
 the tie in **cleared / inverse-free** form: the polynomial identities that the
 denominator-cleared affine group law imposes on the Jacobian output.  These are
 exactly what `field_simp` would produce *before* the final `ring`, so they are the
-load-bearing algebraic content of the realization, and they hold **unconditionally
+algebraic content of the realization, and they hold **unconditionally
 over `commRing ξ`** by `ring`:
 
 * `bls377G2_jacDouble_X_cleared` — `X' = (3x²)² − 2x·Z'²` (the cleared affine
@@ -69,7 +69,7 @@ So the projective `G2` accumulation satisfies the same affine short-Weierstrass
 group-law numerator relations as the `G1` chart — the inverse is amortized to the
 final affine conversion.
 
-## Honesty boundary
+## Scope
 
 The *fully affine* realization tie (`g2JacToAffine (g2JacDouble …) = g2AffineDbl …`,
 the `G1` file's headline) needs `Fp2_377` to carry an `Inv` / `Field`.  An abstract
@@ -83,9 +83,9 @@ instance diamond — the `Field`-derived `NoZeroDivisors` / inverse range over
 Building a coherent `Field` from `commRing ξ` (so the ring projections agree) is the
 correct fix but requires supplying `Inv` + `mul_inv_cancel` + `inv_zero` and the
 `div`/`qsmul`/`ratCast` field data, plus `Nontrivial` — a self-contained `Field`
-construction left to a follow-up.  The cleared-form ties below carry the same
+construction outside this module.  The cleared-form ties below carry the same
 polynomial content without any inverse, so the `G2` group-law correctness is
-captured; only the inverse-amortization step is deferred.
+captured; the inverse-amortization step is outside the scope of this module.
 
 0 sorries; no custom axioms; the cleared ties are unconditional over `commRing ξ`.
 -/
@@ -127,7 +127,7 @@ def Bls377G2JacPoint.ofAffine (P : Bls377G2Point) : Bls377G2JacPoint :=
 /-! ## 2. The inversion-free Jacobian group law over `commRing ξ`
 
 Each op installs the canonical `Fp2_377` ring (`commRing ξ`) with `letI`, so the
-`*`/`+`/`−` are the genuine `Fp2_377` operations and the inner `ZMod` multiply
+`*`/`+`/`−` are the `Fp2_377` operations and the inner `ZMod` multiply
 stays opaque. -/
 
 /-- The `dbl-2009-l` Jacobian point-double for `a = 0`: `S = 4XY²`, `M = 3X²`,

@@ -30,17 +30,17 @@ whatever field-multiply correctness the source carries (AUCurves' Qed'd
 bedrock2 spec, threaded through `FieldLeafBridge.lean`) keeps the result
 **verified** while making it **fast**.
 
-## Scope (honest)
+## Scope
 
 * This is the **scalar carry-chain** selection: `MULX` + dual `ADCX`/`ADOX`,
   the GP-register ADX/BMI2 form. The value theorem is over the faithful
   `JasminModel` semantics (`evalInstr`/`runBlock`), lowered into the
   `x86Dialect` `Com`.
 * True **SIMD** vectorised big-integer multiply (AVX-512 `IFMA`'s `VPMADD52`
-  52-bit-limb form) is a **separate, future** pass — out of scope here. ADX is
+  52-bit-limb form) is a **separate** pass, outside this module's scope. ADX is
   scalar; IFMA is the vector analogue, with a different limb radix and a
   different correctness obligation.
-* The value spec is the genuine arithmetic `acc + (low word of a·b) + cy`,
+* The value spec is the arithmetic `acc + (low word of a·b) + cy`,
   with the two carry-outs recombined; the full-product identity
   `hi·2^64 + lo = a·b` (`Cios4LimbProven.mulx_recon` / `wumul_decompose`) ties
   the selected `hi` register to the next column. A wrong spec would make the
@@ -79,7 +79,7 @@ theorem selectMulxMac_length (acc a b cy hi lo : String) :
 
 /-! ## 2. The core value-correctness theorem
 
-`selectMulxMac_value` is the genuinely new content: the actual dual `CF`/`OF`
+`selectMulxMac_value` is the main theorem: the actual dual `CF`/`OF`
 carry-chain x86 instructions compute the multiply-accumulate value. Under
 register-name distinctness (the destinations don't alias the sources mid-block)
 and with both incoming flags defined, the accumulator after the block, plus the
@@ -139,7 +139,7 @@ theorem selectMulxMac_flags (s : JState 64) (acc a b cy hi lo : String)
     x86_ADCX, JState.get, JState.setReg, JState.flagB, JOperand.eval,
     hAccHi, hAccLo, hCyAcc, hCyHi, hCyLo, hLoHi, if_true, if_false]
 
-/-! ## The genuine MAC value identity
+/-! ## The MAC value identity
 
 `selectMulxMac_value` is the **core theorem (2)**: the actual `MULX`/`ADCX`/`ADOX`
 machine instructions, run via the faithful `runBlock` semantics, compute the
@@ -187,7 +187,7 @@ theorem selectMulxMac_value (s : JState 64) (acc a b cy hi lo : String)
 
 /-- **Full-product form of the core value theorem.** Folding in the `MULX` high
     word `hi` (which the selected block writes for the next column) recovers the
-    complete `a·b`: the genuine column identity
+    complete `a·b`: the column identity
     `acc_new + (cf_out + of_out)·2^64 + 2^64·hi
       = acc_old + a·b + cy + cf_in + of_in`, where `hi = (a·b)/2^64` and
     `lo = a·b mod 2^64` are the two `MULX` outputs
@@ -214,7 +214,7 @@ theorem selectMulxMac_value_fullProduct (s : JState 64) (acc a b cy hi lo : Stri
 
 `selectMulxMac_denote` lifts the value theorem to the dialect's `Com.denote`
 level via `X86Dialect.lowerBlock_denote_closed`: the lowered `Com` of the
-selected block denotes to `runBlock` of the same block, so the genuine MAC value
+selected block denotes to `runBlock` of the same block, so the MAC value
 identity holds at the denotation level too (denotation-preservation). -/
 
 /-- The lowered `Com` of the selected block denotes to `runBlock` of it: the
@@ -227,7 +227,7 @@ theorem selectMulxMac_denote (s : JState 64) (acc a b cy hi lo : String) :
 /-- **The core value theorem at the `Com.denote` level.** Combining
     `selectMulxMac_denote` (denotation = `runBlock`) with the value identity
     `selectMulxMac_value`: reading `acc` out of the *denoted* lowered `Com`
-    yields the genuine MAC value. The selected dual-carry-chain block, as a typed
+    yields the MAC value. The selected dual-carry-chain block, as a typed
     dialect program, computes the multiply-accumulate. -/
 theorem selectMulxMac_denote_value (s : JState 64) (acc a b cy hi lo : String)
     (hAccLo : acc ≠ lo) (hAccHi : acc ≠ hi)

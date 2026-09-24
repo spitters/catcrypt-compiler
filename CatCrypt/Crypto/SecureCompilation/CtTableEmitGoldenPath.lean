@@ -281,7 +281,7 @@ def aesSboxHead (n : Nat) : BitVec 64 :=
   else BitVec.ofNat 64 0x7b
 
 /-- **The non-vacuous correctness result.** For any public index `i < 4`, the emitted
-    constant-time gather computes the genuine table value `T[i] = AES S-box[i]`. The
+    constant-time gather computes the table value `T[i] = AES S-box[i]`. The
     mask scan really is the lookup: each `eqMask(i,k)` is all-ones exactly at the
     matching entry and zero elsewhere, so the OR selects `T[i]`. Proven by reducing the
     `i.toNat < 4` bound to the four concrete indices `i ∈ {0,1,2,3}` (each a BitVec

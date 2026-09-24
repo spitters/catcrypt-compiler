@@ -17,15 +17,14 @@ set_option autoImplicit false
 /-!
 # Validate: a **nested** runtime loop, front-compiled into `ComL.forLoopNRtNested`
 
-`TranslateDialectPhaseCompose` §4 recorded the front residual precisely: there was
-no `ComL` value whose denote is the GGM Phase-3 double fold `for jd<D: for
-idx<num>>(jd+1): …`, because `ComL.forLoopNRt`'s per-iteration body is a
-straight-line `Com`. `ComL.forLoopNRtNested` (JasminLprogExport) makes the inner
-loop first-class, and the rolled-loop dispatcher's nested route
+`ComL.forLoopNRt`'s per-iteration body is a straight-line `Com`, so it cannot
+express the GGM Phase-3 double fold `for jd<D: for idx<num>>(jd+1): …`
+(`TranslateDialectPhaseCompose` §4). `ComL.forLoopNRtNested` (JasminLprogExport)
+makes the inner loop first-class, and the rolled-loop dispatcher's nested route
 (`FrontRoutePlan.compileNested` at the `plain` body front) front-compiles both the
 inner-count body and the inner-update body via `frontLoopBodyJ` (no hand-authored
-`Com`). This module closes the residual with a
-`native_decide` validate against the *already-proven* interpreter semantics.
+`Com`). This module validates that route with a
+`native_decide` check against the proven interpreter semantics.
 
 ## The GGM Phase-3 shape
 

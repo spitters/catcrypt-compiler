@@ -12,14 +12,14 @@ public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
 
 /-!
-# Sail-x86 decoder round-trip: `decode (encode i) ≡ i` (#444, upgrades #438)
+# Sail-x86 decoder round-trip: `decode (encode i) ≡ i`
 
-`ScalarEncoder.lean` (#438) is the owned `JInstr → machine-byte` encoder. Its
-trust edge was *differential*: each output byte string is pinned (`gas`) to what
-the GNU assembler produces for the same mnemonic (`ScalarValidation.lean`). That
-makes `gas`'s unverified encoder part of the trusted base.
+`ScalarEncoder.lean` is the owned `JInstr → machine-byte` encoder. Its
+differential trust edge pins each output byte string (`gas`) to what the GNU
+assembler produces for the same mnemonic (`ScalarValidation.lean`), which makes
+`gas`'s unverified encoder part of the trusted base.
 
-This module replaces the differential edge for the decodable subset with a
+For the decodable subset, this module gives in place of the differential edge a
 **round-trip** against the x86 ModRM/REX field-split discipline: a Lean decoder
 `decodeReg` that recovers `(opcode, reg-field, rm-field, displacement)` from a
 fixed-shape machine-byte stream, and a proof that
@@ -71,7 +71,7 @@ spec-equality (`evalInstr = sailAdd …`); that module's own docstring records
 that its Sail citations are likewise external provenance pointers, not files
 vendored or run from this repo.
 
-## Scope of the round-trip (which `JInstr` forms are now decode-proved)
+## Scope of the round-trip (which `JInstr` forms are decode-proved)
 
 `decode (encode i) ≡ i` is proved (`roundtrip_*` below) for the **register-direct
 GP forms** the encoder emits:
@@ -88,7 +88,7 @@ The `MULX`/`ADCX`/`ADOX` (VEX/legacy-VEX) and the `loadMem`/`storeMem`/`mulxMem`
 memory forms decode their **structure** (`decodeMem` recovers the ModRM `mod`,
 the base, and the displacement; `roundtrip_mem_*`) but those mnemonics have **no
 Sail-x86 counterpart** (ACL2 `x86isa` lacks ADX/BMI2 — see `SailX86Validation`),
-so they keep their `gas` differential pin. The honest tally is in the module-
+so they keep their `gas` differential pin. The full tally is in the module-
 final §7 doc comment below (`trust_edge_pilot` anchors one instance of it as a
 real theorem).
 -/
@@ -360,7 +360,7 @@ theorem roundtrip_ShiftCl (ext d : Nat) (hext : ext < 8) (hd : d < 16) :
 
 /-! ## 5. Instruction-level round-trip: `decode (encode i) ≡ i`
 
-The field-level lemmas above invert each *shape* encoder. We now lift them to
+The field-level lemmas above invert each *shape* encoder. This section lifts them to
 the full `JInstr`: a decoder that maps a one-byte opcode back to the ALU/MOV
 mnemonic, and a `JInstr`-rebuilder that reads the `DecReg` register numbers back
 through the allocation. The round-trip `rebuild (decode (encode i)) = i` holds
@@ -409,8 +409,8 @@ theorem roundtrip_jinstr_all (alloc : GpAlloc) (d s : String)
 
 /-! ## 6. A real ELF64 relocatable object header (vs the `gas` `.byte` emitter)
 
-`ScalarEncoder.encodeJBlock` produces a flat `.text` byte stream; the #438 demo
-fed it to a `gas` `.byte` data-emitter. Here we emit an **ELF64
+`ScalarEncoder.encodeJBlock` produces a flat `.text` byte stream, which a `gas`
+`.byte` data-emitter can assemble. Here we emit an **ELF64
 relocatable object header** (`ELFCLASS64`, `ET_REL`, `EM_X86_64`), so the owned
 backend produces a real `.o` directly — no assembler in the object-build path.
 The layout is the standard 64-byte `Elf64_Ehdr` (Intel/System V ABI):
@@ -453,11 +453,11 @@ theorem elf64Header_magic (shoff shnum shstrndx : Nat) :
       = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
   simp [elf64Header, u16LE, u32LE, u64LE, imm32LE]
 
-/-! ## 7. The owned-backend byte-level trust edge after #444
+/-! ## 7. The owned-backend byte-level trust edge
 
 The tally below (no single theorem carries the name `trust_edge`;
 `trust_edge_pilot` at the end of this file anchors one instance of it as a
-real, checked statement) records the honest tally:
+real, checked statement) records the trust edge per form:
 
 * **decode-round-trip-proved** (`gas` differential pin not essential
   for field placement):
@@ -475,25 +475,24 @@ real, checked statement) records the honest tally:
   assignment is `encodeJInstr`'s own hard-coded opcode table, not re-derived
   here. `gas` is out of the trusted path for field placement; which opcode
   byte means which mnemonic is unchecked by this module and rests on that
-  hard-coded table (historically cross-checked against `gas` in
-  `ScalarValidation.lean`).
-* **still gas-pinned-only:** `MULX` (VEX), `ADCX`/`ADOX` (legacy-VEX), and the
+  hard-coded table (cross-checked against `gas` in `ScalarValidation.lean`).
+* **gas-pinned only:** `MULX` (VEX), `ADCX`/`ADOX` (legacy-VEX), and the
   `loadMem`/`storeMem`/`mulxMem` memory forms' *operand-value* decode — `ADX`/`BMI2`
   have no Sail-x86 counterpart (ACL2 `x86isa` omits them, see `SailX86Validation`),
-  and the memory forms are not yet wired to a full `JInstr` rebuild. The
+  and the memory forms have no full `JInstr` rebuild. The
   **base-register** of the shared `ScalarEncoder.memTail` (the SIB-escape and the
-  forced-disp8 RIP-escape, the four bases `%rsp`/`%r12`/`%rbp`/`%r13`) is now
+  forced-disp8 RIP-escape, the four bases `%rsp`/`%r12`/`%rbp`/`%r13`) is
   decode-proved (`memTail_baseLow3_sib`, `memTail_baseLow3_rbp0` below): the encoded
   tail decodes to the *intended* base, not the degenerate no-base / RIP-relative
-  form — the gap that previously segfaulted the BLS-Fp bytes-direct `.o`.
+  form (a mis-encoded base of this kind makes a bytes-direct `.o` segfault).
 
-This is the `decode (encode i) ≡ i` upgrade of the #438 differential anchor for
-the GP-ALU subset. -/
+This is the `decode (encode i) ≡ i` counterpart of the `ScalarEncoder`
+differential anchor for the GP-ALU subset. -/
 
 /-- Structural decode of a memory ModRM (`decodeMem`): recover the `mod` field,
     the base register's low-3 bits, and the displacement-presence per the Sail
     `x86_decode_sib_p` discipline (no SIB when base low-3 ≠ 4). Used by the
-    memory-form structural checks; not yet lifted to a `JInstr` rebuild. -/
+    memory-form structural checks; it is not lifted to a `JInstr` rebuild. -/
 def decodeMemMod (modrm : BitVec 8) : Nat × Nat × Bool :=
   (modField modrm, rmField modrm, sibFollows modrm)
 

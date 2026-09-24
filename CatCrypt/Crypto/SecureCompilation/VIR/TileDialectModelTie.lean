@@ -15,10 +15,10 @@ public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 value is a lane function `Fin n → BitVec w` and the single compute op
 `tileBin op n w` is the elementwise SIMT lane map `fun i => op.apply (a i) (b i)`.
 `TileModel.lean` gives the *operational* tile semantics (`evalTileOp`,
-`runRegBlock`/`runTileBlock`) and the verified-lowering keystone
+`runRegBlock`/`runTileBlock`) and the verified-lowering theorem
 `lowerRegBlock_denote : runTileBlock ∘ lowerRegBlock = runRegBlock`.
 
-This file is the **denotation keystone** connecting the two: it proves that the
+This module is the **denotation bridge** connecting the two: it proves that the
 `tileDialect` denotation of a `tileBin op` coincides, lane for lane, with the
 operational model's per-lane semantics. Concretely:
 
@@ -29,13 +29,13 @@ operational model's per-lane semantics. Concretely:
   writes (e.g. `.add` writes `fun i => a i + b i = fun i => op.apply (a i) (b i)`).
   This makes the `Com`-dialect tile binop and the operational tile binop
   provably one and the same function — so the verified
-  `lowerRegBlock_denote` keystone (stated over the operational model)
+  `lowerRegBlock_denote` theorem (stated over the operational model)
   transfers to the `Com` dialect.
 * a smoke `example` running a one-op `Com tileDialect` add and showing its
   `Com.denote` equals running the corresponding `RegInstr.bin .add` through the
   operational `runRegBlock`/`evalRegInstr` path.
 
-There is no `sorry` and no new axiom; the ties reduce to `rfl`/`funext`+`cases`
+All goals are closed and there is no new axiom; the ties reduce to `rfl`/`funext`+`cases`
 because both sides ultimately compute the bare `BitVec w` lane op.
 -/
 
@@ -92,7 +92,7 @@ def toTileOp (op : JasminBinOp) (d a b : String) :
   | .shl  => .shll d a b
   | .shr  => .shrr d a b
 
-/-- **The dialect↔model keystone.** For any two-operand `JasminBinOp` `op`, the
+/-- **The dialect↔model bridge.** For any two-operand `JasminBinOp` `op`, the
     `Com`-dialect tile op's per-lane function `fun i => op.apply (a i) (b i)`
     equals the lane function the operational `evalTileOp (toTileOp op d a b)`
     writes into `d`, when `a`/`b` are the named operand tiles. Both sides are the

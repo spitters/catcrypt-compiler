@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 public import CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer
 
 /-!
-# AES-GCM grounded UNCONDITIONALLY — both phases' kernels are now THEOREMS
+# AES-GCM grounded UNCONDITIONALLY — both phases' kernels are THEOREMS
 
 AES-GCM is a real AEAD: it produces ciphertext by XOR-ing the plaintext with an
 **AES-CTR keystream** (the AES block cipher run on successive counter blocks under
@@ -36,7 +36,7 @@ This module grounds **both** phases of AES-GCM as Lean theorems carrying **zero
   encryption under the fixed key).
 
 * **GHASH fold** (`grounded_aesgcm_ghash_realizes`) — an `n`-block fold over the
-  `GF(2^128)` carrier `.TBytes 16`, each per-block step the genuine GHASH update
+  `GF(2^128)` carrier `.TBytes 16`, each per-block step the GHASH update
   `acc ↦ (acc ⊕ blockᵢ) · H` (the hash subkey `H` fixed).  We model the `⊕`-then-
   multiply update as a single **unary** step atop the proved **binary**
   `gf128_realizes_concrete`: the step forwards `(encode (decode acc ⊕ blockᵢ),
@@ -45,7 +45,7 @@ This module grounds **both** phases of AES-GCM as Lean theorems carrying **zero
   round-trip — the `⊕` is pure byte-XOR data-massaging, not a separate kernel.
   Chained `n` blocks deep through the carrier-parametric `pipeNT_realizes`.
 
-## What is grounded — the HONEST scope
+## What is grounded — scope
 
 * **Grounded (unconditional Lean theorem):** every per-kernel realization of both
   AES-GCM phases.  The CTR keystream chain decodes to the composite of `n` copies
@@ -57,7 +57,7 @@ This module grounds **both** phases of AES-GCM as Lean theorems carrying **zero
 * **What GHASH shape is modeled:** the per-block update `acc ↦ (acc ⊕ blockᵢ) · H`
   with `H` **fixed**, the `⊕ blockᵢ` folded into the unary step (byte-XOR, not a
   kernel) and the `· H` discharged by the proved binary `GF(2^128)`-multiply
-  realizer.  This is the genuine GHASH per-block fold of NIST SP 800-38D.
+  realizer.  This is the GHASH per-block fold of NIST SP 800-38D.
 
 * **The only residual (the machine-code obligation, NOT a per-kernel hypothesis):**
   that the *jasmin-emitted machine bytes* of the real AES / GHASH `GF(2^128)`
@@ -220,7 +220,7 @@ theorem ghashFold_realizes (H block : BitVec 128) (limbStore : LimbStoreSpec) :
 
 The `pipeNT` chain threads ONE leafSpec, so we fix the per-position block to a
 single value `block` (and the subkey `H`); each of the `n` positions applies the
-same fold step `acc ↦ (acc ⊕ block) · H`.  This is the genuine GHASH per-block
+same fold step `acc ↦ (acc ⊕ block) · H`.  This is the GHASH per-block
 fold, chained `n` deep; varying the per-position block is the combined-dispatch
 generalization (orthogonal — the kernel grounded here is the `GF(2^128)` multiply,
 which is identical at every position). -/
@@ -252,7 +252,7 @@ theorem ghash_realized (H block : BitVec 128) (limbStore : LimbStoreSpec)
       exact List.Forall₂.cons (ghashFold_realizes H block limbStore) ih
 
 /-- **HEADLINE — grounded AES-GCM GHASH fold, ZERO kernel hypotheses.**
-    The `n`-block GHASH fold — each step the genuine GHASH update
+    The `n`-block GHASH fold — each step the GHASH update
     `acc ↦ (acc ⊕ blockᵢ) · H` over the `GF(2^128)` carrier `.TBytes 16` — has its
     whole `pipeNT` computation decode to the composite of its per-block fold specs,
     with **ZERO `KernelRealizes2T` / `KernelRealizesT` hypotheses**.  Every

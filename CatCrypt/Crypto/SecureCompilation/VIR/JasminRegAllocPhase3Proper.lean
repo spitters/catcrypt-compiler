@@ -11,14 +11,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseid
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
 
 /-!
-# Verified register allocation — Phase 3 PROPER
+# Verified register allocation — spilled bodies and a coalescing ρ
 
-This module closes the two residuals named at the end of the Phase 3-prereq
-capstone (`JasminRegAllocPhase3.lean`):
+This module extends the checked allocation theorem of `JasminRegAllocPhase3.lean`
+in two directions:
 
   (a) the **`Lcmd`→`Kernel` reload-event lowering** — the Phase-2/3 capstone
       proves correctness of a body presented as a `Kernel` (`List KBinop`, the
-      destructive two-address pair `mov dst, src0; op dst, src1`). A *real*
+      destructive two-address pair `mov dst, src0; op dst, src1`). A
       spilled body inserts **reload** and **spill** moves (`mov R15, src`,
       `mov dst, R15`) so a binop whose operands are stack slots stays x86-legal.
       We model the four lowering shapes (`LoweredBinop`), give each its concrete
@@ -30,12 +30,12 @@ capstone (`JasminRegAllocPhase3.lean`):
       transports to bodies that contain reloads/spills.
 
   (b) a **checker-accepted coalescing `ρ`** for the 16-lane MDS sub-block that
-      broke residence-rename (the slice the orchestrator scales to 107k). The
-      Phase-0 `poseidon2ResidenceRho` is *rejected* (the MDS over-collapse — that
-      is the whole point of the checker). We give a coalescing `ρ` that the
+      residence-rename fails on (a slice of the 107k-binding body). The
+      Phase-0 `poseidon2ResidenceRho` is *rejected* (the MDS over-collapse, which
+      the checker exists to reject). We give a coalescing `ρ` that the
       *array-backed* `interferenceOkB` **accepts** on the high-pressure MDS
       kernel, with `native_decide` only on the small fixed slice. The full 107k
-      `#eval` is the orchestrator's (heavy); we state it and report the command.
+      check is a compiled `#eval` run outside the build; §7 states its command.
 
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
 convention).
@@ -521,14 +521,13 @@ theorem mds4LoweredBody_outputs {w : Nat} (stL st' st : RegStore w)
   -- `mds4Rho s < 7 ≤ 99 < 100`, so `ρ s ∉ demoScratch`.
   fin_cases hs <;> simp [demoScratch, mds4Rho]
 
-/-! ## 7. The full-107k orchestrator hook (heavy `#eval`, run by the orchestrator)
+/-! ## 7. The full-107k check (compiled `#eval`, run outside the build)
 
 The slice above (`colSum16Kernel`) is the in-Lean, `native_decide`-checkable
 16-lane MDS sub-block: a coalescing ρ that the array checker provably accepts
-(36→20 slots), the over-collapse provably rejected. The **full 107k** body is the
-orchestrator's heavy `#eval` (a compiled run, not an in-kernel `native_decide`;
-#512-class). Two named `Bool` entry points the orchestrator can `#eval` on the
-compiled exe:
+(36→20 slots), the over-collapse provably rejected. The **full 107k** body is
+checked by a compiled `#eval`, not an in-kernel `native_decide`. Two named
+`Bool` entry points can be `#eval`ed on the compiled exe:
 
 * `poseidon2ResidenceCheck` (in `JasminLprogExportPoseidon2`) — the *rejected*
   `proposedRho (slotTraceArr ())`; expected `false` (the MDS over-collapse).
@@ -536,7 +535,7 @@ compiled exe:
 
 A *checker-accepted coalescing* ρ for the full body — one that collapses the
 ≈107 000 SSA names onto few classes yet the array `interferenceOkB` accepts — is
-the open coalescing-allocator deliverable. What it needs (read off the
+outside this module. What it needs (read off the
 slice's accepting ρ and the rejected residence ρ): the residence map
 `proposedRho (slotTraceArr ())` is rejected because the `emitApplyMat4` / `emitColSums`
 staging parks values in `tmp2,tmp4,acc0,acc1,prod0,prod1` (slots `19..24`) that
@@ -548,31 +547,30 @@ classes must be widened to fresh classes (beyond the 25-slot residence universe)
 for the duration of the MDS window, exactly as the slice keeps the four column
 sums `16..19` on their own homes while every lane keeps its own. A linear-scan
 that splits *only* the rejected scratch classes (leaving the 16 lanes + reduction
-scratch coalesced) is the remaining allocator work; its output ρ is then run
-through this same `interferenceOkB` for verified acceptance.
+scratch coalesced) produces such a ρ; its output is then run through this same
+`interferenceOkB` for verified acceptance.
 
-We do **not** assert a theorem that any full-107k ρ is accepted (that would
-require the heavy `#eval`, and asserting acceptance without running the checker
-would be unsound). We expose the orchestrator command below. -/
+This module states no theorem that a full-107k ρ is accepted: that requires the
+compiled `#eval` of the checker. The `#eval` commands are below. -/
 
-/-- Orchestrator `#eval` entry: the full-107k Phase-0 array checker on the
+/-- `#eval` entry: the full-107k Phase-0 array checker on the
     *identity* map (positive control). Expected `true` — the fresh-SSA body is
     intrinsically allocatable; the rejection of the residence collapse is the
     proposal's fault, not the body's. (Same as
     `JasminLprogExportPoseidon2.poseidon2IdentityCheck`, re-exported here so the
-    Phase-3-proper orchestrator step is self-contained.)
+    check is self-contained in this module.)
 
-    Orchestrator command:
+    Command:
     `#eval CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper.poseidon2FullIdentityCheck`
     (expect `true`). -/
 def poseidon2FullIdentityCheck : Bool :=
   CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.poseidon2IdentityCheck
 
-/-- Orchestrator `#eval` entry: the full-107k Phase-0 array checker on the
+/-- `#eval` entry: the full-107k Phase-0 array checker on the
     proposed residence collapse `proposedRho (slotTraceArr ())`. Expected `false` —
     the MDS over-collapse (the slice's `colSum16RhoBad` analogue at scale).
 
-    Orchestrator command:
+    Command:
     `#eval CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper.poseidon2FullResidenceCheck`
     (expect `false`). -/
 def poseidon2FullResidenceCheck : Bool :=

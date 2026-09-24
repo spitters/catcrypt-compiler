@@ -13,12 +13,12 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
-# The terminating guarded (rejection / hedged) loop lowering — RWhile lift (#523)
+# The terminating guarded (rejection / hedged) loop lowering — RWhile lift
 
-`LoopUnroll.lean` (#281) lowers the **bounded counter-decrement loop**
+`LoopUnroll.lean` lowers the **bounded counter-decrement loop**
 `while (n != 0) { body ; n -= 1 }` whose trip count `n : Nat` is a *compile-time*
-constant; `Cond.lean` (#281) lowers the **public forward conditional**;
-`LprogControlFlow.lean` (#538) emits the bounded loop as a *constant-size* looped
+constant; `Cond.lean` lowers the **public forward conditional**;
+`LprogControlFlow.lean` emits the bounded loop as a *constant-size* looped
 `Lcmd` (label + body + `cmpq $0,%n ; jne .L`) rather than an `n`-copy unroll.
 
 What none of those covers is the shape every Round-3 PQC *signature* needs at the
@@ -67,7 +67,7 @@ rejection loop's trip count is not fixed: it is the *least* `k` for which
   the lowered guarded loop denotes `runGuardedLoop fuel guard body s`. The proof
   composes `boundedLoop_lowering_denote` with `runGuardedLoop_eq_runBoundedLoop_trip`.
 
-## The guard is PUBLIC (constant-time discipline; #460)
+## The guard is PUBLIC (constant-time discipline)
 
 A rejection loop's abort decision is **public** by construction: in Fiat-Shamir-
 with-aborts the verifier (and any adversary watching) learns *that* an iteration
@@ -133,7 +133,7 @@ symbolic evaluation of the per-coefficient ALU chain. (`JState.get_writeB5W_same
 bounds the iteration count (the termination witness): once `fuel` is exhausted we
 stop (a well-terminating rejection loop is run with `fuel` ≥ its worst-case trip
 count, so the cap is never hit; the cap only makes the function total). The
-`guard` is evaluated on the *current* state, so this is the genuine
+`guard` is evaluated on the *current* state, so this is the
 data-dependent fixpoint, not a counter loop. -/
 
 /-- The terminating guarded loop. Run `body` from `s` while `guard` holds, with
@@ -212,10 +212,10 @@ value) and depends **only** on the counter guard — *not* on the rest of the bo
 advances the counter by one (within range). The body is therefore **opaque**
 except through that one-step increment fact, so the proof never symbolically runs
 the body more than the one step the hypothesis already abstracts — no `N`-fold
-evaluation of a heavy per-coefficient body. This replaces the body-running
-`native_decide` the owned-emit `*_tripCount` theorems used, which symbolically
-executed the (heavy) body `N = 256` times and overflowed the native kernel stack
-(`lean exited with code 134` in a full `lake build`). -/
+evaluation of a heavy per-coefficient body. A body-running `native_decide` for
+the owned-emit `*_tripCount` theorems would symbolically execute the (heavy) body
+`N = 256` times and overflow the native kernel stack (`lean exited with code
+134`). -/
 
 /-- **Body-opaque trip count of a counter-increment loop.** With the public
     counter guard `fun t => decide ((t.get k).toNat < N)` and a body that
@@ -264,9 +264,9 @@ register `k` by one each iteration, the counter ends at exactly `N` — i.e.
 through the one-step BitVec increment `hinc`; the proof runs the body at most one
 (abstracted) step per induction layer, never `N`-fold, so it does not
 symbolically evaluate a heavy per-coefficient body and cannot overflow the native
-kernel stack. This replaces the final-state-running `native_decide` the owned-emit
-`*_final_i` theorems used, which symbolically executed the `runGuardedLoop` for
-all `N = 256` iterations and overflowed the native kernel stack (`lean exited with
+kernel stack. A final-state-running `native_decide` for the owned-emit
+`*_final_i` theorems would symbolically execute the `runGuardedLoop` for all
+`N = 256` iterations and overflow the native kernel stack (`lean exited with
 code 134`). -/
 
 /-- **Body-opaque final counter of a counter-increment loop.** With the public
@@ -761,7 +761,7 @@ def mldsaRejectGuard : JState 64 → Bool := fun s => decide ((s.get "reject").t
 def mldsaSignFuel : Nat := 64
 
 /-- The initial signing state: `kappa = 0`, every other register 0. The guard
-    must initially hold (we have not yet computed a `reject` — model the first
+    must initially hold (no `reject` is computed before entry — model the first
     entry as "reject pending"; equivalently the loop is entered after a first
     body run). We set `reject = 1` so the loop body runs at least once. -/
 def mldsaSignInit : JState 64 :=
@@ -832,7 +832,7 @@ this corresponds to `LowCTCT.isCT_LowCT'`'s admission of `RWhileNz x body` when
 `!(secrets x)` (the guard variable is not secret) and the body is CT. The
 bounded-subset lowering of this module (`lowerGuardedLoop` reduces to
 `lowerBoundedLoop` at the public-resolved trip count) is therefore CT-admissible
-under the same `#460` policy as `Cond.lowerCond`: a public-guard loop emits the
+under the same public-guard policy as `Cond.lowerCond`: a public-guard loop emits the
 looped `loopLcmd` whose `jne .L` tests only the public norm-check result. A
 *secret*-dependent loop guard is rejected by `isCT_LowCT'` (`secrets x = true`),
 matching the forbidden timing-oracle case. -/

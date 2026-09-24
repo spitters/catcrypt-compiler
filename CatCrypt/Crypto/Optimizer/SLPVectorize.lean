@@ -14,8 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 # `slpVectorize`: verified superword-level (SLP) straight-line auto-vectorization
 
 A `Com → Com` transform — the **straight-line sibling** of the loop vectorizer
-(`LaneMap.laneMap_eq_scalarMap`, #68/#107) and the intra-block scheduler
-(`Optimizer.SchedulerPass`, #590).  Where the loop vectorizer packs the *body of
+(`LaneMap.laneMap_eq_scalarMap`) and the intra-block scheduler
+(`Optimizer.SchedulerPass`).  Where the loop vectorizer packs the *body of
 a loop* across iterations and the scheduler *reorders* independent statements,
 SLP packs **groups of isomorphic independent scalar ops inside one basic block**
 — no loop required — into one packed SIMD op.
@@ -37,7 +37,7 @@ machine model.
 ## What we prove (the denotation obligation)
 
 The pass carries a **per-lane denotation-equality** theorem, exactly the `vmap`
-pattern (#107/#121) applied *straight-line* rather than across a loop:
+pattern applied *straight-line* rather than across a loop:
 
 * `slpGroup_denote` — running the **packed** SIMD op on the SoA register that
   carries lane `j`'s operands, then reading lane `j`, yields **exactly** the
@@ -51,7 +51,7 @@ pattern (#107/#121) applied *straight-line* rather than across a loop:
 
 * `slpVectorize_footprint_disjoint` — the soundness side-condition the detector
   certifies before packing: a fired group is isomorphic + pairwise-independent
-  (the same `indep` invariant the #590 scheduler gates every move on).
+  (the same `indep` invariant the scheduler gates every move on).
 
 ## Global lane-assignment objective (stated hook)
 
@@ -62,8 +62,9 @@ minimization: choose a single lane layout per SSA value across the whole region
 so that producer and consumer groups share a layout and the gather/scatter ops
 cancel — is captured as a stated cost functional (`layoutConversionCost`) and a
 realizability hook (`slpLayout_localCut_realizes`).  The local cut is the
-`identity`-layout instance of that functional; the global solver (assign layouts
-to minimize total conversion cost) is future work and documented at the functional.
+`identity`-layout instance of that functional; a global solver (assign layouts
+to minimize total conversion cost) is outside this module's scope; the functional
+states its objective.
 -/
 
 @[expose] public section
@@ -132,7 +133,7 @@ def runScalar : List SStmt → SRegs → SRegs
 A group of statements is **packable** iff every member uses the same `LaneOp`
 (*isomorphic*) and the members are **pairwise independent**: distinct
 destinations and no read/write hazard.  This is exactly the disjoint-footprint
-invariant the #590 scheduler gates each move on, lifted to a whole group. -/
+invariant the scheduler gates each move on, lifted to a whole group. -/
 
 /-- The footprint (read + write names) of a statement.  For shifts `s2` is
     not read, but including it is conservative-safe (it only *strengthens*
@@ -267,7 +268,7 @@ theorem slpVectorize_denote (g : List SStmt) (G : SLPGroup) (h : slpDetect g = s
     pairwise-independent: any two distinct members have disjoint write/read
     footprints (no RAW/WAR/WAW).  This is the invariant that makes packing
     sound — the lanes do not alias, so SoA packing loses no dependency.  Same
-    `indep` gate as the #590 scheduler, lifted to a group. -/
+    `indep` gate as the scheduler, lifted to a group. -/
 theorem slpVectorize_footprint_disjoint (g : List SStmt) (G : SLPGroup)
     (h : slpDetect g = some G) : pairwiseIndep G.members = true := by
   cases g with
@@ -462,8 +463,8 @@ to minimize total layout-conversion (pack/unpack) cost so producer/consumer
 groups that share a layout need no conversion.
 
 We state the cost functional and record that the local cut is its identity-layout
-instance.  The global solver (choose layouts minimizing `layoutConversionCost`)
-is future work; this is the hook it plugs into. -/
+instance.  A global solver (choose layouts minimizing `layoutConversionCost`) is
+outside this module's scope; this is the hook it plugs into. -/
 
 /-- A lane layout for a value: a permutation of the `L` lanes (`Fin L → Fin L`).
     `identity` = the SoA layout the local cut uses. -/
@@ -481,19 +482,19 @@ def layoutConversionCost {L : Nat} [DecidableEq (Layout L)]
     the identity SoA layout, so within a single fired group producer and
     consumer layouts coincide and the conversion cost is `0`.  The global
     objective generalizes this: assign possibly-non-identity layouts across
-    *different* groups to cancel boundary shuffles.  (Stated hook — the global
-    solver is future work.) -/
+    *different* groups to cancel boundary shuffles.  (Stated hook; the global
+    solver is outside this module's scope.) -/
 theorem slpLayout_localCut_realizes {L : Nat} [DecidableEq (Layout L)]
     (lay : Layout L) : layoutConversionCost lay lay = 0 := by
   simp [layoutConversionCost]
 
 /-! ## §7  Status -/
 
-/-- This pass file compiles; the SLP detection (`slpDetect`), packing
-    (`packedResult`/`LaneOp.toVInst`), and the denotation keystones
-    (`slpGroup_denote`, `slpVectorize_denote`, `vpaddd_slp_realizes`) plus the
+/-- Summary: the module defines the SLP detection (`slpDetect`) and packing
+    (`packedResult`/`LaneOp.toVInst`), and proves the denotation theorems
+    (`slpGroup_denote`, `slpVectorize_denote`, `vpaddd_slp_realizes`) and the
     pairwise-independence soundness side-condition
-    (`slpVectorize_footprint_disjoint`) are all closed. -/
+    (`slpVectorize_footprint_disjoint`). -/
 theorem slpVectorize_compiles : True := trivial
 
 end CatCrypt.Crypto.Optimizer.SLPVectorize

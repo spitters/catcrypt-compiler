@@ -15,9 +15,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
 set_option autoImplicit false
 
 /-!
-# The fold → source-`Com` tie for the memref export chain (B4)
+# The fold → source-`Com` tie for the memref export chain
 
-The B3 export theorems (`JasminLsemMemChainBridge`) end at the **spec fold**:
+The export theorems of `JasminLsemMemChainBridge` end at the **spec fold**:
 the emitted control-flow form's machine run `decodeM`s to
 `runBoundedLoopMem` / `runBoundedLoopMemC` / `runWhileMem` / `lsemStraightMemDN`.
 This file ties those folds to the **source semantics** — `JLoopBodyN.denote` /
@@ -39,16 +39,17 @@ Structure (mirroring the register template):
    equals `JLoopBodyN.denote ⟨n, update⟩ invs init` — the `LstateM` analogue of
    `general_loopBody_lsem_faithful`.
 3. **`runBoundedLoopMem` decodes to `JLoopBodyN.denote`** (§3): the fold
-   induction lifting a per-trip simulation through the A1 machine-state fold:
+   induction lifting a per-trip simulation through the counter-loop machine-state fold:
    if each trip of the emitted body computes one `stepC` under the `decodeM`
    correspondence, the whole `m`-fold decodes to the source loop's `m`-fold
    denotation.
 4. **Composed export theorems** (§4): `loopMem_export_faithful_denote` /
-   `loopMem_export_faithful_comL` — the A1 export theorem's conclusion
+   `loopMem_export_faithful_comL` — the counter-loop export theorem's conclusion
    strengthened from the spec fold to `JLoopBodyN.denote` = the front-emitted
    `ComL.forLoopNRt`'s `ComL.denote`: **the emitted loop's machine execution
    decodes to the source `Com` denotation**. §4b clones the fold induction and
-   the composed export theorem for A2 (`runBoundedLoopMemC_decodes_denote` /
+   the composed export theorem for the loop with call
+   (`runBoundedLoopMemC_decodes_denote` /
    `loopCall_export_faithful_denote` — the loop whose body calls a linked
    leaf).
 5. **The `Lcall` leaf tie** (§5): the depth-N export theorem at depth 0
@@ -64,7 +65,7 @@ Structure (mirroring the register template):
    run by `lsemFuelMemL` decodes to `JLoopBodyN.denote` — the composed tie is
    realised end-to-end on a real back-edge.
 
-Honest residuals (named, not papered over):
+Scope:
 * The per-trip simulation hypothesis `hsim` of §3/§4/§4b is discharged here
   generically at the **encoded** trip states (§1) and concretely in §7; its
   *unconditional* discharge for the emitted `chain ++ writeback` body shape
@@ -73,11 +74,12 @@ Honest residuals (named, not papered over):
   whose `loopMem_export_faithful_denote_uncond` / `_comL_uncond` carry only
   schedule/seed/name-hygiene hypotheses. The array-carrier decode analogue
   (`decodeArrM`, array-accumulator fold/export, the fill shape) lives there too.
-* The while form (A3) has no `ComL` source node in this lane (the guard-while
-  front is `TranslateDialectGuardWhile`); its tie follows the same pattern once
-  a source node exists.
-* The inline-nested **machine** fold (B5) is the remaining first half for §6's
-  source-side tie; the nested-call route (`calleeRunDN`) is covered via §5.
+* The while form (`JasminLsemMemLoopNestWhile`) has no `ComL` source node in this
+  lane (the guard-while front is `TranslateDialectGuardWhile`), so this module
+  states no source tie for it.
+* The inline-nested **machine** fold (`JasminLsemMemLoopNestInline`) is not
+  composed with §6's source-side tie here; the nested-call route (`calleeRunDN`)
+  is covered via §5.
 
 **0 sorries; axioms = {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the §7 concrete witness).** The `lsem→bytes` encoder +
@@ -207,7 +209,7 @@ theorem general_loopBodyN_lsemMem_faithful {w : Nat}
 
 /-! ## 3. `runBoundedLoopMem` decodes to `JLoopBodyN.denote`
 
-The A1 machine-state fold `runBoundedLoopMem` threads the raw `LstateM` across
+The counter-loop machine-state fold `runBoundedLoopMem` threads the raw `LstateM` across
 trips. The induction below lifts a **per-trip simulation** — each trip of the
 emitted body computes one `stepC` under the `decodeM` correspondence at the
 accumulator register — through the whole fold: the final state decodes to the
@@ -260,11 +262,11 @@ theorem runBoundedLoopMem_decodes_denote {w : Nat}
 
 /-! ## 4. The composed export theorems: machine run decodes to `ComL.denote`
 
-Strengthening B3's `loopMem_export_faithful` from the spec fold to the source
+Strengthening `loopMem_export_faithful` from the spec fold to the source
 denotation, and reading the result as the front node `ComL.forLoopNRt`'s
 denotation. -/
 
-/-- **A1 export faithfulness, tied to the source denotation.** Under the A1
+/-- **Counter-loop export faithfulness, tied to the source denotation.** Under the counter-loop
     counter schedule (as in `loopMem_export_faithful`, never re-proved) plus
     the seed decode (`hinit`) and the per-trip simulation (`hsim`, §3), the
     emitted counter loop's machine run halts at a state whose accumulator
@@ -315,9 +317,9 @@ theorem comL_forLoopNRt_ret_denote {Γ : Ctxt jasminDialect} {w : Nat}
       = JLoopBodyN.denote ⟨(count.lookup V).toNat, update⟩
           (Expr.lookupArgs invs V) (init.lookup V) := rfl
 
-/-- **A1 export faithfulness, concluded at `ComL.denote`.** The composed
+/-- **Counter-loop export faithfulness, concluded at `ComL.denote`.** The composed
     "emitted bytes execute as the source denotation" statement for the counter
-    loop: under the A1 schedule + the per-trip simulation, the machine run of
+    loop: under the counter-loop schedule + the per-trip simulation, the machine run of
     the emitted loop decodes to the front node
     `ComL.forLoopNRt update count init invsV (.ret .here)`'s `ComL.denote` —
     the source semantics of the runtime-trip loop, at trip count
@@ -356,14 +358,14 @@ theorem loopMem_export_faithful_comL {Γ : Ctxt jasminDialect} {w : Nat}
     hlopn s hfn hpc _ hm bprev blast bfin hprev hlast hbfin htaken hhalt accReg _
     hinit hsim
 
-/-! ## 4b. The A2 fold: `runBoundedLoopMemC` decodes to `JLoopBodyN.denote`
+/-! ## 4b. The loop-with-call fold: `runBoundedLoopMemC` decodes to `JLoopBodyN.denote`
 
 The same fold induction over the **loop-with-call** body-fold
-`lsemStraightMemC env body` (A2, the loop whose body `Lcall`s a linked owned
-leaf): the per-trip simulation now runs the call-resolving body-fold, and §5's
+`lsemStraightMemC env body` (the loop whose body `Lcall`s a linked owned
+leaf): the per-trip simulation runs the call-resolving body-fold, and §5's
 called-leaf tie is what discharges the callee's contribution to it. -/
 
-/-- **The A2 fold induction.** As `runBoundedLoopMem_decodes_denote`, over the
+/-- **The loop-with-call fold induction.** As `runBoundedLoopMem_decodes_denote`, over the
     call-resolving fold `runBoundedLoopMemC`: if each trip of the emitted
     loop-with-call body computes one `JLoopBodyN.stepC` under the `decodeM`
     correspondence, the `m`-fold decodes to the source loop's `m`-fold
@@ -403,7 +405,7 @@ theorem runBoundedLoopMemC_decodes_denote {w : Nat} (env : LeafEnvM)
           rw [JLoopBodyN.denote_succ, decodeM_setLpc]
           exact hdec'
 
-/-- **A2 export faithfulness, tied to the source denotation.** Under the A2
+/-- **Loop-with-call export faithfulness, tied to the source denotation.** Under the loop-with-call
     schedule (as `loopCall_export_faithful`, never re-proved) plus the seed
     decode and the per-trip simulation, the emitted loop-with-call's machine
     run (`lsemFuelMemLC`) halts at a state whose accumulator register decodes
@@ -440,12 +442,12 @@ theorem loopCall_export_faithful_denote {w : Nat} (env : LeafEnvM)
 
 /-! ## 5. The `Lcall` leaf tie: a called emitted leaf executes as `Com.denote`
 
-`calleeRunDN_export_faithful` (B3) at depth `0` runs a straight-line callee:
+`calleeRunDN_export_faithful` at depth `0` runs a straight-line callee:
 `lsemStraightMemDN env 0 = lsemStraightMem` by definition. Instantiating the
 callee body with the linearizer-emitted chain of a `ScalarMemN` leaf and
 composing with the straight-line faithfulness gives: **a caller `Lcall`-ing the
 emitted leaf runs (under the region-call machine model) to a halt state whose
-result register decodes to the leaf's `Com.denote`** — the A2-flavoured
+result register decodes to the leaf's `Com.denote`** — the call-flavoured
 source tie, the callee's straight-line faithfulness threaded through the call
 frame. -/
 
@@ -475,7 +477,7 @@ theorem shiftLinstr_isLopn (mn : String) (w : Nat) (dst : String) (src : LOperan
 
 /-- **Every emitted chain element is an `Lopn`.** The `straightOpsMem` chain
     contains no control-transfer instruction — the depth-0 `NestBodyOK` (and
-    A1's `IsLopn` side condition) holds for every linearizer-emitted body. -/
+    the counter loop's `IsLopn` side condition) holds for every linearizer-emitted body. -/
 theorem straightOpsMem_isLopn {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (nArgs : Nat) :
     ∀ curDepth, ∀ i ∈ straightOpsMem nArgs com curDepth, IsLopn i := by
@@ -512,7 +514,7 @@ theorem encodeM_setLpc_zero {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ) :
     callee `sym` (its emitted chain + trailing `Lret`), entered from a caller
     frame that halts on return: the region-call machine model `lsemFuelMemLC`
     runs the whole call chain to a halt state whose result register decodes to
-    **`com.denote V`** — the leaf's source denotation. Composes B3's
+    **`com.denote V`** — the leaf's source denotation. Composes
     `calleeRunDN_export_faithful` (depth `0`) with the straight-line
     faithfulness `comToLprog_lsemMem`; the depth-0 body side condition is
     discharged by `straightOpsMem_isLopn`. -/
@@ -632,7 +634,7 @@ theorem lsemNestedBodyRunnerMemN_stepCNested {w : Nat}
     the emitted `innerCount` chain and folding the emitted `innerUpdate` chain
     over the inner trips — equals `JLoopBodyN.nestedDenote`, the source
     semantics of `ComL.forLoopNRtNested`. The source-side second half of the
-    nested tie (the inline-nested machine fold is the B5 residual; the
+    nested tie (the inline-nested machine fold is not composed here; the
     nested-call route is §5). -/
 theorem general_nestedLoopBodyN_lsemMem_faithful {w : Nat}
     (innerCount : Com jasminDialect (JasminTy.reg 64 :: invTys) (JasminTy.reg 64))
@@ -677,7 +679,7 @@ chain** `loopBodyChainMN` of the source body `acc := acc + acc` (a `ScalarMemN`
 decrement `SUB n ← n, 1`. Run by the labeled machine model `lsemFuelMemL` from
 the encoded seed `acc = 5`, the loop follows the back-edge twice and the
 accumulator register decodes to `JLoopBodyN.denote ⟨2, wUpd⟩ .nil 5 = 20` — the
-composed A1 source tie realised end-to-end on a real back-edge. (The source
+composed counter-loop source tie realised end-to-end on a real back-edge. (The source
 body ignores the loop index, so the index register needs no increment here;
 `htaken`/`hsim`-style schedules are exercised implicitly by the run.) -/
 
@@ -720,7 +722,7 @@ example :
   native_decide
 
 /-- **Validate (the source value).** The source denotation itself is `20`
-    (`5 → 10 → 20`): the decoded machine result above is the honest doubling
+    (`5 → 10 → 20`): the decoded machine result above is the doubling
     fold, not a stale register. -/
 example : (JLoopBodyN.denote ⟨2, wUpd⟩ .nil (5#64) : BitVec 64) = 20#64 := rfl
 

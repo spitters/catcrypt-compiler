@@ -16,7 +16,7 @@ set_option autoImplicit false
 # The Frobenius endomorphism as a generic optimizer rewrite
 
 The **Frobenius endomorphism** `x ↦ x ^ p` over a commutative ring `R` of
-(exponential) characteristic `p` is the algebraic backbone of extension-field
+(exponential) characteristic `p` is the algebraic basis of extension-field
 arithmetic in pairing-based cryptography: the final-exponentiation step of a
 pairing, sparse subfield multiplication, and the `p`-power tower maps of an
 extension `𝔽_{p^k}` are all expressed through it. A rewrite pass that wants to

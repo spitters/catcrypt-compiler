@@ -11,14 +11,14 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 public import Mathlib.Data.BitVec
 
 /-!
-# A verified `Com→Com` instruction-selection pass for pseudo-Mersenne / Solinas reduction (#393)
+# A verified `Com→Com` instruction-selection pass for pseudo-Mersenne / Solinas reduction
 
-`Fe25519MulKernel.feMulBlock` (#391) reaches s2n parity on the Curve25519
+`Fe25519MulKernel.feMulBlock` reaches s2n parity on the Curve25519
 field-multiply by HAND-porting s2n-bignum's *fused-quotient-estimate* reduce for
 the single prime `2^255 - 19`. This module turns that one-kernel win into a
 **compiler property**: a pass, parametric in the prime shape `p = 2^k - c`, that
 *recognises* the modular-reduction step and *emits* the fused reduce
-automatically. Instantiating it at `(k = 255, c = 19)` reproduces #391's reduce
+automatically. Instantiating it at `(k = 255, c = 19)` reproduces `feMulBlock`'s reduce
 semantics; the same pass instantiates at secp256k1 (`2^256 - (2^32 + 977)`),
 Poly1305 (`2^130 - 5`), and any pseudo-Mersenne / Solinas prime with small `c`.
 
@@ -55,22 +55,23 @@ injected in the same carry pass, and one conditional `−p` (cf.
 * **Concrete, per prime.** `solinasParams25519`, `solinasParamsSecp256k1`,
   `solinasParamsPoly1305` instantiate `(k, c)`; `*_reduce_eq_mod` discharge the
   side condition and specialise the general theorem to each. The
-  `(255, 19)`-instantiation is value-identical to the residue #391's `feMulBlock`
+  `(255, 19)`-instantiation is value-identical to the residue `feMulBlock`
   computes (`feMul_reduce_matches`): both equal `(x·y) mod (2^255-19)` on the
   product, so the SELECTED reduce and the HAND reduce agree by value.
 
 * **Emitter shape.** `fusedReduceBlock k c lo hi …` emits the parametric
   `JInstr` reduce (the generalisation of `feMulBlock`'s lines 178–217, with the
   Solinas constant `2·c` and the `c·q` correction parametric). At
-  `(255, 19)` it is the #391 reduce sequence; the constants `2·c`/`c` print into
+  `(255, 19)` it is `feMulBlock`'s reduce sequence; the constants `2·c`/`c` print into
   the body, checked by `fusedReduce25519_constants`.
 
-The honest scope: the *value-level reduction identity* is fully general over
+Scope: the *value-level reduction identity* is fully general over
 `(k, c)` under the stated side condition; the *instruction-level emission* is the
 parametric generalisation of one hand-written block, concrete-checked to
 reproduce it at `(255, 19)` and to carry the right Solinas constants at the other
-primes. The all-inputs byte-identity of the emitted asm against a reference stays
-the external KAT discipline (`bench/x25519_fieldmul_compare`), as for #391.
+primes. The all-inputs byte-identity of the emitted asm against a reference is
+checked by the external KAT harness (`bench/x25519_fieldmul_compare`), as for
+`feMulBlock`.
 -/
 
 @[expose] public section
@@ -334,28 +335,28 @@ theorem reducePoly1305_eq_mod {high low : Nat}
         have e6 : (2 : Nat) ^ 6 = 64 := by norm_num
         omega }
 
-/-! ## 6. Validation against the #391 hand-written reduce
+/-! ## 6. Validation against the hand-written `feMulBlock` reduce
 
-`Fe25519MulKernel.feMulComputes` (#391) asserts the hand-written `feMulBlock`'s
+`Fe25519MulKernel.feMulComputes` asserts the hand-written `feMulBlock`'s
 stored output equals `(x·y) mod p25519`. The pass at `(255, 19)` targets the
 **same residue**: `solinasReduce solinasParams25519 high low` reduces
 `high·2^255 + low` to `… mod (2^255 - 19)`, and `Fe25519MulKernel.p25519` is
 *definitionally* `2^255 - 19`. So whenever the double-width product is presented
 as `high·2^255 + low` (the radix split the reduce consumes), the SELECTED reduce
 and the HAND reduce land on the identical canonical residue — the selection
-reproduces #391's value semantics. -/
+reproduces `feMulBlock`'s value semantics. -/
 
 /-- The modulus the pass uses at `(255, 19)` is *definitionally* the prime
-    `Fe25519MulKernel.p25519` the #391 hand reduce targets. -/
+    `Fe25519MulKernel.p25519` the hand reduce targets. -/
 theorem modulus25519_eq_p25519 :
     solinasParams25519.modulus
       = CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel.p25519 := rfl
 
-/-- **The selected reduce reproduces #391's reduce by value.** For any
+/-- **The selected reduce reproduces `feMulBlock`'s reduce by value.** For any
     `high, low < 2^255`, the automatically-selected `(255, 19)` fused reduce
     computes exactly the canonical residue `(high·2^255 + low) mod p25519` that
     `Fe25519MulKernel.feMulBlock`'s hand-written reduce produces — they agree on
-    every input presented in the radix split. The selection is now a compiler
+    every input presented in the radix split. The selection is a compiler
     property, not a hand decision. -/
 theorem feMul_reduce_matches {high low : Nat}
     (hh : high < 2 ^ 255) (hl : low < 2 ^ 255) :
@@ -438,15 +439,15 @@ def fusedReduce4LimbBlock (twoC c : Nat) : List (JInstr 64) :=
 def fusedReduce25519 : List (JInstr 64) :=
   fusedReduce4LimbBlock (2 * solinasParams25519.c) solinasParams25519.c
 
-/-- The reduce tail of the #391 hand-written `feMulBlock`: its last 38
+/-- The reduce tail of the hand-written `feMulBlock`: its last 38
     instructions (lines 178–217), the fused-quotient-estimate reduce. -/
 def feMulReduceTail : List (JInstr 64) :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel.feMulBlock.drop 56
 
-/-- **The selected reduce is the #391 reduce (instruction-level).** The pass,
+/-- **The selected reduce is the `feMulBlock` reduce (instruction-level).** The pass,
     instantiated at Curve25519's `(twoC, c) = (38, 19)`, emits *exactly* the
-    instruction sequence the #391 hand reduce uses (`feMulBlock`'s reduce tail) —
-    instruction for instruction. The hand instruction-selection decision is now
+    instruction sequence the hand reduce uses (`feMulBlock`'s reduce tail) —
+    instruction for instruction. The hand instruction-selection decision is
     reproduced by the parametric pass. -/
 theorem fusedReduce_at_25519_eq_feMulReduce :
     fusedReduce25519 = feMulReduceTail := rfl
@@ -469,14 +470,14 @@ theorem fusedReduceSecp256k1_constant :
         solinasParamsSecp256k1.c).head?
       = some (.mov "yd" (.imm (2 * (2 ^ 32 + 977)))) := rfl
 
-/-! ## 8. Wiring the selected reduce into the emit path (#397)
+/-! ## 8. Wiring the selected reduce into the emit path
 
-§7 proves the *reduce tail* the pass emits is the #391 hand reduce. To make the
+§7 proves the *reduce tail* the pass emits is the `feMulBlock` hand reduce. To make the
 selection actually drive code-gen, we split `feMulBlock` into its schoolbook
 prefix (the 4×4→8 product, the first 56 instructions) and let the pass supply the
 reduce, then re-assemble. `feMul25519Schoolbook ++ fusedReduce25519` is then
 *byte-identical* to the hand-written `feMulBlock` — the field-multiply kernel is
-now `schoolbook ++ (selected reduce)` rather than `schoolbook ++ (hand reduce)`,
+`schoolbook ++ (selected reduce)` rather than `schoolbook ++ (hand reduce)`,
 and the emit driver renders this composed block. -/
 
 /-- The schoolbook prefix of `feMulBlock`: the 4×4→8 dual-carry-chain product
@@ -492,7 +493,7 @@ def selectedFeMul25519 : List (JInstr 64) :=
   feMul25519Schoolbook ++ fusedReduce25519
 
 /-- **The composed (schoolbook ++ selected-reduce) kernel is byte-identical to the
-    #391 hand `feMulBlock`.** Splitting the kernel and letting the pass supply the
+    hand-written `feMulBlock`.** Splitting the kernel and letting the pass supply the
     reduce reproduces the hand block instruction-for-instruction, so wiring the
     pass into emit does not change the emitted Curve25519 field-multiply — the
     fe25519 (255,19) KAT and s2n parity are preserved by construction. -/
@@ -517,7 +518,7 @@ def fieldMul255Kernel (schoolbook : List (JInstr 64)) (P : SolinasPrime) :
 theorem fieldMul255Kernel_at_25519 :
     fieldMul255Kernel feMul25519Schoolbook solinasParams25519 = selectedFeMul25519 := rfl
 
-/-! ### 8.1 The `2^256`-boundary reduce skeleton (secp256k1, #397)
+/-! ### 8.1 The `2^256`-boundary reduce skeleton (secp256k1)
 
 secp256k1's prime `p = 2^256 - c` (`c = 2^32 + 977 = 4294968273`) sits on a *clean
 2^256 boundary*, so its reduce differs structurally from the `2^255`-class
@@ -586,10 +587,10 @@ def selectedFeMulSecp256k1 : List (JInstr 64) :=
 /-! ## 9. Emit driver for the selected kernel
 
 The emit path renders the *composed* `schoolbook ++ (selected reduce)` block
-through the same backend (`allocGp`/`renderLeafFn`) the #391 kernel uses, with the
+through the same backend (`allocGp`/`renderLeafFn`) the `feMulBlock` kernel uses, with the
 identical register pinning. Because `selectedFeMul25519_eq_feMulBlock` holds by
 `rfl`, this produces a byte-identical `.s` to `Fe25519MulKernel.emitMain`; the
-pass now *supplies* the reduce instead of it being hand-inlined. -/
+pass *supplies* the reduce instead of it being hand-inlined. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
   (GpAlloc allocGp renderBlockBody renderLeafFn regOf)
@@ -645,7 +646,7 @@ def emitSelectedSecp256k1 : IO Unit := do
     selectedSecp256k1Asm
   IO.println "wrote secp256k1_fe_mul_x86_from_lean.s (pass-selected 2^256 reduce, #397)"
 
-/-! ## 10. Multi-term Solinas primes (#403): the iterated-fold generalisation
+/-! ## 10. Multi-term Solinas primes: the iterated-fold generalisation
 
 The single-fold `solinasReduce` (§3–4) is exact only in the *small-`c`* regime
 `c·(c+3) < 2^k` (two folds reach `< 2·p`). The NIST curves are **multi-term**
@@ -666,7 +667,7 @@ value is below `2^{k+1}`, where a single conditional subtract of `p` finishes
 `2c < p`, giving one subtract).
 
 This section generalises to **any** `p = 2^k − c` with `0 < c` and `2c < 2^k`
-(equivalently `c < p`, the only constraint a genuine modulus imposes), proving
+(equivalently `c < p`), proving
 `multiSolinasReduce` computes the residue, with the per-prime fold count `fuel`
 the single explicit numeric parameter. P-256 and P-384 are instantiated and
 their side conditions discharged. -/
@@ -828,7 +829,7 @@ theorem multiFold_lt_boundM (P : MultiSolinasPrime)
 /-! ### The multi-term side condition and correctness
 
 `MultiSolinasOK` packages exactly what the iterated-fold reduce needs: `c ≥ 1`,
-`3·c < 2^k` (so `c < p`, the genuine-modulus constraint, and two conditional
+`3·c < 2^k` (so `c < p`, and two conditional
 subtracts collapse a value `< 2^{k+1}` into `[0, p)`), well-formed limbs, and the
 single per-prime numeric check `boundM P fuel ≤ 2` (so `fuel` folds bring the
 value below `2^{k+1}`). The last is a closed `Nat` computation per prime,
@@ -838,7 +839,7 @@ discharged by `norm_num`/`decide`. -/
 structure MultiSolinasOK (P : MultiSolinasPrime) (high low : Nat) : Prop where
   /-- `c ≥ 1`. -/
   c_pos : 1 ≤ P.c
-  /-- `3·c < 2^k`: gives `c < p` (genuine modulus) and that two conditional
+  /-- `3·c < 2^k`: gives `c < p` and that two conditional
       subtracts of `p` collapse a value `< 2^{k+1}` into `[0, p)` (since
       `2^{k+1} − 2p = 2c < p`). Satisfied by every deployed Solinas prime
       (`c ≪ 2^k`). -/
@@ -904,7 +905,7 @@ theorem multiSolinasReduce_eq_mod (P : MultiSolinasPrime) {high low : Nat}
   show condSub P (condSub P t) = V % P.modulus
   rw [← hsdef, ← hmod_final, Nat.mod_eq_of_lt hfinal_lt]
 
-/-! ## 11. Multi-term per-prime instantiations (#403)
+/-! ## 11. Multi-term per-prime instantiations
 
 The NIST curves and two single-term quick wins, each instantiating
 `MultiSolinasPrime` and discharging `MultiSolinasOK`. The `fuel` is the number of
@@ -1010,7 +1011,7 @@ theorem reduceGoldilocks_eq_mod {high low : Nat}
       low_lt := hl
       fuel_ok := by native_decide }
 
-/-! ## 12. Goldilocks field-multiply emitter (#403)
+/-! ## 12. Goldilocks field-multiply emitter
 
 The multi-term value-level reduce `multiSolinasReduce multiGoldilocks hi lo` is
 the fold–fold–condSub–condSub the emitted kernel below realises for the 64-bit
@@ -1111,7 +1112,7 @@ def emitGoldilocks : IO Unit := do
 
 §10's `MultiSolinasPrime.terms` records the signed-power decomposition of the
 subtrahend, but the value-level reduce depends only on the net `c` — nothing
-ties the list to the arithmetic. This section makes the term list load-bearing,
+ties the list to the arithmetic. This section ties the term list to the arithmetic,
 which is what a *generated* (rather than hand-authored) instruction realisation
 needs:
 

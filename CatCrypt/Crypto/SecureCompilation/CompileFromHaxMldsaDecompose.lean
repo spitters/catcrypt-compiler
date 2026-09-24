@@ -23,7 +23,7 @@ the Keccak `χ`/`θ`/`ι` lanes (`CompileFromHaxKeccak`), the BLAKE2s `G` step
 the bitwise, ARX, prime-field, and binary-field families. Here we do the same
 for a **post-quantum signature rounding leaf**, the per-coefficient
 straight-line shift/add/sub split that `MLDSA/Power2RoundEmit.lean` lowers
-through the owned X86 loop backend — now derived through the *same* verified
+through the owned X86 loop backend — here derived through the *same* verified
 `compileFromHax` front as the other C4 leaves, with no front change.
 
 ## FIPS-204 §7.4 `Power2Round` (ML-DSA-65: q = 8380417, D = 13)

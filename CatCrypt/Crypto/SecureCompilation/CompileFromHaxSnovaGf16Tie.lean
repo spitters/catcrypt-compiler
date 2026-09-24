@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSnovaGf16
 public import CatCrypt.Crypto.Util.Gf16
 
 /-!
-# #607 fan-out: the emitted SNOVA GF(16) multiply leaf EQUALS the abstract field op
+# Field tie: the emitted SNOVA GF(16) multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxSnovaGf16.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 32` denotation is `snovaGf16MulSpec` — the bit-serial straight line
@@ -69,13 +69,12 @@ theorem snovaGf16MulCore_eq_field (a b : BitVec 4) :
     snovaGf16MulCore a b = Gf16.mul a b := by
   revert a b; decide
 
-/-- **Universal SNOVA GF(16) emit-form ↔ abstract-field tie (#607 fan-out).**
+/-- **Universal SNOVA GF(16) emit-form ↔ abstract-field tie.**
     For every `a b : BitVec 32`, the emitted leaf's spec `snovaGf16MulSpec`, read
     on the low nibble, equals the abstract GF(16) field multiply `Gf16.mul`
-    (`CatCrypt.Util.Gf16`) on the truncated nibbles. This upgrades the SNOVA leaf
-    from KAT-only (`snovaGf16MulSpec_kat`, two sample vectors) to a genuine
-    universal tie to the field op the SNOVA ring-dot multiply-accumulate is built
-    from. Composed with `CompileFromHaxSnovaGf16.snovaGf16Mul_compiles`, the
+    (`CatCrypt.Util.Gf16`) on the truncated nibbles. Beyond the two sample vectors
+    of `snovaGf16MulSpec_kat`, this is a universal tie of the SNOVA leaf to the
+    field op the SNOVA ring-dot multiply-accumulate is built from. Composed with `CompileFromHaxSnovaGf16.snovaGf16Mul_compiles`, the
     verified compiler's emitted jasmin `Com` therefore computes the abstract
     GF(16) field product per ring-dot term. -/
 theorem snovaGf16MulSpec_eq_field (a b : BitVec 32) :

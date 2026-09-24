@@ -11,18 +11,18 @@ public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-381 `Fp6` / `Fp12` multiply — in-`ZMod p` value-correctness over the
-  Tier-A `Fp2` multiply (completing the tower)
+  value-proved `Fp2` multiply (completing the tower)
 
-This file continues the BLS12-381 pairing tower **two layers up** from the
-Tier-A `Fp2` multiply (`Bls12381TowerTierA.bls_fp2_mul_karatsuba`), replacing the
-**Tier-C** RELIC-byte-only status of the `Fp6`/`Fp12` multiply
-(`Bls12381Fp6Fp12MulKernel`, byte-identity to unverified C, which proves nothing
-about the field algebra) with genuine in-Lean **value-correctness** theorems.
+This module continues the BLS12-381 pairing tower **two layers up** from the
+value-proved `Fp2` multiply (`Bls12381TowerTierA.bls_fp2_mul_karatsuba`). The
+`Fp6`/`Fp12` multiply kernel (`Bls12381Fp6Fp12MulKernel`) is gated only by
+byte-identity to unverified RELIC C, which proves nothing about the field
+algebra; this module supplies in-Lean **value-correctness** theorems for it.
 
 ## The tower
 
-* `Fp2 = Fp[u]/(u²+1)` — the Tier-A base of this construction. An element is a
-  pair `(a, b) : ZMod p × ZMod p` (standing for `a + b·u`). The genuine
+* `Fp2 = Fp[u]/(u²+1)` — the value-proved base of this construction. An element
+  is a pair `(a, b) : ZMod p × ZMod p` (standing for `a + b·u`). The
   Montgomery-form product is `Bls12381TowerTierA.fp2MulSpec` and the non-residue
   `ξ = 1 + u` multiply is `fp2NonResidue (x,y) = (x − y, x + y)`. Both are
   imported, not re-derived.
@@ -32,7 +32,7 @@ about the field algebra) with genuine in-Lean **value-correctness** theorems.
   `GT`'s field). An element is a pair `(c₀, c₁) : Fp6²` (standing for
   `c₀ + c₁·w`).
 
-## The genuine tower products
+## The tower products
 
 `Fp6` multiply (RELIC `fp6_mul_basic`, Karatsuba over the cubic with the `v³ = ξ`
 wrap), for `α = (a₀,a₁,a₂)`, `β = (b₀,b₁,b₂)` and `vᵢ = aᵢ·bᵢ`:
@@ -47,37 +47,37 @@ wrap), for `α = (a₀,a₁,a₂)`, `β = (b₀,b₁,b₂)` and `vᵢ = aᵢ·b�
     c₀ = t0 + v·t1                        -- `v·` is the `Fp6` mul-by-`v` rotation
     c₁ = (a₀+a₁)(b₀+b₁) − t0 − t1
 
-These are the genuine extension-field products: the schedules the emitted kernel
+These are the extension-field products: the schedules the emitted kernel
 (`Bls12381Fp6Fp12MulKernel.fp6MulAsm` / `fp12MulAsm`) runs are *defined* to be
 exactly these Karatsuba arrangements, and the schedule-equals-spec identities
 close by `ring` over the proven `Fp2` arithmetic — Montgomery multiplication is
 `Fp`-bilinear (`fpMul a b = a·b·R⁻¹` is `R⁻¹`-linear), so the tower formulas hold
 verbatim in Montgomery form.
 
-## Scope reached (brutally honest)
+## Scope
 
 * **`Fp6` multiply value-correctness — fully proven** (`bls_fp6_mul_karatsuba`):
-  the emitted 6-`Fp2`-mul Karatsuba schedule equals the genuine cubic-extension
+  the emitted 6-`Fp2`-mul Karatsuba schedule equals the cubic-extension
   Montgomery-form product `fp6MulSpec`. The six `Fp2` sub-multiplies are the
-  Tier-A `fp2MulSpec` (tied to the `runBlock` `Fp` leaf via `fpMul_eq_leaf`).
+  value-proved `fp2MulSpec` (tied to the `runBlock` `Fp` leaf via `fpMul_eq_leaf`).
 * **`Fp12` multiply value-correctness — fully proven** (`bls_fp12_mul_karatsuba`):
-  the emitted 3-`Fp6`-mul quadratic Karatsuba schedule equals the genuine
+  the emitted 3-`Fp6`-mul quadratic Karatsuba schedule equals the
   dodecic-extension product `fp12MulSpec`, built on the proven `Fp6` multiply.
 
-The honest caveat is identical to the Tier-A `Fp2` file: the genuine
+The scope limit is the same as for the `Fp2` module (`Bls12381TowerTierA`): the
 kernel↔algebra tie runs through the **multiply** leaves (`Fp` via
 `fpMul_eq_leaf`, `Fp2` via `bls_fp2_mul_karatsuba`); the `Fp2`/`Fp6` add/sub and
 the non-residue twists are `ZMod`-level specifications of `+`/`−`/mul-by-ξ (the
 hardware carry-chain + conditional reduce realises the canonical residue; the
 `fpAdd`/`fpSub` `runBlock` reconstruction is KAT-gated, not proven in-Lean — see
-the Tier-A file's honest-scope note). The genuine *algebraic* content tying the
-schedule to the extension-field product is what this file proves.
+the scope note of `Bls12381TowerTierA`). This module proves the *algebraic*
+content tying the schedule to the extension-field product.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
--- The Tier-A base carries the `2^384` radix literal; never evaluated, so raise
+-- The `Fp2` base carries the `2^384` radix literal; never evaluated, so raise
 -- the pretty-printer's exponentiation threshold to silence the benign notice.
 set_option exponentiation.threshold 400
 
@@ -85,10 +85,10 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12TierA
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381TowerTierA
 
-/-! ## 0. `Fp2` as a pair, with the Tier-A operations
+/-! ## 0. `Fp2` as a pair, with the value-proved operations
 
-We model an `Fp2` element by `Fp2 := ZMod p × ZMod p` and reuse the Tier-A
-operations: multiply is `fp2MulSpec` (the proven Montgomery-form product),
+We model an `Fp2` element by `Fp2 := ZMod p × ZMod p` and reuse the value-proved
+operations of `Bls12381TowerTierA`: multiply is `fp2MulSpec` (the proven Montgomery-form product),
 non-residue (mul-by-`ξ`) is `fp2NonResidue`, and add/sub are componentwise. We
 expose curried wrappers `fp2mul`/`fp2add`/`fp2sub`/`fp2nr` on the pair type so the
 `Fp6`/`Fp12` schedules read like the RELIC drivers. -/
@@ -96,7 +96,7 @@ expose curried wrappers `fp2mul`/`fp2add`/`fp2sub`/`fp2nr` on the pair type so t
 /-- An `Fp2` element: a pair `(a, b)` standing for `a + b·u`. -/
 abbrev Fp2 : Type := ZMod p × ZMod p
 
-/-- `Fp2` multiply (Tier-A Montgomery-form product). -/
+/-- `Fp2` multiply (value-proved Montgomery-form product). -/
 noncomputable def fp2mul (x y : Fp2) : Fp2 := fp2MulSpec x.1 x.2 y.1 y.2
 
 /-- `Fp2` add (componentwise `Fp` add). -/
@@ -141,7 +141,7 @@ noncomputable def fp6MulKaratsuba (α β : Fp6) : Fp6 :=
   let c2 := r2
   (c0, c1, c2)
 
-/-- The genuine Montgomery-form `Fp6` product of `α = (a₀,a₁,a₂)` and
+/-- The Montgomery-form `Fp6` product of `α = (a₀,a₁,a₂)` and
     `β = (b₀,b₁,b₂)`, the cubic-extension product with the `v³ = ξ` reduction. -/
 noncomputable def fp6MulSpec (α β : Fp6) : Fp6 :=
   let a0 := α.1; let a1 := α.2.1; let a2 := α.2.2
@@ -156,17 +156,18 @@ noncomputable def fp6MulSpec (α β : Fp6) : Fp6 :=
   let c2 := fp2sub (fp2add (fp2sub (fp2mul (fp2add a0 a2) (fp2add b0 b2)) v0) v1) v2
   (c0, c1, c2)
 
-/-- **`Fp6` multiply value-correctness (Tier-C eliminator, layer 2).** The emitted
-    6-`Fp2`-mul Karatsuba schedule computes exactly the genuine cubic-extension
+/-- **`Fp6` multiply value-correctness (tower layer 2).** The emitted
+    6-`Fp2`-mul Karatsuba schedule computes exactly the cubic-extension
     Montgomery-form `Fp6` product `fp6MulSpec`. A real `ZMod p` identity over the
-    Tier-A `Fp2` multiply (`fp2MulSpec`), replacing the RELIC byte-identity. -/
+    value-proved `Fp2` multiply (`fp2MulSpec`), in place of the RELIC
+    byte-identity. -/
 theorem bls_fp6_mul_karatsuba (α β : Fp6) :
     fp6MulKaratsuba α β = fp6MulSpec α β := rfl
 
-/-! ### The `Fp6` spec is the genuine cubic-extension product
+/-! ### The `Fp6` spec is the cubic-extension product
 
 To show `fp6MulSpec` is not a vacuous re-arrangement, we extract its three
-coordinates and prove each equals the genuine `Fp2`-coefficient of the cubic
+coordinates and prove each equals the `Fp2`-coefficient of the cubic
 product mod `v³ − ξ` (`ξ = 1 + u`):
 
     c₀ = a₀b₀ + ξ·(a₁b₂ + a₂b₁)
@@ -238,7 +239,7 @@ noncomputable def fp12MulKaratsuba (x y : Fp12) : Fp12 :=
   let c0 := fp6add t0 (fp6mulv t1)
   (c0, c1)
 
-/-- The genuine Montgomery-form `Fp12` product of `x = (a₀,a₁)` and `y = (b₀,b₁)`,
+/-- The Montgomery-form `Fp12` product of `x = (a₀,a₁)` and `y = (b₀,b₁)`,
     the quadratic-extension product with the `w² = v` reduction. -/
 noncomputable def fp12MulSpec (x y : Fp12) : Fp12 :=
   let a0 := x.1; let a1 := x.2
@@ -249,20 +250,20 @@ noncomputable def fp12MulSpec (x y : Fp12) : Fp12 :=
   let c1 := fp6sub (fp6sub (fp6MulSpec (fp6add a0 a1) (fp6add b0 b1)) t0) t1
   (c0, c1)
 
-/-- **`Fp12` multiply value-correctness (Tier-C eliminator, layer 3 — tower
+/-- **`Fp12` multiply value-correctness (tower layer 3 — tower
     complete).** The emitted 3-`Fp6`-mul quadratic Karatsuba schedule computes
-    exactly the genuine dodecic-extension Montgomery-form `Fp12` product
+    exactly the dodecic-extension Montgomery-form `Fp12` product
     `fp12MulSpec`, built on the proven `Fp6` multiply. A real `ZMod p` identity
-    over the tower, replacing the RELIC byte-identity for the BLS12-381 GT-field
+    over the tower, in place of the RELIC byte-identity for the BLS12-381 GT-field
     multiply. -/
 theorem bls_fp12_mul_karatsuba (x y : Fp12) :
     fp12MulKaratsuba x y = fp12MulSpec x y := by
   simp only [fp12MulKaratsuba, fp12MulSpec, bls_fp6_mul_karatsuba]
 
-/-! ### The `Fp12` spec is the genuine quadratic-extension product
+/-! ### The `Fp12` spec is the quadratic-extension product
 
 `Fp12 = Fp6[w]/(w² − v)`. For `x = (a₀, a₁)`, `y = (b₀, b₁)` over `Fp6` the
-genuine product is `c₀ = a₀b₀ + v·(a₁b₁)`, `c₁ = a₀b₁ + a₁b₀` (the `w² = v`
+product is `c₀ = a₀b₀ + v·(a₁b₁)`, `c₁ = a₀b₁ + a₁b₀` (the `w² = v`
 wrap), where `v·` is the `Fp6` mul-by-`v` rotation `fp6mulv`. -/
 
 /-- `Fp12` product `c₀` coordinate = `a₀b₀ + v·(a₁b₁)` (the `w² = v` wrap). -/

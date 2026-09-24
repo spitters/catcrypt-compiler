@@ -13,17 +13,16 @@ public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 set_option autoImplicit false
 
 /-!
-# AUCurves → CatCrypt-compiler retarget pilot — Lean importer (R2–R4)
+# AUCurves → CatCrypt-compiler retarget pilot — Lean importer
 
-This file is the CatCrypt side of the AUCurves-retarget de-risking pilot
-(phases R1–R4).  AUCurves' Rocq dev exports a `rust_cmd_ed` body in a neutral
-s-expression form (R1, `AUCurves/src/Bedrock/LowCTEdSerialize.v`); here we
-parse it back into CatCrypt's `LowCT` IR and route it through the owned
-compiler front.
+This module is the CatCrypt side of the AUCurves-retarget pilot.  AUCurves'
+Rocq development exports a `rust_cmd_ed` body in a neutral s-expression form
+(`AUCurves/src/Bedrock/LowCTEdSerialize.v`); here we parse it back into
+CatCrypt's `LowCT` IR and route it through the owned compiler front.
 
-The two IRs were co-designed: AUCurves' `rust_cmd_ed` and CatCrypt's `LowCT`
-have the same constructor shape (the plan's correspondence table).  So the
-import is a *structural* parse, not a from-scratch frontend.
+The two IRs are co-designed: AUCurves' `rust_cmd_ed` and CatCrypt's `LowCT`
+have the same constructor shape (the constructor map below).  So the import is
+a *structural* parse, not a from-scratch frontend.
 
 ## Pilot routine
 
@@ -35,7 +34,7 @@ form is certified by AUCurves' Qed `Example xyzt_copy_sexpr_value`:
 (Call "fe25519_xyzt_copy" (loc "dest" (Bytes 200)) ((loc "src" (Bytes 200))))
 ```
 
-## Constructor map (plan §"key enabler", restricted to the pilot's needs)
+## Constructor map (restricted to the pilot's needs)
 
 | AUCurves `rust_cmd_ed`        | CatCrypt `LowCT`           |
 |-------------------------------|------------------------------|
@@ -48,18 +47,18 @@ The full parser below covers every `rust_cmd_ed`/`sexpr_ed`/`tower_type_ed`
 constructor the serializer emits, so it is a structural inverse of
 `ser_cmd` for the whole IR, not just the pilot.
 
-## What this file delivers (honest scoping, plan R3)
+## Contents and scope
 
-* **R2** — `parseLowCT : String → Option LowCT`, total recursive-descent
-  parser over the R1 grammar.
-* **R3 (structural correspondence)** — `importedPilot_eq`: the parsed pilot
+* **Parser** — `parseLowCT : String → Option LowCT`, total recursive-descent
+  parser over the serializer's s-expression grammar.
+* **Structural correspondence** — `importedPilot_eq`: the parsed pilot
   equals the hand-written `RCall` that the constructor map dictates for
   AUCurves' certified s-expression.  This is the constructor-by-constructor
-  agreement of the two IRs *at the AST level*.  The fully machine-checked
-  cross-prover equivalence (Rocq `rust_exec_ed` ⇔ Lean `RustExec`) is the
-  gold-standard residual named in the plan; it is **not** delivered here —
-  the two semantics live in different proof assistants.
-* **R4 (emit + cross-check)** — `importedPilot_jasmin_eq`: routing the parsed
+  agreement of the two IRs *at the AST level*.  The cross-prover semantic
+  equivalence (Rocq `rust_exec_ed` ⇔ Lean `RustExec`) is outside the scope of
+  this module — the two semantics live in different proof assistants; see
+  `CrossProverBridge`.
+* **Emit + cross-check** — `importedPilot_jasmin_eq`: routing the parsed
   pilot through `toJasminCmd` yields a single `Ccall` node naming
   `fe25519_xyzt_copy` with `[dest]` as lvalue and `[src]` as argument — the
   same call node AUCurves' own jasmin export produces
@@ -77,7 +76,7 @@ open CatCrypt.Crypto.Jasmin (Cmd InstrR LVal PExpr)
 -- decidable equality.  Both inductives are first-order (String / Nat /
 -- BitVec / Located / TowerType / lists), so the derivation is structural.
 deriving instance DecidableEq for SExpr
--- #267: derive on the canonical inductive `LowCT` (`LowCT` is now an abbrev).
+-- Derive on the canonical inductive `LowCT`.
 deriving instance DecidableEq for LowCT
 
 /-! ## §1  Tokenizer
@@ -93,7 +92,7 @@ inductive Tok where
 
 /-- Tokenize an s-expression string.  Whitespace separates atoms; `(`/`)`
     are always single tokens; `"…"` is a string literal (no escapes — the
-    R1 grammar's names contain no quotes). -/
+    serializer grammar's names contain no quotes). -/
 partial def tokenize (s : String) : List Tok :=
   let rec go (cs : List Char) (acc : List Tok) : List Tok :=
     match cs with
@@ -199,11 +198,11 @@ partial def parseSExpr : List Tok → Option (SExpr × List Tok)
   | .lparen :: .atom "Shr" :: rest => parseSBin .SShr rest
   | .lparen :: .atom "And" :: rest => parseSBin .SAnd rest
   | .lparen :: .atom "Lt" :: rest => parseSBin .SLt rest
-  -- Tower-limb read (#354).  AUCurves serializes `SLimb v i` as
-  -- `(Limb "v" i)` (`LowCTEdSerialize.v`'s `ser_sexpr`).  It now imports to
-  -- CatCrypt's `SExpr.SLimb v i` (the tower-limb read added in #354), whose
+  -- Tower-limb read.  AUCurves serializes `SLimb v i` as
+  -- `(Limb "v" i)` (`LowCTEdSerialize.v`'s `ser_sexpr`).  It imports to
+  -- CatCrypt's `SExpr.SLimb v i` (the tower-limb read), whose
   -- faithful value lives in `SExpr.evalState` (the tower-aware evaluator).
-  -- This is what unblocks the real inline field-op bodies (`fe25519_add`).
+  -- The inline field-op bodies (`fe25519_add`) use it.
   | .lparen :: .atom "Limb" :: .str v :: n :: .rparen :: rest => do
       let i ← parseNat? n
       pure (.SLimb v i, rest)
@@ -269,11 +268,9 @@ partial def parseCmd : List Tok → Option (LowCT × List Tok)
           --  * a literal `(Lit z)` value imports to `RLimbStore loc i (BitVec
           --    z)` — the compile-time-constant limb store.
           --  * any other `sexpr_ed` (e.g. `(Add (Var …) (Var …))` in
-          --    `fe25519_add`) imports to `RLimbStoreExpr loc i e` via the
-          --    `RLimbStoreExpr` constructor added in the R5 step.  This is the
-          --    faithful image of a runtime-valued limb store and is what
-          --    unblocks the real field-op bodies (the R-pilot's recorded
-          --    expressivity obstacle, now closed).
+          --    `fe25519_add`) imports to `RLimbStoreExpr loc i e`.  This is the
+          --    faithful image of a runtime-valued limb store, which the
+          --    field-op bodies use.
           match rest2 with
           | .lparen :: .atom "Lit" :: vlit :: .rparen :: .rparen :: rest3 => do
               let vn ← parseNat? vlit
@@ -286,8 +283,8 @@ partial def parseCmd : List Tok → Option (LowCT × List Tok)
       | _ => none
   -- Remaining `rust_cmd_ed` shapes (LetU64/ScalarSet/IfNz/WhileNz/By­teStore/
   -- ByteLoad/For/Select/CallFn/SetBytes/ArrLoad/ArrStore) are part of the
-  -- full grammar; the pilot exercises only `Call`.  They are added to the
-  -- parser as the retarget scales (R6) — each is one `parseCmd` arm.
+  -- full grammar; the pilot does not use them, and this parser rejects
+  -- them.  Each would be one `parseCmd` arm.
   | _ => none
 
 end
@@ -298,7 +295,7 @@ def parseLowCT (s : String) : Option LowCT :=
   | some (c, _) => some c
   | none => none
 
-/-! ## §3  The pilot artifact and its import (R2) -/
+/-! ## §3  The pilot artifact and its import -/
 
 /-- The byte-exact s-expression AUCurves certified for the pilot
     (`LowCTEdSerialize.v`'s `xyzt_copy_sexpr_value`, committed to
@@ -312,7 +309,7 @@ def xyztCopyExpected : LowCT :=
     { locVar := "dest", locSrc := .TBytes 200 }
     [{ locVar := "src", locSrc := .TBytes 200 }]
 
-/-- **R2 + R3 (structural correspondence).**  Importing AUCurves' certified
+/-- **Structural correspondence.**  Importing AUCurves' certified
     s-expression yields exactly the `RCall` the IR-correspondence map
     prescribes.  Constructor-by-constructor: `Call → RCall`, `loc → Located`,
     `(Bytes 200) → TBytes 200`, with the function name and slot names
@@ -320,12 +317,12 @@ def xyztCopyExpected : LowCT :=
 
     This is the AST-level agreement of the two co-designed IRs.  The
     cross-prover *semantic* equivalence (Rocq `rust_exec_ed` ⇔ Lean
-    `RustExec`) is the gold-standard residual and is not proved here. -/
+    `RustExec`) is outside the scope of this theorem. -/
 theorem importedPilot_eq :
     parseLowCT xyztCopySexpr = some xyztCopyExpected := by
   native_decide
 
-/-! ## §4  Emit + cross-check (R4) -/
+/-! ## §4  Emit + cross-check -/
 
 open CatCrypt.Crypto.Jasmin.LowCT (toJasminCmd locToLVal locToPExpr)
 
@@ -333,7 +330,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (toJasminCmd locToLVal locToPExpr)
 def xyztCopyJasmin : Cmd :=
   toJasminCmd xyztCopyExpected
 
-/-- **R4 (backend cross-check).**  The owned front lowers the imported pilot
+/-- **Backend cross-check.**  The owned front lowers the imported pilot
     to a single Jasmin `Ccall` naming `fe25519_xyzt_copy`, with the
     destination slot as the lone lvalue and the source slot as the lone
     argument.  This is the same call site AUCurves' own jasmin backend
@@ -350,7 +347,7 @@ theorem importedPilot_jasmin_eq :
         ([{ locVar := "src", locSrc := .TBytes 200 }].map locToPExpr)] := by
   rfl
 
-/-- End-to-end pilot statement (R2→R4 in one line): the parsed AUCurves
+/-- End-to-end pilot statement (parse, then emit): the parsed AUCurves
     export lowers, through CatCrypt's verified front, to the expected
     single-`Ccall` jasmin program. -/
 theorem importedPilot_end_to_end :
@@ -363,42 +360,40 @@ theorem importedPilot_end_to_end :
   rw [importedPilot_eq]
   rfl
 
-/-! ## §5  R5 — runtime-valued limb store (`RLimbStoreExpr`)
+/-! ## §5  Runtime-valued limb store (`RLimbStoreExpr`)
 
-The R-pilot recorded ONE structural obstacle blocking the real field-op
-bodies: AUCurves' `REdLimbStore : … → sexpr_ed → …` stores a *runtime*
-`sexpr_ed`, while CatCrypt's `RLimbStore` only stored a literal `BitVec 64`.
-R5 closes that with the new `RLimbStoreExpr : Located → Nat → SExpr → LowCT`
-constructor (mirroring the existing `RScalarSetExpr` runtime-scalar precedent)
-and threads it through the whole `LowCT` closure (toJasminCmd, the CryptoSSA
-front, CT analysis, leak trace, borrow check — see the R5 cascade).
+AUCurves' `REdLimbStore : … → sexpr_ed → …` stores a *runtime* `sexpr_ed`,
+while CatCrypt's `RLimbStore` stores a literal `BitVec 64`.  The constructor
+`RLimbStoreExpr : Located → Nat → SExpr → LowCT` (mirroring the
+`RScalarSetExpr` runtime scalar) carries the runtime value through the whole
+`LowCT` closure (toJasminCmd, the `CryptoSSA` front, CT analysis, leak trace,
+borrow check).
 
-The importer's `LimbStore` arm now parses a runtime `sexpr_ed` value into
-`RLimbStoreExpr` (literal values still go to `RLimbStore`).  The serialized
+The importer's `LimbStore` arm parses a runtime `sexpr_ed` value into
+`RLimbStoreExpr` (literal values go to `RLimbStore`).  The serialized
 form of a single `(LimbStore (loc "dest" Fp25519) 0 (Add (Var "ai0") (Var "bi0")))`
 node — the shape of an inline radix-2^51 add-chain limb write — round-trips
 constructor-by-constructor.
 
-### The deeper obstacle — CLOSED in R6 (#354)
+### Tower-limb reads
 
 AUCurves' real `fe25519_add_body` (`End2End/Ed25519/Fe25519AddSubBody.v`) is
 five `REdLimbStore dest i (SAdd (SLimb a i) (SLimb b i))` writes.  Its stored
 value uses `sexpr_ed`'s **`SLimb v i`** — *read limb `i` of the tower slot
 `v`*, evaluated against `rs_get_tower_ed` (the tower heap).  CatCrypt's scalar
 `SExpr.eval : (String → Nat) → SExpr → Nat` sees only `rsScalar`, never the
-tower.  R6 (#354) closes this **additively**: `SExpr` gains the `SLimb v i`
-constructor; the scalar `eval` keeps its signature and gives `SLimb` a safe
-default of `0`; a new tower-aware `SExpr.evalState : RustState → SExpr → Nat`
+tower.  `SExpr` therefore has the `SLimb v i` constructor; the scalar `eval`
+gives `SLimb` a safe default of `0`; the tower-aware `SExpr.evalState : RustState → SExpr → Nat`
 reads the limb from `rs.rsTower` (the faithful image of AUCurves'
 `eval_sexpr_ed` `SLimb` arm).  The tower-free runtime value below
-(`SAdd (SVar …) (SVar …)`) still exercises the carrier, and §6 below now
+(`SAdd (SVar …) (SVar …)`) exercises the carrier, and §6 below
 round-trips the **real** `SLimb`-valued `fe25519_add` body. -/
 
 /-- A runtime-valued limb store: `dest.limbs[0] := ai0 + bi0` for runtime
     scalars `ai0`, `bi0`.  This is the serialized shape AUCurves' `ser_cmd`
     emits for a `REdLimbStore (loc "dest" Fp25519) 0 (SAdd (SVar "ai0")
     (SVar "bi0"))` node (head-tagged `LimbStore` / `Add` / `Var`).  It is the
-    minimal exercise of the new `RLimbStoreExpr` carrier through the importer. -/
+    minimal exercise of the `RLimbStoreExpr` carrier through the importer. -/
 def limbStoreExprSexpr : String :=
   "(LimbStore (loc \"dest\" Fp25519) 0 (Add (Var \"ai0\") (Var \"bi0\")))"
 
@@ -410,24 +405,25 @@ def limbStoreExprExpected : LowCT :=
     0
     (.SAdd (.SVar "ai0") (.SVar "bi0"))
 
-/-- **R5 (structural correspondence).**  Importing the serialized
+/-- **Structural correspondence (runtime-valued limb store).**  Importing the serialized
     runtime-valued limb store yields exactly the `RLimbStoreExpr` the IR map
     prescribes: `LimbStore → RLimbStoreExpr`, `loc → Located`, `Fp25519 →
     TFp25519`, `(Add (Var …) (Var …)) → SAdd (SVar …) (SVar …)`, with the slot
     name, limb index, and scalar names recovered verbatim.  This is the
     constructor-by-constructor agreement of the two co-designed IRs on the
-    runtime-valued limb store — the node that was previously unrepresentable. -/
+    runtime-valued limb store. -/
 theorem importedLimbStoreExpr_eq :
     parseLowCT limbStoreExprSexpr = some limbStoreExprExpected := by
   native_decide
 
-/-- **R5 (backend cross-check).**  The owned front lowers the imported
+/-- **Backend cross-check (runtime-valued limb store).**  The owned front
+    lowers the imported
     runtime-valued limb store to a single Jasmin `STORE64` `Copn`: the
     destination slot as the lvalue, and `[dest, idx=0, ai0 + bi0]` as the
     operand list — the value argument is the *lowered `SExpr`* (`Papp2 Oadd`)
     rather than a literal, which is exactly what distinguishes
     `RLimbStoreExpr` from `RLimbStore`.  This is the same single-`Copn` STORE64
-    shape AUCurves' jasmin backend produces for an inline limb write, now with
+    shape AUCurves' jasmin backend produces for an inline limb write, with
     a runtime operand. -/
 theorem importedLimbStoreExpr_jasmin_eq :
     toJasminCmd limbStoreExprExpected =
@@ -440,7 +436,7 @@ theorem importedLimbStoreExpr_jasmin_eq :
          CatCrypt.Crypto.Jasmin.LowCT.sexprToPExpr (.SAdd (.SVar "ai0") (.SVar "bi0"))]] := by
   rfl
 
-/-- End-to-end R5 statement: the parsed AUCurves runtime-valued limb store
+/-- End-to-end runtime-valued limb-store statement: the parsed AUCurves runtime-valued limb store
     lowers, through CatCrypt's verified front, to the expected single STORE64
     `Copn` with the lowered-`SExpr` operand. -/
 theorem importedLimbStoreExpr_end_to_end :
@@ -456,30 +452,28 @@ theorem importedLimbStoreExpr_end_to_end :
   rw [importedLimbStoreExpr_eq]
   rfl
 
-/-! ## §6  R6 — the real `fe25519_add` body round-trips (`SLimb`-valued)
+/-! ## §6  The real `fe25519_add` body round-trips (`SLimb`-valued)
 
-R5 closed the `RLimbStoreExpr` *carrier* but left a deeper obstacle: AUCurves'
-real `fe25519_add_body` stores `SAdd (SLimb a i) (SLimb b i)` — the value reads
-limb `i` of a TOWER slot, which the scalar-only `SExpr.eval` could not see.
-R6 (#354) closes it additively: `SExpr` gains the `SLimb v i` constructor and a
-tower-aware evaluator `SExpr.evalState : RustState → SExpr → Nat` that reads the
+AUCurves' real `fe25519_add_body` stores `SAdd (SLimb a i) (SLimb b i)` — the
+value reads limb `i` of a TOWER slot, which the scalar-only `SExpr.eval` does
+not see.  `SExpr` has the `SLimb v i` constructor and a tower-aware evaluator
+`SExpr.evalState : RustState → SExpr → Nat` that reads the
 limb from `rs.rsTower` (the faithful image of AUCurves' `eval_sexpr_ed` `SLimb`
-arm, masked through `mask64`).  The scalar `SExpr.eval` signature is UNCHANGED:
-`SLimb` gets a safe default of `0` there, so the in-flight emit modules that
-depend on `eval`'s `(String → Nat) → SExpr → Nat` shape are untouched.
+arm, masked through `mask64`).  The scalar `SExpr.eval` keeps the shape
+`(String → Nat) → SExpr → Nat` and gives `SLimb` a safe default of `0`.
 
 The serialized form below is AUCurves' Qed-pinned `fe25519_add_sexpr_value`
 (`LowCTEdSerialize.v`): five `(LimbStore (loc "dest" Fp25519) i (Add (Limb "a"
-i) (Limb "b" i)))` writes, right-nested under `Seq`.  It now parses
+i) (Limb "b" i)))` writes, right-nested under `Seq`.  It parses
 constructor-by-constructor into the corresponding `RLimbStoreExpr` chain, and
 each `(Add (Limb …) (Limb …))` value imports to `SAdd (SLimb …) (SLimb …)`.
 
-#356 closes the final residual: `evalState` is now WIRED into the `RustExec`
-relation — `RustExec.limbStoreExpr` evaluates the stored word via
+`evalState` is used by the `RustExec` relation — `RustExec.limbStoreExpr`
+evaluates the stored word via
 `SExpr.evalState rs` (tower-heap read at byte offset `i*8`), so the runtime
 effect of these `SLimb`-valued stores is faithful, not a scalar-`0` default.
-The structural round-trip theorems here are unaffected (they live at the
-`parseLowCT`/`toJasminCmd` layer, orthogonal to the runtime relation). -/
+The structural round-trip theorems here live at the
+`parseLowCT`/`toJasminCmd` layer, orthogonal to the runtime relation. -/
 
 /-- AUCurves' byte-exact serialization of the real inline 5-limb
     `fe25519_add_body` (Qed-pinned in `LowCTEdSerialize.v` as
@@ -509,22 +503,21 @@ def fe25519AddExpected : LowCT :=
         (.RSeq (fe25519AddLimb 3)
           (fe25519AddLimb 4))))
 
-/-- **R6 (structural correspondence) — the real field-op body.**  Importing
+/-- **Structural correspondence — the real field-op body.**  Importing
     AUCurves' Qed-certified `fe25519_add` serialization yields exactly the
     five-`RLimbStoreExpr` chain the IR map dictates.  Constructor-by-constructor:
     `Seq → RSeq`, `LimbStore → RLimbStoreExpr`, `(loc "dest" Fp25519) → Located
     TFp25519`, `(Add (Limb "a" i) (Limb "b" i)) → SAdd (SLimb "a" i) (SLimb "b"
-    i)`, with slot names and limb indices recovered verbatim.  This is the body
-    the R-pilot recorded as having no faithful image (the `SLimb`-over-tower
-    obstacle); it now round-trips. -/
+    i)`, with slot names and limb indices recovered verbatim; the `SLimb`-over-tower
+    reads round-trip. -/
 theorem importedFe25519Add_eq :
     parseLowCT fe25519AddSexpr = some fe25519AddExpected := by
   native_decide
 
-/-- **R6 (backend cross-check).**  The owned front lowers the imported
+/-- **Backend cross-check (`fe25519_add`).**  The owned front lowers the imported
     `fe25519_add` body to five Jasmin `STORE64` `Copn` nodes (one per limb),
     each with the lowered `SExpr` operand `a[i] + b[i]` — where `a[i]`/`b[i]`
-    are the scaled-`U64` array reads (`Pget .AAscale .U64`) produced by the new
+    are the scaled-`U64` array reads (`Pget .AAscale .U64`) produced by the
     `SLimb` lowering.  This is the radix-2^51 inline add-chain at the call-free
     granularity AUCurves' own jasmin backend emits it. -/
 theorem importedFe25519Add_jasmin_eq :

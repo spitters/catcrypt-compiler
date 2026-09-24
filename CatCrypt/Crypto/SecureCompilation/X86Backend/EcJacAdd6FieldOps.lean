@@ -24,14 +24,14 @@ each threading an *already-proven* six-limb field core over the frame.
 
 Each op reads its input slots into register windows (`loadSlot6`), runs the
 proven six-limb field brick over those windows, and (for add/sub) stores the
-result window back to the output slot. The value lemmas are genuine `runBlock`
+result window back to the output slot. The value lemmas are `runBlock`
 derivations: the frame load (`loadSlot6_get`) lands each input slot's six limbs
 in its window, so the window register map equals the slot's `slotLimbs6` value,
 and the proven core then gives the field-op spec over that value.
 
 ## The three proven six-limb cores threaded
 
-* **multiply** — `Curve6LimbTierA.p384_emit_montmul_runBlock` (the genuine emitted
+* **multiply** — `Curve6LimbTierA.p384_emit_montmul_runBlock` (the emitted
   384×384 schoolbook product over `runBlock`, `= valLimbs x · valLimbs y`, fed to
   the prime-parametric Montgomery reduce at `R = 2^384`). The product's twelve
   words are stored into the two-slot output region via `storeSlot12`.
@@ -42,11 +42,11 @@ and the proven core then gives the field-op spec over that value.
   over `runBlock`, canonicalised by the conditional add-back of `p`,
   `= (a − b) mod p`).
 
-## What is proven (genuine `runBlock` = spec)
+## What is proven (`runBlock` = spec)
 
 * `feMulFrameAt6` / `feMulFrameAt6_value` — over a frame whose input slots hold
   reduced six-limb field elements, with the curve's `Nprime384` hypothesis, the
-  twelve-word output region reconstructs (`valLimbs`) to the genuine emitted
+  twelve-word output region reconstructs (`valLimbs`) to the emitted
   product `valLimbs (slot a) · valLimbs (slot b)`, and `montgomeryReduce` of that
   stored value is the Montgomery field product (`< 2·p`, `· 2^384 ≡ a·b (mod p)`).
 * `feAddFrameAt6` / `feAddFrameAt6_value` — the windows hold the slot limbs and
@@ -56,7 +56,7 @@ and the proven core then gives the field-op spec over that value.
 
 The product half is a real emitted+stored `runBlock` of a `List (JInstr 64)`; the
 reduction is the prime-parametric `montgomeryMul_correct`. The add/sub reduced
-values are read off the genuine emitted chain `runBlock`, exactly as the Tier-A
+values are read off the emitted chain `runBlock`, exactly as the Tier-A
 six-limb headlines.
 -/
 
@@ -102,7 +102,7 @@ def feMulFrameAt6 (xs ys accs : List String) (hi lo base : String) (o a b : Nat)
     fresh and disjoint, and the curve's Montgomery constant `Nprime384`:
 
     * the twelve-word output region rooted at slot `o` reconstructs (`valLimbs`) to
-      the genuine emitted product `valLimbs (slot a) · valLimbs (slot b)`
+      the emitted product `valLimbs (slot a) · valLimbs (slot b)`
       (`p384_emit_montmul_runBlock` + `storeSlot12_load`); and
     * `montgomeryReduce p384 (2^384) Nprime384` of that stored value is the
       Montgomery field product — it lies in `[0, 2·p384)` and
@@ -239,7 +239,7 @@ theorem feMulFrameAt6_value
   obtain ⟨hprodval, hrange, hcong⟩ := Curve6LimbTierA.p384_emit_montmul_runBlock
     accs xs ys xv yv hi lo s2 Nprime384 hxslen hyslen (by rw [hxsdef, hysdef, haccsdef]; simp)
     hfresh hxmap hymap hacc0_s2 hcf_s2 hof_s2 hx_red hy_red hNprime
-  -- the genuine product value over the twelve accumulator registers.
+  -- the product value over the twelve accumulator registers.
   have hprod : valLimbs (accs.map s3.get) = valLimbs xv * valLimbs yv := by
     rw [hs3def, emitProductBlock6]
     simpa only [runBlockProductValue] using hprodval

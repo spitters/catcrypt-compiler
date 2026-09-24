@@ -10,9 +10,9 @@ public import CatCrypt.Crypto.Bridges.CoqEAL.GaussPivotStep
 /-!
 # Gaussian elimination: multi-row forward sweep (refinement)
 
-`GaussPivotStep.lean` discharged a **single** forward-elimination pivot step and
-proved it preserves the solution set of `A · x = b`. This file iterates that
-step across a **list of target rows** — the genuine *forward sweep* that
+`GaussPivotStep.lean` treats a **single** forward-elimination pivot step and
+proves it preserves the solution set of `A · x = b`. This module iterates that
+step across a **list of target rows** — the *forward sweep* that
 eliminates one fixed pivot column from each of a batch of rows — and proves the
 whole sweep preserves the solution set, by induction over the row list using the
 single-step lemma.
@@ -28,10 +28,10 @@ single-step invariance composes:
   `  (gaussSweepMat A p targets).mulVec x = gaussSweepRhs b p targets ↔`
   `    A.mulVec x = b`
 
-This is the honest **forward-elimination-preserves-solutions** result. The
-remaining Gaussian-elimination tail — pivot *selection* (search for a nonzero
-pivot, row swaps), back-substitution, and the termination/complexity argument —
-is the named residual and is **not** attempted here.
+This is the **forward-elimination-preserves-solutions** result. The rest of
+Gaussian elimination — pivot *selection* (search for a nonzero pivot, row
+swaps), back-substitution, and the termination/complexity argument — is outside
+the scope of this module.
 
 ## API
 

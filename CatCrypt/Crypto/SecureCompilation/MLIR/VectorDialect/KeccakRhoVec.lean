@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
-# Keccak `ρ` step through the structured VectorDialect (task #275, pure reuse)
+# Keccak `ρ` step through the structured VectorDialect (pure reuse)
 
 The Keccak `ρ` (rho) step rotates each of the 25 lanes by a per-lane constant
 offset: `lane i ↦ (x <<< rotConst i) ||| (x >>> (64 - rotConst i))`. This is
@@ -22,7 +22,7 @@ offset: `lane i ↦ (x <<< rotConst i) ||| (x >>> (64 - rotConst i))`. This is
 The per-lane *varying* rotate offset (`rotConst i` differs per lane) is exactly
 the `LaneMap.laneMapIdx` shape (a lane-INDEXED map). This file pins the Keccak
 `ρ` lane meaning against the dialect shift/or ops and grounds its denotation in
-the proven `LaneMap.keccak_rho_lane_map` keystone. All three ops lower with
+the proven `LaneMap.keccak_rho_lane_map` theorem. All three ops lower with
 proven denotation preservation (`lower_shiftL_correct`, `lower_shiftR_correct`,
 `lower_add_correct`).
 
@@ -72,13 +72,13 @@ theorem rho_lane_via_dialect (v : VectorTy (BitVec 64) keccakLaneN) (n : Nat) :
 /-! ## 3. The full `ρ` step (per-lane VARYING offset) via `laneMapIdx`
 
 The 25 lanes each rotate by a different `rotConst i`. That lane-indexed map is
-`LaneMap.laneMapIdx`, and the proven `keccak_rho_lane_map` keystone says the
+`LaneMap.laneMapIdx`, and the proven `keccak_rho_lane_map` theorem says the
 packed (SIMD) form equals the scalar per-lane sequential form. -/
 
 /-- **The Keccak `ρ` lane-indexed rotate equals its scalar per-lane form.** The
     dialect shift/or alphabet realizes each lane's rotate (`rho_lane_via_dialect`
     at the per-lane amount `rotConst i`); the lane-varying offset table is the
-    `laneMapIdx` shape closed by the proven keystone. -/
+    `laneMapIdx` shape closed by the proven lane-map theorem. -/
 theorem rho_denotation_preserves (rotConst : Fin keccakLaneN → Nat)
     (state : VectorTy (BitVec 64) keccakLaneN) :
     keccakRotStub rotConst state =
@@ -88,7 +88,7 @@ theorem rho_denotation_preserves (rotConst : Fin keccakLaneN → Nat)
 /-! ## 4. The reused ops lower with proven preservation -/
 
 /-- The `ρ`-step shift/or ops all lower to proven per-lane scalar expansions
-    (the dialect keystones `lower_shiftL_correct` / `lower_shiftR_correct` /
+    (the dialect lowering theorems `lower_shiftL_correct` / `lower_shiftR_correct` /
     `lower_add_correct` at the Keccak lane instance). -/
 theorem rho_ops_lower_correct (v : VectorTy (BitVec 64) keccakLaneN) (n : Nat) :
     (lower (0 : BitVec 64) (.shiftL keccakShl n v)).map (·.denote)

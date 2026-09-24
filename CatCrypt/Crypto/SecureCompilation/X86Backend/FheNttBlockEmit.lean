@@ -101,7 +101,7 @@ Outputs: `Xo_k` → `out[2k]`, `Yo_k` → `out[2k+1]`.
   re-derives through the generic proved `lowerThir_denote`. A tiny `native_decide`
   value check on ONE slot (`fheNttBlock_slot3_kat`) ties the block's `.ret`
   output to the independent `Nat` Harvey reference `bflyRef` (reused from
-  `FheNttButterflyEmit`). Per the REV-12 wall we do NOT `native_decide` all
+  `FheNttButterflyEmit`). We do NOT `native_decide` all
   `K` slots; the per-butterfly arithmetic is identical to the (already
   KAT-checked) single butterfly and the orchestrator KATs all `2K` outputs vs
   GMP.
@@ -342,13 +342,13 @@ theorem fheNttBlock_via_thirDialect
   (lowerThir_denote fheNttBlockThir _).trans
     (fheNttBlockThir_denote X0 Y0 w0 wp0 X1 Y1 w1 wp1 X2 Y2 w2 wp2 X3 Y3 w3 wp3)
 
-/-! ## 6. Tiny value KAT (ONE slot vs the Harvey `Nat` reference; REV-12 wall)
+/-! ## 6. Tiny value KAT (ONE slot vs the Harvey `Nat` reference)
 
 The block's `.ret` is `Y3'`, the second component of butterfly 3's Harvey
 reference `bflyRef X3 Y3 ω3 ω3'`. We pin ONLY this one slot (`fheNttBlock_slot0_kat`):
 the per-butterfly arithmetic is identical to the already-KAT-checked single
 butterfly (`FheNttButterflyEmit.fheBfly_kat0/1`), and the orchestrator KATs
-all `8` outputs vs GMP. We do NOT `native_decide` all `K` slots (REV-12 wall). -/
+all `8` outputs vs GMP. We do NOT `native_decide` all `K` slots. -/
 
 /-- **KAT (block slot 3 `.ret` = `Y3'`).** Butterfly 3's inputs exercise the
     X-normalize (`X3 ∈ [2q, 4q)`) and the T-reduction; the other slots carry

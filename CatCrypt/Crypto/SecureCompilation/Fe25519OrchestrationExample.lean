@@ -144,7 +144,7 @@ def fe25519AddExtCallCom :
     default for `"fe25519_add"` (a non-lattice leaf), so the node denotes `JasminTy.default`.
     The node's real semantics — that it computes the front-generated leaf
     `fe25519Add51LimbCom`'s `A[i] + B[i]` — are supplied when the named call is INLINED against
-    that leaf `Com` via the `FuncRegistryN` registry. That is the load-bearing tie, kept out of
+    that leaf `Com` via the `FuncRegistryN` registry. That is the semantic tie, kept out of
     `jasminExtSem` so the dialect-correctness invariants (`jasminExtSem_reg`/`_stackArr64`) hold. -/
 theorem fe25519AddExtCall_denote_opaque (a b : Fin 5 → BitVec 64) (i : BitVec 64) :
     Com.denote fe25519AddExtCallCom (.cons a (.cons b (.cons i .nil)))

@@ -40,7 +40,7 @@ core.
   `· 2^256 ≡ valLimbs x · valLimbs y (mod N)` (`Number.montgomeryMul_correct`).
 
 The composition mirrors `Curve4LimbTierA.secp256k1_emit_montmul_runBlock4`: the
-emitted product is a genuine `runBlock`-produced value, and the reduction is
+emitted product is a `runBlock`-produced value, and the reduction is
 applied to that value, giving `runBlock(emitted product) → Montgomery field
 product`. Here that composition is wrapped over a stack **frame** (each field
 element a slot of four 64-bit limbs, the `Ed25519PointKernel` convention of
@@ -49,11 +49,11 @@ windows, runs the emitted product over an eight-word accumulator window, and
 stores the eight product words into the two-slot output region `o` (low slot
 `o`, high slot `o+1`).
 
-## What is proven (genuine `runBlock(emitted) = spec`)
+## What is proven (`runBlock(emitted) = spec`)
 
 `feMulFrameAt_value` — over a frame whose slots `a`, `b` hold reduced field-element
 limbs, with the curve's `Nprime` hypothesis, the eight-word output region's value
-reconstructs to the genuine emitted product `valLimbs(slot a) · valLimbs(slot b)`,
+reconstructs to the emitted product `valLimbs(slot a) · valLimbs(slot b)`,
 and `montgomeryReduce N (2^256) Nprime` of that stored value is the Montgomery
 field product (`< 2·N`, `· 2^256 ≡ a·b (mod N)`). The product half is a real
 emitted+stored `runBlock` of a `List (JInstr 64)`; the reduction is the
@@ -200,7 +200,7 @@ valLimbs y`) + `storeSlot8_load` (the product lands in the output region), then
     constant `Nprime` (`N · Nprime ≡ −1 mod 2^256`):
 
     * the eight-word output region rooted at slot `o` reconstructs (`valLimbs`) to
-      the genuine emitted product `valLimbs (slot a) · valLimbs (slot b)`
+      the emitted product `valLimbs (slot a) · valLimbs (slot b)`
       (`emitProductBlock_runBlock_value` + `storeSlot8_load`); and
     * `montgomeryReduce N (2^256) Nprime` of that stored value is the Montgomery
       field product — it lies in `[0, 2·N)` and `· 2^256 ≡ valLimbs a · valLimbs b

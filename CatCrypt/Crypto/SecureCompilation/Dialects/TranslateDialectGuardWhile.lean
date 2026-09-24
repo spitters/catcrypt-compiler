@@ -65,7 +65,7 @@ exactly when the guard falls outside `lowerSExpr`'s fragment (e.g. a raw `SLt`).
 
 ## Validation
 
-`§ Validate` front-compiles a genuine general-guard while — `while (x < 100)
+`§ Validate` front-compiles a general-guard while — `while (x < 100)
 { x := x + step }`, `x = 0`, `step = 25` — where the guard is a comparison
 (`x < 100`, branch-free), NOT a `name != 0` countdown, and the trip is
 data-dependent (fixed at run time by when `x` reaches `100`).  `native_decide`
@@ -176,7 +176,7 @@ theorem rolledWhileGuard_realizes (env : LeafEnvM) (fn : String) (top : LLabel)
 
 /-! ## 3. Validate: a front-compiled general-guard `while (x < 100)`
 
-`while (x < 100) { x := x + step }`, `x = 0`, `step = 25`.  The guard is a genuine
+`while (x < 100) { x := x + step }`, `x = 0`, `step = 25`.  The guard is a
 comparison — `x < 100`, expressed branch-free as `SShr (SSub x 100) 63` — NOT a
 `name != 0` countdown, and the trip is data-dependent (fixed at run time by when
 `x` reaches `100`).  The loop threads `x` through the argument register `a1` (the
@@ -246,7 +246,7 @@ theorem vSLt_declined :
       = false := by native_decide
 
 /-- **(b) The emitted program carries a REAL `Lcond` back-edge and a NON-empty
-    front-compiled guardCompute** — a genuine general-guard loop, not a `name != 0`
+    front-compiled guardCompute** — a general-guard loop, not a `name != 0`
     countdown with an empty guard segment. -/
 theorem vWhile_realBackEdge_nonemptyGuard :
     hasBackEdge vWhileProg.body = true ∧ vGuardCompute ≠ [] := by native_decide

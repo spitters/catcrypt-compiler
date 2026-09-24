@@ -11,10 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 
 /-!
-# BN254 pairing perf (#225, L2+L3): the fused-line Miller step + cyclotomic /
+# BN254 pairing perf: the fused-line Miller step + cyclotomic /
   NAF final exponentiation, on top of the verified field leaves
 
-`Bn254Emit.lean` (#260) keeps the whole pairing inside one opaque `bn254_pairing`
+`Bn254Emit.lean` keeps the whole pairing inside one opaque `bn254_pairing`
 leaf. This module opens that leaf one level and emits the **pairing algorithm**
 — the optimal-ate Miller doubling step and the DSD final-exponentiation chain —
 as straight-line `Com`s over the (verified-emitted, §8 of `Bn254Reflect.lean`)

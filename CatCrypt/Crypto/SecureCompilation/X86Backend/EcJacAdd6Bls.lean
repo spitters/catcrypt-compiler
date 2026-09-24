@@ -33,7 +33,7 @@ plumbing definitions reused verbatim, with value lemmas threading the
 
 ## The three proven six-limb cores threaded (BLS12-381 base field)
 
-* **multiply** — `Curve6LimbTierA.bls12381_emit_montmul_runBlock` (the genuine
+* **multiply** — `Curve6LimbTierA.bls12381_emit_montmul_runBlock` (the
   emitted 384×384 schoolbook product over `runBlock`, `= valLimbs x · valLimbs y`,
   fed to the prime-parametric Montgomery reduce at `R = 2^384` with the
   BLS12-381 base prime).
@@ -74,7 +74,7 @@ value lemma threads the BLS12-381 mont-mul core. -/
     constant `Nprime384`:
 
     * the twelve-word output region rooted at slot `o` reconstructs (`valLimbs`)
-      to the genuine emitted product `valLimbs (slot a) · valLimbs (slot b)`
+      to the emitted product `valLimbs (slot a) · valLimbs (slot b)`
       (`bls12381_emit_montmul_runBlock` + `storeSlot12_load`); and
     * `montgomeryReduce bls12381 (2^384) Nprime384` of that stored value is the
       Montgomery field product — it lies in `[0, 2·bls12381)` and

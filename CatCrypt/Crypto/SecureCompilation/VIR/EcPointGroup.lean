@@ -12,7 +12,7 @@ public import Mathlib.Algebra.Group.TransferInstance
 public import Mathlib.Algebra.Field.ZMod
 
 /-!
-# A genuine `AddCommGroup` for EllipticCurve-dialect points (bridge to Mathlib)
+# An `AddCommGroup` for on-curve EllipticCurve-dialect points (bridge to Mathlib)
 
 The EllipticCurve dialect (`EllipticCurveDialect.lean`) models a short-Weierstrass
 curve `y² = x³ + a·x + b` over `F_p = ZMod p` with the *full affine plane* carrier
@@ -23,7 +23,7 @@ and a chord/tangent group law `ECParams.add`.  That carrier includes **off-curve
 points, and `ECParams.add` — while defined on all of it — is a group law **only**
 on the on-curve subset.  So `AddCommGroup (ECPoint p)` is *false* as stated.
 
-This file gives the honest statement: a genuine `AddCommGroup` on the subtype of
+This module defines an `AddCommGroup` on the subtype of
 **on-curve** points, obtained by **transporting** Mathlib's proven Weierstrass
 point group `WeierstrassCurve.Affine.Point`.  We do **not** reprove associativity
 of the chord-tangent law — that is Mathlib's theorem
@@ -216,7 +216,7 @@ theorem toECPoint_add (C : ECParams p) (P Q : (toW C).toAffine.Point) :
 
 /-- The **on-curve dialect points**: the image of Mathlib's nonsingular point set
     `(toW C).toAffine.Point` under the bridge `toECPoint`.  Concretely a dialect
-    `ECPoint p` value that is genuinely on the curve, together with `none = O`.
+    `ECPoint p` value that lies on the curve, together with `none = O`.
     This — not the full carrier `ECPoint p` — is the set on which `ECParams.add`
     is a group law. -/
 def EcCurvePoint (C : ECParams p) : Type :=
@@ -232,7 +232,7 @@ omit hp in
 @[simp] theorem ecCurvePointEquiv_val (C : ECParams p) (X : (toW C).toAffine.Point) :
     (ecCurvePointEquiv C X).val = toECPoint C X := rfl
 
-/-- **Genuine `AddCommGroup` on the on-curve dialect points.**  Transported from
+/-- **`AddCommGroup` on the on-curve dialect points.**  Transported from
     Mathlib's proven Weierstrass point group
     `WeierstrassCurve.Affine.Point.instAddCommGroup` across the equivalence
     `ecCurvePointEquiv`.  Associativity/commutativity are Mathlib's theorems (the

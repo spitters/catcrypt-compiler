@@ -10,19 +10,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
 
 /-!
-# D4 (typed-`Com` step): bridging `ComLegality` to `gatherJBlock` success
+# Typed-`Com` step: bridging `ComLegality` to `gatherJBlock` success
 
 This file is the **typed-`Com → gather`** step of the MLIR dialect-alignment
-restructure's **D4** phase. The prior step (`OptimizedComToElfLegality.lean`)
-turned the implicit "`gatherJBlock` returns `none` on an uncovered op" guard
-into an *explicit, decidable* `Linstr`-level predicate `blockSupported`, with the
-headline gate `blockSupported_iff_gather_isSome`. It flagged the remaining gap:
+restructure. `OptimizedComToElfLegality.lean` states the "`gatherJBlock` returns
+`none` on an uncovered op" guard as an *explicit, decidable* `Linstr`-level
+predicate `blockSupported`, with the headline gate
+`blockSupported_iff_gather_isSome`. The gap this file addresses:
 bridging the typed-`Com` legality predicate `Dialects.ComLegality.comAllSupported`
 / `ComSupported` to that `Linstr` gate needs the exporter-level reconciliation of
 the mnemonic table, blocked by the `:64` width tag.
 
-This file does that reconciliation as far as the definitions allow, and reports
-honestly where the definitions block the rest.
+This file does that reconciliation as far as the definitions allow, and records
+where the definitions block the rest.
 
 ## The reconciliation: a tag-stripping normalization
 
@@ -38,7 +38,7 @@ block (`normBody_blockSupported_gate`). This is the seam at which the tag
 reconciliation plugs in: `gatherJBlock` consumes the normalized (bare-mnemonic)
 block.
 
-## What the tag-strip closes — and what it does NOT (honest)
+## What the tag-strip closes, and what it does NOT
 
 Stripping `:64` is necessary but, per the actual definitions, **not sufficient**
 for the whole supported set. Probing each `isSupportedOp` op's *actual* export
@@ -46,7 +46,7 @@ for the whole supported set. Probing each `isSupportedOp` op's *actual* export
 
 | supported op | normalized export | lowers? | residual blocker |
 |---|---|---|---|
-| `regConst 64 n` | `Lopn [reg dst] "MOV" [imm n]` | **yes** | none — the tag was the only blocker |
+| `regConst 64 n` | `Lopn [reg dst] "MOV" [imm n]` | **yes** | none — the tag is the only blocker |
 | `regArith bop 64` | `Lopn [reg dst] BOP [s0,s1]` | no | **arity**: 2 sources; `lowerLinstrExt`'s ALU arm matches a *single* source `[src]` (the two-address `op dst, src` form), the SSA exporter emits both sources explicitly |
 | `mulhi 64` | `Lopn [reg dst] "MULXHI" [s0,s1]` | no | **arity + alphabet**: 2 sources *and* `"MULXHI"` has no `lowerAluJ` arm |
 | `shrImm 64 n` | `Lopn [reg dst] ("SHR:"++n) [src]` | no | **alphabet**: `"SHR:<n>"` has no `lowerAluJ` arm (bare `"SHR"` exists, but the immediate-shift export carries the count in the mnemonic) |
@@ -85,7 +85,7 @@ the **optimized lowering's mnemonic table** (`LoweringExtended.lowerLinstrExt` /
 2. **A two-source ALU arm.** Add `| .Lopn [.reg dst] opn [s0, s1] => …` mapping
    to the two-address `op dst, s1` (with `dst := s0` already established by the
    regalloc/SSA convention), so the explicit-two-source SSA export of `regArith`
-   lowers. This is the load-bearing change: without it no `regArith` export
+   lowers. This is the necessary change: without it no `regArith` export
    lowers, tag or no tag.
 3. **`SHR:<n>` / `SHL:<n>` / `MULXHI` arms** in `lowerAluJ` (the immediate-shift
    and widening-high-multiply mnemonics the exporter emits), to cover
@@ -190,7 +190,7 @@ theorem supportedOp_of_opCleanlyLowers (op : JasminOp)
 
 /-- **The per-op clean bridge.** For a cleanly-lowering supported op (a width-64
     materialised constant), the *normalized* export is in the `lowerLinstrExt`
-    fragment — i.e. it lowers. The `:64` tag was the only blocker, and
+    fragment — i.e. it lowers. The `:64` tag is the only blocker, and
     `normLinstrR` removes it. -/
 theorem linstrRSupported_normLinstrR_export (op : JasminOp) (dst : String)
     (srcs : List LOperand) (h : opCleanlyLowers op = true) :
@@ -209,7 +209,7 @@ theorem linstrRSupported_normLinstrR_export (op : JasminOp) (dst : String)
 
 `comAllCleanlyLowers` is the `Com`-wide walk over `opCleanlyLowers` — the clean,
 tag-only-blocked sublattice of the canonical `comAllSupported`. We prove (a) it
-refines `comAllSupported` (so it is genuinely a subset of the canonical legal
+refines `comAllSupported` (so it is a subset of the canonical legal
 set), and (b) the front's straight-line export of such a `Com` is normalized-legal
 *up to the terminal `Lret`*. -/
 

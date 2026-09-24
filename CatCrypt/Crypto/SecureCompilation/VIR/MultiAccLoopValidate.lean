@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Validate: the multi-accumulator block loop (`ComL.forLoopMultiAcc`, task #20)
+# Validate: the multi-accumulator block loop (`ComL.forLoopMultiAcc`)
 
 Every single-`accTy` loop node (`forLoop*`, `whileNz`, `forLoopBlock`) carries
 **one** accumulator across the back-edge. Imperative kernels (MAYO/SolveGf16's

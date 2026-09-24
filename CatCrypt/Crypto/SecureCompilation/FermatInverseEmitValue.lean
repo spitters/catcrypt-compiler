@@ -33,7 +33,7 @@ This module composes:
 3. the **correctness corollary** supplied by the proven Fermat theorem
    `fermatInv_eq_inv` (`fermatInv p a = a⁻¹` under `a ≠ 0`).
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the **correctness corollary**
   `fermatInv_emit_correct`.  The Fermat theorem `fermatInv_eq_inv` rewrites
@@ -53,7 +53,7 @@ This module composes:
 `fermatInvKernelRealizes_canonical` exhibits a concrete `LeafSpec` (built from a
 `fermatInv`-returning realizer) under which `FermatInvKernelRealizes` — hence
 `FermatInvEmitRealizes` — holds, so the hypotheses are satisfiable, not an
-unsatisfiable over-constraint.  The genuine cross-prover content is the gap
+unsatisfiable over-constraint.  The cross-prover content is the gap
 between this canonical realizer and the emitted CT-inverse kernel's real byte
 semantics, which lives outside Lean.
 -/
@@ -110,7 +110,7 @@ Unlike the Barrett seam — where the commuting square `barrettCondsub_eq_mod`
 bridges the *distinct* kernel value `barrettCondsub q k x` and abstract op
 `x % q` — here the kernel value `fermatInv p x` and the abstract op
 `fermatInv p x` coincide (both are `x ^ (p - 2)`), so the discharge is the
-identity.  The genuinely closed content is the **correctness corollary**: the
+identity.  The closed content is the **correctness corollary**: the
 proven `fermatInv_eq_inv` lifts the Fermat exponentiation to the true field
 inverse on nonzero inputs. -/
 
@@ -124,7 +124,7 @@ theorem fermatInvEmitRealizes_of_kernel
     FermatInvEmitRealizes p decode leaf leafSpec :=
   hker
 
-/-- **The correctness corollary (the genuinely closed content).**  If the
+/-- **The correctness corollary (the closed content).**  If the
     emitted leaf realizes the Fermat exponentiation (`FermatInvEmitRealizes`),
     then on any **nonzero** input the leaf-call value decodes to the **true field
     inverse** `(decode xVal)⁻¹`.  The "`a ^ (p - 2)` = inverse" step is the proven
@@ -169,7 +169,7 @@ def fermatInvKernelCallSpec (decode : RustVal .TFp → ZMod p)
 /-- **Non-vacuity witness for `FermatInvKernelRealizes`.**  For the canonical
     `LeafSpec` built from `fermatInvKernelCallSpec` with a decoder section `encode`
     (`decode ∘ encode = id`), the kernel-realization holds — so the localized
-    hypothesis is satisfiable.  The genuine cross-prover content is precisely the
+    hypothesis is satisfiable.  The cross-prover content is precisely the
     gap between this canonical realizer and the emitted CT-inverse kernel's real
     byte semantics (the leaf-bytes KAT), which lives outside Lean. -/
 theorem fermatInvKernelRealizes_canonical

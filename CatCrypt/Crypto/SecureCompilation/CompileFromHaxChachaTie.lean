@@ -10,14 +10,14 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxChaCha
 public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
 /-!
-# #607 Phase 3b: functional tie — verified-compiler ChaCha20 quarter-round = protocol's abstract QR
+# Functional tie — verified-compiler ChaCha20 quarter-round = protocol's abstract QR
 
 This module wires the committed **compile-from-hax ChaCha20 quarter-round leaf**
 (`CompileFromHaxChaCha.qr{A,B,C,D}_compiles`) into the abstract quarter-round
 function that the ChaCha20 PRF security assumption quantifies over
 (`CatCrypt.Crypto.Jasmin.ChaCha20QR.quarterRound`).
 
-## What this is — and what it is NOT (honest framing)
+## What this is — and what it is NOT
 
 This is a **functional-equality** tie, not a security claim.
 

@@ -27,7 +27,7 @@ of that virtual body, neither of which the proven waist covers:
    (collapsing the `mov` when `dst = s0`), plus spill-reload threading through
    the reserved scratches `R15`/`R14`.
 
-This module discharges, against the increment-1 linear machine
+This module discharges, against the straight-line linear machine
 `JasminLsem.lsemStraight`, the **core semantic obligation that pass (2)
 introduces in the no-spill register case**: the two-instruction expansion
 `mov dst, s0 ; op dst, s1` computes, at `dst`, exactly what the original
@@ -36,15 +36,15 @@ the leading `mov` clobbers the second source before the op reads it). This is
 the `lsem`/`LinstrR` analogue of `ScalarLinX86Demo.hstep_x86_on` (which proves
 the same fact over the `X86Backend.Model` register machine `xrun`/`XState`).
 
-What is **not** proved here (the residual, named honestly):
+Outside the scope of this module:
 * the register-allocation pass `physMap`/`physBody` preserves the denotation
-  (the `RegMachineSim` keystone `jinstr_renameBlock_sound` proves this for the
+  (the `RegMachineSim` main theorem `jinstr_renameBlock_sound` proves this for the
   `JInstr`/`JState` machine under a *uniform* renaming `ρ`, but `physBody` is
   not a uniform renaming — it inserts the two-address `mov`s and spill reloads,
-  so the keystone does not directly apply to the `LinstrR` body);
+  so that theorem does not directly apply to the `LinstrR` body);
 * the spill cases of `legalizeBinop` (the `R15`/`R14` reload sequences);
 * the ABI prologue/epilogue (`buildPrologue`/`buildEpilogue`) and the `Lret`
-  terminator (control flow, out of increment-1 scope).
+  terminator (control flow, outside the straight-line scope).
 
 So this is **not** a `toLprogPhysAbi` faithfulness theorem; it is the proof of
 the single new ingredient pass (2) needs, isolated and verified against the

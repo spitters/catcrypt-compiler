@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 /-!
 # Operational CALL run-correctness: emitted `Ccall` run = running the callee
 
-The linker keystone (`X86Backend/LinkerReloc.lean`) proves the *byte-level*
+The linker theorem (`X86Backend/LinkerReloc.lean`) proves the *byte-level*
 half of "a call is correct": the relocated `call rel32` displacement lands
 **exactly on the callee's `.text` address**. Its own scope note is explicit
 that the **operational** half is missing:
@@ -27,7 +27,7 @@ AND *running* it equals running the callee (here).
 ## What substrate we reuse (a *real* `Ccall` run-semantics already exists)
 
 We do **not** invent a call model. `JasminCoqSemMirror` is the line-by-line
-Lean port of Jasmin's Coq `psem.v`, and it already carries the genuine Jasmin
+Lean port of Jasmin's Coq `psem.v`, and it carries the Jasmin
 call construct:
 
 * `InstrR.Ccall (xs) (fn) (es)` — the AST node (`expr.v:412` mirror): the
@@ -48,9 +48,9 @@ So this is the run-correctness theorem for the **existing** `Ccall` executor:
 its functional fuel-bounded run = (evaluate args → run the callee `fn`'s body
 → write the results), where the callee run is `execCall` (= `SemCall`).
 
-## What is genuinely new
+## What this module adds
 
-1. **`execInstrR_Ccall_eq`** — the keystone: for any fuel `fuel'+1`, the emitted
+1. **`execInstrR_Ccall_eq`** — the main theorem: for any fuel `fuel'+1`, the emitted
    `Ccall xs fn args` run **equals** the explicit composition
    `bind (semPexprs args) (fun vargs => bind (execCall … fn vargs prog) (fun r =>
    writeLvals … r.vres))` — i.e. the call's effect *is* (eval args; run callee;
@@ -70,7 +70,7 @@ its functional fuel-bounded run = (evaluate args → run the callee `fn`'s body
    (`add1`/`main`): the caller's `Ccall` run on `[Pconst 5]` equals running the
    callee body `ret := in + 1` on the bound argument, yielding `y = 6`
    (`callAdd1_emitted_kat`, by `native_decide`); and that emitted run equals the
-   composition keystone (`callAdd1_emitted_eq_composition`). All goals closed.
+   composition theorem (`callAdd1_emitted_eq_composition`). All goals closed.
 
 ## Scope (honest)
 
@@ -88,7 +88,7 @@ its functional fuel-bounded run = (evaluate args → run the callee `fn`'s body
   are covered *operationally* (they just need enough fuel), but we do not here
   prove a fuel-independent / relational (`SemCall`) statement, nor a termination
   measure discharging "the executor's fuel suffices". That is the same residual
-  the `WhileLowering` keystone notes for `Cwhile`.
+  `WhileLowering` notes for `Cwhile`.
 
 All goals are closed; no opaque-leaf hypothesis is needed (the executor and the
 composition target are both concrete functional definitions).
@@ -129,14 +129,14 @@ def callComposition (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
   writeLvals (Mem := Mem) true gd opS
     ({ s with escs := escs2, emem := emem2 }) xs vres
 
-/-! ## 2. Keystone: the emitted `Ccall` run equals the composition
+/-! ## 2. Main theorem: the emitted `Ccall` run equals the composition
 
 `execInstrR`'s `.Ccall` branch, at fuel `fuel'+1`, unfolds to exactly
 `callComposition` at fuel `fuel'`. This is the run-correctness theorem for the
 real Jasmin `Ccall` construct: its functional fuel-bounded run = (eval args; run
 callee; write results). -/
 
-/-- **Keystone.** The emitted `Ccall xs fn args` executor (at fuel `fuel'+1`)
+/-- **Call run-correctness.** The emitted `Ccall xs fn args` executor (at fuel `fuel'+1`)
     equals the explicit composition (eval args → run callee `fn` via `execCall` →
     write results). This is run-correctness for the real Jasmin `Ccall`
     construct: the call's effect equals running the callee. -/
@@ -223,7 +223,7 @@ The caller's `Ccall` run on `[Pconst 5]`:
 
 * drives `y` to `6` (`callAdd1_emitted_kat`, by `native_decide`) — the call's
   effect *is* running the callee body `ret := in + 1` on the bound argument;
-* equals the §2 composition keystone (`callAdd1_emitted_eq_composition`);
+* equals the §2 composition (`callAdd1_emitted_eq_composition`);
 * equals the §3 linked-callee form with `add1`'s body substituted in
   (`callAdd1_emitted_eq_linked`).
 
@@ -301,7 +301,7 @@ theorem callAdd1_emitted_kat :
   native_decide
 
 /-- **Run-correctness instance.** The emitted call run equals the §2 composition
-    keystone (eval args → run callee via `execCall` → write results) — a direct
+    (eval args → run callee via `execCall` → write results) — a direct
     instance of `execInstrR_Ccall_eq`. -/
 theorem callAdd1_emitted_eq_composition (fuel' : Nat) :
     execInstrR (Mem := TrivialMem) addAsmSem addOpSem [] (fuel'+1) startState

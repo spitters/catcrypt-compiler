@@ -1201,6 +1201,8 @@ def scalarCallNat (f : String) : Option (Nat → Nat → Nat) :=
   | "scalar#Mul" => some (· * ·)
   | "scalar#BitAnd" => some (· &&& ·)
   | "scalar#BitXor" => some (· ^^^ ·)
+  | "scalar#Shr" => some (· >>> ·)
+  | "scalar#Shl" => some (· <<< ·)
   | "scalar#Lt" => some fun a b => if a < b then 1 else 0
   | "scalar#Gt" => some fun a b => if b < a then 1 else 0
   | "scalar#Le" => some fun a b => if a ≤ b then 1 else 0

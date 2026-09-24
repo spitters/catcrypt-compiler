@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
-# A Lean RISC-V RVV (vector extension) machine model — fixed VLEN=128, SEW=32, 4 × u32 lanes (#549 RVV residual)
+# A Lean RISC-V RVV (vector extension) machine model — fixed VLEN=128, SEW=32, 4 × u32 lanes
 
 `ARMBackend/NeonModel.lean` is the 128-bit AArch64 NEON V-register machine layer
 (the fixed-128-bit ASIMD analogue of `ArmModel`'s scalar GP file), and the ChaCha
@@ -28,11 +28,11 @@ ChaCha 4-way SoA shape (and the NEON 128-bit/4×u32 sibling) we model a **fixed
 treat the `vsetvli` that pins `VL = 4` (`e32, m1`) as the model prelude that
 selects this lane shape (`VConfig` below). Every packed op below then operates on
 exactly the 4 active u32 lanes. (A length-agnostic model would carry
-`vl`/`vtype` as state and prove the per-lane ops mask above `vl`; that is the
-honest residual — we fix the configuration the ChaCha 4-way kernel uses, the same
+`vl`/`vtype` as state and prove the per-lane ops mask above `vl`; that is
+outside this model's scope — we fix the configuration the ChaCha 4-way kernel uses, the same
 posture as the fixed-128-bit NEON model.)
 
-## The honest anchor (same posture as the NEON / x86 Vec128 model)
+## The trust anchor (same posture as the NEON / x86 Vec128 model)
 
 There is no ported authoritative model for the packed-u32 RVV ALU semantics here;
 the faithfulness of `evalVInst` rests on **differential validation against the RFC

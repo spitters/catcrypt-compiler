@@ -280,6 +280,186 @@ def vpshufbW (a b : BitVec 256) : BitVec 256 :=
     if (m >>> 7) = 1 then 0
     else yByteW a (16 * h + (m &&& 0x0F).toNat))
 
+/-! ## 2c. Word and half views, and the 16-bit and cross-lane lane semantics
+
+A 256-bit register read as 16 × 16-bit words (word `j` at bit `16·j`) or as two
+128-bit halves (half `h` at bit `128·h`). The pack, unpack, word-blend and
+byte-shift ops act on each 128-bit half separately, as the Intel SDM specifies;
+`vpermd` and `vperm2i128` cross the halves. -/
+
+/-- The `j`-th 16-bit word lane (`j < 16`). -/
+@[reducible] def yWordW (v : BitVec 256) (j : Nat) : BitVec 16 := BitVec.extractLsb' (16 * j) 16 v
+
+/-- Reassemble 16 word lanes into a `BitVec 256` (lane `j` at bit `16·j`). -/
+def yOfWordsW (f : Fin 16 → BitVec 16) : BitVec 256 :=
+  Fin.foldl 16 (init := (0 : BitVec 256)) (fun acc j => acc ||| ((f j).setWidth 256 <<< (16 * j.val)))
+
+/-- The `h`-th 128-bit half (`h < 2`). -/
+@[reducible] def yHalfW (v : BitVec 256) (h : Nat) : BitVec 128 := BitVec.extractLsb' (128 * h) 128 v
+
+/-- Signed saturation of a 32-bit value to 16 bits: values below `-2¹⁵` give
+    `-2¹⁵`, values above `2¹⁵ − 1` give `2¹⁵ − 1`, the rest are truncated
+    unchanged. -/
+def satI32toI16W (x : BitVec 32) : BitVec 16 :=
+  if x.slt (BitVec.ofInt 32 (-32768)) then BitVec.ofInt 16 (-32768)
+  else if (BitVec.ofInt 32 32767).slt x then BitVec.ofInt 16 32767
+  else x.setWidth 16
+
+/-- Signed saturation of a 16-bit value to 8 bits: values below `-2⁷` give
+    `-2⁷`, values above `2⁷ − 1` give `2⁷ − 1`, the rest are truncated
+    unchanged. -/
+def satI16toI8W (x : BitVec 16) : BitVec 8 :=
+  if x.slt (BitVec.ofInt 16 (-128)) then BitVec.ofInt 8 (-128)
+  else if (BitVec.ofInt 16 127).slt x then BitVec.ofInt 8 127
+  else x.setWidth 8
+
+/-- `VPADDW a, b`: 16 wrapping 16-bit-lane additions. AVX2. -/
+def vpaddwW (a b : BitVec 256) : BitVec 256 := yOfWordsW (fun i => yWordW a i.val + yWordW b i.val)
+
+/-- `VPSUBW a, b`: 16 wrapping 16-bit-lane subtractions. AVX2. -/
+def vpsubwW (a b : BitVec 256) : BitVec 256 := yOfWordsW (fun i => yWordW a i.val - yWordW b i.val)
+
+/-- `VPMULLW a, b`: 16 × the low 16 bits of the 16-bit-lane products, the same
+    for a signed and an unsigned reading. AVX2. -/
+def vpmullwW (a b : BitVec 256) : BitVec 256 := yOfWordsW (fun i => yWordW a i.val * yWordW b i.val)
+
+/-- `VPMULHW a, b`: 16 × the high 16 bits of the SIGNED 16×16→32 product of the
+    word lanes. The sign-extended 32-bit product is exact. AVX2. -/
+def vpmulhwW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    BitVec.extractLsb' 16 16
+      (BitVec.signExtend 32 (yWordW a i.val) * BitVec.signExtend 32 (yWordW b i.val)))
+
+/-- `VPMADDWD a, b`: dword lane `i` is the sum of the SIGNED products of word
+    lanes `2i` and `2i+1` of `a` and `b`, taken modulo 2³² (the one overflowing
+    input, all four words `-2¹⁵`, gives `0x80000000`, as on x86). AVX2. -/
+def vpmaddwdW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i =>
+    BitVec.signExtend 32 (yWordW a (2 * i.val)) * BitVec.signExtend 32 (yWordW b (2 * i.val))
+      + BitVec.signExtend 32 (yWordW a (2 * i.val + 1))
+        * BitVec.signExtend 32 (yWordW b (2 * i.val + 1)))
+
+/-- `VPCMPGTW a, b`: word lane `i` is all ones when lane `i` of `a` is SIGNED
+    greater than lane `i` of `b`, and zero otherwise. AVX2. -/
+def vpcmpgtwW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i => if (yWordW b i.val).slt (yWordW a i.val) then BitVec.allOnes 16 else 0)
+
+/-- `VPCMPGTD a, b`: dword lane `i` is all ones when lane `i` of `a` is SIGNED
+    greater than lane `i` of `b`, and zero otherwise. AVX2. -/
+def vpcmpgtdW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i => if (yDwordW b i.val).slt (yDwordW a i.val) then BitVec.allOnes 32 else 0)
+
+/-- `VPCMPEQD a, b`: dword lane `i` is all ones when lane `i` of `a` equals lane
+    `i` of `b`, and zero otherwise. AVX2. -/
+def vpcmpeqdW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i => if yDwordW a i.val = yDwordW b i.val then BitVec.allOnes 32 else 0)
+
+/-- `VPSLLW a, imm8`: 16 × logical shift left of each 16-bit lane by `imm8`
+    (zero for `imm8 ≥ 16`, matching x86). AVX2. -/
+def vpsllwW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfWordsW (fun i => yWordW a i.val <<< imm)
+
+/-- `VPSRLW a, imm8`: 16 × logical shift right of each 16-bit lane by `imm8`
+    (zero for `imm8 ≥ 16`, matching x86). AVX2. -/
+def vpsrlwW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfWordsW (fun i => yWordW a i.val >>> imm)
+
+/-- `VPSRAW a, imm8`: 16 × arithmetic shift right of each 16-bit lane by `imm8`,
+    replicating the sign bit; a count of 16 or more fills the lane with the sign
+    bit, as on x86. AVX2. -/
+def vpsrawW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfWordsW (fun i => (yWordW a i.val).sshiftRight imm)
+
+/-- `VPABSD a`: 8 × the absolute value of each SIGNED 32-bit lane. The lane
+    `-2³¹` maps to itself (`0x80000000`, the unsigned result x86 writes).
+    `BitVec.abs` negates exactly the lanes with the sign bit set. AVX2. -/
+def vpabsdW (a : BitVec 256) : BitVec 256 := yOfDwordsW (fun i => (yDwordW a i.val).abs)
+
+/-- `VPSIGND a, b`: dword lane `i` is lane `i` of `a` negated (mod 2³²) when
+    lane `i` of `b` is negative, zero when it is zero, and unchanged when it is
+    positive. AVX2. -/
+def vpsigndW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i =>
+    if (yDwordW b i.val).msb then -(yDwordW a i.val)
+    else if yDwordW b i.val = 0 then 0
+    else yDwordW a i.val)
+
+/-- `VPACKSSWB a, b`: in each 128-bit half `h`, bytes `0‥7` are the eight word
+    lanes of `a`'s half `h` and bytes `8‥15` those of `b`'s half `h`, each
+    narrowed with signed saturation (Intel SDM `VPACKSSWB`, VEX.256). AVX2. -/
+def vpacksswbW (a b : BitVec 256) : BitVec 256 :=
+  yOfBytesW (fun i =>
+    let h := i.val / 16
+    let j := i.val % 16
+    if j < 8 then satI16toI8W (yWordW a (8 * h + j)) else satI16toI8W (yWordW b (8 * h + j - 8)))
+
+/-- `VPACKSSDW a, b`: in each 128-bit half `h`, words `0‥3` are the four dword
+    lanes of `a`'s half `h` and words `4‥7` those of `b`'s half `h`, each
+    narrowed with signed saturation (Intel SDM `VPACKSSDW`, VEX.256). AVX2. -/
+def vpackssdwW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    let h := i.val / 8
+    let j := i.val % 8
+    if j < 4 then satI32toI16W (yDwordW a (4 * h + j)) else satI32toI16W (yDwordW b (4 * h + j - 4)))
+
+/-- `VPERMD idx, a`: cross-lane dword permute; dword `i` of the result is dword
+    `idx[i] mod 8` of the data operand `a` (Intel SDM `VPERMD`: `idx` = src1 =
+    `vvvv`, `a` = src2 = `ModRM.rm`). AVX2. -/
+def vpermdW (idx a : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i => yDwordW a ((yDwordW idx i.val).toNat % 8))
+
+/-- `VPUNPCKLDQ a, b`: in each 128-bit half `h`, interleave the low two dwords:
+    result dwords `4h‥4h+3` are `a[4h], b[4h], a[4h+1], b[4h+1]`. AVX2. -/
+def vpunpckldqW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i =>
+    let h := i.val / 4
+    let k := i.val % 4
+    if k % 2 = 0 then yDwordW a (4 * h + k / 2) else yDwordW b (4 * h + k / 2))
+
+/-- `VPUNPCKHDQ a, b`: in each 128-bit half `h`, interleave the high two dwords:
+    result dwords `4h‥4h+3` are `a[4h+2], b[4h+2], a[4h+3], b[4h+3]`. AVX2. -/
+def vpunpckhdqW (a b : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i =>
+    let h := i.val / 4
+    let k := i.val % 4
+    if k % 2 = 0 then yDwordW a (4 * h + 2 + k / 2) else yDwordW b (4 * h + 2 + k / 2))
+
+/-- `VPUNPCKLQDQ a, b`: in each 128-bit half `h`, result qwords `2h, 2h+1` are
+    `a[2h], b[2h]`. AVX2. -/
+def vpunpcklqdqW (a b : BitVec 256) : BitVec 256 :=
+  yOfQwordsW (fun j => if j.val % 2 = 0 then yQwordW a (2 * (j.val / 2)) else yQwordW b (2 * (j.val / 2)))
+
+/-- `VPUNPCKHQDQ a, b`: in each 128-bit half `h`, result qwords `2h, 2h+1` are
+    `a[2h+1], b[2h+1]`. AVX2. -/
+def vpunpckhqdqW (a b : BitVec 256) : BitVec 256 :=
+  yOfQwordsW (fun j =>
+    if j.val % 2 = 0 then yQwordW a (2 * (j.val / 2) + 1) else yQwordW b (2 * (j.val / 2) + 1))
+
+/-- `VPBLENDW a, b, imm8`: per-word select; word `i` is `b`'s when bit `i mod 8`
+    of `imm8` is set and `a`'s otherwise, so the same eight bits control both
+    128-bit halves (Intel SDM `VPBLENDW`, VEX.256). AVX2. -/
+def vpblendwW (a b : BitVec 256) (imm : Nat) : BitVec 256 :=
+  yOfWordsW (fun i => if (imm >>> (i.val % 8)) &&& 1 = 1 then yWordW b i.val else yWordW a i.val)
+
+/-- `VPSRLDQ a, imm8`: each 128-bit half shifted right by `imm8` bytes, zero
+    filled, with no bytes crossing between the halves. A count of 16 or more
+    clears the half, as the Intel SDM specifies. AVX2. -/
+def vpsrldqW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  (yHalfW a 1 >>> (8 * imm)) ++ (yHalfW a 0 >>> (8 * imm))
+
+/-- The 128-bit half `VPERM2I128` selects under a 4-bit control field `c`: zero
+    when bit 3 of `c` is set, otherwise half `c mod 2` of `a` for `c mod 4 < 2`
+    and half `c mod 2` of `b` for `c mod 4 ≥ 2`. -/
+def perm2i128SelW (a b : BitVec 256) (c : Nat) : BitVec 128 :=
+  if (c >>> 3) &&& 1 = 1 then 0
+  else yHalfW (if c % 4 < 2 then a else b) (c % 2)
+
+/-- `VPERM2I128 a, b, imm8`: the low result half is selected by bits `0‥3` of
+    `imm8`, the high half by bits `4‥7`, each through `perm2i128SelW` (Intel SDM
+    `VPERM2I128`: `a` = src1 = `vvvv`, `b` = src2 = `ModRM.rm`). AVX2. -/
+def vperm2i128W (a b : BitVec 256) (imm : Nat) : BitVec 256 :=
+  perm2i128SelW a b (imm >>> 4) ++ perm2i128SelW a b imm
+
 /-! ## 3. The op family
 
 `YmmOp` is the dialect op set: the register-only AVX2 NTT fragment, MIXED arity
@@ -340,6 +520,52 @@ inductive YmmOp where
   | vpmulld
   /-- `VPSRAD a, imm8` — 8×i32 arithmetic shift right (`imm8` baked in). Unary. AVX2. -/
   | vpsrad (imm : Nat)
+  /-- `VPADDW a, b` — 16×u16 wrapping add. Binary. AVX2. -/
+  | vpaddw
+  /-- `VPSUBW a, b` — 16×u16 wrapping subtract. Binary. AVX2. -/
+  | vpsubw
+  /-- `VPMULLW a, b` — 16×u16 low-word product. Binary. AVX2. -/
+  | vpmullw
+  /-- `VPMULHW a, b` — 16×i16 signed high-word product. Binary. AVX2. -/
+  | vpmulhw
+  /-- `VPMADDWD a, b` — 8×i32 sums of adjacent signed word products. Binary. AVX2. -/
+  | vpmaddwd
+  /-- `VPCMPGTW a, b` — 16×i16 signed greater-than mask. Binary. AVX2. -/
+  | vpcmpgtw
+  /-- `VPCMPGTD a, b` — 8×i32 signed greater-than mask. Binary. AVX2. -/
+  | vpcmpgtd
+  /-- `VPCMPEQD a, b` — 8×u32 equality mask. Binary. AVX2. -/
+  | vpcmpeqd
+  /-- `VPSLLW a, imm8` — 16×u16 logical shift left (`imm8` baked in). Unary. AVX2. -/
+  | vpsllw (imm : Nat)
+  /-- `VPSRLW a, imm8` — 16×u16 logical shift right (`imm8` baked in). Unary. AVX2. -/
+  | vpsrlw (imm : Nat)
+  /-- `VPSRAW a, imm8` — 16×i16 arithmetic shift right (`imm8` baked in). Unary. AVX2. -/
+  | vpsraw (imm : Nat)
+  /-- `VPABSD a` — 8×i32 absolute value. Unary. AVX2. -/
+  | vpabsd
+  /-- `VPSIGND a, b` — 8×i32 negate, zero or keep by the sign of `b`. Binary. AVX2. -/
+  | vpsignd
+  /-- `VPACKSSWB a, b` — per-128-lane signed-saturating pack of words to bytes. Binary. AVX2. -/
+  | vpacksswb
+  /-- `VPACKSSDW a, b` — per-128-lane signed-saturating pack of dwords to words. Binary. AVX2. -/
+  | vpackssdw
+  /-- `VPERMD idx, a` — cross-lane dword permute under an index vector. Binary. AVX2. -/
+  | vpermd
+  /-- `VPUNPCKLDQ a, b` — per-128-lane interleave of the low dwords. Binary. AVX2. -/
+  | vpunpckldq
+  /-- `VPUNPCKHDQ a, b` — per-128-lane interleave of the high dwords. Binary. AVX2. -/
+  | vpunpckhdq
+  /-- `VPUNPCKLQDQ a, b` — per-128-lane interleave of the low qwords. Binary. AVX2. -/
+  | vpunpcklqdq
+  /-- `VPUNPCKHQDQ a, b` — per-128-lane interleave of the high qwords. Binary. AVX2. -/
+  | vpunpckhqdq
+  /-- `VPBLENDW a, b, imm8` — per-word blend, `imm8` applied to each 128-bit half. Binary. AVX2. -/
+  | vpblendw (imm : Nat)
+  /-- `VPSRLDQ a, imm8` — per-128-lane byte shift right (`imm8` baked in). Unary. AVX2. -/
+  | vpsrldq (imm : Nat)
+  /-- `VPERM2I128 a, b, imm8` — 128-bit half select from two sources. Binary. AVX2. -/
+  | vperm2i128 (imm : Nat)
   deriving DecidableEq, Repr
 
 /-- Whether the op consumes one (`false`) or two (`true`) register operands.
@@ -371,6 +597,29 @@ def YmmOp.isBinary : YmmOp → Bool
   | .vprolq _ => false
   | .vpmulld => true
   | .vpsrad _ => false
+  | .vpaddw => true
+  | .vpsubw => true
+  | .vpmullw => true
+  | .vpmulhw => true
+  | .vpmaddwd => true
+  | .vpcmpgtw => true
+  | .vpcmpgtd => true
+  | .vpcmpeqd => true
+  | .vpsllw _ => false
+  | .vpsrlw _ => false
+  | .vpsraw _ => false
+  | .vpabsd => false
+  | .vpsignd => true
+  | .vpacksswb => true
+  | .vpackssdw => true
+  | .vpermd => true
+  | .vpunpckldq => true
+  | .vpunpckhdq => true
+  | .vpunpcklqdq => true
+  | .vpunpckhqdq => true
+  | .vpblendw _ => true
+  | .vpsrldq _ => false
+  | .vperm2i128 _ => true
 
 /-- The jasmin/x86 (gas / AT&T) mnemonic of a `YmmOp` for asm emit. The AT&T
     print is lower-case with operands in `src…, dst` order; the printer adds the
@@ -401,6 +650,29 @@ def YmmOp.attMnemonic : YmmOp → String
   | .vprolq _ => "vprolq"
   | .vpmulld => "vpmulld"
   | .vpsrad _ => "vpsrad"
+  | .vpaddw => "vpaddw"
+  | .vpsubw => "vpsubw"
+  | .vpmullw => "vpmullw"
+  | .vpmulhw => "vpmulhw"
+  | .vpmaddwd => "vpmaddwd"
+  | .vpcmpgtw => "vpcmpgtw"
+  | .vpcmpgtd => "vpcmpgtd"
+  | .vpcmpeqd => "vpcmpeqd"
+  | .vpsllw _ => "vpsllw"
+  | .vpsrlw _ => "vpsrlw"
+  | .vpsraw _ => "vpsraw"
+  | .vpabsd => "vpabsd"
+  | .vpsignd => "vpsignd"
+  | .vpacksswb => "vpacksswb"
+  | .vpackssdw => "vpackssdw"
+  | .vpermd => "vpermd"
+  | .vpunpckldq => "vpunpckldq"
+  | .vpunpckhdq => "vpunpckhdq"
+  | .vpunpcklqdq => "vpunpcklqdq"
+  | .vpunpckhqdq => "vpunpckhqdq"
+  | .vpblendw _ => "vpblendw"
+  | .vpsrldq _ => "vpsrldq"
+  | .vperm2i128 _ => "vperm2i128"
 
 /-- The jasmin/Intel-SDM mnemonic of a `YmmOp` (upper-case, matching the
     `SimdOp.mnemonic` convention used by the dialect printer). -/
@@ -430,6 +702,29 @@ def YmmOp.jasminMnemonic : YmmOp → String
   | .vprolq n => "VPROLQ:" ++ toString n
   | .vpmulld => "VPMULLD"
   | .vpsrad n => "VPSRAD:" ++ toString n
+  | .vpaddw => "VPADDW"
+  | .vpsubw => "VPSUBW"
+  | .vpmullw => "VPMULLW"
+  | .vpmulhw => "VPMULHW"
+  | .vpmaddwd => "VPMADDWD"
+  | .vpcmpgtw => "VPCMPGTW"
+  | .vpcmpgtd => "VPCMPGTD"
+  | .vpcmpeqd => "VPCMPEQD"
+  | .vpsllw n => "VPSLLW:" ++ toString n
+  | .vpsrlw n => "VPSRLW:" ++ toString n
+  | .vpsraw n => "VPSRAW:" ++ toString n
+  | .vpabsd => "VPABSD"
+  | .vpsignd => "VPSIGND"
+  | .vpacksswb => "VPACKSSWB"
+  | .vpackssdw => "VPACKSSDW"
+  | .vpermd => "VPERMD"
+  | .vpunpckldq => "VPUNPCKLDQ"
+  | .vpunpckhdq => "VPUNPCKHDQ"
+  | .vpunpcklqdq => "VPUNPCKLQDQ"
+  | .vpunpckhqdq => "VPUNPCKHQDQ"
+  | .vpblendw n => "VPBLENDW:" ++ toString n
+  | .vpsrldq n => "VPSRLDQ:" ++ toString n
+  | .vperm2i128 n => "VPERM2I128:" ++ toString n
 
 /-! ## 4. Per-arm denotation (mixed arity)
 

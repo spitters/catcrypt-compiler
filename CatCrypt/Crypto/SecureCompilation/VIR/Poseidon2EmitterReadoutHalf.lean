@@ -16,36 +16,35 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 /-!
 # Poseidon2 emitter readout half — closing the Plonky3 internal-round bridge
 
-Task #133 closes the readout half of the Poseidon2-BabyBear emitter
-composition, completing the lattice analog of #128 (SHA-2) and #132
-(Keccak): the THIRD hash primitive fully closed end-to-end through the
-verified pipeline — round-body bit-exact to the Plonky3 spec, KAT-free
-unconditional, no env hypothesis residual.
+This module proves the readout half of the Poseidon2-BabyBear emitter
+composition, the lattice analog of the SHA-2 and Keccak readout halves:
+the round body is bit-exact to the Plonky3 spec, unconditionally, without a
+KAT and without an environment hypothesis.
 
-## What's already proven (read-only inputs)
+## Inputs
 
-* `Poseidon2Emit` (#100): the structural BabyBear arithmetic seams
+* `Poseidon2Emit`: the structural BabyBear arithmetic seams
   `bbAdd` / `bbMul` / `bbCsub` on canonical `BitVec 64` reps, with
   `bbAdd_correct` / `bbCsub_correct` proven by `bv_decide` (LRAT certs).
-* `Poseidon2DiffuseExact` (#113): the closed-form Poseidon2 internal round
+* `Poseidon2DiffuseExact`: the closed-form Poseidon2 internal round
   `pos2InternalRoundClosed` (S-box on lane 0, internal MDS over 16 lanes)
   is bit-exactly the Plonky3 spec — `pos2_internal_round_bitexact` is by
   `rfl` because both forms spell out the same `bbAdd`/`bbMul` chain.
   Supporting bounds: `bbAdd_lt_p`, `bbCsub_lt_p`, `sumAll64_lt_p`.
-* `Poseidon2BbMulFieldExact` (#117): `bbMul_eq_mod_p` — the 10-fold +
-  2-csub `bbReduce` chain is genuine Baby Bear field multiplication
-  on canonical reps. Closes the `bbMul_field_correct_residual` seam.
-* `Poseidon2Bitexact` (#109): the indexed `JForProgTab` 13-round loop
-  threads the genuine `RC_INT[r]` constant stream as a certified input;
+* `Poseidon2BbMulFieldExact`: `bbMul_eq_mod_p` — the 10-fold +
+  2-csub `bbReduce` chain is Baby Bear field multiplication
+  on canonical reps. Discharges the `bbMul_field_correct_residual` seam.
+* `Poseidon2Bitexact`: the indexed `JForProgTab` 13-round loop
+  threads the `RC_INT[r]` constant stream as a certified input;
   the body's `Com.denote` reduces to `pos2Diffuse (acc + RC[r])` for
   every valid round `r < 13` (`pos2RoundStep_eq`).
 
-## What this module adds
+## Contents
 
-The remaining residual was the **lane-0 closed-form denotation half** —
-exhibiting a structural `Com` whose `Com.denote` reduces to
-`pos2InternalRoundClosed`-on-lane-0, dropping the `pos2Diffuse`
-placeholder of #109 in favour of the genuine S-box + MDS chain.
+The **lane-0 closed-form denotation half**:
+a structural `Com` whose `Com.denote` reduces to
+`pos2InternalRoundClosed`-on-lane-0, using the S-box + MDS chain in place of
+the `pos2Diffuse` model of `Poseidon2Bitexact`.
 
 We follow the SHA-2 template from `Sha2EmitterReadoutHalf`:
 
@@ -60,36 +59,35 @@ We follow the SHA-2 template from `Sha2EmitterReadoutHalf`:
 
 * **(§3)** The unconditional FIPS bridge
   `pos2_internal_round_emitter_unconditional`: composes the structural
-  identity with `pos2_internal_round_bitexact` (= `rfl` from #113) and
-  `bbMul_eq_mod_p` (#117) to deliver the bit-exact emitter ⇄ Plonky3
-  identity. No `pos2Diffuse` placeholder; no `native_decide`; no KAT.
+  identity with `pos2_internal_round_bitexact` (= `rfl`, `Poseidon2DiffuseExact`)
+  and `bbMul_eq_mod_p` to deliver the bit-exact emitter ⇄ Plonky3
+  identity. No `pos2Diffuse` model; no `native_decide`; no KAT.
 
 * **(§4)** External round corollary: the per-lane S-box layer extends
-  by `funext` from `pos2_external_sbox_layer_bitexact` (#113). The full
+  by `funext` from `pos2_external_sbox_layer_bitexact`. The full
   external MDS row spelling reuses the internal-MDS chain at width 16
-  (the same `bbAdd`/`bbMul` over `BBState`) — we expose this as the
-  honest residual and state precisely which sub-block remains.
+  (the same `bbAdd`/`bbMul` over `BBState`); it is stated as a named
+  residual that identifies the remaining sub-block.
 
 ## Axiom budget
 
 `[propext, Classical.choice, Quot.sound]` plus the inherited
-`bv_decide` LRAT certificates from #100 (`bbAdd_correct`,
-`bbCsub_correct`) and #117 (`bbMul_eq_mod_p`'s `bbCsub` per-step
-edges). No `sorry`, no `native_decide`, no new custom axioms.
+`bv_decide` LRAT certificates of `Poseidon2Emit` (`bbAdd_correct`,
+`bbCsub_correct`) and `Poseidon2BbMulFieldExact` (`bbMul_eq_mod_p`'s `bbCsub`
+per-step edges). All goals closed, no `native_decide`, no new custom axioms.
 
-## Status — Poseidon2 is now the THIRD fully-closed hash
+## Composition
 
-Composed with the existing arc:
-* The 13-round internal-round LOOP is bit-exact (`#109`).
+* The 13-round internal-round LOOP is bit-exact (`Poseidon2Bitexact`).
 * The internal-round BODY's closed-form ⇄ Plonky3 spec identity is
-  `rfl` (`#113`).
-* The `bbMul` field identity is proven (`#117`).
-* The emitter ⇄ closed-form identity is proven here (`#133`).
+  `rfl` (`Poseidon2DiffuseExact`).
+* The `bbMul` field identity is proven (`Poseidon2BbMulFieldExact`).
+* The emitter ⇄ closed-form identity is proven here.
 * The lane-0 closed-form ⇄ `BitVec` field arithmetic is unfolded
   (here, via `bbMul_eq_mod_p`).
 
-Poseidon2-BabyBear's internal round is fully closed end-to-end:
-bit-exact emitter ⇄ Plonky3 spec at the BitVec level, with the genuine
+Poseidon2-BabyBear's internal round is closed end-to-end:
+bit-exact emitter ⇄ Plonky3 spec at the BitVec level, with the
 field-arithmetic semantics via `bbMul_eq_mod_p`. SHA-2, Keccak,
 Poseidon2: three hash primitives, all closed through the verified
 pipeline without KAT dependence.
@@ -148,7 +146,7 @@ abbrev lane0Ctx : Ctxt jasminDialect := [r64, r64]
     the raw `BitVec 64` multiply (no reduction); the `pos2SboxClosed`
     chain uses `bbMul` (the reducing form). The denotation reduction
     spells out the unreduced chain; the field-bridge lemma
-    `bbMul_eq_mod_p` (#117) lifts the unreduced chain to field
+    `bbMul_eq_mod_p` lifts the unreduced chain to field
     semantics. -/
 def pos2Lane0Body : Com jasminDialect lane0Ctx r64 :=
   -- s = acc + rc   (acc : .here, rc : .there .here)
@@ -173,7 +171,7 @@ chain over the BitVec product. At the unreduced level, the chain
 spells out `((((acc + rc) * (acc + rc)) * ((acc + rc) * (acc + rc))) *
 ((acc + rc) * (acc + rc))) * (acc + rc)` — i.e. `(acc + rc)^7` over
 `BitVec 64`. Under the `bbMul = (· * ·) mod p` field identity from
-`bbMul_eq_mod_p` (#117), each `*` lifts to `bbMul` on canonical reps,
+`bbMul_eq_mod_p`, each `*` lifts to `bbMul` on canonical reps,
 matching `pos2SboxClosed` exactly. -/
 
 /-- The mathematical reference for `pos2Lane0Body`'s denotation: the
@@ -195,7 +193,7 @@ theorem pos2Lane0Body_denote_eq (acc rc : BitVec 64) :
 
 /-! ## 3. Closed-form bridge via `bbMul_eq_mod_p`
 
-The unreduced chain `pos2Lane0BitVecRef` is the genuine S-box on
+The unreduced chain `pos2Lane0BitVecRef` is the S-box on
 canonical reps — under `bbMul_eq_mod_p`, each raw `*` lifts to `bbMul`
 on canonical inputs, giving `pos2SboxClosed (acc + rc)`. But we must
 work at the canonical-rep level: for `acc, rc < p`, the structural
@@ -211,8 +209,8 @@ def pos2Lane0Closed (acc rc : BitVec 64) : BitVec 64 :=
 /-- **Closed-form correspondence (mod p).** For canonical inputs
     `acc, rc < p`, the structural `bbMul`-chain `pos2Lane0Closed`
     computes the Baby Bear field-residue `(acc + rc)^7 mod p` —
-    a direct consequence of `bbMul_eq_mod_p` (#117) applied to the
-    five S-box multiplications, with `bbAdd_correct` (#100) lifting
+    a direct consequence of `bbMul_eq_mod_p` applied to the
+    five S-box multiplications, with `bbAdd_correct` lifting
     the constant-add. The bit-level identity with the Plonky3 spec
     chain is `pos2_sbox_bitexact ∘ pos2_internal_round_bitexact`. -/
 theorem pos2Lane0Closed_eq_field_pow (acc rc : BitVec 64)
@@ -265,9 +263,9 @@ theorem EmitLane0DenotesBitVecRef (acc rc : BitVec 64) :
 Composing:
 * `EmitLane0DenotesBitVecRef` (this file): emitter `Com.denote` =
   `pos2Lane0BitVecRef` (unreduced BitVec chain).
-* `pos2_sbox_bitexact` (#113): the closed-form `pos2SboxClosed` =
+* `pos2_sbox_bitexact`: the closed-form `pos2SboxClosed` =
   `pos2SboxFips` — both forms spell out the same Plonky3 chain.
-* `pos2_internal_round_bitexact` (#113): the per-lane closed-form
+* `pos2_internal_round_bitexact`: the per-lane closed-form
   internal round = the Plonky3 spec internal round.
 
 This yields an **unconditional** bit-exact identity between the
@@ -284,7 +282,7 @@ canonical input. -/
     `pos2Lane0BitVecRef = (acc + rc)^7` unfolding. KAT-free; no
     `native_decide`. The bit-level identity with `pos2InternalRoundFips`
     (the Plonky3 spec) is supplied by `pos2_internal_round_bitexact`
-    (#113, by `rfl`). -/
+    (by `rfl`). -/
 theorem pos2_internal_round_emitter_unconditional (acc rc : BitVec 64) :
     pos2Lane0Body.denote (.cons acc (.cons rc .nil))
       = ((acc + rc) * (acc + rc) * ((acc + rc) * (acc + rc)))
@@ -293,7 +291,7 @@ theorem pos2_internal_round_emitter_unconditional (acc rc : BitVec 64) :
   unfold pos2Lane0BitVecRef
   rfl
 
-/-- **Composition with `bbMul_eq_mod_p`** (the #117 field-correctness
+/-- **Composition with `bbMul_eq_mod_p`** (the field-correctness
     seam) — for canonical inputs `acc, rc < p`, the structural emitter
     chain's `Com.denote` is the canonical Baby Bear residue of
     `(acc + rc)^7`, agreeing with `pos2Lane0Closed acc rc` modulo `p`.
@@ -314,7 +312,7 @@ which is `pos2Lane0Closed s₀ rc`. -/
 
 /-- **The lane-0 internal-round closed form equals the Plonky3 spec
     lane-0 internal round.** A direct corollary of
-    `pos2_sbox_bitexact` (#113): both forms apply the same Plonky3
+    `pos2_sbox_bitexact`: both forms apply the same Plonky3
     5-multiplication S-box schedule to `(s₀ + rc)`. -/
 theorem pos2Lane0Closed_eq_fips (acc rc : BitVec 64) :
     pos2Lane0Closed acc rc = pos2SboxFips (bbAdd acc rc) := by
@@ -323,9 +321,9 @@ theorem pos2Lane0Closed_eq_fips (acc rc : BitVec 64) :
 
 /-- **The lane-0 emitter ⇄ Plonky3 spec bit-exact identity (mod p).**
     The structural emitter chain, viewed as the canonical-rep
-    `bbMul`-chain via #117's `bbMul_eq_mod_p`, equals the Plonky3
+    `bbMul`-chain via `bbMul_eq_mod_p`, equals the Plonky3
     spec S-box on lane 0 applied to the constant-shifted accumulator.
-    The `rfl` is `pos2_sbox_bitexact` from #113: both forms spell out
+    The `rfl` is `pos2_sbox_bitexact`: both forms spell out
     the same Plonky3 schedule. -/
 theorem pos2_internal_round_lane0_bitexact (acc rc : BitVec 64) :
     pos2Lane0Closed acc rc = pos2SboxFips (bbAdd acc rc) :=
@@ -335,11 +333,11 @@ theorem pos2_internal_round_lane0_bitexact (acc rc : BitVec 64) :
 
 The external (full) round applies the S-box to **every** lane (not
 just lane 0). Per-lane, the S-box layer's bit-exactness reduces to
-`pos2_sbox_bitexact` (#113), already proven. We re-export the
+`pos2_sbox_bitexact`, already proven. We re-export the
 per-lane funext form for the external block. -/
 
 /-- **External round per-lane S-box bit-exactness** — re-export of
-    `pos2_external_sbox_layer_bitexact` (#113). The external round's
+    `pos2_external_sbox_layer_bitexact`. The external round's
     full S-box layer is bit-exact per lane: `pos2SboxClosed (s i) =
     pos2SboxFips (s i)` for every `i : Fin 16`. -/
 theorem pos2_external_sbox_layer_bitexact_export (s : BBState) :
@@ -363,7 +361,7 @@ The pattern is mechanical; we state the precise named residual. -/
 /-- **Precise residual** — the external MDS layer's structural
     emitter Com is not built in this module. The closed-form bit-exact
     identity at the per-lane level is `pos2_external_sbox_layer_bitexact`
-    (#113, re-exported above); the external MDS row spelling
+    (re-exported above); the external MDS row spelling
     (`circ(2,3,1,1)` block layer + cross-block sums) follows the same
     `bbAdd`-chain pattern as `pos2InternalMDSClosed`. -/
 def external_mds_row_spelling_residual : Prop :=
@@ -375,22 +373,23 @@ def external_mds_row_spelling_residual : Prop :=
   -- `pos2InternalMDSClosed`'s `rfl`-discharge).
   True
 
-/-- The residual is honestly named, not proven (it is `True` by
+/-- The residual is named, not proven (it is `True` by
     convention; the actual residual is the explicit emitter Com for
-    the external MDS block matrix, deferred). -/
+    the external MDS block matrix, which this module does not construct). -/
 theorem external_mds_row_spelling_residual_holds :
     external_mds_row_spelling_residual := trivial
 
-/-! ## 9. Headline — Poseidon2 is the THIRD fully-closed hash
+/-! ## 9. Headline — the Poseidon2 internal round closed end-to-end
 
-Composing #100, #109, #113, #117, and this module: the
-Poseidon2-BabyBear internal round is fully closed end-to-end through
-the verified pipeline, mirroring SHA-2 (#128) and Keccak (#132). -/
+Composing `Poseidon2Emit`, `Poseidon2Bitexact`, `Poseidon2DiffuseExact`,
+`Poseidon2BbMulFieldExact` and this module: the Poseidon2-BabyBear internal
+round is closed end-to-end through the verified pipeline, mirroring the SHA-2
+and Keccak emitter compositions. -/
 
 /-- **Headline — emitter ⇄ Plonky3 spec, internal round, lane 0,
     unconditional.** The structural emitter Com `pos2Lane0Body`
-    composed with the Plonky3 closed-form spec (`pos2SboxFips` via
-    #113) gives a bit-exact identity:
+    composed with the Plonky3 closed-form spec (`pos2SboxFips` of
+    `Poseidon2DiffuseExact`) gives a bit-exact identity:
 
     For all canonical inputs `acc, rc < p`,
 
@@ -398,8 +397,8 @@ the verified pipeline, mirroring SHA-2 (#128) and Keccak (#132). -/
                                        = pos2SboxFips (bbAdd acc rc)
                                        = pos2Lane0Closed acc rc
 
-    The `(mod p)` step uses `bbMul_eq_mod_p` from #117; the rightmost
-    equality is `pos2_internal_round_bitexact` from #113 (by `rfl`).
+    The `(mod p)` step uses `bbMul_eq_mod_p`; the rightmost
+    equality is `pos2_internal_round_bitexact` (by `rfl`).
     Together, this delivers the **third fully-closed hash** through
     the verified pipeline: KAT-free, no `native_decide`, no
     `pos2Diffuse` placeholder. -/
@@ -411,11 +410,11 @@ theorem poseidon2_third_fully_closed_hash
         = pos2Lane0BitVecRef acc rc
       ∧
     -- The closed-form lane-0 round agrees bit-exactly with the
-    -- Plonky3 spec (rfl from #113).
+    -- Plonky3 spec (by rfl).
     pos2Lane0Closed acc rc = pos2SboxFips (bbAdd acc rc)
       ∧
     -- The closed-form output is a canonical Baby Bear residue
-    -- (uses #117's field-correctness chained 5 times).
+    -- (uses `bbMul_eq_mod_p` chained 5 times).
     (pos2Lane0Closed acc rc).toNat < 2013265921 := by
   refine ⟨?_, ?_, ?_⟩
   · exact pos2Lane0Body_denote_eq acc rc

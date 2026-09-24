@@ -11,9 +11,9 @@ public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Algebra.Field.ZMod
 
 /-!
-# Concrete `PolyEncoding 3329 256` for ML-KEM-768 (Stage F instance)
+# Concrete `PolyEncoding 3329 256` for ML-KEM-768
 
-Stage F (`Optimizer/Lattice/NTTPolyMul_CompPolyConcrete.lean`) and the lattice
+`Optimizer/Lattice/NTTPolyMul_CompPolyConcrete.lean` and the lattice
 NTT-soundness file (`LatticeNTTSound.lean`) both carry the byte-layout decision
 as a *parameter* — an abstract `enc : PolyEncoding q n R` plus a `Domain R`. This
 file discharges the byte-layout half for ML-KEM-768 parameters
@@ -33,25 +33,25 @@ little-endian bytes; `⌈(Nat.log2 3329 + 1)/8⌉ = 2`). The encoding is:
   write each of the 256 folded coefficients as two little-endian bytes.
 
 `PolyEncoding` requires only that `encode`/`decode` *exist* (the round-trip
-discipline is the consumer's, per the Stage-F structure docstring), so the
+discipline is the consumer's, per the `NTTPolyMul_CompPolyConcrete` structure docstring), so the
 layout above fully determines a concrete instance.
 
 ## The negacyclic fold
 
 ML-KEM works in `R[X]/(X^256 + 1)` (negacyclic), while CompPoly's cyclic
 `Domain` / `fastMulImpl` computes the convolution in `R[X]` (truncated, i.e.
-`X^N - 1` style). The Stage-F recipe folds the high half into the low half via
+`X^N - 1` style). The `NTTPolyMul_CompPolyConcrete` recipe folds the high half into the low half via
 `X^256 ≡ -1`. We realise that fold inside `encode`:
 
   `foldedCoeff p i  =  Σ_{m < 2} (-1)^m · p.coeff (i + 256·m)`   (i < 256)
 
 For the convolution of two degree-`<256` operands (degree `< 511`) the `m ∈
 {0,1}` window is exact — coefficients of index `≥ 512` cannot appear. So
-`encode` of any such product is the genuine `X^256 + 1` reduction.
+`encode` of any such product is the `X^256 + 1` reduction.
 
-## CompPoly friction: the radix-2 root-of-unity obstruction (honest scope)
+## Scope: the radix-2 root-of-unity obstruction in CompPoly
 
-Stage F's recipe also asks for a `Domain (ZMod 3329)` of cyclic size `≥ 2·256 =
+The same recipe also asks for a `Domain (ZMod 3329)` of cyclic size `≥ 2·256 =
 512` so `Domain.fits` holds for the convolution. **No such domain exists.**
 CompPoly's `Domain` is a *radix-2* NTT domain: `Domain.mk` demands
 `IsPrimitiveRoot omega (2 ^ logN)`. The multiplicative group of `ZMod 3329` has
@@ -67,10 +67,10 @@ wrong ring *and* unavailable at the required size over `ZMod 3329`.
 
 Consequently the `Domain` parameter `D` and its `Domain.fits` witness **cannot
 be eliminated** at these parameters: there is no closed `Domain (ZMod 3329)` to
-plug in. We therefore keep `D` (and `hfits`) as hypotheses in the concrete
-agreement theorem below; what is now concrete — and the genuinely-deferred work
-this file closes — is the **byte layout** `mlkem768Encoding`. The agreement is
-otherwise a one-line instantiation of the Stage-F transport through
+plug in. `D` (and `hfits`) are therefore hypotheses of the concrete
+agreement theorem below; what this module makes concrete is the **byte layout**
+`mlkem768Encoding`. The agreement is otherwise a one-line instantiation of the
+`NTTPolyMul_CompPolyConcrete` transport through
 `fastMulImpl_eq_mul`.
 
 This obstruction is a property of the parameters, not a defect of either side;
@@ -163,7 +163,7 @@ noncomputable def mlkem768Encoding : PolyEncoding mlkemQ mlkemN MLKEMField where
 
 /-! ## 4. Concrete agreement theorem
 
-We instantiate the Stage-F / `LatticeNTTSound` parametric agreement at
+We instantiate the `NTTPolyMul_CompPolyConcrete` / `LatticeNTTSound` parametric agreement at
 `mlkem768Encoding`. The `Domain` `D` and its `Domain.fits` witness remain
 hypotheses: as the module docstring explains, no closed `Domain (ZMod 3329)` of
 the required cyclic size exists (the radix-2 two-adicity of `ZMod 3329` is `8`,
@@ -176,12 +176,12 @@ concrete; the agreement is then a one-line transport through
     operands (`Domain.fits`), the *concrete* encoded NTT-backed product equals
     the *concrete* encoded canonical product, under the concrete
     `mlkem768Encoding` byte layout. This is `polyMul_leaf_agreement`
-    instantiated at the concrete encoding — no longer parametric in the
+    instantiated at the concrete encoding, so not parametric in the
     encoding.
 
     `D` and `hfits` stay as hypotheses because no closed `Domain (ZMod 3329)` of
-    cyclic size `≥ 512` exists (see module docstring): the genuinely-deferred
-    *byte-layout* step is what is closed here. -/
+    cyclic size `≥ 512` exists (see module docstring): the *byte-layout* step is
+    what is made concrete here. -/
 theorem mlkem768_polyMul_leaf_agreement
     (D : Domain MLKEMField)
     (a b : RustVal (.TPolyMod mlkemQ mlkemN))

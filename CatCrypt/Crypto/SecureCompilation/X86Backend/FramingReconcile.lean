@@ -102,12 +102,12 @@ emits, *as body `Linstr`s*:
 and the epilogue emits the matching `MOV`/`MOVQ` restores before the trailing
 `Lret`. So the right reconciliation question is **not** "does a separate JInstr
 `argMarshalBytes`/`prologueBytes` equal the `Lprog` framing" — on the physical
-path `argMarshalBytes = []` genuinely holds (the marshal is IN the body) — but
+path `argMarshalBytes = []` holds (the marshal is IN the body) — but
 rather: **does the JInstr gather cover those in-body `MOVQ` framing
 instructions, so that gathering the FULL physical body (framing + ALU + shift)
 byte-matches `encodeLcmd` of the same body?**
 
-## The verdict: the framing does NOT gather — and the residual is ONE mnemonic
+## The result: the framing does NOT gather — and the residual is ONE mnemonic
 
 The whole physical body does **not** gather: `gatherJBlock3 physBody = none`
 (§2 `#eval`). Of the 28 physical-body instructions, the 12 ALU-core ops
@@ -146,7 +146,7 @@ no new trusted bytes are needed.
 
 ## What this means for the full-kernel byte identity
 
-Combining with the body results already landed:
+Combining with the body results:
 
 * the two-source ALU core byte-matches under `gatherJBlock3`
   (`GatherInPlace`, §4b′ — the self-`mov` removed by the in-place peephole);
@@ -159,15 +159,15 @@ So the remaining gaps to a literal whole-physical-body byte identity are two
 named, local lowering items: (1) the gather's per-shift materialise `mov` (a
 shift-arm in-place peephole, `GatherInPlace` §4b), and (2) the `MOVQ` mnemonic
 alias in the gather (this file). Neither is a structural mismatch, an encoder
-bug, or a new-trust requirement — both encoders already agree on the bytes; the
-gather's coverage table is what lags.
+bug, or a new-trust requirement: both encoders agree on the bytes, and the
+gather's coverage table lacks the two arms.
 
 ## Trust tier
 
 No new trust. The `Lprog` framing bytes are `LprogBytes.encodeLopn` (the
 gas-pinned tier `encodeLcmd` already carries), the gather bytes are
 `ScalarEncoder.encodeJBlock`, and every theorem below is `decide +kernel` over
-those (no `native_decide`, no `sorry`, no axiom). The `#eval`s are interpreter
+those (no `native_decide`, no axiom, all goals closed). The `#eval`s are interpreter
 evidence on the real `AsconLinear.asconSigma0Com` kernel, not part of any proof
 term.
 -/
@@ -200,7 +200,7 @@ def argMarshalLopn : LinstrR := .Lopn [.reg "R14"] "MOVQ" [.reg "RSI"]
     `MOVQ qsave.RBX, RBX` (store `RBX` to its red-zone slot). -/
 def qsaveSpillLopn : LinstrR := .Lopn [.reg "qsave.RBX"] "MOVQ" [.reg "RBX"]
 
-/-! ## 2. The empirical verdict: the framing does NOT gather (the residual)
+/-! ## 2. The empirical result: the framing does NOT gather (the residual)
 
 The whole-physical-body gather-coverage `#eval`s on `asconSigma0` (the `MOVQ`
 framing is the only blocker) are re-homed in `GoldenPathByteIdentityDemo` (above

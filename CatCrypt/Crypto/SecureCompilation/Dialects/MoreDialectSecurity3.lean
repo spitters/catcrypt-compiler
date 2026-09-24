@@ -10,12 +10,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNa
 /-!
 # Lifted algebraic-rewrite security results, native on `Com catCryptDialect`
 
-This file states and proves two algebraic peephole-security results
+This module states and proves two algebraic peephole-security results
 **directly on `catCryptDialect`**, computing the `SPComp` distance through
-`Com.denoteSP` / `catCryptDenoteSP`. It completes phase C.3 of the
-CProg-retirement plan: the two remaining straight-line rewrites that the earlier
-native files (`CryptoDialectSecurityNative.lean`, `MoreDialectSecurity.lean`,
-`MoreDialectSecurity2.lean`) did not yet cover are the `BitVec n`
+`Com.denoteSP` / `catCryptDenoteSP`. Alongside
+`CryptoDialectSecurityNative.lean`, `MoreDialectSecurity.lean` and
+`MoreDialectSecurity2.lean`, it covers the `BitVec n`
 self-cancellation identities
 
 * `bvXor(x, x) = 0` (the program form of `BitVec.xor_self`), and
@@ -32,12 +31,12 @@ The security view therefore lives on `catCryptDialect` alone.
 
 ## Anti-vacuity
 
-Each ported theorem genuinely relates *distinct* programs (the `lhs` binds an
+Each theorem relates *distinct* programs (the `lhs` binds an
 algebraic `bvXor`/`bvSub` op whose `rhs` binds a `bvConst 0` instead), so none
 is `0 = 0`; none routes through the valuation-free `Com.all_com_ct` shadow.
 
-**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`,
-**0 sorries**.
+**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`;
+all goals closed.
 -/
 
 @[expose] public section

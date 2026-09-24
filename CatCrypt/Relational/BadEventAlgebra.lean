@@ -10,7 +10,7 @@ public import CatCrypt.Relational.Approx
 /-!
 # Identical-Until-Bad as a Graded Exception Structure
 
-This file gives the precise algebraic statement of the up-to-bad technique:
+This module proves the algebraic statement of the up-to-bad technique:
 **identical-until-bad is exact equality after bad-truncation, and the grade of
 the up-to-bad rule is exactly the truncated (= "thrown") mass.**
 
@@ -481,7 +481,7 @@ theorem truncBadE_apply_error (d : SDistr α) :
   refine tsum_congr fun a => ?_
   by_cases h : bad a <;> simp [h]
 
-/-- The tagged truncation leaves the genuine failure mass untouched. -/
+/-- The tagged truncation leaves the underlying failure mass untouched. -/
 theorem truncBadE_apply_none (d : SDistr α) :
     truncBadE bad d none = d none := by
   rw [truncBadE, SDistr.bind_apply_none]

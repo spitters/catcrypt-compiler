@@ -16,7 +16,7 @@ public import Mathlib.Tactic.NormNum
 
 This file constructs the concrete primitive roots of unity used by the
 number-theoretic transforms (NTT) of ML-KEM (FIPS 203) and ML-DSA (FIPS 204).
-These are the keystone facts that let the generic NTT theorems be instantiated
+These are the facts that let the generic NTT theorems be instantiated
 at the real crypto parameters.
 
 * ML-KEM works in `ZMod 3329` with polynomial degree `n = 256`; the standard
@@ -65,7 +65,7 @@ theorem orderOf_17_eq_256 : orderOf (17 : ZMod 3329) = 256 := by
   simpa using h
 
 /-- **ML-KEM NTT root.** `ζ = 17` is a primitive `256`-th root of unity in
-    `ZMod 3329`. This is the keystone fact instantiating the generic NTT
+    `ZMod 3329`. This is the fact instantiating the generic NTT
     theorems at the ML-KEM parameters (FIPS 203). -/
 theorem isPrimitiveRoot_17_256 : IsPrimitiveRoot (17 : ZMod 3329) 256 :=
   IsPrimitiveRoot.iff_orderOf.mpr orderOf_17_eq_256

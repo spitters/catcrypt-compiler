@@ -44,7 +44,7 @@ name is `Function.update`.
 `freeInExpr x e` / `freeIn x p` decide whether a variable name `x` occurs in an
 expression / program. When a `letB x e body` has `x` *not* free in `body`, the
 binding is dead: `dce` drops it, keeping `body` (recursively cleaned) verbatim.
-The keystone `dce_denote` shows the single-pass DCE is denotation-preserving.
+The main theorem `dce_denote` shows the single-pass DCE is denotation-preserving.
 
 The real content is the **irrelevance lemma** `denote_update_of_not_free`: if a
 name `x` is not free in a body, then updating the environment at `x` with *any*

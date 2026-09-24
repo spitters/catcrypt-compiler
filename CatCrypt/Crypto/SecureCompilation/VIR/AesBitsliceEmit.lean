@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Bit-sliced AES round emitted as a `Com jasminDialect`, routed through the
-  owned-RA linear-jasmin path (task #468)
+  owned-RA linear-jasmin path
 
 ## Why this module exists
 
@@ -27,23 +27,23 @@ the unrolled 8-iteration loop, then calls `_bs_xtime` (8 more temporaries
 registers, so jasminc emits
 `register allocation: no more free register to allocate variable: x3 / o3`
 (in `_bs_xtime`, reached from `_bs_gfmul_inplace_64`'s loop body) — the same
-RA-wall class #466 showed on `mpn_add_n` at `n ≥ 16` and that #469/#470 routed
-around for SHA-2/Keccak/ChaCha.
+RA-wall class that `mpn_add_n` hits at `n ≥ 16` and that the owned linear-jasmin
+path routes around for SHA-2/Keccak/ChaCha.
 
 The bit-sliced AES S-box body is **carry-free** (only `and`/`xor`/`not` on
 bit-planes — xtime is plane re-wiring, the affine is XOR of input bits, no
 `add`), so it fits the `regArith` dialect exactly and can be emitted as a
 `Com jasminDialect` and lowered through the **owned linear-jasmin path**
-(`JasminLprogExport.Com.toLprogPhysAbi`, the same path SHA-256 #462 / SHA-512
-#475 / Keccak / ChaCha20 #453 use). That path regenerates a physical-register,
+(`JasminLprogExport.Com.toLprogPhysAbi`, the same path SHA-256 / SHA-512 /
+Keccak / ChaCha20 use). That path regenerates a physical-register,
 two-address `Linear.lprog` and feeds it to the patched jasmin
-`read_linear` (#470 reserved stack frame), which ONLY encodes — it does not
+`read_linear` (with a reserved stack frame), which ONLY encodes — it does not
 re-allocate — so the high register pressure becomes stack spills (`k.N` cells)
 that jasminc's RA could not produce.
 
 ## What is emitted
 
-The 8-bit-plane AES S-box round `aes_sbox_bitslice_round`, the load-bearing
+The 8-bit-plane AES S-box round `aes_sbox_bitslice_round`, the central
 primitive of the bit-sliced AES (the same body the rejected leaf realises):
 
 * **input**  : `state[0..63]` (64 bit-planes = 8 byte-tiles × 8 planes) and

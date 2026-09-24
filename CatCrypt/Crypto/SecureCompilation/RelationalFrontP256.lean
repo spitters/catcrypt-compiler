@@ -40,15 +40,15 @@ multi-limb ADD's no-overflow side condition `2q ≤ (2^64)^k` therefore **fails 
 limbs (carrier `2^320`): the top limb is `0`, and `2p ≤ 2^320` holds with room to
 spare. The product width for MUL is then `2k = 10` limbs.
 
-## P-256 instance scope (HONEST)
+## P-256 instance scope
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
+* **ADD (fully proved):** the abstract `ZMod q` field add `a + b`, serialized by the
   5-limb encoding `encMLK q 5`, equals the emitted 5-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce), read through
+  on the serialized operands (with the `condSubLimbs` reduce), read through
   `bignumVal`. This is `p256_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
+* **MUL (fully proved):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 10-limb (`2k = 10`) Barrett-reducing kernel
-  `mlMulMod` on the serialized operands — with the genuine multi-limb Barrett reduce of
+  `mlMulMod` on the serialized operands — with the multi-limb Barrett reduce of
   the product (`mu = ⌊(2^64)^10 / q⌋`, defined *as its side-condition value* so no
   `2^640` literal is evaluated). This is `p256_mul_commutes`.
 * The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^5`, `bignumVal p256Limbs = q`)
@@ -123,9 +123,9 @@ def p256KLimbPrime : KLimbPrime where
   two_q_le := by unfold p256Q; norm_num
 
 /-- **The P-256 base-field ADD commuting square.** The abstract P-256 base-field
-    addition `a + b` (in `ZMod q` for the genuine 256-bit prime `q = p256Q`), serialized
+    addition `a + b` (in `ZMod q` for the 256-bit prime `q = p256Q`), serialized
     by the 5-limb encoding `encMLK q 5`, equals the emitted 5×64-bit reducing kernel
-    `mlAddModK` on the serialized operands, read through `bignumVal` — with the genuine
+    `mlAddModK` on the serialized operands, read through `bignumVal` — with the
     5-limb conditional-subtract modular reduce. The P-256 sibling of
     `secp_add_commutes`. -/
 theorem p256_add_commutes (a b : ZMod p256Q) :
@@ -202,10 +202,10 @@ def p256KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The P-256 base-field MUL commuting square.** The abstract P-256 base-field
-    multiply `a * b` (in `ZMod q` for the genuine 256-bit prime `q = p256Q`), serialized
+    multiply `a * b` (in `ZMod q` for the 256-bit prime `q = p256Q`), serialized
     by the 5-limb encoding `encMLK q 5`, equals the emitted 10-limb Barrett-reducing
     kernel `mlMulMod` on the serialized operands, read through `bignumVal` — with the
-    genuine multi-limb Barrett modular reduce of the product. The P-256 sibling of
+    multi-limb Barrett modular reduce of the product. The P-256 sibling of
     `secp_mul_commutes`, completing the P-256 field-op set. -/
 theorem p256_mul_commutes (a b : ZMod p256Q) :
     (a * b).val

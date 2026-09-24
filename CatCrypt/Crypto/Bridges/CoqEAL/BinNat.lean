@@ -34,7 +34,7 @@ CoqEAL is a whole library. Its first-order data refinements — `binnat` succ
 / Toom-Cook multiplication, Strassen matrix multiply, GCD, normal forms — are
 multi-month developments and are NOT ported here. Binary *addition* and
 *multiplication* are `foldl`-shaped refinements reachable via the same scheme;
-the fast algorithms (Karatsuba) are the genuine library tail.
+the fast algorithms (Karatsuba) are outside the scope of this port.
 -/
 
 @[expose] public section

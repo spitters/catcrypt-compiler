@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
 /-!
 # C-tie: compile-from-hax output realizes an abstract `Dependencies` record
 
-This module is the **security-tie** step (#607 Phase 3, scoped to the
-*mechanism*) of the verified-compiler plan. It answers the question:
+This module is the **security-tie** step of the verified compiler, scoped to the
+*mechanism*. It answers the question:
 
 > *Do our security proofs keep working when the primitives they reason about are
 > emitted by the verified `compileFromHax` compiler rather than written by hand?*
@@ -53,7 +53,7 @@ proof is parametric over the `Dependencies`; it only ever reasons through the
 
 `appliesToCompiled` is exactly that composition, stated and proved generically.
 
-## Honest scope
+## Scope
 
 This proves the **connective principle**: a verified-compiled leaf (a
 `Com jasmin` proven equal to its FIPS spec) realizes an abstract `Dependencies`
@@ -260,7 +260,7 @@ theorem tie_transfer {Deps : Type*} (P : Deps → Prop) {specD compiledD : Deps}
     theorem proved over `roundDepsSpec` transfers verbatim to `toRoundDeps`, the
     verified compiler's emitted primitives — with no new axioms.
 
-    This is now the **first client** of the generic, record-agnostic
+    This is the **first client** of the generic, record-agnostic
     `tie_transfer`: it instantiates `tie_transfer` at `Deps := RoundDeps 32` with
     the SHA-256 realization equality `toRoundDeps_eq_spec`. -/
 theorem appliesToCompiled (P : RoundDeps 32 → Prop) (h : P roundDepsSpec) :

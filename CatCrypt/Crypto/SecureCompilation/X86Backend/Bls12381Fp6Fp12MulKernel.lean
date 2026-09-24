@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKe
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
 
 /-!
-# BLS12-381 `Fp6` + `Fp12` (GT-field) multiply, owned x86 (#602/#219)
+# BLS12-381 `Fp6` + `Fp12` (GT-field) multiply, owned x86
 
 **Variant: RELIC-transcribed (tests-only correctness).**
 
@@ -40,11 +40,11 @@ Both layers are emitted as **owned drivers** that compose the committed owned
 `Fp2` leaf (`bls12381_fp2_mul_x86_from_lean`, 3 real `Fp`-muls each) plus the
 owned `Fp2` add / sub / mul-by-ξ (the non-residue `E`) and the owned `Fp6`
 mul-by-`v` (`fp6_mul_art`) helpers emitted **here**. No jasminc: the deep tower
-nesting (`Fp6`→`Fp2`→`Fp`, `Fp12`→`Fp6`→`Fp2`→`Fp`) is the exact place jasminc's
-register allocator (#241) wall bit hardest on the pairing wrappers; the owned
+nesting (`Fp6`→`Fp2`→`Fp`, `Fp12`→`Fp6`→`Fp2`→`Fp`) is where jasminc's register
+allocator fails on the pairing wrappers; the owned
 **caller-owned frame-spilling** discipline (save bases in callee-saved
 registers, hold every cross-`Fp2`/`Fp6` live value as a stack felem, recompute
-operand pointers with `leaq` before each `call`) clears it.
+operand pointers with `leaq` before each `call`) avoids that failure.
 
 ## Non-residue conventions (must match RELIC byte-for-byte)
 
@@ -83,7 +83,7 @@ same standard as the committed `Fp2` driver and `renderLeafFn` prologue/epilogue
 elsewhere. Value-level correctness — that the emitted drivers compute the
 `Fp6`/`Fp12` product — is the **external KAT** (`bench/bls12381_fp6_compare`, vs
 RELIC `fp6_mul`/`fp12_mul` and GMP over the same canonical prime, per `Fp2`/`Fp6`
-component), the standard gate for these word kernels (per REV-12).
+component), the standard gate for these word kernels.
 
 This is the **GT-field arithmetic** (`Fp6`/`Fp12` mul) of the pairing tower —
 **not** `pp_map`. The Miller loop (line evaluations + the `f`-accumulation over
@@ -155,8 +155,8 @@ def w1 : Int := 288
 `leaq off(%base), %argreg`. `%rdi/%rsi/%rdx` are the first three SysV integer
 args; the live bases (`z`/`x`/`y`) are held across the calls in callee-saved
 registers (`%rbx`/`%r12`/`%r13`) and the scratch felems in the `%rbp` frame —
-this is the owned frame-spilling discipline that clears the jasminc #241 wall on
-the deep tower nesting. -/
+this is the owned frame-spilling discipline that avoids the jasminc
+register-allocator failure on the deep tower nesting. -/
 
 /-- Emit `leaq off(%base), %argreg`. -/
 def lea (off : Int) (base argreg : String) : String :=
@@ -237,7 +237,7 @@ So `INVM = to_mont(invLeaf(from_mont(norm')))` is `norm⁻¹` in Montgomery form
 and `z.re = a·INVM`, `z.im = −(b·INVM)` (both Montgomery).  Every read of `x`
 precedes the writes to `z`, so `z` may alias `x`. -/
 
-/-- The committed owned `Fp` Montgomery-mul leaf (`bls12381_mont_mul…`, #490). -/
+/-- The owned `Fp` Montgomery-mul leaf (`bls12381_mont_mul…`). -/
 def fpMulSym : String := "bls12381_mont_mul_x86_from_lean"
 /-- The AUCurves Bernstein–Yang safegcd base-field inverse leaf (canonical
     6×u64 in/out) — the same leaf `BLS12381GroupEmit` wires for affine inverses. -/
@@ -355,8 +355,8 @@ def fp12InvAsm : String :=
 
 /-! ## 3e. Final-exp easy part `fp12_conv_cyc` (`f ↦ f^{(p⁶−1)(p²+1)}`).
 
-This is the composition the BLS12-381 final exponentiation was missing once
-`fp12_inv` landed.  `f^{p⁶−1} = conj(f)·f⁻¹` (where `conj = fp12_inv_cyc`, the
+The easy-part composition of the BLS12-381 final exponentiation, built on
+`fp12_inv`.  `f^{p⁶−1} = conj(f)·f⁻¹` (where `conj = fp12_inv_cyc`, the
 `(c₀,−c₁)` map = `f^{p⁶}` for general `f`), giving a cyclotomic element `g`; then
 `g^{p²+1} = frb²(g)·g` (two single-step `fp12_frb` applications = the `p²` power).
 ABI `(z, f, cptr, gptr)`: `cptr=[one‖R²]` for `fp12_inv`, `gptr=[γ₁…γ₅]` for the
@@ -593,8 +593,7 @@ def countSub (hay needle : String) : Nat :=
 
 /-- **The owned `Fp6` mul carries six real `Fp2`-multiply calls** (= 18 `Fp`-muls),
     the RELIC `fp6_mul_basic` call graph, plus two `fp2_mul_nor` (ξ) calls
-    and the Karatsuba `Fp2` add/subs — not the 0–1-multiply stub the RELIC bench
-    previously flagged. -/
+    and the Karatsuba `Fp2` add/subs. -/
 theorem fp6MulAsm_six_real_fp2muls :
     countSub fp6MulAsm "callq bls12381_fp2_mul_x86_from_lean" = 6
       ∧ countSub fp6MulAsm "callq bls12381_fp2_mul_nor_x86_from_lean" = 2

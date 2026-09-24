@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192
 public import CatCrypt.Crypto.Util.ZMod8192
 
 /-!
-# #606 fan-out: the emitted Z/8192Z multiply leaf EQUALS the abstract ring op
+# Ring tie: the emitted Z/8192Z multiply leaf EQUALS the abstract ring op
 
 `CompileFromHaxRing8192.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `ring8192MulMask` — the integer multiply plus
@@ -25,7 +25,7 @@ elements the inputs encode.
 
 The product `a · b ≤ 8191² = 67092481 < 2⁶⁴` never wraps, so the `BitVec`
 multiply is the integer multiply, and `(a·b) % 8192` projected to `ZMod 8192` is
-the ring product `↑a · ↑b`. The genuine power-of-two reduce identity, lifted to
+the ring product `↑a · ↑b`. The power-of-two reduce identity is lifted to
 the Mathlib ring through `ZMod.natCast_*`. Unlike the prime-field ties this is a
 **ring** (`8192 = 2¹³` is composite), reusing the committed `Util/ZMod8192.lean`.
 -/
@@ -52,7 +52,7 @@ theorem ring8192_toNat_mul (a b : BitVec 64) (ha : a < 8192#64) (hb : b < 8192#6
   rw [BitVec.toNat_mul]
   exact Nat.mod_eq_of_lt hlt
 
-/-- **Z/8192Z emit-form ↔ abstract `Zq8192` ring tie (#606 fan-out).** On the
+/-- **Z/8192Z emit-form ↔ abstract `Zq8192` ring tie.** On the
     residue domain `a, b < 8192`, the emitted mask leaf `ring8192MulMask` — read
     back as a `Zq8192 = ZMod 8192` ring element via `Zq8192.fromNat ∘ toNat` —
     equals the `Zq8192` ring product of the elements the inputs encode. Composed

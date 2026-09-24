@@ -22,14 +22,14 @@ public import Mathlib.Data.ZMod.Basic
 `RelationalFrontBls377Add` / `RelationalFrontBls377Mul` realize the `bls12_377`
 base-field **ADD** and **MUL** relationally at `k = 6` limbs: the abstract `ZMod q`
 operation, serialized by the 6-limb encoding `encMLK q 6`, equals the emitted 6-limb
-reducing kernel (`mlAddModK` with the genuine `condSubLimbs` reduce; `mlMulMod` with the
-genuine Barrett reduce of the product), read through `bignumVal`. Those modules supply
+reducing kernel (`mlAddModK` with the `condSubLimbs` reduce; `mlMulMod` with the
+Barrett reduce of the product), read through `bignumVal`. Those modules supply
 the carrier-parametric scaffolding — `splitLimbsK`, `encMLK`, `mlAddModK`, `mlMulMod`,
 `KLimbPrime`, `KLimbPrimeMul`, the commuting squares `encMLK_add_commutes` /
 `encMLK_mul_commutes`, and the transfer lemmas — instantiated there at the 377-bit
 Zexe/Aleo prime.
 
-This module instantiates **exactly the same `k = 6` scaffolding** at the genuine
+This module instantiates **exactly the same `k = 6` scaffolding** at the
 `bls12_381` (IETF / Ethereum-2 pairing curve) **base-field** prime
 
 ```
@@ -50,11 +50,11 @@ change. We reuse `splitLimbsK` / `encMLK` / `mlAddModK` / `mlMulMod` / `KLimbPri
   `q ≠ 0` and `2q ≤ (2^64)^6` (= `2^384`; `p` is 381-bit so `2p < 2^384`) by `norm_num`
   (pure-`Nat`, no `decide`); `bignumVal bls381Limbs = q` by `bignumVal_bls381Limbs`.
 * `bls381_add_commutes` — the `bls12_381` base-field **ADD** commuting square, with the
-  genuine 6-limb conditional-subtract reduce.
+  6-limb conditional-subtract reduce.
 * `bls381Mu = ⌊(2^64)^12 / q⌋` — the product-width (`2k = 12`, `m = 768`) Barrett
   reciprocal, *defined as its side-condition value* (no `2^768` literal to `norm_num`);
   `bls381KLimbPrimeMul` and `bls381_mul_commutes` — the `bls12_381` base-field **MUL**
-  commuting square, with the genuine 12-limb Barrett reduce of the product.
+  commuting square, with the 12-limb Barrett reduce of the product.
 * `EndoOpRealization`s for both ops, and a worked wrapping example per op.
 
 The prime source: the repo's `Crypto/Util/BLS12381Verified.lean` declares `BLS12381`
@@ -116,10 +116,10 @@ instance : NeZero bls381Q := bls381KLimbPrime.nz
 /-! ## 2. The `bls12_381` base-field ADD commuting square -/
 
 /-- **The `bls12_381` base-field ADD commuting square.** The abstract `bls12_381`
-    base-field addition `a + b` (in `ZMod q` for the genuine 381-bit prime `q = bls381Q`),
+    base-field addition `a + b` (in `ZMod q` for the 381-bit prime `q = bls381Q`),
     serialized by the 6-limb encoding `encMLK q 6`, equals the emitted 6×64-bit reducing
     kernel `mlAddModK` on the serialized operands, read through `bignumVal` — with the
-    genuine 6-limb conditional-subtract modular reduce. The `bls12_381` sibling of
+    6-limb conditional-subtract modular reduce. The `bls12_381` sibling of
     `bls377_add_commutes`. -/
 theorem bls381_add_commutes (a b : ZMod bls381Q) :
     (a + b).val
@@ -187,10 +187,10 @@ def bls381KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The `bls12_381` base-field MUL commuting square.** The abstract `bls12_381`
-    base-field multiply `a * b` (in `ZMod q` for the genuine 381-bit prime `q = bls381Q`),
+    base-field multiply `a * b` (in `ZMod q` for the 381-bit prime `q = bls381Q`),
     serialized by the 6-limb encoding `encMLK q 6`, equals the emitted 12-limb
     Barrett-reducing kernel `mlMulMod` on the serialized operands, read through
-    `bignumVal` — with the genuine multi-limb Barrett modular reduce of the product. The
+    `bignumVal` — with the multi-limb Barrett modular reduce of the product. The
     `bls12_381` sibling of `bls377_mul_commutes`, completing the `bls12_381` field-op set. -/
 theorem bls381_mul_commutes (a b : ZMod bls381Q) :
     (a * b).val

@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the ChaCha-AVX SIMD-extension analogue of `UovReflect.lean`:
 it adds a ChaCha-4way-specific opaque leaf and a `LowCTPattern`
 registration so that a pure-Lean ChaCha20 4-way block kernel can be
-lifted through the verified compiler chain `LowCT → CryptoSSA → Com →
+lifted through the verified compiler chain `LowCT → catCryptDialect → Com →
 jasmin`, **without** editing `LowCTReflect.lean`'s `knownOps` table.
 
 ## ChaCha 4-way kernel
@@ -33,7 +33,7 @@ bytes = 256 bytes = `TBytes 256`); the output is the packed 4-block
 keystream (also `TBytes 256`). The verified front sees only the opaque
 leaf name and the TBytes signature; the per-round semantics is RFC 8439
 §2.3 and pinned by the existing single-block ChaCha emit
-(`bench/chacha_compare/chacha_emit.lean`, Tier B).
+(`bench/chacha_compare/chacha_emit.lean`).
 
 ## Reflection→front gap (same as `UovReflect` / `FalconReflect`)
 
@@ -50,17 +50,17 @@ straight-line invocation of `#VPADD_4u32` / `#VPXOR_128` /
 `#VPSHUFB_128`. Wrapping the entire kernel as one opaque leaf preserves
 the perf because the leaf body is straight-line (no per-call orchestration
 cost — the verified front emits ~2 register movs for the wrapper). The
-existing #111 XMM-resident emit
-(`bench/chacha_compare/chacha_4way_xmm_emit.lean`) is the legacy Tier C
-artifact; this reflect surface lifts it under the same byte-level shape.
+string-templated XMM-resident emit
+(`bench/chacha_compare/chacha_4way_xmm_emit.lean`) has the same byte-level
+shape; this reflect surface lifts it through the verified front.
 
 ## References
 
 * RFC 8439 §2.3 — ChaCha20 block / quarter-round / double-round
-* `bench/chacha_compare/chacha_emit.lean` — sibling Tier B single-block
+* `bench/chacha_compare/chacha_emit.lean` — sibling single-block
   Com (verified emit on hand-built Com)
-* `bench/chacha_compare/chacha_4way_xmm_emit.lean` — legacy Tier C
-  string-templated 4-way emit (superseded by this leaf-shim pattern)
+* `bench/chacha_compare/chacha_4way_xmm_emit.lean` —
+  string-templated 4-way emit
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

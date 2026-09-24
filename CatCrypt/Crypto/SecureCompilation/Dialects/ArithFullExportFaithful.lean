@@ -21,7 +21,7 @@ This module lifts the whole `arith` op set — adding the widening-high multiply
 `mului_extended_hi` (↦ `mulhi`) and the immediate shifts `shrui_imm`/`shli_imm`
 (↦ `shrImm`/`shlImm`) — into the mul/carry fragment `ScalarMulCarryN`. Composed with
 `JasminLsemGeneralFaithfulMC.comLsemExportFaithfulMC_of_mulcarry`, this gives the
-genuine `lsem` export faithfulness `ComLsemExportFaithfulMC` for *every* `arith`-lowered
+`lsem` export faithfulness `ComLsemExportFaithfulMC` for *every* `arith`-lowered
 program at a uniform width, not just the scalar sub-fragment.
 
 The `FullArithW` predicate carries the two side conditions the mul/carry constructors
@@ -109,7 +109,7 @@ theorem lowerArithToJasmin_fullArith {w : Nat} {Γ : Ctxt arithDialect}
       subst hop; cases hret
       exact ScalarMulCarryN.shl hn _ _ ih
 
-/-- **Genuine `lsem` export faithfulness for a full-`arith` program.** The
+/-- **`lsem` export faithfulness for a full-`arith` program.** The
     `toJasmin`-lowered full-`arith` `Com` (ALU + materialised constant + widening-high
     multiply + immediate shifts, at a uniform width `w`) satisfies
     `ComLsemExportFaithfulMC`: its emitted singleton program, run under the labeled

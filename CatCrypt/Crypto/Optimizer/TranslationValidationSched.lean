@@ -10,13 +10,13 @@ public import CatCrypt.Crypto.Optimizer.TranslationValidation
 public import CatCrypt.Crypto.Optimizer.SchedulerPass
 
 /-!
-# Schedule-aware translation validation (#591 continuation)
+# Schedule-aware translation validation
 
-This file **broadens** the verified translation-validation (TV) checker so that,
+This module **broadens** the verified translation-validation (TV) checker so that,
 in addition to the relations the base `tvCheck`
 (`CatCrypt.Crypto.Optimizer.TranslationValidation`) already certifies, an
 *untrusted* optimizer oracle's output is also accepted when that output is a
-**dependence-respecting instruction schedule** of the input — the `#525`/`#593`
+**dependence-respecting instruction schedule** of the input — the
 `scheduleBlock` pass (`CatCrypt.Crypto.Optimizer.SchedulerPass`), whose
 `scheduleBlock_denote_eq` already proves semantics preservation against the
 big-step `RustExec` semantics.
@@ -74,7 +74,7 @@ open CatCrypt.Crypto.Optimizer.TranslationValidation
 `Located` already has `DecidableEq`; `SExpr` and `BBStmt` do not (they only
 `deriving Repr, Inhabited`).  We derive `DecidableEq` for both so that the two
 checker arms (`b' = b`, `b' = scheduleBlock b`) are `decide`-able Booleans — the
-whole point of a *checker* is that its verdict is computable. -/
+whole point of a *checker* is that its result is computable. -/
 
 deriving instance DecidableEq for CatCrypt.Crypto.Jasmin.LowCT.SExpr
 deriving instance DecidableEq for BBStmt
@@ -93,12 +93,12 @@ def tvCheckSched (b b' : List BBStmt) : Bool :=
 
 /-! ## §3  Soundness -/
 
-/-- **Soundness of the schedule-aware TV checker (#591 continuation).**  If
+/-- **Soundness of the schedule-aware TV checker.**  If
 `tvCheckSched b b' = true`, the candidate block `b'` lowers to a program that
 reaches exactly the same final states as the input `b` under the big-step
 `RustExec` semantics, for every leaf spec and start state.  The optimizer that
 produced `b'` is *not* trusted: this theorem certifies the candidate purely from
-the checker's `true` verdict, by composing the identity-arm reflexivity with the
+the checker's `true` result, by composing the identity-arm reflexivity with the
 verified `SchedulerPass.scheduleBlock_denote_eq`.  Incomplete (only the
 conservative relation is accepted) but never unsound. -/
 theorem tvCheckSched_sound (N : Nat) (leafSpec : LeafSpec)
@@ -152,7 +152,7 @@ input is certified. -/
 example : tvCheckSched demoBlock (scheduleBlock demoBlock) = true := by
   simp only [tvCheckSched, Bool.or_eq_true, decide_eq_true_eq]; exact Or.inr trivial
 
-/-- The accepted schedule candidate genuinely denotes the same function as the
+/-- The accepted schedule candidate denotes the same function as the
 input under `RustExec` — the soundness theorem applied to the demo. -/
 example (N : Nat) (leafSpec : LeafSpec) (rs rs' : RustState) :
     RustExec N leafSpec (blockToCmd (scheduleBlock demoBlock)) rs rs'

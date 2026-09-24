@@ -36,16 +36,16 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
 /-!
 # A real ARX round through the closed-kernel `emitted = RustExec` route
 
-`RustExecRoundAdeq.roundC_emitted_eq_rustexec` proved `emitted jasmin = RustExec
+`RustExecRoundAdeq.roundC_emitted_eq_rustexec` proves `emitted jasmin = RustExec
 reference` for the SHA-2 `Maj` round — the **bitwise** (`∧`/`⊕`/`¬`) layer, whose
-`inRange` obligation holds for ALL `u64` inputs with no side condition. Its
-`Residual` note flagged the ARX layer — **rotations** (`SShl`) and **modular
-additions** (`SAdd`) — as NOT reachable by the input-agnostic hoisted bound: a
-left-shift or an add of two full-range `u64`s overflows the saturating-`Nat`
-model, so `∀ σ, (∀ y, σ y < 2^64) → e.inRange σ` fails on those arms.
+`inRange` obligation holds for ALL `u64` inputs with no side condition. The ARX
+layer — **rotations** (`SShl`) and **modular additions** (`SAdd`) — is NOT reachable
+by the input-agnostic hoisted bound: a left-shift or an add of two full-range
+`u64`s overflows the saturating-`Nat` model, so
+`∀ σ, (∀ y, σ y < 2^64) → e.inRange σ` fails on those arms.
 
-This module closes that ARX layer. The wall was never the ARX ops themselves —
-it was the *quantifier*: the hoisted bound demands no-overflow for EVERY `u64`
+This module covers that ARX layer. The obstruction is not the ARX ops themselves
+but the *quantifier*: the hoisted bound demands no-overflow for EVERY `u64`
 input. A real round runs on a KERNEL with a fixed input discipline (SHA words
 fit in their lane; the round's addends are known to stay in range), and under
 that **concrete per-kernel input bound** the very same `SExpr.inRange` obligation
@@ -60,18 +60,18 @@ s := ((a ≪ 8) ⊕ (a ≫ 56)) + b
 
 `(a ≪ 8) ⊕ (a ≫ 56)` is `rotl64(a, 8)` in XOR form (the rotate halves occupy
 disjoint bit ranges, so `⊕ = ∨`); `+ b` is the modular add. So the kernel
-exercises BOTH residual ARX arms in one closed straight-line body — the minimal
+exercises BOTH ARX arms in one closed straight-line body — the minimal
 "rotate + modular add" round core. The inputs are the SHA-256 IV word `a` and a
-round-constant-shaped `b`, both `< 2^32`, the honest u32/u64 lane discipline of
+round-constant-shaped `b`, both `< 2^32`, the u32/u64 lane discipline of
 a real round.
 
 ## Two ways the ARX layer reconciles under the per-kernel bound
 
-* **Concretely (the deliverable, §"emitted = RustExec").** The kernel is CLOSED
+* **Concretely (the main result, §"emitted = RustExec").** The kernel is CLOSED
   (`a`, `b` are literals), so `semScalar` runs it to a concrete `BitVec 64` and
   `RustExec` to a concrete `Nat`; on the chosen literals no shift/add overflows
   `u64`, so `arxVal = BitVec.ofNat 64 (rsF.rsScalar "s")` holds by `decide`. This
-  is the `#250` `inRange` reconciliation discharged by concrete evaluation — the
+  is the `inRange` reconciliation discharged by concrete evaluation — the
   same fact `SExpr.evalBV_eq_ofNat_eval` states, specialised to the kernel's
   literal inputs. Fed through the SATISFIABLE closed-kernel route
   `rustToJasminCom_endToEnd_topLevel_unconditional` (which needs only
@@ -96,21 +96,22 @@ prove `∀ σ, B σ → e.inRange σ` exactly as `arxE_inRange_of_bound` does �
 `SShl k` arm discharges from `σ x < 2^(64-k)` (or a mask), the `SAdd` arm from the
 addends' partial-sum bound (`h + Σ1 + Ch + K + W < 2^64`, the standard SHA-2
 no-overflow accounting). The rotations of the message schedule and the `T1`/`T2`
-additions are then all covered; the bitwise `Maj`/`Ch` layer was already covered
-(`RustExecRoundAdeq`). The 64-round iteration is the `RFor` bridge
+additions are then all covered; the bitwise `Maj`/`Ch` layer is covered by
+`RustExecRoundAdeq`. The 64-round iteration is the `RFor` bridge
 (`IsCoveredAdeq.rFor`) whose body is one such round. For a CLOSED kernel the
 `decide` leg (as here) delivers the concrete `emitted = RustExec` capstone with no
 manual `inRange` bookkeeping at all.
 
-## Residual
+## Scope
 
 The symbolic leg here reconciles the `semScalar` value with the `RustExec` value
 (`arxE_reconcile`). Fusing that with the jasmin denotation leg for an OPEN kernel
-still hits `RustExecKernelAdeq`'s `entry_trio_unsat_empty` (the `EnvRel` /
+meets `RustExecKernelAdeq`'s `entry_trio_unsat_empty` (the `EnvRel` /
 `ConsistentS` / `NoAliasVM` clash at any finite entry) — so the general
 `emitted = RustExec` for a NON-closed ARX round routes through the closed-kernel
-argument, exactly as here. Closing the open-kernel jasmin leg is the standing
-`P3`-composition residual, orthogonal to the ARX `inRange` work done here.
+argument, exactly as here. The open-kernel jasmin leg (the end-to-end composition
+of `RustExecSemScalarBridge`) is outside this module and independent of the ARX
+`inRange` argument.
 -/
 
 @[expose] public section
@@ -171,9 +172,9 @@ theorem arxC_covered : IsCoveredSCtl arxC := .ofStraight arxC_coveredS
 
 /-! ## The concrete-bound `inRange` discharge — the reusable ARX-arm pattern
 
-The residual note's obstruction was the *quantifier*: `SShl`/`SAdd` overflow for
+The obstruction is the *quantifier*: `SShl`/`SAdd` overflow for
 some `u64` inputs, so the input-agnostic bound fails. Under a concrete per-kernel
-lane bound `σ "a" < 2^32 ∧ σ "b" < 2^32` — the honest u32/u64 discipline of a
+lane bound `σ "a" < 2^32 ∧ σ "b" < 2^32` — the u32/u64 discipline of a
 real round — the same `SExpr.inRange` obligation is provable. This is the
 template a full round instantiates per `RScalarSetExpr`. -/
 
@@ -183,7 +184,7 @@ def arxBound (σ : String → Nat) : Prop := σ "a" < 2 ^ 32 ∧ σ "b" < 2 ^ 32
 /-- **The ARX `inRange` discharge.** From the concrete per-kernel input bound the
     `SShl` (left-shift, `a ≪ 8 < 2^64`) and `SAdd` (modular add, sum `< 2^64`)
     side conditions — the two the hoisted all-`u64` arm cannot meet — are proved.
-    This is the exact `#250` obligation the ARX layer needs, discharged from the
+    This is the exact `inRange` obligation the ARX layer needs, discharged from the
     kernel's lane discipline rather than input-agnostically. -/
 theorem arxE_inRange_of_bound (σ : String → Nat) (h : arxBound σ) : arxE.inRange σ := by
   obtain ⟨ha, hb⟩ := h
@@ -297,7 +298,7 @@ noncomputable def arxJcom : Com jasminDialect (mapCtx ([] : Ctx)) (mapTy (.sword
 theorem arxHCom : cryptoDialectToJasminCom arxCom = some arxJcom :=
   (Option.some_get arxComSome).symm
 
-/-- **The `#250` reconciliation, concrete leg.** The word `semScalar` leaves in
+/-- **The `inRange` reconciliation, concrete leg.** The word `semScalar` leaves in
     `s` — computed by the wrapping-`u64` evaluator through the rotate and the
     modular add — is the `ofNat 64` image of the `RustExec` saturating-`Nat`
     reference output `rsF.rsScalar "s"`. Both sides are concrete words on the
@@ -315,7 +316,7 @@ theorem arxVal_eq_ref : arxVal = BitVec.ofNat 64 (rsF.rsScalar "s") := by decide
     Obtained through the SATISFIABLE closed-kernel route
     `rustToJasminCom_endToEnd_topLevel_unconditional`: the kernel is closed, so
     `semScalar` succeeds from the empty entry env and no entry `EnvRel` seam is
-    needed; the ARX `#250` value reconciliation is discharged concretely
+    needed; the ARX value reconciliation is discharged concretely
     (`arxVal_eq_ref`) under the kernel's u32/u64 input discipline. Axiom-free. -/
 theorem arxC_emitted_eq_rustexec (N : Nat) (leafSpec : LeafSpec) :
     (∃ Vb' : HVec arxO.Γ', RustStateInterp arxO.vm rsF Vb')

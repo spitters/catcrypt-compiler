@@ -210,7 +210,7 @@ theorem alt_pass1_reads_prev :
 
 /-- Sanity: if the initial region B *did* leak into the 2-pass result (i.e. if there
     were no ping-pong and pass 1 read the initial B), the two starts would differ.  They
-    do not (`alt_pass1_reads_prev`) — confirming the alternation is genuine. -/
+    do not (`alt_pass1_reads_prev`) — confirming the alternation takes effect. -/
 theorem alt_result_independent_of_initial_B :
     (lsemFuelMemL pingPongProg 200 (mkStart 2 5 6 0 0)).bind liveRegionA
       = some (ppPure 2 (5#64, 6#64))
@@ -221,7 +221,7 @@ theorem alt_result_independent_of_initial_B :
 
 The ping-pong pointer swap is `sb^=db; db^=sb; sb^=db`.  This lemma proves the
 three-XOR sequence swaps the pair — no branch, no temp register — so the interpreter's
-faithful application of `XOR:64` (validated above) genuinely alternates the source/dest
+faithful application of `XOR:64` (validated above) alternates the source/dest
 bases each pass. -/
 
 /-- **XOR-swap faithfulness.**  From `(sb, db)`, the sequence `sb := sb^db`,

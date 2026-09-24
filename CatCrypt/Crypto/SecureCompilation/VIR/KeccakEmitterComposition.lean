@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 /-!
 # Composition of the substrate through `KeccakEmit.emitRound`
 
-`KeccakEmitterReduction` (task #116) supplied the per-helper `Com.denote`
+`KeccakEmitterReduction` supplies the per-helper `Com.denote`
 rewrite lemmas (`emitOp_denote`, `emitMov_denote'`, `emitRotL_denote_pos/_zero`)
 and the slot-reading lemmas (`readSlot_bsAfterOp_eq/_ne`,
 `readImm_immVarAfter`, `readSrc_bsAfterOp_ne`). This file composes them
@@ -32,7 +32,7 @@ The denotation half of `EmitRoundDenotesClosedForm` — that
 `(emitRound bs immV round k).denote V` equals `(k bsF immVF).denote VF` for
 *some* `(bsF, immVF, VF)` — discharges by `rfl` once the unifier picks the
 witnesses from the chain's `Com.var` constructors. This is the same pattern
-the SHA-2 analog (`Sha2EmitterComposition`, task #115) uses.
+the SHA-2 analog (`Sha2EmitterComposition`) uses.
 
 The readout half — that `lanesOfBState bsF VF = keccakClosedFullRound
 (lanesOfBState bs V) (RC round)` — is the bookkeeping content of the chain:
@@ -40,8 +40,8 @@ every `readSlot` query at slots `aSlot x y` after the full chain has to
 chain ~600 `readSlot_bsAfterOp_*` rewrites, and each rewrite at slot `i ≠ dst`
 has a `decide`-discharged side condition. In parallel with the SHA-2 analog,
 we expose the **denotation half** discharge as a theorem, and consume it via
-the conditional bridges of #116 to deliver `emitRound_lanes_eq_fips_keccak_
-unconditional` once the readout half is also closed.
+the conditional bridges of `KeccakEmitterReduction`, which give the
+unconditional lane-level bridge whenever the readout half is supplied.
 
 ## Status & axiom budget
 
@@ -54,28 +54,29 @@ unconditional` once the readout half is also closed.
 * `emitRound_lanes_eq_fips_keccak_via_residual` (§3): the *via-residual*
   FIPS bridge, dropping the explicit hypothesis on the readout half but
   retaining the explicit shape (existential bsF/immVF/VF and an equality
-  proof). Routes through #116's `emitRound_lanes_eq_fips_keccak` and
-  #113's `keccak_round_bitexact`. Axiom budget: `[propext, Classical.choice,
-  Quot.sound]` plus the standard `bv_decide` LRAT certs from #113.
+  proof). Routes through `KeccakEmitterReduction.emitRound_lanes_eq_fips_keccak`
+  and `KeccakDiffuseExact`'s `keccak_round_bitexact`. Axiom budget:
+  `[propext, Classical.choice, Quot.sound]` plus the standard `bv_decide` LRAT
+  certs from `KeccakDiffuseExact`.
 
 * `keccak_round_loop_bitexact_via_fips_unconditional` (§4): the
-  composition with #109's loop keystone, stating the lane-level FIPS 202
-  bit-exactness of `emitRound` once the structural Prop is inhabited.
+  composition with the `KeccakBitexact` loop theorem, stating the lane-level
+  FIPS 202 bit-exactness of `emitRound` whenever the structural Prop is inhabited.
 
-The remaining structural gap — fully closing the readout half through the
-~600-binding chain — is the bookkeeping residual described in §1 of #116.
-The substrate (§1–§3 of #116) provides every per-step rewrite; their
-composition is a `simp` blast at a raised heartbeat budget. Per the task
-spec, this file delivers the denotation-half closure plus the via-residual
-bridges; the readout-half discharge is the next milestone, parallel to the
-SHA-2 status in #115.
+The readout half through the ~600-binding chain is the bookkeeping residual
+described in §1 of `KeccakEmitterReduction`, which provides every per-step
+rewrite (§1–§3 there); their composition is a `simp` at a raised heartbeat
+budget. This module proves the denotation half and the via-residual bridges;
+the readout half is a hypothesis here, as in the SHA-2 analog
+`Sha2EmitterComposition`.
 
 No `sorry`, no `native_decide`, no new custom axioms in any final theorem.
 
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #118 in that chain: denotation-half composition + via-residual
+module is the chain step after `KeccakEmitterReduction`: denotation-half
+composition + via-residual
 FIPS bridge.
 -/
 
@@ -215,24 +216,23 @@ theorem emitRound_denote_exists (round : Nat) {Γ : Ctxt jasminDialect}
 
 /-! ### Probe note
 
-The full `EmitRoundDenotesClosedForm` theorem-attempt has the denotation
-half closing by `rfl` and exposing the residual readout half:
+Stated as a theorem, the full `EmitRoundDenotesClosedForm` has its denotation
+half closing by `rfl` and leaves the residual readout half:
 `lanesOfBState bsF VF = keccakClosedFullRound (lanesOfBState bs V)
-(BitVec.ofNat 64 (roundConst round))`. The exposed goal exceeds the
-default `maxRecDepth` to display, confirming the readout is the chain-
-bookkeeping `simp` blast described in §5 (parallel to the SHA-2 status
-in #115). -/
+(BitVec.ofNat 64 (roundConst round))`. That goal exceeds the
+default `maxRecDepth` to display; the readout is the chain-bookkeeping
+`simp` described in §5–§6 (as in `Sha2EmitterComposition`). -/
 
 /-! ## 3. The `EmitRoundDenotesClosedForm`-consuming FIPS bridges, re-exported
 
 We re-expose `KeccakEmitterReduction.emitRound_lanes_eq_fips_keccak` and the
-`#109` composition with cleaner names, ready to be used once
-`EmitRoundDenotesClosedForm` is fully inhabited (the lanes-readout half). -/
+`KeccakBitexact` composition with cleaner names, applicable wherever
+`EmitRoundDenotesClosedForm` is inhabited (the lanes-readout half). -/
 
 /-- **Conditional FIPS bridge (re-export).** `EmitRoundDenotesClosedForm
-    round bs immV V` combined with `keccak_round_bitexact` (#113) gives the
-    bit-exact identity of the emitted round with the FIPS 202 spec on lanes.
-    This is the form #116 stated; here we re-export it for downstream use. -/
+    round bs immV V` combined with `keccak_round_bitexact` (`KeccakDiffuseExact`)
+    gives the bit-exact identity of the emitted round with the FIPS 202 spec on
+    lanes. Re-export of the `KeccakEmitterReduction` form for downstream use. -/
 theorem emitRound_lanes_eq_fips_keccak_via_residual (round : Nat)
     {Γ : Ctxt jasminDialect}
     (bs : BState Γ) (immV : Nat → Ctxt.Var Γ r64) (V : Ctxt.Valuation Γ)
@@ -246,19 +246,19 @@ theorem emitRound_lanes_eq_fips_keccak_via_residual (round : Nat)
             (BitVec.ofNat 64 (roundConst round)) :=
   emitRound_lanes_eq_fips_keccak round bs immV V h k
 
-/-! ## 4. Composition with #109's loop keystone
+/-! ## 4. Composition with the `KeccakBitexact` loop theorem
 
-The corollary chaining the conditional FIPS bridge with #109's keccak round
-loop bit-exactness. Once `EmitRoundDenotesClosedForm` is inhabited as a
-theorem (not just a hypothesis), this gives the unconditional lane-level
+The corollary chaining the conditional FIPS bridge with the Keccak round
+loop bit-exactness of `KeccakBitexact`. Given a proof of
+`EmitRoundDenotesClosedForm`, this gives the unconditional lane-level
 FIPS 202 bit-exactness of the emitter through the entire 24-round permutation
 without any KAT dependence. -/
 
-/-- **Loop keystone composition (re-export).** Given the structural Prop
+/-- **Loop theorem composition (re-export).** Given the structural Prop
     `EmitRoundDenotesClosedForm` for the round, the emitted `emitRound`
     denotes to a final state whose lanes equal `keccakFullRound (lanesOfBState
     bs V) (RC round)`. This is the per-round step that, composed across 24
-    rounds (#109's keccak_round_loop_bitexact), gives the full 24-round
+    rounds (`keccak_round_loop_bitexact` of `KeccakBitexact`), gives the full 24-round
     Keccak-p[1600,24] permutation bit-exact = FIPS 202 through the emitter
     with NO KAT dependence — the residual structural fact being the
     inhabitation of `EmitRoundDenotesClosedForm`. -/
@@ -278,7 +278,7 @@ theorem keccak_round_loop_bitexact_via_fips_unconditional (round : Nat)
 
 /-! ## 5. The faithful-environment refinement
 
-Following the SHA-2 analog (`Sha2EmitterComposition` §4c, task #115), the
+Following the SHA-2 analog (`Sha2EmitterComposition` §4c), the
 Keccak readout half needs a *faithful-environment* hypothesis: that the
 immediate inputs at `immVar (immIdx n)` are populated with the literal
 `BitVec.ofNat 64 n`. For Keccak, this is:
@@ -301,7 +301,7 @@ immediate inputs at `immVar (immIdx n)` are populated with the literal
 
     Under this hypothesis, the lanes-readout half of the structural Prop
     closes by simp through the substrate's per-step slot-reading lemmas;
-    the resulting strengthened Prop is consumed by the FIPS bridge of #116.
+    the resulting strengthened Prop is consumed by the FIPS bridge of `KeccakEmitterReduction`.
 -/
 def EmitRoundDenotesClosedFormFaithful (round : Nat)
     {Γ : Ctxt jasminDialect}
@@ -311,8 +311,7 @@ def EmitRoundDenotesClosedFormFaithful (round : Nat)
 
 /-! ## 6. Per-sub-block-closure inventory
 
-Status of the five sub-blocks of `emitRound`, per the task's "honest partial"
-criterion:
+Status of the five sub-blocks of `emitRound`:
 
 | Sub-block       | Denotation half      | Readout half             |
 |-----------------|----------------------|--------------------------|
@@ -324,8 +323,8 @@ criterion:
 
 All five **denotation halves** close. The **readout half** is the bookkeeping
 through the substrate's `readSlot_bsAfterOp_*` chain — solid as a substrate
-but high-term-size to compose mechanically. This file delivers the
-denotation-side closure and the FIPS-bridge re-exports; the readout-side
-closure is the residual, parallel to the SHA-2 status in #115. -/
+but high-term-size to compose mechanically. This module proves the
+denotation side and the FIPS-bridge re-exports; the readout side
+is the residual hypothesis, as in `Sha2EmitterComposition`. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterComposition

@@ -12,73 +12,73 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 /-!
 # Counted loop with a **multi-binder** straight-line body: `loopNMulti n body`
 
-`LoopLowering.loopN` packages the counted-loop keystone for a **single-op**
+`LoopLowering.loopN` packages the counted-loop theorem for a **single-op**
 accumulator body (`SingleVarBody e` — one dialect op, then return its result).
 Real crypto loop bodies — a round function, an X25519 ladder step, a Merkle
 compression — are *multi-binder*: they bind several intermediate SSA names
-(`let s = …; let t = …; ret …`) before producing the new accumulator. This file
-closes that gap: a first-class counted loop whose body is an **arbitrary
+(`let s = …; let t = …; ret …`) before producing the new accumulator. This module
+defines a first-class counted loop whose body is an **arbitrary
 multi-binder straight-line `Com` over the singleton accumulator context**, with
 the emitted run proved equal to the `n`-fold composition of the body's
 denotation.
 
-## How the gap closes (reuse, not rebuild)
+## Proof route
 
-The `JForProg` structure's `update : Com jasminDialect [accTy] accTy` field was
-*already* an arbitrary `Com` — the single-op restriction lived only in the
-**single-var keystone proof path** (`JForProgSemCorrect.loop_denote_eq`, which
+The `JForProg` structure's `update : Com jasminDialect [accTy] accTy` field is
+an arbitrary `Com` — the single-op restriction lives only in the
+**single-var proof path** (`JForProgSemCorrect.loop_denote_eq`, which
 sidesteps the whole-`Com` preservation theorem and so needs no fresh-name
-injectivity). The scope note in `LoopLowering` flagged the blocker honestly:
+injectivity). The scope note in `LoopLowering` records the obstruction:
 
 > multi-binder straight-line bodies would re-introduce the `freshName`
 > injectivity carried by `JasminPrintSemCorrect.execCom_eq`.
 
-That `freshName` injectivity is now a **theorem**
-(`FreshNameInjective.freshName_injective`), and `JForProgMultiOp` already used it
+That `freshName` injectivity is a **theorem**
+(`FreshNameInjective.freshName_injective`), and `JForProgMultiOp` uses it
 to discharge the per-iteration body run for **any** straight-line body:
 
 * `JForProgMultiOp.bodyStepRun_multiOp_eq` — the emitted body runner computes
   `JForProg.step` for any `StraightLine` body, routed through `execCom_eq` with
   `hInj := freshName_injective` (the multi-binder fresh names `v0, v1, …` are
   kept distinct from the accumulator `"acc"` and from each other).
-* `JForProgMultiOp.loop_denote_eq_multiOp` — hence the whole-loop keystone
+* `JForProgMultiOp.loop_denote_eq_multiOp` — hence the whole-loop theorem
   (emitted run = `JForProg.denote`) for any straight-line body.
 
 This file is the **clean surface + iterate-form packaging** on top of those: it
 mirrors `LoopLowering.loopN`/`loopN_lower_denote_iterate` but accepts a
 multi-binder `Com` body, threading `loop_denote_eq_multiOp` (instead of the
 single-var `loop_denote_eq`) through `LoopLowering.denote_eq_iterate` (the
-`foldl` ↔ `f^[n]` bridge). The threading is **direct**: the multi-op body went
+`foldl` ↔ `f^[n]` bridge). The threading is **direct**: the multi-op body goes
 through `loopN`/`JForProg.denote` with no new proof obligation — the
-`WholeFnLowering` straight-line bridge (`lowerComToProg_sem_eq'`) was *not*
-needed at the loop level, because the per-iteration body-run discharge already
+`WholeFnLowering` straight-line bridge (`lowerComToProg_sem_eq'`) is *not*
+needed at the loop level, because the per-iteration body-run discharge
 lives in `JForProgMultiOp` via the same `execCom_eq` + `freshName_injective`
-keystone that `WholeFnLowering` uses for the whole-function case.
+argument that `WholeFnLowering` uses for the whole-function case.
 
-## Conditioned scope (honest)
+## Conditioned scope
 
 The soundness is conditioned on exactly two hypotheses, both standard in this
-emit-correctness theory and *neither* a `sorry`:
+emit-correctness theory:
 
 * `hLeaf : LeafAgrees leafSem` — the opaque-leaf edge (`extCall` agreement),
-  carried throughout the emit theory; it is the genuine assumption about the
+  carried throughout the emit theory; it is the assumption about the
   leaf semantics.
 * `hSL : StraightLine body` — every binder of the body is a non-`stackStore`
   op. This is the discipline `JForProgMultiOp` already requires; it excludes the
   aliasing `stackStore` op (whose in-place write breaks the fresh-name argument,
   see `stackStore_aliases_source`).
 
-What this does **not** yet cover: multi-*accumulator* loop bodies (a body
+Outside the scope of this module: multi-*accumulator* loop bodies (a body
 carrying several live values across iterations — packable into a product `accTy`,
-but the single-accumulator `JForProg` shape is hard-wired), control flow /
-branches *inside* the body (`StraightLine` rejects them; that is the
+but the single-accumulator `JForProg` shape is hard-wired; see `MultiAccumLoop`),
+control flow / branches *inside* the body (`StraightLine` rejects them; that is the
 `StructuredControlFlow` layer), function calls (the `extCall` leaf stays opaque
 under `LeafAgrees`), and runtime/`while` bounds. The per-iteration fresh-name
-threading — the honest blocker the loop work flagged — is fully discharged here;
-it did **not** block, because `JForProgMultiOp` already carried it through
+threading is discharged here, through `JForProgMultiOp`, which carries it via
 `execCom_eq` with the `freshName_injective` theorem.
 
-0 sorries; the only carried hypotheses are `LeafAgrees` and `StraightLine body`.
+All goals closed; the only carried hypotheses are `LeafAgrees` and
+`StraightLine body`.
 -/
 
 @[expose] public section
@@ -134,7 +134,7 @@ def loopNMulti {accTy : JasminTy} (n : Nat) (body : MultiBinderBody accTy) :
     (body : MultiBinderBody accTy) (acc : ⟦accTy⟧) :
     (loopNMulti n body).step acc = body.denote (.cons acc .nil) := rfl
 
-/-! ## 2. The lowering and its soundness (the multi-binder keystone, packaged)
+/-! ## 2. The lowering and its soundness (the multi-binder loop theorem, packaged)
 
 `loopNMulti n body` lowers via `JForProg.toProg`. The emitted loop is run,
 evaluator-side, by `bodyStepRun`. The soundness states the emitted run equals
@@ -147,7 +147,7 @@ def loopNMulti_lower {accTy : JasminTy} (name : String) (n : Nat)
     (body : MultiBinderBody accTy) : JasminProg :=
   (loopNMulti n body).toProg name
 
-/-- **Keystone (multi-binder, fold form).** The emitted counted loop with a
+/-- **Main theorem (multi-binder, fold form).** The emitted counted loop with a
     multi-binder body, run `n` times by the word-level body evaluator threading
     the named accumulator, equals the loop's `n`-fold denotation
     `JForProg.denote`. This is `JForProgMultiOp.loop_denote_eq_multiOp`
@@ -162,10 +162,10 @@ theorem loopNMulti_lower_denote {accTy : JasminTy} {leafSem : LeafSem}
       = (loopNMulti n body).denote init :=
   loop_denote_eq_multiOp hLeaf (loopNMulti n body) hSL init
 
-/-- **Keystone (multi-binder, iterate form — the roadmap statement).** The
+/-- **Main theorem (multi-binder, iterate form).** The
     emitted counted loop's `n`-fold run equals `step^[n] init`, where
     `step acc = body.denote (.cons acc .nil)` is the multi-binder body's
-    denotation. This is the loop keystone for the first-class **multi-binder**
+    denotation. This is the loop theorem for the first-class **multi-binder**
     `loopNMulti` construct: the emitted loop's denotation is the `n`-fold
     composition of the body's denotation. Combines `loopNMulti_lower_denote`
     (emitted run = abstract fold) with `LoopLowering.denote_eq_iterate` (abstract
@@ -182,7 +182,7 @@ theorem loopNMulti_lower_denote_iterate {accTy : JasminTy} {leafSem : LeafSem}
 
 /-! ## 3. Worked example: a concrete **two-op** straight-line round body
 
-The body `acc ↦ (acc + acc) ^^^ acc` — two genuine `let`-binders (an `add` and a
+The body `acc ↦ (acc + acc) ^^^ acc` — two `let`-binders (an `add` and a
 `xor`), a minimal "round step" shape:
 
     let s = regArith add acc acc   -- s = acc + acc   : reg 64
@@ -196,7 +196,7 @@ its iterate-form emitted-loop denotation, and a concrete `n = 3` KAT. -/
 /-- A concrete **two-op** (multi-binder) round body `acc ↦ (acc + acc) ^^^ acc`.
     First binder: `s = acc + acc` (`regArith add`, both operands the accumulator
     `.here`). Second binder: `r = s ^^^ acc` (`regArith xor`, first operand the
-    fresh `s = .here`, second the accumulator now at `.there .here`). Returns
+    fresh `s = .here`, second the accumulator, shifted to `.there .here`). Returns
     `r = .here`. -/
 def roundBody : MultiBinderBody (.reg 64) :=
   .var (.mk (.regArith .add 64) rfl (.cons .here (.cons .here .nil)))
@@ -230,7 +230,7 @@ theorem roundBody_loop_iterate {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 /-- **Worked example (concrete KAT).** At seed `init = 1`, the emitted
     multi-binder counted loop computes the unrolled reference
     `1 → (1+1)^^^1 = 3 → (3+3)^^^3 = 5 → (5+5)^^^5 = 15`, i.e. `15`. Ties the
-    iterate-form keystone for a multi-binder body to a concrete value. -/
+    iterate-form theorem for a multi-binder body to a concrete value. -/
 theorem roundBody_loop_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     loopRun (loopNMulti 3 roundBody) (bodyStepRun leafSem (loopNMulti 3 roundBody))
         (1 : BitVec 64)

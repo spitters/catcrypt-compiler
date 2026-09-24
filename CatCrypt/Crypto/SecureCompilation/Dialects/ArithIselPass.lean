@@ -9,10 +9,10 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
 
 /-!
-# D3 — a denotation-preserving instruction-selection rewrite over `Com jasminDialect`
+# A denotation-preserving instruction-selection rewrite over `Com jasminDialect`
 
 `ArithIselSoundness.lean` proves, at the *value* (`BitVec`) level, that each native
-x86 op equals the neutral-arith idiom it replaces (`andn_eq_andnot`,
+x86 op equals its neutral-arith idiom (`andn_eq_andnot`,
 `mulhi_eq_mulHiW`, `rorImm_eq_shiftOr`, `select_eq_maskSelect`). Those equivalences
 license instruction selection: the legalizer may emit the faster native op in place
 of the always-valid emulation **without changing the denotation**. This file lifts
@@ -34,7 +34,7 @@ induction.
 
 The headline theorem is `iselCom_denote : (iselCom c).denote V = c.denote V`: the
 ISel pass never affects the value a program computes. Correctness is therefore
-*independent* of the pass — exactly the D3 reading where native-op / canonical-form
+*independent* of the pass — the reading where native-op / canonical-form
 selection is a perf-only choice below the `llvm` waist.
 
 ## What needs a multi-op rewrite (documented, out of this simple pass's scope)
@@ -58,8 +58,8 @@ bindings), which a single-`Expr` map cannot express:
   definitionally, but it has no neutral single-op image in `jasminDialect` to swap
   *from* — its emulation lives in the `arith` dialect.
 
-These multi-op (subtree-collapsing / operand-materialising) selections are the
-natural next deliverable; the value-level soundness for each is already discharged in
+These multi-op (subtree-collapsing / operand-materialising) selections are outside
+this pass; the value-level soundness for each is discharged in
 `ArithIselSoundness`. This pass establishes the denotation-preserving rewrite
 *framework* (the structural `Com` recursion + the `Expr.denote` lift) on the cleanest
 same-shape case, so the multi-op extensions reuse the same preservation skeleton.

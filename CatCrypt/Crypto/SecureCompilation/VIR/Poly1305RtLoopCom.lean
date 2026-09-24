@@ -21,7 +21,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 # Poly1305 MAC — FRONT-COMPILED owned runtime-block-loop x86-64 emit
 
 The Poly1305 130-bit field MAC over `𝔽_{2¹³⁰−5}` as a **runtime-trip counted
-loop** `ComL.forLoopNRt`, sourced through the verified `CProg`-free runtime-loop
+loop** `ComL.forLoopNRt`, sourced through the verified runtime-loop
 front — NO hand-built `Com` in the emit path. The per-block `5×26`-limb HACL
 Horner field step is authored as a covered `LowCT` loop body
 (`RArrLoad`/`RScalarSetExpr`/`RArrStore` over the runtime loop index `idx`) and

@@ -37,7 +37,7 @@ denote homomorphism, the same recipe as
 `Fe25519ScalarmultCovered.fullScalarmultCovered_denote` and
 `Shake256Covered.shake256Covered_denote`. It strengthens the hand-composed
 `MAYO.SolveGf16FrontGen.WholeSolve` (a step-composition `ComL` schedule with no
-whole-program machine denote) to a genuine high-level-source descent.
+whole-program machine denote) to a high-level-source descent.
 
 ## Opaque leaves — the per-step GF(16) work, exactly the exemplar tier
 
@@ -63,9 +63,9 @@ bounds anything, only feeds CT comparison masks). A runtime-count loop is an
 covered fragment. Those inner sweeps are therefore kept **inside the opaque
 per-step leaves** (`mayo_solve_ef_step`, `mayo_solve_backsub_step`), exactly as
 Keccak-f's 24 rounds live inside `keccakf1600`. Opening a leaf to descend its full
-body (rather than treat it opaque) is the `RWhileNz` data-dependent-count arm the
-parallel work is building; it is not needed for the whole-program *control*
-descent banked here.
+body (rather than treat it opaque) uses the `RWhileNz` data-dependent-count arm
+(`MayoSolveLeafOpenCovered` does so for the echelon phase); it is not needed for
+the whole-program *control* descent proved here.
 
 Likewise the matrix cell access is at a *public* runtime index (`i·AC + j`,
 derived from public counters) — the covered-fragment array boundary; kept inside
@@ -170,13 +170,13 @@ def backsubLoop : LowCT :=
 def mayoSolveLowCT : LowCT :=
   .RSeq copyLoop (.RSeq lastColLoop (.RSeq echelonLoop backsubLoop))
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the structural proofs -/
 
 /-- The copy-step body is straight-line covered. -/
 theorem copyStepBody_coveredS : IsCoveredS copyStepBody :=
   .rCall "mayo_solve_copy_step" (loc "x") [loc "x", loc "r"]
 
-/-- The copy loop is Stage-2 covered (`IsCoveredSCtl`): a bounded `RFor` over the
+/-- The copy loop is control-covered (`IsCoveredSCtl`): a bounded `RFor` over the
     straight-line copy step. -/
 theorem copyLoop_covered : IsCoveredSCtl copyLoop :=
   .rFor (.ofStraight copyStepBody_coveredS)
@@ -185,7 +185,7 @@ theorem copyLoop_covered : IsCoveredSCtl copyLoop :=
 theorem lastColStepBody_coveredS : IsCoveredS lastColStepBody :=
   .rCall "mayo_solve_lastcol_step" (loc "A") [loc "A", loc "y", loc "r"]
 
-/-- The last-column loop is Stage-2 covered (`IsCoveredSCtl`). -/
+/-- The last-column loop is control-covered (`IsCoveredSCtl`). -/
 theorem lastColLoop_covered : IsCoveredSCtl lastColLoop :=
   .rFor (.ofStraight lastColStepBody_coveredS)
 
@@ -193,7 +193,7 @@ theorem lastColLoop_covered : IsCoveredSCtl lastColLoop :=
 theorem efStepBody_coveredS : IsCoveredS efStepBody :=
   .rCall "mayo_solve_ef_step" (loc "A") [loc "A", loc "P", loc "P2"]
 
-/-- The echelon loop is Stage-2 covered (`IsCoveredSCtl`). -/
+/-- The echelon loop is control-covered (`IsCoveredSCtl`). -/
 theorem echelonLoop_covered : IsCoveredSCtl echelonLoop :=
   .rFor (.ofStraight efStepBody_coveredS)
 
@@ -201,7 +201,7 @@ theorem echelonLoop_covered : IsCoveredSCtl echelonLoop :=
 theorem backsubStepBody_coveredS : IsCoveredS backsubStepBody :=
   .rCall "mayo_solve_backsub_step" (loc "x") [loc "A", loc "x"]
 
-/-- The back-substitution loop is Stage-2 covered (`IsCoveredSCtl`). -/
+/-- The back-substitution loop is control-covered (`IsCoveredSCtl`). -/
 theorem backsubLoop_covered : IsCoveredSCtl backsubLoop :=
   .rFor (.ofStraight backsubStepBody_coveredS)
 
@@ -233,7 +233,7 @@ def solveArgVM : VarMap solveArgCtx where
     else none
 
 /-- **The covered front fires on the whole MAYO-1 solve.** The four bounded `RFor`
-    phases unroll `CProg`-free through `loopRForD`, each opaque per-step leaf
+    phases unroll through `loopRForD`, each opaque per-step leaf
     resolves its bundle arguments, the `RSeq` spine composes the phase prefixes,
     and the top-level terminator closes. -/
 theorem mayoSolve_front_fires :
@@ -243,7 +243,7 @@ theorem mayoSolve_front_fires :
 /-! ## 4. `transCtlSeq` coincides with the canonical front on this term
 
 The control-sequencing front `transCtlSeq` folds `translateDialectControl` along
-the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl` now
+the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl`
 does the *same* (its `RSeq` arm recurses into itself). On leaves (`RFor`)
 `transCtlSeq` delegates to `translateDialectControl` through its wildcard. So on
 this pure `RSeq`-of-leaves term the two fronts coincide, letting the

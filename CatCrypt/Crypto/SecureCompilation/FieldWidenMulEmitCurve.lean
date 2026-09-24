@@ -47,7 +47,7 @@ needed closing two owned-RA/mulx interaction seams:
 * **Coincident mulx destinations** (`LprogAsmPrinter`): the owned RA homes a
   `mulx`'s LOW and HIGH outputs in the SAME physical register when the low word is
   redundant (`z0` is materialised by a separate `imul`), so `mulx s, r, r` clobbers
-  the high word. The printer now routes the redundant low to a red-zone-saved
+  the high word. The printer routes the redundant low to a red-zone-saved
   scratch when `dst_lo == dst_hi`.
 * **`%rdx`-homed high word across the next `mulx` pin** (`fuseMulHiLprog
   saveRdx := true`): the RA can home the first `mulx`'s high word (`hi00`) in

@@ -175,7 +175,7 @@ theorem quarterRound_d_correct (a b c d : BitVec 32) :
     pureEvalMonoCmd 32 (qrEnv a b c d) retD qrCmd =
     (quarterRound a b c d).2.2.2 := by rfl
 
-/-! ## Section 6: CryptoSSA Translation -/
+/-! ## Section 6: `catCryptDialect` Translation -/
 
 /-- The input variable names are all distinct. -/
 theorem va_ne_vb : va ≠ vb := by decide
@@ -208,7 +208,7 @@ def dprog : Option (Com catCryptDialect [.sword 32, .sword 32, .sword 32, .sword
     translated quarter-round computes `SPComp.pure` of the pure specification
     (for the `a` output).
 
-    Routed through the CProg-free native translator correctness
+    Routed through the native translator correctness
     `translateMonoCmdD_denoteSP_native`, composed with `quarterRound_a_correct`
     for the pure evaluation. -/
 theorem qr_catcrypt_correct_a

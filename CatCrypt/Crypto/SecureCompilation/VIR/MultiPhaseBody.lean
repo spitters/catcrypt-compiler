@@ -33,14 +33,14 @@ A **phase** is bundled as a self-map of the accumulator together with its own
 already-discharged soundness:
 
 * `run  : ⟦accTy⟧ → ⟦accTy⟧` — the emitted evaluator run, threaded over the
-  accumulator (the `runProg`/`loopRun` of the landed keystones, abstracted to a
+  accumulator (the `runProg`/`loopRun` of the lowering theorems, abstracted to a
   function of the incoming accumulator).
 * `sem  : ⟦accTy⟧ → ⟦accTy⟧` — the reference semantics (the `Com.denote` /
-  `body.denote^[n]` of the landed keystones).
+  `body.denote^[n]` of the lowering theorems).
 * `sound : run = sem` — the per-phase soundness, **supplied by an existing
-  keystone** at construction time.
+  lowering theorem** at construction time.
 
-Two smart constructors build phases from the two landed keystones, each
+Smart constructors build phases from the lowering theorems, each
 discharging `sound` with no new proof obligation:
 
 * `loopPhase`   — from `LoopLowering.loopN n body`, sound via
@@ -64,10 +64,9 @@ the composed soundness is `phasesRun_eq` by induction on the list.
   field.
 * **Newly proved**: `Phase`/`phasesRun`/`phasesSem` (the list-folded
   multi-phase surface) and `phasesRun_eq` (the composed soundness, by induction
-  on the phase list — the genuinely new content: threading per-phase soundness
-  through a `List.foldl`).
+  on the phase list — threading per-phase soundness through a `List.foldl`).
 
-## Conditioned scope (honest)
+## Conditioned scope
 
 Each phase carries its own `sound`, so the carried hypotheses are exactly the
 union of the per-phase hypotheses — every phase needs `LeafAgrees leafSem`, and
@@ -83,10 +82,9 @@ accumulator value, exactly as `WholeProtocolBody` composes setup and loop — th
 `extCall` leaf stays opaque under `LeafAgrees`, it is not a fused CFG with a real
 `call` instruction); or **heterogeneous accumulators** (every phase is a self-map
 of the *same* `accTy`; a phase that grows/shrinks the live set would need a typed
-seam `accTy₁ → accTy₂`, a dependent list — see the gap note). Those are the
-remaining whole-protocol-body work.
+seam `accTy₁ → accTy₂`, a dependent list — see the gap note).
 
-0 sorries; the only carried hypotheses are `LeafAgrees` and the per-phase
+All goals closed; the only carried hypotheses are `LeafAgrees` and the per-phase
 `StraightLine` witnesses, the same edges carried throughout the emit theory.
 -/
 
@@ -110,27 +108,27 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBinderLoopBody
 
 A `Phase accTy` is a self-map of the accumulator type `accTy`, bundling the
 emitted evaluator run, the reference semantics, and a proof that they agree.
-The proof is discharged at construction by one of the landed keystones, so a
+The proof is discharged at construction by one of the lowering theorems, so a
 phase is *by construction* a verified accumulator transform. -/
 
 /-- **A single verified phase.** A self-map of the accumulator `accTy` packaging
     the emitted evaluator `run`, the reference `sem`antics, and the per-phase
-    soundness `sound : run = sem` (discharged at construction by a landed
-    keystone). The unit of composition for a multi-phase protocol body. -/
+    soundness `sound : run = sem` (discharged at construction by a lowering
+    theorem). The unit of composition for a multi-phase protocol body. -/
 structure Phase (accTy : JasminTy) where
   /-- The emitted evaluator run, as a self-map of the accumulator. -/
   run : ⟦accTy⟧ → ⟦accTy⟧
   /-- The reference semantics, as a self-map of the accumulator. -/
   sem : ⟦accTy⟧ → ⟦accTy⟧
   /-- The per-phase soundness: the emitted run equals the reference semantics.
-      Supplied by an existing keystone at construction. -/
+      Supplied by an existing lowering theorem at construction. -/
   sound : run = sem
 
-/-! ## 2. Smart constructors — each discharges `sound` from a landed keystone
+/-! ## 2. Smart constructors — each discharges `sound` from a lowering theorem
 
 Each constructor takes the opaque-leaf edge `hLeaf` (and any per-phase
 `StraightLine` witness) and produces a `Phase` whose `sound` field is exactly
-the corresponding keystone applied pointwise. No new proof obligation. -/
+the corresponding lowering theorem applied pointwise. No new proof obligation. -/
 
 /-- **A counted-loop phase (single-op body).** `loopPhase hLeaf n body` is the
     phase that runs the counted loop `loopN n body` over the incoming
@@ -243,11 +241,11 @@ the protocol, its composed run, and a concrete KAT.
 (The setup phase reuses `WholeProtocolBody.addSetup` — `acc := a + b` over the
 singleton-after-currying context. Here the phase accumulator is `reg 64`, so the
 setup block is a self-map `[reg 64] → reg 64`; we use the doubling body's shape
-for the loops, and a single-input add-with-self for the setup so it is a genuine
+for the loops, and a single-input add-with-self for the setup so it is a
 `[reg 64] → reg 64` straight-line block.) -/
 
 /-- A straight-line setup block over the singleton accumulator context
-    `[reg 64]`: `acc := acc + acc` (a self-map block, the simplest genuine
+    `[reg 64]`: `acc := acc + acc` (a self-map block, the simplest
     `[reg 64] → reg 64` straight-line `Com`). Denotes `acc ↦ acc + acc`. Reuses
     the doubling op shape as a `Com` (one `regArith add`, then return). -/
 def setupBlock : Com jasminDialect [JasminTy.reg 64] (.reg 64) :=
@@ -288,7 +286,7 @@ theorem threePhaseDouble_run_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 /-- **Worked example (concrete KAT).** On seed `init = 1` with `n₁ = 2, n₂ = 3`,
     the 3-phase body computes `(1 + 1) · 2^(2+3) = 2 · 32 = 64` byte-for-byte:
     setup doubles `1 → 2`, loop₁ doubles twice `2 → 4 → 8`, loop₂ doubles thrice
-    `8 → 16 → 32 → 64`. Ties the multi-phase composition keystone to a concrete
+    `8 → 16 → 32 → 64`. Ties the multi-phase composition theorem to a concrete
     value across two phase kinds. -/
 theorem threePhaseDouble_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     phasesRun (threePhaseDouble hLeaf 2 3) (1 : BitVec 64) = (64 : BitVec 64) := by

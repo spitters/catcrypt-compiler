@@ -17,7 +17,7 @@ set_option autoImplicit false
 # Plonky3 Merkle 2-to-1 compress, FRONT-COMPILED (`plonky3_merkle_compress_rc`)
 
 The Plonky3 Merkle 2-to-1 compress leaf, sourced through the verified
-`CProg`-free front — NO hand-built `Com` anywhere in the emit path:
+front — NO hand-built `Com` anywhere in the emit path:
 
 ```
   compressBody (LowCT: RScalarSetExpr u64 word math over the 15 input slots)
@@ -157,7 +157,7 @@ def srcVM : VarMap srcCtx :=
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `compressBody` through the `CProg`-free control front and cap with
+/-- Push `compressBody` through the control front and cap with
     `ret <name>` (a `u64` slot of the final `VarMap`). `none` if the front
     declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=

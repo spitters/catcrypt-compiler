@@ -18,41 +18,33 @@ set_option autoImplicit false
 /-!
 # `poly_zp` empirical baseline
 
-Empirical baseline validating the `poly_zp` tactic's open questions.
+Test cases for the algebraic layers of the `poly_zp` tactic over
+`ZMod (2^255 - 19)`.
 
-## Findings
+## Contents
 
-1. **`ring` over `ZMod (2^255 - 19)` scales to 25-term schoolbook**
-   expansions. Tier 0a (2-limb mul) and 0d (5-limb mul, 25 terms) both
-   close in a single `ring` call, fast.
+1. **`ring` over `ZMod (2^255 - 19)` closes 25-term schoolbook**
+   expansions. Tier 0a (2-limb mul) and 0d (5-limb mul, 25 terms) each
+   close with a single `ring` call.
 
-2. **`(2 : Fp25519)^255 = 19` proves via `native_decide`** in <1s.
-   `decide` blows the recursion stack; `native_decide` is the right
-   tool for this kind of large-modulus identity.
+2. **`(2 : Fp25519)^255 = 19` is proved by `native_decide`** in <1s;
+   `decide` exceeds the recursion stack on this large-modulus identity.
 
 3. **`linear_combination` with manual hints closes the full radix-2^51
-   reduction identity** — Tier 2's `five_limb_radix51_mul_spec` is a
-   discharged Qed theorem stating exactly the spec form
-   `mulBody_correct`'s algebraic side needs.
+   reduction identity**: Tier 2's `five_limb_radix51_mul_spec` states
+   exactly the spec form that `mulBody_correct`'s algebraic side needs.
 
-This is significantly stronger than the plan anticipated. Layer C
-(reduction by `2^255 ≡ 19`) and Layer D (`ring` finish) collapse into a
-single `linear_combination` call given the right hint. The plan's
-budget for Layers C + D (5–7 days) can be replaced by ~1 hour of
-hint-finding for new polynomial shapes.
+Reduction by `2^255 ≡ 19` (layer C) and the `ring` finish (layer D) are
+therefore a single `linear_combination` call given the right hint.
 
-## What this leaves for `poly_zp`
+## Scope
 
-- **Layer A (bv_to_nat)** — still needed: lift BitVec-64 polynomial
-  expressions (with `addCarry`, `mulx`, `bzhi`, `shrdImm`, `imulImm`)
-  to Nat / `ZMod p`.
-- **Layer B (carry-chain elimination)** — still needed: collapse
-  ADCX/ADOX/ADD/ADC chains threading through the symbolic execution.
-- **Layer C+D** — ✅ done (this file's `five_limb_radix51_mul_spec`).
+`poly_zp` also has two layers outside this module:
 
-So the plan reduces to ~10–14 days, not 4 weeks: Layer A's ~30 lemmas
-and Layer B's chain eliminator. Layer C+D ships as a single reusable
-theorem.
+- **Layer A (bv_to_nat)**: lift BitVec-64 polynomial expressions (with
+  `addCarry`, `mulx`, `bzhi`, `shrdImm`, `imulImm`) to Nat / `ZMod p`.
+- **Layer B (carry-chain elimination)**: collapse ADCX/ADOX/ADD/ADC
+  chains threading through the symbolic execution.
 -/
 
 namespace CatCrypt.Tactics.PolyZpTest
@@ -61,9 +53,9 @@ abbrev Fp25519 : Type := ZMod (2^255 - 19)
 
 /-! ## Tier 0a: 2-limb mul over a *generic* CommRing — control case.
 
-Works fast. Demonstrates `ring` is fine on small polynomials over
-`CommRing` in general; the slowness is specifically the `ZMod p`
-elaboration cost for `p = 2^255 - 19`. -/
+Control case: `ring` closes small polynomials over a general `CommRing`
+quickly; the `ZMod p` cases add the elaboration cost of `ZMod p`
+for `p = 2^255 - 19`. -/
 
 example {R : Type} [CommRing R] (a₀ a₁ b₀ b₁ : R) :
     (a₀ + a₁ * 2^51) * (b₀ + b₁ * 2^51)
@@ -128,12 +120,11 @@ example (a₀ a₁ a₂ a₃ a₄ b₀ b₁ b₂ b₃ b₄ x : Fp25519) :
 
 /-! ## Tier 0e: the `2^255 ≡ 19 (mod p)` reduction identity.
 
-Layer C of `poly_zp` rests on this identity. If
-`ring` doesn't handle it directly (it doesn't, since it's a
-non-polynomial fact about the specific modulus), we need a separate
-lemma proven via `decide` / `ZMod` machinery. -/
+Layer C of `poly_zp` rests on this identity. `ring` does not prove it
+(it is a non-polynomial fact about the specific modulus), so it is a
+separate lemma proved by evaluation. -/
 
--- `decide` blew the recursion stack on a 255-bit power; `native_decide`
+-- `decide` exceeds the recursion stack on a 255-bit power; `native_decide`
 -- compiles to native code and runs in ms.
 theorem two_pow_255_eq_19 : (2 : Fp25519)^255 = 19 := by
   native_decide
@@ -175,10 +166,10 @@ theorem two_limb_radix128_mul_correct (a₀ a₁ b₀ b₁ : Fp25519) :
 
 /-! ## Tier 2: 5-limb radix-2^51 mul reduced modulo p.
 
-This is the real `carry_mul` algebraic spec — the schoolbook product
-of two 5-limb radix-2^51 representations reduced via `2^255 ≡ 19`. If
-this closes, we've validated the full Layer-D-applies-after-Layer-C
-pipeline at the polynomial level for the actual mulBody scope. -/
+This is the `carry_mul` algebraic spec — the schoolbook product
+of two 5-limb radix-2^51 representations reduced via `2^255 ≡ 19`. It
+exercises layer C followed by layer D at the polynomial level for the
+`mulBody` scope. -/
 
 /-- An abstract polynomial identity: 5-limb radix-`t` schoolbook
     multiplication, reduced via `t^5 = 19`. Pure ring identity in `t`,

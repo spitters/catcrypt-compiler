@@ -17,7 +17,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesc
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
 
 /-!
-# Ed25519 fixed-base comb-window **constant-time select**, owned x86 backend (#387)
+# Ed25519 fixed-base comb-window **constant-time select**, owned x86 backend
 
 Ed25519 signing multiplies the *fixed* basepoint `B` by the secret scalar `s`
 (twice: `A = s·B` and `R = r·B`). The standard fast path replaces the
@@ -32,7 +32,7 @@ gap is", item 1).
 
 This module emits the **CT window-select primitive** through the owned x86
 backend (`Com (x86Dialect 64) → runBlock → AsmPrinter`, no jasminc) — the same
-verified-front substrate as `Fe25519MulKernel.feMulBlock` (the #391 field-mul at
+verified-front substrate as `Fe25519MulKernel.feMulBlock` (the field-mul at
 s2n parity). It is the security-critical piece: the lookup MUST be constant-time
 (no secret-dependent load address, no secret-dependent branch), or the whole
 "verified CT compiler" story leaks the scalar through a cache/timing side
@@ -85,7 +85,7 @@ KAT are the runtime gate in `bench/ed25519_comb_compare/` against RFC 8032
 §7.1 + libsodium/dalek; this module lands the CT-critical select kernel that
 gates them.
 
-**Wider windows (#459).** The same CT scan is emitted at three widths: the
+**Wider windows.** The same CT scan is emitted at three widths: the
 16-entry 4-bit `combSelect*` kernel, the 32-entry 5-bit `combSelect5*` kernel
 (`combSelect5_eval` / `combSelect5_constant_time_offsets`), and the 64-entry
 6-bit `combSelect6*` kernel. A 5-bit signed window cuts a 256-bit scalar from 64
@@ -98,7 +98,7 @@ identical.
 Identical to `Fe25519MulKernel` / `BignumMontMulKernel`: the verified artifact
 is `Com (x86Dialect 64) → runBlock → evalInstr`, the transcription of Jasmin's
 Rocq x86 semantics; `AsmPrinter` + `gas` is the syntactic boundary, and the
-System-V leaf prologue/epilogue is trusted ABI scaffolding. No `sorry`.
+System-V leaf prologue/epilogue is trusted ABI scaffolding. All goals are closed.
 -/
 
 @[expose] public section

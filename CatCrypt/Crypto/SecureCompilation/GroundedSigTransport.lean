@@ -9,14 +9,14 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 public import CatCrypt.Crypto.SecureCompilation.ConcreteEcScalarRealizer
 
 /-!
-# Grounded SIGNATURE / TRANSPORT backbones — whole-pipeline emit-realization with
+# Grounded SIGNATURE / TRANSPORT cores — whole-pipeline emit-realization with
   ZERO assumed per-kernel hypotheses
 
-This module grounds the computational backbones of three real signature /
+This module grounds the computational cores of three real signature /
 transport constructions **unconditionally** — every per-step realization is a
 *theorem* (a proved concrete realizer), so each headline carries **zero
 `KernelRealizesT` / `KernelRealizes` hypotheses** (only codec-fit side
-conditions, honestly flagged).  It reuses the carrier-driven groundings already
+conditions, stated explicitly).  It reuses the carrier-driven groundings already
 proved in-repo:
 
 * `GroundedHashProtocol.keccakSponge_realized` + `pipeNT_realizes` — the
@@ -28,10 +28,10 @@ proved in-repo:
   template — the Curve25519 base-field doubling-constant multiply over
   `ZMod (2^255 − 19)`, codec a theorem (`decodeF_encodeF`), axiom-clean.
 
-## The grounded backbones
+## The grounded cores
 
 * **`grounded_slh_treehash_realizes`** — the hash-based-signature TREEHASH /
-  Merkle authentication-path backbone of SLH-DSA / SPHINCS⁺ (FIPS 205) in its
+  Merkle authentication-path core of SLH-DSA / SPHINCS⁺ (FIPS 205) in its
   SHAKE / Keccak instantiation: a Merkle tree's node hashes and the
   authentication-path verification are a chain of the *same* Keccak permutation
   on the 1600-bit sponge state, one `keccak_f steps` per absorbed/squeezed
@@ -57,11 +57,11 @@ proved in-repo:
   `add`/`sub`/`mul`) are exposed as separately-proved rows (`ConcreteEcScalarRealizer`),
   not chained here.
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
 * **Grounded (unconditional Lean theorems):** every per-step realization of all
-  three backbones — each a proved concrete realizer (`keccak_realizes_concrete`
-  for the two hash backbones; `mul121665_realizes_concrete` for the ladder
+  three cores — each a proved concrete realizer (`keccak_realizes_concrete`
+  for the two hash cores; `mul121665_realizes_concrete` for the ladder
   multiply), with no KAT and no per-kernel hypothesis.  Each whole pipeline
   decodes to the composite of its per-step specs.
 
@@ -77,10 +77,10 @@ proved in-repo:
 * **The abstract elliptic-curve group law is NOT grounded.**  Only the
   base-field arithmetic sub-step (`mul121665`) of the ladder is grounded — the EC
   group operation / point addition has no concrete field realizer and is the
-  honest residual, exactly as in `ConcreteEcScalarRealizer`.  Likewise the
+  residual, exactly as in `ConcreteEcScalarRealizer`.  Likewise the
   lattice arithmetic of ML-DSA (NTT, sampling, rejection) and the WOTS⁺ /
   FORS chaining *parameters* of SLH-DSA beyond the bare Keccak permutation are
-  out of scope — only the hash/sponge and field-multiply backbones are grounded.
+  out of scope — only the hash/sponge and field-multiply cores are grounded.
 
 * **The only machine-code residual (NOT a per-kernel hypothesis):** that the
   *jasmin-emitted machine bytes* of the real `keccak_f1600` / `mul121665` kernels
@@ -110,7 +110,7 @@ open CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
 open CatCrypt.Crypto.SecureCompilation.ConcreteEcScalarRealizer
 open CatCrypt.Crypto.Hash.Keccak
 
-/-! ## §1  SLH-DSA / SPHINCS⁺ TREEHASH / authentication-path backbone — UNCONDITIONAL
+/-! ## §1  SLH-DSA / SPHINCS⁺ TREEHASH / authentication-path core — UNCONDITIONAL
 
 A hash-based signature (SLH-DSA, FIPS 205; SPHINCS⁺) verifies by recomputing a
 Merkle tree's node hashes up an authentication path and the WOTS⁺ / FORS hash
@@ -132,7 +132,7 @@ def slhTreehashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     List (KeccakState → KeccakState) :=
   keccakSpongeSpecs steps n
 
-/-- **GROUNDED SLH-DSA / SPHINCS⁺ treehash / auth-path backbone — UNCONDITIONAL.**
+/-- **GROUNDED SLH-DSA / SPHINCS⁺ treehash / auth-path core — UNCONDITIONAL.**
 
     The hash-based-signature Merkle authentication-path verification of SLH-DSA
     (FIPS 205) in its SHAKE / Keccak instantiation: recomputing node hashes and
@@ -144,7 +144,7 @@ def slhTreehashSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by the carrier-generalized `pipeNT_realizes`.
 
-    Honest scope: this grounds the **Keccak-permutation hash backbone** of the
+    Scope: this grounds the **Keccak-permutation hash core** of the
     treehash / auth-path.  The structural tweak / FORS-index / WOTS⁺-checksum
     bookkeeping around the bare permutation is NOT modeled, and the SHA-256
     instantiation of SLH-DSA is dropped (its codec uses a `bv_decide` certificate
@@ -197,8 +197,8 @@ def mldsaFiatShamirSpecs (steps : KeccakStepMappings) (n : ℕ) :
     concrete realizer `keccak_realizes_concrete` (in turn the verified 200-byte
     codec round-trip `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    Honest scope: this grounds the **SHAKE-256 / Keccak-permutation hash
-    backbone** of the Fiat–Shamir challenge.  The lattice arithmetic of ML-DSA
+    Scope: this grounds the **SHAKE-256 / Keccak-permutation hash
+    core** of the Fiat–Shamir challenge.  The lattice arithmetic of ML-DSA
     (NTT, `w₁` decomposition, `SampleInBall`, rejection sampling) is NOT modeled —
     only the hash transcript.  The only machine-code residual is the owned-emit
     obligation for the `"keccak_f1600"` leaf — NOT a per-block hypothesis (and NOT
@@ -281,9 +281,9 @@ def x25519LadderDblProtocol (width : ℕ) (hw : width ≤ 48)
     `mul121665_realizes_concrete` (in turn the field codec round-trip
     `decodeF_encodeF`); the composition is the generic `runRealizes`.
 
-    Honest scope: this grounds the **base-field arithmetic** doubling-constant of
+    Scope: this grounds the **base-field arithmetic** doubling-constant of
     the ladder.  The abstract elliptic-curve group law / point addition is NOT
-    field arithmetic and has no concrete field realizer — it is the honest
+    field arithmetic and has no concrete field realizer — it is the
     residual, exactly as in `ConcreteEcScalarRealizer`.  The ladder's binary
     coordinate ops (field `add`/`sub`/`mul`) are separately proved
     (`ConcreteEcScalarRealizer.fieldAdd/Sub/Mul25519_realizes_concrete`), not
@@ -299,30 +299,30 @@ theorem grounded_x25519_ladder_dbl_realizes (width : ℕ) (hw : width ≤ 48)
       = composeSpecs (x25519LadderDblSpecs n) (decodeF width xVal) :=
   (x25519LadderDblProtocol width hw hq limbStore n).runRealizes oldDest xVal
 
-/-! ## §4  The combined SIGNATURE / TRANSPORT headline — all three backbones grounded
+/-! ## §4  The combined SIGNATURE / TRANSPORT headline — all three cores grounded
 
-The signature / transport portfolio is its three grounded backbones conjoined:
+The signature / transport portfolio is its three grounded cores conjoined:
 the SLH-DSA treehash sponge, the ML-DSA Fiat–Shamir challenge-hash sponge (both
 over the 1600-bit Keccak carrier `.TBytes 200`), and the X25519 ladder
 doubling-constant chain (over the base-field carrier `.TFp`).  Each conjunct is
 unconditional in its kernels. -/
 
-/-- **THE SIGNATURE / TRANSPORT HEADLINE — three grounded backbones, ZERO kernel
+/-- **THE SIGNATURE / TRANSPORT HEADLINE — three grounded cores, ZERO kernel
     hypotheses.**
 
-    The three signature / transport backbones conjoined:
+    The three signature / transport cores conjoined:
 
     * the SLH-DSA / SPHINCS⁺ treehash / auth-path Keccak sponge,
     * the ML-DSA / Dilithium Fiat–Shamir SHAKE-256 challenge-hash, and
     * the X25519 Montgomery-ladder doubling-constant field chain,
 
     each with **ZERO kernel hypotheses** — every per-step realization is a proved
-    concrete realizer (`keccak_realizes_concrete` for the two hash backbones,
+    concrete realizer (`keccak_realizes_concrete` for the two hash cores,
     `mul121665_realizes_concrete` for the ladder multiply), in turn a verified
     codec round-trip.  All three are axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    Honest scope: only the hash/sponge backbones (Keccak) and the base-field
+    Scope: only the hash/sponge cores (Keccak) and the base-field
     doubling-constant (`mul121665`) are grounded.  The abstract EC group law, the
     ML-DSA lattice arithmetic, and the SLH-DSA structural bookkeeping are NOT
     grounded; the SHA-256 instantiations are dropped (certificate axiom).  The

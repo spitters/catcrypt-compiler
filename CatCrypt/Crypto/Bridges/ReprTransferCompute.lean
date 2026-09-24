@@ -19,17 +19,17 @@ analogue of `@[implemented_by]`** — it carries the proof that attribute omits.
 
 Two regimes, matching Lean's two impl-swap mechanisms:
 
-* **Representation-changing** (`enc` a genuine `Equiv`, the CoqEAL "refinement for
+* **Representation-changing** (`enc` a non-identity `Equiv`, the CoqEAL "refinement for
   compute" pattern): compute on the concrete representation with `bop`, then
   decode. `EndoOpRefinement.compute_via` is the proved justification for an
   `@[implemented_by fun a b => decode (bop (encode a) (encode b))]`.
 * **Same-representation** (`enc = id`): the square collapses to function equality
   `op = bop`, which `@[csimp]` consumes to replace `op` by `bop` in compiled code
   — soundly, *because we proved it*. `EndoOpRefinement.funEq` produces exactly
-  such a lemma. This is the genuinely-verified replacement for `@[implemented_by]`
+  such a lemma. This is the verified counterpart of `@[implemented_by]`
   (which is trusted: the kernel never sees a proof).
 
-## Scope and honesty
+## Scope
 
 This makes verified native compute available **only when the concrete `bop` is an
 actual computable Lean function** (e.g. the emitted `BitVec` field kernels

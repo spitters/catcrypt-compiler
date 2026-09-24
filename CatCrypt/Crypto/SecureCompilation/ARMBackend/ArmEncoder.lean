@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
-# A verified machine-code byte encoder for the scalar A64 `AInst` instructions (#533 sub-2)
+# A verified machine-code byte encoder for the scalar A64 `AInst` instructions
 
 `ArmAsmPrinter.lean` prints an `AInst` block to GAS AArch64 assembly *text*, which
 is then handed to `as`/`clang` to be encoded into machine bytes — that last step
@@ -31,7 +31,7 @@ bit positions. We compute the word arithmetically and split it little-endian.
 ## The narrowed trust boundary (same posture as the x86 encoder)
 
 `ArmAsmPrinter` → `as` trusts (printer is correct GAS syntax) ∧ (`as` encodes each
-mnemonic per the Arm ARM). This encoder replaces both with a *Lean* function whose
+mnemonic per the Arm ARM). This encoder substitutes for both a *Lean* function whose
 every output word is determined by the fixed A64 field construction below —
 auditable field by field against the Arm Architecture Reference Manual (the C4.1
 "A64 instruction set encoding" tables). The remaining trusted edge shrinks to
@@ -172,7 +172,7 @@ def encodeAInst (alloc : GpAlloc) : AInst → List (BitVec 8)
 def encodeABlock (alloc : GpAlloc) (block : List AInst) : List (BitVec 8) :=
   block.flatMap (encodeAInst alloc)
 
-/-! ### 3b. The branch / control-flow encoders (the looped-emission words, #551)
+/-! ### 3b. The branch / control-flow encoders (the looped-emission words)
 
 A64 branches carry a **PC-relative immediate offset** to the target label, in
 units of 4 bytes (the offset is `(target_addr - branch_addr) / 4`, a *signed*
@@ -282,7 +282,7 @@ def qrAlloc : GpAlloc :=
 #guard encodeAInst qrAlloc (.add "c" "c" "d")
     == [0x42, 0x00, 0x03, 0x0b].map (BitVec.ofNat 8)
 
-/-! ### 5b. Branch-encoder well-formedness + gas differential pins (#551)
+/-! ### 5b. Branch-encoder well-formedness + gas differential pins
 
 Each branch instruction is one 4-byte word (a label is 0 bytes); the words are
 pinned to `aarch64-linux-gnu-as` for the looped back-edge offsets. The reference
@@ -315,7 +315,7 @@ theorem encodeABranch_length (alloc : GpAlloc) (resolve : ALabel → Nat) (i : A
 #guard encCmpBranch 0 9 (0x80000 - 4)
     == [0x89, 0xff, 0xff, 0x34].map (BitVec.ofNat 8)
 
-/-! ## 6. The 64-bit bignum/field instruction encoder (#547)
+/-! ## 6. The 64-bit bignum/field instruction encoder
 
 The A64 analogue of the x86 ADX/BMI2 carry-chain encoder, for the
 `ArmModel.BInst` 64-bit subset. The field layouts are transcribed from the same

@@ -71,7 +71,7 @@ def ComLsemExportFaithfulSimd (leaf : LeafEnvN) {Γ : Ctxt jasminDialect} {t : J
     ∧ decodeN st' (comRetReg Γ.length argName com Γ.length) w
         = some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the packed-lane SIMD fragment.** Any `Com`
+/-- **The export gate is discharged for the packed-lane SIMD fragment.** Any `Com`
     over `{regArith, select, immediate shifts, mulhi, addCarryLo/Hi, castW, extCall,
     vpackZMM}` satisfies `ComLsemExportFaithfulSimd` for any leaf environment whose external
     primitives agree with the dialect (`LeafAgreesN leaf`) — assembled from

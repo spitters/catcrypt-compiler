@@ -21,7 +21,7 @@ set_option autoImplicit false
 # Poly1305 MAC — FRONT-COMPILED owned x86-64 kernel (`5×26`-limb HACL field-dot)
 
 The fixed-`NBlk` Poly1305 130-bit field MAC over `𝔽_{2¹³⁰−5}`, sourced through
-the verified `CProg`-free front — NO hand-built `Com` anywhere in the emit path:
+the verified front — NO hand-built `Com` anywhere in the emit path:
 
 ```
   macBody (LowCT: RScalarSetExpr u64 word math over the 55 input slots)
@@ -31,7 +31,7 @@ the verified `CProg`-free front — NO hand-built `Com` anywhere in the emit pat
 
 The emit drivers (`bench/chachapoly_compare/poly1305_owned_emit.lean`,
 `poly1305_aead_owned_emit.lean`) render `poly1305MacCom` to owned AT&T `.s` via
-`Com.toLprogPhysAbi` (#476 owned-RA, 2-pointer SysV; NO jasminc) under the
+`Com.toLprogPhysAbi` (owned register allocation, 2-pointer SysV; NO jasminc) under the
 export symbols `poly1305_mac` / `poly1305_mac_hacl_r`.
 
 ## Field schedule (HACL `5×26`)
@@ -202,7 +202,7 @@ def srcVM : VarMap srcCtx := mkVMAux nIn
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `macBody` through the `CProg`-free control front and cap with
+/-- Push `macBody` through the control front and cap with
     `ret <name>` (a `u64` slot of the final `VarMap`). `none` if the front
     declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=

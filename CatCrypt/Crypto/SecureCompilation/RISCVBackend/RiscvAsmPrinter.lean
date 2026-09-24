@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 
 /-!
-# GAS RV64 asm printer for the scalar RISC-V machine instructions (#535)
+# GAS RV64 asm printer for the scalar RISC-V machine instructions
 
 `ARMBackend.ArmAsmPrinter` prints the A64 scalar subset to GAS AArch64 asm; this
 is its **RISC-V RV64** counterpart: it prints a `RiscvModel.RInst` block — the
@@ -29,8 +29,8 @@ This printer + `as` is the *thin* trust boundary, because the printer is a
 assignment, no instruction selection / scheduling / optimization), and `as`
 performs only assembly. So the trusted edge is: (the printer is correct GAS RV64
 syntax for each mnemonic) ∧ (`as` encodes each mnemonic per the RISC-V ISA). The
-machine-code byte encoder + `decode(encode)=i` against `riscv/sail-riscv` is
-**deferred to sub-2** (the RV64 analogue of `SailX86Decoder`).
+machine-code byte encoder + `decode(encode)=i` against `riscv/sail-riscv` are
+`RiscvEncoder` and `SailRiscvDecoder` (the RV64 analogue of `SailX86Decoder`).
 
 ## Register allocation
 
@@ -130,7 +130,7 @@ def renderRInst (alloc : GpAlloc) : RInst → String
 def renderRBlockBody (alloc : GpAlloc) (block : List RInst) : List String :=
   block.map (renderRInst alloc)
 
-/-! ### 2b. The branch / control-flow printer (the looped-emission lines, #552)
+/-! ### 2b. The branch / control-flow printer (the looped-emission lines)
 
 A `RBranch.label` renders as the bare `.L<name>:` line; a `bcc` as the GAS B-type
 branch `b<cmp> rs1, rs2, .L<name>` (e.g. `bne ctr, zero, .Ltop`, the counter

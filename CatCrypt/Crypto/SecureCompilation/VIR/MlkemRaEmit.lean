@@ -16,16 +16,16 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 /-!
 # ML-KEM-768 4-way batched NTT with live-range-aware register allocation
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
+`RegisterAllocation.lean` provides the verified linear-scan RA
 framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
 hint (`seqOf`), well-formed when `slotOf` is injective and `applyRA` preserves
 `JForProg.denote`. The central theorem `applyRA_denote_preserves` is
 RA-agnostic.
 
 `Sha2RaEmit.lean` / `KeccakRaEmit.lean` / `ChachaRaEmit.lean` /
-`Poseidon2RaEmit.lean` wired the framework into the SHA-2, Keccak, ChaCha20,
+`Poseidon2RaEmit.lean` wire the framework into the SHA-2, Keccak, ChaCha20,
 and Poseidon2 emit pipelines. This module is the **ML-KEM-768 4-way batched
-NTT analog** — the lattice-primitive sibling, testing whether the Phase A
+NTT analog** — the lattice-primitive sibling, testing whether the same
 pattern transfers beyond symmetric crypto and Plonky3 hash-fields.
 
 ## The ML-KEM 4-way NTT emit

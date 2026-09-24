@@ -13,7 +13,7 @@ public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
 
 /-!
-# sail-riscv decoder round-trip: `decode (encode i) ≡ i` (#535 sub-2)
+# sail-riscv decoder round-trip: `decode (encode i) ≡ i`
 
 `RiscvEncoder.lean` is the owned `RInst → machine-byte` encoder. Its trust edge
 is *differential*: each output word is pinned (`native_decide`) to what the GNU
@@ -21,7 +21,7 @@ RISC-V assembler produces for the same mnemonic, checked by hand against
 `riscv64-linux-gnu-as`/`objdump` (the comparison harness itself is not vendored
 in this tree). That makes `as`'s unverified encoder part of the trusted base.
 
-This module replaces the differential edge for the emitted RV64I subset with a
+This module discharges the differential edge for the emitted RV64I subset by a
 **round-trip** against the RISC-V *decoder* discipline: a Lean decoder
 `riscvDecode` that recovers the `(funct7, rs2/shamt, rs1, funct3, rd, opcode)`
 fields from a 32-bit instruction word and reconstructs the `RInst`, transcribed
@@ -74,7 +74,7 @@ round-trip-proved by the capstone `roundtrip_RInst`:
 
 The capstone `roundtrip_RInst` quantifies over **all** `RInst` (with the
 register-name well-formedness side-condition the backend's register pool
-satisfies). The only ceiling vs the x86 line is honest and structural: the
+satisfies). The only ceiling vs the x86 line is structural: the
 `*W`-shift `shamt` is 5-bit, so the round-trip is stated for shift counts
 `< 32` (`as` rejects `slliw rd,rs,32` likewise); the ChaCha rotate emits only
 counts in `{7, 8, 12, 16, 20, 24, 25}`, all `< 32`.
@@ -375,7 +375,7 @@ theorem roundtrip_roriw (d a : String) (m : Nat)
     (by intro d' a' m' h; rcases h with h | h <;> cases h)
     (by intro d' a' m' h; cases h; exact hm)
 
-/-! ## 6b. B-type branch round-trip: the scrambled immediate (`decode (encode) = i`, #552)
+/-! ## 6b. B-type branch round-trip: the scrambled immediate (`decode (encode) = i`)
 
 The B-type word reassembles its 13-bit signed byte offset from the **scrambled**
 field positions `imm[12]=bit31, imm[10:5]=bits[30:25], imm[4:1]=bits[11:8],
@@ -461,7 +461,7 @@ theorem roundtrip_bne_backedge :
       = some (.bne, "a2", "zero", (BitVec.ofNat 13 (0x2000 - 4)) &&& 0x1ffe) :=
   roundtrip_bcc .bne "a2" "zero" _ (by decide) (by decide)
 
-/-! ## 7. The owned-backend byte-level trust edge after #535 sub-2
+/-! ## 7. The owned-backend byte-level trust edge
 
 Unlike x86 (`SailX86Decoder.trust_edge`, where only the register-direct GP forms
 round-trip and the VEX/ADX/memory forms stay gas-pinned), RV64 base is a clean

@@ -226,7 +226,7 @@ the TCB (trusted computing base) of our Ed25519 deployment:
 | `sign` (def) | `bench_ed25519_sign.c::ed_sign` | Cross-checked via RFC 8032 §7.1 KATs (3/3 pass) |
 | `verify` (def) | `bench_ed25519_sign.c::ed_verify` | Cross-checked via KATs (accepts our sigs + RFC's) |
 
-## 4. Proof path (open work)
+## 4. Proof path
 
 A full-stack correctness proof of `sign` and `verify` would compose:
 
@@ -235,40 +235,39 @@ A full-stack correctness proof of `sign` and `verify` would compose:
    bounded integer operations mod p = 2²⁵⁵−19. Analogous lemmas for
    `fiat_25519_scalar_*` mod L.
 
-2. **Addition-chain correctness** (to prove, ~1 week):
+2. **Addition-chain correctness** (unproved):
    `fe_invert(z) = z^(p-2) mod p` for all z ≠ 0. Chain transcribed from
    ed25519-donna; each step is a sqr or mul, bounded-range trivially
    via fiat-crypto bounds. Proof shape: unroll the 254 sqrs + 11 muls
    and show each intermediate exponent. Tractable but tedious.
 
-3. **Dalek `fp_sqrt_ratio_i` correctness** (to prove, ~2 weeks):
+3. **Dalek `fp_sqrt_ratio_i` correctness** (unproved):
    Show that for u, v ∈ Fp with v ≠ 0 and u/v a quadratic residue,
    `fp_sqrt_ratio_i(u, v)` returns the canonical non-negative square
    root of u/v. Non-trivial: involves the Legendre-symbol / pow_p58
    trick + canonicalization branch.
 
-4. **Scalar reduction correctness** (to prove, ~1 day):
+4. **Scalar reduction correctness** (unproved):
    `scalar_reduce_64(bytes) = int(bytes) mod L` as Montgomery form.
    The Mont-domain trick is subtle (to_montgomery applied twice on
    the high half); a concrete statement + `decide`-level check for
    small inputs, then abstract argument via fiat lemmas for general.
 
-5. **Edwards curve law** (to prove, ~2 weeks):
+5. **Edwards curve law** (unproved):
    Extended-coords point addition and doubling formulas are correct.
    Standard algebraic lemmas (also in the dalek Coq artifacts); can be
    ported.
 
-6. **Scalarmult correctness** (to prove, ~1 week):
+6. **Scalarmult correctness** (unproved):
    Both windowed fixed-base and wNAF variable-base compute
    `scalar · P` correctly, given the point-operation lemmas.
 
-7. **RFC 8032 sign/verify correctness** (to prove, ~1 week):
+7. **RFC 8032 sign/verify correctness** (unproved):
    Given 2–6 above, the wrapper flows `sign` and `verify` match the RFC
    spec. Mostly sequencing / byte-packing arithmetic.
 
-Total: rough estimate 6–10 weeks of proof work for full end-to-end
-certification. The KAT-based cross-check is the pragmatic substitute
-for now; the pipeline-(1a) pieces (field + scalar primitives + ed_add/
+The KAT-based cross-check stands in for these proofs; the
+pipeline-(1a) pieces (field + scalar primitives + ed_add/
 dbl MLIR) are the same code paths used for actual signature operations,
 so KAT agreement pins down correctness on every tested input. -/
 

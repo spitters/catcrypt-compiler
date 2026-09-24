@@ -40,7 +40,7 @@ This file factors that out.  Over a section `variable {F : Type*} [Field F]` it 
 * the two realization ties
   `ec_jacDouble_realizes_affineDbl` and `ec_jacAdd_realizes_affineAdd`.
 
-This is the **canonical parametric form** (`@canonical_parametric` — genuinely parametric over
+This is the **canonical parametric form** (`@canonical_parametric` — parametric over
 the base field, as the curve carrier varies per protocol).  A new curve needs **no new EC
 proof**: instantiate `@ec_jacDouble_realizes_affineDbl (ZMod p) _ …` and discharge the four
 nonvanishing facts `(2,3,4,8 : ZMod p) ≠ 0`, which all follow from `p > 8` (Mathlib infers

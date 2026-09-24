@@ -19,7 +19,7 @@ builds `QuadExt K = K × K` written `c0 + c1·u`, proves the
 `CommRing (QuadExt K)` instance.
 
 `RelationalFrontBls377Fp2.lean`'s `Fp2_377` is the special case `K = ZMod
-bls377Q`; this module abstracts the base ring away. The two genuine
+bls377Q`; this module abstracts the base ring away. The two
 quadratic-on-quadratic instantiations are functor applications of this one
 construction:
 
@@ -45,7 +45,7 @@ The headline is the **Karatsuba-equals-schoolbook** correctness:
 where `v0 = ac`, `v1 = bd`, `mid = (a+b)(c+d)`. Trading the fourth base multiply
 for an extra add (`ad + bc = (a+b)(c+d) − ac − bd`) is **semantics-preserving**
 (`mulKaratsuba_eq_schoolbook`) — `ext` then `ring` on each component. Because the
-base `K` is a genuine abstract `CommRing`, `ring` closes the component identities
+base `K` is an abstract `CommRing`, `ring` closes the component identities
 **directly**: there is no opaque-multiply dance (no `simp`-then-`ring` on an
 uninterpreted `mul`), unlike a `ZMod`-specialized phrasing where the base
 operations are concrete.
@@ -56,7 +56,7 @@ all ring axioms hold for *any* `ξ : K`, so we do not pin its value.
 We also give `QuadExt K` a `CommRing` instance (schoolbook mul, componentwise
 add/sub/neg): every axiom is a componentwise `K`-identity closed by `ext`/`ring`.
 
-## Honesty boundary
+## Scope
 
 This is the abstract algebra only — the construction `K[u]/(u² − ξ)` and the
 Karatsuba optimization's correctness. It does **not** wire the multiply down to
@@ -157,7 +157,7 @@ directly. -/
     the fourth base product `ad + bc` for `(a+b)(c+d) − ac − bd` is
     denotation-preserving for any nonresidue `ξ` over any `CommRing K`. The `c0`
     components are syntactically equal; the `c1` components agree by `ring`
-    (`(a+b)(c+d) − ac − bd = ad + bc`). This is the load-bearing correctness fact
+    (`(a+b)(c+d) − ac − bd = ad + bc`). This is the correctness fact
     for emitting a 3-mul quadratic-extension multiply. -/
 theorem mulKaratsuba_eq_schoolbook [CommRing K] (ξ : K) (x y : QuadExt K) :
     mulKaratsuba ξ x y = mulSchoolbook ξ x y := by

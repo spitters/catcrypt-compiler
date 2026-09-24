@@ -11,13 +11,13 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Plonky3 AIR reflect surface — Tier A migration of the AIR layer
+# Plonky3 AIR reflect surface
 
-Layer 4 of the Plonky3 STARK chain (#154): the AIR (Algebraic Intermediate
+Layer 4 of the Plonky3 STARK chain: the AIR (Algebraic Intermediate
 Representation) transition-constraint evaluator over a precomputed execution
-trace. This file is the architectural analogue of `Plonky3Reflect.lean`
-(Merkle, Wave 1): every byte of the new AIR emit goes through the verified
-front `LowCT → CryptoSSA → Com → jasmin`.
+trace. This module is the architectural analogue of `Plonky3Reflect.lean`
+(Merkle): every byte of the AIR emit goes through the verified
+front `LowCT → Com catCryptDialect → Jasmin`.
 
 ## AIR equation (this surface)
 
@@ -44,7 +44,7 @@ by the trace width `W` and the height `H` (the runtime `i` bound is part of the
 leaf's contract, not the orchestration — the orchestration just chains one
 RCall per step bucket).
 
-For Tier-A KAT identity with the legacy Tier-C `air.jazz` body, we provide a
+For KAT identity with the string-emitted `air.jazz` body, we provide a
 single-call shape: one `air_transition` call that returns the OK flag (a
 `TBytes 8` u64-sized buffer). Multi-step variants statically unroll into a
 chain of identical RCall sites.
@@ -54,21 +54,20 @@ chain of identical RCall sites.
 Same as `FalconReflect.lean` / `Plonky3Reflect.lean`: `reifyLowCT%` does not
 consult the `LowCTPattern` registry, so we hand-build the body the reifier
 *would* produce. Downstream (`translate → cryptoDialectToJasminCom →
-emitAbiOrchRegPtr`) is unchanged.
+emitAbiOrchRegPtr`) is the standard chain.
 
-## Relation to legacy Tier C `Plonky3AirEmit.lean`
+## Relation to the string emit `Plonky3AirEmit.lean`
 
-The legacy file builds its `.jazz` via inline regArith templating; this file
-replaces that pattern with an in-chain emit anchored on an opaque
-`plonky3_air_transition` leaf so the orchestration is verified end-to-end.
-The leaf's field-arithmetic body is the legacy file's responsibility (linked
-in via `air_eval_fib.jinc` / equivalent); the cross-layer composition is now
-verified.
+`Plonky3AirEmit.lean` builds its `.jazz` via inline regArith templating; this
+module emits in-chain, anchored on an opaque `plonky3_air_transition` leaf, so
+the orchestration is verified end-to-end. The leaf's field-arithmetic body
+comes from the string emit (linked in via `air_eval_fib.jinc` / equivalent);
+the cross-layer composition is verified.
 
 ## References
 
 * Plonky3 AIR transition: `plonky3-hax/src/air.rs`
-* Mirror pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Wave 1 Merkle)
+* Mirror pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Merkle)
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
 -/
 

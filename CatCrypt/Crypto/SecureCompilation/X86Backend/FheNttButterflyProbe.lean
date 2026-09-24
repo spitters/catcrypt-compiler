@@ -67,7 +67,7 @@ has no carry chain). `q̂` is `mulhi`, taken as the high output of `MULX`.
 * **Value (in Lean)**: `butterfly_kat0`/`butterfly_kat1` — `runBlock` over
   `butterflyBody` equals the `Nat` reference `shoupRefBF` on two vectors (one
   with `X ∈ [2q,4q)` exercising the X-normalize, one with `X < 2q`), by
-  `native_decide` (small vectors per the REV-12 runaway rule).
+  `native_decide` (small vectors, so the check stays cheap).
 * **Rendered asm shape**: `butterflyAsm_*` — the emitted AT&T text carries BOTH
   conditional reductions as the mask-trick (`sarq $63`, `andq $<2q>`,
   `andq $<q>`), the Shoup `mulx`, and no `<UNALLOCATED>` sentinel (the body fits

@@ -18,7 +18,7 @@ public import Mathlib.Tactic.Ring
 
 This file states the curve field-multiply correctness **top-down**, anchored at
 Mathlib's `ZMod p` field. The canonical Mathlib-anchored spine is
-`CurveFieldMathlibSpec.lean`; this file gives the same `ZMod p` field statement per
+`CurveFieldMathlibSpec.lean`; this module states the same `ZMod p` field statement per
 curve plus an **optional** fiat/AUCurves cross-prover *corroboration* arm.
 fiat-crypto is structural **inspiration** for the Montgomery field-element decode
 `feval`, NOT the source of truth.
@@ -315,7 +315,7 @@ theorem secp256k1_emit_refines_fiat
 /-! ## 4. SM2 — parametric over the bridge (NO AUCurves anchor)
 
 SM2 is **not** in AUCurves (`FieldLeafBridge.§0`), so it has no cross-prover anchor.
-Its field refinement is genuine (Tier A); its fiat refinement is the parametric
+Its field refinement is proved (Tier A); its fiat refinement is the parametric
 form: *if* a cross-prover bridge for an SM2 leaf were supplied, the emitted asm
 would refine it. We never claim AUCurves proves SM2. Radix `R = 2^256`. -/
 

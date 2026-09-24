@@ -23,14 +23,12 @@ The hand-written 4-limb CIOS Montgomery kernels (`Sm2MontMulKernel.lean`,
 `BignumMontMulKernel.lean`) carry only a `*_lowering_correct` theorem (the
 lowered `Com` denotes the source block); the link "the block computes
 `x·y·R⁻¹ mod p`" is asserted in a docstring and gated by an external GMP KAT.
-The SM2 one was, in fact, *buggy* until the KAT caught it (the `n+2`-word
-accumulator window's terminal dual-carry).
 
 This file is the 4-limb analogue of `Sm2FieldProven.lean`'s 2-word Solinas
-reconstruction: it proves, **sorry-free and over `Nat`**, that the explicit
+reconstruction: it proves, **fully and over `Nat`**, that the explicit
 carry-chain computations built from the `jasminDialect` register primitives
 (`mulHiW` = MULX hi, `regArith .mul` = MULX lo, `addCarryWord`/`carryOutBit`
-= ADD/ADC) reconstruct the genuine arithmetic, bottom-up:
+= ADD/ADC) reconstruct the `Nat` arithmetic, bottom-up:
 
 1. **One multiply-accumulate word** (`mulAddc`): the `(lo, hi)` of
    `a·b + add + cin` from MULX + two carry adds reconstruct
@@ -59,7 +57,7 @@ carry-chain computations built from the `jasminDialect` register primitives
    subtract lands it in `[0, N)`. Instantiated for **SM2** (`p_sm2`) and
    **secp256k1**.
 
-## Genuine spec, not fabricated
+## The specification
 
 The target arithmetic is `CatCrypt.Crypto.Number.montgomeryReduce` /
 `montgomeryMul` — fiat-crypto's `WordByWordMontgomery` reduction core, already
@@ -71,7 +69,7 @@ pinned to that pre-existing, independently-proven law.
 ## Scope
 
 This is the *reconstruction layer* (the `.toNat` of the dialect carry-chain
-computation = the genuine Nat arithmetic). It is width-generic where it can be
+computation = the Nat arithmetic). It is width-generic where it can be
 and 4-limb concrete where the layout matters. The Com→`lsem` semantic
 faithfulness for the modeled straight-line fragments is the proved
 `ComLsemExportFaithful[MC]` predicate; this kernel's physical asm-emit tie
@@ -407,7 +405,7 @@ theorem addLimbs_reconstruct (u : List (BitVec 64)) :
 the carry word appended), with `mulScalar_reconstruct` proving
 `valLimbs (mulScalar x c) = valLimbs x · c`. `mulLimbs x y` folds the rows:
 `x · (y₀ :: ys) = (x · y₀) + 2^64 · (x · ys)`, the combine an `addLimbs`. The
-top theorem `mulLimbs_reconstruct` is the genuine 256×256→512 product identity. -/
+top theorem `mulLimbs_reconstruct` is the 256×256→512 product identity. -/
 
 /-- One scalar-multiply row `x · c` as limbs: `addmul1` into a zero accumulator,
     with the carry-out word appended as the top limb (length `|x| + 1`). -/
@@ -455,7 +453,7 @@ row's limb 0, and the higher limbs are the truncating multi-limb add (`addLimbs`
 of `rest = x·ys` (the longer, length-controlling operand) with `row.tail`, the
 final carry appended. The base case is a single multiplier limb (so `rest` is
 always at least as long as `row.tail` in the recursive step, making the
-`addLimbs` truncation exact). `mulLimbs_reconstruct` is the genuine 256×256→512
+`addLimbs` truncation exact). `mulLimbs_reconstruct` is the 256×256→512
 product identity. -/
 
 /-- The recursive schoolbook product `x · y` as limbs (`|y| ≥ 1`). -/
@@ -505,7 +503,7 @@ theorem mulLimbs_reconstruct (x : List (BitVec 64)) :
       cases hys : ys with
       | nil => simp only [mulLimbs, valLimbs_cons, valLimbs_nil]; rw [mulScalar_reconstruct]; ring
       | cons z zs =>
-          -- the genuine recursive step
+          -- the recursive step
           have hih : valLimbs (mulLimbs x (z :: zs)) = valLimbs x * valLimbs (z :: zs) := by
             have := ih (by rw [hys]; simp); rw [hys] at this; exact this
           -- unfold the cons branch
@@ -580,7 +578,7 @@ of `Number.montgomeryReduce` (because `valLimbs T ≡ T₀ mod 2^64`).
 chain: form the digit `m`, add `N · m` into the accumulator (a `mulScalar`
 row + `addLimbs`), and shift down one limb (`/2^64`, exact because the low limb
 cancels). `ciosWord_eq` proves it equals `Number.montgomeryReduce (valLimbs N)
-(2^64) n' (valLimbs T)` — the genuine per-word REDC, where `montgomeryReduce_comp`
+(2^64) n' (valLimbs T)` — the per-word REDC, where `montgomeryReduce_comp`
 then chains four such steps into the full `R = 2^256` reduction. -/
 
 /-- The Montgomery factor word `m = (T₀ · n') mod 2^64`, computed from the
@@ -636,13 +634,13 @@ def ciosWord (N : List (BitVec 64)) (nP : BitVec 64) (T : List (BitVec 64)) :
   let m := montDigit T nP
   let nm := mulScalar N m                         -- value = valLimbs N · m
   let (sum, fc) := addLimbs T nm 0                -- value = T + N·m  (low limbs)
-  (sum ++ [fc.setWidth 64]).drop 1                 -- drop the now-zero low limb
+  (sum ++ [fc.setWidth 64]).drop 1                 -- drop the zero low limb
 
 /-- **One CIOS word step = one Montgomery reduction step.** When the accumulator
     `T` is at least as long as `N · m` (i.e. `|T| ≥ |N|+1`, the `n+2`-word CIOS
     window, so the `addLimbs` truncation against `T` is exact), `ciosWord N n' T`
     computes `Number.montgomeryReduce (valLimbs N) (2^64) n' (valLimbs T)` — the
-    genuine per-word REDC. The shift-down `drop 1` realises the spec's `/R` as
+    per-word REDC. The shift-down `drop 1` realises the spec's `/R` as
     floor division (unconditionally); the Montgomery side conditions
     (`N · n' ≡ -1 (mod 2^64)`, range) enter at the next layer via
     `Number.montgomeryReduce_correct` / `montgomeryReduce_comp`, which turn this
@@ -694,7 +692,7 @@ theorem ciosWord_eq (N : List (BitVec 64)) (nP : BitVec 64) (T : List (BitVec 64
 product radix; applied across four words it gives a reduction at `R = 2^256`.
 The accumulator is seeded with the schoolbook product `mulLimbs x y` (value
 `valLimbs x · valLimbs y`, the proven `mulLimbs_reconstruct`). The conclusion is
-the genuine Montgomery-product law `· R ≡ x·y (mod N)` and the `< 2N` range —
+the Montgomery-product law `· R ≡ x·y (mod N)` and the `< 2N` range —
 one conditional subtract from canonical. -/
 
 /-- The 4-fold per-word Montgomery reduction: apply the single-word
@@ -790,7 +788,7 @@ theorem secp256k1_nprime : (valLimbs secp256k1Limbs * 0xd838091dd2253531) % 2 ^ 
     `mulLimbs_reconstruct`) and running the four per-word reductions
     (`montRedc4`, `n' = 1`) yields a value `< 2·p_sm2` that is
     `≡ x·y·(2^256)⁻¹ (mod p_sm2)` — exactly `mont_mul(a,b) = a·b·R⁻¹ mod p`. The
-    arithmetic is the genuine fiat-crypto Montgomery law
+    arithmetic is the fiat-crypto Montgomery law
     (`Number.montgomeryReduce_comp`), instantiated at the canonical SM2 prime; the
     per-word step is the proven `ciosWord_eq`. -/
 theorem sm2_montmul_correct (T : Nat) (hT : T < 2 ^ 64 * valLimbs sm2Limbs) :

@@ -17,12 +17,12 @@ public meta import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 public import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 
 /-!
-# `wholeProgramResidence`: the residence lever as ONE automatic verified pass (#555)
+# `wholeProgramResidence`: the residence lever as ONE automatic verified pass
 
-This session established register **residence** as THE general high-speed lever
-(ChaCha 0.72×, NTT 0.47×, X25519 #412): a whole-program value that is kept in a
+Register **residence** is the general high-speed lever
+(ChaCha 0.72×, NTT 0.47×, X25519): a whole-program value that is kept in a
 register across leaf boundaries beats one that round-trips through the frame at
-every leaf-ABI hop. The four enabling passes existed *separately*:
+every leaf-ABI hop. The enabling passes are defined *separately*:
 
 * **inline** (`ComInline.inline`, `inline_preserves_denote`) — fuse the leaf
   `extCall`s into one straight-line body, so the cross-leaf values are *nameable*
@@ -33,39 +33,37 @@ every leaf-ABI hop. The four enabling passes existed *separately*:
   (`storeMem`/`loadMem` of an SSA-scratch slot) to register moves, removing the
   frame traffic on the observable footprint;
 * **GP graph-coloring RA** (`GraphColoringRegAlloc.graphColorAlloc`,
-  `graphColor_spillReload_sound`) — once the working set genuinely lives in
+  `graphColor_spillReload_sound`) — once the working set lives in
   registers, keep the *scalar* hot values resident (use-density spill cost), spilling
-  only the genuinely-cheap ones; the inserted spill traffic is sandwich-transparent.
+  only the cheap ones; the inserted spill traffic is sandwich-transparent.
 
 The *vector* (`%ymm`) residence track is the same lever applied to the lane
 registers (the ChaCha / NTT state words). Its soundness is the polymorphic
-move-machine core (`MoveMachine.spillReload_sandwich`) instantiated at the lane
-machine. The previous instantiation over the 128-bit `Vec128` `VState`/`VInst`
-machine has been removed with that machine; the vector instantiation is deferred
-to a future unified `%zmm` `MoveMachine` instance. The polymorphic core and the
-GP/scalar residence chain are intact and Vec128-free.
+move-machine core (`MoveMachine.spillReload_sandwich`) instantiated at a lane
+machine. This module contains no vector instantiation; it requires a `MoveMachine`
+instance for the lane machine, which is outside this module's scope. The polymorphic
+core and the GP/scalar residence chain are independent of any lane machine.
 
 `wholeProgramResidence` composes the scalar passes into ONE driver, and
 `wholeProgramResidence_denote` is the COMPOSED denote-preservation theorem: each
 of the four pieces is denotation-preserving (on its footprint), so the composition
-is. This is the #555 vision — the residence methodology as a single verified
-automatic pass — and it is the *automatic* generalisation of the hand-wired #527
-ML-KEM NTT residence (`NttResidentKernel`) and the #412 X25519 inline→mem2reg→spillRA
-ladder.
+is. This is the residence methodology as a single verified automatic pass, the
+*automatic* generalisation of the hand-wired ML-KEM NTT residence
+(`NttResidentKernel`) and the X25519 inline→mem2reg→spillRA ladder.
 
-## The two-layer architecture (and why it is honest)
+## The two-layer architecture
 
-The four passes do **not** all live at one IR level — and the composed theorem is
-faithful to that, rather than papering over it:
+The four passes do **not** all live at one IR level, and the composed theorem
+states each at its own level:
 
-* **inline is a genuine `Com → Com` pass** with a `Com.denote` *equality*
+* **inline is a `Com → Com` pass** with a `Com.denote` *equality*
   (`inline_preserves_denote`, under `RegistryConsistent`). It is the Com-level head
   of the driver.
 * **mem2reg / GP-RA operate on the lowered straight-line *block*** (the
   `JInstr` form), and their soundness is stated on `runBlock` as
   an `AgreeOn` (registers + protected output cells) agreement, *not* a full
   `Com.denote` equality — because register allocation deliberately changes the
-  *non-observable* footprint (scratch cells, dead spill slots). The honest composed
+  *non-observable* footprint (scratch cells, dead spill slots). The composed
   statement is therefore: the Com-level head is a denote *equality*, and the
   block-level tail is `AgreeOn`-preserving on the observable footprint (the harness
   reads exactly that footprint — the protocol output cells — so the KAT is byte-exact).
@@ -126,18 +124,16 @@ GP machine (`JState`/`JInstr`), any vector lane machine, and the NTT machine
 **single** verified residence soundness theorem. A vector or NTT tail (e.g. the NTT
 kernel's `nttSpillReload_sandwich`) is then a *literal instantiation* of this one
 theorem — not a parallel analogue — so the residence pass applies to a new lane
-model by supplying a `MoveMachine` instance, nothing more. The vector lane
-instance is currently deferred to a unified `%zmm` machine (the prior 128-bit
-`Vec128` instance was removed with that machine); this core is model-agnostic and
-stays. -/
+model by supplying a `MoveMachine` instance, nothing more. This module provides no
+vector lane instance; the core is model-agnostic. -/
 
 /-- **The register-file move algebra.** A model with a named register file
     (`get`/`setV` + the two projection laws), a register-move instruction `vmov`
     whose semantics is `setV dst (get src)`, and a straight-line `run` fold. This
     is the *entire* interface the residence spill/reload soundness needs — the ALU
     arms of the instruction set are irrelevant to it. Instance: the NTT machine
-    (`NttResidentKernel.nttMachine`); a vector lane instance is deferred to the
-    unified `%zmm` machine. -/
+    (`NttResidentKernel.nttMachine`); this module provides no vector lane
+    instance. -/
 structure MoveMachine where
   /-- The register-file state type. -/
   St : Type
@@ -314,7 +310,7 @@ block, the **scalar** residence tail runs:
    inlined leaf ABIs left behind), denotation-preserving on the protected footprint;
 2. `graphColorAlloc`-driven spill materialization — keep the hot scalar values
    register-resident (use-density spill cost), inserting only sandwich-transparent
-   spill traffic for the genuinely-cheap evictions.
+   spill traffic for the cheap evictions.
 
 `prot` is the harness-observable output-cell set; `pinned`/`frameBase`/`spillBase`
 are the allocator's fixed assignments. -/
@@ -404,13 +400,13 @@ theorem wholeProgramResidence_gpSpill_sound {sb : String} {off : Int} {r : Strin
 /-! ### The slot-reuse link
 
 `reusePackDecisions` shares one frame cell between spilled names whose live ranges do
-not overlap. A spilled value `r` reusing a cell `(sb, off)` a now-dead name held earlier
+not overlap. A spilled value `r` reusing a cell `(sb, off)` a dead name held earlier
 is transparent: `r`'s own store re-establishes the cell, so its reload is a no-op — the
 prior occupant's value is irrelevant. The `reusePackValid` certificate guarantees the
 earlier occupant is dead, so no live reload of it straddles `r`'s store. -/
 
 /-- **The slot-reuse link is sandwich-transparent (RA-path soundness).** A spilled
-    value `r` that reuses a frame cell `(sb, off)` previously held by a now-dead name:
+    value `r` that reuses a frame cell `(sb, off)` earlier held by a dead name:
     once `r`'s own store re-establishes the cell (`SpillValid`), the reload before `r`'s
     use is a no-op, so the store/`mid`/reload sandwich denotes the same as the
     un-instrumented body — independently of the earlier occupant. Residence entry point
@@ -430,7 +426,7 @@ After the spill traffic is materialised, the GP-residence tail runs
 `GraphColoringCoalesce.coalesce`: it merges a register-to-register copy
 `mov d (.reg s)` whose two names do not interfere away from the copy point (certified
 by `coalesceInterfereOk` against the materialised block's `liveRanges`) into the
-single register `s`, dropping the now-identity `mov`. A coalescing step is the rename
+single register `s`, dropping the resulting identity `mov`. A coalescing step is the rename
 `subst d s`; its soundness is the `StateRel` simulation carried through `runBlock`. -/
 
 /-- **The coalescing link carries the `StateRel` simulation (RA-path soundness).**
@@ -464,11 +460,11 @@ theorem wholeProgramResidence_coalesce_allDirect (block : List (JInstr 64))
 
 /-! ### The whole-block GP-spill lift: `SpillWellFormed` status
 
-`SpillingRegAlloc` §6 named the two structural facts the linear scan maintains so
+`SpillingRegAlloc` §6 names the two structural facts the linear scan maintains so
 the per-spill sandwich (`wholeProgramResidence_gpSpill_sound`) lifts to the whole
 `spillReloadBlock` output: (1) distinct live cells, (2) no intervening cell write.
 
-These are now a **proved, unconditional** whole-block lift —
+These give a **proved, unconditional** whole-block lift —
 `MoveMachine.spillReload_wholeBlock`, gated by the decidable `MoveMachine.SpillWellFormed`
 predicate — on every *lane* machine (e.g. `nttMachine`): there, the §6 facts
 are decidable on the instruction list (each lane op writes exactly one named register,
@@ -483,7 +479,7 @@ runtime index value. For the applied GP bodies (the X25519 ladder) the spill cel
 distinct compile-time 32-byte frame slots and every store in the inter-spill region is
 a static `storeMem` to a different cell, so fact (2) holds by inspection of the emitted
 body; a body containing a `storeMemIdx` whose dynamic address could alias a live spill
-cell is the single case that still requires per-body (or alias-analysis) discharge. The
+cell is the single case that requires per-body (or alias-analysis) discharge. The
 GP per-spill core (`wholeProgramResidence_gpSpill_sound`) is unconditional; only the GP
 *whole-block* lift carries this `storeMemIdx`-aliasing caveat. -/
 
@@ -511,7 +507,7 @@ theorem wholeProgramResidence_mem2reg_lowering_agree (prot : List (String × Int
       ((lowerBlock (Γ := []) block).denote (.cons s .nil)) :=
   mem2reg_lowering_agree prot block s
 
-/-! ## 3. The composed chain (the #555 statement)
+/-! ## 3. The composed chain
 
 The end-to-end picture, stated as the conjunction of the per-pass denote facts
 each restated at the residence entry point:
@@ -524,10 +520,8 @@ each restated at the residence entry point:
 
 The vector track is the dual lever (keep the whole-program-live lane values
 resident); its soundness is the polymorphic move-machine core
-(`MoveMachine.spillReload_sandwich`) instantiated at a lane machine. The lane
-instantiation is currently deferred to a unified `%zmm` `MoveMachine` instance
-(the prior 128-bit `Vec128` instance was removed with that machine); the core
-itself is intact above.
+(`MoveMachine.spillReload_sandwich`) instantiated at a lane machine. This module provides no lane
+`MoveMachine` instance; the core is stated above.
 
 `wholeProgramResidence_chain` bundles links (1) and (2) — the Com-level head composed
 with the block-level mem2reg tail through the lowering bridge — into the single

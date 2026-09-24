@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
 
 /-!
-# Value-carrying leak trace for `catCryptDialect` (RHP-off-CProg substrate, step 1)
+# Value-carrying leak trace for `catCryptDialect`
 
 The native dialect leak trace `Com.leakTrace`
 (`CryptoDialectLeakTrace.lean`) is **valuation-free**: it recurses over the ANF
@@ -24,12 +24,11 @@ observable trace does *not* depend on the secret input. To even *state* that
 non-trivially one needs a trace that *can* depend on the input — i.e. a trace
 that threads the runtime valuation through the program's evaluation and may emit
 value-dependent observations. A valuation-free trace makes CT vacuous (always
-true by `rfl`); a value-carrying trace makes CT a genuine proof obligation.
+true by `rfl`); a value-carrying trace makes CT a proof obligation.
 
-This module is the honest **first step** of porting the RHP / CT-leakage
-framework off the deprecated `CProg` onto the dialect `Com`. It defines such a
-value-carrying trace and proves the property the trivial shadow *cannot* have:
-the trace distinguishes inputs.
+This module provides the substrate for the RHP / CT-leakage framework on the
+dialect `Com`. It defines such a value-carrying trace and proves the property
+the trivial shadow *cannot* have: the trace distinguishes inputs.
 
 ## What is defined / proved
 
@@ -58,10 +57,10 @@ the trace distinguishes inputs.
   program whose only bound op is a constant (`bvConst`) is constant-time, proved
   by showing the per-step value tag does not depend on the secret input.
 
-This is the substrate the eventual RHP-off-CProg port needs; it does **not**
-re-prove `progSdist` / `LowCTRHP` / the full pipeline RHP (the large follow-up).
+The statistical-distance and pipeline RHP results (`LowCTRHP`, the full
+pipeline RHP) over this trace are outside the scope of this module.
 
-**0 axioms**, **0 sorries**.
+**0 axioms**; all goals closed.
 -/
 
 @[expose] public section
@@ -84,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
     tracks the runtime value); on `pair`/`sum` it recurses; on `memref` it
     returns a constant tag, because the dialect's memref addresses are static
     `Fin n` indices (the memory axis is constant-time by construction — see the
-    `CryptoDialectLeakTrace` module docstring). It is precisely the honest
+    `CryptoDialectLeakTrace` module docstring). It is precisely the
     `bit`/`sword` cases that make `leakTraceV` value-dependent. -/
 def valTag : (t : CryptoTy) → t.denote → String
   | .bit, b => if b then "1" else "0"
@@ -156,7 +155,7 @@ theorem Com.leakTraceV_value_dependent :
     Com.leakTraceV witnessProg valFalse ≠ Com.leakTraceV witnessProg valTrue := by
   decide
 
-/-! ## 4. A non-trivial (not `rfl`) constant-time predicate over the new trace -/
+/-! ## 4. A non-trivial (not `rfl`) constant-time predicate over the valued trace -/
 
 /-- **Value-carrying constant-time predicate.** A dialect program with a leading
     secret entry is constant-time when its *value-carrying* leak trace agrees on
@@ -164,9 +163,8 @@ theorem Com.leakTraceV_value_dependent :
     `V`), regardless of the secret head value.
 
     Crucially this is **not** `rfl`: `leakTraceV` is value-dependent, so the
-    equality `leakTraceV (s₁ :: V) = leakTraceV (s₂ :: V)` is a genuine
-    proof obligation about the program, exactly as the `CProg` predicate
-    `SSALeakage.isConstantTime` was — in contrast to the trivial
+    equality `leakTraceV (s₁ :: V) = leakTraceV (s₂ :: V)` is a proof
+    obligation about the program, in contrast to the trivial
     `Com.all_com_ct`, whose body is `rfl` because its trace ignores all
     inputs. -/
 def Com.isConstantTimeV {secret : CryptoTy} {Γ : Ctx} {t : CryptoTy}

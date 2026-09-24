@@ -20,15 +20,16 @@ mirror the FIPS 180-4 §6.2.2 / §6.4.2 SHA-2 round: compute `T1 = h + Σ1(e) +
 Ch(e,f,g) + K[rt] + W[rt]`, `T2 = Σ0(a) + Maj(a,b,c)`, then shift `a..h` (with
 `~e` realised as `e ^^^ allOnes` and `rotr n` as `(x >>> n) ||| (x <<< (w-n))`).
 
-`Sha2DiffuseExact.roundClosedForm sp s K W` (committed task #110) is the same
+`Sha2DiffuseExact.roundClosedForm sp s K W` is the same
 round spelled directly as `BitVec` operations, and is proven bit-exactly equal
 to the FIPS 180-4 `fipsRound` by `bv_decide` + `rfl` at SHA-256 and SHA-512.
 
-This file delivers the **substrate** for the structural denotation reduction of
+This module defines the **substrate** for the structural denotation reduction of
 the 46-binding `emitRound` chain to `roundClosedForm`: per-helper `Com.denote`
 rewrite lemmas (`emitOp_denote`, `cp_denote`, `cp_denote'`, `emitShr_denote`,
 `emitRotr_denote`) and slot-reading lemmas that let one push reads of the
-final environment back to reads of the original `(env, V)`. Combined with #110,
+final environment back to reads of the original `(env, V)`. Combined with
+`Sha2DiffuseExact`,
 these compose to a bit-exact identity of the emitted SHA-2 round with FIPS
 180-4 — KAT-free.
 
@@ -46,21 +47,22 @@ these compose to a bit-exact identity of the emitted SHA-2 round with FIPS
   let `readSlot`/`readInp` after one `envAfterOp` reduce to reads of the
   original env at unmodified slots.
 
-## What is stated but **residual** (§4–§6)
+## What is stated as a hypothesis (§4–§6)
 
-The full 46-step composition of these helper lemmas through `emitRound` is the
-residual structural fact: `EmitRoundDenotesClosedForm sp rt e V` (§4) records
-its shape as a `Prop`. Granting this residual, the bridges
-`emitRound_st_eq_fips_sha256` / `_sha512` (§5) close the bit-exact identity
-with FIPS 180-4 by composing with `Sha2DiffuseExact.closed_form_eq_fips_sha*`
-(#110, `bv_decide` LRAT). The §6 corollary `sha2_round_loop_bitexact_via_fips_
-sha256` records how the bridge upgrades #109's placeholder `shaDiffuse` to the
-FIPS round.
+The full 46-step composition of these helper lemmas through `emitRound` is a
+structural fact: `EmitRoundDenotesClosedForm sp rt e V` (§4) records its shape
+as a `Prop`, and the theorems of §5–§6 take it as a hypothesis. Given it, the
+bridges `emitRound_st_eq_fips_sha256` / `_sha512` (§5) close the bit-exact
+identity with FIPS 180-4 by composing with
+`Sha2DiffuseExact.closed_form_eq_fips_sha*` (`bv_decide` LRAT). The §6
+corollary `sha2_round_loop_bitexact_via_fips_sha256` relates `Sha2Bitexact`'s
+modeled `shaDiffuse` to the FIPS round. `Sha2EmitterReadoutHalf` proves the
+faithful-environment refinement of the `Prop`.
 
-The residual `EmitRoundDenotesClosedForm` is **not** an axiom — it is a `Prop`
-witnessing the structural reduction. The file is axiom-clean
+`EmitRoundDenotesClosedForm` is **not** an axiom — it is a `Prop` stating the
+structural reduction. The module is axiom-clean
 (`[propext, Classical.choice, Quot.sound]` plus the standard `bv_decide` LRAT
-certs inherited from #110 for the FIPS bridges).
+certs inherited from `Sha2DiffuseExact` for the FIPS bridges).
 
 ## Axiom budget
 
@@ -68,9 +70,9 @@ Verified by `lean_verify`:
 * `emitOp_denote`: `[propext, Quot.sound]`.
 * `emitRotr_denote`: `[propext, Quot.sound]`.
 * `emitRound_st_eq_fips_sha256/_sha512`: `[propext, Classical.choice,
-  Quot.sound]` plus the six `bv_decide` LRAT certs from #110's
-  `crotr_eq_rotr_sha256` (or 6 from `_sha512`). No `sorry`, no
-  `native_decide`, no new custom axioms.
+  Quot.sound]` plus the six `bv_decide` LRAT certs from
+  `Sha2DiffuseExact.crotr_eq_rotr_sha256` (or 6 from `_sha512`). All goals
+  closed; no `native_decide`, no new custom axioms.
 -/
 
 @[expose] public section
@@ -119,7 +121,7 @@ definitionally an application of the continuation `k` to an explicit extended
 environment + valuation. The `cases _ <;> rfl` discharges the `Src.var` case
 split (`.sl` vs `.iw`). -/
 
-/-- The post-`emitOp` environment: slot `dst` is now the freshly-bound `.here`
+/-- The post-`emitOp` environment: slot `dst` is the freshly-bound `.here`
     in the extended context; every other slot is lifted by `.there`. -/
 def envAfterOp {w : Nat} {Γ : Ctxt jasminDialect}
     (e : Env w Γ) (dst : Nat) : Env w (Rw w :: Γ) where
@@ -266,7 +268,7 @@ theorem emitRotr_denote {w : Nat} {Γ : Ctxt jasminDialect} {s : JasminTy}
   -- so `_ne` falls through to the scA layer where `_eq` fires).
   rw [readSlot_envAfterOp_ne _ scB _ _ scA hAB, readSlot_envAfterOp_eq]
 
-/-! ## 4. The structural residual: composing helpers through `emitRound`
+/-! ## 4. The structural hypothesis: composing helpers through `emitRound`
 
 The helper-level `Com.denote` rewrites `emitOp_denote`, `cp_denote'`,
 `emitShr_denote`, and `emitRotr_denote` together reduce `emitRound` step-by-step.
@@ -327,9 +329,9 @@ def readSt (sp : Sha2Spec) {Γ : Ctxt jasminDialect}
     * `readSlot envF VF i = readSlot env V i` for `i ∉ {wkA..wkA+7, scratch...}`.
 
     The discharge is a 46-step composition of `emitOp_denote`, `emitRotr_denote`,
-    `cp_denote'`. We expose the existential shape so downstream `Sha2Bitexact`
-    upgrades can quote it; the composition itself is the residual structural
-    fact described in the module note above. -/
+    `cp_denote'`. We expose the existential shape so downstream bridges can
+    quote it; the composition itself is the structural fact described in the
+    module note above. -/
 def EmitRoundDenotesClosedForm (sp : Sha2Spec) (rt : Nat) {Γ : Ctxt jasminDialect}
     (e : Env sp.w Γ) (V : Ctxt.Valuation Γ) : Prop :=
   ∀ (k : SCont sp.w (Rw sp.w)),
@@ -338,14 +340,14 @@ def EmitRoundDenotesClosedForm (sp : Sha2Spec) (rt : Nat) {Γ : Ctxt jasminDiale
       readSt sp envF VF
         = roundClosedForm sp (readSt sp e V) (readInp e V (kIdx rt)) (readSlot e V rt)
 
-/-! ## 5. Bridge to FIPS 180-4: composition with #110
+/-! ## 5. Bridge to FIPS 180-4: composition with `Sha2DiffuseExact`
 
-Assuming the structural reduction `EmitRoundDenotesClosedForm` (the residual
-fact above), the bit-exact identity of the emitter with FIPS 180-4 follows
-immediately from `Sha2DiffuseExact.closed_form_eq_fips_sha{256,512}` (task #110,
-proven by `bv_decide` + `rfl`). -/
+Assuming the structural reduction `EmitRoundDenotesClosedForm` (the hypothesis
+above), the bit-exact identity of the emitter with FIPS 180-4 follows
+immediately from `Sha2DiffuseExact.closed_form_eq_fips_sha{256,512}` (proven by
+`bv_decide` + `rfl`). -/
 
-/-- **SHA-256 bridge**: `EmitRoundDenotesClosedForm` for `sha256Spec` plus #110's
+/-- **SHA-256 bridge**: `EmitRoundDenotesClosedForm` for `sha256Spec` plus
     `closed_form_eq_fips_sha256` gives the bit-exact identity of the emitted
     round with the FIPS 180-4 spec. No KAT, no `native_decide`. -/
 theorem emitRound_st_eq_fips_sha256 {Γ : Ctxt jasminDialect}
@@ -377,20 +379,19 @@ theorem emitRound_st_eq_fips_sha512 {Γ : Ctxt jasminDialect}
   refine ⟨Γ', envF, VF, hDen, ?_⟩
   exact hSt.trans (closed_form_eq_fips_sha512 _ _ _)
 
-/-! ## 6. Composition with `Sha2Bitexact.sha2_round_loop_bitexact` (#109)
+/-! ## 6. Composition with `Sha2Bitexact.sha2_round_loop_bitexact`
 
 `Sha2Bitexact.sha2_round_loop_bitexact` proves the SHA-2 compression-round loop
-bit-exact with a placeholder `shaDiffuse` modelling the diffusion. With the
-above bridges in hand, the placeholder `shaDiffuse` in #109 can be upgraded to
-the FIPS round on a per-round step: the emitter's `emitRound` for round
-`rt` denotes (under the residual structural fact) to `fipsRound sp s K W`,
-matching FIPS 180-4 bit-for-bit. The corollary `sha2_round_loop_bitexact_via_
-fips_sha256` records this upgrade. -/
+bit-exact with a fixed map `shaDiffuse` modelling the diffusion. With the
+above bridges, the per-round step is the FIPS round: the emitter's
+`emitRound` for round `rt` denotes (under the structural hypothesis) to
+`fipsRound sp s K W`, matching FIPS 180-4 bit-for-bit. The corollary
+`sha2_round_loop_bitexact_via_fips_sha256` records this. -/
 
-/-- **Composition with #109 (SHA-256)**: if the structural reduction holds for
-    a given env/valuation, the `emitRound` denotation equals `fipsRound`. This
-    is the form `Sha2Bitexact.sha256_round_loop_bitexact` would use to replace
-    `shaDiffuse` with the FIPS round. -/
+/-- **Composition with `Sha2Bitexact` (SHA-256)**: if the structural reduction
+    holds for a given env/valuation, the `emitRound` denotation equals
+    `fipsRound`. This is the per-round form that relates `Sha2Bitexact`'s
+    modeled `shaDiffuse` to the FIPS round. -/
 theorem sha2_round_loop_bitexact_via_fips_sha256 {Γ : Ctxt jasminDialect}
     (rt : Nat) (e : Env sha256Spec.w Γ) (V : Ctxt.Valuation Γ)
     (h : EmitRoundDenotesClosedForm sha256Spec rt e V)

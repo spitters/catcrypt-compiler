@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
-# Verified CryptOpt: randomized register allocation with in-Lean translation validation (#386)
+# Verified CryptOpt: randomized register allocation with in-Lean translation validation
 
 This is the **register-allocation** companion to the schedule-search pass in
 `RandomizedScheduleSearch.lean`. CryptOpt (Kuepper et al., PLDI'23) searches the
@@ -38,7 +38,7 @@ backend `Com`. A **randomized** instance (`searchAssign`) draws a seeded LCG
 permutation of the free-name → physical mapping; an **acceptance check**
 (`accept`) keeps only renamings that (a) are injective on the block's live names
 (no two virtuals collapse onto one physical) and (b) fit the GP pool
-(`AsmPrinter.allocOverflow = none`, the #380 overflow guard).
+(`AsmPrinter.allocOverflow = none`, the overflow guard).
 
 ## Translation validation (the contribution)
 
@@ -52,10 +52,10 @@ final state — the rename commutes through the whole machine semantics
 (`evalInstr`/`runBlock`), so a renaming accepted by the pass is
 denotation-preserving against the validated `JasminModel`. Lifted through
 `X86Dialect.lowerBlock_denote_closed` this is equality of lowered-`Com`
-denotations modulo the renaming, the in-Lean certificate that **replaces**
+denotations modulo the renaming, the in-Lean certificate that takes the place of
 CryptOpt's external equivalence checker for the RA dimension.
 
-The `renameState ρ`-on-both-sides shape is the honest statement: a renaming is a
+The `renameState ρ`-on-both-sides shape is the right statement: a renaming is a
 bijection of *which physical register holds which value*, so the post-states are
 equal **up to** that bijection (read register `ρ n` of the renamed run = read
 register `n` of the original). This is precisely soundness of register
@@ -64,7 +64,7 @@ rename (and claiming one would be false).
 
 ## Headroom
 
-fe25519/s2n-class kernels have **zero** GP headroom (the #386 analysis null:
+fe25519/s2n-class kernels have **zero** GP headroom (the analysis result is null:
 `gpFreeSlots` is fully consumed and s2n itself reuses `%rax`). This pass therefore
 targets kernels with slack. §6 records `AsmPrinter.gpFreeSlots`/`gpFreeNames`
 for the suite's small straight-line kernels (`add2Block`,
@@ -725,7 +725,7 @@ def assignRenaming (assign : GpAlloc) (n : String) : String :=
 /-- **Acceptance check** (the in-Lean gate replacing CryptOpt's external checker
     precondition). A candidate assignment is accepted iff:
     (a) it leaves no name unallocated / spilled — `allocOverflow = none` for the
-        first-fit budget over the same block (the #380 overflow guard), and
+        first-fit budget over the same block (the overflow guard), and
     (b) the assigned physicals are pairwise distinct on the block's names (the
         induced renaming is injective on the live set — no two virtuals collapse
         onto one physical, which would break the simulation).
@@ -738,10 +738,10 @@ def accept (pinned assign : GpAlloc) (block : List (JInstr 64)) : Bool :=
 
 /-! ## 8. Headroom: which suite kernels can the pass help?
 
-The deliverable's honest part. A renaming can only spread mul-output names across
+A renaming can only spread mul-output names across
 distinct physicals if there are free physicals to spread into — `gpFreeSlots`
 beyond the names the block already needs (`gpFreeNames.length`). fe25519/s2n-class
-kernels have **zero** such headroom (the #386 analysis null). The small
+kernels have **zero** such headroom. The small
 straight-line kernels in the suite have ample headroom, recorded below.
 
 `add2Block` (`Add2Kernel`): 4 live names `{a0,a1,b0,b1}`, no pinned regs, so 14

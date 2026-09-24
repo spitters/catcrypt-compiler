@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 **single** decode map `φ : α → A` shared by both operands and the result, and a
 **homogeneous** target `tgt : α → α → α` (both operands the *same* carrier). That
 is the right shape for a lane combine or a same-width add/multiply. But the
-register-level multi-limb kernels include genuinely **heterogeneous** binary ops
+register-level multi-limb kernels include **heterogeneous** binary ops
 whose two operands live in *different* carriers and whose result carrier is a
 third type:
 
@@ -46,7 +46,7 @@ This file adds, **additively** (it touches neither `ReprTransfer.lean` nor
   `a1 = a2 = RESULT`, `tgt = tgt`. So `OpHomOn` strictly generalises both
   `BinOpHomOn2` (hence, by the existing subsumption, `BinOpHomOn`).
 * `opHomOn_strictly_more_general` — a witness that `OpHomOn`'s three decode maps
-  and three carriers genuinely differ (a two-type asymmetric example no
+  and three carriers can differ (a two-type asymmetric example no
   `BinOpHomOn2` can express).
 
 The **application** is the scalar multiply `mulScalar`: with carry-in `0`, its
@@ -89,7 +89,7 @@ universe u
     `phiRes (tgt x y) = src (phiL x) (phiR y)`  whenever  `dom2 x y`.
 
     This is the shape the register-level multi-limb kernels need — scalar×bignum
-    and limb-pair×word multiply — where the operand and result carriers genuinely
+    and limb-pair×word multiply — where the operand and result carriers
     differ and `BinOpHomOn2`'s single `φ : α → A` with `tgt : α → α → α` cannot
     type the square. Map-level: each decode is a plain map (the Trocq map₁
     witness), no injectivity. -/
@@ -137,8 +137,8 @@ theorem toOpHomOn_realizes {α A : Type u} {φ : α → A} {dom2 : α → α →
     (BinOpHomOn2.toOpHomOn H).realizes hxy = H.realizes hxy := rfl
 
 /-- **Strict generality.** `OpHomOn`'s three carriers and three decode maps may
-    genuinely differ, so it expresses squares no single-`φ` `BinOpHomOn2` can
-    type. Witness: an honest two-type asymmetric homomorphism — left operand a
+    differ, so it expresses squares no single-`φ` `BinOpHomOn2` can
+    type. Witness: a two-type asymmetric homomorphism — left operand a
     `Bool` decoded to `ℕ` by `cond · 1 0`, right operand a `ℕ` decoded by `id`,
     result a `ℕ` decoded by `id`, target `fun p n => (cond p 1 0) * n`, abstract
     op multiplication. Here `phiL ≠ phiR` (different *types*, `Bool → ℕ` vs
@@ -171,7 +171,7 @@ def scalarMulAbs (av bv : Nat) : Nat := av * bv
     vanishes. No schoolbook arithmetic is re-derived. The domain is *full*
     (`fun _ _ => True`): the schoolbook list grows to fit, so the product is exact
     unconditionally — no joint no-overflow bound is needed (the truncated,
-    fixed-width variant with its genuine joint bound is the separate
+    fixed-width variant with its joint bound is the separate
     `TransferMultiLimbTransport`). -/
 theorem decode_scalarMul (a : BitVec 64) (bs : List (BitVec 64)) :
     bignumVal (scalarMulOp a bs) = scalarMulAbs a.toNat (bignumVal bs) := by
@@ -228,10 +228,10 @@ result, nor a `phiRes (tgt x y) = src (phiL x) (phiR y)` lemma. To feed it to
 (`r0, r1, r2`) into a named tuple-valued `field_mul_2x1_tgt`; (2) restate the
 existing inline equation as `phiRes (field_mul_2x1_tgt ⟨a0,a1⟩ b) = …` (a `rfl`
 re-association of the current `let`-form goal); then `app_eq := that lemma`. That
-refactor lives in `FieldMul2x1GoldenPath.lean`, which this base file does not
-import or modify. The `mulScalar` application above is the clean,
-already-named-lemma site and is the genuine deliverable; `field_mul_2x1` is a
-mechanical tuple-extraction away.
+refactor belongs in `FieldMul2x1GoldenPath.lean`, which this base file does not
+import or modify. The `mulScalar` application above is the
+already-named-lemma instance; `field_mul_2x1` is a mechanical tuple-extraction
+away.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.ReprTransferAsym

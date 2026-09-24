@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# Pilot: a verified THIR → `Com` lowering ("Aeneas-for-compilation", #568)
+# Pilot: a verified THIR → `Com` lowering ("Aeneas-for-compilation")
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -23,16 +23,16 @@ concrete pilot functions.
 CatCrypt already has a hax-extraction pipeline (`CatCrypt/Hax/*`):
 
   THIR  --hax-->  `ImpExpr` (untyped, String-named, fuel-bounded big-step,
-                   `Outcome`-effectful;  `Hax/AST.lean`, `Hax/Semantics.lean`)
+                   `Outcome`-effectful;  `HaxLean/AST.lean`,
+                   `HaxLean/Semantics.lean` in `hax-lean`)
         --phases-->  `RawCode`  (a Lean term)
 
 That path targets the **extraction-to-Lean** problem: turn Rust into a Lean
 *term* whose abstract security can be proved. It does **not** target `Com`, the
 SSA IR the **compilation/codegen** backend consumes (X86/ARM/RISC-V/Jasmin/MLIR
-via `VIR/*`). There is currently no lowering from the THIR/`ImpExpr` world into
-`Com`.
+via `VIR/*`), and it has no lowering from the THIR/`ImpExpr` world into `Com`.
 
-#568 asks for the *compilation* counterpart: a direct THIR → `Com` front, in
+This module gives the *compilation* counterpart: a direct THIR → `Com` front, in
 the style of Aeneas (which lowers Rust's typed MIR/THIR directly into a pure
 functional model). This file pilots that lowering on a monomorphic ANF fragment
 and ties the two denotations.

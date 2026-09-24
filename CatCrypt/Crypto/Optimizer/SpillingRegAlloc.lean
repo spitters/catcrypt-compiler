@@ -13,18 +13,18 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
-# Verified spilling register allocator (#413): the spiller `allocGp`/`RandomizedRegAlloc` lack
+# Verified spilling register allocator: the spiller `allocGp`/`RandomizedRegAlloc` lack
 
 `AsmPrinter.allocGp` (first-fit) and `Optimizer.RandomizedRegAlloc` (a renaming
 `ρ`) are both **non-spilling**: the first truncates names past the pool to an
 `<UNALLOCATED>` sentinel; the second is a bijection. Neither can place a working
-set larger than the pool. The X25519 monolithic ladder body (#411/#412) has 176
+set larger than the pool. The X25519 monolithic ladder body has 176
 distinct names against a 13-slot GP pool, so a register-resident allocation *must*
 spill: keep the hot ladder state in registers and push the value whose live range
 ends latest to a frame slot when the pool is full, reloading it before its next
 use. s2n's `curve25519_x25519` does exactly this by hand.
 
-This module builds the missing piece:
+This module provides a spilling allocator:
 
 1. **Live-range analysis** (`liveRanges`): a backward scan over a straight-line
    `List (JInstr 64)` body assigning each value-name its `(def, lastUse)` index
@@ -391,16 +391,16 @@ def spillAlloc (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JInstr 6
     (stride : Int := 8) : List (String × Slot) :=
   linearScan pinned spillFrameBase (liveRanges block) stride
 
-/-! ### 3b. Pin-aware allocation: keep the MULX multiplier in `%rdx` (#426)
+/-! ### 3b. Pin-aware allocation: keep the MULX multiplier in `%rdx`
 
 Every `MULX`/`MULXMEM` reads its first source (`src1`, the multiplier) from the
 implicit hardware register `%rdx`. In the inlined X25519 body each field-op leaf
 loads its multiplier into a single name (`<tag>yd`) and then uses it as `src1`
-across a run of consecutive multiplies; the leaf-level emit kept that name pinned
-to `%rdx` (`mulxPinsFor`), so the multiplier was materialised **once per run** and
-the multiplies read it for free. mem2reg + the oblivious `spillAlloc` (#415–418)
-dissolved that pin: the spilling allocator handed `%rdx` to ordinary residents and
-the per-program-point printer had to re-materialise `%rdx` (`mulxRdxSetup`) before
+across a run of consecutive multiplies; the leaf-level emit keeps that name pinned
+to `%rdx` (`mulxPinsFor`), so the multiplier is materialised **once per run** and
+the multiplies read it for free. mem2reg + the oblivious `spillAlloc` dissolve
+that pin: the spilling allocator hands `%rdx` to ordinary residents and the
+per-program-point printer then re-materialises `%rdx` (`mulxRdxSetup`) before
 *every* one of the 193 multiplies (193 extra `movq → %rdx` per ladder step).
 
 The pin-aware allocator restores the leaf discipline at whole-body scope: the set
@@ -435,7 +435,7 @@ def mulxMultiplierNames (block : List (JInstr 64)) : List String :=
     | _ => [])).foldl
       (fun acc n => if acc.contains n then acc else acc ++ [n]) []
 
-/-- **Pin-aware spill allocation (#426).** Like `spillAlloc`, but the MULX-multiplier
+/-- **Pin-aware spill allocation.** Like `spillAlloc`, but the MULX-multiplier
     names are first bound to `%rdx` (`Slot.resident mulxMultReg`) and removed from the
     block's live ranges before the linear scan, so:
     * the multiplier is never spilled and never handed an ordinary pool register, and
@@ -785,7 +785,7 @@ theorem hot_spillAlloc_wellformed :
       (fun d => match d.2 with | .resident _ => true | .spilled off => 0 ≤ off) = true := by
   native_decide
 
-/-! ## 9. Pin-aware multiplier disjointness (the soundness side-condition, #426)
+/-! ## 9. Pin-aware multiplier disjointness (the soundness side-condition)
 
 Binding all the MULX-multiplier names to the single `%rdx` is sound **iff** no two
 of them are simultaneously live (else one would clobber the other's `%rdx` value).

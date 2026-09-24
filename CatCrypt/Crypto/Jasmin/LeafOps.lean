@@ -14,10 +14,9 @@ set_option autoImplicit false
 /-!
 # `LeafOps`: Per-curve modulus-parametric leaf operations
 
-Phase E.1 (2026-05-04). Phase E added the modulus-parametric tower
-constructors `TFpGen (modulusName : String) (byteSize : Nat)` and
-`TFp2Gen` to `TowerType`. This file provides the matching operational
-layer: a `LeafOps` typeclass parameterised by `modulusName : String`
+`TowerType` has the modulus-parametric tower constructors
+`TFpGen (modulusName : String) (byteSize : Nat)` and `TFp2Gen`. This module
+provides the matching operational layer: a `LeafOps` typeclass parameterised by `modulusName : String`
 that exposes the per-curve leaf operations used by inline arithmetic
 emitters.
 
@@ -103,8 +102,8 @@ instance : LeafOps "P-256" where
   copy    out a   := .RCall "fpP256_copy"     out [a]
 
 /-- BLS12-381 base-field leaf operations. Leaf names use the bare
-    `fp_*` convention historically used by the BLS12-381 inline
-    emitter (this is the original, unparameterised tower). -/
+    `fp_*` convention of the BLS12-381 inline emitter (the
+    unparameterised tower). -/
 instance : LeafOps "BLS12-381" where
   add     out a b := .RCall "fp_add"      out [a, b]
   sub     out a b := .RCall "fp_sub"      out [a, b]

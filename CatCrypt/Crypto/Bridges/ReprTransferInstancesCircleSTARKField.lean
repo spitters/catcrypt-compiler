@@ -41,7 +41,7 @@ an abstract field of size `2³¹ − 1` (its `CircleSTARKSecurityParams` carries
 error terms, not field operations), so the field-layer target here is the
 concrete field `Zm31` itself — the same target the multiply lane uses.
 
-## Residual (HONEST)
+## Scope
 
 The M31 base-field **multiply, add, and reduce** are each connected via proven,
 front-emitted kernels (`m31MulFold_eq_field` / `m31AddFold_eq_field` /

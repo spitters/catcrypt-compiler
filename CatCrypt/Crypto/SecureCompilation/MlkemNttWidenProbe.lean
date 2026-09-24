@@ -49,7 +49,7 @@ the lowering's allocation and show:
 * `probeWide_universe_gt_pool` — the slot universe exceeds the 13-register pool
   (so a non-spilling allocator would overflow);
 * `probeWide_spills` — `toLprogPhysAbi`'s linear scan assigns at least one slot a
-  **spill cell** `k.N` (the lowering genuinely spills here), the capability a
+  **spill cell** `k.N` (the lowering spills here), the capability a
   `Fin 25`-bounded author never exercised but ML-KEM N = 256 needs.
 
 This is a register-allocation probe: it does **not** claim a byte-correct
@@ -90,7 +90,7 @@ def inVar (i : Nat) : Ctxt.Var wideCtxt r64 := inputVar 15 i
 /-! ### A `Fin 16`-slot CPS builder (the `BState` pattern at a free slot count)
 
 This mirrors `Poseidon2WholePermCom.BState`/`emitBin` exactly, except the slot
-map is `Fin 16 → Var Γ r64` rather than `Fin 25`. This is the load-bearing
+map is `Fin 16 → Var Γ r64` rather than `Fin 25`. This is the key
 observation: the slot count of the *authoring* builder is a free parameter — the
 `Fin 25` in `Poseidon2WholePermCom` is a Poseidon2 sizing choice, not a lowering
 constraint. A 16-slot machine (or any `Fin n`) threads through the same way. -/

@@ -9,13 +9,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
-# s2n-bignum's `bignum_add_p256`, lowered through the owned AArch64 backend (#547)
+# s2n-bignum's `bignum_add_p256`, lowered through the owned AArch64 backend
 
-`ArmLowering.lean` (sub #533) lowered the ChaCha quarter-round through the 32-bit
-`W`-register GP-ALU subset. This module is the **bignum/field hot-path** keystone:
+`ArmLowering.lean` lowers the ChaCha quarter-round through the 32-bit
+`W`-register GP-ALU subset. This module is the **bignum/field hot-path** instance:
 it lowers s2n-bignum's `bignum_add_p256` — `z := (x + y) mod p_256` for two
 reduced 256-bit inputs — through the 64-bit `X`-register bignum model
-(`ArmModel.BState`/`evalBInst`, #547), exercising the full carry-chain +
+(`ArmModel.BState`/`evalBInst`), exercising the full carry-chain +
 conditional-subtract-reduce instruction mix: `ADDS`/`ADCS`/`ADC` (the carry
 chain), `SUBS`/`SBCS` (the trial subtraction of `p_256`), `MOVZ`/`MOVK` (the
 64-bit reduction constants), and `CSEL` (the constant-time select). It is the A64
@@ -62,7 +62,7 @@ four result limbs `d0..d3` back (the registers the `stp`s write).
 The full all-inputs correctness (`⟦d0..d3⟧ = (⟦x⟧ + ⟦y⟧) mod p_256`) is the s2n
 proof obligation (`arm/proofs/bignum_add_p256.ml`); as an in-Lean close it is a
 256-bit modular-arithmetic identity gated by the GMP/s2n cross-check KAT, the same
-posture as the x86 bignum kernels (REV-12). Here we pin the worked vector that
+treatment as the x86 bignum kernels. Here we pin the worked vector that
 exercises the reduce branch.
 -/
 
@@ -125,7 +125,7 @@ def addp256Block : List BOp :=
   , .csel "d2" "d2" "n2" .cc
   , .csel "d3" "d3" "n3" .cc ]
 
-/-! ## 2. Lowering correctness (the bignum keystone instantiated) -/
+/-! ## 2. Lowering correctness (the bignum lowering theorem instantiated) -/
 
 /-- **Lowering correctness on `bignum_add_p256`.** Running the lowered body on the
     64-bit model equals the direct machine fold — `bignumBlock_lowering_denote`

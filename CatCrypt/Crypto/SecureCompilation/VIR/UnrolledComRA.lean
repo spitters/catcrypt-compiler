@@ -15,18 +15,18 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 /-!
 # Unrolled-Com-domain register allocation — the winning RA consumer
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
+`RegisterAllocation.lean` ships the verified linear-scan RA
 framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
 hint (`seqOf`), well-formed when `slotOf` is injective and the Com→Com
 transform `applyRA` preserves `JForProg.denote`. The central theorem
 `applyRA_denote_preserves` is RA-agnostic: it holds for **any** well-formed
 RA via the `preserves` witness.
 
-`Sha2RaEmit.lean` / `KeccakRaEmit.lean` (#153) wired the framework into the
+`Sha2RaEmit.lean` / `KeccakRaEmit.lean` wire the framework into the
 SHA-2 / Keccak emit through `raDstName` / `keccakRaDstName`: binding `k`'s
 destination slot `slotSeq.getD k 0` (resp. `keccakSlots.getD j 0`) is rerouted
-through `ra.seqOf`. #153 instantiated `ra := linearScanRA p` where `p` is the
-small `JForProg` round-loop wrapper. That allocator's `seqOf` is indexed by the
+through `ra.seqOf`. Instantiating `ra := linearScanRA p`, where `p` is the
+small `JForProg` round-loop wrapper, does not work: that allocator's `seqOf` is indexed by the
 *binders of the wrapper* — not the SLOT OFFSETS of the unrolled compression
 body — so it does not respect live-range non-overlap on the unrolled slot file,
 and its naive use breaks the KAT (collisions across unrolled iterations).
@@ -61,7 +61,7 @@ the matching reads: a logical slot, when written and later read, always renders
 to the same physical name. The only way to corrupt the computation is to map two
 **simultaneously-live** logical slots to the same physical slot (a WAR/WAW
 hazard). `unrolledSlotRA_no_collision` proves the linear-scan assignment never
-does this — the property whose violation broke #153.
+does this, the property that the naive `linearScanRA` wiring violates.
 
 ## Contents
 
@@ -490,7 +490,7 @@ theorem unrolledSlotRAKeccak_WellFormed :
 
 /-! ## 6. No-collision: simultaneously-live slots get distinct physical slots
 
-This is the property whose violation broke #153's naive wiring. Two logical
+This is the property that the naive `linearScanRA` wiring violates. Two logical
 slots are *simultaneously live* when their (conservative) live ranges overlap.
 The linear-scan invariant guarantees they receive distinct physical slots: when
 slot `s₂` is assigned at `physScanStep`, all physical slots still busy (owner
@@ -569,8 +569,8 @@ theorem unrolledSlotRA_no_collision_keccak :
 
 /-- **No-collision, uniform statement.** For any of the three concrete unrolled
 traces, the linear-scan assignment never maps two simultaneously-live logical
-slots to the same physical slot — the KAT-safety property whose violation broke
-#153's naive `linearScanRA` wiring. -/
+slots to the same physical slot — the KAT-safety property that the naive
+`linearScanRA` wiring violates. -/
 theorem unrolledSlotRA_no_collision :
     NoCollision (shaSlotTrace Sha2Emit.sha256Spec) ∧
     NoCollision (shaSlotTrace Sha2Emit.sha512Spec) ∧
@@ -745,8 +745,8 @@ ChaCha20 4-way: 10 double-rounds (column + diagonal), each a fixed-size chunk
 of the slot trace. Since the existing UnrolledComRA traces (`shaSlotTrace`,
 `kSlotTrace`) flatten everything, this section provides the per-iteration
 chunking that the analysis needs. The downstream consumers (`ChachaRaEmit`,
-`Poseidon2RaEmit`) currently use their own bespoke `seqOf` — wiring them to
-consume `unrolledSlotRAofIters` is a separate follow-up. The chunkings below
+`Poseidon2RaEmit`) use their own bespoke `seqOf` and do not consume
+`unrolledSlotRAofIters`. The chunkings below
 expose the carry data so the consumers (and the smoke under
 `bench/integration/`) can audit which slots carry across iteration
 boundaries. -/
@@ -787,7 +787,7 @@ operand of the two-address lowering). Many of the existing traces
 already self-alias src1=dst (e.g. ChaCha20's `⟨a, [a, b]⟩` for `a += b`,
 Poseidon2's `⟨s, [s]⟩` per-slot phase events). The coalescing pass here
 fires only where `dst ≠ src1` AND `src1` is last-used at this event —
-i.e. the trace is genuinely three-address with a dying first source.
+i.e. the trace is three-address with a dying first source.
 
 ### Soundness
 
@@ -802,7 +802,7 @@ A pair `(dst, src1)` is **coalesce-safe** when
 The fourth condition is checked by running `noCollisionB` over the
 remapped summary; this is the same finite check that closes the
 `unrolledSlotRA_no_collision` theorem. Coalescing is denotation-
-preserving exactly when the dying source is genuinely dead, which is
+preserving exactly when the dying source is dead, which is
 condition (3) — the read-set/write-set semantics of `SlotEvent` is the
 only data the framework's `WellFormed` predicate needs.
 

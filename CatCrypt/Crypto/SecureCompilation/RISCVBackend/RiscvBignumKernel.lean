@@ -9,20 +9,20 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering6
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
-# s2n-bignum's `bignum_add_p256`, lowered through the owned RV64 backend (#549)
+# s2n-bignum's `bignum_add_p256`, lowered through the owned RV64 backend
 
-`ArmBignumKernel.lean` (#547) lowered s2n-bignum's `bignum_add_p256` —
+`ArmBignumKernel.lean` lowers s2n-bignum's `bignum_add_p256` —
 `z := (x + y) mod p_256` for two reduced 256-bit inputs — through the AArch64
 64-bit `X`-register bignum model, riding the flag-based carry chain
 (`ADDS`/`ADCS`/`SUBS`/`SBCS`/`CSEL`). This module lowers the **same kernel**
-through the **RISC-V RV64** 64-bit model — the cross-ISA comparison the task
-asks for — but RV64 has **no carry flag and no conditional select**, so the
+through the **RISC-V RV64** 64-bit model, as a cross-ISA comparison, but RV64 has
+**no carry flag and no conditional select**, so the
 carry chain is **SLTU-synthesized** and the reduce is a **branch-free mask
 select** (`RiscvModel64`/`RiscvLowering64` headers explain the architectural
 reason). It is the RISC-V sibling of `ArmBignumKernel.addp256Block` and
 `X86Backend/BignumMontMulKernel.lean`.
 
-## The routine, and the honest RISC-V instruction-count cost
+## The routine, and the RISC-V instruction-count cost
 
 The same s2n `bignum_add_p256` body, but the A64 single-instruction carry ops
 become RV64 SLTU macros:
@@ -101,7 +101,7 @@ def addp256Block64 : List ROp64 :=
   , .csub "d2" "m2" "d2" "cond" "mask" "tt"
   , .csub "d3" "m3" "d3" "cond" "mask" "tt" ]
 
-/-! ## 2. Lowering correctness (the bignum keystone instantiated) -/
+/-! ## 2. Lowering correctness (the bignum block-lowering theorem instantiated) -/
 
 /-- **Lowering correctness on `bignum_add_p256` (RV64).** Running the lowered body
     on the 64-bit model equals the direct fold — `riscvBlock64_lowering_denote`

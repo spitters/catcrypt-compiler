@@ -9,14 +9,14 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Match
 
 /-!
-# Multi-output leaf-call tower agreement (Friction #14)
+# Multi-output leaf-call tower agreement
 
 Extends the leaf-call agreement framework from the 1-output predicate
 `LeafCallAgreesTower` (in `HaxToLowCTSim_Quarta.lean`) and the
 2-output predicate `LeafCallAgreesTowerSwap` (in `HaxToLowCTSim_Match.lean`)
 to general `n`-output leaves via `LeafCallAgreesTowerN`.
 
-The constructor `LowCT.RCallN` (Phase G, see `Jasmin/LowCT.lean`) is
+The constructor `LowCT.RCallN` (see `Jasmin/LowCT.lean`) is
 the AST-level analogue of `RCallSwap` for arbitrary destination count.
 `RustExec.callN` writes each destination, output `i` read through
 `LeafSpec.call` at `callNLeafName f i`.  Which values those outputs carry
@@ -185,7 +185,7 @@ ChaCha quarter-round destruction in `Jasmin/ByteOps.lean`).
 
 ## §4  Summary
 
-This file lands:
+This module defines:
 
 * `LeafCallAgreesTowerN` — `n`-output tower-typed leaf agreement.
 * `LeafCallOutputAgreesTower` — the single-output condition at one
@@ -193,12 +193,8 @@ This file lands:
 * `leafCallAgreesTowerN_of_index` — the reduction of the former to the
   latter at every index.
 
-No invocations of `rustExecSimulatesCryptoSSA` in
-`SecureCompilation/LowCTToCryptoSSACorrect.lean` are affected:
-`RCallN` is already handled there via the
-`translate = none → vacuous` pattern (Phase F/G/H/L unhandled
-constructors).  This file only adds a new bridge-level predicate;
-it does not touch the closed simulation proof.
+The module adds bridge-level predicates only; it changes no
+simulation proof.
 -/
 
 end CatCrypt.Crypto.Hax

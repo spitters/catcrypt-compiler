@@ -18,12 +18,12 @@ set_option autoImplicit false
 The FAEST QuickSilver linear check accumulates a GF(2^128) inner product
 `acc = Σ_i x[i] ·_clmul alpha_i` — a loop over a **128-bit array** `x` whose body
 is, per index, a 128-bit dynamic load `x[i]` feeding a carry-less multiply into a
-128-bit accumulator. Until now the vsimd front could carry the multiply/xor
-(`RolledVsimdFrontValidate`, `GhashClmulVsimdCovered`) but NOT the per-index
-128-bit load: `RolledVsimdFrontValidate §Note` flagged that `memrefGetDyn`
-returns `.sword 64` only. This module closes that gap.
+128-bit accumulator. The vsimd front carries the multiply/xor
+(`RolledVsimdFrontValidate`, `GhashClmulVsimdCovered`); `memrefGetDyn` returns
+`.sword 64` only (`RolledVsimdFrontValidate §Note`), so the per-index 128-bit
+load needs a separate op. This module supplies it.
 
-## The new capability: `memrefGetDyn128` + the `vloadidx128` front tag
+## The capability: `memrefGetDyn128` + the `vloadidx128` front tag
 
 `CatCryptDialect.memrefGetDyn128 n` is the 128-bit twin of `memrefGetDyn` (added
 ADDITIVELY — a distinct ctor, not a widening of `memrefGetDyn`, whose `.sword 64`

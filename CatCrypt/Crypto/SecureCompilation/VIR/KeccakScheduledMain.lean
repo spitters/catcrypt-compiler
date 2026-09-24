@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
-# ILP-scheduled Keccak-p[1600,24] owned producer (#590 / #555)
+# ILP-scheduled Keccak-p[1600,24] owned producer
 
 The same owned `keccak_f1600` linear-jasmin emit as `KeccakLinearMain`, but with
 the virtual (pre-RA) body run through the **verified instruction-scheduling pass**
@@ -56,8 +56,8 @@ def main : IO UInt32 := do
   let lp0 : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog :=
     Com.toLprogPhysAbiScheduled keccakF1600Com "keccak_f1600" 26
               (fun _ => none) keccakImmSlots keccakInLoadMap keccakOutStoreMap
-  -- #555: verified redundant-reload elimination (the verified-native CSE win the
-  -- #590 measurement identified — repeated `movq <off>(%rsp),%rN` spill reloads
+  -- Verified redundant-reload elimination (a verified CSE of repeated
+  -- `movq <off>(%rsp),%rN` spill reloads
   -- with no intervening write). `elimReloadsLprog` drops every reload whose
   -- register provably already holds the slot; the output is a sublist of the
   -- input (`elimReloads_sublist`) and every drop is a held reload

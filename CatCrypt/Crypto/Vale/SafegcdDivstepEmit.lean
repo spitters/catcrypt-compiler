@@ -13,7 +13,7 @@ public meta import CatCrypt.Crypto.Jasmin.JasminEmit
 public import CatCrypt.Crypto.Jasmin.JasminEmit
 
 /-!
-# Bernstein-Yang safegcd divstep modular inverse — emitted kernel (#258)
+# Bernstein-Yang safegcd divstep modular inverse — emitted kernel
 
 The 30-bit-radix (`libsecp256k1 modinv32`) Bernstein-Yang divstep modular
 inverter, authored as a `LowCT` body and emitted through the verified
@@ -34,7 +34,7 @@ libsecp256k1 `modinv32` variant uses **30-bit limbs** with **int64**
 accumulators — every product (`t.u * limb`, ≤ 2^31 · 2^30 = 2^61) and every
 accumulator fits in 64 bits. So the whole divstep loop lowers to `SMulS`
 (signed 64-bit mul, → Jasmin `*`), `SAsr` (arithmetic shift, → `>>s`),
-`SAdd`/`SSub`/`SAnd`/`SShl`/`SShr` — exactly the #257 signed-arith SExpr ops.
+`SAdd`/`SSub`/`SAnd`/`SShl`/`SShr` — exactly the signed-arith SExpr ops.
 
 For a 256-bit modulus: `N9 = 9` limbs of 30 bits (= 270 bits, top limb
 partial). The C ground truth

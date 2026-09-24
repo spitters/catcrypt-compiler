@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 
 /-!
-# Poly lowering (#482-4) — the L4′ → L2 (Poly → ModArith) step
+# Poly lowering — the L4′ → L2 (Poly → ModArith) step
 
 The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
@@ -51,11 +51,11 @@ coefficients:
   (`PolyOp.ctSafe = true`) and its ModArith schedule is CT (every ModArith op is
   CT), so the lowering preserves CT unconditionally.
 
-## The #442 redundant-limb gate on the Vector route
+## The redundant-limb gate on the Vector route
 
 The pointwise-mul lane multiplies vectorize *only* for pseudo-Mersenne / Solinas
 moduli (ML-KEM's `q = 3329`, the BabyBear/Goldilocks Plonky3 primes), per the
-`ModArithLowering.vectorizable` predicate (#442).  A random NTT-friendly prime
+`ModArithLowering.vectorizable` predicate.  A random NTT-friendly prime
 keeps the lanes scalar.  We surface that gate here via `routeOfModulus` (reusing
 the L2 `routeOf` decision) so the Vector-vs-scalar choice for the NTT lanes is
 made once, at L2, not re-decided per protocol.
@@ -132,7 +132,7 @@ theorem ctButterfly_ops (ζ a b : ZMod q) :
 The NTT-domain pointwise product of two evaluation vectors `a, b : Fin n → ZMod q`
 is the `n` independent residue-ring multiplies `(aᵢ·bᵢ)ᵢ`.  We lower it to `n`
 ModArith `modMul`s — one per lane; the lanes vectorize on a pseudo-Mersenne
-modulus (#442) and stay scalar otherwise. -/
+modulus and stay scalar otherwise. -/
 
 variable {n : Nat}
 
@@ -207,20 +207,20 @@ theorem lower_ctSafeCom_preserved {Γ : Ctxt polyDialect} {t : PolyTy}
     ctSafeCom c = true ∧ (∀ op : PolyOp, scheduleCtSafe op = true) :=
   ⟨ctSafeCom_all c, fun op => scheduleCtSafe_all op⟩
 
-/-! ## 6. The #442 redundant-limb gate on the NTT lanes
+/-! ## 6. The redundant-limb gate on the NTT lanes
 
 The pointwise-mul lane multiplies route to the Vector dialect iff the modulus is
 vectorizable (pseudo-Mersenne / Solinas).  We surface the L2 routing decision
 (`ModArithLowering.routeOf`) for the lane multiply `modMul q`, so the
 Vector-vs-scalar choice for the NTT lanes is made once at L2. -/
 
-/-- The lowering route the #442 rule selects for the NTT-lane multiply at modulus
+/-- The lowering route the redundant-limb rule selects for the NTT-lane multiply at modulus
     `q`: `vector` if `q` is a pseudo-Mersenne / Solinas prime, else `scalar`. -/
 noncomputable def routeOfModulus (q : Nat) : ModArithDialect.LowerTarget :=
   ModArithDialect.routeOf (.modMul q)
 
 /-- The NTT lanes route to `scalar` at a non-vectorizable modulus — a random
-    NTT-friendly prime keeps the lanes scalar (the #442 row of the plan applied to
+    NTT-friendly prime keeps the lanes scalar (the redundant-limb rule applied to
     the NTT-domain pointwise product). -/
 theorem routeOfModulus_scalar_of_not_vectorizable (q : Nat)
     (hv : ¬ ModArithDialect.vectorizable q) :

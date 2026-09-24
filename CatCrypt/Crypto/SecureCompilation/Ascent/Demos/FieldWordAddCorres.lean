@@ -19,7 +19,7 @@ concrete instruction-list block this repository states an ascent
 correspondence about (`feAddBlock`, `feMulBlock`, `combSelectBlock`, …) is
 instead a `List (JInstr 64)` authored directly, with no mechanised map from a
 `Com jasminDialect` term to a `List (JInstr n)` — `JasminDialect.lean`'s own
-docstring names that map "intentionally not attempted". `#408`'s `feAddBlock`
+docstring names that map "intentionally not attempted". The kernels `feAddBlock`
 and `feMulBlock` (`X86Backend/Fe25519OpsKernel.lean`,
 `X86Backend/Fe25519MulKernel.lean`) are 4-limb (256-bit) kernels; the only
 front reaching a concrete jasmin-level block at all, `FieldToJasminWord`, is a
@@ -27,7 +27,7 @@ front reaching a concrete jasmin-level block at all, `FieldToJasminWord`, is a
 kernel's 4-limb schoolbook and carry chain, and no other listed front
 (`fieldToJasminLimbs`, `cryptoDialectToJasminCom`, the rolled-loop family)
 lands in `List (JInstr n)` either — they all stop at the same `Com
-jasminDialect` level. See the accompanying report for the file:line evidence.
+jasminDialect` level.
 
 This module states the smaller correspondence the existing front DOES support:
 `addJBlock`, a `List (JInstr 64)` computing the same branch-free

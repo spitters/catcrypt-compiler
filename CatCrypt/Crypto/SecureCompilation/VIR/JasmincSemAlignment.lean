@@ -157,7 +157,7 @@ theorem castW_agrees_jasmin {w w' : Nat} (src : BitVec w) :
 
 /-- **The discharged half of the alignment**, bundled: every ALU and cast shape our
     emitter produces matches jasmin's `psem` word primitives. This is the part of "our
-    Lean jasmin model is faithful to Coq `psem`" that is now *proved* (down to the §1
+    Lean jasmin model is faithful to Coq `psem`" that is *proved* (down to the §1
     transcriptions mirroring the Coq `word` ops); a trusted-base statement cites this
     theorem for the ALU/cast obligations and §4 for the memory/leaf/loop residuals. -/
 theorem alu_cast_agrees_jasmin :
@@ -236,7 +236,7 @@ theorem mem_agrees_jasmin :
 parametric in the opaque leaf semantics `leafSem`. The dialect's own
 interpretation is `jasminExtSem` (`JasminDialect`). jasmin's `psem` evaluates an
 `extCall` as `Ccall`/`sem_call` of the linked function (`expr.v:420`). There is
-**no closed `rfl` here**: the leaf is external (a CryptoSSA `fp_*`
+**no closed `rfl` here**: the leaf is external (an `fp_*`
 intrinsic, a formosa NTT leaf, …), so its agreement with `jasmin`'s `sem_call`
 is precisely the `LeafAgrees leafSem` hypothesis that `lowerComToProg_sem_eq`
 already carries. We make the op-set entry explicit by *naming* the predicate the
@@ -302,7 +302,7 @@ theorem opcode_alignment_total :
    fun a k => stackLoad_agrees_jasmin a k,
    fun a k v => stackStore_agrees_jasmin a k v⟩
 
-/-! ## 5. Packed-`u16` AVX2 vector ops (the VV emit mode — additive, 2026-05-25)
+/-! ## 5. Packed-`u16` AVX2 vector ops (the VV emit mode)
 
 The vectorized FrodoKEM emit (`JasminAbiEmit.emitFrodoVecJazz`) renders a matmul
 row as `#VPMULL_16u16` (packed lane-wise multiply) + a horizontal-sum tree of
@@ -354,7 +354,7 @@ theorem vv_lane_agrees_jasmin :
     ∧ (∀ a b : BitVec 16, jVPADD_lane a b = jWordAdd a b) :=
   ⟨vpmull_lane_agrees_jasmin, vpadd_lane_agrees_jasmin⟩
 
-/-! ## 6. `#VPCLMULQDQ` carryless multiply (the GF(2^128) VV emit mode — additive)
+/-! ## 6. `#VPCLMULQDQ` carryless multiply (the GF(2^128) VV emit mode)
 
 The FAEST QuickSilver/VOLE GF(2^128) dot emit
 (`JasminAbiEmit.emitGFDotJazz`) renders each `r_i · v_i` term with `#VPCLMULQDQ`
@@ -425,7 +425,7 @@ theorem gf_vv_agrees_jasmin :
     ∧ (∀ a b : BitVec 128, a ^^^ b = jWordXor a b) :=
   ⟨vpclmulqdq_00_agrees_jasmin, gf_xoracc_agrees_jasmin⟩
 
-/-! ## 7. GF(16) PSHUFB AVX2 vector ops (the GF16 VV emit mode — additive, 2026-05-26)
+/-! ## 7. GF(16) PSHUFB AVX2 vector ops (the GF16 VV emit mode)
 
 The vectorized MAYO GF(16) emit (`JasminAbiEmit.emitMayoVecJazz`) renders the
 GF(16) lane multiply as four `#VPSHUFB_256` times-`x^k` table lookups masked and
@@ -525,7 +525,7 @@ theorem gf16_vv_agrees_jasmin :
         jVPSHUFB_byte tbl i = tbl ⟨i.toNat, hi⟩) :=
   ⟨vpsub_byte_agrees_jasmin, gf16_xoracc_agrees_jasmin, vpshufb_byte_is_lookup⟩
 
-/-! ## 8. GF(127) packed-`u16` AVX2 vector ops (the GF127 VV emit mode — additive, 2026-05-26)
+/-! ## 8. GF(127) packed-`u16` AVX2 vector ops (the GF127 VV emit mode)
 
 The vectorized QR-UOV GF(127) emit (`JasminAbiEmit.emitQruovVecJazz`) renders the
 GF(127) lane multiply as `#VPMULL_16u16` (16 `u16` lane products), the packed
@@ -595,7 +595,7 @@ theorem gf127_vv_agrees_jasmin :
     ∧ (∀ a b : BitVec 16, a &&& b = jWordAnd a b) :=
   ⟨vpadd16_lane_agrees_jasmin, vpsub16_lane_agrees_jasmin, vpand16_lane_agrees_jasmin⟩
 
-/-! ## 9. ChaCha 4-way packed-`u32` AVX2 lane-parallel-map ops (the LANE-MAP emit mode — additive, 2026-05-26)
+/-! ## 9. ChaCha 4-way packed-`u32` AVX2 lane-parallel-map ops (the LANE-MAP emit mode)
 
 The vectorized ChaCha20 4-way emit (`JasminAbiEmit.emitChacha4wayJazz`) renders
 each ARX step as a SINGLE packed-`u32` lane-wise AVX2 instruction operating on
@@ -670,7 +670,7 @@ theorem chacha_lanemap_agrees_jasmin :
     ∧ (∀ a b : BitVec 128, a ||| b = jWordOr a b) :=
   ⟨vpadd32_lane_agrees_jasmin, vpxor128_agrees_jasmin, vpor128_agrees_jasmin⟩
 
-/-! ## 10. GF(16) TABLE-LOOKUP ops (the SNOVA multtab emit mode — additive, 2026-05-26)
+/-! ## 10. GF(16) TABLE-LOOKUP ops (the SNOVA multtab emit mode)
 
 The new TABLE-LOOKUP GF(16) emit (`JasminAbiEmit.Gf16Tab.emitSnovaRingDotTabJazz`)
 performs the GF(16) multiply via a 256-byte precomputed multtab indexed
@@ -730,7 +730,7 @@ theorem gf16_tab_agrees_jasmin :
    apply_or_eq_jasmin,
    gf16_xoracc_agrees_jasmin⟩
 
-/-! ## 11. Keccak SIMD packed-`u64` AVX2 lane-parallel-MAP ops (the KECCAK LANE-MAP emit mode — additive, 2026-05-26)
+/-! ## 11. Keccak SIMD packed-`u64` AVX2 lane-parallel-MAP ops (the KECCAK LANE-MAP emit mode)
 
 The vectorized Keccak emit (`JasminAbiEmit.KeccakSimd.emitKeccakSimdJazz`)
 renders the θ-parity column XORs as a SINGLE packed-`u64` lane-wise AVX2
@@ -807,7 +807,7 @@ theorem keccak_simd_agrees_jasmin :
   ⟨vpxor64_lane_agrees_jasmin, vpxor256_agrees_jasmin, vpor256_agrees_jasmin⟩
 
 /-! ## 12. SHA-2 N-block batched register-resident emit (the BATCHED ARX
-emit mode — additive, 2026-05-26)
+emit mode)
 
 The batched SHA-256 / SHA-512 emit (`JasminAbiEmit.Sha2Batch.emitSha256BatchedJazz`
 / `emitSha512BatchedJazz`) renders N=4 blocks of FIPS 180-4 block compression
@@ -910,7 +910,7 @@ theorem sha2_batched_agrees_jasmin :
   ⟨fun _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl,
    fun _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl⟩
 
-/-! ## 13. GF(256) LOG/EXP TABLE-LOOKUP ops (the UOV multtab emit mode — additive, 2026-05-26)
+/-! ## 13. GF(256) LOG/EXP TABLE-LOOKUP ops (the UOV multtab emit mode)
 
 The new GF(256) TABLE-LOOKUP emit
 (`JasminAbiEmit.Gf256Tab.emitUovKernelTabJazz`) performs the GF(256) multiply
@@ -994,12 +994,12 @@ theorem gf256_tab_agrees_jasmin :
    fun _ _ => rfl,
    gf16_xoracc_agrees_jasmin⟩
 
-/-! ## 14. Bitsliced AES S-box ops (the FOURTEENTH ABI mode — pure-boolean, 2026-05-26)
+/-! ## 14. Bitsliced AES S-box ops (the FOURTEENTH ABI mode — pure-boolean)
 
-The new bitsliced AES S-box emit
+The bitsliced AES S-box emit
 (`JasminAbiEmit.AesBitslice.emitAes128SboxKernelJazz`) replaces the opaque
-`#AESENC` hardware leaf — and, by composition, the `faest_aes128` extCall leaf
-in `CatCrypt/Crypto/FAEST/Leaves.lean` — by a pure-boolean computation of the
+`#AESENC` hardware leaf — and, by composition, the `faest_aes128` extCall
+leaf — by a pure-boolean computation of the
 GF(2^8) inverse via Fermat (`x^254`, an addition-chain of 7 squarings + 6
 multiplications) followed by the AES post-affine matrix `M·y ⊕ 0x63`. The
 single primitive in the emit is the bit-plane register at `BitVec 64`

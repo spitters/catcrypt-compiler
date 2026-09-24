@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 set_option autoImplicit false
 
 /-!
-# The literal `CMP`/flag-guarded back-edge over the memref state (capability B2)
+# The literal `CMP`/flag-guarded back-edge over the memref state
 
 The memref interpreter stack (`JasminLsemMemLoop.evalInstrPMemL` and everything
 built on it) guards a loop back-edge by reading the **counter register**
@@ -36,7 +36,7 @@ never-written register named `"NZ"` (miss ⇒ `false` — the back-edge would ne
 be taken).
 
 This module extends the interpreter with the emitted idiom — **purely
-additively** (`evalInstrPMemL` / `LstatePM` / the A1–B5 theorems are imported,
+additively** (`evalInstrPMemL` / `LstatePM` / the memref loop theorems are imported,
 never edited):
 
 * **`LstateMF`** — the flag-extended program state: a wrapped `LstatePM` plus a
@@ -59,15 +59,15 @@ never edited):
      wrapped state, threading `zf` unchanged.
 * **Conservativity square** (`lsemFuelMemF_conservative`): on a program none of
   whose instructions is recognised by the three new arms, the flag machine *is*
-  the A1 machine — `lsemFuelMemF P fuel ⟨s, zf⟩ = (lsemFuelMemL P fuel s).map
-  (⟨·, zf⟩)`.  All A1–B5 loop programs (counter-register `Lcond`, no `CMP`, no
-  reg-reg `MOV`) satisfy the premise, so their closed theorems describe the flag
-  machine verbatim.
+  the counter-register machine — `lsemFuelMemF P fuel ⟨s, zf⟩ = (lsemFuelMemL P
+  fuel s).map (⟨·, zf⟩)`.  All counter-register loop programs (counter-register
+  `Lcond`, no `CMP`, no reg-reg `MOV`) satisfy the premise, so their closed
+  theorems describe the flag machine verbatim.
 * **Guard equivalence + re-tie** (`flagLoop_runBounded`): the flag-guarded loop
   `flagLoopLinstrRM top nReg body = Llabel top :: body ++ [CMP nReg,#0 ; Lcond
   NZ top]` — the EMITTED back-edge idiom, pinned to the lowering by
   `forLoopLcmdNRt_backedge` — realises **the same fold `runBoundedLoopMem`** as
-  A1's counter-guarded `loopLinstrRM`, with A1's `loopMem_runBounded` conclusion
+  the counter-guarded `loopLinstrRM`, with `loopMem_runBounded`'s conclusion
   (register store + array carrier agree with the fold).  The guard equivalence
   is `zf`-after-`CMP nReg,#0` `= ¬ condNZ nReg` (`zf_after_cmp_eq_not_condNZ`):
   comparing the counter against zero materialises exactly the bit the
@@ -89,15 +89,15 @@ checks the flag machine runs it end to end: the accumulator decodes to
 zero-trip guard skips the body (accumulator = seed).
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}** for every named
-theorem (+ `Lean.ofReduceBool` for the `native_decide` validates).  Honest
-scope: the generic re-tie takes a `CMP`-free, reg-`MOV`-free body (the fold side
-is A1's `lsemStraightMem`, which steps neither); the invariant-touch compares
+theorem (+ `Lean.ofReduceBool` for the `native_decide` validates).
+Scope: the generic re-tie takes a `CMP`-free, reg-`MOV`-free body (the fold side
+is `lsemStraightMem`, which steps neither); the invariant-touch compares
 (`CMP ctr, invBase`, emitted only when the loop carries invariant base
 registers) and bodies with feedback `MOV`s are covered by the machine (see the
 validate, whose body has a feedback `MOV`) but not by the generic fold tie.
-The loop exit needs a genuine **zero read** of the counter (`getW = some 0`) —
-the emitted `CMP` evaluates its operand, whereas A1's register guard falls
-through even on a read miss; that is the one honest strengthening of the
+The loop exit needs a **zero read** of the counter (`getW = some 0`) —
+the emitted `CMP` evaluates its operand, whereas the counter-register guard falls
+through even on a read miss; this is the one strengthening of the
 schedule hypotheses.
 -/
 
@@ -139,7 +139,7 @@ def movRegArgs? (i : LinstrRM) : Option (String × String) :=
     `Lcond (.reg "NZ") l` as `jne .L<l>` and `Lcond (.reg "Z") l` as `je .L<l>`.
     Returns the polarity (`true` = jump iff `zf`, i.e. `je`; `false` = jump iff
     `¬ zf`, i.e. `jne`) and the target label.  Any other condition operand (in
-    particular a counter register, as in A1's `loopLinstrRM`) is not recognised
+    particular a counter register, as in `loopLinstrRM`) is not recognised
     and keeps its `condNZ` register-read semantics. -/
 def flagCondCC? (i : LinstrRM) : Option (Bool × LLabel) :=
   match i.fst with
@@ -149,26 +149,26 @@ def flagCondCC? (i : LinstrRM) : Option (Bool × LLabel) :=
 
 /-! ## 2. The flag-extended program state and step -/
 
-/-- The flag-extended memref program state: the A1 program state `LstatePM`
+/-- The flag-extended memref program state: the loop program state `LstatePM`
     (bundled base + function name) plus the zero-flag `zf` the emitted
     `CMP`/`Jcc` idiom communicates through.  The flag lives outside the register
     file: a flag-machine step never writes a flag *register*, so the base state
     tracks the unextended machine exactly. -/
 structure LstateMF where
-  /-- The wrapped A1 program state (bundled memref base + function name). -/
+  /-- The wrapped loop program state (bundled memref base + function name). -/
   prog : LstatePM
   /-- `ZF`: set by the flag-`CMP`, read by the `Lcond NZ`/`Z` conditional. -/
   zf : Bool := false
 
-/-- **The flag-extended eval arm.**  Three additive arms in front of the A1
-    delegate:
+/-- **The flag-extended eval arm.**  Three additive arms in front of the
+    counter-register delegate:
 
     * the emitted flag-`CMP` (`cmpArgs?`) evaluates both operands at width 64,
       sets `zf := (va = vb)` (a compare is a subtract that only writes flags),
       and advances the pc — the store is untouched;
     * the emitted register-copy `MOV` (`movRegArgs?`) writes `dst := src` at
       `src`'s stored width and advances the pc, threading `zf`;
-    * the flag-reading conditional (`flagCondCC?`) jumps (via A1's
+    * the flag-reading conditional (`flagCondCC?`) jumps (via
       `evalJumpMem`) iff `zf` matches the condition-code polarity, else falls
       through — the `jne`/`je` semantics;
     * **everything else is `evalInstrPMemL` on the wrapped state**, `zf`
@@ -194,7 +194,7 @@ def evalInstrPMemF (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF 
       else some { s with prog := { s.prog with base := s.prog.base.nextPc } }
   | none => (evalInstrPMemL P i s.prog).map (fun p => { s with prog := p })
 
-/-- `step`: fetch (A1's `findInstrMem` on the wrapped state) and flag-eval. -/
+/-- `step`: fetch (`findInstrMem` on the wrapped state) and flag-eval. -/
 def lsemStepPMemF (P : LprogM) (s : LstateMF) : Option LstateMF :=
   match findInstrMem P s.prog with
   | some i => evalInstrPMemF P i s
@@ -202,7 +202,7 @@ def lsemStepPMemF (P : LprogM) (s : LstateMF) : Option LstateMF :=
 
 /-- The flag-extended fuel-stepped interpreter: iterate `evalInstrPMemF`,
     halting (returning the state) when `findInstrMem` is `none` — the same
-    recursion as A1's `lsemFuelMemL`. -/
+    recursion as `lsemFuelMemL`. -/
 def lsemFuelMemF (P : LprogM) : Nat → LstateMF → Option LstateMF
   | 0, s => match findInstrMem P s.prog with
             | none => some s
@@ -239,10 +239,10 @@ theorem findInstrMem_singleton (fn : String) (body : List LinstrRM) (s : LstateP
   rw [if_pos (show s.lfn = (singletonProgM fn body).lfn from hfn)]
   rfl
 
-/-! ## 3. Conservativity: without the three emitted forms, this IS the A1 machine -/
+/-! ## 3. Conservativity: without the three emitted forms, this IS the counter-register machine -/
 
 /-- On an instruction recognised by none of the three new arms, `evalInstrPMemF`
-    is exactly the A1 step on the wrapped state, `zf` threaded unchanged. -/
+    is exactly the counter-register step on the wrapped state, `zf` threaded unchanged. -/
 theorem evalInstrPMemF_delegate (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (hc : cmpArgs? i = none) (hm : movRegArgs? i = none) (hf : flagCondCC? i = none) :
     evalInstrPMemF P i s = (evalInstrPMemL P i s.prog).map (fun p => { s with prog := p }) := by
@@ -250,7 +250,7 @@ theorem evalInstrPMemF_delegate (P : LprogM) (i : LinstrRM) (s : LstateMF)
   rw [hc, hm, hf]
 
 /-- A program with no emitted flag idiom: no flag-`CMP`, no register-copy `MOV`,
-    no condition-code `Lcond`.  An A1–B5 loop program (counter-register
+    no condition-code `Lcond`.  A memref loop program (counter-register
     back-edge, `Lopn`/call bodies) satisfies this whenever its counter register
     is not itself named `"Z"`/`"NZ"` (the two condition-code names). -/
 def NoFlagIdiom (P : LprogM) : Prop :=
@@ -265,8 +265,9 @@ theorem findInstrMem_mem (P : LprogM) (s : LstatePM) (i : LinstrRM)
   · exact absurd h (by simp)
 
 /-- **The conservativity square.**  On a `NoFlagIdiom` program the flag machine
-    is the A1 machine: `lsemFuelMemF` is `lsemFuelMemL` on the wrapped state
-    with the flag carried through untouched.  Every closed A1–B5 theorem
+    is the counter-register machine: `lsemFuelMemF` is `lsemFuelMemL` on the
+    wrapped state with the flag carried through untouched.  Every closed memref
+    loop theorem
     (`loopMem_runBounded`, the chain-bridge exports, the nest folds) therefore
     describes the flag machine verbatim on its own programs. -/
 theorem lsemFuelMemF_conservative (P : LprogM) (h : NoFlagIdiom P) :
@@ -310,7 +311,7 @@ def flagBackedge (nReg : String) (top : LLabel) : List LinstrRM :=
 
 /-- The flag-guarded counter loop — the EMITTED guard idiom over a general typed
     body: `Llabel top :: body ++ [CMP nReg,#0 ; Lcond NZ top]`.  The `LstateMF`
-    analogue of A1's counter-guarded `loopLinstrRM` (which reads `nReg` directly
+    analogue of the counter-guarded `loopLinstrRM` (which reads `nReg` directly
     at the `Lcond`); here the back-edge reads the `zf` the `CMP` materialised. -/
 def flagLoopLinstrRM (top : LLabel) (nReg : String) (body : List LinstrRM) :
     List LinstrRM :=
@@ -405,9 +406,9 @@ theorem condNZ_true_getW {b : LstateM} {nReg : String}
       exact ⟨v, hv, by simpa using of_decide_eq_true h⟩
 
 /-- **Guard equivalence.**  The `zf` the emitted `CMP nReg,#0` writes is the
-    negation of the counter-register guard A1's back-edge reads: `zf = (v = 0)`
+    negation of the counter-register guard of `loopLinstrRM` reads: `zf = (v = 0)`
     where `condNZ = (v ≠ 0)`.  So `Lcond NZ` (jump iff `¬ zf`) takes the
-    back-edge exactly when A1's `Lcond (.reg nReg)` does. -/
+    back-edge exactly when `Lcond (.reg nReg)` does. -/
 theorem zf_after_cmp_eq_not_condNZ (b : LstateM) (nReg : String) (v : BitVec 64)
     (hread : b.reg.getW nReg 64 = some v) :
     (v == 0#64) = !(condNZ b (.reg nReg)) := by
@@ -462,7 +463,7 @@ theorem flagLoop_end_pos (top : LLabel) (nReg : String) (body : List LinstrRM) :
 /-! ## 8. The straight-line segment over the flag machine
 
 A body of plain `Lopn`s (no flag-`CMP`, no register-copy `MOV`) steps by the
-verbatim A1 delegate, so a segment run is the A1 body-fold `lsemStraightMem`
+verbatim delegate, so a segment run is the straight-line body-fold `lsemStraightMem`
 with `zf` threaded unchanged — the flag analogue of `lsemFuelMemL_seg`. -/
 
 /-- On a plain `Lopn` (not a flag-`CMP`, not a register-copy `MOV`),
@@ -481,13 +482,13 @@ theorem evalInstrPMemF_lopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
   cases lsemStepMem i s.prog.base <;> rfl
 
 /-- A plain-`Lopn` body: every instruction is an `Lopn` and neither a flag-`CMP`
-    nor a register-copy `MOV` — the delegate fragment of the A1 body-fold. -/
+    nor a register-copy `MOV` — the delegate fragment of the straight-line body-fold. -/
 def PlainLopnBody (body : List LinstrRM) : Prop :=
   ∀ i ∈ body, IsLopn i ∧ cmpArgs? i = none ∧ movRegArgs? i = none
 
 /-- **Straight-line segment run with continuation fuel** (flag machine).  The
-    flag analogue of A1's `lsemFuelMemL_seg`: a plain-`Lopn` segment at
-    positions `lpc .. lpc+|seg|-1` executes the A1 body-fold `lsemStraightMem`
+    flag analogue of `lsemFuelMemL_seg`: a plain-`Lopn` segment at
+    positions `lpc .. lpc+|seg|-1` executes the straight-line body-fold `lsemStraightMem`
     on the base and continues with `f` fuel, `zf` threaded unchanged. -/
 theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
     ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat),
@@ -534,8 +535,8 @@ theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
 /-! ## 9. The single-pass core: body, flag-`CMP`, back-edge -/
 
 /-- **Single loop pass — back-edge TAKEN** (flag machine).  From the top of the
-    body (`lpc = 1`), if the A1 body-fold runs to `b` and the counter is
-    non-zero at `b` (`condNZ` — the SAME schedule hypothesis as A1), then one
+    body (`lpc = 1`), if the straight-line body-fold runs to `b` and the counter is
+    non-zero at `b` (`condNZ` — the SAME schedule hypothesis as `loopMem_runBounded`), then one
     pass (body + flag-`CMP` + taken `Lcond NZ`) consumes `body.length + 2` fuel
     and lands back at the top with base `b.setLpc 1` and `zf = false` (the `CMP`
     saw a non-zero counter). -/
@@ -660,10 +661,10 @@ theorem flagLoop_pass_halt (fn : String) (top : LLabel) (nReg : String)
     rw [LstateM.lpc_nextPc, LstateM.lpc_nextPc, hb_lpc]; omega]
   exact flagLoop_end_pos top nReg body
 
-/-! ## 10. The `n`-fold re-tie: A1's fold, realised by the EMITTED guard idiom -/
+/-! ## 10. The `n`-fold re-tie: the counter-loop fold, realised by the EMITTED guard idiom -/
 
 /-- **Taken chain** (flag machine): the first `j` passes (back-edge taken after
-    each — the same `condNZ` schedule as A1's `loopMem_taken_chain`) factor
+    each — the same `condNZ` schedule as `loopMem_taken_chain`) factor
     through the SAME fold `runBoundedLoopMem`; each pass costs `|body| + 2` fuel
     (body + flag-`CMP` + `Lcond`), and every reentry after the first pass
     carries `zf = false` (the just-run `CMP` saw a non-zero counter). -/
@@ -730,20 +731,20 @@ theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
               rw [hpass]
               simp
 
-/-- **The bounded-loop re-tie over the EMITTED guard idiom.**  A1's
+/-- **The bounded-loop re-tie over the EMITTED guard idiom.**
     `loopMem_runBounded`, lifted to the flag-guarded loop `flagLoopLinstrRM` —
     the literal `CMP nReg,#0 ; Lcond NZ top` back-edge `forLoopLcmdNRt` emits
     (pin: `forLoopLcmdNRt_backedge`) — run under the flag machine
     `lsemFuelMemF`:
 
-    given the SAME counter schedule as A1 (back-edge taken after iterations
+    given the SAME counter schedule as `loopMem_runBounded` (back-edge taken after iterations
     `1..m-1`; the counter *reads zero* after the `m`-th body-fold — the emitted
-    `CMP` evaluates the counter, so the exit needs a genuine zero read, not just
+    `CMP` evaluates the counter, so the exit needs a zero read, not just
     a read miss), the machine runs `m·(|body|+2)` steps and halts in a state
     whose base agrees with **the same fold `runBoundedLoopMem body m`** on the
     register store and the array carrier, with `zf = true` (the exit compare).
-    The interpreter now runs the emitted guard idiom; the fold — and hence
-    every consumer of A1's conclusion shape — is unchanged. -/
+    The interpreter runs the emitted guard idiom; the fold — and hence
+    every consumer of `loopMem_runBounded`'s conclusion shape — is the same. -/
 theorem flagLoop_runBounded (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hbody : PlainLopnBody body)
     (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 1)
@@ -907,8 +908,8 @@ theorem guardedFlagLoop_zeroTrip (fn : String) (top endL : LLabel) (nReg : Strin
     CMP:64 Lctr2, #0 ; Lcond NZ <top> ; Llabel <endL> ; Lret
 
 — reg-copy `MOV` seeds/feedback, the zero-trip guard, and the flag-`CMP`/`jne`
-back-edge, none of which step under the A1 machine.  The flag machine runs the
-stream end to end (the trailing `Lret` — function return, outside the loop
+back-edge, none of which step under the counter-register machine.  The flag
+machine runs the stream end to end (the trailing `Lret` — function return, outside the loop
 idiom — is dropped; program-end is the halt). -/
 
 /-- The real rendered runtime-count loop, lifted to the typed instruction list
@@ -947,7 +948,7 @@ example :
           (.cons (3 : BitVec 64) (.cons (0 : BitVec 64) .nil)))) := by
   native_decide
 
-/-- **Validate (halt, not stuck).**  Both runs genuinely halt (`some`), i.e.
+/-- **Validate (halt, not stuck).**  Both runs halt (`some`), i.e.
     every rendered instruction — the reg-copy `MOV`s, the two `CMP`s, the
     `je`/`jne` conditionals — has a step. -/
 example : (lsemFuelMemF rtLoopProg 40 (rtStart 3 2)).isSome

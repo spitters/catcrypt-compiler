@@ -13,15 +13,14 @@ public import CatCrypt.Crypto.SecureCompilation.RustStateSubstrate
 set_option autoImplicit false
 
 /-!
-# Rust ↔ dialect-front simulation over the `CProg`-free front
+# Rust ↔ dialect-front simulation over the direct dialect front
 
-This file proves the `LowCT`-source relational simulation **directly over the
-`CProg`-free dialect front** `translateDialectControl` / `DTransOut`, by a
+This module proves the `LowCT`-source relational simulation **directly over the
+dialect front** `translateDialectControl` / `DTransOut`, by
 induction on the `RustExec` derivation. For a control-covered `LowCT` whose
 direct dialect translation succeeds with output `o`, every concrete `RustExec`
 trace lands a post-state valuation satisfying `RustStateInterp` *at the dialect
-front's* `o.Γ'` / `o.vm`. Neither the statement nor the proof names `CProg`,
-`CExpr`, `TransOut`, or `translate`.
+front's* `o.Γ'` / `o.vm`.
 
 ## Proof structure
 
@@ -29,10 +28,10 @@ The induction mirrors the structure of the byte-layout simulation: per
 `RustExec` step it constructs a `RustStateInterp` witness. `RustStateInterp`,
 `bindingOK`, and the per-constructor transport lemmas (`interp_bind_*`,
 `interp_cons_*`, `noAlias_*`, `bindingOK_*`) live over the shared
-`VarMap`/`RustState` substrate, so they carry to the dialect unchanged; the
-proof differs from the `CProg` development only in unfolding the dialect front
-(`translateDialectControl` / `translateDialectFull` / `translateDialect`) in
-place of `translate`, and in the `RCallN` fold (`loopCallNDestsD_interp_extend`),
+`VarMap`/`RustState` substrate, so they apply to the dialect unchanged; the
+proof unfolds the dialect front
+(`translateDialectControl` / `translateDialectFull` / `translateDialect`), and
+the `RCallN` arm uses the fold (`loopCallNDestsD_interp_extend`),
 which walks the rust state along `callNUpdate` one destination at a time.
 
 The coverage hypothesis `hCov : IsCoveredCtl c` is reverted into the induction:
@@ -51,7 +50,7 @@ the dialect front preserves `NoAliasVM`
 
 `IsCoveredCtl` — the leaf-call covered arms plus `RFor` (bounded unroll),
 `RIfNz` (φ-merge) and `RWhileNz` (data-dependent loop, context-invariant front
-output). Not-yet-in-dialect ops are excluded.
+output). Ops the dialect does not express are excluded.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
@@ -108,14 +107,14 @@ theorem loopCallNDestsD_interp_extend (leafSpec : LeafSpec) (fname : String)
           exact loopCallNDestsD_interp_extend leafSpec fname args argTs argList
             hInv' rest (i + 1) hRest
 
-/-! ## `NoAliasVM` preservation by the `CProg`-free front
+/-! ## `NoAliasVM` preservation by the dialect front
 
 The `RIfNz` arms of the simulation produce a witness at the post-branch state
 via `noAlias_canonical_witness` — the byte-correspondence valuation
 `HVec.ofVarFn (witVarFn o.vm rs)` (the same lever the `whileTrue` arm uses),
 which is satisfiable at *any* state given `NoAliasVM o.vm`. So we only need that
 the dialect front preserves `NoAliasVM`, proved below by structural recursion
-over `IsCoveredCtl` (no `CProg`, no `translate`). -/
+over `IsCoveredCtl`. -/
 
 /-- `loopCallNDestsD` preserves `NoAliasVM`: each destination binds one fresh
     name (`noAlias_bind`), at any starting output index. -/
@@ -607,15 +606,14 @@ theorem rustStateInterp_weaken_word {Γ : Ctx} {vm : VarMap Γ} {rs : RustState}
     | sum _ _ => simp only [bindingOK]
     | memrefW _ _ => simp only [bindingOK]
 
-/-- **Rust ↔ dialect-front simulation (`CProg`-free statement).**
-    On the control-covered fragment `IsCoveredCtl`, if the `CProg`-free direct
+/-- **Rust ↔ dialect-front simulation.**
+    On the control-covered fragment `IsCoveredCtl`, if the direct dialect
     front `translateDialectControl` translates `c` with output `o`, then every
     concrete `RustExec` trace from `rs` to `rs'` (with entry valuation `V`
     satisfying `RustStateInterp vm rs V`) lands a post-state valuation
     `V' : HVec o.Γ'` satisfying `RustStateInterp o.vm rs' V'`.
 
-    Neither the statement nor the proof names `CProg` / `TransOut` / `translate`:
-    the proof is a direct induction on the `RustExec` derivation over the dialect
+    The proof is a direct induction on the `RustExec` derivation over the dialect
     front, reusing the shared `VarMap`/`RustState` byte-layout transport lemmas. -/
 theorem rustExecSimulatesDialect
     {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) (o : DTransOut Γ)
@@ -638,7 +636,7 @@ theorem rustExecSimulatesDialect
         | rSeq h1c h2c =>
           have h1Ctl : IsCoveredCtl c1 := .ofCovered h1c
           have h2Ctl : IsCoveredCtl c2 := .ofCovered h2c
-          -- `translateDialectControl`'s `RSeq` arm now recurses into itself (control
+          -- `translateDialectControl`'s `RSeq` arm recurses into itself (control
           -- sequencing); case directly on the two child translations.
           simp only [translateDialectControl] at hTrans
           split at hTrans

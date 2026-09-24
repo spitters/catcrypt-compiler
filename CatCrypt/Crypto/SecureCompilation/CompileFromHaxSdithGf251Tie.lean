@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.Util.ZMod251
 public import CatCrypt.Crypto.Util.ZMod251
 
 /-!
-# #607 fan-out: the emitted SDitH GF(251) multiply leaf EQUALS the abstract field op
+# Field tie: the emitted SDitH GF(251) multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxSdithGf251.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `gf251MulFold` — the Solinas `256 ≡ 5` double-fold
@@ -29,7 +29,7 @@ field elements the inputs encode.
 
 The product `a · b ≤ 250² = 62500 < 2⁶⁴` never wraps, so the `BitVec` multiply is
 the integer multiply, and `(a·b) % 251` projected to `ZMod 251` is the field
-product `↑a · ↑b`. No `decide`/`native_decide` here — it is the genuine prime-field
+product `↑a · ↑b`. No `decide`/`native_decide` here — it is the prime-field
 reduce identity, lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
 
@@ -55,7 +55,7 @@ theorem gf251_toNat_mul (a b : BitVec 64) (ha : a < 251#64) (hb : b < 251#64) :
   rw [BitVec.toNat_mul]
   exact Nat.mod_eq_of_lt hlt
 
-/-- **SDitH GF(251) emit-form ↔ abstract `Zq251` field tie (#607 fan-out).** On the
+/-- **SDitH GF(251) emit-form ↔ abstract `Zq251` field tie.** On the
     residue domain `a, b < 251`, the emitted Solinas-fold leaf `gf251MulFold` —
     read back as a `Zq251 = ZMod 251` field element via `Zq251.fromNat ∘ toNat` —
     equals the `Zq251` field product of the elements the inputs encode. Composed

@@ -44,7 +44,7 @@ prime-pin (already discharged in `Curve4LimbTierA`): the *same* op-level proof
 skeleton closes all of secp256k1 / P256 / BN254. This is the prime-parametric
 claim made concrete for the curve family.
 
-## What rides the compiler vs. GMP-KAT-gated (REV-12)
+## What rides the compiler vs. GMP-KAT-gated
 
 As in `FieldDescentMultiLimb`: the value-level Montgomery multiply
 `Number.montgomeryMul p R nP` is proven (`montgomeryMul_correct`), and the
@@ -52,10 +52,10 @@ field-op *tree* (`a·b + c·d` over `ZMod p`) rides the compiler leaf-by-leaf ov
 that proven leaf. The single multi-limb *byte-identity* of the emitted `.s`
 (`p256_montmul_proven` / `bn254_montmul_proven`, the `Curve4LimbTierA`
 `*_emit_montmul_runBlock4` schoolbook+REDC block) stays **GMP-KAT-gated** — a
-256×256→256 field multiply, **never** `#eval`'d in Lean (REV-12: that OOMs the
-shared LSP).
+256×256→256 field multiply, **never** `#eval`'d in Lean (that exhausts the
+memory of the shared LSP).
 
-**0 sorries.** Target axiom set `{propext, Classical.choice, Quot.sound}` plus
+**All goals closed.** Target axiom set `{propext, Classical.choice, Quot.sound}` plus
 the `native_decide` LRAT certificates the per-curve prime pins cite
 (`p256Limbs_value`, `bn254Limbs_value`).
 -/

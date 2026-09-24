@@ -12,14 +12,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
-# #606 fan-out: the verified compiler emits the Mersenne-31 field multiply
+# The verified compiler emits the Mersenne-31 field multiply
 
-This module extends the **C4** step of the verified-compiler plan to the
-**Mersenne-31** base-field multiply, the prime `p = 2³¹ − 1 = 2147483647`.
+This module compiles the **Mersenne-31** base-field multiply from its hax source,
+the prime `p = 2³¹ − 1 = 2147483647`.
 This is the base field of CircleSTARK / Plonky3-Mersenne31. `2³¹ ≡ 1 (mod p)`,
 so multiply is integer `a·b` followed by a `2³¹ ≡ 1` double-fold and a single
 branch-free conditional subtract — the same Mersenne reduce shape as the
-GF(127) (= 2⁷−1), GF(8191) (= 2¹³−1) and GF(131071) (= 2¹⁷−1) fan-outs, here
+GF(127) (= 2⁷−1), GF(8191) (= 2¹³−1) and GF(131071) (= 2¹⁷−1) leaves, here
 at the 31-bit Mersenne modulus.
 
 ## Mersenne-31 multiply (Mersenne fold), `w = 64`
@@ -45,7 +45,7 @@ BLAKE2/GF(8191) recognizers (`wrapping_mul`/`shift_right`/`BitAnd`/
 `m31MulSrc` is the let-normalized `ImpExpr` (one op per `letBind`, all args
 atoms or earlier locals); `m31MulFold` is the explicit closed Mersenne-fold
 **emit form** the source denotes to; the `_compiles` theorem routes the
-FOLD-FORM source-spec (`m31MulSrc_denoteScalar`, a `rfl`) through the C3
+FOLD-FORM source-spec (`m31MulSrc_denoteScalar`, a `rfl`) through the
 per-primitive obligation `compileFromHax_meets_spec`. The emitted jasmin `Com`
 is *computed by the verified compiler* and proven equal to the Mersenne-fold
 form.
@@ -53,7 +53,7 @@ form.
 The abstract `(a·b) % p` tie `m31MulFold_eq_mod` is, **unlike** the narrower
 GF(8191)/GF(131071) Mersenne fields, **not** discharged by `bv_decide`: at
 `p = 2³¹` the product reaches `2⁶²` and the 64-bit double-fold blows the SAT
-solver up (the #117 Barrett-seam timeout). Instead it is closed via
+solver up (a SAT timeout). Instead it is closed via
 `toNat` **`Nat`-arithmetic** (`m31_toNat_mul` plus the two-fold residue
 computation), the same structured-`Nat` route the BabyBear `bbMul_correct`
 seam uses — no bitblast at `2³¹`.
@@ -124,8 +124,8 @@ theorem m31Mul_compileFromHax_isSome :
     There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] m31MulSrc = some c`, and for every `(a, b)`,
     `c`'s `BitVec 64` denotation (under `![a, b]`) is the closed Mersenne-fold
-    emit form `m31MulFold`. Routed through `compileFromHax_meets_spec`. A #606
-    fan-out to the Mersenne prime field `GF(2³¹−1)` (CircleSTARK / Plonky3-M31),
+    emit form `m31MulFold`. Routed through `compileFromHax_meets_spec`, over
+    the Mersenne prime field `GF(2³¹−1)` (CircleSTARK / Plonky3-M31),
     reusing the SHA-256/Keccak/BLAKE2/GF(8191) recognizers with no front change.
     The abstract `(a·b) % p` tie is `m31MulFold_eq_mod`. -/
 theorem m31Mul_compiles :
@@ -148,7 +148,7 @@ theorem m31Mul_compiles :
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] m31MulSrc _ hc hspec
 
-/-! ## The abstract `(a·b) % p` tie (the #117 Barrett seam at `2³¹`)
+/-! ## The abstract `(a·b) % p` tie at `p = 2³¹ − 1`
 
 `bv_decide` SAT-times-out on the 64-bit Mersenne double-fold at `p = 2³¹`
 (the product reaches `2⁶²`).  We close the tie by **`Nat` arithmetic on
@@ -185,8 +185,8 @@ def m31FoldNat (m n : Nat) : Nat :=
 /-- The pure-`Nat` Mersenne-31 reduce payload: the fold-as-`Nat` equals `(m·n) % p`
     (`p = 2147483647 = 2³¹ − 1`) on the residue domain `m, n < p`.
 
-    Proved via `Nat` arithmetic (no `bv_decide` bitblast — the #117 Barrett seam
-    SAT-times-out at `2³¹`). The product `P = m·n < 2⁶²` never wraps; `2³¹ ≡ 1`, so
+    Proved via `Nat` arithmetic (no `bv_decide` bitblast, which SAT-times-out at
+    `2³¹`). The product `P = m·n < 2⁶²` never wraps; `2³¹ ≡ 1`, so
     the first fold gives `P mod 2³¹ + P / 2³¹ ≡ P` with value `< 2³²`, the second
     fold drops the value to `≤ 2³¹` while preserving the residue, and the single
     branch-free csub of `p` lands the result in `[0, p)`. Factored out of the
@@ -243,8 +243,7 @@ theorem m31FoldNat_eq_mod (m n : Nat) (hm : m < 2147483647) (hn : n < 2147483647
     (`p = 2147483647 = 2³¹ − 1`). Ties the emitted closed fold form `m31MulFold`
     (the `_compiles` deliverable) to abstract modular multiply. The `Nat` reduce is
     factored into `m31FoldNat_eq_mod`; `bitvec_binop_eq_of_nat_bridge` does the
-    plumbing (no `bv_decide` bitblast — the #117 Barrett seam SAT-times-out at
-    `2³¹`). -/
+    plumbing (no `bv_decide` bitblast, which SAT-times-out at `2³¹`). -/
 theorem m31MulFold_eq_mod (a b : BitVec 64)
     (ha : a < 2147483647#64) (hb : b < 2147483647#64) :
     m31MulFold a b = (a * b) % 2147483647#64 := by

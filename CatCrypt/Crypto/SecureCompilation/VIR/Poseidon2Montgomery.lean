@@ -17,7 +17,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2SimdReduce
 /-!
 # Poseidon2 BabyBear: Montgomery + `VPMULUDQ` packed 32x32 -> 64 (SEVENTEENTH ABI)
 
-This module is an **additive companion** to `Poseidon2SimdReduce` (#147). It
+This module is an **additive companion** to `Poseidon2SimdReduce`. It
 re-emits the Poseidon2 width-16 BabyBear permutation with the field multiply
 implemented as a **Montgomery reduction** layered on top of the AVX2
 `VPMULUDQ` packed 32x32 -> 64 multiply. This is the lever Plonky3's own AVX2
@@ -27,9 +27,9 @@ backend uses
 32 bits of a `__m256i`'s four u64 lanes, and `VPMULUDQ` produces four 64-bit
 products in a single instruction with no pack/unpack round-trip.
 
-## Why the previous SIMD-reduce variant regressed (#147 finding)
+## Why the SIMD-reduce variant is slower than scalar
 
-#147 measured the SIMD-reduce SIXTEENTH ABI mode at ~96000 cyc/op (vs ~25500
+The SIMD-reduce SIXTEENTH ABI mode measures at ~96000 cyc/op (vs ~25500
 scalar; ~4500 in Plonky3's production backend). The packed Barrett 10-fold
 chain wins per fold step, but every S-box `bbMul` requires a lane-spread to
 4 scalar 64x64 -> 64 multiplies (AVX2 has no packed-u64-by-scalar mul) plus
@@ -91,8 +91,8 @@ equality.
 
 ## Denotation: Montgomery output equals `bbMul`
 
-This is the load-bearing point and where #147's proof scaffold pays off.
-The `bbMul_simd_field_correct` theorem from #147 is **parametric over the
+The `bbMul_simd_field_correct` theorem of `Poseidon2SimdReduce` is
+**parametric over the
 scalar reduce**: it depends on `bbMul_eq_mod_p` (the per-lane field-mul
 correctness), not on which Barrett vs Montgomery chain realises the
 scalar `bbMul`. The Montgomery variant only changes the bytes emitted in
@@ -101,7 +101,7 @@ the jazz `fmul` helper -- the Lean-side denotation `bbMontMul` is the
 to `(a * b) mod p`), so the SIMD field-correctness theorem transports
 verbatim.
 
-The honest minimal statement is therefore:
+The minimal statement is therefore:
 
 * `bbMontMul a b := bbMul a b`  (denotation; the Montgomery factorisation
   computes the same canonical residue).
@@ -109,14 +109,14 @@ The honest minimal statement is therefore:
 * `bbMontMul_simd_field_correct` = `bbMul_simd_field_correct` (via the
   `vmap2 bbMontMul = vmap2 bbMul` definitional equality).
 
-The emit-side change is what closes the cycle gap; the proof obligation
-is discharged by the existing #117 scaffold.
+The emit-side change targets the cycle gap; the proof obligation
+is discharged by `Poseidon2BbMulFieldExact.bbMul_eq_mod_p`.
 
-## Bench expectation (the load-bearing measurement)
+## Bench expectation
 
-* OLD scalar baseline: ~25500 cyc/op.
-* SIMD-add (#138, FIFTEENTH): ~27000 cyc/op (slight regress).
-* SIMD-reduce (#147, SIXTEENTH): ~96000 cyc/op (regress; pack/unpack
+* Scalar baseline: ~25500 cyc/op.
+* SIMD-add (FIFTEENTH): ~27000 cyc/op (slightly slower than scalar).
+* SIMD-reduce (SIXTEENTH): ~96000 cyc/op (slower; pack/unpack
   dominates).
 * Plonky3 production reference: ~4500 cyc/op (single-pass Montgomery,
   state carried in Montgomery form throughout the rounds).
@@ -126,23 +126,23 @@ is discharged by the existing #117 scaffold.
   gap is the price of preserving the canonical-IO ABI for the existing
   KAT and proof scaffold.
 
-If the measured number is outside that band, the bench harness reports
-honestly and the gap is documented; we don't claim a win we don't have.
+The bench harness reports the measured number whether or not it falls in
+that band.
 
-## What's byte-unchanged
+## Other emits
 
 This module is additive. It does **not** edit `JasminAbiEmit`,
-`Poseidon2Emit`, `Poseidon2SimdReduce`, or any of the existing emits.
-The `.jazz` it writes is `poseidon2_bb_montgomery.jazz`, a new file.
+`Poseidon2Emit`, `Poseidon2SimdReduce`, or any of the other emits.
+The `.jazz` it writes is its own file, `poseidon2_bb_montgomery.jazz`.
 
 ## Reference
 
-* Scalar emit: `Poseidon2Emit.poseidon2Jazz` (#117 scaffold).
-* SIMD-add: `JasminAbiEmit.Poseidon2Simd.emitPoseidon2SimdBodyJazz` (#138).
-* SIMD-reduce: `Poseidon2SimdReduce.poseidon2SimdReduceJazz` (#147).
-* `bbMul` correctness: `Poseidon2BbMulFieldExact.bbMul_eq_mod_p` (#117).
+* Scalar emit: `Poseidon2Emit.poseidon2Jazz`.
+* SIMD-add: `JasminAbiEmit.Poseidon2Simd.emitPoseidon2SimdBodyJazz`.
+* SIMD-reduce: `Poseidon2SimdReduce.poseidon2SimdReduceJazz`.
+* `bbMul` correctness: `Poseidon2BbMulFieldExact.bbMul_eq_mod_p`.
 * SIMD field-correctness: `Poseidon2SimdReduce.bbMul_simd_field_correct`
-  (#147; parametric over the scalar reduce).
+  (parametric over the scalar reduce).
 * Plonky3 AVX2 Montgomery: `plonky3/monty-31/src/x86_64_avx2/packing.rs`.
 -/
 
@@ -299,7 +299,7 @@ def bbMontMul (a b : BitVec 64) : BitVec 64 := bbMul a b
     bbMontMul a b = bbMul a b := rfl
 
 /-- **Field-correctness of `bbMontMul`** (instantiates `bbMul_eq_mod_p`
-    from #117). For `a, b < bbP`, `bbMontMul a b < bbP` and
+    of `Poseidon2BbMulFieldExact`). For `a, b < bbP`, `bbMontMul a b < bbP` and
     `bbMontMul a b = (a * b) % bbP`. -/
 theorem bbMontMul_eq_mod_p (a b : BitVec 64) (ha : a < bbP) (hb : b < bbP) :
     bbMontMul a b < bbP ∧ bbMontMul a b = (a * b) % bbP :=
@@ -323,9 +323,9 @@ theorem bbMontMul_simd_eq_scalar_lanemap (a b : Vec 4 64) :
     canonical (< `bbP`).
 
     Proof: `bbMontMul` is definitionally `bbMul`, so this is the same
-    statement as `bbMul_simd_field_correct` from #147 -- the Montgomery
-    variant transports verbatim through the parametric scaffold. No
-    new axioms, no `sorry`. -/
+    statement as `bbMul_simd_field_correct` of `Poseidon2SimdReduce` -- the
+    Montgomery variant transports verbatim through the parametric scaffold.
+    No new axioms; all goals closed. -/
 theorem bbMontMul_simd_field_correct (a b : Vec 4 64)
     (ha : ∀ i, a i < bbP) (hb : ∀ i, b i < bbP) :
     (∀ i, (vmap₂ bbMontMul a b) i < bbP) ∧
@@ -354,8 +354,8 @@ to `φ(c)` at compile time. The headline denotation
 lemmas compose.
 
 All of this is field algebra over `F`; we never touch the BitVec layer
-here (the bit-level facts live in §3's `bbMontMul_eq_mod_p`, the #117
-scaffold). -/
+here (the bit-level facts live in §3's `bbMontMul_eq_mod_p`, via
+`bbMul_eq_mod_p`). -/
 
 namespace MontIso
 
@@ -369,7 +369,7 @@ def R : F := 268435454
     canonical residue `rInvMod = 943718400`. -/
 def Rinv : F := 943718400
 
-/-- `R · R⁻¹ = 1` in `F` — the load-bearing field fact. Lifted from the
+/-- `R · R⁻¹ = 1` in `F` — the key field fact. Lifted from the
     Nat-level coherence `(rMod · rInvMod) % p = 1` via the `ZMod` cast. -/
 theorem R_mul_Rinv : R * Rinv = 1 := by
   have h : ((268435454 : Nat) * 943718400) % 2013265921 = 1 % 2013265921 := by
@@ -499,7 +499,7 @@ theorem montInternalMDS_eq (s : Fin width → F) :
     internalMDS (vForm s) = vForm (internalMDS s) := by
   simpa only [vForm, bbMontForm] using! internalMDS_smul R s
 
-/-- **Vectorized internal MDS** (the lever for #165): the diagonal multiply
+/-- **Vectorized internal MDS**: the diagonal multiply
     realised by `montMul` against the **Montgomery-form** diagonal
     `φ(diagV i)`, plus the (Montgomery-form) lane sum. This is the layer the
     emitted `.jazz` runs as 16 packed `VPMULUDQ + MontReduce` montmuls
@@ -527,7 +527,7 @@ theorem montInternalMDS_vec_eq (s : Fin width → F) :
   rw [bbMontMul_form]
   simp only [bbMontForm]; ring
 
-/-- **Quartet-aligned horizontal-sum decomposition** (#177 lemma).
+/-- **Quartet-aligned horizontal-sum decomposition**.
 
     The 16-lane sum `sumAll s` regroups along quartet boundaries that match
     the 4-YMM packed-add tree:
@@ -547,8 +547,7 @@ theorem partialSumUpTo4p (s : Fin width → F) :
           + ((s 2 + s 6 + s 10 + s 14) + (s 3 + s 7 + s 11 + s 15)) := by
   simp only [sumAll]; ring
 
-/-- **Horizontal-sum-tree equivalence to lane-0 round-trip sum**
-    (#177 equivalence theorem).
+/-- **Horizontal-sum-tree equivalence to lane-0 round-trip sum**.
 
     The new `renderResidentSumYmm` emit computes `vsumYmm` as
     `broadcast(reduce((((s0+s4)+(s2+s6))_pkdLanes[0] + ...)))` over the
@@ -1101,7 +1100,7 @@ def rcFinMontFlat : List Nat := rcFinFlat.map montgomeryOf
 /-- The internal (partial) round constants, pre-converted to Montgomery form. -/
 def rcIntMontFlat : List Nat := rcIntFlat.map montgomeryOf
 
-/-- The internal-MDS diagonal `V`, pre-converted to Montgomery form (`#165`).
+/-- The internal-MDS diagonal `V`, pre-converted to Montgomery form.
     Each entry is `φ(diagV i) = (diagV i · R) mod p`, so the vectorized
     `internal_mat` realises the diagonal multiply as a packed Montgomery
     montmul `montMul (φ (diagV i)) (φ (s i)) = φ (diagV i · s i)`
@@ -1265,7 +1264,7 @@ def emitPoseidon2MontgomerySinglePassBodyJazz : String :=
     ++ String.intercalate "\n  " renderPoseidon2MontgomerySinglePassBody
     ++ "\n  return outp;\n}"
 
-/-- **Vectorized `internal_mat`** (#165): the internal-MDS diagonal multiply
+/-- **Vectorized `internal_mat`**: the internal-MDS diagonal multiply
     emitted as 4 packed-quartet Montgomery montmuls (`VPMULUDQ` + a single
     `MontReduce`) against the Montgomery-form diagonal `DIAGV`, then a packed
     `+sum` and packed `csub`, replacing the 15 scalar Barrett `fmul`s.
@@ -1414,13 +1413,13 @@ def poseidon2MontgomerySinglePassJazz : String :=
   "    a = s[k + 8];  a = fadd(a, sumk); s[k + 8] = a;\n" ++
   "    a = s[k + 12]; a = fadd(a, sumk); s[k + 12] = a;\n  }\n" ++
   "  return s;\n}\n\n" ++
-  -- Internal MDS (the diagonal multiply): emitted SCALAR. #165 vectorized this
-  -- layer as packed Montgomery montmuls (see `emitInternalMatVec` /
-  -- `MontIso.montInternalMDS_vec_eq`, kept and proven), expecting the imul-heavy
-  -- partial rounds to be the lever flagged by #160's .s profile (2301 scalar
-  -- imulq vs 404 packed vpmuludq). The vectorization DID collapse the imul
-  -- count (2301 -> 156) but REGRESSED cycles (~13.8k -> ~16k cyc/op on the same
-  -- machine state): the 16 diagonal multiplies are INDEPENDENT singletons with
+  -- Internal MDS (the diagonal multiply): emitted SCALAR. A vectorized form of
+  -- this layer as packed Montgomery montmuls exists (see `emitInternalMatVec` /
+  -- `MontIso.montInternalMDS_vec_eq`, proven), targeting the imul-heavy
+  -- partial rounds (the `.s` profile shows 2301 scalar imulq vs 404 packed
+  -- vpmuludq). The vectorization collapses the imul count (2301 -> 156) but
+  -- is slower (~13.8k -> ~16k cyc/op on the same machine state): the 16
+  -- diagonal multiplies are INDEPENDENT singletons with
   -- no cross-multiply register reuse (unlike the S-box, where 4 montmuls chain
   -- on one resident vector). Packing forces a stack pack/unpack round-trip per
   -- quartet (store-to-load forwarding) and a high-latency serial
@@ -1464,7 +1463,7 @@ def poseidon2MontgomerySinglePassJazz : String :=
     `R_SQR` boundary constant is declared (input conversion to Montgomery). -/
 #guard (strContains poseidon2MontgomerySinglePassJazz "param int R_SQR     = 1172168163;")
 
-/- The vectorized internal-MDS fragment (`#165`, `emitInternalMatVec`) is a
+/- The vectorized internal-MDS fragment (`emitInternalMatVec`) is a
     well-formed `internal_mat` whose diagonal multiply runs as packed
     `VPMULUDQ` montmuls. Retained and proven denotation-equal
     (`MontIso.montInternalMDS_vec_eq`); not wired into the shipped artifact
@@ -1492,7 +1491,7 @@ input/output boundary conversions; the 13 partial rounds and the inner
 helper calls are unchanged. AVX2 has 16 YMM regs: 4 state + ~10 scratches
 (`va vb vt vu vv vr vm vsub vmgt` + the broadcast consts) fits trivially.
 
-This is the Poseidon2 analog of #111's SIXTEENTH ABI mode for ChaCha
+This is the Poseidon2 analog of the SIXTEENTH ABI mode for ChaCha
 (`renderChacha4wayXmmBody`), which pinned 14 of 16 ChaCha state words to
 named XMMs across the 20-round body for a ~4.6× speedup. Storage class
 differs (4 named YMMs vs `s[]` stack array); the OP SEQUENCE is identical
@@ -1827,7 +1826,7 @@ The same theorem covers the lane-resident emit (§9b): the storage class
 refinement. Both §9 and §9b render the SAME single-pass Montgomery permutation
 on the SAME quartets of lanes; only the variable bindings change. The lane-
 parallel-map invariant in `MontIso` is over the per-lane FUNCTION, not the
-storage layout — exactly the SIXTEENTH-mode design point reused for #111. -/
+storage layout — exactly the SIXTEENTH-mode design point of the ChaCha 4-way emit. -/
 
 /-- **Headline**: the single-pass Montgomery permutation, with the boundary
     conversions, denotes the canonical Poseidon2 BabyBear permutation:
@@ -1894,7 +1893,7 @@ still `internalMDS(modified_state)` where `modified_state[0] =
 montsbox(s[0] + c)` and `internalMDS` is the vectorized form
 `MontIso.montInternalMDS_vec` (lemma `montInternalMDS_vec_eq` collapses
 this to the canonical `internalMDS` in the `φ`-image). Per the
-SIXTEENTH-ABI design point applied at #166: storage class is a
+SIXTEENTH-ABI design point: storage class is a
 denotation-irrelevant refinement of the lane-parallel map; both §9b and
 §9c emit denote `MontIso.montPoseidon2BabyBearPermute` via
 `montPerm_sandwich_eq`. KAT wire format is byte-identical (canonical
@@ -1938,7 +1937,7 @@ def renderResidentLane0SboxDance (r : Nat) : List String :=
   , "vS0 = tbuf[:u256 0];" ]
 
 /-- Render the YMM-direct sum reduction across `vS0..vS3` into a broadcast
-    YMM `vsumYmm`. **#177 leaner-partial-rounds variant**: keeps the
+    YMM `vsumYmm`. **Leaner-partial-rounds variant**: keeps the
     inter-quartet sum register-resident with a 3-step packed-u64 tree
     instead of spilling all 4 YMMs and reducing scalar-side.
 
@@ -1963,9 +1962,9 @@ def renderResidentLane0SboxDance (r : Nat) : List String :=
     `montInternalMDS_vec_eq`'s `hsum` lemma (sumAll commutes with
     `bbMontForm`). Reduce + broadcast then canonicalises and replicates.
 
-    Trade vs the previous lane-0-roundtrip render: 1 YMM spill (was 4) +
-    3 raw u64 adds + 1 reduce (was 15 scalar `fadd`s = 15 raw adds + 15
-    `csub`s) + 16 scalar reads cut to 4. Tradeoff target per task #177:
+    Trade vs the lane-0-roundtrip render: 1 YMM spill (against 4) +
+    3 raw u64 adds + 1 reduce (against 15 scalar `fadd`s = 15 raw adds + 15
+    `csub`s) + 4 scalar reads (against 16). Tradeoff target:
     ~12 cyc/round → ~6 cyc/round on the partial-rounds loop. -/
 def renderResidentSumYmm : List String :=
   [ "vt = #VPADD_4u64(vS0, vS1);"
@@ -2253,7 +2252,7 @@ def poseidon2MontgomeryResidentPartialJazz : String :=
     rounds). The packed csub-after-add is reg-to-reg on `vSg` directly. -/
 #guard (strContains poseidon2MontgomeryResidentPartialJazz "vr = #VPADD_4u64(vr, vsumYmm);")
 
-/- **#177 leaner-partial-rounds witness**: the partial-round sum reduction
+/- **Leaner-partial-rounds witness**: the partial-round sum reduction
     uses the 3-step YMM packed-add tree (`vt = vS0+vS1`, `vu = vS2+vS3`,
     `vsumYmm = vt+vu`) instead of spilling each `vSg` and reducing
     scalar-side. Algebraic justification: `MontIso.partialSumUpTo4p`. -/

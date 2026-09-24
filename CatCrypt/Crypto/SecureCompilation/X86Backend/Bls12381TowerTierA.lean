@@ -12,13 +12,12 @@ public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-381 extension-field multiply — in-`ZMod p` value-correctness over the
-  Tier-A base-field `Fp` Montgomery multiply
+  `runBlock`-proven base-field `Fp` Montgomery multiply
 
-This file replaces the **Tier-C** status of the BLS12-381 `Fp2`/`Fp6`/`Fp12`
-extension multiply (RELIC-byte-only: byte-identity to unverified C, which proves
-*nothing* about the field algebra the kernel computes) with a genuine in-Lean
-**value-correctness** theorem, built on the now-Tier-A BLS base-field
-multiply.
+This module proves an in-Lean **value-correctness** theorem for the BLS12-381
+`Fp2` extension multiply, built on the `runBlock` value theorem for the BLS
+base-field multiply. Byte-identity to RELIC (unverified C) proves nothing about
+the field algebra the kernel computes; the theorem here does.
 
 ## The base-field leaf
 
@@ -35,18 +34,18 @@ image `(r : ZMod p)`,
 
     nat m = nat x · nat y · R⁻¹.
 
-`fpMul` below is exactly this `ZMod p` operation. The genuine `Fp` add / sub are
+`fpMul` below is exactly this `ZMod p` operation. The `Fp` add / sub are
 `+` / `-` in `ZMod p` (the hardware carry-chain + conditional reduce computes the
-canonical residue of `a ± b`; see the honest-scope note at the bottom for the
+canonical residue of `a ± b`; see the scope note at the bottom for the
 status of those leaves as `runBlock` value theorems).
 
-## The `Fp2` multiply (the Tier-C eliminator)
+## The `Fp2` multiply
 
-`Fp2 = Fp[u]/(u² + 1)` (`u² = −1`); an element `a + b·u`. The genuine product is
+`Fp2 = Fp[u]/(u² + 1)` (`u² = −1`); an element `a + b·u`. The product is
 
     (a + b·u)(c + d·u) = (ac − bd) + (ad + bc)·u.
 
-In Montgomery form every base multiply carries one `R⁻¹` factor, so the genuine
+In Montgomery form every base multiply carries one `R⁻¹` factor, so the
 Montgomery-form `Fp2` product is `((ac−bd)·R⁻¹, (ad+bc)·R⁻¹)`, i.e.
 `(fpMul a c − fpMul b d, fpMul a d + fpMul b c)`. The emitted kernel
 (`Bls12381Fp2MulKernel.fp2MulAsm`) computes this via the 3-multiply Karatsuba
@@ -56,33 +55,33 @@ schedule
     re = t0 − t1,    im = (t2 − t0) − t1.
 
 `fp2MulKaratsuba` is that schedule and `fp2_mul_runBlock` (here
-`bls_fp2_mul_runBlock`) proves it equals the genuine Montgomery `Fp2` product —
-a real `ZMod p` value theorem where before there was only RELIC byte-identity.
-The three `fpMul`s are the Tier-A base leaf (`fpMul_eq_leaf`).
+`bls_fp2_mul_runBlock`) proves it equals the Montgomery `Fp2` product, a
+`ZMod p` value theorem. The three `fpMul`s are the `runBlock`-proven base leaf
+(`fpMul_eq_leaf`).
 
-## Scope reached (brutally honest)
+## Scope
 
-* **`Fp2` multiply value-correctness — fully proven** here as a `ZMod p`
+* **`Fp2` multiply value-correctness — fully proved** here as a `ZMod p`
   identity (`bls_fp2_mul_karatsuba` / `bls_fp2_mul_runBlock`), with the `fpMul`
-  leaf tied to the Tier-A base multiply via `fpMul_eq_leaf` (the
-  `montgomeryMul_correct` congruence reinterpreted in `ZMod p`). This is the
-  Tier-C eliminator: the extension-field algebra the kernel computes is now a
-  proved theorem, not a byte-diff against C.
+  leaf tied to the `runBlock`-proven base multiply via `fpMul_eq_leaf` (the
+  `montgomeryMul_correct` congruence reinterpreted in `ZMod p`). The
+  extension-field algebra the kernel computes is a proved theorem, not a
+  byte-diff against C.
 * **`Fp2` square** value-correctness — also proven (`bls_fp2_sqr_complex`).
 * **`Fp6` / `Fp12`** — the same compositional pattern lifts: `Fp6 = Fp2[v]/(v³−ξ)`
   and `Fp12 = Fp6[w]/(w²−v)`. Their full schedules (RELIC `fp6_mul_basic` /
   `fp12_mul_basic`, 6 / 3 sub-field muls + non-residue twists) are the named
   remainder — see `bls_fp6_v_wrap` for the proved non-residue (mul-by-`v`)
   coordinate-rotation law `v·(a₀,a₁,a₂) = (ξ·a₂, a₀, a₁)`, the algebraic core
-  of the `Fp6` step. The full `Fp6`/`Fp12` Karatsuba value theorems are not
-  claimed Tier A here.
+  of the `Fp6` step. The full `Fp6`/`Fp12` Karatsuba value theorems are outside
+  the scope of this module.
 
 The `fpAdd`/`fpSub` **`runBlock`** value theorems (the carry-chain +
 conditional-reduce reconstruction at 6 limbs) are *not* proven in-Lean in the
 codebase — they are KAT-gated, by design (`Bls12381Fp2MulKernel` proves only
 their lowering-correctness). `bls_fp_add_spec` / `bls_fp_sub_spec` here state
-the abstract `ZMod p` add/sub the kernel realises; they are honest `rfl`
-specifications of `+`/`-`, *not* a `runBlock` reconstruction. The genuine
+the abstract `ZMod p` add/sub the kernel realises; they are `rfl`
+specifications of `+`/`-`, *not* a `runBlock` reconstruction. The
 content tying the kernel to its algebra is the multiply leaf
 (`bls12381_emit_montmul_runBlock`) plus the `Fp2` Karatsuba identity.
 -/
@@ -105,7 +104,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 /-! ## 0. The base-field prime as a `Nat` and the Montgomery radix in `ZMod p` -/
 
 /-- The BLS12-381 base-field prime as a `Nat` (the `valLimbs` of its canonical
-    six little-endian limbs, pinned to the genuine prime by
+    six little-endian limbs, pinned to the prime by
     `Curve6LimbTierA.bls12381Limbs_value`). -/
 def p : Nat := valLimbs bls12381Limbs
 
@@ -123,16 +122,16 @@ theorem p_le_R : p ≤ 2 ^ 384 := valLimbs_le_pow384 bls12381Limbs rfl
 We model an `Fp` element by its image in `ZMod p`. The base-field operations the
 kernel realises are:
 
-* **add** `a + b`, **sub** `a − b` — the genuine `ZMod p` ring operations
+* **add** `a + b`, **sub** `a − b` — the `ZMod p` ring operations
   (the hardware carry-chain + single conditional reduce computes the canonical
   residue);
 * **mul** `fpMul a b := a · b · R⁻¹` with `R = (2^384 : ZMod p)` — the
-  *Montgomery* product, exactly what the Tier-A base leaf computes (the
+  *Montgomery* product, exactly what the `runBlock`-proven base leaf computes (the
   `montgomeryReduce` output reinterpreted in `ZMod p`; tied below in
   `fpMul_eq_leaf`).
 
 `Rinv` is the (chosen) inverse of `R`; `ZMod p` is a `CommRing`, so the tower
-identities below are ring identities in `Rinv` — they hold for the genuine
+identities below are ring identities in `Rinv` — they hold for
 `Rinv = R⁻¹` and need no field/primality side condition for the Karatsuba
 algebra itself. -/
 
@@ -142,13 +141,13 @@ def R : ZMod p := (2 : ZMod p) ^ 384
 /-- The chosen inverse of the Montgomery radix in `ZMod p`. -/
 noncomputable def Rinv : ZMod p := R⁻¹
 
-/-- The genuine `Fp` add the kernel realises: `+` in `ZMod p`. -/
+/-- The `Fp` add the kernel realises: `+` in `ZMod p`. -/
 def fpAdd (a b : ZMod p) : ZMod p := a + b
 
-/-- The genuine `Fp` sub the kernel realises: `−` in `ZMod p`. -/
+/-- The `Fp` sub the kernel realises: `−` in `ZMod p`. -/
 def fpSub (a b : ZMod p) : ZMod p := a - b
 
-/-- The genuine `Fp` (Montgomery) mul the Tier-A base leaf realises:
+/-- The `Fp` (Montgomery) mul the `runBlock`-proven base leaf realises:
     `fpMul a b = a · b · R⁻¹`. -/
 noncomputable def fpMul (a b : ZMod p) : ZMod p := a * b * Rinv
 
@@ -183,16 +182,16 @@ theorem bls_fp_add_spec (a b : ZMod p) : fpAdd a b = a + b := rfl
 /-- **`Fp` sub spec.** The kernel's `Fp` sub is `−` in `ZMod p`. -/
 theorem bls_fp_sub_spec (a b : ZMod p) : fpSub a b = a - b := rfl
 
-/-! ### The base leaf ties `fpMul` to the Tier-A `runBlock` multiply
+/-! ### The base leaf ties `fpMul` to the `runBlock` multiply
 
-The Tier-A base leaf `Curve6LimbTierA.bls12381_emit_montmul_runBlock` produces a
+The base leaf `Curve6LimbTierA.bls12381_emit_montmul_runBlock` produces a
 `runBlock` value `montgomeryReduce p (2^384) Nprime (vx·vy)` whose `ZMod p`
 image is exactly `fpMul`. We isolate that as a `Nat`-level fact (the leaf's
 congruence reinterpreted in `ZMod p`) and chain it through the base leaf. -/
 
 /-- From the leaf congruence `m · 2^384 ≡ vx · vy (mod p)` and `R` a unit, the
     `ZMod p` image of the Montgomery output `m` is `fpMul ↑vx ↑vy`. This is the
-    bridge from the Tier-A base leaf to the `ZMod p` `fpMul` operation. -/
+    bridge from the `runBlock` base leaf to the `ZMod p` `fpMul` operation. -/
 theorem fpMul_of_modEq (m vx vy : Nat)
     (h : m * 2 ^ 384 ≡ vx * vy [MOD p]) :
     ((m : ZMod p)) = fpMul (vx : ZMod p) (vy : ZMod p) := by
@@ -205,12 +204,12 @@ theorem fpMul_of_modEq (m vx vy : Nat)
     _ = ((m : ZMod p) * R) * Rinv := by ring
     _ = ((vx : ZMod p) * vy) * Rinv := by rw [hcast]
 
-/-- **`fpMul` is the Tier-A base-field leaf.** Under the Tier-A
+/-- **`fpMul` is the `runBlock` base-field leaf.** Under the
     `bls12381_emit_montmul_runBlock` hypotheses (reduced 6-limb inputs `x, y`, a
     cleared accumulator file, `ProdFresh`, the BLS Montgomery constant `Nprime`),
     the `ZMod p` image of the emitted multiply's Montgomery-reduced `runBlock`
     output is exactly `fpMul ↑(valLimbs x) ↑(valLimbs y)`. So the `fpMul` used in
-    the `Fp2` Karatsuba theorem below is the genuine emitted base multiply, not
+    the `Fp2` Karatsuba theorem below is the emitted base multiply, not
     an abstract stand-in. -/
 theorem fpMul_eq_leaf
     (accs as ys : List String) (x yv : List (BitVec 64)) (hi lo : String)
@@ -236,7 +235,7 @@ theorem fpMul_eq_leaf
 /-! ## 2. The `Fp2` Karatsuba multiply schedule and its value-correctness
 
 `Fp2 = Fp[u]/(u² + 1)`. An element is the pair `(a, b)` standing for `a + b·u`.
-The genuine product is `(a + b·u)(c + d·u) = (ac − bd) + (ad + bc)·u`. In
+The product is `(a + b·u)(c + d·u) = (ac − bd) + (ad + bc)·u`. In
 Montgomery form each base multiply carries one `R⁻¹`, so the Montgomery-form
 product is `((ac − bd)·R⁻¹, (ad + bc)·R⁻¹)`, i.e.
 `(fpMul a c − fpMul b d, fpMul a d + fpMul b c)`. -/
@@ -250,31 +249,30 @@ noncomputable def fp2MulKaratsuba (a b c d : ZMod p) : ZMod p × ZMod p :=
   let t2 := fpMul (fpAdd a b) (fpAdd c d)
   (fpSub t0 t1, fpSub (fpSub t2 t0) t1)
 
-/-- The genuine Montgomery-form `Fp2` product of `(a,b)` and `(c,d)`:
+/-- The Montgomery-form `Fp2` product of `(a,b)` and `(c,d)`:
     `(fpMul a c − fpMul b d, fpMul a d + fpMul b c)`. -/
 noncomputable def fp2MulSpec (a b c d : ZMod p) : ZMod p × ZMod p :=
   (fpSub (fpMul a c) (fpMul b d), fpAdd (fpMul a d) (fpMul b c))
 
-/-- **`Fp2` multiply value-correctness (the Tier-C eliminator).** The emitted
-    3-multiply Karatsuba schedule computes exactly the genuine Montgomery-form
-    `Fp2` product `((ac − bd)·R⁻¹, (ad + bc)·R⁻¹)`. A real `ZMod p` identity over
-    the Tier-A base multiply (`fpMul`), replacing the RELIC byte-identity that
-    said nothing about the field algebra. -/
+/-- **`Fp2` multiply value-correctness.** The emitted
+    3-multiply Karatsuba schedule computes exactly the Montgomery-form
+    `Fp2` product `((ac − bd)·R⁻¹, (ad + bc)·R⁻¹)`. A `ZMod p` identity over
+    the `runBlock`-proven base multiply (`fpMul`). -/
 theorem bls_fp2_mul_karatsuba (a b c d : ZMod p) :
     fp2MulKaratsuba a b c d = fp2MulSpec a b c d := by
   simp only [fp2MulKaratsuba, fp2MulSpec, fpMul, fpAdd, fpSub]
   refine Prod.ext ?_ ?_ <;> ring
 
-/-- **`Fp2` multiply over the Tier-A `runBlock` base leaf (the Tier-C eliminator,
-    end-to-end form).** Suppose the three base-field multiplies of the Karatsuba
-    schedule are realised by the Tier-A `runBlock` leaf, i.e. their
+/-- **`Fp2` multiply over the `runBlock` base leaf (end-to-end form).** Suppose
+    the three base-field multiplies of the Karatsuba
+    schedule are realised by the `runBlock` leaf, i.e. their
     Montgomery-reduced `runBlock` outputs `m0, m1, m2` satisfy the leaf
     congruences `m0 · 2^384 ≡ ac`, `m1 · 2^384 ≡ bd`, `m2 · 2^384 ≡ (a+b)(c+d)`
     `(mod p)` (the conclusion `fpMul_eq_leaf` supplies for each call). Then,
     reading the assembled `Fp2` result in `ZMod p`, the Karatsuba schedule
-    `(m0 − m1, (m2 − m0) − m1)` equals the genuine Montgomery-form `Fp2` product
-    `fp2MulSpec ↑a ↑b ↑c ↑d`. This is a real `ZMod p` value theorem over the
-    emitted base multiply — what RELIC byte-identity never established. -/
+    `(m0 − m1, (m2 − m0) − m1)` equals the Montgomery-form `Fp2` product
+    `fp2MulSpec ↑a ↑b ↑c ↑d`. This is a `ZMod p` value theorem over the
+    emitted base multiply. -/
 theorem bls_fp2_mul_runBlock
     (a b c d : Nat) (m0 m1 m2 : Nat)
     (h0 : m0 * 2 ^ 384 ≡ a * c [MOD p])

@@ -39,7 +39,7 @@ Four meaningful `imm8` values, named after their byte (high, low) halves:
 EVEX widens the lane count: `VPCLMULQDQ ymm` runs **2** independent
 PCLMUL ops on the two 128-bit lanes of an `ymm`; `VPCLMULQDQ zmm` runs
 **4**. The per-lane semantics is the same single-lane `polyMul64`-based
-op — no cross-lane mixing — so the lane-map keystone
+op — no cross-lane mixing — so the lane-map lemma
 `LaneMap.vmap₂_eq_scalar` carries the multi-lane denotation to
 2-way and 4-way for free.
 
@@ -309,11 +309,11 @@ theorem vpclmulqdq_imm11_eq_HH (a b : BitVec 128) :
   unfold vpclmulqdq_lane selectHalf
   simp
 
-/-! ## 7. Alignment lemma — multi-lane VPCLMULQDQ via the lane-map keystone
+/-! ## 7. Alignment lemma — multi-lane VPCLMULQDQ via the lane-map lemma
 
 The 2-way (U256) and 4-way (U512) variants are lane-parallel maps of
 the single-lane denotation, with NO cross-lane mixing. The lane-map
-keystone `LaneMap.vmap₂_eq_scalar` carries the equality without
+lemma `LaneMap.vmap₂_eq_scalar` carries the equality without
 proof duplication. -/
 
 /-- **2-way VPCLMULQDQ alignment.** The packed U256 denotation equals

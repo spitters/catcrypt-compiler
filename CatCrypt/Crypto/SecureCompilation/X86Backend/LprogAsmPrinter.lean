@@ -11,14 +11,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Owned AT&T printer for the linear-jasmin owned-RA `Lcmd` (task #537)
+# Owned AT&T printer for the linear-jasmin owned-RA `Lcmd`
 
 The owned-RA linear path (`JasminLprogExport.Com.toLprogPhysAbi`) emits a
 **physical-register, two-address** `Linear.lprog`: every body `Lopn` is already
 allocated to a concrete x86 GP register (`RAX … R15`), a stack spill slot
 (`k.N`), an ABI save slot (`qsave.X`), or a memory operand (`mem.<base>.<off>`),
-and is in destructive two-address form (`MOV dst,src0; OP dst,src1`). Until now
-the only consumer of that `Lprog` was the *patched* jasmin `read_linear` +
+and is in destructive two-address form (`MOV dst,src0; OP dst,src1`). The other
+consumer of that `Lprog` is the *patched* jasmin `read_linear` +
 `compile_lprog_to_asm`, which RE-encodes the already-allocated body to `.s`.
 
 This module is the **owned** consumer: a direct `Lcmd → AT&T gas` text renderer,
@@ -34,11 +34,11 @@ the renderer performs **no** instruction selection, scheduling, allocation, or
 optimization: one `Lopn` arm → one AT&T mnemonic line, operands resolved by a
 fixed name→`%rN` / `k.N`→`off(%rsp)` map. This is the SAME map the patched
 `read_linear.ml` implements (`spill_addr`, `qsave_addr_of_name`, `mem_of_name`,
-`phys_reg_of_name`); we transcribe it Lean-side so the encoder dependency is
-gone. The trusted-but-unverified surface is then exactly `gas` (mnemonic+operands
+`phys_reg_of_name`), transcribed Lean-side so the path does not depend on that
+encoder. The trusted-but-unverified surface is then exactly `gas` (mnemonic+operands
 → bytes), the same final step every backend trusts.
 
-## Operand-name conventions (transcribed from `patches/jasmin/read_linear.ml`)
+## Operand-name conventions (transcribed from SSProve-lean `patches/jasmin/read_linear.ml.patch`)
 
 * physical GP `RAX … R15` → `%rax … %r15` (32-bit subregister `%eax … %r15d`
   for U32 ops, full 64-bit register for U64 ops);
@@ -122,7 +122,7 @@ def gpReg8 : String → String
 /-- The AT&T 16-bit subregister name for a physical GP name (`"RAX" → "%ax"`,
     `"R8" → "%r8w"`). Used by the narrow `u16` ABI store (`MOV:16`), which writes
     a width-exact 16-bit slot (`movw %r15w, out(%rdi,…)`) without overrunning the
-    neighbouring `uint16_t` element (#656 Frodo seam). -/
+    neighbouring `uint16_t` element (the Frodo seam). -/
 def gpReg16 : String → String
   | "RAX" => "%ax"  | "RBX" => "%bx"  | "RCX" => "%cx"  | "RDX" => "%dx"
   | "RSI" => "%si"  | "RDI" => "%di"  | "RBP" => "%bp"  | "RSP" => "%sp"
@@ -141,7 +141,7 @@ def gpReg32 : String → String
   | other => "%<UNKNOWN:" ++ other ++ ">"
 
 /-- The AVX-512 ZMM vector-register name for a `vN`-style packed-lane operand
-    (`"v0" → "%zmm0"`). The `VPACK` (#656) packed-add arm names its 512-bit
+    (`"v0" → "%zmm0"`). The `VPACK` packed-add arm names its 512-bit
     ZMM operands through this map. **Limitation (the u512 blocker):** the owned
     GP-linear allocator (`Com.toLprogPhysAbi`) has no vector-register file, so a
     512-bit value cannot be allocated to a ZMM register through that path — it
@@ -286,7 +286,7 @@ def resolveName (frame spillW w : Nat) (n : String)
     an `arr base idx` (not produced by the scalar path) renders as a form gas
     would reject, surfacing any unexpected use.
 
-    A **register-indexed (SIB) element** `arrIdx base idx scale` (#539, the
+    A **register-indexed (SIB) element** `arrIdx base idx scale` (the
     runtime-index image of `stackLoad`/`stackStore`) renders as the x86 effective
     address `(%base, %idx, scale)`: `base` and `idx` are physical GP register
     *names* (always addressed as full 64-bit registers in a SIB), and `scale` is
@@ -345,14 +345,14 @@ The body mnemonics are the textual jasmin opcodes from
 `LOAD`/`STORE`), optionally carrying a `:64` width tag (`stripWidthTag` peels it).
 Each maps to one AT&T mnemonic with the `l` (U32) or `q` (U64) size suffix. The
 two-address `MUL` is x86 `IMUL` (signed/unsigned agree on the low word). The
-constant-time conditional-move class `CMOVcc` (#581) is the branchless select a
+constant-time conditional-move class `CMOVcc` is the branchless select a
 *secret* condition must take (the move is unconditional, only the value is
 selected) — the GE-solve pivot-swap primitive for MAYO/UOV/SNOVA sign. -/
 
 /-- The op width (in bits) of a body mnemonic: 64 iff it carries the `:64` tag
     (or is the 64-bit-only `MOVQ`), 16 for `:16`, 8 for `:8`, else 32. The narrow
     tags `:16`/`:8` are carried only by the **ABI load/store** MOV of a narrow
-    (`u16`/`u8`) buffer (the Frodo `uint16_t` ABI seam, #656); the body
+    (`u16`/`u8`) buffer (the Frodo `uint16_t` ABI seam); the body
     *arithmetic* stays at its natural register width (low bits exact). -/
 def mnemWidth (opn : String) : Nat :=
   if hasSuffix opn ":64" || opn = "MOVQ" then 64
@@ -363,7 +363,7 @@ def mnemWidth (opn : String) : Nat :=
 /-- Strip the width tag (`:64`, `:16`, `:8`) from a body mnemonic to recover the
     base opcode. The upstream `JasminLprogExport.stripWidthTag` only peels `:64`
     (the only tag the verified two-address legalizer ever sees); the printer also
-    needs to recover the base of the narrow ABI MOVs `MOV:16`/`MOV:8` (#656), so
+    needs to recover the base of the narrow ABI MOVs `MOV:16`/`MOV:8`, so
     this printer-local stripper handles all three widths without disturbing the
     legalizer's tag alphabet. -/
 def stripAbiTag (opn : String) : String :=
@@ -379,7 +379,7 @@ def sizeSuffix (w : Nat) : String :=
 /-- The AT&T base mnemonic (no size suffix) for a stripped body opcode. `none`
     for an unmodeled opcode (call), which the renderer surfaces.
 
-    The compare class `CMP`/`TEST` (#538) is the GP-ALU flag-setting head of a
+    The compare class `CMP`/`TEST` is the GP-ALU flag-setting head of a
     branch: `CMP` is `SUB` discarding its result (it sets `ZF`/`CF`/`OF`/`SF`
     exactly like the differentially-validated `x86_SUB` in `JasminModel`), and
     `TEST` is the analogous `AND`-discarding-result form. They render as the
@@ -408,9 +408,9 @@ def attBase : String → Option String
   | "LOAD" => some "mov" | "STORE" => some "mov"
   -- ZEROEXT/TRUNC are not produced by the carry-free hash/Poseidon2 bodies.
   | "TRUNC" => some "mov"
-  -- Compare class (#538): the flag-setting head of a branch.
+  -- Compare class: the flag-setting head of a branch.
   | "CMP" => some "cmp" | "TEST" => some "test"
-  -- ADX carry-chain class (#477 / #500). `ADCX dst, src` adds `src + CF` into
+  -- ADX carry-chain class. `ADCX dst, src` adds `src + CF` into
   -- `dst` and writes CF only (leaves OF); `ADOX dst, src` adds `src + OF` into
   -- `dst` and writes OF only (leaves CF). Two independent carry chains so a
   -- bignum add/addmul keeps two carries in flight with no flag spill. The
@@ -421,7 +421,7 @@ def attBase : String → Option String
   -- flag is produced as a side effect of the matching `ADCX`/`ADOX`, so they
   -- render to no line (the renderLinstrR `ADCXHI`/`ADOXHI` arm drops them). -/
   | "ADCX" => some "adcx" | "ADOX" => some "adox"
-  -- Constant-time conditional move class (#581). `CMOVcc dst, src` is the
+  -- Constant-time conditional move class. `CMOVcc dst, src` is the
   -- branchless select `dst := cc(flags) ? src : dst`: the move *issues
   -- unconditionally* (no PC divergence, no secret-dependent branch), only the
   -- written value is selected by the flag the preceding `CMP`/`SUB`/`TEST`/`AND`
@@ -442,7 +442,7 @@ def attBase : String → Option String
   | "CMOVE"  => some "cmove"  | "CMOVNE" => some "cmovne"
   | "CMOVB"  => some "cmovb"  | "CMOVAE" => some "cmovae"
   | "CMOVL"  => some "cmovl"  | "CMOVGE" => some "cmovge"
-  -- Effective-address load `LEA dst, mem` (#656 array-ABI orchestration). The
+  -- Effective-address load `LEA dst, mem` (array-ABI orchestration). The
   -- pointer-passing marshaling around an opaque `extCall` over `.stackArr` G1/G2/GT
   -- operands (`ArrAbiOrch.comToLfundefArrAbi`) computes the address of each array
   -- buffer — an input slot `mem.RDI.off` / `mem.RSI.off` or a frame scratch
@@ -468,7 +468,7 @@ def isCarryOutBinding (opn : String) : Bool :=
 def isMulHiBinding (opn : String) : Bool :=
   stripWidthTag opn == "MULXHI"
 
-/-! ### Condition-code → Jcc mnemonic map (#538)
+/-! ### Condition-code → Jcc mnemonic map
 
 A `Lcond cond lbl` is the owned-RA conditional jump: branch to `lbl` when the
 public condition `cond` holds. The `cond` operand names the x86 condition code
@@ -476,7 +476,7 @@ public condition `cond` holds. The `cond` operand names the x86 condition code
 map it to the matching `Jcc` mnemonic. The condition is on a **public** value
 (a loop/limb count, a counter-zero test) — the constant-time discipline forbids
 a secret-dependent branch (those compile to `CMOVcc`, no PC divergence). See the
-`#460` vartime policy and `Cond.lean`'s public-condition note. -/
+vartime policy and `Cond.lean`'s public-condition note. -/
 
 /-- The AT&T `Jcc` mnemonic for an x86 condition-code name (`"NE" → "jne"`).
     Covers the signed (`L`/`GE`/`LE`/`G`), unsigned (`B`/`AE`/`BE`/`A`), and
@@ -574,7 +574,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
   -- (`d := if CF then 1 else 0`): `setb %d8` sets the low byte from CF, `movzbq
   -- %d8, %d64` zero-extends to the full register. The flag-to-GPR materialisation
   -- the open-coded carry chain (`add; setc cy`) needs to keep the carry across the
-  -- loop back-edge (#500/#560). Only the register-direct destination is produced
+  -- loop back-edge. Only the register-direct destination is produced
   -- (the carry GPR); a spill/mem destination would surface as the `<UNKNOWN>`
   -- form gas rejects.
   | [.reg d], opn, [] =>
@@ -687,7 +687,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
           "\tmovq " ++ scratch ++ ", " ++ dOp,
           "\tmovq -128(%rsp), " ++ scratch ]
       else
-      -- **Native immediate shift / rotate** (#497/#605/#606): the count is carried
+      -- **Native immediate shift / rotate**: the count is carried
       -- IN the mnemonic (`SHR:n` / `SHL:n` / `SAR:n` / `ROR:n` / `ROL:n`, from
       -- `.shrImm` / … ), not as a source operand. This MUST be checked before the
       -- `mnemWidth`/narrow-ABI-MOV logic below: the count separator `:` collides
@@ -719,7 +719,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         if sop == dop then [ shiftLine ]
         else [ "\tmov" ++ sizeSuffix w ++ " " ++ sop ++ ", " ++ dop, shiftLine ]
       else
-      -- **LOADIDX / STOREIDX** (#539): the register-indexed (SIB) array element.
+      -- **LOADIDX / STOREIDX**: the register-indexed (SIB) array element.
       -- `LOADIDX [.arrIdx base idx scale]` reads `d ← (%base,%idx,scale)`;
       -- `STOREIDX` (3-arity form below handles the value; this single-source form
       -- is the load) renders the SIB source operand directly. The element-access
@@ -742,7 +742,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
                   ++ resolveOperand frame spillW 64 s qsaveB ++ ", "
                   ++ resolveOperand frame spillW dstW d qsaveB ]
         | _ => [ "\t# UNHANDLED-LOADIDX " ++ opn ]
-      -- **ZEROEXT / TRUNC** (#656 cast_demo): a cross-width cast. `ZEROEXT` is the
+      -- **ZEROEXT / TRUNC** (cast_demo): a cross-width cast. `ZEROEXT` is the
       -- widening zero-extend (`movzx`), `TRUNC` the narrowing low-bits keep. The
       -- cast op does not carry its source width in the mnemonic, so the renderer
       -- assumes the narrowing/widening crosses the **byte** boundary (the cast_demo
@@ -773,7 +773,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         | _, _ => [ "\t# UNHANDLED-CAST " ++ opn ]
       else
       let w := mnemWidth opn
-      -- **Narrow ABI MOV** (`MOV:16` / `MOV:8`, #656 Frodo): the load/store of a
+      -- **Narrow ABI MOV** (`MOV:16` / `MOV:8`, Frodo): the load/store of a
       -- narrow (`u16`/`u8`) ABI buffer. A 32-bit `movl` to a `uint16_t` slot
       -- overruns the adjacent element by 2 bytes (the Frodo gap). Discriminate by
       -- operand class: a **memory source** is a LOAD ⇒ zero-extend `movz{w,b}l`
@@ -857,7 +857,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
   -- the destructive two-address arm. This must precede the generic two-source arm
   -- (it also has two sources) so the ANDN operand order wins.
   | [d], opn, [a, b] =>
-      -- **VPACK** (#656): the AVX-512 ZMM packed-lane add `VPACK8u64:ADD` (8×u64,
+      -- **VPACK**: the AVX-512 ZMM packed-lane add `VPACK8u64:ADD` (8×u64,
       -- `vpaddq`) / `VPACK16u32:ADD` (16×u32, `vpaddd`). 3-operand AVX form
       -- `vpadd{q,d} %zmmB, %zmmA, %zmmD` (`src2, src1, dst`). The operands must be
       -- ZMM names (`vN`) — the owned GP-linear RA cannot allocate a 512-bit value
@@ -1031,7 +1031,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
             ++ resolveOperand frame spillW w b qsaveB ++ ", "
             ++ resolveOperand frame spillW w a qsaveB ++ ", "
             ++ resolveOperand frame spillW w d qsaveB ]
-      -- **STOREIDX** (#539): the register-indexed (SIB) array element store. Sources
+      -- **STOREIDX**: the register-indexed (SIB) array element store. Sources
       -- are `[.arrIdx base idx scale, val]` — the SIB destination and the stored
       -- value; the `Lopn` destination `d` names the functionally-updated array (the
       -- dialect's `stackStore` returns the new array), so it is NOT an x86 operand.
@@ -1117,7 +1117,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- claim that this cannot arise — that the export's argument-liveness pin
       -- leaves `d` and `cond` in distinct registers — is a statement about the
       -- register allocator with no theorem behind it. No emitted artifact
-      -- contains the pattern (measured 2026-09-21 over every `.s` under `bench/`,
+      -- contains the pattern (measured over every `.s` under `bench/`,
       -- `crates/` and `gen/`). `LoweringCoverageCmovSar.lowerLinstrExtCov2`
       -- declines the shape outright when `cn == dst`, so the JInstr route is
       -- guarded and this one is not. Hoisting the `test` above the `mov` fixes
@@ -1249,7 +1249,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
           [ "\t" ++ m ++ sizeSuffix w ++ " "
               ++ resolveOperand frame spillW w s qsaveB ++ ", " ++ resolveOperand frame spillW w d qsaveB ]
       | none => [ "\t# UNHANDLED-OP " ++ opn ]
-  -- BMI2 widening multiply `MULX` (#656 byte-direct field leaves): TWO
+  -- BMI2 widening multiply `MULX` (byte-direct field leaves): TWO
   -- destinations `[dstLo, dstHi]` and one explicit source `src2` (the implicit
   -- src1 is `%rdx`, pinned by the kernel allocation — not a printed operand).
   -- AT&T order is `mulx src2, dstLo, dstHi` (reg form, no size suffix — the
@@ -1367,7 +1367,7 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
   -- data op's side effect. Drop them (empty line list) before the general arity
   -- arms so they never double-issue.
   | .Lopn dsts opn srcs =>
-      -- The `FRAME` directive (#656 array-ABI orchestration) is a frame-size
+      -- The `FRAME` directive (array-ABI orchestration) is a frame-size
       -- annotation consumed by `frameSize`; it issues no x86 line (drop before the
       -- arity arms so the empty-dst form doesn't surface as UNHANDLED-LOPN).
       if opn == "FRAME" || opn == "FRAMEADD" then [] else
@@ -1417,7 +1417,7 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
   | .Lret => []
   | .Lalign => []
   | .Llabel _ l => [ ".L" ++ lblPfx ++ toString l ++ ":" ]
-  -- Control flow (#538). A local internal label `Lgoto ("", l)` (the back-edge
+  -- Control flow. A local internal label `Lgoto ("", l)` (the back-edge
   -- of a bounded loop / a forward skip) renders as `jmp .L<l>`; a remote target
   -- `Lgoto (f, l)` keeps the function symbol. `Lcond (reg cc) l` is the
   -- conditional back-edge / guard: emit `j<cc> .L<l>` mapping the public
@@ -1427,7 +1427,7 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
   | .Lgoto (f, l) => [ "\tjmp " ++ f ++ "  # .L" ++ lblPfx ++ toString l ]
   | .Lcond (.reg cc) l => [ "\t" ++ attCC cc ++ " .L" ++ lblPfx ++ toString l ]
   | .Lcond c l => [ "\t# UNHANDLED-COND " ++ c.toText ++ " .L" ++ lblPfx ++ toString l ]
-  -- Cross-function call (#656). `Lcall ra (f, _)` is a direct near `call` to the
+  -- Cross-function call. `Lcall ra (f, _)` is a direct near `call` to the
   -- sibling function symbol `f` (an intra-object owned-RA leaf, e.g. a fe25519
   -- field op the X25519 ladder body calls). gas/`ld` resolve the `call f` against
   -- the same-object `STT_FUNC` symbol `f` (a `R_X86_64_PLT32`/intra-object rel32) —
@@ -1548,7 +1548,7 @@ def bodyIsU64 (body : VIR.JasminLprogExport.Lcmd) : Bool :=
     | .Lopn _ opn _ => hasSuffix opn ":64"
     | _ => false)
 
-/-- An explicit frame-size directive `Lopn [] "FRAME" [.imm F]` (#656 array-ABI
+/-- An explicit frame-size directive `Lopn [] "FRAME" [.imm F]` (array-ABI
     orchestration). The pointer-passing orchestration around opaque `.stackArr`
     `extCall` leaves needs scratch buffers for each leaf result (G1/G2/GT points,
     96–576 bytes), whose size the spill-index frame sizer cannot see (the body
@@ -1611,7 +1611,7 @@ def frameAddVecOverlap (body : VIR.JasminLprogExport.Lcmd) : Bool :=
   [ ⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩
   , ⟨0, .Lopn [.reg "kv.0"] "VMOVDQU" [.reg "XMM0"]⟩ ] = true
 
-/-! ### Callee-saved GP park/restore for hand-built bodies (#596)
+/-! ### Callee-saved GP park/restore for hand-built bodies
 
 The SysV x86-64 ABI requires a function to preserve `{RBX, RBP, R12, R13, R14,
 R15}` across a call. The linear-jasmin owned path (`comToLfundefPhysAbi`) already

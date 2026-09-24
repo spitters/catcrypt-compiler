@@ -18,7 +18,7 @@ set_option autoImplicit false
 
 The `Z/8192[x]/(x^N − 1)` cyclic polynomial product of ntruhrss701 (schoolbook
 width-`N = 16` tile + the single `& 8191` field mask), sourced through the
-verified `CProg`-free front — NO hand-built `Com` anywhere:
+verified front — NO hand-built `Com` anywhere:
 
 ```
   mulBody (LowCT: RScalarSetExpr schoolbook + mask word math over the coeff slots)
@@ -157,7 +157,7 @@ def srcVM : VarMap srcCtx := bindAll wordNames
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `mulBody` through the `CProg`-free control front and cap with
+/-- Push `mulBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM mulBody with

@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
 
 /-!
-# sail-riscv decoder round-trip for the 64-bit bignum subset: `decode (encode i) ≡ i` (#549)
+# sail-riscv decoder round-trip for the 64-bit bignum subset: `decode (encode i) ≡ i`
 
 `SailRiscvDecoder.lean` proves `riscvDecode (encodeWord i) = some i` for the
 scalar 32-bit-word `RInst` subset. This module is its **64-bit bignum**
@@ -47,8 +47,8 @@ also allocates the callee-saved `s2..s11` (25 names total, since the bignum body
 has a larger live set than the ChaCha QR). So `roundtrip_RInst64`'s round-trip
 is proved only for the `emittedRegs` register names; an `RInst64` whose operand
 is allocated from `s2..s11` satisfies the capstone's hypothesis only if that
-name is separately shown to be in `emittedRegs` (it is not) — the round-trip is
-not yet extended to the full `gpPool64` range.
+name is separately shown to be in `emittedRegs` (it is not) — the full `gpPool64` range is
+outside the round-trip's scope.
 -/
 
 @[expose] public section

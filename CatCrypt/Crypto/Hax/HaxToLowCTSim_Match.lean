@@ -9,10 +9,10 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
 
 /-!
-# H3 Blocker 1: match tuple-destructure simulation
+# Match tuple-destructure simulation
 
 Discharges the 2-output tuple-destructure simulation case
-(`Hyp_match_full`) for the H3.quarta layer.
+(`Hyp_match_full`) for the tower-typed agreement layer.
 
 The source-side pattern is
 

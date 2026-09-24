@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax sntrup761 MAC leaf realizes the
+# Security tie: the compile-from-hax sntrup761 MAC leaf realizes the
   abstract `Zq4591` field multiply-accumulate the security reference reasons over
 
 `CompileFromHaxSntrupMul` proves the verified compiler *emits* a jasmin `Com`

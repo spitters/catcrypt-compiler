@@ -9,10 +9,10 @@ public meta import CatCrypt.Crypto.Jasmin.JasminEmit
 public import CatCrypt.Crypto.Jasmin.JasminEmit
 
 /-!
-# Coalescer write-hazard regression test (#439)
+# Coalescer write-hazard regression test
 
-Confirms `coalesceGo` no longer performs the unsound copy-merge that
-miscompiled the Pasta Montgomery reduce's conditional subtract: merging
+Confirms `coalesceGo` refuses the unsound copy-merge that would miscompile
+the Pasta Montgomery reduce's conditional subtract: merging
 `x := y OP z` into `y` and renaming `x → y` in the tail when `y` is itself
 **re-defined** later in the tail.
 -/
@@ -50,9 +50,9 @@ def liveOut : List Var := [(u64v "out").var]
 /-- The coalescer must NOT have renamed the use of `x` to `y` (which would make
     `out` read the re-defined `y` instead of the original `x = y + z`). So the
     merge is refused and the output still reads `x` twice (the `out := x + x`
-    assignment is untouched). With the old (buggy) guard the merge fired and
-    `countReads "x"` of the output was `0` — the value corruption that produced
-    the wrong select. -/
+    assignment is untouched). A guard that let the merge fire would give
+    `countReads "x" = 0` — a value corruption that produces the wrong
+    select. -/
 theorem hazard_refused :
     countReads "x" (coalesceGo liveOut hazardBody).1 = 2 := by native_decide
 

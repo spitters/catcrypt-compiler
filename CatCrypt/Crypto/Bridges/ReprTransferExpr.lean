@@ -123,7 +123,7 @@ LHS) mixes two operations of *different sorts*: the **pairing** `e : A → B →
 two-sorted tree — pairing *leaves* and product *nodes* — so the *entire* verifier
 LHS is one term, and `PExpr.expr_eq_transfer` transfers the whole verifier
 equation from a single abstraction theorem. This is the maximal-reach tier-3:
-the pairings are no longer opaque leaf-values fed in by hand, they are nodes of
+the pairings are not opaque leaf-values fed in by hand, they are nodes of
 the same tree the transfer ranges over. -/
 
 /-- A **bilinear-operation realization**: an abstract pairing `e : A → B → C` and

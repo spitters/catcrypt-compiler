@@ -12,8 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 This file carries the leakage / constant-time *security view* directly on the
 crypto dialect. It defines the observable `LeakEvent`/`LeakTrace` model and the
-per-op and per-program leak functions on `catCryptDialect`, with no reference to
-any CryptoSSA `CProg` leakage layer.
+per-op and per-program leak functions on `catCryptDialect`.
 
 ## What is defined
 
@@ -24,7 +23,7 @@ any CryptoSSA `CProg` leakage layer.
 * `CatCryptOp.leakEvent` — the observable `LeakEvent` of a single dialect op:
   every pure bv/bit/pair op leaks its op name, the sample ops leak `sampleOp`,
   `extCall name` leaks `pureOp ("extCall:" ++ name)`. The branch op `.ite` leaks
-  `pureOp "ite"` — in the CryptoSSA model `ite` is a *value-select* (both arms
+  `pureOp "ite"` — in the dialect semantics `ite` is a *value-select* (both arms
   evaluated unconditionally), so it leaks only its op identity, never the
   condition's value. Memref ops carry a **static** `Fin n` index, so the memory
   address is a compile-time constant and leaks no data-dependent observation —
@@ -39,7 +38,7 @@ any CryptoSSA `CProg` leakage layer.
 The native constant-time input-independence statements built on this leak trace
 live in `CryptoDialectLeakTraceNative.lean`.
 
-**0 axioms**, **0 sorries**.
+**0 axioms**; all goals closed.
 -/
 
 @[expose] public section
@@ -119,8 +118,8 @@ def CatCryptOp.leakEvent : CatCryptOp → LeakEvent
   | .memrefGet _ _ => .pureOp "memrefGet"
   -- Dynamic-index memref ops: this trace is input-INDEPENDENT, so they emit only
   -- a structural op-identity event. Their data-dependent address leak (the runtime
-  -- index is observable) is captured by `CTPredicate.ctSafe = false` for these ops
-  -- (set when the dynamic-index lowering was added), NOT by this static trace.
+  -- index is observable) is captured by `CTPredicate.ctSafe = false` for these ops,
+  -- NOT by this static trace.
   | .memrefSetDyn _ => .pureOp "memrefSetDyn"
   | .memrefGetDyn _ => .pureOp "memrefGetDyn"
   | .memrefGetDyn128 _ => .pureOp "memrefGetDyn128"

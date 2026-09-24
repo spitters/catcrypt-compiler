@@ -5,6 +5,13 @@ Authors: CatCrypt Contributors
 -/
 module
 
+/-!
+# Exactness of the du = 10 compression magic number
+
+`magic10_exact`: for every ML-KEM coefficient `x < 3329`, the multiply/shift form
+`(((x<<10)+1665)·1290167) >> 32 & 0x3ff` equals the FIPS 203 rounding division
+`(((x<<10)+1664)/3329) & 0x3ff`.
+-/
 
 @[expose] public section
 set_option autoImplicit false

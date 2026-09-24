@@ -12,15 +12,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
-# Register-indexed (`base + idx·scale`) memory addressing through the owned backend (#581)
+# Register-indexed (`base + idx·scale`) memory addressing through the owned backend
 
 The multivariate-signature GE-solve loops (`MAYO`/`UOV`/`SNOVA`/`QR-UOV`'s
 `sample_solution`) all access a flat augmented matrix by a **runtime** cell index
 `row·AC + col` that lives in a register and advances across the elimination
-sweep. The owned x86 backend previously only modelled a *static-displacement*
-memory operand (`off(%base)`, `JInstr.loadMem`/`storeMem`); a register-indexed
-cell access had to be open-coded as a per-step pointer bump (`p += 8`). This
-module exercises the new register-indexed addressing mode added to the model —
+sweep. Besides the *static-displacement* memory operand (`off(%base)`,
+`JInstr.loadMem`/`storeMem`), which forces a register-indexed cell access to be
+open-coded as a per-step pointer bump (`p += 8`), the model has a register-indexed
+addressing mode, which this module exercises —
 `JInstr.loadMemIdx`/`storeMemIdx`, the `mov (%base, %idx, scale), %dst` SIB form
 whose effective offset is `scale · (s.get idx).toNat` computed at run time
 (`JState.loadIdx`/`storeIdx`).

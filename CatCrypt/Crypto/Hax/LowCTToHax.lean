@@ -36,7 +36,8 @@ parses:
 
 A call argument is the variable of its slot.  The scalar expression of a
 `scalar#Op` binding is one of the shapes `scalarCallSExpr` produces on two
-variables (`scalarCallOfSExpr`), a limb read is `SLimb v i` itself
+variables (`scalarCallOfSExpr`), for `Op` one of `Add`, `Sub`, `Mul`, `BitAnd`,
+`BitXor`, `Shr`, `Shl` and the six comparisons; a limb read is `SLimb v i` itself
 (`limbReadOfSExpr`, the inverse of `limbReadArgs`), and a runtime loop bound is a variable, a
 literal, or `Add`/`Sub`/`Mul` over those (`sexprToImpBound`, the inverse of
 `impBoundToSExpr`); a bound that is a literal at the root is refused, since the
@@ -116,6 +117,8 @@ def scalarCallOfSExpr : SExpr → Option (String × String × String)
   | .SMul (.SVar a) (.SVar b) => some ("scalar#Mul", a, b)
   | .SAnd (.SVar a) (.SVar b) => some ("scalar#BitAnd", a, b)
   | .SXor (.SVar a) (.SVar b) => some ("scalar#BitXor", a, b)
+  | .SShr (.SVar a) (.SVar b) => some ("scalar#Shr", a, b)
+  | .SShl (.SVar a) (.SVar b) => some ("scalar#Shl", a, b)
   | .SLt (.SVar a) (.SVar b) => some ("scalar#Lt", a, b)
   | .SSub (.SLit 1) (.SLt (.SVar b) (.SVar a)) => some ("scalar#Le", a, b)
   | .SSub (.SSub (.SLit 1) (.SLt (.SVar a) (.SVar b))) (.SLt (.SVar b') (.SVar a')) =>

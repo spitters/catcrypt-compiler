@@ -215,7 +215,7 @@ abbrev srcCtx : Ctx := List.replicate 2 (.sword 64)
 /-- The source `VarMap` (word 0 = `w0` at the head). -/
 def srcVM : VarMap srcCtx := bindAll wordNames
 
-/-- Push a butterfly body through the `CProg`-free control front and cap with
+/-- Push a butterfly body through the dialect control front and cap with
     `ret "res"`. `none` if the front declines. -/
 def frontComAt (body : LowCT) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM body with
@@ -293,7 +293,7 @@ def hawkInttBflyAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.Lpr
 
 `hawk18433_pointwise_montymul` is the FRONT-COMPILED `rolledForLoopN` emit of
 `HawkPointwiseEmit.lean` (one body copy + a real `jne` back-edge, 2-pointer
-packed ABI). Re-exported here so this module still names the three NTT kernels;
+packed ABI). Re-exported here so this module names the three NTT kernels;
 its front provenance is `HawkPointwiseEmit.pw_provenance`. -/
 
 /-- The owned-backend pointwise-montymul `Lprog` (rolled front, no jasminc). -/

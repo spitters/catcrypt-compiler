@@ -22,11 +22,11 @@ and exercises the connection end-to-end on the SHA-256 message-schedule leaf σ�
 
 ## What it adds over `ThirToComFront`
 
-`ThirToComFront.lean` already lowers a hand-written `Thir` all the way to a
+`ThirToComFront.lean` lowers a hand-written `Thir` all the way to a
 `Com jasminDialect` (emitted owned-x86) with the universal preservation theorem
-`thirToJasmin_denote`. What was missing is the *top* of the chain: a verified
+`thirToJasmin_denote`. This module supplies the *top* of the chain: a verified
 translator from the `ImpExpr` the hax pipeline actually produces into that
-`Thir`. This file supplies it, plus the preservation theorem and the σ₀
+`Thir`, with the preservation theorem and the σ₀
 demo that threads `ImpExpr → Thir → Com` in one statement.
 
 ## The supported subset (v1 — scalar, let-normalized ARX)
@@ -548,7 +548,7 @@ The σ₀ demo above is fully *let-flattened* with bare scalar parameters. Real 
 extractions instead emit scalar bodies over an **array parameter** `w`, reading
 elements via `index[w, k]` *nested inside* arithmetic applications — the exact
 shape the §3 v1 ANF restriction rejected. This demo exercises the extension:
-a body containing `index[w, k]` as a nested argument now both translates and is
+a body containing `index[w, k]` as a nested argument both translates and is
 value-preserving.
 
 Convention: one array parameter `["w"]`; element `w[k]` denotes to input word `k`
@@ -1752,7 +1752,7 @@ The substitution `substVars` is **shadowing-respecting** (it does not substitute
 free `var` under a `letBind` that rebinds the same name) — adequate for our
 ANF/let-normalized callee bodies, whose formal parameters are distinct names. Full
 α-renaming hygiene is not needed for the bounded demo. `callInline` is fuel-bounded
-like §10's `anfLift`. The honest preservation statement is callee-specific (the
+like §10's `anfLift`. The preservation statement is callee-specific (the
 inlined `#32`-tagged body has no `denoteScalar` of its own until `anfLift`), so it
 is proved in the demo file `CompileFromHaxCall.lean`; here we supply the computable
 defs plus the cleanly-general structural equations the demo's `rfl`-reduction uses. -/
@@ -1904,7 +1904,7 @@ coincidence lemma plus freshness-preservation through the recursion; that is
 heavier than the bounded deliverable, so the *whole-pass* preservation is
 proved demo-specifically by the `rfl`-reduction in `CompileFromHaxLetFlatten.lean`
 (exactly as §10/§11's `anfLift`/`callInline` have no general
-`denoteScalar`-preservation either — their honest preservation is the
+`denoteScalar`-preservation either — their preservation statement is the
 σ-family-specific `denoteScalar` of the normal form). -/
 
 /-- The let-flatten pre-pass: re-associate nested `letBind`s so that no `letBind`

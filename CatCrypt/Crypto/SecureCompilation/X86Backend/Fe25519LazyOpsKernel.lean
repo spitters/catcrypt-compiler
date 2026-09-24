@@ -13,7 +13,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
 
 /-!
-# Lazy-reduction Curve25519 field-OP leaves `feAddLazy`/`feSubLazy`/`feCmadd121666Lazy` (#410)
+# Lazy-reduction Curve25519 field-OP leaves `feAddLazy`/`feSubLazy`/`feCmadd121666Lazy`
 
 `Fe25519OpsKernel.lean` emits the **canonical** field add/sub: each forms `x ± y`
 and then performs a full conditional reduction mod `p = 2^255 - 19`, so the
@@ -77,7 +77,7 @@ s2n's verified `curve25519_x25519`, mirroring `Fe25519OpsKernel`'s discipline.
 For each lazy block: `feXLazyBlock_lowering_correct` — the owned x86 backend's
 straight-line lowering is denotation-preserving (reusing `lowerBlock_denote_closed`,
 exactly as the canonical leaves), plus body-length and mnemonic-shape checks and
-no register-allocation overflow. No `sorry`.
+no register-allocation overflow. All goals are closed.
 -/
 
 @[expose] public section
@@ -172,8 +172,8 @@ theorem feSubLazyBlock_lowering_correct (x0 x1 x2 x3 y0 y1 y2 y3 : BitVec 64) :
 
 /-! ## 3. feCmadd121666Lazy: `z := 121666·x + y` reduced `< 2·p` (s2n `cmadd_4`)
 
-Fuses the X25519 doubling step `e = 121666·p + d` into one leaf (was
-`feMul121666` then `feAdd`). The multiplier `C1 = 0x1db42 = 121666`. Since
+Fuses the X25519 doubling step `e = 121666·p + d` into one leaf (in place
+of `feMul121666` then `feAdd`). The multiplier `C1 = 0x1db42 = 121666`. Since
 `19·(121666·x + y) < 2^60·2^256`, the high part needs only a single-word
 multiply by `19` (no high `mulx`), exactly as s2n: estimate the top word, fold
 `19·hi`, conditional `−p` via the sign idiom, clear bit 255. Output `< 2·p`

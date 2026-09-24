@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.LowCTLeakTraceDef
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
-# Task #460 — foundation for sound variable-time support
+# Foundation for sound variable-time support
 
 This module generalises the constant-time guarantee from "leak nothing"
 (full CT) to **noninterference modulo public declassification**: code may
@@ -400,7 +400,7 @@ theorem exampleVartimeIf_trace_records_branch
   · simp only [exampleVartimeIf, dynLeakTrace, guardBit, hF]
     simp
 
-/-! ## §6. Pilot A — Ed25519 / XEdDSA verify is an all-public region (#459)
+/-! ## §6. Pilot A — Ed25519 / XEdDSA verify is an all-public region
 
 EdDSA *verification* operates entirely on public data: the public key,
 the signature, and the message are all public values (no secret key is
@@ -454,8 +454,8 @@ def verifyVartimeLT : LevelTable := LevelTable.allPublic
 
 open CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify in
 /-- The vartime verify variant — with a *public* early-out guard — is
-accepted by the analyser. This is the concrete payoff: a data-dependent
-branch is now sound because its guard is public-derived. -/
+accepted by the analyser: the data-dependent branch is sound because its
+guard is public-derived. -/
 theorem xeddsaVerifyVartime_accepted :
     cmdCT xeddsaVerifyVartime verifyVartimeLT LeafCTTable.canonical = true := by
   rw [xeddsaVerifyVartime, cmdCT_RIfNz_iff]

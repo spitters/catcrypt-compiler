@@ -10,16 +10,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering6
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
-# s2n-bignum's `bignum_mul_4_8` (4×4 schoolbook), lowered through the owned RV64 backend (#550)
+# s2n-bignum's `bignum_mul_4_8` (4×4 schoolbook), lowered through the owned RV64 backend
 
-`RiscvBignumKernel.lean` (#549) lowered s2n-bignum's *add*-class `bignum_add_p256`
+`RiscvBignumKernel.lean` lowers s2n-bignum's *add*-class `bignum_add_p256`
 through the 64-bit RV64 model, riding the SLTU-synthesized carry chain. This
 module is the **multiply**-class sibling: it lowers the SAME kernel the x86
 `X86Backend/BignumMontMulKernel.lean` reference emits — `bignum_mul_4_8`, the full
 256×256→512 schoolbook product `z[8] = x[4] · y[4]` — but through the **RISC-V
 RV64** M-extension (`MUL`/`MULHU`) plus the SLTU `addc`/`addcc` carry macros. It
-is the cross-ISA comparison #550 asks for and the field-multiply prerequisite for
-X25519.
+is a cross-ISA comparison and the field-multiply prerequisite for X25519.
 
 ## The key architectural difference: no MULX, no ADX, no carry flag
 
@@ -32,12 +31,12 @@ only:
 * `MUL`/`MULHU` — the low / high 64 bits of the 64×64 product, as **two separate
   instructions** (no fused 128-bit destination, no `%rdx`-implicit src);
 * `ADD`/`SUB`/`SLTU` — no carry flag, so every add-with-carry is the SLTU macro
-  (`add ; sltu ; add ; sltu ; or`, 5 insns), exactly as in #549.
+  (`add ; sltu ; add ; sltu ; or`, 5 insns), exactly as in `RiscvBignumKernel`.
 
 So the multiply is a pure **operand-scanning schoolbook**: for each multiplier
 limb `x[i]`, each `MUL`/`MULHU` pair `(lo, hi) = x[i]·y[j]` is accumulated into the
 running column window with the SLTU `addc` chain. There is no dual-chain
-parallelism — RV64 cannot express it — so the instruction count is the honest
+parallelism — RV64 cannot express it — so the instruction count is the
 no-ADX cost (documented in §"instruction-count cost" below).
 
 ## The routine
@@ -60,9 +59,9 @@ SLTU carry chain.
 
 The full all-inputs correctness is the s2n proof obligation; as an in-Lean close
 it is a 256×256→512 schoolbook identity gated by the qemu-riscv64 KAT, the same
-posture as the x86/ARM kernels (REV-12 externalization).
+posture as the x86/ARM kernels.
 
-## The honest no-ADX instruction-count cost (vs x86/ARM)
+## The no-ADX instruction-count cost (vs x86/ARM)
 
 | ISA   | product op            | add-with-carry           | 4×4 machine insns |
 |-------|-----------------------|--------------------------|-------------------|
@@ -70,7 +69,7 @@ posture as the x86/ARM kernels (REV-12 externalization).
 | ARM   | `mul`+`umulh` (2)     | `adds`/`adcs` (1, flag)  | ~50               |
 | RV64  | `mul`+`mulhu` (2)     | SLTU `addc` macro (5)    | 800 (this body)   |
 
-The honest measured cost: this RV64 body lowers to **800** machine `RInst64`
+The measured cost: this RV64 body lowers to **800** machine `RInst64`
 (`mul48Block64_lowered_length`), against x86's **63** for the identical
 `bignum_mul_4_8` (`X86Backend.BignumMontMulKernel.mul48Block`). RV64 pays the
 no-ADX tax twice over:
@@ -167,7 +166,7 @@ def mul48Block64 : List ROp64 :=
       (List.range 4).map (fun j =>
         macAt i j ("u" ++ toString i) ("v" ++ toString j))))
 
-/-! ## 2. Lowering correctness (the bignum keystone instantiated) -/
+/-! ## 2. Lowering correctness (the bignum block-lowering theorem instantiated) -/
 
 /-- **Lowering correctness on `bignum_mul_4_8` (RV64).** Running the lowered body
     on the 64-bit model equals the direct fold — `riscvBlock64_lowering_denote`
@@ -182,7 +181,7 @@ theorem mul48_lowering_correct64 (s : RState64) :
 Read the eight accumulator words little-endian as a 512-bit integer and compare
 against the true integer product `x·y`. These are the in-Lean witnesses that the
 operand-scanning carry accumulation matches the schoolbook math; the all-inputs
-identity is gated by the qemu-riscv64 KAT (REV-12). -/
+identity is gated by the qemu-riscv64 KAT. -/
 
 /-- The 512-bit little-endian value of the eight accumulator words in a state. -/
 def outProduct (s : RState64) : Nat :=
@@ -242,7 +241,7 @@ theorem mul48_kat_allones64 :
 
 /-! ## 4. The no-ADX instruction-count cost (the cross-ISA datum) -/
 
-/-- The lowered RV64 body instruction count — the honest no-ADX cost. The x86
+/-- The lowered RV64 body instruction count — the no-ADX cost. The x86
     reference (`X86Backend.BignumMontMulKernel.mul48Block`) is 63 instructions
     riding MULX + dual ADCX/ADOX; this RV64 body is materially larger (two insns
     per product, no fused 128-bit dest; five insns per add-with-carry, no flag). -/

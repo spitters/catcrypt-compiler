@@ -17,11 +17,11 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 register-direct GP forms (`encAluRR`/`encMovImm`/…): for those the encoder's
 bytes are *proved* to decode back to the same operands, so `gas` is out of the
 trusted path. The rel32 **control-flow** forms `LprogBytes` emits
-(`encJmp32`/`encCall32`/`encJcc32`) had no such round-trip — they were
-"gas-pinned by byte-diff" (trusted, like the differential anchor #438), the only
-remaining residual in the byte path's trust edge.
+(`encJmp32`/`encCall32`/`encJcc32`) are not covered there; without a round-trip
+they would be "gas-pinned by byte-diff" (trusted, like the differential
+`ScalarEncoder` anchor).
 
-This module closes that residual. It transcribes the same x86 decode discipline
+This module gives their round-trip. It transcribes the same x86 decode discipline
 to the control-flow opcode bytes:
 
 * `0xE9 cd` (`jmp rel32`, 5 bytes), `0xE8 cd` (`call rel32`, 5 bytes),
@@ -35,15 +35,15 @@ original for every in-range signed 32-bit `d` (`-2^31 ≤ d < 2^31`).
 
 `decodeCF` dispatches on the first byte and reads the displacement via
 `decDisp32`; `roundtrip_jmp32`/`roundtrip_call32`/`roundtrip_jcc32` are the
-residual-closers: `decodeCF (encode i) = some i`.
+round-trips: `decodeCF (encode i) = some i`.
 
-## `jcc` opcode-vs-name honesty note
+## `jcc` opcode-vs-name note
 
 `LprogBytes.jccOpcode` is **many-to-one** — the condition synonyms collapse on
 the same `0F 8x` byte (`Z` and `E` both `0x84`, `NZ` and `NE` both `0x85`,
 `C`/`B` both `0x82`, `NC`/`AE` both `0x83`). The byte stream therefore carries
 the *opcode*, not the source-level condition *name*: `decodeCF` cannot recover
-which synonym was written, only the opcode. So `roundtrip_jcc32` is honestly
+which synonym was written, only the opcode. So `roundtrip_jcc32` is
 stated up to `jccOpcode cc` (the opcode the encoder emitted), which is the
 faithful invertible target — the bytes decode to the same opcode, hence the same
 condition the CPU tests.
@@ -110,7 +110,7 @@ theorem disp32LE_roundtrip (d : Int) (hd : -2 ^ 31 ≤ d ∧ d < 2 ^ 31) :
 `DecCF` is the result of a control-flow decode: `jmp d`, `call d`, or
 `jcc opcode d`. The `jcc` arm carries the **opcode** byte (`0x80..0x8F`), not the
 source condition name — `jccOpcode` is many-to-one, so the byte stream only
-determines the opcode (see the module docstring's honesty note). -/
+determines the opcode (see the module docstring's opcode-vs-name note). -/
 
 /-- A decoded rel32 control-flow instruction: the recovered signed displacement
     plus, for `jcc`, the `0F 8x` condition opcode byte. -/

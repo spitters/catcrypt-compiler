@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
 public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 
 /-!
-# Poly VIR dialect (#482-4 — the L4′ polynomial-ring layer, over Field/ModArith)
+# Poly VIR dialect (the L4′ polynomial-ring layer, over Field/ModArith)
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -36,7 +36,7 @@ algebraic polynomial — and in **NTT (evaluation) form** as an
 ring ops therefore denote into the *real* CompPoly NTT pipeline
 (`LatticeNTTSound`'s `realNtt`/`realInvntt`/`realBasemul`/`realNttMul`), and the
 once-per-dialect tie is CompPoly's negacyclic convolution theorem
-(`realNttMul_negacyclic_coeff`, #32/#35): the `nttMul` op denotes, after the
+(`realNttMul_negacyclic_coeff`): the `nttMul` op denotes, after the
 `%ₘ (Xⁿ+1)` fold, to the explicit negacyclic convolution.
 
 ## Types (`PolyTy`)
@@ -295,7 +295,7 @@ theorem ctSafeCom_all {Γ : Ctxt polyDialect} {t : PolyTy}
 
 The add/sub/scalar facts hold **definitionally** (the leaves are `CPolynomial`'s
 native ring ops).  The `nttMul` negacyclic fact is the deep tie: it reuses
-CompPoly's `realNttMul_negacyclic_coeff` (#32/#35), so the dialect's `nttMul`
+CompPoly's `realNttMul_negacyclic_coeff`, so the dialect's `nttMul`
 op — after the `%ₘ (Xⁿ+1)` fold — denotes to the negacyclic
 convolution, stated **once** at the dialect. -/
 
@@ -323,7 +323,7 @@ theorem nttMul_denote [Fact (Nat.Prime q)] (p r : CPolynomial (ZMod q)) :
         else (0 : CPolynomial (ZMod q))) = realNttMul (ND.dom q) p r
   rw [dif_pos (Fact.out : Nat.Prime q)]
 
-/-- **The once-per-dialect negacyclic tie (#32/#35).** With the CompPoly
+/-- **The once-per-dialect negacyclic tie.** With the CompPoly
     NTT operations plugged into the dialect denotation, the negacyclic reduction
     `%ₘ (Xⁿ+1)` of the `nttMul` op's denotation, on the encoded inputs
     `enc a`, `enc b`, has its `k`-th coefficient (`k < n`) equal to the explicit

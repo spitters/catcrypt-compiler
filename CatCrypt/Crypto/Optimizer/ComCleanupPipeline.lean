@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.Optimizer.ComDCE
 
 This file wires the four denotation-preserving `Com → Com` clean-up passes over
 the typed VIR `jasminDialect` into a single pipeline with one end-to-end
-preservation meta-theorem.  Each component already carries its own genuine
+preservation meta-theorem.  Each component already carries its own
 (non-`rfl`) preservation proof; we reuse those lemmas verbatim and `Eq.trans`-
 chain them.
 
@@ -32,7 +32,7 @@ The stages, in order:
    is dead in its continuation (the IR realisation of measurement-based
    uncomputation — a compute/uncompute ancilla pair whose uncompute is free once
    the value is dead).  Lemma `uncompute_denote`.
-4. `ComDCE.comDCE` — trailing dead-let elimination (sweep the now-dead bindings
+4. `ComDCE.comDCE` — trailing dead-let elimination (sweep the dead bindings
    the earlier stages exposed).  Lemma `comDCE_denote`.
 
 The four share the signature `Com jasminDialect Γ t → Com jasminDialect Γ t`
@@ -45,7 +45,7 @@ adapter.
 `comCleanup_denote : KEnv.Consistent k V → (comCleanup k c).denote V = c.denote V`,
 obtained by chaining the four component `*_denote` lemmas.  The `foldCom` arm
 consumes the `KEnv.Consistent k V` hypothesis exactly as `foldCom_denote`
-requires.  **Not `rfl`** — it inherits the genuine inductive preservation proofs
+requires.  **Not `rfl`** — it inherits the inductive preservation proofs
 of the components.
 
 This complements `ComFullOpt.lean` (algebraic-saturation · copy-prop · DCE) with

@@ -17,10 +17,10 @@ This file is the **toy EC (Z/23) analogue** of `Secp256k1Reflect.lean` /
 `P256Reflect.lean`: it adds toy-EC opaque surface types (`MsmEcScalar`,
 `MsmEcPoint`) and `@[rust_cmd_pattern]` registrations so that a pure-Lean
 MSM-term kernel can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → Com catCryptDialect → Jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
-## Toy EC group (matches the legacy `bench/msm_compare/msm_emit.lean`)
+## Toy EC group (matches `bench/msm_compare/msm_emit.lean`)
 
 The toy EC group is `y² = x³ + a·x + b` over `Fp = Z/23`
 (`Pairing.MsmReduce.toyW`), matching `ec_ref.h`'s `P=23`. A curve point
@@ -40,7 +40,7 @@ ops are schoolbook modular arithmetic.
 The full `for i = 0 to L { acc += k_i · P_i }` MSM is built around this
 Reflect surface's per-term body (same approach as
 `Secp256k1Reflect`/`P256Reflect`): the rustcmd lifts ONE iteration body
-`t = ec_scalar_mul(k, P)`, and the verified loop layer (or the legacy
+`t = ec_scalar_mul(k, P)`, and the verified loop layer (or the string
 emit's hand-written `for`) wraps the iteration.
 
 ## L2↔L3 hax bridge
@@ -61,8 +61,8 @@ register the leaves via `@[rust_cmd_pattern]` and hand-build the
 
 ## References
 
-* `bench/msm_compare/msm_emit.lean` — legacy Tier C emit (kept as
-  out-of-chain reference)
+* `bench/msm_compare/msm_emit.lean` — the string emit outside the
+  verified chain (reference)
 * `CatCrypt/Crypto/Pairing/MsmReduce.lean` — `msm_eq_scalarFold`,
   `ECPt`, `EcLeafAgrees`, the toy-EC reduction this file glues into
   the verified front

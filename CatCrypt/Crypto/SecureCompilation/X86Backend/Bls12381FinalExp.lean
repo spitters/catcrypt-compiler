@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
 
 /-!
-# BLS12-381 final exponentiation, owned x86 (#602)
+# BLS12-381 final exponentiation, owned x86
 
 **Variant: RELIC-transcribed (tests-only correctness).**
 

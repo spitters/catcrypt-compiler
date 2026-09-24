@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 public import Mathlib.Data.ZMod.Basic
 
 /-!
-# Field VIR dialect (#482-2 — the L3 algebraic layer, over ModArith)
+# Field VIR dialect (the L3 algebraic layer, over ModArith)
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
@@ -33,7 +33,7 @@ gives the residue-ring layer one home.
               (a triple of `Fp2Val p`, `a + b·v + c·v²`, `v³ = ξ`).
 * `fp12 p`   — the quadratic extension `Fp12 = Fp6[w]/(w²−v)`, `⟦·⟧ = Fp12Val p`
               (a pair of `Fp6Val p`, `a + b·w`, `w² = v`).  This is the pairing
-              target group `GT` (#357).
+              target group `GT`.
 
 The denotation of every Field type is the **abstract** extension-field value
 (`ZMod p`-built tower), so a Field op denotes to the abstract field operation —
@@ -314,10 +314,10 @@ are the abstract `Fp2Val`/`Fp6Val`/`Fp12Val` operations. -/
 
 /-- Prime-field nullary constant: the fixed element `c : ZMod p`, independent of
     any input (delegates to `ModArith`'s `modConstF`). This is the field layer's
-    home for a round/field constant — the single constant-producing op the
-    algebraic field alphabet previously lacked (every other `FieldOp` takes at
-    least one field argument, so every `Com fieldDialect` value used to originate
-    from a context `Var`). -/
+    home for a round/field constant — the single constant-producing op of the
+    algebraic field alphabet (every other `FieldOp` takes at least one field
+    argument, so without it every `Com fieldDialect` value originates from a
+    context `Var`). -/
 @[reducible] def fConstF {p : Nat} (c : ZMod p) : ZMod p := modConstF c
 
 /-- Prime-field identity/copy: returns its single argument unchanged (delegates
@@ -384,9 +384,9 @@ inductive FieldOp where
   /-- Prime-field doubling `a + a : fp p` (sig `[fp p]`), prime-ir
       `field.double`. A fold of `derivedDialect`'s `fieldDouble` into this
       dialect: a `Com` is indexed by one dialect, so an op kept in a dialect of
-      its own cannot sit beside `fMul`. The alternative was a coproduct
-      `fieldDialect ⊕ derivedDialect` with an injection; the value types already
-      coincide (`DerivedTy.fp p` and `FieldTy.fp p` both denote `ZMod p`), so
+      its own cannot sit beside `fMul`. A coproduct
+      `fieldDialect ⊕ derivedDialect` with an injection is unnecessary: the value
+      types coincide (`DerivedTy.fp p` and `FieldTy.fp p` both denote `ZMod p`), so
       the op is carried here directly. -/
   | fieldDouble (p : Nat)
   /-- Prime-field squaring `a * a : fp p` (sig `[fp p]`), prime-ir
@@ -575,7 +575,7 @@ theorem frobenius2_denote {p : Nat} (a : Fp2Val p) :
 theorem ext6Mul_denote {p : Nat} (ξ0 : ZMod p) (a b : Fp6Val p) :
     fieldDenote.denote (.ext6Mul p ξ0) (.cons a (.cons b .nil)) = Fp6Val.mul ξ0 a b := rfl
 
-/-- `ext12Mul` denotes to the abstract `Fp12` product (the `GT` op, #357). -/
+/-- `ext12Mul` denotes to the abstract `Fp12` product (the `GT` op). -/
 theorem ext12Mul_denote {p : Nat} (ξ0 : ZMod p) (a b : Fp12Val p) :
     fieldDenote.denote (.ext12Mul p ξ0) (.cons a (.cons b .nil)) = Fp12Val.mul ξ0 a b := rfl
 

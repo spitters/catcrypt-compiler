@@ -9,8 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.GfniEmit
 
 /-!
-# GFNI byte-lane map through the structured VectorDialect (task #275)
-
+# GFNI byte-lane map through the structured VectorDialect
 The existing GFNI emit (`VIR/GfniEmit`) renders the three byte-wise mnemonics
 (`#VGF2P8MULB_128`, `#VGF2P8AFFINEQB_128`, `#VGF2P8AFFINEINVQB_128`) DIRECTLY
 via `renderGfniLine`, and denotes them lane-wise via `denoteGfni`. It is left
@@ -46,7 +45,7 @@ open CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect
 /-! ## 1. The 16-byte lane shape
 
 A `BitVec 128` GFNI operand is 16 lanes of `BitVec 8`. `GfniEmit.lanesOf`
-exposes the byte split, `GfniEmit.packBytes` the join — the lane-map keystone
+exposes the byte split, `GfniEmit.packBytes` the join — the lane-map theorem
 applies at lane width 8, count 16. -/
 
 /-- The GFNI lane count: 16 bytes per `xmm`. -/

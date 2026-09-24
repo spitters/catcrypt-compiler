@@ -25,7 +25,7 @@ fe25519, the radix-2^51 schoolbook; for the Montgomery curves, the
 word-by-word Montgomery product `x · y · R⁻¹ mod p`) — agrees with the
 CatCrypt-side `LeafSpec` value the leaf-call oracle produces.
 
-It follows the *exact* discipline of `CrossProverBridge` (`#368`): the
+It follows the *exact* discipline of `CrossProverBridge`: the
 cross-prover statement is **not** a Lean theorem (it crosses Rocq↔Lean), so it
 is a named, inhabited predicate (`§2`), bundled as a Catalog-style assumption
 `structure` (`§3`), with a non-vacuous witness (`§3`) and a worked consumable
@@ -176,8 +176,8 @@ Prop` carrying it as its single field, so a downstream theorem that takes a
 
     Holding a value of this structure is *assuming* that AUCurves' Qed'd
     field-mul correctness (`fe25519_mul_body_correct`, …) is faithfully
-    realized by the CatCrypt `leafSpec.call` oracle for this leaf — the honest,
-    named cross-prover edge, never a bare `axiom` bolted onto a different
+    realized by the CatCrypt `leafSpec.call` oracle for this leaf — the named
+    cross-prover edge, never a bare `axiom` bolted onto a different
     hand-written kernel. -/
 structure AUCurvesFieldMulBridge (leaf : FieldMulLeaf) (leafSpec : LeafSpec) :
     Prop where
@@ -247,7 +247,7 @@ To show `AUCurvesFieldMulBridge` is *usable as an explicit hypothesis* — not
 just a label — we record the canonical conclusion it supports, in the
 `cross_call_of_residual` discipline: given the named field-mul assumption, the
 CatCrypt leaf-call value *provably decodes to the field product*.  This is the
-consumable cross-prover edge: a downstream theorem can now assume
+consumable cross-prover edge: a downstream theorem can assume
 `AUCurvesFieldMulBridge curve25519Fe25519Mul leafSpec` and conclude the
 `fe25519_mul` leaf computes `x · y` in `ZMod (2^255 − 19)`. -/
 

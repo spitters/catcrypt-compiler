@@ -14,7 +14,7 @@ public import Transfer.Congruence.RCongr
 ## Scope
 
 The prime-field → ModArith dialect lowering of
-`FieldToModArithLowering.lean` proves its only genuinely op-specific
+`FieldToModArithLowering.lean` proves its only op-specific
 obligation, `fpOpLowerTransports` (the `OpLowerTransports` leaf the
 `ComParametricityTransport.fundamental` lemma consumes), **by hand**: a
 `cases op` over the five prime-field tags, an `HVector` argument peel
@@ -48,12 +48,12 @@ shared leaf function. The `rcongrBinOp` rule strips that node and leaves the
 two per-argument relatedness leaves, each the variable coherence
 `mapVar_lookup` wrapped in `Related.mk`.
 
-### The layers, and the honest capability boundary (two real gaps)
+### The layers, and the capability boundary (two gaps)
 
 * **Binary op node (automated by the `rcongrBinOp` descent).** The op square
   is closed by `transferGround` (bridging `=` → `Related id`) then
   `rcongrBinOp _ _ _ ?_ ?_ <;> exact ⟨mapVar_lookup _ _⟩`. We also show, in
-  isolation (§2), a genuine differing-argument descent and multi-op tree
+  isolation (§2), a differing-argument descent and multi-op tree
   composites closed by one `transfer`/`rcongr`.
 
 * **Gap 1 — the `Expr`/`HVector` peel is not relational congruence.** The
@@ -72,9 +72,8 @@ two per-argument relatedness leaves, each the variable coherence
   registry rule at all (`RelatedBinOp` only — no `RelatedUnaryOp`), so those
   arms keep the dialect's `rw [mapVar_lookup]`.
 
-**0 sorries**; axiom set is the ambient
-`{propext, Classical.choice, Quot.sound}` — see `lean_verify` report in the
-final summary.
+**All goals closed**; axiom set is the ambient
+`{propext, Classical.choice, Quot.sound}`.
 -/
 
 @[expose] public section
@@ -92,7 +91,7 @@ open Transfer
 /-! ## 1. The per-op leaf functions as registered `RelatedBinOp` squares
 
 The five prime-field leaves are 1:1 with their ModArith twins and
-definitionally equal (the fragment that makes the lowering a genuine
+definitionally equal (the fragment that makes the lowering a
 program transport). With the identity encoding, each is the degenerate-but
 real commuting square `id (op x y) = op (id x) (id y)`, i.e. a
 `RelatedBinOp id op op`. Registering them puts the dialect op squares into
@@ -161,7 +160,7 @@ example {p : Nat} (a b c d : ZMod p) :
     modAddF (modSubF (modMulF a b) c) d = modAddF (modSubF (modMulF a b) c) d := by
   transfer
 
-/-- **Non-trivial cross-head descent: the args genuinely differ.** Here the
+/-- **Non-trivial cross-head descent: the args differ.** Here the
     two sides are *not* syntactically equal — the left args are `f a`/`f b`,
     the right `a`/`b`, related by the local squares `hfa`/`hfb`. The
     `rcongrBinOp` rule (the move `rcongr` applies at each node) strips the
@@ -176,7 +175,7 @@ example {p : Nat} (f : ZMod p → ZMod p) (a b : ZMod p)
 
 /-! ## 3. Discharging the real `fpOpLowerTransports` arm by the `rcongr` rule
 
-The genuine dialect leaf, after the (manual, non-automatable) `Expr` peel +
+The dialect leaf, after the (manual, non-automatable) `Expr` peel +
 a `show` that exposes the body, is an equation
 `lowered-op (mapVar-lookups) = source-op (source-lookups)` — e.g. for
 `fpAdd`:
@@ -255,10 +254,9 @@ theorem fpOpLowerTransports_by_rcongr :
 
 /-! ## 4. The capability boundary, stated precisely (two real gaps)
 
-Probing `rcongr`/`transfer` against the actual dialect leaf surfaced **two
-precise shape mismatches** that bound the automation. Neither is fatal — the
-binary cross-head op node *is* automated by the `rcongrBinOp` rule above —
-but they are recorded honestly rather than forced.
+Two **shape mismatches** between `rcongr`/`transfer` and the dialect leaf bound
+the automation. Neither blocks the binary cross-head op node, which the
+`rcongrBinOp` rule above automates; they are recorded here rather than forced.
 
 ### Gap 1 — the dependent `Expr`/`HVector` peel is not relational congruence.
 
@@ -313,9 +311,9 @@ the bridge is read-only here.
 ### Manual-lines comparison
 
 The hand `fpOpLowerTransports` binary arm is `show …F (…lookup…) (…) = …F (…)
-(…)` + `rw [mapVar_lookup, mapVar_lookup]` — the `rw` is the load-bearing
+(…)` + `rw [mapVar_lookup, mapVar_lookup]` — the `rw` is the
 line that closes the square by aligning both lookups (then trailing `rfl`).
-The `rcongr` form replaces that closing `rw [mapVar_lookup, mapVar_lookup]`
+The `rcongr` form swaps that closing `rw [mapVar_lookup, mapVar_lookup]`
 with `refine transferGround (h := ?_); refine rcongrBinOp _ _ _ ?_ ?_ <;>
 exact ⟨mapVar_lookup _ _⟩`: the op node becomes a **first-class lemma-driven
 structural move** (`rcongrBinOp`) rather than a single definitional
@@ -324,10 +322,10 @@ collapse, with the two lookup leaves explicit. The `show` prelude and the
 automation reframes the op square as a registry congruence step on the three
 binary arms; it does **not** shrink the line count (the dialect leaf is
 lookup-aligned, so the hand `rw` is already a one-liner), and it does **not**
-reach the unary arms. The genuine *win* of the automation shows on op-**tree**
+reach the unary arms. The *gain* of the automation shows on op-**tree**
 composites (§2): a multi-op nesting closes in one `transfer`/`rcongr` where by
 hand each layer needs its own `congr`/`rw` — but the 1:1 dialect leaf is a
-single op, so that lever is dormant here. This is the honest verdict: the
+single op, so that gain does not apply here. In summary: the
 cross-head rule applies to the dialect op node, the line-count win lands on
 composites, not on the already-flat 1:1 leaf. -/
 
@@ -344,7 +342,7 @@ example :
     op leaf.** Feeding `fpOpLowerTransports_by_rcongr` (binary arms by the
     cross-head rule) to `fundamental` alongside the existing variable /
     binding coherences yields the same `Com`-level denotation-preservation
-    the hand leaf does — the automation plugs into the keystone unchanged. -/
+    the hand leaf does — the automation plugs into `fundamental` unchanged. -/
 theorem fpComLowerTransports_via_rcongr {Γ : Ctxt fpDialect} {t : FpTy}
     (c : Com fpDialect Γ t) :
     ComLowerTransports lowerFieldToModArith transTy mapVal c :=

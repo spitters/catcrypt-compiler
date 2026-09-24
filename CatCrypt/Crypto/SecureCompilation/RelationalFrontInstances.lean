@@ -261,7 +261,7 @@ def addMod251Realization :
 /-! ## 4. The `RealizedKernel`: the abstract `F_251` add, emitted
 
 Tie the realization to the emitted kernel `fieldAddMod251Com`. The seam
-`com_denotes_bop` holds because the kernel was built to denote exactly
+`com_denotes_bop` holds because the kernel denotes exactly
 `csub251 (x1 + x0)` (`fieldAddMod251Com_denote`), and `com_ok` is the supported-
 fragment check (`fieldAddMod251Com_ok`). -/
 

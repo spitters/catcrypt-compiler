@@ -34,9 +34,9 @@ which the existing call-free export path handles directly.
 (`ComInline.inline_preserves_denote`), but only for **single-expression** callee bodies
 (`SingleExprBody = .var defExpr (.ret .here)` — one op). A real ladder step callee
 (`x25519_mono_step`, a whole block of `fe25519` word ops) is a **multi-binding** `Com`.
-`ComInline`'s own docstring flags this as the next deliverable ("general inlining … requires
-Com-level splicing through `Com.foldVar`"). This file supplies exactly that, reusing the
-already-proved dialect-generic block-splice primitive
+`ComInline`'s docstring places this case outside its scope ("general inlining … requires
+Com-level splicing through `Com.foldVar`"). This module supplies it, reusing the
+dialect-generic block-splice primitive
 `FieldDialectBlockDescent.spliceCom` (the `Com` let-composition, `spliceCom_denote`) and
 `ComInline.argHom` (the call's args → formal substitution).
 

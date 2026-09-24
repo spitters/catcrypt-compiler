@@ -14,7 +14,7 @@ public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
 
 /-!
-# Sail-arm NEON decoder round-trip: `decode (encode i) = i` (#548)
+# Sail-arm NEON decoder round-trip: `decode (encode i) = i`
 
 `NeonEncoder.lean` is the owned `NInst → machine-byte` encoder. Its bench trust
 edge is *differential*: each emitted 32-bit word is pinned to what
@@ -22,8 +22,8 @@ edge is *differential*: each emitted 32-bit word is pinned to what
 vendored in this repo, plus the qemu KAT). That makes `as`'s unverified encoder
 part of the trusted base.
 
-This module replaces the differential edge, for the instruction classes in
-scope below, with a **round-trip** against an AArch64 ASIMD *decoder*
+This module substitutes for the differential edge, for the instruction classes
+in scope below, a **round-trip** against an AArch64 ASIMD *decoder*
 discipline: a Lean decoder `decodeNeon` that recovers the instruction-class
 fields `(opcode-class, Rd, Rn, Rm/sh)` from a 32-bit instruction word,
 following the field-split structure of the

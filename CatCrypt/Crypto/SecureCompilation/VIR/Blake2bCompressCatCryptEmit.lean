@@ -52,7 +52,7 @@ assembles the quarter-round `Com` into the whole block:
    the committed catCrypt-dialect `Com`. Twelve rounds, then the XOR
    feed-forward.
 
-4. **`blake2bCompress_catcrypt_denote`** (`§5`) — the keystone: the whole
+4. **`blake2bCompress_catcrypt_denote`** (`§5`) — the main theorem: the whole
    catCrypt compression equals the canonical RFC-7693 `F` spec `blake2bCompress`,
    proved by folding the per-G denote equality through the round structure (one
    `funext` collapse `roundCatCrypt = round`, then a `simp` over the 12-round
@@ -256,7 +256,7 @@ def blake2bCompressCatCrypt (m : Blake2bMsg) (h v0 : Blake2bState) : Blake2bStat
 
 /-! ## 5. The whole catCrypt compression equals the RFC-7693 `F` spec
 
-The keystone. The per-round equality `roundCatCrypt = round` collapses to a
+The main theorem. The per-round equality `roundCatCrypt = round` collapses to a
 function equality by `funext`; the twelve-round fold then collapses by rewriting
 the fold body, so the whole catCrypt compression equals the canonical RFC `F`
 spec `blake2bCompress`. NOT a monolithic `rfl` over 96 G applications — every G is
@@ -271,7 +271,7 @@ theorem compressCoreCatCrypt_eq (m : Blake2bMsg) (s : Blake2bState) :
     funext st r; exact roundCatCrypt_eq m r st
   simp only [compressCoreCatCrypt, compressCore, hfun]
 
-/-- **Whole-compression keystone.** The whole BLAKE2b `F` compression computed over
+/-- **Whole-compression theorem.** The whole BLAKE2b `F` compression computed over
     the committed catCrypt-dialect G `Com` equals the canonical RFC-7693 `F` spec
     `blake2bCompress`. Every G application in the twelve rounds is evaluated by the
     committed `Com catCryptDialect` program `blake2bGCatCrypt{A,B,C,D}`, so the

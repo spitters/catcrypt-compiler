@@ -25,10 +25,9 @@ The recipe per kernel (mirroring `ComBuilder.condSub251SSA`/`condSub251Built`):
 1. write a `NamedSSA` (operands named by de-Bruijn *level*; the generator
    resolves the indices);
 2. `build … |>.get (by decide)` materialises the `Com`;
-3. `ComOK` via the direct per-op witnesses (the general builder-preserves-`ComOK`
-   lemma is owned by another stream; here we give the explicit chain so this file
-   stands alone);
-4. `…_denote` by `rfl` — the load-bearing check that the auto-resolved de-Bruijn
+3. `ComOK` via the direct per-op witnesses (the explicit chain, so this module
+   does not depend on a general builder-preserves-`ComOK` lemma);
+4. `…_denote` by `rfl` — the check that the auto-resolved de-Bruijn
    indices coincide with the intended ALU expression (a miscounted level would
    make this `rfl` fail);
 5. `arm_e2e`/`riscv_e2e` via `com_arm_e2e`/`com_riscv_e2e` + `allReg64_one`, and

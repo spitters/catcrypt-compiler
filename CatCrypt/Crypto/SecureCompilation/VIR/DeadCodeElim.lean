@@ -13,9 +13,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 /-!
 # Verified dead-code elimination (DCE) for `Com` — analysis-as-decision pass
 
-This file extends the verified-optimizer suite (`JForProgUnroll.lean` (#139),
-`RegisterAllocation.lean` (#141 / #143), `CtPreservationNewTransforms.lean`
-(#146)) with a **dead-code-elimination** pass at the `Com` level.
+This module adds to the verified-optimizer suite (`JForProgUnroll.lean`,
+`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`) a
+**dead-code-elimination** pass at the `Com` level.
 
 ## Architectural principle: analysis as decision
 
@@ -26,8 +26,8 @@ intrinsic type of the body — every subsequent `.there` index would need to
 shift. Doing that in a type-safe `Com → Com` rewrite is possible but
 requires a substantial De Bruijn renumbering layer.
 
-The architectural shape we adopt here mirrors `RegisterAllocation.lean`'s
-`#143` finding: **the heavy lifting is the analysis (which variables are
+The architectural shape mirrors `RegisterAllocation.lean`:
+**the substance is the analysis (which variables are
 dead); the `Com → Com` rewrite itself is the identity at the framework
 level, because the emit pass downstream consumes the analysis as a
 labelling, not as a structural change**. Concretely:

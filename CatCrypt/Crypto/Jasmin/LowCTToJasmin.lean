@@ -91,7 +91,7 @@ def towerToSType (t : TowerType) : SType :=
     expect.  ML-DSA's 4-way NTT kernel signature is
     `stack u32[260]`, not `stack u8[1040]`; the packed-u64 default
     is close to that intent (and the kernel ABI can be adapted via a
-    per-protocol override in a follow-up).
+    per-protocol override).
 
     *Soundness*: this is purely an **emit-layer** choice — the
     underlying Jasmin AST type is still `.sarr N` (N bytes), and the
@@ -108,7 +108,7 @@ example : tbytesStackLayout 1040 = (.U64, 130) := by decide
 example : tbytesStackLayout 1 = (.U8, 1) := by decide
 example : tbytesStackLayout 33 = (.U8, 33) := by decide
 
-/-- **Widening-multiply extension (#261).** The Jasmin array-element word
+/-- **Widening-multiply extension.** The Jasmin array-element word
     size for a `TArr n t` slot: `.U64` when the element TowerType is `.TU64`
     (the 62-bit-radix safegcd limb arrays), `.U32` otherwise (the default —
     the 30-bit safegcd / ML-DSA poly buffers).  Used by the `RArrLoad` /
@@ -197,7 +197,7 @@ def unrollForJ (x : String) (bodyJ : Cmd) : Nat → Cmd
                 (.Papp1 (.Oword_of_int .U64) (.Pconst n))
       unrollForJ x bodyJ n ++ (scalarSetK :: bodyJ)
 
-/-- **E1.5 (SExpr → PExpr, 2026-05-30).** Translate an `SExpr` (the
+/-- **SExpr → PExpr.** Translate an `SExpr` (the
     runtime-scalar arithmetic carried by `RScalarSetExpr`) into a Jasmin
     `PExpr` over `u64` word ops.  Every `SExpr` operator has an exact
     `SOp2`/`SOp1` counterpart:
@@ -232,13 +232,13 @@ def sexprToPExpr : SExpr → PExpr
   | .SAnd a b => .Papp2 (.Oland .U64) (sexprToPExpr a) (sexprToPExpr b)
   | .SXor a b => .Papp2 (.Olxor .U64) (sexprToPExpr a) (sexprToPExpr b)
   | .SLt  a b => .Papp2 (.Olt .Uextend .U64) (sexprToPExpr a) (sexprToPExpr b)
-  -- Signed-arith extension (#257): `SAsr` → `Oasr U64` (Jasmin `>>s`,
+  -- Signed-arith extension: `SAsr` → `Oasr U64` (Jasmin `>>s`,
   -- arithmetic shift right); `SMulS` → `Omul U64` (the low-word product is
   -- sign-agnostic, so signed and unsigned share the `Omul` node — the
   -- signed *interpretation* is carried by any following `Oasr`).
   | .SAsr  a b => .Papp2 (.Oasr .U64) (sexprToPExpr a) (sexprToPExpr b)
   | .SMulS a b => .Papp2 (.Omul .U64) (sexprToPExpr a) (sexprToPExpr b)
-  -- Widening-multiply extension (#261): the high word of a 64×64→128 product
+  -- Widening-multiply extension: the high word of a 64×64→128 product
   -- is a *multi-output intrinsic* (`#MULX` / `#IMUL`), not a `PExpr` binop.
   -- The `RScalarSetExpr` arm of `toJasminCmd` intercepts a top-level high-mul
   -- and emits a `Copn` directly; this `PExpr` fallback (the low-word `Omul`
@@ -246,7 +246,7 @@ def sexprToPExpr : SExpr → PExpr
   -- only for `sexprToPExpr` totality.
   | .SMulHiU a b => .Papp2 (.Omul .U64) (sexprToPExpr a) (sexprToPExpr b)
   | .SMulHiS a b => .Papp2 (.Omul .U64) (sexprToPExpr a) (sexprToPExpr b)
-  -- Tower-limb read extension (#354): `SLimb v i` reads limb `i` (a `u64`) of
+  -- Tower-limb read extension: `SLimb v i` reads limb `i` (a `u64`) of
   -- the limb-bearing tower slot `v`, which lowers to a Jasmin scaled array
   -- read `v[i]` (`Pget .AAscale .U64` — the same `AAscale`/`U64` shape the
   -- `RArrLoadLit` u64 path uses).  The slot is a `reg u64[N]` whose element
@@ -258,7 +258,7 @@ def sexprToPExpr : SExpr → PExpr
         { gv := { var := { vname := v, vtype := .sarr 0 }, info := {} }, gs := false }
         (.Pconst (Int.ofNat i))
 
-/-- **Widening-multiply extension (#261, 2026-05-30).** Lower a
+/-- **Widening-multiply extension.** Lower a
     `RScalarSetExpr x e` to Jasmin instructions.  A *top-level* high-word
     multiply (`SMulHiU` / `SMulHiS`) is the multi-output Jasmin intrinsic
     `#MULX` / `#IMUL`, which has no single-`PExpr` rendering, so it lowers to a
@@ -305,7 +305,7 @@ def toJasminCmdLeaf : LowCT → Cmd
       -- forbids dest1 = dest2 and either dest in args, so the two calls
       -- write disjoint locations, and the second's args read the same
       -- (unchanged) source values the first read.  This matches the
-      -- semantics treatment in `LowCTToCryptoSSA`'s RCallSwap arm.
+      -- semantics treatment of the RCallSwap arm in the `Com` front.
       [.Ccall .DoNotInline [locToLVal dest1] { name := f } (args.map locToPExpr),
        .Ccall .DoNotInline [locToLVal dest2] { name := f } (args.map locToPExpr)]
   | .RCloneCall cloneVar cloneTy oldDest innerF dest args =>
@@ -324,16 +324,16 @@ def toJasminCmdLeaf : LowCT → Cmd
       -- Store u64 v into array loc at index idx (scaled by 8 bytes)
       [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
              [locToPExpr loc, .Pconst idx, .Pconst v.toNat]]
-  -- Phase R5: runtime-valued limb store.  Same STORE64 Copn as
+  -- runtime-valued limb store.  Same STORE64 Copn as
   -- `RLimbStore`, but the stored word is the lowered `SExpr` (a nested
   -- `PExpr` over u64 ops via `sexprToPExpr`) rather than a literal.
   | .RLimbStoreExpr loc idx e =>
       [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
              [locToPExpr loc, .Pconst idx, sexprToPExpr e]]
-  -- Phase G: emit a single Jasmin `Ccall` with multiple destinations.
+  -- emit a single Jasmin `Ccall` with multiple destinations.
   | .RCallN f dests args =>
       [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
-  -- Phase H: emit a CMOV `Copn`.  The selVar is the test scalar;
+  -- emit a CMOV `Copn`.  The selVar is the test scalar;
   -- src0 is the "if-zero" branch, src1 the "if-nonzero".  Jasmin's
   -- CMOV opcode reads `(sel, src0, src1)` and writes `dst`.
   | .RSelect dst sel src0 src1 =>
@@ -342,15 +342,15 @@ def toJasminCmdLeaf : LowCT → Cmd
                 gs := false }
       [.Copn [locToLVal dst] .AT_none (.Oasm { name := "CMOV" })
              [selExpr, locToPExpr src0, locToPExpr src1]]
-  -- Phase L: zero-cost contract — emit nothing.
+  -- zero-cost contract — emit nothing.
   | .RAssert _ => []
-  -- Phase C: helper call → multi-dest Ccall.
+  -- helper call → multi-dest Ccall.
   | .RFnCall f dests args =>
       [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
-  -- Phase I: tuple component load — identity stub at this level (no
+  -- tuple component load — identity stub at this level (no
   -- runtime effect modelled in the simulation theorem).
   | .RTupleLoad _ _ _ => []
-  -- Phase RND (2026-05-30): dynamic-index array store / load — the
+  -- dynamic-index array store / load — the
   -- runnable counterpart of the literal-index `RArrStoreLit`/`RArrLoadLit`
   -- arms below, with the index supplied by a runtime scalar slot (`idxVar`,
   -- typically a loop counter from an enclosing `RFor`).  Element width is
@@ -362,7 +362,7 @@ def toJasminCmdLeaf : LowCT → Cmd
   | .RArrStore arr idxVar src =>
       -- For a `u32[…]` array the source scalar is `u64`; jasminc requires an
       -- explicit narrowing cast `arr[i] = (32u) src;`.  For a `u64[…]` array
-      -- (#261: the 62-bit safegcd limbs) the widths match — no cast,
+      -- (the 62-bit safegcd limbs) the widths match — no cast,
       -- `arr[i] = src;`.
       let idxPv : PExpr := .Pvar { gv := { var := { vname := idxVar, vtype := .sword .U64 },
                                            info := {} }, gs := false }
@@ -379,7 +379,7 @@ def toJasminCmdLeaf : LowCT → Cmd
             .AT_none (.sword .U32) (.Papp1 (.Ozeroext .U32 .U64) srcPv)]
   | .RArrLoad dst src idxVar =>
       -- For a `u32[…]` array jasminc requires a widening cast
-      -- `dst = (64u) src[i];`.  For a `u64[…]` array (#261) the widths match —
+      -- `dst = (64u) src[i];`.  For a `u64[…]` array the widths match —
       -- `dst = src[i];`.
       let idxPv : PExpr := .Pvar { gv := { var := { vname := idxVar, vtype := .sword .U64 },
                                            info := {} }, gs := false }
@@ -405,7 +405,7 @@ def toJasminCmdLeaf : LowCT → Cmd
   | .RArrLoadLit dst src idx =>
       [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
         (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
-  -- Phase RND (2026-05-30): runtime-scalar arithmetic assignment.  Lowers
+  -- runtime-scalar arithmetic assignment.  Lowers
   -- the `SExpr` into a nested `PExpr` over `u64` word ops (`sexprToPExpr`)
   -- and assigns it to the `u64` scalar slot `x`.  jasminc renders the nested
   -- expression as a parenthesised arithmetic RHS (`x = ((a >> 13) + 1);`)
@@ -415,7 +415,7 @@ def toJasminCmdLeaf : LowCT → Cmd
   -- `RArrLoad`→`RScalarSetExpr`→`RArrStore`.
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
-  -- Phase E2 (2026-05-29): dst-threaded leaf call.  Emits a single
+  -- dst-threaded leaf call.  Emits a single
   -- Jasmin `Ccall` whose lvalue is `dst` and whose argument list is
   -- `dst :: args` — the existing JasminEmit `Ccall` arm renders this
   -- as the surface form `dst = name(dst, args...);` which is the ABI
@@ -445,9 +445,9 @@ def toJasminCmdLeaf : LowCT → Cmd
     - `RLimbStore loc i v`  → array-set instruction
     - `RSkip`               → `[]`
 
-    **Structural fold (task #369).**  `toJasminCmd` is the `LowCT.foldNode`
-    whose `leaf` (`toJasminCmdLeaf`) emits every non-recursive constructor
-    exactly as the old open match did, and whose node-aware
+    **Structural fold.**  `toJasminCmd` is the `LowCT.foldNode`
+    whose `leaf` (`toJasminCmdLeaf`) emits every non-recursive constructor,
+    and whose node-aware
     `seqNode`/`wrapNode` combiners re-introduce the *heterogeneous* emit
     shapes that depend on the original node: `RSeq`/`RFnDef` append children
     (`r1 ++ r2`); `RIfNz` wraps both children in a single `[.Cif …]`;
@@ -706,8 +706,8 @@ theorem toJasminCmd_RArrLoadLit_u64 (dst src : Located) (idx : Nat) (n : Nat)
       = [.Ccall .DoNotInline [locToLVal dst] { name := f }
                 (locToPExpr dst :: args.map locToPExpr)] := rfl
 
--- Stage 1a (2026-07-01): the runtime-bound loop is a non-descending `foldNode`
--- leaf; `toJasminCmdLeaf`'s `| _ => []` rejects it (not yet lowered).
+-- The runtime-bound loop is a non-descending `foldNode`
+-- leaf; `toJasminCmdLeaf`'s `| _ => []` rejects it (not lowered).
 @[simp] theorem toJasminCmd_RForRuntime (x : String) (b : SExpr) (body : LowCT) :
     toJasminCmd (.RForRuntime x b body) = [] := rfl
 
@@ -744,7 +744,7 @@ def toJasminProg (name : String) (params results : List Located)
     (c : LowCT) : JasminProg :=
   { funcs := [toFunDecl name params results c] }
 
-/-! ## §2.4  Phase C.1 — multi-FunDecl lift (2026-05-05)
+/-! ## §2.4  Multi-FunDecl lift
 
 The default `toJasminCmd` translates `RFnDef name params returns body cont`
 by inlining `body ++ cont` into a single output Jasmin command.  This is
@@ -752,7 +752,7 @@ correct (the bodies execute in line) but blocks Jasmin's
 `inline fn` / function-level scheduling which is needed for
 performance-critical compositions.
 
-**Phase C.1** lands `extractFnDefs` and `toJasminProgWithFns`: two
+`extractFnDefs` and `toJasminProgWithFns` are two
 helpers that walk a top-level LowCT, **lift** every `RFnDef` body
 into a separate Jasmin `FunDecl`, and translate `RFnCall` to a real
 Jasmin `Ccall .DoNotInline` to the lifted function.  The result is
@@ -858,7 +858,7 @@ example :
     extractFnDefs (.RSeq .RSkip .RSkip) = ([], .RSeq .RSkip .RSkip) := by
   rfl
 
-/-! ## §2.5  Inline registry (D4.2)
+/-! ## §2.5  Inline registry
 
 The default `toJasminCmd` translates every `RCall f dest args` to a Jasmin
 `Ccall` instruction, which `jasminc` lowers to a real x86-64 `call`. This
@@ -900,9 +900,8 @@ to `toJasminCmd`.
 
 Per-leaf semantic correctness — that the spliced `InstrR` list refines
 the leaf-spec for `f` — is a *hypothesis on the registry*, discharged
-once per registry by combining per-leaf refinement lemmas (D4.1). The
-strengthened simulation theorem `rustExecSimulates_with_inlines` is
-deferred to a follow-up. -/
+once per registry by combining per-leaf refinement lemmas. A simulation
+theorem for `toJasminCmdWithInlines` is outside this module's scope. -/
 def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RSkip => []
   | .RSeq c1 c2 =>
@@ -943,8 +942,8 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
               (.Oasm { name := "CLONE_TOWER" })
               [locToPExpr oldDest]
       -- For RCloneCall, we always keep the inner call as Ccall — clone only
-      -- exists to break aliasing for follow-up `Ccall`s. Inlining a
-      -- `RCloneCall.innerF` is a follow-up if it ever becomes useful.
+      -- exists to break aliasing for subsequent `Ccall`s; `RCloneCall.innerF`
+      -- is not inlined.
       [cloneInstr,
        .Ccall .DoNotInline [locToLVal dest] { name := innerF } (args.map locToPExpr)]
   | .RIfNz e ct cf =>
@@ -965,7 +964,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RFor x n body =>
       -- Static unrolling: same shape as in `toJasminCmd`.
       unrollForJ x (toJasminCmdWithInlines env body) n
-  -- Stage 1a (2026-07-01): runtime loop is not yet lowered — reject to `[]`.
+  -- runtime loop is not lowered — reject to `[]`.
   | .RForRuntime _ _ _ => []
   | .RLimbStore loc idx v =>
       [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
@@ -997,11 +996,11 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
           dests.foldl (fun acc d => acc ++ impl d args) []
       | none =>
           [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
-  -- Phase I: tuple component load — identity stub.
+  -- tuple component load — identity stub.
   | .RTupleLoad _ _ _ => []
-  -- Phase RND (2026-05-30): dynamic-index array + SExpr — mirror toJasminCmd.
+  -- dynamic-index array + SExpr — mirror toJasminCmd.
   | .RArrStore arr idxVar src =>
-      -- #261: element-width-driven (u64 arrays need no narrowing cast).
+      -- Element-width-driven (u64 arrays need no narrowing cast).
       let idxPv : PExpr := .Pvar { gv := { var := { vname := idxVar, vtype := .sword .U64 },
                                            info := {} }, gs := false }
       let srcPv : PExpr := .Pvar { gv := { var := { vname := src.locVar, vtype := .sword .U64 },
@@ -1016,7 +1015,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
             (.Laset .AAscale .U32 { var := locToVar arr, info := {} } idxPv)
             .AT_none (.sword .U32) (.Papp1 (.Ozeroext .U32 .U64) srcPv)]
   | .RArrLoad dst src idxVar =>
-      -- #261: element-width-driven (u64 arrays need no widening cast).
+      -- Element-width-driven (u64 arrays need no widening cast).
       let idxPv : PExpr := .Pvar { gv := { var := { vname := idxVar, vtype := .sword .U64 },
                                            info := {} }, gs := false }
       let dstLv : LVal := .Lvar { var := { vname := dst.locVar, vtype := .sword .U64 }, info := {} }
@@ -1039,7 +1038,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
         (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
-  -- Phase E2 (2026-05-29): dst-threaded leaf call.  Mirror toJasminCmd
+  -- dst-threaded leaf call.  Mirror toJasminCmd
   -- (inline registries don't carry dst-threaded variants today; the
   -- common Ccall path is the canonical lowering).
   | .RCallDstThreaded f dst args =>
@@ -1135,8 +1134,8 @@ def whileFree : LowCT → Bool
   -- is itself while-free.  The simulation theorem extends to RFor by
   -- mirroring `forSucc` against the unrolled translation.
   | .RFor _ _ body => whileFree body
-  -- Stage 1a (2026-07-01): the runtime-bound loop is NOT yet lowered (its
-  -- backend `while`-counter simulation lands with A2–A5); exclude it here,
+  -- the runtime-bound loop is NOT lowered (the backend has no
+  -- `while`-counter simulation for it); exclude it here,
   -- exactly like `RWhileNz`, so the refinement theorem's `forRuntime` case
   -- closes by `whileFree`-contradiction.
   | .RForRuntime _ _ _ => false
@@ -1151,23 +1150,23 @@ def whileFree : LowCT → Bool
   -- constant-word `RLimbStore` is simulated by `rustLimbStoreSimulates`
   -- under `LimbStoreImplOk`.
   | .RLimbStoreExpr _ _ _ => false
-  -- Phase L.1: RAssert is while-free *and* covered by the
+  -- RAssert is while-free *and* covered by the
   -- simulation theorem (lowers to `[]`, identity semantics).
   | .RAssert _ => true
-  -- Phase M.1: RBlock is while-free iff its body is.  The body
+  -- RBlock is while-free iff its body is.  The body
   -- IH closes the simulation case via the same path as RSeq.
   | .RBlock body => whileFree body
-  -- Phase C: not yet covered by simulation theorem.
+  -- outside the simulation theorem's scope.
   | .RFnDef _ _ _ _ _ | .RFnCall _ _ _ => false
-  -- Phase I: not yet covered by simulation theorem.
+  -- outside the simulation theorem's scope.
   | .RTupleLoad _ _ _ => false
-  -- Phase Ext (2026-05-12): TArr/SExpr — not yet covered by simulation theorem.
+  -- TArr/SExpr — outside the simulation theorem's scope.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
-  -- Phase DD (2026-05-28): literal-index variants — not yet covered by
-  -- simulation theorem (would close via single-instruction Cassgn case).
+  -- literal-index variants — outside the simulation theorem's scope
+  -- (the single-instruction Cassgn case applies to them).
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
-  -- Phase E2 (2026-05-29): dst-threaded leaf call — not yet covered by
-  -- simulation theorem (analogous to RCall, which is also false).
+  -- dst-threaded leaf call — outside the simulation theorem's scope
+  -- (analogous to RCall, which is also false).
   | .RCallDstThreaded _ _ _ => false
 
 /-- `forFree c = true` iff `c` contains no `RFor` subterm.
@@ -1175,7 +1174,7 @@ def whileFree : LowCT → Bool
     Some downstream theorems (e.g. the reverse trace correspondence
     `jasminSemTraced_to_rustExecTraced`) rely on the `whileFree` predicate
     excluding `RFor` from the search space.  Lifting `whileFree` to admit
-    `RFor` (via the static-unrolling lowering) means those theorems now
+    `RFor` (via the static-unrolling lowering) means those theorems
     need an *additional* `forFree` precondition to retain their proof
     obligations. -/
 def forFree : LowCT → Bool
@@ -1185,20 +1184,20 @@ def forFree : LowCT → Bool
   | .RLetZero _ _ body | .RLetU64Zero _ body | .RWhileNz _ body =>
       forFree body
   | .RFor _ _ _ => false
-  -- Stage 1a (2026-07-01): runtime loop is a for-loop; excluded like `RFor`.
+  -- runtime loop is a for-loop; excluded like `RFor`.
   | .RForRuntime _ _ _ => false
   | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
-  -- Phase R5: runtime-valued limb store has no RFor inside.
+  -- runtime-valued limb store has no RFor inside.
   | .RLimbStoreExpr _ _ _ => true
   | .RBlock body => forFree body
   | .RFnDef _ _ _ body cont => forFree body && forFree cont
   | .RFnCall _ _ _ => true
   | .RTupleLoad _ _ _ => true
-  -- Phase Ext (2026-05-12): TArr/SExpr — no RFor inside, treat as for-free.
+  -- TArr/SExpr — no RFor inside, treat as for-free.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => true
-  -- Phase DD (2026-05-28): literal-index variants — no RFor inside.
+  -- literal-index variants — no RFor inside.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
-  -- Phase E2 (2026-05-29): dst-threaded leaf call has no RFor inside.
+  -- dst-threaded leaf call has no RFor inside.
   | .RCallDstThreaded _ _ _ => true
 
 /-- Minimum fuel for `translateCmd env (toJasminCmd c) sid fuel` to not return `.fail`.
@@ -1229,26 +1228,26 @@ def jasminFuel : LowCT → Nat
   -- the trailing list, plus the body's own fuel).  Add `1` for the
   -- terminating empty-list step.  Conservatively: `n * (jasminFuel body + 2) + 1`.
   | .RFor _ n body       => n * (jasminFuel body + 2) + 1
-  -- Stage 1a: runtime loop is rejected to `[]`; fuel value is irrelevant.
+  -- runtime loop is rejected to `[]`; fuel value is irrelevant.
   | .RForRuntime _ _ body => jasminFuel body + 1
-  -- Phase G/H: single-instruction commands like RCall.
+  -- `RCallN`/`RSelect`: single-instruction commands like RCall.
   | .RCallN _ _ _        => 2
   | .RSelect _ _ _ _     => 2
-  -- Phase L: emits no Jasmin code.
+  -- emits no Jasmin code.
   | .RAssert _           => 1
-  -- Phase M: scope inherits the body's fuel.
+  -- scope inherits the body's fuel.
   | .RBlock body         => jasminFuel body
-  -- Phase C: fnDef = body fuel + cont fuel (both translated inline).
+  -- fnDef = body fuel + cont fuel (both translated inline).
   | .RFnDef _ _ _ body cont => jasminFuel body + jasminFuel cont
   | .RFnCall _ _ _       => 2
-  -- Phase I: tuple component load translates to `[]`.
+  -- tuple component load translates to `[]`.
   | .RTupleLoad _ _ _ => 1
-  -- Phase RND (2026-05-30): dynamic-index array + SExpr now lower to a
+  -- dynamic-index array + SExpr lower to a
   -- single `Cassgn` each (length 1), so fuel must exceed 1.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => 2
-  -- Phase DD (2026-05-28): literal-index variants translate to a single Cassgn.
+  -- literal-index variants translate to a single Cassgn.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => 2
-  -- Phase E2 (2026-05-29): single-Ccall instruction lowering.
+  -- single-Ccall instruction lowering.
   | .RCallDstThreaded _ _ _ => 2
 
 /-- `callFree c = true` iff `c` contains no `RCall`, `RCloneCall`, or `RLimbStore`.
@@ -1261,26 +1260,26 @@ def callFree : LowCT → Bool
   | .RFor _ _ body | .RForRuntime _ _ body => callFree body
   | .RCall _ _ _ | .RCallSwap _ _ _ _
   | .RCloneCall _ _ _ _ _ _ | .RLimbStore _ _ _ => false
-  -- Phase R5: mirror `RLimbStore` (conservatively non-call-free).
+  -- mirror `RLimbStore` (conservatively non-call-free).
   | .RLimbStoreExpr _ _ _ => false
-  -- Phase G: multi-out call IS a call.
+  -- multi-out call IS a call.
   | .RCallN _ _ _ => false
-  -- Phase H: cmov is not a call.
+  -- cmov is not a call.
   | .RSelect _ _ _ _ => true
-  -- Phase L: assertion has no runtime effect.
+  -- assertion has no runtime effect.
   | .RAssert _ => true
-  -- Phase M: scope inherits.
+  -- scope inherits.
   | .RBlock body => callFree body
-  -- Phase C: fnDef inherits via body && cont; fnCall IS a call.
+  -- fnDef inherits via body && cont; fnCall IS a call.
   | .RFnDef _ _ _ body cont => callFree body && callFree cont
   | .RFnCall _ _ _ => false
-  -- Phase I: not yet covered by simulation theorem.
+  -- outside the simulation theorem's scope.
   | .RTupleLoad _ _ _ => false
-  -- Phase Ext (2026-05-12): TArr/SExpr — not yet covered by simulation theorem.
+  -- TArr/SExpr — outside the simulation theorem's scope.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
-  -- Phase DD (2026-05-28): literal-index variants — not yet covered.
+  -- literal-index variants — outside the simulation theorem's scope.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
-  -- Phase E2 (2026-05-29): dst-threaded IS a call (analogous to RCall).
+  -- dst-threaded IS a call (analogous to RCall).
   | .RCallDstThreaded _ _ _ => false
 
 /-- **Scalar invariant**: the heap correctly encodes `rs.rsScalar` at `sword U64` locations. -/
@@ -1305,28 +1304,28 @@ def scalarSetsSmall : LowCT → Bool
   -- we additionally require `n < 2^64` (the loop bound itself).  All
   -- intermediate counter values are then automatically `< 2^64`.
   | .RFor _ n body => decide (n < 2^64) && scalarSetsSmall body
-  -- Stage 1a: runtime loop rejected; recurse into the body for totality.
+  -- runtime loop rejected; recurse into the body for totality.
   | .RForRuntime _ _ body => scalarSetsSmall body
   | .RScalarSet _ v => decide (v < 2^64)
-  -- Phase G/H/L: no RScalarSet inside.
+  -- `RCallN`/`RSelect`/`RAssert`: no RScalarSet inside.
   | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
-  -- Phase M: scope inherits.
+  -- scope inherits.
   | .RBlock body => scalarSetsSmall body
-  -- Phase C.
+  -- Helper definition.
   | .RFnDef _ _ _ body cont => scalarSetsSmall body && scalarSetsSmall cont
   | .RFnCall _ _ _ => true
-  -- Phase I: no RScalarSet inside.
+  -- no RScalarSet inside.
   | .RTupleLoad _ _ _ => true
-  -- Phase Ext (2026-05-12): RScalarSetExpr writes a scalar via an SExpr
+  -- RScalarSetExpr writes a scalar via an SExpr
   -- evaluation; we approximate the bound check by `true` (the SExpr.eval
   -- is in Nat, so unbounded — a separate `sexprBoundedSmall` predicate
   -- would refine this when the simulation case lands).
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => true
-  -- Phase R5: runtime-valued limb store has no RScalarSet inside.
+  -- runtime-valued limb store has no RScalarSet inside.
   | .RLimbStoreExpr _ _ _ => true
-  -- Phase DD (2026-05-28): literal-index variants have no RScalarSet inside.
+  -- literal-index variants have no RScalarSet inside.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
-  -- Phase E2 (2026-05-29): dst-threaded leaf call has no RScalarSet inside.
+  -- dst-threaded leaf call has no RScalarSet inside.
   | .RCallDstThreaded _ _ _ => true
 
 end HeapBridge
@@ -1432,7 +1431,7 @@ def LeafImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
 /-- U64 word location ID and tower (sarr) location ID are always disjoint:
     `encodeSType (.sword .U64)` is odd while `encodeSType (.sarr n)` is even.
     Thanks to the parity-based encoding, this lemma works for any TowerType
-    byteSize (including the Phase D/E/I/K constructors with free `Nat`s). -/
+    byteSize (including the constructors with free `Nat`s). -/
 lemma wordLoc_id_ne_towerLoc_id (sid : ScopeId) (x y : String) (t : TowerType) :
     varLocId sid { vname := x, vtype := .sword .U64 } ≠
     varLocId sid { vname := y, vtype := .sarr t.storageBytes } := by
@@ -1541,7 +1540,7 @@ lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < jasminFue
   | RFnCall f dests args => simp [toJasminCmd_RFnCall, jasminFuel]
   | RTupleLoad _ _ _ => simp [toJasminCmd_RTupleLoad, jasminFuel]
   | RArrStore arr _ _ =>
-    -- element-width-driven (#261): one `Cassgn` in either branch.
+    -- element-width-driven: one `Cassgn` in either branch.
     simp only [toJasminCmd_RArrStore, jasminFuel]
     cases arrElemWS arr <;> simp
   | RArrLoad _ src _ =>
@@ -1841,9 +1840,9 @@ lemma callFree_toJasmin_newSid
   | RCloneCall _ _ _ _ _ _ => simp [callFree] at hCF
   | RLimbStore _ _ _ => simp [callFree] at hCF
   | RLimbStoreExpr _ _ _ => simp [callFree] at hCF
-  -- Phase G: RCallN IS a call.
+  -- RCallN IS a call.
   | RCallN _ _ _ => simp [callFree] at hCF
-  -- Phase H: RSelect emits a Copn, which leaves newSid unchanged.
+  -- RSelect emits a Copn, which leaves newSid unchanged.
   | RSelect dst sel src0 src1 =>
     cases fuel with
     | zero => simp [translateCmd]
@@ -1851,23 +1850,23 @@ lemma callFree_toJasmin_newSid
       cases n with
       | zero => simp [toJasminCmd_RSelect, translateCmd, translateInstrR]
       | succ m => simp [toJasminCmd_RSelect, translateCmd, translateInstrR]
-  -- Phase L: RAssert emits []; trivially preserves newSid.
+  -- RAssert emits []; trivially preserves newSid.
   | RAssert label =>
     simp [toJasminCmd_RAssert, translateCmd]
     cases fuel <;> simp [translateCmd]
-  -- Phase M: RBlock forwards to body.
+  -- RBlock forwards to body.
   | RBlock body ih =>
     simp only [callFree] at hCF
     exact ih hCF sid fuel
-  -- Phase C.
+  -- Helper definition.
   | RFnDef _ _ _ body cont ihBody ihCont =>
     simp only [callFree, Bool.and_eq_true] at hCF
     simp only [toJasminCmd_RFnDef, translateCmd_append_newSid, ihBody hCF.1 sid fuel,
                ihCont hCF.2 sid _]
   | RFnCall _ _ _ => simp [callFree] at hCF
-  -- Phase I: RTupleLoad excluded by callFree.
+  -- RTupleLoad excluded by callFree.
   | RTupleLoad _ _ _ => simp [callFree] at hCF
-  -- Phase Ext (2026-05-12): TArr/SExpr excluded by callFree.
+  -- TArr/SExpr excluded by callFree.
   | RArrStore _ _ _ => simp [callFree] at hCF
   | RArrLoad _ _ _ => simp [callFree] at hCF
   | RArrStoreLit _ _ _ => simp [callFree] at hCF
@@ -2452,16 +2451,16 @@ theorem rustExecSimulates
 
   | limbStore _ _ _ _ => simp [callFree] at hCF
 
-  -- Phase R5: `whileFree (.RLimbStoreExpr ..) = false`, so unreachable under `hWf`.
+  -- `whileFree (.RLimbStoreExpr ..) = false`, so unreachable under `hWf`.
   | limbStoreExpr _ _ _ _ => simp [whileFree] at hWf
 
-  -- Phase G/H/L/M: not yet covered by the simulation theorem;
+  -- `RCallN`/`RSelect`/`RAssert`/`RBlock`: outside the simulation theorem's scope;
   -- `whileFree` is gated false for these constructors so this case
   -- is unreachable under `hWf`.
   | callN _ _ _ _ => simp [whileFree] at hWf
   | selectFalse _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectTrue _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase L.1: RAssert lowers to `[]`; semantics is identity.
+  -- RAssert lowers to `[]`; semantics is identity.
   -- Same shape as `skip`.
   | assert _ _ =>
     obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 1 :=
@@ -2469,7 +2468,7 @@ theorem rustExecSimulates
     exact ⟨heap,
       by simp [toJasminCmd_RAssert, translateCmd, CatCrypt.Deep.eval_ret, SPComp.pure_def],
       hInv, hSInv, hBounded⟩
-  -- Phase M.1: RBlock body — toJasminCmd inlines the body, so the
+  -- RBlock body — toJasminCmd inlines the body, so the
   -- simulation step is just the body IH.
   | block body rs0 rs0' hBody ih =>
     simp only [whileFree] at hWf
@@ -2479,11 +2478,11 @@ theorem rustExecSimulates
     simp only [toJasminCmd_RBlock]
     exact ih fuel hWf hCF hSSS hFuel sid heap hInv hSInv hBounded
   | tupleLoad _ _ _ _ => simp [whileFree] at hWf
-  -- Phase Ext (2026-05-12): TArr/SExpr operational semantics — excluded by
+  -- TArr/SExpr operational semantics — excluded by
   -- `whileFree` (returns `false` for these constructors).
   | arrStore _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoad _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase DD (2026-05-28): literal-index variants excluded by `whileFree`.
+  -- literal-index variants excluded by `whileFree`.
   | arrStoreLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoadLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
@@ -2748,9 +2747,9 @@ lemma rustCloneCallSimulates
         rsClone rs' hCall sid heap1 hInv1 hSInv1 hBounded1
     exact ⟨heap2, hEvalCall, hInv2, hSInv2, hB2⟩
 
-/-! ### Phase G.1 / H.1 — simulation lemmas for the call/select constructors
+/-! ### Simulation lemmas for the call/select constructors
 
-The LowCT constructors `RCallN` (Phase G) and `RSelect` (Phase H)
+The LowCT constructors `RCallN` and `RSelect`
 each get a standalone simulation lemma mirroring the
 `rustCallSimulates` / `rustLimbStoreSimulates` pattern:
 
@@ -2792,7 +2791,7 @@ def CallNImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
         heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
         heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
 
-/-- **Phase G.1 — Standalone RCallN simulation**.  The emitted Jasmin `Ccall`
+/-- **Standalone RCallN simulation**.  The emitted Jasmin `Ccall`
     lands each destination on the value the `callN` rule writes there, which is
     what `CallNImplOk` supplies; the scalar heap is untouched on both sides. -/
 lemma rustCallNSimulates
@@ -2825,7 +2824,7 @@ lemma rustCallNSimulates
     · show ScalarsBounded (callNUpdate _ _ _ _ 0 dests rs)
       simpa [ScalarsBounded, callNUpdate_rsScalar] using hBounded
 
-/-- **Phase H.1 — Select oracle hypothesis**: the translated
+/-- **Select oracle hypothesis**: the translated
     `.Copn [dst] .AT_none (.Oasm { name := "CMOV" }) [sel; src0; src1]`
     instruction reads `sel`'s scalar value, copies the appropriate
     source's tower value into `dst`, and leaves all other locations
@@ -2861,7 +2860,7 @@ def SelectImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
         heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
         heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
 
-/-- **Phase H.1 — Standalone RSelect simulation**.  Real conditional-
+/-- **Standalone RSelect simulation**.  Real conditional-
     copy semantics: post-state writes `dst` to either `src0` or `src1`
     depending on the runtime scalar `sel`. -/
 lemma rustSelectSimulates
@@ -3001,7 +3000,7 @@ theorem rustExecSimulates_emptyInlineRegistry
   exact rustExecSimulates N leafSpec env fuel c rs rs' hWf hCF hSSS hFuel hExec
     sid heap hInv hSInv hBounded
 
-/-- **Helper lemma (D4.2 closure)**: under the existing `callFree`
+/-- **Helper lemma (inline-registry agreement)**: under the `callFree`
 precondition, `toJasminCmdWithInlines` agrees with `toJasminCmd` for
 every registry, because `RCall` (the only constructor whose translation
 depends on `env`) cannot occur in a call-free program.
@@ -3066,39 +3065,39 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
   | RLimbStoreExpr loc idx e =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase G: RCallN IS a call → contradiction with callFree = true.
+  -- RCallN IS a call → contradiction with callFree = true.
   | RCallN f dests args =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase H/L: RSelect / RAssert are call-free; identical code.
+  -- RSelect / RAssert are call-free; identical code.
   | RSelect dst sel src0 src1 => intro _; rfl
   | RAssert label => intro _; rfl
-  -- Phase M: RBlock forwards to body recursively.
+  -- RBlock forwards to body recursively.
   | RBlock body ih =>
       intro hCF
       simp only [callFree] at hCF
       simp [toJasminCmdWithInlines, toJasminCmd, ih hCF]
-  -- Phase C: fnDef = body && cont; both inherit.
+  -- fnDef = body && cont; both inherit.
   | RFnDef _ _ _ body cont ihBody ihCont =>
       intro hCF
       simp only [callFree, Bool.and_eq_true] at hCF
       simp [toJasminCmdWithInlines, toJasminCmd, ihBody hCF.1, ihCont hCF.2]
-  -- Phase C: fnCall IS a call → contradiction.
+  -- fnCall IS a call → contradiction.
   | RFnCall _ _ _ =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase I: RTupleLoad excluded by callFree → contradiction.
+  -- RTupleLoad excluded by callFree → contradiction.
   | RTupleLoad _ _ _ =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase Ext (2026-05-12): TArr/SExpr excluded by callFree → contradiction.
+  -- TArr/SExpr excluded by callFree → contradiction.
   | RArrStore _ _ _ =>
       intro hCF
       simp [callFree] at hCF
   | RArrLoad _ _ _ =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase DD (2026-05-28): literal-index variants excluded by callFree.
+  -- literal-index variants excluded by callFree.
   | RArrStoreLit _ _ _ =>
       intro hCF
       simp [callFree] at hCF
@@ -4104,7 +4103,6 @@ def ppTowerType : TowerType → String
   | .TU32    => "u32"
   | .TFp25519 => "fp25519"
   | .TFp25519_64 => "fp25519_64"
-  -- Phase D/E/I/K (2026-05-03):
   | .TFpL25519 => "fpL25519"
   | .TFpP256 => "fpP256"
   | .TFp25519_4Bounded b => "fp25519_4(<2^" ++ toString b ++ ")"
@@ -4113,7 +4111,7 @@ def ppTowerType : TowerType → String
   | .TTuple a b => "(" ++ ppTowerType a ++ "," ++ ppTowerType b ++ ")"
   | .TBytes n => "u8[" ++ toString n ++ "]"
   | .TArr n t => ppTowerType t ++ "[" ++ toString n ++ "]"
-  -- Phase L (2026-05-22): polynomial-mod-q pretty forms.
+  -- Polynomial-mod-q pretty forms.
   | .TPolyMod q n => "poly_mod[" ++ toString q ++ "," ++ toString n ++ "]"
   | .TPolyVec q n k =>
       "polyvec[" ++ toString q ++ "," ++ toString n ++ "," ++ toString k ++ "]"

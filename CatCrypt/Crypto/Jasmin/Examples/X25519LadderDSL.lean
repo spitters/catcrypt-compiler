@@ -15,14 +15,14 @@ scalar multiplication, authored in the DSL and unrolled at elaboration
 time. This parallels the hand-written VIR program in
 `CatCrypt/Crypto/SecureCompilation/VIR/X25519EmitMLIR.lean`, but at the
 `LowCT` surface level — so it flows through the verified
-`translate : LowCT → CryptoSSA` pipeline.
+`translateDialectControl : LowCT → Com catCryptDialect` pipeline.
 
 ## Encoding
 
 `TowerType.TFp25519` encodes to `CryptoTy.memref 5` (5×u64 = 40 bytes),
 matching Curve25519's packed limb layout and the `Fp[5]` used by the
 fiat-crypto shim (`catcrypt-bench/src/fiat_shim.c`). This means the
-DSL output translates cleanly through `LowCTToCryptoSSA.translate`
+DSL output translates through `translateDialectControl`
 into memrefs of the correct shape for the existing MLIR pipeline.
 
 ## Structure
@@ -36,15 +36,14 @@ five underlying field ops (`fp_add`, `fp_sub`, `fp_mul`, `fp_sqr`,
 `ladder255` — the 255-round unrolled ladder. Elaboration reduces the
 `for` to 255 copies of the step.
 
-## `cswap_fp` 2-output handling (resolved 2026-05-01)
+## `cswap_fp` 2-output handling
 
 Mathematically `cswap(bit, a, b)` mutates *both* `a` and `b`.  The
-DSL's original `rc_call` constructor only had one destination, which
-forced an awkward `cswap_fp(&mut a, &b, &swap)` emit that Rust would
-reject.
+single-destination `rc_call` constructor would give a
+`cswap_fp(&mut a, &b, &swap)` emit that Rust rejects.
 
-Resolved by adding `RCallSwap` to `LowCT.lean` and the matching
-`rc_call_swap` helper in `LowCTDSL.lean`.  The emitter (`RustEmit.
+`RCallSwap` in `LowCT.lean` and the matching `rc_call_swap` helper in
+`LowCTDSL.lean` handle it.  The emitter (`RustEmit.
 lean::ppLowCT`) renders it as
 `cswap_fp(&mut a, &mut b, &swap)`, matching the natural Rust
 signature `pub fn cswap_fp(a: &mut Fp25519, b: &mut Fp25519,
@@ -52,8 +51,8 @@ swap: &Fp25519)`.  Used here for the four cswap sites in
 `ladderStep`.
 
 (NOTE: borrowOk for `RCallSwap` — `dest1 ≠ dest2`, neither in
-args — is asserted by the constructor's intent but not yet
-formally proved as a `Decidable` predicate.)
+args — is the constructor's intended invariant; it is not stated as a
+`Decidable` predicate.)
 -/
 
 @[expose] public section
@@ -93,7 +92,7 @@ appropriately placed.
 def ladderStep : Rcm Unit := do
   -- Conditional swap (in-place): leaf mutates BOTH x2 and x3 (and
   -- z2/z3) per the ct-cswap semantics. The 2-output AST constructor
-  -- `RCallSwap` (added 2026-05-01 to support exactly this) emits
+  -- `RCallSwap` emits
   -- `cswap_fp(&mut x2, &mut x3, &swap)` — the leaf gets two `&mut
   -- Fp25519` args and a `&Fp25519` swap mask.
   rc_call_swap "cswap_fp" (loc "x2" TFp25519) (loc "x3" TFp25519)
@@ -148,7 +147,7 @@ def ladder255 : LowCT := rustcmd| do
   rc_let "z3" TFp25519
   rc_let "swap" TFp25519  -- current bit, broadcast to a memref for cswap_fp
   -- Per-step scratch names. Each iteration rebinds these via `rc_let`;
-  -- LowCT semantics treat that as shadowing at the CryptoSSA level.
+  -- the SSA translation treats that as shadowing.
   rc_let "A" TFp25519
   rc_let "B" TFp25519
   rc_let "C" TFp25519
@@ -176,9 +175,8 @@ def ladder255 : LowCT := rustcmd| do
     ladderStep
 
 /-- Elaboration check: the 255-iteration unroll completes without
-    hitting Lean's recursion-depth limit. Translate-roundtrip (via
-    `LowCTToCryptoSSA.translate`) is tested in a separate file
-    where the import scope is clean. -/
+    hitting Lean's recursion-depth limit. The translation through
+    `translateDialectControl` is not checked here. -/
 example : True := by trivial
 
 /-! ## 3. Standalone ladder-step entry point

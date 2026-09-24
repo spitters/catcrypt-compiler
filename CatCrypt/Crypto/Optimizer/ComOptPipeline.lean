@@ -10,14 +10,13 @@ public import CatCrypt.Crypto.Optimizer.CopyProp
 public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
-# The `Com → Com` optimizer pipeline (#555/#566 integration)
+# The `Com → Com` optimizer pipeline
 
-This file *rounds out and wires together* the three newly-landed,
-denotation-preserving `Com → Com` passes over the typed VIR `jasminDialect`
-into a single pipeline, with one end-to-end denotation-preservation
-meta-theorem.
+This module composes three denotation-preserving `Com → Com` passes over the
+typed VIR `jasminDialect` into a single pipeline, with one end-to-end
+denotation-preservation meta-theorem.
 
-The composed passes (each already carries its own genuine, non-`rfl`
+The composed passes (each already carries its own non-`rfl`
 preservation proof; we reuse those lemmas verbatim and do **not** restate
 them):
 
@@ -28,13 +27,13 @@ them):
   register aliases (`let z = a ||| a` redirects uses of `z` to `a`). Lemma
   `copyProp_denote`.
 * `comDCE`   (`Optimizer/ComDCE.lean`) — trailing dead-let elimination (drops
-  the now-dead copy bindings). Lemma `comDCE_denote`.
+  the dead copy bindings). Lemma `comDCE_denote`.
 
 ## The pipeline
 
 `comOptPipeline := comDCE ∘ copyProp ∘ peepCom`: the classic clean-up
 sequence — peephole-canonicalise first, then copy-propagate (which redirects
-uses of register copies past their now-dead binders), then drop the dead
+uses of register copies past their binders, which become dead), then drop the dead
 copy bindings with DCE.
 
 All three passes share the identical signature
@@ -46,7 +45,7 @@ adapter.
 
 `comOptPipeline_denote : (comOptPipeline c).denote V = c.denote V`, obtained by
 `Eq.trans`-chaining the three component `*_denote` lemmas. **Not `rfl`** — it
-inherits the genuine inductive preservation proofs of the components.
+inherits the inductive preservation proofs of the components.
 
 We also record `comOptPipeline_ctSafe`: the whole pipeline preserves
 constant-time safety (the dialect is branch-free; via the components'
@@ -82,7 +81,7 @@ def comOptPipeline {Γ : Ctxt jasminDialect} {t : JasminTy} :
 /-- **End-to-end denotation preservation for the optimizer pipeline.**
 `(comOptPipeline c).denote V = c.denote V` for every valuation `V`. Obtained by
 transitively chaining the three component preservation lemmas
-(`comDCE_denote`, `copyProp_denote`, `peepCom_denote`) — each itself a genuine
+(`comDCE_denote`, `copyProp_denote`, `peepCom_denote`) — each itself an
 induction over the `Com` let-chain, **not** `rfl`. -/
 theorem comOptPipeline_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
@@ -116,7 +115,7 @@ We exercise the pipeline on a program that hits all three passes in sequence:
     ret z                -- returns the copy; d is a dead trailing binder
 
 Peephole canonicalises `x - x ↦ x ^^^ x`; copy propagation redirects the
-return through the `z = x ||| x` alias; DCE drops the now-dead trailing
+return through the `z = x ||| x` alias; DCE drops the dead trailing
 binder. Denotation is preserved end-to-end (both map `x` to `x`). -/
 
 /-- The pipeline demo: `let z = x|||x; let d = x-x; ret z`. -/

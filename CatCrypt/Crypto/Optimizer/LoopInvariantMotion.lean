@@ -56,7 +56,7 @@ recomputes `pre acc`, but `pre acc = pre init` by invariance — so the two fold
 agree pointwise and therefore agree on the whole `range n` iteration. That is
 `licm_denote`.
 
-This is a *genuinely sound transform*, not the identity: `licm` produces a new
+This is a *sound transform* that is not the identity: `licm` produces a new
 `JForProg` whose body is `body c · ` (the hoisted-out `pre` is gone from the
 per-iteration work; it is evaluated once into `c`). The denotation theorem
 reuses the `JForProgUnroll` fold-congruence reasoning (`List.range`/`foldl`),
@@ -68,7 +68,7 @@ exactly the existing bounded-loop denotation machinery.
   `step = fun acc => body (pre acc) acc`. This is the simplest sound case — a
   single leading loop-invariant value lifted to the prelude — and it is a
   proven seed, not a stub: `licm_denote` is a real equality of denotations
-  under the genuine invariance hypothesis.
+  under the invariance hypothesis.
 * Soundness rests *only* on `Invariant pre`. We do not assume anything about
   `body`; in particular `body` may still read `acc` freely (that is the
   loop-carried part that must stay inside the loop).

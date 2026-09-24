@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.Util.ZMod127
 public import CatCrypt.Crypto.Util.ZMod127
 
 /-!
-# #607 fan-out: the emitted GF(127) multiply leaf EQUALS the abstract field op
+# The emitted GF(127) multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxGf127.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `gf127MulFold` — the Mersenne `128 ≡ 1`
@@ -30,7 +30,7 @@ of the field elements the inputs encode.
 
 The product `a · b ≤ 126² = 15876 < 2⁶⁴` never wraps, so the `BitVec` multiply is
 the integer multiply, and `(a·b) % 127` projected to `ZMod 127` is the field
-product `↑a · ↑b`. No `decide`/`native_decide` here — it is the genuine prime-field
+product `↑a · ↑b`. No `decide`/`native_decide` here — it is the prime-field
 reduce identity, lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
 
@@ -56,7 +56,7 @@ theorem gf127_toNat_mul (a b : BitVec 64) (ha : a < 127#64) (hb : b < 127#64) :
   rw [BitVec.toNat_mul]
   exact Nat.mod_eq_of_lt hlt
 
-/-- **GF(127) emit-form ↔ abstract `Zq127` field tie (#607 fan-out).** On the
+/-- **GF(127) emit-form ↔ abstract `Zq127` field tie.** On the
     residue domain `a, b < 127`, the emitted Mersenne-fold leaf `gf127MulFold` —
     read back as a `Zq127 = ZMod 127` field element via `Zq127.fromNat ∘ toNat` —
     equals the `Zq127` field product of the elements the inputs encode. Composed

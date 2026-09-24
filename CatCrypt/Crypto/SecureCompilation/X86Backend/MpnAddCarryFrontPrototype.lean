@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Width-`N` `mpn_add_n` with-carry FRONT feasibility prototype (task #20)
+# Width-`N` `mpn_add_n` with-carry FRONT feasibility prototype
 
 Feasibility prototype: a runtime-`N` GMP-ABI `mpn_add_n` (`res[i] = a[i] + b[i]
 + carry`, carry threaded across iterations) FRONT-COMPILED via
@@ -45,10 +45,10 @@ or via `SLt`).
 * This is a **feasibility prototype**: it establishes that the covered
   carry-threading body front-compiles (`rolledForLoopNRt` returns `some`,
   `addRtProg_isSome`), wrapping into a `ComL.forLoopNRt` (one body copy,
-  `jne` back-edge, counter seeded from the runtime `n` register). It does NOT yet
-  wire the owned `.s` emission or the external `libgmp` byte-KAT — that flip
-  (re-sourcing `MpnLoopEmit`'s hand-authored `addLoopBody`/`subLoopBody`
-  through this front) is the follow-up.
+  `jne` back-edge, counter seeded from the runtime `n` register). The owned `.s`
+  emission, the external `libgmp` byte-KAT and the re-sourcing of
+  `MpnLoopEmit`'s hand-authored `addLoopBody`/`subLoopBody` through this front
+  are outside this module.
 * **Carry-in seed ABI wrinkle** (plumbing, not a front gap): `rolledForLoopNRt`
   needs `init` to be an in-scope `Ctxt.Var` of `mapTy accCTy = .reg 64`. GMP's
   `mpn_add_n(rp, ap, bp, n)` has no carry-in argument, so this prototype adds a

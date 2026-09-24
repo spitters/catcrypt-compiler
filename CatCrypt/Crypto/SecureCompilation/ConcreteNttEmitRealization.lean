@@ -40,34 +40,34 @@ For ML-KEM (`nttPolyMulMlkem = nttPolyMul 3329 256`) the leaf string is therefor
 
 The compiler's ML-DSA pass is `nttPolyMulMldsa = nttPolyMul 8380417 256`, so its
 leaf string is `"ntt_poly_mul_8380417_256"` — at degree `n = 256`. But ML-DSA
-operates in the **negacyclic** ring `Z_8380417[X]/(X²⁵⁶+1)`; the genuine ML-DSA
+operates in the **negacyclic** ring `Z_8380417[X]/(X²⁵⁶+1)`; the ML-DSA
 NTT operation is the *negacyclic* convolution (`ConcreteNttInstances.mldsa_ndft_negaConv`,
 twist root `ψ = 1753`), not the cyclic `X²⁵⁶−1` convolution. The generic seam in
 `GenericNttEmitValue` exposes only a **cyclic** emit-realization
 (`NttKernelRealizes` is `cyclicConv n …`, and `nttEmitRealizes_of_cyclicConv` is
-the cyclic discharge). There is no negacyclic emit-realization seam yet. So the
+the cyclic discharge); it has no negacyclic emit-realization seam. So the
 cyclic discharge would be the *wrong* value content for the compiler's
 `ntt_poly_mul_8380417_256` leaf — forcing it would be a semantic mismatch, not a
 discharge.
 
 For completeness we record the two ML-DSA *cyclic* realizations that **are**
-genuine instantiations of the generic seam — at parameters where a primitive
+instantiations of the generic seam — at parameters where a primitive
 root of the right order exists:
 
 * `mldsa_cyclic_nttEmitRealizes_of_kernel` at `n = 512`, `ω = 1753` (a real
   primitive `512`-th root, `isPrimitiveRoot_1753_512`). This matches a
-  hypothetical `"ntt_poly_mul_8380417_512"` leaf, which the current compiler
+  hypothetical `"ntt_poly_mul_8380417_512"` leaf, which the compiler
   pass does **not** emit.
 * `mldsa_cyclic256_nttEmitRealizes_of_kernel` at `n = 256`, `ω = 1753²` (a real
   primitive `256`-th root, `isPrimitiveRoot_1753sq_256`). This is the cyclic
   `X²⁵⁶−1` statement at the ML-DSA modulus; it is *not* the negacyclic operation
   the `"ntt_poly_mul_8380417_256"` leaf computes, so the leaf string is left
-  abstract (it is a genuine cyclic emit-realization, but not the compiler's
+  abstract (it is a cyclic emit-realization, but not the compiler's
   ML-DSA leaf).
 
-The honest end-to-end deliverable of this file is therefore the ML-KEM theorem
+The end-to-end theorem of this module is therefore the ML-KEM theorem
 `mlkem_nttEmitRealizes_of_kernel`. Closing the ML-DSA compiler leaf requires a
-*negacyclic* emit-realization seam (a future addition).
+*negacyclic* emit-realization seam, which is outside this module.
 
 ## References
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA)
@@ -113,7 +113,7 @@ theorem mlkem_nttEmitRealizes_of_kernel
 /-- **Non-vacuity for the ML-KEM residual.**  A concrete `LeafSpec` built from a
     `cyclicConv`-returning realizer (with a decoder section `encode`) satisfies
     `mlkem_nttEmitRealizes_of_kernel`'s hypothesis — so the localized KAT is
-    satisfiable, not an unsatisfiable over-constraint.  The genuine cross-prover
+    satisfiable, not an unsatisfiable over-constraint.  The cross-prover
     gap is between this canonical realizer and the emitted ML-KEM kernel's real
     byte semantics. -/
 theorem mlkem_nttKernelRealizes_canonical
@@ -140,19 +140,19 @@ theorem mlkem_nttEmitRealizes_canonical
   mlkem_nttEmitRealizes_of_kernel decode _
     (mlkem_nttKernelRealizes_canonical decode encode hsection limbStore)
 
-/-! ## §2  ML-DSA cyclic realizations (genuine seam instantiations, NOT the
+/-! ## §2  ML-DSA cyclic realizations (seam instantiations, NOT the
 compiler's negacyclic `ntt_poly_mul_8380417_256` leaf)
 
 See the module docstring: the compiler's ML-DSA leaf is negacyclic at `n = 256`,
 while the generic seam is cyclic. We record the two parameter points where a
-primitive root of the matching order exists, so the cyclic discharge is genuine —
+primitive root of the matching order exists, so the cyclic discharge holds —
 but neither matches the compiler's `ntt_poly_mul_8380417_256` leaf semantics. The
 leaf strings are kept as generic parameters (not the compiler literal). -/
 
 /-- **ML-DSA cyclic NTT-multiply at `n = 512`** (real primitive `512`-th root
-    `ω = 1753`).  This is a genuine instantiation of the generic cyclic seam; it
+    `ω = 1753`).  This is an instantiation of the generic cyclic seam; it
     would match a hypothetical `"ntt_poly_mul_8380417_512"` leaf, which the
-    current compiler pass does **not** emit (it emits `…_8380417_256`). -/
+    compiler pass does **not** emit (it emits `…_8380417_256`). -/
 theorem mldsa_cyclic_nttEmitRealizes_of_kernel
     (decode : RustVal .TFp → (Fin 512 → ZMod 8380417))
     (leaf : String) (leafSpec : LeafSpec)

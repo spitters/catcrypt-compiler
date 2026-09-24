@@ -11,19 +11,17 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 /-!
 # Index-parameterized bounded loops (`JForProgIdx`) — per-round constants as a theorem
 
-`JForProgMultiOp.loop_denote_eq_multiOp` (task #R1) proves the bounded-loop
-keystone for an arbitrary **straight-line multi-op** body — but the body is
-**uniform**: it is a single `Com jasminDialect [accTy] accTy` whose only free
-variable is the loop-carried accumulator. The loop counter `i` does **not**
-appear in the body, so a uniform body cannot fold in a *different* constant each
-iteration. That is exactly why the emitted Keccak ι (`RC[round]`), SHA-2 `K[t]` /
-fixed σ shift amounts, and Poseidon2 per-round constants could, until now, only
-be certified by the FULLY-UNROLLED emission (validated against the FIPS / Plonky3
-KAT) — **not** by the loop denotation theorem, whose uniform skeleton folded in a
-*fixed* constant (e.g. `RC[0]`).
+`JForProgMultiOp.loop_denote_eq_multiOp` proves the bounded-loop theorem for an
+arbitrary **straight-line multi-op** body, but the body is **uniform**: it is a
+single `Com jasminDialect [accTy] accTy` whose only free variable is the
+loop-carried accumulator. The loop counter `i` does **not** appear in the body,
+so a uniform body cannot fold in a *different* constant each iteration. The
+emitted Keccak ι (`RC[round]`), SHA-2 `K[t]` / fixed σ shift amounts, and
+Poseidon2 per-round constants therefore fall outside that theorem, whose uniform
+skeleton folds in a *fixed* constant (e.g. `RC[0]`); the FULLY-UNROLLED emission
+is validated against the FIPS / Plonky3 KAT instead.
 
-This file closes that hole. It generalizes the loop layer so the body can see the
-loop counter `i`:
+This module generalizes the loop layer so the body can see the loop counter `i`:
 
 * `JForProgIdx accTy` — like `JForProg` but its body is an **indexed family**
   `update : Nat → Com jasminDialect [accTy] accTy`. Iteration `i` runs the body
@@ -33,13 +31,13 @@ loop counter `i`:
   emission already uses — e.g. `KeccakEmit.emitIota bs immV i` reads `RC[i]` as a
   literal operand). **No new dialect op is needed:** the index selects *which*
   `Com` body is emitted, and each body carries its own constant via the immediate
-  resolver. (Part B: least-invasive mechanism — no `JasminOp` constructor added,
-  no exhaustive-match cascade.)
+  resolver. (No `JasminOp` constructor is added, so no exhaustive match
+  changes.)
 
 * `JForProgIdx.stepI` / `denoteI` — the **index-dependent** `n`-fold semantics:
   `denoteI init = (List.range n).foldl (fun acc i => stepI i acc) init`. Unlike
   `JForProg.denote` (which folds `fun acc _ => …`, ignoring the index), this folds
-  `fun acc i => …`, so the index genuinely threads through.
+  `fun acc i => …`, so the index threads through.
 
 * `bodyStepRunI` / `loopRunI` — the concrete index-parameterized evaluator: at
   iteration `i`, run the emitted body `update i` once on the accumulator through
@@ -54,7 +52,7 @@ loop counter `i`:
   index dimension closes by a fold congruence that threads `i`.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-uniform multi-op keystone — no `sorry`, axiom-clean.
+uniform multi-op main theorem — no `sorry`, axiom-clean.
 -/
 
 @[expose] public section
@@ -101,7 +99,7 @@ def JForProgIdx.denoteI {accTy : JasminTy} (p : JForProgIdx accTy)
   (List.range p.n).foldl (fun acc i => p.stepI i acc) init
 
 /-- The fixed-index `JForProg` for iteration `i`: the uniform multi-op loop with
-    body `p.update i`. Used to reuse the uniform multi-op keystone per index. -/
+    body `p.update i`. Used to reuse the uniform multi-op main theorem per index. -/
 def JForProgIdx.atIndex {accTy : JasminTy} (p : JForProgIdx accTy) (i : Nat) :
     JForProg accTy :=
   { n := p.n, update := p.update i }
@@ -142,13 +140,13 @@ def loopRunI {accTy : JasminTy} (leafSem : LeafSem) (p : JForProgIdx accTy)
     (init : ⟦accTy⟧) : ⟦accTy⟧ :=
   (List.range p.n).foldl (fun acc i => bodyStepRunI leafSem p i acc) init
 
-/-! ## 3. Per-index step agreement, via the uniform multi-op keystone
+/-! ## 3. Per-index step agreement, via the uniform multi-op main theorem
 
 For each fixed index `i`, the body `update i` is a straight-line multi-op `Com`,
 so `JForProgMultiOp.bodyStepRun_multiOp_eq` (routed through `execCom_eq` with
 `hInj := freshName_injective`) gives `bodyStepRun (p.atIndex i) acc =
 (p.atIndex i).step acc = p.stepI i acc`. No `freshName` injectivity is carried;
-it is discharged inside R1. -/
+it is discharged inside `bodyStepRun_multiOp_eq`. -/
 
 /-- The per-index straight-line discipline: every body `update i` is
     `StraightLine` (each binder non-`stackStore`). The natural per-round constant
@@ -161,17 +159,17 @@ def AllStraightLineIdx {accTy : JasminTy} (p : JForProgIdx accTy) : Prop :=
     runner computes the index-dependent step `p.stepI i`, via the uniform multi-op
     body runner agreement `JForProgMultiOp.bodyStepRun_multiOp_eq`. The only
     carried edge is the opaque-leaf `LeafAgrees`; fresh-name injectivity is
-    discharged inside R1. -/
+    discharged inside `bodyStepRun_multiOp_eq`. -/
 theorem bodyStepRunI_eq_stepI {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (p : JForProgIdx accTy)
     (hSL : AllStraightLineIdx p) (i : Nat) (acc : ⟦accTy⟧) :
     bodyStepRunI leafSem p i acc = p.stepI i acc := by
   rw [bodyStepRunI_eq_bodyStepRun]
-  -- The fixed-index uniform multi-op keystone, with `hInj` discharged inside R1.
+  -- The fixed-index uniform multi-op body runner lemma, with `hInj` discharged.
   rw [bodyStepRun_multiOp_eq hLeaf (p.atIndex i) (hSL i) acc]
   rfl
 
-/-! ## 4. The keystone: emitted indexed loop run = index-dependent `n`-fold
+/-! ## 4. The main theorem: emitted indexed loop run = index-dependent `n`-fold
        denotation
 
 A `foldl` of two index-threading functions that agree on every `(acc, i)` over
@@ -191,7 +189,7 @@ theorem foldl_congr_idx {accTy : JasminTy}
       rw [List.foldl_cons, List.foldl_cons, hfg]
       exact foldl_congr_idx f g hfg l _
 
-/-- **Keystone (index-parameterized) — the emitted indexed bounded loop denotes
+/-- **Main theorem (index-parameterized) — the emitted indexed bounded loop denotes
     the index-dependent `n`-fold semantics.** Running the emitted
     `for i = 0 to n { acc = update(i)(acc) }` `n` times from `init`, threading the
     named accumulator AND the loop counter `i` (each iteration running the
@@ -201,10 +199,10 @@ theorem foldl_congr_idx {accTy : JasminTy}
 
     This is the index-parameterized analogue of
     `JForProgMultiOp.loop_denote_eq_multiOp` (which covers only a UNIFORM body):
-    the body may now depend on the loop counter, so a per-round-varying constant
-    `RC[i]` / `K[i]` / a fixed σ shift is a genuine input to the certified
-    denotation — closing the "uniform skeleton" hole. The per-index bodies route
-    through the SAME `freshName_injective` discharge (via R1's
+    the body may depend on the loop counter, so a per-round-varying constant
+    `RC[i]` / `K[i]` / a fixed σ shift is an input to the certified
+    denotation. The per-index bodies route
+    through the SAME `freshName_injective` discharge (via `JForProgMultiOp`'s
     `bodyStepRun_multiOp_eq`); the only hypothesis is the opaque-leaf edge
     `LeafAgrees`. -/
 theorem loopRunI_eq_denoteI {accTy : JasminTy} {leafSem : LeafSem}
@@ -222,7 +220,7 @@ theorem loopRunI_eq_denoteI {accTy : JasminTy} {leafSem : LeafSem}
 
 A `JForProgIdx` whose body family is constant (`update i = body` for all `i`) is
 exactly the uniform `JForProg` of `JForProgMultiOp`. So the index-parameterized
-keystone strictly generalizes the uniform one: instantiating at a constant family
+main theorem strictly generalizes the uniform one: instantiating at a constant family
 recovers `loop_denote_eq_multiOp`. -/
 
 /-- The constant-index family: every iteration runs the same uniform body. -/
@@ -239,8 +237,8 @@ theorem denoteI_ofUniform {accTy : JasminTy} (p : JForProg accTy) (init : ⟦acc
   unfold JForProgIdx.denoteI JForProg.denote
   rfl
 
-/-- The index-parameterized keystone, instantiated at a constant family, recovers
-    the uniform multi-op keystone `loop_denote_eq_multiOp`: the emitted indexed
+/-- The index-parameterized main theorem, instantiated at a constant family, recovers
+    the uniform multi-op main theorem `loop_denote_eq_multiOp`: the emitted indexed
     loop over a uniform body denotes `JForProg.denote`. -/
 theorem loopRunI_ofUniform_eq {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (p : JForProg accTy)
@@ -274,8 +272,8 @@ We model this directly. The body lives over the **three-slot** context
 
 A round body reads `RC[i]` by `stackLoad rc idx` (a `regArith`-free, but
 `StraightLine`, op — it binds a fresh name), then folds it in by `regArith`. The
-constant is genuinely per-round (it is `table[i]`, and the loop threads the real
-`i`), so the certified denotation now carries the actual per-round-varying input.
+constant is per-round (it is `table[i]`, and the loop threads the actual `i`),
+so the certified denotation carries the per-round-varying input.
 -/
 
 /-- The three-slot body context: accumulator, loop index register, constant table.
@@ -405,13 +403,13 @@ theorem bodyStepRunT_eq_stepT {accTy : JasminTy} {nRC : Nat} {leafSem : LeafSem}
   exact execCom_eq hLeaf freshName_injective p.body hSL
     (tabSeed_agrees acc i p.table) tabVM_FreshFor
 
-/-- **Keystone (index register + constant table) — the emitted indexed loop
+/-- **Main theorem (index register + constant table) — the emitted indexed loop
     denotes the index-dependent `n`-fold semantics.** Running the emitted
     `for i = 0 to n { acc = body(acc, i, table)(acc) }` `n` times from `init`,
     threading the named accumulator, the loop index register `"idx"` and the
     loop-invariant constant table `"rc"`, equals `p.denoteT init` — the `n`-fold
     application of the table-and-index step `JForProgTab.stepT`, where iteration
-    `i` reads the **actual** per-round constant `table[i]`. This is the genuine
+    `i` reads the **actual** per-round constant `table[i]`. This is the
     per-round-constant analogue of `loop_denote_eq_multiOp`: the constant is a
     real input to the certified denotation, not a fixed `RC[0]` skeleton. Routed
     through the SAME `freshName_injective` discharge (via `execCom_eq`); the only

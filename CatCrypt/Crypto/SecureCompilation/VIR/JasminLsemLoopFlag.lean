@@ -9,20 +9,20 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 
 /-!
-# The LITERAL emitted counted loop (with `CMP`/flag) — increment 4c, gaps 1 & 2
+# The LITERAL emitted counted loop (with `CMP`/flag)
 
-`JasminLsemLoop.lean` (increment 4c) proves the counted-loop `lsem` simulation
+`JasminLsemLoop.lean` proves the counted-loop `lsem` simulation
 over `loopLR` — the `loopLcmd` back-edge in the **`dec; jnz`** form, i.e. the
 literal emitted loop with the flag-materialising `CMP nReg,#0` *dropped*
-(`loopLR_eq_loopLcmd_dropCmp`). That left two documented gaps (§"Scope", §6):
+(`loopLR_eq_loopLcmd_dropCmp`). Its §"Scope" names two gaps of that model:
 
-* **GAP 1 — the literal `CMP`/flag.** The increment-1 word model
+* **GAP 1 — the literal `CMP`/flag.** The word model
   (`JasminLsem.applyOpn`) has no `CMP`/flag arm (`applyOpn "CMP" _ = none`) and
   `Lstate` carries no flag register, so the `CMP nReg,#0` instruction the real
-  emission places *between* the body and the `jne` back-edge could not be run.
-* **GAP 2 — the `JForProg` value tie.** 4c's `LoopBodySpec.bodyStep` is an
-  abstract per-iteration transformer; it was instantiated only by the concrete
-  counter-decrement `decBodySpec`, never tied to the source loop's value
+  emission places *between* the body and the `jne` back-edge does not run there.
+* **GAP 2 — the `JForProg` value tie.** `JasminLsemLoop`'s `LoopBodySpec.bodyStep`
+  is an abstract per-iteration transformer, instantiated there by the concrete
+  counter-decrement `decBodySpec` and not tied to the source loop's value
   semantics `JForProg.step` / `JForProg.denote`.
 
 This module — **purely additive**, no edit to `JasminLsem.lean` / `Lstate` /
@@ -51,10 +51,11 @@ The **fidelity tie to the real emit** is `loopLcmdLR_run` /
 `loopLcmdF_correct_and_robust` below: we run the **literal** `loopLcmdLR` —
 `Llabel ; body ; CMP "NZ",#0 ; Lcond "NZ" top` (`loopLR_eq_loopLcmd_dropCmp`'s
 LHS, the projection of `LprogControlFlow.loopLcmd`) — under `lsemFuelF` and prove
-it halts at the same `(c+1)`-fold body data as 4c's CMP-elided `loopLR`. The
+it halts at the same `(c+1)`-fold body data as the CMP-elided `loopLR`. The
 `CMP` materialises the `zf` the `Lcond` reads; the trip count and the
-taken/not-taken decision are *identical* to 4c (same public counter tested
-against `0`), so the literal loop's run is 4c's run with the flag threaded.
+taken/not-taken decision are *identical* to `loopLR`'s (same public counter
+tested against `0`), so the literal loop's run is the `loopLR` run with the flag
+threaded.
 
 ## GAP 2: the `JForProg` value tie (= `JForProg.denote`)
 
@@ -62,7 +63,7 @@ against `0`), so the literal loop's run is 4c's run with the flag threaded.
 state encoding `encodeAcc`/`decodeAcc` carries the source accumulator value in
 the counter-paired register `"acc"`, and the body run computes `JForProg.step`
 via `JForProgSemCorrect.bodyStepRun` (the `JForProgCT.StepAgrees` edge from the
-increment-2 value bridge). Composing 4c's `loop_lsem_correct` (the literal-loop
+functional value bridge). Composing `loop_lsem_correct` (the literal-loop
 run halts at `bodyStep^[c+1]`) with `JForProgCT.loopRun_eq` /
 `JForProgSemCorrect.loop_denote_eq` gives the capstone
 `jforprog_loop_lsem_correct_and_robust`: the literal emitted loop's `lsem` run
@@ -87,7 +88,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
 
 /-! ## 1. The flag-extended program state `LstateF`
 
-Additive wrapper around the increment-4a/4b `LstateP` (lvm/lmem/lpc + lfn) with
+Additive wrapper around the labeled-semantics `LstateP` (lvm/lmem/lpc + lfn) with
 a single boolean zero-flag `zf`. No mutation of `Lstate`/`LstateP`. -/
 
 /-- The flag-extended program-level linear state: a wrapped `LstateP` plus a
@@ -235,7 +236,7 @@ theorem loopProgF_body_li (w : Nat) (fn : String) (top : LLabel) (body : List Li
 A straight-line `block` of non-`CMP` instructions run under `lsemFuelF`: each step
 takes `evalInstrF`'s delegate branch (`isCmpZero = none`, not the `NZ`-`Lcond`
 branch) and reduces to `evalInstrP`, threading `zf` unchanged. So the flag machine
-over `pre ++ block ++ post` advances exactly as the increment-4a/4b program
+over `pre ++ block ++ post` advances exactly as the labeled-semantics program
 machine, carrying the flag. The flag analogue of
 `JasminLsemLoop.lsemFuel_straight_block`. -/
 
@@ -364,7 +365,7 @@ theorem findInstr_loopEndF (w : Nat) (fn : String) (top : LLabel) (body : List L
     (pc `1+|body|`), one `lsemFuelF` step runs the `CMP "NZ",#0`: it sets `zf :=
     (⟦"NZ"⟧ == 0)` and advances to the back-edge position (pc `2+|body|`),
     leaving the store unchanged. This is the single instruction the CMP-elided
-    4c form `loopLR` drops — it recomputes the zero flag the body's trailing
+    form `loopLR` drops — it recomputes the zero flag the body's trailing
     `SUB` already produced. -/
 theorem cmp_step (w : Nat) (fn : String) (top : LLabel) (body : List LinstrR)
     (s : LstateF w) (restFuel : Nat) (hfn : s.prog.lfn = fn)
@@ -433,7 +434,7 @@ theorem backedge_fallthroughF (w : Nat) (fn : String) (top : LLabel) (body : Lis
 
 /-! ## 6. The `n`-fold loop simulation over the LITERAL loop (flag machine)
 
-The flag machine's reentry state at iteration `k` reuses 4c's `reentry`
+The flag machine's reentry state at iteration `k` reuses `JasminLsemLoop`'s `reentry`
 (`JasminLsemLoop`) for the base store, wrapped with the program `lfn` and an
 arbitrary `zf` (the back-edge decision depends only on the freshly-recomputed
 `zf := (⟦"NZ"⟧ == 0)`, never the carried one). One iteration runs the body
@@ -444,7 +445,7 @@ zero). -/
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop (LoopBodySpec reentry loopData
   LoopTerminatesIn reentry_lpc reentry_base_setpc)
 
-/-- The flag-machine reentry state at iteration `k`: 4c's base-store reentry,
+/-- The flag-machine reentry state at iteration `k`: `JasminLsemLoop`'s base-store reentry,
     wrapped at function `fn` with flag `zf`. (The carried `zf` is irrelevant: the
     back-edge reads the `zf` the `CMP` recomputes each iteration.) -/
 def reentryF {w : Nat} {body : List LinstrR} (spec : LoopBodySpec w body)
@@ -617,7 +618,7 @@ theorem loop_entry_stepF (w : Nat) (fn : String) (top : LLabel) {body : List Lin
     denotation). One `Llabel` step into the body, then `loop_lsem_iterateF`.
 
     The literal `CMP` materialises the `zf` the back-edge `Lcond NZ` reads (the
-    `jne`); the trip count and the taken/not-taken decision are identical to 4c's
+    `jne`); the trip count and the taken/not-taken decision are identical to the
     CMP-elided `loopLR` (`loopLR_eq_loopLcmd_dropCmp`). This runs the LITERAL emit. -/
 theorem loop_lsem_correctF (w : Nat) (fn : String) (top : LLabel) {body : List LinstrR}
     (spec : LoopBodySpec w body) (hnocmp : BodyNoCmp body) (sb : Lstate w) (zf : Bool)
@@ -637,7 +638,7 @@ GAP 1 (above) proves the literal loop's `lsemFuelF` run halts at
 per-iteration `spec.bodyStep`. GAP 2 instantiates `bodyStep` with the
 **value-encoded** source step: the loop body reads a source accumulator value
 from a designated register `"acc"`, applies one `JForProg.step` (via the
-increment-2 body runner `JForProgSemCorrect.bodyStepRun`, the `StepAgrees` edge),
+functional body runner `JForProgSemCorrect.bodyStepRun`, the `StepAgrees` edge),
 writes it back, and decrements the public counter `"NZ"`. The `(c+1)`-fold
 composite then *decodes* (reads `"acc"`) to `JForProg.denote` (for `p.n = c+1`),
 by `JForProgCT.loopRun_eq`. -/
@@ -694,7 +695,7 @@ theorem decodeAcc_valBodyStep_setpc {w : Nat} (bodyRun : BodyRunner (.reg w))
     decodeAcc (valBodyStep bodyRun { s with lpc := p }) = decodeAcc (valBodyStep bodyRun s) := by
   rw [decodeAcc_valBodyStep, decodeAcc_valBodyStep]; rfl
 
-/-- **The decode of 4c's `reentry` iterate is the `bodyRun`-fold.** For a
+/-- **The decode of `JasminLsemLoop`'s `reentry` iterate is the `bodyRun`-fold.** For a
     value-spec whose `bodyStep` is `valBodyStep bodyRun`, the `"acc"` register
     after `k` `reentry` steps reads the `k`-fold application of `bodyRun` to the
     initial `"acc"` (the lpc re-pin between iterations is invisible to `"acc"`). -/
@@ -716,7 +717,7 @@ theorem decodeAcc_reentry {w : Nat} (bodyRun : BodyRunner (.reg w)) {body : List
     `JForProg.denote`, and is public-counter constant-time.** For a `reg w`
     `JForProg p` with `p.n = c + 1`, a body emission whose per-iteration
     transformer is the value-encoded source step (`spec.bodyStep = valBodyStep
-    bodyRun`, `bodyRun` the increment-2 source-step runner with
+    bodyRun`, `bodyRun` the functional source-step runner with
     `JForProgCT.StepAgrees p bodyRun`), and a public trip count (`hterm`):
 
     1. *(functional, = `JForProg.denote`)* the program-level `lsemFuelF` trace over
@@ -725,7 +726,7 @@ theorem decodeAcc_reentry {w : Nat} (bodyRun : BodyRunner (.reg w)) {body : List
        state's accumulator register `"acc"` **decodes to `p.denote (decodeAcc sb)`**
        — the source loop's `n`-fold denotation;
     2. *(robust / constant-time)* the loop's back-edge tests only the public
-       counter (`#460` vartime policy); the source-level CT fact is
+       counter (vartime policy); the source-level CT fact is
        `JForProgCT.RobustlyCTSafeJForProg` (carried as a hypothesis on `p`).
 
     The literal `CMP nReg,#0` materialises the `zf` the back-edge `Lcond NZ`
@@ -763,8 +764,8 @@ and the back-edge `Lcond` are actually stepped, unlike `JasminLsem.lsemStep`
 which has no `CMP` arm), is a function of the public instruction list alone: every
 `linstrLeak` reads only the instruction's *syntax* (never the store / flag). The
 flag-`CMP` leaks `[.opn "CMP" …]` (constant), the back-edge `Lcond` leaks the
-constant `[.branch]`; the trip count `c+1` is the public static loop bound (`#460`
-vartime policy). Hence the leak is **state-independent**. -/
+constant `[.branch]`; the trip count `c+1` is the public static loop bound
+(vartime policy). Hence the leak is **state-independent**. -/
 
 /-- The flag-threaded leak trace: like `JasminLsemRobust.lsemLeak`, but threading
     the state with the flag stepper `evalInstrF` so the literal loop's `CMP` and
@@ -822,8 +823,8 @@ theorem lsemLeakF_append (P : Lprog) {w : Nat} (xs ys : List LinstrR) (s : Lstat
     instruction's `linstrLeak` reads only syntax, the flag-`CMP` leaks a constant
     `[.opn "CMP" …]`, and the back-edge `Lcond` leaks the constant `[.branch]` —
     so the whole leak is a function of the public instruction list (the public
-    body and the public trip count `c+1`, `#460` vartime policy), never of a
-    register value or the flag. The literal-loop analogue of 4c's
+    body and the public trip count `c+1`, vartime policy), never of a
+    register value or the flag. The literal-loop analogue of
     `loopLR_lsemLeak_state_independent`, over the LITERAL `CMP`-carrying loop via
     the flag stepper. The source-level CT is `JForProgCT.RobustlyCTSafeJForProg`. -/
 theorem loopLcmdLR_lsemLeakF_state_independent (w : Nat) (P : Lprog) (top : LLabel)
@@ -874,7 +875,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT (RobustlyCTSafeJForProg)
 /-- **Combined capstone (`correct ∧ value-tie ∧ robust`) over the LITERAL emitted
     counted loop.** For the `reg w` `JForProg p` with `p.n = c + 1`, body emission
     `spec` (per-iteration transformer `= valBodyStep bodyRun`, the value-encoded
-    source step; `bodyRun` the increment-2 runner with `StepAgrees`), public trip
+    source step; `bodyRun` the functional runner with `StepAgrees`), public trip
     count (`hterm`), state-independent body leak (`hLeak`), and total body
     (`hSucc`):
 
@@ -887,8 +888,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT (RobustlyCTSafeJForProg)
        steps the literal `CMP` and the back-edge `Lcond`) is the **same from any
        two states** — the back-edge `Lcond NZ` reads the `zf` the public-counter
        `CMP` set, leaking a state-independent `branch`; the body and `CMP` leak
-       only syntax. The public trip count `c + 1` is the loop bound (`#460`
-       vartime policy); the source-level CT is `RobustlyCTSafeJForProg p` (carried
+       only syntax. The public trip count `c + 1` is the loop bound
+       (vartime policy); the source-level CT is `RobustlyCTSafeJForProg p` (carried
        through). No `JasminIRToX86` edge, no `jasminc_preserves_ct`. -/
 theorem jforprog_literal_loop_correct_and_robust {w : Nat} (fn : String) (top : LLabel)
     {body : List LinstrR} (spec : LoopBodySpec w body) (hnocmp : BodyNoCmp body)

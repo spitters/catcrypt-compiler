@@ -48,7 +48,7 @@ spilling **because those passes are denotation-preserving AND only**:
    the leakage trace; it never adds a secret-dependent branch or a
    secret-dependent address.
 
-So the genuine theorem is **leakage-shape preservation**: the RA/spill rewrite
+So the theorem is **leakage-shape preservation**: the RA/spill rewrite
 preserves the *security-relevant* leakage trace — the subsequence of
 secret-dependent observations — even though it changes the full instruction
 list. Equivalently, if the source leakage trace is CT-free (no secret branch,
@@ -70,7 +70,7 @@ RV64 back-ends.
   `secret`-classified memory access.
 * **`renameBlock_preserves_leakTrace`** — register renaming leaves the leakage
   trace pointwise unchanged (the classifier ignores the register name). NON
-  vacuous: it is a genuine `blockLeakTrace (renameBlock ρ b) = blockLeakTrace b`,
+  vacuous: it is the equation `blockLeakTrace (renameBlock ρ b) = blockLeakTrace b`,
   not `X = X`, discharged from the `RALeak.leakOf_rename` law.
 * **`storesOf_leakFree` / `reloadsOf_leakFree`** — every inserted spill store /
   reload load is a **public** memory access, hence CT-leak-free. NON vacuous:
@@ -82,7 +82,7 @@ RV64 back-ends.
 * **`raRewrite_preserves_ctLeakFree`** — the composed statement: rename **then**
   spill-rewrite (the full RA output shape) preserves CT-leak-freedom.
 
-## How far CT now reaches
+## How far CT reaches
 
 These theorems establish CT preservation at the **`MachineModel` instruction /
 leakage-shape level** — the level at which the real register-allocation and
@@ -117,7 +117,7 @@ open CatCrypt.Crypto.Optimizer.GenericRegAlloc
 /-- The security class of a memory address or branch condition: a **public**
     address/condition (a function of public inputs only — e.g. a static frame
     offset, a public loop counter) leaks nothing, whereas a **secret**-derived
-    address/condition is a genuine side channel. -/
+    address/condition is a side channel. -/
 inductive AddrClass where
   /-- The address / condition is a function of public data only. -/
   | pub : AddrClass
@@ -246,7 +246,7 @@ theorem blockLeakTrace_flatMap [MachineModel I] [RALeak I]
 /-! ## 3. Register renaming preserves the leakage trace (the resident half)
 
 This is the leakage companion to `renameBlock_runBlock`
-(`GenericRegAlloc` §3): the *value-denotation* keystone shows the renamed block
+(`GenericRegAlloc` §3): the *value-denotation* theorem shows the renamed block
 computes the same values; here we show it produces the **same leakage trace**.
 Both are needed for CT-preservation — value-denotation alone permits a pass to
 change the leakage shape. -/
@@ -287,7 +287,7 @@ theorem renameBlock_preserves_ctLeakFree [MachineModel I] [RALeak I]
 /-! ## 4. The spill rewrite adds only public memory accesses (the spilled half)
 
 This is the leakage companion to the `reload_sandwich` (`GenericRegAlloc` §4):
-the *value-denotation* keystone shows the reload before a use is a no-op; here
+the *value-denotation* theorem shows the reload before a use is a no-op; here
 we show the inserted spill stores and reload loads are all **public** memory
 accesses, so they never add a secret observation to the leakage trace. -/
 
@@ -321,7 +321,7 @@ theorem storesOf_leakFree [MachineModel I] [RALeak I]
   intro e he
   rw [List.mem_map] at he
   obtain ⟨j, hj, rfl⟩ := he
-  -- `storesOf` is now a `filterMap` over the written names (one `mkSpill` per spilled
+  -- `storesOf` is a `filterMap` over the written names (one `mkSpill` per spilled
   -- destination); each produced element is a `mkSpill`, hence a public access.
   rw [List.mem_filterMap] at hj
   obtain ⟨n, _hn, hj⟩ := hj
@@ -386,7 +386,7 @@ def raRewrite [MachineModel I] [RALeak I] (ρ : String → String)
 
 A CT-leak-free source block stays CT-leak-free after the **full** register
 allocation rewrite: renaming the residents (invisible to leakage) and inserting
-spill / reload traffic (all public memory accesses). This is the genuine,
+spill / reload traffic (all public memory accesses). This is the
 **non-vacuous** CT-preservation statement for register allocation — it ranges
 over the real, non-identity instruction-list transform `raRewrite`, not the
 `applyRA p ra = p` identity at the `Com` level.
@@ -406,12 +406,12 @@ theorem raRewrite_preserves_ctLeakFree [MachineModel I] [RALeak I]
 
 /-! ## 6. Non-vacuity: a secret-indexed access IS flagged
 
-To confirm `ctLeakFree` is genuinely discriminating (not vacuously true), we
+To confirm `ctLeakFree` is discriminating (not vacuously true), we
 exhibit a one-instruction leak classifier where a secret-indexed access is
 rejected and the corresponding rewrite-preservation hypothesis is therefore
 *not* satisfiable — i.e. the theorems above have real content. We do this
 abstractly: a block whose sole instruction leaks `mem .secret` is not
-CT-leak-free, so `raRewrite_preserves_ctLeakFree`'s hypothesis genuinely
+CT-leak-free, so `raRewrite_preserves_ctLeakFree`'s hypothesis
 constrains the input. -/
 
 /-- A leakage trace containing a secret memory access is **not** CT-leak-free.
@@ -427,7 +427,7 @@ theorem secret_branch_not_ctLeakFree (rest : RALeakTrace) :
   simp [ctLeakFree, RALeakEvent.ctSafe]
 
 /-- A public memory access (e.g. a spill slot) **is** CT-leak-free.
-    Confirms the spill-traffic side is genuinely accepted. -/
+    Confirms the spill-traffic side is accepted. -/
 theorem public_mem_ctLeakFree (off : Int) :
     ctLeakFree [RALeakEvent.mem .pub off] = true := by
   simp [ctLeakFree, RALeakEvent.ctSafe]
@@ -438,7 +438,7 @@ The parametric theorems above range over `[MachineModel I] [RALeak I]`. To
 confirm that quantification is **not** vacuous (an uninstantiable class would
 make the headline a statement about nothing), we exhibit a concrete
 instruction type `DemoI` with a `MachineModel` and `RALeak`, and apply the
-headline to it. The demo also confirms the rewrite is genuinely
+headline to it. The demo also confirms the rewrite is
 **non-identity**: the spill of a value lengthens the instruction list, yet the
 leakage trace stays CT-leak-free. -/
 
@@ -516,7 +516,7 @@ theorem demoBlock_raRewrite_ctLeakFree (ρ : String → String) :
         (blockLeakTrace (raRewrite ρ [("c", Slot.spilled 16)] demoBlock)) = true :=
   raRewrite_preserves_ctLeakFree ρ _ demoBlock demoBlock_ctLeakFree
 
-/-- The RA rewrite of the demo block is genuinely **non-identity**: spilling
+/-- The RA rewrite of the demo block is **non-identity**: spilling
     `"c"` inserts a reload before the `store "c" 8` use and a spill store after
     the `load "c" 0` def, so the rewritten instruction list is strictly longer
     than the original. (Confirms the headline is not a disguised `X = X`.) -/

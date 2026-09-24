@@ -11,14 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # BIT-EXACT 16-way ChaCha20 dword quarter-round on the UNIFIED `Com jasminDialect`
 
-SIMD-dialect-unification migration of the 16-way (512-bit, `16 × u32`) ChaCha20
-quarter-round off the bespoke `Avx512DwordModel` (`ZInstr32D`/`runZBlock32D`)
-machine onto the verified `Com jasminDialect`. The pre-existing realization
-(`X86Backend/Chacha20DwordRealization.lean`) expresses the quarter-round as
-a straight-line `ZInstr32D` block (`qrBlockP32`) over the bespoke dword ZMM
-register machine (`ZState32`, `runZBlock32D`); this module re-expresses the same
-ARX data flow as a single-output `Com jasminDialect` program built only from the
-verified-dialect dword ops added for the dword migration:
+The 16-way (512-bit, `16 × u32`) ChaCha20 quarter-round on the verified
+`Com jasminDialect`. This module expresses the quarter-round's ARX data flow as
+single-output `Com jasminDialect` programs built only from the verified-dialect
+dword ops:
 
 * `JasminOp.vpackZMMd .add` — `VPADDD`, 16-lane `u32` wrapping add (`zmmPackD .add`);
 * `JasminOp.vpackZMMd .xor` — `VPXORD`, 16-lane `u32` xor (`zmmPackD .xor`);
@@ -65,8 +61,8 @@ of the pure spec `qrSpecZ`, the RFC-8439 §2.1 quarter-round written directly in
 the verified-dialect dword waist functions `zmmPackD` / `zmmRorD`. The denote
 lemmas peel one binding at a time (`peel_qr`): `Com.denote` of the straight-line
 program steps through the `vpackZMMd` / `vprordZMM` denote arms to the
-`zmmPackD` / `zmmRorD` waist calls — the carry-free packed semantics shared with
-the bespoke `ZState32` lane math (no re-proof of the lane arithmetic).
+`zmmPackD` / `zmmRorD` waist calls, the carry-free packed lane semantics (no
+re-proof of the lane arithmetic).
 
 A `#eval`-backed lane-0 cross-check against the RFC-8439 §2.1 single quarter-round
 test vector (`a=0x11111111 b=0x01020304 c=0x9b8d6f43 d=0x01234567` ↦

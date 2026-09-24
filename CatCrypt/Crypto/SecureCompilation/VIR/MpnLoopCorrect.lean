@@ -21,12 +21,12 @@ limb count of times".
 
 This module wires that loop-emit machinery to a real `mpn` kernel:
 
-* `mpnAddNStep` — a genuine `mpn_add_n` per-limb step as a `List (JInstr 64)`:
+* `mpnAddNStep` — an `mpn_add_n` per-limb step as a `List (JInstr 64)`:
   load `a[i]` and `b[i]` (register-indexed through the limb counter `i`), add
   them **with carry** (`add` then `adc`, threading the carry flag `CF` across the
   iteration via `setc`), store the result limb `r[i]`, then advance the index and
   decrement the trip counter. This is the inner pass GMP's `mpn_add_n` runs.
-* `mpnAddN_loop_iterate` — **the runtime-N keystone**: via
+* `mpnAddN_loop_iterate` — **the runtime-N main theorem**: via
   `LoopEmitBridge.runBoundedLoop_eq_iterate`, the emitted bounded back-edge loop
   run `n` times *is* the `n`-fold iterate of the per-limb step,
   `runBoundedLoop s n mpnAddNStep = (bodyStep mpnAddNStep)^[n] s`. The runtime
@@ -55,7 +55,7 @@ holding the current limb number and `scale = 8`, limb `i` of `base` is exactly
 trip counter `n` (`sub "n" 1`), so iteration `k` (counting from `i = 0`)
 processes limb `k`.
 
-## Honest scope: functional correctness + runtime-N, NOT constant-time
+## Scope: functional correctness + runtime-N, NOT constant-time
 
 GMP is **not** a constant-time library and this result does **not** claim CT. An
 `mpn` loop branches on the **public** limb count `n` (the back-edge `jne .L`
@@ -121,14 +121,14 @@ def mpnAddNStep : List (JInstr 64) :=
   , .add "i" (.imm 1)                 -- i += 1            (advance limb index)
   , .sub "n" (.imm 1) ]               -- n -= 1            (trip-counter decrement)
 
-/-! ## 2. The runtime-N keystone: the loop is the `n`-fold per-limb step -/
+/-! ## 2. The runtime-N main theorem: the loop is the `n`-fold per-limb step -/
 
 /-- **The runtime-N `mpn_add_n` loop is the `n`-fold per-limb step.**
     Instantiating `LoopEmitBridge.runBoundedLoop_eq_iterate` at `mpnAddNStep`:
     the emitted bounded back-edge counter loop run `n` times *is* the `n`-fold
     iterate of the per-limb body step `bodyStep mpnAddNStep`. The runtime limb
     count `n` is the loop trip count; the loop computes the `n`-fold per-limb add.
-    This is the GMP-ABI (runtime limb count) keystone — the looped emit, not a
+    This is the GMP-ABI (runtime limb count) main theorem — the looped emit, not a
     fixed-size kernel, expresses "process the runtime number of limbs". -/
 theorem mpnAddN_loop_iterate (s : JState 64) (n : Nat) :
     runBoundedLoop s n mpnAddNStep = (bodyStep mpnAddNStep)^[n] s :=
@@ -192,7 +192,7 @@ def katState0 : JState 64 :=
     Running the bounded loop `4` times from `katState0` writes, into the result
     base `"rp"` at limb offsets `0,8,16,24`, exactly the reference 4-limb sum
     `refResult` (carry chain propagated independently in Lean). The looped emit's
-    result limbs equal the genuine `mpn_add_n` output. Checked by `native_decide`
+    result limbs equal the `mpn_add_n` output. Checked by `native_decide`
     over the modeled memory. -/
 theorem mpnAddN_kat_n4 :
     let s := runBoundedLoop katState0 4 mpnAddNStep

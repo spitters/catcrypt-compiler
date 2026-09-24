@@ -25,7 +25,7 @@ same shape as `Bridges/ReprTransfer`'s `BinOpHomOn` / `Related` / `composeBinOp`
 The decode is the value transport, and lowering is a *forward* refinement, so the
 weakest Trocq level (map₁, no inverse, no univalence) is exactly the right one.
 
-This is **Phase 0** of the pervasive-use plan: the wrapper that turns one such
+This module defines the wrapper that turns one such
 square into a registered transport, and the **pilot** deriving the composition of
 two adjacent passes by *transitivity of transports* rather than a hand `rw`-chain.
 
@@ -40,9 +40,9 @@ two adjacent passes by *transitivity of transports* rather than a hand `rw`-chai
   `composeBinOp` analogue): two transports sharing the middle carrier,
   `S12 : g↦h along (φin₁, φout₁)` and `S23 : h↦k along (φin₂, φout₂)`, paste to a
   single transport `g↦k along (φin₁ ∘ … , φout₂ ∘ φout₁)`.  Proved by transitivity:
-  rewrite by the second square then the first.  This is the key lemma — the whole
-  plan's payoff (the ~5-pass × N-protocol chain collapses to "register each square
-  once, compose by `comp`") rests on it.
+  rewrite by the second square then the first.  This is the key lemma: with it a
+  multi-pass × N-protocol chain reduces to "register each square once, compose by
+  `comp`".
 
 ## The pilot — two adjacent passes of the ML-KEM NTT-mul route
 
@@ -63,16 +63,16 @@ The two adjacent passes are exactly the ones the hand `rw`-chain in
 `pilot_latticeNttMul_compose` derives their two-pass composition **by**
 `TransportSquare.comp` — `exact (… .comp …).related V` — *not* by a hand
 `rw`-chain.  `pilot_matches_handChain` records that the transport-derived statement
-is *definitionally* the existing hand-chained `latticeNttMul_compile_correct`, so
-the registry resolution genuinely replaces the manual `rw`.
+is *definitionally* the hand-chained `latticeNttMul_compile_correct`, so
+the registry resolution stands in for the manual `rw`.
 
 ## Scope
 
 The wrapper *composes* transports; it does not *invent* leaf semantics — the
 arithmetic leaves (the NTT round-trip agreement, the jasmin `extCall` semantics)
 are discharged upstream (`nttMul_rewrite_denote_eq`, `latticeLeafAgrees`) and the
-inherited kernel TCB is unchanged.  The pilot is a faithful re-derivation of an
-*already-proved* composition by transitivity, de-risking the Phase 1–5 rollout.
+inherited kernel TCB is unchanged.  The pilot is a faithful re-derivation of a
+proved composition by transitivity.
 
 All goals closed.
 -/
@@ -236,9 +236,9 @@ theorem pilot_latticeNttMul_compose
     (pass2_lowering_transport q n) rfl V
 
 /-- **The transport-derived statement is the hand-chained one.**  The pilot
-    composition `pilot_latticeNttMul_compose` is *definitionally* the existing
+    composition `pilot_latticeNttMul_compose` is *definitionally*
     `CompilerCorrectness.latticeNttMul_compile_correct` — same statement, same
-    type — so the registry resolution genuinely *replaces* the manual `rw`-chain
+    type — so the registry resolution stands in for the manual `rw`-chain
     (it is not a weaker or differently-shaped corollary). -/
 theorem pilot_matches_handChain
     (V : Ctxt.Valuation (LatticeDialect.inCtxt q n)) :

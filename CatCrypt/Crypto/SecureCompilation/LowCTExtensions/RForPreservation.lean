@@ -9,19 +9,18 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
-# Stage EE1 — `RFor` constructor extension lemmas
+# `RFor` constructor extension lemmas
 
-This file extends the **robust-compilation** (#95) and **CT-preservation** (#146)
-meta-theorems to cover the bounded for-loop constructor `RFor` introduced by
-Agents F/L. It is a *sibling* file: it does not edit the original #95 / #146
-proof files, but states the per-constructor obligations explicitly and
-discharges them by composing existing foundation lemmas.
+This module extends the **robust-compilation** and **CT-preservation**
+meta-theorems to cover the bounded for-loop constructor `RFor`. It states the
+per-constructor obligations explicitly and discharges them by composing the
+foundation lemmas.
 
 ## Scope
 
 Two obligations per constructor:
 
-1. **Translation preservation** — the `CProg`-free dialect front
+1. **Translation preservation** — the dialect front
    `translateDialectControl` produces a denotationally-preserving
    `catCryptDialect` prefix. For `RFor`, this is mediated by the `loopRForD`
    helper. At the foundation layer, the simulation theorem
@@ -35,7 +34,7 @@ Two obligations per constructor:
    literal* at the AST level (no runtime / secret control). Therefore
    `RFor` is **CT by construction**: the loop introduces no new secret
    branch and no new secret-dependent control flow, and CT reduces to the
-   body's CT. This is already discharged inside the global soundness
+   body's CT. This is discharged inside the global soundness
    theorem `cmdCT_sound` (case `forSucc` / `forZero`); we extract that
    discharge into a named extension lemma here.
 
@@ -52,8 +51,8 @@ The composition into the meta-theorem chain is in `CombinedExtended.lean`.
 ## References
 
 * `translateDialectControl` / `loopRForD` (dialect front, read-only).
-* `rustExecSimulatesDialect` (#95-side carrier, foundation).
-* `cmdCT_sound` (#146-side carrier, foundation).
+* `rustExecSimulatesDialect` (robust-compilation carrier, foundation).
+* `cmdCT_sound` (CT-preservation carrier, foundation).
 -/
 
 @[expose] public section
@@ -77,21 +76,17 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
 The foundational theorem `rustExecSimulatesDialect` says: if
 `translateDialectControl vm c = some o` and `RustExec N leafSpec c rs rs'`, then
 there exists `V' : HVec o.Γ'` with `RustStateInterp o.vm rs' V'`. We specialize
-it to the `RFor` constructor over the `CProg`-free dialect front.
+it to the `RFor` constructor over the dialect front.
 
 The `RFor` constructor is one of the cases of `translateDialectControl` (it
-dispatches to the `CProg`-free `loopRForD`), so the foundational theorem already
-covers it — no new proof obligation. We expose the specialization as a *named*
+dispatches to `loopRForD`), so the foundational theorem covers it — no new proof obligation. We expose the specialization as a *named*
 lemma so downstream consumers can cite the per-constructor coverage.
 -/
 
-/-- **Dialect twin — `RFor` translation preserves `RustStateInterp` over the
-    `CProg`-free front.** The `catCryptDialect` restatement of
-    `loopRFor_denotation_preserved`: a specialization of `rustExecSimulatesDialect`
-    to the bounded-for constructor over `translateDialectControl` (whose `RFor`
-    arm is the `CProg`-free `loopRForD`). Stated on the covered control fragment
-    `IsCoveredCtl body`. Neither statement nor proof names `CProg` / `CExpr` /
-    `translate`. -/
+/-- **`RFor` translation preserves `RustStateInterp` over the dialect front.**
+    A specialization of `rustExecSimulatesDialect` to the bounded-for
+    constructor over `translateDialectControl` (whose `RFor` arm is
+    `loopRForD`). Stated on the covered control fragment `IsCoveredCtl body`. -/
 theorem loopRForD_denotation_preserved
     {Γ : Ctx} (vm : VarMap Γ) (x : String) (N_loop : Nat) (body : LowCT)
     (o : DTransOut Γ) (N : Nat) (leafSpec : LeafSpec)
@@ -105,8 +100,7 @@ theorem loopRForD_denotation_preserved
     (.rFor hCov) hTrans hExec V hInv
 
 /-- **Unrolling at `N = 0` is the identity (dialect front).** The empty loop
-    translates to the identity continuation `ComCont.id` over the `CProg`-free
-    `loopRForD`. `CProg`-free restatement of `loopRFor_zero_denotation`. -/
+    translates to the identity continuation `ComCont.id` over `loopRForD`. -/
 theorem loopRForD_zero_denotation
     {Γ : Ctx} (vm : VarMap Γ) (x : String) (body : LowCT) :
     translateDialectControl vm (.RFor x 0 body)

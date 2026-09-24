@@ -13,15 +13,14 @@ public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.PilotImport
 set_option autoImplicit false
 
 /-!
-# AUCurves → CatCrypt cross-prover semantics bridge (R3 — gold-standard residual)
+# AUCurves → CatCrypt cross-prover semantics bridge
 
-This file is the **R3 semantics-bridge** step of the AUCurves retarget.
+This module is the semantics bridge of the AUCurves retarget.
 
-The prior pilot files delivered the *structural* correspondence (AUCurves'
-`rust_cmd_ed` AST ↔ CatCrypt `LowCT`, AST-by-AST: `PilotImport.lean`,
-theorems `importedPilot_eq`, `importedFe25519Add_eq`) and the backend
-cross-check (R4).  The standing residual — named by the pilot result and by
-the R5/R6 notes — is the full **cross-prover SEMANTIC equivalence**:
+`PilotImport.lean` gives the *structural* correspondence (AUCurves'
+`rust_cmd_ed` AST ↔ CatCrypt `LowCT`, AST-by-AST: theorems
+`importedPilot_eq`, `importedFe25519Add_eq`) and the backend cross-check.
+This module addresses the full **cross-prover SEMANTIC equivalence**:
 
 > AUCurves' Rocq big-step relation `rust_exec_ed`
 > (`AUCurves/src/Bedrock/SafeRustEd25519Sim.v`, Qed'd, axiom-free —
@@ -30,8 +29,8 @@ the R5/R6 notes — is the full **cross-prover SEMANTIC equivalence**:
 > (`CatCrypt/Crypto/Jasmin/LowCT.lean`), constructor-by-constructor.
 
 A *fully machine-checked* cross-prover equivalence spans two proof
-assistants and therefore **cannot** be a single Lean `theorem`.  This file
-delivers the honest, deliverable middle:
+assistants and therefore **cannot** be a single Lean `theorem`.  This module
+provides:
 
 1. **A faithful Lean transcription of `rust_exec_ed`** — `AUCurvesExec`, a
    parametric inductive whose constructors mirror the Rocq inductive's
@@ -174,7 +173,7 @@ def CallBridge
     masked through `mask64` (a `Z` in `[0, 2^64)`); the CatCrypt stored value
     is `BitVec.ofNat 64 (e.evalState rs)`.  `limbValBridge` says the
     Rocq-side numeric value `limbVal rs e` equals `e.evalState rs` (the
-    tower-aware evaluator of #356, which is exactly the CatCrypt image of
+    tower-aware evaluator, which is exactly the CatCrypt image of
     `eval_sexpr_ed`'s `SLimb`/arith arms — see `SExpr.evalState`). -/
 def limbValBridge
     (limbVal : RustState → SExpr → Nat) : Prop :=
@@ -271,7 +270,7 @@ theorem cross_limbStore
       (rsSetTower rs loc.locVar
         (limbWrite loc ⟨loc.locDst, oldDestV⟩ i (limbVal rs e))) := by
   rw [hwrite loc oldDestV i (limbVal rs e), hval rs e]
-  -- now the goal post-state matches `RustExec.limbStoreExpr`'s `locatedUpdate`
+  -- the goal post-state matches `RustExec.limbStoreExpr`'s `locatedUpdate`
   exact RustExec.limbStoreExpr loc i e rs oldDestV hlook
 
 /-! ## §4  Residual — the precisely-scoped two-prover trust edge
@@ -308,23 +307,22 @@ What the above theorems establish, and what they do NOT:
      them is exactly the cross-prover step: it requires a *shared semantic
      anchor* (e.g. exporting the Rocq oracle's input/output relation as a
      trusted interface, or a Rocq→Lean transport of the inductive).  They are
-     left as *named hypotheses* — the honest scoping.  Note their shape is
-     deliberately tight: `limbValBridge` is even *plausibly closable* should a
-     future step instantiate `limbVal := fun rs e => e.evalState rs` (then it
-     is `rfl`), and `limbWriteBridge` closes by `rfl` for any `limbWrite`
+     *named hypotheses*.  Their shape is tight: `limbValBridge` holds by `rfl`
+     for the instantiation `limbVal := fun rs e => e.evalState rs`, and
+     `limbWriteBridge` closes by `rfl` for any `limbWrite`
      defined as the CatCrypt `leafSpec.limbStore` image.  The
      irreducible edge is `CallBridge` (the opaque FFI leaf) together with the
      transcription-faithfulness meta-claim.
 
 This is the same residual any two-prover bridge carries; it is not specific to
-this routine.  The deliverable here is the localisation: the cross-prover gap
-is now exactly three named hypotheses + one meta-level transcription claim,
+this routine.  The cross-prover gap is localised to exactly three named
+hypotheses + one meta-level transcription claim,
 with every downstream implication a closed Lean proof. -/
 
 /-- **Sanity instance: the bridge hypotheses are satisfiable / not vacuous.**
     For the canonical instantiation `limbVal := SExpr.evalState`,
     `limbValBridge` holds by `rfl` — confirming the hypothesis is the *right*
-    shape (it is exactly the #356 tower-aware evaluator), not an unsatisfiable
+    shape (it is exactly the tower-aware evaluator), not an unsatisfiable
     over-constraint. -/
 theorem limbValBridge_canonical :
     limbValBridge (fun rs e => e.evalState rs) := by
@@ -346,21 +344,21 @@ theorem limbWriteBridge_canonical (leafSpec : LeafSpec) :
   intro loc oldV i val
   simp [canonicalLimbWrite]
 
-/-! ## §5  The cross-prover residual as machine-recorded named assumptions (#368)
+/-! ## §5  The cross-prover residual as machine-recorded named assumptions
 
-§2–§4 expressed the trust edge as loose predicates (`CallBridge`, …) plus prose
-in §4 ("transcription faithfulness").  This section promotes the **two
+§2–§4 express the trust edge as loose predicates (`CallBridge`, …) plus prose
+in §4 ("transcription faithfulness").  This section states the **two
 irreducible cross-prover edges** to *named assumption objects*, in the
 discipline of the FFI trust edge `SecureCompilation/VIR/LeafAxiomConsolidation.lean`'s
-  `LeafFFIValidated` (#200, `844fce2d`), the canonical pattern for a residual
+  `LeafFFIValidated`, the canonical pattern for a residual
   that *cannot* be a Lean theorem because it crosses a boundary Lean cannot see
   (there: an externally compiled binary; here: a second proof assistant). That
   edge is a **named predicate** with a non-vacuous witness and a consumable
   worked theorem — the shape reproduced below.
 
-Neither edge can be a Lean `theorem`: both straddle Rocq and Lean.  Recording
-them as named, inhabited Lean objects (not prose, not a bare `axiom`) IS the
-deliverable.  No `sorry`, no new global `axiom`. -/
+Neither edge can be a Lean `theorem`: both straddle Rocq and Lean.  They are
+recorded as named, inhabited Lean objects (not prose, not a bare `axiom`).  No
+`sorry`, no new global `axiom`. -/
 
 /-! ### §5.1  Edge 1 — the call-oracle bridge (the irreducible two-prover edge)
 
@@ -372,18 +370,18 @@ binary).  We package it as a Catalog-style assumption *structure* carrying the
 `CallBridge` predicate as its single field — so a downstream theorem that takes
 a `CrossProverCallBridge` value *assumes* the edge, as a hypothesis. -/
 
-/-- **Named assumption: the cross-prover call-oracle bridge (#368).**
+/-- **Named assumption: the cross-prover call-oracle bridge.**
 
     Bundles the irreducible two-prover edge `CallBridge calleePost leafSpec`
     (the Rocq `Prop`-oracle `callee_post` agrees with the CatCrypt function
     oracle `leafSpec.call`) as an assumption object, mirroring the named FFI
-    predicate `LeafFFIValidated` (#200).
+    predicate `LeafFFIValidated`.
 
     This is **not** a Lean theorem and cannot be one: it relates a Rocq object
     (`callee_post` in `AUCurves/src/Bedrock/SafeRustEd25519Sim.v`) to a Lean
     object (`leafSpec.call`), so it requires a shared semantic anchor exported
     across the two proof assistants. Holding a value of this structure is
-    *assuming* that anchor — the honest cross-prover trust surface, named rather
+    *assuming* that anchor — the cross-prover trust surface, named rather
     than left as prose or a bare `axiom`. -/
 structure CrossProverCallBridge
     (calleePost : String → List Located → Located → RustState → RustState → Prop)
@@ -393,7 +391,7 @@ structure CrossProverCallBridge
 
 /-! ### §5.2  Edge 2 — transcription faithfulness (the meta-level claim)
 
-§4(1) recorded, as prose, that `AUCurvesExec` faithfully transcribes Rocq's
+§4(1) records, as prose, that `AUCurvesExec` faithfully transcribes Rocq's
 `rust_exec_ed` (constructors copied one-for-one from `SafeRustEd25519Sim.v`).
 We make that a *Lean-stated named assumption*: `TranscriptionFaithful` says the
 Lean transcription `AUCurvesExec` agrees, derivation-for-derivation, with a
@@ -405,7 +403,7 @@ claim's exact shape as an inhabited Prop and consume it, exactly as
 `LeafFFIValidated` records "the binary computes `leafSem`" without modelling the
 binary. -/
 
-/-- **Named assumption: transcription faithfulness (#368).**
+/-- **Named assumption: transcription faithfulness.**
 
     `TranscriptionFaithful calleePost limbVal limbWrite rocqExec` says the Lean
     transcription `AUCurvesExec calleePost limbVal limbWrite` coincides,
@@ -417,7 +415,7 @@ binary. -/
     reading the two inductives side-by-side, per the §0 constructor-map table,
     and rests on the Rocq file being Qed'd and axiom-free). What Lean *can* do —
     and what this predicate does — is record the precise claim and let downstream
-    theorems consume it, in the `LeafFFIValidated` discipline (#200): a named,
+    theorems consume it, in the `LeafFFIValidated` discipline: a named,
     inhabited predicate over the boundary object, never a bare global `axiom`. -/
 def TranscriptionFaithful
     (calleePost : String → List Located → Located → RustState → RustState → Prop)
@@ -431,7 +429,7 @@ def TranscriptionFaithful
     relation to be `AUCurvesExec` itself, transcription faithfulness holds by
     reflexivity — confirming the predicate is the right shape (an inhabited
     boundary claim, not an unsatisfiable over-constraint), exactly as
-    `leafFFIValidated_jasminExtSem` witnesses `LeafFFIValidated` (#200). The
+    `leafFFIValidated_jasminExtSem` witnesses `LeafFFIValidated`. The
     *content* of the assumption is precisely the gap between this canonical proxy
     and the actual Rocq inductive, which lives outside Lean. -/
 theorem transcriptionFaithful_canonical :
@@ -448,7 +446,7 @@ inhabited Lean object.
 A downstream theorem quantifying over it assumes the cross-prover gap;
 everything else is the closed Lean proof of §3. -/
 
-/-- **The complete AUCurves cross-prover residual (#368).**
+/-- **The complete AUCurves cross-prover residual.**
 
     Bundles the full localized trust surface of the AUCurves→CatCrypt retarget:
 
@@ -525,7 +523,7 @@ theorem rocqExec_lifts_to_rustExec
     residual collapses to its *single* irreducible field: the call-oracle bridge.
     This pins the cross-prover trust surface to exactly `CrossProverCallBridge`,
     the analogue of `leafEdge_doublyCorroborated` pinning the leaf trust surface
-    to `LeafFFIValidated` (#200). -/
+    to `LeafFFIValidated`. -/
 theorem crossProverResidual_canonical
     (leafSpec : LeafSpec)
     (calleePost : String → List Located → Located → RustState → RustState → Prop)

@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # Ergonomic `Com.denote = field spec` for `mul`-based kernels
 
-`MontMulFragmentDemo` (#477) and `FieldEmitGoldenPath` discharge each
+`MontMulFragmentDemo` and `FieldEmitGoldenPath` discharge each
 `Com.denote = <BitVec spec>` step with a bare `rfl`. That works — the Jasmin
 dialect's denotation is fully structural — but a bare `rfl` forces the kernel
 *defeq* through the entire `Com.denote / Expr.denote / lookupArgs / Var.lookup`

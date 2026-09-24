@@ -51,7 +51,7 @@ assembled from `mkVar`-resolved operands, and recursing under the extended conte
 variables is built by a small `argsReg64` recursion that checks each signature slot
 is `.reg 64`.
 
-The output is an honest `Com jasminDialect` term — golden-provable exactly like a
+The output is an ordinary `Com jasminDialect` term — golden-provable exactly like a
 hand-written one (`ComOK`, `Com.denote`, `com_arm_e2e`/`com_riscv_e2e`). The worked
 re-derivation of `fieldCondSub251Com` at the end proves the generated `Com`'s
 `Com.denote` is *definitionally equal* (`rfl`) to the hand-authored one.
@@ -440,7 +440,7 @@ the *same* `DialectDenote.denote`). -/
 
 /-- The env↔valuation correspondence that the lockstep maintains: at depth `depth`,
     every **in-scope** env level `L < depth` equals the de-Bruijn slot
-    `depth - 1 - L` of the valuation. The bound `L < depth` is load-bearing: a level
+    `depth - 1 - L` of the valuation. The bound `L < depth` is required: a level
     `≥ depth` is out of scope (not yet bound), and the truncated `depth - 1 - L = 0`
     would spuriously read the head — so the correspondence is asserted only on
     in-scope levels, exactly the ones a well-formed program's operands reference. -/
@@ -577,7 +577,7 @@ theorem buildCom_denote_evalCom :
     at a valuation built from `inputs` equals `NamedSSA.eval` at those inputs. The
     valuation is the inputs in de-Bruijn order (level `i` at index `nInputs-1-i`),
     which is exactly the all-`reg 64` input context `build` runs over. Turnkey: a
-    denote fact is now an `eval` computation, not a per-kernel `Com.denote` `rfl`. -/
+    denote fact is an `eval` computation, not a per-kernel `Com.denote` `rfl`. -/
 theorem build_preserves_denote
     (p : NamedSSA)
     (c : Com jasminDialect (List.replicate p.nInputs (JasminTy.reg 64)) (.reg 64))
@@ -629,7 +629,7 @@ def condSub251Built : Com jasminDialect [.reg 64] (.reg 64) :=
 
 /-- **The generated `Com` denotes the same ALU expression as the hand-written one** —
     a definitional `rfl`, exactly as `FieldEmitGoldenPath.fieldCondSub251Com_denote`.
-    This is the load-bearing check: the auto-resolved de-Bruijn indices coincide with
+    This is the key check: the auto-resolved de-Bruijn indices coincide with
     the hand-authored `.there` chains, so the two `Com`s have identical denotation. -/
 theorem condSub251Built_denote (a : BitVec 64) :
     Com.denote condSub251Built (.cons a .nil)
@@ -685,7 +685,7 @@ theorem condSub251SSA_wf : BindingsWF 1 condSub251SSA.bindings 7 := by
 
 /-- **The generated `Com`'s denotation equals the evaluator** — the turnkey value
     fact via `build_preserves_denote`, instantiated at the single input `a`. The
-    `Com.denote` is no longer pinned by a per-kernel `rfl`; it is the computable
+    `Com.denote` is not pinned by a per-kernel `rfl`; it is the computable
     `NamedSSA.eval` (here `condSub251_eval_symbolic` / `condSub251_eval_300`). -/
 theorem condSub251Built_denote_via_eval (a : BitVec 64) :
     Com.denote condSub251Built (.cons a .nil)

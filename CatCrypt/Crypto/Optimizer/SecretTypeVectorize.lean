@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Optimizer.SLPVectorize
 public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
-# A fifth pass for the compositional-CT taint story: the SLP auto-vectorizer (#594)
+# A fifth pass for the compositional-CT taint story: the SLP auto-vectorizer
 
 `Optimizer/SecretType.lean` seeds *constant-time as a compositional typing
 invariant*: a secret/public taint qualifier flows along a program's data-flow
@@ -27,12 +27,12 @@ Four passes are already covered —
   (`scheduleBlock_blockMaxTaint_eq`), a pure independent reorder; and
 * (X86 lowering) the per-instruction selection pass.
 
-This file adds a **fifth, structurally-distinct pass**: the #68/#107/#108
+This module adds a **fifth, structurally-distinct pass**: the
 straight-line **auto-vectorizer** (`Optimizer/SLPVectorize.lean`,
 `slpDetect`/`packedResult`). The vectorizer is unlike all predecessors: it does
 not rewrite, drop, or reorder scalar statements — it **packs** a group of `L`
 isomorphic independent scalar ops into *one* `L`-lane SIMD op. The taint
-question it raises is genuinely new: a packed vector op carries `L` lanes at
+question it raises is different: a packed vector op carries `L` lanes at
 once, so its single output object's taint is the **join of the packed lanes'
 taints**. A vector op therefore can only *coarsen* taint (lane `j` reading the
 packed register sees the whole-vector secrecy level), never introduce a
@@ -56,8 +56,8 @@ scalar statement's output taint is the join of its two source-register taints
 
 ## What we prove
 
-The keystone is the **lane-pack taint-join** lemma, the taint analogue of the
-denotation keystone `slpGroup_denote`:
+The main lemma is the **lane-pack taint-join** lemma, the taint analogue of the
+denotation lemma `slpGroup_denote`:
 
 * `packedTaint_eq_join` — the taint of the packed group (the join of all lanes'
   source taints) equals the join of the per-lane scalar statements' output
@@ -135,17 +135,17 @@ the lane-pack identity. -/
 def packedTaint (T : VTaint) (g : List SStmt) : SecretLevel :=
   scalarGroupTaint T g
 
-/-! ## 3. The lane-pack taint-join keystone
+/-! ## 3. The lane-pack taint-join lemma
 
 The taint analogue of `slpGroup_denote`. Reading the packed result at lane `j`
-denotes the `j`-th scalar op (denotation keystone); at the taint level, lane `j`
+denotes the `j`-th scalar op (denotation lemma); at the taint level, lane `j`
 of the packed sources is the `j`-th statement's sources, so the *contribution*
 of lane `j` to the packed op's taint is exactly `sstmtTaint T sⱼ`, and the packed
 op's overall taint is the join of these over all lanes. -/
 
-/-- **Lane-pack taint-join (keystone).** The packed op's taint equals the join of
+/-- **Lane-pack taint-join.** The packed op's taint equals the join of
 the per-lane scalar statements' output taints. This is the taint-level analogue
-of the denotation keystone `slpGroup_denote`: where that lemma says the packed
+of the denotation lemma `slpGroup_denote`: where that lemma says the packed
 op *computes* the per-lane scalar op, this says the packed op *carries* the join
 of the per-lane scalar taints. By definition `packedTaint = scalarGroupTaint`,
 and `scalarGroupTaint` is precisely that join. -/
@@ -212,13 +212,13 @@ theorem scalarSummary_le_packedTaint (T : VTaint) (g : List SStmt) :
 
 When `slpDetect` fires, the group it returns (`G.members`) is packed. The
 fired-group taint summary is preserved exactly under vectorization. This is the
-fifth pass of the #594 compositional-CT story: a *layout* (AoS→SoA) pass that,
+fifth pass of the compositional-CT story: a *layout* (AoS→SoA) pass that,
 like the scheduler's reorder, preserves the taint summary exactly. -/
 
 /-- **The vectorizer preserves a fired group's taint summary exactly.** When
 `slpDetect g = some G`, the packed op for `G.members` carries exactly the scalar
-group's taint summary — packing is taint-neutral. The fifth pass of the #594
-story. -/
+group's taint summary — packing is taint-neutral. The fifth pass of the
+compositional-CT story. -/
 theorem slpVectorize_packedTaint_eq (g : List SStmt) (G : SLPGroup)
     (_h : slpDetect g = some G) (T : VTaint) :
     packedTaint T G.members = scalarGroupTaint T G.members :=

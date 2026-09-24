@@ -167,9 +167,7 @@ def HVec.extend (V : HVec Γ) (val : t.denote) : HVec (t :: Γ) :=
 
 Generic heterogeneous vector indexed by a `List CryptoTy`, with a per-element
 type function `f`. Structurally identical to `VIR.HVector` so the translation
-to VIR `Expr` is a trivial map (no list-vs-HVector shape mismatch).
-
-Introduced 2026-05-14 as part of the `extCall` HVector refactor. -/
+to VIR `Expr` is a trivial map (no list-vs-HVector shape mismatch). -/
 
 /-- A heterogeneous list of items indexed by `List CryptoTy`, with a per-tag
     type function. -/
@@ -190,8 +188,8 @@ end CHVector
 
 /-- Convert a runtime-typed `List (Σ t, f t)` into a typed pair
     `(argTys, CHVector f argTys)`. The `argTys` is the projected first
-    components in order. Used for migrating call sites that previously
-    accumulated `List (Σ t : CryptoTy, CVar Γ t)`. -/
+    components in order. Used by call sites that accumulate
+    `List (Σ t : CryptoTy, CVar Γ t)`. -/
 def listSigmaToCHVector {f : CryptoTy → Type} :
     (xs : List (Σ t : CryptoTy, f t)) →
     Σ argTys : List CryptoTy, CHVector f argTys

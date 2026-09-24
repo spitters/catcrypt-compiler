@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
-# Poly1305 MAC kernel — HACL-schedule 5×26 field-dot, runtime block loop (#421)
+# Poly1305 MAC kernel — HACL-schedule 5×26 field-dot, runtime block loop
 
 `ChaChaPolyEmit.poly1305MacJazz` emits a correct-but-naive Poly1305 MAC: a fixed
 `NBLK = 10` fully-unrolled Horner over a `5×26`-limb `𝔽_{2¹³⁰−5}` accumulator, with
@@ -48,11 +48,11 @@ fixes both:
   message blocks `nblk` as a register argument and Horner-folds exactly that many
   (`while (nblk != 0)`), so a 3-block message does 3 multiplies, not 10.
 
-The lane field and the load-bearing denotation lemma are **unchanged**: the MAC is
-still `Σᵢ mᵢ · r^(n-i)` over `𝔽_p = ZMod (2¹³⁰−5)`, carried by
+The lane field and the denotation lemma are **the same** as `ChaChaPolyEmit`'s: the
+MAC is `Σᵢ mᵢ · r^(n-i)` over `𝔽_p = ZMod (2¹³⁰−5)`, carried by
 `VectorReduce.scalarFold_eq_hsum` (re-exported here at the same lane as
 `ChaChaPolyEmit.poly1305_dot`). Only the *schedule* of the field arithmetic
-changes; the algebraic content is identical.
+differs; the algebraic content is identical.
 
 ## What is verified vs KAT-gated
 
@@ -71,12 +71,12 @@ The emitted text is structurally checked here (`strContains`): the `r5i` precomp
 the absence of the per-product `·5` instruction, the register-SSA diagonals, and
 the runtime `while (nblk` loop.
 
-## Measured (the honest picture)
+## Measured
 
 Standalone MAC, RFC 8439 §2.5.2 message (34 bytes = 3 Poly1305 blocks), taskset
 core-pinned, MIN-of-3 (`bench/poly1305_compare/poly1305_hacl_vs.c`):
 
-  prior naive (`ChaChaPolyEmit`)  661.9 cyc   4.86× vs HACL*'s 136
+  naive (`ChaChaPolyEmit`)        661.9 cyc   4.86× vs HACL*'s 136
   this kernel (loop, 3 blocks)    308.4 cyc   2.25× vs HACL*
 
 So **4.86× → 2.25×** on the standalone MAC. Most of that win is the runtime
@@ -90,9 +90,9 @@ accumulator limbs to/from the stack **on every block** — the `movq` traffic
 (`652` over the MAC body) that offsets the multiply saving on the 10-block AEAD
 message.
 
-The **cross-block-resident** variant (`emitHaclMacResident`, #498) fixes that:
+The **cross-block-resident** variant (`emitHaclMacResident`) fixes that:
 it keeps the five accumulator limbs `a0..a4` in `reg u64` SSA variables across
-the whole unrolled block sequence (the #111 ChaCha XMM-resident / #166 Poseidon2
+the whole unrolled block sequence (the ChaCha XMM-resident / Poseidon2
 lane-resident lever applied to the Poly1305 accumulator) — zeroed once, folded
 block-by-block without spilling, stored once. The read-only key `r[]`/`r5[]` stay
 in stack arrays (loop-invariant, so they cost no per-block accumulator spill and
@@ -103,7 +103,7 @@ MAC-body `movq` count `652 → 406` and the whole ChaCha20-Poly1305 AEAD core (4
 ChaCha keystream + this MAC) from **2.04× → ~1.78× vs HACL\*'s full AEAD**
 (`bench/chachapoly_compare/chachapoly_hacl_vs.c`, MIN over runs). The resident
 MAC accumulator is KAT-checked byte-identical to the unrolled variant — which
-#421 KAT'd byte-identical to HACL\*'s `Hacl_MAC_Poly1305` over the RFC 8439 vector
+is KAT-checked byte-identical to HACL\*'s `Hacl_MAC_Poly1305` over the RFC 8439 vector
 + 256 random vectors — so the residency change is value-preserving.
 
 The remaining whole-AEAD residual is the C-side AEAD orchestration + the
@@ -121,10 +121,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 open CatCrypt.Crypto.SecureCompilation.VIR.ChaChaPolyEmit (Fp NBlk polyPrime)
 open scoped BigOperators
 
-/-! ## 1. Denotation preservation — unchanged at the `𝔽_{2¹³⁰−5}` MAC lane
+/-! ## 1. Denotation preservation at the `𝔽_{2¹³⁰−5}` MAC lane
 
 The HACL schedule changes only how the field multiply is *computed*; the MAC is
-the same polynomial `Σᵢ mᵢ · r^(n-i)` over `𝔽_p`. We re-export the load-bearing
+the same polynomial `Σᵢ mᵢ · r^(n-i)` over `𝔽_p`. We re-export the key
 reassociation at the same lane so this kernel carries the identical denotation
 guarantee as `ChaChaPolyEmit`. -/
 
@@ -302,8 +302,8 @@ cost more than a straight-line unroll on **long** messages. For the fixed
 `NBLK`-block AEAD message (RFC 8439 §2.8.2 = 10 blocks) the unrolled form keeps
 the HACL `r5i`/register-diagonal schedule win **without** that loop overhead:
 each block's limbs are read at the static offset `5 + 5·i + k`. This is the
-straight-line analog of `emitHaclMacExport`, a drop-in replacement for the prior
-`ChaChaPolyEmit.poly1305MacJazz` (same fixed-`NBLK` ABI), now on the HACL
+straight-line analog of `emitHaclMacExport`, a drop-in replacement for
+`ChaChaPolyEmit.poly1305MacJazz` (same fixed-`NBLK` ABI) on the HACL
 schedule. -/
 
 /-- The unrolled fixed-`nblk`-block HACL-schedule MAC export (static indexing,
@@ -346,8 +346,8 @@ accumulator limbs to/from the stack **on every block** — the `movq` traffic
 the whole-AEAD speedup.
 
 This variant applies the **cross-block residency** technique
-(`CrossBlockResidencyUnroll`, the same lever as #111 ChaCha XMM-resident state
-and #166 Poseidon2 lane-resident `vS0..vS3` across rounds): the five accumulator
+(`CrossBlockResidencyUnroll`, the same lever as the ChaCha XMM-resident state
+and the Poseidon2 lane-resident `vS0..vS3` across rounds): the five accumulator
 limbs `a0..a4` are held in `reg u64` SSA variables and **stay register-resident
 across the entire unrolled block sequence**. They are zeroed once before the
 blocks and stored to `out[]` once after — never spilled to a stack array between
@@ -425,7 +425,7 @@ def renderResidentBlock (i : Nat) : List String :=
     (`out : u64[5]`, `inp : u64[5 + 5·nblk]`). The five accumulator limbs
     `a0..a4` and the key limbs `r0..r4` / `r50..r54` are held in `reg u64`
     across the FULL unrolled block sequence (the residency lever, analog of
-    #111 / #166): zeroed/loaded once in the prologue, the blocks fold without
+    the ChaCha and Poseidon2 kernels): zeroed/loaded once in the prologue, the blocks fold without
     spilling the accumulator, and `a0..a4` are stored to `out[]` once at the
     end. -/
 def emitHaclMacResident (name : String) (nblk : Nat) : String :=
@@ -562,7 +562,7 @@ def poly1305MacHaclAeadBundleJazz : String :=
 /-! ### Structural checks on the cross-block-resident export -/
 
 /- The bundle carries the cross-block-resident export `poly1305_mac_hacl_r`
-    (the #498 accumulator-residence variant). -/
+    (the accumulator-residence variant). -/
 #guard (strContains poly1305MacHaclBundleJazz "export fn poly1305_mac_hacl_r(")
 
 /- The resident export declares the five accumulator limbs as `reg u64`

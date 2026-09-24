@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder
 # A verified AArch64 ELF64 relocatable-object stitcher (the ARM `gas -o foo.o` analogue)
 
 This is the **AArch64 analogue of `X86Backend/ElfObject.lean`**: it wraps the
-verified-encoder `.text` bytes of one or more leaves into a genuine ELF64
+verified-encoder `.text` bytes of one or more leaves into an ELF64
 relocatable object (`ELFCLASS64`, `ET_REL`, `EM_AARCH64`), so the owned ARM
 backend produces a real `.o` directly — with neither `as`/gas nor `clang` on the
 object-build path. A list of `(name, textBytes)` leaves concatenate into one

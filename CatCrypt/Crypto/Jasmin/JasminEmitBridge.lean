@@ -17,7 +17,7 @@ set_option autoImplicit false
 /-!
 # Bridge: `BignumExec.bignumExec` ≡ `JasminCoqSemMirror.execInstrR`
 
-Phase C, first per-opcode bridge step. We want the agreement
+A per-opcode bridge between the two semantics. The target is the agreement
 
 ```
 bignumExec is s = some s'  ↔
@@ -28,7 +28,7 @@ execInstrR_chain realAsmSem realOpSem [] fuel (stateToEstate s) is_mirror
 for the straight-line `Cassgn` / `Copn` chains the bignum SSA fragment
 emits, where `is_mirror = astToMirror_Cmd is`.
 
-## What this scaffold delivers
+## Contents
 
 * `astToMirror_PExpr` / `astToMirror_LVal` / `astToMirror_InstrR` —
   a partial syntax translation from `CatCrypt.Crypto.Jasmin.*` to
@@ -48,19 +48,16 @@ emits, where `is_mirror = astToMirror_Cmd is`.
 * `bignumExec_agrees_coqSem_chain_skel` — chain-level lemma: given
   per-instruction `OpcodeAgrees`, the chain version follows.
 
-The `Cassgn (Lvar _) _ _ (Pconst _)` case, mnemonic Copn cases, and
-the other shapes documented in §7 are tracked as follow-up per-opcode
-batches that feed into the same chain-skel lemma.
+* `opcodeAgrees_Copn_{ADD_64,SUB_64,ADC_64,SBB_64,MULX,ADCX,ADOX,XOR_64}`
+  (§5) and their `_equiv` forms (§6) — the per-mnemonic Copn cases.
 
-## What remains as future per-opcode batches
+## Scope
 
-The per-mnemonic opcode lemmas for `ADD_64`, `ADC_64`, `SUB_64`, `SBB_64`,
-`MULX`, `ADCX`, `ADOX`, `XOR_64`, `SHL_64`, `SHR_64`, `SHLD_64`, `SHRD_64`,
-and their 32-bit variants are named below as `OpcodeAgrees` instances
-*not yet provided*.  Each is a small per-mnemonic proof: pick the right
-`sopn_sem` clause in `realAsmSem`, unfold both sides, and discharge.
-This module ships the *skeleton*; the per-opcode batches are tracked as
-follow-up work.
+The `Cassgn (Lvar _) _ _ (Pconst _)` case, `SHL_64`, `SHR_64`, `SHLD_64`,
+`SHRD_64`, the 32-bit variants, and the other shapes documented in §7 have
+no `OpcodeAgrees` instance here.  Each is a per-mnemonic proof of the same
+form: pick the right `sopn_sem` clause in `realAsmSem`, unfold both sides,
+and discharge; it feeds the same chain-skel lemma.
 
 ### Shape-mismatch caveat
 
@@ -94,7 +91,7 @@ the bignum SSA fragment shapes only; everything else returns `none`. -/
 
     The six upstream widths `U8`..`U256` map structurally (the mirror is a
     faithful image of Coq `wsize.v`, which has exactly these six). The CatCrypt
-    AVX-512 extension width `U512` (task #286) has **no** image in the faithful
+    AVX-512 extension width `U512` has **no** image in the faithful
     Coq mirror — Jasmin's scalar word model caps at `U256`. This arm maps it to
     `U256` only to keep the bridge total; it is **unreachable** for emitted
     AVX-512 (`zmm`) kernels, which carry their per-lane meaning through the
@@ -256,8 +253,8 @@ def astToMirror_SOpn : CatCrypt.Crypto.Jasmin.SOpn → CoqSemMirror.Sopn
   | .Oasm op => .Oasm op.name
 
 /-- Translate the straight-line `InstrR` shapes (`Cassgn`, `Copn`).
-    Control-flow shapes (`Cif`, `Cfor`, `Cwhile`, `Ccall`) return `none` —
-    a `Phase D` task to extend the chain bridge to control flow.  The
+    Control-flow shapes (`Cif`, `Cfor`, `Cwhile`, `Ccall`) return `none`;
+    the chain bridge does not cover control flow.  The
     instruction list versions of `Cif`/`Cfor`/`Cwhile` would also require
     a translated `body : List Instr`; we omit them. -/
 def astToMirror_InstrR : CatCrypt.Crypto.Jasmin.InstrR → Option CoqSemMirror.InstrR
@@ -660,8 +657,7 @@ theorem opcodeAgrees_Cassgn_Lvar_Pvar
 The per-opcode `OpcodeAgrees` proofs all start with the same brittle dance:
 unfold `execInstrR`, then `show` the resulting do-block matches a fresh `let`
 chain.  We package that step as two helpers (one per `InstrR` shape the bignum
-SSA fragment emits) so the per-opcode lemmas stay shallow.  Discharges the
-follow-up note in the §5.a scaffold. -/
+SSA fragment emits) so the per-opcode lemmas stay shallow. -/
 
 /-- The `.Cassgn` arm of `execInstrR` reduces (on a positive fuel) to the
     canonical do-chain `semPexpr e >>= truncateVal (evalAtype ty) >>=
@@ -1967,7 +1963,7 @@ theorem bignumExec_agrees_coqSem_chain_skel
           (stateToEstate s1) (mIs'.map (fun ir => .MkI () ir)) = _
       exact ih mIs' hMiTail hRecAgree s1 hExec (fuel' + 1) hRecFuel
 
-/-! ## §6. `Vm.Equiv`-friendly per-opcode lemmas (2026-05-28)
+/-! ## §6. `Vm.Equiv`-friendly per-opcode lemmas
 
 The lemmas in §5 establish a strict-equality form of `OpcodeAgrees`:
 the mirror executor's output state is *structurally equal* to

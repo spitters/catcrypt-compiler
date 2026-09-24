@@ -18,7 +18,7 @@ and forms the field norm `norm ξ x = (x · conj x).c0 = a² − ξ·b²` togeth
 `mul_conj_eq : x · conj x = ⟨norm ξ x, 0⟩` (the product of an element with its
 conjugate lands in the base field). The *next* gateway toward `bls12_377`
 pairings is **inversion**: with the norm in hand, `x⁻¹ = conj x / norm x`, the
-operation that makes `Fp2_377` a genuine field. This module builds that inverse
+operation that makes `Fp2_377` a field. This module builds that inverse
 and proves the cancellation law `x · x⁻¹ = 1` (whenever `norm ξ x ≠ 0`).
 
 ## What this module proves
@@ -49,7 +49,7 @@ norm is invertible in the base field. This makes `Fp2_377` **operationally a
 field** over the relational `bls12_377` carrier — the final field-tower operation
 needed for pairing arithmetic and the pairing's final exponentiation.
 
-## Honesty boundary
+## Scope
 
 This is the abstract `Fp2` inversion over the relational `bls12_377` base
 carrier. The cancellation law is conditioned on `norm ξ x ≠ 0`; that condition
@@ -112,7 +112,7 @@ noncomputable def inv [Fact (Nat.Prime bls377Q)] (ξ : FpBLS377) (x : Fp2_377) :
     as `(x · conj x) · ⟨(norm x)⁻¹, 0⟩`, the inner factor is the base-field-valued
     `⟨norm ξ x, 0⟩` (`mul_conj_eq`), so the whole product is the base-field
     product `⟨norm x · (norm x)⁻¹, 0⟩ = ⟨1, 0⟩ = 1` by `mul_inv_cancel₀`. This is
-    the operation that makes `Fp2_377` a genuine field. -/
+    the operation that makes `Fp2_377` a field. -/
 theorem mul_inv [Fact (Nat.Prime bls377Q)] (ξ : FpBLS377) (x : Fp2_377)
     (hx : norm ξ x ≠ 0) :
     letI := commRing ξ

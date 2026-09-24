@@ -41,7 +41,7 @@ becomes composable by `TransportSquare.comp`; and **(2)** composes the dialect
 chain with an x86 instruction step into one end-to-end transport,
 `endToEnd_dialectChain_then_x86`.
 
-## The interface seam (documented honestly, not faked)
+## The interface seam
 
 The two halves do **not** share a value model:
 
@@ -56,7 +56,7 @@ into the `BitVec`-pair domain a `RelatedBinOp` reads, so the two cannot be
 spliced by literal carrier-equality of `f`(chain) = `g`(x86). What composes is
 the **shape**: both are `TransportSquare`s, hence both are objects of
 `TransportSquare.comp`. We therefore compose them *on the representative scalar
-op where the value models genuinely meet* — a `BitVec w` carrier with the `id`
+op where the value models meet* — a `BitVec w` carrier with the `id`
 encoding on both ends — yielding a single transport whose two factors are (i) a
 representative-form dialect-style square and (ii) the x86 instruction square.
 The general splice across the structured/scalar seam — a `runOutputToWords`
@@ -160,12 +160,12 @@ theorem x86Add_transport :
 
 The interface seam (module docstring) is that the dialect chain's run-output is a
 structured `transTy`-transport, not a `BitVec`-pair the x86 ALU domain reads.  To
-compose the two *shapes* honestly on a carrier where the value models genuinely
+compose the two *shapes* on a carrier where the value models
 meet, we take the representative scalar instance: a dialect-style transport whose
 realised function feeds the x86 step.  Here it is the **identity** transport on
 the scalar pair carrier (the degenerate `φin = φout = id` dialect square, exactly
 the form `regPass1_optimizer`/`regPass3_printer` take), standing for "the lowered
-program delivers the operand pair unchanged" — the genuinely composable head onto
+program delivers the operand pair unchanged" — the composable head onto
 which the x86 instruction square is pasted. -/
 
 /-- A carrier-preserving (identity) dialect-style transport on the scalar pair —
@@ -221,16 +221,16 @@ theorem endToEnd_dialectChain_then_x86 (a b : BitVec 64) :
 theorem endToEnd_value_eq (a b : BitVec 64) : x86Add a b = a + b :=
   endToEnd_dialectChain_then_x86 a b
 
-/-! ## 5. The genuine 3-pass dialect chain still composes as a transport square
+/-! ## 5. The full 3-pass dialect chain composes as a transport square
 
-For completeness we record the genuine (non-representative) dialect half as a
+For completeness we record the full (non-representative) dialect half as a
 single composed `TransportSquare` over `Com`/`runProg` — the object that, *were*
 the seam `runOutputToWords` provided, would be the left factor of a full splice.
 This is the `compSquare`-folded `registryChain_threePass`, exposed here so the
 end-to-end statement names both the representative composition (§4) and the real
 chain it stands for. -/
 
-/-- **The genuine dialect half as one transport square** (the 3-pass chain folded
+/-- **The full dialect half as one transport square** (the 3-pass chain folded
     by `compSquare`).  Carrier-changing `(mapVal, transTy)` over `Com`/`runProg`;
     parametric in the printer-TCB edges, exactly as `registryChain_threePass`.
     This is the real left factor a full (non-representative) end-to-end splice

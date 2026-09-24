@@ -140,7 +140,7 @@ theorem xorPhysBody_one_indexed_store :
       | .Lopn _ "STOREIDX" _ => true | _ => false)).length = 1 := by native_decide
 
 /-- **Real back-edge + label:** the physical body has both an internal `Llabel`
-    and a `Lcond` (`jne .L<d>`) — a genuine rolled loop. -/
+    and a `Lcond` (`jne .L<d>`) — a rolled loop. -/
 theorem xorPhysBody_has_backedge :
     xorPhysBody.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false) = true ∧
     xorPhysBody.any (fun i => match i.li_i with | .Llabel _ _ => true | _ => false) = true :=

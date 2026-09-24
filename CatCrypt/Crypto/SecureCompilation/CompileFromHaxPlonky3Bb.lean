@@ -53,8 +53,8 @@ obligation `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by
 the verified compiler* and proven equal to the reduce form.
 
 The abstract `(a*b) % p` tie is `bbMulReduceForm_eq_mod` over the domain
-`a, b < p`. This is the **#117 Barrett seam** — historically `bv_decide`-timed
-out at `p = 2³¹`. We do **not** re-derive it by `bv_decide`: the seam is already
+`a, b < p`. This is the **Barrett seam**, on which `bv_decide` times out at
+`p = 2³¹`. We do **not** re-derive it by `bv_decide`: the seam is already
 closed structurally by `Poseidon2Emit.bbMul_correct` (folds bound + residue +
 two exact csubs, via structured `Nat` arithmetic), and `bbMulReduceForm` is
 definitionally `bbMul`, so the tie is `bbMul_correct` verbatim.
@@ -179,11 +179,11 @@ theorem bbMul_compiles :
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] bbMulSrc _ hc hspec
 
-/-! ## The abstract `(a*b) % p` tie (the #117 Barrett seam)
+/-! ## The abstract `(a*b) % p` tie (the Barrett seam)
 
 The reduce emit form `bbMulReduceForm` equals abstract `(a*b) % p` over the
-BabyBear residue domain `a, b < p`. This is the **#117 Barrett seam** that
-historically timed out under `bv_decide` at `p = 2³¹`. We do not bitblast it:
+BabyBear residue domain `a, b < p`. This is the **Barrett seam**, on which
+`bv_decide` times out at `p = 2³¹`. We do not bitblast it:
 `bbMulReduceForm` is definitionally `Poseidon2Emit.bbMul`, whose mod-`p`
 correctness `bbMul_correct` is already proved **structurally** (the product fits
 below `2⁶²`; ten folds preserve the residue and shrink the high part below `2p`;
@@ -193,7 +193,7 @@ verbatim. -/
 /-- **BabyBear reduce form = `(a*b) mod p`** on the residue domain `a, b < p`
     (`p = 2013265921 = 2³¹ − 2²⁷ + 1`). Ties the emitted closed reduce form
     `bbMulReduceForm` (the `_compiles` deliverable) to abstract modular multiply.
-    This is the #117 Barrett seam: it reuses the structurally-proved
+    This is the Barrett seam: it reuses the structurally-proved
     `Poseidon2Emit.bbMul_correct` (no `bv_decide` bitblast at `2³¹`). -/
 theorem bbMulReduceForm_eq_mod (a b : BitVec 64)
     (ha : a < bbP) (hb : b < bbP) :

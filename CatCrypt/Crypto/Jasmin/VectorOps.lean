@@ -43,11 +43,11 @@ this file is a **pure wrapper**. It does not edit `JasminAST.lean`,
 Future agents fold these op names into the main dispatcher when the
 state model is extended to carry vector registers.
 
-## Explicitly deferred (out of scope here)
+## Out of scope
 
 - Semantics-equivalence proofs (`vpaddw_correct` etc.) against an
   Intel SDM reference.
-- Preservation through `CryptoSSA → Jasmin` lowering.
+- Preservation through the `Com catCryptDialect → Jasmin` lowering.
 - `BignumExec` dispatch — the existing `BignumState` only models a
   scalar register file (`String → BitVec 64`); a vector dispatch
   needs a `vregs : String → BitVec 256` field added there. Until

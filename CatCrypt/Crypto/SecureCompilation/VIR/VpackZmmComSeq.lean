@@ -32,7 +32,7 @@ List VpackZmmBlock              -- the round-by-round Com blocks (round state in
    List String                  -- ONE straight-line owned AT&T %zmm body
 ```
 
-The bespoke whole-kernel renderer it replaces (`Avx512AsmPrinter.renderZBlockBody`
+The bespoke whole-kernel renderer (`Avx512AsmPrinter.renderZBlockBody`
 + `allocLinear`) takes ONE flat `List ZInstr` and ONE `ZAlloc` computed over that
 whole list — i.e. the alloc is already threaded across "rounds" because the rounds
 were never separate objects. Here the rounds ARE separate typed `Com` blocks, so
@@ -363,14 +363,14 @@ previous step's aux, yet they all sit at local param index `p1, p2, …`.
 
 The fix flagged in §7's bullet list — **each block carries its own `XAlloc`** —
 is implemented here as `VpackZmmAllocSeq := List (XAlloc × VpackZmmBlock)`. Each
-block now renders against ITS OWN name→`%zmm` map, so:
+block renders against ITS OWN name→`%zmm` map, so:
 
 * **distinct per-block aux** — block `k`'s `p1` and block `k+1`'s `p1` can map to
   different `%zmm` registers (each is looked up in that block's own alloc); and
 * **threaded round state** — the cross-block value (block `k`'s result, read as
   block `k+1`'s data input `p0`) still keeps ONE `%zmm` slot, because the CALLER
   pins block `k`'s result name and block `k+1`'s `p0` to the SAME register in
-  their respective allocs. The threading is no longer "one shared map" but
+  their respective allocs. The threading is by
   "consistent per-block maps at the boundary register" — which is precisely how
   the bespoke `renderZBlockBody` driver pins the fixed Keccak/SHA state lanes.
 

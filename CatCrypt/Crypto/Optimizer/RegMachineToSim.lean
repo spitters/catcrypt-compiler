@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.Optimizer.GenericRegAllocSim
 set_option autoImplicit false
 
 /-!
-# `RegMachineSim` is the one universal resident-path interface (D3 tier-unification)
+# `RegMachineSim` is the one universal resident-path interface
 
 The generic register allocator has a two-tier resident-path abstraction:
 `RegMachine` (register-only `writes_rename`, instantiated by ARM `AInst` / RISC-V
@@ -26,9 +26,9 @@ every `RegMachine` is a `RegMachineSim` with the trivial auxiliary relation
 `aux`-conditioned `writes_rename_sim` (the `aux` hypothesis is ignored), and `aux_step`
 is `trivial`. So `RegMachineSim` is the single resident-path interface all three backends
 instantiate: ARM/RISC-V (and the vector backends) inherit it here, x86 supplies its
-flags+memory `aux` directly. The generic simulation keystone
+flags+memory `aux` directly. The generic simulation theorem
 `renameBlock_runBlock_sim_reindexed` is then the one resident-path soundness theorem for
-every ISA — the D3 "one `MachineTarget`" unification on the register-allocation pass.
+every ISA — the "one `MachineTarget`" unification on the register-allocation pass.
 -/
 
 namespace CatCrypt.Crypto.Optimizer.GenericRegAlloc
@@ -37,7 +37,7 @@ variable {I S : Type}
 
 /-- **The universal bridge.** Every register-only `RegMachine` is a `RegMachineSim` with
     trivial `aux`. Low priority so a backend's bespoke `RegMachineSim` (x86's flags+memory
-    `aux`) is preferred where it exists. With this, `RegMachineSim` — and its keystone
+    `aux`) is preferred where it exists. With this, `RegMachineSim` — and its main theorem
     `renameBlock_runBlock_sim_reindexed` — is the single resident-path interface ARM,
     RISC-V, the vector backends, and x86 all sit under. -/
 instance (priority := 50) regMachineToRegMachineSim [inst : RegMachine I S] :
@@ -62,8 +62,8 @@ instance (priority := 50) regMachineToRegMachineSim [inst : RegMachine I S] :
   aux_step _ _ _ _ _ _ _ := trivial
 
 /-- **Smoke: the bridge fires.** Any register-only `RegMachine` (ARM `AInst`, RISC-V
-    `RInst`, the vector backends) now also resolves a `RegMachineSim` instance — so the
-    single simulation keystone covers all three ISAs, x86 included. -/
+    `RInst`, the vector backends) also resolves a `RegMachineSim` instance — so the
+    single simulation theorem covers all three ISAs, x86 included. -/
 example [RegMachine I S] : RegMachineSim I S := inferInstance
 
 end CatCrypt.Crypto.Optimizer.GenericRegAlloc

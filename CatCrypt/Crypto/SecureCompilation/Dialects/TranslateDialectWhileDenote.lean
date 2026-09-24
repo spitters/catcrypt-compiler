@@ -20,12 +20,11 @@ gates on the guard being a bound scalar and on the body front-compiling, then
 returns the context-invariant `DTransOut` (`Γ' = Γ`, `cont = ComCont.id`, `vm`
 unchanged).  The real run-time back-edge is emitted downstream at `Lcmd`
 (`TranslateDialectDataWhile.rolledWhileNz` / `X86Backend.LprogControlFlow`),
-whose denote already realises A3's fuel-bounded do-while `runWhileMem`.  What was
-missing was a **`semScalar`-waist** whole-program denote: `semScalar` has **no**
-`RWhileNz` arm (it hits `| _, _ => none`), so at the waist the loop was
-unmodeled.
+whose denote realises A3's fuel-bounded do-while `runWhileMem`.  `semScalar`
+has **no** `RWhileNz` arm (it hits `| _, _ => none`), so a whole-program denote
+at the **`semScalar` waist** needs a separate loop model.
 
-This sidecar closes that gap the same way the counted loop is closed
+This sidecar supplies it the same way the counted loop is handled
 (`loopRForD` / `loopRForD_denote`), but guard-driven and fuel-indexed:
 
 * `semWhileIter semBody k` — the **unconditional `k`-fold** body iteration over
@@ -76,7 +75,7 @@ peels the LAST trip, so the trip-index induction closes in lock-step with
 `semWhileIter`. -/
 
 /-- Trip-indexed unrolled dialect while descent: a `Nat`-fold of the direct body
-    translation, composing `ComCont` prefixes with `ComCont.comp`.  `CProg`-free.
+    translation, composing `ComCont` prefixes with `ComCont.comp`.
     The `k`-fold copy of the body region — the semantic witness that the loop
     region, run for `k` trips, is exactly `k` sequenced body descents.  The body
     translator `translateBody` is passed in (as in `loopRForD`). -/
@@ -203,7 +202,7 @@ iteration at the trip `k` read off the run. -/
 /-- Guard-driven do-while over `SEnvScalar` (the `runWhileMem` waist twin).  The
     trip is decided by `guard` on the values the body produces — the
     data-dependent `while (name != 0)` shape.  `fuel = 0` returns `none`, so any
-    `some` result is a genuine termination within `fuel`. -/
+    `some` result is a termination within `fuel`. -/
 def semScalarWhile (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnvScalar → Bool) :
     Nat → SEnvScalar → Option SEnvScalar
   | 0, _ => none
@@ -303,7 +302,7 @@ example :
   native_decide
 
 /-- The **trip-indexed unrolled descent** front-compiles: the `3`-fold copy of the
-    body region descends `CProg`-free (the loop region run for `3` trips). -/
+    body region descends through the front (the loop region run for `3` trips). -/
 example :
     (loopWhileD (translateBody := fun vm' => translateDialectControl vm' (.RScalarSet "acc" 5))
       (Γ := []) VarMap.empty 3).isSome := by

@@ -49,12 +49,10 @@ and return its result. This covers the realistic inlining case for a small
 *wrapper* leaf (e.g. a "Σ₀" SHA-2 helper that just calls one primitive, or a
 Barrett-reduce wrapper around a single intrinsic).
 
-Per the task's "honest blocker handling" guidance: general inlining (bodies
-with nested let-bindings) requires Com-level splicing through `Com.foldVar`
-plus a bookkeeping lemma about lifting outer-context vars through emitted
-bindings — straightforward in principle (the substitution laws are proved
-below) but not needed for the single-expression case. Extending the scope to
-multi-binding bodies is the next deliverable.
+General inlining (bodies with nested let-bindings) requires Com-level splicing
+through `Com.foldVar` plus a bookkeeping lemma about lifting outer-context vars
+through emitted bindings (the substitution laws are proved below); it is outside
+this module's scope and is supplied by `ComInlineCall`.
 
 ## Architecture
 

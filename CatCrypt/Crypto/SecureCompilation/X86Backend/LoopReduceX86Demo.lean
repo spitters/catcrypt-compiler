@@ -8,23 +8,23 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceDemo
 
 /-!
-# Array-reduction loop x86 emit — `v := v + a[i]` to `.s` (task #538, wall #2)
+# Array-reduction loop x86 emit — `v := v + a[i]` to `.s`
 
 `LoopReduceDemo` pins the array-reduction `v := v + a[i]` value semantics and the
 **abstract** array-loop control-flow tie (`arrSumLoop_loopRun_eq_ref`, over the
-`execCom` evaluator via `JForProgIndexed.loopRunT_eq_denoteT`), and names the
-**x86 register-pin splice for the memref load** as the residual:
+`execCom` evaluator via `JForProgIndexed.loopRunT_eq_denoteT`), and leaves the
+**x86 register-pin splice for the memref load** outside its scope:
 `cforIdxToLprogAbiBodyZeroAcc` accepts only a two-slot `[acc, ctr]` counter-reading
 body, with no array-base register and no per-iteration `MOV resReg, [base+idx*8]`
 load.
 
-This module **closes that splice**. `LprogControlFlow.cforIdxToLprogAbiBodyArr`
-(added alongside the §5b counter-reading emitters) lowers the genuine three-slot
+This module **provides that splice**. `LprogControlFlow.cforIdxToLprogAbiBodyArr`
+(next to the §5b counter-reading emitters) lowers the three-slot
 array-reduction body `arrSumBody nRC : Com [.reg 64, .reg 64, .stackArr 64 nRC]
 (.reg 64)` over `(acc, idx, a)` to a callable owned `.s` function:
 
 * the per-iteration `stackLoad a idx` (the memref load `a[idx]`) is lowered by the
-  pre-existing `opToLinstrR`/`LprogAsmPrinter` SIB path to a register-indexed load
+  `opToLinstrR`/`LprogAsmPrinter` SIB path to a register-indexed load
   `LOADIDX [.arrIdx aReg idxReg 8]`, rendered `mov (%aReg,%idxReg,8), %scratch`;
 * the **array base** is passed in the SysV second arg `RSI` and pinned to the
   body's `a2`-arg register;
@@ -33,7 +33,7 @@ array-reduction body `arrSumBody nRC : Com [.reg 64, .reg 64, .stackArr 64 nRC]
   `a1`-arg register;
 * the **trip counter** `nReg` runs down `n,…,1` for the back-edge.
 
-## What is landed here
+## What this module provides
 
 1. **The array-reduction x86 emit** `arrSumAbiLcmd nRC` — `arrSumBody nRC` lowered
    through `cforIdxToLprogAbiBodyArr` at width 64, top label `0`, counter `R8`,
@@ -49,7 +49,7 @@ array-reduction body `arrSumBody nRC : Com [.reg 64, .reg 64, .stackArr 64 nRC]
    the independent reference array sum `Σ_{j<n} a[j]` (`arrSumUpTo`). The emit and
    the abstract loop share the body `arrSumBody nRC` and the ascending-index fold.
 
-## The honest residual (the Lprog-denotation value-tie is NOT carried to bytes)
+## Scope (the Lprog-denotation value-tie is NOT carried to bytes)
 
 There is **no `lsem` model** for the ABI-body emit — `cforIdxToLprogAbiBodyArr`
 (like `cforIdxToLprogAbiBody{,ZeroAcc}`) is a control-flow + ABI emit outside the
@@ -61,56 +61,54 @@ proof that the rendered `.s` bytes compute the array sum. That last link — a
 machine-semantics denotation of the spliced loop (the `MOV (%base,%idx,8)` SIB
 load, the `ADD idxReg,#1` index-up, the `SUB nReg,#1`/`CMP`/`jne` back-edge) tied
 to `cforIdxDenote`/`loopRunT` — is the same Lprog-denotation gap
-`cforIdxToLprogAbiBodyZeroAcc` carries, and is closed at run time by the
+`cforIdxToLprogAbiBodyZeroAcc` carries, and is checked at run time by the
 C-harness byte-KAT (array → sum) the bench driver runs, not by an in-Lean kernel.
 
-Relative to `LoopReduceDemo`, this file adds the array-base + scaled-indexed-load
+Relative to `LoopReduceDemo`, this module adds the array-base + scaled-indexed-load
 **ABI-body emitter** `cforIdxToLprogAbiBodyArr` (the 3-slot `[acc, idx, ptr]`
 body, the SIB `MOV (%base,%idx,8)` structure, the index-up / counter-down split)
 and the proven **abstract** value-tie.
 
-The two register-resolution bugs that kept the rendered `.s` from assembling are
-**fixed**:
+Two register-resolution conditions make the rendered `.s` assemble:
 
-1. **SIB arg-register resolution (fixed).** The register-indexed (SIB) source
-   `arrIdx base idx scale` is now threaded through the same physical-name map as
+1. **SIB arg-register resolution.** The register-indexed (SIB) source
+   `arrIdx base idx scale` is threaded through the same physical-name map as
    every other body operand: `JasminLprogExport.LOperand.srcRegNames` tracks the
    SIB **base** (the array pointer) as a register-file source alongside the index,
-   so the linear scan allocates it, and `remapOperand`'s new `.arrIdx` arm rewrites
-   both `base` and `idx` to physical registers. The SIB now renders
-   `(%ptrReg, %idxReg, 8)` with real registers instead of `(%<UNKNOWN:a0>, …)`.
+   so the linear scan allocates it, and `remapOperand`'s `.arrIdx` arm rewrites
+   both `base` and `idx` to physical registers. The SIB renders
+   `(%ptrReg, %idxReg, 8)` with real registers.
 
-2. **Accumulator/array arg-slot swap (fixed).** `tabCtxt accTy nRC =
+2. **Accumulator/array arg-slot order.** `tabCtxt accTy nRC =
    [accTy, .reg 64, .stackArr 64 nRC]` lists the accumulator at the **head** and
    the array at the **tail**; `comToLfundef`'s program-root (`Γ.reverse`) order
    therefore numbers them `a0 = array base`, `a1 = idx`, `a2 = accumulator` — the
-   *reverse* of the De-Bruijn order. `cforIdxToLprogAbiBodyArr` had read `a0` as the
-   accumulator and `a2` as the pointer, so the `XOR accReg, accReg` prologue zeroed
-   `a0`'s register (the array base). The splice now reads the accumulator from `a2`
-   and the array base from `a0`, so the XOR zeroes the genuine accumulator.
+   *reverse* of the De-Bruijn order. The splice reads the accumulator from `a2`
+   and the array base from `a0`, so the `XOR accReg, accReg` prologue zeroes the
+   accumulator.
 
-With these two fixes the SIB renders real registers and the prologue zeroes the
-genuine accumulator, so the `.s` **assembles**. The value-semantics link to the
-rendered bytes is still the same Lprog-denotation gap
+So the SIB renders real registers and the prologue zeroes the
+accumulator, and the `.s` **assembles**. The value-semantics link to the
+rendered bytes is the same Lprog-denotation gap
 `cforIdxToLprogAbiBody{,ZeroAcc}` carry (no `lsem` model for the ABI-body emit):
 the §2 tie is over the abstract `execCom` array-loop evaluator
-(`loopRunT`/`denoteT`), and the rendered `.s` is closed at run time by the
+(`loopRunT`/`denoteT`), and the rendered `.s` is checked at run time by the
 C-harness byte-KAT (array → sum) the bench driver runs, not by an in-Lean kernel.
 
-The earlier register-aliasing residual is **also fixed**. The three loop-carried
+Register aliasing is excluded as follows. The three loop-carried
 roles (acc/idx/ptr) must occupy three *distinct* registers that survive the
 back-edge, but `comToLfundefPhys` allocates the body as a single straight-line
 copy: for a body whose arg uses are *disjoint* in that copy, the linear scan
 reclaims and aliases the arg registers onto one slot, and the per-iteration arg
-pins then clobber the accumulator. `arrSumBody` now opens with a **leading
+pins would clobber the accumulator. `arrSumBody` opens with a **leading
 liveness binder** (`regArith .add acc idx`, result discarded) that reads `acc`
 and `idx` at the body's first instruction, so the accumulator's live range
 overlaps the index and array-base uses and the linear scan keeps all three in
 distinct registers across the back-edge. The binder is shadowed (never reaches
-`.ret`), so the denotation is unchanged (`arrSumBody_denote` is still `rfl`).
+`.ret`), so the denotation is unchanged (`arrSumBody_denote` is `rfl`).
 This mirrors the §5b rejection-sampler body (`acc ^= ctr`, which reads both
-loop-carried values in one binding and so was never aliased — which is why the
-§5b byte-KATs already passed). The fix is local to `arrSumBody`; the global
+loop-carried values in one binding and so is never aliased). The binder is
+local to `arrSumBody`; the global
 linear scan is untouched, so the SIB-using kernels (Keccak/Poseidon2) are
 unaffected.
 -/
@@ -178,7 +176,7 @@ theorem arrSumX86_denote_eq_ref {nRC : Nat} (a : Fin nRC → BitVec 64) (n : Nat
   arrSumLoop_denoteT_eq_ref a n
 
 /-- **The value semantics the emit realises (abstract run form).** Routed through
-    the array-loop control-flow keystone, the abstract emitted array-reduction loop
+    the array-loop control-flow theorem, the abstract emitted array-reduction loop
     run from `acc = 0` equals the reference array sum `Σ_{j<n} a[j]`, under the
     single opaque-leaf hypothesis. This is `LoopReduceDemo`'s
     `arrSumLoop_loopRun_eq_ref`; it is over the abstract `execCom` evaluator, NOT

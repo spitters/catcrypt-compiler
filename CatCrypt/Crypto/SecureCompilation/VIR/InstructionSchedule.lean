@@ -13,11 +13,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 /-!
 # Verified instruction scheduling for `Com` — analysis-as-decision pass
 
-This file extends the verified-optimizer suite (`JForProgUnroll.lean` (#139),
-`RegisterAllocation.lean` (#141 / #143), `CtPreservationNewTransforms.lean`
-(#146), `DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
+This file extends the verified-optimizer suite (`JForProgUnroll.lean`,
+`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`,
+`DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
 `CommonSubexprElim.lean`, `ComInline.lean`) with **instruction scheduling**
-at the `Com` level — the last major missing `-O2` pass.
+at the `Com` level, an `-O2` pass.
 
 Instruction scheduling reorders **data-independent** instructions inside a
 straight-line basic block to improve instruction-level parallelism (ILP).
@@ -31,7 +31,7 @@ HACL\*-style ChaCha20 quarter-round.
 `Com d Γ t` is intrinsically typed: variables are `Ctxt.Var`, not `Nat`.
 Reordering two `Com.var` nodes would change the intrinsic context shape
 seen by every later `.there` index — exactly the same De Bruijn renumbering
-gap that `RegisterAllocation.lean` (#143), `DeadCodeElim.lean`,
+gap that `RegisterAllocation.lean`, `DeadCodeElim.lean`,
 `LoopInvariantHoist.lean`, `CommonSubexprElim.lean`, and `ComInline.lean`
 all resolved by factoring the heavy lifting out of the Com rewrite.
 

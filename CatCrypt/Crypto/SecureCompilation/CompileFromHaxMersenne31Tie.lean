@@ -12,7 +12,7 @@ public import Mathlib.Data.ZMod.Basic
 public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
-# #606 fan-out: the emitted Mersenne-31 multiply leaf EQUALS the abstract field op
+# Field tie: the emitted Mersenne-31 multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxMersenne31.lean` proves the verified compiler *emits* a jasmin
 `Com` whose `BitVec 64` denotation is `m31MulFold` — the Mersenne `2³¹ ≡ 1`
@@ -29,11 +29,11 @@ product of the field elements the inputs encode.
 
 The product `a · b ≤ (2³¹−2)² < 2⁶²` never wraps `2⁶⁴`, so the `BitVec`
 multiply is the integer multiply, and `(a·b) % p` projected to `ZMod p` is the
-field product `↑a · ↑b`. No `decide`/`native_decide` here — it is the genuine
+field product `↑a · ↑b`. No `decide`/`native_decide` here — it is the
 prime-field reduce identity, lifted to the Mathlib field through
 `ZMod.natCast_*`. (The `(a·b) % p` identity itself, `m31MulFold_eq_mod`, is
 proved over in the leaf module by **`Nat` arithmetic on `toNat`**, not
-`bv_decide` — the #117 Barrett seam SAT-times-out at `p = 2³¹`.)
+`bv_decide` — the Barrett seam SAT-times-out at `p = 2³¹`.)
 -/
 
 @[expose] public section
@@ -61,7 +61,7 @@ theorem m31_toNat_mul' (a b : BitVec 64)
     (a * b).toNat = a.toNat * b.toNat :=
   m31_toNat_mul a b ha hb
 
-/-- **Mersenne-31 emit-form ↔ abstract `Zm31` field tie (#606 fan-out).** On the
+/-- **Mersenne-31 emit-form ↔ abstract `Zm31` field tie.** On the
     residue domain `a, b < p = 2³¹−1`, the emitted Mersenne-fold leaf
     `m31MulFold` — read back as a `Zm31 = ZMod 2147483647` field element via
     `fromNat ∘ toNat` — equals the `Zm31` field product of the elements the

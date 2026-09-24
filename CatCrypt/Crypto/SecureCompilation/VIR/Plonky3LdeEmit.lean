@@ -14,10 +14,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # Plonky3 low-degree extension (coset FFT) emitted through the verified front
 
-This is **layer 2** of the full Plonky3 STARK prover chain (task #154): the
+This is **layer 2** of the full Plonky3 STARK prover chain: the
 low-degree extension (LDE) of the execution trace — a coset-FFT evaluation of
 the trace polynomial over the blown-up evaluation domain. It reuses the
-butterfly structure of the lattice NTT (`LatticeNttEmit.lean`, #150) over the
+butterfly structure of the lattice NTT (`LatticeNttEmit.lean`) over the
 Baby Bear field, and sits between the Merkle commitment (layer 1,
 `Plonky3MerkleEmit.lean`) and FRI (layer 3).
 
@@ -31,7 +31,7 @@ of size `n · blowup`. The two computational kernels are:
 * **Evaluation**: the radix-2 decimation butterfly, structurally identical to
   the lattice NTT's `(a, b) ↦ (a + ω·b, a − ω·b)`. Each butterfly stage is a
   set of independent 2-point transforms — the lane-parallel-MAP shape the
-  keystone `LaneMap.laneMap_eq_scalarMap` covers, instantiated at the Baby Bear
+  theorem `LaneMap.laneMap_eq_scalarMap` covers, instantiated at the Baby Bear
   lane ring (here modelled as `BitVec 64` canonical residues).
 
 The straightforward (non-FFT) evaluation oracle is Horner's rule
@@ -130,13 +130,13 @@ def bbCosetElement (shift : BitVec 64) (domainLog2 : ℕ) (index : BitVec 64) :
     BitVec 64 :=
   bbMul shift (bbDomainElement domainLog2 index)
 
-/-! ## 3. The radix-2 butterfly is a lane-parallel MAP (reuse the NTT keystone)
+/-! ## 3. The radix-2 butterfly is a lane-parallel MAP (reuse the NTT lane-map theorem)
 
 A decimation-in-time FFT stage applies the same 2-point butterfly
 `(a, b, ω) ↦ (a + ω·b, a − ω·b)` to each independent pair. Bundling the pairs
 into SIMD lanes, the stage is the lane-parallel map: each lane runs its own
 butterfly with no cross-lane dependency. This is `LaneMap.laneMap_eq_scalarMap`
-at the Baby Bear lane ring — the exact reuse the NTT emit (#150) already
+at the Baby Bear lane ring — the exact reuse the NTT emit
 performs. We instantiate it here at the LDE's butterfly. -/
 
 /-- A Baby Bear LDE butterfly lane: one pair `(a, b)` plus its twiddle `ω`,

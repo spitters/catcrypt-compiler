@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
 lowered to **one `Ccall`** — but that is a purely **structural** claim: it says
 nothing about *what value* the emitted call writes.  Separately, the per-curve
 relational fronts (e.g. `c25519_add_commutes`) prove the **value** content:
-`(a + b).val = bignumVal (mlAddModK …)` over the limb carrier.  The genuine
+`(a + b).val = bignumVal (mlAddModK …)` over the limb carrier.  The
 end-to-end gap is the **seam between them**: tying the emitted field-op program,
 *evaluated under its operational denotation*, to the actual `ZMod q` field value.
 
@@ -34,7 +34,7 @@ This module bridges that seam.  It composes:
    **commuting-square value** `op (decode aVal) (decode bVal)` of the abstract
    field binop `op` (e.g. `(· + ·)` for `c25519_add_commutes`).
 
-The payload — `emitFieldBinop_realizes_value` — is then the genuine emit→value
+The payload — `emitFieldBinop_realizes_value` — is then the emit→value
 tie: under the leaf-realization hypothesis, *running* the emitted program from a
 state holding the two operands writes a value into `dest` that **decodes to the
 field-op value** `op (decode aVal) (decode bVal)`.  The structural lowering
@@ -43,7 +43,7 @@ the residual that the leaf computes the field value (point 3) is localized as a
 named hypothesis, in the exact `FieldLeafBridge` / `CrossProverBridge`
 discipline (an inhabited cross-prover predicate, never a bare `axiom`).
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the structural-emit ↔ operational-denotation
   composition.  `emitFieldBinop`'s `.RCall` form drives `RustExec.call`, and the
@@ -61,7 +61,7 @@ discipline (an inhabited cross-prover predicate, never a bare `axiom`).
 `fieldEmitRealizes_canonical` exhibits a concrete `LeafSpec` (built from the
 `FieldLeafBridge`-style `fieldMulCallSpec`-shaped realizer, here for the binop
 `op`) under which `FieldEmitRealizes` holds — so the hypothesis is satisfiable,
-not an unsatisfiable over-constraint.  The genuine cross-prover content is the
+not an unsatisfiable over-constraint.  The cross-prover content is the
 gap between this canonical realizer and the emitted Rust leaf's real semantics,
 which lives outside Lean (in the per-curve commuting square + the AUCurves
 field-mul correctness).
@@ -107,7 +107,7 @@ def FieldEmitRealizes (q : Nat) (decode : RustVal .TFp → ZMod q)
 
 /-! ## §2  The structural emit drives the operational denotation
 
-This is the part that is a genuine Lean theorem: the `.RCall` shape that
+This is the part that is a Lean theorem: the `.RCall` shape that
 `emitFieldBinop` lowers to (point 1) is exactly the shape `RustExec.call`
 consumes (point 2), and the resulting state's `dest` slot is the leaf-call
 value.  No `rfl` shadow — this is over the real big-step relation. -/
@@ -203,7 +203,7 @@ theorem emitFieldBinop_exec
 /-! ## §3  The payload: emit → field VALUE
 
 Composing §2 (the closed structural↔operational step) with §1 (the localized
-leaf-realization) gives the genuine emit→value tie: the emitted program's `dest`
+leaf-realization) gives the emit→value tie: the emitted program's `dest`
 slot, **read through `decode`**, equals the abstract field-op value
 `op (decode aVal) (decode bVal)`. -/
 
@@ -283,7 +283,7 @@ def fieldBinopCallSpec (q : Nat) (decode : RustVal .TFp → ZMod q)
 /-- **Non-vacuity witness for `FieldEmitRealizes`.**  For the canonical
     `LeafSpec` built from `fieldBinopCallSpec` with a decoder section `encode`
     (`decode ∘ encode = id`), the leaf-realization holds — so the localized
-    hypothesis is satisfiable, not an over-constraint.  The genuine cross-prover
+    hypothesis is satisfiable, not an over-constraint.  The cross-prover
     content is precisely the gap between this canonical realizer and the emitted
     Rust leaf's real semantics (the per-curve commuting square + AUCurves
     field-op correctness), which lives outside Lean. -/

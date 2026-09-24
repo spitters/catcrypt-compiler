@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
-# H3.sexta: whileLoop simulation case (the hard one)
+# whileLoop simulation case
 
 Handles `.whileLoop (.var cond) body` arm of `haxToLowCT`,
 which produces `RWhileNz cond bodyC` on the LowCT side.
@@ -264,7 +264,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
 
 /-! ## §7  Main simulation: `whileLoop (.var cond) body`
 
-The main theorem closes the H3.sexta whileLoop case under an extra
+The main theorem closes the whileLoop case under an extra
 hypothesis `hBodyAlwaysVal`: at every reachable env, the body's `denote`
 outcome is `.val _` (no `.broke` / `.continued` / `.earlyRet` / `.err`).
 

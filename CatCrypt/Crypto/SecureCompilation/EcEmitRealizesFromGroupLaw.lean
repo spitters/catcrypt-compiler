@@ -16,7 +16,7 @@ the `<curve>_point_add` leaf, applied to the four encoded input coordinates,
 produces `encP (ecAffineAdd lam P Q)` — the byte encoding of the *affine
 group-sum point*.  As stated there, that residual is "the leaf computes the
 **abstract affine group law**" — a wide gap, exactly as the field version's
-`FieldEmitRealizes` residual was "the leaf computes the **abstract field
+`FieldEmitRealizes` residual is "the leaf computes the **abstract field
 value**".
 
 This module **narrows that residual** using our *proven* generic EC realization
@@ -61,17 +61,17 @@ The bridge `EcEmitRealizes` is then discharged from **one narrow fact**:
 
 Given that, the affine group-law value content `add_realizes` is **proved**,
 *because* `ec_jacAdd_realizes_affineAdd` proves the kernel value equals
-`ecAffineAdd lam P Q` (at the chord slope `lam`).  The residual that survives is
-no longer "the leaf computes the abstract affine group sum" but the much narrower
+`ecAffineAdd lam P Q` (at the chord slope `lam`).  The remaining residual is
 "the leaf's bytes are the inversion-free Jacobian-add kernel's bytes"
-(kernel-realization) — exactly the Tier-2 narrowing this module is for.
+(kernel-realization), narrower than "the leaf computes the abstract affine group
+sum".
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the affine-group-law value content of
   `add_realizes`.  Given the kernel-realization hypothesis, the leaf-call value
   encodes the affine group sum — discharged by `ec_jacAdd_realizes_affineAdd`
-  (our proved generic realization), *not* assumed.  This is the genuine
+  (our proved generic realization), *not* assumed.  This is the
   narrowing: the projective→affine inverse and the `ecAffineAdd` value come from
   a theorem.
 * **Localized (narrowed residual):** the leaf-call value is
@@ -90,7 +90,7 @@ group-law realization — and `emitEcAdd_realizes_affineAdd_of_kernel` composes 
 with `emitEcAdd_realizes_affineAdd` for the end-to-end emit→value statement with
 the residual narrowed to the Jacobian kernel.
 
-## Honest scope
+## Scope
 
 * The kernel-realization fact is **assumed** (the `EcJacKernelRealizes`
   hypothesis), not proved: it is the named trust edge at the opaque-leaf
@@ -98,7 +98,7 @@ the residual narrowed to the Jacobian kernel.
   fact in `FieldEmitRealizesFromCommSquare`.
 * The affine group-law *value* `ecAffineAdd lam P Q` is the one
   `ec_jacAdd_realizes_affineAdd` certifies equals the inverse-free Jacobian sum,
-  so this module's output value is the genuine EC group sum (generic chart), not
+  so this module's output value is the EC group sum (generic chart), not
   an opaque restatement.
 * The chord slope is fixed to `lam = (Q.y − P.y)·(Q.x − P.x)⁻¹` (the slope of
   `ec_jacAdd_realizes_affineAdd`); vertical-line / point-at-infinity exceptional
@@ -239,7 +239,7 @@ theorem ecJacKernelRealizes_canonical {F : Type u} [Field F]
 
 /-- **Non-vacuity for the full bridge.**  Threading the canonical Jacobian-add
     realizer through `ecEmitRealizes_of_kernel` (under the generic-chart side
-    condition) yields a genuine `EcEmitRealizes` inhabitant — so the generic
+    condition) yields an `EcEmitRealizes` inhabitant — so the generic
     group-law realization does deliver the `GenericEcEmitValue` hypothesis. -/
 def ecEmitRealizes_canonical {F : Type u} [Field F]
     (P Q : ECAffPoint F) (encC : F → RustVal .TFp) (encP : ECAffPoint F → RustVal .TFp)
@@ -257,7 +257,7 @@ Composing §3 with `GenericEcEmitValue.emitEcAdd_realizes_affineAdd` gives the
 end-to-end statement: *running* the emitted `emitEcAdd` program reaches a state
 whose two output slots hold the encoded affine group-sum point
 `encP (ecAffineAdd (chordSlope P Q) P Q)` — with the *only* cross-prover residual
-now the narrowed Jacobian-kernel fact (§2), the affine-group-law value content
+the narrowed Jacobian-kernel fact (§2), the affine-group-law value content
 supplied by `ec_jacAdd_realizes_affineAdd`. -/
 
 set_option maxHeartbeats 1000000 in

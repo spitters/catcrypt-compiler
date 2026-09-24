@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax Mersenne-31 multiply leaf realizes the
+# Security tie: the compile-from-hax Mersenne-31 multiply leaf realizes the
   abstract `Zm31` base-field multiply the CircleSTARK / Plonky3-M31 layer reasons over
 
 `CompileFromHaxMersenne31` proves the verified compiler *emits* a jasmin `Com`
@@ -32,19 +32,19 @@ that equality to `tie_transfer` so that **any** property the security layer
 proves of the abstract field multiply transfers verbatim to the
 compiler-emitted leaf, with no new axioms.
 
-## Why this is parametric-correct for CircleSTARK / Plonky3-M31 (honest scope)
+## Why this is parametric-correct for CircleSTARK / Plonky3-M31 (scope)
 
 CircleSTARK and Plonky3-Mersenne31 reason over the base field `Zm31`
 abstractly, through the arithmetic-circuit / AIR constraint polynomials that are
 sums and products of field elements `a · b`. This module's compiled leaf is the
 **field multiply** `a · b`. The compiled-realization equality
-`toMulDeps = mulDepsSpec` is genuine: the verified compiler's emitted Mersenne
+`toMulDeps = mulDepsSpec` holds: the verified compiler's emitted Mersenne
 fold computes exactly the abstract `Zm31` field product on residue inputs, and
 `tie_transfer` carries any field-multiply property onto the compiled artifact.
 It does **not** discharge the STARK soundness / FRI low-degree-test assumption —
 those remain the hypotheses of the CircleSTARK / Plonky3 `Security.lean`; this
 ties the *emitted arithmetic* to the *abstract arithmetic* the proof uses, which
-is the scope of #607.
+is the scope of this module.
 
 `toMulDeps_eq_spec` is restricted to the residue inputs the field operates over
 (`encF` produces canonical residues `< 2147483647`), which is exactly the domain

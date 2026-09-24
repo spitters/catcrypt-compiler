@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Jasmin.Bn254Reflect
 
 /-!
-# Marlin KZG prover reflect surface — Tier 3 full-emit (ZK honesty roadmap)
+# Marlin KZG prover reflect surface
 
 Marlin's polynomial-commitment layer is **KZG over a pairing group** (q-SDH /
 trusted setup), unlike Halo2's IPA over Pasta. The prover commits to the AHP
@@ -19,17 +19,17 @@ challenge point, and the verifier's pairing check
 `e(C − [v]·G, H) = e(W, [τ]·H − H)` closes the KZG opening — one BN254 pairing
 plus an `Fp12` multiply (the batched LHS/RHS combination).
 
-This file supplies the **Axis-A** piece for Tier 3 (`bench/marlin_compare/
+This module supplies the **Axis-A** piece (`bench/marlin_compare/
 README.md`): the *Marlin KZG prover orchestration* — KZG commit of the AHP
 polynomials, the sum-check transcript rounds, the batched KZG opening, and the
 final pairing-check combination — reflected through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, the same chain
+`LowCT → Com catCryptDialect → Jasmin`, the same chain
 `bench/plonky3_compare/fri_from_rustcmd.lean` runs for the Plonky3 FRI prover
 and `bench/bn254_compare/pairing_from_rustcmd.lean` runs for the BN254 pairing
 algorithm. The KZG commit / opening / pairing-check leaves reuse the
 **already-emitted BN254 pairing-group leaves** (`bn254_g1_scalar_mul` /
 `bn254_g1_add` / `bn254_pairing` / `bn254_fp12_mul` from `Bn254Reflect.lean`,
-the #260 reg-ptr field-tower re-emit + the #225 Miller / final-exp chain), so
+the reg-ptr field-tower emit + the Miller / final-exp chain), so
 the KZG hot path is built over the pairing primitive the suite already emits and
 the q-SDH soundness layer (`MarlinBound.marlinKZGError`) quantifies over. The
 sum-check round transcript and the batched-opening combination are

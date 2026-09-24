@@ -84,7 +84,7 @@ Both lowered blocks are `allDirect`: `mov`/`sar`/`test`/`cmove`/`cmovne` address
 no memory, so `MachineConstantTime.instrLeak` is empty for each and the block's
 leak trace is state-independent.
 
-## Shapes this level still declines
+## Shapes this level declines
 
 * `CMOV` untagged (a narrow-width select) and a `CMOV:64` whose condition,
   true-value or false-value operand is not a register.

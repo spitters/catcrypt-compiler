@@ -12,13 +12,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmControlFlow
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmControlFlow
 
 /-!
-# Curve25519 field operations + the Montgomery ladder, lowered through the owned AArch64 backend (#552)
+# Curve25519 field operations + the Montgomery ladder, lowered through the owned AArch64 backend
 
-`ArmMontMulKernel.lean` (#549) lowered the bare 4×4→8 schoolbook
+`ArmMontMulKernel.lean` lowers the bare 4×4→8 schoolbook
 (`bignum_mul_4_8`) through the owned A64 bignum backend (`MUL`/`UMULH` widening +
-`ADDS`/`ADCS` carry chain); `ArmBignumKernel.lean` (#547) lowered the
+`ADDS`/`ADCS` carry chain); `ArmBignumKernel.lean` lowers the
 add-mod-`p256` carry-chain + conditional-subtract reduce; `ArmControlFlow.lean`
-(#551) renders the bounded counter loop (`loopABlock`). This module builds, on
+renders the bounded counter loop (`loopABlock`). This module builds, on
 the owned A64 bignum backend over `p25519 = 2²⁵⁵ - 19`:
 
 * the five field operations the Montgomery ladder calls — `feAdd`, `feSub`,

@@ -8,6 +8,14 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
+/-!
+# Commutation of `mulx` with `adcx` and `adox`
+
+Under disjointness of destination and source registers, a `mulx` step and an `adcx`
+(resp. `adox`) step commute in `evalInstr`, with the products kept abstract. The module
+also proves `JState.ext` and `eval_setReg_notMem`, the operand-evaluation frame lemma
+used in both commutations.
+-/
 
 @[expose] public section
 set_option autoImplicit false

@@ -10,9 +10,9 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
-# Pass 3.1 — NTT-backed Polynomial Multiplication
+# NTT-backed Polynomial Multiplication
 
-First Tier-3 (algorithmic-rewrite) pass of CatCrypt's verified optimizing
+An algorithmic-rewrite pass of CatCrypt's verified optimizing
 compiler.  Rewrites `RCall "poly_mul" [a, b]` to
 `RCall s!"ntt_poly_mul_{q}_{n}"` when the polynomial parameters
 `(q, n)` are statically known.
@@ -38,7 +38,7 @@ once the concrete `LeafSpec` is instantiated.
 
 ## Composition
 
-This pass is one slot in the optimizer pipeline (orchestrator Tier 4.1,
+This pass is one slot in the optimizer pipeline (the orchestrator in
 `Optimizer/Pipeline.lean`).  Compose with `BarrettReduce` /
 `MontgomeryReduce` to get coefficient-level + algorithmic rewrites in
 a single pipeline application.
@@ -625,7 +625,7 @@ theorem nttPolyMul_denote_reverse
 
 /-- The NTT poly-mul rewrite preserves the big-step semantics, modulo
     the per-leaf agreement assumption.  This is the **soundness anchor**
-    for Pass 3.1 — combine with a concrete `LeafSpec` whose
+    for this pass — combine with a concrete `LeafSpec` whose
     `nttAgreesPolyMul` is discharged via
     `CompPoly.NTT.fastMulImpl_eq_mul`. -/
 theorem nttPolyMul_denote_eq
@@ -669,8 +669,7 @@ A representative butterfly-style coefficient loop — `for i in 0..n {
 tmp := coeffs[i]; coeffs[i] := tmp }` over a `TArr n (TU64)` polynomial — uses
 the runtime-indexed array access this pass leaves in place (lines `RArrLoad`/
 `RArrStore` above).  With a public index it is constant-time by construction
-(`cmdCT`), and the access now flows through the CryptoSSA front-end without
-unrolling.  The bit-level field correctness of the butterfly is the kernel
+(`cmdCT`), and the access is lowered without unrolling.  The bit-level field correctness of the butterfly is the kernel
 layer (`BarrettButterflyKernel`, `NttPolyVerified`); here we record the CT
 guarantee of the access shape. -/
 

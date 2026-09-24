@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
 # Grounded PASSWORD-HASHING / KEY-HARDENING and RECORD-LAYER KEY-UPDATE
-  backbones — whole-pipeline emit-realization with ZERO assumed per-kernel
+  cores — whole-pipeline emit-realization with ZERO assumed per-kernel
   hypotheses, over the PROVED Keccak concrete realizer
 
 A password-hashing / key-stretching function (PBKDF2, scrypt, Argon2) and a
@@ -19,7 +19,7 @@ keyed-hash / sponge permutation over a running state.  The iteration count of a
 password-hashing function is exactly its **work factor**; the ratchet is one
 HKDF-Expand step per traffic key.  Once the underlying permutation's
 per-iteration realization is a *theorem* — and it is,
-`ConcreteHashRealizer.keccak_realizes_concrete` — the whole iterated backbone is
+`ConcreteHashRealizer.keccak_realizes_concrete` — the whole iterated core is
 grounded with **zero `KernelRealizesT` hypotheses**.
 
 This module reuses the carrier-`.TBytes 200` (1600-bit) Keccak-sponge grounding
@@ -27,12 +27,12 @@ already proved in-repo — `GroundedHashProtocol.keccakSponge_realized` +
 `pipeNT_realizes`, every per-iteration realization the **proved**
 `keccak_realizes_concrete` (whose codec round-trip `decodeKbytes_encodeKbytes`
 is proved per-bit, *axiom-clean*: `{propext, Classical.choice, Quot.sound}`
-only).  Each iterated KDF / hardening / ratchet backbone is, at the leaf level, a
+only).  Each iterated KDF / hardening / ratchet core is, at the leaf level, a
 chain of the *same* permutation iterated on a running sponge state; the whole
-backbone is therefore a `pipeNT (.TBytes 200)` chain whose every step is
+core is therefore a `pipeNT (.TBytes 200)` chain whose every step is
 discharged by the proved realizer.
 
-## The grounded backbones (all SHA-3 / Keccak)
+## The grounded cores (all SHA-3 / Keccak)
 
 * **`grounded_pbkdf2_stretch_realizes`** — a PBKDF2-style key-stretching
   iteration (RFC 8018 / PKCS #5): the derived key is `c` iterations of the keyed
@@ -65,20 +65,20 @@ discharged by the proved realizer.
   by the proved `keccak_realizes_concrete`.  **ZERO `KernelRealizesT`
   hypotheses.**
 
-* **`grounded_kdf_then_keystream_composite_realizes`** — a genuinely *composite*
-  record-layer grounding: a `m`-iteration key-stretch / key-schedule backbone
-  feeding a `n`-step traffic-key / keystream backbone.  Because both backbones
+* **`grounded_kdf_then_keystream_composite_realizes`** — a *composite*
+  record-layer grounding: a `m`-iteration key-stretch / key-schedule core
+  feeding a `n`-step traffic-key / keystream core.  Because both cores
   drive the *same* 1600-bit Keccak sponge (same leaf `"keccak_f1600"`, same
   carrier `.TBytes 200`), the derive-then-use chain is the concatenated
   `pipeNT (.TBytes 200)` pipeline of `m + n` permutations, grounded by the single
   `keccakSponge_realized steps limbStore (m + n)` realization bundle.  **ZERO
   `KernelRealizesT` hypotheses.**
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
-* **The COMPUTATIONAL BACKBONE is grounded, NOT the hardness / forward-secrecy
+* **The COMPUTATIONAL CORE is grounded, NOT the hardness / forward-secrecy
   SECURITY.**  What these theorems establish is that the *emitted Keccak-sponge
-  kernel pipeline* of each iterated backbone **computes its hash spec** — the
+  kernel pipeline* of each iterated core **computes its hash spec** — the
   per-iteration permutation chain decodes to the composite of its per-iteration
   specs.  They do **NOT** establish any password-hashing *hardness* property —
   not the memory-hardness of Argon2 / scrypt, not the brute-force / dictionary
@@ -91,7 +91,7 @@ discharged by the proved realizer.
   modeled; the PRF is the Keccak sponge.
 
 * **Grounded (unconditional Lean theorem):** every per-iteration realization of
-  every backbone.  Each is the proved `keccak_realizes_concrete` (in turn the
+  every core.  Each is the proved `keccak_realizes_concrete` (in turn the
   verified codec round-trip `decodeKbytes_encodeKbytes`), with no KAT, no abstract
   section assumption, and no per-kernel hypothesis.  Each whole `pipeNT` pipeline
   decodes to the composite of its per-step specs.
@@ -104,8 +104,8 @@ discharged by the proved realizer.
   `bv_decide` LRAT certificate, which introduces a certificate axiom.  To keep
   every theorem in this file strictly axiom-clean
   (`{propext, Classical.choice, Quot.sound}` only) we ground the
-  hardening / ratchet backbones on the **Keccak** permutation, whose codec
-  round-trip is proved per-bit with no `bv_decide` axiom.  This is a genuine
+  hardening / ratchet cores on the **Keccak** permutation, whose codec
+  round-trip is proved per-bit with no `bv_decide` axiom.  This is a
   substitution: PBKDF2 / Argon2 / TLS-`KeyUpdate` as specified use SHA-2 / Blake2
   / HMAC-SHA-256; we ground the SHA-3 / KMAC instantiation of the same
   iterate-a-fixed-permutation structure, and say so.  (NIST SP 800-56C Rev. 2
@@ -118,7 +118,7 @@ discharged by the proved realizer.
   per kernel, explicitly not one of the per-step realizations this file
   discharges (nor a KAT).  The memory-addressing / data-dependent indexing of
   Argon2 / scrypt and the AEAD record protection itself are likewise out of
-  scope: only the hash/sponge iteration backbone is grounded here.
+  scope: only the hash/sponge iteration core is grounded here.
 
 ## References
 * RFC 8018 / PKCS #5 v2.1 (PBKDF2); RFC 7914 (scrypt); RFC 9106 (Argon2).
@@ -175,7 +175,7 @@ def pbkdf2StretchSpecs (steps : KeccakStepMappings) (c : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by the carrier-generalized `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational stretch backbone** — that the
+    Scope: this grounds the **computational stretch core** — that the
     emitted Keccak-sponge pipeline of the `c`-iteration stretch computes its hash
     spec, with the work-factor iteration count `c` modeled exactly.  It does
     **NOT** ground any password-hashing *hardness* property — not brute-force /
@@ -233,7 +233,7 @@ def argon2CompressSpecs (steps : KeccakStepMappings) (n : ℕ) :
     turn the verified 200-byte codec round-trip `decodeKbytes_encodeKbytes`),
     assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational compression-chain backbone** —
+    Scope: this grounds the **computational compression-chain core** —
     that the emitted Keccak-sponge pipeline computes its hash spec.  It does
     **NOT** ground the **memory-hardness** of Argon2 / scrypt — not the
     time–memory cost lower bound, not the data-dependent memory addressing that
@@ -292,7 +292,7 @@ def keyUpdateRatchetSpecs (steps : KeccakStepMappings) (n : ℕ) :
     concrete realizer `keccak_realizes_concrete` (in turn the verified 200-byte
     codec round-trip `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the **computational ratchet backbone** — that the
+    Scope: this grounds the **computational ratchet core** — that the
     emitted Keccak-sponge ratchet pipeline computes its HKDF-Expand hash spec.  It
     does **NOT** ground the record layer's *security* — not the forward secrecy of
     the TLS 1.3 `KeyUpdate` ratchet (an old traffic key gives no advantage on a
@@ -302,7 +302,7 @@ def keyUpdateRatchetSpecs (steps : KeccakStepMappings) (n : ℕ) :
     only machine-code residual is the owned-emit obligation for the
     `"keccak_f1600"` leaf — NOT a per-step hypothesis (and NOT a KAT).  The AEAD
     record protection keyed by each derived traffic key is out of scope — only the
-    HKDF-Expand ratchet backbone is grounded. -/
+    HKDF-Expand ratchet core is grounded. -/
 theorem grounded_tls_keyupdate_ratchet_realizes (steps : KeccakStepMappings)
     (limbStore : LimbStoreSpec) (n : ℕ)
     (oldDest xVal : RustVal (.TBytes 200)) :
@@ -321,8 +321,8 @@ theorem grounded_tls_keyupdate_ratchet_realizes (steps : KeccakStepMappings)
 /-! ## §4  Composite derive-then-use grounding — UNCONDITIONAL
 
 A record layer derives keys then uses them: a `m`-iteration key-stretch /
-key-schedule backbone (§1 / the KDF-derive) feeds an `n`-step traffic-key /
-keystream backbone (§3 / the use).  Because both backbones drive the *same*
+key-schedule core (§1 / the KDF-derive) feeds an `n`-step traffic-key /
+keystream core (§3 / the use).  Because both cores drive the *same*
 1600-bit Keccak sponge — same leaf `"keccak_f1600"`, same carrier `.TBytes 200`,
 same permutation `keccak_f steps` — the derive-then-use chain is the
 **concatenated** `pipeNT (.TBytes 200)` pipeline of `m + n` permutations.  The
@@ -355,10 +355,10 @@ theorem deriveThenUseSpecs_eq (steps : KeccakStepMappings) (m n : ℕ) :
   simp only [deriveThenUseSpecs, pbkdf2StretchSpecs, keyUpdateRatchetSpecs,
     keccakSpongeSpecs, List.replicate_append_replicate]
 
-/-- **GROUNDED composite derive-then-use record-layer backbone — UNCONDITIONAL.**
+/-- **GROUNDED composite derive-then-use record-layer core — UNCONDITIONAL.**
 
-    A genuinely composite grounding: a `m`-iteration key-stretch / key-schedule
-    backbone (§1) feeding a `n`-step traffic-key / keystream backbone (§3).  Both
+    A composite grounding: a `m`-iteration key-stretch / key-schedule
+    core (§1) feeding a `n`-step traffic-key / keystream core (§3).  Both
     drive the same 1600-bit Keccak sponge, so the derive-then-use chain is the
     concatenated `pipeNT (.TBytes 200)` pipeline of `m + n` permutations.  Its
     entire pipeline decodes to the composite of all `m + n` per-step specs — with
@@ -366,10 +366,10 @@ theorem deriveThenUseSpecs_eq (steps : KeccakStepMappings) (m n : ℕ) :
     proved concrete realizer `keccak_realizes_concrete` (in turn the verified
     200-byte codec round-trip `decodeKbytes_encodeKbytes`), and the whole composite
     is discharged by the single `keccakSponge_realized steps limbStore (m + n)`
-    bundle via `pipeNT_realizes` — a genuinely composite grounding of two stacked
-    sponge backbones.
+    bundle via `pipeNT_realizes` — a composite grounding of two stacked
+    sponge cores.
 
-    HONEST scope: this grounds the **composite computational backbone** — that the
+    Scope: this grounds the **composite computational core** — that the
     emitted Keccak-sponge pipeline of the derive-then-use chain computes its hash
     spec.  It does **NOT** ground the key separation / forward secrecy of the
     derived keys, nor any hardness of the stretch phase; those security properties
@@ -391,18 +391,18 @@ theorem grounded_kdf_then_keystream_composite_realizes (steps : KeccakStepMappin
     (keccakSpongeLeaves (m + n)) (keccakSpongeSpecs steps (m + n))
     (keccakSponge_realized steps limbStore (m + n)) oldDest xVal
 
-/-! ## §5  The combined hardening / record-layer headline — all backbones grounded
+/-! ## §5  The combined hardening / record-layer headline — all cores grounded
 
-The password-hashening / record-layer portfolio is its grounded SHA-3 backbones
+The password-hashening / record-layer portfolio is its grounded SHA-3 cores
 conjoined: the PBKDF2 stretch, the Argon2 / scrypt compression chain, the
 TLS-`KeyUpdate` / Signal ratchet, and the composite derive-then-use chain.  All
 drive the 1600-bit Keccak sponge (carrier `.TBytes 200`), so the conjunction is
 over one carrier; each conjunct is unconditional in its kernels. -/
 
-/-- **THE HARDENING / RECORD-LAYER HEADLINE — grounded SHA-3 backbones, ZERO
+/-- **THE HARDENING / RECORD-LAYER HEADLINE — grounded SHA-3 cores, ZERO
     kernel hypotheses.**
 
-    The SHA-3 password-hashening and record-layer backbones conjoined:
+    The SHA-3 password-hashening and record-layer cores conjoined:
 
     * the PBKDF2 key-stretch iteration (RFC 8018; work factor `c`),
     * the Argon2 / scrypt compression chain (RFC 9106 / RFC 7914),
@@ -414,7 +414,7 @@ over one carrier; each conjunct is unconditional in its kernels. -/
     verified codec round-trip `decodeKbytes_encodeKbytes`).  All are axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    HONEST scope: only the **computational backbones** (the emitted Keccak-sponge
+    Scope: only the **computational cores** (the emitted Keccak-sponge
     pipelines compute their hash specs, with the work-factor / ratchet iteration
     counts modeled exactly) are grounded — NOT the password-hashing *hardness*
     (memory-hardness / brute-force resistance) nor the record-layer *security*

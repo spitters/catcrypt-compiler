@@ -24,14 +24,14 @@ multi-register return."*
 This module closes that residual **without a `Com`-core change**. The key
 observation: the `Com` core's single return type `t : d.Ty` is the dialect's
 **type alphabet**, and `jasminDialect`'s `JasminTy.stackArr 32 8` already denotes
-to `Fin 8 → BitVec 32` — a genuine 8-element product. So a single
+to `Fin 8 → BitVec 32` — an 8-element product. So a single
 `Com jasminDialect Γ (.stackArr 32 8)` returns the **whole 8-word state as ONE
 value**; the existing `stackStore`/`stackLoad` ops (the §9 `storeDemoCom` pilot)
 build and read it. No new `Com` constructor, no multi-`ret`, no ripple through
 the pipeline — the product-return is the existing array `Ty` used as the return
 type.
 
-(The `callN` multi-result op of #315 does **not** provide this: `callNRet`
+(The `callN` multi-result op does **not** provide this: `callNRet`
 projects its `retTys` to the head slot `retTys.headD`, exposing only ONE
 `JasminTy` at the `Expr`/`Com` level — its tuple lives as op-data for the
 `func.call` lowering, not as a `Com` value. The array `Ty` is the right vehicle

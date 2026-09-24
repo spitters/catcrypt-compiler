@@ -80,7 +80,7 @@ multi-binding arms (`RLetU64Zero`, `RCallSwap`, `RCloneCall`, `RLimbStore`,
 induction on its dest list, generalizing the context).
 
 The scalar-`SExpr` assignment (`RScalarSetExpr`) — the point-op brick route — is
-now proved over its `srcClean` fragment (`SVar` / `SLit` / `SAdd` / `SSub` /
+proved over its `srcClean` fragment (`SVar` / `SLit` / `SAdd` / `SSub` /
 `SMul` / `SAnd` / `SXor` / `SShl` / `SShr` / `SMulHiU` over non-`__sx` source
 variables and `< 2^64` literals — the full alphabet of the Keccak-f1600 round
 bodies and the secp256k1 `feMul` brick). It rests on the `SExpr`-recursion
@@ -886,7 +886,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr callNLeafName)
 covers: the leaf-call arm (`RCall`), the dynamic-index array **load**/**store**
 arms (`RArrLoad` / `RArrStore`), plus their `RSeq` / `RBlock` / `RSkip` closure.
 Deliberately separate from `IsCoveredCtl` (same shape, fewer arms). The
-scalar-`SExpr` assignment (`RScalarSetExpr x e`, with `srcClean e`) is now
+scalar-`SExpr` assignment (`RScalarSetExpr x e`, with `srcClean e`) is
 covered via the `SExpr`-recursion homomorphism `lowerSExpr_denote` (§5f, §7); its
 constructor carries the `srcClean` side condition (`SExpr` over the arithmetic /
 bitwise / shift / high-multiply fragment, non-`__sx` source variables). The
@@ -2988,7 +2988,7 @@ arms (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
   (or `consistentS_weaken` for an anonymous temp), composed via `ComCont.comp` along
   the `RSeq` spine.
 
-The dynamic-index **load** and **store** arms (`RArrLoad`, `RArrStore`) are now
+The dynamic-index **load** and **store** arms (`RArrLoad`, `RArrStore`) are
 proved cases of the homomorphism (§5b/§5c + the `rArrLoad`/`rArrStore` arms of
 `translateDialectFull_denote`). Their front combinators `arrLoadCont` /
 `arrStoreCont` refactor as `ComCont.varBind (arrLoadExpr …)` /
@@ -3015,7 +3015,7 @@ the `whnf` budget), a single `by_cases encodeTy arr.locDst = .memref n` drives
 both `semScalar`'s guard and `arrStoreExpr`'s guard together — the parametric
 per-op congruence factoring that avoids the case product entirely.
 
-The **`RScalarSetExpr x e`** arm (the point-op brick route) is now proved over
+The **`RScalarSetExpr x e`** arm (the point-op brick route) is proved over
 its `srcClean` fragment. The front lowers the `SExpr` tree via `lowerSExpr` into a
 **chain** of `ComCont.varBind`s over fresh `__sx` temporaries (not a single
 `varBind`), so beyond `scalar_step` it needs the `SExpr`-recursion homomorphism
@@ -3467,7 +3467,7 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
         (Δ = [] → ∀ env env' : SEnvScalar, semScalarL ls c env = some env' → env' = env) := by
   induction c <;> intro Γ vm o htr
   case RSeq c₁ c₂ ih1 ih2 =>
-      -- Control-level `RSeq`: the front now recurses into `translateDialectControl`
+      -- Control-level `RSeq`: the front recurses into `translateDialectControl`
       -- on both children; the pushed context is `Δ₂ ++ Δ₁` and inertness chains
       -- through `semScalar (RSeq _ _) = bind`.
       simp only [translateDialectControl] at htr

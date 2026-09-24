@@ -21,7 +21,7 @@ through the SAME owned x86 backend (`JasminModel.runBlock` /
 `X86Dialect.lowerBlock_denote` / `AsmPrinter`, no jasminc) used for the
 BN254 (`Bn254MontMulKernel`), SM2 (`Sm2MontMulKernel`), BLS12-381,
 `bignum_mul_4_8`, and `fe25519` kernels, framed by the principled SysV ABI layer
-(`renderSysVLeafFn`, #464). It is the secp256k1 analog of the SM2 field-multiply:
+(`renderSysVLeafFn`). It is the secp256k1 analog of the SM2 field-multiply:
 four CIOS iterations over a 256-bit prime with the six-word accumulator window.
 
 This is the **register-fitting CIOS** kernel for secp256k1 — the replacement for
@@ -62,7 +62,7 @@ it is `≠ 1`, so the Montgomery factor `m = t0 · n′ mod 2^64` is computed wi
   owned backend's straight-line lowering is denotation-preserving across the
   `loadMem`/`mulxMem`/`mulx`/`adcx`/`adox`/`imul`/`sub`/`sbb`/`cmovb`/`storeMem` mix.
 * `secp256k1MontMulAlloc_no_overflow`: the first-fit allocator assigns every register
-  name a distinct pool register (no silent `%rax`-alias, the #380 class) — the peak
+  name a distinct pool register (no silent `%rax`-alias) — the peak
   register pressure fits the pool with no spill.
 * `secp256k1MontMulBlock_constant_time`: the body is straight-line all-direct
   addressing (no secret-indexed memory), so its machine leakage trace is
@@ -70,7 +70,7 @@ it is `≠ 1`, so the Montgomery factor `m = t0 · n′ mod 2^64` is computed wi
 * The all-inputs byte-identity that the emitted stream computes
   `a·b·R⁻¹ (mod p)` is the external KAT (`bench/secp256k1_compare`, vs GMP `mod p`
   and the vendored s2n-bignum `bignum_montmul_p256k1`): the standard gate for these
-  word kernels (per REV-12), over corner + random vectors. CIOS Montgomery's
+  word kernels, over corner + random vectors. CIOS Montgomery's
   value-level correctness is a generic Montgomery identity; in-Lean it is a
   256×256→512 SAT instance, infeasible, hence the external gate.
 
@@ -269,8 +269,8 @@ def secp256k1MontMulPinned : GpAlloc :=
 /-- First-fit allocation over the full block. -/
 def secp256k1MontMulAlloc : GpAlloc := allocGp secp256k1MontMulPinned secp256k1MontMulBlock
 
-/-- The allocation maps every name to a distinct pool register (no `%rax`-alias,
-    the #380 class) — the peak register pressure fits the pool with no spill. -/
+/-- The allocation maps every name to a distinct pool register (no `%rax`-alias)
+    — the peak register pressure fits the pool with no spill. -/
 theorem secp256k1MontMulAlloc_no_overflow :
     allocOverflow secp256k1MontMulPinned secp256k1MontMulBlock = none := by native_decide
 

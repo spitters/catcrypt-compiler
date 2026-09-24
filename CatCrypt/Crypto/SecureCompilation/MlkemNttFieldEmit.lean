@@ -153,7 +153,7 @@ theorem mkBarrettRem_lt (r : BitVec 64) (h : r < (11082241 : BitVec 64)) :
 theorem mkBarrettRem_umod (r : BitVec 64) (h : r < (11082241 : BitVec 64)) :
     mkBarrettRem r % (3329 : BitVec 64) = r % (3329 : BitVec 64) := by
   unfold mkBarrettRem
-  -- Deterministic structural proof (the two-`umod` `bv_decide` was wall-clock
+  -- Deterministic structural proof (a two-`umod` `bv_decide` is wall-clock
   -- flaky under parallel build load). `mkBarrettRem r = r − qhat·q` with
   -- `qhat = (r·5039)>>>24`; the two heavy facts become SIMPLE inequalities
   -- (`qhat < q`, `qhat·q ≤ r`, no `umod` — fast/robust SAT), then the residue

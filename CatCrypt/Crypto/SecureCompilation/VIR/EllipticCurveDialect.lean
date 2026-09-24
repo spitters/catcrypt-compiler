@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 public import Mathlib.Data.ZMod.Basic
 
 /-!
-# EllipticCurve VIR dialect (#482-3 — the L4 algebraic layer, over Field)
+# EllipticCurve VIR dialect (the L4 algebraic layer, over Field)
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 

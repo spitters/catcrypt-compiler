@@ -26,13 +26,13 @@ or re-translates the other — the emitted `catCryptDialect` `Com` runs `then` (
 So a `then`-branch that CALLS a function or WRITES state — the observe/sample
 trigger `if inlen == 8 { call duplex; store … }` — has **no** faithful waist
 model at the `semScalar` level: the φ-merge runs it always, which denotes WRONG
-when the guard is false.  The genuine forward branch lives only at the raw `Lcmd`
+when the guard is false.  The forward branch lives only at the raw `Lcmd`
 layer (`QuerySampleBranchFront.condSkip` = `CMP ; Lcond ; <then> ; label`), which
 runs its `then` band **iff** the guard holds — but that `Lcmd`-layer branch has
 no `semScalar`-waist denote.
 
-This sidecar closes that gap the SAME way `TranslateDialectWhileDenote` closed
-the `RWhileNz` waist (semScalar-had-no-arm → add the missing control model): it
+This sidecar supplies that model the same way `TranslateDialectWhileDenote` does
+for the `RWhileNz` waist (a control model `semScalar` has no arm for): it
 adds the **guarded-execution** waist model that `semScalar`'s φ-merge does not
 capture, together with the front descent that denotes it — the conditional twin
 of `semScalarWhile` / `loopWhileD` / `rWhileNz_whole_denote`:
@@ -63,7 +63,7 @@ run, and the denote holds per-value by the case split.  The `false` leg is the
 key non-vacuity: the block's side effect (the call/store) does NOT run and the
 descent is the identity, so the denote is env-preserving.
 
-**0 sorries; no axioms beyond the front's existing set.**
+**All goals closed; no axioms beyond the front's existing set.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
@@ -95,7 +95,7 @@ def semScalarCond (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnvScal
 
 /-- The guard-false leg of `semScalarCond` is the identity: a skipped conditional
     leaves the environment untouched (the block does NOT run).  The key
-    non-vacuity fact — distinguishes the genuine forward branch from the φ-merge
+    non-vacuity fact — distinguishes the forward branch from the φ-merge
     that would run `then` regardless. -/
 @[simp] theorem semScalarCond_false (semBody : SEnvScalar → Option SEnvScalar)
     (guard : SEnvScalar → Bool) (env : SEnvScalar) (hg : guard env = false) :
@@ -117,8 +117,7 @@ that `translateDialectControl`'s `RWhileNz` arm returns).  As in `loopWhileD`, t
 body translator `translateBody` is passed in. -/
 
 /-- Guard-indexed dialect descent for a guarded block.  `true ↦` the block
-    descent; `false ↦` the identity descent (the skipped-block invariant).
-    `CProg`-free. -/
+    descent; `false ↦` the identity descent (the skipped-block invariant). -/
 def condSkipD {Γ : Ctx}
     (translateBody : VarMap Γ → Option (DTransOut Γ))
     (vm : VarMap Γ) : Bool → Option (DTransOut Γ)
@@ -261,7 +260,7 @@ example :
 
 /-- The **guard-indexed descent** front-compiles on the block side (`true`): the
     guarded leaf call — the side-effecting `then` of the observe trigger —
-    descends `CProg`-free. -/
+    descends through the front. -/
 example :
     (condSkipD (translateBody := fun vm' => translateDialectControl vm'
         (.RCall "duplex" ⟨"st", .TU64⟩ []))

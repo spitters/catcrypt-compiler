@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2Emit
 
 /-!
-# #607 fan-out: functional tie — verified-compiler BLAKE2s G output word = the reference `gSpec`
+# Functional tie — verified-compiler BLAKE2s G output word = the reference `gSpec`
 
 This module wires the committed **compile-from-hax BLAKE2s G leaf**
 (`CompileFromHaxBlake2.blake2G_compiles`, the final `a'` word) onto the BLAKE2

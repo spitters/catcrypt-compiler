@@ -565,14 +565,16 @@ inside `RLetU64Zero name`. -/
 /-- The call names computed in the scalar heap. -/
 def scalarCallNames : List String :=
   ["scalar#Add", "scalar#Sub", "scalar#Mul", "scalar#BitAnd", "scalar#BitXor",
+   "scalar#Shr", "scalar#Shl",
    "scalar#Lt", "scalar#Gt", "scalar#Le", "scalar#Ge", "scalar#Eq", "scalar#Ne"]
 
 /-- `f` is a call name computed in the scalar heap. -/
 def scalarCallName (f : String) : Bool := scalarCallNames.contains f
 
 /-- The scalar expression of the call `f` on the operands `a` and `b`: `Add`,
-    `Sub`, `Mul`, `BitAnd` and `BitXor` as the `SExpr` operations (`SSub`
-    truncates at `0`), and the comparisons as `0` or `1` from `SLt`. -/
+    `Sub`, `Mul`, `BitAnd`, `BitXor`, `Shr` and `Shl` as the `SExpr` operations
+    (`SSub` truncates at `0`; `SShr` and `SShl` are the exact shifts on `Nat`),
+    and the comparisons as `0` or `1` from `SLt`. -/
 def scalarCallSExpr (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
     Option CatCrypt.Crypto.Jasmin.LowCT.SExpr :=
   match f with
@@ -581,6 +583,8 @@ def scalarCallSExpr (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
   | "scalar#Mul" => some (.SMul a b)
   | "scalar#BitAnd" => some (.SAnd a b)
   | "scalar#BitXor" => some (.SXor a b)
+  | "scalar#Shr" => some (.SShr a b)
+  | "scalar#Shl" => some (.SShl a b)
   | "scalar#Lt" => some (.SLt a b)
   | "scalar#Gt" => some (.SLt b a)
   | "scalar#Le" => some (.SSub (.SLit 1) (.SLt b a))

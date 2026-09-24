@@ -12,12 +12,12 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
-# PROTOTYPE: one Keccak-p[1600] round, FRONT-COMPILED (bucket E investigation)
+# PROTOTYPE: one Keccak-p[1600] round, FRONT-COMPILED
 
 This is a bounded prototype (NOT a deployed artifact) demonstrating that a single
 Keccak round — θ (column parities + D application), ρ∘π (lane permute + rotate),
 χ (nonlinear), ι (round constant) — is expressible through the verified
-`CProg`-free front and lowers to a `Com jasminDialect`, exactly the way
+front and lowers to a `Com jasminDialect`, exactly the way
 `AsconEmit.asconPbCom` front-generates the Ascon permutation (whose S-box is
 itself the bit-sliced Keccak-χ). The mirror is:
 
@@ -35,8 +35,8 @@ All five step mappings use only `SXor` / `SAnd` / `SShl` / `SShr`:
 * ι:   `o[0] = ch[0] ⊕ RC[0]`, `o[i] = ch[i]` (i≠0).
 
 The round constants `RC` and rotate offsets `r` are reused from `KeccakEmit`
-(param defs — NOT the hand-built `Com` builders). This file does NOT touch the
-load-bearing `KeccakEmit.keccakF1600Com`; it is an isolated feasibility check for
+(param defs — NOT the hand-built `Com` builders). This module does NOT touch
+`KeccakEmit.keccakF1600Com`; it is an isolated feasibility check for
 re-sourcing that Com through the front.
 -/
 
@@ -174,7 +174,7 @@ abbrev inCtxt : Ctxt jasminDialect := List.replicate nInputs r64
 
 /-! ## Front-emit + lower -/
 
-/-- Push the round body through the `CProg`-free control front and cap with the
+/-- Push the round body through the control front and cap with the
     named output result. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM keccakRoundBody with

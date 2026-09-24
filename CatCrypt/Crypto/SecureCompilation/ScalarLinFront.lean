@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 The literal front that turns a high-level `Com jasminDialect` straight-line leaf
 (the `regArith` fragment: binary ALU, widening-high multiply, immediate shifts,
 materialised constants) into the shared `ScalarLin.RegProg` waist — which every
-backend (`ComToArm`, `RegToRiscv`, …) then lowers with its proved keystone.
+backend (`ComToArm`, `RegToRiscv`, …) then lowers with its proved denotation theorem.
 
 It mirrors the x86 `JasminLprogExport.comToBody` exactly: walk the `Com`
 (`.var e body` / `.ret v`), name each binding by its de-Bruijn **level**

@@ -38,8 +38,8 @@ a `Com jasminDialect` that is **entirely `regArith add/sub/mul/and/xor/shr`**
     Com jasminDialect  --Com.toLprogPhysAbi-->  Lprog (physical-register, SysV ABI)
                        --renderLprogAtt-->       AT&T `.s`  (assembled by `cc`, no jasminc)
 
-— the `Poseidon2LinearMain` / `KeccakLinearMain` owned path (#504/#537), now
-applied to the Plonky3 regArith leaves (#656 jasmin-tail migration).
+— the `Poseidon2LinearMain` / `KeccakLinearMain` owned path, applied to the
+Plonky3 regArith leaves.
 
 ## ABI: constants are immediates (`immSlotMap`), runtime words are pointer loads
 

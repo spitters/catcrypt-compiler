@@ -56,7 +56,7 @@ open CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
 
 /-- **Verified compiler — straight-line scalar fragment.** For a register map `ρ`
     injective on the live slots, a basic block `ps` of the homomorphic-scalar
-    `LowCT` fragment whose source CT verdict `cmdCT (seqToLowCT ps)` is `true`,
+    `LowCT` fragment whose source CT result `cmdCT (seqToLowCT ps)` is `true`,
     and a machine state matching the source state, the lowered block:
 
     1. **computes the source function** — the post-machine state matches the source
@@ -65,7 +65,7 @@ open CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
        states (so it leaks nothing about secret register values).
 
     The two guarantees a verified compiler delivers, for this fragment, in one
-    statement. The `cmdCT` hypothesis is the genuine source-analyzer verdict on a
+    statement. The `cmdCT` hypothesis is the source analyzer's result on a
     real `LowCT` `RSeq` chain (`seqToLowCT`). -/
 theorem scalarCompile_correct (ρ : RegMap) (hρ : Function.Injective ρ)
     (ps : List ArithSrc) (hwf : ∀ p ∈ ps, p.b ≠ p.dst)

@@ -213,8 +213,8 @@ Two things matter for the `mul` case that are trivial for the ALU case:
   there is no `whnf` blow-up;
 * **the value step** — that the two emitted words reassemble to the exact
   integer product — is the `MontMulFragmentDemo.mulx_reconstruct` widening law
-  over `mulHiW`, the carry-propagation fact #474 could not state with the
-  carry-free alphabet. This closes the golden path for `mul`, not just ALU. -/
+  over `mulHiW`, a carry-propagation fact the carry-free alphabet cannot
+  state. This covers the golden path for `mul` as well as the ALU ops. -/
 
 /-- Low word of `a * b` (the `MUL`/`mullo`), as a one-op `Com` over `[a, b]`. -/
 def fieldMulLoCom : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=

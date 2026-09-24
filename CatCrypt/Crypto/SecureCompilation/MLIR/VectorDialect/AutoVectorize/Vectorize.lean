@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
 
 /-!
-# Auto-Vectorize — Pattern → VectorOp transformation (task #108)
+# Auto-Vectorize — Pattern → VectorOp transformation
 
 This is the **proven half** of the auto-vectorize pass: given a detected
 `VectorizablePattern α`, build the equivalent `VectorOp α n` (the abstract
@@ -26,27 +26,24 @@ op.
 | `dotProduct`    | named hypothesis (`Phase2DotProductVectorizes`)              |
 | `broadcast`     | named hypothesis (`Phase2BroadcastVectorizes`)               |
 
-The `lanewiseAdd` proof is the keystone: it composes
+The `lanewiseAdd` proof is the main theorem: it composes
 `VectorTy.map₂_apply` (which is `rfl`) with the abstract `denote_add` lemma
-(also `rfl`). Total proof length is well under 30 LOC.
+(also `rfl`).
 
 The other three patterns are *statement-equivalent* to the `lanewiseAdd`
-proof — they reduce by the same `funext + rfl` argument. They are tagged
-as `Phase2*` named Prop hypotheses so the scaffold compiles axiom-clean
-without `sorry`. Closing them in Phase-2 is a 3-LOC rewrite per pattern.
+proof — they reduce by the same `funext + rfl` argument. They are stated
+as `Phase2*` named Prop hypotheses.
 
-## Why named Props, not `sorry`?
+## Why named Props
 
-The project policy bans `sorry` in any persistent module. A named Prop
-hypothesis (`Phase2LanewiseMulVectorizes : Prop`) preserves the obligation
-without polluting the `#print axioms` output: anyone using one of these
-theorems will have to either provide the proof or carry the named
-hypothesis through their reduction, which makes the proof debt visible
-to downstream consumers. Closing the named-hypothesis form is a strict
-extension (the proof just instantiates `Phase2LanewiseMulVectorizes` to a
-proven statement).
+A named Prop hypothesis (`Phase2LanewiseMulVectorizes : Prop`) records the
+obligation without affecting the `#print axioms` output: a user of one of
+these theorems either provides the proof or carries the named hypothesis
+through their reduction, so the obligation is visible to downstream
+consumers. Discharging the named-hypothesis form is a strict extension (the
+proof instantiates `Phase2LanewiseMulVectorizes` to a proven statement).
 
-See also: `LoweringChoice.lean`'s pairwise-equivalence Phase-2 hole, which
+See also: `LoweringChoice.lean`'s pairwise-equivalence hypothesis, which
 uses the same modelling-invariant pattern.
 -/
 
@@ -78,11 +75,11 @@ def vectorize {α : Type} :
       .reduce addOp init (fun i => mulOp (lhs i) (rhs i))
   | .broadcast _ x => .broadcast x
 
-/-! ## 2. Denotation-preservation — the keystone
+/-! ## 2. Denotation-preservation — the main theorem
 
 The proven equivalence for `lanewiseAdd`. -/
 
-/-- **Keystone (proven, axiom-clean).** Vectorizing a `lanewiseAdd` pattern
+/-- **Main theorem (standard axioms only).** Vectorizing a `lanewiseAdd` pattern
     preserves denotation: the original per-lane scalar program (which by
     definition computes `op (lhs i) (rhs i)` at lane `i`) equals the
     `VectorTy` denoted by the rewritten `VectorOp.add`.
@@ -110,14 +107,13 @@ theorem lanewiseAdd_vectorize_denotation_preserves {α : Type} [Add α] [Mul α]
        = VectorOp.Result.vec (fun i => op (lhs i) (rhs i))
   rfl
 
-/-! ## 3. Phase-2 named-Prop hypotheses
+/-! ## 3. Named-Prop hypotheses
 
 For the remaining three patterns, the analogous denotation-preservation
-statement is recorded as a named `Prop`. Each is a single-line `rfl` proof
-in Phase-2; the named form here keeps the scaffold buildable and
-axiom-clean. -/
+statement is recorded as a named `Prop`. Each is stated in the shape of a
+single-line `rfl` proof. -/
 
-/-- The Phase-2 obligation for `lanewiseMul`. Closing this is the
+/-- The obligation for `lanewiseMul`. Discharging this is the
     `rfl`-class proof
     `denoteVectorOp (.mul op lhs rhs) = .vec (fun i => op (lhs i) (rhs i))`,
     identical in shape to `lanewiseAdd_vectorize_denotation_preserves`. -/
@@ -126,7 +122,7 @@ def Phase2LanewiseMulVectorizes : Prop :=
     @denoteVectorOp α n (.mul op lhs rhs)
       = VectorOp.Result.vec (fun i => op (lhs i) (rhs i))
 
-/-- The Phase-2 obligation for `dotProduct`. The scalar reduction
+/-- The obligation for `dotProduct`. The scalar reduction
     `(List.finRange n).foldl …` is what `VectorOp.reduce` denotes — agreement
     is `rfl` once `VectorTy.reduce` is unfolded; the per-lane multiply
     `mulOp (lhs i) (rhs i)` is the same on both sides. -/
@@ -139,7 +135,7 @@ def Phase2DotProductVectorizes : Prop :=
           ((List.finRange n).foldl
             (fun acc i => addOp acc (mulOp (lhs i) (rhs i))) init)
 
-/-- The Phase-2 obligation for `broadcast`. Closing this is
+/-- The obligation for `broadcast`. Discharging this is
     `denoteVectorOp (.broadcast x) = .vec (fun _ => x)`, identical to the
     proven `denote_broadcast` `@[simp]` lemma in `Denote.lean`. The named
     form is here to surface the obligation at the pattern level rather
@@ -153,22 +149,21 @@ def Phase2BroadcastVectorizes : Prop :=
 
 A user-facing entry point: given any `VectorizablePattern`, returns the
 `VectorOp` plus the proof (where available) or a witness of the relevant
-Phase-2 hypothesis (where not).
+named hypothesis (where not).
 
-This is `Option`-shaped on the proof side because not all four patterns
-have proven keystones yet. The signature mirrors the `Lowering.lean`
+This is `Option`-shaped on the proof side because only `lanewiseAdd` has a
+proven equivalence theorem. The signature mirrors the `Lowering.lean`
 selector pattern. -/
 
 /-- Bundled vectorization result: the vectorized op, and whether the
-    proof is available now (`isProven = true`) or is a Phase-2 obligation
-    (`isProven = false`, with the named hypothesis as a `Prop` discharge
-    requirement). -/
+    proof is available (`isProven = true`) or is a named-hypothesis
+    obligation (`isProven = false`, with the named hypothesis as a `Prop`
+    discharge requirement). -/
 structure VectorizeResult (α : Type) (n : Nat) where
   /-- The rewritten `VectorOp`. -/
   op : VectorOp α n
-  /-- Whether the equivalence theorem is currently axiom-clean. `false`
-      means the closing proof currently lives behind a `Phase2*Vectorizes`
-      named hypothesis. -/
+  /-- Whether the equivalence theorem is proved. `false` means the
+      equivalence is carried by a `Phase2*Vectorizes` named hypothesis. -/
   isProven : Bool
 
 /-- Dispatch the vectorize transformation, recording proof status. -/

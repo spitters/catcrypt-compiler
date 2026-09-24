@@ -147,8 +147,8 @@ ed25519_compress, plus the eight region-copy memmove helpers).  At
 the verified-front level both factorings denote to the same RFC 8032
 sign function; we pick the HACL\* whole-primitive boundary because
 HACL\*'s F\* proof is anchored there.  Adopting the AUCurves
-decomposition leaf-by-leaf is a finer-grained future variant (Phase B
-of #213's wave-2 roadmap), but it does not change the trust shape.
+decomposition leaf-by-leaf is a finer-grained variant that
+does not change the trust shape.
 -/
 
 namespace CatCrypt.Crypto.Vale.Ed25519

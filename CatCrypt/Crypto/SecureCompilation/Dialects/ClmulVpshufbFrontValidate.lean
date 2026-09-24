@@ -109,7 +109,7 @@ example :
                         0x0102040810204080ff00ff00ff00ff00) := by
   native_decide
 
-/-! ### (3b) Carry-suppression KAT — the front routes a GENUINE carry-less product
+/-! ### (3b) Carry-suppression KAT — the front routes a carry-less product
 
 `clmul.0` on low lanes `a = b = 3` (`x + 1`) yields `(x+1)² = x² + 1 = 5` over
 `GF(2)[x]`, NOT the integer `3 · 3 = 9`. Threaded through the `⊕ b` accumulate:

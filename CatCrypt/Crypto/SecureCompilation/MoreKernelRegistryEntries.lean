@@ -28,7 +28,7 @@ Four families, of the two shapes the registry already supports:
   (`CatCrypt.Crypto.Primitives.GF128.gf128_mul`). The carrier `C` is
   `BitVec 128`; `decode` is the (univalence-free) transport witness.
 * **The Poseidon2 permutation is *unary*** (`state → state`), the ZK-hash
-  workhorse (Plonky3 Merkle trees, FRI). It fits the unary generic predicate
+  primitive (Plonky3 Merkle trees, FRI). It fits the unary generic predicate
   `KernelRealizes` verbatim, at `spec := poseidon2BabyBearPermute`
   (`CatCrypt.Crypto.Hash.Poseidon2.BabyBear.poseidon2BabyBearPermute`), with the
   carrier `C = Fin width → F` (`F = ZMod babyBearPrime`, `width = 16`) fixed.

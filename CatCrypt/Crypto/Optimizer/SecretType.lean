@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 
 /-!
-# Secret/public taint qualifier for the `Com`/VIR substrate (#594)
+# Secret/public taint qualifier for the `Com`/VIR substrate
 
 A **secret / public taint qualifier** for the typed VIR `jasminDialect`
 `Com` substrate, with a proof that one existing optimizer
@@ -262,7 +262,7 @@ the first "a pass preserves the secret-type qualifier" lemma. -/
 
 /-- **Peephole preserves the taint-typing invariant.** If `c` is well-tainted
     under `T`, so is `peepCom c`: the pass keeps every binder's output level
-    equal to the join of its inputs'. The compositional-CT seed (#594). -/
+    equal to the join of its inputs'. The base case of compositional CT. -/
 theorem peepCom_wellTainted {Γ : Ctxt jasminDialect} {t : JasminTy} :
     ∀ (T : Taint Γ) (c : Com jasminDialect Γ t),
       WellTainted T c → WellTainted T (peepCom c)
@@ -304,7 +304,7 @@ example :
   peepExpr_exprTaint demoTaint _
 
 /-! ## 8. A second, structurally-different pass: the egraph saturation
-declassifies *monotonically* (#594 follow-on)
+declassifies *monotonically*
 
 The peephole pass (§6) preserves the binder taints **exactly**: it rewrites
 `binE bop a b ↦ binE bop' a b` reusing the *same* argument variables. The
@@ -326,7 +326,7 @@ let-chain and through the fuel iteration to `saturateCom_taint_mono`.
 This is the substantive content for this pass: `WellTainted` is *total* (each
 binder's level is *defined* as `exprTaint`, so there is no separate recorded
 level that could mismatch), hence a bare `WellTainted T c → WellTainted T (…)`
-would be vacuous. The honest invariant the egraph pass adds over peephole's
+would be vacuous. The invariant the egraph pass adds over peephole's
 exact preservation is taint-monotonicity (declassification-only). -/
 
 namespace SecretLevel
@@ -454,7 +454,7 @@ def ComTaintLe {Γ : Ctxt jasminDialect} {t : JasminTy}
 the let-chain. Structurally different from `peepCom_wellTainted` (§6): the
 peephole *preserves* taint exactly, whereas the egraph collapses *drop* an
 argument variable and so can only move taint *down* the lattice — the CT-safe
-declassification discipline of the module header, now a proved invariant. -/
+declassification discipline of the module header, as a proved invariant. -/
 theorem rewriteCom_taint_mono {Γ : Ctxt jasminDialect} {t : JasminTy} :
     ∀ (T : Taint Γ) (c : Com jasminDialect Γ t) (k : KEnv Γ),
       ComTaintLe T (rewriteCom c k) c

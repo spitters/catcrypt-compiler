@@ -57,7 +57,7 @@ Both compression functions are **leaf-free pure `regArith`**, so the emitted
 **multi-op straight-line** `Com jasminDialect [.reg (16·w)] (.reg (16·w))`.
 Routed through `JForProgMultiOp.loop_denote_eq_multiOp`, the emitted bounded loop
 `for t = 16 to N { window = step(window) }` denotes the `(N-16)`-fold schedule
-recurrence — the verified-front loop keystone for the schedule expansion.
+recurrence — the verified-front loop theorem for the schedule expansion.
 
 ### The dialect gap that forces a leaf for the *real* per-round step
 
@@ -72,11 +72,11 @@ With only the accumulator in scope, the constant-free body can synthesise only
 fully-unrolled compression above does not hit this gap: there the shift amounts
 and `K[t]` are *input words* of a rich context, rendered as immediates.)
 
-We therefore route the schedule **loop** through the keystone two ways:
+We therefore route the schedule **loop** through the loop theorem two ways:
 
 * `schedSkelLoop_denote_eq` — a pure-`regArith` wide-register multi-op body
   (the window-shift skeleton), **axiom-clean, no `LeafAgrees`**, showing the
-  bounded-loop keystone fires for a leaf-free SHA-2-shaped wide accumulator body.
+  bounded-loop theorem fires for a leaf-free SHA-2-shaped wide accumulator body.
 * `schedLoop_denote_eq` — the *full* FIPS schedule recurrence with the
   `σ`-step encapsulated as one `extCall` leaf (the ML-KEM matvec precedent in
   `MLKem768MatvecLoop.lean`), so the loop **structure** is verified end to end;
@@ -593,7 +593,7 @@ theorem sha512_binding_count : (slotSeq sha512Spec).length = 5032 := by
 The schedule expansion `W[16..N-1]` is a fixed-trip loop iterating one recurrence
 step `W[t] = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16]` over a 16-word sliding
 window. We pack the window into one wide register `reg (16·w)` (lane `j` =
-`W[t-16+j]`) and route the loop through the R1 multi-op keystone
+`W[t-16+j]`) and route the loop through the multi-op loop theorem
 `JForProgMultiOp.loop_denote_eq_multiOp`: the emitted bounded loop
 `for t = 16 to N { window = step(window) }` denotes the `(N-16)`-fold step. -/
 
@@ -604,9 +604,9 @@ abbrev WinAcc (w : Nat) : JasminTy := .reg (16 * w)
 
 A multi-op straight-line `Com [WinAcc w] (WinAcc w)` built from pure `regArith`
 ops on the wide accumulator — the shape of the window-shift / lane-combine
-skeleton, leaf-free. It routes through the multi-op keystone with **no**
+skeleton, leaf-free. It routes through the multi-op loop theorem with **no**
 `LeafAgrees` hypothesis, axiom-clean to `[propext, Quot.sound, Classical.choice]`.
-This shows the bounded-loop keystone fires for a leaf-free wide SHA-2 accumulator
+This shows the bounded-loop theorem fires for a leaf-free wide SHA-2 accumulator
 body — the loop machinery needs no opaque primitive. -/
 
 /-- A `regArith op (16·w)` expression over the wide accumulator, reading two of
@@ -617,8 +617,8 @@ def winOp {w : Nat} {Γ : Ctxt jasminDialect}
 
 /-- A leaf-free multi-op straight-line body over the wide window accumulator: a
     three-op `regArith` chain (`v0 = acc + acc; v1 = v0 ^ acc; v2 = v1 | v0`),
-    binding three fresh SSA names — exactly the multi-op shape the single-leaf
-    keystone could not cover and the R1 multi-op keystone does. -/
+    binding three fresh SSA names — the multi-op shape that the single-leaf
+    loop theorem does not cover and the multi-op loop theorem does. -/
 def schedSkelBody (w : Nat) : Com jasminDialect [WinAcc w] (WinAcc w) :=
   .var (winOp .add .here .here)
     (.var (winOp .xor .here (.there .here))
@@ -644,9 +644,9 @@ def schedSkelLoop (sp : Sha2Spec) : JForProg (WinAcc sp.w) :=
     semantics — axiom-clean, no `LeafAgrees`.** Running the emitted
     `for t = 0 to (rounds-16) { window = body(window) }` `rounds-16` times from
     `init` equals `schedSkelLoop.denote init`, via `loop_denote_eq_multiOp`. The
-    body is pure `regArith` over the wide accumulator, so the keystone's
+    body is pure `regArith` over the wide accumulator, so the loop theorem's
     `LeafAgrees` is satisfied vacuously (no `extCall`): **any** `leafSem` works,
-    and the result is axiom-clean. This is the bounded-loop keystone for a
+    and the result is axiom-clean. This is the bounded-loop theorem for a
     leaf-free SHA-2-shaped wide-register multi-op body. -/
 theorem schedSkelLoop_denote_eq (sp : Sha2Spec) {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : ⟦WinAcc sp.w⟧) :
@@ -693,7 +693,7 @@ def schedLoop (sp : Sha2Spec) : JForProg (WinAcc sp.w) :=
     carried edge is the leaf agreement `LeafAgrees` (the `sha2_sched_step` leaf's
     data-oblivious recurrence semantics), required only because of the missing
     in-body immediate op documented above; fresh-name injectivity is discharged
-    inside the R1 keystone. -/
+    inside `loop_denote_eq_multiOp`. -/
 theorem schedLoop_denote_eq (sp : Sha2Spec) {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (init : ⟦WinAcc sp.w⟧) :
     loopRun (schedLoop sp) (bodyStepRun leafSem (schedLoop sp)) init
@@ -708,11 +708,11 @@ theorem schedLoop_toCfor_range (sp : Sha2Spec) :
           { dir := .UpTo, lo := 0, hi := sp.rounds - 16 }
           (JForProgCT.emittedBody (schedLoop sp)) := rfl
 
-/-! ## 9. State-resident SHA-2 emit (task #179, storage-class refinement)
+/-! ## 9. State-resident SHA-2 emit (storage-class refinement)
 
 The §3-§6 scalar emit (`compressJazz`) keeps the 8 working words `a..h` and
 the 16-word schedule window `W[0..15]` in a `stack u{w}[128] st` array. Every
-binding is a load-from-`st[i]` → compute → store-back-to-`st[i]`. The current
+binding is a load-from-`st[i]` → compute → store-back-to-`st[i]`. The scalar
 `.s` carries ~17k `(%rsp)` accesses across the 64/80-round body, costing the
 1.64× gap vs HACL* `sha256_update_nblocks` (~530 cyc/block).
 
@@ -736,8 +736,7 @@ only the storage class changes (named regs vs stack array).
 **Denotation justification (storage-class refinement principle).** The per-
 binding semantics is `dst = a <op> b` for the SAME `op` and SAME logical
 operands as the scalar emit; only the variable each binding is named in
-differs (named reg `a` vs stack slot `st[100]`). This is the
-SIXTEENTH/NINETEENTH/#173 design note: same SSA op sequence, same operand
+differs (named reg `a` vs stack slot `st[100]`). Same SSA op sequence, same operand
 order, different variable bindings ⇒ same denotation, lane-for-lane. The
 denotation theorem `sha2_resident_denotation_preserves` below records this
 composition. Wire format and I/O boundary are unchanged (16 message words +
@@ -1090,7 +1089,7 @@ def sha512ResidentJazz : String := residentJazz sha512Spec "sha512_compress_resi
 
 /- The SHA-256 resident body uses `K[0] = 0x428a2f98` as a SCALAR LITERAL
     IMMEDIATE in the first round (materialised in `t1`, then `t3 += t1;`),
-    not a memory read. This is the load-bearing reg-to-imm K addend; the
+    not a memory read. This is the reg-to-imm K addend; the
     intermediate move is forced by Jasmin's ADD_{32,64} signed-32 immediate
     ceiling. Net: one extra mov per round (64 + 80 = 144 extra ops vs the
     scalar emit's 64 + 80 = 144 K-memory-load ops — pure reg-imm vs memory
@@ -1128,7 +1127,7 @@ The resident emit's per-step semantics match the scalar emit's lane-for-lane:
 
 Same op sequence ⇒ same denotation. The only difference is the variable each
 binding is NAMED in (reg `a..h, w0..w15, t0..t3` vs stack slot `st[i]`).
-This is the storage-class refinement principle (#111/#166/#173). -/
+This is the storage-class refinement principle. -/
 
 /-- The resident-emit's per-round rotate amounts read directly from
     `Sha2Spec`, identical to the scalar emit's reads (`Sha2Emit.emitSigma`,
@@ -1162,7 +1161,7 @@ theorem sha2_resident_denotation_preserves (sp : Sha2Spec) :
 
 end Resident
 
-/-! ## 10. State-resident + W-pinned SHA-2 emit (task #180, schedule-window packing)
+/-! ## 10. State-resident + W-pinned SHA-2 emit (schedule-window packing)
 
 The §9 `Resident` emit pins the 8 working words `a..h` to named GPRs but
 keeps the 16-word schedule window in `stack u{w}[16] w` (4 loads + 1 store
@@ -1182,10 +1181,10 @@ are reg-resident, with allocator-driven spills of the colder slots.
 
 Same per-round op sequence as §9 (Sha2Emit.Resident.renderResRound); only
 `wReg` changes from `w[i mod 16]` (stack array) to `w{i mod 16}` (named
-reg). Storage-class refinement principle (#111/#166/#173): denotation is
+reg). Storage-class refinement principle: denotation is
 unchanged. ABI is the SAME as §9.
 
-**Bench target:** SHA-512 1244 cyc/op (#179) → ≤ ~1133 cyc/op (1.64× × 691
+**Bench target:** SHA-512 1244 cyc/op (§9 emit) → ≤ ~1133 cyc/op (1.64× × 691
 HACL* baseline). KAT byte-identical to the §9 emit (which is FIPS 180-4
 KAT'd in `sha2_kat_resident.c`). -/
 
@@ -1395,7 +1394,7 @@ with the SAME arguments derived from the SAME `Sha2Spec`. -/
     `Ch`/`Maj` op order. The only token-level difference is the W operand
     spelling (`w{i}` vs `w[i]`), which is a storage-class refinement
     (named GPR vs stack array slot) — semantically identical lane-for-
-    lane. (#111/#166/#173). -/
+    lane. -/
 theorem sha2_residentP_denotation_preserves (sp : Sha2Spec) :
     sp.bigSig0   = sp.bigSig0   ∧ sp.bigSig1   = sp.bigSig1   ∧
     sp.smallSig0 = sp.smallSig0 ∧ sp.smallSig1 = sp.smallSig1 ∧
@@ -1515,7 +1514,7 @@ theorem sha384_binding_count : (slotSeq sha384Variant.core).length = 5032 :=
 /-! ### Wrapper facts (IV + truncation) — one tiny in-Lean KAT vector
 
 The full FIPS 180-4 KAT (SHA-224/384 of `"abc"`, `""`, and the 896-bit example)
-is in the C harness. In-Lean we pin only the load-bearing wrapper constants: the
+is in the C harness. In-Lean we pin only the wrapper constants: the
 leading IV word and the digest byte length, which is all the wrapper contributes
 beyond the (already-KAT'd) shared core. -/
 

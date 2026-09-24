@@ -223,7 +223,7 @@ theorem robustlyCTSafeJForProg_of_body {accTy : JasminTy} {p : JForProg accTy}
 
 /-! ## 5. Non-vacuity: a secret-indexed loop body IS flagged
 
-To confirm `ctSafeJForProg` / `RobustlyCTSafeJForProg` are genuinely
+To confirm `ctSafeJForProg` / `RobustlyCTSafeJForProg` are
 restrictive (not vacuously `true`), we exhibit a one-iteration loop whose body
 performs a `stackLoad` at the accumulator-as-index: when the accumulator is
 labelled `.Secret` the loop is flagged non-CT, and it is *not* robustly

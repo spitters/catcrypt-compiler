@@ -10,14 +10,14 @@ public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 public import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
 
 /-!
-# Grounded MPC / ZK / commitment backbones — whole-pipeline emit-realization with
+# Grounded MPC / ZK / commitment cores — whole-pipeline emit-realization with
   ZERO assumed per-kernel hypotheses
 
-This module grounds the **computational backbones** of three real MPC / ZK /
+This module grounds the **computational cores** of three real MPC / ZK /
 commitment constructions **unconditionally** — every per-step realization is a
 *theorem* (a proved concrete realizer), so each headline carries **zero
 `KernelRealizesT` / `KernelRealizes` / `KernelRealizes2` hypotheses** (only
-codec-fit side conditions, honestly flagged).  It reuses the proved concrete
+codec-fit side conditions, stated explicitly).  It reuses the proved concrete
 realizers already in-repo:
 
 * `ConcretePoseidon2Realizer.poseidon2_perm_realizes_concrete` (carrier
@@ -34,7 +34,7 @@ realizers already in-repo:
   `.TBytes 200` (1600-bit) Keccak sponge chain, every per-iteration realization
   the proved `ConcreteHashRealizer.keccak_realizes_concrete`.
 
-## The grounded backbones
+## The grounded cores
 
 * **`grounded_poseidon_merkle_node_realizes` / `grounded_poseidon_merkle_path_realizes`**
   — the Poseidon2 MERKLE COMMITMENT TREE used by STARK / Plonky3 vector
@@ -63,16 +63,16 @@ realizers already in-repo:
   per-block realization the proved `keccak_realizes_concrete`.  **ZERO kernel
   hypotheses.**
 
-## HONEST scope — what is grounded and what is NOT
+## Scope — what is grounded and what is NOT
 
 * **Grounded (unconditional Lean theorems):** every per-step realization of all
-  backbones — each a proved concrete realizer (`poseidon2_compress_/perm_…`,
+  cores — each a proved concrete realizer (`poseidon2_compress_/perm_…`,
   `combined_realizes_add/mul`, `keccak_realizes_concrete`), with no KAT and no
   per-kernel hypothesis.  Each whole pipeline decodes to the composite of its
   per-step specs.
 
 * **The PROTOCOL-LEVEL property is NOT what is grounded here.**  We ground the
-  *computational backbone* — the field/hash KERNEL PIPELINE realized by emitted
+  *computational core* — the field/hash KERNEL PIPELINE realized by emitted
   code — NOT the cryptographic security of the construction.  Concretely:
   Merkle/vector-commitment BINDING (collision-resistance of Poseidon2), SPDZ
   MAC-check SOUNDNESS / share PRIVACY, Shamir RECONSTRUCTION correctness, and
@@ -80,7 +80,7 @@ realizers already in-repo:
   results proved elsewhere.  This file says only: *the emitted Poseidon2 / field
   / Keccak kernel pipeline computes its arithmetic spec*, unconditionally.
 
-* **Why Poseidon2 / Keccak / field and not SHA-256.**  Each backbone here has a
+* **Why Poseidon2 / Keccak / field and not SHA-256.**  Each core here has a
   proved concrete realizer whose codec round-trip is proved *per-bit* / by
   *digit-sum* (axiom-clean).  The SHA-256 route is avoided because its codec
   round-trip uses a `bv_decide` LRAT certificate, which leaks a certificate
@@ -132,7 +132,7 @@ node hashes its two children by the 2-to-1 compression
   (the proved `poseidon2_perm_realizes_concrete`, exactly the
   `GroundedZkProtocol` transcript skeleton named for the Merkle commitment).
 
-AXIOM NOTE (honest flag): the permutation-chain theorems
+AXIOM NOTE: the permutation-chain theorems
 (`poseidonMerkle_realized`, `grounded_poseidon_merkle_path_realizes`) inherit one
 extra axiom beyond the standard three —
 `BabyBear.instFactPrimeBabyBearPrime._native.native_decide.ax_1` — because the
@@ -141,7 +141,7 @@ permutation carrier `Fin width → ZMod babyBearPrime` carries the
 This is exactly the axiom already carried by the in-repo reference
 `GroundedZkProtocol.grounded_poseidon_transcript_realizes` over the same proved
 realizer; it is NOT a kernel hypothesis.  The 2-to-1 compression node and the
-combined PORTFOLIO theorem ground the Merkle backbone through the strictly
+combined PORTFOLIO theorem ground the Merkle core through the strictly
 axiom-clean `decodeF 4` compression realizer instead, so the portfolio stays
 within `{propext, Classical.choice, Quot.sound}`.
 -/
@@ -158,7 +158,7 @@ within `{propext, Classical.choice, Quot.sound}`.
     `poseidon2_compress_realizes_concrete` (in turn the field codec round-trip
     `decodeF_encodeF` at `width = 4`, `q = babyBearPrime`).
 
-    HONEST scope: this grounds the *computational backbone* — that the emitted
+    Scope: this grounds the *computational core* — that the emitted
     Poseidon2 compression kernel computes `poseidon2BabyBearCompress`.  It does
     NOT prove the Merkle commitment's BINDING (collision-resistance of
     Poseidon2), which is a separate cryptographic assumption.  The only residual
@@ -212,7 +212,7 @@ theorem poseidonMerkle_realized (limbStore : LimbStoreSpec) (n : ℕ) :
     round-trip `decodeP_encodeP`), assembled by the carrier-generalized
     `pipeNT_realizes`.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted
+    Scope: this grounds the *computational core* — the emitted
     Poseidon2 permutation chain computes its arithmetic spec.  It does NOT prove
     the Merkle commitment's BINDING / collision-resistance (a separate
     assumption).  The only residual is the machine-code obligation for the
@@ -264,7 +264,7 @@ def mulAddStepValue (q : ℕ) [NeZero q] (width : ℕ) (v c : ZMod q)
     `combined_realizes_mul` / `combined_realizes_add`; the encoded coefficient
     and constant collapse by the proved `decodeF_encodeF`.  No assumed kernel
     fact; the only residual is the machine-code obligation for the two combined
-    arms.  This is the common backbone of a SPDZ MAC-check term and a Shamir
+    arms.  This is the common core of a SPDZ MAC-check term and a Shamir
     Horner share-evaluation step. -/
 theorem grounded_mulAddStep_realizes (q : ℕ) [NeZero q] (width : ℕ)
     (hw : width ≤ 48) (hq : q < 2 ^ (8 * width)) (v c : ZMod q)
@@ -289,7 +289,7 @@ theorem grounded_mulAddStep_realizes (q : ℕ) [NeZero q] (width : ℕ)
     per-kernel realizations are theorems (`combined_realizes_mul` /
     `combined_realizes_add` + codec round-trip).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted field
+    Scope: this grounds the *computational core* — the emitted field
     mul/add kernel pipeline computes the inner-product arithmetic.  It does NOT
     prove the SPDZ MAC-check's SOUNDNESS (that a corrupt party passes the check
     only with probability `≤ 2/|F|`) nor the MAC KEY PRIVACY — those are separate
@@ -309,11 +309,11 @@ theorem grounded_spdz_maccheck_realizes (q : ℕ) [NeZero q] (width : ℕ)
     polynomial `p`, computed by Horner's rule `p(α) = (⋯(c_d·α + c_{d-1})·α +
     ⋯)·α + c_0`.  One Horner step `x ↦ x · α + cᵢ` decodes to exactly
     `decodeF width xVal · α + cᵢ`, with **ZERO kernel hypotheses** — the same
-    grounded mul-then-add backbone, with `(v, c) = (α, cᵢ)`.  Both per-kernel
+    grounded mul-then-add core, with `(v, c) = (α, cᵢ)`.  Both per-kernel
     realizations are theorems (`combined_realizes_mul` / `combined_realizes_add`
     + codec round-trip).
 
-    HONEST scope: this grounds the *computational backbone* — the emitted field
+    Scope: this grounds the *computational core* — the emitted field
     kernel pipeline computes the Horner evaluation arithmetic.  It does NOT prove
     Shamir RECONSTRUCTION correctness (Lagrange interpolation recovers the secret)
     nor the share PRIVACY (any `t-1` shares are uniformly distributed) — those are
@@ -357,7 +357,7 @@ def hashCommitSpecs (steps : KeccakStepMappings) (n : ℕ) :
     concrete realizer `keccak_realizes_concrete` (in turn the verified 200-byte
     codec round-trip `decodeKbytes_encodeKbytes`), assembled by `pipeNT_realizes`.
 
-    HONEST scope: this grounds the *computational backbone* — the emitted Keccak
+    Scope: this grounds the *computational core* — the emitted Keccak
     permutation chain computes its arithmetic spec.  It does NOT prove the
     commitment's BINDING (collision-resistance of Keccak) or HIDING (the random
     opening), which are separate ROM / cryptographic assumptions.  The only
@@ -378,19 +378,19 @@ theorem grounded_hash_commitment_realizes (steps : KeccakStepMappings)
     (hashCommitLeaves n) (hashCommitSpecs steps n)
     (keccakSponge_realized steps limbStore n) oldDest xVal
 
-/-! ## §4  The combined MPC / ZK headline — all backbones grounded
+/-! ## §4  The combined MPC / ZK headline — all cores grounded
 
-The MPC / ZK / commitment portfolio is its grounded backbones conjoined: the
+The MPC / ZK / commitment portfolio is its grounded cores conjoined: the
 Poseidon2 Merkle 2-to-1 compression node, the SPDZ MAC-check / Shamir Horner
 field step, and the Keccak hash commitment.  Each conjunct is unconditional in
-its kernels; each grounds a *computational backbone*, not a protocol-level
+its kernels; each grounds a *computational core*, not a protocol-level
 security property.  The portfolio uses the strictly axiom-clean compression node
-for the Merkle backbone (the full permutation-path chain is a separate theorem
+for the Merkle core (the full permutation-path chain is a separate theorem
 carrying the BabyBear-prime `native_decide` axiom). -/
 
-/-- **THE MPC / ZK HEADLINE — grounded backbones, ZERO kernel hypotheses.**
+/-- **THE MPC / ZK HEADLINE — grounded cores, ZERO kernel hypotheses.**
 
-    The MPC / ZK / commitment backbones conjoined:
+    The MPC / ZK / commitment cores conjoined:
 
     * the Poseidon2 Merkle / vector-commitment 2-to-1 node compression
       `H(left, right)` (the `KernelRealizes2` over the 4-byte field codec),
@@ -404,14 +404,14 @@ carrying the BabyBear-prime `native_decide` axiom). -/
     codec round-trip.  All conjuncts are strictly axiom-clean
     (`{propext, Classical.choice, Quot.sound}`).
 
-    The Merkle backbone is grounded here through the 2-to-1 COMPRESSION node
+    The Merkle core is grounded here through the 2-to-1 COMPRESSION node
     (which runs over the field codec `decodeF 4` and is strictly axiom-clean), not
     the permutation path: the separate `grounded_poseidon_merkle_path_realizes`
     grounds the full `n`-level permutation chain but inherits the BabyBear-prime
     `native_decide` axiom (see the §1 AXIOM NOTE), so it is kept out of this strict
     portfolio.
 
-    HONEST scope: each conjunct grounds the *computational backbone* — that the
+    Scope: each conjunct grounds the *computational core* — that the
     emitted Poseidon2 / field / Keccak kernel pipeline computes its arithmetic
     spec.  It does NOT prove the protocol-level security (Merkle/commitment
     BINDING, SPDZ MAC SOUNDNESS, Shamir PRIVACY/RECONSTRUCTION, commitment

@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopCarriedDemo
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopCarriedDemo
 
 /-!
-# Array-reduction loop emit — `v := v + a[i]` over a memref (task #538, wall #2)
+# Array-reduction loop emit — `v := v + a[i]` over a memref
 
 `CounterLoopDemo` / `LoopCarriedDemo` lower a **counter-reading** loop body
 `(acc, ctr) ↦ acc ⊕ ctr` (resp. `acc + ctr`) through the verified x86
@@ -21,21 +21,21 @@ loop-carried value is fed by the **loop counter** (`ctr = n - i`), not by a valu
 loaded from a caller-supplied **array**. That counter-reading body context has no
 pointer/array slot — it is exactly `[accTy, .reg 64]` (acc, counter).
 
-This module advances to the genuine **array reduction** `v := v + a[i]` for
+This module treats the **array reduction** `v := v + a[i]` for
 `i = 0 .. n-1`, where the per-iteration summand `a[i]` is **loaded from a base
 array** each iteration, not read off the counter. The body therefore needs an
 array/pointer slot in its context. We use the three-slot body context
 `JForProgIndexed.tabCtxt (.reg 64) nRC = [.reg 64, .reg 64, .stackArr 64 nRC]`
 (`acc`, loop-index register `idx`, the array `a`), whose abstract `execCom`
-denotation tie `JForProgIndexed.loopRunT_eq_denoteT` already exists and is what
+denotation tie is `JForProgIndexed.loopRunT_eq_denoteT` and is what
 the x86 emit must realise.
 
-## What is landed here
+## What this module proves
 
 1. **The array-reduction body** `arrSumBody nRC : Com jasminDialect
    (tabCtxt (.reg 64) nRC) (.reg 64)` — a `stackLoad a idx` (the memref load
    `a[idx]`) followed by a `regArith .add` (`acc + a[idx]`). It is `StraightLine`
-   (both binders are non-`stackStore` ops), so it meets the keystone's hypothesis.
+   (both binders are non-`stackStore` ops), so it meets the hypothesis of `loopRunT_eq_denoteT`.
    One-step denotation `arrSumBody.denote [acc, ofNat i, a] = acc + stackGet a i`
    is `rfl`.
 
@@ -53,16 +53,16 @@ the x86 emit must realise.
    (`range_succ_eq_map`/`foldl_map`/`ac_rfl`) — no heavy kernel `native_decide`.
 
 4. **The abstract emit tie** `arrSumLoop_loopRun_eq_ref`: routing through the
-   pre-existing array-loop keystone `JForProgIndexed.loopRunT_eq_denoteT`, the
+   array-loop theorem `JForProgIndexed.loopRunT_eq_denoteT`, the
    abstract emitted loop run `loopRunT leafSem (arrSumLoop a n) 0` (the `execCom`
    evaluator threading the named accumulator, the index register and the array
    buffer through `n` iterations) equals the reference `arrSumUpTo a n`, under the
-   single opaque-leaf hypothesis `LeafAgrees` the keystone carries.
+   single opaque-leaf hypothesis `LeafAgrees` that theorem carries.
 
-## The honest residual (the x86-register-pin splice is NOT done here)
+## Scope (the x86-register-pin splice is outside this module)
 
 The tie in §4 is over `execCom` (the abstract dialect evaluator), via
-`loopRunT_eq_denoteT` — the array-loop control-flow keystone in
+`loopRunT_eq_denoteT` — the array-loop control-flow theorem in
 `JForProgIndexed`. It is **not** carried to the x86 `Lprog` byte emit.
 `cforIdxToLprogAbiBodyZeroAcc` (the verified x86 counter-loop emit `LoopCarriedDemo`
 uses) only accepts a **two-slot** body `Com jasminDialect [accTy, .reg 64] accTy`
@@ -71,10 +71,10 @@ and has **no third register/pointer operand** for an array base, and no
 per-iteration `MOV resReg, [base + idx*8]` memory-load splice. Adding a
 `[accTy, .reg 64, ptr]` body context to the x86 ABI splice — a base-pointer arg
 register plus a scaled-indexed load `mem[base + idx*8]` inside the loop body, RA'd
-and register-pinned alongside the counter — is the explicit remaining gap (a
-genuine x86-backend extension, not reachable by reuse alone). This module pins the
+and register-pinned alongside the counter — is an x86-backend extension, not
+reachable by reuse alone; `LoopReduceX86Demo` treats it. This module pins the
 array-reduction **value semantics** and the **abstract array-loop control-flow
-tie**; the x86 memref-load register-pin splice is the next wall.
+tie**.
 -/
 
 @[expose] public section
@@ -113,7 +113,7 @@ The body lives over the three-slot context `tabCtxt (.reg 64) nRC =
 
     The leading binder is a **register-liveness device for the x86 emit**, not a
     semantic step: it is shadowed by the later bindings and never reaches `.ret`,
-    so the denotation is exactly `acc + a[idx]` (`arrSumBody_denote`, still `rfl`).
+    so the denotation is exactly `acc + a[idx]` (`arrSumBody_denote`, by `rfl`).
     Its purpose is to make the `acc`-arg's live range start at the body's first
     instruction so the linear-scan register allocator keeps `acc`, `idx` and the
     array base in three *distinct* registers across the loop back-edge — see the
@@ -131,7 +131,7 @@ def arrSumBody (nRC : Nat) : Com jasminDialect (tabCtxt (.reg 64) nRC) (.reg 64)
   -- registers across the back-edge — the same overlap guarantee the §5b
   -- rejection-sampler body (`acc ^= ctr`, which reads both in one binding)
   -- enjoys for free. The binding is shadowed (never read by `.ret`), so the
-  -- denotation is unchanged: the final value is still `acc + a[idx]`.
+  -- denotation is unchanged: the final value is `acc + a[idx]`.
   .var (.mk (.regArith .add 64) rfl
         (.cons .here (.cons (.there .here) .nil)))
     (.var (.mk (.stackLoad 64 nRC) rfl
@@ -151,7 +151,7 @@ def arrSumBody (nRC : Nat) : Com jasminDialect (tabCtxt (.reg 64) nRC) (.reg 64)
 
 /-- `arrSumBody` is `StraightLine`: all three binders are non-`stackStore` ops
     (the leading liveness `regArith .add`, the `stackLoad`, then the folding
-    `regArith .add`). This meets the array-loop keystone's hypothesis
+    `regArith .add`). This meets the array-loop theorem's hypothesis
     (`JForProgIndexed.loopRunT_eq_denoteT` needs `StraightLine p.body`). -/
 theorem arrSumBody_straightLine (nRC : Nat) : StraightLine (arrSumBody nRC) := by
   refine ⟨?_, ?_, ?_, trivial⟩ <;> intro w n h <;> exact nomatch h
@@ -242,7 +242,7 @@ theorem stackGet_ofNat_in_range {nRC : Nat} (a : Fin nRC → BitVec 64) (i : Nat
     `n ≤ nRC ≤ 2^64`, the reference `arrSumUpTo a` over `0 .. n` reads the in-range
     array entries directly: each step adds `a ⟨k, _⟩` (via the in-range `stackGet`
     reduction `stackGet_ofNat_in_range`), so the certified sum is the natural array
-    sum `Σ_{j<n} a[j]` over the genuine `Fin nRC` entries. Stated as the
+    sum `Σ_{j<n} a[j]` over the `Fin nRC` entries. Stated as the
     last-step recursion (the per-term form callers fold into a `Fin`-indexed sum). -/
 theorem arrSumUpTo_succ_in_range {nRC : Nat} (a : Fin nRC → BitVec 64) (k : Nat)
     (hk : k < nRC) (hn : nRC ≤ 2 ^ 64) :
@@ -250,7 +250,7 @@ theorem arrSumUpTo_succ_in_range {nRC : Nat} (a : Fin nRC → BitVec 64) (k : Na
   rw [arrSumUpTo, stackGet_ofNat_in_range a k hk hn]
 
 
-/-! ## 4. The abstract emit tie (via the array-loop control-flow keystone)
+/-! ## 4. The abstract emit tie (via the array-loop control-flow theorem)
 
 `JForProgIndexed.loopRunT_eq_denoteT` ties the abstract emitted loop run
 `loopRunT leafSem p init` (the `execCom` evaluator threading the named
@@ -259,12 +259,12 @@ accumulator, the index register and the array buffer through `n` iterations) to
 value-tie gives the emitted array-reduction loop's run = the reference array sum.
 
 This tie is over `execCom` (the abstract dialect evaluator) — NOT over the x86
-`Lprog` byte emit. The x86 memref-load register-pin splice is the named residual
+`Lprog` byte emit. The x86 memref-load register-pin splice is outside this module
 (see the module docstring). -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect (LeafSem LeafAgrees)
 
-/-- **The abstract emit tie.** Routed through the array-loop control-flow keystone
+/-- **The abstract emit tie.** Routed through the array-loop control-flow theorem
     `JForProgIndexed.loopRunT_eq_denoteT` (with `StraightLine` discharged by
     `arrSumBody_straightLine` and the opaque-leaf edge `LeafAgrees` carried), the
     abstract emitted array-reduction loop run from `acc = 0` equals the

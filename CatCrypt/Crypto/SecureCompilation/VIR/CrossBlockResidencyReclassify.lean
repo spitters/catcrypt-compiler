@@ -9,15 +9,12 @@ module
 /-!
 # Cross-block residency unroll: reclassification (audit Class A)
 
-The compiler-proof-cheats audit flagged
-`CrossBlockResidencyUnroll.applyCrossBlockResidency = fun p _ => p` (identity,
-`rfl` preservation) alongside DCE/CSE/LICM/StrengthReduce/Schedule/SoftwarePipelining
-as a "vacuous optimizer pass". On investigation, **cross-block residency is the
-same kind of pass as `RegisterAllocation` — a PHYSICAL-level decision — and is
-honestly the `Com`-level identity.** It should NOT get a `*Real.lean`
-`Com → Com` real-transform sibling.
+`CrossBlockResidencyUnroll.applyCrossBlockResidency = fun p _ => p` is the
+identity, with `rfl` preservation. **Cross-block residency is the same kind of
+pass as `RegisterAllocation` — a PHYSICAL-level decision — and is the
+`Com`-level identity.** It has no `*Real.lean` `Com → Com` transform sibling.
 
-## Why cross-block residency is honestly the `Com`-level identity
+## Why cross-block residency is the `Com`-level identity
 
 `Com d Γ t` (`VIR/Core.lean`) is intrinsically-typed, register-FREE SSA:
 variables are `Ctxt.Var Γ t` (de Bruijn indices), not physical registers or
@@ -37,21 +34,21 @@ spilled and reloaded at each loop-head / loop-tail). Its decision record
 Pins, spills, reloads, and "which physical register holds slot `s` across the
 boundary" exist only at the `Lprog`/`Lstate` level produced by
 `Com.toLprogPhysAbi`. A residency decision therefore *cannot* rewrite the
-`Com`; the only honest `Com → Com` action is the identity. Contrast
+`Com`; the only `Com → Com` action it determines is the identity. Contrast
 `DeadCodeElimReal` / `CommonSubexprElimReal` / `ScheduleReal` /
 `SoftwarePipeliningReal`, which change the binding / context / loop structure
-(so their preservation theorems are genuinely non-`rfl`). Cross-block residency
+(so their preservation theorems are non-`rfl`). Cross-block residency
 has no such `Com`-level analogue: the loop body, its bindings, and its trip
 count are all unchanged — only the storage-class of each value across the
 boundary changes, and storage class is invisible to `Com`.
 
-## The file already witnesses this: it routes through the RA framework
+## The pass routes through the RA framework
 
-`CrossBlockResidencyUnroll.lean` itself packages its decision as a
+`CrossBlockResidencyUnroll.lean` packages its decision as a
 `RegisterAllocation` (`crossBlockResidencyRA`, with `slotOf := id`,
 `seqOf := id`) and discharges its `Com`-level preservation through the RA
-framework's `applyRA_denote_preserves` (`crossBlockResidency_via_RA`). That is
-the structural admission that this pass lives at the same layer as RA: its
+framework's `applyRA_denote_preserves` (`crossBlockResidency_via_RA`). So this
+pass lives at the same layer as RA: its
 real content is a physical-register-allocation refinement (boundary-stable
 residency), consumed by the per-protocol `*RaEmit.lean` lowering, not a
 `Com` rewrite.
@@ -68,9 +65,9 @@ form
   `physExec (toLprogPhysAbi com (physAssign … with boundary-stable residency))
      = Com.denote com`
 
-— the same `Phase 1` (`toLprogPhysAbi` physical-machine) obligation that
+— the same `toLprogPhysAbi` physical-machine obligation that
 `RegisterAllocationReclassify.lean` identifies for ordinary RA, whose
-discharged structural core already exists as
+discharged structural core is
 `X86Backend.ToLprogFaithfulNary.physBody_lsem_result_uniform` (after the body
 runs, the VM register holding the result holds the abstract-semantics value).
 
@@ -84,25 +81,21 @@ That is a physical-machine (`Lstate`) move-cancellation lemma at the
 `toLprogPhysAbi` layer, NOT a `Com` equation — which is exactly why
 `applyCrossBlockResidency` is correctly the `Com`-identity.
 
-## Audit accounting
+## Classification of the optimizer passes
 
-The audit's Class-A list therefore over-counts cross-block residency, the same
-way it over-counted RA. The honest accounting:
-
-* **Genuinely vacuous `Com`-level passes, now each fixed with a real
-  `*Real.lean` transform:** DCE (`DeadCodeElimReal`), CSE
+* **`Com`-level passes, each with a `*Real.lean` transform:** DCE (`DeadCodeElimReal`), CSE
   (`CommonSubexprElimReal`), LICM (`LoopInvariantHoistReal`), StrengthReduce,
   Schedule (`InstructionScheduleReal`), and SoftwarePipelining
   (`SoftwarePipeliningReal`, the prologue-peel loop transform).
-* **Physical-level passes, correctly the `Com`-identity, real correctness in
-  Phase 1:** `RegisterAllocation` (see `RegisterAllocationReclassify.lean`) and
-  **`CrossBlockResidencyUnroll`** (this file) — both register-residency
-  decisions, both reclassified.
+* **Physical-level passes, the `Com`-identity, correctness at the
+  `toLprogPhysAbi` layer:** `RegisterAllocation` (see
+  `RegisterAllocationReclassify.lean`) and **`CrossBlockResidencyUnroll`**
+  (this file) — both register-residency decisions.
 
 (This module is documentation only — the machine-checked claims
 `applyCrossBlockResidency = id` / `crossBlockResidencyRA.slotOf = id` are
-trivial `rfl`s over `CrossBlockResidencyUnroll`'s own defs; the load-bearing
-fact is the Phase-1 physical theorem `physBody_lsem_result_uniform` plus the
+trivial `rfl`s over `CrossBlockResidencyUnroll`'s own defs; the substantive
+fact is the physical theorem `physBody_lsem_result_uniform` plus the
 boundary move-cancellation lemma at the `toLprogPhysAbi` layer.)
 -/
 

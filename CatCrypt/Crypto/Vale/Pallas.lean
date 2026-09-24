@@ -68,13 +68,13 @@ for `b = 255`).
   `pallas_invert_divstep_sat` takes a 4×u64 saturated little-endian
   representation of `x` and writes `x^{-1} mod p_{Pallas}` into a
   4×u64 output buffer.
-* **Adopted in the Halo2 Pasta commitment MSM bench** (task #433): the
+* **Adopted in the Halo2 Pasta commitment MSM bench**: the
   leaf is exported with a C ABI by the AUCurves `pallas-safe-rust`
   crate (`src/ffi.rs` → `pallas_fp_inv` / `pallas_invert_sat`, built as
   `libpallas.a`) and linked into the Pallas affine point-add as the
-  chord/slope inverse, replacing the Fermat `a^{p-2}` ladder. Alongside
+  chord/slope inverse, instead of the Fermat `a^{p-2}` ladder. Alongside
   it, that crate's fiat-crypto WordByWordMontgomery field
-  (`fiat_pallas_mul`, the machine-checked Montgomery reduce) replaces the
+  (`fiat_pallas_mul`, the machine-checked Montgomery reduce) is used in place of the
   hand-written CIOS C reduce. KAT: `inv(x)·x ≡ 1 (mod p_{Pallas})` and the
   full Montgomery multiply vs GMP `a·b mod p`; the 8-term commit MSM drops
   ~7.9× (Fermat → safegcd). See `bench/halo2_compare/{pasta_msm_av,

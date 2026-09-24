@@ -13,10 +13,10 @@ public import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
 /-!
 # NTT-multiply correctness: transform, pointwise-multiply, inverse-transform
 
-This file closes the NTT-multiply round trip. The forward half
+This module proves the NTT-multiply round trip. The forward half
 (`NTTConvolutionTheorem` / `NttMultiplyGeneric`) shows the pointwise product of
 two forward transforms equals the forward transform of the convolution; the
-inversion keystone (`NTTFullInversionGeneric.idft_dft`) shows the synthesis map
+inversion theorem (`NTTFullInversionGeneric.idft_dft`) shows the synthesis map
 `idft` is a left inverse of `dft`. Composing them:
 
   `nttMul n ω x y := idft n ω (fun k => dft n ω x k · dft n ω y k)`

@@ -48,7 +48,7 @@ so `xtime`/`mul3`/`id` are exactly what MixColumns needs.
 * `addRoundKeyCom` — `denote = (a ⊕ k)` (AddRoundKey is a byte XOR)
 
 ShiftRows is a pure lane permutation (no arithmetic) and AddRoundKey is `bvXor`;
-the GF(2⁸) `xtime`/`mul3` + MixColumns witness is the load-bearing deliverable,
+the GF(2⁸) `xtime`/`mul3` + MixColumns witness is the main result,
 since the MDS multiply is the only non-ALU-trivial part of the round. SubBytes is
 the S-box table; its dialect handling is via `memrefGetDyn` (runtime-index table
 lookup) and is discussed in the final section.

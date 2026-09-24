@@ -11,11 +11,10 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# `Com(arith) → Lprog(jasmin)` — the D6 jasmin sibling backend
+# `Com(arith) → Lprog(jasmin)` — the jasmin sibling backend
 
-The D6 phase of the MLIR dialect-alignment restructure keeps the **linearized
-jasmin** target (`Lprog`) as a *sibling* backend descending from the neutral,
-upstream-aligned `arith` mid-level, **parallel to the owned x86 target**. Both
+The **linearized jasmin** target (`Lprog`) is a *sibling* backend descending from
+the neutral, upstream-aligned `arith` mid-level, **parallel to the owned x86 target**. Both
 backends start from the same neutral `Com arithDialect` program; this file wires
 the jasmin sibling:
 
@@ -31,7 +30,7 @@ the jasmin sibling:
           Lprog                    -- linearized jasmin (the `jasminc`-fed form)
 ```
 
-The point of D6 is the **perf comparison** against `jasminc`'s own pipeline and
+This backend exists for the **perf comparison** against `jasminc`'s own pipeline and
 the `jasminc_preserves_ct` anchor: by descending the jasmin `Lprog` from the
 *same* neutral `arith` mid-level as the owned x86 path, the two targets share a
 common, verified front half (`lowerArithToJasmin`) and diverge only in the
@@ -56,26 +55,26 @@ The composed lowering `arithToLprog` reuses two existing pieces:
   `…MC` / `…Leaf` fragment extensions) over jasmin's program-indexed linear
   semantics `lsem` — established for the modeled straight-line / mul-carry /
   ScalarLeafN fragments. For Coms outside those fragments, whole-program
-  denotation preservation across `Com.toLprog` is not yet covered in-tree.
+  denotation preservation across `Com.toLprog` is outside the in-tree coverage.
 
 Consequently, the preservation we obtain *for free* for `arithToLprog` is the
 **composition of the verified front-half denote-preservation with the
-structural back-half well-formedness** — stated honestly below. The full
+structural back-half well-formedness**, stated below. The full
 end-to-end `Com.denote = lsem (arithToLprog …)` holds for the fragments
 `ComLsemExportFaithful[MC/Leaf]` covers; the back half is otherwise structural.
 
 ## Relationship to the CT anchor
 
-The `jasminc_preserves_ct` axiom (`SecureCompilation/JasminCompilerBridge.lean`)
+The `jasminc_preserves_ct` axiom (`CompilerSecurity/JasminCompilerBridge.lean`)
 is stated over the separate `Jasmin/` AST (`JasminProg` + `isCT_Cmd`), *not* over
 `Lprog`. So this file does **not** discharge a CT obligation; it positions the
 `Lprog` sibling at the point in the pipeline that feeds `jasminc`, whose CT
 preservation is the trusted anchor. The contribution here is the *neutral-mid-
-level provenance* of the jasmin target — it now descends from `arith`, sibling to
+level provenance* of the jasmin target — it descends from `arith`, sibling to
 the owned x86 backend — together with the structural + front-half-denote
 guarantees that compose through.
 
-0 sorries, 0 axioms. Semantic preservation across `Com.toLprog` is the proved
+All goals closed, 0 axioms. Semantic preservation across `Com.toLprog` is the proved
 `ComLsemExportFaithful[MC/Leaf]` predicate over `lsem` for its modeled
 fragments, not an axiom.
 -/
@@ -95,7 +94,7 @@ with the existing total `Com.toLprog` linearizer. The optional `immSlotMap`
 (immediate-slot substitution, see `JasminLprogExport.ImmSlotMap`) is threaded
 through to the back half. -/
 
-/-- **The D6 jasmin sibling lowering.** Lower a neutral-`arith` program straight
+/-- **The jasmin sibling lowering.** Lower a neutral-`arith` program straight
     to linearized jasmin `Lprog`, by composing the verified arith→jasmin dialect
     lowering with the existing jasmin-Com linearizer `Com.toLprog`. This is the
     `Lprog` target descending from the same neutral mid-level as the owned x86

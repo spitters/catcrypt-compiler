@@ -25,7 +25,7 @@ in lockstep, giving 2x–4x over the per-block AES-NI baseline.
 This module pins the **xmm-width** semantics (one 128-bit AES state,
 one 128-bit round key) — that is exactly the per-lane semantics of
 the wider VAES variants (`vaesenc ymm` = two `vaesenc xmm` in
-parallel, no cross-lane mixing). The lane-map keystone
+parallel, no cross-lane mixing). The lane-map lemma
 `LaneMap.vmap₂_eq_scalar` then carries the multi-lane denotation to
 2-way, 4-way, n-way packings without proof duplication.
 
@@ -41,7 +41,7 @@ parallel, no cross-lane mixing). The lane-map keystone
 4. Structural sanity (`vaesOp_complete`) and alignment
    (`vaesenc_lane_map_two_way`) — the latter is a 2-way VAES instance
    on `BitVec 256` reusing `LaneMap.vmap₂_eq_scalar`, demonstrating
-   the keystone covers the multi-lane case for free.
+   the lemma covers the multi-lane case without a new proof.
 
 ## What this module is NOT
 
@@ -76,11 +76,11 @@ open CatCrypt.Crypto.Primitives.AES128
     a single 128-bit round key, computing one AES round step. The
     wider EVEX variants (`vaesenc ymm`/`zmm`) are lane-wise extensions
     — same per-lane semantics, more lanes — covered by the lane-map
-    keystone `LaneMap.vmap₂_eq_scalar`. -/
+    lemma `LaneMap.vmap₂_eq_scalar`. -/
 inductive VAESOp
   | /-- `VAESENC xmm, xmm/m128, xmm/m128` (Intel SDM Vol. 2A):
         `dst := MixColumns(ShiftRows(SubBytes(src1))) XOR src2`. The
-        load-bearing per-round encrypt op. -/
+        main per-round encrypt op. -/
     vaesenc
   | /-- `VAESENCLAST xmm, xmm/m128, xmm/m128`:
         `dst := ShiftRows(SubBytes(src1)) XOR src2` (no MixColumns —
@@ -137,7 +137,7 @@ def vaesRoundOnState : VAESOp → State → State → State
       -- here; since the consumer side of the bench (the AEAD round)
       -- only consumes `vaesenc` / `vaesenclast`, the decrypt branches
       -- are spec-only (and proven structurally by the same lane-map
-      -- keystone — they're per-lane independent, so the multi-lane
+      -- lemma — they're per-lane independent, so the multi-lane
       -- denotation reuses the same alignment lemma without
       -- per-mnemonic proof duplication).
       addRoundKey (subBytes (shiftRows s)) (fun i => k i)
@@ -184,7 +184,7 @@ theorem vaesOp_complete (op : VAESOp) :
     op = .vaesenc ∨ op = .vaesenclast ∨ op = .vaesdec ∨ op = .vaesdeclast := by
   cases op <;> simp
 
-/-! ## 6. Alignment lemma — multi-lane VAES via the lane-map keystone
+/-! ## 6. Alignment lemma — multi-lane VAES via the lane-map lemma
 
 A 2-way VAES op on `BitVec 256` runs two independent `vaesenc xmm`
 in parallel, with no cross-lane mixing. The denotation of the packed

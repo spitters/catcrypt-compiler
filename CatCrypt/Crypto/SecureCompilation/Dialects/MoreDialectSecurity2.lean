@@ -10,10 +10,10 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNa
 /-!
 # More peephole-security results, native on `Com catCryptDialect`
 
-This file states and proves four further peephole-security results **directly on
+This module states and proves four further peephole-security results **directly on
 `catCryptDialect`**, computing the `SPComp` distance through `Com.denoteSP` /
-`catCryptDenoteSP`. It continues phase C.3 of the CProg-retirement plan, joining
-`CryptoDialectSecurityNative.lean` and `MoreDialectSecurity.lean`:
+`catCryptDenoteSP`, alongside `CryptoDialectSecurityNative.lean` and
+`MoreDialectSecurity.lean`:
 
 * `xor_self_cancel` — XOR self-cancellation: `let y = xor(x, x); ret y ≡ ret false`.
 * `bvAnd_self_identity n` — AND self-identity: `let y = bvAnd(x, x); ret y ≡ ret x`.
@@ -33,12 +33,12 @@ The security view therefore lives on `catCryptDialect` alone.
 
 ## Anti-vacuity
 
-Each ported theorem genuinely relates *distinct* programs (the `lhs` of each
+Each theorem relates *distinct* programs (the `lhs` of each
 rewrite binds an extra algebraic/sample op the `rhs` lacks), so none is
 `0 = 0`; none routes through the valuation-free `Com.all_com_ct` shadow.
 
-**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`,
-**0 sorries**.
+**0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`;
+all goals closed.
 -/
 
 @[expose] public section

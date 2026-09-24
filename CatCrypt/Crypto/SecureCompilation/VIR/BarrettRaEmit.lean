@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 /-!
 # Barrett-reduction inner kernel — register allocation
 
-`RegisterAllocation.lean` (#141 / #143) ships the verified linear-scan RA
+`RegisterAllocation.lean` ships the verified linear-scan RA
 framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
 hint (`seqOf`), well-formed when `slotOf` is injective and `applyRA` preserves
 `JForProg.denote`. The central theorem `applyRA_denote_preserves` is RA-agnostic.

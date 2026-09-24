@@ -17,22 +17,22 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
 /-!
 # Operational ASSIGN run-correctness + the `InstrR` coverage capstone
 
-This file completes the operational-semantics layer for the Jasmin instruction
+This module completes the operational-semantics layer for the Jasmin instruction
 executor (`JasminCoqSemMirror`'s `execInstrR`, the mechanical Lean port of Coq
 `psem.v`). It does two things:
 
 1. **`execInstrR_Cassgn_eq`** — the run-correctness theorem for the assignment
-   construct `Cassgn x tag ty e`, completing the per-constructor family started
-   by the three just-landed siblings (`Cif`/`Cwhile`/`Ccall`) and the counted
-   `Cfor` keystone (`LoopLowering`). `Cassgn` is non-recursive, so — exactly as
-   the `Ccall` keystone — one `conv_lhs => rw [execInstrR]` peeling closes it.
+   construct `Cassgn x tag ty e`, completing the per-constructor family of the
+   three siblings (`Cif`/`Cwhile`/`Ccall`) and the counted
+   `Cfor` theorem (`LoopLowering`). `Cassgn` is non-recursive, so — exactly as
+   the `Ccall` theorem — one `conv_lhs => rw [execInstrR]` peeling closes it.
 
 2. **`OpSemCoverage`** — a capstone *coverage* section that collects, by
    `example`, the run-correctness theorem for **every** `InstrR` constructor,
    making explicit that `execInstrR` has a verified run-characterisation on the
    whole instruction set. The collected theorems are not re-proved here; the
-   section merely *references* the landed keystones so the coverage claim is
-   machine-checked (each `example` fails to elaborate if its keystone's
+   section merely *references* the existing theorems so the coverage claim is
+   machine-checked (each `example` fails to elaborate if its theorem's
    signature drifts).
 
 ## The assignment construct (what `Cassgn` denotes)
@@ -53,7 +53,7 @@ i.e. *evaluate `e`; truncate to `ty`; write into `lv`* — the executor's own
 this as `assignExec` (matching `ifExec`/`whileExec`/`callComposition` in the
 siblings) and prove the executor unfolds to it.
 
-## `InstrR` constructor coverage (honest)
+## `InstrR` constructor coverage
 
 `InstrR` (`JasminCoqSemMirror.lean:436`) has **seven** constructors:
 
@@ -61,7 +61,7 @@ siblings) and prove the executor unfolds to it.
 |---|---|---|---|
 | `Cassgn`   | `execInstrR_Cassgn_eq`            | **this file** | covered |
 | `Cif`      | `CifLowering.execInstrR_Cif_eq_ite` | CifLowering | covered |
-| `Cfor`     | `LoopLowering.loopN_lower_denote_iterate` | LoopLowering | covered (counted keystone) |
+| `Cfor`     | `LoopLowering.loopN_lower_denote_iterate` | LoopLowering | covered (counted loop) |
 | `Cwhile`   | `WhileLowering.execInstrR_Cwhile_eq_whileExec` | WhileLowering | covered |
 | `Ccall`    | `CallLowering.execInstrR_Ccall_eq` | CallLowering | covered |
 | `Copn`     | `execInstrR_Copn_eq`              | **this file** | covered (this file adds it) |
@@ -71,12 +71,12 @@ So **six of seven** `InstrR` constructors have a verified run-characterisation.
 `Csyscall` is the lone gap, *by construction*: the executor's `.Csyscall` branch
 is `.otherErr "execInstrR Csyscall: deferred to Phase C"` (the mirror's §6 note
 deliberately omits syscall semantics — Coq requires a `syscall_sem` typeclass
-that the port has not instantiated). We state and prove the only honest thing
+that the port does not instantiate). The module proves the one exact statement
 about it — `execInstrR_Csyscall_err`, that the emitted `Csyscall` run *is* that
-deferral error — rather than papering the gap with a vacuous "characterisation".
+deferral error.
 
-`Cfor`'s entry is the **counted-loop** keystone (`loopN_lower_denote_iterate`:
-emitted `Cfor` run = `step^[n]`), the static-count form `LoopLowering` lands;
+`Cfor`'s entry is the **counted-loop** theorem (`loopN_lower_denote_iterate`:
+emitted `Cfor` run = `step^[n]`), the static-count form of `LoopLowering`;
 the lower-level `execInstrR`-direct `Cfor` arm runs through `execFor` (mirrored
 by `JForProgSemCorrect`). We additionally give here an `execInstrR`-level
 `Cfor` peel (`execInstrR_Cfor_eq`) so the coverage table has a uniform
@@ -84,7 +84,7 @@ by `JForProgSemCorrect`). We additionally give here an `execInstrR`-level
 
 All goals are closed; no opaque-leaf hypothesis is needed for the `Cassgn`,
 `Copn`, `Cfor`-peel and `Csyscall` results (the executor branches are concrete
-functional definitions). The `Cfor` *counted-loop* keystone carries the same
+functional definitions). The `Cfor` *counted-loop* theorem carries the same
 `LeafAgrees` opaque-leaf edge as the rest of the emit-correctness theory.
 -/
 
@@ -117,15 +117,15 @@ def assignExec (opS : OpSem) (gd : GlobDecls)
   let v' ← truncateVal (evalAtype ty) v
   writeLval (Mem := Mem) true gd opS lv v' s
 
-/-! ## 2. Keystone: the emitted `Cassgn` run equals the composition
+/-! ## 2. Main theorem: the emitted `Cassgn` run equals the composition
 
 `execInstrR`'s `.Cassgn` branch, at fuel `fuel'+1`, unfolds to exactly
 `assignExec`. This is the run-correctness theorem for the real Jasmin `Cassgn`
 construct: its functional fuel-bounded run = (eval `e`; truncate to `ty`; write
-into `lv`). `Cassgn` is non-recursive, so — exactly as the `Ccall` keystone —
+into `lv`). `Cassgn` is non-recursive, so — exactly as the `Ccall` theorem —
 one `conv_lhs => rw [execInstrR]` peeling closes it. -/
 
-/-- **Keystone.** The emitted `Cassgn lv tag ty e` executor (at fuel `fuel'+1`,
+/-- **Main theorem.** The emitted `Cassgn lv tag ty e` executor (at fuel `fuel'+1`,
     for *any* `tag` — assignment is fuel-insensitive past the guard and ignores
     the tag) equals the explicit composition (eval `e` → truncate to `ty` →
     write into `lv`). This is run-correctness for the real Jasmin `Cassgn`
@@ -146,7 +146,7 @@ branch peel for `Copn` (a primitive opcode application, run by `semSopn`) and a
 `Cfor` peel (a counted iteration, run by `execFor`). Both are one-step `rw`
 peels of the executor's own branch — the same non-recursive shape as `Cassgn`. -/
 
-/-- **`Copn` keystone.** The emitted `Copn xs tag o es` run equals the
+/-- **`Copn` run theorem.** The emitted `Copn xs tag o es` run equals the
     primitive-opcode application `semSopn … o s xs es` — the executor's own
     `.Copn` branch (`SemIr.Eopn`, `psem.v:67`). -/
 theorem execInstrR_Copn_eq
@@ -157,11 +157,11 @@ theorem execInstrR_Copn_eq
       = semSopn (Mem := Mem) aS opS gd o s xs es := by
   conv_lhs => rw [execInstrR]
 
-/-- **`Cfor` keystone (`execInstrR`-direct).** The emitted `Cfor v r body` run
+/-- **`Cfor` run theorem (`execInstrR`-direct).** The emitted `Cfor v r body` run
     (at fuel `fuel'+1`) equals: evaluate the range bounds (`r.lo`/`r.hi`), coerce
     to `Int`, and run `execFor` over the materialised range list — the executor's
     own `.Cfor` branch (`SemIr.Efor`, `psem.v:99`). The packaged *counted-loop*
-    keystone is `LoopLowering.loopN_lower_denote_iterate` (emitted loop run =
+    theorem is `LoopLowering.loopN_lower_denote_iterate` (emitted loop run =
     `step^[n]`); this is its `execInstrR`-level companion. -/
 theorem execInstrR_Cfor_eq
     (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
@@ -176,16 +176,16 @@ theorem execInstrR_Cfor_eq
           execFor (Mem := Mem) aS opS gd fuel' v (wrange r.dir vlo vhi) body s prog) := by
   conv_lhs => rw [execInstrR]
 
-/-! ## 4. `Csyscall`: the honest deferral
+/-! ## 4. `Csyscall`: the deferral error
 
 The mirror's §6 note deliberately omits syscall semantics (Coq requires a
-`syscall_sem` typeclass the port has not instantiated). The executor's
-`.Csyscall` branch is therefore a deferral error. We state exactly that — the
-only honest characterisation of the run — rather than a vacuous "covered". -/
+`syscall_sem` typeclass the port does not instantiate). The executor's
+`.Csyscall` branch is therefore a deferral error, and the theorem below states
+exactly that. -/
 
 /-- **`Csyscall` deferral.** The emitted `Csyscall xs o es` run (at fuel
     `fuel'+1`) is the deferral error `execInstrR Csyscall: deferred to Phase C`.
-    This is the honest run-characterisation: `Csyscall` semantics are not
+    This is the exact run-characterisation: `Csyscall` semantics are not
     modelled (the mirror omits `syscall_sem`), so the constructor's run is a
     deterministic error, not a real effect. -/
 theorem execInstrR_Csyscall_err
@@ -256,7 +256,7 @@ theorem assignXY_kat :
   native_decide
 
 /-- **Run-correctness instance.** The emitted assignment run equals the §2
-    composition keystone (eval `y + 1` → truncate to `aint` → write into `x`) —
+    composition theorem (eval `y + 1` → truncate to `aint` → write into `x`) —
     a direct instance of `execInstrR_Cassgn_eq`. -/
 theorem assignXY_emitted_eq_assignExec (n : Int) (fuel' : Nat) :
     execInstrR (Mem := TrivialMem) addAsmSem addOpSem [] (fuel'+1)
@@ -270,13 +270,13 @@ end AssignExample
 
 /-! ## 6. CAPSTONE: `execInstrR` run-correctness coverage over all of `InstrR`
 
-This section *collects* the per-constructor run-correctness keystones into one
+This section *collects* the per-constructor run-correctness theorems into one
 place, making the coverage claim machine-checked: each `example` below pins the
-signature of a landed keystone, so the coverage table cannot silently drift.
+signature of an existing theorem, so the coverage table cannot silently drift.
 
 Six of `InstrR`'s seven constructors carry a verified run-characterisation
-against the real `execInstrR` executor; `Csyscall` is the deliberate gap (its
-run is the deferral error, captured honestly above). -/
+against the real `execInstrR` executor; `Csyscall` is outside the coverage (its
+run is the deferral error, captured above). -/
 
 section Coverage
 
@@ -308,7 +308,7 @@ example (cond : Pexpr) (cthen celse : Cmd) (b : Bool)
 
 /-- **`Cfor` covered** — `execInstrR_Cfor_eq` (this file, `execInstrR`-direct
     peel) and `LoopLowering.loopN_lower_denote_iterate` (the packaged counted-loop
-    keystone: emitted loop run = `step^[n]`). The `execInstrR`-level entry: -/
+    theorem: emitted loop run = `step^[n]`). The `execInstrR`-level entry: -/
 example (v : VarI) (r : Range) (body : Cmd) :
     execInstrR (Mem := Mem) aS opS gd (fuel'+1) s (.Cfor v r body) prog
       = (do
@@ -335,7 +335,7 @@ example (xs : Lvals) (fn : FunName) (args : Pexprs) :
           fuel' s :=
   CallLowering.execInstrR_Ccall_eq aS opS gd xs fn args prog fuel' s
 
-/-- **`Csyscall` NOT covered (honest gap)** — the only honest statement is the
+/-- **`Csyscall` NOT covered** — the statement collected here is the
     deferral: the emitted `Csyscall` run is the deferral error (syscall semantics
     are not modelled — the mirror omits `syscall_sem`). This is *not* a run
     characterisation of a real effect, and is collected here to make the gap

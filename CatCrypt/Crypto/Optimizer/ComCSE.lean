@@ -11,9 +11,8 @@ public import CatCrypt.Crypto.Optimizer.CopyProp
 # Verified common-subexpression elimination for `Com` — a denotation-preserving rewrite
 
 A **structural `Com → Com` common-subexpression-elimination pass** over the
-typed VIR `jasminDialect`. It is the genuine `Com`-level rewrite that the
-analysis-only `SecureCompilation/VIR/CommonSubexprElim.lean` left as the
-documented residual: that file *decides* which binders recompute an
+typed VIR `jasminDialect`. It performs the `Com`-level rewrite for the
+analysis-only `SecureCompilation/VIR/CommonSubexprElim.lean`: that file *decides* which binders recompute an
 already-bound expression but applies the identity transform at the `Com` level
 (the CSE decisions are consumed downstream as a labelling). Here the rewrite
 actually rewires the body's references away from a redundant binder, with a real
@@ -47,7 +46,7 @@ of `v1` to `v0` is denotation-preserving. This is exactly the `copyHom`/
 `Ctxt.Var.there .here`.
 
 We *keep* the redundant binder in place (so the surrounding chain's De Bruijn
-shape, cost and CT facts are undisturbed); the binder is now dead — every use was
+shape, cost and CT facts are undisturbed); the binder is dead — every use is
 redirected to `v0` — and a later dead-code pass (`ComDCE`) removes it.
 
 ## Contents
@@ -230,7 +229,7 @@ def comCSE {Γ : Ctxt jasminDialect} {t : JasminTy} :
   | .ret v => .ret v
   | .var e body => cseHead e (comCSE body)
 
-/-! ## 4. Denotation preservation (genuine, not `rfl`) -/
+/-! ## 4. Denotation preservation (not `rfl`) -/
 
 /-- **One CSE step preserves denotation.** `cseHead e c` denotes exactly the
 `.var e c` it replaces: `(cseHead e c).denote V = c.denote (V.extend (e.denote V))`.
@@ -238,7 +237,7 @@ The firing case discharges via:
 * `shiftExpr_denote` — the inner binder denotes the outer binder's value, so the
   two adjacent slots hold equal values;
 * `Com.denote_rename` + `pullV_copyHom` — redirecting the inner binder to the
-  outer one is a no-op on the (now equal-valued) doubled valuation.
+  outer one is a no-op on the (equal-valued) doubled valuation.
 **Not `rfl`.** -/
 theorem cseHead_denote {Γ : Ctxt jasminDialect} {r t : JasminTy}
     (e : Expr jasminDialect Γ r) (c : Com jasminDialect (r :: Γ) t)

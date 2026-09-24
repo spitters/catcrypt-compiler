@@ -7,7 +7,7 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# A Lean RV64 (RISC-V 64-bit) machine model for the scalar GP-ALU subset (#535)
+# A Lean RV64 (RISC-V 64-bit) machine model for the scalar GP-ALU subset
 
 `X86Backend/Model.lean` (scalar x86) and `ARMBackend/ArmModel.lean` (AArch64
 scalar) are the owned machine layers for those two ISAs; this module is their
@@ -23,9 +23,9 @@ RV64 analogue of `ARMBackend.armBlock_lowering_denote`, proved by induction with
 no new custom axioms); `RiscvAsmPrinter.lean` renders the lowered `RInst` block
 to GAS RV64 assembly text with a linear-scan GP allocator.
 
-## The honest anchor (same posture as the x86/ARM owned models)
+## The trust anchor (same posture as the x86/ARM owned models)
 
-This sub-1 stands up the *framework*: a Lean RV64 GP-ALU machine + verified
+This module provides the *framework*: a Lean RV64 GP-ALU machine + verified
 lowering + GAS printer, with one scalar primitive (the RFC 8439 §2.1.1 ChaCha
 quarter-round) emitted, the in-Lean KAT pinned, and a **real `qemu-riscv64` run**
 of the emitted code against the RFC vector (`bench/riscv_compare/`). As with the
@@ -36,11 +36,11 @@ the integer op the RV64 mnemonic computes (the RISC-V ISA `ADDW`/`XOR`/`SLLIW`/
 `SRLIW`/… on the 32-bit-word view, auditable by eye), and is
 differentially validated against the RFC 8439 KAT.
 
-**Deferred to sub-2/sub-3** (per the task plan): the machine-code byte `Encoder`
-+ `decode(encode i) = i` against the hand-transcribed `riscv/sail-riscv` `encdec`
-clauses (upstream is not vendored in this repo; the RV64 analogue of
-`SailX86Decoder`/`SailX86Validation`), and the RVV vector / Zvk
-crypto extensions. This module deliberately covers only the scalar 32-bit-word
+The machine-code byte encoder (`RiscvEncoder`) and `decode(encode i) = i` against
+the hand-transcribed `riscv/sail-riscv` `encdec` clauses (`SailRiscvDecoder`;
+upstream is not vendored in this repo; the RV64 analogue of
+`SailX86Decoder`/`SailX86Validation`) live in separate modules, as does the RVV
+vector model (`RvvModel`). This module covers only the scalar 32-bit-word
 GP-ALU subset (RV64I, no `B`-extension rotate).
 
 ## RV64 has no base-ISA rotate — synthesize it
@@ -247,10 +247,10 @@ theorem runRBlock_append_model (s : RState) (xs ys : List RInst) :
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runRBlock_cons, ih]
 
-/-! ## 3b. RV64 B-type branches + the bounded counter-loop semantics (#552)
+/-! ## 3b. RV64 B-type branches + the bounded counter-loop semantics
 
-`RiscvControlFlow.lean` is the RV64 analogue of `ARMBackend.ArmControlFlow` (#551)
-and `X86Backend/LprogControlFlow` (#538): it lowers a **bounded counter loop**
+`RiscvControlFlow.lean` is the RV64 analogue of `ARMBackend.ArmControlFlow`
+and `X86Backend/LprogControlFlow`: it lowers a **bounded counter loop**
 `for k in 0..n { body }` to a single body copy wrapped in an RV64 back-edge
 
 ```
@@ -259,8 +259,8 @@ and `X86Backend/LprogControlFlow` (#538): it lowers a **bounded counter loop**
        bne   <ctr>, x0, .Ltop  -- B-type back-edge: loop while ctr ≠ 0
 ```
 
-instead of unrolling the body `n` times. Every RISC-V kernel so far was
-straight-line/unrolled; this adds the looped emission.
+instead of unrolling the body `n` times; this is the looped emission, beside the
+straight-line/unrolled one.
 
 RV64 has no `CBNZ`: the counter back-edge is the **B-type** conditional branch
 `BNE ctr, x0, .Ltop` (branch if `ctr ≠ x0`, i.e. `ctr ≠ 0`). B-type branches

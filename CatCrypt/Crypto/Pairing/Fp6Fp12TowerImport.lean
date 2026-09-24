@@ -15,12 +15,12 @@ public meta import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.PilotImport
 set_option autoImplicit false
 
 /-!
-# AUCurves Fp6 + Fp12 (GT) tower ops → CatCrypt-compiler round-trip (CONN-3j, task #357)
+# AUCurves Fp6 + Fp12 (GT) tower ops → CatCrypt-compiler round-trip
 
-This file scales the AUCurves→CatCrypt `rust_cmd_ed`→`LowCT` round-trip up the
-**BN254/BLS pairing tower** from the Fp2 layer (`Fp2TowerImport.lean`, #341) to
+This module extends the AUCurves→CatCrypt `rust_cmd_ed`→`LowCT` round-trip up the
+**BN254/BLS pairing tower** from the Fp2 layer (`Fp2TowerImport.lean`) to
 the **cubic (Fp6)** and **dodecic (Fp12 = GT)** layers — the full pairing-tower
-arithmetic the KZG / Halo2-Marlin (T3, #349) pairing check needs.
+arithmetic the KZG / Halo2-Marlin pairing check needs.
 
 ## The compositional pattern, one tower level up
 
@@ -50,34 +50,34 @@ Qed-pinned as `bn254_fp6_add_sexpr_value` / `bn254_fp6_mul_sexpr_value` /
 artifacts).  The byte-exact strings are reproduced below and consumed by the
 importer.
 
-## What this file delivers (honest scoping)
+## Scope
 
 * **Structural correspondence** — `importedFp6Add_eq` / `importedFp6Mul_eq` /
   `importedFp12Add_eq` / `importedFp12Mul_eq`: each parsed Fp6/Fp12 op body
   equals, constructor-by-constructor, the `LowCT` the IR-correspondence map
   dictates (`Seq → RSeq`, `LetZero → RLetZero`, `Call → RCall`, `loc → Located`,
   `(Bytes n) → TBytes n`), with leaf names and component slot names recovered
-  verbatim.  The parser needs no extension beyond #354's: the Fp6/Fp12 bodies
-  are pure `Seq`/`LetZero`/`Call`/`loc`/`Bytes` trees, all already covered.
+  verbatim.  The parser needs no extension beyond the field-op pilot's: the
+  Fp6/Fp12 bodies are pure `Seq`/`LetZero`/`Call`/`loc`/`Bytes` trees, all covered.
 * **Jasmin call-graph cross-check** — `importedFp6Mul_jasmin_eq` etc.: routing
   the imported body through CatCrypt's owned front (`toJasminCmd`) reproduces the
   leaf call graph AUCurves' own jasmin tower emits: one `Ccall` per leaf call,
   same leaf name, same destination-then-args ordering, with scratch felems
   materialized as the `RLetZero` zero-init prologue.
 
-## Residual (named, not papered over)
+## Limits
 
 This is the **structural** correspondence + the backend call-graph cross-check,
-at the granularity #341 delivered for the Fp2 layer (and #354 for the Fp field
-ops).  It depends on #356's faithful tower-heap-aware `RustExec` realization at
+at the granularity of the Fp2 layer (and of the pilot for the Fp field
+ops).  It depends on the tower-heap-aware `RustExec` realization at
 the leaf layer (the leaf `Fp`-level `SLimb` stores read the tower heap by byte
 offset); the Fp6/Fp12 bodies here are pure leaf-call chains, so they inherit that
 faithfulness through the leaf calls and add no new runtime-semantics obligation.
 
-The fully machine-checked **cross-prover semantic** equivalence (Rocq
+The machine-checked **cross-prover semantic** equivalence (Rocq
 `rust_exec_ed` ⇔ Lean `RustExec`, proven constructor-by-constructor across the
-whole tower) is the gold-standard residual shared by *any* two-prover bridge; it
-is not delivered here.  The round-trip theorems below live at the
+whole tower) is outside the scope of this module, as for any two-prover bridge.
+The round-trip theorems below live at the
 `parseLowCT` / `toJasminCmd` (AST / call-graph) level.
 -/
 

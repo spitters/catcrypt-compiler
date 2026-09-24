@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
 
 /-!
-# A faithful Lean transcription of Jasmin's Rocq x86 semantics (#281)
+# A faithful Lean transcription of Jasmin's Rocq x86 semantics
 
 `Model.lean` is a hand-authored x86 machine (it tracks only `CF`/`OF` and leaves
 `SF`/`PF`/`ZF` inert) that is then *differentially* checked against Jasmin's
@@ -1102,7 +1102,7 @@ inductive JInstr (w : Nat) where
       zero-extended flag value `if CF then 1 else 0`. This is the flag-to-GPR
       materialisation the open-coded carry idiom uses (`adc; setc cy`) — the one
       primitive the runtime-N `mpn_add_n`/`mpn_sub_n` carry chain needs to keep
-      the carry across the flag-clobbering loop back-edge (#500/#560). The model
+      the carry across the flag-clobbering loop back-edge. The model
       writes the **already zero-extended** word `if CF then 1 else 0` (so the
       `SETB`+`MOVZBQ` pair is modeled as one arm) and touches no flag. -/
   | setc (dst : String)

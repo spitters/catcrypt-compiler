@@ -25,7 +25,7 @@ lower to jasmin `stackStore`/`stackLoad`), so the result memref survives the
 lowering. The dialect program returns a `.memref 4` holding the whole 256-bit
 sum, and we prove that reading each cell back (`memGetDyn` at index `0..3`) yields
 the matching `bignumAdd4` sum limb. Then `cryptoDialectToJasminCom` lowers the
-whole program to jasmin — the entire 256-bit result is now emitted, via
+whole program to jasmin — the entire 256-bit result is emitted, via
 `stackStore`, not just the carry.
 
 (`memrefZero` is *not* in the lowered fragment — only `memrefSetDyn`/`memrefGetDyn`

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# Path (b) Tier 1.2 (probe-only): Veir printer status
+# Veir printer status (probe only)
 
 ## Finding
 

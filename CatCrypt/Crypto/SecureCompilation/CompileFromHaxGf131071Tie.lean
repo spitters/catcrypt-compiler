@@ -11,7 +11,7 @@ public import Mathlib.Data.ZMod.Basic
 public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
-# #606 fan-out: the emitted GF(131071) multiply leaf EQUALS the abstract field op
+# The emitted GF(131071) multiply leaf EQUALS the abstract field op
 
 `CompileFromHaxGf131071.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `gf131071MulFold` — the Mersenne `2¹⁷ ≡ 1`
@@ -23,7 +23,7 @@ double-fold plus branch-free conditional subtract — and ties it to abstract
 This module closes the **last hop**: from the `BitVec`-`%` form to the abstract
 prime field `Zq131071 = ZMod 131071`. The product `a·b ≤ 131070² < 2⁶⁴` never
 wraps, so the `BitVec` multiply is the integer multiply, and `(a·b) % 131071`
-projected to `ZMod 131071` is the field product `↑a · ↑b`. The genuine
+projected to `ZMod 131071` is the field product `↑a · ↑b`: the
 prime-field reduce identity, lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
 
@@ -58,7 +58,7 @@ theorem gf131071_toNat_mul (a b : BitVec 64)
   rw [BitVec.toNat_mul]
   exact Nat.mod_eq_of_lt hlt
 
-/-- **GF(131071) emit-form ↔ abstract `Zq131071` field tie (#606 fan-out).** On
+/-- **GF(131071) emit-form ↔ abstract `Zq131071` field tie.** On
     `a, b < 131071`, the emitted Mersenne-fold leaf `gf131071MulFold` — read back
     as a `Zq131071 = ZMod 131071` field element via `fromNat ∘ toNat` — equals the
     `Zq131071` field product of the elements the inputs encode. Composed with

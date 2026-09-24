@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
-# H3.tertia: assign-lit and match-tuple-destructure simulation cases
+# Assign-literal and match-tuple-destructure simulation cases
 
 * `assign name (lit l)` → `RScalarSet name n` (when literal decodes)
 * `match_ (app f args) [(tuplePat [varPat n1, varPat n2], body)]` →
@@ -296,12 +296,12 @@ The simulation obligation requires:
   into argument denotations + the builtin call;
 * a `LeafCallAgrees` predicate relating the source builtin call to
   `leafSpec.call f dt [...]` on the Rust side;
-* tower-typed agreement (`bindingOK`-style) — currently the agreement
-  predicate `envAgreesRust` only covers scalars.
+* tower-typed agreement (`bindingOK`-style) — the agreement predicate
+  `envAgreesRust` covers scalars only.
 
-All three are H3.quarta (tower / byte leaf calls) territory.  The full
-proof is blocked on the H3.quarta agreement extension; this file
-intentionally leaves the match-tuple case as a stub to track.
+All three belong to the tower-typed layer (tower / byte leaf calls).  This
+module does not prove the match-tuple case; `HaxToLowCTSim_Match.lean`
+discharges it over the tower-typed agreement.
 
 ```
 /- TODO: haxToLowCT_simulates_match_tuple_app -/

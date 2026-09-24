@@ -17,7 +17,7 @@ set_option autoImplicit false
 # Plonky3 Merkle leaf-hash, FRONT-COMPILED (`plonky3_merkle_hash_leaf_rc`)
 
 The Plonky3 Merkle leaf-hash (one Baby-Bear field word → 4-word digest),
-sourced through the verified `CProg`-free front — NO hand-built `Com` anywhere
+sourced through the verified front — NO hand-built `Com` anywhere
 in the emit path:
 
 ```
@@ -151,7 +151,7 @@ def srcVM : VarMap srcCtx :=
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `hashBody` through the `CProg`-free control front and cap with
+/-- Push `hashBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM hashBody with

@@ -5,33 +5,27 @@ Authors: CatCrypt Contributors
 
 # `build_comb_table` authored using the **TArr** array-of-slots IR.
 
-This is the rewrite of `Examples/CombTableInit.lean` to use the new
+This is `Examples/CombTableInit.lean` re-authored with the
 `TArr 1024 (TBytes 200)` data type and `RArrLoad` / `RArrStore` runtime-
-indexed access (added 2026-05-12).
+indexed access.
 
-**HONEST RESULT (2026-05-12)**: TArr alone is NOT enough for 100×
-compression.  Lean's `RScalarSet` only accepts a `Nat` literal — there
-is no `RScalarSetExpr` for runtime scalar arithmetic — so the
-inner-row index `i*16+d` must be set per-cell as a literal,
-forcing outer-loop unrolling.
+TArr alone does not compress the body.  The main body
+`combTableInitArrBody` sets the inner-row index `i*16+d` per cell with
+`RScalarSet`, which takes a `Nat` literal, so the outer loop is unrolled.
 
 Concrete sizes:
   * Named-slot version (CombTableInit.lean): 277 KB, 5075 lines
-  * TArr version (this file):                331 KB, 8145 lines
+  * TArr version (`combTableInitArrBody`):   331 KB, 8145 lines
 
-What TArr DOES improve:
+What TArr improves:
   * Slot declarations: 1024 named cells → 1 array slot
   * Type-system expressiveness: arrays with runtime indexing
-  * Foundation for future emit shrinkage once scalar expressions land
 
-What's still missing for the 100× compression:
-  * `RScalarSetExpr : String → SExpr → LowCT` with `SExpr` supporting
-    `SVar`/`SLit`/`SAdd`/`SMul` — same shape as Rocq's `sexpr_ed`
-  * Once available, `for i in 0..64 { for d in 0..16 { k := i*16+d; ... } }`
-    becomes ~10 IR nodes.
-
-So this file is best read as a syntactic validation of TArr, not a
-size-win demo.  The size win awaits the scalar-expression follow-up.
+The compression comes from `RScalarSetExpr : String → SExpr → LowCT`
+(`SExpr` with `SVar`/`SLit`/`SAdd`/`SMul`, the shape of Rocq's
+`sexpr_ed`): with it,
+`for i in 0..64 { for d in 0..16 { k := i*16+d; ... } }` is ~10 IR
+nodes.  §2b gives that compact form (`combTableInitArrCompact`).
 
 The full algorithm:
   for d in 0..16: cells[d] = either ID, B, or cells[d-1] + B
@@ -186,10 +180,10 @@ def combTableInitArrBody : LowCT :=
 The comb table is indexed by the loop position (`k = i*16 + d`) — a *public*
 quantity (it depends on the iteration, not on any secret).  The runtime-indexed
 array accesses `arrStore`/`arrLoad` are therefore constant-time by construction
-(`cmdCT`); by `cmdCT_sound` no secret leaks via the address trace.  (With both
-the dynamic-index array support and `RScalarSetExpr`/`SExpr` now available, the
-~5000-node unrolled body laments above can be re-authored as the ~10-node
-nested `for i { for d { k := i*16+d; cells[k] := … } }` form.) -/
+(`cmdCT`); by `cmdCT_sound` no secret leaks via the address trace.  (With the
+dynamic-index array support and `RScalarSetExpr`/`SExpr`, the ~5000-node
+unrolled body can be re-authored as the ~10-node nested
+`for i { for d { k := i*16+d; cells[k] := … } }` form; see §2b.) -/
 
 /-- The runtime-indexed comb-table store is constant-time (public index). -/
 theorem arrStore_isCT (idxVar src : String) (leafCT : LeafCTTable) :
@@ -203,10 +197,10 @@ theorem arrLoad_isCT (dst idxVar : String) (leafCT : LeafCTTable) :
 
 /-! ## §2b.  Compact re-authoring (the AST-size win)
 
-The 2026-05-12 docstring noted the ~5000-node unrolled body could collapse to
-the `for i { for d { k := i*16+d; cells[k] := … } }` form *once* `RScalarSetExpr`
-(runtime index arithmetic) landed alongside the runtime-indexed array access.
-Both now exist, so here is that compact form — one nested `RFor` body with the
+The ~5000-node unrolled body collapses to the
+`for i { for d { k := i*16+d; cells[k] := … } }` form using `RScalarSetExpr`
+(runtime index arithmetic) and the runtime-indexed array access.
+This section gives that compact form — one nested `RFor` body with the
 index computed via `RScalarSetExpr`, ~12 IR nodes instead of ~5000.  (NB: this
 is the structural skeleton — computed index + nested loop + dynamic array
 access; the exact row-0 / `(i-1)` offset handling is the same meta-logic as the
@@ -229,7 +223,7 @@ def combTableInitArrCompact : LowCT :=
 /-- The compact comb table is constant-time by construction: the computed index
     `k = i*16 + d` is public (it reads only the public loop counters `i`, `d`),
     so the `RScalarSetExpr` and the runtime-indexed array accesses all pass
-    `cmdCT`.  By `cmdCT_sound` this is genuine noninterference. -/
+    `cmdCT`.  By `cmdCT_sound` this is noninterference. -/
 theorem combTableInitArrCompact_isCT :
     cmdCT combTableInitArrCompact (fun _ => SecretLevel.Public) (fun _ => true) = true := by
   simp only [combTableInitArrCompact, seqN, arrLoad, arrStore, xyztDouble, cellsLoc, cellLoc,

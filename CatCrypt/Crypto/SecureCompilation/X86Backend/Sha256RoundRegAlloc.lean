@@ -16,9 +16,9 @@ public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 
 /-!
-# SHA-256 round body in the `JInstr 64` backend IR, routed through the verified optimizer (#555)
+# SHA-256 round body in the `JInstr 64` backend IR, routed through the verified optimizer
 
-## The architectural finding this module records
+## Context: the two x86 backends
 
 CatCrypt has **two disjoint x86 backends**:
 
@@ -31,16 +31,16 @@ CatCrypt has **two disjoint x86 backends**:
 
 2. The **owned `JInstr 64` backend** (`X86Backend/AsmPrinter.lean` +
    `Optimizer/{SpillingRegAlloc,Mem2Reg,StoreToLoadForward}.lean`), which the
-   verified linear-scan spilling allocator (`#413`) and `mem2reg` (`#415`)
-   actually target — but those passes were only ever *applied* to the X25519
-   monolithic ladder body, which is authored directly as `List (JInstr 64)`.
+   verified linear-scan spilling allocator and `mem2reg` target; apart from this
+   module, their client is the X25519 monolithic ladder body, which is authored
+   directly as `List (JInstr 64)`.
 
-The scalar SHA-2 emit therefore **bypasses the verified optimizer passes**: its
+The scalar SHA-2 emit **bypasses the verified optimizer passes**: its
 IR is `Com jasminDialect` rendered to `.jazz` text, never `List (JInstr 64)`,
 and there is no `Com jasminDialect → List (JInstr 64)` lowering (`X86Dialect`'s
 `lowerBlock` goes the *other* direction, `JInstr → Com x86Dialect`, for
-denotation/validation only). Routing SHA-2 through the verified spilling RA is
-exactly task `#555`, and it requires **re-authoring the SHA-2 round body in the
+denotation/validation only). Routing SHA-2 through the verified spilling RA
+requires **re-authoring the SHA-2 round body in the
 `JInstr 64` IR** — the same shape the optimizer already consumes for X25519.
 
 ## What this module does
@@ -205,7 +205,7 @@ def sha256RoundOpt : List (JInstr 64) :=
   mem2reg protectedCells sha256RoundBlock
 
 /-- The spill/placement decisions for the optimized round body, from the
-    verified linear-scan spilling allocator (#413). -/
+    verified linear-scan spilling allocator. -/
 def sha256RoundDecisions : List (String × Slot) :=
   spillAlloc framePins 0 sha256RoundOpt
 
@@ -218,7 +218,7 @@ def spillBase : String := "spillfp"
 
 /-- The rewritten block with spill stores + reload loads inserted
     (`SpillingRegAlloc.spillReloadBlock`). Denotation-preserving on the
-    canonical run by `spillReload_sandwich_runBlock` (per-spill core, #413). -/
+    canonical run by `spillReload_sandwich_runBlock` (per-spill core). -/
 def sha256RoundSpilled : List (JInstr 64) :=
   spillReloadBlock sha256RoundDecisions spillBase sha256RoundOpt
 
@@ -303,7 +303,7 @@ The round body's meaning is `runBlock` against the faithful Jasmin-Rocq port
 (`lowerBlock_denote_closed`), and `mem2reg` preserves `runBlock` on the
 protected output cells (`mem2reg_runBlock_agree`). Composed, the optimized,
 register-allocated SHA-256 round computes the same working-word update as the
-authored body — the soundness `#413`/`#415` already proved, here specialised to
+authored body — the soundness of the two passes, specialised to
 the SHA-256 round. -/
 
 /-- The lowered round body denotes `runBlock` on the authored block, for any
@@ -323,7 +323,7 @@ theorem sha256Round_mem2reg_agree (s : JState 64) :
       (runBlock s sha256RoundOpt) (runBlock s sha256RoundBlock) :=
   mem2reg_runBlock_agree protectedCells sha256RoundBlock s
 
-/-! ## 6. Emit driver — rendering the RA-allocated round to `.s` (#555)
+/-! ## 6. Emit driver — rendering the RA-allocated round to `.s`
 
 This is the half the pilot stopped short of: turning the verified
 `spillAlloc`/`spillReloadBlock` decisions into an actual gas `.s` leaf the bench
@@ -442,15 +442,15 @@ def emitMain : IO Unit := do
     roundAsm
   IO.println "wrote gen_ra/sha256_round_ra_x86_from_lean.s (mem2reg→spillRA SHA-256 round, register-resident scratch)"
 
-/-! ## 6b. Graph-coloring register allocation — the selectable global allocator (gap #2)
+/-! ## 6b. Graph-coloring register allocation — the selectable global allocator
 
-`spillAlloc` (above) is the spill-BLIND linear scan (#413): on a def whose pool is
+`spillAlloc` (above) is the spill-BLIND linear scan: on a def whose pool is
 full it evicts the active interval whose `lastUse` is farthest in the future. On the
 SHA-256 round body — 35 value names against a 12-register pool — that heuristic
 spills two names and reloads them **12 times** (the round's hot Σ-rotate scratch),
 because farthest-end ignores how often a value is touched.
 
-`GraphColoringRegAlloc.graphColorAlloc` (gap #2) is the verified **global** allocator:
+`GraphColoringRegAlloc.graphColorAlloc` is the verified **global** allocator:
 Chaitin–Briggs graph coloring with **use-density** spill cost. It spills the same two
 names the near-overflow forces, but chooses the **cold** ones (low use density), so the
 two spilled names are reloaded only **3 times** total — `0.36×` the reload traffic of
@@ -465,7 +465,7 @@ is never nominally spilled (unlike the oblivious `spillAlloc`, which marks `fp` 
 spurious third spill). This matches `spilledMaterialised`'s `fp`-override exactly. -/
 
 /-- **The graph-coloring spill/placement decisions** for the optimized SHA-256 round —
-    the gap-#2 global allocator (`GraphColoringRegAlloc.graphColorAlloc`) over the same
+    the global allocator (`GraphColoringRegAlloc.graphColorAlloc`) over the same
     `framePins`/pool the linear scan uses. Drop-in shape: `List (String × Slot)`. -/
 def sha256RoundGcDecisions : List (String × Slot) :=
   graphColorAlloc framePins 0 sha256RoundOpt
@@ -577,7 +577,7 @@ def emitGcMain : IO Unit := do
     gcRoundAsm
   IO.println "wrote gen_ra/sha256_round_{ra,gc}_x86_from_lean.s (linear-scan vs graph-coloring SHA-256 round)"
 
-/-! ## 7. SHA-512 round — the higher-pressure 64-bit analogue (#555)
+/-! ## 7. SHA-512 round — the higher-pressure 64-bit analogue
 
 SHA-512 is the bigger RA win: every working word is a full 64-bit register (no
 32-bit masking), `Σ₀=(28,34,39)`, `Σ₁=(14,18,41)`, and `~e` is the full 64-bit
@@ -733,7 +733,7 @@ def emitMain512 : IO Unit := do
     roundAsm512
   IO.println "wrote gen_ra/sha512_round_ra_x86_from_lean.s (mem2reg→spillRA SHA-512 round, 64-bit register-resident scratch)"
 
-/-! ### 7b. Graph-coloring register allocation for the SHA-512 round (gap #2)
+/-! ### 7b. Graph-coloring register allocation for the SHA-512 round
 
 The 64-bit SHA-512 round has the same name pressure as SHA-256 (35 value names vs the
 12-register pool) and the same linear-scan degeneracy: 2 spilled names reloaded 12×.
@@ -827,7 +827,7 @@ def emitGcMain512 : IO Unit := do
     gcRoundAsm512
   IO.println "wrote gen_ra/sha512_round_{ra,gc}_x86_from_lean.s (linear-scan vs graph-coloring SHA-512 round)"
 
-/-! ## 8. Full SHA-256 / SHA-512 compress: the 64/80-round wrapper (#555)
+/-! ## 8. Full SHA-256 / SHA-512 compress: the 64/80-round wrapper
 
 §1–7 author and RA **one** FIPS round in isolation, which is the verified
 round core but not a full-message FIPS KAT target on its own. This section wraps
@@ -1118,7 +1118,7 @@ def sha512CompressAsm : String :=
 The full-compress strings (`sha256CompressAsm`/`sha512CompressAsm`) concatenate
 112/128 RA'd blocks; a `native_decide` over the whole string forces all 112/128
 super-quadratic `spillAlloc` runs in-kernel and is far too heavy to gate the
-build (the REV-12 pitfall). The in-Lean checks therefore target a **single
+build. The in-Lean checks therefore target a **single
 representative block** of each width — the same RA path every block takes — and
 the whole-compress no-`UNALLOCATED` / shape property is checked at assemble time
 by the orchestrator (gas rejects any `<UNALLOCATED>` sentinel, and the FIPS KAT

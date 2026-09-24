@@ -16,17 +16,15 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 set_option autoImplicit false
 
 /-!
-# Multi-binding arms of the `CProg`-free direct front (`translateDialectFull`)
+# Multi-binding arms of the direct front (`translateDialectFull`)
 
-`TranslateDialectDirect.translateDialect` fuses the **core straight-line**
-`LowCT` arms (`RSkip`, `RSeq`, `RScalarSet`, `RLetU64Zero`, `RBlock`) into a
-`CProg`-free `Com catCryptDialect` recursion, with context agreement to
-`translate` (`translateDialect_ctx_agree`). Every other arm is declined to
-`none` there.
+`TranslateDialectDirect.translateDialect` lowers the core straight-line
+`LowCT` arms (`RSkip`, `RSeq`, `RScalarSet`, `RLetU64Zero`, `RBlock`) to a
+`Com catCryptDialect` recursion and declines every other arm to `none`.
 
-This file extends that front to the **multi-binding arms** — the ones whose
-`translate` image is *not* a single `letBind` of a `bvConst`, but one (or more)
-opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
+This module extends that front to the multi-binding arms — the ones whose
+image is not a single `varBind` of a `bvConst`, but one or more opaque
+`extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 
 * `RCall`            — one `extCall fname` rebinding the destination;
 * `RSelect`          — on 64-bit word slots, the comparison and conditional
@@ -56,36 +54,17 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
   dest, indexed by output position;
 * `RAssert`          — no dialect node at all (§2b).
 
-For each, the fused arm builds the same `catCryptDialect` `Expr` that
-`toVIRExprT ∘ translate` would have produced (`extCall` via `toVIRArgs`,
-`bvConst`/`memrefSet` directly), threaded through `ComCont` instead of
-`CProgCont`. No `CProg` value is constructed.
+Each arm builds its `catCryptDialect` `Expr` (`extCall` via `extCallExpr`,
+`bvConst`/`memrefSet` directly) and threads it through `ComCont`.
 
-## Context agreement (`translateDialectFull_ctx_agree`)
+## Covered fragment
 
-`translateTop` **discards the straight-line prefix `o.cont`** entirely — it only
-emits the `constUnit; ret` terminator at the final context `o.Γ'`. So the
-central fact downstream is *context agreement*: `translateDialectFull` and
-`translate` succeed together and emit the **same** final context `Γ'` and the
-**same** updated `VarMap` `vm`. We prove that for the covered fragment
-`IsCovered` (the core arms plus the new ones), reusing the
-`TranslateDialectDirect.translateDialect_ctx_agree` pattern.
+`IsCovered` is the syntactic fragment `translateDialectFull` lowers: the core
+arms plus the arms above. The top-level wrapper `translateDialectFullTop` emits
+the `constUnit; ret` terminator at the final context `o.Γ'`.
 
-## Which arms fuse cleanly
-
-The single/double-`extCall` arms (`RCall`, `RSelect`, `RCallDstThreaded`,
-`RTuple*`, `RArr*Lit`, `RArr{Load,Store}`, `RLimbStore`, `RCallSwap`,
-`RCloneCall`) and the `RCallN` fold close: their `Γ'`/`vm` are syntactically the
-same expressions on both fronts, so agreement is `rfl`-grade after unfolding.
-
-`RIfNz` (the φ-merge: case (A)/(B) pass through one branch's `Γ'`/`vm`; case
-(C′) materialises a six-binding `CExpr.ite` chain; case (C-otherwise)
-re-translates the else branch) and the bounded-unroll `RFor` (`loopRFor`) build
-their `Γ'`/`vm` through helper recursions whose dialect twins need their **own**
-agreement lemmas (`loopRForD_ctx_agree`, an `RIfNz` case split). Those are the
-documented residual — each shrinks the front's `none` set further but is a
-larger mechanical port than the leaf-call arms. They stay declined here, so the
-covered fragment grows by the leaf-call + `RCallN` arms.
+`RIfNz` (the φ-merge) and the bounded-unroll `RFor` are declined here; they are
+handled by `translateDialectControl` (`TranslateDialectDirectControl.lean`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
@@ -101,12 +80,11 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec Located Tow
 
 /-! ## 1. Fused dialect `extCall` / `memrefSet` builders
 
-Each builds the `catCryptDialect` `Expr` that `toVIRExprT` of the corresponding
-`CExpr` produces — inlined so no `CExpr`/`CProg` is named. -/
+Each builds the `catCryptDialect` `Expr` for one leaf-call or limb-store
+binding. -/
 
-/-- The fused dialect `extCall` expression: the `toVIRExprT`-image of
-    `CExpr.extCall name retTy args`. `args` is translated pointwise via
-    `toVIRArgs`, the same map `toVIRExpr`'s `extCall` arm uses. -/
+/-- The dialect `extCall` expression calling `name` with return type `retTy`.
+    `args` is translated pointwise via `toVIRArgs`. -/
 def extCallExpr {Γ : Ctx} (name : String) (retTy : CryptoTy) {argTys : List CryptoTy}
     (args : CHVector (fun t => CVar Γ t) argTys) : Expr catCryptDialect Γ retTy :=
   { op := .extCall name argTys retTy, retTy_eq := rfl, args := toVIRArgs args }
@@ -161,7 +139,7 @@ def pushVarBind {Γ : Ctx} (o : DTransOut Γ) (e : Expr catCryptDialect o.Γ' (.
     cont := ComCont.comp o.cont (ComCont.varBind e),
     vm := o.vm.bind nm }
 
-/-- Lower a scalar `SExpr` into a `CProg`-free `ComCont` chain over the
+/-- Lower a scalar `SExpr` into a `ComCont` chain over the
     `catCryptDialect` word ops. Returns the output (extended context + prefix +
     `VarMap`), the name the result is bound under, and the next-free counter.
     `none` on the SExpr arms with no jasmin lowering (`SLt`, `SAsr`, `SMulS`,
@@ -250,7 +228,7 @@ def lowerSExpr {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) :
   -- read the shift amount from a register and match `SExpr.evalBV`'s
   -- `a <<< (b.evalBV).toNat` exactly). Constant-amount shifts therefore emit
   -- `const; regArith shl` rather than `shlImm`; folding a literal amount into the
-  -- immediate `bvShiftL`/`bvShiftR` op is a peephole follow-up.
+  -- immediate `bvShiftL`/`bvShiftR` op is left to a peephole pass.
   -- **Left shift `x << y`.** Both operands are lowered (preserving the two-chain
   -- `seqOut`/`pushVarBind` structure the leak-factoring proof expects). The final
   -- op is selected by the shift amount: a compile-time literal `SLit k` emits the
@@ -368,7 +346,7 @@ def pushVarBindW (w : Nat) {Γ : Ctx} (o : DTransOut Γ)
     cont := ComCont.comp o.cont (ComCont.varBind e),
     vm := o.vm.bind nm }
 
-/-- Lower a scalar `SExpr` into a `CProg`-free `ComCont` chain over the
+/-- Lower a scalar `SExpr` into a `ComCont` chain over the
     `catCryptDialect` word ops at width `w`. Width-parametric twin of
     `lowerSExpr` (`64 ↦ w` on every op and slot). Covers the straight-line
     arithmetic / bitwise / shift / high-multiply arms — exactly the alphabet the
@@ -752,11 +730,11 @@ def selectVm {Γ : Ctx} (vm : VarMap Γ) (dst : String) : VarMap (selectCtx Γ) 
 
 /-! ## 2. The fused multi-binding front `translateDialectFull`
 
-Mirrors `translate`'s control flow on the leaf-call arms, building `ComCont`
-prefixes. Core arms delegate to `translateDialect`; the unhandled
-multi-control-flow arms (`RIfNz`, `RFor`, `RWhileNz`, helper defs) decline. -/
+Lowers the leaf-call arms, building `ComCont` prefixes. Core arms delegate to
+`translateDialect`; the control-flow arms (`RIfNz`, `RFor`, `RWhileNz`, helper
+defs) decline. -/
 
-/-- Dialect twin of `loopCallNDests`: a left-to-right fold of
+/-- The `RCallN` fold: a left-to-right fold of
     `extCall (callNLeafName fname i)` bindings, one per destination, building
     `ComCont` prefixes.
 
@@ -785,7 +763,7 @@ def loopCallNDestsD {Γ : Ctx} (fname : String) (args : List Located) (vm : VarM
                        vm := oRest.vm }
 
 /-- Direct `LowCT → catCryptDialect` translation extended to the leaf-call
-    multi-binding arms. `CProg`-free: every prefix is a `ComCont`. -/
+    multi-binding arms. Every prefix is a `ComCont`. -/
 def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
     LowCT → Option (DTransOut Γ)
   | .RSkip => translateDialect vm .RSkip
@@ -1000,16 +978,16 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
   -- **Dead zero-init elision.** `reifyLowCT%` emits each leaf as
   -- `RSeq (RLetZero name tt RSkip) (RCall leaf name args)`: the `RLetZero`
   -- declares the destination slot, and the *sibling* `RCall` immediately
-  -- overwrites it. `translate` faithfully emits a `memrefZero n` for the
+  -- overwrites it. A faithful translation would emit a `memrefZero n` for the
   -- declaration, but that op has **no jasmin lowering** (`toJExprD` declines
-  -- `memrefZero`), so it blocks `cryptoDialectToJasminCom` on the whole
+  -- `memrefZero`), so it would block `cryptoDialectToJasminCom` on the whole
   -- program. Since the slot is never read before the overwriting `RCall`,
   -- the zero-init is dead: we elide the binding entirely and let the `RCall`
-  -- bind `name`. The emitted `Com` is observationally identical to `translate`'s
-  -- (modulo the removed dead `memrefZero`) and now lowers. Same structural
-  -- shape as the `RBlock` arm above. (NB: this is a sound dead-code removal,
-  -- so `translateDialectFull` here intentionally *diverges* from `translate`'s
-  -- context on `RLetZero` — `RLetZero` is therefore not in `IsCovered`.)
+  -- bind `name`. The emitted `Com` is observationally identical to the faithful
+  -- one (modulo the removed dead `memrefZero`) and lowers. Same structural
+  -- shape as the `RBlock` arm above. (NB: this is a sound dead-code removal
+  -- that changes the context on `RLetZero`, so `RLetZero` is not in
+  -- `IsCovered`.)
   | .RLetZero _name _tt body => translateDialectFull vm body
   -- **Scalar `SExpr` assignment.** Lower the `SExpr` tree into a chain of
   -- `catCryptDialect` word ops via `lowerSExpr`, then bind `x` to a fresh copy
@@ -1029,7 +1007,7 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           | _ => none
   | _ => none
 
-/-- Direct `CProg`-free top-level front over the extended (multi-binding) arm
+/-- Direct top-level front over the extended (multi-binding) arm
     set. Mirrors `translateDialectTop`: emits the `constUnit; ret` terminator at
     the final context `o.Γ'`. -/
 def translateDialectFullTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
@@ -1065,15 +1043,13 @@ theorem translateDialectFull_rAssert_seq {Γ : Ctx} (vm : VarMap Γ) (label : St
   | none => simp only [translateDialectFull, h]
   | some o => simp only [translateDialectFull, h, ComCont.id_comp]
 
-/-! ## 3. The covered fragment and context agreement
+/-! ## 3. The covered fragment
 
 `IsCovered` is the syntactic fragment `translateDialectFull` lowers directly:
 the core arms (`RSkip`/`RScalarSet`/`RSeq`/`RLetU64Zero`/`RBlock`) plus the
 leaf-call multi-binding arms (`RCall`, `RSelect`, `RCallDstThreaded`,
-`RTuple*`, `RArr*`, `RLimbStore`, `RCallSwap`, `RCloneCall`, `RCallN`) and the
-contract assertion `RAssert`. On it,
-`translateDialectFull` and `translate` emit the **same** `⟨Γ', vm⟩` — the only
-data the top-level wrappers consume from the prefix. -/
+`RTuple*`, `RArr*`, `RLimbStore`, `RCallSwap`, `RCloneCall`, `RCallN`), the
+scalar assignment `RScalarSetExpr` and the contract assertion `RAssert`. -/
 
 /-- The covered `LowCT` fragment: core arms, leaf-call multi-binding arms, and
     the zero-emission contract assertion. -/
@@ -1116,7 +1092,7 @@ inductive IsCovered : LowCT → Prop
 /-! ## 4. Worked examples -/
 
 /-- A crypto leaf call (`RCall`) is covered and lowers directly to a
-    `Com catCryptDialect` via the `CProg`-free multi-binding front. -/
+    `Com catCryptDialect` via the multi-binding front. -/
 example (fname : String) (dest : Located) (args : List Located) :
     IsCovered (.RCall fname dest args) := .rCall fname dest args
 

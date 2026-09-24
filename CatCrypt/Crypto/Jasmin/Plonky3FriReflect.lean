@@ -11,18 +11,18 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Plonky3 FRI reflect surface — Tier A migration of the FRI layer
+# Plonky3 FRI reflect surface
 
 Layer 3 of the Plonky3 STARK chain (FRI commit + query phase, polynomial
 degree-halving with Fiat-Shamir challenge), lifted through the verified
-compiler chain `LowCT → CryptoSSA → Com → jasmin`.
+compiler chain `LowCT → Com catCryptDialect → Jasmin`.
 
-This is the architectural opposite of the legacy
+This is the architectural opposite of the
 `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3FriEmit.lean` string-template
 emit (`bench/plonky3_compare/gen/fri.jazz` is built by `String.intercalate` —
-out-of-chain by construction). This file is the FRI analogue of
-`Plonky3Reflect.lean` (Wave 1 Merkle) and `FalconReflect.lean` (#191): every
-byte of the new emit goes through the verified front.
+out-of-chain by construction). This module is the FRI analogue of
+`Plonky3Reflect.lean` (Merkle) and `FalconReflect.lean`: every
+byte of the emit goes through the verified front.
 
 ## FRI equation (per layer)
 
@@ -55,7 +55,7 @@ We model each major step as one opaque leaf call:
 | `plonky3_fri_query_phase N`         | `plonky3_fri_query_phase_N`        | `TBytes 32`       |
 
 `plonky3_fri_merkle_commit_N` is FRI-local (FRI's per-layer commitment) and
-deliberately namespaced separately from Wave 1's `plonky3_merkle_*` family
+deliberately namespaced separately from the Merkle surface's `plonky3_merkle_*` family
 so the two reflect surfaces don't collide. The runtime can wire it to the
 same underlying Poseidon2 implementation.
 
@@ -67,20 +67,19 @@ A full FRI commit+query over `N = 2^k` evaluations is:
   acceptance / rejection digest.
 
 The fold loop is **statically unrolled** at Lean time into a flat `RSeq`
-of `RCall` chains (`RFor` is not consumed by `translate` — line 752 of
-`LowCTToCryptoSSA.lean`, same workaround as `Plonky3Reflect.lean`).
+of `RCall` chains, as in `Plonky3Reflect.lean`.
 
-## Relation to legacy Tier C `Plonky3FriEmit.lean`
+## Relation to the string emit `Plonky3FriEmit.lean`
 
-The legacy file emits its `.jazz` via `String.intercalate` (no compiler
-correctness theorem witnesses the body). This file replaces that pattern with
-an in-chain emit. The legacy emit is kept as an out-of-chain reference
-(`bench/plonky3_compare/gen/fri.jazz`) until the FRI bench harness migrates.
+`Plonky3FriEmit.lean` emits its `.jazz` via `String.intercalate` (no compiler
+correctness theorem witnesses the body). This module emits in-chain. The
+string emit (`bench/plonky3_compare/gen/fri.jazz`) serves as an out-of-chain
+reference for the FRI bench harness.
 
 ## References
 
 * Plonky3 FRI: `plonky3-hax/src/fri.rs`
-* Wave 1 sibling: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`
+* Merkle sibling: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
 -/
 
@@ -105,7 +104,7 @@ noncomputable instance (N : Nat) : Inhabited (Plonky3FriEvals N) :=
   ⟨Plonky3FriEvals.default N⟩
 
 /-- A 32-byte FRI-layer Merkle digest (same byte-shape as
-    `Plonky3Digest` in Wave 1, kept FRI-local for clean reflect-surface
+    `Plonky3Digest` in `Plonky3Reflect.lean`, kept FRI-local for clean reflect-surface
     namespacing). -/
 axiom Plonky3FriDigest : Type
 /-- Axiomatic inhabitant. -/ axiom Plonky3FriDigest.default : Plonky3FriDigest

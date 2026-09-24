@@ -185,7 +185,7 @@ def spongeArgVM : VarMap spongeArgCtx where
     else none
 
 /-- **The covered front fires on the whole SDitH SHAKE128 sponge.** The two
-    bounded `RFor` loops unroll `CProg`-free through `loopRForD`, the pad leaf and
+    bounded `RFor` loops unroll through `loopRForD`, the pad leaf and
     permute leaves resolve their state/input/output arguments, the `RSeq` spine
     composes the phase prefixes, and the top-level terminator closes. -/
 theorem sdithShake_front_fires :
@@ -195,7 +195,7 @@ theorem sdithShake_front_fires :
 /-! ## 4. `transCtlSeq` coincides with the canonical front on this term
 
 The control-sequencing front `transCtlSeq` folds `translateDialectControl` along
-the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl` now
+the `RSeq` spine with `ComCont.comp`; the canonical `translateDialectControl`
 does the *same* (its `RSeq` arm recurses into itself). On leaves (`RFor`, `RCall`)
 `transCtlSeq` delegates to `translateDialectControl` through its wildcard. So on
 this pure `RSeq`-of-leaves term the two fronts coincide, letting the

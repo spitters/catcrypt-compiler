@@ -8,9 +8,9 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 
 /-!
-# D3 — the `select`/CMOV peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
+# The `select`/CMOV peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
 
-This is keystone #1's **third** native-op selection (after `RorImmSelect.lean`'s
+This is the **third** native-op selection (after `RorImmSelect.lean`'s
 `rorImm` and `AndnSelect.lean`'s `andn`): the constant-time `CMOVcc` / branchless
 mask-select, which collapses the masked-conditional idiom
 `(x &&& c) ||| (y &&& (~~~ c))` to the single native `select cond x y` op. It is the
@@ -20,7 +20,7 @@ exact shape the front emits for a conditional-subtract, a Montgomery / X25519
 ## The extra structure vs ROR / ANDN (read this)
 
 ROR and ANDN are pure value-level collapses: the native op reads the **same** data
-inputs as the emulation. SELECT is genuinely different — the native `select` reads a
+inputs as the emulation. SELECT differs — the native `select` reads a
 **1-bit** condition `cond : reg 1`, whereas the emulation reads a **full-width** mask
 `c : reg w`. The two agree only when `c` is the mask the 1-bit condition
 *materialises*, `c = condMask w cond` (`= allOnes` if `cond = 1`, else `0`). So the
@@ -28,7 +28,7 @@ collapse is licensed by a **materialisation invariant** — a hypothesis relatin
 in-context mask `c` to the 1-bit condition `cond` — which has no analogue in the
 rotate/and-not peepholes. We carry it as the `hmask` hypothesis on the denotation
 headline (exactly as `RorImmSelect` carries the `n < w` in-range guard), rather than
-firing on an arbitrary `c` (where the masked form and the 1-bit branch genuinely
+firing on an arbitrary `c` (where the masked form and the 1-bit branch
 differ).
 
 ## The emulation subtree it matches
@@ -118,7 +118,7 @@ def mkSelectOp {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
                   (.cons (.there (.there (.there (.there y)))) .nil))))
             body))))
 
-/-! ## 2. Value-level keystone: the two subtrees denote equally (under the
+/-! ## 2. Value-level lemma: the two subtrees denote equally (under the
     materialisation invariant) -/
 
 /-- **Subtree denotation agreement.** When the in-context mask `c` is the one the
@@ -144,7 +144,7 @@ theorem mkSelectOp_denote {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
   -- instantiate at the looked-up inputs. The head identity rewrites `C ^^^ allOnes`
   -- to `~~~ C`, uses `hmask` to put `C = condMask w cond`, and closes by
   -- `select_eq_maskSelect`.
-  -- Quantify over the looked-up inputs as genuine `BitVec`s so the shift/and/xor
+  -- Quantify over the looked-up inputs as `BitVec`s so the shift/and/xor
   -- notation lands on `BitVec`, not the unreduced `⟦reg w⟧` (template lesson (a)).
   have h : ∀ (Cnd : BitVec 1) (C X Y : BitVec w),
       C = condMask w Cnd →
@@ -180,7 +180,7 @@ We therefore make the pass **condition-guided**: `selectSelect cond` takes the 1
 `cond : Var Γ (.reg 1)` the producer knows the mask came from, and rewrites a matched
 5-op masked-select chain at the head of the program to the native `select cond x y`,
 keeping the four mask/and carriers dead (no de-Bruijn re-threading). This faithfully
-captures the *selection* (the native-op image), while being honest that the
+captures the *selection* (the native-op image), and makes explicit that the
 condition provenance is an input, not recoverable from the emulation alone. The
 guard is the structural width check; the *value* correctness is then conditioned on
 the materialisation invariant in `selectSelect_denote` below. -/

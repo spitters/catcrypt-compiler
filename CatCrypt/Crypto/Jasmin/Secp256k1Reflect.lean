@@ -16,10 +16,10 @@ This file is the **secp256k1 analogue** of `FalconReflect.lean` / `UovReflect.le
 it adds secp256k1-specific opaque surface types (`Secp256k1Scalar`, `Secp256k1Point`)
 and `@[rust_cmd_pattern]` registrations so that pure-Lean secp256k1 kernels
 (scalar-mul, point-add, ECDSA-verify 2-term MSM) can be lifted through the
-verified compiler chain `LowCT → CryptoSSA → Com → jasmin`, **without**
+verified compiler chain `LowCT → Com catCryptDialect → Jasmin`, **without**
 editing `LowCTReflect.lean`'s `knownOps` table.
 
-## Two kernels (matches the legacy `bench/secp256k1_compare/secp256k1_emit.lean`)
+## Two kernels (matches `bench/secp256k1_compare/secp256k1_emit.lean`)
 
 * **`secp256k1MsmTermLean`** — one term of the scalar-mul MSM
   `Σ_i k_i · P_i`: `secp256k1_scalar_mul(k_i, P_i)` followed by
@@ -36,7 +36,7 @@ The leaves are the secp256k1 group law built over the AUCurves
 verified-bedrock2 field tower (`secp256k1-safe-rust`: fiat `fp_add/sub/mul/
 square/opp` + Bernstein–Yang `fp_inv`). The Pairing.Secp256k1Emit theory
 proves `MsmReduce.msm_eq_scalarFold` over the production secp256k1 group;
-this file is the Tier A glue carrying that into the verified front-end.
+this module carries that into the verified front-end.
 
 | Lean axiom              | Leaf name (.jazz)         | TowerType    |
 |------------------------|---------------------------|--------------|
@@ -66,8 +66,9 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 ## References
 
 * SEC 2: Recommended Elliptic Curve Domain Parameters, §2.4.1 (secp256k1)
-* `bench/secp256k1_compare/secp256k1_emit.lean` — legacy Tier C emit (kept
-  as out-of-chain reference, superseded by `scalar_mul_from_rustcmd.lean`)
+* `bench/secp256k1_compare/secp256k1_emit.lean` — the string emit outside
+  the verified chain (reference; the in-chain driver is
+  `scalar_mul_from_rustcmd.lean`)
 * `CatCrypt/Crypto/Pairing/Secp256k1Emit.lean` — `msmFold_eq_msm`,
   `ecdsaVerifyCom_denote`, the production-group reduction this file glues
   into the verified front
@@ -157,14 +158,14 @@ def locSecp256k1 (n : String) (t : TowerType) : Located :=
 /-! ## 5. Pure-Lean secp256k1 kernel functions — the specs -/
 
 /-- One MSM term: compute `t = secp256k1_scalar_mul(k, P)`. (The full
-    `for`-loop wrapper around `acc ↦ acc + k_i·P_i` is the outer Tier-A
+    `for`-loop wrapper around `acc ↦ acc + k_i·P_i` is the outer
     scope; this body covers one fold step, the leaf the reifier sees.) -/
 noncomputable def secp256k1MsmTermLean (k : Secp256k1Scalar) (P : Secp256k1Point) :
     Secp256k1Point :=
   secp256k1_scalar_mul k P
 
 /-- ECDSA-verify recomputed point `R' = u₁·G + u₂·Q`. Two scalar-mul
-    leaves + one point-add leaf — exactly the legacy emit shape. -/
+    leaves + one point-add leaf — the shape of the string emit. -/
 noncomputable def secp256k1EcdsaVerifyLean
     (u1 : Secp256k1Scalar) (G : Secp256k1Point)
     (u2 : Secp256k1Scalar) (Q : Secp256k1Point) : Secp256k1Point :=

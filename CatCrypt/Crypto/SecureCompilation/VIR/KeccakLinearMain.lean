@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
-# Compiled Keccak-p[1600,24] linear-jasmin owned-RA producer (task #472)
+# Compiled Keccak-p[1600,24] linear-jasmin owned-RA producer
 
 The same producer as `bench/keccak_compare/keccak_linear.lean`, compiled as a
 `lean_exe` (`lake exe keccaklinear`) so it runs as native code. The `lean --run`
@@ -54,7 +54,7 @@ def main : IO UInt32 := do
       IO.println s!"  function name : {name}"
       IO.println s!"  args          : {f.lfd_arg.length} (2-pointer SysV ABI expected)"
       IO.println s!"  body linstrs  : {f.lfd_body.length} (prologue + two-addr + epilogue)"
-      -- Report the maximum k.N spill index so the reserved-frame model (#470)
+      -- Report the maximum k.N spill index so the reserved-frame model
       -- can be checked: read_linear sizes the frame from the highest spill index.
       let mut maxSpill : Int := -1
       for li in f.lfd_body do
@@ -75,26 +75,25 @@ def main : IO UInt32 := do
     (fun _ => none) keccakImmSlots keccakInLoadMap keccakOutStoreMap
   let sz := (← outPath.metadata).byteSize
   IO.println s!"link 1/7 OK : {outPath} written ({sz} bytes)"
-  -- OWNED path (task #537): render the SAME `Lprog` to AT&T `.s` directly.
-  -- #555: verified redundant-reload elimination before rendering (the
+  -- OWNED path: render the SAME `Lprog` to AT&T `.s` directly.
+  -- Verified redundant-reload elimination before rendering (the
   -- verified-native CSE of repeated `movq <off>(%rsp),%rN` spill reloads). The
   -- eliminated body is a sublist of the input (`elimReloads_sublist`) and every
   -- drop is a held reload (`stepReload_drop_is_held_reload`), value-identical.
   let removed := CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.countRemovedLprog lp
   let lp := CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.elimReloadsLprog lp
   IO.println s!"  redundant reloads removed (verified CSE) : {removed}"
-  -- #587/#590: verified CROSS-REGISTER load-CSE after the same-register reload
+  -- Verified CROSS-REGISTER load-CSE after the same-register reload
   -- drop. `loadCSELprog` redirects a second load of a slot already held in a
   -- different register onto that register (memory load -> register move), the
-  -- generic recompile-and-it-fires version of the #590 χ B-lane reuse win. The
+  -- generic compiler pass that yields the χ B-lane register reuse. The
   -- output is the same length (`loadCSE_length`); every changed instruction is a
   -- held-load register move (`loadCSEAux_pointwise`), value-identical.
   let cseRewrites := CatCrypt.Crypto.Optimizer.LoadCSE.countRewritesLprog lp
   -- `lpCSE` is the load-CSE'd program used for the AT&T `.s` render (gas/KAT). The
   -- byte-encode path below keeps the pre-load-CSE `lp`: the looped byte encoder
-  -- (#658) does not yet encode a register-to-register `movq %r,%r` (the move the
-  -- rewrite produces), so the bytes-direct `.o` stays on the elimReloads-only body
-  -- — a separate encoder increment, not a load-CSE concern.
+  -- does not encode a register-to-register `movq %r,%r` (the move the
+  -- rewrite produces), so the bytes-direct `.o` uses the elimReloads-only body.
   let lpCSE := CatCrypt.Crypto.Optimizer.LoadCSE.loadCSELprog lp
   IO.println s!"  cross-register loads -> reg moves (verified load-CSE) : {cseRewrites}"
   IO.FS.createDirAll "bench/keccak_compare/gen"
@@ -104,8 +103,8 @@ def main : IO UInt32 := do
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow
   IO.println s!"OWNED emit OK : {ownedPath} written ({asm.toUTF8.size} bytes, owned render {(t1 - t0) / 1000} us)"
-  -- BYTES-DIRECT path (task #658): byte-encode the SAME `Lprog` straight to an ELF
-  -- `.o` via `LprogBytes.encodeLprog` (the looped byte encoder, now covering the
+  -- BYTES-DIRECT path: byte-encode the SAME `Lprog` straight to an ELF
+  -- `.o` via `LprogBytes.encodeLprog` (the looped byte encoder, which covers the
   -- `%rsp`-relative spill/qsave slots Keccak's heavy U64 register pressure uses),
   -- NO assembler; plus the function body `.text` + a matching body-only `.s` for a
   -- differential KAT byte-identical to the gas-assembled `renderLprogAtt` `.text`.

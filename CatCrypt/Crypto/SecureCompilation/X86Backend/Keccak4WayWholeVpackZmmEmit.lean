@@ -65,7 +65,7 @@ sharing — and it is the SAME benign register-aliasing the committed worked
 2-block example (`VpackZmmComSeq.chained_seq_lines`) exhibits.
 
 For the FULL θ→ρ→π→χ→ι round (and the 24-round permutation), where consecutive
-steps need genuinely DISTINCT auxiliary-constant registers at the same `p`-index
+steps need DISTINCT auxiliary-constant registers at the same `p`-index
 (ρ's rotate-count broadcasts vs ι's round constant vs χ's all-ones, all wanting
 `p1`/`p2`), the single flat `XAlloc` is insufficient. Per the renderer's design
 note (`VpackZmmComSeq` §7), the whole round renders cleanly under one of:
@@ -261,7 +261,7 @@ def keccak_theta_iota_whole_vpackzmm_asm : String :=
 /-! ## 6. Structural smoke pins on the emitted whole-sub-kernel `.s` text
 
 Reproducing the per-step emit's posture (the packed XOR present, no UPPERCASE
-jasmin intrinsic, 512-bit `%zmm`, the export symbol), now over the ONE framed
+jasmin intrinsic, 512-bit `%zmm`, the export symbol), over the ONE framed
 function whose body is the threaded θ→ι sequence. -/
 
 /- The whole sub-kernel issues the packed XOR (θ's fold and ι's round-constant

@@ -11,9 +11,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
-# #606 fan-out: the verified compiler emits a GF(8191) Mersenne-fold multiply
+# The verified compiler emits a GF(8191) Mersenne-fold multiply
 
-This module extends the **C4** step of the verified-compiler plan to another
+This module applies the verified compile-from-hax front to another
 **prime-field** primitive: the `GF(8191)` base-field multiply. `8191 = 2¹³ - 1`
 is a **Mersenne** prime, so `2¹³ ≡ 1 (mod 8191)`: multiply is integer `a·b`
 followed by a `2¹³ ≡ 1` double-fold and a branch-free conditional subtract —
@@ -44,7 +44,7 @@ the GF(127) multiply, here for the Mersenne prime `8191 = 2¹³ - 1`.
 `gf8191MulSrc` is the let-normalized `ImpExpr` (one op per `letBind`, all args
 atoms or earlier locals); `gf8191MulFold` is the explicit closed Mersenne-fold
 **emit form** the source denotes to; the `_compiles` theorem routes the
-FOLD-FORM source-spec (`gf8191MulSrc_denoteScalar`, a `rfl`) through the C3
+FOLD-FORM source-spec (`gf8191MulSrc_denoteScalar`, a `rfl`) through the
 per-primitive obligation `compileFromHax_meets_spec`. The emitted jasmin `Com`
 is *computed by the verified compiler* and proven equal to the Mersenne-fold
 form. The abstract `(a*b) % 8191` tie is stated and proved separately
@@ -116,8 +116,8 @@ theorem gf8191Mul_compileFromHax_isSome :
     There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] gf8191MulSrc = some c`, and for every `(a, b)`,
     `c`'s `BitVec 64` denotation (under `![a, b]`) is the closed Mersenne-fold
-    emit form `gf8191MulFold`. Routed through `compileFromHax_meets_spec`. A
-    #606 fan-out to the Mersenne prime field `GF(2¹³-1)`, reusing the
+    emit form `gf8191MulFold`. Routed through `compileFromHax_meets_spec`,
+    over the Mersenne prime field `GF(2¹³-1)`, reusing the
     SHA-256/Keccak/BLAKE2 `wrapping_mul`/`shr`/`BitAnd`/`add`/`sub` recognizers
     with no front change. The abstract `(a*b) % 8191` tie is
     `gf8191MulFold_eq_mod`. -/

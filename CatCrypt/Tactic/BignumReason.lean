@@ -9,7 +9,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
 
 /-!
-# `bignum_reason` — a single cascade for the genuine-reasoning bignum obligations
+# `bignum_reason` — a single cascade for the reasoning-fraction bignum obligations
 
 The s2n-bignum-bench "reasoning fraction" (the ~16 % of the BIT-VECTOR / GENERIC
 auxiliary obligations that a *blunt* `bv_decide`/`omega`/`grind` cascade does not
@@ -35,10 +35,10 @@ kernel obligations close without a bespoke per-lemma proof.
 4. **`simp` with the codec lemma set + `omega`** — the digit-algebra
    (`highdigits`/`lowdigits`/`bigdigit`) and codec append/bound/round-trip facts.
 
-Items requiring a genuine *choice of induction* (the recursive-codec round-trips,
+Items requiring a *choice of induction* (the recursive-codec round-trips,
 `toLimbs_limbsToNat`) are proved once in the library by structural induction;
 `bignum_reason` then closes their *consumers* by `exact`/instance application.
-A standalone `induction … ; bignum_reason` still drives each branch.
+A standalone `induction … ; bignum_reason` also drives each branch.
 
 ## The forward generalize-driver
 
@@ -65,7 +65,7 @@ macro_rules
         BitVec.toNat_ofNat, BitVec.toNat_and, BitVec.toNat_ushiftRight])
 
 /-- The §5 carry/lex/bound/codec library, applied by elaboration. Each
-    genuine-reasoning obligation is a direct instance of one of these (the lemma
+    reasoning-fraction obligation is a direct instance of one of these (the lemma
     *is* the goal, up to the arguments and side conditions), so `apply`-ing the
     matching library lemma and discharging the side conditions by `assumption`
     closes it without re-deriving the carry / induction argument. -/
@@ -87,7 +87,7 @@ macro_rules
       | exact toLimbs_limbsToNat _
       | exact limbsToNat_toLimbs _ _)
 
-/-- `bignum_reason` — the packaged cascade for the genuine-reasoning bignum
+/-- `bignum_reason` — the packaged cascade for the reasoning-fraction bignum
     obligations. Tries, in order: trivial closers, the §5 library applied by
     elaboration (`bignum_lib`), the bv↔Nat bridge + `omega`, the
     overflow-bound–supplying clause, and the codec/digit-algebra `simp` set.

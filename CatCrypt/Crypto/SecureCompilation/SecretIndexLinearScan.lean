@@ -38,7 +38,7 @@ This module is the verified core of that repair.  It is deliberately *generic*:
 
 The two deliverables, mirroring `ifToCmov`'s `*_denote_eq` + `ctSafe`:
 
-1. **Functional correctness (the keystone).**
+1. **Functional correctness (the main theorem).**
    `linearScan_eq_index : i < arr.length → linearScan sel arr i d = arr.get ⟨i, _⟩`
    — the oblivious scan returns the *same value* as the direct (secret) indexed
    read.  This is the denotational-equality obligation that licenses replacing
@@ -58,7 +58,7 @@ The two deliverables, mirroring `ifToCmov`'s `*_denote_eq` + `ctSafe`:
 a scan built **only** from public-index reads (`List.range`) and the
 constant-time `sel`.  Wiring `linearScan` into the full `LowCT`/`catCryptDialect`
 `RArrLoad` constructor — emitting the `RFor`-over-`List.range` + `RSelect` chain
-and re-running `cmdCT` on it — is the dialect-integration follow-up; the verified
+and re-running `cmdCT` on it — is outside this module's scope; the verified
 core (correctness + access-pattern obliviousness) lives here.
 -/
 
@@ -111,7 +111,7 @@ def scanStep {α : Type _} (sel : CTSelect α) (i : Nat) (acc : α) (p : Nat × 
 def linearScan {α : Type _} (sel : CTSelect α) (arr : List α) (i : Nat) (d : α) : α :=
   (arr.zipIdx.map (fun p => (p.2, p.1))).foldl (scanStep sel i) d
 
-/-! ## §3.  Functional correctness — the keystone
+/-! ## §3.  Functional correctness — the main theorem
 
 `linearScan_eq_index` : when `i` is in range, the scan returns `arr[i]`. -/
 
@@ -158,7 +158,7 @@ theorem foldl_scanStep_offset {α : Type _} {sel : CTSelect α}
           simp only [List.length_cons] at hin ⊢; omega
         rw [dif_neg hin', dif_neg hin]
 
-/-- **The keystone.**  When the secret index `i` is in range, the oblivious
+/-- **Functional correctness.**  When the secret index `i` is in range, the oblivious
     linear scan returns exactly the direct (secret) indexed read `arr[i]`.
 
     This is the denotational-equality obligation that licenses the *repair*:
@@ -176,7 +176,7 @@ theorem linearScan_eq_index {α : Type _} {sel : CTSelect α}
   rw [dif_pos hcond]
   simp
 
-/-- A convenient `get`-phrased restatement of the keystone. -/
+/-- A convenient `get`-phrased restatement of `linearScan_eq_index`. -/
 theorem linearScan_eq_get {α : Type _} {sel : CTSelect α}
     (hsel : IsCTSelect sel) (arr : List α) (i : Nat) (d : α)
     (h : i < arr.length) :
@@ -198,7 +198,7 @@ rely on. -/
     we recover it by instrumenting `scanStep` to *record* the position it reads
     instead of selecting a value.  Crucially, this carries `i` as a parameter
     (mirroring `linearScan`'s signature) so that the constancy theorem below is
-    a genuine statement about `i`-independence, not a tautology.  The body
+    a statement about `i`-independence, not a tautology.  The body
     discards `i`: that discarding is the content of `linearScan_accessPattern`. -/
 def linearScanAccessPattern {α : Type _} (arr : List α) (_i : Nat) : List Nat :=
   (arr.zipIdx.map (fun p => (p.2, p.1))).map Prod.fst
@@ -222,7 +222,7 @@ theorem linearScan_accessPattern {α : Type _} (arr : List α) (i : Nat) :
     half is `linearScan_eq_index`.)
 
     Proved by routing both sides through `linearScan_accessPattern`, so the
-    statement is genuinely about the two distinct indices `i₁ i₂` — not a
+    statement is about the two distinct indices `i₁ i₂` — not a
     syntactic `rfl`. -/
 theorem linearScan_accessPattern_constant {α : Type _} (arr : List α)
     (i₁ i₂ : Nat) :
@@ -251,7 +251,7 @@ example : linearScan decideSelect tbl4 3 0 = 40 := by decide
 example : linearScan decideSelect tbl4 4 99 = 99 := by decide
 
 /-- The scan agrees with the direct indexed read at a (here, concrete) index —
-    the keystone, specialised. -/
+    `linearScan_eq_index`, specialised. -/
 example (i : Nat) (h : i < tbl4.length) :
     linearScan decideSelect tbl4 i 0 = tbl4[i] :=
   linearScan_eq_index decideSelect_isCTSelect tbl4 i 0 h

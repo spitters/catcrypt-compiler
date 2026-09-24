@@ -31,7 +31,7 @@ size every real bignum field/register allocation actually uses): the truncation
 bignumVal as * bignumVal bs < (2^64)^W .
 ```
 
-This is a genuinely *joint* no-overflow bound on `(as, bs)`: a large `as` is
+This is a *joint* no-overflow bound on `(as, bs)`: a large `as` is
 admissible exactly when `bs` is correspondingly small. It does NOT factor into two
 per-operand bounds, so `ReprTransfer.BinOpHomOn`'s per-operand `dom` cannot state
 it and the joint-domain `BinOpHomOn2` is required.
@@ -41,7 +41,7 @@ The pieces, mirroring `TransferLinCombTransport`:
 1. `mulBignumW W` — the **fixed-`W`-width** machine multiply, the low `W` limbs of
    the schoolbook product `mulBignum`.
 2. `mulBignumAbs` — the abstract product `(·) * (·)` of the decoded values.
-3. `mulBignumDomJoint W` — the **genuine joint** no-overflow domain
+3. `mulBignumDomJoint W` — the **joint** no-overflow domain
    `bignumVal as * bignumVal bs < (2^64)^W`.
 4. `decode_mulBignumW_joint` — the single `app_eq` commuting square on that domain,
    which **cites the existing value-correctness lemma** `mulBignum_val` (the
@@ -89,9 +89,9 @@ def mulBignumW (W : Nat) (as bs : List (BitVec 64)) : List (BitVec 64) :=
     value; the abstract op is just multiplication.) -/
 def mulBignumAbs (av bv : Nat) : Nat := av * bv
 
-/-- The **genuine joint** no-overflow domain for the fixed-`W`-width multiply: the
+/-- The **joint** no-overflow domain for the fixed-`W`-width multiply: the
     exact product of the two decoded values fits in `W` limbs,
-    `bignumVal as * bignumVal bs < (2^64)^W`. This is a genuinely *binary* predicate
+    `bignumVal as * bignumVal bs < (2^64)^W`. This is a *binary* predicate
     on `(as, bs)` — it does NOT factor into two per-operand bounds (a large `as` is
     admissible iff `bs` is correspondingly small), which is exactly why
     `ReprTransfer.BinOpHomOn`'s per-operand `dom` cannot state it and the

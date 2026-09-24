@@ -33,7 +33,7 @@ as ChaCha/BLAKE, here with Threefish's modular-add over u64. There is no rotate
 `(x1 <<< R) ||| (x1 >>> (64 - R))` (`shlImm`/`shrImm`/`or`); the source denotes that
 explicit shift form by `rfl`, and `bv_decide` certifies it equals `BitVec.rotateLeft`.
 
-Two instances are worked, with genuine Threefish-512 rotation constants **R = 46** and
+Two instances are worked, with the Threefish-512 rotation constants **R = 46** and
 **R = 33** (from the Threefish-512 rotation-constant table). Each MIX has two outputs, so
 each instance gives two single-output `Com`s — `y0` (one `add`) and `y1` (rotate-xor).
 Both lower through the *same* `comToReg_faithful` as the field/Keccak ops — so the

@@ -14,11 +14,11 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 commutes with `runABlock` for the 32-bit ChaCha path (`AInst`/`AState`), and the
 generic `GenericRegAlloc.renameBlock_runBlock` recovers it via a `RegMachine`
 instance. Neither covers the **64-bit bignum/field path** (`BInst`/`BState`) — the
-path the waist keystone `ComToArm.regToBOp_denote` actually runs over — because
+path the main lowering theorem `ComToArm.regToBOp_denote` runs over — because
 `BInst` carries flag-setting instructions (`ADDS`/`ADCS`/`SUBS`/`SBCS`/`CSEL`) that
 read and write the carry flag `cf`. The flag is **global** machine state, not a
 named register, so the single-`writtenName` `RegMachine` shape does not fit; we
-prove the renaming-soundness keystone directly here, with the `Reindexed` relation
+prove the renaming-soundness theorem directly here, with the `Reindexed` relation
 additionally pinning the carry flag (which a register renaming leaves untouched).
 
 This is the **register-allocation-inside-the-equality** result for the bignum
@@ -26,8 +26,7 @@ backend: `regToBOp_alloc_denote` states that running the *renamed* (allocated)
 lowered block on a reindexed state computes, at the renamed names, exactly the
 source program's denotation `armTarget.denote p`. Allocation, modelled as the
 register renaming `ρ` the `GpAlloc` map induces, is thereby brought *inside* a
-proved semantic equality (previously it appeared only in the byte-length fact
-`compiled_length`).
+proved semantic equality, in addition to the byte-length fact `compiled_length`.
 
 `Reindexed ρ s t` says `t` is `s` with every name `n` relabelled to `ρ n` (on the
 non-`xzr` names) and the same carry flag. For an **injective**, `xzr`-preserving
@@ -111,7 +110,7 @@ theorem reindexed_get (ρ : String → String) (hinj : Function.Injective ρ)
     subst this; rw [hxzr]; simp [BState.get]
   · exact h.1 a ha
 
-/-! ## 3. The renaming keystone -/
+/-! ## 3. The renaming theorem -/
 
 /-- **One step commutes with renaming.** Running the renamed instruction on the
     reindexed state `t` is reindexed to running the original on `s`. The flag-out
@@ -165,7 +164,7 @@ theorem evalBInst_rename_reindexed (ρ : String → String) (hinj : Function.Inj
       | exact hset _ _
       | exact hsetC _ _ _
 
-/-- **Block renaming soundness (the bignum-path keystone).** For an injective,
+/-- **Block renaming soundness (the bignum-path renaming theorem).** For an injective,
     `xzr`-preserving renaming `ρ`, running the renamed block on a reindexed state
     is reindexed to running the original block — the `BInst`/`BState` analogue of
     `ArmRegAlloc.renameABlock_runABlock`, with the carry flag tracked. -/
@@ -184,10 +183,10 @@ theorem renameBBlock_runBBlock (ρ : String → String) (hinj : Function.Injecti
 /-- **Register allocation preserves the source denotation.** Running the *renamed*
     (allocated) lowered block on a reindexed state `t` computes, at the renamed
     names, exactly the source program's denotation `armTarget.denote p`. Composes
-    the waist keystone `regToBOp_denote` (allocation-free, virtual names) with the
-    renaming keystone `renameBBlock_runBBlock`: register allocation — modelled as
-    the injective renaming an aliasing-free `GpAlloc` induces — is now *inside* a
-    proved semantic equality, not merely the byte-length fact. -/
+    the lowering theorem `regToBOp_denote` (allocation-free, virtual names) with the
+    renaming theorem `renameBBlock_runBBlock`: register allocation — modelled as
+    the injective renaming an aliasing-free `GpAlloc` induces — is *inside* a
+    proved semantic equality, in addition to the byte-length fact. -/
 theorem regToBOp_alloc_denote (ρ : String → String) (hinj : Function.Injective ρ)
     (hxzr : ρ "xzr" = "xzr") (p : RegProg) (s t : BState) (h : Reindexed ρ s t) :
     Reindexed ρ (armTarget.denote p s)
@@ -195,13 +194,13 @@ theorem regToBOp_alloc_denote (ρ : String → String) (hinj : Function.Injectiv
   have hb := renameBBlock_runBBlock ρ hinj hxzr (lowerBBlock (regToBOp p)) s t h
   rwa [regToBOp_denote] at hb
 
-/-! ## 5. Injective-on-block-names: tying the keystone to the concrete allocator
+/-! ## 5. Injective-on-block-names: tying the renaming theorem to the concrete allocator
 
 The global-injectivity hypothesis above is the standard "validated renaming" shape,
 but the *concrete* allocation map `gpOf alloc` the encoder uses is **not** globally
 injective (it returns a distinct `<UNALLOCATED:n>` sentinel off-domain, and `wzr`/
 `xzr` are fixed points). What an aliasing-free allocation actually guarantees is
-injectivity on the **register names the block uses**. We weaken the keystone to that
+injectivity on the **register names the block uses**. We weaken the renaming theorem to that
 hypothesis (`ReindexedOn`/`RenInjOn` scoped to a name list `ns ⊇ block names`), then
 discharge it for the real `gpOf alloc` via an `allocValidOn` no-alias certificate —
 so the soundness statement is about the encoder's actual register substitution
@@ -329,7 +328,7 @@ def allocValidOn (alloc : GpAlloc) (block : List BInst) : Prop :=
     `allocValidOn` no-alias certificate, the block renamed by the encoder's own
     substitution `gpOf alloc` computes the source denotation `armTarget.denote p` at
     the allocated names. This is `regToBOp_alloc_denote` discharged for the real
-    `GpAlloc` the AArch64 encoder uses — the `<UNALLOCATED>` sentinel is now a proof
+    `GpAlloc` the AArch64 encoder uses — the `<UNALLOCATED>` sentinel is a proof
     obligation (`allocValidOn`), not a trusted runtime check. -/
 theorem regToBOp_concreteAlloc_denote (alloc : GpAlloc) (p : RegProg)
     (hvalid : allocValidOn alloc (lowerBBlock (regToBOp p))) (s t : BState)

@@ -13,15 +13,15 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTie
 set_option autoImplicit false
 
 /-!
-# Unconditional per-trip simulation + the array-carrier decode (B4 residuals i, iv)
+# Unconditional per-trip simulation + the array-carrier decode
 
-`JasminLsemMemSourceTie` (B4) ties the memref export theorems to the source
-denotation `JLoopBodyN.denote` / `ComL.denote`, but leaves the per-trip
+`JasminLsemMemSourceTie` ties the memref export theorems to the source
+denotation `JLoopBodyN.denote` / `ComL.denote`, with the per-trip
 simulation `hsim` as a hypothesis, discharged generically only at *encoded*
-trip states. This module closes that residual and adds the array-carrier
-decode:
+trip states. This module discharges `hsim` for the emitted body shape and adds
+the array-carrier decode:
 
-1. **R1 — the unconditional per-trip discharge** (§2–§4): for the emitted
+1. **The unconditional per-trip discharge** (§2–§4): for the emitted
    `chain ++ writeback` body shape (`loopBodyFullMN` — the linearizer chain of
    the `ScalarMemN` update, the accumulator writeback into its argument
    register, the loop-index increment, the counter decrement), the per-trip
@@ -33,17 +33,17 @@ decode:
    carry only the schedule (`hprev`/`hlast`/`hbfin`/`htaken`/`hhalt`), the seed
    (`hseed`/`hn0`) and the counter-name hygiene (`hna`/`hnr`) hypotheses — no
    `hsim`.
-2. **R4 — the array-carrier decode** (§5–§7): `decodeArrM` reads a named
+2. **The array-carrier decode** (§5–§7): `decodeArrM` reads a named
    `larr` region off the halt state; `runBoundedLoopMemArr_decodes_denote` is
    the fold induction at an **array accumulator** (`accTy = .stackArr w n` —
    `JLoopBodyN` is already generic in `accTy`); `loopMemArr_export_faithful*`
-   are the A1 export theorems concluded at the array cells (using the array
-   half of `loopMem_runBounded`, previously discarded); and the **fill shape**
+   are the counter-loop export theorems concluded at the array cells (using the
+   array half of `loopMem_runBounded`); and the **fill shape**
    `out[i] := a[i]` (`fillBodyM`, the in-place `LOADIDX`/`STOREIDX` pass the
    physical allocator produces) gets its per-trip simulation discharged
    unconditionally too — `fillLoop_export_faithful_denote` is `hsim`-free.
 3. **Validation** (§8): the composed unconditional theorems are instantiated on
-   concrete runs — the §7 doubling loop of the B4 file re-derived *through*
+   concrete runs — the §7 doubling loop of `JasminLsemMemSourceTie` re-derived *through*
    `loopMem_export_faithful_denote_uncond` (no `hsim` side condition), and a
    4-cell fill loop at runtime count 3 through `fillLoop_export_faithful_denote`,
    its array cells decoding to the source fold.
@@ -202,7 +202,7 @@ theorem lsemStepMem_storeIdx (dst base idx val : String) (sc : Nat) {w n : Nat}
 The loop-body context is `accTy :: .reg 64 :: invTys` (`nA = |invTys| + 2`
 binders, all arguments). The accumulator resolves to `argName (|invTys| + 1)`,
 the loop index to `argName |invTys|`, each invariant to an `argName < |invTys|`.
-Generic in `accTy` (scalar for R1, `stackArr` for R4). -/
+Generic in `accTy` (scalar for §3–§4, `stackArr` for §5–§7). -/
 
 variable {invTys : Ctxt jasminDialect}
 
@@ -472,7 +472,7 @@ theorem tripAgree_setArr_acc {w n : Nat} {s : LstateM} {invs : Ctxt.Valuation in
             have := h.arr (.there (.there v''))
             rwa [hrv] at this
 
-/-! ## 3. R1 — the emitted `chain ++ writeback` body and its proved per-trip pass -/
+/-! ## 3. The emitted `chain ++ writeback` body and its proved per-trip pass -/
 
 /-- The canonical writeback of a scalar-accumulator loop pass: move the chain's
     result register into the accumulator argument (`ADD acc ← ret, #0` — the
@@ -495,7 +495,7 @@ def loopBodyFullMN {w : Nat}
       (JasminTy.reg w)) (nReg : String) : List LinstrRM :=
   loopBodyChainMN update ++ loopWritebackMN update nReg
 
-/-- Every element of the full body is an `Lopn` (A1's side condition, by
+/-- Every element of the full body is an `Lopn` (the counter loop's side condition, by
     construction). -/
 theorem loopBodyFullMN_isLopn {w : Nat}
     (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
@@ -512,7 +512,7 @@ theorem loopBodyFullMN_isLopn {w : Nat}
     · exact ⟨_, _, _, rfl⟩
     · exact absurd h (List.not_mem_nil)
 
-/-- **The proved per-trip pass (R1).** One pass of the emitted
+/-- **The proved per-trip pass.** One pass of the emitted
     `chain ++ writeback` body, from ANY machine state agreeing with the trip-`t`
     valuation and holding a readable counter: it succeeds, lands in a state
     agreeing with the trip-`(t+1)` valuation at the stepped accumulator
@@ -586,7 +586,7 @@ theorem loopBodyFullMN_trip {w : Nat}
     rw [LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.getW_nextPc,
       LstateN.getW_setReg_same]
 
-/-! ## 4. R1 — the trip invariant and the unconditional export theorems -/
+/-! ## 4. The trip invariant and the unconditional export theorems -/
 
 /-- **The trip invariant.** Every `runBoundedLoopMem` trip state of the emitted
     `chain ++ writeback` loop agrees with its trip valuation at the source fold
@@ -633,7 +633,7 @@ theorem loopBodyFullMN_inv {w : Nat}
               LstateN.getW_congr_lvm (LstateM.reg_lvm_setLpc bt' 1) nReg 64, hn']
             rfl
 
-/-- **A1 export faithfulness, source-tied, UNCONDITIONAL per-trip (R1).** As
+/-- **Counter-loop export faithfulness, source-tied, UNCONDITIONAL per-trip.** As
     `loopMem_export_faithful_denote`, for the emitted `chain ++ writeback` body
     `loopBodyFullMN`: the remaining hypotheses are the counter **schedule**
     (`hprev`/`hlast`/`hbfin`/`htaken`/`hhalt`), the **seed**
@@ -685,8 +685,8 @@ theorem loopMem_export_faithful_denote_uncond {w : Nat}
       invs t _ bt hAgt vn hvn
     exact ⟨bt', hbt', tripAgree_getW_acc hAg'⟩
 
-/-- **A1 export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip (R1).**
-    The `loopMem_export_faithful_comL` upgrade: the machine run of the emitted
+/-- **Counter-loop export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip.**
+    The `hsim`-free form of `loopMem_export_faithful_comL`: the machine run of the emitted
     `chain ++ writeback` counter loop decodes to the front node
     `ComL.forLoopNRt`'s denotation, with only schedule/seed/name-hygiene
     hypotheses. -/
@@ -722,11 +722,11 @@ theorem loopMem_export_faithful_comL_uncond {Γ : Ctxt jasminDialect} {w : Nat}
     fn top nReg hna hnr s hfn hpc (initV.lookup V) hseed hn0 _ hm
     bprev blast bfin hprev hlast hbfin htaken hhalt
 
-/-! ## 5. R4 — the array-carrier decode
+/-! ## 5. The array-carrier decode
 
-The B4 export theorems observe only the register half (`decodeM = reg.getW`),
-so an array-ACCUMULATOR loop (the fill phase `out[i] := a[i]`) had no
-source-tie form. `decodeArrM` reads a named `larr` region; the fold induction
+The `JasminLsemMemSourceTie` export theorems observe only the register half
+(`decodeM = reg.getW`), so they give an array-ACCUMULATOR loop (the fill phase
+`out[i] := a[i]`) no source-tie form. `decodeArrM` reads a named `larr` region; the fold induction
 and the export wrappers below conclude at the array cells, at
 `accTy = .stackArr w n` (`JLoopBodyN` is already `accTy`-generic). -/
 
@@ -795,13 +795,13 @@ theorem runBoundedLoopMemArr_decodes_denote {w n : Nat}
           rw [JLoopBodyN.denote_succ, decodeArrM_setLpc]
           exact hdec'
 
-/-! ## 6. R4 — the A1 export theorems at the array cells -/
+/-! ## 6. The counter-loop export theorems at the array cells -/
 
-/-- **A1 export faithfulness — array observable.** As `loopMem_export_faithful`
+/-- **Counter-loop export faithfulness — array observable.** As `loopMem_export_faithful`
     (`JasminLsemMemChainBridge`), but observing a named ARRAY region: the halt
     state's `decodeArrM` agrees with the fold's. Uses the array half of
-    `loopMem_runBounded` (never re-proved), previously discarded by the
-    register-only lift. -/
+    `loopMem_runBounded` (never re-proved), which the register-only lift does
+    not use. -/
 theorem loopMemArr_export_faithful (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hlopn : ∀ i ∈ body, IsLopn i)
     (s : LstatePM) (hfn : s.lfn = fn) (hpc : s.base.lpc = 1)
@@ -821,8 +821,8 @@ theorem loopMemArr_export_faithful (fn : String) (top : LLabel) (nReg : String)
     bprev blast bfin hprev hlast hbfin htaken hhalt
   exact ⟨t, ht, decodeArrM_congr_larr t.base bfin harr arrSlot w n⟩
 
-/-- **A1 export faithfulness at the array cells, tied to the source
-    denotation.** Under the A1 schedule plus the array seed decode and the
+/-- **Counter-loop export faithfulness at the array cells, tied to the source
+    denotation.** Under the counter-loop schedule plus the array seed decode and the
     per-trip simulation, the emitted counter loop's machine run halts at a
     state whose ARRAY slot decodes to `JLoopBodyN.denote ⟨m, update⟩ invs arr0`
     — the source loop's array output. -/
@@ -868,7 +868,7 @@ theorem comL_forLoopNRt_ret_denote_acc {Γ : Ctxt jasminDialect} {accTy : Jasmin
       = JLoopBodyN.denote ⟨(count.lookup V).toNat, update⟩
           (Expr.lookupArgs invs V) (init.lookup V) := rfl
 
-/-- **A1 export faithfulness at the array cells, concluded at `ComL.denote`.**
+/-- **Counter-loop export faithfulness at the array cells, concluded at `ComL.denote`.**
     The machine run of the emitted counter loop decodes AT THE ARRAY SLOT to
     the front node `ComL.forLoopNRt`'s denotation, at a memref accumulator. -/
 theorem loopMemArr_export_faithful_comL {Γ : Ctxt jasminDialect} {w n : Nat}
@@ -906,7 +906,7 @@ theorem loopMemArr_export_faithful_comL {Γ : Ctxt jasminDialect} {w n : Nat}
     body hlopn s hfn hpc _ hm bprev blast bfin hprev hlast hbfin htaken hhalt arrSlot _
     hinit hsim
 
-/-! ## 7. R4 — the fill shape `out[i] := a[i]`, per-trip DISCHARGED
+/-! ## 7. The fill shape `out[i] := a[i]`, per-trip DISCHARGED
 
 The fill-phase body: load `a[i]` into a scratch slot, store it into `out[i]`
 **in place** (the store's destination slot is the accumulator argument itself —
@@ -976,7 +976,7 @@ theorem fillBodyM_isLopn (w n : Nat) (nReg : String) :
   · exact ⟨_, _, _, rfl⟩
   · exact absurd h (List.not_mem_nil)
 
-/-- **The proved per-trip fill pass (R4).** One pass of the emitted in-place
+/-- **The proved per-trip fill pass.** One pass of the emitted in-place
     fill body, from ANY state agreeing with the trip-`t` valuation and holding
     a readable counter: it succeeds, the accumulator array cell steps by
     `JLoopBodyN.stepC (fillUpdate w n)`, and the next-trip agreement holds. -/
@@ -1093,8 +1093,8 @@ theorem fillBodyM_inv {w n : Nat} (nReg : String)
               LstateN.getW_congr_lvm (LstateM.reg_lvm_setLpc bt' 1) nReg 64, hn']
             rfl
 
-/-- **The fill-loop export theorem, at the array cells, UNCONDITIONAL per-trip
-    (R4).** The emitted in-place fill loop `out[i] := a[i]` (runtime trip count
+/-- **The fill-loop export theorem, at the array cells, UNCONDITIONAL per-trip.**
+    The emitted in-place fill loop `out[i] := a[i]` (runtime trip count
     read off the counter register), run by the machine model from any seed
     state agreeing with the trip-0 valuation: the halt state's array slot
     `decodeArrM`s to the source fold `JLoopBodyN.denote ⟨m, fillUpdate w n⟩` —
@@ -1142,10 +1142,10 @@ theorem fillLoop_export_faithful_denote {w n : Nat}
 
 /-! ## 8. Validation: the unconditional theorems instantiated on concrete runs
 
-R1: the B4 §7 doubling loop re-derived THROUGH
+Scalar: the `JasminLsemMemSourceTie` §7 doubling loop re-derived THROUGH
 `loopMem_export_faithful_denote_uncond` — no `hsim` side condition (the per-trip
 pass is proved). The body is the CANONICAL `chain ++ writeback` (with the
-loop-index increment the §7 hand-writeback omitted). R4: a 4-cell fill loop at
+loop-index increment the §7 hand-writeback omitted). Array: a 4-cell fill loop at
 runtime count 3 through `fillLoop_export_faithful_denote` — the array cells
 decode to the source fold. -/
 
@@ -1163,7 +1163,7 @@ theorem counterN_ne_regName (k : Nat) : "n" ≠ regName k := by
   have hd := congrArg (fun s => s.toList.head?) h
   simp [String.toList_append] at hd
 
-/-! ### R1 validate: the doubling loop, hsim-free -/
+/-! ### Validate: the doubling loop, hsim-free -/
 
 /-- The canonical emitted body of the doubling loop: the linearizer chain of
     `wUpd` (`acc := acc + acc`) + the canonical writeback. -/
@@ -1215,7 +1215,7 @@ def wFinU : LstateM := (runBoundedLoopMem wBodyU 2 wBaseU).get wFin_isSome
 theorem wFinU_eq : runBoundedLoopMem wBodyU 2 wBaseU = some wFinU :=
   (Option.some_get wFin_isSome).symm
 
-/-- **Validate (R1).** The doubling-loop conclusion derived THROUGH the
+/-- **Validate.** The doubling-loop conclusion derived THROUGH the
     unconditional export theorem: only the schedule (concrete run facts), the
     seed agreement and the counter-name hygiene are supplied — **no `hsim`
     side condition**. The machine run of the emitted `chain ++ writeback` loop
@@ -1236,7 +1236,7 @@ theorem wLoop_export_uncond :
   obtain rfl := Option.some.inj (wPrevU_eq.symm.trans hbi)
   native_decide
 
-/-- **Validate (R1, value + non-vacuity crosscheck).** The same fuel/program
+/-- **Validate (value + non-vacuity crosscheck).** The same fuel/program
     actually runs to a halt whose accumulator decodes `20` (`5 → 10 → 20`) —
     the theorem's existential is inhabited by the real run. -/
 example :
@@ -1244,7 +1244,7 @@ example :
         (fun t => decodeM t.base (accRegMN []) 64)
       = some (some (20#64)) := by native_decide
 
-/-! ### R4 validate: a 4-cell fill loop at runtime count 3 -/
+/-! ### Validate: a 4-cell fill loop at runtime count 3 -/
 
 /-- The source array. -/
 def fSrc : Fin 4 → BitVec 64 := ![101#64, 202#64, 303#64, 404#64]
@@ -1308,7 +1308,7 @@ def fFinV : LstateM := (runBoundedLoopMem fBodyV 3 fBaseV).get fFin_isSome
 theorem fFinV_eq : runBoundedLoopMem fBodyV 3 fBaseV = some fFinV :=
   (Option.some_get fFin_isSome).symm
 
-/-- **Validate (R4).** The fill loop `out[i] := a[i]` at runtime count 3 over 4
+/-- **Validate.** The fill loop `out[i] := a[i]` at runtime count 3 over 4
     cells, THROUGH the hsim-free export theorem: the machine run's halt state
     decodes AT THE ARRAY SLOT to the source fold
     `JLoopBodyN.denote ⟨3, fillUpdate 64 4⟩ [fSrc] fInit` — the array cells are
@@ -1331,7 +1331,7 @@ theorem fillLoop_export_uncond :
   · obtain rfl := Option.some.inj (fT2_eq.symm.trans hbi)
     native_decide
 
-/-- **Validate (R4, cells crosscheck).** The source fold's cells are the
+/-- **Validate (cells crosscheck).** The source fold's cells are the
     expected fill (`[101, 202, 303, 7]` — three trips copy, cell 3 keeps the
     seed). -/
 example :

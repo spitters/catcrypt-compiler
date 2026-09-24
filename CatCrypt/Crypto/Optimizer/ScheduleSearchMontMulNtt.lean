@@ -11,15 +11,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulK
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
 
 /-!
-# Verified-CryptOpt schedule search applied to the modularity-floor kernels (#385 continuation)
+# Verified-CryptOpt schedule search applied to the modularity-floor kernels
 
 The randomized schedule/RA search of `RandomizedScheduleSearch.lean` (the
 verified form of CryptOpt's loop: a seeded local search over the
 disjoint-footprint adjacent-transposition neighbourhood, with **in-Lean
 translation validation of the winner** standing in for CryptOpt's external
-equivalence checker) closed `fe25519` to s2n parity only where the gap was
-schedule-shaped, and reported a *null* where it was not (`feMulBlock`: 8 legal
-swaps, all cost-neutral; the residual was register allocation, #386).
+equivalence checker) closes `fe25519` to s2n parity only where the gap is
+schedule-shaped, and reports a *null* where it is not (`feMulBlock`: 8 legal
+swaps, all cost-neutral; the residual is register allocation).
 
 This module points the **same** loop at the two kernels the bench flags as
 trailing their hand-asm references on scheduling: the **BLS12-381 `Fp` CIOS

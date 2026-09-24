@@ -32,7 +32,7 @@ two-stage flow.
 
 The low jasmin emitters are continuation-passing over a *mutable register file*:
 a fragment writes a result to a slot index and is parameterised by an
-environment, so it is genuinely context-polymorphic. The Field dialect's `Com`
+environment, so it is context-polymorphic. The Field dialect's `Com`
 instead grows a **De Bruijn context**: each `Com.var e body` binds the result of
 `e` at index `0` and continues with the context extended by that result. So a
 field-op fragment is **tied to the context its argument variables live in** (a

@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 
 # `TArr` array-of-slots IR demo.
 
-Demonstrates the new `TArr n t` TowerType + `RArrLoad` / `RArrStore`
-constructors added 2026-05-12.  Same body shape as the build_comb_table
+Demonstrates the `TArr n t` TowerType + `RArrLoad` / `RArrStore`
+constructors.  Same body shape as the build_comb_table
 inner loop, but using runtime-indexed array access instead of 1024
 separately named slots.
 
@@ -64,11 +64,11 @@ def demoLoadStoreLoop : LowCT :=
 
 /-! ## Constant-time guarantee (dynamic-index array support)
 
-With the runtime-indexed array ops now wired through the secure-compiler
+With the runtime-indexed array ops wired through the secure-compiler
 front-end, the security question is whether a runtime-indexed array loop is
 constant-time.  It is — **when the index is public**.  The loop counter `"i"`
 is public (it ranges over `0..4`, independent of any secret), so the array-map
-loop passes `cmdCT`; by `cmdCT_sound` this is genuine noninterference (no
+loop passes `cmdCT`; by `cmdCT_sound` this is noninterference (no
 secret leaks via the address trace).  The *same* `cmdCT` rejects a loop whose
 index reads secret data (the AES-S-box class). -/
 

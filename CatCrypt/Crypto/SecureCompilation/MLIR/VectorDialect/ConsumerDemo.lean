@@ -12,14 +12,14 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 
 A worked example showing that one *kernel step* of the existing ChaCha
 4-way primitive (the lane-parallel `#VPADD_4u32` that adds four 32-bit
-state words in parallel) is expressible in the new VectorDialect *and*
+state words in parallel) is expressible in the VectorDialect *and*
 proven equivalent to the abstract vector denotation.
 
 This **validates that the dialect is expressive enough** for SIMD kernels
-that today are hand-emitted as inline jasmin mnemonics in
+that are emitted as inline jasmin mnemonics in
 `VIR/ChaChaEmit.lean` (cf. `chacha4way_has_packed_add` —
-`strContains "#VPADD_4u32("`). We do *not* rewrite the emit; we only show
-the equivalence to anchor the claim that a future Phase-2 rewrite will be
+`strContains "#VPADD_4u32("`). The module does *not* rewrite the emit; the
+equivalence shows that a rewrite of that step to the VectorDialect is
 denotation-preserving.
 
 The consumer-side specification of the ChaCha 4-way `add` step is the
@@ -84,7 +84,7 @@ def initW32 : W32 := 0
 /-- **Lowered = abstract = consumer spec.** The VectorDialect *lowered*
     expansion of `vpadd4u32_vectorOp a b` denotes to `vpadd4u32_spec a b`.
 
-    This is the keystone for the rewrite "rewrite the ChaCha 4-way kernel
+    This is the key lemma for the rewrite "rewrite the ChaCha 4-way kernel
     step to a VectorDialect op". Combined with `vpadd4u32_abstract_eq`, the
     rewrite is denotation-preserving on both sides. -/
 theorem vpadd4u32_lowered_eq (a b : W32x4) :
@@ -95,7 +95,7 @@ theorem vpadd4u32_lowered_eq (a b : W32x4) :
 
 /-! ## Conclusion — the dialect is expressive enough for the kernel
 
-If a Phase-2 rewrite replaces
+If a rewrite replaces
 
 ```
 chacha20_4way_block { … #VPADD_4u32(a, b) … }

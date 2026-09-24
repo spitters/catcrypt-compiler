@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 
 /-!
-# #607 fan-out: functional tie — verified-compiler BLAKE2b G words = the front's `blake2bGSpec`
+# Functional tie — verified-compiler BLAKE2b G words = the front's `blake2bGSpec`
 
 This module wires the committed **compile-from-hax BLAKE2b G leaves**
 (`CompileFromHaxBlake2b.blake2bG{A,B,C,D}_compiles`) onto the front's RFC 7693

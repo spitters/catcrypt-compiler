@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 
 /-!
-# A64 ABI / scaffolding-instruction byte encoder (the whole-function residual, #552-obj)
+# A64 ABI / scaffolding-instruction byte encoder (whole-function emission)
 
 `ArmEncoder.lean` encodes the verified *body* `AInst`/`BInst` instructions (the
 GP-ALU and the 64-bit bignum forms) plus the branch alphabet. To emit a **whole

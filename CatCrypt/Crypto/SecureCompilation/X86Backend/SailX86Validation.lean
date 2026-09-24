@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValid
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
 
 /-!
-# Self-consistency against recorded Sail-x86 (ACL2) interpreter outputs (#281/#437)
+# Self-consistency against recorded Sail-x86 (ACL2) interpreter outputs
 
 `TranslationValidation.lean` differentially validates the owned Lean x86 model
 (`Model.lean`'s `step`, `JasminModel.lean`'s `evalInstr`) against **Jasmin's
@@ -33,9 +33,9 @@ proof, and its outputs are trusted at face value here — this file is a
 cross-check against a second machine-checked semantics living in this repo.
 (`SailX86Lean.lean` goes further for a subset of instructions: it transcribes
 the Sail-exported *Lean definitions* themselves and proves `evalInstr` equal to
-those definitions — a genuine second-semantics equality. This file predates
-that and, for the instructions it covers that `SailX86Lean.lean` does not
-reprove, still rests on the quoted-literal method described below.)
+those definitions — a second-semantics equality. For the instructions this
+file covers that `SailX86Lean.lean` does not reprove, the evidence is the
+quoted-literal method described below.)
 ACL2-`x86isa` is a long-standing, heavily-validated executable x86 reference
 (it boots real binaries) and is *independent* of Jasmin's hand-written Rocq
 model, so agreement with its recorded outputs is still meaningful evidence —
@@ -109,11 +109,11 @@ ones above, paths in the authors' external `sail-x86-from-acl2` checkout — not
 vendored here.)
 
 * **`ADCX`/`ADOX`/`MULX` (ADX + BMI2):** the upstream ACL2 `x86isa` model
-  predates the ADX/BMI2 extensions, so these instructions were absent from the
-  Sail model. `MULX`'s widening *product* is still cross-validated here via the
+  predates the ADX/BMI2 extensions, so these instructions are absent from the
+  upstream Sail model. `MULX`'s widening *product* is cross-validated here via the
   equivalent unsigned `MUL` (`mul_spec_64`), whose `(hi, lo)` split is bit-
   identical to `MULX`'s `(lo, hi)` — see `sail_mulx_via_mul_*` below.
-  **Update (#484):** the ADX trio now *does* have a Sail-x86 counterpart:
+  The ADX trio has a Sail-x86 counterpart in the authors' checkout:
   `model/adx_spec.sail` supplies `mulx_spec_64` and `adcx_adox_spec_64`
   (transcribed from the Intel SDM, exercised through the Sail 0.20.1
   interpreter — `model/x86_adx_harness.sail`, outputs in
@@ -123,12 +123,11 @@ vendored here.)
   `adox_eq_sail*`), including the defining ADX feature — `ADCX` writes **only**
   `CF`, `ADOX` writes **only** `OF` (independent dual carry chains), the routing
   realized by the owned step and matching Jasmin's `Ox86_ADCX_instr`/
-  `Ox86_ADOX_instr`. The trio is therefore now anchored to **both** Jasmin's
+  `Ox86_ADOX_instr`. The trio is therefore anchored to **both** Jasmin's
   Rocq model and Sail-x86.
 * **AES-NI / PCLMUL / GFNI / VAES:** the upstream ACL2 model has no decode
-  tables or spec functions for these families either.
-  **Update (#492):** as with ADX, the crypto-extension primitives now *do* have
-  a Sail-x86 counterpart: `model/cryptoext_spec.sail` supplies `gf256_mul` /
+  tables or spec functions for these families either. As with ADX, the
+  crypto-extension primitives have a Sail-x86 counterpart: `model/cryptoext_spec.sail` supplies `gf256_mul` /
   `gf2p8mulb_spec` (GFNI), `aesenc_spec` / `aesenclast_spec` /
   `aeskeygenassist_spec` (AES-NI, and per-lane VAES), and `clmul64_spec`
   (PCLMULQDQ) — transcribed from the Intel SDM + FIPS 197, exercised through the
@@ -140,8 +139,7 @@ vendored here.)
   `SailX86Lean.lean` (`gf256_mul_eq_sail*`/`gf2p8mulb_eq_sail`/`aesenc_eq_sail`/
   `aesenclast_eq_sail`/`aeskeygenassist_eq_sail`/`clmul_eq_sail*`). The byte
   *encoders* for these families (`CryptoExtEncoder.lean`) remain at the
-  gas-pinned tier (the SDM byte tables are unchanged by this); this anchors the
-  instruction *semantics*.
+  gas-pinned tier; the Sail counterpart anchors the instruction *semantics*.
 * **`CMOVcc`:** the ACL2 model treats it as a predicated `MOV` (no dedicated
   spec function); its data selection is the move semantics, anchored to Jasmin.
 * **Shift-count masking:** Sail's `sal_shl_spec_64` takes a `bits(6)` count
@@ -150,9 +148,9 @@ vendored here.)
   `TranslationValidation` (`shl_count_ge_width_differs`). Our compiler only
   emits counts `< w`, where all three agree.
 
-This file is the realization of #281's named residual "Sail-x86 cross-checks
-remain unwired", and sets up #438 (the verified `JInstr → bytes` encoder will
-be validated against Sail-x86's byte-level decoder).
+This module wires the Sail-x86 cross-checks into the build; the verified
+`JInstr → bytes` encoder is a candidate for validation against Sail-x86's
+byte-level decoder.
 -/
 
 @[expose] public section
@@ -295,7 +293,8 @@ The ACL2/Sail model has no BMI2 `MULX`, but its unsigned `MUL` (`mul_spec_64`)
 computes the *same* `128`-bit product, returning `(product_high, product_low)`.
 `MULX`'s output is `(lo, hi)` of that same product. So Sail-x86's `MUL` directly
 validates the owned `MULX` data words. (The flag-independence routing of
-`ADCX`/`ADOX` has no Sail counterpart — see the module honesty note.) -/
+`ADCX`/`ADOX` has no counterpart in the upstream Sail model — see the module
+docstring's scope section.) -/
 
 /-- `MULX (2^64-1) 2`: Sail-x86 `mul_spec_64`: `lo=2^64-2, hi=1`. The owned
     `step` `MULX` reproduces both words. -/

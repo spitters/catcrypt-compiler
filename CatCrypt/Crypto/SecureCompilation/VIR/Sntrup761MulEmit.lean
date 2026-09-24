@@ -18,7 +18,7 @@ set_option autoImplicit false
 
 The `Z/q = Z/4591` coefficient arithmetic of sntrup761's polynomial multiply
 (schoolbook width-16 tile + per-coefficient Barrett reduction), sourced through
-the verified `CProg`-free front — NO hand-built `Com` anywhere:
+the verified control front — NO hand-built `Com` anywhere:
 
 ```
   mulBody (LowCT: RScalarSetExpr schoolbook + Barrett word math over the 36 slots)
@@ -176,7 +176,7 @@ def srcVM : VarMap srcCtx := bindAll wordNames
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `mulBody` through the `CProg`-free control front and cap with
+/-- Push `mulBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM (mulBody barrettShift) with

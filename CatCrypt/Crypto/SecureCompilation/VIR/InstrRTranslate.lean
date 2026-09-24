@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 # A verified AST translation `JasminAST.InstrR → CoqSemMirror.InstrR`
 
 This file closes **gap #1** of `ComJasminBridge.lean`: the
-`JasminAST.InstrR → CoqSemMirror.InstrR` translation that, until now, existed
+`JasminAST.InstrR → CoqSemMirror.InstrR` translation, which otherwise exists
 *only* as the unverified `MetaM` reifier `reifyInstrRMirror%`
 (`InstrRReflect.lean` §9.c) and the lossy structural walker
 `Mirror.instrRToMirror` (§9.b, which only handled `Copn` and discarded the

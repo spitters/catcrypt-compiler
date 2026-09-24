@@ -65,10 +65,11 @@ has its expected degree, so `modByMonic_eq_self_iff` and
 `modByMonic_eq_zero_iff_dvd` apply.
 
 The *concrete* factorization `X^256 + 1 = ∏_{i<128} (X^2 - ζ_i)` over `ZMod 3329`,
-and the pairwise coprimality of those quadratics, is genuine cyclotomic algebra
-over a specific finite field and is out of scope here. It is exactly the `hcop`
-and `hfact` hypotheses of `incompleteNTT` / `incompleteNTTOfModulus`; discharging
-them for the ML-KEM parameters `(3329, 256)` is the remaining concrete step.
+and the pairwise coprimality of those quadratics, is cyclotomic algebra
+over a specific finite field and is outside the scope of this module. It is exactly
+the `hcop` and `hfact` hypotheses of `incompleteNTT` / `incompleteNTTOfModulus`,
+which the statements here take as hypotheses; they are not discharged for the
+ML-KEM parameters `(3329, 256)` in this module.
 
 ## References
 

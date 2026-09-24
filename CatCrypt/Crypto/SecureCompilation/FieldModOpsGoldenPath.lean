@@ -109,7 +109,7 @@ theorem modDoubleCom_denote (a : BitVec 64) :
   rfl
 
 /-- **The modular spec.** For a reduced input `a.toNat < 251`, the emitted source
-    computes `(2 · a) mod 251` — the genuine modular-double value. -/
+    computes `(2 · a) mod 251` — the modular-double value. -/
 theorem modDoubleCom_spec (a : BitVec 64) (ha : a.toNat < 251) :
     (Com.denote modDoubleCom (.cons a .nil)).toNat = (2 * a.toNat) % 251 := by
   rw [modDoubleCom_denote]
@@ -200,7 +200,7 @@ theorem modNegCom_denote (a : BitVec 64) :
   rfl
 
 /-- **The modular spec.** For a reduced input `a.toNat < 251`, the emitted source
-    computes `(251 - a) mod 251` — the genuine modular-negate value (`0` at `a = 0`). -/
+    computes `(251 - a) mod 251` — the modular-negate value (`0` at `a = 0`). -/
 theorem modNegCom_spec (a : BitVec 64) (ha : a.toNat < 251) :
     (Com.denote modNegCom (.cons a .nil)).toNat = (251 - a.toNat) % 251 := by
   rw [modNegCom_denote]

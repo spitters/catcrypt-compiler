@@ -32,7 +32,7 @@ permutation.
 
 ## Why the Poseidon2 emit needs RA
 
-`Poseidon2Montgomery.poseidon2MontgomeryResidentPartialJazz` (#171) holds
+`Poseidon2Montgomery.poseidon2MontgomeryResidentPartialJazz` holds
 the 16-element state in 4 YMM-resident lane registers `vS0..vS3` across
 the FULL 4 + 13 + 4 = 21-round schedule, and preloads the Montgomery-form
 diagonal table into 4 more YMMs `vDV0..vDV3` for the 13 partial rounds.
@@ -72,7 +72,7 @@ We count YMM uses per slot per "round class" (external vs partial):
   * `vrsq_const`: 0 ops (dead since boundary)
   * **`vsq, vx4, vx_orig`: 0 ops (dead in partial rounds)**
 
-So during the 13 partial rounds (which dominate the gap per #171 and the
+So during the 13 partial rounds (which dominate the gap in the TWENTIETH-mode
 measured profile), `vsq`, `vx4`, `vx_orig` are dead, but the existing
 declaration `reg u256 ... vsq vx4 vx_orig ...` keeps them claiming YMM
 slots in jasminc's register file accounting. The slot pressure from this
@@ -205,7 +205,7 @@ def externalRoundUseCount (s : Nat) : Nat :=
   | _  => 0
 
 /-- Number of uses of slot `s` in one partial round. The partial-round
-body is what dominates the residual gap per #171. -/
+body is what dominates the residual gap of the TWENTIETH-mode emit. -/
 def partialRoundUseCount (s : Nat) : Nat :=
   match s with
   | 0  => 8   -- va: input to each quartet montMul
@@ -305,7 +305,7 @@ version splits that single declaration into TWO lines:
 
 The rest of the emit is byte-identical: the rendered body still names
 `vsq`, `vx4`, `vx_orig` in the S-box quartet (`renderMontSboxQuartetResident`),
-but now those names refer to stack slots. jasminc's RA handles the
+but those names refer to stack slots. jasminc's RA handles the
 load/store at use sites; the 3 freed YMM positions become available for
 `vsumYmm`, `vDV0..vDV3`, and the constants during the partial-rounds
 block.
@@ -399,7 +399,7 @@ def emitPoseidon2ResidentPartialRaBodyJazz (ra : RegisterAllocation) : String :=
 
 /-- **The RA-driven Poseidon2 BabyBear lane-resident + YMM-direct
 internal_mat single-pass Montgomery `.jazz`.** Same ABI as the
-TWENTIETH-mode emit (#171). The 16-element state is pinned to
+TWENTIETH-mode emit. The 16-element state is pinned to
 `vS0..vS3` across the FULL 4 + 13 + 4 = 21-round schedule, with the
 Montgomery-form diagonal table preloaded into `vDV0..vDV3` once before
 the partial-rounds block. The scratch YMMs are split into reg-resident
@@ -409,13 +409,13 @@ demoted to `stack u256`, freeing 3 YMM register-file positions during
 the dominant 13-round partial-rounds chunk. For the identity-shaped
 `poseidonRA` defined in this module, the result is the
 phase-dead-spill emit; for `RegisterAllocation.identity` the result
-would (modulo the additive stack-line declarations) match the #171
-baseline. -/
+would (modulo the additive stack-line declarations) match the
+TWENTIETH-mode baseline. -/
 def emitPoseidon2ResidentPartialRaJazz (ra : RegisterAllocation) : String :=
   -- Reuse the baseline preamble (params, RC tables, scalar helpers including
   -- `csub`, `reduce`, `montreduce`, `montmul`, `fmul`, `fadd`, `fsub`,
-  -- `montsbox`, `mds`) so the RA-driven jazz is byte-identical to the #171
-  -- baseline up to the export body. The baseline string ends with
+  -- `montsbox`, `mds`) so the RA-driven jazz is byte-identical to the
+  -- TWENTIETH-mode baseline up to the export body. The baseline string ends with
   -- `emitPoseidon2MontgomeryResidentPartialBodyJazz ++ "\n"` — we strip that
   -- baseline body and append the RA-driven body in its place.
   let baseline := poseidon2MontgomeryResidentPartialJazz

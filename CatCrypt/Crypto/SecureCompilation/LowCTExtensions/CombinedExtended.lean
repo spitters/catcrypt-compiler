@@ -9,34 +9,33 @@ public import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.RForPreservation
 public import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.ArrayPreservation
 
 /-!
-# Stage EE3 — Combined meta-theorem extensions
+# Combined meta-theorem extensions
 
-This file composes the per-constructor extension lemmas from
-`RForPreservation.lean` (Stage EE1) and `ArrayPreservation.lean`
-(Stage EE2) into combined statements that name the extended coverage of
-the **robust-compilation** (#95) and **CT-preservation** (#146)
-meta-theorems for the constructor set on master at extension time:
+This module composes the per-constructor extension lemmas from
+`RForPreservation.lean` and `ArrayPreservation.lean` into combined
+statements that name the extended coverage of the **robust-compilation**
+and **CT-preservation** meta-theorems for the constructors
 `RFor`, `RArrLoad`, `RArrStore`.
 
 ## Naming conventions
 
 * `*_extended` — the meta-theorem statement, with all per-constructor
   obligations bundled into a single named theorem. The proof composes
-  the EE1 / EE2 building blocks.
+  the `RForPreservation` / `ArrayPreservation` building blocks.
 
-## Foundational deferral note
+## Relation to the foundation theorems
 
-The original `#95` and `#146` proofs at the Com-level (lattice → jasmin)
-are **not edited** by this extension. The foundation theorems
+The robust-compilation and CT-preservation proofs at the Com-level
+(lattice → jasmin) are separate from this module. The foundation theorems
 `rustExecSimulatesDialect` (LowCT → `catCryptDialect` simulation over the
-`CProg`-free front, the upstream feeder of #95) and `cmdCT_sound`
-(RustExec-level CT soundness, the upstream feeder of #146) **already** cover
+dialect front, feeding robust compilation) and `cmdCT_sound`
+(RustExec-level CT soundness, feeding CT preservation) cover
 `RFor`, `RArrLoad`, and `RArrStore` in their inductive case-splits (see
 `LowCTCTAnalysis.lean` cases `forZero`, `forSucc`, `arrLoad`, `arrStore`, and
 `Dialects/CryptoDialectRustSim.lean`'s `RFor` / `arrLoad` / `arrStore` arms).
 
-The role of this file is to **expose** that coverage as named, citable
-extension theorems on master, so downstream protocols and audits can
+This module **exposes** that coverage as named, citable
+extension theorems, so downstream protocols and audits can
 reference per-constructor coverage without re-reading the inductive
 proofs.
 
@@ -46,7 +45,7 @@ emit witnesses are `RArrLoad{,Store}D_translation_emits`.
 
 ## What is *not* extended here
 
-This file does **not** modify the statements of the
+This module does **not** restate the
 `robustCompilation_source_to_x86` capstone or `trust_boundary_is_jasmin_ir_to_x86`
 in `RobustCompilationPipeline.lean`. Those theorems are stated at the
 Com / jasmin level (downstream of the LowCT → `catCryptDialect` front-end);
@@ -70,10 +69,10 @@ open CatCrypt.Core
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
-/-! ## 1. Robust compilation, extended (#95-extended)
+/-! ## 1. Robust compilation, extended
 
 The robust-compilation theorem chain at the LowCT layer is fed by the
-`CProg`-free dialect-front simulation `rustExecSimulatesDialect`. The
+dialect-front simulation `rustExecSimulatesDialect`. The
 per-constructor extensions are:
 
 * **`RFor`**: covered by `RForPreservation.loopRForD_denotation_preserved`.
@@ -83,13 +82,13 @@ per-constructor extensions are:
 
 /-- **Robust compilation extended — `RFor` coverage (dialect front).**
 
-    For any control-covered `RFor x N_loop body` AST that the `CProg`-free
+    For any control-covered `RFor x N_loop body` AST that the
     dialect front translates successfully, the simulation theorem
     `rustExecSimulatesDialect` produces a witness `V'` for the post-state
     `RustStateInterp`. This is the constructor-specialized robust-compilation
     statement at the LowCT layer.
 
-    Composing this with the existing #95 chain at the Com→x86 layer
+    Composing this with the robust-compilation chain at the Com→x86 layer
     (`RobustCompilationPipeline.robustCompilation_source_to_x86`) lifts
     the guarantee through the verified emit pipeline to x86. -/
 theorem RobustCompilation_RFor_extended
@@ -106,7 +105,7 @@ theorem RobustCompilation_RFor_extended
 
 /-- **Robust compilation extended — `RArrLoad` coverage (dialect front).**
 
-    The `CProg`-free dialect front emits an opaque `extCall "arrLoadDyn"` (with
+    The dialect front emits an opaque `extCall "arrLoadDyn"` (with
     the runtime index as an argument) for `RArrLoad` when the source slot
     resolves and the index var is bound. Denotation preservation is the `arrLoad`
     case of `rustExecSimulatesDialect`; the public-index constant-time discipline
@@ -130,7 +129,7 @@ theorem RobustCompilation_RArrStore_extended
     (translateDialectControl vm (.RArrStore arr idxVar src)).isSome :=
   RArrStoreD_translation_emits vm arr idxVar src hra hiv
 
-/-! ## 2. CT preservation, extended (#146-extended)
+/-! ## 2. CT preservation, extended
 
 The CT-preservation chain at the LowCT layer is fed by `cmdCT_sound`.
 Per-constructor extensions:
@@ -222,7 +221,7 @@ the single combined no-claim theorem.
     Stated as: `cmdCT` refuses to certify the AST. This is the precise
     formal sense of "secret-index breaks CT".
 
-    *Read this lemma as the formal boundary of #146-extended's coverage*:
+    *Read this lemma as the formal boundary of the extended CT coverage*:
     array constructors are covered ONLY for public indices, and the
     no-claim case is itself a positive theorem. -/
 theorem CTPreservation_array_public_index_restriction

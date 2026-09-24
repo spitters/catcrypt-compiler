@@ -10,27 +10,26 @@ public import HaxLean.TExpr
 public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
-# Heterogeneous array-input front pilot — runtime `arr[i]` reads (the §9 deferral)
+# Heterogeneous array-input front — runtime `arr[i]` reads
 
 The committed THIR→`Com jasminDialect` front (`ThirToComFront.lean`) is
 **homogeneous**: `frontCtxt`/`FState`/`Atom`/`inputValuation` all model the
 input file as `nIn` replicated `rW w` registers. That front can compile
 `inp[i]` reads only when `i` is a *compile-time* literal (it resolves to a fixed
-input register); a genuine runtime-indexed array read `arr[i]` — where the array
+input register); a runtime-indexed array read `arr[i]` — where the array
 is one heterogeneous `stackArr w n` value and `i` is a runtime `reg 64` — cannot
 be carried, because a stack-array value is not a `rW w` register. The §9 store
 pilot and the §20 table-load demonstrator (`storeDemoCom` / `zetaLookupCom` in
 `ThirToComFront.lean`) note this exact gap and defer it.
 
-This module opens that deferral **additively**: it adds a *parallel*
-heterogeneous front entry over the context `[.stackArr w n, .reg 64]` (one array
-input + one runtime index register). Nothing in the committed homogeneous front
-is touched — `frontCtxt`, `FState`, `Atom`, `inputValuation`, `thirToJasmin`,
-and every σ₀ / round-component / load proof stay byte-identical. The dialect and
-the emit back-half already support heterogeneous `Com` contexts (this is exactly
-what `storeDemoCom`/`zetaLookupCom` exercise); the only missing piece was a
-front that *recognises* an `index[arr, idx]` THIR-`TExpr` leaf and lowers it into
-the dialect's `stackLoad` gather. That recogniser is what we add here.
+This module defines a *parallel* heterogeneous front entry over the context
+`[.stackArr w n, .reg 64]` (one array input + one runtime index register),
+separate from the homogeneous front; it does not reference `frontCtxt`, `FState`,
+`inputValuation` or `thirToJasmin`. The
+dialect and the emit back-half support heterogeneous `Com` contexts (this is
+what `storeDemoCom`/`zetaLookupCom` exercise); this module supplies the front
+that *recognises* an `index[arr, idx]` THIR-`TExpr` leaf and lowers it into the
+dialect's `stackLoad` gather.
 
 ## What carries the connecting theorem
 
@@ -170,9 +169,8 @@ def arrReadModel : Hax.TExpr :=
     `index`-leaf `arrReadModel`, producing a gather `Com`; that `Com` denotes,
     for every array `arr : Fin 1 → BitVec 32` and runtime index `idx : BitVec 64`,
     to the dialect's total indexed read `stackGet arr idx.toNat` (element
-    `idx mod 1` of the array). This is the first runtime array-index read
-    compiled through a (parallel) verified front — the §9 deferral, opened
-    additively at `w = 32`, `n = 1`. -/
+    `idx mod 1` of the array). This is a runtime array-index read compiled
+    through the parallel verified front at `w = 32`, `n = 1`. -/
 theorem arrRead_compiles :
     ∃ c, arrReadFront 32 modelLen arrReadModel = some c ∧
       ∀ (arr : Fin modelLen → BitVec 32) (idx : BitVec 64),
@@ -203,7 +201,7 @@ theorem arrRead_compiles_inrange :
 
 /-! ## §H.4  Width/length-general statement
 
-The pilot is not specific to `w = 32`, `n = 1`: the front, the gather `Com`, and
+The construction is not specific to `w = 32`, `n = 1`: the front, the gather `Com`, and
 the denotation work for any width `w` and length `n` (`n ≤ 2^64`, so a `Fin n`
 index has a faithful `u64` representative). The general statement records that
 the recogniser + gather denote uniformly. -/

@@ -21,7 +21,7 @@ group law (`bls377G2_affine_double_realizes` / `_add_realizes`).
 (`lineTangent` / `lineChord`), which embeds every coordinate into `Fp12_377`'s
 `c0.c0.c0` slot through `Fp12_377.ofBase` — a same-field stand-in, not the twist.
 
-This module builds the two twist-native objects that stand-in replaces:
+This module builds the two twist-native counterparts of that stand-in:
 
 * `g2MillerSteps ξ P bits` threads the **real** `G2` accumulator `T` (all
   coordinates in `Fp2_377`) over the realized twist double/add group law,

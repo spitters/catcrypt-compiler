@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12M
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
 
 /-!
-# BLS12-381 pairing tower, squaring layer + cyclotomic squaring, owned x86 (#602/#219)
+# BLS12-381 pairing tower, squaring layer + cyclotomic squaring, owned x86
 
 **Variant: RELIC-transcribed (tests-only correctness).**
 
@@ -324,7 +324,7 @@ def fp12SqrCycAsm : String :=
     ++ callTri fp2AddSym "%rbx" (aij 1 1) "%rbp" Q11 "%rbp" QZ
     ++ callTri fp2AddSym "%rbx" (aij 1 2) "%rbp" Q12 "%rbp" QZ )
 
-/-! ## 4. In-Lean value pin (faithful leaf-call model vs Granger–Scott reference, #602/#219)
+/-! ## 4. In-Lean value pin (faithful leaf-call model vs Granger–Scott reference)
 
 `native_decide`/`lean_diagnostic` can witness the *shape* of the emitted asm but
 not its computed *value*; a wrong scratch slot or a leaf-aliasing violation in

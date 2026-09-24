@@ -51,9 +51,9 @@ parameter:
   `λ = (yQ − yP)/(xQ − xP)`) evaluated at `(x, y)`:
   `ℓ_{P,Q}(x,y) = (y − yP) − λ·(x − xP)`.
 
-Both are honest `Fp12_377` elements (the value the Miller loop multiplies in).
+Both are `Fp12_377` elements (the value the Miller loop multiplies in).
 The slope is the *same* `λ : FpBLS377` the EC module computes — so this is the
-genuine pairing line function, not a re-encoding.
+pairing line function, not a re-encoding.
 
 ## The Miller per-step update
 
@@ -62,7 +62,7 @@ doubling-and-add Miller loop, over the `Fp12_377` `CommRing` multiply. We give i
 as a definition and prove a basic well-definedness law (`millerStep_one_left`:
 the line value of the unit accumulator is `ℓ`, i.e. `millerStep 1 ℓ = ℓ`).
 
-## Honesty boundary
+## Scope
 
 This is the pairing line-function **computation skeleton** — the per-step value
 and the per-step accumulator update — over the `bls12_377` `Fp12` tower. It does
@@ -171,7 +171,7 @@ def lineChord (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (lam xP yP x y : FpBLS377) :
 The defining algebraic property of a line function: the tangent line at `R`
 passes through `R` (and the chord through `P, Q` passes through `P`). Evaluated
 at the anchor, both differences `x − xR` and `y − yR` are `0`, so the value is
-`ofBase 0 − ofBase λ · ofBase 0 = 0`. This is the `Fp12_377`-level honesty check
+`ofBase 0 − ofBase λ · ofBase 0 = 0`. This is the `Fp12_377`-level check
 that the line function is the right object — it needs the `Fp12_377` `CommRing`
 (for `ofBase_mul` / `mul_zero`), parameterized by the tower nonresidues. -/
 

@@ -508,13 +508,13 @@ theorem chacha4way_has_packed_add :
     pure lane-parallel MAP, not a reduction. -/
 #guard !(strContains chacha4wayBlockJazz "#VPEXTR_16(")
 
-/-! ## 8. ChaCha 4-way XMM-resident emission (the SIXTEENTH ABI mode — task #111)
+/-! ## 8. ChaCha 4-way XMM-resident emission (the SIXTEENTH ABI mode)
 
 The stack-resident 4-way emit above (`chacha4wayBlockJazz`, NINTH ABI mode)
 keeps the 16 state words on the stack (`stack u128[16] m`) and routes every
 ARX op via two `reg u128` working scratch `w0`/`w1`: each binding is
 load/compute/store, paying two memory accesses. Register-allocator-trivial,
-but ~2× slower than the HACL* `Hacl_Chacha20_Vec256` reference (audit #137:
+but ~2× slower than the HACL* `Hacl_Chacha20_Vec256` reference (measured:
 ~612 cyc/block stack-resident vs ~131 cyc/block HACL* Vec256; the 4.6× gap).
 
 The SIXTEENTH ABI mode pins the 16 state words in named XMM regs `m0..m15`
@@ -548,8 +548,8 @@ def chacha4wayXmmBlockJazz : String :=
     plus single-slot stack spills `m14s`/`m15s` for words 14/15 (the AVX2
     16-XMM file cannot hold 16 state words + 2 rotate scratches; HACL*
     `Hacl_Chacha20_Vec256` faces the identical cap and resolves it
-    identically with compiler-allocated temps). This is the load-bearing
-    storage-class change vs the stack-resident emit (#107): 14 of 16
+    identically with compiler-allocated temps). This is the main
+    storage-class change vs the stack-resident emit: 14 of 16
     state words are register-resident, eliminating ~14/16 of the round-body
     memory traffic. -/
 #guard (strContains chacha4wayXmmBlockJazz "reg u128 m0 m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13;")
@@ -576,7 +576,7 @@ def chacha4wayXmmBlockJazz : String :=
     XMM regs) is a denotation-irrelevant refinement: both emits realize the
     same SSA sequence (same ops in the same order with the same operands),
     bound to different variables. Composes `LaneMap.chacha4way_lane_map` —
-    the proven 4-way lane-map theorem (#107 deliverable) — which is
+    the proven 4-way lane-map theorem — which is
     parametric over the per-lane block function and lane bundling, with no
     dependence on the lane's register layout.
 

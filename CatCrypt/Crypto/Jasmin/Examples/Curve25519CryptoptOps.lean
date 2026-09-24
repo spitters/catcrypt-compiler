@@ -44,8 +44,8 @@ With these semantics:
   / `… sqrBody ⊆ fiat_25519_carry_square` would close the audit
   boundary inside Lean — replacing "trust CryptOpt + linker" with
   "trust the seven SDM-spec'd helpers below".
-- Such a proof is genuinely heavy (165 / 111 instructions of carry-
-  chain reasoning) and is the next step beyond this commit.
+- Such a proof (165 / 111 instructions of carry-chain reasoning) is
+  outside the scope of this module.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Curve25519CryptoptOps

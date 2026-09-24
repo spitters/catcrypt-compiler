@@ -31,9 +31,9 @@ The `>> 23` is the **arithmetic** (sign-preserving) shift of an `int32`. Unlike
 the `caddq` mask idiom (`CompileFromHaxMldsaPoly`), there is no logical-shift
 realisation: the quotient estimate `(a + 2²²) >> 23` must round toward `−∞` for
 negative `a`, i.e. it is `BitVec.sshiftRight`, not `>>>`. This is
-exactly the surface the new front op unblocks: the recognizer head
-`arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`) denotes `BitVec.sshiftRight`
-(commit #606/#605). With it the body compiles unchanged through the verified
+the surface of the front op with recognizer head
+`arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`), which denotes
+`BitVec.sshiftRight`. With it the body compiles unchanged through the verified
 front; the remaining ops (`wrapping_add`/`wrapping_mul`/`wrapping_sub`) are the
 SHA-256/Keccak/BLAKE2/SDitH recognizers already in place.
 
@@ -136,7 +136,7 @@ theorem mldsaReduce32_compileFromHax_isSome :
     Barrett emit form `mldsaReduce32Form`. Routed through the C3 per-primitive
     obligation `compileFromHax_meets_spec`. This is the first C4 fan-out using the
     **arithmetic** shift op (`arith_shift_right` ↦ `Rhs.sarImm` ↦
-    `BitVec.sshiftRight`, #606/#605): the signed `>> 23` of ML-DSA-65's Barrett
+    `BitVec.sshiftRight`): the signed `>> 23` of ML-DSA-65's Barrett
     `reduce32` (`q = 8380417`), which the logical `shift_right` cannot realise. -/
 theorem mldsaReduce32_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 64 1 []) (rW 64)),
@@ -162,7 +162,7 @@ The Barrett emit form `mldsaReduce32Form` equals the abstract centered residue:
 `reduce32(a) ≡ a (mod q)` and `reduce32(a)` lands in the FIPS-204 Barrett output
 band `[−6283008, 6283008]`, for every `int32` `a` (`−2³¹ ≤ a.toInt < 2³¹`). This
 is the signed-Barrett identity — the arithmetic-shift analogue of the
-`#117` Barrett seam. -/
+Barrett seam. -/
 
 /-- **ML-DSA `reduce32` Barrett form ≡ `a (mod q)`** on the `int32` domain. The
     Barrett quotient `t = (a + 2²²) >>ₐ 23` (arithmetic shift) times `q`,

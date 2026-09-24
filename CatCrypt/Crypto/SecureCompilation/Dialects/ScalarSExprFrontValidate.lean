@@ -17,8 +17,8 @@ set_option autoImplicit false
 
 A small GF(16)-style scalar body — bitwise `and`/`xor` plus a shift over the
 `u64` slots `a`, `b` — is assigned via `RScalarSetExpr` and pushed through the
-`CProg`-free front (`lowerSExpr` ⊂ `translateDialectFull` ⊂
-`translateDialectControl`). This file confirms, computationally:
+dialect front (`lowerSExpr` ⊂ `translateDialectFull` ⊂
+`translateDialectControl`). This module confirms, computationally:
 
 1. the body **translates** (`translateDialectControlTop … = some`);
 2. the body **lowers** to a `Com jasminDialect` (`lowCTToJasminComD … = some`),
@@ -74,7 +74,7 @@ def frontDenote (av bv : BitVec 64) : Option (BitVec 64) :=
 
 /-! ## 1. The body translates and lowers -/
 
-/-- The `RScalarSetExpr` body translates through the `CProg`-free control front. -/
+/-- The `RScalarSetExpr` body translates through the dialect control front. -/
 theorem testC_translates : (translateDialectControlTop testVM testC).isSome := by
   native_decide
 

@@ -34,7 +34,7 @@ This module composes:
    `barrettCondsub_eq_mod` (`barrettCondsub q k x = x % q` under `0 < q`,
    `q ≤ 2^k`, `x < 2^k`).
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the **commuting-square discharge**
   `barrettEmitRealizes_of_kernel`.  The Barrett correctness theorem
@@ -52,7 +52,7 @@ This module composes:
 `barrettKernelRealizes_canonical` exhibits a concrete `LeafSpec` (built from a
 `barrettCondsub`-returning realizer) under which `BarrettKernelRealizes` — hence
 `BarrettEmitRealizes` — holds, so the hypotheses are satisfiable, not an
-unsatisfiable over-constraint.  The genuine cross-prover content is the gap
+unsatisfiable over-constraint.  The cross-prover content is the gap
 between this canonical realizer and the emitted Barrett kernel's real byte
 semantics, which lives outside Lean.
 -/
@@ -152,7 +152,7 @@ def barrettKernelCallSpec (q k : ℕ) (decode : RustVal .TFp → ℕ)
 /-- **Non-vacuity witness for `BarrettKernelRealizes`.**  For the canonical
     `LeafSpec` built from `barrettKernelCallSpec` with a decoder section `encode`
     (`decode ∘ encode = id`), the kernel-realization holds — so the localized
-    hypothesis is satisfiable.  The genuine cross-prover content is precisely the
+    hypothesis is satisfiable.  The cross-prover content is precisely the
     gap between this canonical realizer and the emitted Barrett kernel's real byte
     semantics (the leaf-bytes KAT), which lives outside Lean. -/
 theorem barrettKernelRealizes_canonical

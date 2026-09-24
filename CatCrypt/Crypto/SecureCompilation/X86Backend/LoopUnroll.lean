@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 
 /-!
-# Bounded-loop lowering by unrolling (#281 increment)
+# Bounded-loop lowering by unrolling
 
 `X86Dialect.lean` lowers a **straight-line** block `List (JInstr w)` to a
 `Com (x86Dialect w)` and proves `lowerBlock_denote`

@@ -31,12 +31,12 @@ The headline facts about `conj12 (c0 + c1·w) = c0 − c1·w`:
    conj12 1 = 1,  conj12 0 = 0                 -- units
 ```
 
-The multiplicative fact is the load-bearing one: both `conj12 (x*y)` and
+The multiplicative fact is the key one: both `conj12 (x*y)` and
 `conj12 x · conj12 y` equal `(c0·c0' + v·c1·c1') − (c0·c1' + c1·c0')·w`, i.e.
 the sign flip on the `w`-component commutes with the schoolbook product (the
 `w² = v` fold is invariant because `(−c1)(−c1')·v = c1·c1'·v`). Together these
 say `conj12` is a **ring endomorphism of `Fp12_377` that fixes the `Fp6_377`
-subfield pointwise** — the genuine cyclotomic element of `Gal(Fp12 / Fp6)`, the
+subfield pointwise** — the cyclotomic element of `Gal(Fp12 / Fp6)`, the
 `x ↦ x̄` map that the pairing's final exponentiation uses (the easy part of
 `x^((p⁶−1)) = x̄ / x`).
 
@@ -47,7 +47,7 @@ the `w`-component of `x · conj12 x` vanishes (`mul_conj12_c1_zero`). This
 `Fp12 → Fp6` norm is the building block for `Fp12` inversion
 (`x⁻¹ = conj12 x · (norm12 x)⁻¹`) and for the pairing's final exponentiation.
 
-## Honesty boundary
+## Scope
 
 This is the abstract `Fp12` cyclotomic conjugation and norm over the relational
 `bls12_377` tower carrier. It does **not** wire conjugation/norm down to the
@@ -132,7 +132,7 @@ is `generalize`d so `ring` over the `Fp6_377` `CommRing` closes each
 component. -/
 
 /-- **`conj12` is multiplicative** (`conj12 (x * y) = conj12 x * conj12 y`) over
-    the `commRing ξ₂ ξ₆` instance — the load-bearing ring-homomorphism fact. The
+    the `commRing ξ₂ ξ₆` instance — the key ring-homomorphism fact. The
     sign flip on the `w`-component commutes with the schoolbook product because
     the `w² = v` fold `(−c1)(−c1')·v = c1·c1'·v` is invariant under
     conjugation. -/
@@ -153,7 +153,7 @@ theorem conj12_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x y : Fp12_377) :
 
 The norm is the product of an element with its conjugate, projected to the
 `Fp6_377` subfield. Because `(c0 + c1·w)(c0 − c1·w) = (c0² − v·c1²) + 0·w`, the
-`w`-component of `x · conj12 x` vanishes — the norm genuinely lands in
+`w`-component of `x · conj12 x` vanishes — the norm lands in
 `Fp6_377`. -/
 
 /-- The **`w`-component of `x · conj12 x` vanishes** — the field norm lands in

@@ -12,7 +12,7 @@ public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
 
 /-!
-# Sail-arm decoder round-trip: `decode (encode i) = i` (#533 sub-2)
+# Sail-arm decoder round-trip: `decode (encode i) = i`
 
 `ArmEncoder.lean` is the owned `AInst → machine-byte` encoder. Its bench trust
 edge is *differential*: each emitted 32-bit word is pinned to what
@@ -20,7 +20,7 @@ edge is *differential*: each emitted 32-bit word is pinned to what
 checkout/harness, not vendored in this repo, plus the qemu KAT). That makes
 `as`'s unverified encoder part of the trusted base.
 
-This module replaces the differential edge with a **round-trip** against the
+This module substitutes for the differential edge a **round-trip** against the
 AArch64 *decoder* discipline: a Lean decoder `decodeA64` that recovers the
 instruction-class fields `(opcode-class, Rd, Rn, Rm/imm)` from a 32-bit
 instruction word, and a proof that
@@ -119,8 +119,8 @@ Unlike the x86 capstone — where `MULX`/`ADCX`/`ADOX` had **no** Sail counterpa
 clause, so there is **no Sail-coverage ceiling** for this subset. That is an
 unverified claim about upstream: no sail-arm checkout is vendored here, so
 nothing in this tree enumerates upstream's clause set. (The NEON/SVE SIMD A64
-forms — the `Vec128` analogue — are out of scope for the scalar backend, the same
-way x86's SIMD lives in a separate `Avx512`/`Vec128` module; sail-arm is believed
+forms are out of scope for the scalar backend, the same way x86's SIMD lives in
+separate modules; sail-arm is believed
 to model them too, so they are expected to carry no ceiling either.)
 -/
 
@@ -366,7 +366,7 @@ theorem roundtrip_ubfm (d n immr imms : Nat) (hd : d < 32) (hn : n < 32)
 
 /-! ## 6. Instruction-level round-trip: `decode (encode i) = i`
 
-The field-level lemmas above invert each *shape* encoder. We now lift them to the
+The field-level lemmas above invert each *shape* encoder. We lift them to the
 full `AInst`: a `rebuild` that reads the `DecA64` class + register numbers back
 into an `AInst` over the *allocated* register names, and the capstone theorem
 `roundtrip_ainst` proving `rebuild (decode (encode i)) = i` (on the allocated
@@ -546,9 +546,9 @@ theorem roundtrip_ainst_lsl (alloc : GpAlloc) (d a : String) (imm : Nat)
   rw [if_neg (show ¬ (31 - imm = 31) by omega), show (32 - (32 - imm)) % 32 = imm by omega,
     hd, ha]
 
-/-! ## 7. The owned-ARM-backend byte-level trust edge after sub-2
+/-! ## 7. The owned-ARM-backend byte-level trust edge
 
-`trust_edge` (a doc-only theorem) records the honest tally — and, unlike the x86
+`trust_edge` (a doc-only theorem) records the tally — and, unlike the x86
 capstone, there is **no Sail-coverage ceiling** for the emitted scalar subset:
 
 * **decode-round-trip-proved** (the `as`/gas differential pin is not
@@ -567,8 +567,8 @@ capstone, there is **no Sail-coverage ceiling** for the emitted scalar subset:
   has a sail-arm `decode64` clause (A64 is a fixed-width ISA with a uniform
   decode table — there is no ADX/BMI2-style gap the way x86's `MULX`/`ADCX`/
   `ADOX` lacked an ACL2 `x86isa` counterpart), and likewise that sail-arm models
-  the NEON/SVE SIMD forms that are out of scope for the *scalar* backend (the
-  `Vec128` analogue lives in a separate module). Neither belief is checked here:
+  the NEON/SVE SIMD forms that are out of scope for the *scalar* backend (NEON
+  lives in separate modules). Neither belief is checked here:
   no sail-arm checkout is vendored in this repo, so nothing in this tree
   enumerates upstream's clause set.
 * **What this does *not* say.** The decode discipline is a hand transcription
@@ -595,7 +595,7 @@ theorem trust_edge_pilot (alloc : GpAlloc) (d a b : String)
       = some (.add (gpOf alloc d) (gpOf alloc a) (gpOf alloc b)) :=
   roundtrip_ainst_add alloc d a b hd ha hb
 
-/-! ## 8. The 64-bit bignum/field decode round-trip (#547)
+/-! ## 8. The 64-bit bignum/field decode round-trip
 
 The same `decode (encode i) = i` discipline for the bignum/field `BInst` subset,
 against the matching sail-arm `decode64` clauses (`integer_arithmetic_addsub_*`,
@@ -629,10 +629,10 @@ suffices:
 * AND/ORR/EOR/ANDS all sit in `grp=0x0a` and are split *only* by `opc[30:29]` —
   read via `fldOpc`.
 
-That last split is the one `decodeBignumWide` used to skip: it classified every
-`grp=0x0a` word as `ORR`, so `encAndX` and `encEorX` output rebuilt as `MOV`; and
-it read `grp=0x13` bitfield words as move-wide, so `encUbfmX` output rebuilt as
-`MOVZ`. `roundtrip_andX`/`_orrX`/`_eorX`/`_ubfmX` now pin all four apart.
+That last split is required: a decoder that classifies every `grp=0x0a` word as
+`ORR` rebuilds `encAndX` and `encEorX` output as `MOV`, and one that reads
+`grp=0x13` bitfield words as move-wide rebuilds `encUbfmX` output as `MOVZ`.
+`roundtrip_andX`/`_orrX`/`_eorX`/`_ubfmX` pin all four apart.
 
 Two side conditions on the capstones are inherent to the A64 alias rules, not
 gaps: `roundtrip_binst_orr` assumes `Rn ≠ XZR` (else the word *is* the `MOV`
@@ -1293,7 +1293,7 @@ theorem roundtrip_binst_lsl (alloc : GpAlloc) (d a : String) (sh : Nat)
   rw [if_neg (show ¬ (63 - sh = 63) by omega), show (64 - (64 - sh)) % 64 = sh by omega,
     hd, ha]
 
-/-! ## 9. The branch / control-flow decode round-trip (the looped-emission edge, #551)
+/-! ## 9. The branch / control-flow decode round-trip (the looped-emission edge)
 
 The same `decode (encode i) = i` discipline for the three branch forms the looped
 emission uses (`encB`/`encBcond`/`encCmpBranch`), against the sail-arm `decode64`

@@ -49,7 +49,7 @@ clean. Fusing it with the jasmin denotation leg
 non-temp name; `NoAliasVM` (a field of `RustStateInterp`) forces the bound names
 to inject into the finitely-many De Bruijn slots of `Γ`. The three are therefore
 jointly unsatisfiable at any finite `Γ` — see `entry_trio_unsat_empty` for the
-`VarMap.empty` witness of the clash. The genuine closed jasmin-leg result is
+`VarMap.empty` witness of the clash. The closed jasmin-leg result is
 obtained instead through the empty-entry-env route
 (`rustToJasminCom_endToEnd_topLevel_unconditional`), valid because a closed
 straight-line kernel's reads all follow their writes, so `semScalar` succeeds
@@ -256,7 +256,7 @@ theorem dC_emitted_eq_rustexec (N : Nat) (leafSpec : LeafSpec) :
     dEnv' "r" dW (BitVec.ofNat 64 7) dCom dJcom dC_covered dHTrans (dC_exec N leafSpec)
     dHSem dHName dHVal dHRet dHCom
 
-/-! ## The P3-composition residual (why the jasmin leg cannot reuse this env)
+/-! ## The open-kernel composition (why the jasmin leg cannot reuse this env)
 
 `rustToJasminCom_endToEnd_rustexec_adeq` fuses the value leg above with the
 jasmin denotation leg, and for that it needs `ConsistentS vm V env` for the
@@ -269,7 +269,7 @@ unsatisfiable, so the composed theorem's entry hypotheses cannot be discharged
 at `VarMap.empty`. (For a non-empty finite `vm`, the same clash reappears
 through `NoAliasVM`: `EnvRel` binds infinitely many non-temp names, which
 `NoAliasVM` must inject into the finitely-many De Bruijn slots of a finite `Γ`.)
-The genuine closed jasmin-leg result therefore takes the empty-entry-env route
+The closed jasmin-leg result therefore takes the empty-entry-env route
 (§D), where a closed kernel's reads-follow-writes make the empty env suffice. -/
 
 /-- The entry-trio clash at the `VarMap.empty` pipeline entry: no env is both

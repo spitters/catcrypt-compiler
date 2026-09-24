@@ -63,10 +63,10 @@ mirroring the GF(2⁸) approach.
 * `valStepCom` — the running-value update `(v ≫ 1) ⊕ (mask(v₀) ∧ R)` as a
   `Com catCryptDialect`, `denote = (gf128_step z v xi).2`.
 
-`gf128_mul` is the 128-fold `Fin.foldl` of `gf128_step`; the load-bearing
-deliverable is the single-step GF(2¹²⁸) multiply structure through the high
+`gf128_mul` is the 128-fold `Fin.foldl` of `gf128_step`; the main
+result is the single-step GF(2¹²⁸) multiply structure through the high
 dialect (the per-bit shift–XOR–reduce is the only non-ALU-trivial part of
-GHASH), exactly as `AesRoundCatCryptEmit` delivered the GF(2⁸) single-multiply
+GHASH), exactly as `AesRoundCatCryptEmit` gives the GF(2⁸) single-multiply
 `xtime`/`mul3` rather than a 128-step unrolling. `gf128_mul` is then the
 straight-line composition (`Fin.foldl`) of these per-bit kernels.
 

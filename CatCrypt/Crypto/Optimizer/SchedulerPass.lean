@@ -19,11 +19,11 @@ scheduling* pass).  It sits alongside the other verified Com→Com passes
 directory, and follows the same shape: a syntactic rewrite together with
 a `RustExec`-equivalence theorem.
 
-## Motivation (the #209 negative result)
+## Motivation
 
-#209 showed that latency-bound kernels — the safegcd-62 divstep's
+Latency-bound kernels — the safegcd-62 divstep's
 `#IMUL → #IMUL → SAR` Montgomery accumulate chain, NTT butterflies — are
-bottlenecked by serial dependency chains, not spills.  Register
+measured to be bottlenecked by serial dependency chains, not spills.  Register
 allocation cannot help a chain whose every instruction reads the
 previous one's output.  Instruction scheduling is the classical answer:
 hoist *independent* ops (e.g. the next product `plo`/`phi`) up to run in
@@ -219,7 +219,7 @@ theorem SExpr.eval_eq_of_agree (σ1 σ2 : String → Nat) :
       intro h; simp only [SExpr.freeVars, List.mem_append] at h
       simp only [SExpr.eval, iha (fun y hy => h y (Or.inl hy)),
         ihb (fun y hy => h y (Or.inr hy))]
-  -- Tower-limb read extension (#354): the SCALAR `eval` returns the constant
+  -- Tower-limb read extension: the SCALAR `eval` returns the constant
   -- `0` for `SLimb` (it cannot read the tower heap), so the value is the same
   -- on any two scalar environments.
   | SLimb v i => intro _; rfl

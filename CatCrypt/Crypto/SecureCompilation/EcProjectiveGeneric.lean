@@ -40,7 +40,7 @@ The tie is the **generic-chart** identity (general `Z ≠ 0`, doubling branch, n
 holds by `field_simp; ring`.  This reuses the affine-side maps `ecAffineDbl` / `ecTangentSlope`
 of `EcRealizationGeneric` verbatim — only the Jacobian side is generalized off the `Z = 1` chart.
 
-This is the **canonical parametric form** (`@canonical_parametric` — genuinely parametric over
+This is the **canonical parametric form** (`@canonical_parametric` — parametric over
 the base field).  0 sorries; no custom axioms; the field-algebra tie is unconditional given the
 field structure plus the four numeral-nonvanishing hypotheses and `Z ≠ 0`, `Y ≠ 0`.
 -/

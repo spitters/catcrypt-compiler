@@ -38,10 +38,9 @@ The fully-generic walker `Com d Γ t → Com d Γ t` that recognises the
 width, the multiplication width, and the `Var` payload type) plus a
 non-trivial De-Bruijn alignment between the source and target shapes.
 The verified-rewrites infrastructure for that is `lean-mlir`'s
-`PeepholeRewrite`, which VIR does not yet ship. Until that lands,
-this file provides:
+`PeepholeRewrite`, which VIR does not ship. This module provides:
 
-1. The arithmetic identity (load-bearing for any verified version).
+1. The arithmetic identity (the key lemma for any verified version).
 2. A pointwise rewrite that the user invokes when emitting the chain
    (e.g. inside `CryptoToVIR` or `compress` IR emission).
 
@@ -49,16 +48,15 @@ The existing `Peephole.lean` follows the same "narrow-shape rewrite"
 philosophy (Group A operates only when the constants sit directly
 above the consuming op).
 
-## Stretch (task b) — DEFERRED
+## Scope: mask refresh
 
 A `refreshMask` op + insertion pass to maintain the masking-safe
-invariant under `bvAnd`/`bvMul`/etc. was scoped as a stretch goal.
-**Deferred** because it requires either (i) extending `CatCryptOp` with
-a new constructor (touching `CatCryptDialect.lean` / `CTPredicate.lean`
-/ `MaskingPredicate.lean` / `Grind.lean`, which are explicitly off-limits
-for this task), or (ii) inventing a Com-level "fresh randomness source"
-that VIR currently does not have. Auto-fresh-random insertion is
-documented as needing Phase-5 effectful-`Com`; see `MaskingPredicate.lean`.
+invariant under `bvAnd`/`bvMul`/etc. is outside this module. It requires
+either (i) extending `CatCryptOp` with a new constructor (touching
+`CatCryptDialect.lean` / `CTPredicate.lean` / `MaskingPredicate.lean` /
+`Grind.lean`), or (ii) a Com-level "fresh randomness source", which VIR
+does not have. Auto-fresh-random insertion needs an effectful `Com`; see
+`MaskingPredicate.lean`.
 -/
 
 @[expose] public section

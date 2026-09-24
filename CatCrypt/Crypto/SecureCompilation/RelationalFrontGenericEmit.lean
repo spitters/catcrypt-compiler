@@ -46,7 +46,7 @@ the generic statements at `"fp_add"` / `"fp_mul"` recovers exactly the per-curve
 `*Jasmin_length` / `*Jasmin_all_calls` statements the 7 clone files prove. Those
 files are therefore `emitFieldBinop "fp_add" …` applications.
 
-## Honest scope
+## Scope
 
 As with the per-curve files, the claims here are purely **structural lowering**:
 that the owned front accepts the rendered field-op bodies and emits one `Ccall`

@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the AES-NI/VAES SIMD-extension analogue of `UovReflect.lean`:
 it adds VAES-specific opaque leaves and `LowCTPattern` registrations so
 that a pure-Lean 2-way AES round can be lifted through the verified
-compiler chain `LowCT → CryptoSSA → Com → jasmin`, **without** editing
+compiler chain `LowCT → Com catCryptDialect → Jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## VAES inner equation
@@ -73,8 +73,8 @@ VAES-specific difference (the VEX/EVEX encoding) is byte-validated in
 * Intel Optimization Manual §13.5 — "VAES and VPCLMULQDQ AES-GCM"
   reference code (2-way YMM variant)
 * NIST FIPS-197 §5.1 — AES round structure
-* `bench/aesgcm_compare/aesgcm_vaes_emit.lean` — legacy Tier C string-
-  templated emit (superseded by this leaf-shim pattern)
+* `bench/aesgcm_compare/aesgcm_vaes_emit.lean` — string-templated
+  emit outside the verified chain
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 

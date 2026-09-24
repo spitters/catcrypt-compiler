@@ -10,9 +10,9 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Plonky3 end-to-end prover orchestrator — Tier A migration
+# Plonky3 end-to-end prover orchestrator
 
-This is the **cross-layer orchestrator** (task #154 / #162) that fuses the four
+This is the **cross-layer orchestrator** that fuses the four
 prover-chain kernels — Merkle commitment, coset-FFT LDE, FRI commit+query, and
 the AIR constraint evaluator — into a single `plonky3_prove` STARK prover,
 mirroring `plonky3-hax/src/plonky3.rs::plonky3_prove`.
@@ -58,7 +58,7 @@ contract embeds this width as part of its TowerType signature.
 
 ## Opaque-leaf strategy (per fall-back gate)
 
-Per the task contract, the orchestrator declares its own opaque-leaf
+The orchestrator declares its own opaque-leaf
 registrations even when the sub-layer reflect files exist. This keeps the
 orchestrator emit self-contained: a downstream change to the per-sub-layer
 leaf shape does NOT break the orchestrator's verified front (only the
@@ -85,9 +85,9 @@ is unmodified.
 ## References
 
 * Plonky3 prover: `plonky3-hax/src/plonky3.rs::plonky3_prove`
-* Mirror pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Wave 1 Merkle)
+* Mirror pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Merkle)
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
-* Legacy Tier C: `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3ProveEmit.lean`
+* String emit: `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3ProveEmit.lean`
 -/
 
 @[expose] public section
@@ -238,7 +238,7 @@ def plonky3FriProve8Pattern : LowCTPattern where
   arity     := 2
   towerType := .TBytes 32
 
-/-! ## 4. SELECTOR-INCLUSIVE degree=2 guard (#154)
+/-! ## 4. SELECTOR-INCLUSIVE degree=2 guard
 
 The orchestrator's quotient sizing is locked to the SELECTOR-INCLUSIVE degree.
 We expose this as a definition and a guard theorem; any change to the
@@ -287,7 +287,7 @@ noncomputable def proveOrchestratorLean3x8 (trace : Plonky3ProveTrace 3 8) :
   let proof   := plonky3_fri_prove 8 ood alpha
   proof
 
-/-- The orchestrator canonical alias matching the legacy emit's name. -/
+/-- The orchestrator canonical alias matching the string emit's name. -/
 noncomputable def proveOrchestratorLean (trace : Plonky3ProveTrace 3 8) :
     Plonky3Proof :=
   proveOrchestratorLean3x8 trace

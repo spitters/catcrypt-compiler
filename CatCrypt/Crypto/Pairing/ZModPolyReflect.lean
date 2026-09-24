@@ -186,7 +186,7 @@ example (x : ZMod 101) :
 
 /-! ## Toy 2 — degree ~13, 10-digit modulus (scaling probe for `decide`)
 
-Two genuinely different reflections of the same degree-13 polynomial (cube of a
+Two distinct reflections of the same degree-13 polynomial (cube of a
 degree-3 factor times a degree-4 factor, in both orders), 10-digit coefficients,
 10-digit modulus. Kernel `decide` on the integer residues stays fast. -/
 example (x : ZMod 9999999967) :

@@ -11,8 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 
 /-!
-# ChaCha20 4-way emitted through the structured VectorDialect (task #183, Step 2)
-
+# ChaCha20 4-way emitted through the structured VectorDialect
 The existing ChaCha 4-way emit (`VIR/JasminAbiEmit.emitChacha4wayJazz`,
 re-exported as `ChaChaEmit.chacha4wayBlockJazz`) renders the lane-parallel
 quarter-round DIRECTLY as mnemonic strings (`renderChacha4wayAddIn`,

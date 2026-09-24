@@ -41,15 +41,15 @@ Weierstrass `a = 0` shape as BLS12-381 `G1`, only the base field changes:
 4. `bn254G1Prims` — a concrete `Bn254Primitives` whose `g1Add := g1AddByteSpec`, and
    `bn254G1Prims_g1AddLeafAgrees : G1AddLeafAgrees bn254G1Prims (bn254Oracle
    bn254G1Prims)` — the `g1_add` leaf agreement **as a theorem** (via the proven
-   `Bn254Denote.bn254Oracle_ecAgrees`), replacing the deployed axiom for this
-   primitive.
+   `Bn254Denote.bn254Oracle_ecAgrees`), so this primitive needs no deployed leaf
+   axiom.
 
-## Honest scope / residual
+## Scope
 
 The transport (item 3) needs *no* property of the codec — it is a pure
 `congrArg encodeG1` over the field-algebra identity. The leaf agreement (item 4)
 holds by the model oracle's definitional dispatch. What this module does **not**
-establish, and what remains the genuine byte edge:
+establish, and what forms the byte edge:
 
 * that the *actual* emitted x86 leaf computes `g1AddByteSpec` on the *actual*
   on-wire (Montgomery) encoding — i.e. that `Bn254Denote.bn254DeployedPrims.g1Add`
@@ -157,9 +157,10 @@ def bn254G1Prims : Bn254Primitives where
 
 /-- **The `G1`-add leaf agreement, as a theorem.** For the model oracle
     `bn254Oracle bn254G1Prims`, the `g1_add` leaf agrees with `bn254G1Prims.g1Add`
-    (`= g1AddByteSpec`) — via the proven `Bn254Denote.bn254Oracle_ecAgrees`. This
-    replaces the deployed **axiom** `bn254LeafOracle_ecAgrees` for the concrete
-    primitive whose `g1_add` is (by `g1AddLeafSpec_correct`) the abstract group
+    (`= g1AddByteSpec`) — via the proven `Bn254Denote.bn254Oracle_ecAgrees`. It
+    discharges, without the deployed **axiom** `bn254LeafOracle_ecAgrees`, the
+    agreement for the concrete primitive whose `g1_add` is
+    (by `g1AddLeafSpec_correct`) the abstract group
     law. -/
 theorem bn254G1Prims_g1AddLeafAgrees :
     G1AddLeafAgrees bn254G1Prims (bn254Oracle bn254G1Prims) :=

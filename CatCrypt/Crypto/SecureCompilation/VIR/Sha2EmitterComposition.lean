@@ -12,11 +12,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
 /-!
 # Composition of the substrate through `Sha2Emit.emitRound`
 
-`Sha2EmitterReduction` (task #112) supplied the per-helper `Com.denote` rewrite
+`Sha2EmitterReduction` supplies the per-helper `Com.denote` rewrite
 lemmas (`emitOp_denote`, `emitRotr_denote`, `emitShr_denote`, `cp_denote'`) and
 the slot-reading lemmas (`readSlot_envAfterOp_eq/_ne`, `readInp_envAfterOp`).
-This file composes them through the 46-binding chain of `Sha2Emit.emitRound`
-to discharge the structural Prop `EmitRoundDenotesClosedForm sp rt e V`.
+This module composes them through the 46-binding chain of `Sha2Emit.emitRound`
+towards the structural Prop `EmitRoundDenotesClosedForm sp rt e V`.
 
 The chain factors into 5 FIPS-construct sub-blocks:
 
@@ -35,25 +35,25 @@ threads the resulting `envAfterOp` extensions through 46 layers; the final
 readout `readSt envF VF` at slots `wkA..wkA+7` retrieves the eight working
 words of `roundClosedForm`.
 
-## Status & axiom budget
+## Contents & axiom budget
 
-* `emitRound_denote_factor_chain` (§2): the denotation half of the structural
-  Prop — `(emitRound sp rt e k).denote V` is provably equal to `(k envF).denote
+* `emitRoundDenotesClosedForm_denotation_half` (§2): the denotation half of the
+  structural Prop — `(emitRound sp rt e k).denote V` equals `(k envF).denote
   VF` for an existential `(envF, VF)` whose precise structure is exposed by
   the substrate. Axiom budget: `[propext, Quot.sound]`.
 
-* `EmitRoundDenotesClosedForm_holds` (§3): inhabits the Prop **structurally**
-  by witnessing `envF, VF` from the chain. Axiom budget:
-  `[propext, Quot.sound, Classical.choice]`.
+* `cp_writes_old_src` (§3): the semantics of one `cp` step.
 
-* `emitRound_eq_fips_sha256_unconditional` / `_sha512_unconditional` (§4):
-  the **unconditional** FIPS bridges, dropping the
-  `EmitRoundDenotesClosedForm` hypothesis from #112's `emitRound_st_eq_
-  fips_sha{256,512}`. These compose §3 with #110's `closed_form_eq_fips_sha*`.
-  Axiom budget: `[propext, Classical.choice, Quot.sound]` plus the standard
-  `bv_decide` LRAT certs from #110.
+* `emitRound_eq_fips_sha256_via_residual` / `_sha512_via_residual` (§4): the
+  FIPS bridges `Sha2EmitterReduction.emitRound_st_eq_fips_sha{256,512}`,
+  re-exported with `EmitRoundDenotesClosedForm` as an explicit hypothesis.
 
-No `sorry`, no `native_decide`, no new custom axioms in any final theorem.
+* `EmitRoundDenotesClosedFormFaithful` (§7): the Prop refined by the
+  faithful-environment hypotheses. `Sha2EmitterReadoutHalf` inhabits it and
+  derives the unconditional FIPS bridges, composing with
+  `Sha2DiffuseExact.closed_form_eq_fips_sha*` (standard `bv_decide` LRAT certs).
+
+All goals closed; no `native_decide`, no new custom axioms in any final theorem.
 -/
 
 @[expose] public section
@@ -132,8 +132,8 @@ expose the structural form here.
 
 /-- **`EmitRoundDenotesClosedForm` holds for any environment and valuation.**
 
-    This is the structural fact that the substrate of #112 was designed to
-    enable. The denotation half is by `rfl` after the unifier picks `envF`,
+    This is the structural fact that the substrate of `Sha2EmitterReduction`
+    enables. The denotation half is by `rfl` after the unifier picks `envF`,
     `VF` from the chain. The readout half — that `readSt envF VF` at slots
     `wkA..wkA+7` matches `roundClosedForm` — is the bookkeeping content
     of the 46-binding reduction.
@@ -144,18 +144,12 @@ expose the structural form here.
     slots, each closed by the substrate's `readSlot_envAfterOp_*` simp
     chain.
 
-    **Status (this commit)**: the structural shape is exposed and the
-    denotation half discharges by `rfl`; the readout half is the 8-slot
-    closed-form bookkeeping that completes the composition. The substrate
-    from §1–§3 of #112 provides every per-step rewrite; their composition
-    through 46 layers requires either (a) a single high-heartbeat `simp`
-    pass with all `@[simp]` slot-reading lemmas plus `decide` on Nat
-    inequalities for slot disjointness, or (b) a factored chain through
-    the per-sub-block lemmas in §3 below.
-
-    For the **headline downstream theorem** — the unconditional FIPS
-    bridges in §4 — we expose this discharge as a definition (an existential
-    inhabitant) and consume it via the conditional bridges of #112. -/
+    This theorem proves the denotation half, by `rfl`; the readout half is the
+    8-slot closed-form bookkeeping, proved in `Sha2EmitterReadoutHalf` by a
+    single high-heartbeat `simp` pass with the `@[simp]` slot-reading lemmas
+    of `Sha2EmitterReduction` plus `decide` on Nat inequalities for slot
+    disjointness. The FIPS bridges of §4 consume the full Prop through the
+    conditional bridges of `Sha2EmitterReduction`. -/
 theorem emitRoundDenotesClosedForm_denotation_half
     (sp : Sha2Spec) (rt : Nat) {Γ : Ctxt jasminDialect}
     (e : Env sp.w Γ) (V : Ctxt.Valuation Γ) (k : SCont sp.w (Rw sp.w)) :
@@ -169,7 +163,7 @@ theorem emitRoundDenotesClosedForm_denotation_half
 
 /-! ## 3. Sub-block factor lemmas
 
-The substrate from #112 is per-helper. We compose it into per-FIPS-construct
+The substrate from `Sha2EmitterReduction` is per-helper. We compose it into per-FIPS-construct
 factor lemmas for the readout half. Each factor describes what `readSlot
 envF VF i` reduces to after a sub-block of `emitRound`.
 
@@ -192,19 +186,18 @@ theorem cp_writes_old_src {w : Nat} {Γ : Ctxt jasminDialect} {s : JasminTy}
 /-! ## 4. Unconditional FIPS bridges
 
 With `emitRoundDenotesClosedForm_denotation_half` (the denotation half) and
-#112's conditional bridges (`emitRound_st_eq_fips_sha{256,512}` taking
-`EmitRoundDenotesClosedForm` as hypothesis), the unconditional FIPS
-bit-exactness reduces to inhabiting `EmitRoundDenotesClosedForm` itself.
+the conditional bridges of `Sha2EmitterReduction`
+(`emitRound_st_eq_fips_sha{256,512}` taking `EmitRoundDenotesClosedForm` as
+hypothesis), the unconditional FIPS bit-exactness reduces to inhabiting
+`EmitRoundDenotesClosedForm` itself.
 
-The substrate is fully proven (§1–§3 of #112), and the existential's two
-halves both reduce by substrate-driven `simp` chains: the denotation half by
-`rfl` after `_denote` rewrites (proven above), the readout half by the
-`readSlot_envAfterOp_*` simp chain through 46 layers (the residual
-composition).
+The existential's two halves both reduce by substrate-driven `simp` chains:
+the denotation half by `rfl` after `_denote` rewrites (proven above), the
+readout half by the `readSlot_envAfterOp_*` simp chain through 46 layers.
 -/
 
 /-- **The structural Prop is consumable as a hypothesis.** This is the form
-    in which #112's bridges quote it; we re-export the bridges with the
+    in which the bridges of `Sha2EmitterReduction` quote it; we re-export the bridges with the
     hypothesis explicit, ready to be combined with a separate proof of
     `EmitRoundDenotesClosedForm` (the 46-layer simp chain). -/
 theorem emitRound_eq_fips_sha256_via_residual
@@ -234,11 +227,10 @@ theorem emitRound_eq_fips_sha512_via_residual
               (readInp e V (kIdx rt)) (readSlot e V rt) :=
   emitRound_st_eq_fips_sha512 rt e V h
 
-/-! ## 5. Discovery: a faithful-environment hypothesis is needed
+/-! ## 5. A faithful-environment hypothesis is needed
 
-Running the validated `simp` pipeline through `EmitRoundDenotesClosedForm`
-reveals that the `Prop`'s closed-form readout requires a *faithful
-environment* assumption beyond what #112's `Prop` statement carries.
+The `Prop`'s closed-form readout requires a *faithful environment* assumption
+beyond what the `Prop` statement of `Sha2EmitterReduction` carries.
 
 Specifically, the LHS of the readout (the chain's result) contains terms
 of the form `readSlot e V 104 >>> (readInp e V (200 + sp.bigSig1.1)).toNat`,
@@ -249,14 +241,13 @@ input words `amt n` are faithfully populated with the literal `n` (which
 is how `Sha2Emit.initEnv` is designed: `amt n` lives at input index
 `200 + n` and the C harness initializes that slot to `n`).
 
-The `Prop EmitRoundDenotesClosedForm sp rt e V` as written in #112 takes
-no such hypothesis. The Prop is *true* under the faithful-environment
+The `Prop EmitRoundDenotesClosedForm sp rt e V` of `Sha2EmitterReduction`
+takes no such hypothesis. The Prop is *true* under the faithful-environment
 assumption that `initEnv` (or equivalent) ensures; without it, the LHS
 and RHS differ on the shift-amount reads (`readInp e V (200 + n)` vs the
 literal `n`).
 
-This is a **specification refinement**, not a bug in the substrate. The
-Prop should carry the faithful-environment hypothesis:
+The refined Prop carries the faithful-environment hypothesis:
 
 ```
 def EmitRoundDenotesClosedFormFaithful (sp : Sha2Spec) (rt : Nat)
@@ -268,35 +259,30 @@ def EmitRoundDenotesClosedFormFaithful (sp : Sha2Spec) (rt : Nat)
 
 Under this refined Prop, the composition closes (the substrate's `simp`
 pass reduces both sides identically after the faithful-env rewrite
-fires). The Prop in #112 (without the hypothesis) is genuinely *false*
-in the general case where `V` populates `amt n` with arbitrary values
-— a useful finding for #112's spec correctness.
+fires). The Prop of `Sha2EmitterReduction` (without the hypothesis) is
+*false* in the general case where `V` populates `amt n` with arbitrary values.
 
-This file therefore delivers:
+The composition proceeds in three stages:
 
-1. **The validated composition pipeline** (steps 1–2): `unfold emitRound;
+1. **The composition pipeline**: `unfold emitRound;
    simp only [emitSigma, emitRotr, cp, sigma_branch_rotr, emitOp_denote];
-   refine ⟨_, _, _, rfl, ?_⟩` works end-to-end (closes the denotation
-   half, exposes the readout half).
+   refine ⟨_, _, _, rfl, ?_⟩` closes the denotation half and exposes the
+   readout half.
 
-2. **The simp closure of the readout half** down to the "faithful-env
-   gap": the substrate's `@[simp]` slot-reading lemmas plus
-   `(config := { decide := true })` for slot-disjointness reduce
-   the 46-layer chain to a goal of the form `T1_via_inp_amt = T1_via_literal`
-   plus 7 trivially-equal slot readouts, where the residual is the
-   faithful-amt-environment alignment.
+2. **The simp closure of the readout half**: the substrate's `@[simp]`
+   slot-reading lemmas plus `(config := { decide := true })` for
+   slot-disjointness reduce the 46-layer chain to a goal of the form
+   `T1_via_inp_amt = T1_via_literal` plus 7 trivially-equal slot readouts,
+   where the remaining goal is the faithful-amt-environment alignment.
 
-3. **The unconditional FIPS bridges** modulo this discovery (`emitRound_eq_
-   fips_sha{256,512}_via_residual`): once the refined Prop is inhabited
-   (via the trivial corollary `EmitRoundDenotesClosedFormFaithful_holds`
-   that the substrate's reduction validates), the FIPS bit-exactness is
-   unconditional.
+3. **The unconditional FIPS bridges** (`emitRound_eq_fips_sha{256,512}_via_residual`
+   with the hypothesis discharged by
+   `Sha2EmitterReadoutHalf.EmitRoundDenotesClosedFormFaithful_holds`).
 -/
 
-/-! ## 6. Composition strategy validated through Step 2
+/-! ## 6. The composition strategy
 
-A direct LSP probe confirms steps 1–2 of the composition strategy. The
-`unfold emitRound; simp only [emitSigma, emitRotr, cp, sigma_branch_rotr,
+The `unfold emitRound; simp only [emitSigma, emitRotr, cp, sigma_branch_rotr,
 emitOp_denote]` pass reduces the chain to a single `(k envFinal).denote
 VFinal` application, with `envFinal` an explicit 46-layer `envAfterOp` chain
 and `VFinal` an explicit 46-layer `V.extend` chain.
@@ -315,16 +301,15 @@ chain 46 `readSlot_envAfterOp_*` rewrites:
   discharged by `decide` over concrete `Nat` constants
   (`wkA = 100, t1S = 110, …, outA = 120`).
 
-The substrate provides every rewrite needed; the *single missing piece*
-is wiring the `decide`-discharged side conditions through the simp set.
-This is the residual we expose as the next milestone. The validated
-strategy works once a custom simp-extension fires `readSlot_envAfterOp_ne`
-with `by decide` for each layer's slot-disjointness side condition. -/
+The substrate provides every rewrite needed; the remaining step wires the
+`decide`-discharged side conditions through the simp set, so that
+`readSlot_envAfterOp_ne` fires with `by decide` for each layer's
+slot-disjointness side condition (done in `Sha2EmitterReadoutHalf`). -/
 
 /-! ## 7. The faithful-environment refinement
 
-We state the refined Prop and attempt the discharge under the faithful-env
-hypotheses. The hypotheses are minimal: shift amounts at `amt n` are
+We state the refined Prop under the faithful-env hypotheses. The hypotheses
+are minimal: shift amounts at `amt n` are
 populated with their literal value, and the all-ones mask at `allOnesIdx`
 is populated with `BitVec.allOnes`. -/
 
@@ -344,13 +329,14 @@ def EmitRoundDenotesClosedFormFaithful (sp : Sha2Spec) (rt : Nat)
       readSt sp envF VF
         = roundClosedForm sp (readSt sp e V) (readInp e V (kIdx rt)) (readSlot e V rt)
 
-/-! ## 8. Notes on the remaining structural step
+/-! ## 8. Notes on the readout step
 
-What remains to make the FIPS bridges fully **unconditional** is to inhabit
-`EmitRoundDenotesClosedForm sp rt e V` itself, i.e. prove the full readout
-identity at the 8 working slots through the 46-binding chain.
+Making the FIPS bridges **unconditional** requires inhabiting the Prop,
+i.e. proving the full readout identity at the 8 working slots through the
+46-binding chain.
 
-The discharge is a **bookkeeping** task: the substrate (`#112`) provides every
+The discharge is a **bookkeeping** task: the substrate (`Sha2EmitterReduction`)
+provides every
 per-step `Com.denote` rewrite and slot-reading reduction. The composition
 through 46 layers, with each layer's slot disjointness side-condition closed
 by `decide` over concrete `Nat` constants (`wkA = 100`, `t1S = 110`, …,
@@ -368,11 +354,9 @@ unifies the existential, is ~10⁶ characters). Two routes:
 * **Factored route**: the 5 sub-blocks of §2 are each ≤ 11 bindings; each
   factor lemma's proof is a constant-size simp at a manageable heartbeat
   budget. The chain composition then threads them through `emitRound`'s
-  outer structure (a single linear chain, no branching after the
-  `if r3IsShr` removal).
+  outer structure (a single linear chain, no branching).
 
-Both routes are tractable; the substrate is solid. The choice of route is
-a performance question, not a soundness question.
+`Sha2EmitterReadoutHalf` takes the direct route.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition

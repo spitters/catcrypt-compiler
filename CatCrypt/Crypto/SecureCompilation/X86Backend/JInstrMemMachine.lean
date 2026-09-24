@@ -12,19 +12,19 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
 set_option autoImplicit false
 
 /-!
-# `MemMachine (JState 64)` — x86 inherits the generic spill keystone (D3)
+# `MemMachine (JState 64)` — x86 inherits the generic spill soundness theorems
 
 The generic register-allocation spill soundness (`GenericRegAlloc.spillStore_establishes`
-/ `evalReload_noop` / `reload_sandwich`, P6's keystone) is proved ONCE over
+/ `evalReload_noop` / `reload_sandwich`) is proved ONCE over
 `[MemMachine M]`. ARM (`instMemMachineAMemState`) and RISC-V (`instMemMachineRMemState`)
-already instantiate it; this file closes the **x86** gap.
+instantiate it; this module instantiates it for **x86**.
 
 x86's spill/reload write/read the `%rsp` frame (`mkSpill r off = storeMem "%rsp" off`,
 `mkReload r off = loadMem r "%rsp" off` — see `instMachineModelJInstr`), so the
 offset-indexed `MemMachine` frame is `JState`'s memory at the fixed base `"%rsp"`. The
 four cell/register laws are immediate from `JState`'s reg/mem separation (`store` keeps
 `regs`, `setReg` is a single-`regs` update). With this instance the generic spill
-keystone applies at the x86 types — x86 now inherits the generic P6 spill soundness, as
+theorems apply at the x86 types — x86 inherits the generic spill soundness, as
 ARM and RISC-V do, completing the resident-path (`RegMachineSim`) story on the spill side.
 -/
 
@@ -34,7 +34,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-- **`MemMachine (JState 64)`**: the x86 spill-path interface over the `%rsp` frame,
-    so the generic P6 spill keystone applies at the x86 types (mirroring the A64
+    so the generic spill theorems apply at the x86 types (mirroring the A64
     `instMemMachineAMemState` / RV64 `instMemMachineRMemState`). -/
 instance instMemMachineJState : MemMachine (JState 64) where
   Val := BitVec 64
@@ -54,7 +54,7 @@ instance instMemMachineJState : MemMachine (JState 64) where
       funext r'
       by_cases h : r' = r <;> simp [h]
 
-/-! ## x86 inherits the generic spill keystone
+/-! ## x86 inherits the generic spill theorems
 
 The three generic spill-soundness theorems, specialized to the x86 `JState 64` — no
 re-proof, they fall out of `instMemMachineJState`. These are the x86 analogues of the
@@ -72,7 +72,7 @@ theorem jstate_evalReload_noop (s : JState 64) (off : Int) (r : String)
 
 /-- **x86 single-spill roundtrip soundness** — the generic `reload_sandwich` at the x86
     types: the reload before `r`'s use is a no-op when the `%rsp` spill cell still holds
-    `r`. x86 now inherits P6 spill soundness exactly as ARM/RISC-V do. -/
+    `r`. x86 inherits the spill soundness exactly as ARM/RISC-V do. -/
 theorem jstate_reload_sandwich (s : JState 64) (off : Int) (r : String)
     (hv : SpillValid off r s) : evalReload s r off = s :=
   reload_sandwich s off r hv

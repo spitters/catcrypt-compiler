@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.Optimizer.RedundantReloadElim
 public import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 
 /-!
-# A translation-validated composed owned-x86 optimizer pipeline (P1)
+# A translation-validated composed owned-x86 optimizer pipeline
 
 `X86ComPipeline.lean` gives the *unconditional-core* driver: a pipeline of
 `X86Pass`es, each of which carries a **global, all-blocks, all-states**
@@ -40,8 +40,8 @@ verified-validator** pipeline that lets those stronger passes become the default
 Because the kept branch is gated by the certificate and the discarded branch is
 the identity, the *composed* pipeline's soundness is **unconditional**: for every
 block and every state, `runBlock s (composeValidated ps b) = runBlock s b`, with
-**no** side hypothesis on `b` or on the passes — every step that was kept was
-validated, and every step that was rejected was a no-op.  The untrusted optimizer
+**no** side hypothesis on `b` or on the passes — every kept step is
+validated, and every rejected step is a no-op.  The untrusted optimizer
 heuristic (the allocator, the forwarder, the scheduler) can be arbitrarily clever;
 trust rests only on the small decidable `chk` and its soundness lemma.
 
@@ -67,12 +67,12 @@ pipeline folds these with the same unconditional guarantees
 
 | pass | certificate `chk` | kind |
 |---|---|---|
-| **store-to-load forwarding** (#372/#412) | `allDirect b → allDirect (f b)`, decidably | semantics always sound (`storeToLoadForward_runBlock`), CT gated by a decidable implication check |
+| **store-to-load forwarding** | `allDirect b → allDirect (f b)`, decidably | semantics always sound (`storeToLoadForward_runBlock`), CT gated by a decidable implication check |
 | **identity-mov drop** | `fun _ => true` | unconditional — both obligations hold on every block (`runBlock_dropIdMovs`, `allDirect_dropIdMovs`), so the gate never rejects |
 | **redundant spill-reload elimination** | `fun _ => true` | unconditional — both obligations hold on every block (`dropReloads_runBlock`, `dropReloads_allDirect`), so the gate never rejects |
-| **spill-slot reuse** (P6) | `decide (f b = b)` (fires only as a no-op) | conservative — CT is unconditional (`spillRewrite_reuse_allDirect`), but the semantic certificate is the per-cell `SpillValid` sandwich, so the rewrite is wrapped with the always-sound no-op gate |
-| **graph-coloring register allocation** (#414) | `decide (f b = b)` (fires only as a no-op) | conservative — the allocator's whole-block soundness is a per-spill `SpillValid` sandwich, not an all-blocks `runBlock`-equality, so it is wrapped with the always-sound no-op gate pending the footprint-completeness upgrade |
-| **mem2reg / DSE** (#415) | `decide (mem2reg prot b = storeToLoadForward b) ∧ allDirect implication` | content-carrying — fires on the sub-domain where the elimination stage is inert, where the pass reduces to store-to-load forwarding and `storeToLoadForward_runBlock` gives the full `runBlock`-equality; store elimination is outside the full-`runBlock` shape (`Mem2Reg`'s certificate there is `AgreeOn prot` only) |
+| **spill-slot reuse** | `decide (f b = b)` (fires only as a no-op) | conservative — CT is unconditional (`spillRewrite_reuse_allDirect`), but the semantic certificate is the per-cell `SpillValid` sandwich, so the rewrite is wrapped with the always-sound no-op gate |
+| **graph-coloring register allocation** | `decide (f b = b)` (fires only as a no-op) | conservative — the allocator's whole-block soundness is a per-spill `SpillValid` sandwich, not an all-blocks `runBlock`-equality, so it is wrapped with the always-sound no-op gate pending the footprint-completeness upgrade |
+| **mem2reg / DSE** | `decide (mem2reg prot b = storeToLoadForward b) ∧ allDirect implication` | content-carrying — fires on the sub-domain where the elimination stage is inert, where the pass reduces to store-to-load forwarding and `storeToLoadForward_runBlock` gives the full `runBlock`-equality; store elimination is outside the full-`runBlock` shape (`Mem2Reg`'s certificate there is `AgreeOn prot` only) |
 
 The latency **scheduler** (`SchedulerPass.scheduleBlock`) is *not* in this
 pipeline: it operates on the `LowCT`/`BBStmt` IR (`RustExec` semantics), not on
@@ -91,14 +91,14 @@ allocator's `SpillWellFormed` predicate threading `spillReload_sandwich_runBlock
 into a whole-block `spillReloadBlock_runBlock`), its `chk` is strengthened in place
 and the composed theorems pick it up with **no** reproof.
 
-## Deferred integration point (the merge-time step)
+## Integration point
 
 In the driver `Com.toLprogPhysAbi` / `compileComToElf`, the block-level optimizer
 hook calls `X86ComPipeline.optimizeX86Block`
 (`= applyX86Pipeline defaultX86Pipeline`, i.e. forwarding, the identity-mov drop,
-reload elimination, and the MUL→MULX fusion).  The merge replaces that call with
-`composeValidated defaultValidatedPipeline`, so the graph-coloring RA, mem2reg and
-spill-slot reuse passes run by default, each gated by its certificate — semantics and constant-time
+reload elimination, and the MUL→MULX fusion).  Substituting
+`composeValidated defaultValidatedPipeline` for that call runs the graph-coloring RA,
+mem2reg and spill-slot reuse passes by default, each gated by its certificate — semantics and constant-time
 preserved unconditionally by `composeValidated_sound` /
 `composeValidated_allDirect`.  No proof obligation is pushed to the driver.
 -/
@@ -263,7 +263,7 @@ def composedDead : List ValidatedPass → List (JInstr 64) → List (String × I
     validated passes, every block, and every state, the pipeline-optimized block
     lands in a `runBlock` final state that agrees with the input's modulo the
     accumulated dead set `composedDead ps b`.  No side hypothesis: every kept step
-    was validated, every rejected step was a no-op.  Induction on the pass list,
+    is validated, every rejected step is a no-op.  Induction on the pass list,
     chaining `applyValidated_sound_fp` through `agreeExcept_trans` under the
     weakening `agreeExcept_mono`. -/
 theorem composeValidated_sound_fp (ps : List ValidatedPass) :
@@ -450,8 +450,7 @@ def noOpCert (f : List (JInstr 64) → List (JInstr 64)) (b : List (JInstr 64)) 
 /-- **Wrap any rewrite behind the conservative no-op gate as a validated pass.**
     The certificate fires only where `f b = b`, so both soundness obligations are
     discharged by rewriting with that equality.  This is the always-available
-    fallback for a pass whose unconditional whole-block certificate is not yet
-    proved. -/
+    fallback for a pass without a proved unconditional whole-block certificate. -/
 def conservativeValidated (f : List (JInstr 64) → List (JInstr 64)) : ValidatedPass where
   f := f
   chk := noOpCert f
@@ -462,7 +461,7 @@ def conservativeValidated (f : List (JInstr 64) → List (JInstr 64)) : Validate
     rw [show f b = b from of_decide_eq_true hc]; exact hd
 
 /-- **Graph-coloring register allocation as a (conservatively-gated) validated
-    pass** (#414).  The allocator emits a `name ↦ Slot` decision list materialized
+    pass**.  The allocator emits a `name ↦ Slot` decision list materialized
     by `SpillingRegAlloc.spillReloadBlock`; its proved soundness is the per-spill
     `SpillValid` sandwich (`GraphColoringRegAlloc.graphColor_spillReload_sound`),
     not an all-blocks `runBlock`-equality, so it is wrapped behind the no-op gate
@@ -501,7 +500,7 @@ def mem2regDseInert (prot : List (String × Int)) (b : List (JInstr 64)) : Bool 
 def mem2regCT (b : List (JInstr 64)) : Bool :=
   decide (allDirect b = true → allDirect (storeToLoadForward b) = true)
 
-/-- **mem2reg / dead-store elimination as a validated pass** (#415).
+/-- **mem2reg / dead-store elimination as a validated pass**.
     `Mem2Reg.mem2reg`'s whole-block certificate is `AgreeOn prot` (agreement on the
     protected footprint only), which is strictly weaker than the full-state
     `runBlock`-equality this abstraction requires: when the pass eliminates a store,
@@ -633,7 +632,7 @@ theorem defaultValidatedPipeline_allDirect
 /-! ## §5  Worked demonstration on a real kernel: `fe25519_mul`
 
 We instantiate the composed-pipeline soundness on the Curve25519 field-multiply
-block (`Fe25519MulKernel.feMulBlock`, the #555 pilot kernel).  The composed
+block (`Fe25519MulKernel.feMulBlock`).  The composed
 validated pipeline lands in the same `runBlock` final state as the hand kernel on
 every machine state, and preserves the `allDirect` constant-time class. -/
 

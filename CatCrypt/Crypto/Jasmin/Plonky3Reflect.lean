@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Plonky3 Merkle reflect surface — Tier A migration of the Merkle layer
+# Plonky3 Merkle reflect surface
 
 Layer 1 of the Plonky3 STARK chain (binary Merkle tree commitment over
 BabyBear leaves) as an orchestration over axiomatized leaves: a pure Lean
@@ -25,7 +25,7 @@ checks in §7 constrain the dataflow of each body: every call argument is
 defined before it is read, and every computed slot other than the result is
 read by a later call.
 
-The legacy `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleEmit.lean`
+The string emit `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleEmit.lean`
 builds its jasmin text by `String.intercalate`; the bodies here instead go
 through the front, as in `FalconReflect.lean`.
 
@@ -50,9 +50,7 @@ We model each major step as one opaque leaf call:
 A full `build_root` over `N = 2^k` leaves is one RCall to `hash_leaves` followed
 by `k` RCalls to `level_M` for `M ∈ {N/2, N/4, ..., 1}`, then `extract_root`
 producing the 32-byte digest. The level loop is **statically unrolled** into a
-flat `RSeq` chain — `RFor` is not consumed by `translate` (see
-`LowCTToCryptoSSA.lean:752`), so flat unrolling is the only path through the
-verified front. For each target depth `k`, we emit one `ReifiedFunc`.
+flat `RSeq` chain. For each target depth `k`, we emit one `ReifiedFunc`.
 
 ## Reflection→front gap
 
@@ -67,7 +65,7 @@ emitAbiOrchRegPtr`) consumes them unchanged.
 ## References
 
 * Plonky3 Merkle commitment: `plonky3-hax/src/specs/merkle.rs`
-* Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean` (#191)
+* Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean`
 * Driver template: `bench/fndsa_compare/verify_from_rustcmd.lean`
 -/
 
@@ -294,7 +292,7 @@ def merkleBuildRoot1024Reified : ReifiedFunc :=
 
 For the small-N KAT (N=1: the degenerate "tree" with one leaf = the hash itself),
 we emit a one-call body: `plonky3_merkle_hash_leaves_1 → plonky3_merkle_extract_root`.
-This is the simplest Tier A driver in the file — a sanity check that the chain
+This is the simplest driver in the file — a sanity check that the chain
 fires on the trivial input. -/
 
 /-- Pure-Lean build-root for `N = 1` (one leaf, no level calls). -/

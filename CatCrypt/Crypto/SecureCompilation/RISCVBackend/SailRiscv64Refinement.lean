@@ -52,8 +52,8 @@ operands — i.e. our hand-written effect semantics matches the in-file excerpt 
 the sail-riscv-lean generated output (commit `9eba3f07`; upstream not vendored).
 
 `MUL`/`MULHU` route through Sail's `mult_to_bits_half` / `to_bits_truncate`
-helper chain (a genuine 128-bit-product BitVec lemma) and are the next target,
-not included here.
+helper chain; the 128-bit-product BitVec lemmas `mulhu_value` (L1) and `mul_value`
+(L2) connect them to `opMulhu` / `opMul64`.
 -/
 
 @[expose] public section
@@ -191,7 +191,7 @@ def execute_ITYPE (imm : BitVec 12) (rs1 rd : regidx) (op : iop) : SailM Executi
       | .SLTIU => (pure (zero_extend (m := 64) (bool_to_bit (zopz0zI_u (← (rX_bits rs1)) immext))))))
   (pure RETIRE_SUCCESS)
 
-/-! ## The genuine BitVec lemmas (L1, L2): Sail product halves = our M-ext ops -/
+/-! ## The BitVec lemmas (L1, L2): Sail product halves = our M-ext ops -/
 
 /-- L1: Sail `MULHU` value = `opMulhu` (high 64 of the 128-bit unsigned product). -/
 theorem mulhu_value (x y : BitVec 64) :

@@ -13,7 +13,7 @@ public import Mathlib.Tactic.Ring
 /-!
 # Shoup precomputed-twiddle modmul law for a 60-bit FHE NTT butterfly
 
-This is the load-bearing correctness law for OpenFHE's actual NTT butterfly
+This is the main correctness law for OpenFHE's actual NTT butterfly
 modular multiply: the **Shoup** (Barrett-with-precomputed-quotient) modmul for a
 *fixed* twiddle `b`. It is faster than the generic Montgomery REDC of
 `FheMontMulLaw.lean` because the per-twiddle quotient `b' = ⌊b·R/q⌋` is

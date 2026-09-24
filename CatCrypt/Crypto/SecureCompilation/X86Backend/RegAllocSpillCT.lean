@@ -10,17 +10,16 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
-# Spill insertion preserves machine constant-time (the load-bearing middle)
+# Spill insertion preserves machine constant-time (the middle of the chain)
 
 `SecureCompileChain.LoweringCTPreserving` is the **assumed middle** of the
 secure-compiler chain: that the source→machine lowering — including register
 allocation — carries a `NoSecretControl` source to a `CompilableCT` machine
-block. The register-resident half of allocation (a renaming) is already proved
-CT-preserving in `ScalarCompileCorrect` (`allDirect_renameBlock`); the
-**spill** half was the piece left assumed, previously blocked because the
-`Optimizer/RegAllocLeakTrace.RALeak` leakage interface was only instantiated for
-the demonstrator (`DemoI`), so no statement connected real spill insertion to
-the machine leakage keystone.
+block. The register-resident half of allocation (a renaming) is proved
+CT-preserving in `ScalarCompileCorrect` (`allDirect_renameBlock`). This module
+proves the **spill** half. The `Optimizer/RegAllocLeakTrace.RALeak` leakage
+interface is instantiated only for the demonstrator (`DemoI`), so it does not
+connect real spill insertion to the machine leakage theorem.
 
 This module discharges the spill half directly over `JInstr 64`, with **no**
 appeal to `RALeak`, the generic `MachineModel` instance, or any
@@ -59,13 +58,11 @@ for spilled writes), exactly the shape of `SpillingRegAlloc.spillRewriteInstr`.
 (`CompilableCT.lean`), so the headline `allDirect` lemma yields `CompilableCT`
 directly.
 
-This closes the spill piece previously blocked by `RegAllocLeakTrace.RALeak`
-being `DemoI`-only and assumed in `LoweringCTPreserving`. Combined with the
-already-proved `allDirect_renameBlock` (resident rename) and `lowerSeq_allDirect`
+Combined with `allDirect_renameBlock` (resident rename) and `lowerSeq_allDirect`
 (lowering), the full **rename + spill + lowering** chain preserves constant-time.
 The `ImpExpr ↔ LowCT` source-IR bridge needed to plug this into
 `secure_compile_constant_time` *directly* (matching its `ImpExpr` lowering type)
-is separate wiring.
+is outside this module.
 -/
 
 @[expose] public section

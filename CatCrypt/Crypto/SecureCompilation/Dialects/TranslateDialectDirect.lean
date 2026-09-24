@@ -14,69 +14,33 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 set_option autoImplicit false
 
 /-!
-# `CProg`-free direct `LowCT → catCryptDialect` front (DR-collapse keystone)
+# Direct `LowCT → catCryptDialect` front (core straight-line arms)
 
-`LowCTToCryptoDialect.lowCTToCryptoDialect` reaches the crypto dialect by
-*materializing* a `CProg` intermediate:
+`translateDialect` is a structural recursion over `LowCT` that emits
+`Com catCryptDialect` directly: every node is a `catCryptDialect` op or `Com`
+constructor, with no intermediate IR between `LowCT` and the dialect.
 
-```
-LowCT ──translateTop──▶ CProg (CryptoSSA) ──toVIRComT──▶ Com catCryptDialect
-```
+## Contents
 
-This file builds the **`CProg`-free** twin `translateDialect`: a structural
-recursion over `LowCT` that emits `Com catCryptDialect` **directly** — every
-node is the `catCryptDialect` op/`Com` constructor that the
-`toVIRComT ∘ translate` composition *would* have produced, fused in, with no
-`CProg` value ever constructed in its definition. Its context behaviour is tied
-to `translate`'s by `translateDialect_ctx_agree`, the context-agreement lemma
-the leak-factoring downstream relies on.
+1. `ComCont` / `translateDialect` — the continuation algebra and the direct
+   structural translation. `ComCont Γ Γ'` is a partial prefix
+   `∀ {t}, Com catCryptDialect Γ' t → Option (Com catCryptDialect Γ t)`, and
+   `translateDialect` builds `Com` nodes (`.var` of a `catCryptDialect` `Expr`).
 
-This is the genuine enabler for deleting the `CProg` inductive (the DR-collapse
-endgame): once the front no longer names `CProg`, the remaining `CProg`
-consumers (Jasmin SSA bridges, peephole, …) are the only thing keeping the
-inductive alive, and they can be migrated independently. This front is the
-keystone — it removes `CProg` from the *front's definition*, not just from its
-result type (which `lowCTToCryptoDialect` already did).
+2. `translateDialectTop` — the top-level wrapper emitting the `constUnit; ret`
+   terminator in the final context.
 
-## What this file delivers
+3. `IsCore` — the syntactic core fragment, and worked examples: the empty
+   program and small straight-line programs through `translateDialect`.
 
-1. `ComCont` / `translateDialect` — the `CProg`-free continuation algebra and
-   the direct structural translation. `ComCont Γ Γ'` is the `Com`-level
-   analogue of `LowCTToCryptoSSA.CProgCont`: a partial prefix
-   `∀ {t}, Com catCryptDialect Γ' t → Option (Com catCryptDialect Γ t)`.
-   `translateDialect` mirrors `translate`'s recursion shape but builds `Com`
-   nodes (`.var` of a `catCryptDialect` `Expr`) where `translate` built
-   `CProg.letBind`.
+## Scope
 
-2. `translateDialect_ctx_agree` — on the core fragment `translateDialect` and
-   `translate` succeed together and emit the *same* final context `Γ'` and
-   `VarMap`. This is the support lemma the control-flow front and the
-   leak-factoring build on.
-
-3. Worked examples: the empty program and small straight-line programs through
-   `translateDialect`, with `CProg` nowhere in the term.
-
-## Honesty: scope of the fused recursion
-
-`translate` has ~25 `LowCT` arms; several (`RIfNz` φ-merge, `RCallSwap`,
-`RCloneCall`, `RLimbStore`, `RCallN`, the unrolling `RFor`/`RBlock`) build
-multi-binding `CProgCont`s with nontrivial context arithmetic, and a fused
-direct translation of each — *together with* the per-constructor equality to
-`toVIRComT ∘ translate` — is a large, mechanical port.
-
-This file fuses the **core straight-line arms** whose `translate` image is a
-single `letBind` of a `toVIRExprT`-total expression (or a clean `comp` of
-those): `RSkip`, `RSeq`, `RScalarSet`, `RLetU64Zero`, and `RBlock`. For these
-the direct `Com`-build provably equals the composition. Every *other*
-`LowCT` constructor is declined to `none` by `translateDialect` — **soundly**,
-exactly as `toVIRComT` / `translate` decline the arms they do not carry — and
-the equality `translateDialect vm c = lowCTToCryptoDialect vm c` is proved on
-the closed core arms by `rfl`-grade reduction, with the residual arms matching
-because *both* sides are `none` only when the composition is.
-
-The residual — fusing the multi-binding arms and extending the equality to
-them — is the documented follow-up; it does not block the keystone (a
-`CProg`-free front with an equality back to the verified composition).
+This module covers the core straight-line arms `RSkip`, `RSeq`, `RScalarSet`,
+`RLetU64Zero` and `RBlock`. Every other `LowCT` constructor is declined to
+`none`. The multi-binding arms (`RIfNz` φ-merge, `RCallSwap`, `RCloneCall`,
+`RLimbStore`, `RCallN`, `RFor`) are handled by `translateDialectFull`
+(`TranslateDialectDirectArms.lean`) and `translateDialectControl`
+(`TranslateDialectDirectControl.lean`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
@@ -88,17 +52,15 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec)
 
-/-! ## 1. `Com`-level continuation algebra (the `CProg`-free prefix)
+/-! ## 1. `Com`-level continuation algebra
 
-`ComCont Γ Γ'` is the direct-dialect analogue of `CProgCont`: a partial
-program prefix that, given a `Com catCryptDialect` tail in context `Γ'`,
-produces a `Com catCryptDialect` in context `Γ`. It is `Option`-valued because
-a fused arm may emit an expression `catCryptDialect` does not carry (the same
-`none` `toVIRExprT` produces). No `CProg` appears anywhere in these types. -/
+`ComCont Γ Γ'` is a partial program prefix that, given a `Com catCryptDialect`
+tail in context `Γ'`, produces a `Com catCryptDialect` in context `Γ`. It is
+`Option`-valued because an arm may emit an expression `catCryptDialect` does
+not carry. -/
 
 /-- A partial `Com`-prefix: given a tail program in context `Γ'`, optionally
-    produce a program in context `Γ`. The direct-dialect twin of
-    `LowCTToCryptoSSA.CProgCont` (which is `CProg`-valued and total). -/
+    produce a program in context `Γ`. -/
 abbrev ComCont (Γ Γ' : Ctx) : Type :=
   ∀ {t : CryptoTy}, Com catCryptDialect Γ' t → Option (Com catCryptDialect Γ t)
 
@@ -124,31 +86,31 @@ end ComCont
 
 /-! ## 2. Output of the direct translation
 
-`DTransOut Γ` mirrors `LowCTToCryptoSSA.TransOut Γ`, but its prefix is the
-`CProg`-free `ComCont` and it carries the same `VarMap`. -/
+`DTransOut Γ` packages a `ComCont` prefix with the extended context and the
+`VarMap` at that context. -/
 
 /-- Output of translating one `LowCT` directly to the crypto dialect: the
-    extended context `Γ'`, the `CProg`-free `Com`-prefix from `Γ` to `Γ'`, and
-    the updated `VarMap` at `Γ'` (the same `VarMap` as `translate` uses). -/
+    extended context `Γ'`, the `Com`-prefix from `Γ` to `Γ'`, and the updated
+    `VarMap` at `Γ'`. -/
 structure DTransOut (Γ : Ctx) where
   Γ' : Ctx
   cont : ComCont Γ Γ'
   vm : VarMap Γ'
 
-/-! ## 3. The direct `CProg`-free translation
+/-! ## 3. The direct translation
 
-`translateDialect` mirrors `translate`'s recursion shape on the core
-straight-line arms, building `Com catCryptDialect` nodes directly:
+`translateDialect` recurses over the core straight-line arms, building
+`Com catCryptDialect` nodes directly:
 
-* `translate`'s `CProgCont.id`            ↦ `ComCont.id`;
-* `translate`'s `letBind (bvConst …)`     ↦ `ComCont.varBind` of the fused
-  `catCryptDialect` `bvConst` expr (`toVIRExprT` of that `bvConst`);
-* `translate`'s `o₁.cont.comp o₂.cont`    ↦ `ComCont.comp`.
+* `RSkip`                        ↦ `ComCont.id`;
+* `RScalarSet` / `RLetU64Zero`   ↦ `ComCont.varBind` of a `catCryptDialect`
+  `bvConst` expression;
+* `RSeq`                         ↦ `ComCont.comp`.
 
-Every other arm declines to `none` — soundly, as the composition does. -/
+Every other arm declines to `none`. -/
 
 /-- Direct `LowCT → catCryptDialect` structural translation (core arms).
-    Builds `Com catCryptDialect` nodes directly; no `CProg` is constructed. -/
+    Builds `Com catCryptDialect` nodes directly. -/
 def translateDialect {Γ : Ctx} (vm : VarMap Γ) :
     LowCT → Option (DTransOut Γ)
   | .RSkip =>
@@ -162,8 +124,7 @@ def translateDialect {Γ : Ctx} (vm : VarMap Γ) :
           | none => none
       | none => none
   | .RScalarSet name n =>
-      -- Fused twin of `translate`'s `letBind (bvConst (BitVec.ofNat 64 n))`:
-      -- emit the `catCryptDialect` `bvConst` op directly.
+      -- Emit the `catCryptDialect` `bvConst (BitVec.ofNat 64 n)` op directly.
       let e : Expr catCryptDialect Γ (.sword 64) :=
         { op := .bvConst 64 (BitVec.ofNat 64 n), retTy_eq := rfl, args := .nil }
       let vm' : VarMap (.sword 64 :: Γ) := vm.bind name
@@ -179,12 +140,11 @@ def translateDialect {Γ : Ctx} (vm : VarMap Γ) :
   | .RBlock body => translateDialect vm body
   | _ => none
 
-/-- Direct `CProg`-free top-level front. Mirrors `translateTop`: the
-    top-level wrapper takes the extended context `o.Γ'` and emits the
-    `constUnit; ret` terminator there — built as a `Com catCryptDialect`, not a
-    `CProg`. (As in `translateTop`, the straight-line prefix `o.cont` is not
-    re-applied at the top level; the emitted program is the terminator in the
-    final context — the prefix's only role is to grow `Γ'`.) -/
+/-- Direct top-level front. The wrapper takes the extended context `o.Γ'` and
+    emits the `constUnit; ret` terminator there as a `Com catCryptDialect`.
+    The straight-line prefix `o.cont` is not re-applied at the top level; the
+    emitted program is the terminator in the final context, and the prefix
+    only determines `Γ'`. -/
 def translateDialectTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
     Option (Σ Γ' : Ctx, Com catCryptDialect Γ' .unit) :=
   match translateDialect vm c with
@@ -194,21 +154,12 @@ def translateDialectTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
       some ⟨o.Γ', term⟩
   | none => none
 
-/-! ## 4. The core fragment and equality to the composition
+/-! ## 4. The core fragment
 
-`translateDialect` is defined on the **core straight-line fragment**: the
-`LowCT` constructors whose `translate` image is a single `letBind` of a
-`toVIRExprT`-total expression (or a clean composition of those). `IsCore`
-characterizes that fragment syntactically. On it, the `CProg`-free direct
-front emits exactly the same final context `Γ'` and terminator `Com` as the
-compose-through-`CProg` front, so the two are equal — and `translateDialect`
-inherits `lowCTToCryptoDialect`'s correctness there, while constructing no
-`CProg`.
-
-Outside the core fragment `translateDialect` declines to `none` (soundly): it
-never claims a translation the composition would contradict. The equality is
-stated *on the core fragment*, which is exactly where the `CProg`-free front
-is defined. -/
+`translateDialect` is defined on the core straight-line fragment: the `LowCT`
+constructors whose image is a single `varBind` of a `catCryptDialect`
+expression, or a composition of those. `IsCore` characterizes that fragment
+syntactically. Outside it `translateDialect` declines to `none`. -/
 
 /-- The core straight-line `LowCT` fragment that `translateDialect` covers
     directly: `RSkip`, `RScalarSet`, and the recursive `RSeq` / `RLetU64Zero`
@@ -224,14 +175,13 @@ inductive IsCore : LowCT → Prop
 
 /-! ## 5. Worked examples (core fragment)
 
-The empty program through `translateDialect` — a `Com catCryptDialect`, with
-`CProg` nowhere in the term. -/
+The empty program and small straight-line programs through
+`translateDialect`, each yielding a `Com catCryptDialect`. -/
 
 /-- The empty program is core. -/
 example : IsCore .RSkip := .rSkip
 
-/-- The empty program lowers directly to a `Com catCryptDialect` via the
-    `CProg`-free front. -/
+/-- The empty program lowers directly to a `Com catCryptDialect`. -/
 example : (translateDialectTop VarMap.empty .RSkip).isSome := by decide
 
 /-- A `RScalarSet` program is core and lowers directly. -/
@@ -244,9 +194,8 @@ example : (translateDialectTop VarMap.empty (.RScalarSet "x" 7)).isSome := by
 example : IsCore (.RSeq (.RScalarSet "x" 7) .RSkip) :=
   .rSeq (.rScalarSet "x" 7) .rSkip
 
-/-- A concrete dialect program produced by the `CProg`-free direct front: the
-    empty program. The result type is `Com catCryptDialect Γ' .unit` — no
-    `CProg` / `CryptoSSA` appears in the term. -/
+/-- A concrete dialect program produced by the direct front: the empty
+    program, of type `Com catCryptDialect Γ' .unit`. -/
 def exampleSkipDialectDirect : Option (Σ Γ' : Ctx, Com catCryptDialect Γ' .unit) :=
   translateDialectTop VarMap.empty .RSkip
 

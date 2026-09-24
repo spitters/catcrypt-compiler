@@ -11,10 +11,10 @@ public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPoly
 public import CompPoly.Univariate.NTT.FastMul
 
 /-!
-# Pass 3.1 — CompPoly algebraic discharge (Stage F)
+# CompPoly algebraic discharge for the NTT poly-mul pass
 
-This file makes the CompPoly link in
-`NTTPolyMul_CompPoly.lean` **load-bearing**: it imports
+This module makes the CompPoly link in
+`NTTPolyMul_CompPoly.lean` **formal**: it imports
 `CompPoly.Univariate.NTT.FastMul` and exposes a theorem that converts the
 algebraic identity `fastMulImpl D p q = p * q` (under `Domain.fits`) into a
 concrete `RustVal`-level equality of two encoded products.
@@ -29,7 +29,7 @@ concrete `RustVal`-level equality of two encoded products.
 * `polyMul_leaf_agreement` — the core algebraic theorem.  Given a `Domain`
   parameter `D : Domain (ZMod q)`, an encoding, and `Domain.fits` on the
   decoded operands, the encoded `fastMulImpl` result equals the encoded
-  canonical product.  This is the load-bearing fact: a one-line transport
+  canonical product.  This is the key fact: a one-line transport
   through `CompPoly.NTT.fastMulImpl_eq_mul`.
 
 ## What this file does **not** provide
@@ -123,10 +123,10 @@ structure PolyEncoding (q n : Nat) (R : Type*) [Field R] where
 
 /-! ## §2  Core algebraic theorem -/
 
-/-- **Stage F core**: under `Domain.fits`, the encoded NTT-backed product
+/-- **Core theorem**: under `Domain.fits`, the encoded NTT-backed product
     equals the encoded canonical product.
 
-    This is the **load-bearing** algebraic fact for the NTT poly-mul
+    This is the key algebraic fact for the NTT poly-mul
     pass.  It is a one-step transport through
     `CompPoly.CPolynomial.NTT.fastMulImpl_eq_mul`:
 

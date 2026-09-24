@@ -155,7 +155,7 @@ generation (as `mulPackTail` is generated, not a hand-`Com` twin).
 **Routing note (do NOT add a `jasminExtSem` arm for a width-64 leaf):** a non-default
 `jasminExtSem` arm with a width-64 return (`.reg 64` / `.stackArr 64 _`) breaks the
 `jasminExtSem_reg` / `jasminExtSem_stackArr64` invariants in `VIR/JasminValTransport.lean`
-(all width-64 returns must be `JasminTy.default`), which are load-bearing for
+(all width-64 returns must be `JasminTy.default`), which are required by
 `DialectToJasminComCorrect`. Only the width-16 `stackArr` lattice leaves may carry a
 non-default arm. The named-call non-vacuous consumption of `fe25519_mul` must therefore go
 through the separate `ComInlineCall` `FuncRegistryN` / `RegistryConsistentN` registry (or

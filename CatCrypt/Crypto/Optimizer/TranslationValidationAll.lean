@@ -10,9 +10,9 @@ public import CatCrypt.Crypto.Optimizer.TranslationValidationEgraph
 public import CatCrypt.Crypto.Optimizer.TranslationValidationSched
 
 /-!
-# The #591 master verified translation-validation checker
+# The master verified translation-validation checker
 
-This file is the **#591 capstone**: it unifies the verified
+This module unifies the verified
 translation-validation (TV) checkers into a single master checker plus
 soundness theorem.  The methodology throughout is the same: an *untrusted*
 optimizer oracle proposes a candidate program, and a small *verified* Boolean
@@ -34,7 +34,7 @@ in the TCB; only the checker and its soundness lemma are.
 ## The representation split
 
 The first two checkers share the `Com jasminDialect Γ t` representation and a
-single denotation notion `Com.denote`, so they genuinely unify into one
+single denotation notion `Com.denote`, so they unify into one
 `Com`-level disjunction.  `tvCheckAny` accepts the candidate when it is the
 identity, the peephole, *or* the full canonicalise pipeline.
 
@@ -82,7 +82,7 @@ open CatCrypt.Crypto.Optimizer.TranslationValidation
 `tvCheck` and `tvCheckCanon` share the `Com jasminDialect Γ t` representation and
 the single denotation notion `Com.denote`, so they unify into one disjunction. -/
 
-/-- **The `Com`-level master TV checker (#591).**  Accepts the candidate `c'`
+/-- **The `Com`-level master TV checker.**  Accepts the candidate `c'`
 (output of an untrusted optimizer oracle) against the input `c` when *any* of the
 verified `Com`-level acceptance arms fires: `c'` is structurally the input
 itself, the verified local peephole canonicalisation `peepCom c`, *or* the full
@@ -93,11 +93,11 @@ def tvCheckAny {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (k : KEnv Γ) (c c' : Com jasminDialect Γ t) : Bool :=
   tvCheck c c' || tvCheckCanon fuel k c c'
 
-/-- **Soundness of the `Com`-level master TV checker (#591 capstone).**  If
+/-- **Soundness of the `Com`-level master TV checker.**  If
 `tvCheckAny fuel k c c' = true`, then for every valuation `V` for which the
 known-constant environment `k` is consistent, the candidate `c'` denotes the same
 function as the input `c`.  The optimizer that produced `c'` is *not* trusted:
-the verdict is certified by case-splitting the disjunction and dispatching to the
+the result is certified by case-splitting the disjunction and dispatching to the
 already-verified `tvCheck_sound` (identity/peephole arm) and `tvCheckCanon_sound`
 (algebraic-canonicalisation arm, which consumes the threaded `KEnv.Consistent k
 V` hypothesis).  Incomplete (only the union of the conservative per-arm relations
@@ -121,7 +121,7 @@ family and denotation notion from `Com jasminDialect` / `Com.denote`.  We do not
 force-unify across representations; instead we re-export the scheduler checker as
 the block-level master. -/
 
-/-- **The block-level master TV checker (#591).**  A re-export of the verified
+/-- **The block-level master TV checker.**  A re-export of the verified
 schedule-aware checker `TranslationValidationSched.tvCheckSched`, which lives at
 the `List BBStmt` representation (lowered to `LowCT` by `blockToCmd`, with
 soundness over the big-step `RustExec` relation).  It accepts the candidate block
@@ -132,7 +132,7 @@ def tvCheckBlockMaster
     (b b' : List CatCrypt.Crypto.Optimizer.SchedulerPass.BBStmt) : Bool :=
   TranslationValidationSched.tvCheckSched b b'
 
-/-- **Soundness of the block-level master TV checker (#591).**  A re-export of
+/-- **Soundness of the block-level master TV checker.**  A re-export of
 `TranslationValidationSched.tvCheckSched_sound`: if `tvCheckBlockMaster b b' =
 true`, the candidate block `b'` lowers to a program reaching exactly the same
 final states as the input `b` under the big-step `RustExec` semantics, for every
@@ -166,7 +166,7 @@ example :
   decide
 
 /-- The master soundness theorem applied to the canonicalisation demo: the
-accepted candidate genuinely denotes the same function as the input. -/
+accepted candidate denotes the same function as the input. -/
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (comAlgebraicPipeline 4 demoMulZero demoK).denote V = demoMulZero.denote V :=
   tvCheckAny_sound 4 demoK demoMulZero _ (by decide) V (demoK_consistent V)

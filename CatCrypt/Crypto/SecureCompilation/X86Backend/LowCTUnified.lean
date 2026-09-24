@@ -13,9 +13,9 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
 
 /-!
-# w7: cross-construct unification — one program type, one compile_correct, one CT
+# Cross-construct unification — one program type, one compile_correct, one CT
 
-The four `IsDirect` source→machine bridges built so far each cover **one**
+The four per-construct `IsDirect` source→machine bridges each cover **one**
 construct family in isolation, with its own source statement type, its own
 lowering, its own denote-preservation lemma, and its own machine-CT corollary:
 
@@ -26,13 +26,13 @@ lowering, its own denote-preservation lemma, and its own machine-CT corollary:
   `lowerSelect_denote_reg`);
 * literal-bound loop — `LowCTForCT` (`ForSrc`, `lowerFor`, `lowerFor_denote`).
 
-The worked-kernel and mulx agents both flagged the same gap: there was **no
-single program type** ranging over more than one construct family, so a real
-kernel mixing (say) a widening multiply and a scalar add could not be lowered
-by one compiler, proved correct by one `compile_correct`, and shown
-constant-time by one CT theorem.  Each construct's results were *fragments*.
+None of them is a **single program type** ranging over more than one construct
+family, so a kernel mixing (say) a widening multiply and a scalar add is not
+lowered by one compiler, proved correct by one `compile_correct`, and shown
+constant-time by one CT theorem through them alone.
 
-This module closes that gap for the **all-`IsDirect`** families.
+This module provides that single program type for the **all-`IsDirect`**
+families.
 
 ## What is unified
 
@@ -49,7 +49,7 @@ relation `StateMatch`).  A `UProg` is a `List UStmt`.
 * `lowerUProg_constant_time` — **one uniform constant-time theorem** for the
   whole unified program: every statement of every family lowers to an
   `allDirect` block, `flatMap` preserves `allDirect` via `allDirect_append`, and
-  the machine keystone `allDirect_constant_time` delivers CT.  This is the
+  the machine theorem `allDirect_constant_time` delivers CT.  This is the
   cross-construct uniform CT: scalar/mulx/select compose with no extra
   obligation.
 * `lowerUProg_denote` — **one functional `compile_correct`** over the unified
@@ -71,7 +71,7 @@ remains available as the per-construct `lowerSelect_denote`.
 
 ## Worked bignum kernel: schoolbook multiply-accumulate
 
-`schoolbookStep` is a genuine multi-op bignum step mixing **two** construct
+`schoolbookStep` is a multi-op bignum step mixing **two** construct
 families in one `UProg`:
 
 ```
@@ -87,25 +87,24 @@ uniform constant-time via `lowerUProg_constant_time`, and a one-vector value
 KAT checking the lowered block computes the right `(acc, carry)` on a concrete
 input.
 
-## Loop nesting — the honest boundary
+## Loop nesting — the boundary
 
 `UStmt` includes a **flattened/unrolled** loop form `forU x n body` whose body is
 itself a `List UStmt`, with `lowerUStmt`/`lowerUProg` mutually recursive (the
-loop is unrolled exactly as `LowCTForCT` unrolls `RFor`).  This already supports
-**nested** unified loops with mixed bodies.  The one honest limitation: the loop
+loop is unrolled exactly as `LowCTForCT` unrolls `RFor`).  This supports
+**nested** unified loops with mixed bodies.  The one limitation: the loop
 body's denote is threaded through `uProgDenote` (the same fold the straight-line
 case uses), so a body statement's well-formedness is required uniformly across
 all iterations — a real allocator guarantees this, and it is exactly the
-hypothesis `lowerFor_denote` already consumes.
+hypothesis `lowerFor_denote` consumes.
 
-## Excluded: memory operands (w7-mem follow-on)
+## Excluded: memory operands (see `LowCTUnifiedMem`)
 
 Memory loads/stores (`loadMemIdx`/`storeMemIdx`) are **not** `IsDirect`; their
 constant-time guarantee has a different shape (`CTAddressed` / public-index
 `agreePub`, see `LowCTMemCT`), so they do **not** fit this uniform
 unconditional-CT unification.  Folding the memory fragment into a *single*
-program type with a *single* (now conditional) CT theorem is the **w7-mem**
-follow-on.
+program type with a *single* (conditional) CT theorem is `LowCTUnifiedMem`.
 -/
 
 @[expose] public section
@@ -305,7 +304,7 @@ end
 /-! ## 5. Uniform cross-construct constant-time (one CT theorem)
 
 Every family lowers to an `allDirect` block; `flatMap`/append preserves
-`allDirect`; the machine keystone delivers CT.  This is the uniform
+`allDirect`; the machine theorem delivers CT.  This is the uniform
 cross-construct CT — scalar/mulx/select/loop compose with no extra obligation. -/
 
 mutual
@@ -417,7 +416,7 @@ theorem lowerUProg_denote (ρ : RegMap) (hρ : Function.Injective ρ)
 `lowerUProg_denoteAll` extends the `compile_correct` to the **full** unified
 type, loops included.  The loop case threads the body denotation through one
 unrolled iteration at a time, exactly as `LowCTForCT.lowerFor_denote` does, but
-now over a unified body (so nested mixed-construct loops are covered).
+over a unified body (so nested mixed-construct loops are covered).
 
 To keep the loop fold tractable, well-formedness is required **at every state**
 (`UStmtWFAll` / `UProgWFAll`): a real register allocator's disjointness facts

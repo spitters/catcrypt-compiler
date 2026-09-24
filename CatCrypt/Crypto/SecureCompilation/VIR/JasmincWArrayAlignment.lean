@@ -232,7 +232,7 @@ def jArrSetScaled (w n : Nat) (a : jByteArr (n * bw w)) (k : Nat) (v : BitVec w)
 the per-byte `get8`/`set8` (`warray_.v:93/98`, our `jGet8`/`jSet8`). These two
 lemmas record that decomposition: a scaled get is the little-endian assembly of
 per-byte `jGet8` reads, and a scaled set is a per-byte `jSet8` write inside the
-window (identity outside). They keep the §1 byte transcriptions load-bearing. -/
+window (identity outside). They rest on the §1 byte transcriptions. -/
 
 /-- A scaled `WArray.get` is `LE.decode` over per-byte `jGet8` reads at the
     scaled offset (`memory_model.v:148-151`, `CoreMem.read` = `decode ∘ map get`). -/

@@ -15,7 +15,7 @@ public meta import CatCrypt.Crypto.Util.Sha512Verified
 public import CatCrypt.Crypto.Util.Sha512Verified
 
 /-!
-# SHA-512 compression-round components as a genuine `catCryptDialect → jasmin → x86` path
+# SHA-512 compression-round components as a `catCryptDialect → jasmin → x86` path
 
 The FIPS 180-4 §6.4 SHA-512 compression round is a *benchmarked* word primitive
 (HACL*-class; the THIR / owned-emit pipelines emit it at `bench/sha2_compare/`).
@@ -71,7 +71,7 @@ non-trivial word-mixing pieces; the surrounding additions are dialect `bvAdd`.
   text through `JasminPrint.emitJazz`, with smokes pinning the op shape (`#ROR_64`,
   `^`) reaching the printer and the `(params, body)` count.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section

@@ -9,25 +9,23 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Multi-limb widening-multiply + carry-propagation demonstration (task #477)
+# Multi-limb widening-multiply + carry-propagation demonstration
 
-#474 found the linear-jasmin `Com jasminDialect` to be **carry-free with no
-widening multiply**: its `JasminBinOp` alphabet is `add/sub/mul/and/or/xor/
-shl/shr`, where `mul` keeps only the low `w` bits. A multi-limb Montgomery /
+The `JasminBinOp` alphabet of the linear-jasmin `Com jasminDialect` is
+`add/sub/mul/and/or/xor/shl/shr`, where `mul` keeps only the low `w` bits, so it
+has **no carry and no widening multiply**. A multi-limb Montgomery /
 pairing-field multiply — the `MULX` (64×64→128) + dual `ADCX`/`ADOX` carry-chain
-idiom — could not be expressed, blocking the owned register-allocation path for
-those kernels.
-
-Task #477 added three single-output ops to the dialect whose denotations are the
-pure (flag-free) effects of that idiom, **ported from the owned x86 model**
+idiom — needs three further single-output ops, which the dialect carries; their
+denotations are the pure (flag-free) effects of that idiom, **taken from the owned
+x86 model**
 (`X86Backend/Model.lean`):
 
 * `mulhi w`     — `mulHiW`     = high word of `a * b`        (= `Model.mulHi`)
 * `addCarryLo w`— `addCarryWord` = `a + b + cin`            (= `Model.step .adcx` data)
 * `addCarryHi w`— `carryOutBit`  = carry-out of `a + b + cin`(= `Model.addCarry`)
 
-This file is the *demonstration* that the dialect can now express the
-widening-mul + carry-propagated add that #474 was blocked on. It builds the
+This module *demonstrates* that the dialect expresses the
+widening-mul + carry-propagated add. It builds the
 `mpn_mul_1` / Montgomery inner kernel — a **2-limb × 1-limb** widening product
 with full carry propagation — as `Com jasminDialect` programs, proves each
 output limb's `Com.denote` equals the intended BitVec function, proves the
@@ -174,8 +172,7 @@ def val (a0 a1 b : BitVec 64) : Ctxt.Valuation Γ :=
 /-! ## 5. The multi-limb product identity (`Nat` level)
 
 The three limbs reassemble to the true double-word product
-`(a0 + a1·2^64) · b`. This is the carry-propagation correctness #474 could not
-state: it depends on `mulHiW` carrying the high half of each `MULX` and on
+`(a0 + a1·2^64) · b`. This is the carry-propagation correctness statement: it depends on `mulHiW` carrying the high half of each `MULX` and on
 `addCarryWord`/`carryOutBit` threading the carry between limbs. -/
 
 /-- The machine modulus is positive. -/
@@ -272,7 +269,7 @@ theorem r2_no_wrap (a0 a1 b : BitVec 64) :
 
     Proved from the per-`MULX` reconstruction (`mulx_reconstruct`) and the
     carry split (`r1_carry_split`, `r2_no_wrap`). This is the carry-propagated
-    widening multiply that #474 was blocked on. -/
+    widening multiply. -/
 theorem montmul_fragment_correct (a0 a1 b : BitVec 64) :
     (r0 a0 b).toNat
         + (r1 a0 a1 b).toNat * 2 ^ 64

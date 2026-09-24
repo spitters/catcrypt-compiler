@@ -19,7 +19,7 @@ set_option autoImplicit false
 /-!
 # Validation: a 128-bit vsimd XOR-accumulate front-compiled to a rolled `ComL.forLoopN`
 
-CAPABILITY G2 witness. It authors a **128-bit SIMD** loop body — a `.sword 128`
+This module is the vsimd loop-body witness. It authors a **128-bit SIMD** loop body — a `.sword 128`
 accumulator updated by a `vsimd` op each trip (`t := gf2p8mulb(x,x)`;
 `acc := acc ⊕ t`) — and front-compiles it through the vsimd-aware
 `TranslateDialectVsimd.translateDialectControlV`, reached through the rolled-loop
@@ -52,11 +52,11 @@ back-edge (`Lcond`/`Llabel`) with ONE vsimd body copy (one `VGF2P8MULB`, one
 Note on scope: the accumulator and the input vector `x` enter as `.sword 128`
 values (a register accumulator + a register invariant). Per-index 128-bit data
 `x[i]` — the full FAEST `acc ^= bf128_mul(x[i], alpha_i)` shape — additionally
-needs a **128-bit dynamic array load**. This is now provided by
+needs a **128-bit dynamic array load**, provided by
 `CatCryptDialect.memrefGetDyn128` (a `.sword 128` dynamic load, the twin of
 `memrefGetDyn`) and the `vloadidx128` vsimd-front tag; the full FAEST per-index
-body is re-sourced with a whole-program denote in
-`VIR/FaestByteCombineVsimdCovered.lean`. G2 here delivers the vsimd-capable loop
+body is sourced with a whole-program denote in
+`VIR/FaestByteCombineVsimdCovered.lean`. This module covers the vsimd-capable loop
 *body* front-compilation.
 
 Invoke (in-model gate):  lake env lean CatCrypt/Crypto/SecureCompilation/Dialects/RolledVsimdFrontValidate.lean
@@ -150,7 +150,7 @@ def sampleX    : BitVec 128 := 0x00112233445566778899aabbccddeeff
    `.reg 128` vsimd accumulator is not kernel-reducible (unlike the scalar `reg 64`
    case), so `native_decide` cannot evaluate it. The abstract lemma is the denote
    proof; the shape gates below confirm the rolled (one-body-copy) x86. The
-   value-carried 128-bit-accumulator `.s` ABI is a follow-up C KAT. -/
+   value-carried 128-bit-accumulator `.s` ABI is outside this module's scope. -/
 
 /-! ## 6. Rolled lowering: real x86 back-edge, ONE vsimd body copy
 

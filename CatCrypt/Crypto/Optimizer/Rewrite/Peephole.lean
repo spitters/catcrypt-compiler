@@ -8,14 +8,14 @@ module
 public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
-# Verified local peephole rewrite pass for `Com` (#274, Pass 2)
+# Verified local peephole rewrite pass for `Com`
 
 A structural `Com → Com` peephole pass over the typed VIR
 `jasminDialect`, complementary to the bounded equality-saturation engine in
 `Egraph.lean`. Where the egraph pass fires *algebraic* rules that depend on a
 known-constant operand, the peephole pass fires *purely local, syntactic*
 patterns: two-address / addressing-mode-friendly cleanups (cf the linear-jasmin
-two-address discipline, #167/#170) and identity collapses that need no constant
+two-address discipline) and identity collapses that need no constant
 analysis — only that two argument variables are syntactically equal.
 
 Like the egraph pass, the rewrite is at the `Expr` level (context- and

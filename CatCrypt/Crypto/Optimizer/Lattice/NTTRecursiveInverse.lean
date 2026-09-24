@@ -14,9 +14,9 @@ public import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
 `NTTRecursiveFull` defines the concrete radix-2 butterfly recursion `nttRec` and
 proves it computes the abstract `dft` (`nttRec_eq_dft`). `NTTFullInversionGeneric`
 defines the abstract synthesis map `idft` and proves it inverts the forward
-transform (`idft_dft`). What was missing is a *concrete* inverse transform — a
-butterfly network — proved to equal `idft` and to invert the recursive forward
-NTT. This file closes that gap.
+transform (`idft_dft`). This module defines a *concrete* inverse transform — a
+butterfly network — and proves it equals `idft` and inverts the recursive forward
+NTT.
 
 ## The algebraic observation
 
@@ -63,7 +63,7 @@ theorem idft_eq_scaled_dft (n : ℕ) (ω : R) (X : Fin n → R) (k : Fin n) :
 
 /-- The **recursive (butterfly-network) inverse NTT** on a length-`2^e` input:
 run the forward butterfly recursion `nttRec` at the inverse twiddle `ω⁻¹`, then
-normalise by `(2^e)⁻¹`. This is a genuine inverse butterfly network — `nttRec`
+normalise by `(2^e)⁻¹`. This is an inverse butterfly network — `nttRec`
 at `ω⁻¹` is the inverse decimation network and `(2^e)⁻¹` the scaling. -/
 noncomputable def nttRecInv (e : ℕ) (ω : R) (X : Fin (2 ^ e) → R) :
     Fin (2 ^ e) → R :=
@@ -92,7 +92,7 @@ theorem nttRecInv_eq_idft (e : ℕ) (ω : R) (hω : ω ^ (2 ^ e) = 1)
 
 Both concrete transforms are reduced to their abstract counterparts —
 `nttRecInv` to `idft` (`nttRecInv_eq_idft`) and the inner `nttRec` to `dft`
-(`nttRec_eq_dft`, pointwise via `funext`) — and the abstract inversion keystone
+(`nttRec_eq_dft`, pointwise via `funext`) — and the abstract inversion theorem
 `idft_dft` closes the result. -/
 theorem nttRecInv_nttRec (e : ℕ) (ω : R) (hω : IsPrimitiveRoot ω (2 ^ e))
     (hn : ((2 ^ e : ℕ) : R) ≠ 0) (x : Fin (2 ^ e) → R) :

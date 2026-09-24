@@ -15,11 +15,11 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 `MachineConstantTime.lean` builds the machine-level constant-time framework over
 `List (JInstr w)` — the leakage model (`MLeak`, `blockLeak`), the public/secret
 register partition (`PubPred`, `agreePub`), the CT-addressed instruction class
-(`CTAddressed`), and the keystone `blockLeak_pub_determined` — but exercises it
+(`CTAddressed`), and the main theorem `blockLeak_pub_determined` — and exercises it
 only on a *representative* leaf (`fieldStoreLeaf`, a two-limb store-back) whose
 "arithmetic" is a single fold.
 
-This module delivers the **s2n-bignum profile** on a genuine kernel: a
+This module applies the **s2n-bignum profile** to a full kernel: a
 fixed-limb, verified, constant-time x86 routine of the kind s2n-bignum provides.
 We emit a real **4-limb `bignum_add`** in the `JInstr 64` model — load `a[0..3]`
 from base pointer `ap`, `b[0..3]` from `bp`, run the `ADD`/`ADC` **carry chain**
@@ -45,7 +45,7 @@ multiply + the `ADCX`/`ADOX` dual carry chains s2n-bignum's hot loops use) and
 carries the identical constant-time proof, showing the fast path is CT too.
 
 **0 axioms beyond the `native_decide` KAT pins** (`propext`, `Quot.sound`,
-`Lean.ofReduceBool`), **0 sorries**.
+`Lean.ofReduceBool`), all goals closed.
 -/
 
 @[expose] public section
@@ -174,7 +174,7 @@ hands them in; the kernel only reads them to form addresses and never writes
 them). Everything else — the limb data registers `a0..a3`, `b0..b3` — is secret.
 Every memory access in `bignumAdd4` is a direct `base + constant-offset`, and no
 public register is among the destinations, so each instruction is `CTAddressed`
-and the keystone `blockLeak_pub_determined` applies. -/
+and the theorem `blockLeak_pub_determined` applies. -/
 
 /-- The public/secret split for `bignumAdd4`: the pointer bases `ap`, `bp`, `rp`
     are public; the limb-data registers (and any carry-materialisation reg) are

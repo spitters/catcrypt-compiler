@@ -29,7 +29,7 @@ Montgomery constant `N'` with `N * N' ≡ -1 (mod R)`, the reduction of an input
 redc T = (T + m * N) / R   where   m = (T * N') mod R
 ```
 
-and the keystone `redc_mul_R_modEq` establishes the **defining Montgomery
+and the main theorem `redc_mul_R_modEq` establishes the **defining Montgomery
 property**
 
 ```
@@ -97,7 +97,7 @@ theorem redc_mul_R_eq
   unfold redc
   exact Int.ediv_mul_cancel hdvd
 
-/-- **Keystone — the defining Montgomery property.**
+/-- **Main theorem — the defining Montgomery property.**
 
     `redc T * R ≡ T (mod N)`, i.e. `redc T ≡ T * R⁻¹ (mod N)`.
 

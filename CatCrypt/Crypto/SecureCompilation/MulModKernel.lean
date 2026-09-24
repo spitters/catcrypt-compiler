@@ -169,7 +169,7 @@ theorem mulmodProg_zmod (p : Nat) [NeZero p] (env : Env) (hp1 : 1 < p) (hp32 : p
       = (((env "a").toNat : ZMod p) * ((env "b").toNat : ZMod p)).val := by
   rw [mulmodProg_toNat p env hp1 hp32 ha hb, ← Nat.cast_mul, ZMod.val_natCast]
 
-/-- The field-multiply kernel compiles to AArch64 (generic keystone). -/
+/-- The field-multiply kernel compiles to AArch64 (instance of the generic `regToBOp_denote`). -/
 theorem mulmodProg_arm (p : Nat) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp (mulmodProg p))) = armTarget.denote (mulmodProg p) s :=
   regToBOp_denote (mulmodProg p) s

@@ -78,7 +78,7 @@ def ComLsemExportFaithfulMC {Γ : Ctxt jasminDialect} {t : JasminTy}
     ∧ decodeN st' (comRetReg Γ.length argName com Γ.length) w
         = some (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the mul/carry fragment.** Any `Com` over
+/-- **The export gate is discharged for the mul/carry fragment.** Any `Com` over
     `{regArith, select, immediate shifts, mulhi, addCarryLo/Hi}` satisfies
     `ComLsemExportFaithfulMC` — assembled from `comToLprog_faithful_mulcarry` + the
     jump-freeness brick + the `lsemFuelMC_straightline` bridge. -/

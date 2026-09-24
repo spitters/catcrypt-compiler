@@ -19,12 +19,12 @@ set_option autoImplicit false
 The state-resident SHA-256 compression (`VIR/Sha2Emit.lean`,
 `compressCom sha256Spec`, deployed as `sha256_compress_resident(_wp)`) is built
 by hand as a `Com jasminDialect` through the `emitOp` / `.regArith` CPS builders.
-The re-source target is the just-landed width-parametric front leaf
-`ScalarSExprWidth32Prototype.lowerSExprW` (commit e6e843381): every SHA-256
+The front route for it is the width-parametric front leaf
+`ScalarSExprWidth32Prototype.lowerSExprW`: every SHA-256
 round op is pure `SXor`/`SAnd`/`SShr`/`SShl` + 32-bit `SAdd`, and `rotr32` is the
 disjoint-halves shift pair — all inside `lowerSExprW`'s covered alphabet.
 
-This module discharges the **capability gate** for that flip: it
+This module discharges the **capability gate** for that route: it
 expresses every SHA-256 round primitive (`Σ0`, `Σ1`, `Ch`, `Maj`, `σ0`, `σ1`),
 one full compression **round step** (`a' = T1+T2`, `e' = d+T1`), and one
 **message-schedule step** (`W[t] = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16]`)
@@ -51,7 +51,7 @@ the front additionally needs a width-parametric *statement* stepper (the `stepW`
 combinator over `RScalarSetExpr`, the w32 twin of the 64-bit
 `TranslateDialectDirectControl.translateDialectControl` that FriFold used) so the
 ~4000 named-intermediate assignments thread through `lowerSExprW 32`; that stepper
-is not yet landed (only the expression leaf is). See the module's companion notes.
+is outside this module, which covers the expression leaf.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Sha256RoundWidth32Front

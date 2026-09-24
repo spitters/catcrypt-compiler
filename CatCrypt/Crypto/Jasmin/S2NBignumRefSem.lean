@@ -12,25 +12,19 @@ public import CatCrypt.Crypto.Jasmin.JasminMonoSem
 public import Std.Tactic.BVDecide
 
 /-!
-# `CProg`-free reference data for the s2n-bignum SSA ports
+# Reference data for the s2n-bignum SSA ports
 
-This module holds the **`CProg`-free** per-kernel reference data — the
+This module holds the per-kernel reference data — the
 SSA `body` (a `List InstrR`), the pure reference semantics `refSem`
 (via `pureEvalMonoCmd`), and the bit-vector correctness specs — for the
 s2n-bignum SSA ports whose `catCryptDialect` twins live in
 `SecureCompilation/Jasmin/S2NBignumSSADialect.lean`.
 
-It is extracted out of `S2NBignumSSA.lean` so that the dialect layer can
-depend on these references **without** dragging in `S2NBignumSSA`'s
-`CProg`-stated material (`prog : Option (CProg …)` and the
-`cryptoSSA_denote` corollaries, both of which mention the `CProg`
-inductive / `CProg.denote`). That `CProg`-stated material stays in
-`S2NBignumSSA.lean`, which now imports **this** module for the shared
-`body`/`refSem`/`spec` definitions.
+The dialect layer and `S2NBignumSSA.lean` both import this module for the
+shared `body`/`refSem`/`spec` definitions.
 
 Everything here is stated over `Var`, `InstrR`, `BitVec`, and the
-proved-translator's pure evaluator `pureEvalMonoCmd` — none of it
-mentions `CProg`, `CExpr`, `CProg.denote`, or `cryptoSSA_denote`.
+proved-translator's pure evaluator `pureEvalMonoCmd`.
 
 ## Kernels covered
 
@@ -41,7 +35,7 @@ mentions `CProg`, `CExpr`, `CProg.denote`, or `cryptoSSA_denote`.
                   `word_negmodinv_correct` proof chain.
 
 The SSA builder helpers (`v`, `assignConst`, `assignBin`, `assignShL`,
-`assignShR`) also live here; they are `CProg`-free and shared by every
+`assignShR`) also live here; they are shared by every
 port in `S2NBignumSSA.lean`.
 -/
 
@@ -54,7 +48,7 @@ open CatCrypt.Crypto.Jasmin.ToSSA
 
 set_option autoImplicit false
 
-/-! ## SSA builder helpers (`CProg`-free) -/
+/-! ## SSA builder helpers -/
 
 /-- A u64 variable with the given name. -/
 def v (s : String) : Var := { vname := s, vtype := .sword .U64 }
@@ -271,7 +265,7 @@ theorem word_negmodinv_correct (a : BitVec 64)
   set x3 : BitVec 64 := (a * x2 + 1) * x2 + x2 with hx3_def
   have h_x3 : a * x3 + 1 = (a * x2 + 1) * (a * x2 + 1) := newton_step_error a x2
   rw [show (a * x2 + 1) * (a * x2 + 1) = a * x3 + 1 from h_x3.symm]
-  -- Goal is now `a * ((a*x3 + 1) * x3 + x3) + 1 = 0`.
+  -- Goal: `a * ((a*x3 + 1) * x3 + x3) + 1 = 0`.
   -- One more application of `newton_step_error a x3` closes it.
   rw [newton_step_error a x3]
   -- Goal: `(a * x3 + 1) * (a * x3 + 1) = 0`.

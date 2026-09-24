@@ -13,9 +13,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # Plonky3 Merkle-tree commitment emitted through the verified front
 
-This is **layer 1** of the full Plonky3 STARK prover chain (task #154): the
+This is **layer 1** of the full Plonky3 STARK prover chain: the
 binary Merkle-tree commitment over Baby Bear leaves. It sits directly above the
-Poseidon2-BabyBear permutation (`Poseidon2Emit.lean`, #100/#138/#147/#152) and
+Poseidon2-BabyBear permutation (`Poseidon2Emit.lean`) and
 below the low-degree extension, FRI, and AIR layers.
 
 ## Structure: every tree level is a lane-parallel MAP
@@ -28,7 +28,7 @@ parent[j] = compress(child[2j], child[2j+1])   for j = 0 .. m-1
 ```
 
 Each parent is computed with no cross-lane dependency, so a tree level is
-exactly the lane-parallel-MAP shape the keystone `LaneMap.laneMapIdx_eq_scalar`
+exactly the lane-parallel-MAP shape the theorem `LaneMap.laneMapIdx_eq_scalar`
 covers (the lane index `j` selects the child pair; the per-lane function is the
 two-to-one compress). The vectorized emit (one packed compress per SIMD lane)
 denotes the same value as the scalar level — `merkleLevel_denotation_preserves`.

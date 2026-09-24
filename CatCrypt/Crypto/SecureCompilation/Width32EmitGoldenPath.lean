@@ -34,7 +34,7 @@ changes:
 1. write the masked-u64 op as a `Com jasminDialect Γ (.reg 64)` over the width-64
    `regArith`/`shrImm`/`shlImm`/`regConst` alphabet;
 2. `ComOK` (mechanical) + an in-`Com` `denote` `rfl` AND a **recognizable u32 `_spec`**
-   proven by `bv_decide` — the spec ties the masked-u64 expression to the *genuine*
+   proven by `bv_decide` — the spec ties the masked-u64 expression to the *native*
    32-bit operation expressed with `BitVec 32` (`setWidth 32`, `rotateLeft`), so the
    tie is non-vacuous: it says the emitted code computes the real `u32` value, not a
    restatement of the mask;
@@ -102,7 +102,7 @@ theorem add32Com_denote (a b : BitVec 64) :
     Com.denote add32Com (.cons a (.cons b .nil)) = (b + a) &&& mask32 := rfl
 
 /-- **Step 2 — recognizable u32 `_spec`, `bv_decide`.** The masked-u64 add equals the
-    genuine 32-bit add: truncate both inputs to `BitVec 32`, add, and zero-extend back
+    native 32-bit add: truncate both inputs to `BitVec 32`, add, and zero-extend back
     to 64 bits. This is the real `u32` `wrapping_add`, not a restatement of the mask. -/
 theorem add32Com_spec (a b : BitVec 64) :
     Com.denote add32Com (.cons a (.cons b .nil))
@@ -141,7 +141,7 @@ def add32Com_x86_elf : ByteArray :=
 
 Args `[a, b]`. The xor of two zero-extended `u32` values needs no mask to stay
 zero-extended; the mask is included for uniformity (and is harmless). The `_spec`
-ties the source to the genuine 32-bit xor. -/
+ties the source to the native 32-bit xor. -/
 
 /-- `xor32 a b = (a ^ b) &&& 0xFFFFFFFF` over `[a, b]`. -/
 def xor32Com : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
@@ -167,7 +167,7 @@ theorem xor32Com_denote (a b : BitVec 64) :
     Com.denote xor32Com (.cons a (.cons b .nil)) = (b ^^^ a) &&& mask32 := rfl
 
 /-- **Step 2 — recognizable u32 `_spec`, `bv_decide`.** The masked-u64 xor equals the
-    genuine 32-bit xor (truncate, xor, zero-extend). -/
+    native 32-bit xor (truncate, xor, zero-extend). -/
 theorem xor32Com_spec (a b : BitVec 64) :
     Com.denote xor32Com (.cons a (.cons b .nil))
       = (a.setWidth 32 ^^^ b.setWidth 32).setWidth 64 := by
@@ -209,7 +209,7 @@ or-ed with the low part `am >>> (32 - k)`, masked back to 32 bits. Body:
 `m := 0xFFFFFFFF ; am := a &&& m ; hi := am <<< k ; lo := am >>> (32 - k) ;
  u := hi ||| lo ; r := u &&& m`. Masking the input first is what makes the emulation
 hold for *every* register value, not just already-reduced ones — the `_spec` is then a
-total equality with the genuine 32-bit rotate. We instantiate the two ChaCha20
+total equality with the native 32-bit rotate. We instantiate the two ChaCha20
 quarter-round amounts, `k = 16` and `k = 12`. -/
 
 /-- `rotl32 a 16` over `[a]` (input masked to 32 bits, then shift-or-rotate). -/
@@ -248,7 +248,7 @@ theorem rotl32Com_16_denote (a : BitVec 64) :
       = (((a &&& mask32) <<< 16) ||| ((a &&& mask32) >>> 16)) &&& mask32 := rfl
 
 /-- **Step 2 — recognizable u32 `_spec`, `bv_decide`.** The masked shift-or equals the
-    genuine 32-bit rotate-left by 16 (truncate to `BitVec 32`, `rotateLeft 16`,
+    native 32-bit rotate-left by 16 (truncate to `BitVec 32`, `rotateLeft 16`,
     zero-extend) — totally, for every input. -/
 theorem rotl32Com_16_spec (a : BitVec 64) :
     Com.denote rotl32Com_16 (.cons a .nil)
@@ -320,7 +320,7 @@ theorem rotl32Com_12_denote (a : BitVec 64) :
       = (((a &&& mask32) <<< 12) ||| ((a &&& mask32) >>> 20)) &&& mask32 := rfl
 
 /-- **Step 2 — recognizable u32 `_spec`, `bv_decide`.** The masked shift-or equals the
-    genuine 32-bit rotate-left by 12 — totally, for every input. -/
+    native 32-bit rotate-left by 12 — totally, for every input. -/
 theorem rotl32Com_12_spec (a : BitVec 64) :
     Com.denote rotl32Com_12 (.cons a .nil)
       = ((a.setWidth 32).rotateLeft 12).setWidth 64 := by
@@ -365,7 +365,7 @@ prefix — and is a recognizable component of the cipher. We emit it over `[d, a
 masked-u64 `Com`:
 `x := d ^ a ; m := 0xFFFFFFFF ; xm := x &&& m ; hi := xm <<< 16 ; lo := xm >>> 16 ;
  u := hi ||| lo ; r := u &&& m`.
-The inner mask after the xor keeps `xm` zero-extended so the rotate is the genuine
+The inner mask after the xor keeps `xm` zero-extended so the rotate is the native
 32-bit rotate. The `_spec` ties the whole step to `rotl32 (d ^ a) 16` on `BitVec 32`. -/
 
 /-- One ChaCha20 quarter-round component `(d ^ a) <<<₃₂ 16` over `[d, a]`. -/
@@ -410,7 +410,7 @@ theorem chachaQuarterStepCom_denote (d a : BitVec 64) :
   rfl
 
 /-- **Step 2 — recognizable u32 `_spec`, `bv_decide`.** The whole step equals the
-    genuine ChaCha20 component: 32-bit `rotateLeft 16` of the 32-bit xor `d ^ a`,
+    ChaCha20 component: 32-bit `rotateLeft 16` of the 32-bit xor `d ^ a`,
     zero-extended back to 64 bits. A real `u32` cipher step emitting via masked-u64. -/
 theorem chachaQuarterStepCom_spec (d a : BitVec 64) :
     Com.denote chachaQuarterStepCom (.cons d (.cons a .nil))

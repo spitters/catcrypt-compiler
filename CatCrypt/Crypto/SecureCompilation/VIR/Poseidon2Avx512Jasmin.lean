@@ -13,13 +13,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
 
 /-!
-# Poseidon2 BabyBear — AVX-512 MDS add through the **verified jasmin chain** (task #286)
+# Poseidon2 BabyBear — AVX-512 MDS add through the **verified jasmin chain**
 
 [`Poseidon2Avx512.lean`](Poseidon2Avx512.lean) re-targets the Poseidon2
 `VectorOp` lane ops to AVX-512 (`zmm`, 8×u64) via the `x86vector` MLIR
 lowering, but its own docstring records the limitation that the *jasmin*
-backend "cannot emit ZMM — its Rocq word model caps at U256". Task #286 closes
-that gap: the AST `WSize` now carries `U512`, and the verified Jasmin VIR
+backend "cannot emit ZMM — its Rocq word model caps at U256". In this chain the
+AST `WSize` carries `U512`, and the verified Jasmin VIR
 dialect ([`JasminDialect.lean`](JasminDialect.lean)) carries a `vpackZMM` op —
 the 8×u64 packed-lane register op (the verified-chain image of `#VPADD_8u64` /
 `#VPSUB_8u64` / `#VPMULL_8u64` / `#VPSRL_8u64`).
@@ -44,7 +44,7 @@ linear-layer add (`#VPADD_8u64`) — end-to-end through the verified jasmin chai
 
 4. **The emitted `.jazz`** (`mdsAddZmm_jazz_has_*`): the chain prints a
    `reg u512` function whose body is the `#VPADD_8u64` intrinsic — the U512
-   register type now prints (no truncation to `u256`).
+   register type prints without truncation to `u256`.
 
 5. **The store-threaded evaluator agrees** (`mdsAddZmm_runProg_eq`): running the
    *emitted instruction list* (`JasminPrintSemCorrect.runProg`) on the seeded
@@ -66,11 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec (padd
 
 /-- Model-free 8-lane packed u64 add (the AVX-512 `VPADDQ zmm` functional model):
     lane `k` is `lane_k(a) + lane_k(b)` over the `zmmLane` (little-endian 64-bit)
-    view. This is definitionally the same per-lane add as the (now-severed)
-    machine-emit `MpnAvx512Emit.denoteVPaddQ8` — `vpaddq_lane = (· + ·)` and
-    `lanesOf512 = zmmLane` are the same `extractLsb'` — so the differential
-    validation below is unchanged; the model lives here, free of any machine
-    backend. -/
+    view, i.e. `vpaddq_lane = (· + ·)` on each `extractLsb'` lane. The model
+    lives here, free of any machine backend. -/
 def denoteVPaddQ8 (a b : BitVec 512) (k : Fin 8) : BitVec 64 :=
   zmmLane a k + zmmLane b k
 
@@ -141,7 +138,7 @@ theorem mdsAddZmm_eq_avx512_model (a b : BitVec 512) (k : Fin 8) :
 
 The Poseidon2 consumer (`Poseidon2LaneVec`) uses `padd x y = x + y` per lane.
 Each lane of the verified-chain ZMM add is exactly that — the same scalar add
-the AVX2 4-lane chain carries, now over 8 lanes. -/
+the AVX2 4-lane chain carries, over 8 lanes. -/
 
 /-- **Poseidon2 lane meaning.** Lane `k` of the verified-chain MDS-add result is
     the Poseidon2 `padd` of the input lanes. The verified jasmin chain realizes
@@ -163,7 +160,7 @@ theorem mdsAddZmm_jazz_has_vpadd8 :
       ≥ 2 := by native_decide
 
 /-- The emitted `.jazz` text declares a `u512` register (the ZMM register type
-    now prints; before #286 a `reg 512` saturated to `u256`). -/
+    prints; a `reg 512` does not saturate to `u256`). -/
 theorem mdsAddZmm_jazz_has_u512 :
     ((JasminPrint.emitJazz "poseidon2_mds_add_zmm" mdsAddZmmCom).splitOn "u512").length
       ≥ 2 := by native_decide

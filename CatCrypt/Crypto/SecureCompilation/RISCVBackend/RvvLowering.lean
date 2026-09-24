@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
 
 /-!
-# Wiring a register-named packed-u32 op alphabet to the RVV machine model (#549 RVV residual)
+# Wiring a register-named packed-u32 op alphabet to the RVV machine model
 
 `ARMBackend/NeonLowering.lean` lowers a register-named packed-u32 `NOp` alphabet
 to the AArch64 NEON `NInst` with the block-lowering denotation theorem
@@ -96,7 +96,7 @@ theorem shl_evalVInst_denote (s : VState) (dst a : String) (imm : Nat) :
       = VectorTy.map₁imm laneSll imm (s.get a) := by
   simp only [toVInst, evalVInst, VState.get_setV_same]
 
-/-! ## 3. The block-lowering denotation theorem (the RVV keystone)
+/-! ## 3. The block-lowering denotation theorem (RVV)
 
 The RVV analogue of `NeonLowering.neonBlock_lowering_denote`: lowering a
 straight-line `VOp` block to machine `VInst`s and running it on the RVV model

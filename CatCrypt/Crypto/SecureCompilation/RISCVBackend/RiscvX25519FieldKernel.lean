@@ -14,13 +14,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFl
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
 
 /-!
-# Curve25519 field operations + the Montgomery ladder, lowered through the owned RV64 backend (#553)
+# Curve25519 field operations + the Montgomery ladder, lowered through the owned RV64 backend
 
-`RiscvMontMulKernel.lean` (#550) lowered the bare 4×4→8 schoolbook
+`RiscvMontMulKernel.lean` lowers the bare 4×4→8 schoolbook
 (`mul48Block64`) through the owned RV64 bignum backend (`MUL`/`MULHU` widening +
-the SLTU `addc`/`addcc` carry macros); `RiscvBignumKernel.lean` (#549) lowered the
+the SLTU `addc`/`addcc` carry macros); `RiscvBignumKernel.lean` lowers the
 add-mod-`p256` SLTU carry chain + branch-free mask-select reduce;
-`RiscvControlFlow.lean` (#552) renders the bounded counter loop (`loopRBlock`, the
+`RiscvControlFlow.lean` renders the bounded counter loop (`loopRBlock`, the
 B-type `BNE` back-edge). This module is the RISC-V counterpart of
 `ARMBackend/ArmX25519FieldKernel.lean`, over `p25519 = 2²⁵⁵ - 19`:
 
@@ -49,7 +49,7 @@ has none of this.** Every add-with-carry is the SLTU `addc` macro
 branch-free mask select (`mask := 0 - cond ; (sub & mask) | (orig & ~mask)`). The
 `2²⁵⁶ ≡ 38 (mod p)` reduce rides `mul`/`mulhu` for the `·38` folds. This makes
 the RV64 field ops materially heavier than ARM — the same no-ADX tax already
-measured on `bignum_add_p256` (#549) and `bignum_mul_4_8` (#550); the
+measured on `bignum_add_p256` and `bignum_mul_4_8`; the
 instruction-count delta vs ARM is documented in §"the no-ADX cost" below.
 
 ## The field representation and the `2²⁵⁵-19` reduce

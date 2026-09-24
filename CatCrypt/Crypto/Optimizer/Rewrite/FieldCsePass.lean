@@ -32,15 +32,14 @@ a reference to `v`. The verified core is the **substitution-correctness lemma**
 > (`env v = e.denote env`), preserves the denotation.
 
 That equation — "a variable bound to `e` can stand in for `e`" — is exactly the
-content of CSE, and is genuinely verifiable; the prompt explicitly accepts this
-substitution-correctness lemma as a complete deliverable. We then lift it to the
+content of CSE. We then lift it to the
 **single-binding CSE step** on programs (`cseLet_denote`):
 
 > `ret t  ↦  letB x e (ret (substExpr x e t))` is denotation-preserving — bind
 > the shared subexpression `e` to a fresh name `x`, then reference `x` wherever
 > `e` was recomputed.
 
-This is the genuine CSE transformation: it introduces the sharing let-binding
+This is the CSE transformation: it introduces the sharing let-binding
 and rewrites the body, with the binding invariant `env' x = e.denote env`
 established *by the very `letB` it introduces*. Working one binding deep sidesteps
 the variable-capture bookkeeping (an inner `letB` could re-bind `x` and break the
@@ -219,7 +218,7 @@ def denote (env : String → R) : FLet R → R
 
 /-! ## The single-binding CSE step
 
-`cseLet x e t` is the genuine CSE transformation on a returned expression: bind
+`cseLet x e t` is the CSE transformation on a returned expression: bind
 the shared subexpression `e` to a fresh name `x`, then rewrite every
 recomputation of `e` in `t` to `var x`. The introduced `letB` establishes the
 binding invariant `env' x = e.denote env` *by construction*, so its soundness
@@ -285,7 +284,7 @@ theorem cseLet_prog_denote (env : String → ℤ) :
   FLet.cseLet_denote env "t" ab prog (by decide) (by decide)
 
 /-- Denotation preservation is characteristic-free: it holds over every `ZMod p`
-as well, by the same `cseLet_denote` keystone. -/
+as well, by the same `cseLet_denote` theorem. -/
 theorem cseLet_prog_denote_zmod (p : Nat) (env : String → ZMod p) :
     FLet.denote env
         (FLet.cseLet "t" (mul (var "a") (var "b"))

@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Optimizer.TranslationValidation
 
 /-!
-# Translation validation against the algebraic canonicalisation pipeline (#591)
+# Translation validation against the algebraic canonicalisation pipeline
 
 A second arm of the verified translation-validation (TV) checker for the typed
 VIR `jasminDialect`. The base checker `TranslationValidation.tvCheck` accepts a
@@ -18,7 +18,7 @@ canonicalisation pipeline** `comAlgebraicPipeline` (peephole, then bounded
 equality-saturation under a known-constant environment; see
 `Rewrite/ComPipeline.lean:75`).
 
-The complementary #591 *scheduler* variant lives in
+The complementary *scheduler* variant lives in
 `TranslationValidationSched.lean`: there the accepted transform is the LowCT
 instruction schedule. Here it is the `Com`-level algebraic canonicalise.
 
@@ -70,7 +70,7 @@ def tvCheckCanon {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fuel : Nat) (k : KEnv Γ) (c c' : Com jasminDialect Γ t) : Bool :=
   comEqB c' (comAlgebraicPipeline fuel c k)
 
-/-- **Soundness of the algebraic-canonicalisation TV checker (#591).** If
+/-- **Soundness of the algebraic-canonicalisation TV checker.** If
 `tvCheckCanon fuel k c c' = true`, then for every valuation `V` for which the
 known-constant environment `k` is consistent, the candidate `c'` denotes the
 same function as the input `c`. The optimizer that produced `c'` is *not*
@@ -100,7 +100,7 @@ example :
       = true := by
   decide
 
-/-- The accepted canonical candidate genuinely denotes the same function as the
+/-- The accepted canonical candidate denotes the same function as the
 input (both map `x` to `0`) — the soundness theorem applied to the demo. -/
 example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (comAlgebraicPipeline 4 demoMulZero demoK).denote V = demoMulZero.denote V :=

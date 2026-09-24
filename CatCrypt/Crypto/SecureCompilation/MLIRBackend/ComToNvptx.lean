@@ -29,24 +29,24 @@ straight-line field `Com` *is* a single thread's program; the tile is the SIMT
 fan-out over lanes. This is the GPU analogue of the SIMD lane-parallel maps the
 x86/ARM backends emit (`LaneMap.laneMap`), but expressed at the thread level.
 
-## What this increment IS / IS NOT (honest scope)
+## Scope
 
 * **IS — a validated emission path.** `Com`-shaped field op sequence → NVPTX
   LLVM IR → (clang `--target=nvptx64-nvidia-cuda -S`) → **PTX**. `clang`'s NVPTX
   back-end is the structural validator: it accepts the emitted IR and produces a
   `.visible .entry` PTX kernel (`bench/gpu_compare`). The emitted kernel is the
-  BabyBear Barrett `bbMul` (the load-bearing field multiply: `(a·b) mod p` via the
+  BabyBear Barrett `bbMul` (the central field multiply: `(a·b) mod p` via the
   shift/multiply/shift reduce + branchless conditional subtract).
 * **IS NOT — executed.** There is no GPU / `ptxas` available; the PTX is emitted
   and structurally validated, **not run**. No execution KAT is claimed.
 * **IS NOT — verified.** There is **no** `Com → PTX` denotation-preservation
-  theorem here and **no** GPU/SIMT semantics — that (a tile/GPU semantics + a
-  lowering-correctness keystone) is the open research part. There is also **no
-  SAIL anchor for GPU** (unlike the x86/ARM `decode(encode)=i` verified-to-bytes
-  story); SAIL has no authoritative PTX/SASS model.
+  theorem here and **no** GPU/SIMT semantics; a tile/GPU semantics and a
+  lowering-correctness theorem are outside this module's scope. There is also
+  **no SAIL anchor for GPU** (unlike the x86/ARM `decode(encode)=i`
+  verified-to-bytes chain); SAIL has no authoritative PTX/SASS model.
 
-The point of this increment is to prove the *emission path* end-to-end and to
-size the verification obligation, not to be a verified GPU prover.
+The module establishes the *emission path* end-to-end and sizes the
+verification obligation; it is not a verified GPU backend.
 -/
 
 @[expose] public section

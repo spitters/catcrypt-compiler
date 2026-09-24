@@ -12,10 +12,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.CarryEqLitIdiom
 set_option autoImplicit false
 
 /-!
-# C6 Instruction Selection: carry-add and is-equal-literal idioms
+# Instruction Selection: carry-add and is-equal-literal idioms
 
-This file is the `InstrSelect.lean` analogue for two further C6
-instruction-selection idioms. It lifts the BitVec-algebra keystones
+This file does for two further instruction-selection idioms what
+`InstrSelect.lean` does for `select`. It lifts the BitVec-algebra lemmas
 `addCarryWord_eq_twoAdds` and `isEqLitIdiom_eq` (`CarryEqLitIdiom.lean`) to the
 `Com jasminDialect` program level: it builds the `Com`s the
 instruction-selection pass chooses between and proves the
@@ -34,8 +34,8 @@ denotation-preservation obligations that license the choice.
 `(carryAddIdiomCom a b cin).denote V = (twoAddsCom a b cin).denote V` for every
 valuation, reducing both `.denote`s to closed `BitVec` forms and closing with
 `addCarryWord_eq_twoAdds` (after the `cin.setWidth w = BitVec.ofNat w cin.toNat`
-bridge, exactly as `InstrSelect.lean` did for the mask cast). This covers
-**all** of the keystone.
+bridge, exactly as `InstrSelect.lean` does for the mask cast). This covers
+the lemma in full.
 
 ## 2. Is-equal-literal (`isEqLitIdiom` = the spec value)
 
@@ -78,7 +78,7 @@ def carryAddIdiomCom {w : Nat} {Γ : Ctxt jasminDialect}
 /-! ## 2. Carry-add: two homogeneous adds idiom -/
 
 /-- The carry-add idiom as a multi-op `Com` over the homogeneous
-    register-arithmetic alphabet, denoting the keystone's right-hand side
+    register-arithmetic alphabet, denoting the lemma's right-hand side
     `(a + b) + (cin.setWidth w)`.
 
     The three bindings (in order) are `t1 = add a b`, `cw = castW 1 w cin`
@@ -97,7 +97,7 @@ def twoAddsCom {w : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 3. Carry-add instruction-selection soundness -/
 
-/-- **C6 carry-add instruction-selection soundness.**
+/-- **Carry-add instruction-selection soundness.**
 
     The efficient single-op `addCarryLo` program computes exactly what the
     homogeneous two-`add` idiom program computes, for every valuation. This is
@@ -105,7 +105,7 @@ def twoAddsCom {w : Nat} {Γ : Ctxt jasminDialect}
     to choose the single `ADCX`/`ADOX` over the two homogeneous adds.
 
     Proof: unfold both `Com.denote`s / `Expr.denote`s to their closed-form
-    `BitVec` expressions; the residual equality is the keystone
+    `BitVec` expressions; the residual equality is the lemma
     `addCarryWord_eq_twoAdds` after rewriting the cast `cin.setWidth w` to
     `BitVec.ofNat w cin.toNat`. -/
 theorem carryAddIdiom_denote {w : Nat} {Γ : Ctxt jasminDialect}
@@ -170,14 +170,14 @@ def eqLitIdiomCom {w : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 5. Is-equal-literal correctness (spec-level) -/
 
-/-- **C6 is-equal-literal idiom correctness** (spec-level).
+/-- **Is-equal-literal idiom correctness** (spec-level).
 
     The branchless equality-literal idiom program denotes to the closed `BitVec`
     form `isEqLitIdiom (a.lookup V) k`. Since `jasminDialect` has no single
     efficient equality op to select *to*, the honest obligation is
     `idiom.denote = isEqLitIdiom (lookup …) k` — the value-correctness
     certificate the front carries for the `thir_eqlit` leaf. The committed
-    keystone `isEqLitIdiom_eq` rewrites `isEqLitIdiom x k` to the spec
+    lemma `isEqLitIdiom_eq` rewrites `isEqLitIdiom x k` to the spec
     `if x = ofNat w k then 1#w else 0#w` for any `x : BitVec w` a consumer
     holds; that `if` is not restated here because its subject — the typed
     lookup `⟦.reg w⟧` — does not expose `BitVec w`'s `DecidableEq` to instance

@@ -16,7 +16,7 @@ set_option autoImplicit false
 /-!
 # The q̂ (q-hat) estimate and its at-most-2 correction — Knuth Theorem B
 
-**Phase 3, the load-bearing NEW obligation for the Knuth Algorithm D division
+**The key new obligation for the Knuth Algorithm D division
 kernel** (the multi-precision divide-and-conquer `mpn_divrem` / `mpn_tdiv_qr`).
 The Euclidean *output* contract is already pinned down and proved in
 `Mpn.DivRemSpec.lean` (`mpnDivRem_spec`); every other Knuth-D phase reuses the
@@ -24,7 +24,7 @@ already-verified `Mpn*Prototype` carry/borrow/limb-walk plumbing
 (`submul_1`, `mpnAddN`) and the per-digit remainder-window invariant is the
 radix-`2^64` lift of `longDivBits_spec`.
 
-The single genuinely-new proof obligation — the one with *no* analogue in the
+The single new proof obligation — the one with *no* analogue in the
 add/sub/mul plumbing — is the **correctness of the per-digit quotient estimate
 `q̂` and its at-most-2 correction** (`mpn.cpp` `div_n` lines 244–249, WhyMP's
 `wmpn_tdiv_qr`, s2n-bignum `bignum_divmod`).  The classical statement is

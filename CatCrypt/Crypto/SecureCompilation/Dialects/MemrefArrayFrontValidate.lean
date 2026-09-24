@@ -16,8 +16,8 @@ set_option autoImplicit false
 /-!
 # Front-emitted dynamic-index memref load/store reaching real `stackLoad`/`LOADIDX`
 
-This module validates the **Gap B** front path: a multi-pointer GF-MQ-shaped body
-whose array accesses (`RArrLoad` / `RArrStore`) are lowered by the `CProg`-free
+This module validates the dynamic-index memref front path: a multi-pointer
+GF-MQ-shaped body whose array accesses (`RArrLoad` / `RArrStore`) are lowered by the
 dialect front (`translateDialectControl`, via the `arrLoadCont` / `arrStoreCont`
 combinators) to the dialect's `memrefGetDyn` / `memrefSetDyn` op, and then by
 `DialectToJasminCom.cryptoDialectToJasminCom` to a real jasmin `stackLoad` /
@@ -31,7 +31,7 @@ arg pointers downstream), and `f` a scalar word op (here `XOR`, authored through
 the already-validated `RScalarSetExpr` arm). A read-back load of `out[i]` after the
 store exercises the store→load roundtrip through the real memref ops.
 
-`denote = spec` below is the load-bearing gate: had the front taken the opaque
+`denote = spec` below is the deciding gate: had the front taken the opaque
 `extCall` path, the dialect denotation would be `CryptoTy.default` (zero / opaque),
 so matching the schoolbook reference on non-trivial inputs witnesses that the
 **memref** ops were emitted. A syntactic `stackLoad`/`stackStore`-presence scan of
@@ -89,7 +89,7 @@ def inVM : VarMap inΓ :=
 
 /-! ## 3. The front-emitted dialect program (returns the read-back word `chk`) -/
 
-/-- Push `gfBody` through the `CProg`-free control front and cap with `ret chk`. -/
+/-- Push `gfBody` through the dialect control front and cap with `ret chk`. -/
 def frontComResult : Option (Com catCryptDialect inΓ (.sword 64)) :=
   match translateDialectControl inVM gfBody with
   | some r =>
@@ -136,7 +136,7 @@ def frontDenote (s mat out : Fin memN → BitVec 64) (i0 : BitVec 64) : Option (
 
 /-! ## 6. Gates -/
 
-/-- The body translates through the `CProg`-free control front. -/
+/-- The body translates through the dialect control front. -/
 theorem gfBody_translates :
     (translateDialectControlTop inVM gfBody).isSome := by native_decide
 

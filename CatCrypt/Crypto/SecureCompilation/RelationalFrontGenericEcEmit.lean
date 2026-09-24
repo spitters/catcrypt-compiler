@@ -63,7 +63,7 @@ at its leaf names — no per-curve `native_decide`, no per-curve boilerplate.  T
 statements at `"bls377_point_add"` / `"bls377_point_double"` recovers exactly
 the per-curve EC-routing facts, as one-line generic applications.
 
-## Honest scope
+## Scope
 
 As with the field-op consolidation, the claims here are purely **structural
 lowering**: that the owned front accepts the rendered EC-op bodies and emits one

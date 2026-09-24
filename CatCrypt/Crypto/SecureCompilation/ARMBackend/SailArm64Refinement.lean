@@ -329,7 +329,7 @@ theorem armStep_transcription_matches_model
 /-! ## 6. `TranscribedClauseMatchesArmModelGpAlu`: the proposition this file proves
 
 `ComToArmLsem.ArmBaseAluGrounded` records the whole-`Com` value-preservation
-keystone but is explicitly *not* a Sail-execute refinement — its GP-ALU coverage
+theorem but is explicitly *not* a Sail-execute refinement — its GP-ALU coverage
 is grounded only by the decode round-trip + qemu.
 `TranscribedClauseMatchesArmModelGpAlu` is what this module proves in its place:
 every GP-ALU op this file's own transcribed clause (§3) computes has its written
@@ -340,7 +340,7 @@ comments, and **not** a check against upstream sail-arm, which is not vendored
 here (see the module docstring). It is, in shape, the AArch64 analogue of
 RISC-V's value-level `RiscvBaseAluGrounded` — a same-file arithmetic fact about
 the transcription in §3, offered as evidence for (but not a machine-checked
-proof of) a genuine execute refinement. -/
+proof of) an execute refinement. -/
 
 /-- **The value match between this file's transcribed clause and `ArmModel`.**
     For every base-ALU op and every register state and operand registers

@@ -8,14 +8,14 @@ module
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# C8: the leaf registry and linker for the two crypto-authoring fronts
+# The leaf registry and linker for the two crypto-authoring fronts
 
-CatCrypt grows verified crypto kernels through **two complementary fronts**:
+CatCrypt builds verified crypto kernels through **two complementary fronts**:
 
-* **compile-from-hax** (`CompileFromHax.lean`, C2/C3): a hax-extracted `ImpExpr`
+* **compile-from-hax** (`CompileFromHax.lean`): a hax-extracted `ImpExpr`
   is compiled value-preservingly into a `Com jasminDialect`. This is the *outer*
   authoring front — whole crypto functions written in Rust and lowered.
-* **author-in-Com** fast leaves (`FAEST/Leaves.lean`, `LatticeToJasminDenote`,
+* **author-in-Com** fast leaves (`VIR/JasminSymmetricLeaves.lean`, `LatticeToJasminDenote`,
   the `VIR/*Emit.lean` kernels): a hand-tuned, separately-verified `Com` (or its
   spec) for a single named primitive (NTT, AES-128, SHAKE, a field multiply…).
 
@@ -47,7 +47,7 @@ worked example.
   it is the negacyclic-convolution theorem; for AES-128 it is the validated
   libjade/jasmin leaf KAT, cf. `FAEST.Leaves.AesLeafAgrees`). We therefore take
   `agrees` as a *field of the registry entry* / a *hypothesis of the linking
-  lemma*, not an `axiom`. Linking is honest: it composes a proved outer with a
+  lemma*, not an `axiom`. Linking composes a proved outer with a
   *carried* leaf obligation; it never invents the leaf's meaning.
 
 This mirrors the existing leaf-agreement vocabulary —
@@ -114,7 +114,7 @@ structure LeafSpec (w : Nat) where
   spec : (Fin n → BitVec w) → BitVec w
   /-- **The per-leaf obligation.** The opaque dialect call semantics
       `jasminExtSem name …` equals `spec` of the arguments (under `hvToFun`).
-      Carried, not an axiom: `jasminExtSem` is opaque on a genuine leaf name, so
+      Carried, not an axiom: `jasminExtSem` is opaque on a non-lattice leaf name, so
       this equality is the fast author's correctness proof. -/
   agrees : ∀ (args : HVector (fun t => ⟦t⟧) (callArgTys w n)),
       (jasminExtSem name (callArgTys w n) (rW w) args : ⟦rW w⟧)
@@ -201,8 +201,8 @@ The mechanical composition step. `linkNames R names` resolves *every* call name
 in `names` against the registry, returning the list of verified leaves (or
 `none` on the first unresolved name). For the toy outer below the list has one
 entry; the fold is the skeleton a multi-call outer drives. The value of the
-linker is the lemma above plus this honest "every call resolves to a verified
-leaf" gate. -/
+linker is the lemma above plus this "every call resolves to a verified leaf"
+gate. -/
 
 /-- Resolve a list of call names against the registry, collecting the verified
     leaves. `none` on the first unresolved name (an unlinked call — its meaning

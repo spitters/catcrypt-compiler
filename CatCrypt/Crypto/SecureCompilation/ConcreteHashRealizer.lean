@@ -23,7 +23,7 @@ NTT row.
 
 We exhibit, for each hash:
 
-* a genuine `RustVal`-byte codec (a real `JArray` byte array, not a constructor
+* a concrete `RustVal`-byte codec (a real `JArray` byte array, not a constructor
   wrapping the function): a little-endian `encode`/`decode` pair over the carrier
   `RustVal (.TBytes n)` (`n = 200` bytes = 1600 bits for Keccak, `n = 32` bytes =
   256 bits for SHA-256), and
@@ -50,7 +50,7 @@ TowerType `T` (`KernelRealizesT`), instantiated at `.TBytes 200` / `.TBytes 32`,
 which have enough room; `kernelRealizesT_TFp_iff` records that at `.TFp` this is
 *exactly* the registry predicate, so it is the same mechanism, carrier-generalized.
 
-## HONEST scope — what this proves and what it does NOT
+## Scope — what this proves and what it does NOT
 
 * **Proved (unconditional Lean theorem):** there is a *concrete* leaf realizer and
   a *concrete*, round-trip-verified byte codec under which the Keccak-f[1600] /
@@ -58,10 +58,10 @@ which have enough room; `kernelRealizesT_TFp_iff` records that at `.TFp` this is
   *assuming* the per-kernel KAT, because the byte-level decode-equals-hash-spec fact
   is a theorem here.  This discharges the per-kernel KAT for the hash families *for
   the spec-computing realizer*.
-* **NOT proved (the remaining residual):** that the *jasmin-emitted machine bytes*
+* **NOT proved (outside the scope):** that the *jasmin-emitted machine bytes*
   of the real Keccak-f / SHA-256 kernels equal this realizer (actual emitted
-  assembly ≡ `specLeafSpecT`).  That is the owned-machine-code route, a separate
-  follow-up.  This file removes the *encoding* KAT (the `decode ∘ encode = id`
+  assembly ≡ `specLeafSpecT`).  That is the owned-machine-code route, outside
+  this module.  This module removes the *encoding* KAT (the `decode ∘ encode = id`
   assumption); it does **not** remove the *machine-code* obligation.
 
 ## References
@@ -216,7 +216,7 @@ carrier (`RustVal .TFp = JArray 48`, 384 bits).  No round-trip `decode ∘ encod
 can exist there for `KeccakState = BitVec 1600` (a faithful injection needs ≥ 1600
 bits, far above 384 — pigeonhole), exactly as the NTT carrier note explains.  We
 re-state the unary predicate over an arbitrary carrier TowerType `T` whose
-`RustVal T = JArray T.storageBytes` is genuinely large enough — `.TBytes 200`
+`RustVal T = JArray T.storageBytes` is large enough — `.TBytes 200`
 (1600 bits) for Keccak, `.TBytes 32` (256 bits) for SHA-256 — and build a concrete,
 round-trip-verified realizer over it. -/
 
@@ -281,8 +281,8 @@ theorem kernelRealizesT_concrete {C : Type*} (T : TowerType)
     section is the theorem `decodeKbytes_encodeKbytes`.
 
     What is **not** proved here: that the jasmin-emitted machine bytes of the real
-    Keccak-f kernel equal this realizer (the owned-machine-code route — a separate
-    follow-up). -/
+    Keccak-f kernel equal this realizer (the owned-machine-code route, outside
+    this module). -/
 theorem keccak_realizes_concrete (steps : KeccakStepMappings) (limbStore : LimbStoreSpec) :
     KernelRealizesT (.TBytes 200) decodeKbytes (keccak_f steps)
       "keccak_f1600"
@@ -300,8 +300,8 @@ theorem keccak_realizes_concrete (steps : KeccakStepMappings) (limbStore : LimbS
     assumption: the section is the theorem `decodeSbytes_encodeSbytes`.
 
     What is **not** proved here: that the jasmin-emitted machine bytes of the real
-    SHA-256 compression kernel equal this realizer (the owned-machine-code route —
-    a separate follow-up). -/
+    SHA-256 compression kernel equal this realizer (the owned-machine-code route,
+    outside this module). -/
 theorem sha256_realizes_concrete (block : Fin 64 → UInt8) (limbStore : LimbStoreSpec) :
     KernelRealizesT (.TBytes 32) decodeSbytes (fun s => compress s block)
       "sha256_compress"

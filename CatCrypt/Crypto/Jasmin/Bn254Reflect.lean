@@ -15,7 +15,7 @@ This file is the BN254 analogue of `Bls12381Reflect.lean`. It adds BN254
 specific opaque surface types and `@[rust_cmd_pattern]` registrations so that
 pure-Lean BN254 G1 MSM and the EIP-197 2-pair pairing-product (the EVM
 precompile) can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## BN254 width table
@@ -27,7 +27,7 @@ precompile) can be lifted through the verified compiler chain
 | `Bn254G2Point`          |   128 | `TBytes 128` | 16                          |
 | `Bn254Fp12`             |   384 | `TBytes 384` | 48                          |
 
-These widths match the legacy Tier C emit (`bench/bn254_compare/bn254_emit.lean`)
+These widths match the string-templated emit (`bench/bn254_compare/bn254_emit.lean`)
 and the bn254 crate's on-wire layout (used by the EIP-196 / EIP-197 EVM
 precompiles).
 
@@ -54,7 +54,7 @@ the bn254 crate's `pairing_optimal` linked by the Rust KAT.
 * `CatCrypt/Crypto/Pairing/Bn254Emit.lean` — abstract `Bn254Primitives`,
   `EcLeafAgrees`, `PairingLeavesAgree`, `g1MsmFold_eq_msm`,
   `eip197VerifyCom_denote`, `pairingCom_denote`
-* `bench/bn254_compare/bn254_emit.lean` — legacy Tier C emit (superseded)
+* `bench/bn254_compare/bn254_emit.lean` — string-templated emit
 * `CatCrypt/Crypto/Jasmin/Bls12381Reflect.lean` — sibling pattern
 * EIP-196 / EIP-197 — published precompile test vectors
 -/
@@ -214,12 +214,12 @@ def eip197VerifyReified : ReifiedFunc :=
 #eval bn254G1MsmStepReified.retName                        -- __result
 #eval eip197VerifyReified.args.length                      -- 4
 
-/-! ## 8. BN254 pairing-tower FIELD leaves — reg-ptr verified-leaf ABI (#260)
+/-! ## 8. BN254 pairing-tower FIELD leaves — reg-ptr verified-leaf ABI
 
 The §1–§7 surface above keeps the whole pairing tower (`Fp2/Fp6/Fp12`, the
 Miller loop, the final exponentiation) inside the opaque `bn254_pairing` /
-`bn254_fp12_mul` leaves: the field arithmetic is composition-trusted (the #222
-path — the tower-composition layer is rustc/LLVM-compiled and linked through the
+`bn254_fp12_mul` leaves: the field arithmetic is composition-trusted (the
+tower-composition layer is rustc/LLVM-compiled and linked through the
 C/FFI shim, or — in the AUCurves direct reg-ptr emit — hits the jasminc regalloc /
 address-of-stack-array limit).
 
@@ -286,7 +286,7 @@ noncomputable instance : Inhabited Bn254Fp6 := ⟨Bn254Fp6.default⟩
 
 The AUCurves verified `Fp` word leaves + the mid-tower `Fp2`/`Fp6` leaves the
 tower op bodies chain over. The `Fp` leaves (`bn254_add`/`mul`/`sub`) are the
-same verified Montgomery leaves carried by `bn254_leaves.jinc` / the #219 emit;
+same verified Montgomery leaves carried by `bn254_leaves.jinc`;
 the `Fp2`/`Fp6` leaves are the next-lower tower ops, themselves emitted by this
 same reg-ptr orchestration (the tower is built leaf-over-leaf). -/
 
@@ -555,7 +555,7 @@ noncomputable def bn254Fp12MulLean (x y : Bn254Fp12) : Bn254Fp12 :=
 #eval bn254Fp2MulReified.retName        -- __re
 #eval bn254Fp12MulReified.retName       -- __c0
 
-/-! ## 9. Miller loop + final exponentiation surface (#225, L2+L3)
+/-! ## 9. Miller loop + final exponentiation surface
 
 Section §8 emitted the pairing-tower FIELD arithmetic (`Fp2/Fp6/Fp12` add/mul)
 as reg-ptr verified-leaf orchestrations. This section builds the **pairing

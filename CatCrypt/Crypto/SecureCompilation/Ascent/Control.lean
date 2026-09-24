@@ -8,9 +8,9 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 
 /-!
-# The ascent refinement calculus over LowCT — control phase
+# The ascent refinement calculus over LowCT — control
 
-Phase-4 control `Corres` lemmas dual to the straight-line leaves in `Corres.lean`,
+Control `Corres` lemmas dual to the straight-line leaves in `Corres.lean`,
 resting on the **real** `semScalar` control arms (`RFor`, `RIfNz`) rather than on a
 re-axiomatised loop/conditional semantics.
 

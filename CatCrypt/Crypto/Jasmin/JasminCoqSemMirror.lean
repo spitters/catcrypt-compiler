@@ -18,10 +18,9 @@ set_option autoImplicit false
 /-!
 # Mechanical port of jasminc's Coq operational semantics
 
-This file is a **line-by-line mechanical port** of the relevant subset of the
-jasminc Coq operational semantics (Phase B approach 2 of the AST-direct emit
-work). Every ported definition carries a `-- mirror of <file>:<line> (<name>)`
-provenance comment pointing back to the Coq source.
+This module is a **line-by-line mechanical port** of the relevant subset of the
+jasminc Coq operational semantics, for the AST-direct emit. Every ported
+definition carries a `-- mirror of <file>:<line> (<name>)` provenance comment pointing back to the Coq source.
 
 **Source repository**: the Jasmin `proofs/lang/` tree
 (reference, READ-ONLY).
@@ -57,7 +56,7 @@ contexts heavily. To preserve algebra without dragging in those dependencies:
 ## What this file deliberately does NOT do
 
 * No proofs (beyond `decide`-checked smoke tests in the demo file).
-* No bridge to `BignumExec` or the existing `JasminSem.lean`. That is Phase C.
+* No bridge to `BignumExec` or `JasminSem.lean`.
 * No port of the `asmOp` / `Sopn`-class infrastructure; we use an opaque
   `AsmOp` token plus an `AsmSem` user-supplied semantics function. This
   matches the existing `JasminAST.lean` and lets the user plug in any
@@ -102,7 +101,7 @@ instance : Monad JResult where
   pure := JResult.ok
   bind := JResult.bind
 
-/-! ### §0.a. Bind-fusion lemmas (2026-05-28)
+/-! ### §0.a. Bind-fusion lemmas
 
 These are the canonical algebraic laws of the `JResult` monad,
 exposed as `@[simp]` lemmas so that downstream proofs (and any
@@ -866,8 +865,7 @@ concrete unary/binary/n-ary semantics. -/
 
 /-- `OpSem` packages the user-supplied semantics for the surface unary,
     binary, and n-ary operators.  The Coq files factor this through the
-    `sem_sop1_typed` family; we accept any well-typed instance.  Plugging
-    this in is part of Phase C. -/
+    `sem_sop1_typed` family; we accept any well-typed instance. -/
 structure OpSem where
   sem_sop1 : SOp1 → Value → JResult Value
   sem_sop2 : SOp2 → Value → Value → JResult Value
@@ -934,7 +932,7 @@ def semPexpr (s : Estate SyscallState Mem) : Pexpr → JResult Value
             let vi ← semPexpr s e
             let _ ← vi.toInt
             -- get_sub: subarray extraction; abstracted to the same array for the mirror
-            -- (Phase C provides the exact byte-window semantics)
+            -- (the exact byte-window semantics is not modelled)
             .ok vr
         | _ => .typeError
   | .Pload al sz e =>                                                     -- psem_defs.v:139
@@ -1080,8 +1078,7 @@ variable {SyscallState Mem : Type} [MemModel Mem]
 
 /-- `AsmSem` packages the user-supplied semantics for the surface `Sopn`
     family.  The Coq side uses the dependent `asmOp`/`sopn_sem` machinery;
-    we accept any function from `(op, values)` to a list-of-output-values.
-    Plugging in real asm semantics is Phase C. -/
+    we accept any function from `(op, values)` to a list-of-output-values. -/
 structure AsmSem where
   sopn_sem : Sopn → Values → JResult Values
 
@@ -1241,17 +1238,15 @@ The relational `Sem` / `SemI` / `SemIr` above is the mechanical port of
 Coq's `Inductive sem`.  For `#eval` smoke tests we provide a
 fuel-bounded *functional* executor that drives the same judgement.  The
 functional and relational definitions agree by construction on
-straight-line code (Phase C: prove this as `semCmd_sound`). -/
+straight-line code (not proved here). -/
 
 section Exec
 variable {SyscallState Mem : Type} [MemModel Mem]
 variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
 
-/-! Backwards-compat note (2026-05-28): the `prog : Prog` parameter
-introduced for `Ccall` support is **explicit-with-default**
-(`:= Prog.empty`) on each executor entry point.  Existing call sites
-that omit it continue to type-check against the pre-`Ccall` signature;
-any `Ccall` encountered with the empty program returns
+/-! The `prog : Prog` parameter for `Ccall` support is
+**explicit-with-default** (`:= Prog.empty`) on each executor entry point.
+Call sites that omit it type-check; any `Ccall` encountered with the empty program returns
 `"execCall: unknown function …"` (which is the expected behaviour for
 that case). -/
 

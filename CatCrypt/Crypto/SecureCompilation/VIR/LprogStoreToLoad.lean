@@ -9,13 +9,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 
 /-!
-# `elimReloads`: verified redundant-reload elimination on the post-RA linear `Lprog` body (#555)
+# `elimReloads`: verified redundant-reload elimination on the post-RA linear `Lprog` body
 
-`StoreToLoadForward.lean` (#372/#412) eliminates redundant stack reloads on the
+`StoreToLoadForward.lean` eliminates redundant stack reloads on the
 hand-authored `JInstr 64` kernels (`fe25519_mul`, the X25519 ladder), carrying a
 full `runBlock`-equality translation-validation certificate against the validated
 `JasminModel`.  That pass is wired into the `optimizeX86Block` driver
-(`X86ComPipeline.lean`, the #555 core).
+(`X86ComPipeline.lean`).
 
 The owned **Keccak / FAEST** emit does **not** flow through that driver.  Its path
 is `Com (jasminDialect) → comToLfundefPhysAbi → Lcmd → physBody RA →
@@ -26,9 +26,9 @@ it.
 
 This module is the `Lprog`-IR sibling of `StoreToLoadForward`: an `Lcmd → Lcmd`
 **redundant-reload eliminator** that runs on the *post-RA physical* body, after
-two-address legalization has injected the scratch reloads.  It is the
-verified-native analogue of the gcc-O3 CSE win the #590 measurement identified —
-the lever there was not reordering (the `LprogScheduler` schedule gave ~1.01×) but
+two-address legalization has injected the scratch reloads.  It performs,
+with a verified certificate, the gcc-O3 optimization that matters on this
+body: not reordering (the `LprogScheduler` schedule gives ~1.01×) but
 **CSE of the redundant base-pointer / spill reloads** (`movq <off>(%rsp), %r14`
 repeated with no write in between).
 

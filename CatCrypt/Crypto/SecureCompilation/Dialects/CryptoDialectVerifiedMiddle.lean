@@ -19,10 +19,9 @@ into a context is the list-monoid concatenation of their `Com.leakTrace`s.
 verified middle: for every source and target context there is a source context
 (namely the target context — the back-translation is the identity at the dialect
 level, both contexts inhabiting `Com catCryptDialect Γ t`) whose linked leakage
-trace agrees. As in the `CProg` original this is reflexive, and faithfully so —
-the asymmetric-adversary version (target contexts observing more than source
-contexts) is out of scope on both IRs. Stated over `Com.leakTrace`, with no
-`CProg`.
+trace agrees. The statement is reflexive; the asymmetric-adversary version
+(target contexts observing more than source contexts) is outside its scope.
+Stated over `Com.leakTrace`.
 -/
 
 @[expose] public section
@@ -49,8 +48,8 @@ def linkedLeakTraceCom {Γ : Ctx} {t : CryptoTy}
     and dialect-level target context there is a source context whose linked
     leakage trace agrees; the witness is the target context itself (identity
     back-translation, both contexts in `Com catCryptDialect Γ t`). The dialect
-    analogue of `RHPVerifiedMiddle.RHP_leakage_verified_middle`, reflexive as in
-    the `CProg` original, over `Com.leakTrace`. -/
+    analogue of `RHPVerifiedMiddle.RHP_leakage_verified_middle`, reflexive, over
+    `Com.leakTrace`. -/
 theorem RHP_leakage_verified_middle_dialect {Γ : Ctx} {t : CryptoTy}
     (sourceProg : Com catCryptDialect Γ t) (targetCtx : DialectCtx Γ t) :
     ∃ sourceCtx : DialectCtx Γ t,

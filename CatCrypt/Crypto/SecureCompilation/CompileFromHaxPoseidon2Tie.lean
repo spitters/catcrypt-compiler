@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPoseidon2
 public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
-# #607 Phase 3 (Category-A tie): the compile-from-hax Poseidon2 round-loop body
+# Category-A tie: the compile-from-hax Poseidon2 round-loop body
 # equals the in-tree hand-authored `Poseidon2Emit.roundLoopBody` Com
 
 `CompileFromHaxPoseidon2.lean` proves that the verified compiler **emits** the
@@ -22,7 +22,7 @@ extracted `ImpExpr` source: there is a `Com jasminDialect (frontCtxt 64 1 [])`
 `Poseidon2Emit.roundLoopBody` is the **hand-authored** `Com jasminDialect [r64]
 r64` for the same body — two `regArith add` binders `v0 = acc+acc`, `v1 = v0+v0`,
 `ret v1` — the linear-arithmetic core the MDS layer's repeated additions reuse
-(`Poseidon2Emit §3`, partial-round loop keystone). Its context `[r64]` is
+(`Poseidon2Emit §3`, partial-round loop lemma). Its context `[r64]` is
 **definitionally** `frontCtxt 64 1 []` (`= List.replicate 1 (rW 64) = [.reg 64]`),
 so the compiled leaf and the hand-authored Com live in the *same* `Com` type.
 
@@ -40,9 +40,9 @@ independent in-tree verified `asconRound` body) and of `CompileFromHaxPlonky3Bb
 Tie` (emitted `bbMul` realizes the field op the soundness layer references): the
 compiler authors the round-loop body from extracted source, and it computes
 exactly the value the hand-authored `roundLoopBody` does — the one the
-partial-round loop keystone (`roundLoop_denote_eq`) iterates.
+partial-round loop lemma (`roundLoop_denote_eq`) iterates.
 
-## Honest scope
+## Scope
 
 * The tie is at the **MDS accumulator-doubling body** granularity — the linear
   `regArith` core (`4·x`). The Poseidon2 *S-box* (`x^7` via `bbMul`) and the full
@@ -100,7 +100,7 @@ The verified compiler emits a `Com` whose denotation equals the hand-authored
 
     The compiler authors the round-loop body from extracted source, and it
     computes exactly the value the hand-authored `roundLoopBody` does — the body
-    the partial-round loop keystone (`roundLoop_denote_eq`) iterates.
+    the partial-round loop lemma (`roundLoop_denote_eq`) iterates.
     Functional-equality tie; MDS-doubling-body scope (no S-box / permutation
     claim). -/
 theorem emittedRoundBody_eq_roundLoopBody :

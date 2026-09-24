@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
-# Jolt prover reflect surface — Tier 1 full-emit (ZK honesty roadmap)
+# Jolt prover reflect surface
 
 The Jolt zkVM prover's hot path is a sum-check (as in Spartan) *plus* the Lasso
 lookup argument, whose core is a grand-product / multiset-fingerprint
@@ -19,11 +19,10 @@ over the verified Baby Bear field kernels) realizes `(multisetPoly M).eval τ`,
 the evaluator the Lasso multiset-equality soundness bound quantifies over
 (Axis B).
 
-This file supplies the deferred **Axis-A** piece (`bench/spartan_compare/
-README.md` §"What is DEFERRED", item 1, applied to Jolt): the *prover
+This module supplies the **Axis-A** piece: the *prover
 orchestration* — sum-check rounds + the Lasso grand-product fingerprint +
 commit + PCS open — reflected through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, the same chain
+`LowCT → Com catCryptDialect → Jasmin`, the same chain
 `bench/plonky3_compare/fri_from_rustcmd.lean` runs for the Plonky3 FRI prover.
 The field arithmetic of the round evaluator and the grand product lives inside
 the opaque `jolt_sumcheck_round_eval` / `jolt_grand_product` leaves, whose
@@ -49,7 +48,7 @@ internal semantics are tied to `UnivariatePoly.eval` / `multisetPoly.eval` in
 
 The returned digest folds in the Lasso grand-product fingerprint (`out[i] =
 open[i] + gp · cᵢ` over Baby Bear), so a multiset/witness-only tamper that
-changes `gp` flips the returned proof digest (#370 faithfulness fix).
+changes `gp` flips the returned proof digest.
 
 We model each major step as one opaque leaf (matching the FRI reflect surface):
 
@@ -122,7 +121,7 @@ axiom jolt_round_poly (N : Nat) : JoltWitness → JoltRoundPoly N
 axiom jolt_commit_round (N : Nat) : JoltRoundPoly N → JoltDigest
 /-- Fiat–Shamir challenger squeeze. -/
 axiom jolt_challenger_squeeze : JoltDigest → JoltFelt
-/-- Evaluate a round polynomial at the challenge (Horner round, #347). -/
+/-- Evaluate a round polynomial at the challenge (Horner round). -/
 axiom jolt_sumcheck_round_eval (N : Nat) : JoltRoundPoly N → JoltFelt → JoltFelt
 /-- Lasso grand-product fingerprint `∏_{x ∈ M} (τ − x)` over the verified
     field kernels (`bbGrandProduct`, tied to `multisetPoly.eval` in
@@ -133,9 +132,8 @@ axiom jolt_pcs_open : JoltWitness → JoltDigest → JoltDigest
 /-- Fold the Lasso grand-product fingerprint into the proof digest, binding the
     returned proof to the multiset: `out[i] = open[i] + gp · cᵢ` over the
     verified Baby Bear field (distinct nonzero `cᵢ`), injective in `gp` per
-    limb. This is the #370 faithfulness fix: without it the orchestration output
-    is not cryptographically bound to the grand-product (multiset), so a
-    multiset-only tamper would not change the returned proof. -/
+    limb. This binds the orchestration output to the grand-product (multiset):
+    a multiset-only tamper changes the returned proof. -/
 axiom jolt_fold_gp : JoltDigest → JoltFelt → JoltDigest
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (n=3 rounds, |M|=8 lookups) -/
@@ -202,7 +200,7 @@ noncomputable def joltProverLean3 (w : JoltWitness) (lk : JoltLookups 8) :
   -- Lasso lookup argument: grand-product fingerprint at the multiset challenge
   let gp   := jolt_grand_product 8 lk a2
   let opn  := jolt_pcs_open w c0
-  -- #370 fix: fold the grand-product into the returned proof digest, so the
+  -- Fold the grand-product into the returned proof digest, so the
   -- orchestration output is cryptographically bound to the lookup multiset.
   jolt_fold_gp opn gp
 

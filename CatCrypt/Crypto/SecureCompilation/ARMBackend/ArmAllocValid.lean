@@ -26,7 +26,7 @@ The 64-bit bignum/field path threads a `GpAlloc` literal through the byte encode
 (`regProgToArmBytes (alloc : GpAlloc) (p : RegProg) :=
 ArmEncoder.encodeBBlock alloc (lowerBBlock (regToBOp p))`). The encoder resolves
 each register name through `gpOf alloc`; the same `GpAlloc` is the one the
-soundness keystone renames by. So the no-alias obligation `regToBOp_concreteAlloc_denote`
+renaming-soundness theorem renames by. So the no-alias obligation `regToBOp_concreteAlloc_denote`
 consumes is exactly `RenInjOn` of `gpOf alloc` on the block's names — and for a
 *concrete* kernel + a *concrete* `GpAlloc` it is **decidable**.
 
@@ -35,21 +35,20 @@ ARM Poseidon2 permutation leaf emits, written over the `RegStmt` IR in
 `ComToArmFront`). `bbMulValidAlloc` is a concrete s2n-style `xN` assignment of the
 kernel's eight live names; `decide` discharges `allocValidOn` for it, and the
 result is the **unconditional** regalloc-soundness `bbMul_concreteAlloc_denote` —
-the assumed certificate is now a proved fact for the real allocator output on this
-kernel.
+the certificate is a proved fact for the real allocator output on this kernel.
 
 ## General algorithm-validity lemma
 
 §3 records the cleanest general form: a `GpAlloc` whose `gpOf` is injective on the
 block names is `allocValidOn` (that *is* the definition, so it is `Iff.rfl` — the
-content is that the decidable certificate and the keystone hypothesis coincide).
-The genuinely-general "linear-scan always produces a no-alias map when the live set
-fits the pool" lemma is **not** proved here: on the `BInst` path no allocator
-*constructs* a `GpAlloc` from a `List BInst` (the shipped path supplies the map as
-a literal, e.g. `ArmEncoder.addp256Alloc`), so there is no algorithm to induct
-over. Closing it requires first generalizing `ArmAsmPrinter.allocGp` (currently
-`AInst`-specific via `ainstDstSrcs`) to `BInst` via `binstDstSrcs`, then proving
-the linear-scan distinct-live-names invariant. That is reported, not attempted.
+content is that the decidable certificate and the renaming-soundness hypothesis
+coincide). The fully general "linear-scan always produces a no-alias map when the
+live set fits the pool" lemma is outside the scope of this module: on the `BInst`
+path no allocator *constructs* a `GpAlloc` from a `List BInst` (the shipped path
+supplies the map as a literal, e.g. `ArmEncoder.addp256Alloc`), so there is no
+algorithm to induct over. Stating it requires generalizing `ArmAsmPrinter.allocGp`
+(`AInst`-specific via `ainstDstSrcs`) to `BInst` via `binstDstSrcs`, then proving
+the linear-scan distinct-live-names invariant.
 -/
 
 @[expose] public section
@@ -97,7 +96,7 @@ def bbMulValidAlloc : GpAlloc :=
 /-- **The no-alias certificate, discharged for the shipped allocation.** `gpOf
     bbMulValidAlloc` is injective on the names of the compiled-and-lowered
     `bbMulReg "d" "a" "b"` block (and `xzr`) — proved by `decide`, so the
-    translation-validation no-alias check the encoder relied on is now a theorem
+    translation-validation no-alias check of the encoder is a theorem
     for the real allocator output, not a trusted runtime check. -/
 theorem bbMul_allocValidOn :
     allocValidOn bbMulValidAlloc (lowerBBlock (regToBOp (bbMulReg "d" "a" "b"))) := by
@@ -120,17 +119,17 @@ theorem bbMul_concreteAlloc_denote (s t : BState)
         (lowerBBlock (regToBOp (bbMulReg "d" "a" "b"))))) :=
   regToBOp_concreteAlloc_denote bbMulValidAlloc (bbMulReg "d" "a" "b") bbMul_allocValidOn s t h
 
-/-! ## 3. General algorithm-validity: the decidable-certificate ⇔ keystone-hypothesis bridge
+/-! ## 3. General algorithm-validity: the decidable-certificate ⇔ soundness-hypothesis bridge
 
 The general "the allocator always produces a no-alias map" lemma needs an
 allocator that *constructs* a `GpAlloc` from a `List BInst`; the shipped bignum
 path has none (the map is a literal). What *is* general and clean is that the
 decidable certificate `allocValidOn` is, by definition, exactly the injectivity
-hypothesis the keystone consumes — so any allocation passing the decidable check
+hypothesis the renaming-soundness theorem consumes — so any allocation passing the decidable check
 (for any concrete kernel) is sound, with no further proof obligation. -/
 
-/-- The decidable no-alias certificate is *definitionally* the keystone's
-    injectivity hypothesis (`RenInjOn` of `gpOf alloc` on `"xzr" :: block names`).
+/-- The decidable no-alias certificate is *definitionally* the renaming
+    theorem's injectivity hypothesis (`RenInjOn` of `gpOf alloc` on `"xzr" :: block names`).
     Any `GpAlloc` whose decidable `allocValidOn` check passes therefore satisfies
     the exact precondition of `regToBOp_concreteAlloc_denote`. -/
 theorem allocValidOn_iff (alloc : GpAlloc) (block : List BInst) :

@@ -43,11 +43,10 @@ A minimal Jasmin-like leaf notation (`jexpr%`, §3) lands: it hides the
 `Expr` record boilerplate (`retTy_eq := rfl`, the `HVector` `.cons`/`.nil`
 spine) so a `Com jasminDialect` op reads `jexpr% (.regArith .mul 64) [x, y]`.
 `macColSugar_eq_leaf` proves a two-op kernel built this way is `rfl`-equal to
-the golden-path leaf `fe25519MacColLoCom`. What it does **not** yet hide is the
-typed de-Bruijn resolution (`.here` / `.there (.there …)`): turning a *named*
-kernel variable into its `Ctxt.Var` index needs a typed symbol-table elaborator
-(the index carries the proof its slot has the right `JasminTy`), which is the
-genuinely hard part — reported, not faked.
+the golden-path leaf `fe25519MacColLoCom`. The typed de-Bruijn resolution
+(`.here` / `.there (.there …)`) is outside its scope: turning a *named* kernel
+variable into its `Ctxt.Var` index needs a typed symbol-table elaborator (the
+index carries the proof its slot has the right `JasminTy`).
 -/
 
 @[expose] public section

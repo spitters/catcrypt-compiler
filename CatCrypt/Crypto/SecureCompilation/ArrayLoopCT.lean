@@ -16,7 +16,7 @@ The runtime-indexed array constructors `RArrLoad`/`RArrStore` already carry the
 A data-dependent (secret-indexed) array access is the canonical constant-time
 violation — a secret index leaks via the address trace — so the analysis is
 *right* to demand a public index, and `cmdCT_sound` turns `cmdCT = true` into
-genuine noninterference (Public-equivalent inputs ⇒ Public-equivalent outputs).
+noninterference (Public-equivalent inputs ⇒ Public-equivalent outputs).
 
 This file composes those facts into the end-to-end statement for the
 **NTT / coefficient-loop pattern**: a `for i in 0..n { dst[i] := f(src[i]) }`

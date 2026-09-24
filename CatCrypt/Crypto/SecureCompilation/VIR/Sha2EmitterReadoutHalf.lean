@@ -12,33 +12,33 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv
 /-!
 # SHA-2 emitter readout half — closing `EmitRoundDenotesClosedFormFaithful`
 
-Task #128 closes the readout half of the SHA-2 emitter composition that #115
-named as the residual. The denotation half of
-`EmitRoundDenotesClosedFormFaithful` was proven conditionally by #115; the
-faithfulness predicates by #124. What remained was discharging the
-existential's *readout half*: under faithful inputs, `readSt envF VF` after
-the 46-binding `emitRound` chain equals `roundClosedForm sp …` slot-by-slot.
+This module proves the readout half of the SHA-2 emitter composition. The
+denotation half of `EmitRoundDenotesClosedFormFaithful` is in
+`Sha2EmitterComposition`; the faithfulness predicates are in
+`Sha2EmitterInitEnv`. The *readout half* states that under faithful inputs,
+`readSt envF VF` after the 46-binding `emitRound` chain equals
+`roundClosedForm sp …` slot-by-slot.
 
 The strategy here is a single `simp` blast over the substrate's `@[simp]`
 slot-reading lemmas (`readSlot_envAfterOp_eq/_ne`, `readInp_envAfterOp`),
 discharging the slot-disjointness side conditions by `decide` over the
 concrete `Nat` constants (`wkA, t1S, t2S, sigS, chmS, scA, scB, scC, scD`).
 
-Together with the denotation-half discharge already in #115, this inhabits
+Together with the denotation half in `Sha2EmitterComposition`, this inhabits
 `EmitRoundDenotesClosedFormFaithful sp rt e V` for any width-faithful
-valuation. Plugged into #124's `emitRound_initEnv_eq_fips_sha{256,512}`,
+valuation. Plugged into `Sha2EmitterInitEnv.emitRound_initEnv_eq_fips_sha{256,512}`,
 the bridges become **unconditional**: SHA-2's emitted round denotes
 bit-exactly to FIPS 180-4 with no KAT dependence anywhere, modulo only the
-six `bv_decide` LRAT certs from #110's `crotr_eq_rotr_sha{256,512}`.
+six `bv_decide` LRAT certs from `Sha2DiffuseExact.crotr_eq_rotr_sha{256,512}`.
 
-## Status
+## Contents
 
 * `EmitRoundDenotesClosedFormFaithful_holds` (§2): the structural Prop is
-  inhabited as a *theorem*. No `sorry`, no `native_decide`.
+  inhabited as a *theorem*. All goals closed; no `native_decide`.
 
 * `emitRound_initEnv_eq_fips_sha256_unconditional`,
   `emitRound_initEnv_eq_fips_sha512_unconditional` (§3): the unconditional
-  forms of #124's bridges — `EmitRoundDenotesClosedFormFaithful` hypothesis
+  forms of the `Sha2EmitterInitEnv` bridges — `EmitRoundDenotesClosedFormFaithful` hypothesis
   dropped.
 
 ## Axiom budget
@@ -63,30 +63,30 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
 open CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition
 open CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv
 
-/-! ## 1. The three-phase discharge strategy
+/-! ## 1. The discharge strategy
 
 `emitRound` is a 46-binding chain through 5 FIPS sub-blocks. The
 strategy that closes the readout half:
 
-* **Phase 0 — Substrate rewrites.** Unfold `emitRound` and rewrite the
+* **Step 0 — Substrate rewrites.** Unfold `emitRound` and rewrite the
   helper chain through the substrate's `_denote` lemmas
   (`emitOp_denote`, `cp_denote'`, `sigma_branch_rotr`, `or_self_apply`).
   Refine the existential by `rfl`; the unifier picks `envF`, `VF`.
 
-* **Phase 1 — Slot-disjointness simp blast.** A single `simp` blast over
+* **Step 1 — Slot-disjointness simp blast.** A single `simp` blast over
   the substrate's `@[simp]` slot-reading lemmas
   (`readSlot_envAfterOp_eq/_ne`, `readInp_envAfterOp`) with
   `decide := true` collapses every read at a concrete working/scratch
   slot (`100..117`). The only reads that survive are at the symbolic
   schedule slot `rt`.
 
-* **Phase 2 — `rt`-disjointness rewrites.** Pre-derive `rt ≠ d` for
+* **Step 2 — `rt`-disjointness rewrites.** Pre-derive `rt ≠ d` for
   every chain write target `d ∈ {110..117}` from `hrt : rt < wkA = 100`,
   then iterate `rw [readSlot_envAfterOp_ne … _ rt h_rt_d]` per layer.
   This peels off the remaining envAfterOp layers in the chain reads
   at slot `rt`.
 
-* **Phase 3 — Algebraic normalisation.** Unfold `JasminBinOp.{add, xor,
+* **Step 3 — Algebraic normalisation.** Unfold `JasminBinOp.{add, xor,
   and, or, shl, shr}.apply` (→ `+`/`^^^`/`&&&`/`|||`/`<<<`/`>>>`) and
   the closed-form definitions (`cBigSigma`, `cCh`, `cMaj`, `crotr`).
   Apply the faithfulness rewrites `hAmt _ hSig*` for each shift amount
@@ -148,7 +148,7 @@ theorem EmitRoundDenotesClosedFormFaithful_holds
   have h_rt_115 : rt ≠ 115 := by unfold wkA at hrt; omega
   have h_rt_116 : rt ≠ 116 := by unfold wkA at hrt; omega
   have h_rt_117 : rt ≠ 117 := by unfold wkA at hrt; omega
-  -- Phase 1: rewrite all reads at fixed working/scratch slots {100..117}
+  -- Step 1: rewrite all reads at fixed working/scratch slots {100..117}
   -- via the substrate's @[simp] set with `decide := true` (every Nat
   -- side-condition is decidable: 100 ≠ 110, 100 ≠ 113, etc.). This
   -- collapses all reads except those at the symbolic schedule slot `rt`.
@@ -157,7 +157,7 @@ theorem EmitRoundDenotesClosedFormFaithful_holds
     readSlot_envAfterOp_eq, readSlot_envAfterOp_ne,
     readInp_envAfterOp,
     wkA, t1S, t2S, sigS, chmS, scA, scB, scC, scD]
-  -- Phase 2: discharge the residual `readSlot (envAfterOp_chain) (V.extend_chain) rt`.
+  -- Step 2: discharge the remaining `readSlot (envAfterOp_chain) (V.extend_chain) rt`.
   -- Loop until no more `readSlot_envAfterOp_ne` rewrites apply.
   -- Each iteration peels off one chain layer of the read at slot `rt`.
   repeat (first
@@ -169,7 +169,7 @@ theorem EmitRoundDenotesClosedFormFaithful_holds
     | rw [readSlot_envAfterOp_ne _ 115 _ _ rt h_rt_115]
     | rw [readSlot_envAfterOp_ne _ 116 _ _ rt h_rt_116]
     | rw [readSlot_envAfterOp_ne _ 117 _ _ rt h_rt_117])
-  -- Phase 3: normalize LHS = RHS via algebraic identities.
+  -- Step 3: normalize LHS = RHS via algebraic identities.
   -- Unfold `JasminBinOp.xx.apply` (→ `+`/`&&&`/`|||`/`^^^`/`>>>`/`<<<`) and
   -- the closed-form definitions (`cBigSigma`, `cCh`, `cMaj`, `crotr`) so
   -- both sides reduce to a common BitVec expression in the original `(e, V)`
@@ -190,7 +190,7 @@ theorem EmitRoundDenotesClosedFormFaithful_holds
 
 /-! ## 3. Unconditional FIPS bridges for the emitter on `initEnv`
 
-With `EmitRoundDenotesClosedFormFaithful` now inhabited as a theorem,
+With `EmitRoundDenotesClosedFormFaithful` inhabited as a theorem,
 `Sha2EmitterInitEnv.emitRound_initEnv_eq_fips_sha{256,512}` can drop its
 `hProp` hypothesis. The resulting statements are the **unconditional**
 FIPS bit-exact identities: under a faithful runtime store (the input layout

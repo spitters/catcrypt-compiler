@@ -22,7 +22,7 @@ through before MLIR lowering.  It composes the two stages:
    uncompute-after-last-use (`UncomputePass.uncompute`), then trailing
    dead-let elimination (`ComDCE.comDCE`).
 
-Both stages carry genuine (non-`rfl`) denotation-preservation proofs and run
+Both stages carry (non-`rfl`) denotation-preservation proofs and run
 under the same constant environment `k`, so they compose directly.  The result
 is the general-purpose optimizer `comCanonical`, wired into the MLIR emit entry
 `MLIRBackend.emitFuncCanon` so it applies to **every** emitted kernel.

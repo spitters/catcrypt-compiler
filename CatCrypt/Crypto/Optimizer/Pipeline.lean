@@ -21,14 +21,13 @@ public import CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
-# Pass Pipeline Orchestrator (Tier 4.1)
+# Pass Pipeline Orchestrator
 
 Composes per-pass denotational-equivalence theorems into a single
 `pipeline_denote_eq` meta-theorem.  Lets passes compose without
 re-proving end-to-end after each new pass.
 
-Per the verified-optimizing-compiler plan, this is the orchestration
-layer for Tier 1 (local arithmetic), Tier 2 (loop and data layout),
+This is the orchestration layer for Tier 1 (local arithmetic), Tier 2 (loop and data layout),
 and Tier 3 (algorithmic rewrites) passes.
 
 ## Architecture
@@ -218,8 +217,8 @@ passes.  Consumers instantiate these in protocol bridge files. -/
 /-- Empty pipeline — useful as a placeholder. -/
 def emptyPipeline : List OptimizerPass := []
 
-/-- Tier 1 unconditional passes (placeholders — populated as passes
-    land). -/
+/-- Tier 1 unconditional passes (empty; the conditional Tier 1 passes are in
+    `tier1ConditionalPipeline`). -/
 def tier1Pipeline : List OptimizerPass :=
   -- TODO: add identityPass-style placeholders for:
   --   - constFold
@@ -227,7 +226,7 @@ def tier1Pipeline : List OptimizerPass :=
   -- Conditional passes (Barrett, Montgomery) go in tier1ConditionalPipeline.
   []
 
-/-! ### Tier 1.1 — Barrett reduction pass
+/-! ### Tier 1 — Barrett reduction pass
 
 Wraps `BarrettReduce.barrettReduce q` and its agreement precondition
 `barrettAgreesModQ leafSpec q`.  Two protocol-specific specialisations
@@ -250,7 +249,7 @@ def barrettMlkemPass : OptimizerPassWithPrecond := barrettPass 3329
 /-- Barrett pass specialised for ML-DSA-65 (`q = 8380417`). -/
 def barrettMldsaPass : OptimizerPassWithPrecond := barrettPass 8380417
 
-/-! ### Tier 1.2 — Montgomery reduction pass
+/-! ### Tier 1 — Montgomery reduction pass
 
 Wraps `MontgomeryReduce.montgomeryReduce q R` and its agreement
 precondition `montAgreesMulModQ leafSpec q R`. -/
@@ -285,7 +284,7 @@ def tier1ConditionalPipelineMldsa : List OptimizerPassWithPrecond :=
 
 /-! ### Tier 3 — algorithmic rewrites
 
-Pass 3.1 (NTT-backed poly-mul) is the first Tier-3 entry.  It wraps
+The NTT-backed poly-mul pass is a Tier 3 entry.  It wraps
 `Lattice.NTTPolyMul.nttPolyMul q n` together with its agreement
 precondition `nttAgreesPolyMul · q n` and the closing equivalence
 theorem.
@@ -297,7 +296,7 @@ construction (algebraic).
 -/
 
 open CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul in
-/-- Pass 3.1 specialised to ML-KEM-768: `q = 3329`, `n = 256`. -/
+/-- The NTT poly-mul pass specialised to ML-KEM-768: `q = 3329`, `n = 256`. -/
 def nttPolyMulMlkemPass : OptimizerPassWithPrecond where
   rewrite := nttPolyMulMlkem
   precond leafSpec := nttAgreesPolyMul leafSpec 3329 256
@@ -305,14 +304,14 @@ def nttPolyMulMlkemPass : OptimizerPassWithPrecond where
     nttPolyMulMlkem_denote_eq N leafSpec hAgree c rs rs'
 
 open CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul in
-/-- Pass 3.1 specialised to ML-DSA-65: `q = 8380417`, `n = 256`. -/
+/-- The NTT poly-mul pass specialised to ML-DSA-65: `q = 8380417`, `n = 256`. -/
 def nttPolyMulMldsaPass : OptimizerPassWithPrecond where
   rewrite := nttPolyMulMldsa
   precond leafSpec := nttAgreesPolyMul leafSpec 8380417 256
   denote_eq N leafSpec hAgree c rs rs' :=
     nttPolyMulMldsa_denote_eq N leafSpec hAgree c rs rs'
 
-/-- Tier 3 conditional passes — algorithmic rewrites.  Currently just
+/-- Tier 3 conditional passes — algorithmic rewrites:
     the ML-KEM specialisation of the NTT poly-mul pass.  ML-DSA's
     specialisation lives in `nttPolyMulMldsaPass`; protocol bridges
     typically pick the one matching their `(q, n)` parameters rather
@@ -324,15 +323,15 @@ def tier3MlkemPipeline : List OptimizerPassWithPrecond :=
 def tier3MldsaPipeline : List OptimizerPassWithPrecond :=
   [nttPolyMulMldsaPass]
 
-/-! ### Tier 3.2 — `invntt` hoist (observational pass)
+/-! ### Tier 3 — `invntt` hoist (observational pass)
 
-Pass 3.2 (`Lattice.NTTHoist.nttHoist`) runs *after* Pass 3.1: 3.1 turns
-`poly_mul` into `ntt_poly_mul_{q}_{n}`, and 3.2 recognises an
+The hoist (`Lattice.NTTHoist.nttHoist`) runs *after* the NTT poly-mul pass: the
+latter turns `poly_mul` into `ntt_poly_mul_{q}_{n}`, and the hoist recognises an
 accumulate-loop of those calls and hoists the per-iteration `invntt` into
 a single one after the loop (NTT-domain accumulation in between).
 
-**Soundness is weaker than the Tier-3.1 passes and is deliberately not an
-`OptimizerPass`.**  The Tier-3.1 `denote_eq` is a *full state*
+**Soundness is weaker than for the NTT poly-mul pass, so the hoist is not an
+`OptimizerPass`.**  The poly-mul pass's `denote_eq` is a *full state*
 equivalence (`RustExec (rewrite c) rs rs' ↔ RustExec c rs rs'`).  The
 hoist restructures the program — the rewritten loop leaves `prod` in the
 NTT domain and accumulates in the NTT domain — so the post-states differ
@@ -341,7 +340,7 @@ only when that accumulator is zero at loop entry (so `invntt 0 = 0`
 applies).  The certificate is therefore the **observational** theorem
 `NTTHoist.nttHoist_maccLoop_eq` (output `acc` agrees, under leaf-additivity
 of `invntt` and a zeroed-accumulator entry state), not an unconditional
-state equivalence.  This is why Pass 3.2 is registered as a composed
+state equivalence.  This is why the hoist is registered as a composed
 *rewrite* (`tier3MlkemHoisted`) rather than appended to
 `tier3MlkemPipeline : List OptimizerPassWithPrecond`. -/
 
@@ -354,18 +353,18 @@ def nttHoistMlkem : LowCT → LowCT := nttHoist 3329 256
 /-- ML-DSA-65 hoist rewrite (`q = 8380417`, `n = 256`). -/
 def nttHoistMldsa : LowCT → LowCT := nttHoist 8380417 256
 
-/-- ML-KEM-768 Tier-3 + Tier-3.2: first the NTT poly-mul rewrite, then the
+/-- ML-KEM-768 poly-mul + hoist: first the NTT poly-mul rewrite, then the
     `invntt` hoist.  This is the rewrite the optimizer actually applies to
     a `polyvec_dot`-shaped kernel; its observable correctness is
     `NTTHoist.nttHoist_maccLoop_eq` (see the section docstring). -/
 def tier3MlkemHoisted : LowCT → LowCT :=
   nttHoistMlkem ∘ nttPolyMulMlkem
 
-/-- ML-DSA-65 Tier-3 + Tier-3.2 rewrite. -/
+/-- ML-DSA-65 poly-mul + hoist rewrite. -/
 def tier3MldsaHoisted : LowCT → LowCT :=
   nttHoistMldsa ∘ nttPolyMulMldsa
 
-/-! ### Tier 3.2 smoke test
+/-! ### Hoist smoke test
 
 The composed `tier3MlkemHoisted` rewrite, applied to a canonical
 `polyvec_dot`-shaped kernel (accumulator `acc` and scratch `prod`
@@ -442,7 +441,7 @@ theorem optimizer_preserves_simulates
   ↔ RustExec N leafSpec c rs rs' :=
   applyPipeline_denote_eq passes N leafSpec c rs rs'
 
-/-! ## §7.5  Intra-block instruction scheduling (#273) wired in
+/-! ## §7.5  Intra-block instruction scheduling wired in
 
 The ILP list scheduler (`SchedulerPass.scheduleBlock`) is a
 `LowCT → LowCT` reorder, but its certificates are phrased over a
@@ -454,7 +453,7 @@ level: the emit entry point presents a hot basic block as a
 algebraic/strength-reduction passes (Barrett, Montgomery, NTT, …) run on
 the scheduled block.
 
-Per #273 / #209 the scheduler is *perf-neutral on a wide out-of-order
+The scheduler is *perf-neutral on a wide out-of-order
 core* (Zen4 reorders the independent multiplies regardless of static
 issue order) — it is a free, verified transform, not a guaranteed win.
 The point of wiring it in is composability: the composed transform
@@ -472,7 +471,7 @@ open CatCrypt.Crypto.Optimizer.SchedulerPass
 
 /-- Schedule a hot block (`List BBStmt`) for ILP, then run the verified
     `LowCT → LowCT` pipeline on the scheduled block.  This is the
-    emit entry point that composes the #273 scheduler with the existing
+    emit entry point that composes the ILP scheduler with the existing
     Barrett/Montgomery/NTT passes (peephole + algebraic canonicalisation
     happen one IR up, on the VIR `Com jasminDialect`; see
     `Optimizer.Rewrite.ComPipeline`). -/
@@ -509,7 +508,7 @@ theorem scheduled_ct_eq (lt : LevelTable) (leafCT : LeafCTTable)
   = cmdCT (blockToCmd b) lt leafCT :=
   scheduleBlock_isCT_eq lt leafCT b
 
-/-! ## §7.6  Default `JForProg`-level optimisation pipeline (W5 / #305)
+/-! ## §7.6  Default `JForProg`-level optimisation pipeline
 
 The composition for the typed VIR IR (`JForProg accTy`, a bounded for-loop
 whose body is a `Com jasminDialect [accTy] accTy`). `optPipelineJ` sequences
@@ -527,10 +526,10 @@ allocator with a semantic theorem is `physScanSpill`
 
 Applied left-to-right:
 
-1. **CSE / GVN (#210)** — `analyzeCse` then `applyCse`
+1. **CSE / GVN** — `analyzeCse` then `applyCse`
    (`CommonSubexprElim.lean`); denote: `applyCse_denote_preserves`,
    CT: `applyCse_preserves_CT`.
-2. **Strength reduction (#210 family)** — `analyzeStrengthReduce` then
+2. **Strength reduction** — `analyzeStrengthReduce` then
    `applyStrengthReduce` (`StrengthReduce.lean`); denote:
    `applyStrengthReduce_denote_preserves`, CT:
    `applyStrengthReduce_preserves_CT`.
@@ -547,7 +546,7 @@ because each stage is the identity.
 
 ### Passes composed elsewhere / deferred (and why)
 
-* **Egraph equality-saturation + peephole (#274)** — composed in
+* **Egraph equality-saturation + peephole** — composed in
   `Optimizer.Rewrite.ComPipeline.comAlgebraicPipeline`, over a bare
   `Com jasminDialect Γ t` (not `JForProg`).  Its preservation theorem
   `comAlgebraicPipeline_denote` is **conditional** on a known-constant
@@ -556,7 +555,7 @@ because each stage is the identity.
   the algebraic-canonicalisation stage that runs on the body `Com` before
   this loop-level pipeline; we re-export it as `optComAlgebraic` below for
   callers that have a `KEnv`, and chain it in `optPipelineJ_withAlgebraic`.
-* **Loop unrolling (#139)** — `JForProgUnroll.lean` packages unrolling as a
+* **Loop unrolling** — `JForProgUnroll.lean` packages unrolling as a
   *witness* (`UnrolledBy p N` carrying the unrolled program + a
   `step_eq`/`factor_correct` proof), not as a total `JForProg → JForProg`
   function: the unrolled body Com is produced by the emit pass, not
@@ -565,12 +564,12 @@ because each stage is the identity.
   emit-pass obligation `ctSafeJasmin u.unrolled.update … = true`.  We expose
   `optPipelineJ_afterUnroll` that chains the unroll witness in front of the
   core pipeline, taking the unroll witness as a hypothesis.
-* **Verified vectorizer (#68/#108)** — the lane-ring `scalarFold`
+* **Verified vectorizer** — the lane-ring `scalarFold`
   construction (`LaneMap.lean`, `VectorReduce.lean`) is, like unrolling, a
   per-kernel construction with a `scalarFold_eq_hsum`-style equality rather
   than a uniform `JForProg → JForProg` rewrite; deferred for the same
   structural reason.
-* **Instruction scheduler (#273)** — composed at the `LowCT` block level
+* **Instruction scheduler** — composed at the `LowCT` block level
   in `scheduleThenPipeline` / `scheduledThenPipeline_denote_eq` above
   (§7.5).  It reorders a `List BBStmt`, one IR down from `JForProg`, so it
   belongs to that entry point, not this one. -/
@@ -586,7 +585,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
 open CatCrypt.Crypto.Jasmin.LowCT (SecretLevel)
 open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
-/-- **The default `JForProg`-level optimisation pipeline (W5 / #305).**
+/-- **The default `JForProg`-level optimisation pipeline.**
 
     Sequences four analysis-then-apply stages: CSE → strength reduction →
     dead-code elimination → register allocation. Each `apply*` function
@@ -715,7 +714,7 @@ structure JForProgPass (accTy : JasminTy) where
     analysis `analyzeDce` into the rewrite `applyDce`, discharging the
     record's denotation/CT obligations from `DeadCodeElim`'s proved
     `applyDce_denote_preserves` / `applyDce_preserves_CT`.  This is the pass
-    `optPipelineJ` runs as its third stage, now exposed as a stand-alone list
+    `optPipelineJ` runs as its third stage, exposed as a stand-alone list
     element feeding `applyJForProgPipeline`. -/
 def dcePass (accTy : JasminTy) : JForProgPass accTy where
   rewrite p := applyDce p (analyzeDce p)

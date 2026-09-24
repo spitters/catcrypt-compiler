@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 
 /-!
-# Field lowering (#482-2) — the L3 → L2 (Field → ModArith) step
+# Field lowering — the L3 → L2 (Field → ModArith) step
 
 The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
@@ -136,7 +136,7 @@ theorem fp6_compose_denote {p : Nat} (ξ0 : ZMod p) (x y : Fp6Val p) :
 
 /-- The **explicit `Fp6` schoolbook schedule** built from the lowered `Fp2`
     schedule (`Fp2MulSchedule`), `Fp2`-add/sub, and the `mul_xi` twist —
-    the #223 `Fp6` Karatsuba/Toom optimization pass *expressed over the lowered
+    the `Fp6` Karatsuba/Toom optimization pass *expressed over the lowered
     `Fp2` ops*.  This is the realisation the lowering emits for `ext6Mul`:
     `c0 = a0 b0 + ξ(a1 b2 + a2 b1)`, `c1 = a0 b1 + a1 b0 + ξ(a2 b2)`,
     `c2 = a0 b2 + a1 b1 + a2 b0`, every product an `Fp2MulSchedule`. -/
@@ -172,7 +172,7 @@ def Fp12MulSchedule {p : Nat} (ξ0 : ZMod p) (x y : Fp12Val p) : Fp12Val p :=
 
 /-- **Denotation preservation, `Fp12` multiply.** The explicit `Fp12` Karatsuba
     schedule over the lowered `Fp6` schedule + `mul_by_v` twist equals the
-    abstract `Fp12` product — the `GT`-field lowering (#357). -/
+    abstract `Fp12` product — the `GT`-field lowering. -/
 theorem fp12MulSchedule_denote {p : Nat} (ξ0 : ZMod p) (x y : Fp12Val p) :
     Fp12MulSchedule ξ0 x y = ext12MulF ξ0 x y := by
   simp only [Fp12MulSchedule, ext12MulF, Fp12Val.mul, fp6MulSchedule_denote, ext6MulF]

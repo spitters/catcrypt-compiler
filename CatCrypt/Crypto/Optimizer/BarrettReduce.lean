@@ -25,7 +25,7 @@ a Jasmin/libcrux implementation.
 
 ## Composition
 
-This pass is one slot in the optimizer pipeline (orchestrator Tier 4.1).
+This pass is one slot in the optimizer pipeline.
 The orchestrator composes the per-pass equivalences into the global
 `optimize_denote_eq` correctness theorem.
 -/

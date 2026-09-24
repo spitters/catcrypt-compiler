@@ -310,8 +310,8 @@ def bignumMul2Com : Com catCryptDialect Γ₄ (.sword 64) :=
 
 /-- **The 2×2 dialect schoolbook multiply denotes EXACTLY the spec's top limb.**
 
-    The first bignum-MULTIPLY-through-`catCryptDialect` `denote = spec` witness:
-    the `Com catCryptDialect` built from the keystone `bvMul`/`bvMulHi`/
+    A bignum-MULTIPLY-through-`catCryptDialect` `denote = spec` witness:
+    the `Com catCryptDialect` built from the `bvMul`/`bvMulHi`/
     `bvAddCarryLo`/`bvAddCarryHi` ops computes precisely the top product limb
     `p3` of the clean schoolbook spec `bignumMul2Spec`. -/
 theorem bignumMul2Com_denote (a0 a1 b0 b1 : BitVec 64) :
@@ -384,7 +384,7 @@ positional weights `(1, 2⁶⁴, 2¹²⁸, 2¹⁹²)`. A fully general `bv_decid
 `maxValue` corner (all-ones limbs — the maximal-carry case that exercises every
 carry-out in the chain) via `native_decide`. -/
 
-/-- **Non-vacuity: the schoolbook spec computes the genuine 256-bit product** at
+/-- **Non-vacuity: the schoolbook spec computes the 256-bit product** at
     the maximal-carry all-ones input — recombining `(p0,p1,p2,p3)` with the
     positional weights gives exactly `(2⁶⁴-1 + (2⁶⁴-1)·2⁶⁴)²`. This exercises
     every carry-out in the chain (the hardest case), confirming the partial-

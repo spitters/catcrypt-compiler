@@ -31,9 +31,9 @@ the pattern of the template `ArithGoldenPathField.lean`:
   de Bruijn-identical to its jasmin twin (only op names and `.int 64` vs `.reg 64`
   differ);
 * `denote = <spec>` is the **same** `BitVec` proof as the jasmin twin (the arith
-  denote was *defined* equal to the jasmin image), so the value lemmas
+  denote is *defined* equal to the jasmin image), so the value lemmas
   (`fieldMul_widening`, `fieldAdd_carry_reconstruct`, the borrow/mod specs) port
-  verbatim over the new denotes;
+  verbatim over the arith denotes;
 * `ArithOK64` (one constructor per op, each `width = 64` by `rfl`) ⇒
   `lowerArithToJasmin_ComOK` ⇒ the lowered jasmin kernel is `ComOK`, so it rides the
   existing `com_arm_e2e` / `com_riscv_e2e` emit;
@@ -132,7 +132,7 @@ theorem fieldMulHiArithCom_denote (x0 x1 : BitVec 64) :
 /-- **The `mul` value step that closes the golden path**: the low and high output
     words reassemble to the exact 128-bit integer product, `lo + hi · 2^64 = a · b`.
     The same `MontMulFragmentDemo.mulx_reconstruct` widening law as the jasmin twin,
-    now over the neutral-`arith` denotes. -/
+    here over the neutral-`arith` denotes. -/
 theorem fieldMul_widening (x0 x1 : BitVec 64) :
     (Com.denote fieldMulLoArithCom (.cons x0 (.cons x1 .nil))).toNat
       + (Com.denote fieldMulHiArithCom (.cons x0 (.cons x1 .nil))).toNat * 2 ^ 64

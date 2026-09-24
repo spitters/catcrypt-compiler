@@ -22,34 +22,35 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 -- Control-flow foundation (labeled, program-indexed, fuel-bounded lsem — for loops/branches).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
--- Single counted-loop simulation (item 4c): the loop control-flow structure (back-edge Lcond, n-fold
+-- Single counted-loop simulation: the loop control-flow structure (back-edge Lcond, n-fold
 -- iteration, halt-on-fallthrough, public-counter CT) over loopLR = the real loopLcmd MINUS the explicit CMP
--- (loopLR_eq_loopLcmd_dropCmp). Documented gaps: the literal-CMP/flag arm (needs a flag register), and the
--- general JForProg value bridge.
+-- (loopLR_eq_loopLcmd_dropCmp). The literal-CMP/flag arm and the general JForProg value bridge are in
+-- JasminLsemLoopFlag.
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
--- Front control-flow bridge (item 4d): FrontControlLsem ties the LowCT front RFor/RIfNz RustExec denotations to
--- the REAL emitted loop (4c loopLcmd shape) / Lcond branch (4a/4b labeled lsem). front_control_lsem_correct_and_robust:
+-- Front control-flow bridge: FrontControlLsem ties the LowCT front RFor/RIfNz RustExec denotations to
+-- the REAL emitted loop (loopLcmd shape) / Lcond branch (labeled lsem). front_control_lsem_correct_and_robust:
 -- (loop) front n-fold = emitted loop lsem run + state-independent leak; (branch) front two-branch = emitted Lcond
 -- decision + constant [branch] leak. The front↔emitted body tie is the named FrontLoopEncodes.comm edge (carried,
--- like 4c's bodyStep). Public-control-flow CT hypotheses explicit (public trip count / public scrutinee).
+-- like JasminLsemLoop's bodyStep). Public-control-flow CT hypotheses explicit (public trip count / public
+-- scrutinee).
 public import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
--- Loop fidelity completion (item 4c-full): JasminLsemLoopFlag closes 4c's two gaps. LstateF (additive flag-state
+-- Loop fidelity: JasminLsemLoopFlag. LstateF (additive flag-state
 -- wrapping LstateP) + a CMP arm runs the LITERAL loopLcmd (with its explicit CMP, loopProgF/loopLcmdLR), not the
 -- CMP-elided loopLR. jforprog_literal_loop_correct_and_robust: the halt accumulator decodes to JForProg.denote
 -- (the value tie, via valBodyStep + JForProgCT.StepAgrees) over the REAL emitted loop, AND the flag-threaded leak
--- (which steps CMP + back-edge) is state-independent — carrying RobustlyCTSafeJForProg. Loops now functionally
+-- (which steps CMP + back-edge) is state-independent — carrying RobustlyCTSafeJForProg. Loops are functionally
 -- correct + robust over the literal emit.
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoopFlag
--- Front while-loop bridge (item 4e residual): FrontWhileLsem ties RWhileNz (PUBLIC guard) to the loop lsem,
+-- Front while-loop bridge: FrontWhileLsem ties RWhileNz (PUBLIC guard) to the loop lsem,
 -- fuel = the public guard trajectory length (frontStep^[n], whileTrue/whileFalse). front_while_lsem_correct_and_robust.
--- A secret guard leaks the iteration count and is genuinely NOT CT — excluded (cmdCT_RWhileNz lt e = .Public).
+-- A secret guard leaks the iteration count and is NOT CT — excluded (cmdCT_RWhileNz lt e = .Public).
 public import CatCrypt.Crypto.SecureCompilation.VIR.FrontWhileLsem
--- SIMD residual (vpackZMM): JasminLsemSimd — a .reg 512 = BitVec 512 lane value; lsemStepSimd applies zmmPackQ
+-- SIMD ops (vpackZMM): JasminLsemSimd — a .reg 512 = BitVec 512 lane value; lsemStepSimd applies zmmPackQ
 -- (per-64-bit-lane bop over 8 lanes) as a pure data effect (no new state axis). straightOpsSimd_wire = real
 -- "VPACK8u64:bop" emit; the lane op rides the typed .snd SimdDesc, never the wire. owned_lsem_correct_and_robust_simd
 -- (ScalarSimdN superset ScalarLeafN); leak = operand structure only (lane op data-oblivious). Trocq relatedZmmPackQ (rfl).
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
--- Multi-result call residual (callN): JasminLsemCallN — callN is structurally SINGLE-result inside Com/Expr
+-- Multi-result call (callN): JasminLsemCallN — callN is structurally SINGLE-result inside Com/Expr
 -- (callNRet = head slot; the k-tuple is consumed only by func.call, a different path than comToBody). So it is an
 -- extCall-shaped head leaf: lsemStepCallN over the real "CALLN:name" wire (straightOpsCallN_wire = real emit),
 -- carried LeafAgreesCN. owned_lsem_correct_and_robust_callN (ScalarCallN). ABI-only leak.
@@ -63,7 +64,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCall
 -- Golden-path kernel export: comToLprog_faithful_straightline instantiated at fieldAddCom
 -- (fieldAddCom's lsem-run emitted body decodes at the result register to fieldAddCom.denote).
 public import CatCrypt.Crypto.SecureCompilation.VIR.GoldenPathLsemFaithful
--- Toward general-Com faithfulness: the straight-line tower lifted into the labeled lsem.
+-- General-Com faithfulness, straight-line part: the straight-line tower lifted into the labeled lsem.
 -- straightOps_isStraightLine (emitted bodies are jump-free) + straightline_com_labeled_lsem
 -- (a straight-line Com runs under the labeled program-indexed lsem to its decoded Com.denote,
 -- via lsem_of_straightline) — the straight-line half, in the semantics the control-flow
@@ -80,7 +81,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
 -- fragment ScalarLeafN (regArith/select/shifts/mulhi/addCarry/cast/regConst + the opaque extCall
 -- leaf) runs under the program-indexed lsem to its decoded Com.denote.
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulLeaf
--- Full-arith genuine export (Dialects.ArithFullExportFaithful): a general arith Com (all ops —
+-- Full-arith export (Dialects.ArithFullExportFaithful): a general arith Com (all ops —
 -- ALU/constant/mului_extended_hi/shifts) lowers to ScalarMulCarryN (with regConst), so
 -- arith_full_export_faithful gives ComLsemExportFaithfulMC for the lowering. The scalar half is
 -- Dialects.ArithExportFaithful.

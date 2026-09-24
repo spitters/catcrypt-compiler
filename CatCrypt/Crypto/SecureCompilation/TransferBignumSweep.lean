@@ -55,8 +55,8 @@ The pieces:
   statement.
 
 Each generated realization is read off `.realizes`; each is tied back to the
-hand-proved kernel fact by `rfl` (`*_eq_handproof`) — the honest invariant: the
-Trocq plumbing replaces the square→realization step, not the math (the
+hand-proved kernel fact by `rfl` (`*_eq_handproof`). The Trocq plumbing performs
+the square→realization step; it does not supply the math (the
 recombination `addLimbs_val` / `condSubLimbs_val`) nor the emit-block machine
 semantics the hand lemmas inherit.
 
@@ -147,7 +147,7 @@ def condSubLimbsDom (p x : List (BitVec 64)) : Prop :=
     subtract `condSubLimbs · p` pushes through to the abstract reduce
     `· % bignumVal p` over `ℕ`, on the reduce domain `condSubLimbsDom`.  The single
     `app_eq` square is the cited `condSubLimbs_val` — the over-limbs analogue of
-    `bCondSub_toNat`, the genuine conditional-subtract content (no free lunch). -/
+    `bCondSub_toNat`, which carries the conditional-subtract content. -/
 def condSubLimbsUnaryHom (p : List (BitVec 64)) :
     UnaryHomOn bignumVal (condSubLimbsDom p)
       (fun x => condSubLimbs x p) (fun n => n % bignumVal p) where

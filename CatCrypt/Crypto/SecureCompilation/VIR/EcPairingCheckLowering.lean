@@ -26,7 +26,7 @@ with `pairingCheck2_lower_denote` proving the realisation denotes to the op
 schedule).  The GT inputs `e₁`, `e₂` are the per-pairing `pairingEmit` outputs
 (`BLS12381PairingTowerEmit.pairingEmit_realizes`, `= finalExp ∘ miller`); this
 file supplies the remaining product+check stage's lowering, so the full
-verification equation `∏ e == 1` is now expressible end-to-end over proven
+verification equation `∏ e == 1` is expressible end-to-end over proven
 field-op schedules.
 
 This is the lowering edge `pairingCheckDialect → fieldDialect` (for the product);
@@ -77,7 +77,7 @@ theorem pairingCheck2_lower_denote (ξ0 : ZMod p) (pub : Bool) (e1 e2 : Fp12Val 
       = gtIsOneF ((pairingProductProg p ξ0).denote (.cons e1 (.cons e2 .nil))) := by
   rw [pairingProductProg_denote, pairingCheck2_denote]
 
-/-- The lowering is faithful on its verdict: the lowered realisation accepts iff
+/-- The lowering is faithful on its accept/reject result: the lowered realisation accepts iff
     the two-pairing product is the GT identity. -/
 theorem pairingCheck2_lower_iff (ξ0 : ZMod p) (_pub : Bool) (e1 e2 : Fp12Val p) :
     gtIsOneF ((pairingProductProg p ξ0).denote (.cons e1 (.cons e2 .nil))) = true

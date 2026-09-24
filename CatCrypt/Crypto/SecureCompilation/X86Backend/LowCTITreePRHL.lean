@@ -9,19 +9,18 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
 public import CatCrypt.Relational.Rules
 
 /-!
-# Bridging the P4.1 interaction-tree layer to the existing pRHL (`rHoare`)
+# Bridging the interaction-tree layer to the pRHL (`rHoare`)
 
 This module connects the **plain interaction-tree** denotational layer of
-`LowCTITree.lean` (the Phase-4.1 `CallTree` free monad, calls-as-visible-events)
-to CatCrypt's **existing probabilistic relational Hoare logic**
+`LowCTITree.lean` (the `CallTree` free monad, calls-as-visible-events)
+to CatCrypt's **probabilistic relational Hoare logic**
 (`CatCrypt.Relational.rHoare`, of SSProve/EasyCrypt lineage).  It is the bridge
 from the bespoke relational-logic machinery the ITree paper (arXiv:2511.11292)
-builds to the relational logic our development *already has*.
+builds to the relational logic of this development.
 
 The headline: **compiler correctness for the call-free bounded fragment is a
-`rHoare` judgment, discharged by the existing return rule `rHoare_ret`.**  This
-validates the Phase-4 integration thesis — our ITree layer + the existing
-pRHL/relational-mvcgen stack *is* the paper's RHL machinery, **iris-free**.
+`rHoare` judgment, discharged by the return rule `rHoare_ret`.**  So the ITree layer + the
+pRHL/relational-mvcgen stack provides the paper's RHL machinery, **iris-free**.
 
 ## What lives here
 
@@ -43,24 +42,24 @@ pRHL/relational-mvcgen stack *is* the paper's RHL machinery, **iris-free**.
 
 ## Iris-free
 
-This file imports **only** `LowCTITree` (the plain-ITree P4.1 layer),
+This module imports **only** `LowCTITree` (the plain-ITree layer),
 `CatCrypt.Relational.Rules` (the iris-free pRHL: `rHoare`, `rHoare_ret`,
 … of SSProve/EasyCrypt lineage), and — transitively — `CatCrypt.Core` (the
 `SPComp` semantic monad).  It imports **nothing** under `Bridges/` or
 `IrisBridge/`.  No guarded ITrees, no step-indexing, no separation logic.
 
-## The call / probabilistic case (the P4.3 hook — not built here)
+## The call / probabilistic case (outside this module)
 
-A genuine **call** (`vis`) step interprets to a real `SPComp` bind
+A **call** (`vis`) step interprets to a real `SPComp` bind
 `h e >>= fun resp => interpSP h (k resp)` (see `interpSP_vis`).  To carry a
-relational judgment across such a step one discharges it with the existing pRHL
+relational judgment across such a step one discharges it with the pRHL
 **one-sided / `Sync` rules** — `rHoare_bind` to peel the bind, then
 `rHoare_sample_same` / `rHoare_sample_bij` / `rHoare_sample_l`/`_r` (or the
 `get`/`set` `Sync` rules) for the `h e` leaf — and closes the residual leaf
 verification condition with the relational `mvcgen` closer (`ssprove_vc`).  That
-is the path to **P4.3** (probabilistic cryptographic-security preservation
-across compilation); it is *not* built here.  This file establishes only the
-call-free bridge plus that hook.
+is the path to probabilistic cryptographic-security preservation across
+compilation (`LowCTSecPreserve`).  This module establishes the call-free bridge
+plus that hook.
 -/
 
 @[expose] public section
@@ -77,7 +76,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
 
 /-! ## 1. `SPComp`-valued interpretation of a `CallTree`
 
-The P4.1 `LowCTITree.interp` folds a tree under a **pure** handler
+`LowCTITree.interp` folds a tree under a **pure** handler
 `∀ e, E.Resp e`.  Here we fold under an **`SPComp`-valued** handler
 `∀ e, SPComp (E.Resp e)` — a handler that may *sample*.  This is the only place
 probabilistic oracle calls can enter; for the call-free fragment it is never
@@ -108,7 +107,7 @@ noncomputable def interpSP {E : EventSig} {R : Type}
     ITree denotation of a call-free scalar-arith program is the *pure* `SPComp`
     computation of the big-step result `srcDenote ps rs` — no `vis`, hence no
     sampling, hence the probabilistic handler is never consulted.  Proven by
-    rewriting with the P4.1 conservative-extension lemma `itreeDenote_callfree`
+    rewriting with the conservative-extension lemma `itreeDenote_callfree`
     (the tree is a `ret`) and `interpSP_ret`. -/
 theorem interpSP_callfree
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
@@ -140,10 +139,9 @@ does not touch the heap). -/
     call-free source programs satisfy the pRHL judgment `rHoare Φ … … Ψ`.
 
     Proved by rewriting both sides with `interpSP_callfree` to
-    `SPComp.pure (srcDenote …)` and applying the existing return rule
-    `rHoare_ret`.  This is the Phase-4 integration headline: compiler
-    correctness on the bounded call-free fragment is *literally* a `rHoare`
-    judgment, discharged by the pRHL stack we already have. -/
+    `SPComp.pure (srcDenote …)` and applying the return rule
+    `rHoare_ret`.  Compiler correctness on the bounded call-free fragment is
+    *literally* a `rHoare` judgment, discharged by the pRHL stack. -/
 theorem callfree_compile_rHoare
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (Φ : RPre) (Ψ : RPost RustState RustState)

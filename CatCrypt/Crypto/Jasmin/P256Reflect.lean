@@ -16,13 +16,13 @@ This file is the **P-256 (NIST FIPS 186-4) analogue** of `Secp256k1Reflect.lean`
 it adds P-256-specific opaque surface types (`P256Scalar`, `P256Point`) and
 `@[rust_cmd_pattern]` registrations so that pure-Lean P-256 kernels
 (scalar-mul, point-add, ECDSA-verify 2-term MSM) can be lifted through the
-verified compiler chain `LowCT → CryptoSSA → Com → jasmin`, **without**
+verified compiler chain `LowCT → Com catCryptDialect → Jasmin`, **without**
 editing `LowCTReflect.lean`'s `knownOps` table.
 
-## Two kernels (matches the legacy `bench/p256_compare/p256_emit.lean`)
+## Two kernels (matches `bench/p256_compare/p256_emit.lean`)
 
 * **`p256MsmTermLean`** — one term of the scalar-mul MSM `Σ_i k_i·P_i`:
-  `p256_scalar_mul(k_i, P_i)`. Tier-A artefact for one fold step.
+  `p256_scalar_mul(k_i, P_i)`, one fold step.
 * **`p256EcdsaVerifyLean`** — `R' = u₁·G + u₂·Q` in ECDSA-P256 verify:
   two `p256_scalar_mul` leaves + one `p256_point_add` leaf.
 
@@ -31,8 +31,8 @@ editing `LowCTReflect.lean`'s `knownOps` table.
 The leaves are the P-256 group law built over the AUCurves verified-bedrock2
 field tower (`p256-safe-rust`: fiat `fp_add/sub/mul/square/opp` + Bernstein–
 Yang `fp_inv`). The Pairing.P256Emit theory proves `MsmReduce.msm_eq_scalarFold`
-over the production P-256 group; this file is the Tier A glue carrying
-that into the verified front-end.
+over the production P-256 group; this module carries that into the
+verified front-end.
 
 ## Reflection→front gap (same pattern as Secp256k1Reflect)
 
@@ -43,8 +43,8 @@ register each leaf via `@[rust_cmd_pattern]`, then hand-build the
 ## References
 
 * FIPS 186-4: Digital Signature Standard (DSS), Appendix D.1.2.3 (P-256)
-* `bench/p256_compare/p256_emit.lean` — legacy Tier C emit (kept as
-  out-of-chain reference)
+* `bench/p256_compare/p256_emit.lean` — the string emit outside the
+  verified chain (reference)
 * `CatCrypt/Crypto/Pairing/P256Emit.lean` — `msmFold_eq_msm`,
   `ecdsaVerifyCom_denote`, the production-group reduction this file glues
   into the verified front

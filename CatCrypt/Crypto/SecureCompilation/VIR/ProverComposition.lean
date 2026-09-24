@@ -20,7 +20,7 @@ straight-line `runRegBlock` body, or an `scfRepeat` loop over such a body
 a list of phase-steps left to right, with a denotation theorem proving the
 composite equals the sequential function-composition of the phases.
 
-## What this IS (honest scope)
+## Scope
 
 This proves the **orchestration sequencing** of a prover pipeline is
 denotation-preserving: composing phases as a list and running them is exactly
@@ -33,10 +33,10 @@ about as, its phase list.
 ## What this is NOT
 
 This is **not** a full prover, and it does **not** compose the actual Plonky3
-`prove()`. It is the structural backbone of the composition: it proves the
-*sequencing combinator* is correct, generically over the state `σ`. The
-individual phases being owned-emitted (trace-gen, LDE/NTT, Merkle commit, FRI
-fold, query, serialize) is **separate work — the open Gap 2**. A looped phase
+`prove()`. It is the structural layer of the composition: it proves the
+*sequencing combinator* is correct, generically over the state `σ`. Owned emission
+of the individual phases (trace-gen, LDE/NTT, Merkle commit, FRI fold, query,
+serialize) is outside its scope. A looped phase
 here is modelled by the verified `scfRepeat` loop from `StructuredControlFlow`
 (its body a `runRegBlock` over verified tile leaves), but the phases used in the
 worked example are stand-ins, not the emitted prover phases.
@@ -63,7 +63,7 @@ open CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 /-! ## 1. The phase-pipeline combinator -/
 
 /-- Run a list of phase state-steps left to right, threading the state: the
-    first element runs first. The orchestration backbone of a prover `prove()` —
+    first element runs first. The orchestration combinator of a prover `prove()` —
     `[traceGen, lde, commit, fold, query, serialize]` applied in order. -/
 def pipeline {σ : Type _} (phases : List (σ → σ)) : σ → σ :=
   fun s => phases.foldl (fun acc f => f acc) s

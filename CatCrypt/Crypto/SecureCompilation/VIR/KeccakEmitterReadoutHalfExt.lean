@@ -11,9 +11,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalf
 /-!
 # Keccak emitter readout half — extension: the remaining 3 sub-block readouts
 
-`KeccakEmitterReadoutHalf` (task #128) shipped the readout-half closures for
+`KeccakEmitterReadoutHalf` proves the readout-half closures for
 two of the five Keccak sub-blocks (`θ-C col`, `ι`), plus the disjointness
-helper `aSlot_ne_cSlot`. This file (task #132) closes the remaining three
+helper `aSlot_ne_cSlot`. This module closes the remaining three
 sub-block readouts following the same template:
 
 * **θ-D column** (`emitThetaDCol_lanes_after`): 9 writes per column —
@@ -24,7 +24,7 @@ sub-block readouts following the same template:
 * **ρπ lane** (`emitRhoPiLane_lanes_after`): per lane `(x, y)` — `mov
   bSlot[y, 2x+3y] (aSlot x y)`, then `rotL bSlot[y, 2x+3y] (rhoOffset (x+5y))`.
   Up to 4 writes. The 25 rotation amounts are the FIPS 202 ρ-offset set,
-  which #113's `crotl_eq_frotl` already discharges by `bv_decide`.
+  which `KeccakDiffuseExact.crotl_eq_frotl` discharges by `bv_decide`.
 
 * **χ lane** (`emitChiLane_lanes_after`): per lane `(x, y)` — `mov chiScr
   (bSlot (x+1) y)`, `xor chiScr (.imm maskImm)` (i.e. `chiScr := chiScr ⊕
@@ -58,7 +58,8 @@ sub-block readouts following the same template:
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #132 in that chain: remaining 3/5 sub-block readouts.
+module is the chain step after `KeccakEmitterReadoutHalf`: remaining 3/5
+sub-block readouts.
 -/
 
 @[expose] public section
@@ -170,7 +171,7 @@ where `D[x] = (C[x+4]) ⊕ rotl(C[x+1], 1)`. -/
 /-- **θ-D column readout closure (existential form).** After the 9-binding
     `emitThetaDCol` chain runs, the chain admits a successor builder state /
     immediate resolver / valuation, by the same `_denote`-substrate
-    composition that #118's `emitThetaDCol_denote_exists` uses. This is the
+    composition that `KeccakEmitterComposition.emitThetaDCol_denote_exists` uses. This is the
     denotation half of the per-sub-block readout closure: the chain has a
     successor environment at every binding.
 
@@ -206,7 +207,7 @@ move) and nonzero (3 writes) otherwise. -/
     with `bSlot_ne_rotScr` as the side condition).
 
     The closed-form value at `bSlot y (2x+3y)` after the chain is `crotl
-    (readSlot bs V (aSlot x y)) (rhoOffset (x + 5y))`, and #113's
+    (readSlot bs V (aSlot x y)) (rhoOffset (x + 5y))`, and `KeccakDiffuseExact`'s
     `crotl_eq_frotl` (provided the rotation amount is one of the 25 FIPS
     202 ρ offsets, which it is by `rhoOffset`'s definition) makes this
     equal to the FIPS spec rotation. -/
@@ -238,7 +239,7 @@ aSlot x y := bSlot x y ^ chiScr                                   -- XOR back
 
 4 writes total. After the chain, `readSlot _ _ (aSlot x y)` reads back
 the `cchi` expression `B[x,y] ⊕ ((B[x+1,y] ^ allOnes) & B[x+2,y])`,
-which #113's `cchi_eq_fchi` makes equal to the FIPS spec `fchi`. -/
+which `KeccakDiffuseExact.cchi_eq_fchi` makes equal to the FIPS spec `fchi`. -/
 
 /-- **χ lane readout closure (existential form).** After the 4-binding
     `emitChiLane` chain runs, the chain admits a successor environment.
@@ -263,10 +264,11 @@ The five per-sub-block existentials of §2–§4 (here) and §4 of
 
 The denotation half of `EmitRoundDenotesClosedForm` is exactly that
 nested existential; the full theorem follows from
-`emitRound_denote_exists` (#118), which we re-export here. -/
+`emitRound_denote_exists` (`KeccakEmitterComposition`), which we re-export
+here. -/
 
 /-- **The full-chain denotation existential** (a consolidated re-export
-    of #118's `emitRound_denote_exists`). Discharges by `rfl` once the
+    of `KeccakEmitterComposition.emitRound_denote_exists`). Discharges by `rfl` once the
     unifier picks the chain's witnesses. The lanes-readout half can be
     derived by chaining the §2–§4 per-sub-block closures, since each one
     re-exposes the chain witnesses for the next sub-block's substrate
@@ -281,13 +283,15 @@ theorem emitRound_denote_exists_full (round : Nat) {Γ : Ctxt jasminDialect}
 
 /-! ## 6. Per-sub-block status table
 
-| Sub-block | Denotation half (#118) | Readout-existential                                |
+| Sub-block | Denotation half        | Readout-existential                                |
 |-----------|------------------------|----------------------------------------------------|
-| θ-C col   | proven                 | proven in #128 (`emitThetaCCol_lanes_after`)        |
+| θ-C col   | proven                 | proven in `KeccakEmitterReadoutHalf` (`emitThetaCCol_lanes_after`) |
 | θ-D col   | proven                 | **proven here** (`emitThetaDCol_lanes_after`)       |
 | ρπ lane   | proven                 | **proven here** (`emitRhoPiLane_lanes_after`)       |
 | χ lane    | proven                 | **proven here** (`emitChiLane_lanes_after`)         |
-| ι         | proven                 | proven in #128 (`emitIota_lanes_after`)             |
+| ι         | proven                 | proven in `KeccakEmitterReadoutHalf` (`emitIota_lanes_after`) |
+
+Denotation halves are from `KeccakEmitterComposition`.
 
 All five sub-blocks have a per-helper readout-existential closure.
 
@@ -310,15 +314,14 @@ construction of `emitRound`, a syntactic identity once the substrate
 collapses the chain to the chained `bsAfterOp` form: the final
 `bsF.st (aSlot x y)` reads the final `xor` writing that slot, which
 the substrate's `_eq`/`_ne` lemmas + the per-sub-block algebraic
-identities (`cTheta`, `cRho`, `cPi`, `cChi`) of #113 reduce to the
-expected closed-form `(crotl, cchi, ...)` expression.
+identities (`cTheta`, `cRho`, `cPi`, `cChi`) of `KeccakDiffuseExact` reduce
+to the expected closed-form `(crotl, cchi, ...)` expression.
 
-The five per-sub-block existentials provide the *infrastructure* to do
-this composition; per task #132's "HONEST PARTIAL OK" criterion, all
-three remaining sub-block readouts (θ-D, ρπ, χ) are now closed at the
-per-sub-block existential level, matching the SHA-2 template's
-sub-block factoring. The remaining full-chain composition is the
-heartbeat-budget `simp` blast through the substrate's slot-reading set
-that #128 documented as the next-milestone task. -/
+The five per-sub-block existentials provide the *infrastructure* for
+this composition; the three sub-block readouts proved here (θ-D, ρπ, χ) are
+closed at the per-sub-block existential level, matching the SHA-2 template's
+sub-block factoring. The full-chain composition — the heartbeat-budget
+`simp` blast through the substrate's slot-reading set described in
+`KeccakEmitterReadoutHalf` — is outside the scope of this module. -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfExt

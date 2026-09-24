@@ -49,7 +49,7 @@ conditional subtract, let alone 384-bit). So we **reuse** the repo's already-pro
   `n`-limb operand for the conditional subtract.
 
 The composite `mlAddMod` (multi-limb add then conditional-subtract reduce) computes
-`(bignumVal x + bignumVal y) % P`, **with the genuine modular reduce**, from those
+`(bignumVal x + bignumVal y) % P`, **with the modular reduce**, from those
 three proved value laws (`mlAddMod_val`). No new multi-limb arithmetic is proved
 here.
 
@@ -57,16 +57,16 @@ here.
 
 The cleanest op with a proved value-level reduce is the **multi-limb modular add**.
 We instantiate at **`k = 2` limbs** — a prime `p` with `2p ≤ 2^128` — the
-`bls12_377` carrier exhibited at honest scale: the encoding, the reducing kernel, and
+`bls12_377` carrier exhibited at reduced scale: the encoding, the reducing kernel, and
 the commuting square are pinned to `k = 2` where the `condSubLimbs`/`addLimbs` length
 bookkeeping is concrete. Swapping to the full `377`-bit (`k = 6`) prime changes only
 the limb count `k` and the modulus limbs `[p0,…,p5]`; the `EndoOpRealization` and the
 commuting-square *structure* is exactly this one (`addLimbs_val`/`condSubLimbs_val`
 are already stated for `n`-limb lists).
 
-## What is demonstrated vs. deferred (HONEST)
+## What is demonstrated vs. deferred
 
-* **Demonstrated (sorry-free):** the multi-limb-carrier `EndoOpRealization`
+* **Demonstrated (fully proved):** the multi-limb-carrier `EndoOpRealization`
   (`addModRealization`) and the commuting square `(a + b).val = bignumVal (mlAddMod
   pl (encML2 a) (encML2 b))` for `ZMod p` ADD over a 2-limb prime, **including the
   multi-limb modular reduce** — reusing `addLimbs_val` + `condSubLimbs_val` +
@@ -208,7 +208,7 @@ in place of `Com.denote`. -/
 structure TwoLimbPrime where
   /-- The prime modulus. -/
   p : Nat
-  /-- `p` is nonzero (so `ZMod p` is a genuine residue ring). -/
+  /-- `p` is nonzero (so `ZMod p` is a nontrivial residue ring). -/
   nz : NeZero p
   /-- The modulus as a 2-limb little-endian vector. -/
   pl : List (BitVec 64)
@@ -258,7 +258,7 @@ with the IR seam (`mlAdd_seam`). -/
     injective-not-surjective multi-limb encoding `encML2`, equals the emitted
     multi-limb reducing kernel `mlAddMod` on the serialized operands, read through
     `bignumVal`. This is the multi-limb analogue of `encMod251_commutes` — the
-    relational tie carried over a multi-limb prime carrier, **with the genuine
+    relational tie carried over a multi-limb prime carrier, **with the
     multi-limb modular reduce** (`condSubLimbs`). -/
 theorem encML2_add_commutes (P : TwoLimbPrime) (a b : ZMod P.p) :
     (a + b).val = bignumVal (mlAddMod P.pl (encML2 P.p a) (encML2 P.p b)) := by
@@ -269,7 +269,7 @@ theorem encML2_add_commutes (P : TwoLimbPrime) (a b : ZMod P.p) :
     `bignumVal`-read value on the encoded operands — through the injective-not-onto
     `encML2`. The multi-limb analogue of `addMod251_spec_transfers`; the relational
     front deciding an abstract field equation through a real multi-limb serialization
-    and a genuine multi-limb modular reduce. -/
+    and a multi-limb modular reduce. -/
 theorem mlAdd_spec_transfers (P : TwoLimbPrime) (a a' b b' : ZMod P.p) :
     a + b = a' + b' ↔
       bignumVal (mlAddMod P.pl (encML2 P.p a) (encML2 P.p b))

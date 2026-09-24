@@ -10,9 +10,9 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# C4 fan-out: the verified compiler emits the HAWK ring-multiply MAC step
+# The verified compiler emits the HAWK ring-multiply MAC step
 
-This module extends the **C4** step of the verified-compiler plan to the
+This module applies the verified compile-from-hax front to the
 inner-loop body of HAWK's negacyclic ring multiply
 (`HAWK/RingMul4WayVerified.lean`). HAWK is the Falcon-family hash-and-sign
 lattice signature over the cyclotomic ring `Z/q[x]/(x^N + 1)`; its per-lane
@@ -52,7 +52,7 @@ front is required**.
 `hawkMacSrc` is the let-normalized `ImpExpr` (one op per `letBind`, all args
 atoms or earlier locals); `hawkMacForm` is the explicit closed **emit form** the
 source denotes to; the `_compiles` theorem routes the form source-spec
-(`hawkMacSrc_denoteScalar`, a `rfl`) through the C3 per-primitive obligation
+(`hawkMacSrc_denoteScalar`, a `rfl`) through the per-primitive obligation
 `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by the
 verified compiler* and proven equal to the emit form.
 
@@ -125,8 +125,8 @@ theorem hawkMac_compileFromHax_isSome :
     `compileFromHax ["acc","a","b"] hawkMacSrc = some c`, and for every
     `(acc, a, b)`, `c`'s `BitVec 64` denotation (under the input valuation
     `![acc, a, b]`) is exactly the closed emit form `hawkMacForm`. Routed through
-    the C3 per-primitive obligation `compileFromHax_meets_spec`. This is a C4
-    fan-out to the **power-of-two-modulus** lattice core of HAWK (the negacyclic
+    the per-primitive obligation `compileFromHax_meets_spec`. The target is
+    the **power-of-two-modulus** lattice core of HAWK (the negacyclic
     ring-multiply inner step `acc + a·b mod 2^10`), reusing the
     SHA-256/Keccak/BLAKE2/GF(127)/Frodo/NTRU `wrapping_mul`/`wrapping_add`/`BitAnd`
     recognizers with no front change. The abstract `Zq1024` ring tie is

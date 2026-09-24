@@ -9,8 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit
 
 /-!
-# VAES round-lane map through the structured VectorDialect (task #275)
-
+# VAES round-lane map through the structured VectorDialect
 The existing VAES emit (`VIR/VAESEmit`) renders the four AES round mnemonics
 (`#VAESENC`, `#VAESENCLAST`, `#VAESDEC`, `#VAESDECLAST`) DIRECTLY via
 `renderVAESLine`, denotes them on the 128-bit state via `denoteVAES`, and
@@ -45,7 +44,7 @@ open CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect
 /-! ## 1. The lane shape
 
 A 2-way VAES op on `BitVec 256` is 2 lanes of `BitVec 128` AES state.
-`VAESEmit.lanesOf256` exposes the split; the lane-map keystone applies at lane
+`VAESEmit.lanesOf256` exposes the split; the lane-map theorem applies at lane
 count 2 (and at higher counts for `ymm`/`zmm`). We pin the 2-way shape. -/
 
 /-- The VAES lane count we pin (2-way `ymm`). -/
@@ -67,7 +66,7 @@ theorem aesRound_denote (op : VAESOp) (state key : VectorTy (BitVec 128) vaesLan
 /-- **The dialect `aesRound` lane vector equals the direct 2-way `denoteVAES2`.**
     Both are the lane-wise application of `denoteVAES op`, so the dialect path
     is value-identical to the direct VAES denotation. Grounded in the proven
-    `vaesenc_lane_map_two_way` keystone (per-lane independence). -/
+    `vaesenc_lane_map_two_way` theorem (per-lane independence). -/
 theorem aesRound_eq_denoteVAES2 (op : VAESOp) (state key : BitVec 256) :
     (denoteVectorOp (.aesRound (denoteVAES op) (lanesOf256 state) (lanesOf256 key) :
         VectorOp (BitVec 128) vaesLaneN)).getVec?.getD (fun _ => 0)

@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax NTRU-HRSS MAC leaf realizes the
+# Security tie: the compile-from-hax NTRU-HRSS MAC leaf realizes the
   abstract `Zq8192` ring multiply-accumulate the security reference reasons over
 
 `CompileFromHaxNtruMul` proves the verified compiler *emits* a jasmin `Com` whose
@@ -30,18 +30,18 @@ equality to `tie_transfer`: **any** property the security layer proves of the
 abstract ring MAC transfers verbatim to the compiler-emitted leaf, with no new
 axioms.
 
-## Parametric-correct scope (honest)
+## Parametric-correct scope
 
 NTRU-HRSS's `NTRU/SurfaceDeps.lean` reasons over the ring `Zq8192` abstractly
 (through `ringMulVerified`/`ringMulCoeff`, themselves cyclic `Finset.sum`s of the
 ring MAC `acc + a·b`). The compiled leaf computes exactly that ring MAC
 (`ntruMacForm_eq_ring`, no domain restriction — the `mod 2^13` mask handles full
 wraparound). The tie is therefore at the **arithmetic building block** the proof
-quantifies over; the realization equality `toMacDeps = macDepsSpec` is genuine and
+quantifies over; the realization equality `toMacDeps = macDepsSpec` holds and
 `tie_transfer` carries any ring-MAC property onto the compiled artifact. It does
 **not** discharge the NTRU one-wayness assumption or the SXY/FO transform — those
 remain the hypotheses of `NTRU/Security.lean`; this ties the *emitted arithmetic*
-to the *abstract arithmetic* the proof uses, which is the scope of #607.
+to the *abstract arithmetic* the proof uses, which is the scope of this module.
 -/
 
 @[expose] public section

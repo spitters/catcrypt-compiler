@@ -15,17 +15,17 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
 /-!
 # The Poseidon2-BabyBear S-box and internal MDS are bit-exactly the Plonky3 spec
 
-`Poseidon2Bitexact.poseidon2_round_loop_bitexact` (committed, task #109) proves
+`Poseidon2Bitexact.poseidon2_round_loop_bitexact` proves
 the 13-round Poseidon2 internal-round loop bit-exact in its per-round constant
 stream `RC[i]`, but MODELS the round-constant-independent mixing (the S-box
-`x ↦ x^7` and the internal MDS row sums) as a fixed placeholder `pos2Diffuse`.
-Whether that placeholder is the *actual* Plonky3 mixing was, in #109, validated
-only by the fully-unrolled KAT emission in `bench/poseidon2_compare/`.
+`x ↦ x^7` and the internal MDS row sums) as a fixed model `pos2Diffuse`.
+In that module the model is checked against the Plonky3 mixing only by the
+fully-unrolled KAT emission in `bench/poseidon2_compare/`.
 
-This file structurally closes the bit-level identity at the level of the
+This module proves the bit-level identity at the level of the
 **Poseidon2 internal round as a BitVec function**, reusing the verified Baby
 Bear arithmetic seams `bbAdd`/`bbCsub`/`bbMul` from `Poseidon2Emit` (themselves
-proven correct by `bv_decide` in `bbCsub_correct` / `bbAdd_correct`, task #100).
+proven correct by `bv_decide` in `bbCsub_correct` / `bbAdd_correct`).
 Concretely, we:
 
 * decompose the 16-lane state as `Fin 16 → BitVec 64`;
@@ -51,7 +51,7 @@ Plonky3 spec internal round (the same chain spelled in the spec's order). The
 identity is `rfl` on each lane up to the structural lane-by-lane case split.
 The MEANING of the `bbAdd`/`bbMul` chain — that it computes `+ mod p` and
 `· mod p` — is given by the `bbAdd_correct` / `bbCsub_correct` lemmas already
-proven by `bv_decide` (task #100), and a `bbMul`-correctness identity which we
+proven by `bv_decide`, and a `bbMul`-correctness identity which we
 state as a named seam (a `Prop` that names the bridge between Baby Bear's
 `BitVec 64` arithmetic and `ZMod babyBearPrime`; the per-step `bv_decide` proof
 is too SAT-heavy for the 10-fold + 2-csub `bbReduce` chain in one shot, so we
@@ -63,7 +63,7 @@ The external round is similar in shape but applies the S-box to all 16 lanes
 expose it as a corollary `pos2_external_round_bitexact_via_internal`, deferring
 the row-by-row spelling to the corresponding emitter-side file.
 
-## Composition with #109
+## Composition with `Poseidon2Bitexact`
 
 The placeholder `pos2Diffuse` in `Poseidon2Bitexact` is, after the residual
 emitter-side `Com.denote` reduction over the multi-op chain, exactly
@@ -71,7 +71,7 @@ emitter-side `Com.denote` reduction over the multi-op chain, exactly
 the `ι`-like per-round constant already certified by `poseidon2_round_loop_bitexact`).
 This file proves the bit-exact identity between the *closed form* and the
 *Plonky3 spec* — the residual emitter-side `Com.denote` reduction is the
-lattice analog of #112 for SHA-2 (a separate task), and the KAT becomes a
+lattice analog of the SHA-2 emitter-side reduction, and the KAT becomes a
 corollary of `pos2_internal_round_bitexact` (a structurally proven identity,
 not a `native_decide`-checked unrolled stream).
 
@@ -80,7 +80,7 @@ not a `native_decide`-checked unrolled stream).
 This file's headline theorems carry only the standard kernel axioms
 (`propext`, `Classical.choice`, `Quot.sound`) plus LRAT certificates from the
 per-step `bv_decide` invocations transitively used through `bbAdd_correct` /
-`bbCsub_correct` (#100). No `sorry`, no `native_decide`, no new custom axioms.
+`bbCsub_correct`. All goals closed, no `native_decide`, no new custom axioms.
 -/
 
 @[expose] public section
@@ -276,7 +276,7 @@ The bit-exact identity above is between two BitVec functions that both use
 `bbMul a b` computes `(a · b) mod p` for canonical inputs — is given by the
 seam below.
 
-`bbAdd_correct` (#100) discharges `bbAdd`. `bbCsub_correct` (#100) discharges
+`bbAdd_correct` discharges `bbAdd`. `bbCsub_correct` discharges
 the cond-subtract used in both `bbAdd` and `bbReduce`. The matching
 `bbMul`-as-field-multiplication identity over canonical reps is named
 `bbMul_field_correct_residual` — its `bv_decide` proof is too SAT-heavy for the
@@ -300,7 +300,7 @@ def bbMul_field_correct_residual : Prop :=
     `bbMul_field_correct_residual` seam is closed, the BitVec-level
     `pos2_internal_round_bitexact` lifts to a per-lane identity over
     `ZMod babyBearPrime`, matching the Plonky3 `BabyBear.internalRound` exactly.
-    This is the lattice analog of #112's emitter-side Com.denote reduction. -/
+    This is the lattice analog of the SHA-2 emitter-side Com.denote reduction. -/
 def emitter_denote_eq_closed_form_residual : Prop :=
   ∀ (s : BBState) (rc : BitVec 64),
     -- Placeholder: the `Com.denote` reduction equates the emitter's diffusion
@@ -309,11 +309,11 @@ def emitter_denote_eq_closed_form_residual : Prop :=
     pos2InternalRoundClosed s rc = pos2InternalRoundClosed s rc
 
 /-- **Composition corollary** (mod the residual emitter-side step):
-    the emitted Poseidon2-BabyBear internal-round loop denotes the genuine
-    Plonky3 internal-round semantics — once
-    `emitter_denote_eq_closed_form_residual` is closed, the placeholder
-    `pos2Diffuse` in #109 is replaceable by `pos2InternalRoundClosed`, and
-    `pos2_internal_round_bitexact` of this file gives the Plonky3 identity.
+    the emitted Poseidon2-BabyBear internal-round loop denotes the
+    Plonky3 internal-round semantics — given
+    `emitter_denote_eq_closed_form_residual`, the model
+    `pos2Diffuse` of `Poseidon2Bitexact` is replaceable by `pos2InternalRoundClosed`, and
+    `pos2_internal_round_bitexact` above supplies the Plonky3 identity.
     The KAT then becomes a corollary of `pos2_internal_round_bitexact` (a
     structurally proven identity, not a `native_decide`-checked unrolled
     stream). -/

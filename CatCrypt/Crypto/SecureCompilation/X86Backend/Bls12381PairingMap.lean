@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
 
 /-!
-# BLS12-381 owned `Fp` inverse + the full owned `pp_map` (#602 / #219)
+# BLS12-381 owned `Fp` inverse + the full owned `pp_map`
 
 **Variant: RELIC-transcribed (tests-only correctness).**
 
@@ -45,7 +45,7 @@ The committed pieces (all owned, all KAT'd byte-identical to RELIC):
   `bls12_invert_divstep_sat` (committed safegcd path, emitted through the
   verified front in `bench/bls12381_safegcd_compare/bls12381_safegcd_emit.lean`).
 
-The one thing that did **not** yet exist was an owned `Fp` inverse over the
+This module adds an owned `Fp` inverse over the
 *Montgomery* felem layout the tower uses, which the final-exp **easy part**
 `fp12_conv_cyc` (`f ↦ f^{(p⁶−1)(p²+1)}`) needs through
 `fp12_inv → fp6_inv → fp2_inv → fp_inv`.
@@ -97,7 +97,7 @@ With the easy part owned, the **full** `pp_exp` (easy ∘ hard) runs owned, and
 
     pp_map(P, Q) = pp_exp( [x<0] inv_cyc( pp_mil(P, Q) ) )
 
-composes the (committed, KAT'd) owned Miller loop with the now-complete owned
+composes the (committed, KAT'd) owned Miller loop with the owned
 final exponentiation.  The bench gate KATs the owned `pp_map(P,Q)` byte-identical
 to RELIC `pp_map_oatep` over random `G1 × G2` — the fully-owned BLS12-381 pairing.
 -/

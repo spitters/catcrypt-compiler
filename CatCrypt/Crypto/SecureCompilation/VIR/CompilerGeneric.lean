@@ -10,13 +10,13 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 
 /-!
-# De-specialized compiler keystone: generic dialect-lowering correctness
+# De-specialized compiler-correctness theorem: generic dialect-lowering correctness
 
-The lattice keystone `compile_correct_all`
+The lattice theorem `compile_correct_all`
 (`CatCrypt/Crypto/SecureCompilation/VIR/Compiler.lean`) is the end-to-end
 statement *"running the emitted owned jasmin program reads back the source
 denotation"* — but **only for the one lattice route** (`lowerLatticeToJasmin`,
-`mapTy = tau`, `mapCtx = (·.map tau)`). This file extracts the **general**
+`mapTy = tau`, `mapCtx = (·.map tau)`). This module proves the **general**
 theorem of which it is an instance.
 
 ## What is de-specialized
@@ -34,7 +34,7 @@ The lattice route's correctness is, structurally, two composable facts:
 2. **Owned backend execution** — running the emitted single-function jasmin
    program equals its `Com.denote`: `runProg leafSem com V = com.denote V`. This
    is `WholeFnLowering.lowerComToProg_sem_eq'`, the **owned** whole-function
-   backend (no jasminc), already generic over the jasmin `Com` (it needs only
+   backend (no jasminc), generic over the jasmin `Com` (it needs only
    `StraightLine` and the opaque-leaf agreement edge; both SSA-naming
    side-conditions are discharged inside it).
 
@@ -44,11 +44,11 @@ structural lowering `L : LoweringData d jasminDialect`:
     runProg leafSem (L.lowerCom c) (mapVal V) = transTy (c.denote V)
 
 i.e. **the owned-emitted artifact computes the transport of the source
-denotation** — the CompCert-shape equation, no longer tied to the lattice poly
+denotation** — the CompCert-shape equation, independent of the lattice poly
 type. `compileVia`/`compileVia_correct` below are exactly this. The lattice
-keystone is recovered by instantiating at the lattice maps (`§3`).
+theorem is recovered by instantiating at the lattice maps (`§3`).
 
-## Scope and honesty
+## Scope
 
 * **Owned backend only.** Execution goes through
   `WholeFnLowering.runProg`/`lowerComToProg_sem_eq'`. No `jasminc`, no `.jazz`
@@ -56,23 +56,22 @@ keystone is recovered by instantiating at the lattice maps (`§3`).
 * The generic theorem carries, as **explicit hypotheses**, exactly the
   obligations its two ingredients need: the three leaf/coherence squares of
   `fundamental` and the `StraightLine` + jasmin opaque-leaf-agreement
-  (`JasminPrintSemCorrect.LeafAgrees`) of `lowerComToProg_sem_eq'`. None are
-  discharged by fiat.
-* This is the **dialect-level + owned-execution** keystone. The per-slot
+  (`JasminPrintSemCorrect.LeafAgrees`) of `lowerComToProg_sem_eq'`.
+* This is the **dialect-level + owned-execution** theorem. The per-slot
   structured read-back (`runOutputToWords`) and the per-ISA Sail validation that
   `Compiler.compile_correct_all` additionally folds in are *downstream* of this
   equation (they post-compose a read-back and assert a model `validated` field);
-  they are deliberately **not** re-stated here, so this file claims neither more
-  nor less than the generic dialect-lowering + owned-run correctness.
-* **0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`, no
-  custom axioms.
+  they are **not** re-stated here; this module states the generic
+  dialect-lowering + owned-run correctness.
+* All proofs are complete; target axiom set
+  `{propext, Classical.choice, Quot.sound}`, no custom axioms.
 
-The §3 lattice recovery is honest about packaging: the lattice route's maps are
-currently *standalone defs* (`LatticeToJasminDenote.transTy`/`mapVal`,
+For the §3 lattice recovery: the lattice route's maps are
+*standalone defs* (`LatticeToJasminDenote.transTy`/`mapVal`,
 `LatticeToJasmin.mapVar`/`lowerExpr`/`lowerLatticeToJasmin`) rather than fields
 of a named `LoweringData`. We package them into `latticeLoweringData` here and
 show its `lowerCom` agrees with `lowerLatticeToJasmin`, so `compileVia` at
-`latticeLoweringData` *is* the lattice compile — making the lattice keystone a
+`latticeLoweringData` *is* the lattice compile — making the lattice theorem a
 literal instance of `compileVia_correct`.
 -/
 
@@ -112,7 +111,7 @@ The abstracted lattice proof: `fundamental` (whole-program transport) composed
 with `lowerComToProg_sem_eq'` (owned backend execution). -/
 
 /-- **`compileVia_correct` — the generic dialect-lowering + owned-execution
-    keystone.**
+    correctness theorem.**
 
     For an arbitrary source dialect `d`, an arbitrary structural lowering
     `L : LoweringData d jasminDialect` with value transport `transTy` and
@@ -150,7 +149,7 @@ theorem compileVia_correct
   -- Whole-program transport square: `(lowered).denote (mapVal V) = transTy (c.denote V)`.
   exact fundamental L transTy mapVal hVar hOp hExt c V
 
-/-! ## 3. The lattice keystone as a literal instance
+/-! ## 3. The lattice theorem as a literal instance
 
 The lattice route's maps (`tau`, `mapVar`, `lowerExpr`) are standalone defs, not
 fields of a `LoweringData`. We package them here into `latticeLoweringData` and
@@ -205,7 +204,7 @@ theorem latticeMapValExtends :
       (fun {_t} v => transTy v) (fun {_Γ} V => mapVal V) :=
   fun V x => mapVal_extend V x
 
-/-- **The lattice keystone, recovered as an instance of `compileVia_correct`.**
+/-- **The lattice theorem, recovered as an instance of `compileVia_correct`.**
 
     Under the lattice op-leaf square (`LatticeToJasminDenote.LeafAgrees`,
     i.e. `OpLowerTransports` for the lattice lowering) and the **owned** jasmin

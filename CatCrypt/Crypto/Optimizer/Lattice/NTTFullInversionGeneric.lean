@@ -8,12 +8,12 @@ module
 public import CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric
 
 /-!
-# Full DFT inversion keystone: `idft ∘ dft = id`
+# Full DFT inversion theorem: `idft ∘ dft = id`
 
 The forward transform `dft` (`NTTRecursionPass`) and the root-of-unity
 orthogonality engine `ntt_orthogonality` (`NTTInverseGeneric`) combine here into
-the inversion keystone: over a field with a primitive `n`-th root of unity `ω`
-(and `(n : R) ≠ 0`), the synthesis map `idft` is a genuine left inverse of the
+the inversion theorem: over a field with a primitive `n`-th root of unity `ω`
+(and `(n : R) ≠ 0`), the synthesis map `idft` is a left inverse of the
 analysis map `dft`.
 
 ## The synthesis map
@@ -22,7 +22,7 @@ analysis map `dft`.
 `dft`'s `∑_j x j · ω^(j·k)`, with the conjugate twiddle `ω⁻¹` and the `(n)⁻¹`
 normalisation that both exist in a field.
 
-## The keystone
+## The main theorem
 
 `idft_dft : idft n ω (dft n ω x) = x`. Expanding both maps gives the double sum
 `(n)⁻¹ · ∑_j (∑_l x l · ω^(l·j)) · (ω⁻¹)^(j·k)`. Swapping the two sums
@@ -51,7 +51,7 @@ normalisation both live in a field; the index convention matches `dft`. -/
 def idft (n : ℕ) (ω : R) (X : Fin n → R) (k : Fin n) : R :=
   (n : R)⁻¹ * ∑ j : Fin n, X j * (ω⁻¹) ^ (j.val * k.val)
 
-/-- **DFT inversion keystone.** For `ω` a primitive `n`-th root of unity over a
+/-- **DFT inversion theorem.** For `ω` a primitive `n`-th root of unity over a
 field with `(n : R) ≠ 0`, the synthesis map `idft` is a left inverse of the
 analysis map `dft`:
 

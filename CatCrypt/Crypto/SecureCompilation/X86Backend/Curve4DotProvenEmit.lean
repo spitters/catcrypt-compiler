@@ -41,7 +41,7 @@ node) are discharged in `FieldDescentMultiLimb.lean`
 (`secp256k1_mmMul_realizes` / `secp256k1_mmAdd_realizes`,
 `dotComposition_realizes`).
 
-## What rides the compiler, and what stays GMP-KAT-gated (REV-12)
+## What rides the compiler, and what stays GMP-KAT-gated
 
 The composition `dotProg` schedules three field ops:
 
@@ -61,8 +61,8 @@ twice (`m1`, `m2`) and runs the proven add+cond-sub on the two products. The
 **composition schedule** (the two-call sequence + the staging of `m1`, `m2` and the
 canonicalising add) is what rides the compiler — its leaf squares are the proven
 blocks above. The single multi-limb leaf *byte-identity* of `secp256k1_montmul_proven`
-stays GMP-KAT-gated (REV-12: a 256×256→256 field multiply is **never** `#eval`'d in
-Lean — that OOMs the shared LSP), and so the whole composition's value identity is
+stays GMP-KAT-gated (a 256×256→256 field multiply is **never** `#eval`'d in
+Lean — that exhausts the shared LSP's memory), and so the whole composition's value identity is
 GMP-KAT-gated end to end
 (`bench/secp256k1_compare/secp256k1_dot_owned_kat.c`, GMP reference
 `a·b·R⁻¹ + c·d·R⁻¹ mod p`).
@@ -88,7 +88,7 @@ sequence + scratch staging is trusted composition scaffolding (outside the
 composes its leaves and as `renderLeafFn`'s prologue/epilogue ABI glue is trusted.
 The verified content is the two proven leaves and the proven canonical add.
 
-**0 sorries** here (this is an emit driver — `IO`/`String` rendering); the proven
+**All goals closed** here (this is an emit driver — `IO`/`String` rendering); the proven
 content is in `Curve4MontMulProvenEmit` / `FieldAddSubTierA` / `FieldDescentMultiLimb`.
 -/
 

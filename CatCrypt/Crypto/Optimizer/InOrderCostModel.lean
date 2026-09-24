@@ -21,9 +21,9 @@ sum — so **instruction scheduling cannot change it**. That is exactly why ever
 in-tree SLOTHY/CryptOpt experiment on a wide-OoO x86 core comes back null or
 negative:
 
-- `RandomizedScheduleSearch` §9 (#385), the Curve25519 field-mul `feMulBlock`:
+- `RandomizedScheduleSearch` §9, the Curve25519 field-mul `feMulBlock`:
   8 legal reschedules, all OoO-cost-neutral, within bench noise — never a win.
-- `RandomizedScheduleSearch` §10 (#530), the three-product safegcd accumulate:
+- `RandomizedScheduleSearch` §10, the three-product safegcd accumulate:
   the MULX-hoist the cost proxy prefers is **measured 20–30 % SLOWER** on a
   Ryzen 7 PRO 7840U (`bench/cryptopt_safegcd/cost_eval_3prod.c`).
 - §1–8, the two-product pilot: 1.03× (`bench/cryptopt_safegcd`, null).
@@ -174,7 +174,7 @@ theorem hoisted_inOrder_lt_input : inOrderCost hoistedBlock < inOrderCost inputB
 theorem ooo_2prod_neutral : scheduleCostV2 hoistedBlock = scheduleCostV2 inputBlock := by
   native_decide
 
-/-! ## 4. Three-product safegcd accumulate — the crossover (#530 measured slower
+/-! ## 4. Three-product safegcd accumulate — the crossover (measured slower
     on OoO, faster in-order)
 
 This is the sharp one. `RandomizedScheduleSearch` §10 *measured* `hoist3Block`
@@ -183,7 +183,7 @@ register-pressure of six live mul-outputs costs more than the (already-hidden)
 multiply latency saves on a wide-OoO core. Yet the OoO *bound* is neutral, and
 under the **in-order** model the hoist is strictly *cheaper*: an in-order core
 cannot hide the multiply latency dynamically, so the static front-load is the
-only way to overlap it. The same code, three microarchitecture verdicts —
+only way to overlap it. The same code, three microarchitecture outcomes —
 exactly why SLOTHY ships for Cortex and not for desktop x86. -/
 
 #eval inOrderCost input3Block    -- naive (higher: each MULX stalls its accumulate)
@@ -192,7 +192,7 @@ exactly why SLOTHY ships for Cortex and not for desktop x86. -/
 /-- **The crossover (machine-checked).** The three-product MULX-hoist is
     strictly cheaper under the in-order model, *while* the OoO bound stays
     neutral — and the on-CPU OoO bench (`cost_eval_3prod.c`) measured it 20–30 %
-    *slower*. One reschedule, opposite verdicts across microarchitectures: the
+    *slower*. One reschedule, opposite outcomes across microarchitectures: the
     precise in-Lean statement of why instruction scheduling is an in-order-core
     optimisation. -/
 theorem hoist3_inOrder_lt__ooo_neutral :
@@ -204,13 +204,13 @@ theorem hoist3_inOrder_lt__ooo_neutral :
     microarchitectures
 
 `feMulBlock` is one of the four headline SLOTHY targets and a fully
-translation-validated real kernel. The §9 finding was that its residual is
+translation-validated real kernel. By §9 of `RandomizedScheduleSearch` its residual is
 **register allocation, not scheduling**: every product reuses the `hi`/`lo`
 output names, serialising the schedule by name. The in-order model corroborates
 this independently — without renaming there is no schedule that overlaps the
 column multiplies, so the in-order cost is already at the name-serialised floor.
-This is the honest negative for X25519: SLOTHY *scheduling* does not help here on
-either microarchitecture; the lever is renaming (#386). -/
+For X25519, SLOTHY *scheduling* does not help here on either microarchitecture;
+the remaining lever is renaming (register allocation, `RandomizedRegAlloc`). -/
 
 #eval inOrderCost feMulBlock
 #eval scheduleCostV2 feMulBlock
@@ -313,8 +313,7 @@ def keccakThetaHoisted : List (JInstr 64) :=
 #eval inOrderCost keccakThetaHoisted
 
 /-- Keccak θ: the reschedule is OoO-neutral and in-order **no worse** (≤). With
-    1-cycle XORs the in-order latency-hiding headroom is marginal — the honest
-    finding that Keccak's scheduling lever is loads/rotates/regpressure, not the
+    1-cycle XORs the in-order latency-hiding headroom is marginal: Keccak's scheduling lever is loads/rotates/regpressure, not the
     latency overlap that drives the multiply kernels. -/
 theorem keccak_inOrder_le__ooo_neutral :
     inOrderCost keccakThetaHoisted ≤ inOrderCost keccakThetaNaive ∧

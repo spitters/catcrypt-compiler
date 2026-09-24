@@ -14,8 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 # Verified common-subexpression elimination (CSE) for `Com` — analysis-as-decision pass
 
 This file extends the verified-optimizer suite
-(`JForProgUnroll.lean` (#139), `RegisterAllocation.lean` (#141 / #143),
-`CtPreservationNewTransforms.lean` (#146), `DeadCodeElim.lean`) with a
+(`JForProgUnroll.lean`, `RegisterAllocation.lean`,
+`CtPreservationNewTransforms.lean`, `DeadCodeElim.lean`) with a
 **common-subexpression-elimination** pass at the `Com` level.
 
 ## Architectural principle: analysis as decision
@@ -25,7 +25,7 @@ This file extends the verified-optimizer suite
 syntax* at that position; the binder itself, and the intrinsic De-Bruijn
 indexing of every later use, must remain — otherwise the typing fails.
 
-Following the same architectural pattern as `RegisterAllocation.lean` (#143)
+Following the same architectural pattern as `RegisterAllocation.lean`
 and `DeadCodeElim.lean`, the heavy lifting is the **analysis** (which binders
 recompute an expression already bound earlier); the `Com → Com` rewrite
 itself is the identity at the framework level, because the emit pass
@@ -629,8 +629,8 @@ optimisation steps plug. The expansion path:
    expression reads through. Currently the Com IR's `stackStore` is
    a functional update that produces a *new* `Ctxt.Var` (preserving
    SSA), so this is not an issue at the Com level — only at later IR
-   levels (textual Jasmin `Cassgn` / `Copn`) does the kill-set become
-   load-bearing.
+   levels (textual Jasmin `Cassgn` / `Copn`) does the kill-set
+   matter.
 
 The framework theorems `applyCse_denote_preserves` and
 `applyCse_preserves_CT` are CSE-decision-independent and hold across all

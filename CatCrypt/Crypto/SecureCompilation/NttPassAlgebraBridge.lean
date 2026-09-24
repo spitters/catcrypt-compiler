@@ -65,7 +65,7 @@ Two gaps therefore separate "both leaves realize the same product" from
 * `nttLeaves_agree_on_canonical_sig` — **on the canonical NTT signature**, if
   the NTT leaf realizes `nttMul` and the `"poly_mul"` leaf realizes the *same*
   `nttMul`, then under `decode` injectivity the two leaves return **equal raw
-  values**.  This is the genuine content the realization machinery delivers:
+  values**.  This is the content the realization machinery delivers:
   it discharges gap (1) at the canonical signature.
 
 * `nttAgreesPolyMul_of_realize_and_offsig` — the full reduction: from the two
@@ -80,14 +80,14 @@ Two gaps therefore separate "both leaves realize the same product" from
   at `(q, n) = (3329, 256)`, `ω = 17`, leaf `"ntt_poly_mul_3329_256"`, feeding
   the conclusion directly into `nttPolyMulMlkem_denote_eq`.
 
-## Honesty: conditional, not unconditional
+## Scope: a conditional result
 
 This connection is **conditional**, on two named residuals:
 
 * `decode`-injectivity on the `.TFp` carrier (gap 1), and
 * off-canonical-signature raw agreement of the NTT and poly-mul leaves (gap 2).
 
-Both are genuine, separate from the algebraic NTT-multiply correctness (which
+Both are separate from the algebraic NTT-multiply correctness (which
 is already discharged: `nttMul = cyclicConv` via `nttMul_eq_cyclicConv'`, and
 the ML-KEM primitive root via `isPrimitiveRoot_17_256`).  A fully *grounded,
 unconditional* `nttAgreesPolyMul mlkemLeafSpec 3329 256` would require a
@@ -165,7 +165,7 @@ an explicit hypothesis and feed the trivial-lift
     `nttAgreesPolyMul_of_pointwise` lifts to `nttAgreesPolyMul`.
 
     Conditional on `hdec` and `hoff'` — see the module docstring for why these
-    are the genuine residuals (the `PolyEncoding` round trip + the
+    are the residuals (the `PolyEncoding` round trip + the
     off-signature pass-through law). -/
 theorem nttAgreesPolyMul_of_realize_and_offsig
     {q n : Nat} {ω : R} {decode : RustVal .TFp → (Fin n → R)}

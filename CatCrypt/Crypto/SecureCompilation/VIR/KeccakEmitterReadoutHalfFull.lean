@@ -10,13 +10,13 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfExt
 
 /-!
-# Keccak emitter readout half — full-chain composition (task #134)
+# Keccak emitter readout half — full-chain composition
 
-Task #134: compose the five per-sub-block readout existentials (`#128`: θ-C
-column, ι; `#132`: θ-D column, ρπ lane, χ lane) through the outer ~263-binding
-`emitRound` chain, with the aim of inhabiting
-`EmitRoundDenotesClosedFormFaithful round bs immV V` as a *theorem* (the SHA-2
-analog of #128's `EmitRoundDenotesClosedFormFaithful_holds`).
+This module composes the five per-sub-block readout existentials
+(`KeccakEmitterReadoutHalf`: θ-C column, ι; `KeccakEmitterReadoutHalfExt`: θ-D
+column, ρπ lane, χ lane) through the outer ~263-binding `emitRound` chain,
+reducing `EmitRoundDenotesClosedFormFaithful round bs immV V` to one named Prop
+(the SHA-2 analog is `Sha2EmitterReadoutHalf.EmitRoundDenotesClosedFormFaithful_holds`).
 
 ## Strategy
 
@@ -35,8 +35,8 @@ with `emitTheta_C 5 0` itself recursing through 5 calls to `emitThetaCCol` (and
 likewise for `emitTheta_D`, `emitRhoPi`, `emitChi`). Each per-helper level has a
 *denotation existential* (`emit{ThetaCCol,ThetaDCol,RhoPiLane,ChiLane,Iota}_
 denote_exists`) proven in `KeccakEmitterComposition`/`*ReadoutHalfExt`. The
-top-level denotation existential `emitRound_denote_exists` is already a theorem
-(committed `KeccakEmitterComposition`).
+top-level denotation existential `emitRound_denote_exists` is a theorem of
+`KeccakEmitterComposition`.
 
 The residual is the **lanes-readout equation**
 
@@ -52,18 +52,18 @@ each `aSlot x y` slot is last touched by exactly one of:
   (only for slot `aSlot 0 0`).
 
 Tracing through the ~266-binding chain, the final `readSlot bsF VF (aSlot x y)`
-unfolds to the explicit closed-form value. By #113's `keccak_round_bitexact`
+unfolds to the explicit closed-form value. By `keccak_round_bitexact`
 (in `KeccakDiffuseExact`), the closed form equals the FIPS 202 spec round
 `keccakFullRound`.
 
-## Status (HONEST PARTIAL)
+## Contents and scope
 
 The full-chain simp blast — even at heartbeat budget 64M — is at the edge of
-elaborator feasibility. This file delivers:
+elaborator feasibility. This module provides:
 
 * §1 `lanesReadoutResidual` — the lanes-readout half as a precisely-stated
-  hypothesis (a closed-form Prop). The 5 sub-block existentials of #128/#132
-  are the substrate; this Prop names what their composition would produce.
+  hypothesis (a closed-form Prop). The 5 sub-block existentials of
+  `KeccakEmitterReadoutHalf` / `KeccakEmitterReadoutHalfExt` are the substrate; this Prop names what their composition would produce.
 
 * §2 `EmitRoundDenotesClosedFormFaithful_from_lanesReadout` — a constructive
   reduction: given `lanesReadoutResidual round bs immV V`, the full Faithful
@@ -78,33 +78,34 @@ elaborator feasibility. This file delivers:
   the 5 sub-block existentials through `emitRound`'s outer 5-step chain
   yields a single existential over the chain-final state, with the lanes
   equation as the residual. This factors what a full closure must do, and
-  matches the SHA-2 #128 sub-block decomposition pattern.
+  matches the `Sha2EmitterReadoutHalf` sub-block decomposition pattern.
 
 The lanes-readout half itself — the simp-blast through the ~266-binding chain
-that would discharge `lanesReadoutResidual` directly — is the residual that
-the heartbeat budget cannot accommodate at the current substrate. The remaining
-gap is reduced from the full chain to a **single named structural Prop** with
-explicit form.
+that would discharge `lanesReadoutResidual` directly — is outside the heartbeat
+budget with this substrate. The module reduces the full chain to a **single
+named structural Prop** with explicit form.
 
-## Comparison to SHA-2 (#128)
+## Comparison to SHA-2 (`Sha2EmitterReadoutHalf`)
 
 The SHA-2 chain is 46 bindings and closes by a 3-phase simp blast at 16M
 heartbeats (`Sha2EmitterReadoutHalf.EmitRoundDenotesClosedFormFaithful_holds`).
 The Keccak chain is ~5.7× longer (266 vs 46) over 25 lanes (vs 4 working
 SHA-2 slots), so the simp blast is ~144× the work in the worst case. The
 per-lane factoring in §4 is the SHA-2-template-faithful decomposition; the
-full closure follows once the simp blast scales.
+full closure requires the simp blast to scale to that size.
 
 ## Axiom budget
 
 `[propext, Classical.choice, Quot.sound]` plus the `bv_decide` LRAT certs
-from #113 (inherited through `keccak_round_bitexact`). No new custom axioms.
+from `KeccakDiffuseExact` (inherited through `keccak_round_bitexact`). No new
+custom axioms.
 No `sorry`, no `native_decide`.
 
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #134 in that chain: full-chain residual reduced to one named Prop.
+module is the chain step after `KeccakEmitterReadoutHalfExt`: full-chain
+residual reduced to one named Prop.
 -/
 
 @[expose] public section
@@ -140,7 +141,8 @@ We name it as a Prop here, with the chain witnesses identified explicitly
     closed-form full-round value at every slot `aSlot x y`.
 
     This is the explicit structural fact whose closure is the residual after
-    the five per-sub-block existentials of #128/#132. The substrate of #116
+    the five per-sub-block existentials of `KeccakEmitterReadoutHalf` /
+    `KeccakEmitterReadoutHalfExt`. The substrate of `KeccakEmitterReduction`
     (`readSlot_bsAfterOp_eq/_ne`, `readImm_immVarAfter`) provides every
     per-step rewrite; their composition through ~266 bindings is the
     elaborator-budget residual. -/
@@ -207,7 +209,7 @@ theorem emitRound_lanes_eq_fips_keccak_from_lanesReadout (round : Nat)
 
 /-- **24-round loop FIPS bridge from the residual.** Equivalent to
     `emitRound_lanes_eq_fips_keccak_from_lanesReadout`, named to match the
-    loop-keystone composition pattern (`#109`). -/
+    loop-theorem composition pattern of `KeccakBitexact`. -/
 theorem keccak_round_loop_bitexact_via_fips_from_lanesReadout (round : Nat)
     {Γ : Ctxt jasminDialect}
     (bs : BState Γ) (immV : Nat → Ctxt.Var Γ r64) (V : Ctxt.Valuation Γ)
@@ -320,15 +322,17 @@ theorem emitRound_denote_exists_chain (round : Nat)
 
 /-! ## 5. Headline status table
 
-Five Keccak sub-blocks; status per task #128/#132/#134:
+Five Keccak sub-blocks. Denotation halves are in `KeccakEmitterComposition`
+(`Comp`); readout-existentials in `KeccakEmitterReadoutHalf` (`RH`) and
+`KeccakEmitterReadoutHalfExt` (`RHExt`); aggregate denotations in this module:
 
 | Sub-block | Denotation half | Per-sub-block readout-existential   | Aggregate denotation         |
 |-----------|-----------------|-------------------------------------|------------------------------|
-| θ-C col   | #118            | #128 (`emitThetaCCol_lanes_after`)  | #134 (`emitTheta_C_denote_exists`)  |
-| θ-D col   | #118            | #132 (`emitThetaDCol_lanes_after`)  | #134 (`emitTheta_D_denote_exists`)  |
-| ρπ lane   | #118            | #132 (`emitRhoPiLane_lanes_after`)  | #134 (`emitRhoPi_denote_exists`)    |
-| χ lane    | #118            | #132 (`emitChiLane_lanes_after`)    | #134 (`emitChi_denote_exists`)      |
-| ι         | #118            | #128 (`emitIota_lanes_after`)       | #134 (re-export)             |
+| θ-C col   | `Comp`          | `RH` (`emitThetaCCol_lanes_after`)  | `emitTheta_C_denote_exists`  |
+| θ-D col   | `Comp`          | `RHExt` (`emitThetaDCol_lanes_after`) | `emitTheta_D_denote_exists` |
+| ρπ lane   | `Comp`          | `RHExt` (`emitRhoPiLane_lanes_after`) | `emitRhoPi_denote_exists`   |
+| χ lane    | `Comp`          | `RHExt` (`emitChiLane_lanes_after`) | `emitChi_denote_exists`      |
+| ι         | `Comp`          | `RH` (`emitIota_lanes_after`)       | (re-export)                  |
 
 Full-chain composition:
 - Denotation half: **proven** (`emitRound_denote_exists_chain`).
@@ -337,9 +341,9 @@ Full-chain composition:
 - Conditional bridges from the residual to the unconditional FIPS 202
   bit-exact identity: **proven** (§3).
 
-## Comparison with SHA-2 (#128)
+## Comparison with SHA-2
 
-| Aspect                      | SHA-2 (#128)                       | Keccak (#128/#132/#134)              |
+| Aspect                      | SHA-2 (`Sha2EmitterReadoutHalf`)   | Keccak (readout chain)                |
 |-----------------------------|------------------------------------|---------------------------------------|
 | Chain length                | 46 bindings                        | ~266 bindings                         |
 | Sub-blocks                  | 1 monolithic block                 | 5 (θ-C, θ-D, ρπ, χ, ι)                |
@@ -347,10 +351,10 @@ Full-chain composition:
 | Faithful Prop closure       | Theorem (single 3-phase simp blast) | Reduced to `lanesReadoutResidual`     |
 | FIPS bridge                 | Unconditional                      | Unconditional **under residual**      |
 
-The SHA-2 closure was a single-file simp blast; the Keccak closure is the
+The SHA-2 closure is a single-file simp blast; the Keccak closure is the
 **substrate** + the **decomposition** + the **named residual**. Closing the
-named residual is the next-milestone simp blast at a yet-higher heartbeat
-budget (or the per-lane factoring of §4 expanded into 25 per-slot reads).
+named residual requires a simp blast at a higher heartbeat budget (or the
+per-lane factoring of §4 expanded into 25 per-slot reads).
 -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfFull

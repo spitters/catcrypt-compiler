@@ -20,7 +20,7 @@ Crypto-specific (vs. VEIR's LLVM-style `nsw`/`nuw`/`exact`/`disjoint`):
 * `ConstantTimeProperties` — op preserves timing-channel safety
 * `PureProperties` — op has no SPComp side effects (sampling, memref store)
 * `LinearProperties` — op is linear over a masking sharing (XOR-share friendly)
-* `OverflowProperties` — BitVec wrap semantics; informative since CryptoSSA
+* `OverflowProperties` — BitVec wrap semantics; informative since `catCryptDialect`
   is wrap-by-default (mod 2^n) but downstream lowering may need to flag
   which wraps are *intended* vs. *exploited*.
 
@@ -57,8 +57,7 @@ deriving Inhabited, Repr, DecidableEq
 /-! ## Purity properties -/
 
 /-- `PureProperties op` is the statement that `op` is a pure function:
-    no sampling, no observable state effect. CryptoSSA-level `isPure`
-    lifts here. -/
+    no sampling, no observable state effect. -/
 structure PureProperties where
   /-- True iff op has no `SPComp.sample` in its denotation. -/
   noSampling : Bool := true
@@ -79,7 +78,7 @@ deriving Inhabited, Repr, DecidableEq
 /-! ## BitVec overflow properties -/
 
 /-- `OverflowProperties op` reports the semantic intent of wrap behavior.
-    CryptoSSA's BitVec arithmetic is *always* `mod 2^n`; this flag
+    The dialect's BitVec arithmetic is *always* `mod 2^n`; this flag
     distinguishes "wrap is the spec" (e.g. ChaCha20 quarter-round) from
     "wrap would be UB in the source language" (e.g. Rust signed add).
 
@@ -103,7 +102,7 @@ def defaultPure : PureProperties := {}
 /-- Default: XOR-linear. -/
 def defaultLinear : LinearProperties := {}
 
-/-- Default: wrap-defined, never UB. CryptoSSA's BitVec arithmetic. -/
+/-- Default: wrap-defined, never UB, matching the dialect's BitVec arithmetic. -/
 def defaultOverflow : OverflowProperties := {}
 
 end CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties

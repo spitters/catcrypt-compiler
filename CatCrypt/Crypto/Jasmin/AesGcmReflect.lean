@@ -16,7 +16,7 @@ it adds AES-GCM specific opaque surface types and `@[rust_cmd_pattern]`
 registrations so that a pure-Lean AES-128-GCM **chain orchestration**
 (key-schedule → per-block AES-CTR + GHASH-multiply for `N = 4` blocks → final
 tag) can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## Background — the hybrid emit pattern
@@ -25,19 +25,18 @@ The AES-GCM family (`aesgcm`, `aesccm`, `aessiv`, `aesgcmsiv`, `aegis`) has a
 per-file HYBRID pattern:
 
 * the **per-round** `Com jasminDialect [.reg 128, .reg 128] (.reg 128)` AES round
-  step is Tier B (a verified emitter over a hand-built `Com`), e.g.
+  step is a verified emitter over a hand-built `Com`, e.g.
   `bench/aesgcm_compare/aesgcm_emit.lean`'s `aesBlockCom` /
   `aesBlockCom_denote`;
-* but the **multi-round chain glue** (the for-each-block loop that ties the AES
-  rounds together with GHASH multiplication and counter increment) is
-  `String.intercalate "\n  " bodyLines` — Tier C, with the chain-level
-  numbers backed only by structural smoke tests (`strContains`).
+* the **multi-round chain glue** (the for-each-block loop that ties the AES
+  rounds together with GHASH multiplication and counter increment) in that
+  file is `String.intercalate "\n  " bodyLines`, a string template whose
+  chain-level numbers are backed only by structural smoke tests (`strContains`).
 
-This file migrates the **chain glue** to Tier A: the orchestration of the
-`N = 4` block chain becomes one verified `LowCT → CryptoSSA → Com → jasmin`
-pass over a hand-built `LowCT`. The per-round Com substrate
-(`aesgcm_emit.lean`) is **kept unchanged** — it is the Tier B round-step
-keeper this migration sits on top of.
+This module puts the **chain glue** through the verified front: the
+orchestration of the `N = 4` block chain is one verified
+`LowCT → catCryptDialect → Com → jasmin` pass over a hand-built `LowCT`. The
+per-round Com substrate (`aesgcm_emit.lean`) sits under it unchanged.
 
 ## AES-128-GCM chain (NIST SP 800-38D, fixed `N = 4` blocks, 96-bit nonce)
 
@@ -85,7 +84,7 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 * NIST SP 800-38D §6, §7 — AES-GCM encryption (`GCTR`, `GHASH`, full encrypt)
 * RFC 5288, NIST Test Case 4 — canonical AES-128-GCM test vector
 * `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` — Rust trait surface this file mirrors
-* `bench/aesgcm_compare/aesgcm_emit.lean` — Tier B per-round Com (keeper)
+* `bench/aesgcm_compare/aesgcm_emit.lean` — per-round Com
 * `CatCrypt/Crypto/Jasmin/MayoReflect.lean` — sibling pattern (single-leaf
   reflect surface registering one fixed-N leaf)
 * `CatCrypt/Crypto/Jasmin/FalconReflect.lean` — sibling pattern (multi-leaf
@@ -157,12 +156,12 @@ noncomputable instance : Inhabited GcmCt4Tag := ⟨GcmCt4Tag.default⟩
 These are not used inside the chain `LowCT` body — the chain is one leaf
 (`aesgcm_chain_n4`). We declare them so this file documents the **conceptual
 decomposition** of the chain and so callers that want a finer-grained surface
-(e.g. for the audited Tier B round-step `aesBlockCom` in
+(e.g. for the audited round-step `aesBlockCom` in
 `aesgcm_emit.lean`) can refer to them by name. -/
 
 /-- One AES-128 ECB round step on a 128-bit counter block, parameterised by
     the round-key schedule. This is the per-round substrate the existing
-    Tier B `aesBlockCom : Com jasminDialect [.reg 128, .reg 128] (.reg 128)`
+    `aesBlockCom : Com jasminDialect [.reg 128, .reg 128] (.reg 128)`
     emits to (see `bench/aesgcm_compare/aesgcm_emit.lean`). Surfaced here as
     an opaque leaf so the conceptual chain decomposition is documented. -/
 axiom aesgcm_round_step : AesKey → BitVec 128 → BitVec 128
@@ -184,7 +183,7 @@ axiom aes_expand_key : AesKey → AesKey
 `aesgcm_chain_n4` is the single leaf the verified front sees: it bundles the
 full `N = 4`-block AES-128-GCM encrypt orchestration — key schedule, CTR
 keystream over 4 blocks, GHASH dot over (AAD ‖ C ‖ lenblock), tag XOR — as one
-opaque jasmin function symbol. The Tier B per-round Com substrate
+opaque jasmin function symbol. The per-round Com substrate
 (`aesgcm_emit.lean`'s `aesBlockCom`) is the under-the-leaf implementation. -/
 
 /-- `(ct, tag) = AES-128-GCM-Encrypt(key, nonce, aad, pt)` for the canonical

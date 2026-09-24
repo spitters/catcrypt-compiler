@@ -18,7 +18,7 @@ set_option maxHeartbeats 1000000
 
 `EcJacAddMontMul.lean` lands the frame-wrapped Montgomery multiply at the value
 level: over a field-element frame whose slots `a`, `b` hold reduced four-limb
-inputs, `feMulFrameAt_value` proves the output region reconstructs to the genuine
+inputs, `feMulFrameAt_value` proves the output region reconstructs to the
 emitted product `valLimbs a · valLimbs b`, and `montgomeryReduce N (2^256) Nprime`
 of that stored value is the Montgomery field product — landing `< 2·N` and
 `· 2^256 ≡ a · b (mod N)`. That result is *one conditional subtract away* from a
@@ -35,7 +35,7 @@ leaf-adoption pattern: "composed over an adopted external verified leaf". The
 canonicalisation we would otherwise KAT-gate is *proven upstream* in the AUCurves
 field tower.
 
-## What AUCurves genuinely proves (verified, accurately established)
+## What AUCurves proves
 
 The reduce/canonicalisation leaf is fiat-crypto's word-by-word-Montgomery
 multiply, which AUCurves consumes and re-states per curve
@@ -58,17 +58,16 @@ Proof using … . … Qed.
 **zero** `Axiom` (verified by reading the source: `grep -c "Admitted\|Axiom"` over
 `WordByWordMontgomery.v` is `0`). The second conjunct `valid (mulmod a b)` is
 exactly the canonicalised output: `valid x = small x ∧ 0 ≤ eval x < m`, i.e. the
-result is a genuine reduced field element in `[0, m)` — *after* the conditional
+result is a reduced field element in `[0, m)` — *after* the conditional
 subtract. The conditional subtract itself is the `Qed`'d
 `conditional_sub_correct` (line 415): `0 ≤ eval v < eval N + R →
 eval (conditional_sub v N) = eval v + (if N ≤ v then -N else 0)`. This is the
 precise canonicalisation our emit only KAT-gates — proven upstream.
 
-This is the field-arithmetic leaf, the candidate the project rule flags as most
-likely genuinely proven, and it is. (The `(*proj*)` markers in the proof scripts
-are proof-search annotations, not stubs; the `Qed.` is real. Contrast the
+This is the field-arithmetic leaf, and it is proved upstream. (The `(*proj*)`
+markers in the proof scripts are proof-search annotations, not stubs; the `Qed.` is real. Contrast the
 half-safegcd divstep certificates `Axiom secp256k1_half_certificate`, which the
-FieldLeafBridge catalog honestly records as `Axiom`s — those are NOT cited here.
+FieldLeafBridge catalog records as `Axiom`s — those are NOT cited here.
 The BLS12 G1 *group* add `bls12_G1_ok` is known commented-out upstream — also NOT
 cited here; this bridge is about the FIELD Montgomery reduce only.)
 
@@ -84,9 +83,9 @@ with a non-vacuous witness and a consumable worked theorem. Holding it = adoptin
 the AUCurves verified canonicalisation as the witness for our value-level reduce.
 
 `feMulFrameAtReduced` is the headline composable field-mul lemma: under the
-adopted leaf, slot `o`'s reduced value is a genuine field element (`< N`) whose
+adopted leaf, slot `o`'s reduced value is a field element (`< N`) whose
 `· 2^256 ≡ a · b (mod N)` — the composable Montgomery field product, ready to feed
-a point-add. No `sorry`, no new global `axiom`.
+a point-add. All goals are closed, with no new global `axiom`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontReduceBridge
@@ -117,7 +116,7 @@ side of the adoption is closed, and only the cross-prover faithfulness edge
 def canonReduce (N v : Nat) : Nat := if N ≤ v then v - N else v
 
 /-- **`canonReduce` lands in `[0, N)`** for an input `< 2·N`: the canonical
-    representative is a genuine field element. The `Nat` image of AUCurves'
+    representative is a field element. The `Nat` image of AUCurves'
     `valid (mulmod a b)` (`0 ≤ eval < m`). -/
 theorem canonReduce_lt (N v : Nat) (hv : v < 2 * N) :
     canonReduce N v < N := by
@@ -171,7 +170,7 @@ def AUCurvesMontReduceFaithful (N : Nat) (reduceLeaf : Nat → Nat) : Prop :=
     assumption object, mirroring `FieldLeafBridge.AUCurvesFieldMulBridge` and the
     FFI predicate `LeafFFIValidated`. Holding a value of this structure is
     *adopting* AUCurves' `Qed`'d Montgomery canonicalisation as the witness for
-    the CatCrypt reduce leaf — the honest, named cross-prover edge, never a bare
+    the CatCrypt reduce leaf — a named cross-prover edge, never a bare
     `axiom` on a hand-written kernel. -/
 structure AUCurvesMontReduceLeaf (N : Nat) (reduceLeaf : Nat → Nat) : Prop where
   /-- The reduce leaf realises the AUCurves canonicalisation on `[0, 2·N)`. -/
@@ -180,7 +179,7 @@ structure AUCurvesMontReduceLeaf (N : Nat) (reduceLeaf : Nat → Nat) : Prop whe
 /-- **Non-vacuous witness.** The CatCrypt-side canonical realiser `canonReduce N`
     itself adopts the leaf by reflexivity — confirming the predicate is the right
     shape (an inhabited cross-prover claim), not an unsatisfiable over-constraint.
-    The genuine cross-prover content is the gap between *this* realiser and the
+    The cross-prover content is the gap between *this* realiser and the
     value the emitted `emitCondSubP` computes, validated against AUCurves' Rocq
     `mulmod` output, which lives outside Lean (analogue of
     `FieldLeafBridge.aucurvesFieldMulBridge_canonical`). -/
@@ -193,14 +192,14 @@ theorem aucurvesMontReduceLeaf_canonical (N : Nat) :
 `montMulFieldElem N Nprime a b` is the canonical reduced Montgomery product: take
 `montgomeryReduce N (2^256) Nprime (a·b)` (in `[0, 2·N)`, the value
 `feMulFrameAt_value` lands) and canonicalise it. By §1 it is `< N` and
-`· 2^256 ≡ a·b (mod N)` — a genuine field element. -/
+`· 2^256 ≡ a·b (mod N)` — a field element. -/
 
 /-- The canonical reduced Montgomery field product of two residues `a, b`: reduce
     the product at radix `2^256`, then canonicalise (the AUCurves leaf). -/
 def montMulFieldElem (N Nprime a b : Nat) : Nat :=
   canonReduce N (montgomeryReduce N (2 ^ 256) Nprime (a * b))
 
-/-- **`montMulFieldElem` is a genuine field element (`< N`)** and
+/-- **`montMulFieldElem` is a field element (`< N`)** and
     **`· 2^256 ≡ a·b (mod N)`**, for reduced inputs `a, b < N` and the curve's
     Montgomery constant. The product half is the proven emitted+stored `runBlock`
     (via `feMulFrameAt_value`); the `< N` canonicalisation is the AUCurves leaf
@@ -239,7 +238,7 @@ to feed a point-add. -/
     applying the leaf `reduceLeaf` to `montgomeryReduce N (2^256) Nprime` of the
     stored output region's reconstructed value yields
 
-    * a genuine field element: `reduceLeaf (montgomeryReduce …) < N`; and
+    * a field element: `reduceLeaf (montgomeryReduce …) < N`; and
     * the Montgomery field product: `· 2^256 ≡ valLimbs a · valLimbs b (mod N)`.
 
     The product is the proven emitted+stored `runBlock` (`feMulFrameAt_value`);

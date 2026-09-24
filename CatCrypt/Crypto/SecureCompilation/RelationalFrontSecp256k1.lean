@@ -41,15 +41,15 @@ below their limb ceiling. We use **`k = 5`** 64-bit limbs (carrier `2^320`): the
 limb is `0`, and `2p ≤ 2^320` holds with room to spare. The product width for MUL is
 then `2k = 10` limbs.
 
-## secp256k1 instance scope (HONEST)
+## secp256k1 instance scope
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
+* **ADD (fully proved):** the abstract `ZMod q` field add `a + b`, serialized by the
   5-limb encoding `encMLK q 5`, equals the emitted 5-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce), read through
+  on the serialized operands (with the `condSubLimbs` reduce), read through
   `bignumVal`. This is `secp_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
+* **MUL (fully proved):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 10-limb (`2k = 10`) Barrett-reducing kernel
-  `mlMulMod` on the serialized operands — with the genuine multi-limb Barrett reduce of
+  `mlMulMod` on the serialized operands — with the multi-limb Barrett reduce of
   the product (`mu = ⌊(2^64)^10 / q⌋`, defined *as its side-condition value* so no
   `2^640` literal is evaluated). This is `secp_mul_commutes`.
 * The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^5`, `bignumVal secpLimbs = q`)
@@ -122,9 +122,9 @@ def secpKLimbPrime : KLimbPrime where
   two_q_le := by unfold secpQ; norm_num
 
 /-- **The secp256k1 base-field ADD commuting square.** The abstract secp256k1 base-field
-    addition `a + b` (in `ZMod q` for the genuine 256-bit prime `q = secpQ`), serialized
+    addition `a + b` (in `ZMod q` for the 256-bit prime `q = secpQ`), serialized
     by the 5-limb encoding `encMLK q 5`, equals the emitted 5×64-bit reducing kernel
-    `mlAddModK` on the serialized operands, read through `bignumVal` — with the genuine
+    `mlAddModK` on the serialized operands, read through `bignumVal` — with the
     5-limb conditional-subtract modular reduce. The secp256k1 sibling of
     `pallas_add_commutes`. -/
 theorem secp_add_commutes (a b : ZMod secpQ) :
@@ -201,10 +201,10 @@ def secpKLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The secp256k1 base-field MUL commuting square.** The abstract secp256k1 base-field
-    multiply `a * b` (in `ZMod q` for the genuine 256-bit prime `q = secpQ`), serialized
+    multiply `a * b` (in `ZMod q` for the 256-bit prime `q = secpQ`), serialized
     by the 5-limb encoding `encMLK q 5`, equals the emitted 10-limb Barrett-reducing
     kernel `mlMulMod` on the serialized operands, read through `bignumVal` — with the
-    genuine multi-limb Barrett modular reduce of the product. The secp256k1 sibling of
+    multi-limb Barrett modular reduce of the product. The secp256k1 sibling of
     `pallas_mul_commutes`, completing the secp256k1 field-op set. -/
 theorem secp_mul_commutes (a b : ZMod secpQ) :
     (a * b).val

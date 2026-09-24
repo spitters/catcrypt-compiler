@@ -19,7 +19,7 @@ jasmin ops (`regArith`/`mulhi`/…), so `sig (op.toJasmin) = (sig op).map toJasm
 is propositional (`Arith.toJasmin_sig`, `rfl` per op) rather than definitional, so
 `lowerExpr` transports the arg `HVector` across that proof.
 
-Since `arithDenote` was defined to equal the jasmin image's denotation on every op,
+Since `arithDenote` is defined to equal the jasmin image's denotation on every op,
 the preservation theorem is exact (no value drift). This is the template the
 `memref`/`func`/`vector`/`cf`/`scf` fan-out mirrors.
 -/
@@ -92,18 +92,18 @@ theorem mapVal_lookup {Γ : Ctxt arithDialect} {s : ArithTy}
   | here => match V with | .cons _ _ => rfl
   | there v ih => match V with | .cons _ V' => exact ih V'
 
-/-! ### Next step: full denotation preservation (a deliberate framework task)
+/-! ### Full denotation preservation
 
-`mapVal_lookup` is the load-bearing transport fact. The remaining `lowerExpr_denote`
-(one op) + `lowerArithToJasmin_denote` (the `Com` recursion) need the explicit
-value-transport (`transTy`) framework `LatticeToJasminDenote` uses in its dedicated
-denote file: in this VIR machinery the class-projection `DialectDenote.denote` does
+`mapVal_lookup` is the key transport fact. `lowerExpr_denote` (one op) and
+`lowerArithToJasmin_denote` (the `Com` recursion) are proved in `ArithToJasminDenote`
+with the explicit value-transport (`transTy`) framework that `LatticeToJasminDenote`
+uses: in this VIR machinery the class-projection `DialectDenote.denote` does
 not reduce under `simp`/`dsimp`, and the dependent `⟦·⟧` types on the args defeat a
 `show`-then-`rw [mapVal_lookup]` close (the operand types stay `⟦(int w).toJasmin⟧`
 rather than `BitVec w` at synthesis transparency, even with `@[reducible]` maps). The
 lattice file's `transTy : ⟦t⟧ → ⟦tau t⟧` makes those types line up syntactically;
-mirroring it for `arith` (where `transTy = id`) is the bounded follow-up. The
-agreement itself is immediate — `arithDenote op` was *defined* equal to
+`ArithToJasminDenote` mirrors it for `arith` (where `transTy = id`). The
+agreement itself is immediate — `arithDenote op` is *defined* equal to
 `jasminDenote (op.toJasmin)`. The structural lowering + `mapVal_lookup` here is the
 template the `memref`/`func`/`vector`/`cf`/`scf` fan-out mirrors. -/
 

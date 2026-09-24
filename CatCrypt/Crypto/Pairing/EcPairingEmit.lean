@@ -27,8 +27,8 @@ public import CatCrypt.Crypto.Pairing.Secp256k1Emit
 
 The EC/pairing verifier-equation + MSM-term `Com`s in `Pairing.{Bls12381,Bn254,
 P256,Secp256k1}Emit` are straight-line compositions of opaque `.extCall` leaves
-over `.stackArr` G1/G2/GT point buffers. Previously they were emitted as jasmin
-`.jazz` and a *structural* well-formedness was validated by **jasminc** (the
+over `.stackArr` G1/G2/GT point buffers. The jasmin route emits them as
+`.jazz` and validates a *structural* well-formedness with **jasminc** (the
 `gen/*.s: jasminc …` rule, with stub leaves in `*_leaves.jinc`). This driver
 emits the SAME orchestrations through the **OWNED** backend instead:
 

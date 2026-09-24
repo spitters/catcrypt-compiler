@@ -11,18 +11,18 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
-# Plonky3 LDE (coset-FFT low-degree extension) reflect surface — Tier A migration
+# Plonky3 LDE (coset-FFT low-degree extension) reflect surface
 
 Layer 2 of the Plonky3 STARK chain (low-degree extension of the execution trace
 via a coset FFT over the BabyBear field) lifted through the verified compiler
-chain `LowCT → CryptoSSA → Com → jasmin`.
+chain `LowCT → Com catCryptDialect → Jasmin`.
 
-This is the **architectural opposite** of the legacy
+This is the **architectural opposite** of the
 `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3LdeEmit.lean` string-template
 emit (`bench/plonky3_compare/gen/lde_coset_fft.jazz` is built by
-`String.intercalate` — out-of-chain by construction). This file is the
-LDE-layer analogue of `Plonky3Reflect.lean` (Merkle layer, Wave 1) and
-`FalconReflect.lean` (#191): every byte of the new emit goes through the
+`String.intercalate` — out-of-chain by construction). This module is the
+LDE-layer analogue of `Plonky3Reflect.lean` (Merkle layer) and
+`FalconReflect.lean`: every byte of the emit goes through the
 verified front.
 
 ## LDE equation (Plonky3 / plonky3-hax)
@@ -58,31 +58,30 @@ and the trace length `N` are specialised at Lean time (typical configs are
 Same as `FalconReflect.lean`, `MemAbiReflect.lean`, and `Plonky3Reflect.lean`
 (Merkle layer): `reifyLowCT%` does not consult the `LowCTPattern` registry,
 so we hand-build the `LowCT` body the reifier *would* produce. The rest of
-the front (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is unmodified.
+the front (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the standard chain.
 
-## RFor and unrolling
+## Unrolling
 
-`LowCTToCryptoSSA.translate` does not consume `RFor` (line 752 — it returns
-`none`). The 4-step LDE chain is therefore expressed as a flat `RSeq` of
+The 4-step LDE chain is expressed as a flat `RSeq` of
 `RCall`s. Each leaf encapsulates one bounded loop (the NTT butterfly, the
 zero-pad, the coset multiplication) — the loops are inside the leaf
-implementation, not in the orchestration body. This matches the Wave 1 Merkle
+implementation, not in the orchestration body. This matches the Merkle
 pattern (flat unroll, one RCall per algorithmic level).
 
-## Relation to legacy Tier C `Plonky3LdeEmit.lean`
+## Relation to the string emit `Plonky3LdeEmit.lean`
 
-The legacy file emits its `.jazz` via `String.intercalate` (no compiler
-correctness theorem witnesses the body). This file replaces that pattern with
-an in-chain emit: same final artifact shape, routed through the verified
-compiler. The legacy emit is kept as an out-of-chain reference until the
-`bench/plonky3_compare` C harness migrates.
+`Plonky3LdeEmit.lean` emits its `.jazz` via `String.intercalate` (no compiler
+correctness theorem witnesses the body). This module emits in-chain: same
+final artifact shape, routed through the verified compiler. The string emit
+serves as an out-of-chain reference for the `bench/plonky3_compare` C
+harness.
 
 ## References
 
 * Plonky3 coset-FFT LDE: `plonky3-hax/src/specs/baby_bear.rs` (`bb_*`),
   `plonky3-hax/src/fri.rs` (`coset_element`, `domain_element`).
-* Wave 1 Merkle pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`.
-* Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean` (#191).
+* Merkle pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`.
+* Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean`.
 * Driver template: `bench/fndsa_compare/verify_from_rustcmd.lean`.
 -/
 
@@ -147,7 +146,7 @@ axiom babybear_mul (N : Nat) :
 
 We register leaves for two typical configurations:
 * `(N=64, k=4)`: small KAT regime — `kN = 256`.
-* `(N=256, k=4)`: medium regime — `kN = 1024` (matches the legacy
+* `(N=256, k=4)`: medium regime — `kN = 1024` (matches the string-emitted
   `lde_coset_fft.jazz` array width).
 * `(N=1024, k=4)`: deep regime — `kN = 4096`.
 
@@ -375,10 +374,10 @@ def ldeCosetFft1024x4Reified : ReifiedFunc :=
 
 /-! ## 6. Default-config alias
 
-The task brief asks for one canonical `ldeCosetFftReified : LowCT` entry
-point. We expose the medium-regime `(N=256, k=4)` body as the default — it
-matches the legacy `lde_coset_fft.jazz` array width (`u64[1024]`) so the
-KAT against the Tier C legacy emit is byte-identical at this size. -/
+`ldeCosetFftReified : LowCT` is the canonical entry point: the
+medium-regime `(N=256, k=4)` body. It matches the string-emitted
+`lde_coset_fft.jazz` array width (`u64[1024]`), so the KAT against the
+string emit is byte-identical at this size. -/
 
 /-- The canonical entry point: the medium-regime `(N=256, k=4)` LDE body. -/
 def ldeCosetFftReified : ReifiedFunc := ldeCosetFft256x4Reified

@@ -11,9 +11,9 @@ public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # A verified GLOBAL register allocator: graph-coloring (Chaitin–Briggs) with
-  use-density spill cost + live-range splitting (gap #2)
+  use-density spill cost + live-range splitting
 
-`Optimizer.SpillingRegAlloc.linearScan` (#413) is a Poletto–Sarkar **linear scan**:
+`Optimizer.SpillingRegAlloc.linearScan` is a Poletto–Sarkar **linear scan**:
 on a def whose pool is full it evicts the active interval whose `lastUse` is
 **farthest in the future**. That heuristic is *spill-blind over whole-program-live
 state*: when every value's live range spans (nearly) the whole block — as Keccak-
@@ -306,7 +306,7 @@ def valueRanges (block : List (JInstr 64)) : List LiveRange :=
   (liveRanges block).filter (fun lr =>
     block.any (fun i => (writtenNames i).contains lr.name))
 
-/-- The #413 linear-scan allocator restricted to the **value** names (the same
+/-- The `SpillingRegAlloc` linear-scan allocator restricted to the **value** names (the same
     `valueRanges` the graph-coloring allocator sees), so the two are compared on an
     identical name set and pool — the only difference is the spill heuristic
     (farthest-end eviction vs use-density). This is `SpillingRegAlloc.linearScan` over

@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition
 /-!
 # `Sha2Emit.initEnv` discharges the faithful-environment Prop
 
-Task #115 (`Sha2EmitterComposition`) discovered that the denotation reduction
+As `Sha2EmitterComposition` §5 shows, the denotation reduction
 of `Sha2Emit.emitRound` to the `Sha2DiffuseExact.roundClosedForm` form needs a
 **faithful-environment** hypothesis on the valuation `V`: the shift-amount
 input words `amt n = .iw (200 + n)` must read as the literal `n` (so the
@@ -22,13 +22,13 @@ emitted `>>> (readInp e V (200 + n)).toNat` aligns with the closed form's
 
 `Sha2Emit.initEnv` (and the C harness in `bench/sha2_compare/`) populates the
 input slots faithfully: input `200 + n` is `BitVec.ofNat sp.w n`, and input
-`199` is `BitVec.allOnes sp.w`. This file packages that faithfulness as the
+`199` is `BitVec.allOnes sp.w`. This module packages that faithfulness as the
 predicates the `EmitRoundDenotesClosedFormFaithful` Prop carries.
 
-The remaining content of the Prop — discharging the existential `(envF, VF)`
-witness with the closed-form readout under the now-active faithfulness — is
-the 46-step substrate composition described in `Sha2EmitterComposition`
-§6–§8. This file delivers the **faithfulness predicates** as concrete
+The rest of the Prop — the existential `(envF, VF)` witness with the
+closed-form readout under the faithfulness hypotheses — is the 46-step
+substrate composition described in `Sha2EmitterComposition` §6–§8 and proved
+in `Sha2EmitterReadoutHalf`. This module defines the **faithfulness predicates** as concrete
 inhabitants of the two Prop hypotheses, plus the bridge form that consumes a
 proof of the inner existential to deliver the unconditional FIPS bridges for
 `emitRound`.
@@ -51,12 +51,11 @@ proof of the inner existential to deliver the unconditional FIPS bridges for
   on `initEnv` denotes to the FIPS-spec round. This is the form
   `bench/sha2_compare/`'s KAT consumes.
 
-The status of the inner-existential composition (the 46-step chain) is the
-same residual as in `Sha2EmitterComposition`: this file does **not** discharge
-that residual. What it delivers is the **faithfulness side** of the env
-hypothesis, ensuring that once the substrate composition is complete, the
-bridge composes without any further KAT-side check on the shift-amount or
-mask inputs.
+The inner-existential composition (the 46-step chain) is outside this
+module; `Sha2EmitterReadoutHalf` proves it. This module supplies the
+**faithfulness side** of the env hypothesis, so that with the substrate
+composition the bridge composes without any further KAT-side check on the
+shift-amount or mask inputs.
 
 ## Axiom budget
 
@@ -68,11 +67,11 @@ Verified by `lean_verify`:
   Quot.sound]`.
 * `emitRound_initEnv_eq_fips_sha256`: `[propext, Classical.choice, Quot.sound]`
   plus the six standard `bv_decide` LRAT certs from `Sha2DiffuseExact.crotr_eq_
-  rotr_sha256` (#110), inherited via `closed_form_eq_fips_sha256`.
+  rotr_sha256`, inherited via `closed_form_eq_fips_sha256`.
 * `emitRound_initEnv_eq_fips_sha512`: same shape, inheriting the six
   `crotr_eq_rotr_sha512` LRAT certs.
 
-No `sorry`, no `native_decide`, no new custom axioms.
+All goals closed; no `native_decide`, no new custom axioms.
 -/
 
 @[expose] public section
@@ -299,18 +298,18 @@ theorem emitRound_initEnv_eq_fips_sha512 (rt : Nat)
   refine ⟨Γ', envF, VF, hDen, ?_⟩
   exact hSt.trans (closed_form_eq_fips_sha512 _ _ _)
 
-/-! ## 5. Scope note: what #124 delivers, and what stays residual
+/-! ## 5. Scope
 
 `EmitRoundDenotesClosedFormFaithful sp rt (initEnv sp) V` is the
 **substrate-composition Prop** itself — the 46-step chain composition
 factoring `emitRound`'s `Com.denote` through the closed-form readout under
-the faithfulness hypotheses. Discharging it is the residual structural task
+the faithfulness hypotheses. Discharging it is the structural task
 described in `Sha2EmitterComposition` §6–§8; the substrate's per-helper
 `_denote` lemmas (`emitOp_denote`, `emitRotr_denote`, `cp_denote'`,
 `readSlot_envAfterOp_*`) plus the faithfulness rewrites are exactly the
 pieces needed.
 
-This file therefore delivers:
+This module provides:
 
 * The **faithfulness side** of the Prop hypothesis — every faithful runtime
   store discharges the two predicates the Prop carries.
@@ -318,13 +317,12 @@ This file therefore delivers:
   FIPS bit-exact identity on `initEnv` follows by combining with
   `Sha2DiffuseExact.closed_form_eq_fips_sha{256,512}`.
 
-What is **not** delivered here is the inner existential itself — the
-46-step substrate composition. That is the same residual as in
-`Sha2EmitterComposition`. With it, this file's `emitRound_initEnv_eq_fips_
-sha{256,512}` becomes the unconditional SHA-2 FIPS bridge for the emitted
-round on a faithful runtime store, with no `EmitRoundDenotesClosedForm`
-hypothesis remaining and no KAT dependence (modulo the substrate
-composition).
+The inner existential itself — the 46-step substrate composition — is
+proved in `Sha2EmitterReadoutHalf`. With it, this module's
+`emitRound_initEnv_eq_fips_sha{256,512}` becomes the unconditional SHA-2 FIPS
+bridge for the emitted round on a faithful runtime store, with no
+`EmitRoundDenotesClosedForm` hypothesis remaining and no KAT dependence
+(`Sha2EmitterReadoutHalf.emitRound_initEnv_eq_fips_sha{256,512}_unconditional`).
 -/
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv

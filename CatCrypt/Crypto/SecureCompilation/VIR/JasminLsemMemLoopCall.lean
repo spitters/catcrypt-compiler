@@ -13,28 +13,28 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 set_option autoImplicit false
 
 /-!
-# A loop body that CALLS a linked owned leaf, over the memref state (capability A2)
+# A loop body that CALLS a linked owned leaf, over the memref state
 
-A1 (`JasminLsemMemLoop`) unified control transfer (`Llabel`/`Lcond`/`Lgoto`) with
+`JasminLsemMemLoop` unifies control transfer (`Llabel`/`Lcond`/`Lgoto`) with
 the memref state `LstateM`, so a **straight-line** loop body runs over the bundled
 register+array state via `lsemFuelMemL`.  Its `evalInstrPMemL` delegates every
 non-control instruction to `lsemStepMem`, which returns `none` on the region-call
-instructions `Lcall`/`Lret`: a loop body could not CALL a leaf.
+instructions `Lcall`/`Lret`, so under it a loop body cannot CALL a leaf.
 
-This module (A2) **adds the region call**: the loop-body may contain a
+This module **adds the region call**: the loop-body may contain a
 `LinstrR.Lcall` to a **linked owned leaf** held in a `LeafEnvM` (name → owned
 body), and that call denotes to the **concrete leaf's effect on `LstateM`** — the
 piece the whole-prover loops need to call a hash leaf per node, and that
 `ConvertToVole` needs to call `prg_14` per node.
 
-## Structure (additive on A1)
+## Structure (additive on `JasminLsemMemLoop`)
 
-* `LstatePMC` extends A1's `LstatePM` with a **return-address stack**
+* `LstatePMC` extends the loop interpreter's `LstatePM` with a **return-address stack**
   `rstack : List (String × Nat)` (caller function + return pc).
 * `LeafEnvM := String → Option (List LinstrRM)` — the callee environment: each
   linked leaf `sym` maps to its **owned body** (a straight-line `List LinstrRM`
   ending in `LinstrR.Lret`).
-* `evalInstrPMemLC` mirrors A1's `evalInstrPMemL` and adds two arms:
+* `evalInstrPMemLC` mirrors the loop interpreter's `evalInstrPMemL` and adds two arms:
   * `Lcall _ (sym, _)` — push the return address `(lfn, pc+1)`, enter the callee
     (`lfn := sym`, `pc := 0`), running the callee's owned body over the **shared**
     `LstateM` (register store + array carrier threaded per the ABI).
@@ -63,7 +63,7 @@ body-fold then loops / exits.
 (`acc += buf[i]` performed by an in-`LeafEnvM` `sum` leaf via a real `Lcall`) and
 checks by `native_decide` that the result decodes to the fold `acc = 60`, and that
 it agrees with `runBoundedLoopMemC` (the fold using the concrete-leaf call step).
-This is the region-call harness for gap 3 / `ConvertToVole` reuse.
+This is the region-call harness `ConvertToVole` reuses.
 
 **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound} (+ `Lean.ofReduceBool`
 for the `native_decide` validate).**
@@ -87,8 +87,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
     run over the shared state. -/
 abbrev LeafEnvM : Type := String → Option (List LinstrRM)
 
-/-- The program-indexed bundled state with a **return-address stack**: A1's
-    `base`/`lfn` plus `rstack`, a stack of return frames `(caller fn, return pc)`
+/-- The program-indexed bundled state with a **return-address stack**: the loop
+    interpreter's `base`/`lfn` plus `rstack`, a stack of return frames `(caller fn, return pc)`
     pushed on `Lcall` and popped on `Lret`. -/
 structure LstatePMC where
   /-- The bundled stack-memory base (register file + array carrier + pc). -/
@@ -120,7 +120,7 @@ def evalJumpMemC (env : LeafEnvM) (P : LprogM) (lbl : LLabel) (s : LstatePMC) :
   | none => none
 
 /-- **The control-transfer + region-call eval arm over the bundled state.**
-    `Llabel`/`Lcond`/`Lgoto` are A1's control transfer (resolving in the current
+    `Llabel`/`Lcond`/`Lgoto` are the loop interpreter's control transfer (resolving in the current
     function's body).  The two new arms:
     * `Lcall _ (sym, _)` — if `sym` is a linked leaf (`env sym` present), push the
       return frame `(lfn, pc+1)`, enter the callee (`lfn := sym`, `pc := 0`),
@@ -241,10 +241,10 @@ def fuelCostC (env : LeafEnvM) (body : List LinstrRM) : Nat :=
     fuelCostC env (i :: is) = stepCostC env i + fuelCostC env is := by
   simp [fuelCostC, List.sum_cons]
 
-/-! ## 4. The `Lopn` delegate arm coincides with A1 -/
+/-! ## 4. The `Lopn` delegate arm coincides with the loop interpreter -/
 
 /-- On an `Lopn`, `evalInstrPMemLC` is the straight-line/memory step, exactly like
-    A1's `evalInstrPMemL`. -/
+    the loop interpreter's `evalInstrPMemL`. -/
 theorem evalInstrPMemLC_lopn (env : LeafEnvM) (P : LprogM) (i : LinstrRM) (s : LstatePMC)
     (hi : IsLopn i) :
     evalInstrPMemLC env P i s
@@ -262,10 +262,10 @@ theorem lsemStepMemC_lopn (env : LeafEnvM) (i : LinstrRM) (s : LstateM) (hi : Is
 
 /-! ## 5. The straight-line-with-calls segment lemma
 
-`segCallC` is the A2 analogue of A1's `lsemFuelMemL_seg`, relaxed so the segment
+`segCallC` is the call-aware analogue of `lsemFuelMemL_seg`, relaxed so the segment
 may contain region calls: running `lsemFuelMemLC` for `fuelCostC seg + f` fuel
 executes the inline body-fold `lsemStraightMemC seg` then continues with `f` fuel.
-Each `Lopn` mirrors A1; each call is discharged by the callee sub-run. -/
+Each `Lopn` mirrors the loop interpreter; each call is discharged by the callee sub-run. -/
 
 /-- The all-`Lopn` callee sub-run: from a callee frame at pc `0`, running the leaf
     ops (`leafOps`, all `Lopn`) then the trailing `Lret` executes the leaf ops via
@@ -285,7 +285,7 @@ theorem callee_run (env : LeafEnvM) (P : LprogM) (sym callerFn : String) (retPc 
   -- the callee's current body is `leafOps ++ [Lret]`, fetched from the environment.
   have hcur : curBodyC env P sym = leafOps ++ [(LinstrR.Lret, MemTag.reg none)] := by
     unfold curBodyC; rw [if_neg hne, hsym]; rfl
-  -- run the all-`Lopn` leaf ops as a straight-line segment (mirrors A1's seg).
+  -- run the all-`Lopn` leaf ops as a straight-line segment (mirrors `lsemFuelMemL_seg`).
   have hseg :
       ∀ (seg pre : List LinstrRM),
         (∀ i ∈ seg, IsLopn i) →
@@ -446,7 +446,7 @@ theorem segCallC (env : LeafEnvM) (P : LprogM) :
         rw [hb, show s.base.lpc + 1 + k = s.base.lpc + (k + 1) from by omega, hp]; simp
       rw [fuelCostC_cons]
       rcases hii with hlopn | ⟨ra, sym, lbl, hcall, hcOK⟩
-      · -- `Lopn`: cost 1, mirror A1.
+      · -- `Lopn`: cost 1, mirror the loop interpreter.
         have hcost : stepCostC env i = 1 := by
           obtain ⟨d, o, src, hd⟩ := hlopn; unfold stepCostC; rw [hd]
         rw [hcost, show 1 + fuelCostC env is + f = (fuelCostC env is + f) + 1 from by omega,
@@ -518,7 +518,7 @@ theorem segCallC (env : LeafEnvM) (P : LprogM) :
 
 /-- The bounded fold semantics of a memref loop **with region calls**: run the
     inline call body-fold `lsemStraightMemC env body` `n` times, resetting the pc
-    to `1` after each pass (as A1's `runBoundedLoopMem`, but the body-fold resolves
+    to `1` after each pass (as `runBoundedLoopMem`, but the body-fold resolves
     calls to the concrete leaf). -/
 def runBoundedLoopMemC (env : LeafEnvM) (body : List LinstrRM) :
     Nat → LstateM → Option LstateM
@@ -570,7 +570,7 @@ theorem lsemStraightMemC_lpc (env : LeafEnvM) (P : LprogM) :
           rw [h2, h1, List.length_cons]; omega
 
 /-- `findLabelMem` finds the loop's top label at position 0 (head of `loopLinstrRM`),
-    reused from A1's shape. -/
+    reused from the loop interpreter's shape. -/
 theorem findLabelMemC_loop (top : LLabel) (nReg : String) (body : List LinstrRM) :
     findLabelMem top (loopLinstrRM top nReg body) = some 0 :=
   findLabelMem_loop top nReg body
@@ -688,7 +688,7 @@ Assemble the two single-pass lemmas into the full bounded-loop-with-calls bridge
 from the top of a call-containing body, running `lsemFuelMemLC` realises
 `runBoundedLoopMemC env body m` — the `m`-fold of the (call-resolving) body over
 `LstateM`.  This is the region-call loop for an arbitrary trip count `m` (e.g. `m`
-tree nodes), the shape gap 3 / `ConvertToVole` need. -/
+tree nodes), the shape `ConvertToVole` needs. -/
 
 /-- After ≥1 iteration the fold sits at the loop top (`lpc = 1`). -/
 theorem runBoundedLoopMemC_succ_lpc (env : LeafEnvM) :

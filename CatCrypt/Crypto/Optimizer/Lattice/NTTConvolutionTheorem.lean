@@ -40,7 +40,7 @@ the coefficient *list* `(List.range n).map x'` at `ωᵏ`.
 ## The convolution theorem (the heart of NTT-multiply)
 
 With the bridge in hand, the convolution theorem is a one-line consequence of the
-`PolyConvGeneric.eval_conv` keystone: the pointwise product of two DFTs is the DFT
+`PolyConvGeneric.eval_conv` theorem: the pointwise product of two DFTs is the DFT
 of the cyclic / acyclic convolution at each evaluation point. `dft_mul_eq_conv`
 states the per-point form
 
@@ -122,7 +122,7 @@ product of the two pointwise evaluations:
 
   `eval (conv a b) ωᵏ = eval a ωᵏ · eval b ωᵏ`.
 
-This is the `PolyConvGeneric.eval_conv` keystone specialised to the evaluation
+This is the `PolyConvGeneric.eval_conv` theorem specialised to the evaluation
 points `ωᵏ` that the DFT samples — the algebraic identity an NTT-based multiply
 realises: a convolution in the coefficient domain becomes a *pointwise product*
 in the evaluation (DFT) domain. No primitive-root hypothesis is needed for this
@@ -140,7 +140,7 @@ point `ωᵏ`:
   `dft n ω x k · dft n ω y k = eval (conv (list x) (list y)) ωᵏ`,
 
 where `list z := (range n).map z'`. Combining `dft_eq_listEval` (each DFT output
-is a polynomial evaluation at `ωᵏ`) with the `eval_conv` keystone, this says the
+is a polynomial evaluation at `ωᵏ`) with the `eval_conv` theorem, this says the
 NTT turns convolution into a pointwise product: to multiply two polynomials,
 take their DFTs, multiply pointwise, and the result is the DFT of their
 convolution. The inverse direction (recovering the convolution coefficients by

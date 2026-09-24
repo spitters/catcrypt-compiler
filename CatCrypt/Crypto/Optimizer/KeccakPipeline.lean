@@ -11,13 +11,13 @@ public import CatCrypt.Crypto.Optimizer.SchedulerPass
 /-!
 # `keccakPipeline`: software-pipelining the sequential Keccak-f1600 θ-step
 
-This is the Keccak analog of the ARX software-pipelining pass (#525,
-`Optimizer/SchedulerPass.lean`).  #525 reorders the latency-bound ARX /
+This is the Keccak analog of the ARX software-pipelining pass
+(`Optimizer/SchedulerPass.lean`).  That pass reorders the latency-bound ARX /
 W-schedule accumulate chains; here we apply the *same* verified
 dependence-respecting reorder framework to the sequential Keccak-f1600
 permutation's θ (theta) step.
 
-## Why θ is the software-pipelining target (#593)
+## Why θ is the software-pipelining target
 
 The θ-step of Keccak-f1600 first computes five **column parities**
 
@@ -32,14 +32,14 @@ dependency (`c := a^b; c := c^d; …`), so on an out-of-order core the next
 chain cannot begin issuing until register pressure / the scheduler lets
 it.  *Modulo-scheduling the sponge* means interleaving the independent
 column-parity chains so the issue window stays fed across the latency
-shadow of each `XOR` — exactly the ILP win #525 targets for ARX.
+shadow of each `XOR` — exactly the ILP win `SchedulerPass` targets for ARX.
 
-## What this file does
+## What this module does
 
 We model a θ-parity block as a `List SchedulerPass.BBStmt` of scalar
 `SXor` assignments (the lane reads are `SExpr.SVar` of the state-lane
 names; each parity writes a distinct `C` slot).  The pipelining transform
-is the **same** latency-aware reorder pass as #525 — `keccakPipeline` is
+is the **same** latency-aware reorder pass as `SchedulerPass` — `keccakPipeline` is
 literally `SchedulerPass.scheduleBlock` specialised to θ-blocks — together
 with a *specific* hand-proven interleave (`thetaInterleave`) that hoists
 the second column's first partial over the first column's tail, built
@@ -50,7 +50,7 @@ from the proven adjacent-independent-swap kernel `block_swap_head`.
 * `keccakPipeline_denote` — the headline obligation: the pipelined block
   reaches exactly the same final states as the original, for *any* start
   state, over `LowCT`'s big-step `RustExec`.  This is a direct
-  specialisation of #525's `scheduleBlock_denote_eq`; the entire
+  specialisation of `scheduleBlock_denote_eq`; the entire
   dependence model (`indep`, the RAW/WAR/WAW gate) is reused.
 
 * `keccakPipeline_isCT` — constant-time preservation, specialised from
@@ -113,13 +113,13 @@ def thetaParityBlock : List BBStmt :=
 
 /-! ## §2  The pipelining transform
 
-`keccakPipeline` is #525's latency-aware list scheduler (`scheduleBlock`)
+`keccakPipeline` is `SchedulerPass`'s latency-aware list scheduler (`scheduleBlock`)
 applied to a θ-parity block.  Reusing the pass verbatim means we inherit
 its denotation- and CT-preservation theorems for free; we only need to
 *specialise* the statements to a sponge block. -/
 
 /-- **The Keccak θ software-pipelining pass.**  Reorder a θ-parity block
-    for ILP by #525's dependence-respecting latency-aware schedule.  Every
+    for ILP by `SchedulerPass`'s dependence-respecting latency-aware schedule.  Every
     move is an adjacent independent swap, so the denotation is preserved
     (`keccakPipeline_denote`). -/
 def keccakPipeline (b : List BBStmt) : List BBStmt :=
@@ -127,9 +127,9 @@ def keccakPipeline (b : List BBStmt) : List BBStmt :=
 
 /-! ## §3  Denotation preservation (the correctness obligation) -/
 
-/-- **Denotation preservation (#593).**  The pipelined θ-block reaches
+/-- **Denotation preservation.**  The pipelined θ-block reaches
     exactly the same final states as the original, from any start state.
-    Direct specialisation of #525's `scheduleBlock_denote_eq`: the entire
+    Direct specialisation of `scheduleBlock_denote_eq`: the entire
     RAW/WAR/WAW dependence model is reused, and the only reorder move is an
     `indep`-gated adjacent swap. -/
 theorem keccakPipeline_denote (N : Nat) (leafSpec : LeafSpec)
@@ -139,7 +139,7 @@ theorem keccakPipeline_denote (N : Nat) (leafSpec : LeafSpec)
   unfold keccakPipeline
   exact scheduleBlock_denote_eq N leafSpec b rs rs'
 
-/-- **CT preservation (#593).**  The pipeline preserves the constant-time
+/-- **CT preservation.**  The pipeline preserves the constant-time
     classification: θ reorders public-structure lane statements and adds no
     data-dependent control flow.  Specialisation of `scheduleBlock_isCT_eq`. -/
 theorem keccakPipeline_isCT (lt : LevelTable) (leafCT : LeafCTTable)
@@ -172,7 +172,7 @@ theorem lane_ne_cvar (a₁ a₂ a₃ b : String) :
 /-- Two θ column parities with **distinct slot names** are independent:
     they write distinct `C` slots and each reads only its own column's
     `A_x_*` lanes, which are disjoint from the other column's write and
-    reads.  The `cvar x₁ ≠ cvar x₂` precondition is the genuine
+    reads.  The `cvar x₁ ≠ cvar x₂` precondition is the
     dependence-model requirement (the pass reasons over slot *names*); for
     distinct numeric columns it is discharged by `decide` (see
     `theta01_interleave`). -/

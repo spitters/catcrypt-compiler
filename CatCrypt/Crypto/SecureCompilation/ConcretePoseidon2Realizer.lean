@@ -21,12 +21,12 @@ that assertion into a **theorem** for a concrete, spec-computing realizer with a
 verified byte codec — mirroring `ConcreteHashRealizer` (Keccak / SHA-256) and
 `ConcreteSymFieldRealizer` (AES / field add-mul), but for the Poseidon2 family.
 
-The encoding KAT is now a theorem: it covers STARK / Plonky3 / Merkle ZK
+The encoding KAT is a theorem here: it covers STARK / Plonky3 / Merkle ZK
 protocols whose Merkle-tree compression and sponge absorb are Poseidon2 calls.
 
 We exhibit, for each Poseidon2 primitive:
 
-* a genuine `RustVal`-byte codec (a real byte array, not a constructor wrapping
+* a concrete `RustVal`-byte codec (a real byte array, not a constructor wrapping
   the function), per-lane base-256 (4 bytes per Baby Bear field element — the
   prime `p = 2013265921 < 2^31 < 2^32` fits in 4 bytes), and
 * a **proved** round-trip `decode ∘ encode = id` for **every** input (the
@@ -48,16 +48,16 @@ We exhibit, for each Poseidon2 primitive:
   `decodeF`/`encodeF` field codec at `width = 4`, `q = babyBearPrime`, whose
   base-256 round-trip `decodeF_encodeF` is already a theorem.
 
-## HONEST scope — what this proves and what it does NOT
+## Scope — what this proves and what it does NOT
 
 * **Proved (unconditional Lean theorem):** there are *concrete*, round-trip
   -verified byte codecs and *concrete*, spec-computing realizer `LeafSpec`s
   under which the Poseidon2 permutation and compression realizations hold for
   **all** inputs — strictly stronger than *assuming* a KAT, because the
   byte-level decode-equals-spec fact is a theorem here, not a test vector.
-* **NOT proved (the remaining residual):** that the *jasmin-emitted machine
+* **NOT proved (outside the scope):** that the *jasmin-emitted machine
   bytes* of the real Poseidon2 kernels equal these realizers.  That is the
-  owned-machine-code route, a separate follow-up.  This file removes the
+  owned-machine-code route, outside this module.  This module removes the
   *encoding* KAT (the `decode ∘ encode = id` assumption); it does **not**
   remove the *machine-code* obligation, nor the upstream Plonky3 reference-
   vector cross-check (`kat_pending` in `BabyBear.lean`).
@@ -164,7 +164,7 @@ theorem decodeP_encodeP (s : Fin width → F) : decodeP (encodeP s) = s := by
 
     What is **not** proved here: that the jasmin-emitted machine bytes of the
     real Poseidon2 permutation kernel equal this realizer (the owned-machine-code
-    route — a separate follow-up). -/
+    route, outside this module). -/
 theorem poseidon2_perm_realizes_concrete (limbStore : LimbStoreSpec) :
     KernelRealizesT (.TBytes 64) decodeP poseidon2BabyBearPermute
       "poseidon2_babybear_permute"
@@ -196,7 +196,7 @@ def compressLeafSpec (leaf : String) (limbStore : LimbStoreSpec) : LeafSpec :=
 
     What is **not** proved here: that the jasmin-emitted machine bytes of the
     real Poseidon2 compression kernel equal this realizer (the owned-machine-code
-    route — a separate follow-up). -/
+    route, outside this module). -/
 theorem poseidon2_compress_realizes_concrete (leaf : String) (limbStore : LimbStoreSpec) :
     KernelRealizes2 (decodeF (q := babyBearPrime) 4) poseidon2BabyBearCompress leaf
       (compressLeafSpec leaf limbStore) :=

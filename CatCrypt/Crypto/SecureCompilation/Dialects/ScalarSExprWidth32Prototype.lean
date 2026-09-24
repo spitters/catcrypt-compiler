@@ -20,7 +20,7 @@ set_option autoImplicit false
 The production scalar front (`TranslateDialectDirectArms.lowerSExpr`) hardwires
 every emitted dialect word op to width `64` (`.bvAdd 64`, `.bvShiftL 64 k`, …) and
 only accepts `.sword 64` input slots (`lookupU64`). That is fine for the
-lane-independent word-packing kernels (Hawk), but it cannot express genuine
+lane-independent word-packing kernels (Hawk), but it cannot express
 32-bit crypto with CROSS-LANE mixing — the ChaCha quarter-round rotations, the
 SHA-256 Σ/Ch/Maj words, the BLAKE3 g-function — because those need a real 32-bit
 register ALU: 32-bit wrapping arithmetic and `rotl32`.
@@ -28,14 +28,13 @@ register ALU: 32-bit wrapping arithmetic and `rotl32`.
 The `catCryptDialect` op set is ALREADY width-parametric — every op carries a
 `(w : Nat)` and denotes over `BitVec w` (`CatCryptDialect.lean`), and the jasmin
 lowering `mapTy (.sword w) = .reg w` is likewise width-generic. So the ONLY place
-the width `64` is baked in is the FRONT lowering. This file adds a
-**width-parametric** copy of that lowering — `lowerSExprW (w : Nat)` — ADDITIVELY:
-the 64-bit `lowerSExpr` is untouched (byte-identical, everyone keeps building on
-it). `lowerSExprW 64` computes the same values; it differs in shape in that a
+the width `64` is baked in is the FRONT lowering. This module defines a
+**width-parametric** copy of that lowering — `lowerSExprW (w : Nat)` — ADDITIVELY,
+next to the 64-bit `lowerSExpr`. `lowerSExprW 64` computes the same values; it differs in shape in that a
 shift by a literal binds no constant for its count, and it also lowers `SAsr` by
 a literal.
 
-It then PROTOTYPE-flips one representative cross-lane kernel: the ChaCha20
+It then front-sources one representative cross-lane kernel: the ChaCha20
 quarter-round's first rotation step `d' = rotl32(d ^ (a + b), 16)` as a
 front-generated `.sword 32` body, and checks computationally that
 

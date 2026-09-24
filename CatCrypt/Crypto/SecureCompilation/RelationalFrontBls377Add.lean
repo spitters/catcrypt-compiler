@@ -22,10 +22,10 @@ the remaining axis: the full `377`-bit (`k = 6`) prime — *the user's literal t
 field* — as a `k`-bump of the already-`n`-limb proved kernels.
 
 This module **closes that bump**. It generalizes the 2-limb pieces to **`k` limbs**
-and instantiates them at the genuine `bls12_377` base-field prime `q` (377-bit, 6×64-bit
+and instantiates them at the `bls12_377` base-field prime `q` (377-bit, 6×64-bit
 limbs). The abstract `ZMod q` field addition `a + b`, serialized by the `k = 6` encoding
 `encMLK`, equals the emitted 6-limb reducing kernel `mlAddModK` (run on the serialized
-operands) read through `bignumVal` — **with the genuine 6-limb modular reduce**
+operands) read through `bignumVal` — **with the 6-limb modular reduce**
 (`condSubLimbs`). This is the `bls12_377` base-field ADD realized relationally.
 
 ## What generalizes (the `k`-limb pieces) and what is reused
@@ -37,7 +37,7 @@ reduce), `bignumVal_dropLast` (drop the zero carry limb). Only the *encoding* an
 
 * `splitLimbsK k v` — the `k`-limb little-endian split of any `v : ℕ` (recursive, no
   `k`-specific arithmetic). `bignumVal_splitLimbsK` proves it reads back `v % (2^64)^k`
-  *unconditionally* (the `k`-limb analogue of `bignumVal_splitLimbs2`, now via
+  *unconditionally* (the `k`-limb analogue of `bignumVal_splitLimbs2`, via
   `Nat.mod_mul`), and `bignumVal_splitLimbsK_of_lt` gives `= v` for `v < (2^64)^k`.
 * `encMLK q k` — the injective `ZMod q → List (BitVec 64)` encoding (`val`, `k`-split).
 * `mlAddModK_val k …` — the `k`-limb modular-add value correctness, **reusing**
@@ -48,7 +48,7 @@ reduce), `bignumVal_dropLast` (drop the zero carry limb). Only the *encoding* an
   carrier-parametric and **unchanged**; the whole-term abstraction theorem
   (`OpExpr.expr_eq_transfer`) is inherited for free.
 
-## The `bls12_377` instance (HONEST scope)
+## The `bls12_377` instance (scope)
 
 * **Demonstrated (sorry-free):** the `k`-limb generalization above, and its instance at
   the real `bls12_377` base-field prime
@@ -57,11 +57,11 @@ reduce), `bignumVal_dropLast` (drop the zero carry limb). Only the *encoding* an
   side conditions discharge axiom-cleanly: `q ≠ 0` and `2q ≤ (2^64)^6` by `norm_num`
   (pure-`Nat`, no `decide`); `bignumVal bls377Limbs = q` by `simp [bignumVal,
   BitVec.toNat_ofNat] + norm_num`. The commuting square `(a + b).val = bignumVal (mlAddModK
-  bls377Limbs (encMLK q 6 a) (encMLK q 6 b))` holds for `a b : ZMod q` — the genuine
+  bls377Limbs (encMLK q 6 a) (encMLK q 6 b))` holds for `a b : ZMod q` — the
   `bls12_377` field add through the emitted 6-limb kernel, *including the wrapping reduce*.
 * **The prime source.** The repo's `Vale/BLS12_377.lean` declares the field leaves as
-  *opaque axioms* (Montgomery-form `Fp377`), not as a `Nat` modulus, so there was no
-  reusable literal; `bls377Q` is defined here directly (the canonical Zexe/Aleo BLS12-377
+  *opaque axioms* (Montgomery-form `Fp377`), not as a `Nat` modulus, so they supply no
+  `Nat` literal; `bls377Q` is defined here directly (the canonical Zexe/Aleo BLS12-377
   base-field prime, `u = 0x8508c00000000001`).
 * **Deferred (unchanged from `RelationalFrontMultiLimb`):** the multi-limb **MUL**
   modular reduce — Montgomery/Barrett *of the product* at the `ZMod` value level. Its
@@ -142,7 +142,7 @@ theorem encMLK_injective (q k : Nat) [NeZero q] (hqk : q < (2 ^ 64) ^ k) :
 def mlAddModK (pl x y : List (BitVec 64)) : List (BitVec 64) :=
   condSubLimbs ((addLimbs x y 0).dropLast) pl
 
-/-- **`mlAddModK` value correctness at `k` limbs — the genuine multi-limb modular
+/-- **`mlAddModK` value correctness at `k` limbs — the multi-limb modular
     reduce.** For `k`-limb operands `x, y` below the `k`-limb modulus `pl` (with `2P ≤
     (2^64)^k`, so the sum stays in the `k`-limb range), the emitted composite computes
     `(bignumVal x + bignumVal y) % bignumVal pl`. The only change from `mlAddModK_val`
@@ -192,7 +192,7 @@ structure KLimbPrime where
   k : Nat
   /-- The prime modulus. -/
   q : Nat
-  /-- `q` is nonzero (so `ZMod q` is a genuine residue ring). -/
+  /-- `q` is nonzero (so `ZMod q` is a residue ring). -/
   nz : NeZero q
   /-- The modulus as a `k`-limb little-endian vector. -/
   ql : List (BitVec 64)
@@ -231,7 +231,7 @@ theorem mlAdd_seamK (Q : KLimbPrime) (a b : ZMod Q.q) :
 /-- **The `k`-limb `F_q` ADD commuting square.** The abstract field add `a + b` (in
     `F_q`), serialized by the injective-not-surjective `k`-limb encoding `encMLK`,
     equals the emitted multi-limb reducing kernel `mlAddModK` on the serialized operands,
-    read through `bignumVal` — **with the genuine multi-limb modular reduce**. The
+    read through `bignumVal` — **with the multi-limb modular reduce**. The
     `k`-generalization of `encML2_add_commutes`. -/
 theorem encMLK_add_commutes (Q : KLimbPrime) (a b : ZMod Q.q) :
     (a + b).val = bignumVal (mlAddModK Q.ql (encMLK Q.q Q.k a) (encMLK Q.q Q.k b)) := by
@@ -248,7 +248,7 @@ theorem mlAddK_spec_transfers (Q : KLimbPrime) (a a' b b' : ZMod Q.q) :
   rw [← encMLK_add_commutes Q, ← encMLK_add_commutes Q]
   exact ⟨fun h => by rw [h], fun h => (addModRealizationK Q.q).enc_inj h⟩
 
-/-! ## 6. The `bls12_377` instance: the genuine 377-bit base-field prime, `k = 6`
+/-! ## 6. The `bls12_377` instance: the 377-bit base-field prime, `k = 6`
 
 The Zexe / SnarkVM / Aleo BLS12-377 base-field prime (`u = 0x8508c00000000001`,
 377-bit). The repo's `Vale/BLS12_377.lean` declares the field leaves as opaque
@@ -288,10 +288,10 @@ def bls377KLimbPrime : KLimbPrime where
   two_q_le := by unfold bls377Q; norm_num
 
 /-- **The `bls12_377` base-field ADD commuting square — the user's target field.** The
-    abstract `bls12_377` base-field addition `a + b` (in `ZMod q` for the genuine 377-bit
+    abstract `bls12_377` base-field addition `a + b` (in `ZMod q` for the 377-bit
     prime `q`), serialized by the 6-limb encoding `encMLK q 6`, equals the emitted 6×64-bit
     reducing kernel `mlAddModK` on the serialized operands, read through `bignumVal` — with
-    the genuine 6-limb conditional-subtract modular reduce. -/
+    the 6-limb conditional-subtract modular reduce. -/
 theorem bls377_add_commutes (a b : ZMod bls377Q) :
     (a + b).val
       = bignumVal (mlAddModK bls377Limbs (encMLK bls377Q 6 a) (encMLK bls377Q 6 b)) :=
@@ -305,7 +305,7 @@ in `ZMod q`, `a + b = q - 1 + 5 = q + 4 ≡ 4`, which the emitted kernel must re
 exhibit the abstract field equation `(q - 1) + 5 = 4 + 0` transferring (through
 `mlAddK_spec_transfers`) to the emitted 6-limb kernel agreeing on the serialized
 operands. The abstract `ZMod q` equation closes by `decide` on the residues; the kernel
-side is the genuine wrapping reduce over `bls377Limbs`. -/
+side is the wrapping reduce over `bls377Limbs`. -/
 
 /-- **Worked wrapping example.** In the `bls12_377` base field, `(q - 1) + 5` wraps to
     `4` (the maximal residue plus `5` exceeds `q` by `4`). The abstract field equation

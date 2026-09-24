@@ -41,8 +41,9 @@ regions become the cheaper option at that point.
 
 * opencompl/lean-mlir (`LeanMLIR/Framework/Basic.lean`, `ErasedContext.lean`,
   `HVector.lean`): the structural ancestor.
-* `CatCrypt/Crypto/SecureCompilation/CryptoSSA.lean`: already mirrors this
-  framework informally; VIR makes the mirror structural.
+* `CatCrypt/Crypto/SecureCompilation/CryptoSSA.lean`: the crypto type
+  substrate (`CryptoTy`, `CHVector`), which mirrors this framework informally;
+  VIR makes the mirror structural.
 -/
 
 @[expose] public section
@@ -132,7 +133,7 @@ open Ctxt (Var)
 
 /-- A dialect's operation signature: for each op, its argument types and
     return type. (Single-return simplification vs lean-mlir's `List`; we
-    don't need multi-return for CryptoSSA-style dialects.) -/
+    don't need multi-return for the crypto dialects.) -/
 class DialectSignature (d : Dialect) where
   sig : d.Op → List d.Ty
   ret : d.Op → d.Ty

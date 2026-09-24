@@ -28,7 +28,7 @@ field is a static immediate (1/2/4/8), so a runtime stride cannot ride the scale
 it needs a computed offset `off := idx * stride` (a reg×reg `MUL`) then the access
 at `[base + off]` (an `ADD` folded into the memref element index).
 
-## What closes the gap: compose the committed front arms (no new node)
+## The route: compose the existing front arms (no additional node)
 
 The row-address arithmetic `idx * stride (+ k)` is exactly a scalar `SExpr`
 (`SAdd (SMul (SVar idx) (SVar stride)) (SLit k)`), which the committed
@@ -57,7 +57,7 @@ This module VALIDATEs that (native_decide): the body front-compiles, its emitted
 physical body contains a real `MUL:64` and `ADD:64` (the offset compute) plus one
 `LOADIDX`/`STOREIDX` (the access), and `denote = the independent row-address spec`
 `out[j] = src[j] iff j ∈ { (i*stride+k) mod N : i < cnt }` — at TWO different
-runtime strides on the SAME emitted program, so the stride is genuinely read from
+runtime strides on the SAME emitted program, so the stride is read from
 its register (not baked into the emit).
 
 Invoke:  lake env lean CatCrypt/Crypto/SecureCompilation/Dialects/RuntimeStrideRowFrontValidate.lean
@@ -128,7 +128,7 @@ def vmBody : VarMap Γbody :=
       (t := .memref paramN) "src").bind
       (t := .sword 64) "idx").bind (t := .memref paramN) "out")
 
-/-! ## 3. The outer program: front body → genuine `ComL.forLoopNRt`
+/-! ## 3. The outer program: front body → `ComL.forLoopNRt`
 
 Outer context `[count, stride, src, out]` (newest-first) — jasmin types
 `[.reg 64, .reg 64, .stackArr 64 N, .stackArr 64 N]`. ABI (deepest = `a0`):
@@ -151,7 +151,7 @@ def strideComL : Option (ComL Γouter (.stackArr 64 paramN)) :=
 
 /-! ## 4. Gate: the front succeeds -/
 
-/-- The runtime-stride row-copy body front-compiles to a genuine
+/-- The runtime-stride row-copy body front-compiles to a
     `ComL.forLoopNRt`. -/
 theorem strideComL_isSome : strideComL.isSome := by native_decide
 
@@ -200,7 +200,7 @@ theorem strideComL_denote_s2 :
 
 /-- **denote = row-address spec at stride 3, count 3 (SAME program).** Cells
     `{0,3,6}` get `src` — different addresses from stride 2, so the stride is
-    genuinely read from its register, not baked into the emit. -/
+    read from its register, not baked into the emit. -/
 theorem strideComL_denote_s3 :
     strideDenoteRow 3 3 sampleSrc sampleInit
       = some (rowList (strideSpec sampleSrc sampleInit 3 3)) := by native_decide
@@ -211,7 +211,7 @@ theorem strideComL_denote_s1 :
     strideDenoteRow 4 1 sampleSrc sampleInit
       = some (rowList (strideSpec sampleSrc sampleInit 1 4)) := by native_decide
 
-/-- **The two strides genuinely disagree** (a sanity witness that the stride reg
+/-- **The two strides disagree** (a sanity witness that the stride reg
     controls the addresses): stride 2 and stride 3 at count 3 produce DIFFERENT
     output rows on the same program. -/
 theorem strideComL_stride_observable :
@@ -231,7 +231,7 @@ def physBody : Option Lcmd :=
       [64, 64, 64, 64]).lfd_body)
 
 /-- **Real reg×reg `MUL:64` and `ADD:64` in the body** — the offset compute
-    `idx*stride + k`, emitted as genuine multiply + add (the runtime-stride
+    `idx*stride + k`, emitted as a multiply + add (the runtime-stride
     address arithmetic the static SIB scale cannot express). -/
 theorem physBody_has_mul_add :
     physBody.map (fun b =>
@@ -252,7 +252,7 @@ theorem physBody_bounded_indexed :
       = some (1, 1) := by native_decide
 
 /-- **Real back-edge preserved:** an internal `Llabel` + `Lcond` (`jne .L<d>`) —
-    a genuine counted loop, not an unrolled chain. -/
+    a counted loop, not an unrolled chain. -/
 theorem physBody_has_backedge :
     physBody.map (fun b =>
       (b.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false))

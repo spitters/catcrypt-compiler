@@ -12,8 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect
 # End-to-end compiler correctness on the `Com` chain
 
 This file composes the per-stage results of the `Com`-based compiler into one
-end-to-end statement for the ML-KEM NTT-multiplication route — the path the
-whole jasmin ⇄ VIR convergence was built for:
+end-to-end statement for the ML-KEM NTT-multiplication route:
 
 ```
 Com[lattice]  ──optimizer rewrite──▶  Com[lattice]  ──A3 lowering──▶  Com[jasmin]  ──printer──▶ .jazz ──jasminc──▶ asm
@@ -53,21 +52,21 @@ each handled separately rather than hand-waved:
    arithmetic builtins are covered by `haxToLowCT_simulates_programT`
    (`Hax/HaxToLowCTSim_ProgramTower.lean`) under `LeafCallAgreesArgs`.
 2. **leaf-spec'd jasmin denotation** — for the lattice leaves this is
-   *discharged* (A3, `jasminExtSem`); for external leaves (CryptoSSA
-   `fp_*` intrinsics on the `cryptoDialectToJasminCom` front, A1) it stays parametric in
-   `CryptoToJasminComCorrect.JasminLeafAgrees`.
+   *discharged* (A3, `jasminExtSem`); for external leaves (`fp_*` intrinsics
+   on the `cryptoDialectToJasminCom` front, A1) it is parametric in the leaf
+   semantics, `DialectJasminLeafAgreesWith`.
 3. **semantic printer faithfulness** — only the *structural* faithfulness is
    proved here (`JasminPrintCorrect`, instruction/parameter counts); the
    `JasminProg → .jazz` text and its parse are a later tier.
 4. **`.jazz → x86`** — `jasminc`, the verified assembly backend, is the
    deliberate trusted base; we do not re-verify it.
 
-The LowCT→CryptoSSA→Com[catCrypt] front (`LowCTToCryptoSSACorrect`,
-`CryptoToVIRCorrect`) and the CProg→Com[jasmin] front (A1,
-`cryptoDialectToJasminCom_denote_eq`) are the verified upstream halves; the lattice
-route below is the verified optimizer+backend half.
+The LowCT→Com[catCryptDialect] front (`translateDialectControl`) and the
+Com[catCryptDialect]→Com[jasmin] front (A1, `cryptoDialectToJasminCom_denote_eq`)
+are the verified upstream halves; the lattice route below is the verified
+optimizer+backend half.
 
-0 sorries.
+All proofs are complete.
 -/
 
 @[expose] public section

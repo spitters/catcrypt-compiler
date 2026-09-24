@@ -29,7 +29,7 @@ outside that body class, and no export theorem applies to it.
 
 This module widens the body class to `touch ++ chain ++ writeback`
 (`loopBodyInvTouchMN`), where the `touch` segment MAY write invariant-tracked
-state, under the weakest honest side condition — a **per-trip restoration
+state, under the weakest side condition — a **per-trip restoration
 discipline**:
 
 * `TouchRestoresMN` (counter machine, `lsemStraightMem`): from any state
@@ -50,9 +50,9 @@ instruction writes a wrong value into the tracked carrier) and `cmpIdxTouch`
 
 ## The widened export theorems (same conclusions as the pinned-body forms)
 
-* `loopMem_export_faithful_denote_invTouch` / `_comL_invTouch` — the A1
+* `loopMem_export_faithful_denote_invTouch` / `_comL_invTouch` — the
   counter-loop exports at `JLoopBodyN.denote` / `ComL.forLoopNRt`'s denotation.
-* `whileMem_export_faithful_comL_invTouch` — the A3 countdown-while export at
+* `whileMem_export_faithful_comL_invTouch` — the countdown-while export at
   `ComL.whileNz`'s denotation.
 * `guardedFlagLoop_export_faithful_denote_invTouch` / `_comL_invTouch` — the
   FLAG-machine export: the full `forLoopLcmdNRt` skeleton
@@ -74,7 +74,7 @@ instruction writes a wrong value into the tracked carrier) and `cmpIdxTouch`
   (`lsemStraightMem_straightOps_full`) is atomic; splitting it needs a
   mid-chain agreement notion over the partially-built scratch registers.
 * `PlainLopnBody (loopBodyChainMN update)` is a per-instance decidable side
-  condition on the flag route, not yet proved generically over `ScalarMemN`
+  condition on the flag route, not proved generically over `ScalarMemN`
   linearizations (the counter-machine route does not need it).
 
 **Fully proved; axioms ⊆ {propext, Classical.choice, Quot.sound}.**
@@ -106,7 +106,7 @@ variable {invTys : Ctxt jasminDialect}
 
 /-- **The per-trip restoration discipline (counter machine).**  From ANY state
     agreeing with a trip valuation `tripValMN invs t acc`, the touch segment
-    runs to completion under the A1 body-fold `lsemStraightMem`, re-agrees with
+    runs to completion under the straight-line body-fold `lsemStraightMem`, re-agrees with
     the SAME trip valuation at its end, and preserves the counter register's
     read.  Mid-segment states are unconstrained — the segment may write
     invariant-tracked registers (accumulator, loop index, invariant args) and
@@ -294,9 +294,9 @@ theorem loopBodyInvTouchMN_inv {w : Nat}
               LstateN.getW_congr_lvm (LstateM.reg_lvm_setLpc bt' 1) nReg 64, hn']
             rfl
 
-/-! ## 3. The counter-machine export theorems (A1 loop + A3 while) -/
+/-! ## 3. The counter-machine export theorems (counter loop + while) -/
 
-/-- **A1 export faithfulness, invariant-touch body.**  As
+/-- **Counter-loop export faithfulness, invariant-touch body.**  As
     `loopMem_export_faithful_denote_uncond`, for the widened body
     `touch ++ chain ++ writeback`: the touch may write invariant-tracked state
     mid-pass; the only new hypotheses are the restoration discipline
@@ -351,7 +351,7 @@ theorem loopMem_export_faithful_denote_invTouch {w : Nat}
       touch htouch invs t _ bt hAgt vn hvn
     exact ⟨bt', hbt', tripAgree_getW_acc hAg'⟩
 
-/-- **A1 export faithfulness at `ComL.denote`, invariant-touch body.**  The
+/-- **Counter-loop export faithfulness at `ComL.denote`, invariant-touch body.**  The
     touched loop realises the UNTOUCHED source node `ComL.forLoopNRt` — the
     restoring touch is denotationally transparent. -/
 theorem loopMem_export_faithful_comL_invTouch {Γ : Ctxt jasminDialect} {w : Nat}
@@ -390,8 +390,8 @@ theorem loopMem_export_faithful_comL_invTouch {Γ : Ctxt jasminDialect} {w : Nat
     fn top nReg hna hnr touch htLopn htouch s hfn hpc (initV.lookup V) hseed hn0 _ hm
     bprev blast bfin hprev hlast hbfin htaken hhalt
 
-/-- **A3 export faithfulness at `ComL.denote`, invariant-touch body.**  The
-    `whileMem_export_faithful_comL_uncond` upgrade for the widened body: the
+/-- **While export faithfulness at `ComL.denote`, invariant-touch body.**  The
+    extension of `whileMem_export_faithful_comL_uncond` to the widened body: the
     countdown pass is `touch ++ chain ++ writeback` (the touch restores the
     tracked region and preserves the guard register per trip), and the per-trip
     simulation is DISCHARGED through the touched trip invariant.  Same

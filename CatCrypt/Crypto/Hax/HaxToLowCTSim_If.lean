@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
-# H3.sexta: ifThenElse simulation case
+# ifThenElse simulation case
 
 Handles `.ifThenElse (.var cond) t e` arm of `haxToLowCT`, which
 produces `RIfNz cond tC eC` on the LowCT side.  The agreement

@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Patterns
 
 /-!
-# Auto-Vectorize — Pattern detection (task #108)
+# Auto-Vectorize — Pattern detection
 
 Unverified pattern-match layer: walks a surface Com expression tree and tries
 to recognise one of the `VectorizablePattern` shapes (`Patterns.lean`).
@@ -17,7 +17,7 @@ to recognise one of the `VectorizablePattern` shapes (`Patterns.lean`).
 ## Surface Com sketch
 
 A real auto-vectorizer reads from CatCrypt's VIR `Com` (`VIR/Core.lean`).
-For the first landing we use a *surface* mini-AST — a small inductive that
+This module uses a *surface* mini-AST — a small inductive that
 captures the bare shape an auto-vectorize pass operates on:
 
 * a binary op `binop op a b`,
@@ -27,8 +27,8 @@ captures the bare shape an auto-vectorize pass operates on:
 * a constant `const x`.
 
 This is *not* a competing IR — it is a small adapter the detection logic
-patterns-matches against. Once the dialect-level wiring (`Phase-2`) lands,
-the detection moves to VIR `Com` directly and this surface goes away.
+pattern-matches against; detection over VIR `Com` directly is outside this
+module's scope.
 
 **Detection is intentionally unverified**: pattern matching is a heuristic.
 A *successful* detection (output `some pattern`) commits to the equivalence
@@ -46,11 +46,10 @@ theorem in `Vectorize.lean`; a *failed* detection (output `none`) is just
 | `seq [const x, …, const x]` (n times, same `x`)   | `broadcast`         |
 
 A "same op everywhere" check requires extensional comparison of `α → α →
-α` functions, which Lean cannot decide automatically. The first landing
+α` functions, which Lean cannot decide automatically. The detection
 takes the operator *as a hypothesis* (the caller passes the expected op as
-an argument to the detection function); a Phase-2 follow-on threads a
-notion of "syntactic op tag" through the surface and discharges this
-check by `decide`.
+an argument to the detection function); a "syntactic op tag" threaded
+through the surface would let `decide` discharge this check.
 -/
 
 @[expose] public section
@@ -61,8 +60,7 @@ namespace CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize
 
 /-! ## 1. Surface Com mini-AST
 
-A throwaway shape representing the surface fragment the pass walks. Real
-auto-vectorize moves to `VIR/Core.lean`'s `Com` in Phase 2. -/
+A minimal shape representing the surface fragment the pass walks. -/
 
 /-- The surface AST node. Carrier-polymorphic in `α` like the rest of the
     pipeline. -/
@@ -98,14 +96,14 @@ end SurfaceCom
 
 The detection function tries each pattern in turn and returns the first
 match (a head-of-list `tryAll` style). The `expectedOp` and `expectedAddOp`
-hypotheses encode the operator the caller wants to vectorize — a Phase-2
-follow-up will infer them from a syntactic op tag carried by `binop`. -/
+hypotheses encode the operator the caller wants to vectorize; they are
+supplied by the caller, not inferred from `binop`. -/
 
 /-- The full pattern-detection function. Tries each pattern in turn and
     returns the first match.
 
     Parameter `hint` carries the expected lane operator(s) (an unverified
-    heuristic; Phase-2 will synthesize this from a syntactic op tag).
+    heuristic supplied by the caller).
 
     The `hint` argument is a discriminated union so the caller can ask for
     one specific pattern, sidestepping the unverified op-equality question.
@@ -131,8 +129,7 @@ end DetectionHint
     `VectorizablePattern` if one is found, else `none`.
 
     The `hint` argument carries the per-lane operators the detection should
-    look for (an unverified heuristic, Phase-2 will synthesise it from
-    syntactic op tags). The lane count `n` is also passed by the caller —
+    look for (an unverified heuristic supplied by the caller). The lane count `n` is also passed by the caller —
     the pass is *bottom-up*, so the caller already knows the SIMD width
     it wants to commit to. -/
 def detectPattern {α : Type} (hint : DetectionHint α) (n : Nat) :
@@ -140,22 +137,19 @@ def detectPattern {α : Type} (hint : DetectionHint α) (n : Nat) :
   | .seq xs => match hint with
       | .lanewiseAdd _ =>
           if xs.length = n then
-            -- The matcher *signals* recognition; the actual lane-function
-            -- reconstruction from the AST is Phase-2. The caller supplies
-            -- the lane functions directly to `vectorize`, so this is the
-            -- "yes, this looks vectorizable" flag. We return a witness
-            -- using constant-zero lanes; a real impl would extract the
-            -- operands from the AST.
+            -- Lane-function reconstruction from the AST is not performed;
+            -- the caller supplies the lane functions directly to
+            -- `vectorize` (via the build helpers below), so this arm
+            -- returns `none`.
             none
           else none
       | .lanewiseMul _ => none
       | _ => none
   | .mac _ _ _ _ => match hint with
       | .dotProduct _ _ =>
-          -- Same caveat as above — the matcher signals recognition; the
-          -- pattern reconstruction is Phase-2. The lhs/rhs lane functions
-          -- would be `fun i => (pairs.get! i).1` etc., but the first
-          -- landing skips this AST → lane reconstruction.
+          -- As above, AST → lane reconstruction is not performed; the
+          -- lhs/rhs lane functions would be `fun i => (pairs.get! i).1`
+          -- etc.
           none
       | _ => none
   | .const x => match hint with
@@ -165,11 +159,10 @@ def detectPattern {α : Type} (hint : DetectionHint α) (n : Nat) :
 
 /-! ## 3. Build helpers (for callers who already have the lane functions)
 
-In the first landing, the most useful entrypoints take the lane functions
-directly and build a `VectorizablePattern` of the requested shape. The
-*detection* function above will be filled in once the Com → lane-function
-machinery is wired; for now these constructors are what `Vectorize.lean`
-and `Demo.lean` actually use. -/
+These entrypoints take the lane functions directly and build a
+`VectorizablePattern` of the requested shape. The *detection* function above
+does not reconstruct lane functions from `Com`; these constructors are what
+`Vectorize.lean` and `Demo.lean` use. -/
 
 /-- Build a `lanewiseAdd` pattern from explicit lane functions. -/
 @[reducible] def mkLanewiseAdd {α : Type} (n : Nat) (op : α → α → α)

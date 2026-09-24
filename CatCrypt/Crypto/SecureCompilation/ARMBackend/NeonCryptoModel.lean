@@ -18,14 +18,13 @@ public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
 
 /-!
-# The ARMv8 crypto-extension NEON instructions: model, lowering, encoder, decoder (#550)
+# The ARMv8 crypto-extension NEON instructions: model, lowering, encoder, decoder
 
 `NeonModel.lean`/`NeonLowering.lean`/`NeonEncoder.lean`/`SailNeonDecoder.lean`
 cover the **packed-u32/u8 ASIMD ALU** subset (ADD/SUB/MUL.4S, AND/ORR/EOR.16B,
 SHL/USHR.4S, MOV.16B) that the ChaCha 4-way kernel emits — the AArch64 analogue
-of the x86 `Vec128*` packed path. This module is the **ARMv8 crypto-extension**
-analogue of the x86 `Vec128Model`'s `VCryptInst` section (#534a:
-VAES/PCLMUL/SHA-NI): the AArch64 AES round / GF(2^128) carry-less multiply
+of the x86 packed-u32 path. This module is the **ARMv8 crypto-extension**
+analogue of the x86 crypto-instruction model (VAES/PCLMUL/SHA-NI): the AArch64 AES round / GF(2^128) carry-less multiply
 instructions, in the **128-bit-value** V-register view, with the lowering
 denotation theorem, the verified byte encoder, and a
 `decode(encode i) = i` round-trip (§8 below — see that section for exactly what
@@ -52,7 +51,7 @@ op split for the *same* round function. Concretely, the ARM pair equals
 zero post-key): proved below (`aese_aesmc_eq_x86`, `native_decide` on the
 FIPS-197 worked example). The KAT catches a wrong split.
 
-## The honest anchor (inherited Sail/FIPS surface, same as x86 #534a)
+## The anchor (inherited Sail/FIPS surface, same as the x86 crypto instructions)
 
 The lane semantics is **not** re-derived: `AESE`/`AESMC`/`AESD`/`AESIMC` are the
 authoritative `Jasmin.aesSubBytes`/`aesShiftRows`/`aesMixColumns`/… FIPS-197 word
@@ -97,8 +96,8 @@ open CatCrypt.Crypto.Jasmin
 /-! ## 1. The 128-bit-value V-register view
 
 The packed-u32 model views a `V` register as 4 × u32 lanes (`Vec128`); the AES /
-PMULL ops act on the whole 128-bit register value. We read/write through the same
-`Vec128 ↔ BitVec 128` bijection the x86 model uses (`xmmToBits`/`bitsToXmm`). -/
+PMULL ops act on the whole 128-bit register value. We read/write through a
+`Vec128 ↔ BitVec 128` bijection, the same lane order as the x86 XMM view. -/
 
 /-- Reinterpret a 4 × u32 `V` register as one little-endian 128-bit value: lane
     `0` is the low dword, lane `3` the high dword (gas's `v` byte order). -/

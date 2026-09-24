@@ -10,12 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Verified store-to-load forwarding: recover register-residence on a frame-resident
-  straight-line body (#412)
+  straight-line body
 
-`RandomizedRegAlloc.lean` (#386) is a **renaming** pass: a register-allocation
+`RandomizedRegAlloc.lean` is a **renaming** pass: a register-allocation
 choice is a bijection `ρ` of the SSA virtual-register names a `JInstr` block uses.
 Renaming is exactly the degree of freedom of register *allocation* — but it is the
-wrong lever for the X25519 monolithic ladder body (#411). That body is
+wrong lever for the X25519 monolithic ladder body. That body is
 **frame-resident**: each inlined field op loads its operands from a frame buffer
 (`loadMem fp off`), computes in registers, and stores its result back to the frame
 (`storeMem fp off`). The cross-op state lives in **memory**, round-tripped op to op.

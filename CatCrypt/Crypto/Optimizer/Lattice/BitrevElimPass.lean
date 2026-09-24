@@ -17,7 +17,7 @@ bit-reversal that re-orders the INTT input. The two cancel, so a correct
 compiler can DELETE the pair and run the butterflies straight through — this is
 the well-known "NTT without bit-reversal" optimization.
 
-This file gives that optimization as a *correctness-preserving* pass over an
+This module defines that optimization as a *correctness-preserving* pass over an
 explicit NTT-pipeline model, reusing the proved bit-reversal-elimination cores
 from `AbsentRewrites`:
 
@@ -50,7 +50,7 @@ variable {w : Nat}
 
 * `bitrev` — a bit-reversal reorder stage: maps every entry through
   `BitVec.reverse` on its `w`-bit index. `BitVec.reverse` is a self-inverse
-  involution, so this models the genuine bit-reversal permutation.
+  involution, so this models the bit-reversal permutation.
 * `butterfly g` — any other stage, carrying its (opaque) stage function `g`
   (e.g. a layer of butterflies / twiddle multiplications). -/
 inductive Stage (w : Nat) where

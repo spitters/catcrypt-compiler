@@ -52,7 +52,7 @@ on 64-bit limbs, scalar reduction, point conditional swap, etc.
 
 All other shapes (nested `ComR` arms, sum/pair/memref returns) are
 returned unchanged. Lifting full sub-programs into a single context
-is follow-up work.
+is outside the scope of this pass.
 
 ## What this file provides
 

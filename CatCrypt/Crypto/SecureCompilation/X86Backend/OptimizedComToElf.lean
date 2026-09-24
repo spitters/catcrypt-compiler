@@ -194,7 +194,7 @@ def encodeOptBlock (opt : List (JInstr 64)) : ByteArray :=
     it to flat-`.text` bytes. Returns `none` if the `Lprog` has no function, or if any
     instruction in the body is outside the `lowerLinstrExtL` fragment (so the caller
     falls back to `compileComToElf`). A multi-function `Lprog` uses only its first
-    function here; a kernel that genuinely needs multiple emitted functions is outside
+    function here; a kernel that needs multiple emitted functions is outside
     this opt-in route's single-leaf scope. -/
 def optimizedLprogToElf (p : Lprog) : Option ByteArray :=
   match p.lp_funcs with

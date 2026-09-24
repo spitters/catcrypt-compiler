@@ -18,9 +18,9 @@ node
 
   `RSelect dst sel src0 src1`  —  `dst := if sel = 0 then src0 else src1`
 
-(`LowCT.lean`'s Phase-H constructor; `RustExec.selectFalse`/`selectTrue` give
+(the `LowCT.lean` constructor; `RustExec.selectFalse`/`selectTrue` give
 its operational semantics, and `cmdCT`'s `RSelect` arm gives the source CT
-verdict).  This rounds out **control flow** on the bounded fragment.
+result).  This rounds out **control flow** on the bounded fragment.
 
 ## Why this is the constant-time conditional
 
@@ -59,11 +59,11 @@ case — the branchless property the whole exercise is about.
 ## What is proved
 
 * `SelectSrc.toLowCT` — the embedding into the **real** `LowCT.RSelect` node,
-  with `cmdCT_iff` recording the source CT verdict (all three tower slots
+  with `cmdCT_iff` recording the source CT result (all three tower slots
   `Public`).
 * `lowerSelect` — the branchless `mov; and_; cmove` schedule.
 * `lowerSelect_allDirect` / `lowerSelect_constant_time` — machine constant-time
-  (the easy genuine half): branchless ⇒ no branch-channel leakage.
+  (the easy half): branchless ⇒ no branch-channel leakage.
 * `selectFlag_zf` — **the flag crux**: after `and_ r r`, `ZF` is
   `decide ((s.get r).toNat = 0)`, and `r`'s value is unchanged.
 * `lowerSelect_denote` — denotation preservation: under register/tower
@@ -117,17 +117,17 @@ def SelectSrc.src1Loc (p : SelectSrc) : Located := ⟨p.src1, p.t⟩
 
 /-! ## 2. Embedding into real `LowCT` -/
 
-/-- **The embedding into real `LowCT`.**  A `SelectSrc` is the genuine
+/-- **The embedding into real `LowCT`.**  A `SelectSrc` is the
     `LowCT.RSelect dst sel src0 src1` node.  This is what makes the fragment
     non-toy: the source object whose CT we analyse and whose semantics we track
-    is a real `LowCT` command, with the real `cmdCT` verdict and the real
+    is a real `LowCT` command, with the real `cmdCT` result and the real
     `RustExec` step. -/
 def SelectSrc.toLowCT (p : SelectSrc) : LowCT :=
   .RSelect p.dstLoc p.sel p.src0Loc p.src1Loc
 
-/-- The source CT verdict for a `SelectSrc`, via the **real** `cmdCT`.  As the
-    Phase-J analyser records, `RSelect` is CT *by construction* (a `cmov`: both
-    branch values are read regardless of `sel`), so the verdict checks only that
+/-- The source CT result for a `SelectSrc`, via the **real** `cmdCT`.  As the
+    CT analyser records, `RSelect` is CT *by construction* (a `cmov`: both
+    branch values are read regardless of `sel`), so the result checks only that
     the three tower slots `dst`, `src0`, `src1` are `Public`; crucially it does
     **not** require `sel` public — the choice never becomes a branch. -/
 theorem SelectSrc.cmdCT_iff (p : SelectSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
@@ -148,7 +148,7 @@ def lowerSelect (ρ : RegMap) (p : SelectSrc) : List (JInstr 64) :=
   , .and_  (ρ p.sel) (.reg (ρ p.sel))
   , .cmove (ρ p.dst) (.reg (ρ p.src0)) ]
 
-/-! ## 4. Machine constant-time (the easy genuine half) -/
+/-! ## 4. Machine constant-time (the easy half) -/
 
 /-- Every emitted instruction of the lowering is `IsDirect` (only
     `loadMemIdx`/`storeMemIdx` are non-direct, and the branchless schedule emits
@@ -162,7 +162,7 @@ theorem lowerSelect_allDirect (ρ : RegMap) (p : SelectSrc) :
     source command produces the **same** machine leakage trace from any two
     initial states: there is no secret-dependent control flow (the `cmov`
     schedule takes no branch), so the observable trace is a function of the
-    program text alone.  Delivered by the machine keystone
+    program text alone.  Delivered by the machine theorem
     `allDirect_constant_time`. -/
 theorem lowerSelect_constant_time (ρ : RegMap) (p : SelectSrc) (s₁ s₂ : JState 64) :
     blockLeak s₁ (lowerSelect ρ p) = blockLeak s₂ (lowerSelect ρ p) :=
@@ -289,7 +289,7 @@ theorem lowerSelect_denote_reg (ρ : RegMap) (p : SelectSrc) (js : JState 64)
 
 /-! ## 7. Denotation against the real `RustExec` post-state
 
-`lowerSelect_denote_rustExec` ties `lowerSelect_denote_reg` to the genuine
+`lowerSelect_denote_rustExec` ties `lowerSelect_denote_reg` to the
 `LowCT.RSelect` operational semantics (`RustExec.selectFalse`/`selectTrue`):
 the machine run of the branchless schedule lands the destination register on
 `valWord` of the source post-state's `dst` slot — i.e. the lowered `cmov`
@@ -386,15 +386,15 @@ theorem lowerSelect_denote (N : Nat) (leafSpec : LeafSpec)
       srcV0 srcV1 hρ hseld hs0d hselR hmatchSel hlook0 hlook1 hmatch0 hmatch1 hexec
     simpa [hz] using this
 
-/-! ## 8. Source CT verdict ⇒ machine constant-time, end to end
+/-! ## 8. Source CT result ⇒ machine constant-time, end to end
 
-A `SelectSrc` whose `cmdCT` verdict is `true` lowers to a machine block that is
+A `SelectSrc` whose `cmdCT` result is `true` lowers to a machine block that is
 constant-time (same leakage trace from any two states).  As in the scalar-arith
 and memory bridges, the `cmdCT` hypothesis is consumed on the source side; the
 machine-CT conclusion is unconditional for this branchless fragment — the whole
 point of `RSelect` being the CT conditional. -/
 
-/-- **Source CT verdict ⇒ machine constant-time.**  If the source command
+/-- **Source CT result ⇒ machine constant-time.**  If the source command
     `p.toLowCT` passes the real source CT analyser `cmdCT` (all three value slots
     `Public`; `sel` need not be — the choice never becomes a branch), its
     branchless lowering is constant-time at the machine level. -/

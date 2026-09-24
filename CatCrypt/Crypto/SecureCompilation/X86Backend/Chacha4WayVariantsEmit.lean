@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
 
 /-!
 # ChaCha20 4-way block — the XMM / RA / PSHUFB layout-and-schedule variants,
-owned-emitted (#539 / #659)
+owned-emitted
 
 `Chacha4WayVsimdEmit` owns the whole 4-way ChaCha20 block (RFC 8439 §2.3.2) as
 machine bytes through the owned x86(+SIMD) backend (no `gas`, no `jasminc` on the

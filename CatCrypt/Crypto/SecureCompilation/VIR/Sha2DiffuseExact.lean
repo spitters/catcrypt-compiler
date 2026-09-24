@@ -16,14 +16,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 /-!
 # The SHA-2 round-constant-INDEPENDENT mixing layer is bit-exactly the FIPS spec
 
-`Sha2Bitexact.sha2_round_loop_bitexact` (committed, task #109) proves the SHA-2
+`Sha2Bitexact.sha2_round_loop_bitexact` proves the SHA-2
 compression loop bit-exact in its per-round constant stream `K[t]`, but MODELS
 the round-constant-independent mixing (Σ0/Σ1/Ch/Maj + the working-word update)
-as a fixed placeholder `shaDiffuse acc = (acc <<< acc.toNat) + acc`. Whether
-that placeholder is the *actual* FIPS 180-4 mixing was, in #109, validated only
-by the fully-unrolled KAT emission in `bench/sha2_compare/`.
+as a fixed map `shaDiffuse acc = (acc <<< acc.toNat) + acc`. That module
+does not identify the map with the FIPS 180-4 mixing; the fully-unrolled
+KAT emission in `bench/sha2_compare/` checks it on test vectors.
 
-This file structurally closes the bit-level identity at the level of the
+This module proves the bit-level identity at the level of the
 **round transformation as a BitVec function** (independent of the emitter
 machinery). Concretely, we:
 
@@ -48,21 +48,20 @@ standard LRAT axiom — a real proof) for the two arithmetic slots
 slots (`b' = a`, `c' = b`, `d' = c`, `f' = e`, `g' = f`, `h' = g`).
 
 This is the **8-out-of-8 bit-exact identity** of the SHA-2 round transformation
-with FIPS 180-4. The remaining task — to certify that the emitter's
-`compressCom` denotes precisely the iteration of this closed-form round — is
-a separate structural question about the `Com jasminDialect` chain (the
-`emitRound`-via-`Com.denote` reduction). That reduction is documented as the
-single remaining structural step between `Sha2Bitexact`'s modeled-core
-`sha2_round_loop_bitexact` and a fully-emitter-side bit-exact identity. It is
-witnessed end-to-end by the KAT emission in `bench/sha2_compare/`, but the
-**bit-exact identity of the round itself with the FIPS spec is now proven
-structurally**, not by KAT.
+with FIPS 180-4. That the emitter's `compressCom` denotes precisely the
+iteration of this closed-form round is a separate structural question about the
+`Com jasminDialect` chain (the `emitRound`-via-`Com.denote` reduction), outside
+the scope of this module; it is the structural step between `Sha2Bitexact`'s
+modeled-core `sha2_round_loop_bitexact` and a fully-emitter-side bit-exact
+identity. The KAT emission in `bench/sha2_compare/` checks it end-to-end on test
+vectors; the **bit-exact identity of the round itself with the FIPS spec is
+proven structurally**.
 
 ## Axiom budget
 
 `closed_form_eq_fips_sha256` and `closed_form_eq_fips_sha512` use `bv_decide`
 for the arithmetic slots. The carried axiom is the standard
-`Lean.ofReduceBool` (LRAT) edge — a real proof. No `sorry`, no
+`Lean.ofReduceBool` (LRAT) edge. All goals closed; no
 `native_decide`, no new custom axioms.
 -/
 
@@ -78,7 +77,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 
 /-! ## 1. The FIPS 180-4 round function (width-parametric spec) -/
 
-/-- `rotr x n` at width `w`: the genuine cyclic right rotation (the spec's `ROTR`). -/
+/-- `rotr x n` at width `w`: the cyclic right rotation (the spec's `ROTR`). -/
 def rotr {w : Nat} (x : BitVec w) (n : Nat) : BitVec w := x.rotateRight n
 
 /-- `Ch(e,f,g) = (e & f) ⊕ (¬e & g)` (FIPS 180-4 §4.1). -/
@@ -401,13 +400,13 @@ theorem not_eq_xor_allOnes_sha256 (e : BitVec 32) :
 theorem not_eq_xor_allOnes_sha512 (e : BitVec 64) :
     e ^^^ BitVec.allOnes 64 = ~~~ e := by bv_decide
 
-/-! ## 5. Composition: what becomes a corollary of #109's loop bit-exactness
+/-! ## 5. Composition: corollaries of the loop bit-exactness
 
 `Sha2Bitexact.sha2_round_loop_bitexact` proves the SHA-2 round loop bit-exact
-with a placeholder `shaDiffuse` modeling the diffusion. With
+with a fixed map `shaDiffuse` modeling the diffusion. With
 `closed_form_eq_fips_sha256` in hand, the *diffusion semantics* of one round
-(everything except `K[t]`) is now proven equal to the FIPS spec — the
-diffusion placeholder used in `Sha2Bitexact` can be replaced by
+(everything except `K[t]`) is proven equal to the FIPS spec — the
+diffusion model used in `Sha2Bitexact` can be replaced by
 `roundClosedForm` minus the `K + W` term, and the identity with FIPS is
 discharged by the theorem above. The remaining structural step (the
 emitter's `compressCom` denotes the iteration of `roundClosedForm`) is the
@@ -416,15 +415,16 @@ question about jasmin-dialect `Com` reduction, NOT the bit-level identity
 this file addresses.
 
 Stated concretely: a single round transformation, when applied to the
-abstract working-word state and the round's `(K, W)` constants, is now
+abstract working-word state and the round's `(K, W)` constants, is
 **proven by structural bit-level reasoning** to equal the FIPS 180-4 round.
-The bit-exactness of the round transformation with FIPS is no longer a KAT
-question; it is the theorems `closed_form_eq_fips_sha256` and
+The bit-exactness of the round transformation with FIPS is the theorems
+`closed_form_eq_fips_sha256` and
 `closed_form_eq_fips_sha512`, closed by `bv_decide`+`rfl`. -/
 
 /-- **Corollary**: applying the closed-form round to any state and any
     `(K, W)` is bit-exactly the FIPS 180-4 round transformation, at SHA-256's
-    word width. This is the per-round bit-exact identity #109 was missing. -/
+    word width. This is the per-round bit-exact identity that
+    `Sha2Bitexact.sha2_round_loop_bitexact` leaves to its modeled core. -/
 theorem sha256_round_bitexact (s : St 32) (K W : BitVec 32) :
     roundClosedForm sha256Spec s K W = fipsRound sha256Spec s K W :=
   closed_form_eq_fips_sha256 s K W
@@ -436,7 +436,7 @@ theorem sha512_round_bitexact (s : St 64) (K W : BitVec 64) :
     roundClosedForm sha512Spec s K W = fipsRound sha512Spec s K W :=
   closed_form_eq_fips_sha512 s K W
 
-/-! ## 6. Storage-class refinement bridge to the resident emit (task #179)
+/-! ## 6. Storage-class refinement bridge to the resident emit
 
 The state-resident emit in `Sha2Emit.Resident` lays out the 8 working words
 `a..h` in named GPRs and the 16-word schedule window in a `stack u{w}[16] w`

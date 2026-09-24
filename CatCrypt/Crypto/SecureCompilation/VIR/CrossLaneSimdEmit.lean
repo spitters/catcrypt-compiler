@@ -132,7 +132,7 @@ def rol8Sigma : Fin 16 → Fin 16 :=
 def crossLaneLeaf {α : Type} {n : Nat} (σ : Fin n → Fin n) :
     VectorTy α n → VectorTy α n := vshuffle σ
 
-/-- The leaf is genuinely cross-lane: output lane `i` reads input lane `σ i`
+/-- The leaf is cross-lane: output lane `i` reads input lane `σ i`
     (which differs from `i` whenever `σ` routes across lanes). The defining law,
     inherited from `vshuffle_apply`. -/
 theorem crossLaneLeaf_apply {α : Type} {n : Nat} (σ : Fin n → Fin n)
@@ -142,7 +142,7 @@ theorem crossLaneLeaf_apply {α : Type} {n : Nat} (σ : Fin n → Fin n)
     leaf is the `<<<24` byte rotate — two constant byte shuffles fuse to one
     (`vshuffle_comp`), the standard `VPERM`/`VPSHUFB`-fusion compiler rewrite. We
     do not emit the fused form (the ChaCha schedule needs the intermediates), but
-    the algebra confirms the leaves are genuine fixed permutations. -/
+    the algebra confirms the leaves are fixed permutations. -/
 theorem rol16_then_rol8_fuse {α : Type} (v : VectorTy α 16) :
     crossLaneLeaf rol8Sigma (crossLaneLeaf rol16Sigma v)
       = crossLaneLeaf (rol16Sigma ∘ rol8Sigma) v := rfl

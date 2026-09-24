@@ -17,8 +17,8 @@ operational premise `hExec : RustExec N leafSpec c rs rs'` (the saturating-`Nat`
 `RustState` model) and the denotational premise
 `hSem : semScalar c env = some env'` (the wrapping-`BitVec` `SEnvScalar` model)
 as **independent** hypotheses, and reads the output value out of `semScalar`'s
-`env'`. Its header flags that tying that value back to the `RustExec` `Nat`
-model is a deferred, per-fragment `inRange` reconciliation. This module supplies
+`env'`. Tying that value back to the `RustExec` `Nat` model is a per-fragment
+`inRange` reconciliation, outside that theorem. This module supplies
 that reconciliation on a restricted fragment.
 
 ## The crux fact
@@ -30,7 +30,7 @@ The refinement `R n w := (w = BitVec.ofNat 64 n)` is a homomorphism for
 free on the clean arms and carries an `inRange` side condition only on
 subtraction (and the no-overflow bounds). The already-proven leaf
 `SExpr.evalBV_eq_ofNat_eval` localizes that condition; ParamTransfer's
-`ReprTransfer` layer packages the refinement (`§ P1`).
+`ReprTransfer` layer packages the refinement (§ "the ParamTransfer registration").
 
 ## The entry seam (reads-follow-writes)
 
@@ -56,7 +56,7 @@ tracked output must be one of the command's writes (`afterB ∅ c name`).
 The opaque-leaf arms (`RCall` / `RArrLoad` / …) are excluded: `semScalar` sends
 every opaque leaf to a fixed `CryptoTy.default`, so tying such a slot back to the
 `RustExec` `Nat` model is vacuous, and the tower-heap agreement it would need is
-`RustStateInterp`'s (byte-leg) job, discharged already by
+`RustStateInterp`'s (byte-leg) job, discharged by
 `rustExecSimulatesDialect` in the e2e's existence conjunct.
 -/
 
@@ -71,7 +71,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
-/-! ## P0(i) — the word-level state relations
+/-! ## The word-level state relations
 
 Two reflections relate a `RustState`'s saturating-`Nat` scalar heap to a
 `semScalar` `SEnvScalar`. `EnvRel` is the **strong/total** form — every non-temp
@@ -182,12 +182,12 @@ theorem envReader_of_envBoundOn {rs : RustState} {env : SEnvScalar} {B : String 
     envReader env s = BitVec.ofNat 64 (rs.rsScalar s) := by
   simp only [envReader, h s hs hns]
 
-/-! ## P0(ii) — the structural scoping (reads-follow-writes)
+/-! ## The structural scoping (reads-follow-writes)
 
 `afterB B c` is the bound-name set *after* running `c` from entry-bound set `B`
 (writes extend it); `readsOK B c` says every free read of `c` sits in the set
 bound when the read happens. `varsBoundIn B e` is the leaf condition (`e`'s
-`SVar`s are in `B`). Together they are the honest reads-follow-writes side
+`SVar`s are in `B`). Together they are the reads-follow-writes side
 condition the weakening of `EnvRel` introduces. -/
 
 /-- `e`'s `SVar` leaves are all in `B`. -/
@@ -230,11 +230,12 @@ def readsOK (B : String → Prop) : LowCT → Prop
   | .RIfNz name _ _ => B name
   | _ => True
 
-/-! ## P0(iii) — the canonical leaf oracle
+/-! ## The canonical leaf oracle
 
 On `IsCoveredAdeq` no opaque-leaf arm fires, so the `RustExec` leaf oracle is
 never consulted; `canonicalLeafSpec` is the identity/default `LeafSpec` recorded
-for the `§ P3` composition interface. -/
+for the end-to-end composition interface (§ "compose into the end-to-end
+discharge"). -/
 
 /-- The canonical (default) leaf specification. Its call oracle returns the old
     destination value; the store/load oracles are identity — matching the
@@ -244,7 +245,7 @@ def canonicalLeafSpec : LeafSpec where
   call := fun _ _ _ oldV _ => oldV
   limbStore := fun _ oldV _ _ => oldV
 
-/-! ## P1 — the ParamTransfer registration of the `ofNat` refinement
+/-! ## The ParamTransfer registration of the `ofNat` refinement
 
 The refinement `R n w := (w = BitVec.ofNat 64 n)` registers through
 `ReprTransfer` at the **homomorphism (map) level** `BinOpHomOn` — *not* the
@@ -277,7 +278,7 @@ theorem sexprTransfer (σ : String → Nat) (e : SExpr) (h : e.inRange σ) :
     e.evalBV (SExpr.liftEnv σ) = BitVec.ofNat 64 (e.eval σ) :=
   SExpr.evalBV_eq_ofNat_eval σ e h
 
-/-! ## P2 — the command-level simulation -/
+/-! ## The command-level simulation -/
 
 /-! ### The restricted fragment -/
 
@@ -604,15 +605,15 @@ theorem rustExec_semScalar_agree {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
     rustExec_semScalar_agree_scoped h hexec (envBoundOn_true_of_envRel hRel) hir (readsOK_true c)
   exact ⟨env', hs, fun x hx => hb' x (le_afterB c _ x trivial) hx, hi'⟩
 
-/-! ## P3 — compose into the end-to-end discharge
+/-! ## Compose into the end-to-end discharge
 
 Feed `rustExec_semScalar_agree_scoped` into `rustToJasminCom_endToEnd_unconditional`:
 the denotational premises `hSem` (`semScalar` defined) and `hVal` (the tracked
-output value) now come *from* `RustExec` + `EnvBoundOn` + the scoping, so the
+output value) come *from* `RustExec` + `EnvBoundOn` + the scoping, so the
 emitted jasmin program's value leg is tied to the `RustExec` `Nat`-model output
 `BitVec.ofNat 64 (rs'.rsScalar name)`. The entry `EnvBoundOn`/`readsOK` pair is
 compatible with `ConsistentS` (both hold of the empty entry env), so there is no
-longer a free-standing `EnvRel` premise to satisfy alongside `ConsistentS`; the
+free-standing `EnvRel` premise to satisfy alongside `ConsistentS`; the
 top-level corollary discharges both entries internally. -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR
@@ -634,10 +635,10 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
     `afterB B c name`), the emitted jasmin program denotes to the `ctTransTy`
     image of the `RustExec` `Nat`-model output word `BitVec.ofNat 64
     (rs'.rsScalar name)`. `EnvBoundOn` is compatible with the translation
-    consistency `ConsistentS` (they hold jointly of the entry env), which is what
-    closes the former `EnvRel`/`ConsistentS` incompatibility. The `semScalar`
+    consistency `ConsistentS` (they hold jointly of the entry env), unlike the
+    `EnvRel`/`ConsistentS` pair. The `semScalar`
     premises of `rustToJasminCom_endToEnd_unconditional` are discharged from the
-    `RustExec` run via `rustExec_semScalar_agree_scoped`; no new axioms. -/
+    `RustExec` run via `rustExec_semScalar_agree_scoped`; no additional axioms. -/
 theorem rustToJasminCom_endToEnd_rustexec_adeq
     {Γ : Ctx}
     (vm : VarMap Γ) (c : LowCT) (o : DTransOut Γ)
@@ -672,8 +673,8 @@ theorem rustToJasminCom_endToEnd_rustexec_adeq
     discharged internally — the byte-layout `RustStateInterp` via
     `BorrowSafety.entry_interp`, the valuation consistency via `consistentS_empty`,
     and the value-reflection `EnvBoundOn` **vacuously** (the empty entry env binds
-    nothing, so the entry-bound set is empty). The former free-standing `EnvRel`
-    premise is thereby discharged. What remains is the honest per-kernel data: the
+    nothing, so the entry-bound set is empty); no free-standing `EnvRel` premise
+    appears. The remaining hypotheses are the per-kernel data: the
     coverage, the compilation/run successes, the `u64`-range `hIR`, and the
     reads-follow-writes scoping `hReads`/`hOut` (over the empty entry-bound set:
     every read follows a prior write, and the tracked output is one of the

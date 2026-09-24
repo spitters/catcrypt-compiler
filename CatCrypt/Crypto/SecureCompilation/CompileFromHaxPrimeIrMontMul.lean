@@ -17,8 +17,9 @@ The `primeir-hax` `ModArith` trait (`primeir-hax/src/lib.rs`; extracted class
 `mont_mul (a, b) ↦ a·b·R⁻¹ (mod p)`.  The unary domain-conversion methods
 `to_mont`/`from_mont` and the fused unary `mont_square` are recognized in
 `CompileFromHaxPrimeIrField.lean` (§4); this module recognizes the remaining
-binary `mont_mul` slot, now that `modArithMontDialect` carries the two-operand
-`ModArithMontOp.montMul` constructor (`VIR/ModArithMontOps.lean`).
+binary `mont_mul` slot through the two-operand
+`ModArithMontOp.montMul` constructor of `modArithMontDialect`
+(`VIR/ModArithMontOps.lean`).
 
 ## The recognition entry
 
@@ -42,9 +43,8 @@ dialect defines, routed through `ModArithMontOps.montMul_denote` (no fresh
 Montgomery reduction, no new dialect op beyond the `montMul` constructor). The
 diagonal `a = b` recovers the `mont_square` tie.
 
-This closes the arity gap the `CompileFromHaxPrimeIrField.lean` §4 note recorded:
-the crate's binary `mont_mul` now recognizes to a genuine binary op rather than
-routing through the unary `mont_square` diagonal.
+The crate's binary `mont_mul` thus recognizes to a binary op, not to the unary
+`mont_square` diagonal of `CompileFromHaxPrimeIrField.lean` §4.
 -/
 
 @[expose] public section

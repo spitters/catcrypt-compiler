@@ -36,7 +36,7 @@ spec (`init <<< n`) that the `ComL.denote` is checked against directly.
   accumulator with itself.
 * `ggmDblLoop n` — the whole kernel: a single `.forLoop ⟨n, dblBody⟩` whose loop
   result is returned. The trip count `n` is a public configuration constant
-  (the GGM tree depth), so the counter/back-edge are CT-admissible (#460).
+  (the GGM tree depth), so the counter/back-edge are CT-admissible (vartime policy).
 
 ## The two pieces of end-to-end evidence
 
@@ -62,10 +62,6 @@ temporary in `%rcx`, the SysV argument `a0` is materialized into `%rbx` at entry
 and the result is moved to `%rax` before the trailing `ret`. No operand is left
 as an `%<UNKNOWN>` SSA name, so `renderLprogAtt` produces an **assemblable** `.s`:
 real registers, one `addq` body copy, and a real `jne .L<d>` back-edge.
-
-(The previous emission lowered via `ComL.toLfundef`, the pre-RA SSA body, whose
-virtual register names `r1`/`Lctr1`/`L1_r1` rendered as `%<UNKNOWN>` placeholders
-— only the control-flow skeleton was final. That path is replaced here.)
 
 ## The `JLoopBody` accumulator-shape limitation (reported, not worked around)
 

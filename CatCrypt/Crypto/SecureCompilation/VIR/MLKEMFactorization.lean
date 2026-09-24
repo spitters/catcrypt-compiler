@@ -247,7 +247,7 @@ theorem mlkemZeta_hfact :
 
     `(ZMod 3329)[X] / (X^256 + 1) ≅ ∏_{i<128} (ZMod 3329)[X] / (X^2 - ζ_i)`,
 
-    the genuine Chinese-Remainder decomposition of the ML-KEM negacyclic ring
+    the Chinese-Remainder decomposition of the ML-KEM negacyclic ring
     into its `128` degree-`2` incomplete-NTT components, with the concrete
     twiddles `ζ_i = 17^(2i+1)`. No hypotheses: the factorization `hcop`/`hfact`
     is fully discharged by `mlkemZeta_hcop` / `mlkemZeta_hfact`. -/

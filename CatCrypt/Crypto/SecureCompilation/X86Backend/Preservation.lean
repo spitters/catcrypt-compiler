@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
 
 /-!
-# Semantics preservation for the representative scalar subset (#148 POC)
+# Semantics preservation for the representative scalar subset
 
 For each modeled two-address arithmetic/logical op, the x86 `step` result in
 the destination register equals the source `lprog` op's denotation

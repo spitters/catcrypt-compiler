@@ -33,7 +33,7 @@ protocol's whole emit-realization is a Lean theorem carrying **zero
   inner loop of polynomial-commitment opening checks, hash-to-field, and Reed–
   Solomon / FRI evaluation).  Evaluating `p(x) = c₁·x + c₀` (degree 1, two
   coefficients) by Horner's rule is `acc ↦ acc·x`, then `acc ↦ acc + c`, repeated
-  per coefficient — genuinely **interleaving the distinct `field_mul` and
+  per coefficient — **interleaving the distinct `field_mul` and
   `field_add` kernels**.  We drive it through the single combined-dispatch
   `alternatingLeafSpec` of `GroundedMultiKernelProtocol`, whose two arms are the
   proved `combined_realizes_mul` / `combined_realizes_add`.  Headline:
@@ -130,7 +130,7 @@ theorem grounded_aes_ofb_keystream_realizes (key : Key128)
       = composeSpecs (aesOfbSpecs key n) (decodeA xVal) :=
   (aesOfbProtocol key limbStore n).runRealizes oldDest xVal
 
-/-! ## §2  Horner polynomial evaluation — UNCONDITIONAL (genuinely mixed kernels)
+/-! ## §2  Horner polynomial evaluation — UNCONDITIONAL (mixed kernels)
 
 Evaluating the degree-1 polynomial `p(t) = c·t + c` (two coefficients both `c`,
 chosen so a single combined add/mul leafSpec drives every step) at `t = x` by
@@ -184,7 +184,7 @@ def hornerProtocol (q : ℕ) [NeZero q] (width : ℕ)
 
 /-- **HEADLINE 2 — grounded Horner polynomial evaluation, ZERO kernel hypotheses.**
     The Horner pipeline `["field_mul", "field_add", "field_mul", "field_add"]` —
-    genuinely interleaving the **distinct** `field_mul` and `field_add` kernels of
+    interleaving the **distinct** `field_mul` and `field_add` kernels of
     ONE combined-dispatch leafSpec — has its whole `pipeN` computation decode to the
     composite of its per-step specs `[(· * x), (· + c), (· * x), (· + c)]` (the
     Horner evaluation of `c·t² + c·t + c` at the running value), with **ZERO

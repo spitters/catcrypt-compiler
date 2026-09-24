@@ -17,7 +17,7 @@ plus `axiom eip197LeafOracle_agrees`.  That axiom is content-free — it relates
 opaque leaf oracle to an opaque primitive, with no reference to the mathematical
 pairing spec or to any external proof.
 
-This file replaces that self-seal with an **AUCurves-anchored cross-prover
+This module provides, in place of that self-seal, an **AUCurves-anchored cross-prover
 transport**, in the exact discipline of the curve25519 bedrock transport
 (`KeyAgreement/X25519/BedrockX25519.lean`) and the trust registry
 (`TrustAxioms.lean` §4): a Rocq-`Qed`'d spec is carried into Lean as a *named*

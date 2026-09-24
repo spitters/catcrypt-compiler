@@ -15,7 +15,7 @@ This file is the **Curve25519 / RFC 7748 analogue** of `Secp256k1Reflect.lean`:
 it adds X25519-specific opaque surface types (`X25519LadderState`) and a
 `@[rust_cmd_pattern]` registration so that a pure-Lean Montgomery-ladder
 iteration can be lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`, **without** editing
+`LowCT → Com catCryptDialect → Jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## The ladder iteration leaf

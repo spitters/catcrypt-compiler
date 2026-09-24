@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
 /-!
 # Named hypothesis: the exported `Uprog` is jasmin-`compile_prog_to_asm` well-formed
 
-Source-level analogue of `LprogJasminWellFormed` (#169). This module names
+Source-level counterpart of `LprogJasminWellFormed`. This module names
 the interface-contract gap between the Lean-side `JasminUprogExport` producer
 and jasmin's `compile_prog_to_asm`: every committed export lemma in
 `JasminUprogExport` holds axiom-clean (`Com.toUprog_wf`, `Com.toUprogText_magic`,
@@ -20,12 +20,12 @@ blob meets `compile_prog_to_asm`'s preconditions. That is a format / interface
 contract, not a semantic property, and it must be named before it can be
 discharged.
 
-The same shape as #140's `LlvmIRSemanticsAgrees`, #145's
-`MlirToolchainSemanticsAgrees`, and #169's `LprogExportJasminWellFormed`: a
+The same shape as `LlvmIRSemanticsAgrees`,
+`MlirToolchainSemanticsAgrees`, and `LprogExportJasminWellFormed`: a
 named-hypothesis bridge that makes the implicit interface assumption explicit.
-Phase 1 (this file) **states** the predicate. Phase 2 (separate effort) is to
-port jasmin's well-formedness checks from Coq and discharge
-`UprogExportJasminWellFormed`.
+This module **states** the predicate. Discharging
+`UprogExportJasminWellFormed` requires porting jasmin's well-formedness checks
+from Coq.
 
 ## What jasmin's `compile_prog_to_asm` actually checks
 
@@ -58,23 +58,23 @@ The fields where we cannot capture the jasmin precondition at this layer
 (no in-Lean model of the x86 `sopn` GADT) are left as `True` and marked
 with an explicit comment. The named hypothesis
 `UprogExportJasminWellFormed` is **unproven**: it is a trust-boundary
-assumption to be discharged by Phase 2 (porting jasmin's per-mnemonic check
-predicate to Lean).
+assumption; discharging it requires porting jasmin's per-mnemonic check
+predicate to Lean.
 
-## Phase 2 progress table
+## Per-clause status
 
 `Uprog.jasminWellFormed` carries three outer fields plus the per-function
 fields of `Ufundef.jasminWellFormed`. Per-clause discharge status against
-`Com.toUprog` (Phase A.1):
+`Com.toUprog`:
 
-| Clause                                  | Status (Phase A.1)          |
+| Clause                                  | Status                      |
 |-----------------------------------------|-----------------------------|
 | `funcs_nonempty`                        | CLOSED (one func)           |
 | `globs_consistent`                      | CLOSED (empty in v1)        |
-| `every_func_wf.body_well_formed`        | PHASE-2 RESIDUAL            |
-| `every_func_wf.tyin_matches_params`     | PHASE-2 RESIDUAL            |
-| `every_func_wf.tyout_matches_res`       | PHASE-2 RESIDUAL            |
-| `every_func_wf.params_unique`           | PHASE-2 RESIDUAL            |
+| `every_func_wf.body_well_formed`        | OPEN (needs jasmin port)    |
+| `every_func_wf.tyin_matches_params`     | OPEN (needs jasmin port)    |
+| `every_func_wf.tyout_matches_res`       | OPEN (needs jasmin port)    |
+| `every_func_wf.params_unique`           | OPEN (needs jasmin port)    |
 | `every_func_wf.cc_recognised`           | CLOSED via default `Export` |
 | `every_func_wf.contract_absent`         | CLOSED via default `false`  |
 | Per-mnemonic `check_sopn` (`True`)      | OVER-APPROXIMATED           |
@@ -106,7 +106,7 @@ enforce:
 * `Cassgn` has a well-formed (non-immediate) destination.
 
 Control-flow constructors (`Cif`, `Cfor`, `Cwhile`, `Ccall`, `Csyscall`,
-`Cassert`) are deferred — Phase 1's producer emits only the straight-line
+`Cassert`) are not constrained: the producer emits only the straight-line
 fragment, so these are unreached. -/
 
 /-- Is the operand a memory operand (an array element)? For the source
@@ -131,8 +131,8 @@ def jasminKnownMnemonics : List String :=
    "MOV", "LOAD", "STORE", "ZEROEXT", "TRUNC"]
 
 /-- Is this a mnemonic the producer is known to emit? `CALL:<name>` external
-    calls are treated as known here (Phase 2 will check them against the
-    architecture's extcall ABI). -/
+    calls are treated as known here; they are not checked against the
+    architecture's extcall ABI. -/
 def isJasminKnownMnemonic (opn : String) : Bool :=
   opn ∈ jasminKnownMnemonics || "CALL:".isPrefixOf opn
 
@@ -140,8 +140,8 @@ def isJasminKnownMnemonic (opn : String) : Bool :=
 
     * `Cassgn dst _ _ src`: `dst` is not an immediate.
     * `Copn dsts _ opn _`: destination list non-empty; mnemonic known.
-    * Control-flow constructors: `True` at this layer (Phase 2 may add
-      branch-target / loop-bound bookkeeping). -/
+    * Control-flow constructors: `True` at this layer (no branch-target /
+      loop-bound bookkeeping). -/
 def InstrR.jasminOperandsValid : InstrR → Prop
   | .Cassgn dst _ _ _ => dst.isLval = true
   | .Copn dsts _ opn _ =>
@@ -190,7 +190,7 @@ def listUnique : List String → Bool
     * `f_tyin`'s length equals `f_params`'s length (parallel lists);
     * `f_tyout`'s length equals `f_res`'s length.
 
-    Left as conservative `True` placeholders (Phase 2):
+    Left as conservative `True` placeholders:
     * per-mnemonic `check_sopn` (operand-kind decoding);
     * per-call resolution (the called function exists in `p_funcs`). -/
 structure Ufundef.jasminWellFormed (fd : Ufundef) : Prop where
@@ -282,12 +282,11 @@ example :
 
 `UprogExportJasminWellFormed` asserts that for every `Com jasminDialect` the
 uprog export (`Com.toUprog`) lands inside the jasmin
-`compile_prog_to_asm`-acceptance set. The analogue of #145's
-`MlirToolchainSemanticsAgrees`, #140's `LlvmIRSemanticsAgrees`, and #169's
-`LprogExportJasminWellFormed`: a stated trust-boundary hypothesis, *unproven*
-in Phase 1.
+`compile_prog_to_asm`-acceptance set. Same shape as
+`MlirToolchainSemanticsAgrees`, `LlvmIRSemanticsAgrees`, and
+`LprogExportJasminWellFormed`: a stated trust-boundary hypothesis, *unproven*.
 
-Discharging it (Phase 2) requires:
+Discharging it requires:
 1. Porting jasmin's `check_uprog` / per-pass-precondition checks to Lean.
 2. Proving each clause of `Uprog.jasminWellFormed` holds of the producer's
    output — which itself requires per-instruction lemmas in
@@ -296,19 +295,18 @@ Discharging it (Phase 2) requires:
 The hypothesis is stated for `Com.toUprog` (the source-AST export — what
 `compile_prog_to_asm` consumes). -/
 
-/-- **Trust-boundary named hypothesis** (Phase 1: stated, *unproven*).
+/-- **Trust-boundary named hypothesis** (stated, *unproven*).
 
     For every `Com jasminDialect` and any function name / immediate-slot
     map the producer is configured with, the resulting `Uprog` satisfies
     jasmin's `compile_prog_to_asm` well-formedness preconditions.
 
-    The analogue of `MlirToolchainSemanticsAgrees` (#145),
-    `LlvmIRSemanticsAgrees` (#140), and `LprogExportJasminWellFormed`
-    (#169). It is a **format / interface contract**, not a semantic
-    property: it states that what we emit *type-checks* in jasmin's
-    intended sense. Phase 2 (separate effort) ports jasmin's checks to
-    Lean and discharges this hypothesis. Until then, treat it as the
-    trust-boundary at the Lean-↔-jasmin handoff. -/
+    Same shape as `MlirToolchainSemanticsAgrees`,
+    `LlvmIRSemanticsAgrees`, and `LprogExportJasminWellFormed`. It is a
+    **format / interface contract**, not a semantic property: it states
+    that what we emit *type-checks* in jasmin's intended sense. It is the
+    trust boundary at the Lean-↔-jasmin handoff; discharging it requires
+    porting jasmin's checks to Lean. -/
 def UprogExportJasminWellFormed : Prop :=
   ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)

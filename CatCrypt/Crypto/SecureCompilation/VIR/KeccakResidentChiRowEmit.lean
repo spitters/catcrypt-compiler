@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
 # Owned-backend (no-jasminc) B-LANE-REUSE (row-resident) χ resident Keccak-p[1600,24]
 
 The owned twin of the verified front's `gen/keccak_f1600_resident_chirow.jazz`
-(#590, the LSU lever), re-emitted through CatCrypt's owned x86 backend (no
+(which reduces load/store traffic), re-emitted through CatCrypt's owned x86 backend (no
 jasminc).
 
 A SINGLE state-resident Keccak-p[1600,24] permutation

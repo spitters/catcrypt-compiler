@@ -17,7 +17,7 @@ FIPS-204 §7.4 `MakeHint` — the per-coefficient 1-bit hint predicate. It is th
 sibling of the Barrett `reduce32` / `decompose` low-part leaves
 (`CompileFromHaxMldsaReduce32`, `CompileFromHaxMldsaDecomposeFull`); like them it
 hinges on the front op `arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`,
-denoting `BitVec.sshiftRight`, commit #606/#605), here used as the **signed
+denoting `BitVec.sshiftRight`), here used as the **signed
 sign-mask** primitive that realises the comparisons branchlessly.
 
 `make_hint` returns the FIPS-204 hint bit (PQClean `ml-dsa-65/clean/rounding.c`):
@@ -172,7 +172,7 @@ theorem mldsaMakeHint_compileFromHax_isSome :
     is exactly the closed `make_hint` emit form `mldsaMakeHintForm`. Routed through
     the C3 per-primitive obligation `compileFromHax_meets_spec`. A C4 fan-out using
     the **arithmetic** shift op (`arith_shift_right` ↦ `Rhs.sarImm` ↦
-    `BitVec.sshiftRight`, #606/#605) as the signed-compare sign-mask primitive:
+    `BitVec.sshiftRight`) as the signed-compare sign-mask primitive:
     the branchless FIPS-204 §7.4 hint predicate of ML-DSA-65 (`γ2 = 261888`). -/
 theorem mldsaMakeHint_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 64 2 []) (rW 64)),

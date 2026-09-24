@@ -34,7 +34,7 @@ with `ctTransTy = id` on `sword` (`ctTransTy_sword`) and `mapTy (.sword w) =
 enc (op_src a b) = op_tgt (enc a) (enc b),    enc = id.
 ```
 
-This module is the architecture proof-of-concept (GENERALITY enabler #2): it
+This module is an architecture proof of concept: it
 **registers those descent squares as `Transfer.RelatedBinOp` instances** and
 discharges the lowering correctness of a *composite* op-tree with the
 ParamTransfer engine's `param_solve` tactic, instead of a bespoke per-kernel
@@ -43,17 +43,17 @@ ParamTransfer engine's `param_solve` tactic, instead of a bespoke per-kernel
 self-authored spec), so the square carries the leaf-agreement content; the
 descent through a composite is then synthesized by the engine.
 
-ParamTransfer is a required `lake` dependency that was wired only into the
+ParamTransfer is a required `lake` dependency, used elsewhere by the
 `Bridges/ReprTransfer*` proof-transfer layer (KZG/STARK/Halo2/Binius). Here it
-enters the **owned-emit compiler descent** for the first time.
+enters the **owned-emit compiler descent**.
 
-## Scope (honest)
+## Scope
 
 * This certifies the `regArith` *leaf squares* and the *descent through a
   composite op-tree* of them, with the identity encoding. That is precisely the
   fragment `cryptoDialectToJasminCom`'s `DialectJasminLeafAgrees` discharges
-  definitionally today — the part where `param_solve` replaces the hand proof.
-* It does **not** yet replace the `Com`-level program induction
+  definitionally — the part where `param_solve` takes the place of the hand proof.
+* It does **not** replace the `Com`-level program induction
   (`cryptoDialectToJasminCom_denote_eq`), the De Bruijn valuation transport
   (`ctMapValD_lookup`/`_extend`), or the `extCall` opaque-default leaf. Those are
   the binder/structural and opaque-leaf layers the engine's term translation

@@ -32,9 +32,8 @@ The final `>> 32` is the **arithmetic** (sign-preserving) shift of a signed
 `int64`. Like the Barrett `reduce32` quotient estimate (`CompileFromHaxMldsaReduce32`),
 this cannot be realised by the logical `>>>`: the quotient `(a − t·q) / 2³²` must
 round toward `−∞` for negative arguments, i.e. it is
-`BitVec.sshiftRight`, not `>>>`. This is exactly the surface the front op
-`arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`, denoting `BitVec.sshiftRight`,
-commit #606/#605) unblocks.
+`BitVec.sshiftRight`, not `>>>`. The front op `arith_shift_right`
+(`ShiftKind.sar`, `Rhs.sarImm`, denoting `BitVec.sshiftRight`) expresses it.
 
 The `(int32_t)t` truncation is the standard `shl 32; sar 32` sign-extend pair:
 multiply gives the full 64-bit product `a·QINV`; shifting the low 32 bits up to
@@ -149,7 +148,7 @@ theorem mldsaMontgomery_compileFromHax_isSome :
     signed-Montgomery emit form `mldsaMontgomeryForm`. Routed through the C3
     per-primitive obligation `compileFromHax_meets_spec`. A C4 fan-out using the
     **arithmetic** shift op (`arith_shift_right` ↦ `Rhs.sarImm` ↦
-    `BitVec.sshiftRight`, #606/#605): the `(int32)` truncation `shl 32; sar 32` and
+    `BitVec.sshiftRight`): the `(int32)` truncation `shl 32; sar 32` and
     the final signed `>> 32` of ML-DSA-65's signed Montgomery reduce
     (`q = 8380417`, `QINV = 58728449`), which the logical `shift_right` cannot
     realise. -/

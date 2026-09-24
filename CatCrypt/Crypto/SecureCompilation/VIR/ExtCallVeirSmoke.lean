@@ -13,26 +13,24 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
 /-!
 # End-to-end `extCall` smoke test: `LowCT → Com[catCryptDialect] → Veir`
 
-This file demonstrates the *full* verified, `CProg`-free lowering chain for a
-tiny extracted-style kernel containing leaf `RCall`s — the construct that the
-unverified `LowCTToMLIR.lean` shortcut was created to bypass ("the
-CryptoSSA/VIR layer whose `extCall` args currently have a list-vs-HVector
-shape mismatch — pending refactor").
+This file demonstrates the *full* verified lowering chain for a
+tiny extracted-style kernel containing leaf `RCall`s, the construct handled
+without verification by the `LowCTToMLIR.lean` text formatter.
 
-The front is the `CProg`-free direct dialect translator
+The front is the direct dialect translator
 `translateDialectControl` (`Dialects/TranslateDialectDirectControl.lean`): it
 translates `LowCT` *directly* to `Com catCryptDialect`, building each leaf
 call's `extCall` op (args carried by an intrinsically-typed `HVector` via
-`toVIRArgs`) with no `CProg`/`CExpr` value ever constructed. The chain is:
+`toVIRArgs`). The chain is:
 
 ```
-LowCT  ──translateDialectControl──▶  Com[catCryptDialect]   (no CProg built)
+LowCT  ──translateDialectControl──▶  Com[catCryptDialect]
        ──lowerClosedComToModuleWithExterns──▶  Veir.IRContext
        ──printModule──▶  MLIR text with `func.call @fp_add`
 ```
 
-So the `LowCTToMLIR` text-formatter shortcut can be retired/demoted: the
-verified, `CProg`-free chain now covers its motivating case.
+The verified chain therefore covers the case the `LowCTToMLIR` text formatter
+handles.
 -/
 
 @[expose] public section
@@ -54,7 +52,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 elements. The operands `a` and `b` are bound as the destinations of two
 `fp_zero` leaf calls (so they are `TFp25519` storage — `memref 5`),
 keeping the whole program closed and type-coherent with `fp_add`. The
-`CProg`-free front covers `RSeq`/`RCall` (`TranslateDialectDirectArms`'s
+dialect front covers `RSeq`/`RCall` (`TranslateDialectDirectArms`'s
 leaf-call arms), so every leaf call threads through directly. -/
 
 /-- `a = fp_zero(); b = fp_zero(); c = fp_add(a, b)`. -/
@@ -66,16 +64,15 @@ def kernel : LowCT :=
         [ { locVar := "a", locSrc := .TFp25519 },
           { locVar := "b", locSrc := .TFp25519 } ]))
 
-/-! ## 2. Front: `LowCT → Com[catCryptDialect]` (CProg-free)
+/-! ## 2. Front: `LowCT → Com[catCryptDialect]`
 
 We drive the direct dialect front `translateDialectControl` from the empty
 `VarMap` (`Γ = []`). It returns a `DTransOut []` whose `cont : ComCont [] Γ'`
-is a `CProg`-free `Com`-prefix carrying the three `extCall` leaves. We close
+is a `Com`-prefix carrying the three `extCall` leaves. We close
 the program by applying that prefix to a `let _ = (); ret _` terminator at the
-final context `Γ'`, giving a closed `Com catCryptDialect [] .unit`. No `CProg`
-value is constructed anywhere in this chain. -/
+final context `Γ'`, giving a closed `Com catCryptDialect [] .unit`. -/
 
-/-- Closed dialect program produced by the `CProg`-free front: apply the
+/-- Closed dialect program produced by the dialect front: apply the
     translated `ComCont` prefix to a `constUnit; ret` terminator. -/
 def comProgOpt : Option (Com catCryptDialect [] .unit) :=
   match translateDialectControl
@@ -84,7 +81,7 @@ def comProgOpt : Option (Com catCryptDialect [] .unit) :=
       o.cont (Com.var { op := .constUnit, retTy_eq := rfl, args := .nil } (.ret .here))
   | none => none
 
-/-- The leaf `RCall`s are supported by the `CProg`-free dialect front, and the
+/-- The leaf `RCall`s are supported by the dialect front, and the
     closing `ComCont` application succeeds. -/
 theorem comProg_isSome : comProgOpt.isSome := by
   native_decide
@@ -136,7 +133,7 @@ def emitKernelVeirText : IO String := do
 -- `builtin.module` with private `func.func @fp_zero` / `func.func @fp_add`
 -- extern decls and a main `func.func @fp_add_kernel` whose body contains
 -- `%N = "func.call"(...) {callee = @fp_add}` — i.e. the leaf `extCall`s
--- threaded all the way from `LowCT` to Veir without a `CProg` step.
+-- threaded all the way from `LowCT` to Veir.
 #eval do
   let txt ← emitKernelVeirText
   IO.println txt

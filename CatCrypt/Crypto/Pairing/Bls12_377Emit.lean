@@ -24,8 +24,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
   the pairing-product verifier equation, as orchestration `Com`s
 
 This is the BLS12-377 (Zexe / SnarkVM / Aleo curve) sibling of
-`Pairing.Bls12381Emit`. It expresses the BLS12-377 kernels previously string-
-templated to `.jazz` (`bench/bls12_377_compare/bls12_377_emit.lean`, jasminc-
+`Pairing.Bls12381Emit`. It expresses the BLS12-377 kernels that the bench driver
+`bls12_377_compare/bls12_377_emit.lean` string-templates to `.jazz` (jasminc-
 lowered) as straight-line orchestration `Com`s over opaque `extCall` leaves, so
 they can be lowered through the **OWNED** x86 backend
 (`Com.toLprogArrAbi` + `renderLprogAtt`, see `Pairing.EcPairingEmit` and the

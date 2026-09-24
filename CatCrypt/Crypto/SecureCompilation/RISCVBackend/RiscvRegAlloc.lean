@@ -12,18 +12,18 @@ public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
-# A fresh RV64 register allocator as a `MachineModel` instance of the generic pass (#552)
+# An RV64 register allocator as a `MachineModel` instance of the generic pass
 
-`Optimizer.GenericRegAlloc` (#552) factored the x86 `SpillingRegAlloc` and the A64
+`Optimizer.GenericRegAlloc` factors the x86 `SpillingRegAlloc` and the A64
 `ArmRegAlloc` into a single `MachineModel`-parameterized validated allocator: the
 linear-scan allocator (untrusted) + the verified checker (the injective-renaming
 lemma `renameBlock_runBlock`, the spill-store/reload-roundtrip sandwich
 `reload_sandwich`, the rewrite-length decomposition `rewriteBlock_length`), all stated
 **once** over `[RegMachine I S]` / `[MemMachine M]`.
 
-This module **instantiates that generic pass fresh for RISC-V RV64** — the backend that
-had *no* register allocator and therefore emitted SHA-256 fully stack-resident (every
-SSA name a 4-byte slot off `a0`, each `RInst` an `lw`-source → op → `sw`-dst storm: the
+This module **instantiates that generic pass for RISC-V RV64**. Without a register
+allocator the backend emits SHA-256 fully stack-resident (every SSA name a 4-byte
+slot off `a0`, each `RInst` an `lw`-source → op → `sw`-dst storm: the
 llvm-mca-sifive-u74 estimate is `37829` cyc, base RV64I, vs clang-O3's `2051` — the 18×
 gap). The instance:
 
@@ -38,13 +38,13 @@ gap). The instance:
   memory-extended `RState`, so the generic `spillStore_establishes` / `evalReload_noop`
   / `reload_sandwich` give the RV64 spill soundness.
 
-The deliverable is the fresh instance plus the register-resident SHA-256 re-emit it
-enables (`bench/riscv_compare/sha256_rv64_ra_emit.lean`): the verified ops are
+The instance enables the register-resident SHA-256 re-emit
+(`bench/riscv_compare/sha256_rv64_ra_emit.lean`): the verified ops are
 unchanged, only the storage class of each value changes (resident in a GP register vs
 spilled to a frame cell), and the value identity is the qemu-riscv64 FIPS-180-4 KAT.
-The A64 twin (`ArmRegAlloc`, #551) closed the analogous SHA-256 5.42× → 2.00×.
+The A64 twin (`ArmRegAlloc`) closes the analogous SHA-256 gap, 5.42× → 2.00×.
 
-No `sorry`; the generic keystones carry no custom axioms (RV64 `instVal_rename` is by
+All goals are closed; the generic lemmas carry no custom axioms (RV64 `instVal_rename` is by
 `cases`, the spill laws by the `RMemState` projections).
 -/
 
@@ -246,7 +246,7 @@ instance instMemMachineRMemState : MemMachine RMemState where
   get_store := RMemState.get_store
   setReg_get_self := RMemState.setReg_get_self
 
-/-! ## 4. The generic keystones, specialized to RV64 (the abstraction validated)
+/-! ## 4. The generic lemmas, specialized to RV64 (the abstraction validated)
 
 The point of the instance: the generic lemmas, instantiated at `RInst`/`RState`, give
 the RV64 register-allocation soundness *for free* — no re-proof. These re-export the

@@ -9,19 +9,18 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
-# Stage EE2 — `RArrLoad` / `RArrStore` constructor extension lemmas
+# `RArrLoad` / `RArrStore` constructor extension lemmas
 
-This file extends the **robust-compilation** (#95) and **CT-preservation**
-(#146) meta-theorems to cover the array-element load/store constructors
-`RArrLoad` and `RArrStore` introduced by Agent DD (Phase Ext, 2026-05-12).
-It is a *sibling* file: no edits to foundation files.
+This module extends the **robust-compilation** and **CT-preservation**
+meta-theorems to cover the array-element load/store constructors
+`RArrLoad` and `RArrStore`.
 
-## Honest status (read this section first)
+## Scope
 
 The array constructors split the two obligations differently from the
 loop / scalar constructors:
 
-* **Translation preservation (#95 side).** The `CProg`-free dialect front
+* **Translation preservation (robust-compilation side).** The dialect front
   `translateDialectControl` (delegating to `translateDialectFull` for these leaf
   arms) emits an opaque `extCall "arrLoadDyn"` / `"arrStoreDyn"` for `RArrLoad` /
   `RArrStore` when the source slot resolves and the runtime index var is bound.
@@ -29,7 +28,7 @@ loop / scalar constructors:
   `RArrLoadD_translation_emits` / `RArrStoreD_translation_emits`; denotation
   preservation is the `arrLoad` / `arrStore` case of `rustExecSimulatesDialect`.
 
-* **CT preservation (#146 side).** The big-step semantics of `RArrLoad` /
+* **CT preservation.** The big-step semantics of `RArrLoad` /
   `RArrStore` is fully defined (see `RustExec.arrLoad` / `.arrStore` in
   `LowCT.lean`), and the CT predicate `cmdCT` rejects these constructors
   unless the **index variable is Public**. The global soundness theorem
@@ -77,21 +76,20 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-! ## 1. Translation for `RArrLoad` / `RArrStore` (dialect front)
 
-The `CProg`-free dialect front `translateDialectControl` lowers the array
+The dialect front `translateDialectControl` lowers the array
 constructors to opaque `extCall "arrLoadDyn"` / `"arrStoreDyn"` expressions when
 the source slot resolves and the runtime index var is bound. We expose the
 positive `.isSome` emit witnesses below.
 -/
 
-/-- **`RArrLoad` translates over the `CProg`-free dialect front (positive).**
+/-- **`RArrLoad` translates over the dialect front (positive).**
     When the source slot resolves and the runtime index var is bound, the
     `catCryptDialect` front `translateDialectControl` (delegating to
     `translateDialectFull` for this leaf arm) emits an opaque `extCall "arrLoadDyn"`
     (carrying the index as an argument). The denotation-preservation is discharged
     by the `arrLoad` case of `rustExecSimulatesDialect` (opaque-value,
     `interp_cons_setTower_any`); the public-index constant-time discipline is in
-    `LowCTCTAnalysis.cmdCT`. Dialect twin of the former `translate`-side witness;
-    neither statement nor proof names `CProg` / `CExpr` / `translate`. -/
+    `LowCTCTAnalysis.cmdCT`. -/
 theorem RArrLoadD_translation_emits {Γ : Ctx} (vm : VarMap Γ)
     (dst src : Located) (idxVar : String)
     {ra : List ((t : CryptoTy) × CVar Γ t)} {iv : (t : CryptoTy) × CVar Γ t}
@@ -102,7 +100,7 @@ theorem RArrLoadD_translation_emits {Γ : Ctx} (vm : VarMap Γ)
   rcases listSigmaToCHVector (ra ++ [iv]) with ⟨_, _⟩
   rfl
 
-/-- **`RArrStore` translates over the `CProg`-free dialect front (positive).**
+/-- **`RArrStore` translates over the dialect front (positive).**
     Dual of `RArrLoadD_translation_emits`. -/
 theorem RArrStoreD_translation_emits {Γ : Ctx} (vm : VarMap Γ)
     (arr : Located) (idxVar : String) (src : Located)
@@ -118,7 +116,7 @@ theorem RArrStoreD_translation_emits {Γ : Ctx} (vm : VarMap Γ)
 
 `cmdCT (.RArrLoad dst src idxVar) lt leafCT = true` iff *all three* of
 `idxVar`, `dst.locVar`, `src.locVar` are classified `Public` by `lt`. The
-**index** Public-classification is the load-bearing one: a secret index
+**index** Public-classification is the essential one: a secret index
 introduces an address-bus / cache-line side channel that is **not**
 prevented by any compiler pass downstream.
 
@@ -234,8 +232,8 @@ theorem RArrStore_secret_index_rejected
 
     Combined statement: when the index is secret, the CT analyser
     refuses; therefore no CT-preservation conclusion is in scope. This
-    is the documentation lemma that pins the boundary of `#146`'s
-    extended coverage. -/
+    is the documentation lemma that pins the boundary of the extended
+    CT-preservation coverage. -/
 theorem RArrLoad_no_CT_claim_for_secret_index
     (dst src : Located) (idxVar : String)
     (lt : LevelTable) (leafCT : LeafCTTable)

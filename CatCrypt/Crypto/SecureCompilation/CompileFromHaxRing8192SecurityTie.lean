@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
-# #607 security tie: the compile-from-hax `Z/8192Z` multiply leaf realizes the
+# Security tie: the compile-from-hax `Z/8192Z` multiply leaf realizes the
   abstract `Zq8192` ring multiply the NTRU-HRSS security reference reasons over
 
 `CompileFromHaxRing8192` proves the verified compiler *emits* a jasmin `Com`
@@ -31,20 +31,20 @@ field-by-field, and feeds that equality to `tie_transfer` so that **any** proper
 the security layer proves of the abstract ring multiply transfers verbatim to the
 compiler-emitted leaf, with no new axioms.
 
-## Why this is parametric-correct for NTRU-HRSS (honest scope)
+## Why this is parametric-correct for NTRU-HRSS (scope)
 
 NTRU-HRSS's `NTRU/SurfaceDeps.lean` reasons over the coefficient ring `Zq8192`
 abstractly, through cyclic-convolution `Finset.sum`s of ring products `a · b`.
 This module's compiled leaf is the **pure ring multiply** `a · b` (distinct from,
 and simpler than, the existing `ntruMacForm` multiply-accumulate leaf — that
 sibling security tie lives in `CompileFromHaxNtruSecurityTie`). The
-compiled-realization equality `toMulDeps = mulDepsSpec` is genuine: the verified
+compiled-realization equality `toMulDeps = mulDepsSpec` holds: the verified
 compiler's emitted `mod 2¹³` multiply computes exactly the abstract `Zq8192` ring
 product on residue inputs, and `tie_transfer` carries any ring-multiply property
 onto the compiled artifact. It does **not** discharge the NTRU one-wayness
 assumption or the SXY/FO transform — those remain the hypotheses of
 `NTRU/Security.lean`; this ties the *emitted arithmetic* to the *abstract
-arithmetic* the proof uses, which is the scope of #607.
+arithmetic* the proof uses, which is the scope of this module.
 
 `toMulDeps_eq_spec` is restricted to the residue inputs the NTRU coefficient ring
 operates over (`encZ` produces canonical residues `< 8192`), which is exactly the

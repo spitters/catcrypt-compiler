@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 # Ascon permutation (`ascon_pa` / `ascon_pb`), FRONT-COMPILED
 
 The Ascon permutation (NIST SP 800-232 / Ascon v1.2) — the core of Ascon-128
-AEAD — sourced through the verified `CProg`-free front, with NO hand-built `Com`
+AEAD — sourced through the verified front, with NO hand-built `Com`
 anywhere in the emit path:
 
 ```
@@ -232,7 +232,7 @@ abbrev inCtxt : Ctxt jasminDialect := List.replicate nInputs r64
 
 /-! ## 4. The front-emitted permutations -/
 
-/-- Push a permutation body through the `CProg`-free control front and cap with
+/-- Push a permutation body through the control front and cap with
     `ret o4` (the last output copy, the `Com`'s last binding). `none` if the
     front declines. -/
 def frontComAt (count startRound : Nat) (name : String) :
@@ -270,7 +270,7 @@ def asconPbCom : Com jasminDialect inCtxt r64 :=
 def asconPaCom : Com jasminDialect inCtxt r64 :=
   asconPaLoweredOpt.get asconPaLowered_isSome
 
-/-! ## 5. Structural gates on the lowered `Com` (REV-12: cheap in-model only —
+/-! ## 5. Structural gates on the lowered `Com` (cheap in-model checks only —
 correctness is the external C KAT, not a `denote = spec` native_decide) -/
 
 /-- Every binding is a pure scalar-arith op (`regArith`/`regConst`/immediate

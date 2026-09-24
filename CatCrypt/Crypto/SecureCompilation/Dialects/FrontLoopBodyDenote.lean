@@ -21,8 +21,8 @@ compiler's own output.
 This module relates `update` back to the source. The two legs of the relation
 are `TranslateDialectScalar.translateDialectControl_denote_ctl` (front
 preservation over `IsCoveredSCtl`, against the `semScalar` waist) and
-`DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'` (the A1
-lowering transport), already composed in
+`DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'` (the
+dialect-to-Jasmin lowering transport), already composed in
 `CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq`. What that
 composite is stated over is a translation output `o : DTransOut Γ` together with
 the four success facts `hTrans` / `hName` / `hRet` / `hCom`. `frontLoopBodyJ`
@@ -89,7 +89,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 
 `frontLoopBodyCD` is a three-stage `Option` match — front success, accumulator
 lookup at the post-varmap, continuation application to `ret accName` — and
-`frontLoopBodyJ` caps it with the A1 lowering. Inverting a success gives back
+`frontLoopBodyJ` caps it with the dialect-to-Jasmin lowering. Inverting a success gives back
 exactly the four premises `semScalarToJasminCom_denote_eq` takes. -/
 
 /-- Inversion of a `frontLoopBodyCD` success: the front ran to some `o`, the

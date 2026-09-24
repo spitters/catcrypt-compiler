@@ -19,7 +19,7 @@ shifts by `b.toNat` (`JasminDialect.lean`, lines 122–130), denoted as the
 
 So at the **dialect-semantics level** the variable shift is fully available, and
 this file proves it: the one-op `Com`s `varShrCom` / `varShlCom` denote exactly
-`a >>> b.toNat` / `a <<< b.toNat` by `rfl` (§1). This is genuine — the dialect's
+`a >>> b.toNat` / `a <<< b.toNat` by `rfl` (§1): the dialect's
 `JasminBinOp.apply` reduces structurally to the BitVec shift.
 
 ## What is NOT yet available: the emit path (§2, documented gap)
@@ -63,7 +63,7 @@ other amount-as-data surface). This is why the immediate shifts `shrImm`/`shlImm
 are unconditionally CT (the amount is a compile-time constant, never data) and are
 the ones the front emits today.
 
-## The genuine workaround for the bounded-public case (§3)
+## The workaround for the bounded-public case (§3)
 
 When the shift amount is **public and bounded to a small fixed set** (the common
 case — e.g. a rotate distance fixed by the cipher, or a 0..3 lane selector), the
@@ -101,7 +101,7 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLin
 open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
 open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 
-/-! ## 1. The variable-distance shift at the dialect level (genuine semantics)
+/-! ## 1. The variable-distance shift at the dialect level (semantics)
 
 The register-amount shift exists in the dialect: `regArith .shr 64` /
 `regArith .shl 64` over two register operands `[a, b]` shift `a` by `b.toNat`.

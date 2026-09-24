@@ -19,29 +19,27 @@ That theorem carries **three** hypotheses:
 
 * `hLeaf : LeafAgrees leafSem` — the opaque-leaf edge (`extCall` agreement),
   carried throughout the emit-correctness theory and *not* dischargeable here
-  (it is the genuine assumption about the leaf semantics);
+  (it is the assumption about the leaf semantics);
 * `hInj : Function.Injective freshName` — distinct fresh-SSA counters give
   distinct `"v…"` names;
 * `hPinj` — the *parameter* resolver is injective (distinct parameters get
   distinct `"p…"` names), which makes the seeded store agree with the input.
 
-The roadmap's whole-function keystone (#5) asks for a verified lowering of a
-**multi-binder straight-line** body — more than the single-op bodies the loop
-passes (`LoopLowering`) cover — that does **not** leave the SSA-naming
-side-conditions as open holes.
+This module gives a verified lowering of a **multi-binder straight-line** body
+(more than the single-op bodies the loop passes of `LoopLowering` cover) with
+the SSA-naming side-conditions discharged.
 
-## What was already there (reused, not re-proved)
+## Reused results
 
 * `JasminPrint.lowerComToProg` — the whole-function lowering `Com → JasminProg`.
 * `JasminPrintSemCorrect.runProg` / `lowerComToProg_sem_eq` — the run + its
-  denote-correctness on the straight-line fragment (the *body* of the keystone).
+  denote-correctness on the straight-line fragment (the *body* of the main theorem).
 * `FreshNameInjective.freshName_injective` — discharges `hInj` (proved in that
-  file from the base-10 `Nat.toDigits` recursion; the honest hurdle the
-  loop-lowering agents flagged).
+  file from the base-10 `Nat.toDigits` recursion).
 * `JasminDialect.smokeProg` — a concrete **two-binder** straight-line `Com`
   (`regArith add` then `castW 32 64`), used as the worked whole-function example.
 
-## What is genuinely new here
+## Contents
 
 1. **`paramsAndMapFrom_name`** — the closed form of the parameter resolver: the
    variable at De Bruijn depth `d` in `paramsAndMapFrom base Γ` is named
@@ -65,20 +63,21 @@ side-conditions as open holes.
    equals its `Com.denote`, with no naming side-conditions
    (`smokeProg_run_eq`), and a concrete KAT (`smokeProg_run_kat`: `7, 35 ↦ 42`).
 
-## Scope (honest)
+## Scope
 
-This is the *whole-function* analogue of `LoopLowering`'s single-op case: a
+This is the *whole-function* counterpart of `LoopLowering`'s single-op case: a
 **fixed-length, loop-free** straight-line body (several `Lopn`/`regArith`/`castW`
 bindings, single return). It composes any number of binders — `smokeProg` is
-two; the statement is generic in the body. It does **not** yet cover: control
+two; the statement is generic in the body. It does **not** cover: control
 flow / branches (`StructuredControlFlow`), function calls (`extCall` leaves stay
 opaque under `LeafAgrees`), the aliasing `stackStore` op (excluded by
 `StraightLine`, see `stackStore_aliases_source`), or composing the loop passes
 into the same function body (a whole *protocol* body interleaves straight-line
 fragments with the counted loops of `LoopLowering` and the nested loops of
-`JForProgNested`). Those are the remaining whole-protocol-body work.
+`JForProgNested`); `WholeProtocolBody` composes straight-line setup with a
+counted loop.
 
-0 sorries; the only remaining hypothesis on the worked example is the opaque-leaf
+All goals are closed; the only remaining hypothesis on the worked example is the opaque-leaf
 edge `LeafAgrees`, the same edge carried throughout the emit-correctness theory.
 -/
 
@@ -190,13 +189,13 @@ theorem paramsAndMap_injective {Γ : Ctxt jasminDialect} :
       (∃ h : t = t', h ▸ v = v') :=
   fun t t' v v' h => paramsAndMapFrom_injective 0 t t' v v' h
 
-/-! ## 3. The whole-function keystone with **both** naming side-conditions
+/-! ## 3. The whole-function theorem with **both** naming side-conditions
 discharged
 
 `lowerComToProg_sem_eq` carries `hInj` and `hPinj`; we discharge both — `hInj`
 by `FreshNameInjective.freshName_injective`, `hPinj` by `paramsAndMap_injective`
 — leaving the opaque-leaf edge `LeafAgrees` as the *only* remaining hypothesis.
-This is the clean statement the whole-function keystone names. -/
+This is the clean whole-function statement. -/
 
 /-- **Whole-function lowering is denotation-preserving (naming side-conditions
     discharged).** For any straight-line `Com jasminDialect Γ t`, running its
@@ -215,7 +214,7 @@ theorem lowerComToProg_sem_eq' {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 /-! ## 4. Worked multi-binder example: the two-op `smokeProg`
 
 `JasminDialect.smokeProg : Com jasminDialect [reg 32, reg 32] (reg 64)` is a
-genuine *multi-binder* (two `var`) straight-line body:
+*multi-binder* (two `var`) straight-line body:
 
     let s = regArith add a b   -- s : reg 32
     let t = castW 32 64 s      -- t : reg 64
@@ -244,7 +243,7 @@ theorem smokeProg_run_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
 
 /-- **Worked multi-binder KAT.** On inputs `7, 35`, the lowered `smokeProg`
     whole function computes `(42 : BitVec 32).zeroExtend 64` — byte-for-byte the
-    reference `denote`. Ties the whole-function keystone to a concrete value. -/
+    reference `denote`. Ties the whole-function theorem to a concrete value. -/
 theorem smokeProg_run_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     runProg leafSem JasminDialect.smokeProg
         (.cons (7 : BitVec 32) (.cons (35 : BitVec 32) .nil))

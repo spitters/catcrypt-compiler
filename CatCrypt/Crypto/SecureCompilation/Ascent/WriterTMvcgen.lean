@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
 set_option autoImplicit false
 
 /-!
-# A writer / accumulating-log effect for `mvcgen` (tier 2)
+# A writer / accumulating-log effect for `mvcgen`
 
 `Std.Do`'s weakest-precondition metatheory ships `@[spec]`/`wp` lemmas for the four
 standard transformers — `StateT`, `ReaderT`, `ExceptT`, `OptionT` — so `mvcgen`
@@ -21,9 +21,9 @@ walks computations built from them. It has **no** `WriterT`. This module gives
 leakage takes when it is *internalized*: the coPara interface channel, whose
 `⊕`-growth accumulates observations, read as a monotone log the VC generator walks.
 
-## Tier 2: writer-as-state, no new `PostShape`
+## Writer-as-state, no new `PostShape`
 
-The tractable route (this file). A writer over a log monoid is a **write-only
+This module takes the writer-as-state route. A writer over a log monoid is a **write-only
 state**: `tell` only ever *appends*, never reads. So
 
     WriterT W m  ≅  StateT W m      with   tell w = modify (· ++ w),
@@ -36,8 +36,8 @@ no new `wp` lemma: the accumulating log is a `StateM` and `mvcgen` walks it out 
 the box.
 
 The general **graded**-`PostShape` route — a writer whose WP tracks the emitted
-monoid element as its own barrel rather than folding it into a state — is tier 3
-and lives separately; it is what one needs when the log must *not* be encoded as
+monoid element as its own barrel rather than folding it into a state — is not
+treated here; it is what one needs when the log must *not* be encoded as
 state (e.g. a commutative or resource-graded accumulation).
 
 ## What is proved
@@ -74,7 +74,7 @@ def tell {I : Type} (i : I) : WriterM I Unit :=
 
 /-- The `PostShape` of `WriterM I = StateT (List I) Id`: a single log argument over
     the pure (no-throw) base — the **native `StateT` shape**, `.arg (List I) .pure`.
-    This is the whole point of tier 2: no new `PostShape` is invented. -/
+    The writer-as-state encoding introduces no new `PostShape`. -/
 abbrev psW (I : Type) : PostShape := .arg (List I) .pure
 
 /-! ## 2. The writer's WP is the native `StateT` WP -/

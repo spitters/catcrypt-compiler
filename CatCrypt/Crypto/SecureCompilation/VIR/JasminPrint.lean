@@ -12,9 +12,9 @@ public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
-# `Com jasminDialect → JasminProg` lowering (phase (a) of the convergence plan)
+# `Com jasminDialect → JasminProg` lowering
 
-This file is the next deliverable after `JasminDialect.lean`: a verified,
+This module builds on `JasminDialect.lean`. It defines a verified,
 structured AST → structured AST lowering from CatCrypt's typed-SSA VIR
 (`Com jasminDialect Γ t`) to the Jasmin program AST
 (`CatCrypt.Crypto.Jasmin.JasminProg`). The `.jazz` *text* is produced by the
@@ -86,7 +86,7 @@ open CatCrypt.Crypto.Jasmin
     exact Jasmin size round *up* to the next supported size (and saturate at
     `U512`, the AVX-512 `zmm` width); this keeps the lowering total. The
     dialect's `smokeProg` uses 32 and 64, which map exactly. A `reg 512`
-    (an AVX-512 packed register, task #286) maps exactly to `U512` so it prints
+    (an AVX-512 packed register) maps exactly to `U512` so it prints
     as `reg u512` rather than truncating to `u256`. -/
 def wsizeOfNat (w : Nat) : WSize :=
   if w ≤ 8 then .U8
@@ -116,8 +116,8 @@ def binOpToSOp2 (op : JasminBinOp) (ws : WSize) : SOp2 :=
   -- kept only for totality; it is unreachable on the emit path.
   | .andn => .Oland ws
 
-/-- The jasmin intrinsic mnemonic for an AVX-512 8×u64 packed `vpackZMM` op
-    (task #286). Matches the `_8u64` surface names in `MpnAvx512Emit`
+/-- The jasmin intrinsic mnemonic for an AVX-512 8×u64 packed `vpackZMM` op.
+    Matches the `_8u64` surface names in `MpnAvx512Emit`
     (`#VPADD_8u64` / `#VPSUB_8u64` / `#VPMULL_8u64` / `#VPSRL_8u64`). The
     bitwise lanes (`and`/`or`/`xor`) are width-agnostic on a `zmm`
     (`#VPAND`/`#VPOR`/`#VPXOR`); `shl` is `#VPSLL_8u64`. -/
@@ -300,7 +300,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         { name := "CMOV" }
         [pvarOf cond (.reg 1), pvarOf a (.reg w), pvarOf b (.reg w)]
   | .vpackZMM bop =>
-      -- AVX-512 8×u64 packed op (task #286): emit the `#VPADD_8u64`-style
+      -- AVX-512 8×u64 packed op: emit the `#VPADD_8u64`-style
       -- intrinsic call on two `reg u512` (= `reg 512`) operands. Mirrors how
       -- `extCall` lowers to `Ccall`, with the lane-parallel mnemonic chosen by
       -- `bop` (matching `MpnAvx512Emit` render helpers).
@@ -362,7 +362,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
           { name := op.jasminMnemonic }
           [pvarOf a (.reg 256)]
   | .mulhi w =>
-      -- Widening multiply high word (#477): emit the BMI2 `#MULXHI` intrinsic on
+      -- Widening multiply high word: emit the BMI2 `#MULXHI` intrinsic on
       -- the two `reg w` factors. The paired low word is the producer's
       -- `regArith .mul`. Mirrors how `extCall`/`vpackZMM` lower to `Ccall`.
       let a := argName vm e.args 0
@@ -371,7 +371,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         { name := "MULXHI" }
         [pvarOf a (.reg w), pvarOf b (.reg w)]
   | .addCarryLo w =>
-      -- Carry-chain add data word (#477): `#ADCX` intrinsic on `[a, b, cin]`
+      -- Carry-chain add data word: `#ADCX` intrinsic on `[a, b, cin]`
       -- (cin a `reg 1` carry-in). `read_linear` routes the carry-in through CF.
       let a := argName vm e.args 0
       let b := argName vm e.args 1
@@ -380,7 +380,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         { name := "ADCX" }
         [pvarOf a (.reg w), pvarOf b (.reg w), pvarOf cin (.reg 1)]
   | .addCarryHi w =>
-      -- Carry-chain carry-out bit (#477): `#ADCXHI` intrinsic on `[a, b, cin]`,
+      -- Carry-chain carry-out bit: `#ADCXHI` intrinsic on `[a, b, cin]`,
       -- producing the propagated `reg 1` carry. `read_linear` snapshots CF.
       let a := argName vm e.args 0
       let b := argName vm e.args 1
@@ -389,11 +389,11 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         { name := "ADCXHI" }
         [pvarOf a (.reg w), pvarOf b (.reg w), pvarOf cin (.reg 1)]
   | .rorImm w n =>
-      -- Native right-rotate (#497): emit the x86 rotate asm op `#ROR_w` on the
+      -- Native right-rotate: emit the x86 rotate asm op `#ROR_w` on the
       -- single `reg w` source plus the compile-time immediate amount `n`
       -- (a `Pconst`). The Rust backend (`JasminToRustEmit`) already renders
       -- `#ROR_32`/`#ROR_64` as `(a).rotate_right((n) as u32)`, so this lowers
-      -- one-to-one to the native rotate instead of the `shr; shl; or` triple.
+      -- one-to-one to the native rotate rather than a `shr; shl; or` triple.
       let ws := wsizeOfNat w
       let src := argName vm e.args 0
       -- jasminc's `#ROR_w` intrinsic produces THREE lvalues: the OF / CF flags
@@ -406,7 +406,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
         (.Oasm { name := "ROR_" ++ toString w })
         [pvarOf src (.reg w), .Pconst (Int.ofNat n)]
   | .shrImm w n =>
-      -- Native immediate logical right-shift (#605): the shift amount `n` is a
+      -- Native immediate logical right-shift: the shift amount `n` is a
       -- compile-time `Pconst`, not a register-file read, so jasminc x86
       -- linearizes it as `dst = src >> n;`. Same `Olsr` op-code as a
       -- `regArith .shr`, but the second operand is a literal.
@@ -415,7 +415,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       .Cassgn (.Lvar (mkVarI dst (.reg w))) .AT_none (.sword ws)
         (.Papp2 (.Olsr ws) (pvarOf src (.reg w)) (.Pconst (Int.ofNat n)))
   | .sarImm w n =>
-      -- Native immediate arithmetic right-shift (#606): the count `n` is a
+      -- Native immediate arithmetic right-shift: the count `n` is a
       -- compile-time `Pconst`. `Oasr` (sign-extending) op-code — the
       -- arithmetic twin of `shrImm`'s `Olsr`; same literal-immediate shape.
       let ws := wsizeOfNat w
@@ -423,7 +423,7 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       .Cassgn (.Lvar (mkVarI dst (.reg w))) .AT_none (.sword ws)
         (.Papp2 (.Oasr ws) (pvarOf src (.reg w)) (.Pconst (Int.ofNat n)))
   | .shlImm w n =>
-      -- Native immediate logical left-shift (#605); see `shrImm`.
+      -- Native immediate logical left-shift; see `shrImm`.
       let ws := wsizeOfNat w
       let src := argName vm e.args 0
       .Cassgn (.Lvar (mkVarI dst (.reg w))) .AT_none (.sword ws)

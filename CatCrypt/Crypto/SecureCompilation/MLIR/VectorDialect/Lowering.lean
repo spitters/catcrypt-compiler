@@ -9,21 +9,21 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
 public import Mathlib.Data.List.FinRange
 
 /-!
-# MLIR `vector` dialect — Progressive lowering (Phase 1)
+# MLIR `vector` dialect — Progressive lowering
 
 This is the first lowering step in the progressive-lowering pipeline
 
 ```
 VectorDialect.VectorOp                      -- abstract, this directory
-  ↓  Lowering.lean              (Phase 1, here)
+  ↓  Lowering.lean              (here)
 VectorDialect.ScalarExpansion              -- per-lane scalar ops
-  ↓  CatCrypt Com / VIR pass     (Phase 2 — existing emit files)
+  ↓  CatCrypt Com / VIR pass     (emit files)
 CatCrypt Com (BitVec / ZMod)
   ↓  ComToVeir / mlir-opt        (existing, see VIR/MlirArithDialect.lean)
 LLVM / x86vector / arm_neon
 ```
 
-The lowering we land here is *to* a small intermediate IR
+The lowering here is *to* a small intermediate IR
 (`ScalarExpansion α n`) that already does the per-lane fan-out — one entry per
 lane. That keeps this file independent of the heavier `VIR/Core.lean`
 `Com` machinery while still mirroring the MLIR-style "one op explodes into a
@@ -31,13 +31,11 @@ loop over lanes" transformation.
 
 The intermediate IR is straightforward enough to denote in one step
 (`runScalarExpansion`), and that denotation is shown to *agree* with the
-abstract `denoteVectorOp` for `broadcast` and `add` — the two ops the task
-spec asks for as proof-of-concept.
+abstract `denoteVectorOp` (`lower_*_correct`, `denoteVectorOp_eq_lower_*`).
 
-A Phase-2 follow-up will lift this lowering into a real `Com` lowering by
-re-using the existing `VIR/MlirArithDialect` per-lane denotation (which is
-already proven equivalent to the catCrypt scalar IR). The shape is fixed; the
-mechanical Var-bookkeeping is the only thing this file defers.
+This lowering does not produce `Com`. A `Com` lowering would reuse the
+`VIR/MlirArithDialect` per-lane denotation (proven equivalent to the catCrypt
+scalar IR); the remaining work is mechanical Var-bookkeeping.
 
 ## Selector abstraction
 
@@ -115,9 +113,8 @@ scalar and they have no per-lane fan-out. -/
 /-- The lowering itself: convert a *vector-result* op to a `ScalarExpansion`.
 
     The function returns an `Option` because scalar-result ops (`extract` /
-    `reduce`) have no vector lowering — those are returned as `none`. Phase-2
-    will surface a dual scalar lowering for them; the current focus is on the
-    vector-shape-preserving subset. -/
+    `reduce`) have no vector lowering — those are returned as `none`. The
+    lowering covers the vector-shape-preserving subset. -/
 def lower {α : Type} {n : Nat} (init : α) : VectorOp α n → Option (ScalarExpansion α n)
   | .broadcast x =>
       -- One store per lane writing `x` (the canonical per-lane expansion
@@ -162,7 +159,7 @@ def lower {α : Type} {n : Nat} (init : α) : VectorOp α n → Option (ScalarEx
       some ⟨defaultLane init,
             (List.finRange n).map fun i => ⟨i, rnd (s i) (k i)⟩⟩
 
-/-! ## 3. Denotation-preservation theorems (the keystones)
+/-! ## 3. Denotation-preservation theorems
 
 For `broadcast` and `add` we prove
 `denoteVectorOp op = .vec (lower init op).get.denote`.
@@ -202,7 +199,7 @@ theorem foldl_insert_notMem
       show (VectorTy.insert w head (f head)) i = w i
       exact VectorTy.insert_apply_ne w head i (f head) (Ne.symm hhead)
 
-/-- The keystone bridge: folding lane-by-lane stores produced from
+/-- The key bridge lemma: folding lane-by-lane stores produced from
     `List.finRange n` writes `f i` to lane `i`. -/
 theorem runLaneStores_finRange_map
     {α : Type} {n : Nat} (init : VectorTy α n) (f : Fin n → α) :
@@ -235,7 +232,7 @@ theorem runLaneStores_finRange_map
         exact ih _ ht (List.nodup_cons.mp hnodup |>.2)
   exact key (List.finRange n) init (List.mem_finRange i) (List.nodup_finRange _)
 
-/-- **Keystone 1: lowering of `broadcast` preserves denotation.**
+/-- **Lowering of `broadcast` preserves denotation.**
     The lowered program (one store per lane, all with value `x`) denotes to
     the constant vector `replicate x`, which is exactly the abstract
     denotation of `broadcast`. -/
@@ -248,7 +245,7 @@ theorem lower_broadcast_correct {α : Type} {n : Nat} (init : α) (x : α) :
   show runLaneStores _ _ = _
   rw [runLaneStores_finRange_map (init := defaultLane init) (f := fun _ => x)]
 
-/-- **Keystone 2: lowering of `add` preserves denotation.**
+/-- **Lowering of `add` preserves denotation.**
     The lowered program (one store per lane writing `op (v i) (w i)`)
     denotes to `map₂ op v w`, exactly the abstract denotation of `add op v w`. -/
 theorem lower_add_correct {α : Type} {n : Nat} (init : α)
@@ -261,7 +258,7 @@ theorem lower_add_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => op (v i) (w i))]
 
-/-- **Keystone 3: lowering of `shiftL` preserves denotation.**
+/-- **Lowering of `shiftL` preserves denotation.**
     The lowered program (one store per lane writing `shf (v i) m`) denotes to
     `map₁imm shf m v`, exactly the abstract denotation of `shiftL shf m v`. -/
 theorem lower_shiftL_correct {α : Type} {n : Nat} (init : α)
@@ -274,7 +271,7 @@ theorem lower_shiftL_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => shf (v i) m)]
 
-/-- **Keystone 4: lowering of `shiftR` preserves denotation.** -/
+/-- **Lowering of `shiftR` preserves denotation.** -/
 theorem lower_shiftR_correct {α : Type} {n : Nat} (init : α)
     (shf : α → Nat → α) (m : Nat) (v : VectorTy α n) :
     (lower init (.shiftR shf m v : VectorOp α n)).map (·.denote)
@@ -285,7 +282,7 @@ theorem lower_shiftR_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => shf (v i) m)]
 
-/-- **Keystone (mul): lowering of `mul` preserves denotation.** Same binary
+/-- **Lowering of `mul` preserves denotation.** Same binary
     lane-fan-out shape as `add`; the carried op is the multiply. -/
 theorem lower_mul_correct {α : Type} {n : Nat} (init : α)
     (op : α → α → α) (v w : VectorTy α n) :
@@ -297,7 +294,7 @@ theorem lower_mul_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => op (v i) (w i))]
 
-/-- **Keystone 5: lowering of `mulHi` preserves denotation.**
+/-- **Lowering of `mulHi` preserves denotation.**
     The lowered program (one store per lane writing `op (v i) (w i)`) denotes
     to `map₂ op v w`, exactly the abstract denotation of `mulHi op v w`. The
     high-half-product op shares the binary-`map₂` lowering shape with `mul`. -/
@@ -311,7 +308,7 @@ theorem lower_mulHi_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => op (v i) (w i))]
 
-/-- **Keystone 6: lowering of `shiftRA` (signed arithmetic shift) preserves
+/-- **Lowering of `shiftRA` (signed arithmetic shift) preserves
     denotation.** Same lane-fan-out shape as `shiftR`; the carried op is the
     arithmetic (sign-extending) shift. -/
 theorem lower_shiftRA_correct {α : Type} {n : Nat} (init : α)
@@ -324,7 +321,7 @@ theorem lower_shiftRA_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => shf (v i) m)]
 
-/-- **Keystone 7: lowering of `affineByte` (per-lane GF(2) affine) preserves
+/-- **Lowering of `affineByte` (per-lane GF(2) affine) preserves
     denotation.** The lowered program (one store per lane writing `aff (v i)`)
     denotes to `map₁ aff v`, the abstract denotation of `affineByte aff v`.
     Same UNARY lane-fan-out shape as `shiftL`/`shiftR` (the matrix/bias are
@@ -339,7 +336,7 @@ theorem lower_affineByte_correct {α : Type} {n : Nat} (init : α)
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun i => aff (v i))]
 
-/-- **Keystone 8: lowering of `aesRound` (per-lane AES round step) preserves
+/-- **Lowering of `aesRound` (per-lane AES round step) preserves
     denotation.** The lowered program (one store per lane writing
     `rnd (s i) (k i)`) denotes to `map₂ rnd s k`, the abstract denotation of
     `aesRound rnd s k`. Same binary-`map₂` lowering shape as `add`/`mul`. -/
@@ -374,7 +371,7 @@ theorem lower_aesRound_correct {α : Type} {n : Nat} (init : α)
     lower init (.add op v w : VectorOp α n) = some (loweredAdd init op v w) :=
   rfl
 
-/-- **Bundled keystone (broadcast).** The abstract denotation of `broadcast x`
+/-- **Bundled lowering theorem (broadcast).** The abstract denotation of `broadcast x`
     equals the vector denoted by its lowered `ScalarExpansion`. -/
 theorem denoteVectorOp_eq_lower_broadcast {α : Type} (n : Nat) (init x : α) :
     denoteVectorOp (.broadcast x : VectorOp α n)
@@ -387,7 +384,7 @@ theorem denoteVectorOp_eq_lower_broadcast {α : Type} (n : Nat) (init x : α) :
   rw [runLaneStores_finRange_map (init := defaultLane init)
         (f := fun (_ : Fin n) => x)]
 
-/-- **Bundled keystone (add).** The abstract denotation of `add op v w`
+/-- **Bundled lowering theorem (add).** The abstract denotation of `add op v w`
     equals the vector denoted by its lowered `ScalarExpansion`. -/
 theorem denoteVectorOp_eq_lower_add {α : Type} {n : Nat} (init : α)
     (op : α → α → α) (v w : VectorTy α n) :

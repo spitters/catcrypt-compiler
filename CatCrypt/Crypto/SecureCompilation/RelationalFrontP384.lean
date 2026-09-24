@@ -43,15 +43,15 @@ same full-width boundary secp256k1 and P-256 hit at `k = 4`. We use **`k = 7`** 
 limbs (carrier `2^448`): the top limb is `0`, and `2p ≤ 2^448` holds with room to spare.
 The product width for MUL is then `2k = 14` limbs (Barrett shift `m = 64·14 = 896`).
 
-## P-384 instance scope (HONEST)
+## P-384 instance scope
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
+* **ADD (fully proved):** the abstract `ZMod q` field add `a + b`, serialized by the
   7-limb encoding `encMLK q 7`, equals the emitted 7-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce), read through
+  on the serialized operands (with the `condSubLimbs` reduce), read through
   `bignumVal`. This is `p384_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
+* **MUL (fully proved):** the abstract `ZMod q` field multiply `a * b`, serialized by the
   same encoding, equals the emitted 14-limb (`2k = 14`) Barrett-reducing kernel
-  `mlMulMod` on the serialized operands — with the genuine multi-limb Barrett reduce of
+  `mlMulMod` on the serialized operands — with the multi-limb Barrett reduce of
   the product (`mu = ⌊(2^64)^14 / q⌋`, defined *as its side-condition value* so no
   `2^896` literal is evaluated). This is `p384_mul_commutes`.
 * The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^7`, `bignumVal p384Limbs = q`)
@@ -131,9 +131,9 @@ def p384KLimbPrime : KLimbPrime where
   two_q_le := by unfold p384Q; norm_num
 
 /-- **The P-384 base-field ADD commuting square.** The abstract P-384 base-field
-    addition `a + b` (in `ZMod q` for the genuine 384-bit prime `q = p384Q`), serialized
+    addition `a + b` (in `ZMod q` for the 384-bit prime `q = p384Q`), serialized
     by the 7-limb encoding `encMLK q 7`, equals the emitted 7×64-bit reducing kernel
-    `mlAddModK` on the serialized operands, read through `bignumVal` — with the genuine
+    `mlAddModK` on the serialized operands, read through `bignumVal` — with the
     7-limb conditional-subtract modular reduce. The P-384 sibling of
     `p256_add_commutes`. -/
 theorem p384_add_commutes (a b : ZMod p384Q) :
@@ -210,10 +210,10 @@ def p384KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The P-384 base-field MUL commuting square.** The abstract P-384 base-field
-    multiply `a * b` (in `ZMod q` for the genuine 384-bit prime `q = p384Q`), serialized
+    multiply `a * b` (in `ZMod q` for the 384-bit prime `q = p384Q`), serialized
     by the 7-limb encoding `encMLK q 7`, equals the emitted 14-limb Barrett-reducing
     kernel `mlMulMod` on the serialized operands, read through `bignumVal` — with the
-    genuine multi-limb Barrett modular reduce of the product. The P-384 sibling of
+    multi-limb Barrett modular reduce of the product. The P-384 sibling of
     `p256_mul_commutes`, completing the P-384 field-op set. -/
 theorem p384_mul_commutes (a b : ZMod p384Q) :
     (a * b).val

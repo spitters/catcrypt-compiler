@@ -65,7 +65,7 @@ computes — turning the proof-transfer layer into a compilation front.
   bls12_377` reuse is exactly this (`ECParams` is parametric over `p`; only the
   modulus changes, the realization structure is reused verbatim).
 
-## The cap (HONEST): `map4` / no univalence
+## The cap: `map4` / no univalence
 
 Type-level univalence is **inconsistent** in this Lean (`propext` is the safe
 Prop-level analogue). So relational transport here is bounded to the
@@ -114,7 +114,7 @@ A `RealizedKernel` ties three things that already exist separately:
 3. an emitted `Com jasminDialect [reg w, reg w] (reg w)` whose denotation **is**
    `bop` (the *IR seam* — what the golden path then lowers to machine code).
 
-Field (3) is the only genuinely new obligation: it asserts the realization's
+Field (3) is the only new obligation: it asserts the realization's
 computational side is not a stand-alone Lean function but the artifact the
 verified compiler emits. -/
 
@@ -174,7 +174,7 @@ end RealizedKernel
 The canonical first instance reuses the golden-path `fieldAddCom`
 (`FieldEmitGoldenPath`) as the emitted `Com`, with the abstract source being the
 `BitVec 64` add itself (`enc = id`, the same-representation regime of
-`ReprTransferCompute`). A *genuine* relational instance (e.g. `ECParams.add`
+`ReprTransferCompute`). A *cross-representation* relational instance (e.g. `ECParams.add`
 over `ZMod p` with a serialization `enc`) follows the same `RealizedKernel`
 shape; only `A`, `op`, `bop`, and `realization` change — and across curves only
 the carrier and modulus change, the structure is reused (bench-D `381 → 377`). -/

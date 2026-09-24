@@ -17,7 +17,7 @@ set_option autoImplicit false
 # NTRU Prime sntrup761 trinary (`Z/3`) polynomial-multiply tile, FRONT-COMPILED
 
 The `Z/3` coefficient arithmetic of sntrup761's `R3_mult` (the trinary decrypt
-product `e · ginv` in decapsulation), sourced through the verified `CProg`-free
+product `e · ginv` in decapsulation), sourced through the verified control
 front — NO hand-built `Com` anywhere:
 
 ```
@@ -169,7 +169,7 @@ def srcVM : VarMap srcCtx := bindAll wordNames
 
 /-! ## 3. The front-emitted programs -/
 
-/-- Push `mulBody` through the `CProg`-free control front and cap with
+/-- Push `mulBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM (mulBody barrettShift) with

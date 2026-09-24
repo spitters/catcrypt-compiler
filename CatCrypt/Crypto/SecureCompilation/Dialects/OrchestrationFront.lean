@@ -34,7 +34,7 @@ takes a **phase schedule** — a sequence of leaf calls, each naming its leaf
 symbol, its argument/result `.stackArr` types, and the **root-order slots** of
 its operand buffers — and generates the marshalled orchestration
 `Com jasminDialect`, resolving every de-Bruijn operand chain automatically. The
-generated `Com` feeds `Com.toLprogArrAbi` unchanged: the front now SOURCES the
+generated `Com` feeds `Com.toLprogArrAbi` unchanged: the front SOURCES the
 orchestration instead of hand-authoring it.
 
 ## Slot convention (matches `ArrAbiOrch.exprArgSlots`)
@@ -231,15 +231,15 @@ which `JasminLprogExport` already lowers to interleaved `STOREIDX` / `LOADIDX`
 word-moves around the `Lcall`.
 
 This section extends the front **additively**: `CallPhase` and `buildOrchCom`
-above are unchanged (the landed EC/pairing flips call them verbatim), and a
+above are used as they are (the EC/pairing orchestrations call them verbatim), and a
 **phase sum** `OrchPhase` reuses `CallPhase` as its call case while adding the
 three word-move cases. `buildOrchComP` walks a `List OrchPhase`, emitting the
 matching `Com.var` per phase and closing with `Com.ret` — the same shape as
 `buildOrchCom`, so an all-`call` schedule builds the *identical* `Com`
-(`buildOrchComP_call_eq`). Every new phase threads a fresh result slot exactly
+(`buildOrchComP_call_eq`). Every word-move phase threads a fresh result slot exactly
 like the call phase, and each operand is resolved through the same `mkVarSlot`
 root-slot convention, so a mixed call + word-move schedule and the array-ABI
-backend's frame layout still agree by construction. -/
+backend's frame layout agree by construction. -/
 
 /-- One phase of a mixed orchestration schedule. The `call` case is a full
     `CallPhase` (an opaque `.extCall` leaf, unchanged from the call band); the
@@ -326,8 +326,8 @@ def buildOrchComP :
 An all-`call` schedule builds the **identical** `Com` that `buildOrchCom` builds
 from the underlying `CallPhase` list — `mkOrchExpr (.call p)` is definitionally
 `mkPhaseExpr Γ p`, `OrchPhase.retTy (.call p)` is `p.retTy`, and the two builders
-share their recursion shape. So the extension does not perturb the landed EC /
-pairing flips: those keep calling `buildOrchCom` on `List CallPhase`, and even if
+share their recursion shape. So the extension does not perturb the EC /
+pairing orchestrations: those call `buildOrchCom` on `List CallPhase`, and
 re-expressed over `OrchPhase` they would build the same `Com`. -/
 
 /-- An all-`call` mixed schedule builds exactly what `buildOrchCom` builds — the
@@ -350,22 +350,21 @@ theorem buildOrchComP_call_eq :
 /-! ### Denotation and lowering
 
 `buildOrchComP` produces an ordinary `Com jasminDialect`, so its denotation is
-the framework's generic `Com.denote` (Core): each new phase's op has a real
+the framework's generic `Com.denote` (Core): each word-move phase's op has a real
 denotation in `jasminDenote` — `stackStore` is `stackSet`, `stackLoad` is
 `stackGet`, `regConst` is `BitVec.ofNat` — so a mixed schedule denotes
-compositionally with no new obligation. LOWERING (corrected 2026-07-04 after the
-SDitH/Shake re-source): the word-move phases lower ONLY through the PHYS-ABI path
+compositionally with no additional obligation. LOWERING: the word-move phases
+lower ONLY through the PHYS-ABI path
 `VIR.JasminLprogExport.Com.toLprogPhysAbi` / `comToLfundefPhysAbi`, whose per-op
 `opToLinstrR` maps `stackStore` to a `STOREIDX` word-move, `stackLoad` to a
 `LOADIDX`, `regConst` to a `MOV`, and `extCall` to an `Lcall` — emitting exactly
 the interleaved word-moves-around-`Lcall` a sponge needs. The array-ABI path
 `Com.toLprogArrAbi` (`ArrAbiOrch.comArrRecords`) does NOT work here: it records
 ONLY `extCall` bindings and silently drops `stackStore`/`stackLoad`/`regConst`, so
-a mixed schedule must NOT be routed through it (an earlier draft of this docstring
-wrongly named `toLprogArrAbi` — it is the wrong consumer). The end-to-end
-lower-to-`Lprog` correspondence for the word-move phases is an ORCHESTRATOR-VERIFY
-step: lower a concrete mixed schedule via `comToLfundefPhysAbi` and byte-KAT the
-emitted `.s`. No denotation is stubbed — the compositional `Com.denote` is total. -/
+a mixed schedule must NOT be routed through it. The end-to-end
+lower-to-`Lprog` correspondence for the word-move phases is outside the scope of
+this module; it is checked by lowering a concrete mixed schedule via
+`comToLfundefPhysAbi` and byte-KAT-testing the emitted `.s`. No denotation is stubbed — the compositional `Com.denote` is total. -/
 
 /-! ### Acceptance: a tiny mixed schedule builds to `some`
 

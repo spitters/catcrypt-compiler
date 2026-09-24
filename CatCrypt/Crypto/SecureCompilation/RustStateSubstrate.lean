@@ -10,20 +10,16 @@ public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
 public import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 
 /-!
-# Rust-state interpretation substrate (CProg-free)
+# Rust-state interpretation substrate
 
 The byte-layout invariant `RustStateInterp` relating a `LowCT` `RustState`
-to a CryptoSSA `HVec` valuation, together with the no-aliasing predicate
+to a `CryptoSSA` `HVec` valuation, together with the no-aliasing predicate
 `NoAliasVM`, the canonical-witness machinery, and the per-binding
 `bindingOK`/`interp_*` transport lemmas.
 
-This module is **CProg-free**: it contains no `CExpr`/`CProg`/`translate`
-token in code. It is the shared substrate consumed both by the
-`translate`-based `LowCTToCryptoSSACorrect` proofs and by the
-`catCryptDialect`-front simulation (`Dialects.CryptoDialectRustSim`) and the
-downstream RHP / borrow-safety / compiler-correctness consumers. Keeping it
-separate from `LowCTToCryptoSSACorrect` lets the CProg front be retired
-without disturbing the survivors.
+It is the shared substrate consumed by the `catCryptDialect`-front simulation
+(`Dialects.CryptoDialectRustSim`, `rustExecSimulatesDialect`) and the
+downstream RHP / borrow-safety / compiler-correctness consumers.
 -/
 
 @[expose] public section
@@ -98,11 +94,8 @@ noncomputable def cryptoTyOfRustVal :
   | .TFp25519_64, v => bytesOfMemrefRust (n := 4)
                        (fun i => v ⟨i.val,
                           by simp [TowerType.storageBytes]⟩)
-  -- Phase D/E/I/K (2026-05-03): the new tower types are not yet handled
-  -- by the CryptoSSA correctness invariant.  Fall back to the default
-  -- `CryptoTy.denote` value (zero memref); `LowCTToCryptoSSA.translate`
-  -- already returns `none` for `RLetZero` over these types, so this
-  -- branch is unreachable through the correctness theorem.
+  -- The remaining tower types are outside the scope of the byte-layout
+  -- invariant: they map to the default `CryptoTy.denote` value (zero memref).
   | .TFpL25519,           _ => CryptoTy.default _
   | .TFpP256,             _ => CryptoTy.default _
   | .TFp25519_4Bounded _, _ => CryptoTy.default _
@@ -110,16 +103,12 @@ noncomputable def cryptoTyOfRustVal :
   | .TFp2Gen _ _,         _ => CryptoTy.default _
   | .TTuple _ _,          _ => CryptoTy.default _
   | .TBytes _,            _ => CryptoTy.default _
-  -- Phase Ext (2026-05-14): TArr similarly unreachable.
   | .TArr _ _,            _ => CryptoTy.default _
-  -- Phase L (2026-05-22): polynomial-mod-q tower types — `translate`
-  -- returns `none` for these, so this branch is unreachable through
-  -- the correctness theorem.
+  -- Polynomial-mod-q tower types: default value.
   | .TPolyMod _ _,        _ => CryptoTy.default _
   | .TPolyVec _ _ _,      _ => CryptoTy.default _
   | .TPolyMat _ _ _ _,    _ => CryptoTy.default _
-  -- Phase L.1 (2026-05-23): u8 / u32 scalar widths — `translate`
-  -- returns `none` for these, so this branch is unreachable.
+  -- u8 / u32 scalar widths: default value.
   | .TU8,                 _ => CryptoTy.default _
   | .TU32,                _ => CryptoTy.default _
 
@@ -127,7 +116,7 @@ noncomputable def cryptoTyOfRustVal :
 
 /-- Default heterogeneous valuation for any context. Built pointwise
     from `CryptoTy.default`. Used to witness the post-state existential
-    in `rustExecSimulatesCryptoSSA`. -/
+    in `rustExecSimulatesDialect`. -/
 def HVec.default : (Γ : Ctx) → HVec Γ
   | [] => .nil
   | t :: Γ => .cons (CryptoTy.default t) (HVec.default Γ)
@@ -153,11 +142,10 @@ noncomputable def bindingOK {Γ : Ctx} (rs : RustState) (V : HVec Γ)
   | .sword 64, v =>
       v.lookup V = BitVec.ofNat 64 (rs.rsScalar name)
   | .memref n, v =>
-      -- B1.quintus weakening: vacuous when `rs.rsTower name = none`.
-      -- B1.sexta-tail Phase 3: also vacuous when types don't match
-      -- (i.e. `encodeTy t' ≠ .memref n`). The `some ⟨t', vt⟩` arm is
-      -- now an *implication* rather than a conjunction: only when the
-      -- types align does the HEq become a real obligation.
+      -- Vacuous when `rs.rsTower name = none`, and also vacuous when
+      -- types don't match (i.e. `encodeTy t' ≠ .memref n`). The
+      -- `some ⟨t', vt⟩` arm is an *implication*: only when the types
+      -- align does the HEq become an obligation.
       match rs.rsTower name with
       | some ⟨t', vt⟩ =>
           encodeTy t' = .memref n →
@@ -168,9 +156,8 @@ noncomputable def bindingOK {Γ : Ctx} (rs : RustState) (V : HVec Γ)
 /-! ## No-alias invariant on `VarMap`
 
 `NoAliasVM vm` says `vm.lookup` is *injective on names*: two distinct source
-names never resolve to the same typed CryptoSSA variable. This is the
-invariant the `whileTrue` arm of `rustExecSimulatesCryptoSSA` needs (commit
-`4a0a53eb` regression).
+names never resolve to the same typed `CryptoSSA` variable. This is the
+invariant the `whileTrue` arm of `rustExecSimulatesDialect` needs.
 
 Why it is necessary. The simulation conclusion `∃ V', RustStateInterp vm rs' V'`
 ranges over the *post-loop* state `rs'`, which the loop body may have left with
@@ -263,12 +250,11 @@ theorem noAlias_weaken {Γ : Ctx} {t : CryptoTy} {vm : VarMap Γ}
     context `Γ`, mediated by a `VarMap`. For each name in the VarMap,
     the byte-layout invariant `bindingOK` must hold (`binding` field), and
     the VarMap must be alias-free (`noAlias` field — see `NoAliasVM`). The
-    `noAlias` field was added (#221) to make the `whileTrue` simulation arm
-    sound; it is carried along by every witness-construction helper.
+    `noAlias` field makes the `whileTrue` simulation arm sound; it is carried
+    along by every witness-construction helper.
 
     A `CoeFun` instance lets an `RustStateInterp` be applied directly as the
-    per-name `bindingOK` function (`hInv name t v hLook`), so the field
-    addition is transparent to consumers. -/
+    per-name `bindingOK` function (`hInv name t v hLook`). -/
 structure RustStateInterp {Γ : Ctx} (vm : VarMap Γ) (rs : RustState)
     (V : HVec Γ) : Prop where
   binding : ∀ name : String, ∀ t : CryptoTy, ∀ v : CVar Γ t,
@@ -276,7 +262,7 @@ structure RustStateInterp {Γ : Ctx} (vm : VarMap Γ) (rs : RustState)
   noAlias : NoAliasVM vm
 
 /-- Apply an `RustStateInterp` directly as its per-name `bindingOK` function;
-    keeps `hInv name t v hLook` working after the `noAlias` field was added. -/
+    supports the application form `hInv name t v hLook`. -/
 instance {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ} :
     CoeFun (RustStateInterp vm rs V)
       (fun _ => ∀ name : String, ∀ t : CryptoTy, ∀ v : CVar Γ t,
@@ -379,7 +365,7 @@ theorem noAlias_canonical_witness {Γ : Ctx} {vm : VarMap Γ}
 
 /-! ## Default-value lemmas for `cryptoTyOfRustVal`
 
-The `letZero` and `letU64Zero` cases of `rustExecSimulatesCryptoSSA`
+The `letZero` and `letU64Zero` cases of `rustExecSimulatesDialect`
 (and, indirectly, `scalarSet` via the SSA-side `bvConst`) need to know
 that a freshly-zero rust-side value packs into the freshly-zero
 SSA-side denotation. These helper lemmas isolate that fact. -/
@@ -473,7 +459,7 @@ lemma bindingOK_there_scalarSet
     | some pair =>
       rw [hRsT] at hOK
       obtain ⟨t'', vt⟩ := pair
-      -- B1.sexta-tail Phase 3: `hOK` is now an implication
+      -- `hOK` is an implication
       -- `encodeTy t'' = .memref n → HEq ...`.
       intro hEnc
       have hHeq := hOK hEnc
@@ -586,7 +572,7 @@ lemma interp_bind_sword64_zero
   rw [this]
   exact interp_bind_sword64_scalarSet hInv x 0
 
-/-- The TU64 sub-case of `RLetZero` is anomalous: `translate` emits a
+/-- The TU64 sub-case of `RLetZero` is anomalous: the front emits a
     `.sword 64` binding (re-using the `RLetU64Zero` shape), but the
     rust-side `RustExec.letZero` calls `rsSetTower`, which does not
     touch `rsScalar`. The SSA-side fresh value is `0`, but the rust
@@ -660,7 +646,7 @@ lemma interp_bind_memref_letZero
     cases hcv
     -- bindingOK at `(.memref n, .here)`: rs.rsTower name = some ⟨t, default⟩
     -- via `rsSetTower_same`, so we hit the `some` arm of the weakened match.
-    -- B1.sexta-tail Phase 3: arm is now an implication; intro the antecedent
+    -- the arm is an implication; intro the antecedent
     -- (which is `hN` itself) and prove the HEq from `cryptoTyOfRustVal_default`.
     simp only [bindingOK]
     rw [rsSetTower_same rs name ⟨t, default⟩]
@@ -684,7 +670,7 @@ lemma interp_bind_memref_letZero
               ⟨t, (default : RustVal t)⟩ hX
               (hInv name t' cv' hOld)
 
-/-! ## B1.sexta: generalized rsSetTower transport for arbitrary values
+/-! ## Generalized rsSetTower transport for arbitrary values
 
 The `letZero` cases use `interp_bind_sword64_letZeroTU64` and
 `interp_bind_memref_letZero` which are specialised to the rust-side
@@ -786,11 +772,10 @@ lemma interp_bind_memref_setTower_general
               ⟨t, val⟩ hX
               (hInv name t' cv' hOld)
 
-/-- B1.sexta-tail Phase 5 helper: extend a witness over `(vm.bind cv) at
+/-- Extend a witness over `(vm.bind cv) at
     `(rsSetTower rs cv tv)` for an arbitrary CryptoTy `s`. Discharges
-    the new binding's `bindingOK` by dispatching on `s`. Used in the
-    `cloneCall` arm of `rustExecSimulatesCryptoSSA` (and analogously in
-    `interp_translate_extend`). -/
+    the new binding's `bindingOK` by dispatching on `s`; the helper for a
+    `cloneCall` arm of a Rust-state simulation. -/
 lemma interp_cons_setTower_any
     {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
     (hInv : RustStateInterp vm rs V) (cv : String) (s : CryptoTy)
@@ -1082,10 +1067,10 @@ lemma interp_cons_unchanged
       subst ht; cases hcvE
       exact bindingOK_there_consonly cv' w (hInv name t' cv' hOld)
 
-/-! ### B1.sexta-tail Phase 0 (continued): witness-packaging helpers
+/-! ### Witness-packaging helpers
 
 Specialised cons-extension wrappers for the common shapes of fresh
-binding `interp_translate_extend` (Phase 1) needs to discharge:
+binding a simulation step needs to discharge:
 
 * `interp_cons_memref_fresh`: when extending by a `memref n` whose
   associated rust-state name is fresh (`rs.rsTower x = none`), the
@@ -1115,7 +1100,7 @@ lemma interp_cons_sword64_unchanged
         = BitVec.ofNat 64 (rs.rsScalar x)
   simp [CVar.lookup]
 
-/-- B1.sexta-tail Phase 3: extend by a memref n binding whose name has a
+/-- Extend by a memref n binding whose name has a
     rust-side tower entry of *matching* encoded type. Pick witness as
     the encoded rust value via `cryptoTyOfRustVal`. -/
 lemma interp_cons_memref_some_match
@@ -1139,7 +1124,7 @@ lemma interp_cons_memref_some_match
   simp only [CVar.lookup]
   exact (cast_heq _ _).trans (HEq.refl _)
 
-/-- B1.sexta-tail Phase 3: extend by a memref n binding whose name has a
+/-- Extend by a memref n binding whose name has a
     rust-side tower entry of *mismatching* encoded type. The implication
     in `bindingOK`'s `some` arm is vacuous; pick witness 0. -/
 lemma interp_cons_memref_some_mismatch
@@ -1155,7 +1140,7 @@ lemma interp_cons_memref_some_mismatch
   intro hAbs
   exact absurd hAbs hNeq
 
-/-- B1.sexta-tail Phase 3: extend by an arbitrary CryptoTy `s` binding,
+/-- Extend by an arbitrary CryptoTy `s` binding,
     picking a vacuous witness via `CryptoTy.default`. The bindingOK at
     `(s, .here)` reduces to `True` for non-`sword 64` / non-`memref n`
     types; for `sword 64` and `memref n` we delegate to the dedicated

@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Lowering the scalar `lprog` `Lopn` fragment to the x86 model (#148 POC)
+# Lowering the scalar `lprog` `Lopn` fragment to the x86 model (proof of concept)
 
 We lower *from* jasmin's `Linear.lprog` (`VIR/JasminLprogExport.lean`), the
 already-linearized two-address IR, rather than from the Veir/MLIR scalar

@@ -169,7 +169,7 @@ theorem vpaddw_eq_vmap₂ {n : Nat} (a b : VectorTy (BitVec 16) n) :
 
 /-! ## 3. The vector splice: dialect chain (packed read-back) ∘ `vpaddw`
 
-The genuine end-to-end vector statement. The left factor is the real 3-pass chain
+The end-to-end vector statement. The left factor is the real 3-pass chain
 `registryChain_threePass'` read back **as a whole array** via `runOutputToVec` (and,
 per lane, via `RunOutputReadback.runOutputToWords_chain_eq`); the right factor is the
 `vpaddw` per-lane SIMD step. They join through the packed read-back: every lane of the

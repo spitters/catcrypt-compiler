@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering6
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
-# GAS RV64 asm printer for the 64-bit bignum `RInst64` (#549)
+# GAS RV64 asm printer for the 64-bit bignum `RInst64`
 
 `RiscvAsmPrinter.lean` prints the scalar 32-bit-word `RInst` block; this is its
 **64-bit bignum** counterpart — it prints a `RiscvModel64.RInst64` block

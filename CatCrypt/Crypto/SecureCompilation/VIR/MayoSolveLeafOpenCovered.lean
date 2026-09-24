@@ -17,13 +17,9 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectUnified
 static-count phases sequenced (`copy ; lastcol ; echelon ; backsub`) — but keeps
 each phase's *inner* sweep **inside an opaque per-step leaf** (`mayo_solve_ef_step`
 etc.), because those inner sweeps have runtime-computed trip counts (`RWhileNz`)
-that the static-count `RFor`+`RSeq` covered fragment there could not express. Its
-docstring flags this as the residual:
+that the static-count `RFor`+`RSeq` covered fragment there does not express.
 
-> Opening a leaf to descend its full body (rather than treat it opaque) is the
-> `RWhileNz` data-dependent-count arm the parallel work is building.
-
-This module banks exactly that opening for the echelon phase, now that `IsCoveredSU`
+This module opens that leaf for the echelon phase, using that `IsCoveredSU`
 closes `RFor` (`rFor`) over an ANY-`IsCoveredSU` body — including a body that is
 itself a data-dependent `RWhileNz` sweep. The echelon phase is re-sourced as
 
@@ -36,7 +32,7 @@ RFor "pcol" AC (                     -- outer: static pivot-column pass (AC = 81
 ```
 
 The **outer** `RFor` (static count) and the **inner** `RWhileNz` (data-dependent
-count) are BOTH now fully descended by the unified engine — the outer via the
+count) are BOTH fully descended by the unified engine — the outer via the
 env-threaded counted fold `loopRForDEnv`, the inner via the guard-driven do-while
 `semScalarWhile`. Only the GF(16) cell arithmetic
 (`mayo_solve_ef_cell_step`) stays an opaque `RCall` leaf, exactly as Keccak-f's
@@ -52,9 +48,9 @@ word: the descent is constant-time. The `row := row - 1` countdown is exactly th
 `srcClean` `SSub` fragment the front covers (as in the DuplexChallenger absorb
 loop).
 
-## What is banked
+## Contents
 
-* `echelonLoopOpened` — the echelon phase with its inner sweep opened as a genuine
+* `echelonLoopOpened` — the echelon phase with its inner sweep opened as an
   `RWhileNz` (not an opaque leaf).
 * `echelonOpened_coveredU : IsCoveredSU echelonLoopOpened` — the structural
   coverage: `rFor` over an `RSeq` of a straight-line reset and an `rWhile` sweep.
@@ -110,8 +106,8 @@ def decRow : SExpr := .SSub (.SVar "row") (.SLit 1)
 def efInnerSweepBody : LowCT :=
   .RSeq efCellStep (.RScalarSetExpr "row" decRow)
 
-/-- **The inner sweep OPENED** — a genuine data-dependent `RWhileNz` over the
-    public row counter, no longer an opaque leaf. -/
+/-- **The inner sweep OPENED** — a data-dependent `RWhileNz` over the
+    public row counter, not an opaque leaf. -/
 def efInnerSweep : LowCT :=
   .RWhileNz "row" efInnerSweepBody
 
@@ -121,7 +117,7 @@ def echelonPhaseBody : LowCT :=
   .RSeq (.RScalarSet "row" pM) efInnerSweep
 
 /-- **The echelon phase with its inner sweep opened.** The outer static-count pass
-    over the pivot columns (`0..AC`) is an `RFor`; its body is now an
+    over the pivot columns (`0..AC`) is an `RFor`; its body is an
     `RWhileNz`-containing phase, not an opaque leaf. -/
 def echelonLoopOpened : LowCT :=
   .RFor "pcol" pAC echelonPhaseBody
@@ -224,7 +220,7 @@ def efArgVM : VarMap efArgCtx where
 /-- **Non-vacuity (semantics).** The unified waist TERMINATES on the concrete
     instance: each of the `3` outer passes resets `row := 2` and the inner sweep
     counts it down to `0` within `fuel = 20`. So the denote's `semU … = some env'`
-    premise is satisfiable — the opened phase is a genuine run, not a vacuous
+    premise is satisfiable — the opened phase has a terminating run, not a vacuous
     hypothesis. -/
 theorem echelonOpenedSmall_semU_terminates :
     (semU 20 echelonLoopOpenedSmall efEnv0).isSome = true := by native_decide

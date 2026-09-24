@@ -110,10 +110,10 @@ The 2 spills (XMM-cap forces 2 stack slots) become 2 STABLE stack
 positions — `m14s`/`m15s` are written once at the loop head and read
 once at the loop tail, not 10× per double-round.
 
-The Phase-B carry analysis already shows
+The carry analysis shows
 `carriedAcross s {ChaCha10DoubleRounds} = true` for every `s ∈ 0..15`
-(see `chachaCarriedSlots` below). What was missing is the lifted
-prologue/epilogue framing — which this pass supplies as a decision.
+(see `chachaCarriedSlots` below). This pass supplies the lifted
+prologue/epilogue framing as a decision.
 
 ## Contents
 
@@ -511,7 +511,7 @@ def sha2FullCarry (sp : Sha2Emit.Sha2Spec) : Bool :=
 The 16 state words are written and read in every double-round (each
 quarter-round touches 4 of them; the 8 QRs of column+diagonal hit each
 word at least once for read AND write). The carry set is therefore
-the full state, matching the manual #111 cross-round pin choice.
+the full state, matching the hand-chosen cross-round pin set.
 
 We model the ChaCha double-round at the slot-event level. Each
 quarter-round `QR(a,b,c,d)` materialises as:

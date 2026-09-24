@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectA
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-!
-# Leak-trace factoring for the CProg-free dialect front
+# Leak-trace factoring for the direct dialect front
 
 The static leak trace `Com.leakTrace` of a `Com catCryptDialect` is the ordered
 list of op events (`Com.var e body ↦ leakEvent e :: leakTrace body`). The
-CProg-free front (`TranslateDialectDirect`) emits its program prefix as a
+direct dialect front (`TranslateDialectDirect`) emits its program prefix as a
 `ComCont` built from `id` / `varBind` / `comp`. Each of those prepends a
 *fixed-length* event prefix to any tail it accepts, so the leak trace of the
 front's output factors as `prefix-events ++ tail-events`.
@@ -27,7 +27,7 @@ prefix leak-factors on the core straight-line fragment
 is the dialect-leak analogue of `LowCTRHP.RHP_leakage_LowCT_prefix_constant`: the
 leak-trace length a prefix contributes is the same for any two tails, so it does
 not depend on the tail — the constancy fact behind leakage non-interference at the
-front-end boundary, stated over `Com.leakTrace` with no `CProg`.
+front-end boundary, stated over `Com.leakTrace`.
 -/
 
 @[expose] public section
@@ -77,7 +77,7 @@ theorem ComCont.comp_leakFactors {Γ Γ' Γ'' : Ctx} {f : ComCont Γ Γ'} {g : C
   | none => rw [hgb] at h; simp at h
   | some b' => rw [hgb] at h; rw [hf b' c h, hg body b' hgb]; omega
 
-/-- **The CProg-free front's prefix leak-factors.** On the core straight-line
+/-- **The direct dialect front's prefix leak-factors.** On the core straight-line
     fragment, `translateDialect` succeeds and its emitted `ComCont` prefix
     prepends a fixed number of leak events `k` to any tail. -/
 theorem translateDialect_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : LowCT} (hc : IsCore c) :
@@ -634,8 +634,8 @@ theorem dialect_leak_prefix_constant {Γ Γ' : Ctx} {f : ComCont Γ Γ'} {k : Na
     contributes the same leak-trace length to any two dialect tails `b₁`/`b₂`: the
     length differential is independent of the tail. This is the dialect-leak,
     front-connected analogue of `LowCTRHP.RHP_leakage_LowCT_prefix_constant` —
-    leakage non-interference at the front-end boundary, over `Com.leakTrace`, with
-    no `CProg`. Combines `translateDialectControl_cont_leakFactors` (the front
+    leakage non-interference at the front-end boundary, over `Com.leakTrace`.
+    Combines `translateDialectControl_cont_leakFactors` (the front
     prefix leak-factors) with `dialect_leak_prefix_constant`. -/
 theorem dialect_front_leak_prefix_constant {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
@@ -1082,7 +1082,7 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
 /-- **The full control front's trace-factoring.** On every `IsCoveredCtl` `LowCT`,
     the front prefix prepends a fixed event list to any tail. The actual-prefix
     (not just length) dialect analogue of `LowCTLeakTrace.leakTrace_translate_factors`,
-    the leak-factoring `RHP_pipeline_labeled_leakage_NI` exposes, CProg-free. -/
+    the leak-factoring `RHP_pipeline_labeled_leakage_NI` exposes. -/
 theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) :
@@ -1147,8 +1147,8 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
     such that plugging *any* tail `body` yields `Com.leakTrace = pre ++
     body.leakTrace`. This is the dialect, front-connected analogue of the
     leak-factoring half of `LowCTRHPFull.RHP_pipeline_labeled_leakage_NI`
-    (`∃ pre, ∀ body, (out.cont body).leakTrace = pre ++ body.leakTrace`), CProg-free.
-    (The x86-CT half of that result is machine-level, independent of `CProg`.) -/
+    (`∃ pre, ∀ body, (out.cont body).leakTrace = pre ++ body.leakTrace`).
+    (The x86-CT half of that result is machine-level.) -/
 theorem dialect_front_leakage_factoring {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) :

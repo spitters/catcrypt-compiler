@@ -30,16 +30,15 @@ Sibling adoption to `Vale/SafegcdP256.lean` / `Vale/SafegcdSecp256k1.lean`
 — same 4-limb (32-byte) shape, same shared safegcd kernel; only the
 prime constant differs.
 
-## Scope (BY/safegcd uniform pass — BN254 was still on Fermat)
+## Scope
 
-The cross-curve audit (#489) found BN254 to be the one production curve
-whose `Fp` inverse was still the **Fermat** addition chain `a^{p−2}`
-(`Vale_AUCurves_BN254_Fp_inv_denote` in `Vale/BN254.lean`, exponent
-`p − 2`), while the sibling P-curves and BLS12-381 already routed
-through the AUCurves Bernstein-Yang safegcd divstep. This module flips
-BN254's `Fp` inverse onto the divstep leaf, matching the #488 recipe
-that put the BLS12-381 inverse at ~1.10× blst's own divstep
-(`ct_inverse_mod_384`) and ~9× faster than the prior Fermat chain.
+The `Fp` inverse in `Vale/BN254.lean` is the **Fermat** addition chain
+`a^{p−2}` (`Vale_AUCurves_BN254_Fp_inv_denote`, exponent `p − 2`); the
+sibling P-curves and BLS12-381 route through the AUCurves Bernstein-Yang
+safegcd divstep. This module routes BN254's `Fp` inverse through the
+divstep leaf, with the same recipe that puts the BLS12-381 inverse at
+~1.10× blst's own divstep (`ct_inverse_mod_384`) and ~9× faster than the
+Fermat chain.
 
 BN254 inversion is the hot inner step in the Jacobian → affine
 normalisation of the G1 MSM (EIP-196 `alt_bn128_add`/`_mul`) and in

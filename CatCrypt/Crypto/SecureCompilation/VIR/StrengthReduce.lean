@@ -14,9 +14,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 /-!
 # Verified strength reduction for `Com` — analysis-as-decision pass
 
-This file extends the verified-optimizer suite (`JForProgUnroll.lean` (#139),
-`RegisterAllocation.lean` (#141 / #143), `CtPreservationNewTransforms.lean`
-(#146), `DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
+This module extends the verified-optimizer suite (`JForProgUnroll.lean`,
+`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`,
+`DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
 `CommonSubexprElim.lean`, `ComInline.lean`, `InstructionSchedule.lean`) with
 **strength reduction** of division-by-constant at the `Com` level — the
 LLVM-class `-O2` rewrite that turns `x / n` (slow divider) into
@@ -47,7 +47,7 @@ We follow the same factoring pattern used by `DeadCodeElim.lean`,
 `LoopInvariantHoist.lean`, `CommonSubexprElim.lean`, `ComInline.lean`, and
 `InstructionSchedule.lean`:
 
-* The heavy lifting is the **analysis** (which binders compute a divide-by-`n`
+* The substantive work is the **analysis** (which binders compute a divide-by-`n`
   for `n` in our magic table; which magic `(m, s)` pair lowers each).
 * The `Com → Com` rewrite itself is the identity at the framework level. The
   emit pass downstream consumes the analysis as a labelling: when emitting an
@@ -55,7 +55,7 @@ We follow the same factoring pattern used by `DeadCodeElim.lean`,
   pass emits `mul m; shr s` in place of a slow `div n` runtime call.
 
 This factoring lets the framework's preservation theorems stay `rfl` while
-the load-bearing content — the magic constants' arithmetic correctness — is
+the substantive content — the magic constants' arithmetic correctness — is
 isolated in the `MagicTable` section as standalone identities that any
 downstream emit pass can rely on.
 
@@ -77,7 +77,7 @@ relevant input range.
 | `8380417`     | `4198404`    | `45` | `2^23` | ML-DSA       |
 | `2013265921`  | `2290649224` | `62` | `2^16` | BabyBear/STARKs |
 
-The bounds are tight: each was verified by exhaustive `native_decide` over
+The bounds are tight: each is verified by exhaustive `native_decide` over
 `[0, N)`. Inputs above the bound can yield a spurious result; the emit pass
 must guard against this (typically the input is a sum of two `BitVec` values
 bounded above by the modulus, so the bound holds by construction).
@@ -97,7 +97,7 @@ bounded above by the modulus, so the bound holds by construction).
   `(position, MagicEntry)` labels.
 * `analyzeStrengthReduce` — the analysis. At the framework level it returns
   the empty decision list (no Com-level `div`-by-constant constructor exists
-  in the current jasminDialect, which has `mul`, `shr`, `and` but no `div`;
+  in jasminDialect, which has `mul`, `shr`, `and` but no `div`;
   the analysis target is reached only via leaf calls such as `RCall "mod_q"`,
   handled separately by `Optimizer/BarrettReduce.lean`). The framework is
   ready for a future jasminDialect extension that adds a `div` arm.
@@ -107,7 +107,7 @@ bounded above by the modulus, so the bound holds by construction).
 * `applyStrengthReduce_denote_preserves`, `applyStrengthReduce_preserves_CT`
   — the two preservation theorems, both `rfl`.
 
-No `sorry`, no new axioms. The framework's Com-level rewrite is the identity,
+All goals closed, no new axioms. The framework's Com-level rewrite is the identity,
 so both preservation theorems reduce to `rfl`; the magic-constant identities
 are closed by `native_decide` against exhaustive `Bool` checks.
 
@@ -386,7 +386,7 @@ the `barrett_{q}` leaf consumes).
 
 `analyzeStrengthReduce` therefore returns the empty decision at this
 shape. The framework is ready for a future jasminDialect extension
-that adds a `div` arm to `JasminBinOp`: a follow-up analyser would walk
+that adds a `div` arm to `JasminBinOp`: such an analyser would walk
 `Com.var`s, match `regArith div w` against `defaultMagicTable`, and
 emit one `StrengthReduceEntry` per match. The framework theorems
 (`applyStrengthReduce_denote_preserves`,
@@ -526,7 +526,7 @@ optimisation steps plug. The expansion path:
    `Expr.regArith mul` + `Expr.regArith shr` two-binder substitution.
    The framework preservation theorems would change from `rfl` to a
    per-Com induction using `mlkem_q3329_magic` / `falcon_q12289_magic`
-   / `mldsa_q8380417_magic` / `babybear_q_magic` as the load-bearing
+   / `mldsa_q8380417_magic` / `babybear_q_magic` as the key
    identities, but the *theorem statements* stay the same.
 
 3. **Modulo reduction.** `x mod n = x - (x / n) * n` lowers to one

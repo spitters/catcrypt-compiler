@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
-# Linker keystone: the cross-object `call` displacement lands on its callee
+# Linker soundness: the cross-object `call` displacement lands on its callee
 
 The owned x86 backend stitches emitted leaf functions into a whole protocol object
 through `LprogBytes.encodeLprogReloc` (the cross-function-call linker path). A
@@ -63,7 +63,7 @@ emitted bytes) to witness that the abstract hypotheses hold on a real object the
 backend produces: the call is intra-object (no relocation emitted), its decoded
 displacement is `−23`, and `callSiteEndAbs + (−23) = 0 = calleeBase`.
 
-## Honest scope (gap to a full verified linker)
+## Scope (relative to a full verified linker)
 
 This is a statement about the **relocation-patching / displacement-encoding**
 layer, NOT a full operational call semantics:
@@ -71,11 +71,11 @@ layer, NOT a full operational call semantics:
 * **No executed-call semantics.** There is no machine model in which `call` pushes
   a return address and jumps; the property is "the displacement field targets the
   callee's byte address", which is the relocation correctness, not "running the
-  linked image computes `callee ∘ caller`". Property #1 of the task (linked-run =
-  composition) is out of scope — the owned backend has a decode round-trip for the
+  linked image computes `callee ∘ caller`". The property "linked run =
+  composition" is out of scope — the owned backend has a decode round-trip for the
   control-flow bytes but no operational step relation for `call`/`ret` (the `ret`
   byte and the `push`/`pop` ABI scaffold are gas-pinned, per `LprogBytes` §"trust
-  tally"). Closing #1 needs that operational model.
+  tally"). That property needs such an operational model.
 * **Single object, intra-object only.** The proof covers a call to a function in
   the *same* `Lprog` (resolved directly). The truly-external / multi-object case
   (the `R_X86_64_PLT32` `.rela.text` relocation against an UNDEF symbol) is
@@ -114,8 +114,8 @@ def landedAddr (callSiteEndAbs : Int) (disp : Int) : Int := callSiteEndAbs + dis
     `encodeLprogReloc` wiring `delta = calleeBase − bodyStart` (the `symBase`
     resolver) and the call site sitting at body-relative end `instrEnd` so its
     absolute end is `bodyStart + instrEnd`, the landed address of the resolved
-    displacement is exactly the callee's absolute `.text` base. This is the heart
-    of the linker keystone: the cross-function call goes to the right function. -/
+    displacement is exactly the callee's absolute `.text` base. This is the core
+    of linker soundness: the cross-function call goes to the right function. -/
 theorem landed_eq_calleeBase (bodyStart calleeBase : Int) (instrEnd : Nat) :
     landedAddr (bodyStart + Int.ofNat instrEnd)
       (resolvedDisp (calleeBase - bodyStart) instrEnd) = calleeBase := by
@@ -136,7 +136,7 @@ theorem decode_encodeRemoteCF_call (d : Int) (ra : Option String) (t : String ×
   simp only [encodeRemoteCF]
   exact roundtrip_call32 d hlo hhi
 
-/-! ## 3. The keystone: the linked call's *decoded* displacement lands on the callee -/
+/-! ## 3. The main theorem: the linked call's *decoded* displacement lands on the callee -/
 
 /-- **Linker soundness (intra-object `call`).** The displacement *recovered by
     decoding the emitted `call` bytes*, applied with x86 PC-relative semantics from
@@ -231,7 +231,7 @@ theorem demo_call_lands_on_callee :
       = some demoCalleeBase := by
   native_decide
 
-/-- Abstract↔concrete tie: the general keystone `linkedCall_lands_on_callee`,
+/-- Abstract↔concrete tie: the general theorem `linkedCall_lands_on_callee`,
     instantiated at the demo's addresses, agrees with the byte-level demo — both
     say the linked `caller→callee` call lands on `callee`. -/
 theorem demo_matches_general :

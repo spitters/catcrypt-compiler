@@ -12,9 +12,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.SelectIdiom
 set_option autoImplicit false
 
 /-!
-# C6 Instruction Selection: `select` over the homogeneous mask-blend idiom
+# Instruction Selection: `select` over the homogeneous mask-blend idiom
 
-This file lifts the BitVec-algebra keystone `selectW_eq_maskBlend`
+This file lifts the BitVec-algebra lemma `selectW_eq_maskBlend`
 (`SelectIdiom.lean`) to the `Com jasminDialect` program level: it builds the
 two `Com`s the instruction-selection pass chooses between — the efficient
 single-op `select` (`CMOVcc`) and the multi-op homogeneous-ALU mask-blend idiom
@@ -29,7 +29,7 @@ Both are `Com jasminDialect Γ (.reg w)` over a context `Γ` holding the inputs
   (`[reg 1, reg w, reg w] → reg w`, denoting `selectW`).
 
 * `maskBlendCom cond a b` — the idiom over the homogeneous register-arithmetic
-  alphabet, exactly the six ops that realise the keystone's right-hand side:
+  alphabet, exactly the six ops that realise the lemma's right-hand side:
 
   ```
   let t1   = xor a b               -- a ^^^ b
@@ -43,8 +43,8 @@ Both are `Com jasminDialect Γ (.reg w)` over a context `Γ` holding the inputs
 
   The `castW 1 w` op supplies the 1→w cast for the mask, and `regConst w 0`
   supplies the `0#w` minuend; the three `regArith` ops (`xor`/`sub`/`and`) are
-  the homogeneous ALU operations. This covers **all** of the keystone's idiom
-  (no sub-idiom shrink was needed).
+  the homogeneous ALU operations. This covers **all** of the lemma's idiom
+  (no sub-idiom shrink is needed).
 
 ## Soundness (`selectIdiom_denote`)
 
@@ -54,7 +54,7 @@ and the dialect signatures — to closed-form `BitVec` expressions; the equality
 is then exactly `selectW_eq_maskBlend` after rewriting
 `cond.zeroExtend w = BitVec.ofNat w cond.toNat` (`BitVec.toNat`-injectivity).
 
-This is the genuine C6 result: a denotation-preserving idiom → efficient-op
+This is the main result: a denotation-preserving idiom → efficient-op
 instruction-selection step, proven at the `Com` level and reusable by the
 emitter/optimizer to legally choose `select` over the 3-op mask-blend.
 
@@ -90,7 +90,7 @@ def selectIdiomCom {w : Nat} {Γ : Ctxt jasminDialect}
 /-! ## 2. The homogeneous mask-blend idiom program -/
 
 /-- The mask-blend idiom as a multi-op `Com` over the homogeneous
-    register-arithmetic alphabet, denoting the keystone's right-hand side
+    register-arithmetic alphabet, denoting the lemma's right-hand side
     `((a ^^^ b) &&& (0#w - ofNat w cond.toNat)) ^^^ b`.
 
     All `Var`s are weakened with `.there`s as new bindings are pushed onto the
@@ -117,7 +117,7 @@ def maskBlendCom {w : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 3. Instruction-selection soundness -/
 
-/-- **C6 instruction-selection soundness.**
+/-- **Instruction-selection soundness.**
 
     The efficient single-op `select` program computes exactly what the
     homogeneous-ALU mask-blend idiom program computes, for every valuation.
@@ -126,7 +126,7 @@ def maskBlendCom {w : Nat} {Γ : Ctxt jasminDialect}
     and zero materialisation) mask-blend idiom.
 
     Proof: unfold both `Com.denote`s / `Expr.denote`s to their closed-form
-    `BitVec` expressions; the residual equality is the keystone
+    `BitVec` expressions; the residual equality is the lemma
     `selectW_eq_maskBlend` after rewriting the cast `cond.zeroExtend w` to
     `BitVec.ofNat w cond.toNat`. -/
 theorem selectIdiom_denote {w : Nat} {Γ : Ctxt jasminDialect}
@@ -145,7 +145,7 @@ theorem selectIdiom_denote {w : Nat} {Γ : Ctxt jasminDialect}
       = (((x ^^^ y) &&& (0#w - (c.setWidth w))) ^^^ y) := rfl
   rw [hL, hR]
   -- Rewrite the cast `c.setWidth w` to `BitVec.ofNat w c.toNat`, then apply
-  -- the BitVec-algebra keystone.
+  -- the BitVec-algebra lemma.
   have hcast : c.setWidth w = BitVec.ofNat w c.toNat := by
     apply BitVec.eq_of_toNat_eq
     simp [BitVec.toNat_setWidth]

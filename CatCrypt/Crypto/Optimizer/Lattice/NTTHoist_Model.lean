@@ -18,14 +18,14 @@ leaves and the additivity of `invntt`).  Those hypotheses are discharged
 on instantiation against a concrete kernel — which the project otherwise
 defers (it needs a byte-layout decision for libcrux/formosa primitives).
 
-This file gives a **witness**: a concrete `LeafSpec` over the byte-array
+This module defines a **witness**: a concrete `LeafSpec` over the byte-array
 value representation (`RustVal t = JArray t.storageBytes`) in which
 
 * `poly_add` is pointwise byte XOR — an abelian-group operation with unit
   `default` (the all-zero array);
 * `invntt` is byte-index reversal — a *non-trivial* additive involution
   (`gInv (a ⊕ b) = gInv a ⊕ gInv b`, `gInv 0 = 0`), so the linearity
-  hypothesis is genuinely exercised, not trivialised by `invntt = id`;
+  hypothesis is exercised, not trivialised by `invntt = id`;
 * `ntt_poly_mul = invntt ∘ basemul`, and `poly_mul` routes to the same
   leaf as `ntt_poly_mul`.
 

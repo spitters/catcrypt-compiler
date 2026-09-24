@@ -28,7 +28,7 @@ reduce.  This file applies the *same* two engine objects to the scalar mod-add /
 mod-mul kernels, replacing the bespoke value-level `rw`-chains
 (`addmodProg_toNat`, `mulmodProg_toNat`) with:
 
-1. a **`BinOpHomOn2`** for the lane combine on its genuine joint no-wrap domain
+1. a **`BinOpHomOn2`** for the lane combine on its joint no-wrap domain
    (`a.toNat + b.toNat < 2^64` for add, `a.toNat · b.toNat < 2^64` for mul) —
    pushing the `BitVec 64` lane op through the decode `toNat` to `ℕ`-addition /
    `ℕ`-multiplication; and
@@ -91,7 +91,7 @@ def condSubDom (p : Nat) (x : BitVec 64) : Prop :=
     decode `decodeLane`, the machine conditional-subtract `bCondSub · p` pushes
     through to the abstract reduce `· % p` over `ℕ`, on the condsub domain
     `x.toNat < 2p`.  The single `app_eq` square is the cited `bCondSub_toNat`
-    (the genuine conditional-subtract content — there is no free lunch). -/
+    (which carries the conditional-subtract content). -/
 def condSubUnaryHom (p : Nat) :
     UnaryHomOn decodeLane (condSubDom p)
       (fun x => bCondSub x (BitVec.ofNat 64 p)) (fun n => n % p) where
@@ -112,7 +112,7 @@ theorem condSub_realizes_via_unary (p : Nat) {x : BitVec 64}
 /-! ## §1  Mod-ADD: the lane sum combine `a + b` as a `BinOpHomOn2`
 
 The lane combine of `addmodProg` is the `BitVec 64` sum `a + b`.  Its joint
-no-wrap domain is `a.toNat + b.toNat < 2^64` (a genuinely *binary* predicate that
+no-wrap domain is `a.toNat + b.toNat < 2^64` (a *binary* predicate that
 does not factor into per-operand bounds), pushing through `decodeLane` to `ℕ`
 addition. -/
 
@@ -209,7 +209,7 @@ theorem mulCombine_realizes_via_joint (a b : BitVec 64) (hab : mulDomJoint a b) 
     no-wrap domain); the reduce half is the `bCondSub` `UnaryHomOn` applied to the
     Barrett remainder (which `barrett_bound` places in `[0, 2p)`).  Tied below to
     the hand `mulmodProg_toNat` whose Barrett-quotient core (`barrett_bound`) is
-    the genuine number-theory content. -/
+    the number-theory content. -/
 theorem mulmod_realizes_via_composed_transport (p : Nat) (env : Env)
     (hp1 : 1 < p) (hp32 : p < 2 ^ 32)
     (ha : (env "a").toNat < p) (hb : (env "b").toNat < p) :

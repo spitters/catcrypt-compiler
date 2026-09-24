@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasmin
 # `lowerMemrefToJasmin` is denotation-preserving — UNCONDITIONALLY
 
 The `ArithToJasminDenote` / `LatticeToJasminDenoteUncond` mirror for the neutral
-`memref` dialect (D0 fan-out of the MLIR dialect-alignment restructure). The
+`memref` dialect of the MLIR dialect alignment. The
 structural lowering `lowerMemrefToJasmin : Com memrefDialect Γ t → Com jasminDialect
 (Γ.map MemrefTy.toJasmin) (MemrefTy.toJasmin t)`, the per-value transport `transTy`,
 and the lookup transport `Memref.mapVal_lookup` are already proved in
-`MemrefToJasmin.lean`; this file closes the **denotational** half.
+`MemrefToJasmin.lean`; this module proves the **denotational** half.
 
 ## Why the value transport is the identity
 
@@ -25,10 +25,10 @@ identity in every branch.
 
 ## Scalar (`load`) vs. array (`store`) leaf agreement
 
-`memrefDenote` was *defined* equal to `jasminDenote (op.toJasmin)` on every op, so
+`memrefDenote` is *defined* equal to `jasminDenote (op.toJasmin)` on every op, so
 the leaf agreement is exact.
 
-* `load` (scalar result `int w`): the keystone scalar tactic applies — `cases op`
+* `load` (scalar result `int w`): the standard scalar tactic applies — `cases op`
   collapses the propositional `toJasmin_sig`/`toJasmin_ret` casts to `rfl`, `simp`
   unfolds both denotes to `stackGet` of the looked-up arguments, and `congr` down
   to each operand discharges via `mapVal_lookup` (since `transTy` is the identity).
@@ -36,7 +36,7 @@ the leaf agreement is exact.
   so the agreement is taken pointwise via `funext`, in the lattice-template style,
   with `stackSet` on both sides reduced to the looked-up arguments.
 
-0 sorries.
+All goals closed.
 -/
 
 @[expose] public section
@@ -72,7 +72,7 @@ theorem mapVal_extend {Γ : Ctxt memrefDialect} {t : MemrefTy}
 For one `memref` expression `e`, the jasmin lowering `lowerExpr e` denotes (under
 the transported valuation) to `transTy` of `e`'s denotation. Proved by casing on
 `e.op` and destructuring its argument `HVector`. `load` closes via the scalar
-keystone (`congr` + `mapVal_lookup_transTy`); `store` closes pointwise via
+tactic (`congr` + `mapVal_lookup_transTy`); `store` closes pointwise via
 `funext` (the result is a buffer `Fin n → BitVec w`). -/
 
 /-- **Leaf agreement.** The lowered jasmin expression's denotation agrees with

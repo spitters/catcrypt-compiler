@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.Generated.LoadU32LeTExpr
 public import CatCrypt.Crypto.SecureCompilation.Generated.LoadU32LeTExpr
 
 /-!
-# Path-(b) piece D: the first REAL-extraction-rooted typed compile (`load_u32_le`)
+# A typed compile rooted in a real extraction (`load_u32_le`)
 
 This module pushes the typed front (`TExprToThir.lean`) at a **real** hax
 extraction — `load_u32_le` from `chacha20poly1305-hax`, parsed by hax-lean into
@@ -25,26 +25,25 @@ clean-head hand-built components do not have:
 3. **array-index reads** `index[bytes, off + k]` over a `&[u8;32]` parameter at a
    runtime offset.
 
-## What lands (proved here)
+## What is proved here
 
-* **Suffix-tolerance + `cast#w`** are now in the front recognisers
+* **Suffix-tolerance + `cast#w`** are handled by the front recognisers
   (`recogBinTy`/`recogShiftTy`/`recogCastTy`, `TExprToThir.lean`), spelled as
   flat string-literal disjuncts so the committed clean-head σ₀/round-component
   proofs short-circuit unchanged. Here they are demonstrated *firing* on the
   real `#32`/`cast#32` heads:
-  - `loadU32LeModel` — the genuine little-endian u32-combine
+  - `loadU32LeModel` — the little-endian u32-combine
     `b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)` built with the **real** extraction
     heads `cast#32`/`Shl#32`/`BitOr#32` — compiles end-to-end through the
     committed `Thir → Com jasminDialect` back half and denotes to the LE-load
-    formula (`loadU32LeModel_compiles`). This is the first typed compile whose
-    op heads are exactly the suffixed/cast strings a real hax export emits.
+    formula (`loadU32LeModel_compiles`). Its op heads are exactly the
+    suffixed/cast strings a real hax export emits.
 
-## The honest blocker: the runtime array-index read
+## Scope: the runtime array-index read
 
-The full literal `loadU32LeTexpr` translates to **`none`**
-(`loadU32LeTexpr_blocked`): its byte reads are `index[bytes, off + k]` where
-`bytes : &[u8; 32]` and `off : usize` is a **runtime** value. This is a genuine
-`Thir`-level gap, not a missing recogniser:
+The full literal `loadU32LeTexpr` translates to **`none`**: its byte reads are
+`index[bytes, off + k]` where `bytes : &[u8; 32]` and `off : usize` is a
+**runtime** value. This is a `Thir`-level gap, not a missing recogniser:
 
 * `bytes` is a `&[u8; 32]` — a `stackArr 8 32`, **not** a `rW w` register. The
   front's `Atom`/`FState`/`frontCtxt`/`inputValuation` are a **homogeneous
@@ -57,22 +56,22 @@ This is exactly the **heterogeneous-typing pass** that `ThirToComFront.lean` §9
 already defers for the *store* (`stackStore`): *"a stack-array value is not a
 `rW w` register, so threading a mutable `stackArr` through the homogeneous
 register-file front (`thirToJasmin`) would require a heterogeneous typing pass.
-That generalisation is deferred."* The same blocker applies to the array *read*
-with a runtime index. The dialect has the `stackLoad` op; what is missing is a
-front (`Atom`/`Rhs`/`FState`) that can carry a `stackArr`-typed input alongside
-the register file. Adding an `index` *recogniser* alone would not help — the
-recognised read has nowhere to land in the register-file `frontCtxt`.
+That generalisation is deferred."* The same restriction applies to the array
+*read* with a runtime index. The dialect has the `stackLoad` op; the front
+(`Atom`/`Rhs`/`FState`) carries no `stackArr`-typed input alongside the register
+file. An `index` *recogniser* alone would not suffice, because the recognised
+read has no slot in the register-file `frontCtxt`.
 
-So path-(b) piece D lands the two recogniser features (suffix-tolerance, `cast`)
-end-to-end on the real extraction heads, and pins the precise remaining gap (the
-heterogeneous stack-array input) as the next front extension.
+The module thus proves the two recogniser features (suffix-tolerance, `cast`)
+end-to-end on the real extraction heads; the heterogeneous stack-array input is
+outside the front's scope.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
 -- The LE-combine denote reduces through the suffix-tolerant recognisers (each op
--- head now a 5-7-way string-eq disjunction); the 10-binder chain is defeq-heavy.
+-- head a 5-7-way string-eq disjunction); the 10-binder chain is defeq-heavy.
 set_option maxHeartbeats 800000
 
 namespace CatCrypt.Crypto.SecureCompilation.LoadU32LeCompiles
@@ -83,7 +82,7 @@ open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
 
-/-! ## §1  The honest blocker: the real literal needs a heterogeneous stack input
+/-! ## §1  Scope: the real literal needs a heterogeneous stack input
 
 The real `load_u32_le` extraction `loadU32LeTexpr` translates to `none`: its
 byte reads are runtime-indexed array reads `index[bytes, off + k]` over a
@@ -96,20 +95,20 @@ byte reads are runtime-indexed array reads `index[bytes, off + k]` over a
 -- register. The dialect HAS `stackLoad w n : [stackArr w n, reg 64] → reg w`, but
 -- `Atom`/`FState`/`frontCtxt`/`inputValuation` have no heterogeneous slot for the
 -- array input — the same heterogeneous-typing pass `ThirToComFront` §9 defers for
--- the dual `stackStore`. Adding an `index` recogniser alone does not help; the read
--- has nowhere to land. (Deliberately NOT pinned as a `= none` theorem — that would
--- rot when the array-read pass lands; the gap lives in the backlog.) The model below
+-- the dual `stackStore`. An `index` recogniser alone does not suffice; the read
+-- has no slot. (Not pinned as a `= none` theorem, since an array-read pass would
+-- falsify it.) The model below
 -- isolates the part the front CAN compile — the LE-combine over the four bytes, on
 -- the real `cast#32`/`Shl#32`/`BitOr#32` heads.
 
-/-! ## §2  The two landed features on the REAL extraction heads
+/-! ## §2  The two recogniser features on the REAL extraction heads
 
 The suffix-tolerant `#32` heads and the `cast#32` coercion fire on the real
 extraction head strings (over atom arguments — the part the front *can* model).
-`loadU32LeModel` is the genuine little-endian u32-combine built with those real
+`loadU32LeModel` is the little-endian u32-combine built with those real
 heads (`cast#32`/`Shl#32`/`BitOr#32`), let-normalized to the ANF the front
 consumes (every op argument an atom). It takes the four already-extracted bytes
-`b0..b3` (the values `bytes[off + k]` *would* supply once the array-read lands)
+`b0..b3` (the values `bytes[off + k]` of the full extraction)
 bundled as `nIn = 4` inputs, each a `BitVec 8` value held in a `BitVec 32`
 register (the `cast#32` widen is the identity at the working width). -/
 
@@ -184,8 +183,8 @@ identical in shape to the σ₀/round-component compiles. -/
     `cast#32`/`Shl#32`/`BitOr#32`) translates to `t` via `texprToThir`, `t` lowers
     to `c` through the committed front, and `c`'s `BitVec 32` denotation is the
     little-endian u32-load `b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)` for every
-    input. The first typed compile whose op heads are exactly the
-    suffixed/cast strings a real hax export emits.
+    input. Its op heads are exactly the suffixed/cast strings a real hax
+    export emits.
     (composition plumbing through the committed `thirToJasmin`.) -/
 theorem loadU32LeModel_compiles :
     ∃ (t : Thir) (c : Com jasminDialect (frontCtxt 32 4 []) (rW 32)),

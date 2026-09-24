@@ -15,14 +15,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminSymmetricLeaves
 # Level-indexed loop composition: the emitted level-`for`-sequence denotes the
 # serial composition of the per-level `n`-folds (`TreehashProg`)
 
-This file is the **level-composition layer** on top of the single-level loop
-keystone (`JForProgSemCorrect.loop_denote_eq`, `JForProgCT.loopRun_eq`). Like the
-nesting layer (`JForProgNested.lean`, task #81), it does **not** modify the
+This module is the **level-composition layer** on top of the single-level loop
+theorem (`JForProgSemCorrect.loop_denote_eq`, `JForProgCT.loopRun_eq`). Like the
+nesting layer (`JForProgNested.lean`), it does **not** modify the
 single-level layer (`JForProgSemCorrect.lean`, `JForProgCT.lean`,
 `JasminPrint.JForProg` / `toCfor` / `toProg`) or the FAEST leaf specs
-(`FAEST/Leaves.lean`) — it imports them and **composes** their results. There is
+(`JasminSymmetricLeaves.lean`) — it imports them and **composes** their results. There is
 **no new denotation-preservation core**: the whole-tree theorem is the existing
-single-level keystone composed `h` times (a `foldl`/list-composition congruence).
+single-level main theorem composed `h` times (a `foldl`/list-composition congruence).
 
 ## The motivating shape: Merkle treehash
 
@@ -51,7 +51,7 @@ i.e. run level 0's loop on `init`, feed the result into level 1's loop, etc. The
 
 `TreehashProg.toCfor` emits the `h` per-level `Cfor`s **in sequence** (one top
 level instruction per level), via the *actual* emitted `JForProg.toCfor` of each
-level (the verified single-level loop the keystone covers). The shared `ppInstrR`
+level (the verified single-level loop the main theorem covers). The shared `ppInstrR`
 prints each `for` consecutively, so the emitted `.jazz` is literally `h`
 sequential `for` loops with the halving counts.
 
@@ -70,7 +70,7 @@ level's emitted single-level `loopRun` serially — equals
    the whole tree.
 
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
-single-level keystone — no `sorry`, axiom-clean (`[propext, Quot.sound]` like
+single-level main theorem — no `sorry`, axiom-clean (`[propext, Quot.sound]` like
 `loop_denote_eq`).
 
 ## The Th tweakable-hash leaf (`PIECE 2`)
@@ -78,8 +78,8 @@ single-level keystone — no `sorry`, axiom-clean (`[propext, Quot.sound]` like
 `§7` declares the SLH-DSA / XMSS **`Th` tweakable hash** as a *single* `extCall`
 leaf — so each level loop's inner body stays single-var (covered by
 `loop_denote_eq`'s `SingleVarBody`, avoiding the multi-op gap). `Th` hashes a
-node pair plus an `ADRS` tweak; per the FAEST `#62` leaf pattern
-(`FAEST/Leaves.lean` `shakeLeafExpr` / `ShakeLeafAgrees`), `Th` is SHAKE-based +
+node pair plus an `ADRS` tweak; per the FAEST leaf pattern
+(`JasminSymmetricLeaves.lean` `shakeLeafExpr` / `ShakeLeafAgrees`), `Th` is SHAKE-based +
 an `ADRS` tweak, so its agreement is *backed by the committed SHAKE leaf*: a
 `leafSem` realising the FAEST `shake128` primitive on the concatenated
 `tweak ‖ left ‖ right` input realises `Th`.
@@ -135,7 +135,7 @@ def TreehashProg.denote {accTy : JasminTy} (levels : TreehashProg accTy)
 
 /-- Emit a treehash as the **`h` per-level `Cfor`s in sequence**: one top-level
     instruction per level, each the *actual* emitted single-level loop
-    `JForProg.toCfor` of that level (the verified loop the keystone covers). The
+    `JForProg.toCfor` of that level (the verified loop the main theorem covers). The
     shared `ppInstrR` prints them consecutively, so the emitted `.jazz` is `h`
     sequential `for` loops with the halving counts. -/
 def TreehashProg.toCfors {accTy : JasminTy} (levels : TreehashProg accTy) :
@@ -211,8 +211,8 @@ theorem denote_cons {accTy : JasminTy} (lvl : JForProg accTy)
 
 Each level's per-fold runner is *the whole emitted single-level loop run*. For a
 single-leaf level body, this equals `level.denote` by the already-proven
-single-level keystone `loop_denote_eq` — so the per-level runner *is*
-`levelStep`. This is the only place the single-level keystone is touched; the
+single-level main theorem `loop_denote_eq` — so the per-level runner *is*
+`levelStep`. This is the only place the single-level main theorem is touched; the
 whole-tree result is its `foldl`-composition. -/
 
 /-- The per-level body runner: running the emitted single-level loop in full on
@@ -225,7 +225,7 @@ def levelRun {accTy : JasminTy} (leafSem : LeafSem) (lvl : JForProg accTy) :
 /-- **The per-level runner computes `levelStep` (= `lvl.denote`).** For a
     single-leaf level body, running the emitted single-level loop in full equals
     the level loop's `n`-fold denotation — by the *already-proven* single-level
-    keystone `JForProgSemCorrect.loop_denote_eq` (reused, not re-derived). The
+    main theorem `JForProgSemCorrect.loop_denote_eq` (reused, not re-derived). The
     only carried hypothesis is the opaque-leaf edge `LeafAgrees`. -/
 theorem levelRun_eq {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) (lvl : JForProg accTy)
@@ -233,15 +233,15 @@ theorem levelRun_eq {accTy : JasminTy} {leafSem : LeafSem}
     (hLvl : lvl.update = SingleVarBody e) (acc : ⟦accTy⟧) :
     levelRun leafSem lvl acc = levelStep lvl acc := by
   unfold levelRun levelStep
-  -- Reuse the single-level keystone for this level's loop.
+  -- Reuse the single-level main theorem for this level's loop.
   exact loop_denote_eq hLeaf e lvl hLvl acc
 
-/-! ## 6. The keystone: emitted level sequence run = serial level composition
+/-! ## 6. The main theorem: emitted level sequence run = serial level composition
 
 The level dimension is closed by a `foldl` congruence: both `treehashLoopRun` and
 `TreehashProg.denote` are left-folds of the per-level runner over the level list,
 and their per-element functions agree on every accumulator by `levelRun_eq` (the
-single-level keystone, per level). There is **no new denotation core** — this is
+single-level main theorem, per level). There is **no new denotation core** — this is
 exactly `loop_denote_eq` composed `h` times. -/
 
 /-- A `foldl` of two functions that agree everywhere over the same list and seed
@@ -266,19 +266,19 @@ def treehashLoopRun {accTy : JasminTy} (leafSem : LeafSem)
 
 /-- A uniform single-leaf witness for *every* level of a treehash: each level's
     body is `SingleVarBody e` for some `e` (allowed to depend on the level). This
-    is the per-level hypothesis the keystone's `SingleVarBody` requires — every
+    is the per-level hypothesis the main theorem's `SingleVarBody` requires — every
     level loop's inner body is one op (e.g. one `Th` `extCall` leaf, or one 2→1
     combiner), so it is covered by `loop_denote_eq`, avoiding the multi-op gap. -/
 abbrev AllSingleVar {accTy : JasminTy} (levels : TreehashProg accTy) : Prop :=
   ∀ lvl ∈ levels, ∃ e : Expr jasminDialect [accTy] accTy,
     lvl.update = SingleVarBody e
 
-/-- **Keystone — the emitted level sequence denotes the serial level
+/-- **Main theorem — the emitted level sequence denotes the serial level
     composition.** For single-leaf level bodies (`AllSingleVar`), running the
     emitted `h`-`Cfor` sequence (each level a real `for`) by composing the
     per-level emitted single-level loop runners serially equals
     `TreehashProg.denote init` = the serial composition of the per-level
-    `n`-folds. Each level reuses the single-level keystone `loop_denote_eq`; the
+    `n`-folds. Each level reuses the single-level main theorem `loop_denote_eq`; the
     level dimension is closed by induction (the `foldl` congruence). **No new
     denotation core** — this is `loop_denote_eq` composed `h` times. The only
     hypothesis is the opaque-leaf edge `LeafAgrees`. -/
@@ -288,7 +288,7 @@ theorem treehash_loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
     treehashLoopRun leafSem levels init = TreehashProg.denote levels init := by
   -- Induct on the level list, threading the per-level witness `hAll`. Both sides
   -- fold over the list; the per-element functions agree on every accumulator by
-  -- `levelRun_eq` (the single-level keystone), per level.
+  -- `levelRun_eq` (the single-level main theorem), per level.
   induction levels generalizing init with
   | nil => rfl
   | cons lvl rest ih =>
@@ -298,7 +298,7 @@ theorem treehash_loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
       have hTail : AllSingleVar rest :=
         fun l hl => hAll l (List.mem_cons_of_mem _ hl)
       -- Peel one level: the head level's emitted run is `levelStep lvl init`
-      -- (single-level keystone), then recurse on the tail.
+      -- (single-level main theorem), then recurse on the tail.
       unfold treehashLoopRun TreehashProg.denote
       rw [List.foldl_cons, List.foldl_cons, levelRun_eq hLeaf lvl e he init]
       exact ih hTail (levelStep lvl init)
@@ -308,8 +308,8 @@ theorem treehash_loop_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
 The SLH-DSA / XMSS **`Th` tweakable hash** hashes a node pair `(left, right)`
 together with an `ADRS` tweak into the parent node. We declare it as a **single**
 `extCall` leaf so each level loop's inner body is one op — `SingleVarBody`
-covered, no multi-op gap. Following the FAEST `#62` leaf pattern
-(`FAEST/Leaves.lean` `shakeLeafExpr` / `ShakeLeafAgrees`): `Th` is SHAKE-based +
+covered, no multi-op gap. Following the FAEST leaf pattern
+(`JasminSymmetricLeaves.lean` `shakeLeafExpr` / `ShakeLeafAgrees`): `Th` is SHAKE-based +
 an `ADRS` tweak, so it is *backed by the committed SHAKE leaf*.
 
 We model nodes / tweaks as byte (`reg 8`) stack arrays of fixed length `n`
@@ -363,7 +363,7 @@ theorem thLeafExpr_denote {Γ : Ctxt jasminDialect} {n : Nat}
 
 /-- `Th` leaf agreement: on the `treehash_th` signature at node length `n`, the
     leaf semantics is `prims.th` of its packed `ADRS ‖ left ‖ right` input. The
-    FAEST-`#62` counterpart of `ShakeLeafAgrees` — opaque leaf, carried
+    FAEST counterpart of `ShakeLeafAgrees` — opaque leaf, carried
     agreement obligation, never a `sorry`. -/
 def ThLeafAgrees (prims : ThPrimitive) (leafSem : FaestLeafSem) : Prop :=
   ∀ (n : Nat) (args : HVector (fun t => ⟦t⟧) (thArgTys n)),
@@ -403,7 +403,7 @@ theorem thPrimitive_ofShake_th (prims : FaestPrimitives) (n : Nat)
 
 /-- A `leafSem` that realises `shake128` on the `Th` signature (input length
     `3n`, output length `n`) — but under the `treehash_th` leaf name — realises
-    the SHAKE-induced `Th`. This is the `#62`-pattern backing: `ThLeafAgrees` for
+    the SHAKE-induced `Th`. This is the FAEST-leaf-pattern backing: `ThLeafAgrees` for
     `ThPrimitive.ofShake` follows from the SHAKE-leaf shape, because both reduce
     to `prims.shake128 (3*n) · n`. -/
 theorem thLeafAgrees_ofShake (prims : FaestPrimitives) (leafSem : FaestLeafSem)
@@ -441,7 +441,7 @@ def combinerLevel (cnt : Nat) : JForProg (.reg 64) :=
         (.ret .here) }
 
 /-- The combiner body is a single-leaf body (one `regArith add` then `.ret .here`)
-    — at every trip count — so the single-level keystone applies. -/
+    — at every trip count — so the single-level main theorem applies. -/
 theorem combinerLevel_singleVar (cnt : Nat) :
     (combinerLevel cnt).update
       = SingleVarBody (accTy := .reg 64)
@@ -453,7 +453,7 @@ theorem combinerLevel_singleVar (cnt : Nat) :
 def combinerTree : TreehashProg (.reg 64) :=
   [combinerLevel 4, combinerLevel 2, combinerLevel 1]
 
-/-- Every level of `combinerTree` has a single-leaf body, so the keystone's
+/-- Every level of `combinerTree` has a single-leaf body, so the main theorem's
     `AllSingleVar` hypothesis holds. -/
 theorem combinerTree_allSingleVar : AllSingleVar combinerTree := by
   intro lvl hmem
@@ -478,10 +478,10 @@ theorem combinerTree_treehash_denote_eq {leafSem : LeafSem}
     treehashLoopRun leafSem combinerTree init = combinerTree.denote init :=
   treehash_loop_denote_eq hLeaf combinerTree combinerTree_allSingleVar init
 
-/-- The discharged level-composition keystone, instantiated at the concrete
+/-- The discharged level-composition main theorem, instantiated at the concrete
     halving counts and seed `init = 1`, computes `128` — byte-for-byte the
     unrolled treehash reference (`1 → 128` after seven doublings). This ties the
-    emitted level-sequence semantics the keystone proves to the concrete KAT
+    emitted level-sequence semantics the main theorem proves to the concrete KAT
     validated end-to-end in `bench/treehash/`. -/
 theorem combinerTree_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem) :
     treehashLoopRun leafSem combinerTree (1 : BitVec 64) = (128 : BitVec 64) := by

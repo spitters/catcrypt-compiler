@@ -47,9 +47,9 @@ and concrete: algorithmic-refinement equations (Karatsuba, and by the same
 recipe Toom-3) and the `Related` registry share *one* "denotation-preserving
 equation" representation, demonstrated by a working adapter on one refinement.
 
-### Honest impedance
+### Impedance
 
-The two representations genuinely differ where there is nothing to bridge:
+The two representations differ where there is nothing to bridge:
 
 * **Cost model.** The e-graph carries a cost model (`opCost`/`comCost`) and a
   monotonicity certificate (`saturate_cost_le`). `Related` has *no* cost analogue
@@ -165,15 +165,15 @@ theorem mulOneRelated_eq {w : Nat} (x : BitVec w) :
 `Egraph` notes (its §3 docstring) that "any e-graph / peephole rewrite that
 replaces a four-multiply schoolbook expansion with the three-multiply form"
 instantiates the generic identity proved in `KaratsubaGenericPass`. We take that
-genuine `ring`-proved equation and route it through the adapter, exhibiting the
+`ring`-proved equation and route it through the adapter, exhibiting the
 schoolbook ↔ Karatsuba refinement as a `Related` transport entry.
 
-### Operand-shape impedance (honest note)
+### Operand-shape impedance
 
 A clean `RelatedBinOp enc op bop` is a binary operation on a single carrier.
 Karatsuba does **not** have that shape: its inputs are the four limbs
 `(a1, a0, b1, b0)` together with a base `B`, and its output is a *triple*
-`R × R × R`, not a single carrier element. So we cannot honestly write
+`R × R × R`, not a single carrier element. So there is no true
 `RelatedBinOp (· * ·) karatsuba`. The cleanest true form is a `Related id`
 equation between the two evaluators at fixed limbs — the schoolbook evaluator and
 the Karatsuba evaluator — which is exactly what the e-graph rule needs (a
@@ -224,7 +224,7 @@ schoolbook assembly denote one and the same ring element
 `(a1*B+a0)*(b1*B+b0)`. -/
 
 /-- The evaluated Karatsuba assembly is `Related` (identity encoding on `R`) to
-the evaluated schoolbook assembly: both equal the genuine product. Certificate:
+the evaluated schoolbook assembly: both equal the ring product. Certificate:
 `evalLimbs_karatsuba_eq_schoolbook`. This is the value-level denotation equality
 that an e-graph cost-extraction would compare candidates against. -/
 @[reducible] def karatsubaEvalRelated (B a1 a0 b1 b0 : R) :
@@ -233,7 +233,7 @@ that an e-graph cost-extraction would compare candidates against. -/
       (KaratsubaGeneric.evalLimbs B (KaratsubaGeneric.schoolbookMul B a1 a0 b1 b0)) :=
   relatedOfEq (KaratsubaGeneric.evalLimbs_karatsuba_eq_schoolbook B a1 a0 b1 b0)
 
-/-- Both evaluators denote the genuine ring product, recovered through the
+/-- Both evaluators denote the ring product, recovered through the
 bridge: `eqOfRelated` on the entry, then the schoolbook evaluation lemma. -/
 theorem karatsubaEval_denotes_product (B a1 a0 b1 b0 : R) :
     KaratsubaGeneric.evalLimbs B (KaratsubaGeneric.karatsubaMul B a1 a0 b1 b0)
@@ -263,7 +263,7 @@ theorem rewriteSoundOfRegistry {α : Type*} {lhs rhs : α}
 
 /-! ### Concrete instantiation on the e-graph's own `rewriteBin_sound`
 
-To show the abstract statement is genuinely the e-graph's certificate (not a
+To show the abstract statement is the e-graph's certificate (not a
 look-alike), we feed `Egraph.rewriteBin_sound` — the real `BitVec`-algebra
 soundness lemma that the saturation engine composes — straight into
 `registryOfRewriteSound`, producing a `Related` registry entry for an actual

@@ -17,7 +17,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledMC
 set_option autoImplicit false
 
 /-!
-# Labeled control-transfer over the memref-bundled state `LstateM` (capability A1)
+# Labeled control-transfer over the memref-bundled state `LstateM`
 
 `JasminLsemGeneralFaithfulMem` lifted the stack-memory fragment
 (`stackLoad`/`stackStore` over the aliasing array carrier) into a
@@ -72,9 +72,9 @@ The core bridge is the two single-pass back-edge lemmas
 (`loopMem_pass_taken` / `loopMem_pass_halt`) — the "loop-back-edge over
 `LstateM` denotes one body-fold then loops / exits" content — assembled into the
 `n`-fold `loopMem_runBounded`.  The body is a **general** `List LinstrRM` over
-`LstateM` (not a fixed straight-line shape), so a loop body can later carry a
-call (A2) or nest (A3): this is the lowering target for a future
-`scf.for`-with-region-call.
+`LstateM` (not a fixed straight-line shape), so a loop body can carry a call
+(`JasminLsemMemLoopCall`) or nest (`JasminLsemMemLoopNestWhile`): this is the
+lowering target for an `scf.for`-with-region-call.
 
 ## Validation
 

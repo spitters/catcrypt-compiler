@@ -10,7 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
 
 /-!
-# C8 field-leaf: compiling an ML-KEM field op through the two-front combiner
+# Field leaf: compiling an ML-KEM field op through the two-front combiner
 
 ML-KEM's scalar field-coefficient operations (`add` / `sub` / `mul` / `reduce`)
 are arithmetic in `𝔽_q` with `q = 3329`. The extracted hax shapes
@@ -24,31 +24,31 @@ add_impExpr    = let a = a; let b = b; reduce[Add[cast#32[a], cast#32[b]]]
 i.e. they use `Rem`/`Div`, the cross-width `cast#16`/`cast#32` tags, and the
 global constant `Q`. None of these live in the compile-from-hax front's
 bitwise/ARX subset (`recogBin`/`recogShift` recognise `Add`/`Sub`/`Mul` and the
-shifts/rotates, but not `Rem`, the cast tags, or a free global const). Teaching
-the front modular arithmetic is the wrong move.
+shifts/rotates, but not `Rem`, the cast tags, or a free global const). The front
+is not extended with modular arithmetic.
 
-The **right** move is the C8 two-front combiner (`CompileFromHaxLink.lean`):
+The field op is compiled through the two-front combiner (`CompileFromHaxLink.lean`):
 
 * the **transparent** structure of the field op — the integer sum `Add[a,b]` —
-  is genuinely *in* the front's subset and is compiled value-preservingly by the
+  is *in* the front's subset and is compiled value-preservingly by the
   whole `ImpExpr → Thir → Com jasminDialect` pipeline;
 * the **opaque** field reduction `reduce` is treated as a registered fast
   **leaf** with intended semantics `spec x = x % 3329`. Its agreement to the
   opaque dialect call `jasminExtSem "reduce" …` is the Barrett-kernel author's
   obligation — a *hypothesis*, never an axiom (`jasminExtSem "reduce"` lands in
   the opaque `_, _, retTy => default` arm of `JasminDialect.jasminExtSem`, so the
-  equality is genuinely unprovable here, exactly as for the toy `"f"` leaf).
+  equality is unprovable here, exactly as for the toy `"f"` leaf).
 
 So `add a b = reduce(a + b)` compiles as: the front's supported `Rhs.add` for
-`a + b`, then the opaque `reduce`-call leaf linked to `· % 3329`. This is
-**Option A** of the task: `reduce` is a registered `LeafSpec`, the field-add
-outer is built through the front (`ThirToComFront`), and the result is routed
-through the committed C8 linking lemma (`extCall_denote_via_leaf`), mirroring
-`CompileFromHaxLink.linked_example` — no fresh compiler proof.
+`a + b`, then the opaque `reduce`-call leaf linked to `· % 3329`: `reduce` is a
+registered `LeafSpec`, the field-add outer is built through the front
+(`ThirToComFront`), and the result is routed through the linking lemma
+(`extCall_denote_via_leaf`), mirroring `CompileFromHaxLink.linked_example` — no
+fresh compiler proof.
 
-## Which option, honestly
+## A-normal form
 
-This is **Option A**. The `Rhs.call`'s arguments are `List Atom` (`lit`/`lvar`/
+The `Rhs.call`'s arguments are `List Atom` (`lit`/`lvar`/
 `inp`), *not* nested binops, so the field-add is in its natural A-normal form
 
 ```text
@@ -59,20 +59,20 @@ ret r
 
 which is exactly the two-front shape: a transparent front-compiled `Add`
 followed by the opaque `reduce` leaf whose `· % 3329` correctness is the carried
-C8 obligation.
+leaf obligation.
 
-## On the residual (honest)
+## Synthetic versus extracted source
 
 The **synthetic** field-add `mlkemFieldAddThir` is used rather than the literal
-`add_impExpr`. The precise residual blocking the literal extracted form from the
-front: (1) the `cast#32`/`cast#16` width tags on the operands (a `castStrip`
+`add_impExpr`. The front does not accept the literal extracted form because of:
+(1) the `cast#32`/`cast#16` width tags on the operands (a `castStrip`
 mirror of `stripWidthSuffix` rewriting the `cast#w` heads is the small additional
 pre-pass that would clear these), (2) the free global const `Q` (the front has no
 global-constant environment — it would be inlined to its literal `3329` by a
 const-folding pre-pass), and (3) the `Rem` inside `reduce` (which is precisely
-what we route to the leaf, so it is *not* a residual — it is the design). The C8
+what we route to the leaf, so it is *not* a residual — it is the design). The
 field-leaf composition demonstrated here is independent of (1)/(2): they are
-cosmetic front pre-passes, whereas (3) — the modular reduction — is the genuine
+cosmetic front pre-passes, whereas (3) — the modular reduction — is the
 opaque-leaf obligation this file discharges via the registry.
 
 ## What is mechanized vs. carried
@@ -185,7 +185,7 @@ theorem mlkemFieldAddCom_denote_opaque (a b : BitVec 32) :
 
 /-! ## §4  The registry: register `reduce` as a verified field leaf
 
-The C8 leaf registry holds the `reduce` leaf with its `· % 3329` spec. Its
+The leaf registry holds the `reduce` leaf with its `· % 3329` spec. Its
 `agrees` field is the carried hypothesis — the Barrett-kernel author's
 obligation that the fast reduce kernel computes the canonical residue. -/
 
@@ -206,7 +206,7 @@ def mlkemFieldRegistry
   (LeafRegistry.empty 32).insert (reduceLeaf hagree)
 
 /-- The field registry resolves `"reduce"` to the field-reduce leaf — the call is
-    C8-linkable. -/
+    linkable. -/
 theorem mlkemFieldRegistry_resolves
     (hagree : ∀ (args : HVector (fun t => ⟦t⟧) (callArgTys 32 1)),
         (jasminExtSem reduceName (callArgTys 32 1) (rW 32) args : ⟦rW 32⟧)
@@ -222,7 +222,7 @@ value-preservation (`mlkemFieldAddCom_denote_opaque`, the transparent integer
 `Add`) is composed with the carried `reduce`-leaf obligation (`hagree`, the
 opaque modular reduction) into one whole field-op statement. -/
 
-/-- **The ML-KEM field-add via the C8 leaf (the two-front combiner).** *Given*
+/-- **The ML-KEM field-add via the reduce leaf (the two-front combiner).** *Given*
     the per-leaf agreement `hagree` — the Barrett-kernel author's obligation that
     the opaque `reduce` call computes `· % 3329`, a *hypothesis*, not an axiom
     (`jasminExtSem "reduce"` is opaque) — the whole compiled field-add outer
@@ -231,10 +231,10 @@ opaque modular reduction) into one whole field-op statement. -/
 
     The transparent, front-compiled integer `Add[a,b]`
     (`mlkemFieldAddCom_denote_opaque`) is composed with the opaque field-reduce
-    leaf (`reduceSpec = · % 3329`, linked through the committed C8 lemma) into one
+    leaf (`reduceSpec = · % 3329`, linked through the linking lemma) into one
     statement: the field op `add a b = reduce(a + b)` is a *verified-compiled
     integer Add* THEN the *reduce leaf whose Barrett correctness is the carried
-    C8 obligation*. The leaf agreement is carried; the composition is
+    leaf obligation*. The leaf agreement is carried; the composition is
     mechanized. -/
 theorem mlkem_field_add_via_leaf
     (hagree : ∀ (args : HVector (fun t => ⟦t⟧) (callArgTys 32 1)),
@@ -251,11 +251,11 @@ theorem mlkem_field_add_via_leaf
   show reduceSpec (hvToFun (HVector.cons ((a + b) : ⟦rW 32⟧) HVector.nil)) = (a + b) % mlkemQ
   simp only [reduceSpec, hvToFun, hvNth, Fin.cases_zero, HVector.head]
 
-/-- **The C8 link, surfaced at the `extCall`-node level.** The committed
+/-- **The leaf link, surfaced at the `extCall`-node level.**
     `extCall_denote_via_leaf` rewrites the opaque `reduce` `extCall`-node's
     denotation to `reduceSpec` of its denoted argument, for any in-scope argument
     variable and valuation — the registry side of the field-add composition,
-    routed through the committed C8 linking lemma (no fresh compiler proof). -/
+    routed through the linking lemma (no fresh compiler proof). -/
 theorem reduce_extCall_via_leaf
     (hagree : ∀ (args : HVector (fun t => ⟦t⟧) (callArgTys 32 1)),
         (jasminExtSem reduceName (callArgTys 32 1) (rW 32) args : ⟦rW 32⟧)

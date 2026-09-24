@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.ArrayLoopCT
 This file is the array and memory-op companion to `FieldEmitGoldenPath.lean`. It
 packages **public-indexed array access** — `dst[i] := f(src[i])` over a public
 loop counter `i`, the access shape every NTT / FRI / coefficient loop uses — at
-the two levels where it is genuinely verified:
+the two levels where it is verified:
 
 1. **Dialect level (value).** A `Com jasminDialect` built from the array ops
    `.stackLoad` / `.stackStore` on a public index register, whose `Com.denote`
@@ -32,7 +32,7 @@ the two levels where it is genuinely verified:
    lookup (the AES S-box class) leaks via the address trace; the public-index
    discipline is exactly what rules it out.
 
-## Honest scope and the emit gap
+## Scope and the emit gap
 
 The dialect denote (`stackGet`/`stackSet`) and the CT property (the real
 `PublicEquiv`-noninterference statement of `ArrayLoopCT`, via `cmdCT_sound`) are
@@ -93,7 +93,7 @@ theorem coeffStoreCom_denote (dst : Fin 256 → BitVec 16) (i : BitVec 64)
       = stackSet dst i.toNat v := rfl
 
 /-- **The read-write round trip on an in-range index.** Loading the value that
-    was just stored at the same in-range index `j : Fin 256` returns it. This is
+    is stored at the same in-range index `j : Fin 256` returns it. This is
     the functional coefficient-update law (`stackSet` then `stackGet` at the
     same in-range cell), composing the two `denote` specs — the value identity a
     coefficient loop relies on. -/
@@ -118,7 +118,7 @@ We instantiate the generic `ArrayLoopCT` results on a concrete coefficient-loop
 instance. The loop body is `arrMapBody src dst t`, i.e. `t := src["i"];
 dst["i"] := t` with index the public loop counter `"i"`. We pick concrete slot
 names and a `LevelTable` classifying them all `Public`; `arrMapLoop_isCT` then
-gives `cmdCT = true`, and `arrMapLoop_noninterference` the genuine
+gives `cmdCT = true`, and `arrMapLoop_noninterference` the
 `PublicEquiv`-noninterference (via `cmdCT_sound`) — neither is re-derived here. -/
 
 /-- Concrete slot for the source coefficient array. -/

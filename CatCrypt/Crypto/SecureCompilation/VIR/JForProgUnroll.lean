@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 /-!
 # Verified loop unrolling for `JForProg`
 
-`JForProgMultiOp.loop_denote_eq_multiOp` (task #92) is the bounded-loop keystone:
+`JForProgMultiOp.loop_denote_eq_multiOp` is the bounded-loop theorem:
 the emitted `for i = 0 to n { acc = body(acc) }` denotes the `n`-fold
 semantics for *any* straight-line body. This file adds a **verified
 loop-unrolling pass** at the `JForProg` (Com) level — the canonical
@@ -370,7 +370,7 @@ theorem UnrolledByWithTail.denote_eq {accTy : JasminTy}
 
 /-! ## 5. Commuting with the verified emit chain
 
-The verified emit keystone (`JForProgMultiOp.loop_denote_eq_multiOp`) says: for
+The verified emit main theorem (`JForProgMultiOp.loop_denote_eq_multiOp`) says: for
 any straight-line body, the emitted `Cfor` loop's word-level run equals
 `JForProg.denote`. Combining this with `UnrolledBy.denote_eq` yields the
 end-to-end statement: **the emitted loop of the unrolled program denotes the
@@ -381,7 +381,7 @@ same function as the emitted loop of the original program.** -/
     the emitted bounded loop of `u.unrolled` produces the same word-level
     result as the emitted bounded loop of `p`. So loop unrolling is a sound
     verified optimisation: it preserves emit-level behaviour with no separate
-    proof of emit correctness for the unrolled body — the multi-op keystone
+    proof of emit correctness for the unrolled body — the multi-op main theorem
     handles it. -/
 theorem UnrolledBy.emit_denote_eq {accTy : JasminTy} {leafSem : LeafSem}
     (hLeaf : LeafAgrees leafSem) {p : JForProg accTy} {N : Nat}
@@ -434,8 +434,8 @@ theorem chacha_unroll_2 {accTy : JasminTy} {p : JForProg accTy}
 
 /-- **SHA-2 64 rounds, `N = 4`.** SHA-2's compression has 64 rounds. Unrolling
     by `N = 4` yields a 16-iteration loop over a 4-round unrolled body — the
-    same batching #120 explored, but verified at the loop-unroll layer (not
-    just the SIMD-lane layer). HACL*'s SHA-2 1.64× speedup is largely driven
+    round batching, verified at the loop-unroll layer rather than the SIMD-lane
+    layer. HACL*'s SHA-2 1.64× speedup is largely driven
     by this kind of round-batching. -/
 theorem sha2_unroll_4 {accTy : JasminTy} {p : JForProg accTy}
     (h64 : p.n = 64) (u : UnrolledBy p 4) (init : ⟦accTy⟧) :

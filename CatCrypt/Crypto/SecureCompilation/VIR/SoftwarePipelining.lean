@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
 /-!
 # Verified software pipelining for `JForProg` — analysis-as-decision pass
 
-This file extends the verified-optimiser suite (`JForProgUnroll.lean` (#139),
-`RegisterAllocation.lean` (#141 / #143), `CtPreservationNewTransforms.lean`
-(#146), `DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
-`CommonSubexprElim.lean`, `ComInline.lean`, `InstructionSchedule.lean`
-(Phase D)) with **software pipelining** at the `Com` level — the
+This module extends the verified-optimiser suite (`JForProgUnroll.lean`,
+`RegisterAllocation.lean`, `CtPreservationNewTransforms.lean`,
+`DeadCodeElim.lean`, `LoopInvariantHoist.lean`,
+`CommonSubexprElim.lean`, `ComInline.lean`, `InstructionSchedule.lean`) with
+**software pipelining** at the `Com` level — the
 inter-iteration ILP-exposing pass.
 
 Software pipelining overlaps execution of consecutive loop iterations so
@@ -45,12 +45,12 @@ initial adds.
 Splitting a loop body across prologue / steady-state / epilogue at the
 `Com` level would require restructuring the `Com.var` chain in three
 ways simultaneously — exactly the same De Bruijn renumbering gap that
-`RegisterAllocation.lean` (#143), `DeadCodeElim.lean`,
+`RegisterAllocation.lean`, `DeadCodeElim.lean`,
 `LoopInvariantHoist.lean`, `CommonSubexprElim.lean`, `ComInline.lean`,
-and `InstructionSchedule.lean` (Phase D) all resolved by factoring the
-heavy lifting out of the `Com` rewrite.
+and `InstructionSchedule.lean` all resolve by factoring the
+substantive work out of the `Com` rewrite.
 
-We follow the same factoring: **the heavy lifting is the analysis (the
+We follow the same factoring: **the substantive work is the analysis (the
 chosen pipeline schedule: II, per-binder stage assignment, and the
 prologue / steady / epilogue partition); the `Com → Com` rewrite itself
 is the identity at the framework level, because the emit pass downstream
@@ -62,7 +62,7 @@ Concretely:
 * LICM: invariance decisions live in `LicmDecisions`;
 * CSE: redundancy decisions live in `CseDecisions`;
 * Inline: callsite decisions live in `InlineDecisions`;
-* Schedule (Phase D): emission permutation lives in `ScheduleDecisions`;
+* Schedule: emission permutation lives in `ScheduleDecisions`;
 * **Here, the modulo schedule lives in `SoftwarePipelineDecisions`.** The
   emit pass produces the three-phase code (prologue + kernel + epilogue)
   driven by the stage assignment. Either way, the *Com-level* transform
@@ -155,19 +155,19 @@ operational invariant maintained by `analyzeSwp` by construction.
   canonical 3-stage linear-chain shape (`b = a + 5; c = b * 2;
   d = c + 1`).
 
-No `sorry`, no new axioms — the framework's Com-level rewrite is the
+All goals closed, no new axioms — the framework's Com-level rewrite is the
 identity, so both preservation theorems reduce to `rfl`.
 
-## Scope this round
+## Scope
 
 * **2-stage pipelining only.** Prologue + steady-state + epilogue, max
   2 iterations in flight. Higher-degree modulo scheduling (3+ stages,
-  rotating registers, MVE-style pipelining) is a follow-up; the
+  rotating registers, MVE-style pipelining) is outside this module; the
   framework theorems carry over uniformly.
 * **Within a single `JForProg` body.** We pipeline iterations of one
   bounded `Cfor`. We do **not** pipeline across nested loops here —
   that requires loop fusion or coalescing first.
-* **Composes with `InstructionSchedule` (Phase D).** Stage assignment
+* **Composes with `InstructionSchedule`.** Stage assignment
   starts from `scheduleGreedy`'s topological order — so an
   intra-iteration scheduling pass already runs before stages are
   assigned. The two passes compose cleanly because both are identities
@@ -271,11 +271,11 @@ def assignStages2 (order : List Nat) : StageAssignment :=
 Records:
 
 * `order` — the topological order of binder positions chosen by
-  `scheduleGreedy` (so this pass composes cleanly with Phase D's
-  intra-iteration scheduler);
+  `scheduleGreedy` (so this pass composes cleanly with the
+  `InstructionSchedule` intra-iteration scheduler);
 * `stages` — the per-binder stage assignment;
 * `numStages` — the total number of stages in the pipeline (capped at
-  `2` this round; the framework supports lifting this);
+  `2`; the framework supports lifting this);
 * `initiationInterval` — the steady-state cycle count per iteration:
   `max (#stage-0 binders) (#stage-1 binders)`. The un-pipelined loop's
   per-iter cost is `numBinders`; the pipelined kernel's is II, so the
@@ -292,11 +292,11 @@ The shape mirrors `DceDecisions`, `LicmDecisions`, `CseDecisions`,
 `InlineDecisions`, `ScheduleDecisions`. -/
 structure SoftwarePipelineDecisions where
   /-- The topological order of binder positions chosen by
-      `scheduleGreedy` (composes cleanly with Phase D). -/
+      `scheduleGreedy` (composes cleanly with `InstructionSchedule`). -/
   order : List Nat
   /-- The per-binder stage assignment in scheduled order. -/
   stages : StageAssignment
-  /-- The total number of stages (`2` this round). -/
+  /-- The total number of stages (`2`). -/
   numStages : Nat
   /-- The initiation interval — steady-state cycles per iteration. -/
   initiationInterval : Nat
@@ -332,10 +332,10 @@ end SoftwarePipelineDecisions
 /-! ## 3. The analyser
 
 Top-level pipelining analysis: compute dependences, run the greedy
-list scheduler (composing with Phase D), bisect for stages, derive
-II.
+list scheduler (composing with `InstructionSchedule`), bisect for stages,
+derive II.
 
-This is the canonical "Phase E step 1" entry point — the verified
+This is the entry point of the verified
 software-pipelining scaffolding into which the emit-pass extensions
 plug. -/
 
@@ -344,8 +344,8 @@ plug. -/
     topological order; then bisects for the 2-stage assignment and
     computes II.
 
-    The 2-stage cap is by design this round: higher-degree pipelining is
-    a follow-up that reuses the same framework (the analysis output
+    The analysis is capped at 2 stages; higher-degree pipelining would
+    reuse the same framework (the analysis output
     grows; the preservation theorems remain `rfl` because the `Com`
     rewrite is identity at the framework level). -/
 def analyzeSwp {accTy : JasminTy} (p : JForProg accTy) :
@@ -548,8 +548,7 @@ example : (analyzeSwp singleBinderProg).stages.entries = [(0, 0)] := rfl
 example : (analyzeSwp singleBinderProg).initiationInterval = 1 := rfl
 example : (analyzeSwp singleBinderProg).numStages = 2 := rfl
 
-/-- **Canonical 3-stage linear-chain shape** (the smoke-test target
-    from Phase E step 1):
+/-- **Canonical 3-stage linear-chain shape** (the smoke-test target):
 
     ```
     b = a + 5               -- position 0, deps = {}
@@ -628,7 +627,7 @@ example (h : RobustlyCTSafeJForProg chain3Prog) :
     ret v3
     ```
 
-    Phase D produces topological order `[0, 1, 2, 3]`. Phase E
+    `scheduleGreedy` produces topological order `[0, 1, 2, 3]`. `analyzeSwp`
     bisects: stages `0, 1` → stage `0`; stages `2, 3` → stage `1`.
     II = `max 2 2 = 2`. This is a balanced 2-stage pipeline — the
     expected speedup is `4 / 2 = 2×` (every kernel cycle issues 2
@@ -673,18 +672,18 @@ theorem analyzeSwp_applySwp_preserves
   ⟨applySwp_denote_preserves p (analyzeSwp p) init,
    applySwp_preserves_CT p (analyzeSwp p) accL⟩
 
-/-! ## 9. Composition with `InstructionSchedule` (Phase D)
+/-! ## 9. Composition with `InstructionSchedule`
 
-Phase D and Phase E are designed to compose cleanly: `analyzeSwp`
-internally runs `scheduleGreedy` (the Phase D scheduler), so the
+Instruction scheduling and software pipelining compose: `analyzeSwp`
+internally runs `scheduleGreedy` (the `InstructionSchedule` scheduler), so the
 pipelining decision is computed from the *scheduled* topological
 order. At the framework level, both `applySchedule` and `applySwp` are
 identities, so the order in which they are applied doesn't matter — but
-the analyser's stage assignment is consistent with Phase D's
+the analyser's stage assignment is consistent with the scheduler's
 intra-iteration emission order. -/
 
 /-- **`analyzeSwp`'s order is exactly `scheduleGreedy`'s.** A direct
-    consequence of the definition, recording the Phase D / Phase E
+    consequence of the definition, recording the scheduling / pipelining
     composition explicitly. -/
 theorem analyzeSwp_order_eq_scheduleGreedy {accTy : JasminTy}
     (p : JForProg accTy) :
@@ -698,7 +697,7 @@ theorem analyzeSchedule_analyzeSwp_order_agree {accTy : JasminTy}
     (analyzeSchedule p).order = (analyzeSwp p).order :=
   rfl
 
-/-- **Sequential application of Phase D then Phase E preserves
+/-- **Sequential application of scheduling then pipelining preserves
     denotation and CT.** A direct corollary of both passes being
     `Com`-level identities. -/
 theorem applySwp_after_applySchedule_preserves {accTy : JasminTy}
@@ -743,9 +742,8 @@ optimisation steps plug. The expansion path:
 
 5. **Nested-loop pipelining.** For doubly-nested `Cfor` (e.g. NTT
    butterfly stages over multiple layers), the framework lifts by
-   recursion on `JForProg.update`'s body. We do not handle that
-   here — single-loop pipelining is the natural Phase E step 1
-   scope.
+   recursion on `JForProg.update`'s body. That case is outside this
+   module, which covers single-loop pipelining.
 
 The framework theorems `applySwp_denote_preserves` and
 `applySwp_preserves_CT` are pipeline-decision-independent and hold

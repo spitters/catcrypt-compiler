@@ -22,7 +22,7 @@ baking `RC[r]`, then copying `a{i}` into `o{i}`), the untyped `ShapeMap` shape
 interpreter (`shapeLowerSExpr` / `shapeTranslate`) with its `Agrees` bridge to
 the `VarMap`, the pure-arith backend-totality lemma
 (`cryptoDialectToJasminCom_isSome_of_pureLower`), and the two scalar-lowering
-simulation keystones (`lowerSExpr_sim` / `shapeTranslate_sim`) plus the per-`SExpr`
+simulation lemmas (`lowerSExpr_sim` / `shapeTranslate_sim`) plus the per-`SExpr`
 shape-success lemma `shapeLowerSExpr_ok`.
 -/
 
@@ -108,7 +108,7 @@ rather than one giant `native_decide`. -/
 -- which never materialises the typed Com. The measurement conclusion is recorded
 -- in the module docstring; re-enable locally to re-measure.
 
-/-! ## Structural composition (task #25): the shape-level simulation engine
+/-! ## Structural composition: the shape-level simulation engine
 
 The monolithic 24-round `native_decide` is infeasible (table above): evaluating
 `loweredFull 24` materialises a ~9768-binding dependently-typed `Com` whose
@@ -124,7 +124,7 @@ Bruijn, so its 24-round run is linear-size and cheap.
   construction. Crucially, the `SLit` arm ignores the literal *value*, so the
   per-round `RC[r]` variation in `aBackStmt` is invisible at shape level — the
   round invariant is uniform in `r`, exactly as required.
-* `lowerSExpr_sim` / `translate_sim` (the keystone — a pure structural
+* `lowerSExpr_sim` / `translate_sim` (the key lemma — a pure structural
   induction, no evaluation): if the shape run succeeds from a shape that
   `Agrees` with the `VarMap`, the real front succeeds too, the output `VarMap`
   agrees with the output shape, and the emitted `ComCont` prefix is total and
@@ -347,7 +347,7 @@ theorem agrees_srcVM : Agrees srcVM srcShape := by
   unfold srcVM srcShape
   exact agrees_bindAll wordNames
 
-/-! ### The scalar-lowering simulation keystone -/
+/-! ### The scalar-lowering simulation lemma -/
 
 open CatCrypt.Crypto.Jasmin.LowCT in
 /-- The exact left-shift `catCryptDialect` expression the `.SShl` arm of

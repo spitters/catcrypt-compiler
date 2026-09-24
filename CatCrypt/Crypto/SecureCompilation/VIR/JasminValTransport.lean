@@ -8,13 +8,10 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
 
 /-!
-# CProg-free value/type transports for the Jasmin lowering
+# Value/type transports for the Jasmin lowering
 
-The shared, `CProg`-free transports relating a CryptoSSA value to its
-`mapTy`-image type, used by both the `CProg`-side correctness file
-(`CryptoToJasminComCorrect`) and the dialect-native correctness file
-(`DialectToJasminComCorrect`). Relocated here so the dialect-native correctness
-proof does not depend on the `CProg`-surface correctness file.
+The transports relating a CryptoSSA value to its `mapTy`-image type, used by the
+dialect-native correctness file (`DialectToJasminComCorrect`).
 
 ## The per-value transport `ctTransTy`
 
@@ -33,10 +30,9 @@ explicit as `ctTransTy : ⟦t⟧ → ⟦mapTy t⟧`, casing on `t`:
 
 On the `sword`/`memref` constructors `ctTransTy` *computes* to the identity.
 
-These declarations live in the `CryptoToJasminComCorrect` namespace so that the
-many consumers that `open … CryptoToJasminComCorrect (ctTransTy …)` resolve
-unchanged; `CryptoToJasminComCorrect.lean` and `DialectToJasminComCorrect.lean`
-both source them from here.
+These declarations live in the `CryptoToJasminComCorrect` namespace, which the
+consumers open as `open … CryptoToJasminComCorrect (ctTransTy …)`;
+`DialectToJasminComCorrect.lean` sources them from here.
 -/
 
 @[expose] public section

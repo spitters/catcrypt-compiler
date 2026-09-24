@@ -240,7 +240,7 @@ def orchArgVM : VarMap orchArgCtx where
     else none
 
 /-- **The covered front fires on the whole Plonky3 counted orchestration.** The
-    four bounded `RFor` phases unroll `CProg`-free through `loopRForD`, each opaque
+    four bounded `RFor` phases unroll through `loopRForD`, each opaque
     per-iteration field leaf resolves its bundle arguments, the `RSeq` spine
     composes the phase prefixes, and the top-level terminator closes. -/
 theorem plonky3OrchLoops_front_fires :

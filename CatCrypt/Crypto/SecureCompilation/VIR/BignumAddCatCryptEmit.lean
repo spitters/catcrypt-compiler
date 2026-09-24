@@ -22,7 +22,7 @@ route a multi-limb carry chain through a *high* dialect (`catCryptDialect`, the
 MLIR-aligned successor IR over the `Com` framework). This file is the first
 witness that a bignum add does.
 
-`catCryptDialect` already carries the bignum-ALU keystone ops:
+`catCryptDialect` carries the bignum-ALU carry ops:
 
 * `bvAdd64 w` : `(a, b) ↦ (cout, sum)` where `sum = a + b` and `cout ∈ {0,1}`
   is the carry-out (Jasmin `#ADD_64`, x86 `ADD`).
@@ -52,8 +52,8 @@ comment: *"…the ops `toJExpr` declines: …`bvAdd64`/`bvAdc`…"*). These ops 
 a `.pair (.sword w) (.sword w)` (multi-output: data word *and* carry bit) and the
 single-return jasmin `Com` lowering cannot express a paired result as one SSA
 expression. The seam's covered carry-chain twins are the *split* word ops
-`bvMulHi`/`bvAddCarryLo`/`bvAddCarryHi` (`#477`), which return single words and
-do lower. So the catCrypt-side `denote = spec` here is the deliverable; the
+`bvMulHi`/`bvAddCarryLo`/`bvAddCarryHi`, which return single words and
+do lower. So the catCrypt-side `denote = spec` here is the result; the
 `bvAdd64`/`bvAdc` → jasmin seam is the gap to fill (lower the paired op into two
 jasmin instructions binding the data word and the carry bit separately, mirroring
 the `bvAddCarryLo`/`bvAddCarryHi` split).
@@ -138,7 +138,7 @@ next `bvAdc` (its denotation reads `cin.toNat ≠ 0`, matching `adcStep`'s
 `rᵢ.1.toNat ≠ 0`). The data words `sᵢ` are projected with `snd`. -/
 
 /-- The 4-limb add-with-carry built natively over `catCryptDialect`, using the
-    keystone carry-chain ops `bvAdd64` (low limb) and `bvAdc` (limbs 1–3). -/
+    carry-chain ops `bvAdd64` (low limb) and `bvAdc` (limbs 1–3). -/
 def bignumAdd4Com : Com catCryptDialect Γ₈ τout :=
   -- p0 := bvAdd64 a0 b0          [a0=idx0, b0=idx4 in Γ₈]
   .var (show Expr catCryptDialect Γ₈ (.pair (.sword 64) (.sword 64)) from
@@ -236,8 +236,8 @@ def bignumAdd4Com : Com catCryptDialect Γ₈ τout :=
 
 /-- **The 4-limb dialect carry chain denotes EXACTLY the abstract 256-bit add.**
 
-    The first bignum-through-`catCryptDialect` `denote = spec` witness: the
-    `Com catCryptDialect` built from the keystone `bvAdd64`/`bvAdc` carry ops
+    A bignum-through-`catCryptDialect` `denote = spec` witness: the
+    `Com catCryptDialect` built from the `bvAdd64`/`bvAdc` carry ops
     computes precisely the clean carry-propagating spec `bignumAdd4`. -/
 theorem bignumAdd_catcrypt_denote
     (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 64) :
@@ -251,7 +251,7 @@ theorem bignumAdd_catcrypt_denote
 
 The `bvAdd64`/`bvAdc` ops above return a *pair* `(cout, sum)`, which the jasmin
 seam (`DialectToJasminCom.toJExprD`) declines. The seam *does* cover the
-single-word **split** twins `bvAddCarryLo`/`bvAddCarryHi` (`#477`):
+single-word **split** twins `bvAddCarryLo`/`bvAddCarryHi`:
 
 * `bvAddCarryLo w : (a, b, cin : sword 1) ↦ a + b + cin`  (the data word; jasmin
   `addCarryLo` = x86 `ADCX`/`ADOX` data effect)
@@ -267,7 +267,7 @@ Because the seam declines the pair ops `mkPair`/`fst`/`snd`, the lowered program
 must avoid them entirely: there is no carry-chain *projection* (the split ops
 return the two words *directly*), and we return a single `sword` word rather
 than packaging the 4-limb sum into a `.pair` tower. We return the **final
-carry-out word** `c4 : sword 1` — the load-bearing result of a multi-limb add
+carry-out word** `c4 : sword 1` — the key result of a multi-limb add
 (the "did it overflow 256 bits" bit). Each per-limb data word `sᵢ` is still bound
 and denotes to the matching `bignumAdd4` sum limb, but is not returned because
 the result must be a single jasmin word.

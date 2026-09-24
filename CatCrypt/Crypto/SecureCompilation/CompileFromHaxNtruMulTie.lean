@@ -29,7 +29,7 @@ multiply-accumulate `accZ + aZ · bZ` of the elements the inputs encode.
 Because the modulus `8192 = 2^13` is a power of two dividing `2^64`, the `&
 0x1FFF` mask is *exactly* `% 8192` and projecting `(acc + a*b) % 8192` into
 `ZMod 8192` is the ring MAC `↑acc + ↑a · ↑b`. No `decide`/`native_decide` here —
-it is the genuine power-of-two reduce identity, lifted to the Mathlib ring
+it is the power-of-two reduce identity, lifted to the Mathlib ring
 through `ZMod.natCast_*`. Like the FrodoKEM tie (and unlike the prime-field
 GF(127)/sntrup ties) there is **no domain restriction**: the mask handles full
 `Z/8192` wraparound for any 64-bit inputs.

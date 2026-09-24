@@ -20,9 +20,9 @@ of the typed machine model — wrapped by the counter-loop construct (`loopLcmd`
 the looped `mpn_addmul_1` kernel). And it is proved that the **emitted loop computes
 the real public value `F₈ = 21`** (`FIB_PUBLIC_VALUES = [0, 1, 21]`).
 
-This is the first prover phase realised as genuine owned assembly with
+This prover phase is realised as owned assembly with
 machine-semantic correctness: the verified `scfRepeat` trace-gen (at the abstract
-state level) is now an emitted machine loop whose denotation is proved — via the
+state level) is an emitted machine loop whose denotation is proved — via the
 loop-emit bridge (`LoopEmitBridge`) and `loopLcmd_denote` — to be the n-fold iterate
 of the emitted body, and that iterate carries the Fibonacci public output.
 -/

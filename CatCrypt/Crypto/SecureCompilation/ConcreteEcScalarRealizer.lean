@@ -41,7 +41,7 @@ codec-fit side-conditions `width ≤ 48`, `p25519 < 2^(8·width)`.  For the bina
 ops we package the existing `fieldBinop_realizes_concrete` realizer at the
 Curve25519 prime.
 
-## HONEST scope — what IS realized and what is NOT
+## Scope — what IS realized and what is NOT
 
 * **Realized (unconditional Lean theorem, codec a theorem not a KAT):** the
   *base-field arithmetic* step of the ladder — the constant-multiply
@@ -49,18 +49,18 @@ Curve25519 prime.
   round-trip-verified `LeafSpec` realizer over `ZMod p25519`.  These are exactly
   the `+`, `−`, `×` of one Montgomery-ladder iteration (the ladder uses *only*
   these field ops — no inversion until the final coordinate recovery).
-* **NOT realized (the honest residual):** the **abstract elliptic-curve group
+* **NOT realized (outside the scope):** the **abstract elliptic-curve group
   law** — point addition on the Curve25519 group as a group operation — is **not**
   a base-field codec target and is **not** claimed here.  The `ladderStep` over
   the abstract group `G × G` (`MoreKernelRegistryEntries.LadderStepKernelRealizes`)
   is realized only *parametrically* over an abstract transport `decode`, with no
-  concrete codec; this file does **not** close that.  What this file does is
-  shrink the residual by grounding the *field-arithmetic* sub-steps of the ladder
-  in a proved byte codec — it does **not** ground the group operation, and it
-  does **not** assert "Schnorr EC point ops are now grounded".
+  concrete codec; this module does **not** close that.  This module grounds the
+  *field-arithmetic* sub-steps of the ladder in a proved byte codec — it does
+  **not** ground the group operation, and it does **not** assert that Schnorr EC
+  point ops are grounded.
 * **NOT proved (the same residual as every realizer file):** that the
   *jasmin-emitted machine bytes* of the real field kernels equal these realizers
-  (the owned-machine-code route — a separate follow-up).
+  (the owned-machine-code route, outside this module).
 
 ## Side-conditions are NOT kernel hypotheses
 

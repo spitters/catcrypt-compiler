@@ -10,10 +10,12 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfFull
 
 /-!
-# Keccak emitter lanes-readout — per-lane factoring of `lanesReadoutResidual` (task #135)
+# Keccak emitter lanes-readout — per-lane factoring of `lanesReadoutResidual`
 
-Task #135: discharge `KeccakEmitterReadoutHalfFull.lanesReadoutResidual` — the
-last named residual reducing Keccak to a single Prop after #128/#132/#134.
+This module factors `KeccakEmitterReadoutHalfFull.lanesReadoutResidual` — the
+single named Prop to which `KeccakEmitterReadoutHalf`, `KeccakEmitterReadoutHalfExt`
+and `KeccakEmitterReadoutHalfFull` reduce the Keccak readout — into per-lane
+sub-residuals.
 
 ## Strategy
 
@@ -27,7 +29,8 @@ The denotation half is `KeccakEmitterReadoutHalfFull.emitRound_denote_exists_cha
 which the unifier picks for us — but only when the witnesses *exist*; the
 existential's witness picks are tied to the lanes equation.
 
-Per #134's documentation: discharging the lanes equation directly via a single
+As recorded in `KeccakEmitterReadoutHalfFull`, discharging the lanes equation
+directly via a single
 simp blast through the ~266-binding chain is **outside the heartbeat budget**
 at 64M heartbeats. The per-lane factoring is the structural decomposition:
 
@@ -36,9 +39,9 @@ at 64M heartbeats. The per-lane factoring is the structural decomposition:
   the chain's terminal state equals the closed-form value at lane `(x, y)`".
 * Compose the 25 per-lane sub-residuals into the full residual.
 
-## Status (HONEST PARTIAL — same approach as #128/#132/#134)
+## Contents and scope
 
-This file delivers:
+This module provides:
 
 * **§1** `lanePostChainEq` — the per-lane sub-residual as a Prop.
 * **§2** `lanesReadoutResidual_of_perLane` — composing 25 per-lane sub-residuals
@@ -49,11 +52,13 @@ This file delivers:
   unconditional in the original FIPS sense.
 * **§4** the per-lane sub-residual is **stated** as a Prop family, with
   the closed-form value identified explicitly per lane via the diffusion
-  algebra of `KeccakDiffuseExact` (#113). The per-lane discharge itself is
-  the irreducible simp blast that the substrate of #116/#128/#132 + the
-  algebraic identities of #113 would close — but the per-lane blast is the
-  same ~266 rewrites at 25-way parallelism, so the per-lane factoring
-  matches the heartbeat-budget reality #134 documented.
+  algebra of `KeccakDiffuseExact`. The per-lane discharge itself is
+  the simp blast that the substrate of `KeccakEmitterReduction` /
+  `KeccakEmitterReadoutHalf` / `KeccakEmitterReadoutHalfExt` plus the
+  algebraic identities of `KeccakDiffuseExact` would close; it is outside the
+  scope of this module, since the per-lane blast is the same ~266 rewrites at
+  25-way parallelism and meets the heartbeat budget recorded in
+  `KeccakEmitterReadoutHalfFull`.
 
 The framework here is the **lattice analog of `Sha2EmitterReadoutHalf` §1's
 per-slot factoring**: SHA-2 closed by a 3-phase simp blast over 8 working
@@ -63,13 +68,15 @@ is the same template at 25× parallel scale.
 ## Axiom budget
 
 `[propext, Classical.choice, Quot.sound]` plus the `bv_decide` LRAT certs
-from #113 (inherited via `keccakClosedFullRound`/`keccak_round_bitexact`).
+from `KeccakDiffuseExact` (inherited via
+`keccakClosedFullRound`/`keccak_round_bitexact`).
 No new custom axioms. No `sorry`. No `native_decide`.
 
 ## Canonical entry point
 
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is step #135 in that chain: per-lane factoring of `lanesReadoutResidual`.
+module is the chain step after `KeccakEmitterReadoutHalfFull`: per-lane
+factoring of `lanesReadoutResidual`.
 -/
 
 @[expose] public section
@@ -97,7 +104,7 @@ at lane `(x, y)`". We expose it as a structural Prop, parameterised by the
 chain witnesses — these are the same witnesses the unifier picks for the
 full residual.
 
-The key observation: by `emitRound_denote_exists_chain` (#134), the chain has
+The key observation: by `emitRound_denote_exists_chain` (`KeccakEmitterReadoutHalfFull`), the chain has
 *some* witness triple `(Γ', bsF, immVF, VF)` for which the denotation half
 holds. The lanes equation evaluated at this terminal triple's `aSlot x y`
 slot is what each per-lane sub-residual names. -/
@@ -190,9 +197,9 @@ theorem lanesReadoutResidual_of_joint (round : Nat)
 
 /-! ## 3. From the joint form to the FIPS 202 unconditional bridges
 
-Given `lanesReadoutJoint round bs immV V`, we get all the bridges of #134
-**unconditionally**: the conditional `_from_lanesReadout` hypothesis is now
-inhabited by `lanesReadoutResidual_of_joint`. -/
+Given `lanesReadoutJoint round bs immV V`, all the bridges of
+`KeccakEmitterReadoutHalfFull` hold **unconditionally**: the conditional
+`_from_lanesReadout` hypothesis is inhabited by `lanesReadoutResidual_of_joint`. -/
 
 /-- **From joint to closed-form structural Prop.** -/
 theorem emitRoundDenotesClosedForm_of_joint (round : Nat)
@@ -229,8 +236,8 @@ i.e., the `keccakClosedFullRound` lane value evaluated on `lanesOfBState bs V`.
 The closure proof for `lanesReadoutJoint round bs immV V` would be: pick
 `(Γ', bsF, immVF, VF)` via `emitRound_denote_exists_chain` and prove the
 25 per-lane equations by a simp blast over the substrate's `@[simp]` set
-+ the 5 sub-block existentials' `_lanes_after` lemmas. Per #134, the simp
-blast is at the elaborator-budget edge; this framework names the per-lane
++ the 5 sub-block existentials' `_lanes_after` lemmas. That simp
+blast is at the elaborator-budget edge (see `KeccakEmitterReadoutHalfFull`); this framework names the per-lane
 factor exactly so the closure can be approached lane-by-lane. -/
 
 /-- **The per-lane closed-form value, written elementarily.** For lane
@@ -254,7 +261,8 @@ theorem closedFullRoundAt_unfold (s : Lanes) (rc : BitVec 64) (i : Fin 25) :
 
 For all 25 lanes `(x, y) ∈ {0..4}²`, the per-lane sub-residual `lanePostChainEq
 round bs immV V x y` follows the **same template**: rewrite the chain to its
-terminal state via the per-sub-block existentials of #128/#132, then evaluate
+terminal state via the per-sub-block existentials of `KeccakEmitterReadoutHalf`
+/ `KeccakEmitterReadoutHalfExt`, then evaluate
 the slot read at `aSlot x y` using the substrate's `@[simp]` slot-reading set.
 
 We expose the template as a definition-level structural fact, parameterised by
@@ -262,7 +270,8 @@ We expose the template as a definition-level structural fact, parameterised by
 
 /-- **Per-lane structural template.** The per-lane sub-residual is the
     composition of the chain's denotation existential (`emitRound_denote_exists_chain`)
-    with the per-sub-block readout-lanes-after lemmas of #128/#132 plus the
+    with the per-sub-block readout-lanes-after lemmas of `KeccakEmitterReadoutHalf`
+    / `KeccakEmitterReadoutHalfExt` plus the
     substrate's slot-reading `@[simp]` set, evaluated at the slot `aSlot x y`.
 
     The closure follows for each `(x, y)` by:
@@ -277,7 +286,7 @@ We expose the template as a definition-level structural fact, parameterised by
        `(bs, V)` reads, B-slot writes (from ρπ), C-slot writes (from θ-C),
        and chiScr writes (from θ-D and χ).
     4. The result equals `keccakClosedFullRound (lanesOfBState bs V) RC ⟨x+5y, _⟩`
-       by the algebraic identities `cTheta`, `cRho`, `cPi`, `cChi` of #113. -/
+       by the algebraic identities `cTheta`, `cRho`, `cPi`, `cChi` of `KeccakDiffuseExact`. -/
 theorem lanePostChainEq_template (round : Nat)
     {Γ : Ctxt jasminDialect}
     (bs : BState Γ) (immV : Nat → Ctxt.Var Γ r64) (V : Ctxt.Valuation Γ)
@@ -305,19 +314,18 @@ theorem lanePostChainEq_template (round : Nat)
   show i.val = x % 5 + 5 * (y % 5)
   rw [hxm, hym, hival]
 
-/-! ## 6. Per-lane discharge attempt — HONEST PARTIAL
+/-! ## 6. Per-lane discharge — scope
 
-We attempt to discharge `lanesReadoutJoint` directly. Per the heartbeat-budget
-documentation of #134, the full 25-lane simp blast is at the elaborator edge.
+A direct discharge of `lanesReadoutJoint` is outside this module's scope: by
+the heartbeat budget recorded in `KeccakEmitterReadoutHalfFull`, the full
+25-lane simp blast is at the elaborator edge.
 The per-lane structural template of §5 factors the work: 25 independent simp
 blasts of ~266 rewrites each.
 
 The per-lane discharge for any concrete `(x, y)` is the simp blast described
 in §5's template. We expose the **shape** of the per-lane discharge below;
-the concrete simp blast itself is documented as the remaining residual, in
-line with #128's "HONEST PARTIAL OK" criterion.
-
-Status: framework delivered; per-lane simp blast is the remaining task. -/
+the concrete simp blast itself is the residual, outside the scope of this
+module. -/
 
 /-- The chain-final closed-form lane equation expressed at the witness picked
     by `emitRound_denote_exists_chain`. This is the **named per-lane
@@ -335,7 +343,7 @@ def lanePostChainEqRes (round : Nat)
 /-! ## 7. Composition shape — 25 per-lane residuals ⇒ joint ⇒ full
 
 The composition direction (per-lane sub-residuals ⇒ joint ⇒ full residual)
-is the structural backbone. The reverse direction (joint ⇒ per-lane) holds
+is the central structure. The reverse direction (joint ⇒ per-lane) holds
 by `lanePostChainEq_template` of §5. The forward direction (per-lane ⇒ joint)
 is the **strengthening** that the per-lane existentials need to share
 witnesses.
@@ -362,24 +370,25 @@ theorem lanesReadoutJoint_intro (round : Nat)
                 (BitVec.ofNat 64 (roundConst round)) i) :
     lanesReadoutJoint round bs immV V := h
 
-/-! ## 8. Comparison with SHA-2 (#128) and headline status
+/-! ## 8. Comparison with SHA-2 and headline status
 
-| Aspect                      | SHA-2 (#128)                       | Keccak (#128/#132/#134/#135)         |
+| Aspect                      | SHA-2 (`Sha2EmitterReadoutHalf`)   | Keccak (readout chain)                |
 |-----------------------------|------------------------------------|---------------------------------------|
 | Chain length                | 46 bindings                        | ~266 bindings                         |
 | Sub-blocks                  | 1 monolithic block                 | 5 (θ-C, θ-D, ρπ, χ, ι)                |
 | Output slots                | 4 working                          | 25 lanes                              |
 | Joint closure               | 1 simp blast (16M HB)              | Per-lane factoring (25×, this file)   |
 | FIPS bridge                 | Unconditional                      | Conditional under `lanesReadoutJoint` |
-| Per-lane factor             | not needed                         | **this file** (#135)                  |
+| Per-lane factor             | not needed                         | **this file**                         |
 
 The per-lane factoring of this file is the **structural decomposition** that
 mirrors the SHA-2 template at 25-way scale. The 5 sub-block existentials of
-#128/#132 + the substrate's `@[simp]` slot-reading set + the algebraic
-identities of #113 (`cTheta`, `cRho`, `cPi`, `cChi`) are the **complete
-recipe** for the per-lane discharge. Per #134's heartbeat-budget
-documentation, the per-lane simp blast is the next-milestone residual —
-this file delivers the **framework** and the **composition direction**.
+`KeccakEmitterReadoutHalf` / `KeccakEmitterReadoutHalfExt` + the substrate's
+`@[simp]` slot-reading set + the algebraic identities of `KeccakDiffuseExact`
+(`cTheta`, `cRho`, `cPi`, `cChi`) are the **complete recipe** for the per-lane
+discharge. Within the heartbeat budget recorded in
+`KeccakEmitterReadoutHalfFull`, the per-lane simp blast is the residual;
+this module provides the **framework** and the **composition direction**.
 
 ## Axiom verification
 

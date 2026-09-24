@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 /-!
 # Register-allocation soundness with an auxiliary (flags + memory) simulation relation
 
-`GenericRegAlloc.RegMachine`'s renaming keystone (`renameBlock_runBlock`) is
+`GenericRegAlloc.RegMachine`'s renaming theorem (`renameBlock_runBlock`) is
 **register-only**: its `writes_rename` field supplies just register read-agreement
 (`get t (ρ a) = get s a` for `a ∈ readNames i`). That is exactly right for
 register-to-register ISAs (RISC-V `RInst`, the AVX/AVX-512 vector backends), but x86
@@ -24,9 +24,9 @@ proofs use, and the one the bespoke x86 `JInstrRegAllocScoped.StateRelOn` (flags
 `memOn`) carries by hand: a **simulation relation that also tracks the auxiliary
 state**. `RegMachineSim` is `RegMachine`'s data plus an abstract, ρ-aware `aux`
 relation and two laws — `writes_rename_sim` (the write-list agreement may assume
-`aux`) and `aux_step` (a step preserves `aux`). The keystone `renameBlock_runBlock_sim`
+`aux`) and `aux_step` (a step preserves `aux`). The main theorem `renameBlock_runBlock_sim`
 threads `Reindexed ∧ aux` through the block and exposes the register conclusion
-(`Reindexed`). Taking `aux := fun _ _ _ => True` recovers the register-only keystone, so
+(`Reindexed`). Taking `aux := fun _ _ _ => True` recovers the register-only theorem, so
 this is a conservative extension; the x86 `JInstr` instance takes `aux ρ s t :=`
 flags-equal `∧` memory-agree-under-ρ.
 
@@ -179,7 +179,7 @@ theorem setManyS_reindexed (I : Type) [RegMachineSim I S] (ρ : String → Strin
       (RegMachineSim.set (I := I) s p.1 p.2) (RegMachineSim.set (I := I) t (ρ p.1) p.2) hstep
     simpa [setManyS_cons, List.map_cons] using hrest
 
-/-! ## 3. The simulation keystone -/
+/-! ## 3. The simulation theorem -/
 
 /-- One step preserves `ReindexedS` (the register half), using the auxiliary relation to
     discharge `writes_rename_sim`. -/
@@ -204,7 +204,7 @@ theorem evalInstS_rename_preserves (I : Type) [RegMachineSim I S] (ρ : String �
     rwa [RegMachineSim.writes_names s i] at hpn
   exact setManyS_reindexed I ρ hinj hρnd (RegMachineSim.writes s i) hsub s t h n hn
 
-/-- **Simulation keystone (registers + aux).** Threading `ReindexedS ∧ aux` through the
+/-- **Simulation theorem (registers + aux).** Threading `ReindexedS ∧ aux` through the
     block: an injective discard-preserving renaming whose written names are all
     non-discard commutes with `runBlock` on the register file, given the auxiliary
     relation holds at entry. Conclusion exposes the register agreement; `aux` is the

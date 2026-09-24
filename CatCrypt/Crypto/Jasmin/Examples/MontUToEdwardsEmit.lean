@@ -7,6 +7,12 @@ module
 
 public import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
 
+/-!
+# Emit driver for the Montgomery-u to Edwards-y field map
+
+`main` runs `MontUToEdwards.runEmit`, which writes the Rust rendering of
+`mont_u_to_edwards_field` to `/tmp/mont_u_to_edwards_field.rs` and prints it.
+-/
 
 @[expose] public section
 /-- Driver script: `lake env lean --run …/MontUToEdwardsEmit.lean`. -/

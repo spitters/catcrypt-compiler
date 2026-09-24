@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # Plonky3 AIR constraint evaluator emitted through the verified front
 
-This is **layer 4** (the top) of the full Plonky3 STARK prover chain (task #154):
+This is **layer 4** (the top) of the full Plonky3 STARK prover chain:
 the AIR (Algebraic Intermediate Representation) constraint evaluator. Given an
 execution trace, it evaluates the transition constraints on every pair of
 consecutive rows and the boundary constraints, accumulating the quotient

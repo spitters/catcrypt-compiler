@@ -75,8 +75,8 @@ matching the front's single-assignment output.
 `Σ`-rotations (`SShl`/`SShr`), `Ch`/`Maj` (`SAnd`/`SXor`), and the `T1`/`T2`/state
 additions (`SAdd`, masked) are all `srcClean` — their variables are source names,
 their literal shift/mask constants `< 2^64`. The `SAdd`/`SShl` overflow `inRange`
-side conditions (the `RustExecRoundAdeq` §Residual wall the hoisted all-`u64` bound
-cannot meet) are irrelevant on a CLOSED kernel: the route needs only `srcClean`, and
+side conditions (which the hoisted all-`u64` bound cannot meet, see
+`RustExecRoundAdeq` §Scope) are irrelevant on a CLOSED kernel: the route needs only `srcClean`, and
 the value reconciliation is `decide` on the concrete literal inputs, on which no
 `+`/`<<` overflows `u64` (the SHA-256 32-bit lane discipline). This is
 `RustExecARXAdeq`'s closed-kernel argument carrying the entire round step — the
@@ -89,7 +89,7 @@ the value reconciliation is `decide` on the concrete literal inputs, on which no
 `σ x < 2^32`: the sum `h + Σ₁ + Ch + K + W < 5·2^32 < 2^64`, so no `u64` overflow.
 This is the `RustExecARXAdeq.arxE_inRange_of_bound` template on the round's widest
 add, showing the five-way partial-sum bound discharges symbolically, not just
-concretely — the residual the task flagged for the `T1` five-way add.
+concretely.
 
 ## Generalization to the whole compression (64 rounds)
 
@@ -109,9 +109,9 @@ them threaded through the state. Along the three orthogonal axes:
 
 For a CLOSED unrolled compression the `decide` leg delivers the concrete
 `emitted = RustExec` capstone with no manual `inRange` bookkeeping at all, exactly as
-the single round step here does. The one standing residual is the OPEN-kernel jasmin
-leg (`RustExecKernelAdeq.entry_trio_unsat_empty`, the `P3`-composition wall),
-orthogonal to the round assembly done here.
+the single round step here does. The OPEN-kernel jasmin leg (see
+`RustExecKernelAdeq.entry_trio_unsat_empty`) is outside this module and independent
+of the round assembly done here.
 -/
 
 @[expose] public section
@@ -241,10 +241,10 @@ theorem naE_srcClean : srcClean naE :=
 
 /-! ## §2 — symbolic ARX arm (`T1` five-way add `inRange` under the lane bound)
 
-The `T1 = h + Σ₁(e) + Ch + K + W` five-way add is the round's widest `SAdd` chain
-and the one the task flagged: its `SAdd` overflow side conditions are exactly the
+The `T1 = h + Σ₁(e) + Ch + K + W` five-way add is the round's widest `SAdd` chain:
+its `SAdd` overflow side conditions are exactly the
 ones the hoisted all-`u64` bound cannot meet. Under the per-kernel 32-bit lane bound
-`σ x < 2^32` — the honest SHA-256 word discipline — the sum stays `< 5·2^32 < 2^64`
+`σ x < 2^32` — the SHA-256 word discipline — the sum stays `< 5·2^32 < 2^64`
 and all four partial-sum `SAdd` conditions discharge. This is
 `RustExecARXAdeq.arxE_inRange_of_bound` on the round's five-way add. -/
 
@@ -255,7 +255,7 @@ def t1Bound (σ : String → Nat) : Prop :=
 /-- **The `T1` five-way-add `inRange` discharge.** From the lane bound the four
     partial-sum `SAdd` overflow conditions of `(h + Σ₁ + Ch + K + W) & M` — the ones
     the hoisted all-`u64` arm cannot meet — are all `< 2^64`, so no `u64` overflow.
-    The `#250` obligation for the round's widest add, discharged from the kernel's
+    The `inRange` obligation for the round's widest add, discharged from the kernel's
     lane discipline. -/
 theorem t1E_inRange_of_bound (σ : String → Nat) (h : t1Bound σ) : t1E.inRange σ := by
   obtain ⟨hh, hs1, hch, hK, hW⟩ := h
@@ -428,7 +428,7 @@ noncomputable def shJcom : Com jasminDialect (mapCtx ([] : Ctx)) (mapTy (.sword 
 theorem shHCom : cryptoDialectToJasminCom shCom = some shJcom :=
   (Option.some_get shComSome).symm
 
-/-- **The `#250` reconciliation for the whole round step, concrete leg.** The word
+/-- **The `inRange` reconciliation for the whole round step, concrete leg.** The word
     `semScalar` leaves in `na` (the new `a`) — computed through the two `Σ`
     rotate-xor trees, `Ch`/`Maj`, the five-way `T1` add, `T2`, and the state
     rotation, by the wrapping-`u64` evaluator — is the `ofNat 64` image of the

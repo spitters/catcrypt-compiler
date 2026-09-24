@@ -9,12 +9,11 @@ public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
 public import CatCrypt.Crypto.Jasmin.JasminAST
 
 /-!
-# `CProg`-free reference semantics for the monomorphic Jasmin fragment
+# Reference semantics for the monomorphic Jasmin fragment
 
-This module holds the `CExpr` / `CProg`-**free** reference-semantics core that
-both the `CProg`-targeting translator (`JasminToSSA.lean`) and the
-dialect-targeting translators (`JasminToSSADialect.lean` /
-`JasminToSSADialectNative.lean`) share:
+This module holds the reference-semantics core shared by the Jasmin SSA
+dead-code elimination (`JasminToSSA.lean`) and the `catCryptDialect`-targeting
+translators (`JasminToSSADialect.lean` / `JasminToSSADialectNative.lean`):
 
 * `MonoVarMap` — the monomorphic Jasmin `Var` → de Bruijn `CVar` map (plus its
   `empty` / `extend` / `extend2` builders);
@@ -24,11 +23,7 @@ dialect-targeting translators (`JasminToSSADialect.lean` /
 * `pureEvalMonoExpr` / `pureEvalMonoCmd` — the pure Jasmin reference evaluator
   on the word fragment (plus the `boolToBVaux` carry-bit packer).
 
-None of these mention the `CryptoSSA` `CExpr` / `CProg` inductives (the
-de Bruijn machinery `CVar` / `HVec` / `Ctx` lives in `CryptoSSA` and is reused
-unchanged). Extracting them here de-couples the dialect-translator correctness
-layer from `CProg`, a prerequisite for retiring the `CExpr` / `CProg`
-inductives.
+The de Bruijn machinery `CVar` / `HVec` / `Ctx` is the `CryptoSSA` substrate.
 -/
 
 @[expose] public section

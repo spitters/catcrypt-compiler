@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.Util.ZMod65536
 public import CatCrypt.Crypto.Util.ZMod65536
 
 /-!
-# C4 fan-out: the emitted Frodo MAC leaf EQUALS the abstract `Zq65536` ring op
+# The emitted Frodo MAC leaf EQUALS the abstract `Zq65536` ring op
 
 `CompileFromHaxFrodoMac.lean` proves the verified compiler *emits* a jasmin `Com`
 whose `BitVec 64` denotation is `frodoMacForm` — the integer multiply-accumulate
@@ -29,7 +29,7 @@ multiply-accumulate `accZ + aZ · bZ` of the elements the inputs encode.
 Because the modulus `65536 = 2^16` is a power of two dividing `2^64`, the `&
 0xFFFF` mask is *exactly* `% 65536` and projecting `(acc + a*b) % 65536` into
 `ZMod 65536` is the ring MAC `↑acc + ↑a · ↑b`. No `decide`/`native_decide` here —
-it is the genuine power-of-two reduce identity, lifted to the Mathlib ring
+it is the power-of-two reduce identity, lifted to the Mathlib ring
 through `ZMod.natCast_*`. Unlike the prime-field GF(127) tie there is **no domain
 restriction**: the mask handles full `u16` wraparound for any 64-bit inputs.
 -/
@@ -43,7 +43,7 @@ namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMacTie
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
 open CatCrypt.Util
 
-/-- **Frodo MAC emit-form ↔ abstract `Zq65536` ring tie (C4 fan-out).** The
+/-- **Frodo MAC emit-form ↔ abstract `Zq65536` ring tie.** The
     emitted MAC leaf `frodoMacForm` — read back as a `Zq65536 = ZMod 65536` ring
     element via `Zq65536.fromNat ∘ toNat` — equals the `Zq65536` ring
     multiply-accumulate `accZ + aZ · bZ` of the elements the inputs encode, with

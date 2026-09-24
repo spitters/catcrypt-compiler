@@ -378,7 +378,7 @@ rendered through an allocation's `seqOf`. `RobustCompilationPipeline.lean` lifts
 Two alternative paths exist in the repo that are deliberately **not** in the
 verified-asm CT pipeline:
 
-* **#140 `LlvmIRSemanticsAgrees`.** The LLVM IR backend trades the
+* **LLVM IR backend.** The LLVM IR backend trades the
   verified-asm CT story for LLVM's optimization budget. LLVM's pass pipeline
   is not, in general, CT-preserving (e.g. branch-on-secret can be introduced
   by `simplifycfg`, table lookups can be introduced by switch lowering).
@@ -387,11 +387,11 @@ verified-asm CT pipeline:
   behaviour or a separate verified LLVM-IR CT-preservation proof. Neither
   is in scope here.
 
-* **#145 MLIR-via-LLVM path.** Same caveat as #140, plus the MLIR lowering
-  passes themselves. The Com → MLIR pivot (#145, on `arith` / `func` /
+* **MLIR-via-LLVM path.** Same caveat as the LLVM IR backend, plus the MLIR
+  lowering passes themselves. The Com → MLIR lowering (on `arith` / `func` /
   `llvm` dialects) is correctness-preserving for *denotation*, but the
-  downstream MLIR → LLVM → asm pipeline is the same as #140's: not in the
-  verified-CT scope.
+  downstream MLIR → LLVM → asm pipeline is the same as the LLVM IR backend's:
+  not in the verified-CT scope.
 
 ### Theorem index for allocations
 

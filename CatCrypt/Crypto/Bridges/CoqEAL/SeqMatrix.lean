@@ -35,8 +35,8 @@ forms, Gaussian elimination, rank — are multi-month developments requiring
 MathComp-grade matrix infrastructure (mostly not yet in Mathlib in the needed
 form), and are NOT ported here. Matrix *multiplication* (row-col fold) is a
 `foldl`-shaped refinement reachable via `Trocq.foldl_transfer`; the fast
-algorithm (Strassen) and the normal-form / determinant developments are the
-genuine library tail.
+algorithm (Strassen) and the normal-form / determinant developments are
+outside the scope of this port.
 -/
 
 @[expose] public section

@@ -21,8 +21,8 @@ ANDN/`andn`, ROR/`rorImm`, MULX/`mulhi`, ADX/`addCarry{Lo,Hi}`) with their own
 
 ISel is the legalizer choice between the two: emit the neutral emulation, or the
 faster native op. For that swap to be **perf-only** (never correctness-critical),
-the native op must compute *exactly* the same `BitVec` value as the emulation it
-replaces. This file proves that equivalence for each idiom, at fully symbolic
+the native op must compute *exactly* the same `BitVec` value as its emulation.
+This module proves that equivalence for each idiom, at fully symbolic
 width `w`:
 
 | native op (jasmin) | emulation (`arith`)        | equivalence lemma            |
@@ -44,8 +44,8 @@ two-output instruction (data word + carry-out bit). The data word `a + b + cin`
 *is* expressible in the neutral add-with-carry-in form, but the **carry-out bit**
 `carryOutBit` reads the unbounded `a.toNat + b.toNat + cin.toNat ≥ 2 ^ w` overflow
 that the carry-free `arith` add (`a + b`, width-truncating) deliberately discards.
-So ADX is honestly *not* a pure-perf swap against the neutral op set — the
-carry-out is genuine extra information, not a re-spelling. We state the data-word
+So ADX is *not* a pure-perf swap against the neutral op set — the
+carry-out is extra information, not a re-spelling. We state the data-word
 identity (`addCarryLo_eq_addCarryWord`) and note the carry-out gap rather than
 fabricate a neutral emulation for it.
 -/
@@ -182,7 +182,7 @@ theorem mulhi_eq_mulHiW (w : Nat) (a b : BitVec w) :
       = BitVec.ofNat w (a.toNat * b.toNat / 2 ^ w) := rfl
 
 /-! ## 5. ADX (`addCarryLo` / `addCarryHi`) — data word ≡ neutral add-with-carry,
-    carry-out is genuine extra information
+    carry-out is extra information
 
 The carry-chain add `ADCX/ADOX dst := dst + src + cin` is a **two-output**
 instruction modelled by two single-output ops:
@@ -191,7 +191,7 @@ instruction modelled by two single-output ops:
 * `addCarryHi` — the carry-out bit `carryOutBit a b cin`
   (`= 1 iff a.toNat + b.toNat + cin.toNat ≥ 2 ^ w`).
 
-The **data word** is honestly expressible in the neutral op set: it is two
+The **data word** is expressible in the neutral op set: it is two
 width-truncating `arith` adds (`(a + b) + ext cin`). We state that identity below.
 
 The **carry-out bit**, however, reads the *unbounded* sum's overflow past
@@ -199,7 +199,7 @@ The **carry-out bit**, however, reads the *unbounded* sum's overflow past
 mod `2 ^ w`) deliberately discards. There is no carry-free `arith` op whose value
 recovers it; the ADX trio earns its keep precisely by exposing that bit. So ADX is
 **not** a pure-perf swap against the neutral op set — unlike ANDN/CMOV/ROR/MULX,
-the native carry-out is genuine extra semantics, not a re-spelling. We record the
+the native carry-out is extra semantics, not a re-spelling. We record the
 data-word equivalence and leave the carry-out as a deliberately-unmatched native
 capability (no fabricated neutral emulation). -/
 
@@ -212,7 +212,7 @@ theorem addCarryLo_apply (w : Nat) (a b : BitVec w) (cin : BitVec 1) :
 /-- **ADX data-word identity (the expressible part).** The native `addCarryLo`
     data result is the neutral add-with-carry-in form `a + b + ext(cin)` — two
     width-truncating adds, expressible without any native op. (The carry-OUT bit
-    `addCarryHi`/`carryOutBit` is the genuinely-extra information the neutral op
+    `addCarryHi`/`carryOutBit` is the extra information the neutral op
     set cannot recover; see the section docstring.) -/
 theorem addCarryLo_eq_addWithCarryIn (w : Nat) (a b : BitVec w) (cin : BitVec 1) :
     (jasminDenote.denote (.addCarryLo w) (.cons a (.cons b (.cons cin .nil))))

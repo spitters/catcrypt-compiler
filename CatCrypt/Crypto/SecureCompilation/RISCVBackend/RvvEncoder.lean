@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
 
 /-!
-# A verified machine-code byte encoder for the packed-u32 RVV `VInst` (#549 RVV residual)
+# A verified machine-code byte encoder for the packed-u32 RVV `VInst`
 
 `ARMBackend/NeonEncoder.lean` encodes the AArch64 NEON `NInst` packed subset; this
 module is its **RISC-V RVV** counterpart, encoding the OPIVV/OPIVI subset the owned

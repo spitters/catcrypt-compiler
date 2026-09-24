@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 # Byte-correct field multiply over `F_q` (`q = 8380417`, ML-DSA), FRONT-COMPILED
 
 This module sources the ML-DSA / Dilithium prime `q = 8380417 = 2^23 − 2^13 + 1`
-single-word Montgomery multiply through the verified `CProg`-free front — NO
+single-word Montgomery multiply through the verified direct front — NO
 hand-built `Com jasminDialect` anywhere:
 
 ```
@@ -85,7 +85,7 @@ extern void mldsa_mul(uint64_t *out, const uint64_t *inp);
 `abiW := 64`: each load is a `movq inp(%rsi,…), %work`, the store a
 `movq %work, out(%rdi)`.
 
-## Gates (REV-12: cheap in-Lean gates only; the byte tie is the C KAT)
+## Gates (cheap in-Lean gates only; the byte tie is the C KAT)
 
 * `mldsaLowered_isSome` — the front translates + lowers.
 * `mldsaMulCom_provenance` — `frontComAt "outv" >>= cryptoDialectToJasminCom =
@@ -93,7 +93,7 @@ extern void mldsa_mul(uint64_t *out, const uint64_t *inp);
 * `mldsaMul_one_func` — one exported function named `mldsa_mul`.
 * The Montgomery constants (`qinvNeg`, `R⁻¹`) and the `#eval` denotation battery
   against the independent Montgomery reference `(a·b·R⁻¹) mod q` are the
-  pre-existing in-Lean honesty evidence (§7–8); the byte tie against the
+  in-Lean cross-check (§7–8); the byte tie against the
   orchestrator's C harness is the real correctness gate.
 
 **0 sorries.**
@@ -169,7 +169,7 @@ def srcVM : VarMap srcCtx := bindAll ["a", "b"]
 
 /-! ## 3. The front-emitted program -/
 
-/-- Push `mulBody` through the `CProg`-free control front and cap with
+/-- Push `mulBody` through the control front and cap with
     `ret <name>`. `none` if the front declines. -/
 def frontComAt (name : String) : Option (Com catCryptDialect srcCtx (.sword 64)) :=
   match translateDialectControl srcVM mulBody with
@@ -271,7 +271,7 @@ def Rinv_ok : Bool := (4294967296 * RinvNat) % qNat == 1
 -- #eval qinvNeg_ok   -- expect: true   (q·qinvNeg ≡ −1 mod 2^32)
 -- #eval Rinv_ok      -- expect: true   (R·R⁻¹ ≡ 1 mod q)
 
-/-! ## 7. Valuation builder + `#eval` honesty gate -/
+/-! ## 7. Valuation builder + reference cross-check -/
 
 /-- Build a `Valuation (List.replicate n r64)` from a positional word function. -/
 def mkVal64 (g : Nat → BitVec 64) :
@@ -302,7 +302,7 @@ def vKat5 : Nat → Nat := fun i => [5000000, 7000000].getD i 0    -- → reduci
 /-- A small affine PRNG family for the spread cross-check. -/
 def vGen (s : Nat) : Nat → Nat := fun i => (i * (7919 * s + 13) + 104729 * s + 7) % qNat
 
-/-- **Honesty gate**: the `Com` denotation matches the independent Montgomery
+/-- **Reference check**: the `Com` denotation matches the independent Montgomery
     reference on the five KAT vectors. Expect `true`. -/
 def katChecks : Bool :=
   checkVec vKat1 && checkVec vKat2 && checkVec vKat3 && checkVec vKat4 && checkVec vKat5
@@ -310,7 +310,7 @@ def katChecks : Bool :=
 /-- ≥200 generated vectors all matching the reference. Expect `true`. -/
 def genChecks : Bool := (List.range 200).all (fun s => checkVec (vGen s))
 
-/-- The full honesty battery: KAT + 200 generated vectors. Expect `true`. -/
+/-- The full check battery: KAT + 200 generated vectors. Expect `true`. -/
 def allChecks : Bool := katChecks && genChecks
 
 -- #eval katChecks      -- expect: true

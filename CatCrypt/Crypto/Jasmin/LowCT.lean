@@ -14,7 +14,7 @@ public import Mathlib.Data.List.Basic
 
 Port of `AUCurves/src/Bedrock/SafeRustSimulation.v`.
 
-`LowCT` (historically `LowCT`, renamed in #267) is a typed DSL for low-level
+`LowCT` is a typed DSL for low-level
 constant-time crypto programs over tower field elements (Fp, Fp2, Fp6, Fp12,
 U64) — *not* Rust.  It exposes branchless-select, kernel-call ABIs, machine
 intrinsics, widening multiply, and limb stores, the scheduling/codegen layer
@@ -40,7 +40,7 @@ namespace CatCrypt.Crypto.Jasmin.LowCT
 
 open CatCrypt.Crypto.Jasmin (JArray)
 
-/-! ## §0  String → Nat injection (Phase E support, 2026-05-03)
+/-! ## §0  String → Nat injection
 
 `encodeStringNat : String → Nat` is an injection from Lean strings
 to Nat, used by `TowerType.byteSize` to give string-parameterised
@@ -105,17 +105,16 @@ theorem encodeStringNat_inj : Function.Injective encodeStringNat := by
 
 /-- Tower type hierarchy for pairing-friendly curves.
 
-    **Phase D/E/I/K extensions (2026-05-03):**
-    * `TFp25519_4Bounded` — refinement-typed 4-limb representation
-      (Phase D).  `bound` is the per-limb upper bound exponent;
+    **Extensions beyond the pairing tower:**
+    * `TFp25519_4Bounded` — refinement-typed 4-limb representation.
+      `bound` is the per-limb upper bound exponent;
       values represent integers below `2^(64*4)` with each limb < 2^bound.
-    * `TFpGen` / `TFp2Gen` — modulus-parametric (Phase E); the
+    * `TFpGen` / `TFp2Gen` — modulus-parametric; the
       `LeafOps` typeclass lookup table provides per-curve operations.
     * `TFpL25519` / `TFpP256` — Curve25519 scalar-field and P-256
-      base-field, added to close the pre-existing LowCTReflect
-      cross-reference and unblock the H1 subset filter.
-    * `TTuple` — binary product type (Phase I).  Larger tuples nest.
-    * `TBytes` — fixed-size byte arrays (Phase K).  Used for AES /
+      base-field, referenced by `LowCTReflect`.
+    * `TTuple` — binary product type.  Larger tuples nest.
+    * `TBytes` — fixed-size byte arrays.  Used for AES /
       ChaCha20 / SHA-256 / SHA-3 byte-level kernels. -/
 inductive TowerType where
   | TFp   : TowerType   -- base field element
@@ -123,14 +122,14 @@ inductive TowerType where
   | TFp6  : TowerType   -- degree-6 extension
   | TFp12 : TowerType   -- degree-12 extension
   | TU64  : TowerType   -- unsigned 64-bit scalar
-  /-- **Phase L.1 (2026-05-23) — unsigned 8-bit scalar.**  The element
+  /-- **Unsigned 8-bit scalar.**  The element
       type produced by a `cast#8` in the hax extraction's byte-packing
       kernels (`byte_encode_12`, `poly_compress_*`).  `TFp` already
       serves as the u16 coefficient width; `TU8` / `TU32` express the
       narrower / wider intermediates the packing code threads values
       through.  Lowers to `reg u8` in Jasmin. -/
   | TU8   : TowerType
-  /-- **Phase L.1 (2026-05-23) — unsigned 32-bit scalar.**  The widen
+  /-- **Unsigned 32-bit scalar.**  The widen
       target of `cast#32` in the byte-packing kernels (so the bit
       shifts have headroom).  Lowers to `reg u32`. -/
   | TU32  : TowerType
@@ -148,46 +147,45 @@ inductive TowerType where
   | TFpL25519 : TowerType
   /-- P-256 base field.  32 bytes (4×u64 saturated). -/
   | TFpP256 : TowerType
-  /-- **Phase D — bounds-tracked saturated 4-limb representation.**
+  /-- **Bounds-tracked saturated 4-limb representation.**
       Each limb < 2^bound.  Used for Sqr4, Solinas
       reduction, and any kernel where carry-bound tracking
       strengthens the Hoare invariants without runtime checks. -/
   | TFp25519_4Bounded : (bound : Nat) → TowerType
-  /-- **Phase E — modulus-parametric base field.**  The `LeafOps`
+  /-- **Modulus-parametric base field.**  The `LeafOps`
       typeclass instantiated at `modulusName` provides the per-curve
       operations.  `byteSize` is fixed at the type level. -/
   | TFpGen  : (modulusName : String) → (byteSize : Nat) → TowerType
-  /-- **Phase E — modulus-parametric quadratic extension.** -/
+  /-- **Modulus-parametric quadratic extension.** -/
   | TFp2Gen : (modulusName : String) → (byteSize : Nat) → TowerType
-  /-- **Phase I — binary product.**  Multi-element tuples nest as
+  /-- **Binary product.**  Multi-element tuples nest as
       `TTuple a (TTuple b c)`.  Lowering: byte-concatenated array.  -/
   | TTuple  : TowerType → TowerType → TowerType
-  /-- **Phase K — fixed-size byte array.**  `n` bytes.  Used for the
+  /-- **Fixed-size byte array.**  `n` bytes.  Used for the
       symmetric-crypto kernels (AES blocks, ChaCha state, SHA blocks). -/
   | TBytes  : (n : Nat) → TowerType
-  /-- **Phase Ext (2026-05-12) — array-of-slots.**  A homogeneous array
+  /-- **Array-of-slots.**  A homogeneous array
       of `n` cells, each holding a value of TowerType `t`.  Used for
       compactly expressing data structures whose elements are accessed
       by runtime index (e.g., comb tables, MSM bucket arrays).
       Runtime indexing is via `RArrLoad` / `RArrStore`; the index is a
       `u64`-typed scalar variable bound in `rsScalar`. -/
   | TArr    : (n : Nat) → (t : TowerType) → TowerType
-  /-- **Phase L (2026-05-22) — polynomial mod q.**  `q` is the prime
+  /-- **Polynomial mod q.**  `q` is the prime
       modulus, `n` the polynomial degree bound (coefficient count).
       For ML-KEM: `TPolyMod 3329 256`; for ML-DSA: `TPolyMod 8380417 256`.
       `storageBytes` allocates `n * ceil(log2 q / 8)` bytes. -/
   | TPolyMod : (q : Nat) → (n : Nat) → TowerType
-  /-- **Phase L — vector of polynomials.**  `k` polynomials each of
+  /-- **Vector of polynomials.**  `k` polynomials each of
       `TPolyMod q n`.  For ML-KEM polyvec: `TPolyVec 3329 256 2/3/4`. -/
   | TPolyVec : (q : Nat) → (n : Nat) → (k : Nat) → TowerType
-  /-- **Phase L — matrix of polynomials.**  `k × m` polyvecs. -/
+  /-- **Matrix of polynomials.**  `k × m` polyvecs. -/
   | TPolyMat : (q : Nat) → (n : Nat) → (k : Nat) → (m : Nat) → TowerType
   deriving DecidableEq, Repr, Inhabited, BEq
 
 /-- Byte size for BLS12-381 — used as a unique discrimination tag
     (required for the determinism proofs in
-    `JasminSemTracedDeterminism`).  After Phase D/E/I/K (2026-05-03),
-    every constructor occupies a disjoint Nat range via top-level
+    `JasminSemTracedDeterminism`).  Every constructor occupies a disjoint Nat range via top-level
     `Nat.pair tag inner`, so `byteSize_inj` holds unconditionally.
     The actual storage byte width is exposed via
     `TowerType.storageBytes` below; lowering / runtime code that
@@ -210,16 +208,16 @@ def TowerType.byteSize : TowerType → Nat
   | .TTuple a b           => Nat.pair 4 (Nat.pair a.byteSize b.byteSize)
   | .TBytes n             => Nat.pair 5 n
   | .TArr n t             => Nat.pair 6 (Nat.pair n t.byteSize)
-  -- Phase L (2026-05-22): polynomial-mod-q tower types.
+  -- Polynomial-mod-q tower types.
   | .TPolyMod q n         => Nat.pair 7 (Nat.pair q n)
   | .TPolyVec q n k       => Nat.pair 8 (Nat.pair q (Nat.pair n k))
   | .TPolyMat q n k m     => Nat.pair 9 (Nat.pair q (Nat.pair n (Nat.pair k m)))
 
-/-- Phase D/E/I/K — actual storage byte width.  This is the value
+/-- Actual storage byte width.  This is the value
     used by Jasmin's `.sarr n` allocation, distinct from `byteSize`
     (which is a unique discrimination tag for the type).  For the
-    seven legacy TowerType constructors the two functions agree;
-    for the Phase-D/E/I/K extensions, `storageBytes` returns the
+    seven pairing-tower constructors the two functions agree;
+    for the extensions, `storageBytes` returns the
     natural byte width while `byteSize` returns a unique encoded
     tag.  Lowering/runtime code that needs actual storage size
     should call `storageBytes`; symbolic proofs that need
@@ -242,7 +240,7 @@ def TowerType.storageBytes : TowerType → Nat
   | .TTuple a b => a.storageBytes + b.storageBytes
   | .TBytes n => n
   | .TArr n t => n * t.storageBytes
-  -- Phase L (2026-05-22): polynomial-mod-q storage.
+  -- Polynomial-mod-q storage.
   -- Each coefficient occupies ⌈(log2 q + 1) / 8⌉ bytes (`Nat.log2 q`
   -- returns ⌊log2⌋, so `Nat.log2 q + 1` is the bit-width of q-1, and
   -- `(x + 7) / 8` rounds up to a byte boundary).
@@ -251,8 +249,8 @@ def TowerType.storageBytes : TowerType → Nat
   | .TPolyMat q n k m => k * m * (n * ((Nat.log2 q + 1 + 7) / 8))
 
 /-- A unique numeric encoding of `TowerType`, distinct from
-    `byteSize` (which has collisions among the 32-byte constructors
-    after Phase D/E/I/K).  Used by the determinism proofs in
+    `byteSize` (which has collisions among the 32-byte
+    constructors).  Used by the determinism proofs in
     `JasminSemTracedDeterminism` where unique-tag per-constructor is
     required.  Injective by construction (each constructor occupies
     a disjoint range of Nat). -/
@@ -274,7 +272,7 @@ def TowerType.encode : TowerType → Nat
   | .TTuple a b              => 4000000 + 1000 * a.encode + b.encode
   | .TBytes n                => 8000000 + n
   | .TArr n t                => 9000000 + 1000 * n + t.encode
-  -- Phase L (2026-05-22): polynomial-mod-q encodings (disjoint Nat ranges).
+  -- Polynomial-mod-q encodings (disjoint Nat ranges).
   | .TPolyMod q n            => 10000000 + 1000 * q + n
   | .TPolyVec q n k          => 11000000 + 1000000 * q + 1000 * n + k
   | .TPolyMat q n k m        => 12000000 + 1000000 * q + 10000 * n + 100 * k + m
@@ -282,9 +280,9 @@ def TowerType.encode : TowerType → Nat
 /-- Runtime value for tower type `t`: a fixed-size byte array of
     `t.storageBytes` bytes.
 
-    Migrated 2026-05-14 from `t.byteSize` to `t.storageBytes` per the
-    db008232 follow-up: `byteSize` is now a proof-tag (unique encoding
-    via `Nat.pair`) needed for `byteSize_inj`, while `storageBytes` is
+    Uses `t.storageBytes`, not `t.byteSize`: `byteSize` is a proof-tag
+    (unique encoding via `Nat.pair`) needed for `byteSize_inj`, while
+    `storageBytes` is
     the actual runtime byte width consumed by lowering (`.sarr N`,
     `Parr_init N`, etc.). See `storageBytes`' docstring above for the
     full distinction. -/
@@ -292,7 +290,7 @@ abbrev RustVal (t : TowerType) := JArray t.storageBytes
 
 /-! ## §2  Located values -/
 
-/-- **Phase J — information-flow level.**  Tracks whether a slot
+/-- **Information-flow level.**  Tracks whether a slot
     holds public or secret data.  Default `Public` for back-compat. -/
 inductive SecretLevel where
   | Public : SecretLevel
@@ -306,10 +304,8 @@ def SecretLevel.join : SecretLevel → SecretLevel → SecretLevel
   | .Public, .Public => .Public
 
 /-- A located value: a named variable together with its tower type.
-    `locDst` is exposed as a function returning `locSrc` for backwards
-    compatibility — historically the structure had a separate `locDst`
-    field, but every construction set `locDst = locSrc` and the
-    duality wasn't exercised. The intrinsic encoding eliminates a
+    `locDst` is exposed as a function returning `locSrc`; there is no
+    separate `locDst` field. The intrinsic encoding eliminates a
     structural ambiguity blocking unconditional reverse compiler
     correctness (see RustExecTraced.lean's A1.16' section). -/
 structure Located where
@@ -317,7 +313,7 @@ structure Located where
   locSrc : TowerType
   deriving DecidableEq, Repr, Inhabited, BEq
 
-/-- **Phase J — information-flow classification (2026-05-03).**
+/-- **Information-flow classification.**
     A `LevelTable` maps named slots to public/secret classification.
     The CT analyser consumes this table to reject secret-dependent
     branches.  Defaults to all-public (`fun _ => .Public`) so
@@ -333,8 +329,7 @@ def LevelTable.allPublic : LevelTable := fun _ => .Public
 def Located.level (loc : Located) (lt : LevelTable) : SecretLevel :=
   lt loc.locVar
 
-/-- Backwards-compatible accessor: `locDst` was historically a separate
-    field always equal to `locSrc`. Now defined as a function. -/
+/-- Accessor `locDst`, always equal to `locSrc`. -/
 abbrev Located.locDst (loc : Located) : TowerType := loc.locSrc
 
 /-- `Located` always has positive `sizeOf` because it has at least
@@ -353,7 +348,7 @@ def callAliases (dest : Located) (args : List Located) : Bool :=
 
 `SExpr` is a small expression language over Nat-valued scalar slots
 (those bound by `RLetU64Zero` and `RScalarSet`).  Used by
-`RScalarSetExpr` (Phase Ext 2026-05-12) to assign a runtime computed
+`RScalarSetExpr` to assign a runtime computed
 value to a scalar slot, e.g. `k := i * 16 + d` for runtime `i`/`d`.
 
 Mirrors Rocq's `sexpr_ed` (`SafeRustEd25519Sim.v`).  The 8 constructors
@@ -371,7 +366,7 @@ inductive SExpr where
   | SAnd : SExpr → SExpr → SExpr    -- bitwise and
   | SXor : SExpr → SExpr → SExpr    -- bitwise xor (GF(16) add)
   | SLt  : SExpr → SExpr → SExpr    -- x < y → 0 / 1 (UNSIGNED)
-  /-- **Signed-arith extension (#257, 2026-05-30) — arithmetic shift right.**
+  /-- **Signed-arith extension —arithmetic shift right.**
       `SAsr a b` shifts `a` right by `b`, interpreting `a` as a 64-bit
       **two's-complement** signed value: the sign bit (bit 63) is replicated
       into the vacated high bits.  This is the FIPS-204 `montgomery_reduce`
@@ -379,7 +374,7 @@ inductive SExpr where
       Lowers to Jasmin `Oasr U64` (`>>s`).  Distinct from `SShr` (logical
       `>>`, vacated bits zero) — the two coincide only when `a`'s sign bit is 0. -/
   | SAsr : SExpr → SExpr → SExpr    -- arithmetic (sign-preserving) shift right
-  /-- **Signed-arith extension (#257, 2026-05-30) — signed multiply.**
+  /-- **Signed-arith extension —signed multiply.**
       `SMulS a b` is the 64-bit low-word product, with both operands
       interpreted as two's-complement.  At the low-64-bit word level a signed
       product and an unsigned product carry the *same* bit pattern (multiply
@@ -388,7 +383,7 @@ inductive SExpr where
       reads a sign-correct value (`montgomery_reduce`'s `(int64_t)t * Q`).
       Lowers to Jasmin `Omul U64`. -/
   | SMulS : SExpr → SExpr → SExpr   -- signed (two's-complement) multiply
-  /-- **Widening-multiply extension (#261, 2026-05-30) — unsigned high word.**
+  /-- **Widening-multiply extension —unsigned high word.**
       `SMulHiU a b` is the *high* 64 bits of the full `64×64 → 128` **unsigned**
       product of `a` and `b` (each read as a `u64` word).  Paired with the
       existing low-word `SMul`, the pair `(SMulHiU a b, SMul a b)` reconstructs
@@ -397,7 +392,7 @@ inductive SExpr where
       (BMI2 unsigned `hi:lo = a*b`), with the low output discarded (`_`).
       Distinct from `SMul` (which keeps the low word). -/
   | SMulHiU : SExpr → SExpr → SExpr -- high 64 bits of unsigned 64×64→128 product
-  /-- **Widening-multiply extension (#261, 2026-05-30) — signed high word.**
+  /-- **Widening-multiply extension —signed high word.**
       `SMulHiS a b` is the *high* 64 bits of the full `64×64 → 128` **signed**
       (two's-complement) product of `a` and `b`.  Paired with the low-word
       `SMulS`, the pair `(SMulHiS a b, SMulS a b)` reconstructs the full signed
@@ -409,7 +404,7 @@ inductive SExpr where
       and unsigned, but the *high* word does NOT — `SMulHiS` ≠ `SMulHiU`
       whenever exactly one operand's sign bit is set. -/
   | SMulHiS : SExpr → SExpr → SExpr -- high 64 bits of signed 64×64→128 product
-  /-- **Tower-limb read extension (#354, 2026-06-01) — read limb `i` of a
+  /-- **Tower-limb read extension —read limb `i` of a
       tower slot.**  `SLimb v i` is the value of limb `i` (a little-endian
       `u64` word) of the limb-bearing tower slot named `v`.  Mirrors
       AUCurves' `sexpr_ed` constructor `SLimb : var → nat → sexpr_ed`
@@ -439,7 +434,7 @@ def sexprToSignedInt64 (n : Nat) : Int := (BitVec.ofNat 64 n).toInt
     (bits `[0,63]`), the storage form `rsScalar` holds. -/
 def sexprOfSignedInt64 (z : Int) : Nat := (BitVec.ofInt 64 z).toNat
 
-/-- **Widening-multiply extension (#261).** High 64 bits of the full
+/-- **Widening-multiply extension.** High 64 bits of the full
     `64×64 → 128` **unsigned** product of the two stored words `a`, `b`.
     Each operand is first reduced mod `2^64` (the `u64` storage form), the
     full Nat product is taken, and its bits `[64,127]` are returned.  Matches
@@ -447,7 +442,7 @@ def sexprOfSignedInt64 (z : Int) : Nat := (BitVec.ofInt 64 z).toNat
 def sexprMulHiU (a b : Nat) : Nat :=
   ((a % (2 ^ 64)) * (b % (2 ^ 64))) >>> 64
 
-/-- **Widening-multiply extension (#261).** High 64 bits of the full
+/-- **Widening-multiply extension.** High 64 bits of the full
     `64×64 → 128` **signed** (two's-complement) product.  The operands are
     interpreted as signed int64 (`sexprToSignedInt64`), the exact `Int`
     product is taken, arithmetically shifted right by 64 (`Int` shift = floor
@@ -472,7 +467,7 @@ def sexprMulHiS (a b : Nat) : Nat :=
     a value oracle.  **For VALUE-level (emit-correctness) reasoning use
     `SExpr.evalBV` (wrapping-`u64`-faithful); the two agree only under the
     explicit `SExpr.inRange` side condition (`SExpr.evalBV_eq_ofNat_eval`, the
-    #250 reconciliation).** -/
+    reconciliation).** -/
 def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SVar x   => σ x
   | .SLit n   => n
@@ -484,7 +479,7 @@ def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SAnd a b => a.eval σ &&& b.eval σ
   | .SXor a b => a.eval σ ^^^ b.eval σ
   | .SLt  a b => if a.eval σ < b.eval σ then 1 else 0
-  -- Signed-arith extension (#257): two's-complement-faithful semantics via
+  -- Signed-arith extension: two's-complement-faithful semantics via
   -- `BitVec 64`.  `SAsr` interprets its operand as a signed int64 and
   -- shifts right with sign replication (matches Jasmin `>>s`); `SMulS`
   -- multiplies as signed int64 and re-wraps mod 2^64.
@@ -492,17 +487,17 @@ def SExpr.eval (σ : String → Nat) : SExpr → Nat
       sexprOfSignedInt64 (sexprToSignedInt64 (a.eval σ) >>> (b.eval σ : Nat))
   | .SMulS a b =>
       sexprOfSignedInt64 (sexprToSignedInt64 (a.eval σ) * sexprToSignedInt64 (b.eval σ))
-  -- Widening-multiply extension (#261): the high word of the 128-bit product.
+  -- Widening-multiply extension: the high word of the 128-bit product.
   | .SMulHiU a b => sexprMulHiU (a.eval σ) (b.eval σ)
   | .SMulHiS a b => sexprMulHiS (a.eval σ) (b.eval σ)
-  -- Tower-limb read extension (#354): `SLimb` reads the tower heap, which the
+  -- Tower-limb read extension: `SLimb` reads the tower heap, which the
   -- scalar environment `σ : String → Nat` does not carry.  The scalar `eval`
   -- therefore returns a SAFE DEFAULT of `0` — the faithful value lives in
   -- `SExpr.evalState` below.  This arm keeps `eval` total and exhaustive
   -- WITHOUT changing its signature (other emit modules depend on it).
   | .SLimb _ _ => 0
 
-/-! ### Wrapping-`u64` reconciliation (#250)
+/-! ### Wrapping-`u64` reconciliation
 
 `SExpr.eval` (above) evaluates over **unbounded `Nat`**.  The jasmin / x86
 target, by contrast, stores every scalar as a `u64` and wraps every
@@ -518,9 +513,9 @@ reduces mod `2^64`), exactly mirroring the hardware.  It is the
 storage-truncation image of `eval` made *intermediate-faithful*.  Note the
 signed / widening arms (`SAsr`, `SMulS`, `SMulHi{U,S}`) already produce an
 in-`u64`-range value in `eval` (via `sexprOfSignedInt64` / `% 2^64`), so their
-`evalBV` arm is the literal truncation of that same value — they were already
-wrapping-faithful (#257, #261); only the plain `Nat`-arithmetic arms (`SAdd`,
-`SSub`, `SMul`, `SShl`, `SShr`, `SLt`, `SAnd`, `SXor`) needed reconciling.
+`evalBV` arm is the literal truncation of that same value — they are
+wrapping-faithful; only the plain `Nat`-arithmetic arms (`SAdd`,
+`SSub`, `SMul`, `SShl`, `SShr`, `SLt`, `SAnd`, `SXor`) need reconciling.
 
 The bridge to the Nat model is `SExpr.evalBV_eq_ofNat_eval` below: under the
 explicit in-range side-condition `SExpr.inRange` the wrapping evaluator equals
@@ -645,7 +640,7 @@ theorem SExpr.eval_lt_of_inRange (σ : String → Nat) :
 def SExpr.liftEnv (σ : String → Nat) : String → BitVec 64 :=
   fun x => BitVec.ofNat 64 (σ x)
 
-/-- **Wrapping-`u64` ⇔ Nat-model bridge (#250, `.toNat` form).**
+/-- **Wrapping-`u64` ⇔ Nat-model bridge (`.toNat` form).**
     Under the in-range side-condition `inRange σ e`, the `Nat` read back out of
     the wrapping-`u64` evaluator equals the Nat-model value: i.e. **no wrap
     occurs**, so `SExpr.eval` faithfully predicts the hardware result.  This is
@@ -716,7 +711,7 @@ theorem SExpr.toNat_evalBV_of_inRange (σ : String → Nat) :
       intro _
       simp [SExpr.evalBV, SExpr.eval]
 
-/-- **Wrapping-`u64` ⇔ Nat-model bridge (#250, `BitVec` form).**  The direct
+/-- **Wrapping-`u64` ⇔ Nat-model bridge (`BitVec` form).**  The direct
     corollary: on in-range inputs the wrapping evaluator *is* the truncation of
     the Nat model.  Combined with `eval_lt_of_inRange` this says the
     emit-correctness chain — which stores `BitVec.ofNat 64 (eval …)` — agrees
@@ -742,13 +737,13 @@ def SExpr.ppRust : SExpr → String
   | .SAnd a b => "(" ++ a.ppRust ++ " & " ++ b.ppRust ++ ")"
   | .SXor a b => "(" ++ a.ppRust ++ " ^ " ++ b.ppRust ++ ")"
   | .SLt  a b => "(if " ++ a.ppRust ++ " < " ++ b.ppRust ++ " { 1u64 } else { 0u64 })"
-  -- Signed-arith extension (#257): cast through i64 for the signed operation,
+  -- Signed-arith extension: cast through i64 for the signed operation,
   -- then back to u64 (the storage form), matching `SExpr.eval`'s BitVec model.
   | .SAsr a b =>
       "(((" ++ a.ppRust ++ " as i64) >> " ++ b.ppRust ++ ") as u64)"
   | .SMulS a b =>
       "(((" ++ a.ppRust ++ " as i64).wrapping_mul(" ++ b.ppRust ++ " as i64)) as u64)"
-  -- Widening-multiply extension (#261): widen to (u/i)128, multiply, take the
+  -- Widening-multiply extension: widen to (u/i)128, multiply, take the
   -- high 64 bits via `>> 64`, narrow back to u64 — matches `SExpr.eval`'s
   -- `sexprMulHi{U,S}` model.
   | .SMulHiU a b =>
@@ -756,7 +751,7 @@ def SExpr.ppRust : SExpr → String
   | .SMulHiS a b =>
       "(((((" ++ a.ppRust ++ " as i64 as i128) * (" ++ b.ppRust ++
         " as i64 as i128)) >> 64) as u64))"
-  -- Tower-limb read extension (#354): limb `i` of the tower slot `v` is the
+  -- Tower-limb read extension: limb `i` of the tower slot `v` is the
   -- `v.limbs[i]` field access in Rust surface source.
   | .SLimb v i => v ++ ".limbs[" ++ toString i ++ "]"
 
@@ -790,13 +785,13 @@ def SExpr.ppJazz : SExpr → String
   | .SAnd a b => "(" ++ a.ppJazz ++ " & " ++ b.ppJazz ++ ")"
   | .SXor a b => "(" ++ a.ppJazz ++ " ^ " ++ b.ppJazz ++ ")"
   | .SLt  a b => "(if (" ++ a.ppJazz ++ " < " ++ b.ppJazz ++ ") { 1 } else { 0 })"
-  -- Signed-arith extension (#257): Jasmin's `>>s` is the arithmetic
+  -- Signed-arith extension: Jasmin's `>>s` is the arithmetic
   -- (sign-preserving) shift right; signed `*` shares the `*` token (the low
   -- word is sign-agnostic).  Jasmin infers signedness from the `>>s` operator
   -- and from declared reg types, so no explicit cast token is needed here.
   | .SAsr a b => "(" ++ a.ppJazz ++ " >>s " ++ b.ppJazz ++ ")"
   | .SMulS a b => "(" ++ a.ppJazz ++ " * " ++ b.ppJazz ++ ")"
-  -- Widening-multiply extension (#261): the high word of a 64×64→128 product
+  -- Widening-multiply extension: the high word of a 64×64→128 product
   -- is NOT a Jasmin infix expression — it is the multi-output intrinsic
   -- `#MULX` / `#IMUL` (lowered as a `Copn` by `LowCTToJasmin`'s dedicated
   -- `RScalarSetExpr` arm).  This surface-string path is the deprecated
@@ -805,7 +800,7 @@ def SExpr.ppJazz : SExpr → String
   -- for `ppJazz` totality.
   | .SMulHiU a b => "#MULX_hi(" ++ a.ppJazz ++ ", " ++ b.ppJazz ++ ")"
   | .SMulHiS a b => "#IMUL_hi(" ++ a.ppJazz ++ ", " ++ b.ppJazz ++ ")"
-  -- Tower-limb read extension (#354): limb `i` of the tower slot `v` is the
+  -- Tower-limb read extension: limb `i` of the tower slot `v` is the
   -- array access `v[i]` in Jasmin surface source (the slot is a `reg u64[N]`).
   | .SLimb v i => v ++ "[" ++ toString i ++ "]"
 
@@ -835,7 +830,7 @@ inductive LowCT where
   /-- 2-destination leaf call, used for cswap-style operations whose
       semantics mutate two field elements at once.  Emits as
       `f(&mut dest1, &mut dest2, &args…)`.  borrowOk requires
-      `dest1 ≠ dest2` and neither in `args`.  The Rocq/CryptoSSA
+      `dest1 ≠ dest2` and neither in `args`.  The Rocq / `Com`
       semantics treats this as two independent writes; the leaf's
       Hoare spec must mention both destinations. -/
   | RCallSwap : String → Located → Located → List Located → LowCT
@@ -850,7 +845,7 @@ inductive LowCT where
       `for`; the Hoare rule below gives `0 ≤ x < n` as a free invariant. -/
   | RFor       : String → Nat → LowCT → LowCT
   | RLimbStore : Located → Nat → BitVec 64 → LowCT
-  /-- **Phase R5 (2026-06-01) — runtime-valued limb store.**
+  /-- **Runtime-valued limb store.**
       `RLimbStoreExpr loc idx e` writes the *runtime-computed* word
       `SExpr.eval e` (truncated to `BitVec 64`) into limb index `idx`
       of the tower slot `loc`.  This is the limb-indexed analogue of
@@ -865,13 +860,13 @@ inductive LowCT where
       is `(BitVec.ofNat 64 (e.eval rs.rsScalar))` fed through
       `leafSpec.limbStore`. -/
   | RLimbStoreExpr : Located → Nat → SExpr → LowCT
-  /-- **Phase G — N-output function call.**  Generalisation of `RCall`
+  /-- **N-output function call.**  Generalisation of `RCall`
       (1-out) and `RCallSwap` (2-out) to arbitrary destination count.
       The oracle `LeafSpec.callN` is the multi-output analogue of
       `LeafSpec.call`.  Borrow checker: `dests` distinct, `dests ∩ args
       = ∅`.  Used for `(carry, sum) = adcx(a, b, c_in)` shapes. -/
   | RCallN     : String → List Located → List Located → LowCT
-  /-- **Phase H — CT-safe conditional select primitive.**
+  /-- **CT-safe conditional select primitive.**
       `RSelect dst sel src0 src1` writes `dst := if sel = 0 then src0
       else src1`.  Hardware-level: a single `CMOV`-shaped opcode chain.
       Promoting cmov to a constructor (rather than emulating via leaf
@@ -879,20 +874,20 @@ inductive LowCT where
       read src0, read src1, write dst — no aliasing constraint between
       dst and srcs since cmov is read-then-write). -/
   | RSelect    : Located → String → Located → Located → LowCT
-  /-- **Phase L — zero-cost contract assertion.**  No runtime effect;
+  /-- **Zero-cost contract assertion.**  No runtime effect;
       the Hoare rule injects an external proposition (looked up by
       `label` in the proof context) into the postcondition.  Used to
       strengthen loop invariants without inserting any bytes into the
       output asm. -/
   | RAssert    : String → LowCT
-  /-- **Phase M — scoped block.**  `RBlock body` runs `body` in a fresh
+  /-- **Scoped block.**  `RBlock body` runs `body` in a fresh
       scope; locally bound slots (via `RLetZero` / `RLetU64Zero` inside
       `body`) are released at scope end, allowing stack reuse across
       multiple `RBlock`s in a sequence.  Lowering: emits `body`'s Jasmin
       bracketed by `stackalloc`/dealloc; runtime semantics are
       identical to `body`. -/
   | RBlock     : LowCT → LowCT
-  /-- **Phase C — user-defined helper definition.**
+  /-- **User-defined helper definition.**
       `RFnDef name params returns body cont` declares a helper
       function `name` with `params` (read-only, by-ref) and `returns`
       (write, by-ref).  `body` runs with `params` and `returns` in
@@ -906,7 +901,7 @@ inductive LowCT where
               → (body : LowCT)
               → (cont : LowCT)
               → LowCT
-  /-- **Phase C — user-defined helper call.**
+  /-- **User-defined helper call.**
       `RFnCall f dests args` invokes a helper previously declared via
       `RFnDef` (or in an outer environment).  Borrow checker: same as
       `RCallN` (dests distinct, dests ∩ args = ∅).  Lowers to a single
@@ -915,29 +910,29 @@ inductive LowCT where
               → (dests : List Located)
               → (args : List Located)
               → LowCT
-  /-- **Phase I — tuple component load.**
+  /-- **Tuple component load.**
       `RTupleLoad dst src idx` reads component `idx` of `src` into
       `dst`.  Lowering: array-index load.  -/
   | RTupleLoad  : (dst : Located) → (src : Located) → (idx : Nat) → LowCT
-  /-- **Phase Ext (2026-05-12) — array element store.**
+  /-- **Array element store.**
       `RArrStore arr idxVar src` writes the value of slot `src` into
       element `idxVar` of the array slot `arr`.  `idxVar` is the name
       of a `u64`-typed scalar variable in `rsScalar` holding the
       runtime index.  Requires `arr.locSrc = TArr n t` and
       `src.locSrc = t`.  Lowering: `arr[idxVar as usize] = *src;`. -/
   | RArrStore  : (arr : Located) → (idxVar : String) → (src : Located) → LowCT
-  /-- **Phase Ext (2026-05-12) — array element load.**
+  /-- **Array element load.**
       `RArrLoad dst src idxVar` reads element `idxVar` of array slot
       `src` into `dst`.  Requires `src.locSrc = TArr n t` and
       `dst.locSrc = t`.  Lowering: `*dst = src[idxVar as usize];`. -/
   | RArrLoad   : (dst : Located) → (src : Located) → (idxVar : String) → LowCT
-  /-- **Phase DD (2026-05-28) — literal-index array store.**
+  /-- **Literal-index array store.**
       `RArrStoreLit arr idx src` writes the value of `src` into element
       `idx` of `arr`, where `idx : Nat` is a *compile-time literal*
       (not read from a runtime scalar slot).  This is the
       static-index complement of `RArrStore` and is sufficient for
       post-`RFor`-unroll outer-loop array access — the most common
-      Tier-3 emit pattern.  Lowering: `arr[idx] = *src;`.
+      emit pattern.  Lowering: `arr[idx] = *src;`.
 
       Composes naturally with the static `unrollForJ` pattern: after
       `RFor x N body` unrolls into `N` explicit iterations, any
@@ -945,20 +940,20 @@ inductive LowCT where
       rewritten to `RArrLoadLit/RArrStoreLit` with the literal
       iteration index. -/
   | RArrStoreLit : (arr : Located) → (idx : Nat) → (src : Located) → LowCT
-  /-- **Phase DD (2026-05-28) — literal-index array load.**
+  /-- **Literal-index array load.**
       `RArrLoadLit dst src idx` reads element `idx` of `src` into
       `dst`, where `idx : Nat` is a *compile-time literal*.  The
       static-index complement of `RArrLoad`.  Lowering:
       `*dst = src[idx];`. -/
   | RArrLoadLit  : (dst : Located) → (src : Located) → (idx : Nat) → LowCT
-  /-- **Phase Ext (2026-05-12) — assign expression to scalar slot.**
+  /-- **Assign expression to scalar slot.**
       `RScalarSetExpr x e` evaluates `SExpr e` against the current
       scalar environment and writes the result to scalar slot `x`.
       Strictly more expressive than `RScalarSet x n` (which only takes
       a literal Nat).  Unlocks index arithmetic like `k := i * 16 + d`
       for runtime-bound `i`, `d`. -/
   | RScalarSetExpr : (x : String) → (e : SExpr) → LowCT
-  /-- **Phase E2 (2026-05-29) — dst-threaded leaf call.**
+  /-- **Dst-threaded leaf call.**
       `RCallDstThreaded f dst args` calls leaf `f` with the destination
       slot threaded as both the first argument **and** the receiving
       lvalue: `dst = f(dst, args)`.  It is the shape for a shim whose
@@ -979,7 +974,7 @@ inductive LowCT where
   | RForRuntime : (x : String) → (bound : SExpr) → (body : LowCT) → LowCT
   deriving Repr, Inhabited
 
-/-- **Phase Vec (2026-07-01) — 128-bit SIMD vector assignment (the vector analog
+/-- **128-bit SIMD vector assignment (the vector analog
     of `RScalarSetExpr`).**  `RVsimdSetExpr x tag args` assigns to the 128-bit
     vector slot `x` the result of the SIMD op named by `tag` applied to the
     128-bit operand slots named in `args`.  `tag` is a `vsimd`-op tag
@@ -1015,21 +1010,19 @@ theorem LowCT.RVsimdSetExpr_desugar (x tag : String) (args : List String) :
     LowCT.RVsimdSetExpr x tag args
       = .RCall tag ⟨x, .TU64⟩ (args.map (fun s => ⟨s, .TU64⟩)) := rfl
 
-/-! ## §3b  Generic structural recursor / fold (#350)
+/-! ## §3b  Generic structural recursor / fold
 
-Adding or changing a `LowCT` constructor historically forced hand-editing
-an open match across ~56 files (the recurring tax behind #226/#245/#263/#344).
-The root cause is that the *recursion structure* of `LowCT` — which
-constructors carry sub-commands and how their results combine — is duplicated
-verbatim in every structural analysis (`borrowOk`, `destsOf`, `rcSize`,
-leak-trace collection, …).
+The *recursion structure* of `LowCT` — which constructors carry sub-commands
+and how their results combine — is shared by every structural analysis
+(`borrowOk`, `destsOf`, `rcSize`, leak-trace collection, …).  Written as an
+open match, adding a constructor would require editing each analysis.
 
 `LowCT.fold` factors that recursion structure into **one** place.  An
 analysis with carrier type `α` supplies:
 
 * `leaf  : LowCT → α`  — the value for a non-recursive (leaf) node.  The
   argument is the *original* node, so the analysis reads off its fields
-  (dest/args/etc.) exactly as in the old match.  A new leaf constructor only
+  (dest/args/etc.) directly.  A new leaf constructor only
   needs an arm here (or a catch-all default), never a new recursion clause.
 * `seqLike  : α → α → α`        — combine the two children of `RSeq`/`RIfNz`
   (and `RFnDef`'s body × cont).
@@ -1042,8 +1035,8 @@ entire structural skeleton.  Analyses that are monoidal folds
 to a one-line algebra; the per-leaf arm stays where it belongs.
 
 The recursion is structural (every recursive call is on a syntactic
-sub-term), so the equation lemmas are definitional `rfl`s — proofs that
-`unfold`/`simp [LowCT.fold]` previously closed by matching still close. -/
+sub-term), so the equation lemmas are definitional `rfl`s and
+`unfold`/`simp [LowCT.fold]` reduces `fold` on a constructor. -/
 def LowCT.fold {α : Type _}
     (leaf : LowCT → α)
     (seqLike : α → α → α)
@@ -1091,9 +1084,8 @@ def LowCT.foldNode {α : Type _}
 
 These `@[simp]` equations let `simp [LowCT.fold]` (and any analysis defined
 as `f := LowCT.fold …`, via `simp [f]`) reduce `fold` on a literal
-constructor exactly as the old open match did — so proofs that previously
-closed by unfolding the analysis keep closing.  Each is a definitional
-`rfl`. -/
+constructor to its per-constructor right-hand side, so proofs close by
+unfolding the analysis.  Each is a definitional `rfl`. -/
 section FoldLemmas
 variable {α : Type _} (leaf : LowCT → α) (seqLike : α → α → α) (wrap1 : α → α)
 
@@ -1210,7 +1202,7 @@ def CallSpec :=
 def LimbStoreSpec :=
   ∀ (loc : Located), RustVal loc.locDst → Nat → BitVec 64 → RustVal loc.locDst
 
-/-- **Phase I.1 (2026-05-04) — TupleLoad oracle.**  Specification
+/-- **TupleLoad oracle.**  Specification
     of `RTupleLoad dst src idx`: reads the `idx`-th component of
     src and produces a new dst value carrying that component.  The
     dependent pair carries src's TowerType, for the heterogeneous
@@ -1219,7 +1211,7 @@ def TupleLoadSpec :=
   ∀ (dst : Located), RustVal dst.locDst →
     (Σ t : TowerType, RustVal t) → Nat → RustVal dst.locDst
 
-/-- **Phase Ext (2026-05-12) — array-element store oracle.**
+/-- **Array-element store oracle.**
     Specification of `RArrStore arr idxVar src`: given the array
     slot's old value, a runtime index, and the source value (with
     its dependent tower type), returns the new array value with
@@ -1230,13 +1222,13 @@ def ArrStoreSpec :=
   ∀ (arr : Located), RustVal arr.locDst → Nat →
     (Σ t : TowerType, RustVal t) → RustVal arr.locDst
 
-/-- **Phase Ext (2026-05-12) — array-element load oracle.**
+/-- **Array-element load oracle.**
     Reads element `idx` of `arr` into `dst`. -/
 def ArrLoadSpec :=
   ∀ (dst : Located), RustVal dst.locDst →
     (Σ t : TowerType, RustVal t) → Nat → RustVal dst.locDst
 
-/-- **Phase I (2026-05-03) — byte-offset arithmetic for tuple
+/-- **Byte-offset arithmetic for tuple
     components.**  For `t = TTuple a b`:
     * Component 0 occupies bytes `[0, a.storageBytes)`.
     * Component 1 occupies bytes `[a.storageBytes, a.storageBytes + b.storageBytes)`.
@@ -1275,11 +1267,11 @@ def TowerType.tupleComponentType : TowerType → Nat → TowerType
 structure LeafSpec where
   call      : CallSpec
   limbStore : LimbStoreSpec
-  /-- Phase I.1: tuple-load oracle.  Defaults to identity. -/
+  /-- Tuple-load oracle.  Defaults to identity. -/
   tupleLoad  : TupleLoadSpec := fun _ oldV _ _ => oldV
-  /-- Phase Ext: array-element store oracle.  Defaults to identity. -/
+  /-- Array-element store oracle.  Defaults to identity. -/
   arrStore   : ArrStoreSpec := fun _ oldV _ _ => oldV
-  /-- Phase Ext: array-element load oracle.  Defaults to identity. -/
+  /-- Array-element load oracle.  Defaults to identity. -/
   arrLoad    : ArrLoadSpec := fun _ oldV _ _ => oldV
 
 /-- Runtime state: a tower-variable heap and a scalar heap.  `rsScalar`'s `Nat`
@@ -1306,7 +1298,7 @@ def rsSetScalar (rs : RustState) (x : String) (v : Nat) : RustState :=
 def rsRemoveTower (rs : RustState) (x : String) : RustState :=
   { rs with rsTower := fun y => if y == x then none else rs.rsTower y }
 
-/-! ### Tower-limb read (#354)
+/-! ### Tower-limb read
 
 The AUCurves `sexpr_ed` constructor `SLimb v i` reads limb `i` (a `u64`) of
 the limb-bearing tower slot `v`.  On the CatCrypt side a tower value is a
@@ -1338,7 +1330,7 @@ def rsTowerLimb (rs : RustState) (x : String) (i : Nat) : Nat :=
   | some ⟨_, v⟩ => towerLimb v i
   | none        => 0
 
-/-- **Tower-aware `SExpr` evaluator (#354).**  Sibling of the scalar-only
+/-- **Tower-aware `SExpr` evaluator.**  Sibling of the scalar-only
     `SExpr.eval`: it evaluates against the full `RustState`, so the new
     `SLimb v i` constructor reads limb `i` of tower slot `v` from `rs.rsTower`
     (via `rsTowerLimb`).  Every non-`SLimb` arm reads only `rs.rsScalar`,
@@ -1397,7 +1389,7 @@ theorem SExpr.evalState_eq_eval (rs : RustState) :
       simp only [SExpr.evalState, SExpr.eval, iha h.1, ihb h.2]
   | SLimb v i => intro h; exact absurd h (by simp [SExpr.limbFree])
 
-/-! ### Tower-aware wrapping-`u64` reconciliation (#250, runtime layer)
+/-! ### Tower-aware wrapping-`u64` reconciliation (runtime layer)
 
 The scalar bridge above (`SExpr.evalBV` / `inRange` / `evalBV_eq_ofNat_eval`)
 reconciles the Nat-model **scalar** `SExpr.eval` with the wrapping-`u64`
@@ -1417,7 +1409,7 @@ returns a value `< 2^64` by construction (`towerLimb_lt`), so the limb read
 needs no truncation.  `inRangeState` is the tower-aware side-condition under
 which the saturating-then-truncate store coincides with the
 intermediate-wrapping hardware; `evalStateBV_eq_ofNat_evalState` is the
-bridge.  This closes the runtime-layer half of #250: the value `RustExec`
+bridge (the runtime-layer reconciliation): the value `RustExec`
 records is provably the hardware value precisely on `inRangeState` inputs. -/
 
 /-- `towerLimb` is a little-endian assembly of 8 bytes, so it is `< 2^64` by
@@ -1441,7 +1433,7 @@ theorem rsTowerLimb_lt (rs : RustState) (x : String) (i : Nat) :
   | some ⟨_, v⟩ => exact towerLimb_lt v i
   | none => positivity
 
-/-- **Tower-aware wrapping-`u64` evaluator (#250 runtime layer).**  The
+/-- **Tower-aware wrapping-`u64` evaluator (runtime layer).**  The
     intermediate-wrapping sibling of `SExpr.evalState`: every arithmetic node
     truncates to `BitVec 64` immediately, mirroring the hardware.  The
     `SLimb v i` arm reads the same `u64` limb as `evalState` (already
@@ -1468,7 +1460,7 @@ def SExpr.evalStateBV (rs : RustState) : SExpr → BitVec 64
   | .SMulHiS a b => BitVec.ofNat 64 (sexprMulHiS (a.evalStateBV rs).toNat (b.evalStateBV rs).toNat)
   | .SLimb v i => BitVec.ofNat 64 (rsTowerLimb rs v i)
 
-/-- Tower-aware in-range side-condition (#250 runtime layer): the analogue of
+/-- Tower-aware in-range side-condition (runtime layer): the analogue of
     `SExpr.inRange` for `evalState`.  Under it, the saturating-then-truncate
     runtime store equals the intermediate-wrapping hardware value.  The
     `SLimb` arm needs no condition — the limb read is always `< 2^64`. -/
@@ -1514,7 +1506,7 @@ theorem SExpr.evalState_lt_of_inRangeState (rs : RustState) :
   | SMulHiS a b _ _ => intro _; exact sexprMulHiS_lt _ _
   | SLimb v i => intro _; exact rsTowerLimb_lt rs v i
 
-/-- **Tower-aware wrapping ⇔ Nat-model bridge (#250 runtime layer, `.toNat`
+/-- **Tower-aware wrapping ⇔ Nat-model bridge (runtime layer, `.toNat`
     form).**  Under `inRangeState`, the `Nat` read back out of the
     intermediate-wrapping evaluator equals the tower-aware Nat-model value: no
     wrap occurs, so `SExpr.evalState` faithfully predicts the hardware. -/
@@ -1585,7 +1577,7 @@ theorem SExpr.toNat_evalStateBV_of_inRangeState (rs : RustState) :
       simp only [SExpr.evalStateBV, SExpr.evalState, BitVec.toNat_ofNat]
       exact Nat.mod_eq_of_lt (rsTowerLimb_lt rs v i)
 
-/-- **Tower-aware wrapping ⇔ Nat-model bridge (#250 runtime layer, `BitVec`
+/-- **Tower-aware wrapping ⇔ Nat-model bridge (runtime layer, `BitVec`
     form).**  On `inRangeState` inputs the intermediate-wrapping evaluator *is*
     the truncation of the tower-aware Nat model.  `RustExec.limbStoreExpr`
     records `BitVec.ofNat 64 (e.evalState rs)`, so on `inRangeState` the runtime
@@ -1894,7 +1886,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs loc = some oldDestV →
       RustExec N leafSpec (.RLimbStore loc idx v) rs
         (locatedUpdate rs loc (leafSpec.limbStore loc oldDestV idx v))
-  /-- **Phase R5 — runtime-valued limb store (tower-aware, #356).**
+  /-- **Runtime-valued limb store (tower-aware).**
       Evaluates `e` against the current *full* state via
       `SExpr.evalState`, truncates the resulting `Nat` to a `BitVec 64`,
       and writes it into limb `idx` of `loc` via the same
@@ -1915,7 +1907,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       RustExec N leafSpec (.RLimbStoreExpr loc idx e) rs
         (locatedUpdate rs loc
           (leafSpec.limbStore loc oldDestV idx (BitVec.ofNat 64 (e.evalState rs))))
-  /-- **Phase G semantics — N-output leaf call.**  Reads the argument values
+  /-- **N-output leaf call.**  Reads the argument values
       from the pre-state, then writes each destination in turn: destination
       `i` receives `leafSpec.call (callNLeafName f i)` on those arguments.
       Naming the outputs apart by index is what distinguishes destinations of
@@ -1927,7 +1919,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       (∀ d ∈ dests, ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩) →
       RustExec N leafSpec (.RCallN f dests args) rs
         (callNUpdate leafSpec f (args.map (·.locDst)) argList 0 dests rs)
-  /-- **Phase H semantics — CT-safe conditional move.**  Reads the
+  /-- **CT-safe conditional move.**  Reads the
       scalar `sel`; if zero, copies `src0`'s tower value into `dst`;
       else copies `src1`.  Hardware analogue: a `CMOV` chain at the
       asm level.  Both source values are read regardless of `sel`'s
@@ -1946,24 +1938,24 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src1 = some srcV →
       RustExec N leafSpec (.RSelect dst sel src0 src1) rs
         (locatedUpdate rs dst (h ▸ srcV))
-  /-- **Phase L semantics — zero-cost contract.**  No state change. -/
+  /-- **Zero-cost contract.**  No state change. -/
   | assert : ∀ label rs,
       RustExec N leafSpec (.RAssert label) rs rs
-  /-- **Phase M semantics — scoped block.**  Identical to running
+  /-- **Scoped block.**  Identical to running
       the body; the "scope" boundary is meaningful only at the
       lowering level (stack reuse) and the Hoare level
       (locally-bound vars dropped from the post-context). -/
   | block : ∀ body rs rs',
       RustExec N leafSpec body rs rs' →
       RustExec N leafSpec (.RBlock body) rs rs'
-  /-- **Phase I.1 — tuple component load.**  Reads the `idx`-th
+  /-- **Tuple component load.**  Reads the `idx`-th
       component of `src` into `dst` via `leafSpec.tupleLoad`. -/
   | tupleLoad : ∀ dst src idx rs oldV srcV,
       locatedLookup rs dst = some oldV →
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RTupleLoad dst src idx) rs
         (locatedUpdate rs dst (leafSpec.tupleLoad dst oldV ⟨src.locDst, srcV⟩ idx))
-  /-- **Phase Ext — array element store.**  Looks up runtime index
+  /-- **Array element store.**  Looks up runtime index
       `rs.rsScalar idxVar`, reads `arr`'s old value, reads `src`'s
       value (with dependent tower type), and writes via
       `leafSpec.arrStore`.  Concrete instances slice arr's byte
@@ -1974,7 +1966,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RArrStore arr idxVar src) rs
         (locatedUpdate rs arr (leafSpec.arrStore arr oldV idx ⟨src.locDst, srcV⟩))
-  /-- **Phase Ext — array element load.**  Looks up runtime index
+  /-- **Array element load.**  Looks up runtime index
       `rs.rsScalar idxVar` and reads element `idx` of `src` into
       `dst` via `leafSpec.arrLoad`. -/
   | arrLoad : ∀ dst src idxVar rs idx oldV srcV,
@@ -1983,7 +1975,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RArrLoad dst src idxVar) rs
         (locatedUpdate rs dst (leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx))
-  /-- **Phase DD (2026-05-28) — literal-index array store.**  Same
+  /-- **Literal-index array store.**  Same
       shape as `arrStore` but the index is the compile-time literal
       `idx : Nat` from the AST (no `rsScalar` lookup). -/
   | arrStoreLit : ∀ arr idx src rs oldV srcV,
@@ -1991,7 +1983,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RArrStoreLit arr idx src) rs
         (locatedUpdate rs arr (leafSpec.arrStore arr oldV idx ⟨src.locDst, srcV⟩))
-  /-- **Phase DD (2026-05-28) — literal-index array load.**  Same
+  /-- **Literal-index array load.**  Same
       shape as `arrLoad` but the index is the compile-time literal
       `idx : Nat` from the AST. -/
   | arrLoadLit : ∀ dst src idx rs oldV srcV,
@@ -1999,7 +1991,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       locatedLookup rs src = some srcV →
       RustExec N leafSpec (.RArrLoadLit dst src idx) rs
         (locatedUpdate rs dst (leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx))
-  /-- **Phase Ext — set scalar slot to an `SExpr` value.**  Evaluates the
+  /-- **Set scalar slot to an `SExpr` value.**  Evaluates the
       expression with the tower-aware `SExpr.evalState`, so that
       `RScalarSetExpr x (SLimb v i)` reads limb `i` of tower slot `v`, and
       writes the result.  On an `SLimb`-free expression the value is
@@ -2007,7 +1999,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
   | scalarSetExpr : ∀ x e rs,
       RustExec N leafSpec (.RScalarSetExpr x e) rs
         (rsSetScalar rs x (e.evalState rs))
-  /-- **Phase E2 semantics — destination-threaded leaf call.**  Single
+  /-- **Destination-threaded leaf call.**  Single
       output, shape-compatible with `call`, but the destination slot is
       threaded as the first call argument *and* the receiving lvalue:
       `dst = f(dst, args)`.  We read `dst`'s old value, build the argument
@@ -2023,7 +2015,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
         (locatedUpdate rs dst
           (leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList))
 
-/-- **Runtime-store reconciliation (#250).**  The word
+/-- **Runtime-store reconciliation.**  The word
     that `RustExec.limbStoreExpr` records — `BitVec.ofNat 64 (e.evalState rs)`,
     i.e. the saturating-then-truncate-at-storage Nat model — equals the
     intermediate-wrapping hardware value `e.evalStateBV rs` **exactly** under

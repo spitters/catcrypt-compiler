@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 This file is the lattice-signature analogue of `MemAbiReflect.lean`:
 it adds Falcon-512 specific opaque types and a `LowCTPattern` registration so
 that a pure-Lean Falcon-512 verify function can be lifted through the verified
-compiler chain `LowCT → CryptoSSA → Com → jasmin`, **without** editing
+compiler chain `LowCT → catCryptDialect → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
 ## Verify equation (Falcon spec §3.10.6)
@@ -303,7 +303,7 @@ matching what the legacy `fndsa_512_verify` SIMD lane-map covers).
 
 This is the same `c − s2·h mod q` arithmetic kernel — the only piece of
 Falcon verify that has a self-contained C reference (the legacy
-`bench/fndsa_compare/gen/fndsa_512_verify.jazz` SIMD body) — but now emitted
+`bench/fndsa_compare/gen/fndsa_512_verify.jazz` SIMD body) — here emitted
 **through the verified front**, so the comparison is in-chain. -/
 
 /-- Pure-Lean version of the kernel: one poly subtraction mod q. -/

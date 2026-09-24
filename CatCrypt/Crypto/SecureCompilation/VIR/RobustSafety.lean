@@ -66,7 +66,7 @@ context model: the attacker picks the secrecy labelling, and CT must hold for
 3. `RobustlyCTSafeSource` + `latticeSource_robustlyCTSafe` — the source side is
    *vacuously* robustly CT-safe: the lattice dialect has no addressed memory
    access, so there is no secret-indexed access for any context to exploit.
-4. `robustCTPreservation` — the genuine RSP shape:
+4. `robustCTPreservation` — the RSP shape:
    `(robust source CT) → (robust target CT)`, with `lowerLatticeToJasmin` as the
    compiler. Combined with (3), the source hypothesis discharges unconditionally,
    so the conclusion holds for every source program (`robustCTPreservation_uncond`).
@@ -84,10 +84,9 @@ is the secrecy labelling, which is shared across the two dialects via `tau`
 (`LatticeTy → JasminTy`), so the back-translation is the identity on labels and
 the implication in (4) is direct. A richer context model — a `Com`-with-a-hole
 that supplies *and consumes* variables, with the attacker observing a full
-leakage trace — would need a genuine back-translation of target program
-fragments to source ones. That is deliberately out of scope for this first
-artifact; the present statements are honest about quantifying over the
-secrecy-labelling context only.
+leakage trace — would need a back-translation of target program
+fragments to source ones. That is out of scope here; the statements of this
+module quantify over the secrecy-labelling context only.
 -/
 
 @[expose] public section
@@ -157,7 +156,7 @@ theorem src_robustlyCTSafe (q n : Nat) :
 
 /-! ## 3. The source side is vacuously robustly CT-safe
 
-For the genuine RSP shape we also need a *source*-level robust-CT judgement. The
+For the RSP shape we also need a *source*-level robust-CT judgement. The
 lattice dialect has no addressed memory op at all (every op is whole-poly), so
 the only meaningful source-level CT property is "the program lowers to something
 robustly CT-safe" — which holds for *every* lattice program. We phrase the
@@ -186,7 +185,7 @@ theorem latticeSource_robustlyCTSafe
 
 /-! ## 4. The RSP-shaped preservation theorem
 
-The genuine RSP shape: *if the source robustly satisfies CT (against all source
+The RSP shape: *if the source robustly satisfies CT (against all source
 contexts), then the target robustly satisfies CT (against all target contexts)*,
 with `lowerLatticeToJasmin` as the compiler. Because the context model is the
 secrecy labelling — shared across the two dialects via `tau` — the
@@ -260,7 +259,7 @@ theorem lowerLatticeToJasmin_secure_compilation
 
 /-! ## 7. Smoke: robust CT is non-vacuous as a predicate
 
-`RobustlyCTSafe` is genuinely restrictive: a hand-built program with a
+`RobustlyCTSafe` is restrictive: a hand-built program with a
 `stackLoad` is *not* robustly CT-safe, because the attacker can choose the
 context labelling its index `.Secret`. (Compare `JasminCTPredicate`'s
 `loadProg_secret_not_ctSafe`.) This confirms the robust judgement is not

@@ -7,10 +7,10 @@ Authors: CatCrypt Contributors
 module
 
 /-!
-# A Lean AArch64 (ARM64) machine model for the scalar GP-ALU subset (#533)
+# A Lean AArch64 (ARM64) machine model for the scalar GP-ALU subset
 
-`X86Backend/Model.lean` (scalar) and `X86Backend/Vec128Model.lean` (packed-u32
-SIMD) are the owned x86 machine layers; this module is their **AArch64 (A64)**
+`X86Backend/Model.lean` (scalar) and the packed-u32 SIMD model are the owned x86
+machine layers; this module is their **AArch64 (A64)**
 analogue at the scalar 32-bit-word GP-ALU shape that a ChaCha20 quarter-round
 needs (`add`/`eor`/`ror`, plus `mov`/`sub`/`and`/`orr`/`lsl`/`lsr` and
 `ldr`/`str`). It adds a named general-purpose register file (`AState`) over the
@@ -22,9 +22,9 @@ with the block-lowering denotation theorem `armBlock_lowering_denote` (proved by
 induction with no new custom axioms); `ArmAsmPrinter.lean` renders the lowered `AInst`
 block to GAS AArch64 assembly text with a linear-scan GP allocator.
 
-## The honest anchor (same posture as the x86 owned model)
+## The anchor (same posture as the x86 owned model)
 
-This sub-1 stands up the *framework*: a Lean A64 GP-ALU machine + verified
+This module defines the *framework*: a Lean A64 GP-ALU machine + verified
 lowering + GAS printer, with one scalar primitive (the RFC 8439 §2.1.1 ChaCha
 quarter-round) emitted and the in-Lean KAT pinned. As with the x86 SIMD model,
 the **lowering** `AOp → AInst → AState transform` is verified down to this model
@@ -33,14 +33,14 @@ per-instruction semantics** is written to be obviously the integer op the A64
 mnemonic computes (Arm ARM `ADD`/`EOR`/`ROR`/… on 32-bit `W` registers,
 auditable by eye), and is differentially validated against the RFC 8439 KAT.
 
-**Landed in sub-2**: the machine-code byte `Encoder` (`ArmEncoder.lean`) +
+The machine-code byte `Encoder` (`ArmEncoder.lean`) +
 `decode(encode i) = i` against the hand-transcribed `rems-project/sail-arm`
 `decode64` tables (`SailArmDecoder.lean` — upstream is not vendored in this repo
 and the transcription is not machine-checked; the A64 analogue of
 `SailX86Decoder`), axiom-clean
-and gas-differential-pinned. **Deferred to sub-3**: NEON/SVE SIMD (the A64
-`Vec128` analogue) and the `FEAT_SHA3` Keccak extension. This module deliberately
-covers only the scalar 32-bit-`W` GP-ALU subset.
+and gas-differential-pinned. NEON SIMD is modelled in `NeonModel.lean`; SVE and
+the `FEAT_SHA3` Keccak extension are outside this module, which covers only the
+scalar 32-bit-`W` GP-ALU subset.
 
 ## The A64 scalar ops we model (the GP-ALU subset ChaCha emits)
 
@@ -171,7 +171,7 @@ inductive AInst where
   | mov (d s : String)
   deriving Repr, DecidableEq
 
-/-! ### A64 branch / control-flow instructions (the looped-emission alphabet, #551)
+/-! ### A64 branch / control-flow instructions (the looped-emission alphabet)
 
 The straight-line `AInst` set above carries no control flow. A bounded counter
 loop's back-edge needs three A64 branch forms, each a single 32-bit word with a
@@ -262,7 +262,7 @@ def runABlock (s : AState) : List AInst → AState
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runABlock_cons, ih]
 
-/-! ## 3b. A64 bounded loop semantics (used by `ArmControlFlow`, #551)
+/-! ## 3b. A64 bounded loop semantics (used by `ArmControlFlow`)
 
 `ArmControlFlow.lean` lowers a **bounded counter loop** — `for k in 0..n { body }`
 — to a single body copy wrapped in an A64 back-edge `label: <body> ; CBNZ <ctr>,
@@ -319,7 +319,7 @@ example : opEor (BitVec.ofNat 32 0xff00ff00) (BitVec.ofNat 32 0x00ff00ff)
 example : opRor (BitVec.ofNat 32 0x12345678) 16 = BitVec.ofNat 32 0x56781234 := by
   native_decide
 
-/-! ## 5. The 64-bit `X`-register bignum/field machine (#547)
+/-! ## 5. The 64-bit `X`-register bignum/field machine
 
 The GP-ALU subset above is the 32-bit `W`-register lane width ChaCha needs. The
 **bignum/field hot path** (the s2n-bignum-class kernels: 256-bit add-mod-p, 4×64

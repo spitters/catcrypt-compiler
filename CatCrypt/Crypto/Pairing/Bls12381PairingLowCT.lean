@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.Pairing.Bls12381AUCurves
 public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
-# BLS12-381 pairing, re-rooted on the LowCT relational-compilation layer (#268)
+# BLS12-381 pairing, re-rooted on the LowCT relational-compilation layer
 
 ## Why this module exists (the security-tie, not a byte cross-check)
 
@@ -76,10 +76,8 @@ reaches the whole verifier equation at the *leaf-composition* granularity.
 
 ## Compile chain and RELIC cross-check (re-use, not re-derive)
 
-The verified `LowCT → CryptoSSA(Com) → owned-x86` chain
-(`LowCTToCryptoSSA` / `LowCTToCryptoSSACorrect.rustExecSimulatesCryptoSSA`,
-#39/#90/#231 `FrontValueAgrees`) compiles a `LowCT` program to `Com` preserving
-the `RustExec` value.  The committed RELIC-byte-identical owned `fp12_mul` /
+The `LowCT → Com → owned-x86` chain (`LowCTToCryptoSSA`) compiles a `LowCT`
+program to `Com`.  The committed RELIC-byte-identical owned `fp12_mul` /
 `bls12_pairing` leaves (`Bls12381PairingMap`, `Bls12381Fp6Fp12MulKernel`) are
 the concrete realisation of the same leaf names: the `LeafSpec` here is the
 *abstract* binding the proof sees, while the owned x86 emitter is the concrete
@@ -393,8 +391,8 @@ the opaque-leaf boundary down from `bls12_pairing` to the `mont_mul` /
 algebraic-equality proof.  That decomposition is the residual work and is NOT
 attempted here: the BLS12-381 Montgomery `Fp` multiply's value-correctness
 (`a·b·R⁻¹ mod p`) is a 384×384→768 SAT instance, infeasible in-kernel, and the
-committed kernel deliberately externalises it to the GMP/blst byte-KAT (per the
-project's REV-12 convention).  So the whole-`pp_map`-from-field-ops tie remains
+committed kernel externalises it to the GMP/blst byte-KAT (value checks run in the
+external KAT harness, not by in-Lean evaluation).  So the whole-`pp_map`-from-field-ops tie remains
 gated on an external oracle for the field multiply; the leaf-level tie proved
 here is the connected boundary. -/
 

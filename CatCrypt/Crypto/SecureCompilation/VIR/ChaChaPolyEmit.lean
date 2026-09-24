@@ -12,7 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
 public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
 
 /-!
-# ChaCha20-Poly1305 AEAD (RFC 8439) emitted through the verified front (#87)
+# ChaCha20-Poly1305 AEAD (RFC 8439) emitted through the verified front
 
 ChaCha20-Poly1305 (RFC 8439, the IETF AEAD) is the AEAD cluster's stream-cipher
 member. It has **no new machinery** for the verified front: every piece is a
@@ -26,7 +26,7 @@ committed building block reused at a new lane.
   `MAC = Σ_i block_i · r^(n-i)  (mod 2¹³⁰ − 5)` over the prime field `𝔽_p`,
   `p = 2¹³⁰ − 5`. This is the SAME `VectorReduce.scalarFold_eq_hsum`
   reassociation the FrodoKEM (`ℤ/2¹⁶`), UOV (`GF(256)`), SDitH (`GF(251)`),
-  FAEST (`GF(2¹²⁸)`) kernels all carry — only the lane field changes, now to the
+  FAEST (`GF(2¹²⁸)`) kernels all carry — only the lane field changes, here to the
   130-bit prime `𝔽_{2¹³⁰−5}`. The Horner accumulation
   `acc := (acc + block_i)·r  (mod p)` is the sequential `scalarFold` over the
   monomial terms `block_i · r^(n-i)`;
@@ -58,7 +58,7 @@ is **5 limbs of 26 bits** (`5·26 = 130`); the field reduction exploits
 concrete 26-bit-limb mul + `·5`-fold reduction lives in the emitted jasmin and
 is KAT'd byte-identical to the RFC 8439 §2.8.2 vector and the HACL* reference.
 
-## Denotation preservation (the load-bearing theorem)
+## Denotation preservation (the main theorem)
 
 The lane type for the verified core is `Fp = ZMod (2¹³⁰ − 5)`, a `CommRing`
 (hence an `AddCommMonoid` under its additive `+ mod p` group).
@@ -72,7 +72,7 @@ at the `𝔽_{2¹³⁰−5}` lane:
 
 This is the identical foundation lemma the GF(256)/GF(251)/GF(2¹²⁸)/ℤ-2¹⁶
 kernels carry — the clean generalization the `AddCommMonoid` statement licenses,
-now at the 130-bit prime field.
+here at the 130-bit prime field.
 
 ## KAT / bench
 
@@ -142,7 +142,7 @@ carries. -/
     `a := (a + m_i)·r` accumulates exactly these terms). This is
     `VectorReduce.scalarFold_eq_hsum` at the `𝔽_{2¹³⁰−5}` lane — no new content;
     the SAME reassociation lemma the GF(256)/GF(251)/GF(2¹²⁸)/ℤ-2¹⁶ kernels carry,
-    now at the 130-bit prime field `𝔽_p`. -/
+    here at the 130-bit prime field `𝔽_p`. -/
 theorem poly1305_dot (m : Fin NBlk → Fp) (r : Fp) :
     hsum (fun i => m i * r ^ (NBlk - (i : ℕ))) =
       scalarFold (fun i => m i * r ^ (NBlk - (i : ℕ))) :=

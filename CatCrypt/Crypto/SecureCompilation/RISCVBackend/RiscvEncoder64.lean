@@ -11,7 +11,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinte
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64
 
 /-!
-# A verified machine-code byte encoder for the 64-bit bignum `RInst64` (#549)
+# A verified machine-code byte encoder for the 64-bit bignum `RInst64`
 
 `RiscvEncoder.lean` encodes the scalar 32-bit-word `RInst` subset; this module is
 its **64-bit bignum** counterpart, encoding the M-extension carry-chain subset the

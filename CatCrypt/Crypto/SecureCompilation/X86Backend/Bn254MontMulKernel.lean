@@ -21,16 +21,14 @@ This module emits the BN254 (alt-bn128) base-field
 through the SAME owned x86 backend (`JasminModel.runBlock` /
 `X86Dialect.lowerBlock_denote` / `AsmPrinter`, no jasminc) used for the
 BLS12-381 (`Bls12381MontMulKernel`), `bignum_mul_4_8`, and `fe25519` kernels,
-framed by the principled SysV ABI layer (`renderSysVLeafFn`, #464). It is the
-BN254 analog of the BLS12-381 field-multiply (#490): four CIOS iterations
+framed by the principled SysV ABI layer (`renderSysVLeafFn`). It is the
+BN254 analog of the BLS12-381 field-multiply: four CIOS iterations
 instead of six.
 
-BN254 was the one production curve whose `Fp` multiply still **adopted** an
-external fiat/bedrock2 Montgomery tower (#489 cross-curve audit) while the
-sibling curves emit their own ADX
-field-mul. Own-emitting it makes the whole BN254 `G1` group law
-(`Pairing/BN254GroupEmit.lean`) own-emitted end-to-end down to the field
-multiply, subtract, and (already #488/#489) the divstep inverse.
+With this leaf the BN254 `Fp` multiply is own-emitted, as for the sibling
+curves, instead of adopting an external fiat/bedrock2 Montgomery tower. The
+whole BN254 `G1` group law (`Pairing/BN254GroupEmit.lean`) is then own-emitted
+end-to-end down to the field multiply, subtract, and the divstep inverse.
 
 Like BLS12-381, the BN254 base field is a *generic* 254-bit prime with no
 special low-Hamming-weight structure, so the canonical reduce is **CIOS
@@ -73,11 +71,11 @@ lands the result in `[0, p)`. The four output words are stored to `z[0..3]`.
   owned backend's straight-line lowering is denotation-preserving across the
   `loadMem`/`mulxMem`/`adcx`/`adox`/`imul`/`add`/`sbb`/`cmovb`/`storeMem` mix.
 * `bn254MontMulAlloc_no_overflow`: the first-fit allocator assigns every register
-  name a distinct pool register (no silent `%rax`-alias, the #380 class).
+  name a distinct pool register (no silent `%rax`-alias).
 * The all-inputs byte-identity that the emitted stream computes
   `a·b·R⁻¹ (mod p)` is the external KAT (`bench/bn254_fieldmul_compare`, vs GMP
   `mod p` — the canonical-arithmetic oracle; blst does NOT implement BN254): the
-  standard gate for these word kernels (per REV-12), over corner + random
+  standard gate for these word kernels, over corner + random
   vectors. CIOS Montgomery's value-level correctness is a generic Montgomery
   identity; in-Lean it is a 256×256→512 SAT instance, infeasible, hence the
   external gate.
@@ -312,8 +310,7 @@ def bn254MontMulPinned : GpAlloc :=
 /-- First-fit allocation over the full block. -/
 def bn254MontMulAlloc : GpAlloc := allocGp bn254MontMulPinned bn254MontMulBlock
 
-/-- The allocation maps every name to a distinct pool register (no `%rax`-alias,
-    the #380 class). -/
+/-- The allocation maps every name to a distinct pool register (no `%rax`-alias). -/
 theorem bn254MontMulAlloc_no_overflow :
     allocOverflow bn254MontMulPinned bn254MontMulBlock = none := by native_decide
 

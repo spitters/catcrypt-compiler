@@ -9,17 +9,17 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 
 /-!
-# Native-rotate instruction selection for Keccak ρ (#497)
+# Native-rotate instruction selection for Keccak ρ
 
 The Keccak ρ step left-rotates each lane by a fixed offset. `KeccakEmit.emitRotL`
-currently lowers a left-rotate `rotl(dst, n)` (`0 < n < 64`) as the **three-op**
+lowers a left-rotate `rotl(dst, n)` (`0 < n < 64`) as the **three-op**
 shift-or idiom
 
     rotScr = dst >>> (64-n);   dst = dst <<< n;   dst = dst ||| rotScr
 
 (two shifts + an or, plus a scratch slot). x86 has the single instruction
 `ROR r64, imm` (and the flag-free BMI2 `RORX r64, r64, imm`); the jasmin dialect
-now carries `JasminOp.rorImm` (#497) whose denotation is `BitVec.rotateRight`.
+carries `JasminOp.rorImm` whose denotation is `BitVec.rotateRight`.
 
 This module is the **rotate insn-selection**: `emitRotLNative` emits the single
 `rorImm 64 (64-n)` op (a left-rotate by `n` is a right-rotate by `64-n`) in place
@@ -536,7 +536,7 @@ keccakF1600Com.denote` is **deferred**, for two structural reasons:
    `emitChiAndnLane` extends it **twice** (andn;xor). The continuation `k : Cont t`
    is therefore applied at *different context depths* (`r64::r64::r64::r64::Γ` vs
    `r64::r64::Γ`), so `(emitChiLane … k).denote = (emitChiAndnLane … k).denote` is
-   not even type-correct as stated — which is exactly why the landed equivalence
+   not even type-correct as stated — which is why the proved equivalence
    is at the **value level** (`emitChiAndnLane_chiScr_value_eq`) and not as a
    `Com.denote` equality.
 

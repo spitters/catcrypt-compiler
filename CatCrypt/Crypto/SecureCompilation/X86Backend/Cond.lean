@@ -9,7 +9,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 
 /-!
-# Forward-conditional lowering (#281 increment)
+# Forward-conditional lowering
 
 `X86Dialect.lean` lowers a **straight-line** block `List (JInstr w)` to a
 `Com (x86Dialect w)` and proves `lowerBlock_denote`
@@ -23,7 +23,7 @@ two straight-line sub-blocks and then converges.
 
 Constant-time code forbids a *secret*-dependent branch: those are compiled to
 `CMOVcc` (already in `JasminModel`'s `evalInstr`, the `.cmove`/`.cmovne`/`.cmovb`
-arms — no PC divergence). A genuine `Lcond` in the emitted constant-time subset
+arms — no PC divergence). An `Lcond` in the emitted constant-time subset
 therefore tests a **public** value — a loop/length bound, a counter-zero test, a
 public configuration flag. We model the condition as a predicate
 
@@ -129,7 +129,7 @@ state, so it is a faithful trace of the taken path and leaks nothing beyond what
 a public branch already reveals.
 
 `lowerCond` is therefore parameterised by the incoming state `s` (the public
-selector); for a fixed `s` it is a genuine `Com (x86Dialect w)` whose
+selector); for a fixed `s` it is a `Com (x86Dialect w)` whose
 denotation is the taken straight-line block. -/
 
 /-- Lower a forward conditional, given the incoming (public) state `s` that

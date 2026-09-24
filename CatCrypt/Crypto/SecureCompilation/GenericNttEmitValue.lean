@@ -35,7 +35,7 @@ This module composes:
    that the emitted leaf decodes to the abstract NTT-multiply value
    `nttMul n ω (decode aVal) (decode bVal)`.
 
-## What is genuinely closed here vs. localized
+## What is closed here vs. localized
 
 * **Closed (Lean theorem):** the structural-emit ↔ operational-denotation
   composition.  The `RustExec`-threading lemma `emitFieldBinop_exec` is
@@ -61,7 +61,7 @@ This module composes:
 `nttEmitRealizes_canonical` exhibits a concrete `LeafSpec` (built from a
 `cyclicConv`-returning realizer) under which `NttKernelRealizes` — hence
 `NttEmitRealizes` — holds, so the hypotheses are satisfiable, not an
-unsatisfiable over-constraint.  The genuine cross-prover content is the gap
+unsatisfiable over-constraint.  The cross-prover content is the gap
 between this canonical realizer and the emitted NTT kernel's real byte
 semantics, which lives outside Lean.
 -/
@@ -227,7 +227,7 @@ def nttKernelCallSpec {n : ℕ} [NeZero n] (decode : RustVal .TFp → (Fin n →
 /-- **Non-vacuity witness for `NttKernelRealizes`.**  For the canonical `LeafSpec`
     built from `nttKernelCallSpec` with a decoder section `encode` (`decode ∘
     encode = id`), the kernel-realization holds — so the localized hypothesis is
-    satisfiable.  The genuine cross-prover content is precisely the gap between
+    satisfiable.  The cross-prover content is precisely the gap between
     this canonical realizer and the emitted NTT kernel's real byte semantics
     (the leaf-bytes KAT), which lives outside Lean. -/
 theorem nttKernelRealizes_canonical

@@ -16,7 +16,7 @@ e·a` for EdDSA) is, over the scalar field, a single field multiply followed by 
 single field add: `x ↦ c·x + r` (multiply the running scalar by the challenge
 `c`, add the nonce `r`).  The EC verification check `s·G == R + c·P` reduces — on
 honest signatures — to exactly this scalar identity over the scalar field, so the
-*field-arithmetic* part of the response is the genuine groundable core.
+*field-arithmetic* part of the response is the groundable core.
 
 `SignatureProtocolKernels` instantiates Schnorr / EdDSA / ECDSA / FROST over the
 generic `ProtocolKernels` template, but each per-kernel realization is taken as a
@@ -36,7 +36,7 @@ a proved-unconditional realizer.
 
 * **Grounded (unconditional Lean theorem):** the Schnorr / EdDSA scalar response
   combine `x ↦ c·x + r` — one `field_mul` step (by the challenge `c`) then one
-  `field_add` step (by the nonce `r`), genuinely DISTINCT kernels of the single
+  `field_add` step (by the nonce `r`), two DISTINCT kernels of the single
   combined leafSpec — decodes to exactly `(decodeF width xVal) · c + r`, with no
   assumed kernel fact.  Both per-op realizations are theorems.  A batch /
   multi-scalar version (`n` chained combine steps, the batch-verification shape)
@@ -50,8 +50,8 @@ a proved-unconditional realizer.
 
 * **The EC point operations** (`s·G`, `c·P`, the point add `R + c·P`) are NOT
   field-arithmetic: they are elliptic-curve group operations with no concrete
-  field realizer.  They are the **honest residual** of this grounding — only the
-  scalar-field response equation is grounded here, which is the genuine
+  field realizer.  They are the **residual** of this grounding — only the
+  scalar-field response equation is grounded here, which is the
   groundable part of the verification arithmetic.
 
 * **The only machine-code residual (NOT a per-kernel hypothesis):** that the
@@ -127,7 +127,7 @@ theorem schnorrResponse_realizes_add (q : ℕ) [NeZero q] (width : ℕ)
 
 The Schnorr / EdDSA response equation over the scalar field — `field_mul` by `c`
 then `field_add` by `r` — assembled through the single combined leafSpec.  We
-use the genuine `pipeN` / `composeSpecs` form (the `ProtocolKernels.runRealizes`
+use the `pipeN` / `composeSpecs` form (the `ProtocolKernels.runRealizes`
 shape), with the per-step realization bundle discharged by the two proved
 theorems above (no hypothesis). -/
 
@@ -181,9 +181,9 @@ def schnorrResponseProtocol (q : ℕ) [NeZero q] (width : ℕ)
     (`schnorrResponse_realizes_mul` / `_add`, in turn `combined_realizes_mul` /
     `combined_realizes_add` + the codec round-trip).
 
-    This is the genuine groundable part of the verification arithmetic: the
+    This is the groundable part of the verification arithmetic: the
     EC point operations (`s·G`, `R + c·P`) are NOT field-arithmetic and have no
-    concrete field realizer — they are the honest residual.  The only machine-code
+    concrete field realizer — they are the residual.  The only machine-code
     residual is the owned-emit obligation for the two combined arms — NOT a
     per-kernel hypothesis. -/
 theorem grounded_schnorr_response_realizes (q : ℕ) [NeZero q] (width : ℕ)
@@ -261,7 +261,7 @@ def batchResponseProtocol (q : ℕ) [NeZero q] (width : ℕ)
     computation decode to the composite of its per-step specs, with **ZERO
     `KernelRealizes` hypotheses** (only the codec fit).  Every per-op realization
     is one of the two proved step theorems; the composition is the generic
-    `runRealizes`.  The EC point operations remain the honest non-field residual;
+    `runRealizes`.  The EC point operations remain the non-field residual;
     the only machine-code residual is the combined arms' owned-emit obligation. -/
 theorem grounded_schnorr_batch_realizes (q : ℕ) [NeZero q] (width : ℕ)
     (hw : width ≤ 48) (hq : q < 2 ^ (8 * width)) (c r : ZMod q)

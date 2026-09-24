@@ -11,23 +11,20 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 
 /-!
-# The factored hardware-ISA trust boundary for the emit pipeline (#483)
+# The factored hardware-ISA trust boundary for the emit pipeline
 
-The verified emit pipeline lowers a typed AST through `LowCT → CryptoSSA → Com
-→ jasmin`, bottoming out in a small set of **hardware crypto/arithmetic
+The verified emit pipeline lowers a typed AST through `LowCT → catCryptDialect →
+Com → jasmin`, bottoming out in a small set of **hardware crypto/arithmetic
 instructions** used as leaves: SHA-NI, AES-NI, VAES, GFNI, PCLMUL, ADX, BMI2.
 The correctness of each such leaf — that the silicon computes its documented
 function — is a *trust assumption* the pipeline rests on; it cannot be discharged
 inside Lean, only validated against an external authoritative semantics.
 
-Historically those assumptions entered the development **scattered**: the
-opaque jasmin leaf symbols (`Jasmin.LowCTReflect.shani_sha256_rnds2`,
-`vaesenc_2way`, `vpclmul_qdq_carryless_mul`, …) carried their semantics only in
-prose docstrings ("per the Intel SDM", "pinned by the HACL* KAT"), with no
-single place a reader could consult to see *exactly which* hardware facts the
-pipeline depends on and *how strongly* each is validated.
-
-This module is that single place. It **factors** the trust boundary into one
+The opaque jasmin leaf symbols (`Jasmin.LowCTReflect.shani_sha256_rnds2`,
+`vaesenc_2way`, `vpclmul_qdq_carryless_mul`, …) carry their semantics in
+prose docstrings ("per the Intel SDM", "pinned by the HACL* KAT"). This module is
+the single place that lists *exactly which* hardware facts the pipeline depends
+on and *how strongly* each is validated. It **factors** the trust boundary into one
 explicit record per hardware-instruction family
 (`HardwareLeafFamily`), each carrying:
 
@@ -44,7 +41,7 @@ bridge). This module does **not** introduce new opaque hypotheses; it collects
 the existing anchors into an auditable surface and records which families are
 validatable-against-an-independent-semantics versus pinned-to-the-SDM-only.
 
-## The scalar SHA-256 ↔ FIPS-180-4 baseline (CLOSED, #124)
+## The scalar SHA-256 ↔ FIPS-180-4 baseline (CLOSED)
 
 Independently of the hardware leaves, the *scalar* SHA-256/512 emit path is
 **closed** to FIPS-180-4 with no residual hypothesis:
@@ -56,7 +53,7 @@ the FIPS bridge carries no leaf assumption at all. The hardware-leaf surface
 below is therefore orthogonal: it concerns the SHA-NI / AES-NI / … *intrinsic*
 leaves, not the scalar lowering.
 
-## Honest tier semantics
+## Tier semantics
 
 The three tiers are a **strict ordering of validation strength**, not cosmetic:
 
@@ -76,8 +73,8 @@ The three tiers are a **strict ordering of validation strength**, not cosmetic:
   Sail side; but the KAT cross-check ties them to the published FIPS-197
   answers, an independent oracle.)
 
-* `Tier.sdmTranscribed` (ADX: ADCX/ADOX — BMI2: MULX/RORX) — **irreducible per
-  #444.** The upstream ACL2 `x86isa` model has *no* ADX/BMI2 instructions, and
+* `Tier.sdmTranscribed` (ADX: ADCX/ADOX — BMI2: MULX/RORX) — **irreducible.**
+  The upstream ACL2 `x86isa` model has *no* ADX/BMI2 instructions, and
   no other independent executable x86 reference models them either, so there is
   no oracle to differentially validate against beyond the Intel SDM text. The
   owned leaf is pinned to an SDM-transcribed Sail spec (`mulx_eq_sail*` /
@@ -113,7 +110,7 @@ inductive Tier where
       interpreter (AES-NI / VAES / GFNI / PCLMUL). -/
   | sailAnchored
   /-- Owned leaf pinned to an SDM-transcribed Sail spec only; **irreducible**
-      (no independent ACL2/Sail corpus for ADX/BMI2 per #444). A ceiling. -/
+      (no independent ACL2/Sail corpus for ADX/BMI2). A ceiling. -/
   | sdmTranscribed
 deriving DecidableEq, Repr
 
@@ -218,8 +215,8 @@ def pclmul : HardwareLeafFamily where
     "SailX86Lean.clmul_eq_sail_small / clmul_eq_sail_ff / clmul_eq_sail_max"
 
 /-- **ADX** — `ADCX` / `ADOX` (independent dual carry chains).
-    `Tier.sdmTranscribed` (**irreducible per #444**): the upstream ACL2 `x86isa`
-    model has no ADX, so `adcx_adox_spec_64` was SDM-transcribed on the Sail
+    `Tier.sdmTranscribed` (**irreducible**): the upstream ACL2 `x86isa`
+    model has no ADX, so `adcx_adox_spec_64` is SDM-transcribed on the Sail
     side. Owned `evalInstr .adcx`/`.adox` = that spec, with the defining
     flag-routing (`ADCX→CF`, `ADOX→OF`). No independent corpus exists to
     cross-validate against — this is a ceiling. -/
@@ -234,7 +231,7 @@ def adx : HardwareLeafFamily where
      (SDM-transcribed Sail; gas byte-validated; irreducible per #444)"
 
 /-- **BMI2** — `MULX` (widening multiply, no flags) / `RORX`.
-    `Tier.sdmTranscribed` (**irreducible per #444**): like ADX, absent from the
+    `Tier.sdmTranscribed` (**irreducible**): like ADX, absent from the
     upstream ACL2 model; owned `evalInstr .mulx` = SDM-transcribed
     `mulx_spec_64`. The widening *product* is additionally cross-checked via the
     unsigned `MUL` (`mul_spec_64`), which the ACL2 model *does* contain — so the
@@ -270,7 +267,7 @@ theorem independently_validated_families :
     ((hardwareTrustSurface.filter (·.validated)).map (·.family))
       = ["SHA-NI", "AES-NI", "VAES", "GFNI", "PCLMUL"] := by decide
 
-/-- The irreducible-per-#444 families are exactly ADX and BMI2. -/
+/-- The irreducible (SDM-transcribed) families are exactly ADX and BMI2. -/
 theorem irreducible_families :
     ((hardwareTrustSurface.filter (fun f => ! f.validated)).map (·.family))
       = ["ADX", "BMI2"] := by decide
@@ -339,7 +336,7 @@ theorem bmi2_mulx_discharge :
       = sailMulx 1311768467463790320 18364758544493064720 :=
   mulx_eq_sail₂
 
-/-- **ADX `ADCX` discharge** (SDM-transcribed, irreducible per #444): owned
+/-- **ADX `ADCX` discharge** (SDM-transcribed, irreducible): owned
     `.adcx` = Sail `adcx_adox_spec_64`, carry routed to `CF`, `OF` untouched.
     Re-export of `SailX86Lean.adcx_eq_sail₁`. -/
 theorem adx_adcx_discharge :

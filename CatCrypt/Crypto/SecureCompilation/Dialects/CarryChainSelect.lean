@@ -17,7 +17,7 @@ public import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
 set_option autoImplicit false
 
 /-!
-# C6 carry-chain instruction selection at the `LowCT → catCryptDialect` front
+# Carry-chain instruction selection at the `LowCT → catCryptDialect` front
 
 The LowCT front has no carry-flag surface, so multi-limb field kernels
 (`MultiLimbKernel.add2Prog` and its descendants, e.g. `Bn254TowerFrontEmit`)
@@ -36,8 +36,8 @@ The dialect **already** carries the efficient ops — `bvAddCarryLo`/`bvAddCarry
 (`[sword 64, sword 64, sword 1] → sword 64 / sword 1`), lowered 1:1 by
 `cryptoDialectToJasminCom` to jasmin `addCarryLo`/`addCarryHi` and rendered by
 the owned backend as `ADCX`/`ADCXHI` (`bt $0,cin; adcx` / `setc; movzbq`) —
-exactly the C6 target `CarryEqLitIdiom` names.  What was missing is the
-**selection**: nothing rewrote the front's `bSltu` windows into carry-op chains.
+exactly the target `CarryEqLitIdiom` names.  The remaining piece is the
+**selection**: rewriting the front's `bSltu` windows into carry-op chains.
 
 This module is that selection pass, at the dialect-lowering level (option (A)
 of the design space; see the design note below):
@@ -71,11 +71,11 @@ a *word* downstream (e.g. the final borrow driving the masked select `m := 0 −
 w₃`), the pass materialises the word: `zext` via `lo 0 0 c♭` for carries, and
 `(lo 0 0 w♭) ^^^ 1` for borrows.
 
-## Per-rewrite denotation preservation (the BitVec keystones)
+## Per-rewrite denotation preservation (the BitVec lemmas)
 
 Each fused emission's ops denote `addCarryWordC` / `carryOutBitC`
 (`catCryptDenote`, definitional), and each replaced window's plain lowering
-denotes the corresponding `ltuIdiom` composition.  The §2 keystone theorems
+denotes the corresponding `ltuIdiom` composition.  The §2 key theorems
 prove, for **all** inputs (`bv_decide`), that the two agree:
 
 * `select_addStart_data` / `select_addStart_carry` — the 2-op start step;
@@ -161,11 +161,11 @@ theorem ltuIdiom_eq (x y : BitVec 64) :
   unfold ltuIdiom onesLit
   bv_decide
 
-/-! ## 2. The BitVec keystones (per-rewrite denotation preservation)
+/-! ## 2. The BitVec lemmas (per-rewrite denotation preservation)
 
 `carryOutBitC` is defined via a `Nat` comparison on `toNat`; `carryOutW` is
 its pure-BitVec twin (the top bit of the 65-bit sum), bridged once by
-`carryOutBitC_eq_carryOutW` so every keystone discharges by `bv_decide`. -/
+`carryOutBitC_eq_carryOutW` so every such lemma discharges by `bv_decide`. -/
 
 /-- Pure-BitVec twin of `carryOutBitC`: bit 64 of the 65-bit sum
     `zext a + zext b + zext cin`. -/

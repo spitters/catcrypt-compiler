@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.Optimizer.SecretType
 /-!
 # Information-flow (secret-level) labelling over the `thirDialect` front IR
 
-This module is **Phase 2** of the secure-compilation stack: an
+This module defines, for the secure-compilation stack, an
 information-flow (IF) secret/public labelling propagated through the front IR's
 ops, with the per-program guarantee that **combines with the by-construction
 constant-time (CT) result** of `ThirCTByConstruction`.
@@ -39,8 +39,8 @@ So this file makes two things concrete:
 1. the **labelling itself** (`LabelCtxt`, `opOutLevel`, `labelCom`), the seed a
    richer (branch-admitting) front IR would *need* to enforce CT, and the seed
    `lowerThir` / the backend would carry down to the machine `PubPred`
-   (the Phase-0 `CompilableCT` / `MachineConstantTime` target); and
-2. the **Phase-2 guarantee** (`thir_ct_for_any_labelling`): for *any* labelling
+   (the `CompilableCT` / `MachineConstantTime` target); and
+2. the **labelling-independent CT guarantee** (`thir_ct_for_any_labelling`): for *any* labelling
    and *any* `Com thirDialect`, the program is CT by construction — i.e. the IF
    system's enforcement obligation is met regardless of the labels, because the
    language has no control surface.
@@ -195,20 +195,20 @@ def labelCom {Γ : Ctxt thirDialect} {t : JasminTy}
     (L : LabelCtxt Γ) (v : Ctxt.Var Γ t) :
     labelCom L (.ret v) = L.lookup v := rfl
 
-/-! ## 5. The Phase-2 guarantee ⭐
+/-! ## 5. The labelling-independent CT guarantee ⭐
 
 This is the formal statement that the IF system's CT obligation is discharged
 *vacuously* by the language restriction. For **any** labelling and **any**
 program, the program is constant-time by construction (`ComCTByConstruction`,
 from `ThirCTByConstruction`) — because there is no control surface for any label
-to reach. The labelling is computed (`labelCom`) but the CT verdict does not
+to reach. The labelling is computed (`labelCom`) but the CT result does not
 depend on it: this is exactly "restrict the language ⇒ the IF policy holds for
 free." -/
 
-/-- **The Phase-2 guarantee: the IF CT obligation is vacuous over `thirDialect`.**
+/-- **The IF CT obligation is vacuous over `thirDialect`.**
     For *any* label context `L` and *any* `Com thirDialect Γ t`, the program is
     constant-time by construction. The labelling `L` (and the propagated result
-    label `labelCom L c`) is computed, but the CT verdict is independent of it:
+    label `labelCom L c`) is computed, but the CT result is independent of it:
     the front IR has no control surface, so no `sec` value can create a
     timing/address channel. This *combines* the by-construction CT result
     (`com_ct_by_construction`) with the IF labelling — the IF enforcement check
@@ -219,8 +219,8 @@ theorem thir_ct_for_any_labelling {Γ : Ctxt thirDialect} {t : JasminTy}
     (L : LabelCtxt Γ) (c : Com thirDialect Γ t) : ComCTByConstruction c :=
   com_ct_by_construction c
 
-/-- The label result is a genuine *function* of the labelling, while the CT
-    verdict is *not* (Phase-2): for the *same* program two different labellings
+/-- The label result is a *function* of the labelling, while the CT
+    result is *not*: for the *same* program two different labellings
     can give different result labels, yet both yield the *same* CT-by-construction
     proof. This pairing — `(labelCom L c, thir_ct_for_any_labelling L c)` — is the
     IF-system output: a propagated secrecy level plus the discharged CT
@@ -303,7 +303,7 @@ A small `Com thirDialect [reg 32] (reg 32)`:
 
 With the single input `x` marked `sec`, the constant binder `c0` is labelled
 `pub` (a `thConst`), and `y` is labelled `sec ⊔ pub = sec` (the secret `x`
-taints it). The result label is `sec`. And — Phase 2 — the program is CT by
+taints it). The result label is `sec`, and the program is CT by
 construction *regardless* of the labelling. -/
 
 /-- The label context marking the single `[reg 32]` input `sec`. -/
@@ -321,16 +321,16 @@ def demoLabelCom : Com thirDialect [.reg 32] (.reg 32) :=
 example : labelCom demoLabel demoLabelCom = .sec := by
   decide
 
-/-- **Phase 2 on the demo: CT by construction holds regardless of the labelling.**
-    The same `ComCTByConstruction` verdict holds whether the input is `sec`
+/-- **On the demo, CT by construction holds regardless of the labelling.**
+    The same `ComCTByConstruction` result holds whether the input is `sec`
     (`demoLabel`) or relabelled all-`pub` — the front IR has no control surface.
     Via `thir_ct_for_any_labelling`. -/
 example : ComCTByConstruction demoLabelCom :=
   thir_ct_for_any_labelling demoLabel demoLabelCom
 
 /-- The all-public relabelling gives a *different* result label (`pub`), yet the
-    *same* CT verdict — making the Phase-2 independence concrete: the label is a
-    function of the seed, the CT verdict is not. -/
+    *same* CT result — making the independence concrete: the label is a
+    function of the seed, the CT result is not. -/
 example : labelCom (.cons .pub .nil) demoLabelCom = .pub := by
   decide
 

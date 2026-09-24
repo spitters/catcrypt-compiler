@@ -16,10 +16,9 @@ physical-ABI `Lprog` form) all the way to an ELF `.o` byte image through the
 **owned** x86 backend — no jasminc.
 
 The byte path is `Com.toLprogPhysAbi → LprogBytes.encodeLprog{,Reloc} →
-ByteArray`. Until now this chain was inlined verbatim in each producer
+ByteArray`. This module packages that chain as one function for the producers
 (`Sha256LinearMain`, `KeccakLinearMain`, `Fe25519LfundefBridge`,
-`Plonky3ProveDriverBytes`, …); this module packages it as one function to call,
-gate, and trust.
+`Plonky3ProveDriverBytes`, …) to call, gate, and trust.
 
 Scope: this is the **scalar `Lprog`** path (the register-arith / spill kernels
 the front emits). SIMD / vector kernels that hand-build a `List VInst` go through
@@ -135,7 +134,7 @@ position `pos` to slot `pos`, and the C side packs the concatenated `inp` buffer
 with that same limb at byte `pos * cellBytes`. So the load map is the **identity**
 `slot ↦ ("RSI", slot * cellBytes)` — limb `slot` of the buffer into the body
 register the RA gave slot `slot`. (The scalar `deriveInLoad`'s `nInputs-1-slot`
-reversal is a no-op for single-input kernels, the only case it was used for; it
+reversal is a no-op for single-input kernels, the only case it applies to; it
 does NOT carry over to the multi-input flattened context — the 4-limb-add KAT,
 `bench/owned_bignum4_add_arrabi`, pins this empirically: a reversed map computes
 `a3+b3` into `out[0]`.) -/

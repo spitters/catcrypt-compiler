@@ -28,9 +28,9 @@ never discharged by fiat.
 
 ## Scope
 
-This is the single generic `compile` + `compile_correct_all` that replaces the
-per-route / per-primitive end-to-end statements with one assembled theorem of
-CompCert shape: *the emitted artifact, executed under a machine model's
+This is the single generic `compile` + `compile_correct_all`: one assembled
+theorem of CompCert shape over the per-route / per-primitive end-to-end
+statements: *the emitted artifact, executed under a machine model's
 validated semantics, computes the value the source program denotes* — relative
 to that model's validation depth and under the stated hypotheses.
 
@@ -141,7 +141,7 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 -- `ctTransTy` lives in `JasminValTransport.lean` under the `CryptoToJasminComCorrect`
--- namespace, not in the `CProg`-lowering correctness module itself.
+-- namespace.
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
 open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
@@ -486,10 +486,10 @@ theorem compile_correct_all_via_generic
     `none` on `.front` precisely because its correctness is gated on these
     explicit hypotheses, which `compile`'s pure `Option` shape cannot witness.
 
-    Routed over the `CProg`-free dialect front
+    Routed over the dialect front
     (`translateDialectControl` → `cryptoDialectToJasminCom`): leaf agreement is
-    discharged internally by the dialect lowering, so — unlike the old `CProg`
-    route — no `JasminLeafAgrees` hypothesis is carried. -/
+    discharged internally by the dialect lowering, so no leaf-agreement
+    hypothesis is carried. -/
 theorem compile_correct_front
     {Γ : Ctx} {t : CryptoTy}
     (vm : VarMap Γ) (c : LowCT) (o : DTransOut Γ)

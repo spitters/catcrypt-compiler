@@ -14,7 +14,7 @@ Compiled producer entry point for the secp256k1 base-field COMPOSITION
 
 `lake exe secp256k1dot` — the proven montmul leaf's spilling-allocated block
 renders too slowly through the `lean --run` interpreter, so the emit is run as
-native code, exactly as the Poseidon2 field-pipeline keystone
+native code, exactly as the Poseidon2 field-pipeline driver
 (`poseidon2fieldpipeline`).
 -/
 

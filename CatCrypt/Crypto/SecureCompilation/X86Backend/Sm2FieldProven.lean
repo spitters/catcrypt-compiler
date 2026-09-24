@@ -44,7 +44,7 @@ register into a single `BitVec w`. A 256-bit Solinas reduce
 (`multiSm2`/`multiP256`) operates on a `512`-bit product split into
 `high, low < 2^256` and folds **9** times over a 4-limb carry chain. Proving a
 multi-limb `runBlock`/`Com.denote` equals that `Nat` fold is the 512-bit-product
-obligation the repo elsewhere externalises to a GMP KAT (the REV-12 policy):
+obligation the repo elsewhere externalises to a GMP KAT:
 infeasible as one in-Lean `BitVec` identity. The **Goldilocks** field
 `p = 2^64 − 2^32 + 1` (`c = 2^32 − 1`, `k = 64`, `fuel = 2`) is the
 `k = 64`-class reduce that fits a **2-word** carry chain — small enough to

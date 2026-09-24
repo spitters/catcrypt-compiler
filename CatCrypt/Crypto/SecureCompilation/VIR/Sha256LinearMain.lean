@@ -19,7 +19,7 @@ public import CatCrypt.Crypto.Optimizer.Batch8
 public import CatCrypt.Crypto.Optimizer.Batch8Emit
 
 /-!
-# Compiled SHA-2 linear-jasmin owned-RA producer (task #469 / #462 / #475)
+# Compiled SHA-2 linear-jasmin owned-RA producer
 
 The `lean --run` interpreter cannot materialize `Sha2Emit.compressCom
 sha256Spec` (it blows the interpreter recursion stack on `emitOp` and runs
@@ -32,14 +32,14 @@ the super-quadratic spec definitions of `nameSlot` / `physTable` /
 scan and `physTable` / per-position `bidx` recomputation are replaced by
 single-pass `Array` / `Std.HashMap` builds).
 
-The same compiled exe also emits the **SHA-512** owned-RA blob (task #475)
+The same compiled exe also emits the **SHA-512** owned-RA blob
 when invoked with the argument `sha512`: SHA-512 shares the input layout and
 the producer chain, differing only in U64 word width (the `regArith _ 64`
 ops carry the `":64"` tag), the 80-round constant table, the `2^64-1` mask,
 and the wider sigma-rotate immediate window — all handled by the
 `sha512ImmSlots` / `sha512InLoadMap` / `sha512OutStoreMap` maps in
 `JasminLprogExportSha2`. The 80-round U64 body has higher GP register
-pressure than SHA-256, so it spills more; `read_linear`'s #470 reserved
+pressure than SHA-256, so it spills more; `read_linear`'s reserved
 stack frame sizes itself from the emitted spill count (8-byte cells).
 -/
 
@@ -105,7 +105,7 @@ def sha256OutStore256 : OutStoreMap :=
   (List.range 8).map (fun j => ("RDI", j * 32))
 
 /-- Emit one SHA-2 variant's owned-RA `.lprogbin`, reporting the body size and
-    the max spill slot index (so the #470 reserved-frame layout can be checked).
+    the max spill slot index (so the reserved-frame layout can be checked).
     `cellBytes` is 4 (U32, SHA-256) or 8 (U64, SHA-512). -/
 def emitOne {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
     (fnName : String) (outPath : System.FilePath)
@@ -138,8 +138,8 @@ def emitOne {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   Com.writeLprogPhysAbiFile com fnName outPath (fun _ => none) immSlots inLoad outStore
   let sz := (← outPath.metadata).byteSize
   IO.println s!"link 1/7 OK : {outPath} written ({sz} bytes)"
-  -- OWNED path (task #537): render the SAME `Lprog` to AT&T `.s` directly via
-  -- `LprogAsmPrinter.renderLprogAtt`, removing the patched-jasmin encoder.
+  -- OWNED path: render the SAME `Lprog` to AT&T `.s` directly via
+  -- `LprogAsmPrinter.renderLprogAtt`, without the patched-jasmin encoder.
   -- Written as `<base>_x86_from_lean.s` next to the `.lprogbin`, assembled by
   -- `gas` exactly like the hand-authored `*_x86_from_lean.s` kernels.
   let base := (outPath.toString.dropEnd 9).toString   -- strip ".lprogbin"
@@ -149,13 +149,13 @@ def emitOne {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow
   IO.println s!"OWNED emit OK : {ownedPath} written ({asm.toUTF8.size} bytes, owned render {(t1 - t0) / 1000} us)"
-  -- BYTES-DIRECT path (task #658): byte-encode the SAME `Lprog` straight to an
-  -- ELF `.o` via `LprogBytes.encodeLprog` (the looped byte encoder, now covering
+  -- BYTES-DIRECT path: byte-encode the SAME `Lprog` straight to an
+  -- ELF `.o` via `LprogBytes.encodeLprog` (the looped byte encoder, covering
   -- the `%rsp`-relative spill/qsave slots this register-pressured body uses), with
   -- NO assembler. Also dump the function body's verified-encoder `.text` (the
   -- looped body bytes incl. every spill load/store) so the differential KAT can
   -- assert it is byte-identical to the gas-assembled `renderLprogAtt` `.text`.
-  -- BYTES-DIRECT path, now via the GENERIC owned driver
+  -- BYTES-DIRECT path via the GENERIC owned driver
   -- (`CompileComToElf.compileLprogToElf` = the packaged `encodeLprog` + ByteArray
   -- adapter; byte-identical to the former inline emit). `toBA` is the generic's
   -- adapter, reused below for the body-only `.text` bytes.
@@ -256,7 +256,7 @@ def emitOneBatch8 {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
 
 def main (args : List String) : IO UInt32 := do
   if args.contains "resident" then
-    -- State-resident (#179) + W-pinned (#180) owned `.s` for the
+    -- State-resident + W-pinned owned `.s` for the
     -- `sha2-vs-hacl-resident{,-wp}` harnesses. The `_resident` and `_resident_wp`
     -- symbols share ONE body: the harness cross-checks `wp == §9 resident == HACL*`
     -- (`sha2_vs_hacl_resident_wp.c` lines 65-68 / 168-171), so the digest is
@@ -287,7 +287,7 @@ def main (args : List String) : IO UInt32 := do
       sha512ImmSlots sha512InLoadMap sha512OutStoreMap
     return 0
   else if args.contains "aes" then
-    -- Bit-sliced AES S-box round (task #468): the carry-free `and`/`xor`/`not`
+    -- Bit-sliced AES S-box round: the carry-free `and`/`xor`/`not`
     -- body that jasminc's RA rejects ("no more free register" in the GF(2^8)
     -- bit-slice multiply). The owned linear-jasmin path spills the high
     -- register pressure to the stack. `aesInCtxt = inCtxt 64` definitionally,

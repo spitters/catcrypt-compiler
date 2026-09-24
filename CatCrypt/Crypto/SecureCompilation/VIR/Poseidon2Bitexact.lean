@@ -44,11 +44,11 @@ We split the round body into:
   sub-`Com`, *fixed* across all 13 partial rounds (the same map every round, as
   the S-box+MDS structure is);
 * the round-**dependent** constant: read `RC[idx]` by `stackLoad rc idx`, then
-  `acc + RC[idx]` by a real `regArith add`. This is the genuine Plonky3
+  `acc + RC[idx]` by a real `regArith add`. This is the Plonky3
   `partialRoundConstants[r]` — the part the indexed-loop machinery certifies.
 
 The reference the loop denotes is `pos2Round r acc = pos2Diffuse (acc + RC[r])`
-(the genuine `RC[r]` add, then the modeled core), iterated 13 times. **The
+(the `RC[r]` add, then the modeled core), iterated 13 times. **The
 round-constant stream `RC[0..12]` is proven bit-exact**; the concrete bit-level
 identity of the S-box+MDS core with the Plonky3 layers (rather than the modeled
 `pos2Diffuse`) is the residual carried by the fully-unrolled KAT emission
@@ -57,12 +57,12 @@ identity of the S-box+MDS core with the Plonky3 layers (rather than the modeled
 ## What this delivers over `Poseidon2Emit.roundLoop_denote_eq`
 
 `Poseidon2Emit.roundLoop_denote_eq` uses a uniform `4·acc` body with **no**
-round constant. This file threads the genuine `RC[r]` constant stream as a
+round constant. This file threads the `RC[r]` constant stream as a
 **certified, proven input** — closing exactly the gap the committed emit module
 left for the per-round constants, for the internal partial rounds. The only
 carried hypothesis is the opaque-leaf edge `LeafAgrees`, **vacuous** here (the
-round body is pure `regArith`/`stackLoad`, no `extCall`). No `sorry`, no new
-axioms, no `native_decide` for the bit-exactness.
+round body is pure `regArith`/`stackLoad`, no `extCall`). All goals closed, no
+new axioms, no `native_decide` for the bit-exactness.
 -/
 
 @[expose] public section
@@ -112,11 +112,11 @@ def wEmit {Γ : Ctxt jasminDialect}
   .var (.mk (.regArith op 64) rfl (.cons a (.cons b .nil))) (k .here)
 
 /-- The round-constant-independent core as a mathematical map on the round word:
-    `acc ↦ (acc <<< acc.toNat) * acc`. A genuine word-level mixing (the modeled
+    `acc ↦ (acc <<< acc.toNat) * acc`. A word-level mixing (the modeled
     lane-0 S-box `x^7` + internal MDS), realized by a `regArith shl` then a
     `regArith mul` — fixed across all rounds. The shift amount is the accumulator
     itself (a self-shift), since the dialect has no in-body literal-constant op
-    (the gap documented in `Poseidon2Emit.lean`); the keystone is agnostic to the
+    (the gap documented in `Poseidon2Emit.lean`); the main theorem is agnostic to the
     core's exact field arithmetic. -/
 def pos2Diffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) * acc
 
@@ -125,8 +125,8 @@ def pos2Diffuse (acc : BitVec 64) : BitVec 64 := (acc <<< acc.toNat) * acc
 `acc : reg 64` (the round word), `idx : reg 64` (the loop counter `r`),
 `rc : stackArr 64 13` (the `RC_INT[r]` table). The body:
 
-1. `k = stackLoad rc idx`     (the genuine per-round constant `RC[idx]`);
-2. `s0 = acc + k`             (a `regArith add`, the genuine constant add);
+1. `k = stackLoad rc idx`     (the per-round constant `RC[idx]`);
+2. `s0 = acc + k`             (a `regArith add`, the constant add);
 3. `s1 = s0 <<< s0.toNat`     (a `regArith shl`, modeled core);
 4. `s2 = s1 * s0`             (a `regArith mul`, → `pos2Diffuse (acc + RC[r])`).
 
@@ -142,7 +142,7 @@ def vAcc : Ctxt.Var rctx AccTy := .here
 def vIdx : Ctxt.Var rctx (.reg 64) := .there .here
 def vRc : Ctxt.Var rctx (.stackArr 64 nPartial) := .there (.there .here)
 
-/-- The Poseidon2 internal round body: the genuine `RC[r]` add, then the modeled
+/-- The Poseidon2 internal round body: the `RC[r]` add, then the modeled
     S-box+MDS core. -/
 def pos2RoundBody : Com jasminDialect rctx AccTy :=
   -- k = stackLoad rc idx
@@ -168,12 +168,12 @@ def pos2RoundLoop : JForProgTab AccTy nPartial :=
 /-! ## 4. The body's per-iteration step is bit-exactly `pos2Diffuse (acc + RC[r])`
 
 For a valid round `r < 13` (so `(ofNat 64 r).toNat = r` and the `% 13` reduction
-is the identity), the body denotation is `pos2Diffuse (acc + RC[r])` — the genuine
+is the identity), the body denotation is `pos2Diffuse (acc + RC[r])` — the
 constant add then the modeled core, with the actual per-round constant `RC[r]`,
 NOT a fixed `RC[0]`. -/
 
 /-- **The round body's per-iteration step is bit-exactly `pos2Diffuse (acc + RC[r])`**
-    (for a valid round `r < 13`): the genuine Plonky3 internal round constant
+    (for a valid round `r < 13`): the Plonky3 internal round constant
     `RC[r]` added (read from the table at the threaded index), then the modeled
     round-constant-independent core `pos2Diffuse`, NOT a fixed `RC[0]`. -/
 theorem pos2RoundStep_eq {r : Nat} (h : r < nPartial) (acc : BitVec 64) :
@@ -193,19 +193,19 @@ theorem pos2RoundStep_eq {r : Nat} (h : r < nPartial) (acc : BitVec 64) :
         rw [← stackGet_id rcIntTable ⟨r, h⟩]]
   rfl
 
-/-! ## 5. The bit-exact reference: 13-fold internal-round with the genuine RC stream
+/-! ## 5. The bit-exact reference: 13-fold internal-round with the RC stream
 
-`pos2Round` is the genuine `RC[r]` add followed by the modeled core `pos2Diffuse`;
+`pos2Round` is the `RC[r]` add followed by the modeled core `pos2Diffuse`;
 `pos2InternalRef` folds it over `range 13`, threading the actual Plonky3 internal
 round-constant stream `RC[0..12]`. -/
 
-/-- The reference internal round: the genuine `RC[r]` add then the modeled core
+/-- The reference internal round: the `RC[r]` add then the modeled core
     `pos2Diffuse`, with `r` clamped (the `% 13` reduction inside `stackGet`). -/
 def pos2Round (r : Nat) (acc : BitVec 64) : BitVec 64 :=
   pos2Diffuse (acc + stackGet rcIntTable r)
 
 /-- The bit-exact 13-round internal-round reference: fold `pos2Round` over
-    `r = 0 .. 12` with the genuine Plonky3 internal round constants. -/
+    `r = 0 .. 12` with the Plonky3 internal round constants. -/
 def pos2InternalRef (init : BitVec 64) : BitVec 64 :=
   (List.range nPartial).foldl (fun acc r => pos2Round r acc) init
 
@@ -234,14 +234,14 @@ theorem denoteT_eq_ref (init : BitVec 64) :
   show pos2Diffuse (acc + rcIntTable ⟨r, hrr⟩) = pos2Diffuse (acc + stackGet rcIntTable r)
   rw [stackGet_id rcIntTable ⟨r, hrr⟩]
 
-/-! ## 6. The keystone: the emitted Poseidon2 internal-round loop is bit-exact -/
+/-! ## 6. The main theorem: the emitted Poseidon2 internal-round loop is bit-exact -/
 
-/-- **Keystone — the emitted Poseidon2-BabyBear internal 13-round loop denotes the
+/-- **Main theorem — the emitted Poseidon2-BabyBear internal 13-round loop denotes the
     bit-exact internal-round semantics, with the ACTUAL per-round constants
     `RC[r]`.** Running the emitted `for r = 0 to 13 { acc = core(acc + RC[r]) }` on
     the word-level evaluator (the round body run once per round, reading `RC[r]`
     from the table at the threaded index register), equals `pos2InternalRef init` —
-    the bit-exact 13-fold internal round with the genuine Plonky3 round-constant
+    the bit-exact 13-fold internal round with the Plonky3 round-constant
     stream `RC[0..12]`.
 
     This is a **proof** (via `JForProgIndexed.loopRunT_eq_denoteT`, routed through
@@ -256,11 +256,11 @@ theorem poseidon2_round_loop_bitexact {leafSem : LeafSem} (hLeaf : LeafAgrees le
   rw [loopRunT_eq_denoteT hLeaf pos2RoundLoop pos2RoundBody_straightLine init,
       denoteT_eq_ref]
 
-/-! ## 7. The Plonky3 KAT is now a corollary
+/-! ## 7. The Plonky3 KAT is a corollary
 
 With the bit-exact loop theorem in hand, a concrete internal-round KAT (e.g. from
-`init = 0` with the genuine `RC_INT` table) is a **corollary**: the loop output is
-the reference `pos2InternalRef`, so a concrete value is `rw` the keystone then
+`init = 0` with the `RC_INT` table) is a **corollary**: the loop output is
+the reference `pos2InternalRef`, so a concrete value is `rw` the main theorem then
 evaluate the reference, not a `native_decide` validation of the loop. The Plonky3
 `test_default_babybear_poseidon2_width_16` KAT in `bench/poseidon2_compare/` is
 the full permutation (external + internal rounds + MDS pre-mix) on top of this
@@ -271,7 +271,7 @@ def pos2ZeroOut : BitVec 64 := pos2InternalRef 0
 
 /-- **KAT (corollary).** Running the emitted Poseidon2 internal-round loop from
     `init = 0` yields `pos2ZeroOut` — the reference 13-round internal block under
-    the genuine Plonky3 round-constant stream `RC[0..12]`. Derived from the
+    the Plonky3 round-constant stream `RC[0..12]`. Derived from the
     bit-exact loop theorem `poseidon2_round_loop_bitexact`, not a `native_decide`
     validation. The Plonky3 width-16 KAT in `bench/poseidon2_compare/` sits on top
     of this block. -/
@@ -279,7 +279,7 @@ theorem poseidon2_round_loop_kat {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem
     loopRunT leafSem pos2RoundLoop (0 : BitVec 64) = pos2ZeroOut := by
   rw [poseidon2_round_loop_bitexact hLeaf]; rfl
 
-/-- The genuine round-constant stream is threaded: each `stepT r` adds in
+/-- The round-constant stream is threaded: each `stepT r` adds in
     `RC[r] = rcIntTable ⟨r, _⟩` (the actual Plonky3 constant, not a fixed `RC[0]`).
     Witnessed at every round `r < 13` — the certified per-round-varying input. -/
 theorem poseidon2_rc_stream_genuine {r : Nat} (h : r < nPartial) (acc : BitVec 64) :

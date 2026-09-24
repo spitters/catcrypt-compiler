@@ -11,9 +11,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage
 /-!
 # Whole-command run-correctness: `execCmd` is the monadic fold of `execInstr`
 
-`OpSemCoverage.lean` lands the *per-instruction* run-correctness family —
+`OpSemCoverage.lean` proves the *per-instruction* run-correctness family —
 `execInstrR_Cassgn_eq`, `execInstrR_Copn_eq`, the `Cif`/`Cwhile`/`Ccall`
-keystones, and the counted `Cfor` keystone — one verified run-characterisation
+theorems, and the counted `Cfor` theorem — one verified run-characterisation
 per `InstrR` constructor. This file lifts that per-instruction layer to the
 **whole-command** level.
 
@@ -40,7 +40,7 @@ deliverable, and lifts them to the concatenation law `execCmd_append`
 The per-instruction keystones characterise the *effect of one instruction*;
 `execCmd_cons` says the effect of a whole command is the head instruction's
 effect, monadically composed with the tail's. Chaining `execCmd_cons` down a
-straight-line list and rewriting each head with its per-instruction keystone
+straight-line list and rewriting each head with its per-instruction theorem
 (e.g. `execInstrR_Cassgn_eq`) gives the whole-program effect as the explicit
 left-to-right composition of the per-instruction effects — the whole-program
 form of the `OpSemCoverage` per-constructor coverage. We exhibit this for a
@@ -65,7 +65,7 @@ end-to-end concrete KAT (`block_kat`: `x := y + 1 ; z := x + x` started at
 * These structural laws need **no** opaque-leaf hypothesis: they are facts about
   `execCmd`'s own recursion and the `JResult` monad, independent of the leaf
   semantics. The opaque-leaf edge (`LeafAgrees`) only enters when one rewrites a
-  *specific* instruction's effect via a keystone that itself denotes a leaf.
+  *specific* instruction's effect via a theorem that itself denotes a leaf.
 -/
 
 @[expose] public section
@@ -164,7 +164,7 @@ theorem execCmd_append
 /-! ## 3. Straight-line `Cassgn` blocks: the whole-program form of coverage
 
 Specialising the fold to a list of assignments connects the per-instruction
-`Cassgn` keystone (`execInstrR_Cassgn_eq`) to a whole-command run. For a
+`Cassgn` theorem (`execInstrR_Cassgn_eq`) to a whole-command run. For a
 two-assignment block `[MkI ii₁ (Cassgn lv₁ tag₁ ty₁ e₁), MkI ii₂ (Cassgn …)]`
 at fuel `fuel'+1`, the whole-command run is the explicit composition of the two
 `assignExec`s — the whole-program lift of `OpSemCoverage`'s per-constructor
@@ -174,7 +174,7 @@ characterisation. -/
     of assignments, run at fuel `fuel'+1`, equals the monadic composition of the
     two per-instruction `assignExec` effects: evaluate/truncate/write the first
     assignment, then (on the resulting state) the second. Each head is rewritten
-    by the per-instruction keystone `execInstrR_Cassgn_eq`; the list structure
+    by the per-instruction theorem `execInstrR_Cassgn_eq`; the list structure
     is supplied by `execCmd_cons`. -/
 theorem execCmd_cassgnBlock_eq
     (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
@@ -187,7 +187,7 @@ theorem execCmd_cassgnBlock_eq
       = (assignExec (Mem := Mem) opS gd lv₁ ty₁ e₁ s).bind
           (fun s' => assignExec (Mem := Mem) opS gd lv₂ ty₂ e₂ s') := by
   -- `execInstr (MkI _ (Cassgn …))` unfolds (via `execInstr`) to `execInstrR`,
-  -- which the per-instruction keystone `execInstrR_Cassgn_eq` rewrites to
+  -- which the per-instruction theorem `execInstrR_Cassgn_eq` rewrites to
   -- `assignExec`; `execCmd_cons`/`execCmd_nil` supply the list structure and
   -- `bind_pure_right` collapses the trailing `>>= fun s' => .ok s'`.
   simp only [execInstr, execInstrR_Cassgn_eq, execCmd_cons, execCmd_nil,
@@ -241,7 +241,7 @@ theorem block_kat :
     same concrete block, run at *any* fuel `fuel'+1` from *any* start state,
     equals the monadic composition of the two `assignExec`s — a direct instance
     of `execCmd_cassgnBlock_eq`, connecting the whole-command run to the
-    per-instruction `Cassgn` keystone without `native_decide`. -/
+    per-instruction `Cassgn` theorem without `native_decide`. -/
 theorem block_eq_composed (n : Int) (fuel' : Nat) :
     execCmd (Mem := TrivialMem) addAsmSem addOpSem [] (fuel'+1)
         (startState n) block

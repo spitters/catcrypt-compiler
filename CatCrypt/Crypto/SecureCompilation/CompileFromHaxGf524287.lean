@@ -10,9 +10,9 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
-# #606 fan-out: the verified compiler emits a GF(524287) Mersenne-fold multiply
+# The verified compiler emits a GF(524287) Mersenne-fold multiply
 
-This module extends the **C4** step of the verified-compiler plan to another
+This module applies the verified compile-from-hax front to another
 **prime-field** primitive: the `GF(524287)` base-field multiply.
 `524287 = 2¹⁹ − 1` is a **Mersenne** prime, so `2¹⁹ ≡ 1 (mod 524287)`: multiply
 is integer `a·b` followed by a `2¹⁹ ≡ 1` double-fold and a branch-free
@@ -41,7 +41,7 @@ required**.
 
 `gf524287MulSrc` is the let-normalized `ImpExpr`; `gf524287MulFold` is the
 explicit closed Mersenne-fold **emit form** the source denotes to; the
-`_compiles` theorem routes the FOLD-FORM source-spec through the C3 per-primitive
+`_compiles` theorem routes the FOLD-FORM source-spec through the per-primitive
 obligation `compileFromHax_meets_spec`. The abstract `(a*b) % 524287` tie
 (`gf524287MulFold_eq_mod`) is proved via `Nat` arithmetic on `toNat`: even with
 the product bounded `< 2³⁸`, the full 64-bit double-fold + csub bitblast
@@ -112,8 +112,8 @@ theorem gf524287Mul_compileFromHax_isSome :
 /-- **GF(524287) Mersenne multiply emitted by the verified compiler (fold
     form).** There is a compiled `Com jasminDialect` `c` with
     `compileFromHax ["a","b"] gf524287MulSrc = some c`, and `c`'s `BitVec 64`
-    denotation (under `![a, b]`) is the closed Mersenne-fold emit form. A #606
-    fan-out to the Mersenne prime field `GF(2¹⁹−1)`, reusing the existing
+    denotation (under `![a, b]`) is the closed Mersenne-fold emit form, over
+    the Mersenne prime field `GF(2¹⁹−1)`, reusing the existing
     recognizers with no front change. The abstract `(a*b) % 524287` tie is
     `gf524287MulFold_eq_mod`. -/
 theorem gf524287Mul_compiles :

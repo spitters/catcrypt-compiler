@@ -8,20 +8,20 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 
 /-!
-# D3 — the `rorImm` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
+# The `rorImm` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `ArithIselPass.lean` builds the denotation-preserving ISel *framework* on the
 cleanest **same-shape** case (commutative operand canonicalization), and its
-docstring §"What needs a multi-op rewrite" flags the next deliverable:
+docstring §"What needs a multi-op rewrite" names this case:
 
 > **ROR** (`rorImm_eq_shiftOr`): the rotate emulation `(a >>> n) ||| (a <<< (w-n))`
 > is a three-op `shr; shl; or` subtree collapsing to one `rorImm` — node-count
 > change.
 
-This file delivers exactly that peephole as a `Com jasminDialect → Com jasminDialect`
-pass. It opens the ISel-as-a-pass line: the first *real native-op selection*
+This module defines that peephole as a `Com jasminDialect → Com jasminDialect`
+pass: a *native-op selection*
 that **matches an emulation subtree and rewrites it to the native op**, with a
 machine-checked denotation-preservation proof.
 
@@ -54,7 +54,7 @@ from `(src >>> n) ||| (src <<< (w-n))` to `src.rotateRight n` — equal by
 `ArithIselSoundness.rorImm_eq_shiftOr` for an in-range `n < w`. That is the whole
 soundness content.
 
-## Coverage (honest)
+## Coverage
 
 The collapse is licensed only for an **in-range immediate** `n < w` (every SHA-512
 Σ/σ and Keccak ρ rotate is in range). We carry that as the `RorPattern` predicate's
@@ -154,7 +154,7 @@ theorem mkRorOp_denote {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat)
 A total `Com jasminDialect → Com jasminDialect` that walks the program and, at any
 binding whose next three ops are the canonical rotate emulation `shrImm w n;
 shlImm w (w-n); regArith .or w`, rewrites the third op to the native `rorImm w n`,
-leaving the two now-dead shift carriers in place (so `body`'s de-Bruijn indices are
+leaving the two dead shift carriers in place (so `body`'s de-Bruijn indices are
 unchanged — no re-threading). Every non-matching or out-of-range shape passes
 through; the recursion descends into the continuation. Mirrors
 `ArithIselPass.iselCom`'s structural-recursion skeleton, extended from a same-shape
@@ -179,7 +179,7 @@ operand-unconditional. `Ctxt.Var` has no `DecidableEq` instance, so we supply th
 structural `varDecEq` below to decide the `Var`-equality operand checks (this lives
 in the pass file, touching no shared substrate).
 
-The `n < w` guard is the honest fragment condition: out of range, `rotateRight`
+The `n < w` guard is the fragment condition: out of range, `rotateRight`
 and the shift-or form differ, so the pass declines to fire (cf.
 `VectorToAvx512.lean`, which likewise conditions its lowering on the supported
 op fragment). -/
@@ -318,11 +318,11 @@ example (V : Ctxt.Valuation (d := jasminDialect) [.reg 64]) :
 
 /-! ## 6. Operand-soundness regression: the non-canonical `or` is NOT rewritten
 
-The defect the tightened matcher closes: a `shrImm 8 1; shlImm 8 1; regArith .or 8`
+The non-canonical input: a `shrImm 8 1; shlImm 8 1; regArith .or 8`
 chain (op tags + widths + `1 < 8` all match) whose `or` combines `lo ||| lo`
-(`.here, .here`) instead of the canonical `hi ||| lo`. The old tag-only matcher fired
-and rewrote it to `rorImm 8 1 [src]`, changing the value (source `2`, pass `128`).
-The tightened matcher checks the `or`'s operands, so it does **not** fire — the chain
+(`.here, .here`) instead of the canonical `hi ||| lo`. A tag-only matcher would
+rewrite it to `rorImm 8 1 [src]`, changing the value (source `2`, pass `128`).
+The matcher checks the `or`'s operands, so it does **not** fire — the chain
 passes through as the identity and the denotation is trivially preserved. -/
 
 /-- The witness program: a `shr; shl; or` chain whose `or` is `lo ||| lo`, **not**
@@ -333,14 +333,13 @@ def rorCex : Com jasminDialect [.reg 8] (.reg 8) :=
       (.var (.mk (.regArith .or 8) rfl (.cons .here (.cons .here .nil)))
         (.ret .here)))
 
-/-- **The tightened matcher does NOT fire on the non-canonical `or`.** The pass is
+/-- **The matcher does NOT fire on the non-canonical `or`.** The pass is
     the identity on `rorCex` — by `rfl`, the operand check (`orHi = .there .here`)
-    fails on the `lo ||| lo` `or`, so no `rorImm` is selected. This is the closed
-    counterexample: the old matcher miscompiled `rorCex`; the new one cannot. -/
+    fails on the `lo ||| lo` `or`, so no `rorImm` is selected. -/
 theorem rorImmSelect_rorCex_not_fired : rorImmSelect rorCex = rorCex := rfl
 
-/-- **Denotation preserved on the former counterexample**, on every input — a direct
-    corollary of the pass being the identity there (no miscompile survives). -/
+/-- **Denotation preserved on `rorCex`**, on every input — a direct
+    corollary of the pass being the identity there. -/
 theorem rorImmSelect_rorCex_denote (V : Ctxt.Valuation (d := jasminDialect) [.reg 8]) :
     (rorImmSelect rorCex).denote V = rorCex.denote V := by
   rw [rorImmSelect_rorCex_not_fired]

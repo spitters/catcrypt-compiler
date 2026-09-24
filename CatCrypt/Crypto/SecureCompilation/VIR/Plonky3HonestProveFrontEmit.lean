@@ -58,7 +58,7 @@ What front-compiles here (committed combinators only — no hand-authored
   grind semantics is instead pinned purely: §1's `findNonce` over the restated
   permutation lands on the machine-validated word-19 (`nonce = 99`).
 
-## What still blocks the whole-artifact flip (precise; the row stays `# L`)
+## Scope: conditions for the whole-artifact render (the row stays `# L`)
 
 1. **Callee-leaf owned emits + linked composition.**  `hp_prove`'s heavy phases
    are calls to real callees (`plonky3_trace_lde_3_8`, `_hp_build_tree32`,
@@ -68,7 +68,7 @@ What front-compiles here (committed combinators only — no hand-authored
    spines do not).  The Merkle tree shape is §5–§6 of the fri_proof twin module
    (`Plonky3FriProofFrontEmit.merkleComL` — leaf-hash ; nested level loop) with
    the mixer swapped for the 8-lane Poseidon2 leaf call: the CONTROL shape is
-   front-covered, the missing piece is the per-iteration multi-word (8-lane)
+   front-covered; outside the covered set is the per-iteration multi-word (8-lane)
    leaf-call marshalling (`LeafGen` writes ONE destination register; an 8-lane
    digest callee needs the SysV memref-pointer marshalling of
    `loopBodyCallLcmd`).
@@ -83,9 +83,9 @@ What front-compiles here (committed combinators only — no hand-authored
    `RuntimeStrideRowFrontValidate`); the per-query record writer
    (`_hp_open_query`) is a straight-line + two-authpath spine, front-coverable
    by the same walker-free trick as the fri_proof twin (level-`l` index =
-   `q >> l`), assembly not done here.
+   `q >> l`); that assembly is outside this module.
 
-No `sorry`, no new axiom.
+All goals closed; no new axiom.
 
 Invoke (in-model gate):
   lake env lean CatCrypt/Crypto/SecureCompilation/VIR/Plonky3HonestProveFrontEmit.lean

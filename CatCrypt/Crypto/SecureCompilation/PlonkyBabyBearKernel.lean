@@ -47,7 +47,7 @@ theorem bbMul_correct (env : Env)
       = ((env "a").toNat * (env "b").toNat) % babyBear :=
   mulmodProg_toNat babyBear env babyBear_pos babyBear_lt ha hb
 
-/-- …and computes the genuine `ZMod babyBear` field product. -/
+/-- …and computes the `ZMod babyBear` field product. -/
 theorem bbMul_zmod (env : Env)
     (ha : (env "a").toNat < babyBear) (hb : (env "b").toNat < babyBear) :
     ((RegProg.denotePure bbMulProg env) "res").toNat

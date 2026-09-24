@@ -9,9 +9,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.PolyRewrites
 public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 
 /-!
-# Poly-dialect ML-KEM NTT migration tie (#482-4, step 4 — additive)
+# Poly-dialect ML-KEM NTT migration tie
 
-Connects the new **Poly Veir-dialect** NTT multiply (`PolyDialect.nttMul`,
+Connects the **Poly Veir-dialect** NTT multiply (`PolyDialect.nttMul`,
 denoting the abstract polynomial-ring product via CompPoly's `realNttMul`) to the
 **verified emitted ML-KEM-style NTT program** of `LatticeNTTSemantic`
 (`realSrcCom` / `realTgtCom` — the one-multiply program and its expanded
@@ -20,15 +20,15 @@ operations, the form whose negacyclic-product soundness
 `realSrcCom_negacyclic_coeff` is proved against CompPoly's
 `fastMulImpl_eq_mul` + the negacyclic fold).
 
-This is the **first NTT emitter migrated onto the Poly dialect**, additively:
-neither `PolyDialect.lean` nor `LatticeNTTSemantic.lean` is modified.  The bridge
+This module ties an NTT emitter to the Poly dialect without changing
+`PolyDialect.lean` or `LatticeNTTSemantic.lean`.  The bridge
 is the observation that both the emitter's `realLatticeDialect.polyMulC` /
 `basemul` and the Poly dialect's `nttMul` op denote to the **same**
 `realNttMul (D q) a b` — so the dialect's `nttMul` is backed by the same verified
 CompPoly NTT round-trip the emitter's negacyclic KAT validates, with no new opaque
-poly leaf and no broken proof.
+poly leaf.
 
-## The one-tie-per-level payoff
+## One tie per dialect level
 
 The realization ties connect **once per dialect level** (structural) instead of
 per-protocol.  In this module:
@@ -40,7 +40,7 @@ per-protocol.  In this module:
   NTT-using protocol (ML-KEM, ML-DSA, Plonky3, FAEST) inherits the negacyclic
   convolution correctness without re-proving the transform.
 
-## What this lands
+## Contents
 
 * `emitterMatchesNttMul` — the emitter's `realLatticeDialect.polyMulC`
   denotation equals the Poly dialect's `nttMul` denotation (both are
@@ -51,15 +51,15 @@ per-protocol.  In this module:
   op, and (via `PolyDialect.nttMul_negacyclic_coeff`) that value's negacyclic
   reduction is the negacyclic convolution.
 
-## Deferred (the continuation, #482-5)
+## Scope
 
 The Plonky3 NTT (`Plonky3NttLayerEmit` / `Plonky3NttButterflyEmit`) and the
 ML-DSA 4-way batched NTT (`LatticeNttEmit` / `MldsaNtt4WayVec`) emitted-kernel
-ties, and the `Com polyDialect` lowering-out to `jasminDialect`, are deferred:
-the Poly dialect already *denotes* the full negacyclic ring product
+ties, and the `Com polyDialect` lowering-out to `jasminDialect`, are outside this
+module: the Poly dialect *denotes* the full negacyclic ring product
 (`PolyDialect.lean`) and the same structural `realNttMul`-bridge lifts each
-emitter onto it.  Only the ML-KEM `nttMul` tie is landed here as the
-proof-of-concept of the one-tie-per-level structure (mirroring the BN254 `padd`
+emitter onto it.  Only the ML-KEM `nttMul` tie is proved here, as the
+proof of concept of the one-tie-per-level structure (mirroring the BN254 `padd`
 proof-of-concept of the EllipticCurve migration).
 -/
 

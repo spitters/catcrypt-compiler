@@ -29,7 +29,7 @@ the 256-bit mask into a 32-bit bitmask of the form `0xFFFFFFFF` if all
 4 qwords match and a non-`0xFFFFFFFF` value with leading zero-bytes
 otherwise.
 
-The pair is the load-bearing primitive for non-CT mpn compare: scan the
+The pair is the key primitive for non-CT mpn compare: scan the
 limbs MSB-first in 4-qword (256-bit ymm) chunks, do one VPCMPEQQ + one
 VPMOVMSKB per chunk, branch on whether the 32-bit bitmask equals
 `0xFFFFFFFF`. If equal → advance to the next chunk; if not → use TZCNT
@@ -272,10 +272,10 @@ theorem vpmovmskb_eq_signmask256 (v : BitVec 256) :
           let sb : BitVec 1 := signBit (bv256Byte v k)
           acc ||| (sb.setWidth 32 <<< k.val)) := rfl
 
-/-! ## 7. Alignment lemma — multi-lane VPCMPEQQ via the lane-map keystone
+/-! ## 7. Alignment lemma — multi-lane VPCMPEQQ via the lane-map lemma
 
 The 2-way (U128), 4-way (U256), 8-way (U512) variants are lane-parallel
-maps of the single-lane denotation. The lane-map keystone
+maps of the single-lane denotation. The lane-map lemma
 `LaneMap.vmap₂_eq_scalar` carries the equality without proof
 duplication. -/
 
@@ -300,7 +300,7 @@ theorem vpcmpeqq_lane_map_eight_way (a b : BitVec 512) :
 
 /-! ## 8. Combined VPCMPEQQ → VPMOVMSKB identity
 
-The load-bearing chain for non-CT mpn compare is:
+The main chain for non-CT mpn compare is:
   mask256 = VPCMPEQQ_256(a, b)
   bm      = VPMOVMSKB_256(mask256)
   branch on (bm == 0xFFFFFFFF)
