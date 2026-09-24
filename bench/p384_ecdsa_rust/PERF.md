@@ -41,8 +41,8 @@ s2n-bignum checkout (see README.md, [§ Paths](README.md#paths)):
 | `P384_NO_CRYPTOPT=1` | AUCurves field in fiat-crypto Rust instead of CryptOpt assembly (build time) | unset |
 | `P384_S2N_FIELD` | AUCurves field from an s2n-bignum archive or an emitted `.s` file (build time) | unset |
 | `P384_OPENSSL36_LIBCRYPTO` | the OpenSSL 3.2+ library of the native DHKEM rows | `/opt/microsoft/mdatp/lib/libcrypto.so.3` |
-| `P384_AWSLC_LIBCRYPTO` | the AWS-LC library; its rows are skipped when absent | `~/Claude/bench_refs/aws-lc-build/crypto/libcrypto.so` |
-| `P384_SYMCRYPT_LIB` | the SymCrypt module; its rows are skipped when absent or not version 103.13 | `~/Claude/bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/libsymcrypt.so.103` |
+| `P384_AWSLC_LIBCRYPTO` | the AWS-LC library; its rows are skipped when absent | `../../../bench_refs/aws-lc-build/crypto/libcrypto.so` |
+| `P384_SYMCRYPT_LIB` | the SymCrypt module; its rows are skipped when absent or not version 103.13 | `../../../bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/libsymcrypt.so.103` |
 | `KAT_RANDOM`, `FIELD_SAMPLES`, `FIELD_INNER` | `fieldbench`: random known-answer pairs, samples, multiplies per sample | 100000, 301, 2000 |
 
 The AUCurves field configuration is fixed at build time, so a benchmark binary
@@ -57,7 +57,7 @@ figure is the median of the per-repetition ns/op. Our side, RustCrypto and
 Graviola, and the two arms of each micro-benchmark, are interleaved
 round-robin within each process, because on this machine the clock drifts by
 more over a sequential sweep than the variants differ from each other
-(the script `~/Claude/BLS/AUCurves/p384-safe-rust/build.sh` records that
+(the script `p384-safe-rust/build.sh` of the AUCurves tree records that
 measurement).
 
 Whether the CryptOpt assembly is linked is a compile-time choice of
@@ -90,7 +90,7 @@ reproduces these three rows to within 1%.
 
 The two divstep inverses cost the same, as they should: identical limb
 count, identical iteration count, and a modulus that enters only as data.
-`~/Claude/SSProve-lean/bench/p384_safegcd_compare` recorded `fp_inv` at 2333 ns/op on this box,
+The development repository's `bench/p384_safegcd_compare` recorded `fp_inv` at 2333 ns/op on this box,
 which is the same figure to 3%.
 
 Both are the half-delta variant. The safegcd core starts `zeta = -1`, the
@@ -261,7 +261,7 @@ micro-benchmarks are direct, and they are what the attribution rests on.
 These are whole-operation numbers for an orchestration the compiler emitted
 over our own verified leaves. They say nothing about the correctness of the emit;
 that is the Lean equivalence proof, and a passing KAT is not a substitute for
-it (`~/Claude/SSProve-lean/bench/AGENTS.md`, "KAT vs correctness proof").
+it (the development repository's `bench/AGENTS.md`, "KAT vs correctness proof").
 
 ## Measured, the s2n-bignum backend
 
@@ -279,8 +279,8 @@ between them is quoted on every row.
 
 Before any configuration was built on our own field kernels, the two emitted
 P-384 field kernels in the tree were measured against s2n-bignum's. Neither
-had been measured against anything recorded: `~/Claude/SSProve-lean/bench/framework/geomean_ratios.tsv`
-has no P-384 row, and the bench section of `~/Claude/SSProve-lean/bench/p384_fieldmul_compare/README.md`
+had been measured against anything recorded: the development repository's `bench/framework/geomean_ratios.tsv`
+has no P-384 row, and the bench section of the development repository's `bench/p384_fieldmul_compare/README.md`
 is deferred.
 
 `src/bin/fieldbench.rs`, `--features s2n,emit-field`. Known-answer gate
@@ -311,7 +311,7 @@ same six-limb layout and the same calling convention. Three runs gave 2.573,
 2.575 and 2.581 on the minima, so the figure is not noise. It is also slower
 than the fiat-crypto Rust it would replace, by a factor of 1.57.
 
-This is consistent with what `~/Claude/SSProve-lean/bench/p384_fieldmul_compare/README.md` already
+This is consistent with what the development repository's `bench/p384_fieldmul_compare/README.md` already
 says of the other kernel: correctness-first, unscheduled emit, with no
 register-residence or scheduling pass applied. Nothing about the result is
 surprising and nothing about it is hidden.

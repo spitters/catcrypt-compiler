@@ -12,6 +12,8 @@ ASCENT.md
 HAX_RUST.md
 ASCENT_REFERENCE.md
 CAPABILITIES.md
+HEADLINES.md
+NAVIGATION.md
 PROVENANCE.md
 THIRD_PARTY_NOTICES.md
 CHANGELOG.md
@@ -22,6 +24,11 @@ bench/p384_ecdsa_rust/README.md
 bench/p384_ecdsa_rust/PERF.md
 bench/p384_ecdsa_rust/gen/PROVENANCE.md
 bench/s2n_import/README.md
+CatCrypt/Crypto/Jasmin/AGENTS.md
+CatCrypt/Crypto/Hax/AGENTS.md
+CatCrypt/Hax/AGENTS.md
+CatCrypt/Tactic/AGENTS.md
+CatCrypt/Tactics/AGENTS.md
 CatCrypt/Crypto/Optimizer/README.md
 CatCrypt/Crypto/Optimizer/Rewrite/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/AGENTS.md

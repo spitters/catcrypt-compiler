@@ -2,7 +2,11 @@
 
 Requires Lean 4 (the toolchain pinned in `lean-toolchain`, installed via
 [elan](https://github.com/leanprover/elan)) and git. Every dependency resolves from a
-public git repository; `lakefile.lean` lists them with their pins.
+public git repository; `lakefile.lean` lists them with their pins:
+[`catcryptCore`](https://github.com/spitters/CatCrypt-core) (the CatCrypt methodology
+library), `Veir` (below), [`paramTransfer`](https://github.com/spitters/ParamTransfer)
+(the proof-transfer bridge), `CompPoly`,
+[`hax-lean`](https://github.com/spitters/hax-lean) (the typed hax front) and `mathlib`.
 
 ## The Veir dependency
 
@@ -15,8 +19,11 @@ the other dependencies, and no credentials are needed.
 
 ## What a build consists of
 
-The default target (`lake build`) builds the 2390 modules that `lakefile.lean` names
-(`grep -c 'Lake.Glob.one' lakefile.lean`). mathlib and the packages it requires come
+`lakefile.lean` declares two libraries: `CatCryptCompiler`, the compiler and its
+theorems, and `CatCryptCompilerExamples`, the demos, probes, tests and benchmark
+drivers, which nothing in `CatCryptCompiler` imports. The default target
+(`lake build`) builds `CatCryptCompiler`; `lake build CatCryptCompilerExamples`
+builds the second. mathlib and the packages it requires come
 prebuilt from mathlib's cache; the other dependencies build from source. A single
 example needs only its import closure: `lake build <module>` builds that closure and
 nothing else, and [GETTING_STARTED.md](GETTING_STARTED.md) starts that way. Peak memory grows with the
@@ -70,24 +77,13 @@ bash scripts/front-callsite-ratchet.sh       # no new direct rolled-loop combina
 bash scripts/audit_emit_provenance.sh        # no new untagged hand-written JInstr block
 bash scripts/vacuous-theorem-ratchet.sh      # no new vacuous or assumption-shaped security theorem
 bash scripts/uc-plumbing-ratchet.sh          # no new plumbing-tagged security statement
-bash scripts/proof-cost-ratchet.sh           # no new native_decide or maxHeartbeats bump
+bash scripts/proof-cost-ratchet.sh           # no rise in the recorded proof-cost counts
 bash scripts/lint-lean-prose.sh --docs       # the listed documents contain no banned phrasing
 ```
 
 Each ratchet compares against a baseline in `scripts/` and fails when its count
 rises. When a count falls the ratchet rewrites the baseline downward; commit the
 tightened file, which is what the final CI step checks.
-
-Line 1 of `scripts/native-decide-baseline.txt` is the number of `native_decide`
-occurrences under `CatCrypt/` outside comments, and each further line gives a count
-and a file; line 1 of `scripts/maxheartbeats-baseline.txt` is the number of
-`set_option maxHeartbeats` bumps above the default 200000
-(`head -1 scripts/native-decide-baseline.txt scripts/maxheartbeats-baseline.txt`).
-At this commit the counts are 2120 `native_decide` occurrences in 477 files and 78
-bumps. Each `native_decide` runs a computation inside the build and adds a
-compiler-trust axiom to the theorems that depend on it; each raised heartbeat budget
-carries a slow proof. Replacing one with a structural proof, or moving a test to a
-harness, lowers the count and the ratchet records it.
 
 `scripts/rot-guard-build.sh --build` builds every module in
 `scripts/rot-guard/build-roots.txt` as its own target, in batches, so a failure
@@ -96,10 +92,9 @@ names the modules it was building.
 Two checks read a build:
 
 ```bash
-# `sorry` in a build that stopped early.
+# `sorry` in a build that ended early.
 bash scripts/sorry-gate.sh --reset
 bash scripts/sorry-gate.sh run bash scripts/rot-guard-build.sh --build
-bash scripts/sorry-gate.sh --init            # writes scripts/sorry-baseline.txt, which the package does not ship
 bash scripts/sorry-gate.sh check
 
 # Per-module elaboration cost.
@@ -110,11 +105,8 @@ bash scripts/build-cost-ratchet.sh check
 A complete `lake build` refuses every declaration whose proof reaches `sorryAx`:
 `lakefile.lean` passes `-E hasSorry`, which reports Lean's `hasSorry` message as an
 error. `scripts/sorry-gate.sh` covers a build that stops early: it reads the log of
-the modules that build reached and compares per-file counts with a baseline file,
-`scripts/sorry-baseline.txt`, which `scripts/sorry-gate.sh --init` writes. The
-package ships no baseline, so `scripts/sorry-gate.sh check` fails until one is
-written. Under `-E hasSorry` the only baseline consistent with a complete build
-allows no such declaration.
+the modules that build reached and compares per-file counts with the baseline
+`scripts/sorry-baseline.txt`, which allows no such declaration.
 
 ## Diagnosing an out-of-memory kill
 
@@ -131,9 +123,8 @@ must already be built.
 
 `scripts/check-build-cost.sh` applies this over the modules changed since HEAD: it
 elaborates each under the same memory cap and a wall-clock timeout and fails on a
-memory overrun or a timeout, after a static lint for proof-cost patterns: a
-`native_decide` in a reflection or emit-front module (whose import native-compiles
-the pipeline), or a `maxRecDepth`/`maxHeartbeats` budget newly placed on a proof.
+memory overrun or a timeout, after a static lint for proof-cost patterns, such as a
+`maxRecDepth`/`maxHeartbeats` budget newly placed on a proof.
 
 ```bash
 BUILD_COST_STATIC_ONLY=1 bash scripts/check-build-cost.sh   # lint only; the pre-commit hook runs this
@@ -195,9 +186,8 @@ lake env lean AxiomAudit.lean     # after the modules it imports are built
 `AxiomAudit.lean` runs `#print axioms` on the theorems it lists and prints, for each,
 the axioms that theorem depends on. To check another theorem, add an import of its
 module and a `#print axioms <fully qualified name>` line, in that file or in a scratch
-file, and run it the same way. A theorem whose proof closure uses `native_decide`
-lists an additional axiom for it. The number of `axiom` declarations in the package,
-with the command that counts them, is in [README.md](README.md#limitations).
+file, and run it the same way. [README.md](README.md#scope) gives the command that
+lists the package's `axiom` declarations.
 
 ## Generate the documentation
 

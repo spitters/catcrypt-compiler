@@ -38,7 +38,7 @@ PROD_FEATURES ?= --features s2n,production
 # build script; this forces the pure-Rust field leaves instead.
 PURE  := P384_NO_CRYPTOPT=1
 # Wycheproof vectors are not vendored.  The corpus test skips when absent.
-WYCHEPROOF_DIR ?= $(HOME)/Claude/bench_refs/boringssl/third_party/wycheproof_testvectors
+WYCHEPROOF_DIR ?= $(CURDIR)/../../../bench_refs/boringssl/third_party/wycheproof_testvectors
 # Core to pin the benchmark to; leave empty to let the scheduler choose.
 BENCH_CPU ?= 15
 BENCH_REPS ?= 15

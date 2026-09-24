@@ -39,7 +39,9 @@ process.
 
 The P-384 and s2n-bignum material spans three repositories:
 catcrypt-compiler (this repository), the development tree SSProve-lean, and
-the AUCurves tree at `~/Claude/BLS/AUCurves`. Paths are relative to the root of
+the AUCurves tree at `../BLS/AUCurves`. A path of the form `../X` in prose is
+relative to the root of this repository; commands run from this directory. Paths in
+the table are relative to the root of
 the repository named in the second column. The "proved" column states only what
 the module docstring of the file states; "none" means the file carries no
 theorem. Elsewhere in this document a code span of the form `checkout:path`
@@ -75,8 +77,6 @@ not a file of this repository.
 | `p384-safe-rust` | AUCurves | P-384 field and group in Rust: fiat-crypto field, RCB `a = -3` complete formulas, 4-bit window, `W = 5` comb; field chosen at build time (fiat, CryptOpt, s2n-bignum, encoded montmul) | outside this repository; see its README |
 | `safegcd-rs` | AUCurves | Bernstein-Yang divstep inversion; `safegcd_p384` (field) and `safegcd_p384_order` (group order) | outside this repository; convergence certificates in Rocq under AUCurves |
 | `fiat-crypto/fiat-rust` | AUCurves | fiat-crypto generated Rust, including `fiat-rust:src/p384_64.rs` and `fiat-rust:src/p384_scalar_64.rs` | outside this repository |
-| `crates/catcrypt-p384` | SSProve-lean | planned Rust crate for the P-384 kernels; not present | — |
-| `crates/catcrypt-ed25519` | SSProve-lean | planned Rust crate for Ed25519 over emitted x86-64 kernels; partly present and untracked | — |
 
 The two emitted field kernels that `fieldbench` links are untracked files of
 this repository, written by `emitMainP384` in
@@ -129,14 +129,14 @@ zero `k` drives `r` to zero and is reported the same way.
 | Graviola 0.4.1 | external, s2n-bignum assembly | second reference and benchmark baseline, never ours |
 | OpenSSL 3.0.13 `libcrypto.so.3` | external, system library | production opponent (`--features production`), never ours |
 | BoringSSL at `956bac6e4db9` | external, `libcrypto.a` | production opponent (`--features production`), never ours |
-| AWS-LC 5.9.0 at `f3798b6fe6a8` | external, `libcrypto.so` of the build tree `~/Claude/bench_refs/aws-lc-build`, P-384 field in s2n-bignum assembly | production opponent, ECDSA and DHKEM reconstruction (`--features production`, skipped when absent), never ours |
+| AWS-LC 5.9.0 at `f3798b6fe6a8` | external, `libcrypto.so` of the build tree `../bench_refs/aws-lc-build`, P-384 field in s2n-bignum assembly | production opponent, ECDSA and DHKEM reconstruction (`--features production`, skipped when absent), never ours |
 | Microsoft SymCrypt 103.13.0 at `286762b` (MIT) | external, the shared module `libsymcrypt.so.103` of the CMake preset `Linux_AMD64_GCC_Release`, P-384 field in SymCrypt's own MULX assembly | production opponent, ECDSA and DHKEM reconstruction (`--features production`, skipped when absent), never ours |
-| DHKEM orchestration (`gen/p384_dhkem_*.rs`, transcription until they land) | CatCrypt compiler emit | ours |
+| DHKEM orchestration (`gen/p384_dhkem_*.rs`) | CatCrypt compiler emit | ours |
 | DHKEM leaves (`src/leaves.rs`, `src/leaves_s2n.rs`, `src/dhkem_kdf.rs`, `src/sec1.rs`) | this crate | ours (plumbing; HKDF is `hkdf` 0.12.4 / `hmac` 0.12.1 / `sha2` 0.10.9, external) |
 | reference DHKEM (`src/dhkem_ref.rs`) | this crate over RustCrypto `p384` ECDH and `hkdf` | reference, not a kernel |
 | hpke-rs 0.7.0 with `hpke-rs-rust-crypto` 0.7.0 | external | DHKEM production opponent, never ours |
 | OpenSSL 3.6.0, Microsoft Defender's `libcrypto.so.3` | external, found on the machine | DHKEM native-API opponent (`--features production`), never ours |
-| OpenSSL 4.1.0-dev, `~/Claude/bench_refs/openssl-install/lib/libcrypto.so.4` | external, built from the `bench_refs/openssl` checkout (HEAD `83ef562`; that the install matches this HEAD was not checked) | the same role, selected with `P384_OPENSSL36_LIBCRYPTO`, never ours |
+| OpenSSL 4.1.0-dev, `../bench_refs/openssl-install/lib/libcrypto.so.4` | external, built from the `bench_refs/openssl` checkout (HEAD `83ef562`; that the install matches this HEAD was not checked) | the same role, selected with `P384_OPENSSL36_LIBCRYPTO`, never ours |
 
 Every layer that differs between the two sides is ours. The field is the one
 layer neither side owns and both sides share: RustCrypto's
@@ -373,7 +373,7 @@ be made to check**, and no vector was altered to make anything pass.
 
 `--features production` adds OpenSSL 3.0.13, the system `libcrypto.so.3`,
 and BoringSSL, the static `libcrypto.a` of the checkout at
-`~/Claude/bench_refs/boringssl` (commit `956bac6e4db9`), as two more
+`../bench_refs/boringssl` (commit `956bac6e4db9`), as two more
 opponents. `src/ossl.rs` and `src/bssl.rs` are the bridges, `tests/production.rs`
 the interop suite; the benchmark gains an OpenSSL and a BoringSSL column. Off
 by default: without the feature the crate builds and tests exactly as before
@@ -518,8 +518,8 @@ is checked through both. No failure occurred and no vector was altered.
 ## AWS-LC, the third production opponent
 
 `--features production` also brings in AWS-LC 5.9.0, the shared
-`libcrypto.so` of the build tree `~/Claude/bench_refs/aws-lc-build`, built
-from the checkout `~/Claude/bench_refs/aws-lc` at `f3798b6fe6a8`.
+`libcrypto.so` of the build tree `../bench_refs/aws-lc-build`, built
+from the checkout `../bench_refs/aws-lc` at `f3798b6fe6a8`.
 `src/awslc.rs` is the bridge. The library is loaded at run time, not at
 build time, so the build does not need it: `awslc::available()` reports
 whether it loaded, and each AWS-LC test prints a `SKIP:` line and passes
@@ -620,7 +620,7 @@ No ECDSA divergence was found. The DHKEM reconstruction has one; see
 
 `--features production` also brings in Microsoft SymCrypt 103.13.0 (commit
 `286762b`, MIT licence), the shared module `libsymcrypt.so.103` built in the
-checkout `~/Claude/bench_refs/symcrypt` with the CMake preset
+checkout `../bench_refs/symcrypt` with the CMake preset
 `Linux_AMD64_GCC_Release`. `src/symcrypt.rs` is the bridge. As for AWS-LC,
 the module is loaded at run time: `symcrypt::available()` reports whether it
 loaded and accepted the API version, and each SymCrypt test prints a `SKIP:`
@@ -714,7 +714,7 @@ self-test) is read from the source, not traced. The reproduction, with
 `$S` a scratch directory:
 
     mkdir -p $S/dbg/.build-id/d7
-    ln -s ~/Claude/bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/generic/.debug/libsymcrypt.so.103.13.0 \
+    ln -s "$PWD"/../../../bench_refs/symcrypt/build/cmake/Linux_AMD64_GCC_Release/module/generic/.debug/libsymcrypt.so.103.13.0 \
       $S/dbg/.build-id/d7/fcb5a95c00644e79cc8a8fedc07ce411d835ce.debug
     # a gdb script: set debug-file-directory $S/dbg; one `break` per routine,
     # each with `commands silent continue end`; run; info breakpoints
@@ -791,7 +791,7 @@ records what SymCrypt accepts under its validation opt-out.
 ## Paths
 
 The three path dependencies are relative and assume the AUCurves checkout is
-at `~/Claude/BLS/AUCurves`, the layout the sibling bench directories already
+at `../BLS/AUCurves`, the layout the sibling bench directories already
 use:
 
     p384        -> ../../../BLS/AUCurves/p384-safe-rust   (features = ["extracted"])
@@ -850,7 +850,7 @@ emitters are `emitMainP384` (module
 `CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit`) and
 `emitP384` (module `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel`),
 both in this repository. The drivers that call them are in SSProve-lean and
-write relative to the working directory, so run from `~/Claude/SSProve-lean`
+write relative to the working directory, so run from the root of SSProve-lean (`../SSProve-lean`)
 they write under that tree's `bench/`:
 
     lake env lean bench/sm2_compare/p384_montmul_proven_emit.lean
@@ -1020,10 +1020,10 @@ That crate is in this machine's cargo registry cache. Nothing was fetched
 from the network and no vector was constructed here.
 
 **CAVP SigVer is not on this machine.** No `.rsp` file for ECDSA P-384
-verification was found under `~/Claude`, `~/.cargo` or the AUCurves tree. The
+verification was found in the sibling checkouts, the cargo home or the AUCurves tree. The
 negative-verification corpus used instead is Google Wycheproof's
 `wycheproof_testvectors:ecdsa_secp384r1_sha384_p1363_test.txt`, in BoringSSL's converted text form
-at `~/Claude/bench_refs/boringssl/third_party/wycheproof_testvectors`. It is
+at `../bench_refs/boringssl/third_party/wycheproof_testvectors`. It is
 Wycheproof, not CAVP, and `tests/wycheproof.rs` says so. The vectors are not
 vendored into this directory; point `WYCHEPROOF_DIR` at a checkout, and the
 test reports a skip when the file is absent.
@@ -1093,7 +1093,7 @@ built s2n-bignum checkout, or the default of [§ Paths](#paths) to exist. The
     P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n --test cavp -- --nocapture
 
     # the Wycheproof corpus only
-    WYCHEPROOF_DIR=$HOME/Claude/bench_refs/boringssl/third_party/wycheproof_testvectors \
+    WYCHEPROOF_DIR=../../../bench_refs/boringssl/third_party/wycheproof_testvectors \
       P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n --test wycheproof -- --nocapture
 
     # the Graviola interop suite only
@@ -1166,7 +1166,7 @@ configurations were run on 2026-09-16 with every test passing, the
 `safegcd` crate's own suite is 18 tests, three of them the P-384 group-order
 instance:
 
-    cd ~/Claude/BLS/AUCurves/safegcd-rs && cargo test --offline --release
+    cd ../../../BLS/AUCurves/safegcd-rs && cargo test --offline --release
 
 ## DHKEM(P-384, HKDF-SHA384)
 
@@ -1293,7 +1293,7 @@ one call, so `ExtractAndExpand` is one call with an empty salt and the
 labelled `ikm` and `info` of RFC 9180 §4; the crate's own KDF is not used.
 
 **Test vectors.** No official DHKEM(P-384) vectors are on this machine. The
-CFRG test-vector file in `~/Claude/libcrux/tests/hpke_test_vectors.json`
+CFRG test-vector file in `../libcrux/tests/hpke_test_vectors.json`
 holds KEM ids `0x0010`, `0x0012`, `0x0020` and `0x0021` only, the same four
 RFC 9180 Appendix A covers; BoringSSL's HPKE vectors cover its own KEMs; the
 hpke-rs 0.7.0 package ships no test data. The evidence is agreement across
@@ -1411,13 +1411,13 @@ does not use `SYMCRYPT_FLAG_KEY_MINIMAL_VALIDATION`.
 
     # the AWS-LC, SymCrypt and OpenSSL 4.1.0-dev runs recorded in PERF.md
     P384_NO_CRYPTOPT=1 cargo build --offline --release --features s2n,production --bin bench
-    P384_OPENSSL36_LIBCRYPTO=$HOME/Claude/bench_refs/openssl-install/lib/libcrypto.so.4 \
+    P384_OPENSSL36_LIBCRYPTO=../../../bench_refs/openssl-install/lib/libcrypto.so.4 \
       BENCH_SECTIONS=dhkem,ecdsa BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 \
       taskset -c 15 ./target/release/bench
     # the SymCrypt run's second process, AUCurves over the encoded montmul
-    P384_S2N_FIELD=$HOME/Claude/catcrypt-compiler/bench/s2n_import/gen/bignum_montmul_p384_encoded.s \
+    P384_S2N_FIELD=../s2n_import/gen/bignum_montmul_p384_encoded.s \
       cargo build --offline --release --features s2n,production --bin bench
-    P384_OPENSSL36_LIBCRYPTO=$HOME/Claude/bench_refs/openssl-install/lib/libcrypto.so.4 \
+    P384_OPENSSL36_LIBCRYPTO=../../../bench_refs/openssl-install/lib/libcrypto.so.4 \
       BENCH_SECTIONS=ecdsa,dhkem BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 \
       taskset -c 15 ./target/release/bench
 

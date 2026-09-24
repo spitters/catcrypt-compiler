@@ -17,35 +17,35 @@ the module and prints AArch64 assembly for the routine
 `fn f(a: u64, b: u64) -> u64 { let t = a.wrapping_mul(b); t.wrapping_add(a) }`:
 
 ```
-	mul w2, w1, w0
-	add w3, w2, w1
-	orr w4, w3, w3
+	mul x2, x1, x0
+	add x3, x2, x1
+	orr x4, x3, x3
 ```
 
 ## What just happened
 
 - The source is `srcThir`, written by hand in the module as a term of the front's
-  input type `ThirToComFront.Thir`. That is the type the package's translators from
-  hax-lean's ASTs produce (`TExprToThir.texprToThir` from `Hax.TExpr`,
-  `ImpExprToThir.impExprToThir` from `Hax.ImpExpr`). The package contains no Rust
-  source for the routine, and the demo does not run hax.
-- The front `thirToJasmin` lowers it at width 64 to the IR program `srcCom`; the
-  module checks that the lowering succeeds with `native_decide` (`srcThir_lowers`).
-- The backend compiles `srcCom` to the 64-bit AArch64 block `srcArm`, and
-  `renderBBlockBody` prints it through the register map `demoAlloc`, which names
-  the 32-bit views `w0`, `w1`, … of the registers. The printer carries no theorem.
-- [DEMO.md](DEMO.md) states which theorems apply to this program.
+  input type `ThirToComFront.Thir`, the type that the translators from hax-lean's
+  ASTs produce (`TExprToThir.texprToThir` from `Hax.TExpr`,
+  `ImpExprToThir.impExprToThir` from `Hax.ImpExpr`). The demo does not run hax.
+- The front `thirToJasmin` lowers it at width 64 to the Jasmin-dialect program
+  `srcCom`; `srcThir_lowers` checks that the lowering succeeds.
+- The backend compiles `srcCom` to the AArch64 block `srcArm`, and
+  `renderBBlockBody` prints it through the register map `demoAlloc` (`x0`, `x1`, …).
+- `srcArm_correct`, an instance of `com_arm_e2e` through `srcCom_ok : ComOK srcCom`,
+  proves that running `srcArm` from registers holding the inputs leaves the
+  denotation of `srcCom` in the result register.
+- [DEMO.md](DEMO.md) states the theorems behind this route.
 
 ## Next
 
 - [DEMO.md](DEMO.md): the theorems behind this run, and the relational front (a
   Lean specification related to compiled code).
 - [EXAMPLES.md](EXAMPLES.md): a set of buildable example modules.
-- [bench.md](bench.md): performance ratios against reference implementations,
-  measured in the development repository; they cannot be reproduced from this
-  package.
-- The manual, with the narrative:
-  `cd docs && lake update && lake build CompilerManual && lake exe compiler-manual --output _out`.
-- [AxiomAudit.lean](AxiomAudit.lean): prints the axioms of the theorems it lists,
-  with `lake env lean AxiomAudit.lean`; [BUILDING.md](BUILDING.md#check-axioms)
-  explains how to check another theorem.
+- [NAVIGATION.md](NAVIGATION.md): where each subsystem lives and its main theorem.
+- [bench.md](bench.md): performance ratios against production implementations.
+- The [manual](docs/CompilerManual.lean); [BUILDING.md](BUILDING.md#generate-the-documentation)
+  builds it.
+- [AxiomAudit.lean](AxiomAudit.lean): prints the axioms of the theorems it lists;
+  [BUILDING.md](BUILDING.md#check-axioms) runs it and explains how to check another
+  theorem.

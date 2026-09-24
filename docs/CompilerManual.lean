@@ -290,13 +290,10 @@ The trusted base includes the following. The package declares axioms, both
 uninterpreted types and operations of the reflection and Vale leaf modules and
 propositions about concrete computations and external tools, among them `bn254_pairing_correct_rocq`,
 `RustcExec_correct`, and the Jasmin compiler statements `x86CompilerCorrect`,
-`aarch64CompilerCorrect` and `riscvCompilerCorrect`. Proofs use `native_decide`, and a
-theorem that depends on one rests on the Lean compiler's evaluation. The hax export,
-the assembly printers and the GNU assembler carry no theorem. Three predicates are
-the constant `True`: `ownedX86CTSafe`, `printableShape` and `CpuMatchesModel`. A
-theorem depends on an axiom only if `#print axioms` lists it. The Limitations section
-of `README.md` gives the axiom and `native_decide` counts with the commands that
-produce them.
+`aarch64CompilerCorrect` and `riscvCompilerCorrect`. The hax export, the assembly
+printers and the GNU assembler are trusted. A theorem depends on an axiom only if
+`#print axioms` lists it; the Scope section of `README.md` gives the command that
+lists the axioms.
 
 Leaves are trusted or taken as hypotheses. The AES round is the `VAESENC`
 instruction. The BLS12-377 field and pairing arithmetic, and the BN254 field

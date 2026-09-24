@@ -1,14 +1,17 @@
 # Benchmarks
 
-Cycle counts on one host (AMD Ryzen 7 PRO 7840U, `taskset`-pinned, `rdtsc`),
+The figures come from the benchmark harness of the CatCrypt development repository
+and cannot be reproduced from this package. "Owned" code is code that CatCrypt's own
+backend emits from the Jasmin dialect, as opposed to output of Jasmin's compiler
+`jasminc`.
+
+Cycle counts are from one host (AMD Ryzen 7 PRO 7840U, `taskset`-pinned, `rdtsc`),
 each behind a byte-identical known-answer test. A ratio is our cycles divided by
-the reference's; below 1.00 we are faster. Every row of the first three tables
-compares against the fastest production implementation at the same instruction
-tier, named in the reference column. Figures are from the development scoreboard
-of 2026-08-11, reconciled with the artifact-tied record of 2026-08-26 on
-2026-09-15. The full record, with tiers, harness commands, corrections and
-shipped artifacts, is [bench/SCOREBOARD.md](bench/SCOREBOARD.md); the kernel
-inventory is [CAPABILITIES.md](CAPABILITIES.md).
+the reference's; below 1.00 we are faster. The first two tables compare against
+the fastest production implementation at the same instruction tier, named in the
+reference column. [bench/SCOREBOARD.md](bench/SCOREBOARD.md) is the full record,
+with tiers, harness commands and shipped artifacts; [CAPABILITIES.md](CAPABILITIES.md)
+is the kernel inventory.
 
 ## Ahead of or at production, same tier
 
@@ -29,7 +32,7 @@ inventory is [CAPABILITIES.md](CAPABILITIES.md).
 | X25519, variable base | libcrux (scalar ADX) | 1.06 |
 | HMAC-SHA256 | HACL\* (scalar) | 1.06 |
 
-Owned x86 backend against `jasminc` on the same nine emitted programs: 0.75.
+The owned x86 backend against `jasminc` on the same nine emitted programs: 0.75.
 
 ## Behind production, same tier
 

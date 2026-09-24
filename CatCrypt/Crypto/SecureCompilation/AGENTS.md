@@ -11,8 +11,9 @@ with `CatCrypt/` or name a document at the package root.
 
 ## Documents to read first
 
-- [README.md](../../../README.md), section "The guarantees": each headline theorem
-  with its fragment and hypotheses, and the section "Limitations".
+- [README.md](../../../README.md), sections "The guarantees" and "Scope": the
+  headline theorems with their level and fragment; [HEADLINES.md](../../../HEADLINES.md)
+  and [NAVIGATION.md](../../../NAVIGATION.md).
 - [DEMO.md](../../../DEMO.md) and [EXAMPLES.md](../../../EXAMPLES.md): worked examples.
 - [CAPABILITIES.md](../../../CAPABILITIES.md): per-primitive modules and theorems.
 - [VIR/DIALECTS.md](VIR/DIALECTS.md): which dialect lowers to which, and which reach bytes.

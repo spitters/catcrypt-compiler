@@ -75,14 +75,13 @@ two templates do.
    a shallow Lean function with the `FnCorres` theorem `Ns.HaxGen.«f».corres`.
    `#hax_coverage Ns` lists the functions the generator does not cover.
 3. Prove the generated function equal to your specification.
-   `CatCrypt/Crypto/ACME/SurfaceCorresGen.lean` in the development repository is
-   a complete example.
+   `CatCrypt/Hax/Ascent/Demo.lean` states such a correspondence for an array
+   comparison (`Hax.Ascent.Demo.keyEq_fnCorres`).
 
 For class-generic extractions, a builtins table built from a class instance
 (`Table.toBuiltins` over the instance's methods) certifies each literal at every
 instance by `ascend_reified`. `CatCrypt/Hax/ClassBuiltinsTest.lean` does this for a
-two-method class; the development repository's `CatCrypt/Hax/ClassCertified.lean`
-does it for the ristretto255 extraction.
+two-method class. The ristretto255 instances are in the development repository.
 
 The typed literals (`_texpr`) are checked by the judgement of
 `CatCrypt/Hax/TExprTypingCore.lean`: `check` with `check_sound`, stability under
@@ -92,10 +91,14 @@ that a well-typed expression evaluates to a value of its type or an error.
 Integer literals annotated at `usize` do not check, since `lit` types them as
 `int`.
 
-The ascent on machine code, `LowCT` and Jasmin is described in `ASCENT.md`.
+[ASCENT.md](ASCENT.md) describes the ascent on machine code, `LowCT` and Jasmin.
 
 ## Building
 
-Build from the development repository's root, as `BUILDING.md` requires, e.g.
-`lake build CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip`. `cargo hax` needs the hax
-frontend (`cargo-hax`) on the path.
+Build a module from the package root, as [BUILDING.md](BUILDING.md) describes:
+
+```bash
+lake build CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
+```
+
+`cargo hax` needs the hax frontend (`cargo-hax`) on the path.

@@ -21,5 +21,5 @@ index.
 theorems behind these modules with their fragments and hypotheses.
 `lake env lean AxiomAudit.lean` prints the axioms of the theorems that file lists;
 [BUILDING.md](BUILDING.md#check-axioms) explains how to check another theorem, and
-[README.md](README.md#limitations) gives the package's declared axioms and
-`native_decide` uses.
+[README.md](README.md#scope) gives the command that lists the package's declared
+axioms.
