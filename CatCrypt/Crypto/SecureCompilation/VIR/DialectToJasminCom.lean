@@ -377,8 +377,9 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
   -- to `[.reg 128, .reg 128] = SimdOp.argTys op` for the binary ops, so the args
   -- typecheck against the jasmin `op.argTys` after casing `op` to a concrete
   -- binary constructor. `ret = .sword 128`, `mapTy = .reg 128 = SimdOp.retTy op`,
-  -- so `retTy_eq` is `rfl`. The two UNARY `SimdOp`s (`vpshufd`/`vaeskeygen`)
-  -- decline here — they come in through the dedicated unary front ops below.
+  -- so `retTy_eq` is `rfl`. The UNARY `SimdOp`s (`vpshufd`/`vaeskeygen`/`packedImm`)
+  -- decline here: `vpshufd` and `vaeskeygen` come in through the dedicated unary
+  -- front ops below, and `packedImm` has no front op.
   | .vsimd op =>
       have hr : mapTy t = JasminTy.reg 128 := by
         have hret := e.retTy_eq; rw [h] at hret; rw [← hret]; rfl
@@ -403,9 +404,6 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
       | .packed b lw => some (hr ▸
           { op := .vsimd (.packed b lw), retTy_eq := rfl,
             args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
-      | .varShift b lw => some (hr ▸
-          { op := .vsimd (.varShift b lw), retTy_eq := rfl,
-            args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
       | .mulhi16 => some (hr ▸
           { op := .vsimd .mulhi16, retTy_eq := rfl,
             args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
@@ -417,6 +415,7 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
             args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
       | .vaeskeygen _ => none
       | .vpshufd _ => none
+      | .packedImm _ _ _ => none
   -- `vpshufdC imm` ↦ jasmin `JasminOp.vsimd (.vpshufd imm)` (unary).
   | .vpshufdC imm =>
       have hr : mapTy t = JasminTy.reg 128 := by

@@ -409,7 +409,7 @@ theorem roundtrip_encodeVsimdShift (ext d m imm : Nat)
     interval_cases ext <;> interval_cases d <;> decide
   have hdec : decodeVex2Shift (encodeVsimdShift ext 0 d m imm)
       = some { opcode := (0x73 : Nat) % 2 ^ 8, ext := ext, d := d, m := m, imm := imm % 2 ^ 8 } := by
-    simp only [encodeVsimdShift, bit, hbm, if_true, vex2p1,
+    simp only [encodeVsimdShift, encodeVsimdShiftImm, bit, hbm, if_true, vex2p1,
       modRMReg, cbit, decodeVex2Shift, List.map_cons, List.map_nil,
       modField, regField, rmField, vex2Vvvv, BitVec.toNat_ofNat, hand]
     rw [if_pos ⟨trivial, hmod⟩]

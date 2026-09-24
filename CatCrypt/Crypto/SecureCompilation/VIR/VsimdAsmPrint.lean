@@ -93,22 +93,20 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
     immediates are NOT part of the mnemonic — they are rendered as a leading
     `$imm` operand by `renderVsimdInstr`.
 
-    **The shift arms of `packed` carry the VARIABLE-shift mnemonics.** Both
-    `packed bop laneW` and `varShift bop laneW` denote by the same per-lane fold
-    (`JasminDialect.v128PackLanesW` and `simdVarShiftW` are the same definition):
-    result lane `k` is lane `k` of the data shifted by the `.toNat` of lane `k`
-    of the second operand. The machine instruction implementing that is
-    `VPSLLVD`/`VPSRLVD` (AVX2, per-lane count), not `VPSLLD`/`VPSRLD`, whose
-    count is the single 64-bit value in the low quadword of the second operand.
-    The two disagree on every dword-broadcast count: a `.long n,n,n,n` operand is
-    the 64-bit count `n·2³² + n`, far above the lane width, so `VPSLLD` zeroes all
-    four lanes while the denotation shifts each by `n`. `laneW = 16` has no AVX2
-    per-lane shift (`VPSLLVW` is AVX-512BW), so it falls to the `vppacked`
-    sentinel that gas rejects rather than to an instruction with another meaning.
+    **The shift arms of `packed` carry the VARIABLE-shift mnemonics.** `packed bop
+    laneW` denotes by the per-lane fold `JasminDialect.v128PackLanesW`: result lane
+    `k` is lane `k` of the data shifted by the `.toNat` of lane `k` of the second
+    operand. The machine instruction implementing that is `VPSLLVD`/`VPSRLVD`
+    (AVX2, per-lane count), not `VPSLLD`/`VPSRLD`, whose count is the single 64-bit
+    value in the low quadword of the second operand. The two disagree on every
+    dword-broadcast count: a `.long n,n,n,n` operand is the 64-bit count
+    `n·2³² + n`, far above the lane width, so `VPSLLD` zeroes all four lanes while
+    the denotation shifts each by `n`. `laneW = 16` has no AVX2 per-lane shift
+    (`VPSLLVW` is AVX-512BW), so it falls to the `vppacked` sentinel that gas
+    rejects rather than to an instruction with another meaning.
 
-    `SimdOp.argTys` gives `packed` two `reg 128` operands, so the immediate form
-    `vpslld $imm, src, dst` is not expressible here: an immediate count enters as
-    a broadcast constant in a register, which is exactly what `VPSLLVD` reads. -/
+    The immediate form `vpslld $imm, src, dst` is `packedImm`, a separate unary op;
+    `renderVsimdInstr` prints its count as a leading `$imm`. -/
 def SimdOp.attMnemonic : SimdOp → String
   | .gf2p8mulb => "vgf2p8mulb"
   | .vpshufb => "vpshufb"
@@ -130,29 +128,29 @@ def SimdOp.attMnemonic : SimdOp → String
   | .packed .shr 32 => "vpsrlvd"
   | .packed .shr 64 => "vpsrlvq"
   | .packed _ _ => "vppacked"
-  | .varShift .shl 32 => "vpsllvd"
-  | .varShift .shl 64 => "vpsllvq"
-  | .varShift .shr 32 => "vpsrlvd"
-  | .varShift .shr 64 => "vpsrlvq"
-  | .varShift _ _ => "vpvarshift"
+  | .packedImm .shl 16 _ => "vpsllw"
+  | .packedImm .shr 16 _ => "vpsrlw"
+  | .packedImm .shl 32 _ => "vpslld"
+  | .packedImm .shr 32 _ => "vpsrld"
+  | .packedImm .shl 64 _ => "vpsllq"
+  | .packedImm .shr 64 _ => "vpsrlq"
+  | .packedImm _ _ _ => "vppackedimm"
   | .mulhi16 => "vpmulhw"
   | .vaesenc => "vaesenc"
   | .vaesenclast => "vaesenclast"
   | .vaeskeygen _ => "vaeskeygenassist"
   | .vpshufd _ => "vpshufd"
 
-/-- A packed shift prints as the variable shift of the same width, for both
-    directions and both AVX2 widths. The two ops denote by the same per-lane
-    fold, so they print identically; the uniform-count `VPSLLD`, whose count
-    operand has the other meaning, is not the mnemonic of either. -/
-theorem attMnemonic_packed_shift_eq_varShift :
-    SimdOp.attMnemonic (.packed .shl 32) = SimdOp.attMnemonic (.varShift .shl 32) ∧
-    SimdOp.attMnemonic (.packed .shr 32) = SimdOp.attMnemonic (.varShift .shr 32) ∧
-    SimdOp.attMnemonic (.packed .shl 64) = SimdOp.attMnemonic (.varShift .shl 64) ∧
-    SimdOp.attMnemonic (.packed .shr 64) = SimdOp.attMnemonic (.varShift .shr 64) ∧
+/-- A packed shift by a register count prints as the per-lane variable shift, for
+    both directions and both AVX2 widths; the uniform-count `VPSLLD`, whose count
+    operand has another meaning, is the mnemonic of the immediate form only. -/
+theorem attMnemonic_packed_shift :
     SimdOp.attMnemonic (.packed .shl 32) = "vpsllvd" ∧
-    SimdOp.attMnemonic (.packed .shr 32) = "vpsrlvd" :=
-  ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+    SimdOp.attMnemonic (.packed .shr 32) = "vpsrlvd" ∧
+    SimdOp.attMnemonic (.packed .shl 64) = "vpsllvq" ∧
+    SimdOp.attMnemonic (.packed .shr 64) = "vpsrlvq" ∧
+    SimdOp.attMnemonic (.packedImm .shl 32 7) = "vpslld" :=
+  ⟨rfl, rfl, rfl, rfl, rfl⟩
 
 /-- A 16-bit packed shift has no AVX2 per-lane instruction (`VPSLLVW` is
     AVX-512BW), so it prints as the sentinel gas rejects. -/
@@ -208,6 +206,10 @@ def renderVsimdInstr (alloc : XAlloc) (op : SimdOp) (dst a b : String) : String 
       -- `Vec128AsmPrinter.renderVCryptInst`'s `.vpshufd` arm
       -- (`vpshufd $imm, %xmmsrc, %xmmdst`).
       "\tvpshufd $" ++ toString imm ++ ", " ++ ra ++ ", " ++ rd
+  | .packedImm bop laneW imm =>
+      -- unary + leading `$imm8` count, source = `a`: `vpslld $imm, src, dst`.
+      "\t" ++ SimdOp.attMnemonic (.packedImm bop laneW imm) ++ " $" ++ toString imm
+        ++ ", " ++ ra ++ ", " ++ rd
   | other =>
       -- 3-operand VEX form (`vaesenc`/`vaesenclast` included): `op src2, src1, dst`.
       "\t" ++ SimdOp.attMnemonic other ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
@@ -368,6 +370,7 @@ def vsimdExprDstSrcs {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       match op with
       | .vaeskeygen _ => (dst, [argName vm e.args 0])
       | .vpshufd _ => (dst, [argName vm e.args 0])
+      | .packedImm _ _ _ => (dst, [argName vm e.args 0])
       | _ => (dst, [argName vm e.args 0, argName vm e.args 1])
   | .vpslldq _ => (dst, [argName vm e.args 0])
   | .vpsrldq _ => (dst, [argName vm e.args 0])
@@ -1105,6 +1108,10 @@ def renderVsimdInstrY (alloc : XAlloc) (op : SimdOp) (dst a b : String) : String
       "\tvaeskeygenassist $" ++ toString rcon.toNat ++ ", " ++ ra ++ ", " ++ rd
   | .vpshufd imm =>
       "\tvpshufd $" ++ toString imm ++ ", " ++ ra ++ ", " ++ rd
+  | .packedImm bop laneW imm =>
+      -- unary + leading `$imm8` count, source = `a`: `vpslld $imm, src, dst`.
+      "\t" ++ SimdOp.attMnemonic (.packedImm bop laneW imm) ++ " $" ++ toString imm
+        ++ ", " ++ ra ++ ", " ++ rd
   | other =>
       "\t" ++ SimdOp.attMnemonic other ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
 

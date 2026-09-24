@@ -116,7 +116,7 @@ instance vectorDenote : DialectDenote vectorDialect where
     -- jasmin waist denote does).
     | .vsimd op => match op with
         | .gf2p8mulb | .vpshufb | .clmul _ | .affineqb _ | .bitwise _ | .packed _ _
-        | .varShift _ _ | .mulhi16 | .vaesenc | .vaesenclast => fun args =>
+        | .mulhi16 | .vaesenc | .vaesenclast => fun args =>
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head
             op.denote a b
@@ -126,6 +126,9 @@ instance vectorDenote : DialectDenote vectorDialect where
         | .vpshufd imm => fun args =>
             let src : BitVec 128 := args.head
             SimdOp.denote (.vpshufd imm) src src
+        | .packedImm bop laneW imm => fun args =>
+            let src : BitVec 128 := args.head
+            SimdOp.denote (.packedImm bop laneW imm) src src
 
 /-! ## 5. The lowering image into `jasminDialect` (the D0 template's op/type maps)
 

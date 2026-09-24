@@ -239,9 +239,6 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
          | .packed bop laneW, args =>
              SimdOp.denote (.packed bop laneW)
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
-         | .varShift bop laneW, args =>
-             SimdOp.denote (.varShift bop laneW)
-               (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
          | .mulhi16, args =>
              SimdOp.denote .mulhi16
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
@@ -258,6 +255,10 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
          | .vpshufd imm, args =>
              -- unary (`argTys = [reg 128]`): only `args.head`; denote ignores arg 2.
              SimdOp.denote (.vpshufd imm)
+               (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.head) (.reg 128))
+         | .packedImm bop laneW imm, args =>
+             -- unary (`argTys = [reg 128]`): only `args.head`; denote ignores arg 2.
+             SimdOp.denote (.packedImm bop laneW imm)
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.head) (.reg 128)))
     | .vymm op, args =>
         -- AVX2 256-bit vector op: read the looked-up arguments into an `HVector`
@@ -515,14 +516,6 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
             show (SimdOp.packed bop laneW).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ b) (.reg 128))
               = (SimdOp.packed bop laneW).denote (a.lookup V) (b.lookup V)
             rw [hS _ a, hS _ b]
-      | varShift bop laneW =>
-        cases args with
-        | cons a rest =>
-          cases rest with
-          | cons b rest' =>
-            show (SimdOp.varShift bop laneW).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ b) (.reg 128))
-              = (SimdOp.varShift bop laneW).denote (a.lookup V) (b.lookup V)
-            rw [hS _ a, hS _ b]
       | mulhi16 =>
         cases args with
         | cons a rest =>
@@ -562,6 +555,15 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
         | cons a rest =>
           show (SimdOp.vpshufd imm).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ a) (.reg 128))
               = (SimdOp.vpshufd imm).denote (a.lookup V) (a.lookup V)
+          rw [hS _ a]
+      | packedImm bop laneW imm =>
+        -- unary: `argTys = [reg 128]`, so `args = cons a nil`; both denote sides
+        -- read only `args.head` (the dialect-denote arm passes `src` twice).
+        cases args with
+        | cons a rest =>
+          show (SimdOp.packedImm bop laneW imm).denote (s.get (vm _ a) (.reg 128))
+                (s.get (vm _ a) (.reg 128))
+              = (SimdOp.packedImm bop laneW imm).denote (a.lookup V) (a.lookup V)
           rw [hS _ a]
   | vymm op =>
       -- AVX2 256-bit vector op: both sides are `vymmDenote op op.isBinary`

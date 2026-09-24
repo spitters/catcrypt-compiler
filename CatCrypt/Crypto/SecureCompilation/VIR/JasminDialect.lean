@@ -300,21 +300,11 @@ def v128PackLanesW (laneW : Nat) (bop : JasminBinOp) (a b : BitVec 128) : BitVec
                     (BitVec.extractLsb' (laneW * k) laneW b)).setWidth 128 <<< (laneW * k)))
     0
 
-/-- Variable per-lane shift on a 128-bit (XMM) register at lane width `laneW`
-    (`VPSLLVD` = `.shl 32`, `VPSLLVQ` = `.shl 64`, `VPSRLVD` = `.shr 32`,
-    `VPSRLVQ` = `.shr 64`): split `a` (data) and `b` (per-lane counts) into
-    `128 / laneW` lanes of width `laneW`; result lane `i` is lane `i` of `a`
-    shifted by the `.toNat` of lane `i` of `b`. Each lane uses its own count from
-    `b`, unlike a uniform packed shift where every lane uses one count. `bop` is
-    `.shl` (left) or `.shr` (right); the per-lane operation is `bop.apply` at width
-    `laneW`. The per-lane fold mirrors `v128PackLanesW`. Total: `laneW = 0` gives
-    `128 / 0 = 0` lanes → `0`. -/
-def simdVarShiftW (bop : JasminBinOp) (laneW : Nat) (a b : BitVec 128) : BitVec 128 :=
+/-- The 128-bit register whose every `laneW`-bit lane holds `x mod 2^laneW`: the
+    count operand of a packed shift by the immediate `x`. -/
+def v128BroadcastW (laneW : Nat) (x : Nat) : BitVec 128 :=
   (List.range (128 / laneW)).foldl
-    (fun acc k =>
-      acc |||
-        ((bop.apply (BitVec.extractLsb' (laneW * k) laneW a)
-                    (BitVec.extractLsb' (laneW * k) laneW b)).setWidth 128 <<< (laneW * k)))
+    (fun acc k => acc ||| ((BitVec.ofNat laneW x).setWidth 128 <<< (laneW * k)))
     0
 
 /-- One lane of `VPMULHW`: packed SIGNED 16-bit HIGH multiply. Copied verbatim from
@@ -493,16 +483,19 @@ inductive SimdOp where
       lane width) is the `packed` op below. -/
   | bitwise (bop : JasminBinOp)
   /-- Packed per-lane binop on a 128-bit register at lane width `laneW`
-      (`VPADDD` = `packed .add 32`, `VPADDQ` = `packed .add 64`). Denote = `v128PackLanesW`.
-      Unblocks the dword-lane kernels (ChaCha-4way etc.). -/
+      (`VPADDD` = `packed .add 32`, `VPADDQ` = `packed .add 64`). Denote =
+      `v128PackLanesW`: lane `k` of the result is `bop` applied to lane `k` of each
+      operand. For `.shl`/`.shr` that is a shift by a per-lane count, so the
+      instruction is the variable shift (`VPSLLVD` = `packed .shl 32`, `VPSLLVQ` =
+      `packed .shl 64`, `VPSRLVD`/`VPSRLVQ` for `.shr`), never the uniform-count
+      `VPSLLD`, whose count is the low quadword of the second operand. -/
   | packed (bop : JasminBinOp) (laneW : Nat)
-  /-- Variable per-lane shift on a 128-bit register at lane width `laneW`
-      (`VPSLLVD` = `varShift .shl 32`, `VPSLLVQ` = `varShift .shl 64`,
-      `VPSRLVD` = `varShift .shr 32`, `VPSRLVQ` = `varShift .shr 64`). Each lane of
-      the first operand is shifted by its own count taken from the corresponding
-      lane of the second operand, unlike the uniform `packed` shift. `bop` is
-      `.shl` / `.shr`. Denote = `simdVarShiftW`. -/
-  | varShift (bop : JasminBinOp) (laneW : Nat)
+  /-- Packed per-lane shift of a 128-bit register by the immediate `imm`, at lane
+      width `laneW` (`VPSLLD $imm` = `packedImm .shl 32 imm`, `VPSRLQ $imm` =
+      `packedImm .shr 64 imm`, `VPSLLW`/`VPSRLW` at 16). UNARY in the register
+      operand. Denote = `packed bop laneW` with the count register
+      `v128BroadcastW laneW imm`. -/
+  | packedImm (bop : JasminBinOp) (laneW : Nat) (imm : Nat)
   /-- `VPMULHW`: packed 8×i16 SIGNED high-16 multiply (ML-KEM NTT Montgomery).
       Distinct from `packed .mul 16` (which is the unsigned LOW product = VPMULLW). -/
   | mulhi16
@@ -533,7 +526,7 @@ def SimdOp.argTys : SimdOp → List JasminTy
   | .affineqb _ => [.reg 128, .reg 128]
   | .bitwise _ => [.reg 128, .reg 128]
   | .packed _ _ => [.reg 128, .reg 128]
-  | .varShift _ _ => [.reg 128, .reg 128]
+  | .packedImm _ _ _ => [.reg 128]
   | .mulhi16 => [.reg 128, .reg 128]
   | .vaesenc => [.reg 128, .reg 128]
   | .vaesenclast => [.reg 128, .reg 128]
@@ -548,7 +541,7 @@ def SimdOp.retTy : SimdOp → JasminTy
   | .affineqb _ => .reg 128
   | .bitwise _ => .reg 128
   | .packed _ _ => .reg 128
-  | .varShift _ _ => .reg 128
+  | .packedImm _ _ _ => .reg 128
   | .mulhi16 => .reg 128
   | .vaesenc => .reg 128
   | .vaesenclast => .reg 128
@@ -572,14 +565,18 @@ def SimdOp.mnemonic : SimdOp → String
   | .packed .mul 16 => "VPMULLW"
   | .packed .add 16 => "VPADDW"
   | .packed .sub 16 => "VPSUBW"
-  | .packed .shl 32 => "VPSLLD"
-  | .packed .shr 32 => "VPSRLD"
+  | .packed .shl 32 => "VPSLLVD"
+  | .packed .shl 64 => "VPSLLVQ"
+  | .packed .shr 32 => "VPSRLVD"
+  | .packed .shr 64 => "VPSRLVQ"
   | .packed _ _ => "VPPACKED"
-  | .varShift .shl 32 => "VPSLLVD"
-  | .varShift .shl 64 => "VPSLLVQ"
-  | .varShift .shr 32 => "VPSRLVD"
-  | .varShift .shr 64 => "VPSRLVQ"
-  | .varShift _ _ => "VPVARSHIFT"
+  | .packedImm .shl 16 imm => "VPSLLW:" ++ toString imm
+  | .packedImm .shr 16 imm => "VPSRLW:" ++ toString imm
+  | .packedImm .shl 32 imm => "VPSLLD:" ++ toString imm
+  | .packedImm .shr 32 imm => "VPSRLD:" ++ toString imm
+  | .packedImm .shl 64 imm => "VPSLLQ:" ++ toString imm
+  | .packedImm .shr 64 imm => "VPSRLQ:" ++ toString imm
+  | .packedImm _ _ _ => "VPPACKEDIMM"
   | .mulhi16 => "VPMULHW"
   | .vaesenc => "VAESENC"
   | .vaesenclast => "VAESENCLAST"
@@ -596,7 +593,9 @@ def SimdOp.denote : SimdOp → BitVec 128 → BitVec 128 → BitVec 128
   | .affineqb imm => fun a A => gf2p8affineqbW a A imm
   | .bitwise bop => fun a b => bop.apply a b
   | .packed bop laneW => fun a b => v128PackLanesW laneW bop a b
-  | .varShift bop laneW => fun a b => simdVarShiftW bop laneW a b
+  -- `packedImm` is unary (the count is the baked immediate); the second operand is
+  -- ignored.
+  | .packedImm bop laneW imm => fun a _ => v128PackLanesW laneW bop a (v128BroadcastW laneW imm)
   | .mulhi16 => vpmulhw16W
   -- AES round ops: denote = the verbatim-copied bespoke `Vec128Model.vaesenc`
   -- semantics (= `Jasmin.wAESENC` etc.), so kernels migrate semantics-identically.
@@ -607,6 +606,12 @@ def SimdOp.denote : SimdOp → BitVec 128 → BitVec 128 → BitVec 128
   | .vaeskeygen rcon => fun src _ => wAESKEYGENASSISTW src rcon
   -- `vpshufd` is unary (`imm8` baked); the second operand is ignored.
   | .vpshufd imm => fun src _ => wVPSHUFDW src imm
+
+/-- A packed shift by the immediate `imm` is the packed per-lane shift whose count
+    register holds `imm` in every lane. -/
+theorem SimdOp.denote_packedImm (bop : JasminBinOp) (laneW imm : Nat) (a b : BitVec 128) :
+    SimdOp.denote (.packedImm bop laneW imm) a b
+      = SimdOp.denote (.packed bop laneW) a (v128BroadcastW laneW imm) := rfl
 
 /-! ### Widening multiply + carry-chain primitives
 
@@ -1117,10 +1122,10 @@ instance jasminDenote : DialectDenote jasminDialect where
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head
             SimdOp.denote (.packed bop laneW) a b
-        | .varShift bop laneW => fun args =>
-            let a : BitVec 128 := args.head
-            let b : BitVec 128 := args.tail.head
-            SimdOp.denote (.varShift bop laneW) a b
+        | .packedImm bop laneW imm => fun args =>
+            -- unary: `argTys = [reg 128]`, only `args.head`; denote ignores op 2.
+            let src : BitVec 128 := args.head
+            SimdOp.denote (.packedImm bop laneW imm) src src
         | .mulhi16 => fun args =>
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head

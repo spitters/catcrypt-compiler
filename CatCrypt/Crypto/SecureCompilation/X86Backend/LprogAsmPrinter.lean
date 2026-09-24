@@ -584,6 +584,8 @@ def ymmImmUnaryAtt? : String → Option String
   | "VPSLLW" => some "vpsllw"
   | "VPSRLW" => some "vpsrlw"
   | "VPSRAW" => some "vpsraw"
+  | "VPSLLQ" => some "vpsllq"
+  | "VPSRLQ" => some "vpsrlq"
   | "VPSRLDQ" => some "vpsrldq"
   | _ => none
 

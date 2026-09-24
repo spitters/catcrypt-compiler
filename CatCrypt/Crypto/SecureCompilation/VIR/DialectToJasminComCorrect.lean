@@ -603,14 +603,6 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
             ctTransTy_sword]
           cases args with | cons a t => cases t with | cons b t2 => rfl
-      | varShift b lw =>
-          cases hop
-          simp only [toJExprD] at he; cases he
-          show SimdOp.denote (.varShift b lw) ((toJVarD args.head).lookup (ctMapValD V))
-            ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
-          rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
-            ctTransTy_sword]
-          cases args with | cons a t => cases t with | cons b t2 => rfl
       | mulhi16 =>
           cases hop
           simp only [toJExprD] at he; cases he
@@ -637,6 +629,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | vaeskeygen r => simp only [toJExprD, reduceCtorEq] at he
       | vpshufd i => simp only [toJExprD, reduceCtorEq] at he
+      | packedImm b lw i => simp only [toJExprD, reduceCtorEq] at he
   -- The unary SIMD front ops (`vpshufdC`/`vaeskeygenC` → jasmin `.vsimd`;
   -- `vpsrldqC`/`vpslldqC` → jasmin `.vpsrldq`/`.vpslldq`). The front denotes with
   -- the same waist the jasmin op denotes (`SimdOp.denote (.vpshufd _) x x` resp. the
