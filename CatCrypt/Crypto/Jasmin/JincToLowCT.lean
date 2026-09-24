@@ -14,6 +14,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
 
 /-!
 # `.jinc` leaf to `LowCT` (front: untyped AST → rolled-loop source)
@@ -414,6 +415,16 @@ def withCarried (names : List String) (body : LowCT) : LowCT :=
 
 /-! ## 6. Owned x86 renders -/
 
+/-- The owned render of a leaf: the basic-block pipeline, then two rounds of
+    register-copy coalescing (`LprogCopyCoalesce.coalesceRounds`, which preserves
+    the stored state by `coalesceBody_stateStore`), then the printer. The front
+    binds every source statement to a fresh name, so a rolled loop body carries a
+    copy per binding that the basic-block pipeline alone leaves in place. -/
+def renderLeaf (p : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog) : String :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce.coalesceRounds 2
+      (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.optimizeLprogBasicBlocks p))
+
 /-- A counted loop rendered to owned AT&T x86.
 
     The accumulator is `%rdi` and the invariant input `%rsi`, matching
@@ -426,7 +437,7 @@ def renderFor2 (sym : String) (wAcc wInv : Nat) (accName idxName invName : Strin
           (t := .sword 64) idxName).bind (t := .memref wAcc) accName)
       accName body (init := .here) (invs := .cons (.there .here) .nil)).map
     (fun c =>
-      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+      renderLeaf
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1]
           (fun _ => none) (fun _ => none) ["RDI", "RSI"] [64, 64]))
 
@@ -446,7 +457,7 @@ def renderWhile2 (sym : String) (wAcc wInv : Nat) (accName idxName invName : Str
           (t := .sword 64) idxName).bind (t := .memref wAcc) accName)
       accName body (init := .here) (invs := .cons (.there .here) .nil)).map
     (fun c =>
-      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+      renderLeaf
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 
@@ -469,7 +480,7 @@ def renderForCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
       stateName (withCarried carried body) (init := .here)
       (invs := .cons (.there .here) (.cons (.there (.there .here)) .nil))).map
     (fun c =>
-      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+      renderLeaf
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 
@@ -494,7 +505,7 @@ def renderWhileCarried (sym : String) (carried : List String) (wAcc wInv : Nat)
       stateName (withCarried carried body) (init := .here)
       (invs := .cons (.there .here) (.cons (.there (.there .here)) .nil))).map
     (fun c =>
-      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+      renderLeaf
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2, argName 3]
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]))
 
