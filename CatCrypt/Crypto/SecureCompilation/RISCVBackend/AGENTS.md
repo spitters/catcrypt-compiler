@@ -103,6 +103,18 @@ is the concatenation of the field-operation blocks; its value is not checked in 
 | Block lowering | `riscvBlock_lowering_denote`, `riscvBlock64_lowering_denote`, `Rvv.rvvBlock_lowering_denote` | all blocks and states | `RiscvLowering.lean`, `RiscvLowering64.lean`, `RvvLowering.lean` |
 | Decode round trip | `SailRiscvDecoder64.roundtrip_RInst64` | not `li`, register names in `emittedRegs`, shifts below 64 | `SailRiscvDecoder64.lean` |
 
+## Ascent over RV64
+
+The ascent relates RV64 blocks to abstract specifications through `CorresR`, the
+correspondence over `runRBlock64` (`../Ascent/CorresRiscv.lean`). Each `RInst64`
+instruction has a leaf (`corresR_add` … `corresR_slli`, `../Ascent/CorresRiscvLeaves.lean`),
+and the tactics `corres_sym_rv` and `corres_solve_rv` (`../Ascent/CorresRiscvSolver.lean`)
+compose them over a block. `corresR_of_refines` (`../Ascent/CorresDescentRiscv.lean`)
+reads the descent theorem `com_riscv_e2e` as a `CorresR`. The demos are
+`../Ascent/Demos/Riscv.lean` (`addCarry_ascends`, an add with carry-out) and
+`../Ascent/Demos/LeanSourceRiscv.lean` (`add_descent_riscv`, a Lean function through
+the descent).
+
 ## What is not proved
 
 - The second conjunct of `comToRiscvLsem_correct` and `comToRiscvLsem_correct_mul` is
