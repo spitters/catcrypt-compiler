@@ -734,6 +734,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitVeir
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
+CatCrypt.Crypto.SecureCompilation.VIR.YmmByteEncoder
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath
