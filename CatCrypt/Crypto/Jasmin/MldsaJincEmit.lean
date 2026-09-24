@@ -38,9 +38,22 @@ registers as stack slots, and the byte encoding are not covered.
 program by `native_decide`. `emitLeaf` runs the same analysis and writes nothing
 the analysis rejects.
 
+## ExpandA
+
+The ExpandA leaf stores to an output index that depends on the sampled bytes,
+so the analysis rejects it. Its inputs are public: FIPS 204 computes the matrix
+`A = ExpandA(ρ)` from the seed `ρ`, which is part of the public key. `main`
+writes it through `emitPublicLeaf`, which runs no constant-time check and
+carries no constant-time statement. The render takes the state array holding
+the carried `cont`, `pos`, `ctr` in `%rdi`, the output in `%rsi`, the stream
+buffer in `%rdx` and the countdown seed in `%rcx`
+(`JincToLowCT.whileCarriedLprog`).
+
 ## Main definitions
 
-* `emitLeaf`: write one leaf, reporting its instruction-line count.
+* `emitLeaf`: write one leaf that passes the constant-time check, reporting its
+  instruction-line count.
+* `emitPublicLeaf`: write one leaf with public-data inputs, without the check.
 * `expandMaskLprog`: the compiled ExpandMask leaf.
 * `mldsaExpandMask_constant_time`: its address-leak trace is a function of the
   pointer arguments.
@@ -68,6 +81,16 @@ def isInstrLine (l : String) : Bool :=
     public iteration count, never secret data. -/
 def argRegs : List String := ["RDI", "RSI", "RDX", "RCX"]
 
+/-- Write the render of `p` to `outDir/<file>`, reporting its instruction-line
+    count. -/
+def writeRender (p : Lprog) (file : String) : IO Unit := do
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt p
+  IO.FS.createDirAll outDir
+  let path : System.FilePath := System.FilePath.mk outDir / file
+  IO.FS.writeFile path asm
+  let n := ((asm.splitOn "\n").filter isInstrLine).length
+  IO.println s!"mldsa-jinc-emit: wrote {path} ({n} instruction lines)"
+
 /-- Parse `src`, compile it under `sym`, and write its render to `outDir/<file>`
     when `rolledLprogCheck argRegs` accepts the compiled program. -/
 def emitLeaf (src sym file : String) : IO Unit := do
@@ -75,12 +98,16 @@ def emitLeaf (src sym file : String) : IO Unit := do
   | some p =>
       if !RolledCT.rolledLprogCheck argRegs p then
         throw (IO.userError s!"mldsa-jinc-emit: {sym} fails the constant-time check")
-      let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt p
-      IO.FS.createDirAll outDir
-      let path : System.FilePath := System.FilePath.mk outDir / file
-      IO.FS.writeFile path asm
-      let n := ((asm.splitOn "\n").filter isInstrLine).length
-      IO.println s!"mldsa-jinc-emit: wrote {path} ({n} instruction lines)"
+      writeRender p file
+  | none =>
+      throw (IO.userError s!"mldsa-jinc-emit: the LowCT route declined {sym}")
+
+/-- Parse `src`, compile it under `sym`, and write its render to `outDir/<file>`
+    without the constant-time check. For a leaf whose inputs are public data
+    only; the written text carries no constant-time statement. -/
+def emitPublicLeaf (src sym file : String) : IO Unit := do
+  match (parseJincFun src).toOption.bind (jfunLeafLprog sym) with
+  | some p => writeRender p file
   | none =>
       throw (IO.userError s!"mldsa-jinc-emit: the LowCT route declined {sym}")
 
@@ -129,7 +156,9 @@ end CatCrypt.Crypto.Jasmin.MldsaJincEmit
 
 open CatCrypt.Crypto.Jasmin.JincToCom in
 open CatCrypt.Crypto.Jasmin.MldsaJincEmit in
-/-- Write the imported leaves. -/
+/-- Write the imported leaves: ExpandMask through the constant-time check, and
+    ExpandA through `emitPublicLeaf`. -/
 def main : IO UInt32 := do
   emitLeaf mldsaExpandMaskSrc "mldsa_expand_mask_real" "mldsa_expand_mask_rolled.s"
+  emitPublicLeaf mldsaExpandASrc "mldsa_expand_a_real" "mldsa_expand_a_rolled.s"
   return 0

@@ -31,7 +31,7 @@ into a binding per iteration.
 
 ## Constant time of the rendered program
 
-§7 states constant time for the `Lprog` the printer receives, after the
+§8 states constant time for the `Lprog` the printer receives, after the
 basic-block pipeline and copy coalescing. The observation model is
 `rolledLeak`: each instruction executed, the effective address
 `(base register value, scale · index register value)` of every register-indexed
@@ -70,6 +70,19 @@ with the entry values the source's pre-loop initialisations assign. A body that
 writes every scalar before reading it carries nothing and keeps the two-array
 ABI.
 
+## A source `while` under a countdown
+
+A source `while (g != 0)` runs as a countdown loop whose trip count is a
+caller-supplied seed, so the rendered body runs `seed` times whatever the guard
+holds. The guard rides the state array with the other carried scalars, and each
+iteration is gated by it without a branch (`gatedIter`): every array access goes
+through a mask that is all ones while the guard is non-zero and zero once it is
+zero, and under the zero mask every access addresses cell `0` and every store
+writes back the word it read. `gatedIter_frame` states that, under the
+word-cell reading `WExec`, an iteration whose guard cell holds zero leaves every
+array unchanged, and `gatedFor_frame` that any number of such iterations do, so
+a seed at least the source's iteration count gives the source's result.
+
 ## Main definitions
 
 * `stmtToLowCT` / `stmtsToLowCT`: the statement translation.
@@ -79,10 +92,16 @@ ABI.
 * `carryLoad` / `carryStore` / `withCarried`: a body's carried scalars read
   from and written back to the state array.
 * `rbwGo` / `carriedOf`: the scalars a loop body reads before it writes them.
-* `for2Lprog` / `while2Lprog`: a counted loop and a countdown loop through
-  the front to the program the owned printer receives.
-* `forCarriedLprog` / `whileCarriedLprog`: the same two over the state-array
-  ABI, for a loop with carried scalars.
+* `for2Lprog`: a counted loop through the front to the program the owned
+  printer receives.
+* `forCarriedLprog` / `whileCarriedLprog`: a counted loop and a countdown loop
+  over the state-array ABI, for a loop with carried scalars; the countdown form
+  runs `gatedIter`.
+* `maskExpr` / `gateAccess` / `gatedIter`: an iteration of a countdown loop
+  gated by the source guard.
+* `WExec` / `gatedIter_frame` / `gatedFor_frame`: the word-cell reading of the
+  translated constructors, and the statement that an iteration with a zero
+  guard changes no array.
 * `jfunLeafLprog` / `renderJFunLeaf`: `jfunLeaf` followed by the matching
   compiler, and that program printed as AT&T x86.
 * `rolledLprogCheck` / `rolledLprog_pub_determined`: a public-register check of
@@ -326,6 +345,33 @@ def rbwGo : LowCT → List String × List String → List String × List String
 def carriedOf (idxName : String) (body : LowCT) : List String :=
   ((rbwGo body ([], [])).2).filter (fun x => x ≠ idxName)
 
+/-- The scalar the guard's state cell is read into. -/
+def gateWord : String := "__jinc_gw"
+
+/-- The scalar holding an iteration's mask. -/
+def maskName : String := "__jinc_mask"
+
+/-- The scalar holding a gated array index. -/
+def gateIdx : String := "__jinc_gi"
+
+/-- The scalar holding the cell a gated store reads before writing. -/
+def gateOld : String := "__jinc_old"
+
+/-- The scalar holding the word a gated store writes. -/
+def gateSel : String := "__jinc_sel"
+
+/-- The scalar slots the gating of a countdown iteration reserves. -/
+def gateNames : List String := [gateWord, maskName, gateIdx, gateOld, gateSel]
+
+/-- The scalar slots written by the constructors `WExec` gives a meaning to. -/
+def scalarWrites : LowCT → List String
+  | .RSeq a b => scalarWrites a ++ scalarWrites b
+  | .RScalarSetExpr x _ => [x]
+  | .RArrLoad dst _ _ => [dst.locVar]
+  | .RFor x _ b => x :: scalarWrites b
+  | .RWhileNz _ b => scalarWrites b
+  | _ => []
+
 /-- Whether a statement is a loop. -/
 def isLoopStmt : Stmt → Bool
   | .whileNz _ _ => true
@@ -343,18 +389,23 @@ structure JLeaf where
   idxName : String
   body : LowCT
   trips : Option Nat
-  /-- The scalars the prologue initialises, which the loop carries across
-      iterations through the state array. -/
+  /-- The scalars the loop carries across iterations through the state array:
+      those the body reads before it writes them, and a countdown loop's guard. -/
   carried : List String
+  /-- The source guard of a countdown loop. -/
+  guard : Option String := none
 
 /-- The loop of a leaf with two array parameters, the first rewritten in place
     and the second read.
 
     `none` unless the body is a prologue of scalar initialisations, then one
     loop, then `return`s. The leaf's `carried` names are the scalars the loop
-    body reads before it writes them; the prologue supplies their entry values.
-    A prologue that only zeroes slots the body overwrites leaves `carried`
-    empty, so such a leaf keeps the two-array ABI. -/
+    body reads before it writes them, headed by the guard for a `while`; the
+    prologue supplies their entry values. A `for` whose prologue only zeroes
+    slots the body overwrites leaves `carried` empty, so such a leaf keeps the
+    two-array ABI. A `while` is declined when the leaf declares a scalar with
+    one of the `gateNames` or its body writes `maskName`, the slots its gating
+    reserves. -/
 def jfunLeaf (f : JFun) : Option JLeaf := do
   let env := envOfJFun f
   match f.params with
@@ -377,11 +428,14 @@ def jfunLeaf (f : JFun) : Option JLeaf := do
                 pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
                        idxName := tripName, body := c', trips := some (hi - lo),
                        carried := carriedOf tripName c' }
-          | .whileNz _ b => do
+          | .whileNz g b => do
               let c ← stmtsToLowCT env b
-              pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
-                     idxName := tripName, body := c, trips := none,
-                     carried := carriedOf tripName c }
+              if gateNames.any env.scalars.contains || (scalarWrites c).contains maskName then
+                none
+              else
+                pure { accName := acc, accWords := nAcc, invName := inv, invWords := nInv,
+                       idxName := tripName, body := c, trips := none,
+                       carried := carriedOf tripName (.RWhileNz g c), guard := some g }
           | _ => none
       | [] => none
   | _ => none
@@ -434,7 +488,320 @@ def carryStore (names : List String) : LowCT :=
 def withCarried (names : List String) (body : LowCT) : LowCT :=
   seq2 (carryLoad names) (seq2 body (carryStore names))
 
-/-! ## 6. Owned x86 renders -/
+/-! ## 6. Gating a countdown iteration by the source guard
+
+The countdown loop of `whileCarriedLprog` runs its body as many times as the
+caller's seed says, and the source loop runs it while its guard is non-zero.
+`gatedIter` turns an iteration after the guard has become zero into a no-op
+without a branch. It reads the guard's state cell, forms `maskExpr` of it (all
+ones when the guard is non-zero, zero when it is zero), and `gateAccess` routes
+every array access of the body and of the carried-scalar write-back through the
+mask: a load reads cell `idx &&& mask`, and a store reads cell `idx &&& mask`
+and writes back `old ^^^ ((old ^^^ v) &&& mask)`. Under the all-ones mask these
+are the source's accesses and words; under the zero mask every access
+addresses cell `0` and every store writes back the word it read.
+
+The mask is built from `SSub`, `SAnd` and `SShr`, which the front lowers, and
+its value is the one `SExpr.evalBV` gives over wrapping 64-bit words. The
+truncating `SExpr.eval` sends `0 - 1` to `0`, so the all-ones case does not
+hold over it. The zero case is `evalBV_maskExpr_zero`.
+
+`WExec` is the word-cell reading of the constructors the translation emits:
+scalars are 64-bit words evaluated by `SExpr.evalBV`, and each array is a map
+from cell index to 64-bit word, the representation of the module header.
+`gatedIter_frame` states that under it an iteration whose guard cell holds zero
+changes no array, the state array holding the carried scalars included, and
+`gatedFor_frame` extends that to any number of iterations. -/
+
+/-- `1` when `g` is non-zero and `0` when it is zero, over 64-bit words:
+    `0 - (g &&& (0 - g))` is `g ||| (0 - g)`, whose bit 63 is set exactly when
+    `g ≠ 0`. -/
+def nzBit (g : SExpr) : SExpr :=
+  .SShr (.SSub (.SLit 0) (.SAnd g (.SSub (.SLit 0) g))) (.SLit 63)
+
+/-- The all-ones word when `g` is non-zero and the zero word when it is zero. -/
+def maskExpr (g : SExpr) : SExpr := .SSub (.SLit 0) (nzBit g)
+
+/-- `maskExpr` over `SExpr.evalBV` is the zero word at a zero guard. -/
+theorem evalBV_maskExpr_zero (β : String → BitVec 64) (x : String) (h : β x = 0) :
+    (maskExpr (.SVar x)).evalBV β = 0 := by
+  simp only [maskExpr, nzBit, SExpr.evalBV, h]
+  decide
+
+/-- The word a gated store writes: the cell's old word where the mask is zero
+    and the source word `src` where it is all ones. -/
+def gatedSel (src : String) : SExpr :=
+  .SXor (.SVar gateOld) (.SAnd (.SXor (.SVar gateOld) (.SVar src)) (.SVar maskName))
+
+/-- `gateIdx` set to `idx` under the mask. -/
+def gateIndex (idx : String) : LowCT :=
+  .RScalarSetExpr gateIdx (.SAnd (.SVar idx) (.SVar maskName))
+
+/-- Every array access of `c` routed through the mask in `maskName`. A load
+    reads cell `idx &&& mask`; a store reads cell `idx &&& mask` into `gateOld`
+    and writes `gatedSel` back to it. Loop bodies are gated in place; every
+    other constructor is left as it is. -/
+def gateAccess : LowCT → LowCT
+  | .RSeq a b => .RSeq (gateAccess a) (gateAccess b)
+  | .RArrLoad dst l idx => .RSeq (gateIndex idx) (.RArrLoad dst l gateIdx)
+  | .RArrStore l idx src =>
+      .RSeq (gateIndex idx) (.RSeq (.RArrLoad (u64Loc gateOld) l gateIdx)
+        (.RSeq (.RScalarSetExpr gateSel (gatedSel src.locVar))
+          (.RArrStore l gateIdx (u64Loc gateSel))))
+  | .RFor x n b => .RFor x n (gateAccess b)
+  | .RWhileNz g b => .RWhileNz g (gateAccess b)
+  | c => c
+
+/-- Read the guard `g`'s state cell into `gateWord` and set `maskName` from it. -/
+def maskLoad (g : String) (names : List String) : LowCT :=
+  .RSeq (.RScalarSetExpr stateIdx (.SLit (names.idxOf g)))
+    (.RSeq (.RArrLoad (u64Loc gateWord) (stateLoc names.length) stateIdx)
+      (.RScalarSetExpr maskName (maskExpr (.SVar gateWord))))
+
+/-- One iteration of a countdown loop gated by the source guard `g`: the
+    carried scalars read from the state array, the mask formed from `g`'s cell,
+    then the body and the write-back of the carried scalars with every array
+    access gated. -/
+def gatedIter (g : String) (names : List String) (body : LowCT) : LowCT :=
+  .RSeq (carryLoad names) (.RSeq (maskLoad g names) (gateAccess (seq2 body (carryStore names))))
+
+/-- A state of the word-cell reading: 64-bit scalar slots, and each array a map
+    from cell index to 64-bit word. -/
+structure WState where
+  sc : String → BitVec 64
+  arr : String → Nat → BitVec 64
+
+/-- `s` with the scalar `x` set to `v`. -/
+def WState.setSc (s : WState) (x : String) (v : BitVec 64) : WState :=
+  ⟨Function.update s.sc x v, s.arr⟩
+
+/-- `s` with cell `i` of the array `a` set to `v`. -/
+def WState.setCell (s : WState) (a : String) (i : Nat) (v : BitVec 64) : WState :=
+  ⟨s.sc, Function.update s.arr a (Function.update (s.arr a) i v)⟩
+
+@[simp] theorem WState.setSc_arr (s : WState) (x : String) (v : BitVec 64) :
+    (s.setSc x v).arr = s.arr := rfl
+
+@[simp] theorem WState.setSc_sc (s : WState) (x y : String) (v : BitVec 64) :
+    (s.setSc x v).sc y = if y = x then v else s.sc y := by
+  simp [WState.setSc, Function.update_apply]
+
+@[simp] theorem WState.setCell_sc (s : WState) (a : String) (i : Nat) (v : BitVec 64) :
+    (s.setCell a i v).sc = s.sc := rfl
+
+/-- The word-cell big-step reading of the constructors the translation emits.
+    Expressions evaluate by `SExpr.evalBV`, over wrapping 64-bit words; a load
+    reads the cell its index scalar names and a store writes the source
+    scalar's word to that cell. Other constructors have no rule. -/
+inductive WExec : LowCT → WState → WState → Prop where
+  | skip (s : WState) : WExec .RSkip s s
+  | seq (a b : LowCT) (s t u : WState) : WExec a s t → WExec b t u → WExec (.RSeq a b) s u
+  | set (x : String) (e : SExpr) (s : WState) :
+      WExec (.RScalarSetExpr x e) s (s.setSc x (e.evalBV s.sc))
+  | load (dst l : Located) (idx : String) (s : WState) :
+      WExec (.RArrLoad dst l idx) s (s.setSc dst.locVar (s.arr l.locVar (s.sc idx).toNat))
+  | store (l : Located) (idx : String) (src : Located) (s : WState) :
+      WExec (.RArrStore l idx src) s (s.setCell l.locVar (s.sc idx).toNat (s.sc src.locVar))
+  | forZero (x : String) (b : LowCT) (s : WState) : WExec (.RFor x 0 b) s s
+  | forSucc (x : String) (n : Nat) (b : LowCT) (s t u : WState) :
+      WExec (.RFor x n b) s t → WExec b (t.setSc x (BitVec.ofNat 64 n)) u →
+      WExec (.RFor x (n + 1) b) s u
+  | whileFalse (g : String) (b : LowCT) (s : WState) : s.sc g = 0 → WExec (.RWhileNz g b) s s
+  | whileTrue (g : String) (b : LowCT) (s t u : WState) :
+      s.sc g ≠ 0 → WExec b s t → WExec (.RWhileNz g b) t u → WExec (.RWhileNz g b) s u
+
+/-- Running `c` from a state whose mask is zero leaves every array unchanged and
+    the mask zero. -/
+def MaskFrame (c : LowCT) : Prop :=
+  ∀ s s', WExec c s s' → s.sc maskName = 0 → s'.arr = s.arr ∧ s'.sc maskName = 0
+
+theorem maskFrame_seq {a b : LowCT} (ha : MaskFrame a) (hb : MaskFrame b) :
+    MaskFrame (.RSeq a b) := by
+  intro s s' h hm
+  cases h with
+  | seq _ _ _ t _ h1 h2 =>
+    obtain ⟨h1a, h1m⟩ := ha _ _ h1 hm
+    obtain ⟨h2a, h2m⟩ := hb _ _ h2 h1m
+    exact ⟨h2a.trans h1a, h2m⟩
+
+theorem maskFrame_set {x : String} (e : SExpr) (hx : x ≠ maskName) :
+    MaskFrame (.RScalarSetExpr x e) := by
+  intro s s' h hm
+  cases h
+  exact ⟨rfl, by simp [Ne.symm hx, hm]⟩
+
+theorem maskFrame_load {dst : Located} (l : Located) (idx : String)
+    (hx : dst.locVar ≠ maskName) : MaskFrame (.RArrLoad dst l idx) := by
+  intro s s' h hm
+  cases h
+  exact ⟨rfl, by simp [Ne.symm hx, hm]⟩
+
+/-- A gated store under a zero mask writes cell `0` of its array with the word
+    it read there. -/
+theorem maskFrame_gatedStore (l : Located) (idx : String) (src : Located) :
+    MaskFrame (gateAccess (.RArrStore l idx src)) := by
+  intro s s' h hm
+  simp only [gateAccess, gateIndex] at h
+  cases h with | seq _ _ _ t₁ _ h1 h =>
+  cases h with | seq _ _ _ t₂ _ h2 h =>
+  cases h with | seq _ _ _ t₃ _ h3 h4 =>
+  cases h1; cases h2; cases h3; cases h4
+  have hgi : gateIdx ≠ maskName := by decide
+  have hgo : gateOld ≠ maskName := by decide
+  have hgs : gateSel ≠ maskName := by decide
+  have h1 : gateOld ≠ gateIdx := by decide
+  have h2 : gateSel ≠ gateOld := by decide
+  have h3 : gateSel ≠ gateIdx := by decide
+  refine ⟨?_, ?_⟩
+  · simp only [u64Loc, WState.setSc_sc, WState.setSc_arr, SExpr.evalBV, gatedSel,
+      if_true, h1, h2, h3, h1.symm, h3.symm, hgi.symm, hgo.symm, if_false, hm]
+    simp [WState.setCell]
+  · simp [u64Loc, WState.setCell, hgi.symm, hgo.symm, hgs.symm, hm]
+
+theorem maskFrame_for {x : String} {b : LowCT} (hx : x ≠ maskName) (hb : MaskFrame b) :
+    ∀ n, MaskFrame (.RFor x n b) := by
+  intro n s s' h
+  generalize hC : LowCT.RFor x n b = C at h
+  induction h generalizing n with
+  | forZero => intro hm; exact ⟨rfl, hm⟩
+  | forSucc x' n' b' s t u h1 h2 ih1 _ =>
+      cases hC
+      intro hm
+      obtain ⟨h1a, h1m⟩ := ih1 n' rfl hm
+      obtain ⟨h2a, h2m⟩ := hb _ _ h2 (by simp [Ne.symm hx, h1m])
+      exact ⟨h2a.trans h1a, h2m⟩
+  | _ => cases hC
+
+theorem maskFrame_while {g : String} {b : LowCT} (hb : MaskFrame b) :
+    MaskFrame (.RWhileNz g b) := by
+  intro s s' h
+  generalize hC : LowCT.RWhileNz g b = C at h
+  induction h with
+  | whileFalse => intro hm; exact ⟨rfl, hm⟩
+  | whileTrue g' b' s t u _ h1 _ _ ih2 =>
+      cases hC
+      intro hm
+      obtain ⟨h1a, h1m⟩ := hb _ _ h1 hm
+      obtain ⟨h2a, h2m⟩ := ih2 rfl h1m
+      exact ⟨h2a.trans h1a, h2m⟩
+  | _ => cases hC
+
+/-- **The gated program keeps the arrays under a zero mask.** When `c` writes no
+    scalar named `maskName`, running `gateAccess c` from a state whose mask is
+    zero changes no array and leaves the mask zero. -/
+theorem gateAccess_maskFrame : ∀ (c : LowCT), maskName ∉ scalarWrites c →
+    MaskFrame (gateAccess c)
+  | .RSeq a b, hc => by
+      simp only [scalarWrites, List.mem_append, not_or] at hc
+      exact maskFrame_seq (gateAccess_maskFrame a hc.1) (gateAccess_maskFrame b hc.2)
+  | .RArrLoad dst l idx, hc => by
+      simp only [scalarWrites, List.mem_singleton] at hc
+      exact maskFrame_seq (maskFrame_set _ (by decide)) (maskFrame_load l _ (Ne.symm hc))
+  | .RArrStore l idx src, _ => maskFrame_gatedStore l idx src
+  | .RFor x n b, hc => by
+      simp only [scalarWrites, List.mem_cons, not_or] at hc
+      exact maskFrame_for (Ne.symm hc.1) (gateAccess_maskFrame b hc.2) n
+  | .RWhileNz g b, hc => by
+      simp only [scalarWrites] at hc
+      exact maskFrame_while (gateAccess_maskFrame b hc)
+  | .RScalarSetExpr x e, hc => by
+      simp only [scalarWrites, List.mem_singleton] at hc
+      exact maskFrame_set e (Ne.symm hc)
+  | .RSkip, _ => fun s s' h hm => by cases h; exact ⟨rfl, hm⟩
+  | .RLetZero .., _ | .RLetU64Zero .., _ | .RScalarSet .., _ | .RCall .., _
+  | .RCallSwap .., _ | .RCloneCall .., _ | .RIfNz .., _ | .RLimbStore .., _
+  | .RLimbStoreExpr .., _ | .RCallN .., _ | .RSelect .., _ | .RAssert .., _
+  | .RBlock .., _ | .RFnDef .., _ | .RFnCall .., _ | .RTupleLoad .., _
+  | .RArrStoreLit .., _ | .RArrLoadLit .., _ | .RCallDstThreaded .., _
+  | .RForRuntime .., _ => fun _ _ h _ => by cases h
+
+theorem scalarWrites_seq2 (a b : LowCT) (x : String) (h : x ∈ scalarWrites (seq2 a b)) :
+    x ∈ scalarWrites a ∨ x ∈ scalarWrites b := by
+  unfold seq2 at h
+  split at h <;> simp_all [scalarWrites]
+
+/-- The write-back of the carried scalars writes no scalar but `stateIdx`. -/
+theorem scalarWrites_carryStore (names : List String) (x : String)
+    (h : x ∈ scalarWrites (carryStore names)) : x = stateIdx := by
+  unfold carryStore at h
+  generalize names.zipIdx = L at h
+  induction L with
+  | nil => simp [scalarWrites] at h
+  | cons p L ih =>
+      rcases scalarWrites_seq2 _ _ x h with h | h
+      · simpa [scalarWrites] using h
+      · rcases scalarWrites_seq2 _ _ x h with h | h
+        · simp [scalarWrites] at h
+        · exact ih h
+
+/-- Running `c` leaves every array unchanged. -/
+def ArrFrame (c : LowCT) : Prop := ∀ s s', WExec c s s' → s'.arr = s.arr
+
+theorem arrFrame_seq2 {a b : LowCT} (ha : ArrFrame a) (hb : ArrFrame b) :
+    ArrFrame (seq2 a b) := by
+  unfold seq2
+  split
+  · exact hb
+  · exact ha
+  · intro s s' h
+    cases h with | seq _ _ _ t _ h1 h2 => exact (hb _ _ h2).trans (ha _ _ h1)
+
+/-- Reading the carried scalars changes no array. -/
+theorem carryLoad_arrFrame (names : List String) : ArrFrame (carryLoad names) := by
+  unfold carryLoad
+  generalize names.zipIdx = L
+  induction L with
+  | nil => intro s s' h; cases h; rfl
+  | cons p L ih =>
+      refine arrFrame_seq2 (fun s s' h => by cases h; rfl)
+        (arrFrame_seq2 (fun s s' h => by cases h; rfl) ih)
+
+/-- **A gated iteration with a zero guard cell changes no array.** Under the
+    word-cell reading `WExec`, one iteration `gatedIter g names body` from a
+    state whose state-array cell for the guard `g` holds zero leaves every array
+    unchanged: the state array, whose cells hold the carried scalars, and every
+    array the body reads or writes. -/
+theorem gatedIter_frame (g : String) (names : List String) (body : LowCT)
+    (hbody : maskName ∉ scalarWrites body) (hlen : names.length < 2 ^ 64)
+    {s s' : WState} (h : WExec (gatedIter g names body) s s')
+    (h0 : s.arr stateName (names.idxOf g) = 0) : s'.arr = s.arr := by
+  cases h with | seq _ _ _ t₁ _ hl h =>
+  cases h with | seq _ _ _ t₂ _ hm h =>
+  have hl' := carryLoad_arrFrame names _ _ hl
+  simp only [maskLoad] at hm
+  cases hm with | seq _ _ _ u₁ _ hm1 hm =>
+  cases hm with | seq _ _ _ u₂ _ hm2 hm3 =>
+  cases hm1; cases hm2; cases hm3
+  have hlt := lt_of_le_of_lt (List.idxOf_le_length (a := g) (l := names)) hlen
+  have hidx : (names.idxOf g) % 18446744073709551616 = names.idxOf g :=
+    Nat.mod_eq_of_lt (by simpa using hlt)
+  have hmask : maskName ∉ scalarWrites (seq2 body (carryStore names)) := by
+    intro hw
+    rcases scalarWrites_seq2 _ _ _ hw with hw | hw
+    · exact hbody hw
+    · exact absurd (scalarWrites_carryStore names _ hw) (by decide)
+  refine ((gateAccess_maskFrame _ hmask _ _ h ?_).1).trans hl'
+  simp only [WState.setSc_sc, if_true]
+  exact evalBV_maskExpr_zero _ _ (by simp [u64Loc, stateLoc, hl', hidx, h0, SExpr.evalBV])
+
+/-- **Iterations after the source loop's exit are no-ops.** Any number `k` of
+    gated iterations from a state whose guard cell holds zero leave every array
+    unchanged, whatever the loop index slot `x` is set to. -/
+theorem gatedFor_frame (g x : String) (names : List String) (body : LowCT)
+    (hbody : maskName ∉ scalarWrites body) (hlen : names.length < 2 ^ 64) (k : Nat)
+    {s s' : WState} (h : WExec (.RFor x k (gatedIter g names body)) s s')
+    (h0 : s.arr stateName (names.idxOf g) = 0) : s'.arr = s.arr := by
+  generalize hC : LowCT.RFor x k (gatedIter g names body) = C at h
+  induction h generalizing k with
+  | forZero => rfl
+  | forSucc x' n' b' s t u h1 h2 ih1 _ =>
+      cases hC
+      have ht := ih1 n' h0 rfl
+      have hu := gatedIter_frame g names body hbody hlen h2 (by simpa [ht] using h0)
+      exact hu.trans ht
+  | _ => cases hC
+
+/-! ## 7. Owned x86 renders -/
 
 /-- The program the printer receives for a leaf: the basic-block pipeline, then
     two rounds of register-copy coalescing (`LprogCopyCoalesce.coalesceRounds`,
@@ -466,26 +833,6 @@ def for2Lprog (sym : String) (wAcc wInv : Nat) (accName idxName invName : String
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1]
           (fun _ => none) (fun _ => none) ["RDI", "RSI"] [64, 64]))
 
-/-- A countdown loop compiled to the program the owned printer receives.
-
-    `ComL.whileNz` reads its trip from an in-scope 64-bit seed register, so the
-    rendered leaf takes it as a third argument: `%rdi` the accumulator, `%rsi`
-    the invariant input, `%rdx` the countdown seed. The source guard variable is
-    not the seed — it is a body scalar, and the loop the render performs is the
-    seed's countdown. -/
-def while2Lprog (sym : String) (wAcc wInv : Nat) (accName idxName invName : String)
-    (body : LowCT) : Option Lprog :=
-  (compileLoop (Γouter := [.stackArr 64 wAcc, .stackArr 64 wInv, .reg 64])
-      (accCTy := .memref wAcc) (invCTys := [.memref wInv]) .plain
-      (.countdown (.there (.there .here)))
-      (((VarMap.empty.bind (t := .memref wInv) invName).bind
-          (t := .sword 64) idxName).bind (t := .memref wAcc) accName)
-      accName body (init := .here) (invs := .cons (.there .here) .nil)).map
-    (fun c =>
-      renderLeafLprog
-        (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2]
-          (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
-
 /-- A counted loop with loop-carried scalars compiled to the program the owned
     printer receives.
 
@@ -511,26 +858,31 @@ def forCarriedLprog (sym : String) (carried : List String) (wAcc wInv : Nat)
           (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 
 /-- A countdown loop with loop-carried scalars compiled to the program the owned
-    printer receives.
+    printer receives, each iteration gated by the source guard `guard`
+    (`gatedIter`).
 
     `ComL.whileNz` reads its trip from an in-scope 64-bit seed register, so the
     rendered leaf takes it as a fourth argument: `%rdi` the state array, `%rsi`
-    and `%rdx` the two source arrays, `%rcx` the countdown seed. The source
-    guard variable is a body scalar; the loop the render performs is the seed's
-    countdown, so the seed is an iteration bound and the body's own guard is
-    what stops the carried counters advancing past their target. -/
-def whileCarriedLprog (sym : String) (carried : List String) (wAcc wInv : Nat)
+    and `%rdx` the two source arrays, `%rcx` the countdown seed, matching
+    `T *sym(uint64_t *state, uint64_t *acc, const uint64_t *inv, uint64_t seed)`.
+    The body runs `seed` times, at least once; an iteration after the guard's
+    state cell holds zero changes no array (`gatedIter_frame`), so any seed at
+    least the source loop's iteration count gives the source's arrays and
+    carried exit values. The seed is the head of `Γouter` because
+    `JasminLprogExport.resolveVar` numbers a context variable's argument slot
+    from the end of the context. -/
+def whileCarriedLprog (sym guard : String) (carried : List String) (wAcc wInv : Nat)
     (accName idxName invName : String) (body : LowCT) : Option Lprog :=
   (compileLoop
-      (Γouter := [.stackArr 64 carried.length, .stackArr 64 wAcc, .stackArr 64 wInv,
-                  .reg 64])
+      (Γouter := [.reg 64, .stackArr 64 carried.length, .stackArr 64 wAcc,
+                  .stackArr 64 wInv])
       (accCTy := .memref carried.length) (invCTys := [.memref wAcc, .memref wInv])
-      .plain (.countdown (.there (.there (.there .here))))
+      .plain (.countdown .here)
       ((((VarMap.empty.bind (t := .memref wInv) invName).bind
           (t := .memref wAcc) accName).bind
           (t := .sword 64) idxName).bind (t := .memref carried.length) stateName)
-      stateName (withCarried carried body) (init := .here)
-      (invs := .cons (.there .here) (.cons (.there (.there .here)) .nil))).map
+      stateName (gatedIter guard carried body) (init := .there .here)
+      (invs := .cons (.there (.there .here)) (.cons (.there (.there (.there .here))) .nil))).map
     (fun c =>
       renderLeafLprog
         (ComL.toLprogPhysAbi c sym (argName 0) [argName 1, argName 2, argName 3]
@@ -540,25 +892,27 @@ def whileCarriedLprog (sym : String) (carried : List String) (wAcc wInv : Nat)
     `sym`, `none` when `jfunLeaf` rejects the shape or the body front declines
     the body.
 
-    A leaf whose prologue initialises no scalar has no carried value and compiles
-    over the two-array ABI; one that does compiles over the state-array ABI of
-    `forCarriedLprog` / `whileCarriedLprog`. -/
+    A counted loop with no carried scalar compiles over the two-array ABI and
+    one with carried scalars over the state-array ABI of `forCarriedLprog`. A
+    countdown loop carries at least its guard and compiles over the state-array
+    ABI of `whileCarriedLprog`. -/
 def jfunLeafLprog (sym : String) (f : JFun) : Option Lprog := do
   let l ← jfunLeaf f
-  match l.carried, l.trips with
-  | [], some n => for2Lprog sym l.accWords l.invWords l.accName l.idxName l.invName n l.body
-  | [], none => while2Lprog sym l.accWords l.invWords l.accName l.idxName l.invName l.body
-  | c, some n =>
+  match l.carried, l.trips, l.guard with
+  | [], some n, _ =>
+      for2Lprog sym l.accWords l.invWords l.accName l.idxName l.invName n l.body
+  | c, some n, _ =>
       forCarriedLprog sym c l.accWords l.invWords l.accName l.idxName l.invName n l.body
-  | c, none =>
-      whileCarriedLprog sym c l.accWords l.invWords l.accName l.idxName l.invName l.body
+  | c, none, some g =>
+      whileCarriedLprog sym g c l.accWords l.invWords l.accName l.idxName l.invName l.body
+  | _, none, none => none
 
 /-- A parsed leaf rendered to owned AT&T x86 under the symbol `sym`: the printer
     applied to `jfunLeafLprog`. -/
 def renderJFunLeaf (sym : String) (f : JFun) : Option String :=
   (jfunLeafLprog sym f).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
 
-/-! ## 7. Constant time of a rolled render -/
+/-! ## 8. Constant time of a rolled render -/
 
 namespace RolledCT
 
