@@ -44,6 +44,25 @@ eight inputs and lowered through a single-word field.
   input elements.
 * `koalaBear_mulJasmin_spec`, `babyBear_mulJasmin_spec`: the instances `W = 3`
   over KoalaBear and `W = 11` over BabyBear.
+
+## The FRI fold over the extension
+
+The arity-2 FRI fold step of the reference STARK (`fri_fold` in `plonky3-hax`,
+`p_even + α · p_odd` with `p_even = (f(x) + f(−x)) · 2⁻¹` and
+`p_odd = (f(x) − f(−x)) · (2x)⁻¹`), with `f(x)`, `f(−x)` and the challenge `β` in the
+extension and the scalars `2⁻¹`, `(2x)⁻¹` in the base field:
+
+```
+fold = (f(x) + f(−x)) · inv2 + β · ((f(x) − f(−x)) · (2x)⁻¹)
+```
+
+* `foldExpr W inv2 k`: coordinate `k` of the fold over thirteen inputs (`f(x)` at
+  `0 .. 3`, `f(−x)` at `4 .. 7`, `β` at `8 .. 11`, `(2x)⁻¹` at `12`); the difference
+  `u − v` is compiled as `u + (−1) · v`.
+* `extFold W inv2 lo hi β s`: its coordinates as a function.
+* `toExt_extFold`: `toExt` of the coordinates is the fold in `F[X]/(X⁴ − W)`.
+* `foldJasmin_spec`, `babyBear_foldJasmin_spec`: the lowered program of coordinate `k`
+  returns the encoding of coordinate `k` of the fold.
 -/
 
 @[expose] public section
@@ -171,5 +190,120 @@ theorem babyBear_mulJasmin_spec (V : Ctxt.Valuation (inCtxt BabyBear.P 8)) (k : 
   mulJasmin_spec 11 BabyBear.babyBear V k
 
 end Instances
+
+/-! ## 5. The FRI fold over the extension -/
+
+section Fold
+
+/-- Coordinate `k` of the product of the elements with coordinate expressions `x`
+    and `y`. -/
+def mulOf {n : Nat} (x y : Fin 4 → FExpr p n) : Fin 4 → FExpr p n
+  | 0 => .add (.mul (x 0) (y 0))
+      (.mul (.const W) (.add (.add (.mul (x 1) (y 3)) (.mul (x 2) (y 2))) (.mul (x 3) (y 1))))
+  | 1 => .add (.add (.mul (x 0) (y 1)) (.mul (x 1) (y 0)))
+      (.mul (.const W) (.add (.mul (x 2) (y 3)) (.mul (x 3) (y 2))))
+  | 2 => .add (.add (.add (.mul (x 0) (y 2)) (.mul (x 1) (y 1))) (.mul (x 2) (y 0)))
+      (.mul (.const W) (.mul (x 3) (y 3)))
+  | 3 => .add (.add (.add (.mul (x 0) (y 3)) (.mul (x 1) (y 2))) (.mul (x 2) (y 1)))
+      (.mul (x 3) (y 0))
+
+theorem mulExpr_eq_mulOf (k : Fin 4) : mulExpr W k = mulOf W a b k := by
+  fin_cases k <;> rfl
+
+theorem mulOf_eval {n : Nat} (x y : Fin 4 → FExpr p n) (z : Fin n → ZMod p) (k : Fin 4) :
+    (mulOf W x y k).eval z = extMul W (fun i => (x i).eval z) (fun i => (y i).eval z) k := by
+  fin_cases k <;> rfl
+
+/-- Coordinate `i` of the evaluation `f(x)`: input `i`. -/
+def foldLo (i : Fin 4) : FExpr p 13 := .inp ⟨i.val, by omega⟩
+
+/-- Coordinate `i` of the evaluation `f(−x)`: input `4 + i`. -/
+def foldHi (i : Fin 4) : FExpr p 13 := .inp ⟨4 + i.val, by omega⟩
+
+/-- Coordinate `i` of the challenge `β`: input `8 + i`. -/
+def foldBeta (i : Fin 4) : FExpr p 13 := .inp ⟨8 + i.val, by omega⟩
+
+/-- The base-field scalar `(2x)⁻¹`: input `12`. -/
+def foldHip : FExpr p 13 := .inp 12
+
+/-- Coordinate `j` of `(f(x) − f(−x)) · (2x)⁻¹`. -/
+def foldDiff (j : Fin 4) : FExpr p 13 :=
+  .mul (.add (foldLo j) (.mul (.const (-1)) (foldHi j))) foldHip
+
+/-- Coordinate `k` of the fold `(f(x) + f(−x)) · inv2 + β · ((f(x) − f(−x)) · (2x)⁻¹)`. -/
+def foldExpr (inv2 : ZMod p) (k : Fin 4) : FExpr p 13 :=
+  .add (.mul (.add (foldLo k) (foldHi k)) (.const inv2)) (mulOf W foldBeta foldDiff k)
+
+/-- The coordinates of `(lo + hi) · inv2 + β · ((lo − hi) · s)`, for extension elements
+    `lo`, `hi`, `β` and base-field scalars `inv2`, `s`. -/
+def extFold (inv2 : ZMod p) (lo hi β : Fin 4 → ZMod p) (s : ZMod p) : Fin 4 → ZMod p :=
+  fun k => (lo k + hi k) * inv2 + extMul W β (fun j => (lo j - hi j) * s) k
+
+/-- The evaluation `f(x)` read from the thirteen inputs. -/
+def loOf (z : Fin 13 → ZMod p) (i : Fin 4) : ZMod p := z ⟨i.val, by omega⟩
+
+/-- The evaluation `f(−x)` read from the thirteen inputs. -/
+def hiOf (z : Fin 13 → ZMod p) (i : Fin 4) : ZMod p := z ⟨4 + i.val, by omega⟩
+
+/-- The challenge `β` read from the thirteen inputs. -/
+def betaOf (z : Fin 13 → ZMod p) (i : Fin 4) : ZMod p := z ⟨8 + i.val, by omega⟩
+
+theorem foldExpr_eval (inv2 : ZMod p) (z : Fin 13 → ZMod p) (k : Fin 4) :
+    (foldExpr W inv2 k).eval z = extFold W inv2 (loOf z) (hiOf z) (betaOf z) (z 12) k := by
+  simp only [foldExpr, FExpr.eval, mulOf_eval, extFold]
+  congr 2
+  funext j
+  simp only [foldDiff, FExpr.eval, foldLo, foldHi, foldHip, loOf, hiOf]
+  ring
+
+theorem toExt_add (c d : Fin 4 → ZMod p) :
+    toExt W (fun k => c k + d k) = toExt W c + toExt W d := by
+  simp only [toExt, map_add]; ring
+
+theorem toExt_sub (c d : Fin 4 → ZMod p) :
+    toExt W (fun k => c k - d k) = toExt W c - toExt W d := by
+  simp only [toExt, map_sub]; ring
+
+theorem toExt_mul_of (c : Fin 4 → ZMod p) (s : ZMod p) :
+    toExt W (fun k => c k * s) = toExt W c * AdjoinRoot.of _ s := by
+  simp only [toExt, map_mul]; ring
+
+/-- **The fold coordinates compute the fold in `F[X]/(X⁴ − W)`.** -/
+theorem toExt_extFold (inv2 : ZMod p) (lo hi β : Fin 4 → ZMod p) (s : ZMod p) :
+    toExt W (extFold W inv2 lo hi β s) =
+      (toExt W lo + toExt W hi) * AdjoinRoot.of _ inv2 +
+        toExt W β * ((toExt W lo - toExt W hi) * AdjoinRoot.of _ s) := by
+  have h := toExt_add W (fun k => (lo k + hi k) * inv2)
+    (extMul W β (fun j => (lo j - hi j) * s))
+  rw [show (fun k => (lo k + hi k) * inv2 + extMul W β (fun j => (lo j - hi j) * s) k)
+    = extFold W inv2 lo hi β s from rfl] at h
+  rw [h, toExt_mul_of W (fun k => lo k + hi k), toExt_add, toExt_extMul,
+    toExt_mul_of W (fun k => lo k - hi k), toExt_sub]
+
+/-- The lowered program of coordinate `k` of the fold, through `F`. -/
+def foldJasmin (F : SingleWordField p) (inv2 : ZMod p) (k : Fin 4) :
+    Com jasminDialect (mapCtxW (inCtxt p 13)) (mapTyW (.fp p)) :=
+  compileJasmin F (foldExpr W inv2 k)
+
+/-- **Correctness of the lowered fold.** On the encoding of any valuation `V` of the
+    thirteen inputs, the lowered program of coordinate `k` returns the encoding of
+    coordinate `k` of the fold, which `toExt_extFold` identifies with the fold in
+    `F[X]/(X⁴ − W)`. -/
+theorem foldJasmin_spec (F : SingleWordField p) (inv2 : ZMod p)
+    (V : Ctxt.Valuation (inCtxt p 13)) (k : Fin 4) :
+    (foldJasmin W F inv2 k).denote (mapValW F V) =
+      F.enc (extFold W inv2 (loOf (inputs V)) (hiOf (inputs V)) (betaOf (inputs V))
+        (inputs V 12) k) := by
+  rw [foldJasmin, compileJasmin_denote, foldExpr_eval]
+
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord in
+/-- BabyBear's quartic extension fold, `X⁴ = 11`, with `inv2 = 2⁻¹`. -/
+theorem babyBear_foldJasmin_spec (V : Ctxt.Valuation (inCtxt BabyBear.P 13)) (k : Fin 4) :
+    (foldJasmin 11 BabyBear.babyBear 2⁻¹ k).denote (mapValW BabyBear.babyBear V) =
+      BabyBear.babyBear.enc (extFold 11 2⁻¹ (loOf (inputs V)) (hiOf (inputs V))
+        (betaOf (inputs V)) (inputs V 12) k) :=
+  foldJasmin_spec 11 BabyBear.babyBear 2⁻¹ V k
+
+end Fold
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.BinomialExt4
