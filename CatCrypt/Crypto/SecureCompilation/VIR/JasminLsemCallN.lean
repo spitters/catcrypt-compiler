@@ -617,9 +617,13 @@ theorem lsemStepCallN_cast {leaf : LeafEnvCN} {nArgs curDepth : Nat} {Γ : Ctxt 
         ((⟨JasminOp.castW w w', heq, args⟩ : Expr jasminDialect Γ (.reg w')).denote V)).nextPc) := by
   rw [lsemStepCallN_of_delegate _ _ _ (Or.inl ?_)]
   · exact lsemStepLeaf_cast heq args hagree
-  · -- the cast wire is a `ZEROEXT`/`TRUNC`, never a `CALLN:` head
-    simp only [opToLinstrR, callNStruct?]
-    split <;> rename_i h <;> first | rfl | (injection h with _ ho _; subst ho; split <;> rfl)
+  · -- the cast wire is a `CASTW_*`, `ZEROEXT` or `TRUNC`, never a `CALLN:` head
+    simp only [opToLinstrR]
+    split
+    all_goals
+      simp only [callNStruct?, castWMnem]
+      split <;> rename_i h <;> first | rfl |
+        (injection h with _ ho _; subst ho; repeat' (first | rfl | split))
 
 theorem lsemStepCallN_var {leaf : LeafEnvCN} {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat} (bop : JasminBinOp)

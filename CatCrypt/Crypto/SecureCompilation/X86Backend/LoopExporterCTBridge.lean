@@ -974,6 +974,14 @@ theorem physAbiLoopWrap_lcmdDirect (virt : Lfundef) (tbl : Array Nat)
     (lcmdDirect_filter (physBodyWithStores_lcmdDirect _ _ _ _ _ _ _ _ _ hv))
     calleeSaveRestoreEpilogue_lcmdDirect
 
+/-- A left fold of body transformations that each preserve direct addressing
+    preserves direct addressing. -/
+theorem foldl_lcmdDirect_of {α : Type} (g : Lcmd → α → Lcmd)
+    (hg : ∀ b a, lcmdDirect b = true → lcmdDirect (g b a) = true) :
+    ∀ (l : List α) (b : Lcmd), lcmdDirect b = true → lcmdDirect (l.foldl g b) = true
+  | [], _, h => h
+  | a :: l, b, h => foldl_lcmdDirect_of g hg l (g b a) (hg b a h)
+
 /-- **The deployed looped export preserves direct addressing.** For an index-free
     `ComL`, the body of the ABI-wrapped, register-allocated function the looped
     2-pointer export emits carries no register-indexed (SIB) operand. -/
@@ -987,7 +995,8 @@ theorem ComL_toLfundefPhysAbi_lcmdDirect {Γ : Ctxt jasminDialect} {t : JasminTy
     (extraInputSaves_lcmdDirect abiArgs) ?_
   exact lcmdDirect_append_of (livePin_lcmdDirect abiArgs)
     (canonicalizeMemrefThread_lcmdDirect
-      (aliasRegBody_lcmdDirect _ _ (ComL_toLfundef_lcmdDirect c immSlotMap h)))
+      (foldl_lcmdDirect_of _ (fun _ _ hb => aliasRegBody_lcmdDirect _ _ hb) _ _
+        (ComL_toLfundef_lcmdDirect c immSlotMap h)))
 
 /-- **The shipped looped `Lprog` export preserves direct addressing.** Every
     function of the looped 2-pointer export of an index-free `ComL` has a body
