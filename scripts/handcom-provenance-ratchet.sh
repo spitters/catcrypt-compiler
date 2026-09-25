@@ -264,7 +264,7 @@ is_infra() {
     return 0
   fi
   case "$1" in
-    *SecureCompilation/VIR/JasminLprogExport.lean|*X86Backend/LprogControlFlow.lean) return 0 ;;
+    *SecureCompilation/VIR/JasminLprogExport.lean|*SecureCompilation/VIR/JasminLprogExport/*.lean|*X86Backend/LprogControlFlow.lean) return 0 ;;
     *Validate.lean|*Pilot.lean|*LeafCall*Emit.lean) return 0 ;;
     # Front translation arms/nodes ARE the front (the thing kernels route
     # through), never deployed kernels themselves.

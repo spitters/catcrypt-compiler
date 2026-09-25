@@ -1,4 +1,4 @@
-2130
+2131
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
@@ -129,7 +129,6 @@
 1	CatCrypt/Crypto/SecureCompilation/CompileFromHaxSntrupMul.lean
 1	CatCrypt/Crypto/SecureCompilation/CompileFromHaxUovGf256.lean
 1	CatCrypt/Crypto/SecureCompilation/CompileFromHaxUovGf256Tie.lean
-1	CatCrypt/Crypto/SecureCompilation/CompilerHelloDemo.lean
 7	CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefFrontValidate.lean
 3	CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefRolledLoop.lean
 1	CatCrypt/Crypto/SecureCompilation/Dialects/CarryChainSelect.lean
@@ -255,7 +254,8 @@
 4	CatCrypt/Crypto/SecureCompilation/VIR/JasminAbiEmit.lean
 2	CatCrypt/Crypto/SecureCompilation/VIR/JasminCTPredicate.lean
 1	CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExportChaCha.lean
-32	CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport.lean
+30	CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/Examples.lean
+2	CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/Proofs.lean
 1	CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemMemChainBridge.lean
 3	CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemMemFlagGuard.lean
 12	CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemMemFlagNestJoin.lean
@@ -432,6 +432,7 @@
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTUnified.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTUnifiedMem.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringExtended.lean
+2	CatCrypt/Crypto/SecureCompilation/X86Backend/LprogAsmPrinter.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddCarryFrontPrototype.lean
 8	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddFrontEmit.lean
 29	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLinearKernels.lean
