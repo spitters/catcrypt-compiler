@@ -49,17 +49,17 @@ BLS12-381 verification is relevant for:
 CatCrypt's coverage of BLS12-381 enables verified primitives for
 these use cases.
 
-## Trust set
+## Soundness
 
-Inherits the generic framework's evaluator + adds **3 axioms**
-(soundness of the named `Fp`/`Fr` inverse and final-exponentiation
-chains, analogous to Curve25519's chain soundness).
+The `Fp`/`Fr` inverse and final-exponentiation chains are generated
+square-and-multiply chains; their soundness theorems are proved through the
+exponent evaluator, with no axiom.
 
 ## What this file ships
 
 * BLS12-381 modulus constants (already in `EvalChainGeneric`).
 * `bls12_381InvResult` and `bls12_381FinalExpResult` headlines.
-* Soundness axioms for both.
+* Soundness theorems for both.
 * Buffer-offset constants for typical chain implementations.
 -/
 
@@ -137,27 +137,130 @@ def bls12_381FrInvResult (chain : List (ChainOp Loc)) (a : Nat) :
     Nat :=
   ((evalFrChain chain (initChainState_Fr a)).read OFF_op)
 
-/-- The BLS12-381 `Fp` inverse chain: an addition chain computing
-    `a^(p − 2) mod p`.  Opaque; stands for the blst `recip-addchain.h`
-    461-step chain (§9 transcribes its 17-op setup window). -/
-opaque bls12_381FpInvChain : List (ChainOp Loc)
+/-! ### Square-and-multiply chains
 
-/-- The BLS12-381 `Fr` (scalar-field) inverse chain: an addition chain
-    computing `a^(r − 2) mod r`.  Opaque; stands for an implementation's
-    concrete chain literal. -/
-opaque bls12_381FrInvChain : List (ChainOp Loc)
+`sqMulChain fuel e` is the left-to-right square-and-multiply chain for the
+exponent `e`: it reads the base at `OFF_ap` and leaves `a ^ e` at `OFF_op` when
+`2 ≤ e < 2 ^ (fuel + 1)` (`sqMulChain_read`, by induction on the fuel through the
+exponent evaluator `EvalChainGeneric.Exp`). The three chains below are these
+generated chains, not the addition chains of blst or another implementation;
+§9 transcribes the setup window of blst's `Fp` chain separately. -/
 
-/-- **BLS12-381 Fp inverse soundness axiom**: `bls12_381FpInvChain`
-    computes the Fermat inverse exponentiation. -/
-axiom bls12_381FpInvChain_sound (a : Nat) :
+section SqMulChain
+
+open CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric.Exp (eOp eChain eRead denote evalChain_read)
+
+/-- Left-to-right square-and-multiply chain with fuel: for `e ≥ 2` and enough
+    fuel, it leaves `a ^ e` at `OFF_op`, reading the base from `OFF_ap`. -/
+def sqMulChain : Nat → Nat → List (ChainOp Loc)
+  | 0, _ => []
+  | fuel + 1, e =>
+    let tail : List (ChainOp Loc) :=
+      if e % 2 = 1 then [.mulStep OFF_op OFF_op OFF_ap] else []
+    if e / 2 ≤ 1 then .sqrStep OFF_op OFF_ap :: tail
+    else sqMulChain fuel (e / 2) ++ .sqrStep OFF_op OFF_op :: tail
+
+theorem eRead_write_self (es : List (Loc × Nat)) (l : Loc) (v : Nat) :
+    eRead (ChainState.write es l v) l = some v := by
+  simp [ChainState.write, eRead]
+
+theorem eRead_write_of_ne (es : List (Loc × Nat)) (l l' : Loc) (v : Nat) (h : l ≠ l') :
+    eRead (ChainState.write es l v) l' = eRead es l' := by
+  simp only [ChainState.write, eRead, h, if_false]
+  induction es with
+  | nil => rfl
+  | cons x rest ih => by_cases hx : x.1 = l <;> simp_all [eRead]
+
+theorem eChain_append (xs ys : List (ChainOp Loc)) (es : List (Loc × Nat)) :
+    eChain (xs ++ ys) es = (eChain xs es).bind (eChain ys) := by
+  induction xs generalizing es with
+  | nil => rfl
+  | cons op rest ih =>
+    rw [List.cons_append, eChain, eChain, Option.bind_assoc]
+    congr 1; funext y; exact ih y
+
+/-- The exponent run of `sqMulChain fuel e` assigns `e` to `OFF_op` and keeps
+    exponent `1` at `OFF_ap`, for `2 ≤ e < 2 ^ (fuel + 1)`. -/
+theorem eChain_sqMulChain : ∀ (fuel e : Nat) (es : List (Loc × Nat)),
+    2 ≤ e → e < 2 ^ (fuel + 1) → eRead es OFF_ap = some 1 →
+    ∃ es', eChain (sqMulChain fuel e) es = some es' ∧
+      eRead es' OFF_op = some e ∧ eRead es' OFF_ap = some 1
+  | 0, e, _, h2, hlt, _ => by omega
+  | fuel + 1, e, es, h2, hlt, hap => by
+    have hne : (OFF_op : Loc) ≠ OFF_ap := by decide
+    have hdm := Nat.div_add_mod e 2
+    have hmod := Nat.mod_lt e (show 2 > 0 by omega)
+    have hne' : (OFF_op : Loc) ≠ OFF_ap := hne
+    by_cases hsmall : e / 2 ≤ 1
+    · have he : e = 2 ∨ e = 3 := by omega
+      rcases he with rfl | rfl
+      · refine ⟨ChainState.write es OFF_op (1 * 2), ?_, eRead_write_self _ _ _, ?_⟩
+        · simp [sqMulChain, eChain, eOp, hap]
+        · rw [eRead_write_of_ne _ _ _ _ hne', hap]
+      · refine ⟨ChainState.write (ChainState.write es OFF_op (1 * 2)) OFF_op (1 * 2 + 1),
+          ?_, eRead_write_self _ _ _, ?_⟩
+        · simp [sqMulChain, eChain, eOp, hap, eRead_write_self, eRead_write_of_ne _ _ _ _ hne']
+        · rw [eRead_write_of_ne _ _ _ _ hne', eRead_write_of_ne _ _ _ _ hne', hap]
+    · have hlt' : e / 2 < 2 ^ (fuel + 1) := by
+        rw [Nat.pow_succ] at hlt; omega
+      obtain ⟨es1, h1, hop1, hap1⟩ := eChain_sqMulChain fuel (e / 2) es (by omega) hlt' hap
+      by_cases hodd : e % 2 = 1
+      · refine ⟨ChainState.write (ChainState.write es1 OFF_op (e / 2 * 2)) OFF_op
+          (e / 2 * 2 + 1), ?_, ?_, ?_⟩
+        · simp only [sqMulChain, hsmall, hodd, if_true, if_false, eChain_append, h1,
+            Option.bind_some, eChain, eOp, hop1, Option.map_some, eRead_write_self,
+            eRead_write_of_ne _ _ _ _ hne', hap1]
+        · rw [eRead_write_self]; congr 1; omega
+        · rw [eRead_write_of_ne _ _ _ _ hne', eRead_write_of_ne _ _ _ _ hne', hap1]
+      · refine ⟨ChainState.write es1 OFF_op (e / 2 * 2), ?_, ?_, ?_⟩
+        · simp only [sqMulChain, hsmall, hodd, if_false, eChain_append, h1,
+            Option.bind_some, eChain, eOp, hop1, Option.map_some]
+        · rw [eRead_write_self]; congr 1; omega
+        · rw [eRead_write_of_ne _ _ _ _ hne', hap1]
+
+/-- The exponent run of `sqMulChain fuel e` from the input state reads `e` at
+    `OFF_op`. -/
+theorem sqMulChain_read (fuel e : Nat) (h2 : 2 ≤ e) (hlt : e < 2 ^ (fuel + 1)) :
+    (eChain (sqMulChain fuel e) [(OFF_ap, 1)]).bind (eRead · OFF_op) = some e := by
+  obtain ⟨es', h, hop, -⟩ := eChain_sqMulChain fuel e [(OFF_ap, 1)] h2 hlt (by decide)
+  rw [h]; exact hop
+
+
+end SqMulChain
+
+/-- The BLS12-381 `Fp` inverse chain: the square-and-multiply chain for
+    `p − 2`. -/
+def bls12_381FpInvChain : List (ChainOp Loc) := sqMulChain 400 (bls12_381_p - 2)
+
+/-- The BLS12-381 `Fr` (scalar-field) inverse chain: the square-and-multiply
+    chain for `r − 2`. -/
+def bls12_381FrInvChain : List (ChainOp Loc) := sqMulChain 300 (bls12_381_r - 2)
+
+open CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric.Exp (eChain eRead denote evalChain_read) in
+/-- `bls12_381FpInvChain` computes the Fermat inverse exponentiation. -/
+theorem bls12_381FpInvChain_sound (a : Nat) :
     bls12_381FpInvResult bls12_381FpInvChain a =
-      a ^ (bls12_381_p - 2) % bls12_381_p
+      a ^ (bls12_381_p - 2) % bls12_381_p := by
+  have hinit : initChainState_Fp a = denote bls12_381_p a [(OFF_ap, 1)] := by
+    simp [initChainState_Fp, denote]
+  have hexp : (eChain bls12_381FpInvChain [(OFF_ap, 1)]).bind
+      (eRead · OFF_op) = some (bls12_381_p - 2) :=
+    sqMulChain_read _ _ (by decide +kernel) (by decide +kernel)
+  rw [bls12_381FpInvResult, evalFpChain, hinit]
+  exact evalChain_read _ _ _ _ _ _ hexp
 
-/-- **BLS12-381 Fr (scalar-field) inverse soundness axiom**:
-    `bls12_381FrInvChain` computes the Fermat inverse exponentiation. -/
-axiom bls12_381FrInvChain_sound (a : Nat) :
+open CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric.Exp (eChain eRead denote evalChain_read) in
+/-- `bls12_381FrInvChain` computes the Fermat inverse exponentiation. -/
+theorem bls12_381FrInvChain_sound (a : Nat) :
     bls12_381FrInvResult bls12_381FrInvChain a =
-      a ^ (bls12_381_r - 2) % bls12_381_r
+      a ^ (bls12_381_r - 2) % bls12_381_r := by
+  have hinit : initChainState_Fr a = denote bls12_381_r a [(OFF_ap, 1)] := by
+    simp [initChainState_Fr, denote]
+  have hexp : (eChain bls12_381FrInvChain [(OFF_ap, 1)]).bind
+      (eRead · OFF_op) = some (bls12_381_r - 2) :=
+    sqMulChain_read _ _ (by decide +kernel) (by decide +kernel)
+  rw [bls12_381FrInvResult, evalFrChain, hinit]
+  exact evalChain_read _ _ _ _ _ _ hexp
 
 /-! ## §5  Final exponentiation (pairing post-processing)
 
@@ -199,17 +302,24 @@ def bls12_381FinalExpHardResult
       chain
       [(OFF_ap, a % (bls12_381_p ^ 12))]).read OFF_op)
 
-/-- The BLS12-381 final-exponentiation hard-part chain: a cyclotomic
-    addition chain for the exponent `(p⁴ − p² + 1) / r`.  Opaque; stands
-    for an implementation's concrete chain literal (blst, BoringSSL, or
-    a paper-cited chain such as Aranha-Karabina-Longa-Gebotys). -/
-opaque bls12_381FinalExpHardChain : List (ChainOp Loc)
+/-- The BLS12-381 final-exponentiation hard-part chain: the square-and-multiply
+    chain for `(p⁴ − p² + 1) / r`, not a cyclotomic addition chain. -/
+def bls12_381FinalExpHardChain : List (ChainOp Loc) :=
+  sqMulChain 1400 bls12_381_final_exp_hard_exponent
 
-/-- **BLS12-381 final-exp hard part soundness axiom**:
-    `bls12_381FinalExpHardChain` computes the hard-part exponentiation. -/
-axiom bls12_381FinalExpHard_sound (a : Nat) :
+open CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric.Exp (eChain eRead denote evalChain_read) in
+/-- `bls12_381FinalExpHardChain` computes the hard-part exponentiation. -/
+theorem bls12_381FinalExpHard_sound (a : Nat) :
     bls12_381FinalExpHardResult bls12_381FinalExpHardChain a =
-      a ^ bls12_381_final_exp_hard_exponent % (bls12_381_p ^ 12)
+      a ^ bls12_381_final_exp_hard_exponent % (bls12_381_p ^ 12) := by
+  have hinit : ([(OFF_ap, a % (bls12_381_p ^ 12))] : ChainState Loc) =
+      denote (bls12_381_p ^ 12) a [(OFF_ap, 1)] := by
+    simp [denote]
+  have hexp : (eChain bls12_381FinalExpHardChain [(OFF_ap, 1)]).bind
+      (eRead · OFF_op) = some bls12_381_final_exp_hard_exponent :=
+    sqMulChain_read _ _ (by decide +kernel) (by decide +kernel)
+  rw [bls12_381FinalExpHardResult, hinit]
+  exact evalChain_read _ _ _ _ _ _ hexp
 
 /-! ## §6  Use-case headlines
 
@@ -394,10 +504,9 @@ t[0], n, t[k])` becomes one
 
 1. 84 lines of mechanical transcription with no semantic content
    beyond what the setup phase demonstrates.
-2. The opaque `bls12_381FpInvChain` constant with its soundness
-   axiom `bls12_381FpInvChain_sound` is the interface for the full
-   chain; a transcription would substitute the literal for the opaque
-   constant without changing the soundness statement's shape.
+2. `bls12_381FpInvChain_sound` is proved for the generated
+   square-and-multiply chain; a transcription of blst's chain would be a
+   second literal with the same soundness statement.
 3. Per-block lemmas (mirror of P-256's `libcruxP256_block_*`) would
    total 84 × 5 = 420 LoC, dominated by mechanical pattern-matching
    on the 12-bit window bits.
@@ -419,21 +528,21 @@ example : blstBLS12_381InvChain_target_size =
 
 * This module contains:
   1. Generic framework instantiation (§§1-3)
-  2. Inverse + Final-exp axiomatic interfaces (§§4-5)
+  2. Inverse and final-exp chains with soundness theorems (§§4-5)
   3. Use-case headlines (§6)
   4. Small worked examples (§7)
   5. Per-block discharge pattern docs (§8)
   6. **blst BLS12-381 inverse — setup window literal** (§9)
   7. **Window-consumption phase** documented (§10, target documented)
 * The final exponentiation (Fp12) chain is sketched in §5 with the
-  `bls12_381FinalExpHardResult` headline + soundness axiom; it has no
-  concrete chain literal, which would come from an implementation
-  source (BoringSSL, blst, or a paper-cited chain like
-  Aranha-Karabina-Longa-Gebotys).
+  `bls12_381FinalExpHardResult` headline and the soundness theorem for the
+  generated square-and-multiply chain; a cyclotomic addition chain from an
+  implementation (BoringSSL, blst, or Aranha-Karabina-Longa-Gebotys) is not
+  transcribed.
 
 Size of the full inverse: setup window (~50 LoC, this module) +
 84-op consumption phase transcription (~150 LoC, mechanical) +
-soundness theorem (~5 LoC, framework axiom application) = ~200
+soundness theorem (~10 LoC through the exponent evaluator) = ~200
 LoC. Final-exp is ~10× larger.
 
 BLS12-377, BLS24-315, BW6-761, and other pairing-friendly curve
