@@ -52,6 +52,8 @@ function — no edit to the shared framework, and no packing into a flat
   (`cuda_tile.broadcast`).
 * `tileReduce (n w)` — horizontal `+`-reduce-and-broadcast: every result lane
   holds `Σ_j a[j]` (`cuda_tile.reduce`).
+* `tileConst (n w) (k)` — no operands; every lane holds `BitVec.ofNat w k`
+  (`cuda_tile.constant`).
 
 These three are the **cross-tile (lane-moving)** ops, lifted into the dialect
 from the operational `TileModel`'s `permxv`/`bcast`/`hadd` arms. They are still
@@ -111,6 +113,9 @@ inductive TileOp where
   /-- Cross-tile reduce (`cuda_tile.reduce`): one `tile n w` operand `a`; every
       result lane holds the horizontal sum `Σ_j a[j]`. -/
   | tileReduce (n w : Nat)
+  /-- Lane-uniform constant (`cuda_tile.constant`): no operands; every result
+      lane is `BitVec.ofNat w k`. -/
+  | tileConst (n w : Nat) (k : Nat)
   deriving DecidableEq
 
 /-! ## 3. The dialect -/
@@ -144,6 +149,11 @@ def tileBroadcastApply {n w : Nat} (lane : Nat) (a : Fin n → BitVec w) :
 def tileReduceApply {n w : Nat} (a : Fin n → BitVec w) : Fin n → BitVec w :=
   fun _ => (List.finRange n).foldl (fun acc j => acc + a j) 0
 
+/-- The data effect of `tileConst`: every lane holds `BitVec.ofNat w k`.
+    Mirrors `TileModel.evalTileOp`'s `.const` arm. -/
+def tileConstApply (n w k : Nat) : Fin n → BitVec w :=
+  fun _ => BitVec.ofNat w k
+
 /-! ## 4. Op signatures (arg types + return type) -/
 
 instance : DialectSignature tileDialect where
@@ -152,11 +162,13 @@ instance : DialectSignature tileDialect where
     | .tilePermute n w => [.tile n w, .tile n w]
     | .tileBroadcast n w _ => [.tile n w]
     | .tileReduce n w => [.tile n w]
+    | .tileConst _ _ _ => []
   ret op := match op with
     | .tileBin _ n w => .tile n w
     | .tilePermute n w => .tile n w
     | .tileBroadcast n w _ => .tile n w
     | .tileReduce n w => .tile n w
+    | .tileConst n w _ => .tile n w
 
 /-! ## 5. Op denotation -/
 
@@ -174,6 +186,7 @@ instance tileDenote : DialectDenote tileDialect where
         tileBroadcastApply lane (args.head : Fin n → BitVec w)
     | .tileReduce n w => fun args =>
         tileReduceApply (args.head : Fin n → BitVec w)
+    | .tileConst n w k => fun _ => tileConstApply n w k
 
 /-! ## 6. Smoke test
 

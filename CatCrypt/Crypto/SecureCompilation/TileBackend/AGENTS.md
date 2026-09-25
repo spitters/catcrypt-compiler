@@ -26,6 +26,7 @@ module declares into `TileBackend.<ModuleName>`.
 | `ZmmArithBridgeComEmit.lean` | AT&T `.s` strings for these programs through `renderVpackZmmCom` and `frameAsmFunction`; `vpaddqBodyLines_eq`, `vpmullqBodyLines_eq`, `vpxorqCom_renders`, `vpsllvqCom_renders` (rendered lines, by `native_decide`) |
 | `TileS16HighMul.lean` | `montMulS16Spec`, `tileMontMulS16` with `tileMontMulS16_denote` (by `rfl`) and `tileMontMulS16_kat`; `vpmulhw16W_lane`, `vpmulhw_com_is_tile_lowering`, `sqdmulh_is_tile_lowering`, `vmulh_is_tile_lowering`, `tri_isa_mulhs_consolidates` |
 | `TileS16HighMulCom.lean` | `s16HighMulCom`, the `VPMULHW` step as `Com jasminDialect`; `s16HighMulCom_denote` |
+| `TileDialectLower.lean` | `lowerCom` (straight-line `Com tileDialect` to a `TileOp` block over named registers) with `lowerCom_correct` for every program; `bbMulTileCom` (the BabyBear multiply as a `Com tileDialect` program) with `bbMulTileCom_denote`, `bbMulTileCom_lower_isSome`, `bbMulTileCom_lowered_denote`; `bbMulTileComIR`, its `cuda_tile` text emitted through the dialect |
 | `TileArithCorrect.lean` | `bbMulWord_toNat` (`bbMulWord a b = a · b mod p` for `a, b < p`), `montMulS16Spec_exact`, `montMulS16Spec_mul_R_modEq` (`r · 2^16 ≡ a · b mod 3329`, all inputs), `montMulS16Spec_abs_lt` (`|r| < 3329` when `|a · b| < 3329 · 2^15`) |
 
 ## Entry-point theorems
@@ -46,8 +47,8 @@ module declares into `TileBackend.<ModuleName>`.
 - `sqdmulh_is_tile_lowering` holds by `rfl` for the NEON model op `mulhs`, the plain
   signed high half. The encoder emits `SQDMULH`, which doubles and saturates; no
   theorem relates the two.
-- `ComToTileIR.lean` emits from a `TileOp` list, not from `Com`, with the tile type
-  fixed to `8xi64`. No theorem in this directory relates the emitted text to
+- `ComToTileIR.lean` emits from a `TileOp` list (reached from `Com tileDialect`
+  through `TileDialectLower.lowerCom`), with the tile type fixed to `8xi64`. No theorem in this directory relates the emitted text to
   `TileModel`, and the text is not checked by the `cuda_tile`
   toolchain in the package.
 - No theorem in this directory relates the strings of `ZmmArithBridgeComEmit.lean`

@@ -31,6 +31,8 @@ operational model's per-lane semantics. Concretely:
   provably one and the same function — so the verified
   `lowerRegBlock_denote` theorem (stated over the operational model)
   transfers to the `Com` dialect.
+* `tileConst_denote_eq_evalTileOp` — the lane-uniform constant `tileConst n w k`
+  denotes to the lane function the operational `.const` arm writes.
 * a smoke `example` running a one-op `Com tileDialect` add and showing its
   `Com.denote` equals running the corresponding `RegInstr.bin .add` through the
   operational `runRegBlock`/`evalRegInstr` path.
@@ -208,6 +210,25 @@ theorem tileReduce_denote_eq_evalTileOp {n w : Nat}
   rw [tileReduce_denote_eq_apply]
   funext i
   simp [tileReduceApply, evalTileOp,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
+    CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
+
+/-! ## 5. Constant tie: `tileConst` ↔ model `const` -/
+
+/-- `tileConst`'s dialect denotation is the lane-uniform constant `tileConstApply`. -/
+theorem tileConst_denote_eq_apply (n w k : Nat) :
+    (tileDenote.denote (TileOp.tileConst n w k) .nil) = tileConstApply n w k :=
+  rfl
+
+/-- **`tileConst` ↔ model `const`.** The dialect constant equals the lane
+    function the operational `evalTileOp (.const d k)` writes into `d`. -/
+theorem tileConst_denote_eq_evalTileOp {n w : Nat} (s : TileState n w) (d : String)
+    (k : Nat) :
+    (tileDenote.denote (TileOp.tileConst n w k) .nil)
+      = (evalTileOp s (.const d k)).get d := by
+  rw [tileConst_denote_eq_apply]
+  funext i
+  simp [tileConstApply, evalTileOp,
     CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
     CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get]
 

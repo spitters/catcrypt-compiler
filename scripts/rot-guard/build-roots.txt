@@ -507,6 +507,7 @@ CatCrypt.Crypto.SecureCompilation.ThirToCryptoDialect
 CatCrypt.Crypto.SecureCompilation.ThreefishMixGoldenPath
 CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileArithCorrect
+CatCrypt.Crypto.SecureCompilation.TileBackend.TileDialectLower
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMul
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileVectorUnify
 CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridge
