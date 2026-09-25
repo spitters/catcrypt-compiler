@@ -36,9 +36,12 @@ structured audit trail that records a citation for each axiom.
 
 ## Emitted-AST field bodies
 
-| Lean axiom | Status | Coq citation |
-|---|---|---|
-| `Examples.EmittedASTCorrectness.fe25519InvertBody_holds_pow` | ✅ proved | `AUCurves/src/Bedrock/End2End/Ed25519/Fe25519InvertCorrect.v::fe25519_invert_correct` (statement line 355, `Qed` line 1218; the file's header comment claiming `Admitted` is stale — the file has no `Admitted`). Concludes `Fp25519_holds rs2 dest.(loc_var) (F.pow x (Z.to_N (p - 2)))`. The Rocq theorem sits in a section over `Variable Fp25519_holds` with hypotheses `sqr_correct`, `mul_correct`, `copy_correct`, `scalar_set_preserves_holds`, `let_zero_preserves_holds`. The Lean axiom instantiates `Fp25519_holds` by `Fp25519Holds decode` for a decoder parameter, keeps the three leaf hypotheses as arguments (`Fe25519SqrCallCorrect` / `Fe25519MulCallCorrect` / `Fe25519CopyCallCorrect`), and discharges the two preservation hypotheses by `Fp25519Holds_rsSetScalar` and `Fp25519Holds_rsSetTower_other`. The Rocq freshness side-conditions (`dest <> a_loc`, `not_in_scratch` on both) hold for the slot names `"a"` and `"out"` that `Fe25519Invert.fe25519InvertBody` hard-codes. |
+`Examples.EmittedASTCorrectness.fe25519InvertBody_holds_pow` is a Lean theorem:
+an exponent tracker over the LowCT fragment (`fp25519ExpTrack`, sound for
+`RustExec` by `fp25519ExpTrack_sound`) reduces the 254-squaring chain to one
+kernel-checked exponent. It corresponds to the Rocq theorem
+`AUCurves/src/Bedrock/End2End/Ed25519/Fe25519InvertCorrect.v::fe25519_invert_correct`,
+and does not depend on it.
 
 ## Edwards addition-formula completeness
 

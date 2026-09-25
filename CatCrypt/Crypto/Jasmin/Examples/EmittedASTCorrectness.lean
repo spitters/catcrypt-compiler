@@ -1481,46 +1481,223 @@ lemma Fe25519CopyCallCorrect_of_leaf
   ⟨fp25519Holds_of_unopLeaf (fieldOp := fun z => z) hLeaf hOps.copy hSrc hExec,
    fp25519Frame_of_rcall hExec⟩
 
+/-! ## Exponent tracking for `fe25519InvertBody`
+
+`fp25519ExpTrack` runs a LowCT command on a map from slots to exponents: a slot
+`v ↦ e` stands for `Fp25519Holds decode rs v (x ^ e)`. `fp25519ExpTrack_sound` states
+that the map is preserved by `RustExec` under the leaf specifications, so the
+invert chain reduces to one kernel computation of the final exponent. -/
+
+section Fp25519ExpTrack
+
+open CatCrypt.Crypto.Jasmin.LowCT
+
+/-- A finite map from slot names to exponents. -/
+abbrev Fp25519ExpMap := List (String × Nat)
+
+/-- Every entry `(y, e)` of `m` has slot `y` of `rs` decoding to `x ^ e`. -/
+def Fp25519ExpHolds (decode : Fe25519Decode) (rs : RustState)
+    (x : ZMod fe25519Modulus) (m : Fp25519ExpMap) : Prop :=
+  ∀ p ∈ m, Fp25519Holds decode rs p.1 (x ^ p.2)
+
+/-- `m` with every entry for slot `v` removed. -/
+def fp25519ExpKill (m : Fp25519ExpMap) (v : String) : Fp25519ExpMap :=
+  m.filter (fun p => !decide (p.1 = v))
+
+/-- `m` with slot `d` bound to exponent `e`. -/
+def fp25519ExpSet (m : Fp25519ExpMap) (d : String) (e : Nat) : Fp25519ExpMap :=
+  (d, e) :: fp25519ExpKill m d
+
+/-- The exponent bound to slot `v` in `m`, if any. -/
+def fp25519ExpFind : Fp25519ExpMap → String → Option Nat
+  | [], _ => none
+  | (y, e) :: m, v => if y = v then some e else fp25519ExpFind m v
+
+/-- Exponent effect of a single `TFp25519` leaf call: `fe25519_sqr d [s]`
+    doubles the exponent of `s`, `fe25519_mul d [a, b]` adds the exponents of
+    `a` and `b`, `fe25519_copy d [s]` copies the exponent of `s`.  The
+    destination must differ from every source; any other call gives `none`. -/
+def fp25519ExpCall (f : String) (dest : Located) (args : List Located)
+    (m : Fp25519ExpMap) : Option Fp25519ExpMap :=
+  if dest.locSrc = TowerType.TFp25519 then
+    match args with
+    | [s] =>
+      if s.locSrc = TowerType.TFp25519 ∧ dest.locVar ≠ s.locVar then
+        if f = "fe25519_sqr" then
+          (fp25519ExpFind m s.locVar).map fun e => fp25519ExpSet m dest.locVar (2 * e)
+        else if f = "fe25519_copy" then
+          (fp25519ExpFind m s.locVar).map fun e => fp25519ExpSet m dest.locVar e
+        else none
+      else none
+    | [a, b] =>
+      if a.locSrc = TowerType.TFp25519 ∧ b.locSrc = TowerType.TFp25519 ∧
+          dest.locVar ≠ a.locVar ∧ dest.locVar ≠ b.locVar ∧ f = "fe25519_mul" then
+        match fp25519ExpFind m a.locVar, fp25519ExpFind m b.locVar with
+        | some ea, some eb => some (fp25519ExpSet m dest.locVar (ea + eb))
+        | _, _ => none
+      else none
+    | _ => none
+  else none
+
+/-- `n`-fold Kleisli iteration of a partial map. -/
+def fp25519ExpIter (f : Fp25519ExpMap → Option Fp25519ExpMap) :
+    Nat → Fp25519ExpMap → Option Fp25519ExpMap
+  | 0, m => some m
+  | n + 1, m => (fp25519ExpIter f n m).bind f
+
+/-- Exponent tracker over the `RSkip`/`RSeq`/`RLetZero`/`RFor`/`RCall`
+    fragment of `LowCT`: the map of slot exponents after running `c` from a
+    state described by `m`, or `none` outside the fragment. -/
+def fp25519ExpTrack : LowCT → Fp25519ExpMap → Option Fp25519ExpMap
+  | .RSkip, m => some m
+  | .RSeq c1 c2, m => (fp25519ExpTrack c1 m).bind (fp25519ExpTrack c2)
+  | .RLetZero v _ body, m => fp25519ExpTrack body (fp25519ExpKill m v)
+  | .RFor _ n body, m => fp25519ExpIter (fp25519ExpTrack body) n m
+  | .RCall f dest args, m => fp25519ExpCall f dest args m
+  | _, _ => none
+
+lemma fp25519ExpFind_mem {m : Fp25519ExpMap} {v : String} {e : Nat}
+    (h : fp25519ExpFind m v = some e) : (v, e) ∈ m := by
+  induction m with
+  | nil => simp [fp25519ExpFind] at h
+  | cons p m ih =>
+    obtain ⟨y, e'⟩ := p
+    simp only [fp25519ExpFind] at h
+    split_ifs at h with hy
+    · cases h; subst hy; exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (ih h)
+
+lemma Fp25519ExpHolds_kill {decode : Fe25519Decode} {rs rs' : RustState}
+    {x : ZMod fe25519Modulus} {m : Fp25519ExpMap} {d : String}
+    (hFrame : Fp25519Frame decode rs rs' d) (h : Fp25519ExpHolds decode rs x m) :
+    Fp25519ExpHolds decode rs' x (fp25519ExpKill m d) := by
+  intro p hp
+  simp only [fp25519ExpKill, List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not] at hp
+  exact hFrame _ _ hp.2 (h p hp.1)
+
+lemma Fp25519ExpHolds_set {decode : Fe25519Decode} {rs rs' : RustState}
+    {x : ZMod fe25519Modulus} {m : Fp25519ExpMap} {d : String} {e : Nat}
+    (hFrame : Fp25519Frame decode rs rs' d) (h : Fp25519ExpHolds decode rs x m)
+    (hd : Fp25519Holds decode rs' d (x ^ e)) :
+    Fp25519ExpHolds decode rs' x (fp25519ExpSet m d e) := by
+  intro p hp
+  rcases List.mem_cons.1 hp with rfl | hp
+  · exact hd
+  · exact Fp25519ExpHolds_kill hFrame h p hp
+
+lemma fp25519ExpCall_sound {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    (hSqr : Fe25519SqrCallCorrect N leafSpec decode)
+    (hMul : Fe25519MulCallCorrect N leafSpec decode)
+    (hCopy : Fe25519CopyCallCorrect N leafSpec decode)
+    {x : ZMod fe25519Modulus} {f : String} {dest : Located} {args : List Located}
+    {rs rs' : RustState} {m m' : Fp25519ExpMap}
+    (hT : fp25519ExpCall f dest args m = some m')
+    (hM : Fp25519ExpHolds decode rs x m)
+    (hExec : RustExec N leafSpec (LowCT.RCall f dest args) rs rs') :
+    Fp25519ExpHolds decode rs' x m' := by
+  obtain ⟨d, dt⟩ := dest
+  rcases args with _ | ⟨⟨s, st⟩, _ | ⟨⟨b, bt⟩, _ | ⟨_, _⟩⟩⟩
+  · simp [fp25519ExpCall] at hT
+  · simp only [fp25519ExpCall] at hT
+    by_cases hdt : dt = TowerType.TFp25519
+    swap
+    · rw [if_neg hdt] at hT; cases hT
+    subst hdt
+    rw [if_pos rfl] at hT
+    by_cases hs : st = TowerType.TFp25519 ∧ d ≠ s
+    swap
+    · rw [if_neg hs] at hT; cases hT
+    rw [if_pos hs] at hT
+    obtain ⟨rfl, hne⟩ := hs
+    by_cases hf : f = "fe25519_sqr"
+    · rw [if_pos hf] at hT
+      subst hf
+      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 hT
+      obtain ⟨hd, hFr⟩ := hSqr d s rs rs' _ hne (hM _ (fp25519ExpFind_mem he)) hExec
+      exact Fp25519ExpHolds_set hFr hM (by rw [mul_comm, pow_mul]; exact hd)
+    rw [if_neg hf] at hT
+    by_cases hf' : f = "fe25519_copy"
+    · rw [if_pos hf'] at hT
+      subst hf'
+      obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 hT
+      obtain ⟨hd, hFr⟩ := hCopy d s rs rs' _ hne (hM _ (fp25519ExpFind_mem he)) hExec
+      exact Fp25519ExpHolds_set hFr hM hd
+    rw [if_neg hf'] at hT; cases hT
+  · simp only [fp25519ExpCall] at hT
+    by_cases hdt : dt = TowerType.TFp25519
+    swap
+    · rw [if_neg hdt] at hT; cases hT
+    subst hdt
+    rw [if_pos rfl] at hT
+    by_cases hc : st = TowerType.TFp25519 ∧ bt = TowerType.TFp25519 ∧
+        d ≠ s ∧ d ≠ b ∧ f = "fe25519_mul"
+    swap
+    · rw [if_neg hc] at hT; cases hT
+    rw [if_pos hc] at hT
+    obtain ⟨rfl, rfl, hna, hnb, rfl⟩ := hc
+    cases hea : fp25519ExpFind m s <;> cases heb : fp25519ExpFind m b <;>
+      rw [hea, heb] at hT <;> try cases hT
+    rename_i ea eb
+    obtain ⟨hd, hFr⟩ := hMul d s b rs rs' _ _ hna hnb
+      (hM _ (fp25519ExpFind_mem hea)) (hM _ (fp25519ExpFind_mem heb)) hExec
+    exact Fp25519ExpHolds_set hFr hM (by rw [pow_add]; exact hd)
+  · simp [fp25519ExpCall] at hT
+
+/-- Soundness of `fp25519ExpTrack`: if the tracker maps `m` to `m'` on `c`,
+    and `m` describes the slot values of `rs`, then `m'` describes the slot
+    values of every `rs'` that `c` reaches from `rs`. -/
+theorem fp25519ExpTrack_sound {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    (hSqr : Fe25519SqrCallCorrect N leafSpec decode)
+    (hMul : Fe25519MulCallCorrect N leafSpec decode)
+    (hCopy : Fe25519CopyCallCorrect N leafSpec decode)
+    (x : ZMod fe25519Modulus) {c : LowCT} {rs rs' : RustState}
+    (hExec : RustExec N leafSpec c rs rs') :
+    ∀ {m m' : Fp25519ExpMap}, fp25519ExpTrack c m = some m' →
+      Fp25519ExpHolds decode rs x m → Fp25519ExpHolds decode rs' x m' := by
+  induction hExec with
+  | skip rs =>
+    intro m m' hT hM
+    cases hT; exact hM
+  | seq c1 c2 rs r1 rs' _ _ ih1 ih2 =>
+    intro m m' hT hM
+    obtain ⟨m1, h1, h2⟩ := Option.bind_eq_some_iff.1 hT
+    exact ih2 h2 (ih1 h1 hM)
+  | letZero v t body rs rs' _ ih =>
+    intro m m' hT hM
+    exact ih hT fun p hp => by
+      simp only [fp25519ExpKill, List.mem_filter, Bool.not_eq_true',
+        decide_eq_false_iff_not] at hp
+      exact Fp25519Holds_rsSetTower_other decode rs v p.1 _ _ hp.2 (hM p hp.1)
+  | forZero v body rs =>
+    intro m m' hT hM
+    cases hT; exact hM
+  | forSucc v n body rs r1 rs' _ _ ihFor ihBody =>
+    intro m m' hT hM
+    obtain ⟨m1, h1, h2⟩ := Option.bind_eq_some_iff.1 hT
+    exact ihBody h2 fun p hp =>
+      Fp25519Holds_rsSetScalar decode r1 v p.1 n _ (ihFor h1 hM p hp)
+  | call f dest args rs oldV argList h1 h2 h3 =>
+    intro m m' hT hM
+    exact fp25519ExpCall_sound hSqr hMul hCopy hT hM
+      (RustExec.call f dest args rs oldV argList h1 h2 h3)
+  | _ => intro m m' hT; simp [fp25519ExpTrack] at hT
+
 open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
-/-- **Rocq-cited trust assumption.**
+/-- The exponent tracker run on `fe25519InvertBody` from `"a" ↦ 1` binds
+    `"out"` to `2^255 - 21`. -/
+theorem fp25519ExpTrack_fe25519InvertBody :
+    ((fp25519ExpTrack fe25519InvertBody [("a", 1)]).bind
+      fun m => fp25519ExpFind m "out") = some (fe25519Modulus - 2) := by
+  decide +kernel
 
-    NAME: `fe25519InvertBody_holds_pow`.
+end Fp25519ExpTrack
 
-    STATEMENT: given the field-level specifications of the `fe25519_sqr`,
-    `fe25519_mul` and `fe25519_copy` leaves, running `fe25519InvertBody`
-    from a state whose `"a"` slot decodes to `x` reaches a state whose
-    `"out"` slot decodes to `x ^ (2^255 - 21)`.
-
-    PROVENANCE: `AUCurves/src/Bedrock/End2End/Ed25519/Fe25519InvertCorrect.v`,
-    theorem `fe25519_invert_correct` (line 355, `Qed` at line 1218),
-    concluding `Fp25519_holds rs2 dest.(loc_var) (F.pow x (Z.to_N (p - 2)))`
-    for `p = 2^255 - 19`.
-
-    The Rocq theorem lives in a section with `Variable Fp25519_holds` and the
-    hypotheses `sqr_correct`, `mul_correct`, `copy_correct`,
-    `scalar_set_preserves_holds`, `let_zero_preserves_holds`.  This axiom
-    instantiates `Fp25519_holds` by `Fp25519Holds decode`; the two
-    preservation hypotheses hold for that instantiation by
-    `Fp25519Holds_rsSetScalar` and `Fp25519Holds_rsSetTower_other`, and the
-    three leaf hypotheses are the arguments `hSqr`, `hMul`, `hCopy`.  The
-    Rocq side-conditions `dest.(loc_var) <> a_loc.(loc_var)`,
-    `not_in_scratch a_loc.(loc_var)` and `not_in_scratch dest.(loc_var)` are
-    satisfied by the slot names `"a"` and `"out"` that `fe25519InvertBody`
-    hard-codes, against the scratch list
-    `["tmp", "scratch", "z2", "z9", "z11", "z2_5_0", "z2_10_0", "z2_20_0",
-      "z2_40_0", "z2_50_0", "z2_100_0", "t2", "t3"]`.
-
-    AUDIT CHECKLIST:
-    - [ ] `fe25519_invert_correct` still ends in `Qed` in the cited file.
-    - [ ] The Rocq `Fp25519_holds`, `sqr_correct`, `mul_correct`,
-          `copy_correct` shapes still match `Fp25519Holds`,
-          `Fe25519SqrCallCorrect`, `Fe25519MulCallCorrect`,
-          `Fe25519CopyCallCorrect`.
-    - [ ] `Fe25519Invert.fe25519InvertBody` and the Rocq
-          `Fe25519InvertBody.fe25519_invert_body` are the same addition
-          chain, over the same 13 scratch slots.
-    - [ ] `fe25519Modulus` equals the Rocq `Crypto.Spec.Curve25519.p`. -/
-axiom fe25519InvertBody_holds_pow
+open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
+/-- Running `fe25519InvertBody` from a state whose `"a"` slot decodes to `x`
+    reaches a state whose `"out"` slot decodes to `x ^ (2^255 - 21)`, given the
+    field-level specifications of the `fe25519_sqr`, `fe25519_mul` and
+    `fe25519_copy` leaves. -/
+theorem fe25519InvertBody_holds_pow
     (N : Nat) (leafSpec : LeafSpec) (decode : Fe25519Decode)
     (hSqr : Fe25519SqrCallCorrect N leafSpec decode)
     (hMul : Fe25519MulCallCorrect N leafSpec decode)
@@ -1528,7 +1705,15 @@ axiom fe25519InvertBody_holds_pow
     (rs rs' : RustState) (x : ZMod fe25519Modulus)
     (hA : Fp25519Holds decode rs "a" x)
     (hExec : RustExec N leafSpec fe25519InvertBody rs rs') :
-    Fp25519Holds decode rs' "out" (x ^ (fe25519Modulus - 2))
+    Fp25519Holds decode rs' "out" (x ^ (fe25519Modulus - 2)) := by
+  have hK := fp25519ExpTrack_fe25519InvertBody
+  obtain ⟨m', hT, hF⟩ := Option.bind_eq_some_iff.1 hK
+  have hInit : Fp25519ExpHolds decode rs x [("a", 1)] := by
+    intro p hp
+    rw [List.mem_singleton.1 hp]
+    simpa using hA
+  exact fp25519ExpTrack_sound hSqr hMul hCopy x hExec hT hInit _ (fp25519ExpFind_mem hF)
+
 
 open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
 /-- **Functional correctness for `fe25519InvertBody`.**
