@@ -84,8 +84,7 @@ orchestration. -/
 
 opaque Plonky3Digest.Impl : NonemptyType.{0}
 /-- A 32-byte Plonky3 Merkle digest (matches `Digest = [u8; 32]` in
-    `plonky3-hax/src/specs/merkle.rs`). Opaque on the Lean side; the leaf
-    `plonky3_poseidon2_compress` implements the byte-mixing under the hood. -/
+    `plonky3-hax/src/specs/merkle.rs`). Opaque on the Lean side. -/
 def Plonky3Digest : Type := Plonky3Digest.Impl.type
 instance : Nonempty Plonky3Digest := Plonky3Digest.Impl.property
 /-- An inhabitant. -/ noncomputable opaque Plonky3Digest.default : Plonky3Digest
@@ -123,9 +122,9 @@ noncomputable opaque plonky3_merkle_hash_leaves (N : Nat) :
     Plonky3Leaves N → Plonky3DigestArr N
 
 /-- One Merkle level: `parents[j] = compress(children[2j], children[2j+1])` for
-    `j ∈ [0, M)`. The input has `2·M` digests, the output has `M`. Implementation
-    is Poseidon2 two-to-one compress per pair (the reference `merkle.rs`
-    `hash_two_to_one`). -/
+    `j ∈ [0, M)`. The input has `2·M` digests, the output has `M`. The reference
+    compress is the byte-mixing `merkle.rs::hash_two_to_one`, modelled in Lean
+    by `Plonky3MerkleEmit.merkleHashTwoToOne`. -/
 noncomputable opaque plonky3_merkle_level (M : Nat) :
     Plonky3DigestArr (2 * M) → Plonky3DigestArr M
 
