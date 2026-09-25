@@ -55,6 +55,9 @@ nothing about the machine code of the leaves.
   double and scalar multiplication represent `A + B`, `2 • A` and `bitsVal bits • A`.
 * `pallas_emittedSmul_G`, `vesta_emittedSmul_G` — the scalar multiplication of the base
   point `(−1, 2)` on each curve.
+* `emittedAdd_projRep_on`, `emittedSmul_projRep_on` — the same for wire arithmetic that
+  is correct only on wires satisfying an invariant (`OpsRealizeOn`), such as field
+  kernels correct on reduced inputs.
 -/
 
 @[expose] public section
@@ -659,5 +662,142 @@ theorem vesta_emittedAdd_projRep {P Q : WireTriple}
       (emittedAdd vestaLeaves (vestaFieldOracle (canonOps vestaQ)) P Q)) (A + B) :=
   emittedAdd_projRep vesta_cubic_no_root vestaQ_two_ne_zero
     (vestaFieldOracle_agrees _) (canonOps_realize vestaQ_le) hP hQ
+
+/-! ## 8. Wire arithmetic that is correct on an invariant
+
+A field kernel is typically correct on reduced inputs only. `OpsRealizeOn ops dec good`
+asks the wire operations to preserve the predicate `good` and to be the field
+operations on wires satisfying it; `emittedAdd_projRep_on` and
+`emittedSmul_projRep_on` are the group-law theorems for inputs whose coordinates
+satisfy `good`. -/
+
+section OnInvariant
+
+variable {K : Type} [Field K]
+
+/-- On wires satisfying `good`, the wire operations `ops` preserve `good` and, read
+through `dec`, are the field operations of `K`. -/
+structure OpsRealizeOn (ops : ArithOps FpWire) (dec : FpWire → K) (good : FpWire → Prop) :
+    Prop where
+  /-- Multiply preserves `good`. -/
+  mul_good : ∀ a b, good a → good b → good (ops.mul a b)
+  /-- Add preserves `good`. -/
+  add_good : ∀ a b, good a → good b → good (ops.add a b)
+  /-- Subtract preserves `good`. -/
+  sub_good : ∀ a b, good a → good b → good (ops.sub a b)
+  /-- Multiply. -/
+  mul : ∀ a b, good a → good b → dec (ops.mul a b) = dec a * dec b
+  /-- Add. -/
+  add : ∀ a b, good a → good b → dec (ops.add a b) = dec a + dec b
+  /-- Subtract. -/
+  sub : ∀ a b, good a → good b → dec (ops.sub a b) = dec a - dec b
+
+/-- All three coordinates of a wire triple satisfy `good`. -/
+def Good3 (good : FpWire → Prop) (t : WireTriple) : Prop := good t.1 ∧ good t.2.1 ∧ good t.2.2
+
+/-- The wire operations restricted to the wires satisfying `good`. -/
+def restrictOps {ops : ArithOps FpWire} {dec : FpWire → K} {good : FpWire → Prop}
+    (h : OpsRealizeOn ops dec good) : ArithOps {w // good w} where
+  mul a b := ⟨ops.mul a.1 b.1, h.mul_good _ _ a.2 b.2⟩
+  add a b := ⟨ops.add a.1 b.1, h.add_good _ _ a.2 b.2⟩
+  sub a b := ⟨ops.sub a.1 b.1, h.sub_good _ _ a.2 b.2⟩
+
+/-- Over any carrier, `add5` read through a map that carries the three operations to
+the field operations is `rcb0Add 5`. -/
+theorem add5_map {α : Type} (o : ArithOps α) (d : α → K)
+    (hm : ∀ a b, d (o.mul a b) = d a * d b) (ha : ∀ a b, d (o.add a b) = d a + d b)
+    (hs : ∀ a b, d (o.sub a b) = d a - d b) (P Q : α × α × α) :
+    (d (o.add5 P Q).1, d (o.add5 P Q).2.1, d (o.add5 P Q).2.2)
+      = rcb0Add 5 (d P.1, d P.2.1, d P.2.2) (d Q.1, d Q.2.1, d Q.2.2) := by
+  simp only [ArithOps.add5, ArithOps.mulSub, ArithOps.mulAdd, ArithOps.cross,
+    ArithOps.m15, ArithOps.triple, ArithOps.pm15Add, ArithOps.pm15Sub, hm, ha, hs, rcb0Add,
+    Prod.mk.injEq]
+  refine ⟨by ring, by ring, by ring⟩
+
+/-- On inputs whose coordinates satisfy `good`, `add5` preserves `good` and, read
+through `dec`, is the complete formula `rcb0Add 5`. -/
+theorem add5_realize_on {ops : ArithOps FpWire} {dec : FpWire → K} {good : FpWire → Prop}
+    (h : OpsRealizeOn ops dec good) {P Q : WireTriple} (hP : Good3 good P)
+    (hQ : Good3 good Q) :
+    Good3 good (ops.add5 P Q) ∧
+      map3 dec (ops.add5 P Q) = rcb0Add 5 (map3 dec P) (map3 dec Q) := by
+  let P' : {w // good w} × {w // good w} × {w // good w} :=
+    (⟨_, hP.1⟩, ⟨_, hP.2.1⟩, ⟨_, hP.2.2⟩)
+  let Q' : {w // good w} × {w // good w} × {w // good w} :=
+    (⟨_, hQ.1⟩, ⟨_, hQ.2.1⟩, ⟨_, hQ.2.2⟩)
+  have e : ops.add5 P Q = (((restrictOps h).add5 P' Q').1.1,
+      ((restrictOps h).add5 P' Q').2.1.1, ((restrictOps h).add5 P' Q').2.2.1) := rfl
+  rw [e]
+  exact ⟨⟨((restrictOps h).add5 P' Q').1.2, ((restrictOps h).add5 P' Q').2.1.2,
+      ((restrictOps h).add5 P' Q').2.2.2⟩,
+    add5_map (restrictOps h) (fun w => dec w.1) (fun a b => h.mul _ _ a.2 b.2)
+      (fun a b => h.add _ _ a.2 b.2) (fun a b => h.sub _ _ a.2 b.2) P' Q'⟩
+
+variable [DecidableEq K]
+
+/-- **The emitted add computes the group law on the invariant.** For inputs whose
+coordinates satisfy `good` and that represent `A` and `B`, the emitted add has
+coordinates satisfying `good` and represents `A + B`. -/
+theorem emittedAdd_projRep_on (hb : ∀ x : K, x ^ 3 + 5 ≠ 0) (h2 : (2 : K) ≠ 0)
+    {L : FieldLeaves} {leafSem : LeafSem} {ops : ArithOps FpWire} {dec : FpWire → K}
+    {good : FpWire → Prop} (hLeaf : FieldLeafAgrees L ops leafSem)
+    (hReal : OpsRealizeOn ops dec good) {P Q : WireTriple}
+    {A B : (w0 (5 : K)).toAffine.Point} (hgP : Good3 good P) (hgQ : Good3 good Q)
+    (hP : ProjRep0 5 (map3 dec P) A) (hQ : ProjRep0 5 (map3 dec Q) B) :
+    Good3 good (emittedAdd L leafSem P Q) ∧
+      ProjRep0 5 (map3 dec (emittedAdd L leafSem P Q)) (A + B) := by
+  rw [emittedAdd_eq, hLeaf.leafOps_eq]
+  obtain ⟨hg, hv⟩ := add5_realize_on hReal hgP hgQ
+  exact ⟨hg, hv ▸ rcb0Add_projRep hb h2 hP hQ⟩
+
+/-- The double-and-add loop invariant on `good`: from an accumulator whose coordinates
+satisfy `good` and that represents `n • A`, the loop over `bits` keeps `good` and
+reaches a representation of the matching multiple of `A`. -/
+theorem smul_foldl_projRep_on (hb : ∀ x : K, x ^ 3 + 5 ≠ 0) (h2 : (2 : K) ≠ 0)
+    {L : FieldLeaves} {leafSem : LeafSem} {ops : ArithOps FpWire} {dec : FpWire → K}
+    {good : FpWire → Prop} (hLeaf : FieldLeafAgrees L ops leafSem)
+    (hReal : OpsRealizeOn ops dec good) {P : WireTriple}
+    {A : (w0 (5 : K)).toAffine.Point} (hgP : Good3 good P) (hP : ProjRep0 5 (map3 dec P) A) :
+    ∀ (bits : List Bool) (acc : WireTriple) (n : ℕ), Good3 good acc →
+      ProjRep0 5 (map3 dec acc) (n • A) →
+      Good3 good (bits.foldl (smulStep L leafSem P) acc) ∧
+      ProjRep0 5 (map3 dec (bits.foldl (smulStep L leafSem P) acc))
+        ((bits.foldl (fun n bit => 2 * n + if bit then 1 else 0) n) • A) := by
+  intro bits
+  induction bits with
+  | nil => intro acc n hg h; exact ⟨hg, h⟩
+  | cons bit bits ih =>
+    intro acc n hg h
+    simp only [List.foldl_cons]
+    obtain ⟨hgd, hd⟩ := emittedAdd_projRep_on hb h2 hLeaf hReal hg hg h h
+    rw [← two_nsmul, ← mul_nsmul'] at hd
+    cases bit with
+    | false =>
+      exact ih _ _ (by simpa [smulStep, emittedDbl] using hgd)
+        (by simpa [smulStep, emittedDbl] using hd)
+    | true =>
+      obtain ⟨hga, ha⟩ := emittedAdd_projRep_on hb h2 hLeaf hReal hgd hgP hd hP
+      exact ih _ _ (by simpa [smulStep, emittedDbl] using hga)
+        (by simpa [smulStep, emittedDbl, add_nsmul, mul_comm] using ha)
+
+/-- **The emitted scalar multiplication computes the group law on the invariant.** When
+`O` represents the identity, `P` represents `A`, and all their coordinates satisfy
+`good`, the emitted double-and-add over `bits` represents `bitsVal bits • A`. -/
+theorem emittedSmul_projRep_on (hb : ∀ x : K, x ^ 3 + 5 ≠ 0) (h2 : (2 : K) ≠ 0)
+    {L : FieldLeaves} {leafSem : LeafSem} {ops : ArithOps FpWire} {dec : FpWire → K}
+    {good : FpWire → Prop} (hLeaf : FieldLeafAgrees L ops leafSem)
+    (hReal : OpsRealizeOn ops dec good) {O P : WireTriple}
+    {A : (w0 (5 : K)).toAffine.Point} (hgO : Good3 good O) (hgP : Good3 good P)
+    (hO : ProjRep0 5 (map3 dec O) 0) (hP : ProjRep0 5 (map3 dec P) A) (bits : List Bool) :
+    ProjRep0 5 (map3 dec (emittedSmul L leafSem O P bits)) (bitsVal bits • A) :=
+  (smul_foldl_projRep_on hb h2 hLeaf hReal hgP hP bits O 0 hgO (by rwa [zero_nsmul])).2
+
+end OnInvariant
+
+/-- The canonical encoding of `x` has little-endian value `x.val`. -/
+theorem leDecode_canonEnc {p : ℕ} [NeZero p] (hp : p ≤ 256 ^ FESZ) (x : ZMod p) :
+    leDecode (canonEnc p x) = x.val := by
+  unfold canonEnc
+  rw [leDecode_leEncode, Nat.mod_eq_of_lt (lt_of_lt_of_le (ZMod.val_lt x) hp)]
 
 end CatCrypt.Crypto.Pairing.PastaGroupEmit

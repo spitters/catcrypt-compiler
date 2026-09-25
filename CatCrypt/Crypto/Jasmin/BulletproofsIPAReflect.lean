@@ -37,16 +37,21 @@ paper, and with this generator fold `⟨a', G'⟩ = x² L + ⟨a, G⟩ + x⁻² 
   their `@[rust_cmd_pattern]` registrations, and the `n = 8` orchestration
   `ipaProverLean8`, with `ipaProverLean8_eq_ipaProve`.
 * §3 The wire encoding: an `IpaCodec` packs a scalar and a group element into
-  four 64-bit limbs each, with decode ∘ encode the identity; `ipaLeafOracle`
-  is the leaf oracle that decodes the arguments of a leaf call, applies the
-  leaf and encodes the result.
-* §4 `ipaProverBody8`, the `LowCT` body of the `n = 8` prover that the front
-  lowers, and `ipaProver8Reified`.
-* §5 `ipaProverBody8_computes`: for every codec, scalar action, challenge
-  function and input, the body run under `semScalarL` at `ipaLeafOracle`
-  leaves the encodings of `ipaProve … 3 a g` in the slots `P`, `L0`–`R2` and
-  `__result`. `ipaProverBody8_denote` carries this through
-  `translateDialectControl` to the denotation of the emitted `Com`.
+  four 64-bit limbs each, with decode ∘ encode the identity. A naming
+  `nm : IpaLeafNames` gives each leaf call (`IpaLeaf`) its `LowCT` name;
+  `ipaLeafOracleN nm` is the leaf oracle that decodes the arguments of a leaf
+  call, applies the leaf and encodes the result, and `ipaLeafOracle` is its
+  instance at the Bulletproofs names `bulletproofsIpaNames`.
+* §4 `ipaProverBodyN nm`, the `LowCT` body of the `n = 8` prover that the front
+  lowers, `ipaProverBody8` at the Bulletproofs names, and `ipaProver8Reified`.
+* §5 `ipaProverBodyN_computes`: for every naming whose call names denote their
+  leaves, and every codec, scalar action, challenge function and input, the
+  body run under `semScalarL` at `ipaLeafOracleN nm` leaves the encodings of
+  `ipaProve … 3 a g` in the slots `P`, `L0`–`R2` and `__result`.
+  `ipaProverBodyN_denote` carries this through `translateDialectControl` to the
+  denotation of the emitted `Com`; `ipaProverBody8_computes` and
+  `ipaProverBody8_denote` are the Bulletproofs instances. `Halo2IPAProverReflect`
+  instantiates the same statements at the Pallas group.
 * §6 The instance at the edwards25519 group `EdPt` with scalars `ZMod L`
   and the action `lsmul`: `ed25519IpaCodec` encodes a scalar as its
   little-endian 32-byte residue and a point in the RFC 8032 compressed form,
@@ -332,51 +337,123 @@ def ipaArg (args : List ((t : CryptoTy) × ⟦t⟧)) (j : ℕ) : ℕ → BitVec 
   | some p => slotLimbs p
   | none => fun _ => 0
 
-/-- The result stream of the leaf `name` on the argument streams `s0`, `s1`:
-    decode the arguments at the widths the name carries, apply the leaf, encode. -/
-def ipaLeafStream (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F) (name : String)
-    (s0 s1 : ℕ → BitVec 64) : ℕ → BitVec 64 :=
-  if name = "ipa_commit_8" then
+/-- The leaf calls of the `n = 8` prover, by role and vector width: the cross
+    commitments by the width they read, the folds by the width they write. -/
+inductive IpaLeaf where
+  | commit8
+  | crossL8
+  | crossR8
+  | crossL4
+  | crossR4
+  | crossL2
+  | crossR2
+  | squeeze
+  | foldWit4
+  | foldWit2
+  | foldWit1
+  | foldGen4
+  | foldGen2
+  | final
+  deriving DecidableEq
+
+/-- Every leaf call, in body order. -/
+def IpaLeaf.all : List IpaLeaf :=
+  [.commit8, .crossL8, .crossR8, .crossL4, .crossR4, .crossL2, .crossR2, .squeeze,
+    .foldWit4, .foldWit2, .foldWit1, .foldGen4, .foldGen2, .final]
+
+/-- A naming of the leaf calls: the `LowCT` call name of each leaf. -/
+abbrev IpaLeafNames : Type := IpaLeaf → String
+
+/-- The leaf a call name denotes under the naming `nm`: the first leaf in
+    `IpaLeaf.all` with that name, and `none` if no leaf has it. -/
+def IpaLeafNames.leafOf (nm : IpaLeafNames) (name : String) : Option IpaLeaf :=
+  IpaLeaf.all.find? (fun l => decide (nm l = name))
+
+/-- The call names of the Bulletproofs leaves. -/
+def bulletproofsIpaNames : IpaLeafNames
+  | .commit8 => "ipa_commit_8"
+  | .crossL8 => "ipa_cross_L_8"
+  | .crossR8 => "ipa_cross_R_8"
+  | .crossL4 => "ipa_cross_L_4"
+  | .crossR4 => "ipa_cross_R_4"
+  | .crossL2 => "ipa_cross_L_2"
+  | .crossR2 => "ipa_cross_R_2"
+  | .squeeze => "ipa_squeeze"
+  | .foldWit4 => "ipa_fold_wit_4"
+  | .foldWit2 => "ipa_fold_wit_2"
+  | .foldWit1 => "ipa_fold_wit_1"
+  | .foldGen4 => "ipa_fold_gen_4"
+  | .foldGen2 => "ipa_fold_gen_2"
+  | .final => "ipa_final"
+
+theorem bulletproofsIpaNames_leafOf (l : IpaLeaf) :
+    bulletproofsIpaNames.leafOf (bulletproofsIpaNames l) = some l := by
+  cases l <;> simp [IpaLeafNames.leafOf, IpaLeaf.all, bulletproofsIpaNames]
+
+/-- The result stream of the leaf `l` on the argument streams `s0`, `s1`: decode
+    the arguments at the widths of `l`, apply the leaf, encode. -/
+def ipaLeafStreamOf (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F) :
+    IpaLeaf → (ℕ → BitVec 64) → (ℕ → BitVec 64) → ℕ → BitVec 64
+  | .commit8, s0, s1 =>
     elemStream (C.encG (ipa_commit smul (decVec (n := 8) C.decF s0) (decVec (n := 8) C.decG s1)))
-  else if name = "ipa_cross_L_8" then
+  | .crossL8, s0, s1 =>
     elemStream (C.encG (ipa_cross_L smul (n := 4)
       (decVec (n := 8) C.decF s0) (decVec (n := 8) C.decG s1)))
-  else if name = "ipa_cross_R_8" then
+  | .crossR8, s0, s1 =>
     elemStream (C.encG (ipa_cross_R smul (n := 4)
       (decVec (n := 8) C.decF s0) (decVec (n := 8) C.decG s1)))
-  else if name = "ipa_cross_L_4" then
+  | .crossL4, s0, s1 =>
     elemStream (C.encG (ipa_cross_L smul (n := 2)
       (decVec (n := 4) C.decF s0) (decVec (n := 4) C.decG s1)))
-  else if name = "ipa_cross_R_4" then
+  | .crossR4, s0, s1 =>
     elemStream (C.encG (ipa_cross_R smul (n := 2)
       (decVec (n := 4) C.decF s0) (decVec (n := 4) C.decG s1)))
-  else if name = "ipa_cross_L_2" then
+  | .crossL2, s0, s1 =>
     elemStream (C.encG (ipa_cross_L smul (n := 1)
       (decVec (n := 2) C.decF s0) (decVec (n := 2) C.decG s1)))
-  else if name = "ipa_cross_R_2" then
+  | .crossR2, s0, s1 =>
     elemStream (C.encG (ipa_cross_R smul (n := 1)
       (decVec (n := 2) C.decF s0) (decVec (n := 2) C.decG s1)))
-  else if name = "ipa_squeeze" then
+  | .squeeze, s0, s1 =>
     elemStream (C.encF (ipa_squeeze H (C.decG (streamElem s0 0)) (C.decG (streamElem s1 0))))
-  else if name = "ipa_fold_wit_4" then
+  | .foldWit4, s0, s1 =>
     vecStream C.encF (ipa_fold_wit (n := 4) (decVec (n := 8) C.decF s0) (C.decF (streamElem s1 0)))
-  else if name = "ipa_fold_wit_2" then
+  | .foldWit2, s0, s1 =>
     vecStream C.encF (ipa_fold_wit (n := 2) (decVec (n := 4) C.decF s0) (C.decF (streamElem s1 0)))
-  else if name = "ipa_fold_wit_1" then
+  | .foldWit1, s0, s1 =>
     vecStream C.encF (ipa_fold_wit (n := 1) (decVec (n := 2) C.decF s0) (C.decF (streamElem s1 0)))
-  else if name = "ipa_fold_gen_4" then
+  | .foldGen4, s0, s1 =>
     vecStream C.encG (ipa_fold_gen smul (n := 4)
       (decVec (n := 8) C.decG s0) (C.decF (streamElem s1 0)))
-  else if name = "ipa_fold_gen_2" then
+  | .foldGen2, s0, s1 =>
     vecStream C.encG (ipa_fold_gen smul (n := 2)
       (decVec (n := 4) C.decG s0) (C.decF (streamElem s1 0)))
-  else if name = "ipa_final" then
+  | .final, s0, _ =>
     elemStream (C.encF (ipa_final (decVec (n := 1) C.decF s0)))
-  else fun _ => 0
 
-/-- The leaf oracle of the IPA leaves under the codec `C`. -/
+/-- The result stream of the call `name` under the naming `nm`: the stream of the
+    leaf `name` denotes, and `0` when it denotes none. -/
+def ipaLeafStreamN (nm : IpaLeafNames) (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
+    (name : String) (s0 s1 : ℕ → BitVec 64) : ℕ → BitVec 64 :=
+  match nm.leafOf name with
+  | some l => ipaLeafStreamOf C smul H l s0 s1
+  | none => fun _ => 0
+
+/-- The leaf oracle of the IPA leaves under the naming `nm` and the codec `C`. -/
+def ipaLeafOracleN (nm : IpaLeafNames) (C : IpaCodec F G) (smul : F → G → G)
+    (H : G → G → F) : SemLeafSpec :=
+  fun name retTy args =>
+    slotOf retTy (ipaLeafStreamN nm C smul H name (ipaArg args 0) (ipaArg args 1))
+
+/-- The result stream of the Bulletproofs leaf `name` on the argument streams `s0`,
+    `s1`. -/
+def ipaLeafStream (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F) (name : String)
+    (s0 s1 : ℕ → BitVec 64) : ℕ → BitVec 64 :=
+  ipaLeafStreamN bulletproofsIpaNames C smul H name s0 s1
+
+/-- The leaf oracle of the Bulletproofs leaves under the codec `C`. -/
 def ipaLeafOracle (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F) : SemLeafSpec :=
-  fun name retTy args => slotOf retTy (ipaLeafStream C smul H name (ipaArg args 0) (ipaArg args 1))
+  ipaLeafOracleN bulletproofsIpaNames C smul H
 
 /-- The environment entry holding the encoding of a group element. -/
 def ptSlot (C : IpaCodec F G) (P : G) : Option ((t : CryptoTy) × ⟦t⟧) :=
@@ -406,10 +483,10 @@ def ipaScalarTowerType : TowerType := .TBytes 32
 /-- The located slot named `n` of wire type `t`. -/
 def locBulletproofsIPA (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
-/-- Body of the `n = 8` (three-round) IPA prover, with the call sequence of
-    `ipaProverLean8`. The slots `a1`/`G1`, `a2`/`G2`, `a3` have the lengths 4,
-    2 and 1 of the round outputs. -/
-def ipaProverBody8 : LowCT :=
+/-- Body of the `n = 8` (three-round) IPA prover with the leaf calls named by
+    `nm`, in the call sequence of `ipaProverLean8`. The slots `a1`/`G1`,
+    `a2`/`G2`, `a3` have the lengths 4, 2 and 1 of the round outputs. -/
+def ipaProverBodyN (nm : BulletproofsIPA.IpaLeafNames) : LowCT :=
   let a_l   := locBulletproofsIPA "a"        (ipaWitnessTowerType 8)
   let G_l   := locBulletproofsIPA "G"        (ipaGenTowerType 8)
   let P_l   := locBulletproofsIPA "P"        ipaPointTowerType
@@ -430,22 +507,26 @@ def ipaProverBody8 : LowCT :=
   let res_l := locBulletproofsIPA "__result" ipaScalarTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
-    (.RCall "ipa_commit_8"   P_l   [a_l, G_l]))
-    (.RCall "ipa_cross_L_8"  L0_l  [a_l, G_l]))
-    (.RCall "ipa_cross_R_8"  R0_l  [a_l, G_l]))
-    (.RCall "ipa_squeeze"    u0_l  [L0_l, R0_l]))
-    (.RCall "ipa_fold_wit_4" a1_l  [a_l, u0_l]))
-    (.RCall "ipa_fold_gen_4" G1_l  [G_l, u0_l]))
-    (.RCall "ipa_cross_L_4"  L1_l  [a1_l, G1_l]))
-    (.RCall "ipa_cross_R_4"  R1_l  [a1_l, G1_l]))
-    (.RCall "ipa_squeeze"    u1_l  [L1_l, R1_l]))
-    (.RCall "ipa_fold_wit_2" a2_l  [a1_l, u1_l]))
-    (.RCall "ipa_fold_gen_2" G2_l  [G1_l, u1_l]))
-    (.RCall "ipa_cross_L_2"  L2_l  [a2_l, G2_l]))
-    (.RCall "ipa_cross_R_2"  R2_l  [a2_l, G2_l]))
-    (.RCall "ipa_squeeze"    u2_l  [L2_l, R2_l]))
-    (.RCall "ipa_fold_wit_1" a3_l  [a2_l, u2_l]))
-    (.RCall "ipa_final"      res_l [a3_l])
+    (.RCall (nm .commit8)  P_l   [a_l, G_l]))
+    (.RCall (nm .crossL8)  L0_l  [a_l, G_l]))
+    (.RCall (nm .crossR8)  R0_l  [a_l, G_l]))
+    (.RCall (nm .squeeze)  u0_l  [L0_l, R0_l]))
+    (.RCall (nm .foldWit4) a1_l  [a_l, u0_l]))
+    (.RCall (nm .foldGen4) G1_l  [G_l, u0_l]))
+    (.RCall (nm .crossL4)  L1_l  [a1_l, G1_l]))
+    (.RCall (nm .crossR4)  R1_l  [a1_l, G1_l]))
+    (.RCall (nm .squeeze)  u1_l  [L1_l, R1_l]))
+    (.RCall (nm .foldWit2) a2_l  [a1_l, u1_l]))
+    (.RCall (nm .foldGen2) G2_l  [G1_l, u1_l]))
+    (.RCall (nm .crossL2)  L2_l  [a2_l, G2_l]))
+    (.RCall (nm .crossR2)  R2_l  [a2_l, G2_l]))
+    (.RCall (nm .squeeze)  u2_l  [L2_l, R2_l]))
+    (.RCall (nm .foldWit1) a3_l  [a2_l, u2_l]))
+    (.RCall (nm .final)    res_l [a3_l])
+
+/-- Body of the `n = 8` Bulletproofs IPA prover: `ipaProverBodyN` at the
+    Bulletproofs leaf names `ipa_commit_8`, `ipa_cross_L_8`, …, `ipa_final`. -/
+def ipaProverBody8 : LowCT := ipaProverBodyN BulletproofsIPA.bulletproofsIpaNames
 
 /-- `ReifiedFunc` bundle for the `n = 8` Bulletproofs IPA prover. -/
 def ipaProver8Reified : ReifiedFunc :=
@@ -507,89 +588,128 @@ local macro "ipa_eval_at " h:ident : tactic => `(tactic| (
     ipaScalarTowerType, CatCrypt.Crypto.Jasmin.LowCT.Located.locDst, encodeTy, locNames,
     List.map, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv] at $h:ident
   simp (config := { decide := true }) only [argVals, List.filterMap_cons,
-    List.filterMap_nil, ipaLeafOracle, ipaArg, List.getElem?_cons_zero,
-    List.getElem?_cons_succ, ipaLeafStream, String.reduceEq, ↓reduceIte, decVec_vecF,
+    List.filterMap_nil, ipaLeafOracleN, ipaArg, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, ipaLeafStreamN, ipaLeafStreamOf, decVec_vecF,
     decVec_vecG, streamElem_elem, IpaCodec.decF_encF, IpaCodec.decG_encG, ne_eq,
     not_false_eq_true, *] at $h:ident))
 
-/-- For every codec, scalar action, challenge function, witness `a` and
-    generators `g` of length 8, running `ipaProverBody8` at the leaf oracle
-    `ipaLeafOracle` from an environment holding the encodings of `a` and `g`
-    leaves the encoding of `ipaProve smul H 3 a g` in the transcript slots. -/
-theorem ipaProverBody8_computes (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
+/-- For every naming `nm` under which each leaf's call name denotes that leaf, and
+    every codec, scalar action, challenge function, witness `a` and generators `g`
+    of length 8, running `ipaProverBodyN nm` at the leaf oracle `ipaLeafOracleN nm`
+    from an environment holding the encodings of `a` and `g` leaves the encoding of
+    `ipaProve smul H 3 a g` in the transcript slots. -/
+theorem ipaProverBodyN_computes (nm : IpaLeafNames) (hnm : ∀ l, nm.leafOf (nm l) = some l)
+    (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
     (a : Fin 8 → F) (g : Fin 8 → G) (env : SEnvScalar)
     (ha : env "a" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encF a)⟩)
     (hg : env "G" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encG g)⟩) :
-    ∃ env', semScalarL (ipaLeafOracle C smul H) ipaProverBody8 env = some env' ∧
+    ∃ env', semScalarL (ipaLeafOracleN nm C smul H) (ipaProverBodyN nm) env = some env' ∧
       ipaTranscriptSlots8 C (ipaProve smul H 3 a g) env' := by
   rw [← ipaProverLean8_eq_ipaProve]
-  have h0 : semScalarL (ipaLeafOracle C smul H) .RSkip env = some env := rfl
-  obtain ⟨e1, h1, v1, f1⟩ := semScalarL_seq_call _ h0 "ipa_commit_8" "P" ipaPointTowerType
+  have h0 : semScalarL (ipaLeafOracleN nm C smul H) .RSkip env = some env := rfl
+  obtain ⟨e1, h1, v1, f1⟩ := semScalarL_seq_call _ h0 (nm .commit8) "P" ipaPointTowerType
     [locBulletproofsIPA "a" (ipaWitnessTowerType 8), locBulletproofsIPA "G" (ipaGenTowerType 8)]
   ipa_eval_at v1
-  obtain ⟨e2, h2, v2, f2⟩ := semScalarL_seq_call _ h1 "ipa_cross_L_8" "L0" ipaPointTowerType
+  obtain ⟨e2, h2, v2, f2⟩ := semScalarL_seq_call _ h1 (nm .crossL8) "L0" ipaPointTowerType
     [locBulletproofsIPA "a" (ipaWitnessTowerType 8), locBulletproofsIPA "G" (ipaGenTowerType 8)]
   ipa_eval_at v2
-  obtain ⟨e3, h3, v3, f3⟩ := semScalarL_seq_call _ h2 "ipa_cross_R_8" "R0" ipaPointTowerType
+  obtain ⟨e3, h3, v3, f3⟩ := semScalarL_seq_call _ h2 (nm .crossR8) "R0" ipaPointTowerType
     [locBulletproofsIPA "a" (ipaWitnessTowerType 8), locBulletproofsIPA "G" (ipaGenTowerType 8)]
   ipa_eval_at v3
-  obtain ⟨e4, h4, v4, f4⟩ := semScalarL_seq_call _ h3 "ipa_squeeze" "u0" ipaScalarTowerType
+  obtain ⟨e4, h4, v4, f4⟩ := semScalarL_seq_call _ h3 (nm .squeeze) "u0" ipaScalarTowerType
     [locBulletproofsIPA "L0" ipaPointTowerType, locBulletproofsIPA "R0" ipaPointTowerType]
   ipa_eval_at v4
-  obtain ⟨e5, h5, v5, f5⟩ := semScalarL_seq_call _ h4 "ipa_fold_wit_4" "a1"
+  obtain ⟨e5, h5, v5, f5⟩ := semScalarL_seq_call _ h4 (nm .foldWit4) "a1"
     (ipaWitnessTowerType 4)
     [locBulletproofsIPA "a" (ipaWitnessTowerType 8), locBulletproofsIPA "u0" ipaScalarTowerType]
   ipa_eval_at v5
-  obtain ⟨e6, h6, v6, f6⟩ := semScalarL_seq_call _ h5 "ipa_fold_gen_4" "G1" (ipaGenTowerType 4)
+  obtain ⟨e6, h6, v6, f6⟩ := semScalarL_seq_call _ h5 (nm .foldGen4) "G1" (ipaGenTowerType 4)
     [locBulletproofsIPA "G" (ipaGenTowerType 8), locBulletproofsIPA "u0" ipaScalarTowerType]
   ipa_eval_at v6
-  obtain ⟨e7, h7, v7, f7⟩ := semScalarL_seq_call _ h6 "ipa_cross_L_4" "L1" ipaPointTowerType
+  obtain ⟨e7, h7, v7, f7⟩ := semScalarL_seq_call _ h6 (nm .crossL4) "L1" ipaPointTowerType
     [locBulletproofsIPA "a1" (ipaWitnessTowerType 4), locBulletproofsIPA "G1" (ipaGenTowerType 4)]
   ipa_eval_at v7
-  obtain ⟨e8, h8, v8, f8⟩ := semScalarL_seq_call _ h7 "ipa_cross_R_4" "R1" ipaPointTowerType
+  obtain ⟨e8, h8, v8, f8⟩ := semScalarL_seq_call _ h7 (nm .crossR4) "R1" ipaPointTowerType
     [locBulletproofsIPA "a1" (ipaWitnessTowerType 4), locBulletproofsIPA "G1" (ipaGenTowerType 4)]
   ipa_eval_at v8
-  obtain ⟨e9, h9, v9, f9⟩ := semScalarL_seq_call _ h8 "ipa_squeeze" "u1" ipaScalarTowerType
+  obtain ⟨e9, h9, v9, f9⟩ := semScalarL_seq_call _ h8 (nm .squeeze) "u1" ipaScalarTowerType
     [locBulletproofsIPA "L1" ipaPointTowerType, locBulletproofsIPA "R1" ipaPointTowerType]
   ipa_eval_at v9
-  obtain ⟨e10, h10, v10, f10⟩ := semScalarL_seq_call _ h9 "ipa_fold_wit_2" "a2"
+  obtain ⟨e10, h10, v10, f10⟩ := semScalarL_seq_call _ h9 (nm .foldWit2) "a2"
     (ipaWitnessTowerType 2)
     [locBulletproofsIPA "a1" (ipaWitnessTowerType 4), locBulletproofsIPA "u1" ipaScalarTowerType]
   ipa_eval_at v10
-  obtain ⟨e11, h11, v11, f11⟩ := semScalarL_seq_call _ h10 "ipa_fold_gen_2" "G2"
+  obtain ⟨e11, h11, v11, f11⟩ := semScalarL_seq_call _ h10 (nm .foldGen2) "G2"
     (ipaGenTowerType 2)
     [locBulletproofsIPA "G1" (ipaGenTowerType 4), locBulletproofsIPA "u1" ipaScalarTowerType]
   ipa_eval_at v11
-  obtain ⟨e12, h12, v12, f12⟩ := semScalarL_seq_call _ h11 "ipa_cross_L_2" "L2" ipaPointTowerType
+  obtain ⟨e12, h12, v12, f12⟩ := semScalarL_seq_call _ h11 (nm .crossL2) "L2" ipaPointTowerType
     [locBulletproofsIPA "a2" (ipaWitnessTowerType 2), locBulletproofsIPA "G2" (ipaGenTowerType 2)]
   ipa_eval_at v12
-  obtain ⟨e13, h13, v13, f13⟩ := semScalarL_seq_call _ h12 "ipa_cross_R_2" "R2" ipaPointTowerType
+  obtain ⟨e13, h13, v13, f13⟩ := semScalarL_seq_call _ h12 (nm .crossR2) "R2" ipaPointTowerType
     [locBulletproofsIPA "a2" (ipaWitnessTowerType 2), locBulletproofsIPA "G2" (ipaGenTowerType 2)]
   ipa_eval_at v13
-  obtain ⟨e14, h14, v14, f14⟩ := semScalarL_seq_call _ h13 "ipa_squeeze" "u2" ipaScalarTowerType
+  obtain ⟨e14, h14, v14, f14⟩ := semScalarL_seq_call _ h13 (nm .squeeze) "u2" ipaScalarTowerType
     [locBulletproofsIPA "L2" ipaPointTowerType, locBulletproofsIPA "R2" ipaPointTowerType]
   ipa_eval_at v14
-  obtain ⟨e15, h15, v15, f15⟩ := semScalarL_seq_call _ h14 "ipa_fold_wit_1" "a3"
+  obtain ⟨e15, h15, v15, f15⟩ := semScalarL_seq_call _ h14 (nm .foldWit1) "a3"
     (ipaWitnessTowerType 1)
     [locBulletproofsIPA "a2" (ipaWitnessTowerType 2), locBulletproofsIPA "u2" ipaScalarTowerType]
   ipa_eval_at v15
-  obtain ⟨e16, h16, v16, f16⟩ := semScalarL_seq_call _ h15 "ipa_final" "__result"
+  obtain ⟨e16, h16, v16, f16⟩ := semScalarL_seq_call _ h15 (nm .final) "__result"
     ipaScalarTowerType [locBulletproofsIPA "a3" (ipaWitnessTowerType 1)]
   ipa_eval_at v16
   refine ⟨e16, h16, ?_⟩
   simp (config := { decide := true }) only [ipaTranscriptSlots8, ipaProverLean8, List.map,
     ptSlot, scSlot, ne_eq, *]
 
-/-- `ipaProverBody8` lies in the straight-line fragment the scalar front covers. -/
-theorem ipaProverBody8_covered : IsCoveredS ipaProverBody8 := by
-  unfold ipaProverBody8
+/-- `ipaProverBody8_computes`: `ipaProverBodyN_computes` at the Bulletproofs leaf
+    names. -/
+theorem ipaProverBody8_computes (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
+    (a : Fin 8 → F) (g : Fin 8 → G) (env : SEnvScalar)
+    (ha : env "a" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encF a)⟩)
+    (hg : env "G" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encG g)⟩) :
+    ∃ env', semScalarL (ipaLeafOracle C smul H) ipaProverBody8 env = some env' ∧
+      ipaTranscriptSlots8 C (ipaProve smul H 3 a g) env' :=
+  ipaProverBodyN_computes bulletproofsIpaNames bulletproofsIpaNames_leafOf C smul H a g env ha hg
+
+/-- `ipaProverBodyN nm` lies in the straight-line fragment the scalar front covers. -/
+theorem ipaProverBodyN_covered (nm : IpaLeafNames) : IsCoveredS (ipaProverBodyN nm) := by
+  unfold ipaProverBodyN
   repeat constructor
 
-/-- The emitted `Com` of `ipaProverBody8`: whenever `translateDialectControl`
+/-- `ipaProverBody8` lies in the straight-line fragment the scalar front covers. -/
+theorem ipaProverBody8_covered : IsCoveredS ipaProverBody8 :=
+  ipaProverBodyN_covered bulletproofsIpaNames
+
+/-- The emitted `Com` of `ipaProverBodyN nm`: whenever `translateDialectControl`
     translates the body from a valuation consistent with an environment holding
     the encodings of `a` and `g`, the translated `Com` denotes, at the leaf
-    oracle `ipaLeafOracle`, a valuation consistent with an environment holding
+    oracle `ipaLeafOracleN nm`, a valuation consistent with an environment holding
     the encoding of `ipaProve smul H 3 a g`. -/
+theorem ipaProverBodyN_denote (nm : IpaLeafNames) (hnm : ∀ l, nm.leafOf (nm l) = some l)
+    (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
+    (a : Fin 8 → F) (g : Fin 8 → G) {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := CatCryptDialect.catCryptDialect) Γ) (env : SEnvScalar)
+    (o : DTransOut Γ) (hc : ConsistentS vm V env)
+    (htr : translateDialectControl vm (ipaProverBodyN nm) = some o)
+    (ha : env "a" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encF a)⟩)
+    (hg : env "G" = some ⟨.memref 32, slotOf (.memref 32) (vecStream C.encG g)⟩) :
+    ∃ (env' : SEnvScalar) (V' : Ctxt.Valuation (d := CatCryptDialect.catCryptDialect) o.Γ'),
+      ConsistentS o.vm V' env' ∧ ipaTranscriptSlots8 C (ipaProve smul H 3 a g) env' ∧
+      ∀ {t : CryptoTy} (tail : Com CatCryptDialect.catCryptDialect o.Γ' t),
+        ∃ com, o.cont tail = some com ∧
+          @Com.denote CatCryptDialect.catCryptDialect _ _
+              (catCryptDenoteWith (ipaLeafOracleN nm C smul H)) _ _ com V
+            = @Com.denote CatCryptDialect.catCryptDialect _ _
+              (catCryptDenoteWith (ipaLeafOracleN nm C smul H)) _ _ tail V' := by
+  obtain ⟨env', hsem, hslots⟩ := ipaProverBodyN_computes nm hnm C smul H a g env ha hg
+  obtain ⟨V', hc', hden⟩ := translateDialectControl_denoteWith (ipaLeafOracleN nm C smul H)
+    (ipaProverBodyN_covered nm) vm V env env' o hc htr hsem
+  exact ⟨env', V', hc', hslots, hden⟩
+
+/-- The emitted `Com` of `ipaProverBody8`: `ipaProverBodyN_denote` at the
+    Bulletproofs leaf names. -/
 theorem ipaProverBody8_denote (C : IpaCodec F G) (smul : F → G → G) (H : G → G → F)
     (a : Fin 8 → F) (g : Fin 8 → G) {Γ : Ctx} (vm : VarMap Γ)
     (V : Ctxt.Valuation (d := CatCryptDialect.catCryptDialect) Γ) (env : SEnvScalar)
@@ -604,11 +724,9 @@ theorem ipaProverBody8_denote (C : IpaCodec F G) (smul : F → G → G) (H : G �
           @Com.denote CatCryptDialect.catCryptDialect _ _
               (catCryptDenoteWith (ipaLeafOracle C smul H)) _ _ com V
             = @Com.denote CatCryptDialect.catCryptDialect _ _
-              (catCryptDenoteWith (ipaLeafOracle C smul H)) _ _ tail V' := by
-  obtain ⟨env', hsem, hslots⟩ := ipaProverBody8_computes C smul H a g env ha hg
-  obtain ⟨V', hc', hden⟩ := translateDialectControl_denoteWith (ipaLeafOracle C smul H)
-    ipaProverBody8_covered vm V env env' o hc htr hsem
-  exact ⟨env', V', hc', hslots, hden⟩
+              (catCryptDenoteWith (ipaLeafOracle C smul H)) _ _ tail V' :=
+  ipaProverBodyN_denote bulletproofsIpaNames bulletproofsIpaNames_leafOf C smul H a g vm V env o
+    hc htr ha hg
 
 end CatCrypt.Crypto.Jasmin.BulletproofsIPA
 
