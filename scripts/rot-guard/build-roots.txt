@@ -207,6 +207,7 @@ CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels
 CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.KoalaBear
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.Goldilocks
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearSpec
