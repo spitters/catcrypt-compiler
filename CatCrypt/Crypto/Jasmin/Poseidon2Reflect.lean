@@ -96,7 +96,7 @@ opaque Poseidon2BbState.Impl : NonemptyType.{0}
     The reifier encodes this as `.TBytes 128` (`memref 16` under `encodeTy`). -/
 def Poseidon2BbState : Type := Poseidon2BbState.Impl.type
 instance : Nonempty Poseidon2BbState := Poseidon2BbState.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Poseidon2BbState.default : Poseidon2BbState
+/-- An inhabitant. -/ noncomputable opaque Poseidon2BbState.default : Poseidon2BbState
 noncomputable instance : Inhabited Poseidon2BbState := ⟨Poseidon2BbState.default⟩
 
 /-! ## 2. Poseidon2 leaves (opaque constants = jasmin function symbols)

@@ -127,12 +127,12 @@ noncomputable opaque Fp25519.default : Fp25519
 
 noncomputable instance : Inhabited Fp25519 := ⟨Fp25519.default⟩
 
-/-- Field add. -/ axiom fp_add     : Fp25519 → Fp25519 → Fp25519
-/-- Field sub. -/ axiom fp_sub     : Fp25519 → Fp25519 → Fp25519
-/-- Field mul. -/ axiom fp_mul     : Fp25519 → Fp25519 → Fp25519
-/-- Field sqr. -/ axiom fp_sqr     : Fp25519 → Fp25519
-/-- `*121666`. -/ axiom fp_mul_a24 : Fp25519 → Fp25519
-/-- Unary negation (opp). -/ axiom fp_opp : Fp25519 → Fp25519
+/-- Field add. -/ noncomputable opaque fp_add     : Fp25519 → Fp25519 → Fp25519
+/-- Field sub. -/ noncomputable opaque fp_sub     : Fp25519 → Fp25519 → Fp25519
+/-- Field mul. -/ noncomputable opaque fp_mul     : Fp25519 → Fp25519 → Fp25519
+/-- Field sqr. -/ noncomputable opaque fp_sqr     : Fp25519 → Fp25519
+/-- `*121666`. -/ noncomputable opaque fp_mul_a24 : Fp25519 → Fp25519
+/-- Unary negation (opp). -/ noncomputable opaque fp_opp : Fp25519 → Fp25519
 
 /-! ### Extended Fp25519 ops (needed for Ed25519 / Ristretto255)
 
@@ -185,10 +185,10 @@ instance : Nonempty FpL25519 := FpL25519.Impl.property
 noncomputable opaque FpL25519.default : FpL25519
 noncomputable instance : Inhabited FpL25519 := ⟨FpL25519.default⟩
 
-/-- Scalar addition mod L. -/ axiom scalar_add : FpL25519 → FpL25519 → FpL25519
-/-- Scalar subtraction mod L. -/ axiom scalar_sub : FpL25519 → FpL25519 → FpL25519
-/-- Scalar multiplication mod L. -/ axiom scalar_mul : FpL25519 → FpL25519 → FpL25519
-/-- Scalar negation. -/ axiom scalar_neg : FpL25519 → FpL25519
+/-- Scalar addition mod L. -/ noncomputable opaque scalar_add : FpL25519 → FpL25519 → FpL25519
+/-- Scalar subtraction mod L. -/ noncomputable opaque scalar_sub : FpL25519 → FpL25519 → FpL25519
+/-- Scalar multiplication mod L. -/ noncomputable opaque scalar_mul : FpL25519 → FpL25519 → FpL25519
+/-- Scalar negation. -/ noncomputable opaque scalar_neg : FpL25519 → FpL25519
 /-- Multiplicative inverse mod L (uses Bernstein's addition chain). -/
 noncomputable opaque scalar_inv : FpL25519 → FpL25519
 
@@ -232,20 +232,20 @@ instance : Nonempty Fp := Fp.Impl.property
 noncomputable opaque Fp.default : Fp
 noncomputable instance : Inhabited Fp := ⟨Fp.default⟩
 
-/-- `Fp` mul. -/ axiom bls_fp_mul : Fp → Fp → Fp
-/-- `Fp` add. -/ axiom bls_fp_add : Fp → Fp → Fp
-/-- `Fp` sub. -/ axiom bls_fp_sub : Fp → Fp → Fp
+/-- `Fp` mul. -/ noncomputable opaque bls_fp_mul : Fp → Fp → Fp
+/-- `Fp` add. -/ noncomputable opaque bls_fp_add : Fp → Fp → Fp
+/-- `Fp` sub. -/ noncomputable opaque bls_fp_sub : Fp → Fp → Fp
 opaque Fp2.Impl : NonemptyType.{0}
-/-- `Fp` sqr. -/ axiom bls_fp_sqr : Fp → Fp
+/-- `Fp` sqr. -/ noncomputable opaque bls_fp_sqr : Fp → Fp
 
 def Fp2 : Type := Fp2.Impl.type
 instance : Nonempty Fp2 := Fp2.Impl.property
 noncomputable opaque Fp2.default : Fp2
 noncomputable instance : Inhabited Fp2 := ⟨Fp2.default⟩
 
-/-- `Fp2` mul. -/ axiom bls_fp2_mul : Fp2 → Fp2 → Fp2
-/-- `Fp2` add. -/ axiom bls_fp2_add : Fp2 → Fp2 → Fp2
-/-- `Fp2` sub. -/ axiom bls_fp2_sub : Fp2 → Fp2 → Fp2
+/-- `Fp2` mul. -/ noncomputable opaque bls_fp2_mul : Fp2 → Fp2 → Fp2
+/-- `Fp2` add. -/ noncomputable opaque bls_fp2_add : Fp2 → Fp2 → Fp2
+/-- `Fp2` sub. -/ noncomputable opaque bls_fp2_sub : Fp2 → Fp2 → Fp2
 
 /-! ## 2.0  Extensible pattern registry
 
@@ -594,24 +594,24 @@ opaque MlPoly.Impl : NonemptyType.{0}
 /-- Opaque ML-KEM polynomial (NTT-or-coefficient form, `Z_3329[X]/(X^256+1)`). -/
 def MlPoly : Type := MlPoly.Impl.type
 instance : Nonempty MlPoly := MlPoly.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlPoly.default : MlPoly
+/-- An inhabitant. -/ noncomputable opaque MlPoly.default : MlPoly
 noncomputable instance : Inhabited MlPoly := ⟨MlPoly.default⟩
-/-- Forward NTT. -/      axiom mlk_ntt     : MlPoly → MlPoly
-/-- Inverse NTT. -/      axiom mlk_invntt  : MlPoly → MlPoly
-/-- NTT-domain basemul.-/axiom mlk_basemul : MlPoly → MlPoly → MlPoly
-/-- Pointwise add. -/    axiom mlk_poly_add : MlPoly → MlPoly → MlPoly
+/-- Forward NTT. -/      noncomputable opaque mlk_ntt     : MlPoly → MlPoly
+/-- Inverse NTT. -/      noncomputable opaque mlk_invntt  : MlPoly → MlPoly
+/-- NTT-domain basemul.-/noncomputable opaque mlk_basemul : MlPoly → MlPoly → MlPoly
+/-- Pointwise add. -/    noncomputable opaque mlk_poly_add : MlPoly → MlPoly → MlPoly
 
 opaque MlVec.Impl : NonemptyType.{0}
 /-- ML-KEM-768 polynomial vector `(MlPoly)^3` (`TPolyVec 3329 256 3`). -/
 def MlVec : Type := MlVec.Impl.type
 instance : Nonempty MlVec := MlVec.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlVec.default : MlVec
+/-- An inhabitant. -/ noncomputable opaque MlVec.default : MlVec
 noncomputable instance : Inhabited MlVec := ⟨MlVec.default⟩
 opaque MlMat.Impl : NonemptyType.{0}
 /-- ML-KEM-768 polynomial matrix `(MlPoly)^{3×3}` (`TPolyMat 3329 256 3 3`). -/
 def MlMat : Type := MlMat.Impl.type
 instance : Nonempty MlMat := MlMat.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlMat.default : MlMat
+/-- An inhabitant. -/ noncomputable opaque MlMat.default : MlMat
 noncomputable instance : Inhabited MlMat := ⟨MlMat.default⟩
 /-- Vector forward NTT (apply NTT to each of the 3 polynomials). -/
 noncomputable opaque pv_ntt    : MlVec → MlVec
@@ -647,19 +647,19 @@ opaque MlSeed.Impl : NonemptyType.{0}
 /-- 32-byte ML-KEM keygen randomness `d` (`TBytes 32`). -/
 def MlSeed : Type := MlSeed.Impl.type
 instance : Nonempty MlSeed := MlSeed.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlSeed.default : MlSeed
+/-- An inhabitant. -/ noncomputable opaque MlSeed.default : MlSeed
 noncomputable instance : Inhabited MlSeed := ⟨MlSeed.default⟩
 opaque MlRhoSigma.Impl : NonemptyType.{0}
 /-- `G(d) = ρ‖σ` (`TBytes 64`, SHA3-512 output: public seed ‖ noise seed). -/
 def MlRhoSigma : Type := MlRhoSigma.Impl.type
 instance : Nonempty MlRhoSigma := MlRhoSigma.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlRhoSigma.default : MlRhoSigma
+/-- An inhabitant. -/ noncomputable opaque MlRhoSigma.default : MlRhoSigma
 noncomputable instance : Inhabited MlRhoSigma := ⟨MlRhoSigma.default⟩
 opaque MlEncVec.Impl : NonemptyType.{0}
 /-- ByteEncode'd polyvec (`TBytes 1152` = k·384, the public-key body). -/
 def MlEncVec : Type := MlEncVec.Impl.type
 instance : Nonempty MlEncVec := MlEncVec.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlEncVec.default : MlEncVec
+/-- An inhabitant. -/ noncomputable opaque MlEncVec.default : MlEncVec
 noncomputable instance : Inhabited MlEncVec := ⟨MlEncVec.default⟩
 /-- Seed expansion `ρ‖σ = G(d)` (SHA3-512 of the 32-byte randomness). -/
 noncomputable opaque mlk_hash_g : MlSeed → MlRhoSigma
@@ -687,19 +687,19 @@ opaque MlPubKey.Impl : NonemptyType.{0}
 /-- ML-KEM-768 public key `ek = ByteEncode(t̂)‖ρ` (`TBytes 1184`). -/
 def MlPubKey : Type := MlPubKey.Impl.type
 instance : Nonempty MlPubKey := MlPubKey.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlPubKey.default : MlPubKey
+/-- An inhabitant. -/ noncomputable opaque MlPubKey.default : MlPubKey
 noncomputable instance : Inhabited MlPubKey := ⟨MlPubKey.default⟩
 opaque MlMsg.Impl : NonemptyType.{0}
 /-- 32-byte message (`TBytes 32`). -/
 def MlMsg : Type := MlMsg.Impl.type
 instance : Nonempty MlMsg := MlMsg.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlMsg.default : MlMsg
+/-- An inhabitant. -/ noncomputable opaque MlMsg.default : MlMsg
 noncomputable instance : Inhabited MlMsg := ⟨MlMsg.default⟩
 opaque MlCipher.Impl : NonemptyType.{0}
 /-- ML-KEM-768 ciphertext `c = Compress_du(u)‖Compress_dv(v)` (`TBytes 1088`). -/
 def MlCipher : Type := MlCipher.Impl.type
 instance : Nonempty MlCipher := MlCipher.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlCipher.default : MlCipher
+/-- An inhabitant. -/ noncomputable opaque MlCipher.default : MlCipher
 noncomputable instance : Inhabited MlCipher := ⟨MlCipher.default⟩
 
 -- Encaps (K-PKE.Encrypt) leaves:
@@ -725,7 +725,7 @@ opaque MlNoiseEnc.Impl : NonemptyType.{0}
     avx2 `__indcpa_enc` uses. -/
 def MlNoiseEnc : Type := MlNoiseEnc.Impl.type
 instance : Nonempty MlNoiseEnc := MlNoiseEnc.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlNoiseEnc.default : MlNoiseEnc
+/-- An inhabitant. -/ noncomputable opaque MlNoiseEnc.default : MlNoiseEnc
 noncomputable instance : Inhabited MlNoiseEnc := ⟨MlNoiseEnc.default⟩
 /-- Sample all encaps noise (r,e1,e2) in one batched leaf. -/
 noncomputable opaque mlk_cbd_enc_all : MlSeed → MlNoiseEnc
@@ -775,7 +775,7 @@ opaque MlUV.Impl : NonemptyType.{0}
     arith-core output; the C harness splits + compresses it. -/
 def MlUV : Type := MlUV.Impl.type
 instance : Nonempty MlUV := MlUV.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlUV.default : MlUV
+/-- An inhabitant. -/ noncomputable opaque MlUV.default : MlUV
 noncomputable instance : Inhabited MlUV := ⟨MlUV.default⟩
 /-- `Âᵀ = gen_matrix(ρ, transposed=1)` taking ρ as a bare 32-byte seed. -/
 noncomputable opaque mlk_gen_matrix_T_rho : MlSeed → MlMat
@@ -796,37 +796,37 @@ opaque MlSharedSecret.Impl : NonemptyType.{0}
 /-- 32-byte FO shared secret `K` (`TBytes 32`). -/
 def MlSharedSecret : Type := MlSharedSecret.Impl.type
 instance : Nonempty MlSharedSecret := MlSharedSecret.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlSharedSecret.default : MlSharedSecret
+/-- An inhabitant. -/ noncomputable opaque MlSharedSecret.default : MlSharedSecret
 noncomputable instance : Inhabited MlSharedSecret := ⟨MlSharedSecret.default⟩
 opaque MlSecKeyFull.Impl : NonemptyType.{0}
 /-- Full ML-KEM-768 secret key `sk = sk_pke‖pk‖H(pk)‖z` (`TBytes 2400`). -/
 def MlSecKeyFull : Type := MlSecKeyFull.Impl.type
 instance : Nonempty MlSecKeyFull := MlSecKeyFull.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlSecKeyFull.default : MlSecKeyFull
+/-- An inhabitant. -/ noncomputable opaque MlSecKeyFull.default : MlSecKeyFull
 noncomputable instance : Inhabited MlSecKeyFull := ⟨MlSecKeyFull.default⟩
 opaque MlKr.Impl : NonemptyType.{0}
 /-- SHA3-512 digest `kr = K‖r'` (`TBytes 64`). -/
 def MlKr : Type := MlKr.Impl.type
 instance : Nonempty MlKr := MlKr.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlKr.default : MlKr
+/-- An inhabitant. -/ noncomputable opaque MlKr.default : MlKr
 noncomputable instance : Inhabited MlKr := ⟨MlKr.default⟩
 opaque MlHash32.Impl : NonemptyType.{0}
 /-- 32-byte hash `H = SHA3-256(pk)` (`TBytes 32`). -/
 def MlHash32 : Type := MlHash32.Impl.type
 instance : Nonempty MlHash32 := MlHash32.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlHash32.default : MlHash32
+/-- An inhabitant. -/ noncomputable opaque MlHash32.default : MlHash32
 noncomputable instance : Inhabited MlHash32 := ⟨MlHash32.default⟩
 opaque MlCond.Impl : NonemptyType.{0}
 /-- Constant-time selector `cnd ∈ {0,1}` from `verify` (`TBytes 8`, a `u64`). -/
 def MlCond : Type := MlCond.Impl.type
 instance : Nonempty MlCond := MlCond.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlCond.default : MlCond
+/-- An inhabitant. -/ noncomputable opaque MlCond.default : MlCond
 noncomputable instance : Inhabited MlCond := ⟨MlCond.default⟩
 opaque MlKemEnc.Impl : NonemptyType.{0}
 /-- Bundled FO encaps output `K‖ct` (`TBytes 1120`); the C harness splits it. -/
 def MlKemEnc : Type := MlKemEnc.Impl.type
 instance : Nonempty MlKemEnc := MlKemEnc.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MlKemEnc.default : MlKemEnc
+/-- An inhabitant. -/ noncomputable opaque MlKemEnc.default : MlKemEnc
 noncomputable instance : Inhabited MlKemEnc := ⟨MlKemEnc.default⟩
 
 -- FO encaps leaves:
@@ -877,7 +877,7 @@ opaque MldsaPoly.Impl : NonemptyType.{0}
 /-- Opaque ML-DSA polynomial (`Z_8380417[X]/(X^256+1)`, 256 `u32` coeffs). -/
 def MldsaPoly : Type := MldsaPoly.Impl.type
 instance : Nonempty MldsaPoly := MldsaPoly.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldsaPoly.default : MldsaPoly
+/-- An inhabitant. -/ noncomputable opaque MldsaPoly.default : MldsaPoly
 noncomputable instance : Inhabited MldsaPoly := ⟨MldsaPoly.default⟩
 /-- Forward NTT (`ntt_avx2`/`fft`; no extra scaling). -/
 noncomputable opaque mld_ntt : MldsaPoly → MldsaPoly
@@ -903,7 +903,7 @@ opaque MldsaPolyVecL.Impl : NonemptyType.{0}
     into the `stack u32[256]` poly leaves with no width mismatch. -/
 def MldsaPolyVecL : Type := MldsaPolyVecL.Impl.type
 instance : Nonempty MldsaPolyVecL := MldsaPolyVecL.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldsaPolyVecL.default : MldsaPolyVecL
+/-- An inhabitant. -/ noncomputable opaque MldsaPolyVecL.default : MldsaPolyVecL
 noncomputable instance : Inhabited MldsaPolyVecL := ⟨MldsaPolyVecL.default⟩
 /-- Component-`0` window `v[0:256]` of a length-5 polyvec (`slice@0`). -/
 noncomputable opaque mld_vl_get0 : MldsaPolyVecL → MldsaPoly
@@ -938,32 +938,32 @@ opaque MldBytes.Impl : Nat → NonemptyType.{0}
 /-- Size-indexed ML-DSA byte buffer (`MldBytes n ↦ .TBytes n`). -/
 def MldBytes (x : Nat) : Type := (MldBytes.Impl x).type
 instance (x : Nat) : Nonempty (MldBytes x) := (MldBytes.Impl x).property
-/-- Axiomatic inhabitant. -/ axiom MldBytes.default (n : Nat) : MldBytes n
+/-- An inhabitant. -/ noncomputable opaque MldBytes.default (n : Nat) : MldBytes n
 noncomputable instance (n : Nat) : Inhabited (MldBytes n) := ⟨MldBytes.default n⟩
 
 opaque MldPoly.Impl : NonemptyType.{0}
 /-- ML-DSA-65 polynomial (`Z_8380417[X]/(X^256+1)`, `.TPolyMod 8380417 256`). -/
 def MldPoly : Type := MldPoly.Impl.type
 instance : Nonempty MldPoly := MldPoly.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldPoly.default : MldPoly
+/-- An inhabitant. -/ noncomputable opaque MldPoly.default : MldPoly
 noncomputable instance : Inhabited MldPoly := ⟨MldPoly.default⟩
 opaque MldVecL.Impl : NonemptyType.{0}
 /-- Length-`l = 5` polyvec (`.TPolyVec 8380417 256 5`). -/
 def MldVecL : Type := MldVecL.Impl.type
 instance : Nonempty MldVecL := MldVecL.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldVecL.default : MldVecL
+/-- An inhabitant. -/ noncomputable opaque MldVecL.default : MldVecL
 noncomputable instance : Inhabited MldVecL := ⟨MldVecL.default⟩
 opaque MldVecK.Impl : NonemptyType.{0}
 /-- Length-`k = 6` polyvec (`.TPolyVec 8380417 256 6`). -/
 def MldVecK : Type := MldVecK.Impl.type
 instance : Nonempty MldVecK := MldVecK.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldVecK.default : MldVecK
+/-- An inhabitant. -/ noncomputable opaque MldVecK.default : MldVecK
 noncomputable instance : Inhabited MldVecK := ⟨MldVecK.default⟩
 opaque MldMat.Impl : NonemptyType.{0}
 /-- `k × l = 6 × 5` matrix (`.TPolyMat 8380417 256 6 5`). -/
 def MldMat : Type := MldMat.Impl.type
 instance : Nonempty MldMat := MldMat.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MldMat.default : MldMat
+/-- An inhabitant. -/ noncomputable opaque MldMat.default : MldMat
 noncomputable instance : Inhabited MldMat := ⟨MldMat.default⟩
 
 /-! #### Byte-side plumbing: concat (size-additive) + slice (size-erasing) -/
@@ -987,65 +987,65 @@ noncomputable opaque mld_bytes_slice {m : Nat} (len : Nat) : MldBytes m → UInt
 
 /-! #### Hash / KDF leaves (fixed-size outputs) -/
 
-/-- `H : SHAKE-256-32`. -/ axiom mld_hash_h32 {n : Nat} : MldBytes n → MldBytes 32
-/-- `H : SHAKE-256-64`. -/ axiom mld_hash_h64 {n : Nat} : MldBytes n → MldBytes 64
-/-- `H : SHAKE-256-128`. -/ axiom mld_hash_h128 {n : Nat} : MldBytes n → MldBytes 128
+/-- `H : SHAKE-256-32`. -/ noncomputable opaque mld_hash_h32 {n : Nat} : MldBytes n → MldBytes 32
+/-- `H : SHAKE-256-64`. -/ noncomputable opaque mld_hash_h64 {n : Nat} : MldBytes n → MldBytes 64
+/-- `H : SHAKE-256-128`. -/ noncomputable opaque mld_hash_h128 {n : Nat} : MldBytes n → MldBytes 128
 
 /-! #### Samplers / expanders -/
 
-/-- ExpandA: `ρ → Â`. -/ axiom mld_expand_a : MldBytes 32 → MldMat
-/-- ExpandS₁: `ρ' → s₁`. -/ axiom mld_expand_s1 : MldBytes 64 → MldVecL
-/-- ExpandS₂: `ρ' → s₂`. -/ axiom mld_expand_s2 : MldBytes 64 → MldVecK
-/-- ExpandMask: `(ρ', κ) → y`. -/ axiom mld_expand_mask : MldBytes 64 → UInt64 → MldVecL
-/-- SampleInBall: `c̃[..32] → c`. -/ axiom mld_sample_in_ball : MldBytes 32 → MldPoly
+/-- ExpandA: `ρ → Â`. -/ noncomputable opaque mld_expand_a : MldBytes 32 → MldMat
+/-- ExpandS₁: `ρ' → s₁`. -/ noncomputable opaque mld_expand_s1 : MldBytes 64 → MldVecL
+/-- ExpandS₂: `ρ' → s₂`. -/ noncomputable opaque mld_expand_s2 : MldBytes 64 → MldVecK
+/-- ExpandMask: `(ρ', κ) → y`. -/ noncomputable opaque mld_expand_mask : MldBytes 64 → UInt64 → MldVecL
+/-- SampleInBall: `c̃[..32] → c`. -/ noncomputable opaque mld_sample_in_ball : MldBytes 32 → MldPoly
 
 /-! #### Poly / polyvec arithmetic -/
 
-/-- In-place NTT on a poly. -/ axiom mld_poly_ntt : MldPoly → MldPoly
-/-- Matrix·vector (`Â · ŝ`). -/ axiom mld_mat_vec_mul : MldMat → MldVecL → MldVecK
-/-- Per-component NTT (length-`l`). -/ axiom mld_polyvec_l_ntt : MldVecL → MldVecL
-/-- Per-component inverse NTT (length-`l`). -/ axiom mld_polyvec_l_invntt : MldVecL → MldVecL
-/-- Componentwise add (length-`l`). -/ axiom mld_polyvec_l_add : MldVecL → MldVecL → MldVecL
+/-- In-place NTT on a poly. -/ noncomputable opaque mld_poly_ntt : MldPoly → MldPoly
+/-- Matrix·vector (`Â · ŝ`). -/ noncomputable opaque mld_mat_vec_mul : MldMat → MldVecL → MldVecK
+/-- Per-component NTT (length-`l`). -/ noncomputable opaque mld_polyvec_l_ntt : MldVecL → MldVecL
+/-- Per-component inverse NTT (length-`l`). -/ noncomputable opaque mld_polyvec_l_invntt : MldVecL → MldVecL
+/-- Componentwise add (length-`l`). -/ noncomputable opaque mld_polyvec_l_add : MldVecL → MldVecL → MldVecL
 /-- `dst[i] = c · a[i]` (poly scalar × length-`l` vec). -/
 noncomputable opaque mld_polyvec_l_scalar_poly : MldPoly → MldVecL → MldVecL
 /-- ∞-norm check (length-`l`) → `u64`. -/
 noncomputable opaque mld_polyvec_l_norm_check : MldVecL → UInt64 → UInt64
-/-- Per-component NTT (length-`k`). -/ axiom mld_polyvec_k_ntt : MldVecK → MldVecK
-/-- Per-component inverse NTT (length-`k`). -/ axiom mld_polyvec_k_invntt : MldVecK → MldVecK
-/-- Componentwise add (length-`k`). -/ axiom mld_polyvec_k_add : MldVecK → MldVecK → MldVecK
-/-- Componentwise subtract (length-`k`). -/ axiom mld_polyvec_k_sub : MldVecK → MldVecK → MldVecK
-/-- Negate every component (length-`k`). -/ axiom mld_polyvec_k_neg : MldVecK → MldVecK
+/-- Per-component NTT (length-`k`). -/ noncomputable opaque mld_polyvec_k_ntt : MldVecK → MldVecK
+/-- Per-component inverse NTT (length-`k`). -/ noncomputable opaque mld_polyvec_k_invntt : MldVecK → MldVecK
+/-- Componentwise add (length-`k`). -/ noncomputable opaque mld_polyvec_k_add : MldVecK → MldVecK → MldVecK
+/-- Componentwise subtract (length-`k`). -/ noncomputable opaque mld_polyvec_k_sub : MldVecK → MldVecK → MldVecK
+/-- Negate every component (length-`k`). -/ noncomputable opaque mld_polyvec_k_neg : MldVecK → MldVecK
 /-- `dst[i] = c · a[i]` (poly scalar × length-`k` vec). -/
 noncomputable opaque mld_polyvec_k_scalar_poly : MldPoly → MldVecK → MldVecK
 /-- ∞-norm check (length-`k`) → `u64`. -/
 noncomputable opaque mld_polyvec_k_norm_check : MldVecK → UInt64 → UInt64
-/-- `t₁ · 2^d` fused NTT (verify-side). -/ axiom mld_polyvec_k_t1_shifted_ntt : MldVecK → MldVecK
+/-- `t₁ · 2^d` fused NTT (verify-side). -/ noncomputable opaque mld_polyvec_k_t1_shifted_ntt : MldVecK → MldVecK
 
 /-! #### Decomposition (per-polyvec, length-`k`) -/
 
-/-- `Power2Round` high component. -/ axiom mld_polyvec_k_power2round_hi : MldVecK → MldVecK
-/-- `Power2Round` low component. -/ axiom mld_polyvec_k_power2round_lo : MldVecK → MldVecK
-/-- `HighBits` poly-wise. -/ axiom mld_polyvec_k_high_bits : MldVecK → MldVecK
-/-- `LowBits` poly-wise. -/ axiom mld_polyvec_k_low_bits : MldVecK → MldVecK
-/-- `MakeHint(z, r)` poly-wise. -/ axiom mld_polyvec_k_make_hint : MldVecK → MldVecK → MldVecK
-/-- `UseHint(h, r)` poly-wise. -/ axiom mld_polyvec_k_use_hint : MldVecK → MldVecK → MldVecK
-/-- Hint 1-count → `u64`. -/ axiom mld_polyvec_k_hint_weight : MldVecK → UInt64
+/-- `Power2Round` high component. -/ noncomputable opaque mld_polyvec_k_power2round_hi : MldVecK → MldVecK
+/-- `Power2Round` low component. -/ noncomputable opaque mld_polyvec_k_power2round_lo : MldVecK → MldVecK
+/-- `HighBits` poly-wise. -/ noncomputable opaque mld_polyvec_k_high_bits : MldVecK → MldVecK
+/-- `LowBits` poly-wise. -/ noncomputable opaque mld_polyvec_k_low_bits : MldVecK → MldVecK
+/-- `MakeHint(z, r)` poly-wise. -/ noncomputable opaque mld_polyvec_k_make_hint : MldVecK → MldVecK → MldVecK
+/-- `UseHint(h, r)` poly-wise. -/ noncomputable opaque mld_polyvec_k_use_hint : MldVecK → MldVecK → MldVecK
+/-- Hint 1-count → `u64`. -/ noncomputable opaque mld_polyvec_k_hint_weight : MldVecK → UInt64
 
 /-! #### Codec leaves (pack/unpack) -/
 
-/-- Pack `s₁` (`l·128 = 640`). -/ axiom mld_polyvec_l_pack_eta : MldVecL → MldBytes 640
-/-- Unpack `s₁`. -/ axiom mld_polyvec_l_unpack_eta : MldBytes 640 → MldVecL
-/-- Pack `s₂` (`k·128 = 768`). -/ axiom mld_polyvec_k_pack_eta : MldVecK → MldBytes 768
-/-- Unpack `s₂`. -/ axiom mld_polyvec_k_unpack_eta : MldBytes 768 → MldVecK
-/-- Pack `t₁` (`k·320 = 1920`). -/ axiom mld_polyvec_k_pack_t1 : MldVecK → MldBytes 1920
-/-- Unpack `t₁`. -/ axiom mld_polyvec_k_unpack_t1 : MldBytes 1920 → MldVecK
-/-- Pack `t₀` (`k·416 = 2496`). -/ axiom mld_polyvec_k_pack_t0 : MldVecK → MldBytes 2496
-/-- Unpack `t₀`. -/ axiom mld_polyvec_k_unpack_t0 : MldBytes 2496 → MldVecK
-/-- Pack `z` (`l·640 = 3200`). -/ axiom mld_polyvec_l_pack_z : MldVecL → MldBytes 3200
-/-- Unpack `z`. -/ axiom mld_polyvec_l_unpack_z : MldBytes 3200 → MldVecL
-/-- Pack `w₁` (`k·192 = 1152`). -/ axiom mld_polyvec_k_pack_w1 : MldVecK → MldBytes 1152
-/-- Hint encoding (`ω + k = 61`). -/ axiom mld_hint_pack : MldVecK → MldBytes 61
-/-- Hint decoding. -/ axiom mld_hint_unpack : MldBytes 61 → MldVecK
+/-- Pack `s₁` (`l·128 = 640`). -/ noncomputable opaque mld_polyvec_l_pack_eta : MldVecL → MldBytes 640
+/-- Unpack `s₁`. -/ noncomputable opaque mld_polyvec_l_unpack_eta : MldBytes 640 → MldVecL
+/-- Pack `s₂` (`k·128 = 768`). -/ noncomputable opaque mld_polyvec_k_pack_eta : MldVecK → MldBytes 768
+/-- Unpack `s₂`. -/ noncomputable opaque mld_polyvec_k_unpack_eta : MldBytes 768 → MldVecK
+/-- Pack `t₁` (`k·320 = 1920`). -/ noncomputable opaque mld_polyvec_k_pack_t1 : MldVecK → MldBytes 1920
+/-- Unpack `t₁`. -/ noncomputable opaque mld_polyvec_k_unpack_t1 : MldBytes 1920 → MldVecK
+/-- Pack `t₀` (`k·416 = 2496`). -/ noncomputable opaque mld_polyvec_k_pack_t0 : MldVecK → MldBytes 2496
+/-- Unpack `t₀`. -/ noncomputable opaque mld_polyvec_k_unpack_t0 : MldBytes 2496 → MldVecK
+/-- Pack `z` (`l·640 = 3200`). -/ noncomputable opaque mld_polyvec_l_pack_z : MldVecL → MldBytes 3200
+/-- Unpack `z`. -/ noncomputable opaque mld_polyvec_l_unpack_z : MldBytes 3200 → MldVecL
+/-- Pack `w₁` (`k·192 = 1152`). -/ noncomputable opaque mld_polyvec_k_pack_w1 : MldVecK → MldBytes 1152
+/-- Hint encoding (`ω + k = 61`). -/ noncomputable opaque mld_hint_pack : MldVecK → MldBytes 61
+/-- Hint decoding. -/ noncomputable opaque mld_hint_unpack : MldBytes 61 → MldVecK
 
 /-! #### Accept / compare pseudo-leaves (→ `u64`) -/
 

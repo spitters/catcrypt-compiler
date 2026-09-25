@@ -77,7 +77,7 @@ opaque AesBitslice32.Impl : NonemptyType.{0}
     bitsliced AES round. -/
 def AesBitslice32 : Type := AesBitslice32.Impl.type
 instance : Nonempty AesBitslice32 := AesBitslice32.Impl.property
-/-- Axiomatic inhabitant. -/ axiom AesBitslice32.default : AesBitslice32
+/-- An inhabitant. -/ noncomputable opaque AesBitslice32.default : AesBitslice32
 noncomputable instance : Inhabited AesBitslice32 := ⟨AesBitslice32.default⟩
 
 /-! ## 2. AES-bitslice leaves (opaque constants = jasmin function symbols) -/

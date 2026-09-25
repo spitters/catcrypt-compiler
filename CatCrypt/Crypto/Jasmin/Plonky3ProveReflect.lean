@@ -107,7 +107,7 @@ opaque Plonky3LdeTrace.Impl (H : Nat) : NonemptyType.{0}
     the leaf `plonky3_trace_lde_H` materialises the LDE bytes. -/
 def Plonky3LdeTrace (H : Nat) : Type := (Plonky3LdeTrace.Impl H).type
 instance (H : Nat) : Nonempty (Plonky3LdeTrace H) := (Plonky3LdeTrace.Impl H).property
-/-- Axiomatic inhabitant. -/ axiom Plonky3LdeTrace.default (H : Nat) : Plonky3LdeTrace H
+/-- An inhabitant. -/ noncomputable opaque Plonky3LdeTrace.default (H : Nat) : Plonky3LdeTrace H
 noncomputable instance (H : Nat) : Inhabited (Plonky3LdeTrace H) :=
   ⟨Plonky3LdeTrace.default H⟩
 
@@ -115,14 +115,14 @@ opaque Plonky3Commit.Impl : NonemptyType.{0}
 /-- A 32-byte trace commitment (Merkle root of the LDE-extended trace). -/
 def Plonky3Commit : Type := Plonky3Commit.Impl.type
 instance : Nonempty Plonky3Commit := Plonky3Commit.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3Commit.default : Plonky3Commit
+/-- An inhabitant. -/ noncomputable opaque Plonky3Commit.default : Plonky3Commit
 noncomputable instance : Inhabited Plonky3Commit := ⟨Plonky3Commit.default⟩
 
 opaque Plonky3Alpha.Impl : NonemptyType.{0}
 /-- An 8-byte Fiat-Shamir challenge α produced by squeezing the transcript. -/
 def Plonky3Alpha : Type := Plonky3Alpha.Impl.type
 instance : Nonempty Plonky3Alpha := Plonky3Alpha.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3Alpha.default : Plonky3Alpha
+/-- An inhabitant. -/ noncomputable opaque Plonky3Alpha.default : Plonky3Alpha
 noncomputable instance : Inhabited Plonky3Alpha := ⟨Plonky3Alpha.default⟩
 
 opaque Plonky3Quotient.Impl (H : Nat) : NonemptyType.{0}
@@ -149,7 +149,7 @@ opaque Plonky3Proof.Impl : NonemptyType.{0}
     surface; the proof's expanded byte form is the leaf's internal layout. -/
 def Plonky3Proof : Type := Plonky3Proof.Impl.type
 instance : Nonempty Plonky3Proof := Plonky3Proof.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3Proof.default : Plonky3Proof
+/-- An inhabitant. -/ noncomputable opaque Plonky3Proof.default : Plonky3Proof
 noncomputable instance : Inhabited Plonky3Proof := ⟨Plonky3Proof.default⟩
 
 opaque Plonky3ProveTrace.Impl (W H : Nat) : NonemptyType.{0}

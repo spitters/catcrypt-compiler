@@ -84,7 +84,7 @@ opaque MsmEcScalar.Impl : NonemptyType.{0}
 /-- A toy-EC scalar (one byte, the Z/23 representative). Opaque. -/
 def MsmEcScalar : Type := MsmEcScalar.Impl.type
 instance : Nonempty MsmEcScalar := MsmEcScalar.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MsmEcScalar.default : MsmEcScalar
+/-- An inhabitant. -/ noncomputable opaque MsmEcScalar.default : MsmEcScalar
 noncomputable instance : Inhabited MsmEcScalar := ⟨MsmEcScalar.default⟩
 
 opaque MsmEcPoint.Impl : NonemptyType.{0}
@@ -92,7 +92,7 @@ opaque MsmEcPoint.Impl : NonemptyType.{0}
     the on-wire sentinel `(0xff, 0xff)`. Opaque. -/
 def MsmEcPoint : Type := MsmEcPoint.Impl.type
 instance : Nonempty MsmEcPoint := MsmEcPoint.Impl.property
-/-- Axiomatic inhabitant. -/ axiom MsmEcPoint.default : MsmEcPoint
+/-- An inhabitant. -/ noncomputable opaque MsmEcPoint.default : MsmEcPoint
 noncomputable instance : Inhabited MsmEcPoint := ⟨MsmEcPoint.default⟩
 
 /-! ## 2. Toy-EC leaves -/

@@ -76,7 +76,7 @@ opaque Halo2CoeffVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The Halo2 coefficient vector of length `N` (an opaque type). -/
 def Halo2CoeffVec (N : Nat) : Type := (Halo2CoeffVec.Impl N).type
 instance (N : Nat) : Nonempty (Halo2CoeffVec N) := (Halo2CoeffVec.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom Halo2CoeffVec.default (N : Nat) : Halo2CoeffVec N
+/-- An inhabitant. -/ noncomputable opaque Halo2CoeffVec.default (N : Nat) : Halo2CoeffVec N
 noncomputable instance (N : Nat) : Inhabited (Halo2CoeffVec N) :=
   ⟨Halo2CoeffVec.default N⟩
 
@@ -84,7 +84,7 @@ opaque Halo2GenVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The Halo2 generator vector `G` of length `N` (an opaque type). -/
 def Halo2GenVec (N : Nat) : Type := (Halo2GenVec.Impl N).type
 instance (N : Nat) : Nonempty (Halo2GenVec N) := (Halo2GenVec.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom Halo2GenVec.default (N : Nat) : Halo2GenVec N
+/-- An inhabitant. -/ noncomputable opaque Halo2GenVec.default (N : Nat) : Halo2GenVec N
 noncomputable instance (N : Nat) : Inhabited (Halo2GenVec N) :=
   ⟨Halo2GenVec.default N⟩
 

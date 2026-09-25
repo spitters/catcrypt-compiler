@@ -73,7 +73,7 @@ opaque IpaWitnessVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The IPA witness vector `a` of length `N` (an opaque type). -/
 def IpaWitnessVec (N : Nat) : Type := (IpaWitnessVec.Impl N).type
 instance (N : Nat) : Nonempty (IpaWitnessVec N) := (IpaWitnessVec.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom IpaWitnessVec.default (N : Nat) : IpaWitnessVec N
+/-- An inhabitant. -/ noncomputable opaque IpaWitnessVec.default (N : Nat) : IpaWitnessVec N
 noncomputable instance (N : Nat) : Inhabited (IpaWitnessVec N) :=
   ⟨IpaWitnessVec.default N⟩
 
@@ -81,7 +81,7 @@ opaque IpaGenVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The IPA generator vector `G` of length `N` (an opaque type). -/
 def IpaGenVec (N : Nat) : Type := (IpaGenVec.Impl N).type
 instance (N : Nat) : Nonempty (IpaGenVec N) := (IpaGenVec.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom IpaGenVec.default (N : Nat) : IpaGenVec N
+/-- An inhabitant. -/ noncomputable opaque IpaGenVec.default (N : Nat) : IpaGenVec N
 noncomputable instance (N : Nat) : Inhabited (IpaGenVec N) :=
   ⟨IpaGenVec.default N⟩
 

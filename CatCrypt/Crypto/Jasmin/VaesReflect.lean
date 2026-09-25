@@ -96,7 +96,7 @@ opaque Vaes2Block.Impl : NonemptyType.{0}
     implement the EVEX-encoded `#VAESENC_256` / `#VAESDEC_256`. -/
 def Vaes2Block : Type := Vaes2Block.Impl.type
 instance : Nonempty Vaes2Block := Vaes2Block.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Vaes2Block.default : Vaes2Block
+/-- An inhabitant. -/ noncomputable opaque Vaes2Block.default : Vaes2Block
 noncomputable instance : Inhabited Vaes2Block := ⟨Vaes2Block.default⟩
 
 /-! ## 2. VAES leaves (opaque constants = jasmin function symbols) -/

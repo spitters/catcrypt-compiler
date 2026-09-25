@@ -94,7 +94,7 @@ opaque ShaNiBlock.Impl : NonemptyType.{0}
     words). Opaque; concrete leaves implement the SHA-NI intrinsics. -/
 def ShaNiBlock : Type := ShaNiBlock.Impl.type
 instance : Nonempty ShaNiBlock := ShaNiBlock.Impl.property
-/-- Axiomatic inhabitant. -/ axiom ShaNiBlock.default : ShaNiBlock
+/-- An inhabitant. -/ noncomputable opaque ShaNiBlock.default : ShaNiBlock
 noncomputable instance : Inhabited ShaNiBlock := ⟨ShaNiBlock.default⟩
 
 /-! ## 2. SHA-NI leaves (opaque constants = jasmin function symbols) -/

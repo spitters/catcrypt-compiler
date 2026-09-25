@@ -96,7 +96,7 @@ opaque Secp256k1Scalar.Impl : NonemptyType.{0}
     The reifier encodes this as `TBytes 32` (memref 4 u64-limbs). -/
 def Secp256k1Scalar : Type := Secp256k1Scalar.Impl.type
 instance : Nonempty Secp256k1Scalar := Secp256k1Scalar.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Secp256k1Scalar.default : Secp256k1Scalar
+/-- An inhabitant. -/ noncomputable opaque Secp256k1Scalar.default : Secp256k1Scalar
 noncomputable instance : Inhabited Secp256k1Scalar := ⟨Secp256k1Scalar.default⟩
 
 opaque Secp256k1Point.Impl : NonemptyType.{0}
@@ -106,7 +106,7 @@ opaque Secp256k1Point.Impl : NonemptyType.{0}
     (memref 8 u64-limbs). -/
 def Secp256k1Point : Type := Secp256k1Point.Impl.type
 instance : Nonempty Secp256k1Point := Secp256k1Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Secp256k1Point.default : Secp256k1Point
+/-- An inhabitant. -/ noncomputable opaque Secp256k1Point.default : Secp256k1Point
 noncomputable instance : Inhabited Secp256k1Point := ⟨Secp256k1Point.default⟩
 
 /-! ## 2. secp256k1 leaves (opaque constants = jasmin function symbols)

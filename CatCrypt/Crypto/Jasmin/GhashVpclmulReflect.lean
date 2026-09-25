@@ -96,7 +96,7 @@ opaque GhashBlock.Impl : NonemptyType.{0}
     multiply via VPCLMULQDQ. -/
 def GhashBlock : Type := GhashBlock.Impl.type
 instance : Nonempty GhashBlock := GhashBlock.Impl.property
-/-- Axiomatic inhabitant. -/ axiom GhashBlock.default : GhashBlock
+/-- An inhabitant. -/ noncomputable opaque GhashBlock.default : GhashBlock
 noncomputable instance : Inhabited GhashBlock := ⟨GhashBlock.default⟩
 
 /-! ## 2. GHASH leaves (opaque constants = jasmin function symbols) -/

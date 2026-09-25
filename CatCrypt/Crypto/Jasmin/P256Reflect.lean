@@ -67,14 +67,14 @@ opaque P256Scalar.Impl : NonemptyType.{0}
     bytes on the wire. Opaque. -/
 def P256Scalar : Type := P256Scalar.Impl.type
 instance : Nonempty P256Scalar := P256Scalar.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P256Scalar.default : P256Scalar
+/-- An inhabitant. -/ noncomputable opaque P256Scalar.default : P256Scalar
 noncomputable instance : Inhabited P256Scalar := ⟨P256Scalar.default⟩
 
 opaque P256Point.Impl : NonemptyType.{0}
 /-- A P-256 affine point `(x ‖ y)`. 64 bytes on the wire. Opaque. -/
 def P256Point : Type := P256Point.Impl.type
 instance : Nonempty P256Point := P256Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P256Point.default : P256Point
+/-- An inhabitant. -/ noncomputable opaque P256Point.default : P256Point
 noncomputable instance : Inhabited P256Point := ⟨P256Point.default⟩
 
 /-! ## 2. P-256 leaves -/

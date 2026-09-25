@@ -72,7 +72,7 @@ opaque Bn254Fr.Impl : NonemptyType.{0}
     converts to the AUCurves internal Montgomery form). -/
 def Bn254Fr : Type := Bn254Fr.Impl.type
 instance : Nonempty Bn254Fr := Bn254Fr.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254Fr.default : Bn254Fr
+/-- An inhabitant. -/ noncomputable opaque Bn254Fr.default : Bn254Fr
 noncomputable instance : Inhabited Bn254Fr := ⟨Bn254Fr.default⟩
 
 opaque Bn254G1Point.Impl : NonemptyType.{0}
@@ -80,7 +80,7 @@ opaque Bn254G1Point.Impl : NonemptyType.{0}
     two `Fp` coordinates × 32 bytes). -/
 def Bn254G1Point : Type := Bn254G1Point.Impl.type
 instance : Nonempty Bn254G1Point := Bn254G1Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254G1Point.default : Bn254G1Point
+/-- An inhabitant. -/ noncomputable opaque Bn254G1Point.default : Bn254G1Point
 noncomputable instance : Inhabited Bn254G1Point := ⟨Bn254G1Point.default⟩
 
 opaque Bn254G2Point.Impl : NonemptyType.{0}
@@ -88,14 +88,14 @@ opaque Bn254G2Point.Impl : NonemptyType.{0}
     two `Fp2` coordinates × 64 bytes). -/
 def Bn254G2Point : Type := Bn254G2Point.Impl.type
 instance : Nonempty Bn254G2Point := Bn254G2Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254G2Point.default : Bn254G2Point
+/-- An inhabitant. -/ noncomputable opaque Bn254G2Point.default : Bn254G2Point
 noncomputable instance : Inhabited Bn254G2Point := ⟨Bn254G2Point.default⟩
 
 opaque Bn254Fp12.Impl : NonemptyType.{0}
 /-- A BN254 `Fp12` (GT) element (384 bytes: twelve `Fp` coordinates × 32 bytes). -/
 def Bn254Fp12 : Type := Bn254Fp12.Impl.type
 instance : Nonempty Bn254Fp12 := Bn254Fp12.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254Fp12.default : Bn254Fp12
+/-- An inhabitant. -/ noncomputable opaque Bn254Fp12.default : Bn254Fp12
 noncomputable instance : Inhabited Bn254Fp12 := ⟨Bn254Fp12.default⟩
 
 /-! ## 2. BN254 leaves -/
@@ -277,7 +277,7 @@ opaque Bn254Fp.Impl : NonemptyType.{0}
     Montgomery form), matching the AUCurves `Fp([u64;4])` on-wire layout. -/
 def Bn254Fp : Type := Bn254Fp.Impl.type
 instance : Nonempty Bn254Fp := Bn254Fp.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254Fp.default : Bn254Fp
+/-- An inhabitant. -/ noncomputable opaque Bn254Fp.default : Bn254Fp
 noncomputable instance : Inhabited Bn254Fp := ⟨Bn254Fp.default⟩
 
 opaque Bn254Fp2.Impl : NonemptyType.{0}
@@ -285,7 +285,7 @@ opaque Bn254Fp2.Impl : NonemptyType.{0}
     `Fp` components: real ‖ imaginary). -/
 def Bn254Fp2 : Type := Bn254Fp2.Impl.type
 instance : Nonempty Bn254Fp2 := Bn254Fp2.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254Fp2.default : Bn254Fp2
+/-- An inhabitant. -/ noncomputable opaque Bn254Fp2.default : Bn254Fp2
 noncomputable instance : Inhabited Bn254Fp2 := ⟨Bn254Fp2.default⟩
 
 opaque Bn254Fp6.Impl : NonemptyType.{0}
@@ -293,7 +293,7 @@ opaque Bn254Fp6.Impl : NonemptyType.{0}
     `Fp2` components c0 ‖ c1 ‖ c2). -/
 def Bn254Fp6 : Type := Bn254Fp6.Impl.type
 instance : Nonempty Bn254Fp6 := Bn254Fp6.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Bn254Fp6.default : Bn254Fp6
+/-- An inhabitant. -/ noncomputable opaque Bn254Fp6.default : Bn254Fp6
 noncomputable instance : Inhabited Bn254Fp6 := ⟨Bn254Fp6.default⟩
 
 /-! ### 8b. Field-tower leaves (opaque constants and axioms = jasmin function symbols)
@@ -335,8 +335,8 @@ noncomputable opaque bn254_Fp6_mul_by_v : Bn254Fp6 → Bn254Fp6
     op exports within the x86-64 SysV 6-pointer-argument ABI (whole-`Fp6`
     operands instead of six per-component args). -/
 noncomputable opaque bn254_Fp6_get_c0 : Bn254Fp6 → Bn254Fp2
-/-- The c1 `Fp2` component of an `Fp6`. -/ axiom bn254_Fp6_get_c1 : Bn254Fp6 → Bn254Fp2
-/-- The c2 `Fp2` component of an `Fp6`. -/ axiom bn254_Fp6_get_c2 : Bn254Fp6 → Bn254Fp2
+/-- The c1 `Fp2` component of an `Fp6`. -/ noncomputable opaque bn254_Fp6_get_c1 : Bn254Fp6 → Bn254Fp2
+/-- The c2 `Fp2` component of an `Fp6`. -/ noncomputable opaque bn254_Fp6_get_c2 : Bn254Fp6 → Bn254Fp2
 /-- `bn254_Fp6_from_c012 a b c` — assemble an `Fp6` from its three `Fp2`
     components (inverse of `get_c{0,1,2}`). -/
 noncomputable opaque bn254_Fp6_from_c012 : Bn254Fp2 → Bn254Fp2 → Bn254Fp2 → Bn254Fp6

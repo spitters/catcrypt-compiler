@@ -88,14 +88,14 @@ opaque JoltWitness.Impl : NonemptyType.{0}
 /-- The Jolt witness (execution trace + memory polynomials, opaque handle). -/
 def JoltWitness : Type := JoltWitness.Impl.type
 instance : Nonempty JoltWitness := JoltWitness.Impl.property
-/-- Axiomatic inhabitant. -/ axiom JoltWitness.default : JoltWitness
+/-- An inhabitant. -/ noncomputable opaque JoltWitness.default : JoltWitness
 noncomputable instance : Inhabited JoltWitness := ⟨JoltWitness.default⟩
 
 opaque JoltRoundPoly.Impl (N : Nat) : NonemptyType.{0}
 /-- A univariate round polynomial, `N = d+1` packed Baby Bear coefficients. -/
 def JoltRoundPoly (N : Nat) : Type := (JoltRoundPoly.Impl N).type
 instance (N : Nat) : Nonempty (JoltRoundPoly N) := (JoltRoundPoly.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom JoltRoundPoly.default (N : Nat) : JoltRoundPoly N
+/-- An inhabitant. -/ noncomputable opaque JoltRoundPoly.default (N : Nat) : JoltRoundPoly N
 noncomputable instance (N : Nat) : Inhabited (JoltRoundPoly N) :=
   ⟨JoltRoundPoly.default N⟩
 
@@ -103,7 +103,7 @@ opaque JoltLookups.Impl (N : Nat) : NonemptyType.{0}
 /-- The Lasso lookup multiset (opaque buffer of `N` packed elements). -/
 def JoltLookups (N : Nat) : Type := (JoltLookups.Impl N).type
 instance (N : Nat) : Nonempty (JoltLookups N) := (JoltLookups.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom JoltLookups.default (N : Nat) : JoltLookups N
+/-- An inhabitant. -/ noncomputable opaque JoltLookups.default (N : Nat) : JoltLookups N
 noncomputable instance (N : Nat) : Inhabited (JoltLookups N) :=
   ⟨JoltLookups.default N⟩
 
@@ -111,14 +111,14 @@ opaque JoltDigest.Impl : NonemptyType.{0}
 /-- A 32-byte commitment digest. -/
 def JoltDigest : Type := JoltDigest.Impl.type
 instance : Nonempty JoltDigest := JoltDigest.Impl.property
-/-- Axiomatic inhabitant. -/ axiom JoltDigest.default : JoltDigest
+/-- An inhabitant. -/ noncomputable opaque JoltDigest.default : JoltDigest
 noncomputable instance : Inhabited JoltDigest := ⟨JoltDigest.default⟩
 
 opaque JoltFelt.Impl : NonemptyType.{0}
 /-- An 8-byte Baby Bear field element (challenge / evaluation / fingerprint). -/
 def JoltFelt : Type := JoltFelt.Impl.type
 instance : Nonempty JoltFelt := JoltFelt.Impl.property
-/-- Axiomatic inhabitant. -/ axiom JoltFelt.default : JoltFelt
+/-- An inhabitant. -/ noncomputable opaque JoltFelt.default : JoltFelt
 noncomputable instance : Inhabited JoltFelt := ⟨JoltFelt.default⟩
 
 /-! ## 2. Jolt prover leaves (opaque constants = jasmin function symbols) -/

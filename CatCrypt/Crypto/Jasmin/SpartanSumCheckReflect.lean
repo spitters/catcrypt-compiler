@@ -82,14 +82,14 @@ opaque SpartanWitness.Impl : NonemptyType.{0}
     and opens it). -/
 def SpartanWitness : Type := SpartanWitness.Impl.type
 instance : Nonempty SpartanWitness := SpartanWitness.Impl.property
-/-- Axiomatic inhabitant. -/ axiom SpartanWitness.default : SpartanWitness
+/-- An inhabitant. -/ noncomputable opaque SpartanWitness.default : SpartanWitness
 noncomputable instance : Inhabited SpartanWitness := ⟨SpartanWitness.default⟩
 
 opaque SpartanRoundPoly.Impl (N : Nat) : NonemptyType.{0}
 /-- A univariate round polynomial, `d+1` packed Baby Bear coefficients. -/
 def SpartanRoundPoly (N : Nat) : Type := (SpartanRoundPoly.Impl N).type
 instance (N : Nat) : Nonempty (SpartanRoundPoly N) := (SpartanRoundPoly.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom SpartanRoundPoly.default (N : Nat) : SpartanRoundPoly N
+/-- An inhabitant. -/ noncomputable opaque SpartanRoundPoly.default (N : Nat) : SpartanRoundPoly N
 noncomputable instance (N : Nat) : Inhabited (SpartanRoundPoly N) :=
   ⟨SpartanRoundPoly.default N⟩
 
@@ -97,14 +97,14 @@ opaque SpartanDigest.Impl : NonemptyType.{0}
 /-- A 32-byte commitment digest. -/
 def SpartanDigest : Type := SpartanDigest.Impl.type
 instance : Nonempty SpartanDigest := SpartanDigest.Impl.property
-/-- Axiomatic inhabitant. -/ axiom SpartanDigest.default : SpartanDigest
+/-- An inhabitant. -/ noncomputable opaque SpartanDigest.default : SpartanDigest
 noncomputable instance : Inhabited SpartanDigest := ⟨SpartanDigest.default⟩
 
 opaque SpartanFelt.Impl : NonemptyType.{0}
 /-- An 8-byte Fiat–Shamir challenge / round evaluation (one Baby Bear element). -/
 def SpartanFelt : Type := SpartanFelt.Impl.type
 instance : Nonempty SpartanFelt := SpartanFelt.Impl.property
-/-- Axiomatic inhabitant. -/ axiom SpartanFelt.default : SpartanFelt
+/-- An inhabitant. -/ noncomputable opaque SpartanFelt.default : SpartanFelt
 noncomputable instance : Inhabited SpartanFelt := ⟨SpartanFelt.default⟩
 
 /-! ## 2. Sum-check prover leaves (opaque constants and axioms = jasmin function symbols) -/

@@ -92,7 +92,7 @@ opaque X25519LadderState.Impl : NonemptyType.{0}
     The reifier encodes this as `TBytes 192` (memref 24 u64-limbs). -/
 def X25519LadderState : Type := X25519LadderState.Impl.type
 instance : Nonempty X25519LadderState := X25519LadderState.Impl.property
-/-- Axiomatic inhabitant. -/ axiom X25519LadderState.default : X25519LadderState
+/-- An inhabitant. -/ noncomputable opaque X25519LadderState.default : X25519LadderState
 noncomputable instance : Inhabited X25519LadderState := ⟨X25519LadderState.default⟩
 
 /-! ## 2. X25519 leaves (opaque constants = jasmin function symbols)

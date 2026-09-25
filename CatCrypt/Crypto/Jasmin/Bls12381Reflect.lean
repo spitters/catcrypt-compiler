@@ -104,7 +104,7 @@ opaque BlsScalar.Impl : NonemptyType.{0}
 /-- A BLS12-381 `Fr` scalar (32 bytes, little-endian Montgomery). -/
 def BlsScalar : Type := BlsScalar.Impl.type
 instance : Nonempty BlsScalar := BlsScalar.Impl.property
-/-- Axiomatic inhabitant. -/ axiom BlsScalar.default : BlsScalar
+/-- An inhabitant. -/ noncomputable opaque BlsScalar.default : BlsScalar
 noncomputable instance : Inhabited BlsScalar := ⟨BlsScalar.default⟩
 
 opaque BlsG1Point.Impl : NonemptyType.{0}
@@ -112,7 +112,7 @@ opaque BlsG1Point.Impl : NonemptyType.{0}
     two `Fp` coordinates × 48 bytes). -/
 def BlsG1Point : Type := BlsG1Point.Impl.type
 instance : Nonempty BlsG1Point := BlsG1Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom BlsG1Point.default : BlsG1Point
+/-- An inhabitant. -/ noncomputable opaque BlsG1Point.default : BlsG1Point
 noncomputable instance : Inhabited BlsG1Point := ⟨BlsG1Point.default⟩
 
 opaque BlsG2Point.Impl : NonemptyType.{0}
@@ -120,7 +120,7 @@ opaque BlsG2Point.Impl : NonemptyType.{0}
     two `Fp2` coordinates × 96 bytes). -/
 def BlsG2Point : Type := BlsG2Point.Impl.type
 instance : Nonempty BlsG2Point := BlsG2Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom BlsG2Point.default : BlsG2Point
+/-- An inhabitant. -/ noncomputable opaque BlsG2Point.default : BlsG2Point
 noncomputable instance : Inhabited BlsG2Point := ⟨BlsG2Point.default⟩
 
 opaque BlsFp12.Impl : NonemptyType.{0}
@@ -128,7 +128,7 @@ opaque BlsFp12.Impl : NonemptyType.{0}
     bytes). The pairing output / `fp12_mul` operand. -/
 def BlsFp12 : Type := BlsFp12.Impl.type
 instance : Nonempty BlsFp12 := BlsFp12.Impl.property
-/-- Axiomatic inhabitant. -/ axiom BlsFp12.default : BlsFp12
+/-- An inhabitant. -/ noncomputable opaque BlsFp12.default : BlsFp12
 noncomputable instance : Inhabited BlsFp12 := ⟨BlsFp12.default⟩
 
 /-! ## 2. BLS12-381 leaves (opaque constants = jasmin function symbols)

@@ -101,7 +101,7 @@ opaque Plonky3FriEvals.Impl (N : Nat) : NonemptyType.{0}
     plus the per-x challenge inputs and produces a `Plonky3FriEvals N`. -/
 def Plonky3FriEvals (N : Nat) : Type := (Plonky3FriEvals.Impl N).type
 instance (N : Nat) : Nonempty (Plonky3FriEvals N) := (Plonky3FriEvals.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom Plonky3FriEvals.default (N : Nat) : Plonky3FriEvals N
+/-- An inhabitant. -/ noncomputable opaque Plonky3FriEvals.default (N : Nat) : Plonky3FriEvals N
 noncomputable instance (N : Nat) : Inhabited (Plonky3FriEvals N) :=
   ⟨Plonky3FriEvals.default N⟩
 
@@ -111,7 +111,7 @@ opaque Plonky3FriDigest.Impl : NonemptyType.{0}
     namespacing). -/
 def Plonky3FriDigest : Type := Plonky3FriDigest.Impl.type
 instance : Nonempty Plonky3FriDigest := Plonky3FriDigest.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3FriDigest.default : Plonky3FriDigest
+/-- An inhabitant. -/ noncomputable opaque Plonky3FriDigest.default : Plonky3FriDigest
 noncomputable instance : Inhabited Plonky3FriDigest := ⟨Plonky3FriDigest.default⟩
 
 opaque Plonky3FriChallenge.Impl : NonemptyType.{0}
@@ -119,7 +119,7 @@ opaque Plonky3FriChallenge.Impl : NonemptyType.{0}
     the challenger sponge). -/
 def Plonky3FriChallenge : Type := Plonky3FriChallenge.Impl.type
 instance : Nonempty Plonky3FriChallenge := Plonky3FriChallenge.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3FriChallenge.default : Plonky3FriChallenge
+/-- An inhabitant. -/ noncomputable opaque Plonky3FriChallenge.default : Plonky3FriChallenge
 noncomputable instance : Inhabited Plonky3FriChallenge :=
   ⟨Plonky3FriChallenge.default⟩
 

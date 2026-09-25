@@ -85,7 +85,7 @@ opaque MarlinCoeffVec.Impl (N : Nat) : NonemptyType.{0}
 /-- The Marlin AHP coefficient vector (opaque buffer of `N` BN254 `Fr` scalars). -/
 def MarlinCoeffVec (N : Nat) : Type := (MarlinCoeffVec.Impl N).type
 instance (N : Nat) : Nonempty (MarlinCoeffVec N) := (MarlinCoeffVec.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom MarlinCoeffVec.default (N : Nat) : MarlinCoeffVec N
+/-- An inhabitant. -/ noncomputable opaque MarlinCoeffVec.default (N : Nat) : MarlinCoeffVec N
 noncomputable instance (N : Nat) : Inhabited (MarlinCoeffVec N) :=
   ⟨MarlinCoeffVec.default N⟩
 
@@ -93,7 +93,7 @@ opaque MarlinSRS.Impl (N : Nat) : NonemptyType.{0}
 /-- The KZG structured reference string `srs` (opaque buffer of `N` G1 points). -/
 def MarlinSRS (N : Nat) : Type := (MarlinSRS.Impl N).type
 instance (N : Nat) : Nonempty (MarlinSRS N) := (MarlinSRS.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom MarlinSRS.default (N : Nat) : MarlinSRS N
+/-- An inhabitant. -/ noncomputable opaque MarlinSRS.default (N : Nat) : MarlinSRS N
 noncomputable instance (N : Nat) : Inhabited (MarlinSRS N) :=
   ⟨MarlinSRS.default N⟩
 

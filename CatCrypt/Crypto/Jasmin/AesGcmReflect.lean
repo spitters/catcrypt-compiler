@@ -122,7 +122,7 @@ opaque AesKey.Impl : NonemptyType.{0}
     the AES master key for the 11-round key schedule. -/
 def AesKey : Type := AesKey.Impl.type
 instance : Nonempty AesKey := AesKey.Impl.property
-/-- Axiomatic inhabitant. -/ axiom AesKey.default : AesKey
+/-- An inhabitant. -/ noncomputable opaque AesKey.default : AesKey
 noncomputable instance : Inhabited AesKey := ⟨AesKey.default⟩
 
 opaque GcmNonce.Impl : NonemptyType.{0}
@@ -130,7 +130,7 @@ opaque GcmNonce.Impl : NonemptyType.{0}
     `J0 = nonce ‖ 0x00000001` per SP 800-38D §7.1. -/
 def GcmNonce : Type := GcmNonce.Impl.type
 instance : Nonempty GcmNonce := GcmNonce.Impl.property
-/-- Axiomatic inhabitant. -/ axiom GcmNonce.default : GcmNonce
+/-- An inhabitant. -/ noncomputable opaque GcmNonce.default : GcmNonce
 noncomputable instance : Inhabited GcmNonce := ⟨GcmNonce.default⟩
 
 opaque GcmAad.Impl : NonemptyType.{0}
@@ -138,7 +138,7 @@ opaque GcmAad.Impl : NonemptyType.{0}
     `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` AAD shape). Opaque. -/
 def GcmAad : Type := GcmAad.Impl.type
 instance : Nonempty GcmAad := GcmAad.Impl.property
-/-- Axiomatic inhabitant. -/ axiom GcmAad.default : GcmAad
+/-- An inhabitant. -/ noncomputable opaque GcmAad.default : GcmAad
 noncomputable instance : Inhabited GcmAad := ⟨GcmAad.default⟩
 
 opaque GcmPt4.Impl : NonemptyType.{0}
@@ -148,7 +148,7 @@ opaque GcmPt4.Impl : NonemptyType.{0}
     encrypts it via AES-CTR keystream. -/
 def GcmPt4 : Type := GcmPt4.Impl.type
 instance : Nonempty GcmPt4 := GcmPt4.Impl.property
-/-- Axiomatic inhabitant. -/ axiom GcmPt4.default : GcmPt4
+/-- An inhabitant. -/ noncomputable opaque GcmPt4.default : GcmPt4
 noncomputable instance : Inhabited GcmPt4 := ⟨GcmPt4.default⟩
 
 opaque GcmCt4Tag.Impl : NonemptyType.{0}
@@ -158,7 +158,7 @@ opaque GcmCt4Tag.Impl : NonemptyType.{0}
     pointer per export). Opaque. -/
 def GcmCt4Tag : Type := GcmCt4Tag.Impl.type
 instance : Nonempty GcmCt4Tag := GcmCt4Tag.Impl.property
-/-- Axiomatic inhabitant. -/ axiom GcmCt4Tag.default : GcmCt4Tag
+/-- An inhabitant. -/ noncomputable opaque GcmCt4Tag.default : GcmCt4Tag
 noncomputable instance : Inhabited GcmCt4Tag := ⟨GcmCt4Tag.default⟩
 
 /-! ## 2. Component leaves (opaque jasmin function symbols)

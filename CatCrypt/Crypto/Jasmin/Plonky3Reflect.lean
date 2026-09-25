@@ -88,7 +88,7 @@ opaque Plonky3Digest.Impl : NonemptyType.{0}
     `plonky3_poseidon2_compress` implements the byte-mixing under the hood. -/
 def Plonky3Digest : Type := Plonky3Digest.Impl.type
 instance : Nonempty Plonky3Digest := Plonky3Digest.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Plonky3Digest.default : Plonky3Digest
+/-- An inhabitant. -/ noncomputable opaque Plonky3Digest.default : Plonky3Digest
 noncomputable instance : Inhabited Plonky3Digest := ⟨Plonky3Digest.default⟩
 
 opaque Plonky3Leaves.Impl (N : Nat) : NonemptyType.{0}
@@ -98,7 +98,7 @@ opaque Plonky3Leaves.Impl (N : Nat) : NonemptyType.{0}
     business. -/
 def Plonky3Leaves (N : Nat) : Type := (Plonky3Leaves.Impl N).type
 instance (N : Nat) : Nonempty (Plonky3Leaves N) := (Plonky3Leaves.Impl N).property
-/-- Axiomatic inhabitant. -/ axiom Plonky3Leaves.default (N : Nat) : Plonky3Leaves N
+/-- An inhabitant. -/ noncomputable opaque Plonky3Leaves.default (N : Nat) : Plonky3Leaves N
 noncomputable instance (N : Nat) : Inhabited (Plonky3Leaves N) :=
   ⟨Plonky3Leaves.default N⟩
 
@@ -108,7 +108,7 @@ opaque Plonky3DigestArr.Impl (M : Nat) : NonemptyType.{0}
     and produces a `Plonky3DigestArr M`. -/
 def Plonky3DigestArr (M : Nat) : Type := (Plonky3DigestArr.Impl M).type
 instance (M : Nat) : Nonempty (Plonky3DigestArr M) := (Plonky3DigestArr.Impl M).property
-/-- Axiomatic inhabitant. -/ axiom Plonky3DigestArr.default (M : Nat) : Plonky3DigestArr M
+/-- An inhabitant. -/ noncomputable opaque Plonky3DigestArr.default (M : Nat) : Plonky3DigestArr M
 noncomputable instance (M : Nat) : Inhabited (Plonky3DigestArr M) :=
   ⟨Plonky3DigestArr.default M⟩
 

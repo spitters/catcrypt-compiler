@@ -131,14 +131,14 @@ opaque P384Sec1.Impl : NonemptyType.{0}
     and `y` 48-byte big-endian. Opaque. -/
 def P384Sec1 : Type := P384Sec1.Impl.type
 instance : Nonempty P384Sec1 := P384Sec1.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P384Sec1.default : P384Sec1
+/-- An inhabitant. -/ noncomputable opaque P384Sec1.default : P384Sec1
 noncomputable instance : Inhabited P384Sec1 := ⟨P384Sec1.default⟩
 
 opaque P384KemContext.Impl : NonemptyType.{0}
 /-- A 194-byte DHKEM(P-384) KEM context `enc ‖ pkRm`. Opaque. -/
 def P384KemContext : Type := P384KemContext.Impl.type
 instance : Nonempty P384KemContext := P384KemContext.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P384KemContext.default : P384KemContext
+/-- An inhabitant. -/ noncomputable opaque P384KemContext.default : P384KemContext
 noncomputable instance : Inhabited P384KemContext := ⟨P384KemContext.default⟩
 
 /-- Tower type of a SEC1 uncompressed P-384 point encoding. -/

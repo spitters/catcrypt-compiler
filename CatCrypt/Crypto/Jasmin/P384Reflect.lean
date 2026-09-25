@@ -96,7 +96,7 @@ opaque P384Scalar.Impl : NonemptyType.{0}
     little-endian 64-bit limbs, 48 bytes on the wire. Opaque. -/
 def P384Scalar : Type := P384Scalar.Impl.type
 instance : Nonempty P384Scalar := P384Scalar.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P384Scalar.default : P384Scalar
+/-- An inhabitant. -/ noncomputable opaque P384Scalar.default : P384Scalar
 noncomputable instance : Inhabited P384Scalar := ⟨P384Scalar.default⟩
 
 opaque P384Point.Impl : NonemptyType.{0}
@@ -104,7 +104,7 @@ opaque P384Point.Impl : NonemptyType.{0}
     elements of 48 bytes each, 144 bytes on the wire. Opaque. -/
 def P384Point : Type := P384Point.Impl.type
 instance : Nonempty P384Point := P384Point.Impl.property
-/-- Axiomatic inhabitant. -/ axiom P384Point.default : P384Point
+/-- An inhabitant. -/ noncomputable opaque P384Point.default : P384Point
 noncomputable instance : Inhabited P384Point := ⟨P384Point.default⟩
 
 /-! ## 2. P-384 leaves -/

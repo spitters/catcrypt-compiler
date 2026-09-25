@@ -74,14 +74,14 @@ opaque FaestGfVec8.Impl : NonemptyType.{0}
     the PCLMUL-Karatsuba dot product. -/
 def FaestGfVec8 : Type := FaestGfVec8.Impl.type
 instance : Nonempty FaestGfVec8 := FaestGfVec8.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FaestGfVec8.default : FaestGfVec8
+/-- An inhabitant. -/ noncomputable opaque FaestGfVec8.default : FaestGfVec8
 noncomputable instance : Inhabited FaestGfVec8 := ⟨FaestGfVec8.default⟩
 
 opaque FaestGf128.Impl : NonemptyType.{0}
 /-- A single GF(2^128) element (the dot-product result). 16 bytes. -/
 def FaestGf128 : Type := FaestGf128.Impl.type
 instance : Nonempty FaestGf128 := FaestGf128.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FaestGf128.default : FaestGf128
+/-- An inhabitant. -/ noncomputable opaque FaestGf128.default : FaestGf128
 noncomputable instance : Inhabited FaestGf128 := ⟨FaestGf128.default⟩
 
 /-! ## 2. FAEST gf_dot leaves (opaque constants = jasmin function symbols) -/

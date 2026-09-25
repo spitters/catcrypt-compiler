@@ -83,7 +83,7 @@ opaque Chacha4WayState.Impl : NonemptyType.{0}
     `chacha_4way_xmm_block` runs the canonical 20-round schedule. -/
 def Chacha4WayState : Type := Chacha4WayState.Impl.type
 instance : Nonempty Chacha4WayState := Chacha4WayState.Impl.property
-/-- Axiomatic inhabitant. -/ axiom Chacha4WayState.default : Chacha4WayState
+/-- An inhabitant. -/ noncomputable opaque Chacha4WayState.default : Chacha4WayState
 noncomputable instance : Inhabited Chacha4WayState := ⟨Chacha4WayState.default⟩
 
 /-! ## 2. ChaCha-4way leaves (opaque constants = jasmin function symbols) -/

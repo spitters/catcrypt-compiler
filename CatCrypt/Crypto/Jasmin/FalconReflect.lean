@@ -80,7 +80,7 @@ opaque FalconPoly.Impl : NonemptyType.{0}
     `falcon_*_12289_512` implement the concrete byte-layout under the hood. -/
 def FalconPoly : Type := FalconPoly.Impl.type
 instance : Nonempty FalconPoly := FalconPoly.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconPoly.default : FalconPoly
+/-- An inhabitant. -/ noncomputable opaque FalconPoly.default : FalconPoly
 noncomputable instance : Inhabited FalconPoly := ⟨FalconPoly.default⟩
 
 opaque FalconPubKey.Impl : NonemptyType.{0}
@@ -89,7 +89,7 @@ opaque FalconPubKey.Impl : NonemptyType.{0}
     the polynomial body. -/
 def FalconPubKey : Type := FalconPubKey.Impl.type
 instance : Nonempty FalconPubKey := FalconPubKey.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconPubKey.default : FalconPubKey
+/-- An inhabitant. -/ noncomputable opaque FalconPubKey.default : FalconPubKey
 noncomputable instance : Inhabited FalconPubKey := ⟨FalconPubKey.default⟩
 
 opaque FalconSig.Impl : NonemptyType.{0}
@@ -97,7 +97,7 @@ opaque FalconSig.Impl : NonemptyType.{0}
     Wire size: 666+40+1 = 707 (compact; spec max 752 B). Opaque. -/
 def FalconSig : Type := FalconSig.Impl.type
 instance : Nonempty FalconSig := FalconSig.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconSig.default : FalconSig
+/-- An inhabitant. -/ noncomputable opaque FalconSig.default : FalconSig
 noncomputable instance : Inhabited FalconSig := ⟨FalconSig.default⟩
 
 opaque FalconMsgPlusNonce.Impl : NonemptyType.{0}
@@ -107,7 +107,7 @@ opaque FalconMsgPlusNonce.Impl : NonemptyType.{0}
     the verify-body let-chain homogeneous. -/
 def FalconMsgPlusNonce : Type := FalconMsgPlusNonce.Impl.type
 instance : Nonempty FalconMsgPlusNonce := FalconMsgPlusNonce.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconMsgPlusNonce.default : FalconMsgPlusNonce
+/-- An inhabitant. -/ noncomputable opaque FalconMsgPlusNonce.default : FalconMsgPlusNonce
 noncomputable instance : Inhabited FalconMsgPlusNonce := ⟨FalconMsgPlusNonce.default⟩
 
 opaque FalconAccept.Impl : NonemptyType.{0}
@@ -115,7 +115,7 @@ opaque FalconAccept.Impl : NonemptyType.{0}
     the front can treat it as a single-`u64` return value. -/
 def FalconAccept : Type := FalconAccept.Impl.type
 instance : Nonempty FalconAccept := FalconAccept.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconAccept.default : FalconAccept
+/-- An inhabitant. -/ noncomputable opaque FalconAccept.default : FalconAccept
 noncomputable instance : Inhabited FalconAccept := ⟨FalconAccept.default⟩
 
 /-! ## 2. Verify leaves (opaque constants = jasmin function symbols) -/
@@ -370,7 +370,7 @@ opaque FalconSecKey.Impl : NonemptyType.{0}
     on the byte form, with the basis fields recovered internally. -/
 def FalconSecKey : Type := FalconSecKey.Impl.type
 instance : Nonempty FalconSecKey := FalconSecKey.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconSecKey.default : FalconSecKey
+/-- An inhabitant. -/ noncomputable opaque FalconSecKey.default : FalconSecKey
 noncomputable instance : Inhabited FalconSecKey := ⟨FalconSecKey.default⟩
 
 opaque FalconNonce.Impl : NonemptyType.{0}
@@ -378,7 +378,7 @@ opaque FalconNonce.Impl : NonemptyType.{0}
     `falcon_draw_nonce` leaf realizes the rejection-free byte draw. -/
 def FalconNonce : Type := FalconNonce.Impl.type
 instance : Nonempty FalconNonce := FalconNonce.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconNonce.default : FalconNonce
+/-- An inhabitant. -/ noncomputable opaque FalconNonce.default : FalconNonce
 noncomputable instance : Inhabited FalconNonce := ⟨FalconNonce.default⟩
 
 opaque FalconShortPair.Impl : NonemptyType.{0}
@@ -387,7 +387,7 @@ opaque FalconShortPair.Impl : NonemptyType.{0}
     body keeps `s2` and encodes the difference of `s1` against `c − s2·h`. -/
 def FalconShortPair : Type := FalconShortPair.Impl.type
 instance : Nonempty FalconShortPair := FalconShortPair.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconShortPair.default : FalconShortPair
+/-- An inhabitant. -/ noncomputable opaque FalconShortPair.default : FalconShortPair
 noncomputable instance : Inhabited FalconShortPair := ⟨FalconShortPair.default⟩
 
 /-! ### Sign leaves (opaque constants = jasmin function symbols) -/
@@ -565,14 +565,14 @@ opaque FalconNTRUBasis.Impl : NonemptyType.{0}
     packaging; the leaves read it via the same byte-form interface. -/
 def FalconNTRUBasis : Type := FalconNTRUBasis.Impl.type
 instance : Nonempty FalconNTRUBasis := FalconNTRUBasis.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconNTRUBasis.default : FalconNTRUBasis
+/-- An inhabitant. -/ noncomputable opaque FalconNTRUBasis.default : FalconNTRUBasis
 noncomputable instance : Inhabited FalconNTRUBasis := ⟨FalconNTRUBasis.default⟩
 
 opaque FalconFullBasis.Impl : NonemptyType.{0}
 /-- Full NTRU-solved basis `(f, g, F, G)`. Opaque. -/
 def FalconFullBasis : Type := FalconFullBasis.Impl.type
 instance : Nonempty FalconFullBasis := FalconFullBasis.Impl.property
-/-- Axiomatic inhabitant. -/ axiom FalconFullBasis.default : FalconFullBasis
+/-- An inhabitant. -/ noncomputable opaque FalconFullBasis.default : FalconFullBasis
 noncomputable instance : Inhabited FalconFullBasis := ⟨FalconFullBasis.default⟩
 
 /-! ### Keygen leaves (opaque constants = jasmin function symbols) -/
