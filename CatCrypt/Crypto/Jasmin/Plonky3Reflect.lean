@@ -119,18 +119,18 @@ a single emit instantiates these at a fixed depth `k`, so the leaves below
 are family-indexed by Nat. -/
 
 /-- Bulk leaf hash: `digests = [hash_leaf(leaves[i]) for i in 0..N]`. -/
-axiom plonky3_merkle_hash_leaves (N : Nat) :
+noncomputable opaque plonky3_merkle_hash_leaves (N : Nat) :
     Plonky3Leaves N → Plonky3DigestArr N
 
 /-- One Merkle level: `parents[j] = compress(children[2j], children[2j+1])` for
     `j ∈ [0, M)`. The input has `2·M` digests, the output has `M`. Implementation
     is Poseidon2 two-to-one compress per pair (the reference `merkle.rs`
     `hash_two_to_one`). -/
-axiom plonky3_merkle_level (M : Nat) :
+noncomputable opaque plonky3_merkle_level (M : Nat) :
     Plonky3DigestArr (2 * M) → Plonky3DigestArr M
 
 /-- Extract the singleton root from a width-1 digest array. -/
-axiom plonky3_merkle_extract_root :
+noncomputable opaque plonky3_merkle_extract_root :
     Plonky3DigestArr 1 → Plonky3Digest
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (per fixed N) -/

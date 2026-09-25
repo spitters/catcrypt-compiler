@@ -193,7 +193,7 @@ from AUCurves' upstream certificates. -/
     convergence certificate (the 10×59-divstep structure terminates
     correctly for every p25519 input) plus the in-tree
     `divstep_matches_fermat_*` KATs in `safegcd25519.rs::tests`. -/
-axiom Vale_safegcd25519_fe25519_inv_denote
+noncomputable opaque Vale_safegcd25519_fe25519_inv_denote
     (x : SafegcdFe25519Buf) : SafegcdFe25519Buf
 
 /-- **Leakage function**: the observable trace the `safegcd25519`

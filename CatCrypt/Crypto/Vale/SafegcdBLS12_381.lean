@@ -164,7 +164,7 @@ sourced from AUCurves's `safegcd_bls12_381.rs` upstream. -/
     `safegcd::modinfo_from_6u64(BLS12_P_6X64, 15)` (885 ≥ 878
     divsteps suffice for `b = 381`), and the round-trip KAT in
     `safegcd_bls12_381.rs::tests::bls12_invert_times_self_is_one`. -/
-axiom Safegcd_BLS12_381_invert_denote
+noncomputable opaque Safegcd_BLS12_381_invert_denote
     (x : BLS12_381_Fp) : BLS12_381_Fp
 
 /-- **Leakage function**: the observable trace the

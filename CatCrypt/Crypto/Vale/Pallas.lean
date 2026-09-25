@@ -191,7 +191,7 @@ upstream. -/
     `safegcd::modinfo_from_4u64(PALLAS_P_4X64, 10)` (590 ≥ 588
     divsteps suffice for `b = 255`), and the round-trip KAT in
     `safegcd_pallas.rs::tests::pallas_invert_times_self_is_one`. -/
-axiom Safegcd_Pallas_invert_denote
+noncomputable opaque Safegcd_Pallas_invert_denote
     (x : PallasFp) : PallasFp
 
 /-- **Leakage function**: the observable trace the

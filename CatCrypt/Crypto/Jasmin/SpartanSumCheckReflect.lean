@@ -125,7 +125,7 @@ noncomputable opaque spartan_challenger_squeeze : SpartanDigest → SpartanFelt
 /-- Evaluate a round polynomial at the challenge by the **Horner round**.
     The leaf's internal semantics are `bbHornerEval`, tied to
     `UnivariatePoly.eval` in `EmittedSumCheckRealization.lean`. -/
-axiom spartan_sumcheck_round_eval (N : Nat) :
+noncomputable opaque spartan_sumcheck_round_eval (N : Nat) :
     SpartanRoundPoly N → SpartanFelt → SpartanFelt
 
 /-- Open the multilinear polynomial commitment (multilinear-IPA opening). -/

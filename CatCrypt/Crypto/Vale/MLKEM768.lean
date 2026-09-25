@@ -221,7 +221,7 @@ Keccak / AVX2 NTT-basemul sub-primitives. -/
     input. Discharged by libcrux's F\* functional-correctness proof
     (cf. Bhargavan et al. 2024) against `Spec.MLKEM.768.KeyGen`,
     composed over the Vale-verified SHAKE and AVX2 NTT primitives. -/
-axiom Vale_libcrux_mlkem768_keygen_denote
+noncomputable opaque Vale_libcrux_mlkem768_keygen_denote
     (randomness : MlKem768KeygenRand) : MlKem768PubKey
 
 /-- **Denotation axiom — keygen secret half**: same leaf produces
@@ -229,20 +229,20 @@ axiom Vale_libcrux_mlkem768_keygen_denote
     denotation projection because the surface uses opaque buffer
     types per output, mirroring the libcrux `MlKem768KeyPair` struct
     `{sk, pk}` shape at the C ABI.) -/
-axiom Vale_libcrux_mlkem768_keygen_sk_denote
+noncomputable opaque Vale_libcrux_mlkem768_keygen_sk_denote
     (randomness : MlKem768KeygenRand) : MlKem768PrivKey
 
 /-- **Denotation axiom — encapsulate**: the libcrux AVX2 leaf
     `libcrux_ml_kem_mlkem768_avx2_encapsulate` computes the
     FIPS-203 ML-KEM-768 ciphertext under the public key and the
     32-byte encaps randomness. -/
-axiom Vale_libcrux_mlkem768_encaps_denote
+noncomputable opaque Vale_libcrux_mlkem768_encaps_denote
     (pk : MlKem768PubKey) (randomness : MlKem768EncapsRand) :
     MlKem768Ct
 
 /-- **Denotation axiom — encapsulate shared-secret half**: same
     leaf produces the corresponding 32-byte shared secret. -/
-axiom Vale_libcrux_mlkem768_encaps_ss_denote
+noncomputable opaque Vale_libcrux_mlkem768_encaps_ss_denote
     (pk : MlKem768PubKey) (randomness : MlKem768EncapsRand) :
     MlKem768Ss
 
@@ -250,22 +250,22 @@ axiom Vale_libcrux_mlkem768_encaps_ss_denote
     `libcrux_ml_kem_mlkem768_avx2_decapsulate` computes the FIPS-203
     ML-KEM-768 shared secret from the private key and ciphertext
     (including the FO implicit-reject path on rejection). -/
-axiom Vale_libcrux_mlkem768_decaps_denote
+noncomputable opaque Vale_libcrux_mlkem768_decaps_denote
     (sk : MlKem768PrivKey) (ct : MlKem768Ct) : MlKem768Ss
 
 /-- Leakage trace of the libcrux AVX2 key-generation leaf, at a
     64-byte randomness input. -/
-axiom Vale_libcrux_mlkem768_keygen_leak
+noncomputable opaque Vale_libcrux_mlkem768_keygen_leak
     (randomness : MlKem768KeygenRand) : LeafLeak
 
 /-- Leakage trace of the libcrux AVX2 encapsulate leaf, at a public key and
     encapsulation randomness. -/
-axiom Vale_libcrux_mlkem768_encaps_leak
+noncomputable opaque Vale_libcrux_mlkem768_encaps_leak
     (pk : MlKem768PubKey) (randomness : MlKem768EncapsRand) : LeafLeak
 
 /-- Leakage trace of the libcrux AVX2 decapsulate leaf, at a ciphertext and
     private key. -/
-axiom Vale_libcrux_mlkem768_decaps_leak
+noncomputable opaque Vale_libcrux_mlkem768_decaps_leak
     (ct : MlKem768Ct) (sk : MlKem768PrivKey) : LeafLeak
 
 /-- **Constant-time axiom — keygen**: the leakage trace of the libcrux AVX2

@@ -164,7 +164,7 @@ sourced from AUCurves' `safegcd_p521.rs` upstream. -/
     to `ModInfo<10>` constructed by
     `safegcd::modinfo_from_9u64(P521_P_9X64, 21)`, and the round-trip
     KAT in `safegcd_p521.rs::tests::p521_invert_times_self_is_one`. -/
-axiom AUCurves_safegcd_p521_invert_denote
+noncomputable opaque AUCurves_safegcd_p521_invert_denote
     (x : P521FieldElt) : P521FieldElt
 
 /-- **Leakage function**: the observable trace the

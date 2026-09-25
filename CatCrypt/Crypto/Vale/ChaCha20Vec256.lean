@@ -148,7 +148,7 @@ noncomputable def Vale_Hacl_Chacha20_Vec256_denote
 
 /-- **Leakage function**: the observable trace the `Hacl_Chacha20_Vec256`
     leaf emits on the given nonce, counter, key and plaintext. -/
-axiom Vale_Hacl_Chacha20_Vec256_leak
+noncomputable opaque Vale_Hacl_Chacha20_Vec256_leak
     (nonce counter : ChaCha20Vec256Block)
     (secrets : ChaCha20Vec256Block × ChaCha20Vec256Block) : LeafLeak
 

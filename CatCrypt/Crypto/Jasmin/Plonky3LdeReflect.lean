@@ -118,30 +118,30 @@ family-indexed by `Nat`. -/
 
 /-- Subgroup-H inverse NTT: maps `N` evaluations on `H = ⟨ω_H⟩` to the `N`
     polynomial coefficients. -/
-axiom babybear_ntt_inverse (N : Nat) :
+noncomputable opaque babybear_ntt_inverse (N : Nat) :
     Plonky3BabyBearVec N → Plonky3BabyBearVec N
 
 /-- Zero-extend: lift `N` coefficients to a `kN`-sized buffer by appending
     `(k-1)·N` zero pads. The leaf is parameterised by both the source width
     `N` and the destination width `kN`. -/
-axiom babybear_zero_extend (N kN : Nat) :
+noncomputable opaque babybear_zero_extend (N kN : Nat) :
     Plonky3BabyBearVec N → Plonky3BabyBearVec kN
 
 /-- Coset twist: pointwise-multiply by `shift^i` for `i ∈ [0, kN)`. The shift
     is implicit in the leaf implementation (typically the BabyBear generator
     `31`). Input and output are both `kN`-wide. -/
-axiom babybear_coset_twist (kN : Nat) :
+noncomputable opaque babybear_coset_twist (kN : Nat) :
     Plonky3BabyBearVec kN → Plonky3BabyBearVec kN
 
 /-- Coset-domain forward NTT: maps `kN` polynomial coefficients (already
     coset-twisted) to `kN` evaluations on the coset `shift · ⟨ω_kN⟩`. -/
-axiom babybear_ntt_forward (kN : Nat) :
+noncomputable opaque babybear_ntt_forward (kN : Nat) :
     Plonky3BabyBearVec kN → Plonky3BabyBearVec kN
 
 /-- Pointwise BabyBear multiply over an `N`-wide vector. Not used in the
     minimal 4-step LDE chain, but exposed as a separate leaf for the
     quotient-polynomial computation that AIR composes on top of the LDE. -/
-axiom babybear_mul (N : Nat) :
+noncomputable opaque babybear_mul (N : Nat) :
     Plonky3BabyBearVec N → Plonky3BabyBearVec N → Plonky3BabyBearVec N
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations

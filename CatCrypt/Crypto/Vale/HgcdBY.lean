@@ -241,7 +241,7 @@ axiom list. -/
     This axiom exists so the `LowCTPattern` below typechecks; it MUST
     NOT be used in a security theorem until an upstream gcd-value
     theorem lands and this axiom is replaced. -/
-axiom AUCurves_safegcd_gcd_n_denote_NOT_YET_PROVEN
+noncomputable opaque AUCurves_safegcd_gcd_n_denote_NOT_YET_PROVEN
     (a b : MpnBuf) : MpnBuf
 
 /-! ## §3. `@[rust_cmd_pattern]` registration (placeholder)

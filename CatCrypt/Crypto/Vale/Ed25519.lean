@@ -221,12 +221,12 @@ from HACL\* / Vale's upstream F\* proofs against `Spec.Ed25519`. -/
     in `Hacl.Ed25519.fst` against `Spec.Ed25519.sign`, composed with
     the Vale proofs on the underlying Curve25519 field arithmetic
     and SHA-512 compression. -/
-axiom Vale_Hacl_Ed25519_sign_denote
+noncomputable opaque Vale_Hacl_Ed25519_sign_denote
     (priv : Ed25519Priv) (msg : Ed25519Msg) : Ed25519Sig
 
 /-- **Leakage function (sign)**: the observable trace the
     `Hacl_Ed25519_sign` leaf emits on the given seed and message. -/
-axiom Vale_Hacl_Ed25519_sign_leak
+noncomputable opaque Vale_Hacl_Ed25519_sign_leak
     (priv : Ed25519Priv) (msg : Ed25519Msg) : LeafLeak
 
 /-- **Constant-time axiom (sign)**: the leakage trace of the
@@ -245,13 +245,13 @@ axiom Vale_Hacl_Ed25519_sign_CT :
     an `Ed25519Sig`-shaped opaque output (the leaf writes a one-byte
     result via the same SSA tower as the signing-output path; the
     bool is recovered by reading the LSB). -/
-axiom Vale_Hacl_Ed25519_verify_denote
+noncomputable opaque Vale_Hacl_Ed25519_verify_denote
     (pk : Ed25519Pub) (msg : Ed25519Msg) (sig : Ed25519Sig) : Ed25519Sig
 
 /-- **Leakage function (verify)**: the observable trace the
     `Hacl_Ed25519_verify` leaf emits on the given public key, message and
     signature. -/
-axiom Vale_Hacl_Ed25519_verify_leak
+noncomputable opaque Vale_Hacl_Ed25519_verify_leak
     (pk : Ed25519Pub) (msg : Ed25519Msg) (sig : Ed25519Sig) : LeafLeak
 
 /-- **Variable-time verify**: the leakage trace of the `Hacl_Ed25519_verify`

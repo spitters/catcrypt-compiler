@@ -156,7 +156,7 @@ sourced from AUCurves' `safegcd_p384.rs` upstream. -/
     `safegcd::modinfo_from_6u64(P384_P_6X64, 15)` (885 ≥ 878
     divsteps suffice for `b = 384`), and the round-trip KAT in
     `safegcd_p384.rs::tests::p384_invert_times_self_is_one`. -/
-axiom AUCurves_safegcd_p384_invert_denote
+noncomputable opaque AUCurves_safegcd_p384_invert_denote
     (x : P384FieldElt) : P384FieldElt
 
 /-- **Leakage function**: the observable trace the

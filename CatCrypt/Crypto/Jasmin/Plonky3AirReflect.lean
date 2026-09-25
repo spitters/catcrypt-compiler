@@ -115,7 +115,7 @@ Parameterised by `(W, H)`. -/
     accumulated over all `H - 1` transitions. Implementation is per-row
     field arithmetic per the AIR constraints (3-column variant:
     `next.x = cur.z` and `next.z = next.x + next.y`). -/
-axiom plonky3_air_transition (W H : Nat) :
+noncomputable opaque plonky3_air_transition (W H : Nat) :
     Plonky3Trace W H → Plonky3AirOk
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations -/

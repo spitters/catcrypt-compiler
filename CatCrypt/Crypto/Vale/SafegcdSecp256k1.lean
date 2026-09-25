@@ -150,7 +150,7 @@ AUCurves' upstream machine-checked Coq proofs. -/
     (`AUCurves/src/Arithmetic/safegcd/divsteps_secp256k1_half.v`) plus
     the structural correspondence between the bedrock2 divstep
     transition and the Rust port (`safegcd.rs` :: `divstep62`). -/
-axiom AUCurves_safegcd_secp256k1_invert_denote
+noncomputable opaque AUCurves_safegcd_secp256k1_invert_denote
     (x : Secp256k1FieldElt) : Secp256k1FieldElt
 
 /-- **Leakage function**: the observable trace the

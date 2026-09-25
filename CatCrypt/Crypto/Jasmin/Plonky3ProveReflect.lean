@@ -180,11 +180,11 @@ noncomputable opaque plonky3_merkle_commit_orch (H : Nat) : Plonky3LdeTrace H �
 noncomputable opaque plonky3_challenger_squeeze_orch : Plonky3Commit → Plonky3Alpha
 
 /-- Quotient / composition polynomial (SELECTOR-INCLUSIVE degree 2). -/
-axiom plonky3_quotient_compose (H : Nat) :
+noncomputable opaque plonky3_quotient_compose (H : Nat) :
     Plonky3LdeTrace H → Plonky3Alpha → Plonky3Quotient H
 
 /-- OOD / DEEP batched evaluation. -/
-axiom plonky3_ood_deep (H : Nat) :
+noncomputable opaque plonky3_ood_deep (H : Nat) :
     Plonky3Quotient H → Plonky3Alpha → Plonky3OodDeep H
 
 /-- The whole FRI prover: commit + query + grind. -/

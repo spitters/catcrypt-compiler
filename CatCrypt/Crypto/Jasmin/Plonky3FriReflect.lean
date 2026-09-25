@@ -132,18 +132,18 @@ leaves below are family-indexed by `Nat`. -/
 /-- One FRI fold round, taking `2·N` evaluations to `N`. The fold equation
     `p'[i] = (p[i] + p[i+half])/2 + α · (p[i] - p[i+half])/(2 xs[i])` uses a
     challenge `α`, but this leaf takes no challenge argument. -/
-axiom plonky3_fri_fold_layer (N : Nat) :
+noncomputable opaque plonky3_fri_fold_layer (N : Nat) :
     Plonky3FriEvals (2 * N) → Plonky3FriEvals N
 
 /-- Per-FRI-layer Merkle commitment: collapse a folded `N`-evaluation array
     into a 32-byte digest under the Poseidon2 sponge. -/
-axiom plonky3_fri_merkle_commit (N : Nat) :
+noncomputable opaque plonky3_fri_merkle_commit (N : Nat) :
     Plonky3FriEvals N → Plonky3FriDigest
 
 /-- Fiat-Shamir challenger squeeze: derive the next-layer challenge `α_k`
     from the running transcript-state (modelled as the previous layer's
     commitment). -/
-axiom plonky3_fri_challenger_squeeze :
+noncomputable opaque plonky3_fri_challenger_squeeze :
     Plonky3FriDigest → Plonky3FriChallenge
 
 /-- Query phase: given the final remainder commitment and the original
@@ -152,7 +152,7 @@ axiom plonky3_fri_challenger_squeeze :
     checks; we keep it as a single opaque leaf in the reflect surface so
     the verified front emits the call site and the runtime supplies the
     bulk-checking implementation. -/
-axiom plonky3_fri_query_phase (N : Nat) :
+noncomputable opaque plonky3_fri_query_phase (N : Nat) :
     Plonky3FriDigest → Plonky3FriDigest
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations (per fixed N) -/

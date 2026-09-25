@@ -161,7 +161,7 @@ sourced from AUCurves' `safegcd_p256.rs` upstream. -/
     byte-identical KAT in
     `safegcd_p256.rs::tests::p256_divstep_matches_fiat_reference`
     against fiat-crypto's `fiat_p256_divstep` per-step reference. -/
-axiom AUCurves_safegcd_p256_invert_denote
+noncomputable opaque AUCurves_safegcd_p256_invert_denote
     (x : P256FieldElt) : P256FieldElt
 
 /-- **Leakage function**: the observable trace the

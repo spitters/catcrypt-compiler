@@ -288,7 +288,7 @@ permit the AUCurves BY/safegcd general-modulus leaf into the pipeline. -/
     when `m` is odd and `Nat.Coprime (toNat a) (toNat m)`. Discharged by
     Bernstein-Yang's divstep correctness theorem applied to the runtime
     `ModInfo<N>` built from `(m, n)` via `safegcd::modinfo_from_*u64`. -/
-axiom MpnInvert_Safegcd_denote
+noncomputable opaque MpnInvert_Safegcd_denote
     (a m : MpnBignum) : MpnBignum
 
 /-- **Leakage function**: the observable trace the `mpn_invert_safegcd`

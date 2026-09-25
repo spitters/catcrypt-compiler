@@ -158,7 +158,7 @@ exists upstream — see the module docstring). -/
     `k` reduced mod the group order `n`. Matched against
     libsecp256k1's reviewed signed-digit / GLV ladder
     (`src/ecmult_const_impl.h`). -/
-axiom Secp256k1Ecmult_const_denote
+noncomputable opaque Secp256k1Ecmult_const_denote
     (k : Secp256k1Scalar) (P : Secp256k1Point) : Secp256k1Point
 
 /-- **Double-scalar denotation axiom**: the libsecp256k1
@@ -168,7 +168,7 @@ axiom Secp256k1Ecmult_const_denote
     the ECDSA signature-verification step. Matched against
     libsecp256k1's Straus / wNAF implementation
     (`src/ecmult_impl.h`). -/
-axiom Secp256k1Ecmult_double_denote
+noncomputable opaque Secp256k1Ecmult_double_denote
     (u1 u2 : Secp256k1Scalar) (Q : Secp256k1Point) : Secp256k1Point
 
 /-- **Constant-time axiom (single-scalar only)**: the libsecp256k1
@@ -184,7 +184,7 @@ axiom Secp256k1Ecmult_double_denote
     operates on entirely public inputs (`u1`, `u2`, `Q`), so CT is not
     a requirement there, and libsecp256k1's `secp256k1_ecmult` makes
     no CT claim. -/
-axiom Secp256k1Ecmult_const_leak
+noncomputable opaque Secp256k1Ecmult_const_leak
     (P : Secp256k1Point) (k : Secp256k1Scalar) : LeafLeak
 
 /-- **Constant-time axiom (single-scalar only)**: at each fixed base point

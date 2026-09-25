@@ -972,10 +972,10 @@ noncomputable instance : Inhabited MldMat := ⟨MldMat.default⟩
     dependent return type carries the summed `TBytes`). -/
 noncomputable opaque mld_bytes_concat_2 {m n : Nat} : MldBytes m → MldBytes n → MldBytes (m + n)
 /-- Concatenate three byte buffers. -/
-axiom mld_bytes_concat_3 {m n p : Nat} :
+noncomputable opaque mld_bytes_concat_3 {m n p : Nat} :
   MldBytes m → MldBytes n → MldBytes p → MldBytes (m + n + p)
 /-- Concatenate six byte buffers. -/
-axiom mld_bytes_concat_6 {m n p r s t : Nat} :
+noncomputable opaque mld_bytes_concat_6 {m n p r s t : Nat} :
   MldBytes m → MldBytes n → MldBytes p → MldBytes r → MldBytes s → MldBytes t →
   MldBytes (m + n + p + r + s + t)
 /-- Slice `src[off..off+len]`.  The source argument is

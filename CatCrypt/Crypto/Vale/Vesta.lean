@@ -177,7 +177,7 @@ upstream. -/
     `safegcd::modinfo_from_4u64(VESTA_P_4X64, 10)` (590 ≥ 588
     divsteps suffice for `b = 255`), and the round-trip KAT in
     `safegcd_vesta.rs::tests::vesta_invert_times_self_is_one`. -/
-axiom Safegcd_Vesta_invert_denote
+noncomputable opaque Safegcd_Vesta_invert_denote
     (x : VestaFp) : VestaFp
 
 /-- **Leakage function**: the observable trace the

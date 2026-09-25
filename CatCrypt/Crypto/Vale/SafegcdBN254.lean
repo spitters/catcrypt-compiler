@@ -164,7 +164,7 @@ sourced from AUCurves' `safegcd_bn254.rs` upstream. -/
     `safegcd::modinfo_from_4u64(BN254_P_4X64, 10)` (590 divsteps suffice
     for `b = 254`), and the round-trip KAT in
     `safegcd_bn254.rs::tests::bn254_invert_times_self_is_one`. -/
-axiom AUCurves_safegcd_bn254_invert_denote
+noncomputable opaque AUCurves_safegcd_bn254_invert_denote
     (x : BN254SafegcdFieldElt) : BN254SafegcdFieldElt
 
 /-- **Leakage function**: the observable trace the

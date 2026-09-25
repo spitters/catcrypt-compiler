@@ -139,12 +139,12 @@ upstream F\* proofs. -/
     by the F\* functional-correctness proof in
     `Hacl.Curve25519_64.fst` against `Spec.Curve25519.scalarmult`,
     and the Vale proofs on the field-arithmetic `*_e` primitives. -/
-axiom Vale_Hacl_Curve25519_64_denote
+noncomputable opaque Vale_Hacl_Curve25519_64_denote
     (priv : Curve25519Buf) (pub : Curve25519Buf) : Curve25519Buf
 
 /-- **Leakage function**: the observable trace the `Hacl_Curve25519_64`
     leaf emits on the scalar `priv` and the point `pub`. -/
-axiom Vale_Hacl_Curve25519_64_leak
+noncomputable opaque Vale_Hacl_Curve25519_64_leak
     (priv : Curve25519Buf) (pub : Curve25519Buf) : LeafLeak
 
 /-- **Constant-time axiom**: the leakage trace of the `Hacl_Curve25519_64`
