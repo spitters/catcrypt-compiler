@@ -1050,3 +1050,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd
 CatCrypt.Crypto.Jasmin.Ed25519Group
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerDenote
+CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2KoalaBearEmit
+CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2Mersenne31
+CatCrypt.Crypto.SecureCompilation.Algebraic.BinomialExt4
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldExprCompile
