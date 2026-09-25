@@ -506,6 +506,7 @@ CatCrypt.Crypto.SecureCompilation.ThirToComPilot
 CatCrypt.Crypto.SecureCompilation.ThirToCryptoDialect
 CatCrypt.Crypto.SecureCompilation.ThreefishMixGoldenPath
 CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR
+CatCrypt.Crypto.SecureCompilation.TileBackend.TileArithCorrect
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMul
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileVectorUnify
 CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridge
@@ -735,6 +736,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
 CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitVeir
 CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
 CatCrypt.Crypto.SecureCompilation.VIR.YmmByteEncoder
+CatCrypt.Crypto.SecureCompilation.VIR.ZmmByteEncoder
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath
