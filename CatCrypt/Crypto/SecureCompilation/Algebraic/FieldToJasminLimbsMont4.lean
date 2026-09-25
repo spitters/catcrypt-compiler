@@ -1,0 +1,180 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+
+/-!
+# `fieldDialect → jasminDialect` over four 64-bit limbs in Montgomery form
+
+For a modulus record `P : FieldLimbs.Mont4.Mont4Prime`, the multi-value block
+lowering from `fieldDialect` to `jasminDialect` that represents every field type by
+four 64-bit registers. A value of `fp P.p` is carried by the limbs of its
+Montgomery form (`FieldLimbs.Mont4.enc`); values of other types are carried by zero
+limbs.
+
+| source op at `P.p` | target block |
+|---|---|
+| `fAdd` | `addBlk x y` |
+| `fMul` | `mulBlk x y` |
+| `fConst c` | `constBlk (c · 2^256).val` |
+| `fCopy` | `Curve25519.copyBlk x` |
+
+Every other operation, and every operation at another modulus, lowers to the zero
+limbs; the coverage predicate `GoodM` excludes them.
+
+## Main definitions
+
+* `mapTysL`, `encL`: the type map and the encoding.
+* `lowerOpL`, `loweringL`: the per-operation blocks and the `MultiBlockLoweringData`.
+* `GoodM`: the operations covered at `P.p`.
+
+## Main results
+
+* `nv_encX`, `nv_encY`: the operand limb variables of a flattened valuation carry the
+  Montgomery forms.
+* `blockSquareL`: the block square of `loweringL` for `GoodM` expressions.
+* `fieldToJasminLimbsMont4_denote`: for every `GoodM`-covered program `c`,
+  `(loweringL.lowerMulti c).denote (flatVal encL V) = encL (c.denote V)`.
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsMont4
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.Ctxt
+open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS
+open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
+  (w64 MC nv nv_cons nv_nil R4 limbsOf copyBlk)
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
+
+variable (P : Mont4Prime)
+
+/-! ## 1. Operand variables -/
+
+/-- The context `Γ` preceded by the four limbs of an operand. -/
+abbrev C4 (Γ : Ctxt jasminDialect) : Ctxt jasminDialect := R4 ++ Γ
+
+/-- Limb `0` of the first operand. -/
+abbrev xv₀ {Γ : Ctxt jasminDialect} : Var (C4 Γ) w64 := .here
+/-- Limb `1` of the first operand. -/
+abbrev xv₁ {Γ : Ctxt jasminDialect} : Var (C4 Γ) w64 := .there .here
+/-- Limb `2` of the first operand. -/
+abbrev xv₂ {Γ : Ctxt jasminDialect} : Var (C4 Γ) w64 := .there (.there .here)
+/-- Limb `3` of the first operand. -/
+abbrev xv₃ {Γ : Ctxt jasminDialect} : Var (C4 Γ) w64 := .there (.there (.there .here))
+
+/-- Shift a variable past the four limbs of the first operand. -/
+abbrev past4 {Γ : Ctxt jasminDialect} (v : Var Γ w64) : Var (C4 Γ) w64 :=
+  .there (.there (.there (.there v)))
+
+theorem nv_limbsOf {Γ : Ctxt jasminDialect} (n : Nat) (hn : n < 2 ^ 256)
+    (B : Valuation Γ) : nv (hvAppend (limbsOf n) B) [xv₀, xv₁, xv₂, xv₃] = n := by
+  show (BitVec.ofNat 64 n).toNat + 2 ^ 64 * ((BitVec.ofNat 64 (n / 2 ^ 64)).toNat
+    + 2 ^ 64 * ((BitVec.ofNat 64 (n / 2 ^ 128)).toNat
+    + 2 ^ 64 * ((BitVec.ofNat 64 (n / 2 ^ 192)).toNat + 2 ^ 64 * 0))) = n
+  simp only [BitVec.toNat_ofNat]
+  omega
+
+theorem nv_encX {Γ : Ctxt jasminDialect} (x : ZMod P.p) (B : Valuation Γ) :
+    nv (hvAppend (enc P x) B) [xv₀, xv₁, xv₂, xv₃] = (x * R P).val :=
+  nv_limbsOf _ (val_lt_two_pow P _) B
+
+theorem nv_encY {Γ : Ctxt jasminDialect} (A : ListDenote R4) (y : ZMod P.p)
+    (B : Valuation Γ) :
+    nv (hvAppend A (hvAppend (enc P y) B))
+      [past4 xv₀, past4 xv₁, past4 xv₂, past4 xv₃] = (y * R P).val := by
+  rcases A with _ | ⟨a₀, _ | ⟨a₁, _ | ⟨a₂, _ | ⟨a₃, _ | _⟩⟩⟩⟩
+  exact nv_encX P y B
+
+/-! ## 2. The lowering -/
+
+/-- Every field type is carried by four 64-bit registers. -/
+@[reducible] def mapTysL : fieldDialect.Ty → List jasminDialect.Ty := fun _ => R4
+
+/-- The encoding: `enc P` on `fp P.p`, and zero limbs on every other type. -/
+def encL : ∀ {t : fieldDialect.Ty}, ⟦t⟧ → Valuation (mapTysL t)
+  | .fp q, x => if h : q = P.p then enc P (cast (congrArg ZMod h) x) else limbsOf 0
+  | .fp2 _, _ => limbsOf 0
+  | .fp6 _, _ => limbsOf 0
+  | .fp12 _, _ => limbsOf 0
+
+theorem encL_fp (x : ZMod P.p) : encL P (t := .fp P.p) x = enc P x := by
+  simp only [encL, dite_true]
+  rfl
+
+/-- The block of each field operation: addition, multiplication, constants and
+    copies at `P.p`, and the zero limbs otherwise. -/
+def lowerOpL : (op : fieldDialect.Op) →
+    MultiReturnCom jasminDialect (ctxFlat mapTysL (DialectSignature.sig op))
+      (mapTysL (DialectSignature.ret op))
+  | .fAdd q => if q = P.p then
+      addBlk P xv₀ xv₁ xv₂ xv₃ (past4 xv₀) (past4 xv₁) (past4 xv₂) (past4 xv₃)
+    else constBlk 0
+  | .fMul q => if q = P.p then
+      mulBlk P xv₀ xv₁ xv₂ xv₃ (past4 xv₀) (past4 xv₁) (past4 xv₂) (past4 xv₃)
+    else constBlk 0
+  | .fConst q c => if h : q = P.p then constBlk ((cast (congrArg ZMod h) c * R P).val)
+    else constBlk 0
+  | .fCopy q => if q = P.p then copyBlk xv₀ xv₁ xv₂ xv₃ else constBlk 0
+  | _ => constBlk 0
+
+/-- The multi-value lowering `fieldDialect → jasminDialect` over four limbs in
+    Montgomery form. -/
+def loweringL : MultiBlockLoweringData fieldDialect jasminDialect where
+  mapTys := mapTysL
+  lowerOp := lowerOpL P
+
+/-- The operations covered at `P.p`: addition, multiplication, constants and copies. -/
+def GoodM {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t) : Prop :=
+  e.op = .fAdd P.p ∨ e.op = .fMul P.p ∨ (∃ c : ZMod P.p, e.op = .fConst P.p c) ∨
+    e.op = .fCopy P.p
+
+/-! ## 3. The block square and the fundamental theorem -/
+
+/-- **The block square of `loweringL`.** -/
+theorem blockSquareL : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x) (GoodM P) := by
+  intro Γ t e hg vals
+  obtain ⟨op, h, args⟩ := e
+  rcases hg with hop | hop | ⟨c, hop⟩ | hop <;> subst hop
+  · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+    show (lowerOpL P (.fAdd P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
+      = encL P (t := .fp P.p) (fAddF a b)
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact addBlk_denote P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
+  · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+    show (lowerOpL P (.fMul P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
+      = encL P (t := .fp P.p) (fMulF a b)
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact mulBlk_denote P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
+  · obtain ⟨⟩ := vals
+    show (lowerOpL P (.fConst P.p c)).denote .nil = encL P (t := .fp P.p) (fConstF c)
+    rw [encL_fp, lowerOpL, dif_pos rfl]
+    exact constBlk_denote _ _
+  · rcases vals with _ | ⟨a, _ | _⟩
+    show (lowerOpL P (.fCopy P.p)).denote (hvAppend (encL P a) .nil)
+      = encL P (t := .fp P.p) (fCopyF a)
+    rw [encL_fp, lowerOpL, if_pos rfl, copyBlk_denote, nv_encX]
+    rfl
+
+/-- **Denotation preservation of `fieldDialect → jasminDialect` over four limbs in
+    Montgomery form.** A `GoodM`-covered field program lowers to a multi-result
+    jasmin program that maps the limbs of its inputs to the limbs of its result. -/
+theorem fieldToJasminLimbsMont4_denote {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodM P) c) (V : Valuation Γ) :
+    ((loweringL P).lowerMulti c).denote (flatVal (fun {t} x => encL P (t := t) x) V)
+      = encL P (c.denote V) :=
+  (loweringL P).multiFundamental_on (fun {t} x => encL P (t := t) x) (GoodM P)
+    (blockSquareL P) c hc V
+
+end CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbsMont4

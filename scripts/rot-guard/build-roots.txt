@@ -1055,3 +1055,5 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2Mersenne31
 CatCrypt.Crypto.SecureCompilation.Algebraic.BinomialExt4
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldExprCompile
 CatCrypt.Crypto.Pairing.PastaGroupEmit
+CatCrypt.Crypto.SecureCompilation.Algebraic.PoseidonBN254Emit
+CatCrypt.Crypto.Hash.Poseidon.BN254
