@@ -140,7 +140,7 @@ noncomputable opaque ed25519_scalarmult_base : FpL25519 → EdPoint
 /-- Variable-base double-scalar `s·B + k·A`. Implementation uses
     Shamir's trick in variable time (only on public values during
     verification) and drives MLIR-emitted `ed25519_add_*` / `ed25519_dbl_*`. -/
-axiom ed25519_double_scalarmult_vartime :
+noncomputable opaque ed25519_double_scalarmult_vartime :
     FpL25519 → FpL25519 → EdPoint → EdPoint
 
 /-! ### 2.1 Signing

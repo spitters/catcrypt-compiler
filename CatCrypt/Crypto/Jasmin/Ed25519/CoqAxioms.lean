@@ -167,7 +167,7 @@ libcrux + Jasmin verification level, not at AUCurves.
 | `curve_two_d` | 📌 cite-only | `2 · curve_d` (precomputed for efficiency); constant. |
 | `fp_is_prime` | ✅ proved | `2^255 - 19` prime; deferred to fiat-crypto's Pratt certificate. |
 | `p_is_prime` | ✅ proved | Alias of `fp_is_prime`. |
-| `fp_pow_p58*` | 📌 cite-only | Spec-side abstract `x^((p−5)/8)`. The machine chain `PowP58Composition.bignum_pow_p25519_p58_correct` is proved in Lean, but `fp_pow_p58`/`interp_fp_pow_p58` remain axioms: the tie from the abstract field element to the chain output is the trust boundary (`PowP58Bridge.lean`), discharged in Rocq. |
+| `fp_pow_p58*` | ✅ proved in Lean | `fp_pow_p58` is the pow22523 chain over `fp_sqr`/`fp_mul` (`Ed25519/PowP58.lean`); `interp_fp_pow_p58` is a theorem from `interp_fp_sqr` and `interp_fp_mul`. |
 
 ### Ed25519Optimizations.lean — radix-16 + windowed scalarmult
 
@@ -187,7 +187,7 @@ trusted at the fiat-crypto level.
 | `ed_add_*` | ✅ proved | Edwards point addition properties (assoc, comm, left_id); standard. |
 | `ed_madd_niels*` | 📌 cite-only | Mixed addition via Niels representation. |
 | `ed_readd*` | 📌 cite-only | Re-addition optimization. |
-| `fp_inv_via_chain` | 📌 cite-only | Spec-side field inversion. The machine chain `InvP25519Composition.bignum_inv_p25519_correct` is proved in Lean, but `fp_inv_via_chain` remains an axiom: the tie from the abstract field element to the chain output is the trust boundary, discharged in Rocq. |
+| `fp_inv_via_chain` | ✅ proved in Lean | A theorem: the statement of `interp_fp_inv_pow` (`Ed25519Spec.lean`). |
 
 ### Ed25519Spec.lean — extra spec-level axioms
 

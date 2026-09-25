@@ -179,16 +179,16 @@ theorem fermat_inv (x : Fp25519) (hx : interp_fe x ≠ 0) :
   field_simp
   linear_combination h_pminus2
 
-/-- **Discharged in Rocq:** `fe_inv_correct` at
-    `fiat-crypto/src/Bedrock/Group/AdditionChains.v:626`.
-    The 254-sqr + 11-mul addition chain in our `dalek_shim.c::fe_invert`
-    computes `z^(p-2)` (the Fermat exponent). -/
-axiom fp_inv_via_chain (z : Fp25519) :
-    interp_fe (fp_inv z) = (interp_fe z) ^ (fpModulus - 2)
+/-- The field inverse `fp_inv z` evaluates to `z^(p-2)` (the Fermat exponent),
+    the statement of `interp_fp_inv_pow`. The corresponding Rocq result for the
+    254-sqr + 11-mul addition chain is `fe_inv_correct` at
+    `fiat-crypto/src/Bedrock/Group/AdditionChains.v:626`. -/
+theorem fp_inv_via_chain (z : Fp25519) :
+    interp_fe (fp_inv z) = (interp_fe z) ^ (fpModulus - 2) :=
+  interp_fp_inv_pow z
 
-/-- **Proved.** The chain-correctness axiom + Fermat together imply our
-    `interp_fp_inv` axiom — i.e., the Lean-level field-inverse axiom
-    is *derivable* from the more basic chain-correctness statement. -/
+/-- The field inverse `fp_inv x` evaluates to `(interp_fe x)⁻¹` for nonzero
+    `x`, from `fp_inv_via_chain` and Fermat's little theorem. -/
 theorem interp_fp_inv_from_chain (x : Fp25519) (hx : interp_fe x ≠ 0) :
     interp_fe (fp_inv x) = (interp_fe x)⁻¹ := by
   rw [fp_inv_via_chain]

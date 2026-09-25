@@ -18,30 +18,20 @@ Elligator2 / hash-to-curve / `fp_sqrt_ratio_i` machinery.
 
 ## What this file ships
 
-* `fp_pow_p58 : Fp25519 → Fp25519` — opaque function.
-* `interp_fp_pow_p58` — chain-correctness axiom:
-  `interp_fe (fp_pow_p58 x) = (interp_fe x)^((p−5)/8)`.
-* `fp_sqrt_ratio_via_pow_p58` — the dalek formula
-  `fp_sqrt_ratio_i u v = u · v · (u · v³ · (u · v⁷)^((p−5)/8))²`-shape
-  identity, connecting `fp_sqrt_ratio_i` (an existing opaque function) to
-  `fp_pow_p58` modulo the canonicalisation post-processing.
+* `fp_pow_p58 : Fp25519 → Fp25519` — the dalek `pow22523` addition
+  chain over `fp_sqr` and `fp_mul`.
+* `interp_fp_pow_p58` — `interp_fe (fp_pow_p58 x) = (interp_fe x)^((p−5)/8)`,
+  proved from `interp_fp_sqr` and `interp_fp_mul`.
+* `sqrtRatioRawCore` — the dalek formula core
+  `u · v · (u · v⁷)^((p−5)/8)` as a composition of `fp_mul` and
+  `fp_pow_p58`, with its interpretation `interp_sqrtRatioRawCore`.
 
-## Trust set delta
+## Trust set
 
-This file adds **one opaque function** (`fp_pow_p58`) and **one axiom**
-(the chain-correctness `interp_fp_pow_p58`) — same shape as
-`fp_inv` + `interp_fp_inv_pow` for the `(p−2)` exponent.
-
-Both are discharged in Rocq:
-
-* `fp_pow_p58` — discharged by `fpPowP58Chain` from
-  `Ed25519AddChainsDSL.lean`, which is the dalek/AUCurves chain.
-* `interp_fp_pow_p58` — Rocq-side via the `exp_by_squaring_correct`
-  lemma instantiated at exponent `(p−5)/8 = 2²⁵² − 3`.
-
-Once `bignum_pow_p25519_p58` lands as a Hoare triple, both declarations
-become unnecessary — the exponent's correctness is proved through
-the verified pipeline.
+The file declares no axiom. `interp_fp_pow_p58` depends on the field-operation
+axioms `interp_fp_sqr` and `interp_fp_mul` of `Ed25519Spec.lean`. The tie from
+`fp_pow_p58` to the machine chain `bignum_pow_p25519_p58` is in
+`PowP58Bridge.lean`.
 
 ## The dalek formula for `fp_sqrt_ratio_i`
 
@@ -76,17 +66,53 @@ open scoped ENNReal
 
 /-! ## §1  The `fp_pow_p58` opaque interface -/
 
-/-- `x^((p−5)/8) = x^(2²⁵² − 3)` for Curve25519.  Implemented by the
-    dalek-style `fpPowP58Chain` (see `Ed25519AddChainsDSL.lean`):
-    251-operation chain (249 sqrs + 2 sqrs + 1 mul). -/
-noncomputable opaque fp_pow_p58 : Fp25519 → Fp25519
+/-- `fp_sqrN n x` squares `x` `n` times with `fp_sqr`. -/
+noncomputable def fp_sqrN (n : ℕ) (x : Fp25519) : Fp25519 := fp_sqr^[n] x
 
-/-- Chain-correctness axiom for `fp_pow_p58`.  Asserts the
-    interpretation of the chain output equals the abstract
-    field exponentiation.  Discharged in Rocq via
-    `exp_by_squaring_correct` instantiated at `(p−5)/8`. -/
-axiom interp_fp_pow_p58 (x : Fp25519) :
-    interp_fe (fp_pow_p58 x) = (interp_fe x) ^ ((fpModulus - 5) / 8)
+/-- `fp_sqrN n x` evaluates to `(interp_fe x) ^ (2 ^ n)`. -/
+theorem interp_fp_sqrN (n : ℕ) (x : Fp25519) :
+    interp_fe (fp_sqrN n x) = (interp_fe x) ^ (2 ^ n) := by
+  induction n with
+  | zero => simp [fp_sqrN]
+  | succ n ih =>
+    rw [fp_sqrN, Function.iterate_succ_apply', ← fp_sqrN, interp_fp_sqr, ih,
+      ← pow_mul, pow_succ]
+
+/-- `x^((p−5)/8) = x^(2²⁵² − 3)` for Curve25519, computed by the dalek
+    `pow22523` addition chain over `fp_sqr` and `fp_mul` (252 squarings,
+    11 multiplications), the chain of `fpPowP58Chain` in
+    `Ed25519AddChainsDSL.lean`. -/
+noncomputable def fp_pow_p58 (x : Fp25519) : Fp25519 :=
+  let t0 := fp_sqr x                      -- x^2
+  let t1 := fp_sqrN 2 t0                  -- x^8
+  let t1 := fp_mul x t1                   -- x^9
+  let t0 := fp_mul t0 t1                  -- x^11
+  let t0 := fp_sqr t0                     -- x^22
+  let t0 := fp_mul t1 t0                  -- x^(2^5 - 1)
+  let t1 := fp_sqrN 5 t0
+  let t0 := fp_mul t1 t0                  -- x^(2^10 - 1)
+  let t1 := fp_sqrN 10 t0
+  let t1 := fp_mul t1 t0                  -- x^(2^20 - 1)
+  let t2 := fp_sqrN 20 t1
+  let t1 := fp_mul t2 t1                  -- x^(2^40 - 1)
+  let t1 := fp_sqrN 10 t1
+  let t0 := fp_mul t1 t0                  -- x^(2^50 - 1)
+  let t1 := fp_sqrN 50 t0
+  let t1 := fp_mul t1 t0                  -- x^(2^100 - 1)
+  let t2 := fp_sqrN 100 t1
+  let t1 := fp_mul t2 t1                  -- x^(2^200 - 1)
+  let t1 := fp_sqrN 50 t1
+  let t0 := fp_mul t1 t0                  -- x^(2^250 - 1)
+  let t0 := fp_sqrN 2 t0                  -- x^(2^252 - 4)
+  fp_mul t0 x                             -- x^(2^252 - 3)
+
+/-- `fp_pow_p58 x` evaluates to `(interp_fe x)^((p−5)/8)`, from
+    `interp_fp_sqr` and `interp_fp_mul`. -/
+theorem interp_fp_pow_p58 (x : Fp25519) :
+    interp_fe (fp_pow_p58 x) = (interp_fe x) ^ ((fpModulus - 5) / 8) := by
+  have hE : (fpModulus - 5) / 8 = 2 ^ 252 - 3 := by unfold fpModulus; decide
+  simp only [fp_pow_p58, interp_fp_mul, interp_fp_sqr, interp_fp_sqrN, hE]
+  ring
 
 /-! ## §2  `(p−5)/8` and `(p−1)/4` arithmetic facts
 
@@ -176,27 +202,11 @@ theorem sqrt_via_pow_p58_qr_case_statement
   refine ⟨sqrtRatioRawCore u v, ?_⟩
   exact interp_sqrtRatioRawCore u v
 
-/-! ## §5  When the bignum chain lands
+/-! ## §5  Connection to Elligator2Curve25519.lean
 
-When `bignum_pow_p25519_p58` ships as a Hoare-verified leaf:
-
-1. Replace the opaque `fp_pow_p58 : Fp25519 → Fp25519` here with a
-   `noncomputable def fp_pow_p58 : Fp25519 → Fp25519 := bignumPowP58.evalChain`.
-2. Replace `axiom interp_fp_pow_p58` with a theorem whose proof
-   walks the `fpPowP58Chain` Hoare triple structure.
-3. The downstream consumers of `interp_fp_pow_p58` (Elligator2,
-   sqrt_ratio_i) inherit the Qed automatically.
-
-This file is the **interface point** for that future refactor —
-adding it now lets downstream Lean code commit to the
-`fp_pow_p58` interface today.
-
-## Connection to Elligator2Curve25519.lean
-
-`Zkgroup/Elligator2Curve25519.lean` axiomatises `elligator2Encode :
-Fp25519 → EdPoint` and routes through `interp_fp_sqrt_ratio_i`.
-A future commit can refactor `elligator2Encode`'s body to use
-`sqrtRatioRawCore` from this file directly, eliminating the
-indirect axiom-citation through `fp_sqrt_ratio_i`. -/
+`Zkgroup/Elligator2Curve25519.lean` declares `elligator2Encode :
+Fp25519 → EdPoint` and routes through `interp_fp_sqrt_ratio_i`;
+`sqrtRatioRawCore` gives the same core as an explicit composition of
+`fp_mul` and `fp_pow_p58`. -/
 
 end CatCrypt.Crypto.Jasmin.Ed25519.PowP58

@@ -552,7 +552,7 @@ theorem ed_smul_neg_inv (k : FpL25519) (P : EdPoint) :
 
     **Discharged in Rocq**: by-definition + the affine projection's
     well-definedness from `XYZT/Basic.v`. -/
-axiom ed_compress_spec : (P : EdPoint) → (hZ : interp_fe P.Z ≠ 0) →
+noncomputable opaque ed_compress_spec : (P : EdPoint) → (hZ : interp_fe P.Z ≠ 0) →
     ZMod fpModulus × Bool
 
 /-- Abstract spec-level decompress: takes `(y_coord, sign_bit)` and
