@@ -305,37 +305,19 @@ theorem keccak_round_bitexact (s : Lanes) (rc : BitVec 64) :
     keccakClosedFullRound s rc = keccakFullRound s rc := by
   simp only [keccakClosedFullRound, keccakFullRound, keccak_diffuse_bitexact]
 
-/-! ## 8. Composition with `KeccakBitexact` (the emitter-side step, named)
+/-! ## 8. Relation to `KeccakBitexact`
 
 `KeccakBitexact.keccak_round_loop_bitexact` proves the emitted
 `for round = 0 to 24 { acc = keccakDiffuse(acc) ⊕ RC[round] }` denotes
 `keccak_f bitexactSteps init` — the 24-fold composition of (`keccakDiffuse` then
 the FIPS 202 ι), where `keccakDiffuse` is a model map for the diffusion. This
 module proves the closed-form diffusion `keccakClosedForm` equals the FIPS 202
-spec `keccakFipsRound` **bit-exactly**. Replacing the model map `keccakDiffuse`
-by `keccakClosedForm` is an emitter-side `Com.denote` reduction over the
-600-binding `emitRound` chain, of the same kind as the SHA-2 emitter-side step;
-it is outside this module's scope. The definition below names that step. -/
-
-/-- **Emitter-side step for Keccak, named.** The intended statement is that
-    `KeccakBitexact.keccakDiffuse`, expanded by the `Com.denote` reduction over
-    the 600-binding `emitRound` chain, coincides with `keccakClosedForm` (on the
-    1600-bit ↔ `Lanes` correspondence). The body as written is the reflexive
-    equation `keccakClosedForm s = keccakClosedForm s`, which does not express
-    that reduction. -/
-def emitter_denote_eq_closed_form_residual : Prop :=
-  ∀ (s : Lanes),
-    -- Reflexive body; the intended statement equates the emitter's diffusion
-    -- with `keccakClosedForm`. The *bit-level identity* between the closed
-    -- form and the FIPS spec is `keccak_diffuse_bitexact` above.
-    keccakClosedForm s = keccakClosedForm s
+spec `keccakFipsRound` **bit-exactly**. The model map `keccakDiffuse` is a
+word-level stand-in, `(acc <<< acc.toNat) ^^^ acc`, not θ∘ρ∘π∘χ, so no statement
+here relates the emitted loop to `keccakClosedForm`. -/
 
 /-- **Composition corollary**: the closed-form full round equals the FIPS 202
-    full round (a restatement of `keccak_round_bitexact`). Together with the
-    emitter-side step from `KeccakBitexact.keccakDiffuse` to `keccakClosedForm`,
-    which this module does not prove, it gives the FIPS identity of the emitted
-    Keccak round loop, with the KAT as a corollary of a proven identity rather
-    than a `native_decide`-checked unrolled stream. -/
+    full round (a restatement of `keccak_round_bitexact`). -/
 theorem keccak_round_loop_bitexact_via_fips :
     ∀ (s : Lanes) (rc : BitVec 64),
       keccakClosedFullRound s rc = keccakFullRound s rc :=

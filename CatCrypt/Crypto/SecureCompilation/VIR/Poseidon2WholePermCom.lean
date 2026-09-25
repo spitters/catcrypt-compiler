@@ -1379,9 +1379,8 @@ the 16 lane slots. Each individual emitter's denotation IS the matching `bbX`
 atomic case; `bbAdd`/`bbMul`/`bbReduce`/`bbCsub` are the closed forms the
 composite emitters realize), so the equality holds binding-by-binding. The
 structural `Com.denote` reduction over the full ≈several-thousand-binding tree is
-too large to `rfl` in one elaboration; we factor it as a named `Prop`, exactly as
-`Poseidon2DiffuseExact.emitter_denote_eq_closed_form_residual` does for the
-single internal round. -/
+too large to `rfl` in one elaboration, so it is stated as the named `Prop`
+`poseidon2_perm_com_denote_residual` below. -/
 
 /-- Read the 16 lane slots off a final valuation as a `BBState`. -/
 def readLanes {Γ : Ctxt jasminDialect} (st : BState Γ)

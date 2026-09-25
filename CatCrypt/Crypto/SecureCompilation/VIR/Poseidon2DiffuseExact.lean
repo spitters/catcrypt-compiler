@@ -296,27 +296,11 @@ def bbMul_field_correct_residual : Prop :=
     a < bbP → b < bbP →
     bbMul a b < bbP ∧ bbMul a b = (a * b) % bbP
 
-/-- **The closed-form spec correspondence** (mod the residual): once the
-    `bbMul_field_correct_residual` seam is closed, the BitVec-level
-    `pos2_internal_round_bitexact` lifts to a per-lane identity over
-    `ZMod babyBearPrime`, matching the Plonky3 `BabyBear.internalRound` exactly.
-    This is the lattice analog of the SHA-2 emitter-side Com.denote reduction. -/
-def emitter_denote_eq_closed_form_residual : Prop :=
-  ∀ (s : BBState) (rc : BitVec 64),
-    -- Placeholder: the `Com.denote` reduction equates the emitter's diffusion
-    -- with `pos2InternalRoundClosed`. The *bit-level identity* between the
-    -- closed form and the Plonky3 spec is `pos2_internal_round_bitexact` above.
-    pos2InternalRoundClosed s rc = pos2InternalRoundClosed s rc
-
-/-- **Composition corollary** (mod the residual emitter-side step):
-    the emitted Poseidon2-BabyBear internal-round loop denotes the
-    Plonky3 internal-round semantics — given
-    `emitter_denote_eq_closed_form_residual`, the model
-    `pos2Diffuse` of `Poseidon2Bitexact` is replaceable by `pos2InternalRoundClosed`, and
-    `pos2_internal_round_bitexact` above supplies the Plonky3 identity.
-    The KAT then becomes a corollary of `pos2_internal_round_bitexact` (a
-    structurally proven identity, not a `native_decide`-checked unrolled
-    stream). -/
+/-- **Composition corollary**: the closed-form internal round equals the Plonky3
+    internal round (a restatement of `pos2_internal_round_bitexact`). The model
+    map `pos2Diffuse` of `Poseidon2Bitexact` is a word-level stand-in,
+    `(acc <<< acc.toNat) * acc`, so no statement here relates the emitted loop to
+    `pos2InternalRoundClosed`. -/
 theorem poseidon2_internal_round_loop_bitexact_via_plonky3 :
     ∀ (s : BBState) (rc : BitVec 64),
       pos2InternalRoundClosed s rc = pos2InternalRoundFips s rc :=

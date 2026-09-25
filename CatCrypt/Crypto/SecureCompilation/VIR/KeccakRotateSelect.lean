@@ -526,10 +526,9 @@ keccakF1600Com.denote` is **deferred**, for two structural reasons:
 
 1. **No baseline to mirror.** Even the straight-line `keccakF1600Com` has no
    closed `Com.denote` lemma — `KeccakEmitterReduction` exposes only the
-   per-helper rewrites (`emitOp_denote`, `emitMov_denote'`, `emitRotL_denote_pos`)
-   and the whole-emitter equality is an *open residual*
-   (`KeccakDiffuseExact.emitter_denote_eq_closed_form_residual : Prop`). There is
-   no proved whole-permutation denotation to transport across the χ swap.
+   per-helper rewrites (`emitOp_denote`, `emitMov_denote'`, `emitRotL_denote_pos`),
+   and the whole-emitter equality is not stated. There is no proved
+   whole-permutation denotation to transport across the χ swap.
 
 2. **Arity mismatch defeats a typed `Com.denote` lane equality.**
    `emitChiLane` extends the context **four** times (mov;xor;and;xor) whereas

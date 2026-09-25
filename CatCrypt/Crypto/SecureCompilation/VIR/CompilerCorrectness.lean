@@ -58,8 +58,9 @@ each handled separately rather than hand-waved:
 3. **semantic printer faithfulness** — only the *structural* faithfulness is
    proved here (`JasminPrintCorrect`, instruction/parameter counts); the
    `JasminProg → .jazz` text and its parse are a later tier.
-4. **`.jazz → x86`** — `jasminc`, the verified assembly backend, is the
-   deliberate trusted base; we do not re-verify it.
+4. **`.jazz → x86`** — through `jasminc` this step is trusted and not
+   re-verified. The package's own x86 backend (`X86Backend/`) is a separate route
+   to machine code, with its own theorems.
 
 The LowCT→Com[catCryptDialect] front (`translateDialectControl`) and the
 Com[catCryptDialect]→Com[jasmin] front (A1, `cryptoDialectToJasminCom_denote_eq`)

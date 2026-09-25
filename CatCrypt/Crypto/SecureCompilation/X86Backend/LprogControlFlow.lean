@@ -43,7 +43,9 @@ the emitted code size and the compiler's peak `Com`/`Lcmd` memory.
   `loopLcmd` below.
 * The **forward branch / guard** (`Cond.lean`'s public forward conditional) is
   emitted through the same `Lcond`/`Lgoto` renderer arms (`LprogAsmPrinter`'s
-  `attCC` Jcc map). Its denotation is `Cond.condBlock_lowering_denote`.
+  `attCC` Jcc map). Its lowering to the x86 dialect denotes `runCond`
+  (`Cond.condBlock_lowering_denote`); the renderer arms carry no theorem of their
+  own.
 
 ## What is NOT lowered by the counted core
 
