@@ -60,7 +60,8 @@ theorem.
 | Primitive | Modules | Theorems | Provenance |
 |---|---|---|---|
 | Plonky3 prover layers | `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`, `Plonky3AirReflect.lean`, `Plonky3FriReflect.lean`, `Plonky3LdeReflect.lean`, `Plonky3ProveReflect.lean`; `SC/VIR/Plonky3OrchLoopsEmit.lean`, `SC/VIR/Plonky3PaddingFreeSpongeEmit.lean`, `SC/VIR/Plonky3SerializeEmit.lean` | `orchLoopFundef_eq_buildOrchLoop`, `leWriterFundef_body_eq`: structural equalities of the rendered loops. | Orchestration over axiomatized leaves, as `LowCT` bodies. |
-| Bulletproofs and Halo2 IPA provers | `CatCrypt/Crypto/Jasmin/BulletproofsIPAReflect.lean`; `CatCrypt/Crypto/Jasmin/Halo2IPAProverReflect.lean` | none | Orchestration over axiomatized leaves, as `LowCT` bodies. |
+| Bulletproofs IPA prover (`n = 8`) | `CatCrypt/Crypto/Jasmin/BulletproofsIPAReflect.lean` | `ipaProverBody8_computes`: for every codec with decode ∘ encode the identity, scalar action and challenge function `H`, the `LowCT` body run under `semScalarL` at the leaf oracle `ipaLeafOracle` leaves the encodings of the commitment, the three `(L, R)` pairs and the final scalar of the spec prover `ipaProve … 3 a g`, for all `a`, `G`. `ipaProverBody8_denote`: the same for the `Com` that `translateDialectControl` produces. `ipaProverBody8_computes_ed25519`: the instance over the edwards25519 group, scalars `ZMod L` acting by `lsmul`, points in the RFC 8032 encoding. | Orchestration as a `LowCT` body over leaves that are Lean definitions; the leaves are external calls in the emitted `.jazz`, and `H` is a parameter. |
+| Halo2 IPA prover | `CatCrypt/Crypto/Jasmin/Halo2IPAProverReflect.lean` | none | Orchestration over axiomatized leaves, as `LowCT` bodies. |
 
 ## Ascent
 
