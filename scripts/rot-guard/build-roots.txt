@@ -506,6 +506,7 @@ CatCrypt.Crypto.SecureCompilation.ThirToComPilot
 CatCrypt.Crypto.SecureCompilation.ThirToCryptoDialect
 CatCrypt.Crypto.SecureCompilation.ThreefishMixGoldenPath
 CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR
+CatCrypt.Crypto.SecureCompilation.TileBackend.CudaTileSemantics
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileArithCorrect
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileDialectLower
 CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMul

@@ -27,6 +27,7 @@ module declares into `TileBackend.<ModuleName>`.
 | `TileS16HighMul.lean` | `montMulS16Spec`, `tileMontMulS16` with `tileMontMulS16_denote` (by `rfl`) and `tileMontMulS16_kat`; `vpmulhw16W_lane`, `vpmulhw_com_is_tile_lowering`, `sqdmulh_is_tile_lowering`, `vmulh_is_tile_lowering`, `tri_isa_mulhs_consolidates` |
 | `TileS16HighMulCom.lean` | `s16HighMulCom`, the `VPMULHW` step as `Com jasminDialect`; `s16HighMulCom_denote` |
 | `TileDialectLower.lean` | `lowerCom` (straight-line `Com tileDialect` to a `TileOp` block over named registers) with `lowerCom_correct` for every program; `bbMulTileCom` (the BabyBear multiply as a `Com tileDialect` program) with `bbMulTileCom_denote`, `bbMulTileCom_lower_isSome`, `bbMulTileCom_lowered_denote`; `bbMulTileComIR`, its `cuda_tile` text emitted through the dialect |
+| `CudaTileSemantics.lean` | an AST for the `cuda_tile` fragment `emitTileFunc` prints, its semantics per the CUDA Tile IR specification (sections cited per op), `print`, `parse`; `emitTileFunc_eq_print`, `parse_print`, `print_injective`, `run_toAst` and `run_readShr_toAst` (AST run = `runTileBlock`, every shape); `bbMulTileComIR_correct` (the emitted BabyBear text, shifts read as `shri … unsigned`, computes `x i * y i mod p`) and `bbMulAst_run_eq_none` (as printed, the text has no meaning under the specification) |
 | `TileArithCorrect.lean` | `bbMulWord_toNat` (`bbMulWord a b = a · b mod p` for `a, b < p`), `montMulS16Spec_exact`, `montMulS16Spec_mul_R_modEq` (`r · 2^16 ≡ a · b mod 3329`, all inputs), `montMulS16Spec_abs_lt` (`|r| < 3329` when `|a · b| < 3329 · 2^15`) |
 
 ## Entry-point theorems
@@ -48,7 +49,14 @@ module declares into `TileBackend.<ModuleName>`.
   signed high half. The encoder emits `SQDMULH`, which doubles and saturates; no
   theorem relates the two.
 - `ComToTileIR.lean` emits from a `TileOp` list (reached from `Com tileDialect`
-  through `TileDialectLower.lowerCom`), with the tile type fixed to `8xi64`. No theorem in this directory relates the emitted text to
+  through `TileDialectLower.lowerCom`), with the tile type fixed to `8xi64`. The
+  text departs from the CUDA Tile IR specification: `shrr` prints the
+  nonexistent `cuda_tile.shrui`, `shr` prints `shri` without the required
+  signedness keyword, `mulhs` prints the nonexistent `mulhi`, the lane-moving
+  ops print names whose specification meaning differs, and the function form
+  (`func.func`/`return`, `dense<k>`) is not `cuda_tile.entry` syntax.
+  `CudaTileSemantics` proves correctness only under the reading of the shifts as
+  `shri … unsigned`. No theorem in this directory relates the emitted text to
   `TileModel`, and the text is not checked by the `cuda_tile`
   toolchain in the package.
 - No theorem in this directory relates the strings of `ZmmArithBridgeComEmit.lean`
