@@ -18,6 +18,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldFrontEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldFrontEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFieldEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Algebraic.BinomialExt4
+public import CatCrypt.Crypto.SecureCompilation.Algebraic.BinomialExt4
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
@@ -280,6 +282,47 @@ theorem extField_owned_has_add :
 theorem extField_owned_has_sub :
     hasSub extFieldAsm "ext4_sub_rc" = true := by native_decide
 
+/-! ## 4c. Front-generated degree-4 extension kernels (`bb_ext4_mul_c{0..3}`, `bb_ext4_fold_c{0..3}`)
+
+The programs `BinomialExt4.mulJasmin 11 babyBear k` and
+`BinomialExt4.foldJasmin 11 babyBear 2⁻¹ k`, compiled from field expressions by
+`FieldExprCompile.compileJasmin` and proved correct by `babyBear_mulJasmin_spec` and
+`babyBear_foldJasmin_spec` (canonical encoding, values in `[0, P)`). Every context
+word is a runtime load and input `i` is read from `inp[i]`:
+
+* `bb_ext4_mul_c{k}`: `a₀..a₃` at `inp[0..3]`, `b₀..b₃` at `inp[4..7]`; `out[0]` is
+  coordinate `k` of `a · b` in `𝔽_p[X]/(X⁴ − 11)`.
+* `bb_ext4_fold_c{k}`: `f(x)` at `inp[0..3]`, `f(−x)` at `inp[4..7]`, `β` at
+  `inp[8..11]`, `(2x)⁻¹` at `inp[12]`; `out[0]` is coordinate `k` of
+  `(f(x) + f(−x)) · 2⁻¹ + β · ((f(x) − f(−x)) · (2x)⁻¹)`. -/
+
+open CatCrypt.Crypto.SecureCompilation.Algebraic in
+/-- The lowered program of coordinate `k` of the BabyBear extension product, over
+    eight runtime input words. -/
+def bbExt4MulLprog (k : Fin 4) : Lprog :=
+  let (imm, inl) := abiMaps 8 (fun _ => none)
+  Com.toLprogPhysAbi (BinomialExt4.mulJasmin 11 FieldWord.BabyBear.babyBear k)
+    ("bb_ext4_mul_c" ++ toString k.val) (fun _ => none) imm inl (stdOutStore 1)
+
+open CatCrypt.Crypto.SecureCompilation.Algebraic in
+/-- The lowered program of coordinate `k` of the BabyBear extension FRI fold, over
+    thirteen runtime input words. -/
+def bbExt4FoldLprog (k : Fin 4) : Lprog :=
+  let (imm, inl) := abiMaps 13 (fun _ => none)
+  Com.toLprogPhysAbi (BinomialExt4.foldJasmin 11 FieldWord.BabyBear.babyBear 2⁻¹ k)
+    ("bb_ext4_fold_c" ++ toString k.val) (fun _ => none) imm inl (stdOutStore 1)
+
+/-- The seven hand-authored ext-field leaves of `extFieldLprog` together with the
+    eight front-generated kernels, rendered into one `.s`. -/
+def ext4OwnedLprog : Lprog :=
+  { extFieldLprog with
+    lp_funcs := extFieldLprog.lp_funcs
+      ++ (List.finRange 4).flatMap (fun k => (bbExt4MulLprog k).lp_funcs)
+      ++ (List.finRange 4).flatMap (fun k => (bbExt4FoldLprog k).lp_funcs) }
+
+def ext4OwnedAsm : String :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned ext4OwnedLprog
+
 /-! ## 5. Emit driver -/
 
 /-- Write the owned-backend `.s` files for the Plonky3 regArith kernels into the
@@ -298,8 +341,8 @@ def emitMain : IO Unit := do
   -- orch-loops composites that still consume `Plonky3FriFoldEmit.friFoldCom`.
   IO.FS.writeFile (dir ++ "/fri_fold_from_rustcmd_owned.s")
     Plonky3FriFoldFrontEmit.friFrontAsm
-  IO.FS.writeFile (dir ++ "/ext4_from_rustcmd_owned.s") extFieldAsm
-  IO.println "WROTE plonky3 owned .s (compress / hash_leaf / ntt_layer / fri_fold + bb_inv / ext4 mul+scale)"
+  IO.FS.writeFile (dir ++ "/ext4_from_rustcmd_owned.s") ext4OwnedAsm
+  IO.println "WROTE plonky3 owned .s (compress / hash_leaf / ntt_layer / fri_fold + bb_inv / ext4 mul+scale+add+sub + bb_ext4 mul/fold)"
   IO.println "  Com[jasmin] regArith -> toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend, NO jasminc"
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3EmitMain
