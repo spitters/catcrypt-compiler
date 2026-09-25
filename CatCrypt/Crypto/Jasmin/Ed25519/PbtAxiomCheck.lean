@@ -13,43 +13,39 @@ public import Mathlib.Tactic.NormNum
 set_option autoImplicit false
 
 /-!
-# Phase 0 axiom reality check
+# ZMod 11 shape checks for the Ed25519 layer
 
-Statement-shape ratchet for the Edwards-curve algebraic axioms in
-`EdwardsCurve.lean` and the optimization theorems in
-`Ed25519Optimizations.lean`. Phase 0:
-catch transcription errors in axiom statements *before* committing
-~3 weeks of Coq proof work to discharging them.
+Exhaustive checks, on a toy Edwards curve and a toy abelian group over
+`ZMod 11`, of the algebraic identities that the Edwards addition formulas
+of `EdwardsCurve.lean` and the group-law derivations of
+`Ed25519Optimizations.lean` rely on.
 
 ## Scope
 
-The actual axioms in `Ed25519Spec.lean` are over opaque `Fp25519` /
-`EdPoint` carrier types — nothing to compute. The checkable subset is
-the **algebraic-identity shapes** at the structural level: laws like
-`add_comm`, `add_assoc`, `add_neg_self` over a concrete small
-Edwards-style curve where computation is feasible.
+The group laws of the Ed25519 layer (`ed_add_assoc`, `ed_add_comm`,
+`ed_add_left_id`, the `ed_smul` laws, the Niels and cached round trips,
+windowed scalar multiplication) are Lean theorems over the edwards25519
+group `Ed25519Group.EdPt`, so their statements need no property-based
+check. The checks below exercise the same identity shapes on a concrete
+small curve and group where computation is feasible: the nonvanishing of
+the addition-formula denominators on on-curve points, and laws like
+`add_comm`, `add_assoc`, `add_neg_cancel` in `(ZMod 11, +)`.
 
-We use `ZMod 11`-based toy curves as the test ground. Each shape is
-discharged by `decide`, which exhausts the finite `ZMod 11` domain, so
-a shape that holds here is verified for the toy curve. A shape that
-would fail to `decide` is suspect of being either (a) wrong, or (b)
-requiring a property of `Fp25519` not captured at the structural
-level. Either way, fail-loud is good.
+Each shape is discharged by `decide`, which exhausts the finite
+`ZMod 11` domain, so a shape that holds here is verified for the toy
+curve or group.
 
 ## Skipped (structural check inapplicable)
 
-- `interp_fp_*` axioms (opaque carrier on LHS)
-- `interp_fp_inv_pow` (same)
-- Anything whose conclusion quantifies over opaque types
-
-These are validated via RFC 8032 §7.1 KAT regression at the
-`bench_ed25519_sign` level instead.
+The axioms of `Ed25519Spec.lean` are the 12 field and scalar interface
+axioms `interp_fp_*`, `interp_fp_sqrt_ratio_i` and `interp_scalar_*`.
+Their left-hand sides apply `interp_fe` or `interp` to an opaque carrier,
+so there is nothing to compute. They are validated via RFC 8032 §7.1 KAT
+regression at the `bench_ed25519_sign` level.
 
 ## When to run
 
-Re-run on every change to `Ed25519Spec.lean` axiom *statements*. A
-`decide` failure = transcription bug; fix the statement before any
-Coq work commits to discharging it.
+A `decide` failure means the stated shape is false on the toy domain.
 
 ```
 lake build CatCrypt.Crypto.Jasmin.Ed25519.PbtAxiomCheck
@@ -126,9 +122,8 @@ example : ∀ Px Py Qx Qy : ZMod 11,
 
 Most theorems in §6/§8 of `Ed25519Optimizations.lean` are derived from
 `ed_add_comm`, `ed_add_assoc`, `ed_add_left_id`, `ed_smul_distrib_add`,
-etc. — abstract group axioms over `EdPoint`. Since `EdPoint` is
-axiomatic, we PBT-check the *shape* of the derivations on a concrete
-abelian group.
+etc., which are theorems over the group `EdPt`. The checks below evaluate
+the *shape* of the derivations on a concrete abelian group.
 
 Use `(ZMod 11, +)` as the test group (commutative, associative,
 identity = 0, inverses = negation). The cascade theorems should hold
@@ -156,10 +151,10 @@ example : ∀ k a : ZMod 11, (a + (-(k * a))) + (k * a) = a := by
 /-! ## Open notes
 
 The checks above exhaust the `ZMod 11` toy domain by `decide`. The
-`to_affine_m1add` axiom (extended-coords ↔ affine equivalence when
-`a = -1`) is the most leveraged single target: it is high-stakes (the
-dalek pipeline depends on it) and its two sides are computable.
-Exhausting valid `EdwardsPointExt` inputs (with `Z ≠ 0`, `T·Z = X·Y`,
-on-curve) over a small field is deferred. -/
+extended-coordinates ↔ affine equivalence of `m1add` when `a = -1`
+(Rocq `to_affine_m1add`; in Lean `EdwardsCurve.to_affine_m1add_x_polynomial`
+and `to_affine_m1add_y_polynomial`) has computable sides; no exhaustive
+check over valid `EdwardsPointExt` inputs (with `Z ≠ 0`, `T·Z = X·Y`,
+on-curve) on a small field is included. -/
 
 end CatCrypt.Crypto.Jasmin.Ed25519.PbtAxiomCheck
