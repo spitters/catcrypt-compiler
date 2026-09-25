@@ -1049,3 +1049,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedRen
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd
 CatCrypt.Crypto.Jasmin.Ed25519Group
+CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerDenote
