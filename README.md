@@ -194,6 +194,7 @@ explains the run.
 | [NAVIGATION.md](NAVIGATION.md) | where each subsystem lives, and how to find a theorem |
 | [CAPABILITIES.md](CAPABILITIES.md) | each primitive with its modules, theorems and provenance class |
 | [ASCENT.md](ASCENT.md) | the ascent from code to Lean specifications |
+| [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) | certifying existing machine code: the hax reference, the differential oracle and the ascent |
 | [HAX_RUST.md](HAX_RUST.md) | Lean to Rust and back through hax |
 | [bench.md](bench.md) | performance ratios against production implementations |
 | [BUILDING.md](BUILDING.md) | dependencies, builds, checks, axiom audit, documentation generation |
