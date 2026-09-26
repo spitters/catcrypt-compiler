@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx
 /-!
 # Decoded programs on the address machine, and the decoded `mpn_and_n`
 
+@ascent-fixture theorems: binDecoded_and_eq, binDecoded_and_halts
+
 `RInstrSemantics` runs a decoded program on any `Machine`. `aMachine` is the address
 machine of `AddrMem`: `evalInstrA` on `AState`, with `AState.view` as the name-keyed
 view. Its block fold is `runBlockA` and its counted loop is `runXLoopA`.

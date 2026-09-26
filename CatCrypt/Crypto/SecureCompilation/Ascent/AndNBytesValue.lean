@@ -12,6 +12,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie
 /-!
 # The bytes of `mpn_and_n_loop_owned` compute the limbwise `and`
 
+@ascent-fixture theorems: and_n_bytes_value, and_n_front_bytes_value
+
 `LprogBytesDecodeClosed.and_n_roundtrip_closed` decodes the function bytes the encoder
 lays down for the `and` loop body to `binDecoded (andMidDecoded .and_)`, and
 `RInstrAddrMem.binDecoded_and_halts` runs that program on the address machine `aMachine`

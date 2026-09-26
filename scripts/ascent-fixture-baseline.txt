@@ -13,3 +13,5 @@ CatCrypt/Crypto/SecureCompilation/Ascent/CallFrame.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryChainZeroIn.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/DialectToBytes.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/FramedJInstrTie.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/AndNBytesValue.lean
+CatCrypt/Crypto/SecureCompilation/Ascent/RInstrAddrMem.lean
