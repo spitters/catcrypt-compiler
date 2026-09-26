@@ -555,6 +555,20 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                           | some o₂' =>
                             rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
                             exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+  | @rLetZero name tt body _hbody ih =>
+      rw [translateDialectControl_rLetZero] at hT
+      exact ih vm hT hNA
+  | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
+      rw [translateDialectControl_rSeq] at hT
+      cases h₁ : translateDialectControl vm c₁ with
+      | none => rw [h₁] at hT; exact absurd hT (by simp)
+      | some o₁ =>
+        simp only [h₁] at hT
+        cases h₂ : translateDialectControl o₁.vm c₂ with
+        | none => rw [h₂] at hT; exact absurd hT (by simp)
+        | some o₂ =>
+          rw [h₂] at hT; simp only [Option.some.injEq] at hT; subst hT
+          exact ih₂ o₁.vm h₂ (ih₁ vm h₁ hNA)
   | @rWhileNz name body _hbody _ih =>
       rw [translateDialectControl] at hT
       split at hT
@@ -637,27 +651,39 @@ theorem rustExecSimulatesDialect
       subst hTrans
       exact ⟨V, hInv⟩
   | seq c1 c2 rs0 r1 rs2 _h1 _h2 ih1 ih2 =>
-      cases hCov with
-      | ofCovered hc =>
-        cases hc with
-        | rSeq h1c h2c =>
-          have h1Ctl : IsCoveredCtl c1 := .ofCovered h1c
-          have h2Ctl : IsCoveredCtl c2 := .ofCovered h2c
-          -- `translateDialectControl`'s `RSeq` arm recurses into itself (control
-          -- sequencing); case directly on the two child translations.
-          simp only [translateDialectControl] at hTrans
-          split at hTrans
-          · rename_i o₁ hd1
-            split at hTrans
-            · rename_i o₂ hd2
-              simp only [Option.some.injEq] at hTrans
-              subst hTrans
-              obtain ⟨V₁, hInv₁⟩ := ih1 vm o₁ h1Ctl hd1 V hInv
-              obtain ⟨V', hInv'⟩ := ih2 o₁.vm o₂ h2Ctl hd2 V₁ hInv₁
-              exact ⟨V', hInv'⟩
-            · exact absurd hTrans (by simp)
-          · exact absurd hTrans (by simp)
-  | letZero x t body rs0 rs2 _h ih => cases hCov with | ofCovered hc => cases hc
+      -- A sequence is covered either leaf-wise (`ofCovered` of `IsCovered.rSeq`)
+      -- or at the control level (`rSeq`); both children are control-covered.
+      have hCtl : IsCoveredCtl c1 ∧ IsCoveredCtl c2 := by
+        cases hCov with
+        | ofCovered hc =>
+          cases hc with
+          | rSeq h1c h2c => exact ⟨.ofCovered h1c, .ofCovered h2c⟩
+        | rSeq h1 h2 => exact ⟨h1, h2⟩
+      obtain ⟨h1Ctl, h2Ctl⟩ := hCtl
+      -- `translateDialectControl`'s `RSeq` arm recurses into itself (control
+      -- sequencing); case directly on the two child translations.
+      simp only [translateDialectControl] at hTrans
+      split at hTrans
+      · rename_i o₁ hd1
+        split at hTrans
+        · rename_i o₂ hd2
+          simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          obtain ⟨V₁, hInv₁⟩ := ih1 vm o₁ h1Ctl hd1 V hInv
+          obtain ⟨V', hInv'⟩ := ih2 o₁.vm o₂ h2Ctl hd2 V₁ hInv₁
+          exact ⟨V', hInv'⟩
+        · exact absurd hTrans (by simp)
+      · exact absurd hTrans (by simp)
+  | letZero x t body rs0 rs2 _h ih =>
+      -- The front emits nothing for the binder; the body runs from the state
+      -- with the slot `x` zeroed, which `noAlias_canonical_witness` interprets
+      -- at the unchanged `vm`.
+      have hbCtl : IsCoveredCtl body := by
+        cases hCov with
+        | ofCovered hc => cases hc
+        | rLetZero hb => exact hb
+      rw [translateDialectControl_rLetZero] at hTrans
+      exact ih vm o hbCtl hTrans _ (noAlias_canonical_witness hInv.noAlias _)
   | letU64Zero x body rs0 rs2 _h ih =>
       -- `RLetU64Zero` is covered (through `ofCovered` or `rLetU64Zero`) iff its
       -- body is control-covered; the front binds `x` to zero and translates the

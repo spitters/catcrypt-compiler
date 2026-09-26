@@ -148,13 +148,18 @@ theorem transCtlSeq_eq_full_of_covered {c : LowCT} (h : IsCovered c) :
     `translateDialectControl` on the covered fragment). -/
 theorem transCtlSeq_eq_control {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (h : IsCoveredSCtl c) : transCtlSeq vm c = translateDialectControl vm c := by
-  cases h with
+  induction h generalizing Γ vm with
   | ofStraight hs =>
       rw [transCtlSeq_eq_full_of_covered hs.toIsCovered vm,
         translateDialectControl_eq_full_of_covered vm hs.toIsCovered]
+  | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
+      rw [translateDialectControl_rSeq]
+      simp only [transCtlSeq, ih₁, ih₂]
+      rfl
   | rFor _ => rfl
   | rIfNz _ _ => rfl
   | rLetU64Zero _ => rfl
+  | rLetZero _ => rfl
 
 /-! ## 4. The extended homomorphism -/
 

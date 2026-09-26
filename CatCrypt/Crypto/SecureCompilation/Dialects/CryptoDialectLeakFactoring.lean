@@ -612,6 +612,22 @@ theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c 
                   · simp at h
           · simp at h
       · simp at h
+  | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
+      rw [translateDialectControl_rSeq] at h
+      cases h₁ : translateDialectControl vm c₁ with
+      | none => rw [h₁] at h; exact absurd h (by simp)
+      | some o₁ =>
+        simp only [h₁] at h
+        cases h₂ : translateDialectControl o₁.vm c₂ with
+        | none => rw [h₂] at h; exact absurd h (by simp)
+        | some o₂ =>
+          rw [h₂] at h; simp only [Option.some.injEq] at h; subst h
+          obtain ⟨k₁, hk₁⟩ := ih₁ vm h₁
+          obtain ⟨k₂, hk₂⟩ := ih₂ o₁.vm h₂
+          exact ⟨k₁ + k₂, ComCont.comp_leakFactors hk₁ hk₂⟩
+  | @rLetZero name tt body _hbody ih =>
+      rw [translateDialectControl_rLetZero] at h
+      exact ih vm h
   | @rWhileNz name body _hbody _ih =>
       rw [translateDialectControl] at h
       split at h
@@ -1146,6 +1162,22 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
                   · simp at h
           · simp at h
       · simp at h
+  | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
+      rw [translateDialectControl_rSeq] at h
+      cases h₁ : translateDialectControl vm c₁ with
+      | none => rw [h₁] at h; exact absurd h (by simp)
+      | some o₁ =>
+        simp only [h₁] at h
+        cases h₂ : translateDialectControl o₁.vm c₂ with
+        | none => rw [h₂] at h; exact absurd h (by simp)
+        | some o₂ =>
+          rw [h₂] at h; simp only [Option.some.injEq] at h; subst h
+          obtain ⟨p₁, hp₁⟩ := ih₁ vm h₁
+          obtain ⟨p₂, hp₂⟩ := ih₂ o₁.vm h₂
+          exact ⟨_, ComCont.comp_leakFactorsTrace hp₁ hp₂⟩
+  | @rLetZero name tt body _hbody ih =>
+      rw [translateDialectControl_rLetZero] at h
+      exact ih vm h
   | @rWhileNz name body _hbody _ih =>
       rw [translateDialectControl] at h
       split at h

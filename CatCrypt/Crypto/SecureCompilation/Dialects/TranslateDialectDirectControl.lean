@@ -296,10 +296,12 @@ def translateDialectControlTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
 
 /-- The control-extended covered `LowCT` fragment: the leaf-call covered arms
     (`TranslateDialectDirectArms.IsCovered`) plus `RFor` over covered bodies,
-    `RIfNz` over covered branches, and the data-dependent `RWhileNz` over a
-    covered body. -/
+    `RIfNz` over covered branches, the data-dependent `RWhileNz` over a
+    covered body, the two binders `RLetU64Zero` / `RLetZero` over covered
+    bodies, and `RSeq` of two covered commands. -/
 inductive IsCoveredCtl : LowCT → Prop
   | ofCovered {c : LowCT} : IsCovered c → IsCoveredCtl c
+  | rSeq {c₁ c₂ : LowCT} : IsCoveredCtl c₁ → IsCoveredCtl c₂ → IsCoveredCtl (.RSeq c₁ c₂)
   | rFor {x : String} {N : Nat} {body : LowCT} :
       IsCoveredCtl body → IsCoveredCtl (.RFor x N body)
   | rIfNz {name : String} {thenBr elseBr : LowCT} :
@@ -309,6 +311,8 @@ inductive IsCoveredCtl : LowCT → Prop
       IsCoveredCtl body → IsCoveredCtl (.RWhileNz name body)
   | rLetU64Zero {name : String} {body : LowCT} :
       IsCoveredCtl body → IsCoveredCtl (.RLetU64Zero name body)
+  | rLetZero {name : String} {tt : TowerType} {body : LowCT} :
+      IsCoveredCtl body → IsCoveredCtl (.RLetZero name tt body)
 
 /-- On the leaf-call covered fragment, `translateDialectControl` coincides with
     `translateDialectFull`: the `RSeq` and `RLetU64Zero` arms agree by the

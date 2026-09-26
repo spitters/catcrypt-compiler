@@ -568,6 +568,9 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
       some (env.upd name (t := .sword 64) (BitVec.ofNat 64 n))
   | .RLetU64Zero name body, env =>
       semScalar body (env.upd name (t := .sword 64) (0 : BitVec 64))
+  -- `RLetZero` declares a tower slot the body writes before it reads; the front
+  -- emits nothing for it, and the waist is the body's on the unchanged env.
+  | .RLetZero _name _tt body, env => semScalar body env
   | .RCall _fname dst _args, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
@@ -728,6 +731,7 @@ def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
       some (env.upd name (t := .sword 64) (BitVec.ofNat 64 n))
   | .RLetU64Zero name body, env =>
       semScalarL ls body (env.upd name (t := .sword 64) (0 : BitVec 64))
+  | .RLetZero _name _tt body, env => semScalarL ls body env
   | .RCall fname dst args, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (ls fname retTy (argVals env (locNames args))))
@@ -845,6 +849,16 @@ theorem semCallNDestsL_default (fname : String) (args : List Located) :
   | [], _, _ => rfl
   | _ :: rest, i, _ => semCallNDestsL_default fname args rest (i + 1) _
 
+/-- `semScalarL` on a `RLetZero` binder is `semScalarL` of its body. -/
+theorem semScalarL_rLetZero (ls : SemLeafSpec) (name : String) (tt : TowerType)
+    (body : LowCT) (env : SEnvScalar) :
+    semScalarL ls (.RLetZero name tt body) env = semScalarL ls body env := rfl
+
+/-- `semScalar` on a `RLetZero` binder is `semScalar` of its body. -/
+theorem semScalar_rLetZero (name : String) (tt : TowerType) (body : LowCT)
+    (env : SEnvScalar) :
+    semScalar (.RLetZero name tt body) env = semScalar body env := rfl
+
 /-- At the default oracle `semScalarL` is `semScalar`. -/
 theorem semScalarL_default : ∀ (c : LowCT) (env : SEnvScalar),
     semScalarL defaultLeaf c env = semScalar c env := by
@@ -853,6 +867,7 @@ theorem semScalarL_default : ∀ (c : LowCT) (env : SEnvScalar),
   | RSeq c₁ c₂ ih₁ ih₂ => intro env; simp only [semScalarL, semScalar, ih₁, ih₂]
   | RBlock body ih => intro env; simp only [semScalarL, semScalar, ih]
   | RLetU64Zero name body ih => intro env; simp only [semScalarL, semScalar, ih]
+  | RLetZero name tt body ih => intro env; rw [semScalarL_rLetZero, semScalar_rLetZero, ih]
   | RFor x N body ih => intro env; simp only [semScalarL, semScalar, ih]
   | RIfNz name thenBr elseBr ihT ihE =>
       intro env; simp only [semScalarL, semScalar, ihT, ihE]
@@ -3073,10 +3088,12 @@ twin of `TranslateDialectDirectControl.IsCoveredCtl`). Three layers:
 
 /-- The control-extended scalar-covered `LowCT` fragment: the straight-line
     covered arms plus `RFor` over covered bodies, `RIfNz` over covered
-    branches and `RLetU64Zero` over covered bodies — the shape of
+    branches, the binders `RLetU64Zero` / `RLetZero` over covered bodies and
+    `RSeq` of two covered commands — the shape of
     `TranslateDialectDirectControl.IsCoveredCtl` without its `rWhileNz` arm. -/
 inductive IsCoveredSCtl : LowCT → Prop
   | ofStraight {c : LowCT} : IsCoveredS c → IsCoveredSCtl c
+  | rSeq {c₁ c₂ : LowCT} : IsCoveredSCtl c₁ → IsCoveredSCtl c₂ → IsCoveredSCtl (.RSeq c₁ c₂)
   | rFor {x : String} {N : Nat} {body : LowCT} :
       IsCoveredSCtl body → IsCoveredSCtl (.RFor x N body)
   | rIfNz {name : String} {thenBr elseBr : LowCT} :
@@ -3084,6 +3101,8 @@ inductive IsCoveredSCtl : LowCT → Prop
       IsCoveredSCtl (.RIfNz name thenBr elseBr)
   | rLetU64Zero {name : String} {body : LowCT} :
       IsCoveredSCtl body → IsCoveredSCtl (.RLetU64Zero name body)
+  | rLetZero {name : String} {tt : TowerType} {body : LowCT} :
+      IsCoveredSCtl body → IsCoveredSCtl (.RLetZero name tt body)
 
 /-- `IsCoveredSCtl` refines the control-extended front-simulation coverage
     `IsCoveredCtl` (via `IsCoveredS.toIsCovered` on the straight-line arms), so
@@ -3094,9 +3113,11 @@ theorem IsCoveredSCtl.toIsCoveredCtl {c : LowCT} (h : IsCoveredSCtl c) :
     IsCoveredCtl c := by
   induction h with
   | ofStraight hs => exact .ofCovered hs.toIsCovered
+  | rSeq _ _ ih₁ ih₂ => exact .rSeq ih₁ ih₂
   | rFor _ ih => exact .rFor ih
   | rIfNz _ _ ihT ihE => exact .rIfNz ihT ihE
   | rLetU64Zero _ ih => exact .rLetU64Zero ih
+  | rLetZero _ ih => exact .rLetZero ih
 
 /-- `asSingleScalarSet` inversion: a successful view IS an `RScalarSet`. -/
 theorem asSingleScalarSet_eq : ∀ {c : LowCT} {s : SingleScalarSet},
@@ -3259,10 +3280,10 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
       exact hin hnil env env' hsem
   case RLetZero nm tt body ih =>
       simp only [translateDialectFull] at htr
-      obtain ⟨Δ, hΔ, _⟩ := ih vm o htr
-      refine ⟨Δ, hΔ, fun _ env env' hsem => ?_⟩
-      simp only [semScalarL] at hsem
-      exact absurd hsem (by simp)
+      obtain ⟨Δ, hΔ, hin⟩ := ih vm o htr
+      refine ⟨Δ, hΔ, fun hnil env env' hsem => ?_⟩
+      rw [semScalarL_rLetZero] at hsem
+      exact hin hnil env env' hsem
   case RLetU64Zero nm body ih =>
       simp only [translateDialectFull] at htr
       rcases htb : translateDialectFull (vm.bind nm) body with _ | ob
@@ -3609,10 +3630,10 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
       case _ => exact absurd htr (by simp)
   case RLetZero nm tt body ih =>
       rw [translateDialectControl_rLetZero] at htr
-      obtain ⟨Δ, hΔ, _⟩ := ih vm o htr
-      refine ⟨Δ, hΔ, fun _ env env' hsem => ?_⟩
-      simp only [semScalarL] at hsem
-      exact absurd hsem (by simp)
+      obtain ⟨Δ, hΔ, hin⟩ := ih vm o htr
+      refine ⟨Δ, hΔ, fun hnil env env' hsem => ?_⟩
+      rw [semScalarL_rLetZero] at hsem
+      exact hin hnil env env' hsem
   case RLetU64Zero nm body ih =>
       rw [translateDialectControl_rLetU64Zero] at htr
       rcases htb : translateDialectControl (vm.bind nm) body with _ | ob
@@ -3827,6 +3848,39 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
       exact loopRForD_denoteWith ls x body
         (fun vm V env env' o hc ht hs => ih vm V env env' o hc ht hs)
         N vm V env env' o hc htr hsem
+  | @rSeq c₁ c₂ h₁ h₂ ih₁ ih₂ =>
+      -- The control-level sequence: the two child prefixes composed, the waist
+      -- the `bind` of the two child waists.
+      intro Γ vm V env env' o hc htr hsem
+      rw [translateDialectControl_rSeq] at htr
+      rcases ht₁ : translateDialectControl vm c₁ with _ | o₁
+      · rw [ht₁] at htr; simp at htr
+      · simp only [ht₁] at htr
+        rcases ht₂ : translateDialectControl o₁.vm c₂ with _ | o₂
+        · rw [ht₂] at htr; simp at htr
+        · rw [ht₂] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          simp only [semScalarL] at hsem
+          rcases hs1 : semScalarL ls c₁ env with _ | env₁
+          · rw [hs1] at hsem; simp at hsem
+          · simp only [hs1, Option.bind_some] at hsem
+            obtain ⟨V₁, hc₁, hcont₁⟩ := ih₁ vm V env env₁ o₁ hc ht₁ hs1
+            obtain ⟨V₂, hc₂, hcont₂⟩ := ih₂ o₁.vm V₁ env₁ env' o₂ hc₁ ht₂ hsem
+            refine ⟨V₂, hc₂, ?_⟩
+            intro t tail
+            obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
+            obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
+            refine ⟨com, ?_, ?_⟩
+            · show ComCont.comp o₁.cont o₂.cont tail = some com
+              simp only [ComCont.comp, hcom₂, hcom]
+            · rw [hden, hden₂]
+  | @rLetZero name tt body hbody ih =>
+      -- The front emits nothing for the binder and the waist is the body's.
+      intro Γ vm V env env' o hc htr hsem
+      rw [translateDialectControl_rLetZero] at htr
+      rw [semScalarL_rLetZero] at hsem
+      exact ih vm V env env' o hc htr hsem
   | @rLetU64Zero name body hbody ih =>
       -- The `bvConst 64 0` binding of `name` is one `scalar_stepWith`, composed
       -- with the body IH at the extended context.
