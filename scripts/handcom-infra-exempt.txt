@@ -168,3 +168,9 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/GatherMemOps.lean  # Lprog-to-JInst
 CatCrypt/Crypto/SecureCompilation/X86Backend/LprogBytesDecode.lean  # decoder for the LprogBytes encoder; its Lcmd loop bodies are proof subjects of the mpn round trips, no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/SelectImmCompare.lean  # verified post-RA Lprog pass folding a constant into a comparison; it rewrites CombSelectCmovFront's front-generated program, no artifact
 CatCrypt/Crypto/SecureCompilation/VIR/JasminImmShiftMnem.lean  # decoder for the count-in-mnemonic immediate shift the exporter renders, with its agreement theorems; LinstrR is the recogniser argument type, no renderer and no artifact
+CatCrypt/Crypto/SecureCompilation/VIR/JasminInlineStoreOrder.lean  # proof module: the exporter's store order (physBodyWithStores_cell_value), no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/DecodedLsemStep.lean  # proof module: decoded-machine vs flag-lsem step simulations, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherLsemTieExt.lean  # proof module: gatherJBlock6_lsem_agreeX, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1BytesValue.lean  # proof module: the mpn_mul_1 decoded-machine chain; the kernel is front-generated (MpnMul1FrontEmit), no emit artifact here
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1DecodedNode.lean  # proof module: node identity and decode of the front-generated mpn_mul_1 body, pinned as a literal for the proof, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulShift.lean  # proof module: physical-ABI faithfulness for immediate shifts, no emit artifact
