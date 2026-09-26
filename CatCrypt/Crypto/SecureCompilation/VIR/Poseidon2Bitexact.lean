@@ -266,8 +266,11 @@ evaluate the reference, not a `native_decide` validation of the loop. The Plonky
 the full permutation (external + internal rounds + MDS pre-mix) on top of this
 internal-round block. -/
 
-/-- The loop output from `init = 0`, as the reference internal-round value. -/
-def pos2ZeroOut : BitVec 64 := pos2InternalRef 0
+/-- The loop output from `init = 0`, as the reference internal-round value. It is
+    `noncomputable`: its rounds shift by a data-dependent 64-bit amount, so evaluating
+    it builds numbers of up to `2^64` bits, and a computable nullary definition is
+    evaluated when any executable importing this module starts. -/
+noncomputable def pos2ZeroOut : BitVec 64 := pos2InternalRef 0
 
 /-- **KAT (corollary).** Running the emitted Poseidon2 internal-round loop from
     `init = 0` yields `pos2ZeroOut` — the reference 13-round internal block under

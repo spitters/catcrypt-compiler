@@ -105,30 +105,40 @@ mapped to one class). Running it in-kernel via
 `native_decide`/`decide` over the 107k body is intentionally NOT done here (it
 would be a multi-minute in-kernel evaluation); it is a compiled `#eval`/run. -/
 
+/- The four definitions below take a defaulted `Unit` argument and are compiled without
+closed-term extraction, so an executable importing this module does not evaluate the
+107k-binding body at start-up; a reference without an argument elaborates to the
+application at `()`. -/
+section DeferredEvaluation
+
+set_option compiler.extract_closed false
+
 /-- The fresh-SSA (per-binding) `PhysEvent` trace of the whole Poseidon2
     permutation body — one unique logical slot per binding, before any residence
     coalescing. This is the trace the interference checker scans. -/
-def poseidon2FreshTrace : List PhysEvent :=
+def poseidon2FreshTrace (_ : Unit := ()) : List PhysEvent :=
   bodyTrace
     (comToLfundef (Poseidon2WholePermCom.poseidon2PermComOut ()) poseidon2ImmSlots).lfd_body
 
 /-- The proposed logical→physical (residence) map for the owned-RA coalescing:
     fresh-SSA def-slot → `Fin 25` residence class, read off
     `(Poseidon2WholePermCom.slotTraceArr ())`. -/
-def poseidon2ResidenceRho : Nat → Nat :=
+def poseidon2ResidenceRho (_ : Unit := ()) : Nat → Nat :=
   proposedRho (Poseidon2WholePermCom.slotTraceArr ())
 
 /-- **Interference-checker result on the 107k Poseidon2 body** (evaluated in a
     compiled executable): `interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho`.
     Expected `false` — the residence collapse aliases simultaneously-live MDS
     lanes. Provided as a named `Bool` so a driver can evaluate it. -/
-def poseidon2ResidenceCheck : Bool :=
-  interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho
+def poseidon2ResidenceCheck (_ : Unit := ()) : Bool :=
+  interferenceOkB (poseidon2FreshTrace ()) (poseidon2ResidenceRho ())
 
 /-- **Positive control** (evaluated in a compiled executable): the SAME fresh-SSA body under the
     identity map is accepted (`true`) — so the rejection above is the residence
     proposal's fault, not an intrinsically unallocatable body. -/
-def poseidon2IdentityCheck : Bool :=
-  interferenceOkB poseidon2FreshTrace id
+def poseidon2IdentityCheck (_ : Unit := ()) : Bool :=
+  interferenceOkB (poseidon2FreshTrace ()) id
+
+end DeferredEvaluation
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

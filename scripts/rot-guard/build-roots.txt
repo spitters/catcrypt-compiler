@@ -736,6 +736,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
+CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
 CatCrypt.Crypto.SecureCompilation.VIR.WeilReciprocity
 CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit
