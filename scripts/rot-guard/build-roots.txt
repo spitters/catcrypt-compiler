@@ -1086,3 +1086,5 @@ CatCrypt.Crypto.Hax.HaxToLowCTWordOpsLoop
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
+CatCrypt.Crypto.SecureCompilation.RangeDomain
+CatCrypt.Crypto.SecureCompilation.VIR.ComRange
