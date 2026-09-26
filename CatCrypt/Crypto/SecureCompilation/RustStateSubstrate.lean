@@ -54,6 +54,69 @@ def wordOfBytes8 (b : Fin 8 → BitVec 8) : BitVec 64 :=
     ||| ((lift 6) <<< 48)
     ||| ((lift 7) <<< 56)
 
+/-- A multiple of `2 ^ i` or-ed with a number below `2 ^ i` is their sum. -/
+private theorem mul_pow_or_eq_add (a b i : Nat) (hb : b < 2 ^ i) :
+    a * 2 ^ i ||| b = a * 2 ^ i + b := by
+  rw [← Nat.shiftLeft_eq, Nat.shiftLeft_add_eq_or_of_lt hb]
+
+/-- The value of `wordOfBytes8 b` is the little-endian number of its eight bytes. -/
+theorem wordOfBytes8_toNat (b : Fin 8 → BitVec 8) :
+    (wordOfBytes8 b).toNat
+      = (b 0).toNat + (b 1).toNat * 256 + (b 2).toNat * 256 ^ 2 + (b 3).toNat * 256 ^ 3 +
+        (b 4).toNat * 256 ^ 4 + (b 5).toNat * 256 ^ 5 + (b 6).toNat * 256 ^ 6 +
+        (b 7).toNat * 256 ^ 7 := by
+  have h0 := (b 0).isLt; have h1 := (b 1).isLt; have h2 := (b 2).isLt; have h3 := (b 3).isLt
+  have h4 := (b 4).isLt; have h5 := (b 5).isLt; have h6 := (b 6).isLt; have h7 := (b 7).isLt
+  have f : ∀ (k : Nat) (x : BitVec 8), k ≤ 56 →
+      (x.zeroExtend 64 <<< k).toNat = x.toNat * 2 ^ k := by
+    intro k x hk
+    have := x.isLt
+    rw [BitVec.toNat_shiftLeft, BitVec.zeroExtend_eq_setWidth, BitVec.toNat_setWidth,
+      Nat.mod_eq_of_lt (a := x.toNat) (b := 2 ^ 64) (by omega), Nat.shiftLeft_eq]
+    apply Nat.mod_eq_of_lt
+    calc x.toNat * 2 ^ k < 2 ^ 8 * 2 ^ k := by
+          exact Nat.mul_lt_mul_of_pos_right this (Nat.two_pow_pos k)
+      _ = 2 ^ (8 + k) := by rw [Nat.pow_add]
+      _ ≤ 2 ^ 64 := Nat.pow_le_pow_right (by omega) (by omega)
+  have f0 : ((b 0).zeroExtend 64).toNat = (b 0).toNat := by
+    rw [BitVec.zeroExtend_eq_setWidth, BitVec.toNat_setWidth]
+    exact Nat.mod_eq_of_lt (by omega)
+  simp only [wordOfBytes8, BitVec.toNat_or, f0, f _ _ (by omega : 8 ≤ 56),
+    f _ _ (by omega : 16 ≤ 56), f _ _ (by omega : 24 ≤ 56), f _ _ (by omega : 32 ≤ 56),
+    f _ _ (by omega : 40 ≤ 56), f _ _ (by omega : 48 ≤ 56), f _ _ (by omega : 56 ≤ 56)]
+  have e1 : (b 0).toNat ||| (b 1).toNat * 2 ^ 8 = (b 0).toNat + (b 1).toNat * 2 ^ 8 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e2 : (b 0).toNat + (b 1).toNat * 2 ^ 8 ||| (b 2).toNat * 2 ^ 16
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e3 : (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 ||| (b 3).toNat * 2 ^ 24
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e4 : (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 |||
+        (b 4).toNat * 2 ^ 32
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e5 : (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 ||| (b 5).toNat * 2 ^ 40
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e6 : (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 ||| (b 6).toNat * 2 ^ 48
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 + (b 6).toNat * 2 ^ 48 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  have e7 : (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 + (b 6).toNat * 2 ^ 48 |||
+        (b 7).toNat * 2 ^ 56
+      = (b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 + (b 3).toNat * 2 ^ 24 +
+        (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 + (b 6).toNat * 2 ^ 48 +
+        (b 7).toNat * 2 ^ 56 := by
+    rw [Nat.or_comm, mul_pow_or_eq_add _ _ _ (by omega), Nat.add_comm]
+  rw [e1, e2, e3, e4, e5, e6, e7]
+  simp only [Nat.reducePow]
+
 /-- Project an `n × 8`-byte rust-side tower value to an `n × i64` memref
     by little-endian packing per limb. -/
 def bytesOfMemrefRust {n : Nat} (bytes : Fin (8 * n) → BitVec 8) :

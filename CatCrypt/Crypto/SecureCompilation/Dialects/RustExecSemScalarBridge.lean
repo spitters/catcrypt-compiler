@@ -1257,16 +1257,12 @@ theorem ofNat_bytes_eq_wordOfBytes8 (b : Fin 8 → BitVec 8) :
     BitVec.ofNat 64 ((b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 +
       (b 3).toNat * 2 ^ 24 + (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 +
       (b 6).toNat * 2 ^ 48 + (b 7).toNat * 2 ^ 56) = wordOfBytes8 b := by
-  simp only [wordOfBytes8]
-  rw [show ∀ x0 x1 x2 x3 x4 x5 x6 x7 : BitVec 8,
-      x0.zeroExtend 64 ||| x1.zeroExtend 64 <<< 8 ||| x2.zeroExtend 64 <<< 16 |||
-        x3.zeroExtend 64 <<< 24 ||| x4.zeroExtend 64 <<< 32 ||| x5.zeroExtend 64 <<< 40 |||
-        x6.zeroExtend 64 <<< 48 ||| x7.zeroExtend 64 <<< 56
-      = x0.zeroExtend 64 + x1.zeroExtend 64 <<< 8 + x2.zeroExtend 64 <<< 16 +
-        x3.zeroExtend 64 <<< 24 + x4.zeroExtend 64 <<< 32 + x5.zeroExtend 64 <<< 40 +
-        x6.zeroExtend 64 <<< 48 + x7.zeroExtend 64 <<< 56
-      from fun _ _ _ _ _ _ _ _ => by bv_decide]
-  bv_omega
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ofNat, wordOfBytes8_toNat]
+  have h0 := (b 0).isLt; have h1 := (b 1).isLt; have h2 := (b 2).isLt; have h3 := (b 3).isLt
+  have h4 := (b 4).isLt; have h5 := (b 5).isLt; have h6 := (b 6).isLt; have h7 := (b 7).isLt
+  simp only [Nat.reducePow] at *
+  omega
 
 /-- Limb `0` of a `TU64` tower value is its word: the `ofNat` image of
     `towerLimb v 0` is `cryptoTyOfRustVal .TU64 v`. -/
