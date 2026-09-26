@@ -32,7 +32,7 @@ one on which the checker returns `some`.
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (ImpExpr ImpLit ImpPat nfAtom nfVar nfLit nfBound nfBoundOp nfRhs nfAssignRhs
-  nfBreakArg isNFK isNF NF isNFK_mono)
+  nfBreakArg isNFK isNF NF isNFK_of_isNF)
 open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
 
 /-! ## Arguments and bounds -/
@@ -89,7 +89,7 @@ theorem nfBound_of_impBoundToSExpr {e : ImpExpr} (h : (impBoundToSExpr e).isSome
 /-- An expression of the shape `AnfShaped` is in normal form in every loop context. -/
 theorem isNFK_of_anfShaped (e : ImpExpr) (h : AnfShaped e = true) (il : Bool) :
     isNFK il e = true := by
-  refine isNFK_mono e il ?_
+  refine isNFK_of_isNF e il (show isNFK false e = true from ?_)
   fun_induction AnfShaped e <;>
     simp_all [-List.all_eq_true, isNFK, nfRhs, nfAssignRhs, nfLit, nfBound,
       all_nfAtom_of_all_isVar, all_nfVar_of_all_isVar, nfBound_of_impBoundToSExpr]

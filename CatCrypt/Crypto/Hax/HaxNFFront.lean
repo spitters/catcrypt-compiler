@@ -43,7 +43,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open _root_.Hax (ImpExpr Value Env Outcome Builtins denote' isNFK NF isNFK_mono)
+open _root_.Hax (ImpExpr Value Env Outcome Builtins denote' isNFK NF isNFK_of_isNF)
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## The program-level simulations -/
@@ -210,7 +210,7 @@ theorem haxToLowCTK_simulates_of_NF (bi : Builtins) (N : Nat) (leafSpec : LeafSp
     (hAgree : envAgreesOff env rs) (hRet : rs.rsScalar exitRetName = 0) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ envAgreesExit tl o env' rs' ∧
       (x = false → rs'.rsScalar exitRetName = 0) :=
-  haxToLowCTK_simulates_of_isNFK bi N leafSpec hs e (isNFK_mono e _ hNF)
+  haxToLowCTK_simulates_of_isNFK bi N leafSpec hs e (isNFK_of_isNF e _ hNF)
     hOk hCtx hLow hRun hVal hAgree hRet
 
 /-! ## The domain of the front -/
