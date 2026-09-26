@@ -69,12 +69,13 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc
 
 open CatCrypt.Crypto.SecureCompilation.ARMBackend
-open CatCrypt.Crypto.Optimizer.GenericRegAlloc (SepAt)
+open CatCrypt.Crypto.Optimizer.GenericRegAlloc (SepAt MachineModel)
 
 /-! ## 1. Live-range analysis over the `AInst` block
 
 `ainstDstSrcs` (from `ArmAsmPrinter`) gives the written name + read names of one
-`AInst`; we lift it to the per-name `(def, lastUse)` interval. -/
+`AInst`. With the A64 GP file these form the `MachineModel AInst` instance, and the
+live-range analysis is `GenericRegAlloc`'s at that instance. -/
 
 /-- The single register name an `AInst` writes (its destination). -/
 def writtenName (i : AInst) : String := (ainstDstSrcs i).1
@@ -82,48 +83,76 @@ def writtenName (i : AInst) : String := (ainstDstSrcs i).1
 /-- The register names an `AInst` reads (its source operands). -/
 def readNames (i : AInst) : List String := (ainstDstSrcs i).2
 
-/-- A value-name's live range over a block: `defIdx` is the first index that writes
-    it (or `0` if it is only ever read — an input, live from entry), `lastUse` is
-    the last index that reads or writes it. -/
-structure LiveRange where
-  /-- The register name. -/
-  name : String
-  /-- First index that writes the name (`0` if never written: a read-only input). -/
-  defIdx : Nat
-  /-- Last index that reads or writes the name. -/
-  lastUse : Nat
-  deriving Repr, DecidableEq
+/-- The full 31-register A64 GP file at 32-bit `W` width (`w0 … w30`). -/
+def gpFile : List String := (List.range 31).map (fun i => "w" ++ toString i)
 
-/-- The last index `< len` at which `name` is read or written (`0` if never). -/
-def lastUseIdx (block : List AInst) (name : String) : Nat :=
-  block.zipIdx.foldl
-    (fun acc (i, idx) =>
-      if writtenName i == name ∨ (readNames i).contains name then idx else acc) 0
+/-- **`MachineModel AInst`**: the syntactic interface of the A64 backend — the
+    written name `writtenName`, the read names `readNames`, the GP file `gpFile`, and
+    spill / reload rendered as `mov` markers carrying the name (the printer attaches
+    the frame offset, matching the `Item.spill` posture of §6). -/
+instance instMachineModelAInst : MachineModel AInst where
+  writtenNames i := [writtenName i]
+  readNames := readNames
+  physRegs := gpFile
+  mkSpill r _off := .mov r r
+  mkReload r _off := .mov r r
+
+export CatCrypt.Crypto.Optimizer.GenericRegAlloc (LiveRange LiveRange.mk LiveRange.name
+  LiveRange.defIdx LiveRange.lastUse)
+
+/-- The last index `< len` at which `name` is read or written (`0` if never):
+    `GenericRegAlloc.lastUseIdx` at `AInst`. -/
+abbrev lastUseIdx (block : List AInst) (name : String) : Nat :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.lastUseIdx block name
 
 /-- The first index at which `name` is written (`0` if never written: a read-only
-    input, live from entry). -/
-def defIdxOf (block : List AInst) (name : String) : Nat :=
-  match block.zipIdx.find? (fun (i, _) => writtenName i == name) with
-  | some (_, idx) => idx
-  | none => 0
+    input, live from entry): `GenericRegAlloc.defIdxOf` at `AInst`. -/
+abbrev defIdxOf (block : List AInst) (name : String) : Nat :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.defIdxOf block name
 
-/-- Every distinct name in the block, in first-seen order. -/
-def blockNames (block : List AInst) : List String :=
-  (block.flatMap (fun i => writtenName i :: readNames i)).foldl
-    (fun acc n => if acc.contains n then acc else acc ++ [n]) []
+/-- Every distinct name in the block, in first-seen order: `GenericRegAlloc.blockNames`
+    at `AInst`. -/
+abbrev blockNames (block : List AInst) : List String :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.blockNames block
 
-/-- The live ranges of every distinct name in the block (first-seen order). -/
-def liveRanges (block : List AInst) : List LiveRange :=
-  (blockNames block).map (fun n => ⟨n, defIdxOf block n, lastUseIdx block n⟩)
+/-- The live ranges of every distinct name in the block (first-seen order):
+    `GenericRegAlloc.liveRanges` at `AInst`. -/
+abbrev liveRanges (block : List AInst) : List LiveRange :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.liveRanges block
 
 /-- Register pressure (count of simultaneously-live names) at index `i`. -/
-def pressureAt (block : List AInst) (i : Nat) : Nat :=
-  ((liveRanges block).filter (fun l => l.defIdx ≤ i ∧ i ≤ l.lastUse)).length
+abbrev pressureAt (block : List AInst) (i : Nat) : Nat :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.pressureAt block i
 
 /-- Peak register pressure over the whole block — the count the pool must hold to
     be spill-free, the key sizing measurement. -/
-def peakPressure (block : List AInst) : Nat :=
-  ((List.range block.length).map (pressureAt block)).foldl max 0
+abbrev peakPressure (block : List AInst) : Nat :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.peakPressure block
+
+/-- `lastUseIdx` scans for the last index whose instruction writes or reads `name`. -/
+theorem lastUseIdx_eq (block : List AInst) (name : String) :
+    lastUseIdx block name = block.zipIdx.foldl
+      (fun acc (i, idx) =>
+        if writtenName i == name ∨ (readNames i).contains name then idx else acc) 0 := by
+  simp only [lastUseIdx, CatCrypt.Crypto.Optimizer.GenericRegAlloc.lastUseIdx,
+    MachineModel.writtenNames, MachineModel.readNames, List.contains_cons,
+    List.contains_nil, Bool.or_false, BEq.comm]
+
+/-- `defIdxOf` is the index of the first instruction that writes `name`, or `0`. -/
+theorem defIdxOf_eq (block : List AInst) (name : String) :
+    defIdxOf block name =
+      match block.zipIdx.find? (fun (i, _) => writtenName i == name) with
+      | some (_, idx) => idx
+      | none => 0 := by
+  simp only [defIdxOf, CatCrypt.Crypto.Optimizer.GenericRegAlloc.defIdxOf,
+    MachineModel.writtenNames, List.contains_cons, List.contains_nil, Bool.or_false,
+    BEq.comm]
+  cases List.find? (fun x => name == writtenName x.fst) block.zipIdx <;> rfl
+
+/-- `blockNames` deduplicates each instruction's written name followed by its read names. -/
+theorem blockNames_eq (block : List AInst) :
+    blockNames block = (block.flatMap (fun i => writtenName i :: readNames i)).foldl
+      (fun acc n => if acc.contains n then acc else acc ++ [n]) [] := rfl
 
 /-! ## 2. The 31-register A64 GP file and the allocatable pool
 
@@ -137,22 +166,13 @@ registers; the rest form the allocatable pool. -/
     uses). Two suffice: a binary op reads at most two sources. -/
 def workRegs : List String := ["w16", "w17"]
 
-/-- The full 31-register A64 GP file at 32-bit `W` width (`w0 … w30`). -/
-def gpFile : List String := (List.range 31).map (fun i => "w" ++ toString i)
-
 /-- The allocatable pool: the 31-register file minus the reserved scratch registers
-    and any pinned (argument/frame) register. -/
-def allocPool (pinned : List String) : List String :=
-  gpFile.filter (fun r => ¬ pinned.contains r ∧ ¬ workRegs.contains r)
+    and any pinned (argument/frame) register: `GenericRegAlloc.allocPool` at `AInst`
+    with scratch `workRegs`. -/
+abbrev allocPool (pinned : List String) : List String :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.allocPool (I := AInst) pinned workRegs
 
-/-- A per-name allocation decision: a pool register (`resident`) or a frame spill
-    slot byte-offset (`spilled`). -/
-inductive Slot where
-  /-- The name stays in the physical register `reg` for its whole live range. -/
-  | resident (reg : String)
-  /-- The name is spilled to the frame at byte offset `off`. -/
-  | spilled (off : Int)
-  deriving Repr, DecidableEq
+export CatCrypt.Crypto.Optimizer.GenericRegAlloc (Slot Slot.resident Slot.spilled)
 
 /-! ## 3. The spilling allocator (linear scan, farthest-end eviction)
 
@@ -160,45 +180,13 @@ A linear scan over the live ranges in `defIdx` order. State: the active map
 (name, reg, lastUse) and the free pool. On a new def: expire intervals whose
 `lastUse` has passed (free their register); assign a free register if one is
 available; else spill the farthest-ending active value (or the newcomer) to a
-fresh frame cell. The A64 analogue of `SpillingRegAlloc.linearScan`. -/
+fresh frame cell. This is `GenericRegAlloc.linearScan` over the A64 pool. -/
 
-/-- The scan step of `linearScan`: `active` is the `(name, reg, lastUse)` map, `freeRegs`
-    the unassigned pool, `nextSpill` the next free frame offset, `acc` the decisions so
-    far, and the final argument the remaining live ranges in `defIdx` order. Consecutive
-    spill offsets advance by `stride`. -/
-def linearScanGo (stride : Int) (active : List (String × String × Nat))
-    (freeRegs : List String) (nextSpill : Int) (acc : List (String × Slot)) :
-    List LiveRange → List (String × Slot)
-  | [] => acc
-  | lr :: rest =>
-    let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
-    let freed := freeRegs ++ expired.map (fun a => a.2.1)
-    match freed with
-    | reg :: more =>
-      linearScanGo stride ((lr.name, reg, lr.lastUse) :: live) more nextSpill
-         ((lr.name, .resident reg) :: acc) rest
-    | [] =>
-      let farthestActive := live.foldl
-        (fun (best : Option (String × String × Nat)) a =>
-          match best with
-          | none => some a
-          | some b => if a.2.2 > b.2.2 then some a else best) none
-      match farthestActive with
-      | some a =>
-        if a.2.2 > lr.lastUse then
-          let live' := live.filter (fun x => x.1 ≠ a.1)
-          linearScanGo stride ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + stride)
-             ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
-        else
-          linearScanGo stride live [] (nextSpill + stride)
-            ((lr.name, .spilled nextSpill) :: acc) rest
-      | none =>
-        linearScanGo stride live [] (nextSpill + stride)
-          ((lr.name, .spilled nextSpill) :: acc) rest
+export CatCrypt.Crypto.Optimizer.GenericRegAlloc (linearScanGo)
 
-/-- Linear-scan core. Walk the live ranges in `defIdx` order keeping an active map
-    `(name, reg, lastUse)` and the free pool; spill the farthest-ending interval
-    when the pool is full.
+/-- Linear-scan core: `GenericRegAlloc.linearScan` over `allocPool pinned`. Walk the
+    live ranges in `defIdx` order keeping an active map `(name, reg, lastUse)` and the
+    free pool; spill the farthest-ending interval when the pool is full.
 
     Frame byte-offsets are assigned sequentially from `frameBase`, advancing by `stride`
     — the byte width of one allocated value, so that two live spills cover disjoint byte
@@ -206,8 +194,7 @@ def linearScanGo (stride : Int) (active : List (String × String × Nat))
     `AInst` value has. -/
 def linearScan (pinned : List String) (frameBase : Int) (lrs : List LiveRange)
     (stride : Int := 4) : List (String × Slot) :=
-  linearScanGo stride [] (allocPool pinned) frameBase []
-    (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.linearScan (allocPool pinned) frameBase lrs stride
 
 /-- The spill decisions: `name ↦ Slot` for every name, by linear scan over the
     block's live ranges. Hot values that fit the pool become `resident`; the rest
@@ -216,25 +203,8 @@ def spillAlloc (pinned : List String) (frameBase : Int) (block : List AInst)
     (stride : Int := 4) : List (String × Slot) :=
   linearScan pinned frameBase (liveRanges block) stride
 
-/-- Count of spilled names (the deliverable metric). -/
-def spillCount (decisions : List (String × Slot)) : Nat :=
-  (decisions.filter (fun d => match d.2 with | .spilled _ => true | _ => false)).length
-
-/-- Count of register-resident names. -/
-def residentCount (decisions : List (String × Slot)) : Nat :=
-  (decisions.filter (fun d => match d.2 with | .resident _ => true | _ => false)).length
-
-/-- The physical register a `resident` name is bound to, if it is resident. -/
-def residentReg (decisions : List (String × Slot)) (n : String) : Option String :=
-  match decisions.lookup n with
-  | some (.resident r) => some r
-  | _ => none
-
-/-- The frame offset a `spilled` name is bound to, if it is spilled. -/
-def spillSlotOf (decisions : List (String × Slot)) (n : String) : Option Int :=
-  match decisions.lookup n with
-  | some (.spilled off) => some off
-  | _ => none
+export CatCrypt.Crypto.Optimizer.GenericRegAlloc (spillCount residentCount residentReg
+  spillSlotOf)
 
 /-! ### 3b. Byte separation of the frame slots
 
@@ -246,53 +216,11 @@ distinctness (at `width = 8` the offsets `0` and `4` are distinct and overlap).
 The condition is discharged from `linearScan`'s frame stride: consecutive spill offsets
 advance by `stride`, so at `width ≤ stride` the offsets are pairwise separated. -/
 
-/-- The spilled byte offsets recorded in `decisions`. -/
-def linearScanSpillOffsets (decisions : List (String × Slot)) : List Int :=
-  decisions.filterMap (fun d => match d.2 with | .spilled off => some off | _ => none)
+/-- The spilled byte offsets recorded in `decisions`: `GenericRegAlloc.slotOffsets`. -/
+abbrev linearScanSpillOffsets (decisions : List (String × Slot)) : List Int :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.slotOffsets decisions
 
-/-- The scan invariant: an offset already emitted lies at least `stride` below the next
-    free offset, so every new slot is separated from all earlier ones. -/
-theorem linearScanGo_pairwise (width : Nat) (stride : Int) (hw : (width : Int) ≤ stride) :
-    ∀ (lrs : List LiveRange) (active : List (String × String × Nat)) (freeRegs : List String)
-      (nextSpill : Int) (acc : List (String × Slot)),
-      (∀ o ∈ linearScanSpillOffsets acc, o + stride ≤ nextSpill) →
-      (linearScanSpillOffsets acc).Pairwise (SepAt width) →
-      (linearScanSpillOffsets (linearScanGo stride active freeRegs nextSpill acc lrs)).Pairwise
-        (SepAt width) := by
-  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
-  intro lrs
-  induction lrs with
-  | nil => intro active freeRegs nextSpill acc _ hp; exact hp
-  | cons lr rest ih =>
-    intro active freeRegs nextSpill acc hacc hp
-    have hres : ∀ (l : List (String × Slot)), linearScanSpillOffsets l = linearScanSpillOffsets acc →
-        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill)
-          ∧ (linearScanSpillOffsets l).Pairwise (SepAt width)) := by
-      intro l hl
-      rw [hl]; exact ⟨hacc, hp⟩
-    have hspill : ∀ (l : List (String × Slot)),
-        linearScanSpillOffsets l = nextSpill :: linearScanSpillOffsets acc →
-        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill + stride)
-          ∧ (linearScanSpillOffsets l).Pairwise (SepAt width)) := by
-      intro l hl
-      rw [hl]
-      refine ⟨?_, ?_⟩
-      · intro o ho
-        rcases List.mem_cons.mp ho with h | h
-        · omega
-        · have := hacc o h; omega
-      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
-        intro b hb
-        have := hacc b hb
-        exact Or.inr (by omega)
-    simp only [linearScanGo]
-    split
-    · exact ih _ _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
-    · split
-      · split
-        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
-        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
-      · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+export CatCrypt.Crypto.Optimizer.GenericRegAlloc (linearScanGo_pairwise)
 
 /-- **The linear scan's frame stride discharges the byte-separation obligation.** When
     the stride is at least the byte width of one allocated value, the slots `linearScan`
@@ -304,8 +232,8 @@ theorem linearScan_slotsSeparated (width : Nat) (pinned : List String) (frameBas
     (lrs : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
     (linearScanSpillOffsets (linearScan pinned frameBase lrs stride)).Pairwise
       (SepAt width) :=
-  linearScanGo_pairwise width stride hw _ [] (allocPool pinned) frameBase []
-    (by simp [linearScanSpillOffsets]) (by simp [linearScanSpillOffsets])
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.linearScan_slotsSeparated width
+    (allocPool pinned) frameBase lrs stride hw
 
 /-- The same for `spillAlloc`: a block's spill decisions are byte-separated at any value
     width the frame stride covers. -/

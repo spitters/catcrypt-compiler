@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # GAS RV64 asm printer for the 64-bit bignum `RInst64`
@@ -61,10 +63,10 @@ def gpOf64 (alloc : GpAlloc64) (n : String) : String :=
   if n = "zero" ∨ n = "x0" then "zero"
   else (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")
 
-/-- The index of the last instruction that *reads* `n`, or 0. -/
-def gpLastUse64 (block : List RInst64) (n : String) : Nat :=
-  (block.zipIdx.foldl (fun acc (i, idx) =>
-    if (rinst64DstSrcs i).2.contains n then idx else acc) 0)
+/-- The index of the last instruction that *reads* `n`, or 0:
+    `GenericRegAlloc.lastReadIdx` at `rinst64DstSrcs`. -/
+abbrev gpLastUse64 (block : List RInst64) (n : String) : Nat :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.lastReadIdx rinst64DstSrcs block n
 
 /-- The GP pool we allocate the 64-bit bignum body from: the caller-saved
     `a0..a7`, `t0..t6`, plus the callee-saved `s2..s11` (the bignum body has a
@@ -78,25 +80,13 @@ def gpPool64 : List String :=
 
 /-- Linear-scan allocation over the 64-bit GP pool with last-use liveness.
     `reserved` names (args/outputs) are pinned to `a0..` and never freed; the rest
-    of the pool is recycled by last use. The 64-bit analogue of `allocGp`. -/
+    of the pool is recycled by last use. The 64-bit analogue of `allocGp`: the printer
+    scan `GenericRegAlloc.lastReadScan` at `rinst64DstSrcs`, with the `reserved` names
+    pinned to `a0..` and the pool after them. -/
 def allocGp64 (reserved : List String) (block : List RInst64) : GpAlloc64 :=
-  let nres := reserved.length
-  let pinned : GpAlloc64 := reserved.zipIdx.map (fun (n, i) => (n, "a" ++ toString i))
-  let pool0 : List String := gpPool64.drop nres
-  let step : (GpAlloc64 × List String) → (RInst64 × Nat) → (GpAlloc64 × List String) :=
-    fun (alloc, free) (instr, idx) =>
-      let (dst, _) := rinst64DstSrcs instr
-      let (alloc1, free1) :=
-        if (alloc.lookup dst).isSome then (alloc, free)
-        else match free with
-          | [] => (alloc, free)
-          | r :: rest => ((dst, r) :: alloc, rest)
-      let toFree := (rinst64DstSrcs instr).2.filter (fun s =>
-        ¬ reserved.contains s ∧ gpLastUse64 block s = idx ∧ s ≠ dst)
-      let freedRegs := toFree.filterMap (fun s => alloc1.lookup s)
-      (alloc1, free1 ++ freedRegs)
-  let (alloc, _) := block.zipIdx.foldl step (pinned, pool0)
-  alloc
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.lastReadScan rinst64DstSrcs
+    (reserved.zipIdx.map (fun (n, i) => (n, "a" ++ toString i)))
+    (gpPool64.drop reserved.length) reserved block
 
 /-! ## 2. The GAS mnemonic printer (one line per `RInst64`)
 

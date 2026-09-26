@@ -15,8 +15,8 @@ public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 `AInst`/`AState`. `Optimizer.GenericRegAlloc` abstracts that allocator (and the
 x86 one) into a `MachineModel`-parameterized validated pass with the soundness theorems
 proved **once**. This module **validates the abstraction against the existing ARM
-instance**: it exhibits `MachineModel AInst` / `RegMachine AInst AState` / `MemMachine
-AMemState` instances built from the *already-proved* `ArmRegAlloc` facts
+instance**: over `ArmRegAlloc.instMachineModelAInst` it exhibits `RegMachine AInst AState`
+/ `MemMachine AMemState` instances built from the *already-proved* `ArmRegAlloc` facts
 (`evalAInst_eq_set`, `writtenName_rename`, the `AState` register-file laws, the
 `AMemState` cell laws), and shows the generic theorem `renameBlock_runBlock`, instantiated
 at the ARM types, gives back exactly what `ArmRegAlloc.renameABlock_runABlock` proved.
@@ -53,7 +53,7 @@ it by `cases` over `AInst` (each op's `instVal` reads only its `readNames`). -/
 /-- **The renamed op writes the same value**, given that every source read agrees via
     `ρ`. The A64 per-read-name source-locality the generic `RegMachine` class needs. -/
 theorem instVal_rename_local (ρ : String → String) (s t : AState) (i : AInst)
-    (h : ∀ a ∈ readNames i, t.get (ρ a) = s.get a) :
+    (h : ∀ a ∈ ArmRegAlloc.readNames i, t.get (ρ a) = s.get a) :
     instVal t (renameAInst ρ i) = instVal s i := by
   cases i <;>
     simp only [renameAInst, instVal, ArmRegAlloc.readNames, ainstDstSrcs, List.mem_cons,
@@ -61,18 +61,10 @@ theorem instVal_rename_local (ρ : String → String) (s t : AState) (i : AInst)
     (try obtain ⟨ha, hb⟩ := h) <;>
     simp_all [AState.get]
 
-/-! ## 2. The `MachineModel` / `RegMachine` / `MemMachine` instances for A64 -/
+/-! ## 2. The `RegMachine` / `MemMachine` instances for A64
 
-/-- **`MachineModel AInst`**: the syntactic interface for the A64 backend — written/read
-    names from `writtenName`/`readNames`, the A64 GP file `gpFile`, and `str`/`ldr`
-    rendered (here as `mov` markers carrying the name, the printer attaching the offset,
-    matching the `ArmRegAlloc.Item.spill` posture). -/
-instance instMachineModelAInst : MachineModel AInst where
-  writtenNames i := [ArmRegAlloc.writtenName i]
-  readNames := ArmRegAlloc.readNames
-  physRegs := gpFile
-  mkSpill r _off := .mov r r
-  mkReload r _off := .mov r r
+The syntactic `MachineModel AInst` instance is `ArmRegAlloc.instMachineModelAInst`, the
+instance the A64 live-range analysis and linear scan run at. -/
 
 /-- **`RegMachine AInst AState`**: the A64 semantic interface, wired from the existing
     `ArmRegAlloc`/`ArmModel` facts. The generic theorem `renameBlock_runBlock` specializes

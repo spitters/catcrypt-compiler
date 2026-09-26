@@ -243,6 +243,46 @@ def residentReg (decisions : List (String × Slot)) (n : String) : Option String
   | some (.resident r) => some r
   | _ => none
 
+/-! ### 2b. The printer scan: instruction-order allocation with last-read recycling
+
+The non-spilling allocator the A64, RV32 and RV64 printers run (`ARMBackend.allocGp`,
+`RISCVBackend.allocGp`, `RISCVBackend.allocGp64`). It walks the block in instruction
+order over single-destination instructions, described by `dstSrcs i = (dst, srcs)`.
+A destination not yet bound takes the head of the free list; when the free list is
+empty the name stays unbound. A source that is not reserved, is not the instruction's
+destination, and is read for the last time at this index returns its register to the
+end of the free list. The scan has no live ranges over writes, no sorting and no
+spill; it differs from `linearScan` in each of these respects, so the two produce
+different allocations on the same block. -/
+
+/-- The index of the last instruction of `block` that reads `n` (`0` if none), where
+    `dstSrcs i` is the destination and the source names of instruction `i`. -/
+def lastReadIdx (dstSrcs : I → String × List String) (block : List I) (n : String) : Nat :=
+  (block.zipIdx.foldl (fun acc (i, idx) =>
+    if (dstSrcs i).2.contains n then idx else acc) 0)
+
+/-- **The printer scan.** Starting from the bindings `pinned` and the free list `pool`,
+    bind each instruction's unbound destination to the next free register and return
+    the register of every non-`reserved` source to the free list after its last read.
+    The result is the final binding list, newest binding first, then `pinned`. -/
+def lastReadScan (dstSrcs : I → String × List String) (pinned : List (String × String))
+    (pool reserved : List String) (block : List I) : List (String × String) :=
+  let step : (List (String × String) × List String) → (I × Nat) →
+      (List (String × String) × List String) :=
+    fun (alloc, free) (instr, idx) =>
+      let (dst, _) := dstSrcs instr
+      let (alloc1, free1) :=
+        if (alloc.lookup dst).isSome then (alloc, free)
+        else match free with
+          | [] => (alloc, free)
+          | r :: rest => ((dst, r) :: alloc, rest)
+      let toFree := (dstSrcs instr).2.filter (fun s =>
+        ¬ reserved.contains s ∧ lastReadIdx dstSrcs block s = idx ∧ s ≠ dst)
+      let freedRegs := toFree.filterMap (fun s => alloc1.lookup s)
+      (alloc1, free1 ++ freedRegs)
+  let (alloc, _) := block.zipIdx.foldl step (pinned, pool)
+  alloc
+
 /-! ## 3. The resident-path checker: an injective renaming commutes with `runBlock`
 
 The register-resident half of any allocation output is a **renaming** `ρ : name →

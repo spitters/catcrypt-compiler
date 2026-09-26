@@ -174,14 +174,11 @@ def readNames : JInstr 64 → List String
   -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
   | .bzhi _ src idx => [src, idx]
 
-/-- A value-name's live range over a block: `defIdx` is the first index that
-    writes it (or, if it is only ever read — e.g. a frame base / input — `0`),
-    `lastUse` is the last index that reads or writes it. -/
-structure LiveRange where
-  name : String
-  defIdx : Nat
-  lastUse : Nat
-  deriving Repr, DecidableEq
+/- A value-name's live range over a block is `GenericRegAlloc.LiveRange`: `defIdx` is
+the first index that writes it (or, if it is only ever read — e.g. a frame base /
+input — `0`), `lastUse` is the last index that reads or writes it. -/
+export GenericRegAlloc (LiveRange LiveRange.mk LiveRange.name LiveRange.defIdx
+  LiveRange.lastUse)
 
 /-- The last index `< len` at which `name` is read or written (`0` if never, only
     reached for names that do appear). Forward scan keeping the max. -/
@@ -324,55 +321,16 @@ def allocPool (pinned : GpAlloc) : List String :=
   let used := pinned.map Prod.snd
   gpPool.filter (fun r => ¬ used.contains r ∧ ¬ workRegs.contains r)
 
-/-- A per-name allocation decision: either a pool register (`resident`) or a frame
-    spill slot byte-offset (`spilled`). -/
-inductive Slot where
-  | resident (reg : String)
-  | spilled (off : Int)
-  deriving Repr, DecidableEq
+/- A per-name allocation decision is `GenericRegAlloc.Slot`: either a pool register
+(`resident`) or a frame spill slot byte-offset (`spilled`). The scan step is
+`GenericRegAlloc.linearScanGo`. -/
+export GenericRegAlloc (Slot Slot.resident Slot.spilled linearScanGo)
 
-/-- The scan step of `linearScan`: `active` is the `(name, reg, lastUse)` map, `freeRegs`
-    the unassigned pool, `nextSpill` the next free frame offset, `acc` the decisions so
-    far, and the final argument the remaining live ranges in `defIdx` order. Consecutive
-    spill offsets advance by `stride`. -/
-def linearScanGo (stride : Int) (active : List (String × String × Nat))
-    (freeRegs : List String) (nextSpill : Int) (acc : List (String × Slot)) :
-    List LiveRange → List (String × Slot)
-  | [] => acc
-  | lr :: rest =>
-    -- expire intervals whose lastUse < this def
-    let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
-    let freed := freeRegs ++ expired.map (fun a => a.2.1)
-    match freed with
-    | reg :: more =>
-      linearScanGo stride ((lr.name, reg, lr.lastUse) :: live) more nextSpill
-         ((lr.name, .resident reg) :: acc) rest
-    | [] =>
-      -- pool full: spill the farthest-ending interval (or the newcomer)
-      let farthestActive := live.foldl
-        (fun (best : Option (String × String × Nat)) a =>
-          match best with
-          | none => some a
-          | some b => if a.2.2 > b.2.2 then some a else best) none
-      match farthestActive with
-      | some a =>
-        if a.2.2 > lr.lastUse then
-          -- spill the active value `a`, give its register to the newcomer
-          let live' := (live.filter (fun x => x.1 ≠ a.1))
-          linearScanGo stride ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + stride)
-             ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
-        else
-          -- spill the newcomer itself
-          linearScanGo stride live [] (nextSpill + stride)
-            ((lr.name, .spilled nextSpill) :: acc) rest
-      | none =>
-        linearScanGo stride live [] (nextSpill + stride)
-          ((lr.name, .spilled nextSpill) :: acc) rest
-
-/-- Linear-scan core: walk the live ranges in `defIdx` order; keep an active map
-    (name, reg, end). On a new def, reuse an expired register if available, else
-    allocate a free pool register, else spill the active interval with the farthest
-    `lastUse` (or the incoming name if it is farthest). Returns name ↦ `Slot`.
+/-- Linear-scan core: `GenericRegAlloc.linearScan` over `allocPool pinned`. Walk the
+    live ranges in `defIdx` order; keep an active map (name, reg, end). On a new def,
+    reuse an expired register if available, else allocate a free pool register, else
+    spill the active interval with the farthest `lastUse` (or the incoming name if it
+    is farthest). Returns name ↦ `Slot`.
 
     Frame byte-offsets are assigned sequentially from `frameBase`, advancing by
     `stride` — the byte width of one allocated value, so that two live spills cover
@@ -380,8 +338,7 @@ def linearScanGo (stride : Int) (active : List (String × String × Nat))
     general-purpose word, the width of every `JInstr 64` value. -/
 def linearScan (pinned : GpAlloc) (frameBase : Int) (lrs : List LiveRange)
     (stride : Int := 8) : List (String × Slot) :=
-  linearScanGo stride [] (allocPool pinned) frameBase []
-    (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
+  GenericRegAlloc.linearScan (allocPool pinned) frameBase lrs stride
 
 /-- The spill decisions: `name ↦ Slot` for every name, computed by the linear scan
     over the block's live ranges. The hot ladder values that fit the pool become
@@ -453,13 +410,9 @@ def spillAllocPinned (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JI
   let restLrs := (liveRanges block).filter (fun lr => ¬ mults.contains lr.name)
   multDecisions ++ linearScan pinned spillFrameBase restLrs stride
 
-/-- Count of names that ended up spilled (the metric the deliverable reports). -/
-def spillCount (decisions : List (String × Slot)) : Nat :=
-  (decisions.filter (fun d => match d.2 with | .spilled _ => true | _ => false)).length
-
-/-- Count of names that stayed register-resident. -/
-def residentCount (decisions : List (String × Slot)) : Nat :=
-  (decisions.filter (fun d => match d.2 with | .resident _ => true | _ => false)).length
+/- The counts of spilled and of register-resident names are `GenericRegAlloc.spillCount`
+and `GenericRegAlloc.residentCount`. -/
+export GenericRegAlloc (spillCount residentCount)
 
 /-! ### Materialising the decisions into a rewritten block
 
@@ -475,11 +428,8 @@ of spill-store / reload-load insertions*, each individually transparent under th
 `SpillValid` invariant. The store at the def establishes the invariant; the reload
 before the use consumes it. -/
 
-/-- Look up a name's spill slot, if it is spilled. -/
-def spillSlotOf (decisions : List (String × Slot)) (n : String) : Option Int :=
-  match decisions.lookup n with
-  | some (.spilled off) => some off
-  | _ => none
+/- A name's spill slot, if it is spilled, is `GenericRegAlloc.spillSlotOf`. -/
+export GenericRegAlloc (spillSlotOf)
 
 /-- For one instruction, the reload loads to prepend (one per spilled name it
     reads) and the spill stores to append (one per spilled name it writes), against
@@ -631,41 +581,8 @@ theorem linearScanGo_pairwise (width : Nat) (stride : Int) (hw : (width : Int) �
       (∀ o ∈ linearScanSpillOffsets acc, o + stride ≤ nextSpill) →
       (linearScanSpillOffsets acc).Pairwise (GenericRegAlloc.SepAt width) →
       (linearScanSpillOffsets (linearScanGo stride active freeRegs nextSpill acc lrs)).Pairwise
-        (GenericRegAlloc.SepAt width) := by
-  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
-  intro lrs
-  induction lrs with
-  | nil => intro active freeRegs nextSpill acc _ hp; exact hp
-  | cons lr rest ih =>
-    intro active freeRegs nextSpill acc hacc hp
-    have hres : ∀ (l : List (String × Slot)), linearScanSpillOffsets l = linearScanSpillOffsets acc →
-        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill)
-          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
-      intro l hl
-      rw [hl]; exact ⟨hacc, hp⟩
-    have hspill : ∀ (l : List (String × Slot)),
-        linearScanSpillOffsets l = nextSpill :: linearScanSpillOffsets acc →
-        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill + stride)
-          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
-      intro l hl
-      rw [hl]
-      refine ⟨?_, ?_⟩
-      · intro o ho
-        rcases List.mem_cons.mp ho with h | h
-        · omega
-        · have := hacc o h; omega
-      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
-        intro b hb
-        have := hacc b hb
-        exact Or.inr (by omega)
-    simp only [linearScanGo]
-    split
-    · exact ih _ _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
-    · split
-      · split
-        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
-        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
-      · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+        (GenericRegAlloc.SepAt width) :=
+  GenericRegAlloc.linearScanGo_pairwise width stride hw
 
 /-- **The linear scan's frame stride discharges the byte-separation obligation.** When
     the stride is at least the byte width of one allocated value, the slots `linearScan`
@@ -677,8 +594,7 @@ theorem linearScan_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameBase : 
     (lrs : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
     (linearScanSpillOffsets (linearScan pinned frameBase lrs stride)).Pairwise
       (GenericRegAlloc.SepAt width) :=
-  linearScanGo_pairwise width stride hw _ [] (allocPool pinned) frameBase []
-    (by simp [linearScanSpillOffsets]) (by simp [linearScanSpillOffsets])
+  GenericRegAlloc.linearScan_slotsSeparated width (allocPool pinned) frameBase lrs stride hw
 
 /-- The same for `spillAlloc`: a block's spill decisions are byte-separated at any value
     width the frame stride covers. -/
