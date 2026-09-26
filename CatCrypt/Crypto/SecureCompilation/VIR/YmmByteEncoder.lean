@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdByteEncoder
 public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdByteEncoder
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCryptCore.Tactics.KatGuard
 
 /-!
 # VEX.256 machine bytes of the `YmmOp` op set
@@ -98,6 +99,9 @@ def encodeYmmVex : YmmOp → (d a b : Nat) → List (BitVec 8)
   | .vpmulld,     d, a, b => encAvx2_0F38 0x40 1 d a b
   | .vpsignd,     d, a, b => encAvx2_0F38 0x0a 1 d a b
   | .vpermd,      d, a, b => encAvx2_0F38 0x36 1 d a b
+  -- `66 0F38` three-register ops with `W = 1` (qword lanes).
+  | .vpsrlvq,     d, a, b => encVex3 0b00010 0b01 1 1 0x45 d a b none
+  | .vpsllvq,     d, a, b => encVex3 0b00010 0b01 1 1 0x47 d a b none
   -- `66 0F3A` three-register ops with a trailing `imm8`.
   | .vpblendd imm,   d, a, b => encVpblendd 1 d a b imm
   | .vpblendw imm,   d, a, b => encVex3 0b00011 0b01 0 1 0x0e d a b (some imm)
@@ -336,5 +340,17 @@ theorem encodeYmmInst_ud2 :
     encodeYmmInst .vpaddq 3 5 21 = ymmBytes [0x0f, 0x0b] ∧
     encodeYmmInst (.vpsrlq 26) 3 16 0 = ymmBytes [0x0f, 0x0b] := by
   decide
+
+/- The per-lane qword shifts are `VEX.256.66.0F38.W1 47 /r` (`vpsllvq`) and
+   `VEX.256.66.0F38.W1 45 /r` (`vpsrlvq`) in the Intel SDM. For
+   `vpsllvq %ymm2, %ymm1, %ymm0` (`d, a, b = 0, 1, 2`): `C4`; `R̄ X̄ B̄ = 111` and map
+   `00010` give `E2`; `W = 1`, `v̄v̄v̄v̄ = ~1 = 1110`, `L = 1`, `pp = 01` give `F5`; the
+   opcode; `ModRM` `11 000 010` gives `C2`. The high-register lines
+   `… %ymm9, %ymm1, %ymm2` (`B̄ = 0`) and `… %ymm6, %ymm4, %ymm12` (`R̄ = 0`,
+   `vvvv = 4`) differ from the `vpsllvd`/`vpsrlvd` pins above only in the `W` bit. -/
+#kat encodeYmmInst .vpsllvq 0 1 2 == ymmBytes [0xc4, 0xe2, 0xf5, 0x47, 0xc2]
+#kat encodeYmmInst .vpsrlvq 0 1 2 == ymmBytes [0xc4, 0xe2, 0xf5, 0x45, 0xc2]
+#kat encodeYmmInst .vpsllvq 2 1 9 == ymmBytes [0xc4, 0xc2, 0xf5, 0x47, 0xd1]
+#kat encodeYmmInst .vpsrlvq 12 4 6 == ymmBytes [0xc4, 0x62, 0xdd, 0x45, 0xe6]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.YmmByteEncoder

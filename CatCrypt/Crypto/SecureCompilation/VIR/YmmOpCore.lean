@@ -66,6 +66,8 @@ that would otherwise arise once `JasminDialect` gains a `JasminOp.vymm` arm:
 | `vpblendw` | binary  | 16 × u16, `imm8`    | per-word select, `imm8` per 128-bit half     |
 | `vpsrldq`  | unary   | 2 × u128, `imm8`    | per-128-lane byte shift right                |
 | `vperm2i128` | binary | 2 × u128, `imm8`   | 128-bit half select from two sources         |
+| `vpsrlvd`/`vpsllvd` | binary | 8 × u32   | logical shifts by a per-lane count vector    |
+| `vpsrlvq`/`vpsllvq` | binary | 4 × u64   | logical shifts by a per-lane count vector    |
 
 ## The anchor
 
@@ -278,6 +280,18 @@ def vpsrlvdW (a b : BitVec 256) : BitVec 256 :=
     variable per-lane shift. -/
 def vpsllvdW (a b : BitVec 256) : BitVec 256 :=
   yOfDwordsW (fun i => yDwordW a i.val <<< (yDwordW b i.val).toNat)
+
+/-- `VPSRLVQ a, b`: 4 × logical shift right of each 64-bit lane of `a` by the
+    corresponding 64-bit count lane of `b`, read as an unsigned number; a count
+    `≥ 64` gives zero, as the Intel SDM specifies. AVX2 variable per-lane shift. -/
+def vpsrlvqW (a b : BitVec 256) : BitVec 256 :=
+  yOfQwordsW (fun j => yQwordW a j.val >>> (yQwordW b j.val).toNat)
+
+/-- `VPSLLVQ a, b`: 4 × logical shift left of each 64-bit lane of `a` by the
+    corresponding 64-bit count lane of `b`, read as an unsigned number; a count
+    `≥ 64` gives zero, as the Intel SDM specifies. AVX2 variable per-lane shift. -/
+def vpsllvqW (a b : BitVec 256) : BitVec 256 :=
+  yOfQwordsW (fun j => yQwordW a j.val <<< (yQwordW b j.val).toNat)
 
 /-- `VPSHUFB a, b`: within EACH 128-bit lane, gather bytes of the data operand
     `a` under the control operand `b`. For output byte `i` with `h = i / 16` the
@@ -579,6 +593,10 @@ inductive YmmOp where
   | vpsrldq (imm : Nat)
   /-- `VPERM2I128 a, b, imm8` — 128-bit half select from two sources. Binary. AVX2. -/
   | vperm2i128 (imm : Nat)
+  /-- `VPSRLVQ a, b` — 4×u64 logical shift right by a per-lane count vector. Binary. AVX2. -/
+  | vpsrlvq
+  /-- `VPSLLVQ a, b` — 4×u64 logical shift left by a per-lane count vector. Binary. AVX2. -/
+  | vpsllvq
   deriving DecidableEq, Repr
 
 /-- Whether the op consumes one (`false`) or two (`true`) register operands.
@@ -633,6 +651,8 @@ def YmmOp.isBinary : YmmOp → Bool
   | .vpblendw _ => true
   | .vpsrldq _ => false
   | .vperm2i128 _ => true
+  | .vpsrlvq => true
+  | .vpsllvq => true
 
 /-- The jasmin/x86 (gas / AT&T) mnemonic of a `YmmOp` for asm emit. The AT&T
     print is lower-case with operands in `src…, dst` order; the printer adds the
@@ -686,6 +706,8 @@ def YmmOp.attMnemonic : YmmOp → String
   | .vpblendw _ => "vpblendw"
   | .vpsrldq _ => "vpsrldq"
   | .vperm2i128 _ => "vperm2i128"
+  | .vpsrlvq => "vpsrlvq"
+  | .vpsllvq => "vpsllvq"
 
 /-- The jasmin/Intel-SDM mnemonic of a `YmmOp` (upper-case, matching the
     `SimdOp.mnemonic` convention used by the dialect printer). -/
@@ -738,6 +760,8 @@ def YmmOp.jasminMnemonic : YmmOp → String
   | .vpblendw n => "VPBLENDW:" ++ toString n
   | .vpsrldq n => "VPSRLDQ:" ++ toString n
   | .vperm2i128 n => "VPERM2I128:" ++ toString n
+  | .vpsrlvq => "VPSRLVQ"
+  | .vpsllvq => "VPSLLVQ"
 
 /-! ## 4. Per-arm denotation (mixed arity)
 
@@ -800,6 +824,8 @@ def YmmOp.denoteUnary : YmmOp → BitVec 256 → BitVec 256
   | .vpunpckhqdq, a => vpunpckhqdqW a a
   | .vpblendw imm, a => vpblendwW a a imm
   | .vperm2i128 imm, a => vperm2i128W a a imm
+  | .vpsrlvq, a => vpsrlvqW a a
+  | .vpsllvq, a => vpsllvqW a a
 
 /-- The binary-op denotation (`vpmuldq`/`vpsubq`/`vpaddd`/`vpsubd`/`vpblendd`).
     The unary arms ignore `b`. -/
@@ -852,6 +878,8 @@ def YmmOp.denoteBinary : YmmOp → BitVec 256 → BitVec 256 → BitVec 256
   | .vpblendw imm, a, b => vpblendwW a b imm
   | .vpsrldq imm, a, _ => vpsrldqW a imm
   | .vperm2i128 imm, a, b => vperm2i128W a b imm
+  | .vpsrlvq, a, b => vpsrlvqW a b
+  | .vpsllvq, a, b => vpsllvqW a b
 
 /-- The uniform per-arm denotation, reading two `BitVec 256` operands (the unary
     arms ignore the second). This is the single dispatch the `Com` integration
