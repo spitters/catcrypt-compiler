@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import CatCrypt.Crypto.SecureCompilation.RangeDomain
 public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
@@ -28,21 +29,10 @@ of `Plonky3NttButterflyEmit` by proof rather than by KAT.
 
 ## The Barrett quotient bound (the classic `t ∈ [0, 2p)`)
 
-Writing `x = h·2^30 + r₀` (`r₀ < 2^30`), `h·MU = q·2^32 + r₁` (`r₁ < 2^32`), and
-`MU·p = 2^62 − s` with `s = 2^62 mod p = 796358521` (`0 < s < p`), the estimate
-`t = x − q·p` satisfies the exact identity
-```
-  t · 2^32 = r₀ · 2^32 + h · s + r₁ · p          (†)
-```
-From (†): `t ≥ 0` (the RHS is a sum of non-negatives, and `q·p ≤ x`), and since
-`r₀ < 2^30`, `h < 2^32`, `r₁ < 2^32`,
-```
-  t · 2^32 < 2^30 · 2^32 + 2^32 · s + 2^32 · p
-  ⟹  t < 2^30 + s + p = 3883366266 < 2 · p = 4026531842,
-```
-so a single conditional subtract canonicalises `t` into `[0, p)`. This is the
-standard Barrett bound; the asymmetric shifts `(30, 32)` make the slack tight
-(empirical max `t ≈ 3.84·10^9`, well below `2p`).
+The bounds `q·p ≤ x` and `x < q·p + 2p` are the instance of the two-shift Barrett
+bound `RangeDomain.barrett_nat` at `s = 30`, `t = 32`, `m = MU`: for `x < 2^62` the
+remainder `t = x − q·p` is at most `barrettBound (2^62 − 1) 30 32 MU p`, which lies
+below `2p`, so a single conditional subtract canonicalises `t` into `[0, p)`.
 -/
 
 @[expose] public section
@@ -52,6 +42,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 
 open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+open CatCrypt.Crypto.SecureCompilation.RangeDomain (barrett_nat barrettBound)
 
 /-- The Barrett constant `MU = ⌊2^62 / p⌋ = 2290649223`, as a `BitVec 64`. -/
 def bbMU : BitVec 64 := 2290649223
@@ -89,87 +80,23 @@ theorem barrett_q_toNat (x : BitVec 64) (hx : x.toNat < 2 ^ 62) :
     rw [BitVec.toNat_mul, hhi, bbMU_toNat, Nat.mod_eq_of_lt hprodlt]
   rw [BitVec.toNat_ushiftRight, hmul, Nat.shiftRight_eq_div_pow]
 
-/-- **The Barrett quotient never overshoots:** `q · p ≤ x` (so `t = x − q·p ≥ 0`),
-    via `q·2^32 ≤ h·MU`, `MU·p ≤ 2^62`, `h·2^30 ≤ x`. -/
+/-- **The Barrett quotient never overshoots:** `q · p ≤ x` (so `t = x − q·p ≥ 0`).
+    The first half of `RangeDomain.barrett_nat` at `X = x`, since `MU·p ≤ 2^62`. -/
 theorem barrett_q_mul_p_le (x : BitVec 64) :
-    (x.toNat / 2 ^ 30 * 2290649223 / 2 ^ 32) * 2013265921 ≤ x.toNat := by
-  set h := x.toNat / 2 ^ 30 with hh
-  set q := h * 2290649223 / 2 ^ 32 with hq
-  -- q * 2^32 ≤ h * MU
-  have h1 : q * 2 ^ 32 ≤ h * 2290649223 := Nat.div_mul_le_self _ _
-  -- h * 2^30 ≤ x
-  have h2 : h * 2 ^ 30 ≤ x.toNat := Nat.div_mul_le_self _ _
-  -- MU * p ≤ 2^62
-  have h3 : (2290649223 : Nat) * 2013265921 ≤ 2 ^ 62 := by norm_num
-  -- q*p*2^32 ≤ h*MU*p ≤ h*2^62 = h*2^30*2^32 ≤ x*2^32
-  have key : q * 2013265921 * 2 ^ 32 ≤ x.toNat * 2 ^ 32 := by
-    calc q * 2013265921 * 2 ^ 32 = q * 2 ^ 32 * 2013265921 := by ring
-      _ ≤ h * 2290649223 * 2013265921 := by
-          exact Nat.mul_le_mul_right _ h1
-      _ = h * (2290649223 * 2013265921) := by ring
-      _ ≤ h * 2 ^ 62 := by exact Nat.mul_le_mul_left _ h3
-      _ = h * 2 ^ 30 * 2 ^ 32 := by ring
-      _ ≤ x.toNat * 2 ^ 32 := by exact Nat.mul_le_mul_right _ h2
-  exact Nat.le_of_mul_le_mul_right key (by norm_num)
+    (x.toNat / 2 ^ 30 * 2290649223 / 2 ^ 32) * 2013265921 ≤ x.toNat :=
+  (barrett_nat x.toNat x.toNat 30 32 2290649223 2013265921 le_rfl (by norm_num)).1
 
 /-- **The Barrett estimate undershoots by less than `2p`:** `x < q·p + 2p`.
-    From the exact identity `t·2^32 = r₀·2^32 + h·s + r₁·p` with
-    `r₀ < 2^30`, `h < 2^32`, `r₁ < 2^32`, `s = 2^62 − MU·p = 796358521`. -/
+    `RangeDomain.barrett_nat` at `X = 2^62 − 1` bounds `x − q·p` by
+    `barrettBound (2^62 − 1) 30 32 MU p`, which is below `2p`. -/
 theorem barrett_x_lt (x : BitVec 64) (hx : x.toNat < 2 ^ 62) :
     x.toNat < (x.toNat / 2 ^ 30 * 2290649223 / 2 ^ 32) * 2013265921
       + 2 * 2013265921 := by
-  set h := x.toNat / 2 ^ 30 with hh
-  set q := h * 2290649223 / 2 ^ 32 with hq
-  -- decompositions: x = h*2^30 + r0, h*MU = q*2^32 + r1
-  have hr0 : x.toNat = h * 2 ^ 30 + x.toNat % 2 ^ 30 := by
-    rw [hh]; rw [Nat.div_add_mod' x.toNat (2 ^ 30)]
-  have hr0lt : x.toNat % 2 ^ 30 < 2 ^ 30 := Nat.mod_lt _ (by norm_num)
-  have hr1 : h * 2290649223 = q * 2 ^ 32 + h * 2290649223 % 2 ^ 32 := by
-    rw [hq]; rw [Nat.div_add_mod' (h * 2290649223) (2 ^ 32)]
-  have hr1lt : h * 2290649223 % 2 ^ 32 < 2 ^ 32 := Nat.mod_lt _ (by norm_num)
-  have hhlt : h < 2 ^ 32 := by rw [hh]; apply Nat.div_lt_of_lt_mul; omega
-  -- the key exact identity: t*2^32 = r0*2^32 + h*s + r1*p  with MU*p = 2^62 - s
-  -- equivalently  x*2^32 = q*p*2^32 + r0*2^32 + h*s + r1*p
-  set r0 := x.toNat % 2 ^ 30 with hr0d
-  set r1 := h * 2290649223 % 2 ^ 32 with hr1d
-  have hMUp : (2290649223 : Nat) * 2013265921 = 2 ^ 62 - 796358521 := by norm_num
-  -- multiply the x-identity by 2^32 and substitute h*MU
-  have ident : x.toNat * 2 ^ 32
-      = q * 2013265921 * 2 ^ 32 + (r0 * 2 ^ 32 + h * 796358521 + r1 * 2013265921) := by
-    have e1 : x.toNat * 2 ^ 32 = h * 2 ^ 62 + r0 * 2 ^ 32 := by
-      conv_lhs => rw [hr0]
-      ring
-    -- h * 2^62 = h*MU*p + h*s   (since MU*p = 2^62 - s, and s < 2^62)
-    have e2 : h * 2 ^ 62 = h * (2290649223 * 2013265921) + h * 796358521 := by
-      rw [hMUp]
-      have : (2 : Nat) ^ 62 = (2 ^ 62 - 796358521) + 796358521 := by norm_num
-      conv_lhs => rw [this]
-      ring
-    -- h*MU*p = (q*2^32 + r1)*p = q*p*2^32 + r1*p
-    have e3 : h * (2290649223 * 2013265921) = q * 2013265921 * 2 ^ 32 + r1 * 2013265921 := by
-      have : h * (2290649223 * 2013265921) = (h * 2290649223) * 2013265921 := by ring
-      rw [this, hr1]; ring
-    rw [e1, e2, e3]; ring
-  -- bound the remainder term: r0*2^32 + h*s + r1*p < (2^30 + s + p) * 2^32 < 2p*2^32
-  have rem_lt : r0 * 2 ^ 32 + h * 796358521 + r1 * 2013265921 < 2 * 2013265921 * 2 ^ 32 := by
-    have b0 : r0 * 2 ^ 32 ≤ (2 ^ 30 - 1) * 2 ^ 32 := by gcongr; omega
-    have b1 : h * 796358521 ≤ (2 ^ 32 - 1) * 796358521 := by gcongr; omega
-    have b2 : r1 * 2013265921 ≤ (2 ^ 32 - 1) * 2013265921 := by gcongr; omega
-    have bnum : (2 ^ 30 - 1) * 2 ^ 32 + (2 ^ 32 - 1) * 796358521
-        + (2 ^ 32 - 1) * 2013265921 < 2 * 2013265921 * 2 ^ 32 := by norm_num
-    calc r0 * 2 ^ 32 + h * 796358521 + r1 * 2013265921
-        ≤ (2 ^ 30 - 1) * 2 ^ 32 + (2 ^ 32 - 1) * 796358521
-            + (2 ^ 32 - 1) * 2013265921 :=
-          Nat.add_le_add (Nat.add_le_add b0 b1) b2
-      _ < 2 * 2013265921 * 2 ^ 32 := bnum
-  -- combine: x*2^32 = q*p*2^32 + rem < q*p*2^32 + 2p*2^32, cancel 2^32
-  have hlt32 : x.toNat * 2 ^ 32 < (q * 2013265921 + 2 * 2013265921) * 2 ^ 32 := by
-    rw [ident]
-    have he : (q * 2013265921 + 2 * 2013265921) * 2 ^ 32
-        = q * 2013265921 * 2 ^ 32 + 2 * 2013265921 * 2 ^ 32 := by ring
-    rw [he]
-    exact Nat.add_lt_add_left rem_lt _
-  exact Nat.lt_of_mul_lt_mul_right hlt32
+  obtain ⟨h1, h2⟩ := barrett_nat x.toNat (2 ^ 62 - 1) 30 32 2290649223 2013265921
+    (by omega) (by norm_num)
+  have hb : barrettBound (2 ^ 62 - 1) 30 32 2290649223 2013265921 < 2 * 2013265921 := by
+    norm_num [barrettBound]
+  omega
 
 /-- **`barrettReduceMU` is the BabyBear field reduction.** For any `x < 2^62`
     (in particular any product of two canonical residues), the emitted Barrett

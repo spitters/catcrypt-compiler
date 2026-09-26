@@ -10,6 +10,7 @@ public import Mathlib.Data.Nat.ModEq
 public import Mathlib.Tactic.Convert
 public import Mathlib.Tactic.NormNum
 public import Mathlib.Tactic.Ring
+public import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
 
 /-!
 # Montgomery REDC law for a 60-bit FHE NTT modmul
@@ -27,7 +28,9 @@ We model the emittable single-word **Montgomery REDC** at the 60-bit prime
 ```
 where `qinv = −q^{-1} mod 2^64` so `q·qinv ≡ −1 mod R`.
 
-All reasoning is over `Nat` (the cleanest layer). The headline result is
+The exact-division step `montRedc_exact_div` is the instance of the generic
+`MontgomeryRedcGeneric.R_dvd_T_add_mN` at `N = q`, `R = 2^64`, `N' = qinv`; the rest
+of the reasoning is over `Nat`. The headline result is
 `normalMul_correct : normalMul a b = (a * b) % q` for `a, b < q`, the function a
 GMP KAT checks.
 -/
@@ -37,6 +40,8 @@ GMP KAT checks.
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FheMontMulLaw
+
+open CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric (R_dvd_T_add_mN montDigit)
 
 /-- The 60-bit FHE prime `q = 2^60 − 2^14 + 1`. -/
 def fheQ : Nat := 1152921504606830593
@@ -58,6 +63,12 @@ theorem fheR_eq : fheR = 2 ^ 64 := by norm_num [fheR]
 theorem fheQ_mul_qinv_mod : fheQ * fheQinv % fheR = fheR - 1 := by
   norm_num [fheQ, fheQinv, fheR]
 
+/-- The defining congruence `q · qinv ≡ −1 (mod R)` over `ℤ`, the hypothesis form of
+    `MontgomeryRedcGeneric`. -/
+theorem fheQ_mul_qinv_modEq :
+    ((fheQ : ℕ) : ℤ) * ((fheQinv : ℕ) : ℤ) ≡ -1 [ZMOD ((fheR : ℕ) : ℤ)] := by
+  unfold Int.ModEq; norm_num [fheQ, fheQinv, fheR]
+
 /-- `R^2 ≡ R2 (mod q)`. -/
 theorem fheR2_eq : fheR ^ 2 % fheQ = fheR2 := by
   norm_num [fheR, fheQ, fheR2]
@@ -77,39 +88,17 @@ def montRedc (T : Nat) : Nat :=
   if u ≥ fheQ then u - fheQ else u
 
 /-- **Montgomery exact-division property.** `(T + m·q) % R = 0`, so the division
-    by `R` in `montRedc` is exact. This is the heart of Montgomery reduction:
-    `m·q ≡ (T%R)·qinv·q ≡ (T%R)·(−1) ≡ −T (mod R)`, hence `T + m·q ≡ 0`. -/
+    by `R` in `montRedc` is exact. The instance of `MontgomeryRedcGeneric.R_dvd_T_add_mN`
+    at `N = q`, `R = 2^64`, `N' = qinv`, whose Montgomery digit `(T·qinv) mod R`
+    equals `((T mod R)·qinv) mod R`. -/
 theorem montRedc_exact_div (T : Nat) :
     (T + ((T % fheR) * fheQinv % fheR) * fheQ) % fheR = 0 := by
-  -- `m·q ≡ (T%R)·(qinv·q) ≡ (T%R)·(R−1) (mod R)`, all via `Nat.ModEq` (no
-  -- rewrite-looping on the big literals).
-  have hmq : (((T % fheR) * fheQinv % fheR) * fheQ) ≡ ((T % fheR) * (fheR - 1)) [MOD fheR] := by
-    have h1 : ((T % fheR) * fheQinv % fheR) ≡ (T % fheR) * fheQinv [MOD fheR] :=
-      Nat.mod_modEq _ _
-    have h2 : ((T % fheR) * fheQinv % fheR) * fheQ ≡ ((T % fheR) * fheQinv) * fheQ [MOD fheR] :=
-      h1.mul_right _
-    have h3 : ((T % fheR) * fheQinv) * fheQ = (T % fheR) * (fheQinv * fheQ) := by ring
-    rw [h3] at h2
-    -- `qinv·q ≡ R − 1 (mod R)` (from `q·qinv % R = R − 1`)
-    have h4 : (fheQinv * fheQ) ≡ (fheR - 1) [MOD fheR] := by
-      unfold Nat.ModEq
-      rw [Nat.mul_comm, fheQ_mul_qinv_mod, Nat.mod_eq_of_lt (by have := fheR_pos; omega)]
-    exact h2.trans (h4.mul_left _)
-  -- Hence `T + m·q ≡ T + (T%R)·(R−1) (mod R)`, and the RHS is `(T/R + T%R)·R ≡ 0`.
-  have hsum : (T + ((T % fheR) * fheQinv % fheR) * fheQ)
-      ≡ (T + (T % fheR) * (fheR - 1)) [MOD fheR] := (Nat.ModEq.refl T).add hmq
-  rw [Nat.ModEq] at hsum
-  rw [hsum]
-  -- `T + (T%R)·(R−1) = (T/R + T%R)·R`, so `% R = 0`.
-  have hR1 : (fheR - 1) + 1 = fheR := by have := fheR_pos; omega
-  have hd : fheR * (T / fheR) + T % fheR = T := Nat.div_add_mod T fheR
-  have key : T + (T % fheR) * (fheR - 1) = (T / fheR + T % fheR) * fheR := by
-    calc T + (T % fheR) * (fheR - 1)
-        = (fheR * (T / fheR) + T % fheR) + (T % fheR) * (fheR - 1) := by rw [hd]
-      _ = fheR * (T / fheR) + (T % fheR) * ((fheR - 1) + 1) := by ring
-      _ = fheR * (T / fheR) + (T % fheR) * fheR := by rw [hR1]
-      _ = (T / fheR + T % fheR) * fheR := by ring
-  rw [key, Nat.mul_mod_left]
+  have h := R_dvd_T_add_mN (fheQ : ℤ) (fheR : ℤ) (fheQinv : ℤ) (T : ℤ) fheQ_mul_qinv_modEq
+  have hm : montDigit (fheR : ℤ) (fheQinv : ℤ) (T : ℤ)
+      = (((T % fheR) * fheQinv % fheR : ℕ) : ℤ) := by
+    unfold montDigit; push_cast; exact (Int.ModEq.mul_right _ (Int.mod_modEq _ _)).symm
+  rw [hm] at h
+  exact Nat.mod_eq_zero_of_dvd (by exact_mod_cast h)
 
 /-- The Montgomery quotient `u = (T + m·q)/R`, named for reuse. -/
 def montU (T : Nat) : Nat := (T + ((T % fheR) * fheQinv % fheR) * fheQ) / fheR

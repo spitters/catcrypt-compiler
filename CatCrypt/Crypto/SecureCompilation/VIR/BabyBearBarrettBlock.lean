@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import CatCrypt.Crypto.SecureCompilation.RangeDomain
 public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
 
 /-!
@@ -29,7 +30,8 @@ states that the block computes `bbMul` on reduced inputs.
 
 ## Main results
 
-* `barrett_quot_bounds`: `q · p ≤ x < q · p + 2p` for `x < p²`.
+* `barrett_quot_bounds`: `q · p ≤ x < q · p + 2p` for `x < p²`, an instance of the
+  two-shift Barrett bound `RangeDomain.barrett_nat`.
 * `bbBarrett_toNat`: `(bbBarrett x).toNat = x.toNat % p` for `x.toNat < p²`.
 * `bbBarrett_mul_eq_bbMul`: `bbBarrett (a * b) = bbMul a b` on reduced words.
 * `emitReduceBarrett_denote_ret`, `emitMulBarrett_denote_ret`.
@@ -49,6 +51,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
   (BState Cont emitBin emitConst emitCsub emitCsub_denote_ret slotVal slotVal_step
    emitBin_denote emitConst_denote here_lookup there_lookup headVar sc0 sc1 sc2 cP)
+open CatCrypt.Crypto.SecureCompilation.RangeDomain (barrett_nat barrettBound)
 
 /-! ## 1. The Barrett quotient on natural numbers -/
 
@@ -62,14 +65,16 @@ theorem bbMuNat_eq : bbMuNat = 2 ^ 62 / 2013265921 := by
 def barrettQuot (x : Nat) : Nat := x / 2 ^ 30 * bbMuNat / 2 ^ 32
 
 /-- **Barrett quotient bounds.** For `x < p²` the estimate `q` satisfies
-    `q · p ≤ x < q · p + 2p`, so `x − q · p` lies in `[0, 2p)`. -/
+    `q · p ≤ x < q · p + 2p`, so `x − q · p` lies in `[0, 2p)`. The instance of
+    `RangeDomain.barrett_nat` at `s = 30`, `t = 32`, `X = p² − 1`, whose remainder
+    bound lies below `2p`. -/
 theorem barrett_quot_bounds (x : Nat) (hx : x < 2013265921 * 2013265921) :
     barrettQuot x * 2013265921 ≤ x ∧ x < barrettQuot x * 2013265921 + 2 * 2013265921 := by
-  unfold barrettQuot bbMuNat
-  have h1 := Nat.div_add_mod x (2 ^ 30)
-  have h2 := Nat.mod_lt x (show 0 < 2 ^ 30 by norm_num)
-  have h3 := Nat.div_add_mod (x / 2 ^ 30 * 2290649223) (2 ^ 32)
-  have h4 := Nat.mod_lt (x / 2 ^ 30 * 2290649223) (show 0 < 2 ^ 32 by norm_num)
+  obtain ⟨h1, h2⟩ := barrett_nat x (2013265921 * 2013265921 - 1) 30 32 bbMuNat 2013265921
+    (by omega) (by norm_num [bbMuNat])
+  have hb : barrettBound (2013265921 * 2013265921 - 1) 30 32 bbMuNat 2013265921
+      < 2 * 2013265921 := by norm_num [barrettBound, bbMuNat]
+  unfold barrettQuot
   omega
 
 theorem barrettQuot_lt (x : Nat) (hx : x < 2013265921 * 2013265921) :

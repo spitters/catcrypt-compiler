@@ -36,7 +36,7 @@ property**
 redc T * R ≡ T (mod N)        i.e.   redc T ≡ T * R⁻¹ (mod N).
 ```
 
-The proof is the two-halves assembly the task description calls for:
+The proof assembles two halves:
 
 1. **Divisibility** (`R ∣ (T + m*N)`): by the choice `m = T*N' mod R`, we have
    `T + m*N ≡ 0 (mod R)` (here `m*N ≡ T*N'*N ≡ -T (mod R)` using
@@ -50,6 +50,9 @@ multiplier rests on; the per-curve `MontMul` kernels instantiate it (at the
 `ℕ` level the same statement is `CatCrypt.Crypto.Number.montgomeryReduce_correct`,
 which additionally tracks the `[0, 2N)` range bound for the conditional
 subtract — see the cross-reference below).
+
+The subtractive form, with `μ = N⁻¹ mod R` and the reduction `T / R − m·N / R`, is
+`redcSub_digit_mul_add`, `redcSub_mul_R_modEq` and `redcSub_lt`.
 -/
 
 namespace CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
@@ -125,5 +128,53 @@ theorem montMul_mul_R_modEq
     (N R N' a b : ℤ) (hN' : N * N' ≡ -1 [ZMOD R]) :
     montMul N R N' a b * R ≡ a * b [ZMOD N] :=
   redc_mul_R_modEq N R N' (a * b) hN'
+
+/-! ## The subtractive form
+
+With `μ = N⁻¹ mod R` (`μ·N ≡ 1 (mod R)`) in place of `N' = −N⁻¹`, the reduction of
+`T` is `T / R − u` with `m = ((T mod R)·μ) mod R` and `u = m·N / R`: the low word of
+`m·N` equals the low word of `T`, so the difference of the two high words is
+`(T − m·N) / R` exactly. A word implementation computes `T / R` and `u` as the high
+halves of `a·b` and `m·N` and corrects a negative difference by adding `N`. -/
+
+/-- **Subtractive digit relation.** For `μ·N ≡ 1 (mod R)` and
+    `m = ((T mod R)·μ) mod R`, the high word `u = m·N / R` satisfies
+    `u·R + T mod R = m·N`. -/
+theorem redcSub_digit_mul_add (N R μ T : ℕ) (hμ : μ * N ≡ 1 [MOD R]) :
+    (T % R * μ % R) * N / R * R + T % R = (T % R * μ % R) * N := by
+  have hmN : (T % R * μ % R) * N % R = T % R := by
+    have h : (T % R * μ % R) * N ≡ T % R * 1 [MOD R] := by
+      calc (T % R * μ % R) * N ≡ (T % R * μ) * N [MOD R] := (Nat.mod_modEq _ R).mul_right N
+        _ = T % R * (μ * N) := by ring
+        _ ≡ T % R * 1 [MOD R] := hμ.mul_left _
+    rw [Nat.mul_one] at h
+    rw [h, Nat.mod_mod]
+  conv_rhs => rw [← Nat.div_add_mod ((T % R * μ % R) * N) R]
+  rw [hmN, Nat.mul_comm R]
+
+/-- **Subtractive Montgomery property.** For `μ·N ≡ 1 (mod R)`,
+    `(T / R − u)·R ≡ T (mod N)` with `u = (((T mod R)·μ) mod R)·N / R`, i.e. the
+    signed difference of the two high words is `T·R⁻¹ (mod N)`. -/
+theorem redcSub_mul_R_modEq (N R μ T : ℕ) (hμ : μ * N ≡ 1 [MOD R]) :
+    (((T / R : ℕ) : ℤ) - (((T % R * μ % R) * N / R : ℕ) : ℤ)) * R ≡ T [ZMOD N] := by
+  have e1 : ((T / R : ℕ) : ℤ) * R + ((T % R : ℕ) : ℤ) = T := by
+    have := Nat.div_add_mod' T R; exact_mod_cast this
+  have e2 : (((T % R * μ % R) * N / R : ℕ) : ℤ) * R + ((T % R : ℕ) : ℤ)
+      = (((T % R * μ % R) : ℕ) : ℤ) * N := by
+    exact_mod_cast redcSub_digit_mul_add N R μ T hμ
+  have h : (((T / R : ℕ) : ℤ) - (((T % R * μ % R) * N / R : ℕ) : ℤ)) * R
+      = T - (((T % R * μ % R) : ℕ) : ℤ) * N := by
+    rw [← e1, ← e2]; ring
+  rw [h]
+  have hz : (((T % R * μ % R) : ℕ) : ℤ) * N ≡ 0 [ZMOD N] :=
+    (Int.modEq_zero_iff_dvd).mpr ⟨_, by ring⟩
+  simpa using (Int.ModEq.refl (T : ℤ)).sub hz
+
+/-- **Subtractive range.** For `T < N·R` both high words lie below `N`:
+    `T / R < N` and `(((T mod R)·μ) mod R)·N / R < N`. -/
+theorem redcSub_lt (N R μ T : ℕ) (hR : 0 < R) (hN : 0 < N) (hT : T < N * R) :
+    T / R < N ∧ (T % R * μ % R) * N / R < N :=
+  ⟨Nat.div_lt_of_lt_mul (by rw [Nat.mul_comm]; exact hT),
+    Nat.div_lt_of_lt_mul (Nat.mul_lt_mul_of_pos_right (Nat.mod_lt _ hR) hN)⟩
 
 end CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
