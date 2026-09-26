@@ -13,15 +13,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
 /-!
 # ABI maps for the owned-RA linear export of the Poseidon2-BabyBear permutation
 
-The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`,
-task #453/#462/#470/#472) regenerates a physical-register, two-address
-`Linear.lprog` from a `Com jasminDialect` and feeds it to the patched jasmin
-`read_linear` / `compile_lprog_to_asm`, which then ONLY encodes — no
-re-allocation. ChaCha20 (#453, 1.80×), SHA-256 (#470, 1.26×) and Keccak (#472,
-1.49×) showed this removes the named-register scheduling tax. This module
-provides the producer-side maps for the whole Poseidon2-BabyBear width-16
-permutation body (`Poseidon2WholePermCom.poseidon2PermComOut`) so the same path
-applies to Poseidon2 (task #504).
+The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`)
+regenerates a physical-register, two-address `Linear.lprog` from a
+`Com jasminDialect` and feeds it to the patched jasmin `read_linear` /
+`compile_lprog_to_asm`, which then ONLY encodes — no re-allocation. On ChaCha20
+(1.80×), SHA-256 (1.26×) and Keccak (1.49×) this removes the named-register
+scheduling tax. This module provides the producer-side maps for the whole
+Poseidon2-BabyBear width-16 permutation body
+(`Poseidon2WholePermCom.poseidon2PermComOut`) so the same path applies to Poseidon2.
 
 Poseidon2-BabyBear is **U64 throughout**: 16 Baby Bear lanes carried as `reg 64`
 canonical residues, all field arithmetic on u64 (add / sub / mul / and / shift)
@@ -52,7 +51,7 @@ extern uint64_t poseidon2_bb_permute(uint64_t *out, const uint64_t *inp);
 
 so `RSI = inp` and `RDI = out`. All operands are U64, so the ABI loads of the
 16 lanes are 8-byte loads (`inp[i]` at byte `8*i`) and the 16 output stores are
-8-byte stores (`out[j]` at byte `8*j`). The #470 jasmin `read_linear` sizes
+8-byte stores (`out[j]` at byte `8*j`). The jasmin `read_linear` sizes
 spill/save cells at 8 bytes uniformly, covering Poseidon2's U64 spills.
 -/
 
@@ -87,28 +86,28 @@ def poseidon2InLoadMap : InLoadMap := fun slot =>
 def poseidon2OutStoreMap : OutStoreMap :=
   (List.range 16).map (fun j => ("RDI", j * 8))
 
-/-! ## Phase-0 register-allocator translation-validation entry points (#476 RA)
+/-! ## Register-allocator translation-validation entry points
 
 The owned-RA producer proposes the residence map
 `(Poseidon2WholePermCom.slotTraceArr ())` (binding ordinal → `Fin 25` residence
 class) to coalesce the ≈107 000 fresh-SSA names onto 25 logical slots. The
-Phase-0 interference checker (`JasminLprogExport.interferenceOkB`,
+interference checker (`JasminLprogExport.interferenceOkB`,
 `interferenceOk_of_boolB`) runs the precise point-wise liveness over the
 **fresh-SSA** body and checks that map.
 
 `poseidon2FreshTrace` is the fresh-SSA per-binding `PhysEvent` trace of the
 whole permutation body (one unique slot per binding). `poseidon2ResidenceRho`
-is the proposed logical→physical map. The orchestrator runs
-`interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho` on the compiled
-exe — it is expected to return **`false`** (the residence collapse merges the
-16 MDS lanes that are simultaneously live in the external-MDS step, so two
-coexisting values are mapped to one class). Running it in-kernel via
+is the proposed logical→physical map. `interferenceOkB poseidon2FreshTrace
+poseidon2ResidenceRho`, run in a compiled executable, is expected to return
+**`false`** (the residence collapse merges the 16 MDS lanes that are
+simultaneously live in the external-MDS step, so two coexisting values are
+mapped to one class). Running it in-kernel via
 `native_decide`/`decide` over the 107k body is intentionally NOT done here (it
 would be a multi-minute in-kernel evaluation); it is a compiled `#eval`/run. -/
 
 /-- The fresh-SSA (per-binding) `PhysEvent` trace of the whole Poseidon2
     permutation body — one unique logical slot per binding, before any residence
-    coalescing. This is the trace the Phase-0 interference checker scans. -/
+    coalescing. This is the trace the interference checker scans. -/
 def poseidon2FreshTrace : List PhysEvent :=
   bodyTrace
     (comToLfundef (Poseidon2WholePermCom.poseidon2PermComOut ()) poseidon2ImmSlots).lfd_body
@@ -119,14 +118,14 @@ def poseidon2FreshTrace : List PhysEvent :=
 def poseidon2ResidenceRho : Nat → Nat :=
   proposedRho (Poseidon2WholePermCom.slotTraceArr ())
 
-/-- **Phase-0 checker verdict on the 107k Poseidon2 body** (orchestrator-run via
-    the compiled exe): `interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho`.
+/-- **Interference-checker result on the 107k Poseidon2 body** (evaluated in a
+    compiled executable): `interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho`.
     Expected `false` — the residence collapse aliases simultaneously-live MDS
-    lanes. Provided as a named `Bool` so the orchestrator can `#eval` it. -/
+    lanes. Provided as a named `Bool` so a driver can evaluate it. -/
 def poseidon2ResidenceCheck : Bool :=
   interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho
 
-/-- **Positive control** (orchestrator-run): the SAME fresh-SSA body under the
+/-- **Positive control** (evaluated in a compiled executable): the SAME fresh-SSA body under the
     identity map is accepted (`true`) — so the rejection above is the residence
     proposal's fault, not an intrinsically unallocatable body. -/
 def poseidon2IdentityCheck : Bool :=

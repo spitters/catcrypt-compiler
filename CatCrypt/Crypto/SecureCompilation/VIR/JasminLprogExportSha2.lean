@@ -11,11 +11,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 /-!
 # ABI maps for the owned-RA linear export of the SHA-256 compression
 
-The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`,
-task #453/#462) regenerates a physical-register, two-address `Linear.lprog`
+The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`)
+regenerates a physical-register, two-address `Linear.lprog`
 from a `Com jasminDialect` and feeds it to the patched jasmin
 `read_linear` / `compile_lprog_to_asm`, which then ONLY encodes — no
-re-allocation. ChaCha20 (#453) showed this removes the named-register
+re-allocation. On ChaCha20 this removes the named-register
 scheduling tax (1.80×). This module provides the three producer-side maps
 for the SHA-256 compression body (`Sha2Emit.compressCom sha256Spec`) so the
 same path applies to SHA-256.
@@ -96,7 +96,7 @@ def sha256InLoadMap : InLoadMap := fun slot =>
 def sha256OutStoreMap : OutStoreMap :=
   (List.range 8).map (fun j => ("RDI", j * 4))
 
-/-! ## SHA-512 maps (task #475)
+/-! ## SHA-512 maps
 
 SHA-512 (`Sha2Emit.sha512Spec`) shares the exact input layout with SHA-256 —
 `ctxtSize = 270`, `allOnesIdx = 199`, message words `0..15`, chaining words
@@ -165,7 +165,7 @@ def sha512InLoadMap : InLoadMap := fun slot =>
 def sha512OutStoreMap : OutStoreMap :=
   (List.range 8).map (fun j => ("RDI", j * 8))
 
-/-! ## Resident ABI maps (owned `_resident` / `_resident_wp` flip, task #179/#180)
+/-! ## Resident ABI maps (owned `_resident` / `_resident_wp` flip)
 
 The state-resident KAT harness (`bench/sha2_compare/sha2_vs_hacl_resident.c`,
 lines 22-24) calls

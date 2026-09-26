@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.R3MulEmit
 /-!
 # ABI maps for the owned-AsmPrinter linear export of the sntrup761 poly-mul kernels
 
-The owned-RA linear path (`JasminLprogExport.Com.toLprogPhysAbi`, task #537)
+The owned-RA linear path (`JasminLprogExport.Com.toLprogPhysAbi`)
 regenerates a physical-register, two-address `Linear.lprog` from a
 `Com jasminDialect` and renders it to AT&T `.s` **directly** via
 `LprogAsmPrinter.renderLprogAtt` — no `jasminc`. This module provides the three

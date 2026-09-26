@@ -11,14 +11,14 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 /-!
 # ABI maps for the owned-RA linear export of Keccak-p[1600,24]
 
-The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`,
-task #453/#462/#470) regenerates a physical-register, two-address `Linear.lprog`
+The linear-jasmin owned-RA path (`JasminLprogExport.Com.toLprogPhysAbi`)
+regenerates a physical-register, two-address `Linear.lprog`
 from a `Com jasminDialect` and feeds it to the patched jasmin `read_linear` /
 `compile_lprog_to_asm`, which then ONLY encodes — no re-allocation. ChaCha20
-(#453, 1.80×) and SHA-256 (#470, 1.26×) showed this removes the named-register
+(1.80×) and SHA-256 (1.26×) show this removes the named-register
 scheduling tax. This module provides the three producer-side maps for the
 Keccak-p[1600,24] permutation body (`KeccakEmit.keccakF1600Com`) so the same
-path applies to Keccak (task #472).
+path applies to Keccak.
 
 Keccak is **U64 throughout** (24 rounds, 25 × 64-bit state lanes, θ ρ π χ ι).
 
@@ -50,7 +50,7 @@ extern uint64_t *keccak_f1600(uint64_t *out, const uint64_t *inp);
 
 so `RSI = inp` and `RDI = out`. All operands are U64 (Keccak word width), so the
 ABI loads of the 25 state lanes are 8-byte loads (`inp[i]` at byte `8*i`) and the
-25 output stores are 8-byte stores (`out[j]` at byte `8*j`). The #470 jasmin
+25 output stores are 8-byte stores (`out[j]` at byte `8*j`). The patched jasmin
 `read_linear` sizes spill/save cells at 8 bytes uniformly, covering Keccak's
 U64 spills.
 -/

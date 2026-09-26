@@ -20,7 +20,7 @@ out-array base name from `resolveVar init` (`ComL.loopArgBaseNames`), aliases
 the accumulator register onto that name, and keys the SIB-base qsave-reload map
 as `(init, invs)` = `(out, ins)` zipped positionally onto `abiArgs`.
 
-The GMP mpn carry family (`mpn_add_n`/`mpn_sub_n`, task #20) breaks that
+The GMP mpn carry family (`mpn_add_n`/`mpn_sub_n`) breaks that
 assumption: the loop-carried accumulator is a **scalar** (the carry/borrow bit,
 riding a `.reg 64` — the half-add-split prototype
 `X86Backend/MpnAddCarryFrontPrototype.lean`), and the output array is a loop
