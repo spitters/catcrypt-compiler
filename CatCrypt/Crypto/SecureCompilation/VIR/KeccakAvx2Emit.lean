@@ -22,6 +22,15 @@ Keccak emit in the tree is the HAND-IR
 `CatCrypt/Crypto/SecureCompilation/VIR/KeccakLinearMain.lean`
 (`keccak_f1600_x86_from_lean.s`), a hand-built `Com` printed by `renderLprogAtt`.
 
+**Not on a build path; do not add consumers.** The four-way kernel with this ABI and
+state layout that the bench (`bench/keccak_compare/Makefile`, target
+`gen/keccak_f1600_ymm4.s`) and the `catcrypt-mldsa65` crate build is
+`VIR/KeccakYmm4Alloc.lean`, emitted by `CatCrypt.Crypto.Keccak.X4AllocEmit`: the same
+permutation over virtual lane names, placed in registers by `YmmRegAlloc`. This
+module's only importers are the bench drivers
+`bench/keccak_compare/keccak_avx2_owned_emit.lean` and
+`bench/keccak_compare/selfcheck_keccak_avx2_owned.lean`.
+
 The Keccak analogue of `CatCrypt/Crypto/MLDSA/InvNttPointwiseSimdEmit.lean`
 and `CatCrypt/Crypto/MLKEM/NttEmit.lean`: a SELF-CONTAINED per-kernel AVX2
 (256-bit YMM) module that re-emits the **4-way** Keccak-p[1600,24] permutation

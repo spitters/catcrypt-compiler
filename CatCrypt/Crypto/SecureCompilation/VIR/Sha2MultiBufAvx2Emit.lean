@@ -27,6 +27,14 @@ FIPS-180-4 §6.2 / §6.4 compression body, an AT&T `.s` renderer, and per-lane
 `decide`/`native_decide` self-checks against the scalar SHA-2 round — the
 multi-buffer-throughput analogue of the ML-KEM / ML-DSA NTT owned-emit wins.
 
+**The SHA-256 8-way half is string-templated; do not add consumers.** The IR-derived
+8-way SHA-256 compression is `Optimizer.Batch8` over the scalar program
+`VIR.Sha2Emit.compressCom` (lane shape `LaneMapVec.dwordYmm`, lane theorem
+`laneMapVec_denote`), emitted by `Optimizer.Batch8Emit`. The SHA-512 4-way half
+(`Sha512X4w`) has no IR-derived counterpart: the lane shape `LaneMapVec.qwordYmm` does
+not cover the variable-count shifts `shl`/`shr` that `compressCom` uses for its
+rotates, since the YMM dialect has no `vpsllvq`/`vpsrlvq`.
+
 ```
 sha256X8Body  --runYBlock (8×u32 lane model)-->  the FIPS-180-4 §6.2 compression
               --renderYInst-->  AT&T `.s`  (gas-assembled, KAT'd byte-identical)

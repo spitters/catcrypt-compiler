@@ -18,11 +18,14 @@ and `LaneMapZmmD` are its instances at `qwordZmm` and `dwordZmm`, and `Optimizer
 at `dwordYmm`. This file adds the shape `qwordYmm` (four 64-bit lanes on the 256-bit
 `vymm` ops) and relates it to `qwordZmm`. `qwordYmm` covers `add`, `sub`, `mul`, `and`,
 `or`, `xor` and `andn`; the dialect has no 256-bit packed shift by a per-lane count
-(`vpsllvq` / `vpsrlvq`), so `shl` and `shr` are outside its fragment.
+(`vpsllvq` / `vpsrlvq`), so `shl` and `shr` are outside its fragment. The shape
+`qwordYmmImm` extends `qwordYmm` with the immediate-count ops `shlImm`, `shrImm` and
+`rorImm`, lowered to `vpsllq` / `vpsrlq` (the rotate as `vpsllq; vpsrlq; vpor`).
 
 ## Main definitions
 
 * `qwordYmm`: four 64-bit lanes in a YMM register.
+* `qwordYmmImm`: `qwordYmm` with immediate-count shifts and rotates.
 
 ## Main results
 
@@ -32,6 +35,7 @@ at `dwordYmm`. This file adds the shape `qwordYmm` (four 64-bit lanes on the 256
 * `laneMapZmm_low_lanes_eq_laneMapYmm`: on a program covered by `qwordYmm`, lanes
   `0..3` of `laneMapZmm c` are the lanes of `laneMapVec qwordYmm c` when the inputs
   agree on those lanes.
+* `laneMapYmmImm_denote`: the lane theorem at `qwordYmmImm`.
 -/
 
 @[expose] public section
@@ -181,5 +185,74 @@ theorem laneMapZmm_low_lanes_eq_laneMapYmm {Γ : Ctxt jasminDialect}
   have h := laneMapVec_denote_default qwordYmm rfl c hc W' k
   rw [LaneMapZmm.laneMapZmm_denote c (laneMapZmmCovered_of_qwordYmm c hc), hW k]
   exact h.symm
+
+/-! ## 3. Four 64-bit lanes with immediate-count shifts and rotates -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect (vpsllqW vpsrlqW)
+
+/-- The 256-bit packed block of an immediate-count op on four 64-bit lanes: `vpsllq`
+    and `vpsrlq` by the count, and the rotate right by `n` as
+    `vpsllq (64 - n); vpsrlq n; vpor`. AVX2 has no packed 64-bit arithmetic right
+    shift, so `sar` has no block. -/
+def ymmQImmBlock : ImmOp → Option (Nat → UnaryBuilder 256)
+  | .shl => some fun n _ a => Com.var ⟨.vymm (.vpsllq n), rfl, .cons a .nil⟩ (.ret .here)
+  | .shr => some fun n _ a => Com.var ⟨.vymm (.vpsrlq n), rfl, .cons a .nil⟩ (.ret .here)
+  | .sar => none
+  | .ror => some fun n _ a =>
+      Com.var ⟨.vymm (.vpsllq (64 - n)), rfl, .cons a .nil⟩
+        (Com.var ⟨.vymm (.vpsrlq n), rfl, .cons a.there .nil⟩
+          (Com.var ⟨.vymm .vpor, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)))
+
+/-- The counts at which `ymmQImmBlock` is lane-correct: every count for the shifts, and
+    `0 < n < 64` for the rotate. -/
+def ymmQImmCovers : ImmOp → Nat → Bool
+  | .ror, n => decide (0 < n ∧ n < 64)
+  | _, _ => true
+
+/-- Qword lane `k` of `vpsllqW a n` is lane `k` of `a` shifted left by `n`. -/
+theorem yQwordW_vpsllqW (a : BitVec 256) (n : Nat) (k : Fin 4) :
+    yQwordW (vpsllqW a n) k.val = yQwordW a k.val <<< n := by
+  rw [vpsllqW, CatCrypt.Crypto.Optimizer.PackedArith256.yQwordW_yOfQwordsW]
+
+/-- Qword lane `k` of `vpsrlqW a n` is lane `k` of `a` shifted right by `n`. -/
+theorem yQwordW_vpsrlqW (a : BitVec 256) (n : Nat) (k : Fin 4) :
+    yQwordW (vpsrlqW a n) k.val = yQwordW a k.val >>> n := by
+  rw [vpsrlqW, CatCrypt.Crypto.Optimizer.PackedArith256.yQwordW_yOfQwordsW]
+
+/-- Qword lane `k` of `vpsllq (64 - n); vpsrlq n; vpor` is lane `k` rotated right by
+    `n`, for `n < 64`. -/
+theorem yQwordW_ror_synth (a : BitVec 256) (n : Nat) (hn : n < 64) (k : Fin 4) :
+    yQwordW (vporW (vpsllqW a (64 - n)) (vpsrlqW a n)) k.val
+      = (yQwordW a k.val).rotateRight n := by
+  rw [vporW, yQwordW, BitVec.extractLsb'_or, ← yQwordW, ← yQwordW, yQwordW_vpsllqW,
+    yQwordW_vpsrlqW, rorImm_denote_eq_shiftOr n hn, BitVec.or_comm]
+
+/-- Four 64-bit lanes in a YMM register: `qwordYmm` with the immediate-count shifts
+    `shlImm`, `shrImm` and the rotate `rorImm` lowered to `vpsllq` / `vpsrlq`. -/
+def qwordYmmImm : LaneShape :=
+  { qwordYmm with
+    immBlock := ymmQImmBlock
+    immCovers := ymmQImmCovers
+    fallbackName := "laneMapYmmImm_uncovered"
+    imm_lane := by
+      intro _ op f hf n hc _ a V k
+      cases op <;> cases hf
+      case shl => exact yQwordW_vpsllqW (a.lookup V) n k
+      case shr => exact yQwordW_vpsrlqW (a.lookup V) n k
+      case ror =>
+        have hn : n < 64 := (of_decide_eq_true hc).2
+        exact yQwordW_ror_synth (a.lookup V) n hn k }
+
+/-- **The lane theorem at four 64-bit lanes with immediate-count shifts.** For a
+    program covered by `qwordYmmImm` returning `reg 64`, qword lane `k` of the 256-bit
+    mapped program's value is the scalar program's value on the lane-`k` valuation. -/
+theorem laneMapYmmImm_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
+    (c : Com jasminDialect Γ (.reg 64)) (hc : qwordYmmImm.Covered c)
+    (W : Ctxt.Valuation (qwordYmmImm.widenCtxt Γ)) (k : Fin 4) :
+    yQwordW (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _ (laneMapVec qwordYmmImm c) W)
+        k.val
+      = c.denote (qwordYmmImm.laneOf k Γ W) :=
+  laneMapVec_denote qwordYmmImm leafSem (fun _ hf => by simp [qwordYmmImm, qwordYmm] at hf)
+    c hc W k
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
