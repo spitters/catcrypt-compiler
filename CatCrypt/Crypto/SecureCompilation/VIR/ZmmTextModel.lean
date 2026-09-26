@@ -15,8 +15,10 @@ public import Std.Data.HashMap
 
 The instruction forms `VpackZmmLinearRender.renderZmmLinearBinds` prints, as a machine
 over 32 vector registers of 512 bits, `%eax`, the mask registers `%k0..7`, an input
-region read at `%rsi`, a data table read at `%rip` and an output region written at
-`%rdi`. A `%ymm` form (`Mode.ymm`) reads the low 256 bits of each register and each
+region read at `%rsi`, a data table read at `%rip`, an output region written at
+`%rdi` and a stack frame below `%rsp`, allocated by `subq $n, %rsp` and released by
+`addq $n, %rsp`, holding spilled registers. A `%ymm` form (`Mode.ymm`) reads the low 256
+bits of each register and each
 write keeps the low 256 bits and zeroes the upper 256 bits (`wr`). Every lane-wise
 instruction is defined through the lane read `lane` and the lane assembly `ofLanes`.
 
@@ -24,9 +26,15 @@ The memory model: the input region is a function from byte offsets to the 64 byt
 there, a store appends its offset and value to a log, and the output region at an
 offset is the newest store there; this agrees with a byte memory when the store offsets
 are multiples of the store width (checked by the validator) and the regions do not
-overlap. The epilogue `vzeroupper; ret` touches no memory and is not modelled.
+overlap. The stack holds, at each byte offset from the current `%rsp`, the register value
+last stored there, and a load of mode `m` reads its active bits (`wr`); moving `%rsp`
+by `n` shifts these offsets by `n`. This agrees with a byte memory when the stack offsets
+are multiples of the store width and lie inside the allocated frame (checked by the
+validator, `ZmmTextValidate.frameOK`). The epilogue `vzeroupper; ret` touches no memory
+and is not modelled.
 
-A symbolic state holds a `Term` per register; `srun` runs a program on terms, and a
+A symbolic state holds a `Term` per register and per stack slot, the slots keyed by their
+offset from `%rsp` at entry; `srun` runs a program on terms, and a
 normaliser `norm` may replace a term by one of equal value. `srun_sound`: when the
 normaliser preserves values and every input offset holds the value its name denotes,
 a symbolic run describes the machine run.
@@ -303,10 +311,18 @@ inductive Instr where
   | movEax (imm : BitVec 32)
   /-- `kmovw %eax, %kN`. -/
   | kmov (k : Fin 8)
+  /-- `vmovdqu64 off(%rsp), dst`: a load from the stack frame. -/
+  | ldS (off : Nat) (dst : Fin 32)
+  /-- `vmovdqu64 src, off(%rsp)`: a store to the stack frame. -/
+  | stS (src : Fin 32) (off : Nat)
+  /-- `subq $n, %rsp`: allocate `n` bytes of stack frame. -/
+  | spSub (n : Nat)
+  /-- `addq $n, %rsp`: release `n` bytes of stack frame. -/
+  | spAdd (n : Nat)
   deriving DecidableEq
 
-/-- The machine state: 32 vector registers, `%eax`, the mask registers and the stores
-    to the output region, newest first. -/
+/-- The machine state: 32 vector registers, `%eax`, the mask registers, the stores
+    to the output region, newest first, and the stack. -/
 structure MState where
   /-- The vector registers. -/
   zmm : Fin 32 → BitVec 512
@@ -316,6 +332,8 @@ structure MState where
   kr : Fin 8 → BitVec 16
   /-- The stores: offset and value, newest first. -/
   log : List (Nat × BitVec 512)
+  /-- The stack: the register value last stored at each byte offset from `%rsp`. -/
+  stk : Int → BitVec 512
 
 /-- The state with register `d` set to `v`. -/
 def MState.setZ (σ : MState) (d : Fin 32) (v : BitVec 512) : MState :=
@@ -351,6 +369,10 @@ def step (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (
   | .mova r d => some (σ.setZ d (wr m (σ.zmm r)))
   | .movEax imm => some { σ with eax := imm }
   | .kmov k => some { σ with kr := fun k' => if k' = k then σ.eax.setWidth 16 else σ.kr k' }
+  | .ldS off d => some (σ.setZ d (wr m (σ.stk off)))
+  | .stS r off => some { σ with stk := fun a => if a = (off : Int) then σ.zmm r else σ.stk a }
+  | .spSub n => some { σ with stk := fun a => σ.stk (a - n) }
+  | .spAdd n => some { σ with stk := fun a => σ.stk (a + n) }
 
 /-- A straight-line run; `none` when an instruction fails. -/
 def run (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (BitVec 64))) :
@@ -398,7 +420,8 @@ theorem Term.wr_eval {m : Mode} {σ0 : Fin 32 → BitVec 512} {P : String → Bi
   cases t <;> simp_all [Term.isInit, Term.eval, wr_wr]
 
 /-- The symbolic state: a term per register, the known values of `%eax` and the mask
-    registers, and the stores, newest first. -/
+    registers, the stores, newest first, the bytes of stack frame allocated since entry,
+    and a term per stack slot keyed by its offset from `%rsp` at entry. -/
 structure SState where
   /-- The term of each vector register. -/
   regs : Vector Term 32
@@ -408,10 +431,16 @@ structure SState where
   kr : Fin 8 → Option (BitVec 16)
   /-- The stores: offset and term, newest first. -/
   log : List (Nat × Term)
+  /-- The bytes of stack frame allocated since entry: `%rsp` is `sp` bytes below its
+      value at entry. -/
+  sp : Int
+  /-- The term last stored to each stack slot, keyed by its offset from `%rsp` at entry. -/
+  stk : Std.HashMap Int Term
 
 /-- The symbolic state at entry. -/
 def SState.init : SState :=
-  { regs := Vector.ofFn (fun r => .init r.val), eax := none, kr := fun _ => none, log := [] }
+  { regs := Vector.ofFn (fun r => .init r.val), eax := none, kr := fun _ => none, log := [],
+    sp := 0, stk := {} }
 
 /-- The symbolic state with register `d` set to `t`. -/
 def SState.setR (s : SState) (d : Fin 32) (t : Term) : SState :=
@@ -443,6 +472,13 @@ def sstep (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
   | .movEax imm => some { s with eax := some imm }
   | .kmov k => s.eax.map fun v =>
       { s with kr := fun k' => if k' = k then some (v.setWidth 16) else s.kr k' }
+  | .ldS off d =>
+      match s.stk[(off : Int) - s.sp]? with
+      | some t => if t.isInit then none else some (s.setR d t)
+      | none => none
+  | .stS r off => some { s with stk := s.stk.insert ((off : Int) - s.sp) s.regs[(r : Nat)] }
+  | .spSub n => some { s with sp := s.sp + n }
+  | .spAdd n => some { s with sp := s.sp - n }
 
 /-- The symbolic run. -/
 def srun (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
@@ -457,24 +493,26 @@ def Rel (m : Mode) (σ0 : Fin 32 → BitVec 512) (P : String → BitVec 512) (s 
   (∀ r : Fin 32, s.regs[(r : Nat)].eval m σ0 P = σ.zmm r) ∧
   (∀ v, s.eax = some v → σ.eax = v) ∧
   (∀ k v, s.kr k = some v → σ.kr k = v) ∧
-  List.Forall₂ (fun a b => a.1 = b.1 ∧ wr m (a.2.eval m σ0 P) = b.2) s.log σ.log
+  List.Forall₂ (fun a b => a.1 = b.1 ∧ wr m (a.2.eval m σ0 P) = b.2) s.log σ.log ∧
+  (∀ a t, s.stk[a]? = some t → σ.stk (a + s.sp) = t.eval m σ0 P)
 
 /-- The symbolic entry state describes every machine state with no stores. -/
 theorem rel_init (m : Mode) (σ : MState) (P : String → BitVec 512) (h : σ.log = []) :
     Rel m σ.zmm P SState.init σ := by
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro r
     simp [SState.init, Term.eval]
   · simp [SState.init]
   · simp [SState.init]
   · simp [SState.init, h]
+  · simp [SState.init]
 
 /-- Setting a register to a term and to its value preserves `Rel`. -/
 theorem rel_setR {m : Mode} {σ0 : Fin 32 → BitVec 512} {P : String → BitVec 512}
     {s : SState} {σ : MState} (h : Rel m σ0 P s σ) (d : Fin 32) (t : Term)
     (v : BitVec 512) (ht : t.eval m σ0 P = v) : Rel m σ0 P (s.setR d t) (σ.setZ d v) := by
-  obtain ⟨h1, h2, h3, h4⟩ := h
-  refine ⟨?_, h2, h3, h4⟩
+  obtain ⟨h1, h2, h3, h4, h5⟩ := h
+  refine ⟨?_, h2, h3, h4, h5⟩
   intro r
   simp only [SState.setR, MState.setZ, Vector.getElem_set]
   by_cases hr : r = d
@@ -492,8 +530,8 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
     {s s' : SState} {σ : MState} (h : Rel m σ0 P s σ) (i : Instr)
     (hs : sstep m ro paramAt norm s i = some s') :
     ∃ σ', step m inp ro σ i = some σ' ∧ Rel m σ0 P s' σ' := by
-  obtain ⟨h1, h2, h3, h4⟩ := h
-  have h : Rel m σ0 P s σ := ⟨h1, h2, h3, h4⟩
+  obtain ⟨h1, h2, h3, h4, h5⟩ := h
+  have h : Rel m σ0 P s σ := ⟨h1, h2, h3, h4, h5⟩
   cases i with
   | ldIn off d =>
     simp only [sstep, Option.map_eq_some_iff] at hs
@@ -506,7 +544,7 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
   | st r off =>
     simp only [sstep, Option.some.injEq] at hs
     subst hs
-    refine ⟨_, rfl, h1, h2, h3, ?_⟩
+    refine ⟨_, rfl, h1, h2, h3, ?_, h5⟩
     exact List.Forall₂.cons ⟨rfl, by rw [h1 r]⟩ h4
   | op L o s2 s1 d =>
     simp only [sstep, Option.map_eq_some_iff] at hs
@@ -547,15 +585,60 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
   | movEax imm =>
     simp only [sstep, Option.some.injEq] at hs
     subst hs
-    exact ⟨_, rfl, h1, by simp, h3, h4⟩
+    exact ⟨_, rfl, h1, by simp, h3, h4, h5⟩
   | kmov k =>
     simp only [sstep, Option.map_eq_some_iff] at hs
     obtain ⟨v, hv, rfl⟩ := hs
-    refine ⟨_, rfl, h1, h2, ?_, h4⟩
+    refine ⟨_, rfl, h1, h2, ?_, h4, h5⟩
     intro k' v' hk'
     by_cases e : k' = k
     · subst e; simp at hk' ⊢; rw [← hk', h2 v hv]
     · simp [e] at hk' ⊢; exact h3 k' v' hk'
+  | ldS off d =>
+    simp only [sstep] at hs
+    split at hs
+    · rename_i t ht
+      split at hs
+      · cases hs
+      · rename_i hni
+        simp only [Option.some.injEq] at hs
+        subst hs
+        refine ⟨_, rfl, rel_setR h d _ _ ?_⟩
+        have e := h5 _ t ht
+        rw [Int.sub_add_cancel] at e
+        rw [e, Term.wr_eval _ (by simpa using hni)]
+    · cases hs
+  | stS r off =>
+    simp only [sstep, Option.some.injEq] at hs
+    subst hs
+    refine ⟨_, rfl, h1, h2, h3, h4, ?_⟩
+    intro a t ht
+    simp only [Std.HashMap.getElem?_insert, beq_iff_eq] at ht
+    by_cases e : (off : Int) - s.sp = a
+    · subst e
+      simp only [if_true, Option.some.injEq] at ht
+      subst ht
+      simp [h1 r]
+    · rw [if_neg e] at ht
+      have e' : ¬ a + s.sp = (off : Int) := fun e'' => e (by omega)
+      simp only [if_neg e']
+      exact h5 a t ht
+  | spSub n =>
+    simp only [sstep, Option.some.injEq] at hs
+    subst hs
+    refine ⟨_, rfl, h1, h2, h3, h4, ?_⟩
+    intro a t ht
+    have e := h5 a t ht
+    simp only
+    rw [show a + (s.sp + (n : Int)) - (n : Int) = a + s.sp by omega, e]
+  | spAdd n =>
+    simp only [sstep, Option.some.injEq] at hs
+    subst hs
+    refine ⟨_, rfl, h1, h2, h3, h4, ?_⟩
+    intro a t ht
+    have e := h5 a t ht
+    simp only
+    rw [show a + (s.sp - (n : Int)) + (n : Int) = a + s.sp by omega, e]
 
 /-- A symbolic run describes the machine run of the same program: the machine run
     succeeds and ends in a state the final symbolic state describes. -/
@@ -586,7 +669,7 @@ def SState.outAt (s : SState) (off : Nat) : Option Term :=
 theorem outAt_rel {m : Mode} {σ0 : Fin 32 → BitVec 512} {P : String → BitVec 512}
     {s : SState} {σ : MState} (h : Rel m σ0 P s σ) (off : Nat) (t : Term)
     (ht : s.outAt off = some t) : σ.outAt off = some (wr m (t.eval m σ0 P)) := by
-  obtain ⟨-, -, -, h4⟩ := h
+  obtain ⟨-, -, -, h4, -⟩ := h
   unfold SState.outAt at ht
   unfold MState.outAt
   generalize s.log = ls at ht h4

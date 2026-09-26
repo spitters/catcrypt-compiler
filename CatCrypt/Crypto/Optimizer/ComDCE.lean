@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
 
 /-!
 # Verified dead-let elimination for `Com` — a denotation-preserving rewrite
@@ -55,6 +56,9 @@ drops an observable effect: denotation is preserved exactly.
   `Dialect`.
 * `comDCE_denote` — **denotation preservation** (`(comDCE c).denote V = c.denote V`),
   by induction over the let-chain. **Not `rfl`.**
+* `dceLive` — elimination of every dead binding, interior ones included, in time
+  linear in the size of the program: a liveness scan over binding levels and a
+  rebuild through a `Thinning`. `dceLive_denote` — denotation preservation.
 * `comDCE_cost_le`, `comDCE_ctSafe` — `jasminDialect` corollaries: the pass is
   cost-non-increasing and CT-preserving (the dialect is branch-free).
 * Self-contained validation: a program with a dead trailing binder is
@@ -154,7 +158,189 @@ theorem comDCE_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
           · next hv => simp only [Com.denote]
       | var e2 body2 => simp only [Com.denote]
 
-/-! ## 4. `jasminDialect` corollaries: cost and constant-time
+/-! ## 4. Elimination of every dead binding by liveness
+
+`dceLive c` deletes every binding of `c` whose value does not reach the return, interior
+ones included, in time linear in the size of `c`:
+
+1. `bindingUses` records, in one forward traversal, the levels of the arguments of each
+   binding (the level of a variable is its position counted from the bottom of the
+   context, `n - 1 - varDepth v` in a context of length `n`);
+2. `liveLevels` marks the live levels in one backward scan of that array: the returned
+   level, and the argument levels of every live binding;
+3. `dceGo` rebuilds the program in one forward traversal, dropping the unmarked
+   bindings and carrying a `Thinning` from the old context to the new one, through which
+   each surviving variable is re-indexed.
+
+The marks are not trusted: `dceGo` returns `none` when a kept binding reads a dropped
+one, and `dceLive` then returns its input. `dceGo_denote` holds for any marks. -/
+
+/-- An order-preserving embedding of `Δ` into `Γ`: `Γ` with some of the bindings above
+    a common base dropped. -/
+inductive Thinning {d : Dialect} : Ctxt d → Ctxt d → Type _ where
+  /-- The identity on the base. -/
+  | refl (Γ : Ctxt d) : Thinning Γ Γ
+  /-- A binding kept in both contexts. -/
+  | keep {Δ Γ : Ctxt d} (t : d.Ty) : Thinning Δ Γ → Thinning (t :: Δ) (t :: Γ)
+  /-- A binding of `Γ` absent from `Δ`. -/
+  | drop {Δ Γ : Ctxt d} (t : d.Ty) : Thinning Δ Γ → Thinning Δ (t :: Γ)
+
+namespace Thinning
+
+/-- The variable of `Δ` a variable of `Γ` corresponds to, or `none` for a dropped
+    binding. -/
+def get {d : Dialect} : {Δ Γ : Ctxt d} → {t : d.Ty} → Thinning Δ Γ → Var Γ t →
+    Option (Var Δ t)
+  | _, _, _, .refl _, v => some v
+  | _, _, _, .keep _ _, .here => some .here
+  | _, _, _, .keep _ θ, .there v => (θ.get v).map .there
+  | _, _, _, .drop _ _, .here => none
+  | _, _, _, .drop _ θ, .there v => θ.get v
+
+/-- The restriction of a valuation of `Γ` to `Δ`. -/
+def pull {d : Dialect} [TyDenote d.Ty] : {Δ Γ : Ctxt d} → Thinning Δ Γ →
+    Ctxt.Valuation Γ → Ctxt.Valuation Δ
+  | _, _, .refl _, V => V
+  | _, _, .keep _ θ, .cons x V => .cons x (θ.pull V)
+  | _, _, .drop _ θ, .cons _ V => θ.pull V
+
+theorem get_lookup {d : Dialect} [TyDenote d.Ty] : ∀ {Δ Γ : Ctxt d} {t : d.Ty}
+    (θ : Thinning Δ Γ) (v : Var Γ t) (v' : Var Δ t), θ.get v = some v' →
+    ∀ V : Ctxt.Valuation Γ, v'.lookup (θ.pull V) = v.lookup V
+  | _, _, _, .refl _, v, v', h, V => by
+      simp only [get, Option.some.injEq] at h; subst h; rfl
+  | _, _, _, .keep _ _, .here, v', h, .cons _ _ => by
+      simp only [get, Option.some.injEq] at h; subst h; rfl
+  | _, _, _, .keep _ θ, .there v, v', h, .cons _ V => by
+      simp only [get, Option.map_eq_some_iff] at h
+      obtain ⟨w, hw, rfl⟩ := h
+      exact get_lookup θ v w hw V
+  | _, _, _, .drop _ _, .here, v', h, _ => by simp [get] at h
+  | _, _, _, .drop _ θ, .there v, v', h, .cons _ V => get_lookup θ v v' h V
+
+/-- The re-indexed argument vector, or `none` when an argument is dropped. -/
+def getArgs {d : Dialect} {Δ Γ : Ctxt d} (θ : Thinning Δ Γ) : {tys : List d.Ty} →
+    HVector (fun ty => Var Γ ty) tys → Option (HVector (fun ty => Var Δ ty) tys)
+  | [], .nil => some .nil
+  | _ :: _, .cons v rest =>
+      match θ.get v, θ.getArgs rest with
+      | some v', some r => some (.cons v' r)
+      | _, _ => none
+
+theorem getArgs_lookup {d : Dialect} [TyDenote d.Ty] {Δ Γ : Ctxt d} (θ : Thinning Δ Γ)
+    (V : Ctxt.Valuation Γ) : ∀ {tys : List d.Ty} (as : HVector (fun ty => Var Γ ty) tys)
+    (as' : HVector (fun ty => Var Δ ty) tys), θ.getArgs as = some as' →
+    Expr.lookupArgs as' (θ.pull V) = Expr.lookupArgs as V
+  | [], .nil, .nil, _ => rfl
+  | _ :: _, .cons v rest, as', h => by
+      simp only [getArgs] at h
+      split at h
+      · rename_i v' r hv hr
+        simp only [Option.some.injEq] at h
+        subst h
+        simp only [Expr.lookupArgs]
+        rw [get_lookup θ v v' hv V, getArgs_lookup θ V rest r hr]
+      · cases h
+
+/-- The re-indexed expression, or `none` when an argument is dropped. -/
+def getExpr {d : Dialect} [DialectSignature d] {Δ Γ : Ctxt d} {t : d.Ty}
+    (θ : Thinning Δ Γ) (e : Expr d Γ t) : Option (Expr d Δ t) :=
+  (θ.getArgs e.args).map fun args => ⟨e.op, e.retTy_eq, args⟩
+
+theorem getExpr_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+    {Δ Γ : Ctxt d} {t : d.Ty} (θ : Thinning Δ Γ) (e : Expr d Γ t) (e' : Expr d Δ t)
+    (h : θ.getExpr e = some e') (V : Ctxt.Valuation Γ) :
+    e'.denote (θ.pull V) = e.denote V := by
+  simp only [getExpr, Option.map_eq_some_iff] at h
+  obtain ⟨args, hargs, rfl⟩ := h
+  simp only [Expr.denote]
+  rw [getArgs_lookup θ V e.args args hargs]
+
+end Thinning
+
+/-- The levels of the variables `args` in a context of length `n`, prepended to `acc`. -/
+def argLevels {d : Dialect} {Γ : Ctxt d} (n : Nat) : {tys : List d.Ty} →
+    HVector (fun ty => Var Γ ty) tys → List Nat → List Nat
+  | [], .nil, acc => acc
+  | _ :: _, .cons v rest, acc => argLevels n rest ((n - 1 - varDepth v) :: acc)
+
+/-- The argument levels of each binding of `c`, in binding order, pushed onto `acc`, and
+    the level of the returned variable; `n` is the length of the context of `c`. -/
+def bindingUses {d : Dialect} [DialectSignature d] : {Γ : Ctxt d} → {t : d.Ty} → Nat →
+    Com d Γ t → Array (List Nat) → Array (List Nat) × Nat
+  | _, _, n, .ret v, acc => (acc, n - 1 - varDepth v)
+  | _, _, n, .var e body, acc => bindingUses (n + 1) body (acc.push (argLevels n e.args []))
+
+/-- The live levels of a program over a context of length `n0` whose bindings read the
+    levels `uses` and which returns level `r`: entry `ℓ` is `true` when level `ℓ` is `r`
+    or is read by a binding at a live level. One backward scan. -/
+def liveLevels (n0 : Nat) (uses : Array (List Nat)) (r : Nat) : Array Bool := Id.run do
+  let mut live := (Array.replicate (n0 + uses.size) false).setIfInBounds r true
+  for j in [0:uses.size] do
+    let i := uses.size - 1 - j
+    if live.getD (n0 + i) false then
+      for a in uses.getD i [] do
+        live := live.setIfInBounds a true
+  return live
+
+/-- The rebuild: the binding at level `n` is kept when `live` marks it (or has no entry
+    for it) and dropped otherwise; `θ` re-indexes the variables of the kept program.
+    `none` when a kept binding or the return reads a dropped binding. -/
+def dceGo {d : Dialect} [DialectSignature d] (live : Array Bool) :
+    {Δ Γ : Ctxt d} → {t : d.Ty} → Nat → Thinning Δ Γ → Com d Γ t → Option (Com d Δ t)
+  | _, _, _, _, θ, .ret v => (θ.get v).map .ret
+  | _, _, _, n, θ, .var (t := u) e body =>
+      if live.getD n true then
+        match θ.getExpr e, dceGo live (n + 1) (.keep u θ) body with
+        | some e', some b => some (.var e' b)
+        | _, _ => none
+      else dceGo live (n + 1) (.drop u θ) body
+
+/-- **Soundness of the rebuild**, for any marks: a rebuilt program denotes, on the
+    restricted valuation, what the input denotes. -/
+theorem dceGo_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+    (live : Array Bool) : ∀ {Δ Γ : Ctxt d} {t : d.Ty} (n : Nat) (θ : Thinning Δ Γ)
+    (c : Com d Γ t) (c' : Com d Δ t), dceGo live n θ c = some c' →
+    ∀ V : Ctxt.Valuation Γ, c'.denote (θ.pull V) = c.denote V
+  | _, _, _, _, θ, .ret v, c', h, V => by
+      simp only [dceGo, Option.map_eq_some_iff] at h
+      obtain ⟨v', hv, rfl⟩ := h
+      exact θ.get_lookup v v' hv V
+  | _, _, _, n, θ, .var (t := u) e body, c', h, V => by
+      simp only [dceGo] at h
+      split at h
+      · split at h
+        · rename_i e' b he hb
+          simp only [Option.some.injEq] at h
+          subst h
+          simp only [Com.denote]
+          rw [θ.getExpr_denote e e' he V]
+          exact dceGo_denote live (n + 1) (.keep u θ) body b hb (V.extend (e.denote V))
+        · cases h
+      · exact dceGo_denote live (n + 1) (.drop u θ) body c' h (V.extend (e.denote V))
+
+/-- **Dead-binding elimination by liveness.** Every binding whose value does not reach
+    the return is deleted; linear in the size of `c`. -/
+def dceLive {d : Dialect} [DialectSignature d] {Γ : Ctxt d} {t : d.Ty}
+    (c : Com d Γ t) : Com d Γ t :=
+  let n0 := Γ.length
+  let ur := bindingUses n0 c #[]
+  match dceGo (liveLevels n0 ur.1 ur.2) n0 (.refl Γ) c with
+  | some c' => c'
+  | none => c
+
+/-- **Denotation preservation for `dceLive`.** -/
+theorem dceLive_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (V : Ctxt.Valuation Γ) :
+    (dceLive c).denote V = c.denote V := by
+  unfold dceLive
+  dsimp only
+  split
+  · rename_i c' h
+    exact dceGo_denote _ _ (.refl Γ) c c' h V
+  · rfl
+
+/-! ## 5. `jasminDialect` corollaries: cost and constant-time
 
 The headline preservation theorem is dialect-generic. For the concrete
 `jasminDialect` (the linear-jasmin emit target) we additionally show the pass is
@@ -189,7 +375,7 @@ theorem comDCE_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
     ctSafeComJ (comDCE c) = ctSafeComJ c := by
   rw [ctSafeComJ_true (comDCE c), ctSafeComJ_true c]
 
-/-! ## 5. Self-contained validation
+/-! ## 6. Self-contained validation
 
 A `Com jasminDialect [reg 32] (reg 32)` with a **dead trailing
 binding**:

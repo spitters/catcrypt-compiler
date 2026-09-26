@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.Hax.HaxToLowCT
 public import CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 public import CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComSpecialize
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Compiler / IR pipeline map  (START HERE before building front-end work)
@@ -142,6 +144,41 @@ lanes of one vector register through one entry point:
 * The Lprog printer prints the YMM per-lane variable shifts `VPSLLV{D,Q}` /
   `VPSRLV{D,Q}` (`X86Backend/LprogAsmPrinter.lean:989`).
 
+## Input specialisation (`Com d Γ τ` → `Com d Δ τ`)
+
+| pass | module | theorem |
+|------|--------|---------|
+| `ComSpecialize.specialize` | `VIR/ComSpecialize.lean` | `ComSpecialize.specialize_denote` |
+
+* `specialize s c` fixes the inputs of `c` that the assignment `s : Spec Γ Δ` maps to a
+  nullary operation (`regConstOp` for `jasminDialect`); each becomes a binding at the
+  head, and the body is renamed onto those bindings and the free inputs `Δ`.
+* `specialize_denote`: on a valuation `V` of `Δ`, the specialised program is `c` on
+  `s.extend V`, the valuation of `Γ` that extends `V` with the constants.
+* Instance: `KeccakF1600Com25.keccakF1600Com25` (`VIR/KeccakF1600Com25.lean`), the
+  Keccak-p[1600,24] program over its 25 state lanes, with its FIPS 202 theorem and its
+  coverage by `qwordYmmV` and `qwordZmm`.
+
+## The `Com` stage of the owned scalar back end (`Com jasminDialect` → `.s`)
+
+`LprogOptPipeline.renderOwnedCom` (`X86Backend/LprogOptPipeline.lean:1345`) is the owned
+back end from a `Com`: `ownedComStage` (:1326), then `Com.toLprogPhysAbi`, then
+`renderOwned` (:1233). The stage is selected by the input intervals `rangeIvs?`; `none`
+(the default) is the identity.
+
+| pass (in order) | module | theorem |
+|-----------------|--------|---------|
+| `ComRangeFold.rangeFold` (range-driven constant fold) | `Optimizer/ComRangeFold.lean` | `rangeFold_denote` |
+| `CopyProp.copyElim` (delete copies, one renaming) | `Optimizer/CopyProp.lean:383` | `copyElim_denote` |
+| `ComDCE.dceLive` (delete dead bindings by liveness) | `Optimizer/ComDCE.lean:324` | `dceLive_denote` |
+
+* `ComRangeFold.comRangeOpt` (`Optimizer/ComRangeFold.lean:237`) is the three passes
+  under `some ivs`; each is one traversal, so the stage is linear in the size of the
+  program. `LprogOptPipeline.ownedComStage_denote` (:1336) is its soundness: with every
+  register input in its interval, the program the exporter receives denotes the source.
+* Caller: `Poseidon2.ScalarEmit` (the scalar `poseidon2_bb`, inputs in `[0, p - 1]`),
+  with `FieldPermStagedSpec.poseidon2BbCom_spec` for the program after the stage.
+
 ## Convention (keep this map true)
 
 Every IR translator's MODULE DOCSTRING must list exactly which source
@@ -182,5 +219,14 @@ open CatCrypt.Crypto.Jasmin.LowCT
 #check @VIR.VectorizeEmit.vectorizeEmit_sound
 #check @VIR.ZmmRenderValidated.laneMapValidated_sound
 #check @VIR.LaneMapVec.laneMapVec_denote
+#check @VIR.ComSpecialize.specialize
+#check @VIR.ComSpecialize.specialize_denote
+#check @X86Backend.LprogOptPipeline.renderOwnedCom
+#check @X86Backend.LprogOptPipeline.ownedComStage
+#check @X86Backend.LprogOptPipeline.ownedComStage_denote
+#check @CatCrypt.Crypto.Optimizer.ComRangeFold.comRangeOpt
+#check @CatCrypt.Crypto.Optimizer.ComRangeFold.rangeFold_denote
+#check @CatCrypt.Crypto.Optimizer.CopyProp.copyElim_denote
+#check @CatCrypt.Crypto.Optimizer.ComDCE.dceLive_denote
 
 end CatCrypt.Crypto.SecureCompilation.PipelineMap

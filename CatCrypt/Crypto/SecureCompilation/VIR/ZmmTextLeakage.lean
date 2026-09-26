@@ -12,8 +12,11 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmRenderValidated
 
 The leakage of a run of the machine `ZmmTextModel.run`: the program counter of each
 executed instruction and the memory locations it touches (an input offset read at
-`%rsi`, a data label read at `%rip`, an output offset written at `%rdi`). The pointer
-arguments `%rsi` and `%rdi` are public, so the locations are given relative to them.
+`%rsi`, a data label read at `%rip`, an output offset written at `%rdi`, a stack
+offset read or written at `%rsp`). The pointer arguments `%rsi` and `%rdi` and the entry
+value of `%rsp` are public, so the locations are given relative to them; `%rsp` moves
+only by the constants of `subq`/`addq` instructions, so its value at each program counter
+is fixed by the instruction list.
 
 `ZmmTextModel.Instr` has no control transfer, so a run executes the instructions of its
 list once each, in order; an instruction touches locations fixed by its operands and
@@ -58,11 +61,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-- A memory location an instruction touches: the 64 bytes read at offset `off` of the
     input region (`%rsi`), the data at label `lbl` (`%rip`), or the bytes written at
-    offset `off` of the output region (`%rdi`). -/
+    offset `off` of the output region (`%rdi`), or the bytes read or written at offset
+    `off` from the current `%rsp`. -/
 inductive Access where
   | rdIn (off : Nat)
   | rdC (lbl : String)
   | wrOut (off : Nat)
+  | rdStk (off : Nat)
+  | wrStk (off : Nat)
   deriving DecidableEq
 
 /-- The label a read-only operand reads. -/
@@ -77,6 +83,8 @@ def accesses : Instr → List Access
   | .ldC c _ => [.rdC (csrcLabel c)]
   | .st _ off => [.wrOut off]
   | .op _ _ (.mem c) _ _ => [.rdC (csrcLabel c)]
+  | .ldS off _ => [.rdStk off]
+  | .stS _ off => [.wrStk off]
   | _ => []
 
 /-- The locations a program touches, in order. -/

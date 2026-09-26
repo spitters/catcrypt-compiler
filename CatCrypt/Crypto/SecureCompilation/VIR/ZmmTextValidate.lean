@@ -44,6 +44,7 @@ per name (`RangeDomain.Iv.Mem`), the form `ComRange.rangeAnalysis_sound` conclud
 * `vBin`, `vMulU`, `vShi`, `vMulhi`, `vMullo`, `vMinu`, `verify`: the recognisers.
 * `keyMap`, `norm`: the candidate table and the normaliser.
 * `parse`: the parser of the renderer's text.
+* `frameOK`: the discipline of the stack frame that holds spilled registers.
 * `buildRep`, `repCheck`, `repTable`, `renameB`: value numbering of the bindings.
 * `validate`: the validator.
 
@@ -961,7 +962,15 @@ def parseOps (m : Mode) (mn : String) (ops : List String) : Option Instr :=
       | _, _ =>
         match parseReg m a, (stripSuf "(%rdi)" b).bind parseNat with
         | some r, some off => some (.st r off)
-        | _, _ => none
+        | _, _ =>
+          match (stripSuf "(%rsp)" a).bind parseNat, parseReg m b with
+          | some off, some d => some (.ldS off d)
+          | _, _ =>
+            match parseReg m a, (stripSuf "(%rsp)" b).bind parseNat with
+            | some r, some off => some (.stS r off)
+            | _, _ => none
+  | "subq", [a, "%rsp"] => do some (.spSub (← (stripPre "$" a).bind parseNat))
+  | "addq", [a, "%rsp"] => do some (.spAdd (← (stripPre "$" a).bind parseNat))
   | "vpbroadcastq", [a, b] => do some (.ldC (.bq (← parseLbl a)) (← parseReg m b))
   | "vpbroadcastd", [a, b] => do some (.ldC (.bd (← parseLbl a)) (← parseReg m b))
   | "vmovdqa64", [a, b] => do some (.mova (← parseReg m a) (← parseReg m b))
@@ -1311,9 +1320,24 @@ def outsOK (m : Mode) (D : Std.HashMap String ZBind) (s : SState) (outs : List S
 def lastOuts (bs : Array ZBind) (nOut : Nat) : List String :=
   (bs.toList.drop (bs.size - nOut)).map ZBind.dst
 
-/-- The translation validator: parse `text`, run it symbolically from the inputs `params`
-    at offsets `offs`, recognise each written value as a binding of `bs` (lane width `w`)
-    with the range facts `rf`, and check that output `j` is `outs[j]`. -/
+/-- The frame discipline of a program run with `depth` bytes of stack frame allocated:
+    an `addq` of `%rsp` releases at most what is allocated, every stack access at offset
+    `off` is at a multiple of the store width and lies inside the frame
+    (`off + stride ≤ depth`), and nothing is allocated at the end. -/
+def frameOK (m : Mode) : Nat → List Instr → Bool
+  | depth, [] => depth == 0
+  | depth, .spSub n :: is => frameOK m (depth + n) is
+  | depth, .spAdd n :: is => decide (n ≤ depth) && frameOK m (depth - n) is
+  | depth, .ldS off _ :: is =>
+    off % m.stride == 0 && decide (off + m.stride ≤ depth) && frameOK m depth is
+  | depth, .stS _ off :: is =>
+    off % m.stride == 0 && decide (off + m.stride ≤ depth) && frameOK m depth is
+  | depth, _ :: is => frameOK m depth is
+
+/-- The translation validator: parse `text`, check the frame discipline (`frameOK`), run
+    it symbolically from the inputs `params` at offsets `offs`, recognise each written
+    value as a binding of `bs` (lane width `w`) with the range facts `rf`, and check that
+    output `j` is `outs[j]`. -/
 def validate (m : Mode) (w : LaneW) (params : List String) (offs : List Nat)
     (bs : Array ZBind) (outs : List String) (rf : Std.HashMap String Iv) (text : String) :
     Bool :=
@@ -1324,7 +1348,7 @@ def validate (m : Mode) (w : LaneW) (params : List String) (offs : List Nat)
     let D := mkDefs bs'
     let km := keyMap w m D bs'
     match srun m ro (paramAt params offs) (norm w m D rf km) SState.init prog with
-    | some s => outsOK m D s (outs.map (repOf R))
+    | some s => frameOK m 0 prog && outsOK m D s (outs.map (repOf R))
     | none => false
   | .error _ => false
 
@@ -1380,7 +1404,7 @@ theorem validate_sound {m : Mode} {w : LaneW} {params : List String} {offs : Lis
       intro j hj
       unfold outsOK at h
       simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
-      have hj' := h.1 j (by rw [List.length_map]; exact hj)
+      have hj' := h.2.1 j (by rw [List.length_map]; exact hj)
       rw [List.getElem?_map, List.getElem?_eq_getElem hj] at hj'
       split at hj'
       · rename_i t o hto ho
@@ -1451,13 +1475,14 @@ def diagRun (m : Mode) (w : LaneW) (ro : Std.HashMap String (Array (BitVec 64)))
       | none => diagRun m w ro params offs D rf km outs s' (i + 1) xs
     | none => s!"instruction {i} rejected"
 
-/-- Why `validate` rejects `text`: the parse error, or the index of the first instruction
-    the symbolic run rejects (diagnostics only). -/
+/-- Why `validate` rejects `text`: the parse error, a violation of the frame discipline,
+    or the index of the first instruction the symbolic run rejects (diagnostics only). -/
 def validateDiag (m : Mode) (w : LaneW) (params : List String) (offs : List Nat)
     (bs : Array ZBind) (outs : List String) (rf : Std.HashMap String Iv) (text : String) :
     String :=
   match parse m text with
   | .ok (prog, ro) =>
+    if !frameOK m 0 prog then "the stack frame discipline (frameOK) is violated" else
     let R := repTable w bs
     let bs' := bs.map (renameB R)
     let D := mkDefs bs'
@@ -1614,5 +1639,28 @@ def montDupRanges : Array Iv :=
     the conditional add validate. -/
 #kat validateBinds .zmm .d ["a", "b"] montDupBinds 1 (some (2013265920, montDupRanges))
   [("v9", (-2013265920, 2013265920))]
+
+/-- The forty parameters `p0..p39` of `spillBinds`. -/
+def spillNames : List String := (List.range 40).map (fun i => "p" ++ toString i)
+
+/-- Forty pairwise sums `t_i = p_i + p_(i+1 mod 40)` followed by the running sum
+    `s_k = s_(k-1) + t_(k+1)` of them: the forty `t_i` are live together, more values
+    than the 31 allocatable registers hold. -/
+def spillBinds : Array ZBind :=
+  ((List.range 40).map (fun i => ZBind.pack .q .add ("t" ++ toString i) ("p" ++ toString i)
+      ("p" ++ toString ((i + 1) % 40))) ++
+    (List.range 39).map (fun k => ZBind.pack .q .add ("s" ++ toString k)
+      (if k = 0 then "t0" else "s" ++ toString (k - 1)) ("t" ++ toString (k + 1)))).toArray
+
+/- A program whose parameters and live values exceed the registers renders with a stack
+    frame (its text addresses `%rsp`) and validates in both register forms; with the frame
+    release turned into a second allocation it is rejected. The check measured 83 ms in
+    the language server, so its budget is 400 ms. -/
+set_option kat.ms 400 in
+#kat validateBinds .zmm .q spillNames spillBinds 1 none [] &&
+  validateBinds .ymm .q spillNames spillBinds 1 none [] &&
+  !validateBinds .zmm .q spillNames spillBinds 1 none [] (fun s => s.replace "\taddq" "\tsubq") &&
+  (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 spillNames
+    spillBinds).toOption.any (fun s => (s.splitOn "(%rsp)").length > 1)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate

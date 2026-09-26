@@ -70,6 +70,14 @@ def varLevel {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t) : Nat := Γ.length 
 theorem varLevel_lt {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t) : varLevel v < Γ.length := by
   have := varDepth_lt v; unfold varLevel; omega
 
+/-- The level of `v` in a context of length `n`. With `n = Γ.length` it is `varLevel v`
+    (`levelIn_length`); a pass that tracks the length of its context passes it here and
+    so does not recompute `Γ.length` at every variable. -/
+def levelIn {Γ : JCtxt} {t : JasminTy} (n : Nat) (v : Ctxt.Var Γ t) : Nat := n - 1 - varDepth v
+
+theorem levelIn_length {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t) :
+    levelIn Γ.length v = varLevel v := rfl
+
 /-- A value of type `t` read as a `w`-bit word, when `t = reg w`. -/
 def regAs : (t : JasminTy) → (w : Nat) → ⟦t⟧ → Option (BitVec w)
   | .reg w', w, x => if h : w' = w then some (h ▸ (x : BitVec w')) else none
@@ -246,30 +254,36 @@ theorem valOK_top {Γ : JCtxt} (V : Ctxt.Valuation Γ) : ∀ (t : JasminTy) (y :
 
 variable {Γ : JCtxt} (A : AEnv Γ)
 
+/-! The functions below take the length `len` of `Γ` as an argument, by default
+`Γ.length`, and read the level of a variable as `levelIn len`. A pass that tracks the
+length of its context passes it and so avoids a traversal of `Γ` at each binding. -/
+
 /-- The conditional-add range of `a + b` when the fact of `b` is the mask of `a`. -/
-def condAddRule? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) : Option Iv :=
+def condAddRule? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) (len : Nat := Γ.length) : Option Iv :=
   match (hget A b).2 with
-  | .mask ℓ ic => if ℓ = varLevel a then ivCondAdd? w (hget A a).1 ic else none
+  | .mask ℓ ic => if ℓ = levelIn len a then ivCondAdd? w (hget A a).1 ic else none
   | _ => none
 
 /-- The Barrett range of `a - b` when the fact of `b` is the Barrett product of `a`. -/
-def barrettRule? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) : Option Iv :=
+def barrettRule? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) (len : Nat := Γ.length) : Option Iv :=
   match (hget A b).2 with
-  | .barY ℓ s m t p => if ℓ = varLevel a then ivBarrett? w (hget A a).1 s t m p else none
+  | .barY ℓ s m t p =>
+    if ℓ = levelIn len a then ivBarrett? w (hget A a).1 s t m p else none
   | _ => none
 
 /-- The interval of `bop a b`. -/
-def binIv (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Iv :=
+def binIv (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
+    (len : Nat := Γ.length) : Iv :=
   match bop with
   | .add =>
-    match condAddRule? A a b with
+    match condAddRule? A a b len with
     | some r => r
     | none =>
-      match condAddRule? A b a with
+      match condAddRule? A b a len with
       | some r => r
       | none => ivAdd w (hget A a).1 (hget A b).1
   | .sub =>
-    match barrettRule? A a b with
+    match barrettRule? A a b len with
     | some r => r
     | none => ivSub w (hget A a).1 (hget A b).1
   | .mul => ivMul w (hget A a).1 (hget A b).1
@@ -285,10 +299,10 @@ def binIv (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Iv :=
   | _ => ivTop w
 
 /-- The fact of `a >>> k`. -/
-def shrSym {w : Nat} (a : Ctxt.Var Γ (.reg w)) (k : Nat) : Sym :=
+def shrSym {w : Nat} (a : Ctxt.Var Γ (.reg w)) (k : Nat) (len : Nat := Γ.length) : Sym :=
   match (hget A a).2 with
   | .barG ℓ s m => .barQ ℓ s m k
-  | _ => .shr (varLevel a) k
+  | _ => .shr (levelIn len a) k
 
 /-- The fact of `a * b` when `b` is a constant and the product does not wrap. -/
 def mulSym? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) : Option Sym :=
@@ -300,7 +314,8 @@ def mulSym? {w : Nat} (a b : Ctxt.Var Γ (.reg w)) : Option Sym :=
   | _, _ => none
 
 /-- The fact of `bop a b`. -/
-def binSym (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Sym :=
+def binSym (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
+    (len : Nat := Γ.length) : Sym :=
   match bop with
   | .sub =>
     match ivSingle? (ivLane w (hget A a).1), (hget A b).2 with
@@ -320,24 +335,31 @@ def binSym (w : Nat) (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) : Sym :=
     | _, _ => .none
   | .shr =>
     match ivSingle? (ivLane w (hget A b).1) with
-    | some k => shrSym A a k
+    | some k => shrSym A a k len
     | none => .none
   | _ => .none
 
 /-- The abstract value of an operation on the variables `args`. -/
-def opAbs : (op : JasminOp) →
-    HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op) → AVal
-  | .regArith bop w, .cons a (.cons b .nil) => (binIv A w bop a b, binSym A w bop a b)
+def opAbs (op : JasminOp)
+    (args : HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (d := jasminDialect) op))
+    (len : Nat := Γ.length) : AVal :=
+  match op, args with
+  | .regArith bop w, .cons a (.cons b .nil) => (binIv A w bop a b len, binSym A w bop a b len)
   | .regConst w n, _ => (ivConst w n, .none)
   | .mulhi w, .cons a (.cons b .nil) => (ivMulhi w (hget A a).1 (hget A b).1, .none)
-  | .shrImm w n, .cons a .nil => (ivShr w (hget A a).1 n, shrSym A a n)
+  | .shrImm w n, .cons a .nil => (ivShr w (hget A a).1 n, shrSym A a n len)
   | .shlImm w n, .cons a .nil => (ivShl w (hget A a).1 n, .none)
   | .castW w w', .cons a .nil => (ivCast w w' (hget A a).1, .none)
   | op, _ => (tyTop (DialectSignature.ret (d := jasminDialect) op), .none)
 
 /-- The abstract value of an expression. -/
-def exprAbs {t : JasminTy} (e : Expr jasminDialect Γ t) : AVal :=
-  opAbs A e.op e.args
+def exprAbs {t : JasminTy} (e : Expr jasminDialect Γ t) (len : Nat := Γ.length) : AVal :=
+  opAbs A e.op e.args len
+
+/-- `exprAbs` at the length of the context is `exprAbs` with the default length. -/
+theorem exprAbs_len {t : JasminTy} (e : Expr jasminDialect Γ t) {len : Nat}
+    (h : len = Γ.length) : exprAbs A e len = exprAbs A e := by
+  subst h; rfl
 
 /-! ## 4. Soundness of the transfer -/
 

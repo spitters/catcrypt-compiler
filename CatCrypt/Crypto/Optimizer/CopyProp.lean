@@ -49,6 +49,8 @@ Replacing `z` by `a.there` throughout the body is therefore denotation-preservin
   `Com` let-chain, using the de-Bruijn substitution laws
   (`Com.denote_rename`, `pullV`) proved here on top of `Expr.denote_rename`.
   **Not** `rfl`.
+* `copyElim_denote` : the same for `copyElim`, which deletes each copy binding and
+  maps its uses to the source in a single traversal carrying one renaming.
 
 The pass is conservative: it propagates **only** through a provably
 denotation-preserving copy (a variable-to-variable alias), never through an
@@ -333,7 +335,62 @@ theorem copyProp_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
         rw [pullV_copyHom a V]
         exact copyProp_denote body (V.extend (a.lookup V))
 
-/-! ## 5. Self-contained validation
+/-! ## 5. Copy elimination in one traversal
+
+`copyProp` renames the whole continuation at every copy, so it takes time proportional
+to the number of copies times the length of the program. `copyElim` carries one
+renaming `ρ` from the input context to the output context down the let-chain instead:
+a copy `let z = a ||| a` is deleted and `z` is mapped to the image of `a`, and every
+other binding is renamed by `ρ` and kept. A variable is re-indexed in time proportional
+to its de Bruijn index in the input plus that of its image, so the pass is linear in the
+size of the input and output programs. -/
+
+/-- The renaming of `t :: Γ` that sends the head to `x` and the rest through `ρ`. -/
+def consHom {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (x : Ctxt.Var Δ t)
+    (ρ : Ctxt.Hom Γ Δ) : Ctxt.Hom (t :: Γ) Δ := fun
+  | .here => x
+  | .there v => ρ v
+
+theorem pullV_consHom {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (x : Ctxt.Var Δ t)
+    (ρ : Ctxt.Hom Γ Δ) (V : Ctxt.Valuation Δ) :
+    pullV (consHom x ρ) V = (pullV ρ V).extend (x.lookup V) := rfl
+
+/-- Copy elimination under the renaming `ρ`: delete each self-`or` copy, map its
+    variable to the image of its source, and rename every other binding by `ρ`. -/
+def copyElimGo : {Γ Δ : Ctxt jasminDialect} → {t : JasminTy} → Ctxt.Hom Γ Δ →
+    Com jasminDialect Γ t → Com jasminDialect Δ t
+  | _, _, _, ρ, .ret v => .ret (ρ v)
+  | _, _, _, ρ, .var e body =>
+      match isCopy e with
+      | some a => copyElimGo (consHom (ρ a) ρ) body
+      | none => .var (e.rename ρ) (copyElimGo ρ.lift body)
+
+theorem copyElimGo_denote : ∀ {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
+    (ρ : Ctxt.Hom Γ Δ) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Δ),
+    (copyElimGo ρ c).denote V = c.denote (pullV ρ V)
+  | _, _, _, ρ, .ret v, V => Ctxt.Var.lookup_rename ρ v V
+  | _, _, _, ρ, .var e body, V => by
+      simp only [copyElimGo]
+      rcases hc : isCopy e with _ | a
+      · simp only [Com.denote]
+        rw [copyElimGo_denote ρ.lift body, Expr.denote_rename ρ e V, pullV_lift]
+      · simp only [Com.denote]
+        rw [copyElimGo_denote (consHom (ρ a) ρ) body, pullV_consHom,
+          isCopy_denote e a (pullV ρ V) hc, Ctxt.Var.lookup_rename ρ a V]
+
+/-- **Copy elimination**: every self-`or` copy is deleted and its uses read its
+    source. One traversal. -/
+def copyElim {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
+    Com jasminDialect Γ t :=
+  copyElimGo (Ctxt.Hom.id Γ) c
+
+/-- **Denotation preservation for `copyElim`.** -/
+theorem copyElim_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (copyElim c).denote V = c.denote V := by
+  rw [copyElim, copyElimGo_denote, pullV_id]
+
+/-! ## 6. Self-contained validation
 
 A small `Com jasminDialect [reg 32] (reg 32)` exercising copy propagation:
 

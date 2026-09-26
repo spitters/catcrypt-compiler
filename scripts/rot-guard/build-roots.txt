@@ -1104,3 +1104,5 @@ CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextLeakage
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
+CatCrypt.Crypto.SecureCompilation.VIR.ComSpecialize
+CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600Com25

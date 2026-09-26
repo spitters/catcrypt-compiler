@@ -60,6 +60,11 @@ in the translation-validation discipline of the e-graph validator `EgraphOracle.
    disjoint, and the linear scan's frame stride discharges that obligation when it is at
    least the value width. `Optimizer.ByteMemMachine` is the memory interface whose
    non-interference law consumes it.
+6. **Straight-line allocation with split live ranges** (`nextUseAlloc`): a value stays
+   in its register until it dies or is evicted, the victim being the resident value whose
+   next read is furthest; an evicted value is stored to a spill slot unless it has a home
+   location or a slot already holds it, and is loaded back before its next read. Untrusted,
+   like `linearScan`.
 
 §5–§6 exhibit that the x86 / A64 instances **fit** the typeclass (the generic lemmas,
 instantiated, give back what `SpillingRegAlloc`/`ArmRegAlloc` proved), and §7 is the
@@ -882,5 +887,175 @@ theorem spillAlloc_slotsSeparated [MachineModel I] (width : Nat) (pinned scratch
     (frameBase : Int) (block : List I) (stride : Int) (hw : (width : Int) ≤ stride) :
     SlotsSeparated width (spillAlloc (I := I) pinned scratch frameBase block stride) :=
   linearScan_slotsSeparated width _ frameBase _ stride hw
+
+/-! ## 8. Straight-line allocation with eviction by furthest next read
+
+`linearScan` gives each value one decision for its whole live range. `nextUseAlloc`
+splits live ranges instead: a value stays in its register until it dies or is evicted,
+and an evicted value is loaded back into a free register before its next read. The victim
+is the resident value, not read by the current step, whose next read is furthest (Belady's
+rule), preferring among equals one that needs no store. A value needs no store when it has
+a home location (an input region it can be loaded from again) or a spill slot already
+holds it; values are single-assignment, so a stored copy stays valid. Values and registers
+are numbers; the caller maps them to its names. The allocator is untrusted: its output is
+checked by a translation validator. -/
+
+/-- A step of a straight-line program as `nextUseAlloc` reads it. -/
+structure NUStep where
+  /-- The values the step reads. -/
+  reads : List Nat
+  /-- The values the step writes, after its reads. -/
+  writes : List Nat
+
+/-- A move `nextUseAlloc` places before a step. -/
+inductive NUMove where
+  /-- Store register `reg`, which holds value `v`, to spill slot `slot`. -/
+  | store (v reg slot : Nat)
+  /-- Load value `v` into register `reg` from spill slot `slot`, or from the home location
+      of `v` when `slot = none`. -/
+  | load (v reg : Nat) (slot : Option Nat)
+  deriving Repr, DecidableEq
+
+/-- The allocation of one step: the moves before it and the register of each value it
+    reads or writes. -/
+structure NUStepAlloc where
+  /-- The moves, in order. -/
+  moves : List NUMove
+  /-- The register of each value the step reads or writes. -/
+  regs : List (Nat × Nat)
+  deriving Repr
+
+/-- The state of `nextUseAlloc`. -/
+structure NUState where
+  /-- The register holding each value. -/
+  regOf : Array (Option Nat)
+  /-- The value each register holds. -/
+  holder : Array (Option Nat)
+  /-- The spill slot holding a copy of each value. -/
+  slotOf : Array (Option Nat)
+  /-- For each value, the position of its next read in its list of reading steps. -/
+  ptr : Array Nat
+  /-- The free registers. -/
+  free : List Nat
+  /-- The released spill slots. -/
+  freeSlots : List Nat
+  /-- The number of spill slots used. -/
+  nSlots : Nat
+
+/-- The next step reading `v`, from its reading steps `uses`. -/
+def nuNextRead (uses : Array (Array Nat)) (st : NUState) (v : Nat) : Option Nat :=
+  (uses.getD v #[])[st.ptr.getD v 0]?
+
+/-- Whether an evicted `v` needs no store: it has a home location or a slot holds it. -/
+def nuClean (home : Nat → Bool) (st : NUState) (v : Nat) : Bool :=
+  home v || (st.slotOf.getD v none).isSome
+
+/-- The register and value to evict: among the registers of `pool` holding a value
+    outside `protect`, the one whose next read is furthest (`big` when there is none),
+    a value needing no store preferred among equals. -/
+def nuVictim (uses : Array (Array Nat)) (home : Nat → Bool) (big : Nat) (pool : List Nat)
+    (st : NUState) (protect : List Nat) : Option (Nat × Nat) :=
+  let best := pool.foldl (fun (best : Option (Nat × Nat × Nat)) r =>
+    match st.holder.getD r none with
+    | none => best
+    | some v =>
+      if protect.contains v then best else
+      let key := 2 * (nuNextRead uses st v).getD big + (if nuClean home st v then 1 else 0)
+      match best with
+      | some (_, _, k) => if key > k then some (r, v, key) else best
+      | none => some (r, v, key)) none
+  best.map (fun (r, v, _) => (r, v))
+
+/-- A register for a new occupant: the head of the free list, or else the register of the
+    victim `nuVictim` picks, with the store of the victim when it needs one. The returned
+    register holds no value in the returned state. -/
+def nuGrab (uses : Array (Array Nat)) (home : Nat → Bool) (big : Nat) (pool : List Nat)
+    (st : NUState) (protect : List Nat) : Except String (Nat × List NUMove × NUState) :=
+  match st.free with
+  | r :: rest => .ok (r, [], { st with free := rest })
+  | [] =>
+    match nuVictim uses home big pool st protect with
+    | none => .error "nextUseAlloc: no register to evict"
+    | some (r, v) =>
+      let clean := nuClean home st v
+      let st := { st with regOf := st.regOf.setIfInBounds v none,
+                          holder := st.holder.setIfInBounds r none }
+      if clean then .ok (r, [], st)
+      else
+        let (s, st) := match st.freeSlots with
+          | s :: rest => (s, { st with freeSlots := rest })
+          | [] => (st.nSlots, { st with nSlots := st.nSlots + 1 })
+        .ok (r, [.store v r s], { st with slotOf := st.slotOf.setIfInBounds v (some s) })
+
+/-- The state with value `v` in register `r`. -/
+def nuPlace (st : NUState) (v r : Nat) : NUState :=
+  { st with regOf := st.regOf.setIfInBounds v (some r),
+            holder := st.holder.setIfInBounds r (some v) }
+
+/-- The state after value `v` dies: its register returns to the tail of the free list and
+    its spill slot to the released slots. -/
+def nuRelease (st : NUState) (v : Nat) : NUState :=
+  let st := match st.regOf.getD v none with
+    | some r => { st with regOf := st.regOf.setIfInBounds v none,
+                          holder := st.holder.setIfInBounds r none, free := st.free ++ [r] }
+    | none => st
+  match st.slotOf.getD v none with
+  | some s => { st with slotOf := st.slotOf.setIfInBounds v none,
+                        freeSlots := s :: st.freeSlots }
+  | none => st
+
+/-- One step of `nextUseAlloc` at index `i`: every value read is made resident (loaded
+    from its slot or its home), the values read for the last time die, and each value
+    written takes a register, evicting when none is free; a value written and never read
+    dies at once. -/
+def nuStep (uses : Array (Array Nat)) (home : Nat → Bool) (big : Nat) (pool : List Nat)
+    (st0 : NUState) (i : Nat) (s : NUStep) : Except String (NUStepAlloc × NUState) := do
+  let reads := s.reads.eraseDups
+  let mut st := st0
+  let mut moves : Array NUMove := #[]
+  for v in reads do
+    if (st.regOf.getD v none).isNone then
+      let src := st.slotOf.getD v none
+      if src.isNone && !home v then
+        throw s!"nextUseAlloc: value {v} read at step {i} before it is written"
+      let (r, mv, st') ← nuGrab uses home big pool st reads
+      st := nuPlace st' v r
+      moves := (moves ++ mv.toArray).push (.load v r src)
+  let readRegs := reads.map (fun v => (v, (st.regOf.getD v none).getD 0))
+  for v in reads do
+    st := { st with ptr := st.ptr.modify v (· + 1) }
+    if (nuNextRead uses st v).isNone then
+      st := nuRelease st v
+  let mut writeRegs : Array (Nat × Nat) := #[]
+  for w in s.writes do
+    let (r, mv, st') ← nuGrab uses home big pool st s.writes
+    st := nuPlace st' w r
+    moves := moves ++ mv.toArray
+    writeRegs := writeRegs.push (w, r)
+  for w in s.writes do
+    if (nuNextRead uses st w).isNone then
+      st := nuRelease st w
+  pure ({ moves := moves.toList, regs := readRegs ++ writeRegs.toList }, st)
+
+/-- **Straight-line allocation with split live ranges.** Allocates the values
+    `0..nValues-1` of `steps` to the registers `pool` (free list in that order), a value
+    `v` with `home v` loadable from its home location. Returns, per step, the moves before
+    it and the registers of the values it reads and writes, and the number of spill slots
+    used. Fails when a value without a home is read before it is written, or when a step
+    needs more registers than the pool has. -/
+def nextUseAlloc (nValues : Nat) (pool : List Nat) (home : Nat → Bool)
+    (steps : Array NUStep) : Except String (Array NUStepAlloc × Nat) := do
+  let uses : Array (Array Nat) := steps.zipIdx.foldl
+    (fun u (s, i) => s.reads.eraseDups.foldl (fun u v => u.modify v (·.push i)) u)
+    (Array.replicate nValues #[])
+  let st0 : NUState :=
+    { regOf := .replicate nValues none, holder := .replicate (pool.foldl max 0 + 1) none,
+      slotOf := .replicate nValues none, ptr := .replicate nValues 0, free := pool,
+      freeSlots := [], nSlots := 0 }
+  let (out, st) ← steps.zipIdx.foldlM
+    (fun (acc : Array NUStepAlloc × NUState) (s, i) => do
+      let (a, st) ← nuStep uses home (steps.size + 1) pool acc.2 i s
+      pure (acc.1.push a, st)) (#[], st0)
+  pure (out, st.nSlots)
 
 end CatCrypt.Crypto.Optimizer.GenericRegAlloc

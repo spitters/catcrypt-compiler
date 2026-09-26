@@ -15,6 +15,8 @@ public import CatCryptCore.Tactics.KatGuard
 public import Std.Data.HashMap
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 public import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # Linear-time owned `%zmm` rendering of a large packed program
@@ -47,6 +49,12 @@ The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
 bindings are stored to `64·j(%rdi)` in binding order, the output convention of
 `JasminLprogExport.outStoreSlots`.
+When the parameters and live values fit in the registers, parameter `s` is pinned to
+register `s` and loaded at entry (`allocZmmLinear`). Otherwise the allocation is
+`GenericRegAlloc.nextUseAlloc` (`allocZmmSpill`): a parameter is loaded from the input
+region before its first read and again after an eviction, and a live value evicted from
+its register is stored to a slot of a stack frame of `stride`-byte slots, allocated by
+`subq`/`addq` of `%rsp` around the body, and loaded back before its next read.
 With `ymm` the same text is printed on the 256-bit registers, four 64-bit lanes per
 value: register names (`vecReg`) and broadcast counts (`constOperand`) are taken from the
 register mode `ZmmTextModel.Mode` the validator's machine model reads.
@@ -66,6 +74,7 @@ sides is the job of a translation validator.
 * `csubToMinu`: the conditional add or subtract of a constant as an unsigned minimum.
 * `RangeInfo`, `rangeInfoOf`: the range facts, taken from `ComRange.rangeAnalysis`.
 * `allocZmmLinear`: the linear-scan allocation, failing when no register is free.
+* `allocZmmSpill`: the allocation with spilling, through `GenericRegAlloc.nextUseAlloc`.
 * `renderZmmLinearFunction`, `renderLaneMapZmmFunction`, `renderLaneMapZmmDFunction`:
   the owned AT&T function text.
 -/
@@ -293,6 +302,56 @@ def allocZmmLinear (md : Mode) (params : List String)
       pure (alloc, if lu.contains b.dst then rest else rest ++ [r])
   let (alloc, _) ← bs.zipIdx.foldlM step (pinned, pool)
   pure alloc
+
+open CatCrypt.Crypto.Optimizer.GenericRegAlloc (NUStep NUMove nextUseAlloc)
+
+/-- The non-constant names a binding reads and the names it writes, as the register
+    allocator sees them: a deferred low half is written by its `mulhilo`. -/
+def bindRW (consts : Std.HashMap String (String × Nat)) : ZBind → List String × List String
+  | .pack _ _ d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
+  | .minu _ d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
+  | .mulhi d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
+  | .mulhilo h l a b => (([a, b].filter (!consts.contains ·)).eraseDups, [h, l])
+  | _ => ([], [])
+
+/-- Allocation with spilling of registers `0..30` of mode `md` less `reserved`, through
+    `GenericRegAlloc.nextUseAlloc`. The steps are the bindings, then one step per output
+    store reading that output; parameter `s` is value `s`, with its home at `inOffset s`
+    of the input region, and a spill slot `k` is at `stride·k(%rsp)`. Returns, per step,
+    the move lines before it and the register of each name it reads or writes, and the
+    frame size in bytes. -/
+def allocZmmSpill (md : Mode) (inOffset : Nat → Nat) (params : List String)
+    (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) (outs : List String)
+    (reserved : List String) :
+    Except String (Array (List String × Std.HashMap String String) × Nat) := do
+  let ids0 : Std.HashMap String Nat := params.zipIdx.foldl (fun m (p, i) => m.insert p i) {}
+  let idOf (ids : Std.HashMap String Nat) (n : String) : Except String Nat :=
+    match ids.get? n with
+    | some i => pure i
+    | none => throw s!"vpackZMM linear render: unallocated operand {n}"
+  let (ids, names, steps) ← bs.foldlM
+    (fun (acc : Std.HashMap String Nat × Array String × Array NUStep) b => do
+      let (ids, names, steps) := acc
+      let (rs, ws) := bindRW consts b
+      let reads ← rs.mapM (idOf ids)
+      let (ids, names, writes) := ws.foldl (fun (ids, names, wi) w =>
+        (ids.insert w names.size, names.push w, wi ++ [names.size])) (ids, names, [])
+      pure (ids, names, steps.push { reads, writes }))
+    (ids0, params.toArray, #[])
+  let outSteps ← outs.mapM (fun o =>
+    if consts.contains o then pure ({ reads := [], writes := [] } : NUStep)
+    else do pure { reads := [← idOf ids o], writes := [] })
+  let pool := (List.range 31).filter (fun i => !reserved.contains (vecReg md i))
+  let (out, nSlots) ← nextUseAlloc names.size pool (· < params.length)
+    (steps ++ outSteps.toArray)
+  let moveLine : NUMove → String
+    | .store _ r s => "\tvmovdqu64 " ++ vecReg md r ++ ", " ++ toString (md.stride * s) ++ "(%rsp)"
+    | .load _ r (some s) =>
+      "\tvmovdqu64 " ++ toString (md.stride * s) ++ "(%rsp), " ++ vecReg md r
+    | .load v r none => "\tvmovdqu64 " ++ toString (inOffset v) ++ "(%rsi), " ++ vecReg md r
+  pure (out.map (fun a => (a.moves.map moveLine,
+      a.regs.foldl (fun m (v, r) => m.insert (names.getD v "") (vecReg md r)) {})),
+    md.stride * nSlots)
 
 /-! ## 3. Rendering -/
 
@@ -608,7 +667,12 @@ def fuseMulHiLo (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind)
     unsigned minimum. Up to four
     constants read as the first operand of a non-commutative operation are resident,
     loaded once at entry into the highest registers the allocation and the high-multiply
-    temporaries leave free. With `ymm` the same instructions are printed on the 256-bit
+    temporaries leave free. The registers are those of `allocZmmLinear` when every
+    parameter has its own register outside the reserved ones and that allocation
+    succeeds; otherwise those of `allocZmmSpill`, whose parameter loads, spills and
+    reloads precede the binding or output store they serve and whose stack frame is
+    allocated after the label and released before `vzeroupper`. With `ymm` the same
+    instructions are printed on the 256-bit
     registers `%ymm0..31` (mode `Mode.ymm`: four 64-bit lanes, outputs 32 bytes apart,
     `{1to4}` broadcasts); every instruction the renderer emits for a 64-bit-lane program is
     lane-wise, so its lanes 0..3 are those of the 512-bit form. The 256-bit form of a
@@ -643,25 +707,47 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     firstConsts.zipIdx.map (fun (c, i) => (c, vecReg md (top - i)))
   let resident : Std.HashMap String String :=
     residentList.foldl (fun m (c, r) => m.insert c.2.1 r) {}
-  let alloc ← allocZmmLinear md names consts bs outs (temps ++ residentList.map (·.2))
-  let loads := names.zipIdx.map (fun (_, s) =>
-    "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ vecReg md s)
+  let reserved := temps ++ residentList.map (·.2)
+  let pinnedOK := names.length ≤ 31 &&
+    (List.range names.length).all (fun i => !reserved.contains (vecReg md i))
+  let alloc? := if pinnedOK then allocZmmLinear md names consts bs outs reserved
+    else .error "parameters exceed the registers"
   let maskSetup := if hasMulhi then
     ["\tmovl $43690, %eax", "\tkmovw %eax, %k1", "\tmovl $21845, %eax", "\tkmovw %eax, %k2"]
     else []
   let residentLoads := residentList.map (fun (c, r) => constLoadTo c.1 c.2 r)
-  let body ← bs.foldlM
-    (fun (acc : Array String) b => do
-      pure (acc ++ (← bindLines md consts alloc info.narrow resident b).toArray)) #[]
-  let stores ← outs.zipIdx.mapM (fun (o, j) =>
+  let storeLines (alloc : Std.HashMap String String) (o : String) (j : Nat) :
+      Except String (List String) :=
     match alloc.get? o, consts.get? o with
     | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
     | none, some c => pure ["\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ scratchReg md,
         "\tvmovdqu64 " ++ scratchReg md ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
-    | none, none => throw s!"vpackZMM linear render: unallocated output {o}")
+    | none, none => throw s!"vpackZMM linear render: unallocated output {o}"
+  let code : List String ← match alloc? with
+    | .ok alloc => do
+      let loads := names.zipIdx.map (fun (_, s) =>
+        "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ vecReg md s)
+      let body ← bs.foldlM
+        (fun (acc : Array String) b => do
+          pure (acc ++ (← bindLines md consts alloc info.narrow resident b).toArray)) #[]
+      let stores ← outs.zipIdx.mapM (fun (o, j) => storeLines alloc o j)
+      pure (loads ++ maskSetup ++ residentLoads ++ body.toList ++ stores.flatten)
+    | .error _ => do
+      let (plan, frame) ← allocZmmSpill md inOffset names consts bs outs reserved
+      let body ← bs.zipIdx.foldlM
+        (fun (acc : Array String) (b, i) => do
+          let (mv, alloc) := plan.getD i ([], {})
+          pure (acc ++ mv.toArray ++
+            (← bindLines md consts alloc info.narrow resident b).toArray)) #[]
+      let stores ← outs.zipIdx.mapM (fun (o, j) => do
+        let (mv, alloc) := plan.getD (bs.size + j) ([], {})
+        pure (mv ++ (← storeLines alloc o j)))
+      let (enter, leave) := if frame = 0 then ([], [])
+        else (["\tsubq $" ++ toString frame ++ ", %rsp"], ["\taddq $" ++ toString frame ++ ", %rsp"])
+      pure (enter ++ maskSetup ++ residentLoads ++ body.toList ++ stores.flatten ++ leave)
   let text : List String :=
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
-      ++ loads ++ maskSetup ++ residentLoads ++ body.toList ++ stores.flatten
+      ++ code
       ++ ["\tvzeroupper", "\tret"]
       ++ ["\t.size " ++ sym ++ ", .-" ++ sym] ++ pool.sectionLines
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]

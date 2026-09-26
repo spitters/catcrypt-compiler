@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
 public import CatCrypt.Crypto.Optimizer.LoadCSE
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
+public import CatCrypt.Crypto.Optimizer.ComRangeFold
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -39,6 +40,9 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
 ## Main results
 
 * `optimizeLprog` — the composition an emitter applies before `renderLprogAtt`.
+* `ownedComStage`, `renderOwnedCom` — the opt-in `Com → Com` stage before the exporter
+  (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
+  `Com`; `ownedComStage_denote` — the stage's soundness.
 * `optimizeLprogVerified` — the five passes with a semantic soundness theorem,
   and `optimizeVerifiedBody_stateStore` — the composed store-image preservation
   across those five passes.
@@ -1297,5 +1301,72 @@ def foldAbiLoad (p : Lprog) : Lprog :=
     `renderOwned` for every other body. -/
 def renderOwnedReserveVecScratch (p : Lprog) : String :=
   renderLprogAtt (optimizeLprogBasicBlocks (foldAbiLoad p)) none true
+
+/-! ## The `Com` stage ahead of the exporter
+
+`ownedComStage` is the `Com → Com` pass that an owned emitter applies before
+`Com.toLprogPhysAbi`. Its one pass is the range-driven fold
+`Optimizer.ComRangeFold.comRangeOpt`, selected by the input intervals: `none` (the
+default) leaves the program unchanged (`ownedComStage_none`), and `some ivs` folds the
+bindings the intervals of `ivs` settle and removes the copies and dead bindings, in time
+linear in the size of the program. `ownedComStage_denote` is its soundness: the program
+handed to the exporter denotes what the source denotes on every valuation whose register
+inputs lie in their intervals. `renderOwnedCom` is the whole owned back end from a `Com`:
+the stage, the exporter and `renderOwned`. -/
+
+section ComStage
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.RangeDomain (Iv)
+open CatCrypt.Crypto.Optimizer.ComRangeFold (comRangeOpt comRangeOpt_denote InputsIn)
+
+/-- The `Com → Com` stage before the exporter: the range fold under the input intervals
+    `rangeIvs?`, or the identity for `none`. -/
+def ownedComStage {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (com : Com jasminDialect Γ t) :
+    Com jasminDialect Γ t :=
+  comRangeOpt rangeIvs? com
+
+theorem ownedComStage_none {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) : ownedComStage none com = com := rfl
+
+/-- **Soundness of the `Com` stage**: on a valuation whose register inputs lie in the
+    selected intervals, the program handed to the exporter denotes what `com` denotes. -/
+theorem ownedComStage_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (com : Com jasminDialect Γ t)
+    (V : Ctxt.Valuation Γ) (h : ∀ ivs, rangeIvs? = some ivs → InputsIn ivs V) :
+    (ownedComStage rangeIvs? com).denote V = com.denote V :=
+  comRangeOpt_denote rangeIvs? com V h
+
+/-- **The owned back end from a `Com`**: `ownedComStage`, then `Com.toLprogPhysAbi` with
+    the given ABI maps, then `renderOwned`. With `rangeIvs? = none` it is
+    `renderOwned (Com.toLprogPhysAbi com …)` (`renderOwnedCom_none`). -/
+def renderOwnedCom {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (fname : String)
+    (rangeIvs? : Option (HVector (fun _ => Iv) Γ) := none)
+    (shiftImm : ShiftImmOracle := fun _ => none)
+    (immSlotMap : ImmSlotMap := fun _ => none)
+    (inLoadMap : InLoadMap := fun _ => none)
+    (outStoreMap : OutStoreMap := [])
+    (abiArgs : List String := ["RDI", "RSI"])
+    (abiTyin : List Nat := [64, 64])
+    (residence : Option (Array Nat) := none)
+    (abiW : Nat := 0)
+    (forceLivePin : Bool := false) : String :=
+  renderOwned (Com.toLprogPhysAbi (ownedComStage rangeIvs? com) fname shiftImm immSlotMap
+    inLoadMap outStoreMap abiArgs abiTyin residence abiW forceLivePin)
+
+theorem renderOwnedCom_none {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (fname : String) (shiftImm : ShiftImmOracle)
+    (immSlotMap : ImmSlotMap) (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap)
+    (abiArgs : List String) (abiTyin : List Nat) (residence : Option (Array Nat))
+    (abiW : Nat) (forceLivePin : Bool) :
+    renderOwnedCom com fname none shiftImm immSlotMap inLoadMap outStoreMap abiArgs abiTyin
+        residence abiW forceLivePin =
+      renderOwned (Com.toLprogPhysAbi com fname shiftImm immSlotMap inLoadMap outStoreMap
+        abiArgs abiTyin residence abiW forceLivePin) := rfl
+
+end ComStage
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
