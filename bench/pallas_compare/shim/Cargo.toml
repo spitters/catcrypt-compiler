@@ -1,0 +1,35 @@
+[package]
+name = "pallas_safegcd_shim"
+version = "0.1.0"
+edition = "2021"
+description = "C-linkable shim re-exporting AUCurves' safegcd_pallas::pallas_invert_divstep_sat"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "pallas_safegcd_shim"
+# staticlib so the bench harness can link the AUCurves BY inversion as a
+# native .a (the parent `curve25519-jasmin` crate is rlib-only and has no
+# C-callable symbols).
+crate-type = ["staticlib"]
+
+[dependencies]
+# Local path to AUCurves' curve25519-jasmin-rs crate (sibling layout
+# under ~/Claude/BLS/AUCurves/).  Same path convention as the sibling
+# `../SSProve-lean/bench/bls12381_safegcd_compare/shim/`.
+#
+# `features = ["dalek_leaves"]` is the smallest feature set that compiles
+# the parent crate end-to-end: the `ed25519_rustcmd` module is declared
+# unconditionally in `lib.rs` and the body of `xeddsa.rs` /
+# `mont_to_edwards_emitted.rs` reference its members, so a leaves
+# backend must be active.  We only consume `safegcd_pallas`, which
+# is independent of this — the dep is a transitive build-time gate.
+curve25519-jasmin = { path = "../../../../BLS/AUCurves/curve25519-jasmin-rs", features = ["dalek_leaves"] }
+
+[profile.release]
+opt-level = 3
+# Note: keep `lto = false` so the linker can DCE the unused dead
+# code from the parent crate (we only call `safegcd_pallas`;
+# pulling in `ed25519_rustcmd` / `ristretto_rustcmd` via LTO drags
+# in their extern dependencies which aren't all linked here).
+lto = false
+codegen-units = 16

@@ -1,0 +1,17 @@
+require "../include/plonky3_lde_leaves.jinc"
+
+export fn plonky3_lde_coset_fft_64x4_rc(reg ptr u64[256] out, reg const ptr u64[64] p0) -> reg ptr u64[256] {
+  stack u64[64] s0;
+  stack u64[64] t0;
+  stack u64[256] t1;
+  stack u64[256] t2;
+  stack u64[256] t3;
+  inline int k;
+  for k = 0 to 64 { s0[k] = p0[k]; }
+  t0 = babybear_ntt_inverse_64(t0, s0);
+  t1 = babybear_zero_extend_64_to_256(t1, t0);
+  t2 = babybear_coset_twist_256(t2, t1);
+  t3 = babybear_ntt_forward_256(t3, t2);
+  for k = 0 to 256 { out[k] = t3[k]; }
+  return out;
+}

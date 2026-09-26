@@ -1,0 +1,49 @@
+// Toy-EC (Z/23) MSM leaves for the rustcmd-emitted MSM-term orchestration
+// (gen_com/msm_term_from_rustcmd_link.jazz).
+//
+// The orchestration emits `t = ec_scalar_mul(t, k, P)` (one per RustCmd
+// RCall); this file provides the actual implementation. The leaf takes a
+// `dst` argument as the first input and returns it as the result (matching
+// the emit's `t = leaf(t, args)` calling convention).
+//
+// Encoding (matches Pairing.MsmReduce and bench/msm_compare/ec_ref.h):
+//   * scalar (Z/23 element):  stack u8[1]  (1 byte; low 5 bits, p=23).
+//   * point   (x ‖ y):         stack u8[2]  (2 bytes; (0xff,0xff)=∞).
+//
+// Note: the verified-front emit uses u64 limbs (one limb covers both
+// 1-byte and 2-byte tower-types, since (storageBytes + 7)/8 = 1 in both
+// cases). The shim mirrors that ABI: `stack u64[1]` for both scalar and
+// point.
+//
+// LEAF EDGE — TRUSTED (toy):
+//   This is a TOY/MODEL EC group; the leaf bodies are pass-through
+//   shims for jasminc to type and assemble the orchestration. The actual
+//   schoolbook EC arithmetic lives in the linked C reference
+//   (bench/msm_compare/ec_ref.h). The MSM bench is an *orchestration
+//   measure*, NOT a production EC-arith benchmark — the production
+//   analogues are bench/{secp256k1,p256,bls12381,bn254}_compare/ with
+//   AUCurves verified-CT field leaves.
+
+inline fn ec_scalar_mul(
+    stack u64[1] dst,
+    stack u64[1] k,
+    stack u64[1] P
+  ) -> stack u64[1] {
+  reg u64 t;
+  t = k[0];
+  t = P[0];
+  dst[0] = t;
+  return dst;
+}
+
+inline fn ec_point_add(
+    stack u64[1] dst,
+    stack u64[1] P,
+    stack u64[1] Q
+  ) -> stack u64[1] {
+  reg u64 t;
+  t = P[0];
+  dst[0] = t;
+  t = Q[0];
+  return dst;
+}

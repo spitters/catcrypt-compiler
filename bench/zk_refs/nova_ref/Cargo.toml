@@ -1,0 +1,16 @@
+[package]
+name = "nova_ref"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nova_bench"
+path = "src/main.rs"
+
+[dependencies]
+nova-snark = "0.23"
+ff = "0.13"
+pasta_curves = "0.5"
+
+[profile.release]
+opt-level = 3

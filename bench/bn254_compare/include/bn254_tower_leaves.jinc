@@ -1,0 +1,122 @@
+// BN254 pairing-TOWER field leaves for the rustcmd-emitted reg-ptr
+// orchestrations (gen_com/fp{2,6,12}_{add,mul}_from_rustcmd.jazz, task #260).
+//
+// These are the FIELD-tower leaves the tower op bodies chain over — the level
+// below the opaque bn254_pairing / bn254_fp12_mul leaves of bn254_leaves.jinc.
+// The reg-ptr verified-leaf re-emit (#260) drops the pairing-tower field
+// arithmetic (Fp2/Fp6/Fp12 add+mul) out of the composition-trusted layer and
+// emits it through CatCrypt's verified front as a reg-ptr orchestration over
+// these typed-array (reg ptr u64[N]) leaves.
+//
+// Encoding (u64-limb widths; encodeTy (.TBytes n) = memref ((n+7)/8) u64):
+//   Fp   felem     = u64[4]   (32 bytes, 4 little-endian u64 limbs, Montgomery)
+//   Fp2  component = u64[8]   (64 bytes, real ‖ imaginary)
+//   Fp6  component = u64[24]  (192 bytes, 3 Fp2 components)
+//
+// The Fp leaves (bn254_add/sub/mul) are the AUCurves verified fiat-crypto
+// Montgomery leaves; the Fp2/Fp6 leaves are the next-lower tower ops, emitted
+// by this same reg-ptr orchestration (the tower is built leaf-over-leaf). The
+// bodies below are STRUCTURAL stubs (copy shells) so jasminc type-checks and
+// compiles the orchestration with the typed-array reg-ptr ABI. The
+// byte-identical KAT runs in Rust against the AUCurves verified reference
+// (bn254_Fp2_mul etc.) on the published EIP-197 generator coordinates plus an
+// LCG-reproducible random sweep (fp2_kat.rs and its Fp6/Fp12 extension).
+//
+// Why this compiles where the AUCurves direct reg-ptr emit did not
+// (JASMIN_TOWER_259.md): there is no inlined byte-pointer multiply in the
+// orchestration body (the field ops are typed-array reg-ptr leaf CALLS), so the
+// spilling-multiply register pressure stays in the leaf's own compile unit and
+// there is no address-of-stack-array → inlined-byte-pointer-leaf segfault
+// pattern. The verified Fp leaf (bn254_mul.jazz) compiles standalone with
+// -auto-spill; here it is a typed-array reg-ptr stub of the same signature.
+
+// ---- Fp word leaves (32 bytes = u64[4]) ---------------------------------
+inline fn bn254_add(reg ptr u64[4] dst, reg ptr u64[4] a, reg ptr u64[4] b) -> reg ptr u64[4] {
+  reg u64 t; inline int j;
+  for j = 0 to 4 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_sub(reg ptr u64[4] dst, reg ptr u64[4] a, reg ptr u64[4] b) -> reg ptr u64[4] {
+  reg u64 t; inline int j;
+  for j = 0 to 4 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_mul(reg ptr u64[4] dst, reg ptr u64[4] a, reg ptr u64[4] b) -> reg ptr u64[4] {
+  reg u64 t; inline int j;
+  for j = 0 to 4 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+
+// ---- Fp2 component leaves (64 bytes = u64[8]) ---------------------------
+inline fn bn254_Fp2_add(reg ptr u64[8] dst, reg ptr u64[8] a, reg ptr u64[8] b) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp2_sub(reg ptr u64[8] dst, reg ptr u64[8] a, reg ptr u64[8] b) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp2_mul(reg ptr u64[8] dst, reg ptr u64[8] a, reg ptr u64[8] b) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp2_mul_xi(reg ptr u64[8] dst, reg ptr u64[8] a) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+
+// ---- Fp6 component leaves (192 bytes = u64[24]) -------------------------
+inline fn bn254_Fp6_add(reg ptr u64[24] dst, reg ptr u64[24] a, reg ptr u64[24] b) -> reg ptr u64[24] {
+  reg u64 t; inline int j;
+  for j = 0 to 24 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_sub(reg ptr u64[24] dst, reg ptr u64[24] a, reg ptr u64[24] b) -> reg ptr u64[24] {
+  reg u64 t; inline int j;
+  for j = 0 to 24 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_mul(reg ptr u64[24] dst, reg ptr u64[24] a, reg ptr u64[24] b) -> reg ptr u64[24] {
+  reg u64 t; inline int j;
+  for j = 0 to 24 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_mul_by_v(reg ptr u64[24] dst, reg ptr u64[24] a) -> reg ptr u64[24] {
+  reg u64 t; inline int j;
+  for j = 0 to 24 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+
+// ---- Fp6 component view leaves (whole-Fp6 operand <-> 3 Fp2 components) ---
+// Keep the Fp6 op exports within the x86-64 SysV 6-pointer-argument ABI:
+// the Fp6 ops take whole-Fp6 operands (u64[24]) and extract / re-assemble the
+// c0/c1/c2 Fp2 components (u64[8]) via these byte-offset views (component i at
+// u64-limb offset 8*i).
+inline fn bn254_Fp6_get_c0(reg ptr u64[8] dst, reg ptr u64[24] a) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_get_c1(reg ptr u64[8] dst, reg ptr u64[24] a) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[8 + j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_get_c2(reg ptr u64[8] dst, reg ptr u64[24] a) -> reg ptr u64[8] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = a[16 + j]; dst[j] = t; }
+  return dst;
+}
+inline fn bn254_Fp6_from_c012(
+    reg ptr u64[24] dst, reg ptr u64[8] c0, reg ptr u64[8] c1, reg ptr u64[8] c2
+  ) -> reg ptr u64[24] {
+  reg u64 t; inline int j;
+  for j = 0 to 8 { t = c0[j]; dst[j]      = t; }
+  for j = 0 to 8 { t = c1[j]; dst[8 + j]  = t; }
+  for j = 0 to 8 { t = c2[j]; dst[16 + j] = t; }
+  return dst;
+}

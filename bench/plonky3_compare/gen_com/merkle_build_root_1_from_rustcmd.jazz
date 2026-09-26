@@ -1,0 +1,11 @@
+export fn plonky3_merkle_build_root_1_rc(reg ptr u64[4] out, reg const ptr u64[1] p0) -> reg ptr u64[4] {
+  stack u64[1] s0;
+  stack u64[4] t0;
+  stack u64[4] t1;
+  inline int k;
+  for k = 0 to 1 { s0[k] = p0[k]; }
+  t0 = plonky3_merkle_hash_leaves_1(t0, s0);
+  t1 = plonky3_merkle_extract_root(t1, t0);
+  for k = 0 to 4 { out[k] = t1[k]; }
+  return out;
+}

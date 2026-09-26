@@ -1,0 +1,28 @@
+inline fn bn254_pairing(stack u64[8] a0, stack u64[16] a1) -> stack u64[48] {
+  stack u64[48] r;
+  return r;
+}
+
+inline fn bn254_fp12_mul(stack u64[48] a0, stack u64[48] a1) -> stack u64[48] {
+  return a0;
+}
+
+export fn bn254_eip197_rustcmd(reg ptr u64[48] out, reg const ptr u64[8] p0, reg const ptr u64[16] p1, reg const ptr u64[8] p2, reg const ptr u64[16] p3) -> reg ptr u64[48] {
+  stack u64[8] s0;
+  stack u64[16] s1;
+  stack u64[8] s2;
+  stack u64[16] s3;
+  stack u64[48] t0;
+  stack u64[48] t1;
+  stack u64[48] t2;
+  inline int k;
+  for k = 0 to 8 { s0[k] = p0[k]; }
+  for k = 0 to 16 { s1[k] = p1[k]; }
+  for k = 0 to 8 { s2[k] = p2[k]; }
+  for k = 0 to 16 { s3[k] = p3[k]; }
+  t0 = bn254_pairing(s0, s1);
+  t1 = bn254_pairing(s2, s3);
+  t2 = bn254_fp12_mul(t0, t1);
+  for k = 0 to 48 { out[k] = t2[k]; }
+  return out;
+}

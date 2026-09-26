@@ -1,0 +1,19 @@
+export fn bn254_final_exp_easy(reg ptr u64[48] out, reg const ptr u64[48] p0) -> reg ptr u64[48] {
+  stack u64[48] s0;
+  stack u64[48] t0;
+  stack u64[48] t1;
+  stack u64[48] t2;
+  stack u64[48] t3;
+  stack u64[48] t4;
+  stack u64[48] t5;
+  inline int k;
+  for k = 0 to 48 { s0[k] = p0[k]; }
+  t0 = bn254_Fp12_conjugate(t0, s0);
+  t1 = bn254_Fp12_conjugate(t1, s0);
+  t2 = bn254_fp12_mul(t2, t0, t1);
+  t3 = bn254_Fp12_frobenius(t3, t2);
+  t4 = bn254_Fp12_frobenius(t4, t3);
+  t5 = bn254_fp12_mul(t5, t2, t4);
+  for k = 0 to 48 { out[k] = t5[k]; }
+  return out;
+}

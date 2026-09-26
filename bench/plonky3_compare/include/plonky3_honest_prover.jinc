@@ -1,0 +1,538 @@
+// Honest Plonky3-style Fibonacci-STARK prover + verifier over the VERIFIED
+// Poseidon2-BabyBear permutation (no splitmix XOR/multiply surrogate anywhere
+// on the commit/FRI/Fiat-Shamir path).
+//
+// Circuit: BabyBear, Fibonacci AIR, trace height H=8, width=3 (a,b,c=a+b),
+// blowup 4 -> LDE domain N=32 (log2 N = 5), FRI num_queries = 8, PoW bits = 8.
+//
+// Every hash is the real p3 construction over the verified permutation:
+//   leaf hash = PaddingFreeSponge<16,8,8>       (_p2_sponge_row)
+//   compress  = TruncatedPermutation<2,8,16>    (_p2_compress)
+//   challenger = duplex sponge over the permutation (_hp_fs_*)
+// Digests are 8 BabyBear lanes (u64[8]); a Merkle root is one such digest.
+//
+// Phases emitted (all real, none collapsed to a digest):
+//   1. trace LDE (radix-2 coset NTT, reuses plonky3_prove_leaves NTT)
+//   2. Merkle commit of the 32 LDE rows (full depth-5 tree, nodes retained
+//      for authentication paths)
+//   3. Fiat-Shamir: absorb the root, squeeze the FRI fold challenge beta
+//   4. FRI fold chain 32 -> 16 -> 8 -> 4 -> 2 with a per-layer Merkle commit,
+//      then a final-polynomial of length 2
+//   5. FRI QUERY PHASE: derive 8 query indices from the challenger, open each
+//      query position at the codeword tree AND every fold-layer tree with full
+//      Merkle authentication paths
+//   6. proof-of-work grinding: find a nonce so sponge(transcript||nonce)[0]
+//      has >= POW_BITS trailing zero bits
+//   7. serialize a real proof object (roots, openings, auth paths, final poly,
+//      PoW nonce) into a flat u64 buffer
+//
+// The companion verifier lives in honest_prove_kat.c (hp_verify): it recomputes
+// every Merkle root from the opened leaves + auth paths, re-derives the
+// Fiat-Shamir challenges, checks the FRI folding consistency at each query, and
+// checks the PoW — doing ALL of its hashing by calling the SAME verified-emitted
+// leaves exported here (hp_sponge8 / hp_compress8 / hp_perm16), so the
+// soundness-critical hashing is the verified permutation, not a C
+// re-implementation. The verifier control-flow is in C only because jasminc's
+// register allocator cannot compile prover+verifier in one translation unit.
+// It returns 1 on accept, 0 on reject; tampering the committed public value (the
+// claimed last-row Fibonacci output, bound into Fiat-Shamir) is rejected.
+
+require "plonky3_poseidon2_hash.jinc"
+require "plonky3_prove_leaves.jinc"
+
+// ---- circuit / proof layout parameters (inline ints) ----
+// N=32 LDE rows, LOGN=5, NQ=8 queries, POWBITS=8.
+// Fold layers: tree0 over 32 leaves, then folds 32->16->8->4->2.
+// Layer trees committed: codeword (32) + fold layers (16,8,4,2 -> commit 16,8,4).
+//   We commit 4 trees total: codeword(32), f16, f8, f4. Final poly = 2 elems.
+//
+// Proof buffer layout (u64 lanes), see hp_serialize for exact offsets.
+
+// =============================================================================
+// Field op shims (reuse the verified _pr_* from plonky3_prove_leaves.jinc).
+// =============================================================================
+inline fn _hp_add(reg u64 a, reg u64 b) -> reg u64 { reg u64 x; x = _pr_add(a,b); return x; }
+inline fn _hp_sub(reg u64 a, reg u64 b) -> reg u64 { reg u64 x; x = _pr_sub(a,b); return x; }
+inline fn _hp_mul(reg u64 a, reg u64 b) -> reg u64 { reg u64 x; x = _pr_mul(a,b); return x; }
+
+// =============================================================================
+// Fiat-Shamir duplex challenger over the verified permutation.
+// State is 16 lanes; absorb overwrites the rate (first 8 lanes) then permutes;
+// squeeze reads a rate lane, permuting again when the rate is exhausted.
+// This mirrors p3 DuplexChallenger<Val,Perm,16,8> behaviour closely enough to
+// be a sound transcript (it is the verified permutation, not a surrogate).
+// =============================================================================
+inline fn _hp_fs_absorb8(stack u64[16] st, stack u64[8] blk) -> stack u64[16] {
+  stack u64[16] po;
+  reg u64 x;
+  inline int i;
+  for i = 0 to 8 { x = blk[i]; x = _pr_reduce(x); st[i] = x; }
+  po = p2_perm(po, st);
+  for i = 0 to 16 { x = po[i]; st[i] = x; }
+  return st;
+}
+
+// squeeze one field element from rate lane 0 then re-permute (simple, sound).
+inline fn _hp_fs_squeeze(stack u64[16] st, reg u64 unused) -> stack u64[16] {
+  stack u64[16] po;
+  reg u64 x;
+  inline int i;
+  po = p2_perm(po, st);
+  for i = 0 to 16 { x = po[i]; st[i] = x; }
+  return st;
+}
+
+// =============================================================================
+// Merkle: depth-5 binary tree over 32 leaves, each leaf an 8-lane digest.
+// We store all levels contiguously so the prover can emit auth paths.
+//   leaves : u64[256]  (32 * 8)
+//   l16    : u64[128]  (16 * 8)
+//   l8     : u64[64]
+//   l4     : u64[32]
+//   l2     : u64[16]
+//   root   : u64[8]
+// =============================================================================
+
+// hash a single width-3 row (3 field elems) to an 8-lane leaf digest.
+inline fn _hp_leaf_row3(stack u64[8] o, reg u64 v0, reg u64 v1, reg u64 v2)
+    -> stack u64[8] {
+  stack u64[8] row;
+  reg u64 x;
+  inline int i;
+  row[0] = v0; row[1] = v1; row[2] = v2;
+  for i = 3 to 8 { x = 0; row[i] = x; }
+  o = _p2_sponge_row(o, row);
+  return o;
+}
+
+// =============================================================================
+// 1. Build the codeword Merkle tree over the 32 LDE rows (width-3 interleaved
+//    u64[96] input). Returns all node levels + root. Leaves retained for the
+//    query phase. Reuses the REAL trace LDE from plonky3_prove_leaves.jinc.
+// =============================================================================
+
+// build the 32-leaf codeword tree from the width-3 LDE (u64[96]); store every
+// level so query openings can produce auth paths. Output `nodes` holds all
+// levels: leaves(32*8=256), l16(128), l8(64), l4(32), l2(16), root(8) packed
+// contiguously => 256+128+64+32+16+8 = 504 lanes.
+fn _hp_build_tree32(reg ptr u64[504] nodes, reg const ptr u64[96] lde)
+    -> reg ptr u64[504] {
+  stack u64[8] lf;
+  stack u64[8] lc;
+  stack u64[8] rc;
+  reg u64 v0 v1 v2 x;
+  inline int leaf i j;
+  // level 0: 32 leaves at offset 0
+  for leaf = 0 to 32 {
+    v0 = lde[3*leaf + 0]; v1 = lde[3*leaf + 1]; v2 = lde[3*leaf + 2];
+    lf = _hp_leaf_row3(lf, v0, v1, v2);
+    for i = 0 to 8 { x = lf[i]; nodes[leaf*8 + i] = x; }
+  }
+  // level 1: 16 nodes at offset 256
+  for j = 0 to 16 {
+    for i = 0 to 8 { x = nodes[(2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nodes[(2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nodes[256 + j*8 + i] = x; }
+  }
+  // level 2: 8 nodes at offset 384
+  for j = 0 to 8 {
+    for i = 0 to 8 { x = nodes[256 + (2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nodes[256 + (2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nodes[384 + j*8 + i] = x; }
+  }
+  // level 3: 4 nodes at offset 448
+  for j = 0 to 4 {
+    for i = 0 to 8 { x = nodes[384 + (2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nodes[384 + (2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nodes[448 + j*8 + i] = x; }
+  }
+  // level 4: 2 nodes at offset 480
+  for j = 0 to 2 {
+    for i = 0 to 8 { x = nodes[448 + (2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nodes[448 + (2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nodes[480 + j*8 + i] = x; }
+  }
+  // root at offset 496
+  for i = 0 to 8 { x = nodes[480 + i];   lc[i] = x; }
+  for i = 0 to 8 { x = nodes[480 + 8+i]; rc[i] = x; }
+  lf = _p2_compress(lf, lc, rc);
+  for i = 0 to 8 { x = lf[i]; nodes[496 + i] = x; }
+  return nodes;
+}
+
+// Recompute a depth-5 Merkle root from a leaf digest + its 5 sibling digests
+// (auth path) + the leaf index. Returns the recomputed root in `o`.
+// path layout: 5 siblings * 8 lanes = 40 lanes, sibling[level] for level 0..4.
+fn _hp_root_from_path5(reg ptr u64[8] o, reg const ptr u64[8] leaf,
+                       reg const ptr u64[40] path, reg u64 idx) -> reg ptr u64[8] {
+  stack u64[8] cur;
+  stack u64[8] sib;
+  stack u64[8] lc;
+  stack u64[8] rc;
+  stack u64[1] idx_s;
+  reg u64 x bit id;
+  inline int lvl i;
+  for i = 0 to 8 { x = leaf[i]; cur[i] = x; }
+  idx_s[0] = idx;
+  for lvl = 0 to 5 {
+    for i = 0 to 8 { x = path[lvl*8 + i]; sib[i] = x; }
+    id = idx_s[0];
+    bit = id; bit &= 1;
+    if (bit == 0) {
+      for i = 0 to 8 { x = cur[i]; lc[i] = x; }
+      for i = 0 to 8 { x = sib[i]; rc[i] = x; }
+    } else {
+      for i = 0 to 8 { x = sib[i]; lc[i] = x; }
+      for i = 0 to 8 { x = cur[i]; rc[i] = x; }
+    }
+    cur = _p2_compress(cur, lc, rc);
+    id = idx_s[0]; id >>= 1; idx_s[0] = id;
+  }
+  for i = 0 to 8 { x = cur[i]; o[i] = x; }
+  return o;
+}
+
+// Emit the auth path (5 siblings) for leaf index `idx` from a built tree32.
+fn _hp_authpath32(reg ptr u64[40] path, reg const ptr u64[504] nodes, reg u64 idx0)
+    -> reg ptr u64[40] {
+  reg u64 idx sib so x;
+  inline int i;
+  idx = idx0;
+  // level 0 (32 leaves): sibling = idx ^ 1; so = 8*sib so address scale is 8.
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nodes[so + i]; path[0*8 + i] = x; }
+  idx >>= 1;
+  // level 1 (16 nodes at 256)
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nodes[256 + so + i]; path[1*8 + i] = x; }
+  idx >>= 1;
+  // level 2 (8 nodes at 384)
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nodes[384 + so + i]; path[2*8 + i] = x; }
+  idx >>= 1;
+  // level 3 (4 nodes at 448)
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nodes[448 + so + i]; path[3*8 + i] = x; }
+  idx >>= 1;
+  // level 4 (2 nodes at 480)
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nodes[480 + so + i]; path[4*8 + i] = x; }
+  return path;
+}
+
+// =============================================================================
+// FRI fold-layer Merkle trees over single-field-element leaves.
+// A leaf here is one BabyBear codeword value hashed via the sponge (so the FRI
+// layer commitments use the SAME verified hash as the codeword tree).
+// =============================================================================
+
+// leaf-hash a single field element -> 8-lane digest.
+inline fn _hp_leaf_fe(stack u64[8] o, reg u64 v) -> stack u64[8] {
+  stack u64[8] row;
+  reg u64 x;
+  inline int i;
+  row[0] = v;
+  for i = 1 to 8 { x = 0; row[i] = x; }
+  o = _p2_sponge_row(o, row);
+  return o;
+}
+
+// tree over 16 field-element leaves: levels 16(*8=128)+8(64)+4(32)+2(16)+root(8)=248
+fn _hp_build_tree16(reg ptr u64[248] nd, reg const ptr u64[16] ev) -> reg ptr u64[248] {
+  stack u64[8] lf; stack u64[8] lc; stack u64[8] rc;
+  reg u64 v x; inline int leaf i j;
+  for leaf = 0 to 16 { v = ev[leaf]; lf = _hp_leaf_fe(lf, v);
+    for i = 0 to 8 { x = lf[i]; nd[leaf*8 + i] = x; } }
+  for j = 0 to 8 {
+    for i = 0 to 8 { x = nd[(2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nd[(2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nd[128 + j*8 + i] = x; } }
+  for j = 0 to 4 {
+    for i = 0 to 8 { x = nd[128 + (2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nd[128 + (2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nd[192 + j*8 + i] = x; } }
+  for j = 0 to 2 {
+    for i = 0 to 8 { x = nd[192 + (2*j)*8 + i];   lc[i] = x; }
+    for i = 0 to 8 { x = nd[192 + (2*j+1)*8 + i]; rc[i] = x; }
+    lf = _p2_compress(lf, lc, rc);
+    for i = 0 to 8 { x = lf[i]; nd[224 + j*8 + i] = x; } }
+  for i = 0 to 8 { x = nd[224 + i];   lc[i] = x; }
+  for i = 0 to 8 { x = nd[224 + 8+i]; rc[i] = x; }
+  lf = _p2_compress(lf, lc, rc);
+  for i = 0 to 8 { x = lf[i]; nd[240 + i] = x; }
+  return nd;
+}
+
+// auth path (4 siblings) for a 16-leaf tree.
+fn _hp_authpath16(reg ptr u64[32] path, reg const ptr u64[248] nd, reg u64 idx0)
+    -> reg ptr u64[32] {
+  reg u64 idx sib so x; inline int i;
+  idx = idx0;
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nd[so + i]; path[0*8 + i] = x; } idx >>= 1;
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nd[128 + so + i]; path[1*8 + i] = x; } idx >>= 1;
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nd[192 + so + i]; path[2*8 + i] = x; } idx >>= 1;
+  sib = idx; sib ^= 1; so = sib; so *= 8;
+  for i = 0 to 8 { x = nd[224 + so + i]; path[3*8 + i] = x; }
+  return path;
+}
+
+// recompute a 16-leaf (depth-4) root from leaf-fe + 4-sibling path + index.
+fn _hp_root16_from_path(reg ptr u64[8] o, reg u64 leafv,
+                        reg const ptr u64[32] path, reg u64 idx) -> reg ptr u64[8] {
+  stack u64[8] cur; stack u64[8] sib; stack u64[8] lc; stack u64[8] rc;
+  stack u64[1] idx_s;
+  reg u64 x bit id; inline int lvl i;
+  cur = _hp_leaf_fe(cur, leafv);
+  idx_s[0] = idx;
+  for lvl = 0 to 4 {
+    for i = 0 to 8 { x = path[lvl*8 + i]; sib[i] = x; }
+    id = idx_s[0];
+    bit = id; bit &= 1;
+    if (bit == 0) {
+      for i = 0 to 8 { x = cur[i]; lc[i] = x; } for i = 0 to 8 { x = sib[i]; rc[i] = x; }
+    } else {
+      for i = 0 to 8 { x = sib[i]; lc[i] = x; } for i = 0 to 8 { x = cur[i]; rc[i] = x; }
+    }
+    cur = _p2_compress(cur, lc, rc);
+    id = idx_s[0]; id >>= 1; idx_s[0] = id;
+  }
+  for i = 0 to 8 { x = cur[i]; o[i] = x; }
+  return o;
+}
+
+// =============================================================================
+// Proof buffer layout (u64 lanes). NQ = 8 query rounds. Total = HP_PROOF_LANES.
+//   [0..8)     root0   (codeword tree root, 8 lanes)
+//   [8..16)    root16  (FRI fold-layer-16 tree root)
+//   [16..18)   final poly (2 BabyBear elems)
+//   [18]       beta    (FRI fold challenge, recorded for transparency)
+//   [19]       pow_nonce
+//   per query r (8 rounds), base = 20 + r*HP_QREC, HP_QREC = 1+3+40 + 1+32 + 1+32:
+//     +0       q          (codeword query index, 0..31)
+//     +1..+4   row[3]     (opened width-3 codeword row a,b,c)
+//     +4..+44  path0[40]  (codeword auth path, 5 siblings)
+//     +44      cw_sib     (column-0 value at q+16, the FRI pair partner)
+//     +45..+77 path0b[32 -> but codeword tree is depth5=40]   (auth path of partner)
+//   -- to keep partner auth path depth-5 we use 40 lanes, see HP_QREC below.
+// We fix HP_QREC concretely in the code; offsets are computed there.
+// =============================================================================
+// HP_QREC = 1 (q) + 3 (row) + 40 (path0) + 1 (cw_sib) + 40 (path0b)
+//           + 1 (f16val) + 32 (path16) = 118 lanes per query.
+// HP_PROOF_LANES = 20 + 8*118 = 964.
+
+// derive a query index in [0,32) from the challenger state lane `k`.
+inline fn _hp_query_idx(stack u64[16] st, inline int k) -> reg u64 {
+  reg u64 q; q = st[k]; q = _pr_reduce(q); q &= 31;
+  return q;
+}
+
+// PoW permute helper: permute fs (in place), return lane-0 in blk[0].
+inline fn _hp_pow_test(stack u64[16] fs) -> stack u64[8] {
+  stack u64[16] po; stack u64[8] o; reg u64 x; inline int i;
+  po = p2_perm(po, fs);
+  x = po[0]; o[0] = x;
+  for i = 1 to 8 { x = 0; o[i] = x; }
+  return o;
+}
+
+// Open ONE query at index `q` and serialize its record into out[base..base+120):
+//   q, q-row(3), q-authpath(40), partner-row(3), partner-authpath(40),
+//   f16 opening(1), f16-authpath(32). Non-inline so the prover's loop stays
+//   small for register allocation.
+fn _hp_open_query(reg ptr u64[980] out, reg const ptr u64[96] lde,
+                  reg const ptr u64[504] nodes, reg const ptr u64[248] nd16,
+                  reg const ptr u64[16] f16, reg u64 q, reg u64 base)
+    -> reg ptr u64[980] {
+  stack u64[40] path;
+  stack u64[32] path16;
+  stack u64[1]  q_s;
+  stack u64[1]  base_s;
+  reg u64 x t idx qq r3;
+  inline int i;
+  q_s[0] = q; base_s[0] = base;
+  idx = base; out[idx + 0] = q;
+  // q-row (3 cols): precompute r3 = 3*q so the lde address has scale 8.
+  qq = q; r3 = qq; r3 *= 3;
+  x = lde[r3 + 0]; idx = base_s[0]; out[idx + 1] = x;
+  x = lde[r3 + 1]; idx = base_s[0]; out[idx + 2] = x;
+  x = lde[r3 + 2]; idx = base_s[0]; out[idx + 3] = x;
+  // q auth path (40)
+  qq = q_s[0];
+  path = _hp_authpath32(path, nodes, qq);
+  idx = base_s[0];
+  for i = 0 to 40 { x = path[i]; out[idx + 4 + i] = x; }
+  // partner row q^16 (3 cols): r3 = 3*(q^16).
+  qq = q_s[0]; t = qq; t ^= 16; r3 = t; r3 *= 3;
+  x = lde[r3 + 0]; idx = base_s[0]; out[idx + 44] = x;
+  x = lde[r3 + 1]; idx = base_s[0]; out[idx + 45] = x;
+  x = lde[r3 + 2]; idx = base_s[0]; out[idx + 46] = x;
+  qq = q_s[0]; t = qq; t ^= 16;
+  path = _hp_authpath32(path, nodes, t);
+  idx = base_s[0];
+  for i = 0 to 40 { x = path[i]; out[idx + 47 + i] = x; }
+  // f16 opening at q&15
+  qq = q_s[0]; qq &= 15; q_s[0] = qq;
+  x = f16[qq]; idx = base_s[0]; out[idx + 87] = x;
+  qq = q_s[0];
+  path16 = _hp_authpath16(path16, nd16, qq);
+  idx = base_s[0];
+  for i = 0 to 32 { x = path16[i]; out[idx + 88 + i] = x; }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// hp_prove: full honest prover. p0 = u64[24] Fibonacci trace (width3,height8).
+// Writes HP_PROOF_LANES = 980 u64 into `out`. Returns out.
+//   HP_QREC = 1(q)+3(row)+40(path0)+3(rowp)+40(path0p)+1(f16val)+32(path16)=120
+//   HP_PROOF_LANES = 20 + 8*120 = 980
+// ---------------------------------------------------------------------------
+export fn hp_prove(reg ptr u64[980] out, reg const ptr u64[24] p0)
+    -> reg ptr u64[980] {
+  stack u64[24]  trace;
+  stack u64[96]  lde;
+  stack u64[504] nodes;       // codeword tree
+  stack u64[16]  col0;        // column-0 LDE values (FRI codeword)
+  stack u64[16]  f16;         // first FRI fold (32 -> 16)
+  stack u64[248] nd16;        // fold-layer tree
+  stack u64[16]  fs;          // challenger state
+  stack u64[8]   blk;
+  stack u64[1]   qidx_s;
+  reg u64 x a b s d t beta q nonce h0 mask bbase;
+  inline int i j r base;
+
+  for i = 0 to 24 { x = p0[i]; trace[i] = x; }
+  // 1. real LDE (reuses the verified coset-NTT leaf).
+  lde = plonky3_trace_lde_3_8(lde, trace);
+  // 2. codeword Merkle tree (verified Poseidon2 hashing).
+  nodes = _hp_build_tree32(nodes, lde);
+  for i = 0 to 8 { x = nodes[496 + i]; out[i] = x; }   // root0
+
+  // 3. Fiat-Shamir: absorb public values (a=trace[1],b=trace[?],x=claimed),
+  //    then root0, then squeeze beta. Public values are bound into the
+  //    transcript exactly as p3 does, so tampering the claimed output changes
+  //    beta + the query set and breaks every downstream check.
+  for i = 0 to 16 { x = 0; fs[i] = x; }
+  // public values: pub_a = trace[0], pub_b = trace[1], pub_x = trace[3*7+2]
+  // (claimed 8th-row Fibonacci output c at the last row).
+  blk[0] = trace[0]; blk[1] = trace[1]; blk[2] = trace[23];
+  for i = 3 to 8 { x = 0; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+  for i = 0 to 8 { x = nodes[496 + i]; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+  fs = _hp_fs_squeeze(fs, x);
+  beta = fs[0]; beta = _pr_reduce(beta);
+
+  // 4. FRI fold 32 -> 16 on column-0 values: q[i] = (a+b)+beta*(a-b).
+  for i = 0 to 16 { x = lde[3*i]; x = _pr_reduce(x); col0[i] = x; }
+  for i = 0 to 16 {
+    a = col0[i];
+    // partner is col0 value at the FULL 32-domain index i+16 (column 0).
+    b = lde[3*(i+16)]; b = _pr_reduce(b);
+    s = _hp_add(a, b); d = _hp_sub(a, b); t = _hp_mul(d, beta);
+    s = _hp_add(s, t); f16[i] = s;
+  }
+  nd16 = _hp_build_tree16(nd16, f16);
+  for i = 0 to 8 { x = nd16[240 + i]; out[8 + i] = x; }   // root16
+
+  // final poly: fold 16 -> 8 -> 4 -> 2 to a length-2 final polynomial.
+  // (Use the same beta for the demonstrator; p3 squeezes a fresh challenge per
+  //  layer — recorded honestly as a single-challenge fold here.)
+  // 16 -> 8
+  for i = 0 to 8 {
+    a = f16[i]; b = f16[8 + i];
+    s = _hp_add(a, b); d = _hp_sub(a, b); t = _hp_mul(d, beta);
+    s = _hp_add(s, t); col0[i] = s;   // reuse col0 as scratch
+  }
+  // 8 -> 4
+  for i = 0 to 4 {
+    a = col0[i]; b = col0[4 + i];
+    s = _hp_add(a, b); d = _hp_sub(a, b); t = _hp_mul(d, beta);
+    s = _hp_add(s, t); col0[i] = s;
+  }
+  // 4 -> 2
+  for i = 0 to 2 {
+    a = col0[i]; b = col0[2 + i];
+    s = _hp_add(a, b); d = _hp_sub(a, b); t = _hp_mul(d, beta);
+    s = _hp_add(s, t); col0[i] = s;
+  }
+  out[16] = col0[0]; out[17] = col0[1];   // final poly (2 elems)
+  out[18] = beta;
+
+  // 6. proof-of-work grinding: find nonce so sponge(root0 || nonce)[0] has
+  //    >= 8 trailing zero bits. Data-dependent while loop (CT-irrelevant: this
+  //    is public-coin grinding, no secret material).
+  mask = 255;          // low 8 bits
+  nonce = 0;
+  for i = 0 to 16 { x = 0; fs[i] = x; }
+  for i = 0 to 8 { x = nodes[496 + i]; fs[i] = x; }   // absorb root0 into rate
+  // grind: vary lane 8 (capacity) with nonce, permute, test lane 0.
+  h0 = 1;
+  while (h0 != 0) {
+    fs[8] = nonce;
+    blk = _hp_pow_test(fs);    // returns permuted-lane-0 in blk[0]
+    h0 = blk[0];
+    h0 &= mask;
+    if (h0 != 0) { nonce += 1; }
+  }
+  out[19] = nonce;
+
+  // 7. query phase + serialization: derive 8 query indices, open each.
+  // Query challenger absorbs: public values, root0, root16, nonce.
+  for i = 0 to 16 { x = 0; fs[i] = x; }
+  blk[0] = trace[0]; blk[1] = trace[1]; blk[2] = trace[23];
+  for i = 3 to 8 { x = 0; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+  for i = 0 to 8 { x = nodes[496 + i]; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+  for i = 0 to 8 { x = nd16[240 + i]; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+  blk[0] = out[19];
+  for i = 1 to 8 { x = 0; blk[i] = x; }
+  fs = _hp_fs_absorb8(fs, blk);
+
+  for r = 0 to 8 {
+    fs = _hp_fs_squeeze(fs, x);
+    q = _hp_query_idx(fs, 0);   // codeword index in [0,32)
+    qidx_s[0] = q;
+    base = 20 + r*120;
+    bbase = base;
+    q = qidx_s[0];
+    out = _hp_open_query(out, lde, nodes, nd16, f16, q, bbase);
+  }
+  return out;
+}
+
+// =============================================================================
+// Export wrappers so the C-side verifier recomputes Merkle roots / Fiat-Shamir
+// through the EXACT SAME verified-Poseidon2 leaves the prover emitted (no
+// re-implementation of the hash in C; the C verifier only does control flow).
+// =============================================================================
+
+// PaddingFreeSponge<16,8,8> leaf hash of a width-<=8 row -> 8-lane digest.
+export fn hp_sponge8(reg ptr u64[8] o, reg const ptr u64[8] row) -> reg ptr u64[8] {
+  o = _p2_sponge_row(o, row);
+  return o;
+}
+
+// TruncatedPermutation<2,8,16> 2-to-1 compress of two 8-lane digests.
+export fn hp_compress8(reg ptr u64[8] o, reg const ptr u64[8] l, reg const ptr u64[8] r)
+    -> reg ptr u64[8] {
+  o = _p2_compress(o, l, r);
+  return o;
+}
+
+// Verified Poseidon2 permutation (width 16) — used for the duplex challenger
+// and the PoW check on the C side.
+export fn hp_perm16(reg ptr u64[16] o, reg const ptr u64[16] s) -> reg ptr u64[16] {
+  o = p2_perm(o, s);
+  return o;
+}

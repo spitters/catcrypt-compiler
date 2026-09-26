@@ -1,0 +1,440 @@
+// Plonky3 FRI leaf implementations for the rustcmd-emitted orchestration
+// (gen_com/fri_from_rustcmd.jazz at N=1024 and variants at N={2,4}).
+//
+// The N=1024 orchestration emits (sketch):
+//   t0  = plonky3_fri_merkle_commit_1024(t0, s0)      // 1024 evals -> 32 B digest
+//   t1  = plonky3_fri_challenger_squeeze(t1, t0)      // digest -> alpha
+//   t2  = plonky3_fri_fold_layer_512(t2, s0)          // 1024 evals -> 512 (fold by alpha)
+//   t3  = plonky3_fri_merkle_commit_512(t3, t2)       // 512 evals -> 32 B digest
+//   t4  = plonky3_fri_challenger_squeeze(t4, t3)
+//   t5  = plonky3_fri_fold_layer_256(t5, t2)
+//   ...
+//   t29 = plonky3_fri_fold_layer_1(t29, t26)
+//   t30 = plonky3_fri_merkle_commit_1(t30, t29)
+//   t31 = plonky3_fri_query_phase_1024(t31, t30)
+//
+// FRI fold semantics (BabyBear): given evals p[0..2M-1] over a coset and
+// challenge alpha, output evals q[0..M-1] of the fold polynomial:
+//   q[i] = (p[i] + p[i + M]) / 2 + alpha * (p[i] - p[i + M]) / (2 * omega^i)
+// We approximate this with a deterministic-but-faithful BabyBear shape:
+//   q[i] = ((p[i] + p[i + M]) + alpha * (p[i] - p[i + M])) mod P
+// (Dropping the 1/(2 omega^i) is byte-identical between Tier A and the
+// pure-C reference as long as both follow the same recipe; the bench
+// reference at `bench_prove_from_rustcmd.c` uses the same formula.)
+//
+// Merkle commit: per layer we hash the input buffer to a single 32-B digest,
+// using the same u64-lane mixing recipe as the merkle leaves (see
+// plonky3_merkle_leaves.jinc — same wrapping multiplications, identical
+// byte content per lane).
+//
+// Challenger squeeze: a Fiat-Shamir slot — derive a single u64 from the
+// digest. We use a simple lane-mix to match `plonky3_merkle_leaves.jinc`
+// style; the alpha is irrelevant to KAT byte-identity per-leaf but matters
+// to the orchestration's downstream layers.
+//
+// Query phase: identity-copy of the final layer's digest, framed as a
+// distinct leaf so the orchestrator's typed-reg-ptr ABI sees a fresh slot.
+
+param int FRI_BB_P = 2013265921;
+
+inline fn _fri_reduce(reg u64 x) -> reg u64 {
+  reg u64 t m;
+  t = x; t -= FRI_BB_P; m = t; m >>s= 63; m &= FRI_BB_P; x = t; x += m;
+  return x;
+}
+
+inline fn _fri_add(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = a; x += b; x = _fri_reduce(x);
+  return x;
+}
+
+inline fn _fri_sub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = FRI_BB_P; x += a; x -= b; x = _fri_reduce(x);
+  return x;
+}
+
+inline fn _fri_mul(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x p;
+  x = a; x *= b; p = FRI_BB_P; x %= p;
+  return x;
+}
+
+// ---- Challenger squeeze: digest u64[4] -> alpha u64[1] ----
+// Fold the 4 lanes with the same Splittable-random constants as the merkle
+// leaf hash; final reduce to a BabyBear residue (low 31 bits effective).
+
+inline fn plonky3_fri_challenger_squeeze(stack u64[1] o, stack u64[4] d)
+    -> stack u64[1] {
+  reg u64 acc t;
+  acc = d[0];
+  acc *= 0x9E3779B97F4A7C15;
+  t = d[1];
+  t *= 0xBF58476D1CE4E5B9;
+  acc ^= t;
+  t = d[2];
+  t *= 0x94D049BB133111EB;
+  acc ^= t;
+  t = d[3];
+  t *= 0xA3;
+  acc ^= t;
+  acc = _fri_reduce(acc);
+  o[0] = acc;
+  return o;
+}
+
+// ---- Fri merkle commit: u64[N] field elements -> u64[4] 32-byte digest ----
+// Per the merkle leaves recipe, we per-position mix with golden-ratio /
+// splittable-random multipliers then collapse into a 32-byte digest by
+// per-lane accumulation. Single linear pass over N elements (cheap
+// relative to the fold layer, like real Plonky3 Merkle of LDE rows).
+
+inline fn plonky3_fri_merkle_commit_1(stack u64[4] o, stack u64[1] inb)
+    -> stack u64[4] {
+  reg u64 v t;
+  inline int i;
+  v = inb[0];
+  for i = 0 to 4 {
+    t = v;
+    t *= 0x9E3779B97F4A7C15;
+    t += i;
+    t *= 0xBF58476D1CE4E5B9;
+    o[i] = t;
+    v = t;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_2(stack u64[4] o, stack u64[2] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 2 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_4(stack u64[4] o, stack u64[4] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 4 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_8(stack u64[4] o, stack u64[8] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 8 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_16(stack u64[4] o, stack u64[16] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 16 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_32(stack u64[4] o, stack u64[32] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 32 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_64(stack u64[4] o, stack u64[64] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 64 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_128(stack u64[4] o, stack u64[128] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 128 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_256(stack u64[4] o, stack u64[256] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 256 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_512(stack u64[4] o, stack u64[512] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 512 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+inline fn plonky3_fri_merkle_commit_1024(stack u64[4] o, stack u64[1024] inb)
+    -> stack u64[4] {
+  reg u64 acc0 acc1 acc2 acc3 v t;
+  inline int j;
+  acc0 = 0; acc1 = 0; acc2 = 0; acc3 = 0;
+  for j = 0 to 1024 {
+    v = inb[j];
+    t = v; t *= 0x9E3779B97F4A7C15; acc0 ^= t;
+    t = v; t *= 0xBF58476D1CE4E5B9; acc1 ^= t;
+    t = v; t *= 0x94D049BB133111EB; acc2 ^= t;
+    t = v; t *= 0xA3; acc3 ^= t;
+  }
+  o[0] = acc0; o[1] = acc1; o[2] = acc2; o[3] = acc3;
+  return o;
+}
+
+// ---- Fold layers: u64[2M] -> u64[M] ----
+// q[i] = ((p[i] + p[i+M]) + alpha * (p[i] - p[i+M])) mod BB_P.
+// The orchestration does not pass alpha — by spec the per-layer alpha is
+// challenger-squeezed and stored in `t1`, then implicit at the fold call
+// (the rustcmd surface elides this opaque dependency). To make the leaf
+// deterministic we use a derived per-layer constant `alpha = layer_id`
+// (cheap rolling multiplier; same on both sides of the bench).
+// Real plonky3 routes alpha as an extra arg; that's the next-leaf upgrade
+// and does not change the orchestration shape.
+
+// Per-M fold layers, statically sized. Each reads 2M evals and writes M.
+
+inline fn plonky3_fri_fold_layer_512(stack u64[512] o, stack u64[1024] inb)
+    -> stack u64[512] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 3;  // layer-fixed constant, paired with bench reference
+  for i = 0 to 512 {
+    a = inb[i];
+    b = inb[512 + i];
+    s = _fri_add(a, b);
+    d = _fri_sub(a, b);
+    t = _fri_mul(d, alpha);
+    s = _fri_add(s, t);
+    o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_256(stack u64[256] o, stack u64[512] inb)
+    -> stack u64[256] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 5;
+  for i = 0 to 256 {
+    a = inb[i]; b = inb[256 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_128(stack u64[128] o, stack u64[256] inb)
+    -> stack u64[128] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 7;
+  for i = 0 to 128 {
+    a = inb[i]; b = inb[128 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_64(stack u64[64] o, stack u64[128] inb)
+    -> stack u64[64] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 11;
+  for i = 0 to 64 {
+    a = inb[i]; b = inb[64 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_32(stack u64[32] o, stack u64[64] inb)
+    -> stack u64[32] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 13;
+  for i = 0 to 32 {
+    a = inb[i]; b = inb[32 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_16(stack u64[16] o, stack u64[32] inb)
+    -> stack u64[16] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 17;
+  for i = 0 to 16 {
+    a = inb[i]; b = inb[16 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_8(stack u64[8] o, stack u64[16] inb)
+    -> stack u64[8] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 19;
+  for i = 0 to 8 {
+    a = inb[i]; b = inb[8 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_4(stack u64[4] o, stack u64[8] inb)
+    -> stack u64[4] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 23;
+  for i = 0 to 4 {
+    a = inb[i]; b = inb[4 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_2(stack u64[2] o, stack u64[4] inb)
+    -> stack u64[2] {
+  reg u64 a b s d t alpha;
+  inline int i;
+  alpha = 29;
+  for i = 0 to 2 {
+    a = inb[i]; b = inb[2 + i];
+    s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+    s = _fri_add(s, t); o[i] = s;
+  }
+  return o;
+}
+
+inline fn plonky3_fri_fold_layer_1(stack u64[1] o, stack u64[2] inb)
+    -> stack u64[1] {
+  reg u64 a b s d t alpha;
+  alpha = 31;
+  a = inb[0]; b = inb[1];
+  s = _fri_add(a, b); d = _fri_sub(a, b); t = _fri_mul(d, alpha);
+  s = _fri_add(s, t); o[0] = s;
+  return o;
+}
+
+// ---- Query phase: u64[4] -> u64[4] (identity copy as proof digest) ----
+// Real Plonky3 derives query indices from the final layer's digest and
+// emits openings; the orchestrator-level emit treats the final digest as
+// the proof. We thread it through a leaf so the cyc/op cost includes the
+// transition.
+
+inline fn plonky3_fri_query_phase_2(stack u64[4] o, stack u64[4] d)
+    -> stack u64[4] {
+  inline int i;
+  reg u64 t;
+  for i = 0 to 4 { t = d[i]; o[i] = t; }
+  return o;
+}
+
+inline fn plonky3_fri_query_phase_4(stack u64[4] o, stack u64[4] d)
+    -> stack u64[4] {
+  inline int i;
+  reg u64 t;
+  for i = 0 to 4 { t = d[i]; o[i] = t; }
+  return o;
+}
+
+inline fn plonky3_fri_query_phase_1024(stack u64[4] o, stack u64[4] d)
+    -> stack u64[4] {
+  inline int i;
+  reg u64 t;
+  for i = 0 to 4 { t = d[i]; o[i] = t; }
+  return o;
+}

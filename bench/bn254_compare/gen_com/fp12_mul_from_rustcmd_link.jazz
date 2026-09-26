@@ -1,0 +1,33 @@
+require "../include/bn254_tower_leaves.jinc"
+
+export fn bn254_Fp12_mul_rustcmd(reg ptr u64[24] out, reg const ptr u64[24] p0, reg const ptr u64[24] p1, reg const ptr u64[24] p2, reg const ptr u64[24] p3) -> reg ptr u64[24] {
+  stack u64[24] s0;
+  stack u64[24] s1;
+  stack u64[24] s2;
+  stack u64[24] s3;
+  stack u64[24] t0;
+  stack u64[24] t1;
+  stack u64[24] t2;
+  stack u64[24] t3;
+  stack u64[24] t4;
+  stack u64[24] t5;
+  stack u64[24] t6;
+  stack u64[24] t7;
+  stack u64[24] t8;
+  inline int k;
+  for k = 0 to 24 { s0[k] = p0[k]; }
+  for k = 0 to 24 { s1[k] = p1[k]; }
+  for k = 0 to 24 { s2[k] = p2[k]; }
+  for k = 0 to 24 { s3[k] = p3[k]; }
+  t0 = bn254_Fp6_mul(t0, s0, s2);
+  t1 = bn254_Fp6_mul(t1, s1, s3);
+  t2 = bn254_Fp6_add(t2, s0, s1);
+  t3 = bn254_Fp6_add(t3, s2, s3);
+  t4 = bn254_Fp6_mul(t4, t3, t2);
+  t5 = bn254_Fp6_sub(t5, t4, t0);
+  t6 = bn254_Fp6_sub(t6, t5, t1);
+  t7 = bn254_Fp6_mul_by_v(t7, t1);
+  t8 = bn254_Fp6_add(t8, t0, t7);
+  for k = 0 to 24 { out[k] = t8[k]; }
+  return out;
+}

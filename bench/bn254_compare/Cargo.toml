@@ -1,0 +1,40 @@
+[package]
+name = "catcrypt-bn254-kat"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "KAT: emitted BN254 (alt-bn128) G1/pairing equation structure vs the AUCurves verified reference, anchored to published EIP-196/EIP-197 vectors"
+
+[dependencies]
+# Verified-bedrock2 BN254 tower (Fp/Fp2/Fp6/Fp12 + pairing_optimal / fp12_mul).
+bn254-safe-rust = { path = "../../../BLS/AUCurves/bn254-safe-rust" }
+
+[[bin]]
+name = "bn254_kat"
+path = "bn254_kat.rs"
+
+[[bin]]
+name = "bn254_vale_bench"
+path = "bn254_vale_bench.rs"
+
+[[bin]]
+name = "fp2_kat"
+path = "fp2_kat.rs"
+
+# Reg-ptr verified-leaf re-emitted BN254 pairing-tower field arithmetic
+# (Fp2/Fp6/Fp12 mul) byte-identical vs the AUCurves verified tower (#260).
+[[bin]]
+name = "fp_tower_kat"
+path = "fp_tower_kat.rs"
+
+# Whole optimal-ate pairing (Miller loop fused line-eval L2 + cyclotomic /
+# NAF final-exp L3) byte-exact vs the AUCurves verified pairing_optimal (#225).
+[[bin]]
+name = "bn254_pairing_kat"
+path = "bn254_pairing_kat.rs"
+
+# Marlin KZG prover whose verifier pairing-check leaf body is the REAL verified
+# AUCurves BN254 optimal-ate pairing (closes the Marlin pairing-leaf stub).
+[[bin]]
+name = "marlin_prover_kat"
+path = "marlin_prover_kat.rs"

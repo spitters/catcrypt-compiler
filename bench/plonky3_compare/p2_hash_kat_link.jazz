@@ -1,0 +1,36 @@
+// KAT harness: expose the verified Poseidon2 permutation + sponge so we can
+// re-confirm byte-match with Plonky3 (PaddingFreeSponge<16,8,8>) on the
+// canonical test vector, now wired through the plonky3 prover's hash include.
+require "include/plonky3_poseidon2_hash.jinc"
+
+export fn p2_perm16(reg ptr u64[16] out, reg const ptr u64[16] p0) -> reg ptr u64[16] {
+  stack u64[16] s0;
+  stack u64[16] po;
+  inline int k;
+  for k = 0 to 16 { s0[k] = p0[k]; }
+  po = p2_perm(po, s0);
+  for k = 0 to 16 { out[k] = po[k]; }
+  return out;
+}
+
+// Full PaddingFreeSponge<16,8,8> on a 16-elem input (= 2 rate-8 blocks),
+// matching poseidon2_hash.c::poseidon2_sponge16 exactly.
+export fn p2_sponge16(reg ptr u64[8] out, reg const ptr u64[16] p0) -> reg ptr u64[8] {
+  stack u64[16] inp;
+  stack u64[16] st;
+  stack u64[16] po;
+  reg u64 x;
+  inline int k;
+  for k = 0 to 16 { inp[k] = p0[k]; }
+  for k = 0 to 16 { x = 0; st[k] = x; }
+  // block 0: overwrite rate
+  for k = 0 to 8 { x = inp[k]; st[k] = x; }
+  po = p2_perm(po, st);
+  for k = 0 to 16 { x = po[k]; st[k] = x; }
+  // block 1: overwrite rate
+  for k = 0 to 8 { x = inp[8 + k]; st[k] = x; }
+  po = p2_perm(po, st);
+  for k = 0 to 16 { x = po[k]; st[k] = x; }
+  for k = 0 to 8 { x = st[k]; out[k] = x; }
+  return out;
+}

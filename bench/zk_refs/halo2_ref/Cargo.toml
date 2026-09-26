@@ -1,0 +1,16 @@
+[package]
+name = "halo2_ref"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "halo2_bench"
+path = "src/main.rs"
+
+[dependencies]
+halo2_proofs = "0.3"
+ff = "0.13"
+rand_core = "0.6"
+
+[profile.release]
+opt-level = 3

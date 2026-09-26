@@ -1,0 +1,46 @@
+/* Plonky3 AIR constraint evaluator (Fibonacci AIR) — layer 4 of the
+ * STARK chain (#154), emitted by CatCrypt's verified front
+ * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3AirEmit.lean).
+ * Per-step transition sweep (lane-parallel over steps); field arithmetic
+ * regArith-only, NO opaque leaf. Reference: plonky3-hax/src/air.rs.
+ * KAT: kat_fibonacci_trace_values / kat_fib_air_transition_degree.
+ *   columns [a, b]; next.a = cur.b; next.b = cur.a + cur.b; trace[0]=[0,1]. */
+
+param int P = 2013265921;
+
+inline fn freduce(reg u64 x) -> reg u64 {
+  reg u64 t m;
+  t = x; t -= P; m = t; m >>s= 63; m &= P; x = t; x += m;
+  return x;
+}
+inline fn fadd(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = a; x += b; x = freduce(x); return x;
+}
+inline fn fsub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = P; x += a; x -= b; x = freduce(x); return x;
+}
+
+export fn air_eval_fib(reg const ptr u64[2048] trace, reg u64 height)
+    -> reg u64 {
+  reg u64 i ok ca cb na nb c0 c1 sum;
+  inline int unused;
+  ok = 1;
+  // boundary: trace[0] = [0, 1]
+  c0 = trace[0]; if (c0 != 0) { ok = 0; }
+  c1 = trace[1]; if (c1 != 1) { ok = 0; }
+  i = 0;
+  while (i + 1 < height) {
+    // one independent step's two constraints (lane-parallel over steps;
+    // covered by airTransition_denotation_preserves):
+    ca = trace[2 * i];     cb = trace[2 * i + 1];
+    na = trace[2 * i + 2]; nb = trace[2 * i + 3];
+    // c0 = next.a - cur.b
+    c0 = fsub(na, cb); if (c0 != 0) { ok = 0; }
+    // c1 = next.b - (cur.a + cur.b)
+    sum = fadd(ca, cb);
+    c1 = fsub(nb, sum); if (c1 != 0) { ok = 0; }
+    i += 1;
+  }
+  return ok;
+}
+

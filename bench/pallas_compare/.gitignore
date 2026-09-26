@@ -1,0 +1,4 @@
+bench_pallas_safegcd
+conform_pallas_safegcd
+shim/target/
+*.o

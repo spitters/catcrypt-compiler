@@ -1,0 +1,22 @@
+[package]
+name = "bn254_safegcd_shim"
+version = "0.1.0"
+edition = "2021"
+description = "C-linkable shim re-exporting AUCurves' safegcd_bn254::bn254_invert_divstep_sat"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "bn254_safegcd_shim"
+# staticlib so the bench harness can link the AUCurves BY inversion as a
+# native .a (the parent curve25519-jasmin crate is rlib-only).
+crate-type = ["staticlib"]
+
+[dependencies]
+# safegcd_bn254.rs depends only on the generic safegcd.rs core (no external
+# crate at the non-test path). The #[cfg(test)] mod's schoolbook reference
+# is not compiled in a staticlib release build.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

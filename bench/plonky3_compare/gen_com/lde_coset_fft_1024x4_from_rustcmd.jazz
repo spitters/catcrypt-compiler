@@ -1,0 +1,15 @@
+export fn plonky3_lde_coset_fft_1024x4_rc(reg ptr u64[4096] out, reg const ptr u64[1024] p0) -> reg ptr u64[4096] {
+  stack u64[1024] s0;
+  stack u64[1024] t0;
+  stack u64[4096] t1;
+  stack u64[4096] t2;
+  stack u64[4096] t3;
+  inline int k;
+  for k = 0 to 1024 { s0[k] = p0[k]; }
+  t0 = babybear_ntt_inverse_1024(t0, s0);
+  t1 = babybear_zero_extend_1024_to_4096(t1, t0);
+  t2 = babybear_coset_twist_4096(t2, t1);
+  t3 = babybear_ntt_forward_4096(t3, t2);
+  for k = 0 to 4096 { out[k] = t3[k]; }
+  return out;
+}

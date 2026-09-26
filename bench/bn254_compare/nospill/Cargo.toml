@@ -1,0 +1,21 @@
+[package]
+name = "catcrypt-bn254-nospill-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "#219 spill-policy re-test: BN254 pairing tower benched against the pp_module_nospill leaf emit (BN254_LEAVES=nospill) vs the default #[spill] emit."
+
+[dependencies]
+# Same AUCurves crate as ../Cargo.toml; built with BN254_LEAVES=nospill so
+# build.sh selects generated/bn254_leaves_nospill.jazz (add/sub/select/copy
+# declared plain reg u64; mul/square keep #[spill] as they exceed 16 GPRs).
+bn254-safe-rust = { path = "../../../../BLS/AUCurves/bn254-safe-rust" }
+
+[[bin]]
+name = "bn254_nospill_bench"
+path = "bn254_nospill_bench.rs"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3

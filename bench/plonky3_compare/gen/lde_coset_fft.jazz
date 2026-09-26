@@ -1,0 +1,54 @@
+/* Plonky3 low-degree extension (coset FFT) — layer 2 of the STARK chain
+ * (#154), emitted by CatCrypt's verified front
+ * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3LdeEmit.lean).
+ * Radix-2 decimation-in-time butterfly over Baby Bear; field arithmetic
+ * is regArith-only (NO opaque leaf). Butterfly / domain / Horner reference:
+ * plonky3-hax/src/specs/baby_bear.rs + plonky3-hax/src/fri.rs.
+ * KAT: kat_poly_eval_horner / kat_fri_domain_element_is_root_of_unity. */
+
+param int P = 2013265921;
+
+inline fn freduce(reg u64 x) -> reg u64 {
+  reg u64 t m;
+  t = x; t -= P; m = t; m >>s= 63; m &= P; x = t; x += m;
+  return x;
+}
+inline fn fadd(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = a; x += b; x = freduce(x); return x;
+}
+inline fn fsub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = P; x += a; x -= b; x = freduce(x); return x;
+}
+inline fn fmul(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = a; x *= b; x %= P; return x;
+}
+
+export fn lde_coset_fft(reg ptr u64[1024] a, reg u64 log_n,
+    reg const ptr u64[1024] tw) -> reg ptr u64[1024] {
+  reg u64 n half len i j w lo hi t wb step;
+  inline int unused;
+  n = 1; n <<= log_n;
+  len = 1;
+  while (len < n) {
+    step = n; step /= (len + len);
+    j = 0;
+    while (j < n) {
+      i = 0;
+      while (i < len) {
+        // one independent butterfly lane (lane-parallel; covered by
+        // ldeStage_denotation_preserves):
+        w  = tw[i * step];
+        lo = a[j + i];
+        hi = a[j + i + len];
+        wb = fmul(w, hi);
+        a[j + i]       = fadd(lo, wb);
+        a[j + i + len] = fsub(lo, wb);
+        i += 1;
+      }
+      j += (len + len);
+    }
+    len += len;
+  }
+  return a;
+}
+

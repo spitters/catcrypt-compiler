@@ -1,4 +1,4 @@
-17
+18
 # Modules naming a rolled-loop front combinator directly rather than reaching
 # it through FrontRoutePlan (frozen baseline; auto-tightened by
 # scripts/front-callsite-ratchet.sh). First line = count; the paths below are
@@ -20,3 +20,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1FrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnShiftFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/TreehashChainEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/WotsChainEmit.lean
+bench/msm_compare/msm_owned_emit.lean

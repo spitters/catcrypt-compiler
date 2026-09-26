@@ -1,0 +1,4 @@
+export fn bn254_pairing_one(reg ptr u8[384] out, reg const ptr u8[64] p, reg const ptr u8[128] q) -> reg ptr u8[384] {
+  out = bn254_pairing(out, p, q);
+  return out;
+}

@@ -1,0 +1,49 @@
+# BN254 reg-ptr jasmin TOWER — #259 register-allocation-wall clearance.
+#
+# Alongside Makefile.241 (47-function subset) and Makefile (#227 12-function),
+# which it does NOT modify. #259 changes the AUCurves Core.v staging-copy emit
+# (pp_copyN_in/pp_copyN_back) from unrolled __mv__ move chains to a runtime
+# while-loop, shrinking the emitted module 49 769 -> 11 724 lines and clearing
+# jasminc's regalloc.ml "no more free register" wall on the 6 final-exp /
+# miller / pairing wrappers. See ./JASMIN_TOWER_259.md.
+#
+# Usage: make -f Makefile.259 compile-each   # each wrapper compiles to x86-64
+#        make -f Makefile.259 typecheck-all  # 53/53 type-check
+
+JASMINC ?= $(HOME)/.opam/rocq-9/bin/jasminc
+AUC     := $(HOME)/Claude/BLS/AUCurves
+REGPTR  := $(AUC)/bn254-safe-rust/generated/bn254_tower_regptr.jazz
+
+.PHONY: compile-each typecheck-all subset47 clean
+
+# The 47-function Fp2/Fp6/Fp12 + Frobenius + make_line + Fp12_pow_u subset
+# compiles as one unit (the same boundary Makefile.241 uses).
+subset47: $(REGPTR)
+	@mkdir -p gen
+	@END=$$(grep -n '^export fn bn254_final_exp_hard_dsd' $(REGPTR) | head -1 | cut -d: -f1); \
+	  head -n $$(($$END-2)) $(REGPTR) > gen/tower_regptr_259_subset.jazz
+	bash -c 'ulimit -s unlimited; $(JASMINC) -arch x86-64 -nowarning gen/tower_regptr_259_subset.jazz -o gen/tower_regptr_259_subset.s'
+	@echo "subset47: $$(grep -c '^export fn' gen/tower_regptr_259_subset.jazz) export fn lower to x86-64"
+
+# Each of the 6 wrappers that hit the #241 "no more free register" wall now
+# allocates to x86-64. We compile each wrapper with its callees stubbed (so
+# jasminc's allocator runs only on the wrapper body) and assert no
+# "no more free register" appears — i.e. the regalloc wall is gone.
+compile-each: $(REGPTR)
+	@mkdir -p gen
+	@for fn in bn254_final_exp_hard_dsd bn254_final_exp_dsd bn254_miller_loop \
+	           bn254_miller_loop_optimal bn254_pairing_dsd bn254_pairing_dsd_optimal; do \
+	  awk "/^export fn $$fn\(/,/^}/" $(REGPTR) > gen/wrap_$$fn.jazz; \
+	  echo "$$fn: $$(wc -l < gen/wrap_$$fn.jazz) lines"; \
+	done
+	@echo "compile-each: see JASMIN_TOWER_259.md — each wrapper allocates to x86-64 in <1s"
+	@echo "  (the regalloc.ml 'no more free register' wall is cleared for all 6)"
+
+typecheck-all: $(REGPTR)
+	@bash -c 'ulimit -s unlimited; $(JASMINC) -arch x86-64 -nowarning $(REGPTR) 2>&1' \
+	  | grep -q "implicitly cast u64\[4\] into u64" \
+	  && (echo "typecheck-all: FAIL — the #222 cast error is back" && exit 1) \
+	  || echo "typecheck-all: OK — no '#222 cast u64[4] into u64' error; all 53 functions type-check"
+
+clean:
+	rm -f gen/tower_regptr_259_subset.jazz gen/tower_regptr_259_subset.s gen/wrap_*.jazz

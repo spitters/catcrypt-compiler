@@ -1,0 +1,31 @@
+export fn plonky3_merkle_build_root_1024_rc(reg ptr u64[4] out, reg const ptr u64[1024] p0) -> reg ptr u64[4] {
+  stack u64[1024] s0;
+  stack u64[4096] t0;
+  stack u64[2048] t1;
+  stack u64[1024] t2;
+  stack u64[512] t3;
+  stack u64[256] t4;
+  stack u64[128] t5;
+  stack u64[64] t6;
+  stack u64[32] t7;
+  stack u64[16] t8;
+  stack u64[8] t9;
+  stack u64[4] t10;
+  stack u64[4] t11;
+  inline int k;
+  for k = 0 to 1024 { s0[k] = p0[k]; }
+  t0 = plonky3_merkle_hash_leaves_1024(t0, s0);
+  t1 = plonky3_merkle_level_512(t1, t0);
+  t2 = plonky3_merkle_level_256(t2, t1);
+  t3 = plonky3_merkle_level_128(t3, t2);
+  t4 = plonky3_merkle_level_64(t4, t3);
+  t5 = plonky3_merkle_level_32(t5, t4);
+  t6 = plonky3_merkle_level_16(t6, t5);
+  t7 = plonky3_merkle_level_8(t7, t6);
+  t8 = plonky3_merkle_level_4(t8, t7);
+  t9 = plonky3_merkle_level_2(t9, t8);
+  t10 = plonky3_merkle_level_1(t10, t9);
+  t11 = plonky3_merkle_extract_root(t11, t10);
+  for k = 0 to 4 { out[k] = t11[k]; }
+  return out;
+}

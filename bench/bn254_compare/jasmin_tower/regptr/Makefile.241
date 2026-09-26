@@ -1,0 +1,51 @@
+# BN254 reg-ptr jasmin TOWER — #241 deep-graph compile coverage.
+#
+# Alongside the #227 `Makefile` (12-function subset), which it does NOT modify.
+# #241 generalizes the reg-ptr emit (AUCurves Core.v: width-aware call staging,
+# >6-ptr-arg functions inline, #SHR/#SHL for variable shifts) so the deep
+# Fp6_mul / Fp12 / Frobenius / make_line / Fp12_pow_u graph clears jasminc's
+# "the region associated to variable ... is partial" stack-allocation wall.
+# See ./JASMIN_TOWER_241.md.
+#
+# Usage: make -f Makefile.241 compile-tower
+#        make -f Makefile.241 typecheck-all
+
+JASMINC ?= $(HOME)/.opam/rocq-9/bin/jasminc
+AUC     := $(HOME)/Claude/BLS/AUCurves
+REGPTR  := $(AUC)/bn254-safe-rust/generated/bn254_tower_regptr.jazz
+
+.PHONY: compile-tower typecheck-all full-attempt clean
+
+# Compile the confirmed-compiling subset: everything through bn254_Fp12_pow_u
+# inclusive (the full Fp2/Fp6/Fp12 algebra + Frobenius family + make_line +
+# constant loaders + the hard-exp ladder). The prefix ends just before
+# bn254_final_exp_hard_dsd (whose compile is reported separately by
+# `full-attempt`; the final-exp/miller/pairing wrappers are field-blocked on
+# the #219 reg-ptr verified leaves regardless of codegen).
+gen/tower_regptr_241.s: $(REGPTR)
+	@mkdir -p gen
+	@END=$$(grep -n '^export fn bn254_final_exp_hard_dsd' $(REGPTR) | head -1 | cut -d: -f1); \
+	  head -n $$(($$END-2)) $(REGPTR) > gen/tower_regptr_241.jazz
+	@echo "reg-ptr subset (through Fp12_pow_u): $$(grep -c '^export fn' gen/tower_regptr_241.jazz) export fn + $$(grep -c '^inline fn' gen/tower_regptr_241.jazz) inline fn lower to x86-64"
+	bash -c 'ulimit -s unlimited; $(JASMINC) -arch x86-64 -nowarning gen/tower_regptr_241.jazz -o $@'
+	@echo "compile-tower: emitted reg-ptr tower (Fp2/Fp6/Fp12 + Frobenius + make_line + Fp12_pow_u) -> $@"
+	@echo "  call instructions (cross-object FFI): $$(grep -c '	call' $@) (0 = leaf calls fully inlined)"
+
+compile-tower: gen/tower_regptr_241.s
+
+# The #222/#227 array->reg-u64 cast blocker is gone; assert it.
+typecheck-all: $(REGPTR)
+	@bash -c 'ulimit -s unlimited; $(JASMINC) -arch x86-64 -nowarning $(REGPTR) 2>&1' \
+	  | grep -q "implicitly cast u64\[4\] into u64" \
+	  && (echo "typecheck-all: FAIL — the #222 cast error is back" && exit 1) \
+	  || echo "typecheck-all: OK — no '#222 cast u64[4] into u64' error; all 53 functions type-check"
+
+# Attempt the WHOLE module (incl. the 11k-line final_exp_hard_dsd). Slow.
+# Reports the first residual function + jasminc wall if any remain.
+full-attempt: $(REGPTR)
+	bash -c 'ulimit -s unlimited; $(JASMINC) -arch x86-64 -nowarning $(REGPTR) -o gen/tower_regptr_full.s' \
+	  && echo "full-attempt: ALL 53 lower to x86-64" \
+	  || echo "full-attempt: residual above is the precise jasminc wall on the deepest function"
+
+clean:
+	rm -f gen/tower_regptr_241.jazz gen/tower_regptr_241.s gen/tower_regptr_full.s

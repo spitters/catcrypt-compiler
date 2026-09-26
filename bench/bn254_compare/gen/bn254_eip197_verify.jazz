@@ -1,0 +1,17 @@
+export fn bn254_eip197_verify(reg ptr u8[384] out, reg const ptr u8[384] inp) -> reg ptr u8[384] {
+  stack u8[64] p1; stack u8[128] q1;
+  stack u8[64] p2; stack u8[128] q2;
+  stack u8[384] e1;
+  stack u8[384] e2;
+  inline int j;
+  reg u8 t;
+  for j = 0 to 64  { t = inp[j];        p1[j] = t; }
+  for j = 0 to 128 { t = inp[64 + j];   q1[j] = t; }
+  for j = 0 to 64  { t = inp[192 + j];  p2[j] = t; }
+  for j = 0 to 128 { t = inp[256 + j];  q2[j] = t; }
+  e1 = bn254_pairing(e1, p1, q1);
+  e2 = bn254_pairing(e2, p2, q2);
+  e1 = bn254_fp12_mul(e1, e2);
+  for j = 0 to 384 { t = e1[j]; out[j] = t; }
+  return out;
+}

@@ -1,0 +1,15 @@
+[package]
+name = "catcrypt-bn254-jasmin-tower-regptr-kat"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "KAT + checks (#227): the reg-ptr-emitted BN254 tower (ExtractBN254TowerJasmin.v / pp_module_regptr). All 53 tower funcs now type-check under jasminc (the #222 array->reg-u64 cast blocker is gone); 12 lower to x86-64 incl Fp2_mul/square/inv. Fp2_felem_copy byte-identical to the Rust tower on the EIP-197 G2 generator."
+build = "build.rs"
+
+[dependencies]
+# Verified-bedrock2 BN254 tower (the Rust reference side of the KAT).
+bn254-safe-rust = { path = "../../../../../BLS/AUCurves/bn254-safe-rust" }
+
+[[bin]]
+name = "bn254_tower_regptr_kat"
+path = "bn254_tower_regptr_kat.rs"

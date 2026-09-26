@@ -1,0 +1,85 @@
+BLS12-381 G1 multi-scalar multiplication — composed Pippenger vs blst (#487)
+===========================================================================
+
+Capstone of the BLS-vs-blst program: the three landed legs assembled into a
+full G1 MSM and benched head-to-head against blst's own Pippenger MSM.
+
+Legs composed:
+  #490  field-mul : the in-Lean x86-backend CIOS Montgomery multiply
+                    (bls12381_mont_mul_x86_from_lean) carries EVERY Fp mul/sqr
+                    in the MSM (~1.07-1.09x blst_fp_mul).
+  #488  inverse   : the AUCurves Bernstein-Yang safegcd divstep inverse
+                    (bls12_invert_divstep_sat) carries the batched inversion
+                    (~1.10x blst_fp_inverse).
+  #481  batch-inv : Montgomery's trick in the affine-conversion path
+                    (1 inverse + 3(n-1) muls instead of n inverses).
+
+Composed MSM:
+  - Pippenger bucketing with booth-style signed-digit window recoding
+    (digits in [-2^(w-1), 2^(w-1)], carry low->high; negative digit adds the
+    Y-negated affine point), balanced window w ~ floor(log2 n) - 2.
+  - Jacobian G1 group law (add-2007-bl / dbl-2009-l / madd-2007-bl); every
+    field multiply/square is the lean x86 kernel.  Fp add/sub use blst's so
+    the composition is NOT advantaged on additions.
+
+Oracle / KAT (NO fabricated vectors):
+  blst_p1s_mult_pippenger over the SAME (points, scalars).  Points are real
+  generator multiples (blst_p1_generator + blst_p1_mult); scalars a
+  deterministic xorshift stream reduced mod r.  Result compared byte-identically
+  on the 96-byte uncompressed serialisation.
+
+KAT (gate):  composed-MSM == blst_p1s_mult_pippenger  at n = 256, 1024, 4096.
+             batch-inversion: Montgomery's trick == per-point inversion.  PASS.
+
+Microbench (this box, ~3.3 GHz; min-of-5, taskset -c 3):
+
+  n      window  composed cyc/point   blst cyc/point   ratio   mul-eq/point
+  256      6           61752.5           51339.3       1.203x      578.6
+  1024     8           47377.3           38236.3       1.239x      435.4
+  4096    10           38718.9           31212.1       1.241x      351.6
+
+Verdict: 1.20-1.24x behind blst, near the field-mul (~1.08x) / safegcd-inverse
+(~1.10x) modularity floor, with the per-point cost amortising as expected
+(mul-eq/point drops 579 -> 352 as n grows -- Montgomery's trick + Pippenger).
+
+Diagnosis of the residual (~0.1-0.15x above the field floor):
+  - Per-field-op function-call overhead: Fp add/sub are external blst calls
+    and the field-mul is an external leaf call per use, whereas blst inlines
+    field ops and batches the bucket accumulation.  The ~500 add/sub per point
+    in the generic Jacobian formulas pay call overhead the field-mul bench
+    (#490) does not see.
+  - Generic Jacobian add/double formula op-count vs blst's tuned formulas.
+  This is a modularity gap (how the verified leaves are stitched), not a field
+  arithmetic gap -- the field-mul and inverse legs are at parity-class to blst.
+
+Note: a kani agent runs in faest-hax; ratios are min-of-5 so robust to
+transient contention.
+
+Formal layer (the verified tie to this benched composition):
+  CatCrypt/Crypto/Pairing/BLS12381ProjectiveEmit.lean
+    - jacDouble / jacAddZ1 : the inversion-free Jacobian group law (dbl-2009-l /
+      add-2007-bl, a=0) over FpBLS, NO per-op inverse.
+    - jacToAffine : the one-inverse Jacobian->affine conversion (Z^-2 / Z^-3).
+    - jacDouble_realizes_affineDbl / jacAdd_realizes_affineAdd : the projective
+      group law, projected back to affine via ONE inverse, equals the affine
+      group law (blsAffineDbl / blsAffineAdd) the group KAT pins byte-identical
+      to blst_p1_double / blst_p1_add (field_simp; ring, unconditional).
+    - bls_jacDbl_realized / bls_jacAdd_realized : denote-ties to the dialect
+      pdbl / padd (inherits the EllipticCurve->Field->ModArith lowering + CT).
+  CatCrypt/Crypto/Pairing/BLS12381WindowedMulEmit.lean
+    - windowLoop / windowLoop_eq_smul : fixed-window scalar-mul over the
+      projective group law, proved = abstract k*P; one final batched inverse
+      (in-loop inverse count drops from 255 to 1, matching this bench's fp_inv=1).
+  CatCrypt/Crypto/Pairing/BLS12381MsmEmit.lean
+    - bucketMsm_eq_msm / msm_append : Pippenger bucket-partition + sub-MSM
+      recombination = the abstract group MSM (the bucketing algebra).
+    - g1Msm_zk_commitment_unblocked : the curve-based ZK PCS commitment MSM is
+      now owned end-to-end (KZG / Groth16 / Bulletproofs / Spartan / Halo2 IPA).
+  Honest boundary: AUCurves leaves the all-pairs projective Gallina equivalence
+  Admitted; the Lean ties are the generic-chart (Z=1, distinct/doubling)
+  identities, and the exceptional cases stay discharged by this byte-identity KAT.
+
+Build / run:
+  make            # build the compare binary
+  make kat        # KAT gate only (n=256/1024/4096 vs blst + batch-inv)
+  make run        # KAT + microbench (min-of-5, core-pinned)

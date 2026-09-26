@@ -1,0 +1,59 @@
+/* Plonky3 FRI commit + query — layer 3 of the STARK chain (#154),
+ * emitted by CatCrypt's verified front
+ * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3FriEmit.lean).
+ * Fold (commit) phase: per-coset fri_fold, lane-parallel over cosets.
+ * Query phase: Merkle authentication-path recompute reusing layer 1's
+ * h2to1 two-to-one compress. Field arithmetic regArith-only; NO opaque
+ * leaf. Reference: plonky3-hax/src/fri.rs.
+ * KAT: kat_fri_fold_specific_point / kat_fri_fold_polynomial_linear. */
+
+param int INV_TWO = 1006632961; // (p+1)/2 = 1/2 mod p
+
+inline fn finv2() -> reg u64 { reg u64 r; r = INV_TWO; return r; }
+
+export fn fri_fold_layer(reg ptr u64[1024] evals, reg u64 half,
+    reg const ptr u64[1024] xs, reg u64 alpha,
+    reg ptr u64[1024] out) -> reg ptr u64[1024] {
+  reg u64 i ep en x sum diff i2 i2x peven podd t;
+  inline int unused;
+  i = 0;
+  while (i < half) {
+    // one independent fold coset (lane-parallel; covered by
+    // friFoldLayer_denotation_preserves):
+    ep = evals[i];
+    en = evals[i + half];
+    x  = xs[i];
+    sum  = fadd(ep, en);
+    diff = fsub(ep, en);
+    i2   = INV_TWO;
+    i2x  = finv(fmul(2, x));
+    peven = fmul(sum, i2);
+    podd  = fmul(diff, i2x);
+    t = fmul(alpha, podd);
+    out[i] = fadd(peven, t);
+    i += 1;
+  }
+  return out;
+}
+
+export fn fri_query_verify(reg ptr u8[32] leaf, reg u64 index,
+    reg ptr u8[1024] siblings, reg u64 depth,
+    reg ptr u8[32] root) -> reg u64 {
+  stack u8[32] cur; reg u64 level idx bit ok b x;
+  inline int c;
+  for c = 0 to 32 { x = leaf[c]; cur[c] = x; }
+  idx = index; level = 0;
+  while (level < depth) {
+    bit = idx; bit &= 1;
+    if (bit == 0) {
+      cur = h2to1(cur, siblings[32 * level : 32], cur);
+    } else {
+      cur = h2to1(siblings[32 * level : 32], cur, cur);
+    }
+    idx >>= 1; level += 1;
+  }
+  ok = 1;
+  for c = 0 to 32 { b = cur[c]; if (b != root[c]) { ok = 0; } }
+  return ok;
+}
+

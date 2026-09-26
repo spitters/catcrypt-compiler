@@ -1,0 +1,14 @@
+/*
+ * Compilation root for the MSM KAT.
+ *
+ * Pulls in the two EC leaves (ec_leaves.jinc, table-driven schoolbook EC over
+ * Z/23) and the EMITTED kernel gen/msm.jazz (CatCrypt's verified front,
+ * MsmEmit.msmJazz: the scalarFold `for i = 0 to 8` loop calling ec_scalar_mul /
+ * ec_point_add).  gen/msm.jazz is emitted verbatim by `lake env lean
+ * bench/msm_compare/msm_emit.lean` and is NOT edited here; this root only
+ * supplies the leaf bodies the emitted code calls and is the unit jasminc
+ * compiles to the linked ec_msm symbol.
+ */
+
+require "ec_leaves.jinc"
+require "gen/msm.jazz"

@@ -1,0 +1,19 @@
+require "../include/bn254_tower_leaves.jinc"
+
+export fn bn254_Fp2_add_rustcmd(reg ptr u64[4] out, reg const ptr u64[4] p0, reg const ptr u64[4] p1, reg const ptr u64[4] p2, reg const ptr u64[4] p3) -> reg ptr u64[4] {
+  stack u64[4] s0;
+  stack u64[4] s1;
+  stack u64[4] s2;
+  stack u64[4] s3;
+  stack u64[4] t0;
+  stack u64[4] t1;
+  inline int k;
+  for k = 0 to 4 { s0[k] = p0[k]; }
+  for k = 0 to 4 { s1[k] = p1[k]; }
+  for k = 0 to 4 { s2[k] = p2[k]; }
+  for k = 0 to 4 { s3[k] = p3[k]; }
+  t0 = bn254_add(t0, s0, s2);
+  t1 = bn254_add(t1, s1, s3);
+  for k = 0 to 4 { out[k] = t1[k]; }
+  return out;
+}

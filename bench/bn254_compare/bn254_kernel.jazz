@@ -1,0 +1,16 @@
+/*
+ * Compilation root for the BN254 (alt-bn128) G1 MSM + EIP-197 verify KAT.
+ *
+ * Pulls in the BN254 leaves (bn254_leaves.jinc) and the EMITTED kernels
+ * (gen/bn254_g1_msm.jazz, gen/bn254_pairing_one.jazz, gen/bn254_eip197_verify.jazz)
+ * from CatCrypt's verified front (bn254_emit.lean: Bn254Emit.Emit.{g1MsmJazz,
+ * pairingOneJazz, eip197VerifyJazz}).  The emitted .jazz are written verbatim by
+ * `lake env lean bench/bn254_compare/bn254_emit.lean` and are NOT edited here;
+ * this root supplies the leaf bodies the emitted code calls so jasminc compiles
+ * the linked unit.
+ */
+
+require "bn254_leaves.jinc"
+require "gen/bn254_g1_msm.jazz"
+require "gen/bn254_pairing_one.jazz"
+require "gen/bn254_eip197_verify.jazz"

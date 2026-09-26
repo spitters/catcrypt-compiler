@@ -1,0 +1,22 @@
+[package]
+name = "plonky3-bench-upstream"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Reference Fibonacci-AIR STARK prover for the head-to-head against the Tier C
+# Jasmin-emitted prover at bench/plonky3_compare/plonky3_prove_fib_tierc_link.jazz.
+#
+# We use the plonky3-hax crate (which carries the reference Rust impl of the
+# Fibonacci AIR + LDE + Merkle + FRI prover that the Lean spec is extracted
+# from). The pure p3-* crates from crates.io currently expose only field
+# primitives (no public p3-uni-stark/p3-air/p3-fri), so this is the closest
+# in-tree upstream-style Rust analog for a full proof.
+
+[dependencies]
+plonky3-hax = { path = "../../../../hax-specs/plonky3-hax" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

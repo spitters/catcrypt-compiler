@@ -1,0 +1,13 @@
+require "../include/msm_leaves.jinc"
+
+export fn msm_term_rustcmd(reg ptr u64[1] out, reg const ptr u64[1] p0, reg const ptr u64[1] p1) -> reg ptr u64[1] {
+  stack u64[1] s0;
+  stack u64[1] s1;
+  stack u64[1] t0;
+  inline int k;
+  for k = 0 to 1 { s0[k] = p0[k]; }
+  for k = 0 to 1 { s1[k] = p1[k]; }
+  t0 = ec_scalar_mul(t0, s0, s1);
+  for k = 0 to 1 { out[k] = t0[k]; }
+  return out;
+}

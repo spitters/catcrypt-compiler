@@ -1,0 +1,17 @@
+export fn ec_msm(reg ptr u8[2] out, reg const ptr u8[8] ks, reg const ptr u8[16] ps) -> reg ptr u8[2] {
+  stack u8[2] acc;
+  stack u8[2] psi;
+  stack u8[1] ksi;
+  inline int i;
+  inline int j;
+  acc[0] = 0xff;
+  acc[1] = 0xff;
+  for i = 0 to 8 {
+    for j = 0 to 1 { ksi[j] = ks[i]; }
+    for j = 0 to 2 { psi[j] = ps[2 * i + j]; }
+    psi = ec_scalar_mul(ksi, psi);
+    acc = ec_point_add(acc, psi);
+  }
+  for j = 0 to 2 { out[j] = acc[j]; }
+  return out;
+}

@@ -1,0 +1,19 @@
+[package]
+name = "catcrypt-bn254-jasmin-tower-kat"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "KAT + parity bench (#222): the jasminc-accepted subset of the AUCurves-emitted full BN254 tower (Fp2 add/sub etc., emitted by ExtractBN254TowerJasmin.v) vs the Rust tower, byte-identical on published EIP-197 G2 generator coords"
+build = "build.rs"
+
+[dependencies]
+# Verified-bedrock2 BN254 tower (the Rust reference side of the KAT).
+bn254-safe-rust = { path = "../../../../BLS/AUCurves/bn254-safe-rust" }
+
+[[bin]]
+name = "bn254_tower_kat"
+path = "bn254_tower_kat.rs"
+
+[[bin]]
+name = "bn254_tower_bench"
+path = "bn254_tower_bench.rs"

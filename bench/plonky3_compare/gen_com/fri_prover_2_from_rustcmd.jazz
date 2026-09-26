@@ -1,0 +1,17 @@
+export fn plonky3_fri_prover_2_rc(reg ptr u64[4] out, reg const ptr u64[2] p0) -> reg ptr u64[4] {
+  stack u64[2] s0;
+  stack u64[4] t0;
+  stack u64[1] t1;
+  stack u64[1] t2;
+  stack u64[4] t3;
+  stack u64[4] t4;
+  inline int k;
+  for k = 0 to 2 { s0[k] = p0[k]; }
+  t0 = plonky3_fri_merkle_commit_2(t0, s0);
+  t1 = plonky3_fri_challenger_squeeze(t1, t0);
+  t2 = plonky3_fri_fold_layer_1(t2, s0);
+  t3 = plonky3_fri_merkle_commit_1(t3, t2);
+  t4 = plonky3_fri_query_phase_2(t4, t3);
+  for k = 0 to 4 { out[k] = t4[k]; }
+  return out;
+}

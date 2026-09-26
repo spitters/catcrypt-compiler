@@ -1,0 +1,34 @@
+// Tier C link wrapper for the legacy string-templated Plonky3 Fibonacci prover.
+//
+// The Tier C orchestrator (gen/plonky3_prove_fib.jazz) is byte-identical to the
+// Tier A "from_rustcmd" emit; the difference is purely provenance — the Tier C
+// file was emitted by the legacy string template (#154/#162), the Tier A file
+// is emitted from Lean through RustCmd -> CryptoSSA -> Com[jasmin].
+//
+// Either orchestrator combined with `include/plonky3_prove_leaves.jinc` gives a
+// runnable end-to-end Fibonacci STARK prover (selector-inclusive degree=2,
+// width=3, height=8). The bench at bench_prove_fib_tierc.c invokes it on a
+// fixed Fibonacci trace seed and reports cyc/op vs the upstream Plonky3 Rust
+// crate (cargo bench in `upstream_ref/`).
+
+require "include/plonky3_prove_leaves.jinc"
+
+export fn plonky3_prove_fib_3_8_rc(reg ptr u64[4] out, reg const ptr u64[24] p0) -> reg ptr u64[4] {
+  stack u64[24] s0;
+  stack u64[96] t0;
+  stack u64[4]  t1;
+  stack u64[1]  t2;
+  stack u64[64] t3;
+  stack u64[64] t4;
+  stack u64[4]  t5;
+  inline int k;
+  for k = 0 to 24 { s0[k] = p0[k]; }
+  t0 = plonky3_trace_lde_3_8(t0, s0);
+  t1 = plonky3_merkle_commit_orch_8(t1, t0);
+  t2 = plonky3_challenger_squeeze(t2, t1);
+  t3 = plonky3_quotient_compose_8(t3, t0, t2);
+  t4 = plonky3_ood_deep_8(t4, t3, t2);
+  t5 = plonky3_fri_prove_8(t5, t4, t2);
+  for k = 0 to 4 { out[k] = t5[k]; }
+  return out;
+}

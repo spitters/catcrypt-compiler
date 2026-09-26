@@ -1,0 +1,18 @@
+[package]
+name = "bulletproofs_ref"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bp_bench"
+path = "src/main.rs"
+
+[dependencies]
+bulletproofs = "4.0"
+curve25519-dalek-ng = "4.1"
+merlin = "3"
+rand = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true

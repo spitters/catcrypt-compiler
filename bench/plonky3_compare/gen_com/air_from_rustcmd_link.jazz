@@ -1,0 +1,21 @@
+require "../include/plonky3_air_leaves.jinc"
+
+export fn plonky3_air_eval_fib_3_8_rc(reg ptr u64[1] out, reg const ptr u64[24] p0) -> reg ptr u64[1] {
+  stack u64[24] s0;
+  stack u64[1] t0;
+  inline int k;
+  for k = 0 to 24 { s0[k] = p0[k]; }
+  t0 = plonky3_air_transition_3_8(t0, s0);
+  for k = 0 to 1 { out[k] = t0[k]; }
+  return out;
+}
+
+export fn plonky3_air_eval_fib_3_16_rc(reg ptr u64[1] out, reg const ptr u64[48] p0) -> reg ptr u64[1] {
+  stack u64[48] s0;
+  stack u64[1] t0;
+  inline int k;
+  for k = 0 to 48 { s0[k] = p0[k]; }
+  t0 = plonky3_air_transition_3_16(t0, s0);
+  for k = 0 to 1 { out[k] = t0[k]; }
+  return out;
+}

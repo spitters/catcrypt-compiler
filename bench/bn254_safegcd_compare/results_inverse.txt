@@ -1,0 +1,43 @@
+BN254 (alt_bn128) Fp inversion — AUCurves BY/safegcd divstep vs Fermat (#489)
+============================================================================
+
+Cross-curve audit (#489) found BN254 to be the one production curve whose Fp
+inverse was still the Fermat a^(p-2) addition chain (bn254_inv, Vale/BN254.lean)
+while the sibling P-curves and BLS12-381 already routed through the AUCurves
+Bernstein-Yang safegcd divstep. This bench wires + measures the flip.
+
+Leaf wired into the BN254 Fp inverse path:
+  bn254_invert_divstep_sat  (AUCurves Bernstein-Yang safegcd divstep,
+  10 outer x 59 inner = 590 divsteps over 5-limb Signed62; replaces the
+  prior Fermat a^(p-2) chain).
+  Lean leaf: CatCrypt/Crypto/Vale/SafegcdBN254.lean
+  Group wiring: invLeafName in CatCrypt/Crypto/Pairing/BN254GroupEmit.lean
+  Verified-front emit: bn254_safegcd_emit.lean (this dir)
+
+Harness:  bench_bn254_safegcd.c  (this dir)
+Build:    make shim && make run REPS=200000   (taskset -c 3, min-of-3)
+
+Cross-check (KAT gate, NO fabricated vectors):
+  safegcd == gmp fermat a^(p-2)  over AUCurves' 4 deterministic inputs
+  (incl. p-1), AND x · safegcd(x) ≡ 1 (mod p) via schoolbook mul-mod.  PASS.
+
+Microbench (REPS=200000, min-of-3, pin core 3; figures are this box, ~3.3 GHz):
+  impl                                      ns/op    cyc/op
+  aucurves-by-safegcd (Fp, CT)             1244.2      4098
+  gmp fermat a^(p-2) (windowed, prior)     5529.7     18213
+
+  ratio safegcd/fermat = 0.225x  (4.4x faster than GMP's windowed powm;
+                                  conservative — a hand a^(p-2) addition
+                                  chain over p-2 is slower than gmp powm,
+                                  so the win vs the actual prior bn254_inv
+                                  chain is larger).
+
+This mirrors the #488 BLS12-381 result (safegcd/fermat 0.108x, safegcd/blst
+1.10x).  BN254 has no blst-equivalent hand-tuned divstep to compare against
+(blst is BLS12-381-specific); the Fermat baseline is the apples-to-apples
+"what we replaced" comparison.
+
+Batch inversion (#481) composes on top: Montgomery's trick (Pairing/BatchInverse,
+wired through FieldPrimitives.{mul,inv} in BN254GroupEmit) converts n projective
+G1 points to affine with 1 divstep inverse + 3(n-1) field multiplies instead of
+n inverses.

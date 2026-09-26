@@ -1,0 +1,32 @@
+inline fn babybear_ntt_inverse_256(stack u64[256] a0) -> stack u64[256] {
+  return a0;
+}
+
+inline fn babybear_zero_extend_256_to_1024(stack u64[256] a0) -> stack u64[1024] {
+  stack u64[1024] r;
+  return r;
+}
+
+inline fn babybear_coset_twist_1024(stack u64[1024] a0) -> stack u64[1024] {
+  return a0;
+}
+
+inline fn babybear_ntt_forward_1024(stack u64[1024] a0) -> stack u64[1024] {
+  return a0;
+}
+
+export fn plonky3_lde_coset_fft_256x4_rc(reg ptr u64[1024] out, reg const ptr u64[256] p0) -> reg ptr u64[1024] {
+  stack u64[256] s0;
+  stack u64[256] t0;
+  stack u64[1024] t1;
+  stack u64[1024] t2;
+  stack u64[1024] t3;
+  inline int k;
+  for k = 0 to 256 { s0[k] = p0[k]; }
+  t0 = babybear_ntt_inverse_256(s0);
+  t1 = babybear_zero_extend_256_to_1024(t0);
+  t2 = babybear_coset_twist_1024(t1);
+  t3 = babybear_ntt_forward_1024(t2);
+  for k = 0 to 1024 { out[k] = t3[k]; }
+  return out;
+}

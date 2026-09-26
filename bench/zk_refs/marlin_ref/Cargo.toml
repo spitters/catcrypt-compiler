@@ -1,0 +1,21 @@
+[package]
+name = "marlin_ref"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "marlin_bench"
+path = "src/main.rs"
+
+[dependencies]
+ark-marlin = "0.3"
+ark-bls12-381 = "0.3"
+ark-ff = "0.3"
+ark-poly = "0.3"
+ark-poly-commit = "0.3"
+ark-relations = "0.3"
+ark-std = "0.3"
+blake2 = "0.9"
+
+[profile.release]
+opt-level = 3

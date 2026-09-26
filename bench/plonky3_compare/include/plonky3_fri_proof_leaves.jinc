@@ -1,0 +1,300 @@
+// Plonky3 FRI PROOF-OBJECT prover leaf.
+//
+// Unlike plonky3_fri_prove_8 (which collapses the FRI phase to a 4-lane
+// digest), this leaf emits the REAL structured FRI proof object that a
+// verifier accepts: per-layer Merkle commitments of the folded codewords,
+// per-query openings (leaf evals + sibling evals + Merkle authentication
+// paths at the Fiat-Shamir query indices), and the final-layer remainder
+// polynomial. Spec-adherent to plonky3-hax/src/fri.rs (FriProof / FriLayer
+// / FriLayerQuery + fri_prove_column), not byte-equal.
+//
+// Parameters (single-column FRI on the bare subgroup, coset_shift = 1):
+//   n           = 32   (domain_log2 = 5)
+//   num_layers  = 4    (32 -> 16 -> 8 -> 4 -> 2; remainder size 2 = deg 1)
+//   num_queries = 3
+//
+// REAL fri_fold (fri.rs::fri_fold), the true degree-halving formula:
+//   p'(x^2) = (p(x)+p(-x))/2 + alpha*(p(x)-p(-x))/(2x)
+// with x = omega^index_pos on the bare subgroup (shift = 1). This is the
+// fold the verifier re-checks, NOT the (a+b)+alpha*(a-b) surrogate used by
+// the digest-only plonky3_fri_prove_8.
+//
+// Merkle hash: the same u64-lane _p3_hleaf_u64 / _p3_compress_u64 primitives
+// the trace commitment uses (the CatCrypt bridge axiomatizes the leaf hash
+// as a random oracle; prover and verifier agree on the concrete mixing).
+//
+// ============================================================================
+// FLAT PROOF BUFFER LAYOUT (u64 array). Per-layer paths are padded to
+// MAX_DEPTH = 5 levels (20 u64 = 5 * 4-lane sibling digests); the verifier
+// reads only the layer's actual depth. With 4 layers and 3 queries:
+//
+//   per query:  eval_pos(1) eval_neg(1) index_pos(1) index_neg(1)
+//               path_pos(20) path_neg(20)                       = 44 u64
+//   per layer:  commitment(4) + num_queries(3) * 44             = 136 u64
+//   layers:     4 * 136                                         = 544 u64
+//   remainder:  2 coeffs                                        = 2 u64
+//   TOTAL                                                       = 546 u64
+//
+// Offsets:
+//   layer L base   = L * 136
+//     commitment   = base + 0 .. base + 3
+//     query q base = base + 4 + q*44
+//       eval_pos   = +0
+//       eval_neg   = +1
+//       index_pos  = +2
+//       index_neg  = +3
+//       path_pos   = +4  .. +23   (5 sibling digests, 4 lanes each)
+//       path_neg   = +24 .. +43
+//   remainder      = 544 .. 545
+// ============================================================================
+
+require "plonky3_merkle_leaves.jinc"
+
+param int FP_BB_P = 2013265921;
+param int FP_BB_G = 31;
+
+inline fn _fp_reduce(reg u64 x) -> reg u64 {
+  reg u64 t m;
+  t = x; t -= FP_BB_P; m = t; m >>s= 63; m &= FP_BB_P; x = t; x += m;
+  return x;
+}
+inline fn _fp_add(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = a; x += b; x = _fp_reduce(x); return x;
+}
+inline fn _fp_sub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x; x = FP_BB_P; x += a; x -= b; x = _fp_reduce(x); return x;
+}
+inline fn _fp_mul(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x p; x = a; x *= b; p = FP_BB_P; x %= p; return x;
+}
+inline fn _fp_pow(reg u64 base, reg u64 exp) -> reg u64 {
+  stack u64[1] res_s; stack u64[1] cur_s; stack u64[1] exp_s;
+  reg u64 r c e bit;
+  inline int it;
+  r = 1; res_s[0] = r;
+  c = base; cur_s[0] = c;
+  e = exp; exp_s[0] = e;
+  for it = 0 to 64 {
+    e = exp_s[0]; bit = e; bit &= 1;
+    if (bit == 1) { r = res_s[0]; c = cur_s[0]; r = _fp_mul(r, c); res_s[0] = r; }
+    c = cur_s[0]; c = _fp_mul(c, c); cur_s[0] = c;
+    e = exp_s[0]; e >>= 1; exp_s[0] = e;
+  }
+  r = res_s[0];
+  return r;
+}
+inline fn _fp_inv(reg u64 a) -> reg u64 {
+  reg u64 x e;
+  if (a == 0) { x = 0; } else { e = FP_BB_P; e -= 2; x = _fp_pow(a, e); }
+  return x;
+}
+
+// fri_fold (fri.rs::fri_fold): p'(x^2) = (p(x)+p(-x))/2 + alpha*(p(x)-p(-x))/(2x)
+// Intermediates are carried through stack slots so live values never collide
+// with the RAX/RDX architectural constraints of `_fp_mul`'s mul+mod (the same
+// stack-carry discipline used by plonky3_trace_lde_3_8 in the prove leaves).
+inline fn _fp_fri_fold(reg u64 ep, reg u64 en, reg u64 x, reg u64 alpha) -> reg u64 {
+  // All operands and intermediates live on the stack; no reg argument is held
+  // live across an _fp_inv / _fp_mul call (those clobber RAX/RDX). This keeps
+  // jasminc register allocation unconstrained through the 64-iteration _fp_pow.
+  stack u64[8] sc;
+  // 0:ep 1:en 2:x 3:alpha 4:sum 5:diff 6:inv2 7:inv2x  (peven reuses 4)
+  reg u64 a b t two;
+  sc[0] = ep; sc[1] = en; sc[2] = x; sc[3] = alpha;
+  a = sc[0]; b = sc[1]; a = _fp_add(a, b); sc[4] = a;   // sum
+  a = sc[0]; b = sc[1]; a = _fp_sub(a, b); sc[5] = a;   // diff
+  two = 2; a = _fp_inv(two); sc[6] = a;                 // inv2
+  two = 2; b = sc[2]; a = _fp_mul(two, b);              // 2*x
+  a = _fp_inv(a); sc[7] = a;                            // inv2x
+  a = sc[4]; b = sc[6]; a = _fp_mul(a, b); sc[4] = a;   // peven = sum * inv2
+  a = sc[5]; b = sc[7]; a = _fp_mul(a, b); sc[5] = a;   // podd  = diff * inv2x
+  a = sc[3]; b = sc[5]; a = _fp_mul(a, b);              // alpha * podd
+  b = sc[4]; t = _fp_add(b, a);                         // peven + alpha*podd
+  return t;
+}
+
+// ============================================================================
+// FRI proof-object prover.
+//   in:  evals  (u64[32] the column LDE on the bare subgroup of order 32)
+//        alpha  (u64[4]  layer challenges alpha_0..alpha_3, one per fold)
+//        qidx   (u64[4]  layer-0 query indices; only the first 3 are used)
+//   out: proof  (u64[546] flat proof object, layout above)
+// ============================================================================
+inline fn plonky3_fri_prove_obj(stack u64[546] proof, stack u64[32] evals,
+                                 stack u64[4] alpha, stack u64[4] qidx)
+    -> stack u64[546] {
+  // working codeword (max size 32), per-layer leaf-hash store (32 leaves x 4)
+  stack u64[32]  cur;
+  stack u64[128] leaves;      // up to 32 leaves * 4 lanes
+  stack u64[128] lvlA;        // ping-pong Merkle level buffers (32*4 max)
+  stack u64[128] lvlB;
+  stack u64[1]   vb;
+  stack u64[4]   od;
+  stack u64[4]   l4;
+  stack u64[4]   r4;
+  stack u64[1]   w_s;
+  stack u64[1]   al_s;
+  stack u64[1]   ol_s;
+  reg u64 w t a b s d x al ep en idx sib omega expo ol e0 e1 inv2 c0 c1;
+  inline int layer n half logn L lbase i j q qbase lvl pairs depth_done sq;
+
+  // copy input codeword
+  for i = 0 to 32 { w = evals[i]; cur[i] = w; }
+
+  // omega = bb_root_of_unity(5) for the layer-0 domain element x = omega^i.
+  // Each fold squares omega (domain halves), tracked per layer.
+  expo = FP_BB_P; expo -= 1; expo >>= 5;
+  t = FP_BB_G; omega = _fp_pow(t, expo);
+
+  // n / logn track the current domain size; layer L lives at proof[L*136..].
+  for layer = 0 to 4 {
+    n = 32; n >>= layer;          // 32,16,8,4
+    half = n / 2;
+    logn = 5 - layer;             // domain_log2 of this layer
+    L = layer;
+    lbase = L * 136;
+
+    // ---- leaf-hash the n current evals ----
+    for i = 0 to 32 {
+      if (i < n) {
+        w = cur[i]; vb[0] = w;
+        od = _p3_hleaf_u64(vb, od);
+        for j = 0 to 4 { w = od[j]; leaves[i*4 + j] = w; }
+      }
+    }
+
+    // ---- Merkle-build the layer commitment into lvlA (and keep levels for
+    //      path extraction below by recomputing per query — see note). We
+    //      build the root here; per-query paths are extracted by a second
+    //      build that records siblings. To keep the body single-pass and
+    //      jasminc-friendly we recompute siblings inline per query level. ----
+    // root: fold leaves[] (n leaves) down to 1 in lvlA via ping-pong.
+    for i = 0 to 128 { w = leaves[i]; lvlA[i] = w; }
+    pairs = n;
+    for lvl = 0 to 5 {            // up to 5 levels (n<=32)
+      if (pairs > 1) {
+        for j = 0 to 16 {
+          if (j < (pairs / 2)) {
+            for i = 0 to 4 { w = lvlA[(2*j)*4 + i];   l4[i] = w; }
+            for i = 0 to 4 { w = lvlA[(2*j+1)*4 + i]; r4[i] = w; }
+            od = _p3_compress_u64(l4, r4, od);
+            for i = 0 to 4 { w = od[i]; lvlB[j*4 + i] = w; }
+          }
+        }
+        for i = 0 to 128 { w = lvlB[i]; lvlA[i] = w; }
+        pairs = pairs / 2;
+      }
+    }
+    // commitment = lvlA[0..3]
+    for i = 0 to 4 { w = lvlA[i]; proof[lbase + i] = w; }
+
+    // ---- per query: opening (eval_pos, eval_neg, indices) + 2 auth paths ----
+    for q = 0 to 3 {
+      qbase = lbase + 4 + q*44;
+      // index_pos folded from the layer-0 index by dropping `layer` low bits?
+      // No: fri.rs maps query index per layer via folded_index applied to the
+      // PREVIOUS layer index. folded_index(i, log) = i & (half-1). Iterating:
+      // at layer L the index is (qidx0 mod n). Since folded_index just masks
+      // to the low (logn-... ) bits and n = 2^logn, idx_pos = qidx0 & (n-1).
+      idx = qidx[q];
+      t = n; t -= 1; idx &= t;          // idx_pos in [0,n)
+      // sibling = (idx + half) mod n
+      sib = idx; sib += half; t = n; t -= 1; sib &= t;
+      proof[qbase + 0] = cur[idx];      // eval_pos
+      proof[qbase + 1] = cur[sib];      // eval_neg
+      proof[qbase + 2] = idx;           // index_pos
+      proof[qbase + 3] = sib;           // index_neg
+
+      // ---- authentication paths for idx (path_pos) and sib (path_neg) ----
+      // Rebuild the Merkle levels recording the sibling at each level for the
+      // walked index. Two passes (one per leaf index) keep the body simple.
+      // path_pos at qbase+4 .. qbase+23, path_neg at qbase+24 .. qbase+43.
+      // pass for idx:
+      for i = 0 to 128 { w = leaves[i]; lvlA[i] = w; }
+      pairs = n;
+      x = idx;                          // walking index
+      for lvl = 0 to 5 {
+        if (pairs > 1) {
+          // record sibling digest of the current walking node
+          // sibling index = x ^ 1; flat element offset (x^1)*4 + i in lvlA
+          t = x; t ^= 1; t <<= 2;       // t = (x^1) * 4
+          for i = 0 to 4 { s = t; s += i; w = lvlA[s]; proof[qbase + 4 + lvl*4 + i] = w; }
+          // compress level
+          for j = 0 to 16 {
+            if (j < (pairs / 2)) {
+              for i = 0 to 4 { w = lvlA[(2*j)*4 + i];   l4[i] = w; }
+              for i = 0 to 4 { w = lvlA[(2*j+1)*4 + i]; r4[i] = w; }
+              od = _p3_compress_u64(l4, r4, od);
+              for i = 0 to 4 { w = od[i]; lvlB[j*4 + i] = w; }
+            }
+          }
+          for i = 0 to 128 { w = lvlB[i]; lvlA[i] = w; }
+          pairs = pairs / 2;
+          x >>= 1;
+        }
+      }
+      // pass for sib:
+      for i = 0 to 128 { w = leaves[i]; lvlA[i] = w; }
+      pairs = n;
+      x = sib;
+      for lvl = 0 to 5 {
+        if (pairs > 1) {
+          t = x; t ^= 1; t <<= 2;       // t = (x^1) * 4
+          for i = 0 to 4 { s = t; s += i; w = lvlA[s]; proof[qbase + 24 + lvl*4 + i] = w; }
+          for j = 0 to 16 {
+            if (j < (pairs / 2)) {
+              for i = 0 to 4 { w = lvlA[(2*j)*4 + i];   l4[i] = w; }
+              for i = 0 to 4 { w = lvlA[(2*j+1)*4 + i]; r4[i] = w; }
+              od = _p3_compress_u64(l4, r4, od);
+              for i = 0 to 4 { w = od[i]; lvlB[j*4 + i] = w; }
+            }
+          }
+          for i = 0 to 128 { w = lvlB[i]; lvlA[i] = w; }
+          pairs = pairs / 2;
+          x >>= 1;
+        }
+      }
+    }
+
+    // ---- fold cur[] (n) -> next (half) using REAL fri_fold ----
+    // next[i] = fri_fold(cur[i], cur[i+half], x_i, alpha_layer),
+    //   x_i = omega_layer^i  (omega_layer = omega^(2^layer)).
+    al = alpha[layer]; al = _fp_reduce(al); al_s[0] = al;
+    // build x_i incrementally: x_0 = 1, x_{i+1} = x_i * omega_layer.
+    // omega_layer = omega squared `layer` times.
+    ol = omega;
+    for sq = 0 to 4 { if (sq < layer) { ol = _fp_mul(ol, ol); } }
+    ol_s[0] = ol;
+    w = 1; w_s[0] = w;            // x_0 = 1
+    for i = 0 to 16 {
+      if (i < half) {
+        ep = cur[i];
+        en = cur[i + half];
+        x  = w_s[0];
+        al = al_s[0];
+        t  = _fp_fri_fold(ep, en, x, al);
+        cur[i] = t;
+        // advance x: x *= omega_layer
+        w = w_s[0]; ol = ol_s[0]; w = _fp_mul(w, ol); w_s[0] = w;
+      }
+    }
+  }
+
+  // ---- remainder: the final codeword has size 2 (cur[0], cur[1]) on the
+  //      coset shift^16 * K_1 = K_1 with shift = 1. fri.rs extracts the
+  //      remainder coeffs via intt; for n=2 the remainder is degree 1 and
+  //      intt over K_1 (omega = -1) gives coeffs[0] = (e0+e1)/2,
+  //      coeffs[1] = (e0-e1)/2. We emit those so bb_poly_eval(coeffs, x)
+  //      reproduces the final evals. ----
+  // Carry e0,e1,inv2 through w_s/al_s/ol_s stack slots so c0,c1 never sit in
+  // a register across the RDX-constrained _fp_mul.
+  e0 = cur[0]; al_s[0] = e0;
+  e1 = cur[1]; ol_s[0] = e1;
+  t = 2; inv2 = _fp_inv(t); w_s[0] = inv2;
+  e0 = al_s[0]; e1 = ol_s[0]; c0 = _fp_add(e0, e1);
+  inv2 = w_s[0]; c0 = _fp_mul(c0, inv2); proof[544] = c0;
+  e0 = al_s[0]; e1 = ol_s[0]; c1 = _fp_sub(e0, e1);
+  inv2 = w_s[0]; c1 = _fp_mul(c1, inv2); proof[545] = c1;
+
+  return proof;
+}

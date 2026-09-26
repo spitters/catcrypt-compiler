@@ -1,0 +1,21 @@
+require "../include/plonky3_fri_proof_leaves.jinc"
+
+// Export the FRI proof-object prover:
+//   in:  evals (u64[32] column LDE), alpha (u64[4]), qidx (u64[4])
+//   out: proof (u64[546] flat FRI proof object)
+export fn plonky3_fri_prove_obj_rc(reg ptr u64[546] out,
+                                    reg const ptr u64[32] pe,
+                                    reg const ptr u64[4] pa,
+                                    reg const ptr u64[4] pq) -> reg ptr u64[546] {
+  stack u64[32]  evals;
+  stack u64[4]   alpha;
+  stack u64[4]   qidx;
+  stack u64[546] proof;
+  inline int k;
+  for k = 0 to 32 { evals[k] = pe[k]; }
+  for k = 0 to 4  { alpha[k] = pa[k]; }
+  for k = 0 to 4  { qidx[k]  = pq[k]; }
+  proof = plonky3_fri_prove_obj(proof, evals, alpha, qidx);
+  for k = 0 to 546 { out[k] = proof[k]; }
+  return out;
+}

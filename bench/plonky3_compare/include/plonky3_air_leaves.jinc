@@ -1,0 +1,90 @@
+// Plonky3 AIR transition leaf implementation for the rustcmd-emitted
+// orchestration (gen_com/air_eval_fib_3_{8,16}_from_rustcmd.jazz).
+//
+// The orchestration emits (per width=3, height=H):
+//   t0 = plonky3_air_transition_3_H(t0, s0)
+//
+// where `s0` is the trace u64[3*H] and `t0` is a u64[1] OK byte
+// (0 = bad, 1 = good). Each trace row is laid out as [a, b, z] but the
+// Fibonacci AIR uses only two columns ([a, b]); column z is the carry
+// slot referenced by Plonky3AirReflect (it's the round-robin column the
+// reflect file allocates but which the AIR transition leaves unused
+// for the Fibonacci demonstrator).
+//
+// Constraints (Fibonacci AIR, two-column slice over width=3 storage):
+//   boundary: trace[0] = [0, 1, 0]
+//   transition (per step i, 0 ≤ i < H-1):
+//     next.a == cur.b           (i.e. trace[3*(i+1)] == trace[3*i + 1])
+//     next.b == cur.a + cur.b   (mod BB_P)
+//
+// BB_P = 2^31 - 2^27 + 1 (Baby Bear prime). Trace elements are stored as
+// canonical residues mod BB_P (u64 lanes, low 31 bits used).
+//
+// The leaf is byte-identical to the legacy `air_eval_fib.jazz` recipe in
+// `bench/plonky3_compare/gen/air_eval_fib.jazz` — same field arithmetic,
+// same constraint sweep, packaged here as an inline jasmin function so
+// the verified-emit orchestration can call it by registered name.
+
+param int AIR_BB_P = 2013265921;
+
+inline fn _air_reduce(reg u64 x) -> reg u64 {
+  reg u64 t m;
+  t = x; t -= AIR_BB_P; m = t; m >>s= 63; m &= AIR_BB_P; x = t; x += m;
+  return x;
+}
+
+inline fn _air_add(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = a; x += b; x = _air_reduce(x);
+  return x;
+}
+
+inline fn _air_sub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = AIR_BB_P; x += a; x -= b; x = _air_reduce(x);
+  return x;
+}
+
+// ---- height-8 Fibonacci AIR transition ----
+// Trace layout: u64[24] = 8 rows of [a, b, z] (z unused by Fib).
+// Output: u64[1], 1 if all constraints satisfied else 0.
+
+inline fn plonky3_air_transition_3_8(stack u64[1] o, stack u64[24] s0)
+    -> stack u64[1] {
+  reg u64 ok ca cb na nb c0 c1 sum;
+  inline int i;
+  ok = 1;
+  // boundary: trace[0..2] == [0, 1, ?]
+  ca = s0[0]; if (ca != 0) { ok = 0; }
+  cb = s0[1]; if (cb != 1) { ok = 0; }
+  // transitions: i = 0..6
+  for i = 0 to 7 {
+    ca = s0[3*i];     cb = s0[3*i + 1];
+    na = s0[3*(i+1)]; nb = s0[3*(i+1) + 1];
+    c0 = _air_sub(na, cb); if (c0 != 0) { ok = 0; }
+    sum = _air_add(ca, cb);
+    c1 = _air_sub(nb, sum); if (c1 != 0) { ok = 0; }
+  }
+  o[0] = ok;
+  return o;
+}
+
+// ---- height-16 Fibonacci AIR transition ----
+
+inline fn plonky3_air_transition_3_16(stack u64[1] o, stack u64[48] s0)
+    -> stack u64[1] {
+  reg u64 ok ca cb na nb c0 c1 sum;
+  inline int i;
+  ok = 1;
+  ca = s0[0]; if (ca != 0) { ok = 0; }
+  cb = s0[1]; if (cb != 1) { ok = 0; }
+  for i = 0 to 15 {
+    ca = s0[3*i];     cb = s0[3*i + 1];
+    na = s0[3*(i+1)]; nb = s0[3*(i+1) + 1];
+    c0 = _air_sub(na, cb); if (c0 != 0) { ok = 0; }
+    sum = _air_add(ca, cb);
+    c1 = _air_sub(nb, sum); if (c1 != 0) { ok = 0; }
+  }
+  o[0] = ok;
+  return o;
+}

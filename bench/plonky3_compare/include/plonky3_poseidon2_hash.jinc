@@ -1,0 +1,242 @@
+// Verified Poseidon2-BabyBear (width 16) permutation + the two Merkle hashes
+// the real Plonky3 prover uses, for the honest Tier C full-prover commit path.
+//
+// PROVENANCE: `_p2_poseidon2_bb_core` below is COPIED VERBATIM (constants,
+// helpers, round structure) from the verified-emitted Poseidon2 leaf
+//   ../SSProve-lean/bench/poseidon2_compare/include/poseidon2_leaves.jinc  (`_leaf_*`).
+// That leaf KAT-matches upstream Plonky3 `test_default_babybear_poseidon2_width_16`
+// and the `PaddingFreeSponge<16,8,8>` digest exactly (poseidon2_hash.c gate).
+// Identifiers are renamed `LEAF_`->`P2_` / `_leaf_`->`_p2_` so this file is a
+// self-contained, namespace-clean include for the Plonky3 prover.
+//
+// On top of the permutation we provide the two byte-faithful Merkle hashes of
+// the real p3 config (p3_ref/src/main.rs):
+//   MyHash     = PaddingFreeSponge<Perm, 16, 8, 8>     -> _p2_sponge_*  (leaf hash)
+//   MyCompress = TruncatedPermutation<Perm, 2, 8, 16>  -> _p2_compress  (2-to-1)
+// These are the GENUINE constructions; only the round constants differ from
+// p3_ref (which seeds Perm from SmallRng(1) rather than the default BabyBear
+// constants). The hashing itself runs through the verified permutation, not a
+// splitmix XOR/multiply surrogate. Digests are 8 BabyBear lanes (u64[8]).
+
+// =============================================================================
+// BabyBear field constants (p = 2^31 - 2^27 + 1).
+// =============================================================================
+param int P2_P   = 2013265921;
+param int P2_BBC = 134217727;
+param int P2_MM  = 2147483647;
+
+u64[16] P2_DIAGV = {
+  2013265919, 1, 2, 1006632961, 3, 4, 1006632960, 2013265918,
+  2013265917, 2005401601, 1509949441, 1761607681, 2013265906, 7864320, 125829120, 15
+};
+
+u64[64] P2_RC_INIT = {
+  1774958255, 1185780729, 1621102414, 1796380621, 588815102, 1932426223, 1925334750, 747903232,
+  89648862, 360728943, 977184635, 1425273457, 256487465, 1200041953, 572403254, 448208942,
+  1215789478, 944884184, 953948096, 547326025, 646827752, 889997530, 1536873262, 86189867,
+  1065944411, 32019634, 333311454, 456061748, 1963448500, 1827584334, 1391160226, 1348741381,
+  88424255, 104111868, 1763866748, 79691676, 1988915530, 1050669594, 359890076, 573163527,
+  222820492, 159256268, 669703072, 763177444, 889367200, 256335831, 704371273, 25886717,
+  51754520, 1833211857, 454499742, 1384520381, 777848065, 1053320300, 1851729162, 344647910,
+  401996362, 1046925956, 5351995, 1212119315, 754867989, 36972490, 751272725, 506915399
+};
+
+u64[64] P2_RC_FIN = {
+  1922082829, 1870549801, 1502529704, 1990744480, 1700391016, 1702593455, 321330495, 528965731,
+  183414327, 1886297254, 1178602734, 1923111974, 744004766, 549271463, 1781349648, 542259047,
+  1536158148, 715456982, 503426110, 340311124, 1558555932, 1226350925, 742828095, 1338992758,
+  1641600456, 1843351545, 301835475, 43203215, 386838401, 1520185679, 1235297680, 904680097,
+  1491801617, 1581784677, 913384905, 247083962, 532844013, 107190701, 213827818, 1979521776,
+  1358282574, 1681743681, 1867507480, 1530706910, 507181886, 695185447, 1172395131, 1250800299,
+  1503161625, 817684387, 498481458, 494676004, 1404253825, 108246855, 59414691, 744214112,
+  890862029, 1342765939, 1417398904, 1897591937, 1066647396, 1682806907, 1015795079, 1619482808
+};
+
+u64[13] P2_RC_INT = {
+  1518359488, 1765533241, 945325693, 422793067, 311365592, 1311448267, 1629555936, 1009879353,
+  190525218, 786108885, 557776863, 212616710, 605745517
+};
+
+// =============================================================================
+// Field helpers (verbatim from the verified _leaf_* leaf).
+// =============================================================================
+inline fn _p2_csub(reg u64 r) -> reg u64 {
+  reg u64 t m;
+  t = r; t -= P2_P;
+  m = t; m >>s= 63; m &= P2_P;
+  r = t; r += m;
+  return r;
+}
+
+inline fn _p2_reduce(reg u64 x) -> reg u64 {
+  reg u64 hi lo;
+  inline int i;
+  for i = 0 to 10 {
+    hi = x; hi >>= 31; hi *= P2_BBC;
+    lo = x; lo &= P2_MM;
+    x = hi; x += lo;
+  }
+  x = _p2_csub(x);
+  x = _p2_csub(x);
+  return x;
+}
+
+inline fn _p2_fmul(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = a; x *= b; x = _p2_reduce(x);
+  return x;
+}
+
+inline fn _p2_fadd(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = a; x += b; x = _p2_csub(x);
+  return x;
+}
+
+inline fn _p2_fsub(reg u64 a, reg u64 b) -> reg u64 {
+  reg u64 x;
+  x = P2_P; x -= b; x += a; x = _p2_csub(x);
+  return x;
+}
+
+inline fn _p2_sbox(reg u64 x) -> reg u64 {
+  reg u64 x2 x4 t;
+  x2 = _p2_fmul(x, x);
+  x4 = _p2_fmul(x2, x2);
+  t  = _p2_fmul(x2, x);
+  x  = _p2_fmul(x4, t);
+  return x;
+}
+
+inline fn _p2_mds(stack u64[16] s) -> stack u64[16] {
+  reg u64 a b c d t01 t23 t0123 t11 t33 two0 two2 n0 n1 n2 n3;
+  reg u64 s0 s1 s2 s3 sumk;
+  inline int blk base k;
+  for blk = 0 to 4 {
+    base = blk * 4;
+    a = s[base + 0]; b = s[base + 1]; c = s[base + 2]; d = s[base + 3];
+    t01 = _p2_fadd(a, b);
+    t23 = _p2_fadd(c, d);
+    t0123 = _p2_fadd(t01, t23);
+    t11 = _p2_fadd(t0123, b);
+    t33 = _p2_fadd(t0123, d);
+    two0 = _p2_fadd(a, a);
+    two2 = _p2_fadd(c, c);
+    n3 = _p2_fadd(t33, two0);
+    n1 = _p2_fadd(t11, two2);
+    n0 = _p2_fadd(t11, t01);
+    n2 = _p2_fadd(t33, t23);
+    s[base + 0] = n0; s[base + 1] = n1; s[base + 2] = n2; s[base + 3] = n3;
+  }
+  for k = 0 to 4 {
+    s0 = s[k]; s1 = s[k + 4]; s2 = s[k + 8]; s3 = s[k + 12];
+    sumk = _p2_fadd(s0, s1);
+    sumk = _p2_fadd(sumk, s2);
+    sumk = _p2_fadd(sumk, s3);
+    a = s[k];      a = _p2_fadd(a, sumk); s[k] = a;
+    a = s[k + 4];  a = _p2_fadd(a, sumk); s[k + 4] = a;
+    a = s[k + 8];  a = _p2_fadd(a, sumk); s[k + 8] = a;
+    a = s[k + 12]; a = _p2_fadd(a, sumk); s[k + 12] = a;
+  }
+  return s;
+}
+
+inline fn _p2_internal_mat(stack u64[16] s) -> stack u64[16] {
+  reg u64 sum x v two0 t;
+  inline int i;
+  sum = s[0];
+  for i = 1 to 16 { x = s[i]; sum = _p2_fadd(sum, x); }
+  x = s[0]; two0 = _p2_fadd(x, x); t = _p2_fsub(sum, two0); s[0] = t;
+  for i = 1 to 16 {
+    v = P2_DIAGV[i];
+    x = s[i];
+    t = _p2_fmul(v, x);
+    t = _p2_fadd(t, sum);
+    s[i] = t;
+  }
+  return s;
+}
+
+// 8 full + 13 partial Poseidon2-BabyBear permutation; canonical state form.
+// Byte-identical to upstream Plonky3 test_default_babybear_poseidon2_width_16.
+//
+// EMITTED ONCE as a real (non-inline) function `p2_perm` taking a reg-ptr to a
+// width-16 state, permuted IN PLACE. The whole prover/verifier `call`s this one
+// body rather than inlining the (large) permutation at every Merkle/FRI/FS hash
+// site — keeping jasminc's inliner bounded. The field-arithmetic helpers
+// (_p2_*) remain inline and are expanded exactly once, inside this body.
+fn p2_perm(reg ptr u64[16] out, reg const ptr u64[16] inp) -> reg ptr u64[16] {
+  stack u64[16] dst;
+  reg u64 x cc;
+  inline int i k r base;
+  for i = 0 to 16 { x = inp[i]; dst[i] = x; }
+  dst = _p2_mds(dst);
+  for r = 0 to 4 {
+    base = r * 16;
+    for k = 0 to 16 {
+      x = dst[k];
+      cc = P2_RC_INIT[base + k];
+      x = _p2_fadd(x, cc);
+      x = _p2_sbox(x);
+      dst[k] = x;
+    }
+    dst = _p2_mds(dst);
+  }
+  for r = 0 to 13 {
+    cc = P2_RC_INT[r];
+    x = dst[0];
+    x = _p2_fadd(x, cc);
+    x = _p2_sbox(x);
+    dst[0] = x;
+    dst = _p2_internal_mat(dst);
+  }
+  for r = 0 to 4 {
+    base = r * 16;
+    for k = 0 to 16 {
+      x = dst[k];
+      cc = P2_RC_FIN[base + k];
+      x = _p2_fadd(x, cc);
+      x = _p2_sbox(x);
+      dst[k] = x;
+    }
+    dst = _p2_mds(dst);
+  }
+  for i = 0 to 16 { x = dst[i]; out[i] = x; }
+  return out;
+}
+
+// =============================================================================
+// Merkle hashes (genuine p3 constructions over the verified permutation).
+// =============================================================================
+
+// PaddingFreeSponge<16,8,8> leaf hash, padding-free overwrite mode, on a
+// width-W (<=8) row of canonical BabyBear field elements -> 8-lane digest.
+// One rate-8 block (W field elements + zero-pad to rate 8), one permutation.
+// Matches p3-symmetric PaddingFreeSponge::hash_iter for a single rate block.
+fn _p2_sponge_row(reg ptr u64[8] o, reg const ptr u64[8] row) -> reg ptr u64[8] {
+  stack u64[16] st;
+  stack u64[16] po;
+  reg u64 x;
+  inline int i;
+  for i = 0 to 8  { x = row[i]; x = _p2_reduce(x); st[i] = x; }
+  for i = 8 to 16 { x = 0; st[i] = x; }
+  po = p2_perm(po, st);
+  for i = 0 to 8 { x = po[i]; o[i] = x; }
+  return o;
+}
+
+// TruncatedPermutation<2,8,16> two-to-one compress: concatenate two 8-lane
+// digests into the width-16 state, permute, take the first 8 lanes. This is
+// exactly p3-symmetric TruncatedPermutation::compress for N=2, CHUNK=8.
+fn _p2_compress(reg ptr u64[8] o, reg const ptr u64[8] l, reg const ptr u64[8] r)
+    -> reg ptr u64[8] {
+  stack u64[16] st;
+  stack u64[16] po;
+  reg u64 x;
+  inline int i;
+  for i = 0 to 8 { x = l[i]; st[i] = x; }
+  for i = 0 to 8 { x = r[i]; st[8 + i] = x; }
+  po = p2_perm(po, st);
+  for i = 0 to 8 { x = po[i]; o[i] = x; }
+  return o;
+}

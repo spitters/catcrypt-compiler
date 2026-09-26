@@ -1,0 +1,33 @@
+export fn bn254_miller_double_step(reg ptr u64[48] out, reg const ptr u64[48] p0, reg const ptr u64[8] p1, reg const ptr u64[8] p2, reg const ptr u64[4] p3, reg const ptr u64[4] p4) -> reg ptr u64[48] {
+  stack u64[48] s0;
+  stack u64[8] s1;
+  stack u64[8] s2;
+  stack u64[4] s3;
+  stack u64[4] s4;
+  stack u64[8] t0;
+  stack u64[8] t1;
+  stack u64[8] t2;
+  stack u64[8] t3;
+  stack u64[8] t4;
+  stack u64[8] t5;
+  stack u64[48] t6;
+  stack u64[48] t7;
+  stack u64[48] t8;
+  inline int k;
+  for k = 0 to 48 { s0[k] = p0[k]; }
+  for k = 0 to 8 { s1[k] = p1[k]; }
+  for k = 0 to 8 { s2[k] = p2[k]; }
+  for k = 0 to 4 { s3[k] = p3[k]; }
+  for k = 0 to 4 { s4[k] = p4[k]; }
+  t0 = bn254_Fp2_square(t0, s1);
+  t1 = bn254_Fp2_add(t1, t0, t0);
+  t2 = bn254_Fp2_add(t2, t1, t0);
+  t3 = bn254_Fp2_add(t3, s2, s2);
+  t4 = bn254_Fp2_inv(t4, t3);
+  t5 = bn254_Fp2_mul(t5, t2, t4);
+  t6 = bn254_make_line(t6, t5, s1, s2, s3, s4);
+  t7 = bn254_Fp12_square(t7, s0);
+  t8 = bn254_fp12_mul(t8, t7, t6);
+  for k = 0 to 48 { out[k] = t8[k]; }
+  return out;
+}

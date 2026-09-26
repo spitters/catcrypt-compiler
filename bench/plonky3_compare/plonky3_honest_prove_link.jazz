@@ -1,0 +1,3 @@
+// Link wrapper for the honest Plonky3 Fibonacci-STARK prover + verifier over
+// the verified Poseidon2 permutation. Exposes hp_prove and hp_verify.
+require "include/plonky3_honest_prover.jinc"

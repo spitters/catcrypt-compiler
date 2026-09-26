@@ -1,0 +1,15 @@
+[package]
+name = "catcrypt-bn254-group-kat"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "KAT (CONN-3e): the BN254 G1 affine point-add re-emitted as a field-leaf composition (BN254GroupEmit) is byte-identical to the published BN254 generator-multiple spec vectors"
+
+[dependencies]
+# Verified-bedrock2 BN254 field tower (fiat fp_* + Fermat fp_inv). Its [lib]
+# name is `bn254`.
+bn254 = { package = "bn254-safe-rust", path = "../../../BLS/AUCurves/bn254-safe-rust" }
+
+[[bin]]
+name = "bn254_group_kat"
+path = "bn254_group_kat.rs"
