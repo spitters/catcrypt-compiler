@@ -21,16 +21,19 @@ file discharges that interface against `ZMod p` / `ZMod L` arithmetic where
 possible, building up to a sign/verify *equivalence lemma* that
 captures the algebraic correctness of the RFC 8032 verification check.
 
-The field and scalar interpretations (`interp_fe`, `interp`) and the
-correctness of the field and scalar primitives (including the 254-sqr +
-11-mul Fermat chain in `fp_inv` and the `fp_sqrt_ratio_i`
-canonicalization) are axioms. The group layer is the edwards25519 group
+The field and scalar interpretations `interp_fe` and `interp` are the
+transports of `Fp25519` and `FpL25519` onto `ZMod p` and `ZMod L`, and the
+leaf operations of `LowCTReflect` are specified by their `ZMod` values, so the
+correctness of the field and scalar primitives is a set of theorems:
+addition, subtraction, multiplication, squaring and negation are the ring
+operations, `fp_inv` and `scalar_inv` are the Fermat powers `x^(p-2)` and
+`x^(L-2)`, and `fp_sqrt_ratio_i` is the root of RFC 9496 `SQRT_RATIO_M1`,
+which squares to `u/v` whenever `u/v` is a square. The group layer is the edwards25519 group
 `EdPt` of `Ed25519Group`: `ed_add`, `ed_identity` and `ed_B` are its
 addition, zero and base point, `ed_smul` is the `ZMod L`-action on its
 `L`-torsion subgroup, and compression is `(y, parity of x)`. The group
 laws, the scalar-action laws and the compress/decompress round trip are
-theorems, so the sign/verify equation depends only on the scalar
-interpretation axioms.
+theorems.
 
 ## Main results
 
@@ -100,48 +103,51 @@ instance : NeZero fpModulus := ⟨fpModulus_ne_zero⟩
 
 /-! ## 2. Scalar-field interpretation `interp : FpL25519 → ZMod L` -/
 
-/-- Interpretation of the opaque scalar-field element type as `ZMod L`.
+/-- The specification of `interp`: the transport `FpL25519.toZMod`. -/
+noncomputable opaque interp.spec : {f : FpL25519 → ZMod L // f = FpL25519.toZMod} :=
+  ⟨_, rfl⟩
 
-    **Discharged in Rocq:** the fiat-crypto-generated `curve25519_scalar_64.c`
-    implements `Z/LZ` Montgomery-domain arithmetic; correctness is given
-    by `Crypto/Arithmetic/WordByWordMontgomery.v` `mul_correct`,
-    `add_correct`, etc. with the appropriate prime ≡ L. -/
-noncomputable opaque interp : FpL25519 → ZMod L
+/-- Interpretation of the scalar-field element type as `ZMod L`: the
+    transport `FpL25519.toZMod` along the carrier equation of `FpL25519`. -/
+@[irreducible] noncomputable def interp : FpL25519 → ZMod L := interp.spec.val
 
-/-- **Discharged in Rocq:** `WordByWordMontgomery.v` `add_correct`. -/
-axiom interp_scalar_add (x y : FpL25519) :
-    interp (scalar_add x y) = interp x + interp y
-/-- **Discharged in Rocq:** `WordByWordMontgomery.v` `sub_correct`. -/
-axiom interp_scalar_sub (x y : FpL25519) :
-    interp (scalar_sub x y) = interp x - interp y
-/-- **Discharged in Rocq:** `WordByWordMontgomery.v` `mul_correct`. -/
-axiom interp_scalar_mul (x y : FpL25519) :
-    interp (scalar_mul x y) = interp x * interp y
-/-- **Discharged in Rocq:** `WordByWordMontgomery.v` `opp_correct`. -/
-axiom interp_scalar_neg (x : FpL25519) :
-    interp (scalar_neg x) = - interp x
+theorem interp_eq_toZMod (x : FpL25519) : interp x = x.toZMod := by
+  rw [interp, interp.spec.property]
 
-/-- The Bernstein addition chain in `dalek_shim.c::scalar_inv`
-    computes `x^(L-2) mod L`.
+/-- `interp` is injective: the transport along the carrier equation is a bijection. -/
+theorem interp_injective : Function.Injective interp := fun x y h => by
+  rw [interp_eq_toZMod, interp_eq_toZMod] at h
+  rw [← FpL25519.ofZMod_toZMod x, ← FpL25519.ofZMod_toZMod y, h]
 
-    **Discharged in Rocq:** Combines two cited theorems:
-    1. The algebraic content `F.inv x = x^(L-2)` is `scalar_inv_eq_pow`
-       in **`AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v`**
-       (specialized at `Curve25519.l` from fiat-crypto's
-       `F.Fq_inv_fermat`).
-    2. The chain-correctness link (the Bernstein addition chain in our
-       `dalek_shim.c::scalar_inv` faithfully implements `x^(L-2)`) is
-       structurally an instance of fiat-crypto's
-       `Bedrock/Group/AdditionChains.v::exp_by_squaring_correct`,
-       instantiated at `L - 2` instead of `p - 2`.
+/-- `scalar_add` is addition in `ZMod L`. The fiat-crypto
+    `WordByWordMontgomery.v` `add_correct` states the same for the
+    Montgomery-domain C implementation. -/
+theorem interp_scalar_add (x y : FpL25519) :
+    interp (scalar_add x y) = interp x + interp y := by
+  simp only [interp_eq_toZMod]; exact scalar_add_toZMod x y
+/-- `scalar_sub` is subtraction in `ZMod L` (`WordByWordMontgomery.v` `sub_correct`). -/
+theorem interp_scalar_sub (x y : FpL25519) :
+    interp (scalar_sub x y) = interp x - interp y := by
+  simp only [interp_eq_toZMod]; exact scalar_sub_toZMod x y
+/-- `scalar_mul` is multiplication in `ZMod L` (`WordByWordMontgomery.v` `mul_correct`). -/
+theorem interp_scalar_mul (x y : FpL25519) :
+    interp (scalar_mul x y) = interp x * interp y := by
+  simp only [interp_eq_toZMod]; exact scalar_mul_toZMod x y
+/-- `scalar_neg` is negation in `ZMod L` (`WordByWordMontgomery.v` `opp_correct`). -/
+theorem interp_scalar_neg (x : FpL25519) :
+    interp (scalar_neg x) = - interp x := by
+  simp only [interp_eq_toZMod]; exact scalar_neg_toZMod x
 
-    The combination of the two gives our axiom statement. -/
-axiom interp_scalar_inv_pow (x : FpL25519) :
-    interp (scalar_inv x) = (interp x) ^ (L - 2)
+/-- `scalar_inv` is the power `x^(L-2)` in `ZMod L`. The Bernstein addition
+    chain in `dalek_shim.c::scalar_inv` computes this power
+    (`scalar_inv_eq_pow` in `AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v`,
+    and fiat-crypto's `Bedrock/Group/AdditionChains.v::exp_by_squaring_correct`
+    instantiated at `L - 2`). -/
+theorem interp_scalar_inv_pow (x : FpL25519) :
+    interp (scalar_inv x) = (interp x) ^ (L - 2) := by
+  simp only [interp_eq_toZMod]; exact scalar_inv_toZMod x
 
-/-- **Proved (was axiom)**: scalar inverse satisfies `inv·x = 1` for
-    nonzero `x`. Mirrors `interp_fp_inv` over `L` instead of `p`.
-    Same Fermat-chain pattern. -/
+/-- The scalar inverse satisfies `inv·x = 1` for nonzero `x` in `ZMod L`. -/
 theorem interp_scalar_inv (x : FpL25519) (hx : interp x ≠ 0) :
     interp (scalar_inv x) * interp x = 1 := by
   rw [interp_scalar_inv_pow, ← pow_succ,
@@ -218,41 +224,50 @@ theorem response_scalar_add_r
 
 /-! ## 4. Field interpretation `interp_fe : Fp25519 → ZMod p`
 
-    Same shape as the scalar side. The basic add/sub/mul/sqr/opp axioms
-    are discharged by fiat-crypto's machine-checked proofs of
-    `curve25519_64.c`. The `fp_inv` correctness axiom is the open obligation
-    discharged by walking the 254-sqr + 11-mul Fermat chain. -/
+    Same shape as the scalar side: `interp_fe` is the transport of `Fp25519`
+    onto `ZMod p`, and each leaf equation follows from the leaf's
+    specification in `LowCTReflect`. -/
 
-/-- Interpretation of `Fp25519` as `ZMod p` where `p = 2^255 - 19`.
+/-- The specification of `interp_fe`: the transport `Fp25519.toZMod`. -/
+noncomputable opaque interp_fe.spec : {f : Fp25519 → ZMod fpModulus // f = Fp25519.toZMod} :=
+  ⟨_, rfl⟩
 
-    **Discharged in Rocq:** the fiat-crypto-generated `curve25519_64.c`
-    implements `F p` arithmetic in unsaturated radix-51 form;
-    correctness is given by `Crypto/Arithmetic/Saturated/UnsaturatedSolinas.v`
-    `mul_correct`, `add_correct`, `square_correct`, etc. -/
-noncomputable opaque interp_fe : Fp25519 → ZMod fpModulus
+/-- Interpretation of `Fp25519` as `ZMod p`, `p = 2^255 - 19`: the transport
+    `Fp25519.toZMod` along the carrier equation of `Fp25519`. -/
+@[irreducible] noncomputable def interp_fe : Fp25519 → ZMod fpModulus := interp_fe.spec.val
 
-/- Each axiom below is *discharged in Rocq* by a fiat-crypto theorem.
-   The Rocq citations are named
-   inline so a future port can replace each axiom with a Lean
-   re-proof or a transparent definition through Mathlib. -/
+theorem interp_fe_eq_toZMod (x : Fp25519) : interp_fe x = x.toZMod := by
+  rw [interp_fe, interp_fe.spec.property]
 
-/-- **Discharged in Rocq:** `UnsaturatedSolinas.v` `add_correct`
-    (a.k.a. `F.add` ring axiom). -/
-axiom interp_fp_add (x y : Fp25519) :
-    interp_fe (fp_add x y) = interp_fe x + interp_fe y
-/-- **Discharged in Rocq:** `UnsaturatedSolinas.v` `sub_correct`. -/
-axiom interp_fp_sub (x y : Fp25519) :
-    interp_fe (fp_sub x y) = interp_fe x - interp_fe y
-/-- **Discharged in Rocq:** `UnsaturatedSolinas.v` `carry_mul_correct`. -/
-axiom interp_fp_mul (x y : Fp25519) :
-    interp_fe (fp_mul x y) = interp_fe x * interp_fe y
-/-- **Discharged in Rocq:** `UnsaturatedSolinas.v` `carry_square_correct`
-    (alternatively `F.pow_S` instantiated at `n = 2`). -/
-axiom interp_fp_sqr (x : Fp25519) :
-    interp_fe (fp_sqr x) = (interp_fe x) ^ 2
-/-- **Discharged in Rocq:** `UnsaturatedSolinas.v` `opp_correct`. -/
-axiom interp_fp_opp (x : Fp25519) :
-    interp_fe (fp_opp x) = - interp_fe x
+/-- `interp_fe` is injective: the transport along the carrier equation is a bijection. -/
+theorem interp_fe_injective : Function.Injective interp_fe := fun x y h => by
+  rw [interp_fe_eq_toZMod, interp_fe_eq_toZMod] at h
+  rw [← Fp25519.ofZMod_toZMod x, ← Fp25519.ofZMod_toZMod y, h]
+
+/- The fiat-crypto theorems named below state the same equations for the
+   unsaturated radix-51 C implementation `curve25519_64.c`
+   (`Crypto/Arithmetic/Saturated/UnsaturatedSolinas.v`). -/
+
+/-- `fp_add` is addition in `ZMod p` (`UnsaturatedSolinas.v` `add_correct`). -/
+theorem interp_fp_add (x y : Fp25519) :
+    interp_fe (fp_add x y) = interp_fe x + interp_fe y := by
+  simp only [interp_fe_eq_toZMod]; exact fp_add_toZMod x y
+/-- `fp_sub` is subtraction in `ZMod p` (`UnsaturatedSolinas.v` `sub_correct`). -/
+theorem interp_fp_sub (x y : Fp25519) :
+    interp_fe (fp_sub x y) = interp_fe x - interp_fe y := by
+  simp only [interp_fe_eq_toZMod]; exact fp_sub_toZMod x y
+/-- `fp_mul` is multiplication in `ZMod p` (`UnsaturatedSolinas.v` `carry_mul_correct`). -/
+theorem interp_fp_mul (x y : Fp25519) :
+    interp_fe (fp_mul x y) = interp_fe x * interp_fe y := by
+  simp only [interp_fe_eq_toZMod]; exact fp_mul_toZMod x y
+/-- `fp_sqr` is squaring in `ZMod p` (`UnsaturatedSolinas.v` `carry_square_correct`). -/
+theorem interp_fp_sqr (x : Fp25519) :
+    interp_fe (fp_sqr x) = (interp_fe x) ^ 2 := by
+  simp only [interp_fe_eq_toZMod]; exact fp_sqr_toZMod x
+/-- `fp_opp` is negation in `ZMod p` (`UnsaturatedSolinas.v` `opp_correct`). -/
+theorem interp_fp_opp (x : Fp25519) :
+    interp_fe (fp_opp x) = - interp_fe x := by
+  simp only [interp_fe_eq_toZMod]; exact fp_opp_toZMod x
 
 /-- `fpModulus = 2^255 − 19` is prime. Concretely decidable but
     `decide` is too slow for a 255-bit number. Mathlib does not ship
@@ -266,24 +281,13 @@ theorem fp_is_prime : Nat.Prime fpModulus :=
 
 instance : Fact (Nat.Prime fpModulus) := ⟨fp_is_prime⟩
 
-/-- The 254-sqr + 11-mul Fermat addition chain in `dalek_shim.c::fe_invert`
-    computes `x^(p-2) mod p`.
-
-    **Discharged in Rocq:** `Crypto/Bedrock/Group/AdditionChains.v`
-    theorem `exp_by_squaring_correct` (line 186) shows that the
-    abstract `exp_by_squaring` algorithm computes the correct power.
-    `fe_inv_correct` (line 626) specializes this to `p - 2` for the
-    Curve25519 prime. We axiomatize the chain ↔ `^(p-2)` equivalence
-    here and DERIVE the `^(-1)` characterization in Lean below
-    (via Fermat's little theorem from Mathlib).
-
-    Auditing this axiom: read `dalek_shim.c::fe_invert`, confirm the
-    254-square + 11-multiply chain matches the Rocq `exp_by_squaring`
-    structure for exponent `2^255 - 21 = p - 2`. The chain itself is
-    standard ed25519-donna / dalek code, also matched by the Rocq
-    Bedrock2 specification. -/
-axiom interp_fp_inv_pow (x : Fp25519) :
-    interp_fe (fp_inv x) = (interp_fe x) ^ (fpModulus - 2)
+/-- `fp_inv` is the power `x^(p-2)` in `ZMod p`. The 254-sqr + 11-mul Fermat
+    addition chain in `dalek_shim.c::fe_invert` computes this power
+    (`Crypto/Bedrock/Group/AdditionChains.v` `exp_by_squaring_correct`,
+    specialized to `p - 2` by `fe_inv_correct`). -/
+theorem interp_fp_inv_pow (x : Fp25519) :
+    interp_fe (fp_inv x) = (interp_fe x) ^ (fpModulus - 2) := by
+  simp only [interp_fe_eq_toZMod]; exact fp_inv_toZMod x
 
 /-- **Helper**: in `ZMod p` with `p` prime, `x^(p-2) = x⁻¹` for nonzero `x`.
     Derived from Fermat's little theorem (`ZMod.pow_card_sub_one`). -/
@@ -293,32 +297,94 @@ lemma pow_card_sub_two_eq_inv {p : ℕ} [hp : Fact (Nat.Prime p)]
   rw [← pow_succ, show p - 2 + 1 = p - 1 from by have := hp.out.two_le; omega]
   simp [ZMod.pow_card_sub_one, ha]
 
-/-- **Proved (was axiom)**: `interp_fe (fp_inv x) = (interp_fe x)⁻¹`
-    when `x ≠ 0`. This was item #3 of Tier A —
-    the chain-correctness axiom (`interp_fp_inv_pow`) cites Rocq's
-    `exp_by_squaring_correct`/`fe_inv_correct`; the connection to the
-    abstract field inverse `⁻¹` is now a Lean theorem via Fermat.
-
-    **Status**: 1 axiom shed (was `interp_fp_inv`); the new axiom
-    `interp_fp_inv_pow` is purely the chain-arithmetic correctness,
-    matching the granularity of `exp_by_squaring_correct`. -/
+/-- `interp_fe (fp_inv x) = (interp_fe x)⁻¹` when `x ≠ 0`: the power form
+    `interp_fp_inv_pow` combined with Fermat's little theorem. -/
 theorem interp_fp_inv (x : Fp25519) (hx : interp_fe x ≠ 0) :
     interp_fe (fp_inv x) = (interp_fe x)⁻¹ := by
   rw [interp_fp_inv_pow]
   exact pow_card_sub_two_eq_inv (interp_fe x) hx
 
-/-- `fp_sqrt_ratio_i u v` returns a value `r` such that `r² · v = u`
-    when `u/v` is a quadratic residue in `Fp p` (which is the only case
-    needed for Ed25519 / Ristretto255 decompression).
+/-- `SQRT_M1` squares to `-1` in `ZMod (2^255 - 19)`. -/
+theorem sqrtM1_sq : Fp25519.sqrtM1 ^ 2 = -1 := by
+  have h : (((19681161376707505956807079304988542015446066515923890162744021073123829784752 ^ 2
+      + 1 : ℕ)) : ZMod (2 ^ 255 - 19)) = 0 := by
+    rw [ZMod.natCast_eq_zero_iff]
+    norm_num
+  rw [Fp25519.sqrtM1]
+  push_cast at h
+  linear_combination h
 
-    **Discharged in Rocq:** Partially — `Crypto/Spec/Elligator2.v` has
-    related sqrt-ratio lemmas, but the dalek 3-case canonicalization
-    (`check ∈ {u, -u, -u·I}`) is *not* in fiat-crypto Rocq directly.
-    True open obligation (small — ~50 LoC of Rocq if we wrote it). -/
-axiom interp_fp_sqrt_ratio_i (u v : Fp25519) (hv : interp_fe v ≠ 0)
+/-- The root component of RFC 9496 `SQRT_RATIO_M1(u, v)` squares to `u/v`
+    whenever `v ≠ 0` and `u/v` is a square. -/
+theorem sqrtRatioM1_mul_self_mul (u v : ZMod (2 ^ 255 - 19)) (hv : v ≠ 0)
+    (h_qr : ∃ r : ZMod (2 ^ 255 - 19), r * r * v = u) :
+    Fp25519.sqrtRatioM1 u v * Fp25519.sqrtRatioM1 u v * v = u := by
+  have : Fact (Nat.Prime (2 ^ 255 - 19)) := ⟨fp_is_prime⟩
+  obtain ⟨s, hs⟩ := h_qr
+  have hi := sqrtM1_sq
+  have fabs_sq : ∀ x, Fp25519.fabs x * Fp25519.fabs x = x * x := fun x => by
+    unfold Fp25519.fabs; split_ifs <;> ring
+  -- the check value `v r0^2` is `u t` with `t = (u v^7)^((p-1)/4)`
+  have hcheck : v * (u * v ^ 3 * (u * v ^ 7) ^ Fp25519.p58Exp) ^ 2
+      = u * (u * v ^ 7) ^ (2 ^ 253 - 5 : ℕ) := by
+    have e2 : ∀ a : ZMod (2 ^ 255 - 19),
+        a ^ (2 ^ 253 - 5 : ℕ) = (a ^ Fp25519.p58Exp) ^ 2 * a := fun a => by
+      rw [← pow_mul, ← pow_succ, Fp25519.p58Exp]; norm_num
+    rw [e2]; ring
+  unfold Fp25519.sqrtRatioM1
+  simp only
+  rw [fabs_sq]
+  by_cases hu : u = 0
+  · subst hu; split_ifs <;> ring
+  -- `t^2 = 1`, since `u v^7 = (s v^4)^2` is a nonzero square
+  have hsv : s * v ^ 4 ≠ 0 := by
+    intro h0
+    rcases mul_eq_zero.mp h0 with h0 | h0
+    · exact hu (by rw [← hs, h0]; ring)
+    · exact hv (pow_eq_zero_iff (by norm_num) |>.mp h0)
+  have ht2 : ((u * v ^ 7) ^ (2 ^ 253 - 5 : ℕ)) ^ 2 = 1 := by
+    rw [show u * v ^ 7 = (s * v ^ 4) ^ 2 by rw [← hs]; ring, ← pow_mul, ← pow_mul,
+      ← ZMod.pow_card_sub_one_eq_one hsv]
+    norm_num
+  generalize Fp25519.sqrtM1 = i at hi ⊢
+  generalize u * v ^ 3 * (u * v ^ 7) ^ Fp25519.p58Exp = r0 at hcheck ⊢
+  generalize (u * v ^ 7) ^ (2 ^ 253 - 5 : ℕ) = t at hcheck ht2
+  have htpm : t = 1 ∨ t = -1 := by
+    have : (t - 1) * (t + 1) = 0 := by linear_combination ht2
+    rcases mul_eq_zero.mp this with h | h
+    · exact Or.inl (sub_eq_zero.mp h)
+    · exact Or.inr (eq_neg_of_add_eq_zero_left h)
+  have two_ne : (2 : ZMod (2 ^ 255 - 19)) ≠ 0 := by
+    intro h
+    have := (ZMod.natCast_eq_zero_iff 2 (2 ^ 255 - 19)).mp (by exact_mod_cast h)
+    norm_num at this
+  have hi1 : i ≠ 1 ∧ i ≠ -1 := by
+    constructor <;> intro h <;> rw [h] at hi <;> apply two_ne <;> linear_combination hi
+  split_ifs with hc
+  · rcases hc with hc | hc
+    · linear_combination (r0 ^ 2 * v) * hi - hc
+    · exfalso
+      rcases htpm with h1 | h1
+      · apply hi1.2
+        apply mul_left_cancel₀ hu
+        linear_combination hc - hcheck - u * h1
+      · apply hi1.1
+        apply mul_left_cancel₀ hu
+        linear_combination hc - hcheck - u * h1
+  · rcases htpm with h1 | h1
+    · linear_combination hcheck + u * h1
+    · exfalso; exact hc (Or.inl (by rw [hcheck, h1]; ring))
+
+/-- `fp_sqrt_ratio_i u v` returns a value `r` such that `r² · v = u`
+    when `v ≠ 0` and `u/v` is a quadratic residue in `ZMod p` (the case
+    needed for Ed25519 / Ristretto255 decompression). -/
+theorem interp_fp_sqrt_ratio_i (u v : Fp25519) (hv : interp_fe v ≠ 0)
     (h_qr : ∃ r : ZMod fpModulus, r * r * interp_fe v = interp_fe u) :
     (interp_fe (fp_sqrt_ratio_i u v)) *
-      (interp_fe (fp_sqrt_ratio_i u v)) * interp_fe v = interp_fe u
+      (interp_fe (fp_sqrt_ratio_i u v)) * interp_fe v = interp_fe u := by
+  simp only [interp_fe_eq_toZMod] at hv h_qr ⊢
+  rw [fp_sqrt_ratio_i_toZMod]
+  exact sqrtRatioM1_mul_self_mul _ _ hv h_qr
 
 /-! ## 5. Field-side proved lemmas -/
 
@@ -334,8 +400,8 @@ theorem fp_sub_self_zero (x : Fp25519) :
     interp_fe (fp_sub x x) = 0 := by
   rw [interp_fp_sub, sub_self]
 
-/-- **Proved.** `(x⁻¹) · x = 1` for nonzero `x`, derived from the
-    `interp_fp_inv` axiom (`fp_inv x = (interp_fe x)⁻¹`) plus the
+/-- **Proved.** `(x⁻¹) · x = 1` for nonzero `x`, derived from
+    `interp_fp_inv` (`fp_inv x = (interp_fe x)⁻¹`) plus the
     field-inverse identity in `ZMod p`. The latter requires `p` prime
     (the `Fact` instance above). -/
 theorem fp_inv_mul_self (x : Fp25519) (hx : interp_fe x ≠ 0) :
@@ -704,7 +770,7 @@ theorem fp_mul_ne_zero_of_factors (x y : Fp25519)
          fun h => hxy (by rw [h, mul_zero])⟩
 
 /-! ## 9b. Z-module algebra over `ed_smul` — proved consequences of
-    `ed_smul_distrib_add` + `ed_smul_resp_interp` + scalar interp axioms. -/
+    `ed_smul_distrib_add` + `ed_smul_resp_interp` + the scalar interpretation lemmas. -/
 
 /-- **Proved.** Scalar doubling: `(2k)·P = k·P + k·P`. Direct from
     `ed_smul_distrib_add` at `a = b = k`. -/
@@ -762,7 +828,7 @@ theorem sign_with_zero_a
 
 /-- **Proved.** `interp` is a ring homomorphism from `FpL25519` to `ZMod L`
     in the sense that ring-shaped expressions on both sides agree. This
-    bundles the four `interp_scalar_*` axioms into one statement useful
+    bundles the four `interp_scalar_*` equations into one statement useful
     as a simp-rewrite hub. -/
 theorem interp_scalar_ring_hom (a b : FpL25519) :
     interp (scalar_add a b) = interp a + interp b ∧
@@ -854,14 +920,8 @@ The remaining work to close the full Ed25519 correctness circle: -/
 theorem p_is_prime : Nat.Prime fpModulus :=
   CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime
 
-/- `L_is_prime` is now declared earlier near the `L` definition with
-   its `Fact (Nat.Prime L)` instance (see §1). Same for `fpModulus`. -/
-
-/-- **Proved (was axiom).** Superseded form of `interp_fp_inv_pow` — the
-    `hz` hypothesis is not needed at this granularity (the equation is a
-    direct rewrite, the non-zeroness only matters when going from the
-    power form to `(·)⁻¹` via Fermat). Kept as a theorem for backward
-    compatibility with downstream callers that pass `hz`. -/
+/-- `interp_fp_inv_pow` with an unused nonzeroness hypothesis `hz`, for
+    callers that pass it. -/
 theorem fp_inv_via_fermat (z : Fp25519) (_hz : interp_fe z ≠ 0) :
     interp_fe (fp_inv z) = (interp_fe z) ^ (fpModulus - 2) :=
   interp_fp_inv_pow z

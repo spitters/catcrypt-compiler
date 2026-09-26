@@ -10,10 +10,12 @@ module
 # Ed25519 Lean declarations ↔ Coq theorem index
 
 Single-place reference connecting the declarations of `Ed25519Spec.lean`
-(and related Ed25519 files) to the Coq theorems they correspond to. The
-axioms of `Ed25519Spec.lean` are the 12 field and scalar interface axioms
-`interp_scalar_{add,sub,mul,neg,inv_pow}`, `interp_fp_{add,sub,mul,sqr,opp,inv_pow}`
-and `interp_fp_sqrt_ratio_i`; each carries a Coq citation below. The group
+(and related Ed25519 files) to the Coq theorems they correspond to. 
+`Ed25519Spec.lean` declares no axiom: the carriers `Fp25519`/`FpL25519` of
+`LowCTReflect` are `ZMod (2^255 − 19)` / `ZMod L` behind opaque specs,
+`interp_fe`/`interp` are the identity transport, and the field and scalar
+statements `interp_fp_*`, `interp_scalar_*`, `interp_fp_sqrt_ratio_i` are Lean
+theorems; the Coq citations below are correspondences. The group
 layer is the edwards25519 group `Ed25519Group.EdPt`, and its laws are Lean
 theorems; for those rows the Coq citation is a correspondence, and the Lean
 proof does not depend on it.
@@ -31,14 +33,14 @@ proof does not depend on it.
 
 | Lean declaration | Status | Coq citation |
 |---|---|---|
-| `interp_fe` | 📌 cite-only | `Crypto.Spec.ModularArithmetic.F p` (built-in fiat-crypto) |
-| `interp_fp_add` | ✅ proved | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.add_correct` |
-| `interp_fp_sub` | ✅ proved | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.sub_correct` |
-| `interp_fp_mul` | ✅ proved | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.carry_mul_correct` |
-| `interp_fp_sqr` | ✅ proved | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.carry_square_correct` |
-| `interp_fp_opp` | ✅ proved | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.opp_correct` |
-| `interp_fp_inv_pow` | ✅ proved | `fiat-crypto/src/Bedrock/Group/AdditionChains.v::fe_inv_correct` |
-| `interp_fp_sqrt_ratio_i` | ✅ proved | `AUCurves/.../EdwardsCompressDecompress.v::Ed25519Compress.interp_fp_sqrt_ratio_i_correct` (Closed under global context). Wraps `sqrt_div` (built from `F.sqrt_5mod8 sqrtm1`); QR-case correctness via `field`-tactic. Default = `F.zero` for non-QR; Lean axiom's QR hypothesis makes that branch unreachable. |
+| `interp_fe` | ✅ proved in Lean (identity transport) | `Crypto.Spec.ModularArithmetic.F p` (built-in fiat-crypto) |
+| `interp_fp_add` | ✅ proved in Lean | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.add_correct` |
+| `interp_fp_sub` | ✅ proved in Lean | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.sub_correct` |
+| `interp_fp_mul` | ✅ proved in Lean | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.carry_mul_correct` |
+| `interp_fp_sqr` | ✅ proved in Lean | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.carry_square_correct` |
+| `interp_fp_opp` | ✅ proved in Lean | `fiat-crypto/src/Arithmetic/Solinas.v::UnsaturatedSolinas.opp_correct` |
+| `interp_fp_inv_pow` | ✅ proved in Lean | `fiat-crypto/src/Bedrock/Group/AdditionChains.v::fe_inv_correct` |
+| `interp_fp_sqrt_ratio_i` | ✅ proved in Lean | `AUCurves/.../EdwardsCompressDecompress.v::Ed25519Compress.interp_fp_sqrt_ratio_i_correct` (Closed under global context). Wraps `sqrt_div` (built from `F.sqrt_5mod8 sqrtm1`); QR-case correctness via `field`-tactic. Default = `F.zero` for non-QR; Lean axiom's QR hypothesis makes that branch unreachable. |
 
 ## Emitted-AST field bodies
 
@@ -60,12 +62,12 @@ and does not depend on it.
 | Lean declaration | Status | Coq citation |
 |---|---|---|
 | `L_is_prime` | ✅ proved in Lean | Theorem, from the primality certificate `Ed25519LPrimeCert.ed25519Llit_prime` (AUCurves uses abstract ZMod L) |
-| `interp` (scalar) | 📌 cite-only | Built-in fiat-crypto F L |
-| `interp_scalar_add` | 🚧 phase1 (Parameter) | `AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v::fe25519_scalar_add_correct` — declared as `Parameter`; discharge target sits in `Scalar25519_64_Synthesis.v.todo` (uncompiled, ~100 min one-time cost on rocq-9) |
-| `interp_scalar_sub` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_sub_correct` — same |
-| `interp_scalar_mul` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_mul_correct` — same |
-| `interp_scalar_neg` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_opp_correct` — same |
-| `interp_scalar_inv_pow` | ✅ proved | algebra side: `AUCurves/.../Scalar25519_64.v::Ed25519Scalar.scalar_inv_eq_pow` (Qed; Closed under global context). Original citation `fiat-crypto/.../AdditionChains.v` was for the field-side fe_inv; the scalar version now lives in AUCurves. |
+| `interp` (scalar) | ✅ proved in Lean (identity transport) | Built-in fiat-crypto F L |
+| `interp_scalar_add` | ✅ proved in Lean | `AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v::fe25519_scalar_add_correct` — declared as `Parameter`; discharge target sits in `Scalar25519_64_Synthesis.v.todo` (uncompiled, ~100 min one-time cost on rocq-9) |
+| `interp_scalar_sub` | ✅ proved in Lean | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_sub_correct` — same |
+| `interp_scalar_mul` | ✅ proved in Lean | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_mul_correct` — same |
+| `interp_scalar_neg` | ✅ proved in Lean | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_opp_correct` — same |
+| `interp_scalar_inv_pow` | ✅ proved in Lean | algebra side: `AUCurves/.../Scalar25519_64.v::Ed25519Scalar.scalar_inv_eq_pow` (Qed; Closed under global context). Original citation `fiat-crypto/.../AdditionChains.v` was for the field-side fe_inv; the scalar version now lives in AUCurves. |
 
 ## Edwards curve point operations
 
@@ -112,8 +114,8 @@ complete trust boundary between Lean's CatCrypt Ed25519 layer and the
 AUCurves Coq stack. Concretely:
 
 1. Every Lean `axiom` in `Ed25519Spec.lean` and dependent files is in
-   this table: the 12 field and scalar interface axioms of
-   `Ed25519Spec.lean`. `Ed25519Optimizations.lean` declares no axiom.
+   this table; `Ed25519Spec.lean` and `Ed25519Optimizations.lean` declare
+   none.
 2. Every entry has either an extant Coq theorem or a Phase-1 ticket.
 3. Every `axiom` in `CatCrypt/Crypto/{KeyAgreement,Jasmin}/Ed25519*.lean`
    has a citation in its docstring or here.
@@ -169,7 +171,7 @@ libcrux + Jasmin verification level, not at AUCurves.
 | `ByteBuf*` | 📌 cite-only | Opaque byte-buffer type + default (libcrux). |
 | `jade_sha512*` | 📌 cite-only | Jade/Jasmin-extracted SHA-512 (verified in `formosa-25519`). |
 | `scalar_reduce_64*` | 📌 cite-only | Scalar reduction mod L; libcrux extraction. |
-| `interp_*` | ✅ proved | Interpretation of opaque types to mathematical objects.  Each `interp_X` axiom is the *defining equation* for `interp` on opaque `X`; tagged "proved" because the equation is trivially consistent with libcrux-specs. |
+| `interp_*` | ✅ proved in Lean | Interpretation of the carriers as mathematical objects.  Each `interp_X` is a theorem: the operation `X` is defined through its `ZMod` equation and `interp` is the identity transport. |
 | `ed25519_*` | 📌 cite-only | Top-level libcrux Ed25519 entry points; cited at the libcrux Ed25519 layer. `ed25519_scalarmult_base` and `ed25519_double_scalarmult_vartime` are `noncomputable opaque` data. |
 | `point_eq` | ✅ proved | Point equality (decidable on `EdPoint`); deferred to fiat-crypto. |
 | `curve_d` | 📌 cite-only | Edwards-form `d = -121665/121666 mod p`; constant. |
@@ -182,8 +184,7 @@ libcrux + Jasmin verification level, not at AUCurves.
 
 `Ed25519Optimizations.lean` declares no axiom. Its representations are
 definitions over `EdPt`, and each correctness statement is a Lean theorem
-from the group laws and the field and scalar interface axioms of
-`Ed25519Spec.lean`.
+from the group laws and the field and scalar theorems of `Ed25519Spec.lean`.
 
 | Pattern | Status | Coverage |
 |---|---|---|

@@ -110,29 +110,98 @@ namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 open CatCrypt.Crypto.Jasmin.LowCT
 open Lean Meta Elab
 
-/-! ## 1. Opaque surface types + field-op symbols
+/-! ## 1. Surface types + field-op symbols
 
-Opaque constants and axioms, so the reifier can intercept calls before Lean
-unfolds them. -/
+Each surface type is a `def` whose body projects an `opaque` constant, and
+each leaf is either an `opaque` constant or an `@[irreducible] def` whose body
+projects an `opaque` specification `X.spec : {f // f = value}`. The
+default-transparency `whnf` the reifier runs neither unfolds an irreducible
+`def` nor sees through an `opaque` constant, so the leaf heads survive it; the
+kernel cannot unfold an `opaque` constant either, so the value of a leaf is
+reachable only through the equation in its specification.
 
-opaque Fp25519.Impl : NonemptyType.{0}
-/-- Opaque `Fp25519` element. Users write Lean source against this type;
-    the reifier produces `LowCT`. Programs over this type are never
-    evaluated — they're extracted to MLIR. -/
-def Fp25519 : Type := Fp25519.Impl.type
-instance : Nonempty Fp25519 := Fp25519.Impl.property
+The Curve25519 base field `Fp25519` and scalar field `FpL25519` carry the
+values `ZMod (2^255 - 19)` and `ZMod L`: `Fp25519.Impl` and `FpL25519.Impl`
+are opaque subtypes pinning the carrier, and `toZMod` / `ofZMod` are the
+transports along that equation. -/
+
+/-- The carrier of `Fp25519`, pinned to `ZMod (2^255 - 19)`. -/
+opaque Fp25519.Impl : {T : Type // T = ZMod (2 ^ 255 - 19)} := ⟨_, rfl⟩
+/-- A `Fp25519` element: an element of `ZMod (2^255 - 19)` behind the opaque
+    carrier `Fp25519.Impl`. Users write Lean source against this type;
+    the reifier produces `LowCT`. -/
+def Fp25519 : Type := Fp25519.Impl.val
+
+/-- The transport `Fp25519 → ZMod (2^255 - 19)`. -/
+def Fp25519.toZMod (x : Fp25519) : ZMod (2 ^ 255 - 19) := cast Fp25519.Impl.property x
+
+/-- The transport `ZMod (2^255 - 19) → Fp25519`. -/
+def Fp25519.ofZMod (x : ZMod (2 ^ 255 - 19)) : Fp25519 := cast Fp25519.Impl.property.symm x
+
+@[simp] theorem Fp25519.toZMod_ofZMod (x : ZMod (2 ^ 255 - 19)) :
+    (Fp25519.ofZMod x).toZMod = x := by
+  exact (cast_cast _ _ x).trans (cast_eq _ x)
+
+@[simp] theorem Fp25519.ofZMod_toZMod (x : Fp25519) :
+    Fp25519.ofZMod x.toZMod = x := by
+  exact (cast_cast _ _ x).trans (cast_eq _ x)
+
+instance : Nonempty Fp25519 := ⟨Fp25519.ofZMod 0⟩
 
 /-- An inhabitant so Lean can typecheck programs over `Fp25519`. -/
 noncomputable opaque Fp25519.default : Fp25519
 
 noncomputable instance : Inhabited Fp25519 := ⟨Fp25519.default⟩
 
-/-- Field add. -/ noncomputable opaque fp_add     : Fp25519 → Fp25519 → Fp25519
-/-- Field sub. -/ noncomputable opaque fp_sub     : Fp25519 → Fp25519 → Fp25519
-/-- Field mul. -/ noncomputable opaque fp_mul     : Fp25519 → Fp25519 → Fp25519
-/-- Field sqr. -/ noncomputable opaque fp_sqr     : Fp25519 → Fp25519
+/-- The specification of `fp_add`: addition in `ZMod (2^255 - 19)`. -/
+noncomputable opaque fp_add.spec :
+    {f : Fp25519 → Fp25519 → Fp25519 //
+      f = fun x y => Fp25519.ofZMod (x.toZMod + y.toZMod)} := ⟨_, rfl⟩
+/-- Field add. -/
+@[irreducible] noncomputable def fp_add : Fp25519 → Fp25519 → Fp25519 := fp_add.spec.val
+
+/-- The specification of `fp_sub`: subtraction in `ZMod (2^255 - 19)`. -/
+noncomputable opaque fp_sub.spec :
+    {f : Fp25519 → Fp25519 → Fp25519 //
+      f = fun x y => Fp25519.ofZMod (x.toZMod - y.toZMod)} := ⟨_, rfl⟩
+/-- Field sub. -/
+@[irreducible] noncomputable def fp_sub : Fp25519 → Fp25519 → Fp25519 := fp_sub.spec.val
+
+/-- The specification of `fp_mul`: multiplication in `ZMod (2^255 - 19)`. -/
+noncomputable opaque fp_mul.spec :
+    {f : Fp25519 → Fp25519 → Fp25519 //
+      f = fun x y => Fp25519.ofZMod (x.toZMod * y.toZMod)} := ⟨_, rfl⟩
+/-- Field mul. -/
+@[irreducible] noncomputable def fp_mul : Fp25519 → Fp25519 → Fp25519 := fp_mul.spec.val
+
+/-- The specification of `fp_sqr`: squaring in `ZMod (2^255 - 19)`. -/
+noncomputable opaque fp_sqr.spec :
+    {f : Fp25519 → Fp25519 // f = fun x => Fp25519.ofZMod (x.toZMod ^ 2)} := ⟨_, rfl⟩
+/-- Field sqr. -/
+@[irreducible] noncomputable def fp_sqr : Fp25519 → Fp25519 := fp_sqr.spec.val
+
 /-- `*121666`. -/ noncomputable opaque fp_mul_a24 : Fp25519 → Fp25519
-/-- Unary negation (opp). -/ noncomputable opaque fp_opp : Fp25519 → Fp25519
+
+/-- The specification of `fp_opp`: negation in `ZMod (2^255 - 19)`. -/
+noncomputable opaque fp_opp.spec :
+    {f : Fp25519 → Fp25519 // f = fun x => Fp25519.ofZMod (-x.toZMod)} := ⟨_, rfl⟩
+/-- Unary negation (opp). -/
+@[irreducible] noncomputable def fp_opp : Fp25519 → Fp25519 := fp_opp.spec.val
+
+theorem fp_add_toZMod (x y : Fp25519) : (fp_add x y).toZMod = x.toZMod + y.toZMod := by
+  rw [fp_add, fp_add.spec.property, Fp25519.toZMod_ofZMod]
+
+theorem fp_sub_toZMod (x y : Fp25519) : (fp_sub x y).toZMod = x.toZMod - y.toZMod := by
+  rw [fp_sub, fp_sub.spec.property, Fp25519.toZMod_ofZMod]
+
+theorem fp_mul_toZMod (x y : Fp25519) : (fp_mul x y).toZMod = x.toZMod * y.toZMod := by
+  rw [fp_mul, fp_mul.spec.property, Fp25519.toZMod_ofZMod]
+
+theorem fp_sqr_toZMod (x : Fp25519) : (fp_sqr x).toZMod = x.toZMod ^ 2 := by
+  rw [fp_sqr, fp_sqr.spec.property, Fp25519.toZMod_ofZMod]
+
+theorem fp_opp_toZMod (x : Fp25519) : (fp_opp x).toZMod = -x.toZMod := by
+  rw [fp_opp, fp_opp.spec.property, Fp25519.toZMod_ofZMod]
 
 /-! ### Extended Fp25519 ops (needed for Ed25519 / Ristretto255)
 
@@ -158,11 +227,50 @@ noncomputable opaque fp_sq8   : Fp25519 → Fp25519
     chain, mirroring `curve25519-dalek/src/backend/serial/u64/field.rs`. -/
 noncomputable opaque fp_invsqrt : Fp25519 → Fp25519
 
-/-- Square root mod p via `sqrt(u/v) = u · v^((p-5)/8)` trick. -/
-noncomputable opaque fp_sqrt_ratio_i : Fp25519 → Fp25519 → Fp25519
+/-- `SQRT_M1` of RFC 9496 §4.1, a square root of `-1` in `ZMod (2^255 - 19)`. -/
+def Fp25519.sqrtM1 : ZMod (2 ^ 255 - 19) :=
+  19681161376707505956807079304988542015446066515923890162744021073123829784752
 
-/-- Multiplicative inverse (Fermat's little theorem; ~265 fp_sqr + ~11 fp_mul). -/
-noncomputable opaque fp_inv : Fp25519 → Fp25519
+/-- The exponent `(p - 5) / 8 = 2^252 - 3` of the `SQRT_RATIO_M1` candidate root. -/
+@[irreducible] def Fp25519.p58Exp : ℕ := 2 ^ 252 - 3
+
+/-- `CT_ABS` of RFC 9496 §4.1: `x` when its canonical representative is even,
+    `-x` otherwise. -/
+def Fp25519.fabs (x : ZMod (2 ^ 255 - 19)) : ZMod (2 ^ 255 - 19) :=
+  if x.val % 2 = 0 then x else -x
+
+/-- The root component of `SQRT_RATIO_M1(u, v)` of RFC 9496 §4.2: the candidate
+    `u v^3 (u v^7)^((p-5)/8)`, multiplied by `SQRT_M1` when `v r^2` is `-u` or
+    `-u · SQRT_M1`, then made nonnegative by `fabs`. -/
+def Fp25519.sqrtRatioM1 (u v : ZMod (2 ^ 255 - 19)) : ZMod (2 ^ 255 - 19) :=
+  let r := u * v ^ 3 * (u * v ^ 7) ^ Fp25519.p58Exp
+  let check := v * r ^ 2
+  let r := if check = -u ∨ check = -u * Fp25519.sqrtM1 then Fp25519.sqrtM1 * r else r
+  Fp25519.fabs r
+
+/-- The specification of `fp_sqrt_ratio_i`: the root component of RFC 9496
+    `SQRT_RATIO_M1`. -/
+noncomputable opaque fp_sqrt_ratio_i.spec :
+    {f : Fp25519 → Fp25519 → Fp25519 //
+      f = fun u v => Fp25519.ofZMod (Fp25519.sqrtRatioM1 u.toZMod v.toZMod)} := ⟨_, rfl⟩
+/-- The root component of RFC 9496 `SQRT_RATIO_M1(u, v)`: a square root of
+    `u/v` whenever `u/v` is a square. -/
+@[irreducible] noncomputable def fp_sqrt_ratio_i : Fp25519 → Fp25519 → Fp25519 :=
+  fp_sqrt_ratio_i.spec.val
+
+/-- The specification of `fp_inv`: the power `x^(p-2)` in `ZMod p`, `p = 2^255 - 19`. -/
+noncomputable opaque fp_inv.spec :
+    {f : Fp25519 → Fp25519 //
+      f = fun x => Fp25519.ofZMod (x.toZMod ^ (2 ^ 255 - 19 - 2))} := ⟨_, rfl⟩
+/-- Multiplicative inverse `x^(p-2)` (Fermat's little theorem; ~265 fp_sqr + ~11 fp_mul). -/
+@[irreducible] noncomputable def fp_inv : Fp25519 → Fp25519 := fp_inv.spec.val
+
+theorem fp_sqrt_ratio_i_toZMod (u v : Fp25519) :
+    (fp_sqrt_ratio_i u v).toZMod = Fp25519.sqrtRatioM1 u.toZMod v.toZMod := by
+  rw [fp_sqrt_ratio_i, fp_sqrt_ratio_i.spec.property, Fp25519.toZMod_ofZMod]
+
+theorem fp_inv_toZMod (x : Fp25519) : (fp_inv x).toZMod = x.toZMod ^ (2 ^ 255 - 19 - 2) := by
+  rw [fp_inv, fp_inv.spec.property, Fp25519.toZMod_ofZMod]
 
 /-- CT conditional move: `sel` is a byte mask encoded into low limb of Fp25519. -/
 noncomputable opaque fp_cmov : Fp25519 → Fp25519 → Fp25519 → Fp25519
@@ -179,18 +287,93 @@ noncomputable opaque fp_is_zero : Fp25519 → Fp25519
 fiat-crypto's 4-limb Montgomery representation (`curve25519_scalar_64.c`).
 The reifier sees `FpL25519` values as having TowerType `.TFpL25519`. -/
 
-opaque FpL25519.Impl : NonemptyType.{0}
-def FpL25519 : Type := FpL25519.Impl.type
-instance : Nonempty FpL25519 := FpL25519.Impl.property
+/-- The carrier of `FpL25519`, pinned to `ZMod L`. -/
+opaque FpL25519.Impl :
+    {T : Type // T = ZMod (2 ^ 252 + 27742317777372353535851937790883648493)} := ⟨_, rfl⟩
+/-- A `FpL25519` element: an element of `ZMod L` behind the opaque carrier
+    `FpL25519.Impl`. -/
+def FpL25519 : Type := FpL25519.Impl.val
+
+/-- The transport `FpL25519 → ZMod L`. -/
+def FpL25519.toZMod (x : FpL25519) :
+    ZMod (2 ^ 252 + 27742317777372353535851937790883648493) :=
+  cast FpL25519.Impl.property x
+
+/-- The transport `ZMod L → FpL25519`. -/
+def FpL25519.ofZMod (x : ZMod (2 ^ 252 + 27742317777372353535851937790883648493)) :
+    FpL25519 :=
+  cast FpL25519.Impl.property.symm x
+
+@[simp] theorem FpL25519.toZMod_ofZMod
+    (x : ZMod (2 ^ 252 + 27742317777372353535851937790883648493)) :
+    (FpL25519.ofZMod x).toZMod = x := by
+  exact (cast_cast _ _ x).trans (cast_eq _ x)
+
+@[simp] theorem FpL25519.ofZMod_toZMod (x : FpL25519) :
+    FpL25519.ofZMod x.toZMod = x := by
+  exact (cast_cast _ _ x).trans (cast_eq _ x)
+
+instance : Nonempty FpL25519 := ⟨FpL25519.ofZMod 0⟩
 noncomputable opaque FpL25519.default : FpL25519
 noncomputable instance : Inhabited FpL25519 := ⟨FpL25519.default⟩
 
-/-- Scalar addition mod L. -/ noncomputable opaque scalar_add : FpL25519 → FpL25519 → FpL25519
-/-- Scalar subtraction mod L. -/ noncomputable opaque scalar_sub : FpL25519 → FpL25519 → FpL25519
-/-- Scalar multiplication mod L. -/ noncomputable opaque scalar_mul : FpL25519 → FpL25519 → FpL25519
-/-- Scalar negation. -/ noncomputable opaque scalar_neg : FpL25519 → FpL25519
-/-- Multiplicative inverse mod L (uses Bernstein's addition chain). -/
-noncomputable opaque scalar_inv : FpL25519 → FpL25519
+/-- The specification of `scalar_add`: addition in `ZMod L`. -/
+noncomputable opaque scalar_add.spec :
+    {f : FpL25519 → FpL25519 → FpL25519 //
+      f = fun x y => FpL25519.ofZMod (x.toZMod + y.toZMod)} := ⟨_, rfl⟩
+/-- Scalar addition mod L. -/
+@[irreducible] noncomputable def scalar_add : FpL25519 → FpL25519 → FpL25519 :=
+  scalar_add.spec.val
+
+/-- The specification of `scalar_sub`: subtraction in `ZMod L`. -/
+noncomputable opaque scalar_sub.spec :
+    {f : FpL25519 → FpL25519 → FpL25519 //
+      f = fun x y => FpL25519.ofZMod (x.toZMod - y.toZMod)} := ⟨_, rfl⟩
+/-- Scalar subtraction mod L. -/
+@[irreducible] noncomputable def scalar_sub : FpL25519 → FpL25519 → FpL25519 :=
+  scalar_sub.spec.val
+
+/-- The specification of `scalar_mul`: multiplication in `ZMod L`. -/
+noncomputable opaque scalar_mul.spec :
+    {f : FpL25519 → FpL25519 → FpL25519 //
+      f = fun x y => FpL25519.ofZMod (x.toZMod * y.toZMod)} := ⟨_, rfl⟩
+/-- Scalar multiplication mod L. -/
+@[irreducible] noncomputable def scalar_mul : FpL25519 → FpL25519 → FpL25519 :=
+  scalar_mul.spec.val
+
+/-- The specification of `scalar_neg`: negation in `ZMod L`. -/
+noncomputable opaque scalar_neg.spec :
+    {f : FpL25519 → FpL25519 // f = fun x => FpL25519.ofZMod (-x.toZMod)} := ⟨_, rfl⟩
+/-- Scalar negation. -/
+@[irreducible] noncomputable def scalar_neg : FpL25519 → FpL25519 := scalar_neg.spec.val
+
+/-- The specification of `scalar_inv`: the power `x^(L-2)` in `ZMod L`. -/
+noncomputable opaque scalar_inv.spec :
+    {f : FpL25519 → FpL25519 //
+      f = fun x => FpL25519.ofZMod
+        (x.toZMod ^ (2 ^ 252 + 27742317777372353535851937790883648493 - 2))} := ⟨_, rfl⟩
+/-- Multiplicative inverse `x^(L-2)` mod L (uses Bernstein's addition chain). -/
+@[irreducible] noncomputable def scalar_inv : FpL25519 → FpL25519 := scalar_inv.spec.val
+
+theorem scalar_add_toZMod (x y : FpL25519) :
+    (scalar_add x y).toZMod = x.toZMod + y.toZMod := by
+  rw [scalar_add, scalar_add.spec.property, FpL25519.toZMod_ofZMod]
+
+theorem scalar_sub_toZMod (x y : FpL25519) :
+    (scalar_sub x y).toZMod = x.toZMod - y.toZMod := by
+  rw [scalar_sub, scalar_sub.spec.property, FpL25519.toZMod_ofZMod]
+
+theorem scalar_mul_toZMod (x y : FpL25519) :
+    (scalar_mul x y).toZMod = x.toZMod * y.toZMod := by
+  rw [scalar_mul, scalar_mul.spec.property, FpL25519.toZMod_ofZMod]
+
+theorem scalar_neg_toZMod (x : FpL25519) : (scalar_neg x).toZMod = -x.toZMod := by
+  rw [scalar_neg, scalar_neg.spec.property, FpL25519.toZMod_ofZMod]
+
+theorem scalar_inv_toZMod (x : FpL25519) :
+    (scalar_inv x).toZMod =
+      x.toZMod ^ (2 ^ 252 + 27742317777372353535851937790883648493 - 2) := by
+  rw [scalar_inv, scalar_inv.spec.property, FpL25519.toZMod_ofZMod]
 
 /-! ### NIST P-256 base field
 
