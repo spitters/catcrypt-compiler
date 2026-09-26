@@ -124,8 +124,8 @@ def collectZBindsScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : V
 
 
 /-- The constants of a binding list: each constant binding's name mapped to the data
-    label and value it reads, one label per distinct value, and the data entries in
-    label order. -/
+    label and value it reads, one assembler-local (`.L`) label per distinct value, and
+    the data entries in label order. -/
 def constTable (sym : String) (bs : Array ZBind) :
     Std.HashMap String (String × Nat) × Array (String × Nat) :=
   let (names, _, data) := bs.foldl
@@ -137,7 +137,7 @@ def constTable (sym : String) (bs : Array ZBind) :
         match byVal.get? v with
         | some lbl => (names.insert d (lbl, v), byVal, data)
         | none =>
-          let lbl := sym ++ "_c" ++ toString data.size
+          let lbl := ".L" ++ sym ++ "_c" ++ toString data.size
           (names.insert d (lbl, v), byVal.insert v lbl, data.push (lbl, v))
       | _ => acc)
     ({}, {}, #[])
