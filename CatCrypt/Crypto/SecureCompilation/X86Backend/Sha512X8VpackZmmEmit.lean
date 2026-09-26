@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
+public import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 
 /-!
 # SHA-512 8-way σ/Σ lane kernel migrated onto the unified `Com jasminDialect` (512-bit ZMM)
@@ -108,6 +110,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit
 
 open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.RodataPool (Pool quadsAt)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
   (renderVpackZmmCom)
@@ -242,31 +245,33 @@ input `x` is loaded from `(%rdi)`; the five broadcast shift-count constants are
 loaded once (from `.rodata`) into their pinned registers by the prologue; the
 8-lane result stores to `(%rdi)`. -/
 
-/-- The `.rodata` broadcast shift-count table: each amount `n ∈ {1,63,8,56,7}` as
-    a `.quad`×8 (one per lane, 64-byte aligned), so `vpbroadcastq` / `vmovdqa64`
-    loads `n` into every lane. This is the same broadcast-constant idiom the SHA
-    dword schedule uses. -/
-def rodataShiftCounts : String :=
-  ".section .rodata\n.align 64\n"
-    ++ String.intercalate "\n"
-         ([("SHL_SIG0_C1", 1), ("SHL_SIG0_C63", 63), ("SHL_SIG0_C8", 8),
-           ("SHL_SIG0_C56", 56), ("SHL_SIG0_C7", 7)].map (fun nv =>
-            nv.1 ++ ":\n\t.quad " ++ toString nv.2 ++ ", " ++ toString nv.2
-              ++ ", " ++ toString nv.2 ++ ", " ++ toString nv.2
-              ++ ", " ++ toString nv.2 ++ ", " ++ toString nv.2
-              ++ ", " ++ toString nv.2 ++ ", " ++ toString nv.2))
-    ++ "\n"
+/-- The five shift counts of σ0, in the order of the context registers `%zmm1..5`. -/
+def sigma0ShiftCounts : List Nat := [1, 63, 8, 56, 7]
+
+/-- The pool entry of shift count `n`: `n` in each of the eight 64-bit lanes, 64-byte
+    aligned for the aligned load `vmovdqa64`. -/
+def shiftEntry (n : Nat) : Nat × List Nat := (6, List.replicate 8 n)
+
+/-- The `.rodata` pool of the five shift-count constants. -/
+def sigma0Pool : Pool := Pool.ofList ".Lsha512_x8_sigma0" (sigma0ShiftCounts.map shiftEntry)
+
+/-- The label holding shift count `n` in every lane. -/
+def shiftCountRef (n : Nat) : String := sigma0Pool.ref (shiftEntry n).1 (shiftEntry n).2
+
+/-- The words at the label of each shift count are `n` in every lane. -/
+theorem quadsAt_shiftCountRef (n : Nat) (h : n ∈ sigma0ShiftCounts) :
+    quadsAt sigma0Pool.directives (shiftCountRef n) = some (List.replicate 8 n) :=
+  Pool.quadsAt_ofList_ref _ _ 6 _ (List.mem_map_of_mem (f := shiftEntry) h)
+
+/-- The `.rodata` section of the shift-count pool. -/
+def rodataShiftCounts : String := sigma0Pool.text
 
 /-- The ABI **load** prologue: pull the data word `x` from `(%rdi)` into `%zmm0`,
-    and broadcast-load the five shift-count constants into their pinned ZMM
-    registers `%zmm1..%zmm5` (the broadcast-shift idiom). -/
+    and load the five shift-count constants into their pinned ZMM registers
+    `%zmm1..%zmm5` (the broadcast-shift idiom). -/
 def sigma0AbiLoads : List String :=
-  [ "\tvmovdqu64\t(%rdi), %zmm0"
-  , "\tvmovdqa64\tSHL_SIG0_C1(%rip), %zmm1"
-  , "\tvmovdqa64\tSHL_SIG0_C63(%rip), %zmm2"
-  , "\tvmovdqa64\tSHL_SIG0_C8(%rip), %zmm3"
-  , "\tvmovdqa64\tSHL_SIG0_C56(%rip), %zmm4"
-  , "\tvmovdqa64\tSHL_SIG0_C7(%rip), %zmm5" ]
+  "\tvmovdqu64\t(%rdi), %zmm0" :: sigma0ShiftCounts.zipIdx.map (fun (n, i) =>
+    "\tvmovdqa64\t" ++ shiftCountRef n ++ "(%rip), %zmm" ++ toString (i + 1))
 
 /-- The ABI **store** epilogue: write the σ0 result (`%zmm0`) back through the
     output pointer `%rdi`. -/

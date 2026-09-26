@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
 public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
+public import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
 
@@ -55,7 +57,8 @@ OWN `XAlloc`. Three properties of that contract shape everything below.
   unmapped name yields the `<UNALLOCATED:…>` sentinel instead). The FIPS 202
   constants — the ι round constants, the ρ shift counts, and χ's all-ones mask —
   therefore reach the body as rip-relative `.rodata` operands in the AVX-512
-  memory-source position (`vpxorq c_RC0(%rip), %zmm0, %zmm0`), which is the
+  memory-source position (`vpxorq .Lkeccakf1600_zmm8_c<i>(%rip), %zmm0, %zmm0`,
+  a label of the constant pool `keccakPool`), which is the
   second-source slot every sub-step `Com` puts its constant argument in. This is
   the same trust class as the `vmovdqa64 c_ALLONES(%rip), %zmm11` prologue
   broadcast the per-sub-step twins carry, and it is what the register budget
@@ -148,6 +151,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
   (VpackZmmBlock VpackZmmAllocSeq renderVpackZmmAllocSeq)
 open CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint (XAlloc frameAsmFunction)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
+open CatCrypt.Crypto.SecureCompilation.VIR.RodataPool (Pool quadsAt undefinedRef)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
   (r512 thetaCtx rotlCtx chiCtx iotaCtx
    thetaColCom rotlStepCom chiStepCom iotaStepCom
@@ -170,15 +174,39 @@ def vname (k : Nat) : String := "v" ++ toString k
     64 bytes per lane in SoA order `i = x + 5y`. -/
 def laneMem (i : Nat) : String := toString (64 * i) ++ "(%rdi)"
 
+/-- The pool entry of a 64-byte broadcast: `v` in each of the eight 64-bit lanes,
+    64-byte aligned. -/
+def bcastEntry (v : Nat) : Nat × List Nat := (6, List.replicate 8 v)
+
+/-- The broadcast values of the permutation: χ's all-ones mask, the 24 ι round
+    constants, and the shift counts `1..63` (ρ's offsets and their 64-complements,
+    plus θ's `1`/`63`). -/
+def keccakConstValues : List Nat :=
+  0xFFFFFFFFFFFFFFFF :: (List.range 24).map roundConst ++ (List.range 63).map (· + 1)
+
+/-- The `.rodata` pool of the permutation's broadcasts; equal values share an entry. -/
+def keccakPool : Pool :=
+  Pool.ofList ".Lkeccakf1600_zmm8" (keccakConstValues.map bcastEntry)
+
+/-- The rip-relative operand of the pool's broadcast of `v`. -/
+def bcastConst (v : Nat) : String :=
+  keccakPool.ref (bcastEntry v).1 (bcastEntry v).2 ++ "(%rip)"
+
+/-- The label of a broadcast value of the permutation reads back `v` in every lane. -/
+theorem quadsAt_keccakPool (v : Nat) (h : v ∈ keccakConstValues) :
+    quadsAt keccakPool.directives (keccakPool.ref 6 (List.replicate 8 v)) =
+      some (List.replicate 8 v) :=
+  Pool.quadsAt_ofList_ref _ _ 6 _ (List.mem_map_of_mem (f := bcastEntry) h)
+
 /-- The `.rodata` broadcast holding the shift count `n` in all eight lanes. -/
-def rotConst (n : Nat) : String := "c_rot_" ++ toString n ++ "(%rip)"
+def rotConst (n : Nat) : String := bcastConst n
 
 /-- The `.rodata` broadcast holding the ι round constant `RC[r]`. -/
-def rcConst (r : Nat) : String := "c_RC" ++ toString r ++ "(%rip)"
+def rcConst (r : Nat) : String := bcastConst (roundConst r)
 
 /-- The `.rodata` broadcast holding `2^64 - 1` in all eight lanes (χ's `¬b`
     is `b ^ allones`; the `vpackZMM` alphabet has no packed NOT). -/
-def allOnesConst : String := "c_ALLONES(%rip)"
+def allOnesConst : String := bcastConst 0xFFFFFFFFFFFFFFFF
 
 /-! ## 2. The four block builders
 
@@ -363,22 +391,8 @@ def epilogueLines : List String :=
   (List.range 25).map (fun i =>
     "\tvmovdqu64\t" ++ genFinal.regOf.getD i "" ++ ", " ++ laneMem i)
 
-/-- A 64-byte `.rodata` broadcast: `name` holding `v` in all eight 64-bit
-    lanes. -/
-def broadcastQuad (name : String) (v : Nat) : String :=
-  "\t.align 64\n" ++ name ++ ":\n"
-    ++ String.intercalate "\n" (List.replicate 8 ("\t.quad " ++ toString v)) ++ "\n"
-
-/-- The `.rodata` section: χ's all-ones mask, the 24 ι round constants, and the
-    shift-count broadcasts `1..63` (ρ's offsets and their 64-complements, plus
-    θ's `1`/`63`). -/
-def rodataSection : String :=
-  "\t.section .rodata\n"
-    ++ broadcastQuad "c_ALLONES" 0xFFFFFFFFFFFFFFFF
-    ++ String.join ((List.range 24).map (fun r =>
-         broadcastQuad ("c_RC" ++ toString r) (roundConst r)))
-    ++ String.join ((List.range 63).map (fun k =>
-         broadcastQuad ("c_rot_" ++ toString (k + 1)) (k + 1)))
+/-- The `.rodata` section: the directives of `keccakPool`. -/
+def rodataSection : String := keccakPool.text
 
 /-- The whole `keccakf1600_zmm8` `.s`: the framed straight-line body of all 2160
     rendered blocks, the generated ABI glue, and the `.rodata` broadcasts. -/
@@ -410,29 +424,22 @@ external XKCP KAT in `bench/keccak4way_compare/`. -/
   through that block's `XAlloc` and the `%zmm` file is not oversubscribed;
 * no `# <unsupported …>` comment, i.e. every block is inside the `vpackZMM`
   fragment;
-* every `.rodata` symbol the body reads is defined by `rodataSection`, so the
+* every `.rodata` constant the body reads is held by `keccakPool` (no
+  `undefinedRef` operand), so its label is defined by `rodataSection` and the
   render links;
 * the export symbol and the five packed mnemonics of the θρπχι alphabet present,
   and no UPPERCASE jasmin intrinsic. -/
 def checkWholePerm : List String :=
   let body := String.intercalate "\n" wholeBody
   let asm := wholePermAsm
-  -- every rip-relative constant the body reads must be defined in `.rodata`,
-  -- paired as (operand spelling, defining label). The rotate range runs to 64 so
-  -- an out-of-range shift count is reported rather than silently unresolved.
-  let refs : List (String × String) :=
-    (allOnesConst, "c_ALLONES:")
-      :: (List.range 24).map (fun r => (rcConst r, "c_RC" ++ toString r ++ ":"))
-      ++ (List.range 65).map (fun n => (rotConst n, "c_rot_" ++ toString n ++ ":"))
-  let missing := (refs.filter (fun c =>
-    strContains body c.1 && !(strContains rodataSection c.2))).map (fun c => c.1)
+  -- a constant the pool does not hold renders as `undefinedRef`; every other
+  -- rip-relative operand is a pool label, defined by `rodataSection`.
   let want : List (String × Bool) :=
     [ ("block count is 24 × 90", keccakWholeSeq.length == 24 * 90)
     , ("instruction count is 24 × 213", wholeBody.length == 24 * 213)
     , ("no unallocated name", !(strContains body "<UNALLOCATED"))
     , ("every block in the vpackZMM fragment", !(strContains body "<unsupported"))
-    , ("every .rodata reference is defined: " ++ String.intercalate " " missing,
-       missing.isEmpty)
+    , ("every .rodata reference is defined", !(strContains body undefinedRef))
     , ("exports keccakf1600_zmm8", strContains asm "keccakf1600_zmm8:")
     , ("issues vpxorq", strContains asm "vpxorq")
     , ("issues vpandq", strContains asm "vpandq")

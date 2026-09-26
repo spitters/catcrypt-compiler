@@ -1483,12 +1483,15 @@ def validatePackedQ {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (nOut : Nat
   | .error _ => false
 
 /- The butterfly `hi` slice of the renderer's §4 (`prod := w ⊙ b`, `hi := a + prod`)
-    validates against its own binding list. -/
+    validates against its own binding list. The render and the validator (with value numbering) run in the interpreter here; the
+    check measured 232 ms under a two-thread build, so its budget is 400 ms. -/
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom (butterflyHiCom) in
+set_option kat.ms 400 in
 #kat validatePackedQ 1 butterflyHiCom
 
 /- The same text with its add turned into a subtract is rejected. -/
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom (butterflyHiCom) in
+set_option kat.ms 400 in
 #kat !validatePackedQ 1 butterflyHiCom (fun s => s.replace "vpaddq" "vpsubq")
 
 /-- The validator on the renderer's text of the binding list `bs` over parameters

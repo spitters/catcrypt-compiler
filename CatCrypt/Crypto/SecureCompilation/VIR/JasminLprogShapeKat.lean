@@ -84,7 +84,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint (renderVpackZmmCom)
     `op src2, src1, dst`: two `vpsrlvq`/`vpsllvq`/`vporq` rotate triples, the
     `x >>> 7` shift, the two `vpxorq` mixes); the others test the emitted `.s` for
     the export label, the packed mnemonics, `%zmm` registers, the `.rodata`
-    shift-count label, and the absence of the jasmin intrinsic `#VPSRL_8u64`. -/
+    shift-count labels, and the absence of the jasmin intrinsic `#VPSRL_8u64`. -/
 def sha512Sigma0TextChecks (_ : Unit) : List (String × Bool) :=
   let asm := sha512_x8_sigma0_vpackzmm_asm
   [ ("Sha512X8VpackZmmEmit.body_lines",
@@ -104,7 +104,8 @@ def sha512Sigma0TextChecks (_ : Unit) : List (String × Bool) :=
   , ("Sha512X8VpackZmmEmit asm contains vporq", strContains asm "vporq")
   , ("Sha512X8VpackZmmEmit asm contains vpxorq", strContains asm "vpxorq")
   , ("Sha512X8VpackZmmEmit asm contains %zmm", strContains asm "%zmm")
-  , ("Sha512X8VpackZmmEmit asm contains SHL_SIG0_C1:", strContains asm "SHL_SIG0_C1:")
+  , ("Sha512X8VpackZmmEmit asm defines every shift-count label",
+      sigma0ShiftCounts.all (fun n => strContains asm (shiftCountRef n ++ ":")))
   , ("Sha512X8VpackZmmEmit asm lacks #VPSRL_8u64", !strContains asm "#VPSRL_8u64") ]
 
 end Sha512Sigma0

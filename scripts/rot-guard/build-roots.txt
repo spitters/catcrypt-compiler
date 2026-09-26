@@ -1100,3 +1100,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.DecSimTactic
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1BytesValue
 CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakLaneMapYmm
+CatCrypt.Crypto.SecureCompilation.VIR.RodataPool

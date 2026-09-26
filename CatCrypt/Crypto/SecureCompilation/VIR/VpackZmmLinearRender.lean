@@ -13,6 +13,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
 public import CatCryptCore.Tactics.KatGuard
 public import Std.Data.HashMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
+public import CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 
 /-!
 # Linear-time owned `%zmm` rendering of a large packed program
@@ -78,6 +80,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (VarMap argName paramsAndMap)
 open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode)
+open CatCrypt.Crypto.SecureCompilation.VIR.RodataPool (Pool qwordsLE leValue leValue_qwordsLE)
 
 /-! ## 1. The binding list -/
 
@@ -213,25 +216,35 @@ def collectZBindsScalar32 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm :
 
 /-! ## 2. Constants and allocation -/
 
+/-- The pool entry of a 512-bit constant `v`, as the base-2 logarithm of its alignment
+    and its words: one 8-byte word when its eight 64-bit lanes are equal (which covers
+    every sixteen-lane broadcast, whose word repeats the 32-bit lane), else the eight
+    words of the 64-byte value. -/
+def constEntry (v : Nat) : Nat × List Nat :=
+  if bcast512 v = v then (3, qwordsLE 1 v) else (6, qwordsLE 8 v)
+
+theorem leValue_constEntry_of_ne (v : Nat) (h : bcast512 v ≠ v) :
+    leValue (constEntry v).2 = v % 2 ^ 512 := by
+  simp [constEntry, h, leValue_qwordsLE]
+
 /-- The constants of a binding list: each constant binding's name mapped to the data
-    label and value it reads, one assembler-local (`.L`) label per distinct value, and
-    the data entries in label order. -/
+    label and value it reads, and the `.rodata` pool holding one entry (`constEntry`)
+    per distinct value, labelled `.L<sym>_c<i>`. -/
 def constTable (sym : String) (bs : Array ZBind) :
-    Std.HashMap String (String × Nat) × Array (String × Nat) :=
-  let (names, _, data) := bs.foldl
-    (fun (acc : Std.HashMap String (String × Nat) × Std.HashMap Nat String ×
-        Array (String × Nat)) b =>
-      let (names, byVal, data) := acc
+    Std.HashMap String (String × Nat) × Pool :=
+  let (names, _, pool) := bs.foldl
+    (fun (acc : Std.HashMap String (String × Nat) × Std.HashMap Nat String × Pool) b =>
+      let (names, byVal, pool) := acc
       match b with
       | .const d v =>
         match byVal.get? v with
-        | some lbl => (names.insert d (lbl, v), byVal, data)
+        | some lbl => (names.insert d (lbl, v), byVal, pool)
         | none =>
-          let lbl := ".L" ++ sym ++ "_c" ++ toString data.size
-          (names.insert d (lbl, v), byVal.insert v lbl, data.push (lbl, v))
+          let (pool, lbl) := pool.push (constEntry v).1 (constEntry v).2
+          (names.insert d (lbl, v), byVal.insert v lbl, pool)
       | _ => acc)
-    ({}, {}, #[])
-  (names, data)
+    ({}, {}, Pool.empty (".L" ++ sym))
+  (names, pool)
 
 /-- The index of the last binding reading each name; the names in `live` are read at
     index `bs.size`, past the last binding. -/
@@ -288,16 +301,6 @@ def isBcast (w : LaneW) (v : Nat) : Bool :=
   match w with
   | .q => bcast512 v == v
   | .d => bcast512d v == v
-
-/-- The `.rodata` lines of the constant labelled `lbl` with value `v`: one 8-byte word
-    when its eight 64-bit lanes are equal (which covers every sixteen-lane broadcast,
-    whose word repeats the 32-bit lane), else the 64-byte value. -/
-def constData (lbl : String) (v : Nat) : List String :=
-  if bcast512 v = v then
-    ["\t.p2align 3", lbl ++ ":", "\t.quad " ++ toString (v % 2 ^ 64)]
-  else
-    ["\t.p2align 6", lbl ++ ":"]
-      ++ (List.range 8).map (fun j => "\t.quad " ++ toString ((v / 2 ^ (64 * j)) % 2 ^ 64))
 
 /-- The memory operand of a constant read by a width-`w` operation in mode `md`: an
     embedded broadcast of its lane to the `md.act / w.bits` lanes of the register, or its
@@ -615,7 +618,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     (ymm : Bool := false) : Except String String := do
   let md : Mode := if ymm then .ymm else .zmm
   let outStride := md.stride
-  let (consts, data) := constTable sym bs0
+  let (consts, pool) := constTable sym bs0
   let info : RangeInfo := match ranges with
     | some (B, arr) => rangeInfoOf consts names B arr bs0
     | none => {}
@@ -660,8 +663,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
       ++ loads ++ maskSetup ++ residentLoads ++ body.toList ++ stores.flatten
       ++ ["\tvzeroupper", "\tret"]
-      ++ ["\t.size " ++ sym ++ ", .-" ++ sym, "\t.section .rodata"]
-      ++ (data.toList.flatMap (fun (lbl, v) => constData lbl v))
+      ++ ["\t.size " ++ sym ++ ", .-" ++ sym] ++ pool.sectionLines
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
   let body := String.intercalate "\n" text ++ "\n"
   if ymm && (hasMulhi || bs.any (fun b => match b with | .pack .d _ _ _ _ => true | _ => false))

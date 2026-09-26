@@ -30,8 +30,8 @@ are the two layouts, not a second renderer.
 unaligned (`vmovdqu`, `vpbroadcastq`), so an 8-byte-aligned 256-bit constant is
 correct, and 32-byte alignment would only be a store-forwarding/split-load
 performance choice. An arm that required natural alignment (`vmovdqa`) would need
-a `.align 32` renderer; the 512-bit path has a private one
-(`Keccak4WayWholePermVpackZmmEmit.broadcastQuad`, `.align 64`, eight words).
+a `.align 32` renderer; the 512-bit path uses the constant pool `VIR.RodataPool`, whose
+entries carry their own alignment (`.p2align 6` for a 64-byte constant).
 
 ## What the reference/definition pairing establishes
 
