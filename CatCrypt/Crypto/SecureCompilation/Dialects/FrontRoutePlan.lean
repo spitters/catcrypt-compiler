@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+public import CatCryptCore.Tactics.KatGuard
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoopCarrySelect
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoopCarrySelect
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
@@ -62,6 +63,10 @@ supersets of the plain one. A caller that wants a different front overrides
   measurements it was derived from, and the per-axis failure diagnosis.
 * `split` / `analyse` — the source analysis: loop shape, innermost body,
   continuation, post-passes.
+* `countVariableName` / `countVariableOfNode` — the variable the heading loop
+  node reads its trip count from (the bound of a runtime-trip loop, the guard
+  of a countdown `while`), which the caller binds to `compile`'s `countVar`;
+  `RouteGap.runtimeBoundNotVariable` when the bound is a compound `SExpr`.
 * `compileLoop` / `compileLoop_denote` — dispatch over
   `{fixed-N, runtime-N, countdown} × {plain, carry-select, vsimd}` and one
   denotation theorem covering it, stated as the `JLoopBodyN.denote` fold at the
@@ -243,6 +248,11 @@ inductive RouteGap where
       register classes only, so a multi-word result has no location the route can
       name. -/
   | bufferResultCallInBody
+  /-- The runtime-trip loop's bound is an `SExpr` other than a variable. The
+      routes read the trip count from a register (`TripCount.runtime`), so only
+      a bound that is a plain variable names that register; a compound bound
+      needs a prologue computing it first. -/
+  | runtimeBoundNotVariable
   deriving Repr, DecidableEq, Inhabited
 
 /-! ## 2. Reading the axes off the source -/
@@ -339,6 +349,44 @@ def isLoopNode : LowCT → Bool
 def loopBodyOf : LowCT → LowCT
   | .RFor _ _ b | .RForRuntime _ _ b | .RWhileNz _ b => b
   | _ => .RSkip
+
+/-- The bound expression of a runtime-trip loop node. -/
+def runtimeBoundOf : LowCT → Option SExpr
+  | .RForRuntime _ b _ => some b
+  | _ => none
+
+/-- The name of the variable a loop node's trip count is read from: `none` for
+    a compile-time trip, the bound variable of a runtime-trip loop, the guard of
+    a countdown `while`. A runtime-trip loop whose bound is not a plain variable
+    is `RouteGap.runtimeBoundNotVariable`; a non-loop command is `RouteGap.noLoop`.
+    The caller binds the named variable to the `.reg 64` register `compile`
+    takes as `countVar`. -/
+def countVariableOfNode : LowCT → Except RouteGap (Option String)
+  | .RFor _ _ _ => .ok none
+  | .RForRuntime _ (.SVar n) _ => .ok (some n)
+  | .RForRuntime _ _ _ => .error .runtimeBoundNotVariable
+  | .RWhileNz n _ => .ok (some n)
+  | _ => .error .noLoop
+
+/-- `countVariableOfNode` at the loop node heading the source's spine, located
+    as `split` locates it. -/
+def countVariableName (src : LowCT) : Except RouteGap (Option String) :=
+  let cmds := CarryChainSelect.flattenSeq src
+  match cmds.findIdx? isLoopNode with
+  | none => .error .noLoop
+  | some i => countVariableOfNode cmds[i]!
+
+/-- A runtime-trip loop over a variable bound names that variable. -/
+theorem countVariableOfNode_rForRuntime_var (x n : String) (b : LowCT) :
+    countVariableOfNode (.RForRuntime x (.SVar n) b) = .ok (some n) := rfl
+
+/-- A countdown `while` names its guard. -/
+theorem countVariableOfNode_rWhileNz (n : String) (b : LowCT) :
+    countVariableOfNode (.RWhileNz n b) = .ok (some n) := rfl
+
+/-- A compile-time trip names no variable. -/
+theorem countVariableOfNode_rFor (x : String) (k : Nat) (b : LowCT) :
+    countVariableOfNode (.RFor x k b) = .ok none := rfl
 
 /-- The source's loop structure: which node, its innermost body, and what
     surrounds it. -/
@@ -1012,20 +1060,35 @@ def siblingSource : LowCT :=
     (.RForRuntime "jd" (.SVar "vn")
       (.RForRuntime "s" (.SVar "un") .RSkip))
 
+/-- A runtime-trip loop whose bound is the difference of a variable and a
+    literal, the offset-start form `haxToLowCT` produces for `for j in lo..hi`
+    with a variable `hi`. -/
+def offsetBoundSource : LowCT :=
+  .RForRuntime "j" (.SSub (.SVar "hi") (.SLit 4)) .RSkip
+
 -- The countdown `while` selects the `ComL.whileNz` shape.
-#guard ((split whileSource).map (·.shape) == .ok .whileNz)
+#kat ((split whileSource).map (·.shape) == .ok .whileNz)
 
 -- An inner countdown `while` selects the block shape at two loop levels.
-#guard ((split blockSource).map (·.shape) == .ok .forLoopBlock)
-#guard ((split blockSource).map (·.loopDepth) == .ok 2)
+#kat ((split blockSource).map (·.shape) == .ok .forLoopBlock)
+#kat ((split blockSource).map (·.loopDepth) == .ok 2)
 
 -- An inner counted loop selects the nested shape, not the block shape.
-#guard ((split nestedSource).map (·.shape) == .ok .runtimeNested)
+#kat ((split nestedSource).map (·.shape) == .ok .runtimeNested)
 
 -- Two loop nodes on the spine select the sibling-loops shape, rather than
 -- silently dropping the second loop as a single-loop route would.
-#guard ((split siblingSource).map (·.shape) == .ok .siblingLoops)
-#guard ((analyse .com siblingSource).map (·.loopShape) == .ok .siblingLoops)
+#kat ((split siblingSource).map (·.shape) == .ok .siblingLoops)
+#kat ((analyse .com siblingSource).map (·.loopShape) == .ok .siblingLoops)
+
+-- The count variable is read off the heading loop node: the outer bound `m` of
+-- the block and nested sources, the guard `n` of the countdown `while`, and no
+-- variable for a compound bound.
+#kat (countVariableName blockSource == .ok (some "m"))
+#kat (countVariableName nestedSource == .ok (some "m"))
+#kat (countVariableName whileSource == .ok (some "n"))
+#kat (countVariableName offsetBoundSource == .error .runtimeBoundNotVariable)
+#kat ((split offsetBoundSource).map (·.shape) == .ok .runtimeN)
 
 /-- The `RouteGap` a source's own plan reports when the caller supplies no count
     variable, or `none` when the dispatch has everything it needs. -/
@@ -1038,19 +1101,19 @@ def tripGapOf (src : LowCT) : Option RouteGap :=
       | .ok _ => none
 
 -- A countdown trip reads its guard from a caller-supplied register.
-#guard tripGapOf whileSource == some .missingCountVariable
+#kat tripGapOf whileSource == some .missingCountVariable
 
 -- The block route takes the inner node's variables in the outer block's
 -- loop-body context, which `compile` does not take.
-#guard tripGapOf blockSource == some .blockNeedsInnerContext
+#kat tripGapOf blockSource == some .blockNeedsInnerContext
 
 -- The nested route takes the inner-count body as a second source.
-#guard tripGapOf nestedSource == some .nestedNeedsTwoBodies
+#kat tripGapOf nestedSource == some .nestedNeedsTwoBodies
 
 -- The sibling route takes the second loop's body in the extended context, which
 -- `compile` (single-body) does not supply, so it names the axis by `RouteGap`
 -- rather than dropping the second loop.
-#guard tripGapOf siblingSource == some .siblingNeedsTwoBodies
+#kat tripGapOf siblingSource == some .siblingNeedsTwoBodies
 
 /-! ### The buffer-result leaf-call condition
 
@@ -1115,18 +1178,18 @@ def regCallBody :
 -- Static checks pinning the predicate against silent change: it fires on a
 -- buffer-returning leaf call, and not on the register-result in-loop call the
 -- emitted rolled kernels already carry.
-#guard comBodyHasBufferCall bufferCallBody
-#guard !comBodyHasBufferCall regCallBody
+#kat comBodyHasBufferCall bufferCallBody
+#kat !comBodyHasBufferCall regCallBody
 
 -- The same two bodies at the loop-body walk's own starting depth (`2` with no
 -- invariant binders): the register-result call lays no buffer, so the loop
 -- lowering takes its existing walk, and the buffer-result call lays one slot of
 -- the leaf's result size and declares those bytes to the frame.
-#guard loopBufBindings regCallBody 2 = []
-#guard loopBufTotal (loopBufBindings regCallBody 2) = 0
-#guard loopBufBindings bufferCallBody 2 = [(2, 128)]
-#guard loopBufTotal (loopBufBindings bufferCallBody 2) = 128
-#guard loopBufOff (loopBufBindings bufferCallBody 2) 2 = some 0
+#kat loopBufBindings regCallBody 2 = []
+#kat loopBufTotal (loopBufBindings regCallBody 2) = 0
+#kat loopBufBindings bufferCallBody 2 = [(2, 128)]
+#kat loopBufTotal (loopBufBindings bufferCallBody 2) = 128
+#kat loopBufOff (loopBufBindings bufferCallBody 2) 2 = some 0
 
 /-- Analyse `src`, select the route, and dispatch it.
 

@@ -42,6 +42,12 @@ on `IsCovered`. This module adds the control-flow arms, building
   zero-init elision) with the body translated by this front, so a binder over
   a control form is accepted.
 
+* **`RForRuntime x bound body`** — declined. `Com catCryptDialect` has no loop
+  node, so a loop whose trip count is read at run time has no `ComCont` image;
+  the runtime-trip loop node `ComL.forLoopNRt` is built over this front's
+  translation of `body` by `TranslateDialectRuntimeLoop.rolledForLoopNRt`
+  (`translateDialectControl_rForRuntime`, `not_isCoveredCtl_rForRuntime`).
+
 Every other arm delegates to `translateDialectFull`.
 
 ## Covered fragment
@@ -241,7 +247,21 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
   -- The dead zero-init elision of `translateDialectFull`'s `RLetZero` arm, with
   -- the body translated by this control front.
   | .RLetZero _name _tt body => translateDialectControl vm body
+  -- A loop whose trip count is read at run time. `Com catCryptDialect` has no
+  -- loop node (`VIR.Com` is `ret`/`var` only), so no `ComCont` prefix denotes a
+  -- fold of the body at a count fixed by the entry state; the front declines.
+  -- The runtime-trip loop node is `ComL.forLoopNRt`, built over this front's
+  -- translation of the body by `TranslateDialectRuntimeLoop.rolledForLoopNRt`,
+  -- with the count read from a register the caller names.
+  | .RForRuntime _ _ _ => none
   | c => translateDialectFull vm c
+
+/-- `translateDialectControl` declines a runtime-trip loop: the target has no
+    loop node. -/
+theorem translateDialectControl_rForRuntime {Γ : Ctx} (vm : VarMap Γ) (x : String)
+    (bound : CatCrypt.Crypto.Jasmin.LowCT.SExpr) (body : LowCT) :
+    translateDialectControl vm (.RForRuntime x bound body) = none :=
+  rfl
 
 /-- `translateDialectControl` on `RSeq`: the two children translated in sequence,
     prefixes composed. -/
@@ -313,6 +333,13 @@ inductive IsCoveredCtl : LowCT → Prop
       IsCoveredCtl body → IsCoveredCtl (.RLetU64Zero name body)
   | rLetZero {name : String} {tt : TowerType} {body : LowCT} :
       IsCoveredCtl body → IsCoveredCtl (.RLetZero name tt body)
+
+/-- A runtime-trip loop is outside the control-covered fragment. -/
+theorem not_isCoveredCtl_rForRuntime (x : String) (bound : CatCrypt.Crypto.Jasmin.LowCT.SExpr)
+    (body : LowCT) : ¬ IsCoveredCtl (.RForRuntime x bound body) := by
+  intro h
+  cases h with
+  | ofCovered hc => cases hc
 
 /-- On the leaf-call covered fragment, `translateDialectControl` coincides with
     `translateDialectFull`: the `RSeq` and `RLetU64Zero` arms agree by the
