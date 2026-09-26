@@ -19,14 +19,12 @@ immediate forms:
   form otherwise;
 * `.shl`/`.shr d (.imm 1)` take the `REX.W D1 /4` resp. `D1 /5` shift-by-one form.
 
-`SailX86Decoder.decodeJ1` has no `D1` arm, reads the `C7 /0 id` immediate
-zero-extended, which is the 64-bit value of the instruction only below `2 ^ 31`,
-and has no arm for the compares `REX.W 39 /r` and `REX.W 81 /7 id` (the loop exit
-test `XLoop.cmpInstr` is `cmp ctr (.imm 0)`). `decodeJ1_6` extends it: it runs
-`decodeJ1`, sign-extends the immediate of a decoded `REX.W C7` move
-(`sextMovC7`), and on a stream `decodeJ1` rejects tries the `D1` shift-by-one
-forms (`decodeShift1`) and then the compares (`decodeCmp`, whose `imm32` field is
-read sign-extended, the value the CPU compares against).
+`SailX86Decoder.decodeJ1` has no `D1` arm and no arm for the compares
+`REX.W 39 /r` and `REX.W 81 /7 id` (the loop exit test `XLoop.cmpInstr` is
+`cmp ctr (.imm 0)`). `decodeJ1_6` extends it: it runs `decodeJ1`, and on a stream
+`decodeJ1` rejects tries the `D1` shift-by-one forms (`decodeShift1`) and then
+the compares (`decodeCmp`, whose `imm32` field is read sign-extended through
+`SailX86Decoder.sext32`, the value the CPU compares against).
 
 The indexed memory moves `loadMemIdx`/`storeMemIdx` are inverted by `decodeJ1`
 itself (`SailX86Decoder.roundtrip_loadMemIdx`, `roundtrip_storeMemIdx`); their
@@ -36,12 +34,10 @@ than through `blockCovered`.
 
 ## Main results
 
-* `sext32`, `sextMovC7`, `decodeShift1`, `decodeCmp`, `decodeJ1_6`,
-  `decodeJStream6`: the extended decoder and its stream version.
-* `sext32_imm32`: sign-extending the low 32 bits of a 64-bit value that fits a
-  signed 32-bit immediate recovers the value, in both ranges.
-* `decodeJ1_6_of_decodeJ1`: wherever `decodeJ1` succeeds, `decodeJ1_6` succeeds
-  with the same remaining bytes and the same instruction up to `sextMovC7`.
+* `decodeShift1`, `decodeCmp`, `decodeJ1_6`, `decodeJStream6`: the extended
+  decoder and its stream version.
+* `decodeJ1_6_of_decodeJ1`: wherever `decodeJ1` succeeds, `decodeJ1_6` returns
+  the same result.
 * `roundtrip_movImm6`, `roundtrip_shl1`, `roundtrip_shr1`: the three arms where
   `encodeJInstr6` differs from `encodeJInstr` decode back to themselves.
 * `roundtrip_cmpRR`, `roundtrip_cmpImm`, `roundtrip_cmpInstr`,
@@ -71,22 +67,6 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encMovImmw encShif
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms (encodeJInstr6 encodeJBlock6)
 
 /-! ## 1. The extended decoder -/
-
-/-- The 64-bit value a 32-bit immediate field `u < 2 ^ 32` denotes under sign
-    extension: `u` below `2 ^ 31`, else `u + (2 ^ 64 - 2 ^ 32)`. -/
-def sext32 (u : Nat) : Nat := if u < 2 ^ 31 then u else u + (2 ^ 64 - 2 ^ 32)
-
-/-- The instruction `decodeJ1_6` returns for a `decodeJ1` result `i` read off the
-    bytes `bs`: when `bs` starts with a `REX.W` byte followed by `C7` and `i` is a
-    `mov` of an immediate, the immediate is sign-extended by `sext32`; every other
-    instruction is unchanged. -/
-def sextMovC7 (bs : List (BitVec 8)) : JInstr 64 → JInstr 64
-  | .mov d (.imm u) =>
-      match bs with
-      | r :: op :: _ =>
-          if rexW r = 1 ∧ op.toNat = 0xc7 then .mov d (.imm (sext32 u)) else .mov d (.imm u)
-      | _ => .mov d (.imm u)
-  | i => i
 
 /-- The `REX.W D1 /4` (`shl $1`) and `REX.W D1 /5` (`shr $1`) register-direct
     shift-by-one forms. -/
@@ -119,12 +99,12 @@ def decodeCmp : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
       else none
   | _ => none
 
-/-- Decode one instruction off the front of a byte stream: `decodeJ1` with the
-    `REX.W C7 /0 id` immediate sign-extended, and on the streams `decodeJ1`
-    rejects, the `D1` shift-by-one forms and then the compares. -/
+/-- Decode one instruction off the front of a byte stream: `decodeJ1`, and on the
+    streams `decodeJ1` rejects, the `D1` shift-by-one forms and then the
+    compares. -/
 def decodeJ1_6 (bs : List (BitVec 8)) : Option (JInstr 64 × List (BitVec 8)) :=
   match decodeJ1 bs with
-  | some (i, rest) => some (sextMovC7 bs i, rest)
+  | some r => some r
   | none => (decodeShift1 bs).or (decodeCmp bs)
 
 /-- Decode a byte stream into `n` instructions with `decodeJ1_6`, requiring the
@@ -138,11 +118,10 @@ def decodeJStream6 : Nat → List (BitVec 8) → Option (List (JInstr 64))
 
 /-! ## 2. Relation to `decodeJ1` -/
 
-/-- Wherever `decodeJ1` succeeds, `decodeJ1_6` succeeds with the same remaining
-    bytes, and returns the `decodeJ1` instruction passed through `sextMovC7`. -/
+/-- Wherever `decodeJ1` succeeds, `decodeJ1_6` returns the same result. -/
 theorem decodeJ1_6_of_decodeJ1 (bs rest : List (BitVec 8)) (i : JInstr 64)
     (h : decodeJ1 bs = some (i, rest)) :
-    decodeJ1_6 bs = some (sextMovC7 bs i, rest) := by
+    decodeJ1_6 bs = some (i, rest) := by
   simp only [decodeJ1_6, h]
 
 /-- On a stream `decodeJ1` rejects, `decodeJ1_6` is `decodeShift1`, then
@@ -151,27 +130,11 @@ theorem decodeJ1_6_of_none (bs : List (BitVec 8)) (h : decodeJ1 bs = none) :
     decodeJ1_6 bs = (decodeShift1 bs).or (decodeCmp bs) := by
   simp only [decodeJ1_6, h]
 
-/-! ## 3. Sign extension of the `imm32` field -/
+/-! ## 3. The two spellings of the `imm32` side condition -/
 
-/-- The little-endian 32-bit recomposition of the `imm32LE` bytes of any `v` is
-    `v % 2 ^ 32`. -/
-theorem imm32_recompose_mod_any (v : Nat) :
-    (v &&& 0xff) % 2 ^ 8 + ((v >>> 8) &&& 0xff) % 2 ^ 8 * 0x100
-      + ((v >>> 16) &&& 0xff) % 2 ^ 8 * 0x10000
-      + ((v >>> 24) &&& 0xff) % 2 ^ 8 * 0x1000000 = v % 2 ^ 32 := by
-  simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
-    Nat.shiftRight_eq_div_pow]
-  omega
-
-/-- Sign-extending the low 32 bits of a 64-bit value that fits a signed 32-bit
-    immediate recovers the value: below `2 ^ 31` the low bits are the value, and
-    for `2 ^ 64 - 2 ^ 31 ≤ v < 2 ^ 64` they are `v - (2 ^ 64 - 2 ^ 32)`, which is at
-    least `2 ^ 31`. -/
-theorem sext32_imm32 (v : Nat) (hv : v < 2 ^ 64)
-    (hf : X86Backend.GatherImmForms.fitsImm32S v = true) : sext32 (v % 2 ^ 32) = v := by
-  simp only [X86Backend.GatherImmForms.fitsImm32S, Bool.or_eq_true, decide_eq_true_eq] at hf
-  unfold sext32
-  split <;> omega
+/-- `GatherImmForms.fitsImm32S` is `ScalarEncoder.fitsImm32S`. -/
+theorem fitsImm32S_gather (v : Nat) :
+    X86Backend.GatherImmForms.fitsImm32S v = fitsImm32S v := rfl
 
 /-! ## 4. Prefix-byte facts -/
 
@@ -249,12 +212,12 @@ theorem roundtrip_shr1 (alloc : GpAlloc) (d : String) (rest : List (BitVec 8)) :
 
 /-! ## 6. The immediate `MOV` -/
 
-/-- `decodeJ1` reads a `REX.W C7 /0 id` stream as a `mov` of the zero-extended
-    `imm32` field, `v % 2 ^ 32`. -/
+/-- `decodeJ1` reads a `REX.W C7 /0 id` stream as a `mov` of the sign-extended
+    `imm32` field, `sext32 (v % 2 ^ 32)`. -/
 theorem decodeJ1_encMovImm (alloc : GpAlloc) (d : String) (v : Nat)
     (rest : List (BitVec 8)) :
     decodeJ1 (encMovImm (gpNum (regOf alloc d)) v ++ rest)
-      = some (.mov (nameOf alloc d) (.imm (v % 2 ^ 32)), rest) := by
+      = some (.mov (nameOf alloc d) (.imm (sext32 (v % 2 ^ 32))), rest) := by
   simp only [encMovImm, imm32LE, List.map_cons,
     List.map_nil, List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
@@ -267,7 +230,7 @@ theorem decodeJ1_encMovImm (alloc : GpAlloc) (d : String) (v : Nat)
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
     if_false, if_true, show (0 : Nat) &&& 7 = 0 by decide,
-    imm32_recompose_mod_any v]
+    imm32S, imm32_recompose_mod_any v]
 
 /-- `MOV $imm, %dst` decodes back to itself from its `encodeJInstr6` bytes for any
     immediate a 64-bit register holds: the `REX.W C7 /0 id` form over the whole
@@ -279,11 +242,9 @@ theorem roundtrip_movImm6 (alloc : GpAlloc) (d : String) (v : Nat)
       = some (renameJ alloc (.mov d (.imm v)), rest) := by
   by_cases hf : X86Backend.GatherImmForms.fitsImm32S v = true
   · simp only [encodeJInstr6, if_pos hf, encMovImmw_one_eq]
-    rw [decodeJ1_6_of_decodeJ1 _ _ _ (decodeJ1_encMovImm alloc d v rest)]
-    simp only [encMovImm, List.map_cons, List.cons_append, sextMovC7,
-      rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
-      BitVec.toNat_ofNat, show (0xc7 : Nat) % 2 ^ 8 = 0xc7 from rfl, and_self, if_true,
-      sext32_imm32 v hv hf, renameJ, operandOf]
+    rw [decodeJ1_6_of_decodeJ1 _ _ _ (decodeJ1_encMovImm alloc d v rest),
+      sext32_imm32 v hv (fitsImm32S_gather v ▸ hf)]
+    simp only [renameJ, operandOf]
   · have h31 : ¬ v < 2 ^ 31 := by
       simp only [X86Backend.GatherImmForms.fitsImm32S, Bool.or_eq_true, decide_eq_true_eq,
         not_or] at hf
@@ -291,11 +252,6 @@ theorem roundtrip_movImm6 (alloc : GpAlloc) (d : String) (v : Nat)
     have henc : encodeJInstr6 alloc (.mov d (.imm v)) = encodeJInstr alloc (.mov d (.imm v)) := by
       simp only [encodeJInstr6, if_neg hf, encodeJInstr, if_neg h31]
     rw [henc, decodeJ1_6_of_decodeJ1 _ _ _ (roundtrip_movImm alloc d v rest hv)]
-    have hlow : gpNum (regOf alloc d) &&& 7 < 8 := by
-      rw [Nat.and_two_pow_sub_one_eq_mod _ 3]; omega
-    have hop : ¬ ((0xb8 + (gpNum (regOf alloc d) &&& 7)) % 2 ^ 8 = 0xc7) := by omega
-    simp only [encodeJInstr, if_neg h31, encMovImm64, List.map_cons, List.cons_append,
-      renameJ, operandOf, sextMovC7, BitVec.toNat_ofNat, hop, and_false, if_false]
 
 /-! ## 7. The compares -/
 
@@ -401,24 +357,22 @@ theorem roundtrip_cmpInstr (alloc : GpAlloc) (l : X86Backend.LprogControlFlow.XL
 
 /-! ## 8. The forms `decodeJ1` inverts -/
 
-/-- An instruction on which `encodeJInstr6` agrees with `encodeJInstr`, whose
-    renamed form `sextMovC7` leaves unchanged, and which `decodeJ1` reads back
-    off its `encodeJInstr` bytes, decodes back to itself through `decodeJ1_6`. -/
+/-- An instruction on which `encodeJInstr6` agrees with `encodeJInstr`, and which
+    `decodeJ1` reads back off its `encodeJInstr` bytes, decodes back to itself
+    through `decodeJ1_6`. -/
 theorem roundtrip_of_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVec 8))
     (henc : encodeJInstr6 alloc i = encodeJInstr alloc i)
-    (hs : ∀ bs, sextMovC7 bs (renameJ alloc i) = renameJ alloc i)
     (h : decodeJ1 (encodeJInstr alloc i ++ rest) = some (renameJ alloc i, rest)) :
     decodeJ1_6 (encodeJInstr6 alloc i ++ rest) = some (renameJ alloc i, rest) := by
-  rw [henc, decodeJ1_6_of_decodeJ1 _ _ _ h, hs]
+  rw [henc, decodeJ1_6_of_decodeJ1 _ _ _ h]
 
-/-- A covered instruction on which `encodeJInstr6` agrees with `encodeJInstr` and
-    whose renamed form `sextMovC7` leaves unchanged decodes back to itself. -/
+/-- A covered instruction on which `encodeJInstr6` agrees with `encodeJInstr`
+    decodes back to itself. -/
 theorem roundtrip_of_encodeJInstr (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVec 8))
     (henc : encodeJInstr6 alloc i = encodeJInstr alloc i)
-    (hs : ∀ bs, sextMovC7 bs (renameJ alloc i) = renameJ alloc i)
     (hc : blockCovered i = true) (hr : mulxRdxOk alloc i = true) :
     decodeJ1_6 (encodeJInstr6 alloc i ++ rest) = some (renameJ alloc i, rest) :=
-  roundtrip_of_decodeJ1 alloc i rest henc hs (roundtrip_decodeJ1 alloc i rest hc hr)
+  roundtrip_of_decodeJ1 alloc i rest henc (roundtrip_decodeJ1 alloc i rest hc hr)
 
 /-- `MOV (%base,%idx,scale), %dst` decodes back to itself through `decodeJ1_6`
     when the index register is not `%rsp` and the stride is `1`, `2`, `4` or `8`. -/
@@ -427,7 +381,7 @@ theorem roundtrip_loadMemIdx6 (alloc : GpAlloc) (d base idx : String) (scale : N
     (hs : scaleOk scale = true) :
     decodeJ1_6 (encodeJInstr6 alloc (.loadMemIdx d base idx scale) ++ rest)
       = some (renameJ alloc (.loadMemIdx d base idx scale), rest) :=
-  roundtrip_of_decodeJ1 alloc _ rest rfl (fun _ => rfl)
+  roundtrip_of_decodeJ1 alloc _ rest rfl
     (roundtrip_loadMemIdx alloc d base idx scale rest hx4 hs)
 
 /-- `MOV %src, (%base,%idx,scale)` decodes back to itself through `decodeJ1_6`
@@ -437,7 +391,7 @@ theorem roundtrip_storeMemIdx6 (alloc : GpAlloc) (base idx : String) (scale : Na
     (hs : scaleOk scale = true) :
     decodeJ1_6 (encodeJInstr6 alloc (.storeMemIdx base idx scale (.reg s)) ++ rest)
       = some (renameJ alloc (.storeMemIdx base idx scale (.reg s)), rest) :=
-  roundtrip_of_decodeJ1 alloc _ rest rfl (fun _ => rfl)
+  roundtrip_of_decodeJ1 alloc _ rest rfl
     (roundtrip_storeMemIdx alloc base idx scale s rest hx4 hs)
 
 /-- One instruction of `blockCovered` decodes off the front of its `encodeJInstr6`
@@ -448,25 +402,25 @@ theorem roundtrip_decodeJ1_6_covered (alloc : GpAlloc) (i : JInstr 64) (rest : L
   cases i with
   | mov d s =>
       cases s with
-      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl (fun _ => rfl) hc hr
+      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl hc hr
       | imm v => exact roundtrip_movImm6 alloc d v rest (of_decide_eq_true hc)
   | shl d s =>
       cases s with
-      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl (fun _ => rfl) hc hr
+      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl hc hr
       | imm v =>
           by_cases h1 : v = 1
           · subst h1; exact roundtrip_shl1 alloc d rest
           · exact roundtrip_of_encodeJInstr alloc _ rest
-              (by simp only [encodeJInstr6, if_neg h1, encodeJInstr]) (fun _ => rfl) hc hr
+              (by simp only [encodeJInstr6, if_neg h1, encodeJInstr]) hc hr
   | shr d s =>
       cases s with
-      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl (fun _ => rfl) hc hr
+      | reg r => exact roundtrip_of_encodeJInstr alloc _ rest rfl hc hr
       | imm v =>
           by_cases h1 : v = 1
           · subst h1; exact roundtrip_shr1 alloc d rest
           · exact roundtrip_of_encodeJInstr alloc _ rest
-              (by simp only [encodeJInstr6, if_neg h1, encodeJInstr]) (fun _ => rfl) hc hr
-  | _ => exact roundtrip_of_encodeJInstr alloc _ rest rfl (fun _ => rfl) hc hr
+              (by simp only [encodeJInstr6, if_neg h1, encodeJInstr]) hc hr
+  | _ => exact roundtrip_of_encodeJInstr alloc _ rest rfl hc hr
 
 /-! ## 9. The covered set -/
 

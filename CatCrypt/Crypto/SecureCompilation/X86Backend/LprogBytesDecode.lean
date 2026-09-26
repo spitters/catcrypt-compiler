@@ -276,9 +276,10 @@ theorem decodeLinstr_leaRsp (disp : Int) (rest : List (BitVec 8))
     rexB_rex _ _ _ (bit_le_one _ _)]
   rfl
 
-/-- `MOV $imm32, %d` (`REX.W C7 /0 id`) decodes to a `mov` of the immediate. -/
+/-- `MOV $imm32, %d` (`REX.W C7 /0 id`) decodes to a `mov` of the immediate, a
+    64-bit value that sign-extends from 32 bits. -/
 theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))
-    (hd : d < 16) (hv : v < 2 ^ 32) :
+    (hd : d < 16) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeLinstr (encMovImmw 1 d v ++ rest)
       = some (.op (.mov (regName d) (.imm v)), rest) := by
   apply decodeLinstr_of_decodeJ1
@@ -295,7 +296,7 @@ theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, ne_eq, not_true_eq_false,
     if_false, if_true, show (0 : Nat) &&& 7 = 0 by decide,
-    imm32_recompose_mod v hv]
+    imm32S_imm32LE v hv hf]
 
 /-! ## 3. Round trips of the shapes outside `decodeJ1` -/
 
@@ -1213,8 +1214,9 @@ theorem mkMov_ok (d s : Nat) (hd : d < 16) (hs : s < 16) : ItemOK (mkMov d s) :=
   ItemOK_of_decode fun rest => decodeLinstr_movRR d s rest hd hs
 theorem mkCmp_ok (d s : Nat) (hd : d < 16) (hs : s < 16) : ItemOK (mkCmp d s) :=
   ItemOK_of_decode fun rest => decodeLinstr_cmpRR d s rest hd hs
-theorem mkMovImm_ok (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 32) : ItemOK (mkMovImm d v) :=
-  ItemOK_of_decode fun rest => decodeLinstr_movImm d v rest hd hv
+theorem mkMovImm_ok (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
+    ItemOK (mkMovImm d v) :=
+  ItemOK_of_decode fun rest => decodeLinstr_movImm d v rest hd hv hf
 theorem mkImm8_ok (digit : Nat) (mk : String → JOperand → JInstr 64) (d v : Nat)
     (hdig : digit < 8) (hd : d < 16) (hv : fitsImm8S 1 v = true)
     (halu : aluImm8Mnemonic digit = some mk) : ItemOK (mkImm8 digit mk d v) :=
@@ -1282,7 +1284,7 @@ macro "item_ok" : tactic =>
     | (refine mkAlu_ok _ _ _ _ ?_ ?_ ?_ ?_ <;> first | assumption | decide | rfl)
     | (refine mkMov_ok _ _ ?_ ?_ <;> decide)
     | (refine mkCmp_ok _ _ ?_ ?_ <;> decide)
-    | (refine mkMovImm_ok _ _ ?_ ?_ <;> decide)
+    | (refine mkMovImm_ok _ _ ?_ ?_ ?_ <;> decide)
     | (refine mkImm8_ok _ _ _ _ ?_ ?_ ?_ ?_ <;> first | decide | rfl)
     | (refine mkLoadIdx_ok _ _ _ ?_ ?_ ?_ ?_ ?_ <;> decide)
     | (refine mkStoreIdx_ok _ _ _ ?_ ?_ ?_ ?_ ?_ <;> decide)

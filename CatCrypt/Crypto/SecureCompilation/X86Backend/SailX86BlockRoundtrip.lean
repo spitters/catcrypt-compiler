@@ -47,8 +47,10 @@ instruction, with nothing left over.
 * `setc`, the `SETB`/`MOVZBQ` pair `encSetcMovzx` emits, read as one
   instruction; its `SETB` carries `REX.B`, a bare `REX` or no prefix,
 
-under the side conditions the encoding needs: an immediate fits the width its
-opcode carries, and a displacement fits a signed 32-bit value (the encoder
+under the side conditions the encoding needs: an `imm32` immediate is a 64-bit
+value that sign-extends from 32 bits (`fitsImm32S`; the decoder reads the field
+through `imm32S`, the sign extension the CPU applies under `REX.W`), an `imm8`
+fits a byte, and a displacement fits a signed 32-bit value (the encoder
 picks the `disp0`, `disp8` or `disp32` form, and the decoder reads all three).
 `blockCovered` is that
 same set, in the form `roundtrip_block` places as a hypothesis on each
@@ -121,6 +123,16 @@ def decodeDisp : Nat → List (BitVec 8) → Option (Int × List (BitVec 8))
   | 1, d :: r => some (sdisp8 d, r)
   | 2, d0 :: d1 :: d2 :: d3 :: r => some (sdisp32 d0 d1 d2 d3, r)
   | _, _ => none
+
+/-- The 64-bit value a 32-bit immediate field `u < 2 ^ 32` denotes under the sign
+    extension every `REX.W` `imm32` form (`81 /digit id`, `C7 /0 id`, `69 /r id`)
+    applies: `u` below `2 ^ 31`, else `u + (2 ^ 64 - 2 ^ 32)`. -/
+def sext32 (u : Nat) : Nat := if u < 2 ^ 31 then u else u + (2 ^ 64 - 2 ^ 32)
+
+/-- The sign-extended 64-bit value of the little-endian `imm32` bytes
+    `j0 j1 j2 j3`. -/
+def imm32S (j0 j1 j2 j3 : BitVec 8) : Nat :=
+  sext32 (j0.toNat + j1.toNat * 0x100 + j2.toNat * 0x10000 + j3.toNat * 0x1000000)
 
 /-- Parse a memory operand under the prefix's `X` bit `x` (`REX.X`, or the
     inverted `X̄` of a VEX prefix): the ModRM byte, the SIB byte when the `r/m`
@@ -303,8 +315,7 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
                 | some (rf, bLow, none, off, j0 :: j1 :: j2 :: j3 :: rest2) =>
                     if rf = 0 then
                       some (.storeMem (regName (rexB r * 8 + bLow)) off
-                        (.imm (j0.toNat + j1.toNat * 0x100 + j2.toNat * 0x10000
-                          + j3.toNat * 0x1000000)), rest2)
+                        (.imm (imm32S j0 j1 j2 j3)), rest2)
                     else none
                 | _ => none
               else none
@@ -312,25 +323,21 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
               match rest1 with
               | j0 :: j1 :: j2 :: j3 :: rest2 =>
                   match aluImmMnemonic (regField modrm) with
-                  | some mk =>
-                      some (mk dst (.imm (j0.toNat + j1.toNat * 0x100
-                        + j2.toNat * 0x10000 + j3.toNat * 0x1000000)), rest2)
+                  | some mk => some (mk dst (.imm (imm32S j0 j1 j2 j3)), rest2)
                   | none => none
               | _ => none
             else if op.toNat = 0xc7 then
               match rest1 with
               | j0 :: j1 :: j2 :: j3 :: rest2 =>
                   if regField modrm = 0 then
-                    some (.mov dst (.imm (j0.toNat + j1.toNat * 0x100
-                      + j2.toNat * 0x10000 + j3.toNat * 0x1000000)), rest2)
+                    some (.mov dst (.imm (imm32S j0 j1 j2 j3)), rest2)
                   else none
               | _ => none
             else if op.toNat = 0x69 then
               match rest1 with
               | j0 :: j1 :: j2 :: j3 :: rest2 =>
                   if regField modrm = rmField modrm then
-                    some (.imul dst (.imm (j0.toNat + j1.toNat * 0x100
-                      + j2.toNat * 0x10000 + j3.toNat * 0x1000000)), rest2)
+                    some (.imul dst (.imm (imm32S j0 j1 j2 j3)), rest2)
                   else none
               | _ => none
             else if op.toNat = 0xc1 then
@@ -478,26 +485,28 @@ theorem dispOk32_of_dispOk (off : Int) (h : dispOk off = true) : dispOk32 off = 
   omega
 
 /-- The instruction forms `decodeJ1` inverts, with the width side conditions each
-    encoding needs. -/
+    encoding needs: an `imm32` immediate is a 64-bit value that sign-extends from
+    32 bits (`fitsImm32S`), an `imm8` fits a byte, a displacement fits a signed
+    32-bit value. -/
 def decodableJ : JInstr 64 → Bool
   | .mov _ (.reg _) => true
   | .mov _ (.imm v) => v < 2 ^ 64
   | .add _ (.reg _) => true
-  | .add _ (.imm v) => v < 2 ^ 32
+  | .add _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .sub _ (.reg _) => true
-  | .sub _ (.imm v) => v < 2 ^ 32
+  | .sub _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .adc _ (.reg _) => true
-  | .adc _ (.imm v) => v < 2 ^ 32
+  | .adc _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .sbb _ (.reg _) => true
-  | .sbb _ (.imm v) => v < 2 ^ 32
+  | .sbb _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .and_ _ (.reg _) => true
-  | .and_ _ (.imm v) => v < 2 ^ 32
+  | .and_ _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .or_ _ (.reg _) => true
-  | .or_ _ (.imm v) => v < 2 ^ 32
+  | .or_ _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .xor_ _ (.reg _) => true
-  | .xor_ _ (.imm v) => v < 2 ^ 32
+  | .xor_ _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .imul _ (.reg _) => true
-  | .imul _ (.imm v) => v < 2 ^ 32
+  | .imul _ (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v
   | .neg _ => true
   | .shl _ (.imm v) => v < 256
   | .shr _ (.imm v) => v < 256
@@ -511,7 +520,7 @@ def decodableJ : JInstr 64 → Bool
   | .mulxMem _ _ (.reg _) _ off => dispOk32 off
   | .loadMem _ _ off => dispOk32 off
   | .storeMem _ off (.reg _) => dispOk32 off
-  | .storeMem _ off (.imm v) => decide (v < 2 ^ 32) && dispOk32 off
+  | .storeMem _ off (.imm v) => decide (v < 2 ^ 64) && fitsImm32S v && dispOk32 off
   | .lea _ base idx scale off => scale == 0 && base == idx && dispOk32 off
   | .movzx _ 8 _ => true
   | .movzx _ 16 _ => true
@@ -553,6 +562,14 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #kat_kernel blockCovered (.adcxMem "a" "b" 152)
 #kat_kernel blockCovered (.storeMem "a" 392 (.imm 0))
 #kat_kernel ! blockCovered (.storeMem "a" 0 (.imm (2 ^ 32)))
+-- An `imm32` immediate is the 64-bit value the sign-extended field denotes: the
+-- range `[2 ^ 31, 2 ^ 64 - 2 ^ 31)` has no `imm32` encoding.
+#kat_kernel blockCovered (.add "a" (.imm (2 ^ 31 - 1)))
+#kat_kernel ! blockCovered (.add "a" (.imm (2 ^ 31)))
+#kat_kernel ! blockCovered (.add "a" (.imm (2 ^ 32 - 1)))
+#kat_kernel blockCovered (.sub "a" (.imm (2 ^ 64 - 1)))
+#kat_kernel blockCovered (.storeMem "a" 0 (.imm (2 ^ 64 - 2 ^ 31)))
+#kat_kernel ! blockCovered (.imul "a" (.imm (2 ^ 64 - 2 ^ 31 - 1)))
 #kat_kernel ! blockCovered (.setcc .b "a")
 #kat_kernel ! blockCovered (.shl "a" (.reg "b"))
 -- The flag-only, BMI1/BMI2 and extension-move forms, and the indexed `lea`, have
@@ -1224,6 +1241,41 @@ theorem imm32_recompose_mod (v : Nat) (hv : v < 2 ^ 32) :
     Nat.shiftRight_eq_div_pow]
   omega
 
+/-- The little-endian 32-bit recomposition of the `imm32LE` bytes of any `v` is
+    `v % 2 ^ 32`. -/
+theorem imm32_recompose_mod_any (v : Nat) :
+    (v &&& 0xff) % 2 ^ 8 + ((v >>> 8) &&& 0xff) % 2 ^ 8 * 0x100
+      + ((v >>> 16) &&& 0xff) % 2 ^ 8 * 0x10000
+      + ((v >>> 24) &&& 0xff) % 2 ^ 8 * 0x1000000 = v % 2 ^ 32 := by
+  simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
+    Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- Below `2 ^ 31` the sign extension is the identity. -/
+theorem sext32_of_lt (u : Nat) (h : u < 2 ^ 31) : sext32 u = u := if_pos h
+
+/-- `fitsImm32S` as the arithmetic condition it decides. -/
+@[simp] theorem fitsImm32S_eq_true (v : Nat) :
+    fitsImm32S v = true ↔ v < 2 ^ 31 ∨ 2 ^ 64 - 2 ^ 31 ≤ v := by
+  simp only [fitsImm32S, Bool.or_eq_true, decide_eq_true_eq]
+
+/-- Sign-extending the low 32 bits of a 64-bit value that fits a signed 32-bit
+    immediate recovers the value: below `2 ^ 31` the low bits are the value, and
+    for `2 ^ 64 - 2 ^ 31 ≤ v < 2 ^ 64` they are `v - (2 ^ 64 - 2 ^ 32)`, which is at
+    least `2 ^ 31`. -/
+theorem sext32_imm32 (v : Nat) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
+    sext32 (v % 2 ^ 32) = v := by
+  simp only [fitsImm32S, Bool.or_eq_true, decide_eq_true_eq] at hf
+  unfold sext32
+  split <;> omega
+
+/-- The decoder's sign-extended reading of the `imm32LE` bytes of a 64-bit value
+    that sign-extends from 32 bits is the value. -/
+theorem imm32S_imm32LE (v : Nat) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
+    imm32S (BitVec.ofNat 8 (v &&& 0xff)) (BitVec.ofNat 8 ((v >>> 8) &&& 0xff))
+      (BitVec.ofNat 8 ((v >>> 16) &&& 0xff)) (BitVec.ofNat 8 ((v >>> 24) &&& 0xff)) = v := by
+  simp only [imm32S, BitVec.toNat_ofNat, imm32_recompose_mod_any, sext32_imm32 v hv hf]
+
 /-- The little-endian 64-bit recomposition, on the `% 2 ^ 8` byte values the
     decoder reads out of `BitVec.ofNat 8` bytes. -/
 theorem imm64_recompose_mod (v : Nat) (hv : v < 2 ^ 64) :
@@ -1244,11 +1296,12 @@ theorem imm8_recompose_mod (v : Nat) (hv : v < 256) : (v &&& 0xff) % 2 ^ 8 = v :
   omega
 
 /-- An immediate-source ALU form (`REX.W 81 /digit id`) decodes back to the
-    mnemonic its opcode-extension digit names in `aluImmMnemonic`, for an
-    immediate that fits `imm32`. -/
+    mnemonic its opcode-extension digit names in `aluImmMnemonic`, for a 64-bit
+    immediate that sign-extends from 32 bits. -/
 theorem roundtrip_aluImm (alloc : GpAlloc) (digit : Nat)
     (mk : String → JOperand → JInstr 64) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hdig : digit < 8) (hv : v < 2 ^ 32) (halu : aluImmMnemonic digit = some mk) :
+    (hdig : digit < 8) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true)
+    (halu : aluImmMnemonic digit = some mk) :
     decodeJ1 (encAluImm digit (gpNum (regOf alloc d)) v ++ rest)
       = some (mk (nameOf alloc d) (.imm v), rest) := by
   have hd7 : digit &&& 7 = digit := by
@@ -1263,60 +1316,60 @@ theorem roundtrip_aluImm (alloc : GpAlloc) (digit : Nat)
     if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x89) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg, hd7,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, halu, imm32_recompose_mod v hv]
+    if_false, if_true, halu, imm32S_imm32LE v hv hf]
 
 /-- `ADD $imm32, %dst` (`REX.W 81 /0 id`) decodes back to itself. -/
 theorem roundtrip_addImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.add d (.imm v)) ++ rest)
       = some (renameJ alloc (.add d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 0 JInstr.add d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 0 JInstr.add d v rest (by decide) hv hf rfl
 
 /-- `OR $imm32, %dst` (`REX.W 81 /1 id`) decodes back to itself. -/
 theorem roundtrip_orImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.or_ d (.imm v)) ++ rest)
       = some (renameJ alloc (.or_ d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 1 JInstr.or_ d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 1 JInstr.or_ d v rest (by decide) hv hf rfl
 
 /-- `ADC $imm32, %dst` (`REX.W 81 /2 id`) decodes back to itself. -/
 theorem roundtrip_adcImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.adc d (.imm v)) ++ rest)
       = some (renameJ alloc (.adc d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 2 JInstr.adc d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 2 JInstr.adc d v rest (by decide) hv hf rfl
 
 /-- `SBB $imm32, %dst` (`REX.W 81 /3 id`) decodes back to itself. -/
 theorem roundtrip_sbbImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.sbb d (.imm v)) ++ rest)
       = some (renameJ alloc (.sbb d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 3 JInstr.sbb d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 3 JInstr.sbb d v rest (by decide) hv hf rfl
 
 /-- `AND $imm32, %dst` (`REX.W 81 /4 id`) decodes back to itself. -/
 theorem roundtrip_andImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.and_ d (.imm v)) ++ rest)
       = some (renameJ alloc (.and_ d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 4 JInstr.and_ d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 4 JInstr.and_ d v rest (by decide) hv hf rfl
 
 /-- `SUB $imm32, %dst` (`REX.W 81 /5 id`) decodes back to itself. -/
 theorem roundtrip_subImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.sub d (.imm v)) ++ rest)
       = some (renameJ alloc (.sub d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 5 JInstr.sub d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 5 JInstr.sub d v rest (by decide) hv hf rfl
 
 /-- `XOR $imm32, %dst` (`REX.W 81 /6 id`) decodes back to itself. -/
 theorem roundtrip_xorImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.xor_ d (.imm v)) ++ rest)
       = some (renameJ alloc (.xor_ d (.imm v)), rest) :=
-  roundtrip_aluImm alloc 6 JInstr.xor_ d v rest (by decide) hv rfl
+  roundtrip_aluImm alloc 6 JInstr.xor_ d v rest (by decide) hv hf rfl
 
 /-- `IMUL $imm32, %dst, %dst` (`REX.W 69 /r id`) decodes back to itself. -/
 theorem roundtrip_imulImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
-    (hv : v < 2 ^ 32) :
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
     decodeJ1 (encodeJInstr alloc (.imul d (.imm v)) ++ rest)
       = some (renameJ alloc (.imul d (.imm v)), rest) := by
   simp only [encodeJInstr, encImulImm, imm32LE, List.map_cons, List.map_nil,
@@ -1331,7 +1384,7 @@ theorem roundtrip_imulImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List 
     if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0xc7) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, renameJ, operandOf, imm32_recompose_mod v hv]
+    if_false, if_true, renameJ, operandOf, imm32S_imm32LE v hv hf]
 
 /-- `MOV $imm, %dst` decodes back to itself for any immediate a 64-bit register
     can hold. The encoder picks the sign-extending `C7 /0 id` form below `2 ^ 31`
@@ -1341,7 +1394,8 @@ theorem roundtrip_movImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (
     decodeJ1 (encodeJInstr alloc (.mov d (.imm v)) ++ rest)
       = some (renameJ alloc (.mov d (.imm v)), rest) := by
   by_cases h31 : v < 2 ^ 31
-  · have hv32 : v < 2 ^ 32 := by omega
+  · have hf : fitsImm32S v = true := by
+      simp only [fitsImm32S, Bool.or_eq_true, decide_eq_true_eq]; exact Or.inl h31
     simp only [encodeJInstr, if_pos h31, encMovImm, imm32LE, List.map_cons,
       List.map_nil, List.cons_append, List.nil_append,
       decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
@@ -1354,7 +1408,7 @@ theorem roundtrip_movImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (
       modField_modRMReg, regField_modRMReg, rmField_modRMReg,
       rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
       if_false, if_true, show (0 : Nat) &&& 7 = 0 by decide, renameJ, operandOf,
-      imm32_recompose_mod v hv32]
+      imm32S_imm32LE v hv hf]
   · have hlow : gpNum (regOf alloc d) &&& 7 = gpNum (regOf alloc d) % 8 :=
       Nat.and_two_pow_sub_one_eq_mod _ 3
     have h0f : ¬ ((0xb8 + (gpNum (regOf alloc d) &&& 7)) % 2 ^ 8 = 0x0f) := by
@@ -1556,9 +1610,11 @@ theorem roundtrip_adoxMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     if_true, and_true, if_neg (show ¬(false = true) by decide)]
 
 /-- `MOV $imm32, off(%base)` (`REX.W C7 /0 id` against `[base + disp]`) decodes back
-    to itself for an immediate that fits `imm32` and a signed 32-bit displacement. -/
+    to itself for a 64-bit immediate that sign-extends from 32 bits and a signed
+    32-bit displacement. -/
 theorem roundtrip_storeMemImm32 (alloc : GpAlloc) (base : String) (off : Int) (v : Nat)
-    (rest : List (BitVec 8)) (hv : v < 2 ^ 32) (h : dispOk32 off = true) :
+    (rest : List (BitVec 8)) (hv : v < 2 ^ 64) (hf : fitsImm32S v = true)
+    (h : dispOk32 off = true) :
     decodeJ1 (encodeJInstr alloc (.storeMem base off (.imm v)) ++ rest)
       = some (renameJ alloc (.storeMem base off (.imm v)), rest) := by
   obtain ⟨m, ts, hm, hmod⟩ := memTail_head 0 (gpNum (regOf alloc base)) off
@@ -1579,9 +1635,14 @@ theorem roundtrip_storeMemImm32 (alloc : GpAlloc) (base : String) (off : Int) (v
   simp only [imm32LE, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
     BitVec.toNat_ofNat, show (0 : Nat) &&& 7 = 0 by decide, if_true,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf,
-    imm32_recompose_mod v hv]
+    imm32S_imm32LE v hv hf]
 
 /-! ## 12. Whole-block round-trip -/
+
+/-- The two conjuncts of the `imm32` side condition of `decodableJ`. -/
+theorem decodableJ_imm32 {v : Nat} (h : (decide (v < 2 ^ 64) && fitsImm32S v) = true) :
+    v < 2 ^ 64 ∧ fitsImm32S v = true := by
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h; exact h
 
 /-- One instruction of the covered set decodes off the front of its own bytes,
     leaving whatever follows untouched. -/
@@ -1598,29 +1659,29 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | add d s =>
       cases s with
       | reg r => exact roundtrip_addRR _ _ _ _
-      | imm v => exact roundtrip_addImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_addImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | sub d s =>
       cases s with
       | reg r => exact roundtrip_subRR _ _ _ _
-      | imm v => exact roundtrip_subImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_subImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | adc d s =>
       cases s with
       | reg r => exact roundtrip_adcRR _ _ _ _
-      | imm v => exact roundtrip_adcImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_adcImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | sbb d s =>
       cases s with
       | reg r => exact roundtrip_sbbRR _ _ _ _
-      | imm v => exact roundtrip_sbbImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_sbbImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | imul d s =>
       cases s with
       | reg r => exact roundtrip_imulRR _ _ _ _
-      | imm v => exact roundtrip_imulImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_imulImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | neg d => exact roundtrip_neg _ _ _
   | setc d => exact roundtrip_setc _ _ _
   | and_ d s =>
       cases s with
       | reg r => exact roundtrip_andRR _ _ _ _
-      | imm v => exact roundtrip_andImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_andImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | test a b =>
       cases b with
       | reg r => exact roundtrip_test _ _ _ _
@@ -1628,11 +1689,11 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | or_ d s =>
       cases s with
       | reg r => exact roundtrip_orRR _ _ _ _
-      | imm v => exact roundtrip_orImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_orImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | xor_ d s =>
       cases s with
       | reg r => exact roundtrip_xorRR _ _ _ _
-      | imm v => exact roundtrip_xorImm _ _ _ _ (of_decide_eq_true hd)
+      | imm v => exact roundtrip_xorImm _ _ _ _ (decodableJ_imm32 hd).1 (decodableJ_imm32 hd).2
   | shl d s =>
       cases s with
       | reg r => simp [decodableJ] at hd
@@ -1682,7 +1743,7 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
       | reg r => exact roundtrip_storeMem32 _ _ _ _ _ hd
       | imm v =>
           simp only [decodableJ, Bool.and_eq_true, decide_eq_true_eq] at hd
-          exact roundtrip_storeMemImm32 _ _ _ _ _ hd.1 hd.2
+          exact roundtrip_storeMemImm32 _ _ _ _ _ hd.1.1 hd.1.2 hd.2
   | loadMemIdx d base idx scale => simp [decodableJ] at hd
   | storeMemIdx base idx scale s => simp [decodableJ] at hd
   | loadSym d sym => simp [decodableJ] at hd
