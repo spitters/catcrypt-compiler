@@ -216,14 +216,21 @@ word fragment on which the `RustExec` `Nat`-model run and the `semScalar`
 `BitVec`-model run agree (`rustExec_semScalar_agree_scoped`). `IsCoveredAdeqU`
 closes it under the unified combinators `semU`/`transU` special-case: `RSeq`,
 `RBlock`, the guarded conditional `RIfNz name thenBlk RSkip`, and the counted
-`RFor` whose body is again any `IsCoveredAdeqU` shape. It is the `IsCoveredSU`
-sub-fragment on which the operational bridge below holds. -/
+`RFor` whose body is again any `IsCoveredAdeqU` shape. Its leaves are the
+`IsCoveredAdeq` word nodes and the dynamic-index word-array accesses of
+`IsCoveredAdeqArrS` (`RArrLoad` into a `TU64` word slot, `RArrStore` from one, over a
+`TArr k TU64` or `TBytes (8 * m)` array), so a counted loop may run over an array
+body. It is the `IsCoveredSU` sub-fragment on which the operational bridge below
+holds. -/
 
-/-- The unified word-adequacy coverage: an `IsCoveredAdeq` leaf under the four
-    unified combinators.
+/-- The unified word-adequacy coverage: `IsCoveredAdeq` leaves and word-array
+    accesses under the four unified combinators.
 
     * `ofAdeq` — a `notSeqLike` `IsCoveredAdeq` node, so `semU`/`transU` route it
       to the `semScalar`/`translateDialectControl` leaf fallback;
+    * `rArrLoad`, `rArrStore` — the dynamic-index load into, and store from, a
+      `TU64` word slot of a `TArr k TU64` array, on non-temp names;
+    * `rArrLoadBytes`, `rArrStoreBytes` — the same over a `TBytes (8 * m)` array;
     * `rSeq`, `rBlock` — the sequencing closures;
     * `rCond` — the guarded do-once conditional, over a non-temp guard name whose
       word the entry reflection resolves;
@@ -240,12 +247,26 @@ inductive IsCoveredAdeqU : LowCT → Prop
       IsCoveredAdeqU thenBlk → IsCoveredAdeqU (.RIfNz name thenBlk .RSkip)
   | rFor {x : String} {N : Nat} {body : LowCT} (hN : N ≤ 2 ^ 64) :
       IsCoveredAdeqU body → IsCoveredAdeqU (.RFor x N body)
+  | rArrLoad (d s idxVar : String) (k : Nat) (hd : ¬ isTmpName d) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqU (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TArr k .TU64⟩ idxVar)
+  | rArrStore (a idxVar s : String) (k : Nat) (ha : ¬ isTmpName a) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqU (.RArrStore ⟨a, .TArr k .TU64⟩ idxVar ⟨s, .TU64⟩)
+  | rArrLoadBytes (d s idxVar : String) (m : Nat) (hd : ¬ isTmpName d) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqU (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TBytes (8 * m)⟩ idxVar)
+  | rArrStoreBytes (a idxVar s : String) (m : Nat) (ha : ¬ isTmpName a) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqU (.RArrStore ⟨a, .TBytes (8 * m)⟩ idxVar ⟨s, .TU64⟩)
 
 /-- Reads-follow-writes scoping for the unified fragment. `readsOK`'s `RIfNz` arm
     asks only that the guard name be bound, which suffices for the φ-merge
     conditional whose two branches are constant writes; the unified combinators put
     an arbitrary block under the guard and under the runtime loop, so those two
-    arms scope their blocks as well. -/
+    arms scope their blocks as well. An array access writes a tower slot, which the
+    scalar reflection does not track, so its written name lies outside the bound
+    set. -/
 def readsOKU (B : String → Prop) : LowCT → Prop
   | .RBlock b => readsOKU B b
   | .RSeq c₁ c₂ => readsOKU B c₁ ∧ readsOKU (afterB B c₁) c₂
@@ -254,7 +275,40 @@ def readsOKU (B : String → Prop) : LowCT → Prop
   | .RFor x _ b => readsOKU (fun y => B y ∨ y = x) b
   | .RIfNz name t e => B name ∧ readsOKU B t ∧ readsOKU B e
   | .RWhileNz name b => B name ∧ readsOKU B b
+  | .RArrLoad dst _ _ => ¬ B dst.locVar
+  | .RArrStore arr _ _ => ¬ B arr.locVar
   | _ => True
+
+/-- Reads-follow-writes scoping for the unified fragment with word slots: `readsOKW`
+    with the guarded-conditional and runtime-loop arms scoping their blocks, as
+    `readsOKU` does. An expression read lies in the scalar set `B` or the word names
+    `TW`, an index read and a guard in `B`, threaded along `afterBW`. -/
+def readsOKUW (TW B : String → Prop) : LowCT → Prop
+  | .RBlock b => readsOKUW TW B b
+  | .RSeq c₁ c₂ => readsOKUW TW B c₁ ∧ readsOKUW TW (afterBW TW B c₁) c₂
+  | .RLetU64Zero n b => readsOKUW TW (fun y => B y ∨ y = n) b
+  | .RScalarSetExpr _ e => varsBoundIn (fun y => B y ∨ TW y) e
+  | .RFor x _ b => readsOKUW TW (fun y => B y ∨ y = x) b
+  | .RIfNz name t e => B name ∧ readsOKUW TW B t ∧ readsOKUW TW B e
+  | .RWhileNz name b => B name ∧ readsOKUW TW B b
+  | .RArrLoad _ _ idxVar => B idxVar
+  | .RArrStore _ idxVar _ => B idxVar
+  | _ => True
+
+/-- The unified word-slot scoping refines the straight-line one, arm by arm. -/
+theorem readsOKUW.toReadsOKW (TW : String → Prop) :
+    ∀ (c : LowCT) (B : String → Prop), readsOKUW TW B c → readsOKW TW B c := by
+  intro c
+  induction c with
+  | RSeq c₁ c₂ ih₁ ih₂ => exact fun B h => ⟨ih₁ B h.1, ih₂ _ h.2⟩
+  | RBlock b ih => exact fun B h => ih B h
+  | RLetU64Zero n b ih => exact fun B h => ih _ h
+  | RScalarSetExpr _ e => exact fun _ h => h
+  | RFor x _ b ih => exact fun B h => ih _ h
+  | RIfNz name t e _ _ => exact fun _ h => h.1
+  | RArrLoad _ _ _ => exact fun _ h => h
+  | RArrStore _ _ _ => exact fun _ h => h
+  | _ => exact fun _ _ => trivial
 
 /-- The unified scoping refines the straight-line one, arm by arm. -/
 theorem readsOKU.toReadsOK :
@@ -281,6 +335,10 @@ theorem IsCoveredAdeqU.toIsCoveredSU {c : LowCT} (h : IsCoveredAdeqU c) :
   | rBlock _ ih => exact .rBlock ih
   | rCond _ _ ih => exact .rCond ih
   | rFor _ _ ih => exact .rFor ih
+  | rArrLoad => exact .ofCtl (.ofStraight (.rArrLoad _ _ _)) rfl
+  | rArrStore => exact .ofCtl (.ofStraight (.rArrStore _ _ _)) rfl
+  | rArrLoadBytes => exact .ofCtl (.ofStraight (.rArrLoad _ _ _)) rfl
+  | rArrStoreBytes => exact .ofCtl (.ofStraight (.rArrStore _ _ _)) rfl
 
 -- The coverage is inhabited: a scalar write, then a counted loop of scalar writes.
 example (name : String) :

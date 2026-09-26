@@ -217,6 +217,21 @@ theorem transU_preserves_noAlias (fuel : Nat) {c : LowCT} (hcov : IsCoveredSU c)
 
 /-! ## 3. The `RustExec` ↔ `semU` value agreement on the unified fragment -/
 
+/-- `semScalar` of a dynamic-index array load writes only its destination name. -/
+theorem semScalar_arrLoad_frame {dst src : Located} {idxVar : String}
+    {env env' : SEnvScalar} (h : semScalar (.RArrLoad dst src idxVar) env = some env')
+    (y : String) (hy : y ≠ dst.locVar) : env' y = env y := by
+  simp only [semScalar] at h
+  split at h <;> (cases h; simp [SEnvScalar.upd, hy])
+
+/-- `semScalar` of a dynamic-index array store writes only the array name. -/
+theorem semScalar_arrStore_frame {arr src : Located} {idxVar : String}
+    {env env' : SEnvScalar} (h : semScalar (.RArrStore arr idxVar src) env = some env')
+    (y : String) (hy : y ≠ arr.locVar) : env' y = env y := by
+  simp only [semScalar] at h
+  repeat' split at h
+  all_goals (cases h; simp [SEnvScalar.upd, hy])
+
 /-- The unified guard read through the entry reflection: on a `B`-bound non-temp
     name whose `RustState` scalar is a `u64`, `guardNz` is the nonzero test on that
     scalar. -/
@@ -280,7 +295,11 @@ theorem agreeForU {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
     * `rSeq` / `rBlock` → thread the two child agreements along `semU`'s `bind`;
     * `rCond` → `guardNz_eq_decide` matches the `semScalarCond` guard against
       `RustExec.ifTrue`/`ifFalse`; the false leg leaves both sides untouched;
-    * `rFor` → `agreeForU`. -/
+    * `rFor` → `agreeForU`;
+    * the array arms → the access writes a tower slot on the `RustExec` side and
+      the name `readsOKU` keeps outside `B` on the `semScalar` side
+      (`semScalar_arrLoad_frame`, `semScalar_arrStore_frame`), so the scalar
+      reflection is untouched. -/
 theorem rustExec_semU_agree {N : Nat} {leafSpec : LeafSpec} (fuel : Nat) {c : LowCT}
     (h : IsCoveredAdeqU c) :
     ∀ {rs rs' : RustState} {env env' : SEnvScalar} {B : String → Prop},
@@ -337,6 +356,194 @@ theorem rustExec_semU_agree {N : Nat} {leafSpec : LeafSpec} (fuel : Nat) {c : Lo
       simp only [semU] at hsem
       exact agreeForU fuel (fun hb hs he hi hr => ih hb hs he hi hr) M hM
         hexec hsem henv hIR hreads
+  | rArrLoad d s i k _ _ _ | rArrLoadBytes d s i k _ _ _ =>
+      intro rs rs' env env' B hexec hsem henv hIR hreads
+      have hnB : ¬ B d := hreads
+      rw [semU_leaf fuel env rfl] at hsem
+      cases hexec with
+      | arrLoad _ _ _ _ idx oldV srcV _ _ _ =>
+          refine ⟨fun y hy hnt => ?_, fun y => by
+            simpa only [locatedUpdate, rsSetTower] using hIR y⟩
+          have hyB : B y := hy
+          have hyd : y ≠ d := fun h => hnB (h ▸ hyB)
+          rw [semScalar_arrLoad_frame hsem y hyd]
+          simp only [locatedUpdate, rsSetTower]
+          exact henv y hyB hnt
+  | rArrStore a i s k _ _ _ | rArrStoreBytes a i s k _ _ _ =>
+      intro rs rs' env env' B hexec hsem henv hIR hreads
+      have hnB : ¬ B a := hreads
+      rw [semU_leaf fuel env rfl] at hsem
+      cases hexec with
+      | arrStore _ _ _ _ idx oldV srcV _ _ _ =>
+          refine ⟨fun y hy hnt => ?_, fun y => by
+            simpa only [locatedUpdate, rsSetTower] using hIR y⟩
+          have hyB : B y := hy
+          have hya : y ≠ a := fun h => hnB (h ▸ hyB)
+          rw [semScalar_arrStore_frame hsem y hya]
+          simp only [locatedUpdate, rsSetTower]
+          exact henv y hyB hnt
+
+/-- The leaf arm of the word-slot unified agreement: on a `notSeqLike`
+    `IsCoveredAdeqArr` node `semU` is `semScalar`, and
+    `rustExec_semScalar_agree_arrW` applies. -/
+theorem agreeLeafUW {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
+    (hload : ArrLoadWord leafSpec) (hstore : ArrStoreWord leafSpec)
+    (hlimb : LimbStoreWord leafSpec) (TW : String → Prop) [DecidablePred TW] {c : LowCT}
+    (hArr : IsCoveredAdeqArr c) (hns : isSeqLike c = false) :
+    ∀ {rs rs' : RustState} {env env' : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW c) rs rs' → semU fuel c env = some env' →
+      EnvBoundOn rs env B → TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKUW TW B c → towerOKW T TW c →
+      EnvBoundOn rs' env' (afterBW TW B c) ∧ TowerWordsOn rs' env' T ∧
+        TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  intro rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads htok
+  rw [semU_leaf fuel env hns] at hsem
+  obtain ⟨e2, hs2, he2, hw2, hu2, hi2⟩ :=
+    rustExec_semScalar_agree_arrW hload hstore hlimb TW hArr hexec henv htw hu hTW hdisj hir
+      (readsOKUW.toReadsOKW TW c B hreads) htok
+  rw [hs2] at hsem
+  obtain rfl := Option.some.inj hsem
+  exact ⟨he2, hw2, hu2, hi2⟩
+
+/-- The counted-loop arm of the word-slot unified agreement, by `Nat`-induction on
+    the trip count with the body agreement passed in: `agreeForU` with the tower
+    reflection `TowerWordsOn` and the word-typedness `TowerU64On` carried as loop
+    invariants (the counter lies outside `T`). -/
+theorem agreeForUW {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
+    (TW : String → Prop) [DecidablePred TW] {x : String} {body : LowCT}
+    (ihBody : ∀ {rs rs' : RustState} {env env' : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW body) rs rs' → semU fuel body env = some env' →
+      EnvBoundOn rs env B → TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKUW TW B body → towerOKW T TW body →
+      EnvBoundOn rs' env' (afterBW TW B body) ∧ TowerWordsOn rs' env' T ∧
+        TowerU64On rs' TW ∧ ScalarInRange rs') :
+    ∀ (M : Nat), M ≤ 2 ^ 64 →
+      ∀ {rs rs' : RustState} {env env' : SEnvScalar} {B T : String → Prop},
+        RustExec N leafSpec (.RFor x M (towerSpellC TW body)) rs rs' →
+        semRForD (fun e => semU fuel body e) x M env = some env' →
+        EnvBoundOn rs env B → TowerWordsOn rs env T → TowerU64On rs TW →
+        (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+        readsOKUW TW (fun y => B y ∨ y = x) body → ¬ T x → towerOKW T TW body →
+        EnvBoundOn rs' env' B ∧ TowerWordsOn rs' env' T ∧
+          TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  intro M
+  induction M with
+  | zero =>
+      intro _ rs rs' env env' B T hexec hsem henv htw hu _ _ hir _ _ _
+      cases hexec
+      simp only [semRForD, Option.some.injEq] at hsem
+      subst hsem
+      exact ⟨henv, htw, hu, hir⟩
+  | succ n ihN =>
+      intro hM rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads hTx htok
+      cases hexec with
+      | forSucc _ _ _ _ _ _ hFor hBody =>
+          rcases hpre : semRForD (fun e => semU fuel body e) x n env with _ | envPre
+          · simp only [semRForD, hpre] at hsem
+            exact absurd hsem (by simp)
+          · simp only [semRForD, hpre] at hsem
+            obtain ⟨hePre, hwPre, huPre, hiPre⟩ :=
+              ihN (by omega) hFor hpre henv htw hu hTW hdisj hir hreads hTx htok
+            have hdisj' : ∀ y, (B y ∨ y = x) → ¬ T y := by
+              intro y hy
+              rcases hy with hy | rfl
+              · exact hdisj y hy
+              · exact hTx
+            obtain ⟨he', hw', hu', hi'⟩ :=
+              ihBody hBody hsem (envBoundOn_upd hePre x n)
+                (towerWordsOn_updScalar hwPre (onlyTmpBelow_refl envPre 0) x hTx _ n)
+                (towerU64On_setScalar huPre _ _) hTW hdisj'
+                (scalarInRange_upd hiPre x (by omega)) hreads htok
+            exact ⟨envBoundOn_mono he' (fun y hy => le_afterBW TW body _ y (Or.inl hy)),
+              hw', hu', hi'⟩
+
+/-- **The unified value agreement with word arrays and word slots.** For a covered
+    `c` and the word names `TW`, a `RustExec` run of the spelling `towerSpellC TW c`
+    under one-word array oracles (`ArrLoadWord`, `ArrStoreWord`) and a word-writing
+    `limbStore` oracle (`LimbStoreWord`), and a `semU` run of `c`, started from an
+    entry state and env related on the scalar set `B` (`EnvBoundOn`) and on the
+    tower names `T` (`TowerWordsOn`), with the word names `TU64`-typed
+    (`TowerU64On`), `TW ⊆ T` and `B ∩ T = ∅`, end in a state and env related on the
+    scalar write set `afterBW TW B c` and on `T`, with `TW` still `TU64`-typed.
+
+    The scopings are `readsOKUW TW B c` (every read resolved when it happens) and
+    `towerOKW T TW c` (the name-kind discipline). Induction on `IsCoveredAdeqU`, as
+    `rustExec_semU_agree`: the leaves (`ofAdeq` and the four array arms) by
+    `agreeLeafUW`, the counted loop by `agreeForUW`, so a counted loop over an array
+    body is covered. -/
+theorem rustExec_semU_agree_arr {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
+    (hload : ArrLoadWord leafSpec) (hstore : ArrStoreWord leafSpec)
+    (hlimb : LimbStoreWord leafSpec) (TW : String → Prop) [DecidablePred TW] {c : LowCT}
+    (h : IsCoveredAdeqU c) :
+    ∀ {rs rs' : RustState} {env env' : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW c) rs rs' → semU fuel c env = some env' →
+      EnvBoundOn rs env B → TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKUW TW B c → towerOKW T TW c →
+      EnvBoundOn rs' env' (afterBW TW B c) ∧ TowerWordsOn rs' env' T ∧
+        TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  induction h with
+  | ofAdeq hAdeq hns => exact agreeLeafUW fuel hload hstore hlimb TW hAdeq.toArr hns
+  | rArrLoad d s i k hd hs hi =>
+      exact agreeLeafUW fuel hload hstore hlimb TW (.ofStraight (.rArrLoad d s i k hd hs hi)) rfl
+  | rArrStore a i s k ha hs hi =>
+      exact agreeLeafUW fuel hload hstore hlimb TW
+        (.ofStraight (.rArrStore a i s k ha hs hi)) rfl
+  | rArrLoadBytes d s i m hd hs hi =>
+      exact agreeLeafUW fuel hload hstore hlimb TW
+        (.ofStraight (.rArrLoadBytes d s i m hd hs hi)) rfl
+  | rArrStoreBytes a i s m ha hs hi =>
+      exact agreeLeafUW fuel hload hstore hlimb TW
+        (.ofStraight (.rArrStoreBytes a i s m ha hs hi)) rfl
+  | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
+      intro rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads htok
+      obtain ⟨hr1, hr2⟩ := hreads
+      obtain ⟨ht1, ht2⟩ := htok
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | seq _ _ _ _ _ h1 h2 =>
+          rcases hs1 : semU fuel c₁ env with _ | env₁
+          · simp only [semU, hs1, Option.bind_none] at hsem
+            exact absurd hsem (by simp)
+          · simp only [semU, hs1, Option.bind_some] at hsem
+            obtain ⟨he1, hw1, hu1, hi1⟩ := ih₁ h1 hs1 henv htw hu hTW hdisj hir hr1 ht1
+            exact ih₂ h2 hsem he1 hw1 hu1 hTW (afterBW_disj _ B T TW ht1 hdisj) hi1 hr2 ht2
+  | @rBlock body _ ih =>
+      intro rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads htok
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | block _ _ _ hb =>
+          simp only [semU] at hsem
+          exact ih hb hsem henv htw hu hTW hdisj hir hreads htok
+  | @rCond name thenBlk hname _ ih =>
+      intro rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads htok
+      obtain ⟨hBname, hrThen, _⟩ := hreads
+      have hg := guardNz_eq_decide henv hir name hBname hname
+      have hskip : towerSpellC TW .RSkip = .RSkip := rfl
+      simp only [towerSpellC, hskip] at hexec
+      cases hexec with
+      | ifTrue _ _ _ _ _ v hveq hvne hct =>
+          have hgt : guardNz name env = true := by
+            rw [hg]; exact decide_eq_true (hveq ▸ hvne)
+          simp only [semU, semScalarCond, hgt, cond_true] at hsem
+          obtain ⟨he', hw', hu', hi'⟩ := ih hct hsem henv htw hu hTW hdisj hir hrThen htok.1
+          exact ⟨envBoundOn_mono he' (fun y hy => le_afterBW TW thenBlk B y hy), hw', hu', hi'⟩
+      | ifFalse _ _ _ _ _ hveq hcf =>
+          cases hcf
+          have hgf : guardNz name env = false := by
+            rw [hg]; exact decide_eq_false (by simp [hveq])
+          simp only [semU, semScalarCond, hgf, cond_false, Option.some.injEq] at hsem
+          subst hsem
+          exact ⟨henv, htw, hu, hir⟩
+  | @rFor x M body hM _ ih =>
+      intro rs rs' env env' B T hexec hsem henv htw hu hTW hdisj hir hreads htok
+      simp only [towerSpellC] at hexec
+      simp only [semU] at hsem
+      exact agreeForUW fuel TW
+        (fun hb hs he hw hu' hT hd hi hr ht => ih hb hs he hw hu' hT hd hi hr ht) M hM
+        hexec hsem henv htw hu hTW hdisj hir hreads htok.1 htok.2
 
 /-! ## 4. The operational bridge -/
 
