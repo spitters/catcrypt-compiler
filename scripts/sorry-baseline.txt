@@ -1,0 +1,7 @@
+# Per-file sorry allowance, from a build that covered the CI target set.
+# A file's count may FALL (the baseline auto-tightens) but never RISE, and a
+# file absent here may not acquire one. Coverage is the build's coverage: a
+# file the scanned build never reached is absent here, which reads as
+# 'not covered', not as 'clean'.
+# Initialize: scripts/sorry-gate.sh --init  (after a full CI-equivalent build)
+# Format: <count><TAB><path>
