@@ -144,6 +144,15 @@ def keccakYmm4Body : List YmmInstr :=
 def keccakYmm4Program (select : Bool) : List YmmInstr :=
   if select then selectYmm keccakYmm4Body else keccakYmm4Body
 
+/-- Instruction selection leaves the memory the body writes unchanged: the
+    program, selected or not, ends with the memory `keccakYmm4Body` ends with,
+    and so stores the same output lanes. -/
+theorem keccakYmm4Program_mem (select : Bool) (s : YmmState) :
+    (ymmRun (keccakYmm4Program select) s).mem = (ymmRun keccakYmm4Body s).mem := by
+  cases select
+  · rfl
+  · exact (selectYmm_sound keccakYmm4Body s).1
+
 /-! ## 3. Allocation and the rendered kernel -/
 
 /-- Registers withheld from allocation, used by `ymmMaterialize` for spilled
