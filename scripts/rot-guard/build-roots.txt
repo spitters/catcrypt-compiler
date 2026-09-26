@@ -633,6 +633,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
+CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
 CatCrypt.Crypto.SecureCompilation.VIR.LeafAxiomConsolidation
 CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoist
