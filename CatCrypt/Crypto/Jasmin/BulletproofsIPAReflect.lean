@@ -560,18 +560,19 @@ theorem envUpd_other (env : SEnvScalar) (n m : String) {t : CryptoTy} (v : ⟦t�
     env.upd n v m = env m := by
   simp [SEnvScalar.upd, h]
 
-/-- One leaf call appended to a program: the destination holds the leaf value on
-    the arguments read before the call, and every other name is unchanged. -/
+/-- One leaf call into a slot of wire type other than `.TFp`, appended to a
+    program: the destination holds the leaf value on the arguments read before the
+    call, and every other name is unchanged. -/
 theorem semScalarL_seq_call (ls : SemLeafSpec) {c : CatCrypt.Crypto.Jasmin.LowCT.LowCT}
     {env e : SEnvScalar} (h : semScalarL ls c env = some e) (f : String)
     (x : String) (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType)
-    (args : List CatCrypt.Crypto.Jasmin.LowCT.Located) :
+    (args : List CatCrypt.Crypto.Jasmin.LowCT.Located) (ht : t ≠ .TFp := by decide) :
     ∃ e', semScalarL ls (.RSeq c (.RCall f (locBulletproofsIPA x t) args)) env = some e' ∧
       e' x = some ⟨encodeTy t, ls f (encodeTy t) (argVals e (locNames args))⟩ ∧
       ∀ m, m ≠ x → e' m = e m :=
   ⟨_, by simp only [semScalarL, h, Option.bind_some, locBulletproofsIPA,
-      CatCrypt.Crypto.Jasmin.LowCT.Located.locDst], envUpd_same _ _ _,
-    fun m hm => envUpd_other _ _ _ _ hm⟩
+      CatCrypt.Crypto.Jasmin.LowCT.Located.locDst, inlineRCallVal_of_ne_TFp ls f ht],
+    envUpd_same _ _ _, fun m hm => envUpd_other _ _ _ _ hm⟩
 
 /-- The slots of an environment holding the encoding of an `n = 8` proof: `P`,
     the pairs `(L0, R0)`, `(L1, R1)`, `(L2, R2)`, and `__result`. -/
