@@ -1080,3 +1080,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
 CatCrypt.Crypto.Hax.HaxToLowCTWordOps
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieEmitted
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
