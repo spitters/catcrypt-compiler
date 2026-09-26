@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
+public import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -81,12 +83,7 @@ def seqAll : List LowCT → LowCT
 
 /-- Branch-free conditional subtract into `dst` (correct for `src < 2q`):
     `dst_s := src − q;  dst := dst_s + (q & (0 − (dst_s >>> 63)))`, `q = 8380417`. -/
-def csubStmts (dst src : String) : List LowCT := [
-  .RScalarSetExpr (dst ++ "_s") (.SSub (.SVar src) (.SLit 8380417)),
-  .RScalarSetExpr dst
-    (.SAdd (.SVar (dst ++ "_s"))
-      (.SAnd (.SLit 8380417)
-        (.SSub (.SLit 0) (.SShr (.SVar (dst ++ "_s")) (.SLit 63))))) ]
+def csubStmts (dst src : String) : List LowCT := SmallPrimeBarrett.csubStmts 8380417 dst src
 
 /-- `dst := montmul(w, b) = (w·b·R⁻¹) mod q` where `w` is an `SExpr` twiddle
     literal and `b` a variable: Montgomery REDC (`FieldMulEmitMldsa.mulBody`) then

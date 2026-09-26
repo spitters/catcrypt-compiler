@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+public meta import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
+public import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
 public import Mathlib.Tactic.NormNum
 public import Mathlib.Tactic.Linarith
 public import Mathlib.Tactic.Ring
@@ -27,20 +29,19 @@ with a *proved* (not assumed, not `native_decide`-pinned) word realization.
 `q = 3329` is a 12-bit prime, so `q² = 3329² = 11 082 241 < 2^64`. A single
 64-bit word holds both a canonical residue (`< q < 2^64`) **and** any product of
 two canonical residues (`< q² < 2^64`) with no overflow. The descent's `modMul`
-leaf is therefore the *direct schoolbook reduce* `(a · b) % q` — exactly the
-shape of BabyBear's `bbMul = (a · b) % p`, but here the reduction is a single
-`%`, not the 10-fold Montgomery `bbReduce`. (The 16-bit lane Montgomery block in
+leaf is therefore the product followed by one single-multiply Barrett reduce
+(`SmallPrimeBarrett.barrettW 3329 5039 24`, which is `% q` on `[0, q²)`), not the
+10-fold Montgomery `bbReduce`. (The 16-bit lane Montgomery block in
 `MLKEM.NttEmit.fqmulBlk` is the *AVX2* realization; the **scalar** descent
-this file serves does not need it, and the canonical-rep `%` is what the proof
-discharges.)
+this file serves does not need it.)
 
 ## What is proved (the residual, closed for q = 3329)
 
 Under the canonical-representative encoding `mkEnc x = BitVec.ofNat 64 x.val`:
 
 * `mkMul_realizes` : `mkMul (mkEnc a) (mkEnc b) = mkEnc (modMulF a b)` — the
-  `modMul` leaf, where `mkMul a b = (a * b) % q` at the BitVec level (no overflow
-  because `a, b < q ⇒ a·b < q² < 2^64`).
+  `modMul` leaf, where `mkMul a b` is the Barrett reduce of the BitVec product
+  (no overflow because `a, b < q ⇒ a·b < q² < 2^64`).
 * `mkAdd_realizes` : `mkAdd (mkEnc a) (mkEnc b) = mkEnc (modAddF a b)` — the
   `modAdd` leaf, `mkAdd a b = mkCsub (a + b)` (one conditional subtract, since
   `a + b < 2q`).
@@ -83,14 +84,14 @@ lemma mkEnc_toNat (x : ZMod Q) : (mkEnc x).toNat = x.val := by
 
 /-! ## 2. The three word blocks (`mkMul` / `mkCsub` / `mkAdd` / `mkSub`)
 
-`mkMul` is the direct schoolbook reduce — sound because `a, b < Q ⇒ a·b < Q²
-< 2^64`, so the BitVec product doesn't wrap and `%` canonicalises. `mkCsub` is
-the single conditional subtract used by `mkAdd`/`mkSub` (both feed it a value
-`< 2Q`). -/
+`mkMul` is the product followed by the single-multiply Barrett reduce
+`SmallPrimeBarrett.barrettW 3329 5039 24`; `a, b < Q ⇒ a·b < Q² < 2^24`, the
+range on which that reduce is `% Q`. `mkCsub` is the reduction `% Q` used by
+`mkAdd`/`mkSub` (both feed it a value `< 2Q`). -/
 
-/-- The ML-KEM field multiply on canonical `reg 64` reps: product then reduce.
-    No overflow (`a·b < Q² < 2^64`), so the `%` is the canonicaliser. -/
-def mkMul (a b : BitVec 64) : BitVec 64 := (a * b) % (3329 : BitVec 64)
+/-- The ML-KEM field multiply on canonical `reg 64` reps: product then the
+    Barrett reduce (`μ = 5039 = ⌊2^24 / Q⌋`, shift `24`). -/
+def mkMul (a b : BitVec 64) : BitVec 64 := SmallPrimeBarrett.barrettW 3329 5039 24 (a * b)
 
 /-- One conditional subtract of `Q`: if `r ≥ Q` subtract `Q`, else keep `r`.
     Canonicalises any `r < 2Q` (`r % Q`). -/
@@ -116,20 +117,23 @@ lemma mkEnc_lt (x : ZMod Q) : (mkEnc x).toNat < 3329 := by
 
 /-- **`modMul` word-realization square.** `mkMul (mkEnc a) (mkEnc b)
     = mkEnc (a * b)`. The single op the descent's `modMul` lowers to, proved on
-    canonical reps: `a·b < Q² < 2^64` so the BitVec product is exact, and `% Q`
-    matches `(a*b).val = a.val*b.val % Q`. -/
+    canonical reps: `a·b < Q² < 2^64` so the BitVec product is exact, the Barrett
+    reduce is `% Q` below `Q²` (`SmallPrimeBarrett.barrettW_mlkem_toNat`), and
+    `% Q` matches `(a*b).val = a.val*b.val % Q`. -/
 theorem mkMul_realizes (a b : ZMod Q) :
     mkMul (mkEnc a) (mkEnc b) = mkEnc (modMulF a b) := by
   apply BitVec.eq_of_toNat_eq
   have ha := val_lt_Q a
   have hb := val_lt_Q b
-  unfold mkMul
-  rw [BitVec.toNat_umod, BitVec.toNat_mul, mkEnc_toNat, mkEnc_toNat, toNat_q]
-  -- a.val * b.val < Q² < 2^64, so the inner `% 2^64` is inert.
   have hnoover : a.val * b.val % 2 ^ 64 = a.val * b.val := by
     apply Nat.mod_eq_of_lt
     simp only [Q] at ha hb; nlinarith [ha, hb]
-  rw [hnoover]
+  have hprod : (mkEnc a * mkEnc b).toNat = a.val * b.val := by
+    rw [BitVec.toNat_mul, mkEnc_toNat, mkEnc_toNat, hnoover]
+  have hlt : (mkEnc a * mkEnc b).toNat < 3329 * 3329 := by
+    rw [hprod]; simp only [Q] at ha hb; nlinarith [ha, hb]
+  unfold mkMul
+  rw [SmallPrimeBarrett.barrettW_mlkem_toNat _ hlt, hprod]
   show a.val * b.val % 3329 = (mkEnc (a * b)).toNat
   rw [mkEnc_toNat, ZMod.val_mul]
 

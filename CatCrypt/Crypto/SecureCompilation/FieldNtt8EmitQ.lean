@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
+public import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -174,24 +176,13 @@ def seqAll : List LowCT → LowCT
 /-- The branch-free conditional subtract into `dst` (correct for `src < 2q`):
     `dst_s := src − 3329;  dst := dst_s + (3329 & (0 − (dst_s >>> 63)))` —
     word-for-word `MlkemNttFieldEmit.mkCsubW`. -/
-def csubStmts (dst src : String) : List LowCT := [
-  .RScalarSetExpr (dst ++ "_s") (.SSub (.SVar src) (.SLit 3329)),
-  .RScalarSetExpr dst
-    (.SAdd (.SVar (dst ++ "_s"))
-      (.SAnd (.SLit 3329)
-        (.SSub (.SLit 0) (.SShr (.SVar (dst ++ "_s")) (.SLit 63))))) ]
+def csubStmts (dst src : String) : List LowCT := SmallPrimeBarrett.csubStmts 3329 dst src
 
 /-- `dst := (a · b) mod q` where the multiplier `a` is an `SExpr` (a twiddle
     literal or a variable): schoolbook product, Barrett quotient estimate,
     remainder, one csub — word-for-word `MlkemNttFieldEmit.mkMulW`. -/
 def mulModStmtsE (dst : String) (a : SExpr) (b : String) : List LowCT :=
-  [ .RScalarSetExpr (dst ++ "_x") (.SMul a (.SVar b)),
-    .RScalarSetExpr (dst ++ "_q")
-      (.SShr (.SMul (.SVar (dst ++ "_x")) (.SLit 5039)) (.SLit 24)),
-    .RScalarSetExpr (dst ++ "_r")
-      (.SSub (.SVar (dst ++ "_x"))
-        (.SMul (.SVar (dst ++ "_q")) (.SLit 3329))) ]
-  ++ csubStmts dst (dst ++ "_r")
+  SmallPrimeBarrett.mulModStmtsE 3329 5039 24 dst a b
 
 /-- `dst := (a + b) mod q`: `a + b` then one csub — `MlkemNttFieldEmit.mkAddW`. -/
 def addModStmts (dst a b : String) : List LowCT :=
@@ -354,13 +345,10 @@ composing with the proved field-op squares gives the field-spec tie under the
 canonical encoding `mkEnc`. -/
 
 /-- The csub word function the body computes (= `mkCsubW`). -/
-def csub3329W (x : BitVec 64) : BitVec 64 :=
-  let t := x - (3329 : BitVec 64)
-  t + ((3329 : BitVec 64) &&& ((0 : BitVec 64) - (t >>> (63 : Nat))))
+def csub3329W (x : BitVec 64) : BitVec 64 := Algebraic.FieldWord.csubW 3329 x
 
 /-- The Barrett-reduce word function the body computes (= `mkBarrettW`). -/
-def barrettW (r : BitVec 64) : BitVec 64 :=
-  csub3329W (r - (((r * (5039 : BitVec 64)) >>> (24 : Nat)) * (3329 : BitVec 64)))
+def barrettW (r : BitVec 64) : BitVec 64 := SmallPrimeBarrett.barrettW 3329 5039 24 r
 
 /-- The mul-step word function the body computes (= `mkMulW`). -/
 def mulQW (a b : BitVec 64) : BitVec 64 := barrettW (a * b)

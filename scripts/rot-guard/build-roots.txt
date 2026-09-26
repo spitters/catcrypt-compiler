@@ -1091,3 +1091,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.ComRange
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate
+CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett

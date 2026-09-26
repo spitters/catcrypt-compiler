@@ -10,6 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.FieldDescentMlkem
+public import CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
 
 /-!
 # ML-KEM (`q = 3329`) field-op word blocks + their `mkEnc` realizations
@@ -74,6 +75,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
 open CatCrypt.Crypto.SecureCompilation.FieldDescentMlkem
 open CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord (csubW)
 
 /-- The jasmin word type. -/
 abbrev r64 : JasminTy := JasminTy.reg 64
@@ -90,16 +92,14 @@ abbrev cQ : Nat := 3329
 /-- The Barrett multiplier `m = ⌊2^24 / 3329⌋`. -/
 abbrev cM24 : Nat := 5039
 
-/-- Branchless conditional subtract of `q` on a 64-bit word (mirrors `bbCsub`). -/
-def mkCsubW (r : BitVec 64) : BitVec 64 :=
-  let t := r - (3329 : BitVec 64)
-  t + ((3329 : BitVec 64) &&& (0 - (t >>> (63 : Nat))))
+/-- Branchless conditional subtract of `q` on a 64-bit word: the `q = 3329`
+    instance of `Algebraic.FieldWord.csubW`. -/
+def mkCsubW (r : BitVec 64) : BitVec 64 := csubW 3329 r
 
 /-- The Barrett mod-`q` reduce on a 64-bit word: `q̂ = (r·m)>>24`, `t = r − q̂·q`,
-    one csub. Realizes `r % q` for every `r < q²`. -/
-def mkBarrettW (r : BitVec 64) : BitVec 64 :=
-  let qhat := (r * (5039 : BitVec 64)) >>> (24 : Nat)
-  mkCsubW (r - qhat * (3329 : BitVec 64))
+    one csub; the `(q, μ, k) = (3329, 5039, 24)` instance of
+    `SmallPrimeBarrett.barrettW`. Realizes `r % q` for every `r < q²`. -/
+def mkBarrettW (r : BitVec 64) : BitVec 64 := SmallPrimeBarrett.barrettW 3329 5039 24 r
 
 /-- The ML-KEM word multiply: full-width product then Barrett reduce. -/
 def mkMulW (a b : BitVec 64) : BitVec 64 := mkBarrettW (a * b)
@@ -113,16 +113,16 @@ def mkSubW (a b : BitVec 64) : BitVec 64 := mkCsubW (a + ((3329 : BitVec 64) - b
 /-! ## 2. The word blocks realize the `FieldDescentMlkem` reduce ops
 
 `mkCsubW` matches `FieldDescentMlkem.mkCsub` (`r % q`) for `r < 2q`; `mkBarrettW`
-matches it for `r < q²`. Both are quantifier-free 64-bit BitVec facts under a
-`toNat` bound, discharged by `bv_decide` (the range hypothesis lets the SAT
-backend bound the high bits). -/
+matches it for `r < q²`. Both are instances of the modulus-generic lemmas
+`SmallPrimeBarrett.csubW_mlkem_toNat` and `SmallPrimeBarrett.barrettW_mlkem_toNat`. -/
 
-/-- **The branchless csub realizes `r % q` for `r < 2q`.** Stated with the bound
-    as a `BitVec` comparison so `bv_decide`'s SAT backend can use it. -/
+/-- **The branchless csub realizes `r % q` for `r < 2q`**, with the bound stated
+    as a `BitVec` comparison. -/
 theorem mkCsubW_eq_bv (r : BitVec 64) (h : r < (6658 : BitVec 64)) :
     mkCsubW r = mkCsub r := by
-  unfold mkCsubW mkCsub
-  bv_decide
+  apply BitVec.eq_of_toNat_eq
+  have h' : r.toNat < 2 * 3329 := by rw [BitVec.lt_def] at h; simpa using h
+  rw [mkCsubW, SmallPrimeBarrett.csubW_mlkem_toNat r h', mkCsub, BitVec.toNat_umod, toNat_q]
 
 /-- `r.toNat < 2q ⇒ r < 6658#64` (the BitVec-comparison form). -/
 theorem lt_bv_of_toNat {n : Nat} (r : BitVec 64) (h : r.toNat < n) (hn : n ≤ 6658) :
@@ -174,39 +174,16 @@ theorem mkBarrettRem_umod (r : BitVec 64) (h : r < (11082241 : BitVec 64)) :
     remainder is `< 2q` (so one csub canonicalises) and `≡ r (mod q)`. -/
 theorem mkBarrettW_eq (r : BitVec 64) (h : r.toNat < 3329 * 3329) :
     mkBarrettW r = mkCsub r := by
-  have hbv : r < (11082241 : BitVec 64) := by
-    rw [BitVec.lt_def]; show r.toNat < (11082241 : BitVec 64).toNat
-    have : (11082241 : BitVec 64).toNat = 11082241 := by decide
-    omega
-  -- mkBarrettW r = mkCsubW (mkBarrettRem r), and the remainder is < 2q.
-  have hrem_lt : (mkBarrettRem r).toNat < 2 * 3329 := by
-    have := mkBarrettRem_lt r hbv
-    rw [BitVec.lt_def] at this; show (mkBarrettRem r).toNat < 2 * 3329
-    have h6 : (6658 : BitVec 64).toNat = 6658 := by decide
-    omega
-  have hstep : mkBarrettW r = mkCsub (mkBarrettRem r) := by
-    show mkCsubW (mkBarrettRem r) = mkCsub (mkBarrettRem r)
-    exact mkCsubW_eq _ hrem_lt
-  rw [hstep]
-  -- mkCsub (mkBarrettRem r) = mkBarrettRem r % q = r % q  (same residue).
-  show mkBarrettRem r % (3329 : BitVec 64) = r % (3329 : BitVec 64)
-  exact mkBarrettRem_umod r hbv
+  apply BitVec.eq_of_toNat_eq
+  rw [mkBarrettW, SmallPrimeBarrett.barrettW_mlkem_toNat r h, mkCsub, BitVec.toNat_umod,
+    toNat_q]
 
 /-- **`mkMulW` realizes the field multiply under `mkEnc`** (canonical encoding):
-    the Barrett product block equals `mkEnc (a * b)`. Combines `mkBarrettW_eq`
-    (the Barrett reduce = `%`) with `FieldDescentMlkem.mkMul_realizes`. -/
+    the Barrett product block equals `mkEnc (a * b)`. `mkMulW` is definitionally
+    `FieldDescentMlkem.mkMul`, so this is `FieldDescentMlkem.mkMul_realizes`. -/
 theorem mkMulW_realizes (a b : ZMod Q) :
-    mkMulW (mkEnc a) (mkEnc b) = mkEnc (modMulF a b) := by
-  have hab : (mkEnc a * mkEnc b).toNat < 3329 * 3329 := by
-    have ha := mkEnc_lt a
-    have hb := mkEnc_lt b
-    rw [BitVec.toNat_mul]
-    calc (mkEnc a).toNat * (mkEnc b).toNat % 2 ^ 64
-        ≤ (mkEnc a).toNat * (mkEnc b).toNat := Nat.mod_le _ _
-      _ < 3329 * 3329 := Nat.mul_lt_mul_of_lt_of_le ha (le_of_lt hb) (by omega)
-  unfold mkMulW
-  rw [mkBarrettW_eq _ hab]
-  exact mkMul_realizes a b
+    mkMulW (mkEnc a) (mkEnc b) = mkEnc (modMulF a b) :=
+  mkMul_realizes a b
 
 /-- **`mkAddW` realizes the field add under `mkEnc`.** -/
 theorem mkAddW_realizes (a b : ZMod Q) :
