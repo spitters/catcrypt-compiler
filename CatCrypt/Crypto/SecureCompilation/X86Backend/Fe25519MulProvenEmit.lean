@@ -17,6 +17,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
 
 /-!
 # Curve25519 plain field multiply emitted from the PROVEN product + a Solinas reduce
@@ -84,6 +86,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+  (condSubRoundN condSubRoundFullN)
 
 /-! ## 1. Register-name layout (shared with the Montgomery template) -/
 
@@ -241,14 +245,20 @@ def emitRefold : List (JInstr 64) :=
     (5th word `rtop`): trial `res − p25519` (borrow chain through `rtop`), then
     `cmovb` each `res[k]` back to the saved copy `sav[k]` on a final borrow
     (`res < p`). Leaves `res = (res ≥ p) ? res − p : res`. The `condSubRound`
-    idiom from the Montgomery template, with the saved copy in `savNames`. -/
+    idiom from the Montgomery template, with the saved copy in `savNames`: the
+    four-limb instance of `CondSubRoundGeneric.condSubRoundN`. -/
 def condSubRound : List (JInstr 64) :=
-  [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
-    ++ (List.range 3).map (fun (k : Nat) =>
-        JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
-    ++ [ JInstr.sbb rtopName (.imm 0) ]
-    ++ (List.range 4).map (fun (k : Nat) =>
-        JInstr.cmovb (resNames.getD k default) (.reg (savNames.getD k default)))
+  condSubRoundN resNames pNames savNames rtopName
+
+/-- The round, written out instruction by instruction. -/
+theorem condSubRound_eq_explicit : condSubRound =
+    [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
+      ++ (List.range 3).map (fun (k : Nat) =>
+          JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
+      ++ [ JInstr.sbb rtopName (.imm 0) ]
+      ++ (List.range 4).map (fun (k : Nat) =>
+          JInstr.cmovb (resNames.getD k default) (.reg (savNames.getD k default))) :=
+  rfl
 
 /-- Number of conditional-subtract rounds. The refold leaves `result < 2^255 + 380
     < 2p`, so a single round canonicalises; we run a couple defensively (each is a
@@ -258,10 +268,16 @@ def condSubRounds : Nat := 2
 /-- One canonicalisation round with the save/clear bookkeeping that sets up the
     next round's restore-copy (`sav ← res`, `rtop ← 0`). -/
 def condSubRoundFull : List (JInstr 64) :=
-  condSubRound
-    ++ (List.range 4).map (fun (k : Nat) =>
-        JInstr.mov (savNames.getD k default) (.reg (resNames.getD k default)))
-    ++ [ JInstr.xor_ rtopName (.reg rtopName) ]
+  condSubRoundFullN resNames pNames savNames rtopName
+
+/-- The full round, written out: the round, the four saved-copy moves and the
+    top-word clear. -/
+theorem condSubRoundFull_eq_explicit : condSubRoundFull =
+    condSubRound
+      ++ (List.range 4).map (fun (k : Nat) =>
+          JInstr.mov (savNames.getD k default) (.reg (resNames.getD k default)))
+      ++ [ JInstr.xor_ rtopName (.reg rtopName) ] :=
+  rfl
 
 /-- The conditional-subtract canonicalisation: load `res`/`sav` from the reduced
     low words `accNames[0..3]`, then run `condSubRounds` rounds. -/

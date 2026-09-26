@@ -22,6 +22,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKer
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
 public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
 
 /-!
 # 4-limb curve Montgomery multiply emitted from PROVEN blocks (generalized SM2)
@@ -90,6 +92,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+  (condSubRoundN condSubRoundFullN)
 
 /-! ## 1. The register-name layout (shared across all curves)
 
@@ -244,18 +248,31 @@ def condSubRoundJ (r0 r1 r2 r3 q0 q1 q2 q3 v0 v1 v2 v3 rtop : String) :
     ++ ([JInstr.cmovb r2 (.reg v2)]
     ++  [JInstr.cmovb r3 (.reg v3)])))))))
 
+/-- `condSubRoundJ` is the four-limb instance of `CondSubRoundGeneric.condSubRoundN`,
+    for arbitrary register names. -/
+theorem condSubRoundJ_eq_condSubRoundN (r0 r1 r2 r3 q0 q1 q2 q3 v0 v1 v2 v3 rtop : String) :
+    condSubRoundJ r0 r1 r2 r3 q0 q1 q2 q3 v0 v1 v2 v3 rtop
+      = condSubRoundN [r0, r1, r2, r3] [q0, q1, q2, q3] [v0, v1, v2, v3] rtop :=
+  rfl
+
 /-- One branch-free conditional-subtract round on the 4-word value in `resNames`
     (5th word `rtop`): trial `res − p` (borrow chain through `rtop`), then `CMOVB`
     each `res[k]` back to the saved copy `acc[k+4]` on a final borrow (`res < p`).
-    Leaves `res = (res ≥ p) ? res − p : res`. -/
+    Leaves `res = (res ≥ p) ? res − p : res`. The four-limb instance of
+    `CondSubRoundGeneric.condSubRoundN`. -/
 def condSubRound : List (JInstr 64) :=
-  condSubRoundJ (resNames.getD 0 default) (resNames.getD 1 default)
-    (resNames.getD 2 default) (resNames.getD 3 default)
-    (pNames.getD 0 default) (pNames.getD 1 default)
-    (pNames.getD 2 default) (pNames.getD 3 default)
-    (accNames.getD 4 default) (accNames.getD 5 default)
-    (accNames.getD 6 default) (accNames.getD 7 default)
-    rtopName
+  condSubRoundN resNames pNames (accNames.drop 4) rtopName
+
+/-- The round is `condSubRoundJ` at the concrete register names. -/
+theorem condSubRound_eq_condSubRoundJ : condSubRound =
+    condSubRoundJ (resNames.getD 0 default) (resNames.getD 1 default)
+      (resNames.getD 2 default) (resNames.getD 3 default)
+      (pNames.getD 0 default) (pNames.getD 1 default)
+      (pNames.getD 2 default) (pNames.getD 3 default)
+      (accNames.getD 4 default) (accNames.getD 5 default)
+      (accNames.getD 6 default) (accNames.getD 7 default)
+      rtopName :=
+  rfl
 
 /-- Number of conditional-subtract rounds. The emitted reduce leaves a value that
     is correct mod `p` but a loose representative (the chained per-step
@@ -272,10 +289,16 @@ def condSubRounds : Nat := 10
 /-- One full canonicalisation round followed by the save/clear bookkeeping that
     sets up the next round's restore-copy (`acc[4..7] ← res`, `rtop ← 0`). -/
 def condSubRoundFull : List (JInstr 64) :=
-  condSubRound
-    ++ (List.range 4).map (fun (k : Nat) =>
-        JInstr.mov (accNames.getD (k + 4) default) (.reg (resNames.getD k default)))
-    ++ [ JInstr.xor_ rtopName (.reg rtopName) ]
+  condSubRoundFullN resNames pNames (accNames.drop 4) rtopName
+
+/-- The full round, written out: the round, the four saved-copy moves and the
+    top-word clear. -/
+theorem condSubRoundFull_eq_explicit : condSubRoundFull =
+    condSubRound
+      ++ (List.range 4).map (fun (k : Nat) =>
+          JInstr.mov (accNames.getD (k + 4) default) (.reg (resNames.getD k default)))
+      ++ [ JInstr.xor_ rtopName (.reg rtopName) ] :=
+  rfl
 
 def emitCondSubP : List (JInstr 64) :=
   -- res ← window

@@ -16,6 +16,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
 
 /-!
 # 6-limb curve Montgomery multiply emitted from PROVEN blocks (P384, BLS12-381)
@@ -82,6 +84,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+  (condSubRoundN condSubRoundFullN)
 
 /-! ## 1. The register-name layout (shared across both 6-limb curves)
 
@@ -199,14 +203,20 @@ def emitMontRedc6Block : List (JInstr 64) :=
 /-- One branch-free conditional-subtract round on the 6-word value in `resNames`
     (7th word `rtop`): trial `res − p` (borrow chain through `rtop`), then `CMOVB`
     each `res[k]` back to the saved copy `acc[k+6]` on a final borrow (`res < p`).
-    Leaves `res = (res ≥ p) ? res − p : res`. -/
+    Leaves `res = (res ≥ p) ? res − p : res`. The six-limb instance of
+    `CondSubRoundGeneric.condSubRoundN`. -/
 def condSubRound : List (JInstr 64) :=
-  [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
-    ++ (List.range 5).map (fun (k : Nat) =>
-        JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
-    ++ [ JInstr.sbb rtopName (.imm 0) ]
-    ++ (List.range 6).map (fun (k : Nat) =>
-        JInstr.cmovb (resNames.getD k default) (.reg (accNames.getD (k + 6) default)))
+  condSubRoundN resNames pNames (accNames.drop 6) rtopName
+
+/-- The round, written out instruction by instruction. -/
+theorem condSubRound_eq_explicit : condSubRound =
+    [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
+      ++ (List.range 5).map (fun (k : Nat) =>
+          JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
+      ++ [ JInstr.sbb rtopName (.imm 0) ]
+      ++ (List.range 6).map (fun (k : Nat) =>
+          JInstr.cmovb (resNames.getD k default) (.reg (accNames.getD (k + 6) default))) :=
+  rfl
 
 /-- Number of conditional-subtract rounds (generous, KAT-gated). The chained
     per-step reduce leaves a value correct mod `p` but a loose representative;
@@ -216,10 +226,16 @@ def condSubRounds : Nat := 8
 /-- One full canonicalisation round followed by the save/clear bookkeeping that
     sets up the next round's restore-copy (`acc[6..11] ← res`, `rtop ← 0`). -/
 def condSubRoundFull : List (JInstr 64) :=
-  condSubRound
-    ++ (List.range 6).map (fun (k : Nat) =>
-        JInstr.mov (accNames.getD (k + 6) default) (.reg (resNames.getD k default)))
-    ++ [ JInstr.xor_ rtopName (.reg rtopName) ]
+  condSubRoundFullN resNames pNames (accNames.drop 6) rtopName
+
+/-- The full round, written out: the round, the six saved-copy moves and the
+    top-word clear. -/
+theorem condSubRoundFull_eq_explicit : condSubRoundFull =
+    condSubRound
+      ++ (List.range 6).map (fun (k : Nat) =>
+          JInstr.mov (accNames.getD (k + 6) default) (.reg (resNames.getD k default)))
+      ++ [ JInstr.xor_ rtopName (.reg rtopName) ] :=
+  rfl
 
 def emitCondSubP : List (JInstr 64) :=
   -- res ← window

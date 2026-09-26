@@ -17,6 +17,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKer
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
 public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
 
 /-!
 # `bignum_montmul_sm2` emitted from PROVEN blocks (product + Montgomery reduce)
@@ -94,6 +96,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+  (condSubRoundN movChain)
 
 /-! ## 1. The register-name layout
 
@@ -278,23 +282,25 @@ otherwise the trial difference `v − p_sm2` is kept. Trusted emit scaffolding
 /-- The final conditional subtract of `p_sm2`: trial-subtract the modulus from
     `accNames[4..7]` (borrow chain through `rtop`) into `resNames`, then `CMOVB`
     each `resNames[k]` back to `accNames[k+4]` on a final borrow — leaving the
-    canonical `< p_sm2` result in `resNames`. -/
+    canonical `< p_sm2` result in `resNames`. The window copy followed by the
+    four-limb instance of `CondSubRoundGeneric.condSubRoundN`; the modulus limbs
+    are subtracted from the registers `loadConsts` materialised, since x86
+    `SUB`/`SBB` immediates are at most 32 bits wide. -/
 def emitCondSubP : List (JInstr 64) :=
-  -- copy the reduced window into the result registers
-  (List.range 4).map (fun (k : Nat) =>
-      JInstr.mov (resNames.getD k default) (.reg (accNames.getD (k + 4) default)))
-  -- trial-subtract the modulus limbs from the live `pNames` registers (x86
-  -- SUB/SBB take only ≤32-bit immediates, but the SM2 limbs are full 64-bit, so
-  -- we subtract the registers `loadConsts` materialised — they still hold the
-  -- modulus here, read-only through the reduce). SUB the low word, SBB the rest,
-  -- then SBB the top-carry word so CF is the final borrow over the 257-bit value.
-    ++ [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
-    ++ (List.range 3).map (fun (k : Nat) =>
-        JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
-    ++ [ JInstr.sbb rtopName (.imm 0) ]
-  -- CF = 1 ⇒ v < p_sm2 ⇒ keep the original window word; else keep the trial diff
-    ++ (List.range 4).map (fun (k : Nat) =>
-        JInstr.cmovb (resNames.getD k default) (.reg (accNames.getD (k + 4) default)))
+  movChain resNames (accNames.drop 4)
+    ++ condSubRoundN resNames pNames (accNames.drop 4) rtopName
+
+/-- The conditional subtract, written out instruction by instruction. -/
+theorem emitCondSubP_eq_explicit : emitCondSubP =
+    (List.range 4).map (fun (k : Nat) =>
+        JInstr.mov (resNames.getD k default) (.reg (accNames.getD (k + 4) default)))
+      ++ [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
+      ++ (List.range 3).map (fun (k : Nat) =>
+          JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
+      ++ [ JInstr.sbb rtopName (.imm 0) ]
+      ++ (List.range 4).map (fun (k : Nat) =>
+          JInstr.cmovb (resNames.getD k default) (.reg (accNames.getD (k + 4) default))) :=
+  rfl
 
 /-- **The shipped `bignum_montmul_sm2` block: two proven cores + trusted ABI /
     inter-step routing.** `loadInputs` (pointer ABI) ++ `loadConsts` (SM2
