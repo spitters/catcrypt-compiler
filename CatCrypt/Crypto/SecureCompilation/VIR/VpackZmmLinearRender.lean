@@ -9,6 +9,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmm
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComRange
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
 public import CatCryptCore.Tactics.KatGuard
 public import Std.Data.HashMap
 
@@ -43,7 +45,9 @@ The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
 bindings are stored to `64·j(%rdi)` in binding order, the output convention of
 `JasminLprogExport.outStoreSlots`.
-With `ymm` the same text runs on the 256-bit registers, four 64-bit lanes per value.
+With `ymm` the same text is printed on the 256-bit registers, four 64-bit lanes per
+value: register names (`vecReg`) and broadcast counts (`constOperand`) are taken from the
+register mode `ZmmTextModel.Mode` the validator's machine model reads.
 
 The fast selections (`vpmuludq` for a 64-bit multiply, an unsigned minimum for a
 conditional add or subtract) are valid only on part of the lane range. The caller states
@@ -73,6 +77,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (VarMap argName paramsAndMap)
+open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode)
 
 /-! ## 1. The binding list -/
 
@@ -108,6 +113,11 @@ def ZBind.dst : ZBind → String
   | .deferred d _ _ => d
   | .mulhilo h _ _ _ => h
   | .other d => d
+
+/-- Whether a binding lies outside the renderer's fragment. -/
+def ZBind.isOther : ZBind → Bool
+  | .other _ => true
+  | _ => false
 
 /-- The names a binding reads. -/
 def ZBind.srcs : ZBind → List String
@@ -230,29 +240,32 @@ def lastUses (bs : Array ZBind) (live : List String) : Std.HashMap String Nat :=
     (fun m (b, i) => b.srcs.foldl (fun m s => m.insert s i) m) ({} : Std.HashMap String Nat)
   live.foldl (fun m s => m.insert s bs.size) m
 
-/-- The `%zmm` register numbered `i`. -/
-def zmmName (i : Nat) : String := "%zmm" ++ toString i
+/-- The vector register numbered `i` in mode `md`: `%zmm i` or `%ymm i`. -/
+def vecReg (md : Mode) (i : Nat) : String :=
+  (match md with | .zmm => "%zmm" | .ymm => "%ymm") ++ toString i
 
 /-- The scratch register a constant operand is loaded into; never allocated. -/
-def zmmScratch : String := "%zmm31"
+def scratchReg (md : Mode) : String := vecReg md 31
 
 /-- The temporaries of the high-multiply expansion; never allocated when the program
     contains a high multiply. -/
-def mulhiTemps : List String := ["%zmm28", "%zmm29", "%zmm30"]
+def mulhiTemps (md : Mode) : List String := [vecReg md 28, vecReg md 29, vecReg md 30]
 
-/-- Linear-scan allocation of `%zmm0..30` less `reserved` over the non-constant values:
-    parameter `i` is pinned to `%zmm i`; at each binding the registers of the names it
-    reads for the last time are released before its destination is assigned, and the
-    destination's register is released at once when nothing reads it. Constants take no
-    register. Fails when a binding finds no free register. -/
-def allocZmmLinear (params : List String) (consts : Std.HashMap String (String × Nat))
+/-- Linear-scan allocation of registers `0..30` of mode `md` less `reserved` over the
+    non-constant values: parameter `i` is pinned to register `i`; at each binding the
+    registers of the names it reads for the last time are released before its destination
+    is assigned, and the destination's register is released at once when nothing reads
+    it. Constants take no register. Fails when a binding finds no free register. -/
+def allocZmmLinear (md : Mode) (params : List String)
+    (consts : Std.HashMap String (String × Nat))
     (bs : Array ZBind) (live : List String) (reserved : List String := []) :
     Except String (Std.HashMap String String) := do
   let lu := lastUses bs live
   let pinned : Std.HashMap String String :=
-    params.zipIdx.foldl (fun m (p, i) => m.insert p (zmmName i)) {}
+    params.zipIdx.foldl (fun m (p, i) => m.insert p (vecReg md i)) {}
   let pool : List String :=
-    (((List.range 31).drop params.length).map zmmName).filter (fun r => !reserved.contains r)
+    (((List.range 31).drop params.length).map (vecReg md)).filter
+      (fun r => !reserved.contains r)
   let step (st : Std.HashMap String String × List String) (bi : ZBind × Nat) :
       Except String (Std.HashMap String String × List String) := do
     let (alloc, free) := st
@@ -286,11 +299,12 @@ def constData (lbl : String) (v : Nat) : List String :=
     ["\t.p2align 6", lbl ++ ":"]
       ++ (List.range 8).map (fun j => "\t.quad " ++ toString ((v / 2 ^ (64 * j)) % 2 ^ 64))
 
-/-- The memory operand of a constant read by a width-`w` operation: an embedded
-    broadcast of its lane, or its 64-byte value. -/
-def constOperand (w : LaneW) (c : String × Nat) : String :=
+/-- The memory operand of a constant read by a width-`w` operation in mode `md`: an
+    embedded broadcast of its lane to the `md.act / w.bits` lanes of the register, or its
+    value. -/
+def constOperand (md : Mode) (w : LaneW) (c : String × Nat) : String :=
   if isBcast w c.2 then
-    c.1 ++ "(%rip)" ++ (match w with | .q => "{1to8}" | .d => "{1to16}")
+    c.1 ++ "(%rip)" ++ "{1to" ++ toString (md.act / w.bits) ++ "}"
   else c.1 ++ "(%rip)"
 
 /-- The line loading a constant read by a width-`w` operation into register `r`. -/
@@ -299,8 +313,9 @@ def constLoadTo (w : LaneW) (c : String × Nat) (r : String) : String :=
     (match w with | .q => "\tvpbroadcastq " | .d => "\tvpbroadcastd ") ++ c.1 ++ "(%rip), " ++ r
   else "\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ r
 
-/-- The line loading a constant into `zmmScratch`. -/
-def constLoad (w : LaneW) (c : String × Nat) : String := constLoadTo w c zmmScratch
+/-- The line loading a constant into `scratchReg md`. -/
+def constLoad (md : Mode) (w : LaneW) (c : String × Nat) : String :=
+  constLoadTo w c (scratchReg md)
 
 /-- The packed operations whose operands may be exchanged. -/
 def bopCommutes : JasminBinOp → Bool
@@ -336,11 +351,11 @@ def opLine (mn : String) (rd ra rb : String) : String :=
   "\t" ++ mn ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
 
 /-- The even and odd 64-bit products of the sixteen-lane operands `ra`, `rb`: the even
-    products (`vpmuludq`) into `%zmm28`, and the odd lanes duplicated down
+    products (`vpmuludq`) into register 28, and the odd lanes duplicated down
     (`vmovshdup`) and multiplied into `odd`. When `rb` holds a sixteen-lane broadcast
     (`rbBcast`) its odd lanes equal its even lanes and it is used as it is. -/
-def productLines (odd ra rb : String) (rbBcast : Bool := false) : List String :=
-  let t0 := "%zmm28"; let t1 := "%zmm29"; let t2 := "%zmm30"
+def productLines (md : Mode) (odd ra rb : String) (rbBcast : Bool := false) : List String :=
+  let t0 := vecReg md 28; let t1 := vecReg md 29; let t2 := vecReg md 30
   [ opLine "vpmuludq" t0 ra rb
   , "\tvmovshdup " ++ ra ++ ", " ++ t1 ]
   ++ (if rbBcast then [] else ["\tvmovshdup " ++ rb ++ ", " ++ t2]) ++
@@ -350,26 +365,28 @@ def productLines (odd ra rb : String) (rbBcast : Bool := false) : List String :=
     (`productLines`) hold the odd lanes' high words in place, and the even products'
     high words are merged into the even lanes by `vmovshdup` under `%k2` (even lanes
     set). -/
-def mulhiLines (rd ra rb : String) (rbBcast : Bool := false) : List String :=
-  productLines rd ra rb rbBcast ++ ["\tvmovshdup %zmm28, " ++ rd ++ "{%k2}"]
+def mulhiLines (md : Mode) (rd ra rb : String) (rbBcast : Bool := false) : List String :=
+  productLines md rd ra rb rbBcast ++ ["\tvmovshdup " ++ vecReg md 28 ++ ", " ++ rd ++ "{%k2}"]
 
 /-- The low and high halves of the sixteen-lane products of `ra` and `rb`, from one
     pair of `vpmuludq`: the high half as in `mulhiLines`, and the low half the even
     products' low words with the odd products' low words merged into the odd lanes by
     `vmovsldup` under `%k1` (odd lanes set). `rhi` and `rlo` are distinct. -/
-def mulhiloLines (rhi rlo ra rb : String) (rbBcast : Bool := false) : List String :=
-  productLines "%zmm29" ra rb rbBcast ++
-  [ "\tvmovdqa64 %zmm29, " ++ rhi
-  , "\tvmovshdup %zmm28, " ++ rhi ++ "{%k2}"
-  , "\tvmovsldup %zmm29, %zmm28{%k1}"
-  , "\tvmovdqa64 %zmm28, " ++ rlo ]
+def mulhiloLines (md : Mode) (rhi rlo ra rb : String) (rbBcast : Bool := false) :
+    List String :=
+  let t0 := vecReg md 28; let t1 := vecReg md 29
+  productLines md t1 ra rb rbBcast ++
+  [ "\tvmovdqa64 " ++ t1 ++ ", " ++ rhi
+  , "\tvmovshdup " ++ t0 ++ ", " ++ rhi ++ "{%k2}"
+  , "\tvmovsldup " ++ t1 ++ ", " ++ t0 ++ "{%k1}"
+  , "\tvmovdqa64 " ++ t0 ++ ", " ++ rlo ]
 
-/-- The instruction lines of binding `b`. A constant second operand is a memory
-    operand; a constant first operand is exchanged with a register second operand when
-    `bop` commutes, and otherwise read from its resident register or loaded into
-    `zmmScratch`; a shift by a broadcast constant below the lane width uses the
+/-- The instruction lines of binding `b` in mode `md`. A constant second operand is a
+    memory operand; a constant first operand is exchanged with a register second operand
+    when `bop` commutes, and otherwise read from its resident register or loaded into
+    `scratchReg md`; a shift by a broadcast constant below the lane width uses the
     immediate form. Constant bindings emit nothing. -/
-def bindLines (consts : Std.HashMap String (String × Nat))
+def bindLines (md : Mode) (consts : Std.HashMap String (String × Nat))
     (alloc : Std.HashMap String String) (narrow : Std.HashSet String := {})
     (resident : Std.HashMap String String := {}) :
     ZBind → Except String (List String)
@@ -377,11 +394,12 @@ def bindLines (consts : Std.HashMap String (String × Nat))
   | .deferred _ _ _ => pure []
   | .mulhilo h l a b =>
       match alloc.get? h, alloc.get? l, alloc.get? a, consts.get? b, alloc.get? b with
-      | some rh, some rl, some ra, none, some rb => pure (mulhiloLines rh rl ra rb)
+      | some rh, some rl, some ra, none, some rb => pure (mulhiloLines md rh rl ra rb)
       | some rh, some rl, some ra, some cb, _ =>
         match resident.get? cb.1 with
-        | some r => pure (mulhiloLines rh rl ra r (isBcast .d cb.2))
-        | none => pure (constLoad .d cb :: mulhiloLines rh rl ra zmmScratch (isBcast .d cb.2))
+        | some r => pure (mulhiloLines md rh rl ra r (isBcast .d cb.2))
+        | none => pure (constLoad md .d cb ::
+            mulhiloLines md rh rl ra (scratchReg md) (isBcast .d cb.2))
       | _, _, _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {h}"
   | .other d => throw s!"vpackZMM linear render: binding {d} is not a packed op or constant"
   | .minu w d a b =>
@@ -398,17 +416,18 @@ def bindLines (consts : Std.HashMap String (String × Nat))
       let constReg (c : String × Nat) : List String × String :=
         match resident.get? c.1 with
         | some r => ([], r)
-        | none => ([constLoad .d c], zmmScratch)
+        | none => ([constLoad md .d c], scratchReg md)
       match consts.get? a, consts.get? b with
-      | none, none => pure (mulhiLines rd (← reg a) (← reg b))
+      | none, none => pure (mulhiLines md rd (← reg a) (← reg b))
       | none, some cb =>
         let (ls, r) := constReg cb
-        pure (ls ++ mulhiLines rd (← reg a) r (isBcast .d cb.2))
+        pure (ls ++ mulhiLines md rd (← reg a) r (isBcast .d cb.2))
       | some ca, none =>
         let (ls, r) := constReg ca
-        pure (ls ++ mulhiLines rd (← reg b) r (isBcast .d ca.2))
+        pure (ls ++ mulhiLines md rd (← reg b) r (isBcast .d ca.2))
       | some ca, some cb =>
-        pure (constLoad .d ca :: constLoadTo .d cb "%zmm30" :: mulhiLines rd zmmScratch "%zmm30")
+        pure (constLoad md .d ca :: constLoadTo .d cb (vecReg md 30) ::
+          mulhiLines md rd (scratchReg md) (vecReg md 30))
   | .pack w bop d a b => do
       let reg (n : String) : Except String String :=
         match alloc.get? n with
@@ -429,17 +448,17 @@ def bindLines (consts : Std.HashMap String (String × Nat))
         let ra ← reg a
         match shiftImm cb ra with
         | some line => pure [line]
-        | none => pure [opLine mn rd ra (constOperand w cb)]
+        | none => pure [opLine mn rd ra (constOperand md w cb)]
       | some ca, none =>
         let rb ← reg b
-        if bopCommutes bop then pure [opLine mn rd rb (constOperand w ca)]
+        if bopCommutes bop then pure [opLine mn rd rb (constOperand md w ca)]
         else match resident.get? ca.1 with
           | some r => pure [opLine mn rd r rb]
-          | none => pure [constLoad w ca, opLine mn rd zmmScratch rb]
+          | none => pure [constLoad md w ca, opLine mn rd (scratchReg md) rb]
       | some ca, some cb =>
-        match shiftImm cb zmmScratch with
-        | some line => pure [constLoad w ca, line]
-        | none => pure [constLoad w ca, opLine mn rd zmmScratch (constOperand w cb)]
+        match shiftImm cb (scratchReg md) with
+        | some line => pure [constLoad md w ca, line]
+        | none => pure [constLoad md w ca, opLine mn rd (scratchReg md) (constOperand md w cb)]
 
 /-! ## 3b. Range facts
 
@@ -586,14 +605,16 @@ def fuseMulHiLo (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind)
     unsigned minimum. Up to four
     constants read as the first operand of a non-commutative operation are resident,
     loaded once at entry into the highest registers the allocation and the high-multiply
-    temporaries leave free. With `ymm` the same instructions run on the 256-bit
-    registers `%ymm0..31` (four 64-bit lanes, operands and outputs 32 bytes apart,
-    `{1to4}` broadcasts): every instruction the renderer emits for a 64-bit-lane program is
-    lane-wise, so its lanes 0..3 are those of the 512-bit form. -/
+    temporaries leave free. With `ymm` the same instructions are printed on the 256-bit
+    registers `%ymm0..31` (mode `Mode.ymm`: four 64-bit lanes, outputs 32 bytes apart,
+    `{1to4}` broadcasts); every instruction the renderer emits for a 64-bit-lane program is
+    lane-wise, so its lanes 0..3 are those of the 512-bit form. The 256-bit form of a
+    program with 32-bit lanes or a high multiply is an error. -/
 def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     (names : List String) (bs0 : Array ZBind) (ranges : Option (Nat × Array Iv) := none)
     (ymm : Bool := false) : Except String String := do
-  let outStride := if ymm then 32 else 64
+  let md : Mode := if ymm then .ymm else .zmm
+  let outStride := md.stride
   let (consts, data) := constTable sym bs0
   let info : RangeInfo := match ranges with
     | some (B, arr) => rangeInfoOf consts names B arr bs0
@@ -607,7 +628,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
   let hasMulhi := bs.any (fun b =>
     match b with | .mulhi _ _ _ => true | .mulhilo _ _ _ _ => true | _ => false)
-  let temps := if hasMulhi then mulhiTemps else []
+  let temps := if hasMulhi then mulhiTemps md else []
   let top := 30 - temps.length
   let firstConsts : List (LaneW × (String × Nat)) := (bs.toList.filterMap (fun b =>
     match b with
@@ -616,24 +637,24 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     | .mulhilo _ _ _ b => (consts.get? b).map (LaneW.d, ·)
     | _ => none)).eraseDups.take 4
   let residentList : List ((LaneW × (String × Nat)) × String) :=
-    firstConsts.zipIdx.map (fun (c, i) => (c, zmmName (top - i)))
+    firstConsts.zipIdx.map (fun (c, i) => (c, vecReg md (top - i)))
   let resident : Std.HashMap String String :=
     residentList.foldl (fun m (c, r) => m.insert c.2.1 r) {}
-  let alloc ← allocZmmLinear names consts bs outs (temps ++ residentList.map (·.2))
+  let alloc ← allocZmmLinear md names consts bs outs (temps ++ residentList.map (·.2))
   let loads := names.zipIdx.map (fun (_, s) =>
-    "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ zmmName s)
+    "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ vecReg md s)
   let maskSetup := if hasMulhi then
     ["\tmovl $43690, %eax", "\tkmovw %eax, %k1", "\tmovl $21845, %eax", "\tkmovw %eax, %k2"]
     else []
   let residentLoads := residentList.map (fun (c, r) => constLoadTo c.1 c.2 r)
   let body ← bs.foldlM
     (fun (acc : Array String) b => do
-      pure (acc ++ (← bindLines consts alloc info.narrow resident b).toArray)) #[]
+      pure (acc ++ (← bindLines md consts alloc info.narrow resident b).toArray)) #[]
   let stores ← outs.zipIdx.mapM (fun (o, j) =>
     match alloc.get? o, consts.get? o with
     | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
-    | none, some c => pure ["\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ zmmScratch,
-        "\tvmovdqu64 " ++ zmmScratch ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
+    | none, some c => pure ["\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ scratchReg md,
+        "\tvmovdqu64 " ++ scratchReg md ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
     | none, none => throw s!"vpackZMM linear render: unallocated output {o}")
   let text : List String :=
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
@@ -643,11 +664,9 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
       ++ (data.toList.flatMap (fun (lbl, v) => constData lbl v))
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
   let body := String.intercalate "\n" text ++ "\n"
-  if ymm then
-    if hasMulhi || bs.any (fun b => match b with | .pack .d _ _ _ _ => true | _ => false) then
-      throw "vpackZMM linear render: the 256-bit form covers 64-bit-lane programs only"
-    pure (((body.replace "%zmm" "%ymm").replace "{1to8}" "{1to4}"))
-  else pure body
+  if ymm && (hasMulhi || bs.any (fun b => match b with | .pack .d _ _ _ _ => true | _ => false))
+  then throw "vpackZMM linear render: the 256-bit form covers 64-bit-lane programs only"
+  pure body
 
 /-- The owned function text of the packed program `com` (`renderZmmLinearBinds` over
     its bindings). -/
@@ -697,6 +716,21 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom (butterflyHi
     "\tvmovdqu64 0(%rsi), %zmm0", "\tvmovdqu64 64(%rsi), %zmm1",
     "\tvmovdqu64 128(%rsi), %zmm2", "\tvpmullq %zmm2, %zmm0, %zmm3",
     "\tvpaddq %zmm3, %zmm1, %zmm4"]
+
+/-- A 64-bit-lane binding list with an immediate shift, a resident constant first operand
+    of a subtract and a broadcast memory operand: `((a·b) >> 3)` subtracted from the
+    broadcast `5`, plus `5`. -/
+def ymmCheckBinds : Array ZBind := #[
+  .const "v0" (bcast512 3), .const "v1" (bcast512 5),
+  .pack .q .mul "v2" "a" "b", .pack .q .shr "v3" "v2" "v0",
+  .pack .q .sub "v4" "v1" "v3", .pack .q .add "v5" "v4" "v1"]
+
+/- The `%ymm` render of `ymmCheckBinds` is its `%zmm` render with every `%zmm` register
+   name read as `%ymm` and every `{1to8}` broadcast as `{1to4}`. -/
+#kat (renderZmmLinearBinds "g" (fun s => 32 * s) 1 ["a", "b"] ymmCheckBinds).toOption.isSome &&
+  (renderZmmLinearBinds "g" (fun s => 32 * s) 1 ["a", "b"] ymmCheckBinds (ymm := true)).toOption
+    == (renderZmmLinearBinds "g" (fun s => 32 * s) 1 ["a", "b"] ymmCheckBinds).toOption.map
+      (fun s => (s.replace "%zmm" "%ymm").replace "{1to8}" "{1to4}")
 
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender

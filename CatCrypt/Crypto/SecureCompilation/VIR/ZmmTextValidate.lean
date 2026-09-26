@@ -30,7 +30,9 @@ facts or constant lanes put both operands below `2^32`), `vShi` (a shift by a co
 as an immediate shift), `vMulhi` and `vMullo` (the two halves of the `vpmuludq` /
 `vmovshdup` / merge sequence) and `vMinu` (the conditional add as an unsigned minimum,
 under the range fact `RangeDomain.condAdd_eq_umin` needs). The text is accepted when
-store `j` writes a register holding output `j`.
+store `j` writes a register holding output `j`. Names are compared up to value numbering
+(`repTable`): the binding list may compute one value in several bindings, and the
+bindings are checked in the form `renameB` gives them, reading representatives.
 
 The reference is a lane valuation `E` (the value `E k n` of name `n` on lane `k`)
 satisfying every binding on every active lane (`SatB`); the range facts are intervals
@@ -42,11 +44,13 @@ per name (`RangeDomain.Iv.Mem`), the form `ComRange.rangeAnalysis_sound` conclud
 * `vBin`, `vMulU`, `vShi`, `vMulhi`, `vMullo`, `vMinu`, `verify`: the recognisers.
 * `keyMap`, `norm`: the candidate table and the normaliser.
 * `parse`: the parser of the renderer's text.
+* `buildRep`, `repCheck`, `repTable`, `renameB`: value numbering of the bindings.
 * `validate`: the validator.
 
 ## Main results
 
 * `verify_sound`, `norm_sound`: a recognised term has the value of its binding.
+* `repCheck_sound`: a name has the value of its representative.
 * `validate_sound`: when `validate` accepts the text, running the parsed program on any
   input region holding the inputs succeeds and leaves at offset `stride·j` a value whose
   active lanes are the values of output `j` of the bindings on those lanes.
@@ -832,10 +836,10 @@ def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
     [("h|" ++ ka ++ "|" ++ kb, (d, [])), ("h|" ++ kb ++ "|" ++ ka, (d, []))]
   | _ => []
 
-/-- The candidate table of a binding list. -/
+/-- The candidate table of a binding list: each key names the first binding that has it. -/
 def keyMap (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (bs : Array ZBind) :
     Std.HashMap String (String × List String) :=
-  bs.foldl (fun km b => (bindKeys w m D b).foldl (fun km (k, v) => km.insert k v) km) {}
+  bs.foldl (fun km b => (bindKeys w m D b).foldl (fun km (k, v) => km.insertIfNew k v) km) {}
 
 /-- Replace a term by the name of a binding it is checked to compute. -/
 def norm (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (rf : Std.HashMap String Iv)
@@ -1064,7 +1068,219 @@ def parse (m : Mode) (text : String) :
       else .error "bad header"
   | _ => .error "short text"
 
-/-! ## 9. The validator -/
+/-! ## 9. Value numbering
+
+The binding list has no common-subexpression elimination, so several bindings may
+compute one value. The candidate table names each register by one binding, so the
+validator compares names up to value numbering: `buildRep` maps every binding to the
+first binding with the same operation on the same representatives (a constant to the
+first constant of its value), `repCheck` checks the table against the bindings, and
+`renameB` makes every binding read representatives. `repCheck_sound`: on a lane
+satisfying every binding, a name and its representative have one value. -/
+
+/-- The representative table: name `n` ↦ `(r, i)`, the representative `r` of `n` and the
+    position `i` of `n` in the binding list. -/
+abbrev RepMap := Std.HashMap String (String × Nat)
+
+/-- The representative of `n`: its table entry, or `n` itself. -/
+def repOf (R : RepMap) (n : String) : String :=
+  match R[n]? with
+  | some (r, _) => r
+  | none => n
+
+/-- The value-numbering key of a binding at lane width `w` over the representatives `R`:
+    the operation and the representatives of its operands (ordered for a commuting
+    operation), or the value of a constant. -/
+def valKey (w : LaneW) (R : RepMap) : ZBind → Option String
+  | .const _ v => some ("c" ++ toString v)
+  | .pack w' bop _ a b =>
+    if w' = w then
+      let x := repOf R a
+      let y := repOf R b
+      let (x, y) := if bopCommutes bop && decide (y < x) then (y, x) else (x, y)
+      some ("p" ++ bopTag bop ++ "|" ++ x ++ "|" ++ y)
+    else none
+  | .mulhi _ a b =>
+    let x := repOf R a
+    let y := repOf R b
+    let (x, y) := if decide (y < x) then (y, x) else (x, y)
+    some ("h|" ++ x ++ "|" ++ y)
+  | _ => none
+
+/-- Value numbering of `bs` at lane width `w`: binding `i` is mapped to the first binding
+    with its key, or to itself when it is the first. -/
+def buildRep (w : LaneW) (bs : Array ZBind) : RepMap :=
+  (bs.foldl (fun (acc : RepMap × Std.HashMap String String × Nat) b =>
+    let (R, T, i) := acc
+    match valKey w R b with
+    | some k =>
+      match T[k]? with
+      | some r => (R.insert b.dst (r, i), T, i + 1)
+      | none => (R.insert b.dst (b.dst, i), T.insert k b.dst, i + 1)
+    | none => (R.insert b.dst (b.dst, i), T, i + 1)) ({}, {}, 0)).1
+
+/-- Name `x` has no table entry, or one of position below `i`. -/
+def below (R : RepMap) (i : Nat) (x : String) : Bool :=
+  match R[x]? with
+  | some (_, j) => decide (j < i)
+  | none => true
+
+/-- The operand pairs `(a, b)` and `(c, e)` have equal representatives, exchanged when
+    `comm` allows. -/
+def sameOps (R : RepMap) (comm : Bool) (a b c e : String) : Bool :=
+  (repOf R a == repOf R c && repOf R b == repOf R e) ||
+    (comm && repOf R a == repOf R e && repOf R b == repOf R c)
+
+/-- Binding `b` of `n` and binding `b'` of `r` compute one value: they are constants of
+    one value, or the same operation at width `w` on operands with equal representatives
+    and positions below `i`. -/
+def sameVal (w : LaneW) (R : RepMap) (i : Nat) (n r : String) : ZBind → ZBind → Bool
+  | .const d v, .const d' v' => d == n && d' == r && v == v'
+  | .pack w1 bop d a b, .pack w2 bop' d' c e =>
+    d == n && d' == r && decide (w1 = w) && decide (w2 = w) && decide (bop' = bop) &&
+      below R i a && below R i b && below R i c && below R i e &&
+      sameOps R (bopCommutes bop) a b c e
+  | .mulhi d a b, .mulhi d' c e =>
+    d == n && d' == r && below R i a && below R i b && below R i c && below R i e &&
+      sameOps R true a b c e
+  | _, _ => false
+
+/-- The table entry `n ↦ (r, i)` is justified by the bindings `D`. -/
+def repEntryOK (w : LaneW) (D : Std.HashMap String ZBind) (R : RepMap)
+    (e : String × (String × Nat)) : Bool :=
+  e.1 == e.2.1 ||
+    match D[e.1]?, D[e.2.1]? with
+    | some b, some b' => sameVal w R e.2.2 e.1 e.2.1 b b'
+    | _, _ => false
+
+/-- Every entry of the representative table is justified by the bindings `D`. -/
+def repCheck (w : LaneW) (D : Std.HashMap String ZBind) (R : RepMap) : Bool :=
+  R.toList.all (repEntryOK w D R)
+
+/-- The representative table `validate` uses: the value numbering of `bs` when `repCheck`
+    justifies it, and the empty table otherwise. -/
+def repTable (w : LaneW) (bs : Array ZBind) : RepMap :=
+  let R := buildRep w bs
+  if repCheck w (mkDefs bs) R then R else {}
+
+/-- The binding `b` with its operands replaced by their representatives. -/
+def renameB (R : RepMap) : ZBind → ZBind
+  | .pack w bop d a b => .pack w bop d (repOf R a) (repOf R b)
+  | .mulhi d a b => .mulhi d (repOf R a) (repOf R b)
+  | b => b
+
+section Rep
+
+variable {w : LaneW} {D : Std.HashMap String ZBind} {R : RepMap}
+  {E : Nat → String → BitVec w.bits} {k : Nat}
+
+theorem sameOps_val {comm : Bool} {a b c e : String}
+    (ha : E k a = E k (repOf R a)) (hb : E k b = E k (repOf R b))
+    (hc : E k c = E k (repOf R c)) (he : E k e = E k (repOf R e))
+    (h : sameOps R comm a b c e = true) :
+    (E k a = E k c ∧ E k b = E k e) ∨ (comm = true ∧ E k a = E k e ∧ E k b = E k c) := by
+  unfold sameOps at h
+  simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at h
+  rcases h with ⟨h1, h2⟩ | ⟨⟨h0, h1⟩, h2⟩
+  · exact Or.inl ⟨by rw [ha, hc, h1], by rw [hb, he, h2]⟩
+  · exact Or.inr ⟨h0, by rw [ha, he, h1], by rw [hb, hc, h2]⟩
+
+theorem sameVal_sound (hsat : ∀ (n : String) (b : ZBind), D[n]? = some b → SatB w E k b)
+    {i : Nat} {n r : String} {b b' : ZBind} (hn : D[n]? = some b) (hr : D[r]? = some b')
+    (ih : ∀ x, below R i x = true → E k x = E k (repOf R x))
+    (h : sameVal w R i n r b b' = true) : E k n = E k r := by
+  have sb := hsat _ _ hn
+  have sb' := hsat _ _ hr
+  cases b <;> cases b' <;> simp only [sameVal, Bool.and_eq_true, beq_iff_eq,
+    decide_eq_true_eq, Bool.false_eq_true] at h
+  · rename_i w1 bop d a b w2 bop' d' c e
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, rfl⟩, ha⟩, hb⟩, hc⟩, he⟩, hs⟩ := h
+    simp only [SatB] at sb sb'
+    rw [sb trivial, sb' trivial]
+    rcases sameOps_val (ih _ ha) (ih _ hb) (ih _ hc) (ih _ he) hs with ⟨h1, h2⟩ | ⟨h0, h1, h2⟩
+    · rw [h1, h2]
+    · rw [h1, h2, JasminBinOp.apply_comm _ h0]
+  · rename_i d a b d' c e
+    obtain ⟨⟨⟨⟨⟨⟨rfl, rfl⟩, ha⟩, hb⟩, hc⟩, he⟩, hs⟩ := h
+    simp only [SatB] at sb sb'
+    rw [sb, sb']
+    rcases sameOps_val (ih _ ha) (ih _ hb) (ih _ hc) (ih _ he) hs with ⟨h1, h2⟩ | ⟨-, h1, h2⟩
+    · rw [h1, h2]
+    · rw [h1, h2, mulHiW_comm]
+  · rename_i d v d' v'
+    obtain ⟨⟨rfl, rfl⟩, rfl⟩ := h
+    simp only [SatB] at sb sb'
+    rw [sb, sb']
+
+/-- **Soundness of the representative table.** On a lane satisfying every binding of `D`,
+    every name has the value of its representative. -/
+theorem repCheck_sound (hsat : ∀ (n : String) (b : ZBind), D[n]? = some b → SatB w E k b)
+    (hc : repCheck w D R = true) (x : String) : E k x = E k (repOf R x) := by
+  have key : ∀ i x, below R i x = true → E k x = E k (repOf R x) := by
+    intro i
+    induction i with
+    | zero =>
+      intro x hx
+      unfold below at hx
+      split at hx
+      · simp at hx
+      · rename_i hR
+        simp [repOf, hR]
+    | succ i ih =>
+      intro x hx
+      unfold below at hx
+      split at hx
+      · rename_i r j hR
+        simp only [decide_eq_true_eq] at hx
+        rcases Nat.lt_succ_iff_lt_or_eq.1 hx with hj | rfl
+        · exact ih x (by simp [below, hR, hj])
+        · have hrep : repOf R x = r := by simp [repOf, hR]
+          rw [hrep]
+          have he := List.all_eq_true.1 hc (x, (r, j))
+            (Std.HashMap.mem_toList_iff_getElem?_eq_some.2 hR)
+          unfold repEntryOK at he
+          simp only [Bool.or_eq_true, beq_iff_eq] at he
+          rcases he with he | he
+          · rw [he]
+          · split at he
+            · rename_i b b' hn hr
+              exact sameVal_sound hsat hn hr ih he
+            · cases he
+      · rename_i hR
+        simp [repOf, hR]
+  exact key ((R[x]?.map (·.2)).getD 0 + 1) x (by
+    unfold below
+    split
+    · rename_i r j hR
+      simp [hR]
+    · rfl)
+
+theorem satB_renameB (hr : ∀ x, E k x = E k (repOf R x)) {b : ZBind} (h : SatB w E k b) :
+    SatB w E k (renameB R b) := by
+  cases b with
+  | pack w' bop d a b =>
+    intro hw
+    simp only [SatB] at h
+    rw [h hw, ← hr, ← hr]
+  | mulhi d a b =>
+    simp only [SatB] at h
+    simp only [renameB, SatB]
+    rw [h, ← hr, ← hr]
+  | _ => exact h
+
+theorem repTable_sound {bs : Array ZBind}
+    (hsat : ∀ (n : String) (b : ZBind), (mkDefs bs)[n]? = some b → SatB w E k b)
+    (x : String) : E k x = E k (repOf (repTable w bs) x) := by
+  unfold repTable
+  dsimp only
+  split
+  · rename_i hc
+    exact repCheck_sound hsat hc x
+  · simp [repOf]
+
+end Rep
+
+/-! ## 10. The validator -/
 
 /-- The name of the input at byte offset `off`: parameter `s` is at `offs[s]`. -/
 def paramAt (params : List String) (offs : List Nat) (off : Nat) : Option String :=
@@ -1103,10 +1319,12 @@ def validate (m : Mode) (w : LaneW) (params : List String) (offs : List Nat)
     Bool :=
   match parse m text with
   | .ok (prog, ro) =>
-    let D := mkDefs bs
-    let km := keyMap w m D bs
+    let R := repTable w bs
+    let bs' := bs.map (renameB R)
+    let D := mkDefs bs'
+    let km := keyMap w m D bs'
     match srun m ro (paramAt params offs) (norm w m D rf km) SState.init prog with
-    | some s => outsOK m D s outs
+    | some s => outsOK m D s (outs.map (repOf R))
     | none => false
   | .error _ => false
 
@@ -1137,8 +1355,15 @@ theorem validate_sound {m : Mode} {w : LaneW} {params : List String} {offs : Lis
   · rename_i prog ro hp
     refine ⟨prog, ro, hp, ?_⟩
     intro E hsat hrf inp hinp σ hσ
-    have hf : Facts m w (mkDefs bs) rf E :=
-      { sat := fun n b hb k hk => hsat b (mkDefs_mem bs n b hb) k ((active_iff m w k).1 hk)
+    have hrep : ∀ k, Active m w k → ∀ x, E k x = E k (repOf (repTable w bs) x) :=
+      fun k hk => repTable_sound
+        (fun n b hb => hsat b (mkDefs_mem bs n b hb) k ((active_iff m w k).1 hk))
+    have hf : Facts m w (mkDefs (bs.map (renameB (repTable w bs)))) rf E :=
+      { sat := fun n b hb k hk => by
+          have hm := mkDefs_mem _ n b hb
+          rw [Array.toList_map, List.mem_map] at hm
+          obtain ⟨b0, hb0, rfl⟩ := hm
+          exact satB_renameB (hrep k hk) (hsat b0 hb0 k ((active_iff m w k).1 hk))
         rng := fun n i hi k hk => hrf n i hi k ((active_iff m w k).1 hk) }
     dsimp only at h
     split at h
@@ -1155,20 +1380,91 @@ theorem validate_sound {m : Mode} {w : LaneW} {params : List String} {offs : Lis
       intro j hj
       unfold outsOK at h
       simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
-      have hj' := h.1 j hj
-      rw [List.getElem?_eq_getElem hj] at hj'
+      have hj' := h.1 j (by rw [List.length_map]; exact hj)
+      rw [List.getElem?_map, List.getElem?_eq_getElem hj] at hj'
       split at hj'
       · rename_i t o hto ho
         cases ho
         refine ⟨_, outAt_rel hrel _ t hto, ?_⟩
         intro k hk
         have hk' : Active m w k := (active_iff m w k).2 hk
-        rw [lane_wr _ hk', opMatch_lane hf hj' hk']
+        rw [lane_wr _ hk', opMatch_lane hf hj' hk', ← hrep k hk']
       · cases hj'
     · cases h
   · cases h
 
-/-! ## 10. Static checks -/
+/-- A short description of a term for diagnostics. -/
+def termDesc : Term → String
+  | .var x => x
+  | .cst _ => "const"
+  | .init r => s!"init{r}"
+  | .lw L o a b =>
+    let os := match o with
+      | .bin .add => "add" | .bin .sub => "sub" | .bin .mul => "mul" | .bin .and => "and"
+      | .bin .or => "or" | .bin .xor => "xor" | .bin .shl => "shl" | .bin .shr => "shr"
+      | .bin .andn => "andn" | .minu => "minu" | .muludq => "muludq"
+    let d (t : Term) : String := match t with
+      | .var x => x | .cst _ => "const" | _ => "term"
+    s!"lw{L} {os}({d a}, {d b})"
+  | .shi L l k _ => s!"shi{L} {if l then "left" else "right"} {k}"
+  | .dup _ _ => "dup"
+  | .mdup _ _ _ _ => "mdup"
+
+/-- The first register written by the step from `s` to `s'` whose term is an unnamed
+    lane-wise operation other than the addition of a constant, which the unsigned-minimum
+    form of the conditional add leaves unnamed (diagnostics only). -/
+def unnamedWrite (s s' : SState) : Option String :=
+  ((List.range 32).find? (fun r =>
+    (s'.regs.toArray.getD r (.init 0)) != (s.regs.toArray.getD r (.init 0)) &&
+      match (s'.regs.toArray.getD r (.init 0)) with
+      | .lw _ (.bin .add) _ (.cst _) => false
+      | .lw _ (.bin .add) (.cst _) _ => false
+      | .lw .. => true
+      | _ => false)).map
+    (fun r => s!"%zmm{r} := {termDesc (s'.regs.toArray.getD r (.init 0))}")
+
+/-- The symbolic run of `validate` from `s`, reporting the index of the first instruction
+    it rejects (diagnostics only; not used by `validate_sound`). -/
+def diagRun (m : Mode) (w : LaneW) (ro : Std.HashMap String (Array (BitVec 64)))
+    (params : List String) (offs : List Nat) (D : Std.HashMap String ZBind)
+    (rf : Std.HashMap String Iv) (km : Std.HashMap String (String × List String)) (outs : List String) :
+    SState → Nat → List Instr → String
+  | s, _, [] =>
+    if outsOK m D s outs then "accepted" else
+    match (List.range outs.length).find? (fun j =>
+        match s.outAt (m.stride * j), outs[j]? with
+        | some t, some o => !opMatch D t o
+        | _, _ => true) with
+    | some j =>
+      let got := match s.outAt (m.stride * j) with
+        | some (.var x) => "var " ++ x
+        | some (.cst _) => "a constant"
+        | some _ => "a non-variable term"
+        | none => "no store"
+      s!"output {j}: expected {outs[j]?.getD "?"}, stored {got}"
+    | none => "a store offset is not a multiple of the stride"
+  | s, i, x :: xs =>
+    match sstep m ro (paramAt params offs) (norm w m D rf km) s x with
+    | some s' =>
+      match unnamedWrite s s' with
+      | some msg => s!"instruction {i} leaves an unnamed value: {msg}"
+      | none => diagRun m w ro params offs D rf km outs s' (i + 1) xs
+    | none => s!"instruction {i} rejected"
+
+/-- Why `validate` rejects `text`: the parse error, or the index of the first instruction
+    the symbolic run rejects (diagnostics only). -/
+def validateDiag (m : Mode) (w : LaneW) (params : List String) (offs : List Nat)
+    (bs : Array ZBind) (outs : List String) (rf : Std.HashMap String Iv) (text : String) :
+    String :=
+  match parse m text with
+  | .ok (prog, ro) =>
+    let R := repTable w bs
+    let bs' := bs.map (renameB R)
+    let D := mkDefs bs'
+    diagRun m w ro params offs D rf (keyMap w m D bs') (outs.map (repOf R)) SState.init 0 prog
+  | .error e => "parse: " ++ e
+
+/-! ## 11. Static checks -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR in
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect in
@@ -1266,5 +1562,54 @@ def barrettFacts : List (String × Iv) :=
 /- Without the range fact on `v7` the `vpmuludq` of `v8` is rejected. -/
 #kat !validateBinds .zmm .q ["a", "b"] barrettBinds 1 (some (2013265920, barrettRanges))
   (barrettFacts.take 3)
+
+/-- A binding list with duplicated bindings: `v1` computes `v0` and `v3` computes `v2`,
+    each read after its duplicate; the outputs are `v3` and `v4`. -/
+def dupBinds : Array ZBind := #[
+  .pack .q .add "v0" "a" "b", .pack .q .add "v1" "b" "a", .pack .q .xor "v2" "v0" "b",
+  .pack .q .xor "v3" "v1" "b", .pack .q .add "v4" "v2" "v3"]
+
+/- Duplicated bindings validate: registers and operands are compared up to value
+    numbering. -/
+#kat validateBinds .zmm .q ["a", "b"] dupBinds 2 none []
+
+/-- The doubling `x = a + a` of a BabyBear element, computed twice (`v3`, `v4`), and its
+    conditional subtract of `p` through the duplicate, `v5 = v4 - p` and
+    `v9 = v5 + ((0 - (v5 >> 63)) & p)`, added to the first copy. -/
+def doubleDupBinds : Array ZBind := #[
+  .const "v0" (VpackZmmLinearRender.bcast512 2013265921),
+  .const "v1" (VpackZmmLinearRender.bcast512 63), .const "v2" 0,
+  .pack .q .add "v3" "a" "a", .pack .q .add "v4" "a" "a", .pack .q .sub "v5" "v4" "v0",
+  .pack .q .shr "v6" "v5" "v1", .pack .q .sub "v7" "v2" "v6", .pack .q .and "v8" "v7" "v0",
+  .pack .q .add "v9" "v5" "v8", .pack .q .add "v10" "v3" "v9"]
+
+/-- The range input of `doubleDupBinds`: `v5 = 2a - p` lies in `[-p, p-2]`. -/
+def doubleDupRanges : Array Iv :=
+  (Array.replicate 11 ((0 : Int), (2 ^ 32 - 1 : Int))).set! 5 (-2013265921, 2013265919)
+
+/- The conditional subtract renders as `vpminuq` of the two copies' registers and
+    validates with the range fact on `v5`. -/
+#kat validateBinds .zmm .q ["a"] doubleDupBinds 1 (some (2013265920, doubleDupRanges))
+  [("v5", (-2013265921, 2013265919))]
+
+/-- `montBinds` with a second high half `v8 = mulhi(a, b)` after the fused pair; the
+    subtraction `v9` reads the first. -/
+def montDupBinds : Array ZBind := #[
+  .const "v0" (VpackZmmLinearRender.bcast512d 2013265921),
+  .const "v1" (VpackZmmLinearRender.bcast512d 2281701377),
+  .const "v2" (VpackZmmLinearRender.bcast512d 31), .const "v3" 0,
+  .pack .d .mul "v4" "a" "b", .mulhi "v5" "a" "b", .pack .d .mul "v6" "v4" "v1",
+  .mulhi "v7" "v6" "v0", .mulhi "v8" "b" "a", .pack .d .sub "v9" "v5" "v7",
+  .pack .d .shr "v10" "v9" "v2", .pack .d .sub "v11" "v3" "v10",
+  .pack .d .and "v12" "v11" "v0", .pack .d .add "v13" "v9" "v12"]
+
+/-- The range input of `montDupBinds`: `v9 = hi - u` lies in `[-(p-1), p-1]`. -/
+def montDupRanges : Array Iv :=
+  (Array.replicate 14 ((0 : Int), (2 ^ 32 - 1 : Int))).set! 9 (-2013265920, 2013265920)
+
+/- The fused high/low multiply, the duplicate high half and the unsigned-minimum form of
+    the conditional add validate. -/
+#kat validateBinds .zmm .d ["a", "b"] montDupBinds 1 (some (2013265920, montDupRanges))
+  [("v9", (-2013265920, 2013265920))]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate
