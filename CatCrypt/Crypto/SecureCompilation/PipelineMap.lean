@@ -161,23 +161,27 @@ lanes of one vector register through one entry point:
 
 ## The `Com` stage of the owned scalar back end (`Com jasminDialect` → `.s`)
 
-`LprogOptPipeline.renderOwnedCom` (`X86Backend/LprogOptPipeline.lean:1345`) is the owned
-back end from a `Com`: `ownedComStage` (:1326), then `Com.toLprogPhysAbi`, then
-`renderOwned` (:1233). The stage is selected by the input intervals `rangeIvs?`; `none`
-(the default) is the identity.
+`LprogOptPipeline.renderOwnedCom` (`X86Backend/LprogOptPipeline.lean:1363`) is the owned
+back end from a `Com`: `ownedComStage nOut` (:1333) with `nOut = outStoreMap.length`, then
+`Com.toLprogPhysAbi`, then `renderOwned` (:1234). The stage is selected by the input
+intervals `rangeIvs?`; `none` (the default) is the identity. The exporter stores the last
+`nOut` bindings as the outputs, and every pass keeps them.
 
-| pass (in order) | module | theorem |
-|-----------------|--------|---------|
-| `ComRangeFold.rangeFold` (range-driven constant fold) | `Optimizer/ComRangeFold.lean` | `rangeFold_denote` |
-| `CopyProp.copyElim` (delete copies, one renaming) | `Optimizer/CopyProp.lean:383` | `copyElim_denote` |
-| `ComDCE.dceLive` (delete dead bindings by liveness) | `Optimizer/ComDCE.lean:324` | `dceLive_denote` |
+| pass (in order) | module | theorems |
+|-----------------|--------|----------|
+| `ComRangeFold.rangeFold` (range-driven constant fold) | `Optimizer/ComRangeFold.lean:219` | `rangeFold_denote`, `rangeFold_bindVals` |
+| `CopyProp.copyElimOut` (delete copies outside the last `nOut`, one renaming) | `Optimizer/CopyProp.lean:470` | `copyElimOut_denote`, `copyElimOut_outputs` |
+| `ComDCE.dceLiveOut` (delete dead bindings by liveness, last `nOut` kept) | `Optimizer/ComDCE.lean:505` | `dceLiveOut_denote`, `dceLiveOut_outputs` |
 
-* `ComRangeFold.comRangeOpt` (`Optimizer/ComRangeFold.lean:237`) is the three passes
+* `ComRangeFold.comRangeOpt` (`Optimizer/ComRangeFold.lean:275`) is the three passes
   under `some ivs`; each is one traversal, so the stage is linear in the size of the
-  program. `LprogOptPipeline.ownedComStage_denote` (:1336) is its soundness: with every
-  register input in its interval, the program the exporter receives denotes the source.
-* Caller: `Poseidon2.ScalarEmit` (the scalar `poseidon2_bb`, inputs in `[0, p - 1]`),
-  with `FieldPermStagedSpec.poseidon2BbCom_spec` for the program after the stage.
+  program. `LprogOptPipeline.ownedComStage_denote` (:1344) and `ownedComStage_outputs`
+  (:1353) are its soundness: with every register input in its interval, the program the
+  exporter receives denotes the source and its last `nOut` bindings hold the values of the
+  last `nOut` bindings of the source (`ComDCE.outputs`).
+* Caller: `Poseidon2.ScalarEmit` (the scalar `poseidon2_bb`, inputs in `[0, p - 1]`,
+  `nOut = 16`), with `FieldPermStagedSpec.poseidon2BbCom_spec` for the returned value and
+  `ScalarEmit.poseidon2BbCom_outputs` for the stored words after the stage.
 
 ## Convention (keep this map true)
 
@@ -224,6 +228,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 #check @X86Backend.LprogOptPipeline.renderOwnedCom
 #check @X86Backend.LprogOptPipeline.ownedComStage
 #check @X86Backend.LprogOptPipeline.ownedComStage_denote
+#check @X86Backend.LprogOptPipeline.ownedComStage_outputs
 #check @CatCrypt.Crypto.Optimizer.ComRangeFold.comRangeOpt
 #check @CatCrypt.Crypto.Optimizer.ComRangeFold.rangeFold_denote
 #check @CatCrypt.Crypto.Optimizer.CopyProp.copyElim_denote

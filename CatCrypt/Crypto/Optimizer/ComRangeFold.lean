@@ -38,11 +38,12 @@ conditional subtract of `C` from `x` when `d = x - C`), the analysis settles the
 * `d` in `[2^w - 2^(w-1), 2^w)`: the mask is the point `2^w - 1`, the masked constant is
   `C`, and the add is `d + C`.
 
-`rangeFoldStage ivs c` follows the fold with copy elimination (`CopyProp.copyElim`) and
-dead-binding elimination (`ComDCE.dceLive`), which remove the copies and the bindings the
-fold leaves unread. Each pass is one traversal of the program, so the stage is linear in
-its size. `comRangeOpt` is the opt-in entry point: its argument `none` returns the
-program unchanged (`comRangeOpt_none`).
+`rangeFoldStage nOut ivs c` follows the fold with copy elimination
+(`CopyProp.copyElimOut`) and dead-binding elimination (`ComDCE.dceLiveOut`), which remove
+the copies and the bindings the fold leaves unread and keep the last `nOut` bindings, the
+outputs an owned emitter stores. Each pass is one traversal of the program, so the stage is
+linear in its size. `comRangeOpt` is the opt-in entry point: its argument `none` returns
+the program unchanged (`comRangeOpt_none`).
 
 ## Main definitions
 
@@ -57,6 +58,9 @@ program unchanged (`comRangeOpt_none`).
   of the valuation, the fold preserves the denotation.
 * `rangeFold_denote`, `rangeFoldStage_denote`, `comRangeOpt_denote`: when every register
   input lies in its interval, the rewritten program denotes the same value.
+* `rangeFold_bindVals`, `rangeFoldStage_outputs`, `comRangeOpt_outputs`: under the same
+  hypothesis, the fold preserves the value of every binding, and the stage the values of
+  the last `nOut` bindings (`ComDCE.outputs`).
 -/
 
 @[expose] public section
@@ -196,6 +200,27 @@ theorem rangeFold_denote {Γ : JCtxt} {t : JasminTy} (ivs : HVector (fun _ => Iv
     (rangeFold ivs c).denote V = c.denote V :=
   rangeFoldCom_denote _ _ _ c V rfl (envOK_ofIvs h) (kOfIvs_consistent h)
 
+/-- The fold rewrites each binding into one binding of the same value: under environments
+    that hold of the valuation, it preserves the value of every binding. -/
+theorem rangeFoldCom_bindVals : ∀ {Γ : JCtxt} {t : JasminTy} (A : AEnv Γ) (k : KEnv Γ)
+    (len : Nat) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ), len = Γ.length →
+    EnvOK A V → KEnv.Consistent k V →
+    ComDCE.bindVals (rangeFoldCom A k len c) V = ComDCE.bindVals c V
+  | _, _, _, _, _, .ret _, _, _, _, _ => rfl
+  | _, _, A, k, len, .var e body, V, hlen, hA, hk => by
+    have he := exprAbs_sound hA e
+    simp only [rangeFoldCom, ComDCE.bindVals]
+    rw [rangeFoldExpr_denote hA hk hlen e, exprAbs_len A e hlen,
+      rangeFoldCom_bindVals _ _ (len + 1) body _ (by simp [hlen]) (hA.cons he)
+        (consistent_cons hk he)]
+
+/-- When every register input lies in its interval, the folded program has the binding
+    values of the source. -/
+theorem rangeFold_bindVals {Γ : JCtxt} {t : JasminTy} (ivs : HVector (fun _ => Iv) Γ)
+    (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) (h : InputsIn ivs V) :
+    ComDCE.bindVals (rangeFold ivs c) V = ComDCE.bindVals c V :=
+  rangeFoldCom_bindVals _ _ _ c V rfl (envOK_ofIvs h) (kOfIvs_consistent h)
+
 /-- The interval `i` for every variable of a context. -/
 def ivsUniform (i : Iv) : (Γ : JCtxt) → HVector (fun _ => Iv) Γ
   | [] => .nil
@@ -216,42 +241,66 @@ theorem inputsIn_uniform {Γ : JCtxt} {i : Iv} {V : Ctxt.Valuation Γ}
 
 /-! ## 3. The stage and its opt-in form -/
 
-/-- The range fold followed by copy elimination and dead-binding elimination. Each of the
-    three passes is one traversal (`rangeFoldCom` tracks the length of its context,
-    `CopyProp.copyElim` carries one renaming, `ComDCE.dceLive` marks liveness in one
+/-- The range fold followed by copy elimination and dead-binding elimination, keeping the
+    last `nOut` bindings (the outputs an owned emitter stores). Each of the three passes is
+    one traversal (`rangeFoldCom` tracks the length of its context,
+    `CopyProp.copyElimOut` carries one renaming, `ComDCE.dceLiveOut` marks liveness in one
     backward scan), so the stage is linear in the size of the program. -/
-def rangeFoldStage {Γ : JCtxt} {t : JasminTy} (ivs : HVector (fun _ => Iv) Γ)
-    (c : Com jasminDialect Γ t) : Com jasminDialect Γ t :=
-  ComDCE.dceLive (CopyProp.copyElim (rangeFold ivs c))
+def rangeFoldStage (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (ivs : HVector (fun _ => Iv) Γ) (c : Com jasminDialect Γ t) : Com jasminDialect Γ t :=
+  ComDCE.dceLiveOut nOut (CopyProp.copyElimOut nOut (rangeFold ivs c))
 
 /-- **Soundness of the range-fold stage**: when every register input lies in its interval,
     the rewritten program denotes the same value. -/
-theorem rangeFoldStage_denote {Γ : JCtxt} {t : JasminTy} (ivs : HVector (fun _ => Iv) Γ)
-    (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) (h : InputsIn ivs V) :
-    (rangeFoldStage ivs c).denote V = c.denote V := by
+theorem rangeFoldStage_denote (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (ivs : HVector (fun _ => Iv) Γ) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ)
+    (h : InputsIn ivs V) : (rangeFoldStage nOut ivs c).denote V = c.denote V := by
   unfold rangeFoldStage
-  rw [ComDCE.dceLive_denote, CopyProp.copyElim_denote, rangeFold_denote ivs c V h]
+  rw [ComDCE.dceLiveOut_denote, CopyProp.copyElimOut_denote, rangeFold_denote ivs c V h]
+
+/-- **The range-fold stage preserves the outputs**: when every register input lies in its
+    interval, the last `nOut` bindings of the rewritten program hold the values of the last
+    `nOut` bindings of the source. -/
+theorem rangeFoldStage_outputs (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (ivs : HVector (fun _ => Iv) Γ) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ)
+    (h : InputsIn ivs V) :
+    ComDCE.outputs nOut (rangeFoldStage nOut ivs c) V = ComDCE.outputs nOut c V := by
+  unfold rangeFoldStage
+  rw [ComDCE.dceLiveOut_outputs, CopyProp.copyElimOut_outputs]
+  unfold ComDCE.outputs
+  rw [rangeFold_bindVals ivs c V h]
 
 /-- The opt-in range-fold stage: `none` leaves the program unchanged, `some ivs` runs
-    `rangeFoldStage ivs`. -/
-def comRangeOpt {Γ : JCtxt} {t : JasminTy} (ivs? : Option (HVector (fun _ => Iv) Γ))
-    (c : Com jasminDialect Γ t) : Com jasminDialect Γ t :=
+    `rangeFoldStage nOut ivs`. -/
+def comRangeOpt (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (ivs? : Option (HVector (fun _ => Iv) Γ)) (c : Com jasminDialect Γ t) :
+    Com jasminDialect Γ t :=
   match ivs? with
   | none => c
-  | some ivs => rangeFoldStage ivs c
+  | some ivs => rangeFoldStage nOut ivs c
 
-theorem comRangeOpt_none {Γ : JCtxt} {t : JasminTy} (c : Com jasminDialect Γ t) :
-    comRangeOpt none c = c := rfl
+theorem comRangeOpt_none (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : comRangeOpt nOut none c = c := rfl
 
 /-- **Soundness of the opt-in stage**: when the stage is on, with every register input in
     its interval, the rewritten program denotes the same value. -/
-theorem comRangeOpt_denote {Γ : JCtxt} {t : JasminTy}
+theorem comRangeOpt_denote (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
     (ivs? : Option (HVector (fun _ => Iv) Γ)) (c : Com jasminDialect Γ t)
     (V : Ctxt.Valuation Γ) (h : ∀ ivs, ivs? = some ivs → InputsIn ivs V) :
-    (comRangeOpt ivs? c).denote V = c.denote V := by
+    (comRangeOpt nOut ivs? c).denote V = c.denote V := by
   cases ivs? with
   | none => rfl
-  | some ivs => exact rangeFoldStage_denote ivs c V (h ivs rfl)
+  | some ivs => exact rangeFoldStage_denote nOut ivs c V (h ivs rfl)
+
+/-- **The opt-in stage preserves the outputs**: when the stage is on, with every register
+    input in its interval, the last `nOut` binding values are unchanged. -/
+theorem comRangeOpt_outputs (nOut : Nat) {Γ : JCtxt} {t : JasminTy}
+    (ivs? : Option (HVector (fun _ => Iv) Γ)) (c : Com jasminDialect Γ t)
+    (V : Ctxt.Valuation Γ) (h : ∀ ivs, ivs? = some ivs → InputsIn ivs V) :
+    ComDCE.outputs nOut (comRangeOpt nOut ivs? c) V = ComDCE.outputs nOut c V := by
+  cases ivs? with
+  | none => rfl
+  | some ivs => exact rangeFoldStage_outputs nOut ivs c V (h ivs rfl)
 
 /-! ## 4. Static checks
 
@@ -267,19 +316,25 @@ def condSub64 : List Step :=
 /- On `x` in `[p, 2p - 1]` the subtract always applies: the stage leaves the constant `p`
    and `x - p`. -/
 #kat (build 64 [.reg 64] condSub64).map (fun c =>
-    UncomputePass.comLen (rangeFoldStage (.cons (2013265921, 4026531841) .nil) c))
+    UncomputePass.comLen (rangeFoldStage 0 (.cons (2013265921, 4026531841) .nil) c))
   == some 2
+
+/- On the same interval with the last three bindings as outputs, the stage keeps them (the
+   folded negation and mask, and the copy of `x - p` the add becomes) with `p` and `x - p`. -/
+#kat (build 64 [.reg 64] condSub64).map (fun c =>
+    UncomputePass.comLen (rangeFoldStage 3 (.cons (2013265921, 4026531841) .nil) c))
+  == some 5
 
 /- On `x` in `[0, p - 1]` the subtract never applies: the sign word, its negation and the
    masked constant fold, and the stage leaves `p`, `x - p`, `p` and their sum. -/
 #kat (build 64 [.reg 64] condSub64).map (fun c =>
-    UncomputePass.comLen (rangeFoldStage (.cons (0, 2013265920) .nil) c))
+    UncomputePass.comLen (rangeFoldStage 0 (.cons (0, 2013265920) .nil) c))
   == some 4
 
 /- On `x` in `[0, 2p - 1]` the analysis does not settle the sign and all eight bindings
    stay. -/
 #kat (build 64 [.reg 64] condSub64).map (fun c =>
-    UncomputePass.comLen (rangeFoldStage (.cons (0, 4026531841) .nil) c))
+    UncomputePass.comLen (rangeFoldStage 0 (.cons (0, 4026531841) .nil) c))
   == some 8
 
 end CatCrypt.Crypto.Optimizer.ComRangeFold

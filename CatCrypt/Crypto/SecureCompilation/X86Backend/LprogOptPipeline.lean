@@ -42,7 +42,8 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
 * `optimizeLprog` — the composition an emitter applies before `renderLprogAtt`.
 * `ownedComStage`, `renderOwnedCom` — the opt-in `Com → Com` stage before the exporter
   (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
-  `Com`; `ownedComStage_denote` — the stage's soundness.
+  `Com`; `ownedComStage_denote`, `ownedComStage_outputs` — the stage's soundness for the
+  returned value and for the last `nOut` binding values the ABI stores.
 * `optimizeLprogVerified` — the five passes with a semantic soundness theorem,
   and `optimizeVerifiedBody_stateStore` — the composed store-image preservation
   across those five passes.
@@ -1304,44 +1305,61 @@ def renderOwnedReserveVecScratch (p : Lprog) : String :=
 
 /-! ## The `Com` stage ahead of the exporter
 
-`ownedComStage` is the `Com → Com` pass that an owned emitter applies before
+`ownedComStage nOut` is the `Com → Com` pass that an owned emitter applies before
 `Com.toLprogPhysAbi`. Its one pass is the range-driven fold
 `Optimizer.ComRangeFold.comRangeOpt`, selected by the input intervals: `none` (the
 default) leaves the program unchanged (`ownedComStage_none`), and `some ivs` folds the
-bindings the intervals of `ivs` settle and removes the copies and dead bindings, in time
-linear in the size of the program. `ownedComStage_denote` is its soundness: the program
-handed to the exporter denotes what the source denotes on every valuation whose register
-inputs lie in their intervals. `renderOwnedCom` is the whole owned back end from a `Com`:
-the stage, the exporter and `renderOwned`. -/
+bindings the intervals of `ivs` settle and removes the copies and dead bindings outside
+the last `nOut` bindings, in time linear in the size of the program. The exporter stores
+the last `nOut` bindings as the outputs (`JasminLprogExport.outStoreSlots`, with `nOut` the
+length of the output store map) and returns the value of the program. Its soundness covers
+both, on every valuation whose register inputs lie in their intervals:
+`ownedComStage_denote` (the returned value) and `ownedComStage_outputs` (the values of the
+last `nOut` bindings, `ComDCE.outputs`). `renderOwnedCom` is the whole owned back end from a
+`Com`: `ownedComStage` with `nOut = outStoreMap.length`, the exporter and `renderOwned`. -/
 
 section ComStage
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.RangeDomain (Iv)
-open CatCrypt.Crypto.Optimizer.ComRangeFold (comRangeOpt comRangeOpt_denote InputsIn)
+open CatCrypt.Crypto.Optimizer.ComRangeFold
+  (comRangeOpt comRangeOpt_denote comRangeOpt_outputs InputsIn)
+open CatCrypt.Crypto.Optimizer.ComDCE (outputs)
 
-/-- The `Com → Com` stage before the exporter: the range fold under the input intervals
-    `rangeIvs?`, or the identity for `none`. -/
-def ownedComStage {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- The `Com → Com` stage before the exporter, for an ABI storing the last `nOut`
+    bindings: the range fold under the input intervals `rangeIvs?`, or the identity for
+    `none`. -/
+def ownedComStage (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (com : Com jasminDialect Γ t) :
     Com jasminDialect Γ t :=
-  comRangeOpt rangeIvs? com
+  comRangeOpt nOut rangeIvs? com
 
-theorem ownedComStage_none {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) : ownedComStage none com = com := rfl
+theorem ownedComStage_none (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) : ownedComStage nOut none com = com := rfl
 
-/-- **Soundness of the `Com` stage**: on a valuation whose register inputs lie in the
-    selected intervals, the program handed to the exporter denotes what `com` denotes. -/
-theorem ownedComStage_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- **Soundness of the `Com` stage for the returned value**: on a valuation whose register
+    inputs lie in the selected intervals, the program handed to the exporter denotes what
+    `com` denotes. -/
+theorem ownedComStage_denote (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (com : Com jasminDialect Γ t)
     (V : Ctxt.Valuation Γ) (h : ∀ ivs, rangeIvs? = some ivs → InputsIn ivs V) :
-    (ownedComStage rangeIvs? com).denote V = com.denote V :=
-  comRangeOpt_denote rangeIvs? com V h
+    (ownedComStage nOut rangeIvs? com).denote V = com.denote V :=
+  comRangeOpt_denote nOut rangeIvs? com V h
 
-/-- **The owned back end from a `Com`**: `ownedComStage`, then `Com.toLprogPhysAbi` with
-    the given ABI maps, then `renderOwned`. With `rangeIvs? = none` it is
-    `renderOwned (Com.toLprogPhysAbi com …)` (`renderOwnedCom_none`). -/
+/-- **Soundness of the `Com` stage for the stored outputs**: on a valuation whose register
+    inputs lie in the selected intervals, the last `nOut` bindings of the program handed to
+    the exporter hold the values of the last `nOut` bindings of `com`. -/
+theorem ownedComStage_outputs (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (rangeIvs? : Option (HVector (fun _ => Iv) Γ)) (com : Com jasminDialect Γ t)
+    (V : Ctxt.Valuation Γ) (h : ∀ ivs, rangeIvs? = some ivs → InputsIn ivs V) :
+    outputs nOut (ownedComStage nOut rangeIvs? com) V = outputs nOut com V :=
+  comRangeOpt_outputs nOut rangeIvs? com V h
+
+/-- **The owned back end from a `Com`**: `ownedComStage` at the number of stored outputs
+    `outStoreMap.length`, then `Com.toLprogPhysAbi` with the given ABI maps, then
+    `renderOwned`. With `rangeIvs? = none` it is `renderOwned (Com.toLprogPhysAbi com …)`
+    (`renderOwnedCom_none`). -/
 def renderOwnedCom {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)
     (rangeIvs? : Option (HVector (fun _ => Iv) Γ) := none)
@@ -1354,8 +1372,8 @@ def renderOwnedCom {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false) : String :=
-  renderOwned (Com.toLprogPhysAbi (ownedComStage rangeIvs? com) fname shiftImm immSlotMap
-    inLoadMap outStoreMap abiArgs abiTyin residence abiW forceLivePin)
+  renderOwned (Com.toLprogPhysAbi (ownedComStage outStoreMap.length rangeIvs? com) fname
+    shiftImm immSlotMap inLoadMap outStoreMap abiArgs abiTyin residence abiW forceLivePin)
 
 theorem renderOwnedCom_none {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String) (shiftImm : ShiftImmOracle)

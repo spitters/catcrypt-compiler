@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
 # Verified copy-propagation pass for `Com` (typed VIR `jasminDialect`)
@@ -51,6 +52,9 @@ Replacing `z` by `a.there` throughout the body is therefore denotation-preservin
   **Not** `rfl`.
 * `copyElim_denote` : the same for `copyElim`, which deletes each copy binding and
   maps its uses to the source in a single traversal carrying one renaming.
+* `copyElimOut_denote`, `copyElimOut_outputs` : `copyElimOut nOut` deletes the copies
+  outside the last `nOut` bindings and keeps those bindings, so it preserves the
+  denotation and the last `nOut` binding values (`ComDCE.outputs`).
 
 The pass is conservative: it propagates **only** through a provably
 denotation-preserving copy (a variable-to-variable alias), never through an
@@ -389,6 +393,97 @@ theorem copyElim_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
     (copyElim c).denote V = c.denote V := by
   rw [copyElim, copyElimGo_denote, pullV_id]
+
+/-! ## 5a. Copy elimination that keeps the output bindings
+
+An owned emitter stores the last `nOut` bindings of its program as its outputs, so a copy
+among them must stay a binding. `copyElimOutGo k rem ρ c` carries the number `rem` of
+bindings of `c`: a binding with more than `k` bindings after it and including it
+(`k < rem`) is deleted when it is a copy, and every binding among the last `k` is kept. -/
+
+/-- The source of the binding `e` when it is a copy outside the last `k` of `rem`
+    remaining bindings. -/
+def copyOutside {Γ : Ctxt jasminDialect} {bs : JasminTy} (k rem : Nat)
+    (e : Expr jasminDialect Γ bs) : Option (Ctxt.Var Γ bs) :=
+  if k < rem then isCopy e else none
+
+theorem copyOutside_some {Γ : Ctxt jasminDialect} {bs : JasminTy} {k rem : Nat}
+    {e : Expr jasminDialect Γ bs} {a : Ctxt.Var Γ bs} (h : copyOutside k rem e = some a) :
+    k < rem ∧ isCopy e = some a := by
+  unfold copyOutside at h
+  split at h
+  · exact ⟨by assumption, h⟩
+  · cases h
+
+/-- Copy elimination under the renaming `ρ` outside the last `k` bindings: `rem` is the
+    number of bindings of the program. -/
+def copyElimOutGo (k : Nat) : {Γ Δ : Ctxt jasminDialect} → {t : JasminTy} → Nat →
+    Ctxt.Hom Γ Δ → Com jasminDialect Γ t → Com jasminDialect Δ t
+  | _, _, _, _, ρ, .ret v => .ret (ρ v)
+  | _, _, _, rem, ρ, .var e body =>
+      match copyOutside k rem e with
+      | some a => copyElimOutGo k (rem - 1) (consHom (ρ a) ρ) body
+      | none => .var (e.rename ρ) (copyElimOutGo k (rem - 1) ρ.lift body)
+
+theorem copyElimOutGo_denote (k : Nat) : ∀ {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
+    (rem : Nat) (ρ : Ctxt.Hom Γ Δ) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Δ),
+    (copyElimOutGo k rem ρ c).denote V = c.denote (pullV ρ V)
+  | _, _, _, _, ρ, .ret v, V => Ctxt.Var.lookup_rename ρ v V
+  | _, _, _, rem, ρ, .var e body, V => by
+      simp only [copyElimOutGo]
+      rcases hc : copyOutside k rem e with _ | a
+      · simp only [Com.denote]
+        rw [copyElimOutGo_denote k (rem - 1) ρ.lift body, Expr.denote_rename ρ e V,
+          pullV_lift]
+      · simp only [Com.denote]
+        rw [copyElimOutGo_denote k (rem - 1) (consHom (ρ a) ρ) body, pullV_consHom,
+          isCopy_denote e a (pullV ρ V) (copyOutside_some hc).2,
+          Ctxt.Var.lookup_rename ρ a V]
+
+/-- The binding values of `copyElimOutGo k` are those of the source with some entries
+    outside the last `k` deleted. -/
+theorem copyElimOutGo_tailAgree (k : Nat) : ∀ {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
+    (ρ : Ctxt.Hom Γ Δ) (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Δ),
+    ComDCE.TailAgree k (ComDCE.bindVals (copyElimOutGo k (UncomputePass.comLen c) ρ c) V)
+      (ComDCE.bindVals c (pullV ρ V))
+  | _, _, _, ρ, .ret v, V => ComDCE.TailAgree.refl k []
+  | _, _, _, ρ, .var e body, V => by
+      simp only [UncomputePass.comLen_var, copyElimOutGo, Nat.add_sub_cancel]
+      rcases hc : copyOutside k (UncomputePass.comLen body + 1) e with _ | a
+      · simp only [ComDCE.bindVals]
+        rw [Expr.denote_rename ρ e V]
+        have ih := copyElimOutGo_tailAgree k ρ.lift body (V.extend (e.denote (pullV ρ V)))
+        rw [pullV_lift] at ih
+        exact ih.cons _
+      · obtain ⟨hk, ha⟩ := copyOutside_some hc
+        have ih := copyElimOutGo_tailAgree k (consHom (ρ a) ρ) body V
+        rw [pullV_consHom] at ih
+        simp only [ComDCE.bindVals]
+        rw [isCopy_denote e a (pullV ρ V) ha, ← Ctxt.Var.lookup_rename ρ a V]
+        refine ih.drop_left _ ?_
+        rw [ComDCE.length_bindVals]
+        omega
+
+/-- **Copy elimination that keeps the output bindings**: every self-`or` copy outside the
+    last `nOut` bindings is deleted and its uses read its source; the last `nOut`
+    bindings are kept. One traversal. -/
+def copyElimOut (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : Com jasminDialect Γ t :=
+  copyElimOutGo nOut (UncomputePass.comLen c) (Ctxt.Hom.id Γ) c
+
+/-- **Denotation preservation for `copyElimOut`.** -/
+theorem copyElimOut_denote (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (copyElimOut nOut c).denote V = c.denote V := by
+  rw [copyElimOut, copyElimOutGo_denote, pullV_id]
+
+/-- **`copyElimOut` preserves the outputs**: the last `nOut` binding values. -/
+theorem copyElimOut_outputs (nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) :
+    ComDCE.outputs nOut (copyElimOut nOut c) V = ComDCE.outputs nOut c V := by
+  have h := (copyElimOutGo_tailAgree nOut (Ctxt.Hom.id Γ) c V).drop_eq
+  rw [pullV_id] at h
+  exact h
 
 /-! ## 6. Self-contained validation
 

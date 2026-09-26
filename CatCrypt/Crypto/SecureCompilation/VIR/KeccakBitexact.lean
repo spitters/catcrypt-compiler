@@ -336,7 +336,7 @@ SHAKE128 / SHAKE256 sit on top of this permutation in `bench/keccak_compare/`. -
 
 /-- The loop output from `init = 0`, as the reference value (the 24-round Keccak
     permutation under the FIPS 202 RC stream applied to the zero state). -/
-def keccakZeroOut : KeccakState := keccakRef 0
+noncomputable def keccakZeroOut : KeccakState := keccakRef 0
 
 /-- **KAT (corollary).** Running the emitted full Keccak round loop from
     `init = 0` yields `keccakZeroOut` — the reference 24-round permutation under

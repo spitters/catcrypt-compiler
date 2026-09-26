@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.Optimizer.UncomputePass
 
 /-!
 # Verified dead-let elimination for `Com` — a denotation-preserving rewrite
@@ -59,6 +60,11 @@ drops an observable effect: denotation is preserved exactly.
 * `dceLive` — elimination of every dead binding, interior ones included, in time
   linear in the size of the program: a liveness scan over binding levels and a
   rebuild through a `Thinning`. `dceLive_denote` — denotation preservation.
+* `bindVals`, `outputs` — the values of the bindings of a program, and the values of its
+  last `nOut` bindings (the words an owned emitter stores as its outputs).
+* `dceLiveOut` — `dceLive` with the last `nOut` bindings as further live roots, which it
+  always keeps. `dceLiveOut_denote`, `dceLiveOut_outputs` — it preserves the denotation
+  and the last `nOut` binding values.
 * `comDCE_cost_le`, `comDCE_ctSafe` — `jasminDialect` corollaries: the pass is
   cost-non-increasing and CT-preserving (the dialect is branch-free).
 * Self-contained validation: a program with a dead trailing binder is
@@ -338,6 +344,196 @@ theorem dceLive_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [Diale
   split
   · rename_i c' h
     exact dceGo_denote _ _ (.refl Γ) c c' h V
+  · rfl
+
+/-! ## 4a. The output bindings
+
+An owned emitter stores the values of the last `nOut` bindings of its program as its
+outputs (`JasminLprogExport.outStoreSlots`). `bindVals c V` lists the values of the
+bindings of `c` run from `V`, in binding order, and `outputs nOut c V` is its last `nOut`
+entries. `TailAgree k L' L` states that `L'` arises from `L` by deleting entries outside
+the last `k`; then the last `k` entries of the two lists agree (`TailAgree.drop_eq`).
+
+`dceLiveOut nOut` is `dceLive` with the last `nOut` bindings as further live roots: the
+rebuild `dceGoWith` keeps every binding at those levels whatever the marks, so the output
+bindings survive in place and `dceLiveOut_outputs` holds. -/
+
+/-- The values of the bindings of `c` run from `V`, in binding order. -/
+def bindVals {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d] :
+    {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → Ctxt.Valuation Γ → List (Σ u : d.Ty, ⟦u⟧)
+  | _, _, .ret _, _ => []
+  | _, _, .var (t := u) e body, V =>
+      ⟨u, e.denote V⟩ :: bindVals body (V.extend (e.denote V))
+
+theorem length_bindVals {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
+    [DialectDenote d] : ∀ {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (V : Ctxt.Valuation Γ),
+    (bindVals c V).length = UncomputePass.comLen c
+  | _, _, .ret _, _ => rfl
+  | _, _, .var e body, V => by
+      simp only [bindVals, List.length_cons, UncomputePass.comLen_var, length_bindVals body]
+
+/-- The values of the last `nOut` bindings of `c` run from `V`, in binding order: the
+    words an owned emitter stores as its `nOut` outputs. -/
+def outputs {d : Dialect} [DialectSignature d] [TyDenote d.Ty] [DialectDenote d]
+    (nOut : Nat) {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (V : Ctxt.Valuation Γ) :
+    List (Σ u : d.Ty, ⟦u⟧) :=
+  (bindVals c V).drop ((bindVals c V).length - nOut)
+
+/-- `L'` is `L` with some entries outside the last `k` deleted. -/
+def TailAgree {α : Type _} (k : Nat) (L' L : List α) : Prop :=
+  ∃ P P' T : List α, L = P ++ T ∧ L' = P' ++ T ∧ (T.length = k ∨ (P = [] ∧ P' = []))
+
+theorem TailAgree.refl {α : Type _} (k : Nat) (L : List α) : TailAgree k L L :=
+  ⟨[], [], L, rfl, rfl, Or.inr ⟨rfl, rfl⟩⟩
+
+theorem TailAgree.cons {α : Type _} {k : Nat} {L' L : List α} (x : α)
+    (h : TailAgree k L' L) : TailAgree k (x :: L') (x :: L) := by
+  obtain ⟨P, P', T, rfl, rfl, hT | ⟨rfl, rfl⟩⟩ := h
+  · exact ⟨x :: P, x :: P', T, rfl, rfl, Or.inl hT⟩
+  · exact TailAgree.refl k (x :: T)
+
+theorem TailAgree.drop_left {α : Type _} {k : Nat} {L' L : List α} (x : α)
+    (hL : k ≤ L.length) (h : TailAgree k L' L) : TailAgree k L' (x :: L) := by
+  obtain ⟨P, P', T, rfl, rfl, hT | ⟨rfl, rfl⟩⟩ := h
+  · exact ⟨x :: P, P', T, rfl, rfl, Or.inl hT⟩
+  · simp only [List.nil_append] at hL ⊢
+    refine ⟨x :: T.take (T.length - k), T.take (T.length - k), T.drop (T.length - k),
+      by simp, by simp, Or.inl ?_⟩
+    simp only [List.length_drop]
+    omega
+
+/-- The last `k` entries of two lists in `TailAgree k` agree. -/
+theorem TailAgree.drop_eq {α : Type _} {k : Nat} {L' L : List α} (h : TailAgree k L' L) :
+    L'.drop (L'.length - k) = L.drop (L.length - k) := by
+  obtain ⟨P, P', T, rfl, rfl, hT | ⟨rfl, rfl⟩⟩ := h
+  · simp only [List.length_append, hT, Nat.add_sub_cancel, List.drop_left]
+  · rfl
+
+/-- The rebuild of `dceGo` with the keep test `keep`: the binding at level `n` is kept
+    when `keep n` holds and dropped otherwise. `none` when a kept binding or the return
+    reads a dropped binding. -/
+def dceGoWith {d : Dialect} [DialectSignature d] (keep : Nat → Bool) :
+    {Δ Γ : Ctxt d} → {t : d.Ty} → Nat → Thinning Δ Γ → Com d Γ t → Option (Com d Δ t)
+  | _, _, _, _, θ, .ret v => (θ.get v).map .ret
+  | _, _, _, n, θ, .var (t := u) e body =>
+      if keep n then
+        match θ.getExpr e, dceGoWith keep (n + 1) (.keep u θ) body with
+        | some e', some b => some (.var e' b)
+        | _, _ => none
+      else dceGoWith keep (n + 1) (.drop u θ) body
+
+/-- **Soundness of the rebuild**, for any keep test. -/
+theorem dceGoWith_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
+    [DialectDenote d] (keep : Nat → Bool) : ∀ {Δ Γ : Ctxt d} {t : d.Ty} (n : Nat)
+    (θ : Thinning Δ Γ) (c : Com d Γ t) (c' : Com d Δ t), dceGoWith keep n θ c = some c' →
+    ∀ V : Ctxt.Valuation Γ, c'.denote (θ.pull V) = c.denote V
+  | _, _, _, _, θ, .ret v, c', h, V => by
+      simp only [dceGoWith, Option.map_eq_some_iff] at h
+      obtain ⟨v', hv, rfl⟩ := h
+      exact θ.get_lookup v v' hv V
+  | _, _, _, n, θ, .var (t := u) e body, c', h, V => by
+      simp only [dceGoWith] at h
+      split at h
+      · split at h
+        · rename_i e' b he hb
+          simp only [Option.some.injEq] at h
+          subst h
+          simp only [Com.denote]
+          rw [θ.getExpr_denote e e' he V]
+          exact dceGoWith_denote keep (n + 1) (.keep u θ) body b hb (V.extend (e.denote V))
+        · cases h
+      · exact dceGoWith_denote keep (n + 1) (.drop u θ) body c' h (V.extend (e.denote V))
+
+/-- **The rebuild keeps the output bindings**: when the keep test holds at the levels of
+    the last `k` bindings of `c`, the binding values of the rebuilt program are those of
+    `c` with some entries outside the last `k` deleted. -/
+theorem dceGoWith_tailAgree {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
+    [DialectDenote d] (keep : Nat → Bool) (k : Nat) : ∀ {Δ Γ : Ctxt d} {t : d.Ty}
+    (n : Nat) (θ : Thinning Δ Γ) (c : Com d Γ t) (c' : Com d Δ t),
+    dceGoWith keep n θ c = some c' →
+    (∀ ℓ, n + UncomputePass.comLen c ≤ ℓ + k → keep ℓ = true) →
+    ∀ V : Ctxt.Valuation Γ, TailAgree k (bindVals c' (θ.pull V)) (bindVals c V)
+  | _, _, _, _, θ, .ret v, c', h, _, V => by
+      simp only [dceGoWith, Option.map_eq_some_iff] at h
+      obtain ⟨v', _, rfl⟩ := h
+      exact TailAgree.refl k []
+  | _, _, _, n, θ, .var (t := u) e body, c', h, hk, V => by
+      simp only [dceGoWith] at h
+      have hk' : ∀ ℓ, n + 1 + UncomputePass.comLen body ≤ ℓ + k → keep ℓ = true :=
+        fun ℓ hℓ => hk ℓ (by simp only [UncomputePass.comLen_var]; omega)
+      split at h
+      · split at h
+        · rename_i e' b he hb
+          simp only [Option.some.injEq] at h
+          subst h
+          simp only [bindVals]
+          rw [θ.getExpr_denote e e' he V]
+          exact (dceGoWith_tailAgree keep k (n + 1) (.keep u θ) body b hb hk'
+            (V.extend (e.denote V))).cons _
+        · cases h
+      · rename_i hkn
+        have hlen : k ≤ (bindVals body (V.extend (e.denote V))).length := by
+          rw [length_bindVals]
+          refine Nat.le_of_not_lt fun hlt => hkn (hk n ?_)
+          simp only [UncomputePass.comLen_var]
+          omega
+        simp only [bindVals]
+        exact (dceGoWith_tailAgree keep k (n + 1) (.drop u θ) body c' h hk' _).drop_left _ hlen
+
+/-- The live levels from the initial marks `live0`, for a program over a context of length
+    `n0` whose bindings read the levels `uses`: the marks of `live0`, and the argument
+    levels of every binding at a live level. One backward scan. -/
+def liveLevelsFrom (live0 : Array Bool) (n0 : Nat) (uses : Array (List Nat)) :
+    Array Bool := Id.run do
+  let mut live := live0
+  for j in [0:uses.size] do
+    let i := uses.size - 1 - j
+    if live.getD (n0 + i) false then
+      for a in uses.getD i [] do
+        live := live.setIfInBounds a true
+  return live
+
+/-- The live levels with the returned level `r` and the levels of the last `nOut`
+    bindings as roots. -/
+def liveLevelsOut (n0 nOut : Nat) (uses : Array (List Nat)) (r : Nat) : Array Bool :=
+  liveLevelsFrom ((Array.range (n0 + uses.size)).map fun ℓ =>
+    decide (ℓ = r) || decide (n0 + uses.size ≤ ℓ + nOut)) n0 uses
+
+/-- **Dead-binding elimination that keeps the output bindings.** Every binding whose
+    value reaches neither the return nor one of the last `nOut` bindings is deleted, and
+    the last `nOut` bindings are kept; linear in the size of `c`. -/
+def dceLiveOut {d : Dialect} [DialectSignature d] (nOut : Nat) {Γ : Ctxt d} {t : d.Ty}
+    (c : Com d Γ t) : Com d Γ t :=
+  let n0 := Γ.length
+  let ur := bindingUses n0 c #[]
+  let live := liveLevelsOut n0 nOut ur.1 ur.2
+  let tail := n0 + UncomputePass.comLen c - nOut
+  match dceGoWith (fun ℓ => decide (tail ≤ ℓ) || live.getD ℓ true) n0 (.refl Γ) c with
+  | some c' => c'
+  | none => c
+
+/-- **Denotation preservation for `dceLiveOut`.** -/
+theorem dceLiveOut_denote {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
+    [DialectDenote d] (nOut : Nat) {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t)
+    (V : Ctxt.Valuation Γ) : (dceLiveOut nOut c).denote V = c.denote V := by
+  unfold dceLiveOut
+  dsimp only
+  split
+  · rename_i c' h
+    exact dceGoWith_denote _ _ (.refl Γ) c c' h V
+  · rfl
+
+/-- **`dceLiveOut` preserves the outputs**: the last `nOut` binding values. -/
+theorem dceLiveOut_outputs {d : Dialect} [DialectSignature d] [TyDenote d.Ty]
+    [DialectDenote d] (nOut : Nat) {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t)
+    (V : Ctxt.Valuation Γ) : outputs nOut (dceLiveOut nOut c) V = outputs nOut c V := by
+  unfold dceLiveOut
+  dsimp only
+  split
+  · rename_i c' h
+    refine (dceGoWith_tailAgree _ nOut _ (.refl Γ) c c' h (fun ℓ hℓ => ?_) V).drop_eq
+    simp only [Bool.or_eq_true, decide_eq_true_eq]
+    exact Or.inl (by omega)
   · rfl
 
 /-! ## 5. `jasminDialect` corollaries: cost and constant-time
