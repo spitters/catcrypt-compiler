@@ -42,11 +42,20 @@ The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
 bindings are stored to `64·j(%rdi)` in binding order, the output convention of
 `JasminLprogExport.outStoreSlots`.
+With `ymm` the same text runs on the 256-bit registers, four 64-bit lanes per value.
+
+The fast selections (`vpmuludq` for a 64-bit multiply, an unsigned minimum for a
+conditional add or subtract) are valid only on part of the lane range. The caller states
+a bound on the inputs, and `rangeAnalysis` bounds every value from it by interval
+arithmetic, with exact rules for the conditional add and the Barrett remainder; each
+selection is taken only where the analysis shows it is valid. The analysis is executable
+and checked on the two BabyBear multiply blocks (§4); its soundness is not proved in Lean.
 
 ## Main definitions
 
 * `ZBind`, `collectZBinds`, `collectZBindsScalar`: the straight-line binding list.
 * `csubToMinu`: the conditional add or subtract of a constant as an unsigned minimum.
+* `rangeAnalysis`, `csubResult`, `barrettResult`: the range analysis.
 * `allocZmmLinear`: the linear-scan allocation, failing when no register is free.
 * `renderZmmLinearFunction`, `renderLaneMapZmmFunction`, `renderLaneMapZmmDFunction`:
   the owned AT&T function text.
@@ -358,7 +367,7 @@ def mulhiloLines (rhi rlo ra rb : String) (rbBcast : Bool := false) : List Strin
     `zmmScratch`; a shift by a broadcast constant below the lane width uses the
     immediate form. Constant bindings emit nothing. -/
 def bindLines (consts : Std.HashMap String (String × Nat))
-    (alloc : Std.HashMap String String) (mulU : Bool := false)
+    (alloc : Std.HashMap String String) (narrow : Std.HashSet String := {})
     (resident : Std.HashMap String String := {}) :
     ZBind → Except String (List String)
   | .const _ _ => pure []
@@ -403,7 +412,7 @@ def bindLines (consts : Std.HashMap String (String × Nat))
         | some r => pure r
         | none => throw s!"vpackZMM linear render: unallocated operand {n} at {d}"
       let rd ← reg d
-      let mn := packMnemonic w mulU bop
+      let mn := packMnemonic w (narrow.contains d) bop
       let lane := 2 ^ w.bits
       let shiftImm (c : String × Nat) (src : String) : Option String :=
         match shiftImmMnemonic w bop with
@@ -429,14 +438,164 @@ def bindLines (consts : Std.HashMap String (String × Nat))
         | some line => pure [constLoad w ca, line]
         | none => pure [constLoad w ca, opLine mn rd zmmScratch (constOperand w cb)]
 
+/-! ## 3b. Range analysis
+
+`rangeAnalysis` bounds every value of a binding list, one bound for all lanes, by an integer
+interval `[lo, hi]` with `hi - lo < 2^L`: every lane value is `v mod 2^L` for some integer
+`v` in the interval. Parameters start in `[0, inBound]`, constants at their least and
+greatest lane. Add and subtract are interval arithmetic, and multiply, shifts by a
+broadcast count, `and` and the high multiply act on the lane interval (the shift of the
+interval into `[0, 2^L)`, or the full lane range when it straddles a multiple of `2^L`);
+anything else is the full lane range. Two idioms get their exact range instead:
+
+* the conditional add `r = d + ((0 - (d >> (L-1))) & C)` (`csubResult`), where `d` lies
+  in `[-C, 2^(L-1))`, is `d` on nonnegative `d` and `d + C` on negative `d`;
+* the Barrett remainder `r = x - ((((x >> s) * m) >> t) * p)` (`barrettResult`), with no
+  lane wrapping and `m·p ≤ 2^(s+t)`, lies in
+  `[0, X·δ/2^(s+t) + p·m/2^t + p]` for `x ≤ X` and `δ = 2^(s+t) - m·p`: the quotient is at
+  most `x/p` and exceeds `x/p - x·δ/(p·2^(s+t)) - m/2^t - 1`.
+
+The renderer takes the fast selections from it: a 64-bit multiply is `vpmuludq` where both
+operand lanes are below `2^32` (`RangeInfo.narrow`), and `csubToMinu` rewrites a
+conditional add where `csubResult` applies. -/
+
+/-- An integer interval `[lo, hi]`: a lane value is `v mod 2^L` for some `v` in it. -/
+abbrev Iv := Int × Int
+
+/-- The full lane range `[0, 2^L - 1]`. -/
+def ivTop (w : LaneW) : Iv := (0, 2 ^ w.bits - 1)
+
+/-- `i` when it spans fewer than `2^L` integers, else the full lane range. -/
+def ivNorm (w : LaneW) (i : Iv) : Iv :=
+  if i.2 - i.1 < 2 ^ w.bits then i else ivTop w
+
+/-- The lane values of `i`: its shift into `[0, 2^L)` when it lies within one multiple of
+    `2^L`, else the full lane range. -/
+def ivLane (w : LaneW) (i : Iv) : Iv :=
+  let M : Int := 2 ^ w.bits
+  let k := i.1 / M
+  if i.2 / M = k then (i.1 - k * M, i.2 - k * M) else ivTop w
+
+/-- The least and greatest lane of the 512-bit constant `v` at width `w`. -/
+def constLaneIv (w : LaneW) (v : Nat) : Iv :=
+  let lanes := (List.range (512 / w.bits)).map (fun k => (v / 2 ^ (w.bits * k)) % 2 ^ w.bits)
+  (Int.ofNat (lanes.foldl min (2 ^ w.bits)), Int.ofNat (lanes.foldl max 0))
+
+/-- The range of the conditional add `d + ((0 - (d >> (L-1))) & C)` for `d` in `id` and the
+    constant's lanes in `ic`, when every lane of `C` is below `2^(L-1)` and `d` lies in
+    `[-C, 2^(L-1))`; there the sign test reads the sign of `d`. -/
+def csubResult (w : LaneW) (id ic : Iv) : Option Iv :=
+  let half : Int := 2 ^ (w.bits - 1)
+  if 0 ≤ ic.1 ∧ ic.2 < half ∧ -ic.1 ≤ id.1 ∧ id.2 < half then
+    some (if 0 ≤ id.1 then id else (0, max id.2 (ic.2 - 1)))
+  else none
+
+/-- The range of the Barrett remainder `x - q·p`, `q = (((x >> s) · m) >> t)`, for `x` in
+    `ix`, the product `(x >> s)·m` in `ig` and `q·p` in `iy`, when no value wraps and
+    `m·p ≤ 2^(s+t)`. -/
+def barrettResult (w : LaneW) (ix ig iy : Iv) (s t m p : Nat) : Option Iv :=
+  let M : Int := 2 ^ w.bits
+  if 0 ≤ ix.1 ∧ ix.2 < M ∧ 0 ≤ ig.1 ∧ ig.2 < M ∧ 0 ≤ iy.1 ∧ iy.2 < M ∧ s < w.bits
+      ∧ t < w.bits ∧ 0 < p ∧ m * p ≤ 2 ^ (s + t) then
+    let X := ix.2.toNat
+    let δ := 2 ^ (s + t) - m * p
+    some (0, min ix.2 (Int.ofNat (X * δ / 2 ^ (s + t) + p * m / 2 ^ t + p + 1)))
+  else none
+
+/-- The ranges of a binding list and the 64-bit multiplies whose operand lanes are below
+    `2^32`. -/
+structure RangeInfo where
+  iv : Std.HashMap String Iv := {}
+  narrow : Std.HashSet String := {}
+
+/-- The ranges of `bs` (§3b) for parameters `params` in `[0, inBound]`. -/
+def rangeAnalysis (consts : Std.HashMap String (String × Nat)) (params : List String)
+    (inBound : Nat) (bs : Array ZBind) : RangeInfo := Id.run do
+  let defs : Std.HashMap String ZBind := bs.foldl (fun m b => m.insert b.dst b) {}
+  let bc (w : LaneW) (n : String) : Option Nat :=
+    (consts.get? n).bind (fun c => if isBcast w c.2 then some (c.2 % 2 ^ w.bits) else none)
+  -- the other operand when one of `a, b` is the broadcast constant `k`, and `k`
+  let withConst (w : LaneW) (a b : String) : Option (String × Nat) :=
+    match bc w b, bc w a with
+    | some k, _ => some (a, k)
+    | none, some k => some (b, k)
+    | none, none => none
+  -- the constant of the conditional add `d + t` at `w`
+  let csubConst (w : LaneW) (d t : String) : Option Nat := do
+    let .pack w1 .and _ t1 t2 ← defs.get? t | none
+    let (m, cC) ← if (consts.get? t2).isSome then some (t1, t2)
+      else if (consts.get? t1).isSome then some (t2, t1) else none
+    let c ← (consts.get? cC).map (·.2)
+    let .pack w2 .sub _ z s ← defs.get? m | none
+    let .pack w3 .shr _ d2 k ← defs.get? s | none
+    if w1 == w && w2 == w && w3 == w && (consts.get? z).map (·.2) == some 0 && d2 == d
+        && bc w k == some (w.bits - 1) then some c else none
+  -- the names of `(x >> s)·m` and `q·p` and the constants `s, t, m, p` of `x - y`
+  let barrett (w : LaneW) (x y : String) : Option (String × String × Nat × Nat × Nat × Nat) := do
+    let .pack w1 .mul _ y1 y2 ← defs.get? y | none
+    let (q, p) ← withConst w y1 y2
+    let .pack w2 .shr _ g tC ← defs.get? q | none
+    let t ← bc w tC
+    let .pack w3 .mul _ g1 g2 ← defs.get? g | none
+    let (h, m) ← withConst w g1 g2
+    let .pack w4 .shr _ x2 sC ← defs.get? h | none
+    let s ← bc w sC
+    if w1 == w && w2 == w && w3 == w && w4 == w && x2 == x then some (g, y, s, t, m, p)
+    else none
+  let mut iv : Std.HashMap String Iv :=
+    params.foldl (fun m p => m.insert p (0, Int.ofNat inBound)) {}
+  let mut narrow : Std.HashSet String := {}
+  for b in bs do
+    let get (w : LaneW) (n : String) : Iv :=
+      match consts.get? n with
+      | some c => constLaneIv w c.2
+      | none => (iv.get? n).getD (ivTop w)
+    match b with
+    | .mulhi d a b2 =>
+      let la := ivLane .d (get .d a)
+      let lb := ivLane .d (get .d b2)
+      iv := iv.insert d ((la.1 * lb.1) / 2 ^ 32, (la.2 * lb.2) / 2 ^ 32)
+    | .pack w bop d a b2 =>
+      let ia := get w a
+      let ib := get w b2
+      let la := ivLane w ia
+      let lb := ivLane w ib
+      let generic : Iv := match bop with
+        | .add => ivNorm w (ia.1 + ib.1, ia.2 + ib.2)
+        | .sub => ivNorm w (ia.1 - ib.2, ia.2 - ib.1)
+        | .mul => ivNorm w (la.1 * lb.1, la.2 * lb.2)
+        | .shr => match bc w b2 with
+          | some k => if k < w.bits then (la.1 / 2 ^ k, la.2 / 2 ^ k) else ivTop w
+          | none => ivTop w
+        | .shl => match bc w b2 with
+          | some k => if k < w.bits then ivNorm w (la.1 * 2 ^ k, la.2 * 2 ^ k) else ivTop w
+          | none => ivTop w
+        | .and => (0, min la.2 lb.2)
+        | _ => ivTop w
+      let special : Option Iv := match bop with
+        | .add =>
+          ((csubConst w a b2).bind (fun c => csubResult w ia (constLaneIv w c))) <|>
+          ((csubConst w b2 a).bind (fun c => csubResult w ib (constLaneIv w c)))
+        | .sub => (barrett w a b2).bind (fun (g, y, s, t, m, p) =>
+            barrettResult w ia (get w g) (get w y) s t m p)
+        | _ => none
+      match w, bop with
+      | .q, .mul => if la.2 < 2 ^ 32 && lb.2 < 2 ^ 32 then narrow := narrow.insert d
+      | _, _ => pure ()
+      iv := iv.insert d (special.getD generic)
+    | _ => pure ()
+  return { iv, narrow }
+
 /-- The conditional add or subtract of a constant `C` that the BabyBear blocks emit,
     `r = d + ((0 - (d >> (L-1))) & C)` at lane width `L`, rewritten to an unsigned
     minimum when the three intermediate values have no other reader: to
     `r = minu(x, d)` when `d = x - C` and `d` has exactly the two readers, and otherwise
     to `u = d + C; r = minu(d, u)`. The two agree on every lane where `d` is below
-    `2^(L-1)` or at least `2^L - C` and `C < 2^(L-1)` (the ranges the blocks produce on
-    reduced inputs); on other lanes they differ, so the caller asserts the range. -/
-def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) :
+    `2^(L-1)` or at least `2^L - C` and `C < 2^(L-1)`; on other lanes they differ, so the
+    rewrite happens only where `ok w d c` holds, which the renderer takes from `csubResult`
+    on the range of `d`. -/
+def csubToMinu (consts : Std.HashMap String (String × Nat))
+    (ok : LaneW → String → Nat → Bool) (bs : Array ZBind) :
     Array ZBind := Id.run do
   let defs : Std.HashMap String Nat := bs.zipIdx.foldl (fun m (b, i) => m.insert b.dst i) {}
   let uses : Std.HashMap String Nat :=
@@ -466,14 +625,15 @@ def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) 
       let hit := (idiom w a b2).map (fun h => (a, h)) <|> (idiom w b2 a).map (fun h => (b2, h))
       match hit with
       | some (d, cC, c, rem) =>
-        let direct : Option String := do
-          let .pack w4 .sub _ x cC2 ← defOf d | none
-          if w4 == w && constVal cC2 == some c && (constVal x).isNone && used d == 2 then
-            some x else none
-        match direct with
-        | some x => rw := rw.insert r [.minu w r x d]
-        | none => rw := rw.insert r [.pack w .add (r ++ "_u") d cC, .minu w r d (r ++ "_u")]
-        removed := rem.foldl (fun s n => s.insert n) removed
+        if ok w d c then
+          let direct : Option String := do
+            let .pack w4 .sub _ x cC2 ← defOf d | none
+            if w4 == w && constVal cC2 == some c && (constVal x).isNone && used d == 2 then
+              some x else none
+          match direct with
+          | some x => rw := rw.insert r [.minu w r x d]
+          | none => rw := rw.insert r [.pack w .add (r ++ "_u") d cC, .minu w r d (r ++ "_u")]
+          removed := rem.foldl (fun s n => s.insert n) removed
       | none => pure ()
     | _ => pure ()
   return bs.foldl (fun acc b =>
@@ -515,18 +675,29 @@ def fuseMulHiLo (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind)
 
 /-- The owned AT&T text of the function `sym(out = %rdi, in = %rsi)` over the parameter
     names `names` and bindings `bs`: parameter `s` loaded from `inOffset s(%rsi)`, the
-    body, and the `nOut` last bindings stored to `64·j(%rdi)`. With `fieldRange` the caller
-    asserts that every value a 64-bit multiply reads is below `2^32` and that the
-    conditional adds and subtracts read values in the ranges `csubToMinu` states; 64-bit
-    multiplies then render as `vpmuludq` and those idioms as unsigned minima. Up to four
+    body, and the `nOut` last bindings stored to `64·j(%rdi)`. With `inBound = some B` the
+    caller states that every input lane is at most `B`; `rangeAnalysis` then bounds every
+    value, and a 64-bit multiply whose operands it shows below `2^32` renders as
+    `vpmuludq`, a conditional add or subtract it shows in range as an unsigned minimum. Up to four
     constants read as the first operand of a non-commutative operation are resident,
     loaded once at entry into the highest registers the allocation and the high-multiply
-    temporaries leave free. -/
+    temporaries leave free. With `ymm` the same instructions run on the 256-bit
+    registers `%ymm0..31` (four 64-bit lanes, operands and outputs 32 bytes apart,
+    `{1to4}` broadcasts): every instruction the renderer emits for a 64-bit-lane program is
+    lane-wise, so its lanes 0..3 are those of the 512-bit form. -/
 def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
-    (names : List String) (bs0 : Array ZBind) (fieldRange : Bool := false) :
-    Except String String := do
+    (names : List String) (bs0 : Array ZBind) (inBound : Option Nat := none)
+    (ymm : Bool := false) : Except String String := do
+  let outStride := if ymm then 32 else 64
   let (consts, data) := constTable sym bs0
-  let bs1 := if fieldRange then csubToMinu consts bs0 else bs0
+  let info : RangeInfo := match inBound with
+    | some B => rangeAnalysis consts names B bs0
+    | none => {}
+  let csubOk (w : LaneW) (d : String) (c : Nat) : Bool :=
+    match info.iv.get? d with
+    | some i => (csubResult w i (constLaneIv w c)).isSome
+    | none => false
+  let bs1 := csubToMinu consts csubOk bs0
   let bs := fuseMulHiLo consts bs1
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
   let hasMulhi := bs.any (fun b =>
@@ -552,12 +723,12 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
   let residentLoads := residentList.map (fun (c, r) => constLoadTo c.1 c.2 r)
   let body ← bs.foldlM
     (fun (acc : Array String) b => do
-      pure (acc ++ (← bindLines consts alloc fieldRange resident b).toArray)) #[]
+      pure (acc ++ (← bindLines consts alloc info.narrow resident b).toArray)) #[]
   let stores ← outs.zipIdx.mapM (fun (o, j) =>
     match alloc.get? o, consts.get? o with
-    | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
+    | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
     | none, some c => pure ["\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ zmmScratch,
-        "\tvmovdqu64 " ++ zmmScratch ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
+        "\tvmovdqu64 " ++ zmmScratch ++ ", " ++ toString (outStride * j) ++ "(%rdi)"]
     | none, none => throw s!"vpackZMM linear render: unallocated output {o}")
   let text : List String :=
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
@@ -566,39 +737,44 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
       ++ ["\t.size " ++ sym ++ ", .-" ++ sym, "\t.section .rodata"]
       ++ (data.toList.flatMap (fun (lbl, v) => constData lbl v))
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
-  pure (String.intercalate "\n" text ++ "\n")
+  let body := String.intercalate "\n" text ++ "\n"
+  if ymm then
+    if hasMulhi || bs.any (fun b => match b with | .pack .d _ _ _ _ => true | _ => false) then
+      throw "vpackZMM linear render: the 256-bit form covers 64-bit-lane programs only"
+    pure (((body.replace "%zmm" "%ymm").replace "{1to8}" "{1to4}"))
+  else pure body
 
 /-- The owned function text of the packed program `com` (`renderZmmLinearBinds` over
     its bindings). -/
 def renderZmmLinearFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (com : Com jasminDialect Γ t)
-    (fieldRange : Bool := false) :
+    (inBound : Option Nat := none) :
     Except String String :=
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
-    (collectZBinds vm 0 #[] com).1 fieldRange
+    (collectZBinds vm 0 #[] com).1 inBound
 
 /-- The owned function text of `LaneMapZmm.laneMapZmm c`, eight lanes of the scalar
     64-bit program `c` per ZMM register, rendered from `c` in one pass by
     `collectZBindsScalar` without building the widened `Com`. -/
 def renderLaneMapZmmFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
-    (fieldRange : Bool := false) :
-    Except String String :=
+    (inBound : Option Nat := none)
+    (ymm : Bool := false) : Except String String :=
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
-    (collectZBindsScalar vm 0 #[] c).1 fieldRange
+    (collectZBindsScalar vm 0 #[] c).1 inBound ymm
 
 /-- The owned function text of the 32-bit lane map of `c`, sixteen lanes of the scalar
     32-bit program `c` per ZMM register, rendered from `c` in one pass by
     `collectZBindsScalar32`. -/
 def renderLaneMapZmmDFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
-    (fieldRange : Bool := false) :
+    (inBound : Option Nat := none) :
     Except String String :=
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
-    (collectZBindsScalar32 vm 0 #[] c).1 fieldRange
+    (collectZBindsScalar32 vm 0 #[] c).1 inBound
 
 /-! ## 4. A static check -/
 
@@ -613,5 +789,38 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom (butterflyHi
     "\tvmovdqu64 0(%rsi), %zmm0", "\tvmovdqu64 64(%rsi), %zmm1",
     "\tvmovdqu64 128(%rsi), %zmm2", "\tvpmullq %zmm2, %zmm0, %zmm3",
     "\tvpaddq %zmm3, %zmm1, %zmm4"]
+
+
+/- The range analysis on the BabyBear multiply of `FieldDescentBB` (a product, the Barrett
+    reduction with `m = ⌊2^62/p⌋`, one conditional subtract, then a product of the result
+    with itself) for inputs below `p`: all four 64-bit multiplies read operands below
+    `2^32`, and the reduced value lies in `[0, p - 1]`. -/
+#kat
+  let bs : Array ZBind := #[
+    .const "c30" (bcast512 30), .const "cm" (bcast512 2290649223),
+    .const "c32" (bcast512 32), .const "cp" (bcast512 2013265921),
+    .const "c63" (bcast512 63), .const "c0" 0,
+    .pack .q .mul "x" "a" "b", .pack .q .shr "h" "x" "c30", .pack .q .mul "g" "h" "cm",
+    .pack .q .shr "q" "g" "c32", .pack .q .mul "y" "q" "cp", .pack .q .sub "r" "x" "y",
+    .pack .q .sub "d" "r" "cp", .pack .q .shr "s" "d" "c63", .pack .q .sub "mm" "c0" "s",
+    .pack .q .and "t" "mm" "cp", .pack .q .add "r2" "d" "t", .pack .q .mul "z" "r2" "r2"]
+  let info := rangeAnalysis (constTable "k" bs).1 ["a", "b"] (2013265921 - 1) bs
+  (["x", "g", "y", "z"].all info.narrow.contains, info.iv.get? "r2")
+  == (true, some (0, 2013265920))
+
+/- The range analysis on the 32-bit Montgomery multiply of `FieldDescentBBMont32`
+    (`hi - mulhi(lo·μ, p)` and its conditional add) followed by an add block, for inputs
+    below `p`: both conditional adds are in range and both results lie in `[0, p - 1]`. -/
+#kat
+  let bs : Array ZBind := #[
+    .const "cp" (bcast512d 2013265921), .const "cmu" (bcast512d 2281701377),
+    .const "c31" (bcast512d 31), .const "c0" 0,
+    .pack .d .mul "lo" "a" "b", .mulhi "hi" "a" "b", .pack .d .mul "m" "lo" "cmu",
+    .mulhi "u" "m" "cp", .pack .d .sub "d" "hi" "u", .pack .d .shr "s" "d" "c31",
+    .pack .d .sub "mm" "c0" "s", .pack .d .and "t" "mm" "cp", .pack .d .add "r" "d" "t",
+    .pack .d .add "e" "r" "a", .pack .d .sub "f" "e" "cp", .pack .d .shr "s2" "f" "c31",
+    .pack .d .sub "mm2" "c0" "s2", .pack .d .and "t2" "mm2" "cp", .pack .d .add "r3" "f" "t2"]
+  let info := rangeAnalysis (constTable "k" bs).1 ["a", "b"] (2013265921 - 1) bs
+  (info.iv.get? "r", info.iv.get? "r3") == (some (0, 2013265920), some (0, 2013265920))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
