@@ -243,6 +243,103 @@ def residentReg (decisions : List (String × Slot)) (n : String) : Option String
   | some (.resident r) => some r
   | _ => none
 
+/-! ### 2a. First-fit allocation as the linear scan over simultaneously live names
+
+When every name is live at every point, the linear scan never frees a register: the
+`k`-th name receives the `k`-th pool register and the names past the pool are spilled.
+Restricted to its resident decisions this is first-fit allocation, `names.zip pool`
+(`firstFitScan_eq_zip`). The x86 printer's `AsmPrinter.allocGp` is this scan. -/
+
+/-- The register-resident decisions of a decision list as `(name, register)` pairs, in
+    list order. -/
+def residentPairs (decisions : List (String × Slot)) : List (String × String) :=
+  decisions.filterMap (fun d => match d.2 with
+    | .resident r => some (d.1, r)
+    | .spilled _ => none)
+
+/-- The live ranges in which all `names` are live together: the interval `[0, 0]` for
+    each name, so every pair of ranges overlaps. -/
+def allLiveRanges (names : List String) : List LiveRange :=
+  names.map (fun n => ⟨n, 0, 0⟩)
+
+/-- **First-fit allocation by linear scan.** The resident decisions of the linear scan of
+    `allLiveRanges names` against `pool`, in name order. The ranges are already in `defIdx`
+    order, so the scan step `linearScanGo` runs on them directly
+    (`firstFitScan_eq_linearScan`). -/
+def firstFitScan (pool names : List String) : List (String × String) :=
+  (residentPairs (linearScanGo 8 [] pool 0 [] (allLiveRanges names))).reverse
+
+/-- A left fold whose step returns either its element or its accumulator ends at an
+    element of the list or at the initial value. -/
+theorem foldl_some_mem {α : Type} (f : Option α → α → Option α)
+    (hf : ∀ o a, f o a = some a ∨ f o a = o) :
+    ∀ (l : List α) (init : Option α) (b : α), l.foldl f init = some b → b ∈ l ∨ init = some b
+  | [], _, _, h => Or.inr h
+  | x :: xs, init, b, h => by
+      rcases foldl_some_mem f hf xs (f init x) b h with hm | hi
+      · exact Or.inl (List.mem_cons_of_mem _ hm)
+      · rcases hf init x with hx | hx
+        · rw [hx] at hi; cases hi; exact Or.inl List.mem_cons_self
+        · rw [hx] at hi; exact Or.inr hi
+
+/-- The scan invariant for simultaneously live names: with every active interval ending
+    at `0`, no register is freed and none is evicted, so the scan pairs the remaining names
+    with the free registers in order and spills the rest. -/
+theorem linearScanGo_allLive_residentPairs (stride : Int) :
+    ∀ (names : List String) (active : List (String × String × Nat)) (free : List String)
+      (next : Int) (acc : List (String × Slot)),
+      (∀ a ∈ active, a.2.2 = 0) →
+      residentPairs (linearScanGo stride active free next acc (allLiveRanges names))
+        = (names.zip free).reverse ++ residentPairs acc
+  | [], _, _, _, _, _ => by simp [allLiveRanges, linearScanGo]
+  | n :: ns, active, free, next, acc, h => by
+      have hpart : List.partition (fun a => decide (0 ≤ a.snd.snd)) active = (active, []) := by
+        simp [List.partition_eq_filter_filter]
+      simp only [allLiveRanges, List.map_cons, linearScanGo, hpart, List.map_nil,
+        List.append_nil]
+      cases free with
+      | cons r more =>
+          simp only
+          rw [← allLiveRanges, linearScanGo_allLive_residentPairs stride ns _ more next _ (by
+            intro a ha
+            rcases List.mem_cons.mp ha with rfl | ha
+            · rfl
+            · exact h a ha)]
+          simp [residentPairs]
+      | nil =>
+          simp only
+          split
+          · rename_i a hfa
+            have ha0 : a.snd.snd = 0 := by
+              rcases foldl_some_mem _ (fun o x => by
+                cases o with
+                | none => exact Or.inl rfl
+                | some b =>
+                    by_cases hx : x.snd.snd > b.snd.snd
+                    · exact Or.inl (if_pos hx)
+                    · exact Or.inr (if_neg hx)) active none a hfa with hm | hn
+              · exact h a hm
+              · cases hn
+            rw [if_neg (by omega), ← allLiveRanges,
+              linearScanGo_allLive_residentPairs stride ns _ [] _ _ h]
+            simp [residentPairs]
+          · rw [← allLiveRanges, linearScanGo_allLive_residentPairs stride ns _ [] _ _ h]
+            simp [residentPairs]
+
+/-- **The linear scan over simultaneously live names is first-fit.** -/
+theorem firstFitScan_eq_zip (pool names : List String) :
+    firstFitScan pool names = names.zip pool := by
+  rw [firstFitScan, linearScanGo_allLive_residentPairs 8 names [] pool 0 [] (by simp)]
+  simp [residentPairs]
+
+/-- `firstFitScan` is the resident part of `linearScan`: sorting ranges that share one
+    `defIdx` leaves them in place. -/
+theorem firstFitScan_eq_linearScan (pool names : List String) :
+    firstFitScan pool names
+      = (residentPairs (linearScan pool 0 (allLiveRanges names))).reverse := by
+  rw [firstFitScan, linearScan, List.mergeSort_of_pairwise]
+  simp [allLiveRanges, List.pairwise_map, List.pairwise_of_forall]
+
 /-! ### 2b. The printer scan: instruction-order allocation with last-read recycling
 
 The non-spilling allocator the A64, RV32 and RV64 printers run (`ARMBackend.allocGp`,

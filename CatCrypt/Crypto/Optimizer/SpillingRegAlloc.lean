@@ -69,13 +69,13 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 /-! ## 1. Live-range analysis
 
 For each value-name the body uses, its **definition index** (first instruction
-that writes it) and its **last-use index** (last instruction that reads it). We
-reuse the printer's `jinstrNames` (all names) plus dedicated read/write
-projections so a name's live range is `[def, lastUse]`.
+that writes it) and its **last-use index** (last instruction that reads it), so a
+name's live range is `[def, lastUse]`. The analysis is `GenericRegAlloc.liveRanges`
+at the x86 `MachineModel (JInstr 64)` data `jinstrMachineModel`, whose read/write
+projections are defined here.
 
-`writtenName` is the single GP destination an instruction writes (the printer's
-`AsmPrinter`-side notion); `readNames` are the source names it reads. A `mulx`
-writes two; for live-range purposes we record both as defs.  -/
+`writtenNames` lists the destinations an instruction writes and `readNames` the
+source names it reads. A `mulx` writes two; both are defs. -/
 
 /-- Register names an instruction **writes** (its destinations). `storeMem`,
     `test`, `testN`, `cmp`, `bt`, `clc` and `stc` write no register. -/
@@ -174,30 +174,48 @@ def readNames : JInstr 64 → List String
   -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
   | .bzhi _ src idx => [src, idx]
 
+/-- The written register names of one `JInstr`, in the order `Jasmin.evalInstr` writes
+    them. Equal to `writtenNames` on every constructor except the two `mulx` arms, whose
+    write order is `dstLo` then `dstHi` (`evalInstr` performs `setReg dstLo` first), so
+    the list is `[dstLo, dstHi]`. The register-effect list
+    `JInstrRegMachine.writesJ` has these names in this order (`writesJ_names`). -/
+def writtenNamesJ : JInstr 64 → List String
+  | .mulx dh dl _ _ => [dl, dh]
+  | .mulxMem dh dl _ _ _ => [dl, dh]
+  | i => writtenNames i
+
+/-- The x86 `MachineModel (JInstr 64)` data of the generic allocator: the write-order
+    `writtenNamesJ`, `readNames`, the GP pool, and `storeMem`/`loadMem` against the
+    `%rsp` frame base as the spill/reload constructors. The instance
+    `JInstrRegMachine.instMachineModelJInstr` is this definition. -/
+abbrev jinstrMachineModel : GenericRegAlloc.MachineModel (JInstr 64) where
+  writtenNames := writtenNamesJ
+  readNames := readNames
+  physRegs := gpPool
+  mkSpill r off := .storeMem "%rsp" off (.reg r)
+  mkReload r off := .loadMem r "%rsp" off
+
 /- A value-name's live range over a block is `GenericRegAlloc.LiveRange`: `defIdx` is
 the first index that writes it (or, if it is only ever read — e.g. a frame base /
 input — `0`), `lastUse` is the last index that reads or writes it. -/
 export GenericRegAlloc (LiveRange LiveRange.mk LiveRange.name LiveRange.defIdx
   LiveRange.lastUse)
 
-/-- The last index `< len` at which `name` is read or written (`0` if never, only
-    reached for names that do appear). Forward scan keeping the max. -/
-def lastUseIdx (block : List (JInstr 64)) (name : String) : Nat :=
-  (block.zipIdx).foldl
-    (fun acc (i, idx) =>
-      if (writtenNames i).contains name ∨ (readNames i).contains name then idx else acc)
-    0
+/-- The last index at which `name` is read or written (`0` if never):
+    `GenericRegAlloc.lastUseIdx` at `jinstrMachineModel`. -/
+abbrev lastUseIdx (block : List (JInstr 64)) (name : String) : Nat :=
+  @GenericRegAlloc.lastUseIdx _ jinstrMachineModel block name
 
-/-- The first index at which `name` is written (`0` if never written — a
-    read-only base/input, live from entry). -/
-def defIdxOf (block : List (JInstr 64)) (name : String) : Nat :=
-  match (block.zipIdx).find? (fun (i, _) => (writtenNames i).contains name) with
-  | some (_, idx) => idx
-  | none => 0
+/-- The first index at which `name` is written (`0` if never written — a read-only
+    base/input, live from entry): `GenericRegAlloc.defIdxOf` at `jinstrMachineModel`. -/
+abbrev defIdxOf (block : List (JInstr 64)) (name : String) : Nat :=
+  @GenericRegAlloc.defIdxOf _ jinstrMachineModel block name
 
-/-- The live ranges of every distinct name in the block (in first-seen order). -/
-def liveRanges (block : List (JInstr 64)) : List LiveRange :=
-  (blockNames block).map (fun n => ⟨n, defIdxOf block n, lastUseIdx block n⟩)
+/-- The live ranges of every distinct name in the block, in the first-seen order of
+    `GenericRegAlloc.blockNames` (the order `linearScan` breaks `defIdx` ties in):
+    `GenericRegAlloc.liveRanges` at `jinstrMachineModel`. -/
+abbrev liveRanges (block : List (JInstr 64)) : List LiveRange :=
+  @GenericRegAlloc.liveRanges _ jinstrMachineModel block
 
 /-! ## 2. The spill/reload roundtrip — the heart of the translation validation
 

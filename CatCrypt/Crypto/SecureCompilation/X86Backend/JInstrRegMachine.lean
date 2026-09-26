@@ -33,7 +33,8 @@ express:
 This file builds, at the x86 `JInstr 64`/`JState 64` types and against
 `Jasmin.evalInstr` arm-by-arm:
 
-* the total `MachineModel (JInstr 64)` instance (`instMachineModelJInstr`);
+* the total `MachineModel (JInstr 64)` instance (`instMachineModelJInstr`), whose data is
+  `SpillingRegAlloc.jinstrMachineModel`;
 * the multi-write register-effect list `writesJ` (two pairs for `mulx`, one for the
   scalar/ADX ops, none for the two stores), its names law `writesJ_names`, and its
   register-observable step law `evalInst_eq_setJ` — the data `RegMachine` needs, all
@@ -172,19 +173,12 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
       [(dst, (x86_IMULt (s.load base off) (BitVec.ofNat 64 imm)).word)]
   | .bzhi d src idx => [(d, (x86_BZHI (s.get src) (s.get idx)).word)]
 
-/-- The written register names of one `JInstr`, **in the order `writesJ` applies them**.
-    Identical to `SpillingRegAlloc.writtenNames` for every constructor except the two
-    `mulx` arms, where the write order is `dstLo` then `dstHi` (matching `evalInstr`'s
-    two `setReg`s and so the `evalInst_eq_set` fold), so the list is `[dstLo, dstHi]`
-    rather than `SpillingRegAlloc`'s liveness-order `[dstHi, dstLo]`. Order is immaterial
-    to the allocator (live-range analysis uses `List.contains`), so this is an
-    order-permutation of the same def set — but `writes_names` (a *list* equality) forces
-    the write order, which the register-observable `evalInst_eq_set` pins to `evalInstr`'s
-    `(setReg dstLo …).setReg dstHi …`. -/
-def writtenNamesJ : JInstr 64 → List String
-  | .mulx dh dl _ _ => [dl, dh]
-  | .mulxMem dh dl _ _ _ => [dl, dh]
-  | i => CatCrypt.Crypto.Optimizer.SpillingRegAlloc.writtenNames i
+/- The written register names of one `JInstr` in the order `writesJ` applies them are
+`SpillingRegAlloc.writtenNamesJ`, defined beside the x86 allocator together with the
+`MachineModel (JInstr 64)` data `SpillingRegAlloc.jinstrMachineModel`. `writes_names`
+(a list equality) fixes the `mulx` order to `[dstLo, dstHi]`, the order of
+`evalInstr`'s two `setReg`s. -/
+export CatCrypt.Crypto.Optimizer.SpillingRegAlloc (writtenNamesJ)
 
 /-- The names `writesJ` writes are exactly `writtenNamesJ`. By cases; `rfl` on every arm
     (the destinations are literal, independent of the values). -/
@@ -528,15 +522,15 @@ ISAs (RV64 `RInst`, and the x86 `mov`/`mulx`/scalar-ALU register-to-register sub
 while flag-carrying ADX and the reg-ptr memory ABI need those components in the
 simulation relation — which is precisely what the x86 scoped simulation already does. -/
 
-/-- **`MachineModel (JInstr 64)`**: the syntactic interface — the (write-order)
-    `writtenNamesJ`, `SpillingRegAlloc.readNames`, the GP pool, and `storeMem`/`loadMem`
-    against the `%rsp` frame base as the spill/reload constructors. -/
-instance instMachineModelJInstr : MachineModel (JInstr 64) where
-  writtenNames := writtenNamesJ
-  readNames := CatCrypt.Crypto.Optimizer.SpillingRegAlloc.readNames
-  physRegs := gpPool
-  mkSpill r off := .storeMem "%rsp" off (.reg r)
-  mkReload r off := .loadMem r "%rsp" off
+/-- **`MachineModel (JInstr 64)`**: the syntactic interface `SpillingRegAlloc.jinstrMachineModel`
+    — the write-order `writtenNamesJ`, `SpillingRegAlloc.readNames`, the GP pool, and
+    `storeMem`/`loadMem` against the `%rsp` frame base as the spill/reload constructors. -/
+instance instMachineModelJInstr : MachineModel (JInstr 64) :=
+  CatCrypt.Crypto.Optimizer.SpillingRegAlloc.jinstrMachineModel
+
+/-- The x86 allocator's live ranges are the generic live ranges at the instance. -/
+theorem spillingRegAlloc_liveRanges_eq (block : List (JInstr 64)) :
+    CatCrypt.Crypto.Optimizer.SpillingRegAlloc.liveRanges block = liveRanges block := rfl
 
 /-- The multi-write semantic data the generic `RegMachine` step needs, bundled and
     proved at the x86 types: the register write list (`writesJ`), its register-observable

@@ -161,7 +161,7 @@ def selAllocL : GpAlloc :=
 theorem allocGp_selBlock (n : Nat) (hn : 0 < n) :
     allocGp combSelectPinned (selBlock n) = selAllocL := by
   obtain ⟨m, rfl⟩ := Nat.exists_eq_add_of_lt hn
-  rw [Nat.zero_add, allocGp, blockNames_selBlock]
+  rw [Nat.zero_add, allocGp_eq_zip, blockNames_selBlock]
   decide
 
 /-- `selAllocL` is the allocation `CombSelectKernel.combSelectAlloc` computes. -/

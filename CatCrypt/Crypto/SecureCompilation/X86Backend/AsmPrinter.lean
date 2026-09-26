@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # AT&T asm printer for the scalar `JInstr` machine instructions (the trust boundary)
@@ -47,8 +48,10 @@ verified straight-line body: the verified claim covers the body's
 
 A `JInstr` block uses SSA-style string names. `allocGp` assigns each distinct
 name a fixed `%rN` (in first-seen order over a fixed GP pool that excludes
-`%rsp`). Small straight-line kernels use far fewer than the pool size, so the
-trivial first-fit allocation never spills. (Spilling is out of scope.)
+`%rsp`). It is the generic linear scan `GenericRegAlloc.firstFitScan` over names
+that are all live together, which is first-fit (`allocGp_eq_zip`). Names past the
+pool are left unmapped (`allocOverflow`); the spilling allocator is
+`Optimizer.SpillingRegAlloc`.
 -/
 
 @[expose] public section
@@ -145,12 +148,20 @@ abbrev GpAlloc := List (String × String)
 
 /-- First-fit allocation: assign each distinct block name the next free pool
     register, with any `pinned` names forced first (used to fix arguments to
-    their System-V argument registers). -/
+    their System-V argument registers). The unpinned names go through the generic
+    linear scan with every name live throughout (`GenericRegAlloc.firstFitScan`). -/
 def allocGp {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) : GpAlloc :=
   let used := pinned.map Prod.snd
   let pool := gpPool.filter (fun r => ¬ used.contains r)
   let free := blockNames block |>.filter (fun n => (pinned.lookup n).isNone)
-  pinned ++ (free.zip pool)
+  pinned ++ CatCrypt.Crypto.Optimizer.GenericRegAlloc.firstFitScan pool free
+
+/-- `allocGp` pairs the unpinned block names with the unpinned pool registers in order. -/
+theorem allocGp_eq_zip {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) :
+    allocGp pinned block
+      = pinned ++ ((blockNames block).filter (fun n => (pinned.lookup n).isNone)).zip
+          (gpPool.filter (fun r => ¬ (pinned.map Prod.snd).contains r)) := by
+  rw [allocGp, CatCrypt.Crypto.Optimizer.GenericRegAlloc.firstFitScan_eq_zip]
 
 /-- The distinct GP names a block needs beyond the pinned ones, and the number
     of pool registers available for them. The block fits the budget iff
@@ -496,9 +507,17 @@ def SpillView.touchedSpills (v : SpillView) : List String :=
     reserved working registers always suffice; if a body ever exceeds the working set
     a name falls off the end and `regOf` of the resulting (resident ∪ work) alloc
     yields the `<UNALLOCATED>` sentinel — the same explicit-failure discipline as the
-    non-spilling path, never a silent alias. -/
+    non-spilling path, never a silent alias. The assignment is
+    `GenericRegAlloc.firstFitScan`, equal to `touchedSpills.zip spillWorkRegs`
+    (`SpillView.workAlloc_eq_zip`). -/
 def SpillView.workAlloc (v : SpillView) : GpAlloc :=
-  (v.touchedSpills.zip spillWorkRegs)
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.firstFitScan spillWorkRegs v.touchedSpills
+
+/-- The working-register assignment pairs the touched spills with `spillWorkRegs` in
+    order. -/
+theorem SpillView.workAlloc_eq_zip (v : SpillView) :
+    v.workAlloc = v.touchedSpills.zip spillWorkRegs :=
+  CatCrypt.Crypto.Optimizer.GenericRegAlloc.firstFitScan_eq_zip _ _
 
 /-- The full per-instruction allocation the spill renderer uses: resident names map
     to their pool register, the (≤ 2) spilled names this instruction touches map to
