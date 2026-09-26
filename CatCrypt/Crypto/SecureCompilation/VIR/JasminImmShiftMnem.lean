@@ -24,13 +24,18 @@ rendering for every count.
 
 ## Contents
 
-* **§1** the decimal atoms: `natOfDigits?_toString` (the digit list of
-  `toString k` evaluates to `k`) and `toString_no_colon` (a decimal rendering
-  carries no `:`), over Lean's `Nat.toDigits`.
+* **§1** the decimal atoms: `natOfDigits?_toString` and `charsToNat?_toString`
+  (the digit list of `toString k` evaluates to `k` under either reader),
+  `toString_no_colon` (a decimal rendering carries no `:`) and
+  `hasSuffix_countTag_eq_false` (a count-tagged mnemonic ends in `:64` only at
+  count `64`), over Lean's `Nat.toDigits`.
 * **§2** `immShiftMnem?`, the mnemonic decoder, and
   `immShiftMnem?_withWidthTag`, its agreement with `withWidthTag w (m ++ ":" ++
   toString k)`.
-* **§3** `immShiftWire?`, the instruction-level recogniser, and its agreement
+* **§3** the parse equations of the exporter's `parseImmShiftMnem` on the
+  exported mnemonic: `parseImmShiftMnem_tag64`, `parseImmShiftMnem_untagged`
+  and `parseImmShiftMnem_withWidthTag`.
+* **§4** `immShiftWire?`, the instruction-level recogniser, and its agreement
   with `opToLinstrR` on the three immediate-shift ops.
 -/
 
@@ -134,33 +139,106 @@ theorem toString_no_colon (k : Nat) : ∀ c ∈ (toString k).toList, c ≠ ':' :
   rw [String.toList_ofList]
   exact toDigits_no_colon k
 
-/-- Split a character list at every occurrence of `sep`, keeping the empty
-    groups: a list with `n` occurrences of `sep` yields `n + 1` groups, and the
-    separators are dropped. -/
-def splitCharsAt (sep : Char) : List Char → List (List Char)
-  | [] => [[]]
-  | c :: rest =>
-      if c = sep then [] :: splitCharsAt sep rest
-      else match splitCharsAt sep rest with
-        | [] => [[c]]
-        | g :: gs => (c :: g) :: gs
-
-/-- A separator-free list is a single `splitCharsAt` group. -/
-theorem splitCharsAt_no_sep (L : List Char) (h : ∀ c ∈ L, c ≠ ':') :
-    splitCharsAt ':' L = [L] := by
+/-- A separator-free list is a single `splitChars` group. -/
+theorem splitChars_no_sep (L : List Char) (h : ∀ c ∈ L, c ≠ ':') :
+    splitChars ':' L = [L] := by
   induction L with
   | nil => rfl
-  | cons a _ ih => rw [splitCharsAt, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+  | cons a _ ih => rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
 
-/-- A separator-free prefix followed by a separator is the first `splitCharsAt`
+/-- A separator-free prefix followed by a separator is the first `splitChars`
     group. -/
-theorem splitCharsAt_cons_sep (L R : List Char) (h : ∀ c ∈ L, c ≠ ':') :
-    splitCharsAt ':' (L ++ ':' :: R) = L :: splitCharsAt ':' R := by
+theorem splitChars_cons_sep (L R : List Char) (h : ∀ c ∈ L, c ≠ ':') :
+    splitChars ':' (L ++ ':' :: R) = L :: splitChars ':' R := by
   induction L with
-  | nil => simp [splitCharsAt]
+  | nil => simp [splitChars]
   | cons a _ ih =>
       simp only [List.cons_append]
-      rw [splitCharsAt, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+      rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+
+/-- A base-10 digit character passes `Char.isDigit`. -/
+theorem digitChar_isDigit : ∀ d < 10, (Nat.digitChar d).isDigit = true := by
+  decide +kernel
+
+/-- Every character of a decimal digit list passes `Char.isDigit`. -/
+theorem toDigits_isDigit (k : Nat) : ∀ c ∈ Nat.toDigits 10 k, c.isDigit = true := by
+  induction k using Nat.strongRecOn with
+  | ind k ih =>
+    by_cases hk : k < 10
+    · rw [Nat.toDigits_of_lt_base hk]
+      intro c hc
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+      subst hc
+      exact digitChar_isDigit k hk
+    · rw [toDigits_rec k (by omega)]
+      intro c hc
+      rcases List.mem_append.mp hc with h | h
+      · exact ih (k / 10) (by omega) c h
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+        subst h
+        exact digitChar_isDigit _ (Nat.mod_lt k (by decide))
+
+/-- The `charsIsNat` scan over a digit list from a clean state ends in the
+    digit state, and leaves an empty list's state alone. -/
+theorem charsIsNatStep_digits (L : List Char) (hL : ∀ c ∈ L, c.isDigit = true) (b : Bool) :
+    charsIsNatStep L (none, b) = if L = [] then (none, b) else (none, true) := by
+  induction L generalizing b with
+  | nil => rfl
+  | cons c rest ih =>
+    have hc := hL c (by simp)
+    have hne : c ≠ '_' := by
+      intro h; subst h; simp [Char.isDigit] at hc
+    rw [charsIsNatStep, if_neg hne, if_pos hc, ih (fun c hc => hL c (by simp [hc]))]
+    by_cases h : rest = [] <;> simp [h]
+
+/-- A non-empty digit list passes `charsIsNat`. -/
+theorem charsIsNat_digits (L : List Char) (hL : ∀ c ∈ L, c.isDigit = true) (hne : L ≠ []) :
+    charsIsNat L = true := by
+  unfold charsIsNat
+  rw [charsIsNatStep_digits L hL false, if_neg hne]
+  rfl
+
+/-- The accumulator step of the `charsToNat?` fold. -/
+def cstep : Nat → Char → Nat := fun n c => if c = '_' then n else n * 10 + (c.toNat - '0'.toNat)
+
+/-- A digit character is not the `_` separator. -/
+theorem digitChar_ne_underscore (d : Nat) (hd : d < 10) : Nat.digitChar d ≠ '_' := by
+  intro h
+  have := digitChar_isDigit d hd
+  rw [h] at this
+  simp [Char.isDigit] at this
+
+/-- Folding `cstep` over the digits of `k` from an accumulator `a` scales `a` by
+    the digit count and adds `k`. -/
+theorem foldl_toDigits_cstep : ∀ (k a : Nat),
+    (Nat.toDigits 10 k).foldl cstep a = a * 10 ^ (Nat.toDigits 10 k).length + k := by
+  intro k
+  induction k using Nat.strongRecOn with
+  | ind k ih =>
+    intro a
+    by_cases hk : k < 10
+    · rw [Nat.toDigits_of_lt_base hk]
+      obtain ⟨_, hv⟩ := digitChar_ok k hk
+      simp only [List.foldl_cons, List.foldl_nil, cstep, if_neg (digitChar_ne_underscore k hk), hv,
+        List.length_cons, List.length_nil]
+    · rw [toDigits_rec k (by omega), List.foldl_append, ih (k / 10) (by omega) a]
+      obtain ⟨_, hv⟩ := digitChar_ok (k % 10) (Nat.mod_lt _ (by decide))
+      simp only [List.foldl_cons, List.foldl_nil, cstep,
+        if_neg (digitChar_ne_underscore (k % 10) (Nat.mod_lt _ (by decide))), hv,
+        List.length_append, List.length_cons, List.length_nil, Nat.pow_succ]
+      generalize (10 : Nat) ^ (Nat.toDigits 10 (k / 10)).length = P
+      have hm : a * (P * 10) = a * P * 10 := (Nat.mul_assoc a P 10).symm
+      omega
+
+/-- **The decimal round-trip for `charsToNat?`.** The character list of
+    `toString k` evaluates to `k` under `charsToNat?`. -/
+theorem charsToNat?_toString (k : Nat) : charsToNat? (toString k).toList = some k := by
+  show charsToNat? (String.ofList (Nat.toDigits 10 k)).toList = some k
+  rw [String.toList_ofList, charsToNat?,
+    if_pos (charsIsNat_digits _ (toDigits_isDigit k) (toDigits_ne_nil k))]
+  show some ((Nat.toDigits 10 k).foldl cstep 0) = some k
+  rw [foldl_toDigits_cstep k 0]
+  simp
 
 /-- A string ends with any suffix it was appended with. -/
 theorem hasSuffix_append (s pat : String) : hasSuffix (s ++ pat) pat = true := by
@@ -182,7 +260,7 @@ theorem stripWidthTag_append64 (s : String) : stripWidthTag (s ++ ":64") = s := 
     the `:64` width tag); `none` for any other mnemonic. -/
 def immShiftMnem? (opn : String) : Option (String × Nat) :=
   let core := if hasSuffix opn ":64" then stripWidthTag opn else opn
-  match splitCharsAt ':' core.toList with
+  match splitChars ':' core.toList with
   | [mn, ds] =>
       let m := String.ofList mn
       if m == "SHL" || m == "SHR" || m == "SAR" then (natOfDigits? ds).map (fun k => (m, k))
@@ -210,8 +288,8 @@ theorem immShiftMnem?_withWidthTag64 {m : String}
   have hw : withWidthTag 64 (m ++ ":" ++ toString k) = (m ++ ":" ++ toString k) ++ ":64" := rfl
   unfold immShiftMnem?
   rw [hw, if_pos (hasSuffix_append _ ":64"), stripWidthTag_append64]
-  simp only [toList_mnem, splitCharsAt_cons_sep _ _ (base_no_colon hm),
-    splitCharsAt_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
+  simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
+    splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
 /-- **The decoder agrees with an untagged rendering.** At a width other than
@@ -223,11 +301,103 @@ theorem immShiftMnem?_untagged {m : String}
     immShiftMnem? (m ++ ":" ++ toString k) = some (m, k) := by
   unfold immShiftMnem?
   rw [if_neg (by rw [hk]; exact Bool.false_ne_true)]
-  simp only [toList_mnem, splitCharsAt_cons_sep _ _ (base_no_colon hm),
-    splitCharsAt_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
+  simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
+    splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
-/-! ## 3. The instruction-level recogniser -/
+/-! ## 3. The parse equations of `parseImmShiftMnem`
+
+`parseImmShiftMnem` is the parser `JasminLsem.applyOpn` runs on a one-source
+mnemonic. On the exported mnemonic `m ++ ":" ++ toString n`, with or without the
+`:64` width tag, it returns the AT&T direction `immShiftAtt m.toList` of the
+base, the count `n` and the width, for every base without a `:` and every
+count. -/
+
+/-- A decimal rendering whose character list is `['6', '4']` renders `64`. -/
+theorem toString_eq_64 {n : Nat} (h : (toString n).toList = ['6', '4']) : n = 64 := by
+  have h1 := natOfDigits?_toString n
+  rw [h] at h1
+  have h2 : natOfDigits? ['6', '4'] = some 64 := by decide
+  rw [h2] at h1
+  exact (Option.some.inj h1).symm
+
+/-- A count-tagged mnemonic ends in `:64` only when its count is `64`. -/
+theorem hasSuffix_countTag_eq_false (m : String) {n : Nat} (hn : n ≠ 64) :
+    hasSuffix (m ++ ":" ++ toString n) ":64" = false := by
+  apply Bool.eq_false_iff.mpr
+  intro hsuf
+  unfold hasSuffix at hsuf
+  rw [List.isSuffixOf_iff_suffix, toList_mnem,
+    show (":64" : String).toList = [':', '6', '4'] from by decide] at hsuf
+  obtain ⟨t, ht⟩ := hsuf
+  have hrev := congrArg List.reverse ht
+  simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append,
+    List.cons_append, List.append_assoc] at hrev
+  have hnc := toString_no_colon n
+  apply hn
+  apply toString_eq_64
+  have hnil : (toString n).toList ≠ [] := by
+    intro h
+    have h1 := natOfDigits?_toString n
+    rw [h] at h1
+    cases h1
+  rcases hds : (toString n).toList.reverse with _ | ⟨a, _ | ⟨b, _ | ⟨c, r⟩⟩⟩
+  · exact absurd (List.reverse_eq_nil_iff.mp hds) hnil
+  · rw [hds] at hrev
+    simp at hrev
+  · rw [hds] at hrev
+    simp only [List.cons_append, List.nil_append, List.cons.injEq] at hrev
+    obtain ⟨rfl, rfl, _⟩ := hrev
+    have := congrArg List.reverse hds
+    simpa using this
+  · rw [hds] at hrev
+    simp only [List.cons_append, List.cons.injEq] at hrev
+    obtain ⟨_, _, hc, _⟩ := hrev
+    exfalso
+    apply hnc c _ hc.symm
+    have : c ∈ (toString n).toList.reverse := by rw [hds]; simp
+    exact List.mem_reverse.mp this
+
+/-- **The parser on the width-64 rendering.** For a base `m` without `:` and any
+    count `n`, `parseImmShiftMnem` reads the direction of `m`, the count `n` and
+    the width `64` off `m ++ ":" ++ toString n ++ ":64"`. -/
+theorem parseImmShiftMnem_tag64 (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':') (n : Nat) :
+    parseImmShiftMnem ((m ++ ":" ++ toString n) ++ ":64")
+      = (immShiftAtt m.toList).map (fun a => (a, n, 64)) := by
+  unfold parseImmShiftMnem
+  dsimp only
+  simp only [hasSuffix_append, if_true, stripWidthTag_append64, toList_mnem,
+    splitChars_cons_sep _ _ hm, splitChars_no_sep _ (toString_no_colon n), charsToNat?_toString]
+  cases immShiftAtt m.toList <;> rfl
+
+/-- **The parser on an untagged rendering.** For a base `m` without `:` and a
+    count `n` whose rendering does not end in `:64`, `parseImmShiftMnem` reads
+    the direction of `m`, the count `n` and the width `32` off
+    `m ++ ":" ++ toString n`. -/
+theorem parseImmShiftMnem_untagged (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':') (n : Nat)
+    (hk : hasSuffix (m ++ ":" ++ toString n) ":64" = false) :
+    parseImmShiftMnem (m ++ ":" ++ toString n)
+      = (immShiftAtt m.toList).map (fun a => (a, n, 32)) := by
+  unfold parseImmShiftMnem
+  dsimp only
+  simp only [hk, Bool.false_eq_true, if_false, toList_mnem, splitChars_cons_sep _ _ hm,
+    splitChars_no_sep _ (toString_no_colon n), charsToNat?_toString]
+  cases immShiftAtt m.toList <;> rfl
+
+/-- **The parser on the exported mnemonic.** At every width `w` and every count
+    `n ≠ 64`, `parseImmShiftMnem` reads the direction of the base, the count
+    and the op width (`64` iff `w = 64`) off `withWidthTag w (m ++ ":" ++
+    toString n)`. -/
+theorem parseImmShiftMnem_withWidthTag (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':')
+    (w : Nat) {n : Nat} (hn : n ≠ 64) :
+    parseImmShiftMnem (withWidthTag w (m ++ ":" ++ toString n))
+      = (immShiftAtt m.toList).map (fun a => (a, n, if w = 64 then 64 else 32)) := by
+  unfold withWidthTag
+  split
+  · exact parseImmShiftMnem_tag64 m hm n
+  · exact parseImmShiftMnem_untagged m hm n (hasSuffix_countTag_eq_false m hn)
+
+/-! ## 4. The instruction-level recogniser -/
 
 /-- Recognise a one-source count-in-mnemonic immediate shift
     `Lopn [.reg dst] opn [.reg src]` and return the destination, the source, the

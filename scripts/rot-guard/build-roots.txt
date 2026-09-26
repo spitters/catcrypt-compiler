@@ -1065,3 +1065,4 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
 CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportPhysAnd
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
+CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt

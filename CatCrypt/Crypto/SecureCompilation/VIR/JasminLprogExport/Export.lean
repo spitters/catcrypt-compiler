@@ -168,6 +168,17 @@ def stripWidthTag (mnem : String) : String :=
     String.ofList (mnem.toList.dropLast.dropLast.dropLast)
   else mnem
 
+/-- The AT&T direction of an immediate shift or rotate base (`ROR`, `ROL`, `SHL`,
+    `SHR`, `SAR`), read from the base's character list; `none` for any other
+    list. -/
+def immShiftAtt : List Char → Option String
+  | ['R', 'O', 'R'] => some "ror"
+  | ['R', 'O', 'L'] => some "rol"
+  | ['S', 'H', 'L'] => some "shl"
+  | ['S', 'H', 'R'] => some "shr"
+  | ['S', 'A', 'R'] => some "sar"
+  | _ => none
+
 /-- Parse a count-tagged immediate shift/rotate mnemonic (`SHL:0`, `SHR:32`,
     `SAR:k`, `ROL:k`, `ROR:k`) into the AT&T direction, the compile-time count,
     and the op width (`64` iff `:64`-tagged, else `32`). `none` for any
@@ -179,18 +190,18 @@ def stripWidthTag (mnem : String) : String :=
     arm consults) would misread the count `8`/`16`/`64` as a width and strip it,
     dropping the shift entirely (the Hawk `t1 >> 16` bug). A unary shift never
     carries a narrow `:8`/`:16` width tag — only the optional `:64` — so the width
-    is unambiguous once the count is parsed off the front. -/
+    is unambiguous once the count is parsed off the front.
+
+    The split (`splitChars`) and the count read (`charsToNat?`) run over the
+    character list, so a closed application reduces in the kernel;
+    `String.splitOn` has no normal form there. -/
 def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
   let isU64 := hasSuffix opn ":64"
   -- peel only the `:64` width tag, leaving `SHR:<count>`
   let core := if isU64 then stripWidthTag opn else opn
-  match core.splitOn ":" with
-  | [mn, nStr] =>
-      let att : Option String := match mn with
-        | "ROR" => some "ror" | "ROL" => some "rol"
-        | "SHL" => some "shl" | "SHR" => some "shr" | "SAR" => some "sar"
-        | _ => none
-      match att, strToNat? nStr with
+  match splitChars ':' core.toList with
+  | [mn, ds] =>
+      match immShiftAtt mn, charsToNat? ds with
       | some a, some n => some (a, n, if isU64 then 64 else 32)
       | _, _ => none
   | _ => none

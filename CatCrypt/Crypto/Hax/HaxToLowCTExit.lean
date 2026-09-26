@@ -24,7 +24,13 @@ no exit construct, so the lowering keeps the exit in scalar slots:
   `RIfNz exitRetName RSkip _`;
 * `whileFoldReturn (var c) body` zeroes the flag and the payload slot, copies the
   guard `c` into a loop slot `run`, and runs `RWhileNz run` over the lowered body
-  followed by `RIfNz exitRetName (run := 0) (run := c)`.
+  followed by `RIfNz exitRetName (run := 0) (run := c)`;
+* `forFoldReturn i lo hi body` with non-negative integer literal bounds and
+  `hi ≤ 2^64` (`forBounds`) zeroes the flag and the payload slot and runs
+  `RFor run (hi - lo)` over the guarded trip `exitForTrip`, which binds the
+  counter `i` to `run + lo` and runs the lowered body; after an exit the guard
+  skips the remaining trips (`exitForLoop`); `forFoldRevReturn` is lowered the
+  same way with the counter bound to `hi - 1 - run` (`exitForLoopRev`).
 
 **Result slot.**  A scalar variable, a scalar literal or `unitVal` in tail
 position is written into `exitResName`.  `haxToLowCTFn` lowers a whole function
@@ -110,6 +116,54 @@ def exitLoop (run c : String) (bC : LowCT) : LowCT :=
       (.RWhileNz run
         (.RSeq bC (.RIfNz exitRetName (.RScalarSet run 0)
                     (.RScalarSetExpr run (.SVar c))))))))
+
+/-- The bounds of a counted loop with an exit: `some (lo, hi)` when both bounds
+    are non-negative integer literals with `hi ≤ 2^64`, so that every counter
+    value is a `u64` word. -/
+def forBounds : ImpExpr → ImpExpr → Option (Nat × Nat)
+  | .lit (.int lo), .lit (.int hi) =>
+      if 0 ≤ lo ∧ 0 ≤ hi ∧ hi ≤ 2 ^ 64 then some (lo.toNat, hi.toNat) else none
+  | _, _ => none
+
+theorem forBounds_some {lo hi : ImpExpr} {l h : Nat} (hb : forBounds lo hi = some (l, h)) :
+    lo = .lit (.int l) ∧ hi = .lit (.int h) ∧ h ≤ 2 ^ 64 := by
+  match lo, hi, hb with
+  | .lit (.int a), .lit (.int b), hb =>
+    simp only [forBounds] at hb
+    split at hb
+    · rename_i hc
+      simp only [Option.some.injEq, Prod.mk.injEq] at hb
+      obtain ⟨rfl, rfl⟩ := hb
+      refine ⟨?_, ?_, ?_⟩
+      · rw [Int.toNat_of_nonneg hc.1]
+      · rw [Int.toNat_of_nonneg hc.2.1]
+      · omega
+    · cases hb
+
+/-- One trip of the lowered `forFoldReturn i lo _ body` with loop slot `run` and
+    lowered body `bC`, run only when the exit flag is `0`: the counter `i` is
+    bound to `run + lo` and the body runs. -/
+def exitForTrip (run i : String) (lo : Nat) (bC : LowCT) : LowCT :=
+  exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i (.SAdd (.SVar run) (.SLit lo))) bC))
+
+/-- The lowered `forFoldReturn i lo hi body` with loop slot `run` and lowered
+    body `bC`: zero the flag and the payload slot, and run `hi - lo` trips of
+    `exitForTrip` with `run` as the trip counter of `RFor`; after an exit the
+    remaining trips are skipped by the guard. -/
+def exitForLoop (run i : String) (lo hi : Nat) (bC : LowCT) : LowCT :=
+  .RLetU64Zero exitRetName (.RLetU64Zero exitValName
+    (.RFor run (hi - lo) (exitForTrip run i lo bC)))
+
+/-- One trip of the lowered `forFoldRevReturn i _ hi body`: as `exitForTrip`,
+    with the counter `i` bound to `hi - 1 - run`. -/
+def exitForTripRev (run i : String) (hi : Nat) (bC : LowCT) : LowCT :=
+  exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i (.SSub (.SLit (hi - 1)) (.SVar run))) bC))
+
+/-- The lowered `forFoldRevReturn i lo hi body`: as `exitForLoop`, over
+    `exitForTripRev`. -/
+def exitForLoopRev (run i : String) (lo hi : Nat) (bC : LowCT) : LowCT :=
+  .RLetU64Zero exitRetName (.RLetU64Zero exitValName
+    (.RFor run (hi - lo) (exitForTripRev run i hi bC)))
 
 /-- Write a scalar value into `slot`: a scalar variable, a uint, nonnegative int
     or bool literal, or `unitVal` (the scalar `0`).  Any other expression is
@@ -285,6 +339,14 @@ def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (Low
       match haxToLowCTK sc false (some (exitRunName fl)) body with
       | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
       | none => none
+  | false, fl, .forFoldReturn i lo hi body =>
+      match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
+      | some (l, h), some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
+      | _, _ => none
+  | false, fl, .forFoldRevReturn i lo hi body =>
+      match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
+      | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
+      | _, _ => none
   | _, some _, .cfBreak e => (exitStore e).map fun s => (s, true)
   | true, _, e => (resultStore e).map fun s => (s, false)
   | false, _, e => (haxToLowCT e).map fun c => (c, false)
@@ -332,6 +394,14 @@ theorem haxToLowCT_eq_haxToLowCTK_none (e : ImpExpr) :
       simp only [haxToLowCT, haxToLowCTK]
       rcases haxToLowCTK false false (some (exitRunName none)) body with _ | ⟨bC, _⟩ <;> rfl
     | _ => simp only [haxToLowCTK]; exact (hmap _).symm
+  | forFoldReturn i lo hi body _ _ _ =>
+    simp only [haxToLowCT, haxToLowCTK]
+    rcases forBounds lo hi with _ | ⟨l, h⟩ <;>
+      rcases haxToLowCTK false false (some (exitRunName none)) body with _ | ⟨bC, _⟩ <;> rfl
+  | forFoldRevReturn i lo hi body _ _ _ =>
+    simp only [haxToLowCT, haxToLowCTK]
+    rcases forBounds lo hi with _ | ⟨l, h⟩ <;>
+      rcases haxToLowCTK false false (some (exitRunName none)) body with _ | ⟨bC, _⟩ <;> rfl
   | _ => simp only [haxToLowCTK]; exact (hmap _).symm
 
 /-- Outside every `whileFoldReturn` a `cfBreak` is refused. -/
@@ -355,6 +425,9 @@ def AnfShapedK (sc : Bool) : Bool → Bool → ImpExpr → Bool
   | tl, il, .ifThenElse (.var _) t e => AnfShapedK sc tl il t && AnfShapedK sc tl il e
   | tl, il, .typeAscription e _ => AnfShapedK sc tl il e
   | false, _, .whileFoldReturn (.var _) body => AnfShapedK sc false true body
+  | false, _, .forFoldReturn _ lo hi body => (forBounds lo hi).isSome && AnfShapedK sc false true body
+  | false, _, .forFoldRevReturn _ lo hi body =>
+      (forBounds lo hi).isSome && AnfShapedK sc false true body
   | _, true, .cfBreak e => (exitStore e).isSome
   | true, _, e => (resultStore e).isSome
   | false, _, e => AnfShaped e
@@ -408,6 +481,28 @@ theorem haxToLowCTK_isSome_iff_anfK (sc tl : Bool) (fl : Option String) (e : Imp
         rw [← h]
         rcases haxToLowCTK sc false (some (exitRunName fl)) body with _ | ⟨bC, x⟩ <;> rfl
       | _ => simp only [haxToLowCTK, AnfShapedK, Option.isSome_map]; exact hanf _
+  | forFoldReturn i lo hi body _ _ ihb =>
+    intro tl fl
+    cases tl with
+    | true => rfl
+    | false =>
+      simp only [haxToLowCTK, AnfShapedK]
+      have h := ihb false (some (exitRunName fl))
+      rw [Option.isSome_some] at h
+      rw [← h]
+      rcases forBounds lo hi with _ | ⟨l, hb⟩ <;>
+        rcases haxToLowCTK sc false (some (exitRunName fl)) body with _ | ⟨bC, x⟩ <;> rfl
+  | forFoldRevReturn i lo hi body _ _ ihb =>
+    intro tl fl
+    cases tl with
+    | true => rfl
+    | false =>
+      simp only [haxToLowCTK, AnfShapedK]
+      have h := ihb false (some (exitRunName fl))
+      rw [Option.isSome_some] at h
+      rw [← h]
+      rcases forBounds lo hi with _ | ⟨l, hb⟩ <;>
+        rcases haxToLowCTK sc false (some (exitRunName fl)) body with _ | ⟨bC, x⟩ <;> rfl
   | cfBreak e _ =>
     intro tl fl
     cases fl with
@@ -465,12 +560,10 @@ theorem haxToLowCTK_isSome_of_representable_and_anfK (sc tl : Bool) (e : ImpExpr
 /-! ## §7  The refused early-exit constructors -/
 
 /-- The early-exit constructors `haxToLowCTK` refuses, each named by its
-    construct: a counted loop with return, an `earlyReturn` or `questionMark`
-    (which `Hax.pipeline` rewrites into a `cfBreak` inside a `whileFoldReturn`),
-    a `cfContinue` or `cfBreakContinue`, and a bare `break_` or `continue_`. -/
+    construct: an `earlyReturn` or `questionMark` (which `Hax.pipeline` rewrites
+    into a `cfBreak` inside a `whileFoldReturn`), a `cfContinue` or
+    `cfBreakContinue`, and a bare `break_` or `continue_`. -/
 inductive ExitGap where
-  | forFoldReturn
-  | forFoldRevReturn
   | earlyReturn
   | questionMark
   | cfContinue
@@ -482,8 +575,6 @@ inductive ExitGap where
 /-- The `ExitGap` of an expression, or `none` when its head constructor is not
     one of the refused ones. -/
 def exitGapOf : ImpExpr → Option ExitGap
-  | .forFoldReturn _ _ _ _ => some .forFoldReturn
-  | .forFoldRevReturn _ _ _ _ => some .forFoldRevReturn
   | .earlyReturn _ => some .earlyReturn
   | .questionMark _ => some .questionMark
   | .cfContinue _ => some .cfContinue

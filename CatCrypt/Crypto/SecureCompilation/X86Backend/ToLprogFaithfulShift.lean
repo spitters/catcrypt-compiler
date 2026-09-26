@@ -31,15 +31,12 @@ carries the non-spill condition `hnsp`.
 
 `JasminLsem.lsemStep` runs the emitted instruction through
 `applyOpn (stripWidthTag opn) [src]`, whose count-tagged arm decodes the count
-with `parseImmShiftMnem`, a parser over `String.splitOn`. `String.splitOn` is a
-well-founded recursion over byte positions with no characterisation lemma, and
-it does not reduce in the kernel on a closed string, so the value that arm
-returns on the exported mnemonic is not derivable here. The binding kind
-`UnaryImmBinding` therefore carries that value as its field `hop`, in the form
-`applyOpn opn [a] = some (vval a)` at every word `a`, as `BinopBinding` and
-`BinopMovBinding` carry theirs. `applyOpn_unary_of_parse` derives `hop` from a
-`parseImmShiftMnem` equation, so a proof of the parser's value on the exported
-mnemonic closes the gap for the whole fragment at once.
+with `parseImmShiftMnem`. `JasminImmShiftMnem.parseImmShiftMnem_untagged` gives
+the parser's value on the exported mnemonic at every count, so
+`applyOpn_countTag` states the `lsem` value of a shift or rotate head as a
+theorem, and the binding kind `UnaryImmBinding` names only the kind and the
+count of the head: its mnemonic `opn` and its word function `vval` are defined
+from them.
 
 ## Main results
 
@@ -51,9 +48,13 @@ mnemonic closes the gap for the whole fragment at once.
   the single renamed instruction.
 * `remapBlockMaintains1`: a one-source single-instruction binding re-establishes
   `StoreRel` against `s ↦ s.setReg nDst (vval (s.lvm nSrc))`.
-* `UnaryImmBinding`: the binding kind of an immediate shift or rotate head.
+* `ShiftKind`: the four heads, with their mnemonic base and word function.
 * `applyOpn_unary_of_parse`: the `lsem` value of a one-source instruction whose
   mnemonic `parseImmShiftMnem` decodes.
+* `applyOpn_countTag`: the `lsem` value of the exported shift or rotate
+  mnemonic of a `ShiftKind` at every count other than `64`.
+* `UnaryImmBinding`: the binding kind of an immediate shift or rotate head, and
+  `UnaryImmBinding.hop`, the `lsem` value of its mnemonic.
 * `UniformRegArithShift`: the `Com` fragment of `UniformRegArithMCS` together with
   `shlImm`, `shrImm`, `sarImm` and `rorImm` bindings at a count other than `64`.
 * `CoverDataShift.uniformRegArithShift`: cover data exists only for that
@@ -114,50 +115,47 @@ def ShiftBase (m : String) : Prop := m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m
 theorem ShiftBase.no_colon {m : String} (hm : ShiftBase m) : ∀ c ∈ m.toList, c ≠ ':' := by
   rcases hm with rfl | rfl | rfl | rfl <;> decide
 
-/-- A decimal rendering whose character list is `['6', '4']` renders `64`. -/
-theorem toString_eq_64 {n : Nat} (h : (toString n).toList = ['6', '4']) : n = 64 := by
-  have h1 := natOfDigits?_toString n
-  rw [h] at h1
-  have h2 : natOfDigits? ['6', '4'] = some 64 := by decide
-  rw [h2] at h1
-  exact (Option.some.inj h1).symm
+/-- The four heads of the fragment: the immediate shifts and the rotate. -/
+inductive ShiftKind where
+  | shl
+  | shr
+  | sar
+  | ror
+  deriving DecidableEq
 
-/-- A count-tagged mnemonic ends in `:64` only when its count is `64`. -/
-theorem hasSuffix_countTag_eq_false (m : String) {n : Nat} (hn : n ≠ 64) :
-    hasSuffix (m ++ ":" ++ toString n) ":64" = false := by
-  apply Bool.eq_false_iff.mpr
-  intro hsuf
-  unfold hasSuffix at hsuf
-  rw [List.isSuffixOf_iff_suffix, toList_mnem,
-    show (":64" : String).toList = [':', '6', '4'] from by decide] at hsuf
-  obtain ⟨t, ht⟩ := hsuf
-  have hrev := congrArg List.reverse ht
-  simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append,
-    List.cons_append, List.append_assoc] at hrev
-  have hnc := toString_no_colon n
-  apply hn
-  apply toString_eq_64
-  have hnil : (toString n).toList ≠ [] := by
-    intro h
-    have h1 := natOfDigits?_toString n
-    rw [h] at h1
-    cases h1
-  rcases hds : (toString n).toList.reverse with _ | ⟨a, _ | ⟨b, _ | ⟨c, r⟩⟩⟩
-  · exact absurd (List.reverse_eq_nil_iff.mp hds) hnil
-  · rw [hds] at hrev
-    simp at hrev
-  · rw [hds] at hrev
-    simp only [List.cons_append, List.nil_append, List.cons.injEq] at hrev
-    obtain ⟨rfl, rfl, _⟩ := hrev
-    have := congrArg List.reverse hds
-    simpa using this
-  · rw [hds] at hrev
-    simp only [List.cons_append, List.cons.injEq] at hrev
-    obtain ⟨_, _, hc, _⟩ := hrev
-    exfalso
-    apply hnc c _ hc.symm
-    have : c ∈ (toString n).toList.reverse := by rw [hds]; simp
-    exact List.mem_reverse.mp this
+/-- The count-tagged mnemonic base of a kind. -/
+def ShiftKind.mnem : ShiftKind → String
+  | .shl => "SHL"
+  | .shr => "SHR"
+  | .sar => "SAR"
+  | .ror => "ROR"
+
+/-- The word function of a kind at count `n`: the dialect's shift or rotate. -/
+def ShiftKind.val {w : Nat} : ShiftKind → Nat → BitVec w → BitVec w
+  | .shl, n, a => a <<< n
+  | .shr, n, a => a >>> n
+  | .sar, n, a => BitVec.sshiftRight a n
+  | .ror, n, a => a.rotateRight n
+
+/-- The AT&T direction `parseImmShiftMnem` returns for a kind's base. -/
+def ShiftKind.att : ShiftKind → String
+  | .shl => "shl"
+  | .shr => "shr"
+  | .sar => "sar"
+  | .ror => "ror"
+
+/-- The mnemonic base of a kind is a shift base. -/
+theorem ShiftKind.shiftBase (k : ShiftKind) : ShiftBase k.mnem := by
+  cases k
+  · exact Or.inl rfl
+  · exact Or.inr (Or.inl rfl)
+  · exact Or.inr (Or.inr (Or.inl rfl))
+  · exact Or.inr (Or.inr (Or.inr rfl))
+
+/-- `immShiftAtt` reads a kind's direction off its base. -/
+theorem ShiftKind.immShiftAtt_mnem (k : ShiftKind) :
+    immShiftAtt k.mnem.toList = some k.att := by
+  cases k <;> decide
 
 /-- The width tag strips off the exported shift mnemonic exactly, at every width
     and every count other than `64`. -/
@@ -231,75 +229,7 @@ theorem remapBlockMaintains1 {w : Nat} (body : Lcmd) (tbl : Array Nat)
       simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
       exact hrel m (hcarry m hmL hmne)
 
-/-! ## 3. The binding kind -/
-
-/-- An immediate shift or rotate binding along the renaming
-    `physRename body tbl`: the logical destination `nDst` receives `vval` of the
-    value at `nSrc`, where `vval` is the `lsem` value of the count-tagged
-    mnemonic `opn` (`hop`); neither renamed operand is a spill slot (`hnsp`), and
-    no other logical name is renamed onto the physical register of `nDst`. -/
-structure UnaryImmBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
-  /-- The logical destination name. -/
-  nDst : String
-  /-- The logical source name. -/
-  nSrc : String
-  /-- The count-tagged mnemonic, width tag included. -/
-  opn : String
-  /-- The value written at the destination, as a function of the source word. -/
-  vval : BitVec w → BitVec w
-  /-- The logical names live before the binding. -/
-  Lin : List String
-  /-- The logical names live after the binding. -/
-  Lout : List String
-  /-- The binding reads its source. -/
-  hSrcIn : nSrc ∈ Lin
-  /-- No other name live after the binding shares the destination's physical
-      register. -/
-  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
-  /-- Every name live after the binding other than its destination was already
-      live before it. -/
-  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
-  /-- Neither renamed operand is a spill slot. -/
-  hnsp : ((LOperand.reg (physRename body tbl nDst)).isSpill
-      || (LOperand.reg (physRename body tbl nSrc)).isSpill) = false
-  /-- The `lsem` value of the mnemonic at every source word. -/
-  hop : ∀ a : BitVec w, applyOpn (stripWidthTag opn) [a] = some (vval a)
-
-/-- The physical block of an immediate shift or rotate binding:
-    `opn ρ nDst, ρ nSrc`. -/
-def UnaryImmBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : UnaryImmBinding w body tbl) : List LinstrR :=
-  [.Lopn [.reg (physRename body tbl b.nDst)] b.opn [.reg (physRename body tbl b.nSrc)]]
-
-/-- The virtual transformer of an immediate shift or rotate binding: write
-    `vval` of the source value at `nDst`. -/
-def UnaryImmBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : UnaryImmBinding w body tbl) : Lstate w → Lstate w :=
-  fun s => s.setReg b.nDst (b.vval (s.lvm b.nSrc))
-
-/-- An immediate shift or rotate binding's block re-establishes `StoreRel`
-    against its virtual transformer. -/
-theorem UnaryImmBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : UnaryImmBinding w body tbl) :
-    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
-  remapBlockMaintains1 body tbl b.Lin b.Lout b.nDst b.nSrc b.opn b.vval
-    b.hSrcIn b.hinj b.hcarry b.hop
-
-/-! ## 4. The `physBody` expansion of a native shift head -/
-
-/-- `physBody` expands a one-source native shift or rotate head whose renamed
-    operands are not spill slots to the single renamed instruction. -/
-theorem physBodyElem_unaryImm (body : Lcmd) (tbl : Array Nat) (ii : Nat)
-    (nDst nSrc opn : String)
-    (hnat : isNativeShiftRotate opn = true)
-    (hnsp : ((LOperand.reg (physRename body tbl nDst)).isSpill
-      || (LOperand.reg (physRename body tbl nSrc)).isSpill) = false) :
-    (physBodyElem body tbl ⟨ii, .Lopn [.reg nDst] opn [.reg nSrc]⟩).map (·.li_i)
-      = [.Lopn [.reg (physRename body tbl nDst)] opn [.reg (physRename body tbl nSrc)]] := by
-  simp only [physBodyElem, hnat, if_true, remapOperand_reg, lowerNativeShiftRotate, hnsp,
-    Bool.false_eq_true, if_false, List.map_cons, List.map_nil]
-
-/-! ## 5. The `lsem` value of a decoded mnemonic -/
+/-! ## 3. The `lsem` value of a decoded mnemonic -/
 
 /-- The value `applyOpn` gives a one-source instruction whose mnemonic is none of
     the named one-source opcodes and which `parseImmShiftMnem` decodes: the
@@ -355,6 +285,104 @@ theorem applyOpn_countTag_of_parse {w : Nat} {m : String} (hm : ShiftBase m) (wO
           else a >>> k) := by
   rw [stripWidthTag_countTag hm wOp hn]
   exact applyOpn_unary_of_parse _ att k wd (countTag_ne_unary hm n) hp a
+
+/-- **The `lsem` value of an exported shift or rotate head.** At every tag width
+    `wOp` and every count `n ≠ 64`, `applyOpn` on the stripped exported mnemonic
+    of a `ShiftKind` is that kind's word function at `n`. -/
+theorem applyOpn_countTag {w : Nat} (k : ShiftKind) (wOp : Nat) {n : Nat} (hn : n ≠ 64)
+    (a : BitVec w) :
+    applyOpn (stripWidthTag (withWidthTag wOp (k.mnem ++ ":" ++ toString n))) [a]
+      = some (k.val n a) := by
+  have hp := parseImmShiftMnem_untagged k.mnem (ShiftBase.no_colon k.shiftBase) n
+    (hasSuffix_countTag_eq_false _ hn)
+  rw [k.immShiftAtt_mnem, Option.map_some] at hp
+  rw [applyOpn_countTag_of_parse k.shiftBase wOp hn k.att n 32 hp]
+  cases k <;> simp [ShiftKind.att, ShiftKind.val]
+
+/-! ## 4. The binding kind -/
+
+/-- An immediate shift or rotate binding along the renaming
+    `physRename body tbl`: the logical destination `nDst` receives the word
+    function of `kind` at `count` applied to the value at `nSrc`; neither renamed
+    operand is a spill slot (`hnsp`), and no other logical name is renamed onto
+    the physical register of `nDst`. -/
+structure UnaryImmBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
+  /-- The logical destination name. -/
+  nDst : String
+  /-- The logical source name. -/
+  nSrc : String
+  /-- The shift or rotate. -/
+  kind : ShiftKind
+  /-- The compile-time count. -/
+  count : Nat
+  /-- The count is not `64`, so the width tag strips off the mnemonic exactly. -/
+  hcount : count ≠ 64
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its source. -/
+  hSrcIn : nSrc ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
+  /-- Neither renamed operand is a spill slot. -/
+  hnsp : ((LOperand.reg (physRename body tbl nDst)).isSpill
+      || (LOperand.reg (physRename body tbl nSrc)).isSpill) = false
+
+/-- The count-tagged mnemonic of a binding, width tag included: the head
+    `opToLinstrR` emits for its kind and count at width `w`. -/
+def UnaryImmBinding.opn {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) : String :=
+  withWidthTag w (b.kind.mnem ++ ":" ++ toString b.count)
+
+/-- The value written at the destination, as a function of the source word. -/
+def UnaryImmBinding.vval {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) : BitVec w → BitVec w :=
+  b.kind.val b.count
+
+/-- The `lsem` value of a binding's mnemonic at every source word. -/
+theorem UnaryImmBinding.hop {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) :
+    ∀ a : BitVec w, applyOpn (stripWidthTag b.opn) [a] = some (b.vval a) :=
+  fun a => applyOpn_countTag b.kind w b.hcount a
+
+/-- The physical block of an immediate shift or rotate binding:
+    `opn ρ nDst, ρ nSrc`. -/
+def UnaryImmBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) : List LinstrR :=
+  [.Lopn [.reg (physRename body tbl b.nDst)] b.opn [.reg (physRename body tbl b.nSrc)]]
+
+/-- The virtual transformer of an immediate shift or rotate binding: write
+    `vval` of the source value at `nDst`. -/
+def UnaryImmBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) : Lstate w → Lstate w :=
+  fun s => s.setReg b.nDst (b.vval (s.lvm b.nSrc))
+
+/-- An immediate shift or rotate binding's block re-establishes `StoreRel`
+    against its virtual transformer. -/
+theorem UnaryImmBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : UnaryImmBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  remapBlockMaintains1 body tbl b.Lin b.Lout b.nDst b.nSrc b.opn b.vval
+    b.hSrcIn b.hinj b.hcarry b.hop
+
+/-! ## 5. The `physBody` expansion of a native shift head -/
+
+/-- `physBody` expands a one-source native shift or rotate head whose renamed
+    operands are not spill slots to the single renamed instruction. -/
+theorem physBodyElem_unaryImm (body : Lcmd) (tbl : Array Nat) (ii : Nat)
+    (nDst nSrc opn : String)
+    (hnat : isNativeShiftRotate opn = true)
+    (hnsp : ((LOperand.reg (physRename body tbl nDst)).isSpill
+      || (LOperand.reg (physRename body tbl nSrc)).isSpill) = false) :
+    (physBodyElem body tbl ⟨ii, .Lopn [.reg nDst] opn [.reg nSrc]⟩).map (·.li_i)
+      = [.Lopn [.reg (physRename body tbl nDst)] opn [.reg (physRename body tbl nSrc)]] := by
+  simp only [physBodyElem, hnat, if_true, remapOperand_reg, lowerNativeShiftRotate, hnsp,
+    Bool.false_eq_true, if_false, List.map_cons, List.map_nil]
 
 /-! ## 6. The sum of binding kinds -/
 
@@ -548,9 +576,8 @@ theorem UniformRegArithMCS.toShift {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-- Cover data threaded along a shift-fragment `Com` over a fixed whole
     `body`/`tbl`. The arms of the previous fragment carry the data of
     `CoverDataMCS`; the four shift arms carry a `UnaryImmBinding` whose
-    destination is `regName d`, whose source is the resolved operand name, whose
-    mnemonic is the exported count-tagged mnemonic and whose value is the
-    dialect's shift or rotate at the count. -/
+    destination is `regName d`, whose source is the resolved operand name and
+    whose kind and count are those of the binding's op. -/
 inductive CoverDataShift {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     Com jasminDialect Γ t → (curDepth : Nat) →
@@ -675,48 +702,48 @@ inductive CoverDataShift {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat)
   | shlImm {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.shlImm w n) = .reg w}
       {a0 : Ctxt.Var Γ (JasminTy.reg w)} {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
-      (d : Nat) (hn : n ≠ 64) (u : UnaryImmBinding w body tbl)
+      (d : Nat) (u : UnaryImmBinding w body tbl)
       (bs : List (ShiftBinding w body tbl))
       (hdst : u.nDst = regName d)
       (hsrc : u.nSrc = resolveVarName d nArgs a0)
-      (hopn : u.opn = withWidthTag w ("SHL:" ++ toString n))
-      (hval : u.vval = fun a : BitVec w => a <<< n)
+      (hkind : u.kind = .shl)
+      (hcount : u.count = n)
       (htail : CoverDataShift body tbl nArgs bdy (d + 1) bs) :
       CoverDataShift body tbl nArgs
         (.var ⟨JasminOp.shlImm w n, heq, .cons a0 .nil⟩ bdy) d (.unaryImm u :: bs)
   | shrImm {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.shrImm w n) = .reg w}
       {a0 : Ctxt.Var Γ (JasminTy.reg w)} {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
-      (d : Nat) (hn : n ≠ 64) (u : UnaryImmBinding w body tbl)
+      (d : Nat) (u : UnaryImmBinding w body tbl)
       (bs : List (ShiftBinding w body tbl))
       (hdst : u.nDst = regName d)
       (hsrc : u.nSrc = resolveVarName d nArgs a0)
-      (hopn : u.opn = withWidthTag w ("SHR:" ++ toString n))
-      (hval : u.vval = fun a : BitVec w => a >>> n)
+      (hkind : u.kind = .shr)
+      (hcount : u.count = n)
       (htail : CoverDataShift body tbl nArgs bdy (d + 1) bs) :
       CoverDataShift body tbl nArgs
         (.var ⟨JasminOp.shrImm w n, heq, .cons a0 .nil⟩ bdy) d (.unaryImm u :: bs)
   | sarImm {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.sarImm w n) = .reg w}
       {a0 : Ctxt.Var Γ (JasminTy.reg w)} {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
-      (d : Nat) (hn : n ≠ 64) (u : UnaryImmBinding w body tbl)
+      (d : Nat) (u : UnaryImmBinding w body tbl)
       (bs : List (ShiftBinding w body tbl))
       (hdst : u.nDst = regName d)
       (hsrc : u.nSrc = resolveVarName d nArgs a0)
-      (hopn : u.opn = withWidthTag w ("SAR:" ++ toString n))
-      (hval : u.vval = fun a : BitVec w => BitVec.sshiftRight a n)
+      (hkind : u.kind = .sar)
+      (hcount : u.count = n)
       (htail : CoverDataShift body tbl nArgs bdy (d + 1) bs) :
       CoverDataShift body tbl nArgs
         (.var ⟨JasminOp.sarImm w n, heq, .cons a0 .nil⟩ bdy) d (.unaryImm u :: bs)
   | rorImm {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w n) = .reg w}
       {a0 : Ctxt.Var Γ (JasminTy.reg w)} {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
-      (d : Nat) (hn : n ≠ 64) (u : UnaryImmBinding w body tbl)
+      (d : Nat) (u : UnaryImmBinding w body tbl)
       (bs : List (ShiftBinding w body tbl))
       (hdst : u.nDst = regName d)
       (hsrc : u.nSrc = resolveVarName d nArgs a0)
-      (hopn : u.opn = withWidthTag w ("ROR:" ++ toString n))
-      (hval : u.vval = fun a : BitVec w => a.rotateRight n)
+      (hkind : u.kind = .ror)
+      (hcount : u.count = n)
       (htail : CoverDataShift body tbl nArgs bdy (d + 1) bs) :
       CoverDataShift body tbl nArgs
         (.var ⟨JasminOp.rorImm w n, heq, .cons a0 .nil⟩ bdy) d (.unaryImm u :: bs)
@@ -737,10 +764,10 @@ theorem CoverDataShift.uniformRegArithShift {w : Nat} {body : Lcmd} {tbl : Array
   | addCarryLo d c bs _ _ _ _ _ ih => exact .addCarryLo _ _ _ _ _ ih
   | addCarryHi d c bs _ _ _ _ _ ih => exact .addCarryHi _ _ _ _ _ ih
   | select d c bs _ _ _ _ _ ih => exact .select _ _ _ _ _ ih
-  | shlImm d hn u bs _ _ _ _ _ ih => exact .shlImm _ _ _ hn ih
-  | shrImm d hn u bs _ _ _ _ _ ih => exact .shrImm _ _ _ hn ih
-  | sarImm d hn u bs _ _ _ _ _ ih => exact .sarImm _ _ _ hn ih
-  | rorImm d hn u bs _ _ _ _ _ ih => exact .rorImm _ _ _ hn ih
+  | shlImm d u bs _ _ _ hcount _ ih => exact .shlImm _ _ _ (hcount ▸ u.hcount) ih
+  | shrImm d u bs _ _ _ hcount _ ih => exact .shrImm _ _ _ (hcount ▸ u.hcount) ih
+  | sarImm d u bs _ _ _ hcount _ ih => exact .sarImm _ _ _ (hcount ▸ u.hcount) ih
+  | rorImm d u bs _ _ _ hcount _ ih => exact .rorImm _ _ _ (hcount ▸ u.hcount) ih
 
 /-- Cover data of the previous fragment is cover data of the shift fragment, with
     every binding tagged `mcs`. -/
@@ -828,20 +855,24 @@ theorem bindingHeads_rorImm_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
   rw [resolveVar_eq_reg]
 
 /-- The cover layer of a shift or rotate head whose binding names the head's
-    destination, source and mnemonic. -/
+    destination, source, kind and count. -/
 theorem unaryImmHead_cover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs d : Nat)
-    {m : String} (hm : ShiftBase m) (wOp n : Nat) (hn : n ≠ 64)
+    (k : ShiftKind) (n : Nat)
     {Γ : Ctxt jasminDialect} {τ : JasminTy} (a0 : Ctxt.Var Γ τ)
     (u : UnaryImmBinding w body tbl)
     (hdst : u.nDst = regName d)
     (hsrc : u.nSrc = resolveVarName d nArgs a0)
-    (hopn : u.opn = withWidthTag wOp (m ++ ":" ++ toString n)) :
-    (physBodyElem body tbl ⟨0, .Lopn [.reg (regName d)] (withWidthTag wOp (m ++ ":" ++ toString n))
+    (hkind : u.kind = k)
+    (hcount : u.count = n) :
+    (physBodyElem body tbl ⟨0, .Lopn [.reg (regName d)] (withWidthTag w (k.mnem ++ ":" ++ toString n))
         [.reg (resolveVarName d nArgs a0)]⟩).map (·.li_i)
       = (ShiftBinding.unaryImm u).block := by
+  have hn : n ≠ 64 := hcount ▸ u.hcount
+  have hopn : u.opn = withWidthTag w (k.mnem ++ ":" ++ toString n) := by
+    rw [UnaryImmBinding.opn, hkind, hcount]
   rw [ShiftBinding.block, UnaryImmBinding.block, ← hdst, ← hsrc, ← hopn]
   exact physBodyElem_unaryImm body tbl 0 u.nDst u.nSrc u.opn
-    (by rw [hopn]; exact isNativeShiftRotate_countTag hm wOp hn) u.hnsp
+    (by rw [hopn]; exact isNativeShiftRotate_countTag k.shiftBase w hn) u.hnsp
 
 /-- The threaded cover data yields a cover of the head list `bindingHeads … com d`. -/
 theorem coverDataShift_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat)
@@ -892,21 +923,18 @@ theorem coverDataShift_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArg
       refine .cons ?_ ih
       rw [physBodyElem_src3 body tbl 0 _ _ _ _ _ (not_isBinop_CMOV _),
         ShiftBinding.block, MulCarryBinding.block, SelectBinding.block, hdst, hCond, hA, hB]
-  | shlImm d hn u bs hdst hsrc hopn _ _ ih =>
+  | shlImm d u bs hdst hsrc hkind hcount _ ih =>
       rw [bindingHeads_shlImm_eq]
-      exact .cons (unaryImmHead_cover body tbl nArgs d (Or.inl rfl) w _ hn _ u hdst hsrc hopn) ih
-  | shrImm d hn u bs hdst hsrc hopn _ _ ih =>
+      exact .cons (unaryImmHead_cover body tbl nArgs d .shl _ _ u hdst hsrc hkind hcount) ih
+  | shrImm d u bs hdst hsrc hkind hcount _ ih =>
       rw [bindingHeads_shrImm_eq]
-      exact .cons (unaryImmHead_cover body tbl nArgs d (Or.inr (Or.inl rfl)) w _ hn _ u
-        hdst hsrc hopn) ih
-  | sarImm d hn u bs hdst hsrc hopn _ _ ih =>
+      exact .cons (unaryImmHead_cover body tbl nArgs d .shr _ _ u hdst hsrc hkind hcount) ih
+  | sarImm d u bs hdst hsrc hkind hcount _ ih =>
       rw [bindingHeads_sarImm_eq]
-      exact .cons (unaryImmHead_cover body tbl nArgs d (Or.inr (Or.inr (Or.inl rfl))) w _ hn _ u
-        hdst hsrc hopn) ih
-  | rorImm d hn u bs hdst hsrc hopn _ _ ih =>
+      exact .cons (unaryImmHead_cover body tbl nArgs d .sar _ _ u hdst hsrc hkind hcount) ih
+  | rorImm d u bs hdst hsrc hkind hcount _ ih =>
       rw [bindingHeads_rorImm_eq]
-      exact .cons (unaryImmHead_cover body tbl nArgs d (Or.inr (Or.inr (Or.inr rfl))) w _ hn _ u
-        hdst hsrc hopn) ih
+      exact .cons (unaryImmHead_cover body tbl nArgs d .ror _ _ u hdst hsrc hkind hcount) ih
 
 /-- **Physical body faithfulness, shift fragment.** For a body that is the head
     list `bindingHeads … com d` of a `Com` with threaded `CoverDataShift`, running
