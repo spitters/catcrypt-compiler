@@ -12,7 +12,7 @@ public import CatCryptCore.Tactics.KatGuard
 public import Std.Data.HashMap
 
 /-!
-# Linear-time owned `%zmm` rendering of a large `vpackZMM` program
+# Linear-time owned `%zmm` rendering of a large packed program
 
 `VpackZmmAsmPrint.renderVpackZmmComAutoZmm` renders a `vpackZMM` `Com` through
 `VsimdAsmPrint.vsimdAutoAllocZmm`, whose linear scan recomputes each value's last use
@@ -20,16 +20,22 @@ by scanning the block and looks registers up in an association list: quadratic i
 number of bindings. It pins every parameter to a register and has no arm for
 constants.
 
-This module renders a straight-line `Com jasminDialect` whose bindings are
-`vpackZMM` operations and 512-bit constants (`regConst 512 n`, the image of a scalar
-constant under a lane-wise widening) in time linear in the binding count, apart from
-the name lookups of `JasminPrint.VarMap`, which cost the de Bruijn distance of the
-variable read. The last-use table and the register map are hash maps. Constants take
-no register: each distinct value is one `.rodata` entry (an 8-byte word when its eight
-lanes are equal, else 64 bytes), read as a memory operand of the operation that uses
-it (`c(%rip){1to8}` for a broadcast word), a shift by a broadcast constant below 64
-uses the immediate-count form, and a constant first operand of a non-commutative
-operation is loaded into the scratch register `%zmm31`.
+This module renders a straight-line `Com jasminDialect` whose bindings are packed
+operations on eight 64-bit lanes (`vpackZMM`) or sixteen 32-bit lanes (`vpackZMMd`),
+the sixteen-lane high multiply `extCall "zmm_mulhi32x16"`, and 512-bit constants, in
+time linear in the binding count, apart from the name lookups of `JasminPrint.VarMap`,
+which cost the de Bruijn distance of the variable read. It also renders the lane-wise
+widening of a scalar program read off the scalar program in one pass
+(`renderLaneMapZmmFunction` for 64-bit words, `renderLaneMapZmmDFunction` for 32-bit
+words). The last-use table and the register map are hash maps. Constants take no
+register: each distinct value is one `.rodata` entry (an 8-byte word when its eight
+64-bit lanes are equal, else 64 bytes), read as a memory operand of the operation that
+uses it (`c(%rip){1to8}` or `{1to16}` for a broadcast), a shift by a broadcast constant
+below the lane width uses the immediate-count form, and a constant first operand of a
+non-commutative operation is resident in a register loaded at entry or loaded into the
+scratch register `%zmm31`. The high multiply renders as `vpmuludq` on the even and on
+the odd lanes, combined by `vpblendmd` under the mask `%k1`, over the temporaries
+`%zmm28..30`.
 
 The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
@@ -38,10 +44,11 @@ bindings are stored to `64·j(%rdi)` in binding order, the output convention of
 
 ## Main definitions
 
-* `ZBind`, `collectZBinds`: the straight-line binding list of a `Com`.
-* `allocZmmLinear`: the linear-scan allocation over `%zmm0..30`, failing when more
-  than 31 values are live.
-* `renderZmmLinearFunction`: the owned AT&T function text.
+* `ZBind`, `collectZBinds`, `collectZBindsScalar`: the straight-line binding list.
+* `csubToMinu`: the conditional add or subtract of a constant as an unsigned minimum.
+* `allocZmmLinear`: the linear-scan allocation, failing when no register is free.
+* `renderZmmLinearFunction`, `renderLaneMapZmmFunction`, `renderLaneMapZmmDFunction`:
+  the owned AT&T function text.
 -/
 
 @[expose] public section
@@ -53,75 +60,129 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (VarMap argName paramsAndMap)
-open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint (renderVpackZmmInstr)
 
 /-! ## 1. The binding list -/
 
-/-- One binding of a straight-line packed program: a `vpackZMM` operation, a 512-bit
-    constant, or any other operation (which the renderer rejects). -/
+/-- The lane width of a packed binding: eight 64-bit lanes or sixteen 32-bit lanes. -/
+inductive LaneW where
+  | q
+  | d
+deriving DecidableEq, BEq
+
+/-- The number of bits of one lane. -/
+def LaneW.bits : LaneW → Nat
+  | .q => 64
+  | .d => 32
+
+/-- One binding of a straight-line packed program: a lane-wise operation, the
+    sixteen-lane high multiply, a 512-bit constant, an unsigned lane-wise minimum, or
+    any other operation (which the renderer rejects). -/
 inductive ZBind where
-  | pack (bop : JasminBinOp) (dst a b : String)
+  | pack (w : LaneW) (bop : JasminBinOp) (dst a b : String)
+  | mulhi (dst a b : String)
   | const (dst : String) (v : Nat)
-  | minu (dst a b : String)
+  | minu (w : LaneW) (dst a b : String)
   | other (dst : String)
 
 /-- The name a binding defines. -/
 def ZBind.dst : ZBind → String
-  | .pack _ d _ _ => d
+  | .pack _ _ d _ _ => d
+  | .mulhi d _ _ => d
   | .const d _ => d
-  | .minu d _ _ => d
+  | .minu _ d _ _ => d
   | .other d => d
 
 /-- The names a binding reads. -/
 def ZBind.srcs : ZBind → List String
-  | .pack _ _ a b => [a, b]
-  | .minu _ a b => [a, b]
+  | .pack _ _ _ a b => [a, b]
+  | .mulhi _ a b => [a, b]
+  | .minu _ _ a b => [a, b]
   | _ => []
 
-/-- The binding of expression `e` defining `dst`. -/
+/-- The name of the sixteen-lane high-multiply leaf. -/
+def mulhiLeafName : String := "zmm_mulhi32x16"
+
+/-- The binding of expression `e` of a packed program defining `dst`. -/
 def exprZBind {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
     (e : Expr jasminDialect Γ t) (dst : String) : ZBind :=
   match e.op with
-  | .vpackZMM bop => .pack bop dst (argName vm e.args 0) (argName vm e.args 1)
+  | .vpackZMM bop => .pack .q bop dst (argName vm e.args 0) (argName vm e.args 1)
+  | .vpackZMMd bop => .pack .d bop dst (argName vm e.args 0) (argName vm e.args 1)
+  | .extCall name _ _ =>
+      if name = mulhiLeafName then .mulhi dst (argName vm e.args 0) (argName vm e.args 1)
+      else .other dst
   | .regConst w n => if w = 512 then .const dst n else .other dst
   | _ => .other dst
 
-/-- The bindings of a straight-line `Com` in order, with fresh names `v{next}`, and
-    the name of its return value. Tail-recursive in the accumulator. -/
-def collectZBinds {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
-    (next : Nat) (acc : Array ZBind) : Com jasminDialect Γ t → Array ZBind × String
-  | .ret v => (acc, vm t v)
-  | .var (t := tEx) e body =>
-      let dst := "v" ++ toString next
-      collectZBinds (vm.extend (t := tEx) dst) (next + 1) (acc.push (exprZBind vm e dst)) body
+/-- The eight-fold broadcast of a 64-bit word to 512 bits. -/
+def bcast512 (w : Nat) : Nat :=
+  (List.range 8).foldl (fun acc k => acc + (w % 2 ^ 64) * 2 ^ (64 * k)) 0
 
-/-- The binding the lane map `LaneMapZmm.laneMapZmm` gives the scalar expression `e`
-    defining `dst`: `regArith bop 64` is the packed `vpackZMM bop`, `regConst 64 k` is
-    the broadcast constant `constZmm k`, and every other operation is outside the
+/-- The sixteen-fold broadcast of a 32-bit word to 512 bits. -/
+def bcast512d (w : Nat) : Nat :=
+  (List.range 16).foldl (fun acc k => acc + (w % 2 ^ 32) * 2 ^ (32 * k)) 0
+
+/-- The binding the 64-bit lane map `LaneMapZmm.laneMapZmm` gives the scalar
+    expression `e` defining `dst`: `regArith bop 64` is `vpackZMM bop`, `regConst 64 k`
+    is the broadcast constant `constZmm k`, and every other operation is outside the
     fragment. -/
 def exprZBindScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
     (e : Expr jasminDialect Γ t) (dst : String) : ZBind :=
   match e.op with
   | .regArith bop w =>
-      if w = 64 then .pack bop dst (argName vm e.args 0) (argName vm e.args 1) else .other dst
+      if w = 64 then .pack .q bop dst (argName vm e.args 0) (argName vm e.args 1)
+      else .other dst
   | .regConst w k =>
       if w = 64 then .const dst (KeccakThetaPiAbstractCom.constZmm k).toNat else .other dst
   | _ => .other dst
 
-/-- The bindings of `LaneMapZmm.laneMapZmm c` read off the scalar program `c` in one
-    pass, without building the widened `Com`: one binding per scalar binding, in order,
-    with the names `collectZBinds` gives the widened program. Tail-recursive in the
+/-- The binding the 32-bit lane map `LaneMapZmmD` gives the scalar expression `e`
+    defining `dst`: `regArith bop 32` is `vpackZMMd bop`, `mulhi 32` is the high-multiply
+    leaf, `regConst 32 k` is the sixteen-fold broadcast of `k`, and every other operation
+    is outside the fragment. -/
+def exprZBindScalar32 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
+    (e : Expr jasminDialect Γ t) (dst : String) : ZBind :=
+  match e.op with
+  | .regArith bop w =>
+      if w = 32 then .pack .d bop dst (argName vm e.args 0) (argName vm e.args 1)
+      else .other dst
+  | .mulhi w =>
+      if w = 32 then .mulhi dst (argName vm e.args 0) (argName vm e.args 1) else .other dst
+  | .regConst w k => if w = 32 then .const dst (bcast512d k) else .other dst
+  | _ => .other dst
+
+/-- The bindings of a straight-line `Com` in order under the binding map `f`, with fresh
+    names `v{next}`, and the name of its return value. Tail-recursive in the
     accumulator. -/
-def collectZBindsScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
+def collectWith
+    (f : ∀ {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}, VarMap Γ →
+      Expr jasminDialect Γ t → String → ZBind)
+    {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
     (next : Nat) (acc : Array ZBind) : Com jasminDialect Γ t → Array ZBind × String
   | .ret v => (acc, vm t v)
   | .var (t := tEx) e body =>
       let dst := "v" ++ toString next
-      collectZBindsScalar (vm.extend (t := tEx) dst) (next + 1)
-        (acc.push (exprZBindScalar vm e dst)) body
+      collectWith f (vm.extend (t := tEx) dst) (next + 1) (acc.push (f vm e dst)) body
 
-/-! ## 2. Linear-scan allocation -/
+/-- The bindings of a packed `Com`. -/
+def collectZBinds {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
+    (next : Nat) (acc : Array ZBind) (c : Com jasminDialect Γ t) : Array ZBind × String :=
+  collectWith exprZBind vm next acc c
 
+/-- The bindings of `LaneMapZmm.laneMapZmm c` read off the scalar 64-bit program `c` in
+    one pass, without building the widened `Com`, with the names `collectZBinds` gives the
+    widened program. -/
+def collectZBindsScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
+    (next : Nat) (acc : Array ZBind) (c : Com jasminDialect Γ t) : Array ZBind × String :=
+  collectWith exprZBindScalar vm next acc c
+
+/-- The bindings of the 32-bit lane map of the scalar 32-bit program `c`, read off `c`
+    in one pass. -/
+def collectZBindsScalar32 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
+    (next : Nat) (acc : Array ZBind) (c : Com jasminDialect Γ t) : Array ZBind × String :=
+  collectWith exprZBindScalar32 vm next acc c
+
+/-! ## 2. Constants and allocation -/
 
 /-- The constants of a binding list: each constant binding's name mapped to the data
     label and value it reads, one assembler-local (`.L`) label per distinct value, and
@@ -153,14 +214,18 @@ def lastUses (bs : Array ZBind) (live : List String) : Std.HashMap String Nat :=
 /-- The `%zmm` register numbered `i`. -/
 def zmmName (i : Nat) : String := "%zmm" ++ toString i
 
-/-- The scratch register a constant first operand is loaded into; never allocated. -/
+/-- The scratch register a constant operand is loaded into; never allocated. -/
 def zmmScratch : String := "%zmm31"
 
-/-- Linear-scan allocation of `%zmm0..30` over the non-constant values: parameter `i` is
-    pinned to `%zmm i`; at each binding the registers of the names it reads for the last
-    time are released before its destination is assigned, and the destination's
-    register is released at once when nothing reads it. Constants take no register.
-    Fails when a binding finds no free register. -/
+/-- The temporaries of the high-multiply expansion; never allocated when the program
+    contains a high multiply. -/
+def mulhiTemps : List String := ["%zmm28", "%zmm29", "%zmm30"]
+
+/-- Linear-scan allocation of `%zmm0..30` less `reserved` over the non-constant values:
+    parameter `i` is pinned to `%zmm i`; at each binding the registers of the names it
+    reads for the last time are released before its destination is assigned, and the
+    destination's register is released at once when nothing reads it. Constants take no
+    register. Fails when a binding finds no free register. -/
 def allocZmmLinear (params : List String) (consts : Std.HashMap String (String × Nat))
     (bs : Array ZBind) (live : List String) (reserved : List String := []) :
     Except String (Std.HashMap String String) := do
@@ -177,7 +242,7 @@ def allocZmmLinear (params : List String) (consts : Std.HashMap String (String �
     let dying := b.srcs.eraseDups.filter (fun s => lu.get? s == some i)
     let free := free ++ dying.filterMap alloc.get?
     match free with
-    | [] => throw s!"vpackZMM linear render: more than 31 live values at binding {i}"
+    | [] => throw s!"vpackZMM linear render: no free register at binding {i}"
     | r :: rest =>
       let alloc := alloc.insert b.dst r
       pure (alloc, if lu.contains b.dst then rest else rest ++ [r])
@@ -186,12 +251,15 @@ def allocZmmLinear (params : List String) (consts : Std.HashMap String (String �
 
 /-! ## 3. Rendering -/
 
-/-- The eight-fold broadcast of a 64-bit word to 512 bits. -/
-def bcast512 (w : Nat) : Nat :=
-  (List.range 8).foldl (fun acc k => acc + (w % 2 ^ 64) * 2 ^ (64 * k)) 0
+/-- Whether a 512-bit value is the broadcast of one lane of width `w`. -/
+def isBcast (w : LaneW) (v : Nat) : Bool :=
+  match w with
+  | .q => bcast512 v == v
+  | .d => bcast512d v == v
 
 /-- The `.rodata` lines of the constant labelled `lbl` with value `v`: one 8-byte word
-    when its eight lanes are equal, else the 64-byte value. -/
+    when its eight 64-bit lanes are equal (which covers every sixteen-lane broadcast,
+    whose word repeats the 32-bit lane), else the 64-byte value. -/
 def constData (lbl : String) (v : Nat) : List String :=
   if bcast512 v = v then
     ["\t.p2align 3", lbl ++ ":", "\t.quad " ++ toString (v % 2 ^ 64)]
@@ -199,88 +267,134 @@ def constData (lbl : String) (v : Nat) : List String :=
     ["\t.p2align 6", lbl ++ ":"]
       ++ (List.range 8).map (fun j => "\t.quad " ++ toString ((v / 2 ^ (64 * j)) % 2 ^ 64))
 
-/-- The memory operand of a constant: an embedded broadcast of its 8-byte word, or its
-    64-byte value. -/
-def constOperand (c : String × Nat) : String :=
-  if bcast512 c.2 = c.2 then c.1 ++ "(%rip){1to8}" else c.1 ++ "(%rip)"
+/-- The memory operand of a constant read by a width-`w` operation: an embedded
+    broadcast of its lane, or its 64-byte value. -/
+def constOperand (w : LaneW) (c : String × Nat) : String :=
+  if isBcast w c.2 then
+    c.1 ++ "(%rip)" ++ (match w with | .q => "{1to8}" | .d => "{1to16}")
+  else c.1 ++ "(%rip)"
+
+/-- The line loading a constant read by a width-`w` operation into register `r`. -/
+def constLoadTo (w : LaneW) (c : String × Nat) (r : String) : String :=
+  if isBcast w c.2 then
+    (match w with | .q => "\tvpbroadcastq " | .d => "\tvpbroadcastd ") ++ c.1 ++ "(%rip), " ++ r
+  else "\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ r
 
 /-- The line loading a constant into `zmmScratch`. -/
-def constLoad (c : String × Nat) : String :=
-  if bcast512 c.2 = c.2 then "\tvpbroadcastq " ++ c.1 ++ "(%rip), " ++ zmmScratch
-  else "\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ zmmScratch
+def constLoad (w : LaneW) (c : String × Nat) : String := constLoadTo w c zmmScratch
 
 /-- The packed operations whose operands may be exchanged. -/
 def bopCommutes : JasminBinOp → Bool
   | .add | .mul | .and | .or | .xor => true
   | _ => false
 
-/-- The immediate-count shift mnemonic of `bop`, for `shl` and `shr`. -/
-def shiftImmMnemonic : JasminBinOp → Option String
-  | .shl => some "vpsllq"
-  | .shr => some "vpsrlq"
+/-- The immediate-count shift mnemonic of `bop` at width `w`, for `shl` and `shr`. -/
+def shiftImmMnemonic (w : LaneW) : JasminBinOp → Option String
+  | .shl => some (match w with | .q => "vpsllq" | .d => "vpslld")
+  | .shr => some (match w with | .q => "vpsrlq" | .d => "vpsrld")
   | _ => none
 
-/-- The mnemonic of `bop`: the packed operation of `VpackZmmAsmPrint`, except that a
-    multiply is `vpmuludq` (the product of the low 32 bits of each lane) when `mulU`
-    holds, which equals `vpmullq` on operands below `2^32`. -/
-def packMnemonic (mulU : Bool) (bop : JasminBinOp) : String :=
-  match bop with
-  | .mul => if mulU then "vpmuludq" else VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
-  | _ => VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
+/-- The mnemonic of `bop` at width `w`: at 64 bits the packed operation of
+    `VpackZmmAsmPrint`, except that a multiply is `vpmuludq` (the product of the low 32
+    bits of each lane) when `mulU` holds, which equals `vpmullq` on operands below
+    `2^32`; at 32 bits the dword operation. -/
+def packMnemonic (w : LaneW) (mulU : Bool) (bop : JasminBinOp) : String :=
+  match w, bop with
+  | .q, .mul => if mulU then "vpmuludq" else VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
+  | .q, _ => VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
+  | .d, .add => "vpaddd"
+  | .d, .sub => "vpsubd"
+  | .d, .mul => "vpmulld"
+  | .d, .and => "vpandd"
+  | .d, .or => "vpord"
+  | .d, .xor => "vpxord"
+  | .d, .andn => "vpandnd"
+  | .d, .shl => "vpsllvd"
+  | .d, .shr => "vpsrlvd"
 
 /-- The line `mn src2, src1, dst`. -/
 def opLine (mn : String) (rd ra rb : String) : String :=
   "\t" ++ mn ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
 
+/-- The sixteen-lane high multiply of `ra` and `rb` into `rd`: `vpmuludq` on the even
+    lanes, the odd lanes shifted down and multiplied, the even high words shifted down,
+    and the two blended under `%k1` (odd lanes set). -/
+def mulhiLines (rd ra rb : String) : List String :=
+  let t0 := "%zmm28"; let t1 := "%zmm29"; let t2 := "%zmm30"
+  [ opLine "vpmuludq" t0 ra rb
+  , "\tvpsrlq $32, " ++ ra ++ ", " ++ t1
+  , "\tvpsrlq $32, " ++ rb ++ ", " ++ t2
+  , opLine "vpmuludq" t1 t1 t2
+  , "\tvpsrlq $32, " ++ t0 ++ ", " ++ t0
+  , "\tvpblendmd " ++ t1 ++ ", " ++ t0 ++ ", " ++ rd ++ "{%k1}" ]
+
 /-- The instruction lines of binding `b`. A constant second operand is a memory
     operand; a constant first operand is exchanged with a register second operand when
-    `bop` commutes, and otherwise loaded into `zmmScratch`; a shift by a broadcast
-    constant below 64 uses the immediate form. Constant bindings emit nothing. -/
+    `bop` commutes, and otherwise read from its resident register or loaded into
+    `zmmScratch`; a shift by a broadcast constant below the lane width uses the
+    immediate form. Constant bindings emit nothing. -/
 def bindLines (consts : Std.HashMap String (String × Nat))
     (alloc : Std.HashMap String String) (mulU : Bool := false)
     (resident : Std.HashMap String String := {}) :
     ZBind → Except String (List String)
   | .const _ _ => pure []
-  | .minu d a b =>
+  | .other d => throw s!"vpackZMM linear render: binding {d} is not a packed op or constant"
+  | .minu w d a b =>
       match alloc.get? d, alloc.get? a, alloc.get? b with
-      | some rd, some ra, some rb => pure ["\tvpminuq " ++ rb ++ ", " ++ ra ++ ", " ++ rd]
+      | some rd, some ra, some rb =>
+        pure [opLine (match w with | .q => "vpminuq" | .d => "vpminud") rd ra rb]
       | _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
-  | .other d => throw s!"vpackZMM linear render: binding {d} is not a vpackZMM op or constant"
-  | .pack bop d a b => do
+  | .mulhi d a b => do
       let reg (n : String) : Except String String :=
         match alloc.get? n with
         | some r => pure r
         | none => throw s!"vpackZMM linear render: unallocated operand {n} at {d}"
       let rd ← reg d
+      match consts.get? a, consts.get? b with
+      | none, none => pure (mulhiLines rd (← reg a) (← reg b))
+      | none, some cb => pure (constLoad .d cb :: mulhiLines rd (← reg a) zmmScratch)
+      | some ca, none => pure (constLoad .d ca :: mulhiLines rd zmmScratch (← reg b))
+      | some ca, some cb =>
+        pure (constLoad .d ca :: constLoadTo .d cb "%zmm30" :: mulhiLines rd zmmScratch "%zmm30")
+  | .pack w bop d a b => do
+      let reg (n : String) : Except String String :=
+        match alloc.get? n with
+        | some r => pure r
+        | none => throw s!"vpackZMM linear render: unallocated operand {n} at {d}"
+      let rd ← reg d
+      let mn := packMnemonic w mulU bop
+      let lane := 2 ^ w.bits
       let shiftImm (c : String × Nat) (src : String) : Option String :=
-        match shiftImmMnemonic bop with
-        | some mn => if bcast512 c.2 = c.2 ∧ c.2 % 2 ^ 64 < 64 then
-            some ("\t" ++ mn ++ " $" ++ toString (c.2 % 2 ^ 64) ++ ", " ++ src ++ ", " ++ rd)
+        match shiftImmMnemonic w bop with
+        | some smn => if isBcast w c.2 ∧ c.2 % lane < w.bits then
+            some ("\t" ++ smn ++ " $" ++ toString (c.2 % lane) ++ ", " ++ src ++ ", " ++ rd)
           else none
         | none => none
       match consts.get? a, consts.get? b with
-      | none, none => pure [opLine (packMnemonic mulU bop) rd (← reg a) (← reg b)]
+      | none, none => pure [opLine mn rd (← reg a) (← reg b)]
       | none, some cb =>
         let ra ← reg a
         match shiftImm cb ra with
         | some line => pure [line]
-        | none => pure [opLine (packMnemonic mulU bop) rd ra (constOperand cb)]
+        | none => pure [opLine mn rd ra (constOperand w cb)]
       | some ca, none =>
         let rb ← reg b
-        if bopCommutes bop then pure [opLine (packMnemonic mulU bop) rd rb (constOperand ca)]
+        if bopCommutes bop then pure [opLine mn rd rb (constOperand w ca)]
         else match resident.get? ca.1 with
-          | some r => pure [opLine (packMnemonic mulU bop) rd r rb]
-          | none => pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch rb]
+          | some r => pure [opLine mn rd r rb]
+          | none => pure [constLoad w ca, opLine mn rd zmmScratch rb]
       | some ca, some cb =>
         match shiftImm cb zmmScratch with
-        | some line => pure [constLoad ca, line]
-        | none => pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch (constOperand cb)]
+        | some line => pure [constLoad w ca, line]
+        | none => pure [constLoad w ca, opLine mn rd zmmScratch (constOperand w cb)]
 
-/-- The conditional subtract `r = d + ((0 - (d >> 63)) & C)` with `d = x - C`, which the
-    BabyBear blocks emit, rewritten to `r = minu(x, d)` (`vpminuq`), when the three
-    intermediate values have no other reader and `d` has exactly the two. On a lane with
-    `x < 2^63` and `C < 2^63` both compute `x - C` if `x ≥ C` and `x` otherwise; on other
-    lanes they differ, so the caller asserts the range. -/
+/-- The conditional add or subtract of a constant `C` that the BabyBear blocks emit,
+    `r = d + ((0 - (d >> (L-1))) & C)` at lane width `L`, rewritten to an unsigned
+    minimum when the three intermediate values have no other reader: to
+    `r = minu(x, d)` when `d = x - C` and `d` has exactly the two readers, and otherwise
+    to `u = d + C; r = minu(d, u)`. The two agree on every lane where `d` is below
+    `2^(L-1)` or at least `2^L - C` and `C < 2^(L-1)` (the ranges the blocks produce on
+    reduced inputs); on other lanes they differ, so the caller asserts the range. -/
 def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) :
     Array ZBind := Id.run do
   let defs : Std.HashMap String Nat := bs.zipIdx.foldl (fun m (b, i) => m.insert b.dst i) {}
@@ -289,73 +403,88 @@ def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) 
   let constVal (n : String) : Option Nat := (consts.get? n).map (·.2)
   let defOf (n : String) : Option ZBind := (defs.get? n).bind (fun i => bs[i]?)
   let used (n : String) : Nat := uses.getD n 0
-  -- `(x, d, removed)` when `d + t` is the idiom
-  let idiom (d t : String) : Option (String × String × List String) := do
-    let .pack .and _ t1 t2 ← defOf t | none
+  -- the constant name and value and the removed names when `d + t` is the idiom at `w`
+  let idiom (w : LaneW) (d t : String) : Option (String × Nat × List String) := do
+    let .pack w1 .and _ t1 t2 ← defOf t | none
     let (m, cC) ← if (constVal t2).isSome then some (t1, t2)
       else if (constVal t1).isSome then some (t2, t1) else none
     let c ← constVal cC
-    let .pack .sub _ z s ← defOf m | none
-    let .pack .shr _ d2 c63 ← defOf s | none
-    let .pack .sub _ x cC2 ← defOf d | none
-    if constVal z == some 0 && d2 == d && constVal c63 == some (bcast512 63)
-        && constVal cC2 == some c && (constVal x).isNone
-        && used s == 1 && used m == 1 && used t == 1 && used d == 2 then
-      some (x, d, [s, m, t])
+    let .pack w2 .sub _ z s ← defOf m | none
+    let .pack w3 .shr _ d2 k ← defOf s | none
+    let signShift := match w with | .q => bcast512 63 | .d => bcast512d 31
+    if w1 == w && w2 == w && w3 == w && constVal z == some 0 && d2 == d
+        && constVal k == some signShift
+        && used s == 1 && used m == 1 && used t == 1 then
+      some (cC, c, [s, m, t])
     else none
-  let mut rw : Std.HashMap String ZBind := {}
+  let mut rw : Std.HashMap String (List ZBind) := {}
   let mut removed : Std.HashSet String := {}
   for b in bs do
     match b with
-    | .pack .add r a b2 =>
-      match idiom a b2 <|> idiom b2 a with
-      | some (x, d, rem) =>
-        rw := rw.insert r (.minu r x d)
+    | .pack w .add r a b2 =>
+      let hit := (idiom w a b2).map (fun h => (a, h)) <|> (idiom w b2 a).map (fun h => (b2, h))
+      match hit with
+      | some (d, cC, c, rem) =>
+        let direct : Option String := do
+          let .pack w4 .sub _ x cC2 ← defOf d | none
+          if w4 == w && constVal cC2 == some c && (constVal x).isNone && used d == 2 then
+            some x else none
+        match direct with
+        | some x => rw := rw.insert r [.minu w r x d]
+        | none => rw := rw.insert r [.pack w .add (r ++ "_u") d cC, .minu w r d (r ++ "_u")]
         removed := rem.foldl (fun s n => s.insert n) removed
       | none => pure ()
     | _ => pure ()
-  return bs.filterMap (fun b =>
-    if removed.contains b.dst then none else some ((rw.get? b.dst).getD b))
+  return bs.foldl (fun acc b =>
+    if removed.contains b.dst then acc
+    else match rw.get? b.dst with
+      | some bs' => acc ++ bs'.toArray
+      | none => acc.push b) #[]
 
 /-- The owned AT&T text of the function `sym(out = %rdi, in = %rsi)` over the parameter
     names `names` and bindings `bs`: parameter `s` loaded from `inOffset s(%rsi)`, the
     body, and the `nOut` last bindings stored to `64·j(%rdi)`. With `fieldRange` the caller
-    asserts that every value a multiply reads is below `2^32` and every conditional-subtract
-    input below `2^63`; multiplies then render as `vpmuludq` and conditional subtracts as
-    `vpminuq` (`csubToMinu`). Up to four constants read as the first operand of a
-    non-commutative operation are resident: loaded once at entry into `%zmm30`, `%zmm29`,
-    …, which the allocation leaves free. -/
+    asserts that every value a 64-bit multiply reads is below `2^32` and that the
+    conditional adds and subtracts read values in the ranges `csubToMinu` states; 64-bit
+    multiplies then render as `vpmuludq` and those idioms as unsigned minima. Up to four
+    constants read as the first operand of a non-commutative operation are resident,
+    loaded once at entry into the highest registers the allocation and the high-multiply
+    temporaries leave free. -/
 def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     (names : List String) (bs0 : Array ZBind) (fieldRange : Bool := false) :
     Except String String := do
   let (consts, data) := constTable sym bs0
   let bs := if fieldRange then csubToMinu consts bs0 else bs0
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
-  let firstConsts : List (String × Nat) := (bs.toList.filterMap (fun b =>
+  let hasMulhi := bs.any (fun b => match b with | .mulhi _ _ _ => true | _ => false)
+  let temps := if hasMulhi then mulhiTemps else []
+  let top := 30 - temps.length
+  let firstConsts : List (LaneW × (String × Nat)) := (bs.toList.filterMap (fun b =>
     match b with
-    | .pack bop _ a _ => if bopCommutes bop then none else consts.get? a
+    | .pack w bop _ a _ => if bopCommutes bop then none else (consts.get? a).map (w, ·)
     | _ => none)).eraseDups.take 4
-  let residentList : List ((String × Nat) × String) :=
-    firstConsts.zipIdx.map (fun (c, i) => (c, zmmName (30 - i)))
+  let residentList : List ((LaneW × (String × Nat)) × String) :=
+    firstConsts.zipIdx.map (fun (c, i) => (c, zmmName (top - i)))
   let resident : Std.HashMap String String :=
-    residentList.foldl (fun m (c, r) => m.insert c.1 r) {}
-  let alloc ← allocZmmLinear names consts bs outs (residentList.map (·.2))
+    residentList.foldl (fun m (c, r) => m.insert c.2.1 r) {}
+  let alloc ← allocZmmLinear names consts bs outs (temps ++ residentList.map (·.2))
   let loads := names.zipIdx.map (fun (_, s) =>
     "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ zmmName s)
-  let residentLoads := residentList.map (fun (c, r) =>
-    (if bcast512 c.2 = c.2 then "\tvpbroadcastq " else "\tvmovdqu64 ") ++ c.1 ++ "(%rip), " ++ r)
+  let maskSetup := if hasMulhi then ["\tmovl $43690, %eax", "\tkmovw %eax, %k1"] else []
+  let residentLoads := residentList.map (fun (c, r) => constLoadTo c.1 c.2 r)
   let body ← bs.foldlM
     (fun (acc : Array String) b => do
       pure (acc ++ (← bindLines consts alloc fieldRange resident b).toArray)) #[]
   let stores ← outs.zipIdx.mapM (fun (o, j) =>
     match alloc.get? o, consts.get? o with
     | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
-    | none, some c => pure [constLoad c,
+    | none, some c => pure ["\tvmovdqu64 " ++ c.1 ++ "(%rip), " ++ zmmScratch,
         "\tvmovdqu64 " ++ zmmScratch ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
     | none, none => throw s!"vpackZMM linear render: unallocated output {o}")
   let text : List String :=
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
-      ++ loads ++ residentLoads ++ body.toList ++ stores.flatten ++ ["\tvzeroupper", "\tret"]
+      ++ loads ++ maskSetup ++ residentLoads ++ body.toList ++ stores.flatten
+      ++ ["\tvzeroupper", "\tret"]
       ++ ["\t.size " ++ sym ++ ", .-" ++ sym, "\t.section .rodata"]
       ++ (data.toList.flatMap (fun (lbl, v) => constData lbl v))
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
@@ -372,7 +501,7 @@ def renderZmmLinearFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     (collectZBinds vm 0 #[] com).1 fieldRange
 
 /-- The owned function text of `LaneMapZmm.laneMapZmm c`, eight lanes of the scalar
-    program `c` per ZMM register, rendered from `c` in one pass by
+    64-bit program `c` per ZMM register, rendered from `c` in one pass by
     `collectZBindsScalar` without building the widened `Com`. -/
 def renderLaneMapZmmFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
     (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
@@ -381,6 +510,17 @@ def renderLaneMapZmmFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
     (collectZBindsScalar vm 0 #[] c).1 fieldRange
+
+/-- The owned function text of the 32-bit lane map of `c`, sixteen lanes of the scalar
+    32-bit program `c` per ZMM register, rendered from `c` in one pass by
+    `collectZBindsScalar32`. -/
+def renderLaneMapZmmDFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
+    (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
+    (fieldRange : Bool := false) :
+    Except String String :=
+  let (params, vm) := paramsAndMap Γ
+  renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
+    (collectZBindsScalar32 vm 0 #[] c).1 fieldRange
 
 /-! ## 4. A static check -/
 
