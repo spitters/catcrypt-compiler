@@ -9,8 +9,8 @@
 #            lemma, `rustToJasminCom_endToEnd`, `robustCompilation_source_to_x86`,
 #            `com_arm_e2e`, `com_riscv_e2e`), so its target is the program the
 #            verified compiler produces;
-#   bytes    the module states its result over the encoded bytes (`encodeJBlock`,
-#            `decodeJStream`, a `*Bytes_correct` theorem).
+#   bytes    the module states its result over the encoded bytes (`encodeJBlock`, `encodeLfundefBytes`,
+#            `decodeJStream`, `decodeLprog`, a `*Bytes_correct` theorem).
 #
 # A module also counts as anchored when a module that (transitively) imports it
 # is anchored: its lemmas feed an anchored result.
@@ -49,7 +49,7 @@ mod_of() { printf '%s' "${1%.lean}" | tr '/' '.'; }
 # the source execution it is given, so a module reaching one states its result about the
 # program the verified pipeline produces.
 descent_re='legWeld|keystone_[A-Za-z0-9_]+|rustToJasminCom_endToEnd|robustCompilation_source_to_x86|com_arm_e2e|com_riscv_e2e|transU_to_jasminCom_endToEnd|translateDialectGuarded_jasmin'
-bytes_re='encodeJBlock|decodeJStream|[A-Za-z0-9_]*Bytes_correct'
+bytes_re='encodeJBlock|decodeJStream|encodeLfundefBytes|decodeLprog|[A-Za-z0-9_]*Bytes_correct'
 
 # Modules that mention the byte route but carry the byte fact as a HYPOTHESIS (a theorem
 # of the form `decodeJStream … = some block → …`) state no result over the shipped bytes.
