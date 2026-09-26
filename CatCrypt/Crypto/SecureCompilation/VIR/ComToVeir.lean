@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
 public import Veir.IR.Basic
 public import Veir.IR.OpInfo
 public import Veir.IR.Attribute
@@ -425,12 +427,6 @@ return-terminator op is appended carrying the final value. -/
 section FuncShape
 
 variable [ToVeirOp d] [ToVeirTy d]
-
-/-- De Bruijn depth of a `Var Γ t`: `.here` has depth 0, each
-    `.there` shifts by one. -/
-def varDepth : {Γ : Ctxt d} → {t : d.Ty} → Var Γ t → Nat
-  | _, _, .here => 0
-  | _, _, .there v => varDepth v + 1
 
 /-- Resolve a De Bruijn `Var Γ t` to a Veir `BlockArgumentPtr`. The
     convention matches CatCrypt's in-tree printer

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVecCore
 public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
 public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordScheduleCom
 
@@ -20,11 +20,10 @@ register: every `reg 32` value becomes a `reg 512`, every scalar binding
 `regConst 32 k` becomes the lane broadcast `regConst 512 (bcastD (BitVec.ofNat 32 k)).toNat`,
 and every `mulhi 32` becomes the two-operand leaf `extCall "zmm_mulhi32x16"`.
 
-The transform is a `FieldDialectBlockDescent.BlockLoweringData` instance, the dword
-counterpart of the qword lane map `LaneMapZmm`. Each covered op lowers to a one-binding
-block; `blockLowerCom` splices the blocks. The type map sends `reg 32` to `reg 512` and
-fixes every other type. Lane `k : Fin 16` of a `reg 512` value is `zmmLane32 v k`, bits
-`32k .. 32k+31`, the layout `zmmPackD` uses.
+The transform is `LaneMapVec.laneMapVec` at the lane shape `LaneMapVec.dwordZmm`
+defined here; the definitions and theorems of this file are that shape's instances of
+the generic ones in `LaneMapVecCore`. Lane `k : Fin 16` of a `reg 512` value is
+`zmmLane32 v k`, bits `32k .. 32k+31`, the layout `zmmPackD` uses.
 
 ## Covered scalar ops
 
@@ -35,13 +34,13 @@ which applies `bop.apply` at width 32 in each lane, reading the shift count of `
 by lane. The leaf `zmm_mulhi32x16` has no fixed meaning in `jasminDenote`; the lane
 theorem denotes the mapped program with `jasminDenoteWith leafSem` under `MulHi32Leaf
 leafSem`, the hypothesis that the leaf computes `mulHiW` in every dword lane. Every
-other op takes an opaque nullary `extCall` fallback, outside the `LaneMapZmmDCovered`
-fragment.
+other op takes the opaque nullary `extCall` fallback `laneMapZmmD_uncovered`, outside
+the `LaneMapZmmDCovered` fragment.
 
 ## Main definitions
 
-* `widenDTy` / `widenDCtxt` / `mapVar`: the type, context and de Bruijn transports.
-* `lowering`: the `BlockLoweringData jasminDialect jasminDialect`.
+* `LaneMapVec.dwordZmm`: sixteen 32-bit lanes on `vpackZMMd` and `zmm_mulhi32x16`.
+* `widenDTy` / `widenDCtxt` / `mapVar` / `lowering`: the shape's maps and lowering.
 * `laneMapZmmD`: the whole-program lane map.
 * `laneOfTy` / `laneOf`: per-type and per-valuation extraction of dword lane `k`.
 * `MulHi32Leaf`: the lane-wise specification of the `zmm_mulhi32x16` leaf.
@@ -62,102 +61,17 @@ fragment.
 
 set_option autoImplicit false
 
-namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
-
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.Ctxt
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+open CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
 open CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane (zmmPackD_lane)
 open CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordScheduleCom (bcastD bcastD_lane)
 
-/-! ## 1. Type, context and variable maps -/
-
-/-- Widen `reg 32` to `reg 512`; fix every other Jasmin type. -/
-@[implicit_reducible]
-def widenDTy : JasminTy → JasminTy
-  | .reg w => if w = 32 then .reg 512 else .reg w
-  | t => t
-
-/-- Context map: `widenDTy` pointwise. -/
-@[implicit_reducible]
-def widenDCtxt (Γ : Ctxt jasminDialect) : Ctxt jasminDialect := Γ.map widenDTy
-
-/-- `List.map` is definitionally `cons`-compatible. -/
-theorem mapCtx_cons (t : JasminTy) (Γ : Ctxt jasminDialect) :
-    widenDCtxt (t :: Γ) = widenDTy t :: widenDCtxt Γ := rfl
-
-/-- de Bruijn index transport along `widenDTy`. -/
-def mapVar {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    Ctxt.Var Γ t → Ctxt.Var (widenDCtxt Γ) (widenDTy t)
-  | .here => .here
-  | .there v => .there (mapVar v)
-
-/-! ## 2. The block lowering -/
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
 
 /-- The name of the sixteen-lane high-multiply leaf. -/
 def mulhiLeafName : String := "zmm_mulhi32x16"
-
-/-- The dword lane-map lowering. Each covered scalar op becomes a one-binding packed
-    block; every other op takes the opaque nullary-`extCall` fallback. -/
-def lowering : BlockLoweringData jasminDialect jasminDialect where
-  mapTy := widenDTy
-  mapCtx := widenDCtxt
-  mapCtx_cons := mapCtx_cons
-  mapVar := mapVar
-  lowerExprBlock := fun {_Γ t} e =>
-    match e with
-    | ⟨.regArith bop 32, h, .cons a (.cons b .nil)⟩ =>
-        congrArg widenDTy h ▸
-          Com.var ⟨.vpackZMMd bop, rfl, .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
-    | ⟨.regConst 32 kk, h, .nil⟩ =>
-        congrArg widenDTy h ▸
-          Com.var ⟨.regConst 512 (bcastD (BitVec.ofNat 32 kk)).toNat, rfl, .nil⟩ (.ret .here)
-    | ⟨.mulhi 32, h, .cons a (.cons b .nil)⟩ =>
-        congrArg widenDTy h ▸
-          Com.var ⟨.extCall mulhiLeafName [.reg 512, .reg 512] (.reg 512), rfl,
-            .cons (mapVar a) (.cons (mapVar b) .nil)⟩ (.ret .here)
-    | ⟨_, _, _⟩ =>
-        Com.var ⟨.extCall "laneMapZmmD_uncovered" [] (widenDTy t), rfl, .nil⟩ (.ret .here)
-
-/-- The dword lane map of a whole scalar program: sixteen `u32` lanes in one ZMM
-    register. -/
-def laneMapZmmD {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
-    Com jasminDialect (widenDCtxt Γ) (widenDTy t) :=
-  lowering.blockLowerCom c
-
-/-! ## 3. Lane extraction -/
-
-/-- Extract dword lane `k` of a mapped value. A mapped `reg 32` (a `reg 512`) yields
-    its lane-`k` dword `zmmLane32 v k`; every other type passes through unchanged. -/
-def laneOfTy (k : Fin 16) : (s : JasminTy) → ⟦widenDTy s⟧ → ⟦s⟧
-  | .reg w, v => by
-      by_cases h : w = 32
-      · subst h; exact zmmLane32 v k
-      · simp only [widenDTy, if_neg h] at v; exact v
-  | .stackArr _ _, v => v
-  | .inlineInt, v => v
-  | .bool, v => v
-
-/-- Lane extraction at `reg 32` is `zmmLane32`. -/
-theorem laneOfTy_reg32 (k : Fin 16) (v : ⟦widenDTy (.reg 32)⟧) :
-    laneOfTy k (.reg 32) v = zmmLane32 v k := rfl
-
-/-- Extract dword lane `k` of a whole mapped valuation, slot by slot. -/
-def laneOf (k : Fin 16) : (Γ : Ctxt jasminDialect) →
-    Ctxt.Valuation (widenDCtxt Γ) → Ctxt.Valuation Γ
-  | [], _ => .nil
-  | s :: _, W => .cons (laneOfTy k s W.head) (laneOf k _ W.tail)
-
-/-- Reading a mapped variable and extracting lane `k` equals reading the original
-    variable against the lane-`k` valuation. -/
-theorem laneOf_lookup : {Γ : Ctxt jasminDialect} → {t : JasminTy} → (v : Ctxt.Var Γ t) →
-    (W : Ctxt.Valuation (widenDCtxt Γ)) → (k : Fin 16) →
-    laneOfTy k t ((mapVar v).lookup W) = v.lookup (laneOf k Γ W)
-  | _, _, .here, W, _ => by cases W; rfl
-  | _, _, .there w, W, k => by
-      cases W with
-      | cons _ rest => exact laneOf_lookup w rest k
 
 /-- Lane `k` of the broadcast constant is the scalar constant. -/
 theorem constD_lane (kk : Nat) (k : Fin 16) :
@@ -165,113 +79,139 @@ theorem constD_lane (kk : Nat) (k : Fin 16) :
       = BitVec.ofNat 32 kk := by
   rw [BitVec.ofNat_toNat, BitVec.setWidth_eq, bcastD_lane]
 
-/-! ## 4. The leaf specification and the covered fragment -/
-
 /-- The `zmm_mulhi32x16` leaf of `leafSem` computes, in every dword lane `k`, the high
     word `mulHiW` of the product of lane `k` of its two operands. -/
-def MulHi32Leaf
-    (leafSem : (name : String) → (argTys : List JasminTy) → (retTy : JasminTy) →
-      HVector (fun t => ⟦t⟧) argTys → ⟦retTy⟧) : Prop :=
+def MulHi32Leaf (leafSem : LeafSem) : Prop :=
   ∀ (a b : BitVec 512) (k : Fin 16),
     zmmLane32 (leafSem mulhiLeafName [.reg 512, .reg 512] (.reg 512) (.cons a (.cons b .nil))) k
       = mulHiW (zmmLane32 a k) (zmmLane32 b k)
 
+end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+/-- Sixteen 32-bit lanes in a ZMM register, on the packed ops `vpackZMMd` and the
+    high-multiply leaf `zmm_mulhi32x16`. -/
+def dwordZmm : LaneShape where
+  laneBits := 32
+  laneCount := 16
+  regBits := 512
+  regBits_eq := rfl
+  lane := zmmLane32
+  covers := fun _ => true
+  packExpr := fun bop _ a b => ⟨.vpackZMMd bop, rfl, .cons a (.cons b .nil)⟩
+  bcast := fun kk => (bcastD (BitVec.ofNat 32 kk)).toNat
+  mulhiExpr := some fun _ a b =>
+    ⟨.extCall LaneMapZmmD.mulhiLeafName [.reg 512, .reg 512] (.reg 512), rfl,
+      .cons a (.cons b .nil)⟩
+  immBlock := fun _ => none
+  immCovers := fun _ _ => false
+  arrWiden := false
+  fallbackName := "laneMapZmmD_uncovered"
+  pack_lane := fun _ bop _ _ a b V k => zmmPackD_lane bop (a.lookup V) (b.lookup V) k
+  const_lane := LaneMapZmmD.constD_lane
+  imm_lane := by intro _ _ _ hf; cases hf
+  arr_index := fun h => Bool.noConfusion h
+  lane_zero := fun h => Bool.noConfusion h
+
+/-- `MulHi32Leaf` is the high-multiply law of `dwordZmm`. -/
+theorem mulhiLane_dwordZmm (leafSem : LeafSem) (hleaf : LaneMapZmmD.MulHi32Leaf leafSem) :
+    dwordZmm.MulhiLane leafSem := by
+  intro f hf Γ a b V k
+  cases Option.some.inj hf
+  exact hleaf _ _ k
+
+end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
+
+/-! ## 1. Type, context and variable maps -/
+
+/-- Widen `reg 32` to `reg 512`; fix every other Jasmin type. -/
+abbrev widenDTy : JasminTy → JasminTy := dwordZmm.widenTy
+
+/-- Context map: `widenDTy` pointwise. -/
+abbrev widenDCtxt (Γ : Ctxt jasminDialect) : Ctxt jasminDialect := dwordZmm.widenCtxt Γ
+
+/-- `List.map` is definitionally `cons`-compatible. -/
+theorem mapCtx_cons (t : JasminTy) (Γ : Ctxt jasminDialect) :
+    widenDCtxt (t :: Γ) = widenDTy t :: widenDCtxt Γ := rfl
+
+/-- de Bruijn index transport along `widenDTy`. -/
+abbrev mapVar {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Ctxt.Var Γ t) :
+    Ctxt.Var (widenDCtxt Γ) (widenDTy t) :=
+  dwordZmm.mapVar v
+
+/-! ## 2. The block lowering -/
+
+/-- The lane-map lowering of `dwordZmm`. -/
+abbrev lowering : FieldDialectBlockDescent.BlockLoweringData jasminDialect jasminDialect :=
+  dwordZmm.lowering
+
+/-- The dword lane map of a whole scalar program: sixteen `u32` lanes in one ZMM
+    register. -/
+def laneMapZmmD {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t) :
+    Com jasminDialect (widenDCtxt Γ) (widenDTy t) :=
+  laneMapVec dwordZmm c
+
+/-! ## 3. Lane extraction -/
+
+/-- Extract dword lane `k` of a mapped value. A mapped `reg 32` (a `reg 512`) yields
+    its lane-`k` dword `zmmLane32 v k`; every other type passes through unchanged. -/
+abbrev laneOfTy (k : Fin 16) (s : JasminTy) (v : ⟦widenDTy s⟧) : ⟦s⟧ :=
+  dwordZmm.laneOfTy k s v
+
+/-- Lane extraction at `reg 32` is `zmmLane32`. -/
+theorem laneOfTy_reg32 (k : Fin 16) (v : ⟦widenDTy (.reg 32)⟧) :
+    laneOfTy k (.reg 32) v = zmmLane32 v k := rfl
+
+/-- Extract dword lane `k` of a whole mapped valuation, slot by slot. -/
+abbrev laneOf (k : Fin 16) (Γ : Ctxt jasminDialect) (W : Ctxt.Valuation (widenDCtxt Γ)) :
+    Ctxt.Valuation Γ :=
+  dwordZmm.laneOf k Γ W
+
+/-- Reading a mapped variable and extracting lane `k` equals reading the original
+    variable against the lane-`k` valuation. -/
+theorem laneOf_lookup {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Ctxt.Var Γ t)
+    (W : Ctxt.Valuation (widenDCtxt Γ)) (k : Fin 16) :
+    laneOfTy k t ((mapVar v).lookup W) = v.lookup (laneOf k Γ W) :=
+  dwordZmm.laneOf_lookup v W k
+
+/-! ## 4. The covered fragment -/
+
 /-- The scalar ops `laneMapZmmD` maps lane-preservingly: every `regArith bop 32`,
     every `regConst 32 k` and `mulhi 32`. -/
-def CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
+abbrev CoveredExpr {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) : Prop :=
-  match e.op with
-  | .regArith _ w => w = 32
-  | .regConst w _ => w = 32
-  | .mulhi w => w = 32
-  | _ => False
+  dwordZmm.CoveredExpr e
 
 /-- A program whose every op is covered. -/
-def LaneMapZmmDCovered {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    Com jasminDialect Γ t → Prop
-  | .ret _ => True
-  | .var e body => CoveredExpr e ∧ LaneMapZmmDCovered body
+abbrev LaneMapZmmDCovered {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) : Prop :=
+  dwordZmm.Covered c
 
-/-! ## 5. The per-op lane square -/
+/-! ## 5. Lane preservation -/
 
 /-- **Per-op lane square.** For each covered op, the packed block denoted with
     `jasminDenoteWith leafSem` and read at dword lane `k` computes the scalar op on
     lane `k`, given `MulHi32Leaf leafSem`. -/
-theorem blockOpLane
-    (leafSem : (name : String) → (argTys : List JasminTy) → (retTy : JasminTy) →
-      HVector (fun t => ⟦t⟧) argTys → ⟦retTy⟧)
-    (hleaf : MulHi32Leaf leafSem) {Γ : Ctxt jasminDialect} {t : JasminTy}
+theorem blockOpLane (leafSem : LeafSem) (hleaf : MulHi32Leaf leafSem)
+    {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) (he : CoveredExpr e) (W : Ctxt.Valuation (widenDCtxt Γ))
     (k : Fin 16) :
     laneOfTy k t (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
-        (lowering.lowerExprBlock e) W) = e.denote (laneOf k Γ W) := by
-  obtain ⟨op, rfl, args⟩ := e
-  cases op <;> try (simp only [CoveredExpr] at he; done)
-  case regArith bop w =>
-    simp only [CoveredExpr] at he; subst he
-    cases args; rename_i a rest
-    cases rest; rename_i b rest2
-    cases rest2
-    have LA := laneOf_lookup a W k
-    have LB := laneOf_lookup b W k
-    simp only [laneOfTy_reg32] at LA LB
-    show zmmLane32 (zmmPackD bop ((mapVar a).lookup W) ((mapVar b).lookup W)) k
-        = (⟨.regArith bop 32, rfl, .cons a (.cons b .nil)⟩ :
-            Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-    rw [zmmPackD_lane, LA, LB]; rfl
-  case regConst w kk =>
-    simp only [CoveredExpr] at he; subst he
-    cases args
-    show zmmLane32 (BitVec.ofNat 512 (bcastD (BitVec.ofNat 32 kk)).toNat) k
-        = (⟨.regConst 32 kk, rfl, .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-    rw [constD_lane]; rfl
-  case mulhi w =>
-    simp only [CoveredExpr] at he; subst he
-    cases args; rename_i a rest
-    cases rest; rename_i b rest2
-    cases rest2
-    have LA := laneOf_lookup a W k
-    have LB := laneOf_lookup b W k
-    simp only [laneOfTy_reg32] at LA LB
-    show zmmLane32 (leafSem mulhiLeafName [.reg 512, .reg 512] (.reg 512)
-          (.cons ((mapVar a).lookup W) (.cons ((mapVar b).lookup W) .nil))) k
-        = (⟨.mulhi 32, rfl, .cons a (.cons b .nil)⟩ :
-            Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-    rw [hleaf, LA, LB]; rfl
-
-/-! ## 6. Whole-program lane preservation -/
+        (lowering.lowerExprBlock e) W) = e.denote (laneOf k Γ W) :=
+  dwordZmm.blockOpLane leafSem (mulhiLane_dwordZmm leafSem hleaf) e he W k
 
 /-- **`laneMapZmmD` is lane-preserving.** For a covered program returning `reg 32` and
     a leaf semantics satisfying `MulHi32Leaf`, dword lane `k` of the mapped program's
     denotation under `jasminDenoteWith leafSem` equals the scalar program's
-    `jasminDenote` denotation on the lane-`k` valuation. The induction on the `Com`
-    let-chain uses `spliceCom_denote` to peel each block and `blockOpLane` for each
-    op. -/
-theorem laneMapZmmD_denote
-    (leafSem : (name : String) → (argTys : List JasminTy) → (retTy : JasminTy) →
-      HVector (fun t => ⟦t⟧) argTys → ⟦retTy⟧)
-    (hleaf : MulHi32Leaf leafSem) :
-    {Γ : Ctxt jasminDialect} → (c : Com jasminDialect Γ (.reg 32)) →
-    LaneMapZmmDCovered c → (W : Ctxt.Valuation (widenDCtxt Γ)) → (k : Fin 16) →
+    `jasminDenote` denotation on the lane-`k` valuation. -/
+theorem laneMapZmmD_denote (leafSem : LeafSem) (hleaf : MulHi32Leaf leafSem)
+    {Γ : Ctxt jasminDialect} (c : Com jasminDialect Γ (.reg 32))
+    (hc : LaneMapZmmDCovered c) (W : Ctxt.Valuation (widenDCtxt Γ)) (k : Fin 16) :
     zmmLane32 (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _ (laneMapZmmD c) W) k
-      = c.denote (laneOf k Γ W)
-  | _, .ret v, _, W, k => laneOf_lookup v W k
-  | Γ, .var e body, hc, W, k => by
-      obtain ⟨he, hbody⟩ := hc
-      have hop := blockOpLane leafSem hleaf e he W k
-      show zmmLane32 (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
-            (spliceCom (lowering.lowerExprBlock e) (laneMapZmmD body)) W) k
-          = body.denote (Ctxt.Valuation.extend (laneOf k Γ W) (e.denote (laneOf k Γ W)))
-      erw [@spliceCom_denote _ _ _ (jasminDenoteWith leafSem)]
-      have IH := laneMapZmmD_denote leafSem hleaf body hbody
-        (Ctxt.Valuation.extend W
-          (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _ (lowering.lowerExprBlock e) W)) k
-      refine IH.trans ?_
-      congr 1
-      show Ctxt.Valuation.extend (laneOf k Γ W)
-          (laneOfTy k _ (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
-            (lowering.lowerExprBlock e) W))
-          = Ctxt.Valuation.extend (laneOf k Γ W) (e.denote (laneOf k Γ W))
-      rw [hop]
+      = c.denote (laneOf k Γ W) :=
+  laneMapVec_denote dwordZmm leafSem (mulhiLane_dwordZmm leafSem hleaf) c hc W k
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD

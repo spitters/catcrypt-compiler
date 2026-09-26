@@ -9,6 +9,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVecCore
 public import CatCrypt.Crypto.Optimizer.PackedArith256
 public import CatCrypt.Crypto.Optimizer.PackedRotate256
 
@@ -56,13 +57,17 @@ read the same message position).
 * `batch8`: the whole-program widening `Com jasminDialect → Com jasminDialect`.
 * `laneOfTy` / `laneOf`: per-type and per-valuation extraction of dword lane `k`.
 * `Batch8Covered`: the fragment on which the widening is lane-preserving.
+* `LaneMapVec.dwordYmm`: the lane shape of the widening (eight 32-bit lanes on the
+  `vymm` dword ops, message arrays widened).
 
 ## Main results
 
 * `laneOf_lookup`: reading a widened variable and extracting lane `k` equals
   reading the original variable against the lane-`k` valuation.
+* `batch8_eq_laneMapVec`: on a covered program, `batch8` is
+  `LaneMapVec.laneMapVec dwordYmm`.
 * `blockOpLane`: each covered op's YMM block, read at dword lane `k`, computes the
-  scalar op on lane `k` — from the committed packed-lane lemmas.
+  scalar op on lane `k`; the instance of `LaneShape.blockOpLane` at `dwordYmm`.
 * `batch8_denote`: for a covered program returning `reg 32`, dword lane `k` of the
   widened program's denotation equals the scalar program's denotation on lane `k`.
 -/
@@ -282,7 +287,7 @@ def Batch8Covered {Γ : Ctxt jasminDialect} {t : JasminTy} :
   | .ret _ => True
   | .var e body => CoveredExpr e ∧ Batch8Covered body
 
-/-! ## 5. The per-op lane square -/
+/-! ## 5. The rotate synthesis -/
 
 /-- The scalar 32-bit rotate-right synthesis `x.rotateRight n = (x <<< (32-n)) |||
     (x >>> n)`, for `0 < n < 32` — the per-lane meaning of the `vpslld; vpsrld;
@@ -291,233 +296,221 @@ theorem ror32_synth (x : BitVec 32) (n : Nat) (h : n < 32) :
     x.rotateRight n = (x <<< (32 - n)) ||| (x >>> n) := by
   rw [BitVec.rotateRight_def, Nat.mod_eq_of_lt h, BitVec.or_comm]
 
+/-! ## 6. The lane shape `dwordYmm` -/
+
+end CatCrypt.Crypto.Optimizer.Batch8
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
+open CatCrypt.Crypto.Optimizer.PackedArith256
+open CatCrypt.Crypto.Optimizer.PackedRotate256
+
+/-- The 256-bit packed expression of a scalar op on eight 32-bit lanes. -/
+def ymmDPackExpr : JasminBinOp → PackBuilder 256
+  | .add => fun _ a b => ⟨.vymm .vpaddd, rfl, .cons a (.cons b .nil)⟩
+  | .sub => fun _ a b => ⟨.vymm .vpsubd, rfl, .cons a (.cons b .nil)⟩
+  | .mul => fun _ a b => ⟨.vymm .vpmulld, rfl, .cons a (.cons b .nil)⟩
+  | .and => fun _ a b => ⟨.vymm .vpand, rfl, .cons a (.cons b .nil)⟩
+  | .or => fun _ a b => ⟨.vymm .vpor, rfl, .cons a (.cons b .nil)⟩
+  | .xor => fun _ a b => ⟨.vymm .vpxor, rfl, .cons a (.cons b .nil)⟩
+  | .andn => fun _ a b => ⟨.vymm .vpandn, rfl, .cons a (.cons b .nil)⟩
+  | .shl => fun _ a b => ⟨.vymm .vpsllvd, rfl, .cons a (.cons b .nil)⟩
+  | .shr => fun _ a b => ⟨.vymm .vpsrlvd, rfl, .cons a (.cons b .nil)⟩
+
+/-- The 256-bit packed block of an immediate-count op on eight 32-bit lanes: `vpslld`,
+    `vpsrld` and `vpsrad` by the count, and the rotate right by `n` as
+    `vpslld (32 - n); vpsrld n; vpor`. -/
+def ymmDImmBlock : ImmOp → Option (Nat → UnaryBuilder 256)
+  | .shl => some fun n _ a => Com.var ⟨.vymm (.vpslld n), rfl, .cons a .nil⟩ (.ret .here)
+  | .shr => some fun n _ a => Com.var ⟨.vymm (.vpsrld n), rfl, .cons a .nil⟩ (.ret .here)
+  | .sar => some fun n _ a => Com.var ⟨.vymm (.vpsrad n), rfl, .cons a .nil⟩ (.ret .here)
+  | .ror => some fun n _ a =>
+      Com.var ⟨.vymm (.vpslld (32 - n)), rfl, .cons a .nil⟩
+        (Com.var ⟨.vymm (.vpsrld n), rfl, .cons a.there .nil⟩
+          (Com.var ⟨.vymm .vpor, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)))
+
+/-- The counts at which `ymmDImmBlock` is lane-correct: every count for the shifts, and
+    `0 < n < 32` for the rotate. -/
+def ymmDImmCovers : ImmOp → Nat → Bool
+  | .ror, n => decide (0 < n ∧ n < 32)
+  | _, _ => true
+
+/-- Eight 32-bit lanes in a YMM register, on the `vymm` dword ops, with the message
+    array widened to an array of packed slots (the `batch8` shape). -/
+def dwordYmm : LaneShape where
+  laneBits := 32
+  laneCount := 8
+  regBits := 256
+  regBits_eq := rfl
+  lane := fun v k => BitVec.extractLsb' (32 * k.val) 32 v
+  covers := fun _ => true
+  packExpr := ymmDPackExpr
+  bcast := fun kk => (Optimizer.Batch8.bcast256 kk).toNat
+  mulhiExpr := none
+  immBlock := ymmDImmBlock
+  immCovers := ymmDImmCovers
+  arrWiden := true
+  fallbackName := "batch8_uncovered"
+  pack_lane := by
+    intro _ bop _ _ a b V k
+    cases bop
+    case add => exact vpadddW_lane (a.lookup V) (b.lookup V) k
+    case sub => exact vpsubdW_lane (a.lookup V) (b.lookup V) k
+    case mul => exact vpmulldW_lane (a.lookup V) (b.lookup V) k
+    case and => exact vpandW_lane (a.lookup V) (b.lookup V) k
+    case or => exact vporW_lane (a.lookup V) (b.lookup V) k
+    case xor => exact vpxorW_lane (a.lookup V) (b.lookup V) k
+    case andn => exact vpandnW_lane (a.lookup V) (b.lookup V) k
+    case shl => exact vpsllvdW_lane (a.lookup V) (b.lookup V) k
+    case shr => exact vpsrlvdW_lane (a.lookup V) (b.lookup V) k
+  const_lane := by
+    intro kk k
+    show BitVec.extractLsb' (32 * k.val) 32
+      (BitVec.ofNat 256 (Optimizer.Batch8.bcast256 kk).toNat) = _
+    rw [Optimizer.Batch8.ofNat_toNat_256, Optimizer.Batch8.bcast256_lane]
+  imm_lane := by
+    intro _ op f hf n hc _ a V k
+    cases op <;> cases hf
+    case shl => exact vpslldW_uniform_lane (a.lookup V) n k
+    case shr => exact vpsrldW_uniform_lane (a.lookup V) n k
+    case sar => exact vpsradW_uniform_lane (a.lookup V) n k
+    case ror =>
+      have hn : n < 32 := (of_decide_eq_true hc).2
+      show BitVec.extractLsb' (32 * k.val) 32
+          (vporW (vpslldW (a.lookup V) (32 - n)) (vpsrldW (a.lookup V) n)) = _
+      rw [vporW, BitVec.extractLsb'_or, vpslldW_uniform_lane, vpsrldW_uniform_lane,
+        ← Optimizer.Batch8.ror32_synth _ n hn]
+      rfl
+  arr_index := fun _ => by decide
+  lane_zero := fun _ _ => by simp
+
+end CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+namespace CatCrypt.Crypto.Optimizer.Batch8
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+open CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
+
+/-! ## 7. `batch8` is `laneMapVec dwordYmm` on its covered fragment -/
+
+/-- The variable maps of `batch8` and of `dwordYmm` agree. -/
+theorem mapVar_dwordYmm : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    (v : Ctxt.Var Γ t) → mapVar v = dwordYmm.mapVar v
+  | _, _, .here => rfl
+  | _, _, .there v => congrArg Ctxt.Var.there (mapVar_dwordYmm v)
+
+/-- On a covered op, the blocks of `batch8` and of `dwordYmm` agree. -/
+theorem lowerExprBlock_dwordYmm {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (he : CoveredExpr e) :
+    lowering.lowerExprBlock e = dwordYmm.lowerExprBlock e := by
+  have hm : @mapVar = @LaneShape.mapVar dwordYmm := by
+    funext Γ t v
+    exact mapVar_dwordYmm v
+  unfold lowering
+  rw [hm]
+  obtain ⟨op, rfl, args⟩ := e
+  cases op <;> try (simp only [CoveredExpr] at he; done)
+  case regArith bop w =>
+    cases bop <;>
+      (simp only [CoveredExpr] at he; subst he
+       cases args; rename_i a rest; cases rest; rename_i b rest2; cases rest2; rfl)
+  case shlImm w n =>
+    simp only [CoveredExpr] at he; subst he
+    cases args; rename_i a rest; cases rest; rfl
+  case shrImm w n =>
+    simp only [CoveredExpr] at he; subst he
+    cases args; rename_i a rest; cases rest; rfl
+  case sarImm w n =>
+    simp only [CoveredExpr] at he; subst he
+    cases args; rename_i a rest; cases rest; rfl
+  case rorImm w n =>
+    obtain ⟨hw, _, _⟩ : w = 32 ∧ 0 < n ∧ n < 32 := he
+    subst hw
+    cases args; rename_i a rest; cases rest; rfl
+  case regConst w kk =>
+    simp only [CoveredExpr] at he; subst he
+    cases args; rfl
+  case stackLoad w n =>
+    simp only [CoveredExpr] at he; subst he
+    cases args; rename_i arr rest; cases rest; rename_i idx rest2; cases rest2; rfl
+
+/-- On a covered program, `batch8` is `laneMapVec dwordYmm`. -/
+theorem batch8_eq_laneMapVec : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    (c : Com jasminDialect Γ t) → Batch8Covered c → batch8 c = laneMapVec dwordYmm c
+  | _, _, .ret v, _ => congrArg Com.ret (mapVar_dwordYmm v)
+  | _, _, .var e body, hc => by
+      show spliceCom (lowering.lowerExprBlock e) (batch8 body)
+        = spliceCom (dwordYmm.lowerExprBlock e) (laneMapVec dwordYmm body)
+      rw [lowerExprBlock_dwordYmm e hc.1, batch8_eq_laneMapVec body hc.2]
+      rfl
+
+/-- The lane extractions of `batch8` and of `dwordYmm` agree. -/
+theorem laneOfTy_dwordYmm (k : Fin 8) :
+    (s : JasminTy) → (v : ⟦widen8Ty s⟧) → laneOfTy k s v = dwordYmm.laneOfTy k s v
+  | .reg w, v => by
+      by_cases h : w = 32
+      · subst h; rfl
+      · simp only [laneOfTy, LaneShape.laneOfTy, dif_neg h,
+          dif_neg (show ¬w = dwordYmm.laneBits from h)]
+        rfl
+  | .stackArr w n, v => by
+      by_cases h : w = 32
+      · subst h; rfl
+      · have h' : ¬(dwordYmm.arrWiden = true ∧ w = dwordYmm.laneBits) := fun h' => h h'.2
+        simp only [laneOfTy, LaneShape.laneOfTy, dif_neg h, dif_neg h']
+        rfl
+  | .inlineInt, _ => rfl
+  | .bool, _ => rfl
+
+/-- The valuation lane extractions of `batch8` and of `dwordYmm` agree. -/
+theorem laneOf_dwordYmm (k : Fin 8) : (Γ : Ctxt jasminDialect) →
+    (W : Ctxt.Valuation (widen8Ctxt Γ)) → laneOf k Γ W = dwordYmm.laneOf k Γ W
+  | [], _ => rfl
+  | s :: Γ, W => by
+      show HVector.cons _ _ = HVector.cons _ _
+      rw [laneOfTy_dwordYmm k s, laneOf_dwordYmm k Γ]
+      rfl
+
+/-- An op covered by `batch8` is covered by `dwordYmm`. -/
+theorem coveredExpr_dwordYmm {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (he : CoveredExpr e) : dwordYmm.CoveredExpr e := by
+  obtain ⟨op, rfl, args⟩ := e
+  cases op
+  case regArith bop w =>
+    cases bop <;> simp_all [CoveredExpr, LaneShape.CoveredExpr, dwordYmm]
+  all_goals simp_all [CoveredExpr, LaneShape.CoveredExpr, dwordYmm, ymmDImmBlock,
+    ymmDImmCovers]
+
+/-- A program covered by `batch8` is covered by `dwordYmm`. -/
+theorem covered_dwordYmm : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    (c : Com jasminDialect Γ t) → Batch8Covered c → dwordYmm.Covered c
+  | _, _, .ret _, _ => trivial
+  | _, _, .var e body, hc => ⟨coveredExpr_dwordYmm e hc.1, covered_dwordYmm body hc.2⟩
+
+/-! ## 8. Lane preservation -/
+
 /-- **Per-op lane square.** For each covered op, the widened YMM block read at
-    dword lane `k` computes the scalar op on lane `k` — from the committed packed
-    lane lemmas. -/
+    dword lane `k` computes the scalar op on lane `k`. -/
 theorem blockOpLane {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t)
     (he : CoveredExpr e) (W : Ctxt.Valuation (widen8Ctxt Γ)) (k : Fin 8) :
     laneOfTy k t ((lowering.lowerExprBlock e).denote W) = e.denote (laneOf k Γ W) := by
-  obtain ⟨op, rfl, args⟩ := e
-  cases op with
-  | regArith bop w =>
-      cases bop with
-      | add =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpadddW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .add 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpadddW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | xor =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpxorW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .xor 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpxorW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | or =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vporW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .or 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vporW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | and =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpandW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .and 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpandW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | sub =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpsubdW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .sub 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpsubdW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | mul =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpmulldW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .mul 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpmulldW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-      | shl =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show BitVec.extractLsb' (32 * k.val) 32
-              (vpsllvdW ((mapVar a).lookup W) ((mapVar b).lookup W))
-              = (⟨.regArith .shl 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpsllvdW_lane, LA, LB]; rfl
-      | shr =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show BitVec.extractLsb' (32 * k.val) 32
-              (vpsrlvdW ((mapVar a).lookup W) ((mapVar b).lookup W))
-              = (⟨.regArith .shr 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpsrlvdW_lane, LA, LB]; rfl
-      | andn =>
-          simp only [CoveredExpr] at he; subst he
-          cases args; rename_i a rest
-          cases rest; rename_i b rest2
-          cases rest2
-          have LA := laneOf_lookup a W k
-          have LB := laneOf_lookup b W k
-          simp only [laneOfTy_reg32] at LA LB
-          show yDwordW (vpandnW ((mapVar a).lookup W) ((mapVar b).lookup W)) k.val
-              = (⟨.regArith .andn 32, rfl, .cons a (.cons b .nil)⟩ :
-                  Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-          erw [vpandnW_lane]; simp only [yDwordW]; rw [LA, LB]; rfl
-  | shlImm w n =>
-      simp only [CoveredExpr] at he; subst he
-      cases args; rename_i a rest
-      cases rest
-      have LA := laneOf_lookup a W k
-      simp only [laneOfTy_reg32] at LA
-      show BitVec.extractLsb' (32 * k.val) 32 (vpslldW ((mapVar a).lookup W) n)
-          = (⟨.shlImm 32 n, rfl, .cons a .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote
-              (laneOf k Γ W)
-      erw [vpslldW_uniform_lane, LA]; rfl
-  | shrImm w n =>
-      simp only [CoveredExpr] at he; subst he
-      cases args; rename_i a rest
-      cases rest
-      have LA := laneOf_lookup a W k
-      simp only [laneOfTy_reg32] at LA
-      show BitVec.extractLsb' (32 * k.val) 32 (vpsrldW ((mapVar a).lookup W) n)
-          = (⟨.shrImm 32 n, rfl, .cons a .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote
-              (laneOf k Γ W)
-      erw [vpsrldW_uniform_lane, LA]; rfl
-  | rorImm w n =>
-      obtain ⟨hw, _, hn⟩ : w = 32 ∧ 0 < n ∧ n < 32 := he
-      subst hw
-      cases args; rename_i a rest
-      cases rest
-      have LA := laneOf_lookup a W k
-      simp only [laneOfTy_reg32] at LA
-      show BitVec.extractLsb' (32 * k.val) 32
-          (vporW (vpslldW ((mapVar a).lookup W) (32 - n)) (vpsrldW ((mapVar a).lookup W) n))
-          = (⟨.rorImm 32 n, rfl, .cons a .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote
-              (laneOf k Γ W)
-      erw [vporW, BitVec.extractLsb'_or, vpslldW_uniform_lane, vpsrldW_uniform_lane]
-      simp only [LA]
-      rw [← ror32_synth (a.lookup (laneOf k Γ W)) n hn]
-      rfl
-  | stackLoad w n =>
-      simp only [CoveredExpr] at he; subst he
-      cases args; rename_i arr rest
-      cases rest; rename_i idx rest2
-      cases rest2
-      have Larr := laneOf_lookup arr W k
-      have Lidx := laneOf_lookup idx W k
-      simp only [laneOfTy_stackArr32] at Larr
-      simp only [laneOfTy_reg64] at Lidx
-      show BitVec.extractLsb' (32 * k.val) 32
-          (stackGet ((mapVar arr).lookup W) ((mapVar idx).lookup W).toNat)
-          = (⟨.stackLoad 32 n, rfl, .cons arr (.cons idx .nil)⟩ :
-              Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-      erw [extract_stackGet, Larr, Lidx]; rfl
-  | stackStore w n => simp only [CoveredExpr] at he
-  | castW w w' => simp only [CoveredExpr] at he
-  | extCall nm a r => simp only [CoveredExpr] at he
-  | regConst w kk =>
-      simp only [CoveredExpr] at he; subst he
-      cases args
-      show BitVec.extractLsb' (32 * k.val) 32 (BitVec.ofNat 256 (bcast256 kk).toNat)
-          = (⟨.regConst 32 kk, rfl, .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote (laneOf k Γ W)
-      rw [ofNat_toNat_256, bcast256_lane]; rfl
-  | vpackZMM bop => simp only [CoveredExpr] at he
-  | vpackZMMd bop => simp only [CoveredExpr] at he
-  | vprordZMM n => simp only [CoveredExpr] at he
-  | vpslldq n => simp only [CoveredExpr] at he
-  | vpsrldq n => simp only [CoveredExpr] at he
-  | vsimd op => simp only [CoveredExpr] at he
-  | mulhi w => simp only [CoveredExpr] at he
-  | addCarryLo w => simp only [CoveredExpr] at he
-  | addCarryHi w => simp only [CoveredExpr] at he
-  | sarImm w n =>
-      simp only [CoveredExpr] at he; subst he
-      cases args; rename_i a rest
-      cases rest
-      have LA := laneOf_lookup a W k
-      simp only [laneOfTy_reg32] at LA
-      show BitVec.extractLsb' (32 * k.val) 32 (vpsradW ((mapVar a).lookup W) n)
-          = (⟨.sarImm 32 n, rfl, .cons a .nil⟩ : Expr jasminDialect Γ (.reg 32)).denote
-              (laneOf k Γ W)
-      erw [vpsradW_uniform_lane, LA]; rfl
-  | select w => simp only [CoveredExpr] at he
-  | callN nm a r => simp only [CoveredExpr] at he
-  | vymm op => simp only [CoveredExpr] at he
-  | cmp c w => simp only [CoveredExpr] at he
-  | cmpImm c w n => simp only [CoveredExpr] at he
-
-/-! ## 6. Whole-program lane preservation -/
+  have h := dwordYmm.blockOpLane_default rfl e (coveredExpr_dwordYmm e he) W k
+  refine (laneOfTy_dwordYmm k t _).trans ?_
+  rw [laneOf_dwordYmm, ← h]
+  exact congrArg (fun c => dwordYmm.laneOfTy k t (Com.denote c W))
+    (lowerExprBlock_dwordYmm e he)
 
 /-- **`batch8` is lane-preserving.** For a covered program returning `reg 32`,
     dword lane `k` of the widened program's denotation equals the scalar program's
-    denotation on the lane-`k` valuation. The induction on the `Com` let-chain uses
-    `spliceCom_denote` to peel each block and `blockOpLane` for each op. -/
-theorem batch8_denote : {Γ : Ctxt jasminDialect} → (c : Com jasminDialect Γ (.reg 32)) →
-    Batch8Covered c → (W : Ctxt.Valuation (widen8Ctxt Γ)) → (k : Fin 8) →
-    BitVec.extractLsb' (32 * k.val) 32 ((batch8 c).denote W) = c.denote (laneOf k Γ W)
-  | _, .ret v, _, W, k => laneOf_lookup v W k
-  | Γ, .var e body, hc, W, k => by
-      obtain ⟨he, hbody⟩ := hc
-      have hop := blockOpLane e he W k
-      show BitVec.extractLsb' (32 * k.val) 32
-          ((spliceCom (lowering.lowerExprBlock e) (batch8 body)).denote W)
-          = body.denote (Ctxt.Valuation.extend (laneOf k Γ W) (e.denote (laneOf k Γ W)))
-      erw [spliceCom_denote]
-      have IH := batch8_denote body hbody
-        (Ctxt.Valuation.extend W ((lowering.lowerExprBlock e).denote W)) k
-      refine IH.trans ?_
-      congr 1
-      show Ctxt.Valuation.extend (laneOf k Γ W)
-          (laneOfTy k _ ((lowering.lowerExprBlock e).denote W))
-          = Ctxt.Valuation.extend (laneOf k Γ W) (e.denote (laneOf k Γ W))
-      rw [hop]
+    denotation on the lane-`k` valuation: `laneMapVec_denote` at `dwordYmm`. -/
+theorem batch8_denote {Γ : Ctxt jasminDialect} (c : Com jasminDialect Γ (.reg 32))
+    (hc : Batch8Covered c) (W : Ctxt.Valuation (widen8Ctxt Γ)) (k : Fin 8) :
+    BitVec.extractLsb' (32 * k.val) 32 ((batch8 c).denote W) = c.denote (laneOf k Γ W) := by
+  rw [batch8_eq_laneMapVec c hc, laneOf_dwordYmm]
+  exact laneMapVec_denote_default dwordYmm rfl c (covered_dwordYmm c hc) W k
 
 end CatCrypt.Crypto.Optimizer.Batch8

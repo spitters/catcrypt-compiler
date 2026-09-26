@@ -143,12 +143,6 @@ This is the *correct* hash that distinguishes `acc + acc` (where `acc`
 is an input-context slot, source-id `< 0`) from `v0 + v0` (where `v0`
 is a recently-bound binder, source-id `≥ 0`). -/
 
-/-- The De-Bruijn depth of a `Ctxt.Var` (`.here` = 0, `.there v` = 1 + …). -/
-def varDepth {Γ : Ctxt jasminDialect} {t : JasminTy} :
-    Ctxt.Var Γ t → Nat
-  | .here => 0
-  | .there v => 1 + varDepth v
-
 /-- The **absolute source identifier** of a variable referenced at binder
     position `i`. Positive (or zero) values index a defining binder
     position; negative values encode an input-context slot.

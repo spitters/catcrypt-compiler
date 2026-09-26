@@ -9,6 +9,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.RangeDomain
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.RangeDomain
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
 public import CatCryptCore.Tactics.KatGuard
 
 /-!
@@ -61,15 +63,6 @@ open CatCrypt.Crypto.SecureCompilation.RangeDomain
 abbrev JCtxt := Ctxt jasminDialect
 
 /-! ## 1. Variables by level -/
-
-/-- The de Bruijn index of a variable. -/
-def varDepth : {Γ : JCtxt} → {t : JasminTy} → Ctxt.Var Γ t → Nat
-  | _, _, .here => 0
-  | _, _, .there v => varDepth v + 1
-
-theorem varDepth_lt : ∀ {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t), varDepth v < Γ.length
-  | _, _, .here => by simp [varDepth]
-  | _, _, .there v => by have := varDepth_lt v; simp [varDepth]; omega
 
 /-- The de Bruijn level of a variable: its position from the bottom of the context. -/
 def varLevel {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t) : Nat := Γ.length - 1 - varDepth v

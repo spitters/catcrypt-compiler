@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
 public import Mathlib.Data.List.GetD
 
 /-!
@@ -163,12 +165,10 @@ lowest-numbered free slot, freeing slots as their last-use position
 passes. This is the classical Poletto–Sarkar algorithm specialised to a
 straight-line body. -/
 
-/-- De Bruijn **depth** of a variable: `.here` is depth `0`, each
-    `.there` adds `1`. This counts how many binders separate the use
-    from the binding. -/
-def varDepth {d : Dialect} : {Γ : Ctxt d} → {t : d.Ty} → Ctxt.Var Γ t → Nat
-  | _, _, .here => 0
-  | _ :: _, _, .there v => varDepth v + 1
+/-- De Bruijn **depth** of a variable, `VIR.varDepth`: `.here` is depth `0`, each
+    `.there` adds `1`. -/
+abbrev varDepth {d : Dialect} {Γ : Ctxt d} {t : d.Ty} (v : Ctxt.Var Γ t) : Nat :=
+  CatCrypt.Crypto.SecureCompilation.VIR.varDepth v
 
 /-- Largest De Bruijn depth reached by any variable in an `HVector`. -/
 def hvectorMaxDepth {d : Dialect} {Γ : Ctxt d} :
