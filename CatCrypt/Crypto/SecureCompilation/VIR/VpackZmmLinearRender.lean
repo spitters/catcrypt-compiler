@@ -162,11 +162,13 @@ def zmmScratch : String := "%zmm31"
     register is released at once when nothing reads it. Constants take no register.
     Fails when a binding finds no free register. -/
 def allocZmmLinear (params : List String) (consts : Std.HashMap String (String × Nat))
-    (bs : Array ZBind) (live : List String) : Except String (Std.HashMap String String) := do
+    (bs : Array ZBind) (live : List String) (reserved : List String := []) :
+    Except String (Std.HashMap String String) := do
   let lu := lastUses bs live
   let pinned : Std.HashMap String String :=
     params.zipIdx.foldl (fun m (p, i) => m.insert p (zmmName i)) {}
-  let pool : List String := ((List.range 31).drop params.length).map zmmName
+  let pool : List String :=
+    (((List.range 31).drop params.length).map zmmName).filter (fun r => !reserved.contains r)
   let step (st : Std.HashMap String String × List String) (bi : ZBind × Nat) :
       Except String (Std.HashMap String String × List String) := do
     let (alloc, free) := st
@@ -235,7 +237,8 @@ def opLine (mn : String) (rd ra rb : String) : String :=
     `bop` commutes, and otherwise loaded into `zmmScratch`; a shift by a broadcast
     constant below 64 uses the immediate form. Constant bindings emit nothing. -/
 def bindLines (consts : Std.HashMap String (String × Nat))
-    (alloc : Std.HashMap String String) (mulU : Bool := false) :
+    (alloc : Std.HashMap String String) (mulU : Bool := false)
+    (resident : Std.HashMap String String := {}) :
     ZBind → Except String (List String)
   | .const _ _ => pure []
   | .minu d a b =>
@@ -265,7 +268,9 @@ def bindLines (consts : Std.HashMap String (String × Nat))
       | some ca, none =>
         let rb ← reg b
         if bopCommutes bop then pure [opLine (packMnemonic mulU bop) rd rb (constOperand ca)]
-        else pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch rb]
+        else match resident.get? ca.1 with
+          | some r => pure [opLine (packMnemonic mulU bop) rd r rb]
+          | none => pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch rb]
       | some ca, some cb =>
         match shiftImm cb zmmScratch with
         | some line => pure [constLoad ca, line]
@@ -317,19 +322,31 @@ def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) 
     body, and the `nOut` last bindings stored to `64·j(%rdi)`. With `fieldRange` the caller
     asserts that every value a multiply reads is below `2^32` and every conditional-subtract
     input below `2^63`; multiplies then render as `vpmuludq` and conditional subtracts as
-    `vpminuq` (`csubToMinu`). -/
+    `vpminuq` (`csubToMinu`). Up to four constants read as the first operand of a
+    non-commutative operation are resident: loaded once at entry into `%zmm30`, `%zmm29`,
+    …, which the allocation leaves free. -/
 def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     (names : List String) (bs0 : Array ZBind) (fieldRange : Bool := false) :
     Except String String := do
   let (consts, data) := constTable sym bs0
   let bs := if fieldRange then csubToMinu consts bs0 else bs0
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
-  let alloc ← allocZmmLinear names consts bs outs
+  let firstConsts : List (String × Nat) := (bs.toList.filterMap (fun b =>
+    match b with
+    | .pack bop _ a _ => if bopCommutes bop then none else consts.get? a
+    | _ => none)).eraseDups.take 4
+  let residentList : List ((String × Nat) × String) :=
+    firstConsts.zipIdx.map (fun (c, i) => (c, zmmName (30 - i)))
+  let resident : Std.HashMap String String :=
+    residentList.foldl (fun m (c, r) => m.insert c.1 r) {}
+  let alloc ← allocZmmLinear names consts bs outs (residentList.map (·.2))
   let loads := names.zipIdx.map (fun (_, s) =>
     "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ zmmName s)
+  let residentLoads := residentList.map (fun (c, r) =>
+    (if bcast512 c.2 = c.2 then "\tvpbroadcastq " else "\tvmovdqu64 ") ++ c.1 ++ "(%rip), " ++ r)
   let body ← bs.foldlM
     (fun (acc : Array String) b => do
-      pure (acc ++ (← bindLines consts alloc fieldRange b).toArray)) #[]
+      pure (acc ++ (← bindLines consts alloc fieldRange resident b).toArray)) #[]
   let stores ← outs.zipIdx.mapM (fun (o, j) =>
     match alloc.get? o, consts.get? o with
     | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
@@ -338,7 +355,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     | none, none => throw s!"vpackZMM linear render: unallocated output {o}")
   let text : List String :=
     ["\t.text", "\t.globl " ++ sym, "\t.type " ++ sym ++ ", @function", sym ++ ":"]
-      ++ loads ++ body.toList ++ stores.flatten ++ ["\tvzeroupper", "\tret"]
+      ++ loads ++ residentLoads ++ body.toList ++ stores.flatten ++ ["\tvzeroupper", "\tret"]
       ++ ["\t.size " ++ sym ++ ", .-" ++ sym, "\t.section .rodata"]
       ++ (data.toList.flatMap (fun (lbl, v) => constData lbl v))
       ++ ["\t.section .note.GNU-stack,\"\",@progbits"]
