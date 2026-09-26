@@ -318,13 +318,14 @@ def opLine (mn : String) (rd ra rb : String) : String :=
 
 /-- The sixteen-lane high multiply of `ra` and `rb` into `rd`: `vpmuludq` on the even
     lanes, the odd lanes shifted down and multiplied, the even high words shifted down,
-    and the two blended under `%k1` (odd lanes set). -/
-def mulhiLines (rd ra rb : String) : List String :=
+    and the two blended under `%k1` (odd lanes set). When `rb` holds a sixteen-lane
+    broadcast (`rbBcast`) its odd lanes equal its even lanes and it is not shifted. -/
+def mulhiLines (rd ra rb : String) (rbBcast : Bool := false) : List String :=
   let t0 := "%zmm28"; let t1 := "%zmm29"; let t2 := "%zmm30"
   [ opLine "vpmuludq" t0 ra rb
-  , "\tvpsrlq $32, " ++ ra ++ ", " ++ t1
-  , "\tvpsrlq $32, " ++ rb ++ ", " ++ t2
-  , opLine "vpmuludq" t1 t1 t2
+  , "\tvpsrlq $32, " ++ ra ++ ", " ++ t1 ]
+  ++ (if rbBcast then [] else ["\tvpsrlq $32, " ++ rb ++ ", " ++ t2]) ++
+  [ opLine "vpmuludq" t1 t1 (if rbBcast then rb else t2)
   , "\tvpsrlq $32, " ++ t0 ++ ", " ++ t0
   , "\tvpblendmd " ++ t1 ++ ", " ++ t0 ++ ", " ++ rd ++ "{%k1}" ]
 
@@ -350,10 +351,18 @@ def bindLines (consts : Std.HashMap String (String × Nat))
         | some r => pure r
         | none => throw s!"vpackZMM linear render: unallocated operand {n} at {d}"
       let rd ← reg d
+      let constReg (c : String × Nat) : List String × String :=
+        match resident.get? c.1 with
+        | some r => ([], r)
+        | none => ([constLoad .d c], zmmScratch)
       match consts.get? a, consts.get? b with
       | none, none => pure (mulhiLines rd (← reg a) (← reg b))
-      | none, some cb => pure (constLoad .d cb :: mulhiLines rd (← reg a) zmmScratch)
-      | some ca, none => pure (constLoad .d ca :: mulhiLines rd zmmScratch (← reg b))
+      | none, some cb =>
+        let (ls, r) := constReg cb
+        pure (ls ++ mulhiLines rd (← reg a) r (isBcast .d cb.2))
+      | some ca, none =>
+        let (ls, r) := constReg ca
+        pure (ls ++ mulhiLines rd (← reg b) r (isBcast .d ca.2))
       | some ca, some cb =>
         pure (constLoad .d ca :: constLoadTo .d cb "%zmm30" :: mulhiLines rd zmmScratch "%zmm30")
   | .pack w bop d a b => do
@@ -462,6 +471,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
   let firstConsts : List (LaneW × (String × Nat)) := (bs.toList.filterMap (fun b =>
     match b with
     | .pack w bop _ a _ => if bopCommutes bop then none else (consts.get? a).map (w, ·)
+    | .mulhi _ a b => ((consts.get? b) <|> (consts.get? a)).map (LaneW.d, ·)
     | _ => none)).eraseDups.take 4
   let residentList : List ((LaneW × (String × Nat)) × String) :=
     firstConsts.zipIdx.map (fun (c, i) => (c, zmmName (top - i)))
