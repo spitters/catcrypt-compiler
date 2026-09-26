@@ -1094,3 +1094,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate
 CatCrypt.Crypto.SecureCompilation.SmallPrimeBarrett
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVecCore
 CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+CatCrypt.Crypto.Hax.HaxRuntimeWordBuiltins
