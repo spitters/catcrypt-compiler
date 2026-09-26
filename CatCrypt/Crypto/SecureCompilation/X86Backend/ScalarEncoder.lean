@@ -1174,8 +1174,12 @@ def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
     one-operand `IMUL`, `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and
     `BTR`/`BTS` are not encoded and are outside the fragment. -/
 def encodableJInstr : JInstr 64 → Bool
+  -- every `imm32` field the CPU sign-extends: the group-1 ALU forms (`81 /digit id`),
+  -- `TEST` (`F7 /0 id`, `A9 id`), `IMUL` (`69 /r id`), the store-immediate and
+  -- add-to-memory forms (`C7 /0 id`, `81 /0 id`) and the memory `IMUL`.
   | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
   | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v)
+  | .test _ (.imm v) | .imul _ (.imm v) | .storeMem _ _ (.imm v)
   | .addToMem _ _ (.imm v) | .imulriMem _ _ _ v =>
       fitsImm32S v
   | .cmove _ (.imm _) | .cmovcc _ _ (.imm _)
@@ -1245,6 +1249,22 @@ theorem encodeJInstr?_eq_none_of_not_encodable (alloc : GpAlloc) (i : JInstr 64)
 /-- A wide ALU immediate is refused rather than truncated. -/
 theorem encodeJInstr?_add_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
     (h : fitsImm32S v = false) : encodeJInstr? alloc (.add d (.imm v)) = none :=
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
+
+/-- A wide `IMUL` immediate is refused rather than sign-extended. -/
+theorem encodeJInstr?_imul_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
+    (h : fitsImm32S v = false) : encodeJInstr? alloc (.imul d (.imm v)) = none :=
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
+
+/-- A wide `TEST` immediate is refused rather than sign-extended. -/
+theorem encodeJInstr?_test_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
+    (h : fitsImm32S v = false) : encodeJInstr? alloc (.test d (.imm v)) = none :=
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
+
+/-- A wide store immediate is refused rather than sign-extended. -/
+theorem encodeJInstr?_storeMem_imm_wide (alloc : GpAlloc) (base : String) (off : Int)
+    (v : Nat) (h : fitsImm32S v = false) :
+    encodeJInstr? alloc (.storeMem base off (.imm v)) = none :=
   encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
 
 /-- An indexed load at a stride outside `{1, 2, 4, 8}` is refused rather than
