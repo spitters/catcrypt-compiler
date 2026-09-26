@@ -512,8 +512,3 @@ def emitMain : IO Unit := do
   IO.println "  Com[jasmin] regArith -> toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend, NO jasminc"
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
-
-/-- Top-level entry point, run with `lake env lean --run` on this file. -/
-def main : IO UInt32 := do
-  CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit.emitMain
-  return 0

@@ -1062,3 +1062,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
 CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
 CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
+CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue
