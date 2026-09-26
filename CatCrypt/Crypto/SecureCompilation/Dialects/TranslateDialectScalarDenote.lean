@@ -536,12 +536,88 @@ def semRForD (semBody : SEnvScalar → Option SEnvScalar) (x : String) :
       | some envPre => semBody (envPre.upd x (t := .sword 64) (BitVec.ofNat 64 n))
       | none => none
 
+/-! ### The inline arithmetic semantics
+
+The `RCall` arm of the front lowers a table name into a `.TFp` slot on two six-limb
+arguments inline (`TranslateDialectDirectArms.inlineArithCont`); its value is
+`inlineArithMemref`. `withInlineArith ls` is the leaf oracle `ls` with that value at a
+six-limb destination on the table names, and `inlineRCallVal` the value `semScalarL`
+binds at an `RCall` by destination tower type. -/
+
+/-- The two six-limb argument values of an inline call; `none` on every other value
+    list. -/
+def memref6Pair :
+    List ((t : CryptoTy) × ⟦t⟧) → Option ((Fin 6 → BitVec 64) × (Fin 6 → BitVec 64))
+  | [⟨.memref 6, a⟩, ⟨.memref 6, b⟩] => some (a, b)
+  | _ => none
+
+/-- The inline semantics of a call into a six-limb slot: on two six-limb arguments and a
+    table name, `inlineArithMemref` of the recipe; `none` otherwise. -/
+def inlineArithSem6 (f : String) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    Option (Fin 6 → BitVec 64) :=
+  (memref6Pair vals).bind fun p => (inlineArithRecipe f).map fun r => inlineArithMemref r p.1 p.2
+
+/-- The leaf oracle `ls` with the inline semantics at six-limb destinations on the table
+    names: `ls` at every other name, destination type or argument shape. -/
+def withInlineArith (ls : SemLeafSpec) : SemLeafSpec := fun f t vals =>
+  match t with
+  | .memref 6 => (inlineArithSem6 f vals).getD (ls f (.memref 6) vals)
+  | t => ls f t vals
+
+/-- The value `semScalarL ls` binds at an `RCall` into a slot of tower type `tt`: the
+    oracle with the inline semantics at a `.TFp` destination, the oracle otherwise. -/
+def inlineRCallVal (ls : SemLeafSpec) (f : String) (tt : TowerType)
+    (vals : List ((t : CryptoTy) × ⟦t⟧)) : ⟦encodeTy tt⟧ :=
+  match tt with
+  | .TFp => withInlineArith ls f (.memref 6) vals
+  | tt => ls f (encodeTy tt) vals
+
+theorem inlineArithSem6_of_recipe_none {f : String} (h : inlineArithRecipe f = none)
+    (vals : List ((t : CryptoTy) × ⟦t⟧)) : inlineArithSem6 f vals = none := by
+  unfold inlineArithSem6
+  cases memref6Pair vals <;> simp [h]
+
+/-- Outside the table the oracle with the inline semantics is the oracle. -/
+theorem withInlineArith_of_recipe_none (ls : SemLeafSpec) {f : String}
+    (h : inlineArithRecipe f = none) (t : CryptoTy) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    withInlineArith ls f t vals = ls f t vals := by
+  unfold withInlineArith
+  split
+  · simp [inlineArithSem6_of_recipe_none h]
+  · rfl
+
+/-- Outside the table the `RCall` value is the oracle at the encoded destination type. -/
+theorem inlineRCallVal_of_recipe_none (ls : SemLeafSpec) {f : String}
+    (h : inlineArithRecipe f = none) (tt : TowerType) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    inlineRCallVal ls f tt vals = ls f (encodeTy tt) vals := by
+  cases tt <;> first | rfl | exact withInlineArith_of_recipe_none ls h (.memref 6) vals
+
+/-- At a `.TFp` destination the `RCall` value is the oracle with the inline semantics. -/
+theorem inlineRCallVal_TFp (ls : SemLeafSpec) (f : String) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    inlineRCallVal ls f .TFp vals = withInlineArith ls f (.memref 6) vals := rfl
+
+/-- The inline value is the recipe's value on the two limbs `0` at limb `0` and `0`
+    elsewhere. -/
+theorem inlineArithMemref_eq (r : InlineArith) (a b : Fin 6 → BitVec 64) :
+    inlineArithMemref r a b = fun j => if j = 0 then r.evalBV (a 0) (b 0) else 0 := by
+  funext j
+  match j with
+  | ⟨0, _⟩ => rfl
+  | ⟨1, _⟩ => rfl
+  | ⟨2, _⟩ => rfl
+  | ⟨3, _⟩ => rfl
+  | ⟨4, _⟩ => rfl
+  | ⟨5, _⟩ => rfl
+  | ⟨n + 6, h⟩ => exact absurd h (by omega)
+
 /-- Pure operational semantics of the covered scalar `LowCT` arms as a partial
     `SEnvScalar` transformer. Each arm binds its destination to the SAME waist the
     front's emitted `catCryptDialect` op denotes by:
 
-    * `RCall` — an opaque leaf: `CryptoTy.default (encodeTy dst)` (the dialect
-      `extCall` denotation, independent of the argument values);
+    * `RCall` — `inlineRCallVal defaultLeaf`: the inline value on a table name into a
+      `.TFp` slot on two six-limb arguments, else the opaque leaf
+      `CryptoTy.default (encodeTy dst)` (the dialect `extCall` denotation, independent
+      of the argument values);
     * `RSelect` — `selectWord s a c` on 64-bit word slots, the value of the
       front's mask chain; on any other slots the opaque `extCall "select"`
       default;
@@ -571,9 +647,10 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
   -- `RLetZero` declares a tower slot the body writes before it reads; the front
   -- emits nothing for it, and the waist is the body's on the unchanged env.
   | .RLetZero _name _tt body, env => semScalar body env
-  | .RCall _fname dst _args, env =>
+  | .RCall fname dst args, env =>
       let retTy := encodeTy dst.locDst
-      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+      some (env.upd dst.locVar (t := retTy)
+        (inlineRCallVal defaultLeaf fname dst.locDst ((args.map (·.locVar)).filterMap env)))
   | .RSelect dst sel src0 src1, env =>
       match dst.locDst, env sel, env src0.locVar, env src1.locVar with
       | .TU64, some ⟨.sword 64, s⟩, some ⟨.sword 64, a⟩, some ⟨.sword 64, c⟩ =>
@@ -720,8 +797,9 @@ def semCallNDestsL (ls : SemLeafSpec) (fname : String) (args : List Located) :
           (ls (callNLeafName fname i) (encodeTy d.locDst) (argVals env (locNames args))))
 
 /-- The waist semantics of `semScalar`, with each opaque leaf call bound to the value of
-    the leaf oracle `ls` instead of `CryptoTy.default`. The non-leaf arms are those of
-    `semScalar`. -/
+    the leaf oracle `ls` instead of `CryptoTy.default`; an `RCall` binds `inlineRCallVal ls`
+    (the inline arithmetic value on a table name into a `.TFp` slot on two six-limb
+    arguments, `ls` otherwise). The non-leaf arms are those of `semScalar`. -/
 def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
   | .RSkip, env => some env
   | .RBlock body, env => semScalarL ls body env
@@ -734,7 +812,8 @@ def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
   | .RLetZero _name _tt body, env => semScalarL ls body env
   | .RCall fname dst args, env =>
       let retTy := encodeTy dst.locDst
-      some (env.upd dst.locVar (t := retTy) (ls fname retTy (argVals env (locNames args))))
+      some (env.upd dst.locVar (t := retTy)
+        (inlineRCallVal ls fname dst.locDst (argVals env (locNames args))))
   | .RSelect dst sel src0 src1, env =>
       match dst.locDst, env sel, env src0.locVar, env src1.locVar with
       | .TU64, some ⟨.sword 64, s⟩, some ⟨.sword 64, a⟩, some ⟨.sword 64, c⟩ =>
@@ -1610,6 +1689,112 @@ theorem selectCmpCont_denoteWith (ls : SemLeafSpec) {Γ : Ctx} (vm : VarMap Γ)
         (Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) V₂ v))
       (selectWord_cmp s a c)
 
+/-! ### The inline arithmetic lowering -/
+
+/-- The inline expression denotes `InlineBop.apply` on the two slot values, at every leaf
+    oracle. -/
+theorem InlineBop.expr_denoteWith (ls : SemLeafSpec) {Γ : Ctx} (bop : InlineBop)
+    (a b : CVar Γ (.sword 64)) (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    @Expr.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ (bop.expr a b) V
+      = bop.apply ((toVIRVar a).lookup V) ((toVIRVar b).lookup V) := by
+  cases bop <;> rfl
+
+/-- The argument values of two resolved six-limb slots. -/
+theorem memref6Pair_map_of_vars {Γ : Ctx} (ra : List ((t : CryptoTy) × CVar Γ t))
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) {aV bV : CVar Γ (.memref 6)}
+    (h : inlineArithArgsVars ra = some (aV, bV)) :
+    memref6Pair (ra.map (fun p => (⟨p.1, (toVIRVar p.2).lookup V⟩ : (t : CryptoTy) × ⟦t⟧)))
+      = some ((toVIRVar aV).lookup V, (toVIRVar bV).lookup V) := by
+  unfold inlineArithArgsVars at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    rfl
+  · cases h
+
+/-- The argument values of resolved slots that are not two six-limb slots. -/
+theorem memref6Pair_map_of_vars_none {Γ : Ctx} (ra : List ((t : CryptoTy) × CVar Γ t))
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (h : inlineArithArgsVars ra = none) :
+    memref6Pair (ra.map (fun p => (⟨p.1, (toVIRVar p.2).lookup V⟩ : (t : CryptoTy) × ⟦t⟧)))
+      = none := by
+  unfold inlineArithArgsVars at h
+  unfold memref6Pair
+  split at h
+  · cases h
+  · rename_i hne
+    split
+    · rename_i heq
+      match ra, heq with
+      | [⟨t₁, x⟩, ⟨t₂, y⟩], heq =>
+          simp only [List.map_cons, List.map_nil, List.cons.injEq, Sigma.mk.injEq] at heq
+          obtain ⟨⟨rfl, _⟩, ⟨rfl, _⟩, _⟩ := heq
+          exact absurd rfl (hne x y)
+    · rfl
+
+/-- The inline lowering binds `dst` to `inlineArithMemref` of the two source slots, keeps
+    every other name consistent (the seventeen temporaries are anonymous), and applied to
+    any tail denotes that tail at the extended valuation, at every leaf oracle (the prefix
+    holds no leaf). -/
+theorem inlineArithCont_denoteWith (ls : SemLeafSpec) {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (dst : String) (r : InlineArith)
+    (aV bV : CVar Γ (.memref 6)) :
+    ∃ V' : Ctxt.Valuation (d := catCryptDialect) (inlineArithCtx Γ),
+      ConsistentS (inlineArithVm vm dst) V'
+        (env.upd dst (t := .memref 6)
+          (inlineArithMemref r ((toVIRVar aV).lookup V) ((toVIRVar bV).lookup V))) ∧
+      ∀ {t : CryptoTy} (tail : Com catCryptDialect (inlineArithCtx Γ) t),
+        ∃ com, inlineArithCont r aV bV tail = some com ∧
+          @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ com V
+            = @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ tail V' := by
+  let a : Fin 6 → BitVec 64 := (toVIRVar aV).lookup V
+  let b : Fin 6 → BitVec 64 := (toVIRVar bV).lookup V
+  let i0 : BitVec 64 := 0
+  let la : BitVec 64 := memGetDyn a i0.toNat
+  let lb : BitVec 64 := memGetDyn b i0.toNat
+  let m : BitVec 64 := r.mask
+  let la' : BitVec 64 := la &&& m
+  let v : BitVec 64 := r.bop.apply la' lb
+  let v' : BitVec 64 := v &&& m
+  let d0 : Fin 6 → BitVec 64 := memSetDyn a i0.toNat v'
+  let d1 : Fin 6 → BitVec 64 := memSetDyn d0 (1 : BitVec 64).toNat i0
+  let d2 : Fin 6 → BitVec 64 := memSetDyn d1 (2 : BitVec 64).toNat i0
+  let d3 : Fin 6 → BitVec 64 := memSetDyn d2 (3 : BitVec 64).toNat i0
+  let d4 : Fin 6 → BitVec 64 := memSetDyn d3 (4 : BitVec 64).toNat i0
+  let d5 : Fin 6 → BitVec 64 := memSetDyn d4 (5 : BitVec 64).toNat i0
+  let extW := fun {Δ : Ctx} (W : Ctxt.Valuation (d := catCryptDialect) Δ) (x : BitVec 64) =>
+    Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) W x
+  let extM := fun {Δ : Ctx} (W : Ctxt.Valuation (d := catCryptDialect) Δ)
+      (x : Fin 6 → BitVec 64) =>
+    Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.memref 6) W x
+  let V₁₂ := extW (extW (extW (extW (extW (extW (extW (extW (extW (extW (extW (extW V i0) la) lb)
+    m) la') v) v') 1) 2) 3) 4) 5
+  let V₁₇ := extM (extM (extM (extM (extM V₁₂ d0) d1) d2) d3) d4
+  have hw : ∀ {Δ : Ctx} (vm' : VarMap Δ) (W : Ctxt.Valuation (d := catCryptDialect) Δ),
+      ConsistentS vm' W env → ∀ x : BitVec 64,
+        ConsistentS (vm'.weaken (t := .sword 64)) (extW W x) env :=
+    fun vm' W h x => consistentS_weaken (t := .sword 64) vm' W env h x
+  have hm : ∀ {Δ : Ctx} (vm' : VarMap Δ) (W : Ctxt.Valuation (d := catCryptDialect) Δ),
+      ConsistentS vm' W env → ∀ x : Fin 6 → BitVec 64,
+        ConsistentS (vm'.weaken (t := .memref 6)) (extM W x) env :=
+    fun vm' W h x => consistentS_weaken (t := .memref 6) vm' W env h x
+  have h₁₂ := hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _
+    (hw _ _ (hw vm V hc i0) la) lb) m) la') v) v') 1) 2) 3) 4) 5
+  have h₁₇ := hm _ _ (hm _ _ (hm _ _ (hm _ _ (hm _ _ h₁₂ d0) d1) d2) d3) d4
+  refine ⟨extM V₁₇ d5, ?_, ?_⟩
+  · exact (scalar_stepWith ls _ V₁₇ env h₁₇ dst
+      (Expr.mk (.memrefSetDyn 6) rfl
+        (.cons (toVIRVar (CVar.here : CVar _ (.memref 6)))
+          (.cons (toVIRVar (.there (.there (.there (.there (.there CVar.here)))) : CVar _ (.sword 64)))
+            (.cons (toVIRVar (.there (.there (.there (.there (.there (.there (.there (.there (.there
+              (.there (.there (.there (.there (.there (.there (.there CVar.here))))))))))))))) :
+                CVar _ (.sword 64))) .nil))) :
+        Expr catCryptDialect _ (.memref 6))).1
+  · intro t tail
+    refine ⟨_, rfl, ?_⟩
+    cases r with
+    | mk bop masked => cases bop <;> rfl
+
 /-- The comparison select binds `dst` to `selectWord` of the three source slots
     (`selectCmpCont_denoteWith` at `defaultLeaf`). -/
 theorem selectCmpCont_denote {Γ : Ctx} (vm : VarMap Γ)
@@ -2455,14 +2640,62 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
       rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
       · simp [translateDialectFull, hra] at htr
       · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
         simp only [semScalarL] at hsem
         obtain rfl := Option.some.inj hsem
-        obtain ⟨hcons, hcont⟩ :=
-          scalar_stepWith ls vm V env hc dst.locVar
-            (extCallExpr fname (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
-        rw [extCallExpr_denoteWith, argVals_of_resolve hc _ resolvedArgs hra] at hcons hcont
-        exact ⟨_, hcons, fun tail => hcont tail⟩
+        have hvals : argVals env (locNames args)
+            = resolvedArgs.map
+                (fun p => (⟨p.1, (toVIRVar p.2).lookup V⟩ : (t : CryptoTy) × ⟦t⟧)) := by
+          rw [← argVals_of_resolve hc _ resolvedArgs hra, hvecSigmaList_listSigma]
+        -- The opaque fallback, shared by every non-inline branch.
+        have hfallback : ∀ (hv : inlineRCallVal ls fname dst.locDst (argVals env (locNames args))
+              = ls fname (encodeTy dst.locDst) (argVals env (locNames args))),
+            (match listSigmaToCHVector resolvedArgs with
+              | ⟨_argTys, hv⟩ =>
+                some { Γ' := encodeTy dst.locDst :: Γ,
+                       cont := ComCont.varBind (extCallExpr fname (encodeTy dst.locDst) hv),
+                       vm := vm.bind dst.locVar } : Option (DTransOut Γ)) = some o →
+            ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+              ConsistentS o.vm V' (env.upd dst.locVar (t := encodeTy dst.locDst)
+                (inlineRCallVal ls fname dst.locDst (argVals env (locNames args)))) ∧
+              ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+                ∃ com, o.cont tail = some com ∧
+                  @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ com V
+                    = @Com.denote catCryptDialect _ _ (catCryptDenoteWith ls) _ _ tail V' := by
+          intro hv htr
+          obtain rfl := Option.some.inj htr
+          rw [hv]
+          obtain ⟨hcons, hcont⟩ :=
+            scalar_stepWith ls vm V env hc dst.locVar
+              (extCallExpr fname (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
+          rw [extCallExpr_denoteWith, argVals_of_resolve hc _ resolvedArgs hra] at hcons hcont
+          exact ⟨_, hcons, fun tail => hcont tail⟩
+        obtain ⟨dv, dt⟩ := dst
+        rcases hrec : inlineArithRecipe fname with _ | r
+        · rw [inlineRCallVal_of_recipe_none ls hrec] at hfallback ⊢
+          refine hfallback rfl ?_
+          simp only [hrec] at htr
+          exact htr
+        · cases dt <;> simp only [hrec] at htr <;>
+            try exact hfallback rfl htr
+          rcases hv : inlineArithArgsVars resolvedArgs with _ | ⟨aV, bV⟩
+          · simp only [hv] at htr
+            refine hfallback ?_ htr
+            show withInlineArith ls fname (.memref 6) _ = _
+            unfold withInlineArith
+            simp only [inlineArithSem6, hvals, memref6Pair_map_of_vars_none resolvedArgs V hv,
+              Option.bind_none, Option.getD_none]
+            rfl
+          · simp only [hv, Option.some.injEq] at htr
+            obtain rfl := htr
+            show ∃ V', ConsistentS (inlineArithVm vm dv) V'
+              (env.upd dv (t := .memref 6) (withInlineArith ls fname (.memref 6) _)) ∧ _
+            have hval : withInlineArith ls fname (.memref 6) (argVals env (locNames args))
+                = inlineArithMemref r ((toVIRVar aV).lookup V) ((toVIRVar bV).lookup V) := by
+              unfold withInlineArith
+              simp only [inlineArithSem6, hvals, memref6Pair_map_of_vars resolvedArgs V hv, hrec,
+                Option.bind_some, Option.map_some, Option.getD_some]
+            rw [hval]
+            exact inlineArithCont_denoteWith ls vm V env hc dv r aV bV
   | rSelect dst sel src0 src1 =>
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectFull] at htr
@@ -3301,9 +3534,15 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
   case RCall fname dest args =>
       rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
       · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
-        exact ⟨[encodeTy dest.locDst], rfl, fun h => absurd h (by simp)⟩
+      · rcases translateDialectFull_rCall_shape vm fname dest args hra htr with
+          ⟨r, aV, bV, _, _, _, rfl⟩ | htr'
+        · exact ⟨[.memref 6, .memref 6, .memref 6, .memref 6, .memref 6, .memref 6,
+            .sword 64, .sword 64, .sword 64, .sword 64, .sword 64, .sword 64,
+            .sword 64, .sword 64, .sword 64, .sword 64, .sword 64, .sword 64], rfl,
+            fun h => absurd h (by simp)⟩
+        · simp only [Option.some.injEq] at htr'
+          subst htr'
+          exact ⟨[encodeTy dest.locDst], rfl, fun h => absurd h (by simp)⟩
   case RSelect dst sel src0 src1 =>
       simp only [translateDialectFull] at htr
       split at htr

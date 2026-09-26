@@ -413,12 +413,35 @@ theorem selectMaskCont_leakFactors {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
               (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
                 (ComCont.varBind_leakFactors _)))))))⟩
 
+/-- The inline arithmetic lowering adds eighteen leak events. -/
+theorem inlineArithCont_leakFactors {Γ : Ctx} (r : InlineArith) (aV bV : CVar Γ (.memref 6)) :
+    ComCont.LeakFactors (inlineArithCont r aV bV) 18 :=
+  ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+    (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+      (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+        (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+          (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+            (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+              (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                  (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                    (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                      (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                        (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                          (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                            (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                              (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                                (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                                  (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                                    (ComCont.varBind_leakFactors _)))))))))))))))))
+
 /-- **The leaf-call front's prefix leak-factors (covered fragment).** On every
     `IsCovered` `LowCT`, whenever `translateDialectFull` succeeds its emitted
     `ComCont` prefix leak-factors: the straight-line/leaf-call/fold arms each
     prepend a fixed number of leak events to any tail. By induction on `IsCovered`
     — recursive arms via the IH, the `RCallN` fold via `loopCallNDestsD_leakFactors`,
-    and the single/double `extCall` arms via `varBind`/`comp`. -/
+    the inline arithmetic `RCall` via `inlineArithCont_leakFactors`, and the
+    single/double `extCall` arms via `varBind`/`comp`. -/
 theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCovered c) {o : DTransOut Γ}
     (h : translateDialectFull vm c = some o) : ∃ k : Nat, ComCont.LeakFactors o.cont k := by
@@ -541,6 +564,15 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
   | rAssert label =>
       simp only [translateDialectFull, Option.some.injEq] at h
       subst h; exact ⟨0, ComCont.id_leakFactors⟩
+  | rCall fname dest args =>
+      rcases hra : LowCTToCryptoSSA.resolveLocatedArgs vm args with _ | ra
+      · simp [translateDialectFull, hra] at h
+      · rcases translateDialectFull_rCall_shape vm fname dest args hra h with
+          ⟨r, aV, bV, _, _, _, rfl⟩ | h'
+        · exact ⟨18, inlineArithCont_leakFactors r aV bV⟩
+        · simp only [Option.some.injEq] at h'
+          subst h'
+          exact ⟨1, ComCont.varBind_leakFactors _⟩
   | _ =>
       rw [translateDialectFull] at h
       split at h <;>
@@ -975,6 +1007,30 @@ theorem selectMaskCont_leakFactorsTrace {Γ : Ctx} (sV aV cV : CVar Γ (.sword 6
               (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
                 (ComCont.varBind_leakFactorsTrace _)))))))⟩
 
+/-- The inline arithmetic lowering prepends a fixed event list. -/
+theorem inlineArithCont_leakFactorsTrace {Γ : Ctx} (r : InlineArith)
+    (aV bV : CVar Γ (.memref 6)) :
+    ∃ pre : LeakTrace, ComCont.LeakFactorsTrace (inlineArithCont r aV bV) pre :=
+  ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+    (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+      (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+        (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+          (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+            (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+              (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                  (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                    (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                      (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                        (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                          (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                            (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                              (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                                (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                                  (ComCont.comp_leakFactorsTrace
+                                    (ComCont.varBind_leakFactorsTrace _)
+                                    (ComCont.varBind_leakFactorsTrace _)))))))))))))))))⟩
+
 /-- The leaf-call front's trace-factoring (covered fragment). -/
 theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCovered c) {o : DTransOut Γ}
@@ -1096,6 +1152,15 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
   | rAssert label =>
       simp only [translateDialectFull, Option.some.injEq] at h
       subst h; exact ⟨[], ComCont.id_leakFactorsTrace⟩
+  | rCall fname dest args =>
+      rcases hra : LowCTToCryptoSSA.resolveLocatedArgs vm args with _ | ra
+      · simp [translateDialectFull, hra] at h
+      · rcases translateDialectFull_rCall_shape vm fname dest args hra h with
+          ⟨r, aV, bV, _, _, _, rfl⟩ | h'
+        · exact inlineArithCont_leakFactorsTrace r aV bV
+        · simp only [Option.some.injEq] at h'
+          subst h'
+          exact ⟨_, ComCont.varBind_leakFactorsTrace _⟩
   | _ =>
       rw [translateDialectFull] at h
       split at h <;> first

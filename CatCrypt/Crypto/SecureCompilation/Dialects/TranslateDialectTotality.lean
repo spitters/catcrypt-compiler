@@ -189,6 +189,17 @@ theorem vmApprox_selectCmpVm {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ}
     VmApprox (σ.upd dst (.sword 64)) (selectCmpVm vm dst) :=
   vmApprox_upd (vmApprox_weaken (vmApprox_weaken h)) dst
 
+/-- The `VarMap` after the inline arithmetic lowering (`inlineArithVm`: seventeen
+    anonymous temporaries, then `dst` on top) realises the map update of `dst` at
+    `.memref 6`. -/
+theorem vmApprox_inlineArithVm {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ}
+    (h : VmApprox σ vm) (dst : String) :
+    VmApprox (σ.upd dst (.memref 6)) (inlineArithVm vm dst) :=
+  vmApprox_upd (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken
+    (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken
+    (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken
+    (vmApprox_weaken (vmApprox_weaken (vmApprox_weaken h))))))))))))))))) dst
+
 /-- `lookupU64` succeeds on a name bound at `.sword 64`. -/
 theorem lookupU64_of_lookup {Γ : Ctx} {vm : VarMap Γ} {y : String}
     {v : CVar Γ (.sword 64)} (h : vm.lookup y = some ⟨.sword 64, v⟩) :
@@ -284,6 +295,31 @@ theorem contJTotal_arrStoreCont {Γ : Ctx}
     · exact ContJTotal.castCtx _ (ContJTotal.varBind rfl)
     · exact ContJTotal.varBind (by cases dty <;> rfl)
   · exact ContJTotal.varBind (by cases dty <;> rfl)
+
+/-- The inline arithmetic lowering is a jasmin-lowerable prefix: each of its bindings
+    (`bvConst`, `memrefGetDyn`, `bvAnd`, the recipe's word op, `memrefSetDyn`) lowers. -/
+theorem contJTotal_inlineArithCont {Γ : Ctx} (r : InlineArith) (aV bV : CVar Γ (.memref 6)) :
+    ContJTotal (inlineArithCont r aV bV) := by
+  obtain ⟨bop, masked⟩ := r
+  cases bop <;>
+  exact ContJTotal.comp (ContJTotal.varBind rfl)
+    (ContJTotal.comp (ContJTotal.varBind rfl)
+      (ContJTotal.comp (ContJTotal.varBind rfl)
+        (ContJTotal.comp (ContJTotal.varBind rfl)
+          (ContJTotal.comp (ContJTotal.varBind rfl)
+            (ContJTotal.comp (ContJTotal.varBind rfl)
+              (ContJTotal.comp (ContJTotal.varBind rfl)
+                (ContJTotal.comp (ContJTotal.varBind rfl)
+                  (ContJTotal.comp (ContJTotal.varBind rfl)
+                    (ContJTotal.comp (ContJTotal.varBind rfl)
+                      (ContJTotal.comp (ContJTotal.varBind rfl)
+                        (ContJTotal.comp (ContJTotal.varBind rfl)
+                          (ContJTotal.comp (ContJTotal.varBind rfl)
+                            (ContJTotal.comp (ContJTotal.varBind rfl)
+                              (ContJTotal.comp (ContJTotal.varBind rfl)
+                                (ContJTotal.comp (ContJTotal.varBind rfl)
+                                  (ContJTotal.comp (ContJTotal.varBind rfl)
+                                    (ContJTotal.varBind rfl)))))))))))))))))
 
 /-- The eight-op word-select chain is a jasmin-lowerable prefix: each of its
     bindings (`bvConst`, `bvSub`, `bvOr`, `bvShiftR`, `bvXor`, `bvAnd`) lowers. -/

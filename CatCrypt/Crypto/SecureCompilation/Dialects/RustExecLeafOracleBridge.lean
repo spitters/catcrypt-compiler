@@ -171,11 +171,14 @@ theorem locatedLookup_locatedUpdate (rs : RustState) (loc : Located) (v : RustVa
     locatedLookup (locatedUpdate rs loc v) loc = some v := by
   simp [locatedLookup, locatedUpdate, rsSetTower_same]
 
-/-- **The call step.** A `RustExec` step of `RCall f dest args` writes a value `v` to
-    `dest`, and `semScalarL ls` binds `dest` to its encoding, when the leaf specification
-    agrees with `ls` and the environment encodes the arguments. -/
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (inlineArithRecipe) in
+/-- **The call step.** A `RustExec` step of `RCall f dest args` on a name outside
+    `inlineArithTable` writes a value `v` to `dest`, and `semScalarL ls` binds `dest` to
+    its encoding, when the leaf specification agrees with `ls` and the environment encodes
+    the arguments. -/
 theorem rustExec_semScalarL_call {N : Nat} {leafSpec : LeafSpec} {ls : SemLeafSpec}
-    (hagree : CallAgrees leafSpec ls) {f : String} {dest : Located} {args : List Located}
+    (hagree : CallAgrees leafSpec ls) {f : String} (hni : inlineArithRecipe f = none)
+    {dest : Located} {args : List Located}
     {rs rs' : RustState} (hexec : RustExec N leafSpec (.RCall f dest args) rs rs')
     {env : SEnvScalar} (henc : TowerEncOn rs env (locNames args)) :
     ∃ v : RustVal dest.locDst, locatedLookup rs' dest = some v ∧
@@ -185,7 +188,7 @@ theorem rustExec_semScalarL_call {N : Nat} {leafSpec : LeafSpec} {ls : SemLeafSp
   cases hexec with
   | call _ _ _ _ oldDestV argList _ hargs _ =>
       refine ⟨_, locatedLookup_locatedUpdate _ _ _, ?_⟩
-      rw [semScalarL_rCall, hagree, hargs, argVals_towerEnc args henc]
+      rw [semScalarL_rCall_of_recipe_none ls hni, hagree, hargs, argVals_towerEnc args henc]
 
 /-- **The literal-index read step, leaf case.** When the read is not a word read of a
     `TArr _ .TU64` array bound as a `.memref`, a `RustExec` step writes a value `v` to
@@ -221,17 +224,18 @@ theorem rustExec_semScalarL_arrLoadLit {N : Nat} {leafSpec : LeafSpec} {ls : Sem
         simp [argVals, locNames, hs, hv]
       rw [hargs]
 
-/-- At `zeroLeafSpec` and the default oracle, the call step is a statement about
-    `semScalar`. -/
-theorem rustExec_semScalar_call_zero {N : Nat} {f : String} {dest : Located}
-    {args : List Located} {rs rs' : RustState}
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (inlineArithRecipe) in
+/-- At `zeroLeafSpec` and the default oracle, the call step on a name outside
+    `inlineArithTable` is a statement about `semScalar`. -/
+theorem rustExec_semScalar_call_zero {N : Nat} {f : String} (hni : inlineArithRecipe f = none)
+    {dest : Located} {args : List Located} {rs rs' : RustState}
     (hexec : RustExec N zeroLeafSpec (.RCall f dest args) rs rs')
     {env : SEnvScalar} (henc : TowerEncOn rs env (locNames args)) :
     ∃ v : RustVal dest.locDst, locatedLookup rs' dest = some v ∧
       semScalar (.RCall f dest args) env =
         some (env.upd dest.locVar (t := encodeTy dest.locDst)
           (cryptoTyOfRustVal dest.locDst v)) := by
-  obtain ⟨v, hv, hs⟩ := rustExec_semScalarL_call callAgrees_zero hexec henc
+  obtain ⟨v, hv, hs⟩ := rustExec_semScalarL_call callAgrees_zero hni hexec henc
   exact ⟨v, hv, (semScalarL_default _ env).symm.trans hs⟩
 
 /-! ## The multi-destination, threaded, tuple and array-writing leaves -/

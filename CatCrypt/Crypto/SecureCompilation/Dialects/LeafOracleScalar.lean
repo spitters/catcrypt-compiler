@@ -117,12 +117,25 @@ theorem semU_eq_semUL (fuel : Nat) : semU fuel = semUL defaultLeaf fuel := by
 
 /-! ## Arm equations -/
 
-/-- The leaf call `RCall` binds its destination to the oracle at its name and arguments. -/
+/-- The leaf call `RCall` binds its destination to `inlineRCallVal`: the oracle with the
+    inline semantics at a `.TFp` destination, the oracle at its name and arguments
+    otherwise. -/
 theorem semScalarL_rCall (ls : SemLeafSpec) (fname : String) (dst : Located)
     (args : List Located) (env : SEnvScalar) :
     semScalarL ls (.RCall fname dst args) env =
       some (env.upd dst.locVar (t := encodeTy dst.locSrc)
-        (ls fname (encodeTy dst.locSrc) (argVals env (locNames args)))) := rfl
+        (inlineRCallVal ls fname dst.locSrc (argVals env (locNames args)))) := rfl
+
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (inlineArithRecipe) in
+/-- A leaf call whose name is outside `inlineArithTable` binds its destination to the
+    oracle at its name and arguments. -/
+theorem semScalarL_rCall_of_recipe_none (ls : SemLeafSpec) {fname : String}
+    (h : inlineArithRecipe fname = none) (dst : Located) (args : List Located)
+    (env : SEnvScalar) :
+    semScalarL ls (.RCall fname dst args) env =
+      some (env.upd dst.locVar (t := encodeTy dst.locSrc)
+        (ls fname (encodeTy dst.locSrc) (argVals env (locNames args)))) := by
+  rw [semScalarL_rCall, inlineRCallVal_of_recipe_none ls h]
 
 /-- A select into a `u64` word from three bound words is `selectWord`. -/
 theorem semScalarL_rSelect_word (ls : SemLeafSpec) (dst : Located) (sel : String)

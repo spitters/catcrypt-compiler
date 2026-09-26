@@ -26,7 +26,9 @@ This module extends that front to the multi-binding arms — the ones whose
 image is not a single `varBind` of a `bvConst`, but one or more opaque
 `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 
-* `RCall`            — one `extCall fname` rebinding the destination;
+* `RCall`            — one `extCall fname` rebinding the destination, or, on a name
+  of `inlineArithTable` into a `.TFp` slot on two six-limb slots, the inline
+  arithmetic lowering of §1e;
 * `RSelect`          — on 64-bit word slots, the comparison and conditional
   select of §1d; on any other slots, one opaque `extCall "select"` over the selector and
   the two sources;
@@ -728,6 +730,226 @@ def selectVm {Γ : Ctx} (vm : VarMap Γ) (dst : String) : VarMap (selectCtx Γ) 
     (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
     (t := .sword 64)).weaken (t := .sword 64)).bind (t := .sword 64) dst
 
+/-! ### 1e. Inline arithmetic builtins
+
+An `RCall f dest args` whose name is in `inlineArithTable`, whose destination is a
+`.TFp` slot and whose two arguments are six-limb slots lowers inline
+(`inlineArithCont`): limb `0` of each argument is loaded, the recipe's word operation
+is applied under the recipe's mask, and the result is written into a copy of the
+first argument at limb `0` with limbs `1` to `5` zeroed. Every other `RCall` lowers to
+the opaque `extCall`. The inline value is `inlineArithMemref`. -/
+
+/-- A binary word operation the front lowers inline: the bitwise operations and the
+    variable-amount logical shifts on 64-bit words. -/
+inductive InlineBop where
+  | and | or | xor | shl | shr
+  deriving DecidableEq, Repr
+
+/-- The value of an inline operation on two 64-bit words, as `catCryptDialect` denotes
+    the corresponding op. -/
+def InlineBop.apply : InlineBop → BitVec 64 → BitVec 64 → BitVec 64
+  | .and, a, b => a &&& b
+  | .or, a, b => a ||| b
+  | .xor, a, b => a ^^^ b
+  | .shl, a, b => a <<< b.toNat
+  | .shr, a, b => a >>> b.toNat
+
+/-- The dialect expression of an inline operation on two word slots. -/
+def InlineBop.expr {Γ : Ctx} : InlineBop → CVar Γ (.sword 64) → CVar Γ (.sword 64) →
+    Expr catCryptDialect Γ (.sword 64)
+  | .and, a, b => Expr.mk (.bvAnd 64) rfl (.cons (toVIRVar a) (.cons (toVIRVar b) .nil))
+  | .or, a, b => Expr.mk (.bvOr 64) rfl (.cons (toVIRVar a) (.cons (toVIRVar b) .nil))
+  | .xor, a, b => Expr.mk (.bvXor 64) rfl (.cons (toVIRVar a) (.cons (toVIRVar b) .nil))
+  | .shl, a, b => Expr.mk (.bvShiftLV 64) rfl (.cons (toVIRVar a) (.cons (toVIRVar b) .nil))
+  | .shr, a, b => Expr.mk (.bvShiftRV 64) rfl (.cons (toVIRVar a) (.cons (toVIRVar b) .nil))
+
+/-- An inline lowering recipe: the word operation and whether the builtin acts on 32-bit
+    words (its first argument and its result masked to 32 bits). -/
+structure InlineArith where
+  bop : InlineBop
+  masked : Bool
+  deriving DecidableEq, Repr
+
+/-- The 32-bit mask as a 64-bit word. -/
+def inlineMask32 : BitVec 64 := BitVec.ofNat 64 (2 ^ 32 - 1)
+
+/-- The mask of a recipe: the 32-bit mask when masked, all ones otherwise. -/
+def InlineArith.mask (r : InlineArith) : BitVec 64 :=
+  if r.masked then inlineMask32 else BitVec.allOnes 64
+
+/-- The value of a recipe on two 64-bit words: the operation on the masked first word
+    and the second word, masked. -/
+def InlineArith.evalBV (r : InlineArith) (a b : BitVec 64) : BitVec 64 :=
+  r.bop.apply (a &&& r.mask) b &&& r.mask
+
+/-- The value of a recipe on two six-limb slots, as the inline lowering computes it: the
+    first slot with limb `0` replaced by the recipe's value on the two limbs `0` and limbs
+    `1` to `5` replaced by `0`. -/
+def inlineArithMemref (r : InlineArith) (a b : Fin 6 → BitVec 64) : Fin 6 → BitVec 64 :=
+  memSetDyn (memSetDyn (memSetDyn (memSetDyn (memSetDyn
+    (memSetDyn a (0 : BitVec 64).toNat
+      (r.evalBV (memGetDyn a (0 : BitVec 64).toNat) (memGetDyn b (0 : BitVec 64).toNat)))
+    (1 : BitVec 64).toNat 0) (2 : BitVec 64).toNat 0) (3 : BitVec 64).toNat 0)
+    (4 : BitVec 64).toNat 0) (5 : BitVec 64).toNat 0
+
+/-- The table of the arithmetic builtins lowered inline, by call name. -/
+def inlineArithTable : List (String × InlineArith) :=
+  [("BitAnd", ⟨.and, false⟩), ("BitOr", ⟨.or, false⟩), ("BitXor", ⟨.xor, false⟩),
+   ("BitAnd#32", ⟨.and, true⟩), ("BitOr#32", ⟨.or, true⟩), ("BitXor#32", ⟨.xor, true⟩),
+   ("BitAnd#64", ⟨.and, false⟩), ("BitOr#64", ⟨.or, false⟩), ("BitXor#64", ⟨.xor, false⟩),
+   ("Shl#32", ⟨.shl, true⟩), ("Shr#32", ⟨.shr, true⟩),
+   ("Shl#64", ⟨.shl, false⟩), ("Shr#64", ⟨.shr, false⟩)]
+
+/-- The inline recipe of a call name; `none` for a name outside the table. -/
+def inlineArithRecipe (f : String) : Option InlineArith := inlineArithTable.lookup f
+
+/-- The two six-limb argument slots of an inline call; `none` on every other argument
+    list. -/
+def inlineArithArgsVars {Γ : Ctx} :
+    List ((t : CryptoTy) × CVar Γ t) → Option (CVar Γ (.memref 6) × CVar Γ (.memref 6))
+  | [⟨.memref 6, a⟩, ⟨.memref 6, b⟩] => some (a, b)
+  | _ => none
+
+/-- The context the inline lowering grows over `Γ`: twelve word temporaries (the index
+    `0`, the two loaded limbs, the mask, the masked first limb, the operation's value, its
+    masked value, the indices `1` to `5`), five intermediate slots, and the destination
+    slot on top. -/
+abbrev inlineArithCtx (Γ : Ctx) : Ctx :=
+  .memref 6 :: .memref 6 :: .memref 6 :: .memref 6 :: .memref 6 :: .memref 6 ::
+    .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 ::
+    .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: Γ
+
+/-- The inline lowering of a call with recipe `r` on the six-limb slots `aV`, `bV`:
+
+    i0 := 0; la := aV[i0]; lb := bV[i0]; m := mask; la' := la & m; v := la' op lb;
+    v' := v & m; i1 := 1; …; i5 := 5;
+    d0 := aV[i0 := v']; d1 := d0[i1 := i0]; …; d5 := d4[i5 := i0]
+
+    The result `d5` holds `v'` at limb `0` and `0` at the other limbs. Every op is in the
+    fragment `DialectToJasminCom` lowers. -/
+def inlineArithCont {Γ : Ctx} (r : InlineArith) (aV bV : CVar Γ (.memref 6)) :
+    ComCont Γ (inlineArithCtx Γ) :=
+  let Γ₁ : Ctx := .sword 64 :: Γ
+  let Γ₂ : Ctx := .sword 64 :: Γ₁
+  let Γ₃ : Ctx := .sword 64 :: Γ₂
+  let Γ₄ : Ctx := .sword 64 :: Γ₃
+  let Γ₅ : Ctx := .sword 64 :: Γ₄
+  let Γ₆ : Ctx := .sword 64 :: Γ₅
+  let Γ₇ : Ctx := .sword 64 :: Γ₆
+  let Γ₈ : Ctx := .sword 64 :: Γ₇
+  let Γ₉ : Ctx := .sword 64 :: Γ₈
+  let Γ₁₀ : Ctx := .sword 64 :: Γ₉
+  let Γ₁₁ : Ctx := .sword 64 :: Γ₁₀
+  let Γ₁₂ : Ctx := .sword 64 :: Γ₁₁
+  let Γ₁₃ : Ctx := .memref 6 :: Γ₁₂
+  let Γ₁₄ : Ctx := .memref 6 :: Γ₁₃
+  let Γ₁₅ : Ctx := .memref 6 :: Γ₁₄
+  let Γ₁₆ : Ctx := .memref 6 :: Γ₁₅
+  let Γ₁₇ : Ctx := .memref 6 :: Γ₁₆
+  let const : (Δ : Ctx) → BitVec 64 → Expr catCryptDialect Δ (.sword 64) :=
+    fun _ k => Expr.mk (.bvConst 64 k) rfl .nil
+  let eI0 := const Γ 0
+  let eLa : Expr catCryptDialect Γ₁ (.sword 64) :=
+    { op := .memrefGetDyn 6, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there aV : CVar Γ₁ (.memref 6)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₁ (.sword 64))) .nil) }
+  let eLb : Expr catCryptDialect Γ₂ (.sword 64) :=
+    { op := .memrefGetDyn 6, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there bV) : CVar Γ₂ (.memref 6)))
+        (.cons (toVIRVar (CVar.there CVar.here : CVar Γ₂ (.sword 64))) .nil) }
+  let eM := const Γ₃ r.mask
+  let eLa' : Expr catCryptDialect Γ₄ (.sword 64) :=
+    { op := .bvAnd 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there CVar.here) : CVar Γ₄ (.sword 64)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₄ (.sword 64))) .nil) }
+  let eV : Expr catCryptDialect Γ₅ (.sword 64) :=
+    r.bop.expr (CVar.here : CVar Γ₅ (.sword 64))
+      (CVar.there (CVar.there CVar.here) : CVar Γ₅ (.sword 64))
+  let eV' : Expr catCryptDialect Γ₆ (.sword 64) :=
+    { op := .bvAnd 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.here : CVar Γ₆ (.sword 64)))
+        (.cons (toVIRVar (CVar.there (CVar.there CVar.here) : CVar Γ₆ (.sword 64))) .nil) }
+  let eI1 := const Γ₇ 1
+  let eI2 := const Γ₈ 2
+  let eI3 := const Γ₉ 3
+  let eI4 := const Γ₁₀ 4
+  let eI5 := const Γ₁₁ 5
+  -- `Γ₁₂ = i5 :: i4 :: i3 :: i2 :: i1 :: v' :: v :: la' :: m :: lb :: la :: i0 :: Γ`.
+  let aV₁₂ : CVar Γ₁₂ (.memref 6) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there aV)))))))))))
+  let i0₁₂ : CVar Γ₁₂ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here))))))))))
+  let v'₁₂ : CVar Γ₁₂ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let eD0 : Expr catCryptDialect Γ₁₂ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar aV₁₂) (.cons (toVIRVar i0₁₂) (.cons (toVIRVar v'₁₂) .nil)))
+  -- In each `Γ₁₂₊ₖ` (`k ≥ 1`) the previous slot is `here`, the index `iₖ` is at depth `5`
+  -- and the zero word `i0` at depth `11 + k`.
+  let i1₁₃ : CVar Γ₁₃ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let i0₁₃ : CVar Γ₁₃ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here)))))))))))
+  let eD1 : Expr catCryptDialect Γ₁₃ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar (CVar.here : CVar Γ₁₃ (.memref 6)))
+        (.cons (toVIRVar i1₁₃) (.cons (toVIRVar i0₁₃) .nil)))
+  let i2₁₄ : CVar Γ₁₄ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let i0₁₄ : CVar Γ₁₄ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here))))))))))))
+  let eD2 : Expr catCryptDialect Γ₁₄ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar (CVar.here : CVar Γ₁₄ (.memref 6)))
+        (.cons (toVIRVar i2₁₄) (.cons (toVIRVar i0₁₄) .nil)))
+  let i3₁₅ : CVar Γ₁₅ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let i0₁₅ : CVar Γ₁₅ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here)))))))))))))
+  let eD3 : Expr catCryptDialect Γ₁₅ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar (CVar.here : CVar Γ₁₅ (.memref 6)))
+        (.cons (toVIRVar i3₁₅) (.cons (toVIRVar i0₁₅) .nil)))
+  let i4₁₆ : CVar Γ₁₆ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let i0₁₆ : CVar Γ₁₆ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here))))))))))))))
+  let eD4 : Expr catCryptDialect Γ₁₆ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar (CVar.here : CVar Γ₁₆ (.memref 6)))
+        (.cons (toVIRVar i4₁₆) (.cons (toVIRVar i0₁₆) .nil)))
+  let i5₁₇ : CVar Γ₁₇ (.sword 64) := .there (.there (.there (.there (.there CVar.here))))
+  let i0₁₇ : CVar Γ₁₇ (.sword 64) :=
+    .there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there CVar.here)))))))))))))))
+  let eD5 : Expr catCryptDialect Γ₁₇ (.memref 6) :=
+    Expr.mk (.memrefSetDyn 6) rfl
+      (.cons (toVIRVar (CVar.here : CVar Γ₁₇ (.memref 6)))
+        (.cons (toVIRVar i5₁₇) (.cons (toVIRVar i0₁₇) .nil)))
+  ComCont.comp (ComCont.varBind eI0)
+    (ComCont.comp (ComCont.varBind eLa)
+      (ComCont.comp (ComCont.varBind eLb)
+        (ComCont.comp (ComCont.varBind eM)
+          (ComCont.comp (ComCont.varBind eLa')
+            (ComCont.comp (ComCont.varBind eV)
+              (ComCont.comp (ComCont.varBind eV')
+                (ComCont.comp (ComCont.varBind eI1)
+                  (ComCont.comp (ComCont.varBind eI2)
+                    (ComCont.comp (ComCont.varBind eI3)
+                      (ComCont.comp (ComCont.varBind eI4)
+                        (ComCont.comp (ComCont.varBind eI5)
+                          (ComCont.comp (ComCont.varBind eD0)
+                            (ComCont.comp (ComCont.varBind eD1)
+                              (ComCont.comp (ComCont.varBind eD2)
+                                (ComCont.comp (ComCont.varBind eD3)
+                                  (ComCont.comp (ComCont.varBind eD4)
+                                    (ComCont.varBind eD5)))))))))))))))))
+
+/-- The `VarMap` after the inline lowering: the seventeen temporaries are anonymous and
+    `dst` names the top slot. -/
+def inlineArithVm {Γ : Ctx} (vm : VarMap Γ) (dst : String) : VarMap (inlineArithCtx Γ) :=
+  (((((((((((((((((vm.weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .memref 6)).weaken (t := .memref 6)).weaken
+    (t := .memref 6)).weaken (t := .memref 6)).weaken (t := .memref 6)).bind
+    (t := .memref 6) dst
+
 /-! ## 2. The fused multi-binding front `translateDialectFull`
 
 Lowers the leaf-call arms, building `ComCont` prefixes. Core arms delegate to
@@ -792,16 +1014,23 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
   -- the same image the jasmin lowering gives it
   -- (`LowCTToJasmin.toJasminCmd_RAssert`: the empty instruction list).
   | .RAssert _label => some { Γ' := Γ, cont := ComCont.id, vm := vm }
-  -- Leaf-call arms (the new multi-binding coverage):
+  -- Leaf-call arms (the new multi-binding coverage). A call into a `.TFp` slot on two
+  -- six-limb slots whose name is in `inlineArithTable` lowers inline (§1e); every other
+  -- call is the opaque `extCall`.
   | .RCall fname dest args =>
       match resolveLocatedArgs vm args with
       | none => none
       | some resolvedArgs =>
-          let retTy := encodeTy dest.locDst
-          match listSigmaToCHVector resolvedArgs with
-          | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
-            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar }
+          match dest.locDst, inlineArithRecipe fname, inlineArithArgsVars resolvedArgs with
+          | .TFp, some r, some (aV, bV) =>
+              some { Γ' := inlineArithCtx Γ, cont := inlineArithCont r aV bV,
+                     vm := inlineArithVm vm dest.locVar }
+          | _, _, _ =>
+              let retTy := encodeTy dest.locDst
+              match listSigmaToCHVector resolvedArgs with
+              | ⟨_argTys, hv⟩ =>
+                let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
+                some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar }
   -- Constant-time select on 64-bit words: the comparison select of §1d. A select over
   -- any other slots (a point bundle, a field-element tower) is the opaque
   -- `extCall "select"` leaf over the selector and the two sources, in that order.
@@ -1042,6 +1271,65 @@ theorem translateDialectFull_rAssert_seq {Γ : Ctx} (vm : VarMap Γ) (label : St
   cases h : translateDialectFull vm c with
   | none => simp only [translateDialectFull, h]
   | some o => simp only [translateDialectFull, h, ComCont.id_comp]
+
+/-- On a name outside `inlineArithTable`, the `RCall` arm is the opaque `extCall`
+    binding. -/
+theorem translateDialectFull_rCall_of_recipe_none {Γ : Ctx} (vm : VarMap Γ) {fname : String}
+    (h : inlineArithRecipe fname = none) (dest : Located) (args : List Located) :
+    translateDialectFull vm (.RCall fname dest args) =
+      match resolveLocatedArgs vm args with
+      | none => none
+      | some resolvedArgs =>
+          let retTy := encodeTy dest.locDst
+          match listSigmaToCHVector resolvedArgs with
+          | ⟨_argTys, hv⟩ =>
+            let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
+            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar } := by
+  unfold translateDialectFull
+  cases resolveLocatedArgs vm args with
+  | none => rfl
+  | some ra =>
+      simp only [h]
+      split
+      · rename_i _ h2 _
+        cases h2
+      · rfl
+
+/-- On a table name, a `.TFp` destination and two resolved six-limb arguments, the `RCall`
+    arm is the inline lowering. -/
+theorem translateDialectFull_rCall_inline {Γ : Ctx} (vm : VarMap Γ) {fname : String}
+    {r : InlineArith} (h : inlineArithRecipe fname = some r) (dv : String) (args : List Located)
+    {ra : List ((t : CryptoTy) × CVar Γ t)} (hra : resolveLocatedArgs vm args = some ra)
+    {aV bV : CVar Γ (.memref 6)} (hv : inlineArithArgsVars ra = some (aV, bV)) :
+    translateDialectFull vm (.RCall fname ⟨dv, .TFp⟩ args) =
+      some { Γ' := inlineArithCtx Γ, cont := inlineArithCont r aV bV,
+             vm := inlineArithVm vm dv } := by
+  unfold translateDialectFull
+  simp only [hra, h, hv]
+
+/-- **The two shapes of the `RCall` arm.** A successful translation of `RCall f dest args`
+    with resolved arguments `ra` is the inline lowering (a table name, a `.TFp`
+    destination and two six-limb arguments) or the opaque `extCall` binding. -/
+theorem translateDialectFull_rCall_shape {Γ : Ctx} (vm : VarMap Γ) (fname : String)
+    (dest : Located) (args : List Located) {ra : List ((t : CryptoTy) × CVar Γ t)}
+    (hra : resolveLocatedArgs vm args = some ra) {o : DTransOut Γ}
+    (h : translateDialectFull vm (.RCall fname dest args) = some o) :
+    (∃ (r : InlineArith) (aV bV : CVar Γ (.memref 6)),
+      dest.locDst = .TFp ∧ inlineArithRecipe fname = some r ∧
+      inlineArithArgsVars ra = some (aV, bV) ∧
+      o = { Γ' := inlineArithCtx Γ, cont := inlineArithCont r aV bV,
+            vm := inlineArithVm vm dest.locVar }) ∨
+    ((match listSigmaToCHVector ra with
+      | ⟨_argTys, hv⟩ =>
+        some { Γ' := encodeTy dest.locDst :: Γ,
+               cont := ComCont.varBind (extCallExpr fname (encodeTy dest.locDst) hv),
+               vm := vm.bind dest.locVar } : Option (DTransOut Γ)) = some o) := by
+  unfold translateDialectFull at h
+  simp only [hra] at h
+  split at h
+  · rename_i heq1 heq2 heq3
+    exact Or.inl ⟨_, _, _, heq1, heq2, heq3, (Option.some.inj h).symm⟩
+  · exact Or.inr h
 
 /-! ## 3. The covered fragment
 

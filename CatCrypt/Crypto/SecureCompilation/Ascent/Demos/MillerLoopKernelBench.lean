@@ -80,6 +80,15 @@ def bLoc : Located := ⟨"b", .TU64⟩
 /-- The encoded type of an `Fp12` slot. -/
 abbrev FTy : CryptoTy := encodeTy .TFp12
 
+/-- The `RCall` value at an `Fp12` destination is the leaf oracle (the inline arithmetic
+    arm is at `.TFp` only). -/
+theorem inlineRCallVal_TFp12 (ls : SemLeafSpec) (f : String) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    inlineRCallVal ls f .TFp12 vals = ls f (encodeTy .TFp12) vals := rfl
+
+/-- The `RCall` value at a `u64` destination is the leaf oracle. -/
+theorem inlineRCallVal_TU64 (ls : SemLeafSpec) (f : String) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    inlineRCallVal ls f .TU64 vals = ls f (encodeTy .TU64) vals := rfl
+
 /-- The conditional addition step: `la := line_add(i); f := fp12_mul(f, la)`. -/
 def millerAddStep : LowCT :=
   .RSeq (.RCall "line_add" laLoc [iLoc]) (.RCall "fp12_mul" fLoc [fLoc, laLoc])
@@ -153,8 +162,9 @@ theorem millerBody_corres (ls : SemLeafSpec) (fuel : Nat)
   rintro env ⟨o, x⟩ ⟨hi, v, hv, hrep⟩ ⟨n, rfl, hn⟩
   have hi' : env "i" = some (ctrArg n) := hi n rfl
   have hbit := hL.bit n hn
-  simp only [millerBody, millerAddStep, semUL, semScalarL_rCall, Option.bind_some, sqLoc,
-    ldLoc, fLoc, iLoc, bLoc, laLoc, locNames, argVals, List.map_cons, List.map_nil,
+  simp only [millerBody, millerAddStep, semUL, semScalarL_rCall, sqLoc, ldLoc, fLoc, iLoc, bLoc,
+    laLoc, inlineRCallVal_TFp12, inlineRCallVal_TU64, Option.bind_some,
+    locNames, argVals, List.map_cons, List.map_nil,
     List.filterMap_cons, List.filterMap_nil, SEnvScalar.upd, hv, hi', semScalarCond, guardNz,
     envReadU64, if_true, if_false, String.reduceEq, encodeTy, Option.getD_some]
   have hsq := hL.sq v x hrep

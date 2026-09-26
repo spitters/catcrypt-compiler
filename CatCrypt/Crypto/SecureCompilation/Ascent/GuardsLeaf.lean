@@ -113,6 +113,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (inlineArithRecipe)
 open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
@@ -932,18 +933,21 @@ theorem corresL_selectArrLeaf (ls : SemLeafSpec) (L : ArrLayout) (dst : Located)
   corresL_leafArr ls L _ "select" dst n _ g hg hsz henc (by simp [locNames, hs, h0, h1])
     (fun env _ _ => semScalarL_rSelect_leafDst ls dst sel src0 src1 env henc)
 
-/-- **The leaf call rule into an array.** `RCall fname dst args` with `dst` a layout array
-    of length `n` whose type encodes to `.memref n` abstracts to
-    `setCells dst n (g (abstract arguments))` for an abstract array leaf `g` sound for the
-    oracle at `fname`. -/
-theorem corresL_callArr (ls : SemLeafSpec) (L : ArrLayout) (fname : String) (dst : Located)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (inlineArithRecipe) in
+/-- **The leaf call rule into an array.** `RCall fname dst args` with `fname` outside
+    `inlineArithTable` and `dst` a layout array of length `n` whose type encodes to
+    `.memref n` abstracts to `setCells dst n (g (abstract arguments))` for an abstract
+    array leaf `g` sound for the oracle at `fname`. -/
+theorem corresL_callArr (ls : SemLeafSpec) (L : ArrLayout) (fname : String)
+    (hni : inlineArithRecipe fname = none) (dst : Located)
     (args : List Located) (n : Nat) (g : List AVal → Nat → ZMod (2 ^ 64))
     (hg : LeafAbsArr ls fname g) (hsz : layoutSize L dst.locVar = some n)
     (henc : encodeTy dst.locSrc = .memref n) (hargs : ∀ x ∈ locNames args, argOkB L x = true) :
     CorresL ls (SRwordL L) (fun _ => True)
       (fun a => setCells dst.locVar n (g ((locNames args).map (absArg L a))) a)
       (.RCall fname dst args) :=
-  corresL_leafArr ls L _ fname dst n _ g hg hsz henc hargs (fun _ _ _ => rfl)
+  corresL_leafArr ls L _ fname dst n _ g hg hsz henc hargs
+    (fun env _ _ => semScalarL_rCall_of_recipe_none ls hni dst args env)
 
 /-- **The destination-threaded call rule.** `RCallDstThreaded fname dst args` with `dst` an
     unreserved `u64` word abstracts to `dst := f (abstract dst :: abstract arguments)`
@@ -1147,10 +1151,25 @@ theorem leafDstAbs_cases {ctor : String} {lf : AbsLeaves} {lfa : AbsArrLeaves} {
   · exact Or.inl ⟨hsz, hd, hdk, hargs⟩
   · exact Or.inr ⟨n, hsz, henc, hargs⟩
 
-/-- The abstraction of `RCall fname dst args`: `leafDstAbs` at `fname` on the arguments. -/
+/-- The abstraction of `RCall fname dst args`: `leafDstAbs` at `fname` on the arguments.
+    A call of a name in `inlineArithTable` into a `.TFp` slot is unsupported: the front
+    lowers it inline and `semScalarL` binds the inline value, not the leaf oracle. -/
 def callAbsL (lf : AbsLeaves) (lfa : AbsArrLeaves) (L : ArrLayout) (fname : String)
     (dst : Located) (args : List Located) : List Guard × (AField → AField) :=
-  leafDstAbs "RCall" lf lfa L fname dst (locNames args)
+  if dst.locSrc = .TFp ∧ (inlineArithRecipe fname).isSome then unsupportedAbs "RCall"
+  else leafDstAbs "RCall" lf lfa L fname dst (locNames args)
+
+/-- Outside the inline arithmetic case the `RCall` value is the leaf oracle at the encoded
+    destination type. -/
+theorem inlineRCallVal_eq_of_not_inline (ls : SemLeafSpec) (f : String) (tt : TowerType)
+    (vals : List ((t : CryptoTy) × ⟦t⟧)) (hn : ¬ (tt = .TFp ∧ (inlineArithRecipe f).isSome)) :
+    inlineRCallVal ls f tt vals = ls f (encodeTy tt) vals := by
+  cases tt <;> try rfl
+  have hrec : inlineArithRecipe f = none := by
+    cases h : inlineArithRecipe f with
+    | none => rfl
+    | some r => exact absurd ⟨rfl, by simp [h]⟩ hn
+  exact withInlineArith_of_recipe_none ls hrec (.memref 6) vals
 
 /-- The abstraction of `RCallDstThreaded fname dst args`: `leafDstAbs` at `fname` on the
     destination followed by the arguments. -/
@@ -1327,6 +1346,10 @@ theorem ascendGLL_noLeaves (L : ArrLayout) (fuel : Nat) :
   | RIfNz name thenBr elseBr ihT _ => simp only [ascendGLL, ascendGL, ihT]
   | RWhileNz name body ih => simp only [ascendGLL, ascendGL, ih]
   | RFor x N body ih => simp only [ascendGLL, ascendGL, ih]
+  | RCall f dst args =>
+      show callAbsL noLeaves noArrLeaves L f dst args = unsupportedAbs "RCall"
+      unfold callAbsL
+      split <;> rfl
   | _ => rfl
 
 /-! ## Soundness -/
@@ -1642,8 +1665,16 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
   case RArrStore arr idxVar src => exact corresUL_arrStoreAbs ls L fuel arr idxVar src
   case RLimbStore loc idx v => exact corresUL_limbStoreAbs ls L fuel loc idx v
   case RCall fname dst args =>
-    exact corresUL_of_absStep ls rfl (fun _ _ _ _ => rfl)
-      (absStep_leafDst ls lf lfa hlf hlfa L "RCall" fname dst (locNames args))
+    show CorresUL ls fuel (SRwordL L) (guardsHold (callAbsL lf lfa L fname dst args).1)
+      (callAbsL lf lfa L fname dst args).2 (.RCall fname dst args)
+    unfold callAbsL
+    split
+    · exact corresUL_unsupported _ _ _ _ _
+    · rename_i hn
+      exact corresUL_of_absStep ls rfl
+        (fun env _ _ _ => by
+          rw [semScalarL_rCall, inlineRCallVal_eq_of_not_inline ls fname dst.locSrc _ hn]; rfl)
+        (absStep_leafDst ls lf lfa hlf hlfa L "RCall" fname dst (locNames args))
   case RCallDstThreaded fname dst args =>
     exact corresUL_of_absStep ls rfl (fun _ _ _ _ => rfl)
       (absStep_leafDst ls lf lfa hlf hlfa L "RCallDstThreaded" fname dst (locNames (dst :: args)))

@@ -306,6 +306,15 @@ theorem lowerSExpr_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat)
   | SMulHiS _ _ _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
   | SLimb _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
 
+/-- The `VarMap` after the inline arithmetic lowering is alias-free when the entry map
+    is. -/
+theorem noAlias_inlineArithVm {Γ : Ctx} {vm : VarMap Γ} (h : NoAliasVM vm) (dst : String) :
+    NoAliasVM (inlineArithVm vm dst) :=
+  noAlias_bind (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
+    (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
+    (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
+    (noAlias_weaken (noAlias_weaken (noAlias_weaken h))))))))))))))))) dst
+
 /-- The multi-binding (`IsCovered`) front preserves `NoAliasVM`: every arm grows
     `vm` by `bind`/`weaken` steps (and the `RCallN` fold), each `NoAliasVM`-safe. -/
 theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
@@ -344,11 +353,14 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
       simp only [translateDialectFull] at hT
       exact ih vm hT hNA
   | rCall fname dest args =>
-      simp only [translateDialectFull] at hT
-      split at hT
-      · exact absurd hT (by simp)
-      · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind hNA dest.locVar
+      rcases hra : resolveLocatedArgs vm args with _ | ra
+      · simp [translateDialectFull, hra] at hT
+      · rcases translateDialectFull_rCall_shape vm fname dest args hra hT with
+          ⟨r, aV, bV, _, _, _, rfl⟩ | hT'
+        · exact noAlias_inlineArithVm hNA dest.locVar
+        · simp only [Option.some.injEq] at hT'
+          subst hT'
+          exact noAlias_bind hNA dest.locVar
   | rSelect dst sel src0 src1 =>
       simp only [translateDialectFull] at hT
       split at hT
@@ -627,6 +639,72 @@ theorem rustStateInterp_weaken_word {Γ : Ctx} {vm : VarMap Γ} {rs : RustState}
     | sum _ _ => simp only [bindingOK]
     | memrefW _ _ => simp only [bindingOK]
 
+/-- A value pushed onto the valuation under the weakened map keeps the state
+    interpretation, at every slot type: every binding of the map refers past the new
+    slot. -/
+theorem rustStateInterp_weaken {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
+    (hInv : RustStateInterp vm rs V) {s : CryptoTy} (w : ⟦s⟧) :
+    RustStateInterp (vm.weaken : VarMap (s :: Γ)) rs (HVec.cons w V) := by
+  refine ⟨?_, noAlias_weaken hInv.noAlias⟩
+  intro name t cv hL
+  simp only [VarMap.weaken] at hL
+  cases hOld : vm.lookup name with
+  | none => rw [hOld] at hL; exact absurd hL (by simp)
+  | some pair3 =>
+    rw [hOld] at hL
+    obtain ⟨t', cv'⟩ := pair3
+    simp only [Option.some.injEq, Sigma.mk.injEq] at hL
+    obtain ⟨ht', hcvE⟩ := hL
+    subst ht'
+    cases hcvE
+    have hOldOK := hInv name t' cv' hOld
+    cases t' with
+    | sword nw =>
+      by_cases h64 : nw = 64
+      · subst h64
+        show (CVar.there cv' : CVar (s :: Γ) (.sword 64)).lookup (HVec.cons w V)
+              = BitVec.ofNat 64 (rs.rsScalar name)
+        simp [CVar.lookup]
+        exact hOldOK
+      · exact bindingOK_sword_ne (n := nw) h64 _ _ _ _
+    | memref m =>
+      simp only [bindingOK] at hOldOK ⊢
+      cases hRsT2 : rs.rsTower name with
+      | none => rw [hRsT2] at hOldOK; exact hOldOK
+      | some pair4 =>
+        rw [hRsT2] at hOldOK
+        obtain ⟨t'', vt⟩ := pair4
+        intro hEncP
+        have hHeqP := hOldOK hEncP
+        show HEq ((CVar.there cv' : CVar (s :: Γ) (.memref m)).lookup (HVec.cons w V))
+                 (cryptoTyOfRustVal t'' vt)
+        simp only [CVar.lookup]
+        exact hHeqP
+    | bit => simp only [bindingOK]
+    | unit => simp only [bindingOK]
+    | pair _ _ => simp only [bindingOK]
+    | sum _ _ => simp only [bindingOK]
+    | memrefW _ _ => simp only [bindingOK]
+
+/-- The state interpretation carries over the inline arithmetic lowering: the seventeen
+    temporaries are pushed anonymously, and the destination slot binds the tower value
+    written. -/
+theorem rustStateInterp_inlineArithVm {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
+    (hInv : RustStateInterp vm rs V) (dst : String) (tv : Σ τ : TowerType, RustVal τ) :
+    ∃ V' : HVec (inlineArithCtx Γ),
+      RustStateInterp (inlineArithVm vm dst) (rsSetTower rs dst tv) V' := by
+  have hw : ∀ {Δ : Ctx} {vm' : VarMap Δ} {V' : HVec Δ}, RustStateInterp vm' rs V' →
+      RustStateInterp (vm'.weaken : VarMap (.sword 64 :: Δ)) rs (HVec.cons (0 : BitVec 64) V') :=
+    fun h => rustStateInterp_weaken h (s := .sword 64) (0 : BitVec 64)
+  have hm : ∀ {Δ : Ctx} {vm' : VarMap Δ} {V' : HVec Δ}, RustStateInterp vm' rs V' →
+      RustStateInterp (vm'.weaken : VarMap (.memref 6 :: Δ)) rs
+        (HVec.cons (fun _ => (0 : BitVec 64)) V') :=
+    fun h => rustStateInterp_weaken h (s := .memref 6) (fun _ => (0 : BitVec 64))
+  have h₁₂ := hw (hw (hw (hw (hw (hw (hw (hw (hw (hw (hw (hw hInv)))))))))))
+  have h₁₇ := hm (hm (hm (hm (hm h₁₂))))
+  obtain ⟨w, hw⟩ := interp_cons_setTower_any h₁₇ dst (.memref 6) tv
+  exact ⟨_, hw⟩
+
 /-- **Rust ↔ dialect-front simulation.**
     On the control-covered fragment `IsCoveredCtl`, if the direct dialect
     front `translateDialectControl` translates `c` with output `o`, then every
@@ -757,10 +835,18 @@ theorem rustExecSimulatesDialect
       -- The runtime loop is not in the covered/translatable fragment.
       cases hCov with | ofCovered hc => cases hc
   | call f dest args rs0 oldDestV argList _hLook _hArgs =>
-      simp only [translateDialectControl, translateDialectFull] at hTrans
-      split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
+      have hTransF : translateDialectFull vm (.RCall f dest args) = some o := hTrans
+      clear hTrans
+      rcases hra : resolveLocatedArgs vm args with _ | ra
+      · simp [translateDialectFull, hra] at hTransF
+      · rcases translateDialectFull_rCall_shape vm f dest args hra hTransF with
+          ⟨r, aV, bV, hTFp, _, _, rfl⟩ | hTrans
+        · -- The inline lowering: seventeen anonymous temporaries, then the destination.
+          obtain ⟨destVar, destSrc⟩ := dest
+          have hTFp' : destSrc = .TFp := hTFp
+          subst hTFp'
+          simp only [locatedUpdate]
+          exact rustStateInterp_inlineArithVm hInv destVar _
         simp only [Option.some.injEq] at hTrans
         subst hTrans
         obtain ⟨destVar, destSrc⟩ := dest
@@ -1227,7 +1313,9 @@ theorem rustExecSimulatesDialect
       have hNAo : NoAliasVM o.vm :=
         translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias
       exact ⟨_, noAlias_canonical_witness hNAo (rsSetScalar rs0 x (e.evalState rs0))⟩
-  | callSwap fname dest1 dest2 args rsCS rs1CS rs'CS _h1 _h2 ih1 ih2 =>
+  | callSwap fname dest1 dest2 args rsCS rs1CS rs'CS h1 h2 _ih1 _ih2 =>
+      -- The two `extCall` bindings of the arm each bind one destination to the tower
+      -- value the corresponding `RCall` step writes.
       simp only [translateDialectControl, translateDialectFull] at hTrans
       cases hMA1 : resolveLocatedArgs vm args with
       | none => rw [hMA1] at hTrans; exact absurd hTrans (by simp)
@@ -1239,27 +1327,18 @@ theorem rustExecSimulatesDialect
           rw [hMA2] at hTrans
           simp only [Option.some.injEq] at hTrans
           subst hTrans
-          have hC1 : IsCoveredCtl (.RCall fname dest1 args) :=
-            .ofCovered (.rCall fname dest1 args)
-          have hC2 : IsCoveredCtl (.RCall fname dest2 args) :=
-            .ofCovered (.rCall fname dest2 args)
-          have ho1 : translateDialectControl vm (.RCall fname dest1 args)
-              = some { Γ' := encodeTy dest1.locDst :: Γ,
-                       cont := fun {_t} =>
-                         ComCont.varBind (extCallExpr fname (encodeTy dest1.locDst)
-                           (listSigmaToCHVector resolvedArgs).snd),
-                       vm := vm.bind dest1.locVar } := by
-            simp only [translateDialectControl, translateDialectFull, hMA1]
-          have ho2 : translateDialectControl (vm.bind dest1.locVar) (.RCall fname dest2 args)
-              = some { Γ' := encodeTy dest2.locDst :: encodeTy dest1.locDst :: Γ,
-                       cont := fun {_t} =>
-                         ComCont.varBind (extCallExpr fname (encodeTy dest2.locDst)
-                           (listSigmaToCHVector resolvedArgs2).snd),
-                       vm := (vm.bind dest1.locVar).bind dest2.locVar } := by
-            simp only [translateDialectControl, translateDialectFull, hMA2]
-          obtain ⟨V1, hInv1⟩ := ih1 vm _ hC1 ho1 V hInv
-          obtain ⟨V', hInv'⟩ := ih2 (vm.bind dest1.locVar) _ hC2 ho2 V1 hInv1
-          exact ⟨V', hInv'⟩
+          cases h1 with
+          | call _ _ _ _ oldV1 argList1 _ _ _ =>
+            cases h2 with
+            | call _ _ _ _ oldV2 argList2 _ _ _ =>
+              simp only [locatedUpdate]
+              obtain ⟨w1, hInv1⟩ := interp_cons_setTower_any hInv dest1.locVar
+                (encodeTy dest1.locDst)
+                ⟨dest1.locDst, leafSpec.call fname dest1.locDst (args.map (·.locDst)) oldV1 argList1⟩
+              obtain ⟨w2, hInv2⟩ := interp_cons_setTower_any hInv1 dest2.locVar
+                (encodeTy dest2.locDst)
+                ⟨dest2.locDst, leafSpec.call fname dest2.locDst (args.map (·.locDst)) oldV2 argList2⟩
+              exact ⟨HVec.cons w2 (HVec.cons w1 V), hInv2⟩
 
 /-- **Rust ↔ dialect simulation for the data-dependent loop `RWhileNz`.**
     The `RWhileNz` specialization of `rustExecSimulatesDialect`, in the shape of
