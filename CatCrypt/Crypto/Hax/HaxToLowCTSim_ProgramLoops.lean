@@ -40,6 +40,10 @@ the same range, guard and body.
   `S` and `v` is in scope at a type that is not a container (`t.elemType = t`),
   and `LimbReadAgrees` is the condition it places on the builtin table
   (`progSimW_letBind_limb`).
+* An assignment `arr = array_update(arr, idx, src)` on three variables lowers to
+  `RArrStore arr idx src`; `simScopeW` accepts it under the side conditions of the
+  `letBind` form, and `ArrUpdateAgrees` is the condition it places on the builtin
+  table (`progSimW_assign_arrUpdate`).
 
 ## Main results
 
@@ -194,7 +198,10 @@ theorem ScalarInv_of_eq {D S : List String} {env env' : Env} (h : ScalarInv D S 
     every loop is its entry scope.  A limb read `let x = index(v, i)` at a
     non-negative integer literal `i` requires `x` to be a name of `S` and `v` to
     be in scope at a type that is not a container, and leaves the scope
-    unchanged. -/
+    unchanged.  An assignment `arr = array_update(arr, idx, src)` on three
+    variables has the side conditions of the `letBind` form: `arr` is recorded in
+    `A` and in scope at that type, `src` is in scope at the element type and `idx`
+    is a name of `S`. -/
 def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerScope) :
     ImpExpr → Option TowerScope
   | .letBind name (.app f args) body =>
@@ -298,7 +305,17 @@ def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerSc
       else none
   | .assign name (.lit _) => if S.contains name then some Γ else none
   | .assign name (.app f args) =>
-      if f = "array_update" ∨ f = "index" then none
+      if f = "array_update" then
+        match args with
+        | [.var arr, .var idx, .var src] =>
+            match List.lookup arr A with
+            | some t =>
+                if decide (name = arr) && decide (List.lookup arr Γ = some t)
+                    && decide (List.lookup src Γ = some t.elemType) && S.contains idx then some Γ
+                else none
+            | none => none
+        | _ => none
+      else if f = "index" then none
       else
         let dt := tow f
         if !scalarCallName f && argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
@@ -485,11 +502,10 @@ theorem simScopeW_lookup_mono (tow : String → TowerType) (D S T : List String)
       · cases h
     | app f args =>
       simp only [simScopeW] at h
-      split at h
-      · cases h
-      · split at h
-        · rw [Option.some.injEq] at h; subst h; exact hm
-        · cases h
+      repeat' split at h
+      all_goals first
+        | (rw [Option.some.injEq] at h; subst h; exact hm)
+        | cases h
     | _ => simp [simScopeW] at h
   | tuple es _ =>
     intro Γ Γ' h m dt hm
@@ -1562,6 +1578,65 @@ theorem progSimW_letBind_arrUpdate (name f arr idx src : String) (body : ImpExpr
       hScope hSBmid hSFmid hBodyT hBodyEval hAgreeMid hNNmid
   exact ⟨rs', RustExec.seq _ _ _ _ _ hStore hBodyExec, hAgreeFinal, hSB', hSF', hNN'⟩
 
+/-- The array-store arm of an assignment: `arr = array_update(arr, idx, src)` on
+    three variables simulates by `RArrStore` under `ArrUpdateAgrees`. -/
+theorem progSimW_assign_arrUpdate (name f arr idx src : String)
+    (hf_arr : f = "array_update")
+    (hUpd : ArrUpdateAgrees bridge bi leafSpec) :
+    ProgSimW bridge bi N leafSpec D S T A
+      (.assign name (.app f [.var arr, .var idx, .var src])) := by
+  intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
+  simp only [simScopeW, if_pos hf_arr] at hScope
+  rcases hA : List.lookup arr A with _ | t
+  · rw [hA] at hScope; cases hScope
+  simp only [hA] at hScope
+  split at hScope
+  swap
+  · cases hScope
+  rename_i hc
+  rw [Option.some.injEq] at hScope
+  subst hScope
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+  obtain ⟨⟨⟨hName, hLk⟩, hLkSrc⟩, hIdxS'⟩ := hc
+  have hIdxS : idx ∈ S := mem_of_contains S idx hIdxS'
+  subst hName
+  have hC := haxToLowCT_assign_arrUpdate_some name f name idx src c hf_arr hHax
+  subst hC
+  rw [litTower_arrStore,
+    arrTower_arrStore A { locVar := name, locSrc := .TBytes 0 } { locVar := src, locSrc := .TBytes 0 }
+      idx t hA]
+  simp only [forToLoop, forToLoopArgs] at hEval
+  have hArgsEnv := evalImp_assign_app_argsDefined bi fuel name f
+    [.var name, .var idx, .var src] env v env' (by simp) hEval
+  obtain ⟨vals, vRes, hAV, hBi, henv', _⟩ :=
+    evalImp_assign_app_vars_inv bi fuel name f _ env v env' hArgsEnv hEval
+  obtain ⟨vArr, vIdx, vSrc, rfl, hvArr, hvIdx, hvSrc⟩ := allVars_three hAV
+  subst hf_arr
+  subst henv'
+  obtain ⟨arrV, hRawArr⟩ := hSB name t hLk
+  obtain ⟨srcV, hRawSrc⟩ := hSB src t.elemType hLkSrc
+  have hTIdx : rs.rsTower idx = none := hSF idx hIdxS
+  have hk : ∀ n, valueToScalar vIdx = some n → n = rs.rsScalar idx :=
+    fun n hn => (hAgree.1 idx vIdx n hvIdx hTIdx hn).symm
+  have hNotMem : name ∉ S := by
+    intro hm
+    rw [hSF name hm] at hRawArr
+    cases hRawArr
+  set arrL : Located := { locVar := name, locSrc := t } with harrL
+  set srcL : Located := { locVar := src, locSrc := t.elemType } with hsrcL
+  have hArrLook : locatedLookup rs arrL = some arrV := locatedLookup_of_rsTower rs name t arrV hRawArr
+  have hSrcLook : locatedLookup rs srcL = some srcV :=
+    locatedLookup_of_rsTower rs src t.elemType srcV hRawSrc
+  set newVal := leafSpec.arrStore arrL arrV (rs.rsScalar idx) ⟨t.elemType, srcV⟩ with hnewVal
+  have hStore : RustExec N leafSpec (.RArrStore arrL idx srcL) rs (rsSetTower rs name ⟨t, newVal⟩) :=
+    RustExec.arrStore arrL idx srcL rs (rs.rsScalar idx) arrV srcV rfl hArrLook hSrcLook
+  have hB : bridge t vRes newVal :=
+    hUpd name t vArr vIdx vSrc vRes arrV srcV (rs.rsScalar idx)
+      (hAgree.2 name vArr hvArr t arrV hRawArr) hk (hAgree.2 src vSrc hvSrc _ srcV hRawSrc) hBi
+  exact ⟨_, hStore, envAgreesRustT_extend_tower bridge env rs name vRes t newVal hAgree hB,
+    ScopeBound_rsSetTower_same rs Γ name t newVal hLk hSB,
+    NamesFresh_rsSetTower rs S name _ hNotMem hSF, hNN.extend_of_not_mem hNotMem _⟩
+
 end ArmsW
 
 /-! ## §5  The checker at a given tower dispatch -/
@@ -1898,50 +1973,60 @@ theorem haxToLowCT_simulates_programW
       rw [(evalImp_assign_lit_inv bi fuel name l env v env' hEval).2]
       exact hNN.extend_of_nonneg name (assign_lit_nonneg name l c hHax)
     | app f args =>
+      by_cases hf_arr : f = "array_update"
+      · rcases hSh : varArgs3 args with _ | ⟨arr, idx, src⟩
+        · refine noneArm _ fun Γ => ?_
+          simp only [simScopeW, if_pos hf_arr]
+          split
+          · simp [varArgs3] at hSh
+          · rfl
+        · rw [varArgs3_some hSh]
+          exact progSimW_assign_arrUpdate bridge bi N leafSpec D S T A name f arr idx src hf_arr
+            hUpd
+      by_cases hf_idx : f = "index"
+      · exact noneArm _ fun Γ => by simp only [simScopeW, if_neg hf_arr, if_pos hf_idx]
+      have hf : ¬ (f = "array_update" ∨ f = "index") := not_or.mpr ⟨hf_arr, hf_idx⟩
       by_cases hsc : scalarCallName f = true
       · exact noneArm _ fun Γ => by
-          simp only [simScopeW, hsc, Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false,
-            ite_self]
+          simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc, Bool.not_true, Bool.false_and,
+            Bool.false_eq_true, if_false]
       have hsc' : scalarCallName f = false := by simpa using hsc
       refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
-        (fun _ => by simp only [simScopeW, simScopeA, hsc', Bool.not_false, Bool.true_and]) rfl
+        (fun _ => by
+          simp only [simScopeW, simScopeA, if_neg hf_arr, if_neg hf_idx, if_neg hf, hsc',
+            Bool.not_false, Bool.true_and]) rfl
         ?_ ?_ ?_ (hA _)
       · intro Γ Γ' h
-        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at h
+        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and] at h
         split at h
+        · rename_i hc
+          simp only [Bool.and_eq_true] at hc
+          simp only [forToLoop, forToLoopArgs_of_vars args (argsInScope_allVars Γ _ args hc.1.1)]
         · cases h
-        · split at h
-          · rename_i hc
-            simp only [Bool.and_eq_true] at hc
-            simp only [forToLoop, forToLoopArgs_of_vars args (argsInScope_allVars Γ _ args hc.1.1)]
-          · cases h
       · intro Γ Γ' c fuel env env' v hScope _ hEval hNN
-        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at hScope
+        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and]
+          at hScope
         split at hScope
+        · rename_i hc
+          simp only [Bool.and_eq_true] at hc
+          obtain ⟨vRhs, env_mid, hRhs, _, henv⟩ := evalImp_assign_inv bi fuel name _ env v env' hEval
+          have hAllVar := argsInScope_allVars Γ _ args hc.1.1
+          have hArgsEnv := evalImp_assign_app_argsDefined bi fuel name f args env v env'
+            hAllVar hEval
+          obtain ⟨_, _, _, _, henv', _⟩ :=
+            evalImp_assign_app_vars_inv bi fuel name f args env v env' hArgsEnv hEval
+          rw [henv']
+          exact hNN.extend_of_not_mem (not_mem_of_not_contains S name hc.2) _
         · cases hScope
-        · split at hScope
-          · rename_i hc
-            simp only [Bool.and_eq_true] at hc
-            obtain ⟨vRhs, env_mid, hRhs, _, henv⟩ := evalImp_assign_inv bi fuel name _ env v env' hEval
-            have hAllVar := argsInScope_allVars Γ _ args hc.1.1
-            have hArgsEnv := evalImp_assign_app_argsDefined bi fuel name f args env v env'
-              hAllVar hEval
-            obtain ⟨_, _, _, _, henv', _⟩ :=
-              evalImp_assign_app_vars_inv bi fuel name f args env v env' hArgsEnv hEval
-            rw [henv']
-            exact hNN.extend_of_not_mem (not_mem_of_not_contains S name hc.2) _
-          · cases hScope
       · intro Γ Γ' h fuel env
-        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at h
+        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and] at h
         split at h
+        · rename_i hc
+          simp only [Bool.and_eq_true] at hc
+          exact evalImp_assign_app_eq_tables bi _ fuel name f args
+            (allVar_of_argsInScope Γ _ args hc.1.1)
+            (fun vals => (scalarCallFree_of_false hsc' vals).symm) env
         · cases h
-        · split at h
-          · rename_i hc
-            simp only [Bool.and_eq_true] at hc
-            exact evalImp_assign_app_eq_tables bi _ fuel name f args
-              (allVar_of_argsInScope Γ _ args hc.1.1)
-              (fun vals => (scalarCallFree_of_false hsc' vals).symm) env
-          · cases h
     | _ => exact noneArm _ fun Γ => by simp [simScopeW]
   | typeAscription e _ ih =>
     intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN

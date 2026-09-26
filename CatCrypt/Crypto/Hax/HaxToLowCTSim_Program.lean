@@ -200,9 +200,11 @@ def simScope (S : List String) (Γ : TowerScope) : ImpExpr → Option TowerScope
       | none => none
   | .assign name (.lit _) => if S.contains name then some Γ else none
   | .assign name (.app f args) =>
-      let dt := towerOfCallName f
-      if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
-          && !S.contains name then some Γ else none
+      if f = "array_update" then none
+      else
+        let dt := towerOfCallName f
+        if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
+            && !S.contains name then some Γ else none
   | .tuple es => if es.all isVar then some Γ else none
   | .typeAscription e _ => simScope S Γ e
   | _ => none
@@ -342,8 +344,10 @@ theorem simScope_lookup_mono (S : List String) (e : ImpExpr) :
     | app f args =>
       simp only [simScope] at h
       split at h
-      · rw [Option.some.injEq] at h; subst h; exact hm
       · cases h
+      · split at h
+        · rw [Option.some.injEq] at h; subst h; exact hm
+        · cases h
     | _ => simp [simScope] at h
   | tuple es _ =>
     intro Γ Γ' h m dt hm
@@ -1105,13 +1109,16 @@ theorem progSim_assign_app (name f : String) (args : List ImpExpr)
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
   simp only [simScope] at hScope
   split at hScope
+  · cases hScope
+  rename_i hf
+  split at hScope
   · rename_i hc
     rw [Option.some.injEq] at hScope
     subst hScope
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
     obtain ⟨⟨hArgsIn, hLk⟩, hNotS⟩ := hc
     have hNotMem : name ∉ S := not_mem_of_not_contains S name hNotS
-    obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hHax
+    obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hf hHax
     have hArgsEnv := evalImp_assign_app_argsDefined bi fuel name f args env v env'
       (argsInScope_allVars Γ _ args hArgsIn) hEval
     have hAB : ArgsTowerBound rs args' := argsInScope_bound Γ _ rs hSB args args' hArgsIn hArgsT
@@ -1121,7 +1128,7 @@ theorem progSim_assign_app (name f : String) (args : List ImpExpr)
       ⟨oldV, locatedLookup_of_rsTower rs name _ oldV hOld⟩
     obtain ⟨rs', hExec, hAgree'⟩ :=
       haxToLowCT_simulates_assign_app_full bridge bi fuel N leafSpec name f args c env env' rs v
-        (hPre.allLeavesAgree f) hArgsEnv
+        hf (hPre.allLeavesAgree f) hArgsEnv
         (fun args'' h => by rw [hArgsT] at h; cases h; exact hAB)
         hDestBound (hPre.leafScalar f) hHax hEval hAgree
     subst hC

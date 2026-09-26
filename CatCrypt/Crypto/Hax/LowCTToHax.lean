@@ -148,6 +148,13 @@ def locArgsToImp (args : List Located) : List ImpExpr :=
 def retypeArgs (dt : TowerType) (args : List Located) : List Located :=
   args.map fun a => { locVar := a.locVar, locSrc := dt }
 
+/-- The assignment of a bare call `f` into the destination `d`; `none` for
+    `array_update` on three arguments, whose assignment the front lowers to an
+    array store. -/
+@[simp] def callToImp (f : String) (d : Located) (args : List Located) : Option ImpExpr :=
+  if f = "array_update" ∧ args.length = 3 then none
+  else some (.assign d.locVar (.app f (locArgsToImp args)))
+
 /-- The hax expression that `haxToLowCT` lowers to the command, or `none` when
     no arm of `haxToLowCT` produces the command's shape. -/
 def lowCTToImp : LowCT → Option ImpExpr
@@ -160,7 +167,7 @@ def lowCTToImp : LowCT → Option ImpExpr
       | some a', some b' => some (.seq a' b')
       | _, _ => none
   | .RScalarSet x k => some (.assign x (.lit (.int k)))
-  | .RCall f d args => some (.assign d.locVar (.app f (locArgsToImp args)))
+  | .RCall f d args => callToImp f d args
   | .RLetZero x _ (.RSeq (.RCall f d args) b) =>
       if d.locVar = x ∧ f ≠ "array_update" ∧ f ≠ "index" ∧ scalarCallName f = false then
         (lowCTToImp b).map fun b' => .letBind x (.app f (locArgsToImp args)) b'
@@ -373,9 +380,18 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
     subst h
     simp [haxToLowCT, frontNF]
   case case6 f d args =>
-    simp only [lowCTToImp, Option.some.injEq] at h
-    subst h
-    simp [haxToLowCT, haxArgsToLocated_locArgsToImp, frontNF]
+    simp only [lowCTToImp, callToImp] at h
+    split at h
+    · cases h
+    · rename_i hf
+      simp only [Option.some.injEq] at h
+      subst h
+      simp only [haxToLowCT, haxArgsToLocated_locArgsToImp, frontNF]
+      split
+      · rename_i hfa
+        rcases args with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, rest⟩⟩⟩⟩ <;>
+          simp [locArgsToImp, hfa] at hf ⊢
+      · rfl
   case case7 x t f d args b hc ih =>
     simp only [lowCTToImp, if_pos hc] at h
     cases hb : lowCTToImp b with

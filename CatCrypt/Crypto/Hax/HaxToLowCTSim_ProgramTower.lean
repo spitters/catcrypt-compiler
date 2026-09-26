@@ -555,11 +555,11 @@ theorem progSimT_assign_lit (name : String) (l : ImpLit) :
         exact hSF k hk⟩
   · cases hScope
 
-theorem progSimT_assign_app (name f : String) (args : List ImpExpr)
+theorem progSimT_assign_app (name f : String) (args : List ImpExpr) (hf : f ≠ "array_update")
     (hLeaf : LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge) :
     ProgSimT bridge bi N leafSpec S (.assign name (.app f args)) := by
   intro fuel Γ Γ' c env env' rs v hScope _ hSB hSF hHax hEval hAgree
-  simp only [simScope] at hScope
+  simp only [simScope, if_neg hf] at hScope
   split at hScope
   · rename_i hc
     rw [Option.some.injEq] at hScope
@@ -567,7 +567,7 @@ theorem progSimT_assign_app (name f : String) (args : List ImpExpr)
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
     obtain ⟨⟨hArgsIn, hLk⟩, hNotS⟩ := hc
     have hNotMem : name ∉ S := not_mem_of_not_contains S name hNotS
-    obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hHax
+    obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hf hHax
     subst hC
     have hArgsEnv := evalImp_assign_app_argsDefined bi fuel name f args env v env'
       (argsInScope_allVars Γ _ args hArgsIn) hEval
@@ -652,7 +652,11 @@ theorem haxToLowCT_simulates_programT
   | assign name rhs _ =>
     cases rhs with
     | lit l => exact progSimT_assign_lit bridge bi N leafSpec S name l
-    | app f args => exact progSimT_assign_app bridge bi N leafSpec S name f args (hLeaf f)
+    | app f args =>
+      by_cases hf : f = "array_update"
+      · exact progSimT_of_simScope_none bridge bi N leafSpec S _
+          (fun Γ => by simp only [simScope, if_pos hf])
+      · exact progSimT_assign_app bridge bi N leafSpec S name f args hf (hLeaf f)
     | _ => exact progSimT_of_simScope_none bridge bi N leafSpec S _ (fun Γ => by simp [simScope])
   | typeAscription e _ ih =>
     intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree

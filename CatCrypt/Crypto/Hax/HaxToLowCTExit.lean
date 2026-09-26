@@ -65,6 +65,8 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 * `haxToLowCT_eq_haxToLowCTK_none`: `haxToLowCT` is the exit-free projection of
   `haxToLowCTK false false none`
 * `haxToLowCTK_isSome_iff_anfK`: the lowering succeeds exactly on `AnfShapedK`
+* `ExitGap`, `exitGapOf`, `haxToLowCTK_none_of_exitGap`: the early-exit
+  constructors the lowering refuses, each with its name, and the refusal
 * `searchLoopShape_lowers`: the search loop with an early return lowers
 -/
 
@@ -460,7 +462,43 @@ theorem haxToLowCTK_isSome_of_representable_and_anfK (sc tl : Bool) (e : ImpExpr
   (haxToLowCTK_isSome_iff_anfK sc tl none e).mpr
     (anfShapedK_of_representable sc tl false e hrep hanf)
 
-/-! ## §7  The pipeline shape of a search loop
+/-! ## §7  The refused early-exit constructors -/
+
+/-- The early-exit constructors `haxToLowCTK` refuses, each named by its
+    construct: a counted loop with return, an `earlyReturn` or `questionMark`
+    (which `Hax.pipeline` rewrites into a `cfBreak` inside a `whileFoldReturn`),
+    a `cfContinue` or `cfBreakContinue`, and a bare `break_` or `continue_`. -/
+inductive ExitGap where
+  | forFoldReturn
+  | forFoldRevReturn
+  | earlyReturn
+  | questionMark
+  | cfContinue
+  | cfBreakContinue
+  | breakOutsideFold
+  | continueOutsideFold
+  deriving DecidableEq, Repr, BEq
+
+/-- The `ExitGap` of an expression, or `none` when its head constructor is not
+    one of the refused ones. -/
+def exitGapOf : ImpExpr → Option ExitGap
+  | .forFoldReturn _ _ _ _ => some .forFoldReturn
+  | .forFoldRevReturn _ _ _ _ => some .forFoldRevReturn
+  | .earlyReturn _ => some .earlyReturn
+  | .questionMark _ => some .questionMark
+  | .cfContinue _ => some .cfContinue
+  | .cfBreakContinue _ => some .cfBreakContinue
+  | .break_ _ => some .breakOutsideFold
+  | .continue_ => some .continueOutsideFold
+  | _ => none
+
+/-- `haxToLowCTK` refuses every expression with an `ExitGap`, in every mode, at
+    every tail position and in every loop context. -/
+theorem haxToLowCTK_none_of_exitGap (sc tl : Bool) (fl : Option String) (e : ImpExpr)
+    (g : ExitGap) (h : exitGapOf e = some g) : haxToLowCTK sc tl fl e = none := by
+  cases e <;> simp only [exitGapOf, reduceCtorEq] at h <;> cases tl <;> cases fl <;> rfl
+
+/-! ## §8  The pipeline shape of a search loop
 
 `searchLoopShape` is the output of `Hax.pipeline` on the search loop of
 `Ascent/Demos/EarlyExit.lean` at `x = 1` (`searchU_pipeline`).  The theorem below

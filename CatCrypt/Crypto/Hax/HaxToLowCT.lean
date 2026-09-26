@@ -38,7 +38,8 @@ nesting requires the H2.1 follow-up.
 * `tuple es` with `es` all `var`s — aggregate tuple tail of named
   results; each component already lives in its slot, so the tail is
   `RSkip` (same justification as the trailing `var _` arm).
-* `assign name (lit _)` / `(app f args)` — direct `RScalarSet`/`RCall`.
+* `assign name (lit _)` / `(app f args)` — direct `RScalarSet`/`RCall`;
+  `arr = array_update(arr, idx, src)` on three variables — `RArrStore`.
 * `ifThenElse (var v) _ _` / `whileLoop (var v) _` — `RIfNz` / `RWhileNz`.
 
 ## Returns `none`
@@ -783,7 +784,16 @@ def haxToLowCT : ImpExpr → Option LowCT
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
       match haxArgsToLocated dt args with
-      | some args' => some (.RCall f dest args')
+      | some args' =>
+          -- Array store: `arr = array_update(arr, idx, src)` lowers to
+          -- `RArrStore arr idx src`, as the `letBind` form does.
+          if f = "array_update" then
+            match args with
+            | [.var arr, .var idx, .var src] =>
+                some (.RArrStore { locVar := arr, locSrc := .TBytes 0 } idx
+                  { locVar := src, locSrc := .TBytes 0 })
+            | _ => some (.RCall f dest args')
+          else some (.RCall f dest args')
       | none       => none
   | .assign _ _ => none
   -- §3.6  Bare `app` at non-let, non-assign position has no destination
@@ -1432,8 +1442,14 @@ theorem haxToLowCT_isSome_iff_anf (e : ImpExpr) :
     | app f args =>
       unfold haxToLowCT AnfShaped
       have hargs := haxArgsToLocated_isSome_iff_all_isVar (towerOfCallName f) args
-      cases h1 : haxArgsToLocated (towerOfCallName f) args <;>
-        simp_all [Option.isSome]
+      cases h1 : haxArgsToLocated (towerOfCallName f) args with
+      | none => simp_all [Option.isSome]
+      | some args' =>
+        simp only [h1, Option.isSome_some, true_iff] at hargs
+        simp only [h1, hargs, iff_true]
+        split
+        · split <;> rfl
+        · rfl
     | _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | forLoop _ _ _ _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | forLoopRev _ _ _ _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]

@@ -466,6 +466,16 @@ theorem haxToLowCT_letBind_arrUpdate_some (name f arr idx src : String) (body : 
     simp only [hBody, if_pos hArr, Option.some.injEq] at h
     exact ⟨bodyC, rfl, h.symm⟩
 
+/-- The lowering of `arr = array_update(arr, idx, src)` on three variables is the
+    array store `RArrStore arr idx src`. -/
+theorem haxToLowCT_assign_arrUpdate_some (name f arr idx src : String) (c : LowCT)
+    (hArr : f = "array_update")
+    (h : haxToLowCT (.assign name (.app f [.var arr, .var idx, .var src])) = some c) :
+    c = .RArrStore { locVar := arr, locSrc := .TBytes 0 } idx
+      { locVar := src, locSrc := .TBytes 0 } := by
+  simp only [haxToLowCT, haxArgsToLocated, haxArgToLocated, if_pos hArr, Option.some.injEq] at h
+  exact h.symm
+
 /-! ## §4  The simulation predicate -/
 
 /-- The array load agrees with the builtin `index`: for an array value related by
@@ -1107,10 +1117,10 @@ theorem haxToLowCT_simulates_programA
       have hf_arr : f ≠ "array_update" := fun h => hf (Or.inl h)
       have hf_idx : f ≠ "index" := fun h => hf (Or.inr h)
       refine progSimA_of_progSimT_assign bridge bi N leafSpec S T A _
-        (fun Γ => by simp only [simScopeA, simScope, if_neg hf]) ?_
-        (progSimT_assign_app bridge bi N leafSpec S name f args (hLeaf f hf_arr hf_idx))
+        (fun Γ => by simp only [simScopeA, simScope, if_neg hf, if_neg hf_arr]) ?_
+        (progSimT_assign_app bridge bi N leafSpec S name f args hf_arr (hLeaf f hf_arr hf_idx))
       intro c hc
-      obtain ⟨_, _, rfl⟩ := haxToLowCT_assign_app_some name f args c hc
+      obtain ⟨_, _, rfl⟩ := haxToLowCT_assign_app_some name f args c hf_arr hc
       simp [litTower, arrTower]
     | _ => exact noneArm _ fun Γ => by simp [simScopeA]
   | typeAscription e _ ih =>

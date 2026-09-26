@@ -447,9 +447,10 @@ theorem evalImp_assign_app_vars_inv
     -- After full simp, h = ⟨v = .unit, env' = env.extend name vRes⟩.
     refine ⟨vals, vRes, hAV, hbi, h.2.symm, h.1.symm⟩
 
-/-- Unpack the syntactic translation for `.assign name (.app f args)`. -/
+/-- Unpack the syntactic translation for `.assign name (.app f args)` on a call
+    name other than `array_update`. -/
 theorem haxToLowCT_assign_app_some
-    (name f : String) (args : List ImpExpr) (c : LowCT)
+    (name f : String) (args : List ImpExpr) (c : LowCT) (hf : f ≠ "array_update")
     (h : haxToLowCT (.assign name (.app f args)) = some c) :
     ∃ (args' : List Located),
       haxArgsToLocated (towerOfCallName f) args = some args' ∧
@@ -458,7 +459,7 @@ theorem haxToLowCT_assign_app_some
   cases hArgs : haxArgsToLocated (towerOfCallName f) args with
   | none => simp [hArgs] at h
   | some args' =>
-    simp [hArgs] at h
+    simp [hArgs, hf] at h
     exact ⟨args', rfl, h.symm⟩
 
 /-- Goal 4: assign-app simulation. -/
@@ -467,6 +468,7 @@ theorem haxToLowCT_simulates_assign_app_full
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
     (name f : String) (args : List ImpExpr)
     (c : LowCT) (env env' : Env) (rs : RustState) (v : Value)
+    (hf : f ≠ "array_update")
     (hLeaf : LeafCallAgreesTower bi leafSpec f (towerOfCallName f) bridge)
     (hArgsEnv : ∀ a ∈ args, ∃ n, a = .var n ∧ ∃ w, env n = some w)
     (hArgsBound :
@@ -482,7 +484,7 @@ theorem haxToLowCT_simulates_assign_app_full
       (.assign name (.app f args)) c env env' rs v := by
   intro hHax hEval hAgreeFull
   -- §1: Unpack syntactic translation.
-  obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hHax
+  obtain ⟨args', hArgsT, hC⟩ := haxToLowCT_assign_app_some name f args c hf hHax
   subst hC
   -- §2: Source-side decomposition.
   obtain ⟨vals, vRes, _hAV, hBi, henvEq, hvEq⟩ :=

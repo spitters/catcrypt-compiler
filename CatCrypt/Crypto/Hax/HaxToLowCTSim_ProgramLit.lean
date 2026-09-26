@@ -179,9 +179,11 @@ def simScopeL (S T : List String) (Γ : TowerScope) : ImpExpr → Option TowerSc
       | none => none
   | .assign name (.lit _) => if S.contains name then some Γ else none
   | .assign name (.app f args) =>
-      let dt := towerOfCallName f
-      if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
-          && !S.contains name then some Γ else none
+      if f = "array_update" then none
+      else
+        let dt := towerOfCallName f
+        if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
+            && !S.contains name then some Γ else none
   | .tuple es => if es.all isVar then some Γ else none
   | .typeAscription e _ => simScopeL S T Γ e
   | _ => none
@@ -312,8 +314,10 @@ theorem simScopeL_lookup_mono (S T : List String) (e : ImpExpr) :
     | app f args =>
       simp only [simScopeL] at h
       split at h
-      · rw [Option.some.injEq] at h; subst h; exact hm
       · cases h
+      · split at h
+        · rw [Option.some.injEq] at h; subst h; exact hm
+        · cases h
     | _ => simp [simScopeL] at h
   | tuple es _ =>
     intro Γ Γ' h m dt hm
@@ -776,10 +780,12 @@ theorem haxToLowCT_simulates_programL
       obtain ⟨m, rfl⟩ := haxToLowCT_assign_lit_shape name l c hc
       rfl
     | app f args =>
+      by_cases hf : f = "array_update"
+      · exact noneArm _ fun Γ => by simp only [simScopeL, if_pos hf]
       refine progSimL_of_progSimT_assign bridge bi N leafSpec S T _ (fun Γ => rfl) ?_
-        (progSimT_assign_app bridge bi N leafSpec S name f args (hLeaf f))
+        (progSimT_assign_app bridge bi N leafSpec S name f args hf (hLeaf f))
       intro c hc
-      obtain ⟨_, _, rfl⟩ := haxToLowCT_assign_app_some name f args c hc
+      obtain ⟨_, _, rfl⟩ := haxToLowCT_assign_app_some name f args c hf hc
       rfl
     | _ => exact noneArm _ fun Γ => by simp [simScopeL]
   | typeAscription e _ ih =>
