@@ -14,17 +14,11 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
 of each width-tagged word call on `.int` values, then the array operations on
 `.array`.  It gives the call `Add` Rust's `+` on `u64`, undefined when the sum
 reaches `2^64`, where `wordOpNat "Add"` is the unbounded sum.  The contract
-`WordBuiltins'` asks the word calls only for results below `2^64`, the bound
-every straight-line binding carries in `WBind.Ok`.
-
-## Main definitions
-
-* `WordBuiltins'` — the word calls, `index` and `array_update` as in
-  `WordBuiltins`, the word calls restricted to results below `2^64`.
+`WordBuiltins'` (`HaxToLowCTWordOpsSim`) asks the word calls only for results
+below `2^64`, the bound every straight-line binding carries in `WBind.Ok`.
 
 ## Main results
 
-* `WordBuiltins.toBounded` — `WordBuiltins` implies `WordBuiltins'`.
 * `hax64Builtins_wordBuiltins'` — `WordBuiltins' Hax.hax64Builtins`.
 * `hax64Builtins_mulHiBuiltins` — `MulHiBuiltins Hax.hax64Builtins`: the steps of
   the unfused multiply-high idiom and the fused `mulhi#64` run in the table.
@@ -42,23 +36,6 @@ open _root_.Hax (Value Builtins hax64Builtins hax64WordOps_wrapping_add
   hax64WordOps_array_update widthArrayOps_index_int widthArrayOps_array_update_int
   hax64Builtins_of_none u64BinOp_natCast)
 open CatCrypt.Crypto.Hax (wordOpNames wordOpNat MulHiBuiltins mulHiCallName sexprMulHiU_of_lt)
-
-/-- The facts a builtin table evaluates the straight-line bindings by: every word
-    call of `wordOpNames` on two words below `2^64` whose `wordOpNat` result is
-    below `2^64` returns that result, an `index` read of an `.int` cell, and an
-    in-range `array_update`. -/
-structure WordBuiltins' (bi : Builtins) : Prop where
-  word : ∀ f ∈ wordOpNames, ∀ n m r : Nat, n < 2 ^ 64 → m < 2 ^ 64 →
-    wordOpNat f n m = some r → r < 2 ^ 64 → bi f [.int n, .int m] = some (.int r)
-  index : ∀ (vs : List Value) (i w : Nat), vs[i]? = some (.int w) →
-    bi "index" [.array vs, .int i] = some (.int w)
-  update : ∀ (vs : List Value) (i : Nat) (v : Value), i < vs.length →
-    bi "array_update" [.array vs, .int i, v] = some (.array (vs.set i v))
-
-theorem WordBuiltins.toBounded {bi : Builtins} (h : WordBuiltins bi) : WordBuiltins' bi where
-  word f hf n m r hn hm hr _ := by rw [h.word f hf n m hn hm, hr]; rfl
-  index := h.index
-  update := h.update
 
 /-- **hax-lean's `u64` table meets the bounded word contract.** -/
 theorem hax64Builtins_wordBuiltins' : WordBuiltins' hax64Builtins where

@@ -42,8 +42,8 @@ every executable semantics on its compiler route and reads back the output cells
 
 | Level | Semantics |
 |---|---|
-| `hax-raw` | `denote'` of `Mpn.mpn_mul_1_impExpr` under `rawWordTable` |
-| `hax-fused` | `denote'` of the fused, A-normalised program under `mul1WordTable` |
+| `hax-raw` | `denote'` of `Mpn.mpn_mul_1_impExpr` under hax-lean's runtime table `hax64Builtins` |
+| `hax-fused` | `denote'` of the fused, A-normalised program under `hax64Builtins` |
 | `front-pipeline` | the front's scalar semantics `semScalar` of the lowered loop body |
 | `front-pinned` | the same fold at the pinned body `mul1BodyLow NR` |
 | `coml` | the denotation of the front-compiled `ComL` loop |

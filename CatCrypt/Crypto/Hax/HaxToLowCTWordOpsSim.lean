@@ -31,6 +31,9 @@ retyped shapes.
 * `WordAt`, `ArrAt`, `EnvRelW` — the environment relation.
 * `WordBuiltins` — the facts the builtin table evaluates the word calls,
   `index` and `array_update` by.
+* `WordBuiltins'` — the same facts with the word calls restricted to results
+  below `2^64`, the bound every binding carries in `WBind.Ok`; the simulation
+  theorems assume it.
 * `WBind`, `bindsHax`, `bindsLow`, `bindsNext`, `bindsScope`, `BindsOk` — the
   straight-line bindings, their hax and `LowCT` forms, the hax environment after
   them, the related names after them and their side conditions.
@@ -38,6 +41,7 @@ retyped shapes.
 
 ## Main results
 
+* `WordBuiltins.toBounded` — `WordBuiltins` implies `WordBuiltins'`.
 * `step_word`, `step_lit`, `step_load`, `step_store` — one binding preserves
   `EnvRelW`, with the hax run and the `semScalar` run each reduced to the run of
   the continuation.
@@ -183,6 +187,24 @@ structure WordBuiltins (bi : Builtins) : Prop where
   update : ∀ (vs : List Value) (i : Nat) (v : Value), i < vs.length →
     bi "array_update" [.array vs, .int i, v] = some (.array (vs.set i v))
 
+/-- The facts a builtin table evaluates the straight-line bindings by: every word
+    call of `wordOpNames` on two words below `2^64` whose `wordOpNat` result is
+    below `2^64` returns that result, an `index` read of an `.int` cell, and an
+    in-range `array_update`. -/
+structure WordBuiltins' (bi : Builtins) : Prop where
+  word : ∀ f ∈ wordOpNames, ∀ n m r : Nat, n < 2 ^ 64 → m < 2 ^ 64 →
+    wordOpNat f n m = some r → r < 2 ^ 64 → bi f [.int n, .int m] = some (.int r)
+  index : ∀ (vs : List Value) (i w : Nat), vs[i]? = some (.int w) →
+    bi "index" [.array vs, .int i] = some (.int w)
+  update : ∀ (vs : List Value) (i : Nat) (v : Value), i < vs.length →
+    bi "array_update" [.array vs, .int i, v] = some (.array (vs.set i v))
+
+/-- `WordBuiltins` implies `WordBuiltins'`. -/
+theorem WordBuiltins.toBounded {bi : Builtins} (h : WordBuiltins bi) : WordBuiltins' bi where
+  word f hf n m r hn hm hr _ := by rw [h.word f hf n m hn hm, hr]; rfl
+  index := h.index
+  update := h.update
+
 /-! ### Cells of a memref -/
 
 theorem memGetDyn_memSetDyn {n : Nat} (a : Fin n → BitVec 64) {i j : Nat} (hi : i < n)
@@ -302,7 +324,7 @@ theorem denote_letBind_app_run (bi : Builtins) (fuel : Nat) (x f : String)
     to the binding of `x` to the call's value `r`, and its lowering
     `RLetU64Zero x (RSeq (RScalarSetExpr x se) _)` runs in `semScalar` to a
     scalar environment related to it with `x` added. -/
-theorem step_word {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : Env}
+theorem step_word {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat) {env : Env}
     {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
     {x f a b : String} {se : SExpr} (hf : f ∈ wordOpNames)
     (hse : wordOpSExpr f (.SVar a) (.SVar b) = some se) (ha : a ∈ S) (hb : b ∈ S)
@@ -317,7 +339,7 @@ theorem step_word {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : En
   obtain ⟨hbL, hbE, hbR⟩ := (h.word b hb).natOf_eq
   refine ⟨?_, ?_⟩
   · exact denote_letBind_app_run bi fuel x f [a, b] [.int (natOf env a), .int (natOf env b)]
-      _ body env (by simp [haE, hbE]) (by rw [hbi.word f hf _ _ haL hbL, hr]; rfl)
+      _ body env (by simp [haE, hbE]) (hbi.word f hf _ _ _ haL hbL hr hlt)
   · have hτa : envReadU64 (σ.upd x (t := .sword 64) (0 : BitVec 64)) a =
         some (BitVec.ofNat 64 (natOf env a)) := by rw [envReadU64_upd_ne _ hax, haR]
     have hτb : envReadU64 (σ.upd x (t := .sword 64) (0 : BitVec 64)) b =
@@ -361,7 +383,7 @@ theorem step_lit (bi : Builtins) (fuel : Nat) {env : Env} {σ : SEnvScalar} {S :
     related array `arr` runs in hax to the binding of `x` to cell `i`, and its
     lowering with a `.TU64` destination to a related scalar environment with `x`
     added. -/
-theorem step_load {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : Env}
+theorem step_load {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat) {env : Env}
     {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
     {x arr i : String} {n : Nat} (t ta : TowerType) (hA : (arr, n) ∈ A) (hi : i ∈ S)
     (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x) (hin : natOf env i < n)
@@ -396,7 +418,7 @@ theorem step_load {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : En
     `n` of the related array `arr` runs in hax to the binding of `arr` to the
     updated list, and its lowering `RSeq (RArrStore _ i _) _`, on an array type
     encoding as `.memref n`, to a related scalar environment. -/
-theorem step_store {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : Env}
+theorem step_store {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat) {env : Env}
     {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
     {arr i v : String} {n : Nat} (ta tv : TowerType) (hA : (arr, n) ∈ A)
     (hty : encodeTy ta = .memref n) (hi : i ∈ S) (hv : v ∈ S) (hin : natOf env i < n)
@@ -502,7 +524,7 @@ def Ok (S : List String) (A : List (String × Nat)) (env : Env) : WBind → Prop
       ∃ n, (arr, n) ∈ A ∧ encodeTy ta = .memref n ∧ natOf env i < n
 
 /-- One binding preserves `EnvRelW`, adding its written names. -/
-theorem sim {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : Env}
+theorem sim {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat) {env : Env}
     {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
     (b : WBind) (hok : b.Ok S A env) (k : ImpExpr) (kC : LowCT) :
     (denote bi fuel (b.hax k)).run env = (denote bi fuel k).run (b.next env) ∧
@@ -562,7 +584,7 @@ def BindsOk (A : List (String × Nat)) : List WBind → List String → Env → 
     hold runs in hax to its continuation in `bindsNext bs env`, and its lowering
     runs in `semScalar` to its continuation in a scalar environment related to
     `bindsNext bs env` on `bindsScope bs S` and `A`. -/
-theorem binds_sim {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
+theorem binds_sim {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat)
     (A : List (String × Nat)) :
     ∀ (bs : List WBind) (S : List String) (env : Env) (σ : SEnvScalar),
       EnvRelW env σ S A → BindsOk A bs S env → ∀ (k : ImpExpr) (kC : LowCT),
@@ -579,7 +601,7 @@ theorem binds_sim {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
     followed by `()`, as the front emits an `array_update` statement: the hax run
     and the `semScalar` run of `RSeq (RSeq _ RSkip) _` each reach their
     continuation in related environments. -/
-theorem segment_sim {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
+theorem segment_sim {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat)
     {A : List (String × Nat)} {bs : List WBind} {S : List String} {env : Env}
     {σ : SEnvScalar} (h : EnvRelW env σ S A) (hok : BindsOk A bs S env) (y : String)
     (hy : ∃ v, bindsNext bs env y = some v) (k : ImpExpr) (kC : LowCT) :

@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
+public import CatCrypt.Crypto.Hax.HaxRuntimeWordBuiltins
 public import CatCrypt.Hax.Ascent.Corres
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
 
@@ -31,7 +32,6 @@ program returns with the denotation of the compiled runtime-trip loop
 * `mul1Pre`, `mul1St1`, `mul1St2`, `mul1BodyHax`, `mul1BodyLow`, `mul1ProgHax` —
   the `mpn_mul_1` body and program, hax and lowered.
 * `mul1Next`, `mul1Trips` — the hax environment after one and after `n` trips.
-* `mul1WordTable` — a builtin table meeting `WordBuiltins`.
 
 ## Main results
 
@@ -43,6 +43,8 @@ program returns with the denotation of the compiled runtime-trip loop
   `mul1Fold`.
 * `mul1_hax_eq_compiled` — the hax `mpn_mul_1` returns the cells and the carry
   of the compiled loop's denotation.
+* `mul1_hax_eq_compiled_runtime` — the same at hax-lean's `u64` table
+  `Hax.hax64Builtins`.
 -/
 
 @[expose] public section
@@ -58,13 +60,13 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 /-! ### The bindings in the control-flow-aware semantics -/
 
 /-- One binding runs in `denote'` to its continuation in `b.next env`. -/
-theorem WBind.run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : Env}
+theorem WBind.run' {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat) {env : Env}
     {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
     (b : WBind) (hok : b.Ok S A env) (k : ImpExpr) :
     denote' bi fuel (b.hax k) env = denote' bi fuel k (b.next env) := by
   cases b with
   | word x f a b =>
-    obtain ⟨hf, ha, hb, -, -, -, -, r, hr, -⟩ := hok
+    obtain ⟨hf, ha, hb, -, -, -, -, r, hr, hlt⟩ := hok
     obtain ⟨haL, haE, -⟩ := (h.word a ha).natOf_eq
     obtain ⟨hbL, hbE, -⟩ := (h.word b hb).natOf_eq
     simp only [WBind.hax, WBind.next, hr, Option.getD_some]
@@ -74,7 +76,7 @@ theorem WBind.run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : E
           rfl (_root_.Hax.Ascent.denoteArgs'_cons bi fuel
             (_root_.Hax.Ascent.denote'_var bi fuel hbE) rfl
             (_root_.Hax.Ascent.denoteArgs'_nil bi fuel env)))
-        (by rw [hbi.word f hf _ _ haL hbL, hr]; rfl)) rfl
+        (hbi.word f hf _ _ _ haL hbL hr hlt)) rfl
   | lit x n =>
     exact _root_.Hax.Ascent.denote'_letBind bi fuel
       (_root_.Hax.Ascent.denote'_lit bi fuel _ env) rfl
@@ -111,7 +113,7 @@ theorem WBind.run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat) {env : E
 
 /-- A sequence of bindings whose side conditions hold runs in `denote'` to its
     continuation in `bindsNext bs env`. -/
-theorem bindsHax_run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
+theorem bindsHax_run' {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat)
     (A : List (String × Nat)) :
     ∀ (bs : List WBind) (S : List String) (env : Env) (σ : SEnvScalar),
       EnvRelW env σ S A → BindsOk A bs S env → ∀ k : ImpExpr,
@@ -125,7 +127,7 @@ theorem bindsHax_run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
 /-- **Segment in `denote'`.** A sequence of bindings ending in a name bound after
     it to a value that is no control-flow value, followed by `()`, runs to its
     continuation in `bindsNext bs env`. -/
-theorem segment_run' {bi : Builtins} (hbi : WordBuiltins bi) (fuel : Nat)
+theorem segment_run' {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat)
     {A : List (String × Nat)} {bs : List WBind} {S : List String} {env : Env}
     {σ : SEnvScalar} (h : EnvRelW env σ S A) (hok : BindsOk A bs S env) {y : String}
     {v : Value} (hy : bindsNext bs env y = some v) (hv : v.isControlFlow = false)
@@ -409,7 +411,7 @@ def mul1Next (R : Nat) (env : Env) : Env :=
     and `up`, the hax body with `i ↦ j` returns `()` in `mul1Next R`, the
     `semScalar` run of the retyped lowered body with `i` bound to the word `j`
     succeeds, and the two results are related on the same names. -/
-theorem mul1_trip {bi : Builtins} (hbi : WordBuiltins bi) {R U j : Nat} (hR : j + 1 < R)
+theorem mul1_trip {bi : Builtins} (hbi : WordBuiltins' bi) {R U j : Nat} (hR : j + 1 < R)
     (hU : j < U) (h64 : j + 1 < 2 ^ 64) {env : Env} {σ : SEnvScalar}
     (h : EnvRelW env σ ["v", "ONES", "n"] [("rp", R), ("up", U)]) :
     ∃ σ', (∀ fuel, denote' bi fuel mul1BodyHax (env.extend "i" (.int j)) =
@@ -473,7 +475,7 @@ def mul1Trips (R : Nat) (env : Env) : Nat → Env
     returns `()` in `mul1Trips R env N` at every fuel `≥ N`, the `N`-trip
     `semScalar` fold of the retyped lowered body succeeds, and the two final
     environments are related on the same names. -/
-theorem mul1_loop_sim {bi : Builtins} (hbi : WordBuiltins bi) {R U N : Nat} (hR : N + 1 ≤ R)
+theorem mul1_loop_sim {bi : Builtins} (hbi : WordBuiltins' bi) {R U N : Nat} (hR : N + 1 ≤ R)
     (hU : N ≤ U) (h64 : N + 1 < 2 ^ 64) {env : Env} {σ : SEnvScalar}
     (h : EnvRelW env σ ["v", "ONES", "n"] [("rp", R), ("up", U)]) (hn : natOf env "n" = N) :
     ∃ σN,
@@ -803,7 +805,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (ComL)
     the all-ones word at `ONES` and `N` at `n`: the compiled program's denotation
     is some `out`, and at every fuel `≥ N` the fused, A-normalised hax program
     returns the first `R` cells of `out` and the carry cell `out[N]`. -/
-theorem mul1_hax_eq_compiled {bi : Builtins} (hbi : WordBuiltins bi)
+theorem mul1_hax_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi)
     (V : Ctxt.Valuation Gouter) {R U : Nat} (hR9 : R ≤ NR) (hU8 : U ≤ NU)
     (hNR : (mul1Count.lookup V).toNat + 1 ≤ R) (hNU : (mul1Count.lookup V).toNat ≤ U)
     {env : Env} (hup : env "up" = some (.array (intCells (upVar.lookup V) U)))
@@ -854,38 +856,21 @@ theorem mul1_hax_eq_compiled {bi : Builtins} (hbi : WordBuiltins bi)
           (_root_.Hax.Ascent.denote'_var bi fuel (extend_self _)) rfl
           (_root_.Hax.Ascent.denoteArgs'_nil bi fuel _)))]
 
-/-- A builtin table meeting `WordBuiltins`: `index` and in-range `array_update` on
-    lists, and every other name on two `.int` operands as `wordOpNat`. -/
-def mul1WordTable : Builtins := fun f args =>
-  if f = "index" then
-    match args with
-    | [.array vs, .int i] => vs[i.toNat]?
-    | _ => none
-  else if f = "array_update" then
-    match args with
-    | [.array vs, .int i, v] =>
-        if i.toNat < vs.length then some (.array (vs.set i.toNat v)) else none
-    | _ => none
-  else
-    match args with
-    | [.int a, .int b] => (wordOpNat f a.toNat b.toNat).map fun r : Nat => Value.int (r : Int)
-    | _ => none
-
-theorem mul1WordTable_wordBuiltins : WordBuiltins mul1WordTable where
-  word f hf n m _ _ := by
-    have h1 : f ≠ "index" := by rintro rfl; exact absurd hf (by decide)
-    have h2 : f ≠ "array_update" := by rintro rfl; exact absurd hf (by decide)
-    unfold mul1WordTable
-    rw [if_neg h1, if_neg h2]
-    show (wordOpNat f ((n : Nat) : Int).toNat ((m : Nat) : Int).toNat).map _ = _
-    rw [Int.toNat_natCast, Int.toNat_natCast]
-  index vs i w h := by
-    show vs[((i : Nat) : Int).toNat]? = _
-    rw [Int.toNat_natCast, h]
-  update vs i v h := by
-    show (if ((i : Nat) : Int).toNat < vs.length then
-      some (Value.array (vs.set ((i : Nat) : Int).toNat v)) else none) = _
-    rw [Int.toNat_natCast, if_pos h]
+/-- **The hax `mpn_mul_1` under hax-lean's `u64` table and the compiled loop
+    return the same words.** `mul1_hax_eq_compiled` at `bi := Hax.hax64Builtins`. -/
+theorem mul1_hax_eq_compiled_runtime (V : Ctxt.Valuation Gouter) {R U : Nat} (hR9 : R ≤ NR)
+    (hU8 : U ≤ NU) (hNR : (mul1Count.lookup V).toNat + 1 ≤ R)
+    (hNU : (mul1Count.lookup V).toNat ≤ U)
+    {env : Env} (hup : env "up" = some (.array (intCells (upVar.lookup V) U)))
+    (hrp : env "rp" = some (.array (intCells (mul1Init.lookup V) R)))
+    (hv : env "v" = some (.int (vVar.lookup V).toNat)) (hO : env "ONES" = some (.int ones))
+    (hn : env "n" = some (.int (mul1Count.lookup V).toNat)) :
+    ∃ out, mul1RtProgOpt.map (fun c => ComL.denote c V) = some out ∧
+      ∀ fuel, (mul1Count.lookup V).toNat ≤ fuel →
+        (denote' _root_.Hax.hax64Builtins fuel mul1ProgHax env).1 =
+          .val (.tuple [.array (intCells out R),
+            .int (memGetDyn out (mul1Count.lookup V).toNat).toNat]) :=
+  mul1_hax_eq_compiled hax64Builtins_wordBuiltins' V hR9 hU8 hNR hNU hup hrp hv hO hn
 
 /-- The hax environment of the `mpn_mul_1` loop entry: the first `U` cells of
     `up`, the first `R` cells of `acc` at `rp`, the multiplier `b`, the all-ones
@@ -924,7 +909,7 @@ theorem mul1BodyLow_fold {NU NR : Nat} (up : Fin NU → BitVec 64) (b : BitVec 6
   have hn : mul1Env0 R U up b acc N "n" = some (.int N) := by
     simp only [mul1Env0]
     rw [extend_self]
-  obtain ⟨σN, -, hsem, hrel⟩ := mul1_loop_sim mul1WordTable_wordBuiltins hNR hNU (by omega)
+  obtain ⟨σN, -, hsem, hrel⟩ := mul1_loop_sim hax64Builtins_wordBuiltins' hNR hNU (by omega)
     (mul1Sigma_rel R U up b acc (by omega) hup hrp hv hO hn) (by simp [natOf, hn])
   obtain ⟨hvr, -⟩ := mul1Trips_val R U up b acc _ hRN hUN hup hrp hv hO N hNR hNU
   obtain ⟨vs, a, he, hs, -, hc⟩ := hrel.arr ("rp", R) (by simp)

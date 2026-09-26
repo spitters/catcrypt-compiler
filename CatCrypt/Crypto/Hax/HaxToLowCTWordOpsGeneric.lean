@@ -140,7 +140,7 @@ def SegOk (A : List (String × Nat)) (s : List WBind × String) : Prop :=
 /-- **Store segments.** A sequence of store segments whose bindings satisfy their
     side conditions returns `()` in `denote'` in `bindsNext (segsBinds segs) env`,
     and its lowering runs in `semScalar` to a related scalar environment. -/
-theorem segs_sim {bi : Builtins} (hbi : WordBuiltins bi) (A : List (String × Nat)) :
+theorem segs_sim {bi : Builtins} (hbi : WordBuiltins' bi) (A : List (String × Nat)) :
     ∀ (segs : List (List WBind × String)) (S : List String) (env : Env) (σ : SEnvScalar),
       EnvRelW env σ S A → BindsOk A (segsBinds segs) S env → (∀ s ∈ segs, SegOk A s) →
       (∀ fuel, denote' bi fuel (segsHax segs) env =
@@ -171,7 +171,7 @@ theorem segs_sim {bi : Builtins} (hbi : WordBuiltins bi) (A : List (String × Na
     bindings satisfy their side conditions from `x ↦ j`, the hax body returns `()`
     in `bindsNext (loopBinds pre segs)`, the lowered body with `x` bound to the
     word `j` succeeds, and the results are related on `S` and `A`. -/
-theorem loopBody_sim {bi : Builtins} (hbi : WordBuiltins bi) {A : List (String × Nat)}
+theorem loopBody_sim {bi : Builtins} (hbi : WordBuiltins' bi) {A : List (String × Nat)}
     {S : List String} {x : String} {env : Env} {σ : SEnvScalar} {j : Nat}
     {pre : List WBind} {segs : List (List WBind × String)} (h : EnvRelW env σ S A)
     (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x) (hj : j < 2 ^ 64)
@@ -205,7 +205,7 @@ theorem loopBody_sim {bi : Builtins} (hbi : WordBuiltins bi) {A : List (String �
     `()` in the `N`-th iterate at every fuel `≥ N`, the `N`-trip `semRForD` fold of
     the lowered body succeeds, and the two final environments are related on `S`
     and `A`. -/
-theorem forFold_binds_sim {bi : Builtins} (hbi : WordBuiltins bi) {A : List (String × Nat)}
+theorem forFold_binds_sim {bi : Builtins} (hbi : WordBuiltins' bi) {A : List (String × Nat)}
     {S : List String} {x n : String} {N : Nat} {pre : List WBind}
     {segs : List (List WBind × String)} {env : Env} {σ : SEnvScalar}
     (h : EnvRelW env σ S A) (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x)
@@ -264,7 +264,7 @@ theorem mul1Binds_ok {R U j : Nat} (hR : j + 1 < R) (hU : j < U) (h64 : j + 1 < 
 
 /-- **The `mpn_mul_1` loop through `forFold_binds_sim`.** The statement of
     `mul1_loop_sim`. -/
-theorem mul1_loop_sim' {bi : Builtins} (hbi : WordBuiltins bi) {R U N : Nat} (hR : N + 1 ≤ R)
+theorem mul1_loop_sim' {bi : Builtins} (hbi : WordBuiltins' bi) {R U N : Nat} (hR : N + 1 ≤ R)
     (hU : N ≤ U) (h64 : N + 1 < 2 ^ 64) {env : Env} {σ : SEnvScalar}
     (h : EnvRelW env σ ["v", "ONES", "n"] [("rp", R), ("up", U)]) (hn : natOf env "n" = N) :
     ∃ σN,
@@ -342,7 +342,7 @@ theorem andNBinds_ok {R U V j : Nat} (hR : j < R) (hU : j < U) (hV : j < V) (E :
     iterate at every fuel `≥ N`, the `N`-trip `semScalar` fold of the retyped
     lowered body succeeds, and the two final environments are related on the
     three arrays. -/
-theorem andN_loop_sim {bi : Builtins} (hbi : WordBuiltins bi) {R U V N : Nat} (hR : N ≤ R)
+theorem andN_loop_sim {bi : Builtins} (hbi : WordBuiltins' bi) {R U V N : Nat} (hR : N ≤ R)
     (hU : N ≤ U) (hV : N ≤ V) (h64 : N < 2 ^ 64) {env : Env} {σ : SEnvScalar}
     (h : EnvRelW env σ [] [("rp", R), ("up", U), ("vp", V)]) (hn : env "n" = some (.int N)) :
     ∃ σN,

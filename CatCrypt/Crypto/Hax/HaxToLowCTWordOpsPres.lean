@@ -25,7 +25,7 @@ value (`treeVal`); a binding of a fresh name exists in the target alone. The
 call-tree value of `mulHiChain a b` is that of `mulhi#64(a, b)` when `a` and `b`
 hold words below `2^64` (`treeVal_mulHiChain`); on other operands the two differ,
 so the fusion preserves `denote'` only under that range condition, which the trip
-of `mpn_mul_1` discharges from `WordBuiltins.index` on the cells of `up` and from
+of `mpn_mul_1` discharges from `WordBuiltins'.index` on the cells of `up` and from
 the word `v`.
 
 ## Main definitions
@@ -704,7 +704,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (SEnvScal
     source environment that agrees with `env` off the fresh names: the loop
     `forFold i 0 n` over `mul1BodySrc` returns `()` at every fuel `≥ N`, in an
     environment that agrees with `mul1Trips R env N` off the fresh names. -/
-theorem mul1_src_loop {bi : Builtins} (hbi : WordBuiltins bi) (hmh : MulHiBuiltins bi)
+theorem mul1_src_loop {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : MulHiBuiltins bi)
     {R U N L : Nat} (hR : N + 1 ≤ R) (hU : N ≤ U) (h64 : N + 1 < 2 ^ 64) {env : Env}
     {σ : SEnvScalar} (h : EnvRelW env σ ["v", "ONES", "n"] [("rp", R), ("up", U)])
     (hn : natOf env "n" = N) (up : Fin L → BitVec 64)
@@ -741,8 +741,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (ComL)
 
 /-- **The extracted `mpn_mul_1` and the compiled loop return the same words.** The
     statement of `mul1_hax_eq_compiled` for the source program `mul1ProgSrc`, under
-    `WordBuiltins` and `MulHiBuiltins`. -/
-theorem mul1_src_eq_compiled {bi : Builtins} (hbi : WordBuiltins bi) (hmh : MulHiBuiltins bi)
+    `WordBuiltins'` and `MulHiBuiltins`. -/
+theorem mul1_src_eq_compiled {bi : Builtins} (hbi : WordBuiltins' bi) (hmh : MulHiBuiltins bi)
     (V : Ctxt.Valuation Gouter) {R U : Nat} (hR9 : R ≤ NR) (hU8 : U ≤ NU)
     (hNR : (mul1Count.lookup V).toNat + 1 ≤ R) (hNU : (mul1Count.lookup V).toNat ≤ U)
     {env : Env} (hup : env "up" = some (.array (intCells (upVar.lookup V) U)))
