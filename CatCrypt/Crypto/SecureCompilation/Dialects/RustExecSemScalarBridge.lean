@@ -708,13 +708,15 @@ theorem rustToJasminCom_endToEnd_rustexec_adeq_topLevel
 /-! ## The word-array extension
 
 `IsCoveredAdeqArr` extends `IsCoveredAdeq` by the dynamic-index word-array arms
-`RArrLoad ⟨d, TU64⟩ ⟨s, TArr k TU64⟩ i` and `RArrStore ⟨a, TArr k TU64⟩ i ⟨s, TU64⟩`.
+`RArrLoad ⟨d, TU64⟩ ⟨s, TArr k TU64⟩ i` and `RArrStore ⟨a, TArr k TU64⟩ i ⟨s, TU64⟩`,
+and their twins over `TBytes (8 * m)` arrays.
 On the `RustExec` side an array is a byte array in the tower heap `rsTower`, read
 and written through the `arrLoad` / `arrStore` oracles of the `LeafSpec`, and the
 loaded word lands in a `TU64` tower slot, not in `rsScalar`. On the `semScalar`
 side the array is a `.memref` of 64-bit words read by `memGetDyn` and written by
 `memSetDyn`, and the loaded word is a `.sword 64` binding. `arrWords` is the
-little-endian word view of a `TArr k TU64` byte array; `TowerWordsOn rs env T`
+little-endian word view of a `TArr k TU64` byte array and `bytesWords` that of a
+`TBytes n` byte array; `TowerWordsOn rs env T`
 binds every name in `T` to the word view of its tower slot; `ArrLoadWord` /
 `ArrStoreWord` say the oracles read and write one word of that view. The tower
 names `T` and the scalar names `B` are disjoint: `towerOK T c` is the name-kind
@@ -731,10 +733,18 @@ noncomputable def arrWords (k : Nat) (v : RustVal (.TArr k .TU64)) :
     simp only [TowerType.storageBytes] at hi ⊢
     omega⟩)
 
-/-- The word-view encoding of a tower value: a `TArr k TU64` array by `arrWords`,
-    every other tower value by `cryptoTyOfRustVal`. -/
+/-- The word view of a `TBytes n` byte array: word `i` is the little-endian 64-bit
+    word at bytes `8 i .. 8 i + 7`, a byte past `n` reading as `0`, at the type
+    `encodeTy (TBytes n)`. -/
+noncomputable def bytesWords (n : Nat) (v : RustVal (.TBytes n)) : ⟦encodeTy (.TBytes n)⟧ :=
+  fun i => wordOfBytes8 (fun j => rustValByte v (8 * i.val + j.val))
+
+/-- The word-view encoding of a tower value: a `TArr k TU64` array by `arrWords`, a
+    `TBytes n` array by `bytesWords`, every other tower value by
+    `cryptoTyOfRustVal`. -/
 noncomputable def encodeTowerWords : (Σ t : TowerType, RustVal t) → (Σ t : CryptoTy, ⟦t⟧)
   | ⟨.TArr k .TU64, v⟩ => ⟨encodeTy (.TArr k .TU64), arrWords k v⟩
+  | ⟨.TBytes n, v⟩ => ⟨encodeTy (.TBytes n), bytesWords n v⟩
   | ⟨t, v⟩ => ⟨encodeTy t, cryptoTyOfRustVal t v⟩
 
 theorem encodeTowerWords_TU64 (v : RustVal .TU64) :
@@ -743,6 +753,9 @@ theorem encodeTowerWords_TU64 (v : RustVal .TU64) :
 theorem encodeTowerWords_TArr (k : Nat) (v : RustVal (.TArr k .TU64)) :
     encodeTowerWords ⟨.TArr k .TU64, v⟩ = ⟨encodeTy (.TArr k .TU64), arrWords k v⟩ := rfl
 
+theorem encodeTowerWords_TBytes (n : Nat) (v : RustVal (.TBytes n)) :
+    encodeTowerWords ⟨.TBytes n, v⟩ = ⟨encodeTy (.TBytes n), bytesWords n v⟩ := rfl
+
 /-- The tower-heap reflection on `T`: the env binds every non-temp name in `T` to
     the word-view encoding of its tower slot, and is unbound where the tower heap
     is. The tower twin of `EnvBoundOn`. -/
@@ -750,18 +763,26 @@ def TowerWordsOn (rs : RustState) (env : SEnvScalar) (T : String → Prop) : Pro
   ∀ x : String, T x → ¬ isTmpName x → env x = (rs.rsTower x).map encodeTowerWords
 
 /-- The `arrLoad` oracle reads one word: loading index `idx` of a `TArr k TU64`
-    array into a `TU64` slot yields the word `memGetDyn (arrWords k a) idx`. -/
+    array into a `TU64` slot yields the word `memGetDyn (arrWords k a) idx`, and of
+    a `TBytes (8 * m)` array the word `memGetDyn (bytesWords (8 * m) a) idx`. -/
 def ArrLoadWord (leafSpec : LeafSpec) : Prop :=
-  ∀ (d : String) (oldV : RustVal .TU64) (k : Nat) (a : RustVal (.TArr k .TU64)) (idx : Nat),
+  (∀ (d : String) (oldV : RustVal .TU64) (k : Nat) (a : RustVal (.TArr k .TU64)) (idx : Nat),
     cryptoTyOfRustVal .TU64 (leafSpec.arrLoad ⟨d, .TU64⟩ oldV ⟨.TArr k .TU64, a⟩ idx)
-      = memGetDyn (arrWords k a) idx
+      = memGetDyn (arrWords k a) idx) ∧
+  (∀ (d : String) (oldV : RustVal .TU64) (m : Nat) (a : RustVal (.TBytes (8 * m))) (idx : Nat),
+    cryptoTyOfRustVal .TU64 (leafSpec.arrLoad ⟨d, .TU64⟩ oldV ⟨.TBytes (8 * m), a⟩ idx)
+      = memGetDyn (bytesWords (8 * m) a) idx)
 
 /-- The `arrStore` oracle writes one word: storing a `TU64` value at index `idx` of
-    a `TArr k TU64` array yields the word view `memSetDyn (arrWords k a) idx v`. -/
+    a `TArr k TU64` array yields the word view `memSetDyn (arrWords k a) idx v`, and
+    of a `TBytes (8 * m)` array the word view `memSetDyn (bytesWords (8 * m) a) idx v`. -/
 def ArrStoreWord (leafSpec : LeafSpec) : Prop :=
-  ∀ (a : String) (k : Nat) (oldV : RustVal (.TArr k .TU64)) (idx : Nat) (sv : RustVal .TU64),
+  (∀ (a : String) (k : Nat) (oldV : RustVal (.TArr k .TU64)) (idx : Nat) (sv : RustVal .TU64),
     arrWords k (leafSpec.arrStore ⟨a, .TArr k .TU64⟩ oldV idx ⟨.TU64, sv⟩)
-      = memSetDyn (arrWords k oldV) idx (cryptoTyOfRustVal .TU64 sv)
+      = memSetDyn (arrWords k oldV) idx (cryptoTyOfRustVal .TU64 sv)) ∧
+  (∀ (a : String) (m : Nat) (oldV : RustVal (.TBytes (8 * m))) (idx : Nat) (sv : RustVal .TU64),
+    bytesWords (8 * m) (leafSpec.arrStore ⟨a, .TBytes (8 * m)⟩ oldV idx ⟨.TU64, sv⟩)
+      = memSetDyn (bytesWords (8 * m) oldV) idx (cryptoTyOfRustVal .TU64 sv))
 
 /-- The name-kind discipline of `c` against the tower-name set `T`: every scalar
     write (the loop counter and the φ-merge name included) lands outside `T`, and
@@ -816,7 +837,7 @@ theorem afterB_disj : ∀ (c : LowCT) (B T : String → Prop), towerOK T c →
 
 /-- The straight-line word-array fragment: the `IsCoveredAdeqS` arms and the
     dynamic-index word-array load and store on non-temp names, the `TU64` word slot
-    and the `TArr k TU64` array given by their tower types. -/
+    and the `TArr k TU64` or `TBytes (8 * m)` array given by their tower types. -/
 inductive IsCoveredAdeqArrS : LowCT → Prop
   | rSkip : IsCoveredAdeqArrS .RSkip
   | rBlock {body : LowCT} : IsCoveredAdeqArrS body → IsCoveredAdeqArrS (.RBlock body)
@@ -835,6 +856,12 @@ inductive IsCoveredAdeqArrS : LowCT → Prop
   | rArrStore (a idxVar s : String) (k : Nat) (ha : ¬ isTmpName a) (hs : ¬ isTmpName s)
       (hi : ¬ isTmpName idxVar) :
       IsCoveredAdeqArrS (.RArrStore ⟨a, .TArr k .TU64⟩ idxVar ⟨s, .TU64⟩)
+  | rArrLoadBytes (d s idxVar : String) (m : Nat) (hd : ¬ isTmpName d) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqArrS (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TBytes (8 * m)⟩ idxVar)
+  | rArrStoreBytes (a idxVar s : String) (m : Nat) (ha : ¬ isTmpName a) (hs : ¬ isTmpName s)
+      (hi : ¬ isTmpName idxVar) :
+      IsCoveredAdeqArrS (.RArrStore ⟨a, .TBytes (8 * m)⟩ idxVar ⟨s, .TU64⟩)
 
 /-- The control-extended word-array fragment: `IsCoveredAdeq` over
     `IsCoveredAdeqArrS`. -/
@@ -871,6 +898,8 @@ theorem IsCoveredAdeqArrS.toIsCoveredS {c : LowCT} (h : IsCoveredAdeqArrS c) : I
   | rScalarSetExpr x e hclean _ => exact .rScalarSetExpr x e hclean
   | rArrLoad d s idxVar k _ _ _ => exact .rArrLoad _ _ _
   | rArrStore a idxVar s k _ _ _ => exact .rArrStore _ _ _
+  | rArrLoadBytes d s idxVar m _ _ _ => exact .rArrLoad _ _ _
+  | rArrStoreBytes a idxVar s m _ _ _ => exact .rArrStore _ _ _
 
 theorem IsCoveredAdeqArr.toIsCoveredSCtl {c : LowCT} (h : IsCoveredAdeqArr c) :
     IsCoveredSCtl c := by
@@ -1005,7 +1034,7 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
           · subst hyd
             simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TU64]
-            rw [hload]
+            rw [hload.1]
           · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
             exact htw y hy hnt
@@ -1039,7 +1068,74 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
           · subst hya
             simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TArr]
-            rw [hstore]
+            rw [hstore.1]
+          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
+            exact htw y hy hnt
+  | rArrLoadBytes d s idxVar m hd hs hi =>
+      intro rs rs' env B T hexec henv htw hdisj hir _ hidx htok
+      have hTd : T d := htok.1
+      have hTs : T s := htok.2
+      have hBi : B idxVar := hidx
+      cases hexec with
+      | arrLoad _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have hsrcT : rs.rsTower s = some ⟨.TBytes (8 * m), srcV⟩ :=
+          rsTower_eq_of_locatedLookup hsrc
+        have henvs : env s = some ⟨encodeTy (.TBytes (8 * m)), bytesWords (8 * m) srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd d (t := .sword 64) (memGetDyn (bytesWords (8 * m) srcV) idx), ?_, ?_, ?_,
+          hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
+        · intro y hy hnt
+          have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
+          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hyd : y = d
+          · subst hyd
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TU64]
+            rw [hload.2]
+          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
+            exact htw y hy hnt
+  | rArrStoreBytes a idxVar s m ha hs hi =>
+      intro rs rs' env B T hexec henv htw hdisj hir _ hidx htok
+      have hTa : T a := htok.1
+      have hTs : T s := htok.2
+      have hBi : B idxVar := hidx
+      cases hexec with
+      | arrStore _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have holdT : rs.rsTower a = some ⟨.TBytes (8 * m), oldV⟩ :=
+          rsTower_eq_of_locatedLookup hold
+        have hsrcT : rs.rsTower s = some ⟨.TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have henva : env a = some ⟨encodeTy (.TBytes (8 * m)), bytesWords (8 * m) oldV⟩ :=
+          towerWordsOn_bind htw hTa ha holdT
+        have henvs : env s = some ⟨.sword 64, cryptoTyOfRustVal .TU64 srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd a (t := encodeTy (.TBytes (8 * m)))
+          (memSetDyn (bytesWords (8 * m) oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
+          hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
+          exact dif_pos rfl
+        · intro y hy hnt
+          have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
+          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hya : y = a
+          · subst hya
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TBytes]
+            rw [hstore.2]
           · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
             exact htw y hy hnt
@@ -1133,6 +1229,680 @@ theorem rustExec_semScalar_agree_arr {N : Nat} {leafSpec : LeafSpec}
             envBoundOn_mono (envBoundOn_upd henv mergeName ev) (fun y hy => Or.inl hy),
             towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
             scalarInRange_upd hir mergeName hev⟩
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_pos heq0]
+
+/-! ## The word-slot agreement
+
+`rustExec_semScalar_agree_arrW` is `rustExec_semScalar_agree_arr` with a loaded word
+allowed to feed an `RScalarSetExpr` whose value is stored back. The two models name
+a `TU64` word differently. `semScalar` and the front keep one namespace: the word a
+load binds is a `.sword 64` env slot, and an `SVar` reads it. `RustExec` keeps two:
+a load writes the tower slot `rsTower`, `SVar` reads the scalar slot `rsScalar`, and
+the tower word is read by `SLimb x 0` and written by `RLimbStoreExpr ⟨x, TU64⟩ 0 e`.
+`towerSpellC TW c` is the `RustExec` spelling of the front program `c` at the
+word-name set `TW`: it rewrites every `SVar x` with `x ∈ TW` to `SLimb x 0` and
+every `RScalarSetExpr x e` with `x ∈ TW` to `RLimbStoreExpr ⟨x, TU64⟩ 0 e`; it is
+the identity on a program with no word-name reads or writes. The agreement theorem
+relates a `RustExec` run of `towerSpellC TW c` to the `semScalar` run of `c`.
+
+`TowerU64On rs TW` says each word name is tower-bound at `TU64`, and `LimbStoreWord`
+says the `limbStore` oracle writes the word it is given at limb `0` of a `TU64`
+slot. The scopings are `afterBW` (the scalar bound set, word-slot writes excluded),
+`readsOKW` (reads, index reads included, resolved in the scalar set or in `TW`) and
+`towerOKW` (the name-kind discipline against `T` and its word subset `TW`). -/
+
+/-- The value of `wordOfBytes8 b` as the `ofNat` image of the little-endian number
+    of its eight bytes. -/
+theorem ofNat_bytes_eq_wordOfBytes8 (b : Fin 8 → BitVec 8) :
+    BitVec.ofNat 64 ((b 0).toNat + (b 1).toNat * 2 ^ 8 + (b 2).toNat * 2 ^ 16 +
+      (b 3).toNat * 2 ^ 24 + (b 4).toNat * 2 ^ 32 + (b 5).toNat * 2 ^ 40 +
+      (b 6).toNat * 2 ^ 48 + (b 7).toNat * 2 ^ 56) = wordOfBytes8 b := by
+  simp only [wordOfBytes8]
+  rw [show ∀ x0 x1 x2 x3 x4 x5 x6 x7 : BitVec 8,
+      x0.zeroExtend 64 ||| x1.zeroExtend 64 <<< 8 ||| x2.zeroExtend 64 <<< 16 |||
+        x3.zeroExtend 64 <<< 24 ||| x4.zeroExtend 64 <<< 32 ||| x5.zeroExtend 64 <<< 40 |||
+        x6.zeroExtend 64 <<< 48 ||| x7.zeroExtend 64 <<< 56
+      = x0.zeroExtend 64 + x1.zeroExtend 64 <<< 8 + x2.zeroExtend 64 <<< 16 +
+        x3.zeroExtend 64 <<< 24 + x4.zeroExtend 64 <<< 32 + x5.zeroExtend 64 <<< 40 +
+        x6.zeroExtend 64 <<< 48 + x7.zeroExtend 64 <<< 56
+      from fun _ _ _ _ _ _ _ _ => by bv_decide]
+  bv_omega
+
+/-- Limb `0` of a `TU64` tower value is its word: the `ofNat` image of
+    `towerLimb v 0` is `cryptoTyOfRustVal .TU64 v`. -/
+theorem towerLimb_zero_TU64 (v : RustVal .TU64) :
+    BitVec.ofNat 64 (towerLimb v 0) = cryptoTyOfRustVal .TU64 v := by
+  simp only [towerLimb, rustValByte, cryptoTyOfRustVal, TowerType.storageBytes]
+  simp only [Nat.zero_mul, Nat.zero_add]
+  simp (config := {decide := true}) only [dif_pos]
+  exact ofNat_bytes_eq_wordOfBytes8 _
+
+/-- The word-typedness of the word names `TW`: each is bound in the tower heap at
+    `TU64`. -/
+def TowerU64On (rs : RustState) (TW : String → Prop) : Prop :=
+  ∀ x : String, TW x → ∃ v : RustVal .TU64, rs.rsTower x = some ⟨.TU64, v⟩
+
+theorem towerU64On_setScalar {rs : RustState} {TW : String → Prop} (h : TowerU64On rs TW)
+    (x : String) (v : Nat) : TowerU64On (rsSetScalar rs x v) TW := h
+
+theorem towerU64On_setTower_TU64 {rs : RustState} {TW : String → Prop} (h : TowerU64On rs TW)
+    (x : String) (v : RustVal .TU64) : TowerU64On (rsSetTower rs x ⟨.TU64, v⟩) TW := by
+  intro y hy
+  by_cases hyx : y = x
+  · subst hyx; exact ⟨v, rsSetTower_same _ _ _⟩
+  · rw [rsSetTower_other _ _ _ _ (Ne.symm hyx)]; exact h y hy
+
+theorem towerU64On_setTower_other {rs : RustState} {TW : String → Prop} (h : TowerU64On rs TW)
+    {x : String} (hx : ¬ TW x) (p : Σ t : TowerType, RustVal t) :
+    TowerU64On (rsSetTower rs x p) TW := by
+  intro y hy
+  have hyx : y ≠ x := fun hyx => hx (hyx ▸ hy)
+  rw [rsSetTower_other _ _ _ _ (Ne.symm hyx)]; exact h y hy
+
+/-- The `limbStore` oracle writes the word: storing `w` at limb `0` of a `TU64` slot
+    yields the value whose word is `w`. -/
+def LimbStoreWord (leafSpec : LeafSpec) : Prop :=
+  ∀ (x : String) (oldV : RustVal .TU64) (w : BitVec 64),
+    cryptoTyOfRustVal .TU64 (leafSpec.limbStore ⟨x, .TU64⟩ oldV 0 w) = w
+
+/-! ### The `RustExec` spelling of a front program -/
+
+/-- The `RustExec` spelling of a scalar expression at the word-name set `TW`: a read
+    `SVar x` with `x ∈ TW` is the tower-word read `SLimb x 0`; the clean binary arms
+    are mapped structurally; every other node is unchanged. -/
+def towerSpell (TW : String → Prop) [DecidablePred TW] : SExpr → SExpr
+  | .SVar x => if TW x then .SLimb x 0 else .SVar x
+  | .SAdd a b => .SAdd (towerSpell TW a) (towerSpell TW b)
+  | .SSub a b => .SSub (towerSpell TW a) (towerSpell TW b)
+  | .SMul a b => .SMul (towerSpell TW a) (towerSpell TW b)
+  | .SAnd a b => .SAnd (towerSpell TW a) (towerSpell TW b)
+  | .SXor a b => .SXor (towerSpell TW a) (towerSpell TW b)
+  | .SShl a b => .SShl (towerSpell TW a) (towerSpell TW b)
+  | .SShr a b => .SShr (towerSpell TW a) (towerSpell TW b)
+  | .SMulHiU a b => .SMulHiU (towerSpell TW a) (towerSpell TW b)
+  | e => e
+
+/-- The `RustExec` spelling of a front program at the word-name set `TW`: an
+    `RScalarSetExpr x e` with `x ∈ TW` is the tower-word write
+    `RLimbStoreExpr ⟨x, TU64⟩ 0 (towerSpell TW e)`, with `x ∉ TW` it is
+    `RScalarSetExpr x (towerSpell TW e)`; the control arms are mapped structurally;
+    every other command is unchanged. -/
+def towerSpellC (TW : String → Prop) [DecidablePred TW] : LowCT → LowCT
+  | .RBlock b => .RBlock (towerSpellC TW b)
+  | .RSeq c₁ c₂ => .RSeq (towerSpellC TW c₁) (towerSpellC TW c₂)
+  | .RLetU64Zero n b => .RLetU64Zero n (towerSpellC TW b)
+  | .RFor x n b => .RFor x n (towerSpellC TW b)
+  | .RIfNz n t e => .RIfNz n (towerSpellC TW t) (towerSpellC TW e)
+  | .RScalarSetExpr x e =>
+      if TW x then .RLimbStoreExpr ⟨x, .TU64⟩ 0 (towerSpell TW e)
+      else .RScalarSetExpr x (towerSpell TW e)
+  | c => c
+
+/-- The scalar reader of a spelled expression: a word name reads limb `0` of its
+    tower slot, every other name its scalar slot. -/
+def spellReader (TW : String → Prop) [DecidablePred TW] (rs : RustState) : String → Nat :=
+  fun y => if TW y then rsTowerLimb rs y 0 else rs.rsScalar y
+
+theorem spellReader_lt {TW : String → Prop} [DecidablePred TW] {rs : RustState}
+    (hir : ScalarInRange rs) (y : String) : spellReader TW rs y < 2 ^ 64 := by
+  unfold spellReader
+  split
+  · exact rsTowerLimb_lt rs y 0
+  · exact hir y
+
+/-- The tower-aware value of the spelled expression is the scalar value of the front
+    expression under `spellReader`. -/
+theorem evalState_towerSpell (TW : String → Prop) [DecidablePred TW] (rs : RustState) :
+    ∀ e : SExpr, srcClean e →
+      (towerSpell TW e).evalState rs = e.eval (spellReader TW rs) := by
+  intro e
+  induction e with
+  | SVar x =>
+      intro _
+      by_cases hx : TW x
+      · simp only [towerSpell, if_pos hx, SExpr.evalState, SExpr.eval, spellReader]
+      · simp only [towerSpell, if_neg hx, SExpr.evalState, SExpr.eval, spellReader]
+  | SLit n => intro _; rfl
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      intro hcl
+      simp only [towerSpell, SExpr.evalState, SExpr.eval, iha hcl.1, ihb hcl.2]
+  | SLt a b _ _ => intro hcl; exact hcl.elim
+  | SAsr a b _ _ => intro hcl; exact hcl.elim
+  | SMulS a b _ _ => intro hcl; exact hcl.elim
+  | SMulHiS a b _ _ => intro hcl; exact hcl.elim
+  | SLimb v i => intro hcl; exact hcl.elim
+
+/-! ### The scopings with word slots -/
+
+/-- The scalar bound set after `c` from entry set `B`: `afterB` with the word-slot
+    writes (an `RScalarSetExpr` into `TW`) excluded. -/
+def afterBW (TW B : String → Prop) : LowCT → (String → Prop)
+  | .RBlock b => afterBW TW B b
+  | .RSeq c₁ c₂ => afterBW TW (afterBW TW B c₁) c₂
+  | .RLetU64Zero n b => afterBW TW (fun y => B y ∨ y = n) b
+  | .RScalarSet n _ => fun y => B y ∨ y = n
+  | .RScalarSetExpr x _ => fun y => B y ∨ (y = x ∧ ¬ TW x)
+  | _ => B
+
+/-- Every free read of `c` is resolved when it happens, given the entry scalar set
+    `B` and the word names `TW`: an expression read in `B ∪ TW`, an index read in
+    `B`, threaded along `afterBW`. -/
+def readsOKW (TW B : String → Prop) : LowCT → Prop
+  | .RBlock b => readsOKW TW B b
+  | .RSeq c₁ c₂ => readsOKW TW B c₁ ∧ readsOKW TW (afterBW TW B c₁) c₂
+  | .RLetU64Zero n b => readsOKW TW (fun y => B y ∨ y = n) b
+  | .RScalarSetExpr _ e => varsBoundIn (fun y => B y ∨ TW y) e
+  | .RFor x _ b => readsOKW TW (fun y => B y ∨ y = x) b
+  | .RIfNz name _ _ => B name
+  | .RArrLoad _ _ idxVar => B idxVar
+  | .RArrStore _ idxVar _ => B idxVar
+  | _ => True
+
+/-- The name-kind discipline of `c` against the tower set `T` and its word subset
+    `TW`: the loop counter, the φ-merge name, an `RLetU64Zero` and an `RScalarSet`
+    write outside `T`; an `RScalarSetExpr` writes outside `T` or a word name; a load
+    lands in a word name and reads an array in `T`; a store writes an array in `T`
+    that is not a word name and reads a word slot in `T`. -/
+def towerOKW (T TW : String → Prop) : LowCT → Prop
+  | .RBlock b => towerOKW T TW b
+  | .RSeq c₁ c₂ => towerOKW T TW c₁ ∧ towerOKW T TW c₂
+  | .RLetU64Zero n b => ¬ T n ∧ towerOKW T TW b
+  | .RScalarSet n _ => ¬ T n
+  | .RScalarSetExpr x _ => ¬ T x ∨ TW x
+  | .RFor x _ b => ¬ T x ∧ towerOKW T TW b
+  | .RIfNz _ t e => towerOKW T TW t ∧ towerOKW T TW e
+  | .RArrLoad dst src _ => TW dst.locVar ∧ T src.locVar
+  | .RArrStore arr _ src => T arr.locVar ∧ ¬ TW arr.locVar ∧ T src.locVar
+  | _ => True
+
+/-- Every entry-bound name stays bound along `afterBW`. -/
+theorem le_afterBW (TW : String → Prop) : ∀ (c : LowCT) (D : String → Prop) (y : String),
+    D y → afterBW TW D c y := by
+  intro c
+  induction c with
+  | RSeq c₁ c₂ ih₁ ih₂ => exact fun D y hy => ih₂ _ y (ih₁ D y hy)
+  | RBlock b ih => exact fun D y hy => ih D y hy
+  | RLetU64Zero n b ih => exact fun D y hy => ih _ y (Or.inl hy)
+  | RScalarSet _ _ => exact fun _ _ hy => Or.inl hy
+  | RScalarSetExpr _ _ => exact fun _ _ hy => Or.inl hy
+  | _ => exact fun D y hy => hy
+
+/-- Under `towerOKW`, the scalar bound set stays outside `T` along `afterBW`. -/
+theorem afterBW_disj : ∀ (c : LowCT) (B T TW : String → Prop), towerOKW T TW c →
+    (∀ y, B y → ¬ T y) → ∀ y, afterBW TW B c y → ¬ T y := by
+  intro c
+  induction c with
+  | RSeq c₁ c₂ ih₁ ih₂ => intro B T TW h hd; exact ih₂ _ T TW h.2 (ih₁ B T TW h.1 hd)
+  | RBlock b ih => intro B T TW h hd; exact ih B T TW h hd
+  | RLetU64Zero n b ih =>
+      intro B T TW h hd
+      exact ih _ T TW h.2 (fun y hy => by
+        rcases hy with hy | rfl
+        · exact hd y hy
+        · exact h.1)
+  | RScalarSet n _ =>
+      intro B T TW hn hd y hy
+      rcases hy with hy | rfl
+      · exact hd y hy
+      · exact hn
+  | RScalarSetExpr x _ =>
+      intro B T TW hx hd y hy
+      rcases hy with hy | ⟨rfl, hnw⟩
+      · exact hd y hy
+      · exact hx.resolve_right hnw
+  | _ => intro B T TW _ hd y hy; exact hd y hy
+
+/-! ### The expression lowering on a readable set -/
+
+/-- Every non-temp name in `R` is bound at `.sword 64` in `env`. -/
+def ReadableOn (env : SEnvScalar) (R : String → Prop) : Prop :=
+  ∀ x : String, R x → ¬ isTmpName x → (envReadU64 env x).isSome
+
+theorem readableOn_onlyTmp {env env2 : SEnvScalar} {R : String → Prop} {cnt : Nat}
+    (h : ReadableOn env R) (hotb : OnlyTmpBelow env env2 cnt) : ReadableOn env2 R := by
+  intro y hy hnt
+  rw [readU64_stable hotb (Or.inl hnt)]; exact h y hy hnt
+
+/-- `semLowerSExpr_ok'` with the leaf condition `ReadableOn env R` in place of
+    `EnvBoundOn rs env B`: the fold succeeds on any `srcClean` expression whose
+    leaves are readable. -/
+theorem semLowerSExpr_ok_readable (R : String → Prop) :
+    ∀ (e : SExpr) (env : SEnvScalar) (cnt : Nat),
+      ReadableOn env R → varsBoundIn R e → srcClean e →
+      ∃ (env2 : SEnvScalar) (nm : String) (cnt' : Nat),
+        semLowerSExpr env cnt e = some (env2, nm, cnt') ∧ cnt ≤ cnt' ∧
+        OnlyTmpBelow env env2 cnt ∧ ResultOK nm cnt' ∧ (envReadU64 env2 nm).isSome := by
+  intro e
+  induction e with
+  | SVar x =>
+      intro env cnt hR hvb hcl
+      have hx : ¬ isTmpName x := hcl
+      have hbx : R x := hvb
+      obtain ⟨w, hw⟩ := Option.isSome_iff_exists.mp (hR x hbx hx)
+      refine ⟨env, x, cnt, ?_, le_refl _, onlyTmpBelow_refl env cnt, Or.inl hx, ?_⟩
+      · simp only [semLowerSExpr, hw]
+      · rw [hw]; rfl
+  | SLit n =>
+      intro env cnt _ _ _
+      refine ⟨env.upd (TranslateDialectDirectArms.tmpName cnt) (t := .sword 64) (BitVec.ofNat 64 n),
+        TranslateDialectDirectArms.tmpName cnt, cnt + 1, rfl, Nat.le_succ _,
+        onlyTmpBelow_upd (onlyTmpBelow_refl env cnt) (le_refl _),
+        Or.inr ⟨cnt, Nat.lt_succ_self _, rfl⟩, ?_⟩
+      rw [envReadU64_upd_self]; rfl
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      intro env cnt hR hvb hcl
+      obtain ⟨sa, sb⟩ := hcl
+      obtain ⟨va, vb⟩ := hvb
+      obtain ⟨env1, na, c1, hsemA, hleA, hotbA, hrokA, hreadA⟩ := iha env cnt hR va sa
+      have hR1 : ReadableOn env1 R := readableOn_onlyTmp hR hotbA
+      obtain ⟨env2, nb, c2, hsemB, hleB, hotbB, hrokB, hreadB⟩ := ihb env1 c1 hR1 vb sb
+      have hna2 : (envReadU64 env2 na).isSome := by
+        rw [readU64_stable hotbB hrokA]; exact hreadA
+      simp only [semLowerSExpr, hsemA, hsemB]
+      exact binNode_ok env env2 na nb cnt c2 _ (le_trans hleA hleB)
+        (onlyTmpBelow_trans hotbA hotbB hleA) hna2 hreadB
+  | SLt a b _ _ => intro _ _ _ _ hcl; exact hcl.elim
+  | SAsr a b _ _ => intro _ _ _ _ hcl; exact hcl.elim
+  | SMulS a b _ _ => intro _ _ _ _ hcl; exact hcl.elim
+  | SMulHiS a b _ _ => intro _ _ _ _ hcl; exact hcl.elim
+  | SLimb v i => intro _ _ _ _ hcl; exact hcl.elim
+
+/-- The word binding of a word name: under `TowerWordsOn` and
+    `TowerU64On`, a non-temp word name is bound at `.sword 64` to the word of its
+    `TU64` tower value. -/
+theorem wordBind_of_towerU64 {rs : RustState} {env : SEnvScalar} {T TW : String → Prop}
+    (htw : TowerWordsOn rs env T) (hu : TowerU64On rs TW)
+    (hTW : ∀ y, TW y → T y) {x : String} (hx : TW x) (hnt : ¬ isTmpName x) :
+    ∃ v : RustVal .TU64, rs.rsTower x = some ⟨.TU64, v⟩ ∧
+      env x = some ⟨.sword 64, cryptoTyOfRustVal .TU64 v⟩ := by
+  obtain ⟨v, hv⟩ := hu x hx
+  exact ⟨v, hv, towerWordsOn_bind htw (hTW x hx) hnt hv⟩
+
+/-- The scalar set and the word names are jointly readable under the two
+    reflections. -/
+theorem readableOn_of_reflections {rs : RustState} {env : SEnvScalar} {B T TW : String → Prop}
+    (henv : EnvBoundOn rs env B) (htw : TowerWordsOn rs env T)
+    (hu : TowerU64On rs TW) (hTW : ∀ y, TW y → T y) :
+    ReadableOn env (fun y => B y ∨ TW y) := by
+  intro y hy hnt
+  rcases hy with hy | hy
+  · rw [Option.isSome_iff_exists]
+    exact ⟨BitVec.ofNat 64 (rs.rsScalar y), by simp only [envReadU64, henv y hy hnt]⟩
+  · obtain ⟨v, _, hb⟩ := wordBind_of_towerU64 htw hu hTW hy hnt
+    rw [Option.isSome_iff_exists]
+    exact ⟨cryptoTyOfRustVal .TU64 v, by simp only [envReadU64, hb]; rfl⟩
+
+/-- The env reader agrees with the lifted `spellReader` on the scalar set and the
+    word names. -/
+theorem envReader_eq_spellReader {rs : RustState} {env : SEnvScalar} {B T TW : String → Prop}
+    [DecidablePred TW] (henv : EnvBoundOn rs env B) (htw : TowerWordsOn rs env T)
+    (hu : TowerU64On rs TW) (hdisj : ∀ y, B y → ¬ T y) (hTW : ∀ y, TW y → T y) :
+    ∀ s, (B s ∨ TW s) → ¬ isTmpName s →
+      envReader env s = SExpr.liftEnv (spellReader TW rs) s := by
+  intro s hs hns
+  rcases hs with hs | hs
+  · have hnw : ¬ TW s := fun hw => hdisj s hs (hTW s hw)
+    rw [envReader_of_envBoundOn henv s hs hns]
+    simp only [SExpr.liftEnv, spellReader, if_neg hnw]
+  · obtain ⟨v, hv, hb⟩ := wordBind_of_towerU64 htw hu hTW hs hns
+    simp only [envReader, hb, SExpr.liftEnv, spellReader, if_pos hs, rsTowerLimb, hv]
+    exact (towerLimb_zero_TU64 v).symm
+
+/-! ### Straight-line agreement with word slots -/
+
+/-- The straight-line half of the word-slot simulation: on `IsCoveredAdeqArrS`, a
+    `RustExec` run of the spelling `towerSpellC TW c` under one-word array oracles
+    and a word-writing `limbStore` oracle is tracked by a defined `semScalar` run of
+    `c` whose output env is `EnvBoundOn` the scalar set `afterBW TW B c` and
+    `TowerWordsOn` the tower names `T`, with the word names `TW`
+    still `TU64`-typed, given the entry reflections, `TW ⊆ T`, the disjointness of
+    `B` and `T`, and the scopings `readsOKW` and `towerOKW`. -/
+theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
+    (hstore : ArrStoreWord leafSpec) (hlimb : LimbStoreWord leafSpec)
+    (TW : String → Prop) [DecidablePred TW] {c : LowCT} (h : IsCoveredAdeqArrS c) :
+    ∀ {rs rs' : RustState} {env : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW c) rs rs' → EnvBoundOn rs env B →
+      TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKW TW B c → towerOKW T TW c →
+      ∃ env', semScalar c env = some env' ∧ EnvBoundOn rs' env' (afterBW TW B c) ∧
+        TowerWordsOn rs' env' T ∧ TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  induction h with
+  | rSkip =>
+      intro rs rs' env B T hexec henv htw hu _ _ hir _ _
+      cases hexec; exact ⟨env, rfl, henv, htw, hu, hir⟩
+  | rBlock _ ih =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      simp only [towerSpellC] at hexec
+      cases hexec with | block _ _ _ hb =>
+        simp only [semScalar]; exact ih hb henv htw hu hTW hdisj hir hreads htok
+  | rSeq _ _ ih₁ ih₂ =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      obtain ⟨hr1, hr2⟩ := hreads
+      obtain ⟨ht1, ht2⟩ := htok
+      simp only [towerSpellC] at hexec
+      cases hexec with | seq _ _ _ _ _ h1 h2 =>
+        obtain ⟨e1, hs1, he1, hw1, hu1, hi1⟩ := ih₁ h1 henv htw hu hTW hdisj hir hr1 ht1
+        obtain ⟨e2, hs2, he2, hw2, hu2, hi2⟩ :=
+          ih₂ h2 he1 hw1 hu1 hTW (afterBW_disj _ B T TW ht1 hdisj) hi1 hr2 ht2
+        exact ⟨e2, by simp only [semScalar, hs1]; exact hs2, he2, hw2, hu2, hi2⟩
+  | rLetU64Zero _ ih =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      simp only [towerSpellC] at hexec
+      cases hexec with | letU64Zero _ _ _ _ hbody =>
+        simp only [semScalar]
+        refine ih hbody (by simpa using envBoundOn_upd henv _ 0)
+          (towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) _ htok.1 _ 0)
+          (towerU64On_setScalar hu _ _) hTW ?_
+          (scalarInRange_upd hir _ (by positivity)) hreads htok.2
+        intro y hy
+        rcases hy with hy | rfl
+        · exact hdisj y hy
+        · exact htok.1
+  | rScalarSet name hn =>
+      intro rs rs' env B T hexec henv htw hu _ _ hir _ htok
+      simp only [towerSpellC] at hexec
+      cases hexec
+      exact ⟨_, rfl, envBoundOn_upd henv name _,
+        towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) name htok _ _,
+        towerU64On_setScalar hu _ _, scalarInRange_upd hir name hn⟩
+  | rScalarSetExpr x e hclean hir_e =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      have hvb : varsBoundIn (fun y => B y ∨ TW y) e := hreads
+      obtain ⟨env2, nm, cnt', hsem2, _, hotb2, _, _⟩ :=
+        semLowerSExpr_ok_readable _ e env 0 (readableOn_of_reflections henv htw hu hTW) hvb hclean
+      have hirS : e.inRange (spellReader TW rs) := hir_e _ (spellReader_lt hir)
+      have hval : SExpr.evalBV (envReader env) e
+          = BitVec.ofNat 64 ((towerSpell TW e).evalState rs) := by
+        rw [evalBV_congr_on (fun y => B y ∨ TW y) (envReader env)
+              (SExpr.liftEnv (spellReader TW rs)) e
+              (envReader_eq_spellReader henv htw hu hdisj hTW) hvb hclean,
+          evalState_towerSpell TW rs e hclean]
+        exact sexprTransfer _ e hirS
+      have hlt : (towerSpell TW e).evalState rs < 2 ^ 64 := by
+        rw [evalState_towerSpell TW rs e hclean]
+        exact SExpr.eval_lt_of_inRange _ _ hirS
+      by_cases hx : TW x
+      · simp only [towerSpellC, if_pos hx] at hexec
+        cases hexec with | limbStoreExpr _ _ _ _ oldV hold =>
+          refine ⟨env2.upd x (t := .sword 64) (BitVec.ofNat 64 ((towerSpell TW e).evalState rs)),
+            by simp only [semScalar, hsem2]; rw [hval], ?_, ?_, ?_, hir⟩
+          · intro y hy hnt
+            have hyx : y ≠ x := by
+              rintro rfl
+              rcases hy with hy | ⟨_, hnw⟩
+              · exact hdisj y hy (hTW y hx)
+              · exact hnw hx
+            have hby : B y := by
+              rcases hy with hy | ⟨_, hnw⟩
+              · exact hy
+              · exact absurd hx hnw
+            simp only [SEnvScalar.upd, if_neg hyx, locatedUpdate, rsSetTower]
+            rw [hotb2 y (Or.inl hnt)]; exact henv y hby hnt
+          · intro y hy hnt
+            by_cases hyx : y = x
+            · subst hyx
+              simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+                Located.locDst, encodeTowerWords_TU64]
+              rw [hlimb]
+            · simp only [SEnvScalar.upd, if_neg hyx, locatedUpdate]
+              rw [rsSetTower_other rs _ y _ (Ne.symm hyx), hotb2 y (Or.inl hnt)]
+              exact htw y hy hnt
+          · exact towerU64On_setTower_TU64 hu x _
+      · simp only [towerSpellC, if_neg hx] at hexec
+        cases hexec
+        have hTx : ¬ T x := htok.resolve_right hx
+        refine ⟨env2.upd x (t := .sword 64) (BitVec.ofNat 64 ((towerSpell TW e).evalState rs)),
+          by simp only [semScalar, hsem2]; rw [hval], ?_, ?_, ?_, ?_⟩
+        · exact envBoundOn_mono (envBoundOn_updExpr henv hotb2 x _)
+            (fun y hy => by
+              rcases hy with hy | ⟨rfl, _⟩
+              · exact Or.inl hy
+              · exact Or.inr rfl)
+        · exact towerWordsOn_updScalar htw hotb2 x hTx _ _
+        · exact towerU64On_setScalar hu _ _
+        · exact scalarInRange_upd hir x hlt
+  | rArrLoad d s idxVar k hd hs hi =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      have hTd : T d := hTW d htok.1
+      have hTs : T s := htok.2
+      have hBi : B idxVar := hreads
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | arrLoad _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have hsrcT : rs.rsTower s = some ⟨.TArr k .TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have henvs : env s = some ⟨encodeTy (.TArr k .TU64), arrWords k srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd d (t := .sword 64) (memGetDyn (arrWords k srcV) idx), ?_, ?_, ?_,
+          towerU64On_setTower_TU64 hu d _, hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
+        · intro y hy hnt
+          have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
+          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hyd : y = d
+          · subst hyd
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TU64]
+            rw [hload.1]
+          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
+            exact htw y hy hnt
+  | rArrStore a idxVar s k ha hs hi =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      have hTa : T a := htok.1
+      have hTs : T s := htok.2.2
+      have hBi : B idxVar := hreads
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | arrStore _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have holdT : rs.rsTower a = some ⟨.TArr k .TU64, oldV⟩ := rsTower_eq_of_locatedLookup hold
+        have hsrcT : rs.rsTower s = some ⟨.TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have henva : env a = some ⟨encodeTy (.TArr k .TU64), arrWords k oldV⟩ :=
+          towerWordsOn_bind htw hTa ha holdT
+        have henvs : env s = some ⟨.sword 64, cryptoTyOfRustVal .TU64 srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd a (t := encodeTy (.TArr k .TU64))
+          (memSetDyn (arrWords k oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
+          towerU64On_setTower_other hu htok.2.1 _, hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
+          exact dif_pos rfl
+        · intro y hy hnt
+          have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
+          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hya : y = a
+          · subst hya
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TArr]
+            rw [hstore.1]
+          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
+            exact htw y hy hnt
+  | rArrLoadBytes d s idxVar m hd hs hi =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      have hTd : T d := hTW d htok.1
+      have hTs : T s := htok.2
+      have hBi : B idxVar := hreads
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | arrLoad _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have hsrcT : rs.rsTower s = some ⟨.TBytes (8 * m), srcV⟩ :=
+          rsTower_eq_of_locatedLookup hsrc
+        have henvs : env s = some ⟨encodeTy (.TBytes (8 * m)), bytesWords (8 * m) srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd d (t := .sword 64) (memGetDyn (bytesWords (8 * m) srcV) idx), ?_, ?_, ?_,
+          towerU64On_setTower_TU64 hu d _, hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
+        · intro y hy hnt
+          have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
+          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hyd : y = d
+          · subst hyd
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TU64]
+            rw [hload.2]
+          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
+            exact htw y hy hnt
+  | rArrStoreBytes a idxVar s m ha hs hi =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      have hTa : T a := htok.1
+      have hTs : T s := htok.2.2
+      have hBi : B idxVar := hreads
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | arrStore _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have holdT : rs.rsTower a = some ⟨.TBytes (8 * m), oldV⟩ :=
+          rsTower_eq_of_locatedLookup hold
+        have hsrcT : rs.rsTower s = some ⟨.TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have henva : env a = some ⟨encodeTy (.TBytes (8 * m)), bytesWords (8 * m) oldV⟩ :=
+          towerWordsOn_bind htw hTa ha holdT
+        have henvs : env s = some ⟨.sword 64, cryptoTyOfRustVal .TU64 srcV⟩ :=
+          towerWordsOn_bind htw hTs hs hsrcT
+        have henvi : env idxVar = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar idxVar)⟩ :=
+          henv idxVar hBi hi
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar idxVar)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir idxVar), hidxv]
+        refine ⟨env.upd a (t := encodeTy (.TBytes (8 * m)))
+          (memSetDyn (bytesWords (8 * m) oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
+          towerU64On_setTower_other hu htok.2.1 _, hir⟩
+        · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
+          exact dif_pos rfl
+        · intro y hy hnt
+          have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
+          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          exact henv y hy hnt
+        · intro y hy hnt
+          by_cases hya : y = a
+          · subst hya
+            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              Located.locDst, encodeTowerWords_TBytes]
+            rw [hstore.2]
+          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
+            exact htw y hy hnt
+
+/-! ### Counted-loop agreement with word slots -/
+
+/-- The counted `RFor` loop over a word-slot body, by `Nat`-induction on the trip
+    count: `agreeArrFor` with `TowerU64On` carried as a third loop invariant. -/
+theorem agreeArrWFor {N : Nat} {leafSpec : LeafSpec} (TW : String → Prop) [DecidablePred TW]
+    {x : String} {body : LowCT}
+    (ihBody : ∀ {rs rs' : RustState} {env : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW body) rs rs' → EnvBoundOn rs env B →
+      TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKW TW B body → towerOKW T TW body →
+      ∃ env', semScalar body env = some env' ∧ EnvBoundOn rs' env' (afterBW TW B body) ∧
+        TowerWordsOn rs' env' T ∧ TowerU64On rs' TW ∧ ScalarInRange rs') :
+    ∀ (M : Nat), M ≤ 2 ^ 64 → ∀ {rs rs' : RustState} {env : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (.RFor x M (towerSpellC TW body)) rs rs' → EnvBoundOn rs env B →
+      TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKW TW B (.RFor x M body) → towerOKW T TW (.RFor x M body) →
+      ∃ env', semScalar (.RFor x M body) env = some env' ∧ EnvBoundOn rs' env' B ∧
+        TowerWordsOn rs' env' T ∧ TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  intro M
+  induction M with
+  | zero =>
+      intro _ rs rs' env B T hexec henv htw hu _ _ hir _ _
+      cases hexec
+      exact ⟨env, rfl, henv, htw, hu, hir⟩
+  | succ n ihN =>
+      intro hN rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      cases hexec with | forSucc _ _ _ _ _ _ hFor hBody =>
+        obtain ⟨envPre, hsPre, hePre, hwPre, huPre, hiPre⟩ :=
+          ihN (by omega) hFor henv htw hu hTW hdisj hir hreads htok
+        have hbodyReads : readsOKW TW (fun y => B y ∨ y = x) body := hreads
+        have hdisj' : ∀ y, (B y ∨ y = x) → ¬ T y := by
+          intro y hy
+          rcases hy with hy | rfl
+          · exact hdisj y hy
+          · exact htok.1
+        obtain ⟨env', hs', he', hw', hu', hi'⟩ :=
+          ihBody hBody (envBoundOn_upd hePre x n)
+            (towerWordsOn_updScalar hwPre (onlyTmpBelow_refl envPre 0) x htok.1 _ n)
+            (towerU64On_setScalar huPre _ _) hTW hdisj'
+            (scalarInRange_upd hiPre x (by omega)) hbodyReads htok.2
+        have hsPre' : semRForD (fun e => semScalar body e) x n env = some envPre := hsPre
+        refine ⟨env', by simp only [semScalar, semRForD, hsPre']; exact hs', ?_, hw', hu', hi'⟩
+        exact envBoundOn_mono he' (fun y hy => le_afterBW TW body _ y (Or.inl hy))
+
+/-! ### The command-level simulation with word slots -/
+
+/-- **`rustExec_semScalar_agree_arrW` (reading-B value adequacy with word slots).**
+    `rustExec_semScalar_agree_arr` with the `RustExec` run taken over the spelling
+    `towerSpellC TW c`: a run under one-word array oracles (`ArrLoadWord`,
+    `ArrStoreWord`) and a word-writing `limbStore` oracle (`LimbStoreWord`) is
+    tracked by a defined
+    `semScalar` run of `c` whose output env is `EnvBoundOn` the scalar set
+    `afterBW TW B c` and `TowerWordsOn` the tower names `T`, with
+    the word names `TW` still `TU64`-typed, given entry `EnvBoundOn rs env B`,
+    `TowerWordsOn rs env T`, `TowerU64On rs TW`, `TW ⊆ T`, the
+    disjointness of `B` and `T`, `ScalarInRange`, and the scopings `readsOKW TW B c`
+    and `towerOKW T TW c`. -/
+theorem rustExec_semScalar_agree_arrW {N : Nat} {leafSpec : LeafSpec}
+    (hload : ArrLoadWord leafSpec) (hstore : ArrStoreWord leafSpec)
+    (hlimb : LimbStoreWord leafSpec) (TW : String → Prop) [DecidablePred TW] {c : LowCT}
+    (h : IsCoveredAdeqArr c) :
+    ∀ {rs rs' : RustState} {env : SEnvScalar} {B T : String → Prop},
+      RustExec N leafSpec (towerSpellC TW c) rs rs' → EnvBoundOn rs env B →
+      TowerWordsOn rs env T → TowerU64On rs TW →
+      (∀ y, TW y → T y) → (∀ y, B y → ¬ T y) → ScalarInRange rs →
+      readsOKW TW B c → towerOKW T TW c →
+      ∃ env', semScalar c env = some env' ∧ EnvBoundOn rs' env' (afterBW TW B c) ∧
+        TowerWordsOn rs' env' T ∧ TowerU64On rs' TW ∧ ScalarInRange rs' := by
+  induction h with
+  | ofStraight hs => exact agreeArrWS hload hstore hlimb TW hs
+  | rFor hN _ ih =>
+      intro rs rs' env B T hexec henv htw hu hTW hdisj hir hreads htok
+      simp only [towerSpellC] at hexec
+      exact agreeArrWFor TW ih _ hN hexec henv htw hu hTW hdisj hir hreads htok
+  | rIfNz name mergeName tv ev hname htv hev =>
+      intro rs rs' env B T hexec henv htw hu _ _ hir hreads htok
+      have hbname : B name := hreads
+      have hTm : ¬ T mergeName := htok.1
+      have hcond : env name = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar name)⟩ :=
+        henv name hbname hname
+      simp only [towerSpellC] at hexec
+      cases hexec with
+      | ifTrue _ _ _ _ _ v hveq hvne hct =>
+          cases hct
+          have hne0 : ¬ (BitVec.ofNat 64 (rs.rsScalar name) = 0#64) := fun hc =>
+            hvne (hveq ▸ (ofNat_eq_zero_iff (hir name)).mp hc)
+          refine ⟨env.upd mergeName (t := .sword 64) (BitVec.ofNat 64 tv), ?_,
+            envBoundOn_mono (envBoundOn_upd henv mergeName tv) (fun y hy => Or.inl hy),
+            towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
+            towerU64On_setScalar hu _ _, scalarInRange_upd hir mergeName htv⟩
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_neg hne0]
+      | ifFalse _ _ _ _ _ hveq hcf =>
+          have heq0 : BitVec.ofNat 64 (rs.rsScalar name) = 0#64 :=
+            (ofNat_eq_zero_iff (hir name)).mpr hveq
+          clear hveq
+          cases hcf
+          refine ⟨env.upd mergeName (t := .sword 64) (BitVec.ofNat 64 ev), ?_,
+            envBoundOn_mono (envBoundOn_upd henv mergeName ev) (fun y hy => Or.inl hy),
+            towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
+            towerU64On_setScalar hu _ _, scalarInRange_upd hir mergeName hev⟩
           simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_pos heq0]
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
