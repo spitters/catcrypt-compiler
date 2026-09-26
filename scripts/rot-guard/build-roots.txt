@@ -1088,3 +1088,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
 CatCrypt.Crypto.SecureCompilation.RangeDomain
 CatCrypt.Crypto.SecureCompilation.VIR.ComRange
+CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
