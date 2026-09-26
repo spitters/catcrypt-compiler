@@ -41,6 +41,8 @@ The store opcode is carried as a parameter under the hypothesis that it moves a
 word unchanged (`MovesWord`). The narrow buffer moves `MOV:8` and `MOV:16` do
 not satisfy it — their `applyOpn` arms truncate — so the results cover the
 `abiW ∈ {0, 64}` exports and not the narrow-element ones.
+`JasminInlineStoreSpillArm.MovesMasked` carries the narrow moves, and
+`JasminInlineStoreOrder` reads a cell in the order `physBodyWithStores` emits.
 
 ## Main definitions
 
