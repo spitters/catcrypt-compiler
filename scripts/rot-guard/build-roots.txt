@@ -523,6 +523,7 @@ CatCrypt.Crypto.SecureCompilation.TransportProtocolKernels
 CatCrypt.Crypto.SecureCompilation.VIR.AesGcmCompose
 CatCrypt.Crypto.SecureCompilation.VIR.AesniRoundVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.AsconEmit
+CatCrypt.Crypto.SecureCompilation.VIR.BabyBearBarrettBlock
 CatCrypt.Crypto.SecureCompilation.VIR.BarrettRaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.BignumMulCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Blake2bCompressCatCryptEmit
