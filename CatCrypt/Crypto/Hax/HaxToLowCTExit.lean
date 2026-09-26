@@ -47,13 +47,20 @@ no-overflow condition `a + b < 2^64` and `b ≤ a`, the condition `inRangeState`
 imposes on the step from `RustExec` to the emitted code.
 
 The translator `haxToLowCTK sc tl fl e` takes the scalar-operation mode `sc`,
-whether `e` is in tail position (`tl`), and the loop slot `fl` of the innermost
-enclosing `whileFoldReturn` (`none` outside every such loop, where `cfBreak` is
+whether `e` is in tail position (`tl`), and the exit context `fl`: the loop slot
+of the innermost enclosing exit loop, `some exitFnSlot` in a function body
+outside every exit loop, or `none` where no exit is handled (there `cfBreak` is
 refused); it returns the lowered command and whether it may have exited.  The
-loop slot of a `whileFoldReturn` is `exitRunName fl`: `"__exit_run"` at the
-outermost level, one `_` appended per nesting level.  The names `exitRetName`,
-`exitValName`, `exitResName` and `exitRunName _` are reserved: the simulation
-takes as a hypothesis that the program binds none of them.
+loop slot of an exit loop is `exitRunName fl`: `"__exit_run"` at the outermost
+level, one `_` appended per nesting level.  The names `exitRetName`,
+`exitValName`, `exitResName`, `exitFnSlot` and `exitRunName _` are reserved:
+the simulation takes as a hypothesis that the program binds none of them.
+
+**Function-level exits.**  hax-lean emits an early `return` outside every loop
+as a `cfBreak` at function level.  `haxToLowCTFn` lowers the body in the
+function context `some exitFnSlot`, so such a `cfBreak` sets the exit flag like
+one inside a loop; the statements after it run under `exitGuard`, and the frame
+`exitFunction` copies `exitValName` into the result slot when the flag is set.
 
 Every constructor that cannot carry an exit is lowered by `haxToLowCT` outside
 tail position, and a `letBind` by `letHead`, the head context `haxToLowCT` builds
@@ -71,6 +78,8 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 * `haxToLowCT_eq_haxToLowCTK_none`: `haxToLowCT` is the exit-free projection of
   `haxToLowCTK false false none`
 * `haxToLowCTK_isSome_iff_anfK`: the lowering succeeds exactly on `AnfShapedK`
+* `haxToLowCTFn_isSome_iff_anfK`: the function lowering succeeds exactly on
+  `AnfShapedK true true true`, the shape with function-level exits
 * `ExitGap`, `exitGapOf`, `haxToLowCTK_none_of_exitGap`: the early-exit
   constructors the lowering refuses, each with its name, and the refusal
 * `searchLoopShape_lowers`: the search loop with an early return lowers
@@ -96,12 +105,21 @@ def exitValName : String := "__exit_val"
 /-- The function's result slot. -/
 def exitResName : String := "__exit_res"
 
-/-- The loop slot of a `whileFoldReturn` whose innermost enclosing
-    `whileFoldReturn` has loop slot `fl`: `"__exit_run"` outside every such loop,
-    and `fl ++ "_"` inside one. -/
+/-- The exit context of a function body: `haxToLowCTFn` lowers the body in
+    context `some exitFnSlot`, where the function frame `exitFunction` handles an
+    exit at function level. -/
+def exitFnSlot : String := "__exit_fn"
+
+/-- The loop slot of an exit loop in exit context `fl`: `"__exit_run"` outside
+    every exit loop (`none` or the function context `some exitFnSlot`), and
+    `r ++ "_"` inside an exit loop with loop slot `r`. -/
 def exitRunName : Option String → String
   | none => "__exit_run"
-  | some r => r ++ "_"
+  | some r => if r = exitFnSlot then "__exit_run" else r ++ "_"
+
+/-- The function context names the same loop slot as the empty context. -/
+@[simp] theorem exitRunName_fn : exitRunName (some exitFnSlot) = exitRunName none := by
+  simp [exitRunName]
 
 /-- A statement run only when the exit flag is `0`. -/
 def exitGuard (c : LowCT) : LowCT := .RIfNz exitRetName .RSkip c
@@ -315,9 +333,10 @@ theorem letHeadK_false (name : String) (val : ImpExpr) :
 /-! ## §4  The translator -/
 
 /-- The lowering with an exit flag and a result slot.  `sc` selects the
-    scalar-operation arms, `tl` records tail position, `fl` is the loop slot of
-    the innermost enclosing `whileFoldReturn` (`none` outside every such loop);
-    the result pairs the lowered command with whether it may have exited.  In
+    scalar-operation arms, `tl` records tail position, `fl` is the exit context:
+    the loop slot of the innermost enclosing exit loop, `some exitFnSlot` in a
+    function body outside every exit loop, and `none` where no exit is handled
+    (a `cfBreak` is refused only there); the result pairs the lowered command with whether it may have exited.  In
     tail position a scalar value is written into the result slot; outside tail
     position the constructors that carry no exit are lowered by `haxToLowCT`. -/
 def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (LowCT × Bool)
@@ -352,10 +371,12 @@ def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (Low
   | false, _, e => (haxToLowCT e).map fun c => (c, false)
 
 /-- The lowering of a function body: `haxToLowCTK` with the scalar-operation
-    arms, in tail position, outside every loop, inside the function frame
-    `exitFunction`. -/
+    arms, in tail position, in the function context `some exitFnSlot`, inside the
+    function frame `exitFunction`.  A `cfBreak` at function level (hax-lean's
+    form of an early `return` outside every loop) sets the exit flag, and the
+    frame copies its payload into the result slot. -/
 def haxToLowCTFn (e : ImpExpr) : Option LowCT :=
-  (haxToLowCTK true true none e).map fun p => exitFunction p.1
+  (haxToLowCTK true true (some exitFnSlot) e).map fun p => exitFunction p.1
 
 /-- The commands that cannot exit: `some c` for a lowering `(c, false)`. -/
 def exitFree : Option (LowCT × Bool) → Option LowCT
@@ -412,7 +433,8 @@ theorem haxToLowCTK_none_cfBreak (sc tl : Bool) (e : ImpExpr) :
 /-! ## §5  The shape predicate -/
 
 /-- The shape `haxToLowCTK sc tl` accepts, with `inLoop` recording whether the
-    expression sits inside a `whileFoldReturn` body: a `letBind` whose head
+    expression sits in an exit context (an exit-loop body or a function body
+    lowered by `haxToLowCTFn`): a `letBind` whose head
     `letHeadK sc` accepts and whose body has the shape; `seq` (its first
     component outside tail position), `ifThenElse` on a variable and a type
     ascription with components of the shape; outside tail position a
@@ -556,6 +578,13 @@ theorem haxToLowCTK_isSome_of_representable_and_anfK (sc tl : Bool) (e : ImpExpr
     (haxToLowCTK sc tl none e).isSome = true :=
   (haxToLowCTK_isSome_iff_anfK sc tl none e).mpr
     (anfShapedK_of_representable sc tl false e hrep hanf)
+
+/-- **The shape biconditional of `haxToLowCTFn`.** The function lowering succeeds
+    exactly on the tail-position shape with exits allowed at function level. -/
+theorem haxToLowCTFn_isSome_iff_anfK (e : ImpExpr) :
+    (haxToLowCTFn e).isSome = true ↔ AnfShapedK true true true e = true := by
+  rw [haxToLowCTFn, Option.isSome_map]
+  exact haxToLowCTK_isSome_iff_anfK true true (some exitFnSlot) e
 
 /-! ## §7  The refused early-exit constructors -/
 

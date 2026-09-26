@@ -22,7 +22,8 @@ the scalar fragment `exitSimOk`:
   variables (`scalarOpExpr`);
 * `seq`, `ifThenElse` on a variable, `whileFoldReturn` on a variable,
   `forFoldReturn` and `forFoldRevReturn` with bounds accepted by `forBounds`,
-  `cfBreak` of a variable or a `u64` literal inside such a loop;
+  `cfBreak` of a variable or a `u64` literal inside such a loop or, in a function
+  body, at function level;
 * outside tail position a variable or `unitVal`, in tail position a variable, a
   `u64` literal or `unitVal`;
 * no name of the program is reserved (`exitReserved`, the prefix `"__exit_"`).
@@ -57,16 +58,19 @@ the trip counter of `RFor`, so a trip after an exit writes only the loop slot
 (`exitedTrips`); the run of `RFor` is assembled from the trips by
 `rustExec_rFor_of_tripsFrom`.
 
-`haxToLowCTK_simulates` is the simulation of every fragment expression, and
-`haxToLowCTFn_simulates` the function-level statement: the result slot holds the
-decoding of the returned or final value.
+`haxToLowCTK_simulates` is the simulation of every fragment expression, in every
+exit context `RunCtx` admits: a loop slot or the function context `exitFnSlot`.
+`haxToLowCTFn_simulates_exit` is the function-level statement for a body in the
+fragment with exits allowed at function level (`exitSimOk true true`): the
+result slot holds the decoding of the returned or final value.
 
 ## Main results
 
 * `haxToLowCTK_simulates`: the lowering of every `exitSimOk` expression simulates
   `Hax.denote'` under `ScalarOpsSound`
-* `haxToLowCTFn_simulates`: the result slot of the lowered function holds the
-  decoding of the returned or final value
+* `haxToLowCTFn_simulates_exit`, `haxToLowCTFn_simulates`: the result slot of the
+  lowered function holds the decoding of the returned or final value, with and
+  without exits at function level
 * `exitLoop_sim`: the `whileFoldReturn` case, by induction on fuel
 * `exitForTrips_sim`, `exitForTripsRev_sim`: the `forFoldReturn` and
   `forFoldRevReturn` cases, by induction on the trips left
@@ -93,8 +97,10 @@ def exitReserved (name : String) : Bool := "__exit_".toList.isPrefixOf name.toLi
 /-- A loop slot: a name starting with `"__exit_run"`. -/
 def exitRunSlot (name : String) : Bool := "__exit_run".toList.isPrefixOf name.toList
 
-/-- The loop slot context `fl` of the translator names a loop slot. -/
-def RunCtx (fl : Option String) : Prop := ∀ r, fl = some r → exitRunSlot r = true
+/-- The exit context `fl` of the translator names a loop slot or the function
+    context `exitFnSlot`. -/
+def RunCtx (fl : Option String) : Prop :=
+  ∀ r, fl = some r → exitRunSlot r = true ∨ r = exitFnSlot
 
 /-! ## §2  Scalar values, agreement and the exit component -/
 
@@ -704,10 +710,12 @@ theorem runSlot_exitRunName {fl : Option String} (h : RunCtx fl) :
   cases fl with
   | none => decide
   | some r =>
-    have hr := h r rfl
+    by_cases hf : r = exitFnSlot
+    · subst hf; rw [exitRunName_fn]; decide
+    have hr := (h r rfl).resolve_right hf
     unfold exitRunSlot at hr ⊢
     rw [List.isPrefixOf_iff_prefix] at hr ⊢
-    simp only [exitRunName, String.toList_append]
+    simp only [exitRunName, if_neg hf, String.toList_append]
     exact List.IsPrefix.trans hr (List.prefix_append _ _)
 
 theorem ne_of_reserved {n r : String} (hn : exitReserved n = false) (hr : exitReserved r = true) :
@@ -1199,7 +1207,7 @@ theorem exitLoop_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb : Bool)
       rs.rsScalar run = rs.rsScalar c →
       ∃ rs', RustExec N leafSpec (.RWhileNz run (.RSeq bC (loopTail run c))) rs rs' ∧
         envAgreesExit false o env' rs' := by
-  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact hslot
+  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact Or.inl hslot
   have hcr : c ≠ run := ne_of_reserved hc (exitReserved_of_runSlot hslot)
   have hresv := exitReserved_of_runSlot hslot
   intro fuel
@@ -1365,7 +1373,7 @@ theorem exitForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : L
       (∃ v, o = .val v) → envAgreesOff env rs → rs.rsScalar exitRetName = 0 →
       ∃ rs', TripsFrom N leafSpec run (exitForTrip run i lo bC) j d rs rs' ∧
         envAgreesExit false o env' rs' := by
-  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact hslot
+  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact Or.inl hslot
   have hresv := exitReserved_of_runSlot hslot
   have hir : i ≠ run := ne_of_reserved hi_ hresv
   have hiret : i ≠ exitRetName := ne_of_reserved hi_ exitReserved_ret
@@ -1496,7 +1504,7 @@ theorem exitForTripsRev_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC 
       (∃ v, o = .val v) → envAgreesOff env rs → rs.rsScalar exitRetName = 0 →
       ∃ rs', TripsFrom N leafSpec run (exitForTripRev run i hi bC) j d rs rs' ∧
         envAgreesExit false o env' rs' := by
-  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact hslot
+  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact Or.inl hslot
   have hresv := exitReserved_of_runSlot hslot
   have hir : i ≠ run := ne_of_reserved hi_ hresv
   have hiret : i ≠ exitRetName := ne_of_reserved hi_ exitReserved_ret
@@ -1675,21 +1683,27 @@ theorem outcomeScalar_val {v : Value} (hv : v.isControlFlow = false) :
     outcomeScalar (.val v) = valueToScalar v := by
   cases v <;> first | rfl | simp at hv
 
-/-- **Function-level simulation.**  For a function body of the fragment in tail
-    position, a builtin table computing the scalar operations soundly, and an
-    entry state agreeing with the entry environment off the reserved names, a
-    `denote'` run ending in a value is matched by the lowered function
-    `haxToLowCTFn e`, whose result slot holds the decoding of the returned value
-    (for an early exit) or of the final value. -/
-theorem haxToLowCTFn_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
+/-- The fragment in a loop context contains the fragment outside every loop. -/
+theorem exitSimOk_inLoop_of (tl il : Bool) (e : ImpExpr) (h : exitSimOk tl il e = true) :
+    exitSimOk tl true e = true := by
+  fun_induction exitSimOk tl il e <;> simp_all [exitSimOk]
+
+/-- **Function-level simulation with function-level exits.**  For a function
+    body of the fragment in tail position in an exit context (so a `cfBreak`
+    may occur at function level, outside every loop), a builtin table computing
+    the scalar operations soundly, and an entry state agreeing with the entry
+    environment off the reserved names, a `denote'` run ending in a value is
+    matched by the lowered function `haxToLowCTFn e`, whose result slot holds the
+    decoding of the returned value (for an early exit) or of the final value. -/
+theorem haxToLowCTFn_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (hs : ScalarOpsSound bi) (e : ImpExpr) (c : LowCT)
-    (hok : exitSimOk true false e = true) (hK : haxToLowCTFn e = some c)
+    (hok : exitSimOk true true e = true) (hK : haxToLowCTFn e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
     (hag : envAgreesOff env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) := by
   unfold haxToLowCTFn at hK
-  rcases hK0 : haxToLowCTK true true none e with _ | ⟨c0, x⟩
+  rcases hK0 : haxToLowCTK true true (some exitFnSlot) e with _ | ⟨c0, x⟩
   · rw [hK0] at hK; cases hK
   rw [hK0] at hK
   simp only [Option.map_some, Option.some.injEq] at hK
@@ -1699,8 +1713,8 @@ theorem haxToLowCTFn_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
   have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitResName 0).rsScalar exitRetName = 0 := by
     simp [rsScalar_rsSetScalar]
   obtain ⟨rs1, hex, hagE, -⟩ :=
-    haxToLowCTK_simulates bi N leafSpec hs e true none fuel env env' o _ c0 x hok
-      (fun r h => by cases h) hK0 hrun hval hag0 hret0
+    haxToLowCTK_simulates bi N leafSpec hs e true (some exitFnSlot) fuel env env' o _ c0 x hok
+      (fun r h => Or.inr (Option.some.inj h).symm) hK0 hrun hval hag0 hret0
   obtain ⟨v, rfl⟩ := hval
   cases hcf : v.isControlFlow with
   | false =>
@@ -1723,6 +1737,18 @@ theorem haxToLowCTFn_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
         simp only [outcomeScalar, rsScalar_rsSetScalar, if_true]
         exact hw
     | _ => simp at hcf
+
+/-- **Function-level simulation.**  `haxToLowCTFn_simulates_exit` for a function
+    body of the fragment outside every loop context. -/
+theorem haxToLowCTFn_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
+    (hs : ScalarOpsSound bi) (e : ImpExpr) (c : LowCT)
+    (hok : exitSimOk true false e = true) (hK : haxToLowCTFn e = some c)
+    (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
+    (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
+    (hag : envAgreesOff env rs) :
+    ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) :=
+  haxToLowCTFn_simulates_exit bi N leafSpec hs e c (exitSimOk_inLoop_of true false e hok) hK
+    fuel env env' o rs hrun hval hag
 
 /-- The pipeline output of the search loop (`searchLoopShape`) lies in the
     fragment; a static check that the fragment's hypothesis is satisfiable on a
