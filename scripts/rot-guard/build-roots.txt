@@ -1057,3 +1057,4 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.FieldExprCompile
 CatCrypt.Crypto.Pairing.PastaGroupEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.PoseidonBN254Emit
 CatCrypt.Crypto.Hash.Poseidon.BN254
+CatCrypt.Crypto.SecureCompilation.Algebraic.ZkFieldsEmitMain

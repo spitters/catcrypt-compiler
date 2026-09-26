@@ -47,12 +47,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-- The exported linear program: `permJasminAt 15` as the function `poseidon2_kb`,
     loading the 16 lanes from `RSI` and storing the last 16 bindings to `RDI`. -/
-def permLprog : Lprog :=
+def permLprog (_ : Unit) : Lprog :=
   Com.toLprogPhysAbi (permJasminAt 15) "poseidon2_kb" (fun _ => none) poseidon2ImmSlots
     poseidon2InLoadMap poseidon2OutStoreMap
 
 /-- The AT&T text of `permLprog` through `renderOwned`. -/
-def permAsm : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned permLprog
+def permAsm (_ : Unit) : String :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned (permLprog ())
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2KoalaBear
