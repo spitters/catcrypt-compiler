@@ -16,9 +16,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 `encodeZmmPackInst bop d a b` is the x86-64 machine encoding of the line
 `VpackZmmAsmPrint.renderVpackZmmInstr` prints for a `JasminOp.vpackZMM bop`
 binding `d := bop-packed(a, b)`, namely `mnem %zmmB, %zmmA, %zmmD`, and
-`encodeZmmPermInst name d ctrl src` is the encoding of the permute line
-`name %zmmCtrl, %zmmSrc, %zmmD` that the printer emits for the `extCall` leaves
-`vpermq`, `vpermt2q` and `vpermpd`. In both, the last AT&T operand is
+`encodeZmmPermInst name d idx src` is the encoding of the permute line
+`name %zmmSrc, %zmmIdx, %zmmD`, the line the printer emits for the `extCall` leaves
+`vpermq` and `vpermpd` (`vpermt2q` is encoded on the same operand roles, with `d` as
+the first table). In both, the last AT&T operand is
 `ModRM.reg`, the middle one is `EVEX.vvvv` and the first one is `ModRM.rm`.
 
 Every instruction is register-only and of the form `EVEX.512.66.0F.W1 op /r`
@@ -129,15 +130,14 @@ def zmmPermOpcode (name : String) : Option Nat :=
   else if name == "vpermt2q" then some 0x7e
   else none
 
-/-- The machine encoding of the printed permute line
-    `name %zmmCtrl, %zmmSrc, %zmmD`: `d` is `ModRM.reg`, `src` is `vvvv` and
-    `ctrl` is `ModRM.rm`. The index vector of all three instructions is `vvvv`,
-    so the instruction selects lanes of `ctrl` (and, for `vpermt2q`, of the
-    previous `d`) by the indices in `src`. An unknown leaf name or a register
+/-- The machine encoding of the permute line `name %zmmSrc, %zmmIdx, %zmmD`: `d` is
+    `ModRM.reg`, `idx` is `vvvv` and `src` is `ModRM.rm`. The index vector of all
+    three instructions is `vvvv`, so the instruction selects lanes of `src` (and,
+    for `vpermt2q`, of the previous `d`) by the indices in `idx`. An unknown leaf name or a register
     numbered 32 or higher gives `UD2`. -/
-def encodeZmmPermInst (name : String) (d ctrl src : Nat) : List (BitVec 8) :=
+def encodeZmmPermInst (name : String) (d idx src : Nat) : List (BitVec 8) :=
   match zmmPermOpcode name with
-  | some op => if zmmRegsOk d src ctrl then encEvex512W1 2 op d src ctrl else encUd2
+  | some op => if zmmRegsOk d idx src then encEvex512W1 2 op d idx src else encUd2
   | none => encUd2
 
 /-! ## 4. Gas pins
@@ -186,15 +186,17 @@ theorem encodeZmmPack_map0F38_eq_gas :
 
 /-- The permute leaves against the gas lines
     `vpermq|vpermpd|vpermt2q %zmm7, %zmm5, %zmm3`, `vpermq %zmm30, %zmm0, %zmm1`,
-    `vpermt2q %zmm26, %zmm21, %zmm17` and `vpermpd %zmm10, %zmm9, %zmm12`. -/
+    `vpermt2q %zmm26, %zmm21, %zmm17`, `vpermpd %zmm10, %zmm9, %zmm12` and
+    `vpermq %zmm0, %zmm30, %zmm1`, the printer's line for `permDemoCom`. -/
 theorem encodeZmmPerm_eq_gas :
-    encodeZmmPermInst "vpermq" 3 7 5 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x36, 0xdf] ∧
-    encodeZmmPermInst "vpermpd" 3 7 5 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x16, 0xdf] ∧
-    encodeZmmPermInst "vpermt2q" 3 7 5 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x7e, 0xdf] ∧
-    encodeZmmPermInst "vpermq" 1 30 0 = ymmBytes [0x62, 0x92, 0xfd, 0x48, 0x36, 0xce] ∧
-    encodeZmmPermInst "vpermt2q" 17 26 21 =
+    encodeZmmPermInst "vpermq" 3 5 7 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x36, 0xdf] ∧
+    encodeZmmPermInst "vpermpd" 3 5 7 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x16, 0xdf] ∧
+    encodeZmmPermInst "vpermt2q" 3 5 7 = ymmBytes [0x62, 0xf2, 0xd5, 0x48, 0x7e, 0xdf] ∧
+    encodeZmmPermInst "vpermq" 1 0 30 = ymmBytes [0x62, 0x92, 0xfd, 0x48, 0x36, 0xce] ∧
+    encodeZmmPermInst "vpermt2q" 17 21 26 =
       ymmBytes [0x62, 0x82, 0xd5, 0x40, 0x7e, 0xca] ∧
-    encodeZmmPermInst "vpermpd" 12 10 9 = ymmBytes [0x62, 0x52, 0xb5, 0x48, 0x16, 0xe2] := by
+    encodeZmmPermInst "vpermpd" 12 9 10 = ymmBytes [0x62, 0x52, 0xb5, 0x48, 0x16, 0xe2] ∧
+    encodeZmmPermInst "vpermq" 1 30 0 = ymmBytes [0x62, 0xf2, 0x8d, 0x40, 0x36, 0xc8] := by
   decide
 
 /-- A register numbered 32 or higher in any position, and a leaf name outside

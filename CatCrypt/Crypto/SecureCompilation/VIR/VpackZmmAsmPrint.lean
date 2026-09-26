@@ -12,6 +12,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+public import CatCryptCore.Tactics.KatGuard
 
 /-!
 # Owned AT&T `.s` printer for the `vpackZMM` (512-bit ZMM) fragment of `Com jasminDialect`
@@ -132,17 +133,20 @@ The cross-lane MDS `P`-powers and the column-sum block-swap ride the `extCall`
 leaf with a compile-time-constant control (`vshuffle σ`, `CrossLaneReadback`),
 the same discipline as ChaCha's `vpshufb` rotate. On the owned `%zmm` printer
 they render to an AVX-512 lane-permute mnemonic. The leaf name IS the mnemonic
-(`"vpermq"` / `"vpermt2q"` / `"vpermpd"`), and the leaf is binary `[control,
-source]`: the control register holds the fixed public index (a rodata-loaded
-`c_rotIdx`/`c_rot4Idx`), the source is the permuted `%zmm`. Byte-identity of the
+(`"vpermq"` / `"vpermpd"`), and the leaf is binary `[control, source]`: the control
+register holds the fixed public index (a rodata-loaded `c_rotIdx`/`c_rot4Idx`), the
+source is the permuted `%zmm`. Both instructions take the index vector in `EVEX.vvvv`
+(the middle AT&T operand) and the permuted table in `ModRM.rm` (the first), so the
+line is `op %src, %ctrl, %dst`. `vpermt2q` reads its destination as a second table
+and is not a binary leaf. Byte-identity of the
 emitted permute to its reference is the leaf's KAT (Tier-B, external bench), the
 same story as the `vpshufb` cross-lane leaf. -/
 
 /-- Whether a leaf name is an AVX-512 cross-lane permute mnemonic the owned `%zmm`
-    printer emits directly (`vpermq` / `vpermt2q` / `vpermpd`). Any other
+    printer emits directly (`vpermq` / `vpermpd`). Any other
     `extCall` name stays out of the `vpackZMM` fragment. -/
 def isZmmPermuteMnemonic (name : String) : Bool :=
-  name == "vpermq" || name == "vpermt2q" || name == "vpermpd"
+  name == "vpermq" || name == "vpermpd"
 
 /-! ## 3. Per-instruction renderer: a `vpackZMM` op + dst/src names → one AT&T line
 
@@ -185,13 +189,14 @@ def lowerVpackZmmExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
   | .extCall name _ _ =>
       -- The cross-lane permute leaf (`vshuffle σ`, constant control): a binary
       -- `[control, source]` leaf whose name is its AVX-512 permute mnemonic.
-      -- Renders in the EVEX 3-operand AT&T order `op control, source, dst`
-      -- (`vpermq %ctrl, %src, %dst`). Any non-permute `extCall` stays out of the
-      -- fragment (the comment arm below).
+      -- Renders in the EVEX 3-operand AT&T order `op source, control, dst`
+      -- (`vpermq %src, %ctrl, %dst`): the index is `vvvv`, the table is
+      -- `rm`. Any non-permute `extCall` stays out of the fragment (the comment arm
+      -- below).
       if isZmmPermuteMnemonic name then
         let ctrl := argName vm e.args 0
         let src := argName vm e.args 1
-        "\t" ++ name ++ " " ++ zmmReg alloc ctrl ++ ", " ++ zmmReg alloc src
+        "\t" ++ name ++ " " ++ zmmReg alloc src ++ ", " ++ zmmReg alloc ctrl
           ++ ", " ++ zmmReg alloc dst
       else
         "\t# <unsupported owned-AT&T op; not in the vpackZMM fragment>"
@@ -345,10 +350,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
 /- The butterfly kernel emits the packed multiply (lowercase owned `%zmm`
     mnemonic, not the UPPERCASE jasmin `#VPMULL_8u64` intrinsic). -/
-#guard (strContains bflyHiExportAsm "vpmullq")
+#kat (strContains bflyHiExportAsm "vpmullq")
 
 /- The butterfly kernel emits the packed add (lowercase owned `%zmm` mnemonic). -/
-#guard (strContains bflyHiExportAsm "vpaddq")
+#kat (strContains bflyHiExportAsm "vpaddq")
 
 /-- The owned export symbol is present. -/
 theorem asm_has_export :
@@ -357,11 +362,11 @@ theorem asm_has_export :
 
 /- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
     `VsimdAsmPrint` fragment). -/
-#guard (strContains bflyHiExportAsm "%zmm")
+#kat (strContains bflyHiExportAsm "%zmm")
 
 /- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
     lowercase-mnemonic path. -/
-#guard !(strContains bflyHiExportAsm "#VPADD_8u64")
+#kat !(strContains bflyHiExportAsm "#VPADD_8u64")
 
 /-- A `vpxorq` binding renders as the lowercase packed XOR over `%zmm`
     (EVEX order `src2, src1, dst`). -/
@@ -382,7 +387,7 @@ The Poseidon2 external-MDS `P`-power (`Poseidon2MdsPermUnified.permP`) rides the
 `extCall "vpermq"` leaf: a binary `[control, source]` leaf whose lane reindex is
 `vshuffle rotσ`. A one-binding `Com` over `[idx, src]` (control, source) renders,
 through the additive permute arm, to the single AT&T line
-`vpermq %<idx>, %<src>, %<dst>`. -/
+`vpermq %<src>, %<idx>, %<dst>`. -/
 
 /-- A one-permute `Com jasminDialect`: `out = vpermq(idx, src)` over `[idx, src]`
     (`reg 512`). The `extCall "vpermq"` leaf is the cross-lane MDS `P`-power's
@@ -393,11 +398,11 @@ def permDemoCom : Com jasminDialect [.reg 512, .reg 512] (.reg 512) :=
     (.ret .here)
 
 /- The permute-leaf `Com` renders to exactly one owned AT&T `vpermq` line
-    (EVEX 3-operand order `vpermq %ctrl, %src, %dst`), pinning `idx`(`p0`) to
+    (EVEX 3-operand order `vpermq %src, %ctrl, %dst`), pinning `idx`(`p0`) to
     `%zmm30`, `src`(`p1`) to `%zmm0`, and the result (`v0`) to `%zmm1`. The
     concrete exercise of the additive permute arm. -/
-#guard (renderVpackZmmCom
+#kat (renderVpackZmmCom
           [("p0", "%zmm30"), ("p1", "%zmm0"), ("v0", "%zmm1")] permDemoCom).1
-        == ["\tvpermq %zmm30, %zmm0, %zmm1"]
+        == ["\tvpermq %zmm0, %zmm30, %zmm1"]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
