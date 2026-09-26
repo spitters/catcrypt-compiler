@@ -1068,3 +1068,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoop
 CatCrypt.Crypto.Hax.HaxNFRel
+CatCrypt.Crypto.Hax.HaxNFFront
