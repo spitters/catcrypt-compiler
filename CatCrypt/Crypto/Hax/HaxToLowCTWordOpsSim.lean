@@ -38,6 +38,10 @@ retyped shapes.
   straight-line bindings, their hax and `LowCT` forms, the hax environment after
   them, the related names after them and their side conditions.
 * `typeWordArrays` — the retyping of the array accesses.
+* `LowersIn` — the scalar expressions `semLowerSExpr` lowers on a scalar
+  environment.
+* `NarrowBuiltins w` — the facts a builtin table evaluates the `u<w>` word calls
+  and the narrowing casts to `w` bits by.
 
 ## Main results
 
@@ -50,6 +54,12 @@ retyped shapes.
 * `binds_sim`, `segment_sim` — a sequence of bindings preserves `EnvRelW`.
 * `semScalar_load_TFp` — on the front's load type the destination is the
   opaque default, which is no `u64` slot.
+* `semLowerSExpr_of_lowersIn`, `step_scalarSetExpr` — an accepted scalar
+  expression lowers, binding only temporaries, and its assignment preserves
+  `EnvRelW`.
+* `step_narrow`, `step_cast`, `step_mulMod` — one binding of a narrow word call,
+  a narrowing cast or `mulmod#64` preserves `EnvRelW`, with the hax run and the
+  `semScalar` run each reduced to the run of the continuation.
 -/
 
 @[expose] public section
@@ -63,7 +73,8 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA (encodeTy)
 open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
-  (SEnvScalar semScalar envReader envReadU64 semLowerSExpr binNode isTmpName isTmpName_tmpName)
+  (SEnvScalar semScalar envReader envReadU64 semLowerSExpr binNode isTmpName isTmpName_tmpName
+   OnlyTmpBelow ResultOK readU64_stable onlyTmpBelow_trans onlyTmpBelow_upd envReadU64_upd_self)
 open CatCrypt.Crypto.SecureCompilation.Dialects.LeafOracleScalar (semScalar_rLetZero)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (tmpName)
 
@@ -645,5 +656,205 @@ def typeWordArrays (len : String → Option Nat) : LowCT → LowCT
 theorem encodeTy_TBytes_eight_mul (n : Nat) : encodeTy (.TBytes (8 * n)) = .memref n := by
   simp only [encodeTy, CryptoTy.memref.injEq]
   omega
+
+/-! ### Scalar expressions the `semScalar` lowering accepts -/
+
+/-- `e` is built from the nodes `semLowerSExpr` lowers (variables, literals and the
+    binary nodes `SAdd`, `SSub`, `SMul`, `SAnd`, `SXor`, `SShl`, `SShr`,
+    `SMulHiU`), and every variable of `e` is a name outside the temporaries bound
+    to a `u64` slot of `σ`. -/
+def LowersIn (σ : SEnvScalar) : SExpr → Prop
+  | .SVar x => ¬ isTmpName x ∧ (envReadU64 σ x).isSome
+  | .SLit _ => True
+  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b
+  | .SShl a b | .SShr a b | .SMulHiU a b => LowersIn σ a ∧ LowersIn σ b
+  | _ => False
+
+/-- `LowersIn` depends only on the names outside the temporaries. -/
+theorem LowersIn.of_agree {σ σ' : SEnvScalar} (hag : ∀ s, ¬ isTmpName s → σ' s = σ s) :
+    ∀ e, LowersIn σ e → LowersIn σ' e := by
+  intro e he
+  induction e with
+  | SVar x => exact ⟨he.1, by unfold envReadU64; rw [hag x he.1]; exact he.2⟩
+  | SLit _ => trivial
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      exact ⟨iha he.1, ihb he.2⟩
+  | _ => exact he.elim
+
+/-- On a scalar expression it accepts, `semLowerSExpr` succeeds, binds only fresh
+    temporaries and returns a name holding a `u64` word. -/
+theorem semLowerSExpr_of_lowersIn :
+    ∀ (e : SExpr) (σ : SEnvScalar) (cnt : Nat), LowersIn σ e →
+      ∃ (σ₂ : SEnvScalar) (nm : String) (cnt' : Nat),
+        semLowerSExpr σ cnt e = some (σ₂, nm, cnt') ∧ cnt ≤ cnt' ∧
+        OnlyTmpBelow σ σ₂ cnt ∧ ResultOK nm cnt' ∧ (envReadU64 σ₂ nm).isSome := by
+  intro e
+  induction e with
+  | SVar x =>
+      intro σ cnt he
+      obtain ⟨w, hw⟩ := Option.isSome_iff_exists.mp he.2
+      exact ⟨σ, x, cnt, by simp only [semLowerSExpr, hw], Nat.le_refl _, fun _ _ => rfl,
+        Or.inl he.1, he.2⟩
+  | SLit n =>
+      intro σ cnt _
+      exact ⟨_, _, _, rfl, Nat.le_succ _, onlyTmpBelow_upd (fun _ _ => rfl) (Nat.le_refl _),
+        Or.inr ⟨cnt, Nat.lt_succ_self _, rfl⟩, by rw [envReadU64_upd_self]; rfl⟩
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      intro σ cnt he
+      obtain ⟨σ1, na, c1, h1, hle1, hot1, hr1, hs1⟩ := iha σ cnt he.1
+      obtain ⟨σ2, nb, c2, h2, hle2, hot2, _, hs2⟩ :=
+        ihb σ1 c1 (LowersIn.of_agree (fun s hs => hot1 s (Or.inl hs)) b he.2)
+      have hna : (envReadU64 σ2 na).isSome := by rw [readU64_stable hot2 hr1]; exact hs1
+      obtain ⟨va, hva⟩ := Option.isSome_iff_exists.mp hna
+      obtain ⟨vb, hvb⟩ := Option.isSome_iff_exists.mp hs2
+      simp only [semLowerSExpr, h1, h2, binNode, hva, hvb]
+      exact ⟨_, _, _, rfl, by omega, onlyTmpBelow_upd (onlyTmpBelow_trans hot1 hot2 hle1)
+        (by omega), Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, by rw [envReadU64_upd_self]; rfl⟩
+  | _ => intro _ _ he; exact he.elim
+
+/-- **Scalar-assignment binding.** A binding lowered to
+    `RLetU64Zero x (RSeq (RScalarSetExpr x se) _)`, with `se` accepted by the
+    lowering and evaluating to `r < 2^64`, runs in `semScalar` to a scalar
+    environment related to the hax environment with `x` bound to `.int r`. -/
+theorem step_scalarSetExpr {env : Env} {σ : SEnvScalar} {S : List String}
+    {A : List (String × Nat)} (h : EnvRelW env σ S A) {x : String} {se : SExpr}
+    (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x)
+    (hlow : LowersIn (σ.upd x (t := .sword 64) (0 : BitVec 64)) se) {r : Nat} (hlt : r < 2 ^ 64)
+    (hval : (se.evalBV (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64)))).toNat = r)
+    (bodyC : LowCT) :
+    ∃ σ', semScalar (.RLetU64Zero x (.RSeq (.RScalarSetExpr x se) bodyC)) σ =
+        semScalar bodyC σ' ∧ EnvRelW (env.extend x (.int r)) σ' (x :: S) A := by
+  obtain ⟨σ₂, _, _, hlow', _, hot, _, _⟩ := semLowerSExpr_of_lowersIn se _ 0 hlow
+  have hv : se.evalBV (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64))) =
+      BitVec.ofNat 64 r := by
+    apply BitVec.eq_of_toNat_eq
+    rw [hval, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt]
+  refine ⟨σ₂.upd x (t := .sword 64) (BitVec.ofNat 64 r), ?_, ?_⟩
+  · simp only [semScalar, hlow', hv, Option.bind_some]
+  · refine h.update x hxT hxA (fun y hy => extend_ne _ hy) (fun y hy hyT => ?_)
+      ⟨r, hlt, extend_self _, upd_self _⟩
+    rw [upd_ne _ hy, hot y (Or.inl hyT), upd_ne _ hy]
+
+/-- A related word other than `x` is a variable the lowering accepts after `x`
+    is bound, holding the word of its hax value. -/
+theorem lowersIn_word {env : Env} {σ : SEnvScalar} {S : List String} {A : List (String × Nat)}
+    (h : EnvRelW env σ S A) {x a : String} (ha : a ∈ S) (hax : a ≠ x) :
+    LowersIn (σ.upd x (t := .sword 64) (0 : BitVec 64)) (.SVar a) ∧
+      ((SExpr.SVar a).evalBV (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64)))).toNat =
+        natOf env a := by
+  obtain ⟨haL, _, haR⟩ := (h.word a ha).natOf_eq
+  have hτa : envReadU64 (σ.upd x (t := .sword 64) (0 : BitVec 64)) a =
+      some (BitVec.ofNat 64 (natOf env a)) := by rw [envReadU64_upd_ne _ hax, haR]
+  refine ⟨⟨h.wordClean a ha, by rw [hτa]; rfl⟩, ?_⟩
+  simp only [SExpr.evalBV, envReader_of_envReadU64 hτa, BitVec.toNat_ofNat, Nat.mod_eq_of_lt haL]
+
+/-! ### The narrow word operations -/
+
+/-- The facts a builtin table evaluates the narrow word calls of width `w` by:
+    every call of `narrowOpOf` at width `w` on two words below `2^64` returns
+    its natural-number operation, and every narrowing cast to `w` bits returns
+    its operand modulo `2^w`. -/
+structure NarrowBuiltins (w : Nat) (bi : Builtins) : Prop where
+  op : ∀ (f : String) (op : NarrowOp), narrowOpOf f = some (w, op) → ∀ n m r : Nat,
+    n < 2 ^ 64 → m < 2 ^ 64 → op.nat w n m = some r → bi f [.int n, .int m] = some (.int r)
+  cast : ∀ f : String, narrowCastOf f = some w → ∀ n : Nat,
+    bi f [.int n] = some (.int ((n % 2 ^ w : Nat) : Int))
+
+/-- The scalar expression of a narrow operation on accepted operands is accepted. -/
+theorem NarrowOp.lowersIn_sexpr {σ : SEnvScalar} (w : Nat) (op : NarrowOp) {ea eb : SExpr}
+    (ha : LowersIn σ ea) (hb : LowersIn σ eb) : LowersIn σ (op.sexpr w ea eb) := by
+  cases op
+  all_goals first | exact ⟨⟨ha, hb⟩, trivial⟩ | exact ⟨⟨ha, trivial⟩, hb⟩
+
+/-- **Narrow word-call binding.** `let x = f(a, b)` for a narrow word call `f` of
+    width `w` on two related words runs in hax to the binding of `x` to the
+    call's value `r`, and its lowering to a scalar environment related to it
+    with `x` added. -/
+theorem step_narrow {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : Nat)
+    {env : Env} {σ : SEnvScalar} {S : List String} {A : List (String × Nat)}
+    (h : EnvRelW env σ S A) {x f a b : String} {op : NarrowOp}
+    (hf : narrowOpOf f = some (w, op)) (ha : a ∈ S) (hb : b ∈ S) (hax : a ≠ x) (hbx : b ≠ x)
+    (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x) {r : Nat}
+    (hr : op.nat w (natOf env a) (natOf env b) = some r) (body : ImpExpr) (bodyC : LowCT) :
+    (denote bi fuel (.letBind x (.app f [.var a, .var b]) body)).run env =
+        (denote bi fuel body).run (env.extend x (.int r)) ∧
+      ∃ σ', semScalar (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (op.sexpr w (.SVar a) (.SVar b)))
+          bodyC)) σ = semScalar bodyC σ' ∧ EnvRelW (env.extend x (.int r)) σ' (x :: S) A := by
+  obtain ⟨haL, haE, _⟩ := (h.word a ha).natOf_eq
+  obtain ⟨hbL, hbE, _⟩ := (h.word b hb).natOf_eq
+  obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
+  obtain ⟨hlb, hvb⟩ := lowersIn_word h hb hbx
+  have hval := NarrowOp.sexpr_evalBV (narrowOpOf_width hf) op
+    (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64))) (ea := .SVar a) (eb := .SVar b)
+    (by rw [hva, hvb]; exact hr)
+  refine ⟨denote_letBind_app_run bi fuel x f [a, b] [.int (natOf env a), .int (natOf env b)]
+      _ body env (by simp [haE, hbE]) (hbi.op f op hf _ _ _ haL hbL hr), ?_⟩
+  exact step_scalarSetExpr h hxT hxA (NarrowOp.lowersIn_sexpr w op hla hlb)
+    (hval ▸ BitVec.isLt _) hval bodyC
+
+/-- **Narrowing-cast binding.** `let x = f(a)` for a cast `f` to `w` bits of a
+    related word runs in hax to the binding of `x` to its value modulo `2^w`,
+    and its lowering to a scalar environment related to it with `x` added. -/
+theorem step_cast {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : Nat)
+    {env : Env} {σ : SEnvScalar} {S : List String} {A : List (String × Nat)}
+    (h : EnvRelW env σ S A) {x f a : String} (hf : narrowCastOf f = some w) (ha : a ∈ S)
+    (hax : a ≠ x) (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x) (body : ImpExpr)
+    (bodyC : LowCT) :
+    (denote bi fuel (.letBind x (.app f [.var a]) body)).run env =
+        (denote bi fuel body).run (env.extend x (.int ((natOf env a % 2 ^ w : Nat) : Int))) ∧
+      ∃ σ', semScalar (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (narrowMask w (.SVar a)))
+          bodyC)) σ = semScalar bodyC σ' ∧
+        EnvRelW (env.extend x (.int ((natOf env a % 2 ^ w : Nat) : Int))) σ' (x :: S) A := by
+  obtain ⟨_, haE, _⟩ := (h.word a ha).natOf_eq
+  obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
+  have hw64 : w ≤ 64 := by rcases narrowCastOf_width hf with rfl | rfl <;> decide
+  have hval := narrowMask_evalBV hw64 (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64)))
+    (.SVar a)
+  rw [hva] at hval
+  refine ⟨denote_letBind_app_run bi fuel x f [a] [.int (natOf env a)] _ body env
+      (by simp [haE]) (hbi.cast f hf _), ?_⟩
+  exact step_scalarSetExpr h hxT hxA (se := narrowMask w (.SVar a)) ⟨hla, trivial⟩
+    (hval ▸ BitVec.isLt _) hval bodyC
+
+/-! ### Modular multiplication by a constant modulus -/
+
+/-- Barrett reduction of an accepted scalar expression is accepted. -/
+theorem lowersIn_barrettRedSExpr {σ : SEnvScalar} (p : Nat) {e : SExpr} (he : LowersIn σ e) :
+    LowersIn σ (barrettRedSExpr p e) :=
+  ⟨⟨⟨he, ⟨he, trivial⟩, trivial⟩, trivial⟩, trivial, ⟨⟨he, ⟨he, trivial⟩, trivial⟩, trivial⟩,
+    trivial⟩
+
+/-- **Modular-multiplication binding.** `let x = mulmod#64(a, b, m)` on two related
+    words, with `m` bound to a modulus `1 < p < 2^32`, runs in hax to the binding
+    of `x` to the product modulo `p`, and its lowering
+    `RScalarSetExpr x (mulModSExpr p a b)` to a scalar environment related to it
+    with `x` added. -/
+theorem step_mulMod {bi : Builtins} (hbi : MulModBuiltins bi) (fuel : Nat) {env : Env}
+    {σ : SEnvScalar} {S : List String} {A : List (String × Nat)} (h : EnvRelW env σ S A)
+    {x a b m : String} {p : Nat} (hp1 : 1 < p) (hp : p < 2 ^ 32) (hm : env m = some (.int p))
+    (ha : a ∈ S) (hb : b ∈ S) (hax : a ≠ x) (hbx : b ≠ x) (hxT : ¬ isTmpName x)
+    (hxA : ∀ p ∈ A, p.1 ≠ x) (body : ImpExpr) (bodyC : LowCT) :
+    (denote bi fuel (.letBind x (.app mulModCallName [.var a, .var b, .var m]) body)).run env =
+        (denote bi fuel body).run
+          (env.extend x (.int ((natOf env a * natOf env b % p : Nat) : Int))) ∧
+      ∃ σ', semScalar (.RLetU64Zero x (.RSeq (.RScalarSetExpr x
+          (mulModSExpr p (.SVar a) (.SVar b))) bodyC)) σ = semScalar bodyC σ' ∧
+        EnvRelW (env.extend x (.int ((natOf env a * natOf env b % p : Nat) : Int))) σ'
+          (x :: S) A := by
+  obtain ⟨haL, haE, _⟩ := (h.word a ha).natOf_eq
+  obtain ⟨hbL, hbE, _⟩ := (h.word b hb).natOf_eq
+  obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
+  obtain ⟨hlb, hvb⟩ := lowersIn_word h hb hbx
+  have hval := mulModSExpr_evalBV hp1 hp
+    (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64))) (.SVar a) (.SVar b)
+  rw [hva, hvb] at hval
+  refine ⟨denote_letBind_app_run bi fuel x mulModCallName [a, b, m]
+      [.int (natOf env a), .int (natOf env b), .int p] _ body env (by simp [haE, hbE, hm])
+      (hbi.mulmod _ _ p haL hbL (by omega) (by omega)), ?_⟩
+  exact step_scalarSetExpr h hxT hxA (se := mulModSExpr p (.SVar a) (.SVar b))
+    (lowersIn_barrettRedSExpr p ⟨lowersIn_barrettRedSExpr p hla, lowersIn_barrettRedSExpr p hlb⟩)
+    (hval ▸ BitVec.isLt _) hval bodyC
 
 end CatCrypt.Crypto.Hax.WordOpsSim
