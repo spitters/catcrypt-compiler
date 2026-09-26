@@ -174,3 +174,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/GatherLsemTieExt.lean  # proof modu
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1BytesValue.lean  # proof module: the mpn_mul_1 decoded-machine chain; the kernel is front-generated (MpnMul1FrontEmit), no emit artifact here
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1DecodedNode.lean  # proof module: node identity and decode of the front-generated mpn_mul_1 body, pinned as a literal for the proof, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulShift.lean  # proof module: physical-ABI faithfulness for immediate shifts, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/PhysAbiShape.lean  # proof module: structure, fusion and decode lemmas of the single-loop physical-ABI export, no emit artifact
