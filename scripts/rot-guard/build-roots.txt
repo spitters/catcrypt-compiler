@@ -1103,3 +1103,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakLaneMapYmm
 CatCrypt.Crypto.SecureCompilation.VIR.RodataPool
 CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextLeakage
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit

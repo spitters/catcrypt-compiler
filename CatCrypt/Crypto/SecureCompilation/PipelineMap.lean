@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 public import CatCrypt.Crypto.Hax.HaxToLowCT
 public import CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+public import CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
 
 /-!
 # Compiler / IR pipeline map  (START HERE before building front-end work)
@@ -118,6 +119,29 @@ bodies; the SIMD-ext and orchestration rows are outside the arm, which keeps the
 hand-authored owned-emit fleet on hand-`Com` (listed in
 `scripts/handcom-provenance-baseline.txt`).
 
+## The lane-map vector route (straight-line `Com jasminDialect` → AVX-512 / AVX2 text)
+
+A straight-line scalar `Com jasminDialect Γ t` runs as `k` independent copies in the
+lanes of one vector register through one entry point:
+
+| lane shape (`VecShape`) | `LaneShape`             | render                                 |
+|-------------------------|-------------------------|----------------------------------------|
+| `q8zmm` (8 × 64, ZMM)   | `LaneMapVec.qwordZmm`   | `renderValidated`                      |
+| `d16zmm` (16 × 32, ZMM) | `LaneMapVec.dwordZmm`   | `renderValidatedD`                     |
+| `q4ymm` (4 × 64, YMM)   | `LaneMapVec.qwordYmmV`  | `renderValidated (ymm := true)`        |
+
+* `VectorizeEmit.vectorizeEmit` (`VIR/VectorizeEmit.lean:186`): the coverage check
+  `firstUncovered` (:160, an error naming the first uncovered binding), then
+  `ZmmRenderValidated.laneMapValidated` (`VIR/ZmmRenderValidated.lean:620`), which
+  returns the text only when the translation validator accepts it.
+* `VectorizeEmit.vectorizeEmit_sound` (`VIR/VectorizeEmit.lean:236`): the lane theorem
+  `LaneMapVec.laneMapVec_denote` (`VIR/LaneMapVecCore.lean:591`) of the shape together
+  with `ZmmRenderValidated.laneMapValidated_sound` (`VIR/ZmmRenderValidated.lean:693`).
+* Callers: `Poseidon2.ZmmX8Emit` (`q8zmm`, `q4ymm`) and `Poseidon2.ZmmX16Emit`
+  (`d16zmm`).
+* The Lprog printer prints the YMM per-lane variable shifts `VPSLLV{D,Q}` /
+  `VPSRLV{D,Q}` (`X86Backend/LprogAsmPrinter.lean:989`).
+
 ## Convention (keep this map true)
 
 Every IR translator's MODULE DOCSTRING must list exactly which source
@@ -153,5 +177,10 @@ open CatCrypt.Crypto.Jasmin.LowCT
 #check @mlkemConstTable
 #check @cmdCT
 #check @cmdCT_sound
+#check @VIR.VectorizeEmit.vectorizeEmit
+#check @VIR.VectorizeEmit.firstUncovered
+#check @VIR.VectorizeEmit.vectorizeEmit_sound
+#check @VIR.ZmmRenderValidated.laneMapValidated_sound
+#check @VIR.LaneMapVec.laneMapVec_denote
 
 end CatCrypt.Crypto.SecureCompilation.PipelineMap

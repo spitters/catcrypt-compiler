@@ -978,20 +978,28 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
             else
               [ "\t" ++ mn ++ " " ++ bStr ++ ", " ++ aStr ++ ", " ++ dStr ]
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
-      -- **YMM packed variable per-lane shift** (batch8 rotations): `VPSLLVD` /
-      -- `VPSRLVD`, `d := data (<<|>>) count` lane-wise. The `Lopn` sources are
-      -- `[data, count]`; AT&T VEX order is `mn <count>, <data>, <dst>` (count =
-      -- src2 = first, may be memory; data = src1 and dst must be registers). NOT
-      -- commutative, so a spilled `data`/`dst` is bounced through `%ymm15`
-      -- (saved/restored to `vecSpillScratch`); a spilled `count` stays memory.
-      else if opn == "VPSLLVD" || opn == "VPSRLVD" then
-        let mn := if opn == "VPSLLVD" then "vpsllvd" else "vpsrlvd"
+      -- **YMM packed variable per-lane shift** (batch8 rotations, the 64-bit lane
+      -- map `qwordYmmV`): `VPSLLVD` / `VPSRLVD` (32-bit lanes) and `VPSLLVQ` /
+      -- `VPSRLVQ` (64-bit lanes), `d := data (<<|>>) count` lane-wise. The `Lopn`
+      -- sources are `[data, count]`; AT&T VEX order is `mn <count>, <data>, <dst>`
+      -- (count = src2 = first, may be memory; data = src1 and dst must be
+      -- registers). NOT commutative, so a spilled `data`/`dst` is bounced through
+      -- `%ymm15` (saved/restored to `vecSpillScratch`); a spilled `count` stays
+      -- memory.
+      else if opn == "VPSLLVD" || opn == "VPSRLVD" || opn == "VPSLLVQ" || opn == "VPSRLVQ" then
+        let mn := if opn == "VPSLLVD" then "vpsllvd"
+                  else if opn == "VPSRLVD" then "vpsrlvd"
+                  else if opn == "VPSLLVQ" then "vpsllvq"
+                  else "vpsrlvq"
         match a, b, d with
         | .reg an, .imm n, .reg dn =>
             -- constant shift count: the per-lane counts are all `n`, so render the
-            -- immediate form `vpslld/vpsrld $n, <data>, <dst>` (data may be memory;
-            -- a spilled dst bounces through %ymm15).
-            let mnImm := if opn == "VPSLLVD" then "vpslld" else "vpsrld"
+            -- immediate form `vpslld/vpsrld/vpsllq/vpsrlq $n, <data>, <dst>` (data
+            -- may be memory; a spilled dst bounces through %ymm15).
+            let mnImm := if opn == "VPSLLVD" then "vpslld"
+                         else if opn == "VPSRLVD" then "vpsrld"
+                         else if opn == "VPSLLVQ" then "vpsllq"
+                         else "vpsrlq"
             let dataStr := resolveName frame spillW 32 an qsaveB
             let dStr := resolveName frame spillW 32 dn qsaveB
             if isVSpill d then
