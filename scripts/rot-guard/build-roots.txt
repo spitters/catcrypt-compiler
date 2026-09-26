@@ -103,6 +103,7 @@ CatCrypt.Crypto.Jasmin.MldsaJincEmit
 CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
 CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound
+CatCrypt.Crypto.Jasmin.MsmReflect
 CatCrypt.Crypto.Jasmin.P256.EvalChain
 CatCrypt.Crypto.Jasmin.P256Reflect
 CatCrypt.Crypto.Jasmin.Passes.ConstantFold
@@ -676,6 +677,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HonestProveFrontEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
+CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmitMain
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleLeafEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttButterflyEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerInlineEmit
