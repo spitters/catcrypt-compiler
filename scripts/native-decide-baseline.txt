@@ -1,4 +1,4 @@
-2131
+2129
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 1	CatCrypt/Crypto/Bridges/CoqEAL/KaratsubaBenchTest.lean
@@ -204,7 +204,6 @@
 8	CatCrypt/Crypto/SecureCompilation/SpeculativeCTMask.lean
 12	CatCrypt/Crypto/SecureCompilation/TExprToThir.lean
 18	CatCrypt/Crypto/SecureCompilation/ThirToComFront.lean
-2	CatCrypt/Crypto/SecureCompilation/TileBackend/ComToTileIR.lean
 5	CatCrypt/Crypto/SecureCompilation/TileBackend/TileModel.lean
 1	CatCrypt/Crypto/SecureCompilation/TileBackend/TileS16HighMul.lean
 4	CatCrypt/Crypto/SecureCompilation/TileBackend/ZmmArithBridgeComEmit.lean

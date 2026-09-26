@@ -10,47 +10,45 @@ public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 
 /-!
-# `Com → Tile → NVIDIA Tile IR`: the emit (Phase 3 of the spike)
+# `Com → Tile → NVIDIA Tile IR`: the emit
 
-This emits a `TileModel` tile program as **NVIDIA `cuda_tile` MLIR dialect** text
-(`github.com/NVIDIA/cuda-tile`, `Dialect/CudaTile/IR/Ops.td`/`Types.td`). It
-completes the spike: `TileModel` fixes the *semantics* (`bbMulTile_denote`); this
-file *emits* the same tile program into the real dialect, so the same field
-arithmetic that the semantics proves correct is written in the IR NVIDIA's
-`cuda-tile` compiler lowers to PTX/SASS.
+This emits a `TileModel` tile program as text of the NVIDIA CUDA Tile IR
+(`cuda_tile` MLIR dialect; specification
+https://docs.nvidia.com/cuda/tile-ir/latest/sections/operations.html, textual
+syntax from `Dialect/CudaTile/IR/Ops.td` and the tests of
+`github.com/NVIDIA/cuda-tile`). `CudaTileSemantics` gives the emitted fragment an
+AST, a parser and a semantics, and proves that the text computes what
+`TileModel.runTileBlock` computes.
 
-## The dialect mapping (from `Ops.td` / `Types.td`)
+## The kernel
 
-| `TileModel.TileOp` | `cuda_tile` op (mnemonic) | assembly |
-|---|---|---|
-| `add` | `cuda_tile.addi` | `%r = cuda_tile.addi %a, %b : !cuda_tile.tile<8xi64>` |
-| `sub` | `cuda_tile.subi` | `%r = cuda_tile.subi %a, %b : …` |
-| `mul` | `cuda_tile.muli` | `%r = cuda_tile.muli %a, %b : …` |
-| `and` | `cuda_tile.andi` | `%r = cuda_tile.andi %a, %b : …` |
-| `shr` | `cuda_tile.shri`  | `%s = cuda_tile.constant …; %r = cuda_tile.shri %a, %s : …` |
-| `const` | `cuda_tile.constant` | `%r = cuda_tile.constant dense<N> : …` |
-| `permxv` | `cuda_tile.permute` | `%r = cuda_tile.permute %a, %idx : …` (index operand second) |
-| `bcast` | `cuda_tile.broadcast` | `%r = cuda_tile.broadcast %a {lane = N} : …` |
-| `hadd` | `cuda_tile.reduce` | `%r = cuda_tile.reduce %a {op = "add"} : …` |
+`emitTileFuncAt n w name body res` prints a module `@name` holding one
+`cuda_tile.entry @name` kernel. Entry arguments are scalars, so the input and
+output tiles are passed as pointers `%pa`, `%pb`, `%pr` of type
+`!cuda_tile.tile<ptr<i w>>`: the kernel builds the pointer tiles `p + i` for
+`i < n` (`iota`, `reshape`, `broadcast`, `offset`), loads the tiles `%a`, `%b`
+(`load_ptr_tko weak`), runs the body at tile type `!cuda_tile.tile<n x i w>`, and
+stores the result register (`store_ptr_tko weak`) before `cuda_tile.return`.
 
-The cross-tile (lane-moving) ops `permute`/`broadcast`/`reduce` are the
-`cuda_tile` mnemonics an NTT butterfly / Poseidon2 MDS shuffle lowers to (named
-in `Ops.td` alongside the elementwise arithmetic).
+## The op mapping
 
-The tile type is `!cuda_tile.tile<8xi64>` (`Types.td`: shape × element, power-of-two
-dims; our 8 BabyBear lanes as `i64` for the Barrett intermediates).
+| `TileModel.TileOp` | `cuda_tile` text |
+|---|---|
+| `const k` | `constant <i w: k>` |
+| `add`, `sub`, `mul` | `addi`, `subi`, `muli` |
+| `and`, `orr`, `xorr` | `andi`, `ori`, `xori` |
+| `shll` | `shli` |
+| `shrr` | `shri … unsigned` |
+| `shr k` | `constant <i w: k>`, then `shri … unsigned` |
+| `andn` | `constant <i w: -1>`, `xori`, `andi` |
+| `mulhs` | `mulhii` on the unsigned values, corrected by `shri … signed` by `w - 1`, `andi` and two `subi` |
+| `permxv`, `bcast`, `hadd` | none |
 
-## Scope (honest)
+The lane-moving ops `permxv`, `bcast`, `hadd` have no `cuda_tile` form here:
+`emitTileOp` prints no line for them and binds the destination to `%undef`, and
+`emitTileFunc?` returns `none` for a block that contains one.
 
-* **Emits** the `bbMul` tile as `cuda_tile` MLIR, grounded in the real dialect's
-  op mnemonics + assembly format (`addi` = `$lhs `,` $rhs attr-dict `:` type`).
-* **Structural pins** (`native_decide`) that the emitted text carries the
-  `cuda_tile` ops + tile type.
-* **Not tool-validated here:** validating the text through NVIDIA's `cuda-tile`
-  `mlir-opt` (and lowering to PTX) needs that C++/MLIR toolchain, which is not on
-  this box — the analogue of "no GPU to execute on." The emit + the `TileModel`
-  denotation are what this increment delivers; toolchain round-trip is the next
-  step once `cuda-tile` is built.
+The emitted text is not checked by the `cuda-tile` toolchain in this package.
 -/
 
 @[expose] public section
@@ -61,13 +59,43 @@ open CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 
 set_option autoImplicit false
 
-/-- The `cuda_tile` tile type for the spike kernels: 8 `i64` lanes. -/
-def tileTy : String := "!cuda_tile.tile<8xi64>"
+/-! ## 1. Types and line forms -/
 
-/-! ## 1. SSA-renaming emit state
+/-- The tile type `!cuda_tile.tile<n x i w>`. -/
+def tileTyAt (n w : Nat) : String := "!cuda_tile.tile<" ++ toString n ++ "xi" ++ toString w ++ ">"
 
-`cuda_tile` MLIR is SSA; the tile program reuses names (`x`/`q`/`o`/`m`). Thread a
-name → current `%vNN` map + a fresh counter (the `ComToMLIR`/`ComToNvptx` pattern). -/
+/-- The tile type of the BabyBear kernels, `!cuda_tile.tile<8xi64>`. -/
+def tileTy : String := tileTyAt 8 64
+
+/-- The scalar pointer type `!cuda_tile.tile<ptr<i w>>` of a kernel argument. -/
+def ptrTyAt (w : Nat) : String := "!cuda_tile.tile<ptr<i" ++ toString w ++ ">>"
+
+/-- The pointer tile type `!cuda_tile.tile<m x ptr<i w>>`. -/
+def ptrTileTyAt (m w : Nat) : String :=
+  "!cuda_tile.tile<" ++ toString m ++ "xptr<i" ++ toString w ++ ">>"
+
+/-- The index tile type `!cuda_tile.tile<n x i32>` of the `iota` result. -/
+def idxTyAt (n : Nat) : String := "!cuda_tile.tile<" ++ toString n ++ "xi32>"
+
+/-- The line `r = cuda_tile.constant <i w: k> : ty`. -/
+def constLine (n w : Nat) (r : String) (k : Int) : String :=
+  "    " ++ r ++ " = cuda_tile." ++ "constant" ++ " <i" ++ toString w ++ ": " ++ toString k
+    ++ "> : " ++ tileTyAt n w
+
+/-- The line `r = cuda_tile.<mn> x, y : ty`. -/
+def binLine (n w : Nat) (mn r x y : String) : String :=
+  "    " ++ r ++ " = cuda_tile." ++ mn ++ " " ++ x ++ ", " ++ y ++ " : " ++ tileTyAt n w
+
+/-- The line `r = cuda_tile.shri x, y <sgn> : ty`, with `sgn` one of `signed`,
+    `unsigned`. -/
+def shriLine (n w : Nat) (sgn r x y : String) : String :=
+  "    " ++ r ++ " = cuda_tile." ++ "shri" ++ " " ++ x ++ ", " ++ y ++ " " ++ sgn ++ " : "
+    ++ tileTyAt n w
+
+/-! ## 2. SSA-renaming emit state
+
+`cuda_tile` MLIR is SSA; the tile program reuses register names. The state threads
+a name → current `%vNN` map and a fresh counter. -/
 
 structure St where
   map : List (String × String)
@@ -79,13 +107,12 @@ def St.bind (s : St) (nm v : String) : St := { s with map := (nm, v) :: s.map }
 def St.fresh (s : St) : String × St := ("%v" ++ toString s.ctr, { s with ctr := s.ctr + 1 })
 def St.emit (s : St) (line : String) : St := { s with lines := line :: s.lines }
 
-/-- Emit one `TileOp` as `cuda_tile` MLIR, threading SSA state. -/
-def emitTileOp (s : St) : TileOp → St
-  | .const dst n =>
+/-- Emit one `TileOp` at tile type `tileTyAt n w`, threading SSA state. The
+    lane-moving ops print nothing and bind their destination to `%undef`. -/
+def emitTileOp (n w : Nat) (s : St) : TileOp → St
+  | .const dst k =>
       let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.constant dense<" ++ toString n
-                        ++ "> : " ++ tileTy)
-      s.bind dst v
+      (s.emit (constLine n w v k)).bind dst v
   | .add dst a b => binOp s "addi" dst a b
   | .sub dst a b => binOp s "subi" dst a b
   | .mul dst a b => binOp s "muli" dst a b
@@ -93,94 +120,117 @@ def emitTileOp (s : St) : TileOp → St
   | .orr dst a b => binOp s "ori" dst a b
   | .xorr dst a b => binOp s "xori" dst a b
   | .shll dst a b => binOp s "shli" dst a b
-  | .shrr dst a b => binOp s "shrui" dst a b
+  | .shrr dst a b =>
+      let (v, s) := s.fresh
+      (s.emit (shriLine n w "unsigned" v (s.opnd a) (s.opnd b))).bind dst v
   | .andn dst a b =>
-      -- no direct `andn`: emit (~a) via `xori` with the all-ones tile, then `andi`
       let (ones, s) := s.fresh
-      let s := s.emit ("  " ++ ones ++ " = cuda_tile.constant dense<-1> : " ++ tileTy)
+      let s := s.emit (constLine n w ones (-1))
       let (na, s) := s.fresh
-      let s := s.emit ("  " ++ na ++ " = cuda_tile.xori " ++ s.opnd a ++ ", " ++ ones
-                        ++ " : " ++ tileTy)
+      let s := s.emit (binLine n w "xori" na (s.opnd a) ones)
       let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.andi " ++ na ++ ", " ++ s.opnd b
-                        ++ " : " ++ tileTy)
-      s.bind dst v
+      (s.emit (binLine n w "andi" v na (s.opnd b))).bind dst v
   | .shr dst a imm =>
-      -- the shift amount is a tile operand: materialise it as a constant tile
       let (sh, s) := s.fresh
-      let s := s.emit ("  " ++ sh ++ " = cuda_tile.constant dense<" ++ toString imm
-                        ++ "> : " ++ tileTy)
+      let s := s.emit (constLine n w sh imm)
       let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.shri " ++ s.opnd a ++ ", " ++ sh
-                        ++ " : " ++ tileTy)
-      s.bind dst v
-  | .mulhs dst a b => binOp s "mulhi" dst a b
-  | .permxv dst idx a =>
-      -- data-dependent gather: `cuda_tile.permute %a, %idx` (index operand second)
+      (s.emit (shriLine n w "unsigned" v (s.opnd a) sh)).bind dst v
+  | .mulhs dst a b =>
+      -- signed high half = unsigned high half - (a < 0 ? b : 0) - (b < 0 ? a : 0)
+      let (c, s) := s.fresh
+      let s := s.emit (constLine n w c (w - 1 : Nat))
+      let (sa, s) := s.fresh
+      let s := s.emit (shriLine n w "signed" sa (s.opnd a) c)
+      let (sb, s) := s.fresh
+      let s := s.emit (shriLine n w "signed" sb (s.opnd b) c)
+      let (h, s) := s.fresh
+      let s := s.emit (binLine n w "mulhii" h (s.opnd a) (s.opnd b))
+      let (ca, s) := s.fresh
+      let s := s.emit (binLine n w "andi" ca sa (s.opnd b))
+      let (cb, s) := s.fresh
+      let s := s.emit (binLine n w "andi" cb sb (s.opnd a))
+      let (u, s) := s.fresh
+      let s := s.emit (binLine n w "subi" u h ca)
       let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.permute " ++ s.opnd a ++ ", "
-                        ++ s.opnd idx ++ " : " ++ tileTy)
-      s.bind dst v
-  | .bcast dst a lane =>
-      -- splat one lane across the tile: `cuda_tile.broadcast %a {lane = N}`
-      let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.broadcast " ++ s.opnd a
-                        ++ " {lane = " ++ toString lane ++ "} : " ++ tileTy)
-      s.bind dst v
-  | .hadd dst a =>
-      -- horizontal add-reduce broadcast: `cuda_tile.reduce %a {op = "add"}`
-      let (v, s) := s.fresh
-      let s := s.emit ("  " ++ v ++ " = cuda_tile.reduce " ++ s.opnd a
-                        ++ " {op = \"add\"} : " ++ tileTy)
-      s.bind dst v
+      (s.emit (binLine n w "subi" v u cb)).bind dst v
+  | .permxv dst _ _ => s.bind dst "%undef"
+  | .bcast dst _ _ => s.bind dst "%undef"
+  | .hadd dst _ => s.bind dst "%undef"
 where
   binOp (s : St) (mn dst a b : String) : St :=
     let (v, s) := s.fresh
-    let s := s.emit ("  " ++ v ++ " = cuda_tile." ++ mn ++ " " ++ s.opnd a ++ ", "
-                      ++ s.opnd b ++ " : " ++ tileTy)
-    s.bind dst v
+    (s.emit (binLine n w mn v (s.opnd a) (s.opnd b))).bind dst v
 
-/-- Emit a 2-input / 1-output tile program (`resName` the result tile) as a
-    `cuda_tile` MLIR function. -/
-def emitTileFunc (name : String) (body : List TileOp) (resName : String) : String :=
-  let header :=
-    [ "func.func @" ++ name ++ "(%a: " ++ tileTy ++ ", %b: " ++ tileTy
-        ++ ") -> " ++ tileTy ++ " {" ]
-  let s0 : St := { map := [("a", "%a"), ("b", "%b")], ctr := 0, lines := [] }
-  let s := body.foldl emitTileOp s0
-  let footer := [ "  return " ++ s.opnd resName ++ " : " ++ tileTy, "}" ]
-  String.intercalate "\n" (header ++ s.lines.reverse ++ footer) ++ "\n"
+/-! ## 3. The kernel -/
 
-/-- The BabyBear `bbMul` tile emitted as `cuda_tile` MLIR (the emitted artifact). -/
+/-- The three lines that turn the pointer argument `%p<x>` into the tile of
+    pointers `%p<x>3` to `n` consecutive elements. -/
+def ptrLines (n w : Nat) (x : String) : String :=
+  "    %p" ++ x ++ "1 = cuda_tile.reshape %p" ++ x ++ " : " ++ ptrTyAt w ++ " -> "
+      ++ ptrTileTyAt 1 w ++ "\n"
+    ++ "    %p" ++ x ++ "2 = cuda_tile.broadcast %p" ++ x ++ "1 : " ++ ptrTileTyAt 1 w ++ " -> "
+      ++ ptrTileTyAt n w ++ "\n"
+    ++ "    %p" ++ x ++ "3 = cuda_tile.offset %p" ++ x ++ "2, %iota : " ++ ptrTileTyAt n w ++ ", "
+      ++ idxTyAt n ++ " -> " ++ ptrTileTyAt n w ++ "\n"
+
+/-- The line loading the tile `%<x>` through `%p<x>3`. -/
+def loadLine (n w : Nat) (x : String) : String :=
+  "    %" ++ x ++ ", %t" ++ x ++ " = cuda_tile.load_ptr_tko weak %p" ++ x ++ "3 : "
+    ++ ptrTileTyAt n w ++ " -> " ++ tileTyAt n w ++ ", token\n"
+
+/-- The lines after the `iota` type: the pointer tiles of `%pa`, `%pb`, `%pr` and the
+    loads of `%a`, `%b`. -/
+def loadPrologue (n w : Nat) : String :=
+  "\n" ++ ptrLines n w "a" ++ loadLine n w "a" ++ ptrLines n w "b" ++ loadLine n w "b"
+    ++ ptrLines n w "r"
+
+/-- The kernel text up to the first body line: the module, the entry with pointer
+    arguments `%pa`, `%pb`, `%pr`, and the loads. -/
+def kernelOpen (n w : Nat) (name : String) : String :=
+  "cuda_tile.module @" ++ name ++ " {\n  cuda_tile.entry @" ++ name ++ "(%pa: " ++ ptrTyAt w
+    ++ ", %pb: " ++ ptrTyAt w ++ ", %pr: " ++ ptrTyAt w ++ ") {\n    %iota = cuda_tile.iota : "
+    ++ idxTyAt n ++ loadPrologue n w
+
+/-- The start of the store line, before the stored operand. -/
+def storeHead : String := "    %tr = cuda_tile.store_ptr_tko weak %pr3, "
+
+/-- The rest of the store line, the `return` and the closing braces. -/
+def storeTail (n w : Nat) : String :=
+  " : " ++ ptrTileTyAt n w ++ ", " ++ tileTyAt n w ++ " -> token\n    cuda_tile.return\n  }\n}\n"
+
+/-- The initial emit state: registers `a`, `b` are the loaded tiles `%a`, `%b`. -/
+def St.init : St := { map := [("a", "%a"), ("b", "%b")], ctr := 0, lines := [] }
+
+/-- Emit a tile block at tile type `tileTyAt n w` as a `cuda_tile` kernel `name`
+    that loads registers `a`, `b` and stores register `res`. -/
+def emitTileFuncAt (n w : Nat) (name : String) (body : List TileOp) (res : String) : String :=
+  let s := body.foldl (emitTileOp n w) St.init
+  kernelOpen n w name ++ String.join (s.lines.reverse.map (· ++ "\n")) ++ storeHead
+    ++ s.opnd res ++ storeTail n w
+
+/-- `emitTileFuncAt` at tile type `8xi64`. -/
+def emitTileFunc (name : String) (body : List TileOp) (res : String) : String :=
+  emitTileFuncAt 8 64 name body res
+
+/-- The ops the emitter has no `cuda_tile` form for. -/
+def laneMoving : TileOp → Bool
+  | .permxv .. | .bcast .. | .hadd .. => true
+  | _ => false
+
+/-- The kernel text, or `none` when the block contains a lane-moving op. -/
+def emitTileFunc? (n w : Nat) (name : String) (body : List TileOp) (res : String) :
+    Option String :=
+  if body.any laneMoving then none else some (emitTileFuncAt n w name body res)
+
+/-- The BabyBear `bbMul` tile emitted as a `cuda_tile` kernel. -/
 def bbMulTileIR : String := emitTileFunc "bb_mul_tile" bbMulTile "o"
 
-/-! ## 2. Structural pins (the emitted dialect text) -/
-
-/-- A substring test. -/
-def contains (hay needle : String) : Bool := (hay.splitOn needle).length > 1
-
-/-- The emit carries the `cuda_tile` tile type and the entry function. -/
-theorem ir_has_func_and_type :
-    contains bbMulTileIR "func.func @bb_mul_tile" = true
-      ∧ contains bbMulTileIR "!cuda_tile.tile<8xi64>" = true := by
-  native_decide
-
-/-- The Barrett field arithmetic is present as `cuda_tile` ops. -/
-theorem ir_has_field_ops :
-    contains bbMulTileIR "cuda_tile.muli" = true
-      ∧ contains bbMulTileIR "cuda_tile.shri" = true
-      ∧ contains bbMulTileIR "cuda_tile.subi" = true
-      ∧ contains bbMulTileIR "cuda_tile.constant dense<2290649223>" = true := by
-  native_decide
-
-/-! ## 3. Emit driver -/
+/-! ## 4. Emit driver -/
 
 def main : IO Unit := do
   IO.FS.createDirAll "bench/gpu_compare/gen"
   IO.FS.writeFile "bench/gpu_compare/gen/bb_mul_tile.cuda_tile.mlir" bbMulTileIR
   IO.println "wrote bench/gpu_compare/gen/bb_mul_tile.cuda_tile.mlir (BabyBear bbMul, cuda_tile dialect)"
   IO.println s!"  {bbMulTile.length} tile ops -> cuda_tile MLIR (tile<8xi64>)"
-
--- #eval main
 
 end CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR
