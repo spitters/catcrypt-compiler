@@ -596,6 +596,12 @@ theorem inlineRCallVal_of_recipe_none (ls : SemLeafSpec) {f : String}
 theorem inlineRCallVal_TFp (ls : SemLeafSpec) (f : String) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
     inlineRCallVal ls f .TFp vals = withInlineArith ls f (.memref 6) vals := rfl
 
+/-- Outside `.TFp` the `RCall` value is the leaf oracle at the encoded destination type. -/
+@[simp] theorem inlineRCallVal_of_ne_TFp (ls : SemLeafSpec) (f : String) {tt : TowerType}
+    (h : tt ≠ .TFp) (vals : List ((t : CryptoTy) × ⟦t⟧)) :
+    inlineRCallVal ls f tt vals = ls f (encodeTy tt) vals := by
+  cases tt <;> first | rfl | exact absurd rfl h
+
 /-- The inline value is the recipe's value on the two limbs `0` at limb `0` and `0`
     elsewhere. -/
 theorem inlineArithMemref_eq (r : InlineArith) (a b : Fin 6 → BitVec 64) :
