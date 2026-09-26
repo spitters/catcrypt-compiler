@@ -124,7 +124,9 @@ theorem transCtlSeq_eq_full_of_covered {c : LowCT} (h : IsCovered c) :
       exact ih vm
   | rSkip => intro Γ vm; rfl
   | rScalarSet _ _ => intro Γ vm; rfl
-  | rLetU64Zero _ _ => intro Γ vm; rfl
+  | rLetU64Zero hb _ =>
+      intro Γ vm
+      exact translateDialectControl_eq_full_of_covered vm (.rLetU64Zero hb)
   | rCall _ _ _ => intro Γ vm; rfl
   | rSelect _ _ _ _ => intro Γ vm; rfl
   | rCallDstThreaded _ _ _ => intro Γ vm; rfl
@@ -152,6 +154,7 @@ theorem transCtlSeq_eq_control {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
         translateDialectControl_eq_full_of_covered vm hs.toIsCovered]
   | rFor _ => rfl
   | rIfNz _ _ => rfl
+  | rLetU64Zero _ => rfl
 
 /-! ## 4. The extended homomorphism -/
 

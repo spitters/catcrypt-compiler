@@ -37,14 +37,20 @@ on `IsCovered`. This module adds the control-flow arms, building
   a bound scalar and on the body front-compiling, emitting a context-invariant
   region.
 
+* **`RLetU64Zero name body`** and **`RLetZero name tt body`** — the binders,
+  handled as in `translateDialectFull` (a `bvConst 64 0` binding, and the dead
+  zero-init elision) with the body translated by this front, so a binder over
+  a control form is accepted.
+
 Every other arm delegates to `translateDialectFull`.
 
 ## Covered fragment
 
 `IsCoveredCtl` is the covered arms of `TranslateDialectDirectArms.IsCovered`
-plus `RFor` over covered bodies, `RIfNz` over covered branches and `RWhileNz`
-over a covered body. On `IsCovered`, `translateDialectControl` coincides with
-`translateDialectFull` (`translateDialectControl_eq_full_of_covered`).
+plus `RFor` over covered bodies, `RIfNz` over covered branches, `RWhileNz`
+over a covered body and `RLetU64Zero` over a covered body. On `IsCovered`,
+`translateDialectControl` coincides with `translateDialectFull`
+(`translateDialectControl_eq_full_of_covered`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
@@ -92,8 +98,8 @@ def loopRForD {Γ : Ctx}
 
 /-! ## 2. The fused control-flow front `translateDialectControl`
 
-Lowers `RSeq`, `RFor`, `RIfNz` and `RWhileNz`; every other arm delegates to
-`translateDialectFull`. The `RIfNz` φ-merge builds its six expressions inline
+Lowers `RSeq`, `RFor`, `RIfNz`, `RWhileNz`, `RLetU64Zero` and `RLetZero`; every
+other arm delegates to `translateDialectFull`. The `RIfNz` φ-merge builds its six expressions inline
 as a chain of `ComCont.varBind`s. -/
 
 /-- Direct `LowCT → catCryptDialect` translation extended to the control-flow
@@ -221,7 +227,58 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
               some { Γ' := o₂.Γ', cont := ComCont.comp o₁.cont o₂.cont, vm := o₂.vm }
           | none => none
       | none => none
+  | .RLetU64Zero name body =>
+      -- The `RLetU64Zero` arm of `translateDialectFull`, with the body
+      -- translated by this control front, so a binder whose body contains a
+      -- control form is accepted.
+      let e : Expr catCryptDialect Γ (.sword 64) :=
+        { op := .bvConst 64 (0 : BitVec 64), retTy_eq := rfl, args := .nil }
+      let vm' : VarMap (.sword 64 :: Γ) := vm.bind name
+      match translateDialectControl vm' body with
+      | some o =>
+          some { Γ' := o.Γ', cont := ComCont.comp (ComCont.varBind e) o.cont, vm := o.vm }
+      | none => none
+  -- The dead zero-init elision of `translateDialectFull`'s `RLetZero` arm, with
+  -- the body translated by this control front.
+  | .RLetZero _name _tt body => translateDialectControl vm body
   | c => translateDialectFull vm c
+
+/-- `translateDialectControl` on `RSeq`: the two children translated in sequence,
+    prefixes composed. -/
+theorem translateDialectControl_rSeq {Γ : Ctx} (vm : VarMap Γ) (c₁ c₂ : LowCT) :
+    translateDialectControl vm (.RSeq c₁ c₂) =
+      match translateDialectControl vm c₁ with
+      | some o₁ =>
+          match translateDialectControl o₁.vm c₂ with
+          | some o₂ =>
+              some { Γ' := o₂.Γ', cont := ComCont.comp o₁.cont o₂.cont, vm := o₂.vm }
+          | none => none
+      | none => none :=
+  rfl
+
+/-- `translateDialectControl` on a `RLetZero` binder is its translation of the
+    body. -/
+theorem translateDialectControl_rLetZero {Γ : Ctx} (vm : VarMap Γ) (name : String)
+    (tt : TowerType) (body : LowCT) :
+    translateDialectControl vm (.RLetZero name tt body) = translateDialectControl vm body :=
+  rfl
+
+/-- `translateDialectControl` on a `RLetU64Zero` binder: a `bvConst 64 0`
+    binding of `name` composed before the body's translation. -/
+theorem translateDialectControl_rLetU64Zero {Γ : Ctx} (vm : VarMap Γ) (name : String)
+    (body : LowCT) :
+    translateDialectControl vm (.RLetU64Zero name body) =
+      match translateDialectControl (vm.bind (t := .sword 64) name) body with
+      | some o =>
+          some { Γ' := o.Γ'
+                 cont := ComCont.comp
+                   (ComCont.varBind
+                     ({ op := .bvConst 64 (0 : BitVec 64), retTy_eq := rfl, args := .nil } :
+                       Expr catCryptDialect Γ (.sword 64)))
+                   o.cont
+                 vm := o.vm }
+      | none => none :=
+  rfl
 
 /-- Direct top-level front over the control-extended arm set.
     Mirrors `translateDialectFullTop`: emits the `constUnit; ret` terminator at
@@ -250,14 +307,21 @@ inductive IsCoveredCtl : LowCT → Prop
       IsCoveredCtl (.RIfNz name thenBr elseBr)
   | rWhileNz {name : String} {body : LowCT} :
       IsCoveredCtl body → IsCoveredCtl (.RWhileNz name body)
+  | rLetU64Zero {name : String} {body : LowCT} :
+      IsCoveredCtl body → IsCoveredCtl (.RLetU64Zero name body)
 
 /-- On the leaf-call covered fragment, `translateDialectControl` coincides with
-    `translateDialectFull` (it delegates there for every non-`RFor`/`RIfNz`
-    arm). -/
+    `translateDialectFull`: the `RSeq` and `RLetU64Zero` arms agree by the
+    child translations, every other arm delegates there. -/
 theorem translateDialectControl_eq_full_of_covered {Γ : Ctx} (vm : VarMap Γ)
     {c : LowCT} (hc : IsCovered c) :
     translateDialectControl vm c = translateDialectFull vm c := by
   induction hc generalizing Γ with
+  | rLetU64Zero _ ih =>
+      simp only [translateDialectControl, translateDialectFull]
+      split
+      · next o heq => rw [ih] at heq; simp only [heq]
+      · next heq => rw [ih] at heq; simp only [heq]
   | rSeq _ _ ih1 ih2 =>
       -- `translateDialectControl`'s `RSeq` arm recurses into itself; on a
       -- straight-line (`IsCovered`) `RSeq` it still agrees with

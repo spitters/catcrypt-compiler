@@ -564,6 +564,14 @@ theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c 
   | ofCovered hcov =>
       rw [translateDialectControl_eq_full_of_covered vm hcov] at h
       exact translateDialectFull_cont_leakFactors vm hcov h
+  | rLetU64Zero _ ih =>
+      rw [translateDialectControl_rLetU64Zero] at h
+      split at h
+      · next o' heq =>
+          rw [Option.some.injEq] at h; subst h
+          obtain ⟨k, hk⟩ := ih (vm.bind _) heq
+          exact ⟨1 + k, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _) hk⟩
+      · simp at h
   | rFor _ ih =>
       rw [translateDialectControl] at h
       refine loopRForD_leakFactors_cond _ ?_ vm _ _ h
@@ -1091,6 +1099,14 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
   | ofCovered hcov =>
       rw [translateDialectControl_eq_full_of_covered vm hcov] at h
       exact translateDialectFull_cont_leakFactorsTrace vm hcov h
+  | rLetU64Zero _ ih =>
+      rw [translateDialectControl_rLetU64Zero] at h
+      split at h
+      · next o' heq =>
+          rw [Option.some.injEq] at h; subst h
+          obtain ⟨p, hp⟩ := ih (vm.bind _) heq
+          exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _) hp⟩
+      · simp at h
   | rFor _ ih =>
       rw [translateDialectControl] at h
       refine loopRForD_leakFactorsTrace_cond _ ?_ vm _ _ h

@@ -476,6 +476,13 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
   | @ofCovered c hcov =>
       rw [translateDialectControl_eq_full_of_covered vm hcov] at hT
       exact translateDialectFull_preserves_noAlias vm hcov hT hNA
+  | @rLetU64Zero name body _ ih =>
+      rw [translateDialectControl_rLetU64Zero] at hT
+      cases hb : translateDialectControl (vm.bind name : VarMap (.sword 64 :: Γ)) body with
+      | none => rw [hb] at hT; exact absurd hT (by simp)
+      | some ob =>
+        rw [hb] at hT; simp only [Option.some.injEq] at hT; subst hT
+        exact ih (vm.bind name) hb (noAlias_bind hNA name)
   | @rFor x N body hbody ih =>
       simp only [translateDialectControl] at hT
       exact loopRForD_preserves_noAlias
@@ -652,23 +659,22 @@ theorem rustExecSimulatesDialect
           · exact absurd hTrans (by simp)
   | letZero x t body rs0 rs2 _h ih => cases hCov with | ofCovered hc => cases hc
   | letU64Zero x body rs0 rs2 _h ih =>
-      -- `RLetU64Zero` is core; covered iff body is covered.
-      cases hCov with
-      | ofCovered hc =>
-        cases hc with
-        | rLetU64Zero hb =>
-          have hbCtl : IsCoveredCtl body := .ofCovered hb
-          simp only [translateDialectControl, translateDialectFull] at hTrans
-          cases hInner : translateDialectFull (vm.bind x : VarMap (.sword 64 :: Γ)) body with
-          | none => rw [hInner] at hTrans; exact absurd hTrans (by simp)
-          | some ob =>
-            rw [hInner] at hTrans
-            simp only [Option.some.injEq] at hTrans
-            subst hTrans
-            have hInnerCtl : translateDialectControl (vm.bind x) body = some ob := by
-              rw [translateDialectControl_eq_full_of_covered _ hb]; exact hInner
-            exact ih (vm.bind x) ob hbCtl hInnerCtl
-              (HVec.cons (0 : BitVec 64) V) (interp_bind_sword64_zero hInv x)
+      -- `RLetU64Zero` is covered (through `ofCovered` or `rLetU64Zero`) iff its
+      -- body is control-covered; the front binds `x` to zero and translates the
+      -- body with the control front.
+      have hbCtl : IsCoveredCtl body := by
+        cases hCov with
+        | ofCovered hc => cases hc with | rLetU64Zero hb => exact .ofCovered hb
+        | rLetU64Zero hb => exact hb
+      rw [translateDialectControl_rLetU64Zero] at hTrans
+      cases hInner : translateDialectControl (vm.bind x : VarMap (.sword 64 :: Γ)) body with
+      | none => rw [hInner] at hTrans; exact absurd hTrans (by simp)
+      | some ob =>
+        rw [hInner] at hTrans
+        simp only [Option.some.injEq] at hTrans
+        subst hTrans
+        exact ih (vm.bind x) ob hbCtl hInner
+          (HVec.cons (0 : BitVec 64) V) (interp_bind_sword64_zero hInv x)
   | scalarSet x v rs0 =>
       simp only [translateDialectControl, translateDialectFull, translateDialect,
         Option.some.injEq] at hTrans

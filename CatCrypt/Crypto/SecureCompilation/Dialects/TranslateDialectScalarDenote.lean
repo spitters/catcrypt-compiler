@@ -3072,9 +3072,9 @@ twin of `TranslateDialectDirectControl.IsCoveredCtl`). Three layers:
   steps + one `scalar_step` on the φ-merge `ite`, cased on the scrutinee). -/
 
 /-- The control-extended scalar-covered `LowCT` fragment: the straight-line
-    covered arms plus `RFor` over covered bodies and `RIfNz` over covered
-    branches — arm-for-arm the shape of
-    `TranslateDialectDirectControl.IsCoveredCtl`. -/
+    covered arms plus `RFor` over covered bodies, `RIfNz` over covered
+    branches and `RLetU64Zero` over covered bodies — the shape of
+    `TranslateDialectDirectControl.IsCoveredCtl` without its `rWhileNz` arm. -/
 inductive IsCoveredSCtl : LowCT → Prop
   | ofStraight {c : LowCT} : IsCoveredS c → IsCoveredSCtl c
   | rFor {x : String} {N : Nat} {body : LowCT} :
@@ -3082,6 +3082,8 @@ inductive IsCoveredSCtl : LowCT → Prop
   | rIfNz {name : String} {thenBr elseBr : LowCT} :
       IsCoveredSCtl thenBr → IsCoveredSCtl elseBr →
       IsCoveredSCtl (.RIfNz name thenBr elseBr)
+  | rLetU64Zero {name : String} {body : LowCT} :
+      IsCoveredSCtl body → IsCoveredSCtl (.RLetU64Zero name body)
 
 /-- `IsCoveredSCtl` refines the control-extended front-simulation coverage
     `IsCoveredCtl` (via `IsCoveredS.toIsCovered` on the straight-line arms), so
@@ -3094,6 +3096,7 @@ theorem IsCoveredSCtl.toIsCoveredCtl {c : LowCT} (h : IsCoveredSCtl c) :
   | ofStraight hs => exact .ofCovered hs.toIsCovered
   | rFor _ ih => exact .rFor ih
   | rIfNz _ _ ihT ihE => exact .rIfNz ihT ihE
+  | rLetU64Zero _ ih => exact .rLetU64Zero ih
 
 /-- `asSingleScalarSet` inversion: a successful view IS an `RScalarSet`. -/
 theorem asSingleScalarSet_eq : ∀ {c : LowCT} {s : SingleScalarSet},
@@ -3604,6 +3607,23 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
                 · exact absurd htr (by simp)
         case _ => exact absurd htr (by simp)
       case _ => exact absurd htr (by simp)
+  case RLetZero nm tt body ih =>
+      rw [translateDialectControl_rLetZero] at htr
+      obtain ⟨Δ, hΔ, _⟩ := ih vm o htr
+      refine ⟨Δ, hΔ, fun _ env env' hsem => ?_⟩
+      simp only [semScalarL] at hsem
+      exact absurd hsem (by simp)
+  case RLetU64Zero nm body ih =>
+      rw [translateDialectControl_rLetU64Zero] at htr
+      rcases htb : translateDialectControl (vm.bind nm) body with _ | ob
+      · rw [htb] at htr; simp at htr
+      · rw [htb] at htr
+        simp only [Option.some.injEq] at htr
+        obtain rfl := htr
+        obtain ⟨Δb, hΔb, _⟩ := ih (vm.bind nm) ob htb
+        refine ⟨Δb ++ [.sword 64], ?_, fun h => absurd h (by simp)⟩
+        show ob.Γ' = (Δb ++ [.sword 64]) ++ Γ
+        rw [hΔb]; simp
   all_goals exact translateDialectFull_extWith ls _ vm o htr
 
 /-- **Context-extension + inertness invariant of the control front**
@@ -3807,6 +3827,31 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
       exact loopRForD_denoteWith ls x body
         (fun vm V env env' o hc ht hs => ih vm V env env' o hc ht hs)
         N vm V env env' o hc htr hsem
+  | @rLetU64Zero name body hbody ih =>
+      -- The `bvConst 64 0` binding of `name` is one `scalar_stepWith`, composed
+      -- with the body IH at the extended context.
+      intro Γ vm V env env' o hc htr hsem
+      rw [translateDialectControl_rLetU64Zero] at htr
+      rcases htb : translateDialectControl (vm.bind name) body with _ | ob
+      · rw [htb] at htr; simp at htr
+      · rw [htb] at htr
+        simp only [Option.some.injEq] at htr
+        obtain rfl := htr
+        obtain ⟨hcons0, hcont0⟩ :=
+          scalar_stepWith ls vm V env hc name
+            ({ op := .bvConst 64 (0 : BitVec 64), retTy_eq := rfl, args := .nil } :
+              Expr catCryptDialect Γ (.sword 64))
+        simp only [semScalarL] at hsem
+        obtain ⟨V', hc', hcont1⟩ :=
+          ih (vm.bind name) (V.extend _) _ env' ob hcons0 htb hsem
+        refine ⟨V', hc', ?_⟩
+        intro t tail
+        obtain ⟨com1, hcom1, hden1⟩ := hcont1 tail
+        obtain ⟨com, hcom, hden⟩ := hcont0 com1
+        refine ⟨com, ?_, ?_⟩
+        · show ComCont.comp (ComCont.varBind _) ob.cont tail = some com
+          simp only [ComCont.comp, hcom1, hcom]
+        · rw [hden, hden1]
   | @rIfNz name thenBr elseBr hthen helse ihT ihE =>
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectControl] at htr
