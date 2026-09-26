@@ -478,13 +478,33 @@ def encMemMovImm (base : Nat) (off : Int) (v : Nat) : List (BitVec 8) :=
   encMemMov 0xc7 0 base off ++ imm32LE v
 
 /-- The `scale` (2-bit `ss`) field of a SIB byte from a byte stride: `1→0`,
-    `2→1`, `4→2`, `8→3` (`log2`), any other value clamps to `0` (stride 1). -/
+    `2→1`, `4→2`, `8→3` (`log2`). The function is total and sends every other
+    stride to `0`; `scaleOk` names the strides on which it is the SIB exponent,
+    and `encodableJInstr` admits an indexed access only on those. -/
 def sibScale (scale : Nat) : Nat :=
   if scale = 8 then 3 else if scale = 4 then 2 else if scale = 2 then 1 else 0
+
+/-- The strides a SIB byte encodes: `1`, `2`, `4` and `8`. -/
+def scaleOk (scale : Nat) : Bool := scale == 1 || scale == 2 || scale == 4 || scale == 8
+
+/-- `sibScale` is a two-bit field. -/
+theorem sibScale_lt_four (scale : Nat) : sibScale scale < 4 := by
+  unfold sibScale; split_ifs <;> decide
+
+/-- On an encodable stride, `2 ^ sibScale scale` is the stride. -/
+theorem two_pow_sibScale (scale : Nat) (hs : scaleOk scale = true) :
+    2 ^ sibScale scale = scale := by
+  simp only [scaleOk, Bool.or_eq_true, beq_iff_eq] at hs
+  rcases hs with ((rfl | rfl) | rfl) | rfl <;> decide
 
 /-- A `SIB` byte `ss<<6 | (index&7)<<3 | (base&7)` for `[base + index*scale]`. -/
 def sibByte (scale index base : Nat) : Nat :=
   (sibScale scale) * 64 + ((index &&& 7) * 8) + (base &&& 7)
+
+/-- The SIB byte has the bit layout of a memory ModRM byte, with the scale
+    exponent in the `mod` position. -/
+theorem sibByte_eq_modRMMem (scale index base : Nat) :
+    sibByte scale index base = modRMMem (sibScale scale) index base := rfl
 
 /-- A `MOV` between a register and a **register-indexed** address
     `[base + index*scale]` (displacement 0): `op` = `0x8B` (load `r ← m`,
@@ -494,25 +514,14 @@ def sibByte (scale index base : Nat) : Nat :=
     `mod=01` with a zero `disp8` to keep `base` present. `REX.X` carries
     `bit(index,3)`, `REX.B` carries `bit(base,3)`.
 
-    **PRECONDITION: `index ≠ 4`** (the index register must not be `%rsp`).
-    `SIB.index = 100` with `REX.X = 0` is the SDM's "**no index**" encoding — the
-    address degrades to `[base]` and the index register is silently dropped, with
-    no diagnostic. `index = 4` is the ONLY bad value: `index = 12` (`%r12`) sets
-    `REX.X = 1`, which lifts `100` out of the escape and names `%r12` normally, and
-    every other low-3 is a plain index.
-
-    The precondition holds for every caller, because an index register only ever
-    arrives here through `gpNum (regOf alloc idx)`:
-    * `AsmPrinter.gpPool` — the pool `allocGp` draws from — **excludes `%rsp`**
-      (and `%rbp`) by construction, so an allocator-assigned index is never `4`;
-    * an *overflowed* name resolves to the `<UNALLOCATED:_>` sentinel, which
-      `gpNum` maps to `0` (`%rax`), not `4`;
-    * the one emitter that pins a name to `"%rsp"` (`FheNttLoopOwnedEmit`'s
-      red-zone spill base `("rsp", "%rsp")`) uses it only as a `loadMem`/`storeMem`
-      **base**, never as a `loadMemIdx`/`storeMemIdx` index.
-
-    Nothing enforces this, so a future pinned allocation putting an index name on
-    `%rsp` would miscompile silently; the guard is the pool, not a check. -/
+    **Precondition: `index ≠ 4`** (the index register is not `%rsp`).
+    `SIB.index = 100` with `REX.X = 0` is the SDM's "no index" encoding: the
+    address is `[base]` and the index register is dropped. `index = 4` is the only
+    such value: `index = 12` (`%r12`) sets `REX.X = 1`, which lifts `100` out of
+    the escape and names `%r12`, and every other low-3 is a plain index.
+    `sibIndexOk` is the gate on this precondition, and `encodeJInstr?` refuses an
+    indexed access whose index the allocation places on `%rsp`. The stride
+    precondition `scaleOk scale` is gated by `encodableJInstr`. -/
 def encMemMovSib (op r base index scale : Nat) : List (BitVec 8) :=
   let needDisp := (base &&& 7) = 5
   let md := if needDisp then 1 else 0
@@ -594,8 +603,9 @@ def encLeaSib (dst base index scale : Nat) (off : Int) : List (BitVec 8) :=
     is inherited, and the `imm32` follows the displacement. gas:
     `movq $0, (%rdi,%rsi,8)` = `48 c7 04 f7 00 00 00 00`.
 
-    Carries BOTH preconditions of the forms it composes: `index ≠ 4`
-    (`encMemMovSib`) and `v < 2^31 ∨ 2^64 - 2^31 ≤ v` (`encMemMovImm`). -/
+    Carries both preconditions of the forms it composes: `index ≠ 4`
+    (`encMemMovSib`, gated by `sibIndexOk`) and `v < 2^31 ∨ 2^64 - 2^31 ≤ v`
+    (`encMemMovImm`, gated by `encodableJInstr` as `fitsImm32S v`). -/
 def encMemMovSibImm (base index scale v : Nat) : List (BitVec 8) :=
   encMemMovSib 0xc7 0 base index scale ++ imm32LE v
 
@@ -1141,12 +1151,19 @@ the instructions not yet encoded, emits no bytes at all.
   `SHLD`, `SHRD`, `RCL`, `RCR`, the sized `TEST` and `BTR`/`BTS`, which are
   not encoded and whose arms return no bytes.
 
-`encodableJInstr` decides membership of the faithful fragment and
-`encodeJInstr?` refuses outside it, so an emitter reaching an unencodable
-immediate gets `none` rather than wrong bytes. The wide-immediate ALU case has
-no local repair — x86-64's only lowering is to materialise the value into a
-scratch register first, which is a register-allocation decision this encoder
-cannot make — so refusal is the correct behaviour here. -/
+* The indexed memory forms (`loadMemIdx`, `storeMemIdx`, the indexed `lea`) at a
+  stride outside `{1, 2, 4, 8}`, which `sibScale` sends to the SIB exponent `0`
+  (stride `1`), and at an index register the allocation places on `%rsp`, whose
+  SIB field `100` under `REX.X = 0` names no index (the address is `[base]`).
+
+`encodableJInstr` decides membership of the faithful fragment on the instruction
+alone, `sibIndexOk` decides the `%rsp`-index condition against the allocation,
+and `encodeJInstr?` refuses outside their conjunction `encodableJInstrAt`, so an
+emitter reaching an unencodable shape gets `none` rather than wrong bytes. The
+wide-immediate ALU case has no local repair — x86-64's only lowering is to
+materialise the value into a scratch register first, which is a
+register-allocation decision this encoder cannot make — so refusal is the
+correct behaviour here. -/
 
 /-- Does `v`'s 64-bit two's-complement image fit the signed 32-bit immediate
     field that `81 /digit id` carries and the CPU sign-extends? -/
@@ -1164,6 +1181,12 @@ def encodableJInstr : JInstr 64 → Bool
   | .cmove _ (.imm _) | .cmovcc _ _ (.imm _)
   | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
+  -- an indexed access encodes its stride as a SIB exponent only on `scaleOk`;
+  -- the indexed store-immediate also needs the sign-extended `imm32`.
+  | .loadMemIdx _ _ _ scale => scaleOk scale
+  | .storeMemIdx _ _ scale (.reg _) => scaleOk scale
+  | .storeMemIdx _ _ scale (.imm v) => scaleOk scale && fitsImm32S v
+  | .lea _ _ _ scale _ => scale == 0 || scaleOk scale
   -- a register-count shift encodes only when its count register is `%rcx`, a
   -- fact of the allocation this gate does not see; the flag-free BMI2 form is
   -- the separate `.shlx`/`.shrx`/`.sarx`.
@@ -1174,43 +1197,102 @@ def encodableJInstr : JInstr 64 → Bool
   | .testN _ _ _ | .btr _ _ | .bts _ _ => false
   | _ => true
 
-/-- `encodeJInstr` restricted to the fragment it encodes faithfully. -/
-def encodeJInstr? (alloc : GpAlloc) (i : JInstr 64) : Option (List (BitVec 8)) :=
-  if encodableJInstr i then some (encodeJInstr alloc i) else none
+/-- The index register of an indexed access is not placed on `%rsp` by the
+    allocation: a SIB index field `100` under `REX.X = 0` names no index register,
+    so an index on `%rsp` would drop out of the address. An indexed `lea` at scale
+    `0` takes the index-free form and passes; every other instruction passes. -/
+def sibIndexOk (alloc : GpAlloc) : JInstr 64 → Bool
+  | .loadMemIdx _ _ idx _ => gpNum (regOf alloc idx) != 4
+  | .storeMemIdx _ idx _ _ => gpNum (regOf alloc idx) != 4
+  | .lea _ _ idx scale _ => scale == 0 || gpNum (regOf alloc idx) != 4
+  | _ => true
 
-/-- Every block instruction encodable, or the first one that is not. -/
+/-- The instruction is in the faithful fragment (`encodableJInstr`) and its index
+    register, when it has one, is not on `%rsp` under `alloc` (`sibIndexOk`). -/
+def encodableJInstrAt (alloc : GpAlloc) (i : JInstr 64) : Bool :=
+  encodableJInstr i && sibIndexOk alloc i
+
+/-- `encodeJInstr` restricted to the fragment it encodes faithfully under
+    `alloc`. -/
+def encodeJInstr? (alloc : GpAlloc) (i : JInstr 64) : Option (List (BitVec 8)) :=
+  if encodableJInstrAt alloc i then some (encodeJInstr alloc i) else none
+
+/-- Every block instruction in the faithful fragment `encodableJInstr`, or the
+    first one that is not. -/
 def firstUnencodable : List (JInstr 64) → Option (JInstr 64)
   | [] => none
   | i :: rest => if encodableJInstr i then firstUnencodable rest else some i
 
 theorem encodeJInstr?_isSome (alloc : GpAlloc) (i : JInstr 64) :
-    (encodeJInstr? alloc i).isSome = encodableJInstr i := by
+    (encodeJInstr? alloc i).isSome = encodableJInstrAt alloc i := by
   unfold encodeJInstr?
   split <;> simp_all
 
 theorem encodeJInstr?_eq_some (alloc : GpAlloc) (i : JInstr 64)
-    (h : encodableJInstr i = true) :
+    (h : encodableJInstrAt alloc i = true) :
     encodeJInstr? alloc i = some (encodeJInstr alloc i) := by
   unfold encodeJInstr?; simp [h]
 
 theorem encodeJInstr?_eq_none (alloc : GpAlloc) (i : JInstr 64)
-    (h : encodableJInstr i = false) : encodeJInstr? alloc i = none := by
+    (h : encodableJInstrAt alloc i = false) : encodeJInstr? alloc i = none := by
   unfold encodeJInstr?; simp [h]
+
+/-- An instruction outside `encodableJInstr` is refused under every allocation. -/
+theorem encodeJInstr?_eq_none_of_not_encodable (alloc : GpAlloc) (i : JInstr 64)
+    (h : encodableJInstr i = false) : encodeJInstr? alloc i = none :=
+  encodeJInstr?_eq_none alloc i (by simp [encodableJInstrAt, h])
 
 /-- A wide ALU immediate is refused rather than truncated. -/
 theorem encodeJInstr?_add_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
     (h : fitsImm32S v = false) : encodeJInstr? alloc (.add d (.imm v)) = none :=
-  encodeJInstr?_eq_none alloc _ (by simp [encodableJInstr, h])
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
+
+/-- An indexed load at a stride outside `{1, 2, 4, 8}` is refused rather than
+    encoded at stride `1`. -/
+theorem encodeJInstr?_loadMemIdx_scale (alloc : GpAlloc) (d base idx : String)
+    (scale : Nat) (h : scaleOk scale = false) :
+    encodeJInstr? alloc (.loadMemIdx d base idx scale) = none :=
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by simp [encodableJInstr, h])
+
+/-- An indexed store at a stride outside `{1, 2, 4, 8}` is refused rather than
+    encoded at stride `1`. -/
+theorem encodeJInstr?_storeMemIdx_scale (alloc : GpAlloc) (base idx : String)
+    (scale : Nat) (s : JOperand) (h : scaleOk scale = false) :
+    encodeJInstr? alloc (.storeMemIdx base idx scale s) = none :=
+  encodeJInstr?_eq_none_of_not_encodable alloc _ (by cases s <;> simp [encodableJInstr, h])
+
+/-- An indexed load whose index register the allocation places on `%rsp` is
+    refused rather than encoded as `[base]`. -/
+theorem encodeJInstr?_loadMemIdx_rsp (alloc : GpAlloc) (d base idx : String)
+    (scale : Nat) (h : gpNum (regOf alloc idx) = 4) :
+    encodeJInstr? alloc (.loadMemIdx d base idx scale) = none :=
+  encodeJInstr?_eq_none alloc _ (by simp [encodableJInstrAt, sibIndexOk, h])
+
+/-- An indexed store whose index register the allocation places on `%rsp` is
+    refused rather than encoded as `[base]`. -/
+theorem encodeJInstr?_storeMemIdx_rsp (alloc : GpAlloc) (base idx : String)
+    (scale : Nat) (s : JOperand) (h : gpNum (regOf alloc idx) = 4) :
+    encodeJInstr? alloc (.storeMemIdx base idx scale s) = none :=
+  encodeJInstr?_eq_none alloc _ (by simp [encodableJInstrAt, sibIndexOk, h])
+
+/-- An indexed load at an encodable stride whose index is not on `%rsp` is
+    accepted and encoded as `encMemMovSib 0x8b`. -/
+theorem encodeJInstr?_loadMemIdx (alloc : GpAlloc) (d base idx : String) (scale : Nat)
+    (hs : scaleOk scale = true) (hx : gpNum (regOf alloc idx) ≠ 4) :
+    encodeJInstr? alloc (.loadMemIdx d base idx scale)
+      = some (encMemMovSib 0x8b (gpNum (regOf alloc d)) (gpNum (regOf alloc base))
+          (gpNum (regOf alloc idx)) scale) :=
+  encodeJInstr?_eq_some alloc _ (by simp [encodableJInstrAt, encodableJInstr, sibIndexOk, hs, hx])
 
 /-- `CMOVcc $imm` has no x86 encoding and is refused. -/
 theorem encodeJInstr?_cmove_imm (alloc : GpAlloc) (d : String) (v : Nat) :
     encodeJInstr? alloc (.cmove d (.imm v)) = none :=
-  encodeJInstr?_eq_none alloc _ rfl
+  encodeJInstr?_eq_none_of_not_encodable alloc _ rfl
 
 /-- `CMOVcc $imm` at a general condition has no x86 encoding and is refused. -/
 theorem encodeJInstr?_cmovcc_imm (alloc : GpAlloc) (c : Condt) (d : String) (v : Nat) :
     encodeJInstr? alloc (.cmovcc c d (.imm v)) = none :=
-  encodeJInstr?_eq_none alloc _ rfl
+  encodeJInstr?_eq_none_of_not_encodable alloc _ rfl
 
 /-! ### The general condition against the condition-specific arms
 
@@ -1310,17 +1392,17 @@ theorem encodeJInstr_shr_reg_rcx (alloc : GpAlloc) (d c : String)
 /-- The gated encoder refuses a register-count logical right shift. -/
 theorem encodeJInstr?_shr_reg (alloc : GpAlloc) (d c : String) :
     encodeJInstr? alloc (.shr d (.reg c)) = none :=
-  encodeJInstr?_eq_none alloc _ rfl
+  encodeJInstr?_eq_none_of_not_encodable alloc _ rfl
 
 /-- The gated encoder refuses a register-count left shift. -/
 theorem encodeJInstr?_shl_reg (alloc : GpAlloc) (d c : String) :
     encodeJInstr? alloc (.shl d (.reg c)) = none :=
-  encodeJInstr?_eq_none alloc _ rfl
+  encodeJInstr?_eq_none_of_not_encodable alloc _ rfl
 
 /-- The gated encoder refuses a register-count arithmetic right shift. -/
 theorem encodeJInstr?_sar_reg (alloc : GpAlloc) (d c : String) :
     encodeJInstr? alloc (.sar d (.reg c)) = none :=
-  encodeJInstr?_eq_none alloc _ rfl
+  encodeJInstr?_eq_none_of_not_encodable alloc _ rfl
 
 /-- The gated encoder accepts the BMI2 `shrx`, the flag-free register-count
     shift at the `JInstr` level. -/

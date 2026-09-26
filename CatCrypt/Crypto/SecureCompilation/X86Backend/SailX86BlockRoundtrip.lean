@@ -7,6 +7,7 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields
+public import CatCryptCore.Tactics.KatGuard
 
 /-!
 # Byte-stream round-trip: `decode (encodeJBlock alloc block) = block`
@@ -32,6 +33,12 @@ instruction, with nothing left over.
 * `MULX` in both the register and the memory-source form,
 * `loadMem`/`storeMem` (`8B`/`89` against `[base + disp]`), and the
   store-immediate `storeMem` (`C7 /0 id` against `[base + disp]`),
+* `loadMemIdx`/`storeMemIdx` (`8B`/`89` against `[base + index * scale]`, the
+  SIB form with `REX.X` extending the index field); these are inverted by
+  `decodeJ1` (`roundtrip_loadMemIdx`, `roundtrip_storeMemIdx`) but sit outside
+  `blockCovered`, because their side condition — the index register is not
+  `%rsp` — is a fact of the allocation, which `blockCovered` does not see;
+  `EncodeJBlock6Roundtrip.blockCovered6` carries it,
 * the index-free `LEA` (`8D` against `[base + disp]`), written
   `lea dst base base 0 off`: at scale `0` the index contributes nothing to the
   address, and the decoder returns the base in the index position,
@@ -47,7 +54,7 @@ picks the `disp0`, `disp8` or `disp32` form, and the decoder reads all three).
 same set, in the form `roundtrip_block` places as a hypothesis on each
 instruction of a block.
 
-Outside the covered set: `loadMemIdx`, `storeMemIdx`, `loadSym`,
+Outside the covered set: the indexed moves (above), `loadSym`,
 `movzx` from a 32-bit source (its `MOV` encoding carries no `REX.W`, which
 `decodeRex`'s opcode table does not distinguish from the 64-bit `MOV` it already
 decodes — including this shape would make the two ambiguous), `movsx`,
@@ -71,7 +78,8 @@ what a `decodeJ1` case for them waits on.
 
 The decoder is written against the Sail-x86 parse discipline
 (`SailX86ByteFields`): the REX/VEX prefix layout, the ModRM `mod/reg/rm` split,
-the SIB escape, and the displacement forms. Recovering the instruction from the
+the SIB escape with `REX.X` extending the index field (`decodeMemTail`), and the
+displacement forms. Recovering the instruction from the
 bytes says the encoder's output is the encoding of the instruction it was given,
 rather than a byte string that agrees with `gas`.
 
@@ -114,26 +122,37 @@ def decodeDisp : Nat → List (BitVec 8) → Option (Int × List (BitVec 8))
   | 2, d0 :: d1 :: d2 :: d3 :: r => some (sdisp32 d0 d1 d2 d3, r)
   | _, _ => none
 
-/-- Parse a memory operand: the ModRM byte, the SIB byte when the `r/m` field is
-    the SIB escape `100`, and the displacement. Returns the ModRM `reg` field,
-    the base register's low three bits, the displacement, and the bytes left.
-    `mod = 11` is register-direct and `mod = 00, r/m = 101` is RIP-relative; both
-    name no base register, so both are rejected. -/
-def decodeMemTail : List (BitVec 8) → Option (Nat × Nat × Int × List (BitVec 8))
+/-- Parse a memory operand under the prefix's `X` bit `x` (`REX.X`, or the
+    inverted `X̄` of a VEX prefix): the ModRM byte, the SIB byte when the `r/m`
+    field is the SIB escape `100`, and the displacement. Returns the ModRM `reg`
+    field, the base register's low three bits (the SIB `base` field in the SIB
+    form), the index register with its stride when the SIB byte names one, the
+    displacement, and the bytes left. The SIB byte has the ModRM bit layout: its
+    `mod` position is the scale exponent, its `reg` position the index field, its
+    `r/m` position the base field. An index field `100` under `x = 0` names no
+    index register; otherwise the index is `x * 8 + field` and the stride
+    `2 ^ exponent`. `mod = 11` is register-direct, `mod = 00, r/m = 101` is
+    RIP-relative and `mod = 00` with SIB base field `101` has no base; all three
+    name no base register and are rejected. -/
+def decodeMemTail (x : Nat) :
+    List (BitVec 8) → Option (Nat × Nat × Option (Nat × Nat) × Int × List (BitVec 8))
   | modrm :: rest =>
       if modField modrm = 3 then none
       else if rmField modrm = 4 then
         match rest with
         | sib :: rest1 =>
-            if sib.toNat = 0x24 then
+            if modField modrm = 0 ∧ rmField sib = 5 then none
+            else
+              let idx : Option (Nat × Nat) :=
+                if x = 0 ∧ regField sib = 4 then none
+                else some (x * 8 + regField sib, 2 ^ modField sib)
               (decodeDisp (modField modrm) rest1).map
-                fun p => (regField modrm, 4, p.1, p.2)
-            else none
+                fun p => (regField modrm, rmField sib, idx, p.1, p.2)
         | [] => none
       else if modField modrm = 0 ∧ rmField modrm = 5 then none
       else
         (decodeDisp (modField modrm) rest).map
-          fun p => (regField modrm, rmField modrm, p.1, p.2)
+          fun p => (regField modrm, rmField modrm, none, p.1, p.2)
   | [] => none
 
 /-! ## 2. The instruction decoder -/
@@ -149,12 +168,12 @@ def decodeAdx (isAdcx : Bool) : List (BitVec 8) → Option (JInstr 64 × List (B
           let s : JOperand := .reg (regName (rexB r * 8 + rmField modrm))
           some (if isAdcx then .adcx d s else .adox d s, rest)
         else
-          match decodeMemTail (modrm :: rest) with
-          | some (rf, bLow, off, rest2) =>
+          match decodeMemTail (rexX r) (modrm :: rest) with
+          | some (rf, bLow, none, off, rest2) =>
               let d := regName (rexR r * 8 + rf)
               let b := regName (rexB r * 8 + bLow)
               some (if isAdcx then .adcxMem d b off else .adoxMem d b off, rest2)
-          | none => none
+          | _ => none
       else none
   | _ => none
 
@@ -195,11 +214,11 @@ def decodeMulx : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
           some (.mulx (regName (rBit * 8 + regField modrm)) dstLo (.reg "%rdx")
                   (.reg (regName (bBit * 8 + rmField modrm))), rest)
         else
-          match decodeMemTail (modrm :: rest) with
-          | some (rf, bLow, off, rest2) =>
+          match decodeMemTail 0 (modrm :: rest) with
+          | some (rf, bLow, none, off, rest2) =>
               some (.mulxMem (regName (rBit * 8 + rf)) dstLo (.reg "%rdx")
                       (regName (bBit * 8 + bLow)) off, rest2)
-          | none => none
+          | _ => none
       else none
   | _ => none
 
@@ -244,10 +263,15 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
                       + i7.toNat * 0x100000000000000)), rest1)
         | _ => none
       else if op.toNat = 0x8b then
-        match decodeMemTail rest with
-        | some (rf, bLow, off, rest1) =>
+        match decodeMemTail (rexX r) rest with
+        | some (rf, bLow, none, off, rest1) =>
             some (.loadMem (regName (rexR r * 8 + rf))
                     (regName (rexB r * 8 + bLow)) off, rest1)
+        | some (rf, bLow, some (idx, scale), off, rest1) =>
+            if off = 0 then
+              some (.loadMemIdx (regName (rexR r * 8 + rf))
+                      (regName (rexB r * 8 + bLow)) (regName idx) scale, rest1)
+            else none
         | none => none
       else
         match rest with
@@ -257,21 +281,26 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
             if op.toNat = 0x89 then
               if modField modrm = 3 then some (.mov dst src, rest1)
               else
-                match decodeMemTail (modrm :: rest1) with
-                | some (rf, bLow, off, rest2) =>
+                match decodeMemTail (rexX r) (modrm :: rest1) with
+                | some (rf, bLow, none, off, rest2) =>
                     some (.storeMem (regName (rexB r * 8 + bLow)) off
                             (.reg (regName (rexR r * 8 + rf))), rest2)
+                | some (rf, bLow, some (idx, scale), off, rest2) =>
+                    if off = 0 then
+                      some (.storeMemIdx (regName (rexB r * 8 + bLow)) (regName idx) scale
+                              (.reg (regName (rexR r * 8 + rf))), rest2)
+                    else none
                 | none => none
             else if modField modrm ≠ 3 then
               if op.toNat = 0x8d then
-                match decodeMemTail (modrm :: rest1) with
-                | some (rf, bLow, off, rest2) =>
+                match decodeMemTail (rexX r) (modrm :: rest1) with
+                | some (rf, bLow, none, off, rest2) =>
                     let b := regName (rexB r * 8 + bLow)
                     some (.lea (regName (rexR r * 8 + rf)) b b 0 off, rest2)
-                | none => none
+                | _ => none
               else if op.toNat = 0xc7 then
-                match decodeMemTail (modrm :: rest1) with
-                | some (rf, bLow, off, j0 :: j1 :: j2 :: j3 :: rest2) =>
+                match decodeMemTail (rexX r) (modrm :: rest1) with
+                | some (rf, bLow, none, off, j0 :: j1 :: j2 :: j3 :: rest2) =>
                     if rf = 0 then
                       some (.storeMem (regName (rexB r * 8 + bLow)) off
                         (.imm (j0.toNat + j1.toNat * 0x100 + j2.toNat * 0x10000
@@ -500,6 +529,58 @@ def mulxRdxOk (alloc : GpAlloc) : JInstr 64 → Bool
   | .mulxMem _ _ (.reg a) _ _ => gpNum (regOf alloc a) == 2
   | _ => true
 
+/-- The instruction forms a block may contain for the whole-block round-trip
+    `roundtrip_block`: the forms `decodeJ1` inverts, with the immediate-width and
+    displacement side conditions their encodings need. -/
+def blockCovered : JInstr 64 → Bool := decodableJ
+
+-- The boundary of the covered set: the forms it admits, and the forms and
+-- out-of-range operands it rejects. These are static checks pinning the
+-- decidable predicate against silent change; each reduces a small closed term.
+-- They precede the round-trip theorems so that the first kernel check does not
+-- wait on the module's asynchronous proof tasks.
+#kat_kernel blockCovered (.mov "a" (.reg "b"))
+#kat_kernel ! blockCovered (.loadMemIdx "a" "b" "c" 8)
+#kat_kernel ! blockCovered (.storeMemIdx "a" "c" 8 (.reg "b"))
+#kat_kernel blockCovered (.shl "a" (.imm 13))
+#kat_kernel blockCovered (.loadMem "a" "b" (-8))
+#kat_kernel blockCovered (.setc "a")
+#kat_kernel blockCovered (.test "a" (.reg "b"))
+#kat_kernel ! blockCovered (.test "a" (.imm 1))
+#kat_kernel blockCovered (.bt "a" (.imm 0))
+#kat_kernel ! blockCovered (.bt "a" (.imm 256))
+#kat_kernel ! blockCovered (.bt "a" (.reg "b"))
+#kat_kernel blockCovered (.adcxMem "a" "b" 152)
+#kat_kernel blockCovered (.storeMem "a" 392 (.imm 0))
+#kat_kernel ! blockCovered (.storeMem "a" 0 (.imm (2 ^ 32)))
+#kat_kernel ! blockCovered (.setcc .b "a")
+#kat_kernel ! blockCovered (.shl "a" (.reg "b"))
+-- The flag-only, BMI1/BMI2 and extension-move forms, and the indexed `lea`, have
+-- no `decodeJ1` arm, so they sit outside the covered set.
+#kat_kernel ! blockCovered (.cmp "a" (.reg "b"))
+#kat_kernel ! blockCovered (.not_ "a")
+#kat_kernel ! blockCovered (.andn "a" "b" "c")
+#kat_kernel ! blockCovered (.rol "a" (.imm 3))
+#kat_kernel ! blockCovered (.ror "a" (.imm 3))
+#kat_kernel ! blockCovered (.rorx "a" "b" (.imm 3))
+#kat_kernel ! blockCovered (.shlx "a" "b" "c")
+#kat_kernel ! blockCovered (.shrx "a" "b" "c")
+#kat_kernel ! blockCovered (.sarx "a" "b" "c")
+#kat_kernel blockCovered (.movzx "a" 8 "b")
+#kat_kernel blockCovered (.movzx "a" 16 "b")
+#kat_kernel ! blockCovered (.movzx "a" 32 "b")
+#kat_kernel ! blockCovered (.movsx "a" 8 "b")
+#kat_kernel ! blockCovered (.lea "a" "b" "c" 8 0)
+#kat_kernel ! blockCovered (.lea "a" "b" "b" 1 0)
+#kat_kernel ! blockCovered (.lea "a" "b" "c" 0 0)
+#kat_kernel blockCovered (.lea "a" "b" "b" 0 32)
+#kat_kernel ! blockCovered (.lea "a" "b" "b" 0 (2 ^ 31))
+#kat_kernel ! blockCovered (.mov "a" (.imm (2 ^ 64)))
+#kat_kernel blockCovered (.loadMem "a" "b" 4096)
+#kat_kernel blockCovered (.storeMem "a" (-2 ^ 31) (.reg "b"))
+#kat_kernel ! blockCovered (.loadMem "a" "b" (2 ^ 31))
+#kat_kernel ! blockCovered (.storeMem "a" (-2 ^ 31 - 1) (.reg "b"))
+
 /-! ## 5. Round-trip for the register-direct forms -/
 
 /-- The REX-bit/ModRM-field split recovers the register name the allocation
@@ -646,43 +727,85 @@ theorem decodeDisp_disp32LE (off : Int) (rest : List (BitVec 8))
   rw [Int.bmod_def]
   split <;> omega
 
-/-- `decodeMemTail` inverts `memTail` on a signed 32-bit displacement: it
-    recovers the ModRM `reg` field, the base register's low three bits, and the
-    displacement, leaving no bytes. This covers the `disp0`, `disp8` and `disp32`
-    forms `memTail` selects between, and all four special bases — the SIB escape
-    at base low-3 = 4 and the forced `disp8` at base low-3 = 5. -/
+/-- `REX.X` of a `REX.W` prefix byte is the bit the encoder put there. -/
+theorem rexX_rex (r x b : Nat) (hx : x ≤ 1) (hb : b ≤ 1) :
+    rexX (BitVec.ofNat 8 (rex 1 r x b)) = x := by
+  rw [rexX, Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow,
+    BitVec.toNat_ofNat]
+  unfold rex; omega
+
+/-- `decodeMemTail` under a clear `X` bit inverts `memTail` on a signed 32-bit
+    displacement: it recovers the ModRM `reg` field, the base register's low
+    three bits, no index, and the displacement, leaving no bytes. This covers the
+    `disp0`, `disp8` and `disp32` forms `memTail` selects between, and all four
+    special bases — the SIB escape at base low-3 = 4 and the forced `disp8` at
+    base low-3 = 5. -/
 theorem decodeMemTail_memTail32 (reg base : Nat) (off : Int) (rest : List (BitVec 8))
     (h : dispOk32 off = true) :
-    decodeMemTail (memTail reg base off ++ rest)
-      = some (reg &&& 7, base &&& 7, off, rest) := by
+    decodeMemTail 0 (memTail reg base off ++ rest)
+      = some (reg &&& 7, base &&& 7, none, off, rest) := by
+  have hrm : rmField (BitVec.ofNat 8 0x24) = 4 := by decide
+  have hrg : regField (BitVec.ofNat 8 0x24) = 4 := by decide
   rcases Decidable.em (dispOk off = true) with h8 | h8
   · have hd := sdisp8_disp8 off h8
     simp only [dispOk, decide_eq_true_eq] at h8
     rcases eq_or_ne off 0 with rfl | h0
     · rcases Decidable.em (base &&& 7 = 4) with hs | hs
       · simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
-          regField_modRMMem, hs]
+          regField_modRMMem, hs, hrm, hrg]
       · rcases Decidable.em (base &&& 7 = 5) with h5 | h5 <;>
           simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
             regField_modRMMem, hs, h5, hd]
     · rcases Decidable.em (base &&& 7 = 4) with hs | hs <;>
         simp [memTail, decodeMemTail, decodeDisp, modField_modRMMem, rmField_modRMMem,
-          regField_modRMMem, hs, h0, hd, h8]
+          regField_modRMMem, hs, h0, hd, h8, hrm, hrg]
   · have hd := decodeDisp_disp32LE off rest h
     simp only [dispOk, decide_eq_true_eq] at h8
     have h0 : off ≠ 0 := by omega
     rcases Decidable.em (base &&& 7 = 4) with hs | hs <;>
       simp [memTail, decodeMemTail, modField_modRMMem, rmField_modRMMem,
-        regField_modRMMem, hs, h0, h8, hd]
+        regField_modRMMem, hs, h0, h8, hd, hrm, hrg]
 
-/-- `decodeMemTail` inverts `memTail` on a signed-byte displacement: it recovers
-    the ModRM `reg` field, the base register's low three bits, and the
-    displacement, leaving no bytes. -/
+/-- `decodeMemTail` under a clear `X` bit inverts `memTail` on a signed-byte
+    displacement: it recovers the ModRM `reg` field, the base register's low
+    three bits, no index, and the displacement, leaving no bytes. -/
 theorem decodeMemTail_memTail (reg base : Nat) (off : Int) (rest : List (BitVec 8))
     (h : dispOk off = true) :
-    decodeMemTail (memTail reg base off ++ rest)
-      = some (reg &&& 7, base &&& 7, off, rest) :=
+    decodeMemTail 0 (memTail reg base off ++ rest)
+      = some (reg &&& 7, base &&& 7, none, off, rest) :=
   decodeMemTail_memTail32 reg base off rest (dispOk32_of_dispOk off h)
+
+/-- The SIB-escape ModRM byte `encMemMovSib` emits is `modRMMem md r 4`. -/
+theorem sibModRM_eq_modRMMem (md r : Nat) : md * 64 + (r &&& 7) * 8 + 4 = modRMMem md r 4 :=
+  rfl
+
+/-- `decodeMemTail` under the index's bit `3` inverts the ModRM/SIB tail of
+    `encMemMovSib` for an index register other than `%rsp` and an encodable
+    stride: it recovers the ModRM `reg` field, the base's low three bits, the
+    index register and its stride, a zero displacement, and the bytes after the
+    tail. `md = 0` is the `disp0` form, available when the base's low three bits
+    are not `101`; `md = 1` carries the zero `disp8` byte. -/
+theorem decodeMemTail_sibTail (r base index scale md : Nat) (rest : List (BitVec 8))
+    (hx : index < 16) (hx4 : index ≠ 4) (hs : scaleOk scale = true)
+    (hmd : (md = 0 ∧ base &&& 7 ≠ 5) ∨ md = 1) :
+    decodeMemTail (bit index 3)
+        (BitVec.ofNat 8 (modRMMem md r 4) :: BitVec.ofNat 8 (sibByte scale index base)
+          :: (if md = 1 then [disp8 0] else []) ++ rest)
+      = some (r &&& 7, base &&& 7, some (index, scale), 0, rest) := by
+  have hsc := two_pow_sibScale scale hs
+  have hid : index >>> 3 % 2 * 8 + (index &&& 7) = index := by
+    have := regsplit_id index hx
+    rwa [Nat.and_one_is_mod] at this
+  have hnx : index >>> 3 % 2 = 0 → ¬ index &&& 7 = 4 := by
+    intro h1 h2; omega
+  rw [sibByte_eq_modRMMem]
+  rcases hmd with ⟨rfl, h5⟩ | rfl
+  · simp [decodeMemTail, decodeDisp, modField_modRMMem, regField_modRMMem, rmField_modRMMem,
+      sibScale_lt_four, hsc, h5]
+    exact ⟨hnx, hid⟩
+  · simp [decodeMemTail, decodeDisp, modField_modRMMem, regField_modRMMem, rmField_modRMMem,
+      sibScale_lt_four, hsc, sdisp8_disp8 0 (by decide)]
+    exact ⟨hnx, hid⟩
 
 /-- A `memTail` byte string starts with a memory `ModRM` byte, whose `mod` field
     is `00`, `01` or `10` — never the register-direct `11`. -/
@@ -720,6 +843,7 @@ theorem roundtrip_loadMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     decodeRex, BitVec.toNat_ofNat,
     if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
     if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _),
     decodeMemTail_memTail32 _ _ _ _ h,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, if_true]
@@ -742,7 +866,7 @@ theorem roundtrip_storeMem32 (alloc : GpAlloc) (base s : String) (off : Int)
     if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
     if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
     if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg hmod, hdec,
+    if_neg hmod, rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true]
 
@@ -793,9 +917,87 @@ theorem roundtrip_lea32 (alloc : GpAlloc) (d base : String) (off : Int)
     if_neg (show ¬(0xb8 ≤ (0x8d : Nat) % 2 ^ 8 ∧ (0x8d : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
     if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x8b) by decide),
     if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x89) by decide),
-    ne_eq, hmod, not_false_eq_true, if_pos, hdec,
+    ne_eq, hmod, not_false_eq_true, if_pos,
+    rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ]
+
+/-- `MOV (%base,%idx,scale), %dst` (`REX.W 8B /r` with a SIB byte) decodes back
+    to itself when the index register is not `%rsp` and the stride is `1`, `2`,
+    `4` or `8`. -/
+theorem roundtrip_loadMemIdx (alloc : GpAlloc) (d base idx : String) (scale : Nat)
+    (rest : List (BitVec 8)) (hx4 : gpNum (regOf alloc idx) ≠ 4)
+    (hs : scaleOk scale = true) :
+    decodeJ1 (encodeJInstr alloc (.loadMemIdx d base idx scale) ++ rest)
+      = some (renameJ alloc (.loadMemIdx d base idx scale), rest) := by
+  have hdec := fun md hmd => decodeMemTail_sibTail (gpNum (regOf alloc d))
+    (gpNum (regOf alloc base)) (gpNum (regOf alloc idx)) scale md rest (gpNum_lt_16 _) hx4 hs hmd
+  by_cases h5 : gpNum (regOf alloc base) &&& 7 = 5
+  · have hd := hdec 1 (Or.inr rfl)
+    simp only [if_true, List.cons_append, List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true]
+  · have hd := hdec 0 (Or.inl ⟨rfl, h5⟩)
+    simp only [if_neg (show ¬((0 : Nat) = 1) by decide), List.cons_append,
+      List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, if_neg h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true]
+
+/-- `MOV %src, (%base,%idx,scale)` (`REX.W 89 /r` with a SIB byte) decodes back
+    to itself when the index register is not `%rsp` and the stride is `1`, `2`,
+    `4` or `8`. -/
+theorem roundtrip_storeMemIdx (alloc : GpAlloc) (base idx : String) (scale : Nat)
+    (s : String) (rest : List (BitVec 8)) (hx4 : gpNum (regOf alloc idx) ≠ 4)
+    (hs : scaleOk scale = true) :
+    decodeJ1 (encodeJInstr alloc (.storeMemIdx base idx scale (.reg s)) ++ rest)
+      = some (renameJ alloc (.storeMemIdx base idx scale (.reg s)), rest) := by
+  have hdec := fun md hmd => decodeMemTail_sibTail (gpNum (regOf alloc s))
+    (gpNum (regOf alloc base)) (gpNum (regOf alloc idx)) scale md rest (gpNum_lt_16 _) hx4 hs hmd
+  have hmod : ∀ md, md < 4 →
+      modField (BitVec.ofNat 8 (modRMMem md (gpNum (regOf alloc s)) 4)) = md :=
+    fun md hmd => modField_modRMMem _ _ _ hmd
+  by_cases h5 : gpNum (regOf alloc base) &&& 7 = 5
+  · have hd := hdec 1 (Or.inr rfl)
+    simp only [if_true, List.cons_append, List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      hmod 1 (by decide), if_neg (show ¬((1 : Nat) = 3) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, if_true]
+  · have hd := hdec 0 (Or.inl ⟨rfl, h5⟩)
+    simp only [if_neg (show ¬((0 : Nat) = 1) by decide), List.cons_append,
+      List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, if_neg h5, List.map_cons, List.map_nil,
+      List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
+      decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      decodeRex, BitVec.toNat_ofNat,
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      hmod 0 (by decide), if_neg (show ¬((0 : Nat) = 3) by decide),
+      rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
+      rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, if_true]
 
 /-- The index-free `LEA off(%base), %dst` (`REX.W 8D /r`) decodes back to itself
     for a displacement the `disp8` form encodes. -/
@@ -1329,7 +1531,8 @@ theorem roundtrip_adcxMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     List.nil_append, hm, decodeJ1, BitVec.toNat_ofNat, decodeAdx,
     isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod, hdec, regName_split, renameJ,
+    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod,
+    rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec, regName_split, renameJ,
     if_true, and_true]
 
 /-- `ADOX off(%base), %dst` (`F3 REX.W 0F 38 F6 /r` against `[base + disp]`) decodes
@@ -1348,7 +1551,8 @@ theorem roundtrip_adoxMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     if_neg (show ¬((0xf3 : Nat) % 2 ^ 8 = 0x66) by decide), decodeAdx,
     isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod, hdec, regName_split, renameJ,
+    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod,
+    rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec, regName_split, renameJ,
     if_true, and_true, if_neg (show ¬(false = true) by decide)]
 
 /-- `MOV $imm32, off(%base)` (`REX.W C7 /0 id` against `[base + disp]`) decodes back
@@ -1370,60 +1574,14 @@ theorem roundtrip_storeMemImm32 (alloc : GpAlloc) (base : String) (off : Int) (v
     if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8b) by decide),
     if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x89) by decide),
     if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8d) by decide),
-    ne_eq, hmod, not_false_eq_true, if_pos, hdec]
+    ne_eq, hmod, not_false_eq_true, if_pos,
+    rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec]
   simp only [imm32LE, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
     BitVec.toNat_ofNat, show (0 : Nat) &&& 7 = 0 by decide, if_true,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf,
     imm32_recompose_mod v hv]
 
 /-! ## 12. Whole-block round-trip -/
-
-/-- The instruction forms a block may contain for the whole-block round-trip:
-    the forms `decodeJ1` inverts, with the immediate-width and displacement side
-    conditions their encodings need. -/
-def blockCovered : JInstr 64 → Bool := decodableJ
-
--- The boundary of the covered set: the forms it admits, and the forms and
--- out-of-range operands it rejects.
-#guard blockCovered (.mov "a" (.reg "b"))
-#guard blockCovered (.shl "a" (.imm 13))
-#guard blockCovered (.loadMem "a" "b" (-8))
-#guard blockCovered (.setc "a")
-#guard blockCovered (.test "a" (.reg "b"))
-#guard ! blockCovered (.test "a" (.imm 1))
-#guard blockCovered (.bt "a" (.imm 0))
-#guard ! blockCovered (.bt "a" (.imm 256))
-#guard ! blockCovered (.bt "a" (.reg "b"))
-#guard blockCovered (.adcxMem "a" "b" 152)
-#guard blockCovered (.storeMem "a" 392 (.imm 0))
-#guard ! blockCovered (.storeMem "a" 0 (.imm (2 ^ 32)))
-#guard ! blockCovered (.setcc .b "a")
-#guard ! blockCovered (.shl "a" (.reg "b"))
--- The flag-only, BMI1/BMI2 and extension-move forms, and the indexed `lea`, have
--- no `decodeJ1` arm, so they sit outside the covered set.
-#guard ! blockCovered (.cmp "a" (.reg "b"))
-#guard ! blockCovered (.not_ "a")
-#guard ! blockCovered (.andn "a" "b" "c")
-#guard ! blockCovered (.rol "a" (.imm 3))
-#guard ! blockCovered (.ror "a" (.imm 3))
-#guard ! blockCovered (.rorx "a" "b" (.imm 3))
-#guard ! blockCovered (.shlx "a" "b" "c")
-#guard ! blockCovered (.shrx "a" "b" "c")
-#guard ! blockCovered (.sarx "a" "b" "c")
-#guard blockCovered (.movzx "a" 8 "b")
-#guard blockCovered (.movzx "a" 16 "b")
-#guard ! blockCovered (.movzx "a" 32 "b")
-#guard ! blockCovered (.movsx "a" 8 "b")
-#guard ! blockCovered (.lea "a" "b" "c" 8 0)
-#guard ! blockCovered (.lea "a" "b" "b" 1 0)
-#guard ! blockCovered (.lea "a" "b" "c" 0 0)
-#guard blockCovered (.lea "a" "b" "b" 0 32)
-#guard ! blockCovered (.lea "a" "b" "b" 0 (2 ^ 31))
-#guard ! blockCovered (.mov "a" (.imm (2 ^ 64)))
-#guard blockCovered (.loadMem "a" "b" 4096)
-#guard blockCovered (.storeMem "a" (-2 ^ 31) (.reg "b"))
-#guard ! blockCovered (.loadMem "a" "b" (2 ^ 31))
-#guard ! blockCovered (.storeMem "a" (-2 ^ 31 - 1) (.reg "b"))
 
 /-- One instruction of the covered set decodes off the front of its own bytes,
     leaving whatever follows untouched. -/
