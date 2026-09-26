@@ -62,17 +62,20 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint (renderVpackZmmInstr
 inductive ZBind where
   | pack (bop : JasminBinOp) (dst a b : String)
   | const (dst : String) (v : Nat)
+  | minu (dst a b : String)
   | other (dst : String)
 
 /-- The name a binding defines. -/
 def ZBind.dst : ZBind → String
   | .pack _ d _ _ => d
   | .const d _ => d
+  | .minu d _ _ => d
   | .other d => d
 
 /-- The names a binding reads. -/
 def ZBind.srcs : ZBind → List String
   | .pack _ _ a b => [a, b]
+  | .minu _ a b => [a, b]
   | _ => []
 
 /-- The binding of expression `e` defining `dst`. -/
@@ -215,17 +218,30 @@ def shiftImmMnemonic : JasminBinOp → Option String
   | .shr => some "vpsrlq"
   | _ => none
 
-/-- The line `mnem src2, src1, dst` computing `dst := bop(src1, src2)`. -/
-def opLine (bop : JasminBinOp) (rd ra rb : String) : String :=
-  "\t" ++ VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
+/-- The mnemonic of `bop`: the packed operation of `VpackZmmAsmPrint`, except that a
+    multiply is `vpmuludq` (the product of the low 32 bits of each lane) when `mulU`
+    holds, which equals `vpmullq` on operands below `2^32`. -/
+def packMnemonic (mulU : Bool) (bop : JasminBinOp) : String :=
+  match bop with
+  | .mul => if mulU then "vpmuludq" else VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
+  | _ => VpackZmmAsmPrint.JasminBinOp.zmmAttMnemonic bop
+
+/-- The line `mn src2, src1, dst`. -/
+def opLine (mn : String) (rd ra rb : String) : String :=
+  "\t" ++ mn ++ " " ++ rb ++ ", " ++ ra ++ ", " ++ rd
 
 /-- The instruction lines of binding `b`. A constant second operand is a memory
     operand; a constant first operand is exchanged with a register second operand when
     `bop` commutes, and otherwise loaded into `zmmScratch`; a shift by a broadcast
     constant below 64 uses the immediate form. Constant bindings emit nothing. -/
 def bindLines (consts : Std.HashMap String (String × Nat))
-    (alloc : Std.HashMap String String) : ZBind → Except String (List String)
+    (alloc : Std.HashMap String String) (mulU : Bool := false) :
+    ZBind → Except String (List String)
   | .const _ _ => pure []
+  | .minu d a b =>
+      match alloc.get? d, alloc.get? a, alloc.get? b with
+      | some rd, some ra, some rb => pure ["\tvpminuq " ++ rb ++ ", " ++ ra ++ ", " ++ rd]
+      | _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
   | .other d => throw s!"vpackZMM linear render: binding {d} is not a vpackZMM op or constant"
   | .pack bop d a b => do
       let reg (n : String) : Except String String :=
@@ -240,33 +256,80 @@ def bindLines (consts : Std.HashMap String (String × Nat))
           else none
         | none => none
       match consts.get? a, consts.get? b with
-      | none, none => pure [opLine bop rd (← reg a) (← reg b)]
+      | none, none => pure [opLine (packMnemonic mulU bop) rd (← reg a) (← reg b)]
       | none, some cb =>
         let ra ← reg a
         match shiftImm cb ra with
         | some line => pure [line]
-        | none => pure [opLine bop rd ra (constOperand cb)]
+        | none => pure [opLine (packMnemonic mulU bop) rd ra (constOperand cb)]
       | some ca, none =>
         let rb ← reg b
-        if bopCommutes bop then pure [opLine bop rd rb (constOperand ca)]
-        else pure [constLoad ca, opLine bop rd zmmScratch rb]
+        if bopCommutes bop then pure [opLine (packMnemonic mulU bop) rd rb (constOperand ca)]
+        else pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch rb]
       | some ca, some cb =>
         match shiftImm cb zmmScratch with
         | some line => pure [constLoad ca, line]
-        | none => pure [constLoad ca, opLine bop rd zmmScratch (constOperand cb)]
+        | none => pure [constLoad ca, opLine (packMnemonic mulU bop) rd zmmScratch (constOperand cb)]
+
+/-- The conditional subtract `r = d + ((0 - (d >> 63)) & C)` with `d = x - C`, which the
+    BabyBear blocks emit, rewritten to `r = minu(x, d)` (`vpminuq`), when the three
+    intermediate values have no other reader and `d` has exactly the two. On a lane with
+    `x < 2^63` and `C < 2^63` both compute `x - C` if `x ≥ C` and `x` otherwise; on other
+    lanes they differ, so the caller asserts the range. -/
+def csubToMinu (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind) :
+    Array ZBind := Id.run do
+  let defs : Std.HashMap String Nat := bs.zipIdx.foldl (fun m (b, i) => m.insert b.dst i) {}
+  let uses : Std.HashMap String Nat :=
+    bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
+  let constVal (n : String) : Option Nat := (consts.get? n).map (·.2)
+  let defOf (n : String) : Option ZBind := (defs.get? n).bind (fun i => bs[i]?)
+  let used (n : String) : Nat := uses.getD n 0
+  -- `(x, d, removed)` when `d + t` is the idiom
+  let idiom (d t : String) : Option (String × String × List String) := do
+    let .pack .and _ t1 t2 ← defOf t | none
+    let (m, cC) ← if (constVal t2).isSome then some (t1, t2)
+      else if (constVal t1).isSome then some (t2, t1) else none
+    let c ← constVal cC
+    let .pack .sub _ z s ← defOf m | none
+    let .pack .shr _ d2 c63 ← defOf s | none
+    let .pack .sub _ x cC2 ← defOf d | none
+    if constVal z == some 0 && d2 == d && constVal c63 == some (bcast512 63)
+        && constVal cC2 == some c && (constVal x).isNone
+        && used s == 1 && used m == 1 && used t == 1 && used d == 2 then
+      some (x, d, [s, m, t])
+    else none
+  let mut rw : Std.HashMap String ZBind := {}
+  let mut removed : Std.HashSet String := {}
+  for b in bs do
+    match b with
+    | .pack .add r a b2 =>
+      match idiom a b2 <|> idiom b2 a with
+      | some (x, d, rem) =>
+        rw := rw.insert r (.minu r x d)
+        removed := rem.foldl (fun s n => s.insert n) removed
+      | none => pure ()
+    | _ => pure ()
+  return bs.filterMap (fun b =>
+    if removed.contains b.dst then none else some ((rw.get? b.dst).getD b))
 
 /-- The owned AT&T text of the function `sym(out = %rdi, in = %rsi)` over the parameter
     names `names` and bindings `bs`: parameter `s` loaded from `inOffset s(%rsi)`, the
-    body, and the `nOut` last bindings stored to `64·j(%rdi)`. -/
+    body, and the `nOut` last bindings stored to `64·j(%rdi)`. With `fieldRange` the caller
+    asserts that every value a multiply reads is below `2^32` and every conditional-subtract
+    input below `2^63`; multiplies then render as `vpmuludq` and conditional subtracts as
+    `vpminuq` (`csubToMinu`). -/
 def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
-    (names : List String) (bs : Array ZBind) : Except String String := do
+    (names : List String) (bs0 : Array ZBind) (fieldRange : Bool := false) :
+    Except String String := do
+  let (consts, data) := constTable sym bs0
+  let bs := if fieldRange then csubToMinu consts bs0 else bs0
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
-  let (consts, data) := constTable sym bs
   let alloc ← allocZmmLinear names consts bs outs
   let loads := names.zipIdx.map (fun (_, s) =>
     "\tvmovdqu64 " ++ toString (inOffset s) ++ "(%rsi), " ++ zmmName s)
   let body ← bs.foldlM
-    (fun (acc : Array String) b => do pure (acc ++ (← bindLines consts alloc b).toArray)) #[]
+    (fun (acc : Array String) b => do
+      pure (acc ++ (← bindLines consts alloc fieldRange b).toArray)) #[]
   let stores ← outs.zipIdx.mapM (fun (o, j) =>
     match alloc.get? o, consts.get? o with
     | some r, _ => pure ["\tvmovdqu64 " ++ r ++ ", " ++ toString (64 * j) ++ "(%rdi)"]
@@ -284,21 +347,23 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
 /-- The owned function text of the packed program `com` (`renderZmmLinearBinds` over
     its bindings). -/
 def renderZmmLinearFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
-    (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (com : Com jasminDialect Γ t) :
+    (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (com : Com jasminDialect Γ t)
+    (fieldRange : Bool := false) :
     Except String String :=
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
-    (collectZBinds vm 0 #[] com).1
+    (collectZBinds vm 0 #[] com).1 fieldRange
 
 /-- The owned function text of `LaneMapZmm.laneMapZmm c`, eight lanes of the scalar
     program `c` per ZMM register, rendered from `c` in one pass by
     `collectZBindsScalar` without building the widened `Com`. -/
 def renderLaneMapZmmFunction {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
-    (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t) :
+    (sym : String) (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
+    (fieldRange : Bool := false) :
     Except String String :=
   let (params, vm) := paramsAndMap Γ
   renderZmmLinearBinds sym inOffset nOut (params.map (fun p => p.var.var.vname))
-    (collectZBindsScalar vm 0 #[] c).1
+    (collectZBindsScalar vm 0 #[] c).1 fieldRange
 
 /-! ## 4. A static check -/
 
