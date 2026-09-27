@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Hax.ListBlocks
 
 /-!
 # Flat structs and `Option` of a word in the hax front
@@ -96,6 +97,23 @@ against `denote'`.
 * `namedRet_tuple_run`, `namedRet_break_sim` — a returned tuple with the
   variables `rs` is determined by `rs`, and its lowering returns the unit value
   from the same environment.
+
+**Arrays of structs** (§3a, §10).  `ArrDecl`, `ArrVars` declare the array variables;
+`flatIdx` is the flat index `i * k + off`; `arrLetKind`, `arrLetBuild`,
+`elemFieldKind`, `arrCallArm` are the arms; `bindElems`, `storeElems` the loads and
+stores of one element.  `ArrStructFlatAt` relates an array of tuples to its flat
+array; `ArrIndexSound`, `ArrUpdateSound`, `LenSound`, `IdxArithSound` state the
+builtins the arms use.
+
+* `flatE_app`, `flatE_letBind` — the unfolding of `flatE` on a call and a binding.
+* `flatE_elemField`, `flatE_elemBind`, `flatE_arrUpdate`, `flatE_len` — the array
+  arms of `flatE`.
+* `flatElemField_sim` — the field call on an element and the flat read evaluate to
+  the same value.
+* `flatElemBind_sim` — the element read into a struct variable and its loads leave
+  the struct flattened.
+* `flatArrUpdate_sim` — the element write and its stores leave the array flattened.
+* `flatLen_sim` — `len` of an array of type `[T; N]` and the literal `N`.
 -/
 
 @[expose] public section
@@ -457,11 +475,189 @@ def callBindArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body
       | none => none
   | _, _ => none
 
+/-! ## §3a  Arrays of structs
+
+An array `arr : [S; n]` of a struct `S` with `k` word fields is one word array of
+length `n * k`: `arr[i].f` is `arr[i * k + off_f]` with `off_f` the position of the
+field, matching Rust's layout for word fields.  The declared array variables
+(`ArrVars`) are parameters (layout fixed by the caller), locals and the component
+variables of array fields of struct variables.  The pass rewrites
+* the element field read `.f (index (arr, i))` to `index (arr, i * k + off_f)`;
+* `let c = index (arr, i)` of a struct variable `c` to the binding of `c#idx` and one
+  load per component of `c`;
+* `let arr = array_update (arr, i, x)` of a struct value `x` to the binding of
+  `arr#idx` and one store per field;
+* `len (arr)` of an array of type `[T; N]` to the literal `N`; `len` of a slice of
+  structs and every other array operation on an array of structs are refused. -/
+
+/-- The declaration of an array variable: the struct of its elements (`none` for
+    words) and the length `N` of an array of type `[T; N]` (`none` for a slice). -/
+structure ArrDecl where
+  /-- The struct of the elements, `none` for words. -/
+  elem : Option String
+  /-- The length `N` of an array of type `[T; N]`, `none` for a slice. -/
+  size : Option Nat
+
+/-- The array variables of a function body with their declarations, keyed by the
+    variable of the flattened program: a parameter or local `a`, or the component
+    variable `s.f` of an array field of a struct variable. -/
+abbrev ArrVars := List (String × ArrDecl)
+
+/-- The fields of the elements of the array variable `a`, when they are structs of
+    the layout. -/
+def arrFields (L : StructLayout) (av : ArrVars) (a : String) : Option (List String) :=
+  (List.lookup a av).bind fun d => d.elem.bind fun S => List.lookup S L
+
+/-- The flattened variable an array expression reads: a variable is itself, and a
+    field call on a struct variable is its component variable. -/
+def arrRef (L : StructLayout) (sv : StructVars) : ImpExpr → Option String
+  | .var a => some a
+  | .app c [.var s] => projArm L sv c s
+  | _ => none
+
+/-- The index `i * k + off` of field `off` of element `i` in the flat array of an
+    array of `k`-field structs: `Add(Mul(i, k), off)`. -/
+def flatIdx (i : ImpExpr) (k off : Nat) : ImpExpr :=
+  .app "Add" [.app "Mul" [i, .lit (.int k)], .lit (.int off)]
+
+/-- The position among the fields `fs` of the field read by the field call `c`. -/
+def fieldIdx (fs : List String) (c : String) : Option Nat :=
+  (List.range fs.length).find? fun j => fs[j]?.map (fun f => "." ++ f) == some c
+
+/-- The element field read `c (index r i)` of an array of structs: the flattened
+    array variable of `r`, the field count `k` of the elements and the position
+    `off` of the field. -/
+def elemFieldKind (L : StructLayout) (sv : StructVars) (av : ArrVars) (c : String) :
+    List ImpExpr → Option (String × Nat × Nat)
+  | [.app g [r, _]] =>
+      match arrRef L sv r with
+      | some a =>
+          match arrFields L av a with
+          | some fs =>
+              if g == "index" then (fieldIdx fs c).map fun off => (a, fs.length, off) else none
+          | none => none
+      | none => none
+  | _ => none
+
+/-- The array operations other than `len`. -/
+def isArrOp (c : String) : Bool := c == "index" || c == "index_mut" || c == "array_update"
+
+/-- A call `c (r :: rest)` on a declared array `r`: `len` of an array of type
+    `[T; N]` is `some (some N)`; `len` of a slice of structs and every other array
+    operation on an array of structs are refused, `some none`; every other call is
+    `none`. -/
+def arrCallArm (L : StructLayout) (sv : StructVars) (av : ArrVars) (c : String) :
+    List ImpExpr → Option (Option ImpExpr)
+  | r :: rest =>
+      match arrRef L sv r with
+      | some a =>
+          match List.lookup a av with
+          | some d =>
+              if c == "len" && rest.isEmpty then
+                match d.size with
+                | some N => some (some (.lit (.int N)))
+                | none => if (arrFields L av a).isSome then some none else none
+              else if isArrOp c && (arrFields L av a).isSome then some none
+              else none
+          | none => none
+      | none => none
+  | [] => none
+
+/-- An array binding of the flattening pass. -/
+inductive ArrLet where
+  /-- `let n = index(r, i)` of a struct variable `n` with the fields `fs`, read
+      from the flattened array variable `a`. -/
+  | elem (a : String) (fs : List String)
+  /-- `let a = array_update(a, i, x)` of an array variable `a` of structs `S` with
+      the fields `fs`. -/
+  | update (S : String) (fs : List String)
+
+/-- The array binding `let n = val`: an element read into a struct variable, or an
+    element write of an array of structs. -/
+def arrLetKind (L : StructLayout) (sv : StructVars) (av : ArrVars) (n : String) :
+    ImpExpr → Option ArrLet
+  | .app g [r, _] =>
+      match arrRef L sv r with
+      | some a =>
+          match arrFields L av a with
+          | some fs =>
+              if g == "index" && structFields L sv n == some fs then some (.elem a fs) else none
+          | none => none
+      | none => none
+  | .app g [.var a, _, _] =>
+      match (List.lookup a av).bind ArrDecl.elem, arrFields L av a with
+      | some S, some fs => if g == "array_update" && n == a then some (.update S fs) else none
+      | _, _ => none
+  | _ => none
+
+/-- The variable holding the element index of an array binding of `n`: `n#idx`. -/
+def elemIdxName (n : String) : String := n ++ "#idx"
+
+/-- The loads of the components `ms`, from field `j` on, of the element at the
+    index held by `x` of the flat array `a` of `k`-field structs, around `body`. -/
+def bindElems (a x : String) (k : Nat) : Nat → List String → ImpExpr → ImpExpr
+  | _, [], body => body
+  | j, m :: ms, body =>
+      .letBind m (.app "index" [.var a, flatIdx (.var x) k j]) (bindElems a x k (j + 1) ms body)
+
+/-- The stores of the values `vs`, from field `j` on, into the element at the
+    index held by `x` of the flat array `a` of `k`-field structs, around `body`. -/
+def storeElems (a x : String) (k : Nat) : Nat → List ImpExpr → ImpExpr → ImpExpr
+  | _, [], body => body
+  | j, v :: vs, body =>
+      .letBind a (.app "array_update" [.var a, flatIdx (.var x) k j, v])
+        (storeElems a x k (j + 1) vs body)
+
+/-- The field values of a flattened struct value: a tuple (a flattened struct
+    variable) or a literal of the struct `S`. -/
+def storeVals (S : String) : ImpExpr → Option (List ImpExpr)
+  | .tuple vs => some vs
+  | .app c vs => if c == S then some vs else none
+  | _ => none
+
+/-- An operand of a store: a literal, or a variable other than the array `a` and
+    the index variable `x`. -/
+def storeAtom (a x : String) : ImpExpr → Bool
+  | .lit _ => true
+  | .var y => y != a && y != x
+  | _ => false
+
+/-- Whether `e` is the variable `n`. -/
+def isVarNamed (n : String) : ImpExpr → Bool
+  | .var x => x == n
+  | _ => false
+
+/-- The lowering of an array binding of `n`, given the flattened arguments `args'`
+    of its right-hand side and the flattened body `body'`:
+    * an element read binds `n#idx` to the index and loads each component of `n`
+      from the flat array;
+    * an element write binds `a#idx` to the index and stores each field value into
+      the flat array; refused unless the value has one operand per field, each a
+      literal or a variable other than `a` and `a#idx`. -/
+def arrLetBuild (n : String) : ArrLet → List ImpExpr → ImpExpr → Option ImpExpr
+  | .elem a fs, [_, i'], body' =>
+      some (.letBind (elemIdxName n) i'
+        (bindElems a (elemIdxName n) fs.length 0 (fs.map (structCompName n)) body'))
+  | .update S fs, [_, i', x'], body' =>
+      match storeVals S x' with
+      | some vs =>
+          if vs.length == fs.length && vs.all (storeAtom n (elemIdxName n)) then
+            some (.letBind (elemIdxName n) i' (storeElems n (elemIdxName n) fs.length 0 vs body'))
+          else none
+      | none => none
+  | _, _, _ => none
+
 mutual
 
-/-- Flatten the struct variables `sv` (layout `L`) and match on the `Option`
-    variables `ov`:
+/-- Flatten the struct variables `sv` (layout `L`), the arrays of structs and the
+    fixed-size arrays `av` (§3a), and match on the `Option` variables `ov`:
     * a field call `.f s` on a struct variable is the component variable `s.f`;
+    * a field call `.f (index (arr, i))` on an element of an array of structs is
+      the read of the flat array at `i * k + off_f`; `let c = index (arr, i)` of a
+      struct variable binds `c#idx` and loads the components of `c`;
+      `let arr = array_update (arr, i, x)` binds `arr#idx` and stores the fields of
+      `x`; `len (arr)` of an array of type `[T; N]` is `N` (`arrLetBuild`,
+      `arrCallArm`);
     * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i`, a
       variable `x` through a copy (`rhsCopy`);
     * a struct literal `let s = S(x₁, …, xₖ)` binds the components of `s` in field
@@ -479,142 +675,165 @@ mutual
       on its tag `o#tag`, with the payload `o#val` for `v` (`optMatchArm`).
     Returns `none` where a struct or `Option` variable occurs in a form the pass
     does not flatten. -/
-def flatE (L : StructLayout) (sv : StructVars) (ov : List String) : ImpExpr → Option ImpExpr
+def flatE (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String) :
+    ImpExpr → Option ImpExpr
   | .lit l => some (.lit l)
   | .var s =>
       match structFields L sv s with
       | some fs => some (.tuple (structComps s fs))
       | none => if ov.contains s then none else some (.var s)
   | .letBind n val body =>
-      if optAlias ov n val then flatE L sv ov body
-      else do
-        let val' ← flatE L sv ov val
-        let body' ← flatE L sv ov body
-        match (if ov.contains n then optBindArm n val val' body' else none) with
-        | some e => some e
+      if optAlias ov n val then flatE L sv av ov body
+      else
+        match arrLetKind L sv av n val with
+        | some k =>
+            match val with
+            | .app _ args => do
+                let args' ← flatList L sv av ov args
+                let body' ← flatE L sv av ov body
+                arrLetBuild n k args' body'
+            | _ => none
         | none =>
-            match letArm L sv n val val' body' with
-            | some e => some e
-            | none =>
-                match structLitArm L sv n val val' body' with
-                | some e => some e
-                | none => callBindArm L sv n val val' body'
-  | .lam ps b => do let b' ← flatE L sv ov b; pure (.lam ps b')
+            if (arrFields L av n).isSome && !isVarNamed n val then none
+            else do
+              let val' ← flatE L sv av ov val
+              let body' ← flatE L sv av ov body
+              match (if ov.contains n then optBindArm n val val' body' else none) with
+              | some e => some e
+              | none =>
+                  match letArm L sv n val val' body' with
+                  | some e => some e
+                  | none =>
+                      match structLitArm L sv n val val' body' with
+                      | some e => some e
+                      | none => callBindArm L sv n val val' body'
+  | .lam ps b => do let b' ← flatE L sv av ov b; pure (.lam ps b')
   | .app c args =>
       match projArgs L sv c args with
       | some comp => some (.var comp)
-      | none => do let args' ← flatCallArgs L sv ov args; pure (.app c args')
-  | .tuple es => do let es' ← flatList L sv ov es; pure (.tuple es')
-  | .proj e i => do let e' ← flatE L sv ov e; pure (.proj e' i)
+      | none =>
+          match elemFieldKind L sv av c args with
+          | some (a, k, off) =>
+              match args with
+              | [.app _ [_, i]] => do
+                  let i' ← flatE L sv av ov i
+                  pure (.app "index" [.var a, flatIdx i' k off])
+              | _ => none
+          | none =>
+              match arrCallArm L sv av c args with
+              | some r => r
+              | none => do let args' ← flatCallArgs L sv av ov args; pure (.app c args')
+  | .tuple es => do let es' ← flatList L sv av ov es; pure (.tuple es')
+  | .proj e i => do let e' ← flatE L sv av ov e; pure (.proj e' i)
   | .ifThenElse c t e => do
-      let c' ← flatE L sv ov c
-      let t' ← flatE L sv ov t
-      let e' ← flatE L sv ov e
+      let c' ← flatE L sv av ov c
+      let t' ← flatE L sv av ov t
+      let e' ← flatE L sv av ov e
       pure (.ifThenElse c' t' e')
   | .match_ (.var o) [(.somePat (.varPat v), e2), (.nonePat, e1)] => do
-      let e2' ← flatE L sv ov e2
-      let e1' ← flatE L sv ov e1
+      let e2' ← flatE L sv av ov e2
+      let e1' ← flatE L sv av ov e1
       optMatchArm ov o v e2' e1'
   | .match_ (.var o) [(.nonePat, e1), (.somePat (.varPat v), e2)] => do
-      let e2' ← flatE L sv ov e2
-      let e1' ← flatE L sv ov e1
+      let e2' ← flatE L sv av ov e2
+      let e1' ← flatE L sv av ov e1
       optMatchArm ov o v e2' e1'
   | .match_ s arms => do
-      let s' ← flatE L sv ov s
-      let arms' ← flatArms L sv ov arms
+      let s' ← flatE L sv av ov s
+      let arms' ← flatArms L sv av ov arms
       pure (.match_ s' arms')
   | .unitVal => some .unitVal
   | .seq a b => do
-      let a' ← flatE L sv ov a
-      let b' ← flatE L sv ov b
+      let a' ← flatE L sv av ov a
+      let b' ← flatE L sv av ov b
       pure (.seq a' b')
-  | .borrow e => do let e' ← flatE L sv ov e; pure (.borrow e')
-  | .deref e => do let e' ← flatE L sv ov e; pure (.deref e')
+  | .borrow e => do let e' ← flatE L sv av ov e; pure (.borrow e')
+  | .deref e => do let e' ← flatE L sv av ov e; pure (.deref e')
   | .assign n r =>
-      if (structFields L sv n).isSome || ov.contains n then none
-      else do let r' ← flatE L sv ov r; pure (.assign n r')
+      if (structFields L sv n).isSome || ov.contains n || (arrFields L av n).isSome then none
+      else do let r' ← flatE L sv av ov r; pure (.assign n r')
   | .forLoop i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forLoop i lo' hi' b')
   | .forLoopRev i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forLoopRev i lo' hi' b')
   | .whileLoop c b => do
-      let c' ← flatE L sv ov c
-      let b' ← flatE L sv ov b
+      let c' ← flatE L sv av ov c
+      let b' ← flatE L sv av ov b
       pure (.whileLoop c' b')
   | .break_ none => some (.break_ none)
-  | .break_ (some e) => do let e' ← flatE L sv ov e; pure (.break_ (some e'))
+  | .break_ (some e) => do let e' ← flatE L sv av ov e; pure (.break_ (some e'))
   | .continue_ => some .continue_
-  | .earlyReturn e => do let e' ← flatE L sv ov e; pure (.earlyReturn e')
-  | .questionMark e => do let e' ← flatE L sv ov e; pure (.questionMark e')
+  | .earlyReturn e => do let e' ← flatE L sv av ov e; pure (.earlyReturn e')
+  | .questionMark e => do let e' ← flatE L sv av ov e; pure (.questionMark e')
   | .forFold i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forFold i lo' hi' b')
   | .forFoldRev i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forFoldRev i lo' hi' b')
   | .whileFold c b => do
-      let c' ← flatE L sv ov c
-      let b' ← flatE L sv ov b
+      let c' ← flatE L sv av ov c
+      let b' ← flatE L sv av ov b
       pure (.whileFold c' b')
   | .forFoldReturn i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forFoldReturn i lo' hi' b')
   | .forFoldRevReturn i lo hi b => do
-      let lo' ← flatE L sv ov lo
-      let hi' ← flatE L sv ov hi
-      let b' ← flatE L sv ov b
+      let lo' ← flatE L sv av ov lo
+      let hi' ← flatE L sv av ov hi
+      let b' ← flatE L sv av ov b
       pure (.forFoldRevReturn i lo' hi' b')
   | .whileFoldReturn c b => do
-      let c' ← flatE L sv ov c
-      let b' ← flatE L sv ov b
+      let c' ← flatE L sv av ov c
+      let b' ← flatE L sv av ov b
       pure (.whileFoldReturn c' b')
-  | .cfBreak e => do let e' ← flatE L sv ov e; pure (.cfBreak e')
-  | .cfContinue e => do let e' ← flatE L sv ov e; pure (.cfContinue e')
-  | .cfBreakContinue e => do let e' ← flatE L sv ov e; pure (.cfBreakContinue e')
-  | .typeAscription e t => do let e' ← flatE L sv ov e; pure (.typeAscription e' t)
+  | .cfBreak e => do let e' ← flatE L sv av ov e; pure (.cfBreak e')
+  | .cfContinue e => do let e' ← flatE L sv av ov e; pure (.cfContinue e')
+  | .cfBreakContinue e => do let e' ← flatE L sv av ov e; pure (.cfBreakContinue e')
+  | .typeAscription e t => do let e' ← flatE L sv av ov e; pure (.typeAscription e' t)
 
 /-- `flatE` on every expression of a list. -/
-def flatList (L : StructLayout) (sv : StructVars) (ov : List String) :
+def flatList (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String) :
     List ImpExpr → Option (List ImpExpr)
   | [] => some []
   | e :: es => do
-      let e' ← flatE L sv ov e
-      let es' ← flatList L sv ov es
+      let e' ← flatE L sv av ov e
+      let es' ← flatList L sv av ov es
       pure (e' :: es')
 
 /-- The arguments of a call: a struct variable is its component variables in field
     order, any other argument is flattened by `flatE`. -/
-def flatCallArgs (L : StructLayout) (sv : StructVars) (ov : List String) :
+def flatCallArgs (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String) :
     List ImpExpr → Option (List ImpExpr)
   | [] => some []
   | e :: es => do
-      let es' ← flatCallArgs L sv ov es
+      let es' ← flatCallArgs L sv av ov es
       match e with
       | .var s =>
           match structFields L sv s with
           | some fs => pure (structComps s fs ++ es')
-          | none => do let e' ← flatE L sv ov e; pure (e' :: es')
-      | _ => do let e' ← flatE L sv ov e; pure (e' :: es')
+          | none => do let e' ← flatE L sv av ov e; pure (e' :: es')
+      | _ => do let e' ← flatE L sv av ov e; pure (e' :: es')
 
 /-- `flatE` on every arm body of a match. -/
-def flatArms (L : StructLayout) (sv : StructVars) (ov : List String) :
+def flatArms (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String) :
     List (ImpPat × ImpExpr) → Option (List (ImpPat × ImpExpr))
   | [] => some []
   | (p, e) :: rest => do
-      let e' ← flatE L sv ov e
-      let rest' ← flatArms L sv ov rest
+      let e' ← flatE L sv av ov e
+      let rest' ← flatArms L sv av ov rest
       pure ((p, e') :: rest')
 
 end
@@ -767,30 +986,146 @@ theorem structCompName_inj {s f g : String} (h : structCompName s f = structComp
   unfold structCompName at h
   simpa using h
 
-/-- `flatE` on a field call of a struct variable is the component variable. -/
-theorem flatE_proj {L : StructLayout} {sv : StructVars} (ov : List String) {c s comp : String}
-    (h : projArm L sv c s = some comp) :
-    flatE L sv ov (.app c [.var s]) = some (.var comp) := by
-  simp only [flatE, projArgs, h]
+/-- `flatE` on a call: the projection arm, the element field read, the array calls,
+    and the call on the flattened arguments. -/
+theorem flatE_app (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String)
+    (c : String) (args : List ImpExpr) :
+    flatE L sv av ov (.app c args) =
+      (match projArgs L sv c args with
+      | some comp => some (.var comp)
+      | none =>
+          match elemFieldKind L sv av c args with
+          | some (a, k, off) =>
+              match args with
+              | [.app _ [_, i]] => do
+                  let i' ← flatE L sv av ov i
+                  pure (.app "index" [.var a, flatIdx i' k off])
+              | _ => none
+          | none =>
+              match arrCallArm L sv av c args with
+              | some r => r
+              | none => do let args' ← flatCallArgs L sv av ov args; pure (.app c args')) := by
+  rw [flatE]
 
-/-- `flatE` on an update of a struct variable rebinds the component of the updated
-    field to the flattened new value `x'`, a variable through a copy. -/
-theorem flatE_update {L : StructLayout} {sv : StructVars} (ov : List String)
+/-- `flatE` on a binding: the `Option` alias, the array bindings, the refusal of
+    any other binding of an array of structs, and the binding arms. -/
+theorem flatE_letBind (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String)
+    (n : String) (val body : ImpExpr) :
+    flatE L sv av ov (.letBind n val body) =
+      (if optAlias ov n val then flatE L sv av ov body
+      else
+        match arrLetKind L sv av n val with
+        | some k =>
+            match val with
+            | .app _ args => do
+                let args' ← flatList L sv av ov args
+                let body' ← flatE L sv av ov body
+                arrLetBuild n k args' body'
+            | _ => none
+        | none =>
+            if (arrFields L av n).isSome && !isVarNamed n val then none
+            else do
+              let val' ← flatE L sv av ov val
+              let body' ← flatE L sv av ov body
+              match (if ov.contains n then optBindArm n val val' body' else none) with
+              | some e => some e
+              | none =>
+                  match letArm L sv n val val' body' with
+                  | some e => some e
+                  | none =>
+                      match structLitArm L sv n val val' body' with
+                      | some e => some e
+                      | none => callBindArm L sv n val val' body') := by
+  rw [flatE]
+
+/-- `flatE` on a field call of a struct variable is the component variable. -/
+theorem flatE_proj {L : StructLayout} {sv : StructVars} (av : ArrVars) (ov : List String)
+    {c s comp : String} (h : projArm L sv c s = some comp) :
+    flatE L sv av ov (.app c [.var s]) = some (.var comp) := by
+  rw [flatE_app]; simp only [projArgs, h]
+
+/-- `flatE` on an update of a struct variable (not a declared array) rebinds the
+    component of the updated field to the flattened new value `x'`, a variable
+    through a copy. -/
+theorem flatE_update {L : StructLayout} {sv : StructVars} (av : ArrVars) (ov : List String)
     {c s comp : String} {fs : List String} {x x' body body' : ImpExpr}
     (h : updateArm L sv c s = some comp) (hs : structFields L sv s = some fs)
+    (ha : List.lookup s av = none)
     (hxs : ∀ y, x = .var y → structFields L sv y = none)
-    (hx : flatE L sv ov x = some x') (hb : flatE L sv ov body = some body') :
-    flatE L sv ov (.letBind s (.app c [.var s, x]) body) =
+    (hx : flatE L sv av ov x = some x') (hb : flatE L sv av ov body = some body') :
+    flatE L sv av ov (.letBind s (.app c [.var s, x]) body) =
       some (.letBind comp (rhsCopy comp x') body') := by
-  have hfx : flatCallArgs L sv ov [x] = some [x'] := by
+  have hfx : flatCallArgs L sv av ov [x] = some [x'] := by
     cases x <;> simp_all [flatCallArgs]
   have hpa : projArgs L sv c [.var s, x] = none := rfl
-  have hca : flatCallArgs L sv ov [.var s, x] = some (structComps s fs ++ [x']) := by
+  have hca : flatCallArgs L sv av ov [.var s, x] = some (structComps s fs ++ [x']) := by
     rw [flatCallArgs, hfx]; simp [hs]
   have hal : optAlias ov s (.app c [.var s, x]) = false := rfl
   have hob : ∀ v' b', optBindArm s (.app c [.var s, x]) v' b' = none := fun _ _ => rfl
-  simp only [flatE, hal, hpa, hca, hb, hob, ite_self, Option.bind_eq_bind, Option.bind_some]
+  have haf : arrFields L av s = none := by simp [arrFields, ha]
+  have hak : arrLetKind L sv av s (.app c [.var s, x]) = none := by
+    simp only [arrLetKind, arrRef, haf]
+  have hek : elemFieldKind L sv av c [.var s, x] = none := rfl
+  have hcc : arrCallArm L sv av c [.var s, x] = none := by
+    simp only [arrCallArm, arrRef, ha]
+  have hv : flatE L sv av ov (.app c [.var s, x]) = some (.app c (structComps s fs ++ [x'])) := by
+    rw [flatE_app]; simp only [hpa, hek, hcc, hca, Option.bind_eq_bind, Option.bind_some]; rfl
+  rw [flatE_letBind]
+  simp only [hal, hak, haf, hv, hb, hob, ite_self, Option.bind_eq_bind,
+    Option.bind_some, Option.isSome_none, Bool.false_and, Bool.false_eq_true, if_false]
   simp [letArm, h]
+
+/-- `flatE` on a field call of an element of an array of structs is the read of the
+    flat array at the flat index. -/
+theorem flatE_elemField {L : StructLayout} {sv : StructVars} {av : ArrVars} {ov : List String}
+    {c a : String} {k off : Nat} {r i i' : ImpExpr}
+    (hk : elemFieldKind L sv av c [.app "index" [r, i]] = some (a, k, off))
+    (hi : flatE L sv av ov i = some i') :
+    flatE L sv av ov (.app c [.app "index" [r, i]]) = some (.app "index" [.var a, flatIdx i' k off]) := by
+  rw [flatE_app]; simp only [projArgs, hk, hi, Option.bind_eq_bind, Option.bind_some]; rfl
+
+/-- `flatE` on the binding of a struct variable to an element of an array of structs
+    binds the index and loads the components. -/
+theorem flatE_elemBind {L : StructLayout} {sv : StructVars} {av : ArrVars} {ov : List String}
+    {n a : String} {fs : List String} {r r' i i' body body' : ImpExpr}
+    (hk : arrLetKind L sv av n (.app "index" [r, i]) = some (.elem a fs))
+    (hr : flatE L sv av ov r = some r') (hi : flatE L sv av ov i = some i')
+    (hb : flatE L sv av ov body = some body') :
+    flatE L sv av ov (.letBind n (.app "index" [r, i]) body) =
+      some (.letBind (elemIdxName n) i'
+        (bindElems a (elemIdxName n) fs.length 0 (fs.map (structCompName n)) body')) := by
+  have hal : optAlias ov n (.app "index" [r, i]) = false := rfl
+  have hl : flatList L sv av ov [r, i] = some [r', i'] := by
+    simp only [flatList, hr, hi, Option.bind_eq_bind, Option.bind_some]; rfl
+  rw [flatE_letBind]
+  simp only [hal, hk, hl, hb, Option.bind_eq_bind, Option.bind_some, Bool.false_eq_true, if_false]
+  rfl
+
+/-- `flatE` on the write of a struct value into an array of structs binds the index
+    and stores the field operands. -/
+theorem flatE_arrUpdate {L : StructLayout} {sv : StructVars} {av : ArrVars} {ov : List String}
+    {a S : String} {fs : List String} {a' i i' x x' body body' : ImpExpr} {vs : List ImpExpr}
+    (hk : arrLetKind L sv av a (.app "array_update" [.var a, i, x]) = some (.update S fs))
+    (ha : flatE L sv av ov (.var a) = some a') (hi : flatE L sv av ov i = some i')
+    (hx : flatE L sv av ov x = some x') (hb : flatE L sv av ov body = some body')
+    (hvs : storeVals S x' = some vs) (hlen : vs.length = fs.length)
+    (hat : vs.all (storeAtom a (elemIdxName a)) = true) :
+    flatE L sv av ov (.letBind a (.app "array_update" [.var a, i, x]) body) =
+      some (.letBind (elemIdxName a) i' (storeElems a (elemIdxName a) fs.length 0 vs body')) := by
+  have hal : optAlias ov a (.app "array_update" [.var a, i, x]) = false := rfl
+  have hl : flatList L sv av ov [.var a, i, x] = some [a', i', x'] := by
+    simp only [flatList, ha, hi, hx, Option.bind_eq_bind, Option.bind_some]; rfl
+  rw [flatE_letBind]
+  simp only [hal, hk, hl, hb, Option.bind_eq_bind, Option.bind_some, Bool.false_eq_true, if_false]
+  simp [arrLetBuild, hvs, hlen, hat]
+
+/-- `flatE` on `len` of a declared array of type `[T; N]` is the literal `N`. -/
+theorem flatE_len {L : StructLayout} {sv : StructVars} {av : ArrVars} {ov : List String}
+    {r : ImpExpr} {N : Nat} (hp : projArgs L sv "len" [r] = none)
+    (he : elemFieldKind L sv av "len" [r] = none)
+    (h : arrCallArm L sv av "len" [r] = some (some (.lit (.int N)))) :
+    flatE L sv av ov (.app "len" [r]) = some (.lit (.int N)) := by
+  rw [flatE_app]; simp only [hp, he, h]
 
 /-! ## §6  Simulation of the arms against `denote'`
 
@@ -1905,5 +2240,361 @@ theorem namedRet_cfBreak (rs : List String) (tl : Bool) (es : List ImpExpr)
 theorem namedRet_tuple (rs : List String) (es : List ImpExpr) (h : retVars es = some rs) :
     namedRet rs true (.tuple es) = some .unitVal := by
   simp [namedRet, h]
+
+/-! ## §10  Arrays of structs
+
+The flattened program holds an array of `k`-field structs as the flat array of the
+components of its elements (`ArrStructFlatAt`).  The arms read and write the flat
+array through the builtins `index`, `array_update`, `Add` and `Mul`, whose readings
+the predicates below state; each arm of §3a is simulated against `denote'`. -/
+
+/-- `index` reads the element of an array at a natural index in range. -/
+def ArrIndexSound (bi : Builtins) : Prop :=
+  ∀ (vs : List Value) (m : Nat) (v : Value), vs[m]? = some v →
+    bi "index" [.array vs, .int m] = some v
+
+/-- `array_update` replaces the element of an array at a natural index (and leaves
+    the array unchanged at an index out of range). -/
+def ArrUpdateSound (bi : Builtins) : Prop :=
+  ∀ (vs : List Value) (m : Nat) (v : Value),
+    bi "array_update" [.array vs, .int m, v] = some (.array (vs.set m v))
+
+/-- `len` returns the length of an array as an integer. -/
+def LenSound (bi : Builtins) : Prop :=
+  ∀ vs : List Value, bi "len" [.array vs] = some (.int vs.length)
+
+/-- `Add` and `Mul` are the sum and the product of integers. -/
+def IdxArithSound (bi : Builtins) : Prop :=
+  ∀ x y : Int, bi "Add" [.int x, .int y] = some (.int (x + y)) ∧
+    bi "Mul" [.int x, .int y] = some (.int (x * y))
+
+/-- The array variable `a` of structs with `k` fields holds in `env` the array of
+    the tuples `rows`, each with `k` components, and in `envF` the flat array of
+    their components. -/
+def ArrStructFlatAt (k : Nat) (a : String) (env envF : Env) : Prop :=
+  ∃ rows : List (List Value), env a = some (.array (rows.map .tuple)) ∧
+    (∀ r ∈ rows, r.length = k) ∧ envF a = some (.array rows.flatten)
+
+/-- The value of an operand of a store: a literal or a bound variable. -/
+def atomVal (env : Env) : ImpExpr → Option Value
+  | .lit l => some (Value.ofLit l)
+  | .var y => env y
+  | _ => none
+
+/-- A field position read by the field call `c`. -/
+theorem fieldIdx_spec {fs : List String} {c : String} {off : Nat} (h : fieldIdx fs c = some off) :
+    ∃ f, fs[off]? = some f ∧ c = "." ++ f := by
+  unfold fieldIdx at h
+  have hp := List.find?_some h
+  cases hf : fs[off]? with
+  | none => simp [hf] at hp
+  | some f => simp only [hf, Option.map_some, beq_iff_eq, Option.some.injEq] at hp
+              exact ⟨f, rfl, hp.symm⟩
+
+/-- The index variable of an array binding of `n` is none of its component
+    variables. -/
+theorem elemIdxName_ne (n f : String) : elemIdxName n ≠ structCompName n f := by
+  simp only [elemIdxName, structCompName, String.append_assoc, ne_eq]
+  intro h
+  have := congrArg String.toList h
+  simp at this
+
+section ArrSim
+
+open _root_.Hax.ListBlocks
+
+variable (bi : Builtins) (fuel : Nat)
+
+/-- A call whose arguments evaluate to `vals` without changing the environment
+    returns the builtin's value. -/
+theorem app_run_of_args (f : String) (args : List ImpExpr) (vals : List Value) (v : Value)
+    (env : Env) (h : (_root_.Hax.denoteArgs' bi fuel args).run env = (some vals, env))
+    (hf : bi f vals = some v) : (denote' bi fuel (.app f args)).run env = (.val v, env) := by
+  rw [denote'_app_run, h]; simp only [hf]
+
+/-- An argument evaluating to a value that is not control flow, without changing the
+    environment, prepends its value to the values of the remaining arguments. -/
+theorem args_cons_of_val (e : ImpExpr) (es : List ImpExpr) (v : Value) (vals : List Value)
+    (env : Env) (he : (denote' bi fuel e).run env = (.val v, env)) (hv : v.isControlFlow = false)
+    (hes : (_root_.Hax.denoteArgs' bi fuel es).run env = (some vals, env)) :
+    (_root_.Hax.denoteArgs' bi fuel (e :: es)).run env = (some (v :: vals), env) := by
+  rw [denoteArgs'_cons_run, he]
+  cases v <;> simp at hv <;> simp only [hes, Option.map_some]
+
+/-- The flat index `Add(Mul(i, k), off)` of an index `i` holding the natural `j` is
+    `j * k + off`. -/
+theorem flatIdx_run (hA : IdxArithSound bi) (i : ImpExpr) (k off j : Nat) (env : Env)
+    (hi : (denote' bi fuel i).run env = (.val (.int j), env)) :
+    (denote' bi fuel (flatIdx i k off)).run env = (.val (.int ((j * k + off : Nat) : Int)), env) := by
+  have hm : (denote' bi fuel (.app "Mul" [i, .lit (.int k)])).run env =
+      (.val (.int ((j : Int) * k)), env) :=
+    app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ hi rfl
+        (args_cons_of_val bi fuel _ _ _ _ _ (denote'_lit_run bi fuel _ _) rfl
+          (denoteArgs'_nil_run bi fuel env))) (hA _ _).2
+  refine app_run_of_args bi fuel _ _ _ _ _
+    (args_cons_of_val bi fuel _ _ _ _ _ hm rfl
+      (args_cons_of_val bi fuel _ _ _ _ _ (denote'_lit_run bi fuel _ _) rfl
+        (denoteArgs'_nil_run bi fuel env))) ?_
+  simp only [Value.ofLit, (hA _ _).1, Nat.cast_add, Nat.cast_mul]
+
+/-- **Element field read.**  The field call `c (index r i)` on element `j` of an
+    array of structs and its lowering, the read of the flat array `a` at
+    `j * k + off`, evaluate to the same value, changing neither environment. -/
+theorem flatElemField_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (c a : String)
+    (fs : List String) (off : Nat) (r i i' : ImpExpr) (env envF : Env)
+    (rows : List (List Value)) (j : Nat) (hF : FieldSound bi fs) (hoff : fieldIdx fs c = some off)
+    (hrow : ∀ w ∈ rows, w.length = fs.length) (hj : j < rows.length)
+    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map .tuple)), env))
+    (haF : envF a = some (.array rows.flatten))
+    (hi : (denote' bi fuel i).run env = (.val (.int j), env))
+    (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF)) :
+    ∃ w, (denote' bi fuel (.app c [.app "index" [r, i]])).run env = (.val w, env) ∧
+      (denote' bi fuel (.app "index" [.var a, flatIdx i' fs.length off])).run envF =
+        (.val w, envF) := by
+  obtain ⟨f, hf, rfl⟩ := fieldIdx_spec hoff
+  have ho : off < fs.length := (List.getElem?_eq_some_iff.1 hf).1
+  have hlen : (rows[j]).length = fs.length := hrow _ (List.getElem_mem hj)
+  have hw : (rows[j])[off]? = some (rows[j])[off] := List.getElem?_eq_getElem (by omega)
+  refine ⟨(rows[j])[off], ?_, ?_⟩
+  · have hidx : (denote' bi fuel (.app "index" [r, i])).run env = (.val (.tuple rows[j]), env) :=
+      app_run_of_args bi fuel _ _ _ _ _
+        (args_cons_of_val bi fuel _ _ _ _ _ hr rfl
+          (args_cons_of_val bi fuel _ _ _ _ _ hi rfl (denoteArgs'_nil_run bi fuel env)))
+        (hI _ _ _ (by simp [hj]))
+    exact app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ hidx rfl (denoteArgs'_nil_run bi fuel env))
+      ((hF _ off f hlen hf).trans hw)
+  · refine app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, haF]) rfl
+        (args_cons_of_val bi fuel _ _ _ _ _ (flatIdx_run bi fuel hA i' _ off j envF hi') rfl
+          (denoteArgs'_nil_run bi fuel envF))) (hI _ _ _ ?_)
+    rw [flatten_getElem?_mul_add rows hrow hj ho, hw]
+
+/-- The loads `bindElems a x k t ms body` of the components of the row `row` at
+    index `j` of the flat array held by `a` bind `ms` to the components from `t` on
+    and run `body`. -/
+theorem bindElems_run (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (a x : String) (k j : Nat)
+    (flat row : List Value) (body : ImpExpr) (hflat : ∀ t < k, flat[j * k + t]? = row[t]?)
+    (hrow : row.length = k) (hcf : ∀ w ∈ row, w.isControlFlow = false) :
+    ∀ (ms : List String) (t : Nat) (envX : Env), envX a = some (.array flat) →
+      envX x = some (.int j) → a ∉ ms → x ∉ ms → t + ms.length ≤ k →
+      (denote' bi fuel (bindElems a x k t ms body)).run envX =
+        (denote' bi fuel body).run (extendList envX ms (row.drop t))
+  | [], t, envX, _, _, _, _, _ => by simp [bindElems, extendList]
+  | m :: ms, t, envX, ha, hx, ham, hxm, hl => by
+    simp only [List.mem_cons, not_or] at ham hxm
+    simp only [List.length_cons] at hl
+    have ht : t < row.length := by omega
+    have hload : (denote' bi fuel (.app "index" [.var a, flatIdx (.var x) k t])).run envX =
+        (.val row[t], envX) :=
+      app_run_of_args bi fuel _ _ _ _ _
+        (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, ha]) rfl
+          (args_cons_of_val bi fuel _ _ _ _ _
+            (flatIdx_run bi fuel hA _ k t j envX (by rw [denote'_var_run, hx])) rfl
+            (denoteArgs'_nil_run bi fuel envX)))
+        (hI _ _ _ (by rw [hflat t (by omega), List.getElem?_eq_getElem ht]))
+    rw [bindElems, denote'_letBind_run_val bi fuel _ _ _ _ _ _ hload (hcf _ (List.getElem_mem ht)),
+      bindElems_run hI hA a x k j flat row body hflat hrow hcf ms (t + 1) _
+        (by rw [_root_.Hax.Env.extend_other _ _ _ _ ham.1]; exact ha)
+        (by rw [_root_.Hax.Env.extend_other _ _ _ _ hxm.1]; exact hx)
+        ham.2 hxm.2 (by omega),
+      List.drop_eq_getElem_cons ht, extendList]
+
+/-- **Element read into a struct variable.**  `let n = index(r, i); body` on element
+    `j` of an array of structs runs `body` with `n` bound to the element, and its
+    lowering, the binding of `n#idx` and the loads of the components of `n` from the
+    flat array `a`, runs `body'` from an environment in which `n` is flattened; the
+    lowering changes no variable other than `n#idx` and the components of `n`. -/
+theorem flatElemBind_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (n a : String)
+    (fs : List String) (r i i' body body' : ImpExpr) (env envF : Env)
+    (rows : List (List Value)) (j : Nat) (hnd : fs.Nodup)
+    (hrow : ∀ w ∈ rows, w.length = fs.length) (hj : j < rows.length)
+    (hcf : ∀ w ∈ rows[j], w.isControlFlow = false)
+    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map .tuple)), env))
+    (haF : envF a = some (.array rows.flatten))
+    (hi : (denote' bi fuel i).run env = (.val (.int j), env))
+    (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF))
+    (hna : a ≠ elemIdxName n) (hac : ∀ f ∈ fs, a ≠ structCompName n f) :
+    ∃ envF2,
+      (denote' bi fuel (.letBind n (.app "index" [r, i]) body)).run env =
+          (denote' bi fuel body).run (env.extend n (.tuple rows[j])) ∧
+      (denote' bi fuel (.letBind (elemIdxName n) i'
+          (bindElems a (elemIdxName n) fs.length 0 (fs.map (structCompName n)) body'))).run envF =
+          (denote' bi fuel body').run envF2 ∧
+      StructFlatAt fs n (env.extend n (.tuple rows[j])) envF2 ∧
+      ∀ y, y ≠ elemIdxName n → (∀ f ∈ fs, y ≠ structCompName n f) → envF2 y = envF y := by
+  have hlen : (rows[j]).length = fs.length := hrow _ (List.getElem_mem hj)
+  have hidx : (denote' bi fuel (.app "index" [r, i])).run env = (.val (.tuple rows[j]), env) :=
+    app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ hr rfl
+        (args_cons_of_val bi fuel _ _ _ _ _ hi rfl (denoteArgs'_nil_run bi fuel env)))
+      (hI _ _ _ (by simp [hj]))
+  have hnm : elemIdxName n ∉ fs.map (structCompName n) := by
+    simp only [List.mem_map, not_exists, not_and]; exact fun f _ h => elemIdxName_ne n f h.symm
+  refine ⟨extendList (envF.extend (elemIdxName n) (.int j)) (fs.map (structCompName n)) rows[j],
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hidx rfl, ?_, ?_, ?_⟩
+  · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hi' rfl,
+      bindElems_run bi fuel hI hA a (elemIdxName n) fs.length j rows.flatten rows[j] body'
+        (fun t ht => flatten_getElem?_mul_add rows hrow hj ht) hlen hcf _ 0 _
+        (by rw [_root_.Hax.Env.extend_other _ _ _ _ hna]; exact haF)
+        (_root_.Hax.Env.extend_same _ _ _)
+        (by simp only [List.mem_map, not_exists, not_and]; exact fun f hf h => hac f hf h.symm)
+        hnm (by simp), List.drop_zero]
+  · refine ⟨rows[j], _root_.Hax.Env.extend_same _ _ _, hlen, fun t f ht => ?_⟩
+    exact extendList_get _ _ _ t _ (hnd.map fun _ _ h => structCompName_inj h)
+      (by simp [hlen]) (by simp [ht])
+  · intro y hy1 hy2
+    rw [extendList_other _ _ _ y (by
+      simp only [List.mem_map, not_exists, not_and]; exact fun f hf h => hy2 f hf h.symm),
+      _root_.Hax.Env.extend_other _ _ _ _ hy1]
+
+/-- A store operand evaluates to its value without changing the environment. -/
+theorem storeAtom_run (a x : String) (e : ImpExpr) (env : Env) (w : Value)
+    (hat : storeAtom a x e = true) (hw : atomVal env e = some w) :
+    (denote' bi fuel e).run env = (.val w, env) := by
+  cases e <;> simp only [storeAtom, reduceCtorEq] at hat
+  · simp only [atomVal, Option.some.injEq] at hw; subst hw; exact denote'_lit_run bi fuel _ _
+  · simp only [atomVal] at hw; rw [denote'_var_run, hw]
+
+/-- Rebinding the array `a` leaves the value of a store operand unchanged. -/
+theorem atomVal_extend (a x : String) (e : ImpExpr) (env : Env) (v : Value)
+    (hat : storeAtom a x e = true) : atomVal (env.extend a v) e = atomVal env e := by
+  cases e <;> simp only [storeAtom, reduceCtorEq] at hat
+  · rfl
+  · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hat
+    simp only [atomVal]; exact _root_.Hax.Env.extend_other _ _ _ _ hat.1
+
+/-- Rebinding the index variable `x` leaves the value of a store operand unchanged. -/
+theorem atomVal_extend_idx (a x : String) (e : ImpExpr) (env : Env) (v : Value)
+    (hat : storeAtom a x e = true) : atomVal (env.extend x v) e = atomVal env e := by
+  cases e <;> simp only [storeAtom, reduceCtorEq] at hat
+  · rfl
+  · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hat
+    simp only [atomVal]; exact _root_.Hax.Env.extend_other _ _ _ _ hat.2
+
+/-- The stores `storeElems a x k t vs body` of the operands `vs` into row `j` of the
+    flat array held by `a`, whose row `j` is `cur` and agrees with `ws` below `t`,
+    run `body` from an environment in which `a` holds the flat array with row `j`
+    replaced by `ws`, and which agrees with the start environment off `a`. -/
+theorem storeElems_run (hU : ArrUpdateSound bi) (hA : IdxArithSound bi) (a x : String)
+    (k j : Nat) (rows : List (List Value)) (hk : ∀ r ∈ rows, r.length = k) (hj : j < rows.length)
+    (ws : List Value) (hws : ws.length = k) (hcf : ∀ w ∈ ws, w.isControlFlow = false)
+    (body : ImpExpr) :
+    ∀ (vs : List ImpExpr) (t : Nat) (cur : List Value) (envX : Env),
+      t + vs.length = k → cur.length = k → (∀ s < t, cur[s]? = ws[s]?) →
+      envX a = some (.array (rows.set j cur).flatten) → envX x = some (.int j) → a ≠ x →
+      (∀ v ∈ vs, storeAtom a x v = true) →
+      (∀ s (h : s < vs.length), atomVal envX vs[s] = ws[t + s]?) →
+      ∃ envX', (denote' bi fuel (storeElems a x k t vs body)).run envX =
+          (denote' bi fuel body).run envX' ∧
+        envX' a = some (.array (rows.set j ws).flatten) ∧ ∀ y, y ≠ a → envX' y = envX y
+  | [], t, cur, envX, hl, hc, hag, ha, _, _, _, _ => by
+    refine ⟨envX, rfl, ?_, fun _ _ => rfl⟩
+    have : cur = ws := List.ext_getElem? fun s => by
+      by_cases hs : s < t
+      · exact hag s hs
+      · rw [List.getElem?_eq_none (by simp at hl; omega), List.getElem?_eq_none (by simp at hl; omega)]
+    rw [ha, this]
+  | v :: vs, t, cur, envX, hl, hc, hag, ha, hx, hax, hat, hvs => by
+    simp only [List.length_cons] at hl
+    have ht : t < k := by omega
+    have htw : t < ws.length := by omega
+    have hv0 : atomVal envX v = some ws[t] := by
+      have := hvs 0 (by simp); simpa [List.getElem?_eq_getElem htw] using this
+    have hrows' : ∀ r ∈ rows.set j cur, r.length = k := by
+      intro r hr
+      rcases List.mem_or_eq_of_mem_set hr with h | h
+      · exact hk r h
+      · rw [h]; exact hc
+    have hj' : j < (rows.set j cur).length := by simpa using hj
+    have hstore : (denote' bi fuel (.app "array_update" [.var a, flatIdx (.var x) k t, v])).run
+        envX = (.val (.array (rows.set j (cur.set t ws[t])).flatten), envX) := by
+      refine app_run_of_args bi fuel _ _ _ _ _
+        (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, ha]) rfl
+          (args_cons_of_val bi fuel _ _ _ _ _
+            (flatIdx_run bi fuel hA _ k t j envX (by rw [denote'_var_run, hx])) rfl
+            (args_cons_of_val bi fuel _ _ _ _ _
+              (storeAtom_run bi fuel a x v envX _ (hat v List.mem_cons_self) hv0)
+              (hcf _ (List.getElem_mem htw)) (denoteArgs'_nil_run bi fuel envX)))) ?_
+      rw [hU, flatten_set_mul_add _ _ hrows' hj' (by omega)]
+      simp [List.set_set]
+    obtain ⟨envX', h1, h2, h3⟩ := storeElems_run hU hA a x k j rows hk hj ws hws hcf body vs
+      (t + 1) (cur.set t ws[t]) (envX.extend a (.array (rows.set j (cur.set t ws[t])).flatten))
+      (by omega) (by simp [hc])
+      (fun s hs => by
+        by_cases hst : s = t
+        · subst hst; simp [List.getElem?_eq_getElem htw, hc, ht]
+        · rw [List.getElem?_set_ne (Ne.symm hst)]; exact hag s (by omega))
+      (_root_.Hax.Env.extend_same _ _ _)
+      (by rw [_root_.Hax.Env.extend_other _ _ _ _ (Ne.symm hax)]; exact hx) hax
+      (fun w hw => hat w (List.mem_cons_of_mem _ hw))
+      (fun s hs => by
+        rw [atomVal_extend a x _ envX _ (hat _ (List.mem_cons_of_mem _ (List.getElem_mem hs)))]
+        have := hvs (s + 1) (by simp; omega)
+        simpa [Nat.add_assoc, Nat.add_comm 1 s] using this)
+    refine ⟨envX', ?_, h2, fun y hy => by rw [h3 y hy, _root_.Hax.Env.extend_other _ _ _ _ hy]⟩
+    rw [storeElems, denote'_letBind_run_val bi fuel _ _ _ _ _ _ hstore rfl, h1]
+
+/-- **Element write.**  `let a = array_update(a, i, x); body` of element `j` of an
+    array of structs with the value `x` of fields `ws` runs `body` with row `j`
+    replaced, and its lowering, the binding of `a#idx` and the stores of the
+    operands `vs` of the fields, runs `body'` from an environment in which `a`
+    holds the flat array with row `j` replaced; the lowering changes no variable
+    other than `a` and `a#idx`. -/
+theorem flatArrUpdate_sim (hU : ArrUpdateSound bi) (hA : IdxArithSound bi) (a : String)
+    (k : Nat) (i i' x body body' : ImpExpr) (vs : List ImpExpr) (env envF : Env)
+    (rows : List (List Value)) (j : Nat) (ws : List Value)
+    (hrow : ∀ r ∈ rows, r.length = k) (hj : j < rows.length) (hws : ws.length = k)
+    (hcf : ∀ w ∈ ws, w.isControlFlow = false)
+    (ha : env a = some (.array (rows.map .tuple))) (haF : envF a = some (.array rows.flatten))
+    (hi : (denote' bi fuel i).run env = (.val (.int j), env))
+    (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF))
+    (hx : (denote' bi fuel x).run env = (.val (.tuple ws), env))
+    (hlen : vs.length = k) (hat : ∀ v ∈ vs, storeAtom a (elemIdxName a) v = true)
+    (hvs : ∀ s (h : s < vs.length), atomVal envF vs[s] = ws[s]?)
+    (hax : a ≠ elemIdxName a) :
+    ∃ envF2,
+      (denote' bi fuel (.letBind a (.app "array_update" [.var a, i, x]) body)).run env =
+          (denote' bi fuel body).run (env.extend a (.array ((rows.set j ws).map .tuple))) ∧
+      (denote' bi fuel (.letBind (elemIdxName a) i'
+          (storeElems a (elemIdxName a) k 0 vs body'))).run envF =
+          (denote' bi fuel body').run envF2 ∧
+      envF2 a = some (.array (rows.set j ws).flatten) ∧
+      ∀ y, y ≠ a → y ≠ elemIdxName a → envF2 y = envF y := by
+  have hsrc : (denote' bi fuel (.app "array_update" [.var a, i, x])).run env =
+      (.val (.array ((rows.set j ws).map .tuple)), env) := by
+    refine app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, ha]) rfl
+        (args_cons_of_val bi fuel _ _ _ _ _ hi rfl
+          (args_cons_of_val bi fuel _ _ _ _ _ hx rfl (denoteArgs'_nil_run bi fuel env)))) ?_
+    rw [hU, List.map_set]
+  have hrj : (rows[j]).length = k := hrow _ (List.getElem_mem hj)
+  obtain ⟨envF2, h1, h2, h3⟩ := storeElems_run bi fuel hU hA a (elemIdxName a) k j rows hrow hj
+    ws hws hcf body' vs 0 rows[j] (envF.extend (elemIdxName a) (.int j)) (by omega) hrj
+    (fun _ h => absurd h (Nat.not_lt_zero _))
+    (by rw [_root_.Hax.Env.extend_other _ _ _ _ hax, List.set_getElem_self]; exact haF)
+    (_root_.Hax.Env.extend_same _ _ _) hax hat
+    (fun s hs => by
+      rw [atomVal_extend_idx a (elemIdxName a) _ envF _ (hat _ (List.getElem_mem hs)),
+        Nat.zero_add]
+      exact hvs s hs)
+  refine ⟨envF2, denote'_letBind_run_val bi fuel _ _ _ _ _ _ hsrc rfl, ?_, h2, fun y hy1 hy2 => ?_⟩
+  · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hi' rfl, h1]
+  · rw [h3 y hy1, _root_.Hax.Env.extend_other _ _ _ _ hy2]
+
+/-- **Length.**  `len r` of an array of length `N` and its lowering, the literal
+    `N`, evaluate to the same value. -/
+theorem flatLen_sim (hL : LenSound bi) (r : ImpExpr) (N : Nat) (env envF : Env)
+    (vs : List Value) (hN : vs.length = N)
+    (hr : (denote' bi fuel r).run env = (.val (.array vs), env)) :
+    (denote' bi fuel (.app "len" [r])).run env = (.val (.int N), env) ∧
+      (denote' bi fuel (.lit (.int N))).run envF = (.val (.int N), envF) :=
+  ⟨app_run_of_args bi fuel _ _ _ _ _
+      (args_cons_of_val bi fuel _ _ _ _ _ hr rfl (denoteArgs'_nil_run bi fuel env))
+      (by rw [hL, hN]),
+    denote'_lit_run bi fuel _ _⟩
+
+end ArrSim
 
 end CatCrypt.Crypto.Hax

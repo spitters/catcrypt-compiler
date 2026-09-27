@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.Hax.HaxToLowCTStruct
 public import CatCrypt.Hax.Ascent.EarlyExit
 public import CatCrypt.Hax.Ascent.Structs
+public import CatCrypt.Hax.Ascent.ArrStructs
 
 /-!
 # The descent relations over the ascent judgment
@@ -30,7 +31,13 @@ flattening relation `StructFlatAt` for a field call (`flatProj_sim`).
 arms hold for a table whose field and update calls are the ascent leaves
 `projLeaf` and `updateLeaf` of a struct with at least two fields
 (`fieldSound_of_projLeaf`, `updateSound_of_updateLeaf`).  `structUpdateName` is hax-lean's
-`structUpdateHead` (`structUpdateName_eq`).
+`structUpdateHead` (`structUpdateName_eq`).  The array builtins of the arrays-of-structs
+arms hold for the runtime leaves `indexLeaf`, `arrayUpdateLeaf`, `lenLeaf` and the
+integer `Add`/`Mul` leaves (`arrIndexSound_of_indexLeaf`,
+`arrUpdateSound_of_arrayUpdateLeaf`, `lenSound_of_lenLeaf`, `idxArithSound_of_leaves`);
+an array variable holding `enc a` and `encFlat a` is flattened
+(`arrStructFlatAt_encFlat`), and `corres_flatElemField` transports a `Corres` statement
+for a field call on an element to the read of the flat array.
 
 **Exit.**  `ExitSim` takes a `denote'` run ending in a value; a `CorresX`
 statement supplies one, with the value `excVal (R σ)`.  `exitSim_corresX` is the
@@ -46,6 +53,10 @@ function holds the decoding of the thrown or returned value (`excPayload`).
   `StructFlatAt`
 * `fieldSound_of_projLeaf`, `updateSound_of_updateLeaf` — the struct builtin
   premises from the ascent leaves
+* `arrIndexSound_of_indexLeaf`, `arrUpdateSound_of_arrayUpdateLeaf`,
+  `lenSound_of_lenLeaf`, `idxArithSound_of_leaves`, `arrStructFlatAt_encFlat`,
+  `corres_flatElemField` — the arrays-of-structs premises from the runtime leaves,
+  and the transport of a field call on an element to the flat read
 * `exitSim_corresX` — an `ExitSim` expression under a `CorresX` statement
 * `haxToLowCTFn_corresX`, `haxToLowCTFn_fnCorresX` — the lowered function's result
   slot under `CorresX` and `FnCorresX`
@@ -148,7 +159,82 @@ theorem updateSound_of_updateLeaf {bi : Builtins} {S : String} {fs : List String
 theorem structUpdateName_eq (S : String) (i n : Nat) :
     structUpdateName S i n = _root_.Hax.structUpdateHead S i n := rfl
 
+/-- `index` interpreted by the runtime leaf satisfies `ArrIndexSound`. -/
+theorem arrIndexSound_of_indexLeaf {bi : Builtins}
+    (h : ∀ vs, bi "index" vs = _root_.Hax.Ascent.indexLeaf vs) : ArrIndexSound bi :=
+  fun vs m v hv => by rw [h]; exact _root_.Hax.Ascent.indexLeaf_nat vs m v hv
+
+/-- `array_update` interpreted by the runtime leaf satisfies `ArrUpdateSound`. -/
+theorem arrUpdateSound_of_arrayUpdateLeaf {bi : Builtins}
+    (h : ∀ vs, bi "array_update" vs = _root_.Hax.Ascent.arrayUpdateLeaf vs) :
+    ArrUpdateSound bi :=
+  fun vs m v => by rw [h]; exact _root_.Hax.Ascent.arrayUpdateLeaf_nat vs m v
+
+/-- `len` interpreted by the runtime leaf satisfies `LenSound`. -/
+theorem lenSound_of_lenLeaf {bi : Builtins} (h : ∀ vs, bi "len" vs = _root_.Hax.Ascent.lenLeaf vs) :
+    LenSound bi :=
+  fun vs => by rw [h]; simp [_root_.Hax.Ascent.lenLeaf]
+
+/-- `Add` and `Mul` interpreted by the runtime integer leaves satisfy
+    `IdxArithSound`. -/
+theorem idxArithSound_of_leaves {bi : Builtins}
+    (hA : ∀ vs, bi "Add" vs = _root_.Hax.Ascent.intArrLeaf2 _root_.Hax.add _root_.Hax.add vs)
+    (hM : ∀ vs, bi "Mul" vs = _root_.Hax.Ascent.intArrLeaf2 _root_.Hax.mul _root_.Hax.mul vs) :
+    IdxArithSound bi := fun x y => by
+  rw [hA, hM]
+  exact ⟨_root_.Hax.Ascent.Leaf.orElse_of_some
+      (_root_.Hax.Ascent.leaf2_apply (_root_.Hax.add : Int → Int → Int) x y),
+    _root_.Hax.Ascent.Leaf.orElse_of_some
+      (_root_.Hax.Ascent.leaf2_apply (_root_.Hax.mul : Int → Int → Int) x y)⟩
+
+/-- An array variable holding the encoding of an array of products in `env` and its
+    flat encoding `encFlat` in `envF` is flattened. -/
+theorem arrStructFlatAt_encFlat {α : Type} [_root_.Hax.Ascent.HaxTupleEnc α]
+    [_root_.Hax.Ascent.HaxEnc α] {k : Nat}
+    (hk : ∀ p : α, (_root_.Hax.Ascent.HaxTupleEnc.encList p).length = k)
+    (henc : ∀ p : α, (_root_.Hax.Ascent.HaxEnc.enc p : Value) =
+      .tuple (_root_.Hax.Ascent.HaxTupleEnc.encList p))
+    (a : Array α) (x : String) (env envF : Env)
+    (h1 : env x = some (_root_.Hax.Ascent.HaxEnc.enc a))
+    (h2 : envF x = some (_root_.Hax.Ascent.encFlat a)) : ArrStructFlatAt k x env envF :=
+  ⟨a.toList.map _root_.Hax.Ascent.HaxTupleEnc.encList,
+    by rw [h1, _root_.Hax.Ascent.enc_array_eq_map_tuple henc],
+    _root_.Hax.Ascent.encFlat_rows hk a, h2⟩
+
 end Leaves
+
+/-! ## Arrays of structs under `Corres` -/
+
+section ArrTransport
+
+variable {S : Type} {bi : Builtins}
+
+/-- The array variable `a` is flattened and the index variable `x` holds the same
+    in-range natural on both sides. -/
+def ElemReadAt (k : Nat) (a x : String) (env envF : Env) : Prop :=
+  ∃ (rows : List (List Value)) (j : Nat), env a = some (.array (rows.map .tuple)) ∧
+    (∀ r ∈ rows, r.length = k) ∧ envF a = some (.array rows.flatten) ∧
+    env x = some (.int j) ∧ envF x = some (.int j) ∧ j < rows.length
+
+/-- **Flattened element field read.**  A `Corres` statement for the field call `c`
+    on `index(a, x)` holds for the read of the flat array at `x * k + off`, from the
+    environments in which `a` is flattened and `x` holds an in-range index. -/
+theorem corres_flatElemField (hI : ArrIndexSound bi) (hA : IdxArithSound bi)
+    {c a x : String} {fs : List String} {off : Nat} (hF : FieldSound bi fs)
+    (hoff : fieldIdx fs c = some off) {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
+    (h : Corres bi P G (.app c [.app "index" [.var a, .var x]]) V Q) :
+    Corres bi (fun envF σ => ∃ env, P env σ ∧ ElemReadAt fs.length a x env envF) G
+      (.app "index" [.var a, flatIdx (.var x) fs.length off]) V
+      (fun envF σ => ∃ env, Q env σ ∧ ElemReadAt fs.length a x env envF) := by
+  refine corres_transport (fun fuel env envF hR => ?_) h
+  obtain ⟨rows, j, ha, hrow, haF, hx, hxF, hj⟩ := hR
+  obtain ⟨w, h1, h2⟩ := flatElemField_sim bi fuel hI hA c a fs off (.var a) (.var x) (.var x)
+    env envF rows j hF hoff hrow hj (by rw [denote'_var_run, ha]) haF
+    (by rw [denote'_var_run, hx]) (by rw [denote'_var_run, hxF])
+  rw [h1, h2]
+  exact ⟨rfl, rows, j, ha, hrow, haF, hx, hxF, hj⟩
+
+end ArrTransport
 
 /-! ## The exit-flag lowering under `CorresX` -/
 

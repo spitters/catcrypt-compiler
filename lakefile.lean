@@ -2596,6 +2596,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.Strategy,
     Lake.Glob.one `CatCrypt.Deep.Tactics,
     Lake.Glob.one `CatCrypt.EmitArtifacts.P384Rust,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.ArrStructs,
     Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHax,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Builtins,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Corres,
@@ -2623,6 +2624,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.CTypeValue,
     Lake.Glob.one `CatCrypt.Hax.ClassBuiltins,
     Lake.Glob.one `CatCrypt.Hax.FoldRange,
+    Lake.Glob.one `CatCrypt.Hax.ListBlocks,
     Lake.Glob.one `CatCrypt.Hax.PrimeirBuiltins,
     Lake.Glob.one `CatCrypt.Hax.ReifyImp,
     Lake.Glob.one `CatCrypt.Hax.ReifyImpBridge,
@@ -2660,10 +2662,10 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactic.ReprTransferAuto,
     Lake.Glob.one `CatCrypt.Tactic.SDistrNorm,
     Lake.Glob.one `CatCrypt.Tactic.TowerRing377,
-    Lake.Glob.one `CatCrypt.Tactic.Unitarity,
-    Lake.Glob.one `CatCrypt.Tactics.Auto,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Tactic.Unitarity,
+    Lake.Glob.one `CatCrypt.Tactics.Auto,
     Lake.Glob.one `CatCrypt.Tactics.Basic,
     Lake.Glob.one `CatCrypt.Tactics.BindAlign,
     Lake.Glob.one `CatCrypt.Tactics.BindMatch,
