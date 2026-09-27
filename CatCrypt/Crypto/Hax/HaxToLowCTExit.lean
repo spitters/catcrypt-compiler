@@ -97,6 +97,10 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 * `searchLoopShape_lowers`: the search loop with an early return lowers
 * `breakLoop`, `hasBreak`, `hasBreak_of_exprIn`: the lowered loop break, the break
   test, and the absence of a break in a representable expression
+* `exitForLoopStop`, `exitForLoopStopRt`: the early-stopping counted loop, which
+  runs no trip after the exit
+* `haxToLowCTKStop`, `haxToLowCTFnStop`: the lowering that uses the
+  early-stopping form for the loops a caller-supplied test `pub` selects
 -/
 
 @[expose] public section
@@ -801,5 +805,126 @@ def searchLoopShape : ImpExpr :=
 /-- The function lowering accepts the search loop's pipeline output. -/
 theorem searchLoopShape_lowers : (haxToLowCTFn searchLoopShape).isSome = true := by
   decide
+
+/-! ## §9  The early-stopping counted loop
+
+`exitForLoop` runs all `hi - lo` trips of a counted loop with an exit, the trips
+after the exit under the guard, so its trip count does not depend on the exit
+flag.  `exitForLoopStop` runs the loop as `RWhileNz` on the run condition
+`exitGoName`, recomputed after each trip as "trip counter below the trip count and
+exit flag clear" (`exitGoExpr`), so no trip runs after the exit.  The trip count
+of the early-stopping form is the index of the exiting trip plus one, which
+reveals the exit flag; the form is meant for loops whose exit flag is public.
+
+`haxToLowCTKStop pub` lowers as `haxToLowCTK`, except that a `forFoldReturn`
+reached through `letBind`, `seq` and `ifThenElse` whose body `b` has `pub b = true`
+is lowered to the early-stopping form.  `pub` is the caller's statement that the
+exit condition of the loop body is public: a caller holding a level table passes
+the test that every condition deciding a `cfBreak` in `b` is public in that table;
+the constant `fun _ => false` keeps the guarded form everywhere.  The lowered body
+must leave the trip counter and the bound slot unwritten (`scalarUntouched`); when
+the check fails the guarded form is kept. -/
+
+/-- The slot holding the trip count of an early-stopping counted loop. -/
+def exitBndName : String := "__exit_bnd"
+
+/-- The run condition of an early-stopping counted loop. -/
+def exitGoName : String := "__exit_go"
+
+/-- The run condition of an early-stopping counted loop with trip counter `run`:
+    `(run < bound) - flag`, which is `1` exactly when the trip counter is below the
+    trip count in `exitBndName` and the exit flag is `0`. -/
+def exitGoExpr (run : String) : SExpr :=
+  .SSub (.SLt (.SVar run) (.SVar exitBndName)) (.SVar exitRetName)
+
+/-- One trip of the early-stopping counted loop: bind the counter `i` to
+    `run + lo`, run the lowered body, advance the trip counter and recompute the
+    run condition. -/
+def exitStopTrip (run i : String) (lo : Nat) (bC : LowCT) : LowCT :=
+  .RSeq (.RLetU64Zero i (.RSeq (.RScalarSetExpr i (.SAdd (.SVar run) (.SLit lo))) bC))
+    (.RSeq (.RScalarSetExpr run (.SAdd (.SVar run) (.SLit 1)))
+      (.RScalarSetExpr exitGoName (exitGoExpr run)))
+
+/-- The early-stopping counted loop with trip counter `run`, counter `i` starting
+    at `lo`, bound command `bnd` (which writes the trip count into `exitBndName`)
+    and lowered body `bC`: zero the flag, the payload slot, the trip counter, the
+    bound and the run condition, run `bnd`, set the run condition, and iterate
+    `exitStopTrip` while it is nonzero. -/
+def exitStopLoop (run i : String) (lo : Nat) (bnd bC : LowCT) : LowCT :=
+  .RLetU64Zero exitRetName (.RLetU64Zero exitValName (.RLetU64Zero run
+    (.RLetU64Zero exitBndName (.RLetU64Zero exitGoName
+      (.RSeq bnd (.RSeq (.RScalarSetExpr exitGoName (exitGoExpr run))
+        (.RWhileNz exitGoName (exitStopTrip run i lo bC))))))))
+
+/-- The early-stopping `forFoldReturn i lo hi body` with literal bounds: the trip
+    count is `hi - lo`. -/
+def exitForLoopStop (run i : String) (lo hi : Nat) (bC : LowCT) : LowCT :=
+  exitStopLoop run i lo (.RScalarSet exitBndName (hi - lo)) bC
+
+/-- The early-stopping `forFoldReturn i lo (var h) body`: the trip count `h - lo`
+    (truncated at `0`) is read on entry. -/
+def exitForLoopStopRt (run i : String) (lo : Nat) (h : String) (bC : LowCT) : LowCT :=
+  exitStopLoop run i lo (.RScalarSetExpr exitBndName (.SSub (.SVar h) (.SLit lo))) bC
+
+/-- A syntactic check that a command writes no scalar slot `s`: it is built from
+    `RSkip`, `RSeq`, `RIfNz`, `RWhileNz` and scalar writes, loops and bindings of
+    names other than `s`.  Every other constructor is rejected. -/
+def scalarUntouched (s : String) : LowCT → Bool
+  | .RSkip => true
+  | .RSeq a b => scalarUntouched s a && scalarUntouched s b
+  | .RLetU64Zero x b => x != s && scalarUntouched s b
+  | .RScalarSet x _ => x != s
+  | .RScalarSetExpr x _ => x != s
+  | .RIfNz _ a b => scalarUntouched s a && scalarUntouched s b
+  | .RWhileNz _ b => scalarUntouched s b
+  | .RFor x _ b => x != s && scalarUntouched s b
+  | .RForRuntime x _ b => x != s && scalarUntouched s b
+  | _ => false
+
+/-- The early-stopping lowering of `forFoldReturn i lo hi body` in exit context
+    `fl`, with the bounds of `forBounds` or `forBoundsRt`; `none` when the body is
+    refused or writes the trip counter or the bound slot. -/
+def exitStopFor (sc : Bool) (fl : Option String) (i : String) (lo hi body : ImpExpr) :
+    Option LowCT :=
+  match haxToLowCTK sc false (some (exitRunName fl)) body with
+  | some (bC, _) =>
+      if scalarUntouched (exitRunName fl) bC && scalarUntouched exitBndName bC then
+        match forBounds lo hi, forBoundsRt lo hi with
+        | some (l, h), _ => some (exitForLoopStop (exitRunName fl) i l h bC)
+        | none, some (l, h) => some (exitForLoopStopRt (exitRunName fl) i l h bC)
+        | none, none => none
+      else none
+  | none => none
+
+/-- The lowering with early-stopping counted loops where `pub` allows them:
+    `haxToLowCTK` on every constructor except `letBind`, `seq` and `ifThenElse` on
+    a variable, which recurse, and `forFoldReturn` outside tail position, which is
+    lowered by `exitStopFor` when `pub body` holds and `exitStopFor` succeeds, and by
+    `haxToLowCTK` otherwise. -/
+def haxToLowCTKStop (pub : ImpExpr → Bool) (sc : Bool) :
+    Bool → Option String → ImpExpr → Option (LowCT × Bool)
+  | tl, fl, .letBind name val body =>
+      match letHeadK sc name val, haxToLowCTKStop pub sc tl fl body with
+      | some k, some (bC, x) => some (k bC, x)
+      | _, _ => none
+  | tl, fl, .seq a b =>
+      match haxToLowCTKStop pub sc false fl a, haxToLowCTKStop pub sc tl fl b with
+      | some (aC, xa), some (bC, xb) =>
+          some (if xa then .RSeq aC (exitGuard bC) else .RSeq aC bC, xa || xb)
+      | _, _ => none
+  | tl, fl, .ifThenElse (.var v) t e =>
+      match haxToLowCTKStop pub sc tl fl t, haxToLowCTKStop pub sc tl fl e with
+      | some (tC, xt), some (eC, xe) => some (.RIfNz v tC eC, xt || xe)
+      | _, _ => none
+  | false, fl, .forFoldReturn i lo hi body =>
+      match (if pub body then exitStopFor sc fl i lo hi body else none) with
+      | some c => some (c, true)
+      | none => haxToLowCTK sc false fl (.forFoldReturn i lo hi body)
+  | tl, fl, e => haxToLowCTK sc tl fl e
+
+/-- The function lowering with early-stopping counted loops where `pub` allows
+    them: `haxToLowCTKStop pub` in the frame `exitFunction`. -/
+def haxToLowCTFnStop (pub : ImpExpr → Bool) (e : ImpExpr) : Option LowCT :=
+  (haxToLowCTKStop pub true true (some exitFnSlot) e).map fun p => exitFunction p.1
 
 end CatCrypt.Crypto.Hax
