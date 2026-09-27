@@ -41,6 +41,16 @@ result (`optRet`): `Some x` and `None` in tail position and as the payload of a
 the early return goes through the function-exit lowering `haxToLowCTFn` with a
 word payload.
 
+**Call results, copies and tuple returns.**  `let s = f(args)` of a struct
+variable binds the call's tuple result to `s#tup` and reads its components into
+the component variables (`callBindArm`).  A variable bound to a component or to an
+`Option` payload is copied through the scalar builtin `copyName` (`rhsCopy`),
+since the front lowers a `letBind` of one variable to another to nothing.  A
+function returning a tuple whose components are variables and flattened structs
+returns its result in those variables (`namedRet`): each such tuple in tail
+position becomes the unit value and each such `cfBreak` payload `cfBreak ()`, so
+the early return goes through `haxToLowCTFn`.
+
 **Simulation.**  Field calls, update calls and `Some`/`None` are builtin calls
 of `Hax.denote'`.  `FieldSound`, `UpdateSound` and `OptionSound` state that the
 builtin table reads a struct as the flat tuple of its fields and builds `Option`
@@ -53,6 +63,8 @@ against `denote'`.
 * `flatE` — the struct and `Option`-match flattening pass.
 * `optBindArm`, `structLitArm` — the `Option` binding and struct literal arms.
 * `optRet` — the `Option` return lowering.
+* `callBindArm`, `rhsCopy` — the call result arm and the copy of a variable.
+* `retVars`, `tailRet`, `namedRet` — the named tuple return.
 * `renameVar`, `renameSafe`, `varAbsent` — renaming a variable, and the syntactic
   conditions under which the `Option` match arm renames.
 * `RenRel`, `RenSim` — the environments and state computations related by a
@@ -77,6 +89,13 @@ against `denote'`.
   flattened `Some` arm with its binder bound to `x`.
 * `optBind_some_sim`, `optBind_none_sim` — `let o = Some x` and `let o = None`
   and their lowering leave `o` flattened.
+* `callBind_sim` — a struct bound to a call result and its lowering leave the
+  struct flattened.
+* `flatUpdateCopy_sim` — an update with a variable and its copy into the component
+  leave the struct flattened.
+* `namedRet_tuple_run`, `namedRet_break_sim` — a returned tuple with the
+  variables `rs` is determined by `rs`, and its lowering returns the unit value
+  from the same environment.
 -/
 
 @[expose] public section
@@ -125,12 +144,23 @@ def updateArm (L : StructLayout) (sv : StructVars) (c s : String) : Option Strin
     ((List.range fs.length).find? fun i => c == structUpdateName S i fs.length).bind fun i =>
       fs[i]?.map (structCompName s)
 
-/-- A flattened update right-hand side that the rebinding accepts: anything but a
-    variable other than the component itself (a `letBind` of one variable to
-    another is an alias, which the front lowers to nothing). -/
-def updateRhsOk (comp : String) : ImpExpr → Bool
-  | .var x => x == comp
-  | _ => true
+/-- The builtin that copies a word: the scalar `&` of a variable with itself,
+    which the front lowers to the scalar assignment `comp := y & y`. -/
+def copyName : String := "scalar#BitAnd"
+
+/-- The copy of the variable `y`: `scalar#BitAnd(y, y)`. -/
+def copyExpr (y : String) : ImpExpr := .app copyName [.var y, .var y]
+
+/-- The right-hand side bound to the variable `comp`: a variable `y` other than
+    `comp` is the copy `copyExpr y` (a `letBind` of one variable to another is an
+    alias, which the front lowers to nothing); every other expression is itself. -/
+def rhsCopy (comp : String) : ImpExpr → ImpExpr
+  | .var y => if y == comp then .var y else copyExpr y
+  | e => e
+
+/-- The variable holding the tuple returned by a call bound to the struct variable
+    `s`: `s#tup`. -/
+def structTupName (s : String) : String := s ++ "#tup"
 
 /-- The tag variable of the flattened `Option` variable `o`: a bool, `true` for
     `Some`. -/
@@ -300,9 +330,9 @@ def projArgs (L : StructLayout) (sv : StructVars) (c : String) : List ImpExpr �
     body `body'`:
     * `let s = s; body` of a struct variable `s` (hax-lean's parameter alias) is
       `body'`;
-    * `let s = struct_update#S#i#n(s, x); body` is `let s.f = x'; body'` for the
-      field `f` of index `i`, where `x'` is the last argument of `val'`; refused
-      when `x'` is a variable other than `s.f`;
+    * `let s = struct_update#S#i#n(s, x); body` is `let s.f = rhsCopy s.f x'; body'`
+      for the field `f` of index `i`, where `x'` is the last argument of `val'`
+      (a variable `x'` other than `s.f` is copied);
     * a `letBind` of a struct variable to any other right-hand side is refused;
     * every other `letBind` is `let n = val'; body'`. -/
 def letArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : ImpExpr) :
@@ -316,7 +346,7 @@ def letArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : I
       match (if n == s then updateArm L sv c s else none), val' with
       | some comp, .app _ args' =>
           match args'.getLast? with
-          | some x' => if updateRhsOk comp x' then some (.letBind comp x' body') else none
+          | some x' => some (.letBind comp (rhsCopy comp x') body')
           | none => none
       | _, _ =>
           if (structFields L sv n).isSome then none else some (.letBind n val' body')
@@ -339,17 +369,17 @@ def optAlias (ov : List String) (n : String) : ImpExpr → Bool
 
 /-- The binding `let o = Some x` or `let o = None` of the flattened `Option`
     variable `o`, given the flattened right-hand side `val'` and body `body'`:
-    `Some x'` binds the payload `o#val` to `x'` and then the tag `o#tag` to `true`,
-    `None` binds the tag to `false`.  `none` on any other right-hand side, and on a
-    payload `x'` that is a variable other than `o#val` (a `letBind` of one variable
-    to another is an alias, which the front lowers to nothing). -/
+    `Some x'` binds the payload `o#val` to `rhsCopy o#val x'` (a variable payload
+    is copied) and then the tag `o#tag` to `true`, `None` binds the tag to
+    `false`.  `none` on any other right-hand side. -/
 def optBindArm (o : String) (val val' body' : ImpExpr) : Option ImpExpr :=
   match val with
   | .app _ [_] =>
       match val' with
       | .app c [x'] =>
-          if c == "Some" && updateRhsOk (optValName o) x' then
-            some (.letBind (optValName o) x' (.letBind (optTagName o) (.lit (.bool true)) body'))
+          if c == "Some" then
+            some (.letBind (optValName o) (rhsCopy (optValName o) x')
+              (.letBind (optTagName o) (.lit (.bool true)) body'))
           else none
       | _ => none
   | .app _ [] =>
@@ -398,14 +428,46 @@ def structLitArm (L : StructLayout) (sv : StructVars) (n : String) (val val' bod
       | none => none
   | _, _ => none
 
+/-- The bindings of the variables `ns` to the components `i`, `i + 1`, … of the
+    tuple variable `t`, around `body`. -/
+def bindProjs (t : String) : Nat → List String → ImpExpr → ImpExpr
+  | _, [], body => body
+  | i, n :: ns, body => .letBind n (.proj (.var t) i) (bindProjs t (i + 1) ns body)
+
+/-- The call result arm: `let s = f(args); body` of a struct variable `s` whose
+    struct `S` has the fields `f₁ … fₖ` is
+    `let s#tup = f(args'); let s.f₁ = s#tup.0; …; let s.fₖ = s#tup.(k-1); body'`,
+    where `f(args')` is the flattened right-hand side: the call's tuple result is
+    destructured into the component variables through the front's tuple-component
+    reads.  A function returning a flat struct returns the tuple of its fields.
+    `none` for a struct literal (`f = S`) and an update call. -/
+def callBindArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : ImpExpr) :
+    Option ImpExpr :=
+  match val, val' with
+  | .app c _, .app c' args' =>
+      match List.lookup n sv with
+      | some S =>
+          match List.lookup S L with
+          | some fs =>
+              if c != S && !c.startsWith "struct_update#" then
+                some (.letBind (structTupName n) (.app c' args')
+                  (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body'))
+              else none
+          | none => none
+      | none => none
+  | _, _ => none
+
 mutual
 
 /-- Flatten the struct variables `sv` (layout `L`) and match on the `Option`
     variables `ov`:
     * a field call `.f s` on a struct variable is the component variable `s.f`;
-    * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i`;
+    * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i`, a
+      variable `x` through a copy (`rhsCopy`);
     * a struct literal `let s = S(x₁, …, xₖ)` binds the components of `s` in field
       order (`structLitArm`);
+    * `let s = f(args)` of a struct variable binds the call's tuple result and
+      reads its components into those of `s` (`callBindArm`);
     * `let o = Some x` and `let o = None` of an `Option` variable bind its payload
       and tag (`optBindArm`);
     * hax-lean's parameter alias `let s = s` of a struct or `Option` variable is
@@ -433,7 +495,10 @@ def flatE (L : StructLayout) (sv : StructVars) (ov : List String) : ImpExpr → 
         | none =>
             match letArm L sv n val val' body' with
             | some e => some e
-            | none => structLitArm L sv n val val' body'
+            | none =>
+                match structLitArm L sv n val val' body' with
+                | some e => some e
+                | none => callBindArm L sv n val val' body'
   | .lam ps b => do let b' ← flatE L sv ov b; pure (.lam ps b')
   | .app c args =>
       match projArgs L sv c args with
@@ -600,6 +665,63 @@ def optRet (T : String) : Bool → ImpExpr → Option ImpExpr
   | true, e => optReturn T e
   | false, e => some e
 
+/-! ## §4b  Returning a tuple in named variables -/
+
+/-- The names of a list of variables; `none` if an element is not a variable. -/
+def varsOf : List ImpExpr → Option (List String)
+  | [] => some []
+  | .var x :: es => (varsOf es).map (x :: ·)
+  | _ :: _ => none
+
+/-- The variables of a returned tuple, with the component variables of a flattened
+    struct (a tuple of variables) in place: `(x, (a, b), y)` has the variables
+    `x, a, b, y`.  `none` on any other component. -/
+def retVars : List ImpExpr → Option (List String)
+  | [] => some []
+  | .var x :: es => (retVars es).map (x :: ·)
+  | .tuple ys :: es => do
+      let xs ← varsOf ys
+      let rs ← retVars es
+      pure (xs ++ rs)
+  | _ :: _ => none
+
+/-- The variables of the tuple in tail position of a function body, through
+    `letBind` bodies, the second statement of a `seq` and type ascriptions. -/
+def tailRet : ImpExpr → Option (List String)
+  | .letBind _ _ b => tailRet b
+  | .seq _ b => tailRet b
+  | .typeAscription e _ => tailRet e
+  | .tuple es => retVars es
+  | _ => none
+
+/-- The body of a function returning a tuple whose components are held in the
+    variables `rs`: every tuple in tail position and every `cfBreak` payload at
+    function level or in the body of a returning loop must be a tuple with the
+    variables `rs` (`retVars`), and becomes the unit value; the result is read from
+    `rs`.  The traversal is that of `optRet`; `tl` records tail position.  Refused
+    on any other tail value or `cfBreak` payload. -/
+def namedRet (rs : List String) : Bool → ImpExpr → Option ImpExpr
+  | tl, .letBind n val body => do let b ← namedRet rs tl body; pure (.letBind n val b)
+  | tl, .seq a b => do
+      let a' ← namedRet rs false a
+      let b' ← namedRet rs tl b
+      pure (.seq a' b')
+  | tl, .ifThenElse c t e => do
+      let t' ← namedRet rs tl t
+      let e' ← namedRet rs tl e
+      pure (.ifThenElse c t' e')
+  | tl, .typeAscription e _ => namedRet rs tl e
+  | _, .cfBreak (.tuple es) => if retVars es == some rs then some (.cfBreak .unitVal) else none
+  | _, .cfBreak _ => none
+  | _, .forFoldReturn i lo hi b => do
+      let b' ← namedRet rs false b; pure (.forFoldReturn i lo hi b')
+  | _, .forFoldRevReturn i lo hi b => do
+      let b' ← namedRet rs false b; pure (.forFoldRevReturn i lo hi b')
+  | _, .whileFoldReturn c b => do let b' ← namedRet rs false b; pure (.whileFoldReturn c b')
+  | true, .tuple es => if retVars es == some rs then some .unitVal else none
+  | true, _ => none
+  | false, e => some e
+
 /-! ## §5  The arms -/
 
 /-- The projection arm reads the component of a field of the struct variable. -/
@@ -651,16 +773,15 @@ theorem flatE_proj {L : StructLayout} {sv : StructVars} (ov : List String) {c s 
     flatE L sv ov (.app c [.var s]) = some (.var comp) := by
   simp only [flatE, projArgs, h]
 
-/-- `flatE` on an update of a struct variable whose flattened new value `x'` is
-    accepted rebinds the component of the updated field. -/
+/-- `flatE` on an update of a struct variable rebinds the component of the updated
+    field to the flattened new value `x'`, a variable through a copy. -/
 theorem flatE_update {L : StructLayout} {sv : StructVars} (ov : List String)
     {c s comp : String} {fs : List String} {x x' body body' : ImpExpr}
     (h : updateArm L sv c s = some comp) (hs : structFields L sv s = some fs)
     (hxs : ∀ y, x = .var y → structFields L sv y = none)
-    (hx : flatE L sv ov x = some x') (hb : flatE L sv ov body = some body')
-    (hok : updateRhsOk comp x' = true) :
+    (hx : flatE L sv ov x = some x') (hb : flatE L sv ov body = some body') :
     flatE L sv ov (.letBind s (.app c [.var s, x]) body) =
-      some (.letBind comp x' body') := by
+      some (.letBind comp (rhsCopy comp x') body') := by
   have hfx : flatCallArgs L sv ov [x] = some [x'] := by
     cases x <;> simp_all [flatCallArgs]
   have hpa : projArgs L sv c [.var s, x] = none := rfl
@@ -669,7 +790,7 @@ theorem flatE_update {L : StructLayout} {sv : StructVars} (ov : List String)
   have hal : optAlias ov s (.app c [.var s, x]) = false := rfl
   have hob : ∀ v' b', optBindArm s (.app c [.var s, x]) v' b' = none := fun _ _ => rfl
   simp only [flatE, hal, hpa, hca, hb, hob, ite_self, Option.bind_eq_bind, Option.bind_some]
-  simp [letArm, h, hok]
+  simp [letArm, h]
 
 /-! ## §6  Simulation of the arms against `denote'`
 
@@ -1451,13 +1572,13 @@ variable (bi : Builtins) (fuel : Nat)
 
 /-- **`Option` binding, `Some`.**  `let o = Some x; body` runs `body` with `o` bound
     to `some v`; its lowering `optBindArm` runs `body'` with the payload `o#val`
-    bound to `v` and the tag `o#tag` to `true`, so `o` is flattened in the two
-    environments. -/
+    bound to `v` (the value of `rhsCopy o#val x'`) and the tag `o#tag` to `true`,
+    so `o` is flattened in the two environments. -/
 theorem optBind_some_sim (o : String) (x x' body body' e' : ImpExpr)
     (env env1 envF envF1 : Env) (v : Value) (hO : OptionSound bi)
     (he : optBindArm o (.app "Some" [x]) (.app "Some" [x']) body' = some e')
     (hx : (denote' bi fuel x).run env = (.val v, env1)) (hv : v.isControlFlow = false)
-    (hx' : (denote' bi fuel x').run envF = (.val v, envF1)) :
+    (hx' : (denote' bi fuel (rhsCopy (optValName o) x')).run envF = (.val v, envF1)) :
     (denote' bi fuel (.letBind o (.app "Some" [x]) body)).run env =
         (denote' bi fuel body).run (env1.extend o (.option (some v))) ∧
       (denote' bi fuel e').run envF =
@@ -1465,12 +1586,10 @@ theorem optBind_some_sim (o : String) (x x' body body' e' : ImpExpr)
           ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) ∧
       OptFlatAt o (env1.extend o (.option (some v)))
         ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) := by
-  have he' : e' =
-      .letBind (optValName o) x' (.letBind (optTagName o) (.lit (.bool true)) body') := by
-    simp only [optBindArm, beq_self_eq_true, Bool.true_and] at he
-    split at he
-    · exact (Option.some.inj he).symm
-    · cases he
+  have he' : e' = .letBind (optValName o) (rhsCopy (optValName o) x')
+      (.letBind (optTagName o) (.lit (.bool true)) body') := by
+    simp only [optBindArm, beq_self_eq_true, if_true] at he
+    exact (Option.some.inj he).symm
   subst he'
   have hS : (denote' bi fuel (.app "Some" [x])).run env = (.val (.option (some v)), env1) := by
     rw [denote'_app_run, denoteArgs'_cons_run, hx]
@@ -1510,5 +1629,281 @@ theorem optBind_none_sim (o : String) (body body' e' : ImpExpr) (env envF : Env)
       fun _ h => by cases h⟩
 
 end OptBind
+
+/-! ## §9  Call results, copies and named tuple returns -/
+
+/-- A tuple-component read of a variable bound to a tuple returns the component. -/
+theorem denote'_proj_var_run (bi : Builtins) (fuel : Nat) (t : String) (i : Nat) (env : Env)
+    (vs : List Value) (v : Value) (ht : env t = some (.tuple vs)) (hv : vs[i]? = some v) :
+    (denote' bi fuel (.proj (.var t) i)).run env = (.val v, env) := by
+  simp only [denote', StateT.run, bind, Bind.bind, StateT.bind, get, getThe,
+    MonadStateOf.get, StateT.get, pure, Pure.pure, StateT.pure, ht, Value.projIdx, hv]
+
+/-- `env` extended by the bindings of the names `ns` to the values `ws` in order
+    (up to the shorter of the two lists). -/
+def extendList (env : Env) : List String → List Value → Env
+  | n :: ns, v :: vs => extendList (env.extend n v) ns vs
+  | _, _ => env
+
+/-- `extendList` leaves a name outside `ns` unchanged. -/
+theorem extendList_other : ∀ (ns : List String) (ws : List Value) (env : Env) (x : String),
+    x ∉ ns → extendList env ns ws x = env x
+  | [], _, _, _, _ => by simp [extendList]
+  | _ :: _, [], _, _, _ => by simp [extendList]
+  | n :: ns, w :: ws, env, x, hx => by
+    simp only [List.mem_cons, not_or] at hx
+    rw [extendList, extendList_other ns ws _ x hx.2, _root_.Hax.Env.extend_other _ _ _ _ hx.1]
+
+/-- `extendList` with distinct names binds the `k`-th name to the `k`-th value. -/
+theorem extendList_get : ∀ (ns : List String) (ws : List Value) (env : Env) (k : Nat)
+    (n : String), ns.Nodup → ns.length ≤ ws.length → ns[k]? = some n →
+    extendList env ns ws n = ws[k]?
+  | [], _, _, _, _, _, _, h => by simp at h
+  | _ :: _, [], _, _, _, _, hl, _ => by simp at hl
+  | m :: ns, w :: ws, env, k, n, hnd, hl, hk => by
+    rw [List.nodup_cons] at hnd
+    rw [extendList]
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+      subst hk
+      rw [extendList_other ns ws _ m hnd.1, _root_.Hax.Env.extend_same]; rfl
+    | succ k =>
+      simp only [List.getElem?_cons_succ] at hk ⊢
+      exact extendList_get ns ws _ k n hnd.2 (by simpa using hl) hk
+
+/-- The component reads `bindProjs t i ns body` of a tuple variable `t` not among
+    `ns` bind `ns` to the components from index `i` on and run `body`. -/
+theorem bindProjs_run (bi : Builtins) (fuel : Nat) (t : String) (vs : List Value)
+    (hcf : ∀ v ∈ vs, v.isControlFlow = false) (body : ImpExpr) :
+    ∀ (ns : List String) (i : Nat) (env : Env), env t = some (.tuple vs) → t ∉ ns →
+      i + ns.length ≤ vs.length →
+      (denote' bi fuel (bindProjs t i ns body)).run env =
+        (denote' bi fuel body).run (extendList env ns (vs.drop i))
+  | [], i, env, _, _, _ => by simp [bindProjs, extendList]
+  | n :: ns, i, env, ht, hn, hl => by
+    simp only [List.mem_cons, not_or] at hn
+    simp only [List.length_cons] at hl
+    have hi : i < vs.length := by omega
+    rw [bindProjs, denote'_letBind_run_val bi fuel _ _ _ _ _ _
+      (denote'_proj_var_run bi fuel t i env vs vs[i] ht (List.getElem?_eq_getElem hi))
+      (hcf _ (List.getElem_mem hi))]
+    rw [bindProjs_run bi fuel t vs hcf body ns (i + 1) _
+      (by rw [_root_.Hax.Env.extend_other _ _ _ _ hn.1]; exact ht) hn.2 (by omega)]
+    rw [List.drop_eq_getElem_cons hi, extendList]
+
+/-- The tuple variable of a struct variable is none of its component variables. -/
+theorem structTupName_ne (n f : String) : structTupName n ≠ structCompName n f := by
+  simp only [structTupName, structCompName, String.append_assoc, ne_eq]
+  intro h
+  have := congrArg String.toList h
+  simp at this
+
+/-- **Call result arm.**  When the call `val` and its flattening `val'` return the
+    same tuple `vs` with one component per field, `let n = val; body` runs `body`
+    with `n` bound to the tuple, and the lowering `callBindArm` runs `body'` from an
+    environment in which `n` is flattened; the lowering changes no variable other
+    than `n#tup` and the component variables of `n`. -/
+theorem callBind_sim (bi : Builtins) (fuel : Nat) (n : String) (fs : List String)
+    (val val' body body' : ImpExpr) (env env1 envF envF1 : Env) (vs : List Value)
+    (hnd : fs.Nodup) (hlen : vs.length = fs.length) (hcf : ∀ v ∈ vs, v.isControlFlow = false)
+    (hx : (denote' bi fuel val).run env = (.val (.tuple vs), env1))
+    (hx' : (denote' bi fuel val').run envF = (.val (.tuple vs), envF1)) :
+    ∃ envF2,
+      (denote' bi fuel (.letBind n val body)).run env =
+          (denote' bi fuel body).run (env1.extend n (.tuple vs)) ∧
+      (denote' bi fuel (.letBind (structTupName n) val'
+          (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body'))).run envF =
+          (denote' bi fuel body').run envF2 ∧
+      StructFlatAt fs n (env1.extend n (.tuple vs)) envF2 ∧
+      ∀ x, x ≠ structTupName n → (∀ f ∈ fs, x ≠ structCompName n f) → envF2 x = envF1 x := by
+  refine ⟨extendList (envF1.extend (structTupName n) (.tuple vs)) (fs.map (structCompName n)) vs,
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx rfl, ?_, ?_, ?_⟩
+  · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' rfl,
+      bindProjs_run bi fuel _ vs hcf body' _ 0 _ (_root_.Hax.Env.extend_same _ _ _)
+        (by simp only [List.mem_map, not_exists, not_and]; exact fun f _ h =>
+          structTupName_ne n f h.symm)
+        (by simp [hlen]), List.drop_zero]
+  · refine ⟨vs, _root_.Hax.Env.extend_same _ _ _, hlen, fun i f hi => ?_⟩
+    exact extendList_get _ vs _ i _ (hnd.map fun _ _ h => structCompName_inj h)
+      (by simp [hlen]) (by simp [hi])
+  · intro x hx1 hx2
+    rw [extendList_other _ _ _ x (by
+      simp only [List.mem_map, not_exists, not_and]; exact fun f hf h => hx2 f hf h.symm),
+      _root_.Hax.Env.extend_other _ _ _ _ hx1]
+
+/-- The copy of a variable holding `v` returns `v` when the builtin table copies
+    `v`. -/
+theorem copyExpr_run (bi : Builtins) (fuel : Nat) (y : String) (env : Env) (v : Value)
+    (hy : env y = some v) (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
+    (denote' bi fuel (copyExpr y)).run env = (.val v, env) := by
+  rw [copyExpr, denote'_app_run, denoteArgs'_cons_run, denote'_var_run, hy]
+  cases v <;> simp at hv <;>
+    simp only [denoteArgs'_cons_run, denote'_var_run, hy, denoteArgs'_nil_run, Option.map_some,
+      hc]
+
+/-- `rhsCopy comp` on a variable holding `v` returns `v`. -/
+theorem rhsCopy_var_run (bi : Builtins) (fuel : Nat) (comp y : String) (env : Env) (v : Value)
+    (hy : env y = some v) (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
+    (denote' bi fuel (rhsCopy comp (.var y))).run env = (.val v, env) := by
+  simp only [rhsCopy]
+  split
+  · rw [denote'_var_run, hy]
+  · exact copyExpr_run bi fuel y env v hy hv hc
+
+/-- **Update arm with a variable.**  `let s = struct_update#S#i#n(s, y); body` and its
+    lowering, the copy of `y` into the component of field `f`, run `body` and
+    `body'` from environments in which `s` stays flattened, when `y` holds the same
+    value `v` on both sides and the builtin table copies `v`. -/
+theorem flatUpdateCopy_sim (bi : Builtins) (fuel : Nat) (S s f y : String) (fs : List String)
+    (i : Nat) (body body' : ImpExpr) (env envF : Env) (v : Value) (hU : UpdateSound bi S fs)
+    (hi : fs[i]? = some f) (huniq : ∀ j, fs[j]? = some f → j = i)
+    (hsf : StructFlatAt fs s env envF) (hy : env y = some v) (hyF : envF y = some v)
+    (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
+    ∃ env2 envF2,
+      (denote' bi fuel (.letBind s (.app (structUpdateName S i fs.length) [.var s, .var y])
+          body)).run env = (denote' bi fuel body).run env2 ∧
+      (denote' bi fuel (.letBind (structCompName s f) (rhsCopy (structCompName s f) (.var y))
+          body')).run envF = (denote' bi fuel body').run envF2 ∧
+      StructFlatAt fs s env2 envF2 :=
+  flatUpdate_sim bi fuel S s f fs i (.var y) _ body body' env env envF envF v hU hi huniq hsf
+    (by rw [denote'_var_run, hy]) hv (rhsCopy_var_run bi fuel _ y envF v hyF hv hc)
+    (fun _ _ _ => rfl)
+
+/-- The variables `rs` are bound in `env` to values that are not control flow, and
+    `env'` agrees with `env` on them. -/
+def RetAt (rs : List String) (env env' : Env) : Prop :=
+  ∀ x ∈ rs, (∃ v, env x = some v ∧ v.isControlFlow = false) ∧ env' x = env x
+
+/-- `RetAt` on the first part of an append. -/
+theorem RetAt.of_append_left {xs rs : List String} {env env' : Env}
+    (h : RetAt (xs ++ rs) env env') : RetAt xs env env' :=
+  fun x hx => h x (List.mem_append_left _ hx)
+
+/-- `RetAt` on the second part of an append. -/
+theorem RetAt.of_append_right {xs rs : List String} {env env' : Env}
+    (h : RetAt (xs ++ rs) env env') : RetAt rs env env' :=
+  fun x hx => h x (List.mem_append_right _ hx)
+
+/-- `RetAt` on the tail of a list. -/
+theorem RetAt.tail {x : String} {rs : List String} {env env' : Env}
+    (h : RetAt (x :: rs) env env') : RetAt rs env env' :=
+  fun y hy => h y (List.mem_cons_of_mem _ hy)
+
+/-- Evaluating a variable at the head of an argument list. -/
+theorem denoteArgs'_var_cons (bi : Builtins) (fuel : Nat) (x : String) (es : List ImpExpr)
+    (env : Env) (v : Value) (hx : env x = some v) (hv : v.isControlFlow = false) :
+    (_root_.Hax.denoteArgs' bi fuel (.var x :: es)).run env =
+      (((_root_.Hax.denoteArgs' bi fuel es).run env).1.map (v :: ·),
+        ((_root_.Hax.denoteArgs' bi fuel es).run env).2) := by
+  rw [denoteArgs'_cons_run, denote'_var_run, hx]
+  cases v <;> simp at hv <;> rfl
+
+/-- A list of variables evaluates to the same values from two environments that
+    agree on them, changing neither. -/
+theorem denoteArgs'_varsOf (bi : Builtins) (fuel : Nat) :
+    ∀ (ys : List ImpExpr) (xs : List String), varsOf ys = some xs → ∀ env env',
+      RetAt xs env env' → ∃ vals,
+        (_root_.Hax.denoteArgs' bi fuel ys).run env = (some vals, env) ∧
+        (_root_.Hax.denoteArgs' bi fuel ys).run env' = (some vals, env')
+  | [], xs, h, env, env', _ => ⟨[], denoteArgs'_nil_run bi fuel env, denoteArgs'_nil_run bi fuel env'⟩
+  | e :: es, xs, h, env, env', hR => by
+    cases e
+    case var x =>
+      simp only [varsOf, Option.map_eq_some_iff] at h
+      obtain ⟨xs', hxs', rfl⟩ := h
+      obtain ⟨⟨v, hv, hcf⟩, he'⟩ := hR x List.mem_cons_self
+      obtain ⟨vals, h1, h2⟩ := denoteArgs'_varsOf bi fuel es xs' hxs' env env' hR.tail
+      refine ⟨v :: vals, ?_, ?_⟩
+      · rw [denoteArgs'_var_cons bi fuel x es env v hv hcf, h1]; rfl
+      · rw [denoteArgs'_var_cons bi fuel x es env' v (he'.trans hv) hcf, h2]; rfl
+    all_goals simp [varsOf] at h
+
+/-- A tuple whose components evaluate to `vals` evaluates to `.tuple vals`. -/
+theorem denote'_tuple_run_some (bi : Builtins) (fuel : Nat) (ys : List ImpExpr) (env e1 : Env)
+    (vals : List Value) (h : (_root_.Hax.denoteArgs' bi fuel ys).run env = (some vals, e1)) :
+    (denote' bi fuel (.tuple ys)).run env = (.val (.tuple vals), e1) := by
+  simp only [denote', StateT.run, bind, Bind.bind, StateT.bind] at h ⊢
+  rw [h]
+  rfl
+
+/-- The components of a returned tuple with the variables `rs` evaluate to the same
+    values from two environments that agree on `rs`, changing neither. -/
+theorem denoteArgs'_retVars (bi : Builtins) (fuel : Nat) :
+    ∀ (es : List ImpExpr) (rs : List String), retVars es = some rs → ∀ env env',
+      RetAt rs env env' → ∃ vals,
+        (_root_.Hax.denoteArgs' bi fuel es).run env = (some vals, env) ∧
+        (_root_.Hax.denoteArgs' bi fuel es).run env' = (some vals, env')
+  | [], rs, h, env, env', _ => ⟨[], denoteArgs'_nil_run bi fuel env, denoteArgs'_nil_run bi fuel env'⟩
+  | e :: es, rs, h, env, env', hR => by
+    cases e
+    case var x =>
+      simp only [retVars, Option.map_eq_some_iff] at h
+      obtain ⟨rs', hrs', rfl⟩ := h
+      obtain ⟨⟨v, hv, hcf⟩, he'⟩ := hR x List.mem_cons_self
+      obtain ⟨vals, h1, h2⟩ := denoteArgs'_retVars bi fuel es rs' hrs' env env' hR.tail
+      refine ⟨v :: vals, ?_, ?_⟩
+      · rw [denoteArgs'_var_cons bi fuel x es env v hv hcf, h1]; rfl
+      · rw [denoteArgs'_var_cons bi fuel x es env' v (he'.trans hv) hcf, h2]; rfl
+    case tuple ys =>
+      simp only [retVars, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨xs, hxs, rs', hrs', rfl⟩ := h
+      obtain ⟨vs1, h1, h2⟩ := denoteArgs'_varsOf bi fuel ys xs hxs env env' hR.of_append_left
+      obtain ⟨vals, h3, h4⟩ :=
+        denoteArgs'_retVars bi fuel es rs' hrs' env env' hR.of_append_right
+      refine ⟨.tuple vs1 :: vals, ?_, ?_⟩
+      · rw [denoteArgs'_cons_run, denote'_tuple_run_some bi fuel ys env env vs1 h1]
+        simp only [h3]; rfl
+      · rw [denoteArgs'_cons_run, denote'_tuple_run_some bi fuel ys env' env' vs1 h2]
+        simp only [h4]; rfl
+    all_goals simp [retVars] at h
+
+/-- **Named tuple return.**  A returned tuple with the variables `rs` (`retVars`)
+    evaluates to a tuple `vals` without changing the environment, and to the same
+    tuple from every environment that agrees on `rs`: the result is determined by
+    the variables `rs`. -/
+theorem namedRet_tuple_run (bi : Builtins) (fuel : Nat) (es : List ImpExpr) (rs : List String)
+    (env : Env) (h : retVars es = some rs)
+    (hb : ∀ x ∈ rs, ∃ v, env x = some v ∧ v.isControlFlow = false) :
+    ∃ vals, (denote' bi fuel (.tuple es)).run env = (.val (.tuple vals), env) ∧
+      ∀ env', (∀ x ∈ rs, env' x = env x) →
+        (denote' bi fuel (.tuple es)).run env' = (.val (.tuple vals), env') := by
+  obtain ⟨vals, h1, -⟩ := denoteArgs'_retVars bi fuel es rs h env env fun x hx => ⟨hb x hx, rfl⟩
+  refine ⟨vals, denote'_tuple_run_some bi fuel es env env vals h1, fun env' he => ?_⟩
+  obtain ⟨vals', h1', h2'⟩ :=
+    denoteArgs'_retVars bi fuel es rs h env env' fun x hx => ⟨hb x hx, he x hx⟩
+  rw [h1] at h1'
+  cases h1'
+  exact denote'_tuple_run_some bi fuel es env' env' vals h2'
+
+/-- **Named tuple early return.**  `cfBreak` of a tuple with the variables `rs`
+    breaks with a tuple `vals` determined by `rs`; its lowering `cfBreak ()` breaks
+    with the unit value from the same environment, which holds the result in
+    `rs`. -/
+theorem namedRet_break_sim (bi : Builtins) (fuel : Nat) (es : List ImpExpr) (rs : List String)
+    (env : Env) (h : retVars es = some rs)
+    (hb : ∀ x ∈ rs, ∃ v, env x = some v ∧ v.isControlFlow = false) :
+    ∃ vals,
+      (denote' bi fuel (.cfBreak (.tuple es))).run env =
+          (.val (.controlFlow true (.tuple vals)), env) ∧
+      (denote' bi fuel (.cfBreak .unitVal)).run env = (.val (.controlFlow true .unit), env) ∧
+      ∀ env', (∀ x ∈ rs, env' x = env x) →
+        (denote' bi fuel (.tuple es)).run env' = (.val (.tuple vals), env') := by
+  obtain ⟨vals, h1, h2⟩ := namedRet_tuple_run bi fuel es rs env h hb
+  refine ⟨vals, ?_, ?_, h2⟩
+  · rw [denote'_cfBreak_run', h1]
+  · rw [denote'_cfBreak_run', denote'_unitVal_run]
+
+/-- `namedRet` lowers a `cfBreak` of a tuple with the variables `rs` to `cfBreak ()`. -/
+theorem namedRet_cfBreak (rs : List String) (tl : Bool) (es : List ImpExpr)
+    (h : retVars es = some rs) :
+    namedRet rs tl (.cfBreak (.tuple es)) = some (.cfBreak .unitVal) := by
+  cases tl <;> simp [namedRet, h]
+
+/-- `namedRet` lowers a tail tuple with the variables `rs` to the unit value. -/
+theorem namedRet_tuple (rs : List String) (es : List ImpExpr) (h : retVars es = some rs) :
+    namedRet rs true (.tuple es) = some .unitVal := by
+  simp [namedRet, h]
 
 end CatCrypt.Crypto.Hax
