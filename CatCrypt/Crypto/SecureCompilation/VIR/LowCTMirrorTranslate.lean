@@ -188,6 +188,12 @@ theorem toJasminCmd_translateCmdExt_isSome :
     obtain ⟨e1, he1⟩ := Option.isSome_iff_exists.mp (translatePExprExt_locToPExpr_isSome src1)
     simp [translateInstrRExt, hl, he0, he1, translatePExprExt, translateGVarExt,
       translateVarIExt, translateVarExt, translateSTypeExt, translateSType, translateWSize]
+  | RCopy dst src =>
+    rw [toJasminCmd_RCopy]
+    refine translateCmdExt_cons_isSome _ _ ?_ rfl
+    obtain ⟨l, hl⟩ := Option.isSome_iff_exists.mp (translateLValExt_locToLVal_isSome dst)
+    obtain ⟨e, he⟩ := Option.isSome_iff_exists.mp (translatePExprExt_locToPExpr_isSome src)
+    simp [translateInstrRExt, hl, he, translateSTypeExt, towerToSType]
   | RAssert _ => rfl
   | RBlock body ih =>
     simp only [callFreePlusCall, callFree] at h

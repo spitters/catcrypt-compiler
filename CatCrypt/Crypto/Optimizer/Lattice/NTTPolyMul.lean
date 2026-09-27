@@ -129,6 +129,7 @@ def nttPolyMul (q n : Nat) : LowCT → LowCT
   | .RScalarSetExpr x e => .RScalarSetExpr x e
   | .RArrStoreLit arr idx src => .RArrStoreLit arr idx src
   | .RArrLoadLit dst src idx => .RArrLoadLit dst src idx
+  | .RCopy dst src => .RCopy dst src
   | .RCallDstThreaded f dst args =>
       if isPolyMulName f then .RCallDstThreaded (nttPolyMulName q n) dst args
       else .RCallDstThreaded f dst args
@@ -346,6 +347,8 @@ theorem nttPolyMul_denote_forward
   | arrLoadLit dst src idx rs oldV srcV hDst hSrc =>
       simpa [nttPolyMul] using
         RustExec.arrLoadLit dst src idx rs oldV srcV hDst hSrc
+  | copy dst src rs hT srcV hSrc =>
+      exact RustExec.copy dst src rs hT srcV hSrc
   | callDstThreaded f dest args rs oldDestV argList hLookup hArgList hArgs =>
       by_cases hf : isPolyMulName f = true
       · have hPostEq :
@@ -418,7 +421,7 @@ theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
   | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
   | assert | block | tupleLoad | arrStore
   | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
-  | callDstThreaded => intro k0 hEq; cases hEq
+  | callDstThreaded | copy => intro k0 hEq; cases hEq
 
 /-- Reverse direction: any `RustExec` of the rewritten command lifts
     to one on the source command. -/
@@ -562,7 +565,7 @@ theorem nttPolyMul_denote_reverse
         | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
         | assert | block | tupleLoad | arrStore
         | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
-        | callDstThreaded => intro hEq; cases hEq
+        | callDstThreaded | copy => intro hEq; cases hEq
       exact aux _ rs rs' h rfl
   | RFor x k body ih =>
       intro rs rs' h
@@ -596,6 +599,7 @@ theorem nttPolyMul_denote_reverse
   | RScalarSetExpr x e => intro rs rs' h; simpa [nttPolyMul] using h
   | RArrStoreLit arr idx src => intro rs rs' h; simpa [nttPolyMul] using h
   | RArrLoadLit dst src idx => intro rs rs' h; simpa [nttPolyMul] using h
+  | RCopy dst src => intro rs rs' h; simpa [nttPolyMul] using h
   | RCallDstThreaded f dst args =>
       intro rs rs' h
       by_cases hf : isPolyMulName f = true

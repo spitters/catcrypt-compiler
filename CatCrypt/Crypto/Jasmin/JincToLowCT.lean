@@ -713,7 +713,7 @@ theorem gateAccess_maskFrame : ∀ (c : LowCT), maskName ∉ scalarWrites c →
   | .RLimbStoreExpr .., _ | .RCallN .., _ | .RSelect .., _ | .RAssert .., _
   | .RBlock .., _ | .RFnDef .., _ | .RFnCall .., _ | .RTupleLoad .., _
   | .RArrStoreLit .., _ | .RArrLoadLit .., _ | .RCallDstThreaded .., _
-  | .RForRuntime .., _ => fun _ _ h _ => by cases h
+  | .RForRuntime .., _ | .RCopy .., _ => fun _ _ h _ => by cases h
 
 theorem scalarWrites_seq2 (a b : LowCT) (x : String) (h : x ∈ scalarWrites (seq2 a b)) :
     x ∈ scalarWrites a ∨ x ∈ scalarWrites b := by

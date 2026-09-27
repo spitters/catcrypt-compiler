@@ -1334,6 +1334,7 @@ def ascendGLL (lf : AbsLeaves) (lfa : AbsArrLeaves) (L : ArrLayout) (fuel : Nat)
   | .RArrLoadLit dst src idx => arrLoadLitAbsL lf L dst src idx
   | .RCallDstThreaded fname dst args => callDstThreadedAbsL lf lfa L fname dst args
   | .RForRuntime _ _ _ => unsupportedAbs "RForRuntime"
+  | .RCopy _ _ => unsupportedAbs "RCopy"
 
 /-- Without abstract leaves `ascendGLL` is `ascendGL`. -/
 theorem ascendGLL_noLeaves (L : ArrLayout) (fuel : Nat) :

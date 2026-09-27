@@ -1087,6 +1087,7 @@ def ascendGL (L : ArrLayout) (fuel : Nat) : LowCT → List Guard × (AField → 
   | .RArrLoadLit dst src idx => arrLoadLitAbs L dst src idx
   | .RCallDstThreaded _ _ _ => unsupportedAbs "RCallDstThreaded"
   | .RForRuntime _ _ _ => unsupportedAbs "RForRuntime"
+  | .RCopy _ _ => unsupportedAbs "RCopy"
 
 /-- The total abstraction over the empty layout, whose relation is `SRwordNT`. -/
 abbrev ascendG (fuel : Nat) : LowCT → List Guard × (AField → AField) := ascendGL [] fuel
