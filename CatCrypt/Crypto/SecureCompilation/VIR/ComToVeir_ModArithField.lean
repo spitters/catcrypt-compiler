@@ -39,11 +39,15 @@ stored word and a zero high word, `mulHi` and the carry-chain adds are the
 
 * `AlgebraicPrintCtx`: the storage width and Montgomery flag of a modulus and the
   tower constant; `AlgebraicPrintCtx.withRepr`: the context with the widths and
-  flags a representation map fixes.
+  flags a representation map fixes; `AlgebraicPrintCtx.withTower`: the context with
+  the tower constants a tower map fixes.
+* `extDescTy`: the `!field.pf`/`!field.ef` type of an extension-field descriptor;
+  `ext2Ty`, `ext6Ty`, `ext12Ty` are those of the dialect's towers.
 * `modArithToVeirOp`, `modArithToVeirTy`, `fieldToVeirOp`, `fieldToVeirTy`: the
   lowering under a print context.
 * `modArithModule`, `fieldModule`: the checked `builtin.module` of a program;
-  `modArithModuleAt`, `fieldModuleAt`: the same for an annotated program.
+  `modArithModuleAt`, `fieldModuleAt`, `fieldModuleTower`: the same for an annotated
+  program.
 * `moduleText`: the text `Veir.Printer.printModule` prints for a module whose
   operations have no successors, as a `String`.
 -/
@@ -92,6 +96,16 @@ def AlgebraicPrintCtx.withRepr (pc : AlgebraicPrintCtx) (ρ : ModArithReprMap) :
 theorem AlgebraicPrintCtx.withRepr_unfixed (pc : AlgebraicPrintCtx) :
     pc.withRepr .unfixed = pc := rfl
 
+/-- The print context with the tower constants `τ` fixes, and those of `pc` for the
+    moduli `τ` leaves unfixed. -/
+def AlgebraicPrintCtx.withTower (pc : AlgebraicPrintCtx) (τ : TowerReprMap) :
+    AlgebraicPrintCtx :=
+  { pc with towerXi0 := fun p => (τ p).orElse fun _ => pc.towerXi0 p }
+
+/-- Under the tower map that fixes nothing, the print context is unchanged. -/
+theorem AlgebraicPrintCtx.withTower_unfixed (pc : AlgebraicPrintCtx) :
+    pc.withTower .unfixed = pc := rfl
+
 /-- The integer type `iw`. -/
 def intTy (w : Nat) : Veir.TypeAttr := (Veir.IntegerType.mk w : Veir.IntegerType)
 
@@ -111,29 +125,70 @@ def primeFieldTy (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
   ⟨.primeFieldType { modulus := intAttr p w, isMontgomery := mont },
    by simp [Veir.Attribute.isType]⟩
 
-/-- `!field.ef<2x!field.pf<p : iw>, (p - 1) : iw>`: `Fp2 = Fp[u]/(u² + 1)`; the base
-    field carries the Montgomery flag `mont`. -/
+/-! ### Extension fields from their descriptors
+
+prime-ir's parser (`ExtensionFieldType::parse` at `fc4261887`) reads a scalar
+non-residue, and a dense one over a prime base, in standard form and converts it to
+Montgomery form when the base is; it stores a dense non-residue over an extension
+base as written. The printer therefore writes the non-residue in standard form,
+except a dense one over a Montgomery extension base, whose coefficients it writes
+in Montgomery form `c · 2^w mod p`. -/
+
+/-- The nested text of a dense attribute value of shape `s` with the elements `vs`
+    in row-major order: `[[0, 0], [1, 0], [0, 0]]` at shape `[3, 2]`. -/
+def denseText : List Nat → List Nat → String
+  | [], vs => toString (vs.headD 0)
+  | n :: s, vs =>
+      "[" ++ ", ".intercalate ((List.range n).map fun i => denseText s (vs.drop (i * s.prod)))
+        ++ "]"
+
+/-- The standard representative in `[0, p)` of a coefficient. -/
+def nrStandard (p : Nat) (c : Int) : Nat := (c % (p : Int)).toNat
+
+/-- A coefficient as stored at storage width `w`: its Montgomery form `c · 2^w mod p`
+    when `mont`, its standard representative otherwise. -/
+def nrStored (p w : Nat) (mont : Bool) (c : Int) : Nat :=
+  if mont then nrStandard p c * 2 ^ w % p else nrStandard p c
+
+/-- The non-residue attribute of the extension of `b` by `nr`: an integer attribute
+    over a prime base or for a scalar, and otherwise a dense attribute of the shape
+    of `b` with its coefficients as prime-ir's parser reads them. -/
+def extNonResidueAttr (w : Nat) (mont : Bool) (b : ExtDesc) (nr : List Int) :
+    Veir.Attribute :=
+  match b, nr with
+  | .prime p, _ => .integerAttr (intAttr (nrStandard p (nr.headD 0)) w)
+  | b, [c] => .integerAttr (intAttr (nrStandard b.modulus c) w)
+  | b, _ => .denseElementsAttr
+      { value := denseText b.shape
+          ((List.range b.degreeOverPrime).map fun i => nrStored b.modulus w mont (nr.getD i 0)),
+        type := s!"tensor<{"x".intercalate (b.shape.map toString)}xi{w}>" }
+
+/-- The VeIR type of a descriptor: `!field.pf<p : iw>` at a prime field and
+    `!field.ef<n x B, ξ>` at an extension, with the Montgomery flag `mont` on the
+    prime field. -/
+def extDescTy (w : Nat) (mont : Bool) : ExtDesc → Veir.TypeAttr
+  | .prime p => primeFieldTy p w mont
+  | .ext n b nr =>
+    ⟨.extensionFieldType
+      { degree := n, base := (extDescTy w mont b).val,
+        nonResidue := extNonResidueAttr w mont b nr },
+     by simp [Veir.Attribute.isType]⟩
+
+/-- `!field.ef<2x!field.pf<p : iw>, (p - 1) : iw>`: `Fp2 = Fp[u]/(u² + 1)`, the type of
+    `ExtDesc.tower2 p (−1)`; the base field carries the Montgomery flag `mont`. -/
 def ext2Ty (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
-  ⟨.extensionFieldType
-    { degree := 2, base := (primeFieldTy p w mont).val,
-      nonResidue := .integerAttr (intAttr (p - 1) w) },
-   by simp [Veir.Attribute.isType]⟩
+  extDescTy w mont (.tower2 p (-1))
 
-/-- `!field.ef<3xFp2, dense<[ξ₀, 1]> : tensor<2xiw>>`: `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))`. -/
+/-- `!field.ef<3xFp2, dense<[ξ₀, 1]> : tensor<2xiw>>`: `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))`,
+    the type of `ExtDesc.tower6 p (−1) ξ₀`. -/
 def ext6Ty (p w ξ0 : Nat) (mont : Bool := false) : Veir.TypeAttr :=
-  ⟨.extensionFieldType
-    { degree := 3, base := (ext2Ty p w mont).val,
-      nonResidue := .denseElementsAttr { value := s!"[{ξ0}, 1]", type := s!"tensor<2xi{w}>" } },
-   by simp [Veir.Attribute.isType]⟩
+  extDescTy w mont (.tower6 p (-1) ξ0)
 
-/-- `!field.ef<2xFp6, v>` with `v = (0, 1, 0)` in `Fp6`: `Fp12 = Fp6[w]/(w² − v)`.
-    The shape `tensor<3x2xiw>` of `v` follows the `Fp6`-over-`Fp2` nesting. -/
+/-- `!field.ef<2xFp6, v>` with `v = (0, 1, 0)` in `Fp6`: `Fp12 = Fp6[w]/(w² − v)`, the
+    type of `ExtDesc.tower12 p (−1) ξ₀`. The shape `tensor<3x2xiw>` of `v` follows the
+    `Fp6`-over-`Fp2` nesting. -/
 def ext12Ty (p w ξ0 : Nat) (mont : Bool := false) : Veir.TypeAttr :=
-  ⟨.extensionFieldType
-    { degree := 2, base := (ext6Ty p w ξ0 mont).val,
-      nonResidue := .denseElementsAttr
-        { value := "[[0, 0], [1, 0], [0, 0]]", type := s!"tensor<3x2xi{w}>" } },
-   by simp [Veir.Attribute.isType]⟩
+  extDescTy w mont (.tower12 p (-1) ξ0)
 
 /-! ## Side conditions -/
 
@@ -417,6 +472,14 @@ def fieldModuleAt (pc : AlgebraicPrintCtx) {ρ : ModArithReprMap}
     (com : Com (fieldDialectAt ρ) Γ t) (name : String) :
     Except String (Veir.IRContext Veir.OpCode × Veir.OperationPtr) :=
   fieldModule (pc.withRepr ρ) (unannotateFieldCom com) name
+
+/-- The `builtin.module` of a program of `fieldDialectTower τ`: `fieldModule` under the
+    print context with the tower constants of `τ`. -/
+def fieldModuleTower (pc : AlgebraicPrintCtx) {τ : TowerReprMap}
+    {Γ : Ctxt (fieldDialectTower τ)} {t : FieldTyTower τ}
+    (com : Com (fieldDialectTower τ) Γ t) (name : String) :
+    Except String (Veir.IRContext Veir.OpCode × Veir.OperationPtr) :=
+  fieldModule (pc.withTower τ) (unannotateTowerCom com) name
 
 /-- An annotated program under the map that fixes nothing prints as the
     unannotated program. -/

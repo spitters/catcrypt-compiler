@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # Field VIR dialect (the L3 algebraic layer, over ModArith)
@@ -34,6 +35,12 @@ gives the residue-ring layer one home.
 * `fp12 p`   — the quadratic extension `Fp12 = Fp6[w]/(w²−v)`, `⟦·⟧ = Fp12Val p`
               (a pair of `Fp6Val p`, `a + b·w`, `w² = v`).  This is the pairing
               target group `GT`.
+
+`ExtDesc` describes prime-ir's generic extension field `!field.ef<N x B, ξ>`, a
+binomial extension of a prime field or of another extension. The three towers are
+its instances `tower2`, `tower6` and `tower12` (`Fp2Val.equivDesc` and the
+`toDesc_mulBeta` lemmas), and `fieldDialectTower τ` indexes the types by the tower
+constant per modulus.
 
 The denotation of every Field type is the **abstract** extension-field value
 (`ZMod p`-built tower), so a Field op denotes to the abstract field operation —
@@ -637,5 +644,311 @@ theorem denote_annotateFieldCom (ρ : ModArithReprMap) {Γ : Ctxt fieldDialect}
 theorem denote_unannotateFieldCom {ρ : ModArithReprMap} {Γ : Ctxt (fieldDialectAt ρ)}
     {t : FieldTyAt ρ} (c : Com (fieldDialectAt ρ) Γ t) (V : Ctxt.Valuation Γ) :
     (unannotateFieldCom c).denote V = c.denote V := rfl
+
+/-! ## 12. Extension-field descriptors
+
+prime-ir has one extension-field type, `!field.ef<N x B, ξ>`: the binomial extension
+`B[v]/(vᴺ − ξ)` of a base field `B`, itself a prime field or an extension. `ExtDesc`
+describes such a field, and `ExtDesc.Carrier` with `ExtDesc.mul` is its arithmetic
+on coefficient vectors. The non-residue `ξ ∈ B` is the list of its coefficients over
+`F_p` in the order of the tower, the flat form of prime-ir's dense attribute; a
+shorter list is padded with zeros, so a one-element list `[ξ₀]` is the scalar `ξ₀`. -/
+
+/-- A field in prime-ir's form: a prime field, or a binomial extension of a field. -/
+inductive ExtDesc where
+  /-- The prime field `F_p` (`!field.pf<p>`). -/
+  | prime (p : Nat)
+  /-- The extension `B[v]/(vⁿ − ξ)` of `base = B` (`!field.ef<n x B, ξ>`), with `ξ`
+      given by its coefficients over `F_p`. -/
+  | ext (degree : Nat) (base : ExtDesc) (nonResidue : List Int)
+  deriving DecidableEq, Repr
+
+namespace ExtDesc
+
+/-- The modulus of the prime field at the bottom of the tower. -/
+def modulus : ExtDesc → Nat
+  | prime p => p
+  | ext _ b _ => b.modulus
+
+/-- The degree over the prime field. -/
+def degreeOverPrime : ExtDesc → Nat
+  | prime _ => 1
+  | ext n b _ => n * b.degreeOverPrime
+
+/-- The degrees of the tower from the top: `[]` at a prime field. -/
+def shape : ExtDesc → List Nat
+  | prime _ => []
+  | ext n b _ => n :: b.shape
+
+/-- The elements: `ZMod p` at a prime field, coefficient vectors over the base at
+    an extension. -/
+@[reducible] def Carrier : ExtDesc → Type
+  | prime p => ZMod p
+  | ext n b _ => Fin n → b.Carrier
+
+/-- Zero. -/
+def zero : (d : ExtDesc) → d.Carrier
+  | prime p => (0 : ZMod p)
+  | ext _ b _ => fun _ => b.zero
+
+/-- Coefficientwise addition. -/
+def add : (d : ExtDesc) → d.Carrier → d.Carrier → d.Carrier
+  | prime p, x, y => (x + y : ZMod p)
+  | ext _ b _, x, y => fun i => b.add (x i) (y i)
+
+/-- The element with the given coefficients over `F_p`, missing coefficients zero. -/
+def ofFlat : (d : ExtDesc) → List Int → d.Carrier
+  | prime p, l => ((l.headD 0 : Int) : ZMod p)
+  | ext _ b _, l => fun i => b.ofFlat (l.drop (i.val * b.degreeOverPrime))
+
+/-- The sum `f 0 + ⋯ + f (m − 1)`. -/
+def sum (d : ExtDesc) : Nat → (Nat → d.Carrier) → d.Carrier
+  | 0, _ => d.zero
+  | m + 1, f => d.add (d.sum m f) (f m)
+
+/-- The coefficient `i` of a vector of length `n`, zero for `i ≥ n`. -/
+def coeff {n : Nat} (b : ExtDesc) (x : Fin n → b.Carrier) (i : Nat) : b.Carrier :=
+  if h : i < n then x ⟨i, h⟩ else b.zero
+
+/-- Multiplication: at an extension `B[v]/(vⁿ − ξ)`, coefficient `k` of the product
+    is `Σ_{i+j=k} xᵢ yⱼ + ξ · Σ_{i+j=k+n} xᵢ yⱼ`. -/
+def mul : (d : ExtDesc) → d.Carrier → d.Carrier → d.Carrier
+  | prime p, x, y => (x * y : ZMod p)
+  | ext n b nr, x, y => fun k =>
+      b.sum n fun i => b.sum n fun j =>
+        if i + j = k.val then b.mul (coeff b x i) (coeff b y j)
+        else if i + j = k.val + n then b.mul (b.ofFlat nr) (b.mul (coeff b x i) (coeff b y j))
+        else b.zero
+
+/-- Zero is a left unit of addition. -/
+theorem zero_add : (d : ExtDesc) → (x : d.Carrier) → d.add d.zero x = x
+  | prime p, x => by simp [add, zero]
+  | ext _ b _, x => funext fun i => zero_add b (x i)
+
+/-- Zero is a right unit of addition. -/
+theorem add_zero : (d : ExtDesc) → (x : d.Carrier) → d.add x d.zero = x
+  | prime p, x => by simp [add, zero]
+  | ext _ b _, x => funext fun i => add_zero b (x i)
+
+/-- The quadratic extension `F_p[u]/(u² − β)`. -/
+def tower2 (p : Nat) (β : Int) : ExtDesc := ext 2 (prime p) [β]
+
+/-- The cubic extension `Fp2[v]/(v³ − (ξ₀ + u))` of `tower2 p β`. -/
+def tower6 (p : Nat) (β ξ0 : Int) : ExtDesc := ext 3 (tower2 p β) [ξ0, 1]
+
+/-- The quadratic extension `Fp6[w]/(w² − v)` of `tower6 p β ξ0`; `v` has the
+    coefficients `[0, 0, 1, 0, 0, 0]` over `F_p`. -/
+def tower12 (p : Nat) (β ξ0 : Int) : ExtDesc := ext 2 (tower6 p β ξ0) [0, 0, 1, 0, 0, 0]
+
+end ExtDesc
+
+/-! ## 13. The towers as descriptor instances
+
+`Fp2Val`, `Fp6Val` and `Fp12Val` with the β-parametric multiplies are the fields of
+`tower2 p β`, `tower6 p β ξ₀` and `tower12 p β ξ₀`: each `equivDesc` is a bijection
+onto the descriptor's carrier, and `toDesc_mulBeta` carries `mulBeta` to
+`ExtDesc.mul`. At `β = −1` these are the dialect's types (`toDesc_mul`); at `β = −5`,
+`ξ₀ = 0` they are the BLS12-377 tower. -/
+
+namespace Fp2Val
+
+variable {p : Nat}
+
+/-- The coefficient vector of an `Fp2` value. -/
+def toDesc (β : Int) (x : Fp2Val p) : (ExtDesc.tower2 p β).Carrier := ![x.c0, x.c1]
+
+/-- The `Fp2` value of a coefficient vector. -/
+def ofDesc (β : Int) (v : (ExtDesc.tower2 p β).Carrier) : Fp2Val p := ⟨v 0, v 1⟩
+
+/-- `Fp2Val p` and the carrier of `tower2 p β` are equivalent. -/
+def equivDesc (β : Int) : Fp2Val p ≃ (ExtDesc.tower2 p β).Carrier where
+  toFun := toDesc β
+  invFun := ofDesc β
+  left_inv _ := rfl
+  right_inv v := by
+    funext k
+    fin_cases k <;> rfl
+
+/-- The β-parametric multiply is the descriptor's multiply. -/
+theorem toDesc_mulBeta (β : Int) (x y : Fp2Val p) :
+    toDesc β (mulBeta (β : ZMod p) x y) = (ExtDesc.tower2 p β).mul (toDesc β x) (toDesc β y) := by
+  funext k
+  fin_cases k <;>
+    simp [toDesc, mulBeta, ExtDesc.tower2, ExtDesc.mul, ExtDesc.sum, ExtDesc.coeff,
+      ExtDesc.ofFlat, ExtDesc.add, ExtDesc.zero]
+
+/-- The `Fp2` multiply is the multiply of `tower2 p (−1)`. -/
+theorem toDesc_mul (x y : Fp2Val p) :
+    toDesc (-1) (x * y) = (ExtDesc.tower2 p (-1)).mul (toDesc (-1) x) (toDesc (-1) y) := by
+  rw [← mulBeta_neg_one, ← toDesc_mulBeta]
+  push_cast
+  rfl
+
+end Fp2Val
+
+namespace Fp6Val
+
+variable {p : Nat}
+
+/-- The coefficient vector of an `Fp6` value. -/
+def toDesc (β ξ0 : Int) (x : Fp6Val p) : (ExtDesc.tower6 p β ξ0).Carrier :=
+  ![Fp2Val.toDesc β x.a0, Fp2Val.toDesc β x.a1, Fp2Val.toDesc β x.a2]
+
+/-- The `Fp6` value of a coefficient vector. -/
+def ofDesc (β ξ0 : Int) (v : (ExtDesc.tower6 p β ξ0).Carrier) : Fp6Val p :=
+  ⟨Fp2Val.ofDesc β (v 0), Fp2Val.ofDesc β (v 1), Fp2Val.ofDesc β (v 2)⟩
+
+/-- `Fp6Val p` and the carrier of `tower6 p β ξ0` are equivalent. -/
+def equivDesc (β ξ0 : Int) : Fp6Val p ≃ (ExtDesc.tower6 p β ξ0).Carrier where
+  toFun := toDesc β ξ0
+  invFun := ofDesc β ξ0
+  left_inv _ := rfl
+  right_inv v := by
+    funext k c
+    fin_cases k <;> fin_cases c <;> rfl
+
+/-- The β-parametric multiply is the descriptor's multiply. -/
+theorem toDesc_mulBeta (β ξ0 : Int) (x y : Fp6Val p) :
+    toDesc β ξ0 (mulBeta (β : ZMod p) (ξ0 : ZMod p) x y)
+      = (ExtDesc.tower6 p β ξ0).mul (toDesc β ξ0 x) (toDesc β ξ0 y) := by
+  funext k c
+  fin_cases k <;> fin_cases c <;>
+    simp [toDesc, Fp2Val.toDesc, mulBeta, mulXiBeta, Fp2Val.mulBeta, ExtDesc.tower6,
+      ExtDesc.tower2, ExtDesc.mul, ExtDesc.sum, ExtDesc.coeff,
+      ExtDesc.ofFlat, ExtDesc.add, ExtDesc.zero, ExtDesc.degreeOverPrime] <;> ring
+
+/-- The `Fp6` multiply is the multiply of `tower6 p (−1) ξ0`. -/
+theorem toDesc_mul (ξ0 : Int) (x y : Fp6Val p) :
+    toDesc (-1) ξ0 (mul (ξ0 : ZMod p) x y)
+      = (ExtDesc.tower6 p (-1) ξ0).mul (toDesc (-1) ξ0 x) (toDesc (-1) ξ0 y) := by
+  rw [← mulBeta_neg_one, ← toDesc_mulBeta]
+  push_cast
+  rfl
+
+/-- The `Fp6` addition is the descriptor's addition. -/
+theorem toDesc_add (β ξ0 : Int) (x y : Fp6Val p) :
+    toDesc β ξ0 (add x y) = (ExtDesc.tower6 p β ξ0).add (toDesc β ξ0 x) (toDesc β ξ0 y) := by
+  funext k c
+  fin_cases k <;> fin_cases c <;>
+    simp [toDesc, Fp2Val.toDesc, add, ExtDesc.tower6, ExtDesc.tower2, ExtDesc.add]
+
+end Fp6Val
+
+namespace Fp12Val
+
+variable {p : Nat}
+
+/-- The coefficient vector of an `Fp12` value. -/
+def toDesc (β ξ0 : Int) (x : Fp12Val p) : (ExtDesc.tower12 p β ξ0).Carrier :=
+  ![Fp6Val.toDesc β ξ0 x.c0, Fp6Val.toDesc β ξ0 x.c1]
+
+/-- The `Fp12` value of a coefficient vector. -/
+def ofDesc (β ξ0 : Int) (v : (ExtDesc.tower12 p β ξ0).Carrier) : Fp12Val p :=
+  ⟨Fp6Val.ofDesc β ξ0 (v 0), Fp6Val.ofDesc β ξ0 (v 1)⟩
+
+/-- `Fp12Val p` and the carrier of `tower12 p β ξ0` are equivalent. -/
+def equivDesc (β ξ0 : Int) : Fp12Val p ≃ (ExtDesc.tower12 p β ξ0).Carrier where
+  toFun := toDesc β ξ0
+  invFun := ofDesc β ξ0
+  left_inv _ := rfl
+  right_inv v := by
+    funext k l c
+    fin_cases k <;> fin_cases l <;> fin_cases c <;> rfl
+
+/-- The `w² = v` fold is multiplication by the non-residue of `tower12`. -/
+theorem toDesc_mulByVBeta (β ξ0 : Int) (x : Fp6Val p) :
+    Fp6Val.toDesc β ξ0 (mulByVBeta (β : ZMod p) (ξ0 : ZMod p) x)
+      = (ExtDesc.tower6 p β ξ0).mul ((ExtDesc.tower6 p β ξ0).ofFlat [0, 0, 1, 0, 0, 0])
+          (Fp6Val.toDesc β ξ0 x) := by
+  funext k c
+  fin_cases k <;> fin_cases c <;>
+    simp [Fp6Val.toDesc, Fp2Val.toDesc, mulByVBeta, Fp6Val.mulXiBeta, ExtDesc.tower6,
+      ExtDesc.tower2, ExtDesc.mul, ExtDesc.sum, ExtDesc.coeff,
+      ExtDesc.ofFlat, ExtDesc.add, ExtDesc.zero, ExtDesc.degreeOverPrime] <;> ring
+
+/-- The β-parametric multiply is the descriptor's multiply. -/
+theorem toDesc_mulBeta (β ξ0 : Int) (x y : Fp12Val p) :
+    toDesc β ξ0 (mulBeta (β : ZMod p) (ξ0 : ZMod p) x y)
+      = (ExtDesc.tower12 p β ξ0).mul (toDesc β ξ0 x) (toDesc β ξ0 y) := by
+  funext k
+  fin_cases k <;>
+    simp [toDesc, mulBeta, ExtDesc.tower12, ExtDesc.mul, ExtDesc.sum, ExtDesc.coeff,
+      ExtDesc.zero_add, ExtDesc.add_zero, Fp6Val.toDesc_add, Fp6Val.toDesc_mulBeta,
+      toDesc_mulByVBeta]
+
+/-- The `Fp12` multiply is the multiply of `tower12 p (−1) ξ0`. -/
+theorem toDesc_mul (ξ0 : Int) (x y : Fp12Val p) :
+    toDesc (-1) ξ0 (mul (ξ0 : ZMod p) x y)
+      = (ExtDesc.tower12 p (-1) ξ0).mul (toDesc (-1) ξ0 x) (toDesc (-1) ξ0 y) := by
+  rw [← mulBeta_neg_one, ← toDesc_mulBeta]
+  push_cast
+  rfl
+
+end Fp12Val
+
+/-- The descriptor of a `FieldTy`, with the tower constant `ξ0 p` over `p`. -/
+def FieldTy.extDesc (ξ0 : Nat → Int) : FieldTy → ExtDesc
+  | .fp p => .prime p
+  | .fp2 p => .tower2 p (-1)
+  | .fp6 p => .tower6 p (-1) (ξ0 p)
+  | .fp12 p => .tower12 p (-1) (ξ0 p)
+
+/-- The denotation of a `FieldTy` is equivalent to the carrier of its descriptor. -/
+def FieldTy.denoteEquiv (ξ0 : Nat → Int) :
+    (t : FieldTy) → ⟦t⟧ ≃ (t.extDesc ξ0).Carrier
+  | .fp _ => Equiv.refl _
+  | .fp2 _ => Fp2Val.equivDesc (-1)
+  | .fp6 p => Fp6Val.equivDesc (-1) (ξ0 p)
+  | .fp12 p => Fp12Val.equivDesc (-1) (ξ0 p)
+
+/-! ## 14. Tower annotations
+
+`fieldDialectTower τ` is `fieldDialect` with its types indexed by the map `τ` that
+fixes, per modulus, the tower constant `ξ₀` of `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))`. The
+index unfolds away, so the instances and the denotation are those of `fieldDialect`;
+`FieldTyTower.extDesc` reads the descriptor of a type from it. -/
+
+/-- A tower constant per modulus, `none` where the program leaves it to the lowering. -/
+abbrev TowerReprMap : Type := Nat → Option Nat
+
+/-- The tower map that fixes nothing. -/
+def TowerReprMap.unfixed : TowerReprMap := fun _ => none
+
+/-- The type alphabet of `fieldDialect` indexed by the tower map `τ`. -/
+abbrev FieldTyTower (_τ : TowerReprMap) : Type := FieldTy
+
+/-- The descriptor of a type under `τ`; `none` at `Fp6`/`Fp12` over a modulus whose
+    tower constant `τ` leaves unfixed. -/
+def FieldTyTower.extDesc {τ : TowerReprMap} (t : FieldTyTower τ) : Option ExtDesc :=
+  match t with
+  | .fp p => some (.prime p)
+  | .fp2 p => some (.tower2 p (-1))
+  | .fp6 p => (τ p).map fun ξ0 => .tower6 p (-1) ξ0
+  | .fp12 p => (τ p).map fun ξ0 => .tower12 p (-1) ξ0
+
+/-- `fieldDialect` with its types indexed by the tower map `τ`. -/
+@[reducible] def fieldDialectTower (_τ : TowerReprMap) : Dialect :=
+  { Op := FieldOp, Ty := FieldTyTower _τ }
+
+/-- The dialect indexed by the map that fixes nothing is `fieldDialect`. -/
+theorem fieldDialectTower_unfixed : fieldDialectTower .unfixed = fieldDialect := rfl
+
+/-- A program of `fieldDialect` annotated with the tower map `τ`. -/
+def annotateTowerCom (τ : TowerReprMap) {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) : Com (fieldDialectTower τ) Γ t := c
+
+/-- The program of `fieldDialect` underlying a tower-annotated program. -/
+def unannotateTowerCom {τ : TowerReprMap} {Γ : Ctxt (fieldDialectTower τ)}
+    {t : FieldTyTower τ} (c : Com (fieldDialectTower τ) Γ t) : Com fieldDialect Γ t := c
+
+/-- The tower annotation does not change the denotation. -/
+theorem denote_annotateTowerCom (τ : TowerReprMap) {Γ : Ctxt fieldDialect}
+    {t : FieldTy} (c : Com fieldDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (annotateTowerCom τ c).denote V = c.denote V := rfl
+
+/-- Removing the tower annotation does not change the denotation. -/
+theorem denote_unannotateTowerCom {τ : TowerReprMap} {Γ : Ctxt (fieldDialectTower τ)}
+    {t : FieldTyTower τ} (c : Com (fieldDialectTower τ) Γ t) (V : Ctxt.Valuation Γ) :
+    (unannotateTowerCom c).denote V = c.denote V := rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
