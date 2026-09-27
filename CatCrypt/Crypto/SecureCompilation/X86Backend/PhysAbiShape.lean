@@ -62,6 +62,11 @@ depends on the label offsets the encoder's relaxation computes, is a hypothesis.
 
 * `physBodyWithStores_eq_physExpand`: the register-allocated body without loads,
   stores and calls is `body.flatMap (physExpand …)`.
+* `arrChainAlias_spec`, `bodyVecSlots_noVec`, `physTableClassed_eq` and the prefix tests
+  on character lists (`isSpill_eq`, `bodyHasMulHi_eq`, …): restatements of exporter steps
+  that do not reduce in the kernel.
+* `bodyTrace_of_bodyNames`, `physRmap_of_bodyNames`, `physNameForBody_of_bodyNames`: the
+  trace and the operand renaming of a call-free body over a name universe computed once.
 * `toLfundefPhysAbi_singleLoop`: the physical body of the single-loop export is the
   prologue, the argument saves and materialization, the flat map of `physExpand`
   over the node renamed by `κ` after the accumulator alias, the restores and `Lret`.
@@ -329,6 +334,163 @@ theorem arrChainAlias_append_ret (x : Lcmd) (ii : Nat) :
     rw [List.cons_append, List.forIn_cons, List.forIn_cons]
     split <;> (try split) <;> exact ih _
 
+/-- One step of the store-thread alias map as an association list, newest entry first:
+    a memory store `dst ← (base, …)` binds `dst` to the resolution of `base`. -/
+def aliasStepL (l : List (String × String)) (i : Linstr) : List (String × String) :=
+  match i.li_i with
+  | .Lopn [.reg dst] opn (.arrIdx base _ _ :: _) =>
+      if isMemStore opn then (dst, (l.lookup base).getD base) :: l else l
+  | _ => l
+
+/-- **The store-thread alias map as an association list.** `arrChainAlias` resolves every
+    name as the association list `aliasStepL` builds, and is empty exactly when that
+    list is. -/
+theorem arrChainAlias_spec (body : Lcmd) :
+    (∀ n, (arrChainAlias body).getD n n = ((body.foldl aliasStepL []).lookup n).getD n)
+      ∧ (arrChainAlias body).isEmpty = (body.foldl aliasStepL []).isEmpty := by
+  unfold arrChainAlias
+  simp only [Id.run, bind_pure]
+  have h0 : ∀ n, (∅ : Std.HashMap String String).getD n n
+      = (([] : List (String × String)).lookup n).getD n := by simp
+  have h1 : (∅ : Std.HashMap String String).isEmpty = ([] : List (String × String)).isEmpty := by
+    simp
+  revert h0 h1
+  generalize (∅ : Std.HashMap String String) = m
+  generalize ([] : List (String × String)) = l
+  induction body generalizing m l with
+  | nil => intro h0 h1; exact ⟨h0, h1⟩
+  | cons a x ih =>
+    intro h0 h1
+    rw [List.forIn_cons, List.foldl_cons]
+    rw [aliasStepL]
+    split
+    next dst opn base _ _ _ heq =>
+      rw [heq]
+      dsimp only
+      split
+      · refine ih _ _ (fun n => ?_) (by simp)
+        rw [Std.HashMap.getD_insert, h0, List.lookup_cons]
+        by_cases h : n = dst
+        · subst h; simp
+        · have hb : (n == dst) = false := by simp [h]
+          have hb' : (dst == n) = false := by simp [Ne.symm h]
+          simp only [hb, hb', Bool.false_eq_true, if_false]
+          exact h0 n
+      · exact ih _ _ h0 h1
+    next heq =>
+      split
+      next heq2 => exact absurd heq2 (heq _ _ _ _ _ _)
+      exact ih _ _ h0 h1
+
+/-- A position that is not a call. -/
+def notCall (i : Linstr) : Bool := match i.li_i with | .Lcall _ _ => false | _ => true
+
+/-- A body every position of which passes `notCall` issues no call. -/
+theorem noCall_of_all (body : Lcmd) (h : body.all notCall = true) :
+    ∀ i ∈ body, ∀ a b, i.li_i ≠ .Lcall a b := by
+  intro i hi a b he
+  have := List.all_eq_true.mp h i hi
+  simp [notCall, he] at this
+
+/-- `bodyHasMulHi` with the prefix test on the character lists. -/
+theorem bodyHasMulHi_eq (body : Lcmd) :
+    bodyHasMulHi body = body.any (fun i => match i.li_i with
+      | .Lopn _ opn _ => hasPrefix opn "MULXHI"
+      | _ => false) := by
+  unfold bodyHasMulHi
+  congr 1
+  funext i
+  rcases i with ⟨ii, w⟩
+  cases w <;> simp [startsWith_eq_isPrefixOf, hasPrefix]
+
+/-- `isVectorMnem` with the prefix test on the character lists. -/
+theorem isVectorMnem_eq (opn : String) : isVectorMnem opn = hasPrefix (stripWidthTag opn) "V" := by
+  simp [isVectorMnem, startsWith_eq_isPrefixOf, hasPrefix]
+
+/-- A class-aware table over `Array.range` is the array of the list map. -/
+theorem physTableClassed_eq (tr : List PhysEvent) (v : Array Bool) (r rv : List Nat) :
+    physTableClassed tr v r rv =
+      ((List.range (physUniverse tr)).map (fun s =>
+        match (physAssignClassed tr v r rv).find? (fun p => p.1 == s) with
+        | some (_, ph) => ph
+        | none => s)).toArray := by
+  unfold physTableClassed
+  apply Array.toList_inj.mp
+  simp only [Array.toList_map, Array.toList_range]
+  rfl
+
+/-- A body without a vector mnemonic classifies every slot general-purpose. -/
+theorem bodyVecSlots_noVec (body : Lcmd)
+    (h : body.all (fun i => match i.li_i with
+      | .Lopn _ opn _ => !hasPrefix (stripWidthTag opn) "V"
+      | _ => true) = true) :
+    bodyVecSlots body = Array.replicate ((bodyNames body).length + 1) false := by
+  have hconst : ∀ {α β : Type} (l : List α) (f : α → β → Id (ForInStep β)),
+      (∀ x ∈ l, ∀ b, f x b = pure (.yield b)) → ∀ b, forIn l b f = pure b := by
+    intro α β l f hf b
+    induction l generalizing b with
+    | nil => rfl
+    | cons x l ih =>
+      rw [List.forIn_cons, hf x (List.mem_cons_self ..) b]
+      exact ih (fun y hy => hf y (List.mem_cons_of_mem _ hy)) b
+  unfold bodyVecSlots
+  simp only [Id.run]
+  rw [hconst]
+  · rfl
+  intro x hx b
+  have hx' := List.all_eq_true.mp h x hx
+  rcases x with ⟨ii, w⟩
+  cases w <;> simp_all [isVectorMnem_eq]
+
+/-- `nameSlot` over a body whose name universe is `ns` is the index in `ns`. -/
+theorem nameSlot_of_bodyNames {body : Lcmd} {ns : List String} (h : bodyNames body = ns) :
+    nameSlot body = fun n => ns.idxOf n := by
+  funext n
+  rw [nameSlot, h]
+
+/-- The trace of a body whose name universe is `ns`, with every slot an index in `ns`. -/
+theorem bodyTrace_of_bodyNames {body : Lcmd} {ns : List String} (h : bodyNames body = ns) :
+    bodyTrace body = (bodyOpNames body).map (fun p =>
+      { wr := (p.1.map ns.idxOf).getD 0, rds := p.2.map ns.idxOf }) := by
+  rw [bodyTrace, nameSlot_of_bodyNames h]
+
+/-- The operand renaming of a call-free body whose name universe is `ns`, with every slot
+    an index in `ns`. -/
+theorem physRmap_of_bodyNames {body : Lcmd} {ns : List String} (h : bodyNames body = ns)
+    (hc : bodyHasCall body = false) (rv : List Nat) :
+    physRmap body rv = fun o => match o with
+      | .reg n => .reg (physRegName (physMapTabled (physTableOut body [] rv) (ns.idxOf n)))
+      | .arrIdx base idx scale =>
+          .arrIdx (physRegName (physMapTabled (physTableOut body [] rv) (ns.idxOf base)))
+            (physRegName (physMapTabled (physTableOut body [] rv) (ns.idxOf idx))) scale
+      | o => o := by
+  have hs : bodyStraightCall body = false := by simp [bodyStraightCall, hc]
+  funext o
+  cases o <;> simp [physRmap, hc, straightCallComposeTable, hs, remapOperand,
+    nameSlot_of_bodyNames h]
+
+/-- The physical name of a register of a call-free body whose name universe is `ns`. -/
+theorem physNameForBody_of_bodyNames {body : Lcmd} {ns : List String} (h : bodyNames body = ns)
+    (hc : bodyHasCall body = false) (tbl : Array Nat) (n : String) :
+    physNameForBody body tbl n
+      = if isFrameSlotName n then n else physRegName (physMapTabled tbl (ns.idxOf n)) := by
+  simp [physNameForBody, hc, nameSlot_of_bodyNames h]
+
+/-- `LOperand.isSpill` with the prefix test on the character lists. -/
+theorem isSpill_eq (o : LOperand) :
+    o.isSpill = (match o with | .reg n => hasPrefix n "k." | _ => false) := by
+  cases o <;> simp [LOperand.isSpill, isPrefixOf_eq_list, hasPrefix]
+
+/-- `sibNameSpill` with the prefix test on the character lists. -/
+theorem sibNameSpill_eq (n : String) : sibNameSpill n = hasPrefix n "k." := by
+  simp [sibNameSpill, isPrefixOf_eq_list, hasPrefix]
+
+/-- `isNativeShiftRotate` with the prefix test on the character lists. -/
+theorem isNativeShiftRotate_eq (opn : String) :
+    isNativeShiftRotate opn
+      = ["ROR:", "ROL:", "SHL:", "SHR:", "SAR:"].any (fun p => hasPrefix (stripWidthTag opn) p) := by
+  simp [isNativeShiftRotate, isPrefixOf_eq_list, hasPrefix]
+
 /-! ## 3. The single-loop export -/
 
 section SingleLoop
@@ -471,6 +633,20 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 def NoMulSite (i : Linstr) : Prop :=
   ∀ d opn s1 s2, i.li_i = .Lopn [.reg d] opn [.reg s1, .reg s2] →
     isLowMulMnem opn = false ∧ isMulHiMnem opn = false
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit in
+/-- The Boolean test for `NoMulSite`. -/
+def noMulSiteB (i : Linstr) : Bool :=
+  match i.li_i with
+  | .Lopn [.reg _] opn [.reg _, .reg _] => !isLowMulMnem opn && !isMulHiMnem opn
+  | _ => true
+
+/-- A body every position of which passes `noMulSiteB` has no multiply site. -/
+theorem noMulSite_of_all (xs : Lcmd) (h : xs.all noMulSiteB = true) : ∀ i ∈ xs, NoMulSite i := by
+  intro i hi d opn s1 s2 he
+  have := List.all_eq_true.mp h i hi
+  simp only [noMulSiteB, he, Bool.and_eq_true, Bool.not_eq_true'] at this
+  exact this
 
 theorem fuseMulHiAux_cons_noSite (s : Bool) (env : ScratchEnv) (pend : List (String × String))
     (i : Linstr) (rest : Lcmd) (h : NoMulSite i) :
