@@ -17,8 +17,12 @@ The lowering of our `modArithDialect` and `fieldDialect` to VeIR's `mod_arith`
 and `field` dialects in prime-ir's form, with `!mod_arith.int<p : iW>`,
 `!field.pf<p : iW>` and `!field.ef<…>` types.
 
-Our types carry neither a storage width nor the tower constant of `Fp6`, so the
-lowering takes an `AlgebraicPrintCtx` that supplies both. Side conditions,
+The lowering takes an `AlgebraicPrintCtx` that supplies the storage width and the
+Montgomery flag of a modulus and the tower constant of `Fp6`. A program of
+`modArithDialectAt ρ` or `fieldDialectAt ρ` carries the width and flag of its moduli
+in its type; `modArithModuleAt` and `fieldModuleAt` take them from `ρ` where `ρ`
+fixes them and from the context elsewhere (`AlgebraicPrintCtx.withRepr`). Side
+conditions,
 checked over the whole program before lowering (`modArithModule`, `fieldModule`),
 reject a program that disagrees with the context: a modulus that the width does
 not hold, a Montgomery `rInv` that does not invert the radix `2 ^ W`, a bitcast
@@ -33,10 +37,13 @@ stored word and a zero high word, `mulHi` and the carry-chain adds are the
 
 ## Main definitions
 
-* `AlgebraicPrintCtx`: the storage width of a modulus and the tower constant.
+* `AlgebraicPrintCtx`: the storage width and Montgomery flag of a modulus and the
+  tower constant; `AlgebraicPrintCtx.withRepr`: the context with the widths and
+  flags a representation map fixes.
 * `modArithToVeirOp`, `modArithToVeirTy`, `fieldToVeirOp`, `fieldToVeirTy`: the
   lowering under a print context.
-* `modArithModule`, `fieldModule`: the checked `builtin.module` of a program.
+* `modArithModule`, `fieldModule`: the checked `builtin.module` of a program;
+  `modArithModuleAt`, `fieldModuleAt`: the same for an annotated program.
 * `moduleText`: the text `Veir.Printer.printModule` prints for a module whose
   operations have no successors, as a `String`.
 -/
@@ -53,22 +60,37 @@ open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-! ## Print context and types -/
 
-/-- The parameters prime-ir's algebraic types carry and ours do not: the storage
-    width of a modulus, and the constant `ξ₀` of the tower
-    `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))` over a modulus. -/
+/-- The parameters of prime-ir's algebraic types for the moduli a program's type
+    leaves unfixed: the storage width and Montgomery flag of a modulus, and the
+    constant `ξ₀` of the tower `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))` over a modulus. -/
 structure AlgebraicPrintCtx where
   /-- The storage width `W` of the modulus `p`, printed as `: iW`. -/
   width : Nat → Nat
   /-- The tower constant `ξ₀` over the modulus `p`, when the program uses the tower. -/
   towerXi0 : Nat → Option Nat
+  /-- The Montgomery flag of the modulus `p`, printed as `, true` when set. -/
+  mont : Nat → Bool := fun _ => false
 
 /-- prime-ir's inferred storage width of a modulus: `bit_ceil(activeBits p)`. -/
 def primeIrWidth (p : Nat) : Nat := Nat.nextPowerOfTwo (Nat.log2 p + 1)
 
-/-- The print context with prime-ir's inferred widths and no tower. -/
+/-- The print context with prime-ir's inferred widths, no Montgomery flag and no
+    tower. -/
 def AlgebraicPrintCtx.inferred : AlgebraicPrintCtx where
   width := primeIrWidth
   towerXi0 := fun _ => none
+
+/-- The print context with the widths and Montgomery flags `ρ` fixes, and those of
+    `pc` for the moduli `ρ` leaves unfixed. -/
+def AlgebraicPrintCtx.withRepr (pc : AlgebraicPrintCtx) (ρ : ModArithReprMap) :
+    AlgebraicPrintCtx where
+  width p := (ρ p).width.getD (pc.width p)
+  towerXi0 := pc.towerXi0
+  mont p := (ρ p).mont.getD (pc.mont p)
+
+/-- Under the map that fixes nothing, the print context is unchanged. -/
+theorem AlgebraicPrintCtx.withRepr_unfixed (pc : AlgebraicPrintCtx) :
+    pc.withRepr .unfixed = pc := rfl
 
 /-- The integer type `iw`. -/
 def intTy (w : Nat) : Veir.TypeAttr := (Veir.IntegerType.mk w : Veir.IntegerType)
@@ -76,36 +98,39 @@ def intTy (w : Nat) : Veir.TypeAttr := (Veir.IntegerType.mk w : Veir.IntegerType
 /-- The integer attribute `v : iw`. -/
 def intAttr (v : Nat) (w : Nat) : Veir.IntegerAttr := ⟨v, Veir.IntegerType.mk w⟩
 
-/-- `!mod_arith.int<p : iw>`. -/
-def modArithTy (p w : Nat) : Veir.TypeAttr :=
-  ({ modulus := intAttr p w } : Veir.ModArithType)
+/-- `!mod_arith.int<p : iw>`, and `!mod_arith.int<p : iw, true>` when `mont`. -/
+def modArithTy (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
+  ({ modulus := intAttr p w, isMontgomery := mont } : Veir.ModArithType)
 
 /-- `tensor<n x τ>`. -/
 def tensorTy (n : Nat) (τ : Veir.TypeAttr) : Veir.TypeAttr :=
   ⟨.rankedTensorType { shape := #[n], elementType := τ.val }, by simp [Veir.Attribute.isType]⟩
 
-/-- `!field.pf<p : iw>`. -/
-def primeFieldTy (p w : Nat) : Veir.TypeAttr :=
-  ⟨.primeFieldType { modulus := intAttr p w }, by simp [Veir.Attribute.isType]⟩
+/-- `!field.pf<p : iw>`, and `!field.pf<p : iw, true>` when `mont`. -/
+def primeFieldTy (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
+  ⟨.primeFieldType { modulus := intAttr p w, isMontgomery := mont },
+   by simp [Veir.Attribute.isType]⟩
 
-/-- `!field.ef<2x!field.pf<p : iw>, (p - 1) : iw>`: `Fp2 = Fp[u]/(u² + 1)`. -/
-def ext2Ty (p w : Nat) : Veir.TypeAttr :=
+/-- `!field.ef<2x!field.pf<p : iw>, (p - 1) : iw>`: `Fp2 = Fp[u]/(u² + 1)`; the base
+    field carries the Montgomery flag `mont`. -/
+def ext2Ty (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
   ⟨.extensionFieldType
-    { degree := 2, base := (primeFieldTy p w).val, nonResidue := .integerAttr (intAttr (p - 1) w) },
+    { degree := 2, base := (primeFieldTy p w mont).val,
+      nonResidue := .integerAttr (intAttr (p - 1) w) },
    by simp [Veir.Attribute.isType]⟩
 
 /-- `!field.ef<3xFp2, dense<[ξ₀, 1]> : tensor<2xiw>>`: `Fp6 = Fp2[v]/(v³ − (ξ₀ + u))`. -/
-def ext6Ty (p w ξ0 : Nat) : Veir.TypeAttr :=
+def ext6Ty (p w ξ0 : Nat) (mont : Bool := false) : Veir.TypeAttr :=
   ⟨.extensionFieldType
-    { degree := 3, base := (ext2Ty p w).val,
+    { degree := 3, base := (ext2Ty p w mont).val,
       nonResidue := .denseElementsAttr { value := s!"[{ξ0}, 1]", type := s!"tensor<2xi{w}>" } },
    by simp [Veir.Attribute.isType]⟩
 
 /-- `!field.ef<2xFp6, v>` with `v = (0, 1, 0)` in `Fp6`: `Fp12 = Fp6[w]/(w² − v)`.
     The shape `tensor<3x2xiw>` of `v` follows the `Fp6`-over-`Fp2` nesting. -/
-def ext12Ty (p w ξ0 : Nat) : Veir.TypeAttr :=
+def ext12Ty (p w ξ0 : Nat) (mont : Bool := false) : Veir.TypeAttr :=
   ⟨.extensionFieldType
-    { degree := 2, base := (ext6Ty p w ξ0).val,
+    { degree := 2, base := (ext6Ty p w ξ0 mont).val,
       nonResidue := .denseElementsAttr
         { value := "[[0, 0], [1, 0], [0, 0]]", type := s!"tensor<3x2xi{w}>" } },
    by simp [Veir.Attribute.isType]⟩
@@ -151,8 +176,8 @@ def checkCom {d : Dialect.{0, 0}} [DialectSignature d]
 
 /-- The VeIR type of a `ModArithTy` under the print context. -/
 def ModArithTy.toVeirTyIn (pc : AlgebraicPrintCtx) : ModArithTy → Veir.TypeAttr
-  | .fp p => modArithTy p (pc.width p)
-  | .fpVec p n => tensorTy n (modArithTy p (pc.width p))
+  | .fp p => modArithTy p (pc.width p) (pc.mont p)
+  | .fpVec p n => tensorTy n (modArithTy p (pc.width p) (pc.mont p))
   | .word w => intTy w
   | .carry => intTy 1
 
@@ -269,10 +294,10 @@ def ModArithOp.checkIn (pc : AlgebraicPrintCtx) : ModArithOp → Except String U
 
 /-- The VeIR type of a `FieldTy` under the print context. -/
 def FieldTy.toVeirTyIn (pc : AlgebraicPrintCtx) : FieldTy → Veir.TypeAttr
-  | .fp p => primeFieldTy p (pc.width p)
-  | .fp2 p => ext2Ty p (pc.width p)
-  | .fp6 p => ext6Ty p (pc.width p) ((pc.towerXi0 p).getD 0)
-  | .fp12 p => ext12Ty p (pc.width p) ((pc.towerXi0 p).getD 0)
+  | .fp p => primeFieldTy p (pc.width p) (pc.mont p)
+  | .fp2 p => ext2Ty p (pc.width p) (pc.mont p)
+  | .fp6 p => ext6Ty p (pc.width p) ((pc.towerXi0 p).getD 0) (pc.mont p)
+  | .fp12 p => ext12Ty p (pc.width p) ((pc.towerXi0 p).getD 0) (pc.mont p)
 
 /-- The check of a `FieldTy` against the print context. -/
 def FieldTy.checkIn (pc : AlgebraicPrintCtx) : FieldTy → Except String Unit
@@ -374,6 +399,30 @@ def fieldModule (pc : AlgebraicPrintCtx) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (Veir.OpCode.builtin .module) default
     (Veir.OpCode.func .func) VeirPrinterShim.funcFuncProps
     (Veir.OpCode.func .return) default name)
+
+/-- The `builtin.module` of a program of `modArithDialectAt ρ`: `modArithModule` under
+    the print context with the widths and Montgomery flags of `ρ`. The side
+    conditions check the widths `ρ` fixes, so a program whose annotation disagrees
+    with its moduli or its `rInv` is rejected. -/
+def modArithModuleAt (pc : AlgebraicPrintCtx) {ρ : ModArithReprMap}
+    {Γ : Ctxt (modArithDialectAt ρ)} {t : ModArithTyAt ρ}
+    (com : Com (modArithDialectAt ρ) Γ t) (name : String) :
+    Except String (Veir.IRContext Veir.OpCode × Veir.OperationPtr) :=
+  modArithModule (pc.withRepr ρ) (unannotateCom com) name
+
+/-- The `builtin.module` of a program of `fieldDialectAt ρ`: `fieldModule` under the
+    print context with the widths and Montgomery flags of `ρ`. -/
+def fieldModuleAt (pc : AlgebraicPrintCtx) {ρ : ModArithReprMap}
+    {Γ : Ctxt (fieldDialectAt ρ)} {t : FieldTyAt ρ}
+    (com : Com (fieldDialectAt ρ) Γ t) (name : String) :
+    Except String (Veir.IRContext Veir.OpCode × Veir.OperationPtr) :=
+  fieldModule (pc.withRepr ρ) (unannotateFieldCom com) name
+
+/-- An annotated program under the map that fixes nothing prints as the
+    unannotated program. -/
+theorem modArithModuleAt_unfixed (pc : AlgebraicPrintCtx) {Γ : Ctxt modArithDialect}
+    {t : ModArithTy} (com : Com modArithDialect Γ t) (name : String) :
+    modArithModuleAt pc (annotateCom .unfixed com) name = modArithModule pc com name := rfl
 
 /-! ## MLIR text -/
 

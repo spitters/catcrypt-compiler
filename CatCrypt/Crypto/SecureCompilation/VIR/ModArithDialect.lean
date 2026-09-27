@@ -495,4 +495,76 @@ example :
 example : modArithDenote.denote (.mulHi 8) (.cons (200 : BitVec 8) (.cons (3 : BitVec 8) .nil))
     = CatCrypt.Crypto.SecureCompilation.X86Backend.mulHi (200 : BitVec 8) 3 := rfl
 
+/-! ## 10. Representation annotations
+
+prime-ir's `!mod_arith.int<p : iW, true>` carries the storage width `W` of the
+modulus and the Montgomery flag. A representation map `ρ` assigns each modulus a
+`ModArithRepr`; `modArithDialectAt ρ` is `modArithDialect` with its type alphabet
+indexed by `ρ`, so that the type of a program records the representation of each of
+its moduli. The lowerings read `ρ` from that type.
+
+The index is a reducible annotation: `ModArithTyAt ρ` and `modArithDialectAt ρ`
+unfold to `ModArithTy` and `modArithDialect`, so the constructors, the signatures,
+the instances and the `ZMod p` denotation are those of the unannotated dialect, and
+`annotateCom`/`unannotateCom` are identities on the program and its denotation. The
+representation is a property of the lowering, as `DESIGN.md` states. -/
+
+/-- The representation of a modulus: its storage width and its Montgomery flag, each
+    `none` where the program leaves it to the lowering. -/
+structure ModArithRepr where
+  /-- The storage width `W` of the modulus, printed as `: iW`. -/
+  width : Option Nat := none
+  /-- Whether residues mod the modulus are stored in Montgomery form. -/
+  mont : Option Bool := none
+  deriving DecidableEq, Repr, Inhabited
+
+/-- A representation per modulus. -/
+abbrev ModArithReprMap : Type := Nat → ModArithRepr
+
+/-- The representation map that fixes nothing: every width and flag is left to the
+    lowering. -/
+def ModArithReprMap.unfixed : ModArithReprMap := fun _ => {}
+
+/-- The type alphabet of `modArithDialect` indexed by the representation map `ρ`:
+    `fp p` and `fpVec p n` are stored as `ρ p` fixes. -/
+abbrev ModArithTyAt (_ρ : ModArithReprMap) : Type := ModArithTy
+
+/-- The representation a type carries: `ρ p` at `fp p` and `fpVec p n`, none at the
+    machine types. -/
+def ModArithTyAt.repr {ρ : ModArithReprMap} : ModArithTyAt ρ → Option ModArithRepr
+  | .fp p => some (ρ p)
+  | .fpVec p _ => some (ρ p)
+  | .word _ => none
+  | .carry => none
+
+/-- `modArithDialect` with its types indexed by the representation map `ρ`. -/
+@[reducible] def modArithDialectAt (_ρ : ModArithReprMap) : Dialect :=
+  { Op := ModArithOp, Ty := ModArithTyAt _ρ }
+
+/-- The dialect indexed by the map that fixes nothing is `modArithDialect`. -/
+theorem modArithDialectAt_unfixed : modArithDialectAt .unfixed = modArithDialect := rfl
+
+/-- An annotated type denotes what the unannotated type denotes: `ZMod p` at `fp p`. -/
+theorem denote_fp_at (ρ : ModArithReprMap) (p : Nat) :
+    TyDenote.denote (ModArithTy.fp p : ModArithTyAt ρ) = ZMod p := rfl
+
+/-- A program of `modArithDialect` annotated with the representation map `ρ`. -/
+def annotateCom (ρ : ModArithReprMap) {Γ : Ctxt modArithDialect} {t : ModArithTy}
+    (c : Com modArithDialect Γ t) : Com (modArithDialectAt ρ) Γ t := c
+
+/-- The program of `modArithDialect` underlying an annotated program. -/
+def unannotateCom {ρ : ModArithReprMap} {Γ : Ctxt (modArithDialectAt ρ)}
+    {t : ModArithTyAt ρ} (c : Com (modArithDialectAt ρ) Γ t) :
+    Com modArithDialect Γ t := c
+
+/-- The annotation does not change the denotation. -/
+theorem denote_annotateCom (ρ : ModArithReprMap) {Γ : Ctxt modArithDialect}
+    {t : ModArithTy} (c : Com modArithDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (annotateCom ρ c).denote V = c.denote V := rfl
+
+/-- Removing the annotation does not change the denotation. -/
+theorem denote_unannotateCom {ρ : ModArithReprMap} {Γ : Ctxt (modArithDialectAt ρ)}
+    {t : ModArithTyAt ρ} (c : Com (modArithDialectAt ρ) Γ t) (V : Ctxt.Valuation Γ) :
+    (unannotateCom c).denote V = c.denote V := rfl
+
 end CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect

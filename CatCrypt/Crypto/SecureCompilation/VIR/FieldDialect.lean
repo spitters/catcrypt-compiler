@@ -599,4 +599,43 @@ example :
       = (⟨6, 5⟩ : Fp2Val 7) := by
   rfl
 
+/-! ## 11. Representation annotations
+
+`fieldDialectAt ρ` is `fieldDialect` with its types indexed by the representation map
+`ρ` of `ModArithDialect`: `!field.pf<p : iW, true>` and the extension types over `p`
+are stored as `ρ p` fixes. As for `modArithDialectAt`, the index unfolds away, so
+the instances and the denotation are those of `fieldDialect`. -/
+
+/-- The type alphabet of `fieldDialect` indexed by the representation map `ρ`. -/
+abbrev FieldTyAt (_ρ : ModArithReprMap) : Type := FieldTy
+
+/-- The representation a type carries: `ρ p` at every type over the modulus `p`. -/
+def FieldTyAt.repr {ρ : ModArithReprMap} : FieldTyAt ρ → ModArithRepr
+  | .fp p | .fp2 p | .fp6 p | .fp12 p => ρ p
+
+/-- `fieldDialect` with its types indexed by the representation map `ρ`. -/
+@[reducible] def fieldDialectAt (_ρ : ModArithReprMap) : Dialect :=
+  { Op := FieldOp, Ty := FieldTyAt _ρ }
+
+/-- The dialect indexed by the map that fixes nothing is `fieldDialect`. -/
+theorem fieldDialectAt_unfixed : fieldDialectAt .unfixed = fieldDialect := rfl
+
+/-- A program of `fieldDialect` annotated with the representation map `ρ`. -/
+def annotateFieldCom (ρ : ModArithReprMap) {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) : Com (fieldDialectAt ρ) Γ t := c
+
+/-- The program of `fieldDialect` underlying an annotated program. -/
+def unannotateFieldCom {ρ : ModArithReprMap} {Γ : Ctxt (fieldDialectAt ρ)}
+    {t : FieldTyAt ρ} (c : Com (fieldDialectAt ρ) Γ t) : Com fieldDialect Γ t := c
+
+/-- The annotation does not change the denotation. -/
+theorem denote_annotateFieldCom (ρ : ModArithReprMap) {Γ : Ctxt fieldDialect}
+    {t : FieldTy} (c : Com fieldDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (annotateFieldCom ρ c).denote V = c.denote V := rfl
+
+/-- Removing the annotation does not change the denotation. -/
+theorem denote_unannotateFieldCom {ρ : ModArithReprMap} {Γ : Ctxt (fieldDialectAt ρ)}
+    {t : FieldTyAt ρ} (c : Com (fieldDialectAt ρ) Γ t) (V : Ctxt.Valuation Γ) :
+    (unannotateFieldCom c).denote V = c.denote V := rfl
+
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect

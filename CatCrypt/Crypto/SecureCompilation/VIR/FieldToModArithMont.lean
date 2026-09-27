@@ -33,6 +33,9 @@ transported to zero.
 * `lowering M`: the lowering; `transTy M`, `mapVal M`: the value and valuation
   transports.
 * `GoodOp M`, `Good M`: the covered operations.
+* `MontParams.withRepr`, `MontParams.reprOut`, `loweringAt`: the lowering of a
+  program of `fieldDialectAt ρ`, whose Montgomery flags are those `ρ` fixes and
+  `M.isMont` elsewhere, into `modArithDialectAt` of the flags it used.
 
 ## Main results
 
@@ -42,6 +45,7 @@ transported to zero.
   `((lowering M).blockLowerCom c).denote (mapVal M V) = transTy M (c.denote V)`.
 * `fieldToModArithMont_readBack`: reading the lowered value of an `fp q` program
   back through `ofRep` gives the field value.
+* `loweringAt_denote`: the transport for `loweringAt`.
 
 The second stage, `modArithDialect → jasminDialect` over four 64-bit limbs, and the
 agreement of the two stages with `FieldToJasminLimbsMont4` are in
@@ -400,5 +404,49 @@ theorem fieldToModArithMont_readBack (M : MontParams) {Γ : Ctxt fieldDialect} {
     M.ofRep (q := q) (((lowering M).blockLowerCom c).denote (mapVal M V)) = c.denote V := by
   rw [fieldToModArithMont_denote M c hc V]
   exact M.ofRep_toRep _
+
+/-! ## 5. Montgomery flags read from the types -/
+
+/-- `M` with the Montgomery flag of `q` taken from `(ρ q).mont` where `ρ` fixes it and
+    from `M.isMont q` elsewhere; `h` gives the radix identity where `ρ` sets the flag. -/
+def MontParams.withRepr (M : MontParams) (ρ : ModArithReprMap)
+    (h : ∀ q, (ρ q).mont = some true → M.R q * M.rInv q = 1) : MontParams where
+  isMont q := (ρ q).mont.getD (M.isMont q)
+  R := M.R
+  rInv := M.rInv
+  R_mul_rInv q hq := by
+    cases hm : (ρ q).mont with
+    | none => rw [hm] at hq; exact M.R_mul_rInv q hq
+    | some b => rw [hm] at hq; cases hq; exact h q hm
+
+/-- Under the map that fixes nothing, the flags are those of `M`. -/
+theorem MontParams.withRepr_unfixed (M : MontParams)
+    (h : ∀ q, (ModArithReprMap.unfixed q).mont = some true → M.R q * M.rInv q = 1) :
+    M.withRepr .unfixed h = M := rfl
+
+/-- The representation map of the lowered program: the widths of `ρ`, and the
+    Montgomery flag of every modulus fixed to `M.isMont`. -/
+def MontParams.reprOut (M : MontParams) (ρ : ModArithReprMap) : ModArithReprMap :=
+  fun q => { ρ q with mont := some (M.isMont q) }
+
+/-- The lowering of a program of `fieldDialectAt ρ` with the Montgomery flags of
+    `M.withRepr ρ h`, into `modArithDialectAt` of the flags it used. -/
+def loweringAt (M : MontParams) (ρ : ModArithReprMap)
+    (h : ∀ q, (ρ q).mont = some true → M.R q * M.rInv q = 1)
+    {Γ : Ctxt (fieldDialectAt ρ)} {t : FieldTyAt ρ} (c : Com (fieldDialectAt ρ) Γ t) :
+    Com (modArithDialectAt ((M.withRepr ρ h).reprOut ρ)) (mapCtx Γ) (mapTy t) :=
+  annotateCom _ ((lowering (M.withRepr ρ h)).blockLowerCom (unannotateFieldCom c))
+
+/-- **Stage 1 transport, flags from the types.** For every covered program `c` of
+    `fieldDialectAt ρ`, the lowered program maps the transported inputs to the
+    transport of `c`'s value under `M.withRepr ρ h`. -/
+theorem loweringAt_denote (M : MontParams) (ρ : ModArithReprMap)
+    (h : ∀ q, (ρ q).mont = some true → M.R q * M.rInv q = 1)
+    {Γ : Ctxt (fieldDialectAt ρ)} {t : FieldTyAt ρ} (c : Com (fieldDialectAt ρ) Γ t)
+    (hc : CoveredCom (Good (M.withRepr ρ h)) (unannotateFieldCom c))
+    (V : Ctxt.Valuation Γ) :
+    (loweringAt M ρ h c).denote (mapVal (M.withRepr ρ h) V)
+      = transTy (M.withRepr ρ h) (c.denote V) :=
+  fieldToModArithMont_denote (M.withRepr ρ h) (unannotateFieldCom c) hc V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithMont
