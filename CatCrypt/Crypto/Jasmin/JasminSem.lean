@@ -351,5 +351,6 @@ theorem rustExecSoundInJasmin
   -- Phase DD (2026-05-28): literal-index variants — whileFree-rejected.
   | arrLoadLit _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrStoreLit _ _ _ _ _ _ => simp [whileFree] at hWf
+  | copy _ _ _ _ _ _ => simp [whileFree] at hWf
 
 end CatCrypt.Crypto.Jasmin.SemBridge

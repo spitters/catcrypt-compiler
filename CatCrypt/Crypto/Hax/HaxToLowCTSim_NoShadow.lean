@@ -120,6 +120,7 @@ def boundNames : LowCT → List String
   | .RScalarSetExpr _ _         => []
   -- dest pre-allocated by the enclosing RLetZero (same as RCall), so binds nothing
   | .RCallDstThreaded _ _ _     => []
+  | .RCopy _ _                  => []
 
 /-! ## §3  Syntactic freshness lemmas for `haxToLowCT` output -/
 

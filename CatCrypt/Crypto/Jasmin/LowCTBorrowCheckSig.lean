@@ -76,7 +76,7 @@ where
       sig-aware `callAliasesSig (sigDb f)`.  The eight recursive
       constructors are handled structurally by `LowCT.fold`
       (`seqLike = (· && ·)`, `wrap1 = id`); every leaf constructor, including
-      `RArrStoreLit`/`RArrLoadLit`/`RCallDstThreaded`, has an arm. -/
+      `RArrStoreLit`/`RArrLoadLit`/`RCallDstThreaded`/`RCopy`, has an arm. -/
   borrowOk'Leaf (sigDb : SigDb) : LowCT → Bool
   | .RSkip                          => true
   | .RScalarSet _ _                 => true
@@ -106,6 +106,8 @@ where
   | .RArrStoreLit arr _ src         => arr.locVar != src.locVar
   | .RArrLoadLit dst src _          => dst.locVar != src.locVar
   | .RCallDstThreaded _ dst args    => !callAliases dst args
+  -- Whole-slot copy: destination distinct from source.
+  | .RCopy dst src                  => dst.locVar != src.locVar
   -- Recursive constructors are dispatched by `LowCT.fold`; these keep
   -- the leaf total and never fire.
   | .RSeq _ _                       => true

@@ -120,6 +120,8 @@ def infoFlowOk (lt : LevelTable) : LowCT → Bool
   | .RScalarSetExpr _ _          => true
   | .RCallDstThreaded _ _ _      => true
   | .RForRuntime _ _ body        => infoFlowOk lt body
+  -- Whole-array copy: no index and no control flow.
+  | .RCopy _ _                   => true
 
 /-! ## §3  Characterisation lemma -/
 

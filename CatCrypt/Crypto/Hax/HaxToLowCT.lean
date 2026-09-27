@@ -1669,6 +1669,8 @@ inductive Shape where
   | shScalarSetExpr
   -- Dst-threaded leaf call.
   | shCallDstThreaded (name : String) (dst : String)
+  -- Whole-slot copy.
+  | shCopy (dst src : String)
   deriving DecidableEq
 
 /-- Project a `LowCT` to its top-level shape (zero-depth view). -/
@@ -1700,6 +1702,7 @@ def shapeOf : LowCT → Shape
   | .RArrLoadLit _ _ _      => .shArrLoadLit
   | .RScalarSetExpr _ _     => .shScalarSetExpr
   | .RCallDstThreaded f d _ => .shCallDstThreaded f d.locVar
+  | .RCopy d s              => .shCopy d.locVar s.locVar
 
 /-- Project the top-level shape of a `Option LowCT`, with a marker for `none`. -/
 def shapeOfOpt : Option LowCT → Option Shape

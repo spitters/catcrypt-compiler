@@ -405,6 +405,10 @@ def toJasminCmdLeaf : LowCT → Cmd
   | .RArrLoadLit dst src idx =>
       [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
         (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
+  -- Whole-slot copy: one array assignment `dst = src` at the storage type
+  -- of the destination tower.
+  | .RCopy dst src =>
+      [.Cassgn (locToLVal dst) .AT_none (towerToSType dst.locDst) (locToPExpr src)]
   -- runtime-scalar arithmetic assignment.  Lowers
   -- the `SExpr` into a nested `PExpr` over `u64` word ops (`sexprToPExpr`)
   -- and assigns it to the `u64` scalar slot `x`.  jasminc renders the nested
@@ -620,6 +624,10 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
       = [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
                  (.Pget .AAscale (arrLitElemWS src) (locToGVar src)
                    (.Pconst (Int.ofNat idx)))] := rfl
+
+@[simp] theorem toJasminCmd_RCopy (dst src : Located) :
+    toJasminCmd (.RCopy dst src)
+      = [.Cassgn (locToLVal dst) .AT_none (towerToSType dst.locDst) (locToPExpr src)] := rfl
 
 /-- On a byte array the literal-index store lowers to a one-byte `Laset`. -/
 theorem toJasminCmd_RArrStoreLit_u8 (arr : Located) (idx : Nat) (src : Located) (n : Nat)
@@ -1036,6 +1044,8 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RArrLoadLit dst src idx =>
       [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
         (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
+  | .RCopy dst src =>
+      [.Cassgn (locToLVal dst) .AT_none (towerToSType dst.locDst) (locToPExpr src)]
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
   -- dst-threaded leaf call.  Mirror toJasminCmd
@@ -1092,6 +1102,7 @@ theorem toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd :
   | RArrLoad _ _ _ => rfl
   | RArrStoreLit _ _ _ => rfl
   | RArrLoadLit _ _ _ => rfl
+  | RCopy _ _ => rfl
   | RScalarSetExpr _ _ => rfl
   | RCallDstThreaded _ _ _ => rfl
   | RForRuntime _ _ _ => rfl
@@ -1164,7 +1175,7 @@ def whileFree : LowCT → Bool
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
   -- literal-index variants — outside the simulation theorem's scope
   -- (the single-instruction Cassgn case applies to them).
-  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RCopy _ _ => false
   -- dst-threaded leaf call — outside the simulation theorem's scope
   -- (analogous to RCall, which is also false).
   | .RCallDstThreaded _ _ _ => false
@@ -1196,7 +1207,7 @@ def forFree : LowCT → Bool
   -- TArr/SExpr — no RFor inside, treat as for-free.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => true
   -- literal-index variants — no RFor inside.
-  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RCopy _ _ => true
   -- dst-threaded leaf call has no RFor inside.
   | .RCallDstThreaded _ _ _ => true
 
@@ -1246,7 +1257,7 @@ def jasminFuel : LowCT → Nat
   -- single `Cassgn` each (length 1), so fuel must exceed 1.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => 2
   -- literal-index variants translate to a single Cassgn.
-  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => 2
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RCopy _ _ => 2
   -- single-Ccall instruction lowering.
   | .RCallDstThreaded _ _ _ => 2
 
@@ -1278,7 +1289,7 @@ def callFree : LowCT → Bool
   -- TArr/SExpr — outside the simulation theorem's scope.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
   -- literal-index variants — outside the simulation theorem's scope.
-  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RCopy _ _ => false
   -- dst-threaded IS a call (analogous to RCall).
   | .RCallDstThreaded _ _ _ => false
 
@@ -1324,7 +1335,7 @@ def scalarSetsSmall : LowCT → Bool
   -- runtime-valued limb store has no RScalarSet inside.
   | .RLimbStoreExpr _ _ _ => true
   -- literal-index variants have no RScalarSet inside.
-  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RCopy _ _ => true
   -- dst-threaded leaf call has no RScalarSet inside.
   | .RCallDstThreaded _ _ _ => true
 
@@ -1548,6 +1559,7 @@ lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < jasminFue
     cases arrElemWS src <;> simp
   | RArrStoreLit _ _ _ => simp [toJasminCmd_RArrStoreLit, jasminFuel]
   | RArrLoadLit _ _ _ => simp [toJasminCmd_RArrLoadLit, jasminFuel]
+  | RCopy _ _ => simp [toJasminCmd_RCopy, jasminFuel]
   | RScalarSetExpr x e =>
     -- `sexprSetExprCmd` produces exactly one instruction in every arm
     -- (a `Cassgn`, or — for a top-level high-mul — a single `Copn`).
@@ -1871,6 +1883,7 @@ lemma callFree_toJasmin_newSid
   | RArrLoad _ _ _ => simp [callFree] at hCF
   | RArrStoreLit _ _ _ => simp [callFree] at hCF
   | RArrLoadLit _ _ _ => simp [callFree] at hCF
+  | RCopy _ _ => simp [callFree] at hCF
   | RScalarSetExpr _ _ => simp [callFree] at hCF
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
@@ -2485,6 +2498,7 @@ theorem rustExecSimulates
   -- literal-index variants excluded by `whileFree`.
   | arrStoreLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoadLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
+  | copy _ _ _ _ _ _ => simp [whileFree] at hWf
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
 
 /-- **Standalone call simulation**: an `RCall` instruction run at `fuel`
@@ -3104,6 +3118,9 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
   | RArrLoadLit _ _ _ =>
       intro hCF
       simp [callFree] at hCF
+  | RCopy _ _ =>
+      intro hCF
+      simp [callFree] at hCF
   | RScalarSetExpr _ _ =>
       intro hCF
       simp [callFree] at hCF
@@ -3446,6 +3463,7 @@ lemma callFreePlusCall_of_callFree :
   | .RArrLoad _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrStoreLit _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrLoadLit _ _ _ => simp [callFreePlusCall, hCF]
+  | .RCopy _ _ => simp [callFreePlusCall, hCF]
   | .RScalarSetExpr _ _ => simp [callFreePlusCall, hCF]
   | .RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
@@ -3600,6 +3618,7 @@ lemma branchScopeMerges_of_callFree
   | RArrLoad _ _ _ => simp [callFree] at hCF
   | RArrStoreLit _ _ _ => simp [callFree] at hCF
   | RArrLoadLit _ _ _ => simp [callFree] at hCF
+  | RCopy _ _ => simp [callFree] at hCF
   | RScalarSetExpr _ _ => simp [callFree] at hCF
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 

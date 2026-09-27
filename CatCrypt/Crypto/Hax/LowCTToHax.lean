@@ -45,7 +45,7 @@ front reads `forFold x 0 n` with a literal `n` as `RFor`.
 
 Every other command maps to `none`.  No arm of `haxToLowCT` produces
 `RCloneCall`, `RLimbStore`, `RLimbStoreExpr`, `RCallN`, `RSelect`, `RAssert`,
-`RBlock`, `RFnDef`, `RFnCall`, `RArrStoreLit`, `RArrLoadLit` or
+`RBlock`, `RFnDef`, `RFnCall`, `RArrStoreLit`, `RArrLoadLit`, `RCopy` or
 `RCallDstThreaded`, nor an `RLetZero` or `RLetU64Zero` whose body does not open
 with the command the binding computes, nor a stand-alone `RArrStore`,
 `RArrLoad`, `RTupleLoad`, `RCallSwap` or `RScalarSetExpr`.  The front's

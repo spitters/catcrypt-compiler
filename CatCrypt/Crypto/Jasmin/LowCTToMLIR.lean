@@ -130,6 +130,19 @@ def emitCall (f : String) (dest : Located) (args : List Located)
       ++ "{callee = @" ++ f ++ "} : (" ++ tysCSV ++ ") -> " ++ retTy
   (s'.emit line).bind dest.locVar newSSA
 
+/-- Emit a whole-array `RCopy dst src`: a fresh buffer of the destination
+    type (`memref.alloc`), a `memref.copy` of `src` into it, and a binding
+    of `dst` to the fresh buffer. -/
+def emitCopy (dst src : Located) (s : State) : State :=
+  let srcSSA := s.lookup src.locVar
+  let ty := towerTypeToMLIR dst.locDst
+  let (newSSA, s') := s.fresh
+  let allocLine := "  " ++ newSSA ++ " = \"memref.alloc\"() : () -> " ++ ty
+  let copyLine :=
+    "  \"memref.copy\"(" ++ srcSSA ++ ", " ++ newSSA ++ ") : ("
+      ++ ty ++ ", " ++ ty ++ ") -> ()"
+  ((s'.emit allocLine).emit copyLine).bind dst.locVar newSSA
+
 /-- Walk a `LowCT` tree in execution order, accumulating MLIR lines. -/
 partial def emitCmd (c : LowCT) (s : State) : State :=
   match c with
@@ -168,6 +181,7 @@ partial def emitCmd (c : LowCT) (s : State) : State :=
   | .RArrStoreLit _ _ _     => s.emit "  // <RArrStoreLit: not emitted>"
   | .RArrLoadLit _ _ _      => s.emit "  // <RArrLoadLit: not emitted>"
   | .RCallDstThreaded _ _ _ => s.emit "  // <RCallDstThreaded: not emitted>"
+  | .RCopy dst src          => emitCopy dst src s
 
 /-! ## Top-level `func.func` emission -/
 

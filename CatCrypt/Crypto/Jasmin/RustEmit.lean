@@ -254,6 +254,12 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
         else rustLocName dst
       rustIndent ind (dstExpr ++ " = " ++ rustLocName src ++ "[" ++
         toString idx ++ "];")
+  | .RCopy dst src =>
+      -- Whole-slot copy; an output slot `&mut T` is written through `*`.
+      let dstExpr :=
+        if resultNames.contains dst.locVar then "*" ++ rustLocName dst
+        else rustLocName dst
+      rustIndent ind (dstExpr ++ " = " ++ rustLocName src ++ ".clone();")
   | .RScalarSetExpr x e =>
       -- Phase Ext: assign SExpr value to scalar slot.
       rustIndent ind (x ++ " = " ++ e.ppRust ++ ";")

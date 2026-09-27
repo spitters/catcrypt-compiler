@@ -52,10 +52,13 @@ command satisfying the other.
 Modelled: the memory-address channel at `(index slot, runtime index value)`
 granularity, over the constructors that read or write state — `RScalarSet`,
 `RScalarSetExpr`, `RSelect`, `RCall`, `RLimbStore`, `RLimbStoreExpr`,
-`RArrStore`, `RArrStoreLit`, `RArrLoad`, `RArrLoadLit` — and the control-flow
-constructors. Store-to-load forwarding is at whole-slot granularity: a buffer
-entry records the value a slot held before a write, and a bypassing load reads
-its element out of that stale slot value.
+`RArrStore`, `RArrStoreLit`, `RArrLoad`, `RArrLoadLit`, `RCopy` — and the
+control-flow constructors. Store-to-load forwarding is at whole-slot granularity:
+a buffer entry records the value a slot held before an element store
+(`RLimbStore`, `RLimbStoreExpr`, `RArrStore`, `RArrStoreLit`), and a bypassing
+element load reads its element out of that stale slot value. The whole-slot
+writes `RSelect`, `RCall` and `RCopy` update the committed state without a
+buffer entry, and the whole-slot read of `RCopy` is not forwarded.
 
 Not modelled: the remaining `LowCT` constructors, which are state-preserving and
 leak nothing here; loop unrolling — `RWhileNz` and `RFor` run their body once,
@@ -290,6 +293,13 @@ def specRun (leafSpec : LeafSpec) (O : SpecOracle) (σ : SpecState) :
                   ({ σ with rs := locatedUpdate σ.rs dst newV }, [])
               | none => (σ, [])
       | none => (σ, [])
+  | .RCopy dst src =>
+      match locatedLookup σ.rs src with
+      | some v =>
+          if h : src.locDst = dst.locDst then
+            ({ σ with rs := locatedUpdate σ.rs dst (h ▸ v) }, [])
+          else (σ, [])
+      | none => (σ, [])
   | _ => (σ, [])
 
 /-- `archRun leafSpec rs c` is the committed run of `c`: the same semantics with
@@ -378,6 +388,12 @@ def archRun (leafSpec : LeafSpec) (rs : RustState) :
                 (leafSpec.arrLoad dst oldDst ⟨src.locDst, srcV⟩ i), [])
           | none => (rs, [])
       | none => (rs, [])
+  | .RCopy dst src =>
+      match locatedLookup rs src with
+      | some v =>
+          if h : src.locDst = dst.locDst then (locatedUpdate rs dst (h ▸ v), [])
+          else (rs, [])
+      | none => (rs, [])
   | _ => (rs, [])
 
 /-! ## 3. The architectural projections
@@ -456,6 +472,10 @@ theorem specRun_neverSpeculate (leafSpec : LeafSpec) (c : LowCT) (σ : SpecState
   | RArrLoadLit dst src _ =>
     simp only [specRun, archRun, bypasses_neverSpeculate]
     split <;> [split; skip] <;> exact ⟨rfl, rfl⟩
+  | RCopy dst src =>
+    simp only [specRun, archRun]
+    repeat' split
+    all_goals exact ⟨rfl, rfl⟩
   | _ => exact ⟨rfl, rfl⟩
 
 theorem specRun_of_window_zero (leafSpec : LeafSpec) (O : SpecOracle) (c : LowCT)
@@ -541,6 +561,10 @@ theorem specRun_of_window_zero (leafSpec : LeafSpec) (O : SpecOracle) (c : LowCT
     all_goals exact ⟨rfl, h, rfl⟩
   | RArrLoadLit dst src _ =>
     simp only [specRun, archRun, bypasses_of_window_zero O σ h]
+    repeat' split
+    all_goals exact ⟨rfl, h, rfl⟩
+  | RCopy dst src =>
+    simp only [specRun, archRun]
     repeat' split
     all_goals exact ⟨rfl, h, rfl⟩
   | _ => exact ⟨rfl, h, rfl⟩
@@ -1148,6 +1172,28 @@ theorem specRun_pub_determined (leafSpec : LeafSpec) (lt : LevelTable)
       | rfl
       | exact h
       | exact ⟨h.1.set_tower_same _ _, h.2.1, by rw [h.2.2]⟩
+  | RCopy dst src =>
+    intro hCT _ σ1 σ2 h
+    simp only [cmdCT_RCopy] at hCT
+    rcases Bool.or_eq_true_iff.mp hCT with hS | hD
+    · have hlk : locatedLookup σ1.rs src = locatedLookup σ2.rs src :=
+        h.1.locatedLookup_eq (level_beq_public_iff.mp hS)
+      refine ⟨?_, ?_⟩ <;> simp only [specRun, hlk] <;> repeat' split
+      all_goals first
+        | rfl
+        | exact h
+        | exact ⟨h.1.set_tower_same _ _, h.2.1, h.2.2⟩
+    · have hSec : lt dst.locVar ≠ .Public := by
+        intro hP
+        rw [hP] at hD
+        exact absurd hD (by decide)
+      refine ⟨?_, ?_⟩ <;> simp only [specRun] <;> repeat' split
+      all_goals first
+        | rfl
+        | exact h
+        | exact ⟨h.1.set_tower_secret hSec _ _, h.2.1, h.2.2⟩
+        | exact ⟨h.1.set_tower_secret_left hSec _, h.2.1, h.2.2⟩
+        | exact ⟨(h.1.symm.set_tower_secret_left hSec _).symm, h.2.1, h.2.2⟩
   | _ => exact fun _ _ _ _ h => ⟨rfl, h⟩
 
 /-- **Store-buffer speculative constant-time.** A `cmdCT`-accepted command whose

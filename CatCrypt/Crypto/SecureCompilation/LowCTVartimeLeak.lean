@@ -273,6 +273,7 @@ theorem dynLeakTrace_noninterference
   | .RArrLoad _ _ _, _, _, _, _ => rfl
   | .RTupleLoad _ _ _, _, _, _, _ => rfl
   | .RArrLoadLit _ _ _, _, _, _, _ => rfl
+  | .RCopy _ _, _, _, _, _ => rfl
   | .RArrStoreLit _ _ _, _, _, _, _ => rfl
   | .RCallDstThreaded _ _ _, _, _, _, _ => rfl
   | .RFor _ _ _, _, _, _, _ => rfl

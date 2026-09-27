@@ -1304,6 +1304,9 @@ theorem rustExecSimulatesDialect
           exact ⟨HVec.cons w V, hInv'⟩
   | limbStoreExpr loc idx e rs0 oldDestV _hLook =>
       cases hCov with | ofCovered hc => cases hc
+  -- A whole-slot copy is outside the covered fragment.
+  | copy dst src rs0 _hTy srcV _hLook =>
+      cases hCov with | ofCovered hc => cases hc
   | scalarSetExpr x e rs0 =>
       -- `RScalarSetExpr` is covered; the front is `NoAliasVM`-preserving, so the
       -- post-state (the scalar overwrite) is realised by the canonical

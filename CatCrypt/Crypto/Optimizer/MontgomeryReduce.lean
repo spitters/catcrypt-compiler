@@ -139,6 +139,7 @@ def montgomeryReduce (q R : Nat) : LowCT → LowCT
   | .RCallDstThreaded f dst args =>
       if isMulModQName f then .RCallDstThreaded (montMulName q R) dst args
       else .RCallDstThreaded f dst args
+  | .RCopy dst src => .RCopy dst src
 
 /-! ## §3  Per-leaf agreement assumption
 
@@ -356,6 +357,8 @@ theorem montgomeryReduce_denote_forward
   | arrLoadLit dst src idx rs oldV srcV hDst hSrc =>
       simpa [montgomeryReduce] using
         RustExec.arrLoadLit dst src idx rs oldV srcV hDst hSrc
+  | copy dst src rs hT srcV hSrc =>
+      exact RustExec.copy dst src rs hT srcV hSrc
   | callDstThreaded f dest args rs oldDestV argList hLookup hArgList hArgs =>
       by_cases hf : isMulModQName f = true
       · have hPostEq :
@@ -432,7 +435,7 @@ theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
   | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
   | assert | block | tupleLoad | arrStore
   | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
-  | callDstThreaded => intro n0 hEq; cases hEq
+  | callDstThreaded | copy => intro n0 hEq; cases hEq
 
 /-- Reverse direction: any `RustExec` of the rewritten command lifts
     to one on the source command. -/
@@ -576,7 +579,7 @@ theorem montgomeryReduce_denote_reverse
         | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
         | assert | block | tupleLoad | arrStore
         | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
-        | callDstThreaded => intro hEq; cases hEq
+        | callDstThreaded | copy => intro hEq; cases hEq
       exact aux _ rs rs' h rfl
   | RFor x n body ih =>
       intro rs rs' h
@@ -610,6 +613,7 @@ theorem montgomeryReduce_denote_reverse
   | RScalarSetExpr x e => intro rs rs' h; simpa [montgomeryReduce] using h
   | RArrStoreLit arr idx src => intro rs rs' h; simpa [montgomeryReduce] using h
   | RArrLoadLit dst src idx => intro rs rs' h; simpa [montgomeryReduce] using h
+  | RCopy dst src => intro rs rs' h; simpa [montgomeryReduce] using h
   | RCallDstThreaded f dst args =>
       intro rs rs' h
       by_cases hf : isMulModQName f = true

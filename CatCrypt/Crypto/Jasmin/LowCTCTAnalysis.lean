@@ -230,6 +230,11 @@ def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
       | .RCallDstThreaded f dst args  =>
           leafCT f && lt dst.locVar == .Public &&
             args.all (fun a => lt a.locVar == .Public)
+      -- Whole-slot copy: no index and no selector, so the access pattern is
+      -- public.  The copy carries the level of `src` into `dst`, which the
+      -- flow-insensitive table admits when `src` is Public or `dst` is Secret.
+      | .RCopy dst src                =>
+          lt src.locVar == .Public || lt dst.locVar == .Secret
       -- `RForRuntime` is NOT in `foldNode`'s recursive
       -- descent list, so it reaches `leaf` and the body is NOT analysed here.
       -- Returning `true` would be UNSOUND (fail-open on an un-analysed body);
@@ -383,6 +388,11 @@ proofs use `simp only [cmdCT_R…, Bool.and_eq_true] at hCT`; the resulting
     cmdCT (.RArrLoadLit dst src i) lt leafCT
       = (lt dst.locVar == .Public && lt src.locVar == .Public) := rfl
 
+@[simp] theorem cmdCT_RCopy (dst src : Located)
+    (lt : LevelTable) (leafCT : LeafCTTable) :
+    cmdCT (.RCopy dst src) lt leafCT
+      = (lt src.locVar == .Public || lt dst.locVar == .Secret) := rfl
+
 @[simp] theorem cmdCT_RArrStoreLit (arr : Located) (i : Nat) (src : Located)
     (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT (.RArrStoreLit arr i src) lt leafCT
@@ -465,6 +475,29 @@ theorem PublicEquiv.set_tower_same {lt : LevelTable} {rs1 rs2 : RustState}
   · intro y hy
     unfold rsSetTower
     simp [hs y hy]
+
+/-- Setting a non-Public tower slot on the left side preserves `PublicEquiv`. -/
+theorem PublicEquiv.set_tower_secret_left {lt : LevelTable} {rs1 rs2 : RustState}
+    (h : PublicEquiv lt rs1 rs2) {x : String} (hx : lt x ≠ .Public)
+    (v : Σ t : TowerType, RustVal t) :
+    PublicEquiv lt (rsSetTower rs1 x v) rs2 := by
+  obtain ⟨ht, hs⟩ := h
+  refine ⟨?_, ?_⟩
+  · intro y hy
+    unfold rsSetTower
+    have hxy : y ≠ x := fun hxy => hx (hxy ▸ hy)
+    simp [beq_eq_false_iff_ne.mpr hxy, ht y hy]
+  · intro y hy
+    unfold rsSetTower
+    simp [hs y hy]
+
+/-- Setting a non-Public tower slot on both sides, to arbitrary values,
+    preserves `PublicEquiv`. -/
+theorem PublicEquiv.set_tower_secret {lt : LevelTable} {rs1 rs2 : RustState}
+    (h : PublicEquiv lt rs1 rs2) {x : String} (hx : lt x ≠ .Public)
+    (v1 v2 : Σ t : TowerType, RustVal t) :
+    PublicEquiv lt (rsSetTower rs1 x v1) (rsSetTower rs2 x v2) :=
+  ((h.set_tower_secret_left hx v1).symm.set_tower_secret_left hx v2).symm
 
 /-- A Public-classified tower variable agrees on the two states. -/
 theorem PublicEquiv.tower_eq {lt : LevelTable} {rs1 rs2 : RustState}
@@ -1328,6 +1361,38 @@ lemma RTupleLoad_CT_step
       exact hEq.set_tower_same dst.locVar
         ⟨dst.locDst, leafSpec.tupleLoad dst oldV1 ⟨src.locDst, srcV2⟩ idx⟩
 
+/-- `RCopy`: a Public `src` gives equal written values; a Secret `dst`
+    is a slot `PublicEquiv` does not observe. -/
+lemma RCopy_CT_step
+    {leafSpec : LeafSpec} {lt : LevelTable}
+    {N : Nat} {dst : Located} {src : Located}
+    (hCT : (lt src.locVar == .Public || lt dst.locVar == .Secret) = true)
+    {rs1 rs2 rs1' rs2' : RustState}
+    (hEq : PublicEquiv lt rs1 rs2)
+    (hExec1 : RustExec N leafSpec (.RCopy dst src) rs1 rs1')
+    (hExec2 : RustExec N leafSpec (.RCopy dst src) rs2 rs2') :
+    PublicEquiv lt rs1' rs2' := by
+  cases hExec1 with
+  | copy _ _ _ h srcV1 hLookupSrc1 =>
+    cases hExec2 with
+    | copy _ _ _ _ srcV2 hLookupSrc2 =>
+      unfold locatedUpdate
+      rcases Bool.or_eq_true_iff.mp hCT with hSrc | hDst
+      · have hTsrc : rs1.rsTower src.locVar = rs2.rsTower src.locVar :=
+          hEq.tower_eq (level_beq_public_iff.mp hSrc)
+        have hSrcV : srcV1 = srcV2 := by
+          unfold locatedLookup at hLookupSrc1 hLookupSrc2
+          rw [hTsrc] at hLookupSrc1
+          rw [hLookupSrc1] at hLookupSrc2
+          exact Option.some.inj hLookupSrc2
+        subst hSrcV
+        exact hEq.set_tower_same dst.locVar _
+      · have hSec : lt dst.locVar ≠ .Public := by
+          intro hP
+          rw [hP] at hDst
+          exact absurd hDst (by decide)
+        exact hEq.set_tower_secret hSec _ _
+
 /-! ### §4.4  Main soundness theorem -/
 
 /-- **Main soundness statement.**  If `cmdCT cmd lt leafCT = true` and
@@ -1742,6 +1807,9 @@ theorem cmdCT_sound
       rw [hSrcV]
       exact hEq.set_tower_same dst.locVar
         ⟨dst.locDst, leafSpec.arrLoad dst oldV1 ⟨src.locDst, srcV2⟩ idx⟩
+  | copy dst src rs h srcV hLookupSrc =>
+    exact RCopy_CT_step (lt := lt) (by simpa only [cmdCT_RCopy] using hCT) hEq
+      (RustExec.copy dst src rs h srcV hLookupSrc) hExec2
   | scalarSetExpr x e rs =>
     -- e is Public ⇒ same value on both sides.
     have hPub : e.isPublic lt = true := by

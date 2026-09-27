@@ -250,15 +250,17 @@ variable.  For our extracted ASTs, fresh-let-bound vars have
 hygienic, unique names that don't collide with externally-bound
 inputs / outputs (e.g. `"a"`, `"out"`). -/
 
-/-- Syntactic check: does the AST contain any `RSelect` or
-    `RCloneCall` constructor?  These are the two constructors whose
+/-- Syntactic check: does the AST contain any `RSelect`, `RCloneCall`
+    or `RCopy` constructor?  These are the constructors whose
     semantics can silently change a slot's stored tower type (via
     the dependent equality `srcs.locDst = dst.locDst` in `RSelect`
-    or the heterogeneous overwrite in `RCloneCall`); excluding them
+    and `RCopy`, which write `dst` without reading its old type, or
+    the heterogeneous overwrite in `RCloneCall`); excluding them
     lets us prove unconditional slot-type preservation. -/
 def hasSelect : LowCT → Bool
   | .RSelect _ _ _ _ => true
   | .RCloneCall _ _ _ _ _ _ => true
+  | .RCopy _ _ => true
   | .RSeq c1 c2 => hasSelect c1 || hasSelect c2
   | .RLetZero _ _ body => hasSelect body
   | .RLetU64Zero _ body => hasSelect body
@@ -535,6 +537,9 @@ theorem rustExec_preserves_slot_type
     intro x t _ _
     simp [hasSelect] at h_noSel
   | selectTrue _ _ _ _ _ _ _ _ _ _ =>
+    intro x t _ _
+    simp [hasSelect] at h_noSel
+  | copy _ _ _ _ _ _ =>
     intro x t _ _
     simp [hasSelect] at h_noSel
   | assert _ _ => intro x t _ h; exact h

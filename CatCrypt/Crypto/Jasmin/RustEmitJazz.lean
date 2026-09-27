@@ -196,6 +196,7 @@ partial def collectLetZeros : LowCT → List (String × TowerType)
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ _        => []
+  | .RCopy _ _                     => []
 
 /-- `RFor` loops with bound above this lower to a runtime `while` (a
     `reg u64` counter) rather than Jasmin's always-unrolled `for`.
@@ -242,6 +243,7 @@ partial def collectLoopIdxs (large : Bool) : LowCT → List String
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ _        => []
+  | .RCopy _ _                     => []
 
 /-- Small (`≤ forLoopThreshold`) loop indices — declared `inline int`. -/
 def collectForIndices (c : LowCT) : List String := collectLoopIdxs false c
@@ -278,6 +280,7 @@ partial def collectLetU64s : LowCT → List String
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ _        => []
+  | .RCopy _ _                     => []
 
 /-- Walk `c` collecting every variable used as an array **index**
     (`RArrStore`'s 2nd field, `RArrLoad`'s 3rd field).  Jasmin requires
@@ -315,6 +318,7 @@ partial def collectIndexVars : LowCT → List String
   | .RArrLoadLit _ _ _             => []   -- literal index, no index var
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ _        => []
+  | .RCopy _ _                     => []
 
 /-- Walk `c` collecting every array slot that is **read**: an
     `RArrLoad` source (`r[idx]`) or any argument to a function-style
@@ -349,6 +353,7 @@ partial def collectArrReadSlots : LowCT → List String
   | .RArrLoadLit _ src _           => [src.locVar]
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ args     => args.map (·.locVar)
+  | .RCopy _ src                   => [src.locVar]
 
 /-- Walk `c` collecting every `RArrLoad` *destination* slot — i.e. a
     slot fully overwritten by a slice-copy (`__anorm_0 = a[i*256:256]`).
@@ -381,6 +386,7 @@ partial def collectArrLoadDsts : LowCT → List String
   | .RArrLoadLit dst _ _           => [dst.locVar]
   | .RScalarSetExpr _ _            => []
   | .RCallDstThreaded _ _ _        => []
+  | .RCopy dst _                   => [dst.locVar]
 
 /-! ## §3 Body pretty-printer
 
@@ -707,6 +713,9 @@ partial def ppJasminBody (ind : Nat) : LowCT → String
       -- MQ/lattice in-place ABI).
       let argStr := String.intercalate ", " (dst.locVar :: args.map (·.locVar))
       jasIndent ind (dst.locVar ++ " = " ++ f ++ "(" ++ argStr ++ ");")
+  | .RCopy dst src =>
+      -- Whole-array copy: `dst = #copy(src);`.
+      jasIndent ind (dst.locVar ++ " = #copy(" ++ src.locVar ++ ");")
 
 /-- Select the accumulator slots that need an explicit zeroing
     prologue, from a list of `(name, TowerType)` candidates (the body's
@@ -825,6 +834,7 @@ partial def widthPass (pinned : List String) (m : WMap) : LowCT → WMap
       | _, _, _, _ => m
   | .RArrLoad dst src _            => m.bump dst.locVar (m.get src.locVar)
   | .RArrStore arr _ src           => m.bump arr.locVar (m.get src.locVar)
+  | .RCopy dst src                 => m.bump dst.locVar (m.get src.locVar)
   | _                              => m
 
 /-- Infer a Jasmin register width for every slot in the body.  Seeds:

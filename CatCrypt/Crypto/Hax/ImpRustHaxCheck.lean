@@ -486,9 +486,16 @@ theorem denote_normHaxRead (h : HaxOpsAgree bi) (e : ImpExpr) :
     split
     · refine agreeE_bind_same _ _ _ fun rhi => ?_
       split
-      · exact denoteForLoop_agreeE bi x _ _ ihb fuel _ _
-      all_goals exact AgreeE.refl _
-    · exact AgreeE.refl _
+      all_goals first
+        | exact denoteForLoop_agreeE bi x _ _ ihb fuel _ _
+        | exact AgreeE.refl _
+    all_goals first
+      | exact AgreeE.refl _
+      | (refine agreeE_bind_same _ _ _ fun rhi => ?_
+         split
+         all_goals first
+           | exact denoteForLoop_agreeE bi x _ _ ihb fuel _ _
+           | exact AgreeE.refl _)
   | match_ s arms _ iha =>
     intro fuel
     simp only [normHaxRead, forToLoop]

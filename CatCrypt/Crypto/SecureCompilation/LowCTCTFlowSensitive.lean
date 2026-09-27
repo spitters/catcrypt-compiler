@@ -394,6 +394,8 @@ theorem cmdCTFlow_sound (leafCT : LeafCTTable) :
       leaf_sound rfl (fun _ => rfl) (fun _ => rfl) hCT h
   | .RArrLoadLit d s i, lt, lt', hCT, rs1, rs2, h =>
       leaf_sound rfl (fun _ => rfl) (fun _ => rfl) hCT h
+  | .RCopy d s, lt, lt', hCT, rs1, rs2, h =>
+      leaf_sound rfl (fun _ => rfl) (fun _ => rfl) hCT h
   | .RArrStoreLit arr i s, lt, lt', hCT, rs1, rs2, h =>
       leaf_sound rfl (fun _ => rfl) (fun _ => rfl) hCT h
   | .RCallDstThreaded f d a, lt, lt', hCT, rs1, rs2, h =>
