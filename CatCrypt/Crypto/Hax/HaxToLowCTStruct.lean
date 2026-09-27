@@ -21,12 +21,17 @@ A-normalisation and rewrites them into constructs the front lowers.
 into one variable per field, `s.f` (`structCompName`).  The struct variables of a
 function body and the field names of each struct are given (`StructVars`,
 `StructLayout`).  A field call on `s` is the variable `s.f`; an update rebinds
-`s.f`; hax-lean's parameter alias `let s = s` is dropped; `s` as an argument of
+`s.f`; a struct literal `let s = S(x₁, …, xₖ)` binds the components in field
+order; hax-lean's parameter alias `let s = s` is dropped; `s` as an argument of
 any other call is its component variables in field order, and elsewhere the
-tuple of them.
+tuple of them.  A function returning a struct thus ends in the tuple of the
+component variables, which `haxToLowCT` lowers as the aggregate tuple tail of
+named results: the fields stay in their component variables.
 
 **`Option` of a word.**  An `Option` variable `o` is the pair of a bool tag
-`o#tag` and a payload word `o#val`.  `match o { None => e1, Some v => e2 }` is
+`o#tag` and a payload word `o#val`.  `let o = Some x` binds `o#val` to `x` and
+`o#tag` to `true`, `let o = None` binds `o#tag` to `false`.
+`match o { None => e1, Some v => e2 }` is
 the branch on the tag, with `o#val` in place of `v` in `e2`; the tag is read as
 a public branch condition (whether a secret-dependent branch is admissible is
 the business of the constant-time theorems, not of the front).  A function
@@ -46,9 +51,12 @@ against `denote'`.
 ## Main definitions
 
 * `flatE` — the struct and `Option`-match flattening pass.
+* `optBindArm`, `structLitArm` — the `Option` binding and struct literal arms.
 * `optRet` — the `Option` return lowering.
-* `renameVar`, `renameSafe` — renaming a variable, and the syntactic condition
-  under which the `Option` match arm renames.
+* `renameVar`, `renameSafe`, `varAbsent` — renaming a variable, and the syntactic
+  conditions under which the `Option` match arm renames.
+* `RenRel`, `RenSim` — the environments and state computations related by a
+  renaming.
 
 ## Main results
 
@@ -62,9 +70,13 @@ against `denote'`.
   return the same payload, with the tag in `T`.
 * `optMatch_sim` — the `Option` match and the branch on the tag dispatch to the
   same arm.
-
-The renaming step of the `Option` match arm (`renameVar` under `renameSafe`) has
-no preservation theorem here.
+* `denote'_renameVar` — under `renameSafe v w` and `varAbsent w`, a program and
+  its renaming `v ↦ w` return the same result from environments related by the
+  renaming.
+* `optMatch_some_renamed_sim` — on `some x`, the lowered `Option` match runs as the
+  flattened `Some` arm with its binder bound to `x`.
+* `optBind_some_sim`, `optBind_none_sim` — `let o = Some x` and `let o = None`
+  and their lowering leave `o` flattened.
 -/
 
 @[expose] public section
@@ -231,6 +243,51 @@ def renameVarList (v w : String) : List ImpExpr → List ImpExpr
 
 end
 
+mutual
+
+/-- `varAbsent w e`: the variable `w` does not occur in `e`, and `e` contains no
+    `match_` and no `lam`. -/
+def varAbsent (w : String) : ImpExpr → Bool
+  | .lit _ => true
+  | .var x => x != w
+  | .letBind _ val body => varAbsent w val && varAbsent w body
+  | .lam _ _ => false
+  | .app _ args => varAbsentList w args
+  | .tuple es => varAbsentList w es
+  | .proj e _ => varAbsent w e
+  | .ifThenElse c t e => varAbsent w c && varAbsent w t && varAbsent w e
+  | .match_ _ _ => false
+  | .unitVal => true
+  | .seq a b => varAbsent w a && varAbsent w b
+  | .borrow e => varAbsent w e
+  | .deref e => varAbsent w e
+  | .assign _ r => varAbsent w r
+  | .forLoop _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .forLoopRev _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .whileLoop c b => varAbsent w c && varAbsent w b
+  | .break_ none => true
+  | .break_ (some e) => varAbsent w e
+  | .continue_ => true
+  | .earlyReturn e => varAbsent w e
+  | .questionMark e => varAbsent w e
+  | .forFold _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .forFoldRev _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .whileFold c b => varAbsent w c && varAbsent w b
+  | .forFoldReturn _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .forFoldRevReturn _ lo hi b => varAbsent w lo && varAbsent w hi && varAbsent w b
+  | .whileFoldReturn c b => varAbsent w c && varAbsent w b
+  | .cfBreak e => varAbsent w e
+  | .cfContinue e => varAbsent w e
+  | .cfBreakContinue e => varAbsent w e
+  | .typeAscription e _ => varAbsent w e
+
+/-- `varAbsent` on every expression of a list. -/
+def varAbsentList (w : String) : List ImpExpr → Bool
+  | [] => true
+  | e :: es => varAbsent w e && varAbsentList w es
+
+end
+
 /-! ## §3  The flattening pass -/
 
 /-- The projection arm on a call `c args`: `some comp` when `args` is one struct
@@ -280,12 +337,77 @@ def optAlias (ov : List String) (n : String) : ImpExpr → Bool
   | .var o => n == o && ov.contains o
   | _ => false
 
+/-- The binding `let o = Some x` or `let o = None` of the flattened `Option`
+    variable `o`, given the flattened right-hand side `val'` and body `body'`:
+    `Some x'` binds the payload `o#val` to `x'` and then the tag `o#tag` to `true`,
+    `None` binds the tag to `false`.  `none` on any other right-hand side, and on a
+    payload `x'` that is a variable other than `o#val` (a `letBind` of one variable
+    to another is an alias, which the front lowers to nothing). -/
+def optBindArm (o : String) (val val' body' : ImpExpr) : Option ImpExpr :=
+  match val with
+  | .app _ [_] =>
+      match val' with
+      | .app c [x'] =>
+          if c == "Some" && updateRhsOk (optValName o) x' then
+            some (.letBind (optValName o) x' (.letBind (optTagName o) (.lit (.bool true)) body'))
+          else none
+      | _ => none
+  | .app _ [] =>
+      match val' with
+      | .app c [] =>
+          if c == "None" then some (.letBind (optTagName o) (.lit (.bool false)) body') else none
+      | _ => none
+  | _ => none
+
+/-- Whether `e` is a variable. -/
+def isVarExpr : ImpExpr → Bool
+  | .var _ => true
+  | _ => false
+
+/-- Whether `e` is a struct variable. -/
+def isStructVar (L : StructLayout) (sv : StructVars) : ImpExpr → Bool
+  | .var s => (structFields L sv s).isSome
+  | _ => false
+
+/-- The bindings of the variables `ns` to the expressions `es` in order, around
+    `body`. -/
+def bindComps : List String → List ImpExpr → ImpExpr → ImpExpr
+  | n :: ns, e :: es, body => .letBind n e (bindComps ns es body)
+  | _, _, body => body
+
+/-- The struct literal arm: `let s = S(x₁, …, xₖ); body` of a struct variable `s`
+    whose struct `S` has the fields `f₁ … fₖ` is
+    `let s.f₁ = x₁'; …; let s.fₖ = xₖ'; body'`, where `S(x₁', …, xₖ')` is the
+    flattened right-hand side.  `none` unless no `xᵢ` is a struct variable, no
+    `xᵢ'` is a variable (a `letBind` of one variable to another is an alias) and no
+    component variable of `s` occurs in any `xᵢ'`. -/
+def structLitArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : ImpExpr) :
+    Option ImpExpr :=
+  match val, val' with
+  | .app c args, .app _ args' =>
+      match List.lookup n sv with
+      | some S =>
+          match List.lookup S L with
+          | some fs =>
+              if c == S && !(args.any (isStructVar L sv)) && args'.length == fs.length &&
+                  args'.all (fun a => !isVarExpr a &&
+                    fs.all fun f => varAbsent (structCompName n f) a) then
+                some (bindComps (fs.map (structCompName n)) args' body')
+              else none
+          | none => none
+      | none => none
+  | _, _ => none
+
 mutual
 
 /-- Flatten the struct variables `sv` (layout `L`) and match on the `Option`
     variables `ov`:
     * a field call `.f s` on a struct variable is the component variable `s.f`;
     * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i`;
+    * a struct literal `let s = S(x₁, …, xₖ)` binds the components of `s` in field
+      order (`structLitArm`);
+    * `let o = Some x` and `let o = None` of an `Option` variable bind its payload
+      and tag (`optBindArm`);
     * hax-lean's parameter alias `let s = s` of a struct or `Option` variable is
       dropped;
     * a struct variable as an argument of any other call is its component
@@ -306,7 +428,12 @@ def flatE (L : StructLayout) (sv : StructVars) (ov : List String) : ImpExpr → 
       else do
         let val' ← flatE L sv ov val
         let body' ← flatE L sv ov body
-        letArm L sv n val val' body'
+        match (if ov.contains n then optBindArm n val val' body' else none) with
+        | some e => some e
+        | none =>
+            match letArm L sv n val val' body' with
+            | some e => some e
+            | none => structLitArm L sv n val val' body'
   | .lam ps b => do let b' ← flatE L sv ov b; pure (.lam ps b')
   | .app c args =>
       match projArgs L sv c args with
@@ -540,7 +667,8 @@ theorem flatE_update {L : StructLayout} {sv : StructVars} (ov : List String)
   have hca : flatCallArgs L sv ov [.var s, x] = some (structComps s fs ++ [x']) := by
     rw [flatCallArgs, hfx]; simp [hs]
   have hal : optAlias ov s (.app c [.var s, x]) = false := rfl
-  simp only [flatE, hal, hpa, hca, hb, Option.bind_eq_bind, Option.bind_some]
+  have hob : ∀ v' b', optBindArm s (.app c [.var s, x]) v' b' = none := fun _ _ => rfl
+  simp only [flatE, hal, hpa, hca, hb, hob, ite_self, Option.bind_eq_bind, Option.bind_some]
   simp [letArm, h, hok]
 
 /-! ## §6  Simulation of the arms against `denote'`
@@ -755,5 +883,632 @@ theorem optMatch_sim (ov : List String) (o v : String) (e2 e1 e2' e1' e' : ImpEx
   · cases h
 
 end ArmSim
+
+/-! ## §7  Preservation of the renaming
+
+`RenRel v w env envF` relates the environment of a program to the environment of
+its renaming `v ↦ w`, and `RenSim` lifts it to state computations.
+`denote'_renameVar` is the logical-relation argument over the structure of the
+program, with one lemma per loop helper of `denote'` by induction on the fuel. -/
+
+open _root_.Hax (denoteArgs' denoteForLoop' denoteForLoopRev' denoteWhile' denoteForLoop'Return
+  denoteForLoopRev'Return denoteWhile'Return denoteForLoopOrig' denoteForLoopRevOrig'
+  denoteWhileOrig')
+
+/-- The environments of a program and of its renaming `v ↦ w`: `v` is bound in
+    `env`, `envF` holds its value at `w`, and the two agree at every name other
+    than `v` and `w`. -/
+def RenRel (v w : String) (env envF : Env) : Prop :=
+  (∃ x, env v = some x ∧ envF w = some x) ∧ ∀ y, y ≠ v → y ≠ w → envF y = env y
+
+/-- Two state computations related by the renaming `v ↦ w`: from `RenRel`-related
+    environments they return the same result and end in `RenRel`-related
+    environments. -/
+def RenSim (v w : String) {α : Type} (m m' : StateM Env α) : Prop :=
+  ∀ env envF, RenRel v w env envF →
+    (m.run env).1 = (m'.run envF).1 ∧ RenRel v w (m.run env).2 (m'.run envF).2
+
+/-- Binding a name other than `v` and `w` to the same value on both sides keeps the
+    environments related. -/
+theorem RenRel.extend {v w : String} {env envF : Env} (h : RenRel v w env envF) {k : String}
+    (hkv : k ≠ v) (hkw : k ≠ w) (x : Value) :
+    RenRel v w (env.extend k x) (envF.extend k x) := by
+  obtain ⟨⟨y, hy1, hy2⟩, ho⟩ := h
+  refine ⟨⟨y, ?_, ?_⟩, fun z hzv hzw => ?_⟩
+  · rw [_root_.Hax.Env.extend_other _ _ _ _ (Ne.symm hkv)]; exact hy1
+  · rw [_root_.Hax.Env.extend_other _ _ _ _ (Ne.symm hkw)]; exact hy2
+  · by_cases hz : z = k
+    · subst hz; simp only [_root_.Hax.Env.extend_same]
+    · rw [_root_.Hax.Env.extend_other _ _ _ _ hz, _root_.Hax.Env.extend_other _ _ _ _ hz]
+      exact ho z hzv hzw
+
+/-- A pure computation is related to itself. -/
+theorem RenSim.pure {v w : String} {α : Type} (a : α) :
+    RenSim v w (Pure.pure a : StateM Env α) (Pure.pure a) :=
+  fun _ _ h => ⟨rfl, h⟩
+
+/-- Related computations followed by pointwise related continuations are related. -/
+theorem RenSim.bind {v w : String} {α β : Type} {m m' : StateM Env α}
+    {f f' : α → StateM Env β} (hm : RenSim v w m m') (hf : ∀ a, RenSim v w (f a) (f' a)) :
+    RenSim v w (m >>= f) (m' >>= f') := by
+  intro env envF h
+  obtain ⟨h1, h2⟩ := hm env envF h
+  have e1 : (m >>= f).run env = (f (m.run env).1).run (m.run env).2 := rfl
+  have e2 : (m' >>= f').run envF = (f' (m'.run envF).1).run (m'.run envF).2 := rfl
+  rw [e1, e2, h1]
+  exact hf _ _ _ h2
+
+/-- Binding a name other than `v` and `w` on both sides is related to itself. -/
+theorem RenSim.modify_extend {v w k : String} (hkv : k ≠ v) (hkw : k ≠ w) (x : Value) :
+    RenSim v w (modify (_root_.Hax.Env.extend · k x) : StateM Env PUnit)
+      (modify (_root_.Hax.Env.extend · k x)) :=
+  fun _ _ h => ⟨rfl, h.extend hkv hkw x⟩
+
+/-- Case on an outcome and, for a value, on its constructor (and on the bool of a
+    `bool`, `result` or `controlFlow` value). -/
+local macro "ren_outcome" : tactic => `(tactic|
+  (intro r
+   rcases r with (x | _ | _ | _ | _)
+   all_goals try (rcases x with (⟨_ | _⟩ | _ | _ | _ | _ | _ | _ | _ | ⟨_ | _, _⟩ | ⟨_ | _, _⟩))
+   all_goals try dsimp only))
+
+/-- `ren_outcome`, also casing on the payload of a `controlFlow` value. -/
+local macro "ren_outcome2" : tactic => `(tactic|
+  (intro r
+   rcases r with (x | _ | _ | _ | _)
+   all_goals try (rcases x with (⟨_ | _⟩ | _ | _ | _ | _ | _ | _ | _ | ⟨_ | _, _⟩ | ⟨_ | _, p⟩))
+   all_goals try (rcases p with (⟨_ | _⟩ | _ | _ | _ | _ | _ | _ | _ | ⟨_ | _, _⟩ | ⟨_ | _, _⟩))
+   all_goals try dsimp only))
+
+section Rename
+
+variable (bi : Builtins) {v w : String}
+
+/-- Reading `v` and reading `w` in the renaming are related. -/
+theorem renSim_var_ren (fuel : Nat) :
+    RenSim v w (denote' bi fuel (.var v)) (denote' bi fuel (.var w)) := by
+  intro env envF hR
+  obtain ⟨y, hy1, hy2⟩ := hR.1
+  rw [denote'_var_run, denote'_var_run, hy1, hy2]
+  exact ⟨rfl, hR⟩
+
+/-- Reading a name other than `v` and `w` is related to itself. -/
+theorem renSim_var_keep (fuel : Nat) {x : String} (hxv : x ≠ v) (hxw : x ≠ w) :
+    RenSim v w (denote' bi fuel (.var x)) (denote' bi fuel (.var x)) := by
+  intro env envF hR
+  rw [denote'_var_run, denote'_var_run, hR.2 x hxv hxw]
+  cases env x <;> exact ⟨rfl, hR⟩
+
+theorem renameSafeList_mem : ∀ {es : List ImpExpr}, renameSafeList v w es = true →
+    ∀ a ∈ es, renameSafe v w a = true
+  | [], _, a, ha => by simp at ha
+  | e :: es, h, a, ha => by
+    simp only [renameSafeList, Bool.and_eq_true] at h
+    rcases List.mem_cons.1 ha with rfl | ha
+    · exact h.1
+    · exact renameSafeList_mem h.2 a ha
+
+theorem varAbsentList_mem : ∀ {es : List ImpExpr}, varAbsentList w es = true →
+    ∀ a ∈ es, varAbsent w a = true
+  | [], _, a, ha => by simp at ha
+  | e :: es, h, a, ha => by
+    simp only [varAbsentList, Bool.and_eq_true] at h
+    rcases List.mem_cons.1 ha with rfl | ha
+    · exact h.1
+    · exact varAbsentList_mem h.2 a ha
+
+/-- The argument lists of a call and of its renaming are related when each argument
+    is. -/
+theorem renSim_args (fuel : Nat) : ∀ (es : List ImpExpr),
+    (∀ a ∈ es, RenSim v w (denote' bi fuel a) (denote' bi fuel (renameVar v w a))) →
+    RenSim v w (denoteArgs' bi fuel es) (denoteArgs' bi fuel (renameVarList v w es))
+  | [], _ => by simp only [renameVarList, denoteArgs']; exact RenSim.pure _
+  | e :: es, h => by
+    simp only [renameVarList, denoteArgs']
+    apply RenSim.bind (h e List.mem_cons_self)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (renSim_args fuel es fun a ha => h a (List.mem_cons_of_mem _ ha))
+         intro _; exact RenSim.pure _)
+
+variable {b : ImpExpr}
+  (hb : ∀ fuel, RenSim v w (denote' bi fuel b) (denote' bi fuel (renameVar v w b)))
+include hb
+
+theorem renSim_forLoop' {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoop' bi fuel i lo hi b)
+      (denoteForLoop' bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoop'; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoop'
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+theorem renSim_forLoopRev' {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoopRev' bi fuel i lo hi b)
+      (denoteForLoopRev' bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoopRev'; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoopRev'
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+theorem renSim_forLoopOrig' {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoopOrig' bi fuel i lo hi b)
+      (denoteForLoopOrig' bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoopOrig'; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoopOrig'
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+theorem renSim_forLoopRevOrig' {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoopRevOrig' bi fuel i lo hi b)
+      (denoteForLoopRevOrig' bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoopRevOrig'; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoopRevOrig'
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+theorem renSim_forLoop'Return {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoop'Return bi fuel i lo hi b)
+      (denoteForLoop'Return bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoop'Return; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoop'Return
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome2
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+theorem renSim_forLoopRev'Return {i : String} (hiv : i ≠ v) (hiw : i ≠ w) :
+    ∀ fuel lo hi, RenSim v w (denoteForLoopRev'Return bi fuel i lo hi b)
+      (denoteForLoopRev'Return bi fuel i lo hi (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro lo hi; unfold denoteForLoopRev'Return; split <;> exact RenSim.pure _
+  | succ k ih =>
+    intro lo hi
+    unfold denoteForLoopRev'Return
+    split
+    · exact RenSim.pure _
+    · split
+      · exact RenSim.pure _
+      · apply RenSim.bind (RenSim.modify_extend hiv hiw _)
+        intro _
+        apply RenSim.bind (hb (k + 1))
+        ren_outcome2
+        all_goals first | exact RenSim.pure _ | exact ih _ _
+
+variable {c : ImpExpr}
+  (hc : ∀ fuel, RenSim v w (denote' bi fuel c) (denote' bi fuel (renameVar v w c)))
+include hc
+
+theorem renSim_while' : ∀ fuel, RenSim v w (denoteWhile' bi fuel c b)
+    (denoteWhile' bi fuel (renameVar v w c) (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => unfold denoteWhile'; split <;> first | exact RenSim.pure _ | omega
+  | succ k ih =>
+    unfold denoteWhile'
+    split
+    · omega
+    · apply RenSim.bind (hc (k + 1))
+      ren_outcome
+      all_goals first
+        | exact RenSim.pure _
+        | (apply RenSim.bind (hb (k + 1)); ren_outcome
+           all_goals first | exact RenSim.pure _ | exact ih)
+
+theorem renSim_whileOrig' : ∀ fuel, RenSim v w (denoteWhileOrig' bi fuel c b)
+    (denoteWhileOrig' bi fuel (renameVar v w c) (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => unfold denoteWhileOrig'; split <;> first | exact RenSim.pure _ | omega
+  | succ k ih =>
+    unfold denoteWhileOrig'
+    split
+    · omega
+    · apply RenSim.bind (hc (k + 1))
+      ren_outcome
+      all_goals first
+        | exact RenSim.pure _
+        | (apply RenSim.bind (hb (k + 1)); ren_outcome
+           all_goals first | exact RenSim.pure _ | exact ih)
+
+theorem renSim_while'Return : ∀ fuel, RenSim v w (denoteWhile'Return bi fuel c b)
+    (denoteWhile'Return bi fuel (renameVar v w c) (renameVar v w b)) := by
+  intro fuel
+  induction fuel with
+  | zero => unfold denoteWhile'Return; split <;> first | exact RenSim.pure _ | omega
+  | succ k ih =>
+    unfold denoteWhile'Return
+    split
+    · omega
+    · apply RenSim.bind (hc (k + 1))
+      ren_outcome
+      all_goals first
+        | exact RenSim.pure _
+        | (apply RenSim.bind (hb (k + 1)); ren_outcome2
+           all_goals first | exact RenSim.pure _ | exact ih)
+
+end Rename
+
+/-- Unpack the Boolean side conditions of one `renameSafe`/`varAbsent` step. -/
+local macro "ren_hyps" : tactic => `(tactic|
+  (simp only [renameSafe, varAbsent, Bool.and_eq_true, bne_iff_ne, ne_eq] at *))
+
+/-- **Renaming preserves the run.**  When no binder of `e` is `v` or `w`, `e`
+    contains no `match_` and no `lam` (`renameSafe v w e`), and `w` does not occur
+    in `e` (`varAbsent w e`), the run of `e` and the run of `renameVar v w e` from
+    `RenRel v w`-related environments return the same result and end in
+    `RenRel v w`-related environments. -/
+theorem denote'_renameVar (bi : Builtins) (v w : String) (e : ImpExpr) :
+    renameSafe v w e = true → varAbsent w e = true → ∀ fuel,
+      RenSim v w (denote' bi fuel e) (denote' bi fuel (renameVar v w e)) := by
+  induction e using _root_.Hax.ImpExpr.ind with
+  | lit l => intro _ _ fuel; simp only [renameVar, denote']; exact RenSim.pure _
+  | var x =>
+    intro _ ha fuel
+    simp only [varAbsent, bne_iff_ne, ne_eq] at ha
+    simp only [renameVar]
+    by_cases hx : x = v
+    · subst hx; simp only [beq_self_eq_true, if_true]; exact renSim_var_ren bi fuel
+    · simp only [beq_iff_eq, hx, if_false]; exact renSim_var_keep bi fuel hx ha
+  | letBind n val body ihv ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihv hs.1.2 ha.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (RenSim.modify_extend hs.1.1.1 hs.1.1.2 _); intro _
+         exact ihb hs.2 ha.2 fuel)
+  | lam _ _ _ => intro hs; simp [renameSafe] at hs
+  | app f args ih =>
+    intro hs ha fuel
+    simp only [renameSafe] at hs
+    simp only [varAbsent] at ha
+    simp only [renameVar, denote', _root_.Hax.denoteApp']
+    apply RenSim.bind (renSim_args bi fuel args fun a h =>
+      ih a h (renameSafeList_mem hs a h) (varAbsentList_mem ha a h) fuel)
+    intro r
+    rcases r with _ | vals
+    · exact RenSim.pure _
+    · dsimp only; split <;> exact RenSim.pure _
+  | tuple es ih =>
+    intro hs ha fuel
+    simp only [renameSafe] at hs
+    simp only [varAbsent] at ha
+    simp only [renameVar, denote']
+    apply RenSim.bind (renSim_args bi fuel es fun a h =>
+      ih a h (renameSafeList_mem hs a h) (varAbsentList_mem ha a h) fuel)
+    intro r
+    rcases r with _ | vals <;> exact RenSim.pure _
+  | proj e i ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals first | exact RenSim.pure _ | (split <;> exact RenSim.pure _)
+  | ifThenElse c t e ihc iht ihe =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihc hs.1.1 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _ | exact iht hs.1.2 ha.1.2 fuel | exact ihe hs.2 ha.2 fuel
+  | match_ _ _ _ _ => intro hs; simp [renameSafe] at hs
+  | unitVal => intro _ _ fuel; simp only [renameVar, denote']; exact RenSim.pure _
+  | seq a b iha ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (iha hs.1 ha.1 fuel)
+    ren_outcome
+    all_goals first | exact RenSim.pure _ | exact ihb hs.2 ha.2 fuel
+  | borrow e ih =>
+    intro hs ha fuel; ren_hyps; simp only [renameVar, denote']; exact ih hs ha fuel
+  | deref e ih =>
+    intro hs ha fuel; ren_hyps; simp only [renameVar, denote']; exact ih hs ha fuel
+  | assign n r ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs.2 ha fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (RenSim.modify_extend hs.1.1 hs.1.2 _); intro _
+         exact RenSim.pure _)
+  | forLoop i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoopOrig' bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1 hs.1.1.1.2 _ _ _)
+  | forLoopRev i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoopRevOrig' bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1
+               hs.1.1.1.2 _ _ _)
+  | whileLoop c b ihc ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    exact renSim_whileOrig' bi (fun f => ihb hs.2 ha.2 f) (fun f => ihc hs.1 ha.1 f) fuel
+  | break_none => intro _ _ fuel; simp only [renameVar, denote']; exact RenSim.pure _
+  | break_some e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | continue_ => intro _ _ fuel; simp only [renameVar, denote']; exact RenSim.pure _
+  | earlyReturn e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | questionMark e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | forFold i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoop' bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1 hs.1.1.1.2 _ _ _)
+  | forFoldRev i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoopRev' bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1
+               hs.1.1.1.2 _ _ _)
+  | whileFold c b ihc ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    exact renSim_while' bi (fun f => ihb hs.2 ha.2 f) (fun f => ihc hs.1 ha.1 f) fuel
+  | forFoldReturn i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoop'Return bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1
+               hs.1.1.1.2 _ _ _)
+  | forFoldRevReturn i lo hi b ihl ihh ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ihl hs.1.1.2 ha.1.1 fuel)
+    ren_outcome
+    all_goals first
+      | exact RenSim.pure _
+      | (apply RenSim.bind (ihh hs.1.2 ha.1.2 fuel); ren_outcome
+         all_goals first
+           | exact RenSim.pure _
+           | exact renSim_forLoopRev'Return bi (fun f => ihb hs.2 ha.2 f) hs.1.1.1.1
+               hs.1.1.1.2 _ _ _)
+  | whileFoldReturn c b ihc ihb =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    exact renSim_while'Return bi (fun f => ihb hs.2 ha.2 f) (fun f => ihc hs.1 ha.1 f) fuel
+  | cfBreak e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | cfContinue e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | cfBreakContinue e ih =>
+    intro hs ha fuel
+    ren_hyps
+    simp only [renameVar, denote']
+    apply RenSim.bind (ih hs ha fuel)
+    ren_outcome
+    all_goals exact RenSim.pure _
+  | typeAscription e t ih =>
+    intro hs ha fuel; ren_hyps; simp only [renameVar, denote']; exact ih hs ha fuel
+
+/-- **`Option` match, `Some` arm, with the renaming.**  On an `Option` variable `o`
+    holding `some x`, the lowering `optMatchArm` of the match runs as the flattened
+    arm `e2'` with `v` bound to `x`: the same result, and final environments related
+    by the renaming `v ↦ o#val`.  The side condition is that `o#val` does not occur
+    in `e2'`.  With `optMatch_sim`, which runs the source match as `e2` with `v`
+    bound to `x`, this is the `Some` case of the match arm of `flatE`. -/
+theorem optMatch_some_renamed_sim (bi : Builtins) (fuel : Nat) (ov : List String)
+    (o v : String) (e2' e1' e' : ImpExpr) (env envF : Env) (x : Value)
+    (h : optMatchArm ov o v e2' e1' = some e') (hof : OptFlatAt o env envF)
+    (ho : env o = some (.option (some x))) (hfresh : varAbsent (optValName o) e2' = true) :
+    ((denote' bi fuel e').run envF).1 = ((denote' bi fuel e2').run (envF.extend v x)).1 ∧
+      RenRel v (optValName o) ((denote' bi fuel e2').run (envF.extend v x)).2
+        ((denote' bi fuel e').run envF).2 := by
+  obtain ⟨ox, hs, ht, hv⟩ := hof
+  rw [ho] at hs
+  cases hs
+  unfold optMatchArm at h
+  split at h
+  · cases h
+    rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    rw [denote'_ifThenElse_var_run_bool bi fuel _ _ _ _ _ ht]
+    have hR : RenRel v (optValName o) (envF.extend v x) envF :=
+      ⟨⟨x, _root_.Hax.Env.extend_same _ _ _, hv x rfl⟩,
+        fun y hy _ => (_root_.Hax.Env.extend_other _ _ _ _ hy).symm⟩
+    obtain ⟨h1, h2⟩ := denote'_renameVar bi v (optValName o) e2' hc.2 hfresh fuel _ _ hR
+    exact ⟨h1.symm, h2⟩
+  · cases h
+
+/-- The tag and payload variables of an `Option` variable are distinct. -/
+theorem optTagName_ne_optValName (o : String) : optTagName o ≠ optValName o := by
+  simp [optTagName, optValName]
+
+section OptBind
+
+variable (bi : Builtins) (fuel : Nat)
+
+/-- **`Option` binding, `Some`.**  `let o = Some x; body` runs `body` with `o` bound
+    to `some v`; its lowering `optBindArm` runs `body'` with the payload `o#val`
+    bound to `v` and the tag `o#tag` to `true`, so `o` is flattened in the two
+    environments. -/
+theorem optBind_some_sim (o : String) (x x' body body' e' : ImpExpr)
+    (env env1 envF envF1 : Env) (v : Value) (hO : OptionSound bi)
+    (he : optBindArm o (.app "Some" [x]) (.app "Some" [x']) body' = some e')
+    (hx : (denote' bi fuel x).run env = (.val v, env1)) (hv : v.isControlFlow = false)
+    (hx' : (denote' bi fuel x').run envF = (.val v, envF1)) :
+    (denote' bi fuel (.letBind o (.app "Some" [x]) body)).run env =
+        (denote' bi fuel body).run (env1.extend o (.option (some v))) ∧
+      (denote' bi fuel e').run envF =
+        (denote' bi fuel body').run
+          ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) ∧
+      OptFlatAt o (env1.extend o (.option (some v)))
+        ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) := by
+  have he' : e' =
+      .letBind (optValName o) x' (.letBind (optTagName o) (.lit (.bool true)) body') := by
+    simp only [optBindArm, beq_self_eq_true, Bool.true_and] at he
+    split at he
+    · exact (Option.some.inj he).symm
+    · cases he
+  subst he'
+  have hS : (denote' bi fuel (.app "Some" [x])).run env = (.val (.option (some v)), env1) := by
+    rw [denote'_app_run, denoteArgs'_cons_run, hx]
+    cases v <;> simp at hv <;> simp only [denoteArgs'_nil_run, Option.map_some, hO.1]
+  refine ⟨denote'_letBind_run_val bi fuel _ _ _ _ _ _ hS rfl, ?_, ?_⟩
+  · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' hv,
+      denote'_letBind_run_val bi fuel _ _ _ _ _ _ (denote'_lit_run bi fuel _ _) rfl]
+    rfl
+  · refine ⟨some v, _root_.Hax.Env.extend_same _ _ _, _root_.Hax.Env.extend_same _ _ _, ?_⟩
+    intro y hy
+    cases hy
+    rw [_root_.Hax.Env.extend_other _ _ _ _ (optTagName_ne_optValName o).symm,
+      _root_.Hax.Env.extend_same]
+
+/-- **`Option` binding, `None`.**  `let o = None; body` runs `body` with `o` bound to
+    `none`; its lowering `optBindArm` runs `body'` with the tag `o#tag` bound to
+    `false`, so `o` is flattened in the two environments. -/
+theorem optBind_none_sim (o : String) (body body' e' : ImpExpr) (env envF : Env)
+    (hO : OptionSound bi)
+    (he : optBindArm o (.app "None" []) (.app "None" []) body' = some e') :
+    (denote' bi fuel (.letBind o (.app "None" []) body)).run env =
+        (denote' bi fuel body).run (env.extend o (.option none)) ∧
+      (denote' bi fuel e').run envF =
+        (denote' bi fuel body').run (envF.extend (optTagName o) (.bool false)) ∧
+      OptFlatAt o (env.extend o (.option none)) (envF.extend (optTagName o) (.bool false)) := by
+  have he' : e' = .letBind (optTagName o) (.lit (.bool false)) body' := by
+    simp only [optBindArm, beq_self_eq_true, if_true] at he
+    exact (Option.some.inj he).symm
+  subst he'
+  have hN : (denote' bi fuel (.app "None" [])).run env = (.val (.option none), env) := by
+    rw [denote'_app_run, denoteArgs'_nil_run]
+    simp only [hO.2]
+  refine ⟨denote'_letBind_run_val bi fuel _ _ _ _ _ _ hN rfl, ?_, ?_⟩
+  · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ (denote'_lit_run bi fuel _ _) rfl]
+    rfl
+  · exact ⟨none, _root_.Hax.Env.extend_same _ _ _, _root_.Hax.Env.extend_same _ _ _,
+      fun _ h => by cases h⟩
+
+end OptBind
 
 end CatCrypt.Crypto.Hax
