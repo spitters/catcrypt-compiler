@@ -128,8 +128,41 @@ end VarMap
 
 /-! ## 2. Op-code and type mapping (typeclasses) -/
 
+/-- An operand of one operation of an expansion: argument `i` of the binding, or
+    result `slot` of the earlier operation `j` of the same expansion. -/
+inductive VeirSrc where
+  /-- Argument `i` of the binding. -/
+  | arg (i : Nat)
+  /-- Result `slot` of operation `j` of the expansion. -/
+  | res (j slot : Nat)
+  deriving Inhabited, Repr, DecidableEq
+
+/-- One operation of an expansion: its op-code and properties, its discardable
+    attributes, its operands, and its result types (`none` is the binding's type). -/
+structure VeirExpandStep (O : Type) [Veir.HasOpInfo O] where
+  /-- The op-code. -/
+  op : O
+  /-- The properties of the op-code. -/
+  props : Veir.propertiesOf op
+  /-- The discardable attributes. -/
+  attrs : Array (ByteArray × Veir.Attribute) := #[]
+  /-- The operands, in order. -/
+  operands : List VeirSrc
+  /-- The result types, in order; `none` is the type of the binding. -/
+  results : List (Option Veir.TypeAttr)
+
+/-- The lowering of one binding as the operations `steps`, emitted in order, and
+    the operand `value` that the binding denotes. With no steps and
+    `value = .arg 0` the binding is an alias of its first argument. -/
+structure VeirExpansion (O : Type) [Veir.HasOpInfo O] where
+  /-- The operations, in emission order. -/
+  steps : List (VeirExpandStep O)
+  /-- The value of the binding. -/
+  value : VeirSrc
+
 /-- A mapping from a VIR dialect to a Veir op-info enum. Each VIR op
-    becomes a Veir op-code with its default properties.
+    becomes a Veir op-code with its default properties, or, when `expand?`
+    gives an expansion, the operations of that expansion.
 
     Optionally an op can carry a per-instance attribute dictionary
     (e.g. `callee = @fp_add` for an external-call op). The default
@@ -152,6 +185,9 @@ class ToVeirOp (d : Dialect) [DialectSignature d] where
       and the index of the result that carries the binding's value. Default: one
       result. -/
   resultSlot (o : d.Op) : Nat × Nat := (1, 0)
+  /-- The lowering of the op as a sequence of operations, when it is not one
+      operation. Default: every op is one operation. -/
+  expand? (o : d.Op) : Option (@VeirExpansion Op hasOpInfo) := none
 
 attribute [reducible, instance] ToVeirOp.hasOpInfo
 
@@ -268,7 +304,7 @@ def pushFreshResults (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
       return r :: rs
 
 /--
-Lower a single `Expr d Γ t` to a Veir operation.
+Lower a single `Expr d Γ t` to one Veir operation.
 
 Builds an op of kind `e.op`, attaches one operand per argument
 (resolved against `vm`), and attaches the results given by
@@ -277,7 +313,7 @@ Returns the pair `(opPtr, resPtr)`: the `OperationPtr` of the allocated op
 (needed for chaining) and the `OpResultPtr` of the result that carries the
 binding's value (needed for the `VarMap`).
 -/
-def lowerExpr {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
+def lowerExprSingle {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
     ComToVeirM (ToVeirOp.Op (d := d))
       (Veir.OperationPtr × Veir.OpResultPtr) := do
   let op ← allocOp e.op
@@ -290,6 +326,86 @@ def lowerExpr {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
       match rs with
       | res :: _ => return (op, res)
       | [] => return (op, ⟨op, 0⟩)
+
+/-- The value pointers of the arguments of a binding, in order. -/
+def argPtrs {Γ : Ctxt d} (vm : VarMap Γ) :
+    {tys : List d.Ty} → HVector (fun ty => Var Γ ty) tys → List Veir.ValuePtr
+  | [], .nil => []
+  | _ :: _, .cons v rest => vm _ v :: argPtrs vm rest
+
+/-- The value pointer an operand of an expansion denotes, given the binding's
+    arguments `args` and the results `done` of the operations emitted so far. -/
+def VeirSrc.resolve (args : List Veir.ValuePtr) (done : List (List Veir.OpResultPtr)) :
+    VeirSrc → Veir.ValuePtr
+  | .arg i => args.getD i default
+  | .res j slot =>
+      match done[j]?.bind (·[slot]?) with
+      | some r => .opResult r
+      | none => default
+
+/-- Append the operands `vs` to the operation `op`, in order. -/
+def pushOperandList (op : Veir.OperationPtr) :
+    List Veir.ValuePtr → ComToVeirM (ToVeirOp.Op (d := d)) Unit
+  | [] => pure ()
+  | v :: vs => do
+      pushFreshOperand (d := d) op v
+      pushOperandList op vs
+
+/-- Append one result per type of `tys` to the operation `op`, returning their
+    pointers in order. -/
+def pushResultsOfTypes (op : Veir.OperationPtr) :
+    List Veir.TypeAttr → ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OpResultPtr)
+  | [] => pure []
+  | ty :: tys => do
+      let r ← pushFreshResult (d := d) op ty
+      let rs ← pushResultsOfTypes op tys
+      return r :: rs
+
+/-- Emit one operation of an expansion, whose result types default to `resTy`,
+    returning its pointer and its results. -/
+def emitStep (args : List Veir.ValuePtr) (resTy : Veir.TypeAttr)
+    (done : List (List Veir.OpResultPtr)) (s : VeirExpandStep (ToVeirOp.Op (d := d))) :
+    ComToVeirM (ToVeirOp.Op (d := d)) (Veir.OperationPtr × List Veir.OpResultPtr) := do
+  let ctx ← get
+  let ptr ←
+    match Veir.OperationPtr.allocEmpty ctx s.op s.props with
+    | some (ctx', ptr) =>
+        let attrs := Veir.DictionaryAttr.fromArray s.attrs
+        set (if attrs.entries.isEmpty then ctx' else ptr.setAttributes! ctx' attrs)
+        pure ptr
+    | none => pure default
+  pushOperandList (d := d) ptr (s.operands.map (·.resolve args done))
+  let rs ← pushResultsOfTypes (d := d) ptr (s.results.map (·.getD resTy))
+  return (ptr, rs)
+
+/-- Emit the operations of an expansion in order, returning their pointers and the
+    results of every operation emitted so far. -/
+def runSteps (args : List Veir.ValuePtr) (resTy : Veir.TypeAttr) :
+    List (VeirExpandStep (ToVeirOp.Op (d := d))) → List (List Veir.OpResultPtr) →
+    ComToVeirM (ToVeirOp.Op (d := d))
+      (List Veir.OperationPtr × List (List Veir.OpResultPtr))
+  | [], done => pure ([], done)
+  | s :: rest, done => do
+      let (op, rs) ← emitStep (d := d) args resTy done s
+      let (ops, done') ← runSteps args resTy rest (done ++ [rs])
+      return (op :: ops, done')
+
+/--
+Lower a single `Expr d Γ t` to Veir operations: the operations of
+`ToVeirOp.expand? e.op` when the op has an expansion, else the one operation of
+`lowerExprSingle`. Returns the emitted operations, in order, and the value the
+binding denotes.
+-/
+def lowerExpr {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
+    ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OperationPtr × Veir.ValuePtr) :=
+  match ToVeirOp.expand? (d := d) e.op with
+  | some x => do
+      let args := argPtrs vm e.args
+      let (ops, done) ← runSteps (d := d) args (ToVeirTy.toTy (d := d) t) x.steps []
+      return (ops, x.value.resolve args done)
+  | none => do
+      let (op, res) ← lowerExprSingle vm e
+      return ([op], .opResult res)
 
 /-! ## 4. Lowering a `Com` -/
 
@@ -308,9 +424,9 @@ Returns the pair `(finalOpRes, opChain)`:
 The semantics:
 
 * `Com.ret v` — looks up `v` in `vm`. No new operation is emitted.
-* `Com.var e body` — lowers `e` to a fresh op, extends the `VarMap`
-  with its result, then recurses on `body`. The op is prepended to
-  the eventual `opChain`.
+* `Com.var e body` — lowers `e` to its operations, extends the `VarMap`
+  with the value of the binding, then recurses on `body`. The operations
+  are prepended to the eventual `opChain`.
 
 Chain assembly (parent / prev / next wiring) is left to the caller —
 keeping `lowerCom` itself chain-free makes the recursion clean.
@@ -321,10 +437,9 @@ def lowerCom {Γ : Ctxt d} {t : d.Ty} :
       (Veir.ValuePtr × List Veir.OperationPtr)
   | vm, .ret v => pure (vm _ v, [])
   | vm, .var (t := tEx) e body => do
-      let (opPtr, resPtr) ← lowerExpr vm e
-      let (final, rest) ← lowerCom
-        (vm.extend (t := tEx) (Veir.ValuePtr.opResult resPtr)) body
-      return (final, opPtr :: rest)
+      let (ops, val) ← lowerExpr vm e
+      let (final, rest) ← lowerCom (vm.extend (t := tEx) val) body
+      return (final, ops ++ rest)
 
 /-- Chain a list of `OperationPtr`s via `setNextOp!`/`setPrevOp!` and
     set each op's parent to `blk`. The first/last pointers of `blk`
