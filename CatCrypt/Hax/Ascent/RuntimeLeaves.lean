@@ -44,7 +44,7 @@ encodings are disjoint.
 * `indexLeaf`, `arrayUpdateLeaf`, `repeatLeaf`, `arrayLitLeaf`, `lenLeaf`, `pushLeaf`,
   `emptyLeaf`, `extendLeaf`, `copyLeaf`, `sliceUpdateLeaf`, `identLeaf`, `iterLeaf`,
   `truncateLeaf`, `isEmptyLeaf`, `someLeaf`, `unitLeaf`, `assertLeaf`, `constLeaf`,
-  `rangeToLeaf`, `rangeFromLeaf`, `rangeLeaf`
+  `rangeToLeaf`, `rangeFromLeaf`, `rangeLeaf`, `projFstLeaf`, `projSndLeaf`
 * `intArrLeaf2`, `eqLeaf`, `notLeaf`, `negLeaf`
 
 ## Main results
@@ -282,6 +282,19 @@ def rangeLeaf : Leaf
   | [.int lo, .int hi] => some (rangeVal lo (some hi))
   | _ => none
 
+/-- `::proj::.1`, the printer's first projection `p.1` of a right-nested tuple: the first
+    component. -/
+def projFstLeaf : Leaf
+  | [.tuple (v :: _)] => some v
+  | _ => none
+
+/-- `::proj::.2`, the printer's second projection `p.2` of a right-nested tuple: the second
+    component of a pair, and the tuple of the remaining components otherwise. -/
+def projSndLeaf : Leaf
+  | [.tuple [_, w]] => some w
+  | [.tuple (_ :: vs)] => some (.tuple vs)
+  | _ => none
+
 /-! ### Transport of the value leaves -/
 
 section Transport
@@ -444,11 +457,31 @@ theorem rangeLeaf_int (lo hi : Int) :
 
 theorem unitLeaf_apply (vs : List Value) : unitLeaf vs = some .unit := rfl
 
+theorem projFstLeaf_enc {γ : Type} [HaxTupleEnc γ] (a : α) (c : γ) :
+    projFstLeaf [enc (a, c)] = some (enc (a, c).1) := rfl
+
+/-- The second projection of a pair whose second component is one component. -/
+theorem projSndLeaf_single {β : Type} [HaxEnc β] (a : α) (b : β) :
+    projSndLeaf [.tuple [enc a, enc b]] = some (enc b) := rfl
+
+/-- The second projection of a tuple of more than two components. -/
+theorem projSndLeaf_prod {β δ : Type} [HaxEnc β] [HaxTupleEnc δ] (a : α) (c : β × δ)
+    (h : 1 ≤ (HaxTupleEnc.encList c.2).length) :
+    projSndLeaf [enc (a, c)] = some (enc (a, c).2) := by
+  obtain ⟨b, d⟩ := c
+  change projSndLeaf [.tuple (enc a :: enc b :: HaxTupleEnc.encList d)] =
+    some (.tuple (enc b :: HaxTupleEnc.encList d))
+  generalize HaxTupleEnc.encList d = l at h
+  cases l with
+  | nil => simp at h
+  | cons x l => rfl
+
 end Transport
 
 attribute [irreducible] indexLeaf arrayUpdateLeaf repeatLeaf arrayLitLeaf lenLeaf pushLeaf
   emptyLeaf extendLeaf copyLeaf sliceUpdateLeaf identLeaf iterLeaf truncateLeaf isEmptyLeaf
   someLeaf unitLeaf assertLeaf constLeaf rangeToLeaf rangeFromLeaf rangeLeaf rangeVal
+  projFstLeaf projSndLeaf
 
 /-! ## Scalar leaves -/
 

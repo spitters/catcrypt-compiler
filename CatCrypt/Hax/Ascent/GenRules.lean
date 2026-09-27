@@ -44,8 +44,19 @@ result with the runtime's combinators:
 A body exit of a `forFoldReturn` is a return from the function: the loop exits with the
 returned value (`retC`, `retOut`) and otherwise binds the final accumulator (`retAcc`).
 
+`corresB_forFoldPJ` and `corresB_forFoldGJ` add an accumulator invariant `J σ a` that
+holds initially and is kept by every step, and under which the body runs.
+
 A tuple whose last component has a product type is typed with that component under
 `Boxed`, whose encoding is the component's own, so that the pair encodes as a pair.
+
+## Nonempty arrays
+
+`AllNE a` states that every element of an array of arrays is nonempty. The lemmas
+`ne_array_update`, `ne_push`, `ne_repeat`, `ne_index`, `allNE_array_update`, … carry
+nonemptiness through the runtime's array operations, `foldRange_pres`,
+`foldRange_pres_lt`, `foldRangeRev_pres` and `forFold_stepCF_pres` through loops, and
+`beq_true_int`, `lt_false_int`, … read the runtime's integer comparisons as propositions.
 
 The counted rules hold for all bounds: an empty range is a separate case
 (`corres_guard_cases`). A break carries its value and the accumulator at the break
@@ -60,15 +71,16 @@ into `FnCorres` and, for a function with early return, `FnCorresX` of
 ## Main definitions
 
 * `BList`, `CorresG`, `cfState`, `cfVal`, `stepCF`
-* `stepRet`, `retC`, `retOut`, `retAcc`, `Boxed`
+* `stepRet`, `retC`, `retOut`, `retAcc`, `Boxed`, `bindPats`, `extendPats`, `AllNE`
 
 ## Main results
 
 * `corresG_seq`, `corresG_letBind`, `corresG_seqL`, `corresG_letBindL`,
   `corresG_ifThenElse`, `corresG_cfBreak`
 * `corresB_forFoldP`, `corresB_forFoldRevP`, `corresB_forFoldG`, `corresB_whileFoldG`,
-  `corresG_forFoldReturnG`
+  `corresG_forFoldReturnG`, `corresB_forFoldPJ`, `corresB_forFoldGJ`
 * `corresG_optMatch` — the `Option` match with guarded exits in the arms
+* `corresB_matchTuple` — the match with one arm whose pattern is a tuple of variables
 * `whileFoldStops_of_measure` — termination of a while-fold from a decreasing measure
 * `fnCorres_of_corresB`, `fnCorresX_of_corresG`
 -/
@@ -805,6 +817,75 @@ theorem corresG_optMatch {α : Type} [HaxEnc α] [Inhabited α] {Γ Ts Ns Tn Nn 
 
 end GenOptMatch
 
+/-! ## Tuple pattern -/
+
+section GenTupleMatch
+
+variable {S : Type} {bi : Builtins}
+
+/-- The binding list `l` extended by the names `xs` bound to the values `vs` in order, the
+    last name at the head. -/
+def bindPats : List String → List Value → BList → BList
+  | x :: xs, v :: vs, l => bindPats xs vs ((x, v) :: l)
+  | _, _, l => l
+
+/-- The environment `env` extended by the names `xs` bound to the values `vs` in order. -/
+def extendPats : List String → List Value → Env → Env
+  | x :: xs, v :: vs, env => extendPats xs vs (env.extend x v)
+  | _, _, env => env
+
+theorem matchPatList_varPats (xs : List String) (vs : List Value) (env : Env)
+    (h : vs.length = xs.length) :
+    matchPat.matchPatList (xs.map ImpPat.varPat) vs env = some (extendPats xs vs env) := by
+  induction xs generalizing vs env with
+  | nil => cases vs with
+    | nil => rfl
+    | cons _ _ => simp at h
+  | cons x xs ih => cases vs with
+    | nil => simp at h
+    | cons v vs =>
+      simp only [List.map_cons, matchPat.matchPatList, matchPat]
+      exact ih vs _ (by simpa using h)
+
+theorem binds_extendPats (xs : List String) (vs : List Value) {env : Env} {l : BList}
+    (h : Binds env l) : Binds (extendPats xs vs env) (bindPats xs vs l) := by
+  induction xs generalizing vs env l with
+  | nil => cases vs <;> exact h
+  | cons x xs ih => cases vs with
+    | nil => exact h
+    | cons v vs => exact ih vs (binds_extend h x v)
+
+theorem denote'_matchTuple {s e : ImpExpr} {xs : List String} {env env₁ : Env}
+    {vs : List Value} {fuel : Nat} (hs : denote' bi fuel s env = (.val (.tuple vs), env₁))
+    (h : vs.length = xs.length) :
+    denote' bi fuel (.match_ s [(.tuplePat (xs.map ImpPat.varPat), e)]) env =
+      denote' bi fuel e (extendPats xs vs env₁) := by
+  have hl : ((xs.map ImpPat.varPat).length != vs.length) = false := by simp [h]
+  simp only [denote', stateM_bind_apply, hs, denoteMatchArms', stateM_get_apply, matchPat, hl,
+    Bool.false_eq_true, if_false, matchPatList_varPats xs vs env₁ h]
+  rfl
+
+/-- **Tuple pattern.** A single arm whose pattern is a tuple of variables: the scrutinee
+    returns the tuple `.tuple (Vs σ)` and the arm runs with the names bound to its
+    components. -/
+theorem corresB_matchTuple {Γ N₁ N : S → BList} {G : S → Prop} {s e : ImpExpr}
+    {ps : List ImpPat} {xs : List String} {W V : S → Value} {Vs : S → List Value}
+    (hs : CorresB bi Γ G s W N₁) (hW : ∀ σ, G σ → W σ = .tuple (Vs σ))
+    (hps : ps = xs.map ImpPat.varPat) (hlen : ∀ σ, G σ → (Vs σ).length = xs.length)
+    (hbody : CorresB bi (fun σ => bindPats xs (Vs σ) (N₁ σ)) G e V N) :
+    CorresB bi Γ G (.match_ s [(.tuplePat ps, e)]) V N := by
+  subst hps
+  intro env σ hb hG
+  obtain ⟨f₁, e₁, hb₁, r₁⟩ := hs env σ hb hG
+  obtain ⟨f₂, e₂, hb₂, r₂⟩ := hbody _ σ (binds_extendPats xs (Vs σ) hb₁) hG
+  refine ⟨max f₁ f₂, e₂, hb₂, fun fuel hf => ?_⟩
+  have h₁ := r₁ fuel (by omega)
+  rw [hW σ hG] at h₁
+  rw [denote'_matchTuple h₁ (hlen σ hG)]
+  exact r₂ fuel (by omega)
+
+end GenTupleMatch
+
 /-! ## Conversions -/
 
 section Glue
@@ -976,5 +1057,320 @@ instance {α : Type} [HaxEnc α] : HaxEnc (Boxed α) := ⟨fun a => enc (α := �
 
 instance {α : Type} [HaxEnc α] [HaxEnc.Plain α] : HaxEnc.Plain (Boxed α) :=
   ⟨fun a => HaxEnc.Plain.not_cf (α := α) a⟩
+
+instance {α : Type} [HaxEnc α] [HaxEnc.Inj α] : HaxEnc.Inj (Boxed α) :=
+  ⟨fun _ _ h => HaxEnc.Inj.inj (α := α) h⟩
+
+/-! ## Loops with an accumulator invariant -/
+
+section GenLoopsJ
+
+variable {S A B : Type} {bi : Builtins}
+
+/-- **Counted loop with a plain body and an accumulator invariant.** `corresB_forFoldP`
+    with a predicate `J σ a` of the accumulator that holds initially and is kept by every
+    step; the body runs under `J` as part of its guard. -/
+theorem corresB_forFoldPJ {Γ N₁ N₂ : S → BList} {G : S → Prop} {var : String}
+    {lo hi body : ImpExpr} {loF hiF : S → Int} {a₀ : S → A} {g : S → Int → A → A}
+    {Λ : S → A → BList} {J : S → A → Prop} {Vb : S × Int × A → Value}
+    {Nb : S × Int × A → BList}
+    (hlo : CorresB bi Γ G lo (fun σ => .int (loF σ)) N₁)
+    (hhi : CorresB bi N₁ G hi (fun σ => .int (hiF σ)) N₂)
+    (hinit : ∀ σ, G σ → BindsSub (N₂ σ) (Λ σ (a₀ σ)))
+    (hinitJ : ∀ σ, G σ → J σ (a₀ σ))
+    (hfresh : ∀ σ a, bindLookup (Λ σ a) var = none)
+    (hbody : CorresB bi (fun t : S × Int × A => (var, .int t.2.1) :: Λ t.1 t.2.2)
+      (fun t => (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2) body Vb Nb)
+    (hV : ∀ t : S × Int × A, G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1 →
+      (Vb t).isControlFlow = false)
+    (hstep : ∀ t : S × Int × A, (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 →
+      BindsSub (Nb t) (Λ t.1 (g t.1 t.2.1 t.2.2)))
+    (hJ : ∀ t : S × Int × A, (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 →
+      J t.1 (g t.1 t.2.1 t.2.2)) :
+    CorresB bi Γ G (.forFold var lo hi body) (fun _ => .unit)
+      (fun σ => Λ σ (Hax.foldRange (loF σ) (hiF σ) (a₀ σ) (g σ))) := by
+  refine corres_guard_cases (fun σ => loF σ ≤ hiF σ) ?_ ?_
+  · have h := corres_forFold (bi := bi) (G := fun σ => G σ ∧ loF σ ≤ hiF σ)
+      (Inv := fun env σ _ a => Binds env (Λ σ a) ∧ J σ a) (g := g) (a₀ := a₀) (Vb := Vb)
+      (var := var) (body := body)
+      (corres_conseq hlo (fun _ _ h _ => h) (fun _ h => h.1) (fun _ _ => rfl)
+        (fun _ _ _ h => h))
+      (corres_conseq hhi (fun _ _ h _ => h) (fun _ h => h.1) (fun _ _ => rfl)
+        (fun _ _ _ h => h))
+      (fun env σ h hG => ⟨binds_of_sub h (hinit σ hG.1), hinitJ σ hG.1⟩) (fun σ hG => hG.2)
+      ?_ ?_ ?_
+    · refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun _ _ => rfl)
+        (fun env σ _ hb => ?_)
+      dsimp only at hb ⊢
+      rw [foldRange_eq_foldRangeSpec]
+      exact hb.1
+    · intro env t hP hG
+      obtain ⟨f₀, e', hN, r⟩ := hbody env t (binds_cons_of hP.2 hP.1.1)
+        ⟨⟨hG.1.1, hG.2⟩, hP.1.2⟩
+      exact ⟨f₀, e', ⟨binds_of_sub hN (hstep t ⟨⟨hG.1.1, hG.2⟩, hP.1.2⟩),
+        hJ t ⟨⟨hG.1.1, hG.2⟩, hP.1.2⟩⟩, r⟩
+    · intro t hG hlo' hlt w hw
+      have := hV t ⟨hG.1, hlo', hlt⟩
+      rw [hw] at this
+      cases this
+    · intro env σ i a h
+      exact ⟨binds_extend_fresh h.1 (hfresh σ a) _, h.2⟩
+  · intro env σ hP hG
+    obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hlo env σ hP hG.1
+    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := hhi e₁ σ hQ₁ hG.1
+    have hlt : hiF σ < loF σ := by have := hG.2; omega
+    refine ⟨max f₁ f₂, e₂, ?_, fun fuel hf => ?_⟩
+    · show Binds e₂ (Λ σ (Hax.foldRange (loF σ) (hiF σ) (a₀ σ) (g σ)))
+      rw [foldRange_of_lt hlt]
+      exact binds_of_sub hQ₂ (hinit σ hG.1)
+    · rw [denote'_forFold bi fuel (r₁ fuel (by omega)) (r₂ fuel (by omega))]
+      exact denoteForLoop'_done bi fuel var body e₂ (by omega)
+
+/-- **Counted loop whose body may break, with an accumulator invariant.**
+    `corresB_forFoldG` with a predicate `J σ a` of the accumulator that holds initially
+    and is kept by every step that does not break; the body runs under `J` as part of
+    its guard. -/
+theorem corresB_forFoldGJ [HaxEnc B] {Γ N₁ N₂ : S → BList} {G : S → Prop} {var : String}
+    {lo hi body : ImpExpr} {loF hiF : S → Int} {a₀ : S → A} {g gb : S → Int → A → A}
+    {w : S → Int → A → B} {Λ : S → A → BList} {J : S → A → Prop} {Cb : S × Int × A → Bool}
+    {Wb Vb : S × Int × A → Value} {Tb Nb : S × Int × A → BList}
+    (hlo : CorresB bi Γ G lo (fun σ => .int (loF σ)) N₁)
+    (hhi : CorresB bi N₁ G hi (fun σ => .int (hiF σ)) N₂)
+    (hinit : ∀ σ, G σ → BindsSub (N₂ σ) (Λ σ (a₀ σ)))
+    (hinitJ : ∀ σ, G σ → J σ (a₀ σ))
+    (hfresh : ∀ σ a, bindLookup (Λ σ a) var = none)
+    (hbody : CorresG bi (fun t : S × Int × A => (var, .int t.2.1) :: Λ t.1 t.2.2)
+      (fun t => (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2) body Cb Wb Vb Tb Nb)
+    (hW : ∀ t : S × Int × A, G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1 → Cb t = true →
+      Wb t = enc (w t.1 t.2.1 t.2.2))
+    (hV : ∀ t : S × Int × A, G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1 → Cb t = false →
+      (Vb t).isControlFlow = false)
+    (hT : ∀ t : S × Int × A, (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 →
+      Cb t = true → BindsSub (Tb t) (Λ t.1 (gb t.1 t.2.1 t.2.2)))
+    (hN : ∀ t : S × Int × A, (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 →
+      Cb t = false → BindsSub (Nb t) (Λ t.1 (g t.1 t.2.1 t.2.2)))
+    (hJ : ∀ t : S × Int × A, (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 →
+      Cb t = false → J t.1 (g t.1 t.2.1 t.2.2)) :
+    CorresB bi Γ G (.forFold var lo hi body)
+      (fun σ => cfVal (Hax.forFold (loF σ) (hiF σ) (a₀ σ)
+        (fun i a => stepCF (Cb (σ, i, a)) (w σ i a) (gb σ i a) (g σ i a))))
+      (fun σ => Λ σ (cfState (Hax.forFold (loF σ) (hiF σ) (a₀ σ)
+        (fun i a => stepCF (Cb (σ, i, a)) (w σ i a) (gb σ i a) (g σ i a))))) := by
+  refine corres_guard_cases (fun σ => loF σ ≤ hiF σ) ?_ ?_
+  · have hb' : LoopBody bi var body (fun σ => G σ ∧ loF σ ≤ hiF σ) loF hiF
+        (fun σ i a => cfToExcept (stepCF (Cb (σ, i, a)) (w σ i a) (gb σ i a) (g σ i a)))
+        (fun env σ _ a => Binds env (Λ σ a) ∧ J σ a) (fun env σ p => Binds env (Λ σ p.2))
+        (fun t => if Cb t = true then .controlFlow true (Wb t) else Vb t) := by
+      intro env t hP hG
+      have hG' : (G t.1 ∧ loF t.1 ≤ t.2.1 ∧ t.2.1 < hiF t.1) ∧ J t.1 t.2.2 :=
+        ⟨⟨hG.1.1, hG.2⟩, hP.1.2⟩
+      obtain ⟨f₀, e', hb, r⟩ := hbody env t (binds_cons_of hP.2 hP.1.1) hG'
+      refine ⟨f₀, e', ?_, r⟩
+      obtain ⟨σ, i, a⟩ := t
+      cases hC : Cb (σ, i, a)
+      · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hb ⊢
+        exact ⟨binds_of_sub hb (hN _ hG' hC), hJ _ hG' hC⟩
+      · simp only [hC, if_true, stepCF, cfToExcept] at hb ⊢
+        exact binds_of_sub hb (hT _ hG' hC)
+    have h := corres_forFoldE (bi := bi) (G := fun σ => G σ ∧ loF σ ≤ hiF σ)
+      (W := fun _ (p : B × A) => enc p.1) (a₀ := a₀)
+      (corres_conseq hlo (fun _ _ h _ => h) (fun _ h => h.1) (fun _ _ => rfl)
+        (fun _ _ _ h => h))
+      (corres_conseq hhi (fun _ _ h _ => h) (fun _ h => h.1) (fun _ _ => rfl)
+        (fun _ _ _ h => h))
+      (fun env σ hb hG => ⟨binds_of_sub hb (hinit σ hG.1), hinitJ σ hG.1⟩) (fun σ hG => hG.2)
+      hb'
+      (fun t hG hl hh => ?_)
+      (fun env σ i a h => ⟨binds_extend_fresh h.1 (hfresh σ a) _, h.2⟩)
+    · refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ _ => ?_)
+        (fun env σ _ hq => ?_)
+      · simp only [← cfToExcept_forFold, loopVal_cfToExcept]
+      · dsimp only at hq ⊢
+        simp only [← cfToExcept_forFold] at hq
+        generalize Hax.forFold _ _ _ _ = r at hq ⊢
+        cases r
+        · exact hq
+        · exact hq.1
+    · obtain ⟨σ, i, a⟩ := t
+      have hG' : G σ ∧ loF σ ≤ i ∧ i < hiF σ := ⟨hG.1, hl, hh⟩
+      cases hC : Cb (σ, i, a)
+      · simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept]
+        intro x hx
+        have := hV _ hG' hC
+        rw [hx] at this
+        cases this
+      · simp only [stepCF, if_true, cfToExcept]
+        rw [hW _ hG' hC]
+  · intro env σ hP hG
+    obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hlo env σ hP hG.1
+    obtain ⟨f₂, e₂, hQ₂, r₂⟩ := hhi e₁ σ hQ₁ hG.1
+    have hlt : hiF σ < loF σ := by have := hG.2; omega
+    refine ⟨max f₁ f₂, e₂, ?_, fun fuel hf => ?_⟩
+    · show Binds e₂ (Λ σ (cfState (Hax.forFold _ _ _ _)))
+      rw [forFold_of_lt hlt]
+      exact binds_of_sub hQ₂ (hinit σ hG.1)
+    · dsimp only
+      rw [denote'_forFold bi fuel (r₁ fuel (by omega)) (r₂ fuel (by omega)), forFold_of_lt hlt]
+      exact denoteForLoop'_done bi fuel var body e₂ (by omega)
+
+end GenLoopsJ
+
+/-! ## Nonempty arrays -/
+
+section NonEmpty
+
+variable {α β A B : Type}
+
+/-- Every element of an array of arrays is nonempty. -/
+def AllNE (a : Array (Array β)) : Prop := ∀ x ∈ a, 0 < x.size
+
+theorem ne_array_update {a : Array α} (i : Int) (v : α) (h : 0 < a.size) :
+    0 < (Hax.array_update a i v).size := by
+  unfold Hax.array_update; dsimp only; split <;> simpa using h
+
+theorem ne_push (a : Array α) (v : α) : 0 < (Hax.push a v).size := by
+  simp [Hax.push]
+
+theorem ne_repeat (v : α) {n : Int} (h : 0 < n) : 0 < (Hax.repeat_ v n).size := by
+  simp [Hax.repeat_]; omega
+
+theorem ne_from_elem (v : α) {n : Int} (h : 0 < n) : 0 < (Hax.from_elem v n).size := by
+  simp [Hax.from_elem]; omega
+
+theorem ne_of_not_is_empty {a : Array α} (h : Hax.Not (Hax.is_empty a) = true) :
+    0 < a.size := by
+  simp only [Hax.Not, Hax.HaxNot.not, Hax.is_empty, Bool.not_eq_true',
+    Array.isEmpty_eq_false_iff] at h
+  exact Array.size_pos_iff.mpr h
+
+theorem ne_of_is_empty_false {a : Array α} (h : Hax.is_empty a = false) : 0 < a.size := by
+  simp only [Hax.is_empty, Array.isEmpty_eq_false_iff] at h
+  exact Array.size_pos_iff.mpr h
+
+theorem array_len_eq (a : Array α) : Hax.array_len a = (a.size : Int) := rfl
+
+/-! The comparisons of the runtime on integers, read as propositions. -/
+
+theorem beq_true_int {a b : Int} (h : Hax.beq a b = true) : a = b := by
+  simpa [Hax.beq] using h
+theorem beq_false_int {a b : Int} (h : Hax.beq a b = false) : a ≠ b := by
+  simpa [Hax.beq] using h
+theorem bne_true_int {a b : Int} (h : Hax.bne a b = true) : a ≠ b := by
+  simpa [Hax.bne] using h
+theorem bne_false_int {a b : Int} (h : Hax.bne a b = false) : a = b := by
+  simpa [Hax.bne] using h
+theorem lt_true_int {a b : Int} (h : Hax.lt a b = true) : a < b := by
+  simpa [Hax.lt] using h
+theorem lt_false_int {a b : Int} (h : Hax.lt a b = false) : b ≤ a := by
+  simpa [Hax.lt] using h
+theorem le_true_int {a b : Int} (h : Hax.le a b = true) : a ≤ b := by
+  simpa [Hax.le] using h
+theorem le_false_int {a b : Int} (h : Hax.le a b = false) : b < a := by
+  simpa [Hax.le] using h
+theorem gt_true_int {a b : Int} (h : Hax.gt a b = true) : b < a := by
+  simpa [Hax.gt] using h
+theorem gt_false_int {a b : Int} (h : Hax.gt a b = false) : a ≤ b := by
+  simpa [Hax.gt] using h
+theorem ge_true_int {a b : Int} (h : Hax.ge a b = true) : b ≤ a := by
+  simpa [Hax.ge] using h
+theorem ge_false_int {a b : Int} (h : Hax.ge a b = false) : a < b := by
+  simpa [Hax.ge] using h
+
+/-- An element of a nonempty array of nonempty arrays is nonempty, at every index. -/
+theorem ne_index {a : Array (Array β)} (h : 0 < a.size) (ha : AllNE a) (i : Int) :
+    0 < (Hax.index a i).size := by
+  unfold Hax.index
+  split
+  · exact ha _ (Array.getElem_mem _)
+  · exact ha _ (Array.getElem_mem _)
+
+theorem allNE_array_update {a : Array (Array β)} (i : Int) {v : Array β} (ha : AllNE a)
+    (hv : 0 < v.size) : AllNE (Hax.array_update a i v) := by
+  unfold Hax.array_update
+  dsimp only
+  split
+  · intro x hx
+    rcases Array.mem_or_eq_of_mem_set hx with h | h
+    · exact ha x h
+    · exact h ▸ hv
+  · exact ha
+
+theorem allNE_push {a : Array (Array β)} {v : Array β} (ha : AllNE a) (hv : 0 < v.size) :
+    AllNE (Hax.push a v) := by
+  intro x hx
+  simp only [Hax.push, Array.mem_push] at hx
+  rcases hx with h | h
+  · exact ha x h
+  · exact h ▸ hv
+
+theorem allNE_repeat {v : Array β} (n : Int) (hv : 0 < v.size) :
+    AllNE (Hax.repeat_ v n) := by
+  intro x hx
+  simp only [Hax.repeat_, List.mem_toArray, List.mem_replicate] at hx
+  exact hx.2 ▸ hv
+
+theorem allNE_from_elem {v : Array β} (n : Int) (hv : 0 < v.size) :
+    AllNE (Hax.from_elem v n) := by
+  intro x hx
+  simp only [Hax.from_elem, List.mem_toArray, List.mem_replicate] at hx
+  exact hx.2 ▸ hv
+
+/-- A predicate of both branches holds of the conditional. -/
+theorem prop_ite {P : α → Prop} {c : Prop} [Decidable c] {x y : α} (hx : P x) (hy : P y) :
+    P (if c then x else y) := by
+  split <;> assumption
+
+/-- A predicate of the initial value kept by every step holds of the fold. -/
+theorem foldRange_pres {P : A → Prop} {lo hi : Int} {a₀ : A} {g : Int → A → A}
+    (h0 : P a₀) (hs : ∀ i a, P a → P (g i a)) : P (Hax.foldRange lo hi a₀ g) := by
+  unfold Hax.foldRange
+  suffices H : ∀ n i a, P a → P (Hax.foldRange.go g n i a) from H _ _ _ h0
+  intro n
+  induction n with
+  | zero => intro i a h; exact h
+  | succ n ih => intro i a h; exact ih _ _ (hs i a h)
+
+/-- A predicate of every step result holds of a fold over a nonempty range. -/
+theorem foldRange_pres_lt {P : A → Prop} {lo hi : Int} {a₀ : A} {g : Int → A → A}
+    (hlt : lo < hi) (hs : ∀ i a, P (g i a)) : P (Hax.foldRange lo hi a₀ g) := by
+  unfold Hax.foldRange
+  obtain ⟨n, hn⟩ : ∃ n, (hi - lo).toNat = n + 1 := ⟨(hi - lo).toNat - 1, by omega⟩
+  rw [hn]
+  suffices H : ∀ n i a, P a → P (Hax.foldRange.go g n i a) from H n _ _ (hs lo a₀)
+  intro n
+  induction n with
+  | zero => intro i a h; exact h
+  | succ n ih => intro i a _; exact ih _ _ (hs i a)
+
+/-- A predicate of the initial value kept by every step holds of the reverse fold. -/
+theorem foldRangeRev_pres {P : A → Prop} {lo hi : Int} {a₀ : A} {g : Int → A → A}
+    (h0 : P a₀) (hs : ∀ i a, P a → P (g i a)) : P (Hax.foldRangeRev lo hi a₀ g) := by
+  unfold Hax.foldRangeRev
+  suffices H : ∀ n i a, P a → P (Hax.foldRangeRev.go g n i a) from H _ _ _ h0
+  intro n
+  induction n with
+  | zero => intro i a h; exact h
+  | succ n ih => intro i a h; exact ih _ _ (hs i a h)
+
+/-- A predicate of the initial value kept by every step and every break holds of the
+    accumulator after a loop that may break. -/
+theorem forFold_stepCF_pres {P : A → Prop} {lo hi : Int} {a₀ : A} {C : Int → A → Bool}
+    {w : Int → A → B} {gb g : Int → A → A} (h0 : P a₀) (hb : ∀ i a, P a → P (gb i a))
+    (hg : ∀ i a, P a → P (g i a)) :
+    P (cfState (Hax.forFold lo hi a₀ (fun i a => stepCF (C i a) (w i a) (gb i a) (g i a)))) := by
+  unfold Hax.forFold
+  suffices H : ∀ n i a, P a → P (cfState (Hax.forFold.go
+      (fun i a => stepCF (C i a) (w i a) (gb i a) (g i a)) n i a)) from H _ _ _ h0
+  intro n
+  induction n with
+  | zero => intro i a h; exact h
+  | succ n ih =>
+    intro i a h
+    simp only [Hax.forFold.go, stepCF]
+    cases C i a
+    · exact ih _ _ (hg i a h)
+    · exact hb i a h
+
+end NonEmpty
 
 end Hax.Ascent

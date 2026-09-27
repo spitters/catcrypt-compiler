@@ -25,8 +25,10 @@ in source order from the module that declares the class.
 * Structs: an abbreviation `S_T` with a constructor `S : T₀ → … → S_T` is a struct of
   arity `n`; a definition `(x : S_T) → _` whose body is a path of `Prod.fst`/`Prod.snd` from
   `x` is a projection, its name the literal's projection name. A constructor returning
-  another type (a pass-through struct) and a struct whose last field has a product type
-  are left out and noted.
+  another type (a pass-through struct) is left out and noted. A struct of arity at least
+  two whose last field has a product type is encoded at the product of its field types
+  with the last one under `Boxed` (`StructInfo.encTy`), so that its encoding has one
+  component per field.
 * Dependencies: every field of the class, including fields without arguments, is a
   `DepMethod` over the right-nested tuple of its argument types. A field whose name is a
   runtime operation is left out and noted.
@@ -71,7 +73,8 @@ run under budgets of their own; a leaf lemma that fails is noted and left out.
 
 The constructs outside the generator (`lam`, `forFoldRevReturn`, `whileFoldReturn`,
 `cfContinue`, `cfBreakContinue`, and the pre-pipeline constructs) are counted per function;
-the generator reads `match_` only as the `Option` match on a variable.
+the generator reads `match_` as the `Option` match on a variable and as a single arm whose
+pattern is a tuple of variables.
 `coverageRun` runs the same on an extraction module from `IO`.
 
 ## Main definitions
@@ -140,6 +143,23 @@ structure StructInfo where
   fieldTys : Array Expr
   /-- The projections: literal name, declaration, field index. -/
   projs : Array (String × Name × Nat)
+  /-- The last field has a product type: the struct is encoded at the product of its
+      field types with the last one under `Boxed`. -/
+  boxed : Bool := false
+
+/-- The type a struct is encoded at: the abbreviation `S_T`, or, for a struct whose last
+    field has a product type, the product of the field types with the last one under
+    `Boxed`. -/
+def StructInfo.encTy (s : StructInfo) : MetaM Expr := do
+  unless s.boxed do return mkConst s.tyName
+  let tys := s.fieldTys.toList
+  let last ← mkAppM ``Hax.Ascent.Boxed #[tys.getLast!]
+  mkProdTy (tys.dropLast ++ [last])
+
+/-- The type of field `i` as a component of `StructInfo.encTy`. -/
+def StructInfo.compTy (s : StructInfo) (i : Nat) : MetaM Expr := do
+  if s.boxed && i + 1 == s.arity then mkAppM ``Hax.Ascent.Boxed #[s.fieldTys[i]!]
+  else return s.fieldTys[i]!
 
 /-- The structs of an extraction, from its `S_T` abbreviations, constructors and
     projections; the second component lists the structs left out, with the reason. -/
@@ -160,8 +180,7 @@ def collectStructs (ns : Name) (consts : Array Name) :
       return some (xs.size, ← xs.mapM inferType)
     let some (arity, tys) := info? | skipped := skipped.push s!"{S}: pass-through struct"; continue
     if arity == 0 then continue
-    if ← isProdTy tys.back! then
-      skipped := skipped.push s!"{S}: the last field has a product type"; continue
+    let boxed ← if arity ≥ 2 then isProdTy tys.back! else pure false
     let mut projs := #[]
     for p in consts do
       unless p.getPrefix == ns do continue
@@ -176,7 +195,7 @@ def collectStructs (ns : Name) (consts : Array Name) :
         | some false => decide (i + 1 < arity)
         | _ => i + 1 == arity
       if ok then projs := projs.push (lastStr p, p, i)
-    out := out.push { lit := S, ctor, tyName := c, arity, fieldTys := tys, projs }
+    out := out.push { lit := S, ctor, tyName := c, arity, fieldTys := tys, projs, boxed }
   return (out, skipped)
 
 /-- The methods of a dependency class: name, projection, argument types, result
@@ -367,6 +386,17 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
   let body (insts : Array Expr) : TermElabM (Array FnReport × Array String) := do
     let mut notes := notes
     let gen (s : String) : Name := ns ++ `HaxGen ++ Name.mkSimple s
+    -- the struct types encoded with a `Boxed` last field, by their abbreviation and its body
+    let mut boxes0 : Array (Expr × Expr) := #[]
+    for s in structs do
+      unless s.boxed do continue
+      let eTy ← s.encTy
+      boxes0 := boxes0.push (mkConst s.tyName, eTy)
+      if let some v := (← getConstInfo s.tyName).value? then boxes0 := boxes0.push (v, eTy)
+    let boxes := boxes0
+    let normTy (t : Expr) : MetaM Expr := do
+      let t ← instantiateMVars t
+      return t.replace fun e => (boxes.find? (·.1 == e)).map (·.2)
     -- structs
     let pairTy ← mkAppM ``Prod #[mkConst ``String, mkConst ``Nat]
     let specs ← structs.toList.mapM fun s => do
@@ -458,7 +488,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
       | .ok () => leafNames := leafNames.push (Name.str leafNs f)
       | .error e => notes := notes.push s!"leaf {f}: {e}"
     for s in structs do
-      let sty := mkConst s.tyName
+      let sty ← s.encTy
       if allApps.contains s.lit then
         match ← budgeted (mkLeafThm s.lit s.fieldTys.toList
             (mkAppM ``Hax.Ascent.ctorLeaf #[mkNatLit s.arity])
@@ -466,7 +496,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
               if s.arity == 1 then mkAppM ``Hax.Ascent.ctorLeaf_one #[xs[0]!]
               else
                 let r ← rapp ``Hax.Ascent.ctorLeaf_prod
-                r.set `p (mkAppN (mkConst s.ctor) xs); r.set `n (mkNatLit s.arity)
+                r.set `p (← mkExpectedTypeHint (mkAppN (mkConst s.ctor) xs) sty)
+                r.set `n (mkNatLit s.arity)
                 r.side `hlen; r.side `hn
                 r.done)
             (fun xs => mkEnc sty (mkAppN (mkConst s.ctor) xs))) with
@@ -482,7 +513,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
               else
                 let r ← rapp ``Hax.Ascent.projLeaf_prod
                 r.set `i (mkNatLit i); r.set `p xs[0]!; r.set `n (mkNatLit s.arity)
-                r.set `β s.fieldTys[i]!
+                r.set `β (← s.compTy i)
                 r.side `hn
                 r.done)
             (fun xs => mkEnc fty (mkApp (mkConst pd) xs[0]!))) with
@@ -498,12 +529,14 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
               if s.arity == 1 then mkAppM ``Hax.Ascent.updateLeaf_one #[xs[0]!, xs[1]!]
               else
                 let r ← rapp ``Hax.Ascent.updateLeaf_prod
+                r.set `β (← s.compTy i)
                 r.set `i (mkNatLit i); r.set `p xs[0]!; r.set `v xs[1]!; r.set `n (mkNatLit s.arity)
                 r.side `hn
                 r.done)
             (fun xs => do
               if s.arity == 1 then mkEnc sty xs[1]!
-              else mkEnc sty (← mkAppOptM ``Hax.Ascent.fieldSet #[mkNatLit i, sty, fty, none, xs[0]!, xs[1]!]))) with
+              else mkEnc sty (← mkAppOptM ``Hax.Ascent.fieldSet
+                #[mkNatLit i, sty, ← s.compTy i, none, xs[0]!, xs[1]!]))) with
         | .ok () => leafNames := leafNames.push (Name.str leafNs un)
         | .error e => notes := notes.push s!"leaf {un}: {e}"
     -- local functions: parameters, globals, calls, order
@@ -637,13 +670,15 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
         let hints := match (← getConstInfo sur).value? with
           | some v => letTypes v {}
           | none => {}
+        let hints ← hints.foldM (init := ({} : Std.HashMap String Expr)) fun m k t => do
+          return m.insert k (← normTy t)
         let spec : FnSpec := {
           lit := (← applyInsts infos[f]!.2.1 insts), surface := surE, params := params.getD f [],
-          globals, bi, leaves := idxF, hints
+          globals, bi, leaves := idxF, hints, normTy
           entry := fun A _ => do
             let tys ← forallTelescopeReducing (← inferType surE) fun xs _ => do
               let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
-              xs.toList.mapM fun x => inferType x
+              xs.toList.mapM fun x => do normTy (← inferType x)
             let vsOf (a : Expr) : MetaM Expr := do
               let cs ← argComps a tys.length
               mkListLit valTy (← (cs.zip tys).mapM fun (c, t) => mkEnc t c)
@@ -692,15 +727,30 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
               withLocalDeclD `hfresh freshTy fun hfresh => do
                 let tys ← forallTelescopeReducing (← inferType surE) fun xs _ => do
                   let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
-                  xs.toList.mapM fun x => inferType x
+                  xs.toList.mapM fun x => do normTy (← inferType x)
                 let decls ← tys.toArray.mapIdxM fun i t => pure (Name.mkSimple s!"x{i}", t)
                 withLocalDeclsDND decls fun xs => do
                   let aT ← mkArgTuple xs.toList
+                  -- the guard of the correspondence, a hypothesis of the call lemma
+                  let gTy := (res.guard.beta #[aT]).headBeta
+                  let withGuard (k : Array Expr → MetaM Unit) : MetaM Unit :=
+                    if gTy.isConstOf ``True then k #[]
+                    else withLocalDeclD `hG gTy fun h => k #[h]
+                  withGuard fun hGs => do
                   let r ← rapp (if res.merged?.isSome then ``Hax.Ascent.extBuiltins_callX
                     else ``Hax.Ascent.extBuiltins_call)
                   r.set `T T; r.set `pre preE; r.set `post post; r.set `fn (fnE f)
+                  r.set `a aT
+                  -- the argument encoding of a struct of many fields, assembled by parts
+                  for m in r.mvs, b in r.bis do
+                    let m' ← instantiateMVars m
+                    unless b.isInstImplicit && m'.isMVar do continue
+                    let cls ← instantiateMVars (← inferType m')
+                    if cls.isAppOf ``Hax.Ascent.HaxArgs && !cls.hasExprMVar then
+                      discard <| isDefEq m' (← synthLarge cls)
                   r.set `h (mkAppN (mkConst (gen f ++ `corres)) insts)
-                  r.set `hfresh hfresh; r.set `a aT; r.set `hG (mkConst ``True.intro)
+                  r.set `hfresh hfresh
+                  r.set `hG (hGs[0]?.getD (mkConst ``True.intro))
                   r.side `hrt; r.side `htag; r.side `hT; r.side `hlen
                   let pf0 ← r.done
                   let vs ← mkListLit valTy (← (xs.toList.zip tys).mapM fun (x, t) => mkEnc t x)
@@ -721,8 +771,9 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                       mkEqTrans pf0 (← mkExpectedTypeHint c (← mkEq r0 rhs))
                     | none => pure pf0
                   addThm (Name.str (ns ++ `HaxCall) f)
-                    (← mkForallFVars (insts ++ #[post, hfresh] ++ xs) ty)
-                    (← mkLambdaFVars (insts ++ #[post, hfresh] ++ xs) (← mkExpectedTypeHint pf ty))
+                    (← mkForallFVars (insts ++ #[post, hfresh] ++ xs ++ hGs) ty)
+                    (← mkLambdaFVars (insts ++ #[post, hfresh] ++ xs ++ hGs)
+                      (← mkExpectedTypeHint pf ty))
           match callRes with
           | .ok () => newCall := true
           | .error e => callNote := s!"no call lemma: {e}"

@@ -171,17 +171,17 @@ instance [HaxEnc α] [HaxEnc.Inj α] : HaxEnc.Inj (Array α) :=
 instance [HaxEnc α] [HaxEnc.Inj α] : HaxEnc.Inj (Option α) :=
   ⟨fun _ _ h => Option.map_injective HaxEnc.Inj.inj (Value.option.inj h)⟩
 
-instance (priority := low) [HaxEnc α] [HaxEnc.Inj α] :
+instance (priority := low) HaxTupleEnc.Inj.single [HaxEnc α] [HaxEnc.Inj α] :
     @HaxTupleEnc.Inj α HaxTupleEnc.single :=
   ⟨fun _ _ h => HaxEnc.Inj.inj (List.cons.inj h).1⟩
 
-instance [HaxEnc α] [HaxEnc.Inj α] [HaxTupleEnc β] [HaxTupleEnc.Inj β] :
+instance HaxTupleEnc.Inj.prod [HaxEnc α] [HaxEnc.Inj α] [HaxTupleEnc β] [HaxTupleEnc.Inj β] :
     HaxTupleEnc.Inj (α × β) :=
   ⟨fun p q h => by
     obtain ⟨h1, h2⟩ := List.cons.inj h
     exact Prod.ext (HaxEnc.Inj.inj h1) (HaxTupleEnc.Inj.inj h2)⟩
 
-instance [HaxEnc α] [HaxEnc.Inj α] [HaxTupleEnc β] [HaxTupleEnc.Inj β] :
+instance HaxEnc.Inj.prod [HaxEnc α] [HaxEnc.Inj α] [HaxTupleEnc β] [HaxTupleEnc.Inj β] :
     HaxEnc.Inj (α × β) :=
   ⟨fun _ _ h => HaxTupleEnc.Inj.inj (α := α × β) (Value.tuple.inj h)⟩
 
@@ -201,7 +201,7 @@ export HaxArgs (encArgs)
 
 instance : HaxArgs Unit := ⟨fun _ => [], fun _ _ _ => rfl⟩
 
-instance {α β : Type} [HaxEnc α] [HaxEnc.Inj α] [HaxArgs β] : HaxArgs (α × β) :=
+instance HaxArgs.prod {α β : Type} [HaxEnc α] [HaxEnc.Inj α] [HaxArgs β] : HaxArgs (α × β) :=
   ⟨fun p => enc p.1 :: encArgs p.2, fun p q h => by
     obtain ⟨h1, h2⟩ := List.cons.inj h
     exact Prod.ext (HaxEnc.Inj.inj h1) (HaxArgs.inj h2)⟩
