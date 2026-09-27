@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public meta import Std.Tactic.BVDecide.Reflect
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 
 /-!

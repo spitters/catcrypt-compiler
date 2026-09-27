@@ -7,8 +7,8 @@ module
 
 import all Init.Data.Repr
 public meta import HaxLean.ImpType
-public meta import CatCrypt.Crypto.Jasmin.LowCT
-public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTSyntax
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public meta import HaxLean.AST
 public import HaxLean.AST
 public import HaxLean.ImpType

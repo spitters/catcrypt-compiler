@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTSyntax
 import all Init.Data.Repr
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public import Lean
 
 /-!

@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 
 /-!
 # Pass 1.1 — Barrett Reduction

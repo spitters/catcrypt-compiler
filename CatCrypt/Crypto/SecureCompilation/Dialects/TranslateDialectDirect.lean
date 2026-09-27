@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 

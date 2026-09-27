@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.Jasmin.JasminAST
 public import CatCrypt.Crypto.Jasmin.JasminVar
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public import CatCrypt.Core.Heap
 

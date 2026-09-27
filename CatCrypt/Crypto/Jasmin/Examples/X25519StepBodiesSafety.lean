@@ -34,7 +34,7 @@ sequence of `rcall_AllSlots` applications on a flat slot list.
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 
 

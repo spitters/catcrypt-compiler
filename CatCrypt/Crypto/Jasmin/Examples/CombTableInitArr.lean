@@ -40,7 +40,7 @@ initialisation pattern).
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public import CatCrypt.Crypto.Jasmin.RustEmit
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 

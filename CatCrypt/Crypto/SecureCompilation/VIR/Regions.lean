@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
 public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.QuantumDialect
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTTypes
 
 /-!
 # Region-extended VIR programs

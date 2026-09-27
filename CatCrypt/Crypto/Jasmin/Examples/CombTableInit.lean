@@ -29,7 +29,7 @@ Outputs: `cell_0_0` ... `cell_63_15`  (1024 × `&mut [u8; 200]`)
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public import CatCrypt.Crypto.Jasmin.RustEmit
 
 

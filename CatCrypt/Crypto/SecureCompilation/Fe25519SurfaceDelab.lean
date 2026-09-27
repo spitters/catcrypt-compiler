@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 
 /-!
 # `orch%` DELABORATOR — the inverse of the orchestration-surface elaborator

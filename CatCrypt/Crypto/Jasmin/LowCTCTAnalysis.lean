@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public meta import CatCrypt.Crypto.Jasmin.LowCT
-public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTExec
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public meta import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
 public import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
 public meta import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops

@@ -52,7 +52,7 @@ We also include a variant that splits a 64-byte signature into the
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.RustEmit
 public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 

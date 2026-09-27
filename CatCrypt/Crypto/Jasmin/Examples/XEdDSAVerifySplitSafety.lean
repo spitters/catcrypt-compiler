@@ -30,7 +30,7 @@ Total: 16 IR bodies with mechanised memory-safety witnesses.
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 public import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 

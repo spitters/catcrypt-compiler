@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public meta import Std.Tactic.BVDecide.Reflect
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public meta import CatCrypt.Crypto.Jasmin.JasminEmit

@@ -14,7 +14,7 @@ import all CatCrypt.Core.Code
 import all CatCrypt.Crypto.CryptoWord
 import all CatCrypt.Crypto.Jasmin.JasminAST
 import all CatCrypt.Crypto.Jasmin.JasminTypes
-import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.Jasmin.LowCTSExpr
 import all CatCrypt.Crypto.SDist
 import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
 import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect

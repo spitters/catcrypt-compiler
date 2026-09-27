@@ -13,7 +13,7 @@ import all CatCrypt.Crypto.Jasmin.JasminOps
 import all CatCrypt.Crypto.Jasmin.JasminTranslate
 import all CatCrypt.Crypto.Jasmin.JasminTypes
 import all CatCrypt.Crypto.Jasmin.JasminVar
-import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.Jasmin.LowCTSyntax
 import all CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 import all CatCrypt.Crypto.Jasmin.LowCTReflect
 import all CatCrypt.Crypto.Jasmin.LowCTToJasmin

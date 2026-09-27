@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.PilotImport
 public meta import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.PilotImport

@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public meta import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTExec
 public meta import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect

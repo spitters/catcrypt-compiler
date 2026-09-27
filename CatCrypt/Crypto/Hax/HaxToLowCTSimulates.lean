@@ -9,7 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.Hax.HaxToLowCT
 public import HaxLean.Semantics
 public import HaxLean.Value
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 
 /-!
 # Hax → LowCT Semantic Simulation

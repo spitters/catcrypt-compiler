@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 public import CatCrypt.Crypto.Optimizer.BarrettReduce
 public import CatCrypt.Crypto.Optimizer.MontgomeryReduce

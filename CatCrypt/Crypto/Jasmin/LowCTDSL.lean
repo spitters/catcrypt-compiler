@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Jasmin.LowCT
-public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTSyntax
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 
 /-!
 # LowCT surface DSL

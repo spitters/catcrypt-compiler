@@ -7,7 +7,7 @@ module
 
 import all Init.Data.Repr
 public import Mathlib.Data.String.Defs
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 
 /-!
 # `LowCT → Jasmin` direct emit

@@ -7,7 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Pairing.Bls12381AUCurves
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 
 /-!
 # BLS12-381 pairing, re-rooted on the LowCT relational-compilation layer

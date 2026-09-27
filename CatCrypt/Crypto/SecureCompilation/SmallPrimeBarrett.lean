@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.SingleWord
 public import CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 public import Mathlib.Tactic.NormNum
 
 /-!

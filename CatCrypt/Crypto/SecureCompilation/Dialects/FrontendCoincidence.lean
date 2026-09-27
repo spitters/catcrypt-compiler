@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTSExpr
 
 /-!
 # DF frontend coincidence (base cases): the two frontend denotations COINCIDE on the

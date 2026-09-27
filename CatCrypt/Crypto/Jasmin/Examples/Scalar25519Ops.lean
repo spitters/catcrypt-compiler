@@ -49,7 +49,7 @@ shim concern, not an AST extension.
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.RustEmit
 
 
