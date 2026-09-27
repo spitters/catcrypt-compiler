@@ -20,7 +20,8 @@ region read at `%rsi`, a data table read at `%rip`, an output region written at
 `addq $n, %rsp`, holding spilled registers. A `%ymm` form (`Mode.ymm`) reads the low 256
 bits of each register and each
 write keeps the low 256 bits and zeroes the upper 256 bits (`wr`). Every lane-wise
-instruction is defined through the lane read `lane` and the lane assembly `ofLanes`.
+instruction is defined through the lane read `lane` and the lane assembly `ofLanes`;
+`vpternlog` is defined bit by bit from its truth table (`semTern`).
 The dword permutation `vpermd` and the masked blend `vpblendmd`, which
 `PackedStateRender` prints, move dwords across lanes; the symbolic execution rejects
 them (`sstep` returns `none`).
@@ -45,8 +46,11 @@ a symbolic run describes the machine run.
 ## Main definitions
 
 * `Mode`, `lane`, `ofLanes`, `wr`: the register forms and lanes.
-* `LOp`, `semLW`, `semShImm`, `semDup`, `semMerge`, `semPerm`: the instruction
-  semantics.
+* `LOp`, `semLW`, `semShImm`, `semDup`, `semMerge`, `semPerm`, `semRol`, `semTern`: the
+  instruction semantics; `ternTable` is the `vpternlog` immediate of a Boolean function.
+* `rolTerm`, `ternTerms`: the terms a rotate and a `vpternlog` of a supported truth table
+  (`xor3B`, the orders of `chiB`) are read as, composites of shifts and bitwise
+  operations.
 * `Instr`, `MState`, `step`, `run`, `MState.outAt`: the machine.
 * `Term`, `Term.eval`, `SState`, `sstep`, `srun`, `Rel`: the symbolic execution.
 
@@ -55,6 +59,10 @@ a symbolic run describes the machine run.
 * `wr_eq_of_lanes`: two writes are equal when their active lanes are.
 * `lane32_even`, `lane32_odd`, `hi_mul_setWidth`, `lo_mul_setWidth`: the dword halves
   of a `vpmuludq` product.
+* `rotateLeft_eq_or_shifts`, `getLsbD_semTern_table`: a rotate is the disjunction of two
+  shifts; a `vpternlog` of the table of `f` computes `f` bitwise.
+* `rolTerm_eval`, `ternTerms_eval`: the terms of a rotate and a `vpternlog` have the
+  instruction's value.
 * `sstep_sound`, `srun_sound`: a symbolic run describes the machine run.
 * `outAt_rel`: the stored values of the two runs agree.
 -/
@@ -260,6 +268,41 @@ theorem lane_semPerm {j : Nat} (n : Nat) (src idx : BitVec 512) (hj : j < 16) :
     lane 32 (semPerm n src idx) j = lane 32 src ((lane 32 idx j).toNat % n) :=
   lane_ofLanes _ (by omega) (by omega)
 
+/-- `vprolq` / `vprold $imm`: every lane of width `L` rotated left by `imm`. -/
+def semRol (L imm : Nat) (x : BitVec 512) : BitVec 512 :=
+  ofLanes L (fun k => (lane L x k).rotateLeft imm)
+
+/-- `vpternlogq` / `vpternlogd $imm`: bit `i` of the result is bit
+    `4·a[i] + 2·b[i] + c[i]` of the truth table `imm`, for `a` the old value of the
+    destination, `b` the second source and `c` the third source. -/
+def semTern (imm : BitVec 8) (a b c : BitVec 512) : BitVec 512 :=
+  BitVec.ofFnLE (fun i : Fin 512 =>
+    imm.getLsbD (4 * (a.getLsbD i).toNat + 2 * (b.getLsbD i).toNat + (c.getLsbD i).toNat))
+
+/-- The truth table of a three-input Boolean function as a `vpternlog` immediate: bit
+    `4x + 2y + z` is `f x y z`. -/
+def ternTable (f : Bool → Bool → Bool → Bool) : BitVec 8 :=
+  BitVec.ofFnLE (fun j : Fin 8 => f (j.val.testBit 2) (j.val.testBit 1) (j.val.testBit 0))
+
+/-- The three-input exclusive or. -/
+def xor3B (x y z : Bool) : Bool := x ^^ y ^^ z
+
+/-- The Keccak χ function `x ⊕ (¬y ∧ z)`. -/
+def chiB (x y z : Bool) : Bool := x ^^ (!y && z)
+
+theorem getLsbD_ternTable (f : Bool → Bool → Bool → Bool) (x y z : Bool) :
+    (ternTable f).getLsbD (4 * x.toNat + 2 * y.toNat + z.toNat) = f x y z := by
+  cases x <;> cases y <;> cases z <;> simp [ternTable] <;> rfl
+
+/-- Bit `i` of a `vpternlog` whose immediate is the truth table of `f` is `f` of the
+    operands' bits `i`. -/
+theorem getLsbD_semTern_table (f : Bool → Bool → Bool → Bool) (a b c : BitVec 512)
+    (i : Nat) : (semTern (ternTable f) a b c).getLsbD i
+      = (decide (i < 512) && f (a.getLsbD i) (b.getLsbD i) (c.getLsbD i)) := by
+  unfold semTern
+  rw [BitVec.getLsbD_ofFnLE]
+  by_cases h : i < 512 <;> simp [h, getLsbD_ternTable]
+
 /-- Every lane of width `L` holding `x`. -/
 def bcast (L : Nat) (x : BitVec L) : BitVec 512 := ofLanes L (fun _ => x)
 
@@ -278,6 +321,37 @@ theorem lane_semShImm {L k : Nat} (left : Bool) (imm : Nat) (x : BitVec 512) (hL
     lane L (semShImm L left imm x) k =
       if left then lane L x k <<< imm else lane L x k >>> imm :=
   lane_ofLanes _ hL hk
+
+/-- Lane `k` of a rotate. -/
+theorem lane_semRol {L k : Nat} (imm : Nat) (x : BitVec 512) (hL : 0 < L)
+    (hk : L * k + L ≤ 512) : lane L (semRol L imm x) k = (lane L x k).rotateLeft imm :=
+  lane_ofLanes _ hL hk
+
+/-- **The rotate selection.** A rotate by `imm`, `0 < imm < L`, is the disjunction of the
+    left shift by `imm` and the right shift by `L - imm`. -/
+theorem rotateLeft_eq_or_shifts {L : Nat} (x : BitVec L) {imm : Nat} (h : imm < L) :
+    x.rotateLeft imm = x <<< imm ||| x >>> (L - imm) := by
+  rw [BitVec.rotateLeft_def, Nat.mod_eq_of_lt h]
+
+/-- A lane-wise binary operation that acts bit by bit is independent of the lane width. -/
+theorem getLsbD_semLW_bin {L : Nat} (hL : 0 < L) (b : JasminBinOp)
+    (f : Bool → Bool → Bool)
+    (hb : ∀ {W : Nat} (x y : BitVec W) (j : Nat),
+      (b.apply x y).getLsbD j = f (x.getLsbD j) (y.getLsbD j))
+    (x y : BitVec 512) (i : Nat) :
+    (semLW L (.bin b) x y).getLsbD i = (decide (i < 512) && f (x.getLsbD i) (y.getLsbD i)) := by
+  have hm : i % L < L := Nat.mod_lt _ hL
+  have hdm : L * (i / L) + i % L = i := Nat.div_add_mod i L
+  simp only [semLW, getLsbD_ofLanes, LOp.apply, hb, getLsbD_lane, hm, decide_true,
+    Bool.true_and, hdm]
+
+theorem getLsbD_semLW_xor {L : Nat} (hL : 0 < L) (x y : BitVec 512) (i : Nat) :
+    (semLW L (.bin .xor) x y).getLsbD i = (decide (i < 512) && (x.getLsbD i ^^ y.getLsbD i)) :=
+  getLsbD_semLW_bin hL .xor _ (fun x y j => by simp [JasminBinOp.apply]) x y i
+
+theorem getLsbD_semLW_and {L : Nat} (hL : 0 < L) (x y : BitVec 512) (i : Nat) :
+    (semLW L (.bin .and) x y).getLsbD i = (decide (i < 512) && (x.getLsbD i && y.getLsbD i)) :=
+  getLsbD_semLW_bin hL .and _ (fun x y j => by simp [JasminBinOp.apply]) x y i
 
 /-- Dword `j` of a dword duplication. -/
 theorem lane_semDup {j : Nat} (odd : Bool) (x : BitVec 512) (hj : j < 16) :
@@ -339,6 +413,11 @@ inductive Instr where
   /-- `vpblendmd a, b, dst{%kN}`: dword `j` of `dst` is dword `j` of `a` where bit `j`
       of `%kN` is set, else dword `j` of `b`. -/
   | blend (k : Fin 8) (a b dst : Fin 32)
+  /-- `vprolq` (`L = 64`) or `vprold` (`L = 32`) `$imm, src, dst`. -/
+  | rol (L imm : Nat) (src dst : Fin 32)
+  /-- `vpternlogq` (`L = 64`) or `vpternlogd` (`L = 32`) `$imm, src3, src2, dst`:
+      `dst := semTern imm dst src2 src3`. -/
+  | tern (L : Nat) (imm : BitVec 8) (src3 src2 dst : Fin 32)
   deriving DecidableEq
 
 /-- The machine state: 32 vector registers, `%eax`, the mask registers, the stores
@@ -395,6 +474,8 @@ def step (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (
   | .spAdd n => some { σ with stk := fun a => σ.stk (a + n) }
   | .perm s i d => some (σ.setZ d (wr m (semPerm (m.act / 32) (σ.zmm s) (σ.zmm i))))
   | .blend k a b d => some (σ.setZ d (wr m (semMerge (σ.kr k) (σ.zmm a) (σ.zmm b))))
+  | .rol L imm r d => some (σ.setZ d (wr m (semRol L imm (σ.zmm r))))
+  | .tern _ imm s3 s2 d => some (σ.setZ d (wr m (semTern imm (σ.zmm d) (σ.zmm s2) (σ.zmm s3))))
 
 /-- A straight-line run; `none` when an instruction fails. -/
 def run (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (BitVec 64))) :
@@ -440,6 +521,96 @@ def Term.isInit : Term → Bool
 theorem Term.wr_eval {m : Mode} {σ0 : Fin 32 → BitVec 512} {P : String → BitVec 512}
     (t : Term) (h : t.isInit = false) : wr m (t.eval m σ0 P) = t.eval m σ0 P := by
   cases t <;> simp_all [Term.isInit, Term.eval, wr_wr]
+
+/-- The term of `vprolq $imm` on `a` at lane width `L`: the disjunction of the two
+    immediate shifts (`rotateLeft_eq_or_shifts`), each node passed through `norm`. -/
+def rolTerm (norm : Term → Term) (L imm : Nat) (a : Term) : Term :=
+  norm (.lw L (.bin .or) (norm (.shi L true imm a)) (norm (.shi L false (L - imm) a)))
+
+/-- The terms a `vpternlog` with truth table `imm` on the destination `a` and the sources
+    `b`, `c` is read as, at lane width `L`, each node passed through `norm`: for the
+    three-input exclusive or, `(a ⊕ b) ⊕ c`, `(a ⊕ c) ⊕ b` and `(b ⊕ c) ⊕ a`; for
+    `chiB x y z = x ⊕ (¬y ∧ z)` with `(x, y, z)` an order of `(a, b, c)`, the term
+    `x ⊕ ((y ⊕ 1…1) ∧ z)` of that order. Empty for any other table and for `L = 0`. -/
+def ternTerms (norm : Term → Term) (L : Nat) (imm : BitVec 8) (a b c : Term) : List Term :=
+  let x2 (p q : Term) : Term := norm (.lw L (.bin .xor) p q)
+  let x3 (p q r : Term) : Term := x2 (x2 p q) r
+  let ch (p q r : Term) : Term :=
+    x2 p (norm (.lw L (.bin .and) (x2 q (.cst (BitVec.allOnes 512))) r))
+  if L = 0 then []
+  else if imm = ternTable xor3B then [x3 a b c, x3 a c b, x3 b c a]
+  else if imm = ternTable (fun x y z => chiB x y z) then [ch a b c]
+  else if imm = ternTable (fun x y z => chiB x z y) then [ch a c b]
+  else if imm = ternTable (fun x y z => chiB y x z) then [ch b a c]
+  else if imm = ternTable (fun x y z => chiB y z x) then [ch b c a]
+  else if imm = ternTable (fun x y z => chiB z x y) then [ch c a b]
+  else if imm = ternTable (fun x y z => chiB z y x) then [ch c b a]
+  else []
+
+/-- Whether a term is a name. -/
+def Term.isVar : Term → Bool
+  | .var _ => true
+  | _ => false
+
+/-- The first term of a list that is a name, else its head. -/
+def pickTerm (ts : List Term) : Option Term :=
+  match ts with
+  | [] => none
+  | t :: _ => some ((ts.find? Term.isVar).getD t)
+
+theorem pickTerm_mem {ts : List Term} {t : Term} (h : pickTerm ts = some t) : t ∈ ts := by
+  unfold pickTerm at h
+  split at h
+  · cases h
+  · rename_i t0 rest
+    simp only [Option.some.injEq] at h
+    subst h
+    cases hf : (t0 :: rest).find? Term.isVar with
+    | none => exact List.mem_cons_self
+    | some u => exact List.mem_of_find?_eq_some hf
+
+section TermSound
+
+variable {m : Mode} {σ0 : Fin 32 → BitVec 512} {P : String → BitVec 512}
+  {norm : Term → Term}
+
+/-- The term of `vprolq` has the value of the rotate. -/
+theorem rolTerm_eval (hnorm : ∀ t, (norm t).eval m σ0 P = t.eval m σ0 P) {L imm : Nat}
+    (hL : L = 32 ∨ L = 64) (h0 : 0 < imm) (h1 : imm < L) (a : Term) :
+    (rolTerm norm L imm a).eval m σ0 P = wr m (semRol L imm (a.eval m σ0 P)) := by
+  have hLp : 0 < L := by omega
+  simp only [rolTerm, hnorm, Term.eval]
+  apply wr_eq_of_lanes hL
+  intro k hk
+  have hk' : L * k + L ≤ 512 := by rcases m.act_cases with e | e <;> rw [e] at hk <;> omega
+  rw [lane_semLW _ _ _ hLp hk', lane_wr _ hk, lane_wr _ hk, lane_semShImm _ _ _ hLp hk',
+    lane_semShImm _ _ _ hLp hk', lane_semRol _ _ hLp hk', rotateLeft_eq_or_shifts _ h1]
+  simp [LOp.apply, JasminBinOp.apply]
+
+/-- Every term of `ternTerms` has the value of the `vpternlog`. -/
+theorem ternTerms_eval (hnorm : ∀ t, (norm t).eval m σ0 P = t.eval m σ0 P) {L : Nat}
+    {imm : BitVec 8} {a b c : Term} {t : Term} (ht : t ∈ ternTerms norm L imm a b c) :
+    t.eval m σ0 P = wr m (semTern imm (a.eval m σ0 P) (b.eval m σ0 P) (c.eval m σ0 P)) := by
+  unfold ternTerms at ht
+  split_ifs at ht with hL0 h1 h2 h3 h4 h5 h6 h7 <;>
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at ht <;>
+    (try subst h1) <;> (try subst h2) <;> (try subst h3) <;> (try subst h4) <;>
+    (try subst h5) <;> (try subst h6) <;> (try subst h7) <;>
+    (try rcases ht with rfl | rfl | rfl) <;>
+    · have hLp : 0 < L := Nat.pos_of_ne_zero hL0
+      simp only [hnorm, Term.eval]
+      apply BitVec.eq_of_getLsbD_eq
+      intro i hi
+      simp only [getLsbD_wr, getLsbD_semLW_xor hLp, getLsbD_semLW_and hLp,
+        getLsbD_semTern_table, BitVec.getLsbD_allOnes, xor3B, chiB]
+      by_cases ha : i < m.act
+      · have h512 : i < 512 := by rcases m.act_cases with e | e <;> omega
+        simp only [ha, h512, decide_true, Bool.true_and]
+        all_goals cases (a.eval m σ0 P).getLsbD i <;> cases (b.eval m σ0 P).getLsbD i <;>
+          cases (c.eval m σ0 P).getLsbD i <;> rfl
+      · simp [ha]
+
+end TermSound
 
 /-- The symbolic state: a term per register, the known values of `%eax` and the mask
     registers, the stores, newest first, the bytes of stack frame allocated since entry,
@@ -503,6 +674,13 @@ def sstep (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
   | .spAdd n => some { s with sp := s.sp - n }
   | .perm _ _ _ => none
   | .blend _ _ _ _ => none
+  | .rol L imm r d =>
+      if (L = 32 ∨ L = 64) ∧ 0 < imm ∧ imm < L then
+        some (s.setR d (rolTerm norm L imm s.regs[(r : Nat)]))
+      else none
+  | .tern L imm s3 s2 d =>
+      (pickTerm (ternTerms norm L imm s.regs[(d : Nat)] s.regs[(s2 : Nat)]
+        s.regs[(s3 : Nat)])).map fun t => s.setR d t
 
 /-- The symbolic run. -/
 def srun (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
@@ -665,6 +843,18 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
     rw [show a + (s.sp - (n : Int)) + (n : Int) = a + s.sp by omega, e]
   | perm _ _ _ => simp [sstep] at hs
   | blend _ _ _ _ => simp [sstep] at hs
+  | rol L imm r d =>
+    simp only [sstep] at hs
+    split at hs
+    · rename_i hc
+      simp only [Option.some.injEq] at hs
+      subst hs
+      exact ⟨_, rfl, rel_setR h d _ _ (by rw [rolTerm_eval hnorm hc.1 hc.2.1 hc.2.2, h1])⟩
+    · cases hs
+  | tern L imm s3 s2 d =>
+    simp only [sstep, Option.map_eq_some_iff] at hs
+    obtain ⟨t, ht, rfl⟩ := hs
+    exact ⟨_, rfl, rel_setR h d _ _ (by rw [ternTerms_eval hnorm (pickTerm_mem ht), h1, h1, h1])⟩
 
 /-- A symbolic run describes the machine run of the same program: the machine run
     succeeds and ends in a state the final symbolic state describes. -/

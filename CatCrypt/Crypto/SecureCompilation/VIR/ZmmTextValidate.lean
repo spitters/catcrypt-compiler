@@ -29,7 +29,11 @@ exchanged for a commuting one), `vMulU` (`vpmuludq` as a 64-bit multiply, when r
 facts or constant lanes put both operands below `2^32`), `vShi` (a shift by a constant
 as an immediate shift), `vMulhi` and `vMullo` (the two halves of the `vpmuludq` /
 `vmovshdup` / merge sequence) and `vMinu` (the conditional add as an unsigned minimum,
-under the range fact `RangeDomain.condAdd_eq_umin` needs). The text is accepted when
+under the range fact `RangeDomain.condAdd_eq_umin` needs). A rotate `vprolq` and a
+`vpternlogq` of a supported truth table need no recogniser of their own: the symbolic
+step reads them as their composites of shifts and bitwise operations
+(`ZmmTextModel.rolTerm`, `ZmmTextModel.ternTerms`), each node normalised, so that each
+node is matched as the binding that computes it. The text is accepted when
 store `j` writes a register holding output `j`. Names are compared up to value numbering
 (`repTable`): the binding list may compute one value in several bindings, and the
 bindings are checked in the form `renameB` gives them, reading representatives.
@@ -1262,6 +1266,20 @@ def parseOps (m : Mode) (mn : String) (ops : List String) : Option Instr :=
   | "vpblendmd", [a, b, c] => do
     let (d, k) ← parseRegMask m c
     some (.blend (← k) (← parseReg m a) (← parseReg m b) d)
+  | "vprolq", [a, b, c] => do
+    some (.rol 64 (← (stripPre "$" a).bind parseNat) (← parseReg m b) (← parseReg m c))
+  | "vprold", [a, b, c] => do
+    some (.rol 32 (← (stripPre "$" a).bind parseNat) (← parseReg m b) (← parseReg m c))
+  | "vpternlogq", [i, a, b, c] => do
+    let imm ← (stripPre "$" i).bind parseNat
+    if imm < 256 then
+      some (.tern 64 (BitVec.ofNat 8 imm) (← parseReg m a) (← parseReg m b) (← parseReg m c))
+    else none
+  | "vpternlogd", [i, a, b, c] => do
+    let imm ← (stripPre "$" i).bind parseNat
+    if imm < 256 then
+      some (.tern 32 (BitVec.ofNat 8 imm) (← parseReg m a) (← parseReg m b) (← parseReg m c))
+    else none
   | mn, [a, b, c] =>
     match shiftTable mn with
     | some (L, left) => do
@@ -1948,5 +1966,42 @@ set_option kat.ms 400 in
   !validateBinds .zmm .q spillNames spillBinds 1 none [] (fun s => s.replace "\taddq" "\tsubq") &&
   (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 spillNames
     spillBinds).toOption.any (fun s => (s.splitOn "(%rsp)").length > 1)
+
+/-- A rotate `v2 = (a << 1) | (a >> 63)`, a three-input exclusive or `v4 = (b ⊕ c) ⊕ d`
+    and a Keccak χ step `v7 = a ⊕ ((b ⊕ 1…1) ∧ c)`, the outputs `v2`, `v4`, `v7`. -/
+def rolTernBinds : Array ZBind := #[
+  .const "k1" (VpackZmmLinearRender.bcast512 1), .const "k63" (VpackZmmLinearRender.bcast512 63),
+  .const "K" (VpackZmmLinearRender.bcast512 (2 ^ 64 - 1)),
+  .pack .q .shl "v0" "a" "k1", .pack .q .shr "v1" "a" "k63", .pack .q .xor "v3" "b" "c",
+  .pack .q .xor "v5" "b" "K", .pack .q .and "v6" "v5" "c",
+  .pack .q .or "v2" "v0" "v1", .pack .q .xor "v4" "v3" "d", .pack .q .xor "v7" "a" "v6"]
+
+/-- The text the renderer prints for `rolTernBinds` on `%zmm`. -/
+def rolTernText : Option String :=
+  (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 3 ["a", "b", "c", "d"]
+    rolTernBinds).toOption
+
+/- The rotate renders as `vprolq $1`, the exclusive or and χ as `vpternlogq` with the
+    truth tables of `xor3B` (150) and `chiB` (210), and the text validates on `%zmm` and
+    `%ymm`. -/
+#kat rolTernText.any (fun s => (s.splitOn "\tvprolq $1, ").length == 2 &&
+    (s.splitOn "\tvpternlogq $150, ").length == 2 && (s.splitOn "\tvpternlogq $210, ").length == 2
+    && (s.splitOn "\tvpsllq").length == 1 && (s.splitOn "\tvpandq").length == 1)
+#kat validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none [] &&
+  validateBinds .ymm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
+
+/- A wrong rotate count and a wrong truth table are rejected; the χ step with its
+    operands in another order and the truth table permuted to match is accepted. -/
+#kat !validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
+    (fun s => s.replace "\tvprolq $1, " "\tvprolq $2, ") &&
+  !validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
+    (fun s => s.replace "\tvpternlogq $210, " "\tvpternlogq $150, ") &&
+  rolTernText.any (fun s => (s.splitOn
+    "\tvmovdqa64 %zmm0, %zmm6\n\tvpternlogq $210, %zmm2, %zmm1, %zmm6").length == 2) &&
+  validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
+    (fun s => s.replace "\tvmovdqa64 %zmm0, %zmm6\n\tvpternlogq $210, %zmm2, %zmm1, %zmm6"
+      ("\tvmovdqa64 %zmm1, %zmm6\n\tvpternlogq $" ++
+        toString (ZmmTextModel.ternTable fun p q r => ZmmTextModel.chiB q p r).toNat ++
+        ", %zmm2, %zmm0, %zmm6"))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate

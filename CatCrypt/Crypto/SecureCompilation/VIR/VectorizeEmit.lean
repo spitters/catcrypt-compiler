@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapVec
 public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmRenderValidated
+public import CatCrypt.Crypto.Optimizer.CopyProp
 
 /-!
 # The lane-map vector route: coverage check, validated render, soundness
@@ -21,18 +22,22 @@ route for a straight-line scalar program `c : Com jasminDialect Γ t`. The lane 
 
 The entry point first checks that every binding of `c` is covered by the lane shape
 (`firstUncovered`, a Boolean test sound for `LaneShape.Covered`) and returns an error
-naming the first uncovered binding otherwise. It then renders the lane map of `c` through
-`ZmmRenderValidated.laneMapValidated` at the shape's lane width, binding map and register
-mode, which returns the AT&T text only when the translation validator accepts it. At each
-shape the render is the one `ZmmRenderValidated.renderValidated` (64-bit lanes, `ymm`
-selecting YMM) or `renderValidatedD` (32-bit lanes) computes
-(`vectorizeEmit_q8zmm`, `vectorizeEmit_q4ymm`, `vectorizeEmit_d16zmm`).
+naming the first uncovered binding otherwise. It then deletes the register copies of `c`
+outside its last `nOut` bindings (`CopyProp.copyElimOut`) and renders the lane map of the
+result through `ZmmRenderValidated.laneMapValidated` at the shape's lane width, binding
+map and register mode, which returns the AT&T text only when the translation validator
+accepts it. At each shape the render is the one `ZmmRenderValidated.renderValidated`
+(64-bit lanes, `ymm` selecting YMM) or `renderValidatedD` (32-bit lanes) computes on
+`copyElimOut nOut c` (`vectorizeEmit_q8zmm`, `vectorizeEmit_q4ymm`,
+`vectorizeEmit_d16zmm`).
 
-`vectorizeEmit_sound` composes the two soundness results: the coverage the check
-establishes gives the lane theorem `LaneMapVec.laneMapVec_denote` of the shape (lane `k`
-of the lane-mapped program is the scalar program on lane `k` of the inputs), and the
-validated render gives `ZmmRenderValidated.laneMapValidated_sound` (the text stores, lane
-by lane, the outputs of the scalar program).
+`vectorizeEmit_sound` composes three results: the coverage the check establishes gives
+the lane theorem `LaneMapVec.laneMapVec_denote` of the shape (lane `k` of the lane-mapped
+program is the scalar program on lane `k` of the inputs); the validated render gives
+`ZmmRenderValidated.laneMapValidated_sound` (the text stores, lane by lane, the last
+`nOut` bindings of the copy-free program); and `CopyProp.copyElimOut_outputs` identifies
+those bindings with the last `nOut` bindings of `c` (`bindWords_getElem?_outputs`: entry
+`nBinds c - n + j` of `bindWords` is entry `j` of `ComDCE.outputs n c`).
 
 ## Main definitions
 
@@ -44,6 +49,10 @@ by lane, the outputs of the scalar program).
 
 * `coveredExprB_iff`, `covered_of_firstUncovered`: the coverage test decides
   `LaneShape.Covered`.
+* `bindWords_eq_map_bindVals`, `bindWords_getElem?_outputs`: `bindWords` is
+  `ComDCE.bindVals` read as `W`-bit words, and its entry `nBinds c − n + j` is entry `j`
+  of `ComDCE.outputs n c` read the same way.
+* `bindWords_copyElimOut`: copy elimination keeps the last `nOut` entries of `bindWords`.
 * `vectorizeEmit_q8zmm`, `vectorizeEmit_q4ymm`, `vectorizeEmit_d16zmm`: the entry point
   on a covered program is the validated render.
 * `vectorizeEmit_sound`: soundness of the entry point.
@@ -63,7 +72,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender (LaneW exprZBind
   exprZBindScalar32)
 open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode MState run lane)
 open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate (parse)
-open CatCrypt.Crypto.SecureCompilation.VIR.ComRange (JCtxt)
+open CatCrypt.Crypto.SecureCompilation.VIR.ComRange (JCtxt regAs)
+open CatCrypt.Crypto.Optimizer.CopyProp (copyElimOut copyElimOut_outputs)
 
 /-! ## 1. The lane shapes of the route -/
 
@@ -175,14 +185,51 @@ theorem covered_of_firstUncovered (S : LaneShape) : {Γ : Ctxt jasminDialect} �
         exact ⟨(coveredExprB_iff S e).1 he, covered_of_firstUncovered S body (i + 1) h⟩
       · cases h
 
-/-! ## 3. The entry point -/
+/-! ## 3. The output bindings -/
+
+/-- `bindWords W V c` is the list `ComDCE.bindVals c V` with each value read as a `W`-bit
+    word. -/
+theorem bindWords_eq_map_bindVals (W : Nat) : ∀ {Γ : JCtxt} {t : JasminTy}
+    (V : Ctxt.Valuation Γ) (c : Com jasminDialect Γ t),
+    bindWords W V c
+      = (Optimizer.ComDCE.bindVals c V).map (fun p => regAs p.1 W p.2)
+  | _, _, _, .ret _ => rfl
+  | _, _, V, .var e body => by
+      simp only [bindWords, Optimizer.ComDCE.bindVals, List.map_cons,
+        bindWords_eq_map_bindVals W (V.extend (e.denote V)) body]
+
+theorem nBinds_eq_comLen : ∀ {Γ : JCtxt} {t : JasminTy} (c : Com jasminDialect Γ t),
+    nBinds c = Optimizer.UncomputePass.comLen c
+  | _, _, .ret _ => rfl
+  | _, _, .var _ body => by
+      simp only [nBinds, Optimizer.UncomputePass.comLen_var, nBinds_eq_comLen body]
+
+/-- Entry `nBinds c − n + j` of `bindWords W V c` is entry `j` of the last `n` binding
+    values `ComDCE.outputs n c V`, read as a `W`-bit word. -/
+theorem bindWords_getElem?_outputs (W n j : Nat) {Γ : JCtxt} {t : JasminTy}
+    (V : Ctxt.Valuation Γ) (c : Com jasminDialect Γ t) :
+    (bindWords W V c)[nBinds c - n + j]?
+      = ((Optimizer.ComDCE.outputs n c V)[j]?).map (fun p => regAs p.1 W p.2) := by
+  rw [bindWords_eq_map_bindVals, Optimizer.ComDCE.outputs, List.getElem?_drop,
+    List.getElem?_map, Optimizer.ComDCE.length_bindVals, nBinds_eq_comLen]
+
+/-- Copy elimination outside the last `n` bindings keeps entry `nBinds − n + j` of
+    `bindWords`: the last `n` binding values. -/
+theorem bindWords_copyElimOut (W n j : Nat) {Γ : JCtxt} {t : JasminTy}
+    (V : Ctxt.Valuation Γ) (c : Com jasminDialect Γ t) :
+    (bindWords W V (copyElimOut n c))[nBinds (copyElimOut n c) - n + j]?
+      = (bindWords W V c)[nBinds c - n + j]? := by
+  rw [bindWords_getElem?_outputs, bindWords_getElem?_outputs, copyElimOut_outputs]
+
+/-! ## 4. The entry point -/
 
 /-- **The vector route.** The AT&T text of the function `sym` computing the lane map of
     the straight-line scalar program `c` at lane shape `V`, parameter `s` loaded from
     byte offset `inOffset s`, the last `nOut` bindings stored as the outputs, with the
-    range analysis run from inputs at most `B` when `inBound = some B`. Returns an error
-    naming the first binding outside the shape's coverage, or the renderer's or the
-    translation validator's error. -/
+    range analysis run from inputs at most `B` when `inBound = some B`. The register
+    copies outside the last `nOut` bindings are deleted before rendering
+    (`CopyProp.copyElimOut`). Returns an error naming the first binding outside the
+    shape's coverage, or the renderer's or the translation validator's error. -/
 def vectorizeEmit (V : VecShape) {Γ : JCtxt} {t : JasminTy} (sym : String)
     (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t)
     (inBound : Option Nat := none) : Except String String :=
@@ -190,35 +237,36 @@ def vectorizeEmit (V : VecShape) {Γ : JCtxt} {t : JasminTy} (sym : String)
   | some (i, op) =>
       .error s!"vectorizeEmit {sym}: binding {i} ({opLabel op}) is outside the lane shape \
         {reprStr V}"
-  | none => laneMapValidated V.laneW V.bindMap V.mode sym inOffset nOut c inBound
+  | none =>
+      laneMapValidated V.laneW V.bindMap V.mode sym inOffset nOut (copyElimOut nOut c) inBound
 
 /-- At eight 64-bit ZMM lanes, the entry point on a covered program is
-    `renderValidated`. -/
+    `renderValidated` of its copy-free form. -/
 theorem vectorizeEmit_q8zmm {Γ : JCtxt} {t : JasminTy} (sym : String)
     (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t) (inBound : Option Nat)
     (h : firstUncovered qwordZmm c 0 = none) :
     vectorizeEmit .q8zmm sym inOffset nOut c inBound
-      = renderValidated sym inOffset nOut c inBound := by
+      = renderValidated sym inOffset nOut (copyElimOut nOut c) inBound := by
   simp only [vectorizeEmit, VecShape.laneShape, h]
   rfl
 
 /-- At four 64-bit YMM lanes, the entry point on a covered program is `renderValidated`
-    with `ymm`. -/
+    of its copy-free form with `ymm`. -/
 theorem vectorizeEmit_q4ymm {Γ : JCtxt} {t : JasminTy} (sym : String)
     (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t) (inBound : Option Nat)
     (h : firstUncovered qwordYmmV c 0 = none) :
     vectorizeEmit .q4ymm sym inOffset nOut c inBound
-      = renderValidated sym inOffset nOut c inBound (ymm := true) := by
+      = renderValidated sym inOffset nOut (copyElimOut nOut c) inBound (ymm := true) := by
   simp only [vectorizeEmit, VecShape.laneShape, h]
   rfl
 
 /-- At sixteen 32-bit ZMM lanes, the entry point on a covered program is
-    `renderValidatedD`. -/
+    `renderValidatedD` of its copy-free form. -/
 theorem vectorizeEmit_d16zmm {Γ : JCtxt} {t : JasminTy} (sym : String)
     (inOffset : Nat → Nat) (nOut : Nat) (c : Com jasminDialect Γ t) (inBound : Option Nat)
     (h : firstUncovered dwordZmm c 0 = none) :
     vectorizeEmit .d16zmm sym inOffset nOut c inBound
-      = renderValidatedD sym inOffset nOut c inBound := by
+      = renderValidatedD sym inOffset nOut (copyElimOut nOut c) inBound := by
   simp only [vectorizeEmit, VecShape.laneShape, h]
   rfl
 
@@ -259,7 +307,15 @@ theorem vectorizeEmit_sound (V : VecShape) {Γ : JCtxt} {t : JasminTy} {sym : St
   · cases h
   · rename_i hc
     have hcov := covered_of_firstUncovered V.laneShape c 0 hc
-    exact ⟨hcov, fun leafSem hm W k => laneMapVec_denote V.laneShape leafSem hm c hcov W k,
-      laneMapValidated_sound V.bindSound V.bindShape h⟩
+    refine ⟨hcov, fun leafSem hm W k => laneMapVec_denote V.laneShape leafSem hm c hcov W k,
+      ?_⟩
+    obtain ⟨prog, ro, hp, hrun⟩ := laneMapValidated_sound V.bindSound V.bindShape h
+    refine ⟨prog, ro, hp, fun Vs inp hB hin σ hσ => ?_⟩
+    obtain ⟨σ', hσ', hout⟩ := hrun Vs inp hB hin σ hσ
+    refine ⟨σ', hσ', fun j hj => ?_⟩
+    obtain ⟨y, hy, hk⟩ := hout j hj
+    exact ⟨y, hy, fun k hk' => by
+      rw [← bindWords_copyElimOut]
+      exact hk k hk'⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
