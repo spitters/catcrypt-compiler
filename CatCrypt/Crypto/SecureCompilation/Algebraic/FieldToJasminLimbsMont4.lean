@@ -20,26 +20,36 @@ limbs.
 | source op at `P.p` | target block |
 |---|---|
 | `fAdd` | `addBlk x y` |
+| `fSub` | `subBlk x y` |
+| `fNeg` | `negBlk x` |
 | `fMul` | `mulBlk x y` |
+| `fInv` | `invBlk x`, the Montgomery power `x^(p-2)` |
+| `fieldDouble` | `addBlk x x` |
+| `fieldSquare` | `mulBlk x x` |
 | `fConst c` | `constBlk (c · 2^256).val` |
 | `fCopy` | `Curve25519.copyBlk x` |
 
 Every other operation, and every operation at another modulus, lowers to the zero
-limbs; the coverage predicate `GoodM` excludes them.
+limbs; the coverage predicate `GoodV` excludes them, and admits `fInv` only at a prime
+modulus.
 
 ## Main definitions
 
 * `mapTysL`, `encL`: the type map and the encoding.
 * `lowerOpL`, `loweringL`: the per-operation blocks and the `MultiBlockLoweringData`.
-* `GoodM`: the operations covered at `P.p`.
+* `GoodM`: addition, multiplication, constants and copies at `P.p`.
+* `GoodV`: `GoodM`, subtraction, negation, doubling, squaring, and inversion at a
+  prime `P.p`.
 
 ## Main results
 
 * `nv_encX`, `nv_encY`: the operand limb variables of a flattened valuation carry the
   Montgomery forms.
-* `blockSquareL`: the block square of `loweringL` for `GoodM` expressions.
-* `fieldToJasminLimbsMont4_denote`: for every `GoodM`-covered program `c`,
-  `(loweringL.lowerMulti c).denote (flatVal encL V) = encL (c.denote V)`.
+* `blockSquareV`, `blockSquareL`: the block square of `loweringL` for `GoodV` and
+  `GoodM` expressions.
+* `fieldToJasminLimbsMont4_denoteV`: for every `GoodV`-covered program `c`,
+  `(loweringL.lowerMulti c).denote (flatVal encL V) = encL (c.denote V)`;
+  `fieldToJasminLimbsMont4_denote` is its restriction to `GoodM`.
 -/
 
 @[expose] public section
@@ -113,21 +123,32 @@ theorem encL_fp (x : ZMod P.p) : encL P (t := .fp P.p) x = enc P x := by
   simp only [encL, dite_true]
   rfl
 
-/-- The block of each field operation: addition, multiplication, constants and
-    copies at `P.p`, and the zero limbs otherwise. -/
+/-- The block of each field operation at `P.p`: addition, subtraction, negation,
+    multiplication, inversion, doubling, squaring, constants and copies; the zero limbs
+    otherwise. -/
 def lowerOpL : (op : fieldDialect.Op) →
     MultiReturnCom jasminDialect (ctxFlat mapTysL (DialectSignature.sig op))
       (mapTysL (DialectSignature.ret op))
   | .fAdd q => if q = P.p then
       addBlk P xv₀ xv₁ xv₂ xv₃ (past4 xv₀) (past4 xv₁) (past4 xv₂) (past4 xv₃)
     else constBlk 0
+  | .fSub q => if q = P.p then
+      subBlk P xv₀ xv₁ xv₂ xv₃ (past4 xv₀) (past4 xv₁) (past4 xv₂) (past4 xv₃)
+    else constBlk 0
+  | .fNeg q => if q = P.p then negBlk P xv₀ xv₁ xv₂ xv₃ else constBlk 0
   | .fMul q => if q = P.p then
       mulBlk P xv₀ xv₁ xv₂ xv₃ (past4 xv₀) (past4 xv₁) (past4 xv₂) (past4 xv₃)
     else constBlk 0
+  | .fInv q => if q = P.p then invBlk P xv₀ xv₁ xv₂ xv₃ else constBlk 0
   | .fConst q c => if h : q = P.p then constBlk ((cast (congrArg ZMod h) c * R P).val)
     else constBlk 0
   | .fCopy q => if q = P.p then copyBlk xv₀ xv₁ xv₂ xv₃ else constBlk 0
-  | _ => constBlk 0
+  | .fieldDouble q => if q = P.p then addBlk P xv₀ xv₁ xv₂ xv₃ xv₀ xv₁ xv₂ xv₃
+    else constBlk 0
+  | .fieldSquare q => if q = P.p then mulBlk P xv₀ xv₁ xv₂ xv₃ xv₀ xv₁ xv₂ xv₃
+    else constBlk 0
+  | .ext2Mul _ | .ext2Add _ | .ext2Sub _ | .frobenius2 _ | .ext6Mul _ _ | .ext6Add _
+  | .ext6Sub _ | .ext12Mul _ _ | .ext12Add _ | .ext12Sub _ => constBlk 0
 
 /-- The multi-value lowering `fieldDialect → jasminDialect` over four limbs in
     Montgomery form. -/
@@ -140,13 +161,19 @@ def GoodM {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t) : 
   e.op = .fAdd P.p ∨ e.op = .fMul P.p ∨ (∃ c : ZMod P.p, e.op = .fConst P.p c) ∨
     e.op = .fCopy P.p
 
+/-- The operations covered at `P.p`: those of `GoodM`, subtraction, negation, doubling,
+    squaring, and inversion when `P.p` is prime. -/
+def GoodV {Γ : Ctxt fieldDialect} {t : FieldTy} (e : Expr fieldDialect Γ t) : Prop :=
+  GoodM P e ∨ e.op = .fSub P.p ∨ e.op = .fNeg P.p ∨ e.op = .fieldDouble P.p ∨
+    e.op = .fieldSquare P.p ∨ (P.p.Prime ∧ e.op = .fInv P.p)
+
 /-! ## 3. The block square and the fundamental theorem -/
 
-/-- **The block square of `loweringL`.** -/
-theorem blockSquareL : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x) (GoodM P) := by
+/-- **The block square of `loweringL` on `GoodV`.** -/
+theorem blockSquareV : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x) (GoodV P) := by
   intro Γ t e hg vals
   obtain ⟨op, h, args⟩ := e
-  rcases hg with hop | hop | ⟨c, hop⟩ | hop <;> subst hop
+  rcases hg with (hop | hop | ⟨c, hop⟩ | hop) | hop | hop | hop | hop | ⟨hp, hop⟩ <;> subst hop
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fAdd P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fAddF a b)
@@ -166,10 +193,48 @@ theorem blockSquareL : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x
       = encL P (t := .fp P.p) (fCopyF a)
     rw [encL_fp, lowerOpL, if_pos rfl, copyBlk_denote, nv_encX]
     rfl
+  · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
+    show (lowerOpL P (.fSub P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
+      = encL P (t := .fp P.p) (fSubF a b)
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact subBlk_denote_enc P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
+  · rcases vals with _ | ⟨a, _ | _⟩
+    show (lowerOpL P (.fNeg P.p)).denote (hvAppend (encL P a) .nil)
+      = encL P (t := .fp P.p) (fNegF a)
+    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact negBlk_denote_enc P _ _ _ _ _ a (nv_encX P a _)
+  · rcases vals with _ | ⟨a, _ | _⟩
+    show (lowerOpL P (.fieldDouble P.p)).denote (hvAppend (encL P a) .nil)
+      = encL P (t := .fp P.p) (fDoubleF a)
+    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact addBlk_denote P _ _ _ _ _ _ _ _ _ a a (nv_encX P a _) (nv_encX P a _)
+  · rcases vals with _ | ⟨a, _ | _⟩
+    show (lowerOpL P (.fieldSquare P.p)).denote (hvAppend (encL P a) .nil)
+      = encL P (t := .fp P.p) (fSquareF a)
+    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact mulBlk_denote P _ _ _ _ _ _ _ _ _ a a (nv_encX P a _) (nv_encX P a _)
+  · rcases vals with _ | ⟨a, _ | _⟩
+    show (lowerOpL P (.fInv P.p)).denote (hvAppend (encL P a) .nil)
+      = encL P (t := .fp P.p) (fInvF a)
+    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    exact invBlk_denote_inv P hp _ _ _ _ _ a (nv_encX P a _)
+
+/-- **The block square of `loweringL` on `GoodM`.** -/
+theorem blockSquareL : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x) (GoodM P) := by
+  intro Γ t e hg
+  exact blockSquareV P e (Or.inl hg)
 
 /-- **Denotation preservation of `fieldDialect → jasminDialect` over four limbs in
-    Montgomery form.** A `GoodM`-covered field program lowers to a multi-result
+    Montgomery form.** A `GoodV`-covered field program lowers to a multi-result
     jasmin program that maps the limbs of its inputs to the limbs of its result. -/
+theorem fieldToJasminLimbsMont4_denoteV {Γ : Ctxt fieldDialect} {t : FieldTy}
+    (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodV P) c) (V : Valuation Γ) :
+    ((loweringL P).lowerMulti c).denote (flatVal (fun {t} x => encL P (t := t) x) V)
+      = encL P (c.denote V) :=
+  (loweringL P).multiFundamental_on (fun {t} x => encL P (t := t) x) (GoodV P)
+    (blockSquareV P) c hc V
+
+/-- Denotation preservation on a `GoodM`-covered field program. -/
 theorem fieldToJasminLimbsMont4_denote {Γ : Ctxt fieldDialect} {t : FieldTy}
     (c : Com fieldDialect Γ t) (hc : CoveredCom (GoodM P) c) (V : Valuation Γ) :
     ((loweringL P).lowerMulti c).denote (flatVal (fun {t} x => encL P (t := t) x) V)

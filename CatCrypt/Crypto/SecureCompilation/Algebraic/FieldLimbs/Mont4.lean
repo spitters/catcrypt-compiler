@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # Montgomery field blocks over four 64-bit limbs for an odd modulus below `2^255`
@@ -14,8 +15,11 @@ For a record `Mont4Prime` of an odd modulus `p < 2^255` and the constant
 `nInv = -p⁻¹ mod 2^64`, an element `x` of `ZMod p` is represented by the four
 little-endian 64-bit limbs of the canonical representative of its Montgomery form
 `x · 2^256` (`enc`). The module gives multi-result `jasminDialect` blocks for
-addition, multiplication and constants, and a value theorem for each: on operand
-limbs holding the Montgomery forms of `x` and `y`, the block denotes `enc (x ⋆ y)`.
+addition, multiplication, constants, subtraction, negation and inversion, and a value
+theorem for each: on operand limbs holding the Montgomery forms of `x` and `y`, the
+block denotes `enc (x ⋆ y)`. Subtraction and negation act on canonical
+representatives and so commute with any fixed factor; inversion is the Montgomery
+power `x^(p-2)`, the inverse at a prime modulus.
 
 The blocks reuse the list combinators of `FieldLimbs.Curve25519` (`adcR`, `rowR`,
 `selR`, `constsK`, `addK`, `mulRowK`, `prodK`) and bind `regArith`, `regConst`,
@@ -36,6 +40,9 @@ The blocks reuse the list combinators of `FieldLimbs.Curve25519` (`adcR`, `rowR`
 * `R`, `enc`: the Montgomery factor and the encoding.
 * `addBlk`, `mulBlk`, `constBlk`: the blocks; the copy block is
   `FieldLimbs.Curve25519.copyBlk`.
+* `subMK`, `subBlk`, `negBlk`: subtraction and negation modulo `p` on four limbs.
+* `mulL`, `powK`, `expBits`, `invBlk`: the Montgomery power chain and the inversion
+  block.
 
 ## Main results
 
@@ -45,6 +52,10 @@ The blocks reuse the list combinators of `FieldLimbs.Curve25519` (`adcR`, `rowR`
 * `addBlk_denote`, `mulBlk_denote`, `constBlk_denote`, `copyBlk_denote`: the value
   theorems of the blocks.
 * `enc_injective`: the encoding is injective.
+* `subBlk_denote`, `negBlk_denote`: the blocks on canonical representatives;
+  `subBlk_denote_enc`, `negBlk_denote_enc` on Montgomery forms.
+* `invBlk_denote_pow`: the inversion block gives `enc (x^(p-2))`;
+  `invBlk_denote_inv` gives `enc x⁻¹` at a prime modulus (`pow_sub_two_eq_inv`).
 -/
 
 @[expose] public section
@@ -60,7 +71,8 @@ open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
   (w64 w1 MC lk lk1 eBin eConst eBit eConst_denote eBit_denote eBin_denote Pres Pres.id
     Pres.comp bindK bindK_denote nv nv_nil nv_cons nv_map nv_append nv_lt selR selR_denote
     constsK constsK_denote limbsNat addK addK_denote mulRowK mulRowK_denote prodK
-    prodK_denote R4 limbsOf ret4 ret4_denote ofNat_mod_two_pow limbsOf_injective copyBlk)
+    prodK_denote R4 limbsOf ret4 ret4_denote ofNat_mod_two_pow limbsOf_injective copyBlk
+    xorR xorR_denote adcR adcR_denote)
 
 /-! ## 1. The modulus -/
 
@@ -498,5 +510,293 @@ theorem copyBlk_denote (x₀ x₁ x₂ x₃ : Var Γ w64) :
   rw [e0, e1, e2, e3]
 
 end Blocks
+
+/-! ## 6. Subtraction and negation -/
+
+/-- The canonical representative of a difference: `b.val` subtracted from `a.val`,
+    with `p` added when `b.val > a.val`. -/
+theorem val_sub_eq (a b : ZMod P.p) :
+    (a - b).val = if b.val ≤ a.val then a.val - b.val else a.val + P.p - b.val := by
+  have ha := val_lt P a
+  have hb := val_lt P b
+  have key : ∀ n : Nat, n < P.p → (n : ZMod P.p) = a - b → (a - b).val = n :=
+    fun n hn h => by rw [← h, ZMod.val_natCast_of_lt hn]
+  split_ifs with h
+  · refine key _ (by omega) ?_
+    rw [Nat.cast_sub h, ZMod.natCast_zmod_val, ZMod.natCast_zmod_val]
+  · refine key _ (by omega) ?_
+    rw [Nat.cast_sub (by omega), Nat.cast_add, ZMod.natCast_zmod_val, ZMod.natCast_zmod_val,
+      ZMod.natCast_self, add_zero]
+
+/-- Subtraction modulo `p` on four limbs: `xs + ¬ys + 1` by the carry chain; when the
+    carry is clear, `p` is added, selected by the carry. -/
+def subMK {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  bindK (eConst (2 ^ 64 - 1)) fun r₁ m =>
+  xorR r₁ m ys fun r₂ ny =>
+  bindK (eBit 1) fun r₃ one =>
+  adcR (fun v => v) (xs.map (fun v => r₃ (r₂ (r₁ v)))) (ny.map (fun v => r₃ v)) one
+    fun r₄ D c =>
+  constsK (digits P.p) fun r₅ PL =>
+  addK (D.map (fun v => r₅ v)) PL fun r₆ E _ =>
+  selR (fun v => v) (r₆ (r₅ c)) (D.map (fun v => r₆ (r₅ v))) E fun r₇ out =>
+  k (fun v => r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ v))))))) out
+
+theorem subMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = 4) (hys : ys.length = 4)
+    (hy : nv W ys < P.p)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = 4 →
+      nv W' out = (if nv W ys ≤ nv W xs then nv W xs - nv W ys else nv W xs + P.p - nv W ys) →
+      (k r out).denote W' = G) :
+    (subMK P xs ys k).denote W = G := by
+  have hp := P.p_lt
+  refine bindK_denote _ _ _ _ fun r₁ m W₁ h₁ hm => ?_
+  refine xorR_denote r₁ m ys _ W W₁ G h₁ hm fun r₂ ny W₂ h₂ hny hnyv => ?_
+  refine bindK_denote _ _ _ _ fun r₃ one W₃ h₃ hone => ?_
+  have h123 : Pres (fun v => r₃ (r₂ (r₁ v))) W W₃ := Pres.comp (Pres.comp h₁ h₂) h₃
+  have eone : (lk1 one W₃).toNat = 1 := by rw [show lk1 one W₃ = _ from hone, eBit_denote]; rfl
+  refine adcR_denote (fun v => v) _ _ one _ W₃ W₃ G (Pres.id W₃) (by simp [hxs, hny, hys])
+    fun r₄ D c W₄ h₄ hD hDv => ?_
+  rw [nv_map h123, nv_map h₃, eone] at hDv
+  simp only [List.length_map, hxs] at hDv hD
+  rw [hys] at hnyv
+  refine constsK_denote _ _ W₄ G (digits_lt _) fun r₅ PL W₅ h₅ hPL hPLv => ?_
+  rw [limbsNat_digits _ (by omega)] at hPLv
+  refine addK_denote _ PL _ W₅ G (by simp [hD, hPL, digits_length])
+    fun r₆ E e W₆ h₆ hE hEv => ?_
+  rw [nv_map h₅, hPLv] at hEv
+  simp only [List.length_map, hD] at hEv hE
+  refine selR_denote (fun v => v) _ _ E _ W₆ W₆ G (Pres.id W₆) (by simp [hE, hD])
+    fun r₇ out W₇ h₇ hout hv => ?_
+  refine hk _ out W₇ (Pres.comp (Pres.comp (Pres.comp (Pres.comp h123 h₄) h₅) h₆) h₇)
+    (by simp [hout, hD]) ?_
+  rw [hv, nv_map (Pres.comp h₅ h₆),
+    show lk1 (r₆ (r₅ c)) W₆ = lk1 c W₄ from (h₆ _).trans (h₅ c)]
+  have hDl := nv_lt W₄ D
+  have hEl := nv_lt W₆ E
+  rw [hD] at hDl
+  rw [hE] at hEl
+  have hc2 := (lk1 c W₄).isLt
+  have he2 := (lk1 e W₆).isLt
+  by_cases hc : lk1 c W₄ = 1#1
+  · have h1 : (lk1 c W₄).toNat = 1 := by rw [hc]; rfl
+    rw [if_pos hc]
+    split_ifs <;> omega
+  · have h0 : (lk1 c W₄).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
+    rw [if_neg hc]
+    split_ifs <;> omega
+
+section SubBlocks
+
+variable {Γ : Ctxt jasminDialect}
+
+/-- The subtraction block over the limbs `x₀ … x₃` and `y₀ … y₃`. -/
+def subBlk (x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃ : Var Γ w64) : MC Γ R4 :=
+  subMK P [x₀, x₁, x₂, x₃] [y₀, y₁, y₂, y₃] fun r out => ret4 (r x₀) out
+
+/-- The negation block: the subtraction of `x₀ … x₃` from four zero limbs. -/
+def negBlk (x₀ x₁ x₂ x₃ : Var Γ w64) : MC Γ R4 :=
+  .var (eConst 0) <| .var (eConst 0) <| .var (eConst 0) <| .var (eConst 0) <|
+    subBlk P (.there (.there (.there .here))) (.there (.there .here)) (.there .here) .here
+      (.there (.there (.there (.there x₀)))) (.there (.there (.there (.there x₁))))
+      (.there (.there (.there (.there x₂)))) (.there (.there (.there (.there x₃))))
+
+variable (W : Valuation Γ)
+
+theorem subBlk_denote (x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃ : Var Γ w64) (a b : ZMod P.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = a.val) (hy : nv W [y₀, y₁, y₂, y₃] = b.val) :
+    (subBlk P x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃).denote W = limbsOf (a - b).val := by
+  refine subMK_denote P _ _ _ W _ rfl rfl (by rw [hy]; exact val_lt P b)
+    fun r out W' _ hout hv => ?_
+  rw [ret4_denote _ out W' hout, hv, hx, hy, val_sub_eq]
+
+theorem negBlk_denote (x₀ x₁ x₂ x₃ : Var Γ w64) (a : ZMod P.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = a.val) :
+    (negBlk P x₀ x₁ x₂ x₃).denote W = limbsOf (-a).val := by
+  rw [← zero_sub]
+  refine subBlk_denote P _ _ _ _ _ _ _ _ _ 0 a ?_ hx
+  rw [ZMod.val_zero]
+  rfl
+
+/-- On the Montgomery forms of `x` and `y`, the subtraction block gives the Montgomery
+    form of `x - y`. -/
+theorem subBlk_denote_enc (x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃ : Var Γ w64) (x y : ZMod P.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = (x * R P).val) (hy : nv W [y₀, y₁, y₂, y₃] = (y * R P).val) :
+    (subBlk P x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃).denote W = enc P (x - y) := by
+  rw [enc, sub_mul]
+  exact subBlk_denote P W _ _ _ _ _ _ _ _ _ _ hx hy
+
+/-- On the Montgomery form of `x`, the negation block gives the Montgomery form of
+    `-x`. -/
+theorem negBlk_denote_enc (x₀ x₁ x₂ x₃ : Var Γ w64) (x : ZMod P.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = (x * R P).val) :
+    (negBlk P x₀ x₁ x₂ x₃).denote W = enc P (-x) := by
+  rw [enc, neg_mul]
+  exact negBlk_denote P W _ _ _ _ _ hx
+
+end SubBlocks
+
+/-! ## 7. The Montgomery power and the inversion block -/
+
+/-- The Montgomery multiplication of `xs` by a list of four limbs; on a list of another
+    length the continuation receives `xs`. -/
+def mulL {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) : MC Γ ts :=
+  match ys with
+  | [y₀, y₁, y₂, y₃] => mulMK P xs y₀ y₁ y₂ y₃ k
+  | _ => k (fun v => v) xs
+
+/-- On the Montgomery forms of `x` and `y`, `mulL` gives the Montgomery form of
+    `x * y`. -/
+theorem mulL_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (hxs : xs.length = 4) (hys : ys.length = 4)
+    (x y : ZMod P.p) (hx : nv W xs = (x * R P).val) (hy : nv W ys = (y * R P).val)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = 4 → nv W' out = (x * y * R P).val →
+      (k r out).denote W' = G) :
+    (mulL P xs ys k).denote W = G := by
+  obtain ⟨y₀, y₁, y₂, y₃, rfl⟩ : ∃ a b c d, ys = [a, b, c, d] := by
+    match ys, hys with
+    | [a, b, c, d], _ => exact ⟨a, b, c, d, rfl⟩
+  refine mulMK_denote P xs y₀ y₁ y₂ y₃ k W G hxs (by rw [hx]; exact val_lt P _)
+    (by rw [hy]; exact val_lt P _) fun r out W' hr hout hlt hmod => hk r out W' hr hout ?_
+  rw [hx, hy] at hmod
+  have hc := (ZMod.natCast_eq_natCast_iff _ _ _).mpr hmod
+  simp only [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat, ZMod.natCast_val, ZMod.cast_id',
+    id] at hc
+  have hR : ((nv W' out : Nat) : ZMod P.p) = x * y * R P := by
+    refine (isUnit_R P).mul_right_cancel ?_
+    rw [show R P = 2 ^ 256 from rfl] at hc ⊢
+    rw [hc]
+    ring
+  rw [← hR, ZMod.val_natCast_of_lt hlt]
+
+/-- Left-to-right square-and-multiply over the bits `bs`, most significant first: each
+    bit squares the accumulator `acc` and, on `true`, multiplies it by the base `xs`,
+    all by Montgomery multiplication. -/
+def powK : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → List Bool →
+    List (Var Γ w64) → List (Var Γ w64) →
+    (∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts) → MC Γ ts
+  | _, _, [], _, acc, k => k (fun v => v) acc
+  | _, _, b :: bs, xs, acc, k =>
+      mulL P acc acc fun r₁ sq =>
+      bif b then
+        mulL P sq (xs.map (fun v => r₁ v)) fun r₂ m =>
+        powK bs (xs.map (fun v => r₂ (r₁ v))) m fun r₃ out => k (fun v => r₃ (r₂ (r₁ v))) out
+      else
+        powK bs (xs.map (fun v => r₁ v)) sq fun r₃ out => k (fun v => r₃ (r₁ v)) out
+
+/-- The value `powK` computes from the accumulator value `u` and the base value `x`. -/
+def powVal (x : ZMod P.p) : List Bool → ZMod P.p → ZMod P.p
+  | [], u => u
+  | b :: bs, u => powVal x bs (bif b then u * u * x else u * u)
+
+/-- The number whose binary digits, most significant first, are `bs`, read after the
+    prefix value `n`. -/
+def bitsNum : List Bool → Nat → Nat
+  | [], n => n
+  | b :: bs, n => bitsNum bs (2 * n + b.toNat)
+
+theorem powVal_pow (x : ZMod P.p) : ∀ (bs : List Bool) (n : Nat),
+    powVal P x bs (x ^ n) = x ^ bitsNum bs n
+  | [], _ => rfl
+  | b :: bs, n => by
+      rw [powVal, bitsNum, ← powVal_pow x bs]
+      congr 1
+      cases b <;> simp only [cond_true, cond_false, Bool.toNat_true, Bool.toNat_false] <;> ring
+
+theorem bitsNum_append_single : ∀ (l : List Bool) (b : Bool) (n : Nat),
+    bitsNum (l ++ [b]) n = 2 * bitsNum l n + b.toNat
+  | [], _, _ => rfl
+  | a :: l, b, n => bitsNum_append_single l b (2 * n + a.toNat)
+
+/-- The binary digits of `n`, most significant first. -/
+def expBits : Nat → List Bool
+  | 0 => []
+  | n + 1 => expBits ((n + 1) / 2) ++ [(n + 1) % 2 == 1]
+decreasing_by omega
+
+theorem bitsNum_expBits (n : Nat) : bitsNum (expBits n) 0 = n := by
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+    cases n with
+    | zero => rw [expBits]; rfl
+    | succ n =>
+      rw [expBits, bitsNum_append_single, ih _ (by omega)]
+      rcases Nat.mod_two_eq_zero_or_one (n + 1) with h | h <;> simp [h] <;> omega
+
+/-- On the Montgomery forms of `x` and `u`, `powK` gives the Montgomery form of
+    `powVal x bs u`. -/
+theorem powK_denote : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (bs : List Bool)
+    (xs acc : List (Var Γ w64))
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → List (Var Δ w64) → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (x u : ZMod P.p),
+    xs.length = 4 → acc.length = 4 → nv W xs = (x * R P).val → nv W acc = (u * R P).val →
+    (∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (out : List (Var Δ w64))
+      (W' : Valuation Δ), Pres r W W' → out.length = 4 →
+      nv W' out = (powVal P x bs u * R P).val → (k r out).denote W' = G) →
+    (powK P bs xs acc k).denote W = G
+  | _, _, [], _, acc, _, W, _, _, _, _, hacc, _, hu, hk => hk _ acc W (Pres.id W) hacc hu
+  | _, _, b :: bs, xs, acc, k, W, G, x, u, hxs, hacc, hx, hu, hk => by
+      rw [powK]
+      refine mulL_denote P acc acc _ W G hacc hacc u u hu hu fun r₁ sq W₁ h₁ hsq hsqv => ?_
+      cases b with
+      | false =>
+        exact powK_denote bs _ sq _ W₁ G x (u * u) (by simp [hxs]) hsq
+          (by rw [nv_map h₁, hx]) hsqv fun r₃ out W₃ h₃ hout hv =>
+            hk _ out W₃ (Pres.comp h₁ h₃) hout hv
+      | true =>
+        refine mulL_denote P sq _ _ W₁ G hsq (by simp [hxs]) (u * u) x hsqv
+          (by rw [nv_map h₁, hx]) fun r₂ m W₂ h₂ hm hmv => ?_
+        exact powK_denote bs _ m _ W₂ G x (u * u * x) (by simp [hxs]) hm
+          (by rw [nv_map (Pres.comp h₁ h₂), hx]) hmv fun r₃ out W₃ h₃ hout hv =>
+            hk _ out W₃ (Pres.comp (Pres.comp h₁ h₂) h₃) hout hv
+
+/-- Fermat inversion: at a prime modulus, `x^(p-2) = x⁻¹`, including at `x = 0`. -/
+theorem pow_sub_two_eq_inv (hp : P.p.Prime) (x : ZMod P.p) : x ^ (P.p - 2) = x⁻¹ := by
+  have := Fact.mk hp
+  have h3 : 3 ≤ P.p := by have := hp.two_le; have := P.p_odd; omega
+  by_cases hx : x = 0
+  · subst hx
+    rw [zero_pow (by omega), ZMod.inv_zero]
+  · refine (ZMod.inv_eq_of_mul_eq_one _ _ _ ?_).symm
+    rw [← pow_succ', show P.p - 2 + 1 = P.p - 1 by omega]
+    exact ZMod.pow_card_sub_one_eq_one hx
+
+section Inv
+
+variable {Γ : Ctxt jasminDialect}
+
+/-- The Montgomery inversion block: the Montgomery power of `x₀ … x₃` to the exponent
+    `p - 2`, from the Montgomery form of `1`. -/
+def invBlk (x₀ x₁ x₂ x₃ : Var Γ w64) : MC Γ R4 :=
+  constsK (digits (R P).val) fun r₁ one =>
+  powK P (expBits (P.p - 2)) [r₁ x₀, r₁ x₁, r₁ x₂, r₁ x₃] one fun r₂ out =>
+    ret4 (r₂ (r₁ x₀)) out
+
+/-- On the Montgomery form of `x`, the inversion block gives the Montgomery form of
+    `x^(p-2)`. -/
+theorem invBlk_denote_pow (W : Valuation Γ) (x₀ x₁ x₂ x₃ : Var Γ w64) (x : ZMod P.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = (x * R P).val) :
+    (invBlk P x₀ x₁ x₂ x₃).denote W = enc P (x ^ (P.p - 2)) := by
+  refine constsK_denote _ _ W _ (digits_lt _) fun r₁ one W₁ h₁ hone hv => ?_
+  rw [limbsNat_digits _ (val_lt_two_pow P _)] at hv
+  refine powK_denote P (expBits (P.p - 2)) _ one _ W₁ _ x 1 rfl
+    (hone.trans (digits_length _)) ?_ (by rw [hv, one_mul]) fun r₂ out W₂ _ hout hval => ?_
+  · rw [show [r₁ x₀, r₁ x₁, r₁ x₂, r₁ x₃] = [x₀, x₁, x₂, x₃].map (fun v => r₁ v) from rfl,
+      nv_map h₁, hx]
+  · rw [enc, ret4_denote _ out W₂ hout, hval, ← pow_zero x, powVal_pow, bitsNum_expBits]
+
+/-- At a prime modulus, on the Montgomery form of `x`, the inversion block gives the
+    Montgomery form of `x⁻¹`. -/
+theorem invBlk_denote_inv (hp : P.p.Prime) (W : Valuation Γ) (x₀ x₁ x₂ x₃ : Var Γ w64)
+    (x : ZMod P.p) (hx : nv W [x₀, x₁, x₂, x₃] = (x * R P).val) :
+    (invBlk P x₀ x₁ x₂ x₃).denote W = enc P x⁻¹ := by
+  rw [invBlk_denote_pow P W x₀ x₁ x₂ x₃ x hx, pow_sub_two_eq_inv P hp]
+
+end Inv
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
