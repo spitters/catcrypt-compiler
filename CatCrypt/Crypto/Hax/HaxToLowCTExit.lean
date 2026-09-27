@@ -36,6 +36,14 @@ no exit construct, so the lowering keeps the exit in scalar slots:
   `RForRuntime run (h - lo)`, whose trip count is read from the slot `h` on entry
   (`exitForLoopRt`).
 
+**Loop breaks.**  In a plain `forFold` or `whileFold`, a `cfBreak v` ends the loop
+and `denote'` returns `val v` from it, so the statements after the loop run.  In
+an exit context, a `forFold` with the bounds of `forBounds` or `forBoundsRt` and a
+`whileFold` on a variable whose body has a break at a statement position
+(`hasBreak`) are lowered to the exit-flag loops `exitForLoop`, `exitForLoopRt` and
+`exitLoop` followed by clearing the flag (`breakLoop`); the lowered loop does not
+exit.  A loop whose body does not break keeps the lowering of `haxToLowCT`.
+
 **Result slot.**  A scalar variable, a scalar literal or `unitVal` in tail
 position is written into `exitResName`.  `haxToLowCTFn` lowers a whole function
 body: it zeroes the flag and the result slot, runs the lowered body, and when the
@@ -87,6 +95,8 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 * `ExitGap`, `exitGapOf`, `haxToLowCTK_none_of_exitGap`: the early-exit
   constructors the lowering refuses, each with its name, and the refusal
 * `searchLoopShape_lowers`: the search loop with an early return lowers
+* `breakLoop`, `hasBreak`, `hasBreak_of_exprIn`: the lowered loop break, the break
+  test, and the absence of a break in a representable expression
 -/
 
 @[expose] public section
@@ -240,6 +250,39 @@ def exitFunction (c : LowCT) : LowCT :=
   .RLetU64Zero exitRetName (.RLetU64Zero exitResName
     (.RSeq c (.RIfNz exitRetName (.RScalarSetExpr exitResName (.SVar exitValName)) .RSkip)))
 
+/-- A lowered loop whose body may break, followed by clearing the exit flag: a
+    `cfBreak` in the body of a `forFold` or a `whileFold` ends the loop, and the
+    statements after the loop run. -/
+def breakLoop (c : LowCT) : LowCT := .RSeq c (.RScalarSet exitRetName 0)
+
+/-- Whether `e` has a `cfBreak` at a statement position outside every nested loop:
+    in the body of a `forFold` or a `whileFold`, a break of that loop. -/
+def hasBreak : ImpExpr → Bool
+  | .cfBreak _ => true
+  | .letBind _ _ b => hasBreak b
+  | .seq a b => hasBreak a || hasBreak b
+  | .ifThenElse _ t e => hasBreak t || hasBreak e
+  | .typeAscription e _ => hasBreak e
+  | _ => false
+
+/-- A representable expression outside every `whileFoldReturn` body has no break
+    at a statement position. -/
+theorem hasBreak_of_exprIn (e : ImpExpr) (h : LowCTRepresentable.ExprIn false e = true) :
+    hasBreak e = false := by
+  induction e using ImpExpr.ind with
+  | letBind n v b _ ihb =>
+    simp only [LowCTRepresentable.ExprIn, Bool.and_eq_true] at h
+    exact ihb h.2
+  | seq a b iha ihb =>
+    simp only [LowCTRepresentable.ExprIn, Bool.and_eq_true] at h
+    simp [hasBreak, iha h.1, ihb h.2]
+  | ifThenElse c t e _ iht ihe =>
+    simp only [LowCTRepresentable.ExprIn, Bool.and_eq_true] at h
+    simp [hasBreak, iht h.1.2, ihe h.2]
+  | typeAscription e _ ih => exact ih (by simpa [LowCTRepresentable.ExprIn] using h)
+  | cfBreak e _ => simp [LowCTRepresentable.ExprIn] at h
+  | _ => rfl
+
 /-! ## §2  The head of a `letBind` -/
 
 /-- The context `haxToLowCT` places around the lowered body of
@@ -367,9 +410,13 @@ theorem letHeadK_false (name : String) (val : ImpExpr) :
     scalar-operation arms, `tl` records tail position, `fl` is the exit context:
     the loop slot of the innermost enclosing exit loop, `some exitFnSlot` in a
     function body outside every exit loop, and `none` where no exit is handled
-    (a `cfBreak` is refused only there); the result pairs the lowered command with whether it may have exited.  In
-    tail position a scalar value is written into the result slot; outside tail
-    position the constructors that carry no exit are lowered by `haxToLowCT`. -/
+    (a `cfBreak` is refused only there); the result pairs the lowered command with
+    whether it may have exited.  In an exit context, a `forFold` with the bounds of
+    `forBounds` or `forBoundsRt` and a `whileFold` on a variable whose bodies break
+    (`hasBreak`) are lowered to the exit-flag loop followed by clearing the flag
+    (`breakLoop`).  In tail position a scalar value is written into the result
+    slot; outside tail position the constructors that carry no exit are lowered
+    by `haxToLowCT`. -/
 def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (LowCT × Bool)
   | tl, fl, .letBind name val body =>
       match letHeadK sc name val, haxToLowCTK sc tl fl body with
@@ -400,6 +447,22 @@ def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (Low
       match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
       | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
       | _, _ => none
+  | false, some r, .forFold i lo hi body =>
+      if hasBreak body then
+        match forBounds lo hi, forBoundsRt lo hi,
+            haxToLowCTK sc false (some (exitRunName (some r))) body with
+        | some (l, h), _, some (bC, _) =>
+            some (breakLoop (exitForLoop (exitRunName (some r)) i l h bC), false)
+        | none, some (l, h), some (bC, _) =>
+            some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
+        | _, _, _ => none
+      else (haxToLowCT (.forFold i lo hi body)).map fun c => (c, false)
+  | false, some r, .whileFold (.var c) body =>
+      if hasBreak body then
+        match haxToLowCTK sc false (some (exitRunName (some r))) body with
+        | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
+        | none => none
+      else (haxToLowCT (.whileFold (.var c) body)).map fun cc => (cc, false)
   | _, some _, .cfBreak e => (exitStore e).map fun s => (s, true)
   | true, _, e => (resultStore e).map fun s => (s, false)
   | false, _, e => (haxToLowCT e).map fun c => (c, false)
@@ -472,8 +535,10 @@ theorem haxToLowCTK_none_cfBreak (sc tl : Bool) (e : ImpExpr) :
     `letHeadK sc` accepts and whose body has the shape; `seq` (its first
     component outside tail position), `ifThenElse` on a variable and a type
     ascription with components of the shape; outside tail position a
-    `whileFoldReturn` on a variable whose body has the shape inside the loop; a
-    `cfBreak` of a scalar value inside a loop; in tail position a scalar value;
+    `whileFoldReturn` on a variable whose body has the shape inside the loop;
+    inside a loop and outside tail position, a `forFold` or `whileFold` whose body
+    breaks and has the shape inside the loop; a `cfBreak` of a scalar value inside
+    a loop; in tail position a scalar value;
     and outside tail position every other expression `AnfShaped` accepts. -/
 def AnfShapedK (sc : Bool) : Bool → Bool → ImpExpr → Bool
   | tl, il, .letBind name val body => (letHeadK sc name val).isSome && AnfShapedK sc tl il body
@@ -485,6 +550,13 @@ def AnfShapedK (sc : Bool) : Bool → Bool → ImpExpr → Bool
       ((forBounds lo hi).isSome || (forBoundsRt lo hi).isSome) && AnfShapedK sc false true body
   | false, _, .forFoldRevReturn _ lo hi body =>
       (forBounds lo hi).isSome && AnfShapedK sc false true body
+  | false, true, .forFold i lo hi body =>
+      if hasBreak body then
+        ((forBounds lo hi).isSome || (forBoundsRt lo hi).isSome) && AnfShapedK sc false true body
+      else AnfShaped (.forFold i lo hi body)
+  | false, true, .whileFold (.var c) body =>
+      if hasBreak body then AnfShapedK sc false true body
+      else AnfShaped (.whileFold (.var c) body)
   | _, true, .cfBreak e => (exitStore e).isSome
   | true, _, e => (resultStore e).isSome
   | false, _, e => AnfShaped e
@@ -560,6 +632,40 @@ theorem haxToLowCTK_isSome_iff_anfK (sc tl : Bool) (fl : Option String) (e : Imp
       rw [← h]
       rcases forBounds lo hi with _ | ⟨l, hb⟩ <;>
         rcases haxToLowCTK sc false (some (exitRunName fl)) body with _ | ⟨bC, x⟩ <;> rfl
+  | forFold i lo hi body _ _ ihb =>
+    intro tl fl
+    cases tl with
+    | true => cases fl <;> rfl
+    | false =>
+      cases fl with
+      | none => simp only [haxToLowCTK, Option.isSome_map]; exact hanf _
+      | some r =>
+        simp only [haxToLowCTK, AnfShapedK, Option.isSome_some]
+        split
+        · have h := ihb false (some (exitRunName (some r)))
+          rw [Option.isSome_some] at h
+          rw [← h]
+          rcases forBounds lo hi with _ | ⟨l, hb⟩ <;> rcases forBoundsRt lo hi with _ | ⟨l', hb'⟩ <;>
+            rcases haxToLowCTK sc false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩ <;> rfl
+        · rw [Option.isSome_map]; exact hanf _
+  | whileFold c body _ ihb =>
+    intro tl fl
+    cases tl with
+    | true => cases fl <;> cases c <;> rfl
+    | false =>
+      cases c with
+      | var v =>
+        cases fl with
+        | none => simp only [haxToLowCTK, Option.isSome_map]; exact hanf _
+        | some r =>
+          simp only [haxToLowCTK, AnfShapedK, Option.isSome_some]
+          split
+          · have h := ihb false (some (exitRunName (some r)))
+            rw [Option.isSome_some] at h
+            rw [← h]
+            rcases haxToLowCTK sc false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩ <;> rfl
+          · rw [Option.isSome_map]; exact hanf _
+      | _ => cases fl <;> (simp only [haxToLowCTK, AnfShapedK, Option.isSome_map]; exact hanf _)
   | cfBreak e _ =>
     intro tl fl
     cases fl with
@@ -602,6 +708,20 @@ theorem anfShapedK_of_representable (sc tl inLoop : Bool) (e : ImpExpr)
     | false => simp [LowCTRepresentable.ExprIn] at hrep
   | whileFoldReturn c body _ _ =>
     cases tl <;> cases c <;> (simp only [AnfShapedK] at hanf ⊢; exact hanf)
+  | forFold i lo hi body _ _ _ => simp [LowCTRepresentable.ExprIn] at hrep
+  | whileFold c body _ _ =>
+    cases inLoop with
+    | true => exact hanf
+    | false =>
+      cases tl with
+      | true => cases c <;> (simp only [AnfShapedK] at hanf ⊢; exact hanf)
+      | false =>
+        cases c with
+        | var v =>
+          simp only [LowCTRepresentable.ExprIn, Bool.and_eq_true] at hrep
+          simp only [AnfShapedK, hasBreak_of_exprIn body hrep.2] at hanf ⊢
+          exact hanf
+        | _ => simp only [AnfShapedK] at hanf ⊢; exact hanf
   | _ => cases tl <;> (simp only [AnfShapedK] at hanf ⊢; exact hanf)
 
 /-- **Filter and translator agree.** A representable expression of the

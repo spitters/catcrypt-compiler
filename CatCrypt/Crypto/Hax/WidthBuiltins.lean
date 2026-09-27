@@ -142,6 +142,18 @@ theorem widthArrayOps_deepNoControlFlow : Builtins.DeepNoControlFlow widthArrayO
   case h_9.isFalse | h_10.isFalse =>
     obtain rfl := Option.some.inj h
     exact h0 rfl
+  case h_11 =>
+    obtain rfl := Option.some.inj h
+    have hvs := (deepNoControlFlow_array_iff _).mp (h0 rfl)
+    exact (deepNoControlFlow_array_iff _).mpr fun y hy => hvs y (List.mem_reverse.mp hy)
+  case h_12 | h_13.isTrue =>
+    obtain ⟨a, ha, rfl⟩ := Option.map_eq_some_iff.mp h
+    have hvs := (deepNoControlFlow_array_iff _).mp (h0 rfl)
+    refine (deepNoControlFlow_array_iff [a, _]).mpr fun y hy => ?_
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hy
+    rcases hy with rfl | rfl
+    · exact hvs _ (List.mem_of_getElem? ha)
+    · exact (deepNoControlFlow_array_iff _).mpr fun z hz => hvs z (List.mem_of_mem_eraseIdx hz)
 
 /-- The signed arithmetic table returns `sint` words only. -/
 theorem signedArithOps_deepNoControlFlow : Builtins.DeepNoControlFlow signedArithOps := by

@@ -32,7 +32,7 @@ one on which the checker returns `some`.
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (ImpExpr ImpLit ImpPat nfAtom nfVar nfLit nfBound nfBoundOp nfRhs nfAssignRhs
-  nfBreakArg isNFK isNF NF isNFK_of_isNF)
+  nfBreakArg isNFK isNF NF isNFK_of_isNF isNFK_true_of_false)
 open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
 
 /-! ## Arguments and bounds -/
@@ -92,7 +92,8 @@ theorem isNFK_of_anfShaped (e : ImpExpr) (h : AnfShaped e = true) (il : Bool) :
   refine isNFK_of_isNF e il (show isNFK false e = true from ?_)
   fun_induction AnfShaped e <;>
     simp_all [-List.all_eq_true, isNFK, nfRhs, nfAssignRhs, nfLit, nfBound,
-      all_nfAtom_of_all_isVar, all_nfVar_of_all_isVar, nfBound_of_impBoundToSExpr]
+      all_nfAtom_of_all_isVar, all_nfVar_of_all_isVar, nfBound_of_impBoundToSExpr,
+      isNFK_true_of_false]
   exact all_nfAtom_of_anfArgs h.1
 
 /-- An expression `haxToLowCT` lowers is in normal form. -/
@@ -189,6 +190,7 @@ theorem isNFK_of_anfShapedK (sc tl il : Bool) (e : ImpExpr) (h : AnfShapedK sc t
     | exact nfLit_of_forBounds h.1
     | exact nfBound_of_forBoundsK (by simpa using h.1)
     | exact nfBound_of_forBoundsK (by simp_all)
+    | simpa [isNFK] using isNFK_of_anfShaped _ h true
 
 /-- An expression `haxToLowCTK sc tl none` lowers is in normal form. -/
 theorem nf_of_haxToLowCTK_isSome (sc tl : Bool) (e : ImpExpr)
@@ -245,7 +247,7 @@ theorem nf_of_simScopeF (tow : String → TowerType) (S T : List String) (A Γ :
   show isNFK false e = true
   fun_induction simScopeF tow S T A Γ e <;>
     simp_all [-List.all_eq_true, isNFK, nfRhs, nfAssignRhs, nfLit, nfBound,
-      all_nfVar_of_all_isVar]
+      all_nfVar_of_all_isVar, isNFK_true_of_false]
   all_goals
     casesm* _ ∧ _
     exact all_nfAtom_of_argsInScope (by assumption)
@@ -255,7 +257,7 @@ theorem nf_of_simScopeW (tow : String → TowerType) (D S T : List String) (A Γ
   show isNFK false e = true
   fun_induction simScopeW tow D S T A Γ e <;>
     simp_all [-List.all_eq_true, isNFK, nfRhs, nfAssignRhs, nfLit, nfBound,
-      all_nfVar_of_all_isVar]
+      all_nfVar_of_all_isVar, isNFK_true_of_false]
   all_goals
     casesm* _ ∧ _
     exact all_nfAtom_of_argsInScope (by assumption)
