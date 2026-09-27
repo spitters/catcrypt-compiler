@@ -50,8 +50,9 @@ even/odd 64-bit products until one final merge (`fuseMontSub`, `montSubLines`): 
 `vpmulld` and no low-half merge. A rotate written as two immediate shifts and a
 disjunction renders as one `vprolq` / `vprold` (`fuseRol`); a three-input exclusive or
 and the Keccak χ step `x ⊕ (¬y ∧ z)` render as one `vpternlogq` / `vpternlogd`
-(`fuseTern`), preceded by a `vmovdqa64` when the destination shares no register with an
-operand.
+(`fuseTern`). Its destination takes the register of an operand read for the last time
+there when there is one (`allocZmmLinear`), and is otherwise loaded from the first
+operand by a `vmovdqa64`.
 
 The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
@@ -299,7 +300,11 @@ def mulhiTemps (md : Mode) : List String := [vecReg md 28, vecReg md 29, vecReg 
     non-constant values: parameter `i` is pinned to register `i`; at each binding the
     registers of the names it reads for the last time are released before its destination
     is assigned, and the destination's register is released at once when nothing reads
-    it. Constants take no register. Fails when a binding finds no free register. -/
+    it. The destination of a `vpternlog`, which overwrites its first operand, is the
+    register of the first of its operands read for the last time there, when there is
+    one (`bindLines` permutes the truth table to put that operand first); every other
+    destination is the head of the free list. Constants take no register. Fails when a
+    binding finds no free register. -/
 def allocZmmLinear (md : Mode) (params : List String)
     (consts : Std.HashMap String (String × Nat))
     (bs : Array ZBind) (live : List String) (reserved : List String := []) :
@@ -316,10 +321,18 @@ def allocZmmLinear (md : Mode) (params : List String)
     let (b, i) := bi
     if consts.contains b.dst then pure (alloc, free) else
     let dying := b.srcs.eraseDups.filter (fun s => lu.get? s == some i)
-    let free := free ++ dying.filterMap alloc.get?
-    match free with
-    | [] => throw s!"vpackZMM linear render: no free register at binding {i}"
-    | r :: rest =>
+    let dyingRegs := dying.filterMap alloc.get?
+    let free := free ++ dyingRegs
+    let tied : Option String := match b with
+      | .tern .. => dyingRegs.head?
+      | _ => none
+    let pick : Option (String × List String) := match tied, free with
+      | some r, _ => some (r, free.erase r)
+      | none, r :: rest => some (r, rest)
+      | none, [] => none
+    match pick with
+    | none => throw s!"vpackZMM linear render: no free register at binding {i}"
+    | some (r, rest) =>
       let alloc := alloc.insert b.dst r
       pure (alloc, if lu.contains b.dst then rest else rest ++ [r])
   let (alloc, _) ← bs.zipIdx.foldlM step (pinned, pool)

@@ -1891,6 +1891,32 @@ def barrettFacts : List (String × Iv) :=
 #kat validateBinds .ymm .q ["a", "b"] barrettBinds 1 (some (2013265920, barrettRanges))
   barrettFacts
 
+/- The two shifts of the Barrett quotient by broadcast constants render in the
+    immediate-count form, `vpsrlq $30` and `vpsrlq $32`, with no variable-count
+    `vpsrlvq`; with the count `30` printed as `31` the text is rejected. -/
+#kat (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 ["a", "b"]
+    barrettBinds (some (2013265920, barrettRanges))).toOption.any (fun s =>
+      (s.splitOn "\tvpsrlq $30, ").length == 2 && (s.splitOn "\tvpsrlq $32, ").length == 2 &&
+        (s.splitOn "vpsrlvq").length == 1) &&
+  !validateBinds .zmm .q ["a", "b"] barrettBinds 1 (some (2013265920, barrettRanges))
+    barrettFacts (fun s => s.replace "\tvpsrlq $30, " "\tvpsrlq $31, ")
+
+/-- Sixteen-lane shifts by broadcast constants: `v2 = ((a << 7) >> 3) ⊕ b`. -/
+def shiftDBinds : Array ZBind := #[
+  .const "k7" (VpackZmmLinearRender.bcast512d 7), .const "k3" (VpackZmmLinearRender.bcast512d 3),
+  .pack .d .shl "v0" "a" "k7", .pack .d .shr "v1" "v0" "k3", .pack .d .xor "v2" "v1" "b"]
+
+/- The dword shifts render as `vpslld $7` and `vpsrld $3`, with no variable-count
+    `vpsllvd` or `vpsrlvd`, and validate; with the count `3` printed as `4` the text is
+    rejected. -/
+#kat (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 ["a", "b"]
+    shiftDBinds).toOption.any (fun s =>
+      (s.splitOn "\tvpslld $7, ").length == 2 && (s.splitOn "\tvpsrld $3, ").length == 2 &&
+        (s.splitOn "vpsllvd").length == 1 && (s.splitOn "vpsrlvd").length == 1) &&
+  validateBinds .zmm .d ["a", "b"] shiftDBinds 1 none [] &&
+  !validateBinds .zmm .d ["a", "b"] shiftDBinds 1 none []
+    (fun s => s.replace "\tvpsrld $3, " "\tvpsrld $4, ")
+
 /- Without the range fact on `v7` the `vpmuludq` of `v8` is rejected. -/
 #kat !validateBinds .zmm .q ["a", "b"] barrettBinds 1 (some (2013265920, barrettRanges))
   (barrettFacts.take 3)
@@ -1990,18 +2016,55 @@ def rolTernText : Option String :=
 #kat validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none [] &&
   validateBinds .ymm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
 
-/- A wrong rotate count and a wrong truth table are rejected; the χ step with its
-    operands in another order and the truth table permuted to match is accepted. -/
-#kat !validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
+/- Each `vpternlogq` of `rolTernBinds` writes the register of an operand read for the last
+    time there, with no `vmovdqa64`: the exclusive or writes `d` (`%zmm3`, its table
+    permuted, which for `xor3B` is itself) and χ writes `a` (`%zmm0`). A wrong rotate count
+    and a wrong truth table are rejected; the χ step with its operands in another order,
+    the truth table permuted to match and the result moved to the register of `a`, is
+    accepted. -/
+#kat rolTernText.any (fun s => (s.splitOn "vmovdqa64").length == 1 &&
+    (s.splitOn "\tvpternlogq $150, %zmm2, %zmm1, %zmm3\n").length == 2 &&
+    (s.splitOn "\tvpternlogq $210, %zmm2, %zmm1, %zmm0\n").length == 2) &&
+  !validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
     (fun s => s.replace "\tvprolq $1, " "\tvprolq $2, ") &&
   !validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
     (fun s => s.replace "\tvpternlogq $210, " "\tvpternlogq $150, ") &&
-  rolTernText.any (fun s => (s.splitOn
-    "\tvmovdqa64 %zmm0, %zmm6\n\tvpternlogq $210, %zmm2, %zmm1, %zmm6").length == 2) &&
   validateBinds .zmm .q ["a", "b", "c", "d"] rolTernBinds 3 none []
-    (fun s => s.replace "\tvmovdqa64 %zmm0, %zmm6\n\tvpternlogq $210, %zmm2, %zmm1, %zmm6"
-      ("\tvmovdqa64 %zmm1, %zmm6\n\tvpternlogq $" ++
+    (fun s => s.replace "\tvpternlogq $210, %zmm2, %zmm1, %zmm0\n"
+      ("\tvpternlogq $" ++
         toString (ZmmTextModel.ternTable fun p q r => ZmmTextModel.chiB q p r).toNat ++
-        ", %zmm2, %zmm0, %zmm6"))
+        ", %zmm2, %zmm0, %zmm1\n\tvmovdqa64 %zmm1, %zmm0\n"))
+
+/-- A Keccak χ step `v2 = a ⊕ ((b ⊕ 1…1) ∧ c)` followed by the bindings `tail`. -/
+def chiThen (tail : List ZBind) : Array ZBind :=
+  #[.const "K" (VpackZmmLinearRender.bcast512 (2 ^ 64 - 1)), .pack .q .xor "v0" "b" "K",
+    .pack .q .and "v1" "v0" "c", .pack .q .xor "v2" "a" "v1"] ++ tail.toArray
+
+/-- The `%zmm` text of `chiThen tail` over the parameters `a`, `b`, `c`. -/
+def chiThenText (tail : List ZBind) (nOut : Nat) : Option String :=
+  (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) nOut ["a", "b", "c"]
+    (chiThen tail)).toOption
+
+/- When only `b` (the second operand of χ) is read for the last time at χ, the
+    `vpternlogq` writes `%zmm1` with the table of `chiB y x z`; when only `c` is, it
+    writes `%zmm2` with the table of `chiB y z x`; neither needs a `vmovdqa64`, and both
+    validate on `%zmm` and `%ymm`. When every operand is read later, one `vmovdqa64`
+    copies `a` first, and the text validates. -/
+#kat (chiThenText [.pack .q .add "v3" "a" "c"] 2).any (fun s =>
+    (s.splitOn "vmovdqa64").length == 1 && (s.splitOn ("\tvpternlogq $" ++
+      toString (ZmmTextModel.ternTable fun p q r => ZmmTextModel.chiB q p r).toNat ++
+      ", %zmm2, %zmm0, %zmm1\n")).length == 2) &&
+  (chiThenText [.pack .q .add "v3" "a" "b"] 2).any (fun s =>
+    (s.splitOn "vmovdqa64").length == 1 && (s.splitOn ("\tvpternlogq $" ++
+      toString (ZmmTextModel.ternTable fun p q r => ZmmTextModel.chiB q r p).toNat ++
+      ", %zmm1, %zmm0, %zmm2\n")).length == 2)
+#kat validateBinds .zmm .q ["a", "b", "c"] (chiThen [.pack .q .add "v3" "a" "c"]) 2 none [] &&
+  validateBinds .ymm .q ["a", "b", "c"] (chiThen [.pack .q .add "v3" "a" "c"]) 2 none [] &&
+  validateBinds .zmm .q ["a", "b", "c"] (chiThen [.pack .q .add "v3" "a" "b"]) 2 none [] &&
+  validateBinds .ymm .q ["a", "b", "c"] (chiThen [.pack .q .add "v3" "a" "b"]) 2 none []
+#kat (chiThenText [.pack .q .add "v3" "a" "b", .pack .q .add "v4" "v3" "c",
+    .pack .q .xor "v5" "v4" "v2"] 1).any (fun s => (s.splitOn "vmovdqa64").length == 2) &&
+  validateBinds .zmm .q ["a", "b", "c"] (chiThen [.pack .q .add "v3" "a" "b",
+    .pack .q .add "v4" "v3" "c", .pack .q .xor "v5" "v4" "v2"]) 1 none []
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate
