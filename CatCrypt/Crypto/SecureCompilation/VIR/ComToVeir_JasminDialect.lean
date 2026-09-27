@@ -12,7 +12,9 @@ public import Veir.OpCode
 public import Veir.IR.OpInfo
 public import Veir.IR.Attribute
 import all Veir.IR.Attribute
-public import Veir.Properties
+public import Veir.Dialects.Arith.Properties
+public import Veir.Dialects.Func.Properties
+public import Veir.GlobalOpInfo
 
 /-!
 # `jasminDialect` → Veir op/type wiring
@@ -28,13 +30,13 @@ named `Veir.OpCode` constructor.
 
 **Trust scope.** The `rfl` examples below verify only
 that the mapping function agrees with its definition — i.e. that
-`toMlirOpCode (.regArith .add w) = .arith_addi` holds because that is how
+`toMlirOpCode (.regArith .add w) = .arith .addi` holds because that is how
 the function was defined. They do NOT prove:
 
-1. that `Veir.OpCode.arith_addi` denotes integer addition in MLIR's
+1. that `Veir.OpCode.arith .addi` denotes integer addition in MLIR's
    sense (Veir's `OpCode` is an opaque inductive at this point — no
    denotation function for `arith_*` ops is shipped here);
-2. that `JasminOp.regArith .add w` and `Veir.OpCode.arith_addi` denote
+2. that `JasminOp.regArith .add w` and `Veir.OpCode.arith .addi` denote
    the same function on the same arguments (no theorem of the form
    `denoteJasmin op args = denoteVeirOp (toMlirOpCode op) (xlat args)`);
 3. that the emitted MLIR text, after `mlir-opt → mlir-translate → llc`,
@@ -108,29 +110,29 @@ open CatCrypt.Crypto.SecureCompilation.VIR (ToVeirOp ToVeirTy
 
 /-- Map `JasminBinOp` to its registered MLIR `arith.*` opcode. -/
 def JasminBinOp.toArithOpCode : JasminBinOp → Veir.OpCode
-  | .add => .arith_addi
-  | .sub => .arith_subi
-  | .mul => .arith_muli
-  | .and => .arith_andi
-  | .or  => .arith_ori
-  | .xor => .arith_xori
-  | .shl => .arith_shli
-  | .shr => .arith_shrui
+  | .add => .arith .addi
+  | .sub => .arith .subi
+  | .mul => .arith .muli
+  | .and => .arith .andi
+  | .or  => .arith .ori
+  | .xor => .arith .xori
+  | .shl => .arith .shli
+  | .shr => .arith .shrui
   -- BMI1 `andn` = `(¬a) ∧ b`. The upstream `arith` dialect has no single
   -- `andn` op; it is the 2-op composition `arith.xori a allOnes` (complement)
   -- then `arith.andi … b`. Kept opaque as a single OpCode here (like
   -- `vpackZMM`/`rorImm`) — its semantic agreement is discharged below via the
   -- total `ArithBinKind.andn` denotation, not a single registered scalar op.
-  | .andn => .catcrypt_unknown
+  | .andn => .catcrypt .unknown
 
-example : JasminBinOp.toArithOpCode .add = .arith_addi := rfl
-example : JasminBinOp.toArithOpCode .sub = .arith_subi := rfl
-example : JasminBinOp.toArithOpCode .mul = .arith_muli := rfl
-example : JasminBinOp.toArithOpCode .and = .arith_andi := rfl
-example : JasminBinOp.toArithOpCode .or  = .arith_ori  := rfl
-example : JasminBinOp.toArithOpCode .xor = .arith_xori := rfl
-example : JasminBinOp.toArithOpCode .shl = .arith_shli := rfl
-example : JasminBinOp.toArithOpCode .shr = .arith_shrui := rfl
+example : JasminBinOp.toArithOpCode .add = .arith .addi := rfl
+example : JasminBinOp.toArithOpCode .sub = .arith .subi := rfl
+example : JasminBinOp.toArithOpCode .mul = .arith .muli := rfl
+example : JasminBinOp.toArithOpCode .and = .arith .andi := rfl
+example : JasminBinOp.toArithOpCode .or  = .arith .ori  := rfl
+example : JasminBinOp.toArithOpCode .xor = .arith .xori := rfl
+example : JasminBinOp.toArithOpCode .shl = .arith .shli := rfl
+example : JasminBinOp.toArithOpCode .shr = .arith .shrui := rfl
 
 /-- Map each `JasminOp` to a Veir `OpCode`.
 
@@ -140,97 +142,98 @@ example : JasminBinOp.toArithOpCode .shr = .arith_shrui := rfl
     (identity, no registered MLIR op). `extCall` → `func.call`. -/
 def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   | .regArith bop _ => bop.toArithOpCode
-  | .stackLoad _ _  => .memref_load
+  | .stackLoad _ _  => .memref .load
   -- `stackStore` returns the updated array (a value); `memref.store` writes a
   -- buffer in place and has no result, so no single registered op matches.
-  | .stackStore _ _ => .catcrypt_unknown
+  | .stackStore _ _ => .catcrypt .unknown
   | .castW w w' =>
-      if w' > w then .arith_extui
-      else if w > w' then .arith_trunci
-      else .catcrypt_unknown
-  | .extCall _ _ _ => .func_call
-  | .regConst _ _ => .arith_constant
-  | .select _ => .arith_select
+      if w' > w then .arith .extui
+      else if w > w' then .arith .trunci
+      else .catcrypt .unknown
+  | .extCall _ _ _ => .func .call
+  | .regConst _ _ => .arith .constant
+  | .select _ => .arith .select
   -- AVX-512 packed lane op: no single registered scalar `arith.*` (it is a
   -- per-lane vector op); kept opaque here.
-  | .vpackZMM _ => .catcrypt_unknown
-  | .vpackZMMd _ => .catcrypt_unknown
-  | .vprordZMM _ => .catcrypt_unknown
-  | .vpslldq _ => .catcrypt_unknown
-  | .vpsrldq _ => .catcrypt_unknown
+  | .vpackZMM _ => .catcrypt .unknown
+  | .vpackZMMd _ => .catcrypt .unknown
+  | .vprordZMM _ => .catcrypt .unknown
+  | .vpslldq _ => .catcrypt .unknown
+  | .vpsrldq _ => .catcrypt .unknown
   -- Parametrized 128-bit SIMD op: a per-lane vector machine op with no single
   -- registered scalar `arith.*`; kept opaque here, like `vpackZMM`.
-  | .vsimd _ => .catcrypt_unknown
+  | .vsimd _ => .catcrypt .unknown
   -- AVX2 256-bit vector op: a per-lane vector machine op with no single
   -- registered scalar `arith.*`; kept opaque here, like `vsimd`.
-  | .vymm _ => .catcrypt_unknown
+  | .vymm _ => .catcrypt .unknown
   -- The high word of the widening multiply is the second result of
   -- `arith.mului_extended` (`JasminOp.resultSlotOfOp`). The carry-chain words
   -- `a + b + cin` take a carry-in that `arith.addui_extended` does not, so no
   -- single registered op matches them.
-  | .mulhi _ => .arith_mului_extended
-  | .addCarryLo _ => .catcrypt_unknown
-  | .addCarryHi _ => .catcrypt_unknown
+  | .mulhi _ => .arith .mului_extended
+  | .addCarryLo _ => .catcrypt .unknown
+  | .addCarryHi _ => .catcrypt .unknown
   -- Native right-rotate: no single registered scalar `arith.*` op for a
   -- rotate (the upstream `arith` dialect has no rotate); kept opaque here. The
   -- rotate's real meaning is the jasmin-backend `#ROR_w` route (and its
   -- `rotateRight` denotation in `jasminDenote`), not the MLIR route.
-  | .rorImm _ _ => .catcrypt_unknown
+  | .rorImm _ _ => .catcrypt .unknown
   -- Immediate shifts and the immediate comparison: the MLIR shifts and
   -- `arith.cmpi` take the amount or the right operand as a second operand, which
   -- a one-operand op lacks, so no single registered op matches.
-  | .shrImm _ _ => .catcrypt_unknown
-  | .sarImm _ _ => .catcrypt_unknown
-  | .shlImm _ _ => .catcrypt_unknown
+  | .shrImm _ _ => .catcrypt .unknown
+  | .sarImm _ _ => .catcrypt .unknown
+  | .shlImm _ _ => .catcrypt .unknown
   -- Multi-result external call (`func.call` lowering target): the multi-result
   -- analogue of `extCall`, lining up 1:1 with a `func.call` carrying `k`
   -- results.
-  | .callN _ _ _ => .func_call
+  | .callN _ _ _ => .func .call
   -- Scalar comparisons: the registered `arith.cmpi`, whose `i1` result is the
   -- `reg 1` boolean; the predicate is the condition code.
-  | .cmp _ _ => .arith_cmpi
-  | .cmpImm _ _ _ => .catcrypt_unknown
+  | .cmp _ _ => .arith .cmpi
+  | .cmpImm _ _ _ => .catcrypt .unknown
 
 /-! Per-op `rfl` coverage that the mapping function evaluates to the named
     `Veir.OpCode` constructor for each case. Semantic equivalence with the
     underlying MLIR dialect is NOT proved by these examples — see the
     file-level docstring on trust scope. -/
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.add 32) = Veir.OpCode.arith_addi := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.add 32) = Veir.OpCode.arith .addi := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.sub 32) = Veir.OpCode.arith_subi := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.sub 32) = Veir.OpCode.arith .subi := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.mul 32) = Veir.OpCode.arith_muli := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.mul 32) = Veir.OpCode.arith .muli := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.and 32) = Veir.OpCode.arith_andi := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.and 32) = Veir.OpCode.arith .andi := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.or 32) = Veir.OpCode.arith_ori := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.or 32) = Veir.OpCode.arith .ori := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.xor 32) = Veir.OpCode.arith_xori := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.xor 32) = Veir.OpCode.arith .xori := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.shl 32) = Veir.OpCode.arith_shli := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.shl 32) = Veir.OpCode.arith .shli := by
   rfl
-example : JasminOp.toMlirOpCode (.regArith JasminBinOp.shr 32) = Veir.OpCode.arith_shrui := by
+example : JasminOp.toMlirOpCode (.regArith JasminBinOp.shr 32) = Veir.OpCode.arith .shrui := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.stackLoad 32 16) = Veir.OpCode.memref_load := by
+example : JasminOp.toMlirOpCode (JasminOp.stackLoad 32 16) = Veir.OpCode.memref .load := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.stackStore 32 16) = Veir.OpCode.catcrypt_unknown := by
+example : JasminOp.toMlirOpCode (JasminOp.stackStore 32 16) = Veir.OpCode.catcrypt .unknown := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.mulhi 64) = Veir.OpCode.arith_mului_extended := by
+example : JasminOp.toMlirOpCode (JasminOp.mulhi 64) = Veir.OpCode.arith .mului_extended := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.castW 32 64) = Veir.OpCode.arith_extui := by
+example : JasminOp.toMlirOpCode (JasminOp.castW 32 64) = Veir.OpCode.arith .extui := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.castW 64 32) = Veir.OpCode.arith_trunci := by
+example : JasminOp.toMlirOpCode (JasminOp.castW 64 32) = Veir.OpCode.arith .trunci := by
   rfl
-example : JasminOp.toMlirOpCode (.extCall "fp_mul" [] (.reg 64)) = Veir.OpCode.func_call := by
+example : JasminOp.toMlirOpCode (.extCall "fp_mul" [] (.reg 64)) = Veir.OpCode.func .call := by
   rfl
 
-/-- Per-op attribute payload. Today only `extCall` carries one —
-    the callee symbol-ref attribute `callee = @<name>`. -/
-def JasminOp.attrsOfOp : JasminOp → Array (ByteArray × Veir.Attribute)
-  | .extCall name _ _ =>
-      #[("callee".toUTF8,
-         Veir.Attribute.unregisteredAttr ⟨"@" ++ name, false⟩)]
-  | _ => #[]
+/-- The `arith.cmpi` predicate of a `JasminCmp` condition code. -/
+def JasminCmp.toIntPred : JasminCmp → Veir.Data.LLVM.IntPred
+  | .eq => .eq
+  | .ne => .ne
+  | .ult => .ult
+  | .ule => .ule
+  | .ugt => .ugt
+  | .uge => .uge
 
 /-- The results of an op's Veir operation: `mulhi` is `arith.mului_extended`, whose
     two results are the low and the high word, the high word being the value; every
@@ -240,13 +243,18 @@ def JasminOp.resultSlotOfOp : JasminOp → Nat × Nat
   | _ => (1, 0)
 
 /-- The properties of an op's Veir operation: the value of the `arith.constant` of
-    `regConst w n` (`BitVec.ofNat w n`), and the default properties otherwise. -/
+    `regConst w n` (`BitVec.ofNat w n`), the callee `@name` of the `func.call` of
+    `extCall name` and `callN name`, the predicate of the `arith.cmpi` of `cmp c`,
+    and the default properties otherwise. -/
 def JasminOp.propsOfOp (o : JasminOp) :
-    Veir.HasOpInfo.propertiesOf (JasminOp.toMlirOpCode o) :=
+    Veir.propertiesOf (JasminOp.toMlirOpCode o) :=
   match o with
   | .regConst w n =>
       ({ value := ⟨(BitVec.ofNat w n).toNat, Veir.IntegerType.mk w⟩ } :
         Veir.ArithConstantProperties)
+  | .extCall name _ _ => VeirPrinterShim.funcCallProps name
+  | .callN name _ _ => VeirPrinterShim.funcCallProps name
+  | .cmp c _ => ({ predicate := c.toIntPred } : Veir.IcmpProperties)
   | _ => default
 
 instance : ToVeirOp jasminDialect where
@@ -254,13 +262,12 @@ instance : ToVeirOp jasminDialect where
   hasOpInfo := inferInstance
   toOp := JasminOp.toMlirOpCode
   defaultProps := JasminOp.propsOfOp
-  attrsOf := JasminOp.attrsOfOp
   resultSlot := JasminOp.resultSlotOfOp
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types (memref, index). Emitted verbatim by Veir's printer. -/
 def mkTextType (s : String) : Veir.TypeAttr :=
-  ⟨.unregisteredAttr ⟨s, true⟩, by simp [Veir.Attribute.isType]⟩
+  ⟨.unregisteredAttr { value := s, isType := true }, by simp [Veir.Attribute.isType]⟩
 
 /-- Map each `JasminTy` to a Veir `TypeAttr`.
 
@@ -319,9 +326,9 @@ def emitJasminFuncToVeirText {Γ : Ctxt jasminDialect} {t : JasminTy}
   let externs := dedupJasminExternsByName (Com.jasminExterns com)
   let (ctx, modOp) :=
     lowerClosedComToModuleWithExterns (d := jasminDialect) com externs
-      Veir.OpCode.builtin_module default
-      Veir.OpCode.func_func default
-      Veir.OpCode.func_return default
+      (Veir.OpCode.builtin .module) default
+      (Veir.OpCode.func .func) VeirPrinterShim.funcFuncProps
+      (Veir.OpCode.func .return) default
       funcName
   VeirPrinterShim.printModuleToString ctx modOp
 
@@ -345,8 +352,8 @@ def smokeAdd : Com jasminDialect [.reg 32, .reg 32] (.reg 32) :=
     open-context `Com` (the args become MLIR block arguments). -/
 example : Veir.IRContext Veir.OpCode × Veir.OperationPtr × Veir.ValuePtr :=
   lowerClosedComToFunc (d := jasminDialect) smokeAdd
-    Veir.OpCode.func_func default
-    Veir.OpCode.func_return default
+    (Veir.OpCode.func .func) VeirPrinterShim.funcFuncProps
+    (Veir.OpCode.func .return) default
     "smoke_add"
 
 /-- End-to-end pipeline check: a single `Com jasminDialect` lowered to
@@ -367,7 +374,7 @@ The full semantic-equivalence theorem for this backend has the form:
     binaryAgreesWith binary (Com.denote com)
 ```
 
-Closing it requires (a) a denotation function for `Veir.OpCode.arith_*` /
+Closing it requires (a) a denotation function for `Veir.OpCode.arith _` /
 `memref_*` / `func_*` that matches MLIR's reference semantics and (b) a
 proof that `mlir-opt → mlir-translate → llc` is denotation-preserving.
 (a) is partially scaffolded below; (b) is the same trust-boundary shape

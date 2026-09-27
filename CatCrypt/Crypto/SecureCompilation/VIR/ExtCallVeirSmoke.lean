@@ -101,9 +101,9 @@ theorem comProg_extern :
 
 The generic `ComToVeir` lowering, instantiated at `catCryptDialect` via the
 `ToVeirOp`/`ToVeirTy` instances in `ComToVeir_CatCryptDialect.lean`, turns the
-`Com` into a Veir `IRContext`. Each `extCall` op lowers to a Veir `func_call`
-op carrying a `callee = @<name>` attribute (see `CatCryptOp.toVeirOp` /
-`attrsOfOp`). -/
+`Com` into a Veir `IRContext`. Each `extCall` op lowers to a Veir `func.call`
+op whose properties carry the callee `@<name>` (see `CatCryptOp.toArithOpCode` /
+`propsOfOp`). -/
 
 /-- Lower `comProg` to a Veir `builtin.module` with private `func.func` extern
     decls for `fp_zero`/`fp_add` plus the main `func.func`. The result is a
@@ -113,9 +113,9 @@ op carrying a `callee = @<name>` attribute (see `CatCryptOp.toVeirOp` /
 def veirModule : Veir.IRContext Veir.OpCode × Veir.OperationPtr :=
   lowerClosedComToModuleWithExterns (d := catCryptDialect) comProg
     (dedupExternsByName (Com.catcryptExterns comProg))
-    Veir.OpCode.builtin_module default
-    Veir.OpCode.func_func default
-    Veir.OpCode.func_return default
+    (Veir.OpCode.builtin .module) default
+    (Veir.OpCode.func .func) VeirPrinterShim.funcFuncProps
+    (Veir.OpCode.func .return) default
     "fp_add_kernel"
 
 /-- The full chain type-checks: `LowCT → Com[catCryptDialect] → Veir`. -/
@@ -124,7 +124,7 @@ example : Veir.IRContext Veir.OpCode × Veir.OperationPtr := veirModule
 /-- Render the lowered Veir module to MLIR text. Prints a `builtin.module`
     containing `func.func private @fp_zero` / `func.func private @fp_add` and
     the main `func.func @fp_add_kernel` whose body holds the
-    `"func.call"(...) {callee = @fp_add}` op. -/
+    `"func.call"(...) <{"callee" = @fp_add}>` op. -/
 def emitKernelVeirText : IO String := do
   let (ctx, modOp) := veirModule
   VeirPrinterShim.printModuleToString ctx modOp

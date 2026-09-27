@@ -59,9 +59,9 @@ def emitFuncToVeirText {Γ : Ctxt catCryptDialect} {t : CryptoTy}
   let externs := dedupExternsByName (Com.catcryptExterns com)
   let (ctx, modOp) :=
     lowerClosedComToModuleWithExterns (d := catCryptDialect) com externs
-      Veir.OpCode.builtin_module default
-      Veir.OpCode.func_func default
-      Veir.OpCode.func_return default
+      (Veir.OpCode.builtin .module) default
+      (Veir.OpCode.func .func) VeirPrinterShim.funcFuncProps
+      (Veir.OpCode.func .return) default
       funcName
   VeirPrinterShim.printModuleToString ctx modOp
 

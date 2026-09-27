@@ -2873,12 +2873,10 @@ require catcryptCore from git
   "https://github.com/spitters/CatCrypt-core.git" @ "8cc92950220d2c48dcebed51e87987d4bb9d69ec"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
--- `spitters/veir-catcrypt`: VeIR v4.29.0 plus the CatCrypt opcode dialects (the
--- catcrypt/memref/polynomial/vector/x86vector lowering dialects, `Func.call`, and
--- the `Veir.List.*` namespacing that avoids a Mathlib/Batteries name collision)
--- and the toolchain updates; Apache-2.0.
+-- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
+-- CatCrypt dialect folders `Veir/Dialects/{Catcrypt,Memref,Polynomial,Vector,X86vector}`.
 require Veir from git
-  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.1"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.2"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git

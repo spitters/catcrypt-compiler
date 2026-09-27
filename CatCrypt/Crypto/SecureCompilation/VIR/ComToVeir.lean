@@ -145,7 +145,7 @@ class ToVeirOp (d : Dialect) [DialectSignature d] where
       typically just return `default` (since `propertiesOf` is
       `Inhabited` for any concrete dialect). -/
   defaultProps (o : d.Op) :
-    Veir.HasOpInfo.propertiesOf (self := hasOpInfo) (toOp o)
+    @Veir.propertiesOf Op hasOpInfo.toIsOpCode (toOp o)
   /-- Per-op attribute payload (key → attribute). Default: no attrs. -/
   attrsOf (o : d.Op) : Array (ByteArray × Veir.Attribute) := #[]
   /-- The number of results of the op's Veir operation, all of the binding's type,
@@ -422,12 +422,12 @@ than just the producing op.
 
 The wrapping op is allocated against the supplied
 `(moduleOp, moduleProps)` pair: callers use their dialect's "module"
-op-code (e.g. `Veir.OpCode.builtin_module`) with whatever properties
+op-code (e.g. `Veir.OpCode.builtin .module`) with whatever properties
 that op-code expects.
 -/
 def lowerClosedComToModule {t : d.Ty} (com : Com d [] t)
     (moduleOp : ToVeirOp.Op (d := d))
-    (moduleProps : Veir.HasOpInfo.propertiesOf moduleOp) :
+    (moduleProps : Veir.propertiesOf moduleOp) :
     Veir.IRContext (ToVeirOp.Op (d := d))
       × Veir.OperationPtr × Veir.ValuePtr :=
   let (ctx, _blk, reg, final) := lowerClosedCom com
@@ -487,16 +487,19 @@ def pushBlockArgs (blk : Veir.BlockPtr) :
     Allocates an entry block + region, materialises `Γ` as block
     arguments, lowers the body, appends a return-terminator op,
     wires the chain, and finally allocates the wrapping func.func op
-    with `sym_name` + `function_type` attributes.
+    with the properties `mkFuncProps funcName funcType extra`, where
+    `mkFuncProps` builds the op-code's properties from the symbol name, the
+    function type and the remaining inherent attributes (`extra`).
 
     Returns the `OperationPtr` of the func.func — usable as a top-level
     op inside a wrapping `builtin.module` block, or as a printer root. -/
 def buildFuncFromCom {Γ : Ctxt d} {t : d.Ty}
     (com : Com d Γ t)
     (funcOp : ToVeirOp.Op (d := d))
-    (funcProps : Veir.HasOpInfo.propertiesOf funcOp)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
     (returnOp : ToVeirOp.Op (d := d))
-    (returnProps : Veir.HasOpInfo.propertiesOf returnOp)
+    (returnProps : Veir.propertiesOf returnOp)
     (funcName : String) :
     ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
   -- Allocate entry block + body region.
@@ -536,22 +539,19 @@ def buildFuncFromCom {Γ : Ctxt d} {t : d.Ty}
   let ctx := blk.setParent! ctx (some reg)
   set ctx
   -- Allocate the func wrapper and wire region in.
-  let ctx ← get
-  let funcOpPtr ←
-    match Veir.OperationPtr.allocEmpty ctx funcOp funcProps with
-    | some (ctx', p) => set ctx'; pure p
-    | none => pure default
-  modify (funcOpPtr.pushRegion! · reg)
-  modify (reg.setParent! · funcOpPtr)
   let inputs : Array Veir.Attribute :=
     (Γ.map (fun ty => ((ToVeirTy.toTy (d := d) ty).val))).toArray
   let outputs : Array Veir.Attribute :=
     #[(ToVeirTy.toTy (d := d) t).val]
   let funcType : Veir.FunctionType := { inputs := inputs, outputs := outputs }
-  let attrs := Veir.DictionaryAttr.fromArray
-    #[("sym_name".toUTF8, Veir.Attribute.stringAttr ⟨funcName.toUTF8⟩),
-      ("function_type".toUTF8, Veir.Attribute.functionType funcType)]
-  modify (funcOpPtr.setAttributes! · attrs)
+  let ctx ← get
+  let funcOpPtr ←
+    match Veir.OperationPtr.allocEmpty ctx funcOp
+        (mkFuncProps funcName funcType default) with
+    | some (ctx', p) => set ctx'; pure p
+    | none => pure default
+  modify (funcOpPtr.pushRegion! · reg)
+  modify (reg.setParent! · funcOpPtr)
   return funcOpPtr
 
 /--
@@ -561,13 +561,14 @@ and unpacks. -/
 def lowerClosedComToFunc {Γ : Ctxt d} {t : d.Ty}
     (com : Com d Γ t)
     (funcOp : ToVeirOp.Op (d := d))
-    (funcProps : Veir.HasOpInfo.propertiesOf funcOp)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
     (returnOp : ToVeirOp.Op (d := d))
-    (returnProps : Veir.HasOpInfo.propertiesOf returnOp)
+    (returnProps : Veir.propertiesOf returnOp)
     (funcName : String) :
     Veir.IRContext (ToVeirOp.Op (d := d))
       × Veir.OperationPtr × Veir.ValuePtr :=
-  let action := buildFuncFromCom com funcOp funcProps returnOp returnProps funcName
+  let action := buildFuncFromCom com funcOp mkFuncProps returnOp returnProps funcName
   let (funcPtr, ctx) := action.run default
   -- The final value isn't recoverable from this entry point (caller
   -- gets only the wrapping func op + ctx). Return `default` as the
@@ -586,12 +587,13 @@ def lowerClosedComToFunc {Γ : Ctxt d} {t : d.Ty}
 This is the shape `mlir-opt` accepts and re-emits in sugared form. -/
 
 /-- Build an extern `func.func` declaration — a func with an empty
-    body region plus `sym_name`, `function_type`, and
-    `sym_visibility = "private"` attributes. Returns the
-    `OperationPtr`. -/
+    body region, whose properties `mkFuncProps name funcType extra` carry the
+    symbol name, the function type and `extra = {sym_visibility = "private"}`.
+    Returns the `OperationPtr`. -/
 def buildExternFunc
     (funcOp : ToVeirOp.Op (d := d))
-    (funcProps : Veir.HasOpInfo.propertiesOf funcOp)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
     (name : String) (argTys : List d.Ty) (retTy : d.Ty) :
     ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
   -- An empty body region (no blocks).
@@ -602,24 +604,20 @@ def buildExternFunc
     | none => pure (ctx, default)
   set ctx'
   -- The func.func op.
-  let ctx ← get
-  let funcOpPtr ←
-    match Veir.OperationPtr.allocEmpty ctx funcOp funcProps with
-    | some (ctx', p) => set ctx'; pure p
-    | none => pure default
-  modify (funcOpPtr.pushRegion! · reg)
-  modify (reg.setParent! · funcOpPtr)
   let inputs : Array Veir.Attribute :=
     (argTys.map (fun ty => ((ToVeirTy.toTy (d := d) ty).val))).toArray
   let outputs : Array Veir.Attribute :=
     #[(ToVeirTy.toTy (d := d) retTy).val]
   let funcType : Veir.FunctionType := { inputs := inputs, outputs := outputs }
-  let attrs := Veir.DictionaryAttr.fromArray
-    #[("function_type".toUTF8, Veir.Attribute.functionType funcType),
-      ("sym_name".toUTF8, Veir.Attribute.stringAttr ⟨name.toUTF8⟩),
-      ("sym_visibility".toUTF8,
-        Veir.Attribute.stringAttr ⟨"private".toUTF8⟩)]
-  modify (funcOpPtr.setAttributes! · attrs)
+  let extra := Veir.DictionaryAttr.fromArray
+    #[("sym_visibility".toUTF8, Veir.Attribute.stringAttr ⟨"private".toUTF8⟩)]
+  let ctx ← get
+  let funcOpPtr ←
+    match Veir.OperationPtr.allocEmpty ctx funcOp (mkFuncProps name funcType extra) with
+    | some (ctx', p) => set ctx'; pure p
+    | none => pure default
+  modify (funcOpPtr.pushRegion! · reg)
+  modify (reg.setParent! · funcOpPtr)
   return funcOpPtr
 
 /--
@@ -630,7 +628,9 @@ private extern declarations for each callee + the main function.
   is responsible for collecting these from the `com` (e.g., via a
   dialect-specific `externNames` traversal).
 * `moduleOp`, `funcOp`, `returnOp` — Veir opcodes (typically
-  `.builtin_module`, `.func_func`, `.func_return`).
+  `.builtin .module`, `.func .func`, `.func .return`).
+* `mkFuncProps` — the `funcOp` properties built from a symbol name, a
+  function type and the remaining inherent attributes.
 * `funcName` — symbol name for the main function.
 
 Returns the `IRContext` and the wrapping `builtin.module`
@@ -639,19 +639,20 @@ def lowerClosedComToModuleWithExterns {Γ : Ctxt d} {t : d.Ty}
     (com : Com d Γ t)
     (externs : List (String × List d.Ty × d.Ty))
     (moduleOp : ToVeirOp.Op (d := d))
-    (moduleProps : Veir.HasOpInfo.propertiesOf moduleOp)
+    (moduleProps : Veir.propertiesOf moduleOp)
     (funcOp : ToVeirOp.Op (d := d))
-    (funcProps : Veir.HasOpInfo.propertiesOf funcOp)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
     (returnOp : ToVeirOp.Op (d := d))
-    (returnProps : Veir.HasOpInfo.propertiesOf returnOp)
+    (returnProps : Veir.propertiesOf returnOp)
     (funcName : String) :
     Veir.IRContext (ToVeirOp.Op (d := d)) × Veir.OperationPtr :=
   let action : ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
     -- Build the extern func.func decls.
     let externOps ← externs.mapM
-      (fun ext => buildExternFunc funcOp funcProps ext.1 ext.2.1 ext.2.2)
+      (fun ext => buildExternFunc funcOp mkFuncProps ext.1 ext.2.1 ext.2.2)
     -- Build the main func.
-    let mainOp ← buildFuncFromCom com funcOp funcProps returnOp returnProps
+    let mainOp ← buildFuncFromCom com funcOp mkFuncProps returnOp returnProps
                                   funcName
     -- Allocate the module wrapper + region + entry block.
     let ctx ← get
@@ -736,13 +737,17 @@ inductive SmokeVeirOp where | const
   deriving Inhabited, Hashable, DecidableEq, Repr
 
 instance : Veir.HasOpInfo SmokeVeirOp where
-  moduleOpCode := .const
+  fromName _ := some .const
+  name _ := "smoke.const".toUTF8
   propertiesOf _ := Unit
+  fromAttrDict _ _ := .ok ()
+  toAttrDict _ _ := Std.HashMap.emptyWithCapacity 0
   propertiesHash := ⟨fun _ => 0⟩
   propertiesDefault := ⟨()⟩
   propertiesRepr := ⟨fun _ _ => "()"⟩
   propertiesDecideEq := fun _ _ => isTrue rfl
   decideEq := inferInstance
+  hasSSADominance _ _ := true
 
 instance : ToVeirOp smokeDialect where
   Op := SmokeVeirOp

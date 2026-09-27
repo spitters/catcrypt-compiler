@@ -87,19 +87,19 @@ structure StageTwoOpcodeInventory where
 
 /-- The concrete inventory the scalar translation targets. Every field
     is a registered Veir opcode (auto-generated via the `@[opcodes]`
-    attribute on the `Arith` / `Func` dialects in `Veir/OpCode.lean`). -/
+    attribute on the `Arith` / `Func` dialects in `Veir/Dialects/`). -/
 def stageTwoOpcodes : StageTwoOpcodeInventory :=
-  { constI := .arith_constant
-  , addI := .arith_addi
-  , subI := .arith_subi
-  , mulI := .arith_muli
-  , andI := .arith_andi
-  , orI := .arith_ori
-  , xorI := .arith_xori
-  , shlI := .arith_shli
-  , shrI := .arith_shrui
-  , funcDef := .func_func
-  , funcRet := .func_return }
+  { constI := .arith .constant
+  , addI := .arith .addi
+  , subI := .arith .subi
+  , mulI := .arith .muli
+  , andI := .arith .andi
+  , orI := .arith .ori
+  , xorI := .arith .xori
+  , shlI := .arith .shli
+  , shrI := .arith .shrui
+  , funcDef := .func .func
+  , funcRet := .func .return }
 
 /-! ## §2. Tiny MLIR program — textual round-trip
 
@@ -131,7 +131,7 @@ def referencedOpcodes : List Veir.OpCode :=
   [stageTwoOpcodes.funcDef, stageTwoOpcodes.addI, stageTwoOpcodes.funcRet]
 
 example : referencedOpcodes.length = 3 := rfl
-example : referencedOpcodes.head? = some Veir.OpCode.func_func := rfl
+example : referencedOpcodes.head? = some (Veir.OpCode.func .func) := rfl
 
 /-! ## §3. Vector / x86vector opcode availability
 
@@ -145,11 +145,11 @@ pilots reduce to. -/
 
 /-- Abstract-vector opcodes. -/
 def stageThreeAbstractOpcodes : List Veir.OpCode :=
-  [.vector_broadcast, .vector_fma, .vector_shuffle, .vector_load, .vector_store]
+  [.vector .broadcast, .vector .fma, .vector .shuffle, .vector .load, .vector .store]
 
 /-- x86-specific vector lowering targets. -/
 def stageThreeX86Opcodes : List Veir.OpCode :=
-  [.x86vector_vpshufb, .x86vector_pclmulqdq, .x86vector_aesenc]
+  [.x86vector .vpshufb, .x86vector .pclmulqdq, .x86vector .aesenc]
 
 example : stageThreeAbstractOpcodes.length = 5 := rfl
 example : stageThreeX86Opcodes.length = 3 := rfl

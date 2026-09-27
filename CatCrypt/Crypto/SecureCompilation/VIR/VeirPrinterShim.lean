@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import Veir.Printer
+public import Veir.GlobalOpInfo
 
 /-!
 # Veir Printer Shim — `IO Unit` → `IO String`
@@ -114,5 +115,18 @@ def printModuleToFile
   catch e =>
     let _ ← IO.setStdout savedStdout
     throw e
+
+/-- The properties of a `func.func` op over `Veir.OpCode`: the symbol name `name`,
+    the function type `ty`, and the remaining inherent attributes `extra` (such as
+    `sym_visibility`). The printer renders them as the op's property dictionary. -/
+def funcFuncProps (name : String) (ty : Veir.FunctionType) (extra : Veir.DictionaryAttr) :
+    Veir.propertiesOf (Veir.OpCode.func .func) :=
+  ({ sym_name := ⟨name.toUTF8⟩, function_type := ty, extra := extra } :
+    Veir.FuncFuncProperties)
+
+/-- The properties of a `func.call` op over `Veir.OpCode` calling the symbol `name`:
+    the callee `@name` and no further attributes. -/
+def funcCallProps (name : String) : Veir.propertiesOf (Veir.OpCode.func .call) :=
+  ({ callee := ⟨"@" ++ name⟩, extra := default } : Veir.FuncCallProperties)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim
