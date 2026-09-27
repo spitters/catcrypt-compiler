@@ -30,7 +30,11 @@ no exit construct, so the lowering keeps the exit in scalar slots:
   `RFor run (hi - lo)` over the guarded trip `exitForTrip`, which binds the
   counter `i` to `run + lo` and runs the lowered body; after an exit the guard
   skips the remaining trips (`exitForLoop`); `forFoldRevReturn` is lowered the
-  same way with the counter bound to `hi - 1 - run` (`exitForLoopRev`).
+  same way with the counter bound to `hi - 1 - run` (`exitForLoopRev`);
+* `forFoldReturn i lo (var h) body` with a non-negative integer literal `lo` and
+  a variable upper bound (`forBoundsRt`) runs the same guarded trips under
+  `RForRuntime run (h - lo)`, whose trip count is read from the slot `h` on entry
+  (`exitForLoopRt`).
 
 **Result slot.**  A scalar variable, a scalar literal or `unitVal` in tail
 position is written into `exitResName`.  `haxToLowCTFn` lowers a whole function
@@ -182,6 +186,33 @@ def exitForTripRev (run i : String) (hi : Nat) (bC : LowCT) : LowCT :=
 def exitForLoopRev (run i : String) (lo hi : Nat) (bC : LowCT) : LowCT :=
   .RLetU64Zero exitRetName (.RLetU64Zero exitValName
     (.RFor run (hi - lo) (exitForTripRev run i hi bC)))
+
+/-- The bounds of a counted loop with an exit and a runtime upper bound:
+    `some (lo, h)` when the lower bound is a non-negative integer literal `lo`
+    and the upper bound is the variable `h`. -/
+def forBoundsRt : ImpExpr → ImpExpr → Option (Nat × String)
+  | .lit (.int lo), .var h => if 0 ≤ lo then some (lo.toNat, h) else none
+  | _, _ => none
+
+theorem forBoundsRt_some {lo hi : ImpExpr} {l : Nat} {h : String}
+    (hb : forBoundsRt lo hi = some (l, h)) : lo = .lit (.int l) ∧ hi = .var h := by
+  match lo, hi, hb with
+  | .lit (.int a), .var b, hb =>
+    simp only [forBoundsRt] at hb
+    split at hb
+    · rename_i hc
+      simp only [Option.some.injEq, Prod.mk.injEq] at hb
+      obtain ⟨rfl, rfl⟩ := hb
+      exact ⟨by rw [Int.toNat_of_nonneg hc], rfl⟩
+    · cases hb
+
+/-- The lowered `forFoldReturn i lo (var h) body` with loop slot `run` and
+    lowered body `bC`: zero the flag and the payload slot, and run the trips of
+    `exitForTrip` under `RForRuntime`, whose trip count `h - lo` (truncated at
+    `0`) is evaluated on entry to the loop. -/
+def exitForLoopRt (run i : String) (lo : Nat) (h : String) (bC : LowCT) : LowCT :=
+  .RLetU64Zero exitRetName (.RLetU64Zero exitValName
+    (.RForRuntime run (.SSub (.SVar h) (.SLit lo)) (exitForTrip run i lo bC)))
 
 /-- Write a scalar value into `slot`: a scalar variable, a uint, nonnegative int
     or bool literal, or `unitVal` (the scalar `0`).  Any other expression is
@@ -359,9 +390,12 @@ def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (Low
       | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
       | none => none
   | false, fl, .forFoldReturn i lo hi body =>
-      match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
-      | some (l, h), some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
-      | _, _ => none
+      match forBounds lo hi, forBoundsRt lo hi,
+          haxToLowCTK sc false (some (exitRunName fl)) body with
+      | some (l, h), _, some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
+      | none, some (l, h), some (bC, _) =>
+          some (exitForLoopRt (exitRunName fl) i l h bC, true)
+      | _, _, _ => none
   | false, fl, .forFoldRevReturn i lo hi body =>
       match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
       | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
@@ -417,7 +451,7 @@ theorem haxToLowCT_eq_haxToLowCTK_none (e : ImpExpr) :
     | _ => simp only [haxToLowCTK]; exact (hmap _).symm
   | forFoldReturn i lo hi body _ _ _ =>
     simp only [haxToLowCT, haxToLowCTK]
-    rcases forBounds lo hi with _ | ⟨l, h⟩ <;>
+    rcases forBounds lo hi with _ | ⟨l, h⟩ <;> rcases forBoundsRt lo hi with _ | ⟨l', h'⟩ <;>
       rcases haxToLowCTK false false (some (exitRunName none)) body with _ | ⟨bC, _⟩ <;> rfl
   | forFoldRevReturn i lo hi body _ _ _ =>
     simp only [haxToLowCT, haxToLowCTK]
@@ -447,7 +481,8 @@ def AnfShapedK (sc : Bool) : Bool → Bool → ImpExpr → Bool
   | tl, il, .ifThenElse (.var _) t e => AnfShapedK sc tl il t && AnfShapedK sc tl il e
   | tl, il, .typeAscription e _ => AnfShapedK sc tl il e
   | false, _, .whileFoldReturn (.var _) body => AnfShapedK sc false true body
-  | false, _, .forFoldReturn _ lo hi body => (forBounds lo hi).isSome && AnfShapedK sc false true body
+  | false, _, .forFoldReturn _ lo hi body =>
+      ((forBounds lo hi).isSome || (forBoundsRt lo hi).isSome) && AnfShapedK sc false true body
   | false, _, .forFoldRevReturn _ lo hi body =>
       (forBounds lo hi).isSome && AnfShapedK sc false true body
   | _, true, .cfBreak e => (exitStore e).isSome
@@ -512,7 +547,7 @@ theorem haxToLowCTK_isSome_iff_anfK (sc tl : Bool) (fl : Option String) (e : Imp
       have h := ihb false (some (exitRunName fl))
       rw [Option.isSome_some] at h
       rw [← h]
-      rcases forBounds lo hi with _ | ⟨l, hb⟩ <;>
+      rcases forBounds lo hi with _ | ⟨l, hb⟩ <;> rcases forBoundsRt lo hi with _ | ⟨l', hb'⟩ <;>
         rcases haxToLowCTK sc false (some (exitRunName fl)) body with _ | ⟨bC, x⟩ <;> rfl
   | forFoldRevReturn i lo hi body _ _ ihb =>
     intro tl fl

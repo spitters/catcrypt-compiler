@@ -150,6 +150,33 @@ theorem nfLit_of_forBounds {lo hi : ImpExpr} (h : (forBounds lo hi).isSome = tru
   obtain ⟨rfl, rfl, _⟩ := forBounds_some hp
   exact ⟨rfl, rfl⟩
 
+/-- The bounds `forBounds` or `forBoundsRt` accepts are a literal and a counted-loop
+    bound. -/
+theorem nfBound_of_forBoundsK {lo hi : ImpExpr}
+    (h : ((forBounds lo hi).isSome || (forBoundsRt lo hi).isSome) = true) :
+    nfLit lo = true ∧ nfBound hi = true := by
+  simp only [Bool.or_eq_true] at h
+  rcases h with h | h
+  · obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp h
+    obtain ⟨rfl, rfl, _⟩ := forBounds_some hp
+    exact ⟨rfl, rfl⟩
+  · obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp h
+    obtain ⟨rfl, rfl⟩ := forBoundsRt_some hp
+    exact ⟨rfl, rfl⟩
+
+/-- The bounds of a `forFoldReturn` in the fragment `exitSimOk` are a literal and a
+    counted-loop bound. -/
+theorem nfBound_of_exitForOk {lo hi : ImpExpr}
+    (h : ((forBounds lo hi).isSome || forBoundsRtOk lo hi) = true) :
+    nfLit lo = true ∧ nfBound hi = true := by
+  refine nfBound_of_forBoundsK ?_
+  simp only [Bool.or_eq_true] at h ⊢
+  rcases h with h | h
+  · exact Or.inl h
+  · right
+    unfold forBoundsRtOk at h
+    cases hb : forBoundsRt lo hi <;> simp_all
+
 /-- An expression of the shape `AnfShapedK sc tl il` is in normal form in loop
     context `il`. -/
 theorem isNFK_of_anfShapedK (sc tl il : Bool) (e : ImpExpr) (h : AnfShapedK sc tl il e = true) :
@@ -160,6 +187,8 @@ theorem isNFK_of_anfShapedK (sc tl il : Bool) (e : ImpExpr) (h : AnfShapedK sc t
   all_goals first
     | exact nfRhs_of_letHeadK h.1
     | exact nfLit_of_forBounds h.1
+    | exact nfBound_of_forBoundsK (by simpa using h.1)
+    | exact nfBound_of_forBoundsK (by simp_all)
 
 /-- An expression `haxToLowCTK sc tl none` lowers is in normal form. -/
 theorem nf_of_haxToLowCTK_isSome (sc tl : Bool) (e : ImpExpr)
@@ -172,7 +201,10 @@ theorem isNFK_of_exitSimOk (tl il : Bool) (e : ImpExpr) (h : exitSimOk tl il e =
     isNFK il e = true := by
   fun_induction exitSimOk tl il e <;>
     simp_all [isNFK, nfRhs, nfAtom, nfBreakArg]
-  all_goals exact nfLit_of_forBounds h.1.1
+  all_goals first
+    | exact nfLit_of_forBounds h.1.1
+    | exact nfBound_of_exitForOk (by simpa using h.1.1)
+    | exact nfBound_of_exitForOk (by simp_all)
 
 /-! ## The scope checkers
 

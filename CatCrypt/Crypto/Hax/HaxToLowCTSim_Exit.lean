@@ -22,6 +22,8 @@ the scalar fragment `exitSimOk`:
   variables (`scalarOpExpr`);
 * `seq`, `ifThenElse` on a variable, `whileFoldReturn` on a variable,
   `forFoldReturn` and `forFoldRevReturn` with bounds accepted by `forBounds`,
+  `forFoldReturn` with a literal lower bound and a variable upper bound
+  (`forBoundsRt`, the variable non-reserved),
   `cfBreak` of a variable or a `u64` literal inside such a loop or, in a function
   body, at function level;
 * outside tail position a variable or `unitVal`, in tail position a variable, a
@@ -56,7 +58,11 @@ is a scalar value.  `exitForTrips_sim` and `exitForTripsRev_sim` are the
 the lowered `RFor` runs `hi - lo` guarded trips, each binding the counter from
 the trip counter of `RFor`, so a trip after an exit writes only the loop slot
 (`exitedTrips`); the run of `RFor` is assembled from the trips by
-`rustExec_rFor_of_tripsFrom`.
+`rustExec_rFor_of_tripsFrom`.  With a variable upper bound `h`, `denote'` runs
+the loop only when `h` holds an integer (`denote'_forFoldReturn_var_int`), and
+then as `denoteForLoop'Return` at that integer (`denote'_forFoldReturn_var_run`);
+`RForRuntime` runs `RFor` at the trip count read from the slot `h`, so
+`exitForLoopRt_sim` reduces to `exitForTrips_sim`.
 
 `haxToLowCTK_simulates` is the simulation of every fragment expression, in every
 exit context `RunCtx` admits: a loop slot or the function context `exitFnSlot`.
@@ -74,6 +80,7 @@ result slot holds the decoding of the returned or final value.
 * `exitLoop_sim`: the `whileFoldReturn` case, by induction on fuel
 * `exitForTrips_sim`, `exitForTripsRev_sim`: the `forFoldReturn` and
   `forFoldRevReturn` cases, by induction on the trips left
+* `exitForLoopRt_sim`: the `forFoldReturn` case with a variable upper bound
 * `scalarOpsSound_noOverflow64_width`: hax-lean's width-aware tables satisfy
   `ScalarOpsSound` under the no-overflow refusal
 * `searchLoopShape_exitSimOk`: the search loop lies in the fragment
@@ -510,6 +517,39 @@ theorem denote'_forFoldReturn_lit_run (i : String) (lo hi : Int) (body : ImpExpr
       (_root_.Hax.denoteForLoop'Return bi fuel i lo hi body).run env := by
   simp only [denote']; rfl
 
+/-- A `forFoldReturn` whose upper bound is a variable holding the integer `hv`
+    runs as `denoteForLoop'Return` up to `hv`. -/
+theorem denote'_forFoldReturn_var_run (i h : String) (lo : Int) (body : ImpExpr) (env : Env)
+    (hv : Int) (hh : env h = some (.int hv)) :
+    (denote' bi fuel (.forFoldReturn i (.lit (.int lo)) (.var h) body)).run env =
+      (_root_.Hax.denoteForLoop'Return bi fuel i lo hv body).run env := by
+  simp only [denote']
+  simp [StateT.run, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get,
+      pure, StateT.pure, hh, Value.ofLit]
+
+/-- A run of a `forFoldReturn` with a variable upper bound that ends in a value,
+    where the variable holds no control-flow value, reads an integer from the
+    variable. -/
+theorem denote'_forFoldReturn_var_int (i h : String) (lo : Int) (body : ImpExpr)
+    (env env' : Env) (o : Outcome)
+    (hrun : (denote' bi fuel (.forFoldReturn i (.lit (.int lo)) (.var h) body)).run env = (o, env'))
+    (hval : ∃ v, o = .val v) (hsv : ∀ v, env h = some v → v.isControlFlow = false) :
+    ∃ hv : Int, env h = some (.int hv) := by
+  obtain ⟨v, rfl⟩ := hval
+  rcases hh : env h with _ | w
+  · simp only [denote'] at hrun
+    simp [StateT.run, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get,
+      pure, StateT.pure, hh, Value.ofLit] at hrun
+    cases (Prod.mk.inj hrun).1
+  · cases w with
+    | int n => exact ⟨n, rfl⟩
+    | controlFlow k u => have := hsv _ hh; simp at this
+    | _ =>
+      simp only [denote'] at hrun
+      simp [StateT.run, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get,
+        pure, StateT.pure, hh, Value.ofLit] at hrun
+      cases (Prod.mk.inj hrun).1
+
 theorem denoteForLoop'Return_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : hi ≤ lo) :
     (_root_.Hax.denoteForLoop'Return bi fuel i lo hi body).run env = (.val .unit, env) := by
@@ -644,6 +684,13 @@ end SourceSteps
 
 /-! ## §5  The fragment -/
 
+/-- The runtime bounds `forBoundsRt` accepts, with a non-reserved upper-bound
+    variable. -/
+def forBoundsRtOk (lo hi : ImpExpr) : Bool :=
+  match forBoundsRt lo hi with
+  | some (_, h) => !exitReserved h
+  | none => false
+
 /-- The fragment the simulation covers, at tail position `tl` and loop context
     `il`.  Every name it mentions is non-reserved. -/
 def exitSimOk : Bool → Bool → ImpExpr → Bool
@@ -656,7 +703,8 @@ def exitSimOk : Bool → Bool → ImpExpr → Bool
   | tl, il, .ifThenElse (.var v) t e => !exitReserved v && exitSimOk tl il t && exitSimOk tl il e
   | false, _, .whileFoldReturn (.var c) body => !exitReserved c && exitSimOk false true body
   | false, _, .forFoldReturn i lo hi body =>
-      (forBounds lo hi).isSome && !exitReserved i && exitSimOk false true body
+      ((forBounds lo hi).isSome || forBoundsRtOk lo hi) && !exitReserved i &&
+        exitSimOk false true body
   | false, _, .forFoldRevReturn i lo hi body =>
       (forBounds lo hi).isSome && !exitReserved i && exitSimOk false true body
   | _, true, .cfBreak (.var x) => !exitReserved x
@@ -802,9 +850,12 @@ theorem haxToLowCTK_whileFoldReturn_eq (sc : Bool) (fl : Option String) (c : Str
 theorem haxToLowCTK_forFoldReturn_eq (sc : Bool) (fl : Option String) (i : String)
     (lo hi body : ImpExpr) :
     haxToLowCTK sc false fl (.forFoldReturn i lo hi body) =
-      match forBounds lo hi, haxToLowCTK sc false (some (exitRunName fl)) body with
-      | some (l, h), some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
-      | _, _ => none := by
+      match forBounds lo hi, forBoundsRt lo hi,
+          haxToLowCTK sc false (some (exitRunName fl)) body with
+      | some (l, h), _, some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
+      | none, some (l, h), some (bC, _) =>
+          some (exitForLoopRt (exitRunName fl) i l h bC, true)
+      | _, _, _ => none := by
   cases fl <;> rfl
 
 theorem haxToLowCTK_forFoldRevReturn_eq (sc : Bool) (fl : Option String) (i : String)
@@ -1452,6 +1503,49 @@ theorem exitForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : L
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
         obtain ⟨_, h⟩ := hval; cases h
 
+/-- **The counted-loop case with a variable upper bound.**  From a state agreeing
+    with `env`, a run of `forFoldReturn i lo (var h) body` ending in a value is
+    matched by `exitForLoopRt`: the variable `h` holds an integer below `2^64`
+    whose decoding is the slot `h`, so `RForRuntime` runs the `h - lo` trips of
+    `exitForTrips_sim`. -/
+theorem exitForLoopRt_sim (run i h : String) (lo : Nat) (body : ImpExpr) (bC : LowCT)
+    (xb : Bool) (ihb : ExitSim bi N leafSpec body) (hslot : exitRunSlot run = true)
+    (hi_ : exitReserved i = false) (hh_ : exitReserved h = false)
+    (hokB : exitSimOk false true body = true)
+    (hKB : haxToLowCTK true false (some run) body = some (bC, xb))
+    (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
+    (hrun : (denote' bi fuel (.forFoldReturn i (.lit (.int lo)) (.var h) body)).run env =
+      (o, env'))
+    (hval : ∃ v, o = .val v) (hag : envAgreesOff env rs) :
+    ∃ rs', RustExec N leafSpec (exitForLoopRt run i lo h bC) rs rs' ∧
+      envAgreesExit false o env' rs' := by
+  obtain ⟨hv, hhv⟩ := denote'_forFoldReturn_var_int bi fuel i h lo body env env' o hrun hval
+    (fun v hv => ScalarVal.not_cf (hag h v hh_ hv).1)
+  obtain ⟨⟨hv0, hv1⟩, hdec⟩ := hag h _ hh_ hhv
+  lift hv to ℕ using hv0 with H
+  rw [valueToScalar_int, Option.some.injEq] at hdec
+  rw [denote'_forFoldReturn_var_run bi fuel i h lo body env _ hhv] at hrun
+  have hag0 : envAgreesOff env (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0) :=
+    envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
+  have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
+      exitRetName = 0 := by
+    rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+  have hH0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar h = H := by
+    rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hh_ exitReserved_val), rsScalar_rsSetScalar,
+      if_neg (ne_of_reserved hh_ exitReserved_ret), hdec]
+  have hrun0 : (_root_.Hax.denoteForLoop'Return bi fuel i ((lo + 0 : Nat) : Int) H body).run env =
+      (o, env') := by
+    rw [Nat.add_zero]; exact hrun
+  obtain ⟨rs', hT, hagL⟩ :=
+    exitForTrips_sim bi N leafSpec run i lo H body bC xb ihb hslot hi_ (by omega)
+      hokB hKB (H - lo) 0 fuel env env' o _ (by omega) hrun0 hval hag0 hret0
+  have hFor := rustExec_rFor_of_tripsFrom N leafSpec run _ (H - lo) 0 _ _ rs'
+    (RustExec.forZero _ _ _) hT
+  rw [Nat.zero_add] at hFor
+  refine ⟨rs', RustExec.letU64Zero _ _ _ _ (RustExec.letU64Zero _ _ _ _
+    (RustExec.forRuntime _ _ _ _ _ ?_)), hagL⟩
+  simpa only [SExpr.evalState, hH0] using hFor
+
 theorem exitSim_forFoldReturn (i : String) (lo hi body : ImpExpr)
     (ihb : ExitSim bi N leafSpec body) :
     ExitSim bi N leafSpec (.forFoldReturn i lo hi body) := by
@@ -1459,20 +1553,38 @@ theorem exitSim_forFoldReturn (i : String) (lo hi body : ImpExpr)
   cases tl with
   | true => cases fl <;> simp [exitSimOk] at hok
   | false =>
-    have hok' : (forBounds lo hi).isSome = true ∧ exitReserved i = false ∧
-        exitSimOk false true body = true := by
-      cases fl <;> simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true', and_assoc] using hok
+    have hok' : ((forBounds lo hi).isSome || forBoundsRtOk lo hi) = true ∧
+        exitReserved i = false ∧ exitSimOk false true body = true := by
+      cases fl <;> simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
+        using hok
+    have hslot := runSlot_exitRunName hfl
     rw [haxToLowCTK_forFoldReturn_eq] at hK
-    rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
-    · rw [hFB] at hok'; cases hok'.1
-    obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
     rcases hB : haxToLowCTK true false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
-    · rw [hFB, hB] at hK; cases hK
-    rw [hFB, hB] at hK
+    · rw [hB] at hK
+      rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
+        rcases hRt : forBoundsRt lo hi with _ | ⟨l', h'⟩ <;> rw [hFB, hRt] at hK <;> cases hK
+    rw [hB] at hK
+    rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
+    · rcases hRt : forBoundsRt lo hi with _ | ⟨l, h⟩
+      · rw [hFB, hRt] at hK; cases hK
+      rw [hFB, hRt] at hK
+      simp only [Option.some.injEq, Prod.mk.injEq] at hK
+      obtain ⟨rfl, rfl⟩ := hK
+      have hh_ : exitReserved h = false := by
+        have h1 := hok'.1
+        simp only [hFB, forBoundsRtOk, hRt, Option.isSome_none, Bool.false_or,
+          Bool.not_eq_true'] at h1
+        exact h1
+      obtain ⟨rfl, rfl⟩ := forBoundsRt_some hRt
+      obtain ⟨rs', hex, hagL⟩ :=
+        exitForLoopRt_sim bi N leafSpec (exitRunName fl) i h l body bC x ihb hslot hok'.2.1 hh_
+          hok'.2.2 hB fuel env env' o rs hrun hval hag
+      exact ⟨rs', hex, hagL, fun h => by cases h⟩
+    rw [hFB] at hK
     simp only [Option.some.injEq, Prod.mk.injEq] at hK
     obtain ⟨rfl, rfl⟩ := hK
+    obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
     rw [denote'_forFoldReturn_lit_run] at hrun
-    have hslot := runSlot_exitRunName hfl
     have hag0 : envAgreesOff env (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0) :=
       envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
     have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
