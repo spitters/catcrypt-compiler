@@ -1915,7 +1915,7 @@ partial def proveTerm (ty : Expr) : GenM Expr := do
           let concl ← mkAppM ``LT.lt #[mkApp μ a', mkApp μ a]
           mkForallFVars #[a, a'] (← mkArrow hc (← mkArrow hf concl))
         let mv ← mkFreshExprMVar hdecTy
-        let tac ← `(tactic| (intro x y hc hf; simp only [Hax.Ascent.stepCF] at hf; split at hf <;> (try cases hf) <;> simp_all [Hax.add, Hax.sub, Hax.lt, Hax.le, Hax.gt, Hax.ge, Hax.bne, Hax.beq] <;> omega))
+        let tac ← `(tactic| (intro x y hc hf; simp only [Hax.Ascent.stepCF] at hf; split at hf <;> (try cases hf) <;> simp_all [Hax.add, Hax.sub, Hax.div, Hax.lt, Hax.le, Hax.gt, Hax.ge, Hax.bne, Hax.beq, Hax.band, Hax.bor, Hax.bnot, Hax.Not] <;> omega))
         Term.withoutErrToSorry <| Term.runTactic mv.mvarId! tac .term
         if (← Core.getMessageLog).hasErrors then throwError "tactic"
         let pf ← mkAppM ``Hax.Ascent.whileFoldStops_of_measure #[μ, ← instantiateMVars mv, init]

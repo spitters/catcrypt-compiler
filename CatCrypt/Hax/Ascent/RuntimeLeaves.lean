@@ -42,7 +42,7 @@ encodings are disjoint.
 
 * `Leaf.orElse`, `rangeVal`, `rangeOf?`, `sliceVals`
 * `indexLeaf`, `arrayUpdateLeaf`, `repeatLeaf`, `arrayLitLeaf`, `lenLeaf`, `pushLeaf`,
-  `emptyLeaf`, `extendLeaf`, `copyLeaf`, `sliceUpdateLeaf`, `identLeaf`, `iterLeaf`,
+  `reverseLeaf`, `emptyLeaf`, `extendLeaf`, `copyLeaf`, `sliceUpdateLeaf`, `identLeaf`, `iterLeaf`,
   `truncateLeaf`, `isEmptyLeaf`, `someLeaf`, `unitLeaf`, `assertLeaf`, `constLeaf`,
   `rangeToLeaf`, `rangeFromLeaf`, `rangeLeaf`, `projFstLeaf`, `projSndLeaf`
 * `intArrLeaf2`, `eqLeaf`, `notLeaf`, `negLeaf`
@@ -199,6 +199,11 @@ def lenLeaf : Leaf
 /-- `push`: `Hax.push`. -/
 def pushLeaf : Leaf
   | [.array vs, v] => some (.array (vs ++ [v]))
+  | _ => none
+
+/-- `slice_reverse`: `Hax.slice_reverse`, the elements in reverse order. -/
+def reverseLeaf : Leaf
+  | [.array vs] => some (.array vs.reverse)
   | _ => none
 
 /-- `new` without arguments and `with_capacity`: the empty array. -/
@@ -390,6 +395,10 @@ theorem pushLeaf_enc (a : Array α) (x : α) :
     pushLeaf [enc a, enc x] = some (enc (Hax.push a x)) := by
   simp [pushLeaf, Hax.push]
 
+theorem reverseLeaf_enc (a : Array α) :
+    reverseLeaf [enc a] = some (enc (Hax.slice_reverse a)) := by
+  simp [reverseLeaf, Hax.slice_reverse, enc_array_toList, List.map_reverse]
+
 theorem emptyLeaf_new : emptyLeaf [] = some (enc (#[] : Array α)) := rfl
 
 theorem emptyLeaf_with_capacity (n : Int) :
@@ -479,6 +488,7 @@ theorem projSndLeaf_prod {β δ : Type} [HaxEnc β] [HaxTupleEnc δ] (a : α) (c
 end Transport
 
 attribute [irreducible] indexLeaf arrayUpdateLeaf repeatLeaf arrayLitLeaf lenLeaf pushLeaf
+  reverseLeaf
   emptyLeaf extendLeaf copyLeaf sliceUpdateLeaf identLeaf iterLeaf truncateLeaf isEmptyLeaf
   someLeaf unitLeaf assertLeaf constLeaf rangeToLeaf rangeFromLeaf rangeLeaf rangeVal
   projFstLeaf projSndLeaf

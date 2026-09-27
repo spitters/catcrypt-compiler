@@ -941,11 +941,11 @@ theorem binds_entry {bi' : Builtins} {fn : ExtFn} {gv : BList}
 
 /-- A leaf of the struct and dependency table, read through the extraction table. -/
 theorem extBase_leaf {T : Table} {fns : List ExtFn} {f : String} {l : Leaf}
-    (hrt : runtimeTable.lookup f = none) (htag : parseTag f = none)
+    (hrt : runtimeTable.lookup f = none) (htag : baseTag f = true)
     (hl : T.lookup f = some l) (vs : List Value) :
     extBuiltins T fns f vs = l vs := by
   unfold extBuiltins
-  rw [runtimeBuiltins_of_base hrt htag]
+  rw [runtimeBuiltins_of_baseTag hrt htag]
   exact Table.over_of_lookup hl vs
 
 /-- Replace the exit and normal values under their conditions. -/

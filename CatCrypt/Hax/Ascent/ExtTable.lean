@@ -196,16 +196,17 @@ theorem retVal_enc {β : Type} [HaxEnc β] [HaxEnc.Plain β] (b : β) : retVal (
   | controlFlow c w => cases c <;> simp_all [Value.isControlFlow]
   | _ => rfl
 
-/-- **A call to a function of the extraction.** -/
+/-- **A call to a function of the extraction.** The argument values are `ea a`, any
+    function of the argument tuple; no injectivity of `ea` is assumed. -/
 theorem extBuiltins_call {T : Table} {pre post : List ExtFn} {fn : ExtFn}
     (hrt : runtimeTable.lookup fn.name = none) (htag : parseTag fn.name = none)
     (hT : T.lookup fn.name = none)
-    (hfresh : fn.name ∉ post.map ExtFn.name) {A β : Type} [HaxArgs A] [HaxEnc β]
+    (hfresh : fn.name ∉ post.map ExtFn.name) {A β : Type} {ea : A → List Value} [HaxEnc β]
     [HaxEnc.Plain β] {G : A → Prop} {g : A → β}
     (h : FnCorres (extBuiltins T pre) fn.body
-      (fun a => fn.entry (extBuiltins T pre) (encArgs a)) G g)
-    {a : A} (hG : G a) (hlen : (encArgs a).length = fn.params.length) :
-    extBuiltins T (pre ++ fn :: post) fn.name (encArgs a) = some (enc (g a)) := by
+      (fun a => fn.entry (extBuiltins T pre) (ea a)) G g)
+    {a : A} (hG : G a) (hlen : (ea a).length = fn.params.length) :
+    extBuiltins T (pre ++ fn :: post) fn.name (ea a) = some (enc (g a)) := by
   rw [extBuiltins_self hrt htag hT hfresh]
   obtain ⟨fuel₀, hrun⟩ := h a hG
   simp only [ExtFn.leaf, if_pos hlen, haxEval_eq hrun, Option.map_some, retVal_enc]
@@ -219,21 +220,21 @@ def mergeExcept {β : Type} : Except β β → β
 theorem extBuiltins_callX {T : Table} {pre post : List ExtFn} {fn : ExtFn}
     (hrt : runtimeTable.lookup fn.name = none) (htag : parseTag fn.name = none)
     (hT : T.lookup fn.name = none)
-    (hfresh : fn.name ∉ post.map ExtFn.name) {A β : Type} [HaxArgs A] [HaxEnc β]
+    (hfresh : fn.name ∉ post.map ExtFn.name) {A β : Type} {ea : A → List Value} [HaxEnc β]
     [HaxEnc.Plain β] {G : A → Prop} {g : A → Except β β}
     (h : FnCorresX (extBuiltins T pre) fn.body
-      (fun a => fn.entry (extBuiltins T pre) (encArgs a)) G g)
-    {a : A} (hG : G a) (hlen : (encArgs a).length = fn.params.length) :
-    extBuiltins T (pre ++ fn :: post) fn.name (encArgs a) =
+      (fun a => fn.entry (extBuiltins T pre) (ea a)) G g)
+    {a : A} (hG : G a) (hlen : (ea a).length = fn.params.length) :
+    extBuiltins T (pre ++ fn :: post) fn.name (ea a) =
       some (enc (mergeExcept (g a))) := by
   rw [extBuiltins_self hrt htag hT hfresh]
   obtain ⟨fuel₀, hrun⟩ := h a hG
   have h₀ := hrun fuel₀ (Nat.le_refl _)
   rcases ho : (denote' (extBuiltins T pre) fuel₀ fn.body
-    (fn.entry (extBuiltins T pre) (encArgs a))).1 with v | v | v | _ | m
+    (fn.entry (extBuiltins T pre) (ea a))).1 with v | v | v | _ | m
   all_goals rw [ho] at h₀
   all_goals try simp [outcomeExceptCF] at h₀
-  have hev : haxEval (extBuiltins T pre) fn.body (fn.entry (extBuiltins T pre) (encArgs a))
+  have hev : haxEval (extBuiltins T pre) fn.body (fn.entry (extBuiltins T pre) (ea a))
       = some v :=
     haxEval_eq (fuel₀ := fuel₀) fun fuel hf => by rw [denote'_val_mono _ ho hf, ho]
   simp only [ExtFn.leaf, if_pos hlen, hev, Option.map_some, Option.some.injEq]

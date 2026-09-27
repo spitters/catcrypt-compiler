@@ -210,11 +210,11 @@ def collectDeps (cls : Name) : MetaM (Array (String × Name × List Expr × Expr
       if xs.size < 1 then return none
       let tys ← xs[1:].toArray.toList.mapM fun x => inferType x
       if r.hasLooseBVars || (← tys.anyM fun t => return t.hasFVar) then return none
-      return some (f.toString, proj, tys, r)
+      return some (f.toString (escape := false), proj, tys, r)
 
-/-- The untagged names of the runtime table. -/
-def runtimeNames : MetaM (List String) := do
-  let some v := (← getConstInfo ``Hax.Ascent.runtimeTable).value? | return []
+/-- The keys of a constant list of named entries, such as `runtimeTable`. -/
+def tableKeys (c : Name) : MetaM (List String) := do
+  let some v := (← getConstInfo c).value? | return []
   let some es ← listElems? v | return []
   es.filterMapM fun e => do
     let e ← whnfR e
@@ -222,11 +222,21 @@ def runtimeNames : MetaM (List String) := do
     | (``Prod.mk, #[_, _, k, _]) => return strOf? k
     | _ => return none
 
+/-- The untagged names of the runtime table. -/
+def runtimeNames : MetaM (List String) := tableKeys ``Hax.Ascent.runtimeTable
+
 /-- A tagged runtime name `op#w`, with `w` decimal digits or `size`. -/
 def isTagged (s : String) : Bool :=
   match s.splitOn "#" with
   | [_, w] => w == "size" || (!w.isEmpty && w.all Char.isDigit)
   | _ => false
+
+/-- A tagged name `op#w` whose family `op` is one of `families`, the keys of
+    `widthTable`: the runtime reads it at width `w`. -/
+def isWidthTagged (families : List String) (s : String) : Bool :=
+  isTagged s && match s.splitOn "#" with
+    | [op, _] => families.contains op
+    | _ => false
 
 /-- The call names, variable names and constructors of a literal. -/
 structure Scan where
@@ -382,6 +392,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
   let (structs, skippedS) ← collectStructs ns consts
   notes := notes ++ skippedS
   let rtNames ← runtimeNames
+  let widthNames ← tableKeys ``Hax.Ascent.widthTable
   let hasCls := env.contains clsName && isClass env clsName
   let body (insts : Array Expr) : TermElabM (Array FnReport × Array String) := do
     let mut notes := notes
@@ -410,7 +421,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     let deps ← if hasCls then collectDeps clsName else pure #[]
     let mut depElems : Array (String × Expr × Name × List Expr × Expr) := #[]
     for (f, proj, tys, r) in deps do
-      if rtNames.contains f || isTagged f then
+      if rtNames.contains f || isWidthTagged widthNames f then
         notes := notes.push s!"dependency {f}: its name is a runtime operation"; continue
       let res ← budgeted do
         let A ← argTupleTy tys
@@ -741,13 +752,12 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                     else ``Hax.Ascent.extBuiltins_call)
                   r.set `T T; r.set `pre preE; r.set `post post; r.set `fn (fnE f)
                   r.set `a aT
-                  -- the argument encoding of a struct of many fields, assembled by parts
-                  for m in r.mvs, b in r.bis do
-                    let m' ← instantiateMVars m
-                    unless b.isInstImplicit && m'.isMVar do continue
-                    let cls ← instantiateMVars (← inferType m')
-                    if cls.isAppOf ``Hax.Ascent.HaxArgs && !cls.hasExprMVar then
-                      discard <| isDefEq m' (← synthLarge cls)
+                  -- the argument values, as in the entry of the correspondence
+                  let ea ← withLocalDeclD `a (← inferType aT) fun a => do
+                    let cs ← argComps a tys.length
+                    mkLambdaFVars #[a]
+                      (← mkListLit valTy (← (cs.zip tys).mapM fun (c, t) => mkEnc t c))
+                  r.set `ea ea
                   r.set `h (mkAppN (mkConst (gen f ++ `corres)) insts)
                   r.set `hfresh hfresh
                   r.set `hG (hGs[0]?.getD (mkConst ``True.intro))

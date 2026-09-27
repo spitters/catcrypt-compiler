@@ -54,9 +54,11 @@ argument of `index`, `index_mut` or `collect`.
 
 Names the table leaves to `base`: `map` and `flat_map` (their argument is a closure,
 which `denote'` does not evaluate), `Ok` and `Err` (no `HaxEnc` for `Except`), `literal`
-and `str_opaque` (the default of a type the leaf does not see), and `new` with arguments
-(the opaque `Hax.new`). `min` and `max`, which the printer emits unchanged, are the
-`min` and `max` of `Int`. The printer's projection markers `::proj::.1` and `::proj::.2`
+(the default of a type the leaf does not see), and `new` with arguments (the opaque
+`Hax.new`). `str_opaque`, the extraction of a string literal, is the unit value, the
+encoding of every string. A tagged name whose family has no width entry, such as the
+dependency constant `MAX#32`, is read from `base` (`runtimeBuiltins_of_baseTag`). `min`
+and `max`, which the printer emits unchanged, are the `min` and `max` of `Int`. The printer's projection markers `::proj::.1` and `::proj::.2`
 are the Lean projections `p.1` and `p.2` of a right-nested tuple (`projFstLeaf`,
 `projSndLeaf`).
 
@@ -138,6 +140,7 @@ noncomputable def runtimeTable : Table :=
    ("array_lit", arrayLitLeaf),
    ("len", lenLeaf),
    ("push", pushLeaf),
+   ("slice_reverse", reverseLeaf),
    ("with_capacity", emptyLeaf), ("new", emptyLeaf),
    ("extend_from_slice", extendLeaf),
    ("copy_from_slice", copyLeaf),
@@ -187,6 +190,8 @@ noncomputable def runtimeTable : Table :=
    ("count_ones", leaf1 Hax.count_ones),
    -- rendered as the unit value
    ("panic", unitLeaf), ("panic_fmt", unitLeaf),
+   -- a string literal, the encoding of every `String`
+   ("str_opaque", unitLeaf),
    ("assert_failed", assertLeaf)]
 
 /-- **The runtime builtin table over `base`.** An untagged runtime name is read from
@@ -223,6 +228,30 @@ theorem runtimeBuiltins_of_base (h₁ : runtimeTable.lookup f = none)
     (h₂ : parseTag f = none) :
     runtimeBuiltins base f vs = base f vs := by
   simp only [runtimeBuiltins, h₁, h₂]
+
+/-- The names `runtimeBuiltins` reads from its base table when `runtimeTable` has no entry
+    for them: an untagged name, or a tagged name `op#w` whose family `op` has no entry in
+    `widthTable` (a dependency constant `MAX#32`). -/
+noncomputable def baseTag (f : String) : Bool :=
+  match parseTag f with
+  | some (op, _) => (widthTable.lookup op).isNone
+  | none => true
+
+/-- A name that is not a runtime name, and is untagged or tagged outside the width
+    families, is read from the base table. -/
+theorem runtimeBuiltins_of_baseTag (h₁ : runtimeTable.lookup f = none)
+    (h₂ : baseTag f = true) :
+    runtimeBuiltins base f vs = base f vs := by
+  unfold baseTag at h₂
+  rcases ht : parseTag f with _ | ⟨op, w⟩
+  · exact runtimeBuiltins_of_base h₁ ht
+  · rw [ht] at h₂
+    simp only [runtimeBuiltins, h₁, ht, Option.isNone_iff_eq_none.mp h₂]
+
+theorem baseTag_of_parseTag (h : parseTag f = none) : baseTag f = true := by
+  simp only [baseTag, h]
+
+theorem baseTag_MAX32 : baseTag "MAX#32" = true := by decide
 
 theorem parseTag_cast8 : parseTag "cast#8" = some ("cast", 8) := by decide
 
@@ -366,6 +395,10 @@ theorem push_enc (a : Array α) (x : α) :
     runtimeBuiltins base "push" [enc a, enc x] = some (enc (Hax.push a x)) :=
   (runtimeBuiltins_of_lookup rfl).trans (pushLeaf_enc a x)
 
+theorem slice_reverse_enc (a : Array α) :
+    runtimeBuiltins base "slice_reverse" [enc a] = some (enc (Hax.slice_reverse a)) :=
+  (runtimeBuiltins_of_lookup rfl).trans (reverseLeaf_enc a)
+
 theorem new_nil : runtimeBuiltins base "new" [] = some (enc (#[] : Array α)) :=
   (runtimeBuiltins_of_lookup rfl).trans emptyLeaf_new
 
@@ -445,6 +478,12 @@ theorem None_nil : runtimeBuiltins base "None" [] = some (enc (none : Option α)
 
 theorem panic_unit (vs : List Value) : runtimeBuiltins base "panic" vs = some .unit :=
   (runtimeBuiltins_of_lookup rfl).trans (unitLeaf_apply vs)
+
+/-- A string literal of the extraction (`str_opaque`, printed `Hax.literal`): the unit
+    value, which is the encoding of every string. -/
+theorem str_opaque_nil :
+    runtimeBuiltins base "str_opaque" [] = some (enc (Hax.literal : String)) :=
+  (runtimeBuiltins_of_lookup rfl).trans (unitLeaf_apply [])
 
 end Arrays
 
