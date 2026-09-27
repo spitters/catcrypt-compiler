@@ -47,7 +47,11 @@ and a high half of the same product share one pair of `vpmuludq` (`fuseMulHiLo`)
 Montgomery step `mulhi(a, b) - mulhi((a·b)·mu, p)` with `mu·p ≡ 1 (mod 2^32)` stays in the
 even/odd 64-bit products until one final merge (`fuseMontSub`, `montSubLines`): six
 `vpmuludq`, two `vpsubq` and two `vmovshdup` (three when `b` is not a broadcast), with no
-`vpmulld` and no low-half merge.
+`vpmulld` and no low-half merge. A rotate written as two immediate shifts and a
+disjunction renders as one `vprolq` / `vprold` (`fuseRol`); a three-input exclusive or
+and the Keccak χ step `x ⊕ (¬y ∧ z)` render as one `vpternlogq` / `vpternlogd`
+(`fuseTern`), preceded by a `vmovdqa64` when the destination shares no register with an
+operand.
 
 The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
@@ -93,7 +97,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (VarMap argName paramsAndMap)
-open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode)
+open CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel (Mode ternTable xor3B chiB)
 open CatCrypt.Crypto.SecureCompilation.VIR.RodataPool (Pool qwordsLE leValue leValue_qwordsLE)
 
 /-! ## 1. The binding list -/
@@ -113,7 +117,9 @@ def LaneW.bits : LaneW → Nat
     sixteen-lane high multiply, a 512-bit constant, an unsigned lane-wise minimum, the
     fused products of the renderer's passes, or any other operation (which the renderer
     rejects). `montsub d a b mu p` is the sixteen-lane Montgomery difference
-    `d = mulhi(a, b) - mulhi((a·b)·mu, p)` of the constants `mu`, `p`. -/
+    `d = mulhi(a, b) - mulhi((a·b)·mu, p)` of the constants `mu`, `p`. `rol w d a n` is the
+    lane-wise rotate of `a` left by `n`, and `tern w imm d a b c` the bitwise function of
+    truth table `imm` (`ZmmTextModel.semTern`) of `a`, `b`, `c`. -/
 inductive ZBind where
   | pack (w : LaneW) (bop : JasminBinOp) (dst a b : String)
   | mulhi (dst a b : String)
@@ -123,6 +129,8 @@ inductive ZBind where
   | mulhilo (hi lo a b : String)
   | montsub (dst a b mu p : String)
   | other (dst : String)
+  | rol (w : LaneW) (dst a : String) (n : Nat)
+  | tern (w : LaneW) (imm : Nat) (dst a b c : String)
 
 /-- The name a binding defines. -/
 def ZBind.dst : ZBind → String
@@ -134,6 +142,8 @@ def ZBind.dst : ZBind → String
   | .mulhilo h _ _ _ => h
   | .montsub d _ _ _ _ => d
   | .other d => d
+  | .rol _ d _ _ => d
+  | .tern _ _ d _ _ _ => d
 
 /-- Whether a binding lies outside the renderer's fragment. -/
 def ZBind.isOther : ZBind → Bool
@@ -148,6 +158,8 @@ def ZBind.srcs : ZBind → List String
   | .deferred _ a b => [a, b]
   | .mulhilo _ _ a b => [a, b]
   | .montsub _ a b _ _ => [a, b]
+  | .rol _ _ a _ => [a]
+  | .tern _ _ _ a b c => [a, b, c]
   | _ => []
 
 /-- The name of the sixteen-lane high-multiply leaf. -/
@@ -323,6 +335,8 @@ def bindRW (consts : Std.HashMap String (String × Nat)) : ZBind → List String
   | .mulhi d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
   | .mulhilo h l a b => (([a, b].filter (!consts.contains ·)).eraseDups, [h, l])
   | .montsub d a b _ _ => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
+  | .rol _ d a _ => (([a].filter (!consts.contains ·)), [d])
+  | .tern _ _ d a b c => (([a, b, c].filter (!consts.contains ·)).eraseDups, [d])
   | _ => ([], [])
 
 /-- Allocation with spilling of registers `0..30` of mode `md` less `reserved`, through
@@ -508,6 +522,26 @@ def bindLines (md : Mode) (consts : Std.HashMap String (String × Nat))
       | some rd, some ra, some rb =>
         pure [opLine (match w with | .q => "vpminuq" | .d => "vpminud") rd ra rb]
       | _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
+  | .rol w d a n =>
+      match alloc.get? d, alloc.get? a with
+      | some rd, some ra =>
+        pure ["\t" ++ (match w with | .q => "vprolq" | .d => "vprold") ++ " $" ++ toString n
+          ++ ", " ++ ra ++ ", " ++ rd]
+      | _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
+  | .tern w imm d a b c =>
+      match alloc.get? d, alloc.get? a, alloc.get? b, alloc.get? c with
+      | some rd, some ra, some rb, some rc =>
+        let mn := match w with | .q => "vpternlogq" | .d => "vpternlogd"
+        let line (i : Nat) (r3 r2 : String) : String :=
+          "\t" ++ mn ++ " $" ++ toString i ++ ", " ++ r3 ++ ", " ++ r2 ++ ", " ++ rd
+        let bit (x y z : Bool) : Bool := imm.testBit (4 * x.toNat + 2 * y.toNat + z.toNat)
+        -- the destination is the first operand: keep it in the register of an operand
+        -- the destination shares, with the truth table permuted to match
+        if rd == ra then pure [line imm rc rb]
+        else if rd == rb then pure [line (ternTable fun p q r => bit q p r).toNat rc ra]
+        else if rd == rc then pure [line (ternTable fun p q r => bit q r p).toNat rb ra]
+        else pure ["\tvmovdqa64 " ++ ra ++ ", " ++ rd, line imm rc rb]
+      | _, _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
   | .mulhi d a b => do
       let reg (n : String) : Except String String :=
         match alloc.get? n with
@@ -670,13 +704,30 @@ def csubToMinu (consts : Std.HashMap String (String × Nat))
 def bcastLowD (c : Option (String × Nat)) : Option Nat :=
   c.bind (fun c => if isBcast .d c.2 then some (c.2 % 2 ^ 32) else none)
 
-/-- The Montgomery step of `FieldDescentBBMont32` as five consecutive bindings,
-    `lo = a·b`, `hi = mulhi(a, b)`, `m = lo·mu`, `u = mulhi(m, p)`, `d = hi - u`, with
+/-- The first `n` non-constant bindings of `bs` from index `j` on, the constant bindings
+    among them in order, and the index after the last binding read. -/
+def takeSkipConst (bs : Array ZBind) (n j : Nat) : Array ZBind × Array ZBind × Nat :=
+  Id.run do
+  let mut picked : Array ZBind := #[]
+  let mut skipped : Array ZBind := #[]
+  let mut k := j
+  while picked.size < n && k < bs.size do
+    match bs[k]? with
+    | some (.const d v) => skipped := skipped.push (.const d v)
+    | some b => picked := picked.push b
+    | none => pure ()
+    k := k + 1
+  return (picked, skipped, k)
+
+/-- The Montgomery step of `FieldDescentBBMont32` as five bindings,
+    `lo = a·b`, `hi = mulhi(a, b)`, `m = lo·mu`, `u = mulhi(m, p)`, `d = hi - u`,
+    consecutive up to constant bindings between them (the descent's `mulBlockM` binds `mu`
+    before `m` and `p` before `u`), with
     `mu` and `p` sixteen-lane broadcast constants whose low words satisfy
     `mu·p ≡ 1 (mod 2^32)`, at most one of `a`, `b` constant, `lo`, `hi`, `m`, `u` each read
     once (by the next binding of the step) and none of them in `keep`: the five are
-    rewritten to the one binding `montsub d a b mu p` (`montSubLines`). The value of `d` is
-    unchanged. -/
+    rewritten to the one binding `montsub d a b mu p` (`montSubLines`), preceded by the
+    constant bindings between them. The value of `d` is unchanged. -/
 def fuseMontSub (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet String)
     (bs : Array ZBind) : Array ZBind := Id.run do
   let uses : Std.HashMap String Nat :=
@@ -697,22 +748,28 @@ def fuseMontSub (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSe
   let mut out : Array ZBind := #[]
   let mut i := 0
   while i < bs.size do
-    match bs[i]?, bs[i + 1]?, bs[i + 2]?, bs[i + 3]?, bs[i + 4]? with
-    | some (.pack .d .mul lo a b), some (.mulhi hi a2 b2), some (.pack .d .mul m x y),
-      some (.mulhi u x2 y2), some (.pack .d .sub d h2 u2) =>
-      match hit lo a b hi a2 b2 m x y u x2 y2 h2 u2 with
-      | some (mu, p) =>
-        -- a constant operand goes second
-        let (a', b') := if consts.contains a then (b, a) else (a, b)
-        out := out.push (.montsub d a' b' mu p)
-        i := i + 5
+    match bs[i]? with
+    | some (.pack .d .mul lo a b) =>
+      let (nx, cs, k) : Array ZBind × Array ZBind × Nat := takeSkipConst bs 4 (i + 1)
+      let fused : Option ZBind :=
+        match (nx.toList : List ZBind) with
+        | [.mulhi hi a2 b2, .pack .d .mul m x y, .mulhi u x2 y2, .pack .d .sub d h2 u2] =>
+          (hit lo a b hi a2 b2 m x y u x2 y2 h2 u2).map fun (mu, p) =>
+            -- a constant operand goes second
+            let (a', b') := if consts.contains a then (b, a) else (a, b)
+            .montsub d a' b' mu p
+        | _ => none
+      match fused with
+      | some z =>
+        out := (out ++ cs).push z
+        i := k
       | none =>
         out := out.push (.pack .d .mul lo a b)
         i := i + 1
-    | some z, _, _, _, _ =>
+    | some z =>
       out := out.push z
       i := i + 1
-    | none, _, _, _, _ => i := i + 1
+    | none => i := i + 1
   return out
 
 /-- The low half `lo = a·b` (`vpackZMMd .mul`) immediately followed by the high half
@@ -745,6 +802,92 @@ def fuseMulHiLo (consts : Std.HashMap String (String × Nat)) (bs : Array ZBind)
       i := i + 1
     | none, _ => i := i + 1
   return out
+
+/-- The lane value of the constant `n` at width `w`, when `n` is a broadcast constant. -/
+def bcastLane (consts : Std.HashMap String (String × Nat)) (w : LaneW) (n : String) :
+    Option Nat :=
+  (consts.get? n).bind (fun c => if isBcast w c.2 then some (c.2 % 2 ^ w.bits) else none)
+
+/-- The rotate `d = (a << n) | (a >> (L - n))`, `0 < n < L`, at lane width `L`, with the
+    shift counts broadcast constants, `a` not a constant and the two shifts each read once
+    and outside `keep`: the three bindings are rewritten to `rol w d a n` (`vprolq`) at
+    the position of `d`. The value of `d` is unchanged
+    (`ZmmTextModel.rotateLeft_eq_or_shifts`). -/
+def fuseRol (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet String)
+    (bs : Array ZBind) : Array ZBind := Id.run do
+  let defs : Std.HashMap String ZBind := bs.foldl (fun m b => m.insert b.dst b) {}
+  let uses : Std.HashMap String Nat :=
+    bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
+  let used (n : String) : Nat := uses.getD n 0
+  -- `x = a << n` and `y = a >> (L - n)`
+  let hit (w : LaneW) (x y : String) : Option (String × Nat) := do
+    let .pack w1 .shl _ a k1 ← defs.get? x | none
+    let .pack w2 .shr _ a2 k2 ← defs.get? y | none
+    let n ← bcastLane consts w k1
+    let n2 ← bcastLane consts w k2
+    guard (w1 == w && w2 == w && a == a2 && 0 < n && n < w.bits && n + n2 == w.bits)
+    guard (!consts.contains a && x != y)
+    guard (used x == 1 && used y == 1 && !keep.contains x && !keep.contains y)
+    pure (a, n)
+  let mut rw : Std.HashMap String ZBind := {}
+  let mut removed : Std.HashSet String := {}
+  for b in bs do
+    match b with
+    | .pack w .or d x y =>
+      match hit w x y <|> hit w y x with
+      | some (a, n) =>
+        rw := rw.insert d (.rol w d a n)
+        removed := (removed.insert x).insert y
+      | none => pure ()
+    | _ => pure ()
+  return bs.filterMap (fun b => if removed.contains b.dst then none else some (rw.getD b.dst b))
+
+/-- The three-input bitwise forms `vpternlog` computes in one instruction, on
+    non-constant operands, the inner bindings each read once and outside `keep`:
+    `d = x ⊕ ((y ⊕ 1…1) ∧ z)` (Keccak χ, the all-ones constant broadcast at the lane
+    width) is rewritten to `tern w (ternTable chiB) d x y z`, and `d = (x ⊕ y) ⊕ z` to
+    `tern w (ternTable xor3B) d x y z`, both at the position of `d`, the inner bindings
+    removed. Operands commute. The value of `d` is unchanged
+    (`ZmmTextModel.ternTerms_eval`). -/
+def fuseTern (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet String)
+    (bs : Array ZBind) : Array ZBind := Id.run do
+  let uses : Std.HashMap String Nat :=
+    bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
+  let used (n : String) : Nat := uses.getD n 0
+  let reg (n : String) : Bool := !consts.contains n
+  let allOnes (w : LaneW) (n : String) : Bool := bcastLane consts w n == some (2 ^ w.bits - 1)
+  let mut cur : Std.HashMap String ZBind := {}
+  let mut removed : Std.HashSet String := {}
+  let mut out : Array ZBind := #[]
+  for b in bs do
+    let free (n : String) : Bool := used n == 1 && !keep.contains n && !removed.contains n
+    let fused : Option (ZBind × List String) :=
+      match b with
+      | .pack w .xor d p q =>
+        let chiS (x u s z : String) : Option (ZBind × List String) := do
+          let .pack w2 .xor _ s1 s2 ← cur.get? s | none
+          let y ← if allOnes w s2 then some s1 else if allOnes w s1 then some s2 else none
+          guard (w2 == w && reg x && reg y && reg z && free s && s != u)
+          pure (.tern w (ternTable chiB).toNat d x y z, [u, s])
+        let chi (x u : String) : Option (ZBind × List String) := do
+          let .pack w1 .and _ u1 u2 ← cur.get? u | none
+          guard (w1 == w && free u)
+          chiS x u u1 u2 <|> chiS x u u2 u1
+        let x3 (u z : String) : Option (ZBind × List String) := do
+          let .pack w1 .xor _ x y ← cur.get? u | none
+          guard (w1 == w && reg x && reg y && reg z && free u)
+          pure (.tern w (ternTable xor3B).toNat d x y z, [u])
+        chi p q <|> chi q p <|> x3 p q <|> x3 q p
+      | _ => none
+    match fused with
+    | some (z, rem) =>
+      removed := rem.foldl (fun s n => s.insert n) removed
+      cur := cur.insert z.dst z
+      out := out.push z
+    | none =>
+      cur := cur.insert b.dst b
+      out := out.push b
+  return out.filter (fun b => !removed.contains b.dst)
 
 /-- The owned AT&T text of the function `sym(out = %rdi, in = %rsi)` over the parameter
     names `names` and bindings `bs`: parameter `s` loaded from `inOffset s(%rsi)`, the
@@ -781,7 +924,8 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
   let bs1 := csubToMinu consts csubOk bs0
   let keep : Std.HashSet String :=
     (bs1.toList.drop (bs1.size - nOut)).foldl (fun s b => s.insert b.dst) {}
-  let bs := fuseMulHiLo consts (fuseMontSub consts keep bs1)
+  let bs := fuseTern consts keep (fuseRol consts keep
+    (fuseMulHiLo consts (fuseMontSub consts keep bs1)))
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
   let hasMulhi := bs.any (fun b =>
     match b with
