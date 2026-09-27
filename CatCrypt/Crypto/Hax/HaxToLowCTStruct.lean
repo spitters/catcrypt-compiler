@@ -27,7 +27,12 @@ order; hax-lean's parameter alias `let s = s` is dropped; `s` as an argument of
 any other call is its component variables in field order, and elsewhere the
 tuple of them.  A function returning a struct thus ends in the tuple of the
 component variables, which `haxToLowCT` lowers as the aggregate tuple tail of
-named results: the fields stay in their component variables.
+named results: the fields stay in their component variables.  The printer makes a
+one-field struct the field itself, and `HaxEnc` encodes a type that is not a
+product as itself; the value of a struct is `structVal`, the field for one field
+and the tuple of the fields otherwise, and a one-field struct variable is its
+component variable wherever it is read (`structRef`) and is bound directly to a
+call result.
 
 **`Option` of a word.**  An `Option` variable `o` is the pair of a bool tag
 `o#tag` and a payload word `o#val`.  `let o = Some x` binds `o#val` to `x` and
@@ -64,6 +69,8 @@ against `denote'`.
 * `flatE` — the struct and `Option`-match flattening pass.
 * `optBindArm`, `structLitArm` — the `Option` binding and struct literal arms.
 * `optRet` — the `Option` return lowering.
+* `structVal`, `structRef` — the value of a struct from its fields, and a flattened
+  struct variable as an expression.
 * `callBindArm`, `rhsCopy` — the call result arm and the copy of a variable.
 * `retVars`, `tailRet`, `namedRet` — the named tuple return.
 * `renameVar`, `renameSafe`, `varAbsent` — renaming a variable, and the syntactic
@@ -90,8 +97,9 @@ against `denote'`.
   flattened `Some` arm with its binder bound to `x`.
 * `optBind_some_sim`, `optBind_none_sim` — `let o = Some x` and `let o = None`
   and their lowering leave `o` flattened.
-* `callBind_sim` — a struct bound to a call result and its lowering leave the
-  struct flattened.
+* `callBind_sim`, `callBind1_sim` — a struct bound to a call result and its
+  lowering leave the struct flattened, for a struct with other than one field and
+  with one field.
 * `flatUpdateCopy_sim` — an update with a variable and its copy into the component
   leave the struct flattened.
 * `namedRet_tuple_run`, `namedRet_break_sim` — a returned tuple with the
@@ -135,10 +143,30 @@ abbrev StructVars := List (String × String)
 /-- The variable holding field `f` of the flattened struct variable `s`: `s.f`. -/
 def structCompName (s f : String) : String := s ++ "." ++ f
 
-/-- hax-lean's call name for the update of field `i` of the `n`-field struct `S`:
-    `struct_update#S#i#n`. -/
-def structUpdateName (S : String) (i n : Nat) : String :=
-  "struct_update#" ++ S ++ "#" ++ toString i ++ "#" ++ toString n
+/-- The value of a struct whose fields hold `vs`, for a struct with `n` fields: the
+    field itself for a one-field struct (the printer's encoding, and `HaxEnc` of a
+    type that is not a product), the tuple of the fields otherwise. -/
+def structVal : Nat → List Value → Value
+  | 1, vs => vs.headD .unit
+  | _, vs => .tuple vs
+
+/-- For a struct without exactly one field, the value is the tuple of the fields. -/
+theorem structVal_of_ne_one {n : Nat} (h : n ≠ 1) (vs : List Value) :
+    structVal n vs = .tuple vs := by
+  match n, h with
+  | 0, _ => rfl
+  | 1, h => exact absurd rfl h
+  | _ + 2, _ => rfl
+
+/-- A struct value whose fields are not control flow is not control flow. -/
+theorem structVal_not_cf {n : Nat} {vs : List Value}
+    (h : ∀ w ∈ vs, w.isControlFlow = false) : (structVal n vs).isControlFlow = false := by
+  by_cases hn : n = 1
+  · subst hn
+    cases vs with
+    | nil => rfl
+    | cons w ws => exact h w List.mem_cons_self
+  · rw [structVal_of_ne_one hn]; rfl
 
 /-- The fields of the struct variable `s`: those of its struct in the layout. -/
 def structFields (L : StructLayout) (sv : StructVars) (s : String) : Option (List String) :=
@@ -148,6 +176,13 @@ def structFields (L : StructLayout) (sv : StructVars) (s : String) : Option (Lis
     order. -/
 def structComps (s : String) (fs : List String) : List ImpExpr :=
   fs.map fun f => .var (structCompName s f)
+
+/-- The flattened struct variable `s` with fields `fs` as a value: the component
+    variable of a one-field struct, the tuple of the component variables otherwise. -/
+def structRef (s : String) (fs : List String) : ImpExpr :=
+  match fs with
+  | [f] => .var (structCompName s f)
+  | _ => .tuple (structComps s fs)
 
 /-- The component read by the field call `c` on the struct variable `s`: the
     component variable of the field `f` with `c = "." ++ f`. -/
@@ -159,7 +194,8 @@ def projArm (L : StructLayout) (sv : StructVars) (c s : String) : Option String 
     `S` of `s` with `n` fields. -/
 def updateArm (L : StructLayout) (sv : StructVars) (c s : String) : Option String :=
   (List.lookup s sv).bind fun S => (List.lookup S L).bind fun fs =>
-    ((List.range fs.length).find? fun i => c == structUpdateName S i fs.length).bind fun i =>
+    ((List.range fs.length).find? fun i =>
+      c == _root_.Hax.structUpdateHead S i fs.length).bind fun i =>
       fs[i]?.map (structCompName s)
 
 /-- The builtin that copies a word: the scalar `&` of a variable with itself,
@@ -457,7 +493,8 @@ def bindProjs (t : String) : Nat → List String → ImpExpr → ImpExpr
     `let s#tup = f(args'); let s.f₁ = s#tup.0; …; let s.fₖ = s#tup.(k-1); body'`,
     where `f(args')` is the flattened right-hand side: the call's tuple result is
     destructured into the component variables through the front's tuple-component
-    reads.  A function returning a flat struct returns the tuple of its fields.
+    reads.  A function returning a flat struct returns the tuple of its fields.  A
+    one-field struct is its field: `let s = f(args); body` binds `s.f₁` to the call.
     `none` for a struct literal (`f = S`) and an update call. -/
 def callBindArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : ImpExpr) :
     Option ImpExpr :=
@@ -468,8 +505,11 @@ def callBindArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body
           match List.lookup S L with
           | some fs =>
               if c != S && !c.startsWith "struct_update#" then
-                some (.letBind (structTupName n) (.app c' args')
-                  (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body'))
+                match fs with
+                | [f] => some (.letBind (structCompName n f) (.app c' args') body')
+                | _ =>
+                  some (.letBind (structTupName n) (.app c' args')
+                    (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body'))
               else none
           | none => none
       | none => none
@@ -670,7 +710,8 @@ mutual
       dropped;
     * a struct variable as an argument of any other call is its component
       variables in field order, and elsewhere the tuple of its component
-      variables;
+      variables, or its one component variable for a one-field struct
+      (`structRef`);
     * `match o { None => e1, Some v => e2 }` on an `Option` variable is the branch
       on its tag `o#tag`, with the payload `o#val` for `v` (`optMatchArm`).
     Returns `none` where a struct or `Option` variable occurs in a form the pass
@@ -680,7 +721,7 @@ def flatE (L : StructLayout) (sv : StructVars) (av : ArrVars) (ov : List String)
   | .lit l => some (.lit l)
   | .var s =>
       match structFields L sv s with
-      | some fs => some (.tuple (structComps s fs))
+      | some fs => some (structRef s fs)
       | none => if ov.contains s then none else some (.var s)
   | .letBind n val body =>
       if optAlias ov n val then flatE L sv av ov body
@@ -962,7 +1003,8 @@ theorem projArm_spec {L : StructLayout} {sv : StructVars} {c s comp : String}
 theorem updateArm_spec {L : StructLayout} {sv : StructVars} {c s comp : String}
     (h : updateArm L sv c s = some comp) :
     ∃ (S : String) (fs : List String) (i : Nat) (f : String), List.lookup s sv = some S ∧
-      List.lookup S L = some fs ∧ c = structUpdateName S i fs.length ∧ fs[i]? = some f ∧
+      List.lookup S L = some fs ∧ c = _root_.Hax.structUpdateHead S i fs.length ∧
+      fs[i]? = some f ∧
       comp = structCompName s f := by
   unfold updateArm at h
   cases hS : List.lookup s sv with
@@ -972,7 +1014,8 @@ theorem updateArm_spec {L : StructLayout} {sv : StructVars} {c s comp : String}
     | none => simp [hS, hL] at h
     | some fs =>
       simp only [hS, hL, Option.bind_some] at h
-      cases hi : (List.range fs.length).find? fun i => c == structUpdateName S i fs.length with
+      cases hi : (List.range fs.length).find? fun i =>
+          c == _root_.Hax.structUpdateHead S i fs.length with
       | none => simp [hi] at h
       | some i =>
         simp only [hi, Option.bind_some, Option.map_eq_some_iff] at h
@@ -1133,31 +1176,33 @@ The flattened program runs in an environment `envF` holding the components of
 each struct variable in its component variables (`StructFlatAt`) and the tag and
 payload of each `Option` variable (`OptFlatAt`).  Field calls, update calls and
 `Some`/`None` are builtins of `denote'`; `FieldSound`, `UpdateSound` and
-`OptionSound` state that the builtin table reads a struct as the tuple of its
-fields and builds `Option` values. -/
+`OptionSound` state that the builtin table reads a struct as the value
+`structVal` of its fields and builds `Option` values. -/
 
-/-- The field calls of the layout `fs` read their component of a tuple with one
-    component per field. -/
+/-- The field calls of the layout `fs` read their component of the struct value with
+    one component per field. -/
 def FieldSound (bi : Builtins) (fs : List String) : Prop :=
   ∀ (vs : List Value) (i : Nat) (f : String), vs.length = fs.length → fs[i]? = some f →
-    bi ("." ++ f) [.tuple vs] = vs[i]?
+    bi ("." ++ f) [structVal fs.length vs] = vs[i]?
 
-/-- The update calls of the struct `S` with fields `fs` replace one component of a
-    tuple with one component per field. -/
+/-- The update calls of the struct `S` with fields `fs` replace one component of the
+    struct value with one component per field. -/
 def UpdateSound (bi : Builtins) (S : String) (fs : List String) : Prop :=
   ∀ (vs : List Value) (i : Nat) (v : Value), vs.length = fs.length → i < fs.length →
-    bi (structUpdateName S i fs.length) [.tuple vs, v] = some (.tuple (vs.set i v))
+    bi (_root_.Hax.structUpdateHead S i fs.length) [structVal fs.length vs, v] =
+      some (structVal fs.length (vs.set i v))
 
 /-- The builtin table builds `Option` values with `Some` and `None`. -/
 def OptionSound (bi : Builtins) : Prop :=
   (∀ v, bi "Some" [v] = some (.option (some v))) ∧ bi "None" [] = some (.option none)
 
-/-- The struct variable `s` with fields `fs` is a tuple with one component per
-    field in `env`, and `envF` binds the component variable of each field to its
-    component. -/
+/-- The struct variable `s` with fields `fs` holds in `env` the struct value of
+    components `vs`, one per field and none control flow, and `envF` binds the
+    component variable of each field to its component. -/
 def StructFlatAt (fs : List String) (s : String) (env envF : Env) : Prop :=
-  ∃ vs : List Value, env s = some (.tuple vs) ∧ vs.length = fs.length ∧
-    ∀ (i : Nat) (f : String), fs[i]? = some f → envF (structCompName s f) = vs[i]?
+  ∃ vs : List Value, env s = some (structVal fs.length vs) ∧ vs.length = fs.length ∧
+    (∀ (i : Nat) (f : String), fs[i]? = some f → envF (structCompName s f) = vs[i]?) ∧
+    ∀ w ∈ vs, w.isControlFlow = false
 
 /-- The `Option` variable `o` holds `ov` in `env`, and `envF` binds its tag to
     `ov.isSome` and, for `ov = some x`, its payload to `x`. -/
@@ -1182,13 +1227,14 @@ theorem flatProj_sim (L : StructLayout) (sv : StructVars) (c s comp : String)
   obtain ⟨fs', f, i, hfs', hi, rfl, rfl⟩ := projArm_spec hp
   rw [hfs] at hfs'
   cases hfs'
-  obtain ⟨vs, hs, hlen, hc⟩ := hsf
+  obtain ⟨vs, hs, hlen, hc, hcf⟩ := hsf
   have hlt : i < vs.length := by
     rw [hlen]; exact (List.getElem?_eq_some_iff.1 hi).1
   refine ⟨vs[i], ?_, ?_⟩
-  · rw [denote'_app_run, denoteArgs'_cons_run, denote'_var_run, hs]
-    simp only [denoteArgs'_nil_run, Option.map_some]
-    rw [hF vs i f hlen hi, List.getElem?_eq_getElem hlt]
+  · exact _root_.Hax.Ascent.denote'_app bi fuel
+      (_root_.Hax.Ascent.denoteArgs'_cons bi fuel (_root_.Hax.Ascent.denote'_var bi fuel hs)
+        (structVal_not_cf hcf) (_root_.Hax.Ascent.denoteArgs'_nil bi fuel env))
+      ((hF vs i f hlen hi).trans (List.getElem?_eq_getElem hlt))
   · rw [denote'_var_run, hc i f hi, List.getElem?_eq_getElem hlt]
 
 /-- **Update arm.**  `let s = struct_update#S#i#n(s, x); body` runs `body` from an
@@ -1205,37 +1251,44 @@ theorem flatUpdate_sim (S s f : String) (fs : List String) (i : Nat) (x x' body 
     (hx' : (denote' bi fuel x').run envF = (.val v, envF1))
     (hkeep : ∀ g, g ∈ fs → g ≠ f → envF1 (structCompName s g) = envF (structCompName s g)) :
     ∃ env2 envF2,
-      (denote' bi fuel (.letBind s (.app (structUpdateName S i fs.length) [.var s, x]) body)).run
-          env = (denote' bi fuel body).run env2 ∧
+      (denote' bi fuel (.letBind s
+          (.app (_root_.Hax.structUpdateHead S i fs.length) [.var s, x]) body)).run env =
+        (denote' bi fuel body).run env2 ∧
       (denote' bi fuel (.letBind (structCompName s f) x' body')).run envF =
           (denote' bi fuel body').run envF2 ∧
       StructFlatAt fs s env2 envF2 := by
-  obtain ⟨vs, hs, hlen, hc⟩ := hsf
+  obtain ⟨vs, hs, hlen, hc, hcf⟩ := hsf
   have hifs : i < fs.length := (List.getElem?_eq_some_iff.1 hi).1
-  have hhead : (denote' bi fuel (.app (structUpdateName S i fs.length) [.var s, x])).run env =
-      (.val (.tuple (vs.set i v)), env1) := by
-    rw [denote'_app_run, denoteArgs'_cons_run, denote'_var_run, hs]
-    simp only
-    rw [denoteArgs'_cons_run, hx]
-    cases v <;> simp at hv <;>
-      simp only [denoteArgs'_nil_run, Option.map_some, hU vs i _ hlen hifs]
-  refine ⟨env1.extend s (.tuple (vs.set i v)), envF1.extend (structCompName s f) v,
-    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hhead rfl,
-    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' hv, vs.set i v, ?_, ?_, ?_⟩
-  · simp [_root_.Hax.Env.extend]
-  · rw [List.length_set, hlen]
-  · intro j g hj
-    by_cases hg : g = f
-    · subst hg
-      have hji : j = i := huniq j hj
-      subst hji
-      have hlt : j < vs.length := by rw [hlen]; exact hifs
-      simp [_root_.Hax.Env.extend, List.getElem?_set_self hlt]
-    · have hne : structCompName s g ≠ structCompName s f := fun h => hg (structCompName_inj h)
-      have hji : j ≠ i := by
-        rintro rfl; rw [hi] at hj; exact hg (Option.some.inj hj).symm
-      simp only [_root_.Hax.Env.extend, beq_iff_eq, hne, if_false]
-      rw [hkeep g (List.mem_of_getElem? hj) hg, hc j g hj, List.getElem?_set_ne hji.symm]
+  have hcf' : ∀ w ∈ vs.set i v, w.isControlFlow = false := fun w hw => by
+    rcases List.mem_or_eq_of_mem_set hw with h | h
+    · exact hcf w h
+    · rw [h]; exact hv
+  have hhead : (denote' bi fuel
+      (.app (_root_.Hax.structUpdateHead S i fs.length) [.var s, x])).run env =
+      (.val (structVal fs.length (vs.set i v)), env1) :=
+    _root_.Hax.Ascent.denote'_app bi fuel
+      (_root_.Hax.Ascent.denoteArgs'_cons bi fuel (_root_.Hax.Ascent.denote'_var bi fuel hs)
+        (structVal_not_cf hcf)
+        (_root_.Hax.Ascent.denoteArgs'_cons bi fuel hx hv
+          (_root_.Hax.Ascent.denoteArgs'_nil bi fuel env1)))
+      (hU vs i v hlen hifs)
+  refine ⟨env1.extend s (structVal fs.length (vs.set i v)),
+    envF1.extend (structCompName s f) v,
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hhead (structVal_not_cf hcf'),
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' hv, vs.set i v,
+    _root_.Hax.Env.extend_same _ _ _, by rw [List.length_set, hlen], ?_, hcf'⟩
+  intro j g hj
+  by_cases hg : g = f
+  · subst hg
+    have hji : j = i := huniq j hj
+    subst hji
+    have hlt : j < vs.length := by rw [hlen]; exact hifs
+    simp [_root_.Hax.Env.extend, List.getElem?_set_self hlt]
+  · have hne : structCompName s g ≠ structCompName s f := fun h => hg (structCompName_inj h)
+    have hji : j ≠ i := by
+      rintro rfl; rw [hi] at hj; exact hg (Option.some.inj hj).symm
+    simp only [_root_.Hax.Env.extend, beq_iff_eq, hne, if_false]
+    rw [hkeep g (List.mem_of_getElem? hj) hg, hc j g hj, List.getElem?_set_ne hji.symm]
 
 /-- **`Option` early return, `Some`.**  `cfBreak (Some y)` breaks with the `Option`
     value of `y`; its lowering `optBreak T` sets the tag `T` to `true` and breaks
@@ -2034,38 +2087,62 @@ theorem structTupName_ne (n f : String) : structTupName n ≠ structCompName n f
   have := congrArg String.toList h
   simp at this
 
-/-- **Call result arm.**  When the call `val` and its flattening `val'` return the
-    same tuple `vs` with one component per field, `let n = val; body` runs `body`
-    with `n` bound to the tuple, and the lowering `callBindArm` runs `body'` from an
+/-- **Call result arm.**  When the call `val` returns the struct value of the
+    components `vs`, one per field, and its flattening `val'` returns the tuple `vs`,
+    `let n = val; body` runs `body` with `n` bound to the struct value, and the
+    lowering `callBindArm` of a struct with other than one field runs `body'` from an
     environment in which `n` is flattened; the lowering changes no variable other
     than `n#tup` and the component variables of `n`. -/
 theorem callBind_sim (bi : Builtins) (fuel : Nat) (n : String) (fs : List String)
     (val val' body body' : ImpExpr) (env env1 envF envF1 : Env) (vs : List Value)
     (hnd : fs.Nodup) (hlen : vs.length = fs.length) (hcf : ∀ v ∈ vs, v.isControlFlow = false)
-    (hx : (denote' bi fuel val).run env = (.val (.tuple vs), env1))
+    (hx : (denote' bi fuel val).run env = (.val (structVal fs.length vs), env1))
     (hx' : (denote' bi fuel val').run envF = (.val (.tuple vs), envF1)) :
     ∃ envF2,
       (denote' bi fuel (.letBind n val body)).run env =
-          (denote' bi fuel body).run (env1.extend n (.tuple vs)) ∧
+          (denote' bi fuel body).run (env1.extend n (structVal fs.length vs)) ∧
       (denote' bi fuel (.letBind (structTupName n) val'
           (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body'))).run envF =
           (denote' bi fuel body').run envF2 ∧
-      StructFlatAt fs n (env1.extend n (.tuple vs)) envF2 ∧
+      StructFlatAt fs n (env1.extend n (structVal fs.length vs)) envF2 ∧
       ∀ x, x ≠ structTupName n → (∀ f ∈ fs, x ≠ structCompName n f) → envF2 x = envF1 x := by
   refine ⟨extendList (envF1.extend (structTupName n) (.tuple vs)) (fs.map (structCompName n)) vs,
-    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx rfl, ?_, ?_, ?_⟩
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx (structVal_not_cf hcf), ?_, ?_, ?_⟩
   · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' rfl,
       bindProjs_run bi fuel _ vs hcf body' _ 0 _ (_root_.Hax.Env.extend_same _ _ _)
         (by simp only [List.mem_map, not_exists, not_and]; exact fun f _ h =>
           structTupName_ne n f h.symm)
         (by simp [hlen]), List.drop_zero]
-  · refine ⟨vs, _root_.Hax.Env.extend_same _ _ _, hlen, fun i f hi => ?_⟩
+  · refine ⟨vs, _root_.Hax.Env.extend_same _ _ _, hlen, fun i f hi => ?_, hcf⟩
     exact extendList_get _ vs _ i _ (hnd.map fun _ _ h => structCompName_inj h)
       (by simp [hlen]) (by simp [hi])
   · intro x hx1 hx2
     rw [extendList_other _ _ _ x (by
       simp only [List.mem_map, not_exists, not_and]; exact fun f hf h => hx2 f hf h.symm),
       _root_.Hax.Env.extend_other _ _ _ _ hx1]
+
+/-- **Call result arm, one field.**  When the call `val` and its flattening `val'`
+    return the same value `v`, `let n = val; body` runs `body` with `n` bound to `v`,
+    and the lowering `callBindArm` of a one-field struct, the binding of the
+    component variable to `val'`, runs `body'` from an environment in which `n` is
+    flattened. -/
+theorem callBind1_sim (bi : Builtins) (fuel : Nat) (n f : String) (val val' body body' : ImpExpr)
+    (env env1 envF envF1 : Env) (v : Value) (hv : v.isControlFlow = false)
+    (hx : (denote' bi fuel val).run env = (.val v, env1))
+    (hx' : (denote' bi fuel val').run envF = (.val v, envF1)) :
+    (denote' bi fuel (.letBind n val body)).run env =
+        (denote' bi fuel body).run (env1.extend n v) ∧
+      (denote' bi fuel (.letBind (structCompName n f) val' body')).run envF =
+        (denote' bi fuel body').run (envF1.extend (structCompName n f) v) ∧
+      StructFlatAt [f] n (env1.extend n v) (envF1.extend (structCompName n f) v) := by
+  refine ⟨denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx hv,
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hx' hv,
+    [v], _root_.Hax.Env.extend_same _ _ _, rfl, fun i g hg => ?_, by simpa using hv⟩
+  cases i with
+  | zero =>
+    cases hg
+    exact _root_.Hax.Env.extend_same _ _ _
+  | succ i => simp at hg
 
 /-- The copy of a variable holding `v` returns `v` when the builtin table copies
     `v`. -/
@@ -2096,8 +2173,9 @@ theorem flatUpdateCopy_sim (bi : Builtins) (fuel : Nat) (S s f y : String) (fs :
     (hsf : StructFlatAt fs s env envF) (hy : env y = some v) (hyF : envF y = some v)
     (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
     ∃ env2 envF2,
-      (denote' bi fuel (.letBind s (.app (structUpdateName S i fs.length) [.var s, .var y])
-          body)).run env = (denote' bi fuel body).run env2 ∧
+      (denote' bi fuel (.letBind s
+          (.app (_root_.Hax.structUpdateHead S i fs.length) [.var s, .var y]) body)).run env =
+        (denote' bi fuel body).run env2 ∧
       (denote' bi fuel (.letBind (structCompName s f) (rhsCopy (structCompName s f) (.var y))
           body')).run envF = (denote' bi fuel body').run envF2 ∧
       StructFlatAt fs s env2 envF2 :=
@@ -2269,10 +2347,10 @@ def IdxArithSound (bi : Builtins) : Prop :=
     bi "Mul" [.int x, .int y] = some (.int (x * y))
 
 /-- The array variable `a` of structs with `k` fields holds in `env` the array of
-    the tuples `rows`, each with `k` components, and in `envF` the flat array of
-    their components. -/
+    the struct values of `rows`, each with `k` components, and in `envF` the flat
+    array of their components. -/
 def ArrStructFlatAt (k : Nat) (a : String) (env envF : Env) : Prop :=
-  ∃ rows : List (List Value), env a = some (.array (rows.map .tuple)) ∧
+  ∃ rows : List (List Value), env a = some (.array (rows.map (structVal k))) ∧
     (∀ r ∈ rows, r.length = k) ∧ envF a = some (.array rows.flatten)
 
 /-- The value of an operand of a store: a literal or a bound variable. -/
@@ -2340,12 +2418,14 @@ theorem flatIdx_run (hA : IdxArithSound bi) (i : ImpExpr) (k off j : Nat) (env :
 
 /-- **Element field read.**  The field call `c (index r i)` on element `j` of an
     array of structs and its lowering, the read of the flat array `a` at
-    `j * k + off`, evaluate to the same value, changing neither environment. -/
+    `j * k + off`, evaluate to the same value, changing neither environment.  The
+    components of the element are not control flow. -/
 theorem flatElemField_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (c a : String)
     (fs : List String) (off : Nat) (r i i' : ImpExpr) (env envF : Env)
     (rows : List (List Value)) (j : Nat) (hF : FieldSound bi fs) (hoff : fieldIdx fs c = some off)
     (hrow : ∀ w ∈ rows, w.length = fs.length) (hj : j < rows.length)
-    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map .tuple)), env))
+    (hcf : ∀ w ∈ rows[j], w.isControlFlow = false)
+    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map (structVal fs.length))), env))
     (haF : envF a = some (.array rows.flatten))
     (hi : (denote' bi fuel i).run env = (.val (.int j), env))
     (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF)) :
@@ -2357,13 +2437,15 @@ theorem flatElemField_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (c a :
   have hlen : (rows[j]).length = fs.length := hrow _ (List.getElem_mem hj)
   have hw : (rows[j])[off]? = some (rows[j])[off] := List.getElem?_eq_getElem (by omega)
   refine ⟨(rows[j])[off], ?_, ?_⟩
-  · have hidx : (denote' bi fuel (.app "index" [r, i])).run env = (.val (.tuple rows[j]), env) :=
+  · have hidx : (denote' bi fuel (.app "index" [r, i])).run env =
+        (.val (structVal fs.length rows[j]), env) :=
       app_run_of_args bi fuel _ _ _ _ _
         (args_cons_of_val bi fuel _ _ _ _ _ hr rfl
           (args_cons_of_val bi fuel _ _ _ _ _ hi rfl (denoteArgs'_nil_run bi fuel env)))
         (hI _ _ _ (by simp [hj]))
     exact app_run_of_args bi fuel _ _ _ _ _
-      (args_cons_of_val bi fuel _ _ _ _ _ hidx rfl (denoteArgs'_nil_run bi fuel env))
+      (args_cons_of_val bi fuel _ _ _ _ _ hidx (structVal_not_cf hcf)
+        (denoteArgs'_nil_run bi fuel env))
       ((hF _ off f hlen hf).trans hw)
   · refine app_run_of_args bi fuel _ _ _ _ _
       (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, haF]) rfl
@@ -2411,21 +2493,22 @@ theorem flatElemBind_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (n a : 
     (rows : List (List Value)) (j : Nat) (hnd : fs.Nodup)
     (hrow : ∀ w ∈ rows, w.length = fs.length) (hj : j < rows.length)
     (hcf : ∀ w ∈ rows[j], w.isControlFlow = false)
-    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map .tuple)), env))
+    (hr : (denote' bi fuel r).run env = (.val (.array (rows.map (structVal fs.length))), env))
     (haF : envF a = some (.array rows.flatten))
     (hi : (denote' bi fuel i).run env = (.val (.int j), env))
     (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF))
     (hna : a ≠ elemIdxName n) (hac : ∀ f ∈ fs, a ≠ structCompName n f) :
     ∃ envF2,
       (denote' bi fuel (.letBind n (.app "index" [r, i]) body)).run env =
-          (denote' bi fuel body).run (env.extend n (.tuple rows[j])) ∧
+          (denote' bi fuel body).run (env.extend n (structVal fs.length rows[j])) ∧
       (denote' bi fuel (.letBind (elemIdxName n) i'
           (bindElems a (elemIdxName n) fs.length 0 (fs.map (structCompName n)) body'))).run envF =
           (denote' bi fuel body').run envF2 ∧
-      StructFlatAt fs n (env.extend n (.tuple rows[j])) envF2 ∧
+      StructFlatAt fs n (env.extend n (structVal fs.length rows[j])) envF2 ∧
       ∀ y, y ≠ elemIdxName n → (∀ f ∈ fs, y ≠ structCompName n f) → envF2 y = envF y := by
   have hlen : (rows[j]).length = fs.length := hrow _ (List.getElem_mem hj)
-  have hidx : (denote' bi fuel (.app "index" [r, i])).run env = (.val (.tuple rows[j]), env) :=
+  have hidx : (denote' bi fuel (.app "index" [r, i])).run env =
+      (.val (structVal fs.length rows[j]), env) :=
     app_run_of_args bi fuel _ _ _ _ _
       (args_cons_of_val bi fuel _ _ _ _ _ hr rfl
         (args_cons_of_val bi fuel _ _ _ _ _ hi rfl (denoteArgs'_nil_run bi fuel env)))
@@ -2433,7 +2516,7 @@ theorem flatElemBind_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (n a : 
   have hnm : elemIdxName n ∉ fs.map (structCompName n) := by
     simp only [List.mem_map, not_exists, not_and]; exact fun f _ h => elemIdxName_ne n f h.symm
   refine ⟨extendList (envF.extend (elemIdxName n) (.int j)) (fs.map (structCompName n)) rows[j],
-    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hidx rfl, ?_, ?_, ?_⟩
+    denote'_letBind_run_val bi fuel _ _ _ _ _ _ hidx (structVal_not_cf hcf), ?_, ?_, ?_⟩
   · rw [denote'_letBind_run_val bi fuel _ _ _ _ _ _ hi' rfl,
       bindElems_run bi fuel hI hA a (elemIdxName n) fs.length j rows.flatten rows[j] body'
         (fun t ht => flatten_getElem?_mul_add rows hrow hj ht) hlen hcf _ 0 _
@@ -2441,7 +2524,7 @@ theorem flatElemBind_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (n a : 
         (_root_.Hax.Env.extend_same _ _ _)
         (by simp only [List.mem_map, not_exists, not_and]; exact fun f hf h => hac f hf h.symm)
         hnm (by simp), List.drop_zero]
-  · refine ⟨rows[j], _root_.Hax.Env.extend_same _ _ _, hlen, fun t f ht => ?_⟩
+  · refine ⟨rows[j], _root_.Hax.Env.extend_same _ _ _, hlen, fun t f ht => ?_, hcf⟩
     exact extendList_get _ _ _ t _ (hnd.map fun _ _ h => structCompName_inj h)
       (by simp [hlen]) (by simp [ht])
   · intro y hy1 hy2
@@ -2547,27 +2630,30 @@ theorem flatArrUpdate_sim (hU : ArrUpdateSound bi) (hA : IdxArithSound bi) (a : 
     (rows : List (List Value)) (j : Nat) (ws : List Value)
     (hrow : ∀ r ∈ rows, r.length = k) (hj : j < rows.length) (hws : ws.length = k)
     (hcf : ∀ w ∈ ws, w.isControlFlow = false)
-    (ha : env a = some (.array (rows.map .tuple))) (haF : envF a = some (.array rows.flatten))
+    (ha : env a = some (.array (rows.map (structVal k))))
+    (haF : envF a = some (.array rows.flatten))
     (hi : (denote' bi fuel i).run env = (.val (.int j), env))
     (hi' : (denote' bi fuel i').run envF = (.val (.int j), envF))
-    (hx : (denote' bi fuel x).run env = (.val (.tuple ws), env))
+    (hx : (denote' bi fuel x).run env = (.val (structVal k ws), env))
     (hlen : vs.length = k) (hat : ∀ v ∈ vs, storeAtom a (elemIdxName a) v = true)
     (hvs : ∀ s (h : s < vs.length), atomVal envF vs[s] = ws[s]?)
     (hax : a ≠ elemIdxName a) :
     ∃ envF2,
       (denote' bi fuel (.letBind a (.app "array_update" [.var a, i, x]) body)).run env =
-          (denote' bi fuel body).run (env.extend a (.array ((rows.set j ws).map .tuple))) ∧
+          (denote' bi fuel body).run
+            (env.extend a (.array ((rows.set j ws).map (structVal k)))) ∧
       (denote' bi fuel (.letBind (elemIdxName a) i'
           (storeElems a (elemIdxName a) k 0 vs body'))).run envF =
           (denote' bi fuel body').run envF2 ∧
       envF2 a = some (.array (rows.set j ws).flatten) ∧
       ∀ y, y ≠ a → y ≠ elemIdxName a → envF2 y = envF y := by
   have hsrc : (denote' bi fuel (.app "array_update" [.var a, i, x])).run env =
-      (.val (.array ((rows.set j ws).map .tuple)), env) := by
+      (.val (.array ((rows.set j ws).map (structVal k))), env) := by
     refine app_run_of_args bi fuel _ _ _ _ _
       (args_cons_of_val bi fuel _ _ _ _ _ (by rw [denote'_var_run, ha]) rfl
         (args_cons_of_val bi fuel _ _ _ _ _ hi rfl
-          (args_cons_of_val bi fuel _ _ _ _ _ hx rfl (denoteArgs'_nil_run bi fuel env)))) ?_
+          (args_cons_of_val bi fuel _ _ _ _ _ hx (structVal_not_cf hcf)
+            (denoteArgs'_nil_run bi fuel env)))) ?_
     rw [hU, List.map_set]
   have hrj : (rows[j]).length = k := hrow _ (List.getElem_mem hj)
   obtain ⟨envF2, h1, h2, h3⟩ := storeElems_run bi fuel hU hA a (elemIdxName a) k j rows hrow hj

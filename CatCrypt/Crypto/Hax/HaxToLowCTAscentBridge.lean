@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTStruct
 public import CatCrypt.Hax.Ascent.EarlyExit
 public import CatCrypt.Hax.Ascent.Structs
 public import CatCrypt.Hax.Ascent.ArrStructs
+public import CatCrypt.Hax.Ascent.AscentOption
 
 /-!
 # The descent relations over the ascent judgment
@@ -18,26 +19,42 @@ The descent (`haxToLowCTK`, the struct flattening `flatE`, the renaming
 evaluator `Hax.denote'`.  This module states the descent relations in terms of
 the ascent judgment.
 
-**Transport.**  `corres_transport` carries a `Corres` statement across any
-relation `R` between environments that a pair of programs preserves at every
-fuel, with the same outcome on both sides: the second program corresponds to
-the same value from every environment `R`-related to an entry environment of
-the first.  The exit environment is fixed by fuel monotonicity
-(`Hax.Ascent.denote'_val_mono`).  `corres_renameVar` is its instance at the
-renaming relation `RenRel` (`denote'_renameVar`), and `corres_flatProj` at the
-flattening relation `StructFlatAt` for a field call (`flatProj_sim`).
+**Transport.**  `FuelSim bi R Rx e e'` states that from `R`-related environments the
+runs of `e` and `e'` have the same outcome at every fuel and end in `Rx`-related
+environments.  `corres_of_fuelSim` carries a `Corres` statement for `e` to one for
+`e'` with the same value, from the environments `R`-related to an entry environment
+of `e` to those `Rx`-related to its exit environment; the exit environment is fixed
+by fuel monotonicity (`Hax.Ascent.denote'_val_mono`).  `corres_transport` is the case
+`R = Rx`, `corres_renameVar` its instance at the renaming relation `RenRel`
+(`denote'_renameVar`), and `corres_flatProj` at the flattening relation
+`StructFlatAt` for a field call (`flatProj_sim`).  `FuelSim.of_step` composes a
+binding arm whose runs reduce to those of the continuations with a `FuelSim` for the
+continuations: the `Option` bindings and match (`fuelSim_optBindSome`,
+`fuelSim_optBindNone`, `fuelSim_optMatch`), the call result bindings
+(`fuelSim_callBind`, `fuelSim_callBind1`), the update with a copy
+(`fuelSim_flatUpdateCopy`) and the element write of an array of structs, whose stores
+change the flat array (`fuelSim_flatArrUpdate`).  A returned tuple with the variables
+`rs` is transported along the agreement `RetAt rs` (`fuelSim_retVars`,
+`corres_retVars`).
 
 **Leaves.**  The builtin premises `FieldSound` and `UpdateSound` of the struct
 arms hold for a table whose field and update calls are the ascent leaves
-`projLeaf` and `updateLeaf` of a struct with at least two fields
-(`fieldSound_of_projLeaf`, `updateSound_of_updateLeaf`).  `structUpdateName` is hax-lean's
-`structUpdateHead` (`structUpdateName_eq`).  The array builtins of the arrays-of-structs
+`projLeaf` and `updateLeaf`, at every arity (`fieldSound_of_projLeaf`,
+`updateSound_of_updateLeaf`); the update call name is hax-lean's `structUpdateHead`.
+`OptionSound` holds for the runtime leaves of `Some` and `None`
+(`optionSound_of_leaves`).  The array builtins of the arrays-of-structs
 arms hold for the runtime leaves `indexLeaf`, `arrayUpdateLeaf`, `lenLeaf` and the
 integer `Add`/`Mul` leaves (`arrIndexSound_of_indexLeaf`,
 `arrUpdateSound_of_arrayUpdateLeaf`, `lenSound_of_lenLeaf`, `idxArithSound_of_leaves`);
 an array variable holding `enc a` and `encFlat a` is flattened
 (`arrStructFlatAt_encFlat`), and `corres_flatElemField` transports a `Corres` statement
 for a field call on an element to the read of the flat array.
+
+**`Option` returns.**  `Some y` and `None` in tail position and as an early return
+correspond, as the source expression, to the `Option` of the value of `y` and, as
+their lowering `optReturn T` or `optBreak T`, to the payload, with the tag in `T`
+(`corres_optReturnSome`, `corres_optReturnNone`, `corresX_optBreakSome`,
+`corresX_optBreakNone`).
 
 **Exit.**  `ExitSim` takes a `denote'` run ending in a value; a `CorresX`
 statement supplies one, with the value `excVal (R σ)`.  `exitSim_corresX` is the
@@ -47,16 +64,22 @@ function holds the decoding of the thrown or returned value (`excPayload`).
 
 ## Main results
 
-* `corres_transport` — `Corres` across an environment relation preserved at every
-  fuel
-* `corres_renameVar`, `corres_flatProj` — its instances at `RenRel` and
-  `StructFlatAt`
-* `fieldSound_of_projLeaf`, `updateSound_of_updateLeaf` — the struct builtin
-  premises from the ascent leaves
+* `FuelSim`, `corres_of_fuelSim`, `FuelSim.of_step` — the fuel-uniform simulation, the
+  transport of `Corres` along it, and its composition through a binding arm
+* `corres_transport`, `corres_renameVar`, `corres_flatProj` — the transport along one
+  relation, and its instances at `RenRel` and `StructFlatAt`
+* `fieldSound_of_projLeaf`, `updateSound_of_updateLeaf`, `optionSound_of_leaves` — the
+  struct and `Option` builtin premises from the ascent leaves
 * `arrIndexSound_of_indexLeaf`, `arrUpdateSound_of_arrayUpdateLeaf`,
   `lenSound_of_lenLeaf`, `idxArithSound_of_leaves`, `arrStructFlatAt_encFlat`,
-  `corres_flatElemField` — the arrays-of-structs premises from the runtime leaves,
-  and the transport of a field call on an element to the flat read
+  `corres_flatElemField`, `fuelSim_flatArrUpdate` — the arrays-of-structs premises
+  from the runtime leaves, the transport of a field call on an element to the flat
+  read, and the element write
+* `fuelSim_optBindSome`, `fuelSim_optBindNone`, `fuelSim_optMatch`,
+  `corres_optReturnSome`, `corres_optReturnNone`, `corresX_optBreakSome`,
+  `corresX_optBreakNone` — the `Option` arms
+* `fuelSim_callBind`, `fuelSim_callBind1`, `fuelSim_flatUpdateCopy`,
+  `fuelSim_retVars`, `corres_retVars` — call results, copies and named returns
 * `exitSim_corresX` — an `ExitSim` expression under a `CorresX` statement
 * `haxToLowCTFn_corresX`, `haxToLowCTFn_fnCorresX` — the lowered function's result
   slot under `CorresX` and `FnCorresX`
@@ -76,20 +99,24 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec)
 
 section Transport
 
+/-- The runs of `e` from `env` and `e'` from `envF` have the same outcome at every fuel
+    from `R`-related environments and end in `Rx`-related environments. -/
+def FuelSim (bi : Builtins) (R Rx : Env → Env → Prop) (e e' : ImpExpr) : Prop :=
+  ∀ fuel env envF, R env envF →
+    ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
+      Rx ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2
+
 variable {S : Type} {bi : Builtins}
 
-/-- **Transport.**  When from `R`-related environments the runs of `e` and `e'`
-    have the same outcome and end in `R`-related environments at every fuel, a
-    `Corres` statement for `e` gives one for `e'` with the same value, from and to
-    the environments `R`-related to the entry and exit environments of `e`. -/
-theorem corres_transport {R : Env → Env → Prop} {e e' : ImpExpr}
-    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
-    (hsim : ∀ fuel env envF, R env envF →
-      ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
-        R ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2)
+/-- **Transport.**  Under a fuel-uniform simulation of `e` by `e'` from `R` to `Rx`, a
+    `Corres` statement for `e` gives one for `e'` with the same value, from the
+    environments `R`-related to the entry environments of `e` to those `Rx`-related to
+    its exit environments. -/
+theorem corres_of_fuelSim {R Rx : Env → Env → Prop} {e e' : ImpExpr}
+    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value} (hsim : FuelSim bi R Rx e e')
     (h : Corres bi P G e V Q) :
     Corres bi (fun envF σ => ∃ env, P env σ ∧ R env envF) G e' V
-      (fun envF σ => ∃ env, Q env σ ∧ R env envF) := by
+      (fun envF σ => ∃ env, Q env σ ∧ Rx env envF) := by
   rintro envF σ ⟨env, hP, hR⟩ hG
   obtain ⟨f₀, env', hQ, hrun⟩ := h env σ hP hG
   obtain ⟨h1, h2⟩ := hsim f₀ env envF hR
@@ -104,6 +131,33 @@ theorem corres_transport {R : Env → Env → Prop} {e e' : ImpExpr}
     rw [← this]; exact h2
   · rw [_root_.Hax.Ascent.denote'_val_mono bi hv hf]
     exact Prod.ext hv rfl
+
+/-- **Binding arm.**  When at every fuel the runs of `e` and `e'` from `R`-related
+    environments are the runs of `b` and `b'` from `R₂`-related environments, a
+    fuel-uniform simulation of `b` by `b'` from `R₂` is one of `e` by `e'` from `R`. -/
+theorem FuelSim.of_step {R R₂ Rx : Env → Env → Prop} {e e' b b' : ImpExpr}
+    (hstep : ∀ fuel env envF, R env envF → ∃ env₂ envF₂,
+      (denote' bi fuel e).run env = (denote' bi fuel b).run env₂ ∧
+        (denote' bi fuel e').run envF = (denote' bi fuel b').run envF₂ ∧ R₂ env₂ envF₂)
+    (hb : FuelSim bi R₂ Rx b b') : FuelSim bi R Rx e e' := by
+  intro fuel env envF hR
+  obtain ⟨env₂, envF₂, h1, h2, h3⟩ := hstep fuel env envF hR
+  rw [h1, h2]
+  exact hb fuel env₂ envF₂ h3
+
+/-- **Transport along one relation.**  When from `R`-related environments the runs
+    of `e` and `e'` have the same outcome and end in `R`-related environments at every
+    fuel, a `Corres` statement for `e` gives one for `e'` with the same value, from
+    and to the environments `R`-related to the entry and exit environments of `e`. -/
+theorem corres_transport {R : Env → Env → Prop} {e e' : ImpExpr}
+    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
+    (hsim : ∀ fuel env envF, R env envF →
+      ((denote' bi fuel e).run env).1 = ((denote' bi fuel e').run envF).1 ∧
+        R ((denote' bi fuel e).run env).2 ((denote' bi fuel e').run envF).2)
+    (h : Corres bi P G e V Q) :
+    Corres bi (fun envF σ => ∃ env, P env σ ∧ R env envF) G e' V
+      (fun envF σ => ∃ env, Q env σ ∧ R env envF) :=
+  corres_of_fuelSim hsim h
 
 /-- **Renaming.**  Under the side conditions of `denote'_renameVar`, a `Corres`
     statement for `e` holds for `renameVar v w e` from the `RenRel v w`-related
@@ -131,33 +185,60 @@ theorem corres_flatProj {L : StructLayout} {sv : StructVars} {c s comp : String}
 
 end Transport
 
-/-! ## The struct builtins as ascent leaves -/
+/-! ## The struct and `Option` builtins as ascent leaves -/
 
 section Leaves
 
-/-- The field calls of a struct with at least two fields, interpreted by the
-    ascent leaves `projLeaf`, satisfy `FieldSound`. -/
-theorem fieldSound_of_projLeaf {bi : Builtins} {fs : List String} (hn : 2 ≤ fs.length)
+/-- The projection leaf of field `i` of an `n`-field struct reads component `i` of the
+    struct value. -/
+theorem projLeaf_structVal {i n : Nat} {vs : List Value} (hlen : vs.length = n) (hi : i < n) :
+    projLeaf i n [structVal n vs] = vs[i]? := by
+  by_cases hn : n = 1
+  · subst hn
+    obtain ⟨v, rfl⟩ := List.length_eq_one_iff.mp hlen
+    obtain rfl : i = 0 := by omega
+    rfl
+  · rw [structVal_of_ne_one hn]
+    simp [projLeaf, show ¬ n ≤ 1 by omega]
+
+/-- The update leaf of field `i` of an `n`-field struct replaces component `i` of the
+    struct value. -/
+theorem updateLeaf_structVal {i n : Nat} {vs : List Value} (v : Value) (hlen : vs.length = n)
+    (hi : i < n) : updateLeaf i n [structVal n vs, v] = some (structVal n (vs.set i v)) := by
+  by_cases hn : n = 1
+  · subst hn
+    obtain ⟨w, rfl⟩ := List.length_eq_one_iff.mp hlen
+    obtain rfl : i = 0 := by omega
+    rfl
+  · rw [structVal_of_ne_one hn, structVal_of_ne_one hn]
+    simp [updateLeaf, show ¬ n ≤ 1 by omega, hlen, hi]
+
+/-- The field calls of a struct, interpreted by the ascent leaves `projLeaf`, satisfy
+    `FieldSound`. -/
+theorem fieldSound_of_projLeaf {bi : Builtins} {fs : List String}
     (h : ∀ i f, fs[i]? = some f → ∀ vs, bi ("." ++ f) vs = projLeaf i fs.length vs) :
     FieldSound bi fs := by
-  intro vs i f _ hi
+  intro vs i f hlen hi
   rw [h i f hi]
-  simp [projLeaf, show ¬ fs.length ≤ 1 by omega]
+  exact projLeaf_structVal hlen (List.getElem?_eq_some_iff.1 hi).1
 
-/-- The update calls of a struct with at least two fields, interpreted by the
-    ascent leaves `updateLeaf`, satisfy `UpdateSound`. -/
+/-- The update calls of a struct, interpreted by the ascent leaves `updateLeaf` under
+    hax-lean's names `structUpdateHead`, satisfy `UpdateSound`. -/
 theorem updateSound_of_updateLeaf {bi : Builtins} {S : String} {fs : List String}
-    (hn : 2 ≤ fs.length)
     (h : ∀ i, i < fs.length → ∀ vs,
-      bi (structUpdateName S i fs.length) vs = updateLeaf i fs.length vs) :
+      bi (_root_.Hax.structUpdateHead S i fs.length) vs = updateLeaf i fs.length vs) :
     UpdateSound bi S fs := by
   intro vs i v hlen hi
   rw [h i hi]
-  simp [updateLeaf, show ¬ fs.length ≤ 1 by omega, hlen, hi]
+  exact updateLeaf_structVal v hlen hi
 
-/-- The update call name of the descent is hax-lean's `structUpdateHead`. -/
-theorem structUpdateName_eq (S : String) (i n : Nat) :
-    structUpdateName S i n = _root_.Hax.structUpdateHead S i n := rfl
+/-- `Some` and `None` interpreted by the runtime leaves satisfy `OptionSound`. -/
+theorem optionSound_of_leaves {bi : Builtins}
+    (hS : ∀ vs, bi "Some" vs = _root_.Hax.Ascent.someLeaf vs)
+    (hN : ∀ vs, bi "None" vs = _root_.Hax.Ascent.constLeaf (.option none) vs) :
+    OptionSound bi :=
+  ⟨fun v => by rw [hS]; simp only [_root_.Hax.Ascent.someLeaf],
+    by rw [hN]; exact _root_.Hax.Ascent.constLeaf_nil _⟩
 
 /-- `index` interpreted by the runtime leaf satisfies `ArrIndexSound`. -/
 theorem arrIndexSound_of_indexLeaf {bi : Builtins}
@@ -187,19 +268,34 @@ theorem idxArithSound_of_leaves {bi : Builtins}
     _root_.Hax.Ascent.Leaf.orElse_of_some
       (_root_.Hax.Ascent.leaf2_apply (_root_.Hax.mul : Int → Int → Int) x y)⟩
 
-/-- An array variable holding the encoding of an array of products in `env` and its
-    flat encoding `encFlat` in `envF` is flattened. -/
+/-- An array variable holding the encoding of an array of structs with `k` fields in
+    `env` and its flat encoding `encFlat` in `envF` is flattened, when each element
+    encodes as the struct value of its components. -/
 theorem arrStructFlatAt_encFlat {α : Type} [_root_.Hax.Ascent.HaxTupleEnc α]
     [_root_.Hax.Ascent.HaxEnc α] {k : Nat}
     (hk : ∀ p : α, (_root_.Hax.Ascent.HaxTupleEnc.encList p).length = k)
     (henc : ∀ p : α, (_root_.Hax.Ascent.HaxEnc.enc p : Value) =
-      .tuple (_root_.Hax.Ascent.HaxTupleEnc.encList p))
+      structVal k (_root_.Hax.Ascent.HaxTupleEnc.encList p))
     (a : Array α) (x : String) (env envF : Env)
     (h1 : env x = some (_root_.Hax.Ascent.HaxEnc.enc a))
-    (h2 : envF x = some (_root_.Hax.Ascent.encFlat a)) : ArrStructFlatAt k x env envF :=
-  ⟨a.toList.map _root_.Hax.Ascent.HaxTupleEnc.encList,
-    by rw [h1, _root_.Hax.Ascent.enc_array_eq_map_tuple henc],
+    (h2 : envF x = some (_root_.Hax.Ascent.encFlat a)) : ArrStructFlatAt k x env envF := by
+  refine ⟨a.toList.map _root_.Hax.Ascent.HaxTupleEnc.encList, ?_,
     _root_.Hax.Ascent.encFlat_rows hk a, h2⟩
+  rw [h1, _root_.Hax.Ascent.enc_array_toList, List.map_map]
+  congr 2
+  exact List.map_congr_left fun p _ => henc p
+
+/-- The array `a` rebound to the struct values of `rows` with row `j` replaced, over
+    the flat array with row `j` replaced, is flattened. -/
+theorem arrStructFlatAt_set {k : Nat} {a : String} {env envF : Env}
+    {rows : List (List Value)} {j : Nat} {ws : List Value}
+    (hrow : ∀ r ∈ rows, r.length = k) (hws : ws.length = k)
+    (hF : envF a = some (.array (rows.set j ws).flatten)) :
+    ArrStructFlatAt k a (env.extend a (.array ((rows.set j ws).map (structVal k)))) envF :=
+  ⟨rows.set j ws, _root_.Hax.Env.extend_same _ _ _, fun r hr => by
+    rcases List.mem_or_eq_of_mem_set hr with h | h
+    · exact hrow r h
+    · rw [h]; exact hws, hF⟩
 
 end Leaves
 
@@ -209,11 +305,12 @@ section ArrTransport
 
 variable {S : Type} {bi : Builtins}
 
-/-- The array variable `a` is flattened and the index variable `x` holds the same
-    in-range natural on both sides. -/
+/-- The array variable `a` is flattened, its components are not control flow, and
+    the index variable `x` holds the same in-range natural on both sides. -/
 def ElemReadAt (k : Nat) (a x : String) (env envF : Env) : Prop :=
-  ∃ (rows : List (List Value)) (j : Nat), env a = some (.array (rows.map .tuple)) ∧
-    (∀ r ∈ rows, r.length = k) ∧ envF a = some (.array rows.flatten) ∧
+  ∃ (rows : List (List Value)) (j : Nat), env a = some (.array (rows.map (structVal k))) ∧
+    (∀ r ∈ rows, r.length = k) ∧ (∀ r ∈ rows, ∀ w ∈ r, w.isControlFlow = false) ∧
+    envF a = some (.array rows.flatten) ∧
     env x = some (.int j) ∧ envF x = some (.int j) ∧ j < rows.length
 
 /-- **Flattened element field read.**  A `Corres` statement for the field call `c`
@@ -226,15 +323,260 @@ theorem corres_flatElemField (hI : ArrIndexSound bi) (hA : IdxArithSound bi)
     Corres bi (fun envF σ => ∃ env, P env σ ∧ ElemReadAt fs.length a x env envF) G
       (.app "index" [.var a, flatIdx (.var x) fs.length off]) V
       (fun envF σ => ∃ env, Q env σ ∧ ElemReadAt fs.length a x env envF) := by
-  refine corres_transport (fun fuel env envF hR => ?_) h
-  obtain ⟨rows, j, ha, hrow, haF, hx, hxF, hj⟩ := hR
+  refine corres_of_fuelSim (fun fuel env envF hR => ?_) h
+  obtain ⟨rows, j, ha, hrow, hcf, haF, hx, hxF, hj⟩ := hR
   obtain ⟨w, h1, h2⟩ := flatElemField_sim bi fuel hI hA c a fs off (.var a) (.var x) (.var x)
-    env envF rows j hF hoff hrow hj (by rw [denote'_var_run, ha]) haF
-    (by rw [denote'_var_run, hx]) (by rw [denote'_var_run, hxF])
+    env envF rows j hF hoff hrow hj (hcf _ (List.getElem_mem hj)) (by rw [denote'_var_run, ha])
+    haF (by rw [denote'_var_run, hx]) (by rw [denote'_var_run, hxF])
   rw [h1, h2]
-  exact ⟨rfl, rows, j, ha, hrow, haF, hx, hxF, hj⟩
+  exact ⟨rfl, rows, j, ha, hrow, hcf, haF, hx, hxF, hj⟩
+
+/-- **Element write.**  The element write `let a = array_update(a, i, x); body` and
+    its lowering, the binding of `a#idx` and the stores of the field operands `vs`,
+    are simulated from `R` when at every fuel `R` gives the flattened array, the index
+    and the field values, and the environments after the write are `R₂`-related. -/
+theorem fuelSim_flatArrUpdate (hU : ArrUpdateSound bi) (hA : IdxArithSound bi) {a : String}
+    {k : Nat} {i i' x body body' : ImpExpr} {vs : List ImpExpr} (hlen : vs.length = k)
+    (hat : ∀ v ∈ vs, storeAtom a (elemIdxName a) v = true) (hax : a ≠ elemIdxName a)
+    {R R₂ Rx : Env → Env → Prop}
+    (hR : ∀ fuel env envF, R env envF → ∃ (rows : List (List Value)) (j : Nat) (ws : List Value),
+      (∀ r ∈ rows, r.length = k) ∧ j < rows.length ∧ ws.length = k ∧
+      (∀ w ∈ ws, w.isControlFlow = false) ∧
+      env a = some (.array (rows.map (structVal k))) ∧ envF a = some (.array rows.flatten) ∧
+      (denote' bi fuel i).run env = (.val (.int j), env) ∧
+      (denote' bi fuel i').run envF = (.val (.int j), envF) ∧
+      (denote' bi fuel x).run env = (.val (structVal k ws), env) ∧
+      (∀ s (h : s < vs.length), atomVal envF vs[s] = ws[s]?) ∧
+      ∀ envF2, envF2 a = some (.array (rows.set j ws).flatten) →
+        (∀ y, y ≠ a → y ≠ elemIdxName a → envF2 y = envF y) →
+        R₂ (env.extend a (.array ((rows.set j ws).map (structVal k)))) envF2)
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx (.letBind a (.app "array_update" [.var a, i, x]) body)
+      (.letBind (elemIdxName a) i' (storeElems a (elemIdxName a) k 0 vs body')) := by
+  refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
+  obtain ⟨rows, j, ws, hrow, hj, hws, hcf, ha, haF, hi, hi', hx, hvs, hR₂⟩ := hR fuel env envF hR0
+  obtain ⟨envF2, h1, h2, h3, h4⟩ := flatArrUpdate_sim bi fuel hU hA a k i i' x body body' vs
+    env envF rows j ws hrow hj hws hcf ha haF hi hi' hx hlen hat hvs hax
+  exact ⟨_, _, h1, h2, hR₂ envF2 h3 h4⟩
 
 end ArrTransport
+
+/-! ## `Option` arms -/
+
+section OptionArms
+
+variable {S : Type} {bi : Builtins}
+
+/-- After `let o = Some v` and its lowering, `o` is flattened. -/
+theorem optFlatAt_bindSome (o : String) (env envF : Env) (v : Value) :
+    OptFlatAt o (env.extend o (.option (some v)))
+      ((envF.extend (optValName o) v).extend (optTagName o) (.bool true)) := by
+  refine ⟨some v, _root_.Hax.Env.extend_same _ _ _, _root_.Hax.Env.extend_same _ _ _, ?_⟩
+  intro y hy
+  cases hy
+  rw [_root_.Hax.Env.extend_other _ _ _ _ (optTagName_ne_optValName o).symm,
+    _root_.Hax.Env.extend_same]
+
+/-- After `let o = None` and its lowering, `o` is flattened. -/
+theorem optFlatAt_bindNone (o : String) (env envF : Env) :
+    OptFlatAt o (env.extend o (.option none)) (envF.extend (optTagName o) (.bool false)) :=
+  ⟨none, _root_.Hax.Env.extend_same _ _ _, _root_.Hax.Env.extend_same _ _ _,
+    fun _ h => by cases h⟩
+
+/-- **`let o = Some y`.**  The binding and its lowering `optBindArm` are simulated from
+    `R` when `R` gives the same copied value of `y` on both sides and the environments
+    after the binding are `R₂`-related. -/
+theorem fuelSim_optBindSome {o y : String} {body body' e' : ImpExpr} (hO : OptionSound bi)
+    (he : optBindArm o (.app "Some" [.var y]) (.app "Some" [.var y]) body' = some e')
+    {R R₂ Rx : Env → Env → Prop}
+    (hR : ∀ env envF, R env envF → ∃ v, env y = some v ∧ envF y = some v ∧
+      v.isControlFlow = false ∧ bi copyName [v, v] = some v ∧
+      R₂ (env.extend o (.option (some v)))
+        ((envF.extend (optValName o) v).extend (optTagName o) (.bool true)))
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx (.letBind o (.app "Some" [.var y]) body) e' := by
+  refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
+  obtain ⟨v, hy, hyF, hv, hc, h2⟩ := hR env envF hR0
+  obtain ⟨h1, h1', -⟩ := optBind_some_sim bi fuel o (.var y) (.var y) body body' e' env env
+    envF envF v hO he (by rw [denote'_var_run, hy]) hv
+    (rhsCopy_var_run bi fuel _ y envF v hyF hv hc)
+  exact ⟨_, _, h1, h1', h2⟩
+
+/-- **`let o = None`.**  The binding and its lowering `optBindArm` are simulated from
+    `R` when the environments after the binding are `R₂`-related. -/
+theorem fuelSim_optBindNone {o : String} {body body' e' : ImpExpr} (hO : OptionSound bi)
+    (he : optBindArm o (.app "None" []) (.app "None" []) body' = some e')
+    {R R₂ Rx : Env → Env → Prop}
+    (hR : ∀ env envF, R env envF →
+      R₂ (env.extend o (.option none)) (envF.extend (optTagName o) (.bool false)))
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx (.letBind o (.app "None" []) body) e' := by
+  refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
+  obtain ⟨h1, h1', -⟩ := optBind_none_sim bi fuel o body body' e' env envF hO he
+  exact ⟨_, _, h1, h1', hR env envF hR0⟩
+
+/-- **`Option` match.**  The match and its lowering `optMatchArm`, the branch on the
+    tag, are simulated from `R` when `R` flattens `o`, the `Some` arm is simulated by
+    its renaming from the entry environment extended at the binder, and the `None` arm
+    by its lowering. -/
+theorem fuelSim_optMatch {ov : List String} {o v : String} {e2 e1 e2' e1' e' : ImpExpr}
+    (h : optMatchArm ov o v e2' e1' = some e') {R Rx : Env → Env → Prop}
+    (hR : ∀ env envF, R env envF → OptFlatAt o env envF)
+    (hs : FuelSim bi (fun env₂ envF => ∃ env x, R env envF ∧ env o = some (.option (some x)) ∧
+      env₂ = env.extend v x) Rx e2 (renameVar v (optValName o) e2'))
+    (hn : FuelSim bi (fun env envF => R env envF ∧ env o = some (.option none)) Rx e1 e1') :
+    FuelSim bi R Rx (.match_ (.var o) [(.somePat (.varPat v), e2), (.nonePat, e1)]) e' := by
+  intro fuel env envF hR0
+  obtain ⟨ox, hs0, h1, h2, -⟩ := optMatch_sim bi fuel ov o v e2 e1 e2' e1' e' env envF h
+    (hR env envF hR0)
+  rw [h1, h2]
+  cases ox with
+  | some x => exact hs fuel _ _ ⟨env, x, hR0, hs0, rfl⟩
+  | none => exact hn fuel _ _ ⟨hR0, hs0⟩
+
+/-- **`Option` tail value, `Some`.**  `Some y` corresponds to the `Option` of the value
+    of `y`, and its lowering `optReturn T` to the value of `y`, with the tag `true`
+    in `T`. -/
+theorem corres_optReturnSome {T y : String} {e' : ImpExpr} (hO : OptionSound bi)
+    (he : optReturn T (.app "Some" [.var y]) = some e') (hT : y ≠ T)
+    {P : Env → S → Prop} {G : S → Prop} {Y : S → Value}
+    (hy : ∀ env σ, P env σ → G σ → env y = some (Y σ))
+    (hplain : ∀ σ, G σ → (Y σ).isControlFlow = false) :
+    Corres bi P G (.app "Some" [.var y]) (fun σ => .option (some (Y σ))) P ∧
+      Corres bi P G e' Y (fun envF σ => ∃ env, P env σ ∧ envF = env.extend T (.bool true)) :=
+  ⟨_root_.Hax.Ascent.corres_some hO.1 (_root_.Hax.Ascent.corres_var hy) hplain,
+    fun env σ hP hG => ⟨0, _, ⟨env, hP, rfl⟩, fun fuel _ =>
+      (optReturn_some_sim bi fuel T y env (Y σ) e' hO (hy env σ hP hG) (hplain σ hG) hT he).2⟩⟩
+
+/-- **`Option` tail value, `None`.**  `None` corresponds to the empty `Option`, and its
+    lowering `optReturn T` to the word `0`, with the tag `false` in `T`. -/
+theorem corres_optReturnNone {T : String} {e' : ImpExpr} (hO : OptionSound bi)
+    (he : optReturn T (.app "None" []) = some e') (P : Env → S → Prop) (G : S → Prop) :
+    Corres bi P G (.app "None" []) (fun _ => .option none) P ∧
+      Corres bi P G e' (fun _ => Value.ofLit (.uintLit .w64 0))
+        (fun envF σ => ∃ env, P env σ ∧ envF = env.extend T (.bool false)) :=
+  ⟨_root_.Hax.Ascent.corres_none P G hO.2,
+    fun env _ hP _ => ⟨0, _, ⟨env, hP, rfl⟩, fun fuel _ =>
+      (optReturn_none_sim bi fuel T env e' hO he).2⟩⟩
+
+/-- **`Option` early return, `Some`.**  `cfBreak (Some y)` throws the `Option` of the
+    value of `y`, and its lowering `optBreak T` throws the value of `y`, with the tag
+    `true` in `T`. -/
+theorem corresX_optBreakSome {T y : String} {e' : ImpExpr} (hO : OptionSound bi)
+    (he : optBreak T (.app "Some" [.var y]) = some e') (hT : y ≠ T)
+    {P : Env → S → Prop} {G : S → Prop} {Y : S → Value}
+    (hy : ∀ env σ, P env σ → G σ → env y = some (Y σ))
+    (hplain : ∀ σ, G σ → (Y σ).isControlFlow = false) :
+    CorresX bi P G (.cfBreak (.app "Some" [.var y])) (fun σ => .error (.option (some (Y σ)))) P ∧
+      CorresX bi P G e' (fun σ => .error (Y σ))
+        (fun envF σ => ∃ env, P env σ ∧ envF = env.extend T (.bool true)) :=
+  ⟨_root_.Hax.Ascent.corresX_throw
+      (_root_.Hax.Ascent.corres_some hO.1 (_root_.Hax.Ascent.corres_var hy) hplain)
+      (fun _ _ => rfl),
+    fun env σ hP hG => ⟨0, _, ⟨env, hP, rfl⟩, fun fuel _ =>
+      (optBreak_some_sim bi fuel T y env (Y σ) e' hO (hy env σ hP hG) (hplain σ hG) hT he).2⟩⟩
+
+/-- **`Option` early return, `None`.**  `cfBreak None` throws the empty `Option`, and
+    its lowering `optBreak T` throws the word `0`, with the tag `false` in `T`. -/
+theorem corresX_optBreakNone {T : String} {e' : ImpExpr} (hO : OptionSound bi)
+    (he : optBreak T (.app "None" []) = some e') (P : Env → S → Prop) (G : S → Prop) :
+    CorresX bi P G (.cfBreak (.app "None" [])) (fun _ => .error (.option none)) P ∧
+      CorresX bi P G e' (fun _ => .error (Value.ofLit (.uintLit .w64 0)))
+        (fun envF σ => ∃ env, P env σ ∧ envF = env.extend T (.bool false)) :=
+  ⟨_root_.Hax.Ascent.corresX_throw (_root_.Hax.Ascent.corres_none P G hO.2) (fun _ _ => rfl),
+    fun env _ hP _ => ⟨0, _, ⟨env, hP, rfl⟩, fun fuel _ =>
+      (optBreak_none_sim bi fuel T env e' hO he).2⟩⟩
+
+end OptionArms
+
+/-! ## Call results, copies and named returns -/
+
+section Calls
+
+variable {S : Type} {bi : Builtins}
+
+/-- **Call result.**  `let n = val; body` and its lowering, the binding of `n#tup` and
+    the reads of its components, are simulated from `R` when at every fuel `val`
+    returns the struct value and `val'` the tuple of the same components, and every
+    environment in which `n` is then flattened, agreeing with the exit environment of
+    `val'` off `n#tup` and the components of `n`, is `R₂`-related to the source. -/
+theorem fuelSim_callBind {n : String} {fs : List String} (hnd : fs.Nodup)
+    {val val' body body' : ImpExpr} {R R₂ Rx : Env → Env → Prop}
+    (hval : ∀ fuel env envF, R env envF → ∃ (vs : List Value) (env1 envF1 : Env),
+      vs.length = fs.length ∧ (∀ v ∈ vs, v.isControlFlow = false) ∧
+      (denote' bi fuel val).run env = (.val (structVal fs.length vs), env1) ∧
+      (denote' bi fuel val').run envF = (.val (.tuple vs), envF1) ∧
+      ∀ envF2, StructFlatAt fs n (env1.extend n (structVal fs.length vs)) envF2 →
+        (∀ x, x ≠ structTupName n → (∀ f ∈ fs, x ≠ structCompName n f) → envF2 x = envF1 x) →
+        R₂ (env1.extend n (structVal fs.length vs)) envF2)
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx (.letBind n val body) (.letBind (structTupName n) val'
+      (bindProjs (structTupName n) 0 (fs.map (structCompName n)) body')) := by
+  refine FuelSim.of_step (fun fuel env envF hR => ?_) hb
+  obtain ⟨vs, env1, envF1, hlen, hcf, hx, hx', hR₂⟩ := hval fuel env envF hR
+  obtain ⟨envF2, h1, h2, h3, h4⟩ := callBind_sim bi fuel n fs val val' body body' env env1 envF
+    envF1 vs hnd hlen hcf hx hx'
+  exact ⟨_, _, h1, h2, hR₂ envF2 h3 h4⟩
+
+/-- **Call result, one field.**  `let n = val; body` of a one-field struct and its
+    lowering, the binding of the component variable to `val'`, are simulated from `R`
+    when at every fuel `val` and `val'` return the same value and the environments
+    after the binding are `R₂`-related. -/
+theorem fuelSim_callBind1 {n f : String} {val val' body body' : ImpExpr}
+    {R R₂ Rx : Env → Env → Prop}
+    (hval : ∀ fuel env envF, R env envF → ∃ (v : Value) (env1 envF1 : Env),
+      v.isControlFlow = false ∧ (denote' bi fuel val).run env = (.val v, env1) ∧
+      (denote' bi fuel val').run envF = (.val v, envF1) ∧
+      R₂ (env1.extend n v) (envF1.extend (structCompName n f) v))
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx (.letBind n val body) (.letBind (structCompName n f) val' body') := by
+  refine FuelSim.of_step (fun fuel env envF hR => ?_) hb
+  obtain ⟨v, env1, envF1, hv, hx, hx', hR₂⟩ := hval fuel env envF hR
+  obtain ⟨h1, h2, -⟩ :=
+    callBind1_sim bi fuel n f val val' body body' env env1 envF envF1 v hv hx hx'
+  exact ⟨_, _, h1, h2, hR₂⟩
+
+/-- **Update with a copy.**  `let s = struct_update#S#i#n(s, y); body` and its
+    lowering, the copy of `y` into the component of field `f`, are simulated from `R`
+    when `R` flattens `s` and gives the same copied value of `y` on both sides, and
+    every pair of environments in which `s` is flattened is `R₂`-related. -/
+theorem fuelSim_flatUpdateCopy {S' s f y : String} {fs : List String} {i : Nat}
+    {body body' : ImpExpr} (hU : UpdateSound bi S' fs) (hi : fs[i]? = some f)
+    (huniq : ∀ j, fs[j]? = some f → j = i) {R R₂ Rx : Env → Env → Prop}
+    (hR : ∀ env envF, R env envF → StructFlatAt fs s env envF ∧ ∃ v, env y = some v ∧
+      envF y = some v ∧ v.isControlFlow = false ∧ bi copyName [v, v] = some v ∧
+      ∀ env2 envF2, StructFlatAt fs s env2 envF2 → R₂ env2 envF2)
+    (hb : FuelSim bi R₂ Rx body body') :
+    FuelSim bi R Rx
+      (.letBind s (.app (_root_.Hax.structUpdateHead S' i fs.length) [.var s, .var y]) body)
+      (.letBind (structCompName s f) (rhsCopy (structCompName s f) (.var y)) body') := by
+  refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
+  obtain ⟨hsf, v, hy, hyF, hv, hc, hR₂⟩ := hR env envF hR0
+  obtain ⟨env2, envF2, h1, h2, h3⟩ := flatUpdateCopy_sim bi fuel S' s f y fs i body body' env
+    envF v hU hi huniq hsf hy hyF hv hc
+  exact ⟨_, _, h1, h2, hR₂ env2 envF2 h3⟩
+
+/-- **Named tuple return.**  A returned tuple with the variables `rs` evaluates to the
+    same tuple from any two environments that agree on `rs`, changing neither. -/
+theorem fuelSim_retVars {es : List ImpExpr} {rs : List String} (h : retVars es = some rs) :
+    FuelSim bi (RetAt rs) (RetAt rs) (.tuple es) (.tuple es) := by
+  intro fuel env envF hR
+  obtain ⟨vals, h1, h2⟩ := denoteArgs'_retVars bi fuel es rs h env envF hR
+  rw [denote'_tuple_run_some bi fuel es env env vals h1,
+    denote'_tuple_run_some bi fuel es envF envF vals h2]
+  exact ⟨rfl, hR⟩
+
+/-- **Named tuple return under `Corres`.**  A `Corres` statement for a returned tuple
+    with the variables `rs` holds from every environment agreeing on `rs` with an entry
+    environment: the result `namedRet` leaves in `rs` reads back as the same value. -/
+theorem corres_retVars {es : List ImpExpr} {rs : List String} (h : retVars es = some rs)
+    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
+    (hc : Corres bi P G (.tuple es) V Q) :
+    Corres bi (fun envF σ => ∃ env, P env σ ∧ RetAt rs env envF) G (.tuple es) V
+      (fun envF σ => ∃ env, Q env σ ∧ RetAt rs env envF) :=
+  corres_of_fuelSim (fuelSim_retVars h) hc
+
+end Calls
 
 /-! ## The exit-flag lowering under `CorresX` -/
 

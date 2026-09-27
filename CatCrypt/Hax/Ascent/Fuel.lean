@@ -86,11 +86,25 @@ theorem stateM_set_apply {σ : Type} (s t : σ) : (set t : StateM σ PUnit) s = 
 theorem stateM_modify_apply {σ : Type} (g : σ → σ) (s : σ) :
     (modify g : StateM σ PUnit) s = (⟨⟩, g s) := rfl
 
+/-- Fuel stability of the run of `e` at `fuel`: a run that is `fuelFree` or not an error
+    is the run at every larger fuel. -/
+abbrev FuelStable (bi : Builtins) (fuel : Nat) (e : ImpExpr) : Prop :=
+  ∀ env, (fuelFree e = true ∨ isErr (denote' bi fuel e env).1 = false) →
+    ∀ fuel', fuel ≤ fuel' → denote' bi fuel' e env = denote' bi fuel e env
+
+/-- Fuel stability of the run of a counted-loop helper `h` at `fuel`: a run that is not
+    an error is the run at every larger fuel. -/
+abbrev LoopFuelStable (h : Nat → String → Int → Int → ImpExpr → StateM Env Outcome)
+    (fuel : Nat) (var : String) (lo hi : Int) (body : ImpExpr) : Prop :=
+  ∀ env, isErr (h fuel var lo hi body env).1 = false →
+    ∀ fuel', fuel ≤ fuel' → h fuel' var lo hi body env = h fuel var lo hi body env
+
 set_option hygiene false in
 /-- The case of a counted loop in `denote'_fuel_mono_aux`: the lower bound; when it is
-    a value that is not a control-flow value, the upper bound; then the loop helper. -/
+    a value that is not a control-flow value, the upper bound; then the loop helper,
+    through `ihl` at the integers the two bounds denote. -/
 local macro "bounded_loop_case" : tactic => `(tactic| (
-  intro fuel var lo hi body ihlo ihhi ihl env hd fuel' hle
+  intro env hd fuel' hle
   simp only [fuelFree, Bool.false_eq_true, false_or] at hd
   rcases hr1 : denote' bi fuel lo env with ⟨o1, s1⟩
   have hlo : isErr o1 = false := by
@@ -123,6 +137,48 @@ local macro "bounded_loop_case" : tactic => `(tactic| (
     all_goals try cases v2
     all_goals try rfl
     all_goals exact ihl _ _ s2 hd fuel' hle))
+
+/-- The `forLoop` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forLoop (bi : Builtins) (fuel : Nat) (var : String) (lo hi body : ImpExpr)
+    (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoopOrig' bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forLoop var lo hi body) := by
+  bounded_loop_case
+
+/-- The `forLoopRev` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forLoopRev (bi : Builtins) (fuel : Nat) (var : String)
+    (lo hi body : ImpExpr) (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoopRevOrig' bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forLoopRev var lo hi body) := by
+  bounded_loop_case
+
+/-- The `forFold` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forFold (bi : Builtins) (fuel : Nat) (var : String) (lo hi body : ImpExpr)
+    (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoop' bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forFold var lo hi body) := by
+  bounded_loop_case
+
+/-- The `forFoldRev` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forFoldRev (bi : Builtins) (fuel : Nat) (var : String)
+    (lo hi body : ImpExpr) (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoopRev' bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forFoldRev var lo hi body) := by
+  bounded_loop_case
+
+/-- The `forFoldReturn` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forFoldReturn (bi : Builtins) (fuel : Nat) (var : String)
+    (lo hi body : ImpExpr) (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoop'Return bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forFoldReturn var lo hi body) := by
+  bounded_loop_case
+
+/-- The `forFoldRevReturn` case of `denote'_fuel_mono_aux`. -/
+theorem fuelStable_forFoldRevReturn (bi : Builtins) (fuel : Nat) (var : String)
+    (lo hi body : ImpExpr) (ihlo : FuelStable bi fuel lo) (ihhi : FuelStable bi fuel hi)
+    (ihl : ∀ lo hi : Int, LoopFuelStable (denoteForLoopRev'Return bi) fuel var lo hi body) :
+    FuelStable bi fuel (.forFoldRevReturn var lo hi body) := by
+  bounded_loop_case
 
 set_option hygiene false in
 /-- The case of a construct with one child whose non-value outcomes pass through, in
@@ -427,9 +483,11 @@ theorem denote'_fuel_mono_aux (bi : Builtins) :
       cases o <;> simp_all [denote', stateM_bind_apply, pure, StateT.pure]
     simp only [denote', stateM_bind_apply, h1]
   -- forLoop
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forLoop bi fuel var lo hi body ihlo ihhi ihl
   -- forLoopRev
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forLoopRev bi fuel var lo hi body ihlo ihhi ihl
   -- whileLoop
   · while_case
   -- break_ (some e)
@@ -443,15 +501,19 @@ theorem denote'_fuel_mono_aux (bi : Builtins) :
   -- questionMark
   · strict_child_case
   -- forFold
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forFold bi fuel var lo hi body ihlo ihhi ihl
   -- forFoldRev
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forFoldRev bi fuel var lo hi body ihlo ihhi ihl
   -- whileFold
   · while_case
   -- forFoldReturn
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forFoldReturn bi fuel var lo hi body ihlo ihhi ihl
   -- forFoldRevReturn
-  · bounded_loop_case
+  · intro fuel var lo hi body ihlo ihhi ihl _ _ _
+    exact fuelStable_forFoldRevReturn bi fuel var lo hi body ihlo ihhi ihl
   -- whileFoldReturn
   · while_case
   -- cfBreak

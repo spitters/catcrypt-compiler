@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import HaxLean.Phase.ContinueFlag
 
 /-!
 # Lowering a function with early returns: exit flag, result slot, scalar operations
@@ -74,6 +75,14 @@ function context `some exitFnSlot`, so such a `cfBreak` sets the exit flag like
 one inside a loop; the statements after it run under `exitGuard`, and the frame
 `exitFunction` copies `exitValName` into the result slot when the flag is set.
 
+**Continue.**  A `cfContinue` at a statement position of a loop body ends the
+trip.  `haxToLowCTFnC c` rewrites the body of each loop of the function body with
+the continue flag `c` (`Hax.ContinueFlag.contFn`): the trip starts by binding `c`
+to `false`, the `cfContinue` binds it to `true`, and each statement after a
+statement that may continue runs under `ifThenElse (var c) unitVal _`; the rewritten
+body is lowered by `haxToLowCTFn`, the flag becoming a scalar slot and the guard an
+`RIfNz c`.
+
 Every constructor that cannot carry an exit is lowered by `haxToLowCT` outside
 tail position, and a `letBind` by `letHead`, the head context `haxToLowCT` builds
 around its body (`haxToLowCT_letBind_eq_letHead`).  `exitFree` keeps the
@@ -87,6 +96,7 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 
 * `haxToLowCTK`, `haxToLowCTFn`: the exit-flag lowering of an expression and of a
   function body
+* `haxToLowCTFnC`: the lowering of a function body whose loop bodies continue
 * `haxToLowCT_eq_haxToLowCTK_none`: `haxToLowCT` is the exit-free projection of
   `haxToLowCTK false false none`
 * `haxToLowCTK_isSome_iff_anfK`: the lowering succeeds exactly on `AnfShapedK`
@@ -478,6 +488,12 @@ def haxToLowCTK (sc : Bool) : Bool → Option String → ImpExpr → Option (Low
     frame copies its payload into the result slot. -/
 def haxToLowCTFn (e : ImpExpr) : Option LowCT :=
   (haxToLowCTK true true (some exitFnSlot) e).map fun p => exitFunction p.1
+
+/-- The lowering of a function body whose loop bodies may `continue`: the body of each
+    loop is rewritten with the continue flag `c` (`Hax.ContinueFlag.contFn`), and the
+    result is lowered by `haxToLowCTFn`. -/
+def haxToLowCTFnC (c : String) (e : ImpExpr) : Option LowCT :=
+  haxToLowCTFn (_root_.Hax.ContinueFlag.contFn c e)
 
 /-- The commands that cannot exit: `some c` for a lowering `(c, false)`. -/
 def exitFree : Option (LowCT × Bool) → Option LowCT

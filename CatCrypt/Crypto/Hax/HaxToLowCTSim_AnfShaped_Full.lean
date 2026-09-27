@@ -727,6 +727,16 @@ theorem denote_forLoop_lit_var_run (bi : Builtins) (fuel : Nat) (v : String) (lo
   simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
     Value.ofLit, get, getThe, MonadStateOf.get, StateT.get, hk]
 
+/-- Unfold equation for `.forLoop` from an integer literal to a variable bound
+    holding the unsigned word `m`: the loop runs up to the integer `m`. -/
+theorem denote_forLoop_lit_var_uint_run (bi : Builtins) (fuel : Nat) (v : String) (lo : Int)
+    (n : String) (wd : _root_.Hax.IntWidth) (m : Nat) (body : ImpExpr) (env : Env)
+    (hm : env n = some (.uint wd m)) :
+    (denote bi fuel (.forLoop v (.lit (.int lo)) (.var n) body)).run env =
+      (denoteForLoop bi fuel v lo m body).run env := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
+    Value.ofLit, get, getThe, MonadStateOf.get, StateT.get, hm]
+
 /-- A reverse counted loop whose body runs to a value or an error at every fuel
     runs to a value or an error. -/
 theorem denoteForLoopRev_val_or_err (bi : Builtins) (v : String) (body : ImpExpr)

@@ -930,20 +930,21 @@ theorem progSimW_forFold (i : String) (lo hi : Int) (body : ImpExpr)
   exact ⟨rs', hExec, hA', hSB', hSF', hNN'⟩
 
 /-- A `forLoop` from an integer literal to a variable bound holding a value
-    that is not an integer runs to an error. -/
+    that is neither an integer nor an unsigned word runs to an error. -/
 theorem denote_forLoop_lit_var_nonint (fuel : Nat) (v : String) (lo : Int) (n : String)
     (body : ImpExpr) (env : Env) (w : Value) (hw : env n = some w)
-    (hk : ∀ k : Int, w ≠ .int k) :
+    (hk : ∀ k : Int, w ≠ .int k) (hu : ∀ (wd : _root_.Hax.IntWidth) (m : Nat), w ≠ .uint wd m) :
     (denote bi fuel (.forLoop v (.lit (.int lo)) (.var n) body)).run env =
       (.err "for loop bounds must be integers", env) := by
   cases w with
   | int k => exact absurd rfl (hk k)
+  | uint wd m => exact absurd rfl (hu wd m)
   | _ =>
     simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
       Value.ofLit, get, getThe, MonadStateOf.get, StateT.get, hw]
 
 /-- The counted-loop arm with a variable bound: the bound holds a non-negative
-    integer, which is the scalar `RForRuntime` evaluates. -/
+    integer or an unsigned word, whose value is the scalar `RForRuntime` evaluates. -/
 theorem progSimW_forFold_var (i : String) (lo : Int) (n : String) (body : ImpExpr)
     (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
     ProgSimW bridge bi N leafSpec D S T A (.forFold i (.lit (.int lo)) (.var n) body) := by
@@ -963,19 +964,26 @@ theorem progSimW_forFold_var (i : String) (lo : Int) (n : String) (body : ImpExp
   obtain ⟨bodyC, hBtrans, rfl⟩ := haxToLowCT_forFold_var_some i lo n body c hlo hHax
   simp only [forToLoop] at hEval
   unfold evalImp at hEval
-  -- The bound holds a non-negative integer `k`.
+  -- The bound holds a non-negative integer or an unsigned word, read as `k`.
   obtain ⟨w, hw⟩ := hNN.1 n (mem_of_contains D n hnD)
-  obtain ⟨k, hk⟩ : ∃ k : Int, env n = some (.int k) := by
-    by_contra hne
-    push_neg at hne
-    rw [denote_forLoop_lit_var_nonint bi fuel i lo n (forToLoop body) env w hw
-      (fun k hk => hne k (hk ▸ hw))] at hEval
-    cases hEval
-  have hk0 : 0 ≤ k := hNN.2 n (mem_of_contains S n hnS) k hk
   have hTn : rs.rsTower n = none := hSF n (mem_of_contains S n hnS)
-  have hScalar : rs.rsScalar n = k.toNat :=
-    hAgree.1 n (.int k) k.toNat hk hTn (by simp [valueToScalar, hk0])
-  rw [denote_forLoop_lit_var_run bi fuel i lo n k _ env hk] at hEval
+  obtain ⟨k, hk0, hScalar, hLoop⟩ : ∃ k : Int, 0 ≤ k ∧ rs.rsScalar n = k.toNat ∧
+      (denote bi fuel (.forLoop i (.lit (.int lo)) (.var n) (forToLoop body))).run env =
+        (denoteForLoop bi fuel i lo k (forToLoop body)).run env := by
+    cases w with
+    | int k =>
+      have hk0 : 0 ≤ k := hNN.2 n (mem_of_contains S n hnS) k hw
+      exact ⟨k, hk0, hAgree.1 n (.int k) k.toNat hw hTn (by simp [valueToScalar, hk0]),
+        denote_forLoop_lit_var_run bi fuel i lo n k _ env hw⟩
+    | uint wd m =>
+      exact ⟨m, Int.natCast_nonneg m,
+        by rw [Int.toNat_natCast]; exact hAgree.1 n (.uint wd m) m hw hTn rfl,
+        denote_forLoop_lit_var_uint_run bi fuel i lo n wd m _ env hw⟩
+    | _ =>
+      rw [denote_forLoop_lit_var_nonint bi fuel i lo n (forToLoop body) env _ hw
+        (fun _ h => by cases h) (fun _ _ h => by cases h)] at hEval
+      cases hEval
+  rw [hLoop] at hEval
   have hRun : (denoteForLoop bi fuel i lo k (forToLoop body)).run env = (.val v, env') := by
     split at hEval
     · rename_i w e1 hw
