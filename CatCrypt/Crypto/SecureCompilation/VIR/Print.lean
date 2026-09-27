@@ -20,7 +20,8 @@ giving per-op and per-type textual names.
 
 Minimal subset compared to upstream opencompl/lean-mlir's
 `Framework/Print.lean`:
-- Single-result operations (mirrors our single-return `Com`).
+- One result per binding (mirrors our single-return `Com`); a dialect may
+  render a binding as several MLIR operations through `printCustom?`.
 - No regions.
 - Function-level `func.func @f(%a : T, ...) -> R { ...; return %k }`.
 
@@ -44,11 +45,16 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR
 /-- A dialect's textual rendering:
     - `printOp` returns the quoted op name only (e.g., `"arith.addi"`)
     - `printAttrs` returns an attribute dict like ` {value = 3 : i8}`
-      (with leading space) or empty string. -/
+      (with leading space) or empty string.
+    - `printCustom?` renders an op whose MLIR form is not one single-result
+      operation: from the operand SSA names (without `%`) and the result name it
+      returns the MLIR lines, which bind `%<result name>` to the op's value.
+      `none` selects the one-operation line of `Expr.printLine`. -/
 class DialectPrint (d : Dialect) [DialectSignature d] where
   printOp : d.Op → String
   printAttrs : d.Op → String := fun _ => ""
   printTy : d.Ty → String
+  printCustom? : d.Op → List String → String → Option String := fun _ _ _ => none
 
 /-! ## 2. SSA-name environment
 
@@ -98,8 +104,15 @@ def printArgTys {d : Dialect} [DialectSignature d] [DialectPrint d]
     (tys : List d.Ty) : String :=
   "(" ++ String.intercalate ", " (tys.map DialectPrint.printTy) ++ ")"
 
-/-- Print an `Expr` as a line `%k = "dialect.op"(%a, %b) : (T, T) -> R`. -/
-def printLine {d : Dialect} [DialectSignature d] [DialectPrint d]
+/-- The SSA names (without `%`) of an argument list. -/
+def argNames {d : Dialect} {Γ : Ctxt d} :
+    {tys : List d.Ty} → HVector (fun ty => Ctxt.Var Γ ty) tys →
+    PrintEnv.Names Γ → List String
+  | [], .nil, _ => []
+  | _ :: _, .cons v rest, names => PrintEnv.get v names :: argNames rest names
+
+/-- The one-operation line `%k = "dialect.op"(%a, %b) : (T, T) -> R` of an `Expr`. -/
+def printOneLine {d : Dialect} [DialectSignature d] [DialectPrint d]
     {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) (names : PrintEnv.Names Γ)
     (resultName : String) : String :=
   let argStr := printArgs e.args names
@@ -107,6 +120,15 @@ def printLine {d : Dialect} [DialectSignature d] [DialectPrint d]
   let retTy := DialectPrint.printTy t
   let attrs := DialectPrint.printAttrs e.op
   s!"  %{resultName} = {DialectPrint.printOp e.op}({argStr}){attrs} : {argTys} -> {retTy}"
+
+/-- The MLIR lines of an `Expr`: the dialect's `printCustom?` rendering when it
+    has one, the one-operation line `printOneLine` otherwise. -/
+def printLine {d : Dialect} [DialectSignature d] [DialectPrint d]
+    {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) (names : PrintEnv.Names Γ)
+    (resultName : String) : String :=
+  match DialectPrint.printCustom? e.op (argNames e.args names) resultName with
+  | some s => s
+  | none => printOneLine e names resultName
 
 end Expr
 
@@ -136,23 +158,19 @@ def printModule {d : Dialect} [DialectSignature d] [DialectPrint d]
     ++ "}" ++ nl
 
 /-- Render a `Com d Γ t` as a `func.func` taking one argument per
-    context entry. Argument SSA names are `%arg0, %arg1, ...` starting
-    with the context's oldest binding (rightmost in the De Bruijn list). -/
+    context entry. The context entry at De Bruijn index `i` is the argument
+    `%arg<i>`, declared at position `i` of the signature with that entry's type. -/
 def printModuleArgs {d : Dialect} [DialectSignature d] [DialectPrint d] :
     {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → (funcName : String) → String
   | Γ, t, c, funcName => Id.run do
-    -- Build argument signature. Γ is innermost-first (De Bruijn).
-    -- Convention: `.here` (index 0) is the LAST arg (newest push),
-    -- so when listed oldest-first in the signature, `.here` = argN-1.
     let nArgs := Γ.length
-    -- Argument declarations "%arg0 : T0, %arg1 : T1, ..." in oldest-first order.
+    -- Argument declarations "%arg0 : Γ[0], %arg1 : Γ[1], ...".
     let rec buildArgDecls : Ctxt d → Nat → List String
       | [], _ => []
       | ty :: rest, i =>
-          let rest' := buildArgDecls rest (i + 1)
-          rest' ++ ["%arg" ++ toString (nArgs - 1 - i) ++ " : " ++ DialectPrint.printTy ty]
+          ("%arg" ++ toString i ++ " : " ++ DialectPrint.printTy ty) :: buildArgDecls rest (i + 1)
     let argDecls := buildArgDecls Γ 0
-    -- Names list parallels `Γ`: index 0 = .here = newest = argN-1.
+    -- Names list parallels `Γ`: index `i` is `arg<i>`.
     let names : List String := (List.range nArgs).map (fun i => "arg" ++ toString i)
     -- Body SSA names start at 0 (distinct from arg* namespace).
     let (body, retNm) := printBody c names 0
@@ -245,8 +263,7 @@ def printModuleArgs {d : Dialect} [DialectSignature d] [DialectPrint d] :
     let rec buildArgDecls : Ctxt d → Nat → List String
       | [], _ => []
       | ty :: rest, i =>
-          let rest' := buildArgDecls rest (i + 1)
-          rest' ++ ["%arg" ++ toString (nArgs - 1 - i) ++ " : " ++ DialectPrint.printTy ty]
+          ("%arg" ++ toString i ++ " : " ++ DialectPrint.printTy ty) :: buildArgDecls rest (i + 1)
     let argDecls := buildArgDecls Γ 0
     let names : List String := (List.range nArgs).map (fun i => "arg" ++ toString i)
     let (body, retNms) := printBody c names 0

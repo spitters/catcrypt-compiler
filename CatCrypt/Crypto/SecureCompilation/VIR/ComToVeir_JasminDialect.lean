@@ -72,7 +72,8 @@ hypothesis on the MLIR toolchain.
 | `regArith shl w`  | `reg w, reg w`   | `reg w`   | `arith_shli`   |
 | `regArith shr w`  | `reg w, reg w`   | `reg w`   | `arith_shrui`  |
 | `stackLoad w n`   | `stackArr,reg64` | `reg w`   | `memref_load`  |
-| `stackStore w n`  | `stackArr,...`   | `stackArr`| `memref_store` |
+| `stackStore w n`  | `stackArr,...`   | `stackArr`| `catcrypt_unknown` (value update; `memref.store` mutates) |
+| `mulhi w`         | `reg w, reg w`   | `reg w`   | `arith_mului_extended`, second result |
 | `castW w w'`      | `reg w`          | `reg w'`  | `arith_extui` (w<w'), `arith_trunci` (w>w'), `catcrypt_unknown` (w=w', would need bitcast/identity) |
 | `extCall …`       | varies           | varies    | `func_call`    |
 
@@ -85,9 +86,10 @@ hypothesis on the MLIR toolchain.
 | `inlineInt`      | `index` (textual)                 |
 | `bool`           | `IntegerType.mk 1`                |
 
-Every arithmetic / memory / cast op routes to a registered MLIR
-dialect. The only escape hatches are:
-* `castW w w` (identity-width cast) → `catcrypt_unknown` since MLIR's
+An op routes to `catcrypt_unknown` when no single registered MLIR operation
+has its denotation: `stackStore`, `addCarryLo`/`addCarryHi`, `andn`, `rorImm`,
+the immediate shifts, `cmpImm` and the vector ops, and
+* `castW w w` (identity-width cast), since MLIR's
   `arith.extui`/`arith.trunci` reject equal-width operands. A
   bit-preserving identity would emit nothing; this arm keeps a marker.
 * `extCall` to a leaf without an MLIR-registered counterpart (e.g.
@@ -139,7 +141,9 @@ example : JasminBinOp.toArithOpCode .shr = .arith_shrui := rfl
 def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   | .regArith bop _ => bop.toArithOpCode
   | .stackLoad _ _  => .memref_load
-  | .stackStore _ _ => .memref_store
+  -- `stackStore` returns the updated array (a value); `memref.store` writes a
+  -- buffer in place and has no result, so no single registered op matches.
+  | .stackStore _ _ => .catcrypt_unknown
   | .castW w w' =>
       if w' > w then .arith_extui
       else if w > w' then .arith_trunci
@@ -160,29 +164,24 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- AVX2 256-bit vector op: a per-lane vector machine op with no single
   -- registered scalar `arith.*`; kept opaque here, like `vsimd`.
   | .vymm _ => .catcrypt_unknown
-  -- Widening multiply + carry chain: the high word is a multiply,
-  -- the carry-data / carry-out are adds. These scalar `arith.*` codes capture
-  -- the closest registered op; the full two-output / carry semantics is the
-  -- jasmin-backend route (read_linear MULX/ADCX/ADOX), not the MLIR route.
-  | .mulhi _ => .arith_muli
-  | .addCarryLo _ => .arith_addi
-  | .addCarryHi _ => .arith_addi
+  -- The high word of the widening multiply is the second result of
+  -- `arith.mului_extended` (`JasminOp.resultSlotOfOp`). The carry-chain words
+  -- `a + b + cin` take a carry-in that `arith.addui_extended` does not, so no
+  -- single registered op matches them.
+  | .mulhi _ => .arith_mului_extended
+  | .addCarryLo _ => .catcrypt_unknown
+  | .addCarryHi _ => .catcrypt_unknown
   -- Native right-rotate: no single registered scalar `arith.*` op for a
   -- rotate (the upstream `arith` dialect has no rotate); kept opaque here. The
   -- rotate's real meaning is the jasmin-backend `#ROR_w` route (and its
   -- `rotateRight` denotation in `jasminDenote`), not the MLIR route.
   | .rorImm _ _ => .catcrypt_unknown
-  -- Native immediate shifts: same registered scalar shift codes as the
-  -- `regArith .shr`/`.shl` ops — the only difference (immediate vs register
-  -- shift amount) is a jasmin-backend instruction-selection detail, not an MLIR
-  -- op distinction.
-  | .shrImm _ _ => .arith_shrui
-  -- Native immediate arithmetic right-shift: the registered scalar
-  -- SIGNED shift code `arith.shrsi` — the sign-extending twin of `shrImm`'s
-  -- `arith.shrui`. Immediate vs register shift-amount is a jasmin-backend
-  -- detail, not an MLIR op distinction.
-  | .sarImm _ _ => .arith_shrsi
-  | .shlImm _ _ => .arith_shli
+  -- Immediate shifts and the immediate comparison: the MLIR shifts and
+  -- `arith.cmpi` take the amount or the right operand as a second operand, which
+  -- a one-operand op lacks, so no single registered op matches.
+  | .shrImm _ _ => .catcrypt_unknown
+  | .sarImm _ _ => .catcrypt_unknown
+  | .shlImm _ _ => .catcrypt_unknown
   -- Multi-result external call (`func.call` lowering target): the multi-result
   -- analogue of `extCall`, lining up 1:1 with a `func.call` carrying `k`
   -- results.
@@ -190,7 +189,7 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- Scalar comparisons: the registered `arith.cmpi`, whose `i1` result is the
   -- `reg 1` boolean; the predicate is the condition code.
   | .cmp _ _ => .arith_cmpi
-  | .cmpImm _ _ _ => .arith_cmpi
+  | .cmpImm _ _ _ => .catcrypt_unknown
 
 /-! Per-op `rfl` coverage that the mapping function evaluates to the named
     `Veir.OpCode` constructor for each case. Semantic equivalence with the
@@ -214,7 +213,9 @@ example : JasminOp.toMlirOpCode (.regArith JasminBinOp.shr 32) = Veir.OpCode.ari
   rfl
 example : JasminOp.toMlirOpCode (JasminOp.stackLoad 32 16) = Veir.OpCode.memref_load := by
   rfl
-example : JasminOp.toMlirOpCode (JasminOp.stackStore 32 16) = Veir.OpCode.memref_store := by
+example : JasminOp.toMlirOpCode (JasminOp.stackStore 32 16) = Veir.OpCode.catcrypt_unknown := by
+  rfl
+example : JasminOp.toMlirOpCode (JasminOp.mulhi 64) = Veir.OpCode.arith_mului_extended := by
   rfl
 example : JasminOp.toMlirOpCode (JasminOp.castW 32 64) = Veir.OpCode.arith_extui := by
   rfl
@@ -231,12 +232,30 @@ def JasminOp.attrsOfOp : JasminOp → Array (ByteArray × Veir.Attribute)
          Veir.Attribute.unregisteredAttr ⟨"@" ++ name, false⟩)]
   | _ => #[]
 
+/-- The results of an op's Veir operation: `mulhi` is `arith.mului_extended`, whose
+    two results are the low and the high word, the high word being the value; every
+    other op has one result. -/
+def JasminOp.resultSlotOfOp : JasminOp → Nat × Nat
+  | .mulhi _ => (2, 1)
+  | _ => (1, 0)
+
+/-- The properties of an op's Veir operation: the value of the `arith.constant` of
+    `regConst w n` (`BitVec.ofNat w n`), and the default properties otherwise. -/
+def JasminOp.propsOfOp (o : JasminOp) :
+    Veir.HasOpInfo.propertiesOf (JasminOp.toMlirOpCode o) :=
+  match o with
+  | .regConst w n =>
+      ({ value := ⟨(BitVec.ofNat w n).toNat, Veir.IntegerType.mk w⟩ } :
+        Veir.ArithConstantProperties)
+  | _ => default
+
 instance : ToVeirOp jasminDialect where
   Op := Veir.OpCode
   hasOpInfo := inferInstance
   toOp := JasminOp.toMlirOpCode
-  defaultProps _ := default
+  defaultProps := JasminOp.propsOfOp
   attrsOf := JasminOp.attrsOfOp
+  resultSlot := JasminOp.resultSlotOfOp
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types (memref, index). Emitted verbatim by Veir's printer. -/

@@ -210,19 +210,36 @@ end Com
 
 namespace Expr
 
-/-- Explicit decomposition of `printLine` into a `pre ++ printOp e.op ++ post`
-    sandwich. Defeq + `rfl`. -/
+/-- Explicit decomposition of the one-line form `printOneLine` into a
+    `pre ++ printOp e.op ++ post` sandwich. -/
+theorem printOneLine_eq
+    {Γ : Ctxt catCryptDialect} {t : catCryptDialect.Ty}
+    (e : Expr catCryptDialect Γ t) (names : PrintEnv.Names Γ)
+    (resultName : String) :
+    printOneLine e names resultName =
+      "  %" ++ resultName ++ " = " ++ DialectPrint.printOp e.op ++
+      "(" ++ printArgs e.args names ++ ")" ++ DialectPrint.printAttrs e.op ++
+      " : " ++ printArgTys (DialectSignature.sig e.op) ++ " -> " ++
+      DialectPrint.printTy t := by
+  unfold printOneLine
+  rfl
+
+/-- `printLine` is the `printCatCryptParts` rendering around the principal op name
+    `printCatCryptOp e.op` when there is one, and the one-line form otherwise. -/
 theorem printLine_eq
     {Γ : Ctxt catCryptDialect} {t : catCryptDialect.Ty}
     (e : Expr catCryptDialect Γ t) (names : PrintEnv.Names Γ)
     (resultName : String) :
     printLine e names resultName =
-      "  %" ++ resultName ++ " = " ++ DialectPrint.printOp e.op ++
-      "(" ++ printArgs e.args names ++ ")" ++ DialectPrint.printAttrs e.op ++
-      " : " ++ printArgTys (DialectSignature.sig e.op) ++ " -> " ++
-      DialectPrint.printTy t := by
+      match printCatCryptParts e.op (argNames e.args names) resultName with
+      | some p => p.1 ++ printCatCryptOp e.op ++ p.2
+      | none => printOneLine e names resultName := by
   unfold printLine
-  rfl
+  change (match (printCatCryptParts e.op (argNames e.args names) resultName).map
+      (fun p => p.1 ++ printCatCryptOp e.op ++ p.2) with
+    | some s => s
+    | none => printOneLine e names resultName) = _
+  cases printCatCryptParts e.op (argNames e.args names) resultName <;> rfl
 
 /-- `printLine` contains `printCatCryptOp e.op` (= `DialectPrint.printOp e.op`)
     as a substring. -/
@@ -233,6 +250,12 @@ theorem printLine_contains_op
     String.isInfix' (printCatCryptOp e.op)
       (printLine e names resultName) := by
   rw [printLine_eq]
+  cases printCatCryptParts e.op (argNames e.args names) resultName
+  case some p =>
+    exact String.isInfix'_append_right _ _ _
+      (String.isInfix'_append_left _ _ _ (String.isInfix'_refl _))
+  show String.isInfix' (printCatCryptOp e.op) (printOneLine e names resultName)
+  rw [printOneLine_eq]
   -- Replace `DialectPrint.printOp e.op` by `printCatCryptOp e.op` via instance.
   have hop : DialectPrint.printOp (d := catCryptDialect) e.op
               = printCatCryptOp e.op := rfl

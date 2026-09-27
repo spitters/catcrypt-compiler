@@ -148,6 +148,10 @@ class ToVeirOp (d : Dialect) [DialectSignature d] where
     Veir.HasOpInfo.propertiesOf (self := hasOpInfo) (toOp o)
   /-- Per-op attribute payload (key → attribute). Default: no attrs. -/
   attrsOf (o : d.Op) : Array (ByteArray × Veir.Attribute) := #[]
+  /-- The number of results of the op's Veir operation, all of the binding's type,
+      and the index of the result that carries the binding's value. Default: one
+      result. -/
+  resultSlot (o : d.Op) : Nat × Nat := (1, 0)
 
 attribute [reducible, instance] ToVeirOp.hasOpInfo
 
@@ -253,22 +257,39 @@ def pushAllOperands {Γ : Ctxt d} (vm : VarMap Γ)
       pushFreshOperand op (vm _ v)
       pushAllOperands vm op rest
 
+/-- Append `n` fresh results of type `ty` to the operation `op`, returning their
+    pointers in order. -/
+def pushFreshResults (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
+    Nat → ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OpResultPtr)
+  | 0 => pure []
+  | n + 1 => do
+      let r ← pushFreshResult (d := d) op ty
+      let rs ← pushFreshResults op ty n
+      return r :: rs
+
 /--
 Lower a single `Expr d Γ t` to a Veir operation.
 
 Builds an op of kind `e.op`, attaches one operand per argument
-(resolved against `vm`), and attaches a single result of type
-`ToVeirTy.toTy t`. Returns the pair `(opPtr, resPtr)`: the
-`OperationPtr` of the allocated op (needed for chaining) and the
-`OpResultPtr` of its result (needed for the `VarMap`).
+(resolved against `vm`), and attaches the results given by
+`ToVeirOp.resultSlot` (at least one), each of type `ToVeirTy.toTy t`.
+Returns the pair `(opPtr, resPtr)`: the `OperationPtr` of the allocated op
+(needed for chaining) and the `OpResultPtr` of the result that carries the
+binding's value (needed for the `VarMap`).
 -/
 def lowerExpr {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
     ComToVeirM (ToVeirOp.Op (d := d))
       (Veir.OperationPtr × Veir.OpResultPtr) := do
   let op ← allocOp e.op
   pushAllOperands vm op e.args
-  let res ← pushFreshResult op (ToVeirTy.toTy (d := d) t)
-  return (op, res)
+  let (n, k) := ToVeirOp.resultSlot (d := d) e.op
+  let rs ← pushFreshResults (d := d) op (ToVeirTy.toTy (d := d) t) (max n 1)
+  match rs[k]? with
+  | some res => return (op, res)
+  | none =>
+      match rs with
+      | res :: _ => return (op, res)
+      | [] => return (op, ⟨op, 0⟩)
 
 /-! ## 4. Lowering a `Com` -/
 

@@ -55,7 +55,7 @@ signatures, with the chosen Veir target op-code:
 | `bvShiftL w k`           | `sword w`              | `sword w`   | `llvm_shl`               |
 | `bvShiftR w k`           | `sword w`              | `sword w`   | `llvm_lshr`              |
 | `ite t`                  | `bit, t, t`            | `t`         | `arith_select`           |
-| `bitToSword n`           | `bit`                  | `sword n`   | `llvm_zext` (placeholder; lossy sign-extend) |
+| `bitToSword n`           | `bit`                  | `sword n`   | `llvm_sext`              |
 | `memrefZero n`           | none                   | `memref n`  | `builtin_unregistered`   |
 | `memrefSet n i`          | `memref n, sword 64`   | `memref n`  | `builtin_unregistered`   |
 | `memrefGet n i`          | `memref n`             | `sword 64`  | `builtin_unregistered`   |
@@ -74,17 +74,12 @@ Type mapping (`CryptoTy → Veir.TypeAttr`):
 
 Notes on the op mapping:
 
-* `bitToSword n` ("if c then allOnes else 0") is morally an
-  `arith.extsi i1 → iN` plus a negate. Veir's `OpCode` enum has
-  `llvm_zext` / `arith_extui` but no `extsi`. Using `llvm_zext`
-  preserves the SSA shape but loses the sign-extend information; an
-  accurate lowering needs Veir to gain `extsi`.
-* Pair / sum / memref / `extCall` have no Veir-native counterpart in
-  the current op-code enum, so they all lower to
-  `OpCode.builtin_unregistered`. This is Veir's standard escape hatch
-  for ops from a dialect it does not know about, and it produces a
-  shape-correct IR (operands and results in the right places) that
-  fails on any Veir pass that wants to inspect op semantics.
+* `bitToSword n` ("if c then allOnes else 0") is the sign extension
+  `i1 → iN`: `llvm_sext` here, `arith_extsi` in `toArithOpCode`.
+* Pair / sum / memref ops have no single Veir operation with their
+  denotation, so they lower to `catcrypt.unknown`, an unregistered op that
+  MLIR accepts under `--allow-unregistered-dialect`, with operands and results
+  in place and no semantics.
 
 ## Goal 2: Veir op-code mechanism
 
@@ -166,7 +161,7 @@ def CatCryptOp.toVeirOp : CatCryptOp → Veir.OpCode
   -- Bignum ALU word splits: no single Veir opcode, unregistered escape.
   | .bvMulHi _ | .bvAddCarryLo _ | .bvAddCarryHi _ => .catcrypt_unknown
   | .ite _ => .arith_select
-  | .bitToSword _ => .llvm_zext
+  | .bitToSword _ => .llvm_sext
   | .memrefZero _ | .memrefSet _ _ | .memrefGet _ _
   | .memrefSetDyn _ | .memrefGetDyn _ | .memrefGetDyn128 _
   | .memrefWSetDyn _ _ | .memrefWGetDyn _ _ =>
@@ -179,58 +174,55 @@ def CatCryptOp.toVeirOp : CatCryptOp → Veir.OpCode
   | .vsha256rnds2 | .vsha256msg1 | .vsha256msg2 =>
       .catcrypt_unknown
 
-/-- **MLIR `arith`-dialect lowering pass.** Maps each arithmetic / bit / control
-    `CatCryptOp` to a REGISTERED MLIR **`arith.*`** (or `func.*`) opcode — the
-    standard mid-level integer dialect — rather than the LLVM-dialect forms
-    `toVeirOp` uses. Lowering to `arith` (not `llvm`) keeps the emitted MLIR at
-    the level upstream MLIR passes operate on (`-canonicalize`, `-cse`,
-    `arith-*`, `-int-range-optimizations`), before any `arith→llvm` conversion.
+/-- **MLIR `arith`-dialect lowering pass.** Maps each `CatCryptOp` whose
+    denotation is that of one registered MLIR operation over the binding's
+    operands to that operation's opcode in the `arith`, `memref` or `func`
+    dialect; every other op maps to `catcrypt.unknown`, carrying its name and
+    immediate in `attrsOfOp`.
 
-    Coverage: every BitVec/bit/`ite`/`extCall` op → an `arith`/`func` opcode, and
-    the memory ops → the registered MLIR **`memref`** dialect (`memref.alloca/
-    load/store`), which Veir's `OpCode` enum carries as a `Memref` block. The only
-    ops WITHOUT a registered counterpart are the algebraic-datatype ops
-    (pair/sum/`constUnit`) → `catcrypt.unknown` (would need an MLIR `tuple`/`index`
-    lowering or a richer `catcrypt` dialect). All mappings `rfl`-checked below. -/
+    * `bvMulHi w` is `arith.mului_extended`, whose second result
+      (`resultSlotOfOp`) is the high word.
+    * `bitToSword n` is `arith.extsi` (`c ↦ allOnes` or `0`).
+    * `bvShiftLV`, `bvShiftRV` are `arith.shli`, `arith.shrui`: equal to the
+      denotation for an amount `< w`, where MLIR yields poison and the
+      denotation `0`.
+    * `not`, `bvNot`, the immediate shifts, rotates and `andn` need a constant
+      operand, `bvAddCarryLo/Hi`, `bvAdd64`, `bvAdc` a chain of operations, the
+      memref reads an `index` operand reduced modulo `n`, and the memref updates
+      a fresh buffer; one registered operation does not express them, so they
+      map to `catcrypt.unknown`. The text printer `CatCryptPrint` renders all of
+      them as sequences of upstream operations. -/
 def CatCryptOp.toArithOpCode : CatCryptOp → Veir.OpCode
   | .constBit _ => .arith_constant
   | .constUnit => .catcrypt_unknown
   | .xor => .arith_xori
   | .and => .arith_andi
   | .or => .arith_ori
-  | .not => .arith_xori           -- `not x = xor x true`
+  | .not => .catcrypt_unknown
   | .eqBit => .arith_cmpi
   | .mkPair _ _ | .fst _ _ | .snd _ _ | .inl _ _ | .inr _ _ => .catcrypt_unknown
   | .bvConst _ _ => .arith_constant
   | .bvXor _ => .arith_xori
   | .bvAnd _ => .arith_andi
   | .bvOr _ => .arith_ori
-  | .bvNot _ => .arith_xori        -- `bvNot x = xor x allOnes`
+  | .bvNot _ => .catcrypt_unknown
   | .bvAdd _ => .arith_addi
   | .bvSub _ => .arith_subi
   | .bvMul _ => .arith_muli
   | .bvEq _ => .arith_cmpi
-  | .bvShiftL _ _ => .arith_shli
-  | .bvShiftR _ _ => .arith_shrui
-  -- Variable-amount logical shifts map to the same registered `arith` shifts.
+  | .bvShiftL _ _ | .bvShiftR _ _ | .bvShiftRA _ _ => .catcrypt_unknown
+  -- Variable-amount logical shifts: equal to the denotation for an amount `< w`.
   | .bvShiftLV _ => .arith_shli
   | .bvShiftRV _ => .arith_shrui
-  -- Arithmetic right shift by immediate → registered `arith.shrsi`.
-  | .bvShiftRA _ _ => .arith_shrsi
-  -- Rotates / `andn`: no single registered `arith.*` op, unregistered escape.
   | .bvRor _ _ | .bvRol _ _ | .andn _ => .catcrypt_unknown
-  -- Multi-output add-with-carry: no registered `arith.*` op produces both
-  -- carry-out and sum in one go, so route to the unregistered escape.
   | .bvAdd64 _ | .bvAdc _ => .catcrypt_unknown
-  -- Bignum ALU word splits: no registered `arith.*` op, unregistered escape.
-  | .bvMulHi _ | .bvAddCarryLo _ | .bvAddCarryHi _ => .catcrypt_unknown
+  | .bvMulHi _ => .arith_mului_extended
+  | .bvAddCarryLo _ | .bvAddCarryHi _ => .catcrypt_unknown
   | .ite _ => .arith_select
-  | .bitToSword _ => .arith_extui
-  -- memory ops → registered MLIR `memref` dialect (Veir gained the block).
-  | .memrefZero _ => .memref_alloca
-  | .memrefGet _ _ | .memrefGetDyn _ | .memrefGetDyn128 _
-  | .memrefWGetDyn _ _ => .memref_load
-  | .memrefSet _ _ | .memrefSetDyn _ | .memrefWSetDyn _ _ => .memref_store
+  | .bitToSword _ => .arith_extsi
+  | .memrefZero _ | .memrefGet _ _ | .memrefGetDyn128 _ => .catcrypt_unknown
+  | .memrefGetDyn _ | .memrefWGetDyn _ _ => .catcrypt_unknown
+  | .memrefSet _ _ | .memrefSetDyn _ | .memrefWSetDyn _ _ => .catcrypt_unknown
   | .extCall _ _ _ => .func_call
   | .sampleBit | .sampleBv _ => .catcrypt_unknown
   -- 128-bit SIMD ops: no registered `arith`/`memref` opcode, unregistered escape.
@@ -239,17 +231,17 @@ def CatCryptOp.toArithOpCode : CatCryptOp → Veir.OpCode
   | .vsha256rnds2 | .vsha256msg1 | .vsha256msg2 =>
       .catcrypt_unknown
 
-/-! The `arith`-lowering maps each arithmetic op to its registered MLIR opcode
-    (verified by `rfl`); no arithmetic op falls back to the unregistered escape. -/
+/-! Instances of the `arith`-lowering map, checked by `rfl`. -/
 example : CatCryptOp.toArithOpCode (.bvAdd 32) = .arith_addi := rfl
 example : CatCryptOp.toArithOpCode (.bvSub 32) = .arith_subi := rfl
 example : CatCryptOp.toArithOpCode (.bvMul 16) = .arith_muli := rfl
 example : CatCryptOp.toArithOpCode (.bvXor 64) = .arith_xori := rfl
-example : CatCryptOp.toArithOpCode (.bvShiftL 32 3) = .arith_shli := rfl
-example : CatCryptOp.toArithOpCode (.bvShiftR 32 3) = .arith_shrui := rfl
+example : CatCryptOp.toArithOpCode (.bvShiftLV 32) = .arith_shli := rfl
+example : CatCryptOp.toArithOpCode (.bvShiftRV 32) = .arith_shrui := rfl
 example : CatCryptOp.toArithOpCode (.bvEq 16) = .arith_cmpi := rfl
 example : CatCryptOp.toArithOpCode (.ite (.sword 64)) = .arith_select := rfl
-example : CatCryptOp.toArithOpCode (.bitToSword 64) = .arith_extui := rfl
+example : CatCryptOp.toArithOpCode (.bitToSword 64) = .arith_extsi := rfl
+example : CatCryptOp.toArithOpCode (.bvMulHi 64) = .arith_mului_extended := rfl
 example : CatCryptOp.toArithOpCode (.extCall "fp_mul" [] (.sword 64)) = .func_call := rfl
 
 /-- **MLIR `polynomial`-dialect lowering pass** for the `latticeDialect` (the
@@ -270,15 +262,35 @@ example : LatticeOp.toPolynomialOpCode (.invntt 3329 256) = .polynomial_intt := 
 example : LatticeOp.toPolynomialOpCode (.basemul 3329 256) = .polynomial_mul := rfl
 example : LatticeOp.toPolynomialOpCode (.polyAddN 3329 256) = .polynomial_add := rfl
 
-/-- Per-op attribute payload. Today only `extCall` carries one — the
-    callee symbol-ref attribute `callee = @<name>`. The remaining ops
-    have no attribute payload; their semantics live entirely in their
-    op-code + operands. -/
+/-- Per-op attribute payload: the callee symbol-ref attribute `callee = @<name>` of
+    `extCall`, and the `eq` predicate `predicate = 0 : i64` of `eqBit` and `bvEq`
+    (`arith.cmpi` carries its predicate as an attribute). -/
 def CatCryptOp.attrsOfOp : CatCryptOp → Array (ByteArray × Veir.Attribute)
   | .extCall name _ _ =>
       #[("callee".toUTF8,
          Veir.Attribute.unregisteredAttr ⟨"@" ++ name, false⟩)]
+  | .eqBit | .bvEq _ =>
+      #[("predicate".toUTF8, Veir.Attribute.integerAttr ⟨0, Veir.IntegerType.mk 64⟩)]
   | _ => #[]
+
+/-- The results of an op's Veir operation: `bvMulHi` is `arith.mului_extended`,
+    whose two results are the low and the high word, the high word being the value;
+    every other op has one result. -/
+def CatCryptOp.resultSlotOfOp : CatCryptOp → Nat × Nat
+  | .bvMulHi _ => (2, 1)
+  | _ => (1, 0)
+
+/-- The properties of an op's Veir operation: the value of an `arith.constant`
+    (`bvConst`, `constBit`), and the default properties otherwise. -/
+def CatCryptOp.propsOfOp (o : CatCryptOp) :
+    Veir.HasOpInfo.propertiesOf (CatCryptOp.toArithOpCode o) :=
+  match o with
+  | .bvConst w v =>
+      ({ value := ⟨v.toNat, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties)
+  | .constBit b =>
+      ({ value := ⟨if b then 1 else 0, Veir.IntegerType.mk 1⟩ } :
+        Veir.ArithConstantProperties)
+  | _ => default
 
 instance : ToVeirOp catCryptDialect where
   Op := Veir.OpCode
@@ -286,11 +298,9 @@ instance : ToVeirOp catCryptDialect where
   -- Lower to the registered MLIR `arith`/`func` mid-level dialect (upstream-pass
   -- compatible), not the LLVM-dialect forms in the legacy `toVeirOp`.
   toOp := CatCryptOp.toArithOpCode
-  defaultProps _ := default
-    -- For each `Veir.OpCode` we map to, the upstream `propertiesOf`
-    -- returns an `Inhabited` type (specific property struct or
-    -- `Unit`), so `default` is always well-typed.
+  defaultProps := CatCryptOp.propsOfOp
   attrsOf := CatCryptOp.attrsOfOp
+  resultSlot := CatCryptOp.resultSlotOfOp
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types that have no native Veir `TypeAttr` (memref,
