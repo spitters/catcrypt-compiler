@@ -37,6 +37,12 @@ sub-derivation or a closed side condition:
 * the termination of a `whileFold`, proved from a measure `(y - x).toNat` read off the
   comparisons of the loop (`proveTerm`).
 
+The comparisons of two values that decide how a proof is built (the equal branches of a
+conditional, `ite_same`, the branch-selecting lemmas, and the oracle equation) are made at
+reducible transparency and then at default transparency within a twentieth of the
+heartbeat budget (`isDefEqBounded`); a comparison that exceeds it counts as unequal, so
+two branches are merged into a conditional value instead of being unfolded.
+
 A step that finds no rule or cannot close a side condition fails with a message whose
 first word names the cause: `construct:`, `leaf:`, `type:`, `unbound:`, `loop:` or `side:`.
 No goal is returned: the generator either proves the correspondence or fails.
@@ -203,6 +209,22 @@ def proveDecide (p : Expr) : MetaM Expr := do
   unless ok do throwError "side: cannot decide{shortExpr p}"
   mkDecideProof p
 
+/-- Run `x` within a twentieth of the heartbeat budget, counted from its start: `none`
+    when `x` throws or exceeds that budget, with the state restored. -/
+def boundedTry? {α : Type} (x : MetaM α) : MetaM (Option α) := do
+  let s ← saveState
+  tryCatchRuntimeEx
+    (withCurrHeartbeats <| withTheReader Core.Context
+      (fun c => { c with maxHeartbeats := c.maxHeartbeats / 20 }) <| some <$> x)
+    fun _ => do s.restore; return none
+
+/-- Whether `a` and `b` are definitionally equal: first at reducible transparency, then at
+    the ambient transparency within a twentieth of the heartbeat budget. A check that
+    exceeds that budget answers `false`. -/
+def isDefEqBounded (a b : Expr) : MetaM Bool := do
+  if ← withReducible (isDefEq a b) then return true
+  return (← boundedTry? (isDefEq a b)).getD false
+
 /-- A proof `rfl` of `lhs = rhs` that the kernel accepts. -/
 def kernelRefl (p : Expr) : MetaM Expr := do
   let p ← instantiateMVars p
@@ -240,10 +262,10 @@ partial def lookupExpr (l : Expr) (x : String) : MetaM (Option Expr) := do
 def proveIteEq (b v1 v2 v : Expr) (hyps : Array Expr) : MetaM Expr := do
   let lhs ← mkIteB b v1 v2
   let goal ← mkEq lhs v
-  if ← isDefEq lhs v then return ← mkExpectedTypeHint (← mkEqRefl v) goal
+  if ← isDefEqBounded lhs v then return ← mkExpectedTypeHint (← mkEqRefl v) goal
   let cands : List (MetaM Expr) :=
     [ (do
-        unless ← isDefEq v1 v2 do throwError "no"
+        unless ← isDefEqBounded v1 v2 do throwError "no"
         mkAppM ``Hax.Ascent.ite_same #[b, v1]),
       (do
         let (``Hax.Ascent.HaxEnc.enc, #[_, _, t]) := v1.getAppFnArgs | throwError "no"
@@ -255,11 +277,11 @@ def proveIteEq (b v1 v2 v : Expr) (hyps : Array Expr) : MetaM Expr := do
     (hyps.toList.map fun h => mkAppM ``Hax.Ascent.ite_of_right_noexit #[v1, v2, h])
   for c in cands do
     let s ← saveState
-    try
+    let r ← boundedTry? do
       let pf ← c
-      if ← isDefEq (← inferType pf) goal then return pf
-      s.restore
-    catch _ => s.restore
+      if ← isDefEq (← inferType pf) goal then return some pf else return none
+    if let some (some pf) := r then return pf
+    s.restore
   throwError "side: cannot prove{shortExpr goal}"
 
 /-- A proof of `bindLookup l x = some v`. -/
@@ -636,9 +658,9 @@ def falseE : Expr := mkConst ``Bool.false
 
 /-- Merge two values under a condition. -/
 def mergeVal (b : Expr) (vt ve : SVal) : MetaM SVal := do
-  if ← isDefEq vt.val ve.val then return vt
+  if ← isDefEqBounded vt.val ve.val then return vt
   if let (some tt, some te, some tyt, some tye) := (vt.ty?, ve.ty?, vt.tm?, ve.tm?) then
-    if ← isDefEq tt te then
+    if ← isDefEqBounded tt te then
       return ← typedV tt (← mkIteB b tyt tye)
   return { val := ← mkIteB b vt.val ve.val }
 
@@ -1292,7 +1314,7 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
         let thmTy ← instantiateMVars (← inferType thm)
         let oracle ← (do
           unless ← isDefEq β retTy do return false
-          withTransparency .default (isDefEq tm surfaceApp))
+          withTransparency .default (isDefEqBounded tm surfaceApp))
         return { argTy := A, fn, thmTy, thm, merged? := none, surfaceFn, oracle }
       | some (C, W, _) =>
         let (some wTm, some vTm, some βw, some β) := (W.tm?, r.val.tm?, W.ty?, r.val.ty?)
@@ -1313,7 +1335,7 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
           merged? := some (← mkLambdaFVars #[a] m)
           oracle ← (do
             unless ← isDefEq β retTy do return false
-            withTransparency .default (isDefEq m surfaceApp))
+            withTransparency .default (isDefEqBounded m surfaceApp))
         let parts := (← mkLambdaFVars #[a] C, ← mkLambdaFVars #[a] wTm, ← mkLambdaFVars #[a] vTm)
         return { argTy := A, fn, thmTy, thm, merged?, surfaceFn, oracle, parts? := some parts }
 

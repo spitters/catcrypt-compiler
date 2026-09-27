@@ -58,9 +58,18 @@ prefix (`Ns.HaxGen.g.call_f`).
 
 ## Reports
 
-A report line gives the function, `proved`, `proved (early return)`, `failed` or
+A report line gives the function, `proved`, `proved (early return)`, `failed`, `timeout` or
 `excluded`, the time, and the oracle status and phase times, or the first line of the
-failure. The constructs outside the generator (`lam`, `match_`, the `*Return` loops,
+failure.
+
+Each function runs under heartbeat budgets of its own, counted from its start: one for the
+generation and its declarations, one for its call lemma and one for its correspondence
+under the whole table. A function that exceeds a budget is reported `timeout`, with the
+phase, and its declarations are discarded; the run continues with the next function. The
+reading of each literal, of its parameters and bound names, and each leaf lemma likewise
+run under budgets of their own; a leaf lemma that fails is noted and left out.
+
+The constructs outside the generator (`lam`, `match_`, the `*Return` loops,
 `cfContinue`, `cfBreakContinue`, and the pre-pipeline constructs) are counted per function.
 `coverageRun` runs the same on an extraction module from `IO`.
 
@@ -313,12 +322,22 @@ def addDefn (n : Name) (ty val : Expr) : MetaM Unit := do
 structure FnReport where
   /-- The function. -/
   name : String
-  /-- `proved`, `proved (early return)`, `failed` or `excluded`. -/
+  /-- `proved`, `proved (early return)`, `failed`, `timeout` (the function exceeded its
+      heartbeat budget) or `excluded`. -/
   status : String
   /-- The oracle status and phase times, or the cause of the failure. -/
   detail : String := ""
   /-- The time in milliseconds. -/
   ms : Nat := 0
+
+/-- Run `x` under a heartbeat budget of its own, counted from the start of `x`. A failure,
+    including an exceeded heartbeat or recursion limit, restores the state and returns the
+    first 300 characters of the error, on one line. -/
+def budgeted {α : Type} (x : TermElabM α) : TermElabM (Except String α) := do
+  let saved ← saveState
+  tryCatchRuntimeEx (return .ok (← withCurrHeartbeats x)) fun ex => do
+    saved.restore
+    return .error ((← msgStr ex).replace "\n" " ")
 
 /-- The right-nested argument tuple `(x₁, (…, (xₙ, ())))`. -/
 def mkArgTuple : List Expr → MetaM Expr
@@ -362,14 +381,15 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     for (f, proj, tys, r) in deps do
       if rtNames.contains f || isTagged f then
         notes := notes.push s!"dependency {f}: its name is a runtime operation"; continue
-      try
+      let res ← budgeted do
         let A ← argTupleTy tys
         let fnLam ← withLocalDeclD `p A fun p => do
           let cs ← argComps p tys.length
           mkLambdaFVars #[p] (mkAppN (← applyInsts proj insts) cs.toArray)
-        let m ← mkAppM ``Hax.Ascent.DepMethod.mk #[mkStrLit f, A, r, fnLam]
-        depElems := depElems.push (f, m, proj, tys, r)
-      catch _ =>
+        mkAppM ``Hax.Ascent.DepMethod.mk #[mkStrLit f, A, r, fnLam]
+      match res with
+      | .ok m => depElems := depElems.push (f, m, proj, tys, r)
+      | .error _ =>
         notes := notes.push s!"dependency {f}: no injective encoding of its argument types"
     let depsE ← mkListLit (mkConst ``Hax.Ascent.DepMethod) (depElems.toList.map (·.2.1))
     addDefn (gen "deps") (← mkForallFVars insts (← inferType depsE)) (← mkLambdaFVars insts depsE)
@@ -381,8 +401,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
       let f := dropEnd (lastStr l) 8
       let sur := Name.str ns f
       unless (← getEnv).contains sur do continue
-      let le ← applyInsts l insts
-      let some lb ← unfoldDefinition? le | continue
+      let .ok (some lb) ← budgeted do unfoldDefinition? (← applyInsts l insts)
+        | notes := notes.push s!"literal {f}: its value could not be read"; continue
       let sc := scanLit lb {}
       for a in sc.apps do allApps := allApps.insert a
       for a in sc.vars do allApps := allApps.insert a
@@ -431,17 +451,16 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     let mut leafNames : Array Name := #[]
     for (f, m, proj, tys, r) in depElems do
       unless allApps.contains f do continue
-      try
-        mkLeafThm f tys (mkAppM ``Hax.Ascent.DepMethod.leaf #[m])
+      match ← budgeted (mkLeafThm f tys (mkAppM ``Hax.Ascent.DepMethod.leaf #[m])
           (fun xs => do mkAppM ``Hax.Ascent.DepMethod.leaf_apply #[m, ← mkArgTuple xs.toList])
-          (fun xs => do mkEnc r (mkAppN (← applyInsts proj insts) xs))
-        leafNames := leafNames.push (Name.str leafNs f)
-      catch ex => notes := notes.push s!"leaf {f}: {← msgStr ex}"
+          (fun xs => do mkEnc r (mkAppN (← applyInsts proj insts) xs))) with
+      | .ok () => leafNames := leafNames.push (Name.str leafNs f)
+      | .error e => notes := notes.push s!"leaf {f}: {e}"
     for s in structs do
       let sty := mkConst s.tyName
       if allApps.contains s.lit then
-        try
-          mkLeafThm s.lit s.fieldTys.toList (mkAppM ``Hax.Ascent.ctorLeaf #[mkNatLit s.arity])
+        match ← budgeted (mkLeafThm s.lit s.fieldTys.toList
+            (mkAppM ``Hax.Ascent.ctorLeaf #[mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.ctorLeaf_one #[xs[0]!]
               else
@@ -449,14 +468,14 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.set `p (mkAppN (mkConst s.ctor) xs); r.set `n (mkNatLit s.arity)
                 r.side `hlen; r.side `hn
                 r.done)
-            (fun xs => mkEnc sty (mkAppN (mkConst s.ctor) xs))
-          leafNames := leafNames.push (Name.str leafNs s.lit)
-        catch ex => notes := notes.push s!"leaf {s.lit}: {← msgStr ex}"
+            (fun xs => mkEnc sty (mkAppN (mkConst s.ctor) xs))) with
+        | .ok () => leafNames := leafNames.push (Name.str leafNs s.lit)
+        | .error e => notes := notes.push s!"leaf {s.lit}: {e}"
       for (pl, pd, i) in s.projs do
         unless allApps.contains pl do continue
-        try
-          let fty ← if s.arity == 1 then pure sty else pure s.fieldTys[i]!
-          mkLeafThm pl [sty] (mkAppM ``Hax.Ascent.projLeaf #[mkNatLit i, mkNatLit s.arity])
+        let fty := if s.arity == 1 then sty else s.fieldTys[i]!
+        match ← budgeted (mkLeafThm pl [sty]
+            (mkAppM ``Hax.Ascent.projLeaf #[mkNatLit i, mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.projLeaf_one #[xs[0]!]
               else
@@ -465,15 +484,15 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.set `β s.fieldTys[i]!
                 r.side `hn
                 r.done)
-            (fun xs => mkEnc fty (mkApp (mkConst pd) xs[0]!))
-          leafNames := leafNames.push (Name.str leafNs pl)
-        catch ex => notes := notes.push s!"leaf {pl}: {← msgStr ex}"
+            (fun xs => mkEnc fty (mkApp (mkConst pd) xs[0]!))) with
+        | .ok () => leafNames := leafNames.push (Name.str leafNs pl)
+        | .error e => notes := notes.push s!"leaf {pl}: {e}"
       for i in [0:s.arity] do
         let un := s!"struct_update#{s.lit}#{i}#{s.arity}"
         unless allApps.contains un do continue
-        try
-          let fty := s.fieldTys[i]!
-          mkLeafThm un [sty, fty] (mkAppM ``Hax.Ascent.updateLeaf #[mkNatLit i, mkNatLit s.arity])
+        let fty := s.fieldTys[i]!
+        match ← budgeted (mkLeafThm un [sty, fty]
+            (mkAppM ``Hax.Ascent.updateLeaf #[mkNatLit i, mkNatLit s.arity])
             (fun xs => do
               if s.arity == 1 then mkAppM ``Hax.Ascent.updateLeaf_one #[xs[0]!, xs[1]!]
               else
@@ -483,25 +502,34 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.done)
             (fun xs => do
               if s.arity == 1 then mkEnc sty xs[1]!
-              else mkEnc sty (← mkAppOptM ``Hax.Ascent.fieldSet #[mkNatLit i, sty, fty, none, xs[0]!, xs[1]!]))
-          leafNames := leafNames.push (Name.str leafNs un)
-        catch ex => notes := notes.push s!"leaf {un}: {← msgStr ex}"
+              else mkEnc sty (← mkAppOptM ``Hax.Ascent.fieldSet #[mkNatLit i, sty, fty, none, xs[0]!, xs[1]!]))) with
+        | .ok () => leafNames := leafNames.push (Name.str leafNs un)
+        | .error e => notes := notes.push s!"leaf {un}: {e}"
     -- local functions: parameters, globals, calls, order
+    -- a function whose parameters or bound names could not be read, with the error
+    let mut preFail : Std.HashMap String String := {}
     let mut params : Std.HashMap String (List String) := {}
     for f in fnNames do
       let (sur, _, lb, _) := infos[f]!
-      let sty ← inferType (← applyInsts sur insts)
-      let n ← forallTelescopeReducing sty fun xs _ => do
-        let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
-        return xs.size
-      params := params.insert f ((leadingParams lb).take n)
-    let consts0 := fnNames.filter fun f => (params.getD f []).isEmpty
+      let res ← budgeted do
+        let sty ← inferType (← applyInsts sur insts)
+        forallTelescopeReducing sty fun xs _ => do
+          let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
+          return xs.size
+      match res with
+      | .ok n => params := params.insert f ((leadingParams lb).take n)
+      | .error e => preFail := preFail.insert f s!"parameters: {e}"
+    let consts0 := fnNames.filter fun f => !preFail.contains f && (params.getD f []).isEmpty
     let zeroDeps := (depElems.filter fun d => d.2.2.2.1.isEmpty).map (·.1)
     let mut globalsOf : Std.HashMap String (List String) := {}
     let mut callsOf : Std.HashMap String (List String) := {}
     for f in fnNames do
       let (_, _, lb, sc) := infos[f]!
-      let bound ← boundNames lb
+      let mut bound : List String := []
+      match ← budgeted (boundNames lb) with
+      | .ok b => bound := b
+      | .error e =>
+        unless preFail.contains f do preFail := preFail.insert f s!"bound names: {e}"
       let ps := params.getD f []
       let gs := (sc.vars.toList.eraseDups).filter fun v =>
         (consts0.contains v || zeroDeps.contains v) && !ps.contains v && !bound.contains v
@@ -538,8 +566,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     addDefn (gen "builtins") (← mkForallFVars insts (mkConst ``Hax.Builtins))
       (← mkLambdaFVars insts (← mkAppM ``Hax.Ascent.extBuiltins #[T, mkAppN (mkConst (gen "fns")) insts]))
     -- the generator, in dependency order
-    let rtIdx ← runtimeLeaves
-    let mut idx ← indexLeaves rtIdx leafNames
+    let rtIdx ← withCurrHeartbeats runtimeLeaves
+    let mut idx ← withCurrHeartbeats (indexLeaves rtIdx leafNames)
     let tableNames : List String := (structs.toList.flatMap fun s =>
         s.lit :: (s.projs.toList.map (·.1)) ++
           ((List.range s.arity).map fun i => s!"struct_update#{s.lit}#{i}#{s.arity}")) ++
@@ -556,9 +584,14 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
         "whileLoop", "break_", "continue_", "earlyReturn", "questionMark"]
       let census := unsupported.filterMap fun c =>
         (sc.ctors[c]?).map fun n => s!"{c}×{n}"
+      if let some e := preFail[f]? then
+        reports := reports.push { name := f, status := "failed", detail := e }
+        continue
       let t0 ← IO.monoMsNow
       let saved ← saveState
-      let (rep, newCall) ← try withCurrHeartbeats do
+      -- the phase the generation of `f` is in, reported when it exceeds its budget
+      let stage ← IO.mkRef "call lemmas of the callees"
+      let (rep, newCall) ← tryCatchRuntimeEx (withCurrHeartbeats do
         let mut newCall := false
         let preE ← mkListLit extFnTy (pre.map fnE)
         let bi ← mkAppM ``Hax.Ascent.extBuiltins #[T, preE]
@@ -587,6 +620,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
           addThm auxN (← mkForallFVars insts (← inferType spec)) (← mkLambdaFVars insts spec)
           idxF := idxF.insert g #[auxN]
         let tSpec ← IO.monoMsNow
+        stage.set "globals"
         let ctx0 : GCtx := { bi := bi, st := st0, leaves := idxF, hints := {} }
         let mut globals := []
         for g in globalsOf.getD f [] do
@@ -618,8 +652,10 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
               mkLambdaFVars #[a, h] (← mkAppM ``Hax.Ascent.binds_entry #[hgv, ← vsOf a])
             return (entry, hentry) }
         let tGen0 ← IO.monoMsNow
+        stage.set "generation"
         let res ← ascendFn spec
         let tGen ← IO.monoMsNow
+        stage.set "declarations"
         -- declarations
         let genN := gen f ++ `gen
         addDefn genN (← mkForallFVars insts (← inferType res.fn)) (← mkLambdaFVars insts res.fn)
@@ -648,7 +684,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
         if rtNames.contains f || isTagged f || tableNames.contains f then
           callNote := "no call lemma: the name is taken by the runtime or the struct table"
         else
-          try
+          let callRes ← budgeted do
             withLocalDeclD `post fnsTy fun post => do
               let freshTy := mkNot (← mkAppM ``Membership.mem
                 #[← mkAppM ``List.map #[mkConst ``Hax.Ascent.ExtFn.name, post], mkStrLit f])
@@ -686,39 +722,44 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                   addThm (Name.str (ns ++ `HaxCall) f)
                     (← mkForallFVars (insts ++ #[post, hfresh] ++ xs) ty)
                     (← mkLambdaFVars (insts ++ #[post, hfresh] ++ xs) (← mkExpectedTypeHint pf ty))
-            newCall := true
-          catch ex => callNote := s!"no call lemma: {← msgStr ex}"
-        -- the correspondence under the whole table
+          match callRes with
+          | .ok () => newCall := true
+          | .error e => callNote := s!"no call lemma: {e}"
+        -- the correspondence under the whole table, under a budget of its own
         let tCall ← IO.monoMsNow
-        let post := order.toList.drop (k - 1)
-        let postE ← mkListLit extFnTy (post.map fnE)
-        let bodyE ← applyInsts infos[f]!.2.1 insts
-        let heTy ← mkEq (← mkAppM ``Hax.Ascent.callsOK
-          #[← mkAppM ``Hax.Ascent.notIn #[postE], bodyE]) trueE
-        let he ← mkExpectedTypeHint (← mkEqRefl trueE) heTy
-        let ext ← mkAppOptM (if res.parts?.isSome then ``Hax.Ascent.fnCorresX_extend
-            else ``Hax.Ascent.fnCorres_extend)
-          #[T, preE, postE, none, he]
-        let full ← mkAppM' ext #[mkAppN (mkConst (gen f ++ `corres)) insts]
-        let fullTy ← inferType full
-        let allE := mkAppN (mkConst (gen "fns")) insts
-        let fullTy := fullTy.replace fun e =>
-          if e.isAppOfArity ``HAppend.hAppend 6 && e.appFn!.appArg! == preE then some allE else none
-        addThm (gen f ++ `corres_full) (← mkForallFVars insts fullTy)
-          (← mkLambdaFVars insts (← mkExpectedTypeHint full fullTy))
-        let t1 ← IO.monoMsNow
-        let kind := if res.merged?.isSome then "proved (early return)" else "proved"
-        let phases := s!" [spec {tSpec - t0}, pre {tGen0 - tSpec}, gen {tGen - tGen0}, decl {tDecl - tGen}, call {tCall - tDecl}, full {t1 - tCall}]"
-        let detail := s!"oracle {oracle}" ++ phases ++ (if callNote.isEmpty then "" else s!"; {callNote}") ++
-          (if census.isEmpty then "" else s!"; unused constructs {census}")
-        let rep : FnReport := { name := f, status := kind, ms := t1 - t0, detail := detail }
-        pure (rep, newCall)
-      catch ex =>
+        stage.set "correspondence under the whole table"
+        withCurrHeartbeats do
+          let post := order.toList.drop (k - 1)
+          let postE ← mkListLit extFnTy (post.map fnE)
+          let bodyE ← applyInsts infos[f]!.2.1 insts
+          let heTy ← mkEq (← mkAppM ``Hax.Ascent.callsOK
+            #[← mkAppM ``Hax.Ascent.notIn #[postE], bodyE]) trueE
+          let he ← mkExpectedTypeHint (← mkEqRefl trueE) heTy
+          let ext ← mkAppOptM (if res.parts?.isSome then ``Hax.Ascent.fnCorresX_extend
+              else ``Hax.Ascent.fnCorres_extend)
+            #[T, preE, postE, none, he]
+          let full ← mkAppM' ext #[mkAppN (mkConst (gen f ++ `corres)) insts]
+          let fullTy ← inferType full
+          let allE := mkAppN (mkConst (gen "fns")) insts
+          let fullTy := fullTy.replace fun e =>
+            if e.isAppOfArity ``HAppend.hAppend 6 && e.appFn!.appArg! == preE then some allE else none
+          addThm (gen f ++ `corres_full) (← mkForallFVars insts fullTy)
+            (← mkLambdaFVars insts (← mkExpectedTypeHint full fullTy))
+          let t1 ← IO.monoMsNow
+          let kind := if res.merged?.isSome then "proved (early return)" else "proved"
+          let phases := s!" [spec {tSpec - t0}, pre {tGen0 - tSpec}, gen {tGen - tGen0}, decl {tDecl - tGen}, call {tCall - tDecl}, full {t1 - tCall}]"
+          let detail := s!"oracle {oracle}" ++ phases ++ (if callNote.isEmpty then "" else s!"; {callNote}") ++
+            (if census.isEmpty then "" else s!"; unused constructs {census}")
+          let rep : FnReport := { name := f, status := kind, ms := t1 - t0, detail := detail }
+          pure (rep, newCall)) fun ex => do
         saved.restore
         let t1 ← IO.monoMsNow
         let msg := (← msgStr ex).replace "\n" " "
+        let phase ← stage.get
+        let (status, msg) := if ex.isRuntime then ("timeout", s!"budget exceeded in {phase}: {msg}")
+          else ("failed", msg)
         let detail := msg ++ (if census.isEmpty then "" else s!"; constructs {census}")
-        let rep : FnReport := { name := f, status := "failed", ms := t1 - t0, detail := detail }
+        let rep : FnReport := { name := f, status, ms := t1 - t0, detail := detail }
         pure (rep, false)
       reports := reports.push rep
       if newCall then
