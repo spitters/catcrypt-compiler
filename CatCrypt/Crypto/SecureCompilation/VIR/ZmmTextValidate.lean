@@ -41,7 +41,9 @@ per name (`RangeDomain.Iv.Mem`), the form `ComRange.rangeAnalysis_sound` conclud
 ## Main definitions
 
 * `SatB`, `Facts`: the reference and the facts the checks rest on.
-* `vBin`, `vMulU`, `vShi`, `vMulhi`, `vMullo`, `vMinu`, `verify`: the recognisers.
+* `vBin`, `vMulU`, `vShi`, `vMulhi`, `vMullo`, `vMinu`, `vMontSub`, `verify`: the
+  recognisers; `vMontSub` checks the Montgomery step kept in the even/odd products, under
+  `montSub_extract`.
 * `keyMap`, `norm`: the candidate table and the normaliser.
 * `parse`: the parser of the renderer's text.
 * `frameOK`: the discipline of the stack frame that holds spilled registers.
@@ -534,6 +536,248 @@ theorem vMullo_sound (hf : Facts m w D rf E) {n : String} {t : Term}
 
 end Sound
 
+/-! ### The Montgomery step in the even/odd products -/
+
+/-- Binding `l` is the dword product of `A` and `B`, in either order. -/
+def montLo (D : Std.HashMap String ZBind) (l : String) (A B : Term) : Bool :=
+  match D[l]? with
+  | some (.pack w' bop d x y) => decide (w' = .d) && decide (bop = .mul) && decide (d = l) &&
+      ((opMatch D A x && opMatch D B y) || (opMatch D A y && opMatch D B x))
+  | _ => false
+
+/-- Binding `h` is the high multiply of `A` and `B`, in either order. -/
+def montHi (D : Std.HashMap String ZBind) (h : String) (A B : Term) : Bool :=
+  match D[h]? with
+  | some (.mulhi d x y) => decide (d = h) &&
+      ((opMatch D A x && opMatch D B y) || (opMatch D A y && opMatch D B x))
+  | _ => false
+
+/-- Binding `q` is `lo·Mu` for a binding `lo` that `montLo` recognises, in either order. -/
+def montQ (D : Std.HashMap String ZBind) (q : String) (A B Mu : Term) : Bool :=
+  match D[q]? with
+  | some (.pack w' bop d x y) => decide (w' = .d) && decide (bop = .mul) && decide (d = q) &&
+      ((montLo D x A B && opMatch D Mu y) || (montLo D y A B && opMatch D Mu x))
+  | _ => false
+
+/-- Binding `u` is `mulhi(q, P)` for a binding `q` that `montQ` recognises, in either
+    order. -/
+def montU (D : Std.HashMap String ZBind) (u : String) (A B Mu P : Term) : Bool :=
+  match D[u]? with
+  | some (.mulhi d x y) => decide (d = u) &&
+      ((montQ D x A B Mu && opMatch D P y) || (montQ D y A B Mu && opMatch D P x))
+  | _ => false
+
+/-- The Montgomery step `VpackZmmLinearRender.montSubLines`: the even products `x` of `A`,
+    `B` and the odd products (of `vmovshdup A` and the odd factor `Bo`), each reduced to
+    `x - (x·c1)·c2` by `vpmuludq` and `vpsubq`, the even high words merged under `0x5555`
+    into the odd ones, compute `n = h - u` for `h = mulhi(a, b)` and
+    `u = mulhi((a·b)·mu, p)`, where the constants `c1`, `c2` (the values of `mu`, `p`) have
+    equal dword pairs and multiply to one on every dword. -/
+def vMontSub (w : LaneW) (D : Std.HashMap String ZBind) (n : String) (t : Term) : Bool :=
+  match t with
+  | .mdup true k0
+      (.lw 64 (.bin .sub) (.lw 64 .muludq A B)
+        (.lw 64 .muludq (.lw 64 .muludq PE (.cst c1)) (.cst c2)))
+      (.lw 64 (.bin .sub) (.lw 64 .muludq (.dup true A') Bo)
+        (.lw 64 .muludq (.lw 64 .muludq PO (.cst c1')) (.cst c2'))) =>
+    decide (w = .d) && decide (k0 = 0x5555#16) && decide (A' = A) &&
+      decide (PE = .lw 64 .muludq A B) && decide (PO = .lw 64 .muludq (.dup true A) Bo) &&
+      decide (c1' = c1) && decide (c2' = c2) && oddOK Bo B &&
+      oddOK (.cst c1) (.cst c1) && oddOK (.cst c2) (.cst c2) &&
+      (List.range 16).all (fun j => lane 32 c1 j * lane 32 c2 j == 1) &&
+      (match D[n]? with
+       | some (.pack w' bop d h u) =>
+         decide (w' = .d) && decide (bop = .sub) && decide (d = n) &&
+           montHi D h A B && montU D u A B (.cst c1) (.cst c2)
+       | _ => false)
+  | _ => false
+
+/-- The Montgomery difference as the high word of a 64-bit difference: for
+    `mu·p = 1` the products `a·b` and `((a·b)·mu)·p` have equal low words, so the high
+    word of their 64-bit difference is `mulhi(a, b) - mulhi((a·b)·mu, p)`. -/
+theorem montSub_extract (a b μ p : BitVec 32) (h : μ * p = 1) :
+    (a.setWidth 64 * b.setWidth 64 - (a * b * μ).setWidth 64 * p.setWidth 64).extractLsb' 32 32
+      = mulHiW a b - mulHiW (a * b * μ) p := by
+  rw [RangeDomain.extractLsb'_sub_of_setWidth_eq _ _ (by
+      rw [lo_mul_setWidth, lo_mul_setWidth, BitVec.mul_assoc (a * b), h]; simp),
+    hi_mul_setWidth, hi_mul_setWidth]
+
+section Sound
+
+variable {m : Mode} {D : Std.HashMap String ZBind} {rf : Std.HashMap String Iv}
+  {σ0 : Fin 32 → BitVec 512}
+
+/-- Qword `i` of a `vpmuludq` is the product of the zero-extended even dwords. -/
+theorem muludq_lane64 (x y : BitVec 512) {i : Nat} (hi : 64 * i + 64 ≤ m.act) :
+    lane 64 (wr m (semLW 64 .muludq x y)) i =
+      (lane 32 x (2 * i)).setWidth 64 * (lane 32 y (2 * i)).setWidth 64 := by
+  have h512 : 64 * i + 64 ≤ 512 := by rcases m.act_cases with h | h <;> omega
+  rw [lane_wr _ hi, lane_semLW _ _ _ (by norm_num) h512]
+  simp only [LOp.apply, lane32_even]
+
+/-- Dword `2i` of a `vpmuludq` is the product of the even dwords. -/
+theorem muludq_lo (x y : BitVec 512) {i : Nat} (hi : 64 * i + 64 ≤ m.act) :
+    lane 32 (wr m (semLW 64 .muludq x y)) (2 * i) = lane 32 x (2 * i) * lane 32 y (2 * i) := by
+  rw [lane32_even, muludq_lane64 _ _ hi, lo_mul_setWidth]
+
+/-- Dword `2i+1` of the reduced product `x - (x·c1)·c2` of the products `x` of `a`, `b`:
+    the Montgomery difference of the dwords `2i`, when `c1·c2 = 1` there. -/
+theorem montSub_lane (a b c1 c2 : BitVec 512) {i : Nat} (hi : 64 * i + 64 ≤ m.act)
+    (hinv : lane 32 c1 (2 * i) * lane 32 c2 (2 * i) = 1) :
+    lane 32 (wr m (semLW 64 (.bin .sub) (wr m (semLW 64 .muludq a b))
+      (wr m (semLW 64 .muludq (wr m (semLW 64 .muludq (wr m (semLW 64 .muludq a b)) c1))
+        c2)))) (2 * i + 1) =
+      mulHiW (lane 32 a (2 * i)) (lane 32 b (2 * i)) -
+        mulHiW (lane 32 a (2 * i) * lane 32 b (2 * i) * lane 32 c1 (2 * i))
+          (lane 32 c2 (2 * i)) := by
+  have h512 : 64 * i + 64 ≤ 512 := by rcases m.act_cases with h | h <;> omega
+  rw [lane32_odd, lane_wr _ hi, lane_semLW _ _ _ (by norm_num) h512]
+  simp only [LOp.apply, JasminBinOp.apply]
+  rw [muludq_lane64 _ _ hi, muludq_lane64 _ _ hi, muludq_lo _ _ hi, muludq_lo _ _ hi]
+  exact montSub_extract _ _ _ _ hinv
+
+variable {E : Nat → String → BitVec LaneW.d.bits}
+
+theorem montLo_sound (hf : Facts m .d D rf E) {l : String} {A B : Term}
+    (h : montLo D l A B = true) {j : Nat} (hj : Active m .d j) :
+    E j l = lane 32 (A.eval m σ0 (pack .d E)) j * lane 32 (B.eval m σ0 (pack .d E)) j := by
+  unfold montLo at h
+  split at h
+  · rename_i w' bop d x y hd
+    simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hm⟩ := h
+    have hs : E j d = E j x * E j y := hf.sat _ _ hd j hj rfl
+    rw [hs]
+    rcases hm with ⟨ma, mb⟩ | ⟨ma, mb⟩
+    · rw [show lane 32 (A.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf ma hj,
+        show lane 32 (B.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf mb hj]
+      rfl
+    · rw [show lane 32 (A.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf ma hj,
+        show lane 32 (B.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf mb hj]
+      exact BitVec.mul_comm _ _
+  · cases h
+
+theorem montHi_sound (hf : Facts m .d D rf E) {h : String} {A B : Term}
+    (hm : montHi D h A B = true) {j : Nat} (hj : Active m .d j) :
+    E j h = mulHiW (lane 32 (A.eval m σ0 (pack .d E)) j)
+      (lane 32 (B.eval m σ0 (pack .d E)) j) := by
+  unfold montHi at hm
+  split at hm
+  · rename_i d x y hd
+    simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hm
+    obtain ⟨rfl, hm⟩ := hm
+    have hs : E j d = mulHiW (E j x) (E j y) := hf.sat _ _ hd j hj
+    rw [hs]
+    rcases hm with ⟨ma, mb⟩ | ⟨ma, mb⟩
+    · rw [show lane 32 (A.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf ma hj,
+        show lane 32 (B.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf mb hj]
+      rfl
+    · rw [show lane 32 (A.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf ma hj,
+        show lane 32 (B.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf mb hj]
+      exact mulHiW_comm _ _
+  · cases hm
+
+theorem montQ_sound (hf : Facts m .d D rf E) {q : String} {A B Mu : Term}
+    (h : montQ D q A B Mu = true) {j : Nat} (hj : Active m .d j) :
+    E j q = lane 32 (A.eval m σ0 (pack .d E)) j * lane 32 (B.eval m σ0 (pack .d E)) j *
+      lane 32 (Mu.eval m σ0 (pack .d E)) j := by
+  unfold montQ at h
+  split at h
+  · rename_i w' bop d x y hd
+    simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hm⟩ := h
+    have hs : E j d = E j x * E j y := hf.sat _ _ hd j hj rfl
+    rw [hs]
+    rcases hm with ⟨ml, mu⟩ | ⟨ml, mu⟩
+    · rw [montLo_sound (σ0 := σ0) hf ml hj,
+        show lane 32 (Mu.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf mu hj]
+      rfl
+    · rw [montLo_sound (σ0 := σ0) hf ml hj,
+        show lane 32 (Mu.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf mu hj]
+      exact BitVec.mul_comm _ _
+  · cases h
+
+theorem montU_sound (hf : Facts m .d D rf E) {u : String} {A B Mu P : Term}
+    (h : montU D u A B Mu P = true) {j : Nat} (hj : Active m .d j) :
+    E j u = mulHiW (lane 32 (A.eval m σ0 (pack .d E)) j * lane 32 (B.eval m σ0 (pack .d E)) j *
+      lane 32 (Mu.eval m σ0 (pack .d E)) j) (lane 32 (P.eval m σ0 (pack .d E)) j) := by
+  unfold montU at h
+  split at h
+  · rename_i d x y hd
+    simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
+    obtain ⟨rfl, hm⟩ := h
+    have hs : E j d = mulHiW (E j x) (E j y) := hf.sat _ _ hd j hj
+    rw [hs]
+    rcases hm with ⟨mq, mp⟩ | ⟨mq, mp⟩
+    · rw [montQ_sound (σ0 := σ0) hf mq hj,
+        show lane 32 (P.eval m σ0 (pack .d E)) j = E j y from opMatch_lane hf mp hj]
+      rfl
+    · rw [montQ_sound (σ0 := σ0) hf mq hj,
+        show lane 32 (P.eval m σ0 (pack .d E)) j = E j x from opMatch_lane hf mp hj]
+      exact mulHiW_comm _ _
+  · cases h
+
+end Sound
+
+section Sound
+
+variable {m : Mode} {w : LaneW} {D : Std.HashMap String ZBind} {rf : Std.HashMap String Iv}
+  {E : Nat → String → BitVec w.bits} {σ0 : Fin 32 → BitVec 512}
+
+theorem vMontSub_sound (hf : Facts m w D rf E) {n : String} {t : Term}
+    (h : vMontSub w D n t = true) :
+    t.eval m σ0 (pack w E) = (Term.var n).eval m σ0 (pack w E) := by
+  unfold vMontSub at h
+  split at h
+  · rename_i k0 A' B PE c1' c2' A Bo PO c1 c2
+    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_range,
+      beq_iff_eq] at h
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hw, hk⟩, hA⟩, hPE⟩, hPO⟩, hc1⟩, hc2⟩, hodd⟩, hmu⟩, hp⟩, hinv⟩, hD⟩ := h
+    subst hw hk hA hPE hPO hc1 hc2
+    split at hD
+    · rename_i w' bop d hh u hd
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hD
+      obtain ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, hhi⟩, hu⟩ := hD
+      apply eval_eq_var
+      intro j hj
+      have hj' : 32 * j + 32 ≤ m.act := hj
+      have hj16 : j < 16 := by rcases m.act_cases with h | h <;> omega
+      have hs : E j d = E j hh - E j u := hf.sat _ _ hd j hj rfl
+      have hwc : ∀ (c : BitVec 512) (k : Nat), 32 * k + 32 ≤ m.act →
+          lane 32 (wr m c) k = lane 32 c k := fun c k hk => lane_wr c hk
+      have hinv' : ∀ i, 64 * i + 64 ≤ m.act →
+          lane 32 (wr m c1) (2 * i) * lane 32 (wr m c2) (2 * i) = 1 := fun i hi => by
+        rw [hwc _ _ (by omega), hwc _ _ (by omega)]
+        exact hinv _ (by rcases m.act_cases with h | h <;> omega)
+      show lane 32 _ j = _
+      rw [hs, montHi_sound (σ0 := σ0) hf hhi hj, montU_sound (σ0 := σ0) hf hu hj]
+      simp only [Term.eval]
+      rw [lane_semMerge _ _ _ hj16]
+      obtain ⟨i, rfl | rfl⟩ : ∃ i, j = 2 * i ∨ j = 2 * i + 1 := ⟨j / 2, by omega⟩
+      · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
+        rw [(mask5555 i (by omega)).1, if_pos rfl, lane_semDup _ _ (by omega)]
+        simp only [if_true, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
+        exact montSub_lane _ _ _ _ hi (hinv' i hi)
+      · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
+        rw [(mask5555 i (by omega)).2]
+        simp only [Bool.false_eq_true, if_false]
+        have hdx : lane 32 (wr m (semDup true (A.eval m σ0 (pack .d E)))) (2 * i) =
+            lane 32 (A.eval m σ0 (pack .d E)) (2 * i + 1) := by
+          rw [lane_wr _ (by omega), lane_semDup _ _ (by omega)]
+          simp only [if_true]
+          congr 1
+          omega
+        have hbo := oddOK_lane (σ0 := σ0) (E := E) hodd i hi
+        have hc1p := oddOK_lane (σ0 := σ0) (E := E) hmu i hi
+        have hc2p := oddOK_lane (σ0 := σ0) (E := E) hp i hi
+        simp only [Term.eval] at hc1p hc2p
+        rw [montSub_lane _ _ _ _ hi (hinv' i hi), hdx, hbo, hc1p, hc2p]
+        rfl
+    · cases hD
+  · cases h
+
+end Sound
+
 /-- Binding `n` is `a bop b` at width `w`. -/
 def isPack (D : Std.HashMap String ZBind) (n : String) (w : LaneW) (bop : JasminBinOp)
     (a b : String) : Bool :=
@@ -717,7 +961,7 @@ def verify (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (rf : Std.HashM
   | .lw L (.bin bop) a b => vBin w D n L bop a b
   | .lw 64 .muludq a b => vMulU w m D rf n a b
   | .shi L l i a => vShi w m D n L l i a
-  | _ => vMinu w m D rf n wit t || vMulhi w D n t || vMullo w D n t
+  | _ => vMinu w m D rf n wit t || vMulhi w D n t || vMullo w D n t || vMontSub w D n t
 
 theorem verify_sound {m : Mode} {w : LaneW} {D : Std.HashMap String ZBind}
     {rf : Std.HashMap String Iv} {E : Nat → String → BitVec w.bits}
@@ -730,10 +974,11 @@ theorem verify_sound {m : Mode} {w : LaneW} {D : Std.HashMap String ZBind}
   · exact vMulU_sound hf h
   · exact vShi_sound hf h
   · simp only [Bool.or_eq_true] at h
-    rcases h with (h | h) | h
+    rcases h with ((h | h) | h) | h
     · exact vMinu_sound hf h
     · exact vMulhi_sound hf h
     · exact vMullo_sound hf h
+    · exact vMontSub_sound hf h
 
 /-- A tag per operation, for the candidate keys. -/
 def bopTag : JasminBinOp → String
@@ -770,6 +1015,11 @@ def candKeys (t : Term) : List String :=
     match termKey a with
     | some ka => ["s|" ++ toString l ++ "|" ++ toString i ++ "|" ++ ka]
     | none => []
+  | .mdup true _ (.lw _ (.bin .sub) (.lw _ .muludq a b)
+      (.lw _ .muludq (.lw _ .muludq _ mu) p)) _ =>
+    match termKey a, termKey b, termKey mu, termKey p with
+    | some ka, some kb, some km, some kp => ["M|" ++ ka ++ "|" ++ kb ++ "|" ++ km ++ "|" ++ kp]
+    | _, _, _, _ => []
   | .mdup true _ (.lw _ .muludq a b) _ => k2 "h" a b
   | .mdup false _ _ (.lw _ .muludq a b) => k2 "l" a b
   | _ => []
@@ -806,6 +1056,26 @@ def minuKeys (w : LaneW) (D : Std.HashMap String ZBind) (n a b : String) :
       | _ => []
     | _ => []
 
+/-- The candidate keys of the difference `n = h - u` when `u` has the shape `vMontSub`
+    checks, `u = mulhi((x·y)·mu, p)`: one key per order of `x`, `y`. -/
+def montKeys (D : Std.HashMap String ZBind) (n u : String) :
+    List (String × (String × List String)) :=
+  match D[u]? with
+  | some (.mulhi _ u1 u2) =>
+    [(u1, u2), (u2, u1)].flatMap fun (q, p) =>
+      match D[q]? with
+      | some (.pack _ .mul _ q1 q2) =>
+        [(q1, q2), (q2, q1)].flatMap fun (l, mu) =>
+          match D[l]? with
+          | some (.pack _ .mul _ x y) =>
+            let kx := leafKey D x
+            let ky := leafKey D y
+            let tail := "|" ++ leafKey D mu ++ "|" ++ leafKey D p
+            [("M|" ++ kx ++ "|" ++ ky ++ tail, (n, [])), ("M|" ++ ky ++ "|" ++ kx ++ tail, (n, []))]
+          | _ => []
+      | _ => []
+  | _ => []
+
 /-- The candidate keys of one binding at lane width `w`. -/
 def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
     List (String × (String × List String)) :=
@@ -828,8 +1098,9 @@ def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
           [one ("s|false|" ++ toString (lane w.bits (BitVec.ofNat 512 v) 0).toNat ++ "|" ++ ka)]
         | _, _ => []
       let minK := if bop = .add then minuKeys w D d a b2 else []
+      let montK := if bop = .sub ∧ w = .d then montKeys D d b2 else []
       let _ := m
-      binK ++ mulK ++ shK ++ minK
+      binK ++ mulK ++ shK ++ minK ++ montK
     else []
   | .mulhi d a b2 =>
     let ka := leafKey D a
@@ -986,6 +1257,11 @@ def parseOps (m : Mode) (mn : String) (ops : List String) : Option Instr :=
   | "kmovw", ["%eax", k] => do
     let kn ← (stripPre "%k" k).bind parseNat
     if h : 1 ≤ kn ∧ kn < 8 then some (.kmov ⟨kn, h.2⟩) else none
+  | "vpermd", [a, b, c] => do
+    some (.perm (← parseReg m a) (← parseReg m b) (← parseReg m c))
+  | "vpblendmd", [a, b, c] => do
+    let (d, k) ← parseRegMask m c
+    some (.blend (← k) (← parseReg m a) (← parseReg m b) d)
   | mn, [a, b, c] =>
     match shiftTable mn with
     | some (L, left) => do
@@ -1560,6 +1836,16 @@ def montRanges : Array Iv :=
 /- A merge under the wrong mask is rejected. -/
 #kat !validateBinds .zmm .d ["a", "b"] montBinds 1 (some (2013265920, montRanges))
   [("v8", (-2013265920, 2013265920))] (fun s => s.replace "{%k2}" "{%k1}")
+
+/- The Montgomery step of `montBinds` renders in the even/odd products (`fuseMontSub`): no
+   `vpmulld` and no `vmovsldup`, two `vpsubq`; with the 64-bit differences turned into sums
+   the text is rejected. -/
+#kat (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 ["a", "b"] montBinds
+    (some (2013265920, montRanges))).toOption.any (fun s =>
+      (s.splitOn "vpmulld").length == 1 && (s.splitOn "vmovsldup").length == 1 &&
+        (s.splitOn "vpsubq").length == 3) &&
+  !validateBinds .zmm .d ["a", "b"] montBinds 1 (some (2013265920, montRanges))
+    [("v8", (-2013265920, 2013265920))] (fun s => s.replace "vpsubq" "vpaddq")
 
 /-- The BabyBear Barrett quotient of `FieldDescentBB` as a binding list:
     `x - (((x >> 30)·m >> 32)·p)` for `x = a·b`. -/

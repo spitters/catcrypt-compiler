@@ -21,6 +21,9 @@ region read at `%rsi`, a data table read at `%rip`, an output region written at
 bits of each register and each
 write keeps the low 256 bits and zeroes the upper 256 bits (`wr`). Every lane-wise
 instruction is defined through the lane read `lane` and the lane assembly `ofLanes`.
+The dword permutation `vpermd` and the masked blend `vpblendmd`, which
+`PackedStateRender` prints, move dwords across lanes; the symbolic execution rejects
+them (`sstep` returns `none`).
 
 The memory model: the input region is a function from byte offsets to the 64 bytes
 there, a store appends its offset and value to a log, and the output region at an
@@ -42,7 +45,8 @@ a symbolic run describes the machine run.
 ## Main definitions
 
 * `Mode`, `lane`, `ofLanes`, `wr`: the register forms and lanes.
-* `LOp`, `semLW`, `semShImm`, `semDup`, `semMerge`: the lane-wise instruction semantics.
+* `LOp`, `semLW`, `semShImm`, `semDup`, `semMerge`, `semPerm`: the instruction
+  semantics.
 * `Instr`, `MState`, `step`, `run`, `MState.outAt`: the machine.
 * `Term`, `Term.eval`, `SState`, `sstep`, `srun`, `Rel`: the symbolic execution.
 
@@ -246,6 +250,16 @@ def semDup (odd : Bool) (x : BitVec 512) : BitVec 512 :=
 def semMerge (k : BitVec 16) (new old : BitVec 512) : BitVec 512 :=
   ofLanes 32 (fun j => if k.getLsbD j then lane 32 new j else lane 32 old j)
 
+/-- `vpermd`: dword `j` of the result is dword `idx[j] mod n` of `src`, for `n` dword
+    lanes. -/
+def semPerm (n : Nat) (src idx : BitVec 512) : BitVec 512 :=
+  ofLanes 32 (fun j => lane 32 src ((lane 32 idx j).toNat % n))
+
+/-- Dword `j` of a dword permutation. -/
+theorem lane_semPerm {j : Nat} (n : Nat) (src idx : BitVec 512) (hj : j < 16) :
+    lane 32 (semPerm n src idx) j = lane 32 src ((lane 32 idx j).toNat % n) :=
+  lane_ofLanes _ (by omega) (by omega)
+
 /-- Every lane of width `L` holding `x`. -/
 def bcast (L : Nat) (x : BitVec L) : BitVec 512 := ofLanes L (fun _ => x)
 
@@ -319,6 +333,12 @@ inductive Instr where
   | spSub (n : Nat)
   /-- `addq $n, %rsp`: release `n` bytes of stack frame. -/
   | spAdd (n : Nat)
+  /-- `vpermd src, idx, dst`: dword `j` of `dst` is dword `idx[j]` (modulo the lane
+      count) of `src`. -/
+  | perm (src idx dst : Fin 32)
+  /-- `vpblendmd a, b, dst{%kN}`: dword `j` of `dst` is dword `j` of `a` where bit `j`
+      of `%kN` is set, else dword `j` of `b`. -/
+  | blend (k : Fin 8) (a b dst : Fin 32)
   deriving DecidableEq
 
 /-- The machine state: 32 vector registers, `%eax`, the mask registers, the stores
@@ -373,6 +393,8 @@ def step (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (
   | .stS r off => some { σ with stk := fun a => if a = (off : Int) then σ.zmm r else σ.stk a }
   | .spSub n => some { σ with stk := fun a => σ.stk (a - n) }
   | .spAdd n => some { σ with stk := fun a => σ.stk (a + n) }
+  | .perm s i d => some (σ.setZ d (wr m (semPerm (m.act / 32) (σ.zmm s) (σ.zmm i))))
+  | .blend k a b d => some (σ.setZ d (wr m (semMerge (σ.kr k) (σ.zmm a) (σ.zmm b))))
 
 /-- A straight-line run; `none` when an instruction fails. -/
 def run (m : Mode) (inp : Nat → BitVec 512) (ro : Std.HashMap String (Array (BitVec 64))) :
@@ -479,6 +501,8 @@ def sstep (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
   | .stS r off => some { s with stk := s.stk.insert ((off : Int) - s.sp) s.regs[(r : Nat)] }
   | .spSub n => some { s with sp := s.sp + n }
   | .spAdd n => some { s with sp := s.sp - n }
+  | .perm _ _ _ => none
+  | .blend _ _ _ _ => none
 
 /-- The symbolic run. -/
 def srun (m : Mode) (ro : Std.HashMap String (Array (BitVec 64)))
@@ -639,6 +663,8 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
     have e := h5 a t ht
     simp only
     rw [show a + (s.sp - (n : Int)) + (n : Int) = a + s.sp by omega, e]
+  | perm _ _ _ => simp [sstep] at hs
+  | blend _ _ _ _ => simp [sstep] at hs
 
 /-- A symbolic run describes the machine run of the same program: the machine run
     succeeds and ends in a state the final symbolic state describes. -/

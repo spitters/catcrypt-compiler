@@ -1107,3 +1107,5 @@ CatCrypt.Crypto.SecureCompilation.VIR.VectorizeEmit
 CatCrypt.Crypto.SecureCompilation.VIR.ComSpecialize
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600Com25
 CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasKernel
+CatCrypt.Crypto.SecureCompilation.VIR.PackedStateEmit
+CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender

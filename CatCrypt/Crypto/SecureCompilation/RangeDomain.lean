@@ -42,6 +42,8 @@ operations, so an analysis over any word-level IR instantiates it.
   `[0, min X (X·δ/2^(s+t) + p·m/2^t + p + 1)]`, `δ = 2^(s+t) - m·p`.
 * `mul_eq_mul_setWidth32`: a 64-bit product of operands below `2^32` is the product of
   their zero-extended low halves.
+* `extractLsb'_sub_of_setWidth_eq`: the high half of a 64-bit difference of words with
+  equal low halves is the difference of their high halves.
 -/
 
 @[expose] public section
@@ -187,13 +189,14 @@ def ivMul (w : Nat) (a b : Iv) : Iv :=
 def ivAnd (w : Nat) (a b : Iv) : Iv :=
   (0, min (ivLane w a).2 (ivLane w b).2)
 
-/-- The interval of a logical right shift by `k`. -/
+/-- The interval of a logical right shift by `k`. A count of at least `w` gives 0 (the
+    shift is by the count's value, as `JasminBinOp.shr` is), and no power `2^k` is formed. -/
 def ivShr (w : Nat) (a : Iv) (k : Nat) : Iv :=
-  ((ivLane w a).1 / 2 ^ k, (ivLane w a).2 / 2 ^ k)
+  if w ≤ k then (0, 0) else ((ivLane w a).1 / 2 ^ k, (ivLane w a).2 / 2 ^ k)
 
-/-- The interval of a left shift by `k`. -/
+/-- The interval of a left shift by `k`; a count of at least `w` gives 0. -/
 def ivShl (w : Nat) (a : Iv) (k : Nat) : Iv :=
-  ivNorm w ((ivLane w a).1 * 2 ^ k, (ivLane w a).2 * 2 ^ k)
+  if w ≤ k then (0, 0) else ivNorm w ((ivLane w a).1 * 2 ^ k, (ivLane w a).2 * 2 ^ k)
 
 /-- The interval of the high multiply `(a·b) / 2^w`. -/
 def ivMulhi (w : Nat) (a b : Iv) : Iv :=
@@ -246,6 +249,13 @@ theorem mem_and (ha : a.Mem w x) (hb : b.Mem w y) : (ivAnd w a b).Mem w (x &&& y
   constructor <;> omega
 
 theorem mem_shr (ha : a.Mem w x) (k : Nat) : (ivShr w a k).Mem w (x >>> k) := by
+  unfold ivShr
+  split
+  · rename_i hk
+    have h0 : (x >>> k).toNat = 0 := by
+      rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+      exact Nat.div_eq_of_lt (lt_of_lt_of_le x.isLt (Nat.pow_le_pow_right (by norm_num) hk))
+    exact mem_of_bounds (by simp [h0]) (by simp [h0])
   obtain ⟨h1, h2⟩ := mem_lane ha
   have hk : (0 : Int) < 2 ^ k := by positivity
   refine mem_of_bounds ?_ ?_
@@ -255,6 +265,13 @@ theorem mem_shr (ha : a.Mem w x) (k : Nat) : (ivShr w a k).Mem w (x >>> k) := by
     exact Int.ediv_le_ediv hk h2
 
 theorem mem_shl (ha : a.Mem w x) (k : Nat) : (ivShl w a k).Mem w (x <<< k) := by
+  unfold ivShl
+  split
+  · rename_i hk
+    have h0 : (x <<< k).toNat = 0 := by
+      rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+      exact Nat.mod_eq_zero_of_dvd (Dvd.dvd.mul_left (Nat.pow_dvd_pow 2 hk) _)
+    exact mem_of_bounds (by simp [h0]) (by simp [h0])
   apply Mem.norm
   obtain ⟨h1, h2⟩ := mem_lane ha
   have hk : (0 : Int) ≤ 2 ^ k := by positivity
@@ -590,5 +607,18 @@ theorem mul_eq_mul_setWidth32 (a b : BitVec 64) (ha : a.toNat < 2 ^ 32)
     rw [BitVec.toNat_setWidth, BitVec.toNat_setWidth, Nat.mod_eq_of_lt hb,
       Nat.mod_eq_of_lt b.isLt]
   rw [ea, eb]
+
+/-- The high half of a 64-bit difference whose operands have equal low halves is the
+    difference of their high halves: the odd dword of a `vpsubq` of two such lanes is the
+    `vpsubd` of their odd dwords. -/
+theorem extractLsb'_sub_of_setWidth_eq (x y : BitVec 64) (h : x.setWidth 32 = y.setWidth 32) :
+    (x - y).extractLsb' 32 32 = x.extractLsb' 32 32 - y.extractLsb' 32 32 := by
+  apply BitVec.eq_of_toNat_eq
+  have h' := congrArg BitVec.toNat h
+  simp only [BitVec.toNat_setWidth] at h'
+  have hx := x.isLt
+  have hy := y.isLt
+  simp only [BitVec.extractLsb'_toNat, BitVec.toNat_sub, Nat.shiftRight_eq_div_pow] at *
+  omega
 
 end CatCrypt.Crypto.SecureCompilation.RangeDomain

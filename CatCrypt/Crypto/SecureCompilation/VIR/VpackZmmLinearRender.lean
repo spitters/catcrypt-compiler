@@ -43,7 +43,11 @@ non-commutative operation is resident in a register loaded at entry or loaded in
 scratch register `%zmm31`. The high multiply renders as `vpmuludq` on the even lanes and
 on the odd lanes duplicated down by `vmovshdup`, the even high words merged by a
 `vmovshdup` under the mask `%k2`, over the temporaries `%zmm28..30`; a low half
-and a high half of the same product share one pair of `vpmuludq` (`fuseMulHiLo`).
+and a high half of the same product share one pair of `vpmuludq` (`fuseMulHiLo`). The
+Montgomery step `mulhi(a, b) - mulhi((a·b)·mu, p)` with `mu·p ≡ 1 (mod 2^32)` stays in the
+even/odd 64-bit products until one final merge (`fuseMontSub`, `montSubLines`): six
+`vpmuludq`, two `vpsubq` and two `vmovshdup` (three when `b` is not a broadcast), with no
+`vpmulld` and no low-half merge.
 
 The function frame follows the two-pointer SysV ABI `f(out = %rdi, in = %rsi)`:
 parameter `s` (head first) is loaded from `inOffset s(%rsi)`, and the `nOut` last
@@ -72,6 +76,7 @@ sides is the job of a translation validator.
 
 * `ZBind`, `collectZBinds`, `collectZBindsScalar`: the straight-line binding list.
 * `csubToMinu`: the conditional add or subtract of a constant as an unsigned minimum.
+* `fuseMulHiLo`, `fuseMontSub`: the fused high/low product and the fused Montgomery step.
 * `RangeInfo`, `rangeInfoOf`: the range facts, taken from `ComRange.rangeAnalysis`.
 * `allocZmmLinear`: the linear-scan allocation, failing when no register is free.
 * `allocZmmSpill`: the allocation with spilling, through `GenericRegAlloc.nextUseAlloc`.
@@ -105,8 +110,10 @@ def LaneW.bits : LaneW → Nat
   | .d => 32
 
 /-- One binding of a straight-line packed program: a lane-wise operation, the
-    sixteen-lane high multiply, a 512-bit constant, an unsigned lane-wise minimum, or
-    any other operation (which the renderer rejects). -/
+    sixteen-lane high multiply, a 512-bit constant, an unsigned lane-wise minimum, the
+    fused products of the renderer's passes, or any other operation (which the renderer
+    rejects). `montsub d a b mu p` is the sixteen-lane Montgomery difference
+    `d = mulhi(a, b) - mulhi((a·b)·mu, p)` of the constants `mu`, `p`. -/
 inductive ZBind where
   | pack (w : LaneW) (bop : JasminBinOp) (dst a b : String)
   | mulhi (dst a b : String)
@@ -114,6 +121,7 @@ inductive ZBind where
   | minu (w : LaneW) (dst a b : String)
   | deferred (dst a b : String)
   | mulhilo (hi lo a b : String)
+  | montsub (dst a b mu p : String)
   | other (dst : String)
 
 /-- The name a binding defines. -/
@@ -124,6 +132,7 @@ def ZBind.dst : ZBind → String
   | .minu _ d _ _ => d
   | .deferred d _ _ => d
   | .mulhilo h _ _ _ => h
+  | .montsub d _ _ _ _ => d
   | .other d => d
 
 /-- Whether a binding lies outside the renderer's fragment. -/
@@ -138,6 +147,7 @@ def ZBind.srcs : ZBind → List String
   | .minu _ _ a b => [a, b]
   | .deferred _ a b => [a, b]
   | .mulhilo _ _ a b => [a, b]
+  | .montsub _ a b _ _ => [a, b]
   | _ => []
 
 /-- The name of the sixteen-lane high-multiply leaf. -/
@@ -312,6 +322,7 @@ def bindRW (consts : Std.HashMap String (String × Nat)) : ZBind → List String
   | .minu _ d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
   | .mulhi d a b => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
   | .mulhilo h l a b => (([a, b].filter (!consts.contains ·)).eraseDups, [h, l])
+  | .montsub d a b _ _ => (([a, b].filter (!consts.contains ·)).eraseDups, [d])
   | _ => ([], [])
 
 /-- Allocation with spilling of registers `0..30` of mode `md` less `reserved`, through
@@ -443,6 +454,23 @@ def mulhiloLines (md : Mode) (rhi rlo ra rb : String) (rbBcast : Bool := false) 
   , "\tvmovsldup " ++ t1 ++ ", " ++ t0 ++ "{%k1}"
   , "\tvmovdqa64 " ++ t0 ++ ", " ++ rlo ]
 
+/-- The Montgomery difference `mulhi(a, b) - mulhi((a·b)·mu, p)` of `ra` and `rb` into
+    `rd`, kept in the even/odd 64-bit products until one merge: the even and odd products
+    `x` (`productLines`), `q = x·mu` and `y = q·p` by `vpmuludq` on the low dwords (the
+    constants as `{1to8}` memory operands), the 64-bit differences `x - y`, and the even
+    differences' high words merged into the odd ones by `vmovshdup` under `%k2`. The high
+    word of `x - y` is the difference of the high words when `mu·p ≡ 1 (mod 2^32)`, since
+    then `x` and `y` have equal low words (`RangeDomain.extractLsb'_sub_of_setWidth_eq`). -/
+def montSubLines (md : Mode) (rd ra rb : String) (rbBcast : Bool) (mu p : String × Nat) :
+    List String :=
+  let t0 := vecReg md 28; let t1 := vecReg md 29; let t2 := vecReg md 30
+  let cm := mu.1 ++ "(%rip){1to" ++ toString (md.act / 64) ++ "}"
+  let cp := p.1 ++ "(%rip){1to" ++ toString (md.act / 64) ++ "}"
+  productLines md t1 ra rb rbBcast ++
+  [ opLine "vpmuludq" t2 t0 cm, opLine "vpmuludq" t2 t2 cp, opLine "vpsubq" t0 t0 t2
+  , opLine "vpmuludq" t2 t1 cm, opLine "vpmuludq" t2 t2 cp, opLine "vpsubq" rd t1 t2
+  , "\tvmovshdup " ++ t0 ++ ", " ++ rd ++ "{%k2}" ]
+
 /-- The instruction lines of binding `b` in mode `md`. A constant second operand is a
     memory operand; a constant first operand is exchanged with a register second operand
     when `bop` commutes, and otherwise read from its resident register or loaded into
@@ -463,6 +491,17 @@ def bindLines (md : Mode) (consts : Std.HashMap String (String × Nat))
         | none => pure (constLoad md .d cb ::
             mulhiloLines md rh rl ra (scratchReg md) (isBcast .d cb.2))
       | _, _, _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {h}"
+  | .montsub d a b mu p =>
+      match alloc.get? d, alloc.get? a, consts.get? mu, consts.get? p, consts.get? b,
+        alloc.get? b with
+      | some rd, some ra, some cm, some cp, none, some rb =>
+        pure (montSubLines md rd ra rb false cm cp)
+      | some rd, some ra, some cm, some cp, some cb, _ =>
+        match resident.get? cb.1 with
+        | some r => pure (montSubLines md rd ra r (isBcast .d cb.2) cm cp)
+        | none => pure (constLoad md .d cb ::
+            montSubLines md rd ra (scratchReg md) (isBcast .d cb.2) cm cp)
+      | _, _, _, _, _, _ => throw s!"vpackZMM linear render: unallocated operand at {d}"
   | .other d => throw s!"vpackZMM linear render: binding {d} is not a packed op or constant"
   | .minu w d a b =>
       match alloc.get? d, alloc.get? a, alloc.get? b with
@@ -627,6 +666,55 @@ def csubToMinu (consts : Std.HashMap String (String × Nat))
       | some bs' => acc ++ bs'.toArray
       | none => acc.push b) #[]
 
+/-- The low word of a sixteen-lane broadcast constant, when the constant is one. -/
+def bcastLowD (c : Option (String × Nat)) : Option Nat :=
+  c.bind (fun c => if isBcast .d c.2 then some (c.2 % 2 ^ 32) else none)
+
+/-- The Montgomery step of `FieldDescentBBMont32` as five consecutive bindings,
+    `lo = a·b`, `hi = mulhi(a, b)`, `m = lo·mu`, `u = mulhi(m, p)`, `d = hi - u`, with
+    `mu` and `p` sixteen-lane broadcast constants whose low words satisfy
+    `mu·p ≡ 1 (mod 2^32)`, at most one of `a`, `b` constant, `lo`, `hi`, `m`, `u` each read
+    once (by the next binding of the step) and none of them in `keep`: the five are
+    rewritten to the one binding `montsub d a b mu p` (`montSubLines`). The value of `d` is
+    unchanged. -/
+def fuseMontSub (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet String)
+    (bs : Array ZBind) : Array ZBind := Id.run do
+  let uses : Std.HashMap String Nat :=
+    bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
+  let used (n : String) : Nat := uses.getD n 0
+  let hit (lo a b hi a2 b2 m x y u x2 y2 h2 u2 : String) : Option (String × String) := do
+    guard ((a2 == a && b2 == b) || (a2 == b && b2 == a))
+    guard (!(consts.contains a && consts.contains b))
+    guard (h2 == hi && u2 == u && lo != a && lo != b)
+    let mu ← if x == lo then some y else if y == lo then some x else none
+    let p ← if x2 == m then some y2 else if y2 == m then some x2 else none
+    let vm ← bcastLowD (consts.get? mu)
+    let vp ← bcastLowD (consts.get? p)
+    guard (vm * vp % 2 ^ 32 == 1)
+    guard (used lo == 1 && used hi == 1 && used m == 1 && used u == 1)
+    guard (!([lo, hi, m, u].any keep.contains))
+    pure (mu, p)
+  let mut out : Array ZBind := #[]
+  let mut i := 0
+  while i < bs.size do
+    match bs[i]?, bs[i + 1]?, bs[i + 2]?, bs[i + 3]?, bs[i + 4]? with
+    | some (.pack .d .mul lo a b), some (.mulhi hi a2 b2), some (.pack .d .mul m x y),
+      some (.mulhi u x2 y2), some (.pack .d .sub d h2 u2) =>
+      match hit lo a b hi a2 b2 m x y u x2 y2 h2 u2 with
+      | some (mu, p) =>
+        -- a constant operand goes second
+        let (a', b') := if consts.contains a then (b, a) else (a, b)
+        out := out.push (.montsub d a' b' mu p)
+        i := i + 5
+      | none =>
+        out := out.push (.pack .d .mul lo a b)
+        i := i + 1
+    | some z, _, _, _, _ =>
+      out := out.push z
+      i := i + 1
+    | none, _, _, _, _ => i := i + 1
+  return out
+
 /-- The low half `lo = a·b` (`vpackZMMd .mul`) immediately followed by the high half
     `hi = mulhi(a, b)` of the same two operands, at most one of them constant, with `lo`
     read later: the
@@ -691,10 +779,14 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     | some i => (ivCondAdd? w.bits i (constLaneIv w c)).isSome
     | none => false
   let bs1 := csubToMinu consts csubOk bs0
-  let bs := fuseMulHiLo consts bs1
+  let keep : Std.HashSet String :=
+    (bs1.toList.drop (bs1.size - nOut)).foldl (fun s b => s.insert b.dst) {}
+  let bs := fuseMulHiLo consts (fuseMontSub consts keep bs1)
   let outs := ((bs.toList.drop (bs.size - nOut)).map ZBind.dst)
   let hasMulhi := bs.any (fun b =>
-    match b with | .mulhi _ _ _ => true | .mulhilo _ _ _ _ => true | _ => false)
+    match b with
+    | .mulhi _ _ _ => true | .mulhilo _ _ _ _ => true | .montsub _ _ _ _ _ => true
+    | _ => false)
   let temps := if hasMulhi then mulhiTemps md else []
   let top := 30 - temps.length
   let firstConsts : List (LaneW × (String × Nat)) := (bs.toList.filterMap (fun b =>
@@ -702,6 +794,7 @@ def renderZmmLinearBinds (sym : String) (inOffset : Nat → Nat) (nOut : Nat)
     | .pack w bop _ a _ => if bopCommutes bop then none else (consts.get? a).map (w, ·)
     | .mulhi _ a b => ((consts.get? b) <|> (consts.get? a)).map (LaneW.d, ·)
     | .mulhilo _ _ _ b => (consts.get? b).map (LaneW.d, ·)
+    | .montsub _ _ b _ _ => (consts.get? b).map (LaneW.d, ·)
     | _ => none)).eraseDups.take 4
   let residentList : List ((LaneW × (String × Nat)) × String) :=
     firstConsts.zipIdx.map (fun (c, i) => (c, vecReg md (top - i)))
