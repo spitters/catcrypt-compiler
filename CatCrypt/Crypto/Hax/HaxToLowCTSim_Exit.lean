@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTExit
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
 public import HaxLean.SemanticsCF
+public import CatCrypt.Hax.Ascent.EarlyExit
 
 /-!
 # Simulation of the exit-flag lowering over `Hax.denote'`
@@ -405,8 +406,8 @@ theorem denoteWhile'Return_succ_run (n : Nat) (c body : ImpExpr) (env : Env) :
 
 theorem denote'_letBind_run_val (n : String) (val body : ImpExpr) (env e1 : Env) (v : Value)
     (h : (denote' bi fuel val).run env = (.val v, e1)) (hv : v.isControlFlow = false) :
-    (denote' bi fuel (.letBind n val body)).run env = (denote' bi fuel body).run (e1.extend n v) := by
-  rw [denote'_letBind_run, h]; cases v <;> first | rfl | simp at hv
+    (denote' bi fuel (.letBind n val body)).run env = (denote' bi fuel body).run (e1.extend n v) :=
+  _root_.Hax.Ascent.denote'_letBind bi fuel h hv
 
 theorem denote'_letBind_run_nonval (n : String) (val body : ImpExpr) (env e1 : Env) (o : Outcome)
     (h : (denote' bi fuel val).run env = (o, e1)) (ho : ∀ v, o ≠ .val v) :
@@ -418,13 +419,13 @@ theorem denote'_letBind_run_nonval (n : String) (val body : ImpExpr) (env e1 : E
 
 theorem denote'_seq_run_val (a b : ImpExpr) (env e1 : Env) (v : Value)
     (h : (denote' bi fuel a).run env = (.val v, e1)) (hv : v.isControlFlow = false) :
-    (denote' bi fuel (.seq a b)).run env = (denote' bi fuel b).run e1 := by
-  rw [denote'_seq_run, h]; cases v <;> first | rfl | simp at hv
+    (denote' bi fuel (.seq a b)).run env = (denote' bi fuel b).run e1 :=
+  _root_.Hax.Ascent.denote'_seq bi fuel h hv
 
 theorem denote'_seq_run_cf (a b : ImpExpr) (env e1 : Env) (k : Bool) (w : Value)
     (h : (denote' bi fuel a).run env = (.val (.controlFlow k w), e1)) :
-    (denote' bi fuel (.seq a b)).run env = (.val (.controlFlow k w), e1) := by
-  rw [denote'_seq_run, h]
+    (denote' bi fuel (.seq a b)).run env = (.val (.controlFlow k w), e1) :=
+  _root_.Hax.Ascent.denote'_seq_cf bi fuel h
 
 theorem denote'_seq_run_nonval (a b : ImpExpr) (env e1 : Env) (o : Outcome)
     (h : (denote' bi fuel a).run env = (o, e1)) (ho : ∀ v, o ≠ .val v) :
@@ -549,10 +550,9 @@ theorem denote'_forFoldReturn_lit_run (i : String) (lo hi : Int) (body : ImpExpr
 theorem denote'_forFoldReturn_var_run (i h : String) (lo : Int) (body : ImpExpr) (env : Env)
     (hv : Int) (hh : env h = some (.int hv)) :
     (denote' bi fuel (.forFoldReturn i (.lit (.int lo)) (.var h) body)).run env =
-      (_root_.Hax.denoteForLoop'Return bi fuel i lo hv body).run env := by
-  simp only [denote']
-  simp [StateT.run, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get,
-      pure, StateT.pure, hh, Value.ofLit]
+      (_root_.Hax.denoteForLoop'Return bi fuel i lo hv body).run env :=
+  _root_.Hax.Ascent.denote'_forFoldReturn bi fuel (_root_.Hax.Ascent.denote'_lit bi fuel _ env)
+    (_root_.Hax.Ascent.denote'_var bi fuel hh)
 
 /-- A run of a `forFoldReturn` with a variable upper bound that ends in a value,
     where the variable holds no control-flow value, reads an integer from the
@@ -579,8 +579,8 @@ theorem denote'_forFoldReturn_var_int (i h : String) (lo : Int) (body : ImpExpr)
 
 theorem denoteForLoop'Return_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : hi ≤ lo) :
-    (_root_.Hax.denoteForLoop'Return bi fuel i lo hi body).run env = (.val .unit, env) := by
-  rw [_root_.Hax.denoteForLoop'Return, if_pos h]; rfl
+    (_root_.Hax.denoteForLoop'Return bi fuel i lo hi body).run env = (.val .unit, env) :=
+  _root_.Hax.Ascent.denoteForLoop'Return_done bi fuel i body env h
 
 theorem denoteForLoop'Return_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
@@ -717,10 +717,9 @@ theorem denote'_forFold_lit_run (i : String) (lo hi : Int) (body : ImpExpr) (env
 theorem denote'_forFold_var_run (i h : String) (lo : Int) (body : ImpExpr) (env : Env)
     (hv : Int) (hh : env h = some (.int hv)) :
     (denote' bi fuel (.forFold i (.lit (.int lo)) (.var h) body)).run env =
-      (_root_.Hax.denoteForLoop' bi fuel i lo hv body).run env := by
-  simp only [denote']
-  simp [StateT.run, bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get,
-      pure, StateT.pure, hh, Value.ofLit]
+      (_root_.Hax.denoteForLoop' bi fuel i lo hv body).run env :=
+  _root_.Hax.Ascent.denote'_forFold bi fuel (_root_.Hax.Ascent.denote'_lit bi fuel _ env)
+    (_root_.Hax.Ascent.denote'_var bi fuel hh)
 
 /-- A run of a `forFold` with a variable upper bound that ends in a value, where the
     variable holds no control-flow value, reads an integer from the variable. -/
@@ -746,8 +745,8 @@ theorem denote'_forFold_var_int (i h : String) (lo : Int) (body : ImpExpr)
 
 theorem denoteForLoop'_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : hi ≤ lo) :
-    (_root_.Hax.denoteForLoop' bi fuel i lo hi body).run env = (.val .unit, env) := by
-  rw [_root_.Hax.denoteForLoop', if_pos h]; rfl
+    (_root_.Hax.denoteForLoop' bi fuel i lo hi body).run env = (.val .unit, env) :=
+  _root_.Hax.Ascent.denoteForLoop'_done bi fuel i body env h
 
 theorem denoteForLoop'_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
@@ -776,17 +775,17 @@ theorem denoteForLoop'_succ_break (n : Nat) (i : String) (lo hi : Int) (body : I
     (env e2 : Env) (w : Value) (h : lo < hi)
     (hb : (denote' bi (n + 1) body).run (env.extend i (.int lo)) =
       (.val (.controlFlow true w), e2)) :
-    (_root_.Hax.denoteForLoop' bi (n + 1) i lo hi body).run env = (.val w, e2) := by
-  rw [denoteForLoop'_succ_run bi n i lo hi body env h, hb]
+    (_root_.Hax.denoteForLoop' bi (n + 1) i lo hi body).run env = (.val w, e2) :=
+  _root_.Hax.Ascent.denoteForLoop'_break bi (n + 1) i h (Nat.succ_ne_zero n) hb
 
 theorem denoteForLoop'_succ_iterate (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env e2 : Env) (w : Value) (h : lo < hi)
     (hb : (denote' bi (n + 1) body).run (env.extend i (.int lo)) = (.val w, e2))
     (hw : w.isControlFlow = false) :
     (_root_.Hax.denoteForLoop' bi (n + 1) i lo hi body).run env =
-      (_root_.Hax.denoteForLoop' bi n i (lo + 1) hi body).run e2 := by
-  rw [denoteForLoop'_succ_run bi n i lo hi body env h, hb]
-  cases w <;> first | rfl | simp at hw
+      (_root_.Hax.denoteForLoop' bi n i (lo + 1) hi body).run e2 :=
+  _root_.Hax.Ascent.denoteForLoop'_next bi (n + 1) i h (Nat.succ_ne_zero n) hb
+    (fun _ he => by subst he; simp at hw)
 
 theorem denoteForLoop'_succ_nonval (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env e2 : Env) (o : Outcome) (h : lo < hi)
