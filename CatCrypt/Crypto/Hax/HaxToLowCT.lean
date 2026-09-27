@@ -11,6 +11,7 @@ public meta import CatCrypt.Crypto.Jasmin.LowCT
 public meta import HaxLean.AST
 public import CatCrypt.Crypto.Hax.LowCTSubset
 public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTOps
 
 /-!
 # H2: Translation `ImpExpr → Option LowCT`
@@ -600,6 +601,16 @@ theorem scalarCallSExpr_isSome (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.
     (scalarCallSExpr f a b).isSome = scalarCallName f := by
   unfold scalarCallSExpr scalarCallName scalarCallNames
   split <;> simp_all
+
+/-- On the name of an operator, `scalarCallSExpr` is the typed
+    `Hax.ScalarOp.toSExpr?`. -/
+theorem scalarCallSExpr_name (o : _root_.Hax.ScalarOp)
+    (a b : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
+    scalarCallSExpr o.name a b = o.toSExpr? a b := by
+  cases o
+  all_goals try (rename_i w; cases w)
+  all_goals try (rename_i w; cases w)
+  all_goals rfl
 
 /-! ### Limb reads
 
