@@ -39,11 +39,9 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 
 `RustExecRoundAdeq.roundC_emitted_eq_rustexec` proves `emitted jasmin = RustExec
 reference` for the SHA-2 `Maj` round — the **bitwise** (`∧`/`⊕`/`¬`) layer, whose
-`inRange` obligation holds for ALL `u64` inputs with no side condition.
-`RustExecARXAdeq.arxC_emitted_eq_rustexec` extends the pattern to the ARX layer
-(one rotate + one modular add) through the closed-kernel `decide` route, and its
-`arxE_inRange_of_bound` supplies the reusable ARX-arm `inRange` template under a
-per-kernel lane bound. This module applies both to the ChaCha20 quarter-round.
+`inRange` obligation holds for ALL `u64` inputs with no side condition. This module
+applies the same closed-kernel route to the ChaCha20 quarter-round, whose 32-bit
+add and rotate arms satisfy `inRange` under a per-kernel lane bound `σ x < 2^32`.
 
 ## The quarter-round
 
@@ -74,8 +72,8 @@ Four modular additions (`+= mod 2^32`), four XORs, four 32-bit rotations.
   `RustExecRoundAdeq` §Scope). For a CLOSED kernel this is irrelevant — the
   route needs only `IsCoveredSCtl` (whose `RScalarSetExpr` arm asks for `srcClean`,
   NOT `inRange`) and the value reconciliation is `decide` on the concrete literal
-  inputs, on which no `+`/`<<` overflows `u64`. This is exactly `RustExecARXAdeq`'s
-  closed-kernel argument, here carrying the entire twelve-step quarter-round.
+  inputs, on which no `+`/`<<` overflows `u64`. The closed-kernel argument carries
+  the entire twelve-step quarter-round.
 
 The 32-bit words are modelled faithfully: each `+=` masks to `& 0xFFFFFFFF`, each
 `rotl32(x,n)` is `((x << n) & 0xFFFFFFFF) ^ (x >> (32-n))` (the rotate halves occupy
@@ -87,8 +85,7 @@ rebinding is needed.
 
 `addE_inRange_of_bound` / `rotlE_inRange_of_bound` discharge the `SAdd`/`SShl`
 overflow side conditions the hoisted arm cannot, from the per-kernel 32-bit lane
-bound `σ x < 2^32` — the `RustExecARXAdeq.arxE_inRange_of_bound` template
-instantiated on ChaCha's add and rotate. `qrAdd_reconcile` / `qrRotl_reconcile`
+bound `σ x < 2^32`. `qrAdd_reconcile` / `qrRotl_reconcile`
 then feed them to `RustExecSemScalarBridge.sexprTransfer` to get the wrapping-`u64`
 evaluator = `ofNat` image of the saturating-`Nat` evaluator on every lane-bounded
 input — showing the ChaCha ARX arms reconcile symbolically, not just concretely.
@@ -298,12 +295,11 @@ theorem qrXorC_emitted_eq_rustexec (N : Nat) (leafSpec : LeafSpec) :
     (qrXorC_exec N leafSpec) xHSem xHName xHVal xHRet xHCom
   rwa [xVal_eq_ref] at h
 
-/-! ## §2 — symbolic ARX arms (the reusable `arxE_inRange_of_bound` template on ChaCha)
+/-! ## §2 — symbolic ARX arms
 
 The `+=` and `rotl32` arms hit the `SAdd`/`SShl` overflow conditions the hoisted
 all-`u64` bound cannot discharge. Under the per-kernel 32-bit lane bound `σ x < 2^32`
-— the ChaCha word discipline — they are provable. This is
-`RustExecARXAdeq.arxE_inRange_of_bound` instantiated on ChaCha's add and rotate. -/
+— the ChaCha word discipline — they are provable. -/
 
 /-- **ChaCha add arm `inRange`.** `(x + y) & 0xFFFFFFFF` under `σ x, σ y < 2^32`:
     the `SAdd` sum `< 2^33 < 2^64`, so no overflow. -/
@@ -348,7 +344,7 @@ theorem qrRotl_reconcile (n : Nat) (x : String) (σ : String → Nat)
 
 All twelve steps, SSA form. `IsCoveredSCtl` needs only `srcClean` per `RScalarSetExpr`
 (NOT `inRange`), and the value reconciliation is `decide` on the concrete literal
-inputs — the `RustExecARXAdeq` closed-kernel argument carrying the whole quarter-round. -/
+inputs; the closed-kernel argument carries the whole quarter-round. -/
 
 theorem addE_srcClean (x y : String) (hx : x.length < 4) (hy : y.length < 4) :
     srcClean (addE x y) :=

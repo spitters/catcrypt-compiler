@@ -637,7 +637,17 @@ theorem inlineArithMemref_eq (r : InlineArith) (a b : Fin 6 → BitVec 64) :
       else the opaque `extCall "arrLoadDyn"` default;
     * `RArrStore` — the dynamic-index write `memSetDyn arr i v` when the shapes
       line up and the destination array's encoding is `.memref n`; else the opaque
-      default. -/
+      default.
+
+    Scalar semantics. `RScalarSetExpr` evaluates by `SExpr.evalBV`, which wraps
+    at 64 bits at every node, and `RScalarSet n` stores `BitVec.ofNat 64 n`. This
+    is the referent for wrapping kernels. `RustExec` evaluates the same expressions
+    over unbounded naturals with saturating `SSub` and agrees with `semScalar` only
+    under an in-range hypothesis; the bridges are
+    `RustExecSemScalarBridge.rustExec_semScalar_agree` (`IsCoveredAdeqS`, hoisted
+    `inRange` for all `u64` inputs, and `ScalarInRange`),
+    `GuardedAgree.rustExec_semScalarGuarded_agree` (per-run `InRangeG`) and
+    `RustExecSimulatesUnified.rustExec_semU_agree` (`IsCoveredAdeqU`). -/
 def semScalar : LowCT → SEnvScalar → Option SEnvScalar
   | .RSkip, env => some env
   | .RBlock body, env => semScalar body env

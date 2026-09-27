@@ -38,9 +38,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 # A whole SHA-256 compression round STEP through the closed-kernel `emitted = RustExec` route
 
 `RustExecRoundAdeq.roundC_emitted_eq_rustexec` proved `emitted jasmin = RustExec
-reference` for the SHA-2 `Maj` round — the **bitwise** (`∧`/`⊕`/`¬`) layer.
-`RustExecARXAdeq.arxC_emitted_eq_rustexec` extended the pattern to the ARX layer
-(one rotate + one modular add) through the closed-kernel `decide` route, and
+reference` for the SHA-2 `Maj` round — the **bitwise** (`∧`/`⊕`/`¬`) layer, and
 `RustExecChaChaAdeq.qrC_emitted_eq_rustexec` carried a full twelve-step ChaCha20
 quarter-round through it. This module assembles a **whole SHA-256 compression round
 step** — the `Σ₀`/`Σ₁` rotate-xor trees, `Ch`/`Maj`, the `T1`/`T2` five-way and
@@ -78,18 +76,15 @@ their literal shift/mask constants `< 2^64`. The `SAdd`/`SShl` overflow `inRange
 side conditions (which the hoisted all-`u64` bound cannot meet, see
 `RustExecRoundAdeq` §Scope) are irrelevant on a CLOSED kernel: the route needs only `srcClean`, and
 the value reconciliation is `decide` on the concrete literal inputs, on which no
-`+`/`<<` overflows `u64` (the SHA-256 32-bit lane discipline). This is
-`RustExecARXAdeq`'s closed-kernel argument carrying the entire round step — the
-`T1` five-way add included.
+`+`/`<<` overflows `u64` (the SHA-256 32-bit lane discipline). The closed-kernel
+argument carries the entire round step, the `T1` five-way add included.
 
 ## The ARX-arm `inRange` discharge, symbolically (`§"symbolic ARX arms"`)
 
 `t1E_inRange_of_bound` discharges the five-way `T1` add's `SAdd` overflow conditions
 — exactly the ones the hoisted arm cannot — from the per-kernel 32-bit lane bound
 `σ x < 2^32`: the sum `h + Σ₁ + Ch + K + W < 5·2^32 < 2^64`, so no `u64` overflow.
-This is the `RustExecARXAdeq.arxE_inRange_of_bound` template on the round's widest
-add, showing the five-way partial-sum bound discharges symbolically, not just
-concretely.
+The five-way partial-sum bound thus discharges symbolically as well as concretely.
 
 ## Generalization to the whole compression (64 rounds)
 
@@ -245,8 +240,7 @@ The `T1 = h + Σ₁(e) + Ch + K + W` five-way add is the round's widest `SAdd` c
 its `SAdd` overflow side conditions are exactly the
 ones the hoisted all-`u64` bound cannot meet. Under the per-kernel 32-bit lane bound
 `σ x < 2^32` — the SHA-256 word discipline — the sum stays `< 5·2^32 < 2^64`
-and all four partial-sum `SAdd` conditions discharge. This is
-`RustExecARXAdeq.arxE_inRange_of_bound` on the round's five-way add. -/
+and all four partial-sum `SAdd` conditions discharge. -/
 
 /-- The per-kernel lane bound for the `T1` addends. -/
 def t1Bound (σ : String → Nat) : Prop :=

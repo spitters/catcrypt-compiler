@@ -1251,7 +1251,17 @@ theorem scalarCallSExpr_limbFree {f : String} {ea eb se : SExpr}
 
 /-- The builtin table agrees with the calls computed in the scalar heap: such a
     call succeeds only on two values with scalar readings, and its result reads
-    as the natural-number operation on them. -/
+    as the natural-number operation on them.
+
+    `scalarCallNat` reads `scalar#Add`, `scalar#Mul` and `scalar#Shl` as unbounded
+    `+`, `*` and `<<<` and `scalar#Sub` as saturating subtraction. Rust `u64` `<<`
+    truncates and `+`/`*` wrap or panic, so a table faithful to Rust satisfies this
+    condition only by refusing every call whose result is at least the word bound
+    `2^64`. Every theorem that takes `ScalarCallsAgree` as a hypothesis (including
+    `lowCTToImp_simulates`, `lowCTToImp_simulates_frontNF` and
+    `roundTrip_hax_simulates`) therefore holds only on runs
+    whose intermediate values stay below the word bound; on a wrapping run the
+    hypothesis fails and the theorem says nothing. -/
 def ScalarCallsAgree (bi : Builtins) : Prop :=
   ∀ (f : String) (k : Nat → Nat → Nat) (va vb r : Value), scalarCallNat f = some k →
     bi f [va, vb] = some r →

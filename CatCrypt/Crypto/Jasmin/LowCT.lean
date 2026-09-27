@@ -457,17 +457,19 @@ def sexprMulHiS (a b : Nat) : Nat :=
     SSub saturates at 0 rather than going negative).  Matches the
     `rsScalar : String → Nat` default-0 behaviour in `RustState`.
 
-    **NOT the `u64` VALUE semantics — memory-safety-layer over-approximation
-    only.**  The `Nat` carrier makes `SSub` *saturate* at 0 and `SAdd`/`SMul`
-    grow unboundedly, matching NEITHER the hardware target (wraps mod 2^64) NOR
-    real Rust `u64` (release: wraps; debug: panics — never saturates; saturation
-    is the distinct `saturating_sub`).  It is a *third* out-of-range behaviour,
-    faithful to nothing physical.  `Nat` is chosen here for the memory-safety /
-    frame layer (aliasing reasoning, where scalar values are irrelevant), NOT as
-    a value oracle.  **For VALUE-level (emit-correctness) reasoning use
-    `SExpr.evalBV` (wrapping-`u64`-faithful); the two agree only under the
-    explicit `SExpr.inRange` side condition (`SExpr.evalBV_eq_ofNat_eval`, the
-    reconciliation).** -/
+    Intended use. This is the scalar semantics of `RustExec`: arithmetic over
+    unbounded naturals with saturating subtraction. It is the referent for Rust
+    `saturating_sub` (the hax front lowers `scalar#Sub` and `min` to `SSub`), for
+    loop counters and array indices, and for values that stay below `2^64`. It is
+    not the referent for a wrapping kernel: `SAdd`, `SMul` and `SShl` do not wrap,
+    and on overflowing inputs the value differs from both the hardware (mod 2^64)
+    and Rust `u64` (wrap or panic). The wrapping referent is `SExpr.evalBV`, used
+    by `semScalar`.
+
+    Bridges to `SExpr.evalBV`, each with its in-range hypothesis:
+    `SExpr.evalBV_eq_ofNat_eval` and `SExpr.toNat_evalBV_of_inRange` (under
+    `SExpr.inRange σ e`); `SExpr.evalStateBV_eq_ofNat_evalState` (under
+    `SExpr.inRangeState`). -/
 def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SVar x   => σ x
   | .SLit n   => n
@@ -520,9 +522,18 @@ wrapping-faithful; only the plain `Nat`-arithmetic arms (`SAdd`,
 The bridge to the Nat model is `SExpr.evalBV_eq_ofNat_eval` below: under the
 explicit in-range side-condition `SExpr.inRange` the wrapping evaluator equals
 `BitVec.ofNat 64 (eval …)`, i.e. *no wrap actually occurs* and the Nat model is
-sound for the hardware on those inputs.  Defined additively (a companion of
-`eval`, not a replacement) so `eval`'s `(String → Nat) → SExpr → Nat` signature
-— and its many callers — stay intact. -/
+sound for the hardware on those inputs. -/
+
+/-- Evaluate an `SExpr` over 64-bit words, wrapping at the width at every node.
+
+    Intended use. This is the scalar semantics of `semScalar` and the referent for
+    wrapping kernels (modular additions, rotations, `wrapping_*` operations): its
+    value on every input is the value the emitted code computes. `SExpr.eval`, the
+    `RustExec` semantics, agrees with it on in-range inputs only; the bridges are
+    `SExpr.evalBV_eq_ofNat_eval` (under `SExpr.inRange`) and
+    `SExpr.evalStateBV_eq_ofNat_evalState` (under `SExpr.inRangeState`). `SSub`
+    wraps here and saturates in `SExpr.eval`; the two agree on `SSub a b` only when
+    `b ≤ a`. -/
 def SExpr.evalBV (β : String → BitVec 64) : SExpr → BitVec 64
   | .SVar x   => β x
   | .SLit n   => BitVec.ofNat 64 n
@@ -1807,7 +1818,24 @@ theorem rsTower_callNUpdate_nth (leafSpec : LeafSpec) (f : String)
     `toJasminCmd` still lowers `RFnCall` to a `Ccall`, so such a program
     compiles; what it does not have is an operational claim at this
     layer. `TranslateDialectFnCall`'s `fnCallD`/`fnDefD` are the dialect-side
-    shape a future rule would mirror. -/
+    shape a future rule would mirror.
+
+    Scalar semantics. `scalarSetExpr`, `limbStoreExpr` and the `forRuntime` trip
+    count evaluate by `SExpr.evalState`, over unbounded naturals with saturating
+    `SSub`; guards test `rsScalar x ≠ 0` on naturals. `RustExec` is therefore the
+    referent for Rust `saturating_sub`, counters, indices and values that stay
+    below `2^64`, and not for wrapping kernels, whose referent is `semScalar`
+    (`SExpr.evalBV`). Wrapping operations routed as leaf calls (`wrapping_*#w`,
+    `rotate_*#w`, `cast#w`) wrap in the leaf oracle and are unaffected.
+
+    Bridges from `RustExec` to `semScalar` and their in-range hypotheses:
+    `RustExec_limbStoreExpr_stored_eq_evalStateBV` (`inRangeState`);
+    `RustExecSemScalarBridge.rustExec_semScalar_agree` and
+    `rustExec_semScalar_agree_arr` (`IsCoveredAdeqS`: `srcClean` and
+    `∀ σ, (∀ y, σ y < 2^64) → e.inRange σ` at every `RScalarSetExpr`, together
+    with `ScalarInRange` at entry); `GuardedAgree.rustExec_semScalarGuarded_agree`
+    (the per-run `InRangeG`); `RustExecSimulatesUnified.rustExec_semU_agree`
+    (`IsCoveredAdeqU`). -/
 inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
     LowCT → RustState → RustState → Prop where
   | skip   : ∀ rs, RustExec N leafSpec .RSkip rs rs

@@ -31,6 +31,20 @@ the simplest non-trivial fold.  The SHA-256 compression body (σ/Ch/Maj over the
 `forZero`/`forSucc` induction with a heavier per-step characterisation; the
 scalability argument — proof term size constant in `N` — is exactly the one
 established below.
+
+## Semantics and scope
+
+The SHA-256 round results (`roundBody_realizes`, `rfor_loop_realizes_compFold`,
+`rforFold_roundStepC_realizes_compFold`) are stated through `RustExec`, whose
+scalar arithmetic is over unbounded naturals, and decoded by `BitVec.ofNat 32`.
+They hold because the round body contains no `SSub`, masks every operand before a
+shift (`redE`), and keeps every intermediate below `2^37`, so the natural-number
+run and the wrapping run decode to the same words. No theorem connects these
+results to emitted code. A connection would read the value from `semScalar`
+(`SExpr.evalBV`, wrapping at 64 bits) and reach it from `RustExec` through a
+bridge with a per-run in-range hypothesis, such as `InRangeG` of
+`GuardedAgree.rustExec_semScalarGuarded_agree`; the `2^37` bound on intermediates
+is the range fact such a hypothesis requires.
 -/
 
 @[expose] public section
@@ -415,7 +429,9 @@ theorem roundStepC_decode (K W : Nat → BitVec 32) (k : Nat) (rs : RustState) :
 /-- **Residual closed: the full varying-`K`/`W` round loop realizes `compFold`.**
     The `n`-fold of the concrete round body — with `K[k]`/`W[k]` injected at each
     counter `k` — decodes to FIPS `compFold init K W n`, for any constant table
-    `K` and message schedule `W`.  `O(1)` proof term, no unrolling. -/
+    `K` and message schedule `W`.  `O(1)` proof term, no unrolling. The statement
+    is about the `RustExec` run and is not connected to emitted code; see the
+    module docstring, section "Semantics and scope". -/
 theorem rforFold_roundStepC_realizes_compFold (K W : Nat → BitVec 32)
     (rs0 : RustState) (init : St) (n : Nat) :
     decodeSt (rforFold (roundStepC K W) (encodeSt rs0 init) n) = compFold init K W n := by

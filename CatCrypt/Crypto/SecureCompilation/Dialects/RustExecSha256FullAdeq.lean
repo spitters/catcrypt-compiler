@@ -74,12 +74,11 @@ and the `⊕`-mixes threading state) meets `hir` for ALL `u64` inputs with no si
 condition (`SAnd`/`SXor` carry only their operand conditions). The `Σ`/`σ`
 rotations (`SShl`) and the `T1`/`T2` modular adds (`SAdd`) do NOT — a left-shift or
 an add of two full-range `u64`s overflows the saturating-`Nat` model, so the
-input-agnostic `hir` fails on those arms (see `RustExecARXAdeq`).
+input-agnostic `hir` fails on those arms.
 So the threading round loop `bodyB` here is the maximal iterated SHA-256
 round expressible on the symbolic leg: the nonlinear `Ch`/`Maj` layer plus the
 `⊕`-state mixing. The ARX `Σ`/`σ`/`+` arms reconcile only under a per-kernel
-concrete input bound (`RustExecSha256Adeq.t1E_inRange_of_bound` /
-`RustExecARXAdeq.arxE_inRange_of_bound`), which the closed-kernel `decide` leg
+concrete input bound (`RustExecSha256Adeq.t1E_inRange_of_bound`), which the closed-kernel `decide` leg
 discharges concretely — as the whole round STEP does in `RustExecSha256Adeq`.
 
 ## Scope: the threading full-ARX compression
