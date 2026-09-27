@@ -197,6 +197,46 @@ theorem convert_roundtrip {p : Nat} (P : ZMod p × ZMod p) :
   show jacobianToAffineF p (affineToJacobianF p P) = P
   exact jacobianToAffine_affineToJacobian P
 
+/-! ## 8b. Conversions read from the representation index
+
+The conversion between two point representations, and the conversion that
+`affToPoint` performs into the representation a map `σ` fixes for `point p`
+(`EllipticCurveDialect.ECTyAt.pointRepr`). -/
+
+/-- The carrier of a point representation over `p` in this dialect: `affine` and
+    `jacobian` have one, the other representations none. -/
+def EcConvertTy.ofPointRepr (p : Nat) : PointRepr → Option EcConvertTy
+  | .affine => some (.affine p)
+  | .jacobian => some (.jacobian p)
+  | _ => none
+
+/-- The conversion op from the representation `s` to the representation `t` over
+    `p`, where this dialect has one. -/
+def EcConvertOp.between (p : Nat) : PointRepr → PointRepr → Option EcConvertOp
+  | .affine, .jacobian => some (.affineToJacobian p)
+  | .jacobian, .affine => some (.jacobianToAffine p)
+  | _, _ => none
+
+/-- A conversion op between two representations takes the carrier of the first and
+    returns the carrier of the second. -/
+theorem EcConvertOp.between_sig {p : Nat} {s t : PointRepr} {op : EcConvertOp}
+    (h : EcConvertOp.between p s t = some op) :
+    EcConvertTy.ofPointRepr p s
+        = (DialectSignature.sig (d := ecConvertDialect) op).head?
+      ∧ EcConvertTy.ofPointRepr p t
+        = some (DialectSignature.ret (d := ecConvertDialect) op) := by
+  cases s <;> cases t <;> cases h <;> exact ⟨rfl, rfl⟩
+
+/-- The conversion op that brings an affine point into the representation `σ` fixes
+    for `point p`; none where that representation is affine or has no conversion op
+    here. -/
+def EcConvertOp.fromAffineAt (σ : ECReprMap) (p : Nat) : Option EcConvertOp :=
+  (ECTyAt.pointRepr (σ := σ) (ECTy.point p)).bind (EcConvertOp.between p .affine)
+
+/-- Under the map that fixes nothing, `affToPoint` converts affine to Jacobian. -/
+theorem EcConvertOp.fromAffineAt_unfixed (p : Nat) :
+    EcConvertOp.fromAffineAt .unfixed p = some (.affineToJacobian p) := rfl
+
 /-! ## 9. Constant-time predicate (the dialect's CT instance)
 
 Each conversion is a fixed schedule of field arithmetic — `affineToJacobian` is a

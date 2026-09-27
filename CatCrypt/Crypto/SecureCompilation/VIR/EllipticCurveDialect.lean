@@ -648,4 +648,201 @@ example :
       = ECPoint.aff 2 3 := by
   rfl
 
+/-! ## 11. Curve descriptors and point representations
+
+prime-ir's point types `!elliptic_curve.affine<#sw>`, `jacobian<#sw>`, `xyzz<#sw>`,
+`ed_affine<#te>` and `ed_extended<#te>` carry a curve attribute: the form, the two
+coefficients, the base field and a generator. A representation map `σ` assigns each
+modulus an `ECRepr`, an optional curve descriptor and an optional representation of
+the abstract point type; `ecDialectAt σ` is `ecDialect` with its type alphabet indexed
+by `σ`. As for `ModArithDialect.modArithDialectAt`, the index is reducible: the
+constructors, the signatures, the instances and the denotation into `ECPoint p` are
+those of `ecDialect`, and the points stay in the group model of section 1. -/
+
+/-- The form of a curve: short Weierstrass `y² = x³ + a·x + b` (`sw`) or twisted
+    Edwards `a·x² + y² = 1 + d·x²·y²` (`te`). -/
+inductive CurveForm where
+  | sw
+  | te
+  deriving DecidableEq, Repr, Inhabited
+
+/-- A curve over `ZMod p` as prime-ir's `#elliptic_curve.sw` and `#elliptic_curve.te`
+    attributes describe it: the form, the coefficients `a` and `b` (`b` is `d` in the
+    twisted-Edwards form), the representation of the base field `!field.pf<p : iW>`
+    and a generator. -/
+structure CurveDesc (p : Nat) where
+  /-- The form of the curve. -/
+  form : CurveForm
+  /-- The coefficient `a`. -/
+  a : ZMod p
+  /-- The coefficient `b` of the short-Weierstrass form, `d` of the twisted-Edwards form. -/
+  b : ZMod p
+  /-- The storage width and Montgomery flag of the base field. -/
+  baseRepr : ModArithDialect.ModArithRepr := {}
+  /-- The generator `(Gx, Gy)`, `none` where the program does not fix it. -/
+  generator : Option (ZMod p × ZMod p) := none
+  deriving DecidableEq
+
+namespace CurveDesc
+
+variable {p : Nat}
+
+/-- The short-Weierstrass descriptor of `C` with generator `g` and base-field
+    representation `r`. -/
+def ofECParams (C : ECParams p) (g : Option (ZMod p × ZMod p) := none)
+    (r : ModArithDialect.ModArithRepr := {}) : CurveDesc p :=
+  { form := .sw, a := C.a, b := C.b, baseRepr := r, generator := g }
+
+/-- The twisted-Edwards descriptor of `C` with generator `g` and base-field
+    representation `r`. -/
+def ofEdwardsParams (C : EdwardsParams p) (g : Option (ZMod p × ZMod p) := none)
+    (r : ModArithDialect.ModArithRepr := {}) : CurveDesc p :=
+  { form := .te, a := C.a, b := C.d, baseRepr := r, generator := g }
+
+/-- The short-Weierstrass parameters `a, b` of a descriptor. -/
+def toECParams (D : CurveDesc p) : ECParams p := ⟨D.a, D.b⟩
+
+/-- The twisted-Edwards parameters `a, d` of a descriptor. -/
+def toEdwardsParams (D : CurveDesc p) : EdwardsParams p := ⟨D.a, D.b⟩
+
+theorem toECParams_ofECParams (C : ECParams p) (g : Option (ZMod p × ZMod p))
+    (r : ModArithDialect.ModArithRepr) : (ofECParams C g r).toECParams = C := rfl
+
+theorem toEdwardsParams_ofEdwardsParams (C : EdwardsParams p)
+    (g : Option (ZMod p × ZMod p)) (r : ModArithDialect.ModArithRepr) :
+    (ofEdwardsParams C g r).toEdwardsParams = C := rfl
+
+/-- The generator, where the descriptor fixes one, lies on the curve it describes. -/
+def GeneratorOnCurve (D : CurveDesc p) : Prop :=
+  ∀ g ∈ D.generator, match D.form with
+    | .sw => D.toECParams.onCurve g.1 g.2
+    | .te => D.toEdwardsParams.onCurve g.1 g.2
+
+end CurveDesc
+
+/-- The coordinate representation of a curve point, one per prime-ir point type:
+    `affine`, `jacobian` and `xyzz` over a short-Weierstrass curve, `edAffine`
+    (`ed_affine`) and `edExtended` (`ed_extended`) over a twisted-Edwards curve. -/
+inductive PointRepr where
+  | affine
+  | jacobian
+  | xyzz
+  | edAffine
+  | edExtended
+  deriving DecidableEq, Repr, Inhabited
+
+/-- The curve form a point representation belongs to. -/
+def PointRepr.form : PointRepr → CurveForm
+  | .affine | .jacobian | .xyzz => .sw
+  | .edAffine | .edExtended => .te
+
+/-- The name of the prime-ir type of a point representation. -/
+def PointRepr.primeIrName : PointRepr → String
+  | .affine => "affine"
+  | .jacobian => "jacobian"
+  | .xyzz => "xyzz"
+  | .edAffine => "ed_affine"
+  | .edExtended => "ed_extended"
+
+/-- The representation of the curve points over a modulus `p`: the curve descriptor
+    and the representation of the abstract point type `point p`, each `none` where
+    the program leaves it to the lowering. -/
+structure ECRepr (p : Nat) where
+  /-- The curve over `ZMod p`. -/
+  curve : Option (CurveDesc p) := none
+  /-- The representation of `point p`. -/
+  point : Option PointRepr := none
+
+/-- The representation of `point p` where `r` fixes none: prime-ir's `jacobian` over
+    a short-Weierstrass curve or an unfixed curve, `ed_extended` over a
+    twisted-Edwards curve. -/
+def ECRepr.defaultPoint {p : Nat} (r : ECRepr p) : PointRepr :=
+  match r.curve with
+  | some { form := .te, .. } => .edExtended
+  | _ => .jacobian
+
+/-- The representation of `point p` under `r`. -/
+def ECRepr.pointRepr {p : Nat} (r : ECRepr p) : PointRepr :=
+  r.point.getD r.defaultPoint
+
+/-- The fixed point representation belongs to the form of the fixed curve, and the
+    fixed generator lies on that curve. -/
+def ECRepr.Coherent {p : Nat} (r : ECRepr p) : Prop :=
+  ∀ D ∈ r.curve, (∀ q ∈ r.point, q.form = D.form) ∧ D.GeneratorOnCurve
+
+/-- A representation per modulus. -/
+abbrev ECReprMap : Type := (p : Nat) → ECRepr p
+
+/-- The representation map that fixes nothing. -/
+def ECReprMap.unfixed : ECReprMap := fun _ => {}
+
+/-- The modulus of an `ECTy`. -/
+def ECTy.modulus : ECTy → Nat
+  | .point p | .affine p | .jacobian p | .scalar p => p
+
+/-- The type alphabet of `ecDialect` indexed by the representation map `σ`. -/
+abbrev ECTyAt (_σ : ECReprMap) : Type := ECTy
+
+/-- The representation a type carries: `σ` at its modulus. -/
+def ECTyAt.repr {σ : ECReprMap} (t : ECTyAt σ) : ECRepr (ECTy.modulus t) :=
+  σ (ECTy.modulus t)
+
+/-- The point representation of a type: the one `σ p` gives at `point p`, the one the
+    type names at `affine p` and `jacobian p`, none at a scalar. -/
+def ECTyAt.pointRepr {σ : ECReprMap} : ECTyAt σ → Option PointRepr
+  | .point p => some (σ p).pointRepr
+  | .affine _ => some .affine
+  | .jacobian _ => some .jacobian
+  | .scalar _ => none
+
+/-- Under the map that fixes nothing, `point p` is represented in Jacobian
+    coordinates. -/
+theorem ECTyAt.pointRepr_point_unfixed (p : Nat) :
+    ECTyAt.pointRepr (σ := .unfixed) (ECTy.point p) = some .jacobian := rfl
+
+/-- The curve an op carries agrees with the curve `σ` fixes at its modulus, in form
+    and coefficients. Ops without a curve agree with every map. -/
+def ECOp.curveAgrees (σ : ECReprMap) : ECOp → Prop
+  | .padd p C | .pdbl p C | .pmadd p C | .line p C => ∀ D ∈ (σ p).curve,
+      D.form = .sw ∧ D.toECParams = C
+  | .psmul p C _ | .pcomb p C _ | .pwnaf p C _ => ∀ D ∈ (σ p).curve,
+      D.form = .sw ∧ D.toECParams = C
+  | .edPadd p C | .edPdbl p C => ∀ D ∈ (σ p).curve,
+      D.form = .te ∧ D.toEdwardsParams = C
+  | .edPsmul p C _ => ∀ D ∈ (σ p).curve, D.form = .te ∧ D.toEdwardsParams = C
+  | .pneg _ | .affToPoint _ => True
+
+/-- Every op agrees with the map that fixes nothing. -/
+theorem ECOp.curveAgrees_unfixed (op : ECOp) : op.curveAgrees .unfixed := by
+  cases op <;> first | trivial | (intro D hD; cases hD)
+
+/-- `ecDialect` with its types indexed by the representation map `σ`. -/
+@[reducible] def ecDialectAt (_σ : ECReprMap) : Dialect :=
+  { Op := ECOp, Ty := ECTyAt _σ }
+
+/-- The dialect indexed by the map that fixes nothing is `ecDialect`. -/
+theorem ecDialectAt_unfixed : ecDialectAt .unfixed = ecDialect := rfl
+
+/-- An annotated point type denotes the abstract group element `ECPoint p`. -/
+theorem denote_point_at (σ : ECReprMap) (p : Nat) :
+    TyDenote.denote (ECTy.point p : ECTyAt σ) = ECPoint p := rfl
+
+/-- A program of `ecDialect` annotated with the representation map `σ`. -/
+def annotateEcCom (σ : ECReprMap) {Γ : Ctxt ecDialect} {t : ECTy}
+    (c : Com ecDialect Γ t) : Com (ecDialectAt σ) Γ t := c
+
+/-- The program of `ecDialect` underlying an annotated program. -/
+def unannotateEcCom {σ : ECReprMap} {Γ : Ctxt (ecDialectAt σ)} {t : ECTyAt σ}
+    (c : Com (ecDialectAt σ) Γ t) : Com ecDialect Γ t := c
+
+/-- The annotation does not change the denotation. -/
+theorem denote_annotateEcCom (σ : ECReprMap) {Γ : Ctxt ecDialect} {t : ECTy}
+    (c : Com ecDialect Γ t) (V : Ctxt.Valuation Γ) :
+    (annotateEcCom σ c).denote V = c.denote V := rfl
+
+/-- Removing the annotation does not change the denotation. -/
+theorem denote_unannotateEcCom {σ : ECReprMap} {Γ : Ctxt (ecDialectAt σ)}
+    {t : ECTyAt σ} (c : Com (ecDialectAt σ) Γ t) (V : Ctxt.Valuation Γ) :
+    (unannotateEcCom c).denote V = c.denote V := rfl
+
 end CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
