@@ -69,8 +69,9 @@ phase, and its declarations are discarded; the run continues with the next funct
 reading of each literal, of its parameters and bound names, and each leaf lemma likewise
 run under budgets of their own; a leaf lemma that fails is noted and left out.
 
-The constructs outside the generator (`lam`, `match_`, the `*Return` loops,
-`cfContinue`, `cfBreakContinue`, and the pre-pipeline constructs) are counted per function.
+The constructs outside the generator (`lam`, `forFoldRevReturn`, `whileFoldReturn`,
+`cfContinue`, `cfBreakContinue`, and the pre-pipeline constructs) are counted per function;
+the generator reads `match_` only as the `Option` match on a variable.
 `coverageRun` runs the same on an extraction module from `IO`.
 
 ## Main definitions
@@ -202,10 +203,10 @@ def runtimeNames : MetaM (List String) := do
     | (``Prod.mk, #[_, _, k, _]) => return strOf? k
     | _ => return none
 
-/-- A tagged runtime name `op#w`. -/
+/-- A tagged runtime name `op#w`, with `w` decimal digits or `size`. -/
 def isTagged (s : String) : Bool :=
   match s.splitOn "#" with
-  | [_, w] => !w.isEmpty && w.all Char.isDigit
+  | [_, w] => w == "size" || (!w.isEmpty && w.all Char.isDigit)
   | _ => false
 
 /-- The call names, variable names and constructors of a literal. -/
@@ -579,7 +580,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
       if let some sel := only? then
         unless sel.contains f do continue
       let (sur, _, _, sc) := infos[f]!
-      let unsupported := ["lam", "match_", "forFoldReturn", "forFoldRevReturn",
+      let unsupported := ["lam", "forFoldRevReturn",
         "whileFoldReturn", "cfContinue", "cfBreakContinue", "assign", "forLoop", "forLoopRev",
         "whileLoop", "break_", "continue_", "earlyReturn", "questionMark"]
       let census := unsupported.filterMap fun c =>

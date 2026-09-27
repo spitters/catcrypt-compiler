@@ -30,6 +30,7 @@ without a decoder.
 ## Main definitions
 
 * `Leaf`, `Table`, `Table.over`, `Table.toBuiltins`
+* the encoding `HaxEnc String`, which erases a string to `.unit`
 * `HaxEnc.Inj`, `HaxTupleEnc.Inj`, `HaxArgs`
 * `liftFn`, `leaf0`, `leaf1`, `leaf2`, `leaf3`, `leaf4`
 
@@ -124,6 +125,16 @@ theorem lookup_eq_none_of_not_mem {t : Table} {f : String} (h : f ∉ t.map Prod
     exact ih (fun hm => h (List.mem_cons_of_mem _ hm))
 
 end Table
+
+/-! ## Strings -/
+
+/-- The encoding of a string: `.unit`. `Value` has no string constructor; a `&str` of an
+    extraction is produced only by the opaque calls of the base table and is never read
+    by a literal, so the encoding erases it. It is not injective, and a leaf that takes a
+    string argument has no `liftFn`. -/
+instance : HaxEnc String := ⟨fun _ => .unit⟩
+
+instance : HaxEnc.Plain String := ⟨fun _ => rfl⟩
 
 /-! ## Injective encodings -/
 

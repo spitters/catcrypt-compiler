@@ -37,10 +37,11 @@ Rust, so does the table. The known differences are:
 ## Names
 
 `runtimeTable` holds the untagged names. A tagged name `op#w`, a single `#` followed by
-decimal digits, is parsed by `parseTag`, and `widthTable` gives the family `op` a leaf at
-every width `w`: `cast#w` is `Hax.castVal_w w`, `BitXor#w` is `Hax.bitxor_w w`, and so
-on. A tagged name whose family has no entry, and every name with several `#` (the struct
-updates `struct_update#S#i#n`), is left to `base`.
+decimal digits or by `size`, is parsed by `parseTag`, and `widthTable` gives the family
+`op` a leaf at every width `w`: `cast#w` is `Hax.castVal_w w`, `BitXor#w` is
+`Hax.bitxor_w w`, and so on. The tag `size` is the width `Hax.usizeBits`, as in the
+printer's `widthAwareRuntime`. A tagged name whose family has no entry, and every name
+with several `#` (the struct updates `struct_update#S#i#n`), is left to `base`.
 
 The printer rewrites `index arr (RangeTo n)` into `Hax.slice_to arr n` and the other range
 arguments of `index` and `index_mut` into slices, `index_mut arr i` into `Hax.index arr i`,
@@ -53,8 +54,9 @@ argument of `index`, `index_mut` or `collect`.
 
 Names the table leaves to `base`: `map` and `flat_map` (their argument is a closure,
 which `denote'` does not evaluate), `Ok` and `Err` (no `HaxEnc` for `Except`), `literal`
-and `str_opaque` (the default of a type the leaf does not see), `new` with arguments
-(the opaque `Hax.new`), and `min` (not a runtime name of the printer).
+and `str_opaque` (the default of a type the leaf does not see), and `new` with arguments
+(the opaque `Hax.new`). `min` and `max`, which the printer emits unchanged, are the
+`min` and `max` of `Int`.
 
 ## Main definitions
 
@@ -86,10 +88,13 @@ def digitsVal (ds : List Char) : Option Nat :=
   else none
 
 /-- The family and width of a tagged name `op#w`: the part before the first `#`, and the
-    rest when it is a nonempty string of decimal digits. -/
+    rest when it is a nonempty string of decimal digits, or `Hax.usizeBits` when it is
+    `size`, the tag of the `usize` and `isize` operands. -/
 def parseTag (f : String) : Option (String × Nat) :=
   match f.toList.span (· != '#') with
-  | (op, _ :: ds) => (digitsVal ds).map fun w => (String.ofList op, w)
+  | (op, _ :: ds) =>
+    if ds = ['s', 'i', 'z', 'e'] then some (String.ofList op, Hax.usizeBits)
+    else (digitsVal ds).map fun w => (String.ofList op, w)
   | (_, []) => none
 
 /-- The width families, after the printer's `widthAwareRuntime`: each family name with
@@ -174,6 +179,7 @@ noncomputable def runtimeTable : Table :=
    ("wrapping_sub", leaf2 (Hax.wrapping_sub : Int → Int → Int)),
    ("wrapping_mul", leaf2 (Hax.wrapping_mul : Int → Int → Int)),
    ("cast", leaf1 Hax.castVal),
+   ("min", leaf2 (min : Int → Int → Int)), ("max", leaf2 (max : Int → Int → Int)),
    ("count_ones", leaf1 Hax.count_ones),
    -- rendered as the unit value
    ("panic", unitLeaf), ("panic_fmt", unitLeaf),
@@ -220,6 +226,8 @@ theorem parseTag_struct_update : parseTag "struct_update#Sha256State#1#4" = none
   decide
 
 theorem parseTag_hash : parseTag "hash" = none := by decide
+
+theorem parseTag_cast_size : parseTag "cast#size" = some ("cast", Hax.usizeBits) := rfl
 
 end Reading
 
@@ -557,6 +565,14 @@ theorem rotate_right_int (x y : Int) :
 theorem cast_int (x : Int) :
     runtimeBuiltins base "cast" [.int x] = some (.int (Hax.castVal x)) :=
   (runtimeBuiltins_of_lookup rfl).trans (leaf1_apply _ x)
+
+theorem min_int (x y : Int) :
+    runtimeBuiltins base "min" [.int x, .int y] = some (.int (min x y)) :=
+  (runtimeBuiltins_of_lookup rfl).trans (leaf2_apply _ x y)
+
+theorem max_int (x y : Int) :
+    runtimeBuiltins base "max" [.int x, .int y] = some (.int (max x y)) :=
+  (runtimeBuiltins_of_lookup rfl).trans (leaf2_apply _ x y)
 
 end Scalars
 

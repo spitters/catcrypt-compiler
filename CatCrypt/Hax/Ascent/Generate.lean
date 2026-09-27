@@ -53,13 +53,24 @@ A loop's accumulator is the tuple, in binding order, of the variables its body a
 among those bound before it; its invariant binds them to the components of the
 accumulator and every other variable to its value before the loop. The body is evaluated
 over a state extended by the index and the accumulator, and its exit bindings give the
-step function. No loop specification is written by hand.
+step function. No loop specification is written by hand. A variable the body rebinds at
+another type is left out of the invariant, and the loop is derived again without it.
+
+A `forFoldReturn` is a counted loop whose body exits by returning from the function
+(`corresG_forFoldReturnG`); an `Option` match on a variable is a two-way branch on
+`isSome` whose `Some` arm binds the payload (`corresG_optMatch`).
 
 ## Types
 
 The type of a binding is the type of the leaf result that produces it. When a leaf is
-polymorphic in its result (`new []`, `None`), the type of the surface `let` of the same
-name decides it (`GCtx.hints`); parameter types come from the surface signature.
+polymorphic in its result (`new []`, `None`), a type hint decides it: the type of the
+surface `let` of the same name (`GCtx.hints`), the hint of the enclosing expression for
+the body of a `let` and the branches of a conditional or match, the return type of the
+surface function for a `return` value and the whole body (`GCtx.retTy?`), and, for the
+arguments of a call whose name has a single leaf lemma, the argument types of that lemma
+(`leafArgHints`). Parameter types come from the surface signature. A tuple whose last
+component has a product type types that component as `Boxed`, so that the pair encodes as
+a pair.
 
 ## The oracle
 
@@ -464,6 +475,8 @@ structure GCtx where
   leaves : Std.HashMap String (Array Name)
   /-- The types of the surface `let`s, by name. -/
   hints : Std.HashMap String Expr
+  /-- The return type of the surface function, the type hint of a `return` value. -/
+  retTy? : Option Expr := none
 
 /-- The generator monad. -/
 abbrev GenM := ReaderT GCtx TermElabM
@@ -569,10 +582,12 @@ def matchLeaf (f : String) (vs : Array SVal) (hint? : Option Expr) (strict : Boo
   return none
 
 /-- Match a call to a tagged runtime name `op#w` on integer arguments with the width
-    family lemmas `RuntimeOps.tagged1` and `RuntimeOps.tagged2`. -/
+    family lemmas `RuntimeOps.tagged1` and `RuntimeOps.tagged2`; the tag `size` is the
+    width `Hax.usizeBits`. -/
 def matchTagged (f : String) (vs : Array SVal) : GenM (Option (Expr × SVal)) := do
   let [op, wS] := f.splitOn "#" | return none
-  let some w := wS.toNat? | return none
+  let some w := (if wS == "size" then some (mkConst ``Hax.usizeBits) else
+    wS.toNat?.map mkNatLit) | return none
   let some tms := vs.toList.mapM (·.tm?) | return none
   for (lem, n) in [(``Hax.Ascent.RuntimeOps.tagged1, 1), (``Hax.Ascent.RuntimeOps.tagged2, 2)] do
     unless tms.length == n do continue
@@ -581,7 +596,7 @@ def matchTagged (f : String) (vs : Array SVal) : GenM (Option (Expr × SVal)) :=
       for v in vs do
         unless ← isDefEq (v.ty?.getD boolTy) intTy do throwError "no"
       let r ← rapp lem
-      r.set `f (mkStrLit f); r.set `op (mkStrLit op); r.set `w (mkNatLit w)
+      r.set `f (mkStrLit f); r.set `op (mkStrLit op); r.set `w w
       r.set `x tms[0]!
       if n == 2 then r.set `y tms[1]!
       let some (_, lhs0, _) := (← inferType (mkAppN r.c r.mvs)).eq? | throwError "no"
@@ -622,6 +637,30 @@ def matchArrayLit (f : String) (vs : Array SVal) (hint? : Option Expr) :
   catch _ =>
     (s.restore : MetaM Unit)
     return none
+
+/-- The argument types of a call `f` with `n` arguments when `f` has a single leaf lemma:
+    the type `τ` of each argument of its left side that is an encoding `enc (x : τ)` with
+    `τ` closed. They are the type hints of the arguments. -/
+def leafArgHints (f : String) (n : Nat) : GenM (List (Option Expr)) := do
+  let some #[lem] := (← read).leaves[f]? | return []
+  let s ← (Meta.saveState : MetaM Meta.SavedState)
+  try
+    let c ← mkConstWithFreshMVarLevels lem
+    let (_, _, concl) ← forallMetaTelescope (← inferType c)
+    let some (_, lhs, _) := concl.eq? | throwError "no"
+    let some args ← listElems? lhs.appArg! | throwError "no"
+    unless args.length == n do throwError "no"
+    let tys ← args.mapM fun a => do
+      match (← instantiateMVars a).getAppFnArgs with
+      | (``Hax.Ascent.HaxEnc.enc, #[ty, _, _]) =>
+        let ty ← instantiateMVars ty
+        return if ty.hasExprMVar then none else some ty
+      | _ => return none
+    s.restore
+    return tys
+  catch _ =>
+    s.restore
+    return []
 
 /-! ### Syntactic scans -/
 
@@ -686,9 +725,9 @@ partial def gen (Γ : SEnv) (G e : Expr) (hint? : Option Expr := none) : GenM GR
     | ``Hax.ImpExpr.lit, #[l] => genLit Γ G e l
     | ``Hax.ImpExpr.unitVal, #[] => genUnit Γ G e
     | ``Hax.ImpExpr.var, #[x] => genVar Γ G e x
-    | ``Hax.ImpExpr.letBind, #[x, v, b] => genSeqLike Γ G e (some x) v b
-    | ``Hax.ImpExpr.seq, #[a, b] => genSeqLike Γ G e none a b
-    | ``Hax.ImpExpr.ifThenElse, #[c, t, f] => genIte Γ G e c t f
+    | ``Hax.ImpExpr.letBind, #[x, v, b] => genSeqLike Γ G e (some x) v b hint?
+    | ``Hax.ImpExpr.seq, #[a, b] => genSeqLike Γ G e none a b hint?
+    | ``Hax.ImpExpr.ifThenElse, #[c, t, f] => genIte Γ G e c t f hint?
     | ``Hax.ImpExpr.app, #[f, as] => genApp Γ G e f as hint?
     | ``Hax.ImpExpr.tuple, #[es] => genTuple Γ G e es
     | ``Hax.ImpExpr.proj, #[a, i] => genProj Γ G e a i
@@ -698,6 +737,8 @@ partial def gen (Γ : SEnv) (G e : Expr) (hint? : Option Expr := none) : GenM GR
     | ``Hax.ImpExpr.cfBreak, #[a] => genBreak Γ G e a
     | ``Hax.ImpExpr.forFold, #[var, lo, hi, body] => genForFold Γ G e var lo hi body
     | ``Hax.ImpExpr.forFoldRev, #[var, lo, hi, body] => genForFold Γ G e var lo hi body true
+    | ``Hax.ImpExpr.forFoldReturn, #[var, lo, hi, body] => genForFoldReturn Γ G e var lo hi body
+    | ``Hax.ImpExpr.match_, #[s, arms] => genMatch Γ G e s arms hint?
     | ``Hax.ImpExpr.whileFold, #[c, body] => genWhile Γ G e c body
     | _, _ =>
       if fn.getPrefix == ``Hax.ImpExpr then
@@ -749,7 +790,8 @@ partial def genPass (Γ : SEnv) (G : Expr) (rule : Name) (a : Expr) (ty? : Optio
   return { ra with proof := ← r.done }
 
 /-- `let` and `seq`: the first part, then the rest. -/
-partial def genSeqLike (Γ : SEnv) (G _e : Expr) (x? : Option Expr) (v b : Expr) : GenM GRes := do
+partial def genSeqLike (Γ : SEnv) (G _e : Expr) (x? : Option Expr) (v b : Expr)
+    (bodyHint? : Option Expr := none) : GenM GRes := do
   let xs? := x?.bind fun x => strOf? x
   let hints := (← read).hints
   let hint? := xs?.bind fun x => hints[x]?
@@ -759,7 +801,7 @@ partial def genSeqLike (Γ : SEnv) (G _e : Expr) (x? : Option Expr) (v b : Expr)
     | none => N
   match r1.exit with
   | none =>
-    let rb ← gen (bodyEnv r1.N) G b
+    let rb ← gen (bodyEnv r1.N) G b bodyHint?
     let r ← rapp (if x?.isSome then ``Hax.Ascent.corresB_letBind else ``Hax.Ascent.corresB_seq)
     if let some x := x? then
       r.set `x x; r.set `val v; r.set `body b
@@ -770,7 +812,7 @@ partial def genSeqLike (Γ : SEnv) (G _e : Expr) (x? : Option Expr) (v b : Expr)
     return { rb with proof := ← r.done }
   | some (C₁, W₁, T₁) =>
     let Gb ← abstE (andE (← atState G) (← mkEq C₁ falseE))
-    let rb ← gen (bodyEnv r1.N) Gb b
+    let rb ← gen (bodyEnv r1.N) Gb b bodyHint?
     match rb.exit with
     | none =>
       let r ← rapp (if x?.isSome then ``Hax.Ascent.corresG_letBindL else ``Hax.Ascent.corresG_seqL)
@@ -799,15 +841,16 @@ partial def normalizeExit (_Γ : SEnv) (_G C C₁ : Expr) (W₁ W₂ : SVal) (T�
   t.set `h (← c.done); t.set `T' (← lamL T); t.side `hT
   return { proof := ← t.done, val := V, N, exit := some (C, W, T) }
 
-partial def genIte (Γ : SEnv) (G _e c t f : Expr) : GenM GRes := do
+partial def genIte (Γ : SEnv) (G _e c t f : Expr) (hint? : Option Expr := none) :
+    GenM GRes := do
   let rc ← gen Γ G c
   if rc.exit.isSome then throwError "construct: exit in a condition"
   let some B := rc.val.tm? | throwError "type: condition"
   unless ← isDefEq (rc.val.ty?.getD intTy) boolTy do throwError "type: condition"
   let Gt ← abstE (andE (← atState G) (← mkEq B trueE))
   let Gf ← abstE (andE (← atState G) (← mkEq B falseE))
-  let rt ← gen rc.N Gt t
-  let rf ← gen rc.N Gf f
+  let rt ← gen rc.N Gt t hint?
+  let rf ← gen rc.N Gf f hint?
   if rt.exit.isNone && rf.exit.isNone then
     let r ← rapp ``Hax.Ascent.corresB_ifThenElse
     r.set `c c; r.set `t t; r.set `e f; r.set `C (← abstE B)
@@ -818,21 +861,30 @@ partial def genIte (Γ : SEnv) (G _e c t f : Expr) : GenM GRes := do
     let k ← rapp ``Hax.Ascent.corresB_conseqVN
     k.set `h h; k.set `V' (← lamV V); k.set `N' (← lamL N); k.side `hV; k.side `hN
     return { proof := ← k.done, val := V, N }
-  let lift (x : GRes) : GenM (Expr × Expr × SVal × SEnv) := do
-    match x.exit with
-    | some (C, W, T) => return (x.proof, C, W, T)
-    | none =>
-      let u ← unitV
-      let r ← rapp ``Hax.Ascent.CorresG.ofPlain
-      r.set `h x.proof; r.set `W (← lamV u); r.set `T (← lamL x.N)
-      return (← r.done, falseE, u, x.N)
-  let (pt, Ct, Wt, Tt) ← lift rt
-  let (pf, Cf, Wf, Tf) ← lift rf
+  let (pt, Ct, Wt, Tt) ← liftG rt
+  let (pf, Cf, Wf, Tf) ← liftG rf
   let r ← rapp ``Hax.Ascent.corresG_ifThenElse
   r.set `c c; r.set `t t; r.set `e f; r.set `B (← abstE B)
   r.set `Ct (← abstE Ct); r.set `Ce (← abstE Cf)
   r.set `hc rc.proof; r.set `ht pt; r.set `he pf
-  let h ← r.done
+  iteTail B (← r.done) rt rf Ct Cf Wt Wf Tt Tf
+
+/-- A derivation as a derivation with exit: its exit, or the exit condition `false`
+    (`CorresG.ofPlain`). -/
+partial def liftG (x : GRes) : GenM (Expr × Expr × SVal × SEnv) := do
+  match x.exit with
+  | some (C, W, T) => return (x.proof, C, W, T)
+  | none =>
+    let u ← unitV
+    let r ← rapp ``Hax.Ascent.CorresG.ofPlain
+    r.set `h x.proof; r.set `W (← lamV u); r.set `T (← lamL x.N)
+    return (← r.done, falseE, u, x.N)
+
+/-- The result of a two-way branch on `B` whose derivation `h` states every component as
+    the conditional of the branches' components: the values and bindings are merged, and
+    the exit condition simplified. -/
+partial def iteTail (B h : Expr) (rt rf : GRes) (Ct Cf : Expr) (Wt Wf : SVal)
+    (Tt Tf : SEnv) : GenM GRes := do
   let C ← mkIteB B Ct Cf
   -- values: a branch that always exits leaves the other; a branch that never exits
   -- leaves the other's exit
@@ -866,6 +918,63 @@ partial def genIte (Γ : SEnv) (G _e c t f : Expr) : GenM GRes := do
     k.set `hC pf
     return { proof := ← k.done, val := V, N, exit := some (C', W, T) }
 
+/-- The `Option` match `match o with | some v => e₂ | none => e₁` on a variable
+    (`corresG_optMatch`): the `Some` arm binds `v` to `(O).getD default`, and the result
+    is the conditional on `(O).isSome`. -/
+partial def genMatch (Γ : SEnv) (G _e s arms : Expr) (hint? : Option Expr) : GenM GRes := do
+  let (``Hax.ImpExpr.var, #[oE]) := (← instantiateMVars s).getAppFnArgs
+    | throwError "construct: match_ on a non-variable"
+  let some os := strOf? (← instantiateMVars oE) | throwError "construct: match_ variable"
+  let some [a1, a2] ← listElems? arms | throwError "construct: match_ arms"
+  let (``Prod.mk, #[_, _, p1, e2]) := (← whnfR a1).getAppFnArgs
+    | throwError "construct: match_ arm"
+  let (``Prod.mk, #[_, _, p2, e1]) := (← whnfR a2).getAppFnArgs
+    | throwError "construct: match_ arm"
+  let (``Hax.ImpPat.somePat, #[pv]) := (← instantiateMVars p1).getAppFnArgs
+    | throwError "construct: match_ pattern"
+  let (``Hax.ImpPat.varPat, #[vE]) := (← instantiateMVars pv).getAppFnArgs
+    | throwError "construct: match_ pattern"
+  unless (← instantiateMVars p2).isConstOf ``Hax.ImpPat.nonePat do
+    throwError "construct: match_ pattern"
+  let some vs := strOf? (← instantiateMVars vE) | throwError "construct: match_ binder"
+  let some sv := lookupEnv Γ os | throwError "unbound: {os}"
+  let (some oTy, some O) := (sv.ty?, sv.tm?) | throwError "type: match_ scrutinee"
+  let oTy ← whnfR oTy
+  unless oTy.isAppOfArity ``Option 1 do throwError "type: match_ scrutinee"
+  let α := oTy.appArg!
+  let payload ← mkAppM ``Option.getD #[O, ← mkAppOptM ``Inhabited.default #[α, none]]
+  let B ← mkAppM ``Option.isSome #[O]
+  let Gs ← abstE (andE (← atState G) (← mkEq B trueE))
+  let Gn ← abstE (andE (← atState G) (← mkEq B falseE))
+  let rs ← gen ((vs, ← typedV α payload) :: Γ) Gs e2 hint?
+  let rn ← gen Γ Gn e1 hint?
+  let (ps, Cs, Ws, Ts) ← liftG rs
+  let (pn, Cn, Wn, Tn) ← liftG rn
+  let r ← rapp ``Hax.Ascent.corresG_optMatch
+  r.set `α α; r.set `O (← abstE O); r.set `o oE; r.set `v vE; r.set `e2 e2; r.set `e1 e1
+  r.set `Cs (← abstE Cs); r.set `Cn (← abstE Cn)
+  r.set `hs ps; r.set `hn pn
+  r.side `ho
+  let h ← r.done
+  if rs.exit.isSome || rn.exit.isSome then
+    return ← iteTail B h rs rn Cs Cn Ws Wn Ts Tn
+  -- no exit: the exit condition `if B then false else false` is `false`
+  let k ← rapp ``Hax.Ascent.corresG_congrC
+  k.set `h h; k.set `C' (← abstE falseE)
+  let hcTy ← k.goal `hC
+  let st := (← read).st
+  let pfC ← forallTelescope hcTy fun xs _ => do
+    let ps ← st.proj xs[0]!
+    mkLambdaFVars xs ((← mkAppM ``Hax.Ascent.ite_same #[B, falseE]).replaceFVars st.vars ps)
+  k.set `hC pfC
+  let p ← rapp ``Hax.Ascent.CorresG.plain
+  p.set `h (← k.done)
+  let V ← mergeVal B rs.val rn.val
+  let N ← mergeEnv B rs.N rn.N
+  let c ← rapp ``Hax.Ascent.corresB_conseqVN
+  c.set `h (← p.done); c.set `V' (← lamV V); c.set `N' (← lamL N); c.side `hV; c.side `hN
+  return { proof := ← c.done, val := V, N }
+
 /-- A simpler form of `if B then Ct else Cf` with the proof of the equation. -/
 partial def simpCond (B Ct Cf : Expr) : GenM (Expr × Option (GenM Expr)) := do
   let t ← isTrueE Ct; let tf ← isFalseE Ct; let f ← isTrueE Cf; let ff ← isFalseE Cf
@@ -879,15 +988,16 @@ partial def simpCond (B Ct Cf : Expr) : GenM (Expr × Option (GenM Expr)) := do
     some (mkAppM ``Hax.Ascent.ite_true_right #[B, Ct]))
   return (← mkIteB B Ct Cf, none)
 
-partial def genArgs (Γ : SEnv) (G : Expr) : List Expr → GenM (Expr × Array SVal × SEnv)
+partial def genArgs (Γ : SEnv) (G : Expr) (hints : List (Option Expr) := []) :
+    List Expr → GenM (Expr × Array SVal × SEnv)
   | [] => do
     let r ← rapp ``Hax.Ascent.corresArgsB_nil
     r.set `bi (← read).bi; r.set `Γ (← lamL Γ); r.set `G G
     return (← r.done, #[], Γ)
   | a :: as => do
-    let ra ← gen Γ G a
+    let ra ← gen Γ G a hints.head?.join
     if ra.exit.isSome then throwError "construct: exit in an argument"
-    let (pr, vs, Nend) ← genArgs ra.N G as
+    let (pr, vs, Nend) ← genArgs ra.N G hints.tail as
     let r ← rapp ``Hax.Ascent.corresArgsB_cons
     r.set `he ra.proof; r.set `hes pr; r.side `hplain
     return (← r.done, #[ra.val] ++ vs, Nend)
@@ -895,7 +1005,7 @@ partial def genArgs (Γ : SEnv) (G : Expr) : List Expr → GenM (Expr × Array S
 partial def genApp (Γ : SEnv) (G _e f as : Expr) (hint? : Option Expr) : GenM GRes := do
   let some fs := strOf? (← instantiateMVars f) | throwError "construct: call name"
   let some argEs ← listElems? as | throwError "construct: argument list"
-  let (pa, vs, Nend) ← genArgs Γ G argEs
+  let (pa, vs, Nend) ← genArgs Γ G (← leafArgHints fs argEs.length) argEs
   let some (pf, sv) ← (do
       match ← matchLeaf fs vs hint? true with
       | some x => pure (some x)
@@ -919,13 +1029,17 @@ partial def genApp (Γ : SEnv) (G _e f as : Expr) (hint? : Option Expr) : GenM G
 
 partial def genTuple (Γ : SEnv) (G _e es : Expr) : GenM GRes := do
   let some elems ← listElems? es | throwError "construct: tuple list"
-  let (pa, vs, Nend) ← genArgs Γ G elems
+  let (pa, vs, Nend) ← genArgs Γ G [] elems
   let r ← rapp ``Hax.Ascent.corresB_tuple
   r.set `h pa
   let h ← r.done
   let tys := vs.toList.filterMap (·.ty?)
   let tms := vs.toList.filterMap (·.tm?)
-  if vs.size ≥ 2 && tys.length == vs.size && !(← isProdTy tys.getLast!) then
+  if vs.size ≥ 2 && tys.length == vs.size then
+    -- a last component of product type is one component of the tuple
+    let tys ← if ← isProdTy tys.getLast! then
+        pure (tys.dropLast ++ [← mkAppM ``Hax.Ascent.Boxed #[tys.getLast!]])
+      else pure tys
     let sv ← typedV (← mkProdTy tys) (← mkTuple tms)
     let c ← rapp ``Hax.Ascent.corresB_castV
     c.set `h h; c.set `V (← lamV sv); c.side `hV
@@ -959,20 +1073,33 @@ partial def projPath (ty tm : Expr) (i : Nat) : MetaM (Expr × Expr) := do
   | _ => if i = 0 then return (ty, tm) else throwError "type: projection {i} out of range"
 
 partial def genBreak (Γ : SEnv) (G _e a : Expr) : GenM GRes := do
-  let ra ← gen Γ G a
+  let ra ← gen Γ G a (← read).retTy?
   if ra.exit.isSome then throwError "construct: exit in a break value"
   let r ← rapp ``Hax.Ascent.corresG_cfBreak
   r.set `h ra.proof; r.side `hp
   return { proof := ← r.done, val := ← unitV, N := ra.N, exit := some (trueE, ra.val, ra.N) }
 
-partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := false) :
-    GenM GRes := do
+/-- The accumulator variables whose type after the body differs from their type before
+    the loop: a body that rebinds a name to a value of another type. -/
+partial def retypedAcc (M : List (String × SVal)) (tys : List Expr) (N : SEnv) :
+    GenM (List String) := do
+  let mut out := []
+  for (k, _) in M, t in tys do
+    match (lookupEnv N k).bind (·.ty?) with
+    | some t' => unless ← isDefEq t t' do out := out ++ [k]
+    | none => out := out ++ [k]
+  return out
+
+/-- A counted loop. `drop` names the bindings left out of the invariant: the variables
+    the body rebinds at another type, which the invariant cannot carry. -/
+partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := false)
+    (drop : List String := []) : GenM GRes := do
   let some vs := strOf? (← instantiateMVars var) | throwError "construct: loop variable"
   let rlo ← gen Γ G lo
   let rhi ← gen rlo.N G hi
   let (some loT, some hiT) := (rlo.val.tm?, rhi.val.tm?) | throwError "type: loop bounds"
   if rlo.exit.isSome || rhi.exit.isSome then throwError "construct: exit in loop bounds"
-  let D := (dedupEnv rhi.N []).filter (·.1 != vs)
+  let D := (dedupEnv rhi.N []).filter fun p => p.1 != vs && !drop.contains p.1
   let bound ← boundNames body
   let M := (D.filter (bound.contains ·.1)).reverse
   let tys ← M.mapM fun (k, v) => match v.ty? with
@@ -1004,6 +1131,11 @@ partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := f
     let Gb ← withReader ({ · with st := bst }) do
       abstE (andE Gσ (andE (← mkAppM ``LE.le #[loT, i]) (← mkAppM ``LT.lt #[i, hiT])))
     let rb ← withReader ({ · with st := bst }) (gen Γb Gb body)
+    let mut bad ← retypedAcc M tys rb.N
+    if let some (_, _, Tb) := rb.exit then
+      bad := bad ++ (← retypedAcc M tys Tb)
+    unless bad.isEmpty do
+      return ← genForFold Γ G _e var lo hi body rev (drop ++ bad.eraseDups)
     let lam3 (x : Expr) : MetaM Expr := withLocalDeclD `s st.stTy fun s => do
       mkLambdaFVars #[s, i, acc] (x.replaceFVars st.vars (← st.proj s))
     let accOf (env : SEnv) : MetaM Expr := do
@@ -1043,6 +1175,87 @@ partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := f
       let stE ← mkAppM ``Hax.Ascent.cfState #[fold]
       let N ← Λenv.mapM fun (k, v) => do return (k, ← instSValRepl v acc stE)
       return { proof := pf, val := { val := ← mkAppM ``Hax.Ascent.cfVal #[fold] }, N }
+
+/-- A counted loop with early return (`corresG_forFoldReturnG`): the accumulator and
+    invariant are those of `genForFold`, an exit of the body is a return from the
+    function, and the loop exits when `Hax.forFoldReturn` returns. -/
+partial def genForFoldReturn (Γ : SEnv) (G _e var lo hi body : Expr)
+    (drop : List String := []) : GenM GRes := do
+  let some vs := strOf? (← instantiateMVars var) | throwError "construct: loop variable"
+  let rlo ← gen Γ G lo
+  let rhi ← gen rlo.N G hi
+  let (some loT, some hiT) := (rlo.val.tm?, rhi.val.tm?) | throwError "type: loop bounds"
+  if rlo.exit.isSome || rhi.exit.isSome then throwError "construct: exit in loop bounds"
+  let D := (dedupEnv rhi.N []).filter fun p => p.1 != vs && !drop.contains p.1
+  let bound ← boundNames body
+  let M := (D.filter (bound.contains ·.1)).reverse
+  let tys ← M.mapM fun (k, v) => match v.ty? with
+    | some t => pure t
+    | none => throwError "type: loop accumulator {k}"
+  let A ← mkProdTy tys
+  let a₀ ← mkTuple (M.map fun p => p.2.tm?.get!)
+  let st := (← read).st
+  withLocalDeclD `i intTy fun i => withLocalDeclD `acc A fun acc => do
+    let comps ← tupleComps acc M.length
+    let mut Λenv : SEnv := []
+    for (k, v) in D do
+      match M.findIdx? (·.1 == k) with
+      | some j => Λenv := Λenv ++ [(k, ← typedV tys[j]! comps[j]!)]
+      | none => Λenv := Λenv ++ [(k, v)]
+    let ΛL := mkBList Λenv
+    let Λl ← withLocalDeclD `s st.stTy fun s => do
+      mkLambdaFVars #[s, acc] (ΛL.replaceFVars st.vars (← st.proj s))
+    let bstTy ← mkAppM ``Prod #[st.stTy, ← mkAppM ``Prod #[intTy, A]]
+    let bst : StCtx := {
+      stTy := bstTy, vars := st.vars ++ #[i, acc]
+      proj := fun t => do
+        let p1 ← mkAppM ``Prod.fst #[t]
+        let p2 ← mkAppM ``Prod.snd #[t]
+        return (← st.proj p1) ++ #[← mkAppM ``Prod.fst #[p2], ← mkAppM ``Prod.snd #[p2]]
+      stVal := ← mkAppM ``Prod.mk #[st.stVal, ← mkAppM ``Prod.mk #[i, acc]] }
+    let Γb := (vs, ← typedV intTy i) :: Λenv
+    let Gσ ← atState G
+    let Gb ← withReader ({ · with st := bst }) do
+      abstE (andE Gσ (andE (← mkAppM ``LE.le #[loT, i]) (← mkAppM ``LT.lt #[i, hiT])))
+    let rb ← withReader ({ · with st := bst }) (gen Γb Gb body)
+    let lam3 (x : Expr) : MetaM Expr := withLocalDeclD `s st.stTy fun s => do
+      mkLambdaFVars #[s, i, acc] (x.replaceFVars st.vars (← st.proj s))
+    let bodyAbst (x : Expr) : GenM Expr := withReader ({ · with st := bst }) (abstE x)
+    let bad ← retypedAcc M tys rb.N
+    unless bad.isEmpty do
+      return ← genForFoldReturn Γ G _e var lo hi body (drop ++ bad)
+    let tms ← M.mapM fun (k, _) => do
+      let some sv := lookupEnv rb.N k | throwError "loop: {k} unbound after the body"
+      let some tm := sv.tm? | throwError "type: loop accumulator {k} after the body"
+      pure tm
+    let gTm ← mkTuple tms
+    -- the body exit is the return; a body without exit never returns
+    let (pb, Cb, wTm, R) ← match rb.exit with
+      | some (Cb, Wb, _) => do
+        let (some wTm, some R) := (Wb.tm?, Wb.ty?) | throwError "type: return value"
+        pure (rb.proof, Cb, wTm, R)
+      | none => do
+        let u ← unitV
+        let r ← rapp ``Hax.Ascent.CorresG.ofPlain
+        r.set `h rb.proof; r.set `W (← bodyAbst u.val); r.set `T (← bodyAbst (mkBList rb.N))
+        pure (← r.done, falseE, mkConst ``Unit.unit, mkConst ``Unit)
+    let r ← rapp ``Hax.Ascent.corresG_forFoldReturnG
+    r.set `R R
+    r.set `hlo rlo.proof; r.set `hhi rhi.proof
+    r.set `var var; r.set `body body
+    r.set `a₀ (← abstE a₀); r.set `g (← lam3 gTm); r.set `Λ Λl
+    r.set `w (← lam3 wTm); r.set `Cb (← bodyAbst Cb)
+    r.set `hbody pb
+    r.side `hinit; r.side `hfresh; r.side `hW; r.side `hV; r.side `hN
+    let pf ← r.done
+    let stepFn ← mkLambdaFVars #[i, acc] (← mkAppM ``Hax.Ascent.stepRet #[Cb, wTm, gTm])
+    let fold ← mkAppM ``Hax.forFoldReturn #[loT, hiT, a₀, stepFn]
+    let C ← mkAppM ``Hax.Ascent.retC #[fold]
+    let d := wTm.replaceFVars #[i, acc] #[loT, a₀]
+    let W ← typedV R (← mkAppM ``Hax.Ascent.retOut #[d, fold])
+    let accE ← mkAppM ``Hax.Ascent.retAcc #[a₀, fold]
+    let N ← Λenv.mapM fun (k, v) => do return (k, ← instSValRepl v acc accE)
+    return { proof := pf, val := ← unitV, N, exit := some (C, W, []) }
 
 /-- Replace a free variable in a symbolic value. -/
 partial def instSValRepl (v : SVal) (x r : Expr) : MetaM SVal := do
@@ -1295,9 +1508,10 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
       for (g, sv, _) in spec.globals do
         Γ₀ := Γ₀ ++ [(g, sv)]
       let st : StCtx := { stTy := A, vars := #[a], proj := fun t => pure #[t], stVal := a }
-      let ctx : GCtx := { bi := spec.bi, st, leaves := spec.leaves, hints := spec.hints }
+      let ctx : GCtx := { bi := spec.bi, st, leaves := spec.leaves, hints := spec.hints,
+                          retTy? := some retTy }
       let G ← withLocalDeclD `a A fun a' => mkLambdaFVars #[a'] (mkConst ``True)
-      let r ← (gen Γ₀ G spec.lit).run ctx
+      let r ← (gen Γ₀ G spec.lit (some retTy)).run ctx
       let Γ₀l ← (lamL Γ₀).run ctx
       let (entry, hentry) ← spec.entry A Γ₀l
       let surfaceApp := mkAppN spec.surface comps.toArray
@@ -1306,8 +1520,12 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
       | none =>
         let some tm := r.val.tm? | throwError "type: result value"
         let some β := r.val.ty? | throwError "type: result value"
-        let fn ← mkLambdaFVars #[a] tm
+        -- the result type, when it differs from the type of the term (`Boxed`)
+        let tmβ ← if ← withReducible (isDefEq (← inferType tm) β) then pure tm
+          else mkExpectedTypeHint tm β
+        let fn ← mkLambdaFVars #[a] tmβ
         let k ← rapp ``Hax.Ascent.fnCorres_of_corresB
+        k.set `β β
         k.set `h r.proof; k.set `entry entry; k.set `f fn; k.set `hentry hentry
         k.side `hV
         let thm ← k.done
