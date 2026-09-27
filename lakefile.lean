@@ -2885,7 +2885,7 @@ require catcryptCore from git
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
 -- CatCrypt dialect folders `Veir/Dialects/{Catcrypt,Memref,Polynomial,Vector,X86vector}`.
 require Veir from git
-  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.2"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.3"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
