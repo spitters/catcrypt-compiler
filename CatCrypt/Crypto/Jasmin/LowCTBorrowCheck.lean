@@ -104,6 +104,8 @@ where
   -- the borrow checker treats dst as a write-only output for the
   -- purposes of the no-alias check).
   | .RCallDstThreaded _ dst args => !callAliases dst args
+  -- Whole-array copy: dst distinct from src.
+  | .RCopy dst src              => dst.locVar != src.locVar
   -- Recursive constructors are dispatched by `LowCT.fold` (seqLike/wrap1)
   -- and never reach `borrowOkLeaf`; these arms keep the leaf total.
   | .RSeq _ _                   => true
@@ -152,6 +154,8 @@ def destsOf : LowCT → List String
   | .RScalarSetExpr _ _          => []           -- writes a scalar, not in destsOf
   -- Dst-threaded leaf call writes its threaded dst.
   | .RCallDstThreaded _ dst _    => [dst.locVar]
+  -- Whole-array copy writes `dst`.
+  | .RCopy dst _                 => [dst.locVar]
 
 /-! ## §3  callAliases ↔ ∉ lemma -/
 
@@ -320,6 +324,9 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
   | arrLoadLit dst _ _ _ _ _ _ _ =>
+    simp only [destsOf, List.mem_singleton] at hNotIn
+    exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
+  | copy dst _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
   | scalarSetExpr _ _ _ =>

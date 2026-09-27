@@ -867,6 +867,13 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       RustExec N leafSpec (.RCallDstThreaded f dst args) rs
         (locatedUpdate rs dst
           (leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList))
+  /-- **Whole-array copy.**  Reads `src` and writes its value to `dst`;
+      the type side condition `src.locDst = dst.locDst` transports the
+      value to the destination type. The old value of `dst` is not read. -/
+  | copy : ∀ dst src rs (h : src.locDst = dst.locDst) srcV,
+      locatedLookup rs src = some srcV →
+      RustExec N leafSpec (.RCopy dst src) rs
+        (locatedUpdate rs dst (h ▸ srcV))
 
 /-- **Runtime-store reconciliation.**  The word
     that `RustExec.limbStoreExpr` records — `BitVec.ofNat 64 (e.evalState rs)`,

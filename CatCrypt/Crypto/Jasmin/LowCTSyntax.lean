@@ -182,6 +182,12 @@ inductive LowCT where
       sibling of `RFor x n body`. Faithful image of a hax `forFold` whose `hi`
       bound is a non-literal `SExpr` (`2*K`, `min(eta,128)`, symbolic const). -/
   | RForRuntime : (x : String) → (bound : SExpr) → (body : LowCT) → LowCT
+  /-- **Whole-array copy.**
+      `RCopy dst src` writes the value of slot `src` into slot `dst`; both
+      slots have the same tower type. It reads no selector and no index.
+      Lowering: a Jasmin `Cassgn` of the array (`dst = #copy(src)`); Rust
+      `dst.copy_from_slice(&src)`. Borrow check: `dst ≠ src`. -/
+  | RCopy : (dst : Located) → (src : Located) → LowCT
   deriving Repr, Inhabited
 
 /-- **128-bit SIMD vector assignment (the vector analog

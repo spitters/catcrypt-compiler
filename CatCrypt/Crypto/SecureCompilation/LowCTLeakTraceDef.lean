@@ -174,5 +174,8 @@ def LowCT.leakTrace : LowCT → LeakTrace
   -- single opaque `extCall f` — the dst-as-first-arg ABI is a call-name
   -- detail, not a leak distinction, so the structural trace is `[extCall:f]`.
   | .RCallDstThreaded f _ _          => [.pureOp ("extCall:" ++ f)]
+  -- A whole-array copy reads no selector and no index; its trace is one
+  -- constant `extCall:copy` event.
+  | .RCopy _ _                       => [.pureOp ("extCall:" ++ "copy")]
 
 end CatCrypt.Crypto.SecureCompilation.LowCTLeakTrace
