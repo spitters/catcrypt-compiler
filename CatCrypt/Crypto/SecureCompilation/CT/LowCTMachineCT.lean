@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CT.LowCTLeakage
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
+public import CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
 
 /-!
 # Constant time from `LowCT` to owned structured machine code
@@ -22,7 +23,9 @@ model of `CT/Leakage.lean`.
   its semantics and leakage, the runtime loop emitting a `trip` event.
   `mcfExec_ofOwned` and `mcfLeak_ofOwned` state that on `OwnedCF` they are
   `cfExec` and `cfLeakCT`.
-* `CFSrc` is the fragment: two-operand arithmetic (`ArithSrc`), variable shifts
+* `CFSrc` is the fragment: two-operand arithmetic (`ArithSrc`), literal
+  assignments, word expressions (`WExpr`: reads, literals, `+`, `&`, `^`, `*`,
+  lowered by `lowerW` through temporary registers), `RLetU64Zero`, variable shifts
   (`SShr`, `SShl`, `SAsr` by a scalar count), the high word of the unsigned
   wide multiply (`SMulHiU`), `RSelect`, `RArrLoad`, `RArrStore`, sequence,
   `RIfNz`, `RFor` with a literal trip count and `RForRuntime` with a scalar bound.
@@ -52,6 +55,20 @@ model of `CT/Leakage.lean`.
   `secretShift_lowered_not_ct` and `secretBound_lowered_not_ct` show that the
   lowering of a secret guard, index, `SARX` count or loop bound is not constant
   time under the preconditions of `lowct_to_machine_ct`.
+* `toCFSrc? nm k c` recognises a `LowCT` program as a program of the fragment, with
+  the names of loop counters, `MULX` low words and temporaries taken from `nm`;
+  `toCFSrc?_spec` states that the recognised program embeds back to `c`. `wfB A`
+  decides `CFSrc.WF` for a register allocation `A` whose image is recognised by a
+  Boolean (`RegAlloc`); `rangeB` is a sufficient check of `InRange` for every state
+  whose values are below `2^64` (`rangeB_sound`), rejecting shifts by a scalar count
+  and loops.
+* `machine_ct_of_lowct` and `machine_ct_of_lowct_closed` derive machine constant
+  time of the lowering of a recognised program from `LowCTConstantTime`, the second
+  for every pair of machine states agreeing on the public registers;
+  `machine_ct_of_levelCheck` derives it from acceptance by `levelCheck`.
+  `machineCTCheck` is a Boolean decision and `machineCTCheck_sound` its soundness.
+* `stdAlloc`, `stdNames` and `stdPub lt` are a register allocation, a name supply
+  outside its image, and the public registers of `lt` under it (`stdPub_spec`).
 -/
 
 @[expose] public section
@@ -167,11 +184,51 @@ def ShiftKind.leak : ShiftKind → Nat → Nat → List CTLeak
   | .sar, a, c => [.vt .sarx [a, c]]
   | _, _, _ => []
 
-/-- The source fragment. `ctr` names the machine counter register of a loop and
-    `lo` the machine register receiving the discarded low word of `MULX`. -/
+/-- Word expressions: scalar reads, literals, and the operations of `ArithOp`
+    (`+`, `&`, `^`, `*`), each of which commutes with truncation to 64 bits. -/
+inductive WExpr where
+  | var (v : String)
+  | lit (n : Nat)
+  | bin (op : ArithOp) (a b : WExpr)
+  deriving Repr
+
+/-- The source node of an `ArithOp`. -/
+def arithNode : ArithOp → SExpr → SExpr → SExpr
+  | .add, a, b => .SAdd a b
+  | .and_, a, b => .SAnd a b
+  | .xor_, a, b => .SXor a b
+  | .mul_, a, b => .SMul a b
+
+/-- The source expression of a word expression. -/
+def WExpr.toSExpr : WExpr → SExpr
+  | .var v => .SVar v
+  | .lit n => .SLit n
+  | .bin op a b => arithNode op a.toSExpr b.toSExpr
+
+/-- The number of temporary registers the lowering of a word expression uses. -/
+def WExpr.depth : WExpr → Nat
+  | .var _ | .lit _ => 1
+  | .bin _ a b => max a.depth (b.depth + 1)
+
+/-- The lowering of a word expression into the first of the temporaries `ts`:
+    the left operand into the first temporary, the right operand into the rest,
+    then the operation. -/
+def lowerW (ρ : RegMap) : List String → WExpr → List (JInstr 64)
+  | [], _ => []
+  | t :: _, .var v => [.mov t (.reg (ρ v))]
+  | t :: _, .lit n => [movImm t n]
+  | t :: ts, .bin op a b =>
+      lowerW ρ (t :: ts) a ++ lowerW ρ ts b ++ [op.toJInstr t (.reg (ts.headD t))]
+
+/-- The source fragment. `ctr` names the machine counter register of a loop,
+    `lo` the machine register receiving the discarded low word of `MULX`, and
+    `tmps` the temporaries of a word expression. -/
 inductive CFSrc where
   | skip
   | arith (p : ArithSrc)
+  | setLit (dst : String) (n : Nat)
+  | expr (dst : String) (e : WExpr) (tmps : List String)
+  | letU64 (x : String) (body : CFSrc)
   | shift (k : ShiftKind) (dst a cnt : String)
   | mulHi (dst a b lo : String)
   | select (dst : Located) (sel : String) (src0 src1 : Located)
@@ -186,6 +243,9 @@ inductive CFSrc where
 def CFSrc.toLowCT : CFSrc → LowCT
   | .skip => .RSkip
   | .arith p => p.toLowCT
+  | .setLit d n => .RScalarSet d n
+  | .expr d e _ => .RScalarSetExpr d e.toSExpr
+  | .letU64 x body => .RLetU64Zero x body.toLowCT
   | .shift k d a c => .RScalarSetExpr d (k.toSExpr (.SVar a) (.SVar c))
   | .mulHi d a b _ => .RScalarSetExpr d (.SMulHiU (.SVar a) (.SVar b))
   | .select dst sel s0 s1 => .RSelect dst sel s0 s1
@@ -211,6 +271,9 @@ def lowerSelect (ρ τ : RegMap) (dst : Located) (sel : String) (src0 src1 : Loc
 def lowerCF (ρ τ : RegMap) : CFSrc → MCF
   | .skip => .straight []
   | .arith p => .straight (lowerArith ρ p)
+  | .setLit d n => .straight [movImm (ρ d) n]
+  | .expr d e ts => .straight (lowerW ρ ts e ++ [.mov (ρ d) (.reg (ts.headD (ρ d)))])
+  | .letU64 x body => .seq (.straight [movImm (ρ x) 0]) (lowerCF ρ τ body)
   | .shift k d a c => .straight [k.toJInstr (ρ d) (ρ a) (ρ c)]
   | .mulHi d a b lo => .straight [.mulx (ρ d) lo (.reg (ρ a)) (.reg (ρ b))]
   | .select dst sel s0 s1 => .straight (lowerSelect ρ τ dst sel s0 s1)
@@ -228,7 +291,9 @@ def lowerCF (ρ τ : RegMap) : CFSrc → MCF
     loop counters, `MULX` low words, and the tower registers of select and load
     destinations. -/
 def CFSrc.writes (τ : RegMap) : CFSrc → List String
-  | .skip | .arith _ | .shift .. | .arrStore .. => []
+  | .skip | .arith _ | .setLit .. | .shift .. | .arrStore .. => []
+  | .expr _ _ ts => ts
+  | .letU64 _ body => body.writes τ
   | .mulHi _ _ _ lo => [lo]
   | .select dst .. => [τ dst.locVar]
   | .arrLoad dst .. => [τ dst.locVar]
@@ -237,12 +302,15 @@ def CFSrc.writes (τ : RegMap) : CFSrc → List String
   | .forLit _ ctr _ body | .forRt _ ctr _ body => ctr :: body.writes τ
 
 /-- Register-allocation side conditions: the second operand of an arithmetic
-    statement is not its destination; `MULX` low words, tower destinations and
-    loop counters lie outside the image of `ρ`; a loop counter is not written by
-    the loop body. -/
+    statement is not its destination; the temporaries of a word expression are
+    distinct, at least its depth in number, and outside the image of `ρ`; `MULX`
+    low words, tower destinations and loop counters lie outside the image of `ρ`;
+    a loop counter is not written by the loop body. -/
 def CFSrc.WF (ρ τ : RegMap) : CFSrc → Prop
-  | .skip | .shift .. | .arrStore .. => True
+  | .skip | .setLit .. | .shift .. | .arrStore .. => True
   | .arith p => p.b ≠ p.dst
+  | .expr _ e ts => (∀ v, ∀ t ∈ ts, ρ v ≠ t) ∧ ts.Nodup ∧ e.depth ≤ ts.length
+  | .letU64 _ body => body.WF ρ τ
   | .mulHi _ _ _ lo => ∀ v, ρ v ≠ lo
   | .select dst .. => ∀ v, ρ v ≠ τ dst.locVar
   | .arrLoad dst .. => ∀ v, ρ v ≠ τ dst.locVar
@@ -256,15 +324,15 @@ def CFSrc.towerFree : CFSrc → Bool
   | .select .. | .arrLoad .. | .arrStore .. => false
   | .seq a b => a.towerFree && b.towerFree
   | .ifNz _ t e => t.towerFree && e.towerFree
-  | .forLit _ _ _ body | .forRt _ _ _ body => body.towerFree
+  | .forLit _ _ _ body | .forRt _ _ _ body | .letU64 _ body => body.towerFree
   | _ => true
 
 /-- Whether a program has no range condition and accesses no tower: arithmetic,
     wide multiplies, sequences and literal loops only. -/
 def CFSrc.rangeFree : CFSrc → Bool
-  | .skip | .arith _ | .mulHi .. => true
+  | .skip | .arith _ | .setLit .. | .expr .. | .mulHi .. => true
   | .seq a b => a.rangeFree && b.rangeFree
-  | .forLit _ _ _ body => body.rangeFree
+  | .forLit _ _ _ body | .letU64 _ body => body.rangeFree
   | _ => false
 
 /-! ## 3. Source post-state and trace -/
@@ -300,6 +368,9 @@ def iterAll (x : String) (f : Env → Env) (P : Env → Prop) : Nat → Nat → 
 def srcDen : CFSrc → Env → Env
   | .skip, σ => σ
   | .arith p, σ => setS σ p.dst (p.toSExpr.eval σ)
+  | .setLit d n, σ => setS σ d n
+  | .expr d e _, σ => setS σ d (e.toSExpr.eval σ)
+  | .letU64 x body, σ => srcDen body (setS σ x 0)
   | .shift k d a c, σ => setS σ d (k.eval (σ a) (σ c))
   | .mulHi d a b _, σ => setS σ d (sexprMulHiU (σ a) (σ b))
   | .select .., σ | .arrLoad .., σ | .arrStore .., σ => σ
@@ -310,7 +381,8 @@ def srcDen : CFSrc → Env → Env
 
 /-- The source trace under `LowCTLeakModel.owned`. -/
 def srcLeak : CFSrc → Env → List CTLeak
-  | .skip, _ | .arith _, _ | .mulHi .., _ | .select .., _ => []
+  | .skip, _ | .arith _, _ | .setLit .., _ | .expr .., _ | .mulHi .., _ | .select .., _ => []
+  | .letU64 x body, σ => srcLeak body (setS σ x 0)
   | .shift k _ a c, σ => k.leak (σ a) (σ c)
   | .arrLoad _ src idx, σ => [.addr src.locVar (σ idx)]
   | .arrStore arr idx _, σ => [.addr arr.locVar (σ idx)]
@@ -324,7 +396,8 @@ def srcLeak : CFSrc → Env → List CTLeak
 /-- The range conditions of a run: guards, indices and loop bounds below `2^64`,
     shifted values below `2^64` and shift counts below `64`. -/
 def InRange : CFSrc → Env → Prop
-  | .skip, _ | .arith _, _ | .mulHi .., _ | .select .., _ => True
+  | .skip, _ | .arith _, _ | .setLit .., _ | .expr .., _ | .mulHi .., _ | .select .., _ => True
+  | .letU64 x body, σ => InRange body (setS σ x 0)
   | .shift _ _ a c, σ => σ a < 2 ^ 64 ∧ σ c < 64
   | .arrLoad _ _ idx, σ => σ idx < 2 ^ 64
   | .arrStore _ idx _, σ => σ idx < 2 ^ 64
@@ -341,7 +414,8 @@ theorem iterAll_of_forall (x : String) (f : Env → Env) (P : Env → Prop)
   | succ k ih => intro i σ; exact ⟨hP _, ih _ _⟩
 
 theorem inRange_of_rangeFree : ∀ (c : CFSrc), c.rangeFree = true → ∀ σ, InRange c σ
-  | .skip, _, _ | .arith _, _, _ | .mulHi .., _, _ => trivial
+  | .skip, _, _ | .arith _, _, _ | .setLit .., _, _ | .expr .., _, _ | .mulHi .., _, _ => trivial
+  | .letU64 _ body, h, _ => inRange_of_rangeFree body h _
   | .seq a b, h, σ => by
     simp only [CFSrc.rangeFree, Bool.and_eq_true] at h
     exact ⟨inRange_of_rangeFree a h.1 σ, inRange_of_rangeFree b h.2 _⟩
@@ -350,7 +424,8 @@ theorem inRange_of_rangeFree : ∀ (c : CFSrc), c.rangeFree = true → ∀ σ, I
   | .ifNz .., h, _ | .forRt .., h, _ => by simp [CFSrc.rangeFree] at h
 
 theorem towerFree_of_rangeFree : ∀ (c : CFSrc), c.rangeFree = true → c.towerFree = true
-  | .skip, _ | .arith _, _ | .mulHi .., _ => rfl
+  | .skip, _ | .arith _, _ | .setLit .., _ | .expr .., _ | .mulHi .., _ => rfl
+  | .letU64 _ body, h => towerFree_of_rangeFree body h
   | .seq a b, h => by
     simp only [CFSrc.rangeFree, Bool.and_eq_true] at h
     simp only [CFSrc.towerFree, towerFree_of_rangeFree a h.1, towerFree_of_rangeFree b h.2,
@@ -388,6 +463,20 @@ theorem sexprLeak_arith (p : ArithSrc) (rs : RustState) :
     sexprLeak .owned rs p.toSExpr = [] := by
   cases p with
   | mk dst a op b => cases op <;> rfl
+
+theorem WExpr.limbFree : ∀ e : WExpr, e.toSExpr.limbFree
+  | .var _ | .lit _ => trivial
+  | .bin op a b => by
+    cases op <;>
+      exact (show _ ∧ _ from ⟨WExpr.limbFree a, WExpr.limbFree b⟩)
+
+/-- A word expression has an empty source trace under the owned model. -/
+theorem WExpr.sexprLeak_nil (rs : RustState) : ∀ e : WExpr, sexprLeak .owned rs e.toSExpr = []
+  | .var _ | .lit _ => rfl
+  | .bin op a b => by
+    cases op <;>
+      simp only [WExpr.toSExpr, arithNode, sexprLeak, WExpr.sexprLeak_nil rs a,
+        WExpr.sexprLeak_nil rs b, List.nil_append] <;> rfl
 
 theorem sexprLeak_shift (k : ShiftKind) (a c : String) (rs : RustState) :
     sexprLeak .owned rs (k.toSExpr (.SVar a) (.SVar c)) =
@@ -432,6 +521,15 @@ theorem srcRun_det (N : Nat) (leafSpec : LeafSpec) :
     refine ⟨sexprLeak_arith p rs, ?_⟩
     rw [rsSetScalar_rsScalar, SExpr.evalState_eq_eval rs _ (arith_limbFree p)]
     rfl
+  | .setLit d n, rs, t, rs', h => by cases h; exact ⟨rfl, rfl⟩
+  | .expr d e ts, rs, t, rs', h => by
+    cases h
+    refine ⟨WExpr.sexprLeak_nil rs e, ?_⟩
+    rw [rsSetScalar_rsScalar, SExpr.evalState_eq_eval rs _ (WExpr.limbFree e)]
+    rfl
+  | .letU64 x body, rs, t, rs', h => by
+    cases h with
+    | letU64Zero _ _ _ _ _ hb => exact srcRun_det N leafSpec body _ t rs' hb
   | .shift k d a c, rs, t, rs', h => by
     cases h
     exact ⟨sexprLeak_shift k a c rs, by rw [rsSetScalar_rsScalar, evalState_shift]; rfl⟩
@@ -488,6 +586,11 @@ theorem srcRun_exists (N : Nat) (leafSpec : LeafSpec) :
       ∃ t rs', RustExecLeak N leafSpec .owned c.toLowCT rs t rs'
   | .skip, _, rs => ⟨_, _, .skip rs⟩
   | .arith p, _, rs => ⟨_, _, .scalarSetExpr p.dst p.toSExpr rs⟩
+  | .setLit d n, _, rs => ⟨_, _, .scalarSet d n rs⟩
+  | .expr d e _, _, rs => ⟨_, _, .scalarSetExpr d e.toSExpr rs⟩
+  | .letU64 x body, h, rs => by
+    obtain ⟨t1, r1, h1⟩ := srcRun_exists N leafSpec body h (rsSetScalar rs x 0)
+    exact ⟨_, _, .letU64Zero _ _ _ _ _ h1⟩
   | .shift k d a c, _, rs => ⟨_, _, .scalarSetExpr _ _ rs⟩
   | .mulHi d a b _, _, rs => ⟨_, _, .scalarSetExpr _ _ rs⟩
   | .seq a b, h, rs => by
@@ -609,16 +712,56 @@ theorem blockLeakCT_shift (k : ShiftKind) (s : JState 64) (d a c : String) :
     blockLeakCT .doitm s [k.toJInstr d a c] = k.leak (s.get a).toNat (s.get c).toNat := by
   cases k <;> rfl
 
+theorem blockLeakCT_append (r : DoitRegime) :
+    ∀ (s : JState 64) (l₁ l₂ : List (JInstr 64)),
+      blockLeakCT r s (l₁ ++ l₂) = blockLeakCT r s l₁ ++ blockLeakCT r (runBlock s l₁) l₂
+  | _, [], _ => rfl
+  | s, i :: is, l₂ => by
+    rw [List.cons_append, blockLeakCT_cons, blockLeakCT_cons, blockLeakCT_append r _ is l₂,
+      runBlock_cons, List.append_assoc]
+
+/-- The lowering of a word expression has an empty machine trace under DOITM. -/
+theorem blockLeakCT_lowerW (ρ : RegMap) :
+    ∀ (e : WExpr) (ts : List String) (s : JState 64), blockLeakCT .doitm s (lowerW ρ ts e) = []
+  | e, [], _ => by cases e <;> rfl
+  | .var _, _ :: _, _ => rfl
+  | .lit _, _ :: _, _ => rfl
+  | .bin op a b, t :: ts, s => by
+    rw [lowerW, blockLeakCT_append, blockLeakCT_append, blockLeakCT_lowerW ρ a,
+      blockLeakCT_lowerW ρ b]
+    cases op <;> rfl
+
 /-! ### 4.3 Preservation of registers outside the image of `ρ` -/
+
+theorem evalInstr_mov_reg (s : JState 64) (d r : String) :
+    evalInstr s (.mov d (.reg r)) = s.setReg d (s.get r) := by
+  simp [evalInstr, x86_MOV, JOperand.eval]
+
+/-- A register outside the temporaries keeps its value across the lowering of a
+    word expression. -/
+theorem lowerW_get_other (ρ : RegMap) :
+    ∀ (e : WExpr) (ts : List String) (s : JState 64) (r : String), r ∉ ts →
+      (runBlock s (lowerW ρ ts e)).get r = s.get r
+  | e, [], _, _, _ => by cases e <;> rfl
+  | .var v, t :: _, s, r, h => by
+    simp only [List.mem_cons, not_or] at h
+    simp only [lowerW, runBlock_cons, runBlock_nil]
+    rw [evalInstr_mov_reg, JState.get_setReg_other _ _ _ _ h.1]
+  | .lit n, t :: _, s, r, h => by
+    simp only [List.mem_cons, not_or] at h
+    simp only [lowerW, runBlock_cons, runBlock_nil]
+    rw [evalInstr_movImm, JState.get_setReg_other _ _ _ _ h.1]
+  | .bin op a b, t :: ts, s, r, h => by
+    have h' := h
+    simp only [List.mem_cons, not_or] at h'
+    rw [lowerW, runBlock_append, runBlock_append, runBlock_cons, runBlock_nil,
+      ArithOp.toJInstr_get_other _ _ _ _ _ h'.1, lowerW_get_other ρ b ts _ r h'.2,
+      lowerW_get_other ρ a (t :: ts) s r h]
 
 theorem iterate_get (B : MCF) (r : String) (h : ∀ s, (mcfExec s B).get r = s.get r) :
     ∀ (k : Nat) (s : JState 64), ((fun s' => mcfExec s' B)^[k] s).get r = s.get r
   | 0, _ => rfl
   | k + 1, s => by rw [Function.iterate_succ_apply, iterate_get B r h k, h]
-
-theorem evalInstr_mov_reg (s : JState 64) (d r : String) :
-    evalInstr s (.mov d (.reg r)) = s.setReg d (s.get r) := by
-  simp [evalInstr, x86_MOV, JOperand.eval]
 
 theorem evalInstr_add_imm_get (s : JState 64) (d r : String) (n : Nat) :
     (evalInstr s (.add d (.imm n))).get r = if r = d then s.get d + BitVec.ofNat 64 n
@@ -643,6 +786,19 @@ theorem lowerCF_preserves (ρ τ : RegMap) (r : String) (hr : ∀ v, ρ v ≠ r)
     have hd : r ≠ ρ p.dst := fun h => hr p.dst h.symm
     rw [ArithOp.toJInstr_get_other _ _ _ _ _ hd, evalInstr_mov_reg,
       JState.get_setReg_other _ _ _ _ hd]
+  | .setLit d n, _, s => by
+    simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil]
+    rw [evalInstr_movImm, JState.get_setReg_other _ _ _ _ (fun h => hr d h.symm)]
+  | .expr d e ts, h, s => by
+    simp only [CFSrc.writes] at h
+    simp only [lowerCF, mcfExec]
+    rw [runBlock_append, runBlock_cons, runBlock_nil, evalInstr_mov_reg,
+      JState.get_setReg_other _ _ _ _ (fun h' => hr d h'.symm), lowerW_get_other ρ e ts s r h]
+  | .letU64 x body, h, s => by
+    simp only [CFSrc.writes] at h
+    simp only [lowerCF, mcfExec]
+    rw [lowerCF_preserves ρ τ r hr body h, runBlock_cons, runBlock_nil, evalInstr_movImm,
+      JState.get_setReg_other _ _ _ _ (fun h' => hr x h'.symm)]
   | .shift k d a c, _, s => by
     simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil]
     rw [evalInstr_shift, JState.get_setReg_other _ _ _ _ (fun h => hr d h.symm)]
@@ -719,6 +875,50 @@ theorem SMatch.setS (ρ : RegMap) (σ : Env) (js : JState 64)
   · subst hu; rw [hd]; simp [LowCTMachine.setS]
   · rw [ho u hu, hm u]; simp [LowCTMachine.setS, hu]
 
+theorem WExpr.depth_pos : ∀ e : WExpr, 0 < e.depth
+  | .var _ | .lit _ => Nat.one_pos
+  | .bin _ _ b => by simp only [WExpr.depth]; omega
+
+/-- The value of the lowering of a word expression: with distinct temporaries
+    outside the image of `ρ`, at least the depth of the expression in number, the
+    first temporary holds the truncated source value. -/
+theorem lowerW_val (ρ : RegMap) (σ : Env) :
+    ∀ (e : WExpr) (ts : List String) (s : JState 64) (x : String), SMatch ρ σ s →
+      (∀ v, ∀ t ∈ ts, ρ v ≠ t) → ts.Nodup → e.depth ≤ ts.length →
+      (runBlock s (lowerW ρ ts e)).get (ts.headD x) = BitVec.ofNat 64 (e.toSExpr.eval σ)
+  | e, [], _, _, _, _, _, hd => absurd hd (by have := e.depth_pos; simp; omega)
+  | .var v, t :: _, s, _, hm, _, _, _ => by
+    simp only [lowerW, runBlock_cons, runBlock_nil, List.headD_cons]
+    rw [evalInstr_mov_reg, JState.get_setReg_same, hm v]
+    rfl
+  | .lit n, t :: _, s, _, _, _, _, _ => by
+    simp only [lowerW, runBlock_cons, runBlock_nil, List.headD_cons]
+    rw [evalInstr_movImm, JState.get_setReg_same]
+    rfl
+  | .bin op a b, t :: ts, s, _, hm, hρt, hnd, hd => by
+    simp only [WExpr.depth, List.length_cons] at hd
+    have hda : a.depth ≤ (t :: ts).length := by simp; omega
+    have hdb : b.depth ≤ ts.length := by omega
+    have hnd' := List.nodup_cons.mp hnd
+    have hρts : ∀ v, ∀ u ∈ ts, ρ v ≠ u := fun v u hu => hρt v u (List.mem_cons_of_mem _ hu)
+    set s₁ := runBlock s (lowerW ρ (t :: ts) a) with hs₁
+    have ha : s₁.get t = BitVec.ofNat 64 (a.toSExpr.eval σ) :=
+      lowerW_val ρ σ a (t :: ts) s t hm hρt hnd hda
+    have hm₁ : SMatch ρ σ s₁ := by
+      intro v
+      rw [hs₁, lowerW_get_other ρ a (t :: ts) s (ρ v) (fun h => hρt v _ h rfl), hm v]
+    have hb : (runBlock s₁ (lowerW ρ ts b)).get (ts.headD t) =
+        BitVec.ofNat 64 (b.toSExpr.eval σ) :=
+      lowerW_val ρ σ b ts s₁ t hm₁ hρts hnd'.2 hdb
+    have ht : (runBlock s₁ (lowerW ρ ts b)).get t = s₁.get t :=
+      lowerW_get_other ρ b ts s₁ t hnd'.1
+    simp only [lowerW, List.headD_cons]
+    rw [runBlock_append, runBlock_append, runBlock_cons, runBlock_nil, ← hs₁,
+      ArithOp.toJInstr_word, ht, hb, ha]
+    cases op <;>
+      simp [WExpr.toSExpr, arithNode, SExpr.eval, BitVec.ofNat_add, BitVec.ofNat_and,
+        BitVec.ofNat_xor, BitVec.ofNat_mul]
+
 /-- The iterations of a loop: from matching states with the counter at `i`, the
     machine iterations of the lowered body track the source iterations. -/
 theorem loop_sim (ρ τ : RegMap) (hρ : Function.Injective ρ) (x ctr : String) (body : CFSrc)
@@ -787,6 +987,40 @@ theorem lowerCF_sim (ρ τ : RegMap) (hρ : Function.Injective ρ) :
     refine ⟨?_, ?_⟩
     · exact lowerArith_denote ρ p { rsTower := fun _ => none, rsScalar := σ } js hρ hwf hm
     · rw [lowerCF, mcfLeak, blockLeakCT_lowerArith]; rfl
+  | .setLit d n, _, σ, js, hm, _ => by
+    refine ⟨?_, ?_⟩
+    · simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil, srcDen]
+      refine SMatch.setS ρ σ js hm d _ _ ?_ ?_
+      · rw [evalInstr_movImm, JState.get_setReg_same]
+      · intro u hu
+        rw [evalInstr_movImm, JState.get_setReg_other _ _ _ _ (fun h => hu (hρ h))]
+    · rfl
+  | .expr d e ts, hwf, σ, js, hm, _ => by
+    obtain ⟨hρt, hnd, hdep⟩ := hwf
+    refine ⟨?_, ?_⟩
+    · simp only [lowerCF, mcfExec, srcDen]
+      rw [runBlock_append, runBlock_cons, runBlock_nil]
+      refine SMatch.setS ρ σ js hm d _ _ ?_ ?_
+      · rw [evalInstr_mov_reg, JState.get_setReg_same]
+        exact lowerW_val ρ σ e ts js (ρ d) hm hρt hnd hdep
+      · intro u hu
+        rw [evalInstr_mov_reg, JState.get_setReg_other _ _ _ _ (fun h => hu (hρ h)),
+          lowerW_get_other ρ e ts js (ρ u) (fun h => hρt u _ h rfl)]
+    · simp only [lowerCF, mcfLeak, srcLeak, List.map_nil]
+      rw [blockLeakCT_append, blockLeakCT_lowerW]
+      rfl
+  | .letU64 x body, hwf, σ, js, hm, hin => by
+    have hm0 : SMatch ρ (setS σ x 0) (evalInstr js (movImm (ρ x) 0)) := by
+      refine SMatch.setS ρ σ js hm x 0 _ ?_ ?_
+      · rw [evalInstr_movImm, JState.get_setReg_same]
+      · intro u hu
+        rw [evalInstr_movImm, JState.get_setReg_other _ _ _ _ (fun h => hu (hρ h))]
+    obtain ⟨hmb, hlb⟩ := lowerCF_sim ρ τ hρ body hwf _ _ hm0 hin
+    refine ⟨?_, ?_⟩
+    · simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil, srcDen]; exact hmb
+    · simp only [lowerCF, mcfLeak, mcfExec, runBlock_cons, runBlock_nil, srcLeak]
+      rw [hlb]
+      rfl
   | .shift k d a c, _, σ, js, hm, hin => by
     obtain ⟨ha, hc⟩ := hin
     refine ⟨?_, ?_⟩
@@ -1089,5 +1323,414 @@ theorem secretBound_lowered_not_ct (N : Nat) (leafSpec : LeafSpec) :
   simp [lowerCF, mcfLeak, mcfExec, instrLeakCT, instrLeak, movImm, evalInstr, x86_MOV,
     JOperand.eval, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing, zeroState, kOneState,
     JState.get, JState.setReg] at this
+
+/-! ## 7. Recognition of the fragment and a decision for machine constant time -/
+
+/-- The word expression of a scalar expression built from reads, literals, `+`, `&`,
+    `^` and `*`, or `none`. -/
+def WExpr.ofSExpr? : SExpr → Option WExpr
+  | .SVar v => some (.var v)
+  | .SLit n => some (.lit n)
+  | .SAdd a b => return .bin .add (← WExpr.ofSExpr? a) (← WExpr.ofSExpr? b)
+  | .SAnd a b => return .bin .and_ (← WExpr.ofSExpr? a) (← WExpr.ofSExpr? b)
+  | .SXor a b => return .bin .xor_ (← WExpr.ofSExpr? a) (← WExpr.ofSExpr? b)
+  | .SMul a b => return .bin .mul_ (← WExpr.ofSExpr? a) (← WExpr.ofSExpr? b)
+  | _ => none
+
+theorem WExpr.ofSExpr?_spec : ∀ (e : SExpr) (w : WExpr), WExpr.ofSExpr? e = some w →
+    w.toSExpr = e := by
+  intro e
+  induction e with
+  | SVar v => intro w h; simp only [WExpr.ofSExpr?, Option.some.injEq] at h; subst h; rfl
+  | SLit n => intro w h; simp only [WExpr.ofSExpr?, Option.some.injEq] at h; subst h; rfl
+  | SAdd a b iha ihb | SAnd a b iha ihb | SXor a b iha ihb | SMul a b iha ihb =>
+    intro w h
+    simp only [WExpr.ofSExpr?, Option.bind_eq_bind, Option.bind_eq_some_iff,
+      Option.pure_def, Option.some.injEq] at h
+    obtain ⟨wa, ha, wb, hb, rfl⟩ := h
+    simp only [WExpr.toSExpr, arithNode, iha wa ha, ihb wb hb]
+  | _ => intro w h; simp [WExpr.ofSExpr?] at h
+
+/-- The machine names the recogniser assigns: the counter of a loop at nesting depth
+    `k` is `ctr k`, the discarded low word of `MULX` is `lo`, and the temporaries of a
+    word expression are `tmps`. -/
+structure CFNames where
+  tmps : List String
+  ctr : Nat → String
+  lo : String
+
+/-- The statement `dst := e`: a shift by a scalar count, the high word of a wide
+    multiply, or a word expression. -/
+def stmtOf? (nm : CFNames) (d : String) : SExpr → Option CFSrc
+  | .SShr (.SVar a) (.SVar c) => some (.shift .shr d a c)
+  | .SShl (.SVar a) (.SVar c) => some (.shift .shl d a c)
+  | .SAsr (.SVar a) (.SVar c) => some (.shift .sar d a c)
+  | .SMulHiU (.SVar a) (.SVar b) => some (.mulHi d a b nm.lo)
+  | e => (WExpr.ofSExpr? e).map fun w => .expr d w nm.tmps
+
+theorem stmtOf?_spec (nm : CFNames) (d : String) (e : SExpr) (c : CFSrc)
+    (h : stmtOf? nm d e = some c) : c.toLowCT = .RScalarSetExpr d e := by
+  unfold stmtOf? at h
+  split at h <;> simp only [Option.some.injEq, Option.map_eq_some_iff] at h
+  · subst h; rfl
+  · subst h; rfl
+  · subst h; rfl
+  · subst h; rfl
+  · obtain ⟨w, hw, rfl⟩ := h
+    simp only [CFSrc.toLowCT, WExpr.ofSExpr?_spec _ w hw]
+
+/-- The recogniser of the fragment, at loop nesting depth `k`. -/
+def toCFSrc? (nm : CFNames) : Nat → LowCT → Option CFSrc
+  | _, .RSkip => some .skip
+  | _, .RScalarSet d n => some (.setLit d n)
+  | _, .RScalarSetExpr d e => stmtOf? nm d e
+  | k, .RLetU64Zero x b => (toCFSrc? nm k b).map (.letU64 x)
+  | _, .RSelect dst sel s0 s1 => some (.select dst sel s0 s1)
+  | _, .RArrLoad dst src idx => some (.arrLoad dst src idx)
+  | _, .RArrStore arr idx src => some (.arrStore arr idx src)
+  | k, .RSeq a b => return .seq (← toCFSrc? nm k a) (← toCFSrc? nm k b)
+  | k, .RIfNz g t e => return .ifNz g (← toCFSrc? nm k t) (← toCFSrc? nm k e)
+  | k, .RFor x n b => (toCFSrc? nm (k + 1) b).map (.forLit x (nm.ctr k) n)
+  | k, .RForRuntime x (.SVar bnd) b => (toCFSrc? nm (k + 1) b).map (.forRt x (nm.ctr k) bnd)
+  | _, _ => none
+
+/-- The recognised program embeds back to the program it was recognised from. -/
+theorem toCFSrc?_spec (nm : CFNames) :
+    ∀ (k : Nat) (c : LowCT) (cf : CFSrc), toCFSrc? nm k c = some cf → cf.toLowCT = c := by
+  intro k c
+  induction c generalizing k with
+  | RSkip => intro cf h; simp only [toCFSrc?, Option.some.injEq] at h; subst h; rfl
+  | RScalarSet d n => intro cf h; simp only [toCFSrc?, Option.some.injEq] at h; subst h; rfl
+  | RScalarSetExpr d e => intro cf h; exact stmtOf?_spec nm d e cf h
+  | RLetU64Zero x b ih =>
+    intro cf h
+    simp only [toCFSrc?, Option.map_eq_some_iff] at h
+    obtain ⟨b', hb, rfl⟩ := h
+    simp only [CFSrc.toLowCT, ih k b' hb]
+  | RSelect dst sel s0 s1 =>
+    intro cf h; simp only [toCFSrc?, Option.some.injEq] at h; subst h; rfl
+  | RArrLoad dst src idx =>
+    intro cf h; simp only [toCFSrc?, Option.some.injEq] at h; subst h; rfl
+  | RArrStore arr idx src =>
+    intro cf h; simp only [toCFSrc?, Option.some.injEq] at h; subst h; rfl
+  | RSeq a b iha ihb =>
+    intro cf h
+    simp only [toCFSrc?, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+      Option.some.injEq] at h
+    obtain ⟨a', ha, b', hb, rfl⟩ := h
+    simp only [CFSrc.toLowCT, iha k a' ha, ihb k b' hb]
+  | RIfNz g t e iht ihe =>
+    intro cf h
+    simp only [toCFSrc?, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+      Option.some.injEq] at h
+    obtain ⟨t', ht, e', he, rfl⟩ := h
+    simp only [CFSrc.toLowCT, iht k t' ht, ihe k e' he]
+  | RFor x n b ih =>
+    intro cf h
+    simp only [toCFSrc?, Option.map_eq_some_iff] at h
+    obtain ⟨b', hb, rfl⟩ := h
+    simp only [CFSrc.toLowCT, ih (k + 1) b' hb]
+  | RForRuntime x bound b ih =>
+    intro cf h
+    cases bound with
+    | SVar bnd =>
+      simp only [toCFSrc?, Option.map_eq_some_iff] at h
+      obtain ⟨b', hb, rfl⟩ := h
+      simp only [CFSrc.toLowCT, ih (k + 1) b' hb]
+    | _ => simp [toCFSrc?] at h
+  | _ => intro cf h; simp [toCFSrc?] at h
+
+/-- A register allocation: an injective map `ρ` of scalars to registers whose image
+    is recognised by `inImg`, and a map `τ` of towers to registers. -/
+structure RegAlloc where
+  ρ : RegMap
+  τ : RegMap
+  inj : Function.Injective ρ
+  inImg : String → Bool
+  inImg_spec : ∀ v, inImg (ρ v) = true
+
+theorem RegAlloc.ne_of_inImg (A : RegAlloc) {r : String} (h : A.inImg r = false) :
+    ∀ v, A.ρ v ≠ r := fun v hv => by rw [← hv, A.inImg_spec] at h; cases h
+
+/-- The side conditions `CFSrc.WF` as a Boolean. -/
+def wfB (A : RegAlloc) : CFSrc → Bool
+  | .skip | .setLit .. | .shift .. | .arrStore .. => true
+  | .arith p => p.b != p.dst
+  | .expr _ e ts => ts.all (fun t => !A.inImg t) && decide ts.Nodup && decide (e.depth ≤ ts.length)
+  | .letU64 _ b => wfB A b
+  | .mulHi _ _ _ lo => !A.inImg lo
+  | .select dst .. | .arrLoad dst .. => !A.inImg (A.τ dst.locVar)
+  | .seq a b | .ifNz _ a b => wfB A a && wfB A b
+  | .forLit _ ctr _ b | .forRt _ ctr _ b =>
+      !A.inImg ctr && !((b.writes A.τ).contains ctr) && wfB A b
+
+theorem wfB_spec (A : RegAlloc) : ∀ (c : CFSrc), wfB A c = true → c.WF A.ρ A.τ
+  | .skip, _ | .setLit .., _ | .shift .., _ | .arrStore .., _ => trivial
+  | .arith p, h => by simpa [wfB, CFSrc.WF] using h
+  | .expr _ e ts, h => by
+    simp only [wfB, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true', decide_eq_true_eq] at h
+    exact ⟨fun v t ht => A.ne_of_inImg (h.1.1 t ht) v, h.1.2, h.2⟩
+  | .letU64 _ b, h => wfB_spec A b h
+  | .mulHi _ _ _ lo, h => by
+    simp only [wfB, Bool.not_eq_true'] at h
+    exact A.ne_of_inImg h
+  | .select dst .., h | .arrLoad dst .., h => by
+    simp only [wfB, Bool.not_eq_true'] at h
+    exact A.ne_of_inImg h
+  | .seq a b, h | .ifNz _ a b, h => by
+    simp only [wfB, Bool.and_eq_true] at h
+    exact ⟨wfB_spec A a h.1, wfB_spec A b h.2⟩
+  | .forLit _ ctr _ b, h | .forRt _ ctr _ b, h => by
+    simp only [wfB, Bool.and_eq_true, Bool.not_eq_true'] at h
+    exact ⟨A.ne_of_inImg h.1.1, by simpa using h.1.2, wfB_spec A b h.2⟩
+
+/-- A predicate on scalar names with one name updated. -/
+def updB (B : String → Bool) (x : String) (b : Bool) : String → Bool :=
+  fun y => if y == x then b else B y
+
+/-- Whether a word expression is below `2^64` when the names `B` are: reads of `B`,
+    literals below `2^64`, `&` with a bounded operand, `^` of bounded operands. -/
+def WExpr.boundedB (B : String → Bool) : WExpr → Bool
+  | .var v => B v
+  | .lit n => decide (n < 2 ^ 64)
+  | .bin .and_ a b => a.boundedB B || b.boundedB B
+  | .bin .xor_ a b => a.boundedB B && b.boundedB B
+  | .bin _ _ _ => false
+
+/-- The names below `2^64` after `c`, starting from the names `B`, or `none` when a
+    range condition of `c` is not established: a guard or index not known below
+    `2^64`, a shift by a scalar count, or a loop. -/
+def rangeB (B : String → Bool) : CFSrc → Option (String → Bool)
+  | .skip => some B
+  | .arith p => some (updB B p.dst false)
+  | .setLit d n => some (updB B d (decide (n < 2 ^ 64)))
+  | .expr d e _ => some (updB B d (e.boundedB B))
+  | .letU64 x body => rangeB (updB B x true) body
+  | .mulHi d .. => some (updB B d false)
+  | .select .. => some B
+  | .arrLoad _ _ idx | .arrStore _ idx _ => if B idx then some B else none
+  | .seq a b => (rangeB B a).bind fun B' => rangeB B' b
+  | .ifNz g t e =>
+      if B g then
+        match rangeB B t, rangeB B e with
+        | some Bt, some Be => some fun y => Bt y && Be y
+        | _, _ => none
+      else none
+  | .shift .. | .forLit .. | .forRt .. => none
+
+/-- The names `B` hold values below `2^64` in `σ`. -/
+def BoundedBy (B : String → Bool) (σ : Env) : Prop := ∀ x, B x = true → σ x < 2 ^ 64
+
+theorem BoundedBy.upd {B : String → Bool} {σ : Env} (h : BoundedBy B σ) (x : String)
+    (b : Bool) (v : Nat) (hv : b = true → v < 2 ^ 64) : BoundedBy (updB B x b) (setS σ x v) := by
+  intro y hy
+  simp only [updB, setS] at hy ⊢
+  split
+  · rw [if_pos (by assumption)] at hy; exact hv hy
+  · rw [if_neg (by assumption)] at hy; exact h y hy
+
+theorem WExpr.boundedB_spec {B : String → Bool} {σ : Env} (h : BoundedBy B σ) :
+    ∀ e : WExpr, e.boundedB B = true → e.toSExpr.eval σ < 2 ^ 64
+  | .var v, hb => h v hb
+  | .lit n, hb => by simpa [WExpr.boundedB, WExpr.toSExpr, SExpr.eval] using hb
+  | .bin .and_ a b, hb => by
+    simp only [WExpr.boundedB, Bool.or_eq_true] at hb
+    simp only [WExpr.toSExpr, arithNode, SExpr.eval]
+    rcases hb with ha | hb
+    · exact lt_of_le_of_lt Nat.and_le_left (WExpr.boundedB_spec h a ha)
+    · exact Nat.and_lt_two_pow _ (WExpr.boundedB_spec h b hb)
+  | .bin .xor_ a b, hb => by
+    simp only [WExpr.boundedB, Bool.and_eq_true] at hb
+    simp only [WExpr.toSExpr, arithNode, SExpr.eval]
+    exact Nat.xor_lt_two_pow (WExpr.boundedB_spec h a hb.1) (WExpr.boundedB_spec h b hb.2)
+  | .bin .add _ _, hb | .bin .mul_ _ _, hb => by simp [WExpr.boundedB] at hb
+
+/-- Soundness of `rangeB`: from a state bounded on `B`, the range conditions hold and
+    the post-state is bounded on the returned names. -/
+theorem rangeB_sound : ∀ (c : CFSrc) (B B' : String → Bool) (σ : Env), BoundedBy B σ →
+    rangeB B c = some B' → InRange c σ ∧ BoundedBy B' (srcDen c σ)
+  | .skip, B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr; exact ⟨trivial, h⟩
+  | .arith p, B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr
+    exact ⟨trivial, h.upd _ _ _ (by simp)⟩
+  | .setLit d n, B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr
+    exact ⟨trivial, h.upd _ _ _ (by simp)⟩
+  | .expr d e _, B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr
+    exact ⟨trivial, h.upd _ _ _ (WExpr.boundedB_spec h e)⟩
+  | .letU64 x body, B, B', σ, h, hr =>
+    rangeB_sound body _ B' _ (h.upd x true 0 (fun _ => by norm_num)) hr
+  | .mulHi d .., B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr
+    exact ⟨trivial, h.upd _ _ _ (by simp)⟩
+  | .select .., B, B', σ, h, hr => by
+    simp only [rangeB, Option.some.injEq] at hr; subst hr; exact ⟨trivial, h⟩
+  | .arrLoad _ _ idx, B, B', σ, h, hr | .arrStore _ idx _, B, B', σ, h, hr => by
+    simp only [rangeB] at hr
+    split at hr
+    · simp only [Option.some.injEq] at hr; subst hr; exact ⟨h idx (by assumption), h⟩
+    · cases hr
+  | .seq a b, B, B', σ, h, hr => by
+    simp only [rangeB, Option.bind_eq_some_iff] at hr
+    obtain ⟨Ba, ha, hb⟩ := hr
+    obtain ⟨hia, hba⟩ := rangeB_sound a B Ba σ h ha
+    obtain ⟨hib, hbb⟩ := rangeB_sound b Ba B' _ hba hb
+    exact ⟨⟨hia, hib⟩, hbb⟩
+  | .ifNz g t e, B, B', σ, h, hr => by
+    simp only [rangeB] at hr
+    split at hr
+    · rename_i hg
+      split at hr
+      · rename_i Bt Be ht he
+        simp only [Option.some.injEq] at hr; subst hr
+        obtain ⟨hit, hbt⟩ := rangeB_sound t B Bt σ h ht
+        obtain ⟨hie, hbe⟩ := rangeB_sound e B Be σ h he
+        refine ⟨⟨h g hg, ?_⟩, ?_⟩
+        · split <;> assumption
+        · intro y hy
+          simp only [Bool.and_eq_true] at hy
+          simp only [srcDen]
+          split
+          · exact hbe y hy.2
+          · exact hbt y hy.1
+      · cases hr
+    · cases hr
+  | .shift .., _, _, _, _, hr | .forLit .., _, _, _, _, hr | .forRt .., _, _, _, _, hr => by
+    cases hr
+
+theorem liftEnv_bounded (ρ : RegMap) (js : JState 64) :
+    BoundedBy (fun _ => true) (liftEnv ρ js) := fun v _ => (js.get (ρ v)).isLt
+
+section Routes
+
+variable (N : Nat) (leafSpec : LeafSpec)
+
+/-- **Source constant time to machine constant time, for a recognised program.** If
+    `c` is recognised as `cf`, the register allocation satisfies the side conditions
+    and `c` is constant time for `lt`, the lowering of `cf` is constant time for
+    admissible machine states agreeing on the public registers. -/
+theorem machine_ct_of_lowct (A : RegAlloc) (nm : CFNames) (lt : LevelTable) (pub : PubPred)
+    (T : String → Option (Σ t : TowerType, RustVal t)) (c : LowCT) (cf : CFSrc)
+    (hrec : toCFSrc? nm 0 c = some cf) (hwf : wfB A cf = true)
+    (hpub : ∀ x, lt x = .Public → pub (A.ρ x) = true)
+    (hsrc : LowCTConstantTime N leafSpec .owned lt c) :
+    ConstantTime
+      (fun js₁ js₂ : JState 64 => agreePub pub js₁ js₂ ∧
+        Admissible N leafSpec A.ρ T cf js₁ ∧ Admissible N leafSpec A.ρ T cf js₂)
+      (fun js => mcfLeak .doitm js (lowerCF A.ρ A.τ cf)) := by
+  have hc := toCFSrc?_spec nm 0 c cf hrec
+  subst hc
+  exact lowct_to_machine_ct N leafSpec lt pub A.ρ A.τ T A.inj cf (wfB_spec A cf hwf) hpub hsrc
+
+/-- **Machine constant time for every pair of public-agreeing states.** For a
+    recognised program without tower access that passes `rangeB`, source constant
+    time gives machine constant time of the lowering for all machine states agreeing
+    on the public registers. -/
+theorem machine_ct_of_lowct_closed (A : RegAlloc) (nm : CFNames) (lt : LevelTable)
+    (pub : PubPred) (c : LowCT) (cf : CFSrc) (B' : String → Bool)
+    (hrec : toCFSrc? nm 0 c = some cf) (hwf : wfB A cf = true) (htf : cf.towerFree = true)
+    (hrange : rangeB (fun _ => true) cf = some B')
+    (hpub : ∀ x, lt x = .Public → pub (A.ρ x) = true)
+    (hsrc : LowCTConstantTime N leafSpec .owned lt c) :
+    ConstantTime (fun js₁ js₂ : JState 64 => agreePub pub js₁ js₂)
+      (fun js => mcfLeak .doitm js (lowerCF A.ρ A.τ cf)) := by
+  have hc := toCFSrc?_spec nm 0 c cf hrec
+  subst hc
+  intro js₁ js₂ hag
+  exact lowct_to_machine_ct_towerFree N leafSpec lt pub A.ρ A.τ A.inj cf (wfB_spec A cf hwf) htf
+    hpub hsrc js₁ js₂
+    ⟨hag, (rangeB_sound cf _ B' _ (liftEnv_bounded A.ρ js₁) hrange).1,
+      (rangeB_sound cf _ B' _ (liftEnv_bounded A.ρ js₂) hrange).1⟩
+
+/-- **Route through the level checker.** A recognised program accepted by
+    `levelCheck` from `lt` lowers to machine code that is constant time for admissible
+    machine states agreeing on the public registers. -/
+theorem machine_ct_of_levelCheck (A : RegAlloc) (nm : CFNames) (lt lt' : LevelTable)
+    (pub : PubPred) (T : String → Option (Σ t : TowerType, RustVal t)) (c : LowCT)
+    (cf : CFSrc) (hchk : levelCheck .owned lt c = some lt') (hrec : toCFSrc? nm 0 c = some cf)
+    (hwf : wfB A cf = true) (hpub : ∀ x, lt x = .Public → pub (A.ρ x) = true) :
+    ConstantTime
+      (fun js₁ js₂ : JState 64 => agreePub pub js₁ js₂ ∧
+        Admissible N leafSpec A.ρ T cf js₁ ∧ Admissible N leafSpec A.ρ T cf js₂)
+      (fun js => mcfLeak .doitm js (lowerCF A.ρ A.τ cf)) :=
+  machine_ct_of_lowct N leafSpec A nm lt pub T c cf hrec hwf hpub
+    (levelCheck_sound (N := N) (leafSpec := leafSpec) hchk).1
+
+end Routes
+
+/-- The recognised program when it satisfies the decided side conditions, has no
+    tower access and passes `rangeB`. -/
+def toCFSrcClosed? (A : RegAlloc) (nm : CFNames) (c : LowCT) : Option CFSrc :=
+  (toCFSrc? nm 0 c).filter fun cf =>
+    wfB A cf && cf.towerFree && (rangeB (fun _ => true) cf).isSome
+
+theorem toCFSrcClosed?_spec {A : RegAlloc} {nm : CFNames} {c : LowCT} {cf : CFSrc}
+    (h : toCFSrcClosed? A nm c = some cf) :
+    toCFSrc? nm 0 c = some cf ∧ wfB A cf = true ∧ cf.towerFree = true ∧
+      ∃ B', rangeB (fun _ => true) cf = some B' := by
+  simp only [toCFSrcClosed?, Option.filter_eq_some_iff, Bool.and_eq_true,
+    Option.isSome_iff_exists] at h
+  exact ⟨h.1, h.2.1.1, h.2.1.2, h.2.2⟩
+
+/-- **The decision.** `c` is accepted by `levelCheck` from `lt`, is recognised, and
+    its recognised program satisfies the decided side conditions, has no tower
+    access and passes `rangeB`. -/
+def machineCTCheck (A : RegAlloc) (nm : CFNames) (lt : LevelTable) (c : LowCT) : Bool :=
+  (levelCheck .owned lt c).isSome && (toCFSrcClosed? A nm c).isSome
+
+/-- **Soundness of the decision.** An accepted program is recognised as a program
+    whose lowering is constant time for every pair of machine states agreeing on the
+    public registers. The leaf specification is arbitrary: the program has no leaf
+    call. -/
+theorem machineCTCheck_sound (leafSpec : LeafSpec) (A : RegAlloc) (nm : CFNames)
+    (lt : LevelTable) (pub : PubPred) (c : LowCT) (h : machineCTCheck A nm lt c = true)
+    (hpub : ∀ x, lt x = .Public → pub (A.ρ x) = true) :
+    ∃ cf, toCFSrc? nm 0 c = some cf ∧ cf.toLowCT = c ∧
+      ConstantTime (fun js₁ js₂ : JState 64 => agreePub pub js₁ js₂)
+        (fun js => mcfLeak .doitm js (lowerCF A.ρ A.τ cf)) := by
+  simp only [machineCTCheck, Bool.and_eq_true, Option.isSome_iff_exists] at h
+  obtain ⟨⟨lt', hchk⟩, cf, hcf⟩ := h
+  obtain ⟨hrec, hwf, htf, B', hr⟩ := toCFSrcClosed?_spec hcf
+  exact ⟨cf, hrec, toCFSrc?_spec nm 0 c cf hrec,
+    machine_ct_of_lowct_closed 0 leafSpec A nm lt pub c cf B' hrec hwf htf hr hpub
+      (levelCheck_sound hchk).1⟩
+
+/-- The register of a name under the prefix `p`: `p` followed by the name. -/
+def prefixed (p : Char) (v : String) : String := String.ofList (p :: v.toList)
+
+theorem prefixed_toList (p : Char) (v : String) : (prefixed p v).toList = p :: v.toList := by
+  simp [prefixed]
+
+/-- Scalar `v` in register `s` followed by `v`; tower `v` in register `t` followed by
+    `v`. -/
+def stdAlloc : RegAlloc where
+  ρ := prefixed 's'
+  τ := prefixed 't'
+  inj := fun a b h => by
+    have := congrArg String.toList h
+    simp only [prefixed_toList, List.cons.injEq, true_and] at this
+    exact String.toList_inj.mp this
+  inImg r := r.toList.head? == some 's'
+  inImg_spec v := by simp [prefixed_toList]
+
+/-- Eight temporaries, the loop counter `c` followed by the depth, and the `MULX` low
+    word `lo`; none starts with `s`. -/
+def stdNames : CFNames where
+  tmps := ["w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"]
+  ctr k := "c" ++ toString k
+  lo := "lo"
+
+/-- The public registers of `lt` under `stdAlloc`: `s` followed by a public name. -/
+def stdPub (lt : LevelTable) : PubPred := fun r =>
+  match r.toList with
+  | 's' :: v => lt (String.ofList v) == .Public
+  | _ => false
+
+theorem stdPub_spec (lt : LevelTable) (x : String) (hx : lt x = .Public) :
+    stdPub lt (stdAlloc.ρ x) = true := by
+  simp [stdPub, stdAlloc, prefixed_toList, hx]
+  rfl
 
 end CatCrypt.Crypto.SecureCompilation.CT.LowCTMachine
