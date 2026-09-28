@@ -20,8 +20,10 @@ heap), and lowers the body by `haxToLowCTKT A`, which reads each name from the
 heap that holds it:
 
 * a scalar operation on two scalar names (`scalarOpExprT`: hax-lean's comparisons,
-  addition and subtraction, and the width-tagged word calls `op#w` as masked
-  `SExpr` templates, `WidthOp.sexpr`) is `RScalarSetExpr`;
+  addition and subtraction, the Boolean connectives, and the width-tagged word calls
+  `op#w` as masked `SExpr` templates, `WidthOp.sexpr`) is `RScalarSetExpr`;
+* a literal bound to a name placed in a tower is stored into limb `0` of the zeroed
+  tower slot of the name;
 * `index(arr, i)` with `arr` in a tower and `i` scalar is an `RArrLoad` into the
   reserved tower slot `exitCallName`, followed by a copy of its limb `0` into the
   scalar slot of the bound name;
@@ -194,8 +196,9 @@ def WidthOp.sexpr (w : Nat) : WidthOp → SExpr → SExpr → SExpr
       (.SShr (widthMask w a) (.SSub (.SLit w) (widthAmt w b))))
 
 /-- The `SExpr` of a scalar operation on the scalars `a` and `b`: the operations of
-    `scalarOpExpr`, their capitalised forms, and the width-tagged calls of
-    `widthOpOf`. -/
+    `scalarOpExpr`, their capitalised forms, the Boolean connectives `&&`, `and` as
+    `SAnd` and `||`, `or` as `orExprN` (exact on the decodings `0` and `1` of two
+    Booleans), and the width-tagged calls of `widthOpOf`. -/
 def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   match op with
   | "lt" | "Lt" => some (.SLt a b)
@@ -206,13 +209,15 @@ def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   | "ne" | "Ne" => some (.SAdd (.SLt a b) (.SLt b a))
   | "add" | "Add" => some (.SAdd a b)
   | "sub" | "Sub" => some (.SSub a b)
+  | "&&" | "and" => some (.SAnd a b)
+  | "||" | "or" => some (orExprN a b)
   | _ => (widthOpOf op).map fun p => p.2.sexpr p.1 a b
 
 /-- The call names whose result is a scalar besides the width-tagged ones. -/
 def exitScalarCalls : List String :=
   ["len", "lt", "gt", "le", "ge", "eq", "ne", "add", "sub",
    "Lt", "Gt", "Le", "Ge", "Eq", "Ne", "Add", "Sub", "Mul", "Div", "Rem",
-   "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg"]
+   "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg", "&&", "||", "and", "or"]
 
 /-- A call whose result is held in the scalar heap: a name of `exitScalarCalls` or a
     width-tagged name (containing `#`). -/
@@ -309,10 +314,16 @@ def appHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     else callHeadT A n f args
 
 /-- The head of `let n = val` under the placement `A`: a literal bound to a scalar
-    name as in `letHead`; a copy between two scalar names as in `letHead`, between two
-    tower names of one type by `RCopy`; a call by `appHeadT`. -/
+    name as in `letHead`; a literal bound to a name placed in a tower at `t` as the zero
+    slot of type `t` with the literal's word stored into its limb `0`; a copy between
+    two scalar names as in `letHead`, between two tower names of one type by `RCopy`; a
+    call by `appHeadT`. -/
 def letHeadT (A : ExitTowers) (n : String) : ImpExpr → Option (LowCT → LowCT)
-  | .lit l => if A.lookup n = none then letHead n (.lit l) else none
+  | .lit l =>
+      match A.lookup n with
+      | none => letHead n (.lit l)
+      | some t => (valueToScalar (Value.ofLit l)).map fun kk b =>
+          .RLetZero n t (.RSeq (.RLimbStoreExpr ⟨n, t⟩ 0 (.SLit kk)) b)
   | .var s =>
       match A.lookup n, A.lookup s with
       | none, none => letHead n (.var s)
@@ -399,27 +410,48 @@ def exitArgNames : List ImpExpr → List String
   | .var x :: as => x :: exitArgNames as
   | _ :: as => exitArgNames as
 
-/-- The names a body binds or reads as scalars: literal bindings, results of scalar
-    calls and element loads, loop counters and bounds, and conditions. -/
-def exitScalarNames : ImpExpr → List String
+/-- The names a body binds by a call with a tower result: a call other than a scalar
+    call, `index`, `array_update` and `len`. -/
+def exitTowerBound : ImpExpr → List String
   | .letBind n v b =>
       let here := match v with
-        | .lit _ => [n]
+        | .app f _ =>
+            if exitScalarCall f || f = "index" || f = "array_update" || f = "len" then []
+            else [n]
+        | _ => []
+      here ++ exitTowerBound b
+  | .seq a b => exitTowerBound a ++ exitTowerBound b
+  | .ifThenElse _ t e => exitTowerBound t ++ exitTowerBound e
+  | .typeAscription e _ => exitTowerBound e
+  | .whileFoldReturn _ b => exitTowerBound b
+  | .forFoldReturn _ _ _ b => exitTowerBound b
+  | .forFoldRevReturn _ _ _ b => exitTowerBound b
+  | .forFold _ _ _ b => exitTowerBound b
+  | .whileFold _ b => exitTowerBound b
+  | _ => []
+
+/-- The names a body binds or reads as scalars, given the names `tb` bound by a call with
+    a tower result: literal bindings of a name outside `tb`, results of scalar calls and
+    element loads, loop counters and bounds, and conditions. -/
+def exitScalarNames (tb : List String) : ImpExpr → List String
+  | .letBind n v b =>
+      let here := match v with
+        | .lit _ => if tb.contains n then [] else [n]
         | .app f _ => if exitScalarCall f || f = "index" then [n] else []
         | _ => []
-      here ++ exitScalarNames b
-  | .seq a b => exitScalarNames a ++ exitScalarNames b
-  | .ifThenElse (.var c) t e => c :: (exitScalarNames t ++ exitScalarNames e)
-  | .ifThenElse _ t e => exitScalarNames t ++ exitScalarNames e
-  | .typeAscription e _ => exitScalarNames e
-  | .whileFoldReturn (.var c) b => c :: exitScalarNames b
-  | .forFoldReturn i _ (.var h) b => i :: h :: exitScalarNames b
-  | .forFoldReturn i _ _ b => i :: exitScalarNames b
-  | .forFoldRevReturn i _ _ b => i :: exitScalarNames b
-  | .forFold i _ (.var h) b => i :: h :: exitScalarNames b
-  | .forFold i _ _ b => i :: exitScalarNames b
-  | .whileFold (.var c) b => c :: exitScalarNames b
-  | .whileFold _ b => exitScalarNames b
+      here ++ exitScalarNames tb b
+  | .seq a b => exitScalarNames tb a ++ exitScalarNames tb b
+  | .ifThenElse (.var c) t e => c :: (exitScalarNames tb t ++ exitScalarNames tb e)
+  | .ifThenElse _ t e => exitScalarNames tb t ++ exitScalarNames tb e
+  | .typeAscription e _ => exitScalarNames tb e
+  | .whileFoldReturn (.var c) b => c :: exitScalarNames tb b
+  | .forFoldReturn i _ (.var h) b => i :: h :: exitScalarNames tb b
+  | .forFoldReturn i _ _ b => i :: exitScalarNames tb b
+  | .forFoldRevReturn i _ _ b => i :: exitScalarNames tb b
+  | .forFold i _ (.var h) b => i :: h :: exitScalarNames tb b
+  | .forFold i _ _ b => i :: exitScalarNames tb b
+  | .whileFold (.var c) b => c :: exitScalarNames tb b
+  | .whileFold _ b => exitScalarNames tb b
   | _ => []
 
 /-- `(x, t) :: A` when `x` is neither placed in `A` nor a scalar name of `sc`. -/
@@ -461,9 +493,11 @@ def exitTowersStep (sc : List String) : ExitTowers → ImpExpr → ExitTowers
   | A, .whileFold _ b => exitTowersStep sc A b
   | A, _ => A
 
-/-- The inferred placement of a body: three passes of `exitTowersStep`. -/
+/-- The inferred placement of a body: three passes of `exitTowersStep` from its scalar
+    names, where a literal binding of a name that a call with a tower result also binds
+    does not make the name scalar. -/
 def exitTowers (e : ImpExpr) : ExitTowers :=
-  let sc := exitScalarNames e
+  let sc := exitScalarNames (exitTowerBound e) e
   exitTowersStep sc (exitTowersStep sc (exitTowersStep sc [] e) e) e
 
 /-- The placement of the tail value of a body under `A`: the placement of its first
@@ -517,12 +551,12 @@ def exitPayloadOk (A : ExitTowers) : ImpExpr → Bool
 /-- The fragment the typed simulation covers under the placement `A` with result
     placement `R`, at tail position `tl` and loop context `il`: every name is
     non-reserved; conditions, loop counters, runtime bounds and break payloads are
-    scalar; a literal is bound to a scalar name; a copy keeps the placement; a call
+    scalar; a literal is a scalar word; a copy keeps the placement; a call
     has a head of `appHeadT`; a tail variable has placement `R` and a tail literal or
     `unitVal` needs `R = none`. -/
 def exitSimOkT (A : ExitTowers) (R : Option TowerType) : Bool → Bool → ImpExpr → Bool
   | tl, il, .letBind n (.lit l) body =>
-      exitLitOk l && exitSc A n && !exitReserved n && exitSimOkT A R tl il body
+      exitLitOk l && !exitReserved n && exitSimOkT A R tl il body
   | tl, il, .letBind n (.var s) body =>
       !exitReserved n && !exitReserved s && decide (A.lookup n = A.lookup s) &&
         exitSimOkT A R tl il body
@@ -558,7 +592,6 @@ def exitSimWhyT (A : ExitTowers) (R : Option TowerType) :
     Bool → Bool → ImpExpr → Option String
   | tl, il, .letBind n (.lit l) body =>
       if !exitLitOk l then some "literal not a scalar word"
-      else if !exitSc A n then some "literal bound to a tower name"
       else if exitReserved n then some "reserved name" else exitSimWhyT A R tl il body
   | tl, il, .letBind n (.var s) body =>
       if exitReserved n || exitReserved s then some "reserved name"
@@ -841,7 +874,7 @@ theorem scalarOpExprT_congr (op : String) {a b a' b' : SExpr} {rs : RustState}
     (scalarOpExprT op a b).map (·.evalState rs) = (scalarOpExprT op a' b').map (·.eval σ) := by
   unfold scalarOpExprT
   split
-  all_goals try simp only [Option.map_some, SExpr.evalState, SExpr.eval, ha, hb]
+  all_goals try simp only [Option.map_some, SExpr.evalState, SExpr.eval, orExprN, ha, hb]
   rcases widthOpOf op with _ | ⟨w, o⟩
   · rfl
   · simp only [Option.map_some, widthOp_sexpr_congr w o ha hb]
@@ -1546,39 +1579,68 @@ theorem ret_setScalar {rs : RustState} {n : String} (hn : exitReserved n = false
     (h : rs.rsScalar exitRetName = 0) : (rsSetScalar rs n kk).rsScalar exitRetName = 0 := by
   rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, h]
 
-theorem head_lit (n : String) (l : ImpLit) (body : ImpExpr) :
+/-- The value of a literal of `exitLitOk` is a scalar word. -/
+theorem exitLitOk_scalarValN {l : ImpLit} (hl : exitLitOk l = true) :
+    ScalarValN (Value.ofLit l) := by
+  cases l with
+  | uintLit w m =>
+    show m % w.modulus < 2 ^ 64
+    cases w <;> simp only [IntWidth.modulus, IntWidth.bits] <;> first
+      | omega | (simp only [exitLitOk] at hl; exact absurd hl (by decide))
+  | int z =>
+    simp only [exitLitOk, Bool.and_eq_true, decide_eq_true_eq] at hl
+    exact hl
+  | bool b => trivial
+  | unit => trivial
+  | _ => simp [exitLitOk] at hl
+
+/-- The head of `let n = l`: on a scalar name, the scalar binding of `letHead`; on a name
+    placed in a tower at `t`, the zero slot of type `t` with the literal's word in limb `0`,
+    whose value the marshalling condition `hmar` relates to the literal. -/
+theorem head_lit
+    (hmar : ∀ (loc : Located) (v : Value) (k : Nat), ScalarValN v → valueToScalar v = some k →
+      br loc.locDst v (leafSpec.limbStore loc default 0 (BitVec.ofNat 64 k)))
+    (n : String) (l : ImpLit) (body : ImpExpr) :
     HeadSimT bi N leafSpec br A R n (.lit l) body := by
   intro tl il fuel env env' o rs k hok hk hrun hval hag hret
-  have hh : exitLitOk l = true ∧ exitSc A n = true ∧ exitReserved n = false := by
+  have hh : exitLitOk l = true ∧ exitReserved n = false := by
     cases tl <;> cases il <;>
       (simp only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true'] at hok
-       exact ⟨hok.1.1.1, hok.1.1.2, hok.1.2⟩)
-  obtain ⟨hl, hsc, hn⟩ := hh
-  have hsc' : A.lookup n = none := by simpa [exitSc] using hsc
-  have hk' : letHead n (.lit l) = some k := by simpa [letHeadT, hsc'] using hk
-  obtain ⟨kk, hkk, hsv, hdk⟩ : ∃ kk, k = (fun bC => .RLetU64Zero n (.RSeq (.RScalarSet n kk) bC)) ∧
-      ScalarValN (Value.ofLit l) ∧ valueToScalar (Value.ofLit l) = some kk := by
-    cases l with
-    | uintLit w m =>
-      simp only [letHead, Option.some.injEq] at hk'
-      refine ⟨_, hk'.symm, ?_, rfl⟩
-      show m % w.modulus < 2 ^ 64
-      cases w <;> simp only [IntWidth.modulus, IntWidth.bits] <;> first
-        | omega | (simp only [exitLitOk] at hl; exact absurd hl (by decide))
-    | int z =>
-      simp only [exitLitOk, Bool.and_eq_true, decide_eq_true_eq] at hl
-      simp only [letHead, ge_iff_le, hl.1, if_true, Option.some.injEq] at hk'
-      exact ⟨_, hk'.symm, hl, by simp [valueToScalar, Value.ofLit, hl.1]⟩
-    | bool b =>
-      simp only [letHead, Option.some.injEq] at hk'
-      exact ⟨_, hk'.symm, trivial, valueToScalar_bool b⟩
-    | unit => simp [letHead] at hk'
-    | _ => simp [exitLitOk] at hl
-  subst hkk
+       exact ⟨hok.1.1, hok.1.2⟩)
+  obtain ⟨hl, hn⟩ := hh
+  have hsv := exitLitOk_scalarValN hl
   rw [denote'_letBind_run_val bi fuel n _ body env env _ (denote'_lit_run bi fuel l env)
     hsv.not_cf] at hrun
-  exact ⟨_, _, hrun, envAgreesT_extend hn hsc' hsv hdk hag, ret_setScalar hn _ hret,
-    fun bC rs' h => exec_letU64_set N leafSpec n kk bC rs rs' h⟩
+  rcases hsc' : A.lookup n with _ | t
+  · have hk' : letHead n (.lit l) = some k := by simpa [letHeadT, hsc'] using hk
+    obtain ⟨kk, hkk, hdk⟩ : ∃ kk, k = (fun bC => .RLetU64Zero n (.RSeq (.RScalarSet n kk) bC)) ∧
+        valueToScalar (Value.ofLit l) = some kk := by
+      cases l with
+      | uintLit w m =>
+        simp only [letHead, Option.some.injEq] at hk'
+        exact ⟨_, hk'.symm, rfl⟩
+      | int z =>
+        simp only [exitLitOk, Bool.and_eq_true, decide_eq_true_eq] at hl
+        simp only [letHead, ge_iff_le, hl.1, if_true, Option.some.injEq] at hk'
+        exact ⟨_, hk'.symm, by simp [valueToScalar, Value.ofLit, hl.1]⟩
+      | bool b =>
+        simp only [letHead, Option.some.injEq] at hk'
+        exact ⟨_, hk'.symm, valueToScalar_bool b⟩
+      | unit => simp [letHead] at hk'
+      | _ => simp [exitLitOk] at hl
+    subst hkk
+    exact ⟨_, _, hrun, envAgreesT_extend hn hsc' hsv hdk hag, ret_setScalar hn _ hret,
+      fun bC rs' h => exec_letU64_set N leafSpec n kk bC rs rs' h⟩
+  · simp only [letHeadT, hsc'] at hk
+    obtain ⟨kk, hdk, rfl⟩ := Option.map_eq_some_iff.mp hk
+    refine ⟨_, rsSetTower rs n ⟨t, leafSpec.limbStore ⟨n, t⟩ default 0 (BitVec.ofNat 64 kk)⟩,
+      hrun, envAgreesT_extend_tower hn hsc' hsv.not_cf (hmar ⟨n, t⟩ _ kk hsv hdk) hag, hret,
+      fun bC rs' h => ?_⟩
+    refine RustExec.letZero _ _ _ _ _ (RustExec.seq _ _ _ _ _
+      (RustExec.limbStoreExpr _ _ _ _ default ?_) ?_)
+    · exact locatedLookup_of_rsTower _ _ t default
+        (CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same _ _ _)
+    · simpa only [locatedUpdate, SExpr.evalState, rsSetTower_rsSetTower] using h
 
 theorem head_var (n s : String) (body : ImpExpr) :
     HeadSimT bi N leafSpec br A R n (.var s) body := by
@@ -3105,7 +3167,7 @@ theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     cases val with
     | lit l =>
       exact exitSimTy_letBind_of_head bi N leafSpec br A R n _ body ihb
-        (head_lit bi N leafSpec br A R n l body)
+        (head_lit bi N leafSpec br A R hL.marshal n l body)
     | var s =>
       exact exitSimTy_letBind_of_head bi N leafSpec br A R n _ body ihb
         (head_var bi N leafSpec br A R n s body)
@@ -3310,16 +3372,16 @@ theorem WidthOp.nat_lt {w : Nat} (hw : w ≤ 64) (o : WidthOp) (a b : Nat) :
     | exact Nat.xor_lt_two_pow (hmod _) (hmod _)
     | exact lt_of_le_of_lt (Nat.shiftRight_le _ _) (hmod _)
 
-/-- An operation of `scalarOpExprT` is one of its sixteen named operations or a name of
-    `widthOpOf`. -/
+/-- An operation of `scalarOpExprT` is one of its sixteen named operations, one of the four
+    Boolean connectives, or a name of `widthOpOf`. -/
 theorem scalarOpExprT_isSome_cases {op : String} {a b : SExpr}
     (h : (scalarOpExprT op a b).isSome = true) :
     op ∈ ["lt", "Lt", "gt", "Gt", "le", "Le", "ge", "Ge", "eq", "Eq", "ne", "Ne", "add", "Add",
-      "sub", "Sub"] ∨ ∃ p, widthOpOf op = some p := by
+      "sub", "Sub"] ∨ op ∈ ["&&", "and", "||", "or"] ∨ ∃ p, widthOpOf op = some p := by
   unfold scalarOpExprT at h
   split at h
-  all_goals first | (left; simp; done) | skip
-  right
+  all_goals first | (left; simp; done) | (right; left; simp; done) | skip
+  right; right
   rcases hw : widthOpOf op with _ | p
   · simp [hw] at h
   · exact ⟨p, rfl⟩
@@ -3553,17 +3615,31 @@ theorem hax64_width_sound {op : String} {p : Nat × WidthOp} {va vb r : Value} {
     exact hax64_width_int hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl) (fun _ _ => rfl)
       (fun _ _ => rfl) (by decide)
 
+/-- The Boolean connectives `&&`, `and`, `||`, `or` in `hax64Builtins`: the table does not
+    define them on two scalar words, so the condition of `ScalarOpsSoundT` holds. -/
+theorem hax64_conn_sound {op : String} {va vb r : Value} {na nb : Nat}
+    (hl : op ∈ ["&&", "and", "||", "or"]) (hva : ScalarValN va) (hvb : ScalarValN vb)
+    (hbi : hax64Builtins op [va, vb] = some r) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT op na nb) := by
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
+  rcases hl with rfl | rfl | rfl | rfl
+  all_goals
+    rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | ⟨a, rfl, ha0, ha⟩ | rfl <;>
+    rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | ⟨b, rfl, hb0, hb⟩ | rfl
+  all_goals exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+
 /-- **hax-lean's `u64` table computes the scalar operations.**  Every operation of
     `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar value whose
     decoding is `scalarOpNatT`: the fifty width-tagged calls of `widthOpTable` (`Shl#w` and
     `Shr#w` undefined for an amount of `w` or more); `Add` and `add` (undefined when the sum
     reaches `2^64`); `Sub` and `sub` (undefined when the subtrahend exceeds the minuend); the
     twelve comparisons on two integer words and `Eq`, `eq`, `Ne`, `ne` on two Booleans, each
-    a Boolean decoding to `1` or `0`. -/
+    a Boolean decoding to `1` or `0`; the Boolean connectives are undefined in the table. -/
 theorem scalarOpsSoundT_hax64Builtins : ScalarOpsSoundT hax64Builtins := by
   intro op va vb r na nb hop hva hvb hna hnb hbi
-  rcases scalarOpExprT_isSome_cases hop with hl | ⟨p, hp⟩
+  rcases scalarOpExprT_isSome_cases hop with hl | hl | ⟨p, hp⟩
   · exact hax64_named_sound hl hva hvb hna hnb hbi
+  · exact hax64_conn_sound hl hva hvb hbi
   · exact hax64_width_sound hp hva hvb hna hnb hbi
 
 /-- `ScalarOpsSoundT` holds on the range-refusing table of a table satisfying it. -/
