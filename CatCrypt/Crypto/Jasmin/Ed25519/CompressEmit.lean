@@ -180,6 +180,8 @@ partial def emitBody : LowCT → List String
   | .RLetZero x t body =>
       ("%" ++ x ++ " = memref.alloca() : " ++ renderTowerType t) :: emitBody body
   | .RCall name dest args => [emitCall name dest args]
+  | .RCopy dst src =>
+      [s!"memref.copy %{src.locVar}, %{dst.locVar} : {renderTowerType src.locDst} to {renderTowerType dst.locDst}"]
   | _ => ["// unsupported"]
 
 /-- Render an extern declaration `func.func private @name(args)`. -/

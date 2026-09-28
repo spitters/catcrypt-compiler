@@ -276,6 +276,7 @@ partial def emitCmdOutParam (c : LowCT) (retSlot : Option String) (s : State) : 
   | .RCall f d args     => emitCallOutParam f d args retSlot s
   | .RLetZero _ _ body  => emitCmdOutParam body retSlot s
   | .RLetU64Zero _ body => emitCmdOutParam body retSlot s
+  | .RCopy dst src      => emitCopy dst src s
   | _                   => s.emit "  // <unsupported constructor>"
 
 /-- Emit a full out-param MLIR function. Signature:
