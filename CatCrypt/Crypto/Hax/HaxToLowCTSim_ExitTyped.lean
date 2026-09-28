@@ -31,8 +31,9 @@ heap that holds it:
 * every other call is an `RCall` into `exitCallName`: its scalar arguments are
   first stored into reserved tower slots `exitMarshalName x` (`callMarshal`), its
   tower arguments are read in place, and the result is copied into the tower slot
-  of the bound name (`RCopy`) or, for a call with a scalar result
-  (`exitScalarCall`), its limb `0` into the scalar slot;
+  of the bound name (`RCopy`) or, for a call with a scalar result (`exitScalarRes`: a
+  scalar call, or a leaf of `exitTowerScalarNames` whose arguments are held in towers),
+  its limb `0` into the scalar slot;
 * a counted loop or a `while` loop in an exit context is lowered to the exit-flag
   loop followed by `breakLoop`, whether its body breaks or not;
 * a tail variable held in a tower is copied into the tower slot `exitResName`.
@@ -223,6 +224,24 @@ def exitScalarCalls : List String :=
     width-tagged name (containing `#`). -/
 def exitScalarCall (f : String) : Bool := exitScalarCalls.contains f || f.contains '#'
 
+/-- The leaf calls whose arguments are held in towers and whose result is a scalar: the
+    zero and identity predicates of field elements and curve points and the infinity
+    flags `infinity`, `g2_inf` of a point, used as conditions, and the accessors `k`,
+    `l`, `ctilde_len` (ML-DSA parameters), `height` and `depth` (a trace and a Merkle
+    tree), used as loop bounds.  Each is a leaf whose specification returns a word,
+    not an element of the tower. -/
+def exitTowerScalarNames : List String :=
+  ["is_zero", "fe_is_zero", "fp_is_zero", "fp2_is_zero", "h2c_p256_is_zero",
+   "point_is_identity", "g1_proj_is_identity", "g2_proj_is_identity", ".infinity",
+   ".g2_inf", ".k", ".l", "ctilde_len", ".height", ".depth"]
+
+/-- A leaf call of `exitTowerScalarNames`. -/
+def exitTowerScalarCall (f : String) : Bool := exitTowerScalarNames.contains f
+
+/-- A call whose result the typed lowering copies from limb `0` of the call slot into the
+    scalar heap: a scalar call or a leaf call of `exitTowerScalarNames`. -/
+def exitScalarRes (f : String) : Bool := exitScalarCall f || exitTowerScalarCall f
+
 /-! ## §3  The heads of a `letBind` -/
 
 /-- The argument slots of a call reading its arguments at the tower type `dt`, and the
@@ -285,7 +304,7 @@ def updateHeadT (A : ExitTowers) (n : String) : List ImpExpr → Option (LowCT �
 
 /-- The head of `let n = f(args)` for a call lowered to `RCall`: the call writes
     `exitCallName` at `towerOfCallName f` from the slots of `callMarshal`; a scalar
-    result (`exitScalarCall f`) is copied from limb `0` into the scalar `n`, any other
+    result (`exitScalarRes f`) is copied from limb `0` into the scalar `n`, any other
     result into the tower slot `n`, which must be placed at the call's tower type. -/
 def callHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
@@ -294,7 +313,7 @@ def callHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
   | none => none
   | some (ctx, ls) =>
     let callC : LowCT := .RLetZero exitCallName dt (ctx (.RCall f ⟨exitCallName, dt⟩ ls))
-    if exitScalarCall f then
+    if exitScalarRes f then
       if A.lookup n = none then
         some fun b => .RSeq callC (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)
       else none
@@ -410,13 +429,13 @@ def exitArgNames : List ImpExpr → List String
   | .var x :: as => x :: exitArgNames as
   | _ :: as => exitArgNames as
 
-/-- The names a body binds by a call with a tower result: a call other than a scalar
-    call, `index`, `array_update` and `len`. -/
+/-- The names a body binds by a call with a tower result: a call other than a call of
+    `exitScalarRes`, `index`, `array_update` and `len`. -/
 def exitTowerBound : ImpExpr → List String
   | .letBind n v b =>
       let here := match v with
         | .app f _ =>
-            if exitScalarCall f || f = "index" || f = "array_update" || f = "len" then []
+            if exitScalarRes f || f = "index" || f = "array_update" || f = "len" then []
             else [n]
         | _ => []
       here ++ exitTowerBound b
@@ -431,13 +450,13 @@ def exitTowerBound : ImpExpr → List String
   | _ => []
 
 /-- The names a body binds or reads as scalars, given the names `tb` bound by a call with
-    a tower result: literal bindings of a name outside `tb`, results of scalar calls and
-    element loads, loop counters and bounds, and conditions. -/
+    a tower result: literal bindings of a name outside `tb`, results of calls of
+    `exitScalarRes` and of element loads, loop counters and bounds, and conditions. -/
 def exitScalarNames (tb : List String) : ImpExpr → List String
   | .letBind n v b =>
       let here := match v with
         | .lit _ => if tb.contains n then [] else [n]
-        | .app f _ => if exitScalarCall f || f = "index" then [n] else []
+        | .app f _ => if exitScalarRes f || f = "index" then [n] else []
         | _ => []
       here ++ exitScalarNames tb b
   | .seq a b => exitScalarNames tb a ++ exitScalarNames tb b
@@ -461,8 +480,10 @@ def exitPlaceAt (sc : List String) (A : ExitTowers) (x : String) (t : TowerType)
 
 /-- One pass of placement inference over a body, from the scalar names `sc`: the
     array argument of `index`, `array_update` and `len` is placed at `.TFp`; the
-    result and the arguments of a call with a tower result are placed at the call's
-    tower type; a copy between names takes the placement of the placed side. -/
+    result and the arguments of a call other than a scalar call are placed at the call's
+    tower type, the result only when it is not a scalar name (the result of a call of
+    `exitTowerScalarNames` is one); a copy between names takes the placement of the
+    placed side. -/
 def exitTowersStep (sc : List String) : ExitTowers → ImpExpr → ExitTowers
   | A, .letBind n v b =>
       let A' := match v with
@@ -937,16 +958,31 @@ def IndexScalarAgrees (br : ValueTowerBridge) (bi : Builtins) (leafSpec : LeafSp
 /-- The leaf conditions of the typed simulation: the scalar operations, the absence of
     control-flow results, the storage of a scalar into limb `0` of a fresh tower slot,
     the calls with a tower result (`LeafCallAgreesArgs`) and with a scalar result
-    (`LeafCallScalar`), the element load and the element store. -/
+    (`LeafCallScalar`, for the scalar calls and for the leaves of
+    `exitTowerScalarNames`), the element load and the element store. -/
 structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridge) : Prop where
   ops : ScalarOpsSoundT bi
   plain : _root_.Hax.ContinueFlag.BuiltinsPlain bi
   marshal : ∀ (loc : Located) (v : Value) (k : Nat), ScalarValN v → valueToScalar v = some k →
     br loc.locDst v (leafSpec.limbStore loc default 0 (BitVec.ofNat 64 k))
-  callT : ∀ f, exitScalarCall f = false → LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
+  callT : ∀ f, exitScalarRes f = false → LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
   callS : ∀ f, exitScalarCall f = true → LeafCallScalar bi leafSpec f (towerOfCallName f) br
+  /-- The leaf calls of `exitTowerScalarNames`, whose arguments are related by `br` to
+      tower values and whose result is a scalar word read from limb `0` of the leaf
+      output, with no bridge on the result. -/
+  callTS : ∀ f, exitTowerScalarCall f = true →
+    LeafCallScalar bi leafSpec f (towerOfCallName f) br
   index : IndexScalarAgrees br bi leafSpec
   update : ArrUpdateAgrees br bi leafSpec
+
+/-- Every call of `exitScalarRes` satisfies `LeafCallScalar`. -/
+theorem ExitLeaves.callSR {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
+    (hL : ExitLeaves bi leafSpec br) {f : String} (hf : exitScalarRes f = true) :
+    LeafCallScalar bi leafSpec f (towerOfCallName f) br := by
+  unfold exitScalarRes at hf
+  rcases Bool.or_eq_true_iff.mp hf with h | h
+  · exact hL.callS f h
+  · exact hL.callTS f h
 
 /-- `ScalarValN` as a Boolean test. -/
 def scalarValNB : Value → Bool
@@ -959,9 +995,9 @@ def scalarValNB : Value → Bool
 theorem scalarValNB_iff (v : Value) : scalarValNB v = true ↔ ScalarValN v := by
   cases v <;> simp [scalarValNB, ScalarValN]
 
-/-- A call whose result the typed lowering holds in the scalar heap: a scalar call or an
-    element load. -/
-def exitScalarResult (f : String) : Bool := exitScalarCall f || f == "index"
+/-- A call whose result the typed lowering holds in the scalar heap: a call of
+    `exitScalarRes` or an element load. -/
+def exitScalarResult (f : String) : Bool := exitScalarRes f || f == "index"
 
 /-- The table `bi` with every scalar result outside `ScalarValN` refused: a call of
     `exitScalarResult` whose result is not a scalar word returns `none`.  A run of `denote'`
@@ -1007,7 +1043,7 @@ theorem leafCallAgreesArgs_exitRange {bi : Builtins} {leafSpec : LeafSpec} {f : 
 /-- A leaf of a call with a scalar result agrees on the range-refusing table when, on
     every scalar-word result of the table, limb `0` of the leaf output is its decoding. -/
 theorem leafCallScalar_exitRange {bi : Builtins} {leafSpec : LeafSpec} {f : String}
-    {dt : TowerType} {br : ValueTowerBridge} (hf : exitScalarCall f = true)
+    {dt : TowerType} {br : ValueTowerBridge} (hf : exitScalarRes f = true)
     (h : ∀ (args : List Located) (vals : List Value)
       (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dt) (vRes : Value),
       bi f vals = some vRes →
@@ -1744,11 +1780,11 @@ theorem updateHeadT_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT
 theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : callHeadT A n f args = some k) :
     ∃ ctx ls, callMarshal A (towerOfCallName f) args = some (ctx, ls) ∧
-      ((exitScalarCall f = true ∧ A.lookup n = none ∧
+      ((exitScalarRes f = true ∧ A.lookup n = none ∧
           k = fun b => .RSeq (.RLetZero exitCallName (towerOfCallName f)
             (ctx (.RCall f ⟨exitCallName, towerOfCallName f⟩ ls)))
             (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)) ∨
-        (exitScalarCall f = false ∧ A.lookup n = some (towerOfCallName f) ∧
+        (exitScalarRes f = false ∧ A.lookup n = some (towerOfCallName f) ∧
           k = fun b => .RSeq (.RLetZero exitCallName (towerOfCallName f)
             (ctx (.RCall f ⟨exitCallName, towerOfCallName f⟩ ls)))
             (.RSeq (.RCopy ⟨n, towerOfCallName f⟩ ⟨exitCallName, towerOfCallName f⟩) b))) := by
@@ -1758,7 +1794,7 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
   · cases h
   · simp only at h
     refine ⟨ctx, ls, rfl, ?_⟩
-    by_cases hs : exitScalarCall f = true
+    by_cases hs : exitScalarRes f = true
     · rw [if_pos hs] at h
       split_ifs at h with hn
       simp only [Option.some.injEq] at h
@@ -1949,7 +1985,7 @@ theorem headT_call (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
     show rs1.rsScalar exitRetName = 0
     rw [hS1]; exact hret
   rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hnA, rfl⟩
-  · obtain ⟨hsr, hdr⟩ := hL.callS f hsc ls vals argList default r hbi hF2
+  · obtain ⟨hsr, hdr⟩ := hL.callSR hsc ls vals argList default r hbi hF2
     have hev : (SExpr.SLimb exitCallName 0).evalState
         (rsSetTower rs1 exitCallName ⟨dt, resV⟩) = towerLimb resV 0 := by
       simp only [SExpr.evalState]
@@ -3615,10 +3651,13 @@ theorem hax64_width_sound {op : String} {p : Nat × WidthOp} {va vb r : Value} {
     exact hax64_width_int hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl) (fun _ _ => rfl)
       (fun _ _ => rfl) (by decide)
 
-/-- The Boolean connectives `&&`, `and`, `||`, `or` in `hax64Builtins`: the table does not
-    define them on two scalar words, so the condition of `ScalarOpsSoundT` holds. -/
+/-- The Boolean connectives `&&`, `and`, `||`, `or` in `hax64Builtins`: the condition of
+    `ScalarOpsSoundT`.  The table defines them on two Booleans, as the Boolean conjunction
+    and disjunction, whose decodings are the template values `SAnd` and `orExprN` on `0`
+    and `1`; on any other pair of scalar values the table is undefined. -/
 theorem hax64_conn_sound {op : String} {va vb r : Value} {na nb : Nat}
     (hl : op ∈ ["&&", "and", "||", "or"]) (hva : ScalarValN va) (hvb : ScalarValN vb)
+    (hna : valueToScalar va = some na) (hnb : valueToScalar vb = some nb)
     (hbi : hax64Builtins op [va, vb] = some r) :
     ScalarValN r ∧ valueToScalar r = some (scalarOpNatT op na nb) := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
@@ -3626,7 +3665,10 @@ theorem hax64_conn_sound {op : String} {va vb r : Value} {na nb : Nat}
   all_goals
     rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | ⟨a, rfl, ha0, ha⟩ | rfl <;>
     rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | ⟨b, rfl, hb0, hb⟩ | rfl
-  all_goals exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+  all_goals try exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+  all_goals
+    cases ba <;> cases bb <;> obtain rfl := Option.some.inj hna <;>
+      obtain rfl := Option.some.inj hnb <;> exact hax64_bool_result rfl hbi (by decide)
 
 /-- **hax-lean's `u64` table computes the scalar operations.**  Every operation of
     `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar value whose
@@ -3634,12 +3676,13 @@ theorem hax64_conn_sound {op : String} {va vb r : Value} {na nb : Nat}
     `Shr#w` undefined for an amount of `w` or more); `Add` and `add` (undefined when the sum
     reaches `2^64`); `Sub` and `sub` (undefined when the subtrahend exceeds the minuend); the
     twelve comparisons on two integer words and `Eq`, `eq`, `Ne`, `ne` on two Booleans, each
-    a Boolean decoding to `1` or `0`; the Boolean connectives are undefined in the table. -/
+    a Boolean decoding to `1` or `0`; the connectives `&&`, `and`, `||`, `or` on two
+    Booleans, a Boolean decoding to `1` or `0`. -/
 theorem scalarOpsSoundT_hax64Builtins : ScalarOpsSoundT hax64Builtins := by
   intro op va vb r na nb hop hva hvb hna hnb hbi
   rcases scalarOpExprT_isSome_cases hop with hl | hl | ⟨p, hp⟩
   · exact hax64_named_sound hl hva hvb hna hnb hbi
-  · exact hax64_conn_sound hl hva hvb hbi
+  · exact hax64_conn_sound hl hva hvb hna hnb hbi
   · exact hax64_width_sound hp hva hvb hna hnb hbi
 
 /-- `ScalarOpsSoundT` holds on the range-refusing table of a table satisfying it. -/
