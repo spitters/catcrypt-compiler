@@ -18,9 +18,10 @@ import all Veir.IR.Attribute
 The `arith` fragment of `jasminDialect` is the set of ops `regArith bop w` with
 `bop ∈ {add, sub, mul, and, or, xor, shl, shr}` and `regConst w n`. The instance
 `ToVeirOp jasminDialect` sends them to `arith.addi`, `arith.subi`, `arith.muli`,
-`arith.andi`, `arith.ori`, `arith.xori`, `arith.shli`, `arith.shrui` and
-`arith.constant`, each with its default properties (no `nsw`, `nuw`, `exact` or
-`disjoint` flag) and one result.
+`arith.andi`, `arith.ori`, `arith.xori` and `arith.constant`, each with its default
+properties (no `nsw`, `nuw`, `exact` or `disjoint` flag) and one result; it sends
+the shifts to the expansion `shiftSelectExpansion`, an `arith.shli` or
+`arith.shrui` under an `arith.select` of `0` when the amount is at least the width.
 
 * `interpretOp'_regArith`, `interpretOp'_regConst`: VeIR's operation interpreter
   `Veir.interpretOp'`, run on the op-code and properties the lowering emits and on
@@ -31,16 +32,19 @@ The `arith` fragment of `jasminDialect` is the set of ops `regArith bop w` with
   shift amount is at least the width (`veirBinInt_shl_poison`,
   `veirBinInt_shr_poison`), where `JasminBinOp.apply` returns the logical shift
   (zero).
-* `veirRunCom` interprets a `Com` op by op with `Veir.interpretOp'`, reading
-  operands from an environment of runtime values and binding the result slot the
-  lowering (`lowerExprSingle`) binds. `veirRunCom_eq` states that on the fragment,
-  from the encoded valuation, it returns the encoded denotation whenever every
-  shift amount is below its width (`Com.ShiftSafe`); `veirRunCom_refines` states
-  that without that condition the VeIR result is refined, in VeIR's sense, by the
-  encoded denotation.
+* `veirShiftSel_val`: the shift expansion (`veirShiftSel`) on defined operands is
+  `JasminBinOp.apply` for every amount, since `arith.select` returns the arm its
+  condition picks and poison in the other arm does not reach the result.
+* `veirRunCom` interprets a `Com` binding by binding with `Veir.interpretOp'`,
+  reading operands from an environment of runtime values and running the
+  operations `lowerExpr` emits (`veirRunBinding`). `veirRunCom_eq_denote` states
+  that on the fragment, from the encoded valuation, it returns the encoded
+  denotation for every shift amount; `veirRunCom_refines` states that from an
+  environment refined by the encoded valuation the VeIR result is refined, in
+  VeIR's sense, by the encoded denotation.
 
 `veirRunCom` reads the op list of `lowerCom` with the same op-codes, properties,
-result types, operand order and result slot; it does not read the pointer graph
+result types, operand order and bound value; it does not read the pointer graph
 that `lowerComToBlockRegion` builds.
 -/
 
@@ -173,6 +177,57 @@ theorem veirBinInt_refines (bop : JasminBinOp) (hb : bop ≠ .andn) {w : Nat}
     · rw [veirBinInt_shl_poison a b hge]; exact llvmInt_poison_isRefinedBy _
     · rw [veirBinInt_shr_poison a b hge]; exact llvmInt_poison_isRefinedBy _
 
+/-! ## The shift expansion -/
+
+/-- The value of `shiftSelectExpansion bop w` on LLVM integers: `arith.select` of
+the constant `0` when `arith.cmpi uge` finds the amount `y` at least `w`, and of
+`veirBinInt bop x y` otherwise. -/
+def veirShiftSel (bop : JasminBinOp) {w : Nat} (x y : LLVM.Int w) : LLVM.Int w :=
+  LLVM.Int.select (LLVM.Int.icmp y (.val (BitVec.ofNat w w)) .uge) (.val 0)
+    (veirBinInt bop x y)
+
+/-- The `arith.cmpi uge` of a defined amount `b` against the width constant. -/
+theorem icmp_uge_width {w : Nat} (b : BitVec w) :
+    LLVM.Int.icmp (.val b) (.val (BitVec.ofNat w w)) .uge =
+      .val (BitVec.ofBool (decide (w ≤ b.toNat))) := by
+  simp [LLVM.Int.icmp, Id.run, LLVM.IntPred.eval, BitVec.ule, BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt Nat.lt_two_pow_self]
+
+/-- On defined operands, the shift expansion is the value of `JasminBinOp.apply`
+for every shift amount: `0` when the amount is at least the width, where the
+shift alone is poison. -/
+theorem veirShiftSel_val (bop : JasminBinOp) (hb : bop.IsShift) {w : Nat} (a b : BitVec w) :
+    veirShiftSel bop (.val a) (.val b) = .val (bop.apply a b) := by
+  simp only [veirShiftSel, icmp_uge_width]
+  by_cases h : w ≤ b.toNat
+  · cases bop <;> simp only [JasminBinOp.IsShift] at hb
+    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.shiftLeft_eq_zero h]
+    · simp [LLVM.Int.select, Id.run, h, JasminBinOp.apply, BitVec.ushiftRight_eq_zero h]
+  · have hlt : b.toNat < w := Nat.lt_of_not_le h
+    have hne : bop ≠ .andn := by rintro rfl; exact hb
+    simp only [LLVM.Int.select, Id.run, h, decide_false, BitVec.ofBool_false]
+    exact veirBinInt_val bop hne a b (fun _ => hlt)
+
+/-- The shift expansion is monotone for VeIR's refinement: operands refined by `a`
+and `b` give a result refined by `JasminBinOp.apply bop a b`, for every shift
+amount. -/
+theorem veirShiftSel_refines (bop : JasminBinOp) (hb : bop.IsShift) {w : Nat}
+    {x y : LLVM.Int w} {a b : BitVec w} (hx : x ⊒ .val a) (hy : y ⊒ .val b) :
+    veirShiftSel bop x y ⊒ .val (bop.apply a b) := by
+  have hne : bop ≠ .andn := by rintro rfl; exact hb
+  rcases (llvmInt_isRefinedBy_val_iff y b).1 hy with rfl | rfl
+  · exact llvmInt_poison_isRefinedBy _
+  by_cases h : w ≤ b.toNat
+  · have hv : ∀ z : LLVM.Int w, veirShiftSel bop z (.val b) = .val 0 := by
+      intro z
+      simp [veirShiftSel, icmp_uge_width, LLVM.Int.select, Id.run, h]
+    rw [hv, ← hv (.val a), veirShiftSel_val bop hb a b]
+    exact isRefinedBy_refl _
+  · have hv : veirShiftSel bop x (.val b) = veirBinInt bop x (.val b) := by
+      simp [veirShiftSel, icmp_uge_width, LLVM.Int.select, Id.run, h]
+    rw [hv]
+    exact veirBinInt_refines bop hne hx hy
+
 /-! ## Runtime values -/
 
 /-- The runtime value of a `jasminDialect` value: a `w`-bit register is the
@@ -257,26 +312,94 @@ def veirRunOp (o : JasminOp) (t : JasminTy) (args : List RuntimeValue) (mem : Me
     (Array.replicate (max (JasminOp.resultSlotOfOp o).1 1) (JasminTy.toVeirTy t))
     args.toArray #[] mem
 
-/-- The op-by-op VeIR interpretation of a `Com`: each binding runs the operation
-`lowerExprSingle` emits for it (`veirRunOp`) on the values of its arguments and
-binds the result in the slot `resultSlotOfOp` names; `ret v` returns the value of
-`v`. -/
+/-- The runtime value an operand of an expansion denotes: argument `i` of `args`,
+or result `slot` of the earlier operation `j`, whose results are `done[j]`. -/
+def VeirSrc.resolveVal (args : List RuntimeValue) (done : List (Array RuntimeValue)) :
+    VeirSrc → Option RuntimeValue
+  | .arg i => args[i]?
+  | .res j slot => done[j]?.bind (·[slot]?)
+
+/-- The operations of an expansion (`emitStep`), run in order by `Veir.interpretOp'`:
+each reads its operands through `VeirSrc.resolveVal`, has the result types of the
+step with `none` read as `resTy`, and appends its results to `done`. -/
+def veirRunSteps (args : List RuntimeValue) (resTy : TypeAttr) :
+    List (VeirExpandStep OpCode) → List (Array RuntimeValue) → MemoryState →
+    Interp (List (Array RuntimeValue) × MemoryState)
+  | [], done, mem => .ok (done, mem)
+  | s :: rest, done, mem => do
+      let some ops := s.operands.mapM (VeirSrc.resolveVal args done) | .fail
+      let (vals, mem', _) ← Veir.interpretOp' s.op s.props
+        (s.results.map (·.getD resTy)).toArray ops.toArray #[] mem
+      veirRunSteps args resTy rest (done ++ [vals]) mem'
+
+/-- The operations `lowerExpr` emits for a binding of type `t` with op `o`, run on
+the operand values `args`: the steps of `JasminOp.expandVeir? o` followed by the
+value of the expansion, or the one operation `veirRunOp` and the result in the slot
+`resultSlotOfOp o` names. -/
+def veirRunBinding (o : JasminOp) (t : JasminTy) (args : List RuntimeValue)
+    (mem : MemoryState) : Interp (RuntimeValue × MemoryState) :=
+  match JasminOp.expandVeir? o with
+  | some x => do
+      let (done, mem') ← veirRunSteps args (JasminTy.toVeirTy t) x.steps [] mem
+      let some r := VeirSrc.resolveVal args done x.value | .fail
+      pure (r, mem')
+  | none => do
+      let (vals, mem', _) ← veirRunOp o t args mem
+      let some r := vals[(JasminOp.resultSlotOfOp o).2]? | .fail
+      pure (r, mem')
+
+/-- The op-by-op VeIR interpretation of a `Com`: each binding runs the operations
+`lowerExpr` emits for it (`veirRunBinding`) on the values of its arguments and
+binds the value of the binding; `ret v` returns the value of `v`. -/
 def veirRunCom : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t →
     VEnv Γ → MemoryState → Interp RuntimeValue
   | _, _, .ret v, ρ, _ => .ok (ρ _ v)
   | _, _, .var (t := tEx) e body, ρ, mem => do
-      let (vals, mem', _) ← veirRunOp e.op tEx (argVals ρ e.args) mem
-      let some r := vals[(JasminOp.resultSlotOfOp e.op).2]? | .fail
+      let (r, mem') ← veirRunBinding e.op tEx (argVals ρ e.args) mem
       veirRunCom body (ρ.extend r) mem'
 
-/-- `veirRunOp` uses the op-code, properties, result slot and result type of the
-`ToVeirOp jasminDialect` and `ToVeirTy jasminDialect` instances. -/
+/-- `veirRunBinding` uses the op-code, properties, result slot, result type and
+expansion of the `ToVeirOp jasminDialect` and `ToVeirTy jasminDialect` instances. -/
 theorem veirRunOp_uses_instances :
     (ToVeirOp.toOp (d := jasminDialect) = JasminOp.toMlirOpCode) ∧
       (ToVeirOp.resultSlot (d := jasminDialect) = JasminOp.resultSlotOfOp) ∧
       (ToVeirTy.toTy (d := jasminDialect) = JasminTy.toVeirTy) ∧
-      (ToVeirOp.expand? (d := jasminDialect) = fun _ => none) :=
+      (ToVeirOp.expand? (d := jasminDialect) = JasminOp.expandVeir?) :=
   ⟨rfl, rfl, rfl, rfl⟩
+
+/-- The expansion of a shift `regArith bop w`, run on two `w`-bit operands, returns
+`veirShiftSel bop x y` with memory unchanged. -/
+theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
+    (x y : LLVM.Int w) (mem : MemoryState) :
+    veirRunBinding (.regArith bop w) (.reg w) [.int w x, .int w y] mem =
+      .ok (.int w (veirShiftSel bop x y), mem) := by
+  cases bop <;> simp only [JasminBinOp.IsShift] at hb
+  all_goals
+    simp only [veirRunBinding, JasminOp.expandVeir?, JasminOp.shiftSelectExpansion,
+      BitVec.toNat_ofNat, Nat.mod_two_pow_self, JasminOp.toMlirOpCode,
+      JasminBinOp.toArithOpCode, veirRunSteps, List.mapM_nil, Option.pure_def, interpretOp',
+      Arith.interpretOp', JasminTy.toVeirTy, List.map_cons, Option.getD_none, List.map_nil,
+      List.size_toArray, List.length_cons, List.length_nil, Nat.zero_add, zero_lt_one,
+      getElem?_pos, List.getElem_toArray, List.getElem_cons_zero, Attribute.asType_val,
+      BitVec.ofInt_natCast, Interp.pure_eq, Interp.bind_ok, List.nil_append, List.mapM_cons,
+      VeirSrc.resolveVal, Nat.reduceAdd, Nat.lt_add_one, List.getElem_cons_succ,
+      Option.bind_some, Option.bind_eq_bind, ne_eq, Interp.liftOption_none, dite_not,
+      List.cons_append, Nat.zero_lt_succ, not_true_eq_false, ↓reduceDIte, LLVM.Int.cast_self,
+      BitVec.ofInt_ofNat, Nat.reduceLT, veirShiftSel, BitVec.ofNat_eq_ofNat, veirBinInt]
+    rfl
+
+/-- An op that is not a shift has no expansion. -/
+theorem JasminOp.expandVeir?_eq_none (o : JasminOp)
+    (h : ¬ ∃ bop w, o = .regArith bop w ∧ bop.IsShift) : JasminOp.expandVeir? o = none := by
+  cases o <;> try rfl
+  rename_i bop w
+  cases bop <;> first | rfl | exact absurd ⟨_, _, rfl, trivial⟩ h
+
+/-- An op that is not a shift is `ShiftSafe` on every argument. -/
+theorem JasminOp.shiftSafe_of_not_shift (o : JasminOp)
+    (args : HVector (fun t => TyDenote.denote t) (DialectSignature.sig (d := jasminDialect) o))
+    (h : ¬ ∃ bop w, o = .regArith bop w ∧ bop.IsShift) : JasminOp.ShiftSafe o args := by
+  cases o <;> first | trivial | exact fun hb => absurd ⟨_, _, rfl, hb⟩ h
 
 /-- One binding of the `arith` fragment, with its shift amount below the width and
 operands read from the encoded valuation, runs to the encoded denotation of the
@@ -362,22 +485,99 @@ theorem VEnv.extend_rel {Γ : Ctxt jasminDialect} {t : JasminTy} (R : RuntimeVal
   | here => exact hr
   | there v' => exact hρ _ v'
 
-/-- On the `arith` fragment, with every shift amount below its width, the op-by-op
-VeIR interpretation from the encoded valuation `V` returns the encoded
-denotation of the program. -/
-theorem veirRunCom_eq : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- The operand values of a two-argument binding, read from an environment. -/
+theorem argVals_two {Γ : Ctxt jasminDialect} (ρ : VEnv Γ) {s₁ s₂ : JasminTy} (x : Var Γ s₁)
+    (y : Var Γ s₂) : argVals ρ (HVector.cons x (HVector.cons y HVector.nil)) = [ρ _ x, ρ _ y] :=
+  rfl
+
+/-- One binding of the `arith` fragment, with operands read from the encoded
+valuation, runs to the encoded denotation of the binding, with memory unchanged,
+for every shift amount. -/
+theorem veirRunBinding_expr_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState)
+    (hc : JasminOp.InArith e.op)
+    (hρ : ∀ (s : JasminTy) (v : Var Γ s), ρ s v = encodeVal s (v.lookup V)) :
+    veirRunBinding e.op t (argVals ρ e.args) mem = .ok (encodeVal t (e.denote V), mem) := by
+  by_cases hsh : ∃ bop w, e.op = .regArith bop w ∧ bop.IsShift
+  · obtain ⟨bop, w, hop, hbs⟩ := hsh
+    obtain ⟨op, hret, args⟩ := e
+    simp only at hop
+    subst hop
+    subst hret
+    cases args with
+    | cons x rest =>
+      cases rest with
+      | cons y rest' =>
+        cases rest'
+        simp only
+        rw [argVals_two, hρ, hρ]
+        exact (veirRunBinding_shift bop hbs w _ _ mem).trans
+          (by rw [veirShiftSel_val bop hbs]; rfl)
+  · have hx := JasminOp.expandVeir?_eq_none e.op hsh
+    obtain ⟨hop, hslot⟩ := veirRunOp_expr_eq e V ρ mem hc
+      (JasminOp.shiftSafe_of_not_shift e.op _ hsh) hρ
+    simp only [veirRunBinding, hx, hop, hslot, Interp.bind_ok]
+    rfl
+
+/-- One binding of the `arith` fragment, with operands refined by the encoded
+valuation, runs to a value refined by the encoded denotation of the binding, with
+memory unchanged, for every shift amount. -/
+theorem veirRunBinding_expr_refines {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState)
+    (hc : JasminOp.InArith e.op)
+    (hρ : ∀ (s : JasminTy) (v : Var Γ s), ρ s v ⊒ encodeVal s (v.lookup V)) :
+    ∃ r, veirRunBinding e.op t (argVals ρ e.args) mem = .ok (r, mem) ∧
+      r ⊒ encodeVal t (e.denote V) := by
+  by_cases hsh : ∃ bop w, e.op = .regArith bop w ∧ bop.IsShift
+  · obtain ⟨bop, w, hop, hbs⟩ := hsh
+    obtain ⟨op, hret, args⟩ := e
+    simp only at hop
+    subst hop
+    subst hret
+    cases args with
+    | cons x rest =>
+      cases rest with
+      | cons y rest' =>
+        cases rest'
+        obtain ⟨sx, hsx, hrx⟩ := eq_int_of_isRefinedBy_int (hρ _ x)
+        obtain ⟨sy, hsy, hry⟩ := eq_int_of_isRefinedBy_int (hρ _ y)
+        refine ⟨.int w (veirShiftSel bop sx sy), ?_, ?_⟩
+        · simp only
+          rw [argVals_two, hsx, hsy]
+          exact veirRunBinding_shift bop hbs w _ _ mem
+        · exact (int_isRefinedBy_int_iff _ _).2 (veirShiftSel_refines bop hbs hrx hry)
+  · have hx := JasminOp.expandVeir?_eq_none e.op hsh
+    obtain ⟨⟨r, hop, hr⟩, hslot⟩ := veirRunOp_expr_refines e V ρ mem hc hρ
+    refine ⟨r, ?_, hr⟩
+    simp only [veirRunBinding, hx, hop, hslot, Interp.bind_ok]
+    rfl
+
+/-- On the `arith` fragment, for every shift amount, the op-by-op VeIR
+interpretation from the encoded valuation `V` returns the encoded denotation of the
+program. -/
+theorem veirRunCom_eq_denote : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState),
-    ComInArith c → ComShiftSafe c V →
+    ComInArith c →
     (∀ (s : JasminTy) (v : Var Γ s), ρ s v = encodeVal s (v.lookup V)) →
     veirRunCom c ρ mem = .ok (encodeVal t (c.denote V))
-  | _, _, .ret v, V, ρ, _, _, _, hρ => by
+  | _, _, .ret v, V, ρ, _, _, hρ => by
     rw [veirRunCom, hρ]
     rfl
-  | _, _, .var e body, V, ρ, mem, hc, hs, hρ => by
-    obtain ⟨hop, hslot⟩ := veirRunOp_expr_eq e V ρ mem hc.1 hs.1 hρ
-    simp only [veirRunCom, hop, hslot, Interp.bind_ok]
-    exact veirRunCom_eq body _ _ mem hc.2 hs.2
+  | _, _, .var e body, V, ρ, mem, hc, hρ => by
+    have hop := veirRunBinding_expr_eq e V ρ mem hc.1 hρ
+    simp only [veirRunCom, hop, Interp.bind_ok]
+    exact veirRunCom_eq_denote body _ _ mem hc.2
       (VEnv.extend_rel (· = ·) ρ V _ (e.denote V) hρ rfl)
+
+/-- On the `arith` fragment, with every shift amount below its width, the op-by-op
+VeIR interpretation from the encoded valuation `V` returns the encoded denotation
+of the program. `veirRunCom_eq_denote` states it for every shift amount. -/
+theorem veirRunCom_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Valuation Γ) (ρ : VEnv Γ) (mem : MemoryState)
+    (hc : ComInArith c) (_hs : ComShiftSafe c V)
+    (hρ : ∀ (s : JasminTy) (v : Var Γ s), ρ s v = encodeVal s (v.lookup V)) :
+    veirRunCom c ρ mem = .ok (encodeVal t (c.denote V)) :=
+  veirRunCom_eq_denote c V ρ mem hc hρ
 
 /-- On the `arith` fragment, for every shift amount, the op-by-op VeIR
 interpretation from an environment refined by the encoded valuation `V` returns a
@@ -389,8 +589,8 @@ theorem veirRunCom_refines : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
     ∃ r, veirRunCom c ρ mem = .ok r ∧ r ⊒ encodeVal t (c.denote V)
   | _, _, .ret v, V, ρ, _, _, hρ => ⟨ρ _ v, rfl, hρ _ v⟩
   | _, _, .var e body, V, ρ, mem, hc, hρ => by
-    obtain ⟨⟨r, hop, hr⟩, hslot⟩ := veirRunOp_expr_refines e V ρ mem hc.1 hρ
-    simp only [veirRunCom, hop, hslot, Interp.bind_ok]
+    obtain ⟨r, hop, hr⟩ := veirRunBinding_expr_refines e V ρ mem hc.1 hρ
+    simp only [veirRunCom, hop, Interp.bind_ok]
     exact veirRunCom_refines body _ _ mem hc.2
       (VEnv.extend_rel (· ⊒ ·) ρ V r (e.denote V) hρ hr)
 

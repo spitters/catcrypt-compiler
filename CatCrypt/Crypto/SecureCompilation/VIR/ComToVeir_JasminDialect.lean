@@ -71,8 +71,8 @@ hypothesis on the MLIR toolchain.
 | `regArith and w`  | `reg w, reg w`   | `reg w`   | `arith_andi`   |
 | `regArith or w`   | `reg w, reg w`   | `reg w`   | `arith_ori`    |
 | `regArith xor w`  | `reg w, reg w`   | `reg w`   | `arith_xori`   |
-| `regArith shl w`  | `reg w, reg w`   | `reg w`   | `arith_shli`   |
-| `regArith shr w`  | `reg w, reg w`   | `reg w`   | `arith_shrui`  |
+| `regArith shl w`  | `reg w, reg w`   | `reg w`   | `arith_shli` under `arith_select` (`shiftSelectExpansion`) |
+| `regArith shr w`  | `reg w, reg w`   | `reg w`   | `arith_shrui` under `arith_select` (`shiftSelectExpansion`) |
 | `stackLoad w n`   | `stackArr,reg64` | `reg w`   | `memref_load`  |
 | `stackStore w n`  | `stackArr,...`   | `stackArr`| `catcrypt_unknown` (value update; `memref.store` mutates) |
 | `mulhi w`         | `reg w, reg w`   | `reg w`   | `arith_mului_extended`, second result |
@@ -257,12 +257,47 @@ def JasminOp.propsOfOp (o : JasminOp) :
   | .cmp c _ => ({ predicate := c.toIntPred } : Veir.IcmpProperties)
   | _ => default
 
+/-- The lowering of the shift `regArith bop w` as five operations: the constant `w`,
+    `arith.cmpi uge` of the amount (argument 1) against it, the shift
+    `toMlirOpCode (.regArith bop w)` of argument 0 by argument 1, the constant `0`,
+    and `arith.select` of `0` when the amount is at least `w` and of the shift
+    otherwise. The value is the result of the `arith.select`. `arith.shli` and
+    `arith.shrui` are poison for an amount at least the width, and `arith.select`
+    does not propagate poison from the arm it does not pick. -/
+def JasminOp.shiftSelectExpansion (bop : JasminBinOp) (w : Nat) :
+    VeirExpansion Veir.OpCode where
+  steps :=
+    [ { op := .arith .constant,
+        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.mk w⟩ } :
+          Veir.ArithConstantProperties),
+        operands := [], results := [none] },
+      { op := .arith .cmpi, props := ({ predicate := .uge } : Veir.IcmpProperties),
+        operands := [.arg 1, .res 0 0],
+        results := [some ((Veir.IntegerType.mk 1 : Veir.IntegerType) : Veir.TypeAttr)] },
+      { op := JasminOp.toMlirOpCode (.regArith bop w),
+        props := JasminOp.propsOfOp (.regArith bop w),
+        operands := [.arg 0, .arg 1], results := [none] },
+      { op := .arith .constant,
+        props := ({ value := ⟨0, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties),
+        operands := [], results := [none] },
+      { op := .arith .select, props := default,
+        operands := [.res 1 0, .res 3 0, .res 2 0], results := [none] } ]
+  value := .res 4 0
+
+/-- The ops of `jasminDialect` that lower to more than one operation: the shifts
+    `regArith shl w` and `regArith shr w`, as `shiftSelectExpansion`. -/
+def JasminOp.expandVeir? : JasminOp → Option (VeirExpansion Veir.OpCode)
+  | .regArith .shl w => some (JasminOp.shiftSelectExpansion .shl w)
+  | .regArith .shr w => some (JasminOp.shiftSelectExpansion .shr w)
+  | _ => none
+
 instance : ToVeirOp jasminDialect where
   Op := Veir.OpCode
   hasOpInfo := inferInstance
   toOp := JasminOp.toMlirOpCode
   defaultProps := JasminOp.propsOfOp
   resultSlot := JasminOp.resultSlotOfOp
+  expand? := JasminOp.expandVeir?
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types (memref, index). Emitted verbatim by Veir's printer. -/
@@ -440,8 +475,9 @@ Outside this scaffold:
 
 /-- The MLIR `arith` binary ops we discharge here. Covers every arm of
     `JasminBinOp`: integer add/sub/mul, bitwise and/or/xor, logical shifts
-    left and right (shifts use the `.toNat` of the second BitVec operand,
-    matching MLIR's `arith.shli` / `arith.shrui`), plus the BMI1 `andn`
+    left and right (shifts use the `.toNat` of the second BitVec operand and
+    give `0` for an amount at least the width, where MLIR's `arith.shli` /
+    `arith.shrui` give poison), plus the BMI1 `andn`
     `(¬a) ∧ b` (an `arith.xori`+`arith.andi` composition, no single upstream
     op). -/
 inductive ArithBinKind where
@@ -459,7 +495,8 @@ inductive ArithBinKind where
 /-- The MLIR-faithful denotation of an `arith` binary op on `BitVec w`.
     Matches MLIR's reference semantics for each op (i-bit two's-complement
     wraparound for add/sub/mul; bitwise for and/or/xor; shift by the Nat
-    value of the second operand for shli/shrui). -/
+    value of the second operand for shli/shrui, which agrees with MLIR for an
+    amount below the width). -/
 def denoteVeirArithBin : ArithBinKind → {w : Nat} → BitVec w → BitVec w → BitVec w
   | .addi,  _, a, b => a + b
   | .subi,  _, a, b => a - b

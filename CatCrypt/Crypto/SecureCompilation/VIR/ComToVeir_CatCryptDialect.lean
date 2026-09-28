@@ -186,7 +186,8 @@ def CatCryptOp.toVeirOp : CatCryptOp → Veir.OpCode
     * `bitToSword n` is `arith.extsi` (`c ↦ allOnes` or `0`).
     * `bvShiftLV`, `bvShiftRV` are `arith.shli`, `arith.shrui`: equal to the
       denotation for an amount `< w`, where MLIR yields poison and the
-      denotation `0`.
+      denotation `0`. The instance `ToVeirOp catCryptDialect` lowers them through
+      `CatCryptOp.shiftSelectExpansion`, which selects `0` for an amount `≥ w`.
     * `not`, `bvNot`, the immediate shifts, rotates and `andn` need a constant
       operand, `bvAddCarryLo/Hi`, `bvAdd64`, `bvAdc` a chain of operations, the
       memref reads an `index` operand reduced modulo `n`, and the memref updates
@@ -287,6 +288,41 @@ def CatCryptOp.propsOfOp (o : CatCryptOp) :
   | .bvEq _ => ({ predicate := .eq } : Veir.IcmpProperties)
   | _ => default
 
+/-- The lowering of a variable-amount shift of `w`-bit words by the `arith` op
+    `shiftOp` (`shli` or `shrui`) as five operations: the constant `w`,
+    `arith.cmpi uge` of the amount (argument 1) against it, the shift of argument 0
+    by argument 1, the constant `0`, and `arith.select` of `0` when the amount is at
+    least `w` and of the shift otherwise. The value is the result of the
+    `arith.select`. `arith.shli` and `arith.shrui` are poison for an amount at least
+    the width, and `arith.select` does not propagate poison from the arm it does not
+    pick. -/
+def CatCryptOp.shiftSelectExpansion (shiftOp : Veir.Arith) (w : Nat) :
+    VeirExpansion Veir.OpCode where
+  steps :=
+    [ { op := .arith .constant,
+        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.mk w⟩ } :
+          Veir.ArithConstantProperties),
+        operands := [], results := [none] },
+      { op := .arith .cmpi, props := ({ predicate := .uge } : Veir.IcmpProperties),
+        operands := [.arg 1, .res 0 0],
+        results := [some ((Veir.IntegerType.mk 1 : Veir.IntegerType) : Veir.TypeAttr)] },
+      { op := .arith shiftOp, props := default,
+        operands := [.arg 0, .arg 1], results := [none] },
+      { op := .arith .constant,
+        props := ({ value := ⟨0, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties),
+        operands := [], results := [none] },
+      { op := .arith .select, props := default,
+        operands := [.res 1 0, .res 3 0, .res 2 0], results := [none] } ]
+  value := .res 4 0
+
+/-- The ops of `catCryptDialect` that lower to more than one operation: the
+    variable-amount shifts `bvShiftLV w` and `bvShiftRV w`, as
+    `shiftSelectExpansion`. -/
+def CatCryptOp.expandVeir? : CatCryptOp → Option (VeirExpansion Veir.OpCode)
+  | .bvShiftLV w => some (CatCryptOp.shiftSelectExpansion .shli w)
+  | .bvShiftRV w => some (CatCryptOp.shiftSelectExpansion .shrui w)
+  | _ => none
+
 instance : ToVeirOp catCryptDialect where
   Op := Veir.OpCode
   hasOpInfo := inferInstance
@@ -295,6 +331,7 @@ instance : ToVeirOp catCryptDialect where
   toOp := CatCryptOp.toArithOpCode
   defaultProps := CatCryptOp.propsOfOp
   resultSlot := CatCryptOp.resultSlotOfOp
+  expand? := CatCryptOp.expandVeir?
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types that have no native Veir `TypeAttr` (memref,
