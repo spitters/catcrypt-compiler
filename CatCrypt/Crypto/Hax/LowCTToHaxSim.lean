@@ -28,7 +28,8 @@ lowering hypothesis; its hypotheses are carried unchanged:
 The checker accepts the call, literal, scalar-call, limb-read, tuple-load,
 array-load and array-store bindings, `if`/`while` on a variable, `forFold` from a non-negative
 literal to a literal or a variable bound, and sequencing.  It rejects the
-`match_` of a two-destination call, so the `RCallSwap` arm of `lowCTToImp` has
+`match_` of a two-destination call and a variable binding `let x = s` with
+`x ≠ s`, so the `RCallSwap`, scalar-copy and `RCopy` arms of `lowCTToImp` have
 the round trip and no simulation, as has a runtime loop bound other than a
 variable.
 

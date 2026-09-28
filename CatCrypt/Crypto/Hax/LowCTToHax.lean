@@ -29,6 +29,8 @@ parses:
 | `RLetU64Zero x (RSeq (RScalarSet x k) b)` | `let x = k; b` | `letBind` of an `int` literal |
 | `RLetU64Zero x (RSeq (RScalarSetExpr x e) b)` | `let x = scalar#Op(a, b); b` | `letBind` of a scalar call |
 | `RLetU64Zero x (RSeq (RScalarSetExpr x (SLimb v i)) b)` | `let x = index(v, i); b` with `i` a literal | `letBind` of a limb read |
+| `RLetU64Zero x (RSeq (RScalarSetExpr x (SVar s)) b)`, `s ≠ x` | `let x = s; b` | `letBind` of a variable |
+| `RLetZero x t (RSeq (RCopy d s) b)`, `d` named `x`, `s` not | `let x = s; b` | `letBind` of a variable |
 | `RIfNz v t e` | `if v { t } else { e }` | `ifThenElse (var _)` |
 | `RWhileNz v b` | `while v { b }` | `whileLoop (var _)` |
 | `RFor x n b` | `forFold x 0 n b` | `forFold` with literal bounds |
@@ -45,18 +47,25 @@ front reads `forFold x 0 n` with a literal `n` as `RFor`.
 
 Every other command maps to `none`.  No arm of `haxToLowCT` produces
 `RCloneCall`, `RLimbStore`, `RLimbStoreExpr`, `RCallN`, `RSelect`, `RAssert`,
-`RBlock`, `RFnDef`, `RFnCall`, `RArrStoreLit`, `RArrLoadLit`, `RCopy` or
+`RBlock`, `RFnDef`, `RFnCall`, `RArrStoreLit`, `RArrLoadLit` or
 `RCallDstThreaded`, nor an `RLetZero` or `RLetU64Zero` whose body does not open
 with the command the binding computes, nor a stand-alone `RArrStore`,
-`RArrLoad`, `RTupleLoad`, `RCallSwap` or `RScalarSetExpr`.  The front's
+`RArrLoad`, `RTupleLoad`, `RCallSwap`, `RScalarSetExpr` or `RCopy`.
+
+The copy binding `let x = s; b` has two images.  `haxToLowCT`, which carries no
+slot types, lowers it to the scalar copy `RLetU64Zero x (RSeq (RScalarSetExpr x
+(SVar s)) _)`, so `frontNF` maps the whole-slot copy `RCopy` to that scalar copy
+and the round trip holds with it.  The typed front `haxToLowCTEnv`, with `s`
+bound at a tower type `t` other than `.TU64`, lowers it to the whole-slot copy
+`RLetZero x t (RSeq (RCopy x s) _)` (`lowCTToImp_copy_haxToLowCTEnv`).  The front's
 offset-start and reverse loop arms, whose bodies open with a counter shift
 `RScalarSetExpr`, and its `uintLit`, `bool`, alias and `whileFold` arms, are
 alternative preimages that `lowCTToImp` does not produce.
 
 `frontNF c` is `c` with the located types the front assigns: the destination and
 arguments of a call `f` at `towerOfCallName f`, array stores at `.TBytes 0`,
-array and tuple loads at `.TFp`, and the destination of a fused binding named
-by the binder.
+array and tuple loads at `.TFp`, the destination of a fused binding named
+by the binder, and a copy binding as the scalar copy.
 
 ## Main definitions
 
@@ -74,6 +83,8 @@ by the binder.
   `AnfShaped`.
 * `lowCTToImp_haxToLowCTK` — the exit-flag front `haxToLowCTK false false none`
   lowers a translation to `frontNF c` with no exit.
+* `lowCTToImp_copy_haxToLowCTEnv` — the typed front lowers the translation of a
+  whole-slot copy back to the copy.
 -/
 
 @[expose] public section
@@ -202,7 +213,13 @@ def lowCTToImp : LowCT → Option ImpExpr
                 (lowCTToImp b).map fun b' =>
                   .letBind x (.app "index" [.var v, .lit (.int i)]) b'
               else none
-          | none => none
+          | none =>
+              match se with
+              | .SVar s =>
+                  if y = x ∧ s ≠ x then
+                    (lowCTToImp b).map fun b' => .letBind x (.var s) b'
+                  else none
+              | _ => none
   | .RIfNz v t e =>
       match lowCTToImp t, lowCTToImp e with
       | some t', some e' => some (.ifThenElse (.var v) t' e')
@@ -216,14 +233,20 @@ def lowCTToImp : LowCT → Option ImpExpr
           match sexprToImpBound bound, lowCTToImp b with
           | some hi, some b' => some (.forFold x (.lit (.int 0)) hi b')
           | _, _ => none
+  | .RLetZero x _ (.RSeq (.RCopy d s) b) =>
+      if d.locVar = x ∧ s.locVar ≠ x then
+        (lowCTToImp b).map fun b' => .letBind x (.var s.locVar) b'
+      else none
   | _ => none
 
 /-- The command with the located types and destination names of the front's
     lowering: a call `f` at `towerOfCallName f`, array stores at `.TBytes 0`,
-    array and tuple loads at `.TFp`, and the destination of a fused binding
-    named by the binder.  On every command that `lowCTToImp` translates the
-    destination of a fused binding already is the binder, so `frontNF` changes
-    located types only. -/
+    array and tuple loads at `.TFp`, the destination of a fused binding
+    named by the binder, and a whole-slot copy binding as the scalar copy of
+    its source, the lowering of `let x = s` by the untyped front.  On every
+    command that `lowCTToImp` translates the destination of a fused binding
+    already is the binder, so `frontNF` changes located types and copy
+    bindings only. -/
 def frontNF : LowCT → LowCT
   | .RSkip => .RSkip
   | .RSeq (.RArrStore arr idx src) b =>
@@ -250,6 +273,8 @@ def frontNF : LowCT → LowCT
         (.RSeq (.RCallSwap f { locVar := x, locSrc := towerOfCallName f }
           { locVar := y, locSrc := towerOfCallName f } (retypeArgs (towerOfCallName f) args))
           (frontNF b)))
+  | .RLetZero x _ (.RSeq (.RCopy _ s) b) =>
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar s.locVar)) (frontNF b))
   | .RLetU64Zero x (.RSeq (.RScalarSet _ k) b) =>
       .RLetU64Zero x (.RSeq (.RScalarSet x k) (frontNF b))
   | .RLetU64Zero x (.RSeq (.RScalarSetExpr _ se) b) =>
@@ -454,13 +479,24 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       obtain rfl : se = .SLimb v i := by
         cases se <;> simp_all [limbReadOfSExpr]
       simp [haxToLowCT, haxArgsToLocated, haxArgToLocated, limbReadArgs_index, ih b' hb, frontNF]
-  case case22 v t el t' el' hel ht iht ihel =>
+  case case21 y b s hc _ _ ih =>
+    obtain ⟨rfl, hs⟩ := hc
+    simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, hs, ne_eq, not_false_eq_true,
+      and_self, ↓reduceIte] at h
+    cases hb : lowCTToImp b with
+    | none => simp [hb] at h
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at h
+      subst h
+      rw [haxToLowCT_letBind_var_ne _ _ _ (Ne.symm hs), ih b' hb]
+      simp [frontNF]
+  case case24 v t el t' el' hel ht iht ihel =>
     simp only [lowCTToImp, ht, hel, Option.some.injEq] at h
     subst h
     simp [haxToLowCT, iht t' ht, ihel el' hel, frontNF]
-  case case23 =>
+  case case25 =>
     simp only [lowCTToImp, reduceCtorEq] at h
-  case case24 v b ih =>
+  case case26 v b ih =>
     simp only [lowCTToImp] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
@@ -468,7 +504,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       simp only [hb, Option.map_some, Option.some.injEq] at h
       subst h
       simp [haxToLowCT, ih b' hb, frontNF]
-  case case25 x n b ih =>
+  case case27 x n b ih =>
     simp only [lowCTToImp] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
@@ -476,7 +512,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       simp only [hb, Option.map_some, Option.some.injEq] at h
       subst h
       simp [haxToLowCT, ih b' hb, frontNF]
-  case case27 x bound b hi b' hb hbd hnl ih =>
+  case case29 x bound b hi b' hb hbd hnl ih =>
     have hL : lowCTToImp (.RForRuntime x bound b) = some (.forFold x (.lit (.int 0)) hi b') := by
       cases bound <;> first | exact absurd rfl (hnl _) | simp [lowCTToImp, hbd, hb]
     rw [hL, Option.some.injEq] at h
@@ -489,7 +525,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
     · simp [haxToLowCT, hI, ih b' hb]
     · exact absurd rfl (hnl n)
     · simp [haxToLowCT, hI, ih b' hb]
-  case case28 x bound b hnl hnone _ =>
+  case case30 x bound b hnl hnone _ =>
     have hL : lowCTToImp (.RForRuntime x bound b) =
         match sexprToImpBound bound, lowCTToImp b with
         | some hi, some b' => some (.forFold x (.lit (.int 0)) hi b')
@@ -499,8 +535,17 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
     cases h1 : sexprToImpBound bound <;> cases h2 : lowCTToImp b <;>
       simp only [h1, h2, reduceCtorEq] at h
     exact (hnone _ _ h1 h2).elim
-  case case29 =>
-    rw [lowCTToImp.eq_17] at h
+  case case31 x t d s b hc ih =>
+    simp only [lowCTToImp, if_pos hc] at h
+    cases hb : lowCTToImp b with
+    | none => simp [hb] at h
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at h
+      subst h
+      rw [haxToLowCT_letBind_var_ne _ _ _ (Ne.symm hc.2), ih b' hb]
+      simp [frontNF]
+  case case33 =>
+    rw [lowCTToImp.eq_19] at h
     · simp only [reduceCtorEq] at h
     all_goals assumption
   all_goals simp [lowCTToImp, *] at h
@@ -534,5 +579,25 @@ theorem lowCTToImp_inFront_of_isSome (c : LowCT) (h : (lowCTToImp c).isSome = tr
     ∃ e, lowCTToImp c = some e ∧ haxToLowCT e = some (frontNF c) ∧ AnfShaped e = true := by
   obtain ⟨e, he⟩ := Option.isSome_iff_exists.mp h
   exact ⟨e, he, lowCTToImp_roundTrip c e he, lowCTToImp_anfShaped c e he⟩
+
+/-! ## §5  The copy under the typed front -/
+
+/-- **The copy under the typed front.**  A whole-slot copy of `s` into the fresh
+    slot `x` at a tower type `t` other than `.TU64` translates to
+    `let x = s; b'`, and the typed front `haxToLowCTEnv`, with `s` bound at `t`
+    in its type environment, lowers that binding back to the copy, followed by
+    its lowering of `b'` with `x` bound at `t`. -/
+theorem lowCTToImp_copy_haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) (x s : String)
+    (t : TowerType) (b bC : LowCT) (b' : ImpExpr) (hb : lowCTToImp b = some b')
+    (hxs : x ≠ s) (hz : mlkemZeroConst? s = none) (hs : env.findOpt s = some t)
+    (ht : t ≠ .TU64) (hbody : haxToLowCTEnv ((x, t) :: env) leaves b' = some bC) :
+    lowCTToImp (.RLetZero x t (.RSeq (.RCopy { locVar := x, locSrc := t }
+        { locVar := s, locSrc := t }) b)) = some (.letBind x (.var s) b') ∧
+      haxToLowCTEnv env leaves (.letBind x (.var s) b') =
+        some (.RLetZero x t (.RSeq (.RCopy { locVar := x, locSrc := t }
+          { locVar := s, locSrc := t }) bC)) := by
+  refine ⟨?_, ?_⟩
+  · simp [lowCTToImp, hb, Ne.symm hxs]
+  · cases t <;> simp_all [haxToLowCTEnv]
 
 end CatCrypt.Crypto.Hax

@@ -40,10 +40,10 @@ The clearing value is `default : RustVal t` and the behaviour of each clearing
 leaf enters every semantic result as the hypothesis
 `ls.call f t [t] old [⟨t, v⟩] = default`.
 
-`appendWipes` is partial: it descends the chain of `RLetZero` bindings and `RSeq`
-sequencing into the tail and replaces an `RSkip` tail. On any other tail it is
-`none`, so a program outside the chain shape is refused rather than returned
-unwiped. `RLetU64Zero` is not descended.
+`appendWipes` is partial: it descends the chain of `RLetZero` and `RLetU64Zero`
+bindings and `RSeq` sequencing into the tail and replaces an `RSkip` tail. On any
+other tail it is `none`, so a program outside the chain shape is refused rather
+than returned unwiped.
 
 ## Main definitions
 
@@ -93,13 +93,15 @@ def wipeSeq (t : TowerType) : List (String × String) → LowCT → LowCT
   | [], k => k
   | p :: xs, k => .RSeq (wipeCall p.2 t p.1) (wipeSeq t xs k)
 
-/-- **The pass.** The straight-line chain of `RLetZero` bindings and `RSeq`
-    sequencing is descended into the tail, and an `RSkip` tail is replaced by the
-    clearing calls for `xs`. A tail of any other shape yields `none`. -/
+/-- **The pass.** The straight-line chain of `RLetZero` and `RLetU64Zero`
+    bindings and `RSeq` sequencing is descended into the tail, and an `RSkip`
+    tail is replaced by the clearing calls for `xs`. A tail of any other shape
+    yields `none`. -/
 def appendWipes (t : TowerType) (xs : List (String × String)) :
     LowCT → Option LowCT
   | .RSkip => some (wipeSeq t xs .RSkip)
   | .RLetZero x ty b => (appendWipes t xs b).map (.RLetZero x ty)
+  | .RLetU64Zero x b => (appendWipes t xs b).map (.RLetU64Zero x)
   | .RSeq a b => (appendWipes t xs b).map (.RSeq a)
   | _ => none
 
@@ -287,14 +289,96 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
   case case14 x ty y u f d el args b hc =>
     intro c' e h _hc'
     simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
-  case case29 =>
+  case case15 y k b ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, ↓reduceIte] at h ⊢
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb =>
+        simp only [hbe, Option.map_some, Option.some.injEq] at h
+        subst h
+        rw [ih b' eb hbe hb]
+        simp [impWipes]
+  case case17 y se b f a a2 hsc ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, hsc, ↓reduceIte] at h ⊢
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb =>
+        simp only [hbe, Option.map_some, Option.some.injEq] at h
+        subst h
+        rw [ih b' eb hbe hb]
+        simp [impWipes]
+  case case19 y se b hsc v i hlr ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, hsc, hlr, ↓reduceIte] at h ⊢
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb =>
+        simp only [hbe, Option.map_some, Option.some.injEq] at h
+        subst h
+        rw [ih b' eb hbe hb]
+        simp [impWipes]
+  case case21 x y b s hc _ _ ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, if_pos hc] at h ⊢
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb =>
+        simp only [hbe, Option.map_some, Option.some.injEq] at h
+        subst h
+        rw [ih b' eb hbe hb]
+        simp [impWipes]
+  case case31 x ty d s b hc ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, if_pos hc] at h ⊢
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb =>
+        simp only [hbe, Option.map_some, Option.some.injEq] at h
+        subst h
+        rw [ih b' eb hbe hb]
+        simp [impWipes]
+  case case33 =>
     intro c' e h _hc'
-    rw [lowCTToImp.eq_17] at h
+    rw [lowCTToImp.eq_19] at h
     · simp only [reduceCtorEq] at h
     all_goals assumption
   all_goals
-    intro c' e _h hc'
-    simp [appendWipes] at hc'
+    intro c' e h hc'
+    first
+      | (simp [appendWipes] at hc'; done)
+      | simp_all [lowCTToImp]
 
 /-! ## §4  The printed tail -/
 
@@ -478,6 +562,18 @@ theorem exec_appendWipes_inv {N : Nat} {ls : LeafSpec} {t : TowerType}
       | letZero x0 t0 body0 rs0 rs1 h1 =>
         obtain ⟨rs'', hrun, heq⟩ := ihb b' _ rs' hb h1
         exact ⟨rs'', .letZero _ _ _ _ _ hrun, heq⟩
+  | RLetU64Zero x b ihb =>
+    intro c' rs rs' hc' hex
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      cases hex with
+      | letU64Zero x0 body0 rs0 rs1 h1 =>
+        obtain ⟨rs'', hrun, heq⟩ := ihb b' _ rs' hb h1
+        exact ⟨rs'', .letU64Zero _ _ _ _ hrun, heq⟩
   | _ =>
     intro c' rs rs' hc' _
     simp [appendWipes] at hc'
@@ -520,6 +616,16 @@ theorem exec_appendWipes {N : Nat} {ls : LeafSpec} {t : TowerType}
       subst hc'
       cases hex with
       | letZero x0 t0 body0 rs0 rs1 h1 => exact .letZero _ _ _ _ _ (ihb b' _ rs'' hbb h1 hb)
+  | RLetU64Zero x b ihb =>
+    intro c' rs rs'' hc' hex hb
+    simp only [appendWipes] at hc'
+    cases hbb : appendWipes t xs b with
+    | none => simp [hbb] at hc'
+    | some b' =>
+      simp only [hbb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      cases hex with
+      | letU64Zero x0 body0 rs0 rs1 h1 => exact .letU64Zero _ _ _ _ (ihb b' _ rs'' hbb h1 hb)
   | _ =>
     intro c' rs rs'' hc' _ _
     simp [appendWipes] at hc'
@@ -638,13 +744,75 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
   case case14 x ty y u f d el args b hc =>
     intro c' e h _hc'
     simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
-  case case29 =>
+  case case15 y k b ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, ↓reduceIte] at h
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
+  case case17 y se b f a a2 hsc ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, hsc, ↓reduceIte] at h
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
+  case case19 y se b hsc v i hlr ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, hsc, hlr, ↓reduceIte] at h
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
+  case case21 x y b s hc _ _ ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, if_pos hc] at h
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
+  case case31 x ty d s b hc ih =>
+    intro c' e h hc'
+    simp only [appendWipes] at hc'
+    cases hb : appendWipes t xs b with
+    | none => simp [hb] at hc'
+    | some b' =>
+      simp only [hb, Option.map_some, Option.some.injEq] at hc'
+      subst hc'
+      simp only [lowCTToImp, if_pos hc] at h
+      cases hbe : lowCTToImp b with
+      | none => simp [hbe] at h
+      | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
+  case case33 =>
     intro c' e h _hc'
-    rw [lowCTToImp.eq_17] at h
+    rw [lowCTToImp.eq_19] at h
     · simp only [reduceCtorEq] at h
     all_goals assumption
   all_goals
-    intro c' e _h hc'
-    simp [appendWipes] at hc'
+    intro c' e h hc'
+    first
+      | (simp [appendWipes] at hc'; done)
+      | simp_all [lowCTToImp]
 
 end CatCrypt.Crypto.Hax
