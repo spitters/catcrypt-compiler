@@ -108,36 +108,61 @@ inductive WidthOp where
   | add | sub | mul | and | or | xor | shl | shr | rotr | rotl
   deriving DecidableEq, Repr
 
-/-- The width of a width tag: `8`, `16`, `32`, `64`, and `size` (width `64`). -/
-def widthOfTag : String → Option Nat
-  | "8" => some 8
-  | "16" => some 16
-  | "32" => some 32
-  | "64" => some 64
-  | "size" => some 64
-  | _ => none
-
-/-- The operation of a width-tagged call name before its `#`. -/
-def widthOpName : String → Option WidthOp
-  | "wrapping_add" => some .add
-  | "wrapping_sub" => some .sub
-  | "wrapping_mul" => some .mul
-  | "BitAnd" => some .and
-  | "BitOr" => some .or
-  | "BitXor" => some .xor
-  | "Shl" => some .shl
-  | "Shr" => some .shr
-  | "rotate_right" => some .rotr
-  | "rotate_left" => some .rotl
-  | _ => none
-
-/-- The width and operation of a width-tagged call name `op#w`. -/
-def widthOpOf (f : String) : Option (Nat × WidthOp) :=
-  match f.splitOn "#" with
-  | [op, tag] =>
-      match widthOfTag tag, widthOpName op with
-      | some w, some o => some (w, o)
-      | _, _ => none
+/-- The width and operation of a width-tagged call name `op#w`: the operations
+    `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `BitAnd`, `BitOr`, `BitXor`, `Shl`,
+    `Shr`, `rotate_right`, `rotate_left` at the tags `8`, `16`, `32`, `64` and `size`
+    (width `64`). -/
+def widthOpOf : String → Option (Nat × WidthOp)
+  | "wrapping_add#8" => some (8, .add)
+  | "wrapping_add#16" => some (16, .add)
+  | "wrapping_add#32" => some (32, .add)
+  | "wrapping_add#64" => some (64, .add)
+  | "wrapping_add#size" => some (64, .add)
+  | "wrapping_sub#8" => some (8, .sub)
+  | "wrapping_sub#16" => some (16, .sub)
+  | "wrapping_sub#32" => some (32, .sub)
+  | "wrapping_sub#64" => some (64, .sub)
+  | "wrapping_sub#size" => some (64, .sub)
+  | "wrapping_mul#8" => some (8, .mul)
+  | "wrapping_mul#16" => some (16, .mul)
+  | "wrapping_mul#32" => some (32, .mul)
+  | "wrapping_mul#64" => some (64, .mul)
+  | "wrapping_mul#size" => some (64, .mul)
+  | "BitAnd#8" => some (8, .and)
+  | "BitAnd#16" => some (16, .and)
+  | "BitAnd#32" => some (32, .and)
+  | "BitAnd#64" => some (64, .and)
+  | "BitAnd#size" => some (64, .and)
+  | "BitOr#8" => some (8, .or)
+  | "BitOr#16" => some (16, .or)
+  | "BitOr#32" => some (32, .or)
+  | "BitOr#64" => some (64, .or)
+  | "BitOr#size" => some (64, .or)
+  | "BitXor#8" => some (8, .xor)
+  | "BitXor#16" => some (16, .xor)
+  | "BitXor#32" => some (32, .xor)
+  | "BitXor#64" => some (64, .xor)
+  | "BitXor#size" => some (64, .xor)
+  | "Shl#8" => some (8, .shl)
+  | "Shl#16" => some (16, .shl)
+  | "Shl#32" => some (32, .shl)
+  | "Shl#64" => some (64, .shl)
+  | "Shl#size" => some (64, .shl)
+  | "Shr#8" => some (8, .shr)
+  | "Shr#16" => some (16, .shr)
+  | "Shr#32" => some (32, .shr)
+  | "Shr#64" => some (64, .shr)
+  | "Shr#size" => some (64, .shr)
+  | "rotate_right#8" => some (8, .rotr)
+  | "rotate_right#16" => some (16, .rotr)
+  | "rotate_right#32" => some (32, .rotr)
+  | "rotate_right#64" => some (64, .rotr)
+  | "rotate_right#size" => some (64, .rotr)
+  | "rotate_left#8" => some (8, .rotl)
+  | "rotate_left#16" => some (16, .rotl)
+  | "rotate_left#32" => some (32, .rotl)
+  | "rotate_left#64" => some (64, .rotl)
+  | "rotate_left#size" => some (64, .rotl)
   | _ => none
 
 /-- `e` masked to its low `w` bits: `e &&& (2^w - 1)`, which over `Nat` is
@@ -3226,5 +3251,215 @@ theorem haxToLowCTFnT_nil_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : L
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) :=
   haxToLowCTFnT_simulates_exit_scalar bi N leafSpec br [] hL e c hok hK fuel env env' o rs hrun
     hval (envAgreesT_nil_of_off hag)
+
+/-- Under the empty placement the result placement is scalar. -/
+theorem exitResultPlace_nil (e : ImpExpr) : exitResultPlace [] e = none := by
+  induction e using ImpExpr.ind <;> simp_all [exitResultPlace]
+
+/-! ## §16  The scalar operations of hax-lean's `u64` table
+
+`ScalarOpsSoundT Hax.hax64Builtins`: on the `u64` table every operation of
+`scalarOpExprT` either computes its template or is undefined.  The width-tagged calls of
+`widthOpTable` compute their masked templates (`WidthOp.eval_sexpr`); `Add` computes the
+sum and is undefined when the sum reaches `2^64`, so no refusing table is needed; the
+comparisons `lt`, …, `Ne` and the names `add`, `sub`, `Sub` are undefined in the table. -/
+
+section Hax64Ops
+
+open _root_.Hax (hax64Builtins hax64WordOps widthArrayOps u64BinOp u64BinOp_natCast rotrNat
+  rotlNat)
+
+/-- The natural-number value of the width-tagged operation `o` at width `w`: the arms of
+    `Hax.hax64WordOps` and `Hax.hax64NarrowOps`, with the shifts total. -/
+def WidthOp.nat (w : Nat) : WidthOp → Nat → Nat → Nat
+  | .add, a, b => (a + b) % 2 ^ w
+  | .sub, a, b => (a % 2 ^ w + 2 ^ w - b % 2 ^ w) % 2 ^ w
+  | .mul, a, b => (a * b) % 2 ^ w
+  | .and, a, b => (a % 2 ^ w) &&& (b % 2 ^ w)
+  | .or, a, b => (a % 2 ^ w) ||| (b % 2 ^ w)
+  | .xor, a, b => (a % 2 ^ w) ^^^ (b % 2 ^ w)
+  | .shl, a, b => ((a % 2 ^ w) <<< b) % 2 ^ w
+  | .shr, a, b => (a % 2 ^ w) >>> b
+  | .rotr, a, b => rotrNat w a b
+  | .rotl, a, b => rotlNat w a b
+
+theorem xor_xor_and_eq_or (a b : Nat) : (a ^^^ b) ^^^ (a &&& b) = a ||| b := by
+  apply Nat.eq_of_testBit_eq
+  intro i
+  simp only [Nat.testBit_xor, Nat.testBit_and, Nat.testBit_or]
+  cases a.testBit i <;> cases b.testBit i <;> rfl
+
+/-- At a width that is a power of two, the masked template of a width-tagged operation
+    evaluates to `WidthOp.nat`. -/
+theorem WidthOp.eval_sexpr (k : Nat) (o : WidthOp) (a b : Nat) (σ : String → Nat) :
+    (o.sexpr (2 ^ k) (.SLit a) (.SLit b)).eval σ = o.nat (2 ^ k) a b := by
+  cases o <;> simp only [WidthOp.sexpr, WidthOp.nat, widthMask, orExprN, widthAmt, SExpr.eval,
+    Nat.and_two_pow_sub_one_eq_mod, xor_xor_and_eq_or, rotrNat, rotlNat]
+
+theorem WidthOp.nat_lt {w : Nat} (hw : w ≤ 64) (o : WidthOp) (a b : Nat) :
+    o.nat w a b < 2 ^ 64 := by
+  have hp : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) hw
+  have hmod : ∀ x, x % 2 ^ w < 2 ^ w := fun x => Nat.mod_lt _ (by positivity)
+  suffices o.nat w a b < 2 ^ w by omega
+  cases o <;> simp only [WidthOp.nat, rotrNat, rotlNat]
+  all_goals first
+    | exact hmod _
+    | exact Nat.and_lt_two_pow _ (hmod _)
+    | exact Nat.or_lt_two_pow (hmod _) (hmod _)
+    | exact Nat.xor_lt_two_pow (hmod _) (hmod _)
+    | exact lt_of_le_of_lt (Nat.shiftRight_le _ _) (hmod _)
+
+/-- An operation of `scalarOpExprT` is one of its sixteen named operations or a name of
+    `widthOpOf`. -/
+theorem scalarOpExprT_isSome_cases {op : String} {a b : SExpr}
+    (h : (scalarOpExprT op a b).isSome = true) :
+    op ∈ ["lt", "Lt", "gt", "Gt", "le", "Le", "ge", "Ge", "eq", "Eq", "ne", "Ne", "add", "Add",
+      "sub", "Sub"] ∨ ∃ p, widthOpOf op = some p := by
+  unfold scalarOpExprT at h
+  split at h
+  all_goals first | (left; simp; done) | skip
+  right
+  rcases hw : widthOpOf op with _ | p
+  · simp [hw] at h
+  · exact ⟨p, rfl⟩
+
+/-- `scalarOpNatT` of a width-tagged name is `WidthOp.nat` at a width of `8`, `16`, `32` or
+    `64`. -/
+theorem scalarOpNatT_width {f : String} {w : Nat} {o : WidthOp}
+    (h : ∀ a b, scalarOpExprT f a b = some (o.sexpr w a b))
+    (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (n m : Nat) :
+    scalarOpNatT f n m = o.nat w n m := by
+  unfold scalarOpNatT
+  rw [h]
+  rcases hw with rfl | rfl | rfl | rfl
+  · exact WidthOp.eval_sexpr 3 o n m _
+  · exact WidthOp.eval_sexpr 4 o n m _
+  · exact WidthOp.eval_sexpr 5 o n m _
+  · exact WidthOp.eval_sexpr 6 o n m _
+
+/-- A two-operand arm `u64BinOp n m g` of `hax64WordOps` whose name `widthArrayOps` does not
+    define: a value of `hax64Builtins` is a value of `g`. -/
+theorem hax64Builtins_arm {f : String} {g : Nat → Nat → Option Nat} {n m : Nat} {r : Value}
+    (hn : n < 2 ^ 64) (hm : m < 2 ^ 64)
+    (harm : hax64WordOps f [.int n, .int m] = u64BinOp n m g)
+    (hA : widthArrayOps f [.int n, .int m] = none)
+    (h : hax64Builtins f [.int n, .int m] = some r) : ∃ v, g n m = some v ∧ r = .int v := by
+  unfold hax64Builtins at h
+  rw [harm, u64BinOp_natCast hn hm, hA] at h
+  cases hg : g n m with
+  | none => rw [hg] at h; cases h
+  | some v => rw [hg] at h; cases h; exact ⟨v, rfl, rfl⟩
+
+/-- The arm of `Hax.hax64WordOps` or `Hax.hax64NarrowOps` of the width-tagged operation `o`
+    at width `w`: `WidthOp.nat`, the shifts undefined for an amount of `w` or more. -/
+def WidthOp.hax (w : Nat) (o : WidthOp) (a b : Nat) : Option Nat :=
+  match o with
+  | .shl | .shr => if b < w then some (o.nat w a b) else none
+  | _ => some (o.nat w a b)
+
+/-- A width-tagged call whose arm in `hax64WordOps` is `WidthOp.hax`: its values on two words
+    below `2^64` are the words `WidthOp.nat`, below `2^64`. -/
+theorem hax64Builtins_widthOp {f : String} {w : Nat} {o : WidthOp} (hw : w ≤ 64)
+    (harm : ∀ a b : Int, hax64WordOps f [.int a, .int b] = u64BinOp a b (o.hax w))
+    (hA : ∀ a b : Int, widthArrayOps f [.int a, .int b] = none) {n m : Nat} {r : Value}
+    (hn : n < 2 ^ 64) (hm : m < 2 ^ 64) (h : hax64Builtins f [.int n, .int m] = some r) :
+    r = .int (o.nat w n m) ∧ o.nat w n m < 2 ^ 64 := by
+  obtain ⟨v, hg, rfl⟩ := hax64Builtins_arm hn hm (harm n m) (hA n m) h
+  refine ⟨?_, WidthOp.nat_lt hw o n m⟩
+  cases o <;> simp only [WidthOp.hax] at hg
+  all_goals first
+    | (split_ifs at hg; cases hg; rfl)
+    | (cases hg; rfl)
+
+/-- The scalar operation `f` on two integer words: when every value of `hax64Builtins f` on
+    two words below `2^64` is the word `F n m` below `2^64`, and `scalarOpNatT f` is `F`, the
+    condition of `ScalarOpsSoundT` holds at `f` on integer operands. -/
+theorem hax64_scalarOp_int {f : String} {F : Nat → Nat → Nat}
+    {a b : Int} {na nb : Nat} {r : Value} (hbi : hax64Builtins f [.int a, .int b] = some r)
+    (ha0 : 0 ≤ a) (ha : a < 2 ^ 64) (hb0 : 0 ≤ b) (hb : b < 2 ^ 64)
+    (hna : valueToScalar (.int a) = some na) (hnb : valueToScalar (.int b) = some nb)
+    (hexpr : ∀ n m, scalarOpNatT f n m = F n m)
+    (hsem : ∀ (n m : Nat) r, n < 2 ^ 64 → m < 2 ^ 64 →
+      hax64Builtins f [.int n, .int m] = some r →
+      r = .int (F n m) ∧ F n m < 2 ^ 64) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT f na nb) := by
+  simp only [valueToScalar, ha0, hb0, if_true, Option.some.injEq] at hna hnb
+  obtain rfl : a = (na : Int) := by omega
+  obtain rfl : b = (nb : Int) := by omega
+  obtain ⟨rfl, hlt⟩ := hsem na nb r (by omega) (by omega) hbi
+  refine ⟨⟨Int.natCast_nonneg _, by exact_mod_cast hlt⟩, ?_⟩
+  simp [valueToScalar, hexpr]
+
+/-- `hax64_scalarOp_int` at a width-tagged call whose template is `WidthOp.sexpr w o` and
+    whose arm in `hax64WordOps` is `WidthOp.hax w o`. -/
+theorem hax64_width_int {f : String} {w : Nat} {o : WidthOp}
+    {a b : Int} {na nb : Nat} {r : Value} (hbi : hax64Builtins f [.int a, .int b] = some r)
+    (ha0 : 0 ≤ a) (ha : a < 2 ^ 64) (hb0 : 0 ≤ b) (hb : b < 2 ^ 64)
+    (hna : valueToScalar (.int a) = some na) (hnb : valueToScalar (.int b) = some nb)
+    (hexpr : ∀ a b, scalarOpExprT f a b = some (o.sexpr w a b))
+    (harm : ∀ a b : Int, hax64WordOps f [.int a, .int b] = u64BinOp a b (o.hax w))
+    (hA : ∀ a b : Int, widthArrayOps f [.int a, .int b] = none)
+    (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT f na nb) :=
+  hax64_scalarOp_int hbi ha0 ha hb0 hb hna hnb (scalarOpNatT_width hexpr hw)
+    (fun _ _ _ hn hm h => hax64Builtins_widthOp (by omega) harm hA hn hm h)
+
+/-- **hax-lean's `u64` table computes the scalar operations.**  Every operation of
+    `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar word whose
+    decoding is `scalarOpNatT`: the fifty width-tagged calls of `widthOpTable` (`Shl#w` and
+    `Shr#w` undefined for an amount of `w` or more) and `Add` (undefined when the sum reaches
+    `2^64`); the comparisons and the names `add`, `sub`, `Sub` are undefined in the table. -/
+theorem scalarOpsSoundT_hax64Builtins : ScalarOpsSoundT hax64Builtins := by
+  intro op va vb r na nb hop hva hvb hna hnb hbi
+  rcases scalarOpExprT_isSome_cases hop with hl | ⟨p, hp⟩
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
+    by_cases hAdd : op = "Add"
+    · subst hAdd
+      obtain ⟨a, rfl, ha0, ha⟩ : ∃ a : Int, va = .int a ∧ 0 ≤ a ∧ a < 2 ^ 64 := by
+        rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | h | rfl
+        all_goals first
+          | exact h
+          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+      obtain ⟨b, rfl, hb0, hb⟩ : ∃ b : Int, vb = .int b ∧ 0 ≤ b ∧ b < 2 ^ 64 := by
+        rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | h | rfl
+        all_goals first
+          | exact h
+          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+      exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl)
+        (fun n m r hn hm h => by
+          obtain ⟨v, hg, rfl⟩ := hax64Builtins_arm hn hm
+            (_root_.Hax.hax64WordOps_add (n : Int) (m : Int)) rfl h
+          split_ifs at hg with hlt
+          cases hg
+          exact ⟨rfl, hlt⟩)
+    rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+      rfl | rfl | rfl
+    all_goals first
+      | exact absurd rfl hAdd
+      | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+  · unfold widthOpOf at hp
+    split at hp
+    all_goals cases hp
+    all_goals
+      obtain ⟨a, rfl, ha0, ha⟩ : ∃ a : Int, va = .int a ∧ 0 ≤ a ∧ a < 2 ^ 64 := by
+        rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | h | rfl
+        all_goals first
+          | exact h
+          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+      obtain ⟨b, rfl, hb0, hb⟩ : ∃ b : Int, vb = .int b ∧ 0 ≤ b ∧ b < 2 ^ 64 := by
+        rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | h | rfl
+        all_goals first
+          | exact h
+          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+      exact hax64_width_int hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl) (fun _ _ => rfl)
+        (fun _ _ => rfl) (by decide)
+
+/-- `ScalarOpsSoundT` holds on the range-refusing table of a table satisfying it. -/
+theorem scalarOpsSoundT_exitRange {bi : Builtins} (h : ScalarOpsSoundT bi) :
+    ScalarOpsSoundT (exitRange bi) :=
+  fun op va vb r na nb hop hva hvb hna hnb hbi =>
+    h op va vb r na nb hop hva hvb hna hnb (exitRange_some hbi).1
+
+end Hax64Ops
 
 end CatCrypt.Crypto.Hax
