@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot
 
 /-!
 # Bitwise OR and NOT value leaves — derived over the `SXor`/`SAnd` fragment
@@ -14,9 +15,9 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 fragment of `SExpr`, keeping the clean spec in the `BitVec 64` word algebra
 (`IsWordClean`, `SRwordBV`). The `SExpr` datatype (`Jasmin/LowCT.lean`) has **no**
 `SOr`/`SNot` arms — the two missing bitwise operations Keccak's `χ = a ^ (¬b & c)`
-and the rotate leaf's `|||`-join need. Rather than a shared IR/dialect extension,
-this module derives both from the covered fragment, so each still lands as a first
-class `corres_setExpr*` value leaf that reuses `corres_setExprBitwise` verbatim:
+and the rotate leaf's `|||`-join need. `SExprOrNot` expresses both over the covered
+fragment, so each lands as a `corres_setExpr*` value leaf that reuses
+`corres_setExprBitwise`:
 
 * **NOT** — `~~~x = x ^^^ allOnes`, the all-ones xor, an `SXor` node with an
   `SLit (2^64-1)` operand (`sNotExpr`).
@@ -39,48 +40,15 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
-/-! ## The all-ones xor identity -/
+/-! ## Word cleanliness of the derived expressions
 
-/-- The `SLit (2^64-1)` literal evaluates to the all-ones `BitVec 64`, and xoring a
-    word with it complements it: `w ^^^ (2^64-1) = ~~~w`. This is what makes the
-    `SXor`-with-all-ones node a faithful bitwise NOT in the word algebra. -/
-theorem wNotXorAllOnes (w : BitVec 64) :
-    w ^^^ BitVec.ofNat 64 (2 ^ 64 - 1) = ~~~ w := by
-  have hall : BitVec.ofNat 64 (2 ^ 64 - 1) = BitVec.allOnes 64 := by
-    apply BitVec.eq_of_toNat_eq
-    rw [BitVec.toNat_ofNat, BitVec.toNat_allOnes, Nat.mod_eq_of_lt (Nat.sub_lt (by positivity) Nat.one_pos)]
-  rw [hall]
-  exact BitVec.xor_allOnes
-
-/-! ## The derived NOT expression and its value -/
-
-/-- Derived bitwise NOT as an `SXor`-with-all-ones node: `~~~e = e ^^^ (2^64-1)`.
-    Stays inside the covered `SXor` fragment, so no new `SExpr` arm is needed. -/
-def sNotExpr (e : SExpr) : SExpr := .SXor e (.SLit (2 ^ 64 - 1))
-
-/-- `sNotExpr` computes the word complement: its `evalBV` is `~~~` of the operand's. -/
-theorem evalBV_sNotExpr (β : String → BitVec 64) (e : SExpr) :
-    SExpr.evalBV β (sNotExpr e) = ~~~ (SExpr.evalBV β e) := by
-  simp only [sNotExpr, SExpr.evalBV]
-  exact wNotXorAllOnes (SExpr.evalBV β e)
+`sNotExpr`, `sOrExpr` and their `evalBV` equations are in `SExprOrNot`. -/
 
 /-- `sNotExpr` preserves `IsWordClean`: the added `SLit (2^64-1)` operand is a legal
     (`< 2^64`) word-clean literal. -/
 theorem isWordClean_sNotExpr (e : SExpr) (he : IsWordClean e) :
     IsWordClean (sNotExpr e) :=
   ⟨he, Nat.sub_lt (by positivity) Nat.one_pos⟩
-
-/-! ## The derived OR expression and its value -/
-
-/-- Derived bitwise OR by De Morgan: `a ||| b = ~~~(~~~a &&& ~~~b)`, built from
-    `SAnd` and three `sNotExpr` nodes — all inside the covered fragment. -/
-def sOrExpr (a b : SExpr) : SExpr := sNotExpr (.SAnd (sNotExpr a) (sNotExpr b))
-
-/-- `sOrExpr` computes the word disjunction: its `evalBV` is `|||` of the operands'. -/
-theorem evalBV_sOrExpr (β : String → BitVec 64) (a b : SExpr) :
-    SExpr.evalBV β (sOrExpr a b) = SExpr.evalBV β a ||| SExpr.evalBV β b := by
-  simp only [sOrExpr, evalBV_sNotExpr, SExpr.evalBV]
-  rw [BitVec.not_and, BitVec.not_not, BitVec.not_not]
 
 /-- `sOrExpr` preserves `IsWordClean` when both operands are. -/
 theorem isWordClean_sOrExpr (a b : SExpr) (ha : IsWordClean a) (hb : IsWordClean b) :

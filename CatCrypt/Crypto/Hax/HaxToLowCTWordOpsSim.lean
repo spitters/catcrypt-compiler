@@ -766,6 +766,7 @@ structure NarrowBuiltins (w : Nat) (bi : Builtins) : Prop where
 theorem NarrowOp.lowersIn_sexpr {σ : SEnvScalar} (w : Nat) (op : NarrowOp) {ea eb : SExpr}
     (ha : LowersIn σ ea) (hb : LowersIn σ eb) : LowersIn σ (op.sexpr w ea eb) := by
   cases op
+  case or => exact ⟨⟨⟨⟨ha, trivial⟩, hb, trivial⟩, trivial⟩, trivial⟩
   all_goals first | exact ⟨⟨ha, hb⟩, trivial⟩ | exact ⟨⟨ha, trivial⟩, hb⟩
 
 /-- **Narrow word-call binding.** `let x = f(a, b)` for a narrow word call `f` of
@@ -809,7 +810,7 @@ theorem step_cast {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : 
         EnvRelW (env.extend x (.int ((natOf env a % 2 ^ w : Nat) : Int))) σ' (x :: S) A := by
   obtain ⟨_, haE, _⟩ := (h.word a ha).natOf_eq
   obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
-  have hw64 : w ≤ 64 := by rcases narrowCastOf_width hf with rfl | rfl <;> decide
+  have hw64 : w ≤ 64 := by rcases narrowCastOf_width hf with rfl | rfl | rfl <;> decide
   have hval := narrowMask_evalBV hw64 (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64)))
     (.SVar a)
   rw [hva] at hval

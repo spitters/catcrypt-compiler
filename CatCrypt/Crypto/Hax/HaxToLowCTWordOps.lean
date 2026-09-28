@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
+public import CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot
 
 /-!
 # Word operations of the hax front computed in the scalar heap
@@ -31,10 +32,11 @@ The scalar expressions are read in the wrapping `u64` semantics
 `SExpr.evalBV`, in which `SAdd`, `SSub` and `SMul` wrap modulo `2^64` as the
 Rust operations do.
 
-The `u8` and `u32` word calls (`narrowOpOf`) and the narrowing casts `cast#8`,
-`cast#32` (`narrowCastOf`) act on values held in `u64` slots: their scalar
-expressions are the `u64` operations masked to the width (`NarrowOp.sexpr`,
-`narrowMask`), and `scalarizeNarrowOps` lowers their bindings.
+The `u8`, `u16` and `u32` word calls and the `u64` bitwise OR (`narrowOpOf`) and
+the narrowing casts `cast#8`, `cast#16`, `cast#32` (`narrowCastOf`) act on values
+held in `u64` slots: their scalar expressions are the `u64` operations masked to
+the width (`NarrowOp.sexpr`, `narrowMask`), OR expressed over `SXor` and `SAnd`
+(`sOrExpr`), and `scalarizeNarrowOps` lowers their bindings.
 
 `fuseMulModIdiom` replaces the Rust modular-multiplication idiom
 `((a as u128) * (b as u128) % (m as u128)) as u64`, inline (`mulModChain`) or with
@@ -51,7 +53,8 @@ of the product of the Barrett reductions of `a` and `b`, exact for `1 < p < 2^32
   natural-number operations and their scalar expressions.
 * `scalarizeWordOps` — the pass on `LowCT`.
 * `NarrowOp`, `narrowOpOf`, `narrowCastOf`, `narrowMask`, `narrowOpSExpr` — the
-  `u8` and `u32` word calls and casts and their scalar expressions.
+  width-tagged word calls and casts of widths `8`, `16`, `32` (and OR at `64`)
+  and their scalar expressions.
 * `barrettRedSExpr`, `mulModSExpr` — reduction and modular multiplication by a
   constant modulus as scalar expressions.
 * `mulModChain`, `mulModLet`, `fuseMulModIdiom`, `MulModBuiltins` — the
@@ -65,7 +68,7 @@ of the product of the Barrett reductions of `a` and `b`, exact for `1 < p < 2^32
 * `wordOpSExpr_evalBV` — the scalar expression of a word call evaluates in
   `SExpr.evalBV` to the natural-number operation of the call on the values of
   its operands.
-* `NarrowOp.sexpr_evalBV`, `narrowMask_evalBV` — the same for the `u8` and `u32`
+* `NarrowOp.sexpr_evalBV`, `narrowMask_evalBV` — the same for the width-tagged
   operations and casts.
 * `barrett64_bound`, `barrettRedSExpr_evalBV`, `mulModSExpr_evalBV` — Barrett's
   estimate and the value of the modular scalar expressions.
@@ -253,9 +256,9 @@ def scalarizeWordOps : LowCT → LowCT
 
 /-! ### Word operations of the narrow widths -/
 
-/-- The two-operand operations of the narrow unsigned widths. -/
+/-- The two-operand operations of the unsigned widths held in `u64` slots. -/
 inductive NarrowOp where
-  | add | sub | mul | and | xor | shl | shr
+  | add | sub | mul | and | or | xor | shl | shr
   deriving DecidableEq, Repr
 
 /-- The natural-number operation of `op` at width `w`: the Rust `u<w>` operation
@@ -266,6 +269,7 @@ def NarrowOp.nat (w : Nat) : NarrowOp → Nat → Nat → Option Nat
   | .sub, a, b => some ((a % 2 ^ w + 2 ^ w - b % 2 ^ w) % 2 ^ w)
   | .mul, a, b => some ((a * b) % 2 ^ w)
   | .and, a, b => some ((a % 2 ^ w) &&& (b % 2 ^ w))
+  | .or, a, b => some ((a % 2 ^ w) ||| (b % 2 ^ w))
   | .xor, a, b => some ((a % 2 ^ w) ^^^ (b % 2 ^ w))
   | .shl, a, b => if b < w then some (((a % 2 ^ w) <<< b) % 2 ^ w) else none
   | .shr, a, b => if b < w then some ((a % 2 ^ w) >>> b) else none
@@ -281,43 +285,57 @@ def NarrowOp.sexpr (w : Nat) : NarrowOp → SExpr → SExpr → SExpr
   | .sub, a, b => narrowMask w (.SSub a b)
   | .mul, a, b => narrowMask w (.SMul a b)
   | .and, a, b => narrowMask w (.SAnd a b)
+  | .or, a, b => narrowMask w (SecureCompilation.Ascent.sOrExpr a b)
   | .xor, a, b => narrowMask w (.SXor a b)
   | .shl, a, b => narrowMask w (.SShl a b)
   | .shr, a, b => .SShr (narrowMask w a) b
 
-/-- The width and operation of a narrow word call. -/
+/-- The width and operation of a width-tagged word call: the `u8`, `u16` and
+    `u32` operations and the `u64` bitwise OR. -/
 def narrowOpOf : String → Option (Nat × NarrowOp)
   | "wrapping_add#8" => some (8, .add)
   | "wrapping_sub#8" => some (8, .sub)
   | "wrapping_mul#8" => some (8, .mul)
   | "BitAnd#8" => some (8, .and)
+  | "BitOr#8" => some (8, .or)
   | "BitXor#8" => some (8, .xor)
   | "Shl#8" => some (8, .shl)
   | "Shr#8" => some (8, .shr)
+  | "wrapping_add#16" => some (16, .add)
+  | "wrapping_sub#16" => some (16, .sub)
+  | "wrapping_mul#16" => some (16, .mul)
+  | "BitAnd#16" => some (16, .and)
+  | "BitOr#16" => some (16, .or)
+  | "BitXor#16" => some (16, .xor)
+  | "Shl#16" => some (16, .shl)
+  | "Shr#16" => some (16, .shr)
   | "wrapping_add#32" => some (32, .add)
   | "wrapping_sub#32" => some (32, .sub)
   | "wrapping_mul#32" => some (32, .mul)
   | "BitAnd#32" => some (32, .and)
+  | "BitOr#32" => some (32, .or)
   | "BitXor#32" => some (32, .xor)
   | "Shl#32" => some (32, .shl)
   | "Shr#32" => some (32, .shr)
+  | "BitOr#64" => some (64, .or)
   | _ => none
 
 /-- The width of a narrowing cast call. -/
 def narrowCastOf : String → Option Nat
   | "cast#8" => some 8
+  | "cast#16" => some 16
   | "cast#32" => some 32
   | _ => none
 
-/-- The narrow widths are `8` and `32`. -/
+/-- The widths of the width-tagged word calls are `8`, `16`, `32` and `64`. -/
 theorem narrowOpOf_width {f : String} {w : Nat} {op : NarrowOp}
-    (h : narrowOpOf f = some (w, op)) : w = 8 ∨ w = 32 := by
+    (h : narrowOpOf f = some (w, op)) : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64 := by
   unfold narrowOpOf at h
   split at h <;> cases h <;> simp
 
-/-- The narrowing casts are to `8` and `32` bits. -/
+/-- The narrowing casts are to `8`, `16` and `32` bits. -/
 theorem narrowCastOf_width {f : String} {w : Nat} (h : narrowCastOf f = some w) :
-    w = 8 ∨ w = 32 := by
+    w = 8 ∨ w = 16 ∨ w = 32 := by
   unfold narrowCastOf at h
   split at h <;> cases h <;> simp
 
@@ -332,7 +350,7 @@ theorem narrowMask_evalBV {w : Nat} (hw : w ≤ 64) (β : String → BitVec 64) 
 /-- The scalar expression of a narrow operation evaluates, in the wrapping `u64`
     semantics `SExpr.evalBV`, to the natural-number operation on the values of
     its operands. -/
-theorem NarrowOp.sexpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 32) (op : NarrowOp)
+theorem NarrowOp.sexpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (op : NarrowOp)
     {ea eb : SExpr} {r : Nat} (β : String → BitVec 64)
     (hr : op.nat w (ea.evalBV β).toNat (eb.evalBV β).toNat = some r) :
     ((op.sexpr w ea eb).evalBV β).toNat = r := by
@@ -345,11 +363,13 @@ theorem NarrowOp.sexpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 32) (op : NarrowOp)
     simp only [SExpr.evalBV, BitVec.toNat_add, Nat.mod_mod_of_dvd _ hdvd]
   · rw [narrowMask_evalBV hw64, ← hr]
     simp only [SExpr.evalBV, BitVec.toNat_sub]
-    rcases hw with rfl | rfl <;> omega
+    rcases hw with rfl | rfl | rfl | rfl <;> omega
   · rw [narrowMask_evalBV hw64, ← hr]
     simp only [SExpr.evalBV, BitVec.toNat_mul, Nat.mod_mod_of_dvd _ hdvd]
   · rw [narrowMask_evalBV hw64, ← hr]
     simp only [SExpr.evalBV, BitVec.toNat_and, Nat.and_mod_two_pow]
+  · rw [narrowMask_evalBV hw64, ← hr]
+    simp only [SecureCompilation.Ascent.evalBV_sOrExpr, BitVec.toNat_or, Nat.or_mod_two_pow]
   · rw [narrowMask_evalBV hw64, ← hr]
     simp only [SExpr.evalBV, BitVec.toNat_xor, Nat.xor_mod_two_pow]
   · split at hr
@@ -668,5 +688,6 @@ def mulModLetAt (m : String) (p : Nat) (x : String) (t : TowerType) : LowCT → 
     the variable `m` to the scalar assignment of `mulModSExpr p a b`; `p` is the
     value `m` holds. -/
 def scalarizeMulMod (m : String) (p : Nat) : LowCT → LowCT := mapLetZero (mulModLetAt m p)
+
 
 end CatCrypt.Crypto.Hax

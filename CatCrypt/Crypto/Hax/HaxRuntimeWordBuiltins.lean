@@ -22,8 +22,10 @@ below `2^64`, the bound every straight-line binding carries in `WBind.Ok`.
 * `hax64Builtins_wordBuiltins'` — `WordBuiltins' Hax.hax64Builtins`.
 * `hax64Builtins_mulHiBuiltins` — `MulHiBuiltins Hax.hax64Builtins`: the steps of
   the unfused multiply-high idiom and the fused `mulhi#64` run in the table.
-* `hax64Builtins_narrowBuiltins8`, `hax64Builtins_narrowBuiltins32` —
-  `NarrowBuiltins 8` and `NarrowBuiltins 32` of `Hax.hax64Builtins`.
+* `hax64Builtins_narrowBuiltins8`, `hax64Builtins_narrowBuiltins32`,
+  `hax64Builtins_narrowBuiltins64` — `NarrowBuiltins 8`, `NarrowBuiltins 32` and
+  `NarrowBuiltins 64` of `Hax.hax64Builtins`.  The table has no `u16` arms, so it
+  meets no `NarrowBuiltins 16`.
 * `hax64Builtins_mulModBuiltins` — `MulModBuiltins Hax.hax64Builtins`: the `u128`
   remainder and the fused `mulmod#64` run in the table.
 -/
@@ -40,10 +42,10 @@ open _root_.Hax (Value Builtins hax64Builtins hax64WordOps_wrapping_add
   hax64WordOps_array_update widthArrayOps_index_int widthArrayOps_array_update_int
   hax64Builtins_of_none u64BinOp_natCast hax64WordOps_rem hax64WordOps_mulmod hax64WordOps_cast8
   hax64WordOps_cast32 hax64WordOps_wrapping_add8 hax64WordOps_wrapping_sub8
-  hax64WordOps_wrapping_mul8 hax64WordOps_bitAnd8 hax64WordOps_bitXor8 hax64WordOps_shl8
-  hax64WordOps_shr8 hax64WordOps_wrapping_add32 hax64WordOps_wrapping_sub32
-  hax64WordOps_wrapping_mul32 hax64WordOps_bitAnd32 hax64WordOps_bitXor32 hax64WordOps_shl32
-  hax64WordOps_shr32)
+  hax64WordOps_wrapping_mul8 hax64WordOps_bitAnd8 hax64WordOps_bitOr8 hax64WordOps_bitXor8
+  hax64WordOps_shl8 hax64WordOps_shr8 hax64WordOps_wrapping_add32 hax64WordOps_wrapping_sub32
+  hax64WordOps_wrapping_mul32 hax64WordOps_bitAnd32 hax64WordOps_bitOr32 hax64WordOps_bitXor32
+  hax64WordOps_shl32 hax64WordOps_shr32 hax64WordOps u64BinOp)
 open CatCrypt.Crypto.Hax (wordOpNames wordOpNat MulHiBuiltins mulHiCallName sexprMulHiU_of_lt
   NarrowOp narrowOpOf narrowCastOf MulModBuiltins mulModCallName)
 
@@ -122,8 +124,8 @@ theorem hax64Builtins_narrowBuiltins8 : NarrowBuiltins 8 hax64Builtins where
     all_goals
       first
       | rw [hax64WordOps_wrapping_add8] | rw [hax64WordOps_wrapping_sub8]
-      | rw [hax64WordOps_wrapping_mul8] | rw [hax64WordOps_bitAnd8] | rw [hax64WordOps_bitXor8]
-      | rw [hax64WordOps_shl8] | rw [hax64WordOps_shr8]
+      | rw [hax64WordOps_wrapping_mul8] | rw [hax64WordOps_bitAnd8] | rw [hax64WordOps_bitOr8]
+      | rw [hax64WordOps_bitXor8] | rw [hax64WordOps_shl8] | rw [hax64WordOps_shr8]
       rw [u64BinOp_natCast hn hm]
       simp only [NarrowOp.nat] at hr
       first
@@ -137,6 +139,7 @@ theorem hax64Builtins_narrowBuiltins8 : NarrowBuiltins 8 hax64Builtins where
     split at hf <;> simp only [Option.some.injEq, reduceCtorEq] at hf
     · rw [hax64WordOps_cast8, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]; rfl
     · omega
+    · omega
 
 /-- **hax-lean's table meets the narrow contract at width `32`.** -/
 theorem hax64Builtins_narrowBuiltins32 : NarrowBuiltins 32 hax64Builtins where
@@ -149,8 +152,8 @@ theorem hax64Builtins_narrowBuiltins32 : NarrowBuiltins 32 hax64Builtins where
     all_goals
       first
       | rw [hax64WordOps_wrapping_add32] | rw [hax64WordOps_wrapping_sub32]
-      | rw [hax64WordOps_wrapping_mul32] | rw [hax64WordOps_bitAnd32] | rw [hax64WordOps_bitXor32]
-      | rw [hax64WordOps_shl32] | rw [hax64WordOps_shr32]
+      | rw [hax64WordOps_wrapping_mul32] | rw [hax64WordOps_bitAnd32] | rw [hax64WordOps_bitOr32]
+      | rw [hax64WordOps_bitXor32] | rw [hax64WordOps_shl32] | rw [hax64WordOps_shr32]
       rw [u64BinOp_natCast hn hm]
       simp only [NarrowOp.nat] at hr
       first
@@ -163,7 +166,30 @@ theorem hax64Builtins_narrowBuiltins32 : NarrowBuiltins 32 hax64Builtins where
     unfold hax64Builtins
     split at hf <;> simp only [Option.some.injEq, reduceCtorEq] at hf
     · omega
+    · omega
     · rw [hax64WordOps_cast32, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]; rfl
+
+/-- The `u64` bitwise OR of `hax64WordOps` on two `int` operands. -/
+theorem hax64WordOps_bitOr64 {a b : Int} : hax64WordOps "BitOr#64" [.int a, .int b] =
+    u64BinOp a b fun x y => some ((x % 2 ^ 64) ||| (y % 2 ^ 64)) := rfl
+
+/-- **hax-lean's table meets the width-tagged contract at width `64`**: the
+    only call of `narrowOpOf` at width `64` is the bitwise OR, and no narrowing
+    cast is to `64` bits. -/
+theorem hax64Builtins_narrowBuiltins64 : NarrowBuiltins 64 hax64Builtins where
+  op f op hf n m r hn hm hr := by
+    unfold narrowOpOf at hf
+    unfold hax64Builtins
+    split at hf <;> simp only [Option.some.injEq, Prod.mk.injEq, reduceCtorEq] at hf
+    all_goals obtain ⟨hw, rfl⟩ := hf
+    all_goals try (exfalso; omega)
+    rw [hax64WordOps_bitOr64, u64BinOp_natCast hn hm]
+    simp only [NarrowOp.nat] at hr
+    cases hr
+    rfl
+  cast f hf n := by
+    unfold narrowCastOf at hf
+    split at hf <;> simp only [Option.some.injEq, reduceCtorEq] at hf <;> omega
 
 /-- **hax-lean's table runs the modular-multiplication idiom**: the `u128`
     remainder and the fused `mulmod#64`. -/
