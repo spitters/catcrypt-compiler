@@ -23,6 +23,7 @@ CatCrypt.Crypto.Bridges.Transfer.ForallFoldTactic
 CatCrypt.Crypto.Hash.FullSecurity
 CatCrypt.Crypto.Hash.KangarooTwelve
 CatCrypt.Crypto.Hax.HaxBorrowAlignment
+CatCrypt.Crypto.Hax.HaxExitCT
 CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeRewrites
@@ -290,7 +291,9 @@ CatCrypt.Crypto.SecureCompilation.BignumAddEmit
 CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
+CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
 CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
+CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2bTie
@@ -485,7 +488,6 @@ CatCrypt.Crypto.SecureCompilation.SecretIndexLinearScan
 CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
 CatCrypt.Crypto.SecureCompilation.SignatureProtocolKernels
 CatCrypt.Crypto.SecureCompilation.SipHashRoundGoldenPath
-CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
 CatCrypt.Crypto.SecureCompilation.Speck128GoldenPath
 CatCrypt.Crypto.SecureCompilation.SpeculativeCTStoreBufferPasses
 CatCrypt.Crypto.SecureCompilation.SqisignFieldMulMontFront
