@@ -1742,7 +1742,7 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
     1. *(correct, §12)* running the linearizer-emitted `.var`-chain
        `straightOpsMem` on the encoded argument valuation and decoding the result
        register at width `w` yields exactly `com.denote V`; and
-    2. *(robust / constant-time, §12)* the leakage trace `lsemLeakMem
+    2. *(robust, syntactic leak model, §12)* the leakage trace `lsemLeakMem
        (straightOpsMem …)` is the **same from the encodings of any two input
        valuations** — the attacker's view is a function of the emitted instruction
        list alone, never of a register value, never of a loaded/stored memory
@@ -1772,7 +1772,13 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
     constant-time. That residual is outside this syntactic leak model and is
     flagged here, not hidden; the in-range/total addressing (`stackGet`/`stackSet`
     reduce `% n`) makes the functional placement sound for any index. The
-    `lsem→bytes` encoder and Sail tables remain the declared trusted base. -/
+    `lsem→bytes` encoder and Sail tables remain the declared trusted base.
+
+    The leak function reads no register value (an indexed access leaks the index
+    register's name, not its value), so conjunct 2 holds for every program of the
+    fragment and is not constant-time evidence. Constant-time evidence for emitted
+    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
+    gathered blocks) and the per-kernel `blockLeak` theorems. -/
 theorem owned_lsem_correct_and_robust_mem {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarMemN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :

@@ -1342,7 +1342,7 @@ theorem lsemLeakMC_straightOps_state_independent {Γ : Ctxt jasminDialect}
     1. *(correct, §10)* running the linearizer-emitted `.var`-chain `straightOpsMC`
        on the encoded argument valuation and decoding the result register at width
        `w` yields exactly `com.denote V`; and
-    2. *(robust / constant-time, §10)* the leakage trace `lsemLeakMC
+    2. *(robust, syntactic leak model, §10)* the leakage trace `lsemLeakMC
        (straightOpsMC …)` is the **same from the encodings of any two input
        valuations** — the attacker's view (including, for the carry chain, the
        carry register *name* threaded between limbs) is a function of the emitted
@@ -1358,7 +1358,13 @@ theorem lsemLeakMC_straightOps_state_independent {Γ : Ctxt jasminDialect}
     widening-multiply / carry-chain trio — `addCarryHi` being the second
     **width-mixing** op (after `select`): `BitVec w` data words and a `BitVec 1`
     carry-out in one instruction. The `lsem→bytes` encoder and Sail tables remain
-    the declared trusted base. -/
+    the declared trusted base.
+
+    The leak function reads no register value (an indexed access leaks the index
+    register's name, not its value), so conjunct 2 holds for every program of the
+    fragment and is not constant-time evidence. Constant-time evidence for emitted
+    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
+    gathered blocks) and the per-kernel `blockLeak` theorems. -/
 theorem owned_lsem_correct_and_robust_mulcarry {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarMulCarryN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :

@@ -1210,7 +1210,7 @@ theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
     1. *(correct, §7)* running the linearizer-emitted `.var`-chain
        `straightOpsLeaf` on the encoded argument valuation and decoding the result
        register at width `w` yields exactly `com.denote V`; and
-    2. *(robust / constant-time, §7)* the leakage trace `lsemLeakLeaf
+    2. *(robust, syntactic leak model, §7)* the leakage trace `lsemLeakLeaf
        (straightOpsLeaf …)` is the **same from the encodings of any two input
        valuations** — the attacker's view is a function of the emitted instruction
        list alone, never of a register value, the descriptor width, or the leaf
@@ -1228,7 +1228,13 @@ theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
     `.fst`-projection is exactly `straightOpsMC`), so the emitted **bytes are
     unchanged**; the result
     width `w'` is the typed-step descriptor, never a wire annotation. The
-    `lsem→bytes` encoder and Sail tables remain the declared trusted base. -/
+    `lsem→bytes` encoder and Sail tables remain the declared trusted base.
+
+    The leak function reads no register value (an indexed access leaks the index
+    register's name, not its value), so conjunct 2 holds for every program of the
+    fragment and is not constant-time evidence. Constant-time evidence for emitted
+    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
+    gathered blocks) and the per-kernel `blockLeak` theorems. -/
 theorem owned_lsem_correct_and_robust_leaf {leaf : LeafEnvN} (hleaf : LeafAgreesN leaf)
     {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarLeafN com) {w : Nat} (hw : t = .reg w)

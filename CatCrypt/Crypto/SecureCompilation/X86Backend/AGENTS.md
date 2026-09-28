@@ -97,7 +97,7 @@ declares into `X86Backend.Jasmin`; `Model.lean`, `Lowering.lean` and
 | Declaration or module | Statement |
 |---|---|
 | `MachineConstantTime.blockLeak` | The machine leakage trace: branch decisions and memory addresses |
-| `MachineConstantTime.owned_ct_control_flow` | Blocks of public-guard conditionals and literal-count loops leak the same trace from states agreeing on public registers |
+| `MachineConstantTime.owned_ct_control_flow` | Blocks of the model IR `OwnedCF` built from public-guard conditionals and literal-count loops leak the same trace from states agreeing on public registers; `OwnedCF` is not tied to `Lcmd` or bytes, so no emitted branch is covered |
 | `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` | A directly addressed export that gathers to an instruction block has a state-independent `blockLeak` |
 | `LcmdToOwnedCF.lcmdToOwnedCF` | Recognises exported counted loops and branches as `OwnedCF` |
 | `ScalarCompileCorrect.scalarCompile_correct`, `scalarCompileAlloc_constant_time` | The straight-line scalar fragment |

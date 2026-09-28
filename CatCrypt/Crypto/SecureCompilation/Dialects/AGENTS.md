@@ -109,7 +109,8 @@ legality check consumed by `../X86Backend/ComLegalityToGather*.lean`.
 - `CryptoDialectLeakTraceValued.lean`: the value-carrying trace `Com.leakTraceV`,
   with `Com.leakTraceV_value_dependent`.
 - `CryptoDialectLeakFactoring.lean`, `CryptoDialectVerifiedMiddle.lean`
-  (`RHP_leakage_verified_middle_dialect`), `ConstantTimeTrait.lean`.
+  (`RHP_leakage_verified_middle_dialect`), `ConstantTimeTrait.lean`: structural
+  statements over the valuation-free trace; not CT evidence.
 - `CryptoDialectSecurity.lean` (`comSdist`), `CryptoDialectSecurityNative.lean`,
   `CatCryptDialectSP.lean` (the `SPComp` interpretation), `CryptoDialectRelCompile.lean`,
   `OtpDialectSecurity.lean`, `MoreDialectSecurity*.lean`.

@@ -22,7 +22,7 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
 | `VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional` | LowCT → Jasmin dialect | `IsCoveredSCtl`: straight-line word code, counted loops, conditionals |
 | `ScalarLinX86Demo.com_x86_e2e`, `ScalarLinNeutralDemo.com_arm_e2e`, `MultiBackendDemo.com_riscv_e2e` | Jasmin dialect → x86-64, AArch64, RV64 instructions | straight-line `ComOK` programs over 64-bit registers |
 | `VIR.JasminLsemMemSourceTieWhileUncond.whileMem_export_faithful_comL_uncond` | emitted loop → linear machine model with memory | data-dependent countdown loops |
-| `X86Backend.MachineConstantTime.owned_ct_control_flow` | x86-64 leakage trace | public guards and literal trip counts |
+| `X86Backend.MachineConstantTime.owned_ct_control_flow` | leakage trace of the model IR `OwnedCF` (no emitted branch is covered) | public guards and literal trip counts |
 | `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` | LowCT constant-time analysis | programs `cmdCT` accepts |
 | `Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct` | x86-64 bytes → Edwards addition | the imported `ed25519_point_add` block |
 
@@ -77,13 +77,19 @@ paths to `CatCrypt/Crypto/SecureCompilation/`, unless they begin with `CatCrypt`
   an exported function body with direct addressing that gathers to an x86 instruction block leaks the same
   machine trace (branch decisions and memory addresses) from any two states.
   `VIR.JasminLsemRobust.owned_lsem_correct_and_robust_straightline` pairs functional
-  correctness of the linearizer with a state-independent leakage trace.
-- x86-64, structured control flow. `owned_ct_control_flow`: a block built from
-  conditionals with public guards and loops with literal trip counts leaks the same
-  trace from any two states that agree on the public registers.
+  correctness of the linearizer with a leakage trace that reads no register value; the
+  trace equality holds for every program of the fragment and is not constant-time
+  evidence.
+- x86-64, structured control flow, on a model IR. `owned_ct_control_flow`: a block of
+  the model IR `OwnedCF` built from conditionals with public guards and loops with
+  literal trip counts leaks the same trace from any two states that agree on the public
+  registers. `OwnedCF` is not tied to the emitted `Lcmd` or to bytes, so no emitted
+  branch is covered.
 - Source. `cmdCT_sound`: a program accepted by the analysis `cmdCT`, run from two
   public-equivalent states, reaches public-equivalent states, under the per-leaf
-  assumption `LeafCTAssumption` and the hypothesis `CMOVInvariant`. `cmdCT` accepts a
+  assumption `LeafCTAssumption` and the hypothesis `CMOVInvariant` (which holds for a
+  select only when its two sources are the same slot; `cmdCT` admits no computation
+  on secrets). `cmdCT` accepts a
   data-dependent loop exactly when its guard is public
   (`LowCTVartimeLeak.cmdCT_RWhileNz_iff`); for example, it accepts the
   early-terminating modular inverse of RSA verification under an all-public level

@@ -1032,7 +1032,7 @@ theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
     1. *(correct, §8)* running the linearizer-emitted `.var`-chain
        `straightOpsCast` on the encoded argument valuation and decoding the result
        register at width `w` yields exactly `com.denote V`; and
-    2. *(robust / constant-time, §8)* the leakage trace `lsemLeakCast
+    2. *(robust, syntactic leak model, §8)* the leakage trace `lsemLeakCast
        (straightOpsCast …)` is the **same from the encodings of any two input
        valuations** — the attacker's view is a function of the emitted instruction
        list alone, never of a register value (and never of the cast descriptor
@@ -1049,7 +1049,13 @@ theorem lsemLeakCast_straightOps_state_independent {Γ : Ctxt jasminDialect}
     never a wire annotation. The first capstone covering `castW` — the **third**
     width-mixing op (after `select` and `addCarryHi`): input `BitVec w`,
     output `BitVec w'` (in general `w ≠ w'`) in one instruction. The `lsem→bytes`
-    encoder and Sail tables remain the declared trusted base. -/
+    encoder and Sail tables remain the declared trusted base.
+
+    The leak function reads no register value (an indexed access leaks the index
+    register's name, not its value), so conjunct 2 holds for every program of the
+    fragment and is not constant-time evidence. Constant-time evidence for emitted
+    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
+    gathered blocks) and the per-kernel `blockLeak` theorems. -/
 theorem owned_lsem_correct_and_robust_cast {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarCastN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :

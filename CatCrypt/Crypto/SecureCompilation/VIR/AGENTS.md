@@ -89,7 +89,8 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
   `JasminLsemShift.lean`, `JasminLsemMulCarry.lean`, `JasminLsemSimd.lean`,
   `JasminLsemWidthN.lean`: further fragments. `LsemPortAll.lean` imports them for the
   rot-guard.
-  `JasminLsemRobust.lean`: `owned_lsem_correct_and_robust_straightline`.
+  `JasminLsemRobust.lean`: `owned_lsem_correct_and_robust_straightline` (its leak
+  model reads no register value; not CT evidence).
 - `JasmincSemAlignment.lean`, `JasmincWArrayAlignment.lean`: alignment with Jasmin's
   Coq `psem`. `FrontControlLsem.lean`, `FrontWhileLsem.lean`,
   `GoldenPathLsemFaithful.lean`: front control flow and golden-path exports against
@@ -139,7 +140,9 @@ literal limb stores, selections within one tower type and admitted calls; it exc
   (`robustCTPreservation_ctx_image_uncond`), `RobustSafetyContext.lean`.
 - `RobustCompilationPipeline.lean`: `JasminVerifiedCompiler` and
   `RobustCompilationPipeline.robustCompilation_source_to_x86`, stated for the lattice
-  dialect with the x86 observable and constant-time predicate as parameters.
+  dialect with the x86 observable and constant-time predicate as parameters; on the
+  owned instance the predicate is `True`, so the theorem carries no constant-time
+  content for the owned backend.
   `OwnedX86RobustInstance.lean`: `ownedJasminVerifiedCompiler`.
 - `CTPredicate.lean`, `JasminCTPredicate.lean`, `MaskingPredicate.lean`,
   `CtPreservationNewTransforms.lean`, `ThirCTSafe.lean`, `JForProgCT.lean`.

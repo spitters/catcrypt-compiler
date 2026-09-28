@@ -14,7 +14,7 @@ them.
 | Lattice route | [`latticeNttMul_compile_correct`](#lattice-route), [`robustCompilation_source_to_x86`](#lattice-route) |
 | Machine code | [`com_x86_e2e`, `com_arm_e2e`, `com_riscv_e2e`](#machine-code) |
 | Emitted loops | [`loopMem_export_faithful_comL_uncond`](#emitted-loops) and five siblings |
-| Constant time | [`owned_ct_control_flow`, `toLprogPhysAbi_gather_constant_time`, `cmdCT_sound`](#constant-time) |
+| Constant time | [`toLprogPhysAbi_gather_constant_time`, `owned_ct_control_flow` (model IR; no emitted branch is covered), `cmdCT_sound`](#constant-time) |
 | Ascent on imported and shipped code | [`paShippedBytes_correct`](#ascent-on-imported-and-shipped-code) and three siblings |
 
 ## Dialect lowering
@@ -81,7 +81,16 @@ inverse as the identity (`VIR/LatticeDialect.lean`).
 lattice-dialect program and valuation, composed with an x86 compiler given as a
 `JasminVerifiedCompiler` record (observable, behaviour, constant-time predicate): the
 x86 observable equals the decoded source denotation, and the compiled program
-satisfies the record's constant-time predicate. Hypotheses: leaf agreement
+satisfies the record's constant-time predicate `x86CTSafe`. The predicate and the
+implication `ctPreserve` are fields of the record, supplied by the caller; the
+Com-level premise (`robustCTPreservation_uncond`) states that the lowered program
+contains no stack load or store, which holds for every lattice-dialect program
+because every lowered operation is an opaque `extCall`. On the owned instance
+(`OwnedX86RobustInstance.ownedJasminVerifiedCompiler`) the predicate is `True`, so
+the theorem carries no constant-time content for the owned backend; constant-time
+evidence for emitted code is `EmitCtGate.emitChecked_gather_constant_time` and
+`AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line gathered
+blocks) and the per-kernel `blockLeak` theorems. Hypotheses: leaf agreement
 `LeafAgrees`, injectivity of `freshName` and of the parameter map.
 
 ## Machine code
@@ -118,16 +127,19 @@ equates the halting state with the source denotation.
 
 ## Constant time
 
-- `X86Backend.MachineConstantTime.owned_ct_control_flow`: a block of conditionals
-  with public guards and loops with literal trip counts leaks the same machine trace
-  (branch decisions and memory addresses) from any two states that agree on the
-  public registers.
+- `X86Backend.MachineConstantTime.owned_ct_control_flow`: a block of the model IR
+  `OwnedCF` built from conditionals with public guards and loops with literal trip
+  counts leaks the same trace (branch decisions and memory addresses) from any two
+  states that agree on the public registers. `OwnedCF` is not tied to the emitted
+  `Lcmd` or to bytes, so no emitted branch is covered.
 - `X86Backend.AllocCTPreservation.toLprogPhysAbi_gather_constant_time`: an exported
   function body with direct addressing that gathers to an x86 instruction block leaks
   the same trace from any two states.
 - `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` (`CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean`):
   a program accepted by `cmdCT`, run from two public-equivalent states, reaches
   public-equivalent states, under `LeafCTAssumption` and `CMOVInvariant`.
+  `CMOVInvariant` holds for a select only when its two sources are the same slot, and
+  `cmdCT` admits no computation on secrets.
 
 ## Ascent on imported and shipped code
 

@@ -127,7 +127,7 @@ fragment and hypotheses of each.
 | Lattice route and robust compilation | `VIR.CompilerCorrectness.latticeNttMul_compile_correct`, `VIR.RobustCompilationPipeline.robustCompilation_source_to_x86` | `VIR/` |
 | Straight-line machine code per backend | `ScalarLinX86Demo.com_x86_e2e`, `ScalarLinNeutralDemo.com_arm_e2e`, `MultiBackendDemo.com_riscv_e2e` | top level |
 | Register-allocation store simulation | `X86Backend.ToLprogFaithfulAssembled.toLprogPhysAbi_faithful_uniform` | `X86Backend/` |
-| Machine constant time | `X86Backend.AllocCTPreservation.toLprogPhysAbi_gather_constant_time`, `X86Backend.MachineConstantTime.owned_ct_control_flow` | `X86Backend/` |
+| Machine constant time | `X86Backend.AllocCTPreservation.toLprogPhysAbi_gather_constant_time`, `X86Backend.MachineConstantTime.owned_ct_control_flow` (on the model IR `OwnedCF`; no emitted branch is covered) | `X86Backend/` |
 
 ## Facts that are easy to misread
 

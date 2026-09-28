@@ -872,7 +872,7 @@ theorem lsemLeakSh_straightOps_state_independent {Γ : Ctxt jasminDialect}
     1. *(correct, §10)* running the linearizer-emitted **structured** `.var`-chain
        `straightOpsShift` on the encoded argument valuation and decoding the result
        register at width `w` yields exactly `com.denote V`; and
-    2. *(robust / constant-time, §10)* the leakage trace `lsemLeakSh
+    2. *(robust, syntactic leak model, §10)* the leakage trace `lsemLeakSh
        (straightOpsShift …)` is the **same from the encodings of any two input
        valuations** — the attacker's view (including, for a shift, the source
        register *name* and the public compile-time count) is a function of the
@@ -885,7 +885,13 @@ theorem lsemLeakSh_straightOps_state_independent {Γ : Ctxt jasminDialect}
     4 hit (recovering `n` by parsing `toString n` out of the mnemonic) is gone, and
     the emitted **bytes are unchanged** (the structured form is the one the
     renderer always rendered). The `lsem→bytes` encoder and Sail tables remain the
-    declared trusted base. First capstone covering the immediate shifts. -/
+    declared trusted base. First capstone covering the immediate shifts.
+
+    The leak function reads no register value (an indexed access leaks the index
+    register's name, not its value), so conjunct 2 holds for every program of the
+    fragment and is not constant-time evidence. Constant-time evidence for emitted
+    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
+    gathered blocks) and the per-kernel `blockLeak` theorems. -/
 theorem owned_lsem_correct_and_robust_shift {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarShiftN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :
