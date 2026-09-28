@@ -3425,10 +3425,11 @@ theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
   | _ => exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)
 
 /-- The value a function returns under the result placement `R`: the payload of an early
-    exit decoded in the scalar result slot, or the final value in agreement with the result
-    slot of `R` (`resultAgreesT`). -/
+    exit decoded in the scalar result slot or in agreement with the result slots of `R`,
+    or the final value in agreement with the result slots of `R` (`resultAgreesT`). -/
 def outcomeAgreesT (br : ValueTowerBridge) (R : ExitRes) : Outcome → RustState → Prop
-  | .val (.controlFlow true v), rs => valueToScalar v = some (rs.rsScalar exitResName)
+  | .val (.controlFlow true v), rs =>
+      valueToScalar v = some (rs.rsScalar exitResName) ∨ resultAgreesT br R v rs
   | .val v, rs => resultAgreesT br R v rs
   | _, _ => False
 
@@ -3438,7 +3439,10 @@ theorem outcomeAgreesT_none (br : ValueTowerBridge) (o : Outcome) (rs : RustStat
     outcomeAgreesT br .scalar o rs ↔ outcomeScalar o = some (rs.rsScalar exitResName) := by
   rcases o with v | _ | _ | _ | _
   · cases v with
-    | controlFlow k w => cases k <;> exact Iff.rfl
+    | controlFlow k w =>
+      cases k
+      · exact Iff.rfl
+      · exact or_self_iff
     | _ => exact Iff.rfl
   all_goals simp [outcomeAgreesT, outcomeScalar]
 
@@ -3485,7 +3489,7 @@ theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
             (RustExec.seq _ _ _ _ _ hex
               (RustExec.ifTrue _ _ _ _ _ 1 h1 (by decide) (RustExec.scalarSetExpr _ _ _)))), ?_⟩
         simp only [outcomeAgreesT, rsScalar_rsSetScalar, if_true]
-        exact hw
+        exact Or.inl hw
     | _ => simp at hcf
 
 /-- **Function-level simulation of the typed lowering.**  For a function body in the
