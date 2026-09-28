@@ -40,8 +40,8 @@ retyped shapes.
 * `typeWordArrays` — the retyping of the array accesses.
 * `LowersIn` — the scalar expressions `semLowerSExpr` lowers on a scalar
   environment.
-* `NarrowBuiltins w` — the facts a builtin table evaluates the `u<w>` word calls
-  and the narrowing casts to `w` bits by.
+* `NarrowBuiltins w` — the facts a builtin table evaluates the `u<w>` word calls,
+  the casts to `w` bits and the complements `Not#w` by.
 
 ## Main results
 
@@ -57,9 +57,10 @@ retyped shapes.
 * `semLowerSExpr_of_lowersIn`, `step_scalarSetExpr` — an accepted scalar
   expression lowers, binding only temporaries, and its assignment preserves
   `EnvRelW`.
-* `step_narrow`, `step_cast`, `step_mulMod` — one binding of a narrow word call,
-  a narrowing cast or `mulmod#64` preserves `EnvRelW`, with the hax run and the
-  `semScalar` run each reduced to the run of the continuation.
+* `step_narrow`, `step_cast`, `step_not`, `step_mulMod` — one binding of a
+  narrow word call (the rotations among them), a cast, a complement or
+  `mulmod#64` preserves `EnvRelW`, with the hax run and the `semScalar` run each
+  reduced to the run of the continuation.
 -/
 
 @[expose] public section
@@ -754,19 +755,39 @@ theorem lowersIn_word {env : Env} {σ : SEnvScalar} {S : List String} {A : List 
 
 /-- The facts a builtin table evaluates the narrow word calls of width `w` by:
     every call of `narrowOpOf` at width `w` on two words below `2^64` returns
-    its natural-number operation, and every narrowing cast to `w` bits returns
-    its operand modulo `2^w`. -/
+    its natural-number operation, every cast to `w` bits returns its operand
+    modulo `2^w`, and every complement `Not#w` of a word below `2^64` returns
+    `2^w - 1` minus the word modulo `2^w`. -/
 structure NarrowBuiltins (w : Nat) (bi : Builtins) : Prop where
   op : ∀ (f : String) (op : NarrowOp), narrowOpOf f = some (w, op) → ∀ n m r : Nat,
     n < 2 ^ 64 → m < 2 ^ 64 → op.nat w n m = some r → bi f [.int n, .int m] = some (.int r)
   cast : ∀ f : String, narrowCastOf f = some w → ∀ n : Nat,
     bi f [.int n] = some (.int ((n % 2 ^ w : Nat) : Int))
+  not : ∀ f : String, narrowNotOf f = some w → ∀ n : Nat, n < 2 ^ 64 →
+    bi f [.int n] = some (.int ((2 ^ w - 1 - n % 2 ^ w : Nat) : Int))
+
+/-- A masked accepted scalar expression is accepted. -/
+theorem lowersIn_narrowMask {σ : SEnvScalar} (w : Nat) {e : SExpr} (he : LowersIn σ e) :
+    LowersIn σ (narrowMask w e) := ⟨he, trivial⟩
+
+/-- The complement of an accepted scalar expression is accepted. -/
+theorem lowersIn_sNotExpr {σ : SEnvScalar} {e : SExpr} (he : LowersIn σ e) :
+    LowersIn σ (SecureCompilation.Ascent.sNotExpr e) := ⟨he, trivial⟩
+
+/-- The disjunction of two accepted scalar expressions is accepted. -/
+theorem lowersIn_sOrExpr {σ : SEnvScalar} {a b : SExpr} (ha : LowersIn σ a) (hb : LowersIn σ b) :
+    LowersIn σ (SecureCompilation.Ascent.sOrExpr a b) :=
+  lowersIn_sNotExpr (σ := σ) (e := .SAnd _ _) ⟨lowersIn_sNotExpr ha, lowersIn_sNotExpr hb⟩
 
 /-- The scalar expression of a narrow operation on accepted operands is accepted. -/
 theorem NarrowOp.lowersIn_sexpr {σ : SEnvScalar} (w : Nat) (op : NarrowOp) {ea eb : SExpr}
     (ha : LowersIn σ ea) (hb : LowersIn σ eb) : LowersIn σ (op.sexpr w ea eb) := by
   cases op
-  case or => exact ⟨⟨⟨⟨ha, trivial⟩, hb, trivial⟩, trivial⟩, trivial⟩
+  case or => exact lowersIn_narrowMask w (lowersIn_sOrExpr ha hb)
+  case rotr | rotl =>
+    have hx := lowersIn_narrowMask (σ := σ) w ha
+    have hk : LowersIn σ (narrowAmt w eb) := ⟨hb, trivial⟩
+    exact lowersIn_narrowMask w (lowersIn_sOrExpr ⟨hx, hk⟩ ⟨hx, trivial, hk⟩)
   all_goals first | exact ⟨⟨ha, hb⟩, trivial⟩ | exact ⟨⟨ha, trivial⟩, hb⟩
 
 /-- **Narrow word-call binding.** `let x = f(a, b)` for a narrow word call `f` of
@@ -810,7 +831,7 @@ theorem step_cast {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : 
         EnvRelW (env.extend x (.int ((natOf env a % 2 ^ w : Nat) : Int))) σ' (x :: S) A := by
   obtain ⟨_, haE, _⟩ := (h.word a ha).natOf_eq
   obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
-  have hw64 : w ≤ 64 := by rcases narrowCastOf_width hf with rfl | rfl | rfl <;> decide
+  have hw64 : w ≤ 64 := by rcases narrowCastOf_width hf with rfl | rfl | rfl | rfl <;> decide
   have hval := narrowMask_evalBV hw64 (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64)))
     (.SVar a)
   rw [hva] at hval
@@ -818,6 +839,32 @@ theorem step_cast {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : 
       (by simp [haE]) (hbi.cast f hf _), ?_⟩
   exact step_scalarSetExpr h hxT hxA (se := narrowMask w (.SVar a)) ⟨hla, trivial⟩
     (hval ▸ BitVec.isLt _) hval bodyC
+
+/-- **Complement binding.** `let x = f(a)` for a complement `f = Not#w` of a
+    related word runs in hax to the binding of `x` to `2^w - 1` minus the word
+    modulo `2^w`, and its lowering to a scalar environment related to it with
+    `x` added. -/
+theorem step_not {w : Nat} {bi : Builtins} (hbi : NarrowBuiltins w bi) (fuel : Nat)
+    {env : Env} {σ : SEnvScalar} {S : List String} {A : List (String × Nat)}
+    (h : EnvRelW env σ S A) {x f a : String} (hf : narrowNotOf f = some w) (ha : a ∈ S)
+    (hax : a ≠ x) (hxT : ¬ isTmpName x) (hxA : ∀ p ∈ A, p.1 ≠ x) (body : ImpExpr)
+    (bodyC : LowCT) :
+    (denote bi fuel (.letBind x (.app f [.var a]) body)).run env =
+        (denote bi fuel body).run
+          (env.extend x (.int ((2 ^ w - 1 - natOf env a % 2 ^ w : Nat) : Int))) ∧
+      ∃ σ', semScalar (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (narrowNotSExpr w (.SVar a)))
+          bodyC)) σ = semScalar bodyC σ' ∧
+        EnvRelW (env.extend x (.int ((2 ^ w - 1 - natOf env a % 2 ^ w : Nat) : Int))) σ'
+          (x :: S) A := by
+  obtain ⟨haL, haE, _⟩ := (h.word a ha).natOf_eq
+  obtain ⟨hla, hva⟩ := lowersIn_word h ha hax
+  have hval := narrowNotSExpr_evalBV (narrowNotOf_width hf)
+    (envReader (σ.upd x (t := .sword 64) (0 : BitVec 64))) (.SVar a)
+  rw [hva] at hval
+  refine ⟨denote_letBind_app_run bi fuel x f [a] [.int (natOf env a)] _ body env
+      (by simp [haE]) (hbi.not f hf _ haL), ?_⟩
+  exact step_scalarSetExpr h hxT hxA (se := narrowNotSExpr w (.SVar a))
+    (lowersIn_narrowMask w (lowersIn_sNotExpr hla)) (hval ▸ BitVec.isLt _) hval bodyC
 
 /-! ### Modular multiplication by a constant modulus -/
 

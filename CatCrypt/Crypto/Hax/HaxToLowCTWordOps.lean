@@ -32,11 +32,17 @@ The scalar expressions are read in the wrapping `u64` semantics
 `SExpr.evalBV`, in which `SAdd`, `SSub` and `SMul` wrap modulo `2^64` as the
 Rust operations do.
 
-The `u8`, `u16` and `u32` word calls and the `u64` bitwise OR (`narrowOpOf`) and
-the narrowing casts `cast#8`, `cast#16`, `cast#32` (`narrowCastOf`) act on values
-held in `u64` slots: their scalar expressions are the `u64` operations masked to
-the width (`NarrowOp.sexpr`, `narrowMask`), OR expressed over `SXor` and `SAnd`
-(`sOrExpr`), and `scalarizeNarrowOps` lowers their bindings.
+The `u8`, `u16`, `u32` and `usize` word calls, the rotations at every width and
+the `u64` bitwise OR (`narrowOpOf`), the casts to at most `64` bits
+(`narrowCastOf`) and the complements `Not#w` (`narrowNotOf`) act on values held
+in `u64` slots: their scalar expressions are the `u64` operations masked to the
+width (`NarrowOp.sexpr`, `narrowMask`), OR and NOT expressed over `SXor` and
+`SAnd` (`sOrExpr`, `sNotExpr`), a rotation as the OR of two shifts of the masked
+operand by the amount modulo the width (`narrowRotSExpr`), and
+`scalarizeNarrowIn` lowers their bindings.  A cast is lowered only when its
+operand is a name the pass knows to hold a word below `2^64` (`bindsWord`): the
+source width of a cast is not in its name, and a `u128` operand is not held in a
+`u64` slot.
 
 `fuseMulModIdiom` replaces the Rust modular-multiplication idiom
 `((a as u128) * (b as u128) % (m as u128)) as u64`, inline (`mulModChain`) or with
@@ -52,9 +58,12 @@ of the product of the Barrett reductions of `a` and `b`, exact for `1 < p < 2^32
 * `wordOpNames`, `wordOpNat`, `wordOpSExpr` — the word calls, their
   natural-number operations and their scalar expressions.
 * `scalarizeWordOps` — the pass on `LowCT`.
-* `NarrowOp`, `narrowOpOf`, `narrowCastOf`, `narrowMask`, `narrowOpSExpr` — the
-  width-tagged word calls and casts of widths `8`, `16`, `32` (and OR at `64`)
-  and their scalar expressions.
+* `NarrowOp`, `narrowOpOf`, `narrowCastOf`, `narrowNotOf`, `narrowMask`,
+  `narrowAmt`, `narrowRotSExpr`, `narrowNotSExpr`, `narrowOpSExpr` — the
+  width-tagged word calls, casts and complements and their scalar expressions.
+* `wordResultCall`, `bindsWord`, `narrowUnSExpr`, `narrowLetIn`,
+  `scalarizeNarrowIn` — the names known to hold words, and the width-tracking
+  lowering of the narrow bindings.
 * `barrettRedSExpr`, `mulModSExpr` — reduction and modular multiplication by a
   constant modulus as scalar expressions.
 * `mulModChain`, `mulModLet`, `fuseMulModIdiom`, `MulModBuiltins` — the
@@ -68,8 +77,12 @@ of the product of the Barrett reductions of `a` and `b`, exact for `1 < p < 2^32
 * `wordOpSExpr_evalBV` — the scalar expression of a word call evaluates in
   `SExpr.evalBV` to the natural-number operation of the call on the values of
   its operands.
-* `NarrowOp.sexpr_evalBV`, `narrowMask_evalBV` — the same for the width-tagged
-  operations and casts.
+* `NarrowOp.sexpr_evalBV`, `narrowMask_evalBV`, `narrowNotSExpr_evalBV` — the
+  same for the width-tagged operations, casts and complements;
+  `narrowRotr_evalBV`, `narrowRotl_evalBV` for the rotations.
+* `narrowLetIn_op`, `narrowLetIn_cast`, `narrowLetIn_not` — the lowering of a
+  binding is the scalar assignment the step lemmas of `HaxToLowCTWordOpsSim`
+  are stated on.
 * `barrett64_bound`, `barrettRedSExpr_evalBV`, `mulModSExpr_evalBV` — Barrett's
   estimate and the value of the modular scalar expressions.
 * `denote_mulModChain`, `denote_mulModLet`, `denote_mulModCall` — both forms of
@@ -83,7 +96,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (ImpExpr ImpLit Value Env Outcome Builtins denote denoteArgs)
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType sexprMulHiU sexprMulHiU_lt)
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType Located sexprMulHiU sexprMulHiU_lt)
 
 /-! ### The multiply-high idiom -/
 
@@ -258,12 +271,12 @@ def scalarizeWordOps : LowCT → LowCT
 
 /-- The two-operand operations of the unsigned widths held in `u64` slots. -/
 inductive NarrowOp where
-  | add | sub | mul | and | or | xor | shl | shr
+  | add | sub | mul | and | or | xor | shl | shr | rotr | rotl
   deriving DecidableEq, Repr
 
 /-- The natural-number operation of `op` at width `w`: the Rust `u<w>` operation
     on the operands read modulo `2^w`, the shifts defined for an amount below
-    `w`. -/
+    `w`, the rotations by the amount modulo `w`. -/
 def NarrowOp.nat (w : Nat) : NarrowOp → Nat → Nat → Option Nat
   | .add, a, b => some ((a + b) % 2 ^ w)
   | .sub, a, b => some ((a % 2 ^ w + 2 ^ w - b % 2 ^ w) % 2 ^ w)
@@ -273,13 +286,26 @@ def NarrowOp.nat (w : Nat) : NarrowOp → Nat → Nat → Option Nat
   | .xor, a, b => some ((a % 2 ^ w) ^^^ (b % 2 ^ w))
   | .shl, a, b => if b < w then some (((a % 2 ^ w) <<< b) % 2 ^ w) else none
   | .shr, a, b => if b < w then some ((a % 2 ^ w) >>> b) else none
+  | .rotr, a, b => some (_root_.Hax.rotrNat w a b)
+  | .rotl, a, b => some (_root_.Hax.rotlNat w a b)
 
 /-- The scalar expression `e` masked to its low `w` bits. -/
 def narrowMask (w : Nat) (e : SExpr) : SExpr := .SAnd e (.SLit (2 ^ w - 1))
 
+/-- The rotation amount `b` modulo a width `w` that is a power of two:
+    `b &&& (w - 1)`. -/
+def narrowAmt (w : Nat) (b : SExpr) : SExpr := .SAnd b (.SLit (w - 1))
+
+/-- The rotation of the `w`-bit word `x` by the amount `k < w`: the disjunction
+    of the shift `sh₁ x k` and the shift `sh₂ x (w - k)`, masked to `w` bits.  For
+    `k = 0` both halves are `x` or one is `0`, so the disjunction is `x`. -/
+def narrowRotSExpr (w : Nat) (sh₁ sh₂ : SExpr → SExpr → SExpr) (x k : SExpr) : SExpr :=
+  narrowMask w (SecureCompilation.Ascent.sOrExpr (sh₁ x k) (sh₂ x (.SSub (.SLit w) k)))
+
 /-- The scalar expression of `op` at width `w` on the `u64` scalar expressions
-    `a` and `b`: the `u64` operation masked to `w` bits, and for `shr` the shift
-    of the masked operand. -/
+    `a` and `b`: the `u64` operation masked to `w` bits, for `shr` the shift
+    of the masked operand, and for the rotations `narrowRotSExpr` of the masked
+    operand by the amount modulo `w`. -/
 def NarrowOp.sexpr (w : Nat) : NarrowOp → SExpr → SExpr → SExpr
   | .add, a, b => narrowMask w (.SAdd a b)
   | .sub, a, b => narrowMask w (.SSub a b)
@@ -289,9 +315,12 @@ def NarrowOp.sexpr (w : Nat) : NarrowOp → SExpr → SExpr → SExpr
   | .xor, a, b => narrowMask w (.SXor a b)
   | .shl, a, b => narrowMask w (.SShl a b)
   | .shr, a, b => .SShr (narrowMask w a) b
+  | .rotr, a, b => narrowRotSExpr w .SShr .SShl (narrowMask w a) (narrowAmt w b)
+  | .rotl, a, b => narrowRotSExpr w .SShl .SShr (narrowMask w a) (narrowAmt w b)
 
-/-- The width and operation of a width-tagged word call: the `u8`, `u16` and
-    `u32` operations and the `u64` bitwise OR. -/
+/-- The width and operation of a width-tagged word call: the `u8`, `u16`,
+    `u32` and `usize` operations (`usize` of width `64`), the rotations at every
+    width, and the `u64` bitwise OR. -/
 def narrowOpOf : String → Option (Nat × NarrowOp)
   | "wrapping_add#8" => some (8, .add)
   | "wrapping_sub#8" => some (8, .sub)
@@ -318,13 +347,44 @@ def narrowOpOf : String → Option (Nat × NarrowOp)
   | "Shl#32" => some (32, .shl)
   | "Shr#32" => some (32, .shr)
   | "BitOr#64" => some (64, .or)
+  | "wrapping_add#size" => some (64, .add)
+  | "wrapping_sub#size" => some (64, .sub)
+  | "wrapping_mul#size" => some (64, .mul)
+  | "BitAnd#size" => some (64, .and)
+  | "BitOr#size" => some (64, .or)
+  | "BitXor#size" => some (64, .xor)
+  | "Shl#size" => some (64, .shl)
+  | "Shr#size" => some (64, .shr)
+  | "rotate_right#8" => some (8, .rotr)
+  | "rotate_right#16" => some (16, .rotr)
+  | "rotate_right#32" => some (32, .rotr)
+  | "rotate_right#64" => some (64, .rotr)
+  | "rotate_right#size" => some (64, .rotr)
+  | "rotate_left#8" => some (8, .rotl)
+  | "rotate_left#16" => some (16, .rotl)
+  | "rotate_left#32" => some (32, .rotl)
+  | "rotate_left#64" => some (64, .rotl)
+  | "rotate_left#size" => some (64, .rotl)
   | _ => none
 
-/-- The width of a narrowing cast call. -/
+/-- The width of a cast call to an unsigned width of at most `64` bits: the
+    truncations to `8`, `16` and `32` bits, and the casts to `u64` and `usize`,
+    which on a word below `2^64` are the identity. -/
 def narrowCastOf : String → Option Nat
   | "cast#8" => some 8
   | "cast#16" => some 16
   | "cast#32" => some 32
+  | "cast#64" => some 64
+  | "cast#size" => some 64
+  | _ => none
+
+/-- The width of a complement call `Not#w`. -/
+def narrowNotOf : String → Option Nat
+  | "Not#8" => some 8
+  | "Not#16" => some 16
+  | "Not#32" => some 32
+  | "Not#64" => some 64
+  | "Not#size" => some 64
   | _ => none
 
 /-- The widths of the width-tagged word calls are `8`, `16`, `32` and `64`. -/
@@ -333,10 +393,16 @@ theorem narrowOpOf_width {f : String} {w : Nat} {op : NarrowOp}
   unfold narrowOpOf at h
   split at h <;> cases h <;> simp
 
-/-- The narrowing casts are to `8`, `16` and `32` bits. -/
+/-- The casts are to `8`, `16`, `32` and `64` bits. -/
 theorem narrowCastOf_width {f : String} {w : Nat} (h : narrowCastOf f = some w) :
-    w = 8 ∨ w = 16 ∨ w = 32 := by
+    w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64 := by
   unfold narrowCastOf at h
+  split at h <;> cases h <;> simp
+
+/-- The complements are at `8`, `16`, `32` and `64` bits. -/
+theorem narrowNotOf_width {f : String} {w : Nat} (h : narrowNotOf f = some w) :
+    w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64 := by
+  unfold narrowNotOf at h
   split at h <;> cases h <;> simp
 
 /-- Masking to `w ≤ 64` bits evaluates to the value modulo `2^w`. -/
@@ -346,6 +412,60 @@ theorem narrowMask_evalBV {w : Nat} (hw : w ≤ 64) (β : String → BitVec 64) 
   have h2 : 1 ≤ 2 ^ w := Nat.one_le_two_pow
   simp only [narrowMask, SExpr.evalBV, BitVec.toNat_and, BitVec.toNat_ofNat]
   rw [Nat.mod_eq_of_lt (by omega : 2 ^ w - 1 < 2 ^ 64), Nat.and_two_pow_sub_one_eq_mod]
+
+/-- The rotation amount evaluates to the value of `b` modulo the width. -/
+theorem narrowAmt_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (b : SExpr) :
+    ((narrowAmt w b).evalBV β).toNat = (b.evalBV β).toNat % w := by
+  simp only [narrowAmt, SExpr.evalBV, BitVec.toNat_and, BitVec.toNat_ofNat]
+  rcases hw with rfl | rfl | rfl | rfl
+  · exact Nat.and_two_pow_sub_one_eq_mod _ 3
+  · exact Nat.and_two_pow_sub_one_eq_mod _ 4
+  · exact Nat.and_two_pow_sub_one_eq_mod _ 5
+  · exact Nat.and_two_pow_sub_one_eq_mod _ 6
+
+/-- The rotation amount is below the width. -/
+theorem narrowAmt_lt {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (b : SExpr) : ((narrowAmt w b).evalBV β).toNat < w := by
+  rw [narrowAmt_evalBV hw]
+  exact Nat.mod_lt _ (by omega)
+
+/-- `w - k` for an amount `k < w ≤ 64`, evaluated as `SSub (SLit w) k`. -/
+theorem narrowRot_sub_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (k : SExpr) (hk : (k.evalBV β).toNat < w) :
+    ((SExpr.SSub (.SLit w) k).evalBV β).toNat = w - (k.evalBV β).toNat := by
+  simp only [SExpr.evalBV, BitVec.toNat_sub, BitVec.toNat_ofNat]
+  rcases hw with rfl | rfl | rfl | rfl <;> omega
+
+/-- The right rotation of a `w`-bit word `x` by `k < w` evaluates to the
+    disjunction of `x >>> k` and `x <<< (w - k)` modulo `2^w`. -/
+theorem narrowRotr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (x k : SExpr) (hk : (k.evalBV β).toNat < w) :
+    ((narrowRotSExpr w .SShr .SShl x k).evalBV β).toNat =
+      (((x.evalBV β).toNat >>> (k.evalBV β).toNat) |||
+        ((x.evalBV β).toNat <<< (w - (k.evalBV β).toNat))) % 2 ^ w := by
+  have hdvd : 2 ^ w ∣ 2 ^ 64 := Nat.pow_dvd_pow 2 (by omega)
+  have hs := narrowRot_sub_evalBV hw β k hk
+  simp only [SExpr.evalBV] at hs
+  rw [narrowRotSExpr, narrowMask_evalBV (by omega), SecureCompilation.Ascent.evalBV_sOrExpr,
+    BitVec.toNat_or]
+  simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft]
+  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd]
+
+/-- The left rotation of a `w`-bit word `x` by `k < w` evaluates to the
+    disjunction of `x <<< k` and `x >>> (w - k)` modulo `2^w`. -/
+theorem narrowRotl_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (x k : SExpr) (hk : (k.evalBV β).toNat < w) :
+    ((narrowRotSExpr w .SShl .SShr x k).evalBV β).toNat =
+      (((x.evalBV β).toNat <<< (k.evalBV β).toNat) |||
+        ((x.evalBV β).toNat >>> (w - (k.evalBV β).toNat))) % 2 ^ w := by
+  have hdvd : 2 ^ w ∣ 2 ^ 64 := Nat.pow_dvd_pow 2 (by omega)
+  have hs := narrowRot_sub_evalBV hw β k hk
+  simp only [SExpr.evalBV] at hs
+  rw [narrowRotSExpr, narrowMask_evalBV (by omega), SecureCompilation.Ascent.evalBV_sOrExpr,
+    BitVec.toNat_or]
+  simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft]
+  rw [hs, Nat.or_mod_two_pow, Nat.or_mod_two_pow, Nat.mod_mod_of_dvd _ hdvd]
 
 /-- The scalar expression of a narrow operation evaluates, in the wrapping `u64`
     semantics `SExpr.evalBV`, to the natural-number operation on the values of
@@ -383,6 +503,26 @@ theorem NarrowOp.sexpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w 
       rw [← hr]
       simp only [SExpr.evalBV, BitVec.toNat_ushiftRight, narrowMask_evalBV hw64]
     · cases hr
+  · rw [← hr, narrowRotr_evalBV hw β _ _ (narrowAmt_lt hw β eb), narrowMask_evalBV hw64,
+      narrowAmt_evalBV hw]
+    rfl
+  · rw [← hr, narrowRotl_evalBV hw β _ _ (narrowAmt_lt hw β eb), narrowMask_evalBV hw64,
+      narrowAmt_evalBV hw]
+    rfl
+
+/-- The complement of `a` in `w` bits: `sNotExpr a` masked to `w` bits. -/
+def narrowNotSExpr (w : Nat) (a : SExpr) : SExpr :=
+  narrowMask w (SecureCompilation.Ascent.sNotExpr a)
+
+/-- The complement in `w` bits evaluates to `2^w - 1` minus the value modulo
+    `2^w`. -/
+theorem narrowNotSExpr_evalBV {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+    (β : String → BitVec 64) (a : SExpr) :
+    ((narrowNotSExpr w a).evalBV β).toNat = 2 ^ w - 1 - (a.evalBV β).toNat % 2 ^ w := by
+  have hA := (a.evalBV β).isLt
+  rw [narrowNotSExpr, narrowMask_evalBV (by omega), SecureCompilation.Ascent.evalBV_sNotExpr,
+    BitVec.toNat_not]
+  rcases hw with rfl | rfl | rfl | rfl <;> omega
 
 /-- The scalar expression of a narrow word call `f` on the operands `a` and `b`. -/
 def narrowOpSExpr (f : String) (a b : SExpr) : Option SExpr :=
@@ -649,11 +789,39 @@ def mapLetZero (g : String → TowerType → LowCT → LowCT) : LowCT → LowCT
   | .RBlock b => .RBlock (mapLetZero g b)
   | c => c
 
+/-- The call names whose bound result is a word below `2^64`: the `u64` word
+    calls, the width-tagged operations, casts and complements, and
+    `mulmod#64`. -/
+def wordResultCall (f : String) : Bool :=
+  wordOpNames.contains f || (narrowOpOf f).isSome || (narrowCastOf f).isSome ||
+    (narrowNotOf f).isSome || f == mulModCallName
+
+/-- Whether the body `b` of a binding of `x` binds `x` to a word below `2^64`:
+    its first command is a call of `wordResultCall` or an array load into `x`. -/
+def bindsWord (x : String) : LowCT → Bool
+  | .RSeq (.RCall f dest _) _ => dest.locVar == x && wordResultCall f
+  | .RSeq (.RArrLoad dest _ _) _ => dest.locVar == x
+  | _ => false
+
+/-- The names `W` with `x` added when `word` holds, and removed otherwise. -/
+def bindWord (W : List String) (x : String) (word : Bool) : List String :=
+  if word then x :: W else W.filter (· != x)
+
+/-- The scalar expression of the one-operand call `f` on the variable `a`, with
+    `W` the names known to hold words below `2^64`: a cast `f` to `w` bits of a
+    name of `W` is `a` masked to `w` bits, and a complement `Not#w` is
+    `narrowNotSExpr w a`.  A cast of a name outside `W`, whose value may be a
+    `u128` held outside the `u64` slots, has none. -/
+def narrowUnSExpr (W : List String) (f a : String) : Option SExpr :=
+  match narrowCastOf f with
+  | some w => if a ∈ W then some (narrowMask w (.SVar a)) else none
+  | none => (narrowNotOf f).map fun w => narrowNotSExpr w (.SVar a)
+
 /-- The binding `RLetZero x t b` with a first call `f(a, b)` of a narrow word
     call `f` into `x` lowered to the scalar assignment of `narrowOpSExpr f a b`,
-    and a first call `f(a)` of a narrowing cast `f` to `u<w>` into `x` lowered to
-    the scalar assignment of `a` masked to `w` bits, inside `RLetU64Zero x`. -/
-def narrowLetAt (x : String) (t : TowerType) : LowCT → LowCT
+    and a first call `f(a)` into `x` with a scalar expression `narrowUnSExpr W f a`
+    lowered to its scalar assignment, inside `RLetU64Zero x`. -/
+def narrowLetIn (W : List String) (x : String) (t : TowerType) : LowCT → LowCT
   | .RSeq (.RCall f dest [a, b]) body =>
       match narrowOpSExpr f (.SVar a.locVar) (.SVar b.locVar) with
       | some se =>
@@ -661,17 +829,63 @@ def narrowLetAt (x : String) (t : TowerType) : LowCT → LowCT
           else .RLetZero x t (.RSeq (.RCall f dest [a, b]) body)
       | none => .RLetZero x t (.RSeq (.RCall f dest [a, b]) body)
   | .RSeq (.RCall f dest [a]) body =>
-      match narrowCastOf f with
-      | some w =>
-          if dest.locVar = x then
-            .RLetU64Zero x (.RSeq (.RScalarSetExpr x (narrowMask w (.SVar a.locVar))) body)
+      match narrowUnSExpr W f a.locVar with
+      | some se =>
+          if dest.locVar = x then .RLetU64Zero x (.RSeq (.RScalarSetExpr x se) body)
           else .RLetZero x t (.RSeq (.RCall f dest [a]) body)
       | none => .RLetZero x t (.RSeq (.RCall f dest [a]) body)
   | b => .RLetZero x t b
 
 /-- The pass lowering every binding `let x = f(a, b)` of a narrow word call `f`
-    and every binding `let x = f(a)` of a narrowing cast `f` (`narrowLetAt`). -/
-def scalarizeNarrowOps : LowCT → LowCT := mapLetZero narrowLetAt
+    and every binding `let x = f(a)` of a cast or complement (`narrowLetIn`),
+    tracking in `W` the names in scope known to hold words below `2^64`: those
+    bound by `RLetU64Zero`, by a call of `wordResultCall` or an array load
+    (`bindsWord`), and the loop indices.  A binding of any other value removes
+    its name. -/
+def scalarizeNarrowIn (W : List String) : LowCT → LowCT
+  | .RLetZero x t b => narrowLetIn W x t (scalarizeNarrowIn (bindWord W x (bindsWord x b)) b)
+  | .RSeq a b => .RSeq (scalarizeNarrowIn W a) (scalarizeNarrowIn W b)
+  | .RLetU64Zero x b => .RLetU64Zero x (scalarizeNarrowIn (x :: W) b)
+  | .RIfNz v t e => .RIfNz v (scalarizeNarrowIn W t) (scalarizeNarrowIn W e)
+  | .RWhileNz v b => .RWhileNz v (scalarizeNarrowIn W b)
+  | .RFor x n b => .RFor x n (scalarizeNarrowIn (x :: W) b)
+  | .RForRuntime x bound b => .RForRuntime x bound (scalarizeNarrowIn (x :: W) b)
+  | .RBlock b => .RBlock (scalarizeNarrowIn W b)
+  | c => c
+
+/-- `scalarizeNarrowIn` from no known words: the parameters of the program are
+    not known to be words, so a cast of a parameter is not lowered. -/
+def scalarizeNarrowOps : LowCT → LowCT := scalarizeNarrowIn []
+
+/-- A binding of a narrow word call into `x` is lowered to the scalar assignment
+    of `NarrowOp.sexpr`, the shape of `step_narrow`. -/
+theorem narrowLetIn_op {W : List String} {x f : String} {t : TowerType} {dest a b : Located}
+    {body : LowCT} {w : Nat} {op : NarrowOp} (hf : narrowOpOf f = some (w, op))
+    (hd : dest.locVar = x) :
+    narrowLetIn W x t (.RSeq (.RCall f dest [a, b]) body) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (op.sexpr w (.SVar a.locVar) (.SVar b.locVar)))
+        body) := by
+  simp [narrowLetIn, narrowOpSExpr, hf, hd]
+
+/-- A binding of a cast into `x` of a name of `W` is lowered to the scalar
+    assignment of the masked operand, the shape of `step_cast`. -/
+theorem narrowLetIn_cast {W : List String} {x f : String} {t : TowerType} {dest a : Located}
+    {body : LowCT} {w : Nat} (hf : narrowCastOf f = some w) (ha : a.locVar ∈ W)
+    (hd : dest.locVar = x) :
+    narrowLetIn W x t (.RSeq (.RCall f dest [a]) body) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (narrowMask w (.SVar a.locVar))) body) := by
+  simp [narrowLetIn, narrowUnSExpr, hf, ha, hd]
+
+/-- A binding of a complement into `x` is lowered to the scalar assignment of
+    `narrowNotSExpr`, the shape of `step_not`. -/
+theorem narrowLetIn_not {W : List String} {x f : String} {t : TowerType} {dest a : Located}
+    {body : LowCT} {w : Nat} (hf : narrowNotOf f = some w) (hd : dest.locVar = x) :
+    narrowLetIn W x t (.RSeq (.RCall f dest [a]) body) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (narrowNotSExpr w (.SVar a.locVar))) body) := by
+  have hc : narrowCastOf f = none := by
+    unfold narrowNotOf at hf
+    split at hf <;> simp only [Option.some.injEq, reduceCtorEq] at hf <;> rfl
+  simp [narrowLetIn, narrowUnSExpr, hc, hf, hd]
 
 /-- The binding `RLetZero x t b` with a first call `mulmod#64(a, b, m)` into `x`
     lowered to the scalar assignment of `mulModSExpr p a b` inside
