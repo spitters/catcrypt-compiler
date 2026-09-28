@@ -22,8 +22,8 @@ public import Veir.GlobalOpInfo
 
 This file provides the `ToVeirOp catCryptDialect _` and
 `ToVeirTy catCryptDialect` instances that let the generic `ComToVeir`
-lowering (`lowerClosedCom`, `lowerCom`, `lowerExpr` in
-`ComToVeir.lean`) target real CatCrypt programs.
+lowering (`lowerClosedCom`, `lowerClosedComToModuleWithExterns`, built by
+`lowerComWfWith` in `ComToVeir.lean`) target real CatCrypt programs.
 
 ## Dependency
 
@@ -425,9 +425,8 @@ example : Veir.IRContext Veir.OpCode × Veir.BlockPtr × Veir.RegionPtr ×
     through `lowerClosedCom` (Veir IRContext), then through the
     `VeirPrinterShim.printModuleToString` to capture MLIR text.
 
-    For real wrapping prefer `lowerClosedComToModule` (or, for
-    function-shaped output, the X25519EmitVeir-side `func.func`
-    wrapper). This helper extracts the producing op pointer from the
+    For a printable module use `lowerClosedComToModuleWithExterns`
+    (as `X25519EmitVeir.emitFuncToVeirText` does). This helper extracts the producing op pointer from the
     final `ValuePtr` purely for the legacy smoke test below. -/
 def lowerCatCryptComToMLIRText {t : CryptoTy} (com : Com catCryptDialect [] t) :
     IO String := do

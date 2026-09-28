@@ -12,53 +12,45 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
 public import Veir.IR.Basic
 public import Veir.IR.OpInfo
 public import Veir.IR.Attribute
+public import Veir.Rewriter.WfRewriter
 
 /-!
-# Path (b): `Com → Veir.IRContext` lowering
+# Path (b): `Com → Veir.WfIRContext` lowering
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-A hand-written lowering from CatCrypt's typed-SSA VIR (`Com d Γ t`) to
-Veir's imperative pointer-graph (`Veir.IRContext`).
-
-## Why this exists
-
-Upstream lean-mlir is planned (per opencompl roadmap) to migrate its
-typed-SSA layer to be Veir-backed. Until that lands, CatCrypt
-maintains this hand-written lowering so we can use Veir as a
-code-generation / serialization backend NOW, without waiting for an
-upstream lean-mlir Veir-backed release.
-
-Once upstream lean-mlir is Veir-backed and 4.29-released, this file
-becomes obsolete — replace with imports from upstream.
+A lowering from CatCrypt's typed-SSA VIR (`Com d Γ t`) to Veir's pointer graph,
+built through VeIR's well-formedness-preserving builder `WfRewriter`, so every
+context it produces is a `Veir.WfIRContext`.
 
 ## Approach
 
 The lowering is parameterised by two typeclasses:
 
-* `ToVeirOp d O` — maps each VIR op (`d.Op`) to a Veir op-code
-  (`O : Type` with `HasOpInfo O`) together with its (default)
-  properties. The codomain is left abstract because Veir uses
-  per-dialect `OpInfo` enums whereas the in-tree VIR dialect
-  (`CatCryptOp`) is structurally different. A separate file will
-  provide the `ToVeirOp catCryptDialect VeirCatCryptOpInfo` instance
-  once Veir gains a CatCrypt op-info enum.
+* `ToVeirOp d` maps each VIR op (`d.Op`) to a Veir op-code of the op-info type
+  `ToVeirOp.Op` with its properties, discardable attributes (`attrsOf`) and result
+  slot, or, through `expand?`, to a sequence of operations (`VeirExpansion`).
+* `ToVeirTy d` maps each VIR type (`d.Ty`) to a Veir `TypeAttr`.
 
-* `ToVeirTy d` — maps each VIR type (`d.Ty`) to a Veir `TypeAttr`.
-  Defaults to `default : TypeAttr` when not refined.
+The builder:
 
-We use Veir's `!`-suffixed (partial) primitives (`pushOperand!`,
-`pushResult!`, `setFirstOp!`, …) and rely on the fact that we only
-ever push into operations we just allocated. Each operand is linked into
-the use list of its value (`pushFreshOperand`). That the built graph is
-`IRContext.WellFormed` is not proved here; `ComToVeirWf.lean` builds the
-same operations of `jasminDialect` through VeIR's `WfRewriter`, whose
-contexts are well formed by construction.
+* `createAtEnd`, `emitStepsWf`: create operations at the end of a block through
+  `WfRewriter.createOp`.
+* `lowerComWfWith bx toTy`: the operations of a program, per binding the steps of the
+  expansion `bx o nargs`; `veirExpansionOf` is the expansion a `ToVeirOp` instance
+  gives.
+* `setAttrsWf`: sets the discardable attributes of the operations through
+  `WfRewriter.setAttributes`.
+* `lowerComToFuncAtWf`, `lowerComToModuleWf`: a `func.func` whose one block holds the
+  context `Γ` as block arguments, the operations of the program and a return
+  terminator, inside a `builtin.module` that first holds one private `func.func`
+  declaration per extern.
 
-## Status
-
-Scaffold + `Expr` lowering + `Com` lowering + smoke test compile
-clean. No open goals, no `axiom`.
+The entry points `lowerClosedCom`, `lowerClosedComToFunc` and
+`lowerClosedComToModuleWithExterns` return the raw context of the builder's output;
+`lowerClosedComToModuleWithExterns_wellFormed` and its siblings state that it is well
+formed. `ComToVeirWf.lean` proves, for `jasminDialect`, what VeIR's interpreter
+computes on the built `func.func`.
 -/
 
 @[expose] public section
@@ -69,11 +61,10 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR
 
 open Ctxt (Var)
 
-/-! ## 1. State monad and variable map -/
+/-! ## 1. Variable map -/
 
 -- We work with `Type 0` dialects because Veir's `IRContext`, `OpResultPtr`,
--- etc., live in `Type 0`, and `StateM` needs its state and result both in
--- the same universe. All real CatCrypt dialects (`CatCryptOp`, `CryptoTy`)
+-- etc., live in `Type 0`. All real CatCrypt dialects (`CatCryptOp`, `CryptoTy`)
 -- are in `Type 0` already, so this is no restriction in practice.
 
 variable {d : Dialect.{0, 0}} [DialectSignature d]
@@ -90,14 +81,6 @@ structure VeirOpInfoBundle where
 attribute [instance] VeirOpInfoBundle.hasOpInfo
 
 /--
-A per-protocol bundle of all the Veir state we operate on. We pin
-`O` and its `HasOpInfo` here so we can keep `IRContext O` consistent
-throughout the lowering.
--/
-abbrev ComToVeirM (O : Type) [Veir.HasOpInfo O] (α : Type) : Type :=
-  StateM (Veir.IRContext O) α
-
-/--
 A map from VIR variables (typed De Bruijn indices) to Veir
 SSA-value pointers (`ValuePtr`).
 
@@ -105,7 +88,7 @@ SSA-value pointers (`ValuePtr`).
 operation result (the common case — bound by `Com.var`) or a block
 argument (when the enclosing context `Γ` is materialised as block
 arguments of a `func.func`-style entry block; see
-`lowerClosedComToFunc`).
+`varMapOfBlockArgs`).
 -/
 abbrev VarMap (Γ : Ctxt d) : Type :=
   ∀ (t : d.Ty), Var Γ t → Veir.ValuePtr
@@ -206,134 +189,7 @@ class ToVeirTy (d : Dialect) where
 @[reducible] def ToVeirTy.trivial (d : Dialect) : ToVeirTy d where
   toTy _ := default
 
-/-! ## 3. Lowering an `Expr` -/
-
-section Lowering
-
-variable [ToVeirOp d] [ToVeirTy d]
-
-/--
-Allocate a fresh `OpResultPtr` on the operation `op`, recording the
-result's `TypeAttr`. Returns the new result pointer.
-
-This mirrors Veir's allocation pattern: a freshly-allocated
-`Operation` starts with `results := #[]`; each subsequent
-`pushResult!` extends that array. The returned `OpResultPtr` is
-`{op := op, index := <old length>}`, which is exactly what
-`OperationPtr.getResult` would return.
--/
-def pushFreshResult (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
-    ComToVeirM (ToVeirOp.Op (d := d)) Veir.OpResultPtr := do
-  let ctx ← get
-  let idx := op.getNumResults! ctx
-  let res : Veir.OpResult :=
-    { type := ty
-      firstUse := none
-      index := idx
-      owner := op }
-  set (op.pushResult! ctx res)
-  return ⟨op, idx⟩
-
-/--
-Append an operand reading `value` to the operation `op` and link it at the head of
-the use list of `value`, in the steps of VeIR's `Rewriter.pushOperand`
-(`OperationPtr.pushOperand` followed by `OpOperandPtr.insertIntoCurrent`): the new
-use points back to the first-use slot of `value` and forward to its previous first
-use, whose back pointer becomes the new use's next-use slot, and `value`'s first
-use becomes the new use.
--/
-def pushFreshOperand (op : Veir.OperationPtr) (value : Veir.ValuePtr) :
-    ComToVeirM (ToVeirOp.Op (d := d)) Unit := do
-  let ctx ← get
-  let use : Veir.OpOperandPtr := ⟨op, op.getNumOperands! ctx⟩
-  let operand : Veir.OpOperand :=
-    { nextUse := none
-      back := Veir.OpOperandPtrPtr.valueFirstUse value
-      owner := op
-      value := value }
-  let ctx := op.pushOperand! ctx operand
-  let ctx := use.setBack! ctx (Veir.OpOperandPtrPtr.valueFirstUse value)
-  let next := value.getFirstUse! ctx
-  let ctx := use.setNextUse! ctx next
-  let ctx := value.setFirstUse! ctx (some use)
-  set (match next with
-    | none => ctx
-    | some n => n.setBack! ctx (Veir.OpOperandPtrPtr.operandNextUse use))
-
-/-- Allocate a fresh operation for a VIR op-tag, returning its
-    `OperationPtr`. The operation starts empty (no operands, no
-    results) but immediately receives the op's static attribute
-    dictionary (from `ToVeirOp.attrsOf`). The caller is responsible
-    for pushing operands and results. -/
-def allocOp (vop : d.Op) :
-    ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
-  let ctx ← get
-  let veop := ToVeirOp.toOp (d := d) vop
-  let props := ToVeirOp.defaultProps (d := d) vop
-  match Veir.OperationPtr.allocEmpty ctx veop props with
-  | some (ctx', ptr) =>
-      let attrs := Veir.DictionaryAttr.fromArray (ToVeirOp.attrsOf (d := d) vop)
-      let ctx'' := if attrs.entries.isEmpty then ctx' else ptr.setAttributes! ctx' attrs
-      set ctx''
-      return ptr
-  | none =>
-      -- `allocEmpty` only returns `none` if the pointer collides,
-      -- which by construction (we use `nextID`, monotonically
-      -- increasing) cannot happen. Returning `default` here is a
-      -- safe fallback that never gets exercised; the smoke test
-      -- below exhibits this.
-      return default
-
-/--
-Push all the operand-arguments from an `HVector` of variables. Iterates
-over the argument list, looking up each `Var` in the `VarMap` and
-emitting one `pushFreshOperand` per argument.
-
-Defined by recursion on the type-list `tys` so it doesn't need
-well-founded reasoning.
--/
-def pushAllOperands {Γ : Ctxt d} (vm : VarMap Γ)
-    (op : Veir.OperationPtr) :
-    {tys : List d.Ty} → HVector (fun ty => Var Γ ty) tys →
-    ComToVeirM (ToVeirOp.Op (d := d)) Unit
-  | [], .nil => pure ()
-  | _ :: _, .cons v rest => do
-      pushFreshOperand op (vm _ v)
-      pushAllOperands vm op rest
-
-/-- Append `n` fresh results of type `ty` to the operation `op`, returning their
-    pointers in order. -/
-def pushFreshResults (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
-    Nat → ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OpResultPtr)
-  | 0 => pure []
-  | n + 1 => do
-      let r ← pushFreshResult (d := d) op ty
-      let rs ← pushFreshResults op ty n
-      return r :: rs
-
-/--
-Lower a single `Expr d Γ t` to one Veir operation.
-
-Builds an op of kind `e.op`, attaches one operand per argument
-(resolved against `vm`), and attaches the results given by
-`ToVeirOp.resultSlot` (at least one), each of type `ToVeirTy.toTy t`.
-Returns the pair `(opPtr, resPtr)`: the `OperationPtr` of the allocated op
-(needed for chaining) and the `OpResultPtr` of the result that carries the
-binding's value (needed for the `VarMap`).
--/
-def lowerExprSingle {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
-    ComToVeirM (ToVeirOp.Op (d := d))
-      (Veir.OperationPtr × Veir.OpResultPtr) := do
-  let op ← allocOp e.op
-  pushAllOperands vm op e.args
-  let (n, k) := ToVeirOp.resultSlot (d := d) e.op
-  let rs ← pushFreshResults (d := d) op (ToVeirTy.toTy (d := d) t) (max n 1)
-  match rs[k]? with
-  | some res => return (op, res)
-  | none =>
-      match rs with
-      | res :: _ => return (op, res)
-      | [] => return (op, ⟨op, 0⟩)
+/-! ## 3. Operands, block arguments and expansions -/
 
 /-- The value pointers of the arguments of a binding, in order. -/
 def argPtrs {Γ : Ctxt d} (vm : VarMap Γ) :
@@ -351,234 +207,12 @@ def VeirSrc.resolve (args : List Veir.ValuePtr) (done : List (List Veir.OpResult
       | some r => .opResult r
       | none => default
 
-/-- Append the operands `vs` to the operation `op`, in order. -/
-def pushOperandList (op : Veir.OperationPtr) :
-    List Veir.ValuePtr → ComToVeirM (ToVeirOp.Op (d := d)) Unit
-  | [] => pure ()
-  | v :: vs => do
-      pushFreshOperand (d := d) op v
-      pushOperandList op vs
-
-/-- Append one result per type of `tys` to the operation `op`, returning their
-    pointers in order. -/
-def pushResultsOfTypes (op : Veir.OperationPtr) :
-    List Veir.TypeAttr → ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OpResultPtr)
-  | [] => pure []
-  | ty :: tys => do
-      let r ← pushFreshResult (d := d) op ty
-      let rs ← pushResultsOfTypes op tys
-      return r :: rs
-
-/-- Emit one operation of an expansion, whose result types default to `resTy`,
-    returning its pointer and its results. -/
-def emitStep (args : List Veir.ValuePtr) (resTy : Veir.TypeAttr)
-    (done : List (List Veir.OpResultPtr)) (s : VeirExpandStep (ToVeirOp.Op (d := d))) :
-    ComToVeirM (ToVeirOp.Op (d := d)) (Veir.OperationPtr × List Veir.OpResultPtr) := do
-  let ctx ← get
-  let ptr ←
-    match Veir.OperationPtr.allocEmpty ctx s.op s.props with
-    | some (ctx', ptr) =>
-        let attrs := Veir.DictionaryAttr.fromArray s.attrs
-        set (if attrs.entries.isEmpty then ctx' else ptr.setAttributes! ctx' attrs)
-        pure ptr
-    | none => pure default
-  pushOperandList (d := d) ptr (s.operands.map (·.resolve args done))
-  let rs ← pushResultsOfTypes (d := d) ptr (s.results.map (·.getD resTy))
-  return (ptr, rs)
-
-/-- Emit the operations of an expansion in order, returning their pointers and the
-    results of every operation emitted so far. -/
-def runSteps (args : List Veir.ValuePtr) (resTy : Veir.TypeAttr) :
-    List (VeirExpandStep (ToVeirOp.Op (d := d))) → List (List Veir.OpResultPtr) →
-    ComToVeirM (ToVeirOp.Op (d := d))
-      (List Veir.OperationPtr × List (List Veir.OpResultPtr))
-  | [], done => pure ([], done)
-  | s :: rest, done => do
-      let (op, rs) ← emitStep (d := d) args resTy done s
-      let (ops, done') ← runSteps args resTy rest (done ++ [rs])
-      return (op :: ops, done')
-
-/--
-Lower a single `Expr d Γ t` to Veir operations: the operations of
-`ToVeirOp.expand? e.op` when the op has an expansion, else the one operation of
-`lowerExprSingle`. Returns the emitted operations, in order, and the value the
-binding denotes.
--/
-def lowerExpr {Γ : Ctxt d} {t : d.Ty} (vm : VarMap Γ) (e : Expr d Γ t) :
-    ComToVeirM (ToVeirOp.Op (d := d)) (List Veir.OperationPtr × Veir.ValuePtr) :=
-  match ToVeirOp.expand? (d := d) e.op with
-  | some x => do
-      let args := argPtrs vm e.args
-      let (ops, done) ← runSteps (d := d) args (ToVeirTy.toTy (d := d) t) x.steps []
-      return (ops, x.value.resolve args done)
-  | none => do
-      let (op, res) ← lowerExprSingle vm e
-      return ([op], .opResult res)
-
-/-! ## 4. Lowering a `Com` -/
-
-/--
-Lower a `Com d Γ t` to a sequence of Veir operations.
-
-Returns the pair `(finalOpRes, opChain)`:
-
-* `finalOpRes : OpResultPtr` — the value the program "computes" (the
-  lowering of the `Com.ret`). On `.ret v`, this is `vm v`; otherwise
-  it's the result pointer of the last `lowerExpr` invocation.
-* `opChain : List OperationPtr` — every `OperationPtr` emitted during
-  this lowering, in emission order. The caller chains them via
-  `setNextOp!`/`setPrevOp!` and pins `block.firstOp`/`lastOp`.
-
-The semantics:
-
-* `Com.ret v` — looks up `v` in `vm`. No new operation is emitted.
-* `Com.var e body` — lowers `e` to its operations, extends the `VarMap`
-  with the value of the binding, then recurses on `body`. The operations
-  are prepended to the eventual `opChain`.
-
-Chain assembly (parent / prev / next wiring) is left to the caller —
-keeping `lowerCom` itself chain-free makes the recursion clean.
--/
-def lowerCom {Γ : Ctxt d} {t : d.Ty} :
-    VarMap Γ → Com d Γ t →
-    ComToVeirM (ToVeirOp.Op (d := d))
-      (Veir.ValuePtr × List Veir.OperationPtr)
-  | vm, .ret v => pure (vm _ v, [])
-  | vm, .var (t := tEx) e body => do
-      let (ops, val) ← lowerExpr vm e
-      let (final, rest) ← lowerCom (vm.extend (t := tEx) val) body
-      return (final, ops ++ rest)
-
-/-- Chain a list of `OperationPtr`s via `setNextOp!`/`setPrevOp!` and
-    set each op's parent to `blk`. The first/last pointers of `blk`
-    are NOT set here; the caller does that.
-
-    Public so structural reasoning in `ComToVeirCorrect.lean` can
-    reference it. -/
-def chainOpsInBlock (blk : Veir.BlockPtr) :
-    List Veir.OperationPtr →
-      ComToVeirM (ToVeirOp.Op (d := d)) Unit
-  | [] => pure ()
-  | [op] => modify (op.setParent! · (some blk))
-  | op :: op' :: rest => do
-      modify (op.setNextOp! · (some op'))
-      modify (op'.setPrevOp! · (some op))
-      modify (op.setParent! · (some blk))
-      chainOpsInBlock blk (op' :: rest)
-
-/--
-Run `lowerCom` and additionally:
-
-1. Allocate a fresh `BlockPtr` (via `BlockPtr.allocEmpty`).
-2. Allocate a fresh `RegionPtr` and link the block as its sole block.
-3. Chain the operations emitted by `lowerCom` via `setNextOp!` /
-   `setPrevOp!`, set each op's `parent` to the block, and pin
-   `block.firstOp` to the first emitted op and `block.lastOp` to the
-   last.
-
-Returns the `(BlockPtr, RegionPtr, OpResultPtr)` triple. The
-`OpResultPtr` is the value the block "computes" (the lowering of the
-`Com.ret`). If the body was a bare `Com.ret v` with no `var`s, no ops
-are chained and `block.firstOp` / `block.lastOp` are left as `none`.
--/
-def lowerComToBlockRegion {Γ : Ctxt d} {t : d.Ty}
-    (vm : VarMap Γ) (com : Com d Γ t) :
-    ComToVeirM (ToVeirOp.Op (d := d))
-      (Veir.BlockPtr × Veir.RegionPtr × Veir.ValuePtr) := do
-  -- Allocate block.
-  let ctx ← get
-  let (ctx', blk) ←
-    match Veir.BlockPtr.allocEmpty ctx with
-    | some (ctx', blk) => pure (ctx', blk)
-    | none => pure (ctx, default)
-  set ctx'
-  -- Allocate region.
-  let ctx ← get
-  let (ctx', reg) ←
-    match Veir.RegionPtr.allocEmpty ctx with
-    | some (ctx', reg) => pure (ctx', reg)
-    | none => pure (ctx, default)
-  set ctx'
-  -- Lower the Com, collecting the emitted op list.
-  let (final, ops) ← lowerCom vm com
-  -- Chain ops and set parents.
-  chainOpsInBlock blk ops
-  -- Wire region → block, block → first/last op, block → parent region.
-  let ctx ← get
-  let ctx := reg.setFirstBlock! ctx (some blk)
-  let ctx := reg.setLastBlock! ctx (some blk)
-  let ctx :=
-    match ops with
-    | [] => ctx
-    | first :: tail =>
-      let last := (first :: tail).getLast (List.cons_ne_nil _ _)
-      blk.setLastOp! (blk.setFirstOp! ctx (some first)) (some last)
-  let ctx := blk.setParent! ctx (some reg)
-  set ctx
-  return (blk, reg, final)
-
-/-! ## 5. Top-level entry point -/
-
-/--
-Top-level: lower a closed `Com d [] t` to a freshly-allocated
-`IRContext`. Returns `(ctx, blk, reg, finalResult)`.
-
-Closed = no free variables, i.e. `Γ = []`. For an open `Com d Γ t`,
-the caller is expected to first emit one block argument per type in
-`Γ`, build a `VarMap` from them, then call `lowerComToBlockRegion`.
--/
-def lowerClosedCom {t : d.Ty} (com : Com d [] t) :
-    Veir.IRContext (ToVeirOp.Op (d := d))
-      × Veir.BlockPtr × Veir.RegionPtr × Veir.ValuePtr :=
-  let action : ComToVeirM (ToVeirOp.Op (d := d))
-      (Veir.BlockPtr × Veir.RegionPtr × Veir.ValuePtr) :=
-    lowerComToBlockRegion VarMap.empty com
-  let (result, ctx) := action.run default
-  (ctx, result.1, result.2.1, result.2.2)
-
-/--
-Wrap `lowerClosedCom`'s result in a synthetic `builtin_module`-style
-op whose sole region is the lowered region. Returns the wrapping
-`OperationPtr` and the updated context — this op is what to hand to
-`Veir.Printer.printModule` so that it walks the full op chain rather
-than just the producing op.
-
-The wrapping op is allocated against the supplied
-`(moduleOp, moduleProps)` pair: callers use their dialect's "module"
-op-code (e.g. `Veir.OpCode.builtin .module`) with whatever properties
-that op-code expects.
--/
-def lowerClosedComToModule {t : d.Ty} (com : Com d [] t)
-    (moduleOp : ToVeirOp.Op (d := d))
-    (moduleProps : Veir.propertiesOf moduleOp) :
-    Veir.IRContext (ToVeirOp.Op (d := d))
-      × Veir.OperationPtr × Veir.ValuePtr :=
-  let (ctx, _blk, reg, final) := lowerClosedCom com
-  match Veir.OperationPtr.allocEmpty ctx moduleOp moduleProps with
-  | some (ctx', modPtr) =>
-      let ctx'' := modPtr.pushRegion! ctx' reg
-      let ctx''' := reg.setParent! ctx'' modPtr
-      (ctx''', modPtr, final)
-  | none => (ctx, default, final)
-
-/-! ## 6. Func-shaped lowering (path b's "func.func" wrapper)
-
-`lowerClosedComToFunc` lowers a possibly-open `Com d Γ t` into a
-`func.func`-shaped operation: the context `Γ` is materialised as
-block arguments, the lowered ops live inside the entry block, and a
-return-terminator op is appended carrying the final value. -/
-
-section FuncShape
-
-variable [ToVeirOp d] [ToVeirTy d]
-
 /-- Resolve a De Bruijn `Var Γ t` to a Veir `BlockArgumentPtr`. The
     convention matches CatCrypt's in-tree printer
     (`Print.printModuleArgs` + `PrintEnv.get`): block-arg index =
     De Bruijn depth, i.e. `.here ↦ arg 0`, `.there .here ↦ arg 1`,
-    `.there (.there .here) ↦ arg 2`, … . This is consistent with
-    `pushBlockArgs` pushing `Γ` head-first (so the head of `Γ` becomes
-    arg 0). -/
+    `.there (.there .here) ↦ arg 2`, … . The block arguments are the
+    entries of `Γ` head first (so the head of `Γ` is arg 0). -/
 def varToBlockArg (blk : Veir.BlockPtr) {Γ : Ctxt d} {t : d.Ty}
     (v : Var Γ t) : Veir.BlockArgumentPtr :=
   blk.getArgument (varDepth v)
@@ -589,98 +223,245 @@ def varMapOfBlockArgs {Γ : Ctxt d} (blk : Veir.BlockPtr) :
     VarMap Γ :=
   fun _ v => Veir.ValuePtr.blockArgument (varToBlockArg blk v)
 
-/-- Push one fresh `BlockArgument` for each type in `tys` (in source
-    order: `tys.head` ⇒ arg 0). -/
-def pushBlockArgs (blk : Veir.BlockPtr) :
-    (tys : List d.Ty) →
-    ComToVeirM (ToVeirOp.Op (d := d)) Unit
-  | [] => pure ()
-  | t :: rest => do
-      let ctx ← get
-      let arg : Veir.BlockArgument :=
-        { type := ToVeirTy.toTy (d := d) t
-          firstUse := none
-          index := blk.getNumArguments! ctx
-          loc := default
-          owner := blk }
-      set (blk.pushArgument! ctx arg)
-      pushBlockArgs blk rest
+/-- The operations the lowering emits for a binding with op `o` and `nargs`
+    arguments under a `ToVeirOp` instance: the expansion `ToVeirOp.expand? o`, or one
+    operation with op-code `toOp o`, properties `defaultProps o`, attributes
+    `attrsOf o`, the arguments as operands and `max n 1` results of the binding's
+    type, whose value is the result in the slot `resultSlot o` names. -/
+def veirExpansionOf [ToVeirOp d] (o : d.Op) (nargs : Nat) :
+    VeirExpansion (ToVeirOp.Op (d := d)) :=
+  match ToVeirOp.expand? (d := d) o with
+  | some x => x
+  | none =>
+      { steps := [{ op := ToVeirOp.toOp o, props := ToVeirOp.defaultProps o,
+                    attrs := ToVeirOp.attrsOf o,
+                    operands := (List.range nargs).map VeirSrc.arg,
+                    results := List.replicate (max (ToVeirOp.resultSlot o).1 1) none }],
+        value := .res 0 (ToVeirOp.resultSlot o).2 }
 
-/-- StateM-builder helper: build a `func.func` op from a `Com d Γ t`.
-    Allocates an entry block + region, materialises `Γ` as block
-    arguments, lowers the body, appends a return-terminator op,
-    wires the chain, and finally allocates the wrapping func.func op
-    with the properties `mkFuncProps funcName funcType extra`, where
-    `mkFuncProps` builds the op-code's properties from the symbol name, the
-    function type and the remaining inherent attributes (`extra`).
+/-! ## 4. The well-formed builder -/
 
-    Returns the `OperationPtr` of the func.func — usable as a top-level
-    op inside a wrapping `builtin.module` block, or as a printer root. -/
-def buildFuncFromCom {Γ : Ctxt d} {t : d.Ty}
-    (com : Com d Γ t)
-    (funcOp : ToVeirOp.Op (d := d))
+section WfBuilder
+
+variable {O : Type} [Veir.HasOpInfo O]
+
+/-- Create an operation with op-code `op`, properties `props`, result types `resTys`
+and operands `operands` at the end of the block `blk`, through
+`WfRewriter.createOp`; `none` when an operand or the block is not in bounds. -/
+def createAtEnd (ctx : Veir.WfIRContext O) (blk : Veir.BlockPtr) (op : O)
+    (props : Veir.propertiesOf op) (resTys : Array Veir.TypeAttr)
+    (operands : Array Veir.ValuePtr) : Option (Veir.WfIRContext O × Veir.OperationPtr) :=
+  if hoper : ∀ v ∈ operands, v.InBounds ctx.raw then
+    if hblk : blk.InBounds ctx.raw then
+      Veir.WfRewriter.createOp ctx op resTys operands #[] #[] props (some (.atEnd blk)) hoper
+        (by simp) (by simp) (by simpa [Option.maybe_some] using hblk)
+    else none
+  else none
+
+/-- The result types of the step `s`, with `none` read as `resTy`. -/
+def stepResTys (resTy : Veir.TypeAttr) (s : VeirExpandStep O) : Array Veir.TypeAttr :=
+  (s.results.map (·.getD resTy)).toArray
+
+/-- The result pointers of `op` with indices below `n`. -/
+def resultPtrs (op : Veir.OperationPtr) (n : Nat) : List Veir.OpResultPtr :=
+  (List.range n).map op.getResult
+
+/-- Emit the steps of an expansion at the end of `blk`, in order, each reading its
+operands through `VeirSrc.resolve`; returns the context, the operations and the
+results of every operation emitted so far. -/
+def emitStepsWf (blk : Veir.BlockPtr) (args : List Veir.ValuePtr) (resTy : Veir.TypeAttr) :
+    List (VeirExpandStep O) → List (List Veir.OpResultPtr) → Veir.WfIRContext O →
+    Option (Veir.WfIRContext O × List Veir.OperationPtr × List (List Veir.OpResultPtr))
+  | [], done, ctx => some (ctx, [], done)
+  | s :: rest, done, ctx => do
+      let (ctx', op) ← createAtEnd ctx blk s.op s.props (stepResTys resTy s)
+        (s.operands.map (VeirSrc.resolve args done)).toArray
+      let (ctx'', ops, done') ←
+        emitStepsWf blk args resTy rest (done ++ [resultPtrs op (stepResTys resTy s).size]) ctx'
+      pure (ctx'', op :: ops, done')
+
+/-- Lower a `Com` at the end of `blk`: each binding with op `o` and `n` arguments emits
+the steps of the expansion `bx o n` (result types defaulting to `toTy` of the binding's
+type) and binds the value of the expansion, which must be in bounds. Returns the
+context, the operations in order, and the value of the program. -/
+def lowerComWfWith (bx : d.Op → Nat → VeirExpansion O) (toTy : d.Ty → Veir.TypeAttr)
+    (blk : Veir.BlockPtr) : {Γ : Ctxt d} → {t : d.Ty} →
+    VarMap Γ → Com d Γ t → Veir.WfIRContext O →
+    Option (Veir.WfIRContext O × List Veir.OperationPtr × Veir.ValuePtr)
+  | _, _, vm, .ret v, ctx => some (ctx, [], vm _ v)
+  | _, _, vm, .var (t := tEx) e body, ctx => do
+      let args := argPtrs vm e.args
+      let x := bx e.op args.length
+      let (ctx1, ops1, done) ← emitStepsWf blk args (toTy tEx) x.steps [] ctx
+      let val := x.value.resolve args done
+      if val.InBounds ctx1.raw then
+        let (ctx2, ops2, final) ← lowerComWfWith bx toTy blk (vm.extend (t := tEx) val) body ctx1
+        pure (ctx2, ops1 ++ ops2, final)
+      else none
+
+/-- The discardable attributes of the operations `lowerComWfWith bx` emits for a
+program, in emission order. -/
+def Com.veirStepAttrs (bx : d.Op → Nat → VeirExpansion O) :
+    {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → List (Array (ByteArray × Veir.Attribute))
+  | _, _, .ret _ => []
+  | _, _, .var e body =>
+      (bx e.op (DialectSignature.sig e.op).length).steps.map (·.attrs) ++
+        Com.veirStepAttrs bx body
+
+/-- Set the discardable attributes of each listed operation whose attribute array is
+not empty, through `WfRewriter.setAttributes`; an operation out of bounds is skipped. -/
+def setAttrsWf :
+    List (Veir.OperationPtr × Array (ByteArray × Veir.Attribute)) →
+    Veir.WfIRContext O → Veir.WfIRContext O
+  | [], ctx => ctx
+  | (op, attrs) :: rest, ctx =>
+      if h : attrs.isEmpty = false ∧ op.InBounds ctx.raw then
+        setAttrsWf rest
+          (Veir.WfRewriter.setAttributes ctx op (Veir.DictionaryAttr.fromArray attrs) h.2)
+      else setAttrsWf rest ctx
+
+/-- Create an operation with op-code `oc`, properties `p` and no operands, results,
+successors or regions, through `WfRewriter.createOp`: at the end of the block `mb` for
+`some mb` (`createAtEnd`), detached for `none`. -/
+def createOpAt (ctx : Veir.WfIRContext O) (oc : O) (p : Veir.propertiesOf oc) :
+    Option Veir.BlockPtr → Option (Veir.WfIRContext O × Veir.OperationPtr)
+  | none => Veir.WfRewriter.createOp ctx oc #[] #[] #[] #[] p none (by simp) (by simp)
+      (by simp) (by simp [Option.maybe_none])
+  | some mb => createAtEnd ctx mb oc p #[] #[]
+
+/-- Create a region and an operation with op-code `oc`, properties `p` and no operands,
+results, successors or regions, through `WfRewriter`, and push the region onto the
+operation (`WfRewriter.pushRegion`); the operation is inserted at the end of the block
+`mb?` when it is `some`, and left detached when it is `none`. Returns the context, the
+operation and the region. -/
+def createRegionOp (ctx : Veir.WfIRContext O) (oc : O) (p : Veir.propertiesOf oc)
+    (mb? : Option Veir.BlockPtr) :
+    Option (Veir.WfIRContext O × Veir.OperationPtr × Veir.RegionPtr) := do
+  let (ctx₁, reg) ← Veir.WfRewriter.createRegion ctx
+  let (ctx₂, o) ← createOpAt ctx₁ oc p mb?
+  if h : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧ (reg.get! ctx₂.raw).parent = none then
+    pure (Veir.WfRewriter.pushRegion ctx₂ o reg h.1 h.2.1 h.2.2, o, reg)
+  else none
+
+/-- Create a block with arguments of types `types` at the end of the region `reg`,
+through `WfRewriter.createBlock`; `none` when `reg` is not in bounds. -/
+def createBlockIn (ctx : Veir.WfIRContext O) (types : Array Veir.TypeAttr)
+    (reg : Veir.RegionPtr) : Option (Veir.WfIRContext O × Veir.BlockPtr) :=
+  if hreg : reg.InBounds ctx.raw then
+    Veir.WfRewriter.createBlock ctx types (some (.atEnd reg))
+      (by simpa [Option.maybe_some, Veir.BlockInsertPoint.inBounds_atEnd] using hreg)
+  else none
+
+/-- The function type with inputs `toTy s` for the entries `s` of `argTys` and the
+output `toTy retTy`. -/
+def funcTypeWith (toTy : d.Ty → Veir.TypeAttr) (argTys : List d.Ty) (retTy : d.Ty) :
+    Veir.FunctionType :=
+  { inputs := (argTys.map fun s => (toTy s).val).toArray, outputs := #[(toTy retTy).val] }
+
+/-- The inherent attributes `{sym_visibility = "private"}` of an extern declaration. -/
+def externVisibility : Veir.DictionaryAttr :=
+  Veir.DictionaryAttr.fromArray
+    #[("sym_visibility".toUTF8, Veir.Attribute.stringAttr ⟨"private".toUTF8⟩)]
+
+/-- Create, at the end of the block `mb` and in order, one `func.func` declaration with
+an empty body region per extern `(name, argTys, retTy)`, with the properties
+`mkFuncProps name (funcTypeWith toTy argTys retTy) externVisibility`. -/
+def createExternsWf (funcOp : O)
     (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
       Veir.propertiesOf funcOp)
-    (returnOp : ToVeirOp.Op (d := d))
-    (returnProps : Veir.propertiesOf returnOp)
-    (funcName : String) :
-    ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
-  -- Allocate entry block + body region.
-  let ctx ← get
-  let (ctx', blk) ←
-    match Veir.BlockPtr.allocEmpty ctx with
-    | some (ctx', blk) => pure (ctx', blk)
-    | none => pure (ctx, default)
-  set ctx'
-  let ctx ← get
-  let (ctx', reg) ←
-    match Veir.RegionPtr.allocEmpty ctx with
-    | some (ctx', reg) => pure (ctx', reg)
-    | none => pure (ctx, default)
-  set ctx'
-  pushBlockArgs blk Γ
-  let vm : VarMap Γ := varMapOfBlockArgs blk
-  let (final, bodyOps) ← lowerCom vm com
-  -- Return-terminator op.
-  let ctxR ← get
-  let retOpPtr ←
-    match Veir.OperationPtr.allocEmpty ctxR returnOp returnProps with
-    | some (ctxR', p) => set ctxR'; pure p
-    | none => pure default
-  pushFreshOperand retOpPtr final
-  let allOps := bodyOps ++ [retOpPtr]
-  chainOpsInBlock blk allOps
-  let ctx ← get
-  let ctx := reg.setFirstBlock! ctx (some blk)
-  let ctx := reg.setLastBlock! ctx (some blk)
-  let ctx :=
-    match allOps with
-    | [] => ctx
-    | first :: tail =>
-      let last := (first :: tail).getLast (List.cons_ne_nil _ _)
-      blk.setLastOp! (blk.setFirstOp! ctx (some first)) (some last)
-  let ctx := blk.setParent! ctx (some reg)
-  set ctx
-  -- Allocate the func wrapper and wire region in.
-  let inputs : Array Veir.Attribute :=
-    (Γ.map (fun ty => ((ToVeirTy.toTy (d := d) ty).val))).toArray
-  let outputs : Array Veir.Attribute :=
-    #[(ToVeirTy.toTy (d := d) t).val]
-  let funcType : Veir.FunctionType := { inputs := inputs, outputs := outputs }
-  let ctx ← get
-  let funcOpPtr ←
-    match Veir.OperationPtr.allocEmpty ctx funcOp
-        (mkFuncProps funcName funcType default) with
-    | some (ctx', p) => set ctx'; pure p
-    | none => pure default
-  modify (funcOpPtr.pushRegion! · reg)
-  modify (reg.setParent! · funcOpPtr)
-  return funcOpPtr
+    (toTy : d.Ty → Veir.TypeAttr) (mb : Veir.BlockPtr) :
+    List (String × List d.Ty × d.Ty) → Veir.WfIRContext O → Option (Veir.WfIRContext O)
+  | [], ctx => some ctx
+  | (name, argTys, retTy) :: rest, ctx => do
+      let (ctx', _, _) ← createRegionOp ctx funcOp
+        (mkFuncProps name (funcTypeWith toTy argTys retTy) externVisibility) (some mb)
+      createExternsWf funcOp mkFuncProps toTy mb rest ctx'
+
+/-- Lower a `Com d Γ t` into a `func.func` named `name` created in `ctx` (at the end of
+the block `mb?` when it is `some`, detached when it is `none`): a `func.func` with
+properties `mkFuncProps name (funcTypeWith toTy Γ t) default` and one region holding
+one block, whose arguments are the entries of `Γ` (argument `i` is the variable of De
+Bruijn depth `i`), followed by the operations of `lowerComWfWith bx toTy` and a return
+terminator `returnOp` of the program's value; the attributes of the operations are
+then set by `setAttrsWf`. Returns the context, the `func.func`, the block, its
+operations in order and the value of the program. -/
+def lowerComToFuncAtWf (bx : d.Op → Nat → VeirExpansion O) (toTy : d.Ty → Veir.TypeAttr)
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (funcOp : O)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
+    (returnOp : O) (returnProps : Veir.propertiesOf returnOp) (name : String)
+    (ctx : Veir.WfIRContext O) (mb? : Option Veir.BlockPtr) :
+    Option (Veir.WfIRContext O × Veir.OperationPtr × Veir.BlockPtr ×
+      List Veir.OperationPtr × Veir.ValuePtr) := do
+  let (ctx₁, fn, reg) ← createRegionOp ctx funcOp
+    (mkFuncProps name (funcTypeWith toTy Γ t) default) mb?
+  let (ctx₂, blk) ← createBlockIn ctx₁ (Γ.map toTy).toArray reg
+  let (ctx₃, ops, final) ← lowerComWfWith bx toTy blk (varMapOfBlockArgs blk) c ctx₂
+  let (ctx₄, ret) ← createAtEnd ctx₃ blk returnOp returnProps #[] #[final]
+  pure (setAttrsWf (ops.zip (c.veirStepAttrs bx)) ctx₄, fn, blk, ops ++ [ret], final)
+
+/-- Lower a `Com d Γ t` into a fresh `builtin.module` (op-code `moduleOp`) whose one
+region holds one block `mb`, holding in order the extern declarations of
+`createExternsWf` and the `func.func` of `lowerComToFuncAtWf` at the end of `mb`.
+Returns the context, the module, the `func.func`, its block, the block's operations in
+order and the value of the program. -/
+def lowerComToModuleWf (bx : d.Op → Nat → VeirExpansion O) (toTy : d.Ty → Veir.TypeAttr)
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) (externs : List (String × List d.Ty × d.Ty))
+    (moduleOp : O) (moduleProps : Veir.propertiesOf moduleOp) (funcOp : O)
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
+    (returnOp : O) (returnProps : Veir.propertiesOf returnOp) (name : String) :
+    Option (Veir.WfIRContext O × Veir.OperationPtr × Veir.OperationPtr × Veir.BlockPtr ×
+      List Veir.OperationPtr × Veir.ValuePtr) := do
+  let (ctxM, modOp, mreg) ← createRegionOp default moduleOp moduleProps none
+  let (ctx₀, mb) ← createBlockIn ctxM #[] mreg
+  let ctxE ← createExternsWf funcOp mkFuncProps toTy mb externs ctx₀
+  let (C, fn, blk, ops, final) ← lowerComToFuncAtWf bx toTy c funcOp mkFuncProps
+    returnOp returnProps name ctxE (some mb)
+  pure (C, modOp, fn, blk, ops, final)
+
+/-- Lower a `Com d Γ t` into a fresh detached region holding one block, whose arguments
+are the entries of `Γ`, followed by the operations of `lowerComWfWith bx toTy`, with
+their attributes set by `setAttrsWf`. Returns the context, the block, the region, the
+operations in order and the value of the program. -/
+def lowerComToRegionWf (bx : d.Op → Nat → VeirExpansion O) (toTy : d.Ty → Veir.TypeAttr)
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t) :
+    Option (Veir.WfIRContext O × Veir.BlockPtr × Veir.RegionPtr ×
+      List Veir.OperationPtr × Veir.ValuePtr) := do
+  let (ctx₀, reg) ← Veir.WfRewriter.createRegion (default : Veir.WfIRContext O)
+  let (ctx₁, blk) ← createBlockIn ctx₀ (Γ.map toTy).toArray reg
+  let (ctx₂, ops, final) ← lowerComWfWith bx toTy blk (varMapOfBlockArgs blk) c ctx₁
+  pure (setAttrsWf (ops.zip (c.veirStepAttrs bx)) ctx₂, blk, reg, ops, final)
+
+end WfBuilder
+
+/-! ## 5. Entry points
+
+Each entry point runs the builder with the expansion `veirExpansionOf` and the types
+`ToVeirTy.toTy` of the dialect's instances, and returns the raw context of its output;
+when the builder fails it returns the empty context `(default : WfIRContext _).raw`.
+Either way the context is well formed. -/
+
+section Entry
+
+variable [ToVeirOp d] [ToVeirTy d]
 
 /--
-Lower a possibly-open `Com d Γ t` into a `func.func`-shaped wrapper.
-Convenience entry: runs `buildFuncFromCom` over a fresh `IRContext`
-and unpacks. -/
+Lower a closed `Com d [] t` to a fresh context: a detached region holding one block
+with the operations of the program (`lowerComToRegionWf`). Returns
+`(ctx, blk, reg, finalResult)`.
+-/
+def lowerClosedCom {t : d.Ty} (com : Com d [] t) :
+    Veir.IRContext (ToVeirOp.Op (d := d))
+      × Veir.BlockPtr × Veir.RegionPtr × Veir.ValuePtr :=
+  match lowerComToRegionWf (veirExpansionOf (d := d)) (ToVeirTy.toTy (d := d)) com with
+  | some (C, blk, reg, _, final) => (C.raw, blk, reg, final)
+  | none => ((default : Veir.WfIRContext (ToVeirOp.Op (d := d))).raw, default, default, default)
+
+/--
+Lower a possibly-open `Com d Γ t` into a detached `func.func` (`lowerComToFuncAtWf`)
+in a fresh context. Returns the context, the `func.func` and the value of the program.
+-/
 def lowerClosedComToFunc {Γ : Ctxt d} {t : d.Ty}
     (com : Com d Γ t)
     (funcOp : ToVeirOp.Op (d := d))
@@ -691,61 +472,15 @@ def lowerClosedComToFunc {Γ : Ctxt d} {t : d.Ty}
     (funcName : String) :
     Veir.IRContext (ToVeirOp.Op (d := d))
       × Veir.OperationPtr × Veir.ValuePtr :=
-  let action := buildFuncFromCom com funcOp mkFuncProps returnOp returnProps funcName
-  let (funcPtr, ctx) := action.run default
-  -- The final value isn't recoverable from this entry point (caller
-  -- gets only the wrapping func op + ctx). Return `default` as the
-  -- ValuePtr slot — kept for legacy API shape.
-  (ctx, funcPtr, default)
-
-/-! ## 7. Module-with-externs wrapping (mlir-opt-roundtrippable)
-
-`lowerClosedComToModuleWithExterns` builds a complete top-level
-`builtin.module` containing:
-
-* A private `func.func` declaration (empty body region) for each
-  callee referenced by a `func.call`-shaped op in `com`.
-* The main `func.func` lowered from `com`.
-
-This is the shape `mlir-opt` accepts and re-emits in sugared form. -/
-
-/-- Build an extern `func.func` declaration — a func with an empty
-    body region, whose properties `mkFuncProps name funcType extra` carry the
-    symbol name, the function type and `extra = {sym_visibility = "private"}`.
-    Returns the `OperationPtr`. -/
-def buildExternFunc
-    (funcOp : ToVeirOp.Op (d := d))
-    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
-      Veir.propertiesOf funcOp)
-    (name : String) (argTys : List d.Ty) (retTy : d.Ty) :
-    ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
-  -- An empty body region (no blocks).
-  let ctx ← get
-  let (ctx', reg) ←
-    match Veir.RegionPtr.allocEmpty ctx with
-    | some (ctx', reg) => pure (ctx', reg)
-    | none => pure (ctx, default)
-  set ctx'
-  -- The func.func op.
-  let inputs : Array Veir.Attribute :=
-    (argTys.map (fun ty => ((ToVeirTy.toTy (d := d) ty).val))).toArray
-  let outputs : Array Veir.Attribute :=
-    #[(ToVeirTy.toTy (d := d) retTy).val]
-  let funcType : Veir.FunctionType := { inputs := inputs, outputs := outputs }
-  let extra := Veir.DictionaryAttr.fromArray
-    #[("sym_visibility".toUTF8, Veir.Attribute.stringAttr ⟨"private".toUTF8⟩)]
-  let ctx ← get
-  let funcOpPtr ←
-    match Veir.OperationPtr.allocEmpty ctx funcOp (mkFuncProps name funcType extra) with
-    | some (ctx', p) => set ctx'; pure p
-    | none => pure default
-  modify (funcOpPtr.pushRegion! · reg)
-  modify (reg.setParent! · funcOpPtr)
-  return funcOpPtr
+  match lowerComToFuncAtWf (veirExpansionOf (d := d)) (ToVeirTy.toTy (d := d)) com funcOp
+      mkFuncProps returnOp returnProps funcName default none with
+  | some (C, fn, _, _, final) => (C.raw, fn, final)
+  | none => ((default : Veir.WfIRContext (ToVeirOp.Op (d := d))).raw, default, default)
 
 /--
-Lower a closed `Com d Γ t` to a complete `builtin.module` containing
-private extern declarations for each callee + the main function.
+Lower a `Com d Γ t` to a complete `builtin.module` containing
+private extern declarations for each callee + the main function
+(`lowerComToModuleWf`).
 
 * `externs` — list of `(name, argTys, retTy)` triples; the caller
   is responsible for collecting these from the `com` (e.g., via a
@@ -770,62 +505,50 @@ def lowerClosedComToModuleWithExterns {Γ : Ctxt d} {t : d.Ty}
     (returnProps : Veir.propertiesOf returnOp)
     (funcName : String) :
     Veir.IRContext (ToVeirOp.Op (d := d)) × Veir.OperationPtr :=
-  let action : ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
-    -- Build the extern func.func decls.
-    let externOps ← externs.mapM
-      (fun ext => buildExternFunc funcOp mkFuncProps ext.1 ext.2.1 ext.2.2)
-    -- Build the main func.
-    let mainOp ← buildFuncFromCom com funcOp mkFuncProps returnOp returnProps
-                                  funcName
-    -- Allocate the module wrapper + region + entry block.
-    let ctx ← get
-    let modOpPtr ←
-      match Veir.OperationPtr.allocEmpty ctx moduleOp moduleProps with
-      | some (ctx', p) => set ctx'; pure p
-      | none => pure default
-    let ctx ← get
-    let (ctx', modBlk) ←
-      match Veir.BlockPtr.allocEmpty ctx with
-      | some (ctx', blk) => pure (ctx', blk)
-      | none => pure (ctx, default)
-    set ctx'
-    let ctx ← get
-    let (ctx', modReg) ←
-      match Veir.RegionPtr.allocEmpty ctx with
-      | some (ctx', reg) => pure (ctx', reg)
-      | none => pure (ctx, default)
-    set ctx'
-    let allTopOps := externOps ++ [mainOp]
-    chainOpsInBlock modBlk allTopOps
-    -- Wire module → region → block, set firstBlock/lastBlock and
-    -- firstOp/lastOp.
-    modify (modReg.setFirstBlock! · (some modBlk))
-    modify (modReg.setLastBlock! · (some modBlk))
-    modify (modReg.setParent! · modOpPtr)
-    modify (modBlk.setParent! · (some modReg))
-    let ctx ← get
-    let ctx :=
-      match allTopOps with
-      | [] => ctx
-      | first :: tail =>
-        let last := (first :: tail).getLast (List.cons_ne_nil _ _)
-        modBlk.setLastOp! (modBlk.setFirstOp! ctx (some first)) (some last)
-    let ctx := modOpPtr.pushRegion! ctx modReg
-    set ctx
-    return modOpPtr
-  let (modPtr, ctx) := action.run default
-  (ctx, modPtr)
+  match lowerComToModuleWf (veirExpansionOf (d := d)) (ToVeirTy.toTy (d := d)) com externs
+      moduleOp moduleProps funcOp mkFuncProps returnOp returnProps funcName with
+  | some (C, modOp, _, _, _, _) => (C.raw, modOp)
+  | none => ((default : Veir.WfIRContext (ToVeirOp.Op (d := d))).raw, default)
 
-end FuncShape
+/-- The context `lowerClosedCom` returns is well formed. -/
+theorem lowerClosedCom_wellFormed {t : d.Ty} (com : Com d [] t) :
+    (lowerClosedCom com).1.WellFormed := by
+  unfold lowerClosedCom
+  split
+  · exact Veir.WfIRContext.wellFormed _
+  · exact (default : Veir.WfIRContext (ToVeirOp.Op (d := d))).wellFormed
 
-end Lowering
+/-- The context `lowerClosedComToFunc` returns is well formed. -/
+theorem lowerClosedComToFunc_wellFormed {Γ : Ctxt d} {t : d.Ty} (com : Com d Γ t)
+    (funcOp : ToVeirOp.Op (d := d))
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
+    (returnOp : ToVeirOp.Op (d := d)) (returnProps : Veir.propertiesOf returnOp)
+    (funcName : String) :
+    (lowerClosedComToFunc com funcOp mkFuncProps returnOp returnProps
+      funcName).1.WellFormed := by
+  unfold lowerClosedComToFunc
+  split
+  · exact Veir.WfIRContext.wellFormed _
+  · exact (default : Veir.WfIRContext (ToVeirOp.Op (d := d))).wellFormed
 
-/-! ## 6. Smoke test
+/-- The context `lowerClosedComToModuleWithExterns` returns is well formed. -/
+theorem lowerClosedComToModuleWithExterns_wellFormed {Γ : Ctxt d} {t : d.Ty}
+    (com : Com d Γ t) (externs : List (String × List d.Ty × d.Ty))
+    (moduleOp : ToVeirOp.Op (d := d)) (moduleProps : Veir.propertiesOf moduleOp)
+    (funcOp : ToVeirOp.Op (d := d))
+    (mkFuncProps : String → Veir.FunctionType → Veir.DictionaryAttr →
+      Veir.propertiesOf funcOp)
+    (returnOp : ToVeirOp.Op (d := d)) (returnProps : Veir.propertiesOf returnOp)
+    (funcName : String) :
+    (lowerClosedComToModuleWithExterns com externs moduleOp moduleProps funcOp mkFuncProps
+      returnOp returnProps funcName).1.WellFormed := by
+  unfold lowerClosedComToModuleWithExterns
+  split
+  · exact Veir.WfIRContext.wellFormed _
+  · exact (default : Veir.WfIRContext (ToVeirOp.Op (d := d))).wellFormed
 
-Build a tiny dialect with one op (a nullary "constant"), lower a
-single-`ret` `Com`, and verify that the lowering type-checks and
-runs.
--/
+end Entry
 
 /-! ## Smoke test (EXAMPLE-ONLY)
 
@@ -886,7 +609,7 @@ def exampleCom : Com smokeDialect [] () :=
   .var (Expr.mk (op := ()) (retTy_eq := rfl) (args := .nil)) (.ret .here)
 
 /-- Smoke test: the lowering type-checks end-to-end and produces a
-    concrete `IRContext × BlockPtr × RegionPtr × OpResultPtr` value.
+    concrete `IRContext × BlockPtr × RegionPtr × ValuePtr` value.
     We deliberately use `#check` rather than `#eval` or a `decide` on
     a size predicate because Veir's `HashMap`-backed `IRContext`
     doesn't reduce via Lean's kernel for `decide`; the type-check

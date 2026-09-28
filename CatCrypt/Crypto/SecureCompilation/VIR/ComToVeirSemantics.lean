@@ -37,15 +37,15 @@ the shifts to the expansion `shiftSelectExpansion`, an `arith.shli` or
   condition picks and poison in the other arm does not reach the result.
 * `veirRunCom` interprets a `Com` binding by binding with `Veir.interpretOp'`,
   reading operands from an environment of runtime values and running the
-  operations `lowerExpr` emits (`veirRunBinding`). `veirRunCom_eq_denote` states
+  operations of the binding's expansion (`veirRunBinding`). `veirRunCom_eq_denote` states
   that on the fragment, from the encoded valuation, it returns the encoded
   denotation for every shift amount; `veirRunCom_refines` states that from an
   environment refined by the encoded valuation the VeIR result is refined, in
   VeIR's sense, by the encoded denotation.
 
-`veirRunCom` reads the op list of `lowerCom` with the same op-codes, properties,
-result types, operand order and bound value; it does not read the pointer graph
-that `lowerComToBlockRegion` builds.
+`veirRunCom` reads the operations `lowerComWfWith veirExpansionOf` emits with the same
+op-codes, properties, result types, operand order and bound value; it does not read
+the pointer graph the builder produces.
 -/
 
 @[expose] public section
@@ -302,7 +302,7 @@ def argVals {Γ : Ctxt jasminDialect} (ρ : VEnv Γ) :
   | [], .nil => []
   | _ :: _, .cons v rest => ρ _ v :: argVals ρ rest
 
-/-- The operation `lowerExprSingle` emits for a binding of type `t` with op `o`,
+/-- The one operation of `veirExpansionOf` for a binding of type `t` with op `o`,
 run by `Veir.interpretOp'` on the operand values `args`: the op-code
 `toMlirOpCode o`, the properties `propsOfOp o`, `max n 1` results of type
 `toVeirTy t` where `n` is the result count of `resultSlotOfOp o`. -/
@@ -319,7 +319,7 @@ def VeirSrc.resolveVal (args : List RuntimeValue) (done : List (Array RuntimeVal
   | .arg i => args[i]?
   | .res j slot => done[j]?.bind (·[slot]?)
 
-/-- The operations of an expansion (`emitStep`), run in order by `Veir.interpretOp'`:
+/-- The operations of an expansion (`emitStepsWf`), run in order by `Veir.interpretOp'`:
 each reads its operands through `VeirSrc.resolveVal`, has the result types of the
 step with `none` read as `resTy`, and appends its results to `done`. -/
 def veirRunSteps (args : List RuntimeValue) (resTy : TypeAttr) :
@@ -332,7 +332,7 @@ def veirRunSteps (args : List RuntimeValue) (resTy : TypeAttr) :
         (s.results.map (·.getD resTy)).toArray ops.toArray #[] mem
       veirRunSteps args resTy rest (done ++ [vals]) mem'
 
-/-- The operations `lowerExpr` emits for a binding of type `t` with op `o`, run on
+/-- The operations the lowering emits for a binding of type `t` with op `o`, run on
 the operand values `args`: the steps of `JasminOp.expandVeir? o` followed by the
 value of the expansion, or the one operation `veirRunOp` and the result in the slot
 `resultSlotOfOp o` names. -/
@@ -349,7 +349,7 @@ def veirRunBinding (o : JasminOp) (t : JasminTy) (args : List RuntimeValue)
       pure (r, mem')
 
 /-- The op-by-op VeIR interpretation of a `Com`: each binding runs the operations
-`lowerExpr` emits for it (`veirRunBinding`) on the values of its arguments and
+the lowering emits for it (`veirRunBinding`) on the values of its arguments and
 binds the value of the binding; `ret v` returns the value of `v`. -/
 def veirRunCom : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t →
     VEnv Γ → MemoryState → Interp RuntimeValue

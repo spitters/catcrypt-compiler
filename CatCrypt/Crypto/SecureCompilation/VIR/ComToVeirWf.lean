@@ -27,8 +27,9 @@ A lowering of `Com jasminDialect Γ t` into a VeIR block built through VeIR's
 well-formedness-preserving builder `WfRewriter`, so that the result is a
 `WfIRContext` and VeIR's own block interpreter `interpretBlock` applies to it.
 
-The operations are those of `lowerExpr` for the `ToVeirOp jasminDialect`
-instance: per binding, the steps of `JasminOp.expandVeir?` or the one operation
+The builder is the one of `ComToVeir.lean` (`lowerComWfWith`, `createAtEnd`,
+`createRegionOp`, `createBlockIn`) at `jasminDialect`. The operations are those of
+`veirExpansionOf` for the `ToVeirOp jasminDialect` instance: per binding, the steps of `JasminOp.expandVeir?` or the one operation
 with op-code `toMlirOpCode o`, properties `propsOfOp o`, one operand per argument
 and `max n 1` results of the binding's type (`bindingExpansion`). They are
 appended to one block whose arguments are the context `Γ` (argument `i` is the
@@ -66,6 +67,11 @@ interpreter does not read them.
   operation, block and region has an identifier below `nextID`, `IdsBelow`) gives
   `exists_interpretFunction_lowerComToFuncWf` and its `_eq_veirRunCom` form without the
   hypothesis that the builder succeeds.
+
+* `lowerClosedComToModuleWithExterns_eq_lowerComToFuncWf`: with no externs, the entry
+  point `lowerClosedComToModuleWithExterns` of `ComToVeir.lean` returns the context of
+  `lowerComToFuncWf`; `interpretFunction_lowerClosedComToModuleWithExterns` states the
+  `interpretFunction` theorem for that context.
 -/
 
 @[expose] public section
@@ -81,22 +87,9 @@ open Ctxt (Var Valuation)
 
 /-! ## The builder -/
 
-/-- Create an operation with op-code `op`, properties `props`, result types `resTys`
-and operands `operands` at the end of the block `blk`, through
-`WfRewriter.createOp`; `none` when an operand or the block is not in bounds. -/
-def createAtEnd (ctx : WfIRContext OpCode) (blk : BlockPtr) (op : OpCode)
-    (props : propertiesOf op) (resTys : Array TypeAttr) (operands : Array ValuePtr) :
-    Option (WfIRContext OpCode × OperationPtr) :=
-  if hoper : ∀ v ∈ operands, v.InBounds ctx.raw then
-    if hblk : blk.InBounds ctx.raw then
-      WfRewriter.createOp ctx op resTys operands #[] #[] props (some (.atEnd blk)) hoper
-        (by simp) (by simp) (by simpa [Option.maybe_some] using hblk)
-    else none
-  else none
-
 /-- The operations the lowering emits for a binding with op `o` and `nargs`
 arguments: the expansion `JasminOp.expandVeir? o`, or the one operation of
-`lowerExprSingle` (op-code `toMlirOpCode o`, properties `propsOfOp o`, the
+`veirExpansionOf` without an expansion (op-code `toMlirOpCode o`, properties `propsOfOp o`, the
 arguments as operands, `max n 1` results of the binding's type) whose value is the
 result in the slot `resultSlotOfOp o` names. -/
 def bindingExpansion (o : JasminOp) (nargs : Nat) : VeirExpansion OpCode :=
@@ -108,44 +101,19 @@ def bindingExpansion (o : JasminOp) (nargs : Nat) : VeirExpansion OpCode :=
                     results := List.replicate (max (JasminOp.resultSlotOfOp o).1 1) none }],
         value := .res 0 (JasminOp.resultSlotOfOp o).2 }
 
-/-- The result types of the step `s`, with `none` read as `resTy`. -/
-def stepResTys (resTy : TypeAttr) (s : VeirExpandStep OpCode) : Array TypeAttr :=
-  (s.results.map (·.getD resTy)).toArray
+/-- `bindingExpansion` is the expansion the `ToVeirOp jasminDialect` instance gives. -/
+theorem veirExpansionOf_eq_bindingExpansion (o : JasminOp) (nargs : Nat) :
+    veirExpansionOf (d := jasminDialect) o nargs = bindingExpansion o nargs := by
+  cases o <;> try rfl
+  rename_i b w
+  cases b <;> rfl
 
-/-- The result pointers of `op` with indices below `n`. -/
-def resultPtrs (op : OperationPtr) (n : Nat) : List OpResultPtr :=
-  (List.range n).map op.getResult
-
-/-- Emit the steps of an expansion at the end of `blk`, in order, each reading its
-operands through `VeirSrc.resolve`; returns the context, the operations and the
-results of every operation emitted so far. -/
-def emitStepsWf (blk : BlockPtr) (args : List ValuePtr) (resTy : TypeAttr) :
-    List (VeirExpandStep OpCode) → List (List OpResultPtr) → WfIRContext OpCode →
-    Option (WfIRContext OpCode × List OperationPtr × List (List OpResultPtr))
-  | [], done, ctx => some (ctx, [], done)
-  | s :: rest, done, ctx => do
-      let (ctx', op) ← createAtEnd ctx blk s.op s.props (stepResTys resTy s)
-        (s.operands.map (VeirSrc.resolve args done)).toArray
-      let (ctx'', ops, done') ←
-        emitStepsWf blk args resTy rest (done ++ [resultPtrs op (stepResTys resTy s).size]) ctx'
-      pure (ctx'', op :: ops, done')
-
-/-- Lower a `Com` at the end of `blk`: each binding emits the steps of its
-`bindingExpansion` and binds the value of the expansion, which must be in bounds.
-Returns the context, the operations in order, and the value of the program. -/
-def lowerComWf (blk : BlockPtr) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
-    VarMap Γ → Com jasminDialect Γ t → WfIRContext OpCode →
-    Option (WfIRContext OpCode × List OperationPtr × ValuePtr)
-  | _, _, vm, .ret v, ctx => some (ctx, [], vm _ v)
-  | _, _, vm, .var (t := tEx) e body, ctx => do
-      let args := argPtrs vm e.args
-      let x := bindingExpansion e.op args.length
-      let (ctx1, ops1, done) ← emitStepsWf blk args (JasminTy.toVeirTy tEx) x.steps [] ctx
-      let val := x.value.resolve args done
-      if val.InBounds ctx1.raw then
-        let (ctx2, ops2, final) ← lowerComWf blk (vm.extend (t := tEx) val) body ctx1
-        pure (ctx2, ops1 ++ ops2, final)
-      else none
+/-- The lowering `lowerComWfWith` of `jasminDialect`: each binding emits the steps of
+its `bindingExpansion`, with result types `JasminTy.toVeirTy`. -/
+abbrev lowerComWf (blk : BlockPtr) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (vm : VarMap Γ) (c : Com jasminDialect Γ t) (ctx : WfIRContext OpCode) :
+    Option (WfIRContext OpCode × List OperationPtr × ValuePtr) :=
+  lowerComWfWith bindingExpansion JasminTy.toVeirTy blk vm c ctx
 
 /-- Lower a `Com jasminDialect Γ t` into a fresh well-formed context: a block with
 one argument per entry of `Γ` (types `toVeirTy`), the operations of `lowerComWf`
@@ -475,11 +443,11 @@ theorem lowerComWf_spec {blk : BlockPtr} :
       (∀ o ∈ ops, ¬ o.InBounds ctx.raw) ∧
       final.InBounds ctx'.raw ∧ Reach ctx ctx'
   | _, _, vm, .ret v, ctx, ctx', ops, final, L, h, hc, hvm => by
-    simp only [lowerComWf, Option.some.injEq, Prod.mk.injEq] at h
+    simp only [lowerComWf, lowerComWfWith, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨by simpa using hc, ⟨rfl, rfl⟩, by simp, hvm _ v, .refl _⟩
   | _, _, vm, .var (t := tEx) e body, ctx, ctx', ops, final, L, h, hc, hvm => by
-    simp only [lowerComWf, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+    simp only [lowerComWf, lowerComWfWith, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨ctx₁, ops₁, done⟩, h₁, h⟩ := h
     split at h
     · rename_i hval
@@ -1571,7 +1539,8 @@ theorem lowerComWf_exists {blk : BlockPtr} :
       ((bindingExpansion e.op (argPtrs vm e.args).length).value.resolve (argPtrs vm e.args) done))
       body hf₁ hc₁ hvm₁
     refine ⟨ctx₂, ops₁ ++ ops₂, final, ?_, hf₂⟩
-    simp only [lowerComWf, h₁, Option.bind_eq_bind, Option.bind_some, if_pos hval, h₂,
+    simp only [lowerComWf] at h₂
+    simp only [lowerComWf, lowerComWfWith, h₁, Option.bind_eq_bind, Option.bind_some, if_pos hval, h₂,
       Option.pure_def]
 
 /-- `lowerComToBlockWf` returns a context for every program of `jasminDialect`. -/
@@ -1647,39 +1616,7 @@ and the output `toVeirTy t`, and no further attributes. -/
 def funcPropsWf (Γ : Ctxt jasminDialect) (t : JasminTy) (name : String) :
     propertiesOf (OpCode.func .func) :=
   CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim.funcFuncProps name
-    { inputs := (Γ.map fun s => (JasminTy.toVeirTy s).val).toArray,
-      outputs := #[(JasminTy.toVeirTy t).val] } default
-
-/-- Create an operation with op-code `oc`, properties `p` and no operands, results,
-successors or regions, through `WfRewriter.createOp`: at the end of the block `mb` for
-`some mb` (`createAtEnd`), detached for `none`. -/
-def createOpAt (ctx : WfIRContext OpCode) (oc : OpCode) (p : propertiesOf oc) :
-    Option BlockPtr → Option (WfIRContext OpCode × OperationPtr)
-  | none => WfRewriter.createOp ctx oc #[] #[] #[] #[] p none (by simp) (by simp) (by simp)
-      (by simp [Option.maybe_none])
-  | some mb => createAtEnd ctx mb oc p #[] #[]
-
-/-- Create a region and an operation with op-code `oc`, properties `p` and no operands,
-results, successors or regions, through `WfRewriter`, and push the region onto the
-operation (`WfRewriter.pushRegion`); the operation is inserted at the end of the block
-`mb?` when it is `some`, and left detached when it is `none`. Returns the context, the
-operation and the region. -/
-def createRegionOp (ctx : WfIRContext OpCode) (oc : OpCode) (p : propertiesOf oc)
-    (mb? : Option BlockPtr) : Option (WfIRContext OpCode × OperationPtr × RegionPtr) := do
-  let (ctx₁, reg) ← WfRewriter.createRegion ctx
-  let (ctx₂, o) ← createOpAt ctx₁ oc p mb?
-  if h : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧ (reg.get! ctx₂.raw).parent = none then
-    pure (WfRewriter.pushRegion ctx₂ o reg h.1 h.2.1 h.2.2, o, reg)
-  else none
-
-/-- Create a block with arguments of types `types` at the end of the region `reg`,
-through `WfRewriter.createBlock`; `none` when `reg` is not in bounds. -/
-def createBlockIn (ctx : WfIRContext OpCode) (types : Array TypeAttr) (reg : RegionPtr) :
-    Option (WfIRContext OpCode × BlockPtr) :=
-  if hreg : reg.InBounds ctx.raw then
-    WfRewriter.createBlock ctx types (some (.atEnd reg))
-      (by simpa [Option.maybe_some, BlockInsertPoint.inBounds_atEnd] using hreg)
-  else none
+    (funcTypeWith JasminTy.toVeirTy Γ t) default
 
 /-- Lower a `Com jasminDialect Γ t` into a `func.func` named `name` inside a fresh
 `builtin.module`: a `builtin.module` whose one region holds one empty block `mb` (the
@@ -2204,5 +2141,96 @@ theorem exists_interpretFunction_lowerComToFuncWf_eq_veirRunCom {Γ : Ctxt jasmi
   obtain ⟨C, modOp, fn, blk, ops, h⟩ := lowerComToFuncWf_isSome c name
   exact ⟨C, modOp, fn, blk, ops, h,
     interpretFunction_lowerComToFuncWf_eq_veirRunCom c name V mem hc hΓ h⟩
+
+/-! ## The entry point `lowerClosedComToModuleWithExterns` on `jasminDialect`
+
+With no externs, the context the production entry point returns for a program of
+`jasminDialect` is the context `lowerComToFuncWf` builds: the builder is
+`lowerComToModuleWf` with `veirExpansionOf = bindingExpansion`, `createExternsWf []`
+adds nothing, and `setAttrsWf` sets nothing because no operation of `jasminDialect`
+carries discardable attributes. -/
+
+/-- No step of `bindingExpansion` carries discardable attributes. -/
+theorem bindingExpansion_attrs (o : JasminOp) (n : Nat) :
+    ∀ s ∈ (bindingExpansion o n).steps, s.attrs = #[] := by
+  unfold bindingExpansion
+  cases h : JasminOp.expandVeir? o with
+  | some x =>
+    cases o <;> simp [JasminOp.expandVeir?] at h
+    rename_i bop w
+    cases bop <;> simp at h <;> subst h <;> simp [JasminOp.shiftSelectExpansion]
+  | none => simp
+
+/-- No operation `lowerComWf` emits for a program of `jasminDialect` carries discardable
+attributes. -/
+theorem veirStepAttrs_bindingExpansion :
+    ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t),
+      ∀ a ∈ c.veirStepAttrs bindingExpansion, a = #[]
+  | _, _, .ret _ => by simp [Com.veirStepAttrs]
+  | _, _, .var e body => by
+    intro a ha
+    simp only [Com.veirStepAttrs, List.mem_append, List.mem_map] at ha
+    rcases ha with ⟨s, hs, rfl⟩ | ha
+    · exact bindingExpansion_attrs _ _ s hs
+    · exact veirStepAttrs_bindingExpansion body a ha
+
+/-- `setAttrsWf` leaves the context unchanged when every attribute array is empty. -/
+theorem setAttrsWf_of_empty {O : Type} [HasOpInfo O] :
+    ∀ (L : List (OperationPtr × Array (ByteArray × Attribute))) (ctx : WfIRContext O),
+      (∀ p ∈ L, p.2 = #[]) → setAttrsWf L ctx = ctx
+  | [], _, _ => rfl
+  | (op, a) :: rest, ctx, h => by
+    have ha : a = #[] := h _ List.mem_cons_self
+    subst ha
+    rw [setAttrsWf, dif_neg (by simp)]
+    exact setAttrsWf_of_empty rest ctx (fun p hp => h p (List.mem_cons_of_mem _ hp))
+
+/-- For a program of `jasminDialect` and no externs, the context and module that the
+production entry point `lowerClosedComToModuleWithExterns` returns are those of
+`lowerComToFuncWf`. -/
+theorem lowerClosedComToModuleWithExterns_eq_lowerComToFuncWf {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t) (name : String)
+    {C : WfIRContext OpCode} {modOp fn : OperationPtr} {blk : BlockPtr}
+    {ops : List OperationPtr}
+    (h : lowerComToFuncWf c name = some (C, modOp, fn, blk, ops)) :
+    lowerClosedComToModuleWithExterns (d := jasminDialect) c [] (OpCode.builtin .module)
+      default (OpCode.func .func)
+      CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim.funcFuncProps
+      (OpCode.func .return) default name = (C.raw, modOp) := by
+  have hx : (veirExpansionOf (d := jasminDialect) : JasminOp → Nat → VeirExpansion OpCode) =
+      bindingExpansion := funext₂ veirExpansionOf_eq_bindingExpansion
+  have hty : (ToVeirTy.toTy (d := jasminDialect)) = JasminTy.toVeirTy := rfl
+  simp only [lowerComToFuncWf, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨⟨ctxM, modOp₀, mreg⟩, hM, ⟨ctx₀, mb⟩, h₀, ⟨ctx₁, fn₁, reg⟩, h₁, ⟨ctx₂, blk₂⟩, h₂,
+    ⟨ctx₃, ops₃, final⟩, h₃, ⟨ctx₄, ret⟩, h₄, rfl, rfl, rfl, rfl, rfl⟩ := h
+  simp only [funcPropsWf] at h₁
+  simp only [lowerComWf] at h₃
+  unfold lowerClosedComToModuleWithExterns
+  rw [hx]
+  simp only [hty, lowerComToModuleWf, lowerComToFuncAtWf, createExternsWf, hM, h₀, h₁, h₂, h₃, h₄,
+    Option.bind_eq_bind, Option.bind_some, Option.pure_def]
+  rw [setAttrsWf_of_empty _ _ (fun p hp =>
+    veirStepAttrs_bindingExpansion c _ (List.of_mem_zip hp).2)]
+
+/-- On the `arith` fragment over a context of integer types, the production entry point
+`lowerClosedComToModuleWithExterns` with no externs returns the well-formed context of
+`lowerComToFuncWf`, on whose `func.func` VeIR's `interpretFunction`, with the encoded
+valuation `V` as arguments and any memory `mem`, returns the encoded denotation of the
+program and leaves the memory unchanged. -/
+theorem interpretFunction_lowerClosedComToModuleWithExterns {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t) (name : String) (V : Valuation Γ)
+    (mem : MemoryState) (hc : ComInArith c) (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s) :
+    ∃ (C : WfIRContext OpCode) (modOp fn : OperationPtr),
+      lowerClosedComToModuleWithExterns (d := jasminDialect) c [] (OpCode.builtin .module)
+        default (OpCode.func .func)
+        CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim.funcFuncProps
+        (OpCode.func .return) default name = (C.raw, modOp) ∧
+      ∃ hf : fn.InBounds C.raw,
+        interpretFunction fn (encodeArgs V).toArray mem hf =
+          .ok (mem, #[encodeVal t (c.denote V)]) := by
+  obtain ⟨C, modOp, fn, blk, ops, h, hi⟩ := exists_interpretFunction_lowerComToFuncWf c name V
+    mem hc hΓ
+  exact ⟨C, modOp, fn, lowerClosedComToModuleWithExterns_eq_lowerComToFuncWf c name h, hi⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
