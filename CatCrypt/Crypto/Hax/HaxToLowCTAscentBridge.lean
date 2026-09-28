@@ -75,6 +75,10 @@ function holds the decoding of the thrown or returned value (`excPayload`).
   `corres_flatElemField`, `fuelSim_flatArrUpdate` — the arrays-of-structs premises
   from the runtime leaves, the transport of a field call on an element to the flat
   read, and the element write
+* `enc_encFlat_set_rows` — the rows after an element write are those of the typed
+  array with the element replaced, under `enc` and `encFlat`
+* `corres_flatFieldElemField` — the transport of a field call on an element of an
+  array field of a struct to the read of the flat array
 * `fuelSim_optBindSome`, `fuelSim_optBindNone`, `fuelSim_optMatch`,
   `corres_optReturnSome`, `corres_optReturnNone`, `corresX_optBreakSome`,
   `corresX_optBreakNone` — the `Option` arms
@@ -297,6 +301,27 @@ theorem arrStructFlatAt_set {k : Nat} {a : String} {env envF : Env}
     · exact hrow r h
     · rw [h]; exact hws, hF⟩
 
+/-- The rows of an array of structs with row `j` replaced by the components of `p`
+    are the rows of the array with element `j` replaced by `p`: their struct values
+    are its encoding and their concatenation its flat encoding. -/
+theorem enc_encFlat_set_rows {α : Type} [_root_.Hax.Ascent.HaxTupleEnc α]
+    [_root_.Hax.Ascent.HaxEnc α] {k : Nat}
+    (henc : ∀ p : α, (_root_.Hax.Ascent.HaxEnc.enc p : Value) =
+      structVal k (_root_.Hax.Ascent.HaxTupleEnc.encList p))
+    (a : Array α) (j : Nat) (hj : j < a.size) (p : α) :
+    Value.array (((a.toList.map _root_.Hax.Ascent.HaxTupleEnc.encList).set j
+        (_root_.Hax.Ascent.HaxTupleEnc.encList p)).map (structVal k)) =
+      _root_.Hax.Ascent.HaxEnc.enc (a.set j p) ∧
+    Value.array ((a.toList.map _root_.Hax.Ascent.HaxTupleEnc.encList).set j
+        (_root_.Hax.Ascent.HaxTupleEnc.encList p)).flatten =
+      _root_.Hax.Ascent.encFlat (a.set j p) := by
+  refine ⟨?_, _root_.Hax.Ascent.encFlat_set a j hj p⟩
+  rw [_root_.Hax.Ascent.enc_array_toList, Array.toList_set, List.map_set, List.map_set,
+    List.map_map]
+  congr 2
+  · exact List.map_congr_left fun q _ => (henc q).symm
+  · exact (henc p).symm
+
 end Leaves
 
 /-! ## Arrays of structs under `Corres` -/
@@ -358,6 +383,24 @@ theorem fuelSim_flatArrUpdate (hU : ArrUpdateSound bi) (hA : IdxArithSound bi) {
   obtain ⟨envF2, h1, h2, h3, h4⟩ := flatArrUpdate_sim bi fuel hU hA a k i i' x body body' vs
     env envF rows j ws hrow hj hws hcf ha haF hi hi' hx hlen hat hvs hax
   exact ⟨_, _, h1, h2, hR₂ envF2 h3 h4⟩
+
+/-- **Flattened element field read through a struct field.**  A `Corres` statement
+    for the field call `c` on `index(s.f, x)` holds for the read of the flat array in
+    the component variable of `f` at `x * k + off`, from the environments in which the
+    array field is flattened and `x` holds an in-range index. -/
+theorem corres_flatFieldElemField (hI : ArrIndexSound bi) (hA : IdxArithSound bi)
+    {c s f x : String} {fs gs : List String} {off : Nat} (hFo : FieldSound bi fs)
+    (hFi : FieldSound bi gs) (hoff : fieldIdx gs c = some off)
+    {P Q : Env → S → Prop} {G : S → Prop} {V : S → Value}
+    (h : Corres bi P G (.app c [.app "index" [.app ("." ++ f) [.var s], .var x]]) V Q) :
+    Corres bi (fun envF σ => ∃ env, P env σ ∧ FieldElemReadAt fs gs.length s f x env envF) G
+      (.app "index" [.var (structCompName s f), flatIdx (.var x) gs.length off]) V
+      (fun envF σ => ∃ env, Q env σ ∧ FieldElemReadAt fs gs.length s f x env envF) := by
+  refine corres_of_fuelSim (fun fuel env envF hR => ?_) h
+  obtain ⟨w, h1, h2⟩ := flatFieldElemField_sim bi fuel hI hA c s f x fs gs off env envF
+    hFo hFi hoff hR
+  rw [h1, h2]
+  exact ⟨rfl, hR⟩
 
 end ArrTransport
 

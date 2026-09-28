@@ -51,7 +51,8 @@ word payload.
 variable binds the call's tuple result to `s#tup` and reads its components into
 the component variables (`callBindArm`).  A variable bound to a component or to an
 `Option` payload is copied through the scalar builtin `copyName` (`rhsCopy`),
-since the front lowers a `letBind` of one variable to another to nothing.  A
+since the scope checkers of the simulation theorems accept a `letBind` of one
+variable to another only when the two are the same variable.  A
 function returning a tuple whose components are variables and flattened structs
 returns its result in those variables (`namedRet`): each such tuple in tail
 position becomes the unit value and each such `cfBreak` payload `cfBreak ()`, so
@@ -111,7 +112,9 @@ against `denote'`.
 `elemFieldKind`, `arrCallArm` are the arms; `bindElems`, `storeElems` the loads and
 stores of one element.  `ArrStructFlatAt` relates an array of tuples to its flat
 array; `ArrIndexSound`, `ArrUpdateSound`, `LenSound`, `IdxArithSound` state the
-builtins the arms use.
+builtins the arms use.  `StructFlatAtK` relates a struct some of whose fields are
+arrays of structs to its components, the flat array for each such field, and
+`FieldElemReadAt` an element read through such a field to the flat read.
 
 * `flatE_app`, `flatE_letBind` — the unfolding of `flatE` on a call and a binding.
 * `flatE_elemField`, `flatE_elemBind`, `flatE_arrUpdate`, `flatE_len` — the array
@@ -122,6 +125,10 @@ builtins the arms use.
   the struct flattened.
 * `flatArrUpdate_sim` — the element write and its stores leave the array flattened.
 * `flatLen_sim` — `len` of an array of type `[T; N]` and the literal `N`.
+* `structFlatAtK_none_iff`, `flatProjK_sim`, `fieldElemReadAt_of_structFlatAtK`,
+  `flatFieldElemField_sim` — without array fields `StructFlatAtK` is `StructFlatAt`;
+  a word field reads as before; the field call on an element of an array field and
+  the read of the flat array evaluate to the same value.
 -/
 
 @[expose] public section
@@ -206,8 +213,9 @@ def copyName : String := "scalar#BitAnd"
 def copyExpr (y : String) : ImpExpr := .app copyName [.var y, .var y]
 
 /-- The right-hand side bound to the variable `comp`: a variable `y` other than
-    `comp` is the copy `copyExpr y` (a `letBind` of one variable to another is an
-    alias, which the front lowers to nothing); every other expression is itself. -/
+    `comp` is the copy `copyExpr y` (the scope checkers accept a `letBind` of one
+    variable to another only for the same variable); every other expression is
+    itself. -/
 def rhsCopy (comp : String) : ImpExpr → ImpExpr
   | .var y => if y == comp then .var y else copyExpr y
   | e => e
@@ -2353,6 +2361,56 @@ def ArrStructFlatAt (k : Nat) (a : String) (env envF : Env) : Prop :=
   ∃ rows : List (List Value), env a = some (.array (rows.map (structVal k))) ∧
     (∀ r ∈ rows, r.length = k) ∧ envF a = some (.array rows.flatten)
 
+/-- The struct variable `s` with fields `fs` holds in `env` the struct value of
+    components `vs`, one per field and none control flow.  A field `f` with
+    `ks f = some k` holds an array of `k`-field structs, the struct values of the
+    rows `rows`, and `envF` binds its component variable to the flat array of the
+    rows; `envF` binds the component variable of every other field to its
+    component. -/
+def StructFlatAtK (fs : List String) (ks : String → Option Nat) (s : String)
+    (env envF : Env) : Prop :=
+  ∃ vs : List Value, env s = some (structVal fs.length vs) ∧ vs.length = fs.length ∧
+    (∀ (i : Nat) (f : String), fs[i]? = some f →
+      match ks f with
+      | none => envF (structCompName s f) = vs[i]?
+      | some k => ∃ rows : List (List Value),
+          vs[i]? = some (.array (rows.map (structVal k))) ∧ (∀ r ∈ rows, r.length = k) ∧
+          (∀ r ∈ rows, ∀ w ∈ r, w.isControlFlow = false) ∧
+          envF (structCompName s f) = some (.array rows.flatten)) ∧
+    ∀ w ∈ vs, w.isControlFlow = false
+
+/-- Without array fields, `StructFlatAtK` is `StructFlatAt`. -/
+theorem structFlatAtK_none_iff (fs : List String) (s : String) (env envF : Env) :
+    StructFlatAtK fs (fun _ => none) s env envF ↔ StructFlatAt fs s env envF := Iff.rfl
+
+/-- The field `f` (position `i` of `fs`) of the struct variable `s` holds an array of
+    `k`-field structs with rows `rows`, none of whose components is control flow;
+    the component variable of `f` holds the flat array of the rows; and the index
+    variable `x` holds the same in-range natural `j` on both sides. -/
+def FieldElemReadAt (fs : List String) (k : Nat) (s f x : String) (env envF : Env) : Prop :=
+  ∃ (vs : List Value) (i : Nat) (rows : List (List Value)) (j : Nat),
+    env s = some (structVal fs.length vs) ∧ vs.length = fs.length ∧
+    (∀ w ∈ vs, w.isControlFlow = false) ∧ fs[i]? = some f ∧
+    vs[i]? = some (.array (rows.map (structVal k))) ∧ (∀ r ∈ rows, r.length = k) ∧
+    (∀ r ∈ rows, ∀ w ∈ r, w.isControlFlow = false) ∧
+    envF (structCompName s f) = some (.array rows.flatten) ∧
+    env x = some (.int j) ∧ envF x = some (.int j) ∧ j < rows.length
+
+/-- An array field of a flattened struct and an index variable holding the same
+    in-range natural on both sides give `FieldElemReadAt`. -/
+theorem fieldElemReadAt_of_structFlatAtK (fs : List String) (ks : String → Option Nat)
+    (s f x : String) (i k j : Nat) (env envF : Env) (hsf : StructFlatAtK fs ks s env envF)
+    (hi : fs[i]? = some f) (hk : ks f = some k) (hx : env x = some (.int j))
+    (hxF : envF x = some (.int j))
+    (hj : ∀ (vs : List Value) (rows : List (List Value)), env s = some (structVal fs.length vs) →
+      vs[i]? = some (.array (rows.map (structVal k))) → j < rows.length) :
+    FieldElemReadAt fs k s f x env envF := by
+  obtain ⟨vs, hs, hlen, hc, hcf⟩ := hsf
+  have hci := hc i f hi
+  rw [hk] at hci
+  obtain ⟨rows, hv, hrow, hrcf, hF⟩ := hci
+  exact ⟨vs, i, rows, j, hs, hlen, hcf, hi, hv, hrow, hrcf, hF, hx, hxF, hj vs rows hs hv⟩
+
 /-- The value of an operand of a store: a literal or a bound variable. -/
 def atomVal (env : Env) : ImpExpr → Option Value
   | .lit l => some (Value.ofLit l)
@@ -2452,6 +2510,49 @@ theorem flatElemField_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi) (c a :
         (args_cons_of_val bi fuel _ _ _ _ _ (flatIdx_run bi fuel hA i' _ off j envF hi') rfl
           (denoteArgs'_nil_run bi fuel envF))) (hI _ _ _ ?_)
     rw [flatten_getElem?_mul_add rows hrow hj ho, hw]
+
+/-- **Projection arm with array fields.**  A field call on a word field of a
+    flattened struct and its component variable evaluate to the same value. -/
+theorem flatProjK_sim (s f : String) (fs : List String) (ks : String → Option Nat) (i : Nat)
+    (env envF : Env) (hi : fs[i]? = some f) (hk : ks f = none)
+    (hsf : StructFlatAtK fs ks s env envF) (hF : FieldSound bi fs) :
+    ∃ v, (denote' bi fuel (.app ("." ++ f) [.var s])).run env = (.val v, env) ∧
+      (denote' bi fuel (.var (structCompName s f))).run envF = (.val v, envF) := by
+  obtain ⟨vs, hs, hlen, hc, hcf⟩ := hsf
+  have hci := hc i f hi
+  rw [hk] at hci
+  have hlt : i < vs.length := by
+    rw [hlen]; exact (List.getElem?_eq_some_iff.1 hi).1
+  refine ⟨vs[i], ?_, ?_⟩
+  · exact _root_.Hax.Ascent.denote'_app bi fuel
+      (_root_.Hax.Ascent.denoteArgs'_cons bi fuel (_root_.Hax.Ascent.denote'_var bi fuel hs)
+        (structVal_not_cf hcf) (_root_.Hax.Ascent.denoteArgs'_nil bi fuel env))
+      ((hF vs i f hlen hi).trans (List.getElem?_eq_getElem hlt))
+  · simp only at hci
+    rw [denote'_var_run, hci, List.getElem?_eq_getElem hlt]
+
+/-- **Element field read through a struct field.**  The field call `c` on
+    `index(s.f, x)`, for an array field `f` of the struct variable `s`, and the read
+    of the flat array in the component variable of `f` at `x * k + off` evaluate to
+    the same value. -/
+theorem flatFieldElemField_sim (hI : ArrIndexSound bi) (hA : IdxArithSound bi)
+    (c s f x : String) (fs gs : List String) (off : Nat) (env envF : Env)
+    (hFo : FieldSound bi fs) (hFi : FieldSound bi gs) (hoff : fieldIdx gs c = some off)
+    (h : FieldElemReadAt fs gs.length s f x env envF) :
+    ∃ w, (denote' bi fuel (.app c [.app "index" [.app ("." ++ f) [.var s], .var x]])).run env =
+        (.val w, env) ∧
+      (denote' bi fuel (.app "index" [.var (structCompName s f),
+          flatIdx (.var x) gs.length off])).run envF = (.val w, envF) := by
+  obtain ⟨vs, i, rows, j, hs, hlen, hcf, hi, hv, hrow, hrcf, haF, hx, hxF, hj⟩ := h
+  have hr : (denote' bi fuel (.app ("." ++ f) [.var s])).run env =
+      (.val (.array (rows.map (structVal gs.length))), env) :=
+    _root_.Hax.Ascent.denote'_app bi fuel
+      (_root_.Hax.Ascent.denoteArgs'_cons bi fuel (_root_.Hax.Ascent.denote'_var bi fuel hs)
+        (structVal_not_cf hcf) (_root_.Hax.Ascent.denoteArgs'_nil bi fuel env))
+      ((hFo vs i f hlen hi).trans hv)
+  exact flatElemField_sim bi fuel hI hA c (structCompName s f) gs off _ (.var x) (.var x)
+    env envF rows j hFi hoff hrow hj (hrcf _ (List.getElem_mem hj)) hr haF
+    (by rw [denote'_var_run, hx]) (by rw [denote'_var_run, hxF])
 
 /-- The loads `bindElems a x k t ms body` of the components of the row `row` at
     index `j` of the flat array held by `a` bind `ms` to the components from `t` on

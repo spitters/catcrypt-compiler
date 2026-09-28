@@ -1002,10 +1002,19 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
             let arrLoc : Located := { locVar := arr, locSrc := arrTy }
             let srcLoc : Located := { locVar := src, locSrc := elemTy }
             -- `array_update` returns the updated array (functional semantics),
-            -- so `name` is rebound to a slot of the SAME container type.
+            -- so `name` is bound to a slot of the same container type.  When
+            -- `name = arr` the store goes into `arr` in place; otherwise `arr`
+            -- is copied into the fresh slot `name` and the store goes into
+            -- `name`, leaving `arr` unchanged.
             let envAU : TypeEnv := (name, arrTy) :: env
             match haxToLowCTEnv envAU leaves body with
-            | some bodyC => some (.RSeq (.RArrStore arrLoc idx srcLoc) bodyC)
+            | some bodyC =>
+                if name = arr then some (.RSeq (.RArrStore arrLoc idx srcLoc) bodyC)
+                else
+                  let nameLoc : Located := { locVar := name, locSrc := arrTy }
+                  some (.RLetZero name arrTy
+                    (.RSeq (.RCopy nameLoc arrLoc)
+                      (.RSeq (.RArrStore nameLoc idx srcLoc) bodyC)))
             | none => none
         | _ =>
             match haxArgsToLocated dt args, haxToLowCTEnv envApp leaves body with
@@ -1242,6 +1251,34 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
 def haxToLowCT_mlkemParams (env : TypeEnv) (e : ImpExpr)
     (leaves : LeafTable := mlkemLeafTable) : Option LowCT :=
   haxToLowCTEnv env leaves e
+
+/-- The in-place element update `let arr = array_update(arr, idx, src); body`
+    lowers to the store into `arr` at the env's type of `arr`, followed by the
+    lowered body. -/
+theorem haxToLowCTEnv_letBind_arrUpdate_self (env : TypeEnv) (leaves : LeafTable)
+    (arr idx src : String) (body : ImpExpr) :
+    haxToLowCTEnv env leaves (.letBind arr (.app "array_update" [.var arr, .var idx, .var src]) body) =
+      (haxToLowCTEnv ((arr, env.find arr) :: env) leaves body).map fun bodyC =>
+        .RSeq (.RArrStore { locVar := arr, locSrc := env.find arr } idx
+          { locVar := src, locSrc := (env.find arr).elemType }) bodyC := by
+  simp only [haxToLowCTEnv]
+  cases haxToLowCTEnv ((arr, env.find arr) :: env) leaves body <;> simp
+
+/-- The element update `let name = array_update(arr, idx, src); body` with
+    `name ≠ arr` lowers to a fresh slot `name` at the type of `arr`, the copy of
+    `arr` into it and the store into `name`, followed by the lowered body; the
+    slot `arr` is unchanged. -/
+theorem haxToLowCTEnv_letBind_arrUpdate_ne (env : TypeEnv) (leaves : LeafTable)
+    (name arr idx src : String) (body : ImpExpr) (h : name ≠ arr) :
+    haxToLowCTEnv env leaves (.letBind name (.app "array_update" [.var arr, .var idx, .var src]) body) =
+      (haxToLowCTEnv ((name, env.find arr) :: env) leaves body).map fun bodyC =>
+        .RLetZero name (env.find arr)
+          (.RSeq (.RCopy { locVar := name, locSrc := env.find arr }
+                         { locVar := arr, locSrc := env.find arr })
+            (.RSeq (.RArrStore { locVar := name, locSrc := env.find arr } idx
+              { locVar := src, locSrc := (env.find arr).elemType }) bodyC)) := by
+  simp only [haxToLowCTEnv]
+  cases haxToLowCTEnv ((name, env.find arr) :: env) leaves body <;> simp [h]
 
 /-! ## §4  Soundness biconditional
 
