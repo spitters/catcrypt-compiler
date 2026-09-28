@@ -334,7 +334,10 @@ def addThm (n : Name) (ty val : Expr) : MetaM Unit := do
   let val ← instantiateMVars val
   addDecl (.thmDecl { name := n, levelParams := [], type := ty, value := val })
 
-/-- Declare a noncomputable definition. -/
+/-- Declare a noncomputable definition with an exposed body. In a `module` file the body
+    is part of the public scope (`forceExpose`), so that `rfl`, `decide` and `unfold` in
+    exported statements and in importing modules reduce it, and its equation lemmas can be
+    realized (`enableRealizationsForConst`). -/
 def addDefn (n : Name) (ty val : Expr) : MetaM Unit := do
   let ty ← instantiateMVars ty
   let val ← instantiateMVars val
@@ -345,7 +348,8 @@ def addDefn (n : Name) (ty val : Expr) : MetaM Unit := do
     value := val
     hints := ReducibilityHints.regular 0
     safety := DefinitionSafety.safe }
-  addDecl (Declaration.defnDecl d)
+  addDecl (Declaration.defnDecl d) (forceExpose := true)
+  enableRealizationsForConst n
   modifyEnv (addNoncomputable · n)
 
 /-- The report line of one function. -/
@@ -377,9 +381,15 @@ def mkArgTuple : List Expr → MetaM Expr
 /-- Run the generator on every function of the extraction `ns`: declare the struct and
     dependency table, the leaf lemmas, and for each function its generated surface, its
     correspondence theorems, its oracle equation and its call lemma. With `only?`, the
-    functions outside the list are skipped. -/
+    functions outside the list are skipped.
+
+    The declarations are kernel-checked synchronously (`Elab.async` off), so the kernel
+    work of a function counts in that function's heartbeat budget whatever the number of
+    threads, and the run proves the same functions in the language server, in a
+    command-line build and in the coverage executable. -/
 def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
-    TermElabM (Array FnReport × Array String) := do
+    TermElabM (Array FnReport × Array String) :=
+  withTheReader Core.Context (fun c => { c with options := Elab.async.set c.options false }) do
   let env ← getEnv
   let clsName := Name.str ns (lastStr ns ++ "Deps")
   let anchor ← if env.contains clsName then pure clsName else
