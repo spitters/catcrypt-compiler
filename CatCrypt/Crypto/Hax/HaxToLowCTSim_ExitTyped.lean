@@ -104,6 +104,24 @@ def exitCallName : String := "__exit_call"
 /-- The tower slot holding the scalar `x` as a call argument. -/
 def exitMarshalName (x : String) : String := "__exit_m" ++ x
 
+/-- The slot of component `i` of a function result that is a tuple:
+    `"__exit_rc"` followed by `i` bars. -/
+def exitResCompName (i : Nat) : String := "__exit_rc" ++ String.ofList (List.replicate i '|')
+
+/-- The placement of a function result: a scalar in the scalar result slot, a tower value
+    of type `t` in the tower result slot, or a tuple whose component `i` is held in the
+    slot `exitResCompName i`. -/
+inductive ExitRes where
+  | scalar
+  | tower (t : TowerType)
+  | tuple
+  deriving DecidableEq
+
+/-- The result placement of a value held under the placement `p` of a name. -/
+def ExitRes.ofPlace : Option TowerType → ExitRes
+  | none => .scalar
+  | some t => .tower t
+
 /-! ## §2  Scalar operations -/
 
 /-- The two-operand operations of hax-lean's width-tagged word calls `op#w`. -/
@@ -357,13 +375,26 @@ def letHeadT (A : ExitTowers) (n : String) : ImpExpr → Option (LowCT → LowCT
 
 /-! ## §4  The translator -/
 
+/-- The stores of the components of a tuple of variables from component `i` on: the
+    variable of component `i` copied into the slot `exitResCompName i`, in the scalar heap
+    or at its tower type.  `none` when a component is not a variable. -/
+def tupleStoreT (A : ExitTowers) : Nat → List ImpExpr → Option LowCT
+  | _, [] => some .RSkip
+  | i, .var x :: es => (tupleStoreT A (i + 1) es).map fun rest =>
+      match A.lookup x with
+      | none => .RSeq (.RScalarSetExpr (exitResCompName i) (.SVar x)) rest
+      | some t => .RSeq (.RCopy ⟨exitResCompName i, t⟩ ⟨x, t⟩) rest
+  | _, _ :: _ => none
+
 /-- The lowered tail value `e`: a scalar value stored into the scalar result slot as
-    by `resultStore`, a tower variable copied into the tower slot `exitResName`. -/
+    by `resultStore`, a tower variable copied into the tower slot `exitResName`, a tuple
+    of variables stored component by component (`tupleStoreT`). -/
 def resultStoreT (A : ExitTowers) : ImpExpr → Option LowCT
   | .var x =>
       match A.lookup x with
       | some t => some (.RCopy ⟨exitResName, t⟩ ⟨x, t⟩)
       | none => resultStore (.var x)
+  | .tuple es => tupleStoreT A 0 es
   | e => resultStore e
 
 /-- The exit-flag lowering under the placement `A`: `haxToLowCTK true` with the heads
@@ -521,15 +552,16 @@ def exitTowers (e : ImpExpr) : ExitTowers :=
   let sc := exitScalarNames (exitTowerBound e) e
   exitTowersStep sc (exitTowersStep sc (exitTowersStep sc [] e) e) e
 
-/-- The placement of the tail value of a body under `A`: the placement of its first
-    tail variable, and `none` (scalar) when the tail is not a variable. -/
-def exitResultPlace (A : ExitTowers) : ImpExpr → Option TowerType
+/-- The placement of the tail value of a body under `A`, read from its first tail: the
+    placement of a tail variable, `tuple` for a tail tuple, and `scalar` otherwise. -/
+def exitResultPlace (A : ExitTowers) : ImpExpr → ExitRes
   | .letBind _ _ b => exitResultPlace A b
   | .seq _ b => exitResultPlace A b
   | .ifThenElse _ t _ => exitResultPlace A t
   | .typeAscription e _ => exitResultPlace A e
-  | .var x => A.lookup x
-  | _ => none
+  | .var x => ExitRes.ofPlace (A.lookup x)
+  | .tuple _ => .tuple
+  | _ => .scalar
 
 /-- The function lowering under the inferred placement. -/
 def haxToLowCTFnI (e : ImpExpr) : Option LowCT := haxToLowCTFnT (exitTowers e) e
@@ -573,9 +605,10 @@ def exitPayloadOk (A : ExitTowers) : ImpExpr → Bool
     placement `R`, at tail position `tl` and loop context `il`: every name is
     non-reserved; conditions, loop counters, runtime bounds and break payloads are
     scalar; a literal is a scalar word; a copy keeps the placement; a call
-    has a head of `appHeadT`; a tail variable has placement `R` and a tail literal or
-    `unitVal` needs `R = none`. -/
-def exitSimOkT (A : ExitTowers) (R : Option TowerType) : Bool → Bool → ImpExpr → Bool
+    has a head of `appHeadT`; a tail variable has placement `R`, a tail literal or
+    `unitVal` needs `R = scalar`, and a tail tuple of non-reserved variables needs
+    `R = tuple`. -/
+def exitSimOkT (A : ExitTowers) (R : ExitRes) : Bool → Bool → ImpExpr → Bool
   | tl, il, .letBind n (.lit l) body =>
       exitLitOk l && !exitReserved n && exitSimOkT A R tl il body
   | tl, il, .letBind n (.var s) body =>
@@ -602,14 +635,15 @@ def exitSimOkT (A : ExitTowers) (R : Option TowerType) : Bool → Bool → ImpEx
   | false, true, .whileFold (.var c) body =>
       !exitReserved c && exitSc A c && exitSimOkT A R false true body
   | _, true, .cfBreak p => exitPayloadOk A p
-  | tl, _, .var x => !exitReserved x && (!tl || decide (A.lookup x = R))
-  | tl, _, .unitVal => !tl || R.isNone
-  | true, _, .lit l => exitLitOk l && R.isNone
+  | tl, _, .var x => !exitReserved x && (!tl || decide (ExitRes.ofPlace (A.lookup x) = R))
+  | tl, _, .unitVal => !tl || decide (R = .scalar)
+  | true, _, .lit l => exitLitOk l && decide (R = .scalar)
+  | true, _, .tuple es => decide (R = .tuple) && exitArgsOk es
   | _, _, _ => false
 
 /-- The first construct of `e` outside the fragment `exitSimOkT A R tl il`, with the
     reason; `none` when `e` lies in the fragment. -/
-def exitSimWhyT (A : ExitTowers) (R : Option TowerType) :
+def exitSimWhyT (A : ExitTowers) (R : ExitRes) :
     Bool → Bool → ImpExpr → Option String
   | tl, il, .letBind n (.lit l) body =>
       if !exitLitOk l then some "literal not a scalar word"
@@ -660,14 +694,17 @@ def exitSimWhyT (A : ExitTowers) (R : Option TowerType) :
   | _, true, .cfBreak p => if exitPayloadOk A p then none else some "break payload not scalar"
   | tl, _, .var x =>
       if exitReserved x then some "reserved name"
-      else if tl && !decide (A.lookup x = R) then some "tail placement" else none
-  | tl, _, .unitVal => if !tl || R.isNone then none else some "tail placement"
+      else if tl && !decide (ExitRes.ofPlace (A.lookup x) = R) then some "tail placement"
+      else none
+  | tl, _, .unitVal => if !tl || decide (R = .scalar) then none else some "tail placement"
   | true, _, .lit l =>
-      if exitLitOk l && R.isNone then none else some "tail literal"
+      if exitLitOk l && decide (R = .scalar) then none else some "tail literal"
+  | true, _, .tuple es =>
+      if decide (R = .tuple) && exitArgsOk es then none else some "tail tuple"
   | _, _, .letBind _ v _ => some s!"letBind {exitWhyHead v}"
   | tl, il, e => some s!"{exitWhyHead e} (tail {tl}, loop {il})"
 
-theorem exitSimWhyT_eq_none_iff (A : ExitTowers) (R : Option TowerType) (tl il : Bool)
+theorem exitSimWhyT_eq_none_iff (A : ExitTowers) (R : ExitRes) (tl il : Bool)
     (e : ImpExpr) : exitSimWhyT A R tl il e = none ↔ exitSimOkT A R tl il e = true := by
   fun_induction exitSimWhyT A R tl il e <;>
     (try simp_all [exitSimOkT, Option.isSome_iff_ne_none]) <;>
@@ -812,17 +849,27 @@ theorem envAgreesT_nil_of_off (h : envAgreesOff env rs) : envAgreesT br [] env r
 
 end Agreement
 
+/-- The agreement of a component `w` of a tuple result with its slot: a scalar word whose
+    decoding is the scalar slot, or a value related by `br` to the tower slot at the type
+    the slot holds. -/
+def compAgreesT (br : ValueTowerBridge) (slot : String) (w : Value) (rs : RustState) : Prop :=
+  (ScalarValN w ∧ valueToScalar w = some (rs.rsScalar slot)) ∨
+    ∃ t val, rs.rsTower slot = some ⟨t, val⟩ ∧ br t w val
+
 /-- The result agreement for result placement `R`: the decoding of `v` in the scalar
-    result slot, or `v` related by `br` to the tower result slot. -/
-def resultAgreesT (br : ValueTowerBridge) (R : Option TowerType) (v : Value) (rs : RustState) :
+    result slot, `v` related by `br` to the tower result slot, or `v` a tuple whose
+    component `i` agrees with the slot `exitResCompName i` (`compAgreesT`). -/
+def resultAgreesT (br : ValueTowerBridge) (R : ExitRes) (v : Value) (rs : RustState) :
     Prop :=
   match R with
-  | none => valueToScalar v = some (rs.rsScalar exitResName)
-  | some t => ∃ val, rs.rsTower exitResName = some ⟨t, val⟩ ∧ br t v val
+  | .scalar => valueToScalar v = some (rs.rsScalar exitResName)
+  | .tower t => ∃ val, rs.rsTower exitResName = some ⟨t, val⟩ ∧ br t v val
+  | .tuple => ∃ vs, v = .tuple vs ∧
+      ∀ (i : Nat) (w : Value), vs[i]? = some w → compAgreesT br (exitResCompName i) w rs
 
 /-- Agreement with the exit component under the placement `A` and result placement
     `R`, for an expression in tail position `tl`. -/
-def envAgreesExitT (br : ValueTowerBridge) (A : ExitTowers) (R : Option TowerType)
+def envAgreesExitT (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
     (tl : Bool) : Outcome → Env → RustState → Prop
   | .val (.controlFlow true v), env, rs =>
       rs.rsScalar exitRetName = 1 ∧ valueToScalar v = some (rs.rsScalar exitValName) ∧
@@ -835,7 +882,7 @@ def envAgreesExitT (br : ValueTowerBridge) (A : ExitTowers) (R : Option TowerTyp
 
 section ExitAgreement
 
-variable {br : ValueTowerBridge} {A : ExitTowers} {R : Option TowerType}
+variable {br : ValueTowerBridge} {A : ExitTowers} {R : ExitRes}
 
 theorem envAgreesExitT_val {tl : Bool} {v : Value} {env : Env} {rs : RustState}
     (hv : v.isControlFlow = false) :
@@ -1262,7 +1309,7 @@ end SourceStepsT
     matched by a run of `haxToLowCTKT A` ending in states agreeing under `A`; a command
     that cannot exit leaves the flag `0`. -/
 def ExitSimTy (bi : Builtins) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-    (A : ExitTowers) (R : Option TowerType) (e : ImpExpr) : Prop :=
+    (A : ExitTowers) (R : ExitRes) (e : ImpExpr) : Prop :=
   ∀ (tl : Bool) (fl : Option String) (fuel : Nat) (env env' : Env) (o : Outcome)
     (rs : RustState) (c : LowCT) (x : Bool),
     exitSimOkT A R tl fl.isSome e = true → RunCtx fl →
@@ -1554,7 +1601,7 @@ theorem forall₂_rsTower_typed {br : ValueTowerBridge} {dt : TowerType} {rs : R
 
 /-! ## §12  The heads of a `letBind` -/
 
-theorem exitSimOkT_letBind_body (A : ExitTowers) (R : Option TowerType) (tl il : Bool)
+theorem exitSimOkT_letBind_body (A : ExitTowers) (R : ExitRes) (tl il : Bool)
     (n : String) (val body : ImpExpr) (h : exitSimOkT A R tl il (.letBind n val body) = true) :
     exitSimOkT A R tl il body = true := by
   cases val with
@@ -1567,7 +1614,7 @@ theorem exitSimOkT_letBind_body (A : ExitTowers) (R : Option TowerType) (tl il :
     runs from an environment `env1` agreeing with a state `rs1` with the exit flag `0`,
     and every run of a lowered body from `rs1` extends to a run of `k` applied to it. -/
 def HeadSimT (bi : Builtins) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-    (A : ExitTowers) (R : Option TowerType) (n : String) (val body : ImpExpr) : Prop :=
+    (A : ExitTowers) (R : ExitRes) (n : String) (val body : ImpExpr) : Prop :=
   ∀ (tl il : Bool) (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (k : LowCT → LowCT),
     exitSimOkT A R tl il (.letBind n val body) = true → letHeadT A n val = some k →
@@ -1580,7 +1627,7 @@ def HeadSimT (bi : Builtins) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBri
 section Heads
 
 variable (bi : Builtins) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-  (A : ExitTowers) (R : Option TowerType)
+  (A : ExitTowers) (R : ExitRes)
 
 /-- **The `letBind` arm** from a simulation of the head. -/
 theorem exitSimTy_letBind_of_head (n : String) (val body : ImpExpr)
@@ -2040,11 +2087,11 @@ end Heads
 section Arms
 
 variable (bi : Builtins) (N : Nat) (leafSpec : LeafSpec) (br : ValueTowerBridge)
-  (A : ExitTowers) (R : Option TowerType)
+  (A : ExitTowers) (R : ExitRes)
 
 theorem exitSimTy_var (x : String) : ExitSimTy bi N leafSpec br A R (.var x) := by
   intro tl fl fuel env env' o rs c xb hok hfl hK hrun hval hag hret
-  have hx : exitReserved x = false ∧ (tl = true → A.lookup x = R) := by
+  have hx : exitReserved x = false ∧ (tl = true → ExitRes.ofPlace (A.lookup x) = R) := by
     cases tl <;> cases fl <;> simp_all [exitSimOkT]
   rw [denote'_var_run] at hrun
   cases hv : env x with
@@ -2108,8 +2155,8 @@ theorem exitSimTy_unitVal : ExitSimTy bi N leafSpec br A R .unitVal := by
     exact ⟨rs, RustExec.skip rs,
       (envAgreesExitT_val rfl).mpr ⟨hret, hag, fun h => by cases h⟩, fun _ => hret⟩
   | true =>
-    have hR : R = none := by
-      cases fl <;> simpa [exitSimOkT] using hok
+    have hR : R = .scalar := by
+      cases fl <;> simpa [exitSimOkT, eq_comm] using hok
     subst hR
     have hK' : haxToLowCTKT A true fl .unitVal = some (.RScalarSet exitResName 0, false) := by
       cases fl <;> rfl
@@ -2154,7 +2201,7 @@ theorem exitSimTy_lit (l : ImpLit) : ExitSimTy bi N leafSpec br A R (.lit l) := 
   cases tl with
   | false => cases fl <;> simp [exitSimOkT] at hok
   | true =>
-    have hh : exitLitOk l = true ∧ R = none := by
+    have hh : exitLitOk l = true ∧ R = .scalar := by
       cases fl <;> simpa [exitSimOkT] using hok
     obtain ⟨hl, rfl⟩ := hh
     have hK' : haxToLowCTKT A true fl (.lit l) =
@@ -2171,6 +2218,149 @@ theorem exitSimTy_lit (l : ImpLit) : ExitSimTy bi N leafSpec br A R (.lit l) := 
     exact ⟨_, hex N leafSpec rs, (envAgreesExitT_val hsv.not_cf).mpr ⟨h0, hag', fun _ => by
       show valueToScalar _ = some _
       rw [hres]; exact hk⟩, fun _ => h0⟩
+
+theorem exitReserved_resComp (i : Nat) : exitReserved (exitResCompName i) = true := by
+  show "__exit_".toList.isPrefixOf (exitResCompName i).toList = true
+  simp [exitResCompName]
+
+theorem exitResCompName_inj {i j : Nat} (h : exitResCompName i = exitResCompName j) : i = j := by
+  have := congrArg String.length h
+  simpa [exitResCompName, String.length_append] using this
+
+theorem exitResCompName_ne_ret (i : Nat) : exitResCompName i ≠ exitRetName := by
+  have hp : "__exit_rc".toList.isPrefixOf exitRetName.toList = false := by decide
+  rintro h
+  rw [← h] at hp
+  simp [exitResCompName] at hp
+
+/-- A run of a tuple ends in a value only when its components evaluate to values: the
+    value is the tuple of the component values, in the environment the components end in. -/
+theorem denote'_tuple_inv (fuel : Nat) (es : List ImpExpr) (env env' : Env) (o : Outcome)
+    (h : (denote' bi fuel (.tuple es)).run env = (o, env')) (hval : ∃ v, o = .val v) :
+    ∃ vals, (_root_.Hax.denoteArgs' bi fuel es).run env = (some vals, env') ∧
+      o = .val (.tuple vals) := by
+  simp only [denote', StateT.run, bind, Bind.bind, StateT.bind] at h
+  rcases hA : _root_.Hax.denoteArgs' bi fuel es env with ⟨_ | vals, e1⟩
+  · rw [hA] at h
+    obtain ⟨rfl, -⟩ := Prod.mk.inj h
+    obtain ⟨_, h'⟩ := hval; cases h'
+  · rw [hA] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+    exact ⟨vals, hA, rfl⟩
+
+/-- The component stores `tupleStoreT A i es` of a tuple of variables bound to `vals`:
+    from a state agreeing with the environment, they run to a state agreeing with it, with
+    the exit flag and the slots of the components before `i` unchanged, where component
+    `j` of `vals` agrees with the slot `exitResCompName (i + j)`. -/
+theorem tupleStoreT_sim {env : Env} :
+    ∀ (es : List ImpExpr) (vals : List Value),
+      List.Forall₂ (fun a v => ∃ x, a = ImpExpr.var x ∧ env x = some v) es vals →
+      exitArgsOk es = true →
+      ∀ (i : Nat) (s : LowCT) (rs : RustState), tupleStoreT A i es = some s →
+        envAgreesT br A env rs →
+        ∃ rs', RustExec N leafSpec s rs rs' ∧ envAgreesT br A env rs' ∧
+          rs'.rsScalar exitRetName = rs.rsScalar exitRetName ∧
+          (∀ (j : Nat) (w : Value), vals[j]? = some w →
+            compAgreesT br (exitResCompName (i + j)) w rs') ∧
+          (∀ k, k < i → rs'.rsScalar (exitResCompName k) = rs.rsScalar (exitResCompName k) ∧
+            rs'.rsTower (exitResCompName k) = rs.rsTower (exitResCompName k))
+  | [], vals, hF, _, i, s, rs, hs, hag => by
+    cases hF
+    simp only [tupleStoreT, Option.some.injEq] at hs
+    subst hs
+    exact ⟨rs, RustExec.skip rs, hag, rfl, fun j w h => by simp at h, fun _ _ => ⟨rfl, rfl⟩⟩
+  | a :: es, vals, hF, hargs, i, s, rs, hs, hag => by
+    rcases hF with _ | ⟨⟨x, rfl, hv⟩, hF⟩
+    rename_i v vals
+    simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hargs
+    simp only [tupleStoreT] at hs
+    rcases hr : tupleStoreT A (i + 1) es with _ | rest
+    · rw [hr] at hs; cases hs
+    rw [hr] at hs
+    simp only [Option.map_some, Option.some.injEq] at hs
+    have hne : ∀ k, k < i → exitResCompName k ≠ exitResCompName i := fun k hk h =>
+      absurd (exitResCompName_inj h) (Nat.ne_of_lt hk)
+    rcases hA : A.lookup x with _ | t
+    · rw [hA] at hs
+      subst hs
+      obtain ⟨hsv, hdec⟩ := envAgreesT_scalar hag hargs.1 hA hv
+      let rs1 := rsSetScalar rs (exitResCompName i) (rs.rsScalar x)
+      have hag1 : envAgreesT br A env rs1 :=
+        envAgreesT_set_reserved _ (exitReserved_resComp i) hag
+      obtain ⟨rs', hex, hag', hret', hcomp, hframe⟩ :=
+        tupleStoreT_sim es vals hF hargs.2 (i + 1) rest rs1 hr hag1
+      refine ⟨rs', RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ rs) hex, hag', ?_, ?_, ?_⟩
+      · rw [hret']
+        simp [rs1, rsScalar_rsSetScalar, Ne.symm (exitResCompName_ne_ret i)]
+      · intro j w hw
+        cases j with
+        | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hw
+          subst hw
+          refine Or.inl ⟨hsv, ?_⟩
+          rw [Nat.add_zero, (hframe i (Nat.lt_succ_self i)).1]
+          simp [rs1, rsScalar_rsSetScalar, hdec]
+        | succ j =>
+          simp only [List.getElem?_cons_succ] at hw
+          have := hcomp j w hw
+          rwa [show i + 1 + j = i + (j + 1) by omega] at this
+      · intro k hk
+        obtain ⟨h1, h2⟩ := hframe k (Nat.lt_succ_of_lt hk)
+        refine ⟨?_, h2⟩
+        rw [h1]
+        simp [rs1, rsScalar_rsSetScalar, hne k hk]
+    · rw [hA] at hs
+      subst hs
+      obtain ⟨-, val, hval', hbr⟩ := envAgreesT_tower hag hargs.1 hA hv
+      let rs1 := rsSetTower rs (exitResCompName i) ⟨t, val⟩
+      have hag1 : envAgreesT br A env rs1 :=
+        envAgreesT_setTower_reserved _ (exitReserved_resComp i) hag
+      obtain ⟨rs', hex, hag', hret', hcomp, hframe⟩ :=
+        tupleStoreT_sim es vals hF hargs.2 (i + 1) rest rs1 hr hag1
+      refine ⟨rs', RustExec.seq _ _ _ _ _
+        (RustExec.copy ⟨exitResCompName i, t⟩ ⟨x, t⟩ rs rfl val
+          (locatedLookup_of_rsTower rs x t val hval')) hex, hag', hret', ?_, ?_⟩
+      · intro j w hw
+        cases j with
+        | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hw
+          subst hw
+          refine Or.inr ⟨t, val, ?_, hbr⟩
+          rw [Nat.add_zero, (hframe i (Nat.lt_succ_self i)).2]
+          exact CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same _ _ _
+        | succ j =>
+          simp only [List.getElem?_cons_succ] at hw
+          have := hcomp j w hw
+          rwa [show i + 1 + j = i + (j + 1) by omega] at this
+      · intro k hk
+        obtain ⟨h1, h2⟩ := hframe k (Nat.lt_succ_of_lt hk)
+        refine ⟨h1, ?_⟩
+        rw [h2]
+        exact CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _ (hne k hk).symm
+
+theorem exitSimTy_tuple (es : List ImpExpr) : ExitSimTy bi N leafSpec br A R (.tuple es) := by
+  intro tl fl fuel env env' o rs c xb hok hfl hK hrun hval hag hret
+  cases tl with
+  | false => cases fl <;> simp [exitSimOkT] at hok
+  | true =>
+    have hh : R = .tuple ∧ exitArgsOk es = true := by
+      cases fl <;> simpa [exitSimOkT] using hok
+    obtain ⟨rfl, hargs⟩ := hh
+    obtain ⟨vals, hA, rfl⟩ := denote'_tuple_inv bi fuel es env env' o hrun hval
+    obtain ⟨rfl, hF⟩ := denoteArgs'_vars_inv bi fuel es hargs env env' (some vals) hA
+    have hK' : haxToLowCTKT A true fl (.tuple es) =
+        (tupleStoreT A 0 es).map fun s => (s, false) := by
+      cases fl <;> rfl
+    rw [hK'] at hK
+    rcases hs : tupleStoreT A 0 es with _ | s
+    · rw [hs] at hK; cases hK
+    rw [hs] at hK
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hK
+    obtain ⟨rfl, rfl⟩ := hK
+    obtain ⟨rs', hex, hag', hret', hcomp, -⟩ :=
+      tupleStoreT_sim N leafSpec br A es vals (hF vals rfl) hargs 0 s rs hs hag
+    refine ⟨rs', hex, (envAgreesExitT_val rfl).mpr ⟨hret'.trans hret, hag', fun _ =>
+      ⟨vals, rfl, fun j w hw => by simpa using hcomp j w hw⟩⟩, fun _ => hret'.trans hret⟩
 
 theorem exitSimTy_cfBreak (p : ImpExpr) : ExitSimTy bi N leafSpec br A R (.cfBreak p) := by
   intro tl fl fuel env env' o rs c xb hok hfl hK hrun hval hag hret
@@ -3190,7 +3380,7 @@ end Arms
     placement `A`: the lowered command `haxToLowCTKT A` matches every `denote'` run that
     ends in a value. -/
 theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
-    (br : ValueTowerBridge) (A : ExitTowers) (R : Option TowerType)
+    (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
     (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) : ExitSimTy bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitSimTy bi N leafSpec br A R e :=
@@ -3231,12 +3421,13 @@ theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     | var v => exact exitSimTy_whileFold bi N leafSpec br A R v body ihb
     | _ => exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)
   | cfBreak p _ => exact exitSimTy_cfBreak bi N leafSpec br A R p
+  | tuple es _ => exact exitSimTy_tuple bi N leafSpec br A R es
   | _ => exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)
 
 /-- The value a function returns under the result placement `R`: the payload of an early
     exit decoded in the scalar result slot, or the final value in agreement with the result
     slot of `R` (`resultAgreesT`). -/
-def outcomeAgreesT (br : ValueTowerBridge) (R : Option TowerType) : Outcome → RustState → Prop
+def outcomeAgreesT (br : ValueTowerBridge) (R : ExitRes) : Outcome → RustState → Prop
   | .val (.controlFlow true v), rs => valueToScalar v = some (rs.rsScalar exitResName)
   | .val v, rs => resultAgreesT br R v rs
   | _, _ => False
@@ -3244,7 +3435,7 @@ def outcomeAgreesT (br : ValueTowerBridge) (R : Option TowerType) : Outcome → 
 /-- With a scalar result placement, the result agreement is the decoding of the returned
     or final value in the scalar result slot. -/
 theorem outcomeAgreesT_none (br : ValueTowerBridge) (o : Outcome) (rs : RustState) :
-    outcomeAgreesT br none o rs ↔ outcomeScalar o = some (rs.rsScalar exitResName) := by
+    outcomeAgreesT br .scalar o rs ↔ outcomeScalar o = some (rs.rsScalar exitResName) := by
   rcases o with v | _ | _ | _ | _
   · cases v with
     | controlFlow k w => cases k <;> exact Iff.rfl
@@ -3255,7 +3446,7 @@ theorem outcomeAgreesT_none (br : ValueTowerBridge) (o : Outcome) (rs : RustStat
     function context, the frame `exitFunction` around its typed lowering matches every
     `denote'` run that ends in a value, with the result of `outcomeAgreesT`. -/
 theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
-    (br : ValueTowerBridge) (A : ExitTowers) (R : Option TowerType) (e : ImpExpr)
+    (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes) (e : ImpExpr)
     (hT : ExitSimTy bi N leafSpec br A R e) (c0 : LowCT) (x : Bool)
     (hok : exitSimOkT A R true true e = true)
     (hK0 : haxToLowCTKT A true (some exitFnSlot) e = some (c0, x))
@@ -3304,7 +3495,7 @@ theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     `haxToLowCTFnT A e`, whose result slot agrees with the returned or final value
     (`outcomeAgreesT`). -/
 theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
-    (br : ValueTowerBridge) (A : ExitTowers) (R : Option TowerType)
+    (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
     (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
@@ -3326,13 +3517,13 @@ theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafS
 theorem haxToLowCTFnT_simulates_exit_scalar (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (A : ExitTowers) (hL : ExitLeaves bi leafSpec br)
     (e : ImpExpr) (c : LowCT)
-    (hok : exitSimOkT A none true true e = true) (hK : haxToLowCTFnT A e = some c)
+    (hok : exitSimOkT A .scalar true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
     (hag : envAgreesT br A env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) := by
   obtain ⟨rs', hex, ho⟩ :=
-    haxToLowCTFnT_simulates_exit bi N leafSpec br A none hL e c hok hK fuel env env' o rs hrun
+    haxToLowCTFnT_simulates_exit bi N leafSpec br A .scalar hL e c hok hK fuel env env' o rs hrun
       hval hag
   exact ⟨rs', hex, (outcomeAgreesT_none br o rs').mp ho⟩
 
@@ -3342,7 +3533,7 @@ theorem haxToLowCTFnT_simulates_exit_scalar (bi : Builtins) (N : Nat) (leafSpec 
     the returned or final value. -/
 theorem haxToLowCTFnT_nil_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) (c : LowCT)
-    (hok : exitSimOkT [] none true true e = true) (hK : haxToLowCTFnT [] e = some c)
+    (hok : exitSimOkT [] .scalar true true e = true) (hK : haxToLowCTFnT [] e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
     (hag : envAgreesOff env rs) :
@@ -3350,9 +3541,10 @@ theorem haxToLowCTFnT_nil_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : L
   haxToLowCTFnT_simulates_exit_scalar bi N leafSpec br [] hL e c hok hK fuel env env' o rs hrun
     hval (envAgreesT_nil_of_off hag)
 
-/-- Under the empty placement the result placement is scalar. -/
-theorem exitResultPlace_nil (e : ImpExpr) : exitResultPlace [] e = none := by
-  induction e using ImpExpr.ind <;> simp_all [exitResultPlace]
+/-- Under the empty placement the result placement is scalar or a tuple. -/
+theorem exitResultPlace_nil (e : ImpExpr) :
+    exitResultPlace [] e = .scalar ∨ exitResultPlace [] e = .tuple := by
+  induction e using ImpExpr.ind <;> simp_all [exitResultPlace, ExitRes.ofPlace]
 
 /-! ## §16  The scalar operations of hax-lean's `u64` table
 
