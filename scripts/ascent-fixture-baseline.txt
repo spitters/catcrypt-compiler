@@ -15,3 +15,4 @@ CatCrypt/Crypto/SecureCompilation/Ascent/DialectToBytes.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/FramedJInstrTie.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/AndNBytesValue.lean
 CatCrypt/Crypto/SecureCompilation/Ascent/RInstrAddrMem.lean
+CatCrypt/Crypto/SecureCompilation/CT/Leakage.lean

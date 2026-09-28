@@ -12,6 +12,8 @@ public import CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector
 /-!
 # The constant-time leakage model
 
+@ascent-fixture theorems: regDoitBlock_ct, secretIndexedLoad_not_ct, sarx_secret_not_ct, shrx_secret_ct, add_secret_not_ct_unguaranteed
+
 One observation type and one definition of constant time, instantiated here at
 the machine level (`JInstr` blocks and structured `OwnedCF` blocks) and in
 `CT/LowCTLeakage.lean` at the source level (`LowCT` under `RustExec`).
