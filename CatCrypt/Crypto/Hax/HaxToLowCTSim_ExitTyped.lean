@@ -473,13 +473,15 @@ def exitArrLen : TowerType → Option Nat
   | _ => none
 
 /-- The head of `let n = array_lit(args)` with `n` placed at an array type `c` of
-    `args.length` elements (`exitArrLen`): the scalar arguments are marshalled at the element
-    type `exitElem c`, the result is held at `c`. -/
+    `args.length` elements (`exitArrLen`) whose element type holds a word (`exitMarshalOk`):
+    the scalar arguments are marshalled at the element type `exitElem c`, the result is held
+    at `c`. -/
 def arrLitHeadN (A : ExitTowers) (n : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   match A.lookup n with
   | some c =>
-      if exitArrLen c = some args.length then callHeadAt A n "array_lit" (exitElem c) c args
+      if exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true then
+        callHeadAt A n "array_lit" (exitElem c) c args
       else none
   | none => none
 
@@ -1424,8 +1426,10 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
   update : ArrUpdateWordAgrees br bi leafSpec
   indexT : IndexTowerAgrees br bi leafSpec
   updateT : ArrUpdateTowerAgrees br bi leafSpec
-  /-- The array literal of `k` values held at an array type `c` of `k` elements. -/
-  arrLitN : ∀ c k, exitArrLen c = some k → LeafCallAgreesArgsLen bi leafSpec "array_lit" c br k
+  /-- The array literal of `k` values held at an array type `c` of `k` elements whose
+      element type holds a word. -/
+  arrLitN : ∀ c k, exitArrLen c = some k → exitMarshalOk (exitElem c) = true →
+    LeafCallAgreesArgsLen bi leafSpec "array_lit" c br k
   /-- A call outside `exitScalarRes` and the array operations with the declared result type
       `dr` agrees at `dr`. -/
   callD : ∀ f dr, D f = some dr → exitScalarRes f = false → f ≠ "index" →
@@ -2385,7 +2389,8 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
 
 theorem arrLitHeadN_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : arrLitHeadN A n args = some k) :
-    ∃ c, A.lookup n = some c ∧ exitArrLen c = some args.length ∧
+    ∃ c, A.lookup n = some c ∧
+      (exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true) ∧
       callHeadAt A n "array_lit" (exitElem c) c args = some k := by
   unfold arrLitHeadN at h
   rcases hn : A.lookup n with _ | c <;> rw [hn] at h
@@ -2664,9 +2669,9 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
     · subst hfu
       exact headT_update hL hk hn hargs hF hbi hag hret
     · subst hfl
-      obtain ⟨c, hnA, hlen, hc⟩ := arrLitHeadN_some A hk
+      obtain ⟨c, hnA, ⟨hlen, hmo⟩, hc⟩ := arrLitHeadN_some A hk
       rw [hF.length_eq] at hlen
-      exact headT_callAt hL (fun _ => hL.arrLitN c _ hlen)
+      exact headT_callAt hL (fun _ => hL.arrLitN c _ hlen hmo)
         (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
     · obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
       rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hd, hnone⟩ | ⟨hsc, -, hnA, rfl⟩
