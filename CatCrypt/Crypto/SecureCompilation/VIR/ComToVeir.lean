@@ -49,9 +49,11 @@ The lowering is parameterised by two typeclasses:
 
 We use Veir's `!`-suffixed (partial) primitives (`pushOperand!`,
 `pushResult!`, `setFirstOp!`, …) and rely on the fact that we only
-ever push into operations we just allocated. The well-formedness
-proofs (`InBounds` everywhere) are deferred to a separate correctness
-file (`ComToVeirCorrect.lean`, future work).
+ever push into operations we just allocated. Each operand is linked into
+the use list of its value (`pushFreshOperand`). That the built graph is
+`IRContext.WellFormed` is not proved here; `ComToVeirWf.lean` builds the
+same operations of `jasminDialect` through VeIR's `WfRewriter`, whose
+contexts are well formed by construction.
 
 ## Status
 
@@ -233,24 +235,30 @@ def pushFreshResult (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
   return ⟨op, idx⟩
 
 /--
-Append a `ValuePtr`-using operand to an operation. Uses
-`pushOperand!` to extend the operation's `operands` array.
-
-We set `back := valueFirstUse value` and `nextUse := none` as a
-naive default. Full use-def-chain bookkeeping (linking into the
-previous-use list) is the job of Veir's higher-level builder and is
-out of scope here. The graph produced is therefore "shape-correct"
-but not "use-list-canonical".
+Append an operand reading `value` to the operation `op` and link it at the head of
+the use list of `value`, in the steps of VeIR's `Rewriter.pushOperand`
+(`OperationPtr.pushOperand` followed by `OpOperandPtr.insertIntoCurrent`): the new
+use points back to the first-use slot of `value` and forward to its previous first
+use, whose back pointer becomes the new use's next-use slot, and `value`'s first
+use becomes the new use.
 -/
 def pushFreshOperand (op : Veir.OperationPtr) (value : Veir.ValuePtr) :
     ComToVeirM (ToVeirOp.Op (d := d)) Unit := do
   let ctx ← get
+  let use : Veir.OpOperandPtr := ⟨op, op.getNumOperands! ctx⟩
   let operand : Veir.OpOperand :=
     { nextUse := none
       back := Veir.OpOperandPtrPtr.valueFirstUse value
       owner := op
       value := value }
-  set (op.pushOperand! ctx operand)
+  let ctx := op.pushOperand! ctx operand
+  let ctx := use.setBack! ctx (Veir.OpOperandPtrPtr.valueFirstUse value)
+  let next := value.getFirstUse! ctx
+  let ctx := use.setNextUse! ctx next
+  let ctx := value.setFirstUse! ctx (some use)
+  set (match next with
+    | none => ctx
+    | some n => n.setBack! ctx (Veir.OpOperandPtrPtr.operandNextUse use))
 
 /-- Allocate a fresh operation for a VIR op-tag, returning its
     `OperationPtr`. The operation starts empty (no operands, no
