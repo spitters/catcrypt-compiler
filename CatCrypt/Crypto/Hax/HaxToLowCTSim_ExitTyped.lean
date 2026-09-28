@@ -27,19 +27,24 @@ heap that holds it:
 * `index(arr, i)` with `arr` in a tower and `i` scalar is an `RArrLoad` into the
   reserved tower slot `exitCallName`: for an array of words, followed by a copy of its
   limb `0` into the scalar slot of the bound name; for an array of tower values
-  (`exitElemTower`: the elements of `TFp2`, `TFp6`, `TFp12` are `TFp`, `TFp2`, `TFp6`),
-  followed by a copy into the tower slot of the bound name;
+  (`exitElemTower`: the elements of `TFp2`, `TFp6`, `TFp12` are `TFp`, `TFp2`, `TFp6`, and
+  those of `TArr n t` for a non-word `t` are `t`), followed by a copy into the tower slot of
+  the bound name;
 * `array_update(arr, i, src)` rebinding `arr` is an `RArrStore` into `arr`, of a scalar
   marshalled into limb `0` for an array of words, and of a tower value for an array of
   tower values;
-* `array_lit(args)` with an argument held in a tower at `t'` is an `RCall` into a slot of
-  the container type `exitContainer t'`;
 * every other call is an `RCall` into `exitCallName`: its scalar arguments are
   first stored into reserved tower slots `exitMarshalName x` of at least `8` bytes
   (`callMarshal`), its tower arguments are read in place at their tower types, and the
-  result is copied into the tower slot of the bound name (`RCopy`) or, for a call with a
-  scalar result (`exitScalarRes`: a scalar call, or a leaf of `exitTowerScalarNames` whose
-  arguments are held in towers), its limb `0` into the scalar slot;
+  result is copied into the tower slot of the bound name (`RCopy`) or its limb `0` into the
+  scalar slot of the bound name.  A call of `exitScalarRes` (a scalar call, or a leaf of
+  `exitTowerScalarNames` whose arguments are held in towers) runs at `towerOfCallName f`
+  into a scalar name.  A call whose result type `dr` the placement declares under the
+  reserved name `exitCallKey f` (`exitCallTys`) runs at `dr` into a name placed at `dr`,
+  or, for the word type `dr = TU64`, into a scalar name.  Any other call runs at
+  `towerOfCallName f` into a name placed there.  An `array_lit` runs only into a name
+  placed at an array type of as many elements (`exitArrLen`), at that type (`arrLitHeadN`);
+  `repeat` is refused;
 * a counted loop, upward or downward, or a `while` loop in an exit context is lowered to
   the exit-flag loop followed by `breakLoop`, whether its body breaks or not;
 * a tail variable held in a tower is copied into the tower slot `exitResName`.
@@ -59,13 +64,17 @@ Agreement off the reserved names (`envAgreesOff`) is agreement under the empty p
 the builtin table and the leaves: the scalar operations compute their templates
 (`ScalarOpsSoundT`), no builtin returns a control-flow value, the store of a scalar into
 limb `0` of a fresh tower slot of at least `8` bytes is related to the scalar
-(`ExitMarshal`), a call with a tower result other than `index` and `array_update`
-satisfies `LeafCallAgreesArgs`, a call with a scalar result and the element load from an
+(`ExitMarshal`), a call with a tower result other than the array operations `index`,
+`array_update`, `array_lit`, `repeat` satisfies `LeafCallAgreesArgs` at
+`towerOfCallName f` and, with a declared result type
+`dr` of the parameter `D`, at `dr` (`callD`), a call with the declared word result `TU64`
+satisfies `LeafCallScalar` at `TU64` (`wordD`), an array literal of `k` values satisfies
+`LeafCallAgreesArgsLen` at every array type of `k` elements (`arrLitN`), a
+call with a scalar result and the element load from an
 array of words return a scalar word whose decoding is limb `0` of the leaf output
 (`LeafCallScalar`, `IndexScalarAgrees`), the element load from an array of tower values
 is related to the loaded element (`IndexTowerAgrees`), the element stores satisfy
-`ArrUpdateWordAgrees` and `ArrUpdateTowerAgrees`, and the array literal of tower values
-satisfies `LeafCallAgreesArgs` at each container type.  The range condition of the scalar
+`ArrUpdateWordAgrees` and `ArrUpdateTowerAgrees`.  The range condition of the scalar
 calls holds on the table `exitRange bi`, which refuses every result of a call of
 `exitScalarRes` outside `ScalarValN` (`leafCallScalar_exitRange`); `exitRange` leaves
 `index` unchanged (`indexScalarAgrees_exitRange`, `indexTowerAgrees_exitRange`).
@@ -74,9 +83,10 @@ calls holds on the table `exitRange bi`, which refuses every result of a call of
 
 * `ExitTowers`, `exitCallName`, `exitMarshalName`
 * `scalarOpExprT`, `WidthOp`, `widthOpOf`
-* `exitElemTower`, `exitContainer`, `exitElem`, `exitMarshalOk`
-* `callMarshal`, `callHeadAt`, `arrLitHeadT`, `letHeadT`, `haxToLowCTKT`, `haxToLowCTFnT`,
-  `haxToLowCTFnI`
+* `exitWordTower`, `exitElemTower`, `exitContainer`, `exitElem`, `exitMarshalOk`
+* `exitCallKey`, `exitCallTys`, `exitArrLen`
+* `callMarshal`, `callHeadAt`, `callHeadT`, `arrLitHeadN`, `letHeadT`, `haxToLowCTKT`,
+  `haxToLowCTFnT`, `haxToLowCTFnI`
 * `exitTowerNames`, `exitTowers`, `exitResultPlace`
 * `exitSimOkT`, `exitSimWhyT`
 * `envAgreesT`, `envAgreesExitT`, `ExitSimTy`, `ExitLeaves`, `exitRange`
@@ -281,13 +291,20 @@ theorem exitScalarRes_arrayLit : exitScalarRes "array_lit" = false := by
 
 /-! ## §3  The heads of a `letBind` -/
 
+/-- A tower type holding one scalar word: `TU64`, `TU32`, `TU8`. -/
+def exitWordTower : TowerType → Bool
+  | .TU64 | .TU32 | .TU8 => true
+  | _ => false
+
 /-- The element tower type of a tower type whose elements are tower values: an element of
-    `TFp2` is a `TFp`, of `TFp6` a `TFp2`, of `TFp12` a `TFp6`.  `none` for a tower type
-    whose elements are scalar words. -/
+    `TFp2` is a `TFp`, of `TFp6` a `TFp2`, of `TFp12` a `TFp6`, and of `TArr n t` a `t`
+    when `t` is not a word type (`exitWordTower`).  `none` for a tower type whose elements
+    are scalar words. -/
 def exitElemTower : TowerType → Option TowerType
   | .TFp2 => some .TFp
   | .TFp6 => some .TFp2
   | .TFp12 => some .TFp6
+  | .TArr _ t => if exitWordTower t then none else some t
   | _ => none
 
 /-- The tower type of an array whose elements are held at the tower type `t`: the inverse
@@ -391,27 +408,51 @@ def updateHeadT (A : ExitTowers) (n : String) : List ImpExpr → Option (LowCT �
 
 /-- The head of `let n = f(args)` for a call lowered to `RCall` whose scalar arguments are
     marshalled at the tower type `dt` and whose result slot has the tower type `dr`: the
-    call writes `exitCallName` at `dr` from the slots of `callMarshal A dt`; a scalar
-    result (`exitScalarRes f`) is copied from limb `0` into the scalar `n`, any other
-    result into the tower slot `n`, which must be placed at `dr`. -/
+    call writes `exitCallName` at `dr` from the slots of `callMarshal A dt`; for a scalar
+    `n` its limb `0` is copied into the scalar slot `n`, for `n` placed at `dr` it is
+    copied into the tower slot `n`. -/
 def callHeadAt (A : ExitTowers) (n f : String) (dt dr : TowerType) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   match callMarshal A dt args with
   | none => none
   | some (ctx, ls) =>
     let callC : LowCT := .RLetZero exitCallName dr (ctx (.RCall f ⟨exitCallName, dr⟩ ls))
-    if exitScalarRes f then
-      if A.lookup n = none then
-        some fun b => .RSeq callC (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)
+    match A.lookup n with
+    | none => some fun b => .RSeq callC (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)
+    | some t =>
+      if t = dr then some fun b => .RSeq callC (.RSeq (.RCopy ⟨n, dr⟩ ⟨exitCallName, dr⟩) b)
       else none
-    else if A.lookup n = some dr then
-      some fun b => .RSeq callC (.RSeq (.RCopy ⟨n, dr⟩ ⟨exitCallName, dr⟩) b)
-    else none
 
-/-- The head of a call at its tower type `towerOfCallName f`. -/
+/-- The reserved name under which a placement records the declared result type of the
+    calls of `f`. -/
+def exitCallKey (f : String) : String := "__exit_ty:" ++ f
+
+/-- A name of the form `exitCallKey f`. -/
+def exitIsCallKey (s : String) : Bool := "__exit_ty:".toList.isPrefixOf s.toList
+
+/-- The declared result types of the calls recorded in the placement `A`: the type at
+    `exitCallKey f`.  A declared result of the word type `TU64` is a scalar word. -/
+def exitCallTys (A : ExitTowers) (f : String) : Option TowerType := A.lookup (exitCallKey f)
+
+/-- The head of a call.  A call of `exitScalarRes` bound to a scalar name runs at its tower
+    type `towerOfCallName f`.  A call with a declared result type `dr` (`exitCallTys A f`)
+    runs at `dr`, its scalar arguments marshalled at `TU64`: its result is copied into the
+    tower slot of a name placed at `dr`, or, for `dr = TU64`, from limb `0` into the scalar
+    slot of a scalar name.  A call without a declared result type runs at
+    `towerOfCallName f` into a name placed there. -/
 def callHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
-  callHeadAt A n f (towerOfCallName f) (towerOfCallName f) args
+  if exitScalarRes f then
+    if A.lookup n = none then callHeadAt A n f (towerOfCallName f) (towerOfCallName f) args
+    else none
+  else
+    match exitCallTys A f with
+    | some dr =>
+        if A.lookup n = none ∧ dr ≠ .TU64 then none else callHeadAt A n f .TU64 dr args
+    | none =>
+        if A.lookup n = some (towerOfCallName f) then
+          callHeadAt A n f (towerOfCallName f) (towerOfCallName f) args
+        else none
 
 /-- The tower type of the first argument held in a tower. -/
 def exitFirstTower (A : ExitTowers) : List ImpExpr → Option TowerType
@@ -422,20 +463,29 @@ def exitFirstTower (A : ExitTowers) : List ImpExpr → Option TowerType
       | none => exitFirstTower A as
   | _ :: as => exitFirstTower A as
 
-/-- The head of `let n = array_lit(args)` building an array of tower values: the first
-    argument held in a tower fixes the element type `t'`, the result is held at the
-    container type `exitContainer t'`, and the scalar arguments are marshalled at `t'`. -/
-def arrLitHeadT (A : ExitTowers) (n : String) (args : List ImpExpr) :
+/-- The number of elements of an array type: `n` for `TArr n t`, and `2`, `3`, `2` for the
+    containers `TFp2`, `TFp6`, `TFp12` of `exitContainer`. -/
+def exitArrLen : TowerType → Option Nat
+  | .TArr n _ => some n
+  | .TFp2 => some 2
+  | .TFp6 => some 3
+  | .TFp12 => some 2
+  | _ => none
+
+/-- The head of `let n = array_lit(args)` with `n` placed at an array type `c` of
+    `args.length` elements (`exitArrLen`): the scalar arguments are marshalled at the element
+    type `exitElem c`, the result is held at `c`. -/
+def arrLitHeadN (A : ExitTowers) (n : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
-  match exitFirstTower A args with
-  | some t' =>
-      match exitContainer t' with
-      | some c => callHeadAt A n "array_lit" t' c args
-      | none => none
+  match A.lookup n with
+  | some c =>
+      if exitArrLen c = some args.length then callHeadAt A n "array_lit" (exitElem c) c args
+      else none
   | none => none
 
 /-- The head of `let n = f(args)`: a scalar operation, an element load, an element
-    store, an array literal of tower values, or a call. -/
+    store, an array literal at the placed array type of its bound name (`arrLitHeadN`), or
+    a call other than `repeat`, which is refused. -/
 def appHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   match scalarOpHeadT A n f args with
@@ -443,10 +493,8 @@ def appHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
   | none =>
     if f = "index" then indexHeadT A n args
     else if f = "array_update" then updateHeadT A n args
-    else if f = "array_lit" then
-      match arrLitHeadT A n args with
-      | some k => some k
-      | none => callHeadT A n f args
+    else if f = "array_lit" then arrLitHeadN A n args
+    else if f = "repeat" then none
     else callHeadT A n f args
 
 /-- The head of `let n = val` under the placement `A`: a literal bound to a scalar
@@ -753,12 +801,69 @@ def exitTowersStep (sc : List String) (dflt : Bool) (A : ExitTowers) :
     literal binding of a name that a call with a tower result also binds does not make the
     name scalar, and an element load bound to a name of `exitTowerNames` is not scalar),
     three passes of `exitTowersStep` over its bindings, then two passes with the default
-    placements. -/
+    placements; the names of the form `exitCallKey f` are left out, so that the placement
+    declares no call result type (`exitCallTys_exitTowers`). -/
 def exitTowers (e : ImpExpr) : ExitTowers :=
   let bs := exitBinds e
   let sc := exitScalarNames (exitTowerBound e) (exitTowerNames e) e
   let pass (dflt : Bool) (A : ExitTowers) : ExitTowers := bs.foldl (exitTowersStep sc dflt) A
-  pass true (pass true (pass false (pass false (pass false []))))
+  (pass true (pass true (pass false (pass false (pass false []))))).filter
+    fun p => !exitIsCallKey p.1
+
+theorem exitIsCallKey_callKey (f : String) : exitIsCallKey (exitCallKey f) = true := by
+  simp [exitIsCallKey, exitCallKey, String.toList_append]
+
+/-- A placement with the names of the form `exitCallKey` left out declares no call result
+    type. -/
+theorem lookup_callKey_filter (l : ExitTowers) (f : String) :
+    (l.filter fun p => !exitIsCallKey p.1).lookup (exitCallKey f) = none := by
+  induction l with
+  | nil => rfl
+  | cons p l ih =>
+    obtain ⟨k, b⟩ := p
+    by_cases hp : exitIsCallKey k = true
+    · simp [hp, ih]
+    · have hne : (exitCallKey f == k) = false := by
+        simpa using fun h : exitCallKey f = k => hp (h ▸ exitIsCallKey_callKey f)
+      simp [hp, List.lookup_cons, hne, ih]
+
+theorem exitCallTys_exitTowers (e : ImpExpr) (f : String) :
+    exitCallTys (exitTowers e) f = none :=
+  lookup_callKey_filter _ f
+
+theorem exitCallKey_inj {f g : String} (h : exitCallKey f = exitCallKey g) : f = g := by
+  unfold exitCallKey at h
+  have := congrArg String.toList h
+  simp [String.toList_append] at this
+  exact String.toList_inj.mp this
+
+/-- The placement `rest` with the declared result types `D` of the call names `fs` recorded
+    under `exitCallKey`, and the names of that form in `rest` left out. -/
+def exitWithCallKeys (D : String → Option TowerType) (fs : List String) (rest : ExitTowers) :
+    ExitTowers :=
+  (fs.filterMap fun g => (D g).map fun d => (exitCallKey g, d)) ++
+    rest.filter (fun p => !exitIsCallKey p.1)
+
+/-- `exitWithCallKeys D fs rest` declares only result types of `D`. -/
+theorem exitCallTys_withCallKeys {D : String → Option TowerType} {fs : List String}
+    {rest : ExitTowers} {f : String} {dr : TowerType}
+    (h : exitCallTys (exitWithCallKeys D fs rest) f = some dr) : D f = some dr := by
+  unfold exitCallTys exitWithCallKeys at h
+  induction fs with
+  | nil => simp [lookup_callKey_filter] at h
+  | cons g fs ih =>
+    rcases hg : D g with _ | d
+    · simp only [List.filterMap_cons, hg, Option.map_none] at h
+      exact ih h
+    · simp only [List.filterMap_cons, hg, Option.map_some, List.cons_append,
+        List.lookup_cons] at h
+      by_cases he : exitCallKey f = exitCallKey g
+      · simp only [he, beq_self_eq_true] at h
+        rw [exitCallKey_inj he, hg]
+        exact h
+      · have : (exitCallKey f == exitCallKey g) = false := by simpa using he
+        simp only [this] at h
+        exact ih h
 
 /-- The placement of the tail value of a body under `A`, read from its first tail: the
     placement of a tail variable, `tuple` for a tail tuple, and `scalar` otherwise. -/
@@ -1267,19 +1372,48 @@ def ExitMarshal (br : ValueTowerBridge) (leafSpec : LeafSpec) : Prop :=
     ScalarValN v → valueToScalar v = some k →
     br loc.locDst v (leafSpec.limbStore loc default 0 (BitVec.ofNat 64 k))
 
-/-- The leaf conditions of the typed simulation: the scalar operations, the absence of
-    control-flow results, the storage of a scalar into limb `0` of a fresh tower slot of
-    at least `8` bytes, the calls with a tower result (`LeafCallAgreesArgs`, for every call
-    other than `index` and `array_update`) and with a scalar result (`LeafCallScalar`, for
-    the scalar calls and for the leaves of `exitTowerScalarNames`), the element load and
-    the element store on an array of words and on an array of tower values, and the array
-    literal of tower values at each container type. -/
-structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridge) : Prop where
+/-- `LeafCallAgreesArgs` on the argument lists of `k` values: the leaf condition of a call
+    whose result has a fixed number `k` of elements. -/
+def LeafCallAgreesArgsLen (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : TowerType)
+    (br : ValueTowerBridge) (k : Nat) : Prop :=
+  ∀ (args : List Located) (vals : List Value) (argList : List (Σ t : TowerType, RustVal t))
+    (oldV : RustVal dt) (vRes : Value),
+    vals.length = k → bi f vals = some vRes →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+    br dt vRes (leafSpec.call f dt (args.map (·.locDst)) oldV argList)
+
+theorem leafCallAgreesArgsLen_of {bi : Builtins} {leafSpec : LeafSpec} {f : String}
+    {dt : TowerType} {br : ValueTowerBridge} (h : LeafCallAgreesArgs bi leafSpec f dt br)
+    (k : Nat) : LeafCallAgreesArgsLen bi leafSpec f dt br k :=
+  fun args vals argList oldV vRes _ hbi hF => h args vals argList oldV vRes hbi hF
+
+/-- A builtin table that does not implement `f` satisfies `LeafCallAgreesArgsLen`. -/
+theorem leafCallAgreesArgsLen_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (f : String)
+    (dt : TowerType) (br : ValueTowerBridge) (k : Nat) (h : ∀ vals, bi f vals = none) :
+    LeafCallAgreesArgsLen bi leafSpec f dt br k := by
+  intro _ vals _ _ _ _ hBi
+  rw [h vals] at hBi
+  cases hBi
+
+/-- The leaf conditions of the typed simulation, for the declared call result types `D`
+    (by default none): the scalar operations, the absence of control-flow results, the
+    storage of a scalar into limb `0` of a fresh tower slot of at least `8` bytes, the
+    calls with a tower result without a declared type at `towerOfCallName f`
+    (`LeafCallAgreesArgs`, for every call other than the array operations `index`,
+    `array_update`, `array_lit`, `repeat`) and with a
+    scalar result (`LeafCallScalar`, for the scalar calls and for the leaves of
+    `exitTowerScalarNames`), the element load and the element store on an array of words
+    and on an array of tower values, the array literal of `k` values at each array type of
+    `k` elements (`arrLitN`), and the calls other than the array operations with a declared
+    result type `dr` at `dr` (`callD`) and, for a declared word result `TU64`, with a scalar
+    result (`wordD`).  `callD` and `wordD` hold for the default `D`. -/
+structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridge)
+    (D : String → Option TowerType := fun _ => none) : Prop where
   ops : ScalarOpsSoundT bi
   plain : _root_.Hax.ContinueFlag.BuiltinsPlain bi
   marshal : ExitMarshal br leafSpec
   callT : ∀ f, exitScalarRes f = false → f ≠ "index" → f ≠ "array_update" →
-    LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
+    f ≠ "array_lit" → f ≠ "repeat" → LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
   callS : ∀ f, exitScalarCall f = true → LeafCallScalar bi leafSpec f (towerOfCallName f) br
   /-- The leaf calls of `exitTowerScalarNames`, whose arguments are related by `br` to
       tower values and whose result is a scalar word read from limb `0` of the leaf
@@ -1290,16 +1424,64 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
   update : ArrUpdateWordAgrees br bi leafSpec
   indexT : IndexTowerAgrees br bi leafSpec
   updateT : ArrUpdateTowerAgrees br bi leafSpec
-  arrLit : ∀ t c, exitContainer t = some c → LeafCallAgreesArgs bi leafSpec "array_lit" c br
+  /-- The array literal of `k` values held at an array type `c` of `k` elements. -/
+  arrLitN : ∀ c k, exitArrLen c = some k → LeafCallAgreesArgsLen bi leafSpec "array_lit" c br k
+  /-- A call outside `exitScalarRes` and the array operations with the declared result type
+      `dr` agrees at `dr`. -/
+  callD : ∀ f dr, D f = some dr → exitScalarRes f = false → f ≠ "index" →
+    f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
+    LeafCallAgreesArgs bi leafSpec f dr br := by
+    intro f dr h; simp at h
+  /-- A call outside `exitScalarRes` and the array operations with the declared word result
+      `TU64` returns a scalar word whose decoding is limb `0` of the leaf output at `TU64`. -/
+  wordD : ∀ f, D f = some .TU64 → exitScalarRes f = false → f ≠ "index" →
+    f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
+    LeafCallScalar bi leafSpec f .TU64 br := by
+    intro f h; simp at h
+
+/-- The leaf conditions for the declared types `D` give those for any `D'` declaring fewer
+    call result types. -/
+theorem ExitLeaves.mono {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
+    {D D' : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    (h : ∀ f dr, D' f = some dr → D f = some dr) : ExitLeaves bi leafSpec br D' where
+  ops := hL.ops
+  plain := hL.plain
+  marshal := hL.marshal
+  callT := hL.callT
+  callS := hL.callS
+  callTS := hL.callTS
+  index := hL.index
+  update := hL.update
+  indexT := hL.indexT
+  updateT := hL.updateT
+  arrLitN := hL.arrLitN
+  callD f dr hf := hL.callD f dr (h f dr hf)
+  wordD f hf := hL.wordD f (h f _ hf)
+
+/-- The leaf conditions for the placement `exitTowers e`, which declares no call result
+    type. -/
+theorem ExitLeaves.atExitTowers {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
+    (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) :
+    ExitLeaves bi leafSpec br (exitCallTys (exitTowers e)) :=
+  hL.mono fun f dr h => by rw [exitCallTys_exitTowers] at h; cases h
 
 /-- Every call of `exitScalarRes` satisfies `LeafCallScalar`. -/
 theorem ExitLeaves.callSR {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
-    (hL : ExitLeaves bi leafSpec br) {f : String} (hf : exitScalarRes f = true) :
+    {D : String → Option TowerType}
+    (hL : ExitLeaves bi leafSpec br D) {f : String} (hf : exitScalarRes f = true) :
     LeafCallScalar bi leafSpec f (towerOfCallName f) br := by
   unfold exitScalarRes at hf
   rcases Bool.or_eq_true_iff.mp hf with h | h
   · exact hL.callS f h
   · exact hL.callTS f h
+
+/-- A builtin table that does not implement `f` satisfies the scalar leaf condition. -/
+theorem leafCallScalar_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (f : String)
+    (dt : TowerType) (br : ValueTowerBridge) (h : ∀ vals, bi f vals = none) :
+    LeafCallScalar bi leafSpec f dt br := by
+  intro _ vals _ _ _ hBi
+  rw [h vals] at hBi
+  cases hBi
 
 /-- `ScalarValN` as a Boolean test. -/
 def scalarValNB : Value → Bool
@@ -2150,11 +2332,11 @@ theorem updateHeadT_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT
 theorem callHeadAt_some {n f : String} {dt dr : TowerType} {args : List ImpExpr}
     {k : LowCT → LowCT} (h : callHeadAt A n f dt dr args = some k) :
     ∃ ctx ls, callMarshal A dt args = some (ctx, ls) ∧
-      ((exitScalarRes f = true ∧ A.lookup n = none ∧
+      ((A.lookup n = none ∧
           k = fun b => .RSeq (.RLetZero exitCallName dr
             (ctx (.RCall f ⟨exitCallName, dr⟩ ls)))
             (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)) ∨
-        (exitScalarRes f = false ∧ A.lookup n = some dr ∧
+        (A.lookup n = some dr ∧
           k = fun b => .RSeq (.RLetZero exitCallName dr
             (ctx (.RCall f ⟨exitCallName, dr⟩ ls)))
             (.RSeq (.RCopy ⟨n, dr⟩ ⟨exitCallName, dr⟩) b))) := by
@@ -2163,39 +2345,55 @@ theorem callHeadAt_some {n f : String} {dt dr : TowerType} {args : List ImpExpr}
   · cases h
   · simp only at h
     refine ⟨ctx, ls, rfl, ?_⟩
-    by_cases hs : exitScalarRes f = true
-    · rw [if_pos hs] at h
-      split_ifs at h with hn
+    rcases hn : A.lookup n with _ | t <;> rw [hn] at h
+    · simp only [Option.some.injEq] at h
+      exact Or.inl ⟨rfl, h.symm⟩
+    · simp only at h
+      split_ifs at h with ht
+      subst ht
       simp only [Option.some.injEq] at h
-      exact Or.inl ⟨hs, hn, h.symm⟩
-    · rw [if_neg hs] at h
-      split_ifs at h with hn
-      simp only [Option.some.injEq] at h
-      exact Or.inr ⟨by simpa using hs, hn, h.symm⟩
+      exact Or.inr ⟨rfl, h.symm⟩
 
+/-- The call heads: a call of `exitScalarRes` bound to a scalar name at
+    `towerOfCallName f`; a call with the declared result type `dr` at `dr`, bound to a
+    scalar name only for `dr = TU64`; a call without a declared result type bound to a name
+    placed at `towerOfCallName f` at that type. -/
 theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : callHeadT A n f args = some k) :
-    ∃ ctx ls, callMarshal A (towerOfCallName f) args = some (ctx, ls) ∧
-      ((exitScalarRes f = true ∧ A.lookup n = none ∧
-          k = fun b => .RSeq (.RLetZero exitCallName (towerOfCallName f)
-            (ctx (.RCall f ⟨exitCallName, towerOfCallName f⟩ ls)))
-            (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) b)) ∨
-        (exitScalarRes f = false ∧ A.lookup n = some (towerOfCallName f) ∧
-          k = fun b => .RSeq (.RLetZero exitCallName (towerOfCallName f)
-            (ctx (.RCall f ⟨exitCallName, towerOfCallName f⟩ ls)))
-            (.RSeq (.RCopy ⟨n, towerOfCallName f⟩ ⟨exitCallName, towerOfCallName f⟩) b))) :=
-  callHeadAt_some A h
+    ∃ dt dr, callHeadAt A n f dt dr args = some k ∧
+      ((exitScalarRes f = true ∧ A.lookup n = none ∧ dr = towerOfCallName f) ∨
+        (exitScalarRes f = false ∧ exitCallTys A f = some dr ∧
+          (A.lookup n = none → dr = .TU64)) ∨
+        (exitScalarRes f = false ∧ exitCallTys A f = none ∧ A.lookup n = some dr ∧
+          dr = towerOfCallName f)) := by
+  unfold callHeadT at h
+  by_cases hs : exitScalarRes f = true
+  · rw [if_pos hs] at h
+    split_ifs at h with hn
+    exact ⟨_, _, h, Or.inl ⟨hs, hn, rfl⟩⟩
+  · rw [if_neg hs] at h
+    have hs' : exitScalarRes f = false := by simpa using hs
+    rcases hd : exitCallTys A f with _ | dr <;> rw [hd] at h
+    · simp only at h
+      split_ifs at h with hn
+      exact ⟨_, _, h, Or.inr (Or.inr ⟨hs', rfl, hn, rfl⟩)⟩
+    · simp only at h
+      split_ifs at h with hn
+      refine ⟨_, _, h, Or.inr (Or.inl ⟨hs', rfl, fun h0 => ?_⟩)⟩
+      by_contra hne
+      exact hn ⟨h0, hne⟩
 
-theorem arrLitHeadT_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
-    (h : arrLitHeadT A n args = some k) :
-    ∃ t' c, exitContainer t' = some c ∧ callHeadAt A n "array_lit" t' c args = some k := by
-  unfold arrLitHeadT at h
-  rcases hf : exitFirstTower A args with _ | t' <;> rw [hf] at h
+theorem arrLitHeadN_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
+    (h : arrLitHeadN A n args = some k) :
+    ∃ c, A.lookup n = some c ∧ exitArrLen c = some args.length ∧
+      callHeadAt A n "array_lit" (exitElem c) c args = some k := by
+  unfold arrLitHeadN at h
+  rcases hn : A.lookup n with _ | c <;> rw [hn] at h
   · cases h
   · simp only at h
-    rcases hc : exitContainer t' with _ | c <;> rw [hc] at h
-    · cases h
-    · exact ⟨t', c, hc, h⟩
+    split_ifs at h with hl
+    exact ⟨c, rfl, hl, h⟩
+
 
 /-! ### Simulation of the call heads -/
 
@@ -2229,7 +2427,8 @@ theorem forall₂_var3 {env : Env} {a b c : String} {vals : List Value}
   cases hx; cases hy; cases hz
   exact ⟨_, _, _, rfl, hxa, hyb, hzc⟩
 
-theorem headT_scalarOp (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
+theorem headT_scalarOp {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    {env : Env} {rs : RustState}
     {n f : String} {args : List ImpExpr} {se : SExpr} {vals : List Value} {r : Value}
     (hso : scalarOpHeadT A n f args = some se) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
@@ -2253,7 +2452,8 @@ theorem rsTowerLimb_rsSetTower_same (rs : RustState) (x : String) (t : TowerType
     (v : RustVal t) (i : Nat) : rsTowerLimb (rsSetTower rs x ⟨t, v⟩) x i = towerLimb v i := by
   simp [rsTowerLimb, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same]
 
-theorem headT_index (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
+theorem headT_index {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    {env : Env} {rs : RustState}
     {n : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : indexHeadT A n args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
@@ -2321,7 +2521,8 @@ theorem headT_index (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState
   exact RustExec.letZero _ _ _ _ _ (RustExec.seq _ _ _ _ _ hload
     (RustExec.seq _ _ _ _ _ hset h))
 
-theorem headT_update (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
+theorem headT_update {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    {env : Env} {rs : RustState}
     {n : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : updateHeadT A n args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
@@ -2377,12 +2578,13 @@ theorem headT_update (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustStat
   rw [hS1]; exact hret
 
 /-- The head of a call marshalling its scalar arguments at `dt` into a result slot of type
-    `dr`, under the leaf conditions of `f` at `dr`. -/
-theorem headT_callAt (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
+    `dr`, under the leaf condition of `f` at `dr` for the placement of the bound name. -/
+theorem headT_callAt {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    {env : Env} {rs : RustState}
     {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
     {vals : List Value} {r : Value}
-    (hT : exitScalarRes f = false → LeafCallAgreesArgs bi leafSpec f dr br)
-    (hS : exitScalarRes f = true → LeafCallScalar bi leafSpec f dr br)
+    (hT : A.lookup n = some dr → LeafCallAgreesArgsLen bi leafSpec f dr br vals.length)
+    (hS : A.lookup n = none → LeafCallScalar bi leafSpec f dr br)
     (hk : callHeadAt A n f dt dr args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
@@ -2422,8 +2624,8 @@ theorem headT_callAt (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustStat
   have hret2 : (rsSetTower rs1 exitCallName ⟨dr, resV⟩).rsScalar exitRetName = 0 := by
     show rs1.rsScalar exitRetName = 0
     rw [hS1]; exact hret
-  rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hnA, rfl⟩
-  · obtain ⟨hsr, hdr⟩ := hS hsc ls vals argList default r hbi hF2
+  rcases hcase with ⟨hnA, rfl⟩ | ⟨hnA, rfl⟩
+  · obtain ⟨hsr, hdr⟩ := hS hnA ls vals argList default r hbi hF2
     have hev : (SExpr.SLimb exitCallName 0).evalState
         (rsSetTower rs1 exitCallName ⟨dr, resV⟩) = towerLimb resV 0 := by
       simp only [SExpr.evalState]
@@ -2434,7 +2636,7 @@ theorem headT_callAt (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustStat
       (.SLimb exitCallName 0) (rsSetTower rs1 exitCallName ⟨dr, resV⟩)
     rw [hev] at hset
     exact RustExec.seq _ _ _ _ _ hC (RustExec.seq _ _ _ _ _ hset h)
-  · have hbrR := hT hsc ls vals argList default r hbi hF2
+  · have hbrR := hT hnA ls vals argList default r rfl hbi hF2
     refine ⟨rsSetTower (rsSetTower rs1 exitCallName ⟨dr, resV⟩) n ⟨dr, resV⟩,
       envAgreesT_extend_tower hn hnA (hL.plain _ _ _ hbi) hbrR hag2, hret2,
       fun bC rs' h => ?_⟩
@@ -2443,7 +2645,8 @@ theorem headT_callAt (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustStat
       (locatedLookup_of_rsTower _ _ _ _ (CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same _ _ _))
 
 /-- Every head of `appHeadT` satisfies `HeadResT` at the builtin's value. -/
-theorem headT_app (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
+theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
+    {rs : RustState}
     {n f : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : appHeadT A n f args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
@@ -2455,33 +2658,35 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br) {env : Env} {rs : RustState}
   rcases hso : scalarOpHeadT A n f args with _ | se
   · rw [hso] at hk
     simp only at hk
-    have hcall : callHeadT A n f args = some k → f ≠ "index" → f ≠ "array_update" →
-        HeadResT N leafSpec br A env rs n r k := fun hc hfi hfu =>
-      headT_callAt hL (fun hsc => hL.callT f hsc hfi hfu) (fun hsc => hL.callSR hsc) hc hn hargs
-        hF hbi hag hret
-    split_ifs at hk with hfi hfu hfl
+    split_ifs at hk with hfi hfu hfl hfr
     · subst hfi
       exact headT_index hL hk hn hargs hF hbi hag hret
     · subst hfu
       exact headT_update hL hk hn hargs hF hbi hag hret
     · subst hfl
-      rcases hal : arrLitHeadT A n args with _ | k'
-      · rw [hal] at hk
-        exact hcall hk (by decide) (by decide)
-      · rw [hal] at hk
-        simp only [Option.some.injEq] at hk
-        subst hk
-        obtain ⟨t', c, hc, hk⟩ := arrLitHeadT_some A hal
-        exact headT_callAt hL (fun _ => hL.arrLit t' c hc)
-          (fun hsc => by rw [exitScalarRes_arrayLit] at hsc; cases hsc) hk hn hargs hF hbi hag
-          hret
-    · exact hcall hk hfi hfu
+      obtain ⟨c, hnA, hlen, hc⟩ := arrLitHeadN_some A hk
+      rw [hF.length_eq] at hlen
+      exact headT_callAt hL (fun _ => hL.arrLitN c _ hlen)
+        (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
+    · obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
+      rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hd, hnone⟩ | ⟨hsc, -, hnA, rfl⟩
+      · exact headT_callAt hL (fun h => by rw [hnA] at h; cases h) (fun _ => hL.callSR hsc) hc
+          hn hargs hF hbi hag hret
+      · refine headT_callAt hL
+          (fun _ => leafCallAgreesArgsLen_of (hL.callD f dr hd hsc hfi hfu hfl hfr) _)
+          (fun h0 => ?_) hc hn hargs hF hbi hag hret
+        obtain rfl := hnone h0
+        exact hL.wordD f hd hsc hfi hfu hfl hfr
+      · exact headT_callAt hL
+          (fun _ => leafCallAgreesArgsLen_of (hL.callT f hsc hfi hfu hfl hfr) _)
+          (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
   · rw [hso] at hk
     simp only [Option.some.injEq] at hk
     subst hk
     exact headT_scalarOp hL hso hn hargs hF hbi hag hret
 
-theorem head_app (hL : ExitLeaves bi leafSpec br) (n f : String) (args : List ImpExpr)
+theorem head_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (n f : String)
+    (args : List ImpExpr)
     (body : ImpExpr) : HeadSimT bi N leafSpec br A R n (.app f args) body := by
   intro tl il fuel env env' o rs k hok hk hrun hval hag hret
   have hh : exitReserved n = false ∧ exitArgsOk args = true := by
@@ -3942,12 +4147,13 @@ end Arms
 /-! ## §15  The simulation theorems -/
 
 /-- **Simulation of the typed exit-flag lowering.**  Under the leaf conditions
-    `ExitLeaves`, every expression of the fragment `exitSimOkT A R` simulates under the
-    placement `A`: the lowered command `haxToLowCTKT A` matches every `denote'` run that
-    ends in a value. -/
+    `ExitLeaves` at the call result types declared by `A` (`exitCallTys A`), every expression
+    of the fragment `exitSimOkT A R` simulates under the placement `A`: the lowered command
+    `haxToLowCTKT A` matches every `denote'` run that ends in a value. -/
 theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) : ExitSimTy bi N leafSpec br A R e := by
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (e : ImpExpr) :
+    ExitSimTy bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitSimTy bi N leafSpec br A R e :=
     exitSimTy_of_not_ok bi N leafSpec br A R
@@ -4062,13 +4268,13 @@ theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
 
 /-- **Function-level simulation of the typed lowering.**  For a function body in the
     fragment `exitSimOkT A R` with exits allowed at function level, leaf conditions
-    `ExitLeaves`, and an entry state agreeing with the entry environment under the
-    placement `A`, a `denote'` run ending in a value is matched by the lowered function
-    `haxToLowCTFnT A e`, whose result slot agrees with the returned or final value
-    (`outcomeAgreesT`). -/
+    `ExitLeaves` at the call result types declared by `A`, and an entry state agreeing with
+    the entry environment under the placement `A`, a `denote'` run ending in a value is
+    matched by the lowered function `haxToLowCTFnT A e`, whose result slot agrees with the
+    returned or final value (`outcomeAgreesT`). -/
 theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) (c : LowCT)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
@@ -4087,7 +4293,7 @@ theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafS
     the scalar result placement: the result slot of the lowered function holds the decoding
     of the returned or final value. -/
 theorem haxToLowCTFnT_simulates_exit_scalar (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
-    (br : ValueTowerBridge) (A : ExitTowers) (hL : ExitLeaves bi leafSpec br)
+    (br : ValueTowerBridge) (A : ExitTowers) (hL : ExitLeaves bi leafSpec br (exitCallTys A))
     (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A .scalar true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
@@ -4110,7 +4316,8 @@ theorem haxToLowCTFnT_nil_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : L
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
     (hag : envAgreesOff env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) :=
-  haxToLowCTFnT_simulates_exit_scalar bi N leafSpec br [] hL e c hok hK fuel env env' o rs hrun
+  haxToLowCTFnT_simulates_exit_scalar bi N leafSpec br []
+    (hL.mono fun _ _ h => by simp [exitCallTys] at h) e c hok hK fuel env env' o rs hrun
     hval (envAgreesT_nil_of_off hag)
 
 /-- Under the empty placement the result placement is scalar or a tuple. -/

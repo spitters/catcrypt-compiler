@@ -288,30 +288,22 @@ theorem letHeadT_prefix {A : ExitTowers} {n : String} {val : ImpExpr} {k : LowCT
     rcases hso : scalarOpHeadT A n f args with _ | se
     · rw [hso] at hk'
       simp only at hk'
-      split_ifs at hk' with hfi hfu hfl
+      have hcallP : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
+          HeadPrefix M N leafSpec k := fun hc => by
+        obtain ⟨_, _, _, h⟩ := callHeadAt_some A hc
+        rcases h with ⟨_, rfl⟩ | ⟨_, rfl⟩ <;>
+          exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
+      split_ifs at hk' with hfi hfu hfl hfr
       · obtain ⟨_, _, _, _, _, _, h⟩ := indexHeadT_some A hk'
         rcases h with ⟨_, _, rfl⟩ | ⟨_, _, _, rfl⟩ <;>
           exact headPrefix_letZero _ _ (headPrefix_seq _ (headPrefix_seq _ headPrefix_id))
       · obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, rfl⟩ := updateHeadT_some A hk'
         exact headPrefix_seq _ headPrefix_id
-      · have hcallP : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
-            HeadPrefix M N leafSpec k := fun hc => by
-          obtain ⟨_, _, _, h⟩ := callHeadAt_some A hc
-          rcases h with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;>
-            exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
-        rcases hal : arrLitHeadT A n args with _ | k'
-        · rw [hal] at hk'
-          subst hfl
-          exact hcallP hk'
-        · rw [hal] at hk'
-          simp only [Option.some.injEq] at hk'
-          subst hk'
-          obtain ⟨_, _, _, hc⟩ := arrLitHeadT_some A hal
-          subst hfl
-          exact hcallP hc
-      · obtain ⟨_, _, _, h⟩ := callHeadT_some A hk'
-        rcases h with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;>
-          exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
+      · subst hfl
+        obtain ⟨_, _, _, hc⟩ := arrLitHeadN_some A hk'
+        exact hcallP hc
+      · obtain ⟨_, _, hc, -⟩ := callHeadT_some A hk'
+        exact hcallP hc
     · rw [hso] at hk'
       simp only [Option.some.injEq] at hk'
       subst hk'
@@ -386,7 +378,7 @@ theorem notCF_of_agreeT {tl : Bool} {v : Value} {env : Env} {rs : RustState}
 
 /-- The state a traced run of the typed lowering reaches agrees with the source
     outcome. -/
-theorem exitSimT_final (hL : ExitLeaves bi leafSpec br) {e : ImpExpr} {tl : Bool}
+theorem exitSimT_final (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {e : ImpExpr} {tl : Bool}
     {fl : Option String} {fuel : Nat} {env env' : Env} {o : Outcome} {rs r : RustState}
     {c : LowCT} {x : Bool} {t : List CTLeak}
     (hok : exitSimOkT A R tl fl.isSome e = true) (hfl : RunCtx fl)
@@ -401,7 +393,8 @@ theorem exitSimT_final (hL : ExitLeaves bi leafSpec br) {e : ImpExpr} {tl : Bool
   exact ⟨hagE, hx⟩
 
 /-- A typed lowering that cannot exit: the source run does not exit. -/
-theorem exitOf_false_of_xT (hL : ExitLeaves bi leafSpec br) {e : ImpExpr} {tl : Bool}
+theorem exitOf_false_of_xT (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {e : ImpExpr}
+    {tl : Bool}
     {fl : Option String} {fuel : Nat} {env env' : Env} {o : Outcome} {rs r : RustState}
     {c : LowCT} {t : List CTLeak}
     (hok : exitSimOkT A R tl fl.isSome e = true) (hfl : RunCtx fl)
@@ -438,7 +431,8 @@ theorem agGuardT {c : String} (hc : exitReserved c = false) (hcs : A.lookup c = 
   exact hd.symm
 
 /-- The body of a typed loop satisfies `BodyRunAg` at `envAgreesT`. -/
-theorem bodyRunT (hL : ExitLeaves bi leafSpec br) {body : ImpExpr} {bC : LowCT} {run : String}
+theorem bodyRunT (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {body : ImpExpr} {bC : LowCT}
+    {run : String}
     {x : Bool} (hokB : exitSimOkT A R false true body = true) (hslot : exitRunSlot run = true)
     (hKB : haxToLowCTKT A false (some run) body = some (bC, x)) :
     BodyRunAg M bi N leafSpec (envAgreesT br A) body bC := by
@@ -601,7 +595,8 @@ theorem headResT_var {n s : String} {k : LowCT → LowCT} {env : Env} {rs : Rust
         (RustExec.copy ⟨n, t⟩ ⟨s, t⟩ rs rfl val (locatedLookup_of_rsTower rs s t val hval')) h
 
 /-- The head of `let n = f(args)`: `HeadResT` at the builtin's value. -/
-theorem headResT_app (hL : ExitLeaves bi leafSpec br) {n f : String} {args : List ImpExpr}
+theorem headResT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {n f : String}
+    {args : List ImpExpr}
     {k : LowCT → LowCT} {env : Env} {rs : RustState} {vals : List Value} {r : Value}
     (hk : appHeadT A n f args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
@@ -639,12 +634,12 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
     have hcallS : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
         Silent M N leafSpec (k .RSkip) := fun hc => by
       obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
-      rcases hcase with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
       · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
           (silent_seq (silent_setLimb _ _ _) silent_skip)
       · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
           (silent_seq (silent_copy _ _) silent_skip)
-    split_ifs at hk with hfi hfu hfl
+    split_ifs at hk with hfi hfu hfl hfr
     · -- the element load
       subst hfi
       obtain ⟨arr, idx, t, rfl, hat, hid, hcase⟩ := indexHeadT_some A hk
@@ -726,19 +721,13 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
         rfl
       rw [htr h₁, htr h₂, hi]
     · -- an array literal: a call
-      have hsil : Silent M N leafSpec (k .RSkip) := by
-        rcases hal : arrLitHeadT A n args with _ | k'
-        · rw [hal] at hk
-          exact hcallS hk
-        · rw [hal] at hk
-          simp only [Option.some.injEq] at hk
-          subst hk
-          obtain ⟨_, _, _, hc⟩ := arrLitHeadT_some A hal
-          subst hfl
-          exact hcallS hc
+      subst hfl
+      obtain ⟨_, _, _, hc⟩ := arrLitHeadN_some A hk
+      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
     · -- a call
-      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hk
+      obtain ⟨_, _, hc, -⟩ := callHeadT_some A hk
+      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
   · -- a scalar operation
     rw [hso] at hk
@@ -818,7 +807,8 @@ theorem varHead_silent {n s : String} {k : LowCT → LowCT}
     · cases hk
   · cases hk
 
-theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi leafSpec br)
+theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A))
     (n : String) (val body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.letBind n val body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -911,7 +901,7 @@ theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi le
   | _ => simp [letHeadT] at hk
 
 /-- An expression whose lowerings cannot exit and have no event. -/
-theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br) (e : ImpExpr)
+theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (e : ImpExpr)
     (hS : ∀ tl fl c x, exitSimOkT A R tl (Option.isSome fl) e = true →
       haxToLowCTKT A tl fl e = some (c, x) → x = false ∧ Silent M N leafSpec c) :
     ExitCTT M bi N leafSpec br A R e := by
@@ -922,7 +912,7 @@ theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br) (e : ImpExpr)
   rw [exitOf_false_of_xT hL hok hfl hK hrun₁ hval₁ hag₁ hret₁ h₁,
     exitOf_false_of_xT hL hok hfl hK hrun₂ hval₂ hag₂ hret₂ h₂]
 
-theorem exitCTT_var (hL : ExitLeaves bi leafSpec br) (x : String) :
+theorem exitCTT_var (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (x : String) :
     ExitCTT M bi N leafSpec br A R (.var x) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb _ hK => by
     cases tl with
@@ -941,7 +931,7 @@ theorem exitCTT_var (hL : ExitLeaves bi leafSpec br) (x : String) :
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br) :
+theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br (exitCallTys A)) :
     ExitCTT M bi N leafSpec br A R .unitVal :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb _ hK => by
     cases tl with
@@ -960,7 +950,7 @@ theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br) :
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br) (l : ImpLit) :
+theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (l : ImpLit) :
     ExitCTT M bi N leafSpec br A R (.lit l) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb hok hK => by
     cases tl with
@@ -974,7 +964,7 @@ theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br) (l : ImpLit) :
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br) (es : List ImpExpr) :
+theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (es : List ImpExpr) :
     ExitCTT M bi N leafSpec br A R (.tuple es) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb hok hK => by
     cases tl with
@@ -988,7 +978,7 @@ theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br) (es : List ImpExpr) :
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_cfBreak (hL : ExitLeaves bi leafSpec br) (p : ImpExpr) :
+theorem exitCTT_cfBreak (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (p : ImpExpr) :
     ExitCTT M bi N leafSpec br A R (.cfBreak p) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
     hrun₂ hval₂ hag₁ hret₁ hag₂ hret₂ _ h₁ h₂
@@ -1032,7 +1022,7 @@ theorem exitCTT_typeAscription (e : ImpExpr) (ty : String)
     (hr hrun₁) hval₁ (hr hrun₂) hval₂ hag₁ hret₁ hag₂ hret₂ (by simpa only [srcLeak] using hLk)
     h₁ h₂
 
-theorem exitCTT_seq (hL : ExitLeaves bi leafSpec br) (a b : ImpExpr)
+theorem exitCTT_seq (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (a b : ImpExpr)
     (iha : ExitCTT M bi N leafSpec br A R a) (ihb : ExitCTT M bi N leafSpec br A R b) :
     ExitCTT M bi N leafSpec br A R (.seq a b) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1234,7 +1224,8 @@ theorem boundIntN_of_scalar {v : Value} {H : Nat} (hs : ScalarValN v)
     simp [boundInt, Int.toNat_of_nonneg h0]
   · exact absurd rfl hnu
 
-theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br) (c : String) (body : ImpExpr)
+theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (c : String)
+    (body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.whileFoldReturn (.var c) body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1279,7 +1270,8 @@ theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br) (c : String) (b
       h₁ h₂
     exact ⟨ht, exitOf_eq_of_flagT hE₁ hE₂ hr⟩
 
-theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br) (c : String) (body : ImpExpr)
+theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (c : String)
+    (body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.whileFold (.var c) body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1334,7 +1326,8 @@ theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br) (c : String) (body : 
         hLk hl₁ hl₂
       exact ⟨by rw [ht], hx₁.trans hx₂.symm⟩
 
-theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi body : ImpExpr)
+theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (i : String)
+    (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldReturn i lo hi body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1427,7 +1420,7 @@ theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br) (i : String) (lo 
       fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
       hL' h₁ h₂
 
-theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br) (i : String)
+theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (i : String)
     (lo hi body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldRevReturn i lo hi body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1473,7 +1466,8 @@ theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br) (i : String)
       hslot hok'.2.1 hh (agExtT hok'.2.1 his) fuel env₁ env₂ env₁' env₂' o₁ o₂ _ _ r₁ r₂ t₁ t₂
       hrun₁ hval₁ hrun₂ hval₂ hag₁' hret₁' hag₂' hret₂' hL' h₁ h₂
 
-theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi body : ImpExpr)
+theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (i : String)
+    (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFold i lo hi body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1591,7 +1585,8 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi bod
 /-- A downward counted loop that may break: its source event is `opaque`, so equal source
     leakage gives equal environments, and the trips are those of `genTripsCT` over
     `denoteForLoopRev'` counting down from `hi - 1`. -/
-theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi body : ImpExpr)
+theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (i : String)
+    (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldRev i lo hi body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1696,8 +1691,9 @@ theorem exitCTT_of_not_ok (A : ExitTowers) (R : ExitRes) (e : ImpExpr)
     for every `f`, as for `LowCTLeakModel.owned`), every expression satisfies `ExitCTT`.
     The condition on `M` is used at the calls: the bridge `br` is a relation, so the tower
     arguments of a call are not determined by the environment. -/
-theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi leafSpec br)
-    (A : ExitTowers) (R : ExitRes) (e : ImpExpr) : ExitCTT M bi N leafSpec br A R e := by
+theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (R : ExitRes) (e : ImpExpr) :
+    ExitCTT M bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitCTT M bi N leafSpec br A R e :=
     exitCTT_of_not_ok M bi N leafSpec br A R
@@ -1735,8 +1731,8 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi le
     fragment `exitSimOkT A R` with exits at function level, two runs ending in a value
     from environments with equal source leakage, and two runs of `haxToLowCTFnT A e` from
     states agreeing with them under `A`, have equal traces. -/
-theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi leafSpec br)
-    (A : ExitTowers) (R : ExitRes) (e : ImpExpr) (c : LowCT)
+theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (R : ExitRes) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
     (t₁ t₂ : List CTLeak)
@@ -1772,7 +1768,7 @@ theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves
   | letU64Zero _ _ _ _ _ h₂ =>
   cases h₂ with
   | seq _ _ _ m₂ _ t0₂ tf₂ hc₂ hf₂ =>
-  obtain ⟨ht, hx⟩ := haxToLowCTKT_ct M bi N leafSpec br hvt hL A R e true (some exitFnSlot) fuel
+  obtain ⟨ht, hx⟩ := haxToLowCTKT_ct M bi N leafSpec br hvt A hL R e true (some exitFnSlot) fuel
     env₁ env₂ env₁' env₂' o₁ o₂ _ _ m₁ m₂ c0 x t0₁ t0₂ hok hctx hK0 hrun₁ hval₁ hrun₂ hval₂
     hag₁' hret₁' hag₂' hret₂' hL' hc₁ hc₂
   obtain ⟨hE₁, -⟩ := exitSimT_final hL hok hctx hK0 hrun₁ hval₁ hag₁' hret₁' hc₁
@@ -1792,8 +1788,9 @@ theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves
     runs whose source counterparts end in a value: two runs of `haxToLowCTFnT A e` from
     states agreeing under `A` with environments that agree on the public variables of
     `lt` and from which the body runs to a value have equal traces. -/
-theorem haxToLowCTFnT_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi leafSpec br)
-    (A : ExitTowers) (R : ExitRes) (lt : LevelTable) (e : ImpExpr) (c : LowCT)
+theorem haxToLowCTFnT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (R : ExitRes) (lt : LevelTable) (e : ImpExpr)
+    (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (hsrc : SourceCT M bi lt e)
     (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
@@ -1803,7 +1800,7 @@ theorem haxToLowCTFnT_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi l
     (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
     (h₁ : RustExecLeak N leafSpec M c rs₁ t₁ r₁) (h₂ : RustExecLeak N leafSpec M c rs₂ t₂ r₂) :
     t₁ = t₂ :=
-  haxToLowCTFnT_leak_eq M bi N leafSpec br hvt hL A R e c hok hK fuel env₁ env₂ env₁' env₂' o₁ o₂
+  haxToLowCTFnT_leak_eq M bi N leafSpec br hvt A hL R e c hok hK fuel env₁ env₂ env₁' env₂' o₁ o₂
     rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
     (hsrc fuel env₁ env₂ env₁' env₂' o₁ o₂ hpub hrun₁ hval₁ hrun₂ hval₂) h₁ h₂
 
@@ -1820,7 +1817,8 @@ theorem haxToLowCTFnI_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi l
     (hag₁ : envAgreesT br (exitTowers e) env₁ rs₁) (hag₂ : envAgreesT br (exitTowers e) env₂ rs₂)
     (h₁ : RustExecLeak N leafSpec M c rs₁ t₁ r₁) (h₂ : RustExecLeak N leafSpec M c rs₂ t₂ r₂) :
     t₁ = t₂ :=
-  haxToLowCTFnT_ct M bi N leafSpec br hvt hL (exitTowers e) _ lt e c hok hK hsrc fuel env₁ env₂
+  haxToLowCTFnT_ct M bi N leafSpec br hvt (exitTowers e) (hL.atExitTowers e) _ lt e c hok hK
+    hsrc fuel env₁ env₂
     env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hpub hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂ h₁ h₂
 
 end Assembly
