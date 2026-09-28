@@ -184,7 +184,9 @@ theorem callMarshal_leak (A : ExitTowers) (dt : TowerType) :
       rcases hr : callMarshal A dt as with _ | ⟨ctx', ls'⟩
       · simp [callMarshal, hr] at h
       rcases hx : A.lookup x with _ | t
-      · simp only [callMarshal, hr, hx, Option.some.injEq, Prod.mk.injEq] at h
+      · simp only [callMarshal, hr, hx] at h
+        split_ifs at h with hmo
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         intro c rs tr r h
         cases h with
@@ -195,9 +197,7 @@ theorem callMarshal_leak (A : ExitTowers) (dt : TowerType) :
         | limbStoreExpr =>
         obtain ⟨rs0, hs0, h0⟩ := ih ctx' ls' hr c _ t2 r h2
         exact ⟨rs0, hs0, by simpa only [sexprLeak, List.nil_append] using h0⟩
-      · simp only [callMarshal, hr, hx] at h
-        split_ifs at h with htd
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
+      · simp only [callMarshal, hr, hx, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         exact ih ctx' ls' hr
     | _ => simp [callMarshal] at h
@@ -265,7 +265,9 @@ theorem letHeadT_prefix {A : ExitTowers} {n : String} {val : ImpExpr} {k : LowCT
         first
           | exact headPrefix_letU64Zero _ (headPrefix_seq _ headPrefix_id)
           | cases hk
-    · obtain ⟨kk, -, rfl⟩ := Option.map_eq_some_iff.mp hk
+    · simp only at hk
+      split_ifs at hk
+      obtain ⟨kk, -, rfl⟩ := Option.map_eq_some_iff.mp hk
       exact headPrefix_letZero _ _ (headPrefix_seq _ headPrefix_id)
   | var s =>
     simp only [letHeadT] at hk
@@ -286,11 +288,27 @@ theorem letHeadT_prefix {A : ExitTowers} {n : String} {val : ImpExpr} {k : LowCT
     rcases hso : scalarOpHeadT A n f args with _ | se
     · rw [hso] at hk'
       simp only at hk'
-      split_ifs at hk' with hfi hfu
-      · obtain ⟨_, _, _, _, _, _, _, rfl⟩ := indexHeadT_some A hk'
-        exact headPrefix_letZero _ _ (headPrefix_seq _ (headPrefix_seq _ headPrefix_id))
-      · obtain ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩ := updateHeadT_some A hk'
+      split_ifs at hk' with hfi hfu hfl
+      · obtain ⟨_, _, _, _, _, _, h⟩ := indexHeadT_some A hk'
+        rcases h with ⟨_, _, rfl⟩ | ⟨_, _, _, rfl⟩ <;>
+          exact headPrefix_letZero _ _ (headPrefix_seq _ (headPrefix_seq _ headPrefix_id))
+      · obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, rfl⟩ := updateHeadT_some A hk'
         exact headPrefix_seq _ headPrefix_id
+      · have hcallP : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
+            HeadPrefix M N leafSpec k := fun hc => by
+          obtain ⟨_, _, _, h⟩ := callHeadAt_some A hc
+          rcases h with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;>
+            exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
+        rcases hal : arrLitHeadT A n args with _ | k'
+        · rw [hal] at hk'
+          subst hfl
+          exact hcallP hk'
+        · rw [hal] at hk'
+          simp only [Option.some.injEq] at hk'
+          subst hk'
+          obtain ⟨_, _, _, hc⟩ := arrLitHeadT_some A hal
+          subst hfl
+          exact hcallP hc
       · obtain ⟨_, _, _, h⟩ := callHeadT_some A hk'
         rcases h with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;>
           exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
@@ -504,10 +522,7 @@ theorem app_run_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (fuel : 
       exact ⟨vals, r, hF vals rfl, hbi, happ, hrun⟩
 
 /-- The head of `let n = l`: `HeadResT` at the literal's value. -/
-theorem headResT_lit
-    (hmar : ∀ (loc : Located) (v : Value) (k : Nat), ScalarValN v → valueToScalar v = some k →
-      br loc.locDst v (leafSpec.limbStore loc default 0 (BitVec.ofNat 64 k)))
-    {n : String} {l : ImpLit} {k : LowCT → LowCT} {env : Env} {rs : RustState}
+theorem headResT_lit (hmar : ExitMarshal br leafSpec) {n : String} {l : ImpLit} {k : LowCT → LowCT} {env : Env} {rs : RustState}
     (hl : exitLitOk l = true) (hn : exitReserved n = false) (hk : letHeadT A n (.lit l) = some k)
     (hag : envAgreesT br A env rs) (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n (Value.ofLit l) k := by
@@ -533,9 +548,11 @@ theorem headResT_lit
     exact ⟨_, envAgreesT_extend hn hsc' hsv hdk hag, ret_setScalar hn _ hret,
       fun bC rs' h => exec_letU64_set N leafSpec n kk bC rs rs' h⟩
   · simp only [letHeadT, hsc'] at hk
+    split_ifs at hk with hmo
     obtain ⟨kk, hdk, rfl⟩ := Option.map_eq_some_iff.mp hk
+    have h8 : 8 ≤ t.storageBytes := by simpa [exitMarshalOk] using hmo
     refine ⟨rsSetTower rs n ⟨t, leafSpec.limbStore ⟨n, t⟩ default 0 (BitVec.ofNat 64 kk)⟩,
-      envAgreesT_extend_tower hn hsc' hsv.not_cf (hmar ⟨n, t⟩ _ kk hsv hdk) hag, hret,
+      envAgreesT_extend_tower hn hsc' hsv.not_cf (hmar ⟨n, t⟩ _ kk h8 hsv hdk) hag, hret,
       fun bC rs' h => ?_⟩
     refine RustExec.letZero _ _ _ _ _ (RustExec.seq _ _ _ _ _
       (RustExec.limbStoreExpr _ _ _ _ default ?_) ?_)
@@ -591,21 +608,8 @@ theorem headResT_app (hL : ExitLeaves bi leafSpec br) {n f : String} {args : Lis
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
     (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
     (hret : rs.rsScalar exitRetName = 0) :
-    HeadResT N leafSpec br A env rs n r k := by
-  unfold appHeadT at hk
-  rcases hso : scalarOpHeadT A n f args with _ | se
-  · rw [hso] at hk
-    simp only at hk
-    split_ifs at hk with hfi hfu
-    · subst hfi
-      exact headT_index hL hk hn hargs hF hbi hag hret
-    · subst hfu
-      exact headT_update hL hk hn hargs hF hbi hag hret
-    · exact headT_call hL hk hn hargs hF hbi hag hret
-  · rw [hso] at hk
-    simp only [Option.some.injEq] at hk
-    subst hk
-    exact headT_scalarOp hL hso hn hargs hF hbi hag hret
+    HeadResT N leafSpec br A env rs n r k :=
+  headT_app hL hk hn hargs hF hbi hag hret
 
 /-- The state a traced run of a head reaches is the state of `HeadResT`. -/
 theorem headResT_state {env : Env} {rs q : RustState} {n : String} {w : Value}
@@ -632,10 +636,18 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
   rcases hso : scalarOpHeadT A n f args with _ | se
   · rw [hso] at hk
     simp only at hk
-    split_ifs at hk with hfi hfu
+    have hcallS : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
+        Silent M N leafSpec (k .RSkip) := fun hc => by
+      obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
+      rcases hcase with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+          (silent_seq (silent_setLimb _ _ _) silent_skip)
+      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+          (silent_seq (silent_copy _ _) silent_skip)
+    split_ifs at hk with hfi hfu hfl
     · -- the element load
       subst hfi
-      obtain ⟨arr, idx, t, rfl, hat, hid, hnA, rfl⟩ := indexHeadT_some A hk
+      obtain ⟨arr, idx, t, rfl, hat, hid, hcase⟩ := indexHeadT_some A hk
       simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hargs
       obtain ⟨va, vi, rfl, hva, hvi⟩ := forall₂_var2 hF₁
       obtain ⟨va', vi', rfl, hva', hvi'⟩ := forall₂_var2 hF₂
@@ -653,26 +665,37 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
         rw [d₁] at d₂
         exact Option.some.inj d₂
       have htr : ∀ {rs q : RustState} {th : List CTLeak}, RustExecLeak N leafSpec M
-          (.RLetZero exitCallName .TFp (.RSeq (.RArrLoad ⟨exitCallName, .TFp⟩ ⟨arr, t⟩ idx)
-            (.RSeq (.RScalarSetExpr n (.SLimb exitCallName 0)) .RSkip))) rs th q →
-          th = [.addr arr (rs.rsScalar idx)] := by
+          (k .RSkip) rs th q → th = [.addr arr (rs.rsScalar idx)] := by
         intro rs q th h
-        cases h with
-        | letZero _ _ _ _ _ _ h =>
-        cases h with
-        | seq _ _ _ _ _ _ _ h1 h2 =>
-        cases h1 with
-        | arrLoad _ _ _ _ _ _ _ hidx _ _ =>
-        cases h2 with
-        | seq _ _ _ _ _ _ _ h3 h4 =>
-        cases h3
-        cases h4
-        subst hidx
-        rfl
+        rcases hcase with ⟨-, -, rfl⟩ | ⟨t', -, -, rfl⟩
+        · cases h with
+          | letZero _ _ _ _ _ _ h =>
+          cases h with
+          | seq _ _ _ _ _ _ _ h1 h2 =>
+          cases h1 with
+          | arrLoad _ _ _ _ _ _ _ hidx _ _ =>
+          cases h2 with
+          | seq _ _ _ _ _ _ _ h3 h4 =>
+          cases h3
+          cases h4
+          subst hidx
+          rfl
+        · cases h with
+          | letZero _ _ _ _ _ _ h =>
+          cases h with
+          | seq _ _ _ _ _ _ _ h1 h2 =>
+          cases h1 with
+          | arrLoad _ _ _ _ _ _ _ hidx _ _ =>
+          cases h2 with
+          | seq _ _ _ _ _ _ _ h3 h4 =>
+          cases h3
+          cases h4
+          subst hidx
+          rfl
       rw [htr h₁, htr h₂, hi]
     · -- the element store
       subst hfu
-      obtain ⟨arr, idx, src, t, ctx, srcLoc, rfl, rfl, hat, hid, hm, rfl⟩ :=
+      obtain ⟨arr, idx, src, t, ctx, srcLoc, rfl, rfl, hat, hid, -, hm, -, rfl⟩ :=
         updateHeadT_some A hk
       simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hargs
       obtain ⟨va, vi, vs, rfl, hva, hvi, hvs⟩ := forall₂_var3 hF₁
@@ -695,21 +718,27 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
         cases h with
         | seq _ _ _ _ _ _ _ h1 h2 =>
         cases h2
-        obtain ⟨rs0, hs0, h0⟩ := callMarshal_leak A t.elemType _ ctx [srcLoc] hm _ _ _ _ h1
+        obtain ⟨rs0, hs0, h0⟩ := callMarshal_leak A (exitElem t) _ ctx [srcLoc] hm _ _ _ _ h1
         cases h0 with
         | arrStore _ _ _ _ _ _ _ hidx _ _ =>
         subst hidx
         rw [hs0]
         rfl
       rw [htr h₁, htr h₂, hi]
-    · -- a call
-      obtain ⟨ctx, ls, hm, hcase⟩ := callHeadT_some A hk
+    · -- an array literal: a call
       have hsil : Silent M N leafSpec (k .RSkip) := by
-        rcases hcase with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
-            (silent_seq (silent_setLimb _ _ _) silent_skip)
-        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
-            (silent_seq (silent_copy _ _) silent_skip)
+        rcases hal : arrLitHeadT A n args with _ | k'
+        · rw [hal] at hk
+          exact hcallS hk
+        · rw [hal] at hk
+          simp only [Option.some.injEq] at hk
+          subst hk
+          obtain ⟨_, _, _, hc⟩ := arrLitHeadT_some A hal
+          subst hfl
+          exact hcallS hc
+      rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
+    · -- a call
+      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hk
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
   · -- a scalar operation
     rw [hso] at hk
@@ -768,7 +797,9 @@ theorem litHead_silent {n : String} {l : ImpLit} {k : LowCT → LowCT}
       first
         | exact silent_letU64Zero _ (silent_seq (silent_scalarSet _ _) silent_skip)
         | cases hk
-  · obtain ⟨kk, -, rfl⟩ := Option.map_eq_some_iff.mp hk
+  · simp only at hk
+    split_ifs at hk
+    obtain ⟨kk, -, rfl⟩ := Option.map_eq_some_iff.mp hk
     exact silent_letZero _ _ (silent_seq (silent_limbLit _ _ _) silent_skip)
 
 /-- The head of a copy has no event. -/
