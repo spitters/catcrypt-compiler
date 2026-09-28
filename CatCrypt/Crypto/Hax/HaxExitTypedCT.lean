@@ -302,6 +302,10 @@ theorem letHeadT_prefix {A : ExitTowers} {n : String} {val : ImpExpr} {k : LowCT
       · subst hfl
         obtain ⟨_, _, _, hc⟩ := arrLitHeadN_some A hk'
         exact hcallP hc
+      · obtain ⟨_, _, _, _, _, _, _, _, hc⟩ := repeatHeadT_some A hk'
+        obtain ⟨_, _, _, h⟩ := callHeadAt_some A hc
+        rcases h with ⟨_, rfl⟩ | ⟨_, rfl⟩ <;>
+          exact headPrefix_seq _ (headPrefix_seq _ headPrefix_id)
       · obtain ⟨_, _, hc, -⟩ := callHeadT_some A hk'
         exact hcallP hc
     · rw [hso] at hk'
@@ -515,6 +519,37 @@ theorem app_run_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (fuel : 
       rw [denote'_letBind_run_val bi fuel n _ body e1 e1 r happ (hplain f vals r hbi)] at hrun
       exact ⟨vals, r, hF vals rfl, hbi, happ, hrun⟩
 
+/-- A run of `let n = repeat(v, l); body` with a literal count ending in a value: the call
+    runs to the builtin's value `r` on the value of `v` and the value of `l` without changing
+    the environment, and the body runs from the environment extended by `n ↦ r`. -/
+theorem repeat_run_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (fuel : Nat)
+    (n v : String) (l : ImpLit) (body : ImpExpr) (env env' : Env) (o : Outcome)
+    (hrun : (denote' bi fuel (.letBind n (.app "repeat" [.var v, .lit l]) body)).run env =
+      (o, env'))
+    (hval : ∃ w, o = .val w) :
+    ∃ vv r, env v = some vv ∧ bi "repeat" [vv, Value.ofLit l] = some r ∧
+      (denote' bi fuel (.app "repeat" [.var v, .lit l])).run env = (.val r, env) ∧
+      (denote' bi fuel body).run (env.extend n r) = (o, env') := by
+  rcases hA : (_root_.Hax.denoteArgs' bi fuel [.var v, .lit l]).run env with ⟨oa, e1⟩
+  obtain ⟨rfl, hF⟩ := denoteArgs'_varLit_inv bi fuel v l env e1 oa hA
+  have happ := denote'_app_run bi fuel "repeat" [.var v, .lit l] e1
+  rw [hA] at happ
+  rcases oa with _ | vals
+  · rw [denote'_letBind_run_nonval bi fuel n _ body e1 e1 _ happ (fun v h => by cases h)] at hrun
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrun
+    obtain ⟨_, h⟩ := hval; cases h
+  · obtain ⟨vv, hvv, rfl⟩ := hF _ rfl
+    cases hbi : bi "repeat" [vv, Value.ofLit l] with
+    | none =>
+      simp only [hbi] at happ
+      rw [denote'_letBind_run_nonval bi fuel n _ body e1 e1 _ happ (fun v h => by cases h)] at hrun
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrun
+      obtain ⟨_, h⟩ := hval; cases h
+    | some r =>
+      simp only [hbi] at happ
+      rw [denote'_letBind_run_val bi fuel n _ body e1 e1 r happ (hplain _ _ r hbi)] at hrun
+      exact ⟨vv, r, hvv, hbi, happ, hrun⟩
+
 /-- The head of `let n = l`: `HeadResT` at the literal's value. -/
 theorem headResT_lit (hmar : ExitMarshal br leafSpec) {n : String} {l : ImpLit} {k : LowCT → LowCT} {env : Env} {rs : RustState}
     (hl : exitLitOk l = true) (hn : exitReserved n = false) (hk : letHeadT A n (.lit l) = some k)
@@ -725,6 +760,16 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
       obtain ⟨_, _, _, hc⟩ := arrLitHeadN_some A hk
       have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
+    · -- a `repeat` with a literal count: a call
+      obtain ⟨_, _, _, _, _, _, _, _, hc⟩ := repeatHeadT_some A hk
+      have hsil : Silent M N leafSpec (k .RSkip) := by
+        obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
+        rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
+        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+            (silent_seq (silent_setLimb _ _ _) silent_skip)
+        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+            (silent_seq (silent_copy _ _) silent_skip)
+      rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
     · -- a call
       obtain ⟨_, _, hc, -⟩ := callHeadT_some A hk
       have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
@@ -885,19 +930,44 @@ theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
       hcf₂, hrun₁, hrun₂, headResT_var hh.1 hh.2.1 hh.2.2 hw₁ hk hag₁ hret₁,
       headResT_var hh.1 hh.2.1 hh.2.2 hw₂ hk hag₂ hret₂⟩
   | app f args =>
-    have hh : exitReserved n = false ∧ exitArgsOk args = true := by
+    have hh : exitReserved n = false ∧ exitArgsOkT f args = true := by
       cases tl <;> cases fl <;>
         (simp only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true'] at hok
          exact ⟨hok.1.1.1, hok.1.1.2⟩)
     have hk' : appHeadT A n f args = some k := hk
-    obtain ⟨vals₁, w₁, hF₁, hbi₁, hv₁, hrun₁'⟩ :=
-      app_run_inv hL.plain fuel n f args body hh.2 env₁ env₁' o₁ hrun₁ hval₁
-    obtain ⟨vals₂, w₂, hF₂, hbi₂, hv₂, hrun₂'⟩ :=
-      app_run_inv hL.plain fuel n f args body hh.2 env₂ env₂' o₂ hrun₂ hval₂
-    exact ⟨fun hLa => headTrace_app hvt hk' hh.2 hF₁ hF₂ hag₁ hag₂ hLa hk₁ hk₂, w₁, w₂, hv₁,
-      hv₂, hL.plain _ _ _ hbi₁, hL.plain _ _ _ hbi₂, hrun₁', hrun₂',
-      headResT_app hL hk' hh.1 hh.2 hF₁ hbi₁ hag₁ hret₁,
-      headResT_app hL hk' hh.1 hh.2 hF₂ hbi₂ hag₂ hret₂⟩
+    by_cases hargs : exitArgsOk args = true
+    · obtain ⟨vals₁, w₁, hF₁, hbi₁, hv₁, hrun₁'⟩ :=
+        app_run_inv hL.plain fuel n f args body hargs env₁ env₁' o₁ hrun₁ hval₁
+      obtain ⟨vals₂, w₂, hF₂, hbi₂, hv₂, hrun₂'⟩ :=
+        app_run_inv hL.plain fuel n f args body hargs env₂ env₂' o₂ hrun₂ hval₂
+      exact ⟨fun hLa => headTrace_app hvt hk' hargs hF₁ hF₂ hag₁ hag₂ hLa hk₁ hk₂, w₁, w₂, hv₁,
+        hv₂, hL.plain _ _ _ hbi₁, hL.plain _ _ _ hbi₂, hrun₁', hrun₂',
+        headResT_app hL hk' hh.1 hargs hF₁ hbi₁ hag₁ hret₁,
+        headResT_app hL hk' hh.1 hargs hF₂ hbi₂ hag₂ hret₂⟩
+    · have hrep : f = "repeat" ∧ exitRepeatArgsOk args = true := by
+        simpa [exitArgsOkT, hargs] using hh.2
+      obtain ⟨rfl, hra⟩ := hrep
+      match args, hra with
+      | [.var v, .lit l], hra =>
+        simp only [exitRepeatArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hra
+        have hkr : repeatHeadT A n [.var v, .lit l] = some k := by
+          simpa [appHeadT, scalarOpHeadT] using hk'
+        obtain ⟨vv₁, w₁, hx₁, hbi₁, hv₁, hrun₁'⟩ :=
+          repeat_run_inv hL.plain fuel n v l body env₁ env₁' o₁ hrun₁ hval₁
+        obtain ⟨vv₂, w₂, hx₂, hbi₂, hv₂, hrun₂'⟩ :=
+          repeat_run_inv hL.plain fuel n v l body env₂ env₂' o₂ hrun₂ hval₂
+        have hsil : Silent M N leafSpec (k .RSkip) := by
+          obtain ⟨_, _, _, _, _, _, _, _, hc⟩ := repeatHeadT_some A hkr
+          obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
+          rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
+          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+              (silent_seq (silent_setLimb _ _ _) silent_skip)
+          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+              (silent_seq (silent_copy _ _) silent_skip)
+        exact ⟨fun _ => (hsil _ _ _ hk₁).trans (hsil _ _ _ hk₂).symm, w₁, w₂, hv₁, hv₂,
+          hL.plain _ _ _ hbi₁, hL.plain _ _ _ hbi₂, hrun₁', hrun₂',
+          headT_repeat hL hkr hh.1 hra.1 hx₁ hbi₁ hag₁ hret₁,
+          headT_repeat hL hkr hh.1 hra.1 hx₂ hbi₂ hag₂ hret₂⟩
   | _ => simp [letHeadT] at hk
 
 /-- An expression whose lowerings cannot exit and have no event. -/

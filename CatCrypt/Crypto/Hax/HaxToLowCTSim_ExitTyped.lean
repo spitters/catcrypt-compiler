@@ -44,7 +44,8 @@ heap that holds it:
   or, for the word type `dr = TU64`, into a scalar name.  Any other call runs at
   `towerOfCallName f` into a name placed there.  An `array_lit` runs only into a name
   placed at an array type of as many elements (`exitArrLen`), at that type (`arrLitHeadN`);
-  `repeat` is refused;
+  a `repeat(v, l)` with a literal count only into a name placed at an array type of `l`
+  elements, reading `v` alone (`repeatHeadT`);
 * a counted loop, upward or downward, or a `while` loop in an exit context is lowered to
   the exit-flag loop followed by `breakLoop`, whether its body breaks or not;
 * a tail variable held in a tower is copied into the tower slot `exitResName`.
@@ -69,7 +70,8 @@ limb `0` of a fresh tower slot of at least `8` bytes is related to the scalar
 `towerOfCallName f` and, with a declared result type
 `dr` of the parameter `D`, at `dr` (`callD`), a call with the declared word result `TU64`
 satisfies `LeafCallScalar` at `TU64` (`wordD`), an array literal of `k` values satisfies
-`LeafCallAgreesArgsLen` at every array type of `k` elements (`arrLitN`), a
+`LeafCallAgreesArgsLen` at every array type of `k` elements (`arrLitN`), a `repeat` with
+count `k` satisfies `LeafRepeatAgrees` at every such type (`repeatN`), a
 call with a scalar result and the element load from an
 array of words return a scalar word whose decoding is limb `0` of the leaf output
 (`LeafCallScalar`, `IndexScalarAgrees`), the element load from an array of tower values
@@ -485,9 +487,24 @@ def arrLitHeadN (A : ExitTowers) (n : String) (args : List ImpExpr) :
       else none
   | none => none
 
+/-- The head of `let n = repeat(v, l)` with a literal count `l` decoding to `k` and `n`
+    placed at an array type `c` of `k` elements (`exitArrLen`) whose element type holds a
+    word: the call reads only `v`, marshalled at the element type `exitElem c` when
+    scalar, and writes its result at `c`. -/
+def repeatHeadT (A : ExitTowers) (n : String) : List ImpExpr → Option (LowCT → LowCT)
+  | [.var v, .lit l] =>
+      match A.lookup n, valueToScalar (Value.ofLit l) with
+      | some c, some k =>
+          if exitArrLen c = some k ∧ exitMarshalOk (exitElem c) = true then
+            callHeadAt A n "repeat" (exitElem c) c [.var v]
+          else none
+      | _, _ => none
+  | _ => none
+
 /-- The head of `let n = f(args)`: a scalar operation, an element load, an element
-    store, an array literal at the placed array type of its bound name (`arrLitHeadN`), or
-    a call other than `repeat`, which is refused. -/
+    store, an array literal at the placed array type of its bound name (`arrLitHeadN`), a
+    `repeat` with a literal count at the placed array type of its bound name
+    (`repeatHeadT`), or a call. -/
 def appHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   match scalarOpHeadT A n f args with
@@ -496,7 +513,7 @@ def appHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     if f = "index" then indexHeadT A n args
     else if f = "array_update" then updateHeadT A n args
     else if f = "array_lit" then arrLitHeadN A n args
-    else if f = "repeat" then none
+    else if f = "repeat" then repeatHeadT A n args
     else callHeadT A n f args
 
 /-- The head of `let n = val` under the placement `A`: a literal bound to a scalar
@@ -908,6 +925,16 @@ def exitLitOk : ImpLit → Bool
   | .unit => true
   | _ => false
 
+/-- The arguments of `repeat(v, l)`: a non-reserved variable and a literal of `exitLitOk`. -/
+def exitRepeatArgsOk : List ImpExpr → Bool
+  | [.var v, .lit l] => !exitReserved v && exitLitOk l
+  | _ => false
+
+/-- The arguments of a call `f` the fragment admits: non-reserved variables
+    (`exitArgsOk`), or, for `repeat`, a variable and a literal count (`exitRepeatArgsOk`). -/
+def exitArgsOkT (f : String) (args : List ImpExpr) : Bool :=
+  exitArgsOk args || (f == "repeat" && exitRepeatArgsOk args)
+
 /-- A scalar payload of a `cfBreak`: a variable held in the scalar heap, a literal of
     `exitLitOk`, or `unitVal`. -/
 def exitPayloadOk (A : ExitTowers) : ImpExpr → Bool
@@ -930,7 +957,7 @@ def exitSimOkT (A : ExitTowers) (R : ExitRes) : Bool → Bool → ImpExpr → Bo
       !exitReserved n && !exitReserved s && decide (A.lookup n = A.lookup s) &&
         exitSimOkT A R tl il body
   | tl, il, .letBind n (.app f args) body =>
-      !exitReserved n && exitArgsOk args && (appHeadT A n f args).isSome &&
+      !exitReserved n && exitArgsOkT f args && (appHeadT A n f args).isSome &&
         exitSimOkT A R tl il body
   | tl, il, .seq a b => exitSimOkT A R false il a && exitSimOkT A R tl il b
   | tl, il, .ifThenElse (.var v) t e =>
@@ -971,7 +998,8 @@ def exitSimWhyT (A : ExitTowers) (R : ExitRes) :
       else if !decide (A.lookup n = A.lookup s) then some "copy across placements"
       else exitSimWhyT A R tl il body
   | tl, il, .letBind n (.app f args) body =>
-      if exitReserved n || !exitArgsOk args then some "reserved name or non-variable argument"
+      if exitReserved n || !exitArgsOkT f args then
+        some "reserved name or non-variable argument"
       else if (appHeadT A n f args).isNone then some s!"letBind app {f}/{args.length} placement"
       else exitSimWhyT A R tl il body
   | tl, il, .seq a b =>
@@ -1389,6 +1417,25 @@ theorem leafCallAgreesArgsLen_of {bi : Builtins} {leafSpec : LeafSpec} {f : Stri
     (k : Nat) : LeafCallAgreesArgsLen bi leafSpec f dt br k :=
   fun args vals argList oldV vRes _ hbi hF => h args vals argList oldV vRes hbi hF
 
+/-- The leaf condition of `repeat(v, cnt)` at an array type `c` of `k` elements: when the
+    count decodes to `k` and the value of `v` is related by `br` to the one slot the call
+    reads, the builtin's result is related at `c` to the leaf output. -/
+def LeafRepeatAgrees (bi : Builtins) (leafSpec : LeafSpec) (c : TowerType)
+    (br : ValueTowerBridge) (k : Nat) : Prop :=
+  ∀ (args : List Located) (vv vc vRes : Value) (argList : List (Σ t : TowerType, RustVal t))
+    (oldV : RustVal c),
+    valueToScalar vc = some k → bi "repeat" [vv, vc] = some vRes →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) [vv] argList →
+    br c vRes (leafSpec.call "repeat" c (args.map (·.locDst)) oldV argList)
+
+/-- A builtin table that does not implement `repeat` satisfies `LeafRepeatAgrees`. -/
+theorem leafRepeatAgrees_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (c : TowerType)
+    (br : ValueTowerBridge) (k : Nat) (h : ∀ vals, bi "repeat" vals = none) :
+    LeafRepeatAgrees bi leafSpec c br k := by
+  intro _ vv vc _ _ _ _ hBi
+  rw [h [vv, vc]] at hBi
+  cases hBi
+
 /-- A builtin table that does not implement `f` satisfies `LeafCallAgreesArgsLen`. -/
 theorem leafCallAgreesArgsLen_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (f : String)
     (dt : TowerType) (br : ValueTowerBridge) (k : Nat) (h : ∀ vals, bi f vals = none) :
@@ -1406,7 +1453,8 @@ theorem leafCallAgreesArgsLen_of_unmatched (bi : Builtins) (leafSpec : LeafSpec)
     scalar result (`LeafCallScalar`, for the scalar calls and for the leaves of
     `exitTowerScalarNames`), the element load and the element store on an array of words
     and on an array of tower values, the array literal of `k` values at each array type of
-    `k` elements (`arrLitN`), and the calls other than the array operations with a declared
+    `k` elements (`arrLitN`), the `repeat` with count `k` at each such type (`repeatN`),
+    and the calls other than the array operations with a declared
     result type `dr` at `dr` (`callD`) and, for a declared word result `TU64`, with a scalar
     result (`wordD`).  `callD` and `wordD` hold for the default `D`. -/
 structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridge)
@@ -1430,6 +1478,10 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
       element type holds a word. -/
   arrLitN : ∀ c k, exitArrLen c = some k → exitMarshalOk (exitElem c) = true →
     LeafCallAgreesArgsLen bi leafSpec "array_lit" c br k
+  /-- The `repeat` with count `k` held at an array type `c` of `k` elements whose element
+      type holds a word. -/
+  repeatN : ∀ c k, exitArrLen c = some k → exitMarshalOk (exitElem c) = true →
+    LeafRepeatAgrees bi leafSpec c br k
   /-- A call outside `exitScalarRes` and the array operations with the declared result type
       `dr` agrees at `dr`. -/
   callD : ∀ f dr, D f = some dr → exitScalarRes f = false → f ≠ "index" →
@@ -1459,6 +1511,7 @@ theorem ExitLeaves.mono {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBr
   indexT := hL.indexT
   updateT := hL.updateT
   arrLitN := hL.arrLitN
+  repeatN := hL.repeatN
   callD f dr hf := hL.callD f dr (h f dr hf)
   wordD f hf := hL.wordD f (h f _ hf)
 
@@ -1761,6 +1814,67 @@ theorem letBind_app_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (n f
       simp only [hbi] at happ
       rw [denote'_letBind_run_val bi fuel n _ body e1 e1 r happ (hplain f vals r hbi)] at hrun
       exact ⟨vals, r, hF vals rfl, hbi, hrun⟩
+
+/-- The arguments `[v, l]` of a call on a variable and a literal evaluate, when they
+    evaluate to values, to the value of `v` and the value of `l`, and leave the environment
+    unchanged. -/
+theorem denoteArgs'_varLit_inv (v : String) (l : ImpLit) (env e1 : Env)
+    (o : Option (List Value))
+    (h : (_root_.Hax.denoteArgs' bi fuel [.var v, .lit l]).run env = (o, e1)) :
+    e1 = env ∧ ∀ vals, o = some vals → ∃ vv, env v = some vv ∧ vals = [vv, Value.ofLit l] := by
+  rw [denoteArgs'_cons_run, denote'_var_run] at h
+  cases hx : env v with
+  | none =>
+    rw [hx] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+    exact ⟨rfl, fun vals hv => by cases hv⟩
+  | some vv =>
+    rw [hx] at h
+    have hl : (_root_.Hax.denoteArgs' bi fuel [.lit l]).run env = (some [Value.ofLit l], env) := by
+      rw [denoteArgs'_cons_run]
+      have h1 : (denote' bi fuel (.lit l)).run env = (.val (Value.ofLit l), env) := by
+        simp only [denote']; rfl
+      rw [h1]
+      cases l <;> simp [denoteArgs'_nil_run, Value.ofLit]
+    cases vv with
+    | controlFlow k u =>
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      exact ⟨rfl, fun vals hv => by cases hv⟩
+    | _ =>
+      simp only [hl, Option.map_some] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      exact ⟨rfl, fun vals hv => ⟨_, rfl, (Option.some.inj hv).symm⟩⟩
+
+/-- A run of `let n = repeat(v, l); body` with a literal count, over a builtin table
+    returning no control-flow value, that ends in a value: `v` holds `vv`, the builtin
+    returns `r` on `vv` and the value of `l`, and the body runs from the environment
+    extended by `n ↦ r`. -/
+theorem letBind_repeat_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (n v : String)
+    (l : ImpLit) (body : ImpExpr) (env env' : Env) (o : Outcome)
+    (hrun : (denote' bi fuel (.letBind n (.app "repeat" [.var v, .lit l]) body)).run env =
+      (o, env'))
+    (hval : ∃ w, o = .val w) :
+    ∃ vv r, env v = some vv ∧ bi "repeat" [vv, Value.ofLit l] = some r ∧
+      (denote' bi fuel body).run (env.extend n r) = (o, env') := by
+  rcases hA : (_root_.Hax.denoteArgs' bi fuel [.var v, .lit l]).run env with ⟨oa, e1⟩
+  obtain ⟨rfl, hF⟩ := denoteArgs'_varLit_inv bi fuel v l env e1 oa hA
+  have happ := denote'_app_run bi fuel "repeat" [.var v, .lit l] e1
+  rw [hA] at happ
+  rcases oa with _ | vals
+  · rw [denote'_letBind_run_nonval bi fuel n _ body e1 e1 _ happ (fun v h => by cases h)] at hrun
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrun
+    obtain ⟨_, h⟩ := hval; cases h
+  · obtain ⟨vv, hvv, rfl⟩ := hF _ rfl
+    cases hbi : bi "repeat" [vv, Value.ofLit l] with
+    | none =>
+      simp only [hbi] at happ
+      rw [denote'_letBind_run_nonval bi fuel n _ body e1 e1 _ happ (fun v h => by cases h)] at hrun
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrun
+      obtain ⟨_, h⟩ := hval; cases h
+    | some r =>
+      simp only [hbi] at happ
+      rw [denote'_letBind_run_val bi fuel n _ body e1 e1 r happ (hplain _ _ r hbi)] at hrun
+      exact ⟨vv, r, hvv, hbi, hrun⟩
 
 theorem denote'_forFoldRev_lit_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env) :
     (denote' bi fuel (.forFoldRev i (.lit (.int lo)) (.lit (.int hi)) body)).run env =
@@ -2387,6 +2501,22 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
       by_contra hne
       exact hn ⟨h0, hne⟩
 
+theorem repeatHeadT_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
+    (h : repeatHeadT A n args = some k) :
+    ∃ v l c kN, args = [.var v, .lit l] ∧ A.lookup n = some c ∧
+      valueToScalar (Value.ofLit l) = some kN ∧
+      (exitArrLen c = some kN ∧ exitMarshalOk (exitElem c) = true) ∧
+      callHeadAt A n "repeat" (exitElem c) c [.var v] = some k := by
+  unfold repeatHeadT at h
+  split at h
+  · rename_i v l
+    rcases hn : A.lookup n with _ | c <;> rcases hv : valueToScalar (Value.ofLit l) with _ | kN <;>
+      simp only [hn, hv] at h
+    all_goals first | cases h | skip
+    split_ifs at h with hc
+    exact ⟨v, l, c, kN, rfl, rfl, hv, hc, h⟩
+  · cases h
+
 theorem arrLitHeadN_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : arrLitHeadN A n args = some k) :
     ∃ c, A.lookup n = some c ∧
@@ -2583,17 +2713,26 @@ theorem headT_update {D : String → Option TowerType} (hL : ExitLeaves bi leafS
   rw [hS1]; exact hret
 
 /-- The head of a call marshalling its scalar arguments at `dt` into a result slot of type
-    `dr`, under the leaf condition of `f` at `dr` for the placement of the bound name. -/
-theorem headT_callAt {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    `dr`, for a value `r` without a control-flow tag that the leaf output agrees with at the
+    placement of the bound name, whenever the argument values are related to the slots the
+    call reads. -/
+theorem headT_callAtR {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
     {env : Env} {rs : RustState}
     {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
-    {vals : List Value} {r : Value}
-    (hT : A.lookup n = some dr → LeafCallAgreesArgsLen bi leafSpec f dr br vals.length)
-    (hS : A.lookup n = none → LeafCallScalar bi leafSpec f dr br)
+    {vals : List Value} {r : Value} (hcf : r.isControlFlow = false)
+    (hT : A.lookup n = some dr → ∀ (ls : List Located)
+      (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
+      List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+      br dr r (leafSpec.call f dr (ls.map (·.locDst)) oldV argList))
+    (hS : A.lookup n = none → ∀ (ls : List Located)
+      (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
+      List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+      ScalarValN r ∧
+        valueToScalar r = some (towerLimb (leafSpec.call f dr (ls.map (·.locDst)) oldV argList) 0))
     (hk : callHeadAt A n f dt dr args = some k) (hn : exitReserved n = false)
     (hargs : exitArgsOk args = true)
     (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
-    (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
+    (hag : envAgreesT br A env rs)
     (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n r k := by
   obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hk
@@ -2630,7 +2769,7 @@ theorem headT_callAt {D : String → Option TowerType} (hL : ExitLeaves bi leafS
     show rs1.rsScalar exitRetName = 0
     rw [hS1]; exact hret
   rcases hcase with ⟨hnA, rfl⟩ | ⟨hnA, rfl⟩
-  · obtain ⟨hsr, hdr⟩ := hS hnA ls vals argList default r hbi hF2
+  · obtain ⟨hsr, hdr⟩ := hS hnA ls argList default hF2
     have hev : (SExpr.SLimb exitCallName 0).evalState
         (rsSetTower rs1 exitCallName ⟨dr, resV⟩) = towerLimb resV 0 := by
       simp only [SExpr.evalState]
@@ -2641,13 +2780,31 @@ theorem headT_callAt {D : String → Option TowerType} (hL : ExitLeaves bi leafS
       (.SLimb exitCallName 0) (rsSetTower rs1 exitCallName ⟨dr, resV⟩)
     rw [hev] at hset
     exact RustExec.seq _ _ _ _ _ hC (RustExec.seq _ _ _ _ _ hset h)
-  · have hbrR := hT hnA ls vals argList default r rfl hbi hF2
+  · have hbrR := hT hnA ls argList default hF2
     refine ⟨rsSetTower (rsSetTower rs1 exitCallName ⟨dr, resV⟩) n ⟨dr, resV⟩,
-      envAgreesT_extend_tower hn hnA (hL.plain _ _ _ hbi) hbrR hag2, hret2,
+      envAgreesT_extend_tower hn hnA hcf hbrR hag2, hret2,
       fun bC rs' h => ?_⟩
     refine RustExec.seq _ _ _ _ _ hC (RustExec.seq _ _ _ _ _ ?_ h)
     exact RustExec.copy ⟨n, dr⟩ ⟨exitCallName, dr⟩ _ rfl resV
       (locatedLookup_of_rsTower _ _ _ _ (CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same _ _ _))
+
+/-- The head of a call marshalling its scalar arguments at `dt` into a result slot of type
+    `dr`, under the leaf condition of `f` at `dr` for the placement of the bound name. -/
+theorem headT_callAt {D : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D)
+    {env : Env} {rs : RustState}
+    {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
+    {vals : List Value} {r : Value}
+    (hT : A.lookup n = some dr → LeafCallAgreesArgsLen bi leafSpec f dr br vals.length)
+    (hS : A.lookup n = none → LeafCallScalar bi leafSpec f dr br)
+    (hk : callHeadAt A n f dt dr args = some k) (hn : exitReserved n = false)
+    (hargs : exitArgsOk args = true)
+    (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
+    (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
+    (hret : rs.rsScalar exitRetName = 0) :
+    HeadResT N leafSpec br A env rs n r k :=
+  headT_callAtR hL (hL.plain _ _ _ hbi)
+    (fun h ls argList oldV hF2 => hT h ls vals argList oldV r rfl hbi hF2)
+    (fun h ls argList oldV hF2 => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
 
 /-- Every head of `appHeadT` satisfies `HeadResT` at the builtin's value. -/
 theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
@@ -2673,6 +2830,8 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
       rw [hF.length_eq] at hlen
       exact headT_callAt hL (fun _ => hL.arrLitN c _ hlen hmo)
         (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
+    · obtain ⟨v, l, -, -, rfl, -⟩ := repeatHeadT_some A hk
+      simp [exitArgsOk] at hargs
     · obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
       rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hd, hnone⟩ | ⟨hsc, -, hnA, rfl⟩
       · exact headT_callAt hL (fun h => by rw [hnA] at h; cases h) (fun _ => hL.callSR hsc) hc
@@ -2690,20 +2849,50 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
     subst hk
     exact headT_scalarOp hL hso hn hargs hF hbi hag hret
 
+/-- The head of `let n = repeat(v, l)` with a literal count: `HeadResT` at the builtin's
+    value on the value of `v` and the value of `l`. -/
+theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A)) {env : Env}
+    {rs : RustState} {n v : String} {l : ImpLit} {k : LowCT → LowCT} {vv r : Value}
+    (hk : repeatHeadT A n [.var v, .lit l] = some k) (hn : exitReserved n = false)
+    (hvr : exitReserved v = false) (hv : env v = some vv)
+    (hbi : bi "repeat" [vv, Value.ofLit l] = some r) (hag : envAgreesT br A env rs)
+    (hret : rs.rsScalar exitRetName = 0) :
+    HeadResT N leafSpec br A env rs n r k := by
+  obtain ⟨v', l', c, kN, hargs, hnA, hkN, ⟨hlen, hmo⟩, hc⟩ := repeatHeadT_some A hk
+  simp only [List.cons.injEq, ImpExpr.var.injEq, ImpExpr.lit.injEq, and_true] at hargs
+  obtain ⟨rfl, rfl⟩ := hargs
+  refine headT_callAtR hL (hL.plain _ _ _ hbi)
+    (fun _ ls argList oldV hF2 => hL.repeatN c kN hlen hmo ls vv _ r argList oldV hkN hbi hF2)
+    (fun h => by rw [hnA] at h; cases h) hc hn (by simp [exitArgsOk, hvr])
+    (List.Forall₂.cons ⟨_, rfl, hv⟩ List.Forall₂.nil) hag hret
+
 theorem head_app (hL : ExitLeaves bi leafSpec br (exitCallTys A)) (n f : String)
     (args : List ImpExpr)
     (body : ImpExpr) : HeadSimT bi N leafSpec br A R n (.app f args) body := by
   intro tl il fuel env env' o rs k hok hk hrun hval hag hret
-  have hh : exitReserved n = false ∧ exitArgsOk args = true := by
+  have hh : exitReserved n = false ∧ exitArgsOkT f args = true := by
     cases tl <;> cases il <;>
       (simp only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true'] at hok
        exact ⟨hok.1.1.1, hok.1.1.2⟩)
-  obtain ⟨hn, hargs⟩ := hh
+  obtain ⟨hn, hargsT⟩ := hh
   have hk' : appHeadT A n f args = some k := hk
-  obtain ⟨vals, r, hF, hbi, hrun'⟩ :=
-    letBind_app_inv bi fuel hL.plain n f args body hargs env env' o hrun hval
-  obtain ⟨rs1, hag1, hret1, hex⟩ := headT_app hL hk' hn hargs hF hbi hag hret
-  exact ⟨_, rs1, hrun', hag1, hret1, hex⟩
+  by_cases hargs : exitArgsOk args = true
+  · obtain ⟨vals, r, hF, hbi, hrun'⟩ :=
+      letBind_app_inv bi fuel hL.plain n f args body hargs env env' o hrun hval
+    obtain ⟨rs1, hag1, hret1, hex⟩ := headT_app hL hk' hn hargs hF hbi hag hret
+    exact ⟨_, rs1, hrun', hag1, hret1, hex⟩
+  · have hrep : f = "repeat" ∧ exitRepeatArgsOk args = true := by
+      simpa [exitArgsOkT, hargs] using hargsT
+    obtain ⟨rfl, hra⟩ := hrep
+    match args, hra with
+    | [.var v, .lit l], hra =>
+      simp only [exitRepeatArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hra
+      obtain ⟨vv, r, hv, hbi, hrun'⟩ :=
+        letBind_repeat_inv bi fuel hL.plain n v l body env env' o hrun hval
+      have hkr : repeatHeadT A n [.var v, .lit l] = some k := by
+        simpa [appHeadT, scalarOpHeadT] using hk'
+      obtain ⟨rs1, hag1, hret1, hex⟩ := headT_repeat hL hkr hn hra.1 hv hbi hag hret
+      exact ⟨_, rs1, hrun', hag1, hret1, hex⟩
 
 end Heads
 
