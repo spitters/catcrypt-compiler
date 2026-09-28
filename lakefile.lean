@@ -2916,7 +2916,7 @@ require CompPoly from git
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "870dee525b42aca327c73c74ccc6aa19d1d53963"
+  "https://github.com/spitters/hax-lean.git" @ "ae6e37746640348ce0e15d02bb1a8e4c14b1e339"
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"
