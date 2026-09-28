@@ -1328,6 +1328,26 @@ theorem ne_of_is_empty_false {a : Array α} (h : Hax.is_empty a = false) : 0 < a
 
 theorem array_len_eq (a : Array α) : Hax.array_len a = (a.size : Int) := rfl
 
+/-! The lengths of the arrays the runtime builds, the lemmas of the termination measures of
+while loops (`Hax.Ascent.Gen.proveTerm`). -/
+
+theorem array_len_array_update (a : Array α) (i : Int) (v : α) :
+    Hax.array_len (Hax.array_update a i v) = Hax.array_len a := by
+  unfold Hax.array_len Hax.array_update; dsimp only; split <;> simp
+
+theorem array_len_vec_remove [Inhabited α] (a : Array α) (i : Int) :
+    Hax.array_len (Hax.vec_remove a i).2 =
+      if 0 ≤ i ∧ i < Hax.array_len a then Hax.array_len a - 1 else Hax.array_len a := by
+  unfold Hax.array_len Hax.vec_remove
+  by_cases h : 0 ≤ i ∧ i.toNat < a.size
+  · rw [dif_pos h]; simp only [Array.size_eraseIdx]
+    rw [if_pos ⟨h.1, by omega⟩]; omega
+  · rw [dif_neg h, if_neg (by omega)]
+
+theorem array_len_push (a : Array α) (x : α) :
+    Hax.array_len (Hax.push a x) = Hax.array_len a + 1 := by
+  simp [Hax.array_len, Hax.push]
+
 /-! The comparisons of the runtime on integers, read as propositions. -/
 
 theorem beq_true_int {a b : Int} (h : Hax.beq a b = true) : a = b := by

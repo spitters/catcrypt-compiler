@@ -34,8 +34,9 @@ sub-derivation or a closed side condition:
 * a call `bi f vs = some v`, proved by the first leaf lemma of `f` whose left side matches
   (`matchLeaf`), by the width-family lemmas for a tagged name (`matchTagged`), or by
   `array_lit_enc` (`matchArrayLit`);
-* the termination of a `whileFold`, proved from a measure `(y - x).toNat` read off the
-  comparisons of the loop (`proveTerm`).
+* the termination of a `whileFold`, proved from a measure `(y - x).toNat`, or a sum of two,
+  read off the comparisons of the loop (`proveTerm`); the decrease is proved with the
+  subterms outside integer arithmetic, pairs and array lengths generalized (`termAtoms`).
 
 The comparisons of two values that decide how a proof is built (the equal branches of a
 conditional, `ite_same`, the branch-selecting lemmas, and the oracle equation) are made at
@@ -81,8 +82,11 @@ the element facts of an array of arrays (`AllNE`) and of the arrays inside the e
 these is asked for as a guard fact of the function, under the hypothesis `0 < n` for an
 integer argument `n` when the facts at the call imply it; the function is derived again
 under that guard (`FnResult.guard`), and its call lemma takes the guard as a hypothesis,
-which callers prove in the same way. A leaf hypothesis that asks for new guard facts is
-admitted while the derivation collects the others, and that derivation is discarded.
+which callers prove in the same way. Once a derivation has asked for a fact past its
+guard, a leaf hypothesis it cannot prove is admitted while it collects the others, and
+that derivation is discarded; the facts of a conjunction and the two facts an index reads
+(`0 < a.size` and `AllP`) are asked for together (`both`), so that one derivation collects
+the guard.
 `vec_remove` takes an index in range, an integer comparison proved in the same way.
 
 A `forFoldReturn` is a counted loop whose body exits by returning from the function
@@ -322,6 +326,9 @@ structure GuardReq where
   /-- The integer arguments: a fact is asked for under the hypothesis that one of them is
       positive when the facts at the request imply it. -/
   ints : Array Expr := #[]
+  /-- The number of facts of the guard the current derivation runs under: the facts past
+      it were asked for by this derivation, which is derived again. -/
+  base : Option (IO.Ref Nat) := none
 
 /-- The conjunction of the propositions, `True` for none. -/
 def andList : List Expr → Expr
@@ -664,6 +671,22 @@ def isArrCtor (t : Expr) : Bool :=
   [``Hax.push, ``Hax.repeat_, ``Hax.from_elem, ``Hax.array_update, ``List.toArray,
     ``Array.empty, ``Hax.with_capacity, ``Array.emptyWithCapacity].any t.isAppOf
 
+/-- The results of `x` and `y`. Under a guard request, `y` is attempted also when `x`
+    fails, and the failure of `x` is raised afterwards: the guard facts that both ask for are
+    requested in one derivation. -/
+def both {α β : Type} (req? : Option GuardReq) (x : MetaM α) (y : MetaM β) :
+    MetaM (α × β) := do
+  if req?.isNone then return (← x, ← y)
+  let s ← saveState
+  try
+    let a ← x
+    return (a, ← y)
+  catch ex =>
+    s.restore
+    try discard y catch _ => pure ()
+    s.restore
+    throw ex
+
 mutual
 
 /-- A proof of a conjunction of array facts from the facts `facts`. An array whose
@@ -677,8 +700,8 @@ partial def proveArr (req? : Option GuardReq) (goal : Expr) (facts : Array Expr)
       mkLambdaFVars xs (← proveArr req? body (facts ++ (← factsOf xs)))
   match goal.getAppFnArgs with
   | (``_root_.And, #[a, b]) =>
-    return mkApp4 (mkConst ``_root_.And.intro) a b (← proveArr req? a facts)
-      (← proveArr req? b facts)
+    let (pa, pb) ← both req? (proveArr req? a facts) (proveArr req? b facts)
+    return mkApp4 (mkConst ``_root_.And.intro) a b pa pb
   | (``True, _) => return mkConst ``True.intro
   | _ => pure ()
   if let some pf ← matchFact goal facts (some (proveArr req?)) then return pf
@@ -699,8 +722,8 @@ partial def proveOverIndex (req? : Option GuardReq) (P : Expr → MetaM Expr) (p
     (a i : Expr) (facts : Array Expr) : MetaM Expr := do
   let elemTy ← inferType (← mkAppM ``Hax.index #[a, i])
   let Q ← withLocalDeclD `x elemTy fun x => do mkLambdaFVars #[x] (← P (← applyPath x p))
-  let h ← proveArr req? (← neProp a) facts
-  let ha ← proveArr req? (← mkAppM ``Hax.Ascent.AllP #[Q, a]) facts
+  let allQ ← mkAppM ``Hax.Ascent.AllP #[Q, a]
+  let (h, ha) ← both req? (do proveArr req? (← neProp a) facts) (proveArr req? allQ facts)
   let pf ← mkAppOptM ``Hax.Ascent.of_index_allP #[none, none, Q, a, h, ha, i]
   mkExpectedTypeHint pf (← P (← applyPath (← mkAppM ``Hax.index #[a, i]) p))
 
@@ -723,8 +746,9 @@ partial def proveNE (req? : Option GuardReq) (t : Expr) (facts : Array Expr) : M
   | (``Hax.deref, #[_, x]) => proveArr req? (← neProp x) facts
   | (``Hax.to_vec, #[_, x]) => proveArr req? (← neProp x) facts
   | (``Hax.index, #[_, _, a, i]) =>
-    mkAppM ``Hax.Ascent.ne_index
-      #[← proveArr req? (← neProp a) facts, ← proveArr req? (← allProp a) facts, i]
+    let (h, ha) ← both req? (do proveArr req? (← neProp a) facts)
+      (do proveArr req? (← allProp a) facts)
+    mkAppM ``Hax.Ascent.ne_index #[h, ha, i]
   | _ =>
     if let some pf ← neOfFacts t facts then return pf
     -- the result of a generated function: from its definition
@@ -935,28 +959,57 @@ def proveIteEq (b v1 v2 v : Expr) (hyps : Array Expr) : MetaM Expr := do
     s.restore
   throwError "side: cannot prove{shortExpr goal}"
 
-/-- A proof of `bindLookup l x = some v`. -/
-partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr) : MetaM Expr := do
+/-- The branch of the conditional binding list `l` (an `ite` whose arguments are `args`)
+    that a hypothesis selects: a proof that the list is that branch, and the branch. The
+    selection does not depend on the variable looked up, so it is made once per list and
+    kept in `sel`. A hypothesis is tried only when its right side is the Boolean its lemma
+    asks for, and a selection is kept only when the lemma's conditional is the list at
+    reducible transparency. -/
+def selectBranch (l : Expr) (args : Array Expr) (hyps : Array Expr)
+    (sel : IO.Ref (Array (Expr × Option (Expr × Expr)))) : MetaM (Option (Expr × Expr)) := do
+  if let some (_, r) := (← sel.get).find? (·.1 == l) then return r
+  let mut res := none
+  for h in hyps do
+    let some (_, _, rhs) := (← instantiateMVars (← inferType h)).eq? | continue
+    let rhs ← whnfR rhs
+    for (lem, bi, exit) in [(``Hax.Ascent.ite_of_left_exit, 4, true),
+        (``Hax.Ascent.ite_of_right_exit, 3, true), (``Hax.Ascent.ite_of_left_noexit, 4, false),
+        (``Hax.Ascent.ite_of_right_noexit, 3, false)] do
+      unless rhs.isConstOf (if exit then ``Bool.false else ``Bool.true) do continue
+      let s ← saveState
+      try
+        let eqPf ← mkAppM lem #[args[3]!, args[4]!, h]
+        let some (_, lhs, _) := (← inferType eqPf).eq? | throwError "no"
+        unless ← withReducible (isDefEq lhs l) do throwError "no"
+        res := some (eqPf, args[bi]!)
+        break
+      catch _ => s.restore
+    if res.isSome then break
+  sel.modify (·.push (l, res))
+  return res
+
+/-- A proof of `bindLookup l x = some v`. `sel` keeps the branch selections of the
+    conditional lists met (`selectBranch`). -/
+partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
+    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none) : MetaM Expr := do
+  let sel ← match sel? with
+    | some r => pure r
+    | none => IO.mkRef #[]
   let l' ← whnfR (← instantiateMVars l)
   if l'.isAppOfArity ``ite 5 then
     let args := l'.getAppArgs
     let some b := args[1]!.eq?.map (·.2.1) | throwError "side: condition of{shortExpr l'}"
     -- a hypothesis that selects one branch
-    for h in hyps do
-      for (lem, bi) in [(``Hax.Ascent.ite_of_left_exit, 4), (``Hax.Ascent.ite_of_right_exit, 3),
-          (``Hax.Ascent.ite_of_left_noexit, 4), (``Hax.Ascent.ite_of_right_noexit, 3)] do
-        let s ← saveState
-        try
-          let eqPf ← mkAppM lem #[args[3]!, args[4]!, h]
-          let sub := args[bi]!
-          let pf ← proveLookup sub x v hyps
-          let r ← mkEqNDRec' eqPf pf x
-          return r
-        catch _ => s.restore
+    if let some (eqPf, sub) ← selectBranch l' args hyps sel then
+      let s ← saveState
+      try
+        let pf ← proveLookup sub x v hyps sel
+        return ← mkEqNDRec' eqPf pf x
+      catch _ => s.restore
     let some v1 ← lookupExpr args[3]! x | throwError "side: {x} unbound in a branch"
     let some v2 ← lookupExpr args[4]! x | throwError "side: {x} unbound in a branch"
-    let h1 ← proveLookup args[3]! x v1 hyps
-    let h2 ← proveLookup args[4]! x v2 hyps
+    let h1 ← proveLookup args[3]! x v1 hyps sel
+    let h2 ← proveLookup args[4]! x v2 hyps sel
     let h ← proveIteEq b v1 v2 v hyps
     return ← mkAppM ``Hax.Ascent.bindLookup_ite_of #[h1, h2, h]
   let lhs := mkApp2 (mkConst ``Hax.Ascent.bindLookup) l (mkStrLit x)
@@ -974,8 +1027,13 @@ where
       mkLambdaFVars #[L] (← mkEq (mkApp2 (mkConst ``Hax.Ascent.bindLookup) L (mkStrLit x)) r)
     mkEqNDRec motive pf (← mkEqSymm eqPf)
 
-/-- A proof of `BindsSub l m` for an explicit list `m`. -/
-partial def proveBindsSub (l m : Expr) (hyps : Array Expr) : MetaM Expr := do
+/-- A proof of `BindsSub l m` for an explicit list `m`. The branch selections of the
+    conditional lists in `l` are shared by the entries of `m`. -/
+partial def proveBindsSub (l m : Expr) (hyps : Array Expr)
+    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none) : MetaM Expr := do
+  let sel ← match sel? with
+    | some r => pure r
+    | none => IO.mkRef #[]
   let m' ← whnfR (← instantiateMVars m)
   match m'.getAppFnArgs with
   | (``List.nil, _) => mkAppM ``Hax.Ascent.bindsSub_nil_intro #[l]
@@ -983,8 +1041,8 @@ partial def proveBindsSub (l m : Expr) (hyps : Array Expr) : MetaM Expr := do
     let h ← whnfR h
     let (``Prod.mk, #[_, _, k, v]) := h.getAppFnArgs | throwError "side: binding{shortExpr h}"
     let some x := strOf? (← instantiateMVars k) | throwError "side: binding name{shortExpr k}"
-    let pl ← proveLookup l x v hyps
-    let ps ← proveBindsSub l t hyps
+    let pl ← proveLookup l x v hyps sel
+    let ps ← proveBindsSub l t hyps sel
     mkAppM ``Hax.Ascent.bindsSub_cons_intro #[pl, ps]
   | _ => throwError "side: binding list{shortExpr m'}"
 
@@ -1478,6 +1536,141 @@ def accFactCands (Gσ0 : Expr) (M : List (String × SVal)) (tys : List Expr)
 def isTrueE (e : Expr) : MetaM Bool := return (← instantiateMVars e).isConstOf ``Bool.true
 def isFalseE (e : Expr) : MetaM Bool := return (← instantiateMVars e).isConstOf ``Bool.false
 
+/-! ### Termination of while loops -/
+
+/-- The heads the termination tactic of a while loop reads: pairs, conditionals, the
+    propositional and Boolean connectives, integer arithmetic and comparisons, and the
+    runtime operations it unfolds or has a length lemma for (`array_len_vec_remove`,
+    `array_len_array_update`, `array_len_push`). -/
+def termHeads : List Name :=
+  [`Prod.mk, `Prod.fst, `Prod.snd, `ite, `dite, `Eq, `Ne, `Not, `And, `Or, `Iff, `True,
+   `False, `LT.lt, `LE.le, `GT.gt, `GE.ge, `HAdd.hAdd, `HSub.hSub, `HMul.hMul, `HDiv.hDiv,
+   `HMod.hMod, `Neg.neg, `OfNat.ofNat, `Int.toNat, `Int.ofNat, `Nat.cast, `NatCast.natCast,
+   `decide, `Bool.true, `Bool.false, `and, `or, `not, `Bool.and, `Bool.or, `Bool.not,
+   `BEq.beq, `bne, ``Unit.unit, ``PUnit.unit, ``ControlFlow.Continue, ``ControlFlow.Break,
+   ``Hax.Ascent.stepCF, ``Array.size, ``Hax.add, ``Hax.sub, ``Hax.mul, ``Hax.div, ``Hax.rem,
+   ``Hax.Div, ``Hax.Rem, ``Hax.lt, ``Hax.le, ``Hax.gt,
+   ``Hax.ge, ``Hax.beq, ``Hax.bne, ``Hax.band, ``Hax.bor, ``Hax.bnot, ``Hax.Not,
+   ``Hax.array_len, ``Hax.array_update, ``Hax.vec_remove, ``Hax.push]
+
+/-- Whether `e` is data: neither a proof, nor a type, nor an instance of a class. -/
+def isDataTerm (e : Expr) : MetaM Bool := do
+  if ← isProof e then return false
+  if ← isType e then return false
+  return (← isClass? (← inferType e)).isNone
+
+/-- The heads that `projNorm` reduces: pair projections, struct updates, field access and
+    the struct projections of an extraction. -/
+def projHead (c : Name) : MetaM Bool := do
+  if [``Prod.fst, ``Prod.snd, ``Hax.struct_update_fst, ``Hax.struct_update_snd,
+      `Hax.Ascent.fieldSet, `Hax.Ascent.fieldGet].contains c then return true
+  isProjDef c
+
+/-- The term with `projNorm` applied at every projection, struct update and field access
+    outside the atoms of `termAtoms`, whose arguments are left as they are. -/
+def termNorm (e : Expr) : MetaM Expr :=
+  Meta.transform e
+    (pre := fun x => do
+      match x.getAppFn with
+      | .const c _ =>
+        if termHeads.contains c || (← projHead c) then return .continue
+        -- an atom is left as it is; an instance or a type is normalized with the terms
+        -- it mentions
+        if ← isDataTerm x then return .done x
+        return .continue
+      | _ => return .continue)
+    (post := fun x => do
+      let isProj ← match x, x.getAppFn with
+        | .app .., .const c _ => projHead c
+        | .proj .., _ => pure true
+        | _, _ => pure false
+      unless isProj do return .done x
+      let x' ← projApp (← projNorm x)
+      return if x' == x then .done x else .visit x')
+where
+  /-- The projections of pairs as applications of `Prod.fst` and `Prod.snd`: one form,
+      which the arithmetic reads as one atom. -/
+  projApp (e : Expr) : MetaM Expr :=
+    Meta.transform e (post := fun y => do
+      if let .proj ``Prod i z := y then
+        return .done (← mkAppM (if i == 0 then ``Prod.fst else ``Prod.snd) #[z])
+      return .done y)
+
+/-- The atoms of a termination goal: the maximal subterms, without loose bound variables,
+    that apply a constant outside `termHeads` and are data. -/
+partial def termAtoms (e : Expr) : StateT (Array Expr) MetaM Unit := do
+  match e with
+  | .mdata _ b => termAtoms b
+  | .proj _ _ b => termAtoms b
+  | .lam _ d b _ | .forallE _ d b _ => do termAtoms d; termAtoms b
+  | .letE _ _ v b _ => do termAtoms v; termAtoms b
+  | .app .. | .const .. =>
+    let f := e.getAppFn
+    if let .const c _ := f then
+      if !termHeads.contains c && !e.hasLooseBVars then
+        if ← isDataTerm e then
+          unless (← get).contains e do modify (·.push e)
+          return
+    else termAtoms f
+    for a in e.getAppArgs do termAtoms a
+  | _ => pure ()
+
+/-- Run `x` within a twentieth of the heartbeat budget, counted from its start: the error
+    message when `x` throws or exceeds that budget, with the state restored. -/
+def boundedTryT {α : Type} (x : TermElabM α) : TermElabM (Except String α) := do
+  let s ← Term.saveState
+  tryCatchRuntimeEx
+    (withCurrHeartbeats <| withTheReader Core.Context
+      (fun c => { c with maxHeartbeats := c.maxHeartbeats / 20 }) <| .ok <$> x)
+    fun ex => do
+      let m ← msgStr ex
+      s.restore
+      return .error (m.replace "\n" " ")
+
+/-- The tactic that proves the decrease of a measure over one step of a while loop. -/
+def termTactic : TermElabM Syntax := do
+  `(tactic|
+    (intros; rename_i hc hf; simp only [Hax.Ascent.stepCF] at hf
+     split at hf <;> (try cases hf) <;> (repeat' split) <;>
+       simp_all [Hax.add, Hax.sub, Hax.mul, Hax.div, Hax.rem, Hax.Div, Hax.Rem, Hax.lt, Hax.le, Hax.gt, Hax.ge, Hax.bne, Hax.beq,
+         Hax.band, Hax.bor, Hax.bnot, Hax.Not, Hax.Ascent.array_len_array_update,
+         Hax.Ascent.array_len_vec_remove, Hax.Ascent.array_len_push] <;>
+       (repeat' split) <;> omega))
+
+/-- A proof that the measure `μ` decreases over each step of the loop with condition `c`
+    and step `f`, `∀ a a', c a = true → f a = .Continue a' → μ a' < μ a`. The statement is
+    put in `termNorm` form, its atoms (`termAtoms`) are generalized, and `termTactic`
+    proves the generalized statement. -/
+def termDecrease (α c f μ : Expr) : TermElabM Expr := do
+  withLocalDeclD `a α fun a => withLocalDeclD `a' α fun a' => do
+    let hc ← mkEq (c.beta #[a]) (mkConst ``Bool.true)
+    let cfTy ← whnf (← inferType (mkApp f a))
+    let β := cfTy.getArg! 0
+    let hf ← mkEq (f.beta #[a]) (← mkAppOptM ``ControlFlow.Continue #[β, α, a'])
+    let concl ← mkAppM ``LT.lt #[μ.beta #[a'], μ.beta #[a]]
+    let P ← mkArrow hc (← mkArrow hf concl)
+    let Pn ← mkArrow (← termNorm hc) (← mkArrow (← termNorm hf) (← termNorm concl))
+    let ((), atoms) ← (termAtoms Pn).run #[]
+    let decls : Array (Name × (Array Expr → TermElabM Expr)) ←
+      atoms.mapIdxM fun i t => do
+        return (Name.mkSimple s!"t{i}", fun _ => inferType t)
+    withLocalDeclsD decls fun bs => do
+      let Pa := Pn.replace fun t => (atoms.idxOf? t).map fun i => bs[i]!
+      let H ← mkForallFVars (#[a, a'] ++ bs) Pa
+      Meta.check H
+      let mv ← mkFreshExprMVar H
+      Term.withoutErrToSorry <| Term.runTactic mv.mvarId! (← termTactic) .term
+      let log ← Core.getMessageLog
+      if log.hasErrors then
+        let errs := log.toList.filter (·.severity == .error)
+        let m ← match errs with
+          | e :: _ => e.data.toString
+          | [] => pure ""
+        throwError "tactic: {m}"
+      let pf ← instantiateMVars mv
+      let hdecTy ← mkForallFVars #[a, a'] P
+      mkExpectedTypeHint (← mkLambdaFVars #[a, a'] (mkAppN pf (#[a, a'] ++ atoms))) hdecTy
+
 mutual
 
 /-- The derivation of `e` from the bindings `Γ` under the guard `G`. -/
@@ -1847,7 +2040,10 @@ partial def genApp (Γ : SEnv) (G _e f as : Expr) (hint? : Option Expr) : GenM G
     let Gσ ← atState G
     for m in pending do
       let ty ← instantiateMVars (← m.getType)
+      -- the facts of the guard: a hypothesis is admitted once the derivation has asked
+      -- for a fact past them, since it is then derived again
       let n₀ ← match req? with
+        | some { base := some b, .. } => b.get
         | some req => pure (← req.need.get).size
         | none => pure 0
       let p ← withLocalDeclD `hG Gσ fun hG => do
@@ -2255,7 +2451,8 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) (jdrop : List (String �
       return { proof := pf, val := { val := ← mkAppM ``Hax.Ascent.cfVal #[fold] }, N }
 
 /-- Prove the termination side condition of a while loop from a measure read off the
-    comparisons of its condition and exit condition. -/
+    comparisons of its condition and exit condition. Each measure is tried within a
+    twentieth of the heartbeat budget (`boundedTryT`). -/
 partial def proveTerm (ty : Expr) : GenM Expr := do
   forallTelescope ty fun xs body => do
     let body ← instantiateMVars body
@@ -2264,48 +2461,60 @@ partial def proveTerm (ty : Expr) : GenM Expr := do
     let cands ← measureCands α c f
     let mut lastErr := ""
     for μ in cands do
-      let s ← (Term.saveState : TermElabM Term.SavedState)
-      try
-        let hdecTy ← withLocalDeclD `a α fun a => withLocalDeclD `a' α fun a' => do
-          let hc ← mkEq (mkApp c a) trueE
-          let cfTy ← whnf (← inferType (mkApp f a))
-          let β := cfTy.getArg! 0
-          let hf ← mkEq (mkApp f a) (← mkAppOptM ``ControlFlow.Continue #[β, α, a'])
-          let concl ← mkAppM ``LT.lt #[mkApp μ a', mkApp μ a]
-          mkForallFVars #[a, a'] (← mkArrow hc (← mkArrow hf concl))
-        let mv ← mkFreshExprMVar hdecTy
-        let tac ← `(tactic| (intro x y hc hf; simp only [Hax.Ascent.stepCF] at hf; split at hf <;> (try cases hf) <;> simp_all [Hax.add, Hax.sub, Hax.div, Hax.lt, Hax.le, Hax.gt, Hax.ge, Hax.bne, Hax.beq, Hax.band, Hax.bor, Hax.bnot, Hax.Not] <;> omega))
-        Term.withoutErrToSorry <| Term.runTactic mv.mvarId! tac .term
-        if (← Core.getMessageLog).hasErrors then throwError "tactic"
-        let pf ← mkAppM ``Hax.Ascent.whileFoldStops_of_measure #[μ, ← instantiateMVars mv, init]
-        let pf ← mkLambdaFVars xs (← mkExpectedTypeHint pf body)
-        return pf
-      catch ex =>
-        lastErr ← msgStr ex
-        (s.restore : TermElabM Unit)
+      let r ← boundedTryT do
+        let hdec ← termDecrease α c f μ
+        let pf ← mkAppM ``Hax.Ascent.whileFoldStops_of_measure #[μ, hdec, init]
+        mkLambdaFVars xs (← mkExpectedTypeHint pf body)
+      match r with
+      | .ok pf => return pf
+      | .error m => lastErr := m
     throwError "loop: while termination not proved ({cands.length} measures; {lastErr})"
 
-/-- Candidate measures `fun a => (y - x).toNat` for the comparisons `x < y`, `x ≤ y` of
-    the loop's condition and step. -/
+/-- Candidate measures for the comparisons `x < y`, `x ≤ y` of the loop's condition and
+    step: `fun a => (y - x).toNat` and `fun a => (y - x + 1).toNat` for each comparison, in
+    both directions, and the sums `(y₁ - x₁).toNat + (y₂ - x₂).toNat` over two
+    comparisons, for a loop whose step advances one of two counters. With several
+    comparisons the sum of all their gaps comes first. -/
 partial def measureCands (α c f : Expr) : MetaM (List Expr) := do
   withLocalDeclD `a α fun a => do
     let body ← instantiateMVars (mkApp2 (mkConst ``_root_.And) (← mkEq (c.beta #[a]) trueE)
       (← mkEq (f.beta #[a]) (f.beta #[a])))
-    let mut out := []
+    let mut cmps : Array (Expr × Expr × Bool) := #[]
     for sub in collectCmp body do
-      let (x, y) := sub
+      let (x, y, _) := sub
+      if (x.containsFVar a.fvarId! || y.containsFVar a.fvarId!) && !cmps.contains sub then
+        cmps := cmps.push sub
+    let mut out := []
+    for (x, y, _) in cmps do
       for (p, q) in [(x, y), (y, x)] do
-        if (p.containsFVar a.fvarId!) || (q.containsFVar a.fvarId!) then
-          for d in [(← mkAppM ``HSub.hSub #[q, p]), (← mkAppM ``HAdd.hAdd #[← mkAppM ``HSub.hSub #[q, p], mkIntLit 1])] do
-            out := out ++ [← mkLambdaFVars #[a] (← mkAppM ``Int.toNat #[d])]
+        for d in [(← mkAppM ``HSub.hSub #[q, p]), (← mkAppM ``HAdd.hAdd #[← mkAppM ``HSub.hSub #[q, p], mkIntLit 1])] do
+          out := out ++ [← mkLambdaFVars #[a] (← mkAppM ``Int.toNat #[d])]
+    let gap (cmp : Expr × Expr × Bool) : MetaM Expr := do
+      let (x, y, strict) := cmp
+      let d ← mkAppM ``HSub.hSub #[y, x]
+      mkAppM ``Int.toNat #[← if strict then pure d else mkAppM ``HAdd.hAdd #[d, mkIntLit 1]]
+    for i in [0:cmps.size] do
+      for j in [i+1:cmps.size] do
+        out := out ++ [← mkLambdaFVars #[a] (← mkAppM ``HAdd.hAdd #[← gap cmps[i]!, ← gap cmps[j]!])]
+    -- the sum of all gaps first: it decreases whenever the step advances some counter and
+    -- moves none back
+    if cmps.size > 2 then
+      let gs ← cmps.toList.mapM gap
+      let all ← gs.tail.foldlM (fun s g => mkAppM ``HAdd.hAdd #[s, g]) gs.head!
+      out := (← mkLambdaFVars #[a] all) :: out
+    else if cmps.size == 2 then
+      out := out.getLast! :: out.dropLast
     return out
 where
   mkIntLit (n : Nat) : Expr := toExpr (n : Int)
-  collectCmp (e : Expr) : List (Expr × Expr) :=
+  /-- The integer comparisons as `(lo, hi, strict)`: `lo < hi` when `strict`, else
+      `lo ≤ hi`. -/
+  collectCmp (e : Expr) : List (Expr × Expr × Bool) :=
     let here := match e.getAppFnArgs with
-      | (``Hax.lt, #[ty, _, _, x, y]) | (``Hax.le, #[ty, _, _, x, y])
-      | (``Hax.gt, #[ty, _, _, x, y]) | (``Hax.ge, #[ty, _, _, x, y]) =>
-        if ty.isConstOf ``Int then [(x, y)] else []
+      | (``Hax.lt, #[ty, _, _, x, y]) => if ty.isConstOf ``Int then [(x, y, true)] else []
+      | (``Hax.le, #[ty, _, _, x, y]) => if ty.isConstOf ``Int then [(x, y, false)] else []
+      | (``Hax.gt, #[ty, _, _, x, y]) => if ty.isConstOf ``Int then [(y, x, true)] else []
+      | (``Hax.ge, #[ty, _, _, x, y]) => if ty.isConstOf ``Int then [(y, x, false)] else []
       | _ => []
     here ++ (e.getAppArgs.toList.flatMap collectCmp)
 
@@ -2432,16 +2641,19 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
         Γ₀ := Γ₀ ++ [(g, sv)]
       let st : StCtx := { stTy := A, vars := #[a], proj := fun t => pure #[t], stVal := a }
       let need ← IO.mkRef (#[] : Array Expr)
+      let base ← IO.mkRef 0
       let ints ← (comps.zip tys).filterMapM fun (c, t) => do
         return if ← isDefEq t intTy then some c else none
       let ctx : GCtx := { bi := spec.bi, st, leaves := spec.leaves, hints := spec.hints,
-                          retTy? := some retTy, req? := some { top := a, need, ints := ints.toArray } }
+                          retTy? := some retTy,
+                          req? := some { top := a, need, ints := ints.toArray, base := some base } }
       -- the guard: the facts about the arguments the derivation asks for, derived again
       -- while it asks for more
       let mut attempt : Nat := 0
       let mut res? : Option (Expr × GRes) := none
       while res?.isNone do
         let facts ← need.get
+        base.set facts.size
         let G ← mkLambdaFVars #[a] (andList facts.toList)
         let s ← saveState
         try
