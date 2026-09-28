@@ -50,21 +50,6 @@ open CatCrypt.Crypto.SecureCompilation.Ascent
 open CatCrypt.Crypto.SecureCompilation.Ascent.RiscvMacros
 open CatCrypt.Crypto.SecureCompilation.FieldSpecs (p256)
 
-/-- The little-endian value of four registers. -/
-def limbs4 (R : AStateR) (a0 a1 a2 a3 : String) : Nat :=
-  (R a0).toNat + 2 ^ 64 * (R a1).toNat + 2 ^ 128 * (R a2).toNat + 2 ^ 192 * (R a3).toNat
-
-theorem limbs4_lt (R : AStateR) (a0 a1 a2 a3 : String) : limbs4 R a0 a1 a2 a3 < 2 ^ 256 := by
-  have := (R a0).isLt; have := (R a1).isLt; have := (R a2).isLt; have := (R a3).isLt
-  unfold limbs4; omega
-
-/-- `b ^^^ 1` for a `0`/`1` word is `1 - b`. -/
-theorem xor_one_toNat (b : X64R) (hb : b.toNat ≤ 1) :
-    (b ^^^ BitVec.ofNat 64 1).toNat = 1 - b.toNat := by
-  rcases Nat.le_one_iff_eq_zero_or_eq_one.mp hb with h | h
-  · rw [BitVec.eq_of_toNat_eq (x := b) (y := 0) (by simpa using h)]; decide
-  · rw [BitVec.eq_of_toNat_eq (x := b) (y := 1) (by simpa using h)]; decide
-
 /-- `p256` as a numeral. -/
 theorem p256_eq :
     p256 = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff := by
