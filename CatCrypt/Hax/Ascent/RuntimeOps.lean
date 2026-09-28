@@ -141,6 +141,7 @@ noncomputable def runtimeTable : Table :=
    ("len", lenLeaf),
    ("push", pushLeaf),
    ("slice_reverse", reverseLeaf),
+   ("vec_remove", vecRemoveLeaf),
    ("with_capacity", emptyLeaf), ("new", emptyLeaf),
    ("extend_from_slice", extendLeaf),
    ("copy_from_slice", copyLeaf),
@@ -398,6 +399,11 @@ theorem push_enc (a : Array α) (x : α) :
 theorem slice_reverse_enc (a : Array α) :
     runtimeBuiltins base "slice_reverse" [enc a] = some (enc (Hax.slice_reverse a)) :=
   (runtimeBuiltins_of_lookup rfl).trans (reverseLeaf_enc a)
+
+theorem vec_remove_enc [Inhabited α] (a : Array α) (i : Int) (h0 : 0 ≤ i)
+    (h : i < Hax.array_len a) :
+    runtimeBuiltins base "vec_remove" [enc a, .int i] = some (enc (Hax.vec_remove a i)) :=
+  (runtimeBuiltins_of_lookup rfl).trans (vecRemoveLeaf_enc a i h0 h)
 
 theorem new_nil : runtimeBuiltins base "new" [] = some (enc (#[] : Array α)) :=
   (runtimeBuiltins_of_lookup rfl).trans emptyLeaf_new

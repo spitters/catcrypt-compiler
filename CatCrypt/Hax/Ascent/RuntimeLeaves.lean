@@ -42,7 +42,8 @@ encodings are disjoint.
 
 * `Leaf.orElse`, `rangeVal`, `rangeOf?`, `sliceVals`
 * `indexLeaf`, `arrayUpdateLeaf`, `repeatLeaf`, `arrayLitLeaf`, `lenLeaf`, `pushLeaf`,
-  `reverseLeaf`, `emptyLeaf`, `extendLeaf`, `copyLeaf`, `sliceUpdateLeaf`, `identLeaf`, `iterLeaf`,
+  `reverseLeaf`, `vecRemoveLeaf`, `emptyLeaf`, `extendLeaf`, `copyLeaf`, `sliceUpdateLeaf`,
+  `identLeaf`, `iterLeaf`,
   `truncateLeaf`, `isEmptyLeaf`, `someLeaf`, `unitLeaf`, `assertLeaf`, `constLeaf`,
   `rangeToLeaf`, `rangeFromLeaf`, `rangeLeaf`, `projFstLeaf`, `projSndLeaf`
 * `intArrLeaf2`, `eqLeaf`, `notLeaf`, `negLeaf`
@@ -199,6 +200,13 @@ def lenLeaf : Leaf
 /-- `push`: `Hax.push`. -/
 def pushLeaf : Leaf
   | [.array vs, v] => some (.array (vs ++ [v]))
+  | _ => none
+
+/-- `vec_remove`: the element at an index in range and the array without it, the
+    `vec_remove` builtin of the semantics; undefined out of range. -/
+def vecRemoveLeaf : Leaf
+  | [.array vs, .int i] =>
+    if 0 ≤ i then vs[i.toNat]?.map fun x => .tuple [x, .array (vs.eraseIdx i.toNat)] else none
   | _ => none
 
 /-- `slice_reverse`: `Hax.slice_reverse`, the elements in reverse order. -/
@@ -395,6 +403,17 @@ theorem pushLeaf_enc (a : Array α) (x : α) :
     pushLeaf [enc a, enc x] = some (enc (Hax.push a x)) := by
   simp [pushLeaf, Hax.push]
 
+theorem vecRemoveLeaf_enc [Inhabited α] (a : Array α) (i : Int) (h0 : 0 ≤ i)
+    (h : i < Hax.array_len a) :
+    vecRemoveLeaf [enc a, .int i] = some (enc (Hax.vec_remove a i)) := by
+  have hi : i.toNat < a.size := by simp only [Hax.array_len] at h; omega
+  simp only [vecRemoveLeaf, enc_array_toList, h0, if_true, Hax.vec_remove, hi, and_self,
+    dite_true, List.getElem?_map, Array.getElem?_toList, Array.getElem?_eq_getElem hi,
+    Option.map_some, Option.some.injEq]
+  show _ = Value.tuple [enc a[i.toNat], enc (a.eraseIdx i.toNat hi)]
+  rw [enc_array_toList (a.eraseIdx i.toNat hi), Array.toList_eraseIdx]
+  simp [List.eraseIdx_eq_take_drop_succ, List.map_take, List.map_drop]
+
 theorem reverseLeaf_enc (a : Array α) :
     reverseLeaf [enc a] = some (enc (Hax.slice_reverse a)) := by
   simp [reverseLeaf, Hax.slice_reverse, enc_array_toList, List.map_reverse]
@@ -488,7 +507,7 @@ theorem projSndLeaf_prod {β δ : Type} [HaxEnc β] [HaxTupleEnc δ] (a : α) (c
 end Transport
 
 attribute [irreducible] indexLeaf arrayUpdateLeaf repeatLeaf arrayLitLeaf lenLeaf pushLeaf
-  reverseLeaf
+  reverseLeaf vecRemoveLeaf
   emptyLeaf extendLeaf copyLeaf sliceUpdateLeaf identLeaf iterLeaf truncateLeaf isEmptyLeaf
   someLeaf unitLeaf assertLeaf constLeaf rangeToLeaf rangeFromLeaf rangeLeaf rangeVal
   projFstLeaf projSndLeaf

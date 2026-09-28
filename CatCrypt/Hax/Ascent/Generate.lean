@@ -57,10 +57,14 @@ step function. No loop specification is written by hand. A variable the body reb
 another type is left out of the invariant, and the loop is derived again without it.
 
 A counted loop also carries an accumulator invariant `J` (`corresB_forFoldPJ`,
-`corresB_forFoldGJ`): the array components of the accumulator that are nonempty, and the
-arrays of arrays whose elements are nonempty, where this holds initially and the step
-keeps it. The body runs under `J` as part of its guard; a fact the step does not keep is
-left out and the loop is derived again.
+`corresB_forFoldGJ`), and a while loop likewise (`corresB_whileFoldGJ`): the candidate
+facts of `accFactCands` that hold initially and that the step keeps. They state that the
+arrays of non-integer elements in the accumulator, reached through `Prod` projections, are
+nonempty, that the arrays inside their elements are nonempty (`AllP`), and, for an array
+not built by a constructor, that this holds of the accumulator when it holds of the
+initial value; in a while loop, that an integer component is not negative. The body runs
+under `J` as part of its guard; a fact the step does not keep is left out and the loop is
+derived again.
 
 ## Nonempty arrays and the guard
 
@@ -69,12 +73,17 @@ nonempty array only (`RuntimeOps.index_pos`): on an empty array the runtime retu
 `.int 0`, not the encoding of the default element. The hypothesis `0 < a.size` of the leaf
 is proved from the guard at the call (`proveArr`): from a fact of the guard, from the
 array's construction (`repeat`, `array_update`, `push`, a loop whose steps keep it), from
-the element facts of an array of arrays (`AllNE`), from `is_empty` tests, and by `omega`
-from loop bounds over `Hax.array_len`. An array argument of the function whose
-nonemptiness follows from none of these is asked for as a guard fact of the function,
-under the hypothesis `0 < n` for an integer argument `n` when the facts at the call
-imply it; the function is derived again under that guard (`FnResult.guard`), and its
-call lemma takes the guard as a hypothesis, which callers prove in the same way.
+the element facts of an array of arrays (`AllNE`) and of the arrays inside the elements
+(`AllP`, `of_index_allP`), from `is_empty` tests, by `omega` from loop bounds over
+`Hax.array_len`, and from the body of a generated function whose result it is
+(`unfoldGen?`). Struct projections, struct updates and field updates are read through
+`projNorm`. An array argument of the function whose nonemptiness follows from none of
+these is asked for as a guard fact of the function, under the hypothesis `0 < n` for an
+integer argument `n` when the facts at the call imply it; the function is derived again
+under that guard (`FnResult.guard`), and its call lemma takes the guard as a hypothesis,
+which callers prove in the same way. A leaf hypothesis that asks for new guard facts is
+admitted while the derivation collects the others, and that derivation is discarded.
+`vec_remove` takes an index in range, an integer comparison proved in the same way.
 
 A `forFoldReturn` is a counted loop whose body exits by returning from the function
 (`corresG_forFoldReturnG`); an `Option` match on a variable is a two-way branch on
@@ -103,7 +112,8 @@ equality at default transparency (`FnResult.oracle`).
 ## Main definitions
 
 * `SVal`, `SEnv`, `StCtx`, `GCtx`, `GenM`, `GRes`, `GuardReq`
-* `proveArr` — the nonemptiness facts of arrays
+* `proveArr` — the nonemptiness facts of arrays; `projNorm`, `unfoldGen?`
+* `accFactCands` — the candidate facts of a loop accumulator invariant
 * `gen` — the derivation of one literal
 * `FnSpec`, `FnResult`, `ascendFn` — the generator on one function
 * `runtimeLeaves`, `indexLeaves`, `moduleConsts`
@@ -319,8 +329,8 @@ def andList : List Expr → Expr
   | [p] => p
   | p :: ps => mkApp2 (mkConst ``_root_.And) p (andList ps)
 
-/-- The proposition is a conjunction of array facts: `0 < a.size`, `AllNE a` or `True`,
-    each possibly under hypotheses. -/
+/-- The proposition is a conjunction of array facts: `0 < a.size`, `AllNE a`, `AllP P a`,
+    `0 ≤ x` for an integer `x`, or `True`, each possibly under hypotheses. -/
 partial def isArrFact (p : Expr) : MetaM Bool := do
   let p := (← instantiateMVars p).headBeta
   if let .forallE _ _ b _ := p then
@@ -329,7 +339,10 @@ partial def isArrFact (p : Expr) : MetaM Bool := do
   | (``_root_.And, #[a, b]) => return (← isArrFact a) && (← isArrFact b)
   | (``True, _) => return true
   | (``Hax.Ascent.AllNE, _) => return true
+  | (``Hax.Ascent.AllP, _) => return true
   | (``LT.lt, #[ty, _, _, s]) => return ty.isConstOf ``Nat && s.isAppOfArity ``Array.size 2
+  -- the sign fact of an integer accumulator of a while loop
+  | (``LE.le, #[ty, _, z, _]) => return ty.isConstOf ``Int && z == toExpr (0 : Int)
   | _ => return false
 
 /-- The proofs of the conjuncts of the hypothesis `h`. -/
@@ -355,35 +368,100 @@ def neProp (a : Expr) : MetaM Expr := do
 /-- The proposition `AllNE a`. -/
 def allProp (a : Expr) : MetaM Expr := mkAppM ``Hax.Ascent.AllNE #[a]
 
+/-- The closed subterms of `e` (without loose bound variables) satisfying `p`, added to
+    `acc`, each shared subterm visited once. -/
+def subtermsWhere (p : Expr → Bool) (e : Expr) (acc : Array Expr) : MetaM (Array Expr) := do
+  let r ← IO.mkRef acc
+  e.forEachWhere (fun x => p x && !x.hasLooseBVars) fun x => r.modify (·.push x)
+  r.get
+
+/-- The term with every projection of a pair reduced: `(a, b).1` becomes `a`. -/
+def reduceProjs (e : Expr) : MetaM Expr :=
+  Meta.transform e (post := fun x => do
+    let comp (i : Nat) (y : Expr) : TransformStep :=
+      if y.isAppOfArity ``Prod.mk 4 then .visit y.getAppArgs[2 + i]! else .continue
+    match x with
+    | .proj ``Prod i y => return comp i y
+    | _ =>
+      match x.getAppFnArgs with
+      | (``Prod.fst, #[_, _, y]) => return comp 0 y
+      | (``Prod.snd, #[_, _, y]) => return comp 1 y
+      | _ => return .continue)
+
+/-- The equations `Hax.add a b = a + b`, `Hax.sub a b = a - b` and `Hax.mul a b = a * b` of
+    the integer operations of the runtime in the terms, which `omega` reads. -/
+def arithOpEqs (es : Array Expr) : MetaM (Array Expr) := do
+  let isOp (x : Expr) : Bool :=
+    (x.isAppOfArity ``Hax.add 4 || x.isAppOfArity ``Hax.sub 4 || x.isAppOfArity ``Hax.mul 4) &&
+      x.getAppArgs[0]!.isConstOf ``Int
+  let mut xs := #[]
+  for e in es do
+    xs ← subtermsWhere isOp (← instantiateMVars e) xs
+  let mut out := #[]
+  for x in xs do
+    let args := x.getAppArgs
+    let op := if x.isAppOf ``Hax.add then ``HAdd.hAdd
+      else if x.isAppOf ``Hax.sub then ``HSub.hSub else ``HMul.hMul
+    let rhs ← mkAppM op #[args[2]!, args[3]!]
+    out := out.push (← mkExpectedTypeHint (← mkEqRefl x) (← mkEq x rhs))
+  return out
+
 /-- The subterms `min x y` of `e`, added to `acc`. -/
-partial def minsOf (e : Expr) (acc : Array Expr) : Array Expr :=
-  let acc := if e.isAppOfArity ``Min.min 4 then acc.push e else acc
-  match e with
-  | .app f a => minsOf a (minsOf f acc)
-  | .mdata _ b => minsOf b acc
-  | .proj _ _ b => minsOf b acc
-  | _ => acc
+def minsOf (e : Expr) (acc : Array Expr) : MetaM (Array Expr) :=
+  subtermsWhere (·.isAppOfArity ``Min.min 4) e acc
+
+/-- The facts, with each fact `Hax.band a b = true` or `Hax.bor a b = false` followed by the
+    facts about its operands. -/
+partial def splitBoolFacts (facts : Array Expr) : MetaM (Array Expr) := do
+  let mut out := #[]
+  for f in facts do
+    out := out.push f
+    let fty ← instantiateMVars (← inferType f)
+    let some (_, lhs, rhs) := fty.eq? | continue
+    let lems := if rhs.isConstOf ``Bool.true && lhs.isAppOfArity ``Hax.band 2 then
+        [``Hax.Ascent.band_true_left, ``Hax.Ascent.band_true_right]
+      else if rhs.isConstOf ``Bool.false && lhs.isAppOfArity ``Hax.bor 2 then
+        [``Hax.Ascent.bor_false_left, ``Hax.Ascent.bor_false_right]
+      else []
+    for lem in lems do
+      out := out ++ (← splitBoolFacts #[← mkAppM lem #[f]])
+  return out
 
 /-- The arithmetic facts that follow from the facts: the integer comparisons of the
-    runtime read as propositions, and the bounds of the minima the facts mention. -/
+    runtime read as propositions, including the operands of `Hax.band` and `Hax.bor`
+    (`splitBoolFacts`), and the bounds of the minima the facts mention. -/
 def arithFacts (facts : Array Expr) : MetaM (Array Expr) := do
-  let lems := [``Hax.Ascent.beq_true_int, ``Hax.Ascent.beq_false_int,
-    ``Hax.Ascent.bne_true_int, ``Hax.Ascent.bne_false_int, ``Hax.Ascent.lt_true_int,
-    ``Hax.Ascent.lt_false_int, ``Hax.Ascent.le_true_int, ``Hax.Ascent.le_false_int,
-    ``Hax.Ascent.gt_true_int, ``Hax.Ascent.gt_false_int, ``Hax.Ascent.ge_true_int,
-    ``Hax.Ascent.ge_false_int]
+  let facts ← splitBoolFacts facts
+  -- the lemmas by the comparison at the head of the fact and its value
+  let lemsOf (c : Name) (v : Bool) : List Name :=
+    match c, v with
+    | ``Hax.beq, true => [``Hax.Ascent.beq_true_int]
+    | ``Hax.beq, false => [``Hax.Ascent.beq_false_int]
+    | ``Hax.bne, true => [``Hax.Ascent.bne_true_int]
+    | ``Hax.bne, false => [``Hax.Ascent.bne_false_int]
+    | ``Hax.lt, true => [``Hax.Ascent.lt_true_int]
+    | ``Hax.lt, false => [``Hax.Ascent.lt_false_int]
+    | ``Hax.le, true => [``Hax.Ascent.le_true_int]
+    | ``Hax.le, false => [``Hax.Ascent.le_false_int]
+    | ``Hax.gt, true => [``Hax.Ascent.gt_true_int]
+    | ``Hax.gt, false => [``Hax.Ascent.gt_false_int]
+    | ``Hax.ge, true => [``Hax.Ascent.ge_true_int]
+    | ``Hax.ge, false => [``Hax.Ascent.ge_false_int]
+    | _, _ => []
   let mut out := #[]
   let mut mins := #[]
   for f in facts do
     let fty ← instantiateMVars (← inferType f)
-    mins := minsOf fty mins
+    mins ← minsOf fty mins
     let some (_, lhs, rhs) := fty.eq? | continue
     unless rhs.isConstOf ``Bool.true || rhs.isConstOf ``Bool.false do continue
-    unless lhs.getAppFn.isConst do continue
-    for lem in lems do
+    let some c := lhs.getAppFn.constName? | continue
+    for lem in lemsOf c (rhs.isConstOf ``Bool.true) do
       let s ← saveState
       try
-        out := out.push (← mkAppM lem #[f])
+        -- at instance transparency: a comparison of another type fails without unfolding
+        -- its operands
+        out := out.push (← withTransparency .instances (mkAppM lem #[f]))
         break
       catch _ => s.restore
   for m in mins do
@@ -396,16 +474,27 @@ def arithFacts (facts : Array Expr) : MetaM (Array Expr) := do
 /-- A proof of an arithmetic proposition: by evaluation, from a fact, or by `omega` over
     the facts, their arithmetic consequences and the local context. -/
 def proveArith (p : Expr) (facts : Array Expr) : MetaM Expr := do
-  if let some pf ← boundedTry? (proveDecide p) then return pf
+  -- evaluation decides closed propositions only
+  unless (← instantiateMVars p).hasFVar do
+    if let some pf ← boundedTry? (proveDecide p) then return pf
   for f in facts do
     if ← isDefEqBounded (← inferType f) p then return f
+  -- `omega` reads the goal and the facts with the projections of pairs reduced, so that a
+  -- state variable read through the state tuple is the variable
+  let p₀ := p
+  let p ← reduceProjs (← instantiateMVars p)
+  let facts ← facts.mapM fun f => do
+    let t ← instantiateMVars (← inferType f)
+    let t' ← reduceProjs t
+    if t' == t then pure f else mkExpectedTypeHint f t'
   let g ← mkFreshExprMVar p
   let some g' ← g.mvarId!.falseOrByContra | throwError "side: cannot prove{indentExpr p}"
   let hyps ← g'.withContext getLocalHyps
   let extra ← arithFacts facts
-  try Lean.Elab.Tactic.Omega.omega (hyps.toList ++ facts.toList ++ extra.toList) g'
+  let ops ← arithOpEqs (#[p] ++ (← (facts ++ extra).mapM inferType))
+  try Lean.Elab.Tactic.Omega.omega (hyps.toList ++ facts.toList ++ extra.toList ++ ops.toList) g'
   catch _ => throwError "side: cannot prove{indentExpr p}"
-  instantiateMVars g
+  mkExpectedTypeHint (← instantiateMVars g) p₀
 
 /-- The array and the reading of the argument that reaches it through `Prod.fst` and
     `Prod.snd`. -/
@@ -424,28 +513,103 @@ partial def pathBase (e : Expr) : MetaM (Expr × (Expr → MetaM Expr)) := do
   | _ => return (e, pure)
 
 /-- The arrays `x` of the subterms `Hax.array_len x` of `e`, added to `acc`. -/
-partial def lensOf (e : Expr) (acc : Array Expr) : Array Expr :=
-  let acc := if e.isAppOfArity ``Hax.array_len 2 then acc.push e.appArg! else acc
+def lensOf (e : Expr) (acc : Array Expr) : MetaM (Array Expr) := do
+  let ls ← subtermsWhere (·.isAppOfArity ``Hax.array_len 2) e #[]
+  return acc ++ ls.map (·.appArg!)
+
+/-- The constant is a definition whose body, under its parameters, is a path of
+    `Prod.fst` and `Prod.snd` from its last parameter: a struct projection of an
+    extraction. -/
+def isProjDef (c : Name) : MetaM Bool := do
+  let some (.defnInfo d) := (← getEnv).find? c | return false
+  lambdaTelescope d.value fun xs b => do
+    let some x := xs.back? | return false
+    let mut e := b
+    for _ in [0:64] do
+      match e with
+      | .mdata _ y => e := y
+      | .proj ``Prod _ y => e := y
+      | _ =>
+        match e.getAppFnArgs with
+        | (``Prod.fst, #[_, _, y]) | (``Prod.snd, #[_, _, y]) => e := y
+        | _ => break
+    return e == x
+
+/-- The term with its struct projections and struct updates unfolded and the projections
+    of pairs reduced: `«.f» (struct_update_fst s v)` becomes `v`. A constant under a
+    projection is unfolded when its value is a pair. -/
+partial def projNorm (e : Expr) : MetaM Expr := do
+  let e ← whnfR (← instantiateMVars e)
+  let step (i : Nat) (mk : Expr → Expr) (x : Expr) : MetaM Expr := do
+    let x' ← projNorm x
+    let comp (p : Expr) : Option Expr :=
+      if p.isAppOfArity ``Prod.mk 4 then some p.getAppArgs[2 + i]! else none
+    if let some c := comp x' then return ← projNorm c
+    -- a constant is unfolded, a few times, while its value is not a pair
+    let mut y := x'
+    for _ in [0:4] do
+      unless y.getAppFn.isConst && !(y.getAppFn.constName!.getRoot == `Hax) do break
+      let some y₁ ← unfoldDefinition? y | break
+      y ← whnfR y₁
+      if let some c := comp y then return ← projNorm c
+    return mk x'
   match e with
-  | .app f a => lensOf a (lensOf f acc)
-  | .mdata _ b => lensOf b acc
-  | .lam _ t b _ => lensOf b (lensOf t acc)
-  | .forallE _ t b _ => lensOf b (lensOf t acc)
-  | .letE _ t v b _ => lensOf b (lensOf v (lensOf t acc))
-  | .proj _ _ b => lensOf b acc
-  | _ => acc
+  | .proj ``Prod i x => return ← step i (fun x' => .proj ``Prod i x') x
+  | _ => pure ()
+  match e.getAppFnArgs with
+  | (``Prod.fst, #[α, β, x]) => step 0 (fun x' => mkApp3 e.getAppFn α β x') x
+  | (``Prod.snd, #[α, β, x]) => step 1 (fun x' => mkApp3 e.getAppFn α β x') x
+  | (``Hax.struct_update_fst, _) | (``Hax.struct_update_snd, _) =>
+    match ← unfoldDefinition? e with
+    | some e' => projNorm e'
+    | none => return e
+  | (`Hax.Ascent.fieldSet, _) | (`Hax.Ascent.fieldGet, _) =>
+    -- the field instances unfold to pairs and projections
+    let e' ← withTransparency .default (whnf e)
+    if e' == e then return e else projNorm e'
+  | (c, _) =>
+    if !c.isAnonymous && (← isProjDef c) then
+      if let some e' ← unfoldDefinition? e then return ← projNorm e'
+    return e
+
+/-- An array fact with its arrays in `projNorm` form: `0 < a.size`, `AllNE a` and
+    `AllP P a`; another proposition is returned unchanged. -/
+def arrFactNorm (p : Expr) : MetaM Expr := do
+  let p := (← instantiateMVars p).headBeta
+  match p.getAppFnArgs with
+  | (``LT.lt, #[ty, inst, z, s]) =>
+    if ty.isConstOf ``Nat && s.isAppOfArity ``Array.size 2 then
+      let s' := mkApp2 s.appFn!.appFn! s.appFn!.appArg! (← projNorm s.appArg!)
+      return mkApp4 p.getAppFn ty inst z s'
+    return p
+  | (``Hax.Ascent.AllNE, #[β, a]) => return mkApp2 p.getAppFn β (← projNorm a)
+  | (``Hax.Ascent.AllP, #[α, P, a]) => return mkApp3 p.getAppFn α P (← projNorm a)
+  | _ => return p
 
 /-- A proof of `goal` from one fact: the fact itself, or a fact `H → goal` whose
-    hypothesis `H` is arithmetic and follows from the facts. -/
-def matchFact (goal : Expr) (facts : Array Expr) : MetaM (Option Expr) := do
+    hypothesis `H` follows from the facts: an array fact through `arr?`, otherwise an
+    arithmetic fact. Array facts are compared in `arrFactNorm` form at reducible
+    transparency. -/
+def matchFact (goal : Expr) (facts : Array Expr)
+    (arr? : Option (Expr → Array Expr → MetaM Expr) := none) : MetaM (Option Expr) := do
+  let arrGoal ← isArrFact goal
+  let goalN ← if arrGoal then arrFactNorm goal else pure goal
+  let same (p : Expr) : MetaM Bool := do
+    if arrGoal && (← isArrFact p) then withReducible (isDefEq (← arrFactNorm p) goalN)
+    else isDefEqBounded p goal
   for f in facts do
     let fty := (← instantiateMVars (← inferType f)).headBeta
-    if ← isDefEqBounded fty goal then return some f
+    if ← same fty then return some f
     if let .forallE _ h q _ := fty then
       unless q.hasLooseBVars do
-        if ← isDefEqBounded q goal then
+        if ← same q then
           let s ← saveState
-          try return some (mkApp f (← proveArith h facts))
+          try
+            -- an array hypothesis is proved from the other facts
+            if let some arr := arr? then
+              if ← isArrFact h then
+                return some (mkApp f (← arr h (facts.filter (· != f))))
+            return some (mkApp f (← proveArith h facts))
           catch _ => s.restore
   return none
 
@@ -457,6 +621,48 @@ partial def ofFacts (goal : Expr) (facts : Array Expr) : MetaM (Option Expr) := 
     let some pb ← ofFacts b facts | return none
     return some (mkApp4 (mkConst ``_root_.And.intro) a b pa pb)
   matchFact goal facts
+
+/-- The array paths of a type through `Prod`: each path, as a list of `Prod.snd` (`true`)
+    and `Prod.fst` (`false`) steps, with the array type it reaches. -/
+partial def arrPaths (ty : Expr) (depth : Nat := 8) : MetaM (List (List Bool × Expr)) := do
+  let ty ← whnfR ty
+  if ty.isAppOfArity ``Array 1 then return [([], ty)]
+  if depth == 0 then return []
+  if let (``Prod, #[α, β]) := ty.getAppFnArgs then
+    let l ← arrPaths α (depth - 1)
+    let r ← arrPaths β (depth - 1)
+    return l.map (fun (p, t) => (false :: p, t)) ++ r.map (fun (p, t) => (true :: p, t))
+  return []
+
+/-- The path applied to a term. -/
+def applyPath (x : Expr) (p : List Bool) : MetaM Expr :=
+  p.foldlM (fun e b => mkAppM (if b then ``Prod.snd else ``Prod.fst) #[e]) x
+
+/-- A term `p (Hax.index a i)` for a path `p` of `Prod.fst` and `Prod.snd`: the path, read
+    from the element outwards, the array and the index. -/
+partial def pathOverIndex (t : Expr) : Option (List Bool × Expr × Expr) :=
+  match t with
+  | .mdata _ x => pathOverIndex x
+  | .proj ``Prod i x => (pathOverIndex x).map fun (p, a, j) => (p ++ [i == 1], a, j)
+  | _ =>
+    match t.getAppFnArgs with
+    | (``Prod.fst, #[_, _, x]) => (pathOverIndex x).map fun (p, a, j) => (p ++ [false], a, j)
+    | (``Prod.snd, #[_, _, x]) => (pathOverIndex x).map fun (p, a, j) => (p ++ [true], a, j)
+    | (``Hax.index, #[_, _, a, i]) => some ([], a, i)
+    | _ => none
+
+/-- The call `f.gen x` or `f.merged x` of a generated function unfolded to the generated
+    body at `x`. -/
+def unfoldGen? (t : Expr) : MetaM (Option Expr) := do
+  let some (.str _ s) := t.getAppFn.constName? | return none
+  unless s == "gen" || s == "merged" do return none
+  let some t' ← unfoldDefinition? t | return none
+  return some (← projNorm t'.headBeta)
+
+/-- The array is the value of an array constructor. -/
+def isArrCtor (t : Expr) : Bool :=
+  [``Hax.push, ``Hax.repeat_, ``Hax.from_elem, ``Hax.array_update, ``List.toArray,
+    ``Array.empty, ``Hax.with_capacity, ``Array.emptyWithCapacity].any t.isAppOf
 
 mutual
 
@@ -475,7 +681,7 @@ partial def proveArr (req? : Option GuardReq) (goal : Expr) (facts : Array Expr)
       (← proveArr req? b facts)
   | (``True, _) => return mkConst ``True.intro
   | _ => pure ()
-  if let some pf ← matchFact goal facts then return pf
+  if let some pf ← matchFact goal facts (some (proveArr req?)) then return pf
   match goal.getAppFnArgs with
   | (``LT.lt, #[ty, _, _, s]) =>
     if ty.isConstOf ``Nat && s.isAppOfArity ``Array.size 2 then
@@ -483,11 +689,29 @@ partial def proveArr (req? : Option GuardReq) (goal : Expr) (facts : Array Expr)
     proveArith goal facts
   | (``Hax.Ascent.AllNE, #[_, t]) =>
     mkExpectedTypeHint (← proveAll req? t facts) goal
+  | (``Hax.Ascent.AllP, #[_, P, t]) =>
+    mkExpectedTypeHint (← proveAllP req? P t facts) goal
   | _ => proveArith goal facts
+
+/-- A proof of `P (p (Hax.index a i))` for the path `p` from `0 < a.size` and
+    `AllP (fun x => P (p x)) a` (`of_index_allP`). -/
+partial def proveOverIndex (req? : Option GuardReq) (P : Expr → MetaM Expr) (p : List Bool)
+    (a i : Expr) (facts : Array Expr) : MetaM Expr := do
+  let elemTy ← inferType (← mkAppM ``Hax.index #[a, i])
+  let Q ← withLocalDeclD `x elemTy fun x => do mkLambdaFVars #[x] (← P (← applyPath x p))
+  let h ← proveArr req? (← neProp a) facts
+  let ha ← proveArr req? (← mkAppM ``Hax.Ascent.AllP #[Q, a]) facts
+  let pf ← mkAppOptM ``Hax.Ascent.of_index_allP #[none, none, Q, a, h, ha, i]
+  mkExpectedTypeHint pf (← P (← applyPath (← mkAppM ``Hax.index #[a, i]) p))
 
 /-- A proof of `0 < t.size`. -/
 partial def proveNE (req? : Option GuardReq) (t : Expr) (facts : Array Expr) : MetaM Expr := do
-  let t ← whnfR (← instantiateMVars t)
+  let t ← projNorm t
+  -- a component of an element: from the elements of the array
+  if let some (p@(_ :: _), a, i) := pathOverIndex t then
+    let s ← saveState
+    try return ← proveOverIndex req? neProp p a i facts
+    catch _ => s.restore
   match t.getAppFnArgs with
   | (``Hax.array_update, #[_, a, i, v]) =>
     mkAppM ``Hax.Ascent.ne_array_update #[i, v, ← proveArr req? (← neProp a) facts]
@@ -503,6 +727,11 @@ partial def proveNE (req? : Option GuardReq) (t : Expr) (facts : Array Expr) : M
       #[← proveArr req? (← neProp a) facts, ← proveArr req? (← allProp a) facts, i]
   | _ =>
     if let some pf ← neOfFacts t facts then return pf
+    -- the result of a generated function: from its definition
+    if let some t' ← unfoldGen? t then
+      let s ← saveState
+      try return ← mkExpectedTypeHint (← proveNE req? t' facts) (← neProp t)
+      catch _ => s.restore
     provePres req? t neProp facts
 
 /-- A proof of `0 < t.size` from a fact that `t` is not empty, or by `omega` from facts
@@ -521,9 +750,9 @@ partial def neOfFacts (t : Expr) (facts : Array Expr) : MetaM (Option Expr) := d
       catch _ => s.restore
   let mut lens : Array Expr := #[]
   for f in facts do
-    lens := lensOf (← instantiateMVars (← inferType f)) lens
+    lens ← lensOf (← instantiateMVars (← inferType f)) lens
   for x in lens do
-    unless ← isDefEqBounded x t do continue
+    unless ← withReducible (isDefEq (← projNorm x) (← projNorm t)) do continue
     let s ← saveState
     try
       let pf ← proveArith (← neProp x) (facts.push (← mkAppM ``Hax.Ascent.array_len_eq #[x]))
@@ -534,7 +763,7 @@ partial def neOfFacts (t : Expr) (facts : Array Expr) : MetaM (Option Expr) := d
 /-- A proof of `AllNE t`. -/
 partial def proveAll (req? : Option GuardReq) (t : Expr) (facts : Array Expr) :
     MetaM Expr := do
-  let t ← whnfR (← instantiateMVars t)
+  let t ← projNorm t
   match t.getAppFnArgs with
   | (``Hax.array_update, #[_, a, i, v]) =>
     mkAppM ``Hax.Ascent.allNE_array_update
@@ -553,6 +782,37 @@ partial def proveAll (req? : Option GuardReq) (t : Expr) (facts : Array Expr) :
     let pf ← provePres req? t
       (fun z => do return mkApp2 (mkConst ``_root_.And) (← neProp z) (← allProp z)) facts
     mkAppM ``_root_.And.right #[pf]
+
+/-- A proof of `AllP P t`: from the construction of `t`, from the elements of an array of
+    which `t` is a component of an element, or through `provePres`. -/
+partial def proveAllP (req? : Option GuardReq) (P t : Expr) (facts : Array Expr) :
+    MetaM Expr := do
+  let t ← projNorm t
+  let allP (x : Expr) : MetaM Expr := mkAppM ``Hax.Ascent.AllP #[P, x]
+  let atP (v : Expr) : Expr := (mkApp P v).headBeta
+  if let some (p, a, i) := pathOverIndex t then
+    let s ← saveState
+    try return ← proveOverIndex req? allP p a i facts
+    catch _ => s.restore
+  match t.getAppFnArgs with
+  | (``Hax.array_update, #[_, a, i, v]) =>
+    mkAppOptM ``Hax.Ascent.allP_array_update
+      #[none, P, a, i, v, ← proveArr req? (← allP a) facts, ← proveArr req? (atP v) facts]
+  | (``Hax.push, #[_, a, v]) =>
+    mkAppOptM ``Hax.Ascent.allP_push
+      #[none, P, a, v, ← proveArr req? (← allP a) facts, ← proveArr req? (atP v) facts]
+  | (``Hax.repeat_, #[_, v, n]) =>
+    mkAppOptM ``Hax.Ascent.allP_repeat #[none, P, v, n, ← proveArr req? (atP v) facts]
+  | (``Hax.from_elem, #[_, v, n]) =>
+    mkAppOptM ``Hax.Ascent.allP_from_elem #[none, P, v, n, ← proveArr req? (atP v) facts]
+  | (``Hax.deref, #[_, x]) => proveArr req? (← allP x) facts
+  | (``Hax.to_vec, #[_, x]) => proveArr req? (← allP x) facts
+  | _ =>
+    if let some t' ← unfoldGen? t then
+      let s ← saveState
+      try return ← mkExpectedTypeHint (← proveAllP req? P t' facts) (← allP t)
+      catch _ => s.restore
+    provePres req? t allP facts
 
 /-- A proof of `mkP t` where `t` reads a conditional or the result of a loop through
     `Prod.fst` and `Prod.snd`: the predicate of both branches, or of the initial value and
@@ -922,10 +1182,19 @@ def readLeafVal (v : Expr) : MetaM SVal := do
   | (``Hax.Value.unit, _) => unitV
   | _ => return { val := v }
 
+/-- A hypothesis of a leaf that the caller proves under the guard: a conjunction of array
+    facts, or an integer comparison (`vec_remove` in range). -/
+def isPendFact (p : Expr) : MetaM Bool := do
+  if ← isArrFact p then return true
+  let p := (← instantiateMVars p).headBeta
+  match p.getAppFnArgs with
+  | (``LT.lt, #[ty, _, _, _]) | (``LE.le, #[ty, _, _, _]) => return ty.isConstOf ``Int
+  | _ => return false
+
 /-- Match the call `f vs` against the leaf lemmas of `f`. With `strict`, a leaf whose
     result type differs from the type hint is skipped. With `pend`, a hypothesis of the
-    leaf that is a conjunction of array facts and is not decided is left as a
-    metavariable of the proof, for the caller to prove under the guard. -/
+    leaf that is a conjunction of array facts or an integer comparison and is not decided
+    is left as a metavariable of the proof, for the caller to prove under the guard. -/
 def matchLeaf (f : String) (vs : Array SVal) (hint? : Option Expr) (strict : Bool)
     (pend : Bool := false) (errs? : Option (IO.Ref (Array String)) := none) :
     GenM (Option (Expr × SVal)) := do
@@ -973,12 +1242,12 @@ def matchLeaf (f : String) (vs : Array SVal) (hint? : Option Expr) (strict : Boo
             if ← isProp mty then
               try m'.mvarId!.assign (← proveDecide mty)
               catch ex =>
-                unless pend && (← isArrFact mty) do throw ex
+                unless pend && (← isPendFact mty) do throw ex
       let pf ← instantiateMVars (mkAppN c mvs)
       if pf.hasExprMVar then
         unless pend do throwError "open"
         for m in (← getMVars pf) do
-          unless ← isArrFact (← instantiateMVars (← m.getType)) do throwError "open"
+          unless ← isPendFact (← instantiateMVars (← m.getType)) do throwError "open"
       return some (pf, ← instSVal sv)
     catch ex =>
       if let some r := errs? then
@@ -1140,6 +1409,71 @@ def mergeEnv (b : Expr) (nt ne : SEnv) : MetaM SEnv := do
     match lookupEnv de k with
     | some ve => return some (k, ← mergeVal b vt ve)
     | none => return none
+
+/-- The candidate facts of a loop accumulator invariant `J`: for each accumulator
+    component `j` named `k`, the key of the fact and the fact as a predicate of the
+    component. `Gσ0` is the guard before the loop and `vs` the initial values.
+
+    * `ne[]` and `all`: an array component is nonempty, and its elements are nonempty;
+    * `ne p`, `all p q`: the arrays of non-integer elements reached from the component by a
+      path `p` of `Prod` projections are nonempty, and the arrays reached from their
+      elements by a path `q` are nonempty (`AllP`);
+    * `cne p`, `call p q`: the same facts under the hypothesis that they hold of the
+      initial value, where they do not hold initially and the initial array is not built
+      by a constructor;
+    * `nn` (with `ints`): an integer component is not negative.
+
+    A fact other than a conditional one is kept when it holds initially; the caller
+    checks that the body keeps each fact. -/
+def accFactCands (Gσ0 : Expr) (M : List (String × SVal)) (tys : List Expr)
+    (jdrop : List (String × String)) (ints : Bool := false) :
+    MetaM (List (Nat × String × String × Expr)) := do
+  let holds (p : Expr) : MetaM Bool := withLocalDeclD `hG Gσ0 fun hG => do
+    let s ← (Meta.saveState : MetaM Meta.SavedState)
+    try
+      discard <| proveArr none p (← splitFacts hG)
+      pure true
+    catch _ =>
+      (s.restore : MetaM Unit)
+      pure false
+  let mut jc : List (Nat × String × String × Expr) := []
+  for (k, v) in M, t in tys, j in [0:M.length] do
+    let some v0 := v.tm? | continue
+    let pred (f : Expr → MetaM Expr) : MetaM Expr :=
+      withLocalDeclD `z t fun z => do mkLambdaFVars #[z] (← f z)
+    let mut cands : List (String × Expr) := []
+    let tw ← whnfR t
+    if ints && tw.isConstOf ``Int then
+      cands := cands ++ [("nn", ← pred fun z => mkAppM ``LE.le #[toExpr (0 : Int), z])]
+    if tw.isAppOfArity ``Array 1 then
+      cands := cands ++ [("ne[]", ← pred neProp)]
+      if (← whnfR tw.appArg!).isAppOfArity ``Array 1 then
+        cands := cands ++ [("all", ← pred allProp)]
+    for (p, arrTy) in (← arrPaths t).take 12 do
+      let elemTy ← whnfR arrTy.appArg!
+      if elemTy.isConstOf ``Int then continue
+      let ctor := isArrCtor (← projNorm (← applyPath v0 p))
+      let neP (x : Expr) : MetaM Expr := do neProp (← applyPath x p)
+      unless p.isEmpty do cands := cands ++ [(s!"ne{p}", ← pred neP)]
+      unless ctor do
+        cands := cands ++ [(s!"cne{p}", ← pred fun x => do mkArrow (← neP v0) (← neP x))]
+      for (q, qTy) in (← arrPaths elemTy 4).take 4 do
+        if (← whnfR qTy.appArg!).isConstOf ``Int then continue
+        let Q ← withLocalDeclD `y elemTy fun y => do
+          mkLambdaFVars #[y] (← neProp (← applyPath y q))
+        let allP (x : Expr) : MetaM Expr := do
+          mkAppM ``Hax.Ascent.AllP #[Q, ← applyPath x p]
+        cands := cands ++ [(s!"all{p}{q}", ← pred allP)]
+        unless ctor do
+          cands := cands ++
+            [(s!"call{p}{q}", ← pred fun x => do mkArrow (← allP v0) (← allP x))]
+    for (key, P) in cands do
+      if jdrop.contains (k, key) then continue
+      if key.startsWith "c" then
+        unless jc.any (fun (j', _, key', _) => j' == j && "c" ++ key' == key) do
+          jc := jc ++ [(j, k, key, P)]
+      else if ← holds (P.beta #[v0]) then jc := jc ++ [(j, k, key, P)]
+  return jc
 
 def isTrueE (e : Expr) : MetaM Bool := return (← instantiateMVars e).isConstOf ``Bool.true
 def isFalseE (e : Expr) : MetaM Bool := return (← instantiateMVars e).isConstOf ``Bool.false
@@ -1513,8 +1847,18 @@ partial def genApp (Γ : SEnv) (G _e f as : Expr) (hint? : Option Expr) : GenM G
     let Gσ ← atState G
     for m in pending do
       let ty ← instantiateMVars (← m.getType)
+      let n₀ ← match req? with
+        | some req => pure (← req.need.get).size
+        | none => pure 0
       let p ← withLocalDeclD `hG Gσ fun hG => do
-        mkLambdaFVars #[hG] (← proveArr req? ty (← splitFacts hG))
+        try mkLambdaFVars #[hG] (← proveArr req? ty (← splitFacts hG))
+        catch ex =>
+          -- a hypothesis that asked for new guard facts is admitted, so that the
+          -- derivation collects the other guard facts it asks for; `ascendFn` discards
+          -- it and derives the function again under the larger guard
+          let some req := req? | throw ex
+          unless (← req.need.get).size > n₀ do throw ex
+          mkLambdaFVars #[hG] (← mkSorry ty (synthetic := true))
       pendPfs := pendPfs.push (m, p)
   let pfl ← forallTelescope hbiTy fun xs _ => do
     let ps ← st.proj xs[0]!
@@ -1591,12 +1935,15 @@ partial def retypedAcc (M : List (String × SVal)) (tys : List Expr) (N : SEnv) 
 
 /-- A counted loop. `drop` names the bindings left out of the invariant: the variables
     the body rebinds at another type, which the invariant cannot carry. The accumulator
-    invariant `J` states that the array components are nonempty (`false`) and that the
-    components that are arrays of arrays have nonempty elements (`true`), for those
-    components where this holds initially and is kept by the body; `jdrop` names the
-    facts left out of it. -/
+    invariant `J` states that array components are nonempty and that the components that
+    are arrays of arrays have nonempty elements, for those components where this holds
+    initially and is kept by the body. It states the same of the arrays of non-integer
+    elements inside the components (through `Prod`) and of the arrays inside their
+    elements (`AllP`), and, where such a fact does not hold initially and the array is not
+    built by a constructor, that it holds of the accumulator when it holds of the initial
+    value. `jdrop` names the facts left out, by accumulator and key. -/
 partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := false)
-    (drop : List String := []) (jdrop : List (String × Bool) := []) : GenM GRes := do
+    (drop : List String := []) (jdrop : List (String × String) := []) : GenM GRes := do
   let some vs := strOf? (← instantiateMVars var) | throwError "construct: loop variable"
   let rlo ← gen Γ G lo
   let rhi ← gen rlo.N G hi
@@ -1612,29 +1959,11 @@ partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := f
   let a₀ ← mkTuple (M.map fun p => p.2.tm?.get!)
   let st := (← read).st
   -- the accumulator facts that hold initially
-  let factOf (all : Bool) (x : Expr) : MetaM Expr := if all then allProp x else neProp x
-  let mut jc : List (Nat × String × Bool) := []
-  if !rev then
-    let Gσ0 ← atState G
-    for (k, v) in M, t in tys, j in [0:M.length] do
-      let t ← whnfR t
-      unless t.isAppOfArity ``Array 1 do continue
-      let inner ← whnfR t.appArg!
-      let kinds := if inner.isAppOfArity ``Array 1 then [false, true] else [false]
-      for all in kinds do
-        if jdrop.contains (k, all) then continue
-        let ok ← withLocalDeclD `hG Gσ0 fun hG => do
-          let s ← (Meta.saveState : MetaM Meta.SavedState)
-          try
-            discard <| proveArr none (← factOf all v.tm?.get!) (← splitFacts hG)
-            pure true
-          catch _ =>
-            (s.restore : MetaM Unit)
-            pure false
-        if ok then jc := jc ++ [(j, k, all)]
+  -- the accumulator facts, by component, name, key and predicate
+  let jc ← if rev then pure [] else accFactCands (← atState G) M tys jdrop
   withLocalDeclD `i intTy fun i => withLocalDeclD `acc A fun acc => do
     let comps ← tupleComps acc M.length
-    let Jbody := andList (← jc.mapM fun (j, _, all) => factOf all comps[j]!)
+    let Jbody := andList (← jc.mapM fun (j, _, _, P) => pure (P.beta #[comps[j]!]))
     let mut Λenv : SEnv := []
     for (k, v) in D do
       match M.findIdx? (·.1 == k) with
@@ -1670,17 +1999,17 @@ partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := f
         pure tm
       let lost ← withLocalDeclD `hJ GbE fun hJ => do
         let fs ← splitFacts hJ
-        jc.filterM fun (j, _, all) => do
+        jc.filterM fun (j, _, _, P) => do
           let s ← (Meta.saveState : MetaM Meta.SavedState)
           try
-            discard <| proveArr none (← factOf all tmsN[j]!) fs
+            discard <| proveArr none (P.beta #[tmsN[j]!]) fs
             pure false
           catch _ =>
             (s.restore : MetaM Unit)
             pure true
       unless lost.isEmpty do
         return ← genForFold Γ G _e var lo hi body rev drop
-          (jdrop ++ lost.map fun (_, k, all) => (k, all))
+          (jdrop ++ lost.map fun (_, k, key, _) => (k, key))
     let Jl ← withLocalDeclD `s st.stTy fun s => do
       mkLambdaFVars #[s, acc] (Jbody.replaceFVars st.vars (← st.proj s))
     let lam3 (x : Expr) : MetaM Expr := withLocalDeclD `s st.stTy fun s => do
@@ -1819,7 +2148,11 @@ partial def instSValRepl (v : SVal) (x r : Expr) : MetaM SVal := do
   return { val := v.val.replaceFVar x r, ty? := v.ty?.map (·.replaceFVar x r),
            tm? := v.tm?.map (·.replaceFVar x r) }
 
-partial def genWhile (Γ : SEnv) (G _e cond body : Expr) : GenM GRes := do
+/-- A while loop. Its accumulator invariant `J` (`corresB_whileFoldGJ`) holds the facts of
+    `accFactCands`, with the sign of integer components, that hold initially and are kept by
+    the body; `jdrop` names the facts left out. -/
+partial def genWhile (Γ : SEnv) (G _e cond body : Expr) (jdrop : List (String × String) := []) :
+    GenM GRes := do
   let D := dedupEnv Γ []
   let bound := (← boundNames body) ++ (← boundNames cond)
   let M := (D.filter (bound.contains ·.1)).reverse
@@ -1829,8 +2162,11 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) : GenM GRes := do
   let A ← mkProdTy tys
   let a₀ ← mkTuple (M.map fun p => p.2.tm?.get!)
   let st := (← read).st
+  let Gσ0 ← atState G
+  let jc ← accFactCands Gσ0 M tys jdrop (ints := true)
   withLocalDeclD `acc A fun acc => do
     let comps ← tupleComps acc M.length
+    let Jbody := andList (jc.map fun (j, _, _, P) => P.beta #[comps[j]!])
     let mut Λenv : SEnv := []
     for (k, v) in D do
       match M.findIdx? (·.1 == k) with
@@ -1852,15 +2188,31 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) : GenM GRes := do
       let rc ← gen Λenv Gc cond
       if rc.exit.isSome then throwError "construct: exit in a loop condition"
       let some cTm := rc.val.tm? | throwError "type: loop condition"
-      let Gb ← abstE (andE (← (atState G : GenM Expr) |>.run { (← read) with st := st })
-        (← mkEq cTm trueE))
+      let GcE := andE Gσ0 (← mkEq cTm trueE)
+      let GbE := if jc.isEmpty then GcE else andE GcE Jbody
+      let Gb ← abstE GbE
       let rb0 ← gen rc.N Gb body
-      let accOf (env : SEnv) : MetaM Expr := do
-        let tms ← M.mapM fun (k, _) => do
-          let some sv := lookupEnv env k | throwError "loop: {k} unbound after the body"
-          let some tm := sv.tm? | throwError "type: loop accumulator {k} after the body"
-          pure tm
-        mkTuple tms
+      let accTms (env : SEnv) : MetaM (List Expr) := M.mapM fun (k, _) => do
+        let some sv := lookupEnv env k | throwError "loop: {k} unbound after the body"
+        let some tm := sv.tm? | throwError "type: loop accumulator {k} after the body"
+        pure tm
+      let accOf (env : SEnv) : MetaM Expr := do mkTuple (← accTms env)
+      -- the accumulator facts the body keeps
+      if !jc.isEmpty then
+        let tmsN ← accTms rb0.N
+        let lost ← withLocalDeclD `hJ GbE fun hJ => do
+          let fs ← splitFacts hJ
+          jc.filterM fun (j, _, _, P) => do
+            let s ← (Meta.saveState : MetaM Meta.SavedState)
+            try
+              discard <| proveArr none (P.beta #[tmsN[j]!]) fs
+              pure false
+            catch _ =>
+              (s.restore : MetaM Unit)
+              pure true
+        unless lost.isEmpty do
+          return ← (genWhile Γ G _e cond body
+            (jdrop ++ lost.map fun (_, k, key, _) => (k, key))).run { (← read) with st := st }
       let gTm ← accOf rb0.N
       let (pb, Cb, wTm, gbTm) ← match rb0.exit with
         | some (Cb, Wb, Tb) => do
@@ -1871,7 +2223,11 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) : GenM GRes := do
           let r ← rapp ``Hax.Ascent.CorresG.ofPlain
           r.set `h rb0.proof; r.set `W (← abstE u.val); r.set `T (← abstE (mkBList rb0.N))
           pure (← r.done, falseE, mkConst ``Unit.unit, gTm)
-      let r ← rapp ``Hax.Ascent.corresB_whileFoldG
+      let r ← rapp (if jc.isEmpty then ``Hax.Ascent.corresB_whileFoldG
+        else ``Hax.Ascent.corresB_whileFoldGJ)
+      if !jc.isEmpty then
+        r.set `J (← withLocalDeclD `s st.stTy fun s => do
+          mkLambdaFVars #[s, acc] (Jbody.replaceFVars st.vars (← st.proj s)))
       r.set `cond cond; r.set `body body
       r.set `Λ Λl
       r.set `c (← lam2 cTm); r.set `g (← lam2 gTm); r.set `gb (← lam2 gbTm)
@@ -1885,6 +2241,9 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) : GenM GRes := do
       r.set `hcond rc.proof; r.set `hbody pb
       r.side `hcondN; r.side `hW; r.side `hV; r.side `hT; r.side `hN
       r.side `hinit
+      unless jc.isEmpty do
+        r.side `hinitJ
+        r.side `hJ
       let htTy ← r.goal `hterm
       r.set `hterm (← (proveTerm htTy : GenM Expr).run outer)
       let pf ← r.done
@@ -2086,7 +2445,12 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
         let G ← mkLambdaFVars #[a] (andList facts.toList)
         let s ← saveState
         try
-          res? := some (G, ← (gen Γ₀ G spec.lit (some retTy)).run ctx)
+          let r ← (gen Γ₀ G spec.lit (some retTy)).run ctx
+          -- a derivation that admitted a hypothesis asking for new guard facts is derived
+          -- again under the larger guard
+          if (← instantiateMVars r.proof).hasSorry then
+            throwError "guard: {(← need.get).size - facts.size} new facts"
+          res? := some (G, r)
         catch ex =>
           attempt := attempt + 1
           unless (← need.get).size > facts.size && attempt < 8 do throw ex

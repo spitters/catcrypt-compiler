@@ -44,19 +44,21 @@ result with the runtime's combinators:
 A body exit of a `forFoldReturn` is a return from the function: the loop exits with the
 returned value (`retC`, `retOut`) and otherwise binds the final accumulator (`retAcc`).
 
-`corresB_forFoldPJ` and `corresB_forFoldGJ` add an accumulator invariant `J σ a` that
-holds initially and is kept by every step, and under which the body runs.
+`corresB_forFoldPJ`, `corresB_forFoldGJ` and `corresB_whileFoldGJ` add an accumulator
+invariant `J σ a` that holds initially and is kept by every step, and under which the body
+runs.
 
 A tuple whose last component has a product type is typed with that component under
 `Boxed`, whose encoding is the component's own, so that the pair encodes as a pair.
 
 ## Nonempty arrays
 
-`AllNE a` states that every element of an array of arrays is nonempty. The lemmas
-`ne_array_update`, `ne_push`, `ne_repeat`, `ne_index`, `allNE_array_update`, … carry
-nonemptiness through the runtime's array operations, `foldRange_pres`,
-`foldRange_pres_lt`, `foldRangeRev_pres` and `forFold_stepCF_pres` through loops, and
-`beq_true_int`, `lt_false_int`, … read the runtime's integer comparisons as propositions.
+`AllNE a` states that every element of an array of arrays is nonempty, and `AllP P a`
+that every element satisfies `P`. The lemmas `ne_array_update`, `ne_push`, `ne_repeat`,
+`ne_index`, `allNE_array_update`, `of_index_allP`, `allP_array_update`, … carry these
+facts through the runtime's array operations, `foldRange_pres`, `foldRange_pres_lt`,
+`foldRangeRev_pres` and `forFold_stepCF_pres` through loops, and `beq_true_int`,
+`lt_false_int`, `band_true_left`, … read the runtime's comparisons as propositions.
 
 The counted rules hold for all bounds: an empty range is a separate case
 (`corres_guard_cases`). A break carries its value and the accumulator at the break
@@ -71,14 +73,14 @@ into `FnCorres` and, for a function with early return, `FnCorresX` of
 ## Main definitions
 
 * `BList`, `CorresG`, `cfState`, `cfVal`, `stepCF`
-* `stepRet`, `retC`, `retOut`, `retAcc`, `Boxed`, `bindPats`, `extendPats`, `AllNE`
+* `stepRet`, `retC`, `retOut`, `retAcc`, `Boxed`, `bindPats`, `extendPats`, `AllNE`, `AllP`
 
 ## Main results
 
 * `corresG_seq`, `corresG_letBind`, `corresG_seqL`, `corresG_letBindL`,
   `corresG_ifThenElse`, `corresG_cfBreak`
 * `corresB_forFoldP`, `corresB_forFoldRevP`, `corresB_forFoldG`, `corresB_whileFoldG`,
-  `corresG_forFoldReturnG`, `corresB_forFoldPJ`, `corresB_forFoldGJ`
+  `corresG_forFoldReturnG`, `corresB_forFoldPJ`, `corresB_forFoldGJ`, `corresB_whileFoldGJ`
 * `corresG_optMatch` — the `Option` match with guarded exits in the arms
 * `corresB_matchTuple` — the match with one arm whose pattern is a tuple of variables
 * `whileFoldStops_of_measure` — termination of a while-fold from a decreasing measure
@@ -524,6 +526,83 @@ theorem corresB_whileFoldG [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond 
       cases r with
       | Break p => exact hq
       | Continue a => exact binds_of_sub hq (hcondN (σ, a) hG)
+  · obtain ⟨σ, a⟩ := t
+    have hG' : G σ ∧ c σ a = true := ⟨hG, hc⟩
+    cases hC : Cb (σ, a)
+    · have := hV _ hG' hC
+      simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept, stepStop]
+      generalize Vb (σ, a) = x at this ⊢
+      cases x with
+      | controlFlow b y => simp [Value.isControlFlow] at this
+      | _ => rfl
+    · simp only [stepCF, if_true, cfToExcept, stopPlain, stepStop]
+      rw [hW _ hG' hC]
+
+/-- **While loop whose body may break, with an accumulator invariant.**
+    `corresB_whileFoldG` with a predicate `J σ a` of the accumulator that holds initially
+    and is kept by every step that does not break; the body runs under `J` as part of its
+    guard. -/
+theorem corresB_whileFoldGJ [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond body : ImpExpr}
+    {a₀ : S → A} {c : S → A → Bool} {g gb : S → A → A} {w : S → A → B}
+    {Λ : S → A → BList} {J : S → A → Prop} {Nc : S × A → BList} {Cb : S × A → Bool}
+    {Wb Vb : S × A → Value} {Tb Nb : S × A → BList}
+    (hinit : ∀ σ, G σ → BindsSub (Γ σ) (Λ σ (a₀ σ)))
+    (hinitJ : ∀ σ, G σ → J σ (a₀ σ))
+    (hcond : CorresB bi (fun t : S × A => Λ t.1 t.2) (fun t => G t.1) cond
+      (fun t => .bool (c t.1 t.2)) Nc)
+    (hcondN : ∀ t : S × A, G t.1 → BindsSub (Nc t) (Λ t.1 t.2))
+    (hbody : CorresG bi Nc (fun t => (G t.1 ∧ c t.1 t.2 = true) ∧ J t.1 t.2) body Cb Wb Vb
+      Tb Nb)
+    (hW : ∀ t : S × A, G t.1 ∧ c t.1 t.2 = true → Cb t = true → Wb t = enc (w t.1 t.2))
+    (hV : ∀ t : S × A, G t.1 ∧ c t.1 t.2 = true → Cb t = false →
+      (Vb t).isControlFlow = false)
+    (hT : ∀ t : S × A, (G t.1 ∧ c t.1 t.2 = true) ∧ J t.1 t.2 → Cb t = true →
+      BindsSub (Tb t) (Λ t.1 (gb t.1 t.2)))
+    (hN : ∀ t : S × A, (G t.1 ∧ c t.1 t.2 = true) ∧ J t.1 t.2 → Cb t = false →
+      BindsSub (Nb t) (Λ t.1 (g t.1 t.2)))
+    (hJ : ∀ t : S × A, (G t.1 ∧ c t.1 t.2 = true) ∧ J t.1 t.2 → Cb t = false →
+      J t.1 (g t.1 t.2))
+    (hterm : ∀ σ, G σ → Hax.WhileFoldStops (a₀ σ) (c σ)
+      (fun a => stepCF (Cb (σ, a)) (w σ a) (gb σ a) (g σ a))) :
+    CorresB bi Γ G (.whileFold cond body)
+      (fun σ => cfVal (Hax.whileFold (a₀ σ) (c σ)
+        (fun a => stepCF (Cb (σ, a)) (w σ a) (gb σ a) (g σ a))))
+      (fun σ => Λ σ (cfState (Hax.whileFold (a₀ σ) (c σ)
+        (fun a => stepCF (Cb (σ, a)) (w σ a) (gb σ a) (g σ a))))) := by
+  have hb : WhileBody bi body G c
+      (fun σ a => cfToExcept (stepCF (Cb (σ, a)) (w σ a) (gb σ a) (g σ a)))
+      (fun env σ a => Binds env (Nc (σ, a)) ∧ J σ a)
+      (fun env σ a => Binds env (Λ σ a) ∧ J σ a)
+      (fun env σ p => Binds env (Λ σ p.2))
+      (fun t => if Cb t = true then .controlFlow true (Wb t) else Vb t) := by
+    intro env t hP hG
+    obtain ⟨f₀, e', hq, r⟩ := hbody env t hP.1 ⟨hG, hP.2⟩
+    refine ⟨f₀, e', ?_, r⟩
+    obtain ⟨σ, a⟩ := t
+    have hG' : (G σ ∧ c σ a = true) ∧ J σ a := ⟨hG, hP.2⟩
+    cases hC : Cb (σ, a)
+    · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hq ⊢
+      exact ⟨binds_of_sub hq (hN _ hG' hC), hJ _ hG' hC⟩
+    · simp only [hC, if_true, stepCF, cfToExcept] at hq ⊢
+      exact binds_of_sub hq (hT _ hG' hC)
+  have hc' : WhileCond bi cond G c (fun env σ a => Binds env (Λ σ a) ∧ J σ a)
+      (fun env σ a => Binds env (Nc (σ, a)) ∧ J σ a) := by
+    intro env t hP hG
+    obtain ⟨f₀, e', hq, r⟩ := hcond env t hP.1 hG
+    exact ⟨f₀, e', ⟨hq, hP.2⟩, r⟩
+  have h := corres_whileFold_runtime (bi := bi) (P := fun env σ => Binds env (Γ σ))
+    (W := fun _ (p : B × A) => enc p.1) (a₀ := a₀)
+    (g := fun σ a => stepCF (Cb (σ, a)) (w σ a) (gb σ a) (g σ a))
+    (fun env σ hb hG => ⟨binds_of_sub hb (hinit σ hG), hinitJ σ hG⟩) hc' hb
+    (fun t hG hc => ?_) hterm
+  · refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ _ => ?_)
+      (fun env σ hG hq => ?_)
+    · exact loopVal_cfToExcept σ _
+    · dsimp only at hq ⊢
+      generalize Hax.whileFold _ _ _ = r at hq ⊢
+      cases r with
+      | Break p => exact hq
+      | Continue a => exact binds_of_sub hq.1 (hcondN (σ, a) hG)
   · obtain ⟨σ, a⟩ := t
     have hG' : G σ ∧ c σ a = true := ⟨hG, hc⟩
     cases hC : Cb (σ, a)
@@ -1370,6 +1449,61 @@ theorem forFold_stepCF_pres {P : A → Prop} {lo hi : Int} {a₀ : A} {C : Int �
     cases C i a
     · exact ih _ _ (hg i a h)
     · exact hb i a h
+
+/-- Every element of an array satisfies `P`. -/
+def AllP (P : α → Prop) (a : Array α) : Prop := ∀ x ∈ a, P x
+
+/-- An element of a nonempty array whose elements satisfy `P` satisfies `P`, at every
+    index. -/
+theorem of_index_allP [Inhabited α] {P : α → Prop} {a : Array α} (h : 0 < a.size)
+    (ha : AllP P a) (i : Int) : P (Hax.index a i) := by
+  unfold Hax.index
+  split
+  · exact ha _ (Array.getElem_mem _)
+  · exact ha _ (Array.getElem_mem _)
+
+theorem allP_array_update {P : α → Prop} {a : Array α} (i : Int) {v : α} (ha : AllP P a)
+    (hv : P v) : AllP P (Hax.array_update a i v) := by
+  unfold Hax.array_update
+  dsimp only
+  split
+  · intro x hx
+    rcases Array.mem_or_eq_of_mem_set hx with h | h
+    · exact ha x h
+    · exact h ▸ hv
+  · exact ha
+
+theorem allP_push {P : α → Prop} {a : Array α} {v : α} (ha : AllP P a) (hv : P v) :
+    AllP P (Hax.push a v) := by
+  intro x hx
+  simp only [Hax.push, Array.mem_push] at hx
+  rcases hx with h | h
+  · exact ha x h
+  · exact h ▸ hv
+
+theorem allP_repeat {P : α → Prop} {v : α} (n : Int) (hv : P v) :
+    AllP P (Hax.repeat_ v n) := by
+  intro x hx
+  simp only [Hax.repeat_, List.mem_toArray, List.mem_replicate] at hx
+  exact hx.2 ▸ hv
+
+theorem allP_from_elem {P : α → Prop} {v : α} (n : Int) (hv : P v) :
+    AllP P (Hax.from_elem v n) := by
+  intro x hx
+  simp only [Hax.from_elem, List.mem_toArray, List.mem_replicate] at hx
+  exact hx.2 ▸ hv
+
+theorem band_true_left {a b : Bool} (h : Hax.band a b = true) : a = true := by
+  simp_all [Hax.band]
+
+theorem band_true_right {a b : Bool} (h : Hax.band a b = true) : b = true := by
+  simp_all [Hax.band]
+
+theorem bor_false_left {a b : Bool} (h : Hax.bor a b = false) : a = false := by
+  simp_all [Hax.bor]
+
+theorem bor_false_right {a b : Bool} (h : Hax.bor a b = false) : b = false := by
+  simp_all [Hax.bor]
 
 end NonEmpty
 
