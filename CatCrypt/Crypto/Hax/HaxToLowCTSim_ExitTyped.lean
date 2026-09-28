@@ -497,15 +497,29 @@ def exitArrLen : TowerType → Option Nat
   | .TFp12 => some 2
   | _ => none
 
+/-- Every argument variable held in a tower is placed at `dt`. -/
+def exitArgsAt (A : ExitTowers) (dt : TowerType) (args : List ImpExpr) : Bool :=
+  args.all fun a =>
+    match a with
+    | .var x =>
+        match A.lookup x with
+        | some t => decide (t = dt)
+        | none => true
+    | _ => true
+
 /-- The head of `let n = array_lit(args)` with `n` placed at an array type `c` of
-    `args.length` elements (`exitArrLen`) whose element type holds a word (`exitMarshalOk`):
-    the scalar arguments are marshalled at the element type `exitElem c`, the result is held
+    `args.length` elements (`exitArrLen`) whose element type holds a word (`exitMarshalOk`),
+    and every argument held in a tower placed at the element type `exitElem c`
+    (`exitArgsAt`): the scalar arguments are marshalled at `exitElem c`, the result is held
     at `c`. -/
 def arrLitHeadN (A : ExitTowers) (n : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   match A.lookup n with
   | some c =>
-      if exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true then
+      -- On the Bls, plonky3, Libcrux_specs and Mldsa extractions every tower argument of
+      -- an array literal is placed at `exitElem c`, so `exitArgsAt` refuses no site there.
+      if exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true ∧
+          exitArgsAt A (exitElem c) args = true then
         callHeadAt A n "array_lit" (exitElem c) c args
       else none
   | none => none
@@ -1701,6 +1715,22 @@ theorem leafCallAgreesArgsLen_of_unmatched (bi : Builtins) (leafSpec : LeafSpec)
   rw [h vals] at hBi
   cases hBi
 
+/-- `LeafCallAgreesArgsLen` on argument slots of the type `e`: the leaf condition of a call
+    whose result has `k` elements and whose argument slots all have the type `e`. -/
+def LeafCallAgreesArgsAt (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : TowerType)
+    (br : ValueTowerBridge) (k : Nat) (e : TowerType) : Prop :=
+  ∀ (args : List Located) (vals : List Value) (argList : List (Σ t : TowerType, RustVal t))
+    (oldV : RustVal dt) (vRes : Value),
+    vals.length = k → (∀ p ∈ argList, p.1 = e) → bi f vals = some vRes →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+    br dt vRes (leafSpec.call f dt (args.map (·.locDst)) oldV argList)
+
+theorem leafCallAgreesArgsAt_of_len {bi : Builtins} {leafSpec : LeafSpec} {f : String}
+    {dt : TowerType} {br : ValueTowerBridge} {k : Nat}
+    (h : LeafCallAgreesArgsLen bi leafSpec f dt br k) (e : TowerType) :
+    LeafCallAgreesArgsAt bi leafSpec f dt br k e :=
+  fun args vals argList oldV vRes hl _ hbi hF => h args vals argList oldV vRes hl hbi hF
+
 /-- The leaf conditions of the typed simulation, for the declared call result types `D`
     (by default none): the scalar operations, the absence of control-flow results, the
     storage of a scalar into limb `0` of a fresh tower slot of at least `8` bytes, the
@@ -1735,9 +1765,10 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
   indexT : IndexTowerAgrees br bi leafSpec
   updateT : ArrUpdateTowerAgrees br bi leafSpec
   /-- The array literal of `k` values held at an array type `c` of `k` elements whose
-      element type holds a word. -/
+      element type holds a word, read from argument slots of the element type
+      `exitElem c`. -/
   arrLitN : ∀ c k, exitArrLen c = some k → exitMarshalOk (exitElem c) = true →
-    LeafCallAgreesArgsLen bi leafSpec "array_lit" c br k
+    LeafCallAgreesArgsAt bi leafSpec "array_lit" c br k (exitElem c)
   /-- The `repeat` with count `k` held at an array type `c` of `k` elements whose element
       type holds a word. -/
   repeatN : ∀ c k, exitArrLen c = some k → exitMarshalOk (exitElem c) = true →
@@ -2519,6 +2550,45 @@ theorem forall₂_filterMap_rsTower {br : ValueTowerBridge} {rs : RustState} :
     rw [List.filterMap_cons, hv]
     exact List.Forall₂.cons hb (forall₂_filterMap_rsTower h)
 
+/-- Under `exitArgsAt A dt args`, every argument slot of `callMarshal A dt args` has the
+    type `dt`. -/
+theorem callMarshal_locDst (A : ExitTowers) (dt : TowerType) :
+    ∀ (args : List ImpExpr) (ctx : LowCT → LowCT) (ls : List Located),
+      callMarshal A dt args = some (ctx, ls) → exitArgsAt A dt args = true →
+      ∀ a ∈ ls, a.locDst = dt := by
+  intro args
+  induction args with
+  | nil =>
+    intro ctx ls h _ a ha
+    simp only [callMarshal, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    cases ha
+  | cons e as ih =>
+    intro ctx ls h hat
+    cases e with
+    | var x =>
+      simp only [exitArgsAt, List.all_cons, Bool.and_eq_true] at hat
+      rcases hr : callMarshal A dt as with _ | ⟨ctx', ls'⟩
+      · simp [callMarshal, hr] at h
+      have ih' := ih ctx' ls' hr hat.2
+      rcases hx : A.lookup x with _ | t
+      · simp only [callMarshal, hr, hx] at h
+        split_ifs at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        intro a ha
+        rcases List.mem_cons.mp ha with rfl | ha
+        · rfl
+        · exact ih' a ha
+      · simp only [callMarshal, hr, hx, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        have ht : t = dt := by simpa [hx] using hat.1
+        intro a ha
+        rcases List.mem_cons.mp ha with rfl | ha
+        · exact ht
+        · exact ih' a ha
+    | _ => simp [callMarshal] at h
+
 theorem forall₂_rsTower_typed {br : ValueTowerBridge} {rs : RustState}
     {vals : List Value} {ls : List Located}
     (h : List.Forall₂ (fun v (a : Located) => ∃ val, rs.rsTower a.locVar = some ⟨a.locDst, val⟩ ∧
@@ -2880,7 +2950,8 @@ theorem repeatHeadT_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT
 theorem arrLitHeadN_some {n : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : arrLitHeadN A n args = some k) :
     ∃ c, A.lookup n = some c ∧
-      (exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true) ∧
+      (exitArrLen c = some args.length ∧ exitMarshalOk (exitElem c) = true ∧
+        exitArgsAt A (exitElem c) args = true) ∧
       callHeadAt A n "array_lit" (exitElem c) c args = some k := by
   unfold arrLitHeadN at h
   rcases hn : A.lookup n with _ | c <;> rw [hn] at h
@@ -3083,6 +3154,7 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
     (hT : A.lookup n = some dr → ∀ (ls : List Located)
       (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
       List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+      (exitArgsAt A dt args = true → ∀ p ∈ argList, p.1 = dt) →
       br dr r (leafSpec.call f dr (ls.map (·.locDst)) oldV argList))
     (hS : A.lookup n = none → ∀ (ls : List Located)
       (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
@@ -3096,6 +3168,7 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
     (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n r k := by
   obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hk
+  have hloc := callMarshal_locDst A dt args ctx ls hm
   have hT0 : ∀ y, exitReserved y = false →
       (rsSetTower rs exitCallName ⟨dr, default⟩).rsTower y = rs.rsTower y := fun y hy =>
     CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _
@@ -3140,7 +3213,14 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
       (.SLimb exitCallName 0) (rsSetTower rs1 exitCallName ⟨dr, resV⟩)
     rw [hev] at hset
     exact RustExec.seq _ _ _ _ _ hC (RustExec.seq _ _ _ _ _ hset h)
-  · have hbrR := hT hnA ls argList default hF2
+  · have hty : exitArgsAt A dt args = true → ∀ p ∈ argList, p.1 = dt := by
+      intro hat p hp
+      obtain ⟨a, ha, hap⟩ := List.mem_filterMap.mp hp
+      obtain ⟨v, hv⟩ := forall₂_rsTower_typed hF1 a ha
+      rw [hv, Option.some.injEq] at hap
+      subst hap
+      exact hloc hat a ha
+    have hbrR := hT hnA ls argList default hF2 hty
     refine ⟨rsSetTower (rsSetTower rs1 exitCallName ⟨dr, resV⟩) n ⟨dr, resV⟩,
       envAgreesT_extend_tower hn hnA hcf hbrR hag2, hret2,
       fun bC rs' h => ?_⟩
@@ -3163,7 +3243,25 @@ theorem headT_callAt {D DO : String → Option TowerType} (hL : ExitLeaves bi le
     (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n r k :=
   headT_callAtR hL (hL.plain _ _ _ hbi)
-    (fun h ls argList oldV hF2 => hT h ls vals argList oldV r rfl hbi hF2)
+    (fun h ls argList oldV hF2 _ => hT h ls vals argList oldV r rfl hbi hF2)
+    (fun h ls argList oldV hF2 => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
+
+/-- `headT_callAt` for arguments held in towers at `dt` (`exitArgsAt`), under the leaf
+    condition of `f` on argument slots of the type `dt`. -/
+theorem headT_callAtTyped {D DO : String → Option TowerType}
+    (hL : ExitLeaves bi leafSpec br D DO) {env : Env} {rs : RustState}
+    {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
+    {vals : List Value} {r : Value} (hat : exitArgsAt A dt args = true)
+    (hT : A.lookup n = some dr → LeafCallAgreesArgsAt bi leafSpec f dr br vals.length dt)
+    (hS : A.lookup n = none → LeafCallScalar bi leafSpec f dr br)
+    (hk : callHeadAt A n f dt dr args = some k) (hn : exitReserved n = false)
+    (hargs : exitArgsOk args = true)
+    (hF : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals)
+    (hbi : bi f vals = some r) (hag : envAgreesT br A env rs)
+    (hret : rs.rsScalar exitRetName = 0) :
+    HeadResT N leafSpec br A env rs n r k :=
+  headT_callAtR hL (hL.plain _ _ _ hbi)
+    (fun h ls argList oldV hF2 hty => hT h ls vals argList oldV r rfl (hty hat) hbi hF2)
     (fun h ls argList oldV hF2 => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
 
 /-- Every head of `appHeadT` satisfies `HeadResT` at the builtin's value. -/
@@ -3186,9 +3284,9 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)
     · subst hfu
       exact headT_update hL hk hn hargs hF hbi hag hret
     · subst hfl
-      obtain ⟨c, hnA, ⟨hlen, hmo⟩, hc⟩ := arrLitHeadN_some A hk
+      obtain ⟨c, hnA, ⟨hlen, hmo, hat⟩, hc⟩ := arrLitHeadN_some A hk
       rw [hF.length_eq] at hlen
-      exact headT_callAt hL (fun _ => hL.arrLitN c _ hlen hmo)
+      exact headT_callAtTyped hL hat (fun _ => hL.arrLitN c _ hlen hmo)
         (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
     · obtain ⟨v, l, -, -, rfl, -⟩ := repeatHeadT_some A hk
       simp [exitArgsOk] at hargs
@@ -3222,7 +3320,7 @@ theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys
   simp only [List.cons.injEq, ImpExpr.var.injEq, ImpExpr.lit.injEq, and_true] at hargs
   obtain ⟨rfl, rfl⟩ := hargs
   refine headT_callAtR hL (hL.plain _ _ _ hbi)
-    (fun _ ls argList oldV hF2 => hL.repeatN c kN hlen hmo ls vv _ r argList oldV hkN hbi hF2)
+    (fun _ ls argList oldV hF2 _ => hL.repeatN c kN hlen hmo ls vv _ r argList oldV hkN hbi hF2)
     (fun h => by rw [hnA] at h; cases h) hc hn (by simp [exitArgsOk, hvr])
     (List.Forall₂.cons ⟨_, rfl, hv⟩ List.Forall₂.nil) hag hret
 
