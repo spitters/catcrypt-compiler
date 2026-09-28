@@ -3260,9 +3260,10 @@ theorem exitResultPlace_nil (e : ImpExpr) : exitResultPlace [] e = none := by
 
 `ScalarOpsSoundT Hax.hax64Builtins`: on the `u64` table every operation of
 `scalarOpExprT` either computes its template or is undefined.  The width-tagged calls of
-`widthOpTable` compute their masked templates (`WidthOp.eval_sexpr`); `Add` computes the
-sum and is undefined when the sum reaches `2^64`, so no refusing table is needed; the
-comparisons `lt`, …, `Ne` and the names `add`, `sub`, `Sub` are undefined in the table. -/
+`widthOpTable` compute their masked templates (`WidthOp.eval_sexpr`); `Add` and `add`
+compute the sum and are undefined when it reaches `2^64`, `Sub` and `sub` the difference and
+are undefined when the subtrahend exceeds the minuend, so no refusing table is needed; the
+comparisons return a Boolean, whose decoding `1` or `0` is their template. -/
 
 section Hax64Ops
 
@@ -3404,55 +3405,166 @@ theorem hax64_width_int {f : String} {w : Nat} {o : WidthOp}
   hax64_scalarOp_int hbi ha0 ha hb0 hb hna hnb (scalarOpNatT_width hexpr hw)
     (fun _ _ _ hn hm h => hax64Builtins_widthOp (by omega) harm hA hn hm h)
 
+/-- A call of `hax64Builtins` whose value is the Boolean `c`: its result is a scalar value
+    decoding to `1` when `c` holds and to `0` otherwise. -/
+theorem hax64_bool_result {f : String} {args : List Value} {c : Bool} {r : Value} {n : Nat}
+    (hc : hax64Builtins f args = some (.bool c)) (hbi : hax64Builtins f args = some r)
+    (hn : n = if c then 1 else 0) : ScalarValN r ∧ valueToScalar r = some n := by
+  rw [hc] at hbi
+  cases hbi
+  subst hn
+  cases c <;> exact ⟨trivial, rfl⟩
+
+/-- The checked addition `F n m = n + m` (`Add`, `add`) or subtraction `F n m = n - m`
+    (`Sub`, `sub`) of `hax64Builtins`: a value on two words below `2^64` is the word
+    `F n m` below `2^64`. -/
+theorem hax64Builtins_checked {f : String} {F : Nat → Nat → Nat} {P : Nat → Nat → Prop}
+    [∀ n m, Decidable (P n m)]
+    (harm : ∀ a b : Int, hax64WordOps f [.int a, .int b] =
+      u64BinOp a b fun x y => if P x y then some (F x y) else none)
+    (hA : ∀ a b : Int, widthArrayOps f [.int a, .int b] = none)
+    (hlt : ∀ n m, n < 2 ^ 64 → m < 2 ^ 64 → P n m → F n m < 2 ^ 64)
+    (n m : Nat) (r : Value) (hn : n < 2 ^ 64) (hm : m < 2 ^ 64)
+    (h : hax64Builtins f [.int n, .int m] = some r) :
+    r = .int (F n m) ∧ F n m < 2 ^ 64 := by
+  obtain ⟨v, hg, rfl⟩ := hax64Builtins_arm hn hm (harm n m) (hA n m) h
+  split_ifs at hg with hP
+  cases hg
+  exact ⟨rfl, hlt n m hn hm hP⟩
+
+/-- A comparison `f` whose value in `hax64Builtins` on two integers is the Boolean `c a b`
+    and whose template value on two naturals is `1` or `0` as `c` holds: the condition of
+    `ScalarOpsSoundT` at `f` on two integer words. -/
+theorem hax64_cmp_int {f : String} {c : Int → Int → Bool}
+    (hc : ∀ a b : Int, hax64Builtins f [.int a, .int b] = some (.bool (c a b)))
+    (hexpr : ∀ n m : Nat, scalarOpNatT f n m = if c n m then 1 else 0)
+    {a b : Int} {na nb : Nat} {r : Value} (hbi : hax64Builtins f [.int a, .int b] = some r)
+    (ha0 : 0 ≤ a) (hb0 : 0 ≤ b)
+    (hna : valueToScalar (.int a) = some na) (hnb : valueToScalar (.int b) = some nb) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT f na nb) := by
+  simp only [valueToScalar, ha0, hb0, if_true, Option.some.injEq] at hna hnb
+  obtain rfl : a = (na : Int) := by omega
+  obtain rfl : b = (nb : Int) := by omega
+  exact hax64_bool_result (hc _ _) hbi (hexpr na nb)
+
+/-- The sixteen named operations of `scalarOpExprT` in `hax64Builtins`: the condition of
+    `ScalarOpsSoundT`.  The comparisons are defined on two integers (and `eq`, `Eq`, `ne`,
+    `Ne` on two Booleans), `add`, `Add`, `sub`, `Sub` on two integer words. -/
+theorem hax64_named_sound {op : String} {va vb r : Value} {na nb : Nat}
+    (hl : op ∈ ["lt", "Lt", "gt", "Gt", "le", "Le", "ge", "Ge", "eq", "Eq", "ne", "Ne", "add",
+      "Add", "sub", "Sub"])
+    (hva : ScalarValN va) (hvb : ScalarValN vb)
+    (hna : valueToScalar va = some na) (hnb : valueToScalar vb = some nb)
+    (hbi : hax64Builtins op [va, vb] = some r) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT op na nb) := by
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
+  rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl
+  all_goals
+    rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | ⟨a, rfl, ha0, ha⟩ | rfl <;>
+    rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | ⟨b, rfl, hb0, hb⟩ | rfl
+  all_goals try exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+  all_goals first
+    | (cases ba <;> cases bb <;> obtain rfl := Option.some.inj hna <;>
+        obtain rfl := Option.some.inj hnb <;> exact hax64_bool_result rfl hbi rfl)
+    | skip
+  -- `lt`, `Lt`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => decide (a < b)) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change (if n < m then 1 else 0) = _
+    simp only [decide_eq_true_eq, Nat.cast_lt]
+  -- `gt`, `Gt`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => decide (b < a)) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change (if m < n then 1 else 0) = _
+    simp only [decide_eq_true_eq, Nat.cast_lt]
+  -- `le`, `Le`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => decide (a ≤ b)) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change 1 - (if m < n then 1 else 0) = _
+    simp only [decide_eq_true_eq, Nat.cast_le]
+    split_ifs <;> omega
+  -- `ge`, `Ge`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => decide (b ≤ a)) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change 1 - (if n < m then 1 else 0) = _
+    simp only [decide_eq_true_eq, Nat.cast_le]
+    split_ifs <;> omega
+  -- `eq`, `Eq`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => a == b) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change 1 - (if n < m then 1 else 0) - (if m < n then 1 else 0) = _
+    simp only [beq_iff_eq, Nat.cast_inj]
+    split_ifs <;> omega
+  -- `ne`, `Ne`
+  iterate 2
+    refine hax64_cmp_int (c := fun a b => a != b) (fun _ _ => rfl)
+      (fun n m => ?_) hbi ha0 hb0 hna hnb
+    change (if n < m then 1 else 0) + (if m < n then 1 else 0) = _
+    simp only [bne_iff_ne, ne_eq, Nat.cast_inj]
+    split_ifs <;> omega
+  -- `add`
+  · exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (hax64Builtins_checked (P := fun x y => x + y < 2 ^ 64)
+        (fun a b => _root_.Hax.hax64WordOps_add_lower a b) (fun _ _ => rfl)
+        (fun _ _ _ _ h => h))
+  -- `Add`
+  · exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (hax64Builtins_checked (P := fun x y => x + y < 2 ^ 64)
+        (fun a b => _root_.Hax.hax64WordOps_add a b) (fun _ _ => rfl)
+        (fun _ _ _ _ h => h))
+  -- `sub`
+  · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (hax64Builtins_checked (P := fun x y => y ≤ x)
+        (fun a b => _root_.Hax.hax64WordOps_sub a b) (fun _ _ => rfl)
+        (fun _ _ hn _ _ => by omega))
+  -- `Sub`
+  · exact hax64_scalarOp_int (F := fun n m => n - m) hbi ha0 ha hb0 hb hna hnb
+      (fun _ _ => rfl) (hax64Builtins_checked (P := fun x y => y ≤ x)
+        (fun a b => _root_.Hax.hax64WordOps_Sub a b) (fun _ _ => rfl)
+        (fun _ _ hn _ _ => by omega))
+
+/-- The width-tagged operations of `widthOpOf` in `hax64Builtins`: the condition of
+    `ScalarOpsSoundT`. -/
+theorem hax64_width_sound {op : String} {p : Nat × WidthOp} {va vb r : Value} {na nb : Nat}
+    (hp : widthOpOf op = some p) (hva : ScalarValN va) (hvb : ScalarValN vb)
+    (hna : valueToScalar va = some na) (hnb : valueToScalar vb = some nb)
+    (hbi : hax64Builtins op [va, vb] = some r) :
+    ScalarValN r ∧ valueToScalar r = some (scalarOpNatT op na nb) := by
+  unfold widthOpOf at hp
+  split at hp
+  all_goals cases hp
+  all_goals
+    obtain ⟨a, rfl, ha0, ha⟩ : ∃ a : Int, va = .int a ∧ 0 ≤ a ∧ a < 2 ^ 64 := by
+      rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | h | rfl
+      all_goals first
+        | exact h
+        | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+    obtain ⟨b, rfl, hb0, hb⟩ : ∃ b : Int, vb = .int b ∧ 0 ≤ b ∧ b < 2 ^ 64 := by
+      rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | h | rfl
+      all_goals first
+        | exact h
+        | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
+    exact hax64_width_int hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl) (fun _ _ => rfl)
+      (fun _ _ => rfl) (by decide)
+
 /-- **hax-lean's `u64` table computes the scalar operations.**  Every operation of
-    `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar word whose
+    `scalarOpExprT` on two scalar words returns, in `Hax.hax64Builtins`, a scalar value whose
     decoding is `scalarOpNatT`: the fifty width-tagged calls of `widthOpTable` (`Shl#w` and
-    `Shr#w` undefined for an amount of `w` or more) and `Add` (undefined when the sum reaches
-    `2^64`); the comparisons and the names `add`, `sub`, `Sub` are undefined in the table. -/
+    `Shr#w` undefined for an amount of `w` or more); `Add` and `add` (undefined when the sum
+    reaches `2^64`); `Sub` and `sub` (undefined when the subtrahend exceeds the minuend); the
+    twelve comparisons on two integer words and `Eq`, `eq`, `Ne`, `ne` on two Booleans, each
+    a Boolean decoding to `1` or `0`. -/
 theorem scalarOpsSoundT_hax64Builtins : ScalarOpsSoundT hax64Builtins := by
   intro op va vb r na nb hop hva hvb hna hnb hbi
   rcases scalarOpExprT_isSome_cases hop with hl | ⟨p, hp⟩
-  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hl
-    by_cases hAdd : op = "Add"
-    · subst hAdd
-      obtain ⟨a, rfl, ha0, ha⟩ : ∃ a : Int, va = .int a ∧ 0 ≤ a ∧ a < 2 ^ 64 := by
-        rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | h | rfl
-        all_goals first
-          | exact h
-          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
-      obtain ⟨b, rfl, hb0, hb⟩ : ∃ b : Int, vb = .int b ∧ 0 ≤ b ∧ b < 2 ^ 64 := by
-        rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | h | rfl
-        all_goals first
-          | exact h
-          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
-      exact hax64_scalarOp_int (F := fun n m => n + m) hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl)
-        (fun n m r hn hm h => by
-          obtain ⟨v, hg, rfl⟩ := hax64Builtins_arm hn hm
-            (_root_.Hax.hax64WordOps_add (n : Int) (m : Int)) rfl h
-          split_ifs at hg with hlt
-          cases hg
-          exact ⟨rfl, hlt⟩)
-    rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-      rfl | rfl | rfl
-    all_goals first
-      | exact absurd rfl hAdd
-      | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
-  · unfold widthOpOf at hp
-    split at hp
-    all_goals cases hp
-    all_goals
-      obtain ⟨a, rfl, ha0, ha⟩ : ∃ a : Int, va = .int a ∧ 0 ≤ a ∧ a < 2 ^ 64 := by
-        rcases ScalarValN.cases hva with ⟨wa, a, rfl, ha⟩ | ⟨ba, rfl⟩ | h | rfl
-        all_goals first
-          | exact h
-          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
-      obtain ⟨b, rfl, hb0, hb⟩ : ∃ b : Int, vb = .int b ∧ 0 ≤ b ∧ b < 2 ^ 64 := by
-        rcases ScalarValN.cases hvb with ⟨wb, b, rfl, hb⟩ | ⟨bb, rfl⟩ | h | rfl
-        all_goals first
-          | exact h
-          | exact absurd hbi (by rw [show hax64Builtins _ [_, _] = none from rfl]; exact nofun)
-      exact hax64_width_int hbi ha0 ha hb0 hb hna hnb (fun _ _ => rfl) (fun _ _ => rfl)
-        (fun _ _ => rfl) (by decide)
+  · exact hax64_named_sound hl hva hvb hna hnb hbi
+  · exact hax64_width_sound hp hva hvb hna hnb hbi
 
 /-- `ScalarOpsSoundT` holds on the range-refusing table of a table satisfying it. -/
 theorem scalarOpsSoundT_exitRange {bi : Builtins} (h : ScalarOpsSoundT bi) :
