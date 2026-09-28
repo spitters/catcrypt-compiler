@@ -113,14 +113,14 @@ abbrev Hyp_whileLoop_full
     HaxToLowCTSimulatesFull bridge bi fuel N leafSpec
       (.whileLoop (.var cond) body) c env env' rs v
 
-/-- Hypothesis: `letBind name (.var src) body` (parameter-alias) simulates
-    under the Full predicate.
+/-- Hypothesis: `letBind name (.var src) body` simulates under the Full
+    predicate.
 
-The translator emits `haxToLowCT body` for this shape.  Source-side
-semantics extends `env` with `name ↦ env src`.  Closure requires that
-the env-extension preserves agreement — which holds when `name = src`
-(the standard hax-extraction shape `let a = a; let b = b; ...`).
-Deployers discharge via a syntactic check on the extracted `ImpExpr`. -/
+The source extends `env` with `name ↦ env src`; the lowering is the body's
+lowering when `name = src` and a scalar copy of `src` into `name` otherwise.
+The scalar copy leaves the tower slot `name` unchanged, so for `name ≠ src`
+the statement fails at a state holding a tower binding at `name`; the
+fragment checkers (`simScope` and its variants) accept only `name = src`. -/
 abbrev Hyp_letBindVarAlias_full
     (bridge : ValueTowerBridge)
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=

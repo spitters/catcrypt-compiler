@@ -742,14 +742,17 @@ def haxToLowCT : ImpExpr → Option LowCT
           some (.RLetU64Zero name
             (.RSeq (.RScalarSet name (if b then 1 else 0)) bodyC))
       | none       => none
-  -- Parameter-alias: `let name = src; body` where `src` is already in scope.
-  -- The auto-extracted ImpExpr opens every kernel with such a chain
-  -- (`let a = a; let b = b; let r = ZERO_VEC; ...`).  We treat the
-  -- binding as a no-op and recurse on `body` directly — the alias's
-  -- name is shadowed by the original `src` slot in the body's lexical
-  -- scope.
-  | .letBind _name (.var _src) body =>
-      haxToLowCT body
+  -- Variable binding `let name = src; body`.  The self-alias `name = src`
+  -- (the parameter re-binding `let a = a` opening extracted kernels) is a
+  -- no-op.  A binding with `name ≠ src` copies the scalar slot `src` into
+  -- the fresh scalar slot `name`.
+  | .letBind name (.var src) body =>
+      if name = src then haxToLowCT body
+      else
+        match haxToLowCT body with
+        | some bodyC =>
+            some (.RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC))
+        | none => none
   -- Tuple-component read: `let name = tup.i; body` — `.proj` of a named
   -- tuple slot (a leaf call's tuple return value, e.g. the K-PKE keygen
   -- `(ek, dk)` pair landing in `"_tup"`).  Lowers to `RTupleLoad`
@@ -919,6 +922,21 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- expression.
   | .typeAscription e _        => haxToLowCT e
 
+/-- A self-alias `let name = name; body` lowers to the lowering of `body`. -/
+theorem haxToLowCT_letBind_var_self (name : String) (body : ImpExpr) :
+    haxToLowCT (.letBind name (.var name) body) = haxToLowCT body := by
+  simp only [haxToLowCT, if_true]
+
+/-- A binding `let name = src; body` with `name ≠ src` lowers to the scalar
+    copy of `src` into the fresh slot `name`, followed by the lowered body. -/
+theorem haxToLowCT_letBind_var_ne (name src : String) (body : ImpExpr)
+    (h : name ≠ src) :
+    haxToLowCT (.letBind name (.var src) body) =
+      (haxToLowCT body).map fun bodyC =>
+        .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC) := by
+  simp only [haxToLowCT, h, if_false]
+  cases haxToLowCT body <;> rfl
+
 /-! ### §3.bis  Typed lowering with a `TypeEnv` and `LeafTable`
 
 `haxToLowCTEnv env leaves e` is the typed twin of `haxToLowCT`: it
@@ -1041,11 +1059,13 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
           some (.RLetU64Zero name
             (.RSeq (.RScalarSet name (if b then 1 else 0)) bodyC))
       | none       => none
-  -- Parameter-alias `let name = src; body`: inherit `src`'s type from env.
-  -- IMPORTANT: when `src` is unknown (e.g. an external identifier like
-  -- `ZERO_VEC` that lives outside the env), do NOT shadow `name`'s existing
-  -- binding.  Otherwise the alias clobbers a known parameter type with
-  -- `.TFp`.
+  -- Variable binding `let name = src; body`.  A module-level zero constant
+  -- (`ZERO_POLY`, `ZERO_VEC`) gives a zero-initialised array slot.  The
+  -- self-alias `name = src` is a no-op that keeps `src`'s type; when `src`
+  -- is absent from the env (an external identifier) the env is unchanged,
+  -- so a known parameter type is not replaced by `.TFp`.  A binding with
+  -- `name ≠ src` copies `src` into `name`: a whole-slot `RCopy` when `src`
+  -- has a known tower type other than `.TU64`, a scalar copy otherwise.
   | .letBind name (.var src) body =>
       match mlkemZeroConst? src with
       | some t =>
@@ -1056,11 +1076,26 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
           | some bodyC => some (.RLetZero name t bodyC)
           | none => none
       | none =>
-          let envAlias : TypeEnv :=
+          if name = src then
+            let envAlias : TypeEnv :=
+              match env.findOpt src with
+              | some t => (name, t) :: env
+              | none   => env
+            haxToLowCTEnv envAlias leaves body
+          else
             match env.findOpt src with
-            | some t => (name, t) :: env   -- src known: propagate to name
-            | none   => env                -- src unknown: don't shadow
-          haxToLowCTEnv envAlias leaves body
+            | some .TU64 | none =>
+                match haxToLowCTEnv ((name, .TU64) :: env) leaves body with
+                | some bodyC =>
+                    some (.RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC))
+                | none => none
+            | some t =>
+                match haxToLowCTEnv ((name, t) :: env) leaves body with
+                | some bodyC =>
+                    some (.RLetZero name t
+                      (.RSeq (.RCopy { locVar := name, locSrc := t }
+                                     { locVar := src, locSrc := t }) bodyC))
+                | none => none
   -- Tuple-component read (typed twin): derive the component type from
   -- the env's type for the tuple slot `t` (`TTuple a b` → component
   -- `i`'s type; non-tuple env types pass through unchanged).
@@ -1364,10 +1399,12 @@ theorem haxToLowCT_isSome_iff_anf (e : ImpExpr) :
         cases h2 : haxToLowCT body <;>
           repeat' (first | split | simp_all [Option.isSome, isVar])
     | var _ =>
-      -- Parameter-alias `let name = src; body`: both `haxToLowCT` and
-      -- `AnfShaped` unfold directly to the body's case.
+      -- Variable binding `let name = src; body`: `haxToLowCT` succeeds iff
+      -- the body lowers, and `AnfShaped` reduces to the body's case.
       unfold haxToLowCT AnfShaped
-      exact ihbody
+      split
+      · exact ihbody
+      · cases h2 : haxToLowCT body <;> simp_all [Option.isSome]
     | proj pe i =>
       -- Tuple-component read: productive iff the proj base is a `var`
       -- and the body translates; a non-`var` base rejects on both sides.
@@ -1904,13 +1941,12 @@ simulation `haxToLowCT_simulates_program` takes the `array_update` and
       (.letBind "v" (.app "index" [.var "arr", .var "idx"]) .unitVal)) ==
   some (.shLetZero "v" .TFp)
 
-/-! ### Parameter-alias smoke tests (2026-05-22)
+/-! ### Variable-binding smoke tests
 
 The auto-extracted `ImpExpr` for every MLKEM kernel opens with a chain
-of parameter aliases (`let a = a; let b = b; let r = ZERO_VEC; ...`).
-Before this extension, those aliases were rejected by the
-`.letBind _ _ _ => none` catch-all in §3.1, dropping the whole kernel
-to `none`.  The new arm treats them as no-ops and recurses on the body. -/
+of variable bindings (`let a = a; let b = b; let r = ZERO_VEC; ...`).
+A self-alias lowers to its body; a binding `let name = src` with
+`name ≠ src` lowers to a copy of `src` into `name`. -/
 
 -- Single parameter alias is a no-op: `let a = a; ()` lowers to the body
 -- (here `unitVal → RSkip`).
@@ -1924,14 +1960,15 @@ to `none`.  The new arm treats them as no-ops and recurses on the body. -/
       (.letBind "a" (.var "a") (.letBind "b" (.var "b") .unitVal))) ==
   some .shSkip
 
--- Three-alias chain (matches the shape opening `polyvec_add_impExpr`)
--- pre- the `forFold` / `array_update` body.
+-- Two self-aliases then `let r = ZERO_VEC` (the shape opening
+-- `polyvec_add_impExpr`): the self-aliases vanish and `r ≠ ZERO_VEC`
+-- lowers to a scalar copy into the fresh slot `r`.
 #guard shapeOfOpt
     (haxToLowCT
       (.letBind "a" (.var "a")
         (.letBind "b" (.var "b")
           (.letBind "r" (.var "ZERO_VEC") .unitVal)))) ==
-  some .shSkip
+  some (.shLetU64Zero "r")
 
 -- AnfShaped agrees: parameter-alias chain is in the ANF subset iff
 -- the body is.
@@ -1984,14 +2021,20 @@ open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
       (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))) ==
   some (.shLetZero "x" .TFp)
 
--- Parameter-alias chain propagates the env: `let a' = a` makes the
--- polyvec type flow to `a'`, so `a'[i]` still gives the right
--- `TPolyMod` destination type (not `TFp`).
+-- `let a' = a` at a polyvec `a` allocates `a'` at the polyvec type and
+-- copies `a` into it; `a'[i]` then gets the `TPolyMod` destination type
+-- (not `TFp`).
 #guard SmokeTests.shapeOfOpt
     (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
       (.letBind "a'" (.var "a")
         (.letBind "x" (.app "index" [.var "a'", .var "i"]) (.var "x")))) ==
-  some (.shLetZero "x" (.TPolyMod 3329 256))
+  some (.shLetZero "a'" (.TPolyVec 3329 256 3))
+
+#guard SmokeTests.innerShapeAfterLetZeroSeq
+    (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
+      (.letBind "a'" (.var "a")
+        (.letBind "x" (.app "index" [.var "a'", .var "i"]) (.var "x")))) ==
+  some (.shCopy "a'" "a")
 
 -- Pipeline regression: empty env on the simple kernel matches the
 -- untyped pathway's shape (`RLetZero "t" TFp _`).

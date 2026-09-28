@@ -33,6 +33,7 @@ Each constructor case dispatches to its per-file lemma:
 | `letBind _ (lit _) _` | `haxToLowCT_simulates_letBind_lit` | `HaxToLowCTSim_Agreement.lean` |
 | `letBind _ (app _ _) _` | **DEFERRED** (tower-typed) | parametric hyp `Hyp_letBindApp` |
 | `letBind _ (proj (var _) _) _` | parametric hyp `Hyp_letBindProj` | closure in `Main_Full` |
+| `letBind _ (var _) _` | `haxToLowCT_simulates_letBind_var` | this file |
 | `letBind _ _ _` (other) | contradiction | inline `simp [haxToLowCT]` |
 | `assign _ (lit (uintLit ..))` | `haxToLowCT_simulates_assign_lit_uintLit` | `HaxToLowCTSim_AssignMatch.lean` |
 | `assign _ (lit (int n))`, n≥0 | `haxToLowCT_simulates_assign_lit_int` | `HaxToLowCTSim_AssignMatch.lean` |
@@ -52,8 +53,9 @@ Each constructor case dispatches to its per-file lemma:
 
 `haxToLowCT_simulates_param` is the parametric main theorem, taking
 the deferred-case hypotheses (`Hyp_letBindApp`, `Hyp_assignApp`,
-`Hyp_match`, `Hyp_whileLoop`, `Hyp_letBindVarAlias`, `Hyp_letBindProj`)
-as inputs; it contains the full dispatch.  This module states no
+`Hyp_match`, `Hyp_whileLoop`, `Hyp_letBindProj`) as inputs; it contains
+the full dispatch, with the variable binding closed by
+`haxToLowCT_simulates_letBind_var`.  This module states no
 unconditional form: discharging the hypotheses needs tower-typed
 `envAgreesRust` and `LeafCallAgrees` instances, which
 `HaxToLowCTSim_Main_Full.lean` and the `HaxToLowCTSim_Quarta*` modules
@@ -129,8 +131,8 @@ abbrev Hyp_matchTuple
 
 An outline of the dispatch via `ImpExpr.ind`, over the three hypotheses
 of §1.  It is not elaborated; the proved theorem in §4 follows this
-structure, with `Hyp_match`, `Hyp_whileLoop`, `Hyp_letBindVarAlias` and
-`Hyp_letBindProj` in place of `Hyp_matchTuple`.
+structure, with `Hyp_match`, `Hyp_whileLoop` and `Hyp_letBindProj` in
+place of `Hyp_matchTuple`.
 
 ```
 theorem haxToLowCT_simulates_param
@@ -258,17 +260,10 @@ abbrev Hyp_match
                     HaxToLowCTSimulates bi fuel N leafSpec pa.2 c' env_a env_b rs_a v_a),
     HaxToLowCTSimulates bi fuel N leafSpec (.match_ scrut arms) c env env' rs v
 
-/-- Hypothesis: `letBind name (.var src) body` (parameter-alias) simulates.
-
-The translator emits `haxToLowCT body` for this shape (parameter-alias
-treated as no-op).  Source-side semantics extends `env` with
-`name ↦ env src`.  The closure requires that the env-extension preserves
-agreement — which holds when `name = src` (the standard hax-extraction
-shape: `let a = a; let b = b; let r = ZERO_VEC; ...`).
-
-In the parametric form, we leave the alias closure as a hypothesis.
-Concrete deployments discharge it via a syntactic check on the
-extracted `ImpExpr` (every alias has `name = src`). -/
+/-- The simulation statement for `letBind name (.var src) body`, closed by
+    `haxToLowCT_simulates_letBind_var`.  The source extends `env` with
+    `name ↦ env src`; the lowering is the body's lowering when `name = src`
+    and the scalar copy of `src` into `name` otherwise. -/
 abbrev Hyp_letBindVarAlias
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
   ∀ (name src : String) (body : ImpExpr)
@@ -277,6 +272,62 @@ abbrev Hyp_letBindVarAlias
                  HaxToLowCTSimulates bi fuel N leafSpec body c' env_a env_b rs_a v_a),
     HaxToLowCTSimulates bi fuel N leafSpec
       (.letBind name (.var src) body) c env env' rs v
+
+/-- Extending the source env at `name` with the value `w` of `src`, and
+    setting the scalar slot `name` to the scalar slot `src`, preserves
+    scalar agreement. -/
+theorem envAgreesRust_extend_copy (env : Env) (rs : RustState) (name src : String)
+    (w : Value) (hAgree : envAgreesRust env rs) (hsrc : env src = some w) :
+    envAgreesRust (Env.extend env name w) (rsSetScalar rs name (rs.rsScalar src)) := by
+  intro m v hv n hn
+  by_cases hm : m = name
+  · subst hm
+    rw [Env.extend_same] at hv
+    cases hv
+    simpa [rsSetScalar] using hAgree src w hsrc n hn
+  · rw [Env.extend_other env name w m hm] at hv
+    simpa [rsSetScalar, hm] using hAgree m v hv n hn
+
+/-- **Simulation of a variable binding.**  `letBind name (.var src) body`
+    simulates for every `name` and `src`: the self-alias by the body's
+    simulation, and `name ≠ src` by the scalar copy of `src` into `name`. -/
+theorem haxToLowCT_simulates_letBind_var
+    (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) :
+    Hyp_letBindVarAlias bi fuel N leafSpec := by
+  intro name src body c env env' rs v ihBody hHax hEval hAgree
+  unfold evalImp at hEval
+  rw [denote_letBind_run_eq', denote_var_run_eq] at hEval
+  cases hsrc : env src with
+  | none => simp only [hsrc] at hEval; cases hEval
+  | some w =>
+    simp only [hsrc] at hEval
+    by_cases h : name = src
+    · subst h
+      rw [haxToLowCT_letBind_var_self] at hHax
+      have hself : env.extend name w = env := by
+        funext y
+        by_cases hy : y = name
+        · subst hy; rw [Env.extend_same, hsrc]
+        · rw [Env.extend_other env name w y hy]
+      rw [hself] at hEval
+      exact ihBody c env env' rs v hHax hEval hAgree
+    · rw [haxToLowCT_letBind_var_ne name src body h] at hHax
+      cases hb : haxToLowCT body with
+      | none => simp [hb] at hHax
+      | some bodyC =>
+        simp only [hb, Option.map_some, Option.some.injEq] at hHax
+        subst hHax
+        obtain ⟨rs', hExec, hAgree'⟩ := ihBody bodyC (env.extend name w) env'
+          (rsSetScalar rs name (rs.rsScalar src)) v hb hEval
+          (envAgreesRust_extend_copy env rs name src w hAgree hsrc)
+        refine ⟨rs', ?_, hAgree'⟩
+        refine RustExec.letU64Zero name _ rs rs' ?_
+        refine RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr name _ _) ?_
+        have hsv : (CatCrypt.Crypto.Jasmin.LowCT.SExpr.SVar src).evalState
+            (rsSetScalar rs name 0) = rs.rsScalar src := by
+          simp [CatCrypt.Crypto.Jasmin.LowCT.SExpr.evalState, rsSetScalar, Ne.symm h]
+        rw [hsv, rsSetScalar_collapse]
+        exact hExec
 
 /-- Hypothesis: `letBind name ((.var t).i) body` (tuple-component read)
     simulates.  The translator lowers this shape to
@@ -297,10 +348,10 @@ abbrev Hyp_letBindProj
 
 /-! ## §4  Parametric main theorem
 
-The main theorem, modulo the six `Hyp_*` hypotheses for deferred
-cases.  All other cases (var, unitVal, seq, letBind lit,
+The main theorem, modulo the five `Hyp_*` hypotheses for deferred
+cases.  All other cases (var, unitVal, seq, letBind lit, letBind var,
 assign lit (uintLit / int n≥0), ifThenElse var, whileLoop (handled
-by hypothesis), all 22 unreachable arms) are closed inline. -/
+by hypothesis), all 22 unreachable arms) are closed. -/
 
 theorem haxToLowCT_simulates_param
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
@@ -308,7 +359,6 @@ theorem haxToLowCT_simulates_param
     (hAssignApp : Hyp_assignApp bi fuel N leafSpec)
     (hMatch : Hyp_match bi fuel N leafSpec)
     (hWhileLoop : Hyp_whileLoop bi fuel N leafSpec)
-    (hLetBindVarAlias : Hyp_letBindVarAlias bi fuel N leafSpec)
     (hLetBindProj : Hyp_letBindProj bi fuel N leafSpec)
     (e : ImpExpr) :
     ∀ (c : LowCT) (env env' : Env) (rs : RustState) (v : Value),
@@ -396,12 +446,8 @@ theorem haxToLowCT_simulates_param
       | lit l => exact haxToLowCT_simulates_letBind_lit bi fuel N leafSpec name l body c env env' rs v ihBody
       | app f args => exact hLetBindApp name f args body c env env' rs v ihBody
       | var src =>
-          -- `letBind _ (.var src) body` is a
-          -- parameter-alias that lowers to `haxToLowCT body`.  The
-          -- closure is delegated to the `hLetBindVarAlias` hypothesis,
-          -- which deployers discharge syntactically via the
-          -- `name = src` invariant of hax extractions.
-          exact hLetBindVarAlias name src body c env env' rs v ihBody
+          exact haxToLowCT_simulates_letBind_var bi fuel N leafSpec
+            name src body c env env' rs v ihBody
       | proj pe i =>
           -- Tuple-component read `let name = tup.i; body`: productive
           -- only for a `var` base; delegated to `hLetBindProj` (the

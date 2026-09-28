@@ -344,7 +344,9 @@ def letHead (name : String) : ImpExpr → Option (LowCT → LowCT)
   | .lit (.bool b) =>
       some fun bodyC =>
         .RLetU64Zero name (.RSeq (.RScalarSet name (if b then 1 else 0)) bodyC)
-  | .var _ => some id
+  | .var src =>
+      if name = src then some id
+      else some fun bodyC => .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC)
   | .proj (.var t) i =>
       let dtL : TowerType := .TFp
       some fun bodyC =>
@@ -378,7 +380,10 @@ theorem haxToLowCT_letBind_eq_letHead (name : String) (val body : ImpExpr) :
     all_goals first
       | (cases limbReadArgs f args <;> rfl)
       | (split_ifs <;> (repeat' split) <;> first | rfl | simp_all)
-  | var s => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl
+  | var s =>
+    by_cases h : name = s
+    · simp only [haxToLowCT, letHead, h, if_true]; cases haxToLowCT body <;> rfl
+    · simp only [haxToLowCT, letHead, h, if_false]; cases haxToLowCT body <;> rfl
   | proj pe i =>
     cases pe with
     | var t => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl
