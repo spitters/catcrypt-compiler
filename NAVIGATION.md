@@ -22,6 +22,7 @@ are relative to `CatCrypt.Crypto.SecureCompilation` unless they begin with
 | RISC-V backend | `SC/RISCVBackend/` | `MultiBackendDemo.com_riscv_e2e`, `RISCVBackend.ComToRiscvLsem.riscvStep64_sail_grounded` | [RISCVBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/RISCVBackend/AGENTS.md) |
 | Relational front | `SC/RelationalFrontMachine.lean` | `RelationalFront.addMod251_source_eq_arm` | [DEMO.md](DEMO.md) |
 | Ascent | `SC/Ascent/` | `Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct` | [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md), [ASCENT.md](ASCENT.md) |
+| Certifying third-party machine code | `SC/Ascent/Demos/`, `CatCrypt/Hax/Ascent/` | `Ascent.Demos.CertifyThirdPartyDemo.s2nMontmulP384_correct_reduced` | [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) |
 | Vector dialect and auto-vectorizer | `SC/MLIR/VectorDialect/` | `Dialects.TranslateDialectVsimd.translateDialectControlV_denote` (SIMD front) | [VectorDialect/AGENTS.md](CatCrypt/Crypto/SecureCompilation/MLIR/VectorDialect/AGENTS.md) |
 | Tile backend | `SC/TileBackend/` | — | [TileBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/TileBackend/AGENTS.md) |
 | Rewrite-saturation optimizer | `CatCrypt/Crypto/Optimizer/` | — | [Optimizer/README.md](CatCrypt/Crypto/Optimizer/README.md) |

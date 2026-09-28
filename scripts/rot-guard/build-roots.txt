@@ -233,6 +233,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduceWide
 CatCrypt.Crypto.SecureCompilation.Ascent.FramedJInstrTie
 CatCrypt.Crypto.SecureCompilation.Ascent.PrefixToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CarryMulGuardSat
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CertifyThirdPartyDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectFrontSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CorresX86MemGuardSat

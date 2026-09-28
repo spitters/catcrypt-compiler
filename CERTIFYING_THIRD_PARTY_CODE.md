@@ -84,6 +84,46 @@ result on `runBlock` to `runBlockA` for a block that respects a memory disciplin
 hypothesis `Separated` that the cells the block uses occupy pairwise disjoint eight-byte
 ranges.
 
+### The ascent against a hax reference
+
+The reference side of the ascent lives in `CatCrypt/Hax/Ascent/`. `Corres bi P G e V Q`
+(`Corres.lean`) relates an `ImpExpr` program `e`, run by `denote'` under the builtin table
+`bi`, to a shallow Lean description: from an entry environment related to the abstract
+state and under the guard `G`, the run returns the value `V` from some fuel on.
+`FnCorres bi e entry G f` is its top-level form for a function `f`, and
+`fnCorres_refinesO` reads it as an `Option`-level refinement.
+
+These judgements are produced without hand-written loop specifications by the surface
+generator.
+
+- `GenRules.lean` states the rules over explicit binding lists (`CorresB`, `CorresG` for
+  early return and break), with one loop rule per loop form of the extraction
+  (`corresB_forFoldP`, `corresB_forFoldRevP`, `corresB_forFoldG`, `corresB_whileFoldG`,
+  `corresG_forFoldReturnG`) and `fnCorres_of_corresB`, `fnCorresX_of_corresG` for whole
+  functions.
+- `Generate.lean` defines `Hax.Ascent.Gen.ascendFn`, which evaluates a literal
+  symbolically, applies one rule per step, closes every side condition (lookups, leaf
+  lemmas of the table, loop termination from a measure) and returns the shallow function
+  with its `FnCorres` (or `FnCorresX` for an early return). A step without a rule fails
+  with a message naming its cause (`construct:`, `leaf:`, `type:`, `unbound:`, `loop:`,
+  `side:`); the generator returns no open goal.
+- `Coverage.lean` runs the generator over a whole haxpipeT extraction: `hax_ascend Ns`
+  assembles the builtin table from the extraction's dependency class and declares, per
+  function `f`, the generated surface `Ns.HaxGen.f.gen`, its correspondence
+  `Ns.HaxGen.f.corres_full` and a call lemma `Ns.HaxCall.f` for later callers;
+  `#hax_coverage Ns` reports per function `proved`, `failed`, `timeout` or `excluded`.
+
+The generator's first whole-extraction user is ACME
+(`CatCrypt/Crypto/ACME/SurfaceCorresGen.lean` in the dev tree): `hax_ascend Acme` proves
+the correspondence of its 17 functions, and `key_eq_fnCorres_gen` carries a hand-written
+correspondence over to the generated table.
+
+These results relate a hax reference to a Lean function. The x86 ascent below relates
+machine code to a Lean function. A certificate that ties third-party bytes to a hax
+reference composes the two at a common Lean function; no such composition exists yet.
+
+### Machine code as input
+
 Foreign assembly enters as a `JInstr 64` list through an importer that is not trusted. Each
 file under `Ascent/Imported/` records the source file, its commit and SHA-256, and the
 importer script (`bench/s2n_import/import_owned.sh`); `bench/s2n_import/compare_owned.sh`
@@ -93,7 +133,7 @@ theorem about different code, which the comparison script is there to detect.
 
 ## What a certificate states
 
-The closed examples fall into two forms.
+The closed examples fall into three forms.
 
 ### Blocks on the address machine
 
@@ -147,6 +187,41 @@ applied to code from other projects: s2n-bignum's `bignum_montmul_p384`
 Curve25519 kernels `solinas_square` and `carry_mul` (`solinasSquare_correct_addr`,
 `carryMul_correct_addr`, `Ascent/CryptOptAddr.lean`), each against a specification written in
 Lean.
+
+## Worked example: s2n-bignum's `bignum_montmul_p384`
+
+`Ascent/Demos/CertifyThirdPartyDemo.lean` states a certificate for a kernel from another
+project in the form its caller uses. The code is `s2nMontmulP384Block`, the body of
+s2n-bignum's hand-written x86-64 Montgomery multiplication modulo
+`p384 = 2^384 - 2^128 - 2^96 + 2^32 - 1`, imported as a `JInstr 64` list
+(`Ascent/Demos/S2nMontmulP384.lean` records the source file, commit and SHA-256).
+
+The proof is in three layers, each an existing module.
+
+1. `S2nMontmulP384Proof.lean` proves `s2nMontmulP384_correct` over `runBlock`, the machine
+   whose memory is keyed by base-register names.
+2. `S2nMontmulP384Addr.lean` restates it over the byte-addressed machine `runBlockA`:
+   `s2nMontmulP384_correct_addr` holds for any overlap of the input and output buffers,
+   because the block's memory reads precede its writes
+   (`s2nMontmulP384Block_readsPrecedeWrites`) and every access follows the pointer map
+   `montBank` (`s2nMontmulP384Block_disciplined`).
+3. `S2nMontmulP384Bytes.lean` carries the result to bytes: `s2nMontmulP384_decode` states
+   that this package's encoding of the block decodes back to the block, and
+   `s2nMontmulP384Bytes_correct` that the decoded instructions compute the product under
+   `runBlock`.
+
+The demo adds the caller's form. `s2nMontmulP384_correct_reduced`: for every address state
+whose entry registers `%rsi`, `%rdx`, `%rdi` hold `px`, `py`, `pz`, and whose six-word
+values `x` at `px` and `y` at `py` are below `p384`, the block run by `runBlockA` stores at
+`pz` a value `z < p384` with `z = x · y · (2^384)⁻¹` in `ZMod p384`. It derives
+s2n-bignum's precondition `x · y ≤ 2^384 · p384` from the reduced inputs and depends on the
+standard three axioms only. `s2nMontmulP384_bytes_decode` restates the decoding theorem.
+
+The certificate assumes the machine model `runBlockA` as a description of the processor, the
+correspondence of the imported list with the object code s2n-bignum ships (checked by the
+importer's comparison script, not proved), and the entry-state hypotheses above. The
+specification is a Lean statement written for the proof; s2n-bignum has no hax extraction,
+so the hax leg of the pipeline does not apply to this kernel.
 
 ## Trusted base
 
@@ -208,6 +283,10 @@ Closed:
   decoded bytes to the flag machine;
 - the oracle `hax-oracle`, wired for `mpn_mul_1` only, over bytes of this package's own
   exporter;
+- the surface generator `hax_ascend` with its rules, relating every function of an
+  extraction to a generated Lean function, used on the ACME extraction;
+- the worked example `Ascent/Demos/CertifyThirdPartyDemo.lean` on s2n-bignum's
+  `bignum_montmul_p384`;
 - the D1 differential runner against rustc for `sha256-hax`.
 
 Planned:

@@ -2757,6 +2757,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.EgraphSelectDemo,
     Lake.Glob.one `CatCrypt.Crypto.Optimizer.Lattice.CompPolyTest,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CarryMulGuardSat,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CertifyThirdPartyDemo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectFrontSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CorresX86MemGuardSat,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin,
