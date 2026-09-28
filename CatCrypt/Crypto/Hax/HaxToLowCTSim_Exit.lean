@@ -19,8 +19,8 @@ by an exit flag, a result slot and scalar operations.  This module proves that
 the lowered `LowCT` simulates hax-lean's control-flow evaluator `Hax.denote'` on
 the scalar fragment `exitSimOk`:
 
-* scalar `letBind`s of a `u64` or bool literal, and of a scalar operation on two
-  variables (`scalarOpExpr`);
+* scalar `letBind`s of a `u64` literal, an integer literal in `[0, 2^64)` or a bool
+  literal, and of a scalar operation on two variables (`scalarOpExpr`);
 * `seq`, `ifThenElse` on a variable, `whileFoldReturn` on a variable,
   `forFoldReturn` and `forFoldRevReturn` with bounds accepted by `forBounds`,
   `forFoldReturn` with a literal lower bound and a variable upper bound
@@ -114,6 +114,8 @@ result slot holds the decoding of the returned or final value.
 * `scalarOpsSound_noOverflow64_width`: hax-lean's width-aware tables satisfy
   `ScalarOpsSound` under the no-overflow refusal
 * `searchLoopShape_exitSimOk`: the search loop lies in the fragment
+* `exitSimWhy_eq_none_iff`: `exitSimWhy`, which names the first construct outside the
+  fragment, returns `none` exactly on the fragment
 * `exitForLoopStop_sim`, `exitForLoopStopRt_sim`: the early-stopping counted loop,
   with literal or variable upper bound, simulates `forFoldReturn`
 * `haxToLowCTKStop_simulates`, `haxToLowCTFnStop_simulates_exit`: the lowering with
@@ -989,6 +991,8 @@ def forBoundsRtOk (lo hi : ImpExpr) : Bool :=
     `il`.  Every name it mentions is non-reserved. -/
 def exitSimOk : Bool → Bool → ImpExpr → Bool
   | tl, il, .letBind n (.lit (.uintLit .w64 _)) body => !exitReserved n && exitSimOk tl il body
+  | tl, il, .letBind n (.lit (.int k)) body =>
+      decide (0 ≤ k) && decide (k < 2 ^ 64) && !exitReserved n && exitSimOk tl il body
   | tl, il, .letBind n (.lit (.bool _)) body => !exitReserved n && exitSimOk tl il body
   | tl, il, .letBind n (.var s) body =>
       !exitReserved n && !exitReserved s && exitSimOk tl il body
@@ -1014,6 +1018,98 @@ def exitSimOk : Bool → Bool → ImpExpr → Bool
   | _, _, .unitVal => true
   | true, _, .lit (.uintLit .w64 _) => true
   | _, _, _ => false
+
+/-- The head constructor of an expression, with the operation and argument count of an
+    `app` and whether its arguments are all variables. -/
+def exitWhyHead : ImpExpr → String
+  | .lit (.uintLit w _) => s!"lit uint {repr w}"
+  | .lit (.int _) => "lit int"
+  | .lit (.bool _) => "lit bool"
+  | .lit _ => "lit other"
+  | .var _ => "var"
+  | .letBind _ _ _ => "letBind"
+  | .lam _ _ => "lam"
+  | .app f args =>
+      s!"app {f}/{args.length}" ++
+        (if args.all fun a => match a with | .var _ => true | _ => false then ""
+         else " non-var args")
+  | .tuple _ => "tuple"
+  | .proj _ _ => "proj"
+  | .ifThenElse (.var _) _ _ => "ifThenElse"
+  | .ifThenElse _ _ _ => "ifThenElse non-var cond"
+  | .match_ _ _ => "match_"
+  | .unitVal => "unitVal"
+  | .seq _ _ => "seq"
+  | .assign _ _ => "assign"
+  | .forFold _ _ _ _ => "forFold"
+  | .forFoldRev _ _ _ _ => "forFoldRev"
+  | .whileFold _ _ => "whileFold"
+  | .forFoldReturn _ _ _ _ => "forFoldReturn"
+  | .forFoldRevReturn _ _ _ _ => "forFoldRevReturn"
+  | .whileFoldReturn _ _ => "whileFoldReturn"
+  | .cfBreak _ => "cfBreak"
+  | .cfContinue _ => "cfContinue"
+  | .typeAscription _ _ => "typeAscription"
+  | _ => "other"
+
+/-- The first construct of `e` outside the fragment `exitSimOk tl il`, in the order
+    `exitSimOk` visits it, with the reason; `none` when `e` lies in the fragment
+    (`exitSimWhy_eq_none_iff`). -/
+def exitSimWhy : Bool → Bool → ImpExpr → Option String
+  | tl, il, .letBind n (.lit (.uintLit .w64 _)) body =>
+      if exitReserved n then some "reserved name" else exitSimWhy tl il body
+  | tl, il, .letBind n (.lit (.int k)) body =>
+      if !(decide (0 ≤ k) && decide (k < 2 ^ 64)) then some "int literal out of range"
+      else if exitReserved n then some "reserved name" else exitSimWhy tl il body
+  | tl, il, .letBind n (.lit (.bool _)) body =>
+      if exitReserved n then some "reserved name" else exitSimWhy tl il body
+  | tl, il, .letBind n (.var s) body =>
+      if exitReserved n || exitReserved s then some "reserved name"
+      else exitSimWhy tl il body
+  | tl, il, .letBind n (.app op [.var a, .var b]) body =>
+      if (scalarOpExpr op (.SVar a) (.SVar b)).isNone then
+        some s!"letBind app {op}/2 (not a scalar op)"
+      else if exitReserved n || exitReserved a || exitReserved b then some "reserved name"
+      else exitSimWhy tl il body
+  | tl, il, .seq a b =>
+      match exitSimWhy false il a with
+      | some r => some r
+      | none => exitSimWhy tl il b
+  | tl, il, .ifThenElse (.var v) t e =>
+      if exitReserved v then some "reserved name"
+      else
+        match exitSimWhy tl il t with
+        | some r => some r
+        | none => exitSimWhy tl il e
+  | false, _, .whileFoldReturn (.var c) body =>
+      if exitReserved c then some "reserved name" else exitSimWhy false true body
+  | false, _, .forFoldReturn i lo hi body =>
+      if !((forBounds lo hi).isSome || forBoundsRtOk lo hi) then some "forFoldReturn bounds"
+      else if exitReserved i then some "reserved name" else exitSimWhy false true body
+  | false, _, .forFoldRevReturn i lo hi body =>
+      if (forBounds lo hi).isNone then some "forFoldRevReturn bounds"
+      else if exitReserved i then some "reserved name" else exitSimWhy false true body
+  | false, true, .forFold i lo hi body =>
+      if !((forBounds lo hi).isSome || forBoundsRtOk lo hi) then some "forFold bounds"
+      else if exitReserved i then some "reserved name"
+      else if !hasBreak body then some "forFold without break"
+      else exitSimWhy false true body
+  | false, true, .whileFold (.var c) body =>
+      if exitReserved c then some "reserved name"
+      else if !hasBreak body then some "whileFold without break"
+      else exitSimWhy false true body
+  | _, true, .cfBreak (.var x) => if exitReserved x then some "reserved name" else none
+  | _, true, .cfBreak (.lit (.uintLit .w64 _)) => none
+  | _, _, .var x => if exitReserved x then some "reserved name" else none
+  | _, _, .unitVal => none
+  | true, _, .lit (.uintLit .w64 _) => none
+  | _, _, .letBind _ v _ => some s!"letBind {exitWhyHead v}"
+  | tl, il, e => some s!"{exitWhyHead e} (tail {tl}, loop {il})"
+
+theorem exitSimWhy_eq_none_iff (tl il : Bool) (e : ImpExpr) :
+    exitSimWhy tl il e = none ↔ exitSimOk tl il e = true := by
+  fun_induction exitSimWhy tl il e <;> simp_all [exitSimOk, Option.isSome_iff_ne_none] <;>
+    intros <;> first | omega | tauto | simp_all
 
 /-! ## §5  The simulation statement -/
 
@@ -1424,6 +1520,15 @@ theorem exitSimT_letBind_lit (T : Bool → Option String → ImpExpr → Option 
         cases tl <;> cases fl <;>
           simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true'] using hok
       exact ⟨_, if b then 1 else 0, rfl, trivial, valueToScalar_bool b, rfl, hh⟩
+    | int k =>
+      have hh : (0 ≤ k ∧ k < 2 ^ 64) ∧ exitReserved n = false ∧
+          exitSimOk tl fl.isSome body = true := by
+        cases tl <;> cases fl <;>
+          simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq,
+            and_assoc] using hok
+      obtain ⟨⟨h0, h1⟩, hh⟩ := hh
+      refine ⟨_, k.toNat, rfl, ⟨h0, h1⟩, by simp [valueToScalar, Value.ofLit, h0], ?_, hh⟩
+      simp [letHeadK, letHead, h0]
     | _ => cases tl <;> cases fl <;> simp [exitSimOk] at hok
   rw [denote'_letBind_run_val bi fuel n _ body env env v (by rw [denote'_lit_run, hv])
     hsv.not_cf] at hrun
