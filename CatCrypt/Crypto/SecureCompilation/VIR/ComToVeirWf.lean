@@ -18,6 +18,7 @@ import all Veir.IR.Basic
 import all Veir.Rewriter.LinkedList.Basic
 import all Veir.IR.WellFormed
 import all Veir.Rewriter.InsertPoint
+import all Veir.Interfaces.FunctionInterfaces
 
 /-!
 # Well-formed `Com → Veir` lowering of `jasminDialect`, run by `interpretBlock`
@@ -55,6 +56,16 @@ interpreter does not read them.
   (`bindingExpansion_inScope`). `exists_interpretBlock_lowerComToBlockWf` and
   `exists_interpretBlock_lowerComToBlockWf_eq_veirRunCom` state the two
   `interpretBlock` theorems without the hypothesis that the builder succeeds.
+
+* `lowerComToFuncWf`: the same block as the body of a `func.func` inside a
+  `builtin.module`, all built through `WfRewriter` (`createRegionOp`, `createBlockIn`).
+  `interpretFunction_lowerComToFuncWf` and `_eq_veirRunCom`: on the `arith` fragment,
+  VeIR's function-level interpreter `interpretFunction` on that `func.func` returns the
+  encoded denotation, equal to what `veirRunCom` computes, and leaves the memory
+  unchanged. `lowerComToFuncWf_isSome` (every allocation is fresh because every
+  operation, block and region has an identifier below `nextID`, `IdsBelow`) gives
+  `exists_interpretFunction_lowerComToFuncWf` and its `_eq_veirRunCom` form without the
+  hypothesis that the builder succeeds.
 -/
 
 @[expose] public section
@@ -849,9 +860,9 @@ theorem bindingExpansion_run {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-! ## The block -/
 
 theorem createBlock_raw {types : Array TypeAttr} {c₀ c : WfIRContext OpCode} {blk : BlockPtr}
-    {hip : Option.maybe BlockInsertPoint.InBounds none c₀.raw}
-    (h : WfRewriter.createBlock c₀ types none hip = some (c, blk)) :
-    ∃ hx, Rewriter.createBlock c₀.raw types none hx hip = some (c.raw, blk) := by
+    {ip : Option BlockInsertPoint} {hip : Option.maybe BlockInsertPoint.InBounds ip c₀.raw}
+    (h : WfRewriter.createBlock c₀ types ip hip = some (c, blk)) :
+    ∃ hx, Rewriter.createBlock c₀.raw types ip hx hip = some (c.raw, blk) := by
   simp only [WfRewriter.createBlock] at h
   split at h
   · simp at h
@@ -886,6 +897,49 @@ theorem createBlock_spec {types : Array TypeAttr} {c₀ c : WfIRContext OpCode} 
   · rw [BlockPtr.getNumArguments!_initBlockArguments, h0]; simp
   · rw [ValuePtr.getType!_initBlockArguments]; simp [h0, BlockPtr.getArgument_def, hi]
   · grind
+
+/-- The block `WfRewriter.createBlock` creates at the end of the region `reg` holds no
+operation and has one argument per type of `types`, with that type; the regions of
+every operation are unchanged, and when `reg` held no block the new block is its first. -/
+theorem createBlock_atEnd_spec {types : Array TypeAttr} {c₀ c : WfIRContext OpCode}
+    {blk : BlockPtr} {reg : RegionPtr}
+    {hip : Option.maybe BlockInsertPoint.InBounds (some (.atEnd reg)) c₀.raw}
+    (h : WfRewriter.createBlock c₀ types (some (.atEnd reg)) hip = some (c, blk)) :
+    (Chain c blk [] ∧ blk.getNumArguments! c.raw = types.size ∧
+      ∀ (i : Nat) (hi : i < types.size),
+        (ValuePtr.blockArgument (blk.getArgument i)).getType! c.raw = types[i] ∧
+        (ValuePtr.blockArgument (blk.getArgument i)).InBounds c.raw) ∧
+    (∀ o : OperationPtr, o.getNumRegions! c.raw = o.getNumRegions! c₀.raw) ∧
+    (∀ (o : OperationPtr) (i : Nat), o.getRegion! c.raw i = o.getRegion! c₀.raw i) ∧
+    ((reg.get! c₀.raw).lastBlock = none → (reg.get! c.raw).firstBlock = some blk) := by
+  obtain ⟨hx, h⟩ := createBlock_raw h
+  have hchain := BlockPtr.opChain_rewriter_createBlock_new h
+  have hin := fun (p : GenericPtr) => Rewriter.createBlock_inBounds p h
+  simp only [Rewriter.createBlock] at h
+  split at h
+  · simp at h
+  rename_i ctx₁ blk₁ halloc
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq,
+    Prod.mk.injEq] at h
+  obtain ⟨ctx₂, hins, hc, rfl⟩ := h
+  have h0 := BlockPtr.getNumArguments!_BlockPtr_allocEmpty (block := blk₁) halloc
+  simp only [if_true] at h0
+  refine ⟨⟨⟨hchain.blockInBounds, by simpa using hchain.first, by simpa using hchain.last,
+    fun i hi => absurd hi (by simp), fun o ho => absurd ho (by simp), List.nodup_nil⟩,
+    ?_, fun i hi => ⟨?_, ?_⟩⟩, fun o => ?_, fun o i => ?_, fun hl => ?_⟩
+  · rw [← hc, BlockPtr.getNumArguments!_insertBlock hins,
+      BlockPtr.getNumArguments!_initBlockArguments, h0]; simp
+  · rw [← hc, ValuePtr.getType!_insertBlock hins, ValuePtr.getType!_initBlockArguments]
+    simp [h0, BlockPtr.getArgument_def, hi]
+  · exact (hin (.value (.blockArgument _))).2 (by simp [BlockPtr.getArgument_def, hi])
+  · rw [← hc, OperationPtr.getNumRegions!_insertBlock hins,
+      OperationPtr.getNumRegions!_initBlockArguments,
+      OperationPtr.getNumRegions!_BlockPtr_allocEmpty halloc]
+  · rw [← hc, OperationPtr.getRegion!_insertBlock hins,
+      OperationPtr.getRegion!_initBlockArguments,
+      OperationPtr.getRegion!_BlockPtr_allocEmpty halloc]
+  · rw [← hc, RegionPtr.firstBlock!_insertBlock hins]
+    simp [RegionPtr.get!_initBlockArguments, RegionPtr.get!_BlockPtr_allocEmpty halloc, hl]
 
 /-! ## Running the operations of a program -/
 
@@ -1034,25 +1088,30 @@ theorem interpretOpChain_of_chain' {C : WfIRContext OpCode} (L : List OperationP
 
 /-! ## The block, run by `interpretBlock` -/
 
-/-- The lowering `lowerComToBlockWf` of a program of the `arith` fragment over a
-context of integer types, run by VeIR's `interpretBlock` on the well-formed context it
-builds, with the block arguments set to the encoded valuation `V`, returns the encoded
-denotation of the program through the block's `func.return`. -/
-theorem interpretBlock_lowerComToBlockWf {Γ : Ctxt jasminDialect} {t : JasminTy}
+/-- A program of the `arith` fragment over a context of integer types, lowered by
+`lowerComWf` into a block `blk₁` of `ctx₁` that holds no operation and has one argument
+of type `toVeirTy s` per entry `s` of `Γ`, followed by a `func.return` of its value, run
+by VeIR's `interpretBlock` from any state `S₀` with the block arguments set to the
+encoded valuation `V`, returns the encoded denotation of the program through the
+`func.return` and leaves the memory unchanged. -/
+theorem interpretBlock_of_lowerComWf {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) (V : Valuation Γ) (hc : ComInArith c)
     (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s)
-    {C : WfIRContext OpCode} {blk : BlockPtr} {ops : List OperationPtr}
-    (h : lowerComToBlockWf c = some (C, blk, ops)) :
-    ∃ (hb : blk.InBounds C.raw) (S : InterpreterState C),
-      interpretBlock blk (encodeArgs V).toArray (InterpreterState.empty C) hb =
+    {ctx₁ ctx₂ ctx₃ : WfIRContext OpCode} {blk₁ : BlockPtr} {ops₂ : List OperationPtr}
+    {final : ValuePtr} {ret : OperationPtr}
+    (hblk : Chain ctx₁ blk₁ [] ∧
+      blk₁.getNumArguments! ctx₁.raw = (Γ.map JasminTy.toVeirTy).toArray.size ∧
+      ∀ (i : Nat) (hi : i < (Γ.map JasminTy.toVeirTy).toArray.size),
+        (ValuePtr.blockArgument (blk₁.getArgument i)).getType! ctx₁.raw =
+          (Γ.map JasminTy.toVeirTy).toArray[i] ∧
+        (ValuePtr.blockArgument (blk₁.getArgument i)).InBounds ctx₁.raw)
+    (h₂ : lowerComWf blk₁ (varMapOfBlockArgs blk₁) c ctx₁ = some (ctx₂, ops₂, final))
+    (h₃ : createAtEnd ctx₂ blk₁ (.func .return) default #[] #[final] = some (ctx₃, ret))
+    (S₀ : InterpreterState ctx₃) :
+    ∃ (hb : blk₁.InBounds ctx₃.raw) (S : InterpreterState ctx₃), S.memory = S₀.memory ∧
+      interpretBlock blk₁ (encodeArgs V).toArray S₀ hb =
         .ok (S, .return #[encodeVal t (c.denote V)]) := by
-  simp only [lowerComToBlockWf, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
-    Option.some.injEq] at h
-  obtain ⟨⟨ctx₁, blk₁⟩, h₁, ⟨ctx₂, ops₂, final⟩, h₂, ⟨ctx₃, ret⟩, h₃, hret⟩
-    := h
-  simp only [Prod.mk.injEq] at hret
-  obtain ⟨rfl, rfl, rfl⟩ := hret
-  obtain ⟨hchain₀, hnum, htypes⟩ := createBlock_spec h₁
+  obtain ⟨hchain₀, hnum, htypes⟩ := hblk
   have hvm : ∀ (s : JasminTy) (v : Var Γ s),
       (varMapOfBlockArgs blk₁ (Γ := Γ) s v).InBounds ctx₁.raw :=
     fun s v => (htypes _ (by simpa using CatCrypt.Crypto.SecureCompilation.VIR.varDepth_lt v)).2
@@ -1067,7 +1126,7 @@ theorem interpretBlock_lowerComToBlockWf {Γ : Ctxt jasminDialect} {t : JasminTy
   have hnum₃ : blk₁.getNumArguments! ctx₃.raw = Γ.length := by
     rw [hr.numArgs, hnum]; simp
   obtain ⟨vars₁, hset⟩ := (VariableState.setArgumentValues?_isSome_iff_conforms
-    (InterpreterState.empty ctx₃).variables (block := blk₁) (values := (encodeArgs V).toArray)
+    S₀.variables (block := blk₁) (values := (encodeArgs V).toArray)
     (blockInBounds := hc₃.blkIn)).mp (by
       intro j hj
       rw [hnum₃] at hj
@@ -1098,20 +1157,42 @@ theorem interpretBlock_lowerComToBlockWf {Γ : Ctxt jasminDialect} {t : JasminTy
     refine hg.trans ?_
     have he := encodeArgs_getElem? V v
     simp [he]
-  let S₁ : InterpreterState ctx₃ := ⟨vars₁, (InterpreterState.empty ctx₃).memory⟩
+  let S₁ : InterpreterState ctx₃ := ⟨vars₁, S₀.memory⟩
   rw [interpretOpChain_of_chain' (ops₂ ++ [ret]) _ S₁ (by rw [hol]; rfl) hc₃.next _
     hc₃.inBounds, interpretTerminatedOpList_append]
-  obtain ⟨S₂, hS₂, _, hf₂⟩ := com_sim V S₁ hcom₃ hc henv
+  obtain ⟨S₂, hS₂, hm₂, hf₂⟩ := com_sim V S₁ hcom₃ hc henv
     (fun o hm => hc₃.inBounds o (List.mem_append_left _ hm))
   simp only [hS₂]
   have hvs : S₂.variables.getOperandValues ret = some #[encodeVal t (c.denote V)] := by
     simp only [VariableState.getOperandValues, hret.operands]
     rw [List.mapM_toArray] at *
     simp [hf₂]
-  obtain ⟨S₃, hS₃, _, _⟩ := interpretOp_of_opIs hret S₂ hvs rfl ⟨rfl, by simp⟩
-  refine ⟨S₃, ?_⟩
+  obtain ⟨S₃, hS₃, hm₃, _⟩ := interpretOp_of_opIs hret S₂ hvs rfl ⟨rfl, by simp⟩
+  refine ⟨S₃, hm₃.trans hm₂, ?_⟩
   rw [interpretTerminatedOpList_cons]
   simp only [hS₃]
+
+/-- The lowering `lowerComToBlockWf` of a program of the `arith` fragment over a
+context of integer types, run by VeIR's `interpretBlock` on the well-formed context it
+builds, with the block arguments set to the encoded valuation `V`, returns the encoded
+denotation of the program through the block's `func.return`. -/
+theorem interpretBlock_lowerComToBlockWf {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (V : Valuation Γ) (hc : ComInArith c)
+    (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s)
+    {C : WfIRContext OpCode} {blk : BlockPtr} {ops : List OperationPtr}
+    (h : lowerComToBlockWf c = some (C, blk, ops)) :
+    ∃ (hb : blk.InBounds C.raw) (S : InterpreterState C),
+      interpretBlock blk (encodeArgs V).toArray (InterpreterState.empty C) hb =
+        .ok (S, .return #[encodeVal t (c.denote V)]) := by
+  simp only [lowerComToBlockWf, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    Option.some.injEq] at h
+  obtain ⟨⟨ctx₁, blk₁⟩, h₁, ⟨ctx₂, ops₂, final⟩, h₂, ⟨ctx₃, ret⟩, h₃, hret⟩
+    := h
+  simp only [Prod.mk.injEq] at hret
+  obtain ⟨rfl, rfl, rfl⟩ := hret
+  obtain ⟨hb, S, _, hS⟩ := interpretBlock_of_lowerComWf c V hc hΓ (createBlock_spec h₁) h₂ h₃
+    (InterpreterState.empty _)
+  exact ⟨hb, S, hS⟩
 
 /-- On the `arith` fragment over a context of integer types, VeIR's `interpretBlock`
 on the block `lowerComToBlockWf` builds returns the value `veirRunCom` computes from
@@ -1272,6 +1353,31 @@ theorem createOp_atEnd_exists {Dialect : Type} [HasOpInfo Dialect] [HasDialect O
     refine ⟨c₅, rfl, ?_⟩
     rw [insertOp_atEnd_nextID hpar h₅', initBlockOperands_empty, initOpOperands_nextID,
       initOpResults_nextID, hn₁]
+
+/-- `Rewriter.createOp` with no successors, no regions and no insertion point returns
+the operation `⟨ctx.nextID⟩` and increments `nextID` whenever that pointer is not in
+bounds. -/
+theorem createOp_none_exists {Dialect : Type} [HasOpInfo Dialect] [HasDialect O Dialect]
+    {oc : Dialect} {p : propertiesOf oc} {rt : Array TypeAttr} {xs : Array ValuePtr}
+    (h₁ h₂ h₃ h₄ h₅)
+    (hfresh : ¬ (OperationPtr.mk ctx.nextID).InBounds ctx) :
+    ∃ c', Rewriter.createOp ctx oc rt xs #[] #[] p none h₁ h₂ h₃ h₄ h₅ =
+      some (c', ⟨ctx.nextID⟩) ∧ c'.nextID = ctx.nextID + 1 := by
+  unfold Rewriter.createOp
+  split
+  · rename_i heq
+    unfold Rewriter.createEmptyOp OperationPtr.allocEmpty at heq
+    grind [OperationPtr.InBounds]
+  rename_i c₁ o₁ he
+  obtain ⟨rfl, hn₁⟩ := createEmptyOp_eq_some he
+  dsimp only
+  split
+  · rename_i h; rw [initOpRegions_empty] at h; simp at h
+  rename_i c₂ h₂
+  rw [initOpRegions_empty] at h₂
+  cases h₂
+  refine ⟨_, rfl, ?_⟩
+  rw [initBlockOperands_empty, initOpOperands_nextID, initOpResults_nextID, hn₁]
 
 end Fresh
 
@@ -1526,5 +1632,577 @@ theorem exists_interpretBlock_lowerComToBlockWf_eq_veirRunCom {Γ : Ctxt jasminD
           .ok (S, .return #[r]) := by
   obtain ⟨C, blk, ops, h⟩ := lowerComToBlockWf_isSome c
   exact ⟨C, blk, ops, h, interpretBlock_lowerComToBlockWf_eq_veirRunCom c V mem hc hΓ h⟩
+
+/-! ## The program as a `func.func` inside a `builtin.module`
+
+`lowerComToFuncWf` builds, through VeIR's `WfIRContext.create` and `WfRewriter`, a
+`builtin.module` whose block holds one `func.func`, whose one region holds the block of
+the lowering: the arguments of `Γ`, the operations of `lowerComWf` and a `func.return`.
+`interpretFunction_lowerComToFuncWf` runs that `func.func` with VeIR's function-level
+interpreter `interpretFunction`. -/
+
+/-- The properties of the `func.func` named `name` of a program over `Γ` returning `t`:
+the symbol name, the function type with inputs `toVeirTy s` for the entries `s` of `Γ`
+and the output `toVeirTy t`, and no further attributes. -/
+def funcPropsWf (Γ : Ctxt jasminDialect) (t : JasminTy) (name : String) :
+    propertiesOf (OpCode.func .func) :=
+  CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim.funcFuncProps name
+    { inputs := (Γ.map fun s => (JasminTy.toVeirTy s).val).toArray,
+      outputs := #[(JasminTy.toVeirTy t).val] } default
+
+/-- Create an operation with op-code `oc`, properties `p` and no operands, results,
+successors or regions, through `WfRewriter.createOp`: at the end of the block `mb` for
+`some mb` (`createAtEnd`), detached for `none`. -/
+def createOpAt (ctx : WfIRContext OpCode) (oc : OpCode) (p : propertiesOf oc) :
+    Option BlockPtr → Option (WfIRContext OpCode × OperationPtr)
+  | none => WfRewriter.createOp ctx oc #[] #[] #[] #[] p none (by simp) (by simp) (by simp)
+      (by simp [Option.maybe_none])
+  | some mb => createAtEnd ctx mb oc p #[] #[]
+
+/-- Create a region and an operation with op-code `oc`, properties `p` and no operands,
+results, successors or regions, through `WfRewriter`, and push the region onto the
+operation (`WfRewriter.pushRegion`); the operation is inserted at the end of the block
+`mb?` when it is `some`, and left detached when it is `none`. Returns the context, the
+operation and the region. -/
+def createRegionOp (ctx : WfIRContext OpCode) (oc : OpCode) (p : propertiesOf oc)
+    (mb? : Option BlockPtr) : Option (WfIRContext OpCode × OperationPtr × RegionPtr) := do
+  let (ctx₁, reg) ← WfRewriter.createRegion ctx
+  let (ctx₂, o) ← createOpAt ctx₁ oc p mb?
+  if h : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧ (reg.get! ctx₂.raw).parent = none then
+    pure (WfRewriter.pushRegion ctx₂ o reg h.1 h.2.1 h.2.2, o, reg)
+  else none
+
+/-- Create a block with arguments of types `types` at the end of the region `reg`,
+through `WfRewriter.createBlock`; `none` when `reg` is not in bounds. -/
+def createBlockIn (ctx : WfIRContext OpCode) (types : Array TypeAttr) (reg : RegionPtr) :
+    Option (WfIRContext OpCode × BlockPtr) :=
+  if hreg : reg.InBounds ctx.raw then
+    WfRewriter.createBlock ctx types (some (.atEnd reg))
+      (by simpa [Option.maybe_some, BlockInsertPoint.inBounds_atEnd] using hreg)
+  else none
+
+/-- Lower a `Com jasminDialect Γ t` into a `func.func` named `name` inside a fresh
+`builtin.module`: a `builtin.module` whose one region holds one empty block `mb` (the
+steps of `IRContext.create`), a `func.func` at the end of `mb` with properties
+`funcPropsWf Γ t name` and one region `reg`, and a block at the end of `reg` with one
+argument per entry of `Γ`, the operations of `lowerComWf` and a `func.return` of the
+program's value. Returns the context, the module, the `func.func`, the block and its
+operations in order. -/
+def lowerComToFuncWf {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t)
+    (name : String) :
+    Option (WfIRContext OpCode × OperationPtr × OperationPtr × BlockPtr ×
+      List OperationPtr) := do
+  let (ctxM, modOp, mreg) ← createRegionOp default (.builtin .module) default none
+  let (ctx₀, mb) ← createBlockIn ctxM #[] mreg
+  let (ctx₁, fn, reg) ← createRegionOp ctx₀ (.func .func) (funcPropsWf Γ t name) (some mb)
+  let (ctx₂, blk) ← createBlockIn ctx₁ (Γ.map JasminTy.toVeirTy).toArray reg
+  let (ctx₃, ops, final) ← lowerComWf blk (varMapOfBlockArgs blk) c ctx₂
+  let (ctx₄, ret) ← createAtEnd ctx₃ blk (.func .return) default #[] #[final]
+  pure (ctx₄, modOp, fn, blk, ops ++ [ret])
+
+/-- The region `WfRewriter.createRegion` creates holds no block, and every pointer in
+bounds before is in bounds after. -/
+theorem createRegion_spec {c₀ c : WfIRContext OpCode} {reg : RegionPtr}
+    (h : WfRewriter.createRegion c₀ = some (c, reg)) :
+    (reg.get! c.raw).lastBlock = none ∧ reg.InBounds c.raw ∧
+      ∀ p : GenericPtr, p.InBounds c₀.raw → p.InBounds c.raw := by
+  refine ⟨?_, WfRewriter.createRegion_new_inBounds h,
+    fun p hp => (WfRewriter.createRegion_genericPtr_mono (ptr := p) h).2 (.inl hp)⟩
+  simp only [WfRewriter.createRegion] at h
+  split at h
+  · simp at h
+  · rename_i ctx' reg' heq
+    simp only [Option.pure_def, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    simp [RegionPtr.lastBlock!_createRegion heq]
+
+/-- `createOpAt` is one `WfRewriter.createOp` with no insertion point or an insertion
+at the end of a block. -/
+theorem createOpAt_spec {ctx ctx' : WfIRContext OpCode} {oc : OpCode} {p : propertiesOf oc}
+    {mb? : Option BlockPtr} {o : OperationPtr} (h : createOpAt ctx oc p mb? = some (ctx', o)) :
+    ∃ ip, (ip = none ∨ ∃ mb, ip = some (InsertPoint.atEnd mb)) ∧ ∃ h₁ h₂ h₃ h₄,
+      WfRewriter.createOp ctx oc #[] #[] #[] #[] p ip h₁ h₂ h₃ h₄ = some (ctx', o) := by
+  cases mb? with
+  | none => exact ⟨_, .inl rfl, _, _, _, _, h⟩
+  | some mb =>
+    obtain ⟨_, _, _, _, _, hc⟩ := createAtEnd_spec (h : createAtEnd _ _ _ _ _ _ = _)
+    exact ⟨_, .inr ⟨mb, rfl⟩, _, _, _, _, hc⟩
+
+/-- The operation `createRegionOp` creates is in bounds, has one region, the region it
+returns, which is in bounds and holds no block; every pointer in bounds before is in
+bounds after. -/
+theorem createRegionOp_spec {ctx ctx' : WfIRContext OpCode} {oc : OpCode}
+    {p : propertiesOf oc} {mb? : Option BlockPtr} {o : OperationPtr} {r : RegionPtr}
+    (h : createRegionOp ctx oc p mb? = some (ctx', o, r)) :
+    o.InBounds ctx'.raw ∧ o.getNumRegions! ctx'.raw = 1 ∧ o.getRegion! ctx'.raw 0 = r ∧
+      (r.get! ctx'.raw).lastBlock = none ∧ r.InBounds ctx'.raw ∧
+      ∀ q : GenericPtr, q.InBounds ctx.raw → q.InBounds ctx'.raw := by
+  unfold createRegionOp at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨⟨ctx₁, reg⟩, h₁, ⟨ctx₂, o₂⟩, h₂, h⟩ := h
+  obtain ⟨hl₁, hr₁, hm₁⟩ := createRegion_spec h₁
+  have key : o₂.getNumRegions! ctx₂.raw = 0 ∧ (reg.get! ctx₂.raw).lastBlock = none ∧
+      ∀ q : GenericPtr, q.InBounds ctx₁.raw → q.InBounds ctx₂.raw := by
+    obtain ⟨ip, _, _, _, _, _, hc⟩ := createOpAt_spec h₂
+    refine ⟨?_, ?_, fun q hq => WfRewriter.createOp_inBounds_mono hc hq⟩
+    · rw [OperationPtr.getNumRegions!_WfRewriter_createOp hc]; simp
+    · rw [RegionPtr.lastBlock!_WfRewriter_createOp hc]; exact hl₁
+  split at h
+  next hin =>
+    simp only [Option.pure_def, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    obtain ⟨hn0, hl₂, hm₂⟩ := key
+    refine ⟨?_, ?_, ?_, ?_, ?_, fun q hq => ?_⟩
+    · exact (Rewriter.pushRegion_inBounds_mono (h₁ := hin.1) (h₂ := hin.2.1) (h₃ := hin.2.2)
+        (.operation o₂)).2 hin.1
+    · simp [WfRewriter.pushRegion, OperationPtr.getNumRegions!_pushRegion, hn0]
+    · simp [WfRewriter.pushRegion, OperationPtr.getRegion!_pushRegion, hn0]
+    · simp [WfRewriter.pushRegion, hl₂]
+    · exact (Rewriter.pushRegion_inBounds_mono (h₁ := hin.1) (h₂ := hin.2.1) (h₃ := hin.2.2)
+        (.region reg)).2 hin.2.1
+    · simpa [WfRewriter.pushRegion] using hm₂ q (hm₁ q hq)
+  next => simp at h
+
+/-- The block `createBlockIn` creates satisfies `createBlock_atEnd_spec`, and every
+operation in bounds before is in bounds after. -/
+theorem createBlockIn_spec {ctx ctx' : WfIRContext OpCode} {types : Array TypeAttr}
+    {reg : RegionPtr} {blk : BlockPtr} (h : createBlockIn ctx types reg = some (ctx', blk)) :
+    ((Chain ctx' blk [] ∧ blk.getNumArguments! ctx'.raw = types.size ∧
+      ∀ (i : Nat) (hi : i < types.size),
+        (ValuePtr.blockArgument (blk.getArgument i)).getType! ctx'.raw = types[i] ∧
+        (ValuePtr.blockArgument (blk.getArgument i)).InBounds ctx'.raw) ∧
+    (∀ o : OperationPtr, o.getNumRegions! ctx'.raw = o.getNumRegions! ctx.raw) ∧
+    (∀ (o : OperationPtr) (i : Nat), o.getRegion! ctx'.raw i = o.getRegion! ctx.raw i) ∧
+    ((reg.get! ctx.raw).lastBlock = none → (reg.get! ctx'.raw).firstBlock = some blk)) ∧
+    ∀ o : OperationPtr, o.InBounds ctx.raw → o.InBounds ctx'.raw := by
+  unfold createBlockIn at h
+  split at h
+  next =>
+    refine ⟨createBlock_atEnd_spec h, fun o ho => ?_⟩
+    have := WfRewriter.createBlock_inBounds_mono (ptr := .operation o) h
+    simpa using this ho
+  next => simp at h
+
+theorem Reach.numRegions {a b : WfIRContext OpCode} (h : Reach a b) {q : OperationPtr}
+    (ho : q.InBounds a.raw) : q.getNumRegions! b.raw = q.getNumRegions! a.raw := by
+  induction h with
+  | refl => rfl
+  | @step _ _ _ _ _ _ _ _ o' h _ ih =>
+    have hne : q ≠ o' := fun he => createAtEnd_new_not_inBounds h (he ▸ ho)
+    have ho' := createAtEnd_op_inBounds_mono h ho
+    obtain ⟨_, _, _, _, _, h⟩ := createAtEnd_spec h
+    rw [ih ho', OperationPtr.getNumRegions!_WfRewriter_createOp h, if_neg hne]
+
+theorem Reach.region {a b : WfIRContext OpCode} (h : Reach a b) (o : OperationPtr) (i : Nat) :
+    o.getRegion! b.raw i = o.getRegion! a.raw i := by
+  induction h with
+  | refl => rfl
+  | step h _ ih =>
+    obtain ⟨_, _, _, _, _, h⟩ := createAtEnd_spec h
+    rw [ih, OperationPtr.getRegion!_WfRewriter_createOp h]
+    simp
+
+theorem Reach.firstBlock {a b : WfIRContext OpCode} (h : Reach a b) (r : RegionPtr) :
+    (r.get! b.raw).firstBlock = (r.get! a.raw).firstBlock := by
+  induction h with
+  | refl => rfl
+  | step h _ ih =>
+    obtain ⟨_, _, _, _, _, h⟩ := createAtEnd_spec h
+    rw [ih, RegionPtr.firstBlock!_WfRewriter_createOp h]
+
+/-- An operation with one region `reg` whose first block is `blk`, run by
+`interpretFunction` with arguments `vals` and memory `mem`, returns what
+`interpretBlock` returns through a `return` action on `blk` from the empty variable
+state with memory `mem`. -/
+theorem interpretFunction_of_interpretBlock {C : WfIRContext OpCode} {fn : OperationPtr}
+    {reg : RegionPtr} {blk : BlockPtr} (hf : fn.InBounds C.raw)
+    (hn : fn.getNumRegions! C.raw = 1) (hr : fn.getRegion! C.raw 0 = reg)
+    (hfb : (reg.get! C.raw).firstBlock = some blk) (hb : blk.InBounds C.raw)
+    (vals : Array RuntimeValue) (mem : MemoryState) {S : InterpreterState C}
+    {res : Array RuntimeValue}
+    (hblock : interpretBlock blk vals ⟨.empty C, mem⟩ hb = .ok (S, .return res)) :
+    interpretFunction fn vals mem hf = .ok (S.memory, res) := by
+  have hn' : fn.getNumRegions C.raw hf = 1 := by
+    rw [← OperationPtr.getNumRegions!_eq_getNumRegions hf]; exact hn
+  unfold interpretFunction
+  rw [dif_neg (by simp [hn'])]
+  have key : ∀ (r : RegionPtr) (hri : r.InBounds C.raw), r = reg →
+      interpretRegion r vals ⟨.empty C, mem⟩ hri = .ok (S, res) := by
+    rintro r hri rfl
+    have hfb' : (r.get C.raw hri).firstBlock = some blk := by
+      rw [← RegionPtr.get!_eq_get hri]; exact hfb
+    unfold interpretRegion
+    split
+    · rename_i hn; rw [hfb'] at hn; simp at hn
+    rename_i b hb'
+    rw [hfb', Option.some.injEq] at hb'
+    subst hb'
+    rw [interpretBlockCFG, hblock]
+  simp only
+  rw [key _ _ (by
+    rw [← FunctionOpInterface.getFunctionBody!_eq_getFunctionBody]
+    simpa [FunctionOpInterface.getFunctionBody!] using hr)]
+  rfl
+
+/-- The `func.func` that `lowerComToFuncWf` builds for a program of the `arith` fragment
+over a context of integer types, run by VeIR's function-level interpreter
+`interpretFunction` with the encoded valuation `V` as arguments and any memory `mem`,
+returns the encoded denotation of the program and leaves the memory unchanged. -/
+theorem interpretFunction_lowerComToFuncWf {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (name : String) (V : Valuation Γ) (mem : MemoryState)
+    (hc : ComInArith c) (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s)
+    {C : WfIRContext OpCode} {modOp fn : OperationPtr} {blk : BlockPtr}
+    {ops : List OperationPtr}
+    (h : lowerComToFuncWf c name = some (C, modOp, fn, blk, ops)) :
+    ∃ hf : fn.InBounds C.raw,
+      interpretFunction fn (encodeArgs V).toArray mem hf =
+        .ok (mem, #[encodeVal t (c.denote V)]) := by
+  simp only [lowerComToFuncWf, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨⟨ctxM, modOp₀, mreg⟩, _, ⟨ctx₀, mb⟩, _, ⟨ctx₁, fn₁, reg⟩, h₁, ⟨ctx₂, blk₂⟩, h₂,
+    ⟨ctx₃, ops₃, final⟩, h₃, ⟨ctx₄, ret⟩, h₄, rfl, rfl, rfl, rfl, rfl⟩ := h
+  obtain ⟨hf₁, hn₁, hreg₁, hlast₁, _, _⟩ := createRegionOp_spec h₁
+  obtain ⟨⟨hblk, hnr, hrg, hfb⟩, hmono⟩ := createBlockIn_spec h₂
+  have hf₂ := hmono _ hf₁
+  have hvm : ∀ (s : JasminTy) (v : Var Γ s),
+      (varMapOfBlockArgs blk₂ (Γ := Γ) s v).InBounds ctx₂.raw :=
+    fun s v => (hblk.2.2 _
+      (by simpa using CatCrypt.Crypto.SecureCompilation.VIR.varDepth_lt v)).2
+  obtain ⟨_, _, _, _, hr₃⟩ := lowerComWf_spec h₃ hblk.1 hvm
+  have hr : Reach ctx₂ ctx₄ := hr₃.trans (.step h₄ (.refl _))
+  obtain ⟨hb, S, hmem, hS⟩ := interpretBlock_of_lowerComWf c V hc hΓ hblk h₃ h₄
+    ⟨.empty _, mem⟩
+  have := interpretFunction_of_interpretBlock (hr.op_inBounds hf₂)
+    ((hr.numRegions hf₂).trans ((hnr fn₁).trans hn₁))
+    ((hr.region fn₁ 0).trans ((hrg fn₁ 0).trans hreg₁))
+    ((hr.firstBlock reg).trans (hfb hlast₁)) hb _ mem hS
+  rw [hmem] at this
+  exact ⟨_, this⟩
+
+/-- On the `arith` fragment over a context of integer types, VeIR's
+`interpretFunction` on the `func.func` that `lowerComToFuncWf` builds returns the value
+`veirRunCom` computes from the encoded valuation, and leaves the memory unchanged. -/
+theorem interpretFunction_lowerComToFuncWf_eq_veirRunCom {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t) (name : String) (V : Valuation Γ)
+    (mem : MemoryState) (hc : ComInArith c) (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s)
+    {C : WfIRContext OpCode} {modOp fn : OperationPtr} {blk : BlockPtr}
+    {ops : List OperationPtr}
+    (h : lowerComToFuncWf c name = some (C, modOp, fn, blk, ops)) :
+    ∃ (hf : fn.InBounds C.raw) (r : RuntimeValue),
+      veirRunCom c (fun s v => encodeVal s (v.lookup V)) mem = .ok r ∧
+      interpretFunction fn (encodeArgs V).toArray mem hf = .ok (mem, #[r]) := by
+  obtain ⟨hf, hS⟩ := interpretFunction_lowerComToFuncWf c name V mem hc hΓ h
+  exact ⟨hf, _, veirRunCom_eq_denote c V _ mem hc (fun _ _ => rfl), hS⟩
+
+/-! ## Totality of `lowerComToFuncWf`
+
+Each allocation of VeIR (`OperationPtr.allocEmpty`, `BlockPtr.allocEmpty`,
+`RegionPtr.allocEmpty`) takes the identifier `nextID` and fails when that pointer is
+already in bounds. `IdsBelow` (every operation, block and region in bounds has an
+identifier below `nextID`) holds of the empty context and is preserved by every step of
+`lowerComToFuncWf` before the operations of the program, so every step succeeds. -/
+
+/-- Every operation, block and region in bounds in `ctx` has an identifier below
+`ctx.nextID`. -/
+def IdsBelow (ctx : IRContext OpCode) : Prop :=
+  OpsBelow ctx ∧ (∀ b : BlockPtr, b.InBounds ctx → b.id < ctx.nextID) ∧
+    ∀ r : RegionPtr, r.InBounds ctx → r.id < ctx.nextID
+
+theorem idsBelow_default : IdsBelow (default : WfIRContext OpCode).raw := by
+  refine ⟨opsBelow_default, fun b hb => ?_, fun r hr => ?_⟩
+  · simp [BlockPtr.InBounds, default, IRContext.empty] at hb
+  · simp [RegionPtr.InBounds, default, IRContext.empty] at hr
+
+theorem IdsBelow.of_step {c c' : IRContext OpCode} (hf : IdsBelow c)
+    (hn : c.nextID ≤ c'.nextID)
+    (hop : ∀ o : OperationPtr, o.InBounds c' → o.InBounds c ∨ o.id < c'.nextID)
+    (hbl : ∀ b : BlockPtr, b.InBounds c' → b.InBounds c ∨ b.id < c'.nextID)
+    (hrg : ∀ r : RegionPtr, r.InBounds c' → r.InBounds c ∨ r.id < c'.nextID) :
+    IdsBelow c' := by
+  refine ⟨fun o ho => ?_, fun b hb => ?_, fun r hr => ?_⟩
+  · rcases hop o ho with h | h
+    · exact Nat.lt_of_lt_of_le (hf.1 o h) hn
+    · exact h
+  · rcases hbl b hb with h | h
+    · exact Nat.lt_of_lt_of_le (hf.2.1 b h) hn
+    · exact h
+  · rcases hrg r hr with h | h
+    · exact Nat.lt_of_lt_of_le (hf.2.2 r h) hn
+    · exact h
+
+theorem createRegion_exists {c : WfIRContext OpCode} (hf : IdsBelow c.raw) :
+    ∃ c' r, WfRewriter.createRegion c = some (c', r) ∧ IdsBelow c'.raw := by
+  unfold WfRewriter.createRegion
+  split
+  · rename_i h
+    exfalso
+    unfold Rewriter.createRegion RegionPtr.allocEmpty at h
+    have := hf.2.2 ⟨c.raw.nextID⟩
+    grind [RegionPtr.InBounds]
+  · rename_i c' r heq
+    refine ⟨_, _, rfl, ?_⟩
+    have hn : c'.nextID = c.raw.nextID + 1 ∧ r = ⟨c.raw.nextID⟩ := by
+      unfold Rewriter.createRegion RegionPtr.allocEmpty at heq
+      dsimp only at heq
+      split at heq
+      · simp at heq
+      · simp only [Option.some.injEq, Prod.mk.injEq] at heq
+        obtain ⟨rfl, rfl⟩ := heq
+        exact ⟨rfl, rfl⟩
+    have hm := fun p => Rewriter.createRegion_genericPtr_mono p heq
+    refine hf.of_step (show c.raw.nextID ≤ c'.nextID by omega) (fun o ho => .inl ?_)
+      (fun b hb => .inl ?_) (fun q hq => ?_)
+    · simpa using (hm (.operation o)).1 ho
+    · simpa using (hm (.block b)).1 hb
+    · rcases (hm (.region q)).1 hq with h | h
+      · exact .inl h
+      · simp only [GenericPtr.region.injEq] at h
+        subst h; right; rw [hn.1, hn.2]; simp
+
+theorem createOpAt_exists {ctx : WfIRContext OpCode} {oc : OpCode} {p : propertiesOf oc}
+    {mb? : Option BlockPtr} (hf : IdsBelow ctx.raw)
+    (hmb : ∀ mb, mb? = some mb → mb.InBounds ctx.raw) :
+    ∃ ctx' o, createOpAt ctx oc p mb? = some (ctx', o) ∧ IdsBelow ctx'.raw := by
+  have hfresh : ¬ (OperationPtr.mk ctx.raw.nextID).InBounds ctx.raw := fun hin =>
+    Nat.lt_irrefl _ (hf.1 _ hin)
+  have hraw : ∀ {ip : Option InsertPoint} {h₁ h₂ h₃ h₄ h₅} {c' : IRContext OpCode},
+      Rewriter.createOp ctx.raw oc #[] #[] #[] #[] p ip h₁ h₂ h₃ h₄ h₅ =
+        some (c', ⟨ctx.raw.nextID⟩) → c'.nextID = ctx.raw.nextID + 1 → IdsBelow c' := by
+    intro ip _ _ _ _ _ c' hc hn
+    refine hf.of_step (by omega) (fun q hq => ?_) (fun b hb => .inl ?_) (fun r hr => .inl ?_)
+    · have := (Rewriter.createOp_inBounds (.operation q) hc).1 (by simpa using hq)
+      simp only [GenericPtr.operation.injEq] at this
+      rcases this with h | rfl
+      · exact .inl (by simpa using h)
+      · right; simp [hn]
+    · simpa using (Rewriter.createOp_inBounds (.block b) hc).1 (by simpa using hb)
+    · simpa using (Rewriter.createOp_inBounds (.region r) hc).1 (by simpa using hr)
+  have hwf : ∀ {ip : Option InsertPoint} {h₁ h₂ h₃ h₄},
+      (ip = none ∨ ∃ b, ip = some (InsertPoint.atEnd b)) →
+      ∃ ctx', WfRewriter.createOp ctx oc #[] #[] #[] #[] p ip h₁ h₂ h₃ h₄ =
+        some (ctx', ⟨ctx.raw.nextID⟩) ∧ IdsBelow ctx'.raw := by
+    intro ip h₁ h₂ h₃ h₄ hip
+    obtain ⟨c', hc, hn⟩ : ∃ c', Rewriter.createOp ctx.raw oc #[] #[] #[] #[] p ip h₁ h₂ h₃ h₄
+        (by grind) = some (c', ⟨ctx.raw.nextID⟩) ∧ c'.nextID = ctx.raw.nextID + 1 := by
+      rcases hip with rfl | ⟨b, rfl⟩
+      · exact createOp_none_exists (Dialect := OpCode) _ _ _ _ _ hfresh
+      · exact createOp_atEnd_exists (Dialect := OpCode) _ _ _ _ _ hfresh
+    unfold WfRewriter.createOp
+    split
+    · rename_i h; rw [hc] at h; simp at h
+    · rename_i c o h
+      rw [hc] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨_, rfl, hraw hc hn⟩
+  cases mb? with
+  | none =>
+    obtain ⟨ctx', hc, hi⟩ := hwf (ip := none) (h₁ := by simp) (h₂ := by simp) (h₃ := by simp)
+      (h₄ := by simp [Option.maybe_none]) (.inl rfl)
+    exact ⟨ctx', _, hc, hi⟩
+  | some mb =>
+    have hb := hmb mb rfl
+    unfold createOpAt createAtEnd
+    dsimp only
+    rw [dif_pos (fun v hv => by simp at hv), dif_pos hb]
+    obtain ⟨ctx', hc, hi⟩ := hwf (.inr ⟨mb, rfl⟩)
+    exact ⟨ctx', _, hc, hi⟩
+
+theorem createRegion_parent {c₀ c : WfIRContext OpCode} {reg : RegionPtr}
+    (h : WfRewriter.createRegion c₀ = some (c, reg)) : (reg.get! c.raw).parent = none := by
+  simp only [WfRewriter.createRegion] at h
+  split at h
+  · simp at h
+  · rename_i ctx' reg' heq
+    simp only [Option.pure_def, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    simp [RegionPtr.parent!_createRegion heq]
+
+theorem createRegionOp_exists {ctx : WfIRContext OpCode} {oc : OpCode} {p : propertiesOf oc}
+    {mb? : Option BlockPtr} (hf : IdsBelow ctx.raw)
+    (hmb : ∀ mb, mb? = some mb → mb.InBounds ctx.raw) :
+    ∃ ctx' o r, createRegionOp ctx oc p mb? = some (ctx', o, r) ∧ IdsBelow ctx'.raw := by
+  obtain ⟨ctx₁, reg, h₁, hf₁⟩ := createRegion_exists hf
+  obtain ⟨_, hr₁, hm₁⟩ := createRegion_spec h₁
+  obtain ⟨ctx₂, o, h₂, hf₂⟩ := createOpAt_exists (oc := oc) (p := p) (mb? := mb?) hf₁
+    (fun mb hm => hm₁ (.block mb) (hmb mb hm))
+  obtain ⟨ip, _, _, _, _, _, hc⟩ := createOpAt_spec h₂
+  have hin : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧
+      (reg.get! ctx₂.raw).parent = none := by
+    refine ⟨WfRewriter.createOp_new_inBounds _ hc,
+      WfRewriter.createOp_inBounds_mono (ptr := .region reg) hc hr₁, ?_⟩
+    rw [RegionPtr.parent!_WfRewriter_createOp hc]
+    simpa using createRegion_parent h₁
+  refine ⟨WfRewriter.pushRegion ctx₂ o reg hin.1 hin.2.1 hin.2.2, o, reg, ?_, ?_⟩
+  · simp only [createRegionOp, h₁, h₂, Option.bind_eq_bind, Option.bind_some, dif_pos hin,
+      Option.pure_def]
+  · have hn : (Rewriter.pushRegion ctx₂.raw o reg hin.1 hin.2.1 hin.2.2).nextID =
+        ctx₂.raw.nextID := rfl
+    have hm := fun q => Rewriter.pushRegion_inBounds_mono (h₁ := hin.1) (h₂ := hin.2.1)
+      (h₃ := hin.2.2) q
+    refine hf₂.of_step (show _ ≤ (Rewriter.pushRegion ctx₂.raw o reg _ _ _).nextID by omega)
+      (fun q hq => .inl ((hm (.operation q)).1 hq)) (fun b hb => .inl ((hm (.block b)).1 hb))
+      (fun r hr => .inl ((hm (.region r)).1 hr))
+
+theorem initBlockArguments_nextID {c : IRContext OpCode} {blk : BlockPtr}
+    {types : Array TypeAttr} {i : Nat} {h₁ h₂} :
+    (Rewriter.initBlockArguments c blk types i h₁ h₂).nextID = c.nextID := by
+  fun_induction Rewriter.initBlockArguments
+  · rfl
+  · rename_i ih
+    rw [ih]
+    show (Rewriter.pushBlockArgument _ _ _ _).nextID = _
+    unfold Rewriter.pushBlockArgument BlockPtr.pushArgument BlockPtr.setArguments
+    rfl
+
+theorem BlockPtr.linkBetween_nextID {c : IRContext OpCode} (b : BlockPtr) (p n) (h₁ h₂ h₃) :
+    (b.linkBetween c p n h₁ h₂ h₃).nextID = c.nextID := by
+  unfold BlockPtr.linkBetween
+  dsimp only
+  split <;> split <;> rfl
+
+/-- Inserting a block without a parent at the end of a region succeeds and keeps
+`nextID`. -/
+theorem insertBlock_atEnd_exists {c : IRContext OpCode} {blk : BlockPtr} {reg : RegionPtr}
+    {h₁ h₂ h₃} (hpar : (blk.get! c).parent = none) :
+    ∃ c', Rewriter.insertBlock c blk (.atEnd reg) h₁ h₂ h₃ = some c' ∧
+      c'.nextID = c.nextID := by
+  unfold Rewriter.insertBlock BlockPtr.linkBetweenWithParent
+  split
+  · rename_i h; simp [BlockInsertPoint.region] at h
+  rename_i parent hb
+  dsimp only
+  split
+  · rename_i h
+    exfalso
+    unfold BlockPtr.setParentWithCheck at h
+    split at h
+    · rename_i p hp
+      rw [← BlockPtr.get!_eq_get] at hp
+      grind
+    · simp at h
+  rename_i c₂ h₂
+  have hc₂ : c₂.nextID = c.nextID := by
+    unfold BlockPtr.setParentWithCheck at h₂
+    split at h₂
+    · simp at h₂
+    · cases h₂
+      exact BlockPtr.linkBetween_nextID blk _ _ _ _ _
+  split <;> split <;> exact ⟨_, rfl, hc₂⟩
+
+theorem blockAllocEmpty_eq {c c' : IRContext OpCode} {b : BlockPtr}
+    (h : BlockPtr.allocEmpty c = some (c', b)) :
+    b = ⟨c.nextID⟩ ∧ c'.nextID = c.nextID + 1 := by
+  unfold BlockPtr.allocEmpty at h
+  dsimp only at h
+  split at h
+  · simp at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact ⟨rfl, rfl⟩
+
+theorem createBlockIn_exists {ctx : WfIRContext OpCode} {types : Array TypeAttr}
+    {reg : RegionPtr} (hf : IdsBelow ctx.raw) (hr : reg.InBounds ctx.raw) :
+    ∃ ctx' blk, createBlockIn ctx types reg = some (ctx', blk) ∧ IdsBelow ctx'.raw := by
+  have hraw : ∀ {hx hip}, ∃ c' b, Rewriter.createBlock ctx.raw types (some (.atEnd reg)) hx hip =
+      some (c', b) ∧ c'.nextID = ctx.raw.nextID + 1 ∧ b = ⟨ctx.raw.nextID⟩ := by
+    intro hx hip
+    unfold Rewriter.createBlock
+    split
+    · rename_i h
+      exfalso
+      unfold BlockPtr.allocEmpty at h
+      have := hf.2.1 ⟨ctx.raw.nextID⟩
+      grind [BlockPtr.InBounds]
+    rename_i c₁ b₁ halloc
+    dsimp only
+    have hpar : (b₁.get! (Rewriter.initBlockArguments c₁ b₁ types 0 (by grind) (by grind))).parent
+        = none := by
+      rw [BlockPtr.parent!_initBlockArguments, BlockPtr.get!_BlockPtr_allocEmpty halloc]
+      simp [Block.empty]
+    obtain ⟨c₂, hc₂, hn₂⟩ := insertBlock_atEnd_exists (reg := reg) (h₁ := by grind)
+      (h₂ := by grind) (h₃ := by grind) hpar
+    obtain ⟨hb₁, hn₁⟩ := blockAllocEmpty_eq halloc
+    refine ⟨c₂, b₁, by simp [hc₂], ?_, hb₁⟩
+    rw [hn₂, initBlockArguments_nextID, hn₁]
+  unfold createBlockIn
+  rw [dif_pos hr]
+  unfold WfRewriter.createBlock
+  split
+  · rename_i h
+    obtain ⟨c', b, hc, _⟩ := hraw (hx := by grind)
+      (hip := by simpa [Option.maybe_some, BlockInsertPoint.inBounds_atEnd] using hr)
+    rw [hc] at h; simp at h
+  · rename_i c b h
+    obtain ⟨c', b', hc, hn, hb'⟩ := hraw (hx := by grind)
+      (hip := by simpa [Option.maybe_some, BlockInsertPoint.inBounds_atEnd] using hr)
+    rw [hc] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    refine ⟨_, _, rfl, hf.of_step (show _ ≤ c'.nextID by omega) (fun q hq => .inl ?_)
+      (fun q hq => ?_) (fun q hq => .inl ?_)⟩
+    · simpa using (Rewriter.createBlock_inBounds (.operation q) hc).1 hq
+    · have := (Rewriter.createBlock_inBounds (.block q) hc).1 hq
+      simp only [GenericPtr.block.injEq, reduceCtorEq, or_false] at this
+      rcases this with h | rfl
+      · exact .inl h
+      · right; show q.id < c'.nextID; simp [hb', hn]
+    · simpa using (Rewriter.createBlock_inBounds (.region q) hc).1 hq
+
+/-- `lowerComToFuncWf` returns a context for every program of `jasminDialect`. -/
+theorem lowerComToFuncWf_isSome {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (name : String) :
+    ∃ C modOp fn blk ops, lowerComToFuncWf c name = some (C, modOp, fn, blk, ops) := by
+  obtain ⟨ctxM, modOp, mreg, hM, hfM⟩ := createRegionOp_exists (oc := .builtin .module)
+    (p := default) (mb? := none) idsBelow_default (by simp)
+  obtain ⟨_, _, _, _, hmreg, _⟩ := createRegionOp_spec hM
+  obtain ⟨ctx₀, mb, h₀, hf₀⟩ := createBlockIn_exists (types := #[]) hfM hmreg
+  have hmb : mb.InBounds ctx₀.raw := (createBlockIn_spec h₀).1.1.1.blkIn
+  obtain ⟨ctx₁, fn, reg, h₁, hf₁⟩ := createRegionOp_exists (oc := .func .func)
+    (p := funcPropsWf Γ t name) (mb? := some mb) hf₀
+    (fun mb' hm => by simp only [Option.some.injEq] at hm; exact hm ▸ hmb)
+  obtain ⟨_, _, _, _, hreg, _⟩ := createRegionOp_spec h₁
+  obtain ⟨ctx₂, blk, h₂, hf₂⟩ := createBlockIn_exists
+    (types := (Γ.map JasminTy.toVeirTy).toArray) hf₁ hreg
+  obtain ⟨⟨hchain, _, htypes⟩, _⟩ := (createBlockIn_spec h₂).1
+  have hvm : ∀ (s : JasminTy) (v : Var Γ s),
+      (varMapOfBlockArgs blk (Γ := Γ) s v).InBounds ctx₂.raw :=
+    fun s v => (htypes _ (by simpa using CatCrypt.Crypto.SecureCompilation.VIR.varDepth_lt v)).2
+  obtain ⟨ctx₃, ops, final, h₃, hf₃⟩ := lowerComWf_exists c hf₂.1 hchain hvm
+  obtain ⟨hc₃, _, _, hfinal, _⟩ := lowerComWf_spec h₃ hchain hvm
+  obtain ⟨ctx₄, ret, h₄, _⟩ := createAtEnd_exists (oc := .func .return) (p := default)
+    (rt := #[]) (xs := #[final]) (by simpa using hfinal) hc₃.blkIn hf₃
+  exact ⟨ctx₄, modOp, fn, blk, ops ++ [ret], by
+    simp only [lowerComToFuncWf, hM, h₀, h₁, h₂, h₃, h₄, Option.bind_eq_bind, Option.bind_some,
+      Option.pure_def]⟩
+
+/-- On the `arith` fragment over a context of integer types, `lowerComToFuncWf` returns
+a well-formed context, and VeIR's `interpretFunction` on its `func.func`, with the
+encoded valuation `V` as arguments and any memory `mem`, returns the encoded
+denotation of the program and leaves the memory unchanged. -/
+theorem exists_interpretFunction_lowerComToFuncWf {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (name : String) (V : Valuation Γ) (mem : MemoryState)
+    (hc : ComInArith c) (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s) :
+    ∃ C modOp fn blk ops, lowerComToFuncWf c name = some (C, modOp, fn, blk, ops) ∧
+      ∃ hf : fn.InBounds C.raw,
+        interpretFunction fn (encodeArgs V).toArray mem hf =
+          .ok (mem, #[encodeVal t (c.denote V)]) := by
+  obtain ⟨C, modOp, fn, blk, ops, h⟩ := lowerComToFuncWf_isSome c name
+  exact ⟨C, modOp, fn, blk, ops, h, interpretFunction_lowerComToFuncWf c name V mem hc hΓ h⟩
+
+/-- On the `arith` fragment over a context of integer types, `lowerComToFuncWf` returns
+a well-formed context, and VeIR's `interpretFunction` on its `func.func` returns the
+value `veirRunCom` computes from the encoded valuation and leaves the memory
+unchanged. -/
+theorem exists_interpretFunction_lowerComToFuncWf_eq_veirRunCom {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (c : Com jasminDialect Γ t) (name : String) (V : Valuation Γ)
+    (mem : MemoryState) (hc : ComInArith c) (hΓ : ∀ s ∈ Γ, JasminTy.IsScalar s) :
+    ∃ C modOp fn blk ops, lowerComToFuncWf c name = some (C, modOp, fn, blk, ops) ∧
+      ∃ (hf : fn.InBounds C.raw) (r : RuntimeValue),
+        veirRunCom c (fun s v => encodeVal s (v.lookup V)) mem = .ok r ∧
+        interpretFunction fn (encodeArgs V).toArray mem hf = .ok (mem, #[r]) := by
+  obtain ⟨C, modOp, fn, blk, ops, h⟩ := lowerComToFuncWf_isSome c name
+  exact ⟨C, modOp, fn, blk, ops, h,
+    interpretFunction_lowerComToFuncWf_eq_veirRunCom c name V mem hc hΓ h⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

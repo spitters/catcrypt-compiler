@@ -290,7 +290,7 @@ CatCrypt.Crypto.SecureCompilation.BignumAddEmit
 CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
-CatCrypt.Crypto.SecureCompilation.CT.LowCTLeakage
+CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2bTie
