@@ -1557,6 +1557,94 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi bod
         hL' hl₁ hl₂
       rw [ht]
 
+/-- A downward counted loop that may break: its source event is `opaque`, so equal source
+    leakage gives equal environments, and the trips are those of `genTripsCT` over
+    `denoteForLoopRev'` counting down from `hi - 1`. -/
+theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br) (i : String) (lo hi body : ImpExpr)
+    (ihb : ExitCTT M bi N leafSpec br A R body) :
+    ExitCTT M bi N leafSpec br A R (.forFoldRev i lo hi body) := by
+  intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
+    hrun₂ hval₂ hag₁ hret₁ hag₂ hret₂ hL' h₁ h₂
+  cases tl with
+  | true => cases fl <;> simp [exitSimOkT] at hok
+  | false =>
+    cases fl with
+    | none => simp [exitSimOkT] at hok
+    | some r =>
+      have hok' : (forBounds lo hi).isSome = true ∧ exitReserved i = false ∧
+          exitSc A i = true ∧ exitSimOkT A R false true body = true := by
+        simpa only [exitSimOkT, Option.isSome_some, Bool.and_eq_true, Bool.not_eq_true',
+          and_assoc] using hok
+      have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
+      have hK0 := hK
+      have hslot := runSlot_exitRunName hfl
+      have hxo : xb = false → exitOf o₁ = exitOf o₂ := fun hxb => by
+        subst hxb
+        exact (exitOf_false_of_xT hL hok hfl hK0 hrun₁ hval₁ hag₁ hret₁ h₁).trans
+          (exitOf_false_of_xT hL hok hfl hK0 hrun₂ hval₂ hag₂ hret₂ h₂).symm
+      rw [haxToLowCTKT_forFoldRev_some_eq] at hK
+      rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
+      · rw [hFB] at hok'; cases hok'.1
+      rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
+      · rw [hFB, hB] at hK; cases hK
+      rw [hFB, hB] at hK
+      simp only [Option.some.injEq, Prod.mk.injEq] at hK
+      obtain ⟨rfl, rfl⟩ := hK
+      refine ⟨?_, hxo rfl⟩
+      obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
+      have hR := bodyRunT (M := M) (N := N) hL hok'.2.2.2 hslot hB
+      have hC := bodyCTT ihb hok'.2.2.2 hslot hB
+      have henv : env₁ = env₂ := by
+        simp only [srcLeak, SrcLeak.ev.injEq, SrcEv.opaque.injEq] at hL'
+        first | exact hL'.1 | exact hL'
+      subst henv
+      rw [denote'_forFoldRev_lit_run] at hrun₁ hrun₂
+      have hcast : ∀ j : Nat, j < h - l →
+          ((h - j : Nat) : Int) - 1 = ((h - 1 - j : Nat) : Int) := by
+        intro j hj; omega
+      have hcast' : ∀ j : Nat, j < h - l →
+          ((h - (j + 1) : Nat) : Int) = ((h - j : Nat) : Int) - 1 := by
+        intro j hj; omega
+      cases h₁ with
+      | seq _ _ _ _ _ tl₁ tz₁ hl₁ hz₁ =>
+      cases h₂ with
+      | seq _ _ _ _ _ tl₂ tz₂ hl₂ hz₂ =>
+      cases hz₁
+      cases hz₂
+      cases hl₁ with
+      | letU64Zero _ _ _ _ _ hl₁ =>
+      cases hl₁ with
+      | letU64Zero _ _ _ _ _ hl₁ =>
+      cases hl₂ with
+      | letU64Zero _ _ _ _ _ hl₂ =>
+      cases hl₂ with
+      | letU64Zero _ _ _ _ _ hl₂ =>
+      obtain ⟨hag₁', hret₁'⟩ := genForEntry agResT hag₁
+      obtain ⟨hag₂', hret₂'⟩ := genForEntry agResT hag₂
+      obtain ⟨ht, -⟩ := genTripsCT agResT (exitRunName (some r)) i body bC
+        (.SSub (.SLit (h - 1)) (.SVar (exitRunName (some r))))
+        (fun j => h - 1 - j) (h - l)
+        (fun n j env =>
+          (_root_.Hax.denoteForLoopRev' bi n i l ((h - j : Nat) : Int) body).run env)
+        (fun n j env => forRevLeak bi i body (srcLeak M bi body) n l ((h - j : Nat) : Int) env)
+        hR hC hslot hok'.2.1
+        (fun env rs j hj hag => agExtT hok'.2.1 his env rs _ (by omega) hag) ⟨trivial, rfl⟩
+        (fun j s hs => by simp [SExpr.evalState, hs])
+        (fun j env v hj => by
+          rw [denoteForLoopRev'_zero_run bi i _ _ body env (by omega)]; simp)
+        (fun n j env o e2 hj hbr ho => by
+          refine denoteForLoopRev'_succ_nonval bi n i _ _ body env e2 o (by omega) ?_ ho
+          rw [hcast j hj]; exact hbr)
+        (fun n j env w e2 hj hbr hw => by
+          rw [denoteForLoopRev'_succ_iterate bi n i _ _ body env e2 w (by omega)
+            (by rw [hcast j hj]; exact hbr) hw, hcast' j hj])
+        (fun n j env hj => by
+          rw [forRevLeak, if_neg (by omega), hcast j hj, hcast' j hj, hcast j hj])
+        (h - l) 0 fuel env₁ env₁ env₁' env₂' o₁ o₂ _ _ _ _ _ _ (by omega)
+        (by simpa using hrun₁) hval₁ (by simpa using hrun₂) hval₂ hag₁' hret₁' hag₂' hret₂'
+        rfl (rFor_tripsL M N leafSpec _ _ _ _ _ _ hl₁) (rFor_tripsL M N leafSpec _ _ _ _ _ _ hl₂)
+      rw [ht]
+
 end LoopArms
 
 /-! ## Every expression of the fragment, and the function frame -/
@@ -1602,6 +1690,8 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (hL : ExitLeaves bi le
   | forFoldRevReturn i lo hi body _ _ ihb =>
     exact exitCTT_forFoldRevReturn M bi N leafSpec br A R hL i lo hi body ihb
   | forFold i lo hi body _ _ ihb => exact exitCTT_forFold M bi N leafSpec br A R hL i lo hi body ihb
+  | forFoldRev i lo hi body _ _ ihb =>
+    exact exitCTT_forFoldRev M bi N leafSpec br A R hL i lo hi body ihb
   | whileFold c body _ ihb =>
     cases c with
     | var v => exact exitCTT_whileFold M bi N leafSpec br A R hL v body ihb

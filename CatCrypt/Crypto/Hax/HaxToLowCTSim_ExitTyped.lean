@@ -34,8 +34,8 @@ heap that holds it:
   of the bound name (`RCopy`) or, for a call with a scalar result (`exitScalarRes`: a
   scalar call, or a leaf of `exitTowerScalarNames` whose arguments are held in towers),
   its limb `0` into the scalar slot;
-* a counted loop or a `while` loop in an exit context is lowered to the exit-flag
-  loop followed by `breakLoop`, whether its body breaks or not;
+* a counted loop, upward or downward, or a `while` loop in an exit context is lowered to
+  the exit-flag loop followed by `breakLoop`, whether its body breaks or not;
 * a tail variable held in a tower is copied into the tower slot `exitResName`.
 
 `exitTowers` infers a placement from a body; the simulation holds for every
@@ -399,8 +399,9 @@ def resultStoreT (A : ExitTowers) : ImpExpr → Option LowCT
 
 /-- The exit-flag lowering under the placement `A`: `haxToLowCTK true` with the heads
     of `letHeadT A`, the tail store `resultStoreT A`, and, in an exit context, every
-    counted loop with the bounds of `forBounds` or `forBoundsRt` and every `while` loop
-    on a variable lowered to the exit-flag loop followed by `breakLoop`. -/
+    counted loop with the bounds of `forBounds` or `forBoundsRt`, every downward counted
+    loop with the bounds of `forBounds`, and every `while` loop on a variable lowered to
+    the exit-flag loop followed by `breakLoop`. -/
 def haxToLowCTKT (A : ExitTowers) : Bool → Option String → ImpExpr → Option (LowCT × Bool)
   | tl, fl, .letBind name val body =>
       match letHeadT A name val, haxToLowCTKT A tl fl body with
@@ -439,6 +440,11 @@ def haxToLowCTKT (A : ExitTowers) : Bool → Option String → ImpExpr → Optio
       | none, some (l, h), some (bC, _) =>
           some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
       | _, _, _ => none
+  | false, some r, .forFoldRev i lo hi body =>
+      match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
+      | some (l, h), some (bC, _) =>
+          some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
+      | _, _ => none
   | false, some r, .whileFold (.var c) body =>
       match haxToLowCTKT A false (some (exitRunName (some r))) body with
       | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
@@ -477,6 +483,7 @@ def exitTowerBound : ImpExpr → List String
   | .forFoldReturn _ _ _ b => exitTowerBound b
   | .forFoldRevReturn _ _ _ b => exitTowerBound b
   | .forFold _ _ _ b => exitTowerBound b
+  | .forFoldRev _ _ _ b => exitTowerBound b
   | .whileFold _ b => exitTowerBound b
   | _ => []
 
@@ -500,6 +507,7 @@ def exitScalarNames (tb : List String) : ImpExpr → List String
   | .forFoldRevReturn i _ _ b => i :: exitScalarNames tb b
   | .forFold i _ (.var h) b => i :: h :: exitScalarNames tb b
   | .forFold i _ _ b => i :: exitScalarNames tb b
+  | .forFoldRev i _ _ b => i :: exitScalarNames tb b
   | .whileFold (.var c) b => c :: exitScalarNames tb b
   | .whileFold _ b => exitScalarNames tb b
   | _ => []
@@ -542,6 +550,7 @@ def exitTowersStep (sc : List String) : ExitTowers → ImpExpr → ExitTowers
   | A, .forFoldReturn _ _ _ b => exitTowersStep sc A b
   | A, .forFoldRevReturn _ _ _ b => exitTowersStep sc A b
   | A, .forFold _ _ _ b => exitTowersStep sc A b
+  | A, .forFoldRev _ _ _ b => exitTowersStep sc A b
   | A, .whileFold _ b => exitTowersStep sc A b
   | A, _ => A
 
@@ -632,6 +641,9 @@ def exitSimOkT (A : ExitTowers) (R : ExitRes) : Bool → Bool → ImpExpr → Bo
   | false, true, .forFold i lo hi body =>
       ((forBounds lo hi).isSome || forBoundsRtOkT A lo hi) && !exitReserved i &&
         exitSc A i && exitSimOkT A R false true body
+  | false, true, .forFoldRev i lo hi body =>
+      (forBounds lo hi).isSome && !exitReserved i && exitSc A i &&
+        exitSimOkT A R false true body
   | false, true, .whileFold (.var c) body =>
       !exitReserved c && exitSc A c && exitSimOkT A R false true body
   | _, true, .cfBreak p => exitPayloadOk A p
@@ -684,6 +696,11 @@ def exitSimWhyT (A : ExitTowers) (R : ExitRes) :
       else exitSimWhyT A R false true body
   | false, true, .forFold i lo hi body =>
       if !((forBounds lo hi).isSome || forBoundsRtOkT A lo hi) then some "forFold bounds"
+      else if exitReserved i then some "reserved name"
+      else if !exitSc A i then some "counter placed in a tower"
+      else exitSimWhyT A R false true body
+  | false, true, .forFoldRev i lo hi body =>
+      if (forBounds lo hi).isNone then some "forFoldRev bounds"
       else if exitReserved i then some "reserved name"
       else if !exitSc A i then some "counter placed in a tower"
       else exitSimWhyT A R false true body
@@ -1300,6 +1317,65 @@ theorem letBind_app_inv (hplain : _root_.Hax.ContinueFlag.BuiltinsPlain bi) (n f
       rw [denote'_letBind_run_val bi fuel n _ body e1 e1 r happ (hplain f vals r hbi)] at hrun
       exact ⟨vals, r, hF vals rfl, hbi, hrun⟩
 
+theorem denote'_forFoldRev_lit_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env) :
+    (denote' bi fuel (.forFoldRev i (.lit (.int lo)) (.lit (.int hi)) body)).run env =
+      (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env := by
+  simp only [denote']; rfl
+
+theorem denoteForLoopRev'_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
+    (h : hi ≤ lo) :
+    (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env = (.val .unit, env) := by
+  rw [_root_.Hax.denoteForLoopRev', if_pos h]; rfl
+
+theorem denoteForLoopRev'_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
+    (h : lo < hi) :
+    (_root_.Hax.denoteForLoopRev' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
+  rw [_root_.Hax.denoteForLoopRev', if_neg (not_le.mpr h), if_pos rfl]; rfl
+
+theorem denoteForLoopRev'_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
+    (env : Env) (h : lo < hi) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env =
+      match (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) with
+      | (.val (.controlFlow true v), e2) => (.val v, e2)
+      | (.val (.controlFlow false _), e2) =>
+          (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
+      | (.val _, e2) => (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
+      | (o, e2) => (o, e2) := by
+  rw [_root_.Hax.denoteForLoopRev', if_neg (not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+    modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
+  rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
+  rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
+  cases v2 with
+  | controlFlow k w => cases k <;> rfl
+  | _ => rfl
+
+theorem denoteForLoopRev'_succ_break (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
+    (env e2 : Env) (w : Value) (h : lo < hi)
+    (hb : (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) =
+      (.val (.controlFlow true w), e2)) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env = (.val w, e2) := by
+  rw [denoteForLoopRev'_succ_run bi n i lo hi body env h, hb]
+
+theorem denoteForLoopRev'_succ_iterate (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
+    (env e2 : Env) (w : Value) (h : lo < hi)
+    (hb : (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) = (.val w, e2))
+    (hw : w.isControlFlow = false) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env =
+      (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2 := by
+  rw [denoteForLoopRev'_succ_run bi n i lo hi body env h, hb]
+  cases w <;> first | rfl | simp at hw
+
+theorem denoteForLoopRev'_succ_nonval (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
+    (env e2 : Env) (o : Outcome) (h : lo < hi)
+    (hb : (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) = (o, e2))
+    (ho : ∀ v, o ≠ .val v) :
+    (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env = (o, e2) := by
+  rw [denoteForLoopRev'_succ_run bi n i lo hi body env h, hb]
+  cases o with
+  | val v => exact absurd rfl (ho v)
+  | _ => rfl
+
 end SourceStepsT
 
 /-! ## §10  The simulation statement and the translator's equations -/
@@ -1386,6 +1462,13 @@ theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr) :
       | none, some (l, h), some (bC, _) =>
           some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
       | _, _, _ => none := rfl
+
+theorem haxToLowCTKT_forFoldRev_some_eq (r i : String) (lo hi body : ImpExpr) :
+    haxToLowCTKT A false (some r) (.forFoldRev i lo hi body) =
+      match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
+      | some (l, h), some (bC, _) =>
+          some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
+      | _, _ => none := rfl
 
 theorem haxToLowCTKT_whileFold_some_eq (r c : String) (body : ImpExpr) :
     haxToLowCTKT A false (some r) (.whileFold (.var c) body) =
@@ -3344,6 +3427,157 @@ theorem exitSimTy_forFold (i : String) (lo hi body : ImpExpr)
           hok'.2.1 his hh hokB hB fuel env env' o rs hrun hval hag
       exact ⟨rs', hex, hagL, fun _ => h0⟩
 
+/-- **The `forFoldRev` trips of a loop that may break**: as `breakForTripsT_sim`, with the
+    counter of trip `j` bound to `hi - 1 - j` (`exitForTripRev`). -/
+theorem breakForTripsRevT_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : LowCT)
+    (xb : Bool) (ihb : ExitSimTy bi N leafSpec br A R body) (hslot : exitRunSlot run = true)
+    (hi_ : exitReserved i = false) (his : A.lookup i = none) (hhi : hi ≤ 2 ^ 64)
+    (hokB : exitSimOkT A R false true body = true)
+    (hKB : haxToLowCTKT A false (some run) body = some (bC, xb)) :
+    ∀ (d j fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState),
+      j + d = hi - lo →
+      (_root_.Hax.denoteForLoopRev' bi fuel i lo ((hi - j : Nat) : Int) body).run env =
+        (o, env') →
+      (∃ v, o = .val v) → envAgreesT br A env rs → rs.rsScalar exitRetName = 0 →
+      ∃ rs', TripsFrom N leafSpec run (exitForTripRev run i hi bC) j d rs rs' ∧
+        envAgreesExitT br A R false o env' (rsSetScalar rs' exitRetName 0) := by
+  have hctx : RunCtx (some run) := fun r hr => by cases hr; exact Or.inl hslot
+  have hresv := exitReserved_of_runSlot hslot
+  have hir : i ≠ run := ne_of_reserved hi_ hresv
+  have hiret : i ≠ exitRetName := ne_of_reserved hi_ exitReserved_ret
+  intro d
+  induction d with
+  | zero =>
+    intro j fuel env env' o rs hj h hval hag hret
+    rw [denoteForLoopRev'_ge_run bi fuel i _ _ body env (by omega)] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+    exact ⟨rs, rfl, envAgreesExitT_reset hag rfl⟩
+  | succ d IH =>
+    intro j fuel env env' o rs hj h hval hag hret
+    have hlt : (lo : Int) < ((hi - j : Nat) : Int) := by omega
+    have hc : ((hi - j : Nat) : Int) - 1 = ((hi - 1 - j : Nat) : Int) := by omega
+    cases fuel with
+    | zero =>
+      rw [denoteForLoopRev'_zero_run bi i _ _ body env hlt] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      obtain ⟨_, h⟩ := hval; cases h
+    | succ n =>
+      have hagT : envAgreesT br A (env.extend i (.int (((hi - j : Nat) : Int) - 1)))
+          (rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j)) := by
+        rw [hc]
+        exact tripStart_agree br A hresv hi_ his j (hi - 1 - j) (by omega) hag
+      have hretT : (rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j)).rsScalar exitRetName = 0 := by
+        rw [rsScalar_rsSetScalar, if_neg hiret.symm, rsScalar_rsSetScalar,
+          if_neg (runSlot_ne_ret hslot).symm, hret]
+      have hpre : ∀ r, RustExec N leafSpec bC (rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j)) r →
+          RustExec N leafSpec (exitForTripRev run i hi bC) (rsSetScalar rs run j) r := by
+        intro r hr
+        have hst : rsSetScalar (rsSetScalar (rsSetScalar rs run j) i 0) i
+            ((SExpr.SSub (.SLit (hi - 1)) (.SVar run)).evalState
+              (rsSetScalar (rsSetScalar rs run j) i 0)) =
+            rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j) := by
+          rw [rsSetScalar_rsSetScalar]
+          simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hir.symm, if_true]
+        refine exitGuard_running N leafSpec _ _ _
+          (by rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, hret])
+          (RustExec.letU64Zero _ _ _ _ (RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ _) ?_))
+        rw [hst]; exact hr
+      rcases hb : (denote' bi (n + 1) body).run (env.extend i (.int (((hi - j : Nat) : Int) - 1)))
+        with ⟨ob, e2⟩
+      cases ob with
+      | val vb =>
+        obtain ⟨rs1, hex1, hag1, -⟩ :=
+          ihb false (some run) (n + 1) _ e2 (.val vb) _ bC xb hokB hctx hKB hb ⟨vb, rfl⟩ hagT hretT
+        cases hcf : vb.isControlFlow with
+        | false =>
+          obtain ⟨h1, hagE, -⟩ := (envAgreesExitT_val hcf).mp hag1
+          rw [denoteForLoopRev'_succ_iterate bi n i lo _ body env e2 vb hlt hb hcf] at h
+          have h' : (_root_.Hax.denoteForLoopRev' bi n i lo ((hi - (j + 1) : Nat) : Int)
+              body).run e2 = (o, env') := by
+            rw [show ((hi - (j + 1) : Nat) : Int) = ((hi - j : Nat) : Int) - 1 by omega]
+            exact h
+          obtain ⟨rs', hT, hagL⟩ := IH (j + 1) n e2 env' o rs1 (by omega) h' hval hagE h1
+          exact ⟨rs', ⟨rs1, hpre rs1 hex1, hT⟩, hagL⟩
+        | true =>
+          cases vb with
+          | controlFlow kk ww =>
+            cases kk with
+            | false => exact (show False from hag1).elim
+            | true =>
+              obtain ⟨h1, hw, hagE⟩ := hag1
+              have hwcf : ww.isControlFlow = false := by
+                cases ww <;> first | rfl | simp [valueToScalar] at hw
+              rw [denoteForLoopRev'_succ_break bi n i lo _ body env e2 ww hlt hb] at h
+              obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+              obtain ⟨rs', hT, hagL⟩ :=
+                exitedTripsT N leafSpec br A R run _ hslot d (j + 1) rs1 ww _ ⟨h1, hw, hagE⟩
+              exact ⟨rs', ⟨rs1, hpre rs1 hex1, hT⟩, envAgreesExitT_reset hagL.2.2 hwcf⟩
+          | _ => simp at hcf
+      | _ =>
+        rw [denoteForLoopRev'_succ_nonval bi n i lo _ body env e2 _ hlt hb
+          (fun v h => by cases h)] at h
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+        obtain ⟨_, h⟩ := hval; cases h
+
+theorem breakForLoopRevT_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : LowCT)
+    (xb : Bool) (ihb : ExitSimTy bi N leafSpec br A R body) (hslot : exitRunSlot run = true)
+    (hi_ : exitReserved i = false) (his : A.lookup i = none) (hhi : hi ≤ 2 ^ 64)
+    (hokB : exitSimOkT A R false true body = true)
+    (hKB : haxToLowCTKT A false (some run) body = some (bC, xb))
+    (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
+    (hrun : (denote' bi fuel (.forFoldRev i (.lit (.int lo)) (.lit (.int hi)) body)).run env =
+      (o, env'))
+    (hval : ∃ v, o = .val v) (hag : envAgreesT br A env rs) :
+    ∃ rs', RustExec N leafSpec (breakLoop (exitForLoopRev run i lo hi bC)) rs rs' ∧
+      envAgreesExitT br A R false o env' rs' ∧ rs'.rsScalar exitRetName = 0 := by
+  rw [denote'_forFoldRev_lit_run] at hrun
+  have hag0 : envAgreesT br A env (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0) :=
+    envAgreesT_set_reserved _ exitReserved_val (envAgreesT_set_reserved _ exitReserved_ret hag)
+  have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
+      exitRetName = 0 := by
+    rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+  have hrun0 : (_root_.Hax.denoteForLoopRev' bi fuel i lo ((hi - 0 : Nat) : Int) body).run env =
+      (o, env') := by
+    rw [Nat.sub_zero]; exact hrun
+  obtain ⟨rs', hT, hagL⟩ :=
+    breakForTripsRevT_sim bi N leafSpec br A R run i lo hi body bC xb ihb hslot hi_ his hhi hokB
+      hKB (hi - lo) 0 fuel env env' o _ (by omega) hrun0 hval hag0 hret0
+  have hFor := rustExec_rFor_of_tripsFrom N leafSpec run _ (hi - lo) 0 _ _ rs'
+    (RustExec.forZero _ _ _) hT
+  rw [Nat.zero_add] at hFor
+  exact ⟨_, RustExec.seq _ _ _ _ _ (RustExec.letU64Zero _ _ _ _ (RustExec.letU64Zero _ _ _ _ hFor))
+    (RustExec.scalarSet _ _ _), hagL, by simp [rsScalar_rsSetScalar]⟩
+
+theorem exitSimTy_forFoldRev (i : String) (lo hi body : ImpExpr)
+    (ihb : ExitSimTy bi N leafSpec br A R body) :
+    ExitSimTy bi N leafSpec br A R (.forFoldRev i lo hi body) := by
+  intro tl fl fuel env env' o rs cc xb hok hfl hK hrun hval hag hret
+  cases tl with
+  | true => cases fl <;> simp [exitSimOkT] at hok
+  | false =>
+    cases fl with
+    | none => simp [exitSimOkT] at hok
+    | some r =>
+      have hok' : (forBounds lo hi).isSome = true ∧ exitReserved i = false ∧
+          exitSc A i = true ∧ exitSimOkT A R false true body = true := by
+        simpa only [exitSimOkT, Option.isSome_some, Bool.and_eq_true, Bool.not_eq_true',
+          and_assoc] using hok
+      have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
+      have hslot := runSlot_exitRunName hfl
+      rw [haxToLowCTKT_forFoldRev_some_eq] at hK
+      rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
+      · rw [hFB] at hok'; cases hok'.1
+      rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
+      · rw [hFB, hB] at hK; cases hK
+      rw [hFB, hB] at hK
+      simp only [Option.some.injEq, Prod.mk.injEq] at hK
+      obtain ⟨rfl, rfl⟩ := hK
+      obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
+      obtain ⟨rs', hex, hagL, h0⟩ :=
+        breakForLoopRevT_sim bi N leafSpec br A R (exitRunName (some r)) i l h body bC x ihb
+          hslot hok'.2.1 his hh hok'.2.2.2 hB fuel env env' o rs hrun hval hag
+      exact ⟨rs', hex, hagL, fun _ => h0⟩
+
 theorem exitSimTy_whileFold (c : String) (body : ImpExpr)
     (ihb : ExitSimTy bi N leafSpec br A R body) :
     ExitSimTy bi N leafSpec br A R (.whileFold (.var c) body) := by
@@ -3416,6 +3650,8 @@ theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
   | forFoldRevReturn i lo hi body _ _ ihb =>
     exact exitSimTy_forFoldRevReturn bi N leafSpec br A R i lo hi body ihb
   | forFold i lo hi body _ _ ihb => exact exitSimTy_forFold bi N leafSpec br A R i lo hi body ihb
+  | forFoldRev i lo hi body _ _ ihb =>
+    exact exitSimTy_forFoldRev bi N leafSpec br A R i lo hi body ihb
   | whileFold c body _ ihb =>
     cases c with
     | var v => exact exitSimTy_whileFold bi N leafSpec br A R v body ihb
