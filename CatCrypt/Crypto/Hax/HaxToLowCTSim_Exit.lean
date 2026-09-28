@@ -990,6 +990,8 @@ def forBoundsRtOk (lo hi : ImpExpr) : Bool :=
 def exitSimOk : Bool → Bool → ImpExpr → Bool
   | tl, il, .letBind n (.lit (.uintLit .w64 _)) body => !exitReserved n && exitSimOk tl il body
   | tl, il, .letBind n (.lit (.bool _)) body => !exitReserved n && exitSimOk tl il body
+  | tl, il, .letBind n (.var s) body =>
+      !exitReserved n && !exitReserved s && exitSimOk tl il body
   | tl, il, .letBind n (.app op [.var a, .var b]) body =>
       (scalarOpExpr op (.SVar a) (.SVar b)).isSome && !exitReserved n && !exitReserved a &&
         !exitReserved b && exitSimOk tl il body
@@ -1444,6 +1446,59 @@ theorem exitSim_letBind_lit (n : String) (l : ImpLit) (body : ImpExpr)
     (ihb : ExitSim bi N leafSpec body) :
     ExitSim bi N leafSpec (.letBind n (.lit l) body) :=
   exitSimT_letBind_lit bi N leafSpec (haxToLowCTK true) (haxToLowCTK_letBind_eq true) n l body ihb
+
+/-- The binding `let n = s; body` of two non-reserved names: the self-alias runs
+    the body, and `n ≠ s` the scalar copy of `s` into `n`. -/
+theorem exitSimT_letBind_var (T : Bool → Option String → ImpExpr → Option (LowCT × Bool))
+    (hT : ∀ tl fl n val body, T tl fl (.letBind n val body) =
+      match letHeadK true n val, T tl fl body with
+      | some k, some (bC, x) => some (k bC, x)
+      | _, _ => none)
+    (n s : String) (body : ImpExpr)
+    (ihb : ExitSimT bi N leafSpec T body) :
+    ExitSimT bi N leafSpec T (.letBind n (.var s) body) := by
+  intro tl fl fuel env env' o rs c xb hok hfl hK hrun hval hag hret
+  have hh : exitReserved n = false ∧ exitReserved s = false ∧
+      exitSimOk tl fl.isSome body = true := by
+    cases tl <;> cases fl <;>
+      simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true', and_assoc] using hok
+  obtain ⟨hn, hs, hokB⟩ := hh
+  cases hw : env s with
+  | none =>
+    rw [denote'_letBind_run_nonval bi fuel n _ body env env _
+      (by rw [denote'_var_run, hw]) (fun _ h => by cases h)] at hrun
+    obtain ⟨v, hv⟩ := hval
+    cases hrun
+    cases hv
+  | some w =>
+    obtain ⟨hsv, hk⟩ := hag s w hs hw
+    rw [denote'_letBind_run_val bi fuel n _ body env env w (by rw [denote'_var_run, hw])
+      hsv.not_cf] at hrun
+    rw [hT] at hK
+    rcases hB : T tl fl body with _ | ⟨bC, x⟩
+    · rw [hB] at hK
+      rcases letHeadK true n (.var s) with _ | k <;> simp at hK
+    rw [hB] at hK
+    by_cases hns : n = s
+    · subst hns
+      simp only [letHeadK, letHead, if_true, id, Option.some.injEq, Prod.mk.injEq] at hK
+      obtain ⟨rfl, rfl⟩ := hK
+      have hself : env.extend n w = env := Env.extend_self env n w hw
+      rw [hself] at hrun
+      exact ihb tl fl fuel env env' o rs bC x hokB hfl hB hrun hval hag hret
+    · simp only [letHeadK, letHead, hns, if_false, Option.some.injEq, Prod.mk.injEq] at hK
+      obtain ⟨rfl, rfl⟩ := hK
+      have hret' : (rsSetScalar rs n (rs.rsScalar s)).rsScalar exitRetName = 0 := by
+        rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, hret]
+      obtain ⟨rs', hexec, hagree, hx⟩ :=
+        ihb tl fl fuel (env.extend n w) env' o (rsSetScalar rs n (rs.rsScalar s)) bC x hokB hfl
+          hB hrun hval (envAgreesOff_extend hn hsv hk hag) hret'
+      exact ⟨rs', rustExec_letBind_copy N leafSpec n s bC rs rs' hns hexec, hagree, hx⟩
+
+theorem exitSim_letBind_var (n s : String) (body : ImpExpr)
+    (ihb : ExitSim bi N leafSpec body) :
+    ExitSim bi N leafSpec (.letBind n (.var s) body) :=
+  exitSimT_letBind_var bi N leafSpec (haxToLowCTK true) (haxToLowCTK_letBind_eq true) n s body ihb
 
 theorem scalarOpExpr_isSome_vars (op x y x' y' : String) :
     (scalarOpExpr op (.SVar x) (.SVar y)).isSome =
@@ -2536,6 +2591,7 @@ theorem haxToLowCTK_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
   | letBind n val body _ ihb =>
     cases val with
     | lit l => exact exitSim_letBind_lit bi N leafSpec n l body ihb
+    | var s => exact exitSim_letBind_var bi N leafSpec n s body ihb
     | app op args =>
       rcases args with _ | ⟨a1, _ | ⟨a2, _ | ⟨a3, rest⟩⟩⟩
       · exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)
@@ -3112,6 +3168,7 @@ theorem haxToLowCTKStop_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec
   | letBind n val body _ ihb =>
     cases val with
     | lit l => exact exitSimT_letBind_lit bi N leafSpec _ hL n l body ihb
+    | var s => exact exitSimT_letBind_var bi N leafSpec _ hL n s body ihb
     | app op args =>
       rcases args with _ | ⟨a1, _ | ⟨a2, _ | ⟨a3, rest⟩⟩⟩
       · exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)

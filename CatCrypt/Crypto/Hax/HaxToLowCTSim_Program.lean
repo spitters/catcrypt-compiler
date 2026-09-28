@@ -28,7 +28,9 @@ corollary for programs accepted by the checker:
   tower-typed `let` extends it), requires every leaf-call argument to be a
   tower-bound variable of the callee's type, every scalar `let`/`assign` name to
   be in `S`, every tower-binding name to be outside `S`, and every alias
-  `let n = s` to satisfy `n = s`.  It returns the scope at the exit.
+  `let n = s` to satisfy `n = s` or to have both `n` and `s` in `S` (the
+  lowering is then the scalar copy of `s` into `n`).  It returns the scope at
+  the exit.
 * `ScopeBound rs Γ` and `NamesFresh rs S` are the state-level preconditions on
   the entry state: the names of `Γ` are tower-bound at their recorded type, and
   the names of `S` have no tower binding.
@@ -37,7 +39,8 @@ corollary for programs accepted by the checker:
   the `seq` and `whileLoop` arms need to continue.
 
 The arms covered: `var`, `unitVal`, `seq`, `tuple` of variables, scalar-literal
-`letBind`/`assign`, leaf-call `letBind`/`assign`, alias `letBind` (with `n = s`),
+`letBind`/`assign`, leaf-call `letBind`/`assign`, alias `letBind` (self-alias
+and scalar copy),
 tuple-component `letBind`, `ifThenElse` on a variable, `whileLoop` on a variable
 (from the body's induction hypothesis and `RustExec.whileTrue`/`whileFalse`).
 The `array_update` and `index` call arms are the two fields of `ProgramSimArms`,
@@ -178,7 +181,8 @@ def simScope (S : List String) (Γ : TowerScope) : ImpExpr → Option TowerScope
   | .letBind name (.lit _) body =>
       if S.contains name then simScope S Γ body else none
   | .letBind name (.var src) body =>
-      if name = src then simScope S Γ body else none
+      if decide (name = src) || (S.contains name && S.contains src) then simScope S Γ body
+      else none
   | .letBind name (.proj (.var t) _) body =>
       if decide (List.lookup t Γ = some .TFp) && decide (t ≠ name)
           && scopeCompat Γ name .TFp && !S.contains name then
@@ -210,9 +214,12 @@ def simScope (S : List String) (Γ : TowerScope) : ImpExpr → Option TowerScope
   | _ => none
 
 /-- The scalar-binding names of a program: the names of its literal
-    `letBind`s and `assign`s. -/
+    `letBind`s and `assign`s, and of its copies `let name = src` with
+    `name ≠ src`. -/
 def scalarNames : ImpExpr → List String
   | .letBind name (.lit _) body => name :: scalarNames body
+  | .letBind name (.var src) body =>
+      if name = src then scalarNames body else name :: scalarNames body
   | .letBind _ _ body => scalarNames body
   | .seq a b => scalarNames a ++ scalarNames b
   | .ifThenElse _ t e => scalarNames t ++ scalarNames e
@@ -573,6 +580,42 @@ theorem Env.extend_self (env : Env) (name : String) (w : Value)
   · subst hx; simp [Hax.Env.extend, h]
   · simp [Hax.Env.extend, hx]
 
+/-- The lowering of a copy `let name = src; body` with `name ≠ src`. -/
+theorem haxToLowCT_letBind_var_ne_some (name src : String) (body : ImpExpr) (c : LowCT)
+    (hne : name ≠ src) (h : haxToLowCT (.letBind name (.var src) body) = some c) :
+    ∃ bodyC, haxToLowCT body = some bodyC ∧
+      c = .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC) := by
+  rw [haxToLowCT_letBind_var_ne name src body hne] at h
+  cases hb : haxToLowCT body with
+  | none => simp [hb] at h
+  | some bodyC =>
+    simp only [hb, Option.map_some, Option.some.injEq] at h
+    exact ⟨bodyC, rfl, h.symm⟩
+
+/-- A run of the lowered copy `let name = src` is a run of the body from the
+    state whose scalar `name` holds the scalar `src`. -/
+theorem rustExec_letBind_copy (N : Nat) (leafSpec : LeafSpec) (name src : String)
+    (bodyC : LowCT) (rs rs' : RustState) (hne : name ≠ src)
+    (h : RustExec N leafSpec bodyC (rsSetScalar rs name (rs.rsScalar src)) rs') :
+    RustExec N leafSpec
+      (.RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC)) rs rs' := by
+  refine RustExec.letU64Zero name _ rs rs' ?_
+  refine RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr name _ _) ?_
+  have hsv : (CatCrypt.Crypto.Jasmin.LowCT.SExpr.SVar src).evalState
+      (rsSetScalar rs name 0) = rs.rsScalar src := by
+    simp [CatCrypt.Crypto.Jasmin.LowCT.SExpr.evalState, rsSetScalar, Ne.symm hne]
+  rw [hsv, rsSetScalar_collapse]
+  exact h
+
+/-- The copy of `src` into a name without a tower binding preserves the combined
+    agreement. -/
+theorem envAgreesRustFull_extend_copy (bridge : ValueTowerBridge) (env : Env)
+    (rs : RustState) (name src : String) (w : Value) (hFresh : TowerFresh rs name)
+    (hsrc : env src = some w) (hAgree : envAgreesRustFull bridge env rs) :
+    envAgreesRustFull bridge (env.extend name w) (rsSetScalar rs name (rs.rsScalar src)) :=
+  ⟨envAgreesRust_extend_copy env rs name src w hAgree.1 hsrc,
+   envAgreesRustTower_extend_scalar_fresh bridge env rs name w _ hFresh hAgree.2⟩
+
 /-- Step inverse for `whileLoop (.var cond) body` at successor fuel, under the
     outcome dichotomy of the body at the entry environment. -/
 theorem evalImp_whileLoop_var_step_inv
@@ -916,14 +959,22 @@ theorem progSim_letBind_var (name src : String) (body : ImpExpr)
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
   simp only [simScope] at hScope
   split at hScope
-  · rename_i hEq
-    subst hEq
-    have hHax' : haxToLowCT body = some c := by
-      simp only [haxToLowCT] at hHax
-      exact hHax
+  · rename_i hc
     obtain ⟨w, hw, hBodyEval⟩ := evalImp_letBind_var_inv bi fuel _ _ body env v env' hEval
-    rw [Env.extend_self env _ w hw] at hBodyEval
-    exact ihBody fuel Γ Γ' c env env' rs v hScope hSB hSF hHax' hBodyEval hAgree
+    by_cases hEq : name = src
+    · subst hEq
+      rw [haxToLowCT_letBind_var_self] at hHax
+      rw [Env.extend_self env _ w hw] at hBodyEval
+      exact ihBody fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hBodyEval hAgree
+    · have hIn : S.contains name = true := by simp_all
+      obtain ⟨bodyC, hBodyT, rfl⟩ := haxToLowCT_letBind_var_ne_some name src body c hEq hHax
+      obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+        ihBody fuel Γ Γ' bodyC (env.extend name w) env' (rsSetScalar rs name (rs.rsScalar src))
+          v hScope hSB hSF hBodyT hBodyEval
+          (envAgreesRustFull_extend_copy bridge env rs name src w
+            (hSF name (mem_of_contains S name hIn)) hw hAgree)
+      exact ⟨rs', rustExec_letBind_copy N leafSpec name src bodyC rs rs' hEq hExec,
+        hAgree', hSB', hSF'⟩
   · cases hScope
 
 theorem progSim_letBind_app (name f : String) (args : List ImpExpr) (body : ImpExpr)

@@ -396,7 +396,9 @@ def simScopeF (tow : String → TowerType) (S T : List String) (A Γ : TowerScop
         else none
       else if S.contains name then simScopeF tow S T A Γ body else none
   | .letBind name (.var src) body =>
-      if name = src then simScopeF tow S T A Γ body else none
+      if decide (name = src) || (S.contains name && S.contains src) then
+        simScopeF tow S T A Γ body
+      else none
   | .letBind name (.proj (.var t) _) body =>
       if decide (List.lookup t Γ = some .TFp) && decide (t ≠ name)
           && scopeCompat Γ name .TFp && !S.contains name then
@@ -955,15 +957,25 @@ theorem progSimF_letBind_var (name src : String) (body : ImpExpr)
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
   simp only [simScopeF] at hScope
   split at hScope
-  · rename_i hEq
-    subst hEq
-    have hHax' : haxToLowCT body = some c := by
-      simp only [haxToLowCT] at hHax
-      exact hHax
+  · rename_i hc
     simp only [forToLoop] at hEval
     obtain ⟨w, hw, hBodyEval⟩ := evalImp_letBind_var_inv bi fuel _ _ _ env v env' hEval
-    rw [Env.extend_self env _ w hw] at hBodyEval
-    exact ihBody fuel Γ Γ' c env env' rs v hScope hSB hSF hHax' hBodyEval hAgree
+    by_cases hEq : name = src
+    · subst hEq
+      rw [haxToLowCT_letBind_var_self] at hHax
+      rw [Env.extend_self env _ w hw] at hBodyEval
+      exact ihBody fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hBodyEval hAgree
+    · have hIn : S.contains name = true ∧ S.contains src = true := by simp_all
+      obtain ⟨bodyC, hBodyT, rfl⟩ := haxToLowCT_letBind_var_ne_some name src body c hEq hHax
+      obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+        ihBody fuel Γ Γ' bodyC (env.extend name w) env' (rsSetScalar rs name (rs.rsScalar src))
+          v hScope hSB hSF hBodyT hBodyEval
+          (envAgreesRustT_extend_copy bridge env rs name src w
+            (hSF name (mem_of_contains S name hIn.1)) (hSF src (mem_of_contains S src hIn.2))
+            hw hAgree)
+      rw [litTower_letBind_copy, arrTower_letBind_copy]
+      exact ⟨rs', rustExec_letBind_copy N leafSpec name src _ rs rs' hEq hExec,
+        hAgree', hSB', hSF'⟩
   · cases hScope
 
 theorem progSimF_letBind_app (name f : String) (args : List ImpExpr) (body : ImpExpr)

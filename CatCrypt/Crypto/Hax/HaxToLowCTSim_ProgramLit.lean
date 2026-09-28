@@ -90,6 +90,11 @@ theorem litTower_lit_not_mem (T : List String) (x : String) (m : Nat) (b : LowCT
       .RLetU64Zero x (.RSeq (.RScalarSet x m) (litTower T b)) := by
   simp only [litTower, h, Bool.false_eq_true, if_false]
 
+theorem litTower_letBind_copy (T : List String) (x src : String) (b : LowCT) :
+    litTower T (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar src)) b)) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar src)) (litTower T b)) := by
+  simp [litTower]
+
 theorem litTower_ifNz (T : List String) (v : String) (t e : LowCT) :
     litTower T (.RIfNz v t e) = .RIfNz v (litTower T t) (litTower T e) := by
   simp [litTower]
@@ -157,7 +162,8 @@ def simScopeL (S T : List String) (Γ : TowerScope) : ImpExpr → Option TowerSc
         else none
       else if S.contains name then simScopeL S T Γ body else none
   | .letBind name (.var src) body =>
-      if name = src then simScopeL S T Γ body else none
+      if decide (name = src) || (S.contains name && S.contains src) then simScopeL S T Γ body
+      else none
   | .letBind name (.proj (.var t) _) body =>
       if decide (List.lookup t Γ = some .TFp) && decide (t ≠ name)
           && scopeCompat Γ name .TFp && !S.contains name then
@@ -202,15 +208,14 @@ theorem simScopeL_nil (S : List String) (e : ImpExpr) :
     | proj pe i => cases pe <;> simp only [simScopeL, simScope, ihBody]
     | _ => simp only [simScopeL, simScope]
   | seq a b iha ihb =>
-    intro Γ; simp only [simScopeL, simScope, iha, ihb]; cases simScope S Γ a <;> rfl
+    intro Γ; simp only [simScopeL, simScope, iha, ihb] <;> cases simScope S Γ a <;> rfl
   | ifThenElse c t e _ iht ihe =>
     intro Γ
-    cases c <;> simp only [simScopeL, simScope, iht, ihe]
-    cases simScope S Γ t <;> cases simScope S Γ e <;> rfl
+    cases c <;> simp only [simScopeL, simScope, iht, ihe] <;>
+      cases simScope S Γ t <;> cases simScope S Γ e <;> rfl
   | whileLoop c body _ ih =>
     intro Γ
-    cases c <;> simp only [simScopeL, simScope, ih]
-    cases simScope S Γ body <;> rfl
+    cases c <;> simp only [simScopeL, simScope, ih] <;> cases simScope S Γ body <;> rfl
   | typeAscription e _ ih => intro Γ; simp only [simScopeL, simScope, ih]
   | assign name rhs _ => intro Γ; cases rhs <;> simp only [simScopeL, simScope]
   | _ => intro Γ; rfl
@@ -575,14 +580,24 @@ theorem progSimL_letBind_var (name src : String) (body : ImpExpr)
   simp only [condsScalar] at hConds
   simp only [simScopeL] at hScope
   split at hScope
-  · rename_i hEq
-    subst hEq
-    have hHax' : haxToLowCT body = some c := by
-      simp only [haxToLowCT] at hHax
-      exact hHax
+  · rename_i hc
     obtain ⟨w, hw, hBodyEval⟩ := evalImp_letBind_var_inv bi fuel _ _ body env v env' hEval
-    rw [Env.extend_self env _ w hw] at hBodyEval
-    exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax' hBodyEval hAgree
+    by_cases hEq : name = src
+    · subst hEq
+      rw [haxToLowCT_letBind_var_self] at hHax
+      rw [Env.extend_self env _ w hw] at hBodyEval
+      exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hBodyEval hAgree
+    · have hIn : S.contains name = true ∧ S.contains src = true := by simp_all
+      obtain ⟨bodyC, hBodyT, rfl⟩ := haxToLowCT_letBind_var_ne_some name src body c hEq hHax
+      obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+        ihBody fuel Γ Γ' bodyC (env.extend name w) env' (rsSetScalar rs name (rs.rsScalar src))
+          v hScope hConds hSB hSF hBodyT hBodyEval
+          (envAgreesRustT_extend_copy bridge env rs name src w
+            (hSF name (mem_of_contains S name hIn.1)) (hSF src (mem_of_contains S src hIn.2))
+            hw hAgree)
+      rw [litTower_letBind_copy]
+      exact ⟨rs', rustExec_letBind_copy N leafSpec name src _ rs rs' hEq hExec,
+        hAgree', hSB', hSF'⟩
   · cases hScope
 
 theorem progSimL_letBind_app (name f : String) (args : List ImpExpr) (body : ImpExpr)

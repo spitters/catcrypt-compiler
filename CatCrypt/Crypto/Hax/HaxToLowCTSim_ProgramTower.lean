@@ -109,6 +109,27 @@ theorem envAgreesRustT_extend_scalar_fresh (bridge : ValueTowerBridge) (env : En
     rw [hS]
     exact hAgree.1 m w k hw hT hk
 
+/-- The copy of `src` into `name`, both without a tower binding, preserves
+    agreement. -/
+theorem envAgreesRustT_extend_copy (bridge : ValueTowerBridge) (env : Env) (rs : RustState)
+    (name src : String) (w : Value) (hFresh : TowerFresh rs name)
+    (hSrcFresh : TowerFresh rs src) (hsrc : env src = some w)
+    (hAgree : envAgreesRustT bridge env rs) :
+    envAgreesRustT bridge (env.extend name w) (rsSetScalar rs name (rs.rsScalar src)) := by
+  refine ⟨?_, envAgreesRustTower_extend_scalar_fresh bridge env rs name w _ hFresh hAgree.2⟩
+  intro m w' k hw hT hk
+  by_cases hm : m = name
+  · subst hm
+    simp only [Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    subst hw
+    simpa [rsSetScalar] using hAgree.1 src w k hsrc hSrcFresh hk
+  · have hEnv : env.extend name w m = env m := by simp [Hax.Env.extend, hm]
+    rw [hEnv] at hw
+    have hS : (rsSetScalar rs name (rs.rsScalar src)).rsScalar m = rs.rsScalar m := by
+      simp [rsSetScalar, hm]
+    rw [hS]
+    exact hAgree.1 m w' k hw hT hk
+
 /-- A boolean condition without a tower binding is held in the scalar heap as
     `0` or `1`. -/
 theorem envAgreesRustT_bool_to_scalar (bridge : ValueTowerBridge) (env : Env) (rs : RustState)
@@ -372,14 +393,23 @@ theorem progSimT_letBind_var (name src : String) (body : ImpExpr)
   simp only [condsScalar] at hConds
   simp only [simScope] at hScope
   split at hScope
-  · rename_i hEq
-    subst hEq
-    have hHax' : haxToLowCT body = some c := by
-      simp only [haxToLowCT] at hHax
-      exact hHax
+  · rename_i hc
     obtain ⟨w, hw, hBodyEval⟩ := evalImp_letBind_var_inv bi fuel _ _ body env v env' hEval
-    rw [Env.extend_self env _ w hw] at hBodyEval
-    exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax' hBodyEval hAgree
+    by_cases hEq : name = src
+    · subst hEq
+      rw [haxToLowCT_letBind_var_self] at hHax
+      rw [Env.extend_self env _ w hw] at hBodyEval
+      exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hBodyEval hAgree
+    · have hIn : S.contains name = true ∧ S.contains src = true := by simp_all
+      obtain ⟨bodyC, hBodyT, rfl⟩ := haxToLowCT_letBind_var_ne_some name src body c hEq hHax
+      obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+        ihBody fuel Γ Γ' bodyC (env.extend name w) env' (rsSetScalar rs name (rs.rsScalar src))
+          v hScope hConds hSB hSF hBodyT hBodyEval
+          (envAgreesRustT_extend_copy bridge env rs name src w
+            (hSF name (mem_of_contains S name hIn.1)) (hSF src (mem_of_contains S src hIn.2))
+            hw hAgree)
+      exact ⟨rs', rustExec_letBind_copy N leafSpec name src bodyC rs rs' hEq hExec,
+        hAgree', hSB', hSF'⟩
   · cases hScope
 
 /-- A tower update at a name no argument reads leaves the slots the call reads

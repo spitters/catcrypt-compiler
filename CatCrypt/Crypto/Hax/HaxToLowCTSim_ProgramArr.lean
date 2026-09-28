@@ -188,6 +188,11 @@ theorem arrTower_limbStore (A : TowerScope) (loc : Located) (i : Nat) (w : BitVe
     arrTower A (.RLimbStore loc i w) = .RLimbStore loc i w := by
   simp [arrTower]
 
+theorem arrTower_letBind_copy (A : TowerScope) (x src : String) (b : LowCT) :
+    arrTower A (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar src)) b)) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar src)) (arrTower A b)) := by
+  simp [arrTower]
+
 theorem arrTower_scalarSet (A : TowerScope) (x : String) (m : Nat) :
     arrTower A (.RScalarSet x m) = .RScalarSet x m := by
   simp [arrTower]
@@ -286,7 +291,9 @@ def simScopeA (tow : String → TowerType) (S T : List String) (A Γ : TowerScop
         else none
       else if S.contains name then simScopeA tow S T A Γ body else none
   | .letBind name (.var src) body =>
-      if name = src then simScopeA tow S T A Γ body else none
+      if decide (name = src) || (S.contains name && S.contains src) then
+        simScopeA tow S T A Γ body
+      else none
   | .letBind name (.proj (.var t) _) body =>
       if decide (List.lookup t Γ = some .TFp) && decide (t ≠ name)
           && scopeCompat Γ name .TFp && !S.contains name then
@@ -739,14 +746,24 @@ theorem progSimA_letBind_var (name src : String) (body : ImpExpr)
   simp only [condsScalar] at hConds
   simp only [simScopeA] at hScope
   split at hScope
-  · rename_i hEq
-    subst hEq
-    have hHax' : haxToLowCT body = some c := by
-      simp only [haxToLowCT] at hHax
-      exact hHax
+  · rename_i hc
     obtain ⟨w, hw, hBodyEval⟩ := evalImp_letBind_var_inv bi fuel _ _ body env v env' hEval
-    rw [Env.extend_self env _ w hw] at hBodyEval
-    exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax' hBodyEval hAgree
+    by_cases hEq : name = src
+    · subst hEq
+      rw [haxToLowCT_letBind_var_self] at hHax
+      rw [Env.extend_self env _ w hw] at hBodyEval
+      exact ihBody fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hBodyEval hAgree
+    · have hIn : S.contains name = true ∧ S.contains src = true := by simp_all
+      obtain ⟨bodyC, hBodyT, rfl⟩ := haxToLowCT_letBind_var_ne_some name src body c hEq hHax
+      obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+        ihBody fuel Γ Γ' bodyC (env.extend name w) env' (rsSetScalar rs name (rs.rsScalar src))
+          v hScope hConds hSB hSF hBodyT hBodyEval
+          (envAgreesRustT_extend_copy bridge env rs name src w
+            (hSF name (mem_of_contains S name hIn.1)) (hSF src (mem_of_contains S src hIn.2))
+            hw hAgree)
+      rw [litTower_letBind_copy, arrTower_letBind_copy]
+      exact ⟨rs', rustExec_letBind_copy N leafSpec name src _ rs rs' hEq hExec,
+        hAgree', hSB', hSF'⟩
   · cases hScope
 
 theorem progSimA_letBind_app (name f : String) (args : List ImpExpr) (body : ImpExpr)
