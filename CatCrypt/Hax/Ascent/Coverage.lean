@@ -8,6 +8,7 @@ module
 public import CatCrypt.Hax.Ascent.Generate
 public import CatCrypt.Hax.Ascent.Structs
 public import CatCrypt.Hax.Ascent.Deps
+public import CatCrypt.Hax.Ascent.Monomorphise
 public meta import Lean
 
 /-!
@@ -28,7 +29,9 @@ in source order from the module that declares the class.
   another type (a pass-through struct) is left out and noted. A struct of arity at least
   two whose last field has a product type is encoded at the product of its field types
   with the last one under `Boxed` (`StructInfo.encTy`), so that its encoding has one
-  component per field.
+  component per field. A newtype, an abbreviation `S_T` with a constructor `S.mk : T → S_T`
+  and a projection `S.0`, is a struct of arity one whose constructor the literal calls
+  `S.mk` and whose projection it calls `::namedProj::S`.
 * Dependencies: every field of the class, including fields without arguments, is a
   `DepMethod` over the right-nested tuple of its argument types. A field whose name is a
   runtime operation is left out and noted.
@@ -58,6 +61,22 @@ correspondence `Ns.HaxGen.f.corres` under the table of the functions before it, 
 lemma `Ns.HaxCall.f`, which later functions use as the leaf of `f`, specialized to their
 prefix (`Ns.HaxGen.g.call_f`).
 
+## Trait-generic functions
+
+A surface generic in one type parameter with class binders, `f {F : Type} [C F] …`, is
+specialised at the first carrier of the extraction's instances (`instCarriers`) at which
+every class binder has an instance (`monoSurface`). Each call name of the literal that is a
+method of one of these instances and reduces, at instance transparency, to a local function
+of the extraction maps to that function (`resolveMethod`); these pairs form the table
+`tbl : MonoTable` at the carrier. The run declares the specialised literal
+`Ns.HaxGen.f.mono_lit`, the equation `Ns.HaxGen.f.mono : monomorphise tbl insts
+Ns.f_impExpr = Ns.HaxGen.f.mono_lit`, and generates `f` from the specialised literal against
+the surface at the carrier. Besides the declarations of a local function it declares
+`Ns.HaxGen.f.corres_generic`, the correspondence of the generic literal under the table of
+all functions extended by the methods of the instances (`fnCorres_of_monomorphise`). A
+generic surface without a fitting carrier is read as a local function and fails at its
+parameters.
+
 ## Reports
 
 A report line gives the function, `proved`, `proved (early return)`, `failed`, `timeout` or
@@ -80,6 +99,8 @@ pattern is a tuple of variables.
 ## Main definitions
 
 * `collectStructs`, `collectDeps`, `ascendExtraction`, `coverageRun`
+* `instCarriers`, `monoSurface`, `resolveMethod`, `renameApps` — the specialisation of
+  trait-generic functions
 * the commands `hax_ascend` and `#hax_coverage`
 -/
 
@@ -173,7 +194,19 @@ def collectStructs (ns : Name) (consts : Array Name) :
     unless c.getPrefix == ns && s.endsWith "_T" do continue
     let S := dropEnd s 2
     let ctor := Name.str ns S
-    unless env.contains ctor do continue
+    unless env.contains ctor do
+      -- a newtype: the constructor `S.mk` and the projection `S.0`, called `::namedProj::S`
+      let mk := Name.str ns (S ++ ".mk")
+      let p0 := Name.str ns (S ++ ".0")
+      unless env.contains mk && env.contains p0 do continue
+      let some fty ← forallTelescope (← inferType (mkConst mk)) (fun xs r => do
+          unless xs.size == 1 && r.isConstOf c do return none
+          return some (← inferType xs[0]!)) | continue
+      let info : StructInfo :=
+        { lit := S ++ ".mk", ctor := mk, tyName := c, arity := 1, fieldTys := #[fty],
+          projs := #[("::namedProj::" ++ S, p0, 0)] }
+      out := out.push info
+      continue
     let cty ← inferType (mkConst ctor)
     let info? ← forallTelescope cty fun xs r => do
       unless r.isConstOf c do return none
@@ -378,6 +411,99 @@ def mkArgTuple : List Expr → MetaM Expr
   | [] => return mkConst ``Unit.unit
   | x :: xs => do mkAppM ``Prod.mk #[x, ← mkArgTuple xs]
 
+/-! ### Trait-generic functions -/
+
+/-- The carriers of the instances an extraction declares: the argument `T` of the type
+    `C T` of each instance among `consts`, in order, without repetition. -/
+def instCarriers (consts : Array Name) : MetaM (Array Expr) := do
+  let mut out := #[]
+  for c in consts do
+    unless ← isInstance c do continue
+    let ci ← getConstInfo c
+    unless ci.levelParams.isEmpty && !ci.type.isForall && ci.type.isApp do continue
+    let T := ci.type.appArg!
+    unless out.contains T do out := out.push T
+  return out
+
+/-- The surface `sur`, generic in one type parameter, at the first carrier of `carriers`
+    at which every class binder has an instance: the surface applied to the carrier and
+    the instances, the class instances, and the carrier. An instance binder whose type is
+    that of an element of `insts` takes that element. `none` when the surface has no type
+    parameter or no carrier fits. -/
+def monoSurface (sur : Name) (insts : Array Expr) (carriers : Array Expr) :
+    MetaM (Option (Expr × Array Expr × Expr)) := do
+  let ci ← getConstInfo sur
+  for T in carriers do
+    let s ← saveState
+    let r ← try
+        let mut e := mkConst sur (ci.levelParams.map fun _ => Level.zero)
+        let mut ty := ci.type
+        let mut clsInsts : Array Expr := #[]
+        let mut types := 0
+        repeat
+          match ty with
+          | .forallE _ d b bi =>
+            if bi.isInstImplicit then
+              let i ← match ← insts.findM? fun i => do isDefEq (← inferType i) d with
+                | some i => pure i
+                | none => do
+                  let i ← synthInstance d
+                  clsInsts := clsInsts.push i
+                  pure i
+              e := mkApp e i
+              ty := b.instantiate1 i
+            else if bi.isImplicit && d.isSort then
+              types := types + 1
+              e := mkApp e T
+              ty := b.instantiate1 T
+            else break
+          | _ => break
+        if types != 1 then throwError "not one type parameter"
+        pure (some (e, clsInsts))
+      catch _ => pure none
+    match r with
+    | some (e, cs) => return some (e, cs, T)
+    | none => s.restore
+  return none
+
+/-- The constant of the extraction `ns` implementing the method `m` at one of the class
+    instances `clsInsts`: the projection `m` of the instance, reduced at instance
+    transparency to a constant. -/
+def resolveMethod (ns : Name) (clsInsts : Array Expr) (m : String) : MetaM (Option Name) := do
+  for i in clsInsts do
+    let some p ← (try some <$> mkProjection i (Name.mkSimple m) catch _ => pure none)
+      | continue
+    let v := (← withTransparency .instances (whnf p)).eta
+    if let .const c _ := v then
+      if c.getPrefix == ns then return some c
+  return none
+
+/-- The literal `e` with the head `f` of every call `.app f args` renamed by `σ`. -/
+partial def renameApps (σ : List (String × String)) (e : Expr) : Expr :=
+  e.replace fun x =>
+    if x.isAppOfArity ``Hax.ImpExpr.app 2 then
+      let f := x.appFn!.appArg!
+      let f' := match strOf? f with
+        | some s => match σ.lookup s with
+          | some t => mkStrLit t
+          | none => f
+        | none => f
+      some (mkApp2 x.appFn!.appFn! f' (renameApps σ x.appArg!))
+    else none
+
+/-- A trait-generic function at a carrier: the surface applied to the carrier and its
+    instances, the monomorphisation table and instance list as terms, and the equation
+    naming the specialised literal. -/
+structure MonoInfo where
+  /-- The surface at the carrier. -/
+  surface : Expr
+  /-- The table `MonoTable` of the renamed methods. -/
+  tbl : Expr
+  /-- The instance list, the carrier's name. -/
+  insts : Expr
+  /-- The theorem `monomorphise tbl insts lit = monoLit`. -/
+  eqn : Name
+
 /-- Run the generator on every function of the extraction `ns`: declare the struct and
     dependency table, the leaf lemmas, and for each function its generated surface, its
     correspondence theorems, its oracle equation and its call lemma. With `only?`, the
@@ -449,13 +575,53 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     let lits := consts.filter fun c => c.getPrefix == ns && (lastStr c).endsWith "_impExpr"
     let mut infos : Std.HashMap String (Name × Name × Expr × Scan) := {}
     let mut allApps : Std.HashSet String := {}
+    -- trait-generic functions, specialised at a carrier of the extraction's instances
+    let carriers ← instCarriers consts
+    let litNames := lits.map fun l => dropEnd (lastStr l) 8
+    let mut monoOf : Std.HashMap String MonoInfo := {}
     for l in lits do
       let f := dropEnd (lastStr l) 8
       let sur := Name.str ns f
       unless (← getEnv).contains sur do continue
       let .ok (some lb) ← budgeted do unfoldDefinition? (← applyInsts l insts)
         | notes := notes.push s!"literal {f}: its value could not be read"; continue
-      let sc := scanLit lb {}
+      let mut sc := scanLit lb {}
+      let mut l := l
+      let mut lb := lb
+      if !carriers.isEmpty then
+        match ← budgeted (monoSurface sur insts carriers) with
+        | .ok (some (surE, clsInsts, T)) =>
+          let instS := match T.getAppFn with
+            | .const c _ => let s := lastStr c; if s.endsWith "_T" then dropEnd s 2 else s
+            | _ => toString T
+          let mut σ : List (String × String) := []
+          for a in sc.apps.toList.eraseDups do
+            if litNames.contains a then continue
+            if let some c ← resolveMethod ns clsInsts a then
+              if litNames.contains (lastStr c) then σ := σ ++ [(a, lastStr c)]
+          let lb' := renameApps σ lb
+          let mImpl := mkConst ``Hax.Monomorphise.MethodImpl
+          let tblE ← mkListLit mImpl (σ.map fun (m, i) =>
+            mkApp3 (mkConst ``Hax.Monomorphise.MethodImpl.mk) (mkStrLit m) (mkStrLit instS)
+              (mkStrLit i))
+          let instsE ← mkListLit (mkConst ``String) [mkStrLit instS]
+          let monoLitN := gen f ++ `mono_lit
+          let eqnN := gen f ++ `mono
+          let res ← budgeted do
+            addDefn monoLitN (mkConst ``Hax.ImpExpr) lb'
+            let eqTy ← mkEq (mkApp3 (mkConst ``Hax.Monomorphise.monomorphise) tblE instsE
+              (mkConst l)) (mkConst monoLitN)
+            addThm eqnN eqTy (← mkExpectedTypeHint (← mkEqRefl (mkConst monoLitN)) eqTy)
+          match res with
+          | .ok () =>
+            monoOf := monoOf.insert f { surface := surE, tbl := tblE, insts := instsE, eqn := eqnN }
+            l := monoLitN
+            lb := lb'
+            sc := scanLit lb' {}
+            notes := notes.push
+              s!"generic {f}: specialised at {instS}, {σ.map fun (m, i) => s!"{m} ↦ {i}"}"
+          | .error e => notes := notes.push s!"generic {f}: specialisation: {e}"
+        | _ => pure ()
       for a in sc.apps do allApps := allApps.insert a
       for a in sc.vars do allApps := allApps.insert a
       infos := infos.insert f (sur, l, lb, sc)
@@ -567,7 +733,10 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     for f in fnNames do
       let (sur, _, lb, _) := infos[f]!
       let res ← budgeted do
-        let sty ← inferType (← applyInsts sur insts)
+        let surE ← match monoOf[f]? with
+          | some mi => pure mi.surface
+          | none => applyInsts sur insts
+        let sty ← inferType surE
         forallTelescopeReducing sty fun xs _ => do
           let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
           return xs.size
@@ -687,9 +856,12 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
         for (_, _, pf) in globals.reverse do
           chain ← mkAppM ``Hax.Ascent.map_global_cons #[pf, chain]
         let hgv ← mkAppOptM ``Hax.Ascent.globalVals_of_map #[bi, fnE f, gv, chain]
-        let surE ← applyInsts sur insts
+        let mono? := monoOf[f]?
+        let surE ← match mono? with
+          | some mi => pure mi.surface
+          | none => applyInsts sur insts
         let hints := match (← getConstInfo sur).value? with
-          | some v => letTypes v {}
+          | some v => letTypes (if mono?.isSome then v.beta surE.getAppArgs else v) {}
           | none => {}
         let hints ← hints.foldM (init := ({} : Std.HashMap String Expr)) fun m k t => do
           return m.insert k (← normTy t)
@@ -817,10 +989,21 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
             if e.isAppOfArity ``HAppend.hAppend 6 && e.appFn!.appArg! == preE then some allE else none
           addThm (gen f ++ `corres_full) (← mkForallFVars insts fullTy)
             (← mkLambdaFVars insts (← mkExpectedTypeHint full fullTy))
+          -- a specialised function: the correspondence of the generic literal under the
+          -- table extended by the methods of the instances
+          if let some mi := mono? then
+            let lem := if res.parts?.isSome then `Hax.Ascent.fnCorresX_of_monomorphise
+              else `Hax.Ascent.fnCorres_of_monomorphise
+            let g ← mkAppM lem #[mi.tbl, mi.insts, mkConst mi.eqn,
+              ← mkExpectedTypeHint full fullTy]
+            addThm (gen f ++ `corres_generic) (← mkForallFVars insts (← inferType g))
+              (← mkLambdaFVars insts g)
           let t1 ← IO.monoMsNow
           let kind := if res.merged?.isSome then "proved (early return)" else "proved"
           let phases := s!" [spec {tSpec - t0}, pre {tGen0 - tSpec}, gen {tGen - tGen0}, decl {tDecl - tGen}, call {tCall - tDecl}, full {t1 - tCall}]"
-          let detail := s!"oracle {oracle}" ++ phases ++ (if callNote.isEmpty then "" else s!"; {callNote}") ++
+          let detail := s!"oracle {oracle}" ++ phases ++
+            (if mono?.isSome then "; specialised" else "") ++
+            (if callNote.isEmpty then "" else s!"; {callNote}") ++
             (if census.isEmpty then "" else s!"; unused constructs {census}")
           let rep : FnReport := { name := f, status := kind, ms := t1 - t0, detail := detail }
           pure (rep, newCall)) fun ex => do

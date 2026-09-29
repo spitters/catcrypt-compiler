@@ -1615,6 +1615,37 @@ partial def termAtoms (e : Expr) : StateT (Array Expr) MetaM Unit := do
     for a in e.getAppArgs do termAtoms a
   | _ => pure ()
 
+/-- The path of pair projections from `x` to `e`, outermost component first; `true` is
+    `Prod.snd`. -/
+partial def pairPath? (x e : Expr) : Option (List Bool) :=
+  if e == x then some [] else
+  match e.getAppFnArgs with
+  | (``Prod.fst, #[_, _, e']) => (pairPath? x e').map (· ++ [false])
+  | (``Prod.snd, #[_, _, e']) => (pairPath? x e').map (· ++ [true])
+  | _ => none
+
+/-- The paths of the components of `x` that `e` reads: the maximal pair projections of
+    `x` in `e`, and the empty path when `e` reads `x` itself. -/
+partial def readPaths (x e : Expr) : List (List Bool) :=
+  match pairPath? x e with
+  | some p => [p]
+  | none => match e with
+    | .app f a => readPaths x f ++ readPaths x a
+    | .lam _ d b _ | .forallE _ d b _ => readPaths x d ++ readPaths x b
+    | .letE _ t v b _ => readPaths x t ++ readPaths x v ++ readPaths x b
+    | .mdata _ b | .proj _ _ b => readPaths x b
+    | _ => []
+
+/-- The components of the tuple `g`, at the path `p` of a state, that no path of `reads`
+    reaches: the largest subtuples outside every read component. -/
+partial def unreadComps (reads : List (List Bool)) (p : List Bool) (g : Expr) : List Expr :=
+  if reads.any (·.isPrefixOf p) then []
+  else if !(reads.any (p.isPrefixOf ·)) then [g]
+  else if g.isAppOfArity ``Prod.mk 4 then
+    unreadComps reads (p ++ [false]) g.appFn!.appArg! ++
+      unreadComps reads (p ++ [true]) g.appArg!
+  else []
+
 /-- Run `x` within a twentieth of the heartbeat budget, counted from its start: the error
     message when `x` throws or exceeds that budget, with the state restored. -/
 def boundedTryT {α : Type} (x : TermElabM α) : TermElabM (Except String α) := do
@@ -1630,8 +1661,10 @@ def boundedTryT {α : Type} (x : TermElabM α) : TermElabM (Except String α) :=
 /-- The tactic that proves the decrease of a measure over one step of a while loop. -/
 def termTactic : TermElabM Syntax := do
   `(tactic|
-    (intros; rename_i hc hf; simp only [Hax.Ascent.stepCF] at hf
-     split at hf <;> (try cases hf) <;> (repeat' split) <;>
+    (intros; rename_i hc hf; rw [Hax.Ascent.stepCF_eq_continue] at hf
+     obtain ⟨hcb, heq⟩ := hf
+     subst heq
+     (repeat' split) <;>
        simp_all [Hax.add, Hax.sub, Hax.mul, Hax.div, Hax.rem, Hax.Div, Hax.Rem, Hax.lt, Hax.le, Hax.gt, Hax.ge, Hax.bne, Hax.beq,
          Hax.band, Hax.bor, Hax.bnot, Hax.Not, Hax.Ascent.array_len_array_update,
          Hax.Ascent.array_len_vec_remove, Hax.Ascent.array_len_push] <;>
@@ -1640,7 +1673,9 @@ def termTactic : TermElabM Syntax := do
 /-- A proof that the measure `μ` decreases over each step of the loop with condition `c`
     and step `f`, `∀ a a', c a = true → f a = .Continue a' → μ a' < μ a`. The statement is
     put in `termNorm` form, its atoms (`termAtoms`) are generalized, and `termTactic`
-    proves the generalized statement. -/
+    proves the generalized statement. For a step `stepCF Cb w gb g`, the break values `w`
+    and `gb` and the components of `g` outside the components `μ` reads (`readPaths`,
+    `unreadComps`) are generalized as well. -/
 def termDecrease (α c f μ : Expr) : TermElabM Expr := do
   withLocalDeclD `a α fun a => withLocalDeclD `a' α fun a' => do
     let hc ← mkEq (c.beta #[a]) (mkConst ``Bool.true)
@@ -1649,8 +1684,21 @@ def termDecrease (α c f μ : Expr) : TermElabM Expr := do
     let hf ← mkEq (f.beta #[a]) (← mkAppOptM ``ControlFlow.Continue #[β, α, a'])
     let concl ← mkAppM ``LT.lt #[μ.beta #[a'], μ.beta #[a]]
     let P ← mkArrow hc (← mkArrow hf concl)
-    let Pn ← mkArrow (← termNorm hc) (← mkArrow (← termNorm hf) (← termNorm concl))
+    let hfN ← termNorm hf
+    let conclN ← termNorm concl
+    let Pn ← mkArrow (← termNorm hc) (← mkArrow hfN conclN)
     let ((), atoms) ← (termAtoms Pn).run #[]
+    -- a step `stepCF Cb w gb g`: the break values `w`, `gb` and the components of the
+    -- continue value `g` that the measure does not read are atoms as well
+    let mut atoms := atoms
+    if let some (_, lhs, _) := hfN.eq? then
+      if lhs.isAppOf ``Hax.Ascent.stepCF && lhs.getAppNumArgs ≥ 4 then
+        let args := lhs.getAppArgs
+        let n := args.size
+        let reads := readPaths a' conclN
+        for t in [args[n - 3]!, args[n - 2]!] ++ unreadComps reads [] args[n - 1]! do
+          if !t.hasLooseBVars && !atoms.contains t && (← isDataTerm t) then
+            atoms := atoms.push t
     let decls : Array (Name × (Array Expr → TermElabM Expr)) ←
       atoms.mapIdxM fun i t => do
         return (Name.mkSimple s!"t{i}", fun _ => inferType t)

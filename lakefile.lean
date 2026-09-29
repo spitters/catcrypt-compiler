@@ -2650,6 +2650,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.Generate,
     Lake.Glob.one `CatCrypt.Hax.Ascent.IfBreak,
     Lake.Glob.one `CatCrypt.Hax.Ascent.LocalCalls,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Monomorphise,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Refines,
     Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeLeaves,
     Lake.Glob.one `CatCrypt.Hax.Ascent.RuntimeOps,
@@ -2661,9 +2662,9 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.WhileFold,
     Lake.Glob.one `CatCrypt.Hax.CType,
     Lake.Glob.one `CatCrypt.Hax.CTypeResolve,
-    Lake.Glob.one `CatCrypt.Hax.CTypeValue,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Hax.CTypeValue,
     Lake.Glob.one `CatCrypt.Hax.ClassBuiltins,
     Lake.Glob.one `CatCrypt.Hax.FoldRange,
     Lake.Glob.one `CatCrypt.Hax.ListBlocks,

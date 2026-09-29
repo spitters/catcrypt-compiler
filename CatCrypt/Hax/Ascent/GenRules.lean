@@ -301,6 +301,13 @@ def cfVal [HaxEnc B] : ControlFlow (B × A) A → Value
 def stepCF (c : Bool) (b : B) (ab a : A) : ControlFlow (B × A) A :=
   if c = true then .Break (b, ab) else .Continue a
 
+/-- A step continues with `a'` exactly when the break condition is false and `a'` is the
+    continue value. -/
+theorem stepCF_eq_continue {c : Bool} {b : B} {ab a a' : A} :
+    stepCF c b ab a = .Continue a' ↔ c = false ∧ a = a' := by
+  unfold stepCF
+  cases c <;> simp
+
 theorem cfToExcept_forFold (lo hi : Int) (a : A) (g : Int → A → ControlFlow B A) :
     cfToExcept (Hax.forFold lo hi a g) = foldRangeE lo hi a (fun i a => cfToExcept (g i a)) := by
   unfold Hax.forFold foldRangeE
