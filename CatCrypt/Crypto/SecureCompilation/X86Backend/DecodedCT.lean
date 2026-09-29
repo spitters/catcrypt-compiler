@@ -7,8 +7,6 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
 public import CatCrypt.Crypto.SecureCompilation.CT.Leakage
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
-public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
 public import CatCrypt.Crypto.Jasmin.LowCTTypes
 
 /-!
@@ -61,14 +59,10 @@ word `%rsp + o`, `o ∈ F`. The soundness theorems hold for runs whose steps all
 
 * `bytesCTCheck_sound`: if `bytesCTCheck r F P prog` holds, two runs of `prog` from states
   agreeing on `P`, whose steps satisfy `FrameSep F`, have equal leakage traces.
-* `mul1Node_bytesCT`: the checker accepts the decoded `mpn_mul_1` node with the pointer
-  arguments `%rdi`, `%rsi`, the count `%rdx` and `%rsp` public, and the multiplier `%rcx`
-  and the array contents secret; `mul1Node_secretCount_rejected` and
-  `mul1Node_secretPointer_rejected` are the rejections with the count or the result
-  pointer secret.
-* `feAddFramed_bytesCT`: the encoding of the framed `fe25519_add` decodes to a block that,
-  followed by `ret`, the checker accepts with the three pointers and `%rsp` public;
-  `feAddFramed_secretPointer_rejected` is the rejection with an input pointer secret.
+* `bytesCTCheckFast_sound`: the same for the array form of the decision.
+
+The acceptance of two shipped kernels, decided by the kernel, is in
+`X86Backend.DecodedCTKernels`, so that this module imports no kernel.
 
 ## Frame words from the certificate and the public set from the ABI
 
@@ -601,70 +595,7 @@ theorem bytesCTCheck_sound {r : DoitRegime} {F : List Int} {P : PubA} {prog : Li
   obtain ⟨b, hb, hle⟩ := succOk_spec h.1
   exact checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂
 
-/-! ## 6. The decoded `mpn_mul_1` node -/
-
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop (nodeLayout)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
-  (mul1DecPre mul1DecLoop mul1DecPost)
-
-/-- The public entry set of `mpn_mul_1`: the result pointer `%rdi`, the source pointer
-    `%rsi`, the count `%rdx` and the stack pointer. The multiplier `%rcx`, the other
-    registers, the memory and the flags are secret. -/
-def mul1PubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
-
-/-- The frame words the analysis of `mpn_mul_1` keeps public: the saved pointers at `56`
-    and `48`, the saved count at `-8` and the saved source pointer at `-128`. -/
-def mul1FrameCells : List Int := [56, 48, -8, -128]
-
-/-- **The checker accepts the decoded `mpn_mul_1` node** under DOITM, from `mul1PubA`
-    with the frame words `mul1FrameCells`. -/
-theorem mul1Node_bytesCT :
-    bytesCTCheck .doitm mul1FrameCells mul1PubA (nodeLayout mul1DecPre mul1DecLoop mul1DecPost)
-      = true := by
-  decide +kernel
-
-/-- With the count `%rdx` secret the checker rejects the node: the loop guard reads it. -/
-theorem mul1Node_secretCount_rejected :
-    bytesCTCheck .doitm mul1FrameCells ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
-      (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
-  decide +kernel
-
-/-- With the result pointer `%rdi` secret the checker rejects the node: the stores
-    address through it. -/
-theorem mul1Node_secretPointer_rejected :
-    bytesCTCheck .doitm mul1FrameCells ⟨["%rsi", "%rdx", "%rsp"], [], false⟩
-      (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
-  decide +kernel
-
-/-! ## 7. The framed field addition `fe25519_add` -/
-
-open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder (decodeJStream)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder (encodeJBlock)
-open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384 (s2nAlloc)
-open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
-  (feAddFramed feAddFramed_length feAddFramed_instrOk decode_phys)
-
-/-- The public entry set of the field kernels: the output pointer `%rdi`, the input
-    pointers `%rsi` and `%rdx`, and the stack pointer. The limbs, the other registers
-    and the flags are secret. -/
-def fePubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
-
-/-- **The checker accepts the decoded `fe25519_add` bytes.** The encoding of the framed
-    field addition decodes to a block `c`, and `c` followed by `ret` passes the checker
-    under DOITM from `fePubA`, with no frame word public. -/
-theorem feAddFramed_bytesCT :
-    ∃ c, decodeJStream 57 (encodeJBlock s2nAlloc feAddFramed) = some c ∧
-      bytesCTCheck .doitm [] fePubA (c.map .op ++ [.ret]) = true :=
-  ⟨feAddFramed, feAddFramed_length ▸ decode_phys _ feAddFramed_instrOk, by decide +kernel⟩
-
-/-- With the input pointer `%rdx` secret the checker rejects the block: its loads address
-    through it. -/
-theorem feAddFramed_secretPointer_rejected :
-    bytesCTCheck .doitm [] ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
-      (feAddFramed.map .op ++ [.ret]) = false := by
-  decide +kernel
-
-/-! ## 8. Frame words from the certificate, the public set from the ABI -/
+/-! ## 6. Frame words from the certificate, the public set from the ABI -/
 
 /-- The frame words public at some index of the certificate. -/
 def certCells (A : List (Option PubA)) : List Int :=
@@ -775,5 +706,148 @@ def firstFailure (r : DoitRegime) (P : PubA) (prog : List RInstr) : Option (Nat 
   let A := infer prog P
   if !succOk A 0 P then some (0, "entry set not below the public set") else
   (List.range prog.length).findSome? fun pc => (failAt r (certCells A) prog A pc).map (pc, ·)
+
+/-! ## 7. Array forms of the inference and the check
+
+The list forms above index the program and the certificate by position, which costs
+time linear in the index, and `sweep` rebuilds the certificate list at each update.
+The forms below keep both in arrays and update the certificate in place. `checkCertA`
+is `checkCert` on the arrays' lists (`checkCertA_eq`), so `bytesCTCheckFast_sound`
+follows from `checkCert_sound`; `inferA` needs no proof, since the check validates
+whatever certificate it computes. -/
+
+/-- The public set the array certificate assigns to index `pc`. -/
+def certAtA (A : Array (Option PubA)) (pc : Nat) : Option PubA := A.getD pc none
+
+theorem certAtA_eq (A : Array (Option PubA)) (pc : Nat) : certAtA A pc = certAt A.toList pc := by
+  simp only [certAtA, certAt, Array.getD, List.getD, Array.getElem?_toList]
+  split <;> simp_all
+
+/-- `succOk` on an array certificate. -/
+def succOkA (A : Array (Option PubA)) (s : Nat) (out : PubA) : Bool :=
+  match certAtA A s with
+  | some b => b.le out
+  | none => false
+
+theorem succOkA_eq (A : Array (Option PubA)) (s : Nat) (out : PubA) :
+    succOkA A s out = succOk A.toList s out := by
+  simp only [succOkA, succOk, certAtA_eq]
+
+/-- `checkAt` on an array program and an array certificate. -/
+def checkAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Option PubA))
+    (pc : Nat) : Bool :=
+  match certAtA A pc with
+  | none => true
+  | some a => a.cells.all F.contains &&
+    match prog[pc]? with
+    | some (.op i) => opOk r a i && succOkA A (pc + 1) (stepA a i)
+    | some (.jcc cc t) =>
+        a.flags && (condtOfNibble cc).isSome && succOkA A t a && succOkA A (pc + 1) a
+    | _ => true
+
+theorem checkAtA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
+    (A : Array (Option PubA)) (pc : Nat) :
+    checkAtA r F prog A pc = checkAt r F prog.toList A.toList pc := by
+  simp only [checkAtA, checkAt, certAtA_eq, succOkA_eq, Array.getElem?_toList]
+
+/-- `checkCert` on an array program and an array certificate. -/
+def checkCertA (r : DoitRegime) (F : List Int) (prog : Array RInstr)
+    (A : Array (Option PubA)) : Bool :=
+  (List.range prog.size).all (checkAtA r F prog A)
+
+theorem checkCertA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
+    (A : Array (Option PubA)) : checkCertA r F prog A = checkCert r F prog.toList A.toList := by
+  simp only [checkCertA, checkCert, Array.length_toList]
+  congr 1
+  funext pc
+  exact checkAtA_eq r F prog A pc
+
+/-- Meet the set at index `s` with `out`, reporting whether it changed. -/
+def meetIntoA (A : Array (Option PubA)) (s : Nat) (out : PubA) : Array (Option PubA) × Bool :=
+  let old := certAtA A s
+  let new := meetO old out
+  if new = old then (A, false) else (A.setIfInBounds s new, true)
+
+/-- The successors of index `pc` of an array program with the set each receives. -/
+def succsA (prog : Array RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
+  match prog[pc]? with
+  | some (.op i) => [(pc + 1, stepA a i)]
+  | some (.jcc _ t) => [(t, a), (pc + 1, a)]
+  | _ => []
+
+/-- One forward pass over the indices, updating the certificate in place, with a flag
+    recording whether any set changed. -/
+def sweepA (prog : Array RInstr) (A : Array (Option PubA)) : Array (Option PubA) × Bool :=
+  (List.range prog.size).foldl (fun acc pc =>
+    let (B, ch) := acc
+    match certAtA B pc with
+    | none => (B, ch)
+    | some a => (succsA prog pc a).foldl (fun acc so =>
+        let (B, ch) := acc
+        let (B', c) := meetIntoA B so.1 so.2
+        (B', ch || c)) (B, ch))
+    (A, false)
+
+/-- Passes until one changes nothing, at most `fuel` of them. -/
+def sweepFixA (prog : Array RInstr) : Nat → Array (Option PubA) → Array (Option PubA)
+  | 0, A => A
+  | fuel + 1, A =>
+    let (B, ch) := sweepA prog A
+    if ch then sweepFixA prog fuel B else B
+
+/-- The certificate of the forward analysis from the entry set `P`, on arrays. -/
+def inferA (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
+  sweepFixA prog prog.size ((Array.replicate prog.size none).setIfInBounds 0 (some P))
+
+/-- The frame words public at some index of an array certificate. -/
+def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
+
+/-- **The decision on arrays.** The array certificate `inferA` assigns the entry a set
+    below `P` and passes `checkCertA` with its own frame words. -/
+def bytesCTCheckFast (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
+  let pa := prog.toArray
+  let A := inferA pa P
+  succOkA A 0 P && checkCertA r (certCellsA A) pa A
+
+/-- **Soundness of the decision on arrays.** If `bytesCTCheckFast r P prog` holds, two
+    runs of `prog` from index `0` from states agreeing on `P`, whose steps satisfy
+    `FrameSep` for the frame words of the certificate `inferA`, have equal leakage
+    traces. -/
+theorem bytesCTCheckFast_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
+    (h : bytesCTCheckFast r P prog = true) :
+    ConstantTimeRel P.Agree (fun sa t => ∃ sa',
+      RunL r (FrameSep (certCellsA (inferA prog.toArray P))) prog 0 sa t sa') := by
+  intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
+  simp only [bytesCTCheckFast, Bool.and_eq_true, succOkA_eq, checkCertA_eq] at h
+  obtain ⟨b, hb, hle⟩ := succOk_spec h.1
+  exact checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂
+
+/-- `failAt` on an array program and an array certificate. -/
+def failAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Option PubA))
+    (pc : Nat) : Option String :=
+  match certAtA A pc with
+  | none => none
+  | some a =>
+    if !(a.cells.all F.contains) then some "frame word outside the frame set" else
+    match prog[pc]? with
+    | some (.op i) =>
+      if r.leaksOperands i.mnem then some "variable-time instruction"
+      else if !idxOk a i then some "secret index register"
+      else if !baseOk a i then some "secret base register"
+      else if !succOkA A (pc + 1) (stepA a i) then some "no post-fixpoint at the successor"
+      else none
+    | some (.jcc cc t) =>
+      if !a.flags then some "branch on secret flags"
+      else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
+      else if !(succOkA A t a && succOkA A (pc + 1) a) then some "no post-fixpoint at a successor"
+      else none
+    | _ => none
+
+/-- The first failing index of `bytesCTCheckFast` with the reason, on the certificate
+    `A` computed by `inferA` for the array program `pa`. -/
+def firstFailureA (r : DoitRegime) (P : PubA) (pa : Array RInstr) (A : Array (Option PubA)) :
+    Option (Nat × String) :=
+  if !succOkA A 0 P then some (0, "entry set not below the public set") else
+  (List.range pa.size).findSome? fun pc => (failAtA r (certCellsA A) pa A pc).map (pc, ·)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
