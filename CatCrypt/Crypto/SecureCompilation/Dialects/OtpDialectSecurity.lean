@@ -17,7 +17,7 @@ both per-valuation and as a single supremum.
 
 The programs are distinct (the real one binds `c = xor(k, m)`, the ideal one
 samples directly), and the distance is computed natively through `Com.denoteSP`
-and the uniform-sample-XOR bijection — not the valuation-free `Com.all_com_ct`
+and the uniform-sample-XOR bijection — not a valuation-free constant-time predicate
 shadow.
 -/
 

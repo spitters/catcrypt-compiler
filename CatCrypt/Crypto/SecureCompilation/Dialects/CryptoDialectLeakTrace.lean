@@ -36,7 +36,7 @@ per-op and per-program leak functions on `catCryptDialect`.
   so it is the same list for every input.
 
 The native constant-time input-independence statements built on this leak trace
-live in `CryptoDialectLeakTraceNative.lean`.
+are `CryptoDialectCTLeak.catCT` and `catLevelCheck_sound`.
 
 **0 axioms**; all goals closed.
 -/

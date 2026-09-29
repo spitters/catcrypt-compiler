@@ -23,8 +23,8 @@ leaf locally — the whole-`Com` square **follows by induction** from
 2. the structural coherences (variables transport by `mapVal`, binding threads
    the transport through `Valuation.extend`).
 
-This is the denotation-preservation analogue of `CryptoDialectLeakTraceNative`'s
-`Com.all_com_ct` (the constant-time structural induction over the same skeleton)
+This is a structural induction over the same skeleton as the constant-time checker
+`ComLevelCheck.levelCheck_sound`
 and of the `owned_fold` combinators (which discharge an `N`-fold induction once).
 Where those fold a CT/leak property, this folds the *value transport* itself,
 phrased in the composable `Related`-square ("commuting square") vocabulary of

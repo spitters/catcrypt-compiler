@@ -1403,11 +1403,10 @@ unbounded search cannot be.
 This file's combinators are **plain `Lcmd` data**: `whileLcmd` does not route
 through any constant-time / leakage-NI obligation (exactly as `loopLcmd` does
 not), so no CT proof is stated for it here, and it is not data-oblivious. A
-*typed* public-while marker that the leakage framework (`Com.leakTrace` /
-`all_com_ct`) recognises — classifying a `whileLcmd` site as `public-while` so it
-is admitted while a secret-guarded one is rejected — is a **framework change to
-the leakage IR** outside this module: `all_com_ct` is a tautology (`rfl`) and is
-not CT evidence, and giving data-dependent control flow a first-class
+*typed* public-while marker that the leakage checker (`ComLevelCheck`,
+`CryptoDialectCTLeak.catCT`) recognises — classifying a `whileLcmd` site as
+`public-while` so it is admitted while a secret-guarded one is rejected — is a
+**framework change to the leakage IR** outside this module: giving data-dependent control flow a first-class
 public/secret guard classification in the leakage trace is a leakage-IR
 extension. `whileLcmd` is classified as `public-while` in this documentation and
 kept off the CT obligation. -/

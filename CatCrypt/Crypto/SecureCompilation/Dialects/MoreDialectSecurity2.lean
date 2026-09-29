@@ -35,7 +35,7 @@ The security view therefore lives on `catCryptDialect` alone.
 
 Each theorem relates *distinct* programs (the `lhs` of each
 rewrite binds an extra algebraic/sample op the `rhs` lacks), so none is
-`0 = 0`; none routes through the valuation-free `Com.all_com_ct` shadow.
+`0 = 0`; none routes through a valuation-free constant-time predicate.
 
 **0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`;
 all goals closed.
