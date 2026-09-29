@@ -8,6 +8,8 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
 public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarStraightRun
+public import CatCrypt.Tactic.KernelRfl
 
 /-!
 # The prologue of the front-compiled secp256k1 doubling kernel
@@ -80,6 +82,7 @@ open CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
    semScalar_loadField
    envReader_of_bound feVal_of_halves half_lo half_hi toNat_ofNat_32 slot_inj
    slot_ne_tag head_ne_slot ix_toList)
+open CatCrypt.Crypto.SecureCompilation.Dialects.ScalarStraightRun (runProg runProg_sound toS_not_mem)
 
 /-! ## 1. Slot-name algebra -/
 
@@ -214,8 +217,12 @@ theorem idxInit_run (env : SEnvScalar) :
   exact ⟨env₁, hs, fun i hi => hv i (List.mem_range.mpr hi),
     fun s hsT hne => hf s hsT (fun i hi => hne i (List.mem_range.mp hi))⟩
 
+/-- The names `constInit` binds, in slot order. -/
+def constTbl : List String := ["ZZ", "CC0", "CC1"] ++ Secp256k1PointOpFront.plNames
+
 /-- **The reduction constants.** `ZZ` holds `0`, `CC0`/`CC1` the two Solinas
-    coefficients, and `PL0 … PL7` the 32-bit limbs of `p`. -/
+    coefficients, and `PL0 … PL7` the 32-bit limbs of `p`. The run and each value
+    are kernel evaluations of `runProg`. -/
 theorem constInit_run (env : SEnvScalar) :
     ∃ env₂, semScalar (seqAll constInit) env = some env₂
       ∧ env₂ "ZZ" = some ⟨.sword 64, BitVec.ofNat 64 0⟩
@@ -225,37 +232,19 @@ theorem constInit_run (env : SEnvScalar) :
             = some ⟨.sword 64, BitVec.ofNat 64 (pl32.getD i 0)⟩)
       ∧ (∀ s, ¬ isTmpName s → s ≠ "ZZ" → s ≠ "CC0" → s ≠ "CC1" →
             (∀ i, i < 8 → s ≠ s!"PL{i}") → env₂ s = env s) := by
-  obtain ⟨e1, hs1, hv1, hf1⟩ :=
-    semScalar_setExpr_run (y := "ZZ") (e := .SLit 0) (lower_lit env 0)
-  obtain ⟨e2, hs2, hv2, hf2⟩ :=
-    semScalar_setExpr_run (y := "CC0") (e := .SLit cc0) (lower_lit e1 cc0)
-  obtain ⟨e3, hs3, hv3, hf3⟩ :=
-    semScalar_setExpr_run (y := "CC1") (e := .SLit cc1) (lower_lit e2 cc1)
-  obtain ⟨env₂, hs4, hv4, hf4⟩ :=
-    semScalar_litList (nm := fun i => s!"PL{i}") (val := fun i => pl32.getD i 0)
-      pl_inj notTmp_PL (List.range 8) List.nodup_range e3
-  have hf4' : ∀ s, ¬ isTmpName s → (∀ i, i < 8 → s ≠ s!"PL{i}") → env₂ s = e3 s :=
-    fun s hsT hne => hf4 s hsT (fun i hi => hne i (List.mem_range.mp hi))
-  have hcl : constInit
-      = (LowCT.RScalarSetExpr "ZZ" (.SLit 0))
-        :: (LowCT.RScalarSetExpr "CC0" (.SLit cc0))
-        :: (LowCT.RScalarSetExpr "CC1" (.SLit cc1))
-        :: ((List.range 8).map (fun i =>
-              (LowCT.RScalarSetExpr s!"PL{i}" (.SLit (pl32.getD i 0))))) := rfl
-  refine ⟨env₂, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · rw [hcl, seqAll_step hs1, seqAll_step hs2, seqAll_step hs3]
-    exact hs4
-  · rw [hf4' _ notTmp_ZZ (fun i _ => neOfHd hd_ZZ (hd_PL i) (by decide)),
-      hf3 _ notTmp_ZZ (by decide), hf2 _ notTmp_ZZ (by decide), hv1]
-    rfl
-  · rw [hf4' _ notTmp_CC0 (fun i _ => neOfHd hd_CC0 (hd_PL i) (by decide)),
-      hf3 _ notTmp_CC0 (by decide), hv2]
-    rfl
-  · rw [hf4' _ notTmp_CC1 (fun i _ => neOfHd hd_CC1 (hd_PL i) (by decide)), hv3]
-    rfl
-  · exact fun i hi => hv4 i (List.mem_range.mpr hi)
-  · intro s hsT hz h0 h1 hpl
-    rw [hf4' s hsT hpl, hf3 s hsT h1, hf2 s hsT h0, hf1 s hsT hz]
+  have h : (runProg constTbl (seqAll constInit) (constTbl.map env)).isSome = true := by
+    kernel_rfl
+  obtain ⟨env₂, hrun, hag⟩ := runProg_sound h
+  refine ⟨env₂, hrun, ?_, ?_, ?_, fun i hi => ?_, fun s hsT hz h0 h1 hpl => ?_⟩
+  · rw [hag _ notTmp_ZZ]; kernel_rfl
+  · rw [hag _ notTmp_CC0]; kernel_rfl
+  · rw [hag _ notTmp_CC1]; kernel_rfl
+  · rw [hag _ (notTmp_PL i)]
+    interval_cases i <;> kernel_rfl
+  · rw [hag s hsT, toS_not_mem]
+    simp only [constTbl, Secp256k1PointOpFront.plNames, List.mem_append, List.mem_cons,
+      List.mem_map, List.mem_range, List.not_mem_nil, or_false, not_or, not_exists, not_and]
+    exact ⟨⟨hz, h0, h1⟩, fun i hi he => hpl i hi he.symm⟩
 
 /-- The frame pointer resolves to `a` and the twelve cell-index slots hold their
     indices. -/
