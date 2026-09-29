@@ -252,8 +252,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvAddP256Proof
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvFe25519AddSubProof
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.RiscvBytesProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384GuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SolverGuardSat
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes
@@ -460,10 +459,8 @@ CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvMulLsem
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.EncoderDiffAudit
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvElfObject
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvSha256Kernel
-CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvX25519FieldKernel
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
-CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder64
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254EC
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254Emit
