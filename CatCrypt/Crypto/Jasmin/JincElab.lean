@@ -26,7 +26,7 @@ Elaborates a parsed straight-line `JFun` (`JincToCom`) into an intrinsically-typ
 `name = GLOBAL` are turned into pointer parameters (the owned export emits no
 globals). The op mapping is `(Wu)x → castW`, the binary ops
 `a*b/a+b/a-b/a&b/a|b/a^b/a<<n/a>>n` and `andn a b` (`(~a) & b`) `→ regArith`,
-the rotate `ror n src → rorImm`, integer
+the rotate `ror n src → rorImm`, the 256-bit op `ymm op args → vymm op`, integer
 literals → `regConst`, `tbl[idx] → stackLoad`, `out[k]=v → stackStore`, and the
 branchless conditional `c ? a : b → select` (constant-time control flow: renders
 to `test`/`cmovcc`, no PC divergence). A bare `lhs = src` is a register copy, in
@@ -132,6 +132,80 @@ def invVars (Γ : Ctxt jasminDialect) (env : Env) :
       let ⟨tys, hv⟩ ← invVars Γ env rest
       return ⟨t :: tys, .cons v hv⟩
 
+/-- The argument vector of the 256-bit op `op` over the `reg 256` variables `vs`:
+    two variables for a binary op, one for a unary one, `none` otherwise. -/
+def ymmArgs (op : YmmDialect.YmmOp) {Γ : Ctxt jasminDialect}
+    (vs : List (Ctxt.Var Γ (.reg 256))) :
+    Option (HVector (fun ty => Ctxt.Var Γ ty) (DialectSignature.sig (JasminOp.vymm op))) :=
+  if h : op.isBinary = true then
+    match vs with
+    | [a, b] =>
+        have hs : DialectSignature.sig (d := jasminDialect) (JasminOp.vymm op)
+            = [JasminTy.reg 256, JasminTy.reg 256] := by
+          show (if op.isBinary = true then _ else _) = _
+          rw [if_pos h]
+        some (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
+          (HVector.cons a (HVector.cons b HVector.nil)))
+    | _ => none
+  else
+    match vs with
+    | [a] =>
+        have hs : DialectSignature.sig (d := jasminDialect) (JasminOp.vymm op)
+            = [JasminTy.reg 256] := by
+          show (if op.isBinary = true then _ else _) = _
+          rw [if_neg h]
+        some (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
+          (HVector.cons a HVector.nil))
+    | _ => none
+
+/-- `vymmDenote` of a binary op over the two-variable argument vector cast to the
+    arity type `if bb then [reg 256, reg 256] else [reg 256]` at `bb = true`. -/
+theorem vymmDenote_cast_binary (op : YmmDialect.YmmOp) (bb : Bool) (hbb : bb = true)
+    {Γ : Ctxt jasminDialect}
+    (hs : (if bb = true then [JasminTy.reg 256, JasminTy.reg 256] else [JasminTy.reg 256])
+      = [JasminTy.reg 256, JasminTy.reg 256])
+    (a b : Ctxt.Var Γ (.reg 256)) (V : Ctxt.Valuation Γ) :
+    vymmDenote op bb (Expr.lookupArgs (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
+      (HVector.cons a (HVector.cons b HVector.nil))) V)
+      = op.denoteBinary (a.lookup V) (b.lookup V) := by
+  subst hbb; rfl
+
+/-- `vymmDenote` of a unary op over the one-variable argument vector cast to the
+    arity type at `bb = false`. -/
+theorem vymmDenote_cast_unary (op : YmmDialect.YmmOp) (bb : Bool) (hbb : bb = false)
+    {Γ : Ctxt jasminDialect}
+    (hs : (if bb = true then [JasminTy.reg 256, JasminTy.reg 256] else [JasminTy.reg 256])
+      = [JasminTy.reg 256])
+    (a : Ctxt.Var Γ (.reg 256)) (V : Ctxt.Valuation Γ) :
+    vymmDenote op bb (Expr.lookupArgs (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
+      (HVector.cons a HVector.nil)) V)
+      = op.denoteUnary (a.lookup V) := by
+  subst hbb; rfl
+
+/-- The expression the elaborator builds for `Rhs.ymm op [a, b]` with `op` binary
+    denotes `op.denoteBinary` of the values of `a` and `b`. -/
+theorem ymmArgs_binary_denote (op : YmmDialect.YmmOp) (h : op.isBinary = true)
+    {Γ : Ctxt jasminDialect} (a b : Ctxt.Var Γ (.reg 256)) (V : Ctxt.Valuation Γ) :
+    (ymmArgs op [a, b]).map (fun hv =>
+      ((⟨.vymm op, rfl, hv⟩ : Expr jasminDialect Γ (.reg 256)).denote V : BitVec 256))
+      = some (op.denoteBinary (a.lookup V) (b.lookup V)) := by
+  unfold ymmArgs
+  rw [dif_pos h]
+  simp only [Option.map_some, Option.some.injEq]
+  exact vymmDenote_cast_binary op op.isBinary h (by rw [if_pos h]) a b V
+
+/-- The expression the elaborator builds for `Rhs.ymm op [a]` with `op` unary
+    denotes `op.denoteUnary` of the value of `a`. -/
+theorem ymmArgs_unary_denote (op : YmmDialect.YmmOp) (h : op.isBinary = false)
+    {Γ : Ctxt jasminDialect} (a : Ctxt.Var Γ (.reg 256)) (V : Ctxt.Valuation Γ) :
+    (ymmArgs op [a]).map (fun hv =>
+      ((⟨.vymm op, rfl, hv⟩ : Expr jasminDialect Γ (.reg 256)).denote V : BitVec 256))
+      = some (op.denoteUnary (a.lookup V)) := by
+  unfold ymmArgs
+  rw [dif_neg (by simp [h])]
+  simp only [Option.map_some, Option.some.injEq]
+  exact vymmDenote_cast_unary op op.isBinary h (by rw [if_neg (by simp [h])]) a V
+
 /-- The run-time loop hook of `elabStmtsG`: given the context, the environment,
     the trip index, the name of the trip count, the body and the statements
     after `for v = 0 to count { body }`, the elaborated rest of the list. -/
@@ -162,6 +236,12 @@ partial def elabStmtsG {R : Ctxt jasminDialect → JasminTy → Type}
       let ⟨tys, hv⟩ ← invVars Γ env args
       let e : Expr jasminDialect Γ retTy := ⟨.extCall sym tys retTy, rfl, hv⟩
       let ⟨s, body⟩ ← elabStmtsG ret var loop loopRt (retTy :: Γ) ((lhs, retTy) :: env) rest
+      return ⟨s, var e body⟩
+  | Γ, env, Stmt.assign lhs (Rhs.ymm op args) :: rest => do
+      let vs ← args.mapM (fun a => lookup Γ env a (.reg 256))
+      let hv ← ymmArgs op vs
+      let e : Expr jasminDialect Γ (.reg 256) := ⟨.vymm op, rfl, hv⟩
+      let ⟨s, body⟩ ← elabStmtsG ret var loop loopRt (.reg 256 :: Γ) ((lhs, .reg 256) :: env) rest
       return ⟨s, var e body⟩
   | Γ, env, Stmt.assign lhs (Rhs.cast w src) :: rest => do
       let sTy ← typeOf env src
@@ -663,7 +743,8 @@ body is rewritten in three ways:
 `emitJFunRolledAsm` attaches each table read at a run-time index as a `.rodata`
 table (`Lprog.withRodataTable`), runs the owned back end (`ownedLprog`), selects
 `rorx` for each rotate whose destination differs from its source (`rorxLprog`),
-and prints. -/
+turns each 256-bit register-indexed access at a known index into a
+displacement access (`ymmIndexFoldLprog`), and prints. -/
 
 /-- `LOADSYM` with its symbol as the compile-time operand `.arr sym 0`. -/
 def symOperandFix (b : Lcmd) : Lcmd :=
@@ -690,8 +771,16 @@ def threadAccs (b : Lcmd) (accs : List String) : Lcmd × (String → String) :=
     | none => (b, ren))
     (canonicalizeMemrefThread b, canonMemrefName m0)
 
+/-- The allocation table of a rolled body: `bodyPhysTable` with the last vector
+    register (`%ymm15`) withheld, so the printer bounces a spilled vector operand
+    through it without saving and restoring it (`renderLprogAtt … true`). For a
+    body without a vector op it is `bodyPhysTable`. -/
+def rolledPhysTable (body : Lcmd) : Array Nat :=
+  physTableClassed (bodyTrace body) (bodyVecSlots body) (bodyReservedGP body) [numVecRegs - 1]
+
 /-- The register-ABI physical `Lfundef` of a rolled `ComL` (see §6): argument `j`
-    in `sysvRegs[j]`, the result moved to `RAX`. -/
+    in `sysvRegs[j]`, the result moved to `RAX`, `%ymm15` withheld from the
+    allocation (`rolledPhysTable`). -/
 def rolledLfundef {Γ : Ctxt jasminDialect} {τ : JasminTy} (c : ComL Γ τ) : Lfundef :=
   let virt0 := ComL.toLfundef c
   let pin : Lcmd :=
@@ -699,11 +788,13 @@ def rolledLfundef {Γ : Ctxt jasminDialect} {τ : JasminTy} (c : ComL Γ τ) : L
   let (body, ren) := threadAccs (pin ++ symOperandFix virt0.lfd_body)
     ((ComL.loopAccRegs c Γ.length).map regName)
   let virt := { virt0 with lfd_body := body, lfd_res := virt0.lfd_res.map ren }
-  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body)
+  let tblA := rolledPhysTable virt.lfd_body
+  let tbl := straightCallComposeTable virt.lfd_body tblA
   let resPhys := virt.lfd_res.map (physNameForBody virt.lfd_body tbl)
   let abi := sysvRegs.take virt.lfd_arg.length
   let argMat := buildArgMaterializePhys virt tbl abi
-  let pbody := (physBody (fun _ => none) virt.lfd_body).filter
+  let pbody := (physBodyRmap (remapOperand virt.lfd_body tblA) (fun _ => none)
+      virt.lfd_body).filter
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   let retEpi : Lcmd := match resPhys with
     | [r] => if r == "RAX" then [] else [⟨0, .Lopn [.reg "RAX"] "MOVQ" [.reg r]⟩]
@@ -727,6 +818,85 @@ def rorxInstr (i : Linstr) : Linstr :=
 def rorxLprog (p : Lprog) : Lprog :=
   { p with lp_funcs := p.lp_funcs.map fun (n, f) => (n, { f with lfd_body := f.lfd_body.map rorxInstr }) }
 
+/-- Whether an operand reads the register `x`: `x` itself, a SIB access through
+    it, or a `mem.x.<off>` memory operand based on it. -/
+def operandReads (x : String) : LOperand → Bool
+  | .reg n => n == x || ("mem." ++ x ++ ".").isPrefixOf n
+  | .arrIdx b i _ => b == x || i == x
+  | _ => false
+
+/-- Whether the register `x` is written before it is read in the leading run of
+    `Lopn`s of `rest`; `false` when that run ends first. A memory destination
+    based on `x` reads it. -/
+def overwrittenFirst (x : String) : Lcmd → Bool
+  | [] => false
+  | i :: rest =>
+      match i.li_i with
+      | .Lopn dsts _ srcs =>
+          if srcs.any (operandReads x)
+              || dsts.any (fun o => o != .reg x && operandReads x o) then false
+          else if dsts.contains (.reg x) then true
+          else overwrittenFirst x rest
+      | _ => false
+
+/-- The immediate `k` of a register move `x := k` (`MOV:64`, `MOV` or `MOVQ`). -/
+def movImm? : LinstrR → Option (String × Nat)
+  | .Lopn [.reg x] opn [.imm k] =>
+      if opn == "MOV:64" || opn == "MOV" || opn == "MOVQ" then some (x, k) else none
+  | _ => none
+
+/-- The 256-bit register-indexed accesses of a body at an index known from an
+    immediate move as displacement accesses, with the index moves they leave
+    dead removed. After `x := k` (`movImm?`) and until `x` is written again,
+    `LOADIDX [d] [(B, x, 32)]` is `VMOVDQU [d] [mem.B.(32·k)]` and
+    `STOREIDX [a] [(B, x, 32), v]` is `VMOVDQU [mem.B.(32·k)] [v]`, for a base `B`
+    held in a register. Known indices are forgotten at every instruction other
+    than an `Lopn`. An immediate move into an index register of a rewritten access
+    is then removed when the register is written before it is read
+    (`overwrittenFirst`). A body without such an access is returned unchanged. -/
+def ymmIndexFoldBody (body : Lcmd) : Lcmd := Id.run do
+  let mut known : List (String × Nat) := []
+  let mut out : Array Linstr := #[]
+  let mut idxRegs : List String := []
+  for i in body do
+    match i.li_i with
+    | .Lopn dsts opn srcs =>
+        let base (b : String) : Bool := !(LOperand.reg b).isSpill && !"mem.".isPrefixOf b
+        let folded : Option (LinstrR × String) := match opn, dsts, srcs with
+          | "LOADIDX", [.reg d], [.arrIdx b x 32] =>
+              (known.lookup x).bind fun k =>
+                if base b then some (.Lopn [.reg d] "VMOVDQU" [.reg (memName b (32 * k))], x)
+                else none
+          | "STOREIDX", _, [.arrIdx b x 32, v] =>
+              (known.lookup x).bind fun k =>
+                if base b then some (.Lopn [.reg (memName b (32 * k))] "VMOVDQU" [v], x)
+                else none
+          | _, _, _ => none
+        match folded with
+        | some (r, x) =>
+            out := out.push ⟨i.li_ii, r⟩
+            unless idxRegs.contains x do idxRegs := x :: idxRegs
+        | none => out := out.push i
+        let written := dsts.filterMap fun o => match o with
+          | .reg n => some n
+          | _ => none
+        known := known.filter (fun p => !written.contains p.1)
+        if let some (x, k) := movImm? i.li_i then known := (x, k) :: known
+    | _ =>
+        out := out.push i
+        known := []
+  if idxRegs.isEmpty then return body
+  let l := out.toList
+  return (l.zipIdx.filter fun (i, j) =>
+    match movImm? i.li_i with
+    | some (x, _) => !(idxRegs.contains x && overwrittenFirst x (l.drop (j + 1)))
+    | none => true).map (·.1)
+
+/-- `ymmIndexFoldBody` on every function body. -/
+def ymmIndexFoldLprog (p : Lprog) : Lprog :=
+  { p with lp_funcs := p.lp_funcs.map fun (n, f) =>
+      (n, { f with lfd_body := ymmIndexFoldBody f.lfd_body }) }
+
 /-- The `Lprog` of a `JFun` imported with rolled loops (`JincInline.importFunRolled`)
     under the symbol `fname`, with the global tables it reads at a run-time index
     (`tables`) as `.rodata`, before the owned back end. `none` when `elabFunL`
@@ -738,15 +908,19 @@ def rolledLprog (f : JFun) (tables : List (String × List Nat)) (fname : String)
                      lp_funcs := [(fname, rolledLfundef c)] }
   return tables.foldl (fun p (s, ws) => p.withRodataTable s (ws.map (BitVec.ofNat 64))) p
 
-/-- The owned AT&T `.s` of `rolledLprog`: `ownedLprog`, `rorxLprog`, then the
-    printer. `"; elaboration failed"` when `elabFunL` declines. -/
+/-- The owned AT&T `.s` of `rolledLprog`: `ownedLprog`, `rorxLprog`,
+    `ymmIndexFoldLprog`, then the printer with `%ymm15` reserved for the
+    vector-spill bounce (`rolledPhysTable`). `"; elaboration failed"` when
+    `elabFunL` declines. -/
 def emitJFunRolledAsm (f : JFun) (tables : List (String × List Nat)) (fname : String) :
     String :=
   match rolledLprog f tables fname with
   | none => "; elaboration failed"
   | some p =>
       CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
-        (rorxLprog (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p))
+        (ymmIndexFoldLprog (rorxLprog
+          (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p)))
+        none true
 
 /-! ## 7. Parameter slots, frame arrays and calls
 
@@ -939,7 +1113,7 @@ def rolledLfundefWith {Γ : Ctxt jasminDialect} {τ : JasminTy} (c : ComL Γ τ)
     | _ => body1 ++ endPin
   let virt := { virt0 with lfd_body := body, lfd_res := res }
   let hasCall := bodyHasCall virt.lfd_body
-  let tbl0 := bodyPhysTable virt.lfd_body
+  let tbl0 := rolledPhysTable virt.lfd_body
   let tbl := if hasCall then callSafeTable virt.lfd_body tbl0 else tbl0
   let rn : String → String :=
     if hasCall then callSafeName virt.lfd_body tbl else physNameForBody virt.lfd_body tbl
@@ -981,14 +1155,18 @@ def rolledProgram (fs : List (JFun × List ArgSlot × String))
                      lp_funcs := funcs }
   return tables.foldl (fun p (s, ws) => p.withRodataTable s (ws.map (BitVec.ofNat 64))) p
 
-/-- The owned AT&T `.s` of `rolledProgram`: `ownedLprog`, `rorxLprog`, then the
-    printer. `"; elaboration failed"` when `rolledProgram` declines. -/
+/-- The owned AT&T `.s` of `rolledProgram`: `ownedLprog`, `rorxLprog`,
+    `ymmIndexFoldLprog`, then the printer with `%ymm15` reserved for the
+    vector-spill bounce (every function is allocated by `rolledPhysTable`).
+    `"; elaboration failed"` when `rolledProgram` declines. -/
 def emitRolledProgramAsm (fs : List (JFun × List ArgSlot × String))
     (tables : List (String × List Nat)) : String :=
   match rolledProgram fs tables with
   | none => "; elaboration failed"
   | some p =>
       CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
-        (rorxLprog (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p))
+        (ymmIndexFoldLprog (rorxLprog
+          (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p)))
+        none true
 
 end CatCrypt.Crypto.Jasmin.JincElab

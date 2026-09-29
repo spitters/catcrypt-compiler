@@ -193,13 +193,13 @@ def truncate (w : Nat) (e : SExpr) : SExpr :=
 
 /-- The `SExpr` of a right-hand side that reads no memory.
 
-    `none` on five right-hand sides. `load` and `castLoad` become `RArrLoad` in
+    `none` on six right-hand sides. `load` and `castLoad` become `RArrLoad` in
     `assignRhs`. `select` has no translation: `cond ? t : f` is branch-free only
     when `cond` is known to be `0` or `1`, which the untyped AST does not
     record. A `glob` naming something other than a declared scalar is a
     global-table binding (`tbl = EC_DLOG`); `LowCT` reaches a table as a loop
-    invariant array parameter, not as a bound name. An external `call` has no
-    `LowCT` image. -/
+    invariant array parameter, not as a bound name. An external `call` and a
+    256-bit vector op `ymm` have no `LowCT` image. -/
 def rhsExpr (env : Env) : Rhs → Option SExpr
   | .bin op a b => some (opExpr op (.SVar a) (operandExpr b))
   | .imm n => some (.SLit n)
@@ -210,6 +210,7 @@ def rhsExpr (env : Env) : Rhs → Option SExpr
   | .select _ _ _ => none
   | .ror n src => some (rorExpr n (.SVar src))
   | .call _ _ => none
+  | .ymm _ _ => none
 
 /-- The `or` translation denotes bitwise or over wrapping 64-bit words. -/
 theorem evalBV_opExpr_or (β : String → BitVec 64) (a b : SExpr) :

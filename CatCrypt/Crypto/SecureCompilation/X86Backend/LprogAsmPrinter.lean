@@ -573,7 +573,35 @@ def ymmTwoSrcAtt? : String → Option String
   | "VPUNPCKHDQ" => some "vpunpckhdq"
   | "VPUNPCKLQDQ" => some "vpunpcklqdq"
   | "VPUNPCKHQDQ" => some "vpunpckhqdq"
+  | "VPSHUFB" => some "vpshufb"
   | _ => none
+
+/-- The AT&T memory operand of the 256-bit cell `x` of the array at `b` in a
+    register-indexed access with element stride `scale`, and the lines that form
+    its index first. A SIB scale is at most `8`, so a larger power-of-two stride is
+    applied to a copy of the index in `%r15`, which the register allocator never
+    assigns: `movq %x, %r15; shlq $log₂ scale, %r15`, then `(%b, %r15, 1)`. -/
+def ymmIdxAddr (b x : String) (scale : Nat) : List String × String :=
+  if scale ≤ 8 then ([], "(" ++ gpReg64 b ++ ", " ++ gpReg64 x ++ ", " ++ toString scale ++ ")")
+  else
+    ([ "\tmovq " ++ gpReg64 x ++ ", %r15", "\tshlq $" ++ toString scale.log2 ++ ", %r15" ],
+     "(" ++ gpReg64 b ++ ", %r15, 1)")
+
+/-- Whether a register name is a vector register (`XMM<k>`) or a vector spill
+    cell (`kv.<k>`). -/
+def isVecName (n : String) : Bool := "XMM".isPrefixOf n || "kv.".isPrefixOf n
+
+/-- The AT&T lines of a vector instruction whose destination operand is `dStr`,
+    given the instruction as a function of the destination it writes: the
+    instruction itself into a register destination, and into a spilled one
+    (`dSpill`) through `%ymm15`, saved to and restored from `vecSpillScratch`
+    unless it is reserved (`rvs`). -/
+def vecDstLines (rvs dSpill : Bool) (dStr : String) (ins : String → String) : List String :=
+  if dSpill then
+    (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
+      ++ [ ins vecSpillReg, "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr ]
+      ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
+  else [ ins dStr ]
 
 /-- The AT&T mnemonic of a one-source 256-bit `YmmOp` whose immediate is carried
     in its jasmin mnemonic as `<NAME>:<n>`, keyed on the exact `<NAME>`. -/
@@ -669,12 +697,14 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- `VPRORD:<n>` form), so this must precede the `mnemWidth` logic below: a
       -- count of 8/16 would otherwise be misread as a narrow width tag and the
       -- shift dropped. AT&T VEX order `vpslld $<n>, %ymm<a>, %ymm<d>`; the source
-      -- operand `XMM<k>` resolves to `%ymm<k>` via `resolveName`.
+      -- operand `XMM<k>` resolves to `%ymm<k>` via `resolveName`. The source may
+      -- be in memory; a spilled destination is written through `%ymm15`.
       if let some mn := ymmImmUnaryAtt? (immOpName opn) then
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
-            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
-                ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
+            vecDstLines rvs (isVSpill d) (resolveName frame spillW 32 dn qsaveB) fun dst =>
+              "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
+                ++ ", " ++ dst
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **YMM cross-/in-lane permutes by immediate** (NTT lane routing):
       -- `VPSHUFD:<n>` (in-lane dword shuffle) / `VPERMQ:<n>` (cross-lane qword
@@ -814,8 +844,20 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- width is the SIB scale (1/2/4/8 bytes), so the GP register `d` is sized by
       -- `scale·8` — a `u16` table lookup (`scale = 2`) zero-extends (`movzwl`), a
       -- `u32`/`u64` element is a plain `movl`/`movq`.
+      -- A 256-bit element (`scale = 32`) is loaded into a vector register with
+      -- `vmovdqu`, its index scaled in `%r15` (`ymmIdxAddr`); a spilled
+      -- destination is written through `%ymm15`.
       if base == "LOADIDX" then
         match s with
+        | .arrIdx b x 32 =>
+            match d with
+            | .reg dn =>
+                if isVecName dn then
+                  let (pre, addr) := ymmIdxAddr b x 32
+                  pre ++ vecDstLines rvs (isVSpill d) (resolveName frame spillW 32 dn qsaveB)
+                    fun dst => "\tvmovdqu " ++ addr ++ ", " ++ dst
+                else [ "\t# UNHANDLED-LOADIDX " ++ opn ]
+            | _ => [ "\t# UNHANDLED-LOADIDX " ++ opn ]
         | .arrIdx _ _ scale =>
             let lw := scale * 8
             let dstW := if lw < 32 then 32 else lw
@@ -1139,6 +1181,22 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       -- `movw` (no overrun of the neighbouring element), `u32`/`u64` a `movl`/`movq`.
       else if stripAbiTag opn == "STOREIDX" then
         match a with
+        -- a 256-bit element: `vmovdqu` from a vector register, the index scaled in
+        -- `%r15` (`ymmIdxAddr`); a spilled value is read through `%ymm15`
+        | .arrIdx bs x 32 =>
+            match b with
+            | .reg vn =>
+                if isVecName vn then
+                  let (pre, addr) := ymmIdxAddr bs x 32
+                  let vStr := resolveName frame spillW 32 vn qsaveB
+                  if isVSpill b then
+                    pre ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
+                      ++ [ "\tvmovdqu " ++ vStr ++ ", " ++ vecSpillReg,
+                           "\tvmovdqu " ++ vecSpillReg ++ ", " ++ addr ]
+                      ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
+                  else pre ++ [ "\tvmovdqu " ++ vStr ++ ", " ++ addr ]
+                else [ "\t# UNHANDLED-STOREIDX " ++ opn ]
+            | _ => [ "\t# UNHANDLED-STOREIDX " ++ opn ]
         | .arrIdx _ _ scale =>
             let sw := scale * 8
             [ "\tmov" ++ sizeSuffix sw ++ " "
@@ -1415,8 +1473,7 @@ binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPMULLD" [.reg "XMM1", .reg "XMM2"]
         = ["\tvpmulld %ymm2, %ymm1, %ymm0"]
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPANDN" [.reg "XMM1", .reg "XMM2"]
-        = ["\tvpandn %ymm2, %ymm1, %ymm0"]
--- NTT butterfly arithmetic: signed/unsigned packed multiply, qword add, and the
+        = ["\tvpandn %ymm2, %ymm1, %ymm0"]-- NTT butterfly arithmetic: signed/unsigned packed multiply, qword add, and the
 -- non-commutative packed subtract (`d = a - b`, sources printed `b, a`).
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPMULDQ" [.reg "XMM1", .reg "XMM2"]
         = ["\tvpmuldq %ymm2, %ymm1, %ymm0"]
@@ -1929,6 +1986,15 @@ contract holds; for a `comToLfundefPhysAbi`-produced body (which `qsave`-parks a
 six) the save list is empty and no push/pop is emitted. `%rsp` returns to its
 entry value before `ret`, so the function is re-callable. -/
 
+/-- Whether rendered body lines name `%r15` (or a sub-register of it): the
+    register the printer writes as scratch where x86 has no direct form (a
+    memory-to-memory move, a `rorx` or `leaq` into memory, a compare with a
+    memory first operand, a register-indexed access with element stride above
+    `8`). The allocator never assigns `R15`, so a body that does not name it
+    itself uses it only through these arms. -/
+def printerScratchUsed (lines : List String) : Bool :=
+  lines.any fun l => (l.splitOn "%r15").length > 1
+
 /-- Emit the `.s` text for an owned-RA leaf function `name` whose body is the
     rendered `Lcmd`. We compute the frame `F` from the body's spill footprint,
     open it with `leaq -F(%rsp), %rsp` (jasmin's frame idiom; the qsave/spill
@@ -1944,12 +2010,26 @@ entry value before `ret`, so the function is re-callable. -/
     precede the `leaq -F` and the pops follow the `leaq F` (LIFO), so `%rsp` nests
     correctly and the post-`leaq` frame offsets are unchanged. For any
     `comToLfundefPhysAbi`-produced body the save list is empty and this emits
-    byte-identical `.s` to before. -/
+    byte-identical `.s` to before.
+
+    The printer's own scratch register `%r15` (`printerScratchUsed`), which some
+    arms write in place of an operand form x86 lacks, is callee-saved as well: a
+    body whose rendering writes it, and which neither saves nor `qsave`-parks
+    `R15`, gets a `pushq %r15`/`popq %r15` pair too. For a body that issues a call
+    the frame then grows by `8`, which keeps the call-site alignment of
+    `frameSize`. -/
 def renderLfundef (name : String) (body : VIR.JasminLprogExport.Lcmd)
     (lblPfx : String := "") (rvs : Bool := false) : String :=
-  let frame := frameSize body
+  let frame0 := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  let saves := calleeSavedToSave body
+  let saves0 := calleeSavedToSave body
+  let lines0 := renderLcmd frame0 spillW body lblPfx rvs
+  let saveR15 := !saves0.contains "R15" && !bodyParksQsave body "R15"
+    && printerScratchUsed lines0
+  let saves := if saveR15 then saves0 ++ ["R15"] else saves0
+  let frame :=
+    if saveR15 && VIR.JasminLprogExport.bodyHasCall body then frame0 + 8 else frame0
+  let lines := if frame == frame0 then lines0 else renderLcmd frame spillW body lblPfx rvs
   let pushes := saves.map (fun r => "\tpushq " ++ gpReg64 r)
   let pops := (saves.reverse).map (fun r => "\tpopq " ++ gpReg64 r)
   -- A body whose bottom-anchored `FRAMEADD` buffers claim the same cells as its
@@ -1973,7 +2053,7 @@ def renderLfundef (name : String) (body : VIR.JasminLprogExport.Lcmd)
   -- (`renderLprogAtt`, or a driver concatenating several `renderLfundef`) passes
   -- `<name>_` so each function's labels are unique; a standalone single-function
   -- `.s` keeps the default `""` (bare `.L<l>`, no collision possible).
-  String.intercalate "\n" (header ++ renderLcmd frame spillW body lblPfx rvs ++ footer) ++ "\n"
+  String.intercalate "\n" (header ++ lines ++ footer) ++ "\n"
 
 /-! ## 6. `.rodata` global constant tables (the NTT twiddle-table seam)
 

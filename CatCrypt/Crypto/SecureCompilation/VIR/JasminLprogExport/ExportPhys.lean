@@ -367,22 +367,41 @@ every `vpackZMM`/`vprordZMM`/`vps*` export arm (`VPACK8u64:…`, `VPACKD:…`,
 does (`ADD`, `SUB`, `MUL`, `MOV`, `CMOV`, `LOAD*`, `STORE*`, `ZEROEXT`, `TRUNC`,
 `CALL:`, `MULXHI`, `ADCX`, `ROR:`, `SHR:`, `SHL:`, `SAR:`, `LOADSYM`). So the
 `V`-prefix is a sound, additive class oracle: a body with no vector op classifies
-every slot GP and the allocator is byte-identical to the original. -/
+every slot GP and the allocator is byte-identical to the original. In a body
+with a vector op, the 256-bit value of a register-indexed access with element
+stride `32` (`wideIdxVecNames`) is also vector. -/
 
 /-- Is `opn` a **vector** `Lopn` mnemonic? True iff its width-stripped form starts
     with `"V"` — the common prefix of every `SimdOp.mnemonic` and every
     `vpack*`/`vpror*`/`vpsl*`/`vpsr*` export arm, and of no GP mnemonic. -/
 def isVectorMnem (opn : String) : Bool := (stripWidthTag opn).startsWith "V"
 
+/-- The register names of a 256-bit register-indexed access (`scale = 32`) that
+    hold a 256-bit value: the destination of a `LOADIDX` and the stored value of a
+    `STOREIDX`. The access has no vector mnemonic. -/
+def wideIdxVecNames : LinstrR → List String
+  | .Lopn [.reg d] "LOADIDX" [.arrIdx _ _ 32] => [d]
+  | .Lopn _ "STOREIDX" [.arrIdx _ _ 32, .reg v] => [v]
+  | _ => []
+
+/-- Whether some `Lopn` of the body has a vector mnemonic (`isVectorMnem`). -/
+def bodyHasVecOp (body : Lcmd) : Bool :=
+  body.any fun i => match i.li_i with
+    | .Lopn _ opn _ => isVectorMnem opn
+    | _ => false
+
 /-- A vector-class array marking which logical slots are in the **vector**
     register class: slot `s` is vector iff some vector `Lopn` (`isVectorMnem`)
-    writes or reads it. Built in one `O(n)` pass over the body, keyed by the same
-    `nameSlot` indexing `bodyTrace` uses, so the class array aligns with the
-    trace's slot universe. A body with no vector op yields the all-`false` array
-    (every slot GP), so the GP-only allocation is unchanged. -/
+    writes or reads it, or, in a body with a vector op, it is a 256-bit value of
+    a register-indexed access (`wideIdxVecNames`). Built in one `O(n)` pass over
+    the body, keyed by the same `nameSlot` indexing `bodyTrace` uses, so the class
+    array aligns with the trace's slot universe. A body with no vector op yields
+    the all-`false` array (every slot GP), so the GP-only allocation is
+    unchanged. -/
 @[inline] unsafe def bodyVecSlotsImpl (body : Lcmd) : Array Bool :=
   let (names, m) := bodyNameInfoCached body
   let slot (nm : String) : Nat := m.getD nm names.size
+  let hasVec := bodyHasVecOp body
   Id.run do
     let mut a : Array Bool := Array.replicate (names.size + 1) false
     for i in body do
@@ -395,13 +414,19 @@ def isVectorMnem (opn : String) : Bool := (stripWidthTag opn).startsWith "V"
             for nm in touched do
               let s := slot nm
               if s < a.size then a := a.set! s true
+          else if hasVec then
+            for nm in wideIdxVecNames (.Lopn dsts opn srcs) do
+              let s := slot nm
+              if s < a.size then a := a.set! s true
       | _ => pure ()
     return a
 
 /-- Spec form of `bodyVecSlots` (the `@[implemented_by]` target is the cached
     one). Slot `s` is vector iff some `Lopn` with a vector mnemonic touches the
-    register name whose `nameSlot` is `s`. Sized by `bodyNames body |>.length`
-    (the distinct-name universe), the same upper bound `nameSlot` ranks against. -/
+    register name whose `nameSlot` is `s`, or, in a body with a vector op, that
+    name is a 256-bit value of a register-indexed access (`wideIdxVecNames`).
+    Sized by `bodyNames body |>.length` (the distinct-name universe), the same
+    upper bound `nameSlot` ranks against. -/
 @[implemented_by bodyVecSlotsImpl]
 def bodyVecSlots (body : Lcmd) : Array Bool :=
   Id.run do
@@ -414,6 +439,10 @@ def bodyVecSlots (body : Lcmd) : Array Bool :=
               (dsts.head?.bind LOperand.regName?).toList
                 ++ srcs.flatMap LOperand.srcRegNames
             for nm in names do
+              let s := nameSlot body nm
+              if s < a.size then a := a.set! s true
+          else if bodyHasVecOp body then
+            for nm in wideIdxVecNames (.Lopn dsts opn srcs) do
               let s := nameSlot body nm
               if s < a.size then a := a.set! s true
       | _ => pure ()

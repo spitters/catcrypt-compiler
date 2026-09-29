@@ -22,9 +22,12 @@ elaborates to a `Com jasminDialect`.
 and `stack` parameters and locals; expressions with C precedence over
 `+ - * / % & | ^ << >> == != < <= > >=` (with the signed and unsigned forms `<s`,
 `<=u`, `>>s`, …), `&& ||`, unary `!` and `-`, casts `(64u) e`, `(u64) e` and
-`(uint) e`, `c ? a : b`, array indexing, memory words `[:uW e]`, array views
-`a.[:uW e]`, vector packs `(kuW)[e, …]`, calls to source functions and to the
-intrinsics `#ROL_64`, `#ROR_64`, `#swap`, `#spill` and `#unspill`; tuple
+`(uint) e`, `c ? a : b`, array indexing, width-typed cells `a[:uW e]`, memory
+words `[:uW e]`, array views `a.[:uW e]`, vector packs `(kuW)[e, …]`, binary
+operators with a width annotation (`^256u`, `+4u64`), calls to source functions,
+to the intrinsics `#ROL_64`, `#ROR_64`, `#swap`, `#spill` and `#unspill`, and to
+the 256-bit intrinsics of `ymmBinIntrinsic?`, `ymmImmIntrinsic?` and
+`ymmBinImmIntrinsic?` and to `#VPBROADCAST_4u64`; tuple
 assignments with `_` and `()`, compound assignments, `if`/`else`,
 `for v = lo to hi`, `while { pre } (c) { post }`, and a final `return`. `#[…]`
 annotations and `require` lines are skipped; the caller supplies the required
@@ -38,8 +41,8 @@ units in the text.
   rejected, and so a `while` whose guard folds is unrolled.
 * `importFunRolled` keeps a loop rolled instead when its unrolling is `rollable`
   (at least two trips, and `rollMinTrips` trips or `rollMinStmts` statements per
-  trip): a `for`, or a `while { pre } (c) {}` whose trips advance one
-  compile-time counter by a fixed step (`affineCounter`). The loop is emitted as
+  trip): a `for`, or a `while { pre } (c) {}` or `while (c) { post }` whose trips
+  advance one compile-time counter by a fixed step (`affineCounter`). The loop is emitted as
   `for idx = 0 to n { body }` over a run-time trip index `idx`, with the counter
   at `c0 + step · idx`. `tryRoll` evaluates the body with the names a trip writes
   unassigned, so a body that reads a value an earlier trip left, or stores into
@@ -74,7 +77,16 @@ units in the text.
 * A register copy emits no statement: the destination names the source's value.
 * `!a & b` with `a` a run-time word is `BinKind.andn`; `#ROL_64(x, i)` and
   `#ROR_64(x, i)` are `Rhs.ror`.
-* Every word is 64 bits wide; a `reg` or array type of another width is rejected.
+* A scalar word is 64 bits wide. A `u256` word is a vector value (`V.vw` at run
+  time, `V.vc` at compile time): `^`, `|`, `&` and the lane-annotated `+` and `-`
+  on it, and the 256-bit intrinsics, are `Rhs.ymm`. A compile-time `u256` value
+  an op reads is a `load` of a one-cell `.rodata` table holding it
+  (`vecConstName`). `#VPBROADCAST_4u64(T[i])` of a global `u64` table `T` at a
+  run-time index is a `load` of the table `T_bcast4u64` whose cell `k` is word
+  `k` of `T` in each of its four lanes; at a compile-time index or of a
+  compile-time word it is a compile-time `u256` value. A `reg ptr u256[n]`
+  parameter is a memory array of 256-bit cells. Every other width of a `reg` or
+  array type is rejected.
 -/
 
 @[expose] public section
@@ -84,6 +96,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Jasmin.JincInline
 
 open CatCrypt.Crypto.Jasmin.JincToCom (Stmt Rhs Operand BinKind JTy Param JFun ArgSlot)
+open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect (YmmOp)
 
 /-! ## 1. Tokens -/
 
@@ -326,6 +339,23 @@ def parseAccessWidth : P Nat := do
     | none => throw s!"parse: expected an access width, got '{s}'"
   else return 64
 
+/-- The operator symbol `op` with the width annotation that follows it appended
+    (`^` then `256u` gives `^256u`, `+` then `4u64` gives `+4u64`); `op` when no
+    annotation follows. -/
+def parseOpAnnot (op : String) : P String := do
+  match ← get with
+  | .num n :: .id s :: r =>
+      if s == "u" || s == "s" || (wordWidth? s).isSome then
+        set r
+        return op ++ toString n ++ s
+      else return op
+  | _ => return op
+
+/-- The cell `i` of the `W`-bit view of the array `a`, `a[:uW i]`, as the view
+    field at byte offset `(W / 8) · i`. -/
+def cellView (a : String) (w : Nat) (i : E) : E :=
+  .view a w (.bin "*" i (.num (w / 8 : Nat)))
+
 mutual
 
 /-- A primary expression: a numeral, a memory word, a cast, a vector pack, a
@@ -369,6 +399,11 @@ partial def parsePrimary : P E := do
         return .call s (← parseArgs)
       else if (← isSym "[") then
         let _ ← next
+        if (← isSym ":") then
+          let w ← parseAccessWidth
+          let i ← parseExpr
+          expectSym "]"
+          return cellView s w i
         let i ← parseExpr
         expectSym "]"
         return .idx s i
@@ -402,8 +437,9 @@ partial def parseBinRhs (minPrec : Nat) (lhs : E) : P E := do
           if p < minPrec then return lhs
           else
             let _ ← next
+            let opA ← parseOpAnnot op
             let rhs ← parseBinRhs (p + 1) (← parseUnary)
-            parseBinRhs minPrec (.bin op lhs rhs)
+            parseBinRhs minPrec (.bin opA lhs rhs)
       | none => return lhs
   | _ => return lhs
 
@@ -484,6 +520,11 @@ def parseLV : P LV := do
   if s == "_" then return .wild
   if (← isSym "[") then
     let _ ← next
+    if (← isSym ":") then
+      let w ← parseAccessWidth
+      let i ← parseExpr
+      expectSym "]"
+      return .view s w (.bin "*" i (.num (w / 8 : Nat)))
     let i ← parseExpr
     expectSym "]"
     return .idx s i
@@ -668,6 +709,12 @@ partial def parseTop (p : Prog) : P Prog := do
           expectSym "}"
           expectSym ";"
           parseTop { p with globs := (n, es) :: p.globs }
+      | .word w =>
+          -- a constant wider than 64 bits keeps its width as a cast
+          let e ← parseExpr
+          expectSym ";"
+          let e := if w > 64 then E.cast w e else e
+          parseTop { p with gconsts := (n, e) :: p.gconsts }
       | _ =>
           let e ← parseExpr
           expectSym ";"
@@ -691,8 +738,9 @@ def toW (n : Int) : Nat := (n % (w64 : Int)).toNat
 /-- A value during evaluation: unassigned, a compile-time integer, a compile-time
     word, a run-time word held by an emitted name, a run-time `w`-bit word
     (`w < 64`) held zero-extended by an emitted name, a register array (one value
-    per cell), a memory array named by an emitted array name, or the read-only
-    global table `nm` with its words. -/
+    per cell), a memory array named by an emitted array name, the read-only
+    global table `nm` with its words, a run-time `w`-bit vector word (`w > 64`)
+    held by an emitted name, or a compile-time `w`-bit vector word. -/
 inductive V where
   | undef
   | int (n : Int)
@@ -702,13 +750,17 @@ inductive V where
   | ra (els : Array V)
   | mem (nm : String) (n : Nat)
   | gtab (nm : String) (els : Array Nat)
+  | vw (w : Nat) (nm : String)
+  | vc (w : Nat) (n : Nat)
   deriving Repr, Inhabited, BEq
 
-/-- The kind of a declared name. -/
+/-- The kind of a declared name: an `inline int`, a 64-bit word, an array, or a
+    `w`-bit vector word. -/
 inductive Kind where
   | int
   | word
   | arr
+  | vword (w : Nat)
   deriving Repr, BEq, Inhabited
 
 /-- A function frame: each declared name with its kind and value, newest first. -/
@@ -738,8 +790,9 @@ structure Addr where
     of that loop, the base name bound for each global table read at a run-time
     index, the tables so read, and the array names with their cell counts; the
     call depth, the functions whose calls are kept, the address and the known
-    alignment of run-time words, the memory views and frame arrays used, and the
-    shifts already emitted. -/
+    alignment of run-time words, the memory views and frame arrays used, the
+    shifts already emitted, the cell widths of the arrays of wider cells, and the
+    names holding vector constants. -/
 structure EvSt where
   out : Array Stmt := #[]
   decls : Array String := #[]
@@ -764,6 +817,12 @@ structure EvSt where
   frames : Array (String × Nat) := #[]
   /-- The names holding `x >>> k`, keyed by `(x, k)`. -/
   shrs : List ((String × Nat) × String) := []
+  /-- The cell width of each memory array and table base whose cells are not
+      64-bit. -/
+  widths : List (String × Nat) := []
+  /-- The names holding a compile-time vector word, keyed by its width and value,
+      within a loop body or the function body. -/
+  vcs : List ((Nat × Nat) × String) := []
   deriving Inhabited
 
 /-- The evaluation monad. -/
@@ -813,7 +872,35 @@ def operandOf : V → M Operand
 def constNat : V → M Nat
   | .int n => if n ≥ 0 then pure n.toNat else throw s!"eval: negative index {n}"
   | .cw n => pure n
+  | .vc _ n => pure n
   | v => throw s!"eval: expected a compile-time integer, got {repr v}"
+
+/-- The cell width of the memory array or table base `nm`: `64` unless another
+    width is recorded. -/
+def cellWidth (nm : String) : M Nat := return ((← get).widths.lookup nm).getD 64
+
+/-- Record the cell width `w` of the memory array or table base `nm`. -/
+def setWidth (nm : String) (w : Nat) : M Unit :=
+  if w == 64 then pure () else modify fun s => { s with widths := (nm, w) :: s.widths }
+
+/-- Whether a value is a vector word. -/
+def isVec : V → Bool
+  | .vw _ _ => true
+  | .vc _ _ => true
+  | _ => false
+
+/-- The operator symbol of a source operator and its width annotation:
+    `^256u` is `("^", "256u")`, `+4u64` is `("+", "4u64")`, `<<` is `("<<", "")`. -/
+def splitOp (op : String) : String × String :=
+  (String.ofList (op.toList.takeWhile (fun c => !c.isDigit)),
+   String.ofList (op.toList.dropWhile (fun c => !c.isDigit)))
+
+/-- The 64-bit words of the `w`-bit value `n`, least significant first. -/
+def limbs64 (w n : Nat) : List Nat :=
+  (List.range (w / 64)).map fun i => n / 2 ^ (64 * i) % w64
+
+/-- The 256-bit word with the 64-bit word `n` in each of its four lanes. -/
+def bcast4u64 (n : Nat) : Nat := n * (1 + 2 ^ 64 + 2 ^ 128 + 2 ^ 192)
 
 /-- The truth of a folded condition. -/
 def truth? : V → Option Bool
@@ -1014,9 +1101,150 @@ def divModConst (op : String) (x : String) (d : Nat) : M V := do
   let qd ← emitOp .mul q (.lit d)
   return .w (← emitOp .sub x (.var qd))
 
+/-- The name holding the base address of the global table `nm` of `cells` cells
+    of `w` bits, whose 64-bit words are `words`, binding it on first use as
+    `b = @nm` (`Rhs.glob` of the `@`-prefixed symbol). Inside a rolled loop body
+    the binding goes to the statements placed ahead of the loop. The table joins
+    the tables read at a run-time index. -/
+def globBaseW (nm : String) (w : Nat) (words : List Nat) (cells : Nat) : M String := do
+  match (← get).gbases.lookup nm with
+  | some b => pure b
+  | none =>
+      let b := "%g" ++ nm
+      let st : Stmt := .assign b (.glob ("@" ++ nm))
+      modify fun s =>
+        { s with gbases := (nm, b) :: s.gbases, adecls := s.adecls.push (b, cells),
+                 tables := if s.tables.any (·.1 == nm) then s.tables
+                           else s.tables.push (nm, words) }
+      setWidth b w
+      if (← get).inBody then modify fun s => { s with hoist := s.hoist.push st }
+      else emit st
+      pure b
+
+/-- The name holding the base address of the global table `nm` of 64-bit words
+    `els` (`globBaseW`). -/
+def globBase (nm : String) (els : Array Nat) : M String :=
+  globBaseW nm 64 els.toList els.size
+
+/-- A name holding the compile-time `w`-bit word `n`: cell `0` of the one-cell
+    `.rodata` table `jinc_c{w}_{n in base 16}`, loaded once per loop body or
+    function body. Only under `importFunRolled`, whose rendering carries the
+    tables. -/
+def vecConstName (w n : Nat) : M String := do
+  match (← get).vcs.lookup (w, n) with
+  | some t => pure t
+  | none =>
+      unless (← get).roll do throw s!"eval: a u{w} constant outside importFunRolled"
+      let sym := "jinc_c" ++ toString w ++ "_" ++ String.ofList (Nat.toDigits 16 n)
+      let b ← globBaseW sym w (limbs64 w n) 1
+      let t ← fresh
+      emit (.assign kiName (.imm 0))
+      emit (.assign t (.load b kiName))
+      modify fun s => { s with vcs := ((w, n), t) :: s.vcs }
+      pure t
+
+/-- A name holding the `w`-bit vector word `v`. -/
+def vecName (w : Nat) : V → M String
+  | .vw w' x => if w' == w then pure x else throw s!"eval: u{w'} word where u{w} is expected"
+  | .vc w' n => if w' == w then vecConstName w n
+      else throw s!"eval: u{w'} word where u{w} is expected"
+  | v => throw s!"eval: expected a u{w} vector word, got {repr v}"
+
+/-- Emit `t = op(args)` for the 256-bit op `op`, returning `t`. -/
+def emitYmm (op : YmmOp) (args : List V) : M V := do
+  let ns ← args.mapM (vecName 256)
+  let t ← fresh
+  emit (.assign t (.ymm op ns))
+  pure (.vw 256 t)
+
+/-- The 256-bit op of a source operator on vector words: `^`, `|` and `&` at any
+    annotation, and `+` and `-` with the lane annotation `4u64`, `8u32` or
+    `16u16`. -/
+def vecBinOp? (base ann : String) : Option YmmOp :=
+  match base, ann with
+  | "^", _ => some .vpxor
+  | "|", _ => some .vpor
+  | "&", _ => some .vpand
+  | "+", "4u64" => some .vpaddq
+  | "+", "8u32" => some .vpaddd
+  | "+", "16u16" => some .vpaddw
+  | "-", "4u64" => some .vpsubq
+  | "-", "8u32" => some .vpsubd
+  | "-", "16u16" => some .vpsubw
+  | _, _ => none
+
+/-- A binary operator on vector words: the bitwise operators folded on two
+    compile-time words, every other application emitted as its 256-bit op. -/
+def vecBin (op base ann : String) (a b : V) : M V := do
+  let some k := vecBinOp? base ann | throw s!"eval: '{op}' on a vector word"
+  match a, b with
+  | .vc w x, .vc w' y =>
+      if w == w' && base == "^" then pure (.vc w (x ^^^ y))
+      else if w == w' && base == "|" then pure (.vc w (x ||| y))
+      else if w == w' && base == "&" then pure (.vc w (x &&& y))
+      else emitYmm k [a, b]
+  | _, _ => emitYmm k [a, b]
+
+/-- `#VPBROADCAST_4u64` of a compile-time 64-bit word: the compile-time 256-bit
+    word with it in each lane. -/
+def bcast64V (v : V) : M V :=
+  match constWord? v with
+  | some n => pure (.vc 256 (bcast4u64 n))
+  | none => throw s!"eval: broadcast of the run-time word {repr v}"
+
+/-- The two-operand 256-bit intrinsics and their ops. -/
+def ymmBinIntrinsic? : String → Option YmmOp
+  | "#VPAND_256" => some .vpand
+  | "#VPANDN_256" => some .vpandn
+  | "#VPOR_256" => some .vpor
+  | "#VPXOR_256" => some .vpxor
+  | "#VPSHUFB_256" => some .vpshufb
+  | "#VPADD_4u64" => some .vpaddq
+  | "#VPSUB_4u64" => some .vpsubq
+  | "#VPADD_8u32" => some .vpaddd
+  | "#VPSUB_8u32" => some .vpsubd
+  | "#VPADD_16u16" => some .vpaddw
+  | "#VPSUB_16u16" => some .vpsubw
+  | "#VPMULL_16u16" => some .vpmullw
+  | "#VPMULH_16u16" => some .vpmulhw
+  | "#VPMULL_8u32" => some .vpmulld
+  | "#VPMADDWD_256" => some .vpmaddwd
+  | "#VPUNPCKL_4u64" => some .vpunpcklqdq
+  | "#VPUNPCKH_4u64" => some .vpunpckhqdq
+  | "#VPUNPCKL_8u32" => some .vpunpckldq
+  | "#VPUNPCKH_8u32" => some .vpunpckhdq
+  | _ => none
+
+/-- The one-operand 256-bit intrinsics with an immediate, and their ops. -/
+def ymmImmIntrinsic? : String → Option (Nat → YmmOp)
+  | "#VPSLL_4u64" => some .vpsllq
+  | "#VPSRL_4u64" => some .vpsrlq
+  | "#VPSLL_8u32" => some .vpslld
+  | "#VPSRL_8u32" => some .vpsrld
+  | "#VPSRA_8u32" => some .vpsrad
+  | "#VPSLL_16u16" => some .vpsllw
+  | "#VPSRL_16u16" => some .vpsrlw
+  | "#VPSRA_16u16" => some .vpsraw
+  | "#VPERMQ" => some .vpermq
+  | "#VPSHUFD_256" => some .vpshufd
+  | _ => none
+
+/-- The two-operand 256-bit intrinsics with an immediate, and their ops. -/
+def ymmBinImmIntrinsic? : String → Option (Nat → YmmOp)
+  | "#VPERM2I128" => some .vperm2i128
+  | "#VPBLEND_8u32" => some .vpblendd
+  | "#VPBLEND_16u16" => some .vpblendw
+  | _ => none
+
 /-- A binary operator applied to two values: folded when both are compile-time,
-    emitted otherwise. A narrow word is rejected as an operand. -/
-def binV (op : String) (a b : V) : M V := do
+    emitted otherwise. A narrow word is rejected as an operand; an operator on a
+    vector word is `vecBin`, and a width annotation on a scalar operator must be
+    `64u` or `64s`. -/
+def binV (op0 : String) (a b : V) : M V := do
+  let (op, ann) := splitOp op0
+  if isVec a || isVec b then return ← vecBin op0 op ann a b
+  unless ann.isEmpty || ann == "64u" || ann == "64s" do
+    throw s!"eval: '{op0}' on 64-bit words"
   match a, b with
   | .nw _ _, _ | _, .nw _ _ => throw s!"eval: '{op}' on a narrow word"
   | .int x, .int y =>
@@ -1104,6 +1332,12 @@ def coerce (k : Kind) (v : V) : M V :=
   | .arr, .ra els => pure (.ra els)
   | .arr, .mem nm n => pure (.mem nm n)
   | .arr, .gtab nm els => pure (.gtab nm els)
+  | .vword w, .vw w' x =>
+      if w == w' then pure (.vw w x) else throw s!"eval: cannot store {repr v} in a {repr k}"
+  | .vword w, .vc w' n =>
+      if w == w' then pure (.vc w n) else throw s!"eval: cannot store {repr v} in a {repr k}"
+  | .vword w, .int n => pure (.vc w (n % (2 ^ w : Nat)).toNat)
+  | .vword w, .cw n => pure (.vc w n)
   | _, _ => throw s!"eval: cannot store {repr v} in a {repr k}"
 
 /-- A cell value: words only, an integer taken as a word. -/
@@ -1111,14 +1345,18 @@ def cellVal : V → M V
   | .int n => pure (.cw (toW n))
   | .cw n => pure (.cw n)
   | .w x => pure (.w x)
+  | .vw w x => pure (.vw w x)
+  | .vc w n => pure (.vc w n)
   | v => throw s!"eval: cannot store {repr v} in an array cell"
 
-/-- The kind of a declared type; words and arrays must be 64-bit. -/
+/-- The kind of a declared type; words and arrays are 64-bit or 256-bit. -/
 def kindOf : Ty → M Kind
   | .int => pure .int
   | .word 64 => pure .word
+  | .word 256 => pure (.vword 256)
   | .arr 64 _ => pure .arr
-  | ty => throw s!"eval: unsupported type {repr ty} (words are 64-bit)"
+  | .arr 256 _ => pure .arr
+  | ty => throw s!"eval: unsupported type {repr ty} (words are 64-bit or 256-bit)"
 
 /-- Cell `k` of an array value: the cell of a register array, or an emitted
     `load` of a memory array. -/
@@ -1134,30 +1372,13 @@ def readCell (av : V) (k : Nat) : M V := do
       let t ← fresh
       emit (.assign kiName (.imm k))
       emit (.assign t (.load nm kiName))
-      pure (.w t)
+      let w ← cellWidth nm
+      pure (if w == 64 then .w t else .vw w t)
   | .gtab nm els =>
       match els[k]? with
       | some x => pure (.cw x)
       | none => throw s!"eval: index {k} out of bounds of {nm}"
   | v => throw s!"eval: indexing {repr v}"
-
-/-- The name holding the base address of the global table `nm`, binding it on
-    first use as `b = @nm` (`Rhs.glob` of the `@`-prefixed symbol). Inside a
-    rolled loop body the binding goes to the statements placed ahead of the
-    loop. The table joins the tables read at a run-time index. -/
-def globBase (nm : String) (els : Array Nat) : M String := do
-  match (← get).gbases.lookup nm with
-  | some b => pure b
-  | none =>
-      let b := "%g" ++ nm
-      let st : Stmt := .assign b (.glob ("@" ++ nm))
-      modify fun s =>
-        { s with gbases := (nm, b) :: s.gbases, adecls := s.adecls.push (b, els.size),
-                 tables := if s.tables.any (·.1 == nm) then s.tables
-                           else s.tables.push (nm, els.toList) }
-      if (← get).inBody then modify fun s => { s with hoist := s.hoist.push st }
-      else emit st
-      pure b
 
 /-- A cell of an array value at the run-time index held by `x`: an emitted `load`
     of a memory array, or of a global table when loops may be kept rolled. A
@@ -1171,7 +1392,14 @@ def readCellAt (av : V) (x : String) : M V := do
     | v => throw s!"eval: run-time index into {repr v}"
   let t ← fresh
   emit (.assign t (.load src x))
-  pure (.w t)
+  let w ← cellWidth src
+  pure (if w == 64 then .w t else .vw w t)
+
+/-- A name holding `v` for a store into a cell of the array `arr`: a 64-bit word
+    for an array of 64-bit cells, a vector word otherwise. -/
+def cellName (arr : String) (v : V) : M String := do
+  let w ← cellWidth arr
+  if w == 64 then wordName v else vecName w v
 
 /-! ## 5. Memory words and array views -/
 
@@ -1292,6 +1520,7 @@ def rollable (n emitted : Nat) : Bool :=
 partial def isCt : V → Bool
   | .w _ => false
   | .nw _ _ => false
+  | .vw _ _ => false
   | .ra els => els.all isCt
   | _ => true
 
@@ -1459,6 +1688,14 @@ partial def evalE (p : Prog) (env : Env) : E → M V
         | .nw w' x =>
             if w' ≤ w then pure (.nw w' x) else pure (.nw w (← emitOp .and x (.lit mask)))
         | v => throw s!"eval: cast to u{w} of {repr v}"
+      else if w == 128 || w == 256 then
+        match ← evalE p env a with
+        | .int n => pure (.vc w (n % (2 ^ w : Nat)).toNat)
+        | .cw n => pure (.vc w n)
+        | .vc _ n => pure (.vc w (n % 2 ^ w))
+        | .vw w' x =>
+            if w' == w then pure (.vw w x) else throw s!"eval: cast of a u{w'} word to u{w}"
+        | v => throw s!"eval: cast to u{w} of {repr v}"
       else throw s!"eval: cast to u{w}"
   | .cond c t f => do
       match truth? (← evalE p env c) with
@@ -1467,9 +1704,36 @@ partial def evalE (p : Prog) (env : Env) : E → M V
       | none => throw "eval: data-dependent '?:'"
 
 /-- The results of a call: an intrinsic, a call kept as a call, or an inlined
-    source function. -/
+    source function. `#VPBROADCAST_4u64(T[i])` of a global table `T` at a
+    run-time index `i` is a `load` of cell `i` of the table `T_bcast4u64`, whose
+    cell `k` holds word `k` of `T` in each of its four lanes. -/
 partial def evalCall (p : Prog) (env : Env) (f : String) (args : List E) : M (List V) := do
+  if f == "#VPBROADCAST_4u64" then
+    let [arg] := args | throw s!"eval: '{f}' takes one argument"
+    match arg with
+    | .idx a i =>
+        let av ← lookupVar p env a
+        match av, ← evalE p env i with
+        | .gtab nm els, .w x =>
+            unless (← get).roll do throw s!"eval: run-time index into the global table {nm}"
+            let b ← globBaseW (nm ++ "_bcast4u64") 256
+              (els.toList.flatMap fun e => [e, e, e, e]) els.size
+            let t ← fresh
+            emit (.assign t (.load b x))
+            return [.vw 256 t]
+        | _, .w x => return [← bcast64V (← readCellAt av x)]
+        | _, vi => return [← bcast64V (← readCell av (← constNat vi))]
+    | e => return [← bcast64V (← evalE p env e)]
   let vs ← args.mapM (evalE p env)
+  if let some op := ymmBinIntrinsic? f then
+    let [a, b] := vs | throw s!"eval: '{f}' takes two arguments"
+    return [← emitYmm op [a, b]]
+  if let some mk := ymmImmIntrinsic? f then
+    let [a, n] := vs | throw s!"eval: '{f}' takes two arguments"
+    return [← emitYmm (mk (← constNat n)) [a]]
+  if let some mk := ymmBinImmIntrinsic? f then
+    let [a, b, n] := vs | throw s!"eval: '{f}' takes three arguments"
+    return [← emitYmm (mk (← constNat n)) [a, b]]
   match f, vs with
   | "#ROL_64", [x, i] => do
       let r ← rotV x ((64 - (← constNat i) % 64) % 64)
@@ -1588,7 +1852,7 @@ partial def assignLV (p : Prog) (env : Env) (lv : LV) (v : V) : M Env := do
       if let .w x := vi then
         match env.get? a with
         | some (_, .mem nm _) =>
-            let y ← wordName v
+            let y ← cellName nm v
             emit (.storeAt nm (.var x) (.glob y))
             return env
         | _ => throw s!"eval: store into '{a}' at a run-time index"
@@ -1602,7 +1866,7 @@ partial def assignLV (p : Prog) (env : Env) (lv : LV) (v : V) : M Env := do
           pure (env.set a (.ra (els.setIfInBounds k (← cellVal v))))
       | some (_, .mem nm n) =>
           unless k < n do throw s!"eval: index {k} out of bounds of '{a}'"
-          let x ← wordName v
+          let x ← cellName nm v
           emit (.store nm k x)
           pure env
       | _ => throw s!"eval: store into '{a}', which holds no array"
@@ -1616,9 +1880,10 @@ partial def execS (p : Prog) (env : Env) : S → M Env
       let mut e := env
       for nm in names do
         let init ← match ty, ptr with
-          | .arr _ n, false => do
+          | .arr w n, false => do
               let m ← constNat (← evalE p env n)
               if stk && depth == 0 then
+                unless w == 64 do throw s!"eval: frame array '{nm}' of u{w} cells"
                 modify fun s => { s with frames := s.frames.push (nm, m) }
                 pure (V.mem nm m)
               else pure (V.ra (Array.replicate m .undef))
@@ -1672,11 +1937,12 @@ partial def execS (p : Prog) (env : Env) : S → M Env
 partial def rollBody (p : Prog) (setup : M Env) (block : List S) :
     M (Env × Array Stmt × Array Stmt) := do
   let s ← get
-  set { s with out := #[], hoist := #[], inBody := true, shrs := [] }
+  set { s with out := #[], hoist := #[], inBody := true, shrs := [], vcs := [] }
   let env ← setup
   let env' ← execBlock p env block
   let s' ← get
-  set { s' with out := s.out, hoist := s.hoist, inBody := s.inBody, shrs := s.shrs }
+  set { s' with out := s.out, hoist := s.hoist, inBody := s.inBody, shrs := s.shrs,
+                vcs := s.vcs }
   pure (env', s'.out, s'.hoist)
 
 /-- Emit `block` as a rolled loop of `n` trips: the statements ahead of the loop,
@@ -1729,6 +1995,18 @@ partial def whileTrace (p : Prog) (pre : List S) (c : E) (fuel : Nat) (env : Env
       whileTrace p pre c (fuel - 1) env' (env :: acc)
   | none => throw "eval: data-dependent 'while' guard"
 
+/-- The frames at the start of each trip of `while (c) { post }` unrolled, and its
+    exit frame. -/
+partial def whileTracePost (p : Prog) (c : E) (post : List S) (fuel : Nat) (env : Env)
+    (acc : List Env) : M (List Env × Env) := do
+  match truth? (← evalE p env c) with
+  | some false => pure (acc.reverse, env)
+  | some true =>
+      if fuel == 0 then throw "eval: 'while' exceeds the unrolling bound"
+      let env' ← execBlock p env post
+      whileTracePost p c post (fuel - 1) env' (env :: acc)
+  | none => throw "eval: data-dependent 'while' guard"
+
 /-- `while (v < n) { body }` with `v` holding `0` and `n` a run-time word, as
     `Stmt.forRt idx n body` over a run-time trip index `idx` standing for `v`;
     `none` when the loop is not of that shape. The body must advance `v` by one
@@ -1761,24 +2039,27 @@ partial def tryRtLoop (p : Prog) (c : E) (body : List S) (env : Env) : M (Option
   return some ((undefAll env d).set v (.w n))
 
 /-- The frame after `while { pre } (c) { post }`. Under `importFunRolled` a loop
-    of the `tryRtLoop` shape is a run-time loop. Otherwise, with an empty
-    `post`, a loop whose unrolling is `rollable` and whose trips advance one
-    compile-time counter by a fixed step (`affineCounter`) is kept rolled when
-    `tryRoll` succeeds; every other loop is unrolled. -/
+    of the `tryRtLoop` shape is a run-time loop. Otherwise, with one of `pre` and
+    `post` empty, a loop whose unrolling is `rollable` and whose trips advance
+    one compile-time counter by a fixed step (`affineCounter`) is kept rolled
+    when `tryRoll` succeeds, a trip being the non-empty block; every other loop is
+    unrolled. -/
 partial def whileStmt (p : Prog) (pre : List S) (c : E) (post : List S) (env : Env) :
     M Env := do
   let s0 ← get
   if s0.roll && !s0.inBody && pre.isEmpty then
     if let some env' ← tryRtLoop p c post env then return env'
-  if !s0.roll || s0.inBody || !post.isEmpty then
+  if !s0.roll || s0.inBody || !(post.isEmpty || pre.isEmpty) then
     return ← whileLoop p pre c post whileFuel env
-  let (starts, envU) ← whileTrace p pre c whileFuel env []
+  let (block, (starts, envU)) ← if post.isEmpty then
+      do pure (pre, ← whileTrace p pre c whileFuel env [])
+    else do pure (post, ← whileTracePost p c post whileFuel env [])
   let s1 ← get
   let n := starts.length
   if !rollable n (s1.out.size - s0.out.size) then return envU
   match affineCounter starts with
   | some (x, c0, st) =>
-      tryCatch (do set s0; tryRoll p n x c0 st pre env envU) (fun _ => pure envU)
+      tryCatch (do set s0; tryRoll p n x c0 st block env envU) (fun _ => pure envU)
   | none => pure envU
 
 /-- The frame after `for v = i to h { body }`. -/
@@ -1809,18 +2090,22 @@ end
 
 /-! ## 7. Import -/
 
-/-- Evaluate `fn` over its parameters: a `reg ptr` array of 64-bit cells is a
-    memory array named by the parameter, a `reg u64` a run-time word that may
-    serve as a pointer. Returns the `JFun` parameters and the returned values. -/
+/-- Evaluate `fn` over its parameters: a `reg ptr` array of 64-bit or 256-bit
+    cells is a memory array named by the parameter, a `reg u64` a run-time word
+    that may serve as a pointer. Returns the `JFun` parameters and the returned
+    values. -/
 def importFnM (p : Prog) (fn : Fn) : M (List Param × List V) := do
   let mut env : Env := []
   let mut params : Array Param := #[]
   for (ty, _, nm) in fn.params do
     match ty with
-    | .arr 64 n =>
+    | .arr w n =>
+        unless w == 64 || w == 256 do
+          throw s!"import: unsupported parameter type {repr ty} of '{nm}'"
         let m ← constNat (← evalE p [] n)
         env := (nm, .arr, .mem nm m) :: env
-        params := params.push ⟨.arr 64 m, nm⟩
+        params := params.push ⟨.arr w m, nm⟩
+        setWidth nm w
     | .word 64 =>
         env := (nm, .word, .w nm) :: env
         params := params.push ⟨.reg 64, nm⟩
@@ -1864,12 +2149,13 @@ def importWith (roll : Bool) (callFns : List String) (src : String) (f : String)
     (([] : List Param), ([] : List ArgSlot), 0)
   let decls : List (JTy × String) :=
     (.reg 64, kiName) :: st.decls.toList.map (fun t => (.reg 64, t))
-      ++ st.adecls.toList.map (fun (b, n) => (.arr 64 n, b))
+      ++ st.adecls.toList.map (fun (b, n) => (.arr ((st.widths.lookup b).getD 64) n, b))
   let allParams := params ++ viewParams ++ frameParams
   let slots := (List.range params.length).map ArgSlot.abi ++ viewSlots ++ frameSlots
   let jf : JFun ← match rs with
     | [.mem nm n] =>
-        pure { name := f, params := allParams, retTy := .arr 64 n, decls, inlineInts := [],
+        pure { name := f, params := allParams, retTy := .arr ((st.widths.lookup nm).getD 64) n,
+               decls, inlineInts := [],
                body := st.out.toList ++ [.ret nm] }
     | [.w nm] =>
         pure { name := f, params := allParams, retTy := .reg 64, decls, inlineInts := [],

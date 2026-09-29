@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 
 module
 
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+
 /-!
 # `.jinc` leaf parser (front: text → untyped AST)
 
@@ -20,8 +22,8 @@ at a literal or variable index and with a cast right-hand side, a global-table
 assignment `name = GLOBAL`, `while (v != 0) { … }`, `for v = lo to hi { … }`,
 and `return name`. The elaborator (`JincElab`) turns a `JFun` into a
 `Com jasminDialect`; this module is the textual front. The rotate `Rhs.ror` and
-the operator `BinKind.andn`, the external call `Rhs.call` and the run-time loop
-`Stmt.forRt` have no syntax in this parser; `JincInline`, the partial evaluator
+the operator `BinKind.andn`, the external call `Rhs.call`, the 256-bit vector
+op `Rhs.ymm` and the run-time loop `Stmt.forRt` have no syntax in this parser; `JincInline`, the partial evaluator
 for full Jasmin source units, produces them. `ArgSlot` records where a
 function parameter's value comes from at entry.
 
@@ -156,6 +158,9 @@ inductive Rhs where
   /-- A call to the external symbol `sym` with the named arguments; the bound
       name receives the callee's result. -/
   | call (sym : String) (args : List String)
+  /-- The 256-bit vector op `op` over the `reg 256` names `args`: one name for a
+      unary op, two for a binary one (`YmmOp.isBinary`). -/
+  | ymm (op : CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect.YmmOp) (args : List String)
   deriving Repr, BEq, Inhabited
 
 inductive Stmt where
@@ -765,6 +770,7 @@ def rhsReads : Rhs → List String
   | .castLoad _ arr idx => [arr, idx]
   | .ror _ src => [src]
   | .call _ args => args
+  | .ymm _ args => args
 
 /-- The names a straight-line statement reads; a loop statement is taken to
     read none of its body's names, and a run-time loop reads its trip count. -/

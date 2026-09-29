@@ -45,6 +45,15 @@ squeezed in a run-time loop around a call of the permutation `_keccakf1600_ref`,
 and the partial block byte by byte. `keccakSpongeAsm` renders the three sponges
 and the permutation as one program (`JincElab.emitRolledProgramAsm`).
 
+The four-way permutation `_keccakf1600_avx2x4` is imported from the AVX2 files
+of the same commit (`keccakX4Unit`), its round loop kept rolled: the state is
+four Keccak states in struct-of-arrays order, lane `i` of all four the 256-bit
+cell `i`, and every operation is a 256-bit op (`Rhs.ymm`). The round constants
+are loads from the table `KECCAK1600_RC_bcast4u64`, each constant in all four
+lanes, and the byte-shuffle masks `ROL8` and `ROL56` are one-cell `.rodata`
+tables. `keccakF1600X4RolledAsm` renders it under the ABI of the owned
+`keccak_f1600_x4(uint64_t *out, const uint64_t *in)`.
+
 The executable `keccak-jinc-emit` (`KeccakJincEmit.lean`) writes the renderings;
 the bench harness `bench/keccak_compare` checks them against FIPS 202.
 
@@ -57,6 +66,9 @@ the bench harness `bench/keccak_compare` checks them against FIPS 202.
   kept rolled, and its owned AT&T rendering.
 * `keccakSpongeUnit`, `keccakSpongeImports`, `keccakSpongeAsm`: the sponge source
   unit, its imported entry points and permutation, and their owned AT&T
+  rendering.
+* `keccakX4Unit`, `keccakF1600X4Rolled`, `keccakF1600X4RolledAsm`: the four-way
+  source unit, its import with the round loop kept rolled, and its owned AT&T
   rendering.
 -/
 
@@ -1354,6 +1366,633 @@ def keccakSpongeAsm : String :=
       let tables := rs.foldl (fun acc (_, r) =>
         acc ++ r.tables.filter (fun t => !acc.any (·.1 == t.1))) []
       JincElab.emitRolledProgramAsm (rs.map fun (s, r) => (r.fn, r.slots, s)) tables
+  | .error e => s!"; import error: {e}"
+
+/-! ## The four-way permutation
+
+The AVX2 files `src/amd64/avx2/keccakf1600x4_pround_inlined.jinc` and
+`src/amd64/avx2/keccakf1600x4.jinc` of the same commit, verbatim except for
+trailing whitespace. `keccakX4WrapperSrc` holds the entry point written for this
+import. -/
+
+/-- `src/amd64/avx2/keccakf1600x4_pround_inlined.jinc`: one round of the four-way
+    permutation without ι, over 256-bit lanes. -/
+def keccakX4PRoundSrc : String := r#"/* -------------------------------------------------------------------- */
+/* After add assignments before and after call to ensure that arguments and results are "reg ptr" */
+
+#[safety =
+   { requires = is_arr_init(a,0,800)
+   , ensures = is_arr_init(e,0,800)
+   }
+ ]
+fn _keccakf1600_4x_pround
+( reg mut ptr u256[25] e
+, reg const ptr u256[25] a
+, reg u256 r8, reg u256 r56
+) -> reg mut ptr u256[25] {
+  reg u256[5] c_571;
+  reg u256 t_574;
+  reg u256 t_577;
+  reg u256 t_580;
+  reg u256 t_583;
+  reg u256 t_586;
+  reg u256 t_593;
+  reg u256 t_596;
+  reg u256 t_599;
+  reg u256 t_602;
+  reg u256[5] b_606;
+  reg u256 t_607;
+  reg u256 t_608;
+  reg u256 t_609;
+  reg u256 t_610;
+  reg u256 t_611;
+  reg u256 t_612;
+  reg u256 t_613;
+  reg u256 t_614;
+  reg u256 t_615;
+  reg u256 t_616;
+  reg u256[5] d_619;
+  reg u256 t_622;
+  reg u256 t_625;
+  reg u256 t_628;
+  reg u256 t_631;
+  reg u256 t_634;
+  reg u256[5] b_638;
+  reg u256 t_639;
+  reg u256 t_640;
+  reg u256 t_641;
+  reg u256 t_642;
+  reg u256 t_643;
+  reg u256 t_644;
+  reg u256 t_645;
+  reg u256 t_646;
+  reg u256 t_647;
+  reg u256 t_648;
+  reg u256 t_655;
+  reg u256 t_658;
+  reg u256 t_661;
+  reg u256 t_667;
+  reg u256[5] b_671;
+  reg u256 t_672;
+  reg u256 t_673;
+  reg u256 t_674;
+  reg u256 t_675;
+  reg u256 t_676;
+  reg u256 t_677;
+  reg u256 t_678;
+  reg u256 t_679;
+  reg u256 t_680;
+  reg u256 t_681;
+  reg u256 t_688;
+  reg u256 t_691;
+  reg u256 t_694;
+  reg u256 t_697;
+  reg u256[5] b_704;
+  reg u256 t_705;
+  reg u256 t_706;
+  reg u256 t_707;
+  reg u256 t_708;
+  reg u256 t_709;
+  reg u256 t_710;
+  reg u256 t_711;
+  reg u256 t_712;
+  reg u256 t_713;
+  reg u256 t_714;
+  reg u256 t_720;
+  reg u256 t_723;
+  reg u256 t_726;
+  reg u256 t_729;
+  reg u256 t_732;
+  reg u256[5] b_736;
+  reg u256 t_737;
+  reg u256 t_738;
+  reg u256 t_739;
+  reg u256 t_740;
+  reg u256 t_741;
+  reg u256 t_742;
+  reg u256 t_743;
+  reg u256 t_744;
+  reg u256 t_745;
+  reg u256 t_746;
+
+  c_571[0] = a[0]; /* u256 */
+  c_571[1] = a[1]; /* u256 */
+  c_571[2] = a[2]; /* u256 */
+  c_571[3] = a[3]; /* u256 */
+  c_571[4] = a[4]; /* u256 */
+  c_571[0] = (c_571[0] ^256u a[5]); /* u256 */
+  c_571[1] = (c_571[1] ^256u a[6]); /* u256 */
+  c_571[2] = (c_571[2] ^256u a[7]); /* u256 */
+  c_571[3] = (c_571[3] ^256u a[8]); /* u256 */
+  c_571[4] = (c_571[4] ^256u a[9]); /* u256 */
+  c_571[0] = (c_571[0] ^256u a[10]); /* u256 */
+  c_571[1] = (c_571[1] ^256u a[11]); /* u256 */
+  c_571[2] = (c_571[2] ^256u a[12]); /* u256 */
+  c_571[3] = (c_571[3] ^256u a[13]); /* u256 */
+  c_571[4] = (c_571[4] ^256u a[14]); /* u256 */
+  c_571[0] = (c_571[0] ^256u a[15]); /* u256 */
+  c_571[1] = (c_571[1] ^256u a[16]); /* u256 */
+  c_571[2] = (c_571[2] ^256u a[17]); /* u256 */
+  c_571[3] = (c_571[3] ^256u a[18]); /* u256 */
+  c_571[4] = (c_571[4] ^256u a[19]); /* u256 */
+  c_571[0] = (c_571[0] ^256u a[20]); /* u256 */
+  c_571[1] = (c_571[1] ^256u a[21]); /* u256 */
+  c_571[2] = (c_571[2] ^256u a[22]); /* u256 */
+  c_571[3] = (c_571[3] ^256u a[23]); /* u256 */
+  c_571[4] = (c_571[4] ^256u a[24]); /* u256 */
+  d_619[0] = c_571[1]; /* u256 */
+  t_574 = #VPSLL_4u64(d_619[0], ((128u) 1)); /*  */
+  d_619[0] = #VPSRL_4u64(d_619[0], ((128u) 63)); /*  */
+  d_619[0] = (d_619[0] |256u t_574); /* u256 */
+  d_619[0] = (d_619[0] ^256u c_571[4]); /* u256 */
+  d_619[1] = c_571[2]; /* u256 */
+  t_577 = #VPSLL_4u64(d_619[1], ((128u) 1)); /*  */
+  d_619[1] = #VPSRL_4u64(d_619[1], ((128u) 63)); /*  */
+  d_619[1] = (d_619[1] |256u t_577); /* u256 */
+  d_619[1] = (d_619[1] ^256u c_571[0]); /* u256 */
+  d_619[2] = c_571[3]; /* u256 */
+  t_580 = #VPSLL_4u64(d_619[2], ((128u) 1)); /*  */
+  d_619[2] = #VPSRL_4u64(d_619[2], ((128u) 63)); /*  */
+  d_619[2] = (d_619[2] |256u t_580); /* u256 */
+  d_619[2] = (d_619[2] ^256u c_571[1]); /* u256 */
+  d_619[3] = c_571[4]; /* u256 */
+  t_583 = #VPSLL_4u64(d_619[3], ((128u) 1)); /*  */
+  d_619[3] = #VPSRL_4u64(d_619[3], ((128u) 63)); /*  */
+  d_619[3] = (d_619[3] |256u t_583); /* u256 */
+  d_619[3] = (d_619[3] ^256u c_571[2]); /* u256 */
+  d_619[4] = c_571[0]; /* u256 */
+  t_586 = #VPSLL_4u64(d_619[4], ((128u) 1)); /*  */
+  d_619[4] = #VPSRL_4u64(d_619[4], ((128u) 63)); /*  */
+  d_619[4] = (d_619[4] |256u t_586); /* u256 */
+  d_619[4] = (d_619[4] ^256u c_571[3]); /* u256 */
+  b_606[0] = a[0]; /* u256 */
+  b_606[0] = (b_606[0] ^256u d_619[0]); /* u256 */
+  b_606[1] = a[6]; /* u256 */
+  b_606[1] = (b_606[1] ^256u d_619[1]); /* u256 */
+  t_593 = #VPSLL_4u64(b_606[1], ((128u) 44)); /*  */
+  b_606[1] = #VPSRL_4u64(b_606[1], ((128u) 20)); /*  */
+  b_606[1] = (b_606[1] |256u t_593); /* u256 */
+  b_606[2] = a[12]; /* u256 */
+  b_606[2] = (b_606[2] ^256u d_619[2]); /* u256 */
+  t_596 = #VPSLL_4u64(b_606[2], ((128u) 43)); /*  */
+  b_606[2] = #VPSRL_4u64(b_606[2], ((128u) 21)); /*  */
+  b_606[2] = (b_606[2] |256u t_596); /* u256 */
+  b_606[3] = a[18]; /* u256 */
+  b_606[3] = (b_606[3] ^256u d_619[3]); /* u256 */
+  t_599 = #VPSLL_4u64(b_606[3], ((128u) 21)); /*  */
+  b_606[3] = #VPSRL_4u64(b_606[3], ((128u) 43)); /*  */
+  b_606[3] = (b_606[3] |256u t_599); /* u256 */
+  b_606[4] = a[24]; /* u256 */
+  b_606[4] = (b_606[4] ^256u d_619[4]); /* u256 */
+  t_602 = #VPSLL_4u64(b_606[4], ((128u) 14)); /*  */
+  b_606[4] = #VPSRL_4u64(b_606[4], ((128u) 50)); /*  */
+  b_606[4] = (b_606[4] |256u t_602); /* u256 */
+  t_607 = #VPANDN_256(b_606[1], b_606[2]); /*  */
+  t_608 = (t_607 ^256u b_606[0]); /* u256 */
+  e[0] = t_608; /* u256 */
+  t_609 = #VPANDN_256(b_606[2], b_606[3]); /*  */
+  t_610 = (t_609 ^256u b_606[1]); /* u256 */
+  e[1] = t_610; /* u256 */
+  t_611 = #VPANDN_256(b_606[3], b_606[4]); /*  */
+  t_612 = (t_611 ^256u b_606[2]); /* u256 */
+  e[2] = t_612; /* u256 */
+  t_613 = #VPANDN_256(b_606[4], b_606[0]); /*  */
+  t_614 = (t_613 ^256u b_606[3]); /* u256 */
+  e[3] = t_614; /* u256 */
+  t_615 = #VPANDN_256(b_606[0], b_606[1]); /*  */
+  t_616 = (t_615 ^256u b_606[4]); /* u256 */
+  e[4] = t_616; /* u256 */
+  b_638[0] = a[3]; /* u256 */
+  b_638[0] = (b_638[0] ^256u d_619[3]); /* u256 */
+  t_622 = #VPSLL_4u64(b_638[0], ((128u) 28)); /*  */
+  b_638[0] = #VPSRL_4u64(b_638[0], ((128u) 36)); /*  */
+  b_638[0] = (b_638[0] |256u t_622); /* u256 */
+  b_638[1] = a[9]; /* u256 */
+  b_638[1] = (b_638[1] ^256u d_619[4]); /* u256 */
+  t_625 = #VPSLL_4u64(b_638[1], ((128u) 20)); /*  */
+  b_638[1] = #VPSRL_4u64(b_638[1], ((128u) 44)); /*  */
+  b_638[1] = (b_638[1] |256u t_625); /* u256 */
+  b_638[2] = a[10]; /* u256 */
+  b_638[2] = (b_638[2] ^256u d_619[0]); /* u256 */
+  t_628 = #VPSLL_4u64(b_638[2], ((128u) 3)); /*  */
+  b_638[2] = #VPSRL_4u64(b_638[2], ((128u) 61)); /*  */
+  b_638[2] = (b_638[2] |256u t_628); /* u256 */
+  b_638[3] = a[16]; /* u256 */
+  b_638[3] = (b_638[3] ^256u d_619[1]); /* u256 */
+  t_631 = #VPSLL_4u64(b_638[3], ((128u) 45)); /*  */
+  b_638[3] = #VPSRL_4u64(b_638[3], ((128u) 19)); /*  */
+  b_638[3] = (b_638[3] |256u t_631); /* u256 */
+  b_638[4] = a[22]; /* u256 */
+  b_638[4] = (b_638[4] ^256u d_619[2]); /* u256 */
+  t_634 = #VPSLL_4u64(b_638[4], ((128u) 61)); /*  */
+  b_638[4] = #VPSRL_4u64(b_638[4], ((128u) 3)); /*  */
+  b_638[4] = (b_638[4] |256u t_634); /* u256 */
+  t_639 = #VPANDN_256(b_638[1], b_638[2]); /*  */
+  t_640 = (t_639 ^256u b_638[0]); /* u256 */
+  e[5] = t_640; /* u256 */
+  t_641 = #VPANDN_256(b_638[2], b_638[3]); /*  */
+  t_642 = (t_641 ^256u b_638[1]); /* u256 */
+  e[6] = t_642; /* u256 */
+  t_643 = #VPANDN_256(b_638[3], b_638[4]); /*  */
+  t_644 = (t_643 ^256u b_638[2]); /* u256 */
+  e[7] = t_644; /* u256 */
+  t_645 = #VPANDN_256(b_638[4], b_638[0]); /*  */
+  t_646 = (t_645 ^256u b_638[3]); /* u256 */
+  e[8] = t_646; /* u256 */
+  t_647 = #VPANDN_256(b_638[0], b_638[1]); /*  */
+  t_648 = (t_647 ^256u b_638[4]); /* u256 */
+  e[9] = t_648; /* u256 */
+  b_671[0] = a[1]; /* u256 */
+  b_671[0] = (b_671[0] ^256u d_619[1]); /* u256 */
+  t_655 = #VPSLL_4u64(b_671[0], ((128u) 1)); /*  */
+  b_671[0] = #VPSRL_4u64(b_671[0], ((128u) 63)); /*  */
+  b_671[0] = (b_671[0] |256u t_655); /* u256 */
+  b_671[1] = a[7]; /* u256 */
+  b_671[1] = (b_671[1] ^256u d_619[2]); /* u256 */
+  t_658 = #VPSLL_4u64(b_671[1], ((128u) 6)); /*  */
+  b_671[1] = #VPSRL_4u64(b_671[1], ((128u) 58)); /*  */
+  b_671[1] = (b_671[1] |256u t_658); /* u256 */
+  b_671[2] = a[13]; /* u256 */
+  b_671[2] = (b_671[2] ^256u d_619[3]); /* u256 */
+  t_661 = #VPSLL_4u64(b_671[2], ((128u) 25)); /*  */
+  b_671[2] = #VPSRL_4u64(b_671[2], ((128u) 39)); /*  */
+  b_671[2] = (b_671[2] |256u t_661); /* u256 */
+  b_671[3] = a[19]; /* u256 */
+  b_671[3] = (b_671[3] ^256u d_619[4]); /* u256 */
+  b_671[3] = #VPSHUFB_256(b_671[3], r8); /*  */
+  b_671[4] = a[20]; /* u256 */
+  b_671[4] = (b_671[4] ^256u d_619[0]); /* u256 */
+  t_667 = #VPSLL_4u64(b_671[4], ((128u) 18)); /*  */
+  b_671[4] = #VPSRL_4u64(b_671[4], ((128u) 46)); /*  */
+  b_671[4] = (b_671[4] |256u t_667); /* u256 */
+  t_672 = #VPANDN_256(b_671[1], b_671[2]); /*  */
+  t_673 = (t_672 ^256u b_671[0]); /* u256 */
+  e[10] = t_673; /* u256 */
+  t_674 = #VPANDN_256(b_671[2], b_671[3]); /*  */
+  t_675 = (t_674 ^256u b_671[1]); /* u256 */
+  e[11] = t_675; /* u256 */
+  t_676 = #VPANDN_256(b_671[3], b_671[4]); /*  */
+  t_677 = (t_676 ^256u b_671[2]); /* u256 */
+  e[12] = t_677; /* u256 */
+  t_678 = #VPANDN_256(b_671[4], b_671[0]); /*  */
+  t_679 = (t_678 ^256u b_671[3]); /* u256 */
+  e[13] = t_679; /* u256 */
+  t_680 = #VPANDN_256(b_671[0], b_671[1]); /*  */
+  t_681 = (t_680 ^256u b_671[4]); /* u256 */
+  e[14] = t_681; /* u256 */
+  b_704[0] = a[4]; /* u256 */
+  b_704[0] = (b_704[0] ^256u d_619[4]); /* u256 */
+  t_688 = #VPSLL_4u64(b_704[0], ((128u) 27)); /*  */
+  b_704[0] = #VPSRL_4u64(b_704[0], ((128u) 37)); /*  */
+  b_704[0] = (b_704[0] |256u t_688); /* u256 */
+  b_704[1] = a[5]; /* u256 */
+  b_704[1] = (b_704[1] ^256u d_619[0]); /* u256 */
+  t_691 = #VPSLL_4u64(b_704[1], ((128u) 36)); /*  */
+  b_704[1] = #VPSRL_4u64(b_704[1], ((128u) 28)); /*  */
+  b_704[1] = (b_704[1] |256u t_691); /* u256 */
+  b_704[2] = a[11]; /* u256 */
+  b_704[2] = (b_704[2] ^256u d_619[1]); /* u256 */
+  t_694 = #VPSLL_4u64(b_704[2], ((128u) 10)); /*  */
+  b_704[2] = #VPSRL_4u64(b_704[2], ((128u) 54)); /*  */
+  b_704[2] = (b_704[2] |256u t_694); /* u256 */
+  b_704[3] = a[17]; /* u256 */
+  b_704[3] = (b_704[3] ^256u d_619[2]); /* u256 */
+  t_697 = #VPSLL_4u64(b_704[3], ((128u) 15)); /*  */
+  b_704[3] = #VPSRL_4u64(b_704[3], ((128u) 49)); /*  */
+  b_704[3] = (b_704[3] |256u t_697); /* u256 */
+  b_704[4] = a[23]; /* u256 */
+  b_704[4] = (b_704[4] ^256u d_619[3]); /* u256 */
+  b_704[4] = #VPSHUFB_256(b_704[4], r56); /*  */
+  t_705 = #VPANDN_256(b_704[1], b_704[2]); /*  */
+  t_706 = (t_705 ^256u b_704[0]); /* u256 */
+  e[15] = t_706; /* u256 */
+  t_707 = #VPANDN_256(b_704[2], b_704[3]); /*  */
+  t_708 = (t_707 ^256u b_704[1]); /* u256 */
+  e[16] = t_708; /* u256 */
+  t_709 = #VPANDN_256(b_704[3], b_704[4]); /*  */
+  t_710 = (t_709 ^256u b_704[2]); /* u256 */
+  e[17] = t_710; /* u256 */
+  t_711 = #VPANDN_256(b_704[4], b_704[0]); /*  */
+  t_712 = (t_711 ^256u b_704[3]); /* u256 */
+  e[18] = t_712; /* u256 */
+  t_713 = #VPANDN_256(b_704[0], b_704[1]); /*  */
+  t_714 = (t_713 ^256u b_704[4]); /* u256 */
+  e[19] = t_714; /* u256 */
+  b_736[0] = a[2]; /* u256 */
+  b_736[0] = (b_736[0] ^256u d_619[2]); /* u256 */
+  t_720 = #VPSLL_4u64(b_736[0], ((128u) 62)); /*  */
+  b_736[0] = #VPSRL_4u64(b_736[0], ((128u) 2)); /*  */
+  b_736[0] = (b_736[0] |256u t_720); /* u256 */
+  b_736[1] = a[8]; /* u256 */
+  b_736[1] = (b_736[1] ^256u d_619[3]); /* u256 */
+  t_723 = #VPSLL_4u64(b_736[1], ((128u) 55)); /*  */
+  b_736[1] = #VPSRL_4u64(b_736[1], ((128u) 9)); /*  */
+  b_736[1] = (b_736[1] |256u t_723); /* u256 */
+  b_736[2] = a[14]; /* u256 */
+  b_736[2] = (b_736[2] ^256u d_619[4]); /* u256 */
+  t_726 = #VPSLL_4u64(b_736[2], ((128u) 39)); /*  */
+  b_736[2] = #VPSRL_4u64(b_736[2], ((128u) 25)); /*  */
+  b_736[2] = (b_736[2] |256u t_726); /* u256 */
+  b_736[3] = a[15]; /* u256 */
+  b_736[3] = (b_736[3] ^256u d_619[0]); /* u256 */
+  t_729 = #VPSLL_4u64(b_736[3], ((128u) 41)); /*  */
+  b_736[3] = #VPSRL_4u64(b_736[3], ((128u) 23)); /*  */
+  b_736[3] = (b_736[3] |256u t_729); /* u256 */
+  b_736[4] = a[21]; /* u256 */
+  b_736[4] = (b_736[4] ^256u d_619[1]); /* u256 */
+  t_732 = #VPSLL_4u64(b_736[4], ((128u) 2)); /*  */
+  b_736[4] = #VPSRL_4u64(b_736[4], ((128u) 62)); /*  */
+  b_736[4] = (b_736[4] |256u t_732); /* u256 */
+  t_737 = #VPANDN_256(b_736[1], b_736[2]); /*  */
+  t_738 = (t_737 ^256u b_736[0]); /* u256 */
+  e[20] = t_738; /* u256 */
+  t_739 = #VPANDN_256(b_736[2], b_736[3]); /*  */
+  t_740 = (t_739 ^256u b_736[1]); /* u256 */
+  e[21] = t_740; /* u256 */
+  t_741 = #VPANDN_256(b_736[3], b_736[4]); /*  */
+  t_742 = (t_741 ^256u b_736[2]); /* u256 */
+  e[22] = t_742; /* u256 */
+  t_743 = #VPANDN_256(b_736[4], b_736[0]); /*  */
+  t_744 = (t_743 ^256u b_736[3]); /* u256 */
+  e[23] = t_744; /* u256 */
+  t_745 = #VPANDN_256(b_736[0], b_736[1]); /*  */
+  t_746 = (t_745 ^256u b_736[4]); /* u256 */
+  e[24] = t_746; /* u256 */
+  return (e);
+}
+
+
+"#
+
+/-- `src/amd64/avx2/keccakf1600x4.jinc`: the four-way permutation
+    `_keccakf1600_avx2x4` with its round loop, the byte-shuffle masks `ROL8` and
+    `ROL56`, and the packing between four scalar states and the four-way state. -/
+def keccakX4Src : String := r#"from Keccak require "common/keccakf1600_generic.jinc"
+
+type keccakx4_state = u256[25];
+
+require "keccakf1600x4_pround_inlined.jinc"
+
+u256 ROL56 = 0x181F1E1D1C1B1A191017161514131211080F0E0D0C0B0A090007060504030201;
+u256 ROL8  = 0x1E1D1C1B1A19181F16151413121110170E0D0C0B0A09080F0605040302010007;
+
+
+inline fn __keccakf1600_avx2x4
+( reg ptr u256[25] a
+) -> reg ptr u256[25]
+{
+  reg ptr u64[24] RC;
+
+  stack u256[25] s_e;
+  reg ptr u256[25] e;
+
+  reg u256 rc r8 r56 t;
+  reg ui64 c;
+
+  RC = KECCAK1600_RC;
+  e = s_e;
+  r8 = ROL8;
+  r56 = ROL56;
+
+  c = 0;
+  while(c < KECCAK_ROUNDS)
+  {
+    rc = #VPBROADCAST_4u64(RC[c]);
+
+    e = _keccakf1600_4x_pround(e, a, r8, r56);
+    t = rc ^ e[0];
+    e[0] = t;
+
+    a, e = #swap(e, a);
+
+    rc = #VPBROADCAST_4u64(RC[c+1]);
+    a = _keccakf1600_4x_pround(a, e, r8, r56);
+    t = rc ^ a[0];
+    a[0] = t;
+
+    a, e = #swap(e, a);
+
+    c += 2;
+  }
+
+  return a;
+}
+
+fn _keccakf1600_avx2x4
+( reg ptr u256[25] a
+) -> reg ptr u256[25]
+{
+  a = __keccakf1600_avx2x4(a);
+  return a;
+}
+
+inline fn _keccakf1600_avx2x4_
+( reg ptr u256[25] a
+) -> reg ptr u256[25]
+{
+  a = a;
+  a = _keccakf1600_avx2x4(a);
+  a = a;
+  return a;
+}
+
+// pack 4 keccak states (st25) into a 4-way state (st4x)
+inline fn __u256x4_4u64x4
+( reg u256 x0 x1 x2 x3
+) -> reg u256, reg u256, reg u256, reg u256 {
+  // x0 = l00 l01  l02 l03
+  // x1 = l10 l11  l12 l13
+  // x2 = l20 l21  l22 l23
+  // x3 = l30 l31  l32 l33
+  reg u256 y0, y1, y2, y3;
+  y0 = #VPUNPCKL_4u64(x0, x1);	// y0 = l00 l10  l02 l12
+  y1 = #VPUNPCKH_4u64(x0, x1);	// y1 = l01 l11  l03 l13
+  y2 = #VPUNPCKL_4u64(x2, x3);	// y2 = l20 l30  l22 l32
+  y3 = #VPUNPCKH_4u64(x2, x3);	// y3 = l21 l31  l23 l33
+
+  x0 = #VPERM2I128(y0, y2, 0x20);	// x0 = l00 l10  l20 l30
+  x1 = #VPERM2I128(y1, y3, 0x20);	// x1 = l01 l11  l21 l31
+  x2 = #VPERM2I128(y0, y2, 0x31);	// x2 = l02 l12  l22 l32
+  x3 = #VPERM2I128(y1, y3, 0x31);	// x3 = l03 l13  l23 l33
+
+  return x0, x1, x2, x3;
+}
+
+#[safety =
+   { requires = is_arr_init(st0,0,25*8) && is_arr_init(st1,0,25*8)
+             && is_arr_init(st2,0,25*8) && is_arr_init(st3,0,25*8)
+   , ensures = is_arr_init(st4x,0,25*32)
+   }
+ ]
+inline fn __st4x_pack
+( reg mut ptr u256[25] st4x
+, reg const ptr u64[25] st0 st1 st2 st3
+) -> reg ptr u256[25]
+{
+  inline int i;
+  reg u256 x0, x1, x2, x3;
+  reg u64 t0, t1, t2, t3;
+  for i = 0 to 6 {
+    x0 = st0[:u256 i];
+    x1 = st1[:u256 i];
+    x2 = st2[:u256 i];
+    x3 = st3[:u256 i];
+    x0, x1, x2, x3 = __u256x4_4u64x4(x0, x1, x2, x3);
+    st4x[4*i+0] = x0;
+    st4x[4*i+1] = x1;
+    st4x[4*i+2] = x2;
+    st4x[4*i+3] = x3;
+  }
+  t0 = st0[24];
+  t1 = st1[24];
+  t2 = st2[24];
+  t3 = st3[24];
+  st4x[:u64 4*24+0] = t0;
+  st4x[:u64 4*24+1] = t1;
+  st4x[:u64 4*24+2] = t2;
+  st4x[:u64 4*24+3] = t3;
+
+  return st4x;
+}
+
+
+
+// extracts 4 keccak states (st25) from a 4-way state (st4x)
+inline fn __4u64x4_u256x4
+( reg u256 y0 y1 y2 y3
+) -> reg u256, reg u256, reg u256, reg u256 {
+  // y0 = l00 l10  l20 l30
+  // y1 = l01 l11  l21 l31
+  // y2 = l02 l12  l22 l32
+  // y3 = l03 l13  l23 l33
+  reg u256 x0, x1, x2, x3;
+  x0 = #VPERM2I128(y0, y2, 0x20);	// x0 = l00 l10  l02 l12
+  x1 = #VPERM2I128(y1, y3, 0x20);	// x1 = l01 l11  l03 l13
+  x2 = #VPERM2I128(y0, y2, 0x31);	// x2 = l20 l30  l22 l32
+  x3 = #VPERM2I128(y1, y3, 0x31);	// x3 = l21 l31  l23 l33
+
+  y0 = #VPUNPCKL_4u64(x0, x1);	// y0 = l00 l01  l02 l03
+  y1 = #VPUNPCKH_4u64(x0, x1);	// y1 = l10 l11  l12 l13
+  y2 = #VPUNPCKL_4u64(x2, x3);	// y2 = l20 l21  l22 l23
+  y3 = #VPUNPCKH_4u64(x2, x3);	// y3 = l30 l31  l32 l33
+
+  return y0, y1, y2, y3;
+}
+
+#[safety =
+   { requires = is_arr_init(st4x,0,25*32)
+   , ensures = is_arr_init(st0,0,25*8) && is_arr_init(st1,0,25*8)
+            && is_arr_init(st2,0,25*8) && is_arr_init(st3,0,25*8)
+   }
+ ]
+inline fn __st4x_unpack
+( reg mut ptr u64[25] st0 st1 st2 st3
+, reg const ptr u256[25] st4x
+) -> reg ptr u64[25], reg ptr u64[25], reg ptr u64[25], reg ptr u64[25]
+{
+  inline int i;
+  reg u256 x0, x1, x2, x3;
+  reg u64 t0, t1, t2, t3;
+  for i = 0 to 6 {
+    x0 = st4x[:u256 4*i+0];
+    x1 = st4x[:u256 4*i+1];
+    x2 = st4x[:u256 4*i+2];
+    x3 = st4x[:u256 4*i+3];
+    x0, x1, x2, x3 = __4u64x4_u256x4(x0, x1, x2, x3);
+    st0.[:u256 4*8*i] = x0;
+    st1.[:u256 4*8*i] = x1;
+    st2.[:u256 4*8*i] = x2;
+    st3.[:u256 4*8*i] = x3;
+  }
+  t0 = st4x[:u64 4*24+0];
+  t1 = st4x[:u64 4*24+1];
+  t2 = st4x[:u64 4*24+2];
+  t3 = st4x[:u64 4*24+3];
+  st0[24] = t0;
+  st1[24] = t1;
+  st2[24] = t2;
+  st3[24] = t3;
+
+  return st0, st1, st2, st3;
+}
+
+
+/* For testing:
+export fn testF_avx2x4(reg mut ptr u256[25] st) -> reg ptr u256[25] {
+ st = _keccakf1600_avx2x4(st);
+ return st;
+}
+*/
+
+/* For the BDEP proof... */
+inline fn __keccakf1600_pround_unpacked
+( reg mut ptr u64[25] st0 st1 st2 st3
+) -> reg ptr u64[25], reg ptr u64[25], reg ptr u64[25], reg ptr u64[25] {
+  stack u256[25] st4x1, st4x2;
+  reg u256 r8 r56;
+
+  r8 = ROL8;
+  r56 = ROL56;
+  st4x1 = __st4x_pack( st4x1, st0, st1, st2, st3);
+  st4x2 = _keccakf1600_4x_pround(st4x2, st4x1, r8, r56);
+  st0, st1, st2, st3 = __st4x_unpack(st0, st1, st2, st3, st4x2);
+
+  return st0, st1, st2, st3;
+}
+
+#[safety =
+   { requires = is_arr_init(a,0,32*25)
+   , ensures = is_arr_init(e,0,32*25)
+   }
+ ]
+inline fn __keccakf1600_pround_equiv
+( reg mut ptr u256[25] e
+, reg const ptr u256[25] a
+) -> reg ptr u256[25] {
+  stack u64[25] st0, st1, st2, st3;
+
+  st0, st1, st2, st3 = __st4x_unpack(st0, st1, st2, st3, a);
+  st0, st1, st2, st3 = __keccakf1600_pround_unpacked(st0, st1, st2, st3);
+  e = __st4x_pack( e, st0, st1, st2, st3);
+
+  return e;
+}
+"#
+
+/-- The entry point of the four-way import: `out` receives the 25 lanes of `inp`,
+    each the 256-bit cell holding lane `i` of the four states, then the four-way
+    permutation in place. -/
+def keccakX4WrapperSrc : String := r#"export fn keccak_f1600_x4(reg ptr u256[25] out inp) -> reg ptr u256[25]
+{
+  inline int i;
+  reg u256 t;
+  for i = 0 to 25 { t = inp[i]; out[i] = t; }
+  out = _keccakf1600_avx2x4(out);
+  return out;
+}
+"#
+
+/-- The four-way source unit: the generic constants, the round, the permutation
+    and the entry point, in dependency order. -/
+def keccakX4Unit : String :=
+  keccakGenericSrc ++ keccakX4PRoundSrc ++ keccakX4Src ++ keccakX4WrapperSrc
+
+/-- The exported four-way symbol, the name of the owned four-way kernel. -/
+def keccakF1600X4Sym : String := "keccak_f1600_x4"
+
+/-- `keccak_f1600_x4` imported with its round loop kept rolled: the twelve trips
+    of the `while`, two rounds each, are one `for` over the trip index, and the
+    broadcast round constants are 256-bit loads from `KECCAK1600_RC_bcast4u64` at
+    the indices `2·idx` and `2·idx + 1`. -/
+def keccakF1600X4Rolled : Except String JincInline.RolledImport :=
+  JincInline.importFunRolled keccakX4Unit keccakF1600X4Sym
+
+/-- The owned AT&T rendering of `keccakF1600X4Rolled`
+    (`JincElab.emitJFunRolledAsm`), or the import error as an assembler
+    comment. -/
+def keccakF1600X4RolledAsm : String :=
+  match keccakF1600X4Rolled with
+  | .ok r => JincElab.emitJFunRolledAsm r.fn r.tables keccakF1600X4Sym
   | .error e => s!"; import error: {e}"
 
 end CatCrypt.Crypto.Jasmin.KeccakJincImport

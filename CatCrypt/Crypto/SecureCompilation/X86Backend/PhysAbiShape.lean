@@ -432,6 +432,12 @@ theorem bodyVecSlots_noVec (body : Lcmd)
     | cons x l ih =>
       rw [List.forIn_cons, hf x (List.mem_cons_self ..) b]
       exact ih (fun y hy => hf y (List.mem_cons_of_mem _ hy)) b
+  have hv : bodyHasVecOp body = false := by
+    rw [bodyHasVecOp, List.any_eq_false]
+    intro x hx
+    have hx' := List.all_eq_true.mp h x hx
+    rcases x with ⟨ii, w⟩
+    cases w <;> simp_all [isVectorMnem_eq]
   unfold bodyVecSlots
   simp only [Id.run]
   rw [hconst]
