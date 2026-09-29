@@ -427,22 +427,21 @@ theorem optFlatAt_bindNone (o : String) (env envF : Env) :
     fun _ h => by cases h⟩
 
 /-- **`let o = Some y`.**  The binding and its lowering `optBindArm` are simulated from
-    `R` when `R` gives the same copied value of `y` on both sides and the environments
-    after the binding are `R₂`-related. -/
+    `R` when `R` gives the same value of `y` on both sides and the environments after
+    the binding are `R₂`-related. -/
 theorem fuelSim_optBindSome {o y : String} {body body' e' : ImpExpr} (hO : OptionSound bi)
     (he : optBindArm o (.app "Some" [.var y]) (.app "Some" [.var y]) body' = some e')
     {R R₂ Rx : Env → Env → Prop}
     (hR : ∀ env envF, R env envF → ∃ v, env y = some v ∧ envF y = some v ∧
-      v.isControlFlow = false ∧ bi copyName [v, v] = some v ∧
+      v.isControlFlow = false ∧
       R₂ (env.extend o (.option (some v)))
         ((envF.extend (optValName o) v).extend (optTagName o) (.bool true)))
     (hb : FuelSim bi R₂ Rx body body') :
     FuelSim bi R Rx (.letBind o (.app "Some" [.var y]) body) e' := by
   refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
-  obtain ⟨v, hy, hyF, hv, hc, h2⟩ := hR env envF hR0
+  obtain ⟨v, hy, hyF, hv, h2⟩ := hR env envF hR0
   obtain ⟨h1, h1', -⟩ := optBind_some_sim bi fuel o (.var y) (.var y) body body' e' env env
-    envF envF v hO he (by rw [denote'_var_run, hy]) hv
-    (rhsCopy_var_run bi fuel _ y envF v hyF hv hc)
+    envF envF v hO he (by rw [denote'_var_run, hy]) hv (by rw [denote'_var_run, hyF])
   exact ⟨_, _, h1, h1', h2⟩
 
 /-- **`let o = None`.**  The binding and its lowering `optBindArm` are simulated from
@@ -581,22 +580,22 @@ theorem fuelSim_callBind1 {n f : String} {val val' body body' : ImpExpr}
 
 /-- **Update with a copy.**  `let s = struct_update#S#i#n(s, y); body` and its
     lowering, the copy of `y` into the component of field `f`, are simulated from `R`
-    when `R` flattens `s` and gives the same copied value of `y` on both sides, and
-    every pair of environments in which `s` is flattened is `R₂`-related. -/
+    when `R` flattens `s` and gives the same value of `y` on both sides, and every
+    pair of environments in which `s` is flattened is `R₂`-related. -/
 theorem fuelSim_flatUpdateCopy {S' s f y : String} {fs : List String} {i : Nat}
     {body body' : ImpExpr} (hU : UpdateSound bi S' fs) (hi : fs[i]? = some f)
     (huniq : ∀ j, fs[j]? = some f → j = i) {R R₂ Rx : Env → Env → Prop}
     (hR : ∀ env envF, R env envF → StructFlatAt fs s env envF ∧ ∃ v, env y = some v ∧
-      envF y = some v ∧ v.isControlFlow = false ∧ bi copyName [v, v] = some v ∧
+      envF y = some v ∧ v.isControlFlow = false ∧
       ∀ env2 envF2, StructFlatAt fs s env2 envF2 → R₂ env2 envF2)
     (hb : FuelSim bi R₂ Rx body body') :
     FuelSim bi R Rx
       (.letBind s (.app (_root_.Hax.structUpdateHead S' i fs.length) [.var s, .var y]) body)
-      (.letBind (structCompName s f) (rhsCopy (structCompName s f) (.var y)) body') := by
+      (.letBind (structCompName s f) (.var y) body') := by
   refine FuelSim.of_step (fun fuel env envF hR0 => ?_) hb
-  obtain ⟨hsf, v, hy, hyF, hv, hc, hR₂⟩ := hR env envF hR0
+  obtain ⟨hsf, v, hy, hyF, hv, hR₂⟩ := hR env envF hR0
   obtain ⟨env2, envF2, h1, h2, h3⟩ := flatUpdateCopy_sim bi fuel S' s f y fs i body body' env
-    envF v hU hi huniq hsf hy hyF hv hc
+    envF v hU hi huniq hsf hy hyF hv
   exact ⟨_, _, h1, h2, hR₂ env2 envF2 h3⟩
 
 /-- **Named tuple return.**  A returned tuple with the variables `rs` evaluates to the

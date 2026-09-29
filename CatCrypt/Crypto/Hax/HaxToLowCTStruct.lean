@@ -49,10 +49,9 @@ word payload.
 
 **Call results, copies and tuple returns.**  `let s = f(args)` of a struct
 variable binds the call's tuple result to `s#tup` and reads its components into
-the component variables (`callBindArm`).  A variable bound to a component or to an
-`Option` payload is copied through the scalar builtin `copyName` (`rhsCopy`),
-since the scope checkers of the simulation theorems accept a `letBind` of one
-variable to another only when the two are the same variable.  A
+the component variables (`callBindArm`).  A variable `y` bound to a component or
+to an `Option` payload is the plain copy `let comp = y`, which the front lowers to
+a scalar assignment.  A
 function returning a tuple whose components are variables and flattened structs
 returns its result in those variables (`namedRet`): each such tuple in tail
 position becomes the unit value and each such `cfBreak` payload `cfBreak ()`, so
@@ -72,7 +71,7 @@ against `denote'`.
 * `optRet` — the `Option` return lowering.
 * `structVal`, `structRef` — the value of a struct from its fields, and a flattened
   struct variable as an expression.
-* `callBindArm`, `rhsCopy` — the call result arm and the copy of a variable.
+* `callBindArm` — the call result arm.
 * `retVars`, `tailRet`, `namedRet` — the named tuple return.
 * `renameVar`, `renameSafe`, `varAbsent` — renaming a variable, and the syntactic
   conditions under which the `Option` match arm renames.
@@ -101,8 +100,8 @@ against `denote'`.
 * `callBind_sim`, `callBind1_sim` — a struct bound to a call result and its
   lowering leave the struct flattened, for a struct with other than one field and
   with one field.
-* `flatUpdateCopy_sim` — an update with a variable and its copy into the component
-  leave the struct flattened.
+* `flatUpdateCopy_sim` — an update with a variable and its copy `let s.f = y` into
+  the component leave the struct flattened.
 * `namedRet_tuple_run`, `namedRet_break_sim` — a returned tuple with the
   variables `rs` is determined by `rs`, and its lowering returns the unit value
   from the same environment.
@@ -204,21 +203,6 @@ def updateArm (L : StructLayout) (sv : StructVars) (c s : String) : Option Strin
     ((List.range fs.length).find? fun i =>
       c == _root_.Hax.structUpdateHead S i fs.length).bind fun i =>
       fs[i]?.map (structCompName s)
-
-/-- The builtin that copies a word: the scalar `&` of a variable with itself,
-    which the front lowers to the scalar assignment `comp := y & y`. -/
-def copyName : String := "scalar#BitAnd"
-
-/-- The copy of the variable `y`: `scalar#BitAnd(y, y)`. -/
-def copyExpr (y : String) : ImpExpr := .app copyName [.var y, .var y]
-
-/-- The right-hand side bound to the variable `comp`: a variable `y` other than
-    `comp` is the copy `copyExpr y` (the scope checkers accept a `letBind` of one
-    variable to another only for the same variable); every other expression is
-    itself. -/
-def rhsCopy (comp : String) : ImpExpr → ImpExpr
-  | .var y => if y == comp then .var y else copyExpr y
-  | e => e
 
 /-- The variable holding the tuple returned by a call bound to the struct variable
     `s`: `s#tup`. -/
@@ -392,9 +376,8 @@ def projArgs (L : StructLayout) (sv : StructVars) (c : String) : List ImpExpr �
     body `body'`:
     * `let s = s; body` of a struct variable `s` (hax-lean's parameter alias) is
       `body'`;
-    * `let s = struct_update#S#i#n(s, x); body` is `let s.f = rhsCopy s.f x'; body'`
-      for the field `f` of index `i`, where `x'` is the last argument of `val'`
-      (a variable `x'` other than `s.f` is copied);
+    * `let s = struct_update#S#i#n(s, x); body` is `let s.f = x'; body'` for the
+      field `f` of index `i`, where `x'` is the last argument of `val'`;
     * a `letBind` of a struct variable to any other right-hand side is refused;
     * every other `letBind` is `let n = val'; body'`. -/
 def letArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : ImpExpr) :
@@ -408,7 +391,7 @@ def letArm (L : StructLayout) (sv : StructVars) (n : String) (val val' body' : I
       match (if n == s then updateArm L sv c s else none), val' with
       | some comp, .app _ args' =>
           match args'.getLast? with
-          | some x' => some (.letBind comp (rhsCopy comp x') body')
+          | some x' => some (.letBind comp x' body')
           | none => none
       | _, _ =>
           if (structFields L sv n).isSome then none else some (.letBind n val' body')
@@ -431,16 +414,15 @@ def optAlias (ov : List String) (n : String) : ImpExpr → Bool
 
 /-- The binding `let o = Some x` or `let o = None` of the flattened `Option`
     variable `o`, given the flattened right-hand side `val'` and body `body'`:
-    `Some x'` binds the payload `o#val` to `rhsCopy o#val x'` (a variable payload
-    is copied) and then the tag `o#tag` to `true`, `None` binds the tag to
-    `false`.  `none` on any other right-hand side. -/
+    `Some x'` binds the payload `o#val` to `x'` and then the tag `o#tag` to `true`,
+    `None` binds the tag to `false`.  `none` on any other right-hand side. -/
 def optBindArm (o : String) (val val' body' : ImpExpr) : Option ImpExpr :=
   match val with
   | .app _ [_] =>
       match val' with
       | .app c [x'] =>
           if c == "Some" then
-            some (.letBind (optValName o) (rhsCopy (optValName o) x')
+            some (.letBind (optValName o) x'
               (.letBind (optTagName o) (.lit (.bool true)) body'))
           else none
       | _ => none
@@ -706,8 +688,8 @@ mutual
       `let arr = array_update (arr, i, x)` binds `arr#idx` and stores the fields of
       `x`; `len (arr)` of an array of type `[T; N]` is `N` (`arrLetBuild`,
       `arrCallArm`);
-    * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i`, a
-      variable `x` through a copy (`rhsCopy`);
+    * `let s = struct_update#S#i#n(s, x)` rebinds the component of field `i` to
+      the flattened `x`;
     * a struct literal `let s = S(x₁, …, xₖ)` binds the components of `s` in field
       order (`structLitArm`);
     * `let s = f(args)` of a struct variable binds the call's tuple result and
@@ -1096,8 +1078,7 @@ theorem flatE_proj {L : StructLayout} {sv : StructVars} (av : ArrVars) (ov : Lis
   rw [flatE_app]; simp only [projArgs, h]
 
 /-- `flatE` on an update of a struct variable (not a declared array) rebinds the
-    component of the updated field to the flattened new value `x'`, a variable
-    through a copy. -/
+    component of the updated field to the flattened new value `x'`. -/
 theorem flatE_update {L : StructLayout} {sv : StructVars} (av : ArrVars) (ov : List String)
     {c s comp : String} {fs : List String} {x x' body body' : ImpExpr}
     (h : updateArm L sv c s = some comp) (hs : structFields L sv s = some fs)
@@ -1105,7 +1086,7 @@ theorem flatE_update {L : StructLayout} {sv : StructVars} (av : ArrVars) (ov : L
     (hxs : ∀ y, x = .var y → structFields L sv y = none)
     (hx : flatE L sv av ov x = some x') (hb : flatE L sv av ov body = some body') :
     flatE L sv av ov (.letBind s (.app c [.var s, x]) body) =
-      some (.letBind comp (rhsCopy comp x') body') := by
+      some (.letBind comp x' body') := by
   have hfx : flatCallArgs L sv av ov [x] = some [x'] := by
     cases x <;> simp_all [flatCallArgs]
   have hpa : projArgs L sv c [.var s, x] = none := rfl
@@ -1968,13 +1949,13 @@ variable (bi : Builtins) (fuel : Nat)
 
 /-- **`Option` binding, `Some`.**  `let o = Some x; body` runs `body` with `o` bound
     to `some v`; its lowering `optBindArm` runs `body'` with the payload `o#val`
-    bound to `v` (the value of `rhsCopy o#val x'`) and the tag `o#tag` to `true`,
+    bound to `v` (the value of `x'`) and the tag `o#tag` to `true`,
     so `o` is flattened in the two environments. -/
 theorem optBind_some_sim (o : String) (x x' body body' e' : ImpExpr)
     (env env1 envF envF1 : Env) (v : Value) (hO : OptionSound bi)
     (he : optBindArm o (.app "Some" [x]) (.app "Some" [x']) body' = some e')
     (hx : (denote' bi fuel x).run env = (.val v, env1)) (hv : v.isControlFlow = false)
-    (hx' : (denote' bi fuel (rhsCopy (optValName o) x')).run envF = (.val v, envF1)) :
+    (hx' : (denote' bi fuel x').run envF = (.val v, envF1)) :
     (denote' bi fuel (.letBind o (.app "Some" [x]) body)).run env =
         (denote' bi fuel body).run (env1.extend o (.option (some v))) ∧
       (denote' bi fuel e').run envF =
@@ -1982,7 +1963,7 @@ theorem optBind_some_sim (o : String) (x x' body body' e' : ImpExpr)
           ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) ∧
       OptFlatAt o (env1.extend o (.option (some v)))
         ((envF1.extend (optValName o) v).extend (optTagName o) (.bool true)) := by
-  have he' : e' = .letBind (optValName o) (rhsCopy (optValName o) x')
+  have he' : e' = .letBind (optValName o) x'
       (.letBind (optTagName o) (.lit (.bool true)) body') := by
     simp only [optBindArm, beq_self_eq_true, if_true] at he
     exact (Option.some.inj he).symm
@@ -2152,44 +2133,24 @@ theorem callBind1_sim (bi : Builtins) (fuel : Nat) (n f : String) (val val' body
     exact _root_.Hax.Env.extend_same _ _ _
   | succ i => simp at hg
 
-/-- The copy of a variable holding `v` returns `v` when the builtin table copies
-    `v`. -/
-theorem copyExpr_run (bi : Builtins) (fuel : Nat) (y : String) (env : Env) (v : Value)
-    (hy : env y = some v) (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
-    (denote' bi fuel (copyExpr y)).run env = (.val v, env) := by
-  rw [copyExpr, denote'_app_run, denoteArgs'_cons_run, denote'_var_run, hy]
-  cases v <;> simp at hv <;>
-    simp only [denoteArgs'_cons_run, denote'_var_run, hy, denoteArgs'_nil_run, Option.map_some,
-      hc]
-
-/-- `rhsCopy comp` on a variable holding `v` returns `v`. -/
-theorem rhsCopy_var_run (bi : Builtins) (fuel : Nat) (comp y : String) (env : Env) (v : Value)
-    (hy : env y = some v) (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
-    (denote' bi fuel (rhsCopy comp (.var y))).run env = (.val v, env) := by
-  simp only [rhsCopy]
-  split
-  · rw [denote'_var_run, hy]
-  · exact copyExpr_run bi fuel y env v hy hv hc
-
 /-- **Update arm with a variable.**  `let s = struct_update#S#i#n(s, y); body` and its
-    lowering, the copy of `y` into the component of field `f`, run `body` and
+    lowering, the copy `let s.f = y` into the component of field `f`, run `body` and
     `body'` from environments in which `s` stays flattened, when `y` holds the same
-    value `v` on both sides and the builtin table copies `v`. -/
+    value `v` on both sides. -/
 theorem flatUpdateCopy_sim (bi : Builtins) (fuel : Nat) (S s f y : String) (fs : List String)
     (i : Nat) (body body' : ImpExpr) (env envF : Env) (v : Value) (hU : UpdateSound bi S fs)
     (hi : fs[i]? = some f) (huniq : ∀ j, fs[j]? = some f → j = i)
     (hsf : StructFlatAt fs s env envF) (hy : env y = some v) (hyF : envF y = some v)
-    (hv : v.isControlFlow = false) (hc : bi copyName [v, v] = some v) :
+    (hv : v.isControlFlow = false) :
     ∃ env2 envF2,
       (denote' bi fuel (.letBind s
           (.app (_root_.Hax.structUpdateHead S i fs.length) [.var s, .var y]) body)).run env =
         (denote' bi fuel body).run env2 ∧
-      (denote' bi fuel (.letBind (structCompName s f) (rhsCopy (structCompName s f) (.var y))
-          body')).run envF = (denote' bi fuel body').run envF2 ∧
+      (denote' bi fuel (.letBind (structCompName s f) (.var y) body')).run envF =
+        (denote' bi fuel body').run envF2 ∧
       StructFlatAt fs s env2 envF2 :=
   flatUpdate_sim bi fuel S s f fs i (.var y) _ body body' env env envF envF v hU hi huniq hsf
-    (by rw [denote'_var_run, hy]) hv (rhsCopy_var_run bi fuel _ y envF v hyF hv hc)
-    (fun _ _ _ => rfl)
+    (by rw [denote'_var_run, hy]) hv (by rw [denote'_var_run, hyF]) (fun _ _ _ => rfl)
 
 /-- The variables `rs` are bound in `env` to values that are not control flow, and
     `env'` agrees with `env` on them. -/
