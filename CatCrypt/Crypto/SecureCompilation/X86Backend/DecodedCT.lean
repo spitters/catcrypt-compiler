@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
 public import CatCrypt.Crypto.SecureCompilation.CT.Leakage
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
+public import CatCrypt.Crypto.Jasmin.LowCTTypes
 
 /-!
 # Constant time of decoded programs on the address machine
@@ -68,6 +69,18 @@ word `%rsp + o`, `o ∈ F`. The soundness theorems hold for runs whose steps all
 * `feAddFramed_bytesCT`: the encoding of the framed `fe25519_add` decodes to a block that,
   followed by `ret`, the checker accepts with the three pointers and `%rsp` public;
   `feAddFramed_secretPointer_rejected` is the rejection with an input pointer secret.
+
+## Frame words from the certificate and the public set from the ABI
+
+`certCells A` is the list of frame words public somewhere in the certificate `A`, and
+`bytesCTCheckAuto r P prog` is `bytesCTCheck` with the frame words of the inferred
+certificate; `bytesCTCheckAuto_sound` is its soundness, under `FrameSep` for those
+words. `abiPubA ps lt` is the public entry set of a function with parameters `ps`
+under the level table `lt` and the System V calling convention: `%rsp`, the register
+of each of the first six parameters that is a pointer or public in `lt`, and the
+stack word `%rsp + 8 (k + 1)` of the parameter at position `6 + k` under the same
+condition. `abiPubA_regs_iff` and `abiPubA_cells_iff` state its content. `failAt`
+and `firstFailure` name the first index at which the check fails and why.
 -/
 
 @[expose] public section
@@ -650,5 +663,117 @@ theorem feAddFramed_secretPointer_rejected :
     bytesCTCheck .doitm [] ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
       (feAddFramed.map .op ++ [.ret]) = false := by
   decide +kernel
+
+/-! ## 8. Frame words from the certificate, the public set from the ABI -/
+
+/-- The frame words public at some index of the certificate. -/
+def certCells (A : List (Option PubA)) : List Int :=
+  A.flatMap fun o => match o with
+    | some a => a.cells
+    | none => []
+
+/-- `bytesCTCheck` with the frame words of the inferred certificate. -/
+def bytesCTCheckAuto (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
+  bytesCTCheck r (certCells (infer prog P)) P prog
+
+/-- **Soundness of the decision with inferred frame words.** If `bytesCTCheckAuto r P
+    prog` holds, two runs of `prog` from index `0` from states agreeing on `P`, whose
+    steps satisfy `FrameSep` for the frame words of the inferred certificate, have equal
+    leakage traces. -/
+theorem bytesCTCheckAuto_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
+    (h : bytesCTCheckAuto r P prog = true) :
+    ConstantTimeRel P.Agree
+      (fun sa t => ∃ sa', RunL r (FrameSep (certCells (infer prog P))) prog 0 sa t sa') :=
+  bytesCTCheck_sound h
+
+open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
+
+/-- The kind of a parameter: a pointer, whose value is an address, or a scalar. -/
+inductive ParamKind where
+  | ptr
+  | scalar
+  deriving DecidableEq, Repr
+
+/-- The System V registers of the first six integer parameters, in order. -/
+def sysvRegs : List String := ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
+
+/-- A parameter is public on entry when it is a pointer or its level in `lt` is
+    `Public`. -/
+def paramPub (lt : LevelTable) (p : String × ParamKind) : Bool :=
+  p.2 == .ptr || lt p.1 == .Public
+
+/-- The public entry set of a function with parameters `ps` under the level table `lt`:
+    `%rsp`, the register of each public parameter among the first six, the stack word of
+    each public parameter from the seventh on, and no flag. -/
+def abiPubA (ps : List (String × ParamKind)) (lt : LevelTable) : PubA where
+  regs := "%rsp" :: ((ps.zip sysvRegs).filter (fun q => paramPub lt q.1)).map (·.2)
+  cells := (((ps.drop 6).zipIdx).filter (fun q => paramPub lt q.1)).map
+    (fun q => 8 * ((q.2 : Int) + 1))
+  flags := false
+
+/-- The level table of a kernel without a hax secrecy record: every name secret, so
+    that under `abiPubA` exactly the pointer parameters and `%rsp` are public. -/
+def defaultLevels : LevelTable := fun _ => .Secret
+
+/-- The registers of `abiPubA`: `%rsp` and the register of each public parameter among
+    the first six. -/
+theorem abiPubA_regs_iff (ps : List (String × ParamKind)) (lt : LevelTable) (x : String) :
+    x ∈ (abiPubA ps lt).regs ↔
+      x = "%rsp" ∨ ∃ (i : Nat) (p : String × ParamKind), ps[i]? = some p ∧
+        sysvRegs[i]? = some x ∧ paramPub lt p = true := by
+  simp only [abiPubA, List.mem_cons, List.mem_map, List.mem_filter]
+  refine or_congr Iff.rfl ⟨?_, ?_⟩
+  · rintro ⟨⟨p, y⟩, ⟨hz, hp⟩, rfl⟩
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp hz
+    rw [List.getElem?_zip_eq_some] at hi
+    exact ⟨i, p, hi.1, hi.2, hp⟩
+  · rintro ⟨i, p, hp, hx, hpub⟩
+    exact ⟨(p, x), ⟨List.mem_iff_getElem?.mpr ⟨i, List.getElem?_zip_eq_some.mpr ⟨hp, hx⟩⟩,
+      hpub⟩, rfl⟩
+
+/-- The frame words of `abiPubA`: the stack word `8 (k + 1)` of each public parameter at
+    position `6 + k`. -/
+theorem abiPubA_cells_iff (ps : List (String × ParamKind)) (lt : LevelTable) (o : Int) :
+    o ∈ (abiPubA ps lt).cells ↔
+      ∃ (k : Nat) (p : String × ParamKind), ps[6 + k]? = some p ∧ o = 8 * ((k : Int) + 1) ∧
+        paramPub lt p = true := by
+  simp only [abiPubA, List.mem_map, List.mem_filter]
+  constructor
+  · rintro ⟨⟨p, k⟩, ⟨hk, hp⟩, rfl⟩
+    rw [List.mem_zipIdx_iff_getElem?, List.getElem?_drop] at hk
+    exact ⟨k, p, hk, rfl, hp⟩
+  · rintro ⟨k, p, hk, rfl, hp⟩
+    refine ⟨(p, k), ⟨?_, hp⟩, rfl⟩
+    rw [List.mem_zipIdx_iff_getElem?, List.getElem?_drop]
+    exact hk
+
+/-- The reason the check fails at index `pc` of `prog` under the certificate `A` and
+    the frame words `F`, or `none` when it passes there. -/
+def failAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Option PubA))
+    (pc : Nat) : Option String :=
+  match certAt A pc with
+  | none => none
+  | some a =>
+    if !(a.cells.all F.contains) then some "frame word outside the frame set" else
+    match prog[pc]? with
+    | some (.op i) =>
+      if r.leaksOperands i.mnem then some "variable-time instruction"
+      else if !idxOk a i then some "secret index register"
+      else if !baseOk a i then some "secret base register"
+      else if !succOk A (pc + 1) (stepA a i) then some "no post-fixpoint at the successor"
+      else none
+    | some (.jcc cc t) =>
+      if !a.flags then some "branch on secret flags"
+      else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
+      else if !(succOk A t a && succOk A (pc + 1) a) then some "no post-fixpoint at a successor"
+      else none
+    | _ => none
+
+/-- The first index at which `bytesCTCheckAuto r P prog` fails, with the reason; `none`
+    when no index fails and the entry set is below `P`. -/
+def firstFailure (r : DoitRegime) (P : PubA) (prog : List RInstr) : Option (Nat × String) :=
+  let A := infer prog P
+  if !succOk A 0 P then some (0, "entry set not below the public set") else
+  (List.range prog.length).findSome? fun pc => (failAt r (certCells A) prog A pc).map (pc, ·)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
