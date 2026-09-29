@@ -26,10 +26,13 @@ with leakage trace `t` and final state `sa'`, in the event type `CT.CTLeak`:
   or the scaled index (region `""`, the flat memory), followed by a `vt` event with the
   data operands when the regime `r` makes them observable;
 * a `jcc` emits the `branch` event of its outcome;
-* `ret` ends the run.
+* a `call` emits the leakage of `callOps`, the callee's trace as a nested run, and the
+  leakage of `retOps`;
+* `ret` ends the innermost run.
 
-Each `op` step also satisfies the side condition `ok sa i`. `RunL.halts` and `halts_runL`
-relate `RunL` with the trivial side condition to `RInstrSemantics.Halts` on `aMachine`.
+Each `op` step also satisfies the side condition `ok sa i`. `RunL.halts` and `haltsC_runL`
+relate `RunL` with the trivial side condition to `RInstrSemantics.HaltsC` on `aMachine`,
+and `halts_runL` covers the call-free `RInstrSemantics.Halts`.
 
 ## The checker
 
@@ -86,7 +89,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (RInstr pushOps popOps)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
+  (RInstr pushOps popOps callOps retOps)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.SecureCompilation.CT
@@ -135,7 +139,9 @@ theorem foldl_aMachine_exec (ops : List (JInstr 64)) :
 /-- A halting run of `prog` on the address machine from index `pc` and state `sa`, with
     leakage trace `t` and final state `sa'`, each instruction the run executes satisfying
     `ok`. A `push` or `pop` runs its straight-line effect (`RInstr.stackOps?`) and emits
-    the leakage of that block. -/
+    the leakage of that block. A `call tgt` runs `callOps`, then the callee from `tgt` to
+    its `ret` as a nested run, then `retOps`, and continues at the next index; its trace
+    is the leakage of the two blocks around the callee's trace. -/
 inductive RunL (r : DoitRegime) (ok : AState → JInstr 64 → Prop) (prog : List RInstr) :
     Nat → AState → List CTLeak → AState → Prop
   | ret {pc : Nat} {sa : AState} (h : prog[pc]? = some .ret) : RunL r ok prog pc sa [] sa
@@ -151,36 +157,46 @@ inductive RunL (r : DoitRegime) (ok : AState → JInstr 64 → Prop) (prog : Lis
       {sa' : AState} (h : prog[pc]? = some ri) (hops : ri.stackOps? = some ops)
       (hok : BlockOk ok sa ops) (hr : RunL r ok prog (pc + 1) (runBlockA sa ops) t sa') :
       RunL r ok prog pc sa (blockLeakA r sa ops ++ t) sa'
+  | call {pc tgt : Nat} {sa sc : AState} {tc tr : List CTLeak} {sa' : AState}
+      (h : prog[pc]? = some (.call tgt)) (hok : BlockOk ok sa (callOps (pc + 1)))
+      (hc : RunL r ok prog tgt (runBlockA sa (callOps (pc + 1))) tc sc)
+      (hokr : BlockOk ok sc retOps)
+      (hr : RunL r ok prog (pc + 1) (runBlockA sc retOps) tr sa') :
+      RunL r ok prog pc sa
+        (blockLeakA r sa (callOps (pc + 1)) ++ tc ++ blockLeakA r sc retOps ++ tr) sa'
 
-/-- A run with leakage is a halting run of `aMachine`. -/
+/-- A run with leakage is a halting run of `aMachine` through calls. -/
 theorem RunL.halts {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {prog : List RInstr}
     {pc : Nat} {sa : AState} {t : List CTLeak} {sa' : AState}
-    (h : RunL r ok prog pc sa t sa') : Halts aMachine prog pc sa sa' := by
+    (h : RunL r ok prog pc sa t sa') : HaltsC aMachine prog pc sa sa' := by
   induction h with
-  | ret h => exact ⟨_, .refl _ _, h⟩
-  | op h _ _ ih =>
-    obtain ⟨pc', hr, hret⟩ := ih
-    exact ⟨pc', .next (by simp [RInstrSemantics.step, h, aMachine]) hr, hret⟩
+  | ret h => exact .ret h
+  | op h _ _ ih => exact .go (by simp [RInstrSemantics.step, h, aMachine]) ih
   | jcc h hc _ ih =>
-    obtain ⟨pc', hr, hret⟩ := ih
-    refine ⟨pc', .next ?_ hr, hret⟩
+    refine .go ?_ ih
     simp only [RInstrSemantics.step, h, hc, Option.map_some, aMachine]
     split <;> simp_all
   | @stack pc sa ri ops _ _ h hops _ _ ih =>
-    obtain ⟨pc', hr, hret⟩ := ih
-    refine ⟨pc', .next ?_ hr, hret⟩
+    refine .go ?_ ih
     cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq, Option.some.injEq] at hops <;>
       subst hops <;> simp only [RInstrSemantics.step, h, foldl_aMachine_exec]
+  | call h _ _ _ _ ihc ihr =>
+    rw [← foldl_aMachine_exec] at ihc ihr
+    exact .call h ihc ihr
 
-/-- Every halting run of `aMachine` has a leakage trace. -/
-theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
-    (h : Halts aMachine prog pc sa sa') :
+/-- Every halting run of `aMachine` through calls has a leakage trace. -/
+theorem haltsC_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : HaltsC aMachine prog pc sa sa') :
     ∃ t, RunL r (fun _ _ => True) prog pc sa t sa' := by
-  obtain ⟨pc', hr, hret⟩ := h
-  induction hr with
-  | refl => exact ⟨[], .ret hret⟩
-  | @next pc s pc₁ s₁ pc₂ s₂ hs _ ih =>
-    obtain ⟨t, ht⟩ := ih hret
+  induction h with
+  | ret hret => exact ⟨[], .ret hret⟩
+  | call h _ _ ihc ihr =>
+    obtain ⟨tc, htc⟩ := ihc
+    obtain ⟨tr, htr⟩ := ihr
+    rw [foldl_aMachine_exec] at htc htr
+    exact ⟨_, .call h (blockOk_true _ _) htc (blockOk_true _ _) htr⟩
+  | @go pc s pc₁ s₁ s₂ hs _ ih =>
+    obtain ⟨t, ht⟩ := ih
     unfold RInstrSemantics.step at hs
     split at hs
     · exact absurd hs (by simp)
@@ -213,6 +229,12 @@ theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AS
       exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
     · simp at hs
 
+/-- Every call-free halting run of `aMachine` has a leakage trace. -/
+theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : Halts aMachine prog pc sa sa') :
+    ∃ t, RunL r (fun _ _ => True) prog pc sa t sa' :=
+  haltsC_runL r (haltsC_of_halts h)
+
 /-- `RunL` under a stronger side condition is `RunL` under a weaker one. -/
 theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {prog : List RInstr}
     (hok : ∀ sa i, ok sa i → ok' sa i) {pc : Nat} {sa : AState} {t : List CTLeak}
@@ -222,6 +244,8 @@ theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {pro
   | op h ho _ ih => exact .op h (hok _ _ ho) ih
   | jcc h hc _ ih => exact .jcc h hc ih
   | stack h hops ho _ ih => exact .stack h hops (BlockOk.mono hok _ _ ho) ih
+  | call h ho _ hor _ ihc ihr =>
+    exact .call h (BlockOk.mono hok _ _ ho) ihc (BlockOk.mono hok _ _ hor) ihr
 
 /-! ## 2. Public sets -/
 
@@ -575,6 +599,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     | op h' => simp_all
     | jcc h' => simp_all
     | stack h' hops' => simp_all [RInstr.stackOps?]
+    | call h' => simp_all
   | @op pc s₁ i t₁ s₁' h hok hr ih =>
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
@@ -587,6 +612,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     | ret h' => simp_all
     | jcc h' => simp_all
     | stack h' hops' => simp_all [RInstr.stackOps?]
+    | call h' => simp_all
     | @op _ _ i' t₂ _ h' hok' hr' =>
       rw [h, Option.some.injEq, RInstr.op.injEq] at h'
       subst h'
@@ -602,6 +628,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     | ret h' => simp_all
     | op h' => simp_all
     | stack h' hops' => simp_all [RInstr.stackOps?]
+    | call h' => simp_all
     | @jcc _ _ cc' tgt' c' t₂ _ h' hcc' hr' =>
       rw [h, Option.some.injEq, RInstr.jcc.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
@@ -632,6 +659,8 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
       rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
     | jcc h' =>
       rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
+    | call h' =>
+      rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
     | @stack _ _ ri' ops' t₂ _ h' hops' hok' hr' =>
       rw [h, Option.some.injEq] at h'
       subst h'
@@ -641,6 +670,10 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
       rw [hl]
       congr 1
       exact ih hb (PubA.agree_of_le hle hag') hr'
+  | call h =>
+    intro a s₂ t₂ s₂' hA _ _
+    have hck := checkAt_of_checkCert hc h
+    simp [checkAt, hA, h] at hck
 
 /-! ## 5. Inference and the decision -/
 

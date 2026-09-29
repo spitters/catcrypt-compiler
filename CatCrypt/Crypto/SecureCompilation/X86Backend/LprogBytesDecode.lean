@@ -1091,6 +1091,16 @@ def pushOps (r : String) : List (JInstr 64) :=
 def popOps (r : String) : List (JInstr 64) :=
   [.loadMem r "%rsp" 0, .lea "%rsp" "%rsp" "%rsp" 0 8]
 
+/-- The stack effect of `call` with return index `ret`: `%rsp` lowered by eight, then
+    `ret` stored at `[%rsp]`. The pushed word is the index of the instruction after the
+    call, in place of the byte address the processor pushes. -/
+def callOps (ret : Nat) : List (JInstr 64) :=
+  [.lea "%rsp" "%rsp" "%rsp" 0 (-8), .storeMem "%rsp" 0 (.imm ret)]
+
+/-- The stack effect of a `ret` that returns from a call: `%rsp` raised by eight. The
+    return target is the index after the call, not the word at `[%rsp]`. -/
+def retOps : List (JInstr 64) := [.lea "%rsp" "%rsp" "%rsp" 0 8]
+
 /-- The straight-line effect of a stack instruction, `none` for the others. -/
 def RInstr.stackOps? : RInstr → Option (List (JInstr 64))
   | .push r => some (pushOps r)
