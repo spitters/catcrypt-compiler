@@ -103,8 +103,8 @@ These are representation-independent facts about the extraction's array
 primitives; the agreement lemmas below are stated in terms of them. -/
 
 @[simp] theorem array_update_size {α : Type} (arr : Array α) (i : Int) (v : α) :
-    (Hax.array_update arr i v).size = arr.size := by
-  simp only [Hax.array_update]; split <;> simp
+    (Hax.array_update arr i v).size = arr.size :=
+  Hax.size_array_update_eq arr i v
 
 /-- Reading the position just written by an in-bounds `array_update`. -/
 theorem index_array_update_self {α : Type} [Inhabited α] (a : Array α) (i : Int) (v : α)
