@@ -28,4 +28,7 @@ the `pkg_coherence!` tactic for package coherence goals.
   import.
 - Tactics for field, bignum and matrix goals live in
   [`CatCrypt/Tactic/`](../Tactic/AGENTS.md); the ascent tactics live in
-  `SecureCompilation/Ascent/` ([AGENTS.md](../Crypto/SecureCompilation/Ascent/AGENTS.md)).
+  `SecureCompilation/Ascent/` ([AGENTS.md](../Crypto/SecureCompilation/Ascent/AGENTS.md))
+  and, for hax-extracted code, in `CatCrypt/Hax/` ([AGENTS.md](../Hax/AGENTS.md)).
+- [CORRECTNESS.md](../../CORRECTNESS.md) states which of descent, ascent and
+  transfer a correctness goal calls for, with the tactics of each.

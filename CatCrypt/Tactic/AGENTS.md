@@ -2,7 +2,8 @@
 
 Tactics for bignum, tower-field, matrix and distribution goals. Modules are in the
 namespace `CatCrypt.Tactic`. Several modules re-export a CatCrypt-core tactic under
-this directory's name.
+this directory's name. [CORRECTNESS.md](../../CORRECTNESS.md) lists the tactics of
+the three correctness techniques (descent, ascent, transfer).
 
 | Module | Tactic or contents |
 |---|---|

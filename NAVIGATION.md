@@ -3,7 +3,8 @@
 Where each subsystem of the compiler lives, its main theorem, and how to find a
 theorem. `SC/` abbreviates `CatCrypt/Crypto/SecureCompilation/`, and theorem names
 are relative to `CatCrypt.Crypto.SecureCompilation` unless they begin with
-`CatCrypt`.
+`CatCrypt`. [CORRECTNESS.md](CORRECTNESS.md) orders the subsystems by the three
+correctness techniques.
 
 ## Subsystems
 

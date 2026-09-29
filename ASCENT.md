@@ -7,6 +7,12 @@ field elements or bit vectors. The largest results are about machine code that i
 actually linked: the x86 blocks of the Ed25519 implementation, and s2n-bignum's P-384
 Montgomery multiplication.
 
+The same calculus applied to hax-extracted Rust, the `FnCorres` judgement on `ImpExpr`
+with the generator `hax_ascend`, is in `CatCrypt/Hax/Ascent/` and described in
+[HAX_RUST.md](HAX_RUST.md#3-existing-rust--lean-the-ascent-on-impexpr).
+[CORRECTNESS.md](CORRECTNESS.md) places the ascent beside the other two correctness
+techniques, descent and transfer, and lists the theorems that join them.
+
 The calculus follows AutoCorres (Greenaway, Andronick, Klein, ITP 2012; Greenaway, Lim,
 Andronick, Klein, PLDI 2014), and its design and vocabulary follow Sebastian Graf's
 Lean port [sgraf812/ascent](https://github.com/sgraf812/ascent); see
@@ -167,6 +173,8 @@ traces the longer path from a Rust-subset source through `legWeld`.
 
 ## Further reading
 
+- [CORRECTNESS.md](CORRECTNESS.md): descent, ascent and transfer, when to use each,
+  and how they compose.
 - [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md): module map,
   naming conventions, choice of tactic, and how to add a kernel.
 - [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md): the layers of the calculus with their

@@ -72,8 +72,13 @@ two templates do.
 2. In a Lean module, `hax_ascend Ns` (`CatCrypt/Hax/Ascent/Coverage.lean`)
    reads the extraction in namespace `Ns`, builds its builtin table
    (`Ns.HaxGen.table`, `Ns.HaxGen.builtins`) and generates, per function `f`,
-   a shallow Lean function with the `FnCorres` theorem `Ns.HaxGen.«f».corres`.
-   `#hax_coverage Ns` lists the functions the generator does not cover.
+   a shallow Lean function `Ns.HaxGen.«f».gen` with the `FnCorres` theorems
+   `Ns.HaxGen.«f».corres` (under the table of the functions before `f`) and
+   `Ns.HaxGen.«f».corres_full` (under the table of all functions).
+   `#hax_coverage Ns` lists the functions the generator does not cover. A function
+   generic over a trait is specialised at the extraction's instances
+   (`CatCrypt/Hax/Ascent/Monomorphise.lean`), and `Ns.HaxGen.«f».corres_generic`
+   states the correspondence of the generic literal.
 3. Prove the generated function equal to your specification.
    `CatCrypt/Hax/Ascent/Demo.lean` states such a correspondence for an array
    comparison (`Hax.Ascent.Demo.keyEq_fnCorres`).
@@ -92,6 +97,7 @@ Integer literals annotated at `usize` do not check, since `lit` types them as
 `int`.
 
 [ASCENT.md](ASCENT.md) describes the ascent on machine code, `LowCT` and Jasmin.
+[CORRECTNESS.md](CORRECTNESS.md) relates this ascent to descent and transfer.
 
 ## Building
 

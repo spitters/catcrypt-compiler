@@ -199,6 +199,7 @@ explains the run.
 | [HEADLINES.md](HEADLINES.md) | the headline theorems with their hypotheses |
 | [NAVIGATION.md](NAVIGATION.md) | where each subsystem lives, and how to find a theorem |
 | [CAPABILITIES.md](CAPABILITIES.md) | each primitive with its modules, theorems and provenance class |
+| [CORRECTNESS.md](CORRECTNESS.md) | how correctness is proved: descent, ascent, transfer, and how they compose |
 | [ASCENT.md](ASCENT.md) | the ascent from code to Lean specifications |
 | [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md) | certifying existing machine code: the hax reference, the differential oracle and the ascent |
 | [HAX_RUST.md](HAX_RUST.md) | Lean to Rust and back through hax |
