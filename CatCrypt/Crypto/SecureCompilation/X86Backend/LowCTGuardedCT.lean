@@ -61,8 +61,6 @@ bridge is the source→machine companion of the in-tree
   source `RScalarSetExpr` semantics.
 * `lowerGuarded_denote_rustExec` — the same against the real `RustExec`.
 * `GuardedSrc.cmdCT_iff` — the source CT result reduces to operand publicness.
-* `lowerGuarded_source_to_machine_CT` — the end-to-end source-CT ⇒ machine-CT
-  shape.
 -/
 
 @[expose] public section
@@ -416,24 +414,5 @@ theorem lowerGuarded_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
   cases hexec
   rw [SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
   exact lowerGuarded_denote ρ p rs js hρ hwf hg hmatch
-
-/-! ## 7. Source CT ⇒ machine CT, end to end
-
-`lowerGuarded_source_to_machine_CT`: a guarded source command whose `cmdCT`
-result is `true` lowers to a machine block that is constant-time. As in the
-homomorphic case the `cmdCT` hypothesis is consumed only on the source side —
-machine CT is unconditional for this memory-free fragment, and (separately) it
-does **not** depend on the value guard. The statement records the intended
-contract: a CT-accepted guarded source command compiles to CT machine code. -/
-
-/-- **Source CT result ⇒ machine constant-time.** If the guarded source command
-    `p.toLowCT` passes the real source CT analyser `cmdCT`, its lowering is
-    constant-time at the machine level (same leakage trace from any two states).
-    Independent of the value guard `p.guard`. -/
-theorem lowerGuarded_source_to_machine_CT (ρ : RegMap) (p : GuardedSrc)
-    (lt : LevelTable) (leafCT : LeafCTTable)
-    (_hsrc : cmdCT p.toLowCT lt leafCT = true) (s₁ s₂ : JState 64) :
-    blockLeak s₁ (lowerGuarded ρ p) = blockLeak s₂ (lowerGuarded ρ p) :=
-  lowerGuarded_constant_time ρ p s₁ s₂
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
