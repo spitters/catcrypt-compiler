@@ -23,8 +23,9 @@ and states, in place of `envAgreesOff`. The lowered loop body `bC` of a source b
 
 `AgReserved Ag` states that writing a reserved scalar slot keeps the agreement. The
 loops are then proved once per target shape as in `HaxExitCT.lean`: `genLoopCT` and
-`genLoopWrapCT` for `RWhileNz`, `genTripsCT` for the guarded trips of a counted loop,
-and `genForCT`, `genForRevCT`, `genForLoopCT`, `genForLoopRtCT` for the counted loops.
+`genLoopWrapCT` for `RWhileNz`, `genTripsCT` for the guarded trips of a counted loop
+(`genTripsCTAg` when the counter expression reads more than the trip slot), and `genForCT`,
+`genForRevCT`, `genForLoopCT`, `genForLoopRtCT`, `genForLoopVCT` for the counted loops.
 
 ## Main definitions
 
@@ -33,8 +34,8 @@ and `genForCT`, `genForRevCT`, `genForLoopCT`, `genForLoopRtCT` for the counted 
 ## Main results
 
 * `bodyStepAg` — two runs of a loop body: equal traces, and both exit or both continue
-* `genLoopCT`, `genLoopWrapCT`, `genTripsCT`, `genForCT`, `genForRevCT`, `genForLoopCT`,
-  `genForLoopRtCT`
+* `genLoopCT`, `genLoopWrapCT`, `genTripsCT`, `genTripsCTAg`, `genForCT`, `genForRevCT`,
+  `genForLoopCT`, `genForLoopRtCT`, `genForLoopVCT`
 -/
 
 @[expose] public section
@@ -555,6 +556,121 @@ theorem genForLoopCT (hres : AgReserved Ag) (Lf : Nat → Int → Env → Outcom
     env₁ env₂ env₁' env₂' o₁ o₂ _ _ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂
     hag₁' hret₁' hag₂' hret₂' hL h₁ h₂
 
+/-- **The trips of a lowered counted loop whose counter expression reads the agreement**:
+    `genTripsCT` with the value and the events of the counter expression `ce` given at the
+    start of each trip from states agreeing with an environment (`hcev`, `hceq`), in place
+    of reading the trip slot alone. -/
+theorem genTripsCTAg (hres : AgReserved Ag) (run i : String) (body : ImpExpr) (bC : LowCT)
+    (ce : SExpr) (cnt : Nat → Nat) (D : Nat) (L : Nat → Nat → Env → Outcome × Env)
+    (T : Nat → Nat → Env → SrcLeak)
+    (hR : BodyRunAg M bi N leafSpec Ag body bC) (hC : BodyCTAg M bi N leafSpec Ag body bC)
+    (hslot : exitRunSlot run = true) (hi_ : exitReserved i = false)
+    (hext : ∀ env rs j, j < D → Ag env rs →
+      Ag (env.extend i (.int (cnt j))) (rsSetScalar rs i (cnt j)))
+    (hcev : ∀ env rs j, j < D → Ag env rs →
+      ce.evalState (rsSetScalar (rsSetScalar rs run j) i 0) = cnt j)
+    (hceq : ∀ env₁ rs₁ env₂ rs₂ j, j < D → Ag env₁ rs₁ → Ag env₂ rs₂ →
+      sexprLeak M (rsSetScalar (rsSetScalar rs₁ run j) i 0) ce =
+        sexprLeak M (rsSetScalar (rsSetScalar rs₂ run j) i 0) ce)
+    (hL0 : ∀ j env v, j < D → (L 0 j env).1 ≠ .val v)
+    (hLo : ∀ n j env o e2, j < D →
+      (denote' bi (n + 1) body).run (env.extend i (.int (cnt j))) = (o, e2) →
+      (∀ v, o ≠ .val v) → L (n + 1) j env = (o, e2))
+    (hLi : ∀ n j env w e2, j < D →
+      (denote' bi (n + 1) body).run (env.extend i (.int (cnt j))) = (.val w, e2) →
+      w.isControlFlow = false → L (n + 1) j env = L n (j + 1) e2)
+    (hT : ∀ n j env, j < D → T (n + 1) j env =
+      .cat (srcLeak M bi body (n + 1) (env.extend i (.int (cnt j))))
+        (tripCont ((denote' bi (n + 1) body).run (env.extend i (.int (cnt j)))) fun e2 =>
+          T n (j + 1) e2)) :
+    ∀ (d j fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome)
+      (rs₁ rs₂ r₁ r₂ : RustState) (t₁ t₂ : List CTLeak), j + d = D →
+      L fuel j env₁ = (o₁, env₁') → (∃ v, o₁ = .val v) →
+      L fuel j env₂ = (o₂, env₂') → (∃ v, o₂ = .val v) →
+      Ag env₁ rs₁ → rs₁.rsScalar exitRetName = 0 →
+      Ag env₂ rs₂ → rs₂.rsScalar exitRetName = 0 →
+      T fuel j env₁ = T fuel j env₂ →
+      TripsL M N leafSpec run (exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i ce) bC)))
+        j d rs₁ t₁ r₁ →
+      TripsL M N leafSpec run (exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i ce) bC)))
+        j d rs₂ t₂ r₂ →
+      t₁ = t₂ ∧ r₁.rsScalar exitRetName = r₂.rsScalar exitRetName := by
+  have hresv := exitReserved_of_runSlot hslot
+  have hiret : i ≠ exitRetName := ne_of_reserved hi_ exitReserved_ret
+  intro d
+  induction d with
+  | zero =>
+    intro j fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ _ _ _ _ _ _ hret₁ _ hret₂ _ h₁ h₂
+    obtain ⟨rfl, rfl⟩ := h₁
+    obtain ⟨rfl, rfl⟩ := h₂
+    exact ⟨rfl, hret₁.trans hret₂.symm⟩
+  | succ d IH =>
+    intro j fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hj hrun₁ hval₁ hrun₂ hval₂
+      hag₁ hret₁ hag₂ hret₂ hL h₁ h₂
+    have hjD : j < D := by omega
+    cases fuel with
+    | zero =>
+      obtain ⟨v, rfl⟩ := hval₁
+      exact absurd (by rw [hrun₁]) (hL0 j env₁ v hjD)
+    | succ n =>
+    have hent : ∀ {env : Env} {rs m : RustState} {tt : List CTLeak},
+        Ag env rs → rs.rsScalar exitRetName = 0 →
+        RustExecLeak N leafSpec M (exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i ce) bC)))
+          (rsSetScalar rs run j) tt m →
+        ∃ tb, tt = .branch false ::
+            (sexprLeak M (rsSetScalar (rsSetScalar rs run j) i 0) ce ++ tb) ∧
+          RustExecLeak N leafSpec M bC (rsSetScalar (rsSetScalar rs run j) i (cnt j)) tb m ∧
+          Ag (env.extend i (.int (cnt j))) (rsSetScalar (rsSetScalar rs run j) i (cnt j)) ∧
+          (rsSetScalar (rsSetScalar rs run j) i (cnt j)).rsScalar exitRetName = 0 := by
+      intro env rs m tt hag hret h
+      have hr0 : (rsSetScalar rs run j).rsScalar exitRetName = 0 := by
+        rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, hret]
+      cases h with
+      | ifTrue _ _ _ _ _ _ _ hv hv0 _ => exact absurd (hv ▸ hr0) hv0
+      | ifFalse _ _ _ _ _ _ _ h =>
+      cases h with
+      | letU64Zero _ _ _ _ _ h =>
+      cases h with
+      | seq _ _ _ _ _ _ tb hs hb =>
+      cases hs
+      have hv : ce.evalState (rsSetScalar (rsSetScalar rs run j) i 0) = cnt j :=
+        hcev env rs j hjD hag
+      rw [hv, rsSetScalar_rsSetScalar] at hb
+      refine ⟨tb, rfl, hb, hext _ _ j hjD (hres _ _ _ _ hresv hag), ?_⟩
+      rw [rsScalar_rsSetScalar, if_neg hiret.symm, hr0]
+    obtain ⟨m₁, tt₁, tr₁, hB₁, hR₁, rfl⟩ := h₁
+    obtain ⟨m₂, tt₂, tr₂, hB₂, hR₂, rfl⟩ := h₂
+    obtain ⟨tb₁, rfl, hb₁, hagT₁, hretT₁⟩ := hent hag₁ hret₁ hB₁
+    obtain ⟨tb₂, rfl, hb₂, hagT₂, hretT₂⟩ := hent hag₂ hret₂ hB₂
+    have hce_eq := hceq env₁ rs₁ env₂ rs₂ j hjD hag₁ hag₂
+    rcases hbr₁ : (denote' bi (n + 1) body).run (env₁.extend i (.int (cnt j))) with ⟨ob₁, e2₁⟩
+    rcases hbr₂ : (denote' bi (n + 1) body).run (env₂.extend i (.int (cnt j))) with ⟨ob₂, e2₂⟩
+    have hvb : ∀ {env env' e2 : Env} {o ob : Outcome},
+        (denote' bi (n + 1) body).run (env.extend i (.int (cnt j))) = (ob, e2) →
+        L (n + 1) j env = (o, env') → (∃ v, o = .val v) → ∃ w, ob = .val w := by
+      intro env env' e2 o ob hbr hrun hval
+      cases ob with
+      | val w => exact ⟨w, rfl⟩
+      | _ =>
+        rw [hLo n j env _ e2 hjD hbr (fun v h => by cases h)] at hrun
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrun
+        obtain ⟨_, h⟩ := hval; cases h
+    obtain ⟨w₁, rfl⟩ := hvb hbr₁ hrun₁ hval₁
+    obtain ⟨w₂, rfl⟩ := hvb hbr₂ hrun₂ hval₂
+    rw [hT n j env₁ hjD, hT n j env₂ hjD, hbr₁, hbr₂] at hL
+    injection hL with hLbody hLrest
+    obtain ⟨htb, hst⟩ := bodyStepAg hR hC hagT₁ hretT₁ hagT₂ hretT₂ hbr₁ hbr₂ hLbody hb₁ hb₂
+    rcases hst with ⟨-, -, hf₁, hf₂⟩ | ⟨hcf₁, hcf₂, h01, hagq₁, h02, hagq₂⟩
+    · obtain ⟨rfl, hr₁⟩ := exitedTripsL M N leafSpec run _ hslot d (j + 1) m₁ r₁ tr₁ hf₁ hR₁
+      obtain ⟨rfl, hr₂⟩ := exitedTripsL M N leafSpec run _ hslot d (j + 1) m₂ r₂ tr₂ hf₂ hR₂
+      exact ⟨by rw [hce_eq, htb], hr₁.trans hr₂.symm⟩
+    · rw [tripCont_val hcf₁, tripCont_val hcf₂] at hLrest
+      rw [hLi n j env₁ w₁ e2₁ hjD hbr₁ hcf₁] at hrun₁
+      rw [hLi n j env₂ w₂ e2₂ hjD hbr₂ hcf₂] at hrun₂
+      obtain ⟨htr, hr⟩ := IH (j + 1) n e2₁ e2₂ env₁' env₂' o₁ o₂ m₁ m₂ r₁ r₂ tr₁ tr₂ (by omega)
+        hrun₁ hval₁ hrun₂ hval₂ hagq₁ h01 hagq₂ h02 hLrest hR₁ hR₂
+      exact ⟨by rw [hce_eq, htb, htr], hr⟩
+
 /-- `genForCT` with the loop entry of `exitForLoopRt`: the trip count is read from the
     slot `hv`, which holds `H` in both runs. -/
 theorem genForLoopRtCT (hres : AgReserved Ag) (Lf : Nat → Int → Env → Outcome × Env)
@@ -618,6 +734,101 @@ theorem genForLoopRtCT (hres : AgReserved Ag) (Lf : Nat → Int → Env → Outc
   rw [ht, sexprLeak_congr M (S := fun x => x = hv)
     (fun x hx => by subst hx; exact he₁.trans he₂.symm) (.SSub (.SVar hv) (.SLit lo))
     ⟨rfl, trivial⟩]
+
+/-- **The lowered upward counted loop with bounds read at run time**: the loop entry zeroes
+    the flag and payload slots, reads the trip count `hiE - loE`, which is `H - lo` in both
+    runs with equal events (`hb₁`, `hb₂`, `hbl`), and runs the trips binding the counter to
+    `run + loE`, where `loE` reads `lo` with equal events from states agreeing with an
+    environment (`hlo`, `hloq`). -/
+theorem genForLoopVCT (hres : AgReserved Ag) (Lf : Nat → Int → Env → Outcome × Env)
+    (run i : String) (loE hiE : SExpr) (lo H : Nat) (body : ImpExpr) (bC : LowCT)
+    (hR : BodyRunAg M bi N leafSpec Ag body bC) (hC : BodyCTAg M bi N leafSpec Ag body bC)
+    (hslot : exitRunSlot run = true) (hi_ : exitReserved i = false)
+    (hext : ∀ env rs (k : Nat), k < 2 ^ 64 → Ag env rs →
+      Ag (env.extend i (.int k)) (rsSetScalar rs i k))
+    (hlo : ∀ env rs j, Ag env rs → loE.evalState (rsSetScalar (rsSetScalar rs run j) i 0) = lo)
+    (hloq : ∀ env₁ rs₁ env₂ rs₂ j, Ag env₁ rs₁ → Ag env₂ rs₂ →
+      sexprLeak M (rsSetScalar (rsSetScalar rs₁ run j) i 0) loE =
+        sexprLeak M (rsSetScalar (rsSetScalar rs₂ run j) i 0) loE)
+    (hH : H < 2 ^ 64)
+    (hL0 : ∀ (k : Int) env v, k < H → (Lf 0 k env).1 ≠ .val v)
+    (hLo : ∀ n (k : Int) env o e2, k < H →
+      (denote' bi (n + 1) body).run (env.extend i (.int k)) = (o, e2) →
+      (∀ v, o ≠ .val v) → Lf (n + 1) k env = (o, e2))
+    (hLi : ∀ n (k : Int) env w e2, k < H →
+      (denote' bi (n + 1) body).run (env.extend i (.int k)) = (.val w, e2) →
+      w.isControlFlow = false → Lf (n + 1) k env = Lf n (k + 1) e2)
+    (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
+    (t₁ t₂ : List CTLeak)
+    (hrun₁ : Lf fuel lo env₁ = (o₁, env₁')) (hval₁ : ∃ v, o₁ = .val v)
+    (hrun₂ : Lf fuel lo env₂ = (o₂, env₂')) (hval₂ : ∃ v, o₂ = .val v)
+    (hag₁ : Ag env₁ rs₁) (hag₂ : Ag env₂ rs₂)
+    (hb₁ : (SExpr.SSub hiE loE).evalState
+      (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0) = H - lo)
+    (hb₂ : (SExpr.SSub hiE loE).evalState
+      (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) = H - lo)
+    (hbl : sexprLeak M (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0)
+        (.SSub hiE loE) =
+      sexprLeak M (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) (.SSub hiE loE))
+    (hL : forLeak bi i body (srcLeak M bi body) fuel lo H env₁ =
+      forLeak bi i body (srcLeak M bi body) fuel lo H env₂)
+    (h₁ : RustExecLeak N leafSpec M (.RLetU64Zero exitRetName (.RLetU64Zero exitValName
+      (.RForRuntime run (.SSub hiE loE)
+        (exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i (.SAdd (.SVar run) loE)) bC))))))
+      rs₁ t₁ r₁)
+    (h₂ : RustExecLeak N leafSpec M (.RLetU64Zero exitRetName (.RLetU64Zero exitValName
+      (.RForRuntime run (.SSub hiE loE)
+        (exitGuard (.RLetU64Zero i (.RSeq (.RScalarSetExpr i (.SAdd (.SVar run) loE)) bC))))))
+      rs₂ t₂ r₂) :
+    t₁ = t₂ ∧ r₁.rsScalar exitRetName = r₂.rsScalar exitRetName := by
+  have hresv := exitReserved_of_runSlot hslot
+  have hir : i ≠ run := ne_of_reserved hi_ hresv
+  have hcast : ∀ j : Nat, ((lo + (j + 1) : Nat) : Int) = ((lo + j : Nat) : Int) + 1 := by
+    intro j; push_cast; ring
+  cases h₁ with
+  | letU64Zero _ _ _ _ _ h₁ =>
+  cases h₁ with
+  | letU64Zero _ _ _ _ _ h₁ =>
+  cases h₁ with
+  | forRuntime _ _ _ _ _ tr₁ h₁ =>
+  cases h₂ with
+  | letU64Zero _ _ _ _ _ h₂ =>
+  cases h₂ with
+  | letU64Zero _ _ _ _ _ h₂ =>
+  cases h₂ with
+  | forRuntime _ _ _ _ _ tr₂ h₂ =>
+  rw [hb₁] at h₁
+  rw [hb₂] at h₂
+  obtain ⟨hag₁', hret₁'⟩ := genForEntry hres hag₁
+  obtain ⟨hag₂', hret₂'⟩ := genForEntry hres hag₂
+  have hev : ∀ env rs j, Ag env rs →
+      (SExpr.SAdd (.SVar run) loE).evalState (rsSetScalar (rsSetScalar rs run j) i 0) =
+        lo + j := by
+    intro env rs j hag
+    simp only [SExpr.evalState, hlo env rs j hag, rsScalar_rsSetScalar, if_neg hir.symm,
+      if_true]
+    omega
+  obtain ⟨ht, hr⟩ := genTripsCTAg hres run i body bC (.SAdd (.SVar run) loE)
+    (fun j => lo + j) (H - lo) (fun n j env => Lf n ((lo + j : Nat) : Int) env)
+    (fun n j env => forLeak bi i body (srcLeak M bi body) n ((lo + j : Nat) : Int) H env)
+    hR hC hslot hi_ (fun env rs j hj hag => hext env rs _ (by omega) hag)
+    (fun env rs j _ hag => hev env rs j hag)
+    (fun env₁ rs₁ env₂ rs₂ j _ hag₁ hag₂ => by
+      simp only [sexprLeak, hloq env₁ rs₁ env₂ rs₂ j hag₁ hag₂]
+      unfold CatCrypt.Crypto.SecureCompilation.CT.nodeLeak
+      simp only [SExpr.evalState, hlo env₁ rs₁ j hag₁, hlo env₂ rs₂ j hag₂,
+        rsScalar_rsSetScalar, if_neg hir.symm, if_true])
+    (fun j env v hj => hL0 _ env v (by omega))
+    (fun n j env o e2 hj hbr ho => hLo n _ env o e2 (by omega) hbr ho)
+    (fun n j env w e2 hj hbr hw => by
+      rw [hLi n _ env w e2 (by omega) hbr hw, hcast])
+    (fun n j env hj => by
+      rw [forLeak, if_neg (by omega), hcast])
+    (H - lo) 0 fuel env₁ env₂ env₁' env₂' o₁ o₂ _ _ r₁ r₂ tr₁ tr₂ (by omega)
+    (by simpa using hrun₁) hval₁ (by simpa using hrun₂) hval₂ hag₁' hret₁' hag₂' hret₂'
+    (by simpa using hL) (rFor_tripsL M N leafSpec _ _ _ _ r₁ tr₁ h₁)
+    (rFor_tripsL M N leafSpec _ _ _ _ r₂ tr₂ h₂)
+  exact ⟨by rw [ht, hbl, hb₁, hb₂], hr⟩
 
 end Generic
 

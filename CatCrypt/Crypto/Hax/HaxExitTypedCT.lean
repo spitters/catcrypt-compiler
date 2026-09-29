@@ -612,15 +612,6 @@ theorem bodyCTT {body : ImpExpr} {bC : LowCT} {run : String} {x : Bool}
   exact ihb false (some run) fuel env₁ env₂ env₁' env₂' _ _ rs₁ rs₂ r₁ r₂ bC x t₁ t₂ hokB hctx
     hKB hr₁ ⟨_, rfl⟩ hr₂ ⟨_, rfl⟩ hag₁ hret₁ hag₂ hret₂ hL h₁ h₂
 
-end Helpers
-
-/-! ## The heads of a `letBind` -/
-
-section Heads
-
-variable {M : LowCTLeakModel} {bi : Builtins} {N : Nat} {leafSpec : LeafSpec}
-  {br : ValueTowerBridge} {A : ExitTowers} {R : ExitRes}
-
 /-- The `SExpr` of a scalar operation of `scalarOpExpr` is that of `scalarOpExprT`. -/
 theorem scalarOpExprT_of_scalarOpExpr {op : String} {a b se : SExpr}
     (h : scalarOpExpr op a b = some se) : scalarOpExprT op a b = some se := by
@@ -639,6 +630,209 @@ theorem scalarOpExprT_readsOnly {op a b : String} {se : SExpr}
     | skip
   obtain ⟨⟨w, o⟩, -, rfl⟩ := Option.map_eq_some_iff.mp h
   cases o <;> simp [WidthOp.sexpr, widthMask, orExprN, widthAmt, sexprReadsOnly]
+
+/-! ### Loop bounds read at run time -/
+
+theorem sexprReadsOnly_and {S T : String → Prop} :
+    ∀ e : SExpr, sexprReadsOnly S e → sexprReadsOnly T e → sexprReadsOnly (fun x => S x ∧ T x) e
+  | .SVar _, h₁, h₂ => ⟨h₁, h₂⟩
+  | .SLit _, _, _ => trivial
+  | .SLimb _ _, h₁, _ => h₁.elim
+  | .SAdd a b, h₁, h₂ | .SSub a b, h₁, h₂ | .SMul a b, h₁, h₂ | .SShr a b, h₁, h₂
+  | .SShl a b, h₁, h₂ | .SAnd a b, h₁, h₂ | .SXor a b, h₁, h₂ | .SLt a b, h₁, h₂
+  | .SAsr a b, h₁, h₂ | .SMulS a b, h₁, h₂ | .SMulHiU a b, h₁, h₂ | .SMulHiS a b, h₁, h₂ =>
+    ⟨sexprReadsOnly_and a h₁.1 h₂.1, sexprReadsOnly_and b h₁.2 h₂.2⟩
+
+/-- The `SExpr` of a scalar operation of `scalarOpExprT` reads only what its operands
+    read. -/
+theorem scalarOpExprT_readsOnly_gen {S : String → Prop} {op : String} {a b se : SExpr}
+    (ha : sexprReadsOnly S a) (hb : sexprReadsOnly S b) (h : scalarOpExprT op a b = some se) :
+    sexprReadsOnly S se := by
+  unfold scalarOpExprT at h
+  split at h
+  all_goals first
+    | (cases h; simp [sexprReadsOnly, orExprN, ha, hb])
+    | skip
+  obtain ⟨⟨w, o⟩, -, rfl⟩ := Option.map_eq_some_iff.mp h
+  cases o <;> simp [WidthOp.sexpr, widthMask, orExprN, widthAmt, sexprReadsOnly, ha, hb]
+
+/-- A bound of `boundSE A` whose source reading returns a value reads only non-reserved
+    scalar variables bound in the environment. -/
+theorem boundSE_reads (hS : ScalarOpsSoundT bi) {rs : RustState} {env : Env}
+    (hag : envAgreesT br A env rs) (fuel : Nat) (e : ImpExpr) :
+    ∀ {se : SExpr}, boundSE A e = some se → ∀ {v : Value} {env' : Env},
+      (denote' bi fuel e).run env = (.val v, env') →
+      sexprReadsOnly (fun x => (∃ w, env x = some w) ∧ exitReserved x = false ∧
+        A.lookup x = none) se := by
+  induction e using ImpExpr.ind
+  case lit l =>
+    intro se hse v env' _
+    simp only [boundSE] at hse
+    split at hse
+    · obtain ⟨k, -, rfl⟩ := Option.map_eq_some_iff.mp hse; trivial
+    · cases hse
+  case var x =>
+    intro se hse v env' hrun
+    simp only [boundSE] at hse
+    split at hse
+    · rename_i hx
+      simp only [Option.some.injEq] at hse
+      subst hse
+      simp only [Bool.and_eq_true, Bool.not_eq_true'] at hx
+      rw [_root_.Hax.ContinueFlag.var_run] at hrun
+      rcases hv : env x with _ | w
+      · rw [hv] at hrun; cases hrun
+      · exact ⟨⟨w, hv⟩, hx.1, by simpa [exitSc] using hx.2⟩
+    · cases hse
+  case app op args ih =>
+    intro se hse v env' hrun
+    match args, ih, hse with
+    | [a, b], ih, hse =>
+      simp only [boundSE] at hse
+      rcases hsa : boundSE A a with _ | sa
+      · rw [hsa] at hse; cases hse
+      rcases hsb : boundSE A b with _ | sb
+      · rw [hsa, hsb] at hse; cases hse
+      rw [hsa, hsb] at hse
+      simp only at hse
+      rw [_root_.Hax.ContinueFlag.app_run] at hrun
+      rcases hra : (denote' bi fuel a).run env with ⟨oa, ea⟩
+      obtain ⟨hea, hva⟩ := boundSE_sim hS hag fuel a hsa hra
+      subst hea
+      rcases hrb : (denote' bi fuel b).run ea with ⟨ob, eb⟩
+      obtain ⟨heb, hvb⟩ := boundSE_sim hS hag fuel b hsb hrb
+      subst heb
+      by_cases hoa : ∃ va, oa = .val va
+      · obtain ⟨va, rfl⟩ := hoa
+        by_cases hob : ∃ vb, ob = .val vb
+        · obtain ⟨vb, rfl⟩ := hob
+          exact scalarOpExprT_readsOnly_gen (ih a (by simp) hsa hra) (ih b (by simp) hsb hrb) hse
+        · rw [denoteArgs'_cons_val hra (ScalarValN.not_cf (hva va rfl).1),
+            denoteArgs'_cons_nonval (es := []) hrb (fun v h => absurd ⟨v, h⟩ hob)] at hrun
+          cases (Prod.mk.inj hrun).1
+      · rw [denoteArgs'_cons_nonval hra (fun v h => absurd ⟨v, h⟩ hoa)] at hrun
+        cases (Prod.mk.inj hrun).1
+    | [], _, hse => simp [boundSE] at hse
+    | [_], _, hse => simp [boundSE] at hse
+    | _ :: _ :: _ :: _, _, hse => simp [boundSE] at hse
+  all_goals (intro se hse; simp [boundSE] at hse)
+
+/-- Two states agreeing with one environment agree on the non-reserved scalar variables bound
+    in it. -/
+theorem envAgreesT_same_scalar {env : Env} {rs₁ rs₂ : RustState}
+    (hag₁ : envAgreesT br A env rs₁) (hag₂ : envAgreesT br A env rs₂) {x : String}
+    (hx : (∃ w, env x = some w) ∧ exitReserved x = false ∧ A.lookup x = none) :
+    rs₁.rsScalar x = rs₂.rsScalar x := by
+  obtain ⟨⟨w, hw⟩, hr, hl⟩ := hx
+  have h1 := (envAgreesT_scalar hag₁ hr hl hw).2
+  have h2 := (envAgreesT_scalar hag₂ hr hl hw).2
+  rw [h1] at h2
+  exact Option.some.inj h2
+
+/-- A state agreeing with an environment reads a non-reserved scalar variable bound in it as
+    the scalar state of the environment does. -/
+theorem envAgreesT_envScalarState {env : Env} {rs : RustState}
+    (hag : envAgreesT br A env rs) {x : String}
+    (hx : (∃ w, env x = some w) ∧ exitReserved x = false ∧ A.lookup x = none) :
+    rs.rsScalar x = (envScalarState env).rsScalar x := by
+  obtain ⟨⟨w, hw⟩, hr, hl⟩ := hx
+  have h1 := (envAgreesT_scalar hag hr hl hw).2
+  simp [envScalarState, hw, h1]
+
+/-- **The events of a bound of `boundSE`** in two states agreeing with two environments in
+    which the bound returns a value are equal when its source leakage is equal. -/
+theorem boundSE_leak_eq (hS : ScalarOpsSoundT bi) {fuel : Nat} {env₁ env₂ : Env}
+    {rs₁ rs₂ : RustState} (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    {hi : ImpExpr} {hiE : SExpr} (hb : boundSE A hi = some hiE) {v₁ v₂ : Value}
+    (hr₁ : (denote' bi fuel hi).run env₁ = (.val v₁, env₁))
+    (hr₂ : (denote' bi fuel hi).run env₂ = (.val v₂, env₂))
+    (hL : srcLeak M bi hi fuel env₁ = srcLeak M bi hi fuel env₂) :
+    sexprLeak M rs₁ hiE = sexprLeak M rs₂ hiE := by
+  have hR₁ := boundSE_reads hS hag₁ fuel hi hb hr₁
+  have hR₂ := boundSE_reads hS hag₂ fuel hi hb hr₂
+  have hopaque : env₁ = env₂ → sexprLeak M rs₁ hiE = sexprLeak M rs₂ hiE := by
+    intro he
+    subst he
+    exact sexprLeak_congr M (fun x hx => envAgreesT_same_scalar hag₁ hag₂ hx) hiE hR₁
+  cases hi with
+  | lit l =>
+    simp only [boundSE] at hb
+    split at hb
+    · obtain ⟨k, -, rfl⟩ := Option.map_eq_some_iff.mp hb; rfl
+    · cases hb
+  | var x =>
+    simp only [boundSE] at hb
+    split at hb
+    · simp only [Option.some.injEq] at hb; subst hb; rfl
+    · cases hb
+  | app op args =>
+    match args, hb, hL, hR₁, hR₂ with
+    | [a, b], hb, hL, hR₁, hR₂ =>
+      simp only [boundSE] at hb
+      rcases hsa : boundSE A a with _ | sa
+      · rw [hsa] at hb; cases hb
+      rcases hsb : boundSE A b with _ | sb
+      · rw [hsa, hsb] at hb; cases hb
+      rw [hsa, hsb] at hb
+      simp only at hb
+      rcases boundSE_shape hsa with ⟨l, rfl⟩ | ⟨p, rfl⟩ | ⟨f, c, d, rfl⟩ <;>
+      rcases boundSE_shape hsb with ⟨l', rfl⟩ | ⟨q, rfl⟩ | ⟨g, c', d', rfl⟩ <;>
+      first
+      | (simp only [srcLeak, SrcLeak.ev.injEq, SrcEv.opaque.injEq] at hL
+         exact hopaque hL.1)
+      | (simp only [srcLeak, opLeak] at hL
+         split at hL
+         · rename_i se hse
+           have hT := scalarOpExprT_of_scalarOpExpr hse
+           simp only [SrcLeak.ev.injEq, SrcEv.op.injEq] at hL
+           have hsp : sa = .SVar p := by
+             simp only [boundSE] at hsa; split at hsa
+             · exact (Option.some.inj hsa).symm
+             · cases hsa
+           have hsq : sb = .SVar q := by
+             simp only [boundSE] at hsb; split at hsb
+             · exact (Option.some.inj hsb).symm
+             · cases hsb
+           subst hsp hsq
+           rw [hT, Option.some.injEq] at hb
+           subst hb
+           have hro := scalarOpExprT_readsOnly hT
+           rw [sexprLeak_congr M (S := fun x => (x = p ∨ x = q) ∧
+               ((∃ w, env₁ x = some w) ∧ exitReserved x = false ∧ A.lookup x = none))
+               (fun x hx => envAgreesT_envScalarState hag₁ hx.2) se
+               (sexprReadsOnly_and se hro hR₁),
+             sexprLeak_congr M (S := fun x => (x = p ∨ x = q) ∧
+               ((∃ w, env₂ x = some w) ∧ exitReserved x = false ∧ A.lookup x = none))
+               (fun x hx => envAgreesT_envScalarState hag₂ hx.2) se
+               (sexprReadsOnly_and se hro hR₂)]
+           exact hL
+         · simp only [SrcLeak.ev.injEq, SrcEv.opaque.injEq] at hL
+           exact hopaque hL.1)
+    | [], hb, _, _, _ | [_], hb, _, _, _ | _ :: _ :: _ :: _, hb, _, _, _ =>
+      simp [boundSE] at hb
+  | _ => simp [boundSE] at hb
+
+/-- The leakage of the bounds of a counted loop whose bounds return, leaving the environment
+    unchanged, values denoting the integers `l` and `h`. -/
+theorem boundsLeak_pure {fuel : Nat} {lo hi : ImpExpr} {llo lhi : Env → SrcLeak}
+    {trips : Int → Int → Env → SrcLeak} {env : Env} {vlo vhi : Value} {l h : Int}
+    (hlo : (denote' bi fuel lo).run env = (.val vlo, env))
+    (hhi : (denote' bi fuel hi).run env = (.val vhi, env))
+    (hbl : boundInt vlo = some l) (hbh : boundInt vhi = some h) :
+    boundsLeak bi lo hi llo lhi fuel trips env =
+      .cat (llo env) (.cat (lhi env) (.cat (.ev (.bound l h)) (trips l h env))) := by
+  cases vlo <;> simp only [boundInt, reduceCtorEq, Option.some.injEq] at hbl <;>
+    cases vhi <;> simp only [boundInt, reduceCtorEq, Option.some.injEq] at hbh <;>
+    subst hbl hbh <;> simp [boundsLeak, hlo, hhi, boundInt]
+
+end Helpers
+
+/-! ## The heads of a `letBind` -/
+
+section Heads
+
+variable {M : LowCTLeakModel} {bi : Builtins} {N : Nat} {leafSpec : LeafSpec}
+  {br : ValueTowerBridge} {A : ExitTowers} {R : ExitRes}
 
 /-- A run of `let n = f(args); body` ending in a value: the call runs to the builtin's
     value `r` without changing the environment, and the body runs from the environment
@@ -1762,6 +1956,154 @@ theorem boundIntN_of_scalar {v : Value} {H : Nat} (hs : ScalarValN v)
     simp [boundInt, Int.toNat_of_nonneg h0]
   · exact absurd rfl hnu
 
+/-- **A counted loop with bounds read at run time** (`exitForLoopV`, bounds of `forBoundsV`),
+    for a source loop `Lf` that unfolds as `denoteForLoop'Return` and `denoteForLoop'` do:
+    two runs whose bounds return words and whose source leakage of the loop is equal have
+    equal traces. The agreement of the trips adds to `envAgreesT` that a variable lower
+    bound holds a word decoding to the lower bound. -/
+theorem loopV_ct (hS : ScalarOpsSoundT bi) {i run : String} {lo hi body : ImpExpr}
+    {loE hiE : SExpr} {bC : LowCT} (hlo : loBoundSE A i body lo = some loE)
+    (hhi : boundSE A hi = some hiE)
+    (hR : BodyRunAg M bi N leafSpec (envAgreesT br A) body bC)
+    (hC : BodyCTAg M bi N leafSpec (envAgreesT br A) body bC)
+    (hslot : exitRunSlot run = true) (hi_ : exitReserved i = false) (his : A.lookup i = none)
+    (Lf : Nat → Int → Int → Env → Outcome × Env)
+    (hL0 : ∀ (H k : Int) env v, k < H → (Lf 0 k H env).1 ≠ .val v)
+    (hLo : ∀ (H : Int) n (k : Int) env o e2, k < H →
+      (denote' bi (n + 1) body).run (env.extend i (.int k)) = (o, e2) →
+      (∀ v, o ≠ .val v) → Lf (n + 1) k H env = (o, e2))
+    (hLi : ∀ (H : Int) n (k : Int) env w e2, k < H →
+      (denote' bi (n + 1) body).run (env.extend i (.int k)) = (.val w, e2) →
+      w.isControlFlow = false → Lf (n + 1) k H env = Lf n (k + 1) H e2)
+    (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
+    (t₁ t₂ : List CTLeak) (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    (vlo₁ vhi₁ vlo₂ vhi₂ : Value)
+    (hlo₁ : (denote' bi fuel lo).run env₁ = (.val vlo₁, env₁))
+    (hhi₁ : (denote' bi fuel hi).run env₁ = (.val vhi₁, env₁))
+    (hlo₂ : (denote' bi fuel lo).run env₂ = (.val vlo₂, env₂))
+    (hhi₂ : (denote' bi fuel hi).run env₂ = (.val vhi₂, env₂))
+    (hw₁ : (∀ b, vlo₁ ≠ .bool b) ∧ vlo₁ ≠ .unit ∧ (∀ b, vhi₁ ≠ .bool b) ∧ vhi₁ ≠ .unit)
+    (hw₂ : (∀ b, vlo₂ ≠ .bool b) ∧ vlo₂ ≠ .unit ∧ (∀ b, vhi₂ ≠ .bool b) ∧ vhi₂ ≠ .unit)
+    (hrun₁ : Lf fuel (loE.evalState (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0))
+      (hiE.evalState (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0)) env₁ =
+        (o₁, env₁'))
+    (hval₁ : ∃ v, o₁ = .val v)
+    (hrun₂ : Lf fuel (loE.evalState (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0))
+      (hiE.evalState (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0)) env₂ =
+        (o₂, env₂'))
+    (hval₂ : ∃ v, o₂ = .val v)
+    (hLk : boundsLeak bi lo hi (srcLeak M bi lo fuel) (srcLeak M bi hi fuel) fuel
+        (fun l h => forLeak bi i body (srcLeak M bi body) fuel l h) env₁ =
+      boundsLeak bi lo hi (srcLeak M bi lo fuel) (srcLeak M bi hi fuel) fuel
+        (fun l h => forLeak bi i body (srcLeak M bi body) fuel l h) env₂)
+    (h₁ : RustExecLeak N leafSpec M (exitForLoopV run i loE hiE bC) rs₁ t₁ r₁)
+    (h₂ : RustExecLeak N leafSpec M (exitForLoopV run i loE hiE bC) rs₂ t₂ r₂) :
+    t₁ = t₂ ∧ r₁.rsScalar exitRetName = r₂.rsScalar exitRetName := by
+  have hag0₁ : envAgreesT br A env₁ (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0) :=
+    envAgreesT_set_reserved _ exitReserved_val (envAgreesT_set_reserved _ exitReserved_ret hag₁)
+  have hag0₂ : envAgreesT br A env₂ (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) :=
+    envAgreesT_set_reserved _ exitReserved_val (envAgreesT_set_reserved _ exitReserved_ret hag₂)
+  obtain ⟨-, hvl₁⟩ := boundSE_sim hS hag0₁ fuel lo (loBoundSE_boundSE hlo) hlo₁
+  obtain ⟨hsl₁, hdl₁⟩ := hvl₁ vlo₁ rfl
+  obtain ⟨-, hvh₁⟩ := boundSE_sim hS hag0₁ fuel hi hhi hhi₁
+  obtain ⟨hsh₁, hdh₁⟩ := hvh₁ vhi₁ rfl
+  obtain ⟨-, hvl₂⟩ := boundSE_sim hS hag0₂ fuel lo (loBoundSE_boundSE hlo) hlo₂
+  obtain ⟨hsl₂, hdl₂⟩ := hvl₂ vlo₂ rfl
+  obtain ⟨-, hvh₂⟩ := boundSE_sim hS hag0₂ fuel hi hhi hhi₂
+  obtain ⟨hsh₂, hdh₂⟩ := hvh₂ vhi₂ rfl
+  rw [boundsLeak_pure hlo₁ hhi₁ (boundIntN_of_scalar hsl₁ hdl₁ hw₁.1 hw₁.2.1)
+      (boundIntN_of_scalar hsh₁ hdh₁ hw₁.2.2.1 hw₁.2.2.2),
+    boundsLeak_pure hlo₂ hhi₂ (boundIntN_of_scalar hsl₂ hdl₂ hw₂.1 hw₂.2.1)
+      (boundIntN_of_scalar hsh₂ hdh₂ hw₂.2.2.1 hw₂.2.2.2)] at hLk
+  simp only [SrcLeak.cat.injEq, SrcLeak.ev.injEq, SrcEv.bound.injEq, Nat.cast_inj] at hLk
+  obtain ⟨-, hLhi, ⟨hLL, hHH⟩, hLf⟩ := hLk
+  have hxlo : ∀ x, loE = .SVar x → lo = .var x ∧ x ≠ i ∧ exitReserved x = false ∧
+      A.lookup x = none := by
+    intro x hx
+    rcases loBoundSE_cases hlo with ⟨k, hk⟩ | ⟨y, hy, hyE, hyi, -⟩
+    · rw [hx] at hk; cases hk
+    · rw [hx] at hyE
+      cases hyE
+      have hb := loBoundSE_boundSE hlo
+      rw [hy, hx] at hb
+      simp only [boundSE] at hb
+      split at hb
+      · rename_i hc
+        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
+        exact ⟨hy, hyi, hc.1, by simpa [exitSc] using hc.2⟩
+      · cases hb
+  let L := loE.evalState (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0)
+  let Ag : Env → RustState → Prop := fun e rs => envAgreesT br A e rs ∧
+    ∀ x, loE = .SVar x → ∃ v, e x = some v ∧ valueToScalar v = some L
+  have hkeep : ∀ (env : Env) (vlo : Value), (denote' bi fuel lo).run env = (.val vlo, env) →
+      valueToScalar vlo = some L → ∀ x, loE = .SVar x → ∃ v, env x = some v ∧
+        valueToScalar v = some L := by
+    intro env vlo hr hd x hx
+    obtain ⟨hlx, -⟩ := hxlo x hx
+    rw [hlx, _root_.Hax.ContinueFlag.var_run] at hr
+    cases hex : env x with
+    | none => rw [hex] at hr; cases hr
+    | some w =>
+      rw [hex] at hr
+      exact ⟨w, rfl, by rw [Outcome.val.inj (Prod.mk.inj hr).1]; exact hd⟩
+  refine genForLoopVCT (Ag := Ag)
+    (fun x k e rs hx ⟨ha, hk⟩ => ⟨envAgreesT_set_reserved k hx ha, hk⟩)
+    (fun n k env => Lf n k (hiE.evalState
+      (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0)) env)
+    run i loE hiE L (hiE.evalState (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0))
+    body bC ?_ ?_ hslot hi_ ?_ ?_ ?_ (hsh₁.lt_of_toScalar hdh₁)
+    (fun k env v hk => hL0 _ k env v hk) (fun n k env o e2 hk hbr ho => hLo _ n k env o e2 hk hbr ho)
+    (fun n k env w e2 hk hbr hw => hLi _ n k env w e2 hk hbr hw)
+    fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ ?_ hval₂
+    ⟨hag₁, hkeep env₁ vlo₁ hlo₁ hdl₁⟩
+    ⟨hag₂, hkeep env₂ vlo₂ hlo₂ (by simp only [L, hLL]; exact hdl₂)⟩ rfl ?_ ?_ ?_ h₁ h₂
+  · intro fuel' e e' w rs r t ⟨ha, hk⟩ hret hr h
+    obtain ⟨h1, h2⟩ := hR fuel' e e' w rs r t ha hret hr h
+    refine ⟨h1, fun hx => ?_⟩
+    obtain ⟨c1, c2, c3⟩ := h2 hx
+    refine ⟨c1, c2, c3, fun x hxE => ?_⟩
+    have hlo' := hlo
+    rw [hxE] at hlo'
+    obtain ⟨-, hfr⟩ := loBoundSE_frame (bi := bi) hlo'
+    rw [hfr fuel' e e' w hr]
+    exact hk x hxE
+  · intro fuel' e₁ e₂ e₁' e₂' w₁ w₂ q₁ q₂ p₁ p₂ u₁ u₂ ha₁ hq₁ ha₂ hq₂ hb₁ hb₂ hLb hx₁ hx₂
+    exact hC fuel' e₁ e₂ e₁' e₂' w₁ w₂ q₁ q₂ p₁ p₂ u₁ u₂ ha₁.1 hq₁ ha₂.1 hq₂ hb₁ hb₂ hLb hx₁ hx₂
+  · intro e rs k hk ⟨ha, hkp⟩
+    refine ⟨agExtT hi_ his e rs k hk ha, fun x hx => ?_⟩
+    obtain ⟨-, hxi, -, -⟩ := hxlo x hx
+    obtain ⟨v, hv, hdv⟩ := hkp x hx
+    refine ⟨v, ?_, hdv⟩
+    simp only [_root_.Hax.Env.extend]
+    rw [if_neg (by simpa using hxi)]
+    exact hv
+  · intro e rs j ⟨ha, hk⟩
+    rcases loBoundSE_cases hlo with ⟨k, hk'⟩ | ⟨x, -, hxE, -, -⟩
+    · simp only [L, hk', SExpr.evalState]
+    · obtain ⟨-, hxi, hxr, hxl⟩ := hxlo x hxE
+      obtain ⟨v, hv, hdv⟩ := hk x hxE
+      have hd := (envAgreesT_scalar ha hxr hxl hv).2
+      rw [hdv] at hd
+      have hxrun : x ≠ run := ne_of_reserved hxr (exitReserved_of_runSlot hslot)
+      rw [hxE]
+      simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hxi, if_neg hxrun]
+      exact (Option.some.inj hd).symm
+  · intro e₁ q₁ e₂ q₂ j _ _
+    rcases loBoundSE_cases hlo with ⟨k, hk'⟩ | ⟨x, -, hxE, -, -⟩
+    · rw [hk']; rfl
+    · rw [hxE]; rfl
+  · simp only [L, hLL, hHH]; exact hrun₂
+  · simp only [L, SExpr.evalState, hLL, hHH]
+  · have hlq : sexprLeak M (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0) loE =
+        sexprLeak M (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) loE := by
+      rcases loBoundSE_cases hlo with ⟨k, hk'⟩ | ⟨x, -, hxE, -, -⟩
+      · rw [hk']; rfl
+      · rw [hxE]; rfl
+    simp only [sexprLeak, boundSE_leak_eq hS hag0₁ hag0₂ hhi hhi₁ hhi₂ hLhi, hlq]
+    unfold CatCrypt.Crypto.SecureCompilation.CT.nodeLeak
+    simp only [hLL, hHH]
+  · simpa only [L, hLL, hHH] using hLf
+
 theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (c : String)
     (body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
@@ -1877,14 +2219,14 @@ theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (e
   cases tl with
   | true => cases fl <;> simp [exitSimOkT] at hok
   | false =>
-    have hok' : ((forBounds lo hi).isSome || forBoundsRtOkT A lo hi) = true ∧
+    have hok' : forBoundsOkT A i body lo hi = true ∧
         exitReserved i = false ∧ exitSc A i = true ∧ exitSimOkT A R false true body = true := by
       cases fl <;> simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
         using hok
     have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
     have hslot := runSlot_exitRunName hfl
     rw [haxToLowCTKT_forFoldReturn_eq _ _ _ _ _ _
-      (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
+      (by simp only [hok'.2.2.1, exitScRt_of_okT hok'.1, Bool.and_self])] at hK
     rcases hB : haxToLowCTKT A false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
     · rw [hB] at hK
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -1894,14 +2236,45 @@ theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (e
     have hC := bodyCTT ihb hok'.2.2.2 hslot hB
     rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
     · rcases hRt : forBoundsRt lo hi with _ | ⟨l, h⟩
-      · rw [hFB, hRt] at hK; cases hK
+      · rw [hFB, hRt] at hK
+        obtain ⟨⟨loE, hiE⟩, hV, hKe⟩ := Option.map_eq_some_iff.mp hK
+        simp only [Prod.mk.injEq] at hKe
+        obtain ⟨rfl, rfl⟩ := hKe
+        obtain ⟨hlo, hhi⟩ := forBoundsV_some hV
+        have hag0₁ : envAgreesT br A env₁
+            (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0) :=
+          envAgreesT_set_reserved _ exitReserved_val (envAgreesT_set_reserved _ exitReserved_ret hag₁)
+        have hag0₂ : envAgreesT br A env₂
+            (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) :=
+          envAgreesT_set_reserved _ exitReserved_val (envAgreesT_set_reserved _ exitReserved_ret hag₂)
+        obtain ⟨hrunL₁, -, vlo₁, vhi₁, hlo₁, hhi₁⟩ := denote'_forFoldReturn_pure_bounds
+          (fun h => boundSE_sim hL.ops hag0₁ fuel lo (loBoundSE_boundSE hlo) h)
+          (fun h => boundSE_sim hL.ops hag0₁ fuel hi hhi h) hrun₁ hval₁
+        obtain ⟨hrunL₂, -, vlo₂, vhi₂, hlo₂, hhi₂⟩ := denote'_forFoldReturn_pure_bounds
+          (fun h => boundSE_sim hL.ops hag0₂ fuel lo (loBoundSE_boundSE hlo) h)
+          (fun h => boundSE_sim hL.ops hag0₂ fuel hi hhi h) hrun₂ hval₂
+        obtain ⟨u₁, rfl⟩ := hval₁
+        obtain ⟨u₂, rfl⟩ := hval₂
+        have hw₁ := forFoldReturn_bounds_words hlo₁ hhi₁
+          ((boundSE_sim hL.ops hag0₁ fuel lo (loBoundSE_boundSE hlo) hlo₁).2 vlo₁ rfl).1
+          ((boundSE_sim hL.ops hag0₁ fuel hi hhi hhi₁).2 vhi₁ rfl).1 hrun₁
+        have hw₂ := forFoldReturn_bounds_words hlo₂ hhi₂
+          ((boundSE_sim hL.ops hag0₂ fuel lo (loBoundSE_boundSE hlo) hlo₂).2 vlo₂ rfl).1
+          ((boundSE_sim hL.ops hag0₂ fuel hi hhi hhi₂).2 vhi₂ rfl).1 hrun₂
+        simp only [srcLeak] at hL'
+        exact loopV_ct M bi N leafSpec br A hL.ops hlo hhi hR hC hslot hok'.2.1 his
+          (fun n k H env => (_root_.Hax.denoteForLoop'Return bi n i k H body).run env)
+          (fun H k env v hk => by rw [denoteForLoop'Return_zero_run bi i k _ body env hk]; simp)
+          (fun H n k env o e2 hk hbr ho =>
+            denoteForLoop'Return_succ_nonval bi n i k _ body env e2 o hk hbr ho)
+          (fun H n k env w e2 hk hbr hw =>
+            denoteForLoop'Return_succ_iterate bi n i k _ body env e2 w hk hbr hw)
+          fuel env₁ env₂ env₁' env₂' _ _ rs₁ rs₂ r₁ r₂ t₁ t₂ hag₁ hag₂ vlo₁ vhi₁ vlo₂ vhi₂
+          hlo₁ hhi₁ hlo₂ hhi₂ hw₁ hw₂ hrunL₁ ⟨u₁, rfl⟩ hrunL₂ ⟨u₂, rfl⟩ hL' h₁ h₂
       rw [hFB, hRt] at hK
       simp only [Option.some.injEq, Prod.mk.injEq] at hK
       obtain ⟨rfl, rfl⟩ := hK
-      have hh : exitReserved h = false ∧ exitSc A h = true := by
-        have h1 := hok'.1
-        simpa only [hFB, forBoundsRtOkT, hRt, Option.isSome_none, Bool.false_or,
-          Bool.and_eq_true, Bool.not_eq_true'] using h1
+      have hh : exitReserved h = false ∧ exitSc A h = true := forBoundsOkT_rt hok'.1 hRt
       have hhs : A.lookup h = none := by simpa [exitSc] using hh.2
       obtain ⟨rfl, rfl⟩ := forBoundsRt_some hRt
       obtain ⟨v₁, H₁, hv₁, hd₁, hH₁, hrun₁'⟩ := denote'_forFoldReturn_var_scalarN bi fuel i h l
@@ -2017,7 +2390,7 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
     cases fl with
     | none => simp [exitSimOkT] at hok
     | some r =>
-      have hok' : ((forBounds lo hi).isSome || forBoundsRtOkT A lo hi) = true ∧
+      have hok' : forBoundsOkT A i body lo hi = true ∧
           exitReserved i = false ∧ exitSc A i = true ∧
           exitSimOkT A R false true body = true := by
         simpa only [exitSimOkT, Option.isSome_some, Bool.and_eq_true, Bool.not_eq_true',
@@ -2030,7 +2403,7 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
         exact (exitOf_false_of_xT hL hok hfl hK0 hrun₁ hval₁ hag₁ hret₁ h₁).trans
           (exitOf_false_of_xT hL hok hfl hK0 hrun₂ hval₂ hag₂ hret₂ h₂).symm
       rw [haxToLowCTKT_forFold_some_eq _ _ _ _ _ _
-        (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
+        (by simp only [hok'.2.2.1, exitScRt_of_okT hok'.1, Bool.and_self])] at hK
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK
         rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -2040,15 +2413,56 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
       have hC := bodyCTT ihb hok'.2.2.2 hslot hB
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
       · rcases hRt : forBoundsRt lo hi with _ | ⟨l, h⟩
-        · rw [hFB, hRt] at hK; cases hK
+        · rw [hFB, hRt] at hK
+          obtain ⟨⟨loE, hiE⟩, hV, hKe⟩ := Option.map_eq_some_iff.mp hK
+          simp only [Prod.mk.injEq] at hKe
+          obtain ⟨rfl, rfl⟩ := hKe
+          refine ⟨?_, hxo rfl⟩
+          obtain ⟨hlo, hhi⟩ := forBoundsV_some hV
+          have hag0₁ : envAgreesT br A env₁
+              (rsSetScalar (rsSetScalar rs₁ exitRetName 0) exitValName 0) :=
+            envAgreesT_set_reserved _ exitReserved_val
+              (envAgreesT_set_reserved _ exitReserved_ret hag₁)
+          have hag0₂ : envAgreesT br A env₂
+              (rsSetScalar (rsSetScalar rs₂ exitRetName 0) exitValName 0) :=
+            envAgreesT_set_reserved _ exitReserved_val
+              (envAgreesT_set_reserved _ exitReserved_ret hag₂)
+          obtain ⟨hrunL₁, -, vlo₁, vhi₁, hlo₁, hhi₁⟩ := denote'_forFold_pure_bounds
+            (fun h => boundSE_sim hL.ops hag0₁ fuel lo (loBoundSE_boundSE hlo) h)
+            (fun h => boundSE_sim hL.ops hag0₁ fuel hi hhi h) hrun₁ hval₁
+          obtain ⟨hrunL₂, -, vlo₂, vhi₂, hlo₂, hhi₂⟩ := denote'_forFold_pure_bounds
+            (fun h => boundSE_sim hL.ops hag0₂ fuel lo (loBoundSE_boundSE hlo) h)
+            (fun h => boundSE_sim hL.ops hag0₂ fuel hi hhi h) hrun₂ hval₂
+          obtain ⟨u₁, rfl⟩ := hval₁
+          obtain ⟨u₂, rfl⟩ := hval₂
+          have hw₁ := forFold_bounds_words hlo₁ hhi₁
+            ((boundSE_sim hL.ops hag0₁ fuel lo (loBoundSE_boundSE hlo) hlo₁).2 vlo₁ rfl).1
+            ((boundSE_sim hL.ops hag0₁ fuel hi hhi hhi₁).2 vhi₁ rfl).1 hrun₁
+          have hw₂ := forFold_bounds_words hlo₂ hhi₂
+            ((boundSE_sim hL.ops hag0₂ fuel lo (loBoundSE_boundSE hlo) hlo₂).2 vlo₂ rfl).1
+            ((boundSE_sim hL.ops hag0₂ fuel hi hhi hhi₂).2 vhi₂ rfl).1 hrun₂
+          simp only [srcLeak] at hL'
+          cases h₁ with
+          | seq _ _ _ _ _ tl₁ tz₁ hl₁ hz₁ =>
+          cases h₂ with
+          | seq _ _ _ _ _ tl₂ tz₂ hl₂ hz₂ =>
+          cases hz₁
+          cases hz₂
+          obtain ⟨ht, -⟩ := loopV_ct M bi N leafSpec br A hL.ops hlo hhi hR hC hslot hok'.2.1 his
+            (fun n k H env => (_root_.Hax.denoteForLoop' bi n i k H body).run env)
+            (fun H k env v hk => by rw [denoteForLoop'_zero_run bi i k _ body env hk]; simp)
+            (fun H n k env o e2 hk hbr ho =>
+              denoteForLoop'_succ_nonval bi n i k _ body env e2 o hk hbr ho)
+            (fun H n k env w e2 hk hbr hw =>
+              denoteForLoop'_succ_iterate bi n i k _ body env e2 w hk hbr hw)
+            fuel env₁ env₂ env₁' env₂' _ _ rs₁ rs₂ _ _ tl₁ tl₂ hag₁ hag₂ vlo₁ vhi₁ vlo₂ vhi₂
+            hlo₁ hhi₁ hlo₂ hhi₂ hw₁ hw₂ hrunL₁ ⟨u₁, rfl⟩ hrunL₂ ⟨u₂, rfl⟩ hL' hl₁ hl₂
+          rw [ht]
         rw [hFB, hRt] at hK
         simp only [Option.some.injEq, Prod.mk.injEq] at hK
         obtain ⟨rfl, rfl⟩ := hK
         refine ⟨?_, hxo rfl⟩
-        have hh : exitReserved h = false ∧ exitSc A h = true := by
-          have h1 := hok'.1
-          simpa only [hFB, forBoundsRtOkT, hRt, Option.isSome_none, Bool.false_or,
-            Bool.and_eq_true, Bool.not_eq_true'] using h1
+        have hh : exitReserved h = false ∧ exitSc A h = true := forBoundsOkT_rt hok'.1 hRt
         have hhs : A.lookup h = none := by simpa [exitSc] using hh.2
         obtain ⟨rfl, rfl⟩ := forBoundsRt_some hRt
         obtain ⟨v₁, H₁, hv₁, hd₁, hH₁, hrun₁'⟩ := denote'_forFold_var_scalarN bi fuel i h l

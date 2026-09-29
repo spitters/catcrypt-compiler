@@ -636,6 +636,49 @@ theorem exitReserved_runName {fl : Option String} (h : RunCtx fl) :
     exitReserved (exitRunName fl) = true :=
   exitReserved_of_runSlot (runSlot_exitRunName h)
 
+/-- A loop bound of `boundSE A` reads only scalar slots under `A`. -/
+theorem boundSE_placed {A : ExitTowers} (e : ImpExpr) :
+    ∀ {se : SExpr}, boundSE A e = some se → sexprPlaced A se = true := by
+  induction e using ImpExpr.ind
+  case lit l =>
+    intro se h
+    simp only [boundSE] at h
+    split at h
+    · obtain ⟨k, -, rfl⟩ := Option.map_eq_some_iff.mp h; rfl
+    · cases h
+  case var x =>
+    intro se h
+    simp only [boundSE] at h
+    split at h
+    · rename_i hx
+      simp only [Option.some.injEq] at h
+      subst h
+      simp only [Bool.and_eq_true, Bool.not_eq_true'] at hx
+      simp [sexprPlaced, plSc, hx.2]
+    · cases h
+  case app op args ih =>
+    intro se h
+    match args, ih, h with
+    | [a, b], ih, h =>
+      simp only [boundSE] at h
+      rcases ha : boundSE A a with _ | sa
+      · rw [ha] at h; cases h
+      rcases hb : boundSE A b with _ | sb
+      · rw [ha, hb] at h; cases h
+      rw [ha, hb] at h
+      exact scalarOpExprT_placed h (ih a (by simp) ha) (ih b (by simp) hb)
+    | [], _, h => simp [boundSE] at h
+    | [_], _, h => simp [boundSE] at h
+    | _ :: _ :: _ :: _, _, h => simp [boundSE] at h
+  all_goals (intro se h; simp [boundSE] at h)
+
+/-- The bounds of `forBoundsV A` read only scalar slots under `A`. -/
+theorem forBoundsV_placed {A : ExitTowers} {i : String} {body lo hi : ImpExpr}
+    {loE hiE : SExpr} (h : forBoundsV A i body lo hi = some (loE, hiE)) :
+    sexprPlaced A loE = true ∧ sexprPlaced A hiE = true := by
+  obtain ⟨hl, hh⟩ := forBoundsV_some h
+  exact ⟨boundSE_placed lo (loBoundSE_boundSE hl), boundSE_placed hi hh⟩
+
 theorem haxToLowCTKT_placedUse (A : ExitTowers) (tl : Bool) (fl : Option String)
     (e : ImpExpr) : RunCtx fl → ∀ {c : LowCT} {x : Bool},
       haxToLowCTKT A tl fl e = some (c, x) → placedUse A c = true ∧ noLetCall c = true := by
@@ -694,20 +737,29 @@ theorem haxToLowCTKT_placedUse (A : ExitTowers) (tl : Bool) (fl : Option String)
     have hh' : exitSc A hh = true := by simpa [exitScRt, hrt] using hi.2
     simp [placedUse, noLetCall, sexprPlaced, exitForLoopRt, exitForTrip, exitGuard, plSc,
       exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi.1, hh', b1, b2]
-  case case20 fl i _ _ _ hi l hh bC xb hb hfb ih =>
+  case case18 fl i lo hi' body hi bC xb hb hrt hfb ih =>
+    obtain ⟨⟨loE, hiE⟩, hV, hsx⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at hsx
+    obtain ⟨rfl, rfl⟩ := hsx
+    obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
+    simp only [Bool.and_eq_true] at hi
+    obtain ⟨p1, p2⟩ := forBoundsV_placed hV
+    simp [placedUse, noLetCall, sexprPlaced, exitForLoopV, exitForTripV, exitGuard, plSc,
+      exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi.1, p1, p2, b1, b2]
+  case case21 fl i _ _ _ hi l hh bC xb hb hfb ih =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
     simp [placedUse, noLetCall, sexprPlaced, exitForLoopRev, exitForTripRev, exitGuard, plSc,
       exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi, b1, b2]
-  case case23 r i _ _ _ hi l hh bC xb hb hfb ih =>
+  case case24 r i _ _ _ hi l hh bC xb hb hfb ih =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
     simp only [Bool.and_eq_true] at hi
     simp [placedUse, noLetCall, sexprPlaced, breakLoop, exitForLoop, exitForTrip, exitGuard, plSc,
       exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi.1, b1, b2]
-  case case24 r i lo hi' _ hi l hh bC xb hb hrt hfb ih =>
+  case case25 r i lo hi' _ hi l hh bC xb hb hrt hfb ih =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
@@ -715,29 +767,38 @@ theorem haxToLowCTKT_placedUse (A : ExitTowers) (tl : Bool) (fl : Option String)
     have hh' : exitSc A hh = true := by simpa [exitScRt, hrt] using hi.2
     simp [placedUse, noLetCall, sexprPlaced, breakLoop, exitForLoopRt, exitForTrip, exitGuard,
       plSc, exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi.1, hh', b1, b2]
-  case case27 r i _ _ _ hi l hh bC xb hb hfb ih =>
+  case case26 r i lo hi' body hi bC xb hb hrt hfb ih =>
+    obtain ⟨⟨loE, hiE⟩, hV, hsx⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at hsx
+    obtain ⟨rfl, rfl⟩ := hsx
+    obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
+    simp only [Bool.and_eq_true] at hi
+    obtain ⟨p1, p2⟩ := forBoundsV_placed hV
+    simp [placedUse, noLetCall, sexprPlaced, breakLoop, exitForLoopV, exitForTripV, exitGuard,
+      plSc, exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi.1, p1, p2, b1, b2]
+  case case29 r i _ _ _ hi l hh bC xb hb hfb ih =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
     simp [placedUse, noLetCall, sexprPlaced, breakLoop, exitForLoopRev, exitForTripRev, exitGuard,
       plSc, exitReserved_ret, exitReserved_val, exitReserved_runName hfl, hi, b1, b2]
-  case case30 r v _ hv bC xb hb ih =>
+  case case32 r v _ hv bC xb hb ih =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨b1, b2⟩ := ih (runCtx_exitRunName hfl) hb
     simp [placedUse, noLetCall, sexprPlaced, breakLoop, exitLoop, plSc, exitReserved_ret,
       exitReserved_val, exitReserved_runName hfl, hv, b1, b2]
-  case case33 hp =>
+  case case35 hp =>
     obtain ⟨s, hs, hsx⟩ := Option.map_eq_some_iff.mp h
     simp only [Prod.mk.injEq] at hsx
     obtain ⟨rfl, rfl⟩ := hsx
     exact exitStore_placed hp hs
-  case case35 =>
+  case case37 =>
     obtain ⟨s, hs, hsx⟩ := Option.map_eq_some_iff.mp h
     simp only [Prod.mk.injEq] at hsx
     obtain ⟨rfl, rfl⟩ := hsx
     exact resultStoreT_placed hs
-  case case36 e _ _ _ _ _ _ _ _ _ _ _ _ _ hs =>
+  case case38 e _ _ _ _ _ _ _ _ _ _ _ _ _ hs =>
     cases e <;> simp [exitStmtOk] at hs <;> simp [haxToLowCT] at h <;>
       (obtain ⟨rfl, rfl⟩ := h; simp [placedUse, noLetCall])
 
