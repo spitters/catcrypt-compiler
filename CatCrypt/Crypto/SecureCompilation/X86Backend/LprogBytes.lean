@@ -641,6 +641,28 @@ def encSetccMovzx (op d : Nat) : List (BitVec 8) :=
   let movzx : List Nat := [rex 1 (bit d 3) 0 (bit d 3), 0x0f, 0xb6, modRMReg d d]
   (setcc ++ movzx).map (BitVec.ofNat 8)
 
+/-- `SET<cc> %d8` (`0F op /0`) on the low byte of register `d`, with the `REX` a byte
+    register needs: `41` for `d ≥ 8`, the bare `40` for `d ∈ {4..7}`
+    (`%spl/%bpl/%sil/%dil`; without it the ModRM selects `AH/CH/DH/BH`). -/
+def encSetccReg (op d : Nat) : List (BitVec 8) :=
+  ((if bit d 3 = 1 then [rex 0 0 0 1] else if 4 ≤ d ∧ d < 8 then [rex 0 0 0 0] else [])
+    ++ [0x0f, op, modRMReg 0 d]).map (BitVec.ofNat 8)
+
+/-- The materialised comparison `SET<cc>:<w> [d] [a, b]` over three registers: the byte
+    image of `LprogAsmPrinter.renderSetcc`'s three lines `cmp<sz> %b, %a`,
+    `mov<sz> $0, %d`, `set<cc> %d8`. The compare is `39 /r` (`reg` = `b`, `rm` = `a`,
+    flags of `a - b`), the zeroing move is the form gas selects for `$0`
+    (`encMovImmw`), and `0F op /0` sets the low byte of `d`, with the `REX` a byte
+    register needs (`41` for `d ≥ 8`, the bare `40` for `d ∈ {4..7}`). -/
+def encSetccCmp (w op d a b : Nat) : List (BitVec 8) :=
+  encAluRRw w 0x39 a b ++ encMovImmw w d 0 ++ encSetccReg op d
+
+/-- The `SET<cc>` second opcode byte of the materialised comparisons the encoder builds:
+    `SETE` (`94`) and `SETNE` (`95`). -/
+def setccCmpOp : String → Option Nat
+  | "SETE" => some 0x94 | "SETNE" => some 0x95
+  | _ => none
+
 /-- `BT $imm8, %reg` (group-8 `0F BA /4 ib`): copy bit `imm` of the register into
     `CF`. The carry-in materialisation of the three-source ADX data arm
     (`bt $0, cin` — the IR passes the carry-in as a VALUE, `renderLopn` prints the
@@ -1252,7 +1274,18 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                             (gpNumU dn) (gpNumU an) (gpNumU sn)
                         else []
                     | _, _, _ => []
-                  else []
+                  -- Materialised comparison `SETE`/`SETNE:<w> [d] [a, b]` over three
+                  -- registers: `renderSetcc`'s `cmp %b, %a ; mov $0, %d ; set<cc> %d8`
+                  -- (`encSetccCmp`). A memory or immediate operand is left as the
+                  -- visible empty byte list. Reached last: `SETE`/`SETNE` are in none
+                  -- of `tagShiftExt`, `aluOpcode` and `twoByteOpcode`.
+                  else
+                    match setccCmpOp base, d, a, s with
+                    | some op, .reg dn, .reg an, .reg sn =>
+                        if isGpName dn && isGpName an && isGpName sn then
+                          encSetccCmp w op (gpNumU dn) (gpNumU an) (gpNumU sn)
+                        else []
+                    | _, _, _, _ => []
       -- Branchless constant-time select `CMOV:<w> [cond, t, f]` (§3c): the byte
       -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
       -- of which source defaults into `d` and which condition the `CMOVcc`
@@ -1746,12 +1779,12 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
-  -- the two-source materialised comparison the compare-and-select export emits.
-  -- `LprogAsmPrinter.renderSetcc` prints it as `cmp b, a ; mov $0, d ; set<cc> d8`;
-  -- the encoder's only `SET<cc>` arm is the zero-source `SETC` above, so a body
-  -- containing this form is declined rather than encoded.
-  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "RBX"], false)
-  , (.Lopn [.reg "R8"] "SETNE:64" [.reg "RAX", .reg "RBX"], false)
+  -- the two-source materialised comparison the compare-and-select export emits,
+  -- `LprogAsmPrinter.renderSetcc`'s `cmp b, a ; mov $0, d ; set<cc> d8`, encoded by
+  -- `encSetccCmp` over registers; with a memory operand it is declined.
+  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "RBX"], true)
+  , (.Lopn [.reg "R8"] "SETNE:64" [.reg "RAX", .reg "RBX"], true)
+  , (.Lopn [.reg "R8"] "SETE:64" [.reg "RAX", .reg "k.0"], false)
   -- the register-count shifts (`regArith .shr`/`.shl`/`.sar` with a runtime
   -- count), the BMI2 `shrx`/`shlx`/`sarx` that `LprogAsmPrinter.renderLopn`
   -- renders (`ScalarEncoder.encShiftX`); U64 only, since the VEX encoder

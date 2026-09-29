@@ -201,13 +201,22 @@ def decodeMovzbq (n : Nat) : List (BitVec 8) → Option (JInstr 64 × List (BitV
       if [m0, m1, m2, m3] = movzbqBytes n then some (.setc (regName n), rest) else none
   | _ => none
 
-/-- A `setc` whose `SETB` carries no `REX` prefix (`0F 92 ModRM(11, /0, d)`): the
-    ModRM `r/m` field names `%al`, `%cl`, `%dl` or `%bl`, since without a prefix
-    the values `100..111` name `%ah`..`%bh`. -/
+/-- The condition of a `SETcc` second opcode byte the decoders read alone: `94` (`SETE`)
+    and `95` (`SETNE`). -/
+def setccCond? (e : Nat) : Option Condt :=
+  if e = 0x94 then some .e else if e = 0x95 then some .ne else none
+
+/-- A `setc` whose `SETB` carries no `REX` prefix (`0F 92 ModRM(11, /0, d)`), and a
+    `SETE`/`SETNE` of a low byte (`0F 94`/`95 ModRM(11, /0, d)`, read as
+    `setcc`, which writes the low byte and keeps the rest of the register): the
+    ModRM `r/m` field names `%al`, `%cl`, `%dl` or `%bl`, since without a prefix the
+    values `100..111` name `%ah`..`%bh`. -/
 def decodeSetcBare : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
   | e :: modrm :: rest =>
       if e.toNat = 0x92 ∧ modField modrm = 3 ∧ regField modrm = 0 ∧ rmField modrm < 4 then
         decodeMovzbq (rmField modrm) rest
+      else if modField modrm = 3 ∧ regField modrm = 0 ∧ rmField modrm < 4 then
+        (setccCond? e.toNat).map fun c => (.setcc c (regName (rmField modrm)), rest)
       else none
   | _ => none
 
@@ -360,7 +369,8 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
 /-- The `REX`-prefixed forms at `REX.W = 0` whose 32-bit operation has the effect of
     a `JInstr 64`: `MOVZX` from a byte or a word register (`0F B6 /r`, `0F B7 /r`),
     which zero the upper bits at either operand size; `SETB` followed by its `MOVZX`
-    (`0F 92 /0`); and `MOV $imm32, %r32` (`B8+rd id`), whose 32-bit write zero-extends
+    (`0F 92 /0`); `SETE`/`SETNE` of a byte register (`0F 94`/`95 /0`), a byte
+    operation at any width; and `MOV $imm32, %r32` (`B8+rd id`), whose 32-bit write zero-extends
     into the register. Every other `REX.W = 0` form is a 32-bit operation that no
     `JInstr 64` denotes, and is rejected. -/
 def decodeRexW0 (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
@@ -377,6 +387,9 @@ def decodeRexW0 (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (
               else if e.toNat = 0x92 then
                 if regField modrm = 0 then decodeMovzbq (rexB r * 8 + rmField modrm) rest1
                 else none
+              else if regField modrm = 0 then
+                (setccCond? e.toNat).map fun c =>
+                  (.setcc c (regName (rexB r * 8 + rmField modrm)), rest1)
               else none
             else none
         | _ => none

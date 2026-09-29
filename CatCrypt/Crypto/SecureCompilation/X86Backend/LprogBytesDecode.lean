@@ -578,16 +578,17 @@ theorem decodeLinstr_jcc8 (cc : String) (d : Int) (rest : List (BitVec 8))
   have e7 : ¬ (0x70 + ccNibble cc = 0x0f) := by omega
   simp [e1, e2, e3, e4, e5, e6, e7]
 
-/-- The `0F` escape followed by five bytes, the second of which is not the `SETB`
-    opcode `92`, is read as a `jcc rel32`. -/
-theorem decodeLinstr_0f (o d0 d1 d2 d3 : BitVec 8) (r : List (BitVec 8)) (ho : o.toNat ≠ 0x92) :
+/-- The `0F` escape followed by five bytes, the second of which is none of the `SETcc`
+    opcodes `92`, `94`, `95`, is read as a `jcc rel32`. -/
+theorem decodeLinstr_0f (o d0 d1 d2 d3 : BitVec 8) (r : List (BitVec 8))
+    (ho : o.toNat ≠ 0x92 ∧ o.toNat ≠ 0x94 ∧ o.toNat ≠ 0x95) :
     decodeLinstr (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r)
       = if 0x80 ≤ o.toNat ∧ o.toNat ≤ 0x8f then
           some (.jcc (o.toNat - 0x80) (sdisp32 d0 d1 d2 d3), r)
         else none := by
   have h : decodeJ1 (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r) = none := by
     show decodeSetcBare (o :: d0 :: d1 :: d2 :: d3 :: r) = none
-    simp [decodeSetcBare, ho]
+    simp [decodeSetcBare, setccCond?, ho.1, ho.2.1, ho.2.2]
   have h6 : decodeJ1_6 (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r) = none := by
     rw [decodeJ1_6_of_not_rex (by decide)]; exact h
   simp only [decodeLinstr, h6]
@@ -688,6 +689,18 @@ theorem decodeLinstr_push (r : String) (rest : List (BitVec 8)) (hr : r ∈ gpNa
        first
        | (rw [decodeLinstr_pushPop_rex41 _ _ (by decide)]; rfl)
        | (rw [decodeLinstr_pushPop_bare _ _ (by decide)]; rfl))
+
+/-- `SETE`/`SETNE %d8` (`encSetccReg`, `0F 94`/`95 /0` with the byte-register `REX`)
+    decodes to `setcc` of `d`, which writes the low byte and keeps the rest of the
+    register. -/
+theorem decodeLinstr_setccReg (op d : Nat) (rest : List (BitVec 8))
+    (hop : op = 0x94 ∨ op = 0x95) (hd : d < 16) :
+    decodeLinstr (encSetccReg op d ++ rest)
+      = some (.op (.setcc (if op = 0x94 then .e else .ne) (regName d)), rest) := by
+  apply decodeLinstr_of_decodeJ1
+  rcases hop with rfl | rfl <;> interval_cases d <;>
+    simp [encSetccReg, bit, rex, modRMReg, decodeJ1, decodeSetcBare, decodeRexW0, setccCond?,
+      isRex, SailX86Decoder.rexW, modField, regField, rmField, rexB, rexR, regName]
 
 /-- `popq r` (`58+r`, or `41 58+r` for `r8`–`r15`) decodes to `pop r`, for every
     canonical register but `%rsp`. -/
