@@ -15,7 +15,7 @@ them.
 | Machine code | [`com_x86_e2e`, `com_arm_e2e`, `com_riscv_e2e`](#machine-code) |
 | Emitted loops | [`loopMem_export_faithful_comL_uncond`](#emitted-loops) and five siblings |
 | Constant time | [`toLprogPhysAbi_gather_constant_time`, `owned_ct_control_flow` (model IR; no emitted branch is covered), `cmdCT_sound`](#constant-time) |
-| Ascent on imported and shipped code | [`paShippedBytes_correct`](#ascent-on-imported-and-shipped-code) and three siblings |
+| Ascent on imported and shipped code | [`paShippedBytes_correct`](#ascent-on-imported-and-shipped-code) and four siblings |
 
 ## Dialect lowering
 
@@ -149,3 +149,9 @@ equates the halting state with the source denotation.
   imported `ed25519_sc_muladd` block stores `(c + a·b) mod L`.
 - `VIR.JasminLsemExportShippedAnd.binAnd_export_machine_shipped`: the shipped
   `mpn_and_n` loop body halts with the array its model `JLoopBodyN.denote` gives.
+- `Ascent.CryptOptAddr.carryMul_correct_addr`: CryptOpt's
+  `fiat_curve25519_carry_mul` block, run under `runBlockA`, stores five words that meet
+  fiat-crypto's `mul_correct` congruence against the input words. Hypotheses: input
+  regions apart from each other, all three regions apart from the stack frame, input
+  limbs below `2^54`. `solinasSquare_correct_addr` states `sqr_correct` for
+  `fiat_curve25519_solinas_square`.

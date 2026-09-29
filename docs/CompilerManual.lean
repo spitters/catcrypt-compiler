@@ -130,18 +130,123 @@ elimination, copy propagation and constant folding (`comCSE_denote`,
 `comDCE_denote`, `copyProp_denote`, `foldCom_denote`), composed in
 `comOptPipeline_denote` and `comFullOpt_denote`. The constant-folding and saturation
 stages assume a known-constant environment consistent with the valuation.
+`Pipeline.optPipelineJ` composes four stages that each return their input program,
+so its theorems hold for every program. `CatCrypt/Crypto/Optimizer/README.md`
+indexes the passes.
 
-Rewriting is rewrite saturation. `saturateCom` applies denotation-preserving rewrite
-rules until no rule fires or a fuel bound is reached. `saturateCom_denote` proves
-that the output denotes the same function as the input, and `saturate_cost_le` that
-the output costs no more than the input under the cost model `comCost`. The engine
-has no union-find and no e-classes, and it does not find a global cost minimum.
-`EgraphGlobalMin` gives an explicit e-class of members, each with a rewrite witness
-to a representative, and extracts the cheapest member (`extractMin_cost_min`);
-`EgraphOracle` admits a proposal from an untrusted oracle only through a decidable
-denotation check (`oracleOpt_denote`). `Pipeline.optPipelineJ` composes four stages
-that each return their input program, so its theorems hold for every program.
-`CatCrypt/Crypto/Optimizer/README.md` indexes the passes.
+No emit driver calls a `Com` pass. The owned emit drivers render an `Lprog` through
+`LprogOptPipeline.renderOwned`, which is `renderLprogAtt ∘ optimizeLprogBasicBlocks`.
+On each maximal straight-line run of a function body whose instructions the passes
+model, it applies reload elimination, spill-pair elimination, the scheduler
+`LprogScheduler.scheduleLprog`, copy propagation and load common-subexpression
+elimination. `mapBodies_entry_store_preserved` states that the optimized program,
+run from a function entry under the labeled semantics `JasminLsemLabeled.lsem`,
+reaches the same register map and memory as the source.
+
+## Equality saturation
+
+`Optimizer/Rewrite/Egraph.lean` rewrites a `Com jasminDialect` to a fixpoint. It has
+no union-find, no e-classes and no congruence closure: `rewriteCom` rewrites each
+binding in place, and `saturateCom` iterates it up to a fuel bound. A rule fires on
+a binary register operation whose second operand a known-constant environment
+`KEnv` records as a constant: `x + 0`, `x ^^^ 0`, `x ||| 0` and `x * 1` become
+`x ||| x`, and `x * 0` and `x &&& 0` become the zero operand. The strength reduction
+`x * 2^k = x <<< k` is the lemma `mul_pow2_eq_shl` and is not fired by the engine,
+because it needs a fresh binder for the shift amount. Under a `KEnv` consistent with
+the valuation, `saturateCom_denote` proves that the output denotes the input's
+function, and `saturate_cost_le` that its cost under `comCost` does not increase.
+The engine reaches a local fixpoint and does not find a global cost minimum.
+
+Three modules separate untrusted search from verified acceptance.
+`EgraphOracle.oracleOpt` takes any function `Com → Com` as an oracle and keeps its
+proposal only when `gate` decides, over the finite valuation space of a
+register-only context, that proposal and input have the same denotation; otherwise
+it returns the input (`oracleOpt_denote`). `gate` is `noncomputable`, so no emit
+driver can run `oracleOpt`. `ProofCarryingExtraction.RewriteWitness` is an ordered
+list of rewrite steps, each carrying a denotation equality, validated by folding
+the steps with transitivity; `optimizeChecked` emits a candidate only when its
+witness applies, and the input otherwise (`optimizeChecked_denote`).
+`EgraphGlobalMin` represents an e-class as a list of members, each with a proof of
+denotation equality to a representative, and `extractMin` returns a cheapest member
+(`extractMin_cost_min`, `extractMin_denote_eq`); its instances choose among two- and
+three-limb multiplication formulas over a commutative ring.
+
+The saturation engine reaches `comAlgebraicPipeline`, `comFullOpt` and
+`ComToMLIR.emitFuncCanon`, which are referenced only in the modules that define
+them, and no assembly the owned backend emits passes through any module of this
+section. In the ascent, `EgraphBlockEquality` takes equal saturations of two
+programs as a certificate of equal denotation, and
+`BytesToDialectJoin.joinBytes_denote_source` applies it to one encoded block that
+computes `x ||| x`, against the source `x + z` under the constant hypothesis
+`z = 0`. Compared with the e-graphs of Cranelift, the design keeps the search
+outside the trusted base and proves one denotation lemma per rule; it has no e-class
+data structure, no rule language, and no extraction integrated with instruction
+selection.
+
+## Search over schedules and register allocations
+
+Three modules follow CryptOpt (Kuepper et al., PLDI 2023): a randomized local search
+over equivalent forms of a straight-line x86 block, whose winner is validated in
+Lean in place of CryptOpt's external equivalence checker.
+`RandomizedScheduleSearch.searchBest` runs seeded greedy descent over adjacent
+transpositions of instructions with disjoint footprints, ranked by the static
+latency and port-pressure proxy `scheduleCost`; `tvCertifiesSwaps_sound` validates a
+sequence of swaps, and `hoisted_runBlock_eq_input` and `hoisted3_runBlock_eq_input`
+prove the winners for the two- and three-product safegcd accumulate equal to the
+input on every machine state. `RandomizedRegAlloc.searchAssign` draws a renaming of
+virtual registers and accepts it only when it is injective on the live names and
+fits the register pool; `regalloc_runBlock_sound` covers every accepted renaming.
+`JointScheduleRegAlloc.searchJoint` searches permutations and renamings as one move
+space, and its legality predicate `jointLegal` checks schedule dependencies on the
+renamed instructions, which excludes the phase-ordering hazard described for SLOTHY
+(Becker et al.).
+
+No emit driver calls the three searches, and no shipped kernel is a search output.
+The scheduler on the emit path is the deterministic `LprogScheduler.scheduleLprog`
+inside `optimizeLprog` and `renderOwned`; it swaps only adjacent independent
+instructions (`bubble_only_indep_swaps`) and preserves `lsemStraight`
+(`scheduleBody_lsemStraight`).
+
+The measurements, recorded in the development repository, show no speed gain. On
+the safegcd accumulate the search winner is 1.03 to 1.05 times slower than the input
+schedule with two products and 1.21 to 1.30 times slower with three
+(`bench/cryptopt_safegcd/README.md`, lines 45-55 and 93-101). The same two-product
+reordering, unrolled 128 times, measures 1.015 times faster, within run-to-run noise
+(`bench/slothy_perf/README.md`, lines 16-22). On the fe25519 schoolbook multiply the
+search has eight legal swaps, all neutral under the static proxy
+(`feMulBlock_legal_swaps`), and the rescheduled block is within noise of the
+baseline (`bench/x25519_fieldmul_compare/README.md`, lines 92-124). These files
+attribute the result to the carry chain being the critical path and to the
+out-of-order core issuing independent multiplies regardless of their order.
+
+## The ascent
+
+The ascent runs opposite to the lowering. It takes code at one of the compiler's
+levels (a `LowCT` command, an x86 block `List (JInstr 64)` or an RV64 block) and
+proves a correspondence square `Corres SR P f c`, in the style of AutoCorres, from
+its runs to a function `f` on integers, field elements or bit vectors. The code is
+given rather than produced by the compiler. The results on linked machine code
+cover the Ed25519 blocks `ed25519_point_add` (at the encoded bytes), `ed25519_madd`,
+`ed25519_invert`, `ed25519_compress`, `ed25519_sc_reduce` and `ed25519_sc_muladd`,
+the fe25519 multiply, square, addition and subtraction, the comb-table select,
+s2n-bignum's `bignum_montmul_p384`, and the exported `mpn_and_n` loop.
+
+Two covered kernels are CryptOpt output. `CarryMulCorrect.carryMul_correct` and
+`SolinasSquareCorrect.solinasSquare_correct` prove that CryptOpt's
+`fiat_curve25519_carry_mul` and `fiat_curve25519_solinas_square` meet fiat-crypto's
+`mul_correct` and `sqr_correct` congruences, and `CryptOptAddr` restates both over
+byte-addressed memory, under separation hypotheses on the input, output and
+stack-frame regions (`carryMul_correct_addr`, `solinasSquare_correct_addr`). Code found by a search outside Lean is thereby
+verified after the search, with no part of the search in the trusted base.
+
+Ascent and descent meet at a few theorems. `LegWeld.legWeld` joins a source
+program, the Jasmin program the compiler emits for it and an ascent square;
+`CorresDescentX86.corres_of_refines_x86` turns a relational-compiler result
+`Refines spec frag` into an ascent square for the compiled x86 block;
+`PipelineWeld.feSub_raw_source_to_bytes` carries the fe25519 subtraction from a hax
+`ImpExpr` source to bytes; and `BytesToDialectJoin` joins decoded bytes to a source
+program through equal saturations, on the one example above. `ASCENT.md` describes
+the calculus, the tactics and each result with its module.
 
 # The guarantee
 
