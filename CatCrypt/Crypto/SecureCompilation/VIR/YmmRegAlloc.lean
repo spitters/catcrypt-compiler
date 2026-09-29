@@ -48,6 +48,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAlloc
 
 open CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
 open CatCrypt.Crypto.Optimizer.GenericRegAlloc
+open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
 
 /-- The sixteen AVX2 vector registers, in the `%ymmN` spelling `YmmInstr` and
     its printer use. -/
@@ -164,6 +165,182 @@ def ymmAllPhysical (block : List YmmInstr) : Bool :=
     the number of scratch registers `ymmMaterialize` needs. -/
 def ymmScratchNeeded (decisions : List (String × Slot)) (block : List YmmInstr) : Nat :=
   block.foldl (fun m i => max m (spilledNamesOf decisions i).length) 0
+
+/-! ## Allocation over an explicit register file
+
+`ymmSpillAlloc` allocates over `MachineModel.physRegs`, the sixteen AVX2
+registers. Under AVX-512VL the file holds thirty-two 256-bit registers,
+`%ymm16 .. %ymm31` being reachable only through the EVEX encoding.
+`ymmSpillAllocIn` is the same linear scan over a register list the caller
+supplies; at `ymmFile` it is `ymmSpillAlloc` (`ymmSpillAllocIn_ymmFile`). -/
+
+/-- The thirty-two AVX-512VL vector registers at 256-bit width. -/
+def evexYmmFile : List String :=
+  (List.range 32).map (fun i => "%ymm" ++ toString i)
+
+/-- The registers of `evexYmmFile` that only the EVEX encoding reaches. -/
+def evexOnlyYmm : List String :=
+  (List.range 16).map (fun i => "%ymm" ++ toString (i + 16))
+
+/-- The live ranges of a vector block, as the allocator computes them. -/
+def ymmLiveRanges (block : List YmmInstr) : List LiveRange :=
+  liveRanges (I := YmmInstr) block
+
+/-- The linear-scan spill decisions over the register list `file`, from live
+    ranges `lrs` already computed for the block. -/
+def ymmSpillAllocRanges (file pinned scratch : List String) (frameBase : Int)
+    (lrs : List LiveRange) : List (String × Slot) :=
+  linearScan (file.filter (fun r => ¬ pinned.contains r ∧ ¬ scratch.contains r))
+    frameBase lrs ymmStride
+
+/-- The linear-scan spill decisions for a vector block over the register list
+    `file`, with 32-byte frame cells. -/
+def ymmSpillAllocIn (file pinned scratch : List String) (frameBase : Int)
+    (block : List YmmInstr) : List (String × Slot) :=
+  ymmSpillAllocRanges file pinned scratch frameBase (ymmLiveRanges block)
+
+/-- Over the sixteen AVX2 registers the explicit-file allocator is
+    `ymmSpillAlloc`. -/
+theorem ymmSpillAllocIn_ymmFile (pinned scratch : List String) (frameBase : Int)
+    (block : List YmmInstr) :
+    ymmSpillAllocIn ymmFile pinned scratch frameBase block
+      = ymmSpillAlloc pinned scratch frameBase block := rfl
+
+/-! ## Frame-cell reuse
+
+`linearScan` gives every spilled name a fresh cell, so the frame grows with the
+number of spilled names rather than with the number spilled at once.
+`compactSlots` reassigns the cells first-fit in order of definition: a spilled
+name takes the lowest cell whose previous occupant's live range ended strictly
+before this name's first write. Every access `ymmMaterialize` makes to a
+spilled name's cell (the store after a write, the reload before a read) lies
+inside the name's live range, so two names with disjoint live ranges never
+observe each other's cell contents. `slotsReuseDisjoint` is the checkable form
+of that condition. -/
+
+/-- The first-fit cell assignment: `cells` holds `(offset, lastUse)` of each
+    cell's current occupant, in offset order; `acc` the `(name, offset)` pairs
+    assigned so far. -/
+def compactSlotsGo (frameBase : Int) :
+    List (Int × Nat) → List (String × Int) → List LiveRange → List (String × Int)
+  | _, acc, [] => acc
+  | cells, acc, lr :: rest =>
+    match cells.find? (fun c => c.2 < lr.defIdx) with
+    | some c =>
+      compactSlotsGo frameBase
+        (cells.map (fun d => if d.1 == c.1 then (c.1, lr.lastUse) else d))
+        ((lr.name, c.1) :: acc) rest
+    | none =>
+      let off := frameBase + ymmStride * (cells.length : Int)
+      compactSlotsGo frameBase (cells ++ [(off, lr.lastUse)]) ((lr.name, off) :: acc) rest
+
+/-- The spilled live ranges of `decisions`, in order of definition. -/
+def spilledRanges (lrs : List LiveRange) (decisions : List (String × Slot)) :
+    List LiveRange :=
+  (lrs.filter (fun lr => (spillSlotOf decisions lr.name).isSome)).mergeSort
+    (fun a b => a.defIdx ≤ b.defIdx)
+
+/-- `decisions` with every spilled name moved to its first-fit reused cell.
+    Resident decisions are unchanged. -/
+def compactSlots (lrs : List LiveRange) (frameBase : Int)
+    (decisions : List (String × Slot)) : List (String × Slot) :=
+  let assign := compactSlotsGo frameBase [] [] (spilledRanges lrs decisions)
+  decisions.map (fun d => match d.2 with
+    | .spilled off => (d.1, .spilled ((assign.lookup d.1).getD off))
+    | .resident r => (d.1, .resident r))
+
+/-- Every two spilled names that share a frame cell have disjoint live ranges. -/
+def slotsReuseDisjoint (lrs : List LiveRange) (decisions : List (String × Slot)) :
+    Bool :=
+  let sp := (spilledRanges lrs decisions).filterMap (fun lr =>
+    (spillSlotOf decisions lr.name).map (fun off => (lr, off)))
+  sp.zipIdx.all (fun (p, i) => sp.zipIdx.all (fun (q, j) =>
+    i == j || p.2 != q.2 || p.1.lastUse < q.1.defIdx || q.1.lastUse < p.1.defIdx))
+
+/-- The bytes of frame the spilled cells of `decisions` occupy above
+    `frameBase`: one cell past the highest spill offset. -/
+def frameExtent (frameBase : Int) (decisions : List (String × Slot)) : Nat :=
+  decisions.foldl (fun m d => match d.2 with
+    | .spilled off => max m (off - frameBase + ymmStride).toNat
+    | .resident _ => m) 0
+
+/-! ## Withholding only the scratch registers the spills need
+
+`ymmMaterialize` needs as many scratch registers as the largest number of
+spilled names one instruction touches (`ymmScratchNeeded`), which depends on
+the decisions, which depend on how many registers are withheld.
+`ymmAllocFewestScratch` tries `k = 0, 1, ...` withheld registers, taken from
+the front of `scratch`, and keeps the first allocation whose spills need at
+most `k`; every register not withheld is allocatable. -/
+
+/-- The allocation, with frame cells reused, that withholds the first `k`
+    registers of `scratch`. -/
+def ymmAllocWithScratch (file pinned scratch : List String) (frameBase : Int)
+    (lrs : List LiveRange) (k : Nat) : List String × List (String × Slot) :=
+  let sc := scratch.take k
+  (sc, compactSlots lrs frameBase (ymmSpillAllocRanges file pinned sc frameBase lrs))
+
+/-- The allocation withholding the fewest scratch registers that its own spills
+    need; all of `scratch` when no smaller prefix suffices. Returns the withheld
+    registers and the decisions. -/
+def ymmAllocFewestScratch (file pinned scratch : List String) (frameBase : Int)
+    (block : List YmmInstr) (lrs : List LiveRange) :
+    List String × List (String × Slot) :=
+  let fits := (List.range (scratch.length + 1)).find? (fun k =>
+    ymmScratchNeeded (ymmAllocWithScratch file pinned scratch frameBase lrs k).2 block ≤ k)
+  ymmAllocWithScratch file pinned scratch frameBase lrs (fits.getD scratch.length)
+
+/-! ## EVEX spelling
+
+An instruction that names a register of `evexOnlyYmm` must be spelled with an
+EVEX mnemonic: the VEX forms `vpxor`, `vpor`, `vpand`, `vpandn` and `vmovdqu`
+have no EVEX encoding, and their AVX-512VL counterparts are the quadword forms
+`vpxorq`, `vporq`, `vpandq`, `vpandnq` and `vmovdqu64`, which compute the same
+256-bit result with the same operand order. Shifts, `vprolq` and `vpternlogq`
+keep their mnemonic, which the assembler encodes as EVEX when an operand
+requires it. An instruction naming only `%ymm0 .. %ymm15` is printed by
+`renderYmmInstr` unchanged. -/
+
+/-- Whether an instruction names a register only EVEX reaches. -/
+def namesEvexOnly (i : YmmInstr) : Bool :=
+  (ymmNamesOf i).any (fun n => evexOnlyYmm.contains n)
+
+/-- The AVX-512VL mnemonic of an ALU op, for the ops whose EVEX form this
+    printer covers; `none` for the rest. -/
+def evexMnemonic : YmmOp → Option String
+  | .vpxor => some "vpxorq"
+  | .vpor => some "vporq"
+  | .vpand => some "vpandq"
+  | .vpandn => some "vpandnq"
+  | .vpaddq => some "vpaddq"
+  | .vpsubq => some "vpsubq"
+  | .vpsllq _ => some "vpsllq"
+  | .vpsrlq _ => some "vpsrlq"
+  | .vprolq _ => some "vprolq"
+  | _ => none
+
+/-- Whether `renderYmmInstrEvex` has a spelling for the instruction. -/
+def evexSpellable : YmmInstr → Bool
+  | i@(.alu op _ _) => !namesEvexOnly i || (evexMnemonic op).isSome
+  | _ => true
+
+/-- The AT&T line of an instruction over `evexYmmFile`: `renderYmmInstr` with
+    the mnemonic replaced by its EVEX form when an operand is one of
+    `evexOnlyYmm`. -/
+def renderYmmInstrEvex (i : YmmInstr) : String :=
+  let line := renderYmmInstr i
+  if !namesEvexOnly i then line
+  else match i with
+    | .alu op _ _ =>
+      match evexMnemonic op with
+      | some mn => line.replace ("\t" ++ op.attMnemonic ++ "\t") ("\t" ++ mn ++ "\t")
+      | none => line
+    | .ymov _ _ | .yload _ _ | .ystore _ _ => line.replace "\tvmovdqu\t" "\tvmovdqu64\t"
+    | .ternlog _ _ _ _ => line
+
+/-- Every vector name in a block is a register of `file`. -/
+def ymmAllPhysicalIn (file : List String) (block : List YmmInstr) : Bool :=
+  block.all (fun i => (ymmNamesOf i).all (fun n => file.contains n))
 
 /-! ## Static pins
 

@@ -15,7 +15,10 @@ The 24-round permutation of four independent Keccak states at once, one state
 per 64-bit lane of each `%ymm` register, written as a `List YmmInstr` over
 virtual lane names and placed in registers by `YmmRegAlloc`. No register or
 stack slot is chosen by hand: the program names values, the allocator decides
-which live in `%ymm0 .. %ymm12`, and the rest are spilled to 32-byte frame cells.
+which live in registers, and the rest are spilled to 32-byte frame cells, a cell
+being shared by spilled names whose live ranges are disjoint. The AVX2 render
+allocates over `%ymm0 .. %ymm12`; the selected render, which needs AVX-512VL,
+allocates over `%ymm0 .. %ymm12` and `%ymm16 .. %ymm31`.
 
 Names are single-assignment per round (`a{r}_{x}{y}` is lane `(x, y)` entering
 round `r`), so each value's live range is at most about a round. One name reused
@@ -40,6 +43,7 @@ through `%rcx`.
 * `keccakYmm4Program`: the body, optionally passed through `YmmSelect.selectYmm`.
 * `keccakYmm4Asm`: allocation, materialization and the AT&T text.
 * `keccakYmm4Stats`: instruction and memory-access counts of the rendered kernel.
+* `keccakYmm4Checks`: EVEX spellability and frame-cell disjointness of the kernel.
 -/
 
 @[expose] public section
@@ -155,20 +159,41 @@ theorem keccakYmm4Program_mem (select : Bool) (s : YmmState) :
 
 /-! ## 3. Allocation and the rendered kernel -/
 
-/-- Registers withheld from allocation, used by `ymmMaterialize` for spilled
-    operands. `vpternlogq` reads three names, so three are withheld. -/
+/-- The candidate scratch registers for spilled operands, withheld from
+    allocation from the front as `ymmAllocFewestScratch` needs them.
+    `vpternlogq` reads three names, so at most three are needed. -/
 def scratchRegs : List String := ["%ymm13", "%ymm14", "%ymm15"]
 
+/-- The register file of a render: the sixteen AVX2 registers, or the
+    thirty-two AVX-512VL registers for the selected program, which already
+    requires AVX-512VL for `vprolq` and `vpternlogq`. -/
+def regFile (select : Bool) : List String :=
+  if select then evexYmmFile else ymmFile
+
+/-- The live ranges of the program. -/
+def ranges (select : Bool) : List LiveRange :=
+  ymmLiveRanges (keccakYmm4Program select)
+
+/-- The allocation of the program: linear scan over `regFile` withholding the
+    fewest scratch registers its spills need, frame cells reused across
+    disjoint live ranges. Returns the withheld registers and the decisions. -/
+def allocation (select : Bool) : List String × List (String × Slot) :=
+  ymmAllocFewestScratch (regFile select) [] scratchRegs 0
+    (keccakYmm4Program select) (ranges select)
+
+/-- The scratch registers the allocation withholds. -/
+def scratchUsed (select : Bool) : List String := (allocation select).1
+
 /-- The allocator's decisions for the program. -/
-def decisions (select : Bool) : List (String × Slot) :=
-  ymmSpillAlloc [] scratchRegs 0 (keccakYmm4Program select)
+def decisions (select : Bool) : List (String × Slot) := (allocation select).2
 
 /-- The program with every name placed in a physical register. -/
 def materialized (select : Bool) : List YmmInstr :=
-  ymmMaterialize (decisions select) scratchRegs (keccakYmm4Program select)
+  let a := allocation select
+  ymmMaterialize a.2 a.1 (keccakYmm4Program select)
 
 /-- Bytes of stack frame the spilled values occupy. -/
-def frameBytes (select : Bool) : Nat := spillCount (decisions select) * 32
+def frameBytes (select : Bool) : Nat := frameExtent 0 (decisions select)
 
 /-- The symbol the kernel exports. -/
 def symbol : String := "keccak_f1600_x4"
@@ -183,7 +208,7 @@ def rcTable : List String :=
     32 bytes, and restored from `%r10`, which no vector instruction touches;
     `%rax` returns the output pointer. -/
 def keccakYmm4Asm (select : Bool) : String :=
-  let body := renderYmmBlockBody (materialized select)
+  let body := (materialized select).map renderYmmInstrEvex
   let pre :=
     [ "\t.att_syntax", "\t.text", "\t.p2align\t5"
     , "\t.globl\t" ++ symbol, "\t.type\t" ++ symbol ++ ", @function"
@@ -213,6 +238,15 @@ def keccakYmm4Stats (select : Bool) : Nat × Nat × Nat × Nat × Nat × Bool :=
   let m := materialized select
   let d := decisions select
   ( m.length, (m.filter isStackAccess).length, spillCount d, residentCount d
-  , ymmScratchNeeded d (keccakYmm4Program select), ymmAllPhysical m )
+  , ymmScratchNeeded d (keccakYmm4Program select), ymmAllPhysicalIn (regFile select) m )
+
+/-- `(the withheld scratch registers cover the spills, every instruction has an
+    EVEX spelling, frame cells are shared only across disjoint live ranges)` for
+    the kernel. -/
+def keccakYmm4Checks (select : Bool) : Bool × Bool × Bool :=
+  let a := allocation select
+  ( ymmScratchNeeded a.2 (keccakYmm4Program select) ≤ a.1.length
+  , (materialized select).all evexSpellable
+  , slotsReuseDisjoint (ranges select) a.2 )
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
