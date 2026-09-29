@@ -86,17 +86,8 @@ def signExt8 (b : BitVec 8) : Nat := (b.signExtend 64).toNat
 def aluImm8Mnemonic (digit : Nat) : Option (String → JOperand → JInstr 64) :=
   if digit = 7 then some JInstr.cmp else aluImmMnemonic digit
 
-/-- The group-2 `/ext` of the shift-by-one form `D1 /ext`: `SHL = /4`, `SHR = /5`,
-    `SAR = /7`. -/
-def shift1Mnemonic (ext : Nat) : Option (String → JOperand → JInstr 64) :=
-  if ext = 4 then some JInstr.shl
-  else if ext = 5 then some JInstr.shr
-  else if ext = 7 then some JInstr.sar
-  else none
-
-/-- The `REX.W`-prefixed forms `decodeRex` has no arm for: the reg-reg compare
-    `39 /r`, the sign-extended-`imm8` group-1 form `83 /digit ib`, and the
-    shift-by-one form `D1 /ext`, read as the shift by the immediate `1`. The fourth
+/-- The `REX.W`-prefixed forms `decodeJ1_6` has no arm for: the sign-extended-`imm8`
+    group-1 form `83 /digit ib`. The second
     arm, the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
     `REX.X`), so `decodeLinstr` reaches it on no stream. An index field of `100`
@@ -110,15 +101,12 @@ def decodeRexExt (r : BitVec 8) :
       if SailX86Decoder.rexW r ≠ 1 then none
       else if modField modrm = 3 then
         let rm := regName (rexB r * 8 + rmField modrm)
-        if op.toNat = 0x39 then some (.cmp rm (.reg reg), rest)
-        else if op.toNat = 0x83 then
+        if op.toNat = 0x83 then
           match rest with
           | ib :: rest1 =>
               (aluImm8Mnemonic (regField modrm)).map
                 fun mk => (mk rm (.imm (signExt8 ib)), rest1)
           | [] => none
-        else if op.toNat = 0xd1 then
-          (shift1Mnemonic (regField modrm)).map fun mk => (mk rm (.imm 1), rest)
         else none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
         match rest with
@@ -136,16 +124,17 @@ def decodeRexExt (r : BitVec 8) :
       else none
   | _ => none
 
-/-- Decode one instruction off the front of a byte stream. `decodeJ1` is tried
-    first, so the two decoders agree wherever `decodeJ1` succeeds; the remaining
-    arms are `ret` (`C3`), `jcc rel8` (`70+cc cb`), `jcc rel32` (`0F 80+cc cd`),
-    the `REX`-prefixed forms of `decodeRexExt`, and the 32-bit `MOV $imm32, %r32`
-    without a prefix (`B8+rd id`), which zero-extends into the 64-bit register and
-    is read as the 64-bit `MOV` of the immediate. -/
+/-- Decode one instruction off the front of a byte stream. `decodeJ1_6` (`decodeJ1`,
+    the shift-by-one forms and the register-direct compares) is tried first, so the
+    decoders agree wherever `decodeJ1_6` succeeds; the remaining arms are `ret`
+    (`C3`), `jcc rel8` (`70+cc cb`), `jcc rel32` (`0F 80+cc cd`), the `REX`-prefixed
+    forms of `decodeRexExt`, and the 32-bit `MOV $imm32, %r32` without a prefix
+    (`B8+rd id`), which zero-extends into the 64-bit register and is read as the
+    64-bit `MOV` of the immediate. -/
 def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
   | [] => none
   | b0 :: rest =>
-      match decodeJ1 (b0 :: rest) with
+      match decodeJ1_6 (b0 :: rest) with
       | some (i, r) => some (.op i, r)
       | none =>
         if b0.toNat = 0xc3 then some (.ret, rest)
@@ -171,13 +160,19 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
           | _ => none
         else none
 
+/-- `decodeLinstr` extends `decodeJ1_6`: on a stream `decodeJ1_6` decodes, it returns
+    the same instruction and the same remaining bytes. -/
+theorem decodeLinstr_of_decodeJ1_6 {bs rest : List (BitVec 8)} {i : JInstr 64}
+    (h : decodeJ1_6 bs = some (i, rest)) : decodeLinstr bs = some (.op i, rest) := by
+  cases bs with
+  | nil => simp [decodeJ1_6, decodeJ1, decodeShift1, decodeCmp] at h
+  | cons b0 t => simp only [decodeLinstr, h]
+
 /-- `decodeLinstr` extends `decodeJ1`: on a stream `decodeJ1` decodes, it returns the
     same instruction and the same remaining bytes. -/
 theorem decodeLinstr_of_decodeJ1 {bs rest : List (BitVec 8)} {i : JInstr 64}
-    (h : decodeJ1 bs = some (i, rest)) : decodeLinstr bs = some (.op i, rest) := by
-  cases bs with
-  | nil => simp [decodeJ1] at h
-  | cons b0 t => simp only [decodeLinstr, h]
+    (h : decodeJ1 bs = some (i, rest)) : decodeLinstr bs = some (.op i, rest) :=
+  decodeLinstr_of_decodeJ1_6 (decodeJ1_6_of_decodeJ1 _ _ _ h)
 
 /-! ## 2. Round trips of the shapes `decodeJ1` covers, over register numbers -/
 
@@ -322,10 +317,22 @@ theorem decodeLinstr_movImm (d v : Nat) (rest : List (BitVec 8))
 
 /-! ## 3. Round trips of the shapes outside `decodeJ1` -/
 
-/-- A `REX.W` stream `decodeRex` rejects is routed to `decodeRexExt`. -/
+/-- On a stream whose first byte is not a `REX` prefix, `decodeJ1_6` is `decodeJ1`:
+    the shift-by-one forms and the compares all start with a `REX.W` byte. -/
+theorem decodeJ1_6_of_not_rex {b0 : BitVec 8} {rest : List (BitVec 8)}
+    (h : isRex b0 = false) : decodeJ1_6 (b0 :: rest) = decodeJ1 (b0 :: rest) := by
+  unfold decodeJ1_6
+  cases decodeJ1 (b0 :: rest) with
+  | some p => rfl
+  | none =>
+    rcases rest with _ | ⟨a, _ | ⟨c, t⟩⟩ <;> simp [decodeShift1, decodeCmp, h]
+
+/-- A `REX.W` stream `decodeJ1_6` rejects is routed to `decodeRexExt`. -/
 theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1)
     (rest : List (BitVec 8))
-    (hnone : decodeRex (BitVec.ofNat 8 (rex 1 r x b)) rest = none) :
+    (hnone : decodeRex (BitVec.ofNat 8 (rex 1 r x b)) rest = none)
+    (hs : decodeShift1 (BitVec.ofNat 8 (rex 1 r x b) :: rest) = none)
+    (hc : decodeCmp (BitVec.ofNat 8 (rex 1 r x b) :: rest) = none) :
     decodeLinstr (BitVec.ofNat 8 (rex 1 r x b) :: rest)
       = (decodeRexExt (BitVec.ofNat 8 (rex 1 r x b)) rest).map fun p => (.op p.1, p.2) := by
   have hc3 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0xc3) := by
@@ -335,7 +342,10 @@ theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb
     rw [BitVec.toNat_ofNat]; unfold rex; omega
   have h0f : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0x0f) := by
     rw [BitVec.toNat_ofNat]; unfold rex; omega
-  simp only [decodeLinstr, decodeJ1_rex _ _ _ hr hx hb, hnone, if_neg hc3, if_neg h7,
+  have h6 : decodeJ1_6 (BitVec.ofNat 8 (rex 1 r x b) :: rest) = none := by
+    rw [decodeJ1_6_of_none _ (by rw [decodeJ1_rex _ _ _ hr hx hb]; exact hnone), hs, hc]
+    rfl
+  simp only [decodeLinstr, h6, if_neg hc3, if_neg h7,
     if_neg h0f, isRex_rex _ _ _ hr hx hb, if_true]
 
 /-- The reg-reg compare `CMP %s, %d` (`REX.W 39 /r`) decodes to `cmp d s`. -/
@@ -345,15 +355,17 @@ theorem decodeLinstr_cmpRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (h
   have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit s 3) 0 (bit d 3)))
       (BitVec.ofNat 8 0x39 :: BitVec.ofNat 8 (modRMReg s d) :: rest) = none := by
     simp [decodeRex, modField_modRMReg, aluMnemonic]
-  simp only [encAluRRw, rexOpt_w1, List.cons_append, List.nil_append,
-    decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
-    decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
-    BitVec.toNat_ofNat,
+  apply decodeLinstr_of_decodeJ1_6
+  simp only [encAluRRw, rexOpt_w1, List.cons_append, List.nil_append]
+  rw [decodeJ1_6_of_none _ (by
+    rw [decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _)]; exact hnone)]
+  simp only [decodeShift1, decodeCmp,
+    isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
-    not_true_eq_false, if_false,
-    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, bitsplit _ hs, if_true]
-  rfl
+    rexB_rex _ _ _ (bit_le_one _ _), BitVec.toNat_ofNat, modField_modRMReg,
+    regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hs, true_and, if_true]
+  simp
 
 /-- Sign-extending the `imm8` byte of a value the short group-1 form admits at
     `REX.W = 1` recovers the value. -/
@@ -379,8 +391,15 @@ theorem decodeLinstr_aluImm8 (digit : Nat) (mk : String → JOperand → JInstr 
       (BitVec.ofNat 8 0x83 :: BitVec.ofNat 8 (modRMReg digit d)
         :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
     simp [decodeRex, modField_modRMReg, aluMnemonic]
+  have hs : decodeShift1 (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)) :: BitVec.ofNat 8 0x83
+      :: BitVec.ofNat 8 (modRMReg digit d) :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
+    simp [decodeShift1]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)) :: BitVec.ofNat 8 0x83
+      :: BitVec.ofNat 8 (modRMReg digit d) :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
+    simp [decodeCmp]
   simp only [encAluImm8, rexOpt_w1, List.cons_append, List.nil_append,
-    decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
+    decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone
+      hs hc,
     decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     BitVec.toNat_ofNat, hd7, halu,
     rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
@@ -388,25 +407,28 @@ theorem decodeLinstr_aluImm8 (digit : Nat) (mk : String → JOperand → JInstr 
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true, signExt8_imm8 v hv]
   rfl
 
-/-- The shift-by-one form `op $1, %d` (`REX.W D1 /ext`) decodes to the shift its
-    extension names, by the immediate `1`. -/
-theorem decodeLinstr_shift1 (ext : Nat) (mk : String → JOperand → JInstr 64) (d : Nat)
-    (rest : List (BitVec 8)) (hext : ext < 8) (hd : d < 16)
-    (hmk : shift1Mnemonic ext = some mk) :
-    decodeLinstr (encShift1 1 ext d ++ rest) = some (.op (mk (regName d) (.imm 1)), rest) := by
+/-- The shift-by-one form `op $1, %d` (`REX.W D1 /ext`) at `ext = 4`, `5` or `7`
+    decodes to `shl`, `shr` or `sar` by the immediate `1`. -/
+theorem decodeLinstr_shift1 (ext d : Nat) (rest : List (BitVec 8))
+    (hext : ext = 4 ∨ ext = 5 ∨ ext = 7) (hd : d < 16) :
+    decodeLinstr (encShift1 1 ext d ++ rest)
+      = some (.op ((if ext = 4 then JInstr.shl else if ext = 5 then JInstr.shr
+          else JInstr.sar) (regName d) (.imm 1)), rest) := by
   have he7 : ext &&& 7 = ext := by
     rw [Nat.and_two_pow_sub_one_eq_mod ext 3]; omega
   have hnone : decodeRex (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)))
       (BitVec.ofNat 8 0xd1 :: BitVec.ofNat 8 (modRMReg ext d) :: rest) = none := by
     simp [decodeRex, modField_modRMReg, aluMnemonic]
-  simp only [encShift1, rexOpt_w1, List.cons_append, List.nil_append,
-    decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
-    decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
-    BitVec.toNat_ofNat, he7, hmk,
-    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
-    not_true_eq_false, if_false,
-    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true]
-  rfl
+  apply decodeLinstr_of_decodeJ1_6
+  simp only [encShift1, rexOpt_w1, List.cons_append, List.nil_append]
+  rw [decodeJ1_6_of_none _ (by
+    rw [decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _)]; exact hnone)]
+  simp only [decodeShift1,
+    isRex_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), BitVec.toNat_ofNat, modField_modRMReg,
+    regField_modRMReg, rmField_modRMReg, he7, bitsplit _ hd, true_and]
+  rcases hext with rfl | rfl | rfl <;> simp
 
 /-- The 32-bit `MOV $imm32, %r32` without a prefix (`B8+rd id`), for a destination
     below `r8` and a value below `2 ^ 32`, decodes to the 64-bit `MOV` of the value:
@@ -431,7 +453,9 @@ theorem decodeLinstr_movImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 8)
     have e4 : ¬ (0x40 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x4f) := by omega
     have e5 : ¬ (0xb8 + d = 0x0f) := by omega
     simp [e1, e2, e3, e4, e5]
-  simp only [decodeLinstr, hj, hop, isRex]
+  have hnr : isRex (BitVec.ofNat 8 (0xb8 + d % 8)) = false := by
+    simp only [isRex, hop]; simp only [decide_eq_false_iff_not]; omega
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, hop, isRex]
   have f1 : ¬ (0xb8 + d = 0xc3) := by omega
   have f2 : ¬ (0x70 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x7f) := by omega
   have f3 : ¬ (0xb8 + d = 0x0f) := by omega
@@ -515,8 +539,10 @@ theorem decodeLinstr_jcc8 (cc : String) (d : Int) (rest : List (BitVec 8))
   have hk := ccNibble_le cc
   have hb : (BitVec.ofNat 8 (0x70 + (jccOpcode cc - 0x80))).toNat = 0x70 + ccNibble cc := by
     rw [BitVec.toNat_ofNat]; unfold ccNibble at *; omega
-  simp only [encJcc8, List.cons_append, List.nil_append, decodeLinstr, decodeJ1, isRex, hb,
-    sdisp8_disp8 d h]
+  have hnr : isRex (BitVec.ofNat 8 (0x70 + (jccOpcode cc - 0x80))) = false := by
+    simp only [isRex, hb]; simp only [decide_eq_false_iff_not]; omega
+  simp only [encJcc8, List.cons_append, List.nil_append, decodeLinstr,
+    decodeJ1_6_of_not_rex hnr, decodeJ1, isRex, hb, sdisp8_disp8 d h]
   have e1 : ¬ (0x70 + ccNibble cc = 0x66) := by omega
   have e2 : ¬ (0x70 + ccNibble cc = 0xf3) := by omega
   have e3 : ¬ (0x70 + ccNibble cc = 0xc4) := by omega
@@ -536,7 +562,9 @@ theorem decodeLinstr_0f (o d0 d1 d2 d3 : BitVec 8) (r : List (BitVec 8)) (ho : o
   have h : decodeJ1 (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r) = none := by
     show decodeSetcBare (o :: d0 :: d1 :: d2 :: d3 :: r) = none
     simp [decodeSetcBare, ho]
-  simp only [decodeLinstr, h]
+  have h6 : decodeJ1_6 (BitVec.ofNat 8 0x0f :: o :: d0 :: d1 :: d2 :: d3 :: r) = none := by
+    rw [decodeJ1_6_of_not_rex (by decide)]; exact h
+  simp only [decodeLinstr, h6]
   all_goals rfl
 
 /-- The value a `rel32` field carries for a displacement: its signed 32-bit
@@ -577,6 +605,8 @@ theorem decodeLinstr_jcc32 (cc : String) (d : Int) (rest : List (BitVec 8))
 /-- `ret` (`C3`) decodes to `ret`. -/
 theorem decodeLinstr_ret (rest : List (BitVec 8)) :
     decodeLinstr (LeafBytes.encRet ++ rest) = some (.ret, rest) := by
+  show decodeLinstr (BitVec.ofNat 8 0xc3 :: rest) = _
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex (show isRex (BitVec.ofNat 8 0xc3) = false by decide)]
   rfl
 
 /-! ## 4. The body encoder as a recursion -/

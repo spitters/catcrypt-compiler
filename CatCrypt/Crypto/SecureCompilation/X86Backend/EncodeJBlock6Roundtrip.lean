@@ -34,10 +34,9 @@ than through `blockCovered`.
 
 ## Main results
 
-* `decodeShift1`, `decodeCmp`, `decodeJ1_6`, `decodeJStream6`: the extended
-  decoder and its stream version.
-* `decodeJ1_6_of_decodeJ1`: wherever `decodeJ1` succeeds, `decodeJ1_6` returns
-  the same result.
+* `decodeJStream6`: the stream version of the extended decoder
+  `SailX86Decoder.decodeJ1_6` (`decodeShift1`, `decodeCmp`), which
+  `LprogBytesDecode.decodeLinstr` also runs first.
 * `roundtrip_movImm6`, `roundtrip_shl1`, `roundtrip_shr1`: the three arms where
   `encodeJInstr6` differs from `encodeJInstr` decode back to themselves.
 * `roundtrip_cmpRR`, `roundtrip_cmpImm`, `roundtrip_cmpInstr`,
@@ -66,46 +65,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encMovImmw encShift1 rexOpt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms (encodeJInstr6 encodeJBlock6)
 
-/-! ## 1. The extended decoder -/
+/-! ## 1. The extended decoder
 
-/-- The `REX.W D1 /4` (`shl $1`) and `REX.W D1 /5` (`shr $1`) register-direct
-    shift-by-one forms. -/
-def decodeShift1 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
-  | r :: op :: modrm :: rest =>
-      if isRex r ∧ rexW r = 1 ∧ op.toNat = 0xd1 ∧ modField modrm = 3 then
-        let dst := regName (rexB r * 8 + rmField modrm)
-        if regField modrm = 4 then some (.shl dst (.imm 1), rest)
-        else if regField modrm = 5 then some (.shr dst (.imm 1), rest)
-        else none
-      else none
-  | _ => none
-
-/-- The register-direct compares `REX.W 39 /r` (`cmp %reg, %rm`, computing
-    `rm - reg`) and `REX.W 81 /7 id` (`cmp $imm32, %rm`, the immediate
-    sign-extended to 64 bits). -/
-def decodeCmp : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
-  | r :: op :: modrm :: rest =>
-      if isRex r ∧ rexW r = 1 ∧ modField modrm = 3 then
-        let a := regName (rexB r * 8 + rmField modrm)
-        if op.toNat = 0x39 then
-          some (.cmp a (.reg (regName (rexR r * 8 + regField modrm))), rest)
-        else if op.toNat = 0x81 ∧ regField modrm = 7 then
-          match rest with
-          | j0 :: j1 :: j2 :: j3 :: rest1 =>
-              some (.cmp a (.imm (sext32 (j0.toNat + j1.toNat * 0x100
-                + j2.toNat * 0x10000 + j3.toNat * 0x1000000))), rest1)
-          | _ => none
-        else none
-      else none
-  | _ => none
-
-/-- Decode one instruction off the front of a byte stream: `decodeJ1`, and on the
-    streams `decodeJ1` rejects, the `D1` shift-by-one forms and then the
-    compares. -/
-def decodeJ1_6 (bs : List (BitVec 8)) : Option (JInstr 64 × List (BitVec 8)) :=
-  match decodeJ1 bs with
-  | some r => some r
-  | none => (decodeShift1 bs).or (decodeCmp bs)
+`SailX86Decoder.decodeJ1_6` is `decodeJ1` extended by the shift-by-one forms
+(`decodeShift1`) and the register-direct compares (`decodeCmp`). -/
 
 /-- Decode a byte stream into `n` instructions with `decodeJ1_6`, requiring the
     stream to be consumed exactly. -/
@@ -115,20 +78,6 @@ def decodeJStream6 : Nat → List (BitVec 8) → Option (List (JInstr 64))
       match decodeJ1_6 bs with
       | some (i, rest) => (decodeJStream6 n rest).map (i :: ·)
       | none => none
-
-/-! ## 2. Relation to `decodeJ1` -/
-
-/-- Wherever `decodeJ1` succeeds, `decodeJ1_6` returns the same result. -/
-theorem decodeJ1_6_of_decodeJ1 (bs rest : List (BitVec 8)) (i : JInstr 64)
-    (h : decodeJ1 bs = some (i, rest)) :
-    decodeJ1_6 bs = some (i, rest) := by
-  simp only [decodeJ1_6, h]
-
-/-- On a stream `decodeJ1` rejects, `decodeJ1_6` is `decodeShift1`, then
-    `decodeCmp`. -/
-theorem decodeJ1_6_of_none (bs : List (BitVec 8)) (h : decodeJ1 bs = none) :
-    decodeJ1_6 bs = (decodeShift1 bs).or (decodeCmp bs) := by
-  simp only [decodeJ1_6, h]
 
 /-! ## 3. The two spellings of the `imm32` side condition -/
 

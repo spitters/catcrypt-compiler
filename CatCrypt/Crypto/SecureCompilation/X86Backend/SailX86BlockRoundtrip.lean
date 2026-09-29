@@ -417,6 +417,58 @@ def decodeJStream : Nat → List (BitVec 8) → Option (List (JInstr 64))
       | some (i, rest) => (decodeJStream n rest).map (i :: ·)
       | none => none
 
+/-- The `REX.W D1 /4` (`shl $1`), `REX.W D1 /5` (`shr $1`) and `REX.W D1 /7`
+    (`sar $1`) register-direct shift-by-one forms. -/
+def decodeShift1 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
+  | r :: op :: modrm :: rest =>
+      if isRex r ∧ rexW r = 1 ∧ op.toNat = 0xd1 ∧ modField modrm = 3 then
+        let dst := regName (rexB r * 8 + rmField modrm)
+        if regField modrm = 4 then some (.shl dst (.imm 1), rest)
+        else if regField modrm = 5 then some (.shr dst (.imm 1), rest)
+        else if regField modrm = 7 then some (.sar dst (.imm 1), rest)
+        else none
+      else none
+  | _ => none
+
+/-- The register-direct compares `REX.W 39 /r` (`cmp %reg, %rm`, computing
+    `rm - reg`) and `REX.W 81 /7 id` (`cmp $imm32, %rm`, the immediate
+    sign-extended to 64 bits). -/
+def decodeCmp : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
+  | r :: op :: modrm :: rest =>
+      if isRex r ∧ rexW r = 1 ∧ modField modrm = 3 then
+        let a := regName (rexB r * 8 + rmField modrm)
+        if op.toNat = 0x39 then
+          some (.cmp a (.reg (regName (rexR r * 8 + regField modrm))), rest)
+        else if op.toNat = 0x81 ∧ regField modrm = 7 then
+          match rest with
+          | j0 :: j1 :: j2 :: j3 :: rest1 =>
+              some (.cmp a (.imm (sext32 (j0.toNat + j1.toNat * 0x100
+                + j2.toNat * 0x10000 + j3.toNat * 0x1000000))), rest1)
+          | _ => none
+        else none
+      else none
+  | _ => none
+
+/-- Decode one instruction off the front of a byte stream: `decodeJ1`, and on the
+    streams `decodeJ1` rejects, the `D1` shift-by-one forms and then the
+    compares. -/
+def decodeJ1_6 (bs : List (BitVec 8)) : Option (JInstr 64 × List (BitVec 8)) :=
+  match decodeJ1 bs with
+  | some r => some r
+  | none => (decodeShift1 bs).or (decodeCmp bs)
+
+/-- Wherever `decodeJ1` succeeds, `decodeJ1_6` returns the same result. -/
+theorem decodeJ1_6_of_decodeJ1 (bs rest : List (BitVec 8)) (i : JInstr 64)
+    (h : decodeJ1 bs = some (i, rest)) :
+    decodeJ1_6 bs = some (i, rest) := by
+  simp only [decodeJ1_6, h]
+
+/-- On a stream `decodeJ1` rejects, `decodeJ1_6` is `decodeShift1`, then
+    `decodeCmp`. -/
+theorem decodeJ1_6_of_none (bs : List (BitVec 8)) (h : decodeJ1 bs = none) :
+    decodeJ1_6 bs = (decodeShift1 bs).or (decodeCmp bs) := by
+  simp only [decodeJ1_6, h]
+
 /-! ## 3. Resolving register names through the allocation -/
 
 /-- The canonical `%rN` name the encoder resolves a block-level register name to:
