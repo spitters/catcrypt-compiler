@@ -6221,6 +6221,34 @@ theorem leafCallAgreesArgsTys_callee {bi : Builtins} {leafSpec : LeafSpec} {N : 
     simp only [calleeOut, hval]
     exact hbr
 
+/-- A value of a callee: as many argument values as parameters, those of the scalar
+    parameters scalar words, none a control-flow value, and the reading from the
+    parameters bound ending in that value. -/
+theorem calleeRun_inv {R : ExitRes} {ps : List String} {read : Env → Outcome} {ρ : Env}
+    {vals : List Value} {v : Value} (h : calleeRun A R ps read ρ vals = some v) :
+    List.Forall₂ (fun p v => (A.lookup p = none → ScalarValN v) ∧ v.isControlFlow = false)
+      ps vals ∧ read (bindParams ρ ps vals) = .val v := by
+  unfold calleeRun at h
+  split_ifs at h with hg
+  obtain ⟨hlen, hsc, hncf⟩ := hg
+  rcases hrd : read (bindParams ρ ps vals) with w | _ | _ | _ | _ <;> rw [hrd] at h <;>
+    try cases h
+  simp only at h
+  split_ifs at h with hw
+  cases h
+  refine ⟨?_, rfl⟩
+  rw [List.forall₂_iff_get]
+  refine ⟨hlen.symm, fun i h1 h2 => ⟨fun hA => ?_, ?_⟩⟩
+  · have hz : (ps[i], vals[i]) ∈ ps.zip vals := by
+      rw [List.mem_iff_getElem]
+      exact ⟨i, by simp [h1, h2], by simp⟩
+    have := List.all_eq_true.mp hsc _ hz
+    simp only [List.get_eq_getElem] at hA ⊢
+    simp only [hA, Option.isSome_none, Bool.false_or] at this
+    exact (scalarValNB_iff _).mp this
+  · have := List.all_eq_true.mp hncf _ (List.getElem_mem h2)
+    simpa using this
+
 /-- A value of a callee with a scalar result is a scalar word. -/
 theorem calleeRun_scalar {R : ExitRes} {ps : List String} {read : Env → Outcome} {ρ : Env}
     {vals : List Value} {v : Value} (hR : R = .scalar) (h : calleeRun A R ps read ρ vals = some v) :
