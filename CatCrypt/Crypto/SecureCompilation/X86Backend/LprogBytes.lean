@@ -491,7 +491,7 @@ def fitsImm8S (w v : Nat) : Bool :=
   v < 128 || (2 ^ bits - 128 ≤ v && v < 2 ^ bits)
 
 /-- Does the immediate `v` denote itself through the `imm32` field of a group-1 form
-    (`81 /digit id`) under op width `w`? At `w = 1` the CPU sign-extends the field
+    (`81 /digit id`) or of `IMUL` (`69 /r id`) under op width `w`? At `w = 1` the CPU sign-extends the field
     to 64 bits, so `v` must be a small positive (`v < 2^31`) or the 64-bit image of a
     small negative (`v ≥ 2^64 - 2^31`); at the 32-bit width every field value
     denotes itself. -/
@@ -549,8 +549,12 @@ def encImmOp (w : Nat) (base : String) (d : LOperand) (v : Nat) : List (BitVec 8
       | "MOVQ" => if fitsImm32S then encMovImmw 1 n v else encMovImm64 n v
       -- `IMUL $imm, %d` (the `MUL` mnemonic with an immediate source): gas picks
       -- the `6B /r ib` sign-extended-imm8 form when the value fits a signed byte
-      -- (the fe25519 Solinas `imul $19`/`imul $38`), else the `69 /r id` imm32 form.
-      | "MUL" => if fitsImm8S w v then encImulImm8w w n v else encImulImm32w w n v
+      -- (the fe25519 Solinas `imul $19`/`imul $38`), else the `69 /r id` imm32 form
+      -- when the value fits the sign-extended field, and no bytes otherwise.
+      | "MUL" =>
+          if fitsImm8S w v then encImulImm8w w n v
+          else if imm32Fits w v then encImulImm32w w n v
+          else []
       | _ =>
         match shiftImmExt base with
         -- gas picks the `D1 /ext` 1-bit short form for a shift count of exactly 1
