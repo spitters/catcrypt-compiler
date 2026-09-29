@@ -1369,8 +1369,9 @@ theorem exitCTT_cfBreak (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
   cases fl with
   | none => cases tl <;> simp [exitSimOkT] at hok
   | some r =>
-    have hK' : haxToLowCTKT A tl (some r) (.cfBreak p) = (exitStore p).map fun s => (s, true) := by
-      cases tl <;> rfl
+    have hK' : haxToLowCTKT A tl (some r) (.cfBreak p) = (exitStore p).map fun s => (s, true) :=
+      haxToLowCTKT_cfBreak_eq _ _ _ _
+        (exitScE_of_payloadOk (by cases tl <;> simpa [exitSimOkT] using hok))
     rw [hK'] at hK
     obtain ⟨s', hs', hsx⟩ := Option.map_eq_some_iff.mp hK
     simp only [Prod.mk.injEq] at hsx
@@ -1506,7 +1507,7 @@ theorem exitCTT_ifThenElse (v : String) (t e : ImpExpr)
     cases tl <;> cases fl <;>
       simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc] using hok
   have hvs : A.lookup v = none := by simpa [exitSc] using hok'.2.1
-  rw [haxToLowCTKT_ifThenElse_eq] at hK
+  rw [haxToLowCTKT_ifThenElse_eq _ _ _ _ _ _ hok'.2.1] at hK
   rcases hT' : haxToLowCTKT A tl fl t with _ | ⟨tC, xt⟩
   · rw [hT'] at hK; cases hK
   rcases hE : haxToLowCTKT A tl fl e with _ | ⟨eC, xe⟩
@@ -1777,7 +1778,7 @@ theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) 
       cases fl <;> simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
         using hok
     have hcs : A.lookup c = none := by simpa [exitSc] using hok'.2.1
-    rw [haxToLowCTKT_whileFoldReturn_eq] at hK
+    rw [haxToLowCTKT_whileFoldReturn_eq _ _ _ _ hok'.2.1] at hK
     rcases hB : haxToLowCTKT A false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
     · rw [hB] at hK; cases hK
     rw [hB] at hK
@@ -1825,7 +1826,7 @@ theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitO
           and_assoc] using hok
       have hcs : A.lookup c = none := by simpa [exitSc] using hok'.2.1
       have hK0 := hK
-      rw [haxToLowCTKT_whileFold_some_eq] at hK
+      rw [haxToLowCTKT_whileFold_some_eq _ _ _ _ hok'.2.1] at hK
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK; cases hK
       rw [hB] at hK
@@ -1882,7 +1883,8 @@ theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (e
         using hok
     have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
     have hslot := runSlot_exitRunName hfl
-    rw [haxToLowCTKT_forFoldReturn_eq] at hK
+    rw [haxToLowCTKT_forFoldReturn_eq _ _ _ _ _ _
+      (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
     rcases hB : haxToLowCTKT A false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
     · rw [hB] at hK
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -1974,7 +1976,7 @@ theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A)
       cases fl <;> simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
         using hok
     have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
-    rw [haxToLowCTKT_forFoldRevReturn_eq] at hK
+    rw [haxToLowCTKT_forFoldRevReturn_eq _ _ _ _ _ _ hok'.2.2.1] at hK
     rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
     · rw [hFB] at hok'; cases hok'.1
     obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
@@ -2027,7 +2029,8 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
         subst hxb
         exact (exitOf_false_of_xT hL hok hfl hK0 hrun₁ hval₁ hag₁ hret₁ h₁).trans
           (exitOf_false_of_xT hL hok hfl hK0 hrun₂ hval₂ hag₂ hret₂ h₂).symm
-      rw [haxToLowCTKT_forFold_some_eq] at hK
+      rw [haxToLowCTKT_forFold_some_eq _ _ _ _ _ _
+        (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK
         rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -2145,7 +2148,7 @@ theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exit
         subst hxb
         exact (exitOf_false_of_xT hL hok hfl hK0 hrun₁ hval₁ hag₁ hret₁ h₁).trans
           (exitOf_false_of_xT hL hok hfl hK0 hrun₂ hval₂ hag₂ hret₂ h₂).symm
-      rw [haxToLowCTKT_forFoldRev_some_eq] at hK
+      rw [haxToLowCTKT_forFoldRev_some_eq _ _ _ _ _ _ hok'.2.2.1] at hK
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
       · rw [hFB] at hok'; cases hok'.1
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩

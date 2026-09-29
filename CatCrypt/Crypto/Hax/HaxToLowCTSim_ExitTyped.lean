@@ -700,11 +700,38 @@ def optHeadT (A : ExitTowers) (f : String) (args : List ImpExpr) (p : String) :
       | some tp =>
           if tp = t ∧ t ≠ .TU64 then some (callC, .RCopy ⟨p, t⟩ ⟨exitOptPayName, t⟩) else none
 
+/-- `x` is held in the scalar heap under `A`. -/
+def exitSc (A : ExitTowers) (x : String) : Bool := (A.lookup x).isNone
+
+/-- A variable `e` is held in the scalar heap under `A`; any other expression passes. -/
+def exitScE (A : ExitTowers) : ImpExpr → Bool
+  | .var x => exitSc A x
+  | _ => true
+
+/-- The runtime upper bound of a counted loop (`forBoundsRt lo hi`), if any, is held in
+    the scalar heap under `A`. -/
+def exitScRt (A : ExitTowers) (lo hi : ImpExpr) : Bool :=
+  match forBoundsRt lo hi with
+  | some (_, h) => exitSc A h
+  | none => true
+
+/-- The statements `haxToLowCTKT` lowers outside tail position by `haxToLowCT`: a
+    variable and the unit, both lowered to `RSkip`. -/
+def exitStmtOk : ImpExpr → Bool
+  | .var _ => true
+  | .unitVal => true
+  | _ => false
+
 /-- The exit-flag lowering under the placement `A`: `haxToLowCTK true` with the heads
     of `letHeadT A`, the tail store `resultStoreT A`, and, in an exit context, every
     counted loop with the bounds of `forBounds` or `forBoundsRt`, every downward counted
     loop with the bounds of `forBounds`, and every `while` loop on a variable lowered to
-    the exit-flag loop followed by `breakLoop`. -/
+    the exit-flag loop followed by `breakLoop`.  Every name the lowering reads from the
+    scalar heap is placed there: the guard of a conditional or of a `while` loop, the
+    counter and the runtime bound of a counted loop, and a variable `break` payload are
+    refused when `A` places them in a tower (`exitSc`, `exitScE`, `exitScRt`); outside
+    tail position only a variable or the unit is lowered by `haxToLowCT`
+    (`exitStmtOk`). -/
 def haxToLowCTKT (A : ExitTowers) : Bool → Option String → ImpExpr → Option (LowCT × Bool)
   | tl, fl, .letBind name val body =>
       match letHeadT A name val, haxToLowCTKT A tl fl body with
@@ -716,9 +743,11 @@ def haxToLowCTKT (A : ExitTowers) : Bool → Option String → ImpExpr → Optio
           some (if xa then .RSeq aC (exitGuard bC) else .RSeq aC bC, xa || xb)
       | _, _ => none
   | tl, fl, .ifThenElse (.var v) t e =>
-      match haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
-      | some (tC, xt), some (eC, xe) => some (.RIfNz v tC eC, xt || xe)
-      | _, _ => none
+      if exitSc A v then
+        match haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
+        | some (tC, xt), some (eC, xe) => some (.RIfNz v tC eC, xt || xe)
+        | _, _ => none
+      else none
   | tl, fl, .typeAscription e _ => haxToLowCTKT A tl fl e
   | tl, fl, .match_ (.app f args) [(.somePat (.varPat p), t), (.nonePat, e)] =>
       match optHeadT A f args p, haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
@@ -731,40 +760,53 @@ def haxToLowCTKT (A : ExitTowers) : Bool → Option String → ImpExpr → Optio
           some (.RSeq callC (.RIfNz exitOptTagS (.RSeq bindP tC) eC), xt || xe)
       | _, _, _ => none
   | false, fl, .whileFoldReturn (.var c) body =>
-      match haxToLowCTKT A false (some (exitRunName fl)) body with
-      | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
-      | none => none
+      if exitSc A c then
+        match haxToLowCTKT A false (some (exitRunName fl)) body with
+        | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
+        | none => none
+      else none
   | false, fl, .forFoldReturn i lo hi body =>
-      match forBounds lo hi, forBoundsRt lo hi,
-          haxToLowCTKT A false (some (exitRunName fl)) body with
-      | some (l, h), _, some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
-      | none, some (l, h), some (bC, _) =>
-          some (exitForLoopRt (exitRunName fl) i l h bC, true)
-      | _, _, _ => none
+      if exitSc A i && exitScRt A lo hi then
+        match forBounds lo hi, forBoundsRt lo hi,
+            haxToLowCTKT A false (some (exitRunName fl)) body with
+        | some (l, h), _, some (bC, _) => some (exitForLoop (exitRunName fl) i l h bC, true)
+        | none, some (l, h), some (bC, _) =>
+            some (exitForLoopRt (exitRunName fl) i l h bC, true)
+        | _, _, _ => none
+      else none
   | false, fl, .forFoldRevReturn i lo hi body =>
-      match forBounds lo hi, haxToLowCTKT A false (some (exitRunName fl)) body with
-      | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
-      | _, _ => none
+      if exitSc A i then
+        match forBounds lo hi, haxToLowCTKT A false (some (exitRunName fl)) body with
+        | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
+        | _, _ => none
+      else none
   | false, some r, .forFold i lo hi body =>
-      match forBounds lo hi, forBoundsRt lo hi,
-          haxToLowCTKT A false (some (exitRunName (some r))) body with
-      | some (l, h), _, some (bC, _) =>
-          some (breakLoop (exitForLoop (exitRunName (some r)) i l h bC), false)
-      | none, some (l, h), some (bC, _) =>
-          some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
-      | _, _, _ => none
+      if exitSc A i && exitScRt A lo hi then
+        match forBounds lo hi, forBoundsRt lo hi,
+            haxToLowCTKT A false (some (exitRunName (some r))) body with
+        | some (l, h), _, some (bC, _) =>
+            some (breakLoop (exitForLoop (exitRunName (some r)) i l h bC), false)
+        | none, some (l, h), some (bC, _) =>
+            some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
+        | _, _, _ => none
+      else none
   | false, some r, .forFoldRev i lo hi body =>
-      match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
-      | some (l, h), some (bC, _) =>
-          some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
-      | _, _ => none
+      if exitSc A i then
+        match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
+        | some (l, h), some (bC, _) =>
+            some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
+        | _, _ => none
+      else none
   | false, some r, .whileFold (.var c) body =>
-      match haxToLowCTKT A false (some (exitRunName (some r))) body with
-      | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
-      | none => none
-  | _, some _, .cfBreak e => (exitStore e).map fun s => (s, true)
+      if exitSc A c then
+        match haxToLowCTKT A false (some (exitRunName (some r))) body with
+        | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
+        | none => none
+      else none
+  | _, some _, .cfBreak e =>
+      if exitScE A e then (exitStore e).map fun s => (s, true) else none
   | true, _, e => (resultStoreT A e).map fun s => (s, false)
-  | false, _, e => (haxToLowCT e).map fun c => (c, false)
+  | false, _, e => if exitStmtOk e then (haxToLowCT e).map fun c => (c, false) else none
 
 /-- The lowering of a function body under the placement `A`: `haxToLowCTKT A` in tail
     position in the function context, inside the frame `exitFunction`. -/
@@ -1293,9 +1335,6 @@ def haxToLowCTFnI (e : ImpExpr) : Option LowCT := haxToLowCTFnT (exitTowers e) e
 
 /-! ## §6  The fragment -/
 
-/-- `x` is held in the scalar heap under `A`. -/
-def exitSc (A : ExitTowers) (x : String) : Bool := (A.lookup x).isNone
-
 /-- Every argument is a non-reserved variable. -/
 def exitArgsOk : List ImpExpr → Bool
   | [] => true
@@ -1308,6 +1347,18 @@ def forBoundsRtOkT (A : ExitTowers) (lo hi : ImpExpr) : Bool :=
   match forBoundsRt lo hi with
   | some (_, h) => !exitReserved h && exitSc A h
   | none => false
+
+/-- The bounds of a counted loop of the fragment have a scalar runtime bound. -/
+theorem exitScRt_of_ok {A : ExitTowers} {lo hi : ImpExpr}
+    (h : ((forBounds lo hi).isSome || forBoundsRtOkT A lo hi) = true) :
+    exitScRt A lo hi = true := by
+  unfold exitScRt
+  rcases hRt : forBoundsRt lo hi with _ | ⟨l, x⟩
+  · rfl
+  · obtain ⟨rfl, rfl⟩ := forBoundsRt_some hRt
+    simp only [forBoundsRtOkT, hRt, forBounds, Option.isSome_none, Bool.false_or,
+      Bool.and_eq_true] at h
+    exact h.2
 
 /-- A literal whose value is a scalar word: an unsigned literal of width at most `64`,
     an integer in `[0, 2^64)`, a bool or the unit. -/
@@ -1335,6 +1386,10 @@ def exitPayloadOk (A : ExitTowers) : ImpExpr → Bool
   | .lit l => exitLitOk l
   | .unitVal => true
   | _ => false
+
+theorem exitScE_of_payloadOk {A : ExitTowers} {p : ImpExpr} (h : exitPayloadOk A p = true) :
+    exitScE A p = true := by
+  cases p <;> simp_all [exitPayloadOk, exitScE]
 
 /-- The fragment the typed simulation covers under the placement `A` with result
     placement `R`, at tail position `tl` and loop context `il`: every name is
@@ -2599,25 +2654,27 @@ theorem haxToLowCTKT_seq_eq (tl : Bool) (fl : Option String) (a b : ImpExpr) :
   cases tl <;> cases fl <;> rfl
 
 theorem haxToLowCTKT_ifThenElse_eq (tl : Bool) (fl : Option String) (v : String)
-    (t e : ImpExpr) :
+    (t e : ImpExpr) (hv : exitSc A v = true) :
     haxToLowCTKT A tl fl (.ifThenElse (.var v) t e) =
       match haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
       | some (tC, xt), some (eC, xe) => some (.RIfNz v tC eC, xt || xe)
       | _, _ => none := by
-  cases tl <;> cases fl <;> rfl
+  cases tl <;> cases fl <;> exact if_pos hv
 
 theorem haxToLowCTKT_typeAscription_eq (tl : Bool) (fl : Option String) (e : ImpExpr)
     (ty : String) : haxToLowCTKT A tl fl (.typeAscription e ty) = haxToLowCTKT A tl fl e := by
   cases tl <;> cases fl <;> rfl
 
-theorem haxToLowCTKT_whileFoldReturn_eq (fl : Option String) (c : String) (body : ImpExpr) :
+theorem haxToLowCTKT_whileFoldReturn_eq (fl : Option String) (c : String) (body : ImpExpr)
+    (hc : exitSc A c = true) :
     haxToLowCTKT A false fl (.whileFoldReturn (.var c) body) =
       match haxToLowCTKT A false (some (exitRunName fl)) body with
       | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
       | none => none := by
-  cases fl <;> rfl
+  cases fl <;> exact if_pos hc
 
-theorem haxToLowCTKT_forFoldReturn_eq (fl : Option String) (i : String) (lo hi body : ImpExpr) :
+theorem haxToLowCTKT_forFoldReturn_eq (fl : Option String) (i : String) (lo hi body : ImpExpr)
+    (hi' : (exitSc A i && exitScRt A lo hi) = true) :
     haxToLowCTKT A false fl (.forFoldReturn i lo hi body) =
       match forBounds lo hi, forBoundsRt lo hi,
           haxToLowCTKT A false (some (exitRunName fl)) body with
@@ -2625,17 +2682,18 @@ theorem haxToLowCTKT_forFoldReturn_eq (fl : Option String) (i : String) (lo hi b
       | none, some (l, h), some (bC, _) =>
           some (exitForLoopRt (exitRunName fl) i l h bC, true)
       | _, _, _ => none := by
-  cases fl <;> rfl
+  cases fl <;> exact if_pos hi'
 
 theorem haxToLowCTKT_forFoldRevReturn_eq (fl : Option String) (i : String)
-    (lo hi body : ImpExpr) :
+    (lo hi body : ImpExpr) (hi' : exitSc A i = true) :
     haxToLowCTKT A false fl (.forFoldRevReturn i lo hi body) =
       match forBounds lo hi, haxToLowCTKT A false (some (exitRunName fl)) body with
       | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
       | _, _ => none := by
-  cases fl <;> rfl
+  cases fl <;> exact if_pos hi'
 
-theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr) :
+theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr)
+    (hi' : (exitSc A i && exitScRt A lo hi) = true) :
     haxToLowCTKT A false (some r) (.forFold i lo hi body) =
       match forBounds lo hi, forBoundsRt lo hi,
           haxToLowCTKT A false (some (exitRunName (some r))) body with
@@ -2643,20 +2701,27 @@ theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr) :
           some (breakLoop (exitForLoop (exitRunName (some r)) i l h bC), false)
       | none, some (l, h), some (bC, _) =>
           some (breakLoop (exitForLoopRt (exitRunName (some r)) i l h bC), false)
-      | _, _, _ => none := rfl
+      | _, _, _ => none := if_pos hi'
 
-theorem haxToLowCTKT_forFoldRev_some_eq (r i : String) (lo hi body : ImpExpr) :
+theorem haxToLowCTKT_forFoldRev_some_eq (r i : String) (lo hi body : ImpExpr)
+    (hi' : exitSc A i = true) :
     haxToLowCTKT A false (some r) (.forFoldRev i lo hi body) =
       match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
       | some (l, h), some (bC, _) =>
           some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
-      | _, _ => none := rfl
+      | _, _ => none := if_pos hi'
 
-theorem haxToLowCTKT_whileFold_some_eq (r c : String) (body : ImpExpr) :
+theorem haxToLowCTKT_whileFold_some_eq (r c : String) (body : ImpExpr)
+    (hc : exitSc A c = true) :
     haxToLowCTKT A false (some r) (.whileFold (.var c) body) =
       match haxToLowCTKT A false (some (exitRunName (some r))) body with
       | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
-      | none => none := rfl
+      | none => none := if_pos hc
+
+theorem haxToLowCTKT_cfBreak_eq (tl : Bool) (r : String) (p : ImpExpr)
+    (hp : exitScE A p = true) :
+    haxToLowCTKT A tl (some r) (.cfBreak p) = (exitStore p).map fun s => (s, true) := by
+  cases tl <;> exact if_pos hp
 
 end Equations
 
@@ -4197,7 +4262,7 @@ theorem exitSimTy_cfBreak (p : ImpExpr) : ExitSimTy bi N leafSpec br A R (.cfBre
         simp only [exitPayloadOk] at hp
         rcases hs : storeScalar exitValName (.lit l) with _ | s
         · have hK' : haxToLowCTKT A tl (some r) (.cfBreak (.lit l)) = none := by
-            cases tl <;> simp [haxToLowCTKT, exitStore, hs]
+            rw [haxToLowCTKT_cfBreak_eq _ _ _ _ rfl]; simp [exitStore, hs]
           rw [hK'] at hK; cases hK
         obtain ⟨k, hsv, hk, hex⟩ := storeScalar_lit hp hs
         exact ⟨_, k, s, denote'_lit_run bi fuel l env, hsv, hk, rfl, hex N leafSpec rs⟩
@@ -4211,7 +4276,7 @@ theorem exitSimTy_cfBreak (p : ImpExpr) : ExitSimTy bi N leafSpec br A R (.cfBre
       rcases hsv.cases with ⟨_, _, rfl, _⟩ | ⟨_, rfl⟩ | ⟨_, rfl, _⟩ | rfl <;> rfl)
     have hK' : haxToLowCTKT A tl (some r) (.cfBreak p) =
         some (.RSeq s (.RScalarSet exitRetName 1), true) := by
-      cases tl <;> simp [haxToLowCTKT, exitStore, hs]
+      rw [haxToLowCTKT_cfBreak_eq _ _ _ _ (exitScE_of_payloadOk hp)]; simp [exitStore, hs]
     rw [hK'] at hK
     simp only [Option.some.injEq, Prod.mk.injEq] at hK
     obtain ⟨rfl, rfl⟩ := hK
@@ -4280,7 +4345,7 @@ theorem exitSimTy_ifThenElse (v : String) (t e : ImpExpr)
       (simp only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true'] at hok
        exact ⟨hok.1.1.1, hok.1.1.2, hok.1.2, hok.2⟩)
   have hvsc : A.lookup v = none := by simpa [exitSc] using hok'.2.1
-  rw [haxToLowCTKT_ifThenElse_eq] at hK
+  rw [haxToLowCTKT_ifThenElse_eq _ _ _ _ _ _ hok'.2.1] at hK
   rcases hT' : haxToLowCTKT A tl fl t with _ | ⟨tC, xt⟩
   · rw [hT'] at hK; cases hK
   rcases hE : haxToLowCTKT A tl fl e with _ | ⟨eC, xe⟩
@@ -4560,7 +4625,7 @@ theorem exitSimTy_whileFoldReturn (c : String) (body : ImpExpr)
       cases fl <;> simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
         using hok
     have hcs : A.lookup c = none := by simpa [exitSc] using hok'.2.1
-    rw [haxToLowCTKT_whileFoldReturn_eq] at hK
+    rw [haxToLowCTKT_whileFoldReturn_eq _ _ _ _ hok'.2.1] at hK
     rcases hB : haxToLowCTKT A false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
     · rw [hB] at hK; cases hK
     rw [hB] at hK
@@ -4759,7 +4824,8 @@ theorem exitSimTy_forFoldReturn (i : String) (lo hi body : ImpExpr)
         using hok
     have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
     have hslot := runSlot_exitRunName hfl
-    rw [haxToLowCTKT_forFoldReturn_eq] at hK
+    rw [haxToLowCTKT_forFoldReturn_eq _ _ _ _ _ _
+      (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
     rcases hB : haxToLowCTKT A false (some (exitRunName fl)) body with _ | ⟨bC, x⟩
     · rw [hB] at hK
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -4907,7 +4973,7 @@ theorem exitSimTy_forFoldRevReturn (i : String) (lo hi body : ImpExpr)
       cases fl <;> simpa only [exitSimOkT, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
         using hok
     have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
-    rw [haxToLowCTKT_forFoldRevReturn_eq] at hK
+    rw [haxToLowCTKT_forFoldRevReturn_eq _ _ _ _ _ _ hok'.2.2.1] at hK
     rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
     · rw [hFB] at hok'; cases hok'.1
     obtain ⟨rfl, rfl, hh⟩ := forBounds_some hFB
@@ -5235,7 +5301,8 @@ theorem exitSimTy_forFold (i : String) (lo hi body : ImpExpr)
       have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
       have hokB := hok'.2.2.2
       have hslot := runSlot_exitRunName hfl
-      rw [haxToLowCTKT_forFold_some_eq] at hK
+      rw [haxToLowCTKT_forFold_some_eq _ _ _ _ _ _
+        (by simp only [hok'.2.2.1, exitScRt_of_ok hok'.1, Bool.and_self])] at hK
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK
         rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -5404,7 +5471,7 @@ theorem exitSimTy_forFoldRev (i : String) (lo hi body : ImpExpr)
           and_assoc] using hok
       have his : A.lookup i = none := by simpa [exitSc] using hok'.2.2.1
       have hslot := runSlot_exitRunName hfl
-      rw [haxToLowCTKT_forFoldRev_some_eq] at hK
+      rw [haxToLowCTKT_forFoldRev_some_eq _ _ _ _ _ _ hok'.2.2.1] at hK
       rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
       · rw [hFB] at hok'; cases hok'.1
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
@@ -5434,7 +5501,7 @@ theorem exitSimTy_whileFold (c : String) (body : ImpExpr)
           and_assoc] using hok
       have hcs : A.lookup c = none := by simpa [exitSc] using hok'.2.1
       have hslot := runSlot_exitRunName hfl
-      rw [haxToLowCTKT_whileFold_some_eq] at hK
+      rw [haxToLowCTKT_whileFold_some_eq _ _ _ _ hok'.2.1] at hK
       rcases hB : haxToLowCTKT A false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK; cases hK
       rw [hB] at hK
