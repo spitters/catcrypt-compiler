@@ -136,14 +136,9 @@ theorem decodeJ1_6_of_none (bs : List (BitVec 8)) (h : decodeJ1 bs = none) :
 theorem fitsImm32S_gather (v : Nat) :
     X86Backend.GatherImmForms.fitsImm32S v = fitsImm32S v := rfl
 
-/-! ## 4. Prefix-byte facts -/
+/-! ## 4. Prefix-byte facts
 
-/-- `REX.W` of a `rex 1 r x b` byte is `1`. -/
-theorem rexW_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1) :
-    rexW (BitVec.ofNat 8 (rex 1 r x b)) = 1 := by
-  rw [rexW, Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow,
-    BitVec.toNat_ofNat]
-  unfold rex; omega
+`SailX86Decoder.rexW_rex` gives `REX.W` of a `rex 1 r x b` byte. -/
 
 /-- A `REX.W` prefix with no `R`/`X` bit is the one byte `rexOpt 1 0 0 b` emits. -/
 theorem rexOpt_one (b : Nat) : rexOpt 1 0 0 b = [BitVec.ofNat 8 (rex 1 0 0 b)] := by

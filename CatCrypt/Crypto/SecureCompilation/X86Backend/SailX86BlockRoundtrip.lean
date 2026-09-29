@@ -357,18 +357,53 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
         | [] => none
   | [] => none
 
+/-- The `REX`-prefixed forms at `REX.W = 0` whose 32-bit operation has the effect of
+    a `JInstr 64`: `MOVZX` from a byte or a word register (`0F B6 /r`, `0F B7 /r`),
+    which zero the upper bits at either operand size; `SETB` followed by its `MOVZX`
+    (`0F 92 /0`); and `MOV $imm32, %r32` (`B8+rd id`), whose 32-bit write zero-extends
+    into the register. Every other `REX.W = 0` form is a 32-bit operation that no
+    `JInstr 64` denotes, and is rejected. -/
+def decodeRexW0 (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
+  | op :: rest =>
+      if op.toNat = 0x0f then
+        match rest with
+        | e :: modrm :: rest1 =>
+            if modField modrm = 3 then
+              let d := regName (rexR r * 8 + regField modrm)
+              if e.toNat = 0xb6 then
+                some (.movzx d 8 (regName (rexB r * 8 + rmField modrm)), rest1)
+              else if e.toNat = 0xb7 then
+                some (.movzx d 16 (regName (rexB r * 8 + rmField modrm)), rest1)
+              else if e.toNat = 0x92 then
+                if regField modrm = 0 then decodeMovzbq (rexB r * 8 + rmField modrm) rest1
+                else none
+              else none
+            else none
+        | _ => none
+      else if 0xb8 ≤ op.toNat ∧ op.toNat ≤ 0xbf then
+        match rest with
+        | i0 :: i1 :: i2 :: i3 :: rest1 =>
+            some (.mov (regName (rexB r * 8 + (op.toNat - 0xb8)))
+              (.imm (i0.toNat + i1.toNat * 0x100 + i2.toNat * 0x10000
+                + i3.toNat * 0x1000000)), rest1)
+        | _ => none
+      else none
+  | [] => none
+
 /-- Decode one instruction off the front of a byte stream, returning it and the
     bytes that follow. The leading byte selects the family: the `66`/`F3`
     mandatory prefixes introduce `ADCX`/`ADOX`, `C4` the three-byte VEX `MULX`
-    forms, a `0x40..0x4F` byte the REX-prefixed GP forms, and a bare `0F` the
-    prefix-free `SETB` of a `setc`. -/
+    forms, a `0x40..0x4F` byte the REX-prefixed GP forms (`decodeRex` at
+    `REX.W = 1`, `decodeRexW0` at `REX.W = 0`), and a bare `0F` the prefix-free
+    `SETB` of a `setc`. -/
 def decodeJ1 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
   | [] => none
   | b0 :: rest =>
       if b0.toNat = 0x66 then decodeAdx true rest
       else if b0.toNat = 0xf3 then decodeAdx false rest
       else if b0.toNat = 0xc4 then decodeMulx rest
-      else if isRex b0 then decodeRex b0 rest
+      else if isRex b0 then
+        if rexW b0 = 1 then decodeRex b0 rest else decodeRexW0 b0 rest
       else if b0.toNat = 0x0f then decodeSetcBare rest
       else none
 
@@ -846,7 +881,7 @@ theorem decodeJ1_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1)
   have hc4 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0xc4) := by
     rw [BitVec.toNat_ofNat]; unfold rex; omega
   simp only [decodeJ1, if_neg h66, if_neg hf3, if_neg hc4,
-    isRex_rex _ _ _ hr hx hb, if_true]
+    isRex_rex _ _ _ hr hx hb, rexW_rex _ _ _ hr hx hb, if_true]
 
 /-- `MOV off(%base), %dst` (`REX.W 8B /r`) decodes back to itself for a
     signed 32-bit displacement. -/

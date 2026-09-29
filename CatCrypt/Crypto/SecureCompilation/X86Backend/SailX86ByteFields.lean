@@ -205,6 +205,13 @@ theorem rexB_rex (r x b : Nat) (hb : b ≤ 1) :
   rw [rexB, Nat.and_two_pow_sub_one_eq_mod _ 1, BitVec.toNat_ofNat]
   unfold rex; omega
 
+/-- `REX.W` of a `rex 1 r x b` byte is `1`. -/
+theorem rexW_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1) :
+    rexW (BitVec.ofNat 8 (rex 1 r x b)) = 1 := by
+  rw [rexW, Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow,
+    BitVec.toNat_ofNat]
+  unfold rex; omega
+
 /-! ## 5. The one-byte ALU opcode tables -/
 
 /-- The one-byte ALU/MOV opcode → mnemonic constructor map, inverting the opcode

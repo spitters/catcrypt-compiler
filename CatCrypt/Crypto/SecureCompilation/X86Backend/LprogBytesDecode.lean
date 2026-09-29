@@ -94,20 +94,21 @@ def shift1Mnemonic (ext : Nat) : Option (String → JOperand → JInstr 64) :=
   else if ext = 7 then some JInstr.sar
   else none
 
-/-- The `REX`-prefixed forms `decodeRex` has no arm for: the reg-reg compare
-    `39 /r`, the sign-extended-`imm8` group-1 form `83 /digit ib`, and at
-    `REX.W = 1` the shift-by-one form `D1 /ext`, read as the shift by the immediate
-    `1`. The fourth
+/-- The `REX.W`-prefixed forms `decodeRex` has no arm for: the reg-reg compare
+    `39 /r`, the sign-extended-`imm8` group-1 form `83 /digit ib`, and the
+    shift-by-one form `D1 /ext`, read as the shift by the immediate `1`. The fourth
     arm, the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
     `REX.X`), so `decodeLinstr` reaches it on no stream. An index field of `100`
     without `REX.X` names no index register and a base field of `101` at
-    `mod = 00` names no base register; both are rejected. -/
+    `mod = 00` names no base register; both are rejected. At `REX.W = 0` every form
+    is a 32-bit operation and is rejected. -/
 def decodeRexExt (r : BitVec 8) :
     List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
   | op :: modrm :: rest =>
       let reg := regName (rexR r * 8 + regField modrm)
-      if modField modrm = 3 then
+      if SailX86Decoder.rexW r ≠ 1 then none
+      else if modField modrm = 3 then
         let rm := regName (rexB r * 8 + rmField modrm)
         if op.toNat = 0x39 then some (.cmp rm (.reg reg), rest)
         else if op.toNat = 0x83 then
@@ -116,7 +117,7 @@ def decodeRexExt (r : BitVec 8) :
               (aluImm8Mnemonic (regField modrm)).map
                 fun mk => (mk rm (.imm (signExt8 ib)), rest1)
           | [] => none
-        else if op.toNat = 0xd1 ∧ SailX86Decoder.rexW r = 1 then
+        else if op.toNat = 0xd1 then
           (shift1Mnemonic (regField modrm)).map fun mk => (mk rm (.imm 1), rest)
         else none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
@@ -349,6 +350,8 @@ theorem decodeLinstr_cmpRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (h
     decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     BitVec.toNat_ofNat,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
+    not_true_eq_false, if_false,
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, bitsplit _ hs, if_true]
   rfl
 
@@ -380,13 +383,10 @@ theorem decodeLinstr_aluImm8 (digit : Nat) (mk : String → JOperand → JInstr 
     decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
     decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     BitVec.toNat_ofNat, hd7, halu,
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
+    not_true_eq_false, if_false,
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true, signExt8_imm8 v hv]
   rfl
-
-/-- `REX.W` of a `REX.W` prefix. -/
-theorem rexW_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1) :
-    SailX86Decoder.rexW (BitVec.ofNat 8 (rex 1 r x b)) = 1 := by
-  interval_cases r <;> interval_cases x <;> interval_cases b <;> rfl
 
 /-- The shift-by-one form `op $1, %d` (`REX.W D1 /ext`) decodes to the shift its
     extension names, by the immediate `1`. -/
@@ -403,7 +403,8 @@ theorem decodeLinstr_shift1 (ext : Nat) (mk : String → JOperand → JInstr 64)
     decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
     decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     BitVec.toNat_ofNat, he7, hmk,
-    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
+    not_true_eq_false, if_false,
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true]
   rfl
 
@@ -419,7 +420,7 @@ theorem decodeLinstr_movImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 8)
   have hop : (BitVec.ofNat 8 (0xb8 + d % 8)).toNat = 0xb8 + d := by
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hd]; omega
   simp only [encMovImmw, if_true, hb, rexOpt, and_self, List.nil_append, imm32LE,
-    List.map_cons, List.map_nil, List.cons_append, List.singleton_append]
+    List.map_cons, List.map_nil, List.cons_append]
   have hj : decodeJ1 (BitVec.ofNat 8 (0xb8 + d % 8) :: BitVec.ofNat 8 (v &&& 0xff)
       :: BitVec.ofNat 8 ((v >>> 8) &&& 0xff) :: BitVec.ofNat 8 ((v >>> 16) &&& 0xff)
       :: BitVec.ofNat 8 ((v >>> 24) &&& 0xff) :: rest) = none := by
