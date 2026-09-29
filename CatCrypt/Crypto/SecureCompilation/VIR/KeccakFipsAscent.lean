@@ -8,6 +8,7 @@ module
 public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 public import CatCrypt.Crypto.Primitives.Keccak
+public import CatCryptCore.Tactics.WordBound
 
 /-!
 # The emitted Keccak-p[1600,24] permutation computes the FIPS 202 permutation
@@ -160,18 +161,13 @@ theorem bSlot_val (x y : Nat) : (bSlot x y).val = 30 + (x % 5 + 5 * (y % 5)) := 
   omega
 
 theorem aSlot_lt (x y : Nat) : (aSlot x y).val < 25 := by
-  have hx : x % 5 < 5 := Nat.mod_lt _ (by decide)
-  have hy : y % 5 < 5 := Nat.mod_lt _ (by decide)
-  rw [aSlot_val]; omega
+  rw [aSlot_val]; word_bound
 
 theorem bSlot_lt (x y : Nat) : (bSlot x y).val < 55 := by
-  have hx : x % 5 < 5 := Nat.mod_lt _ (by decide)
-  have hy : y % 5 < 5 := Nat.mod_lt _ (by decide)
-  rw [bSlot_val]; omega
+  rw [bSlot_val]; word_bound
 
 theorem cSlot_lt (x : Nat) : (cSlot x).val < 30 := by
-  have hx : x % 5 < 5 := Nat.mod_lt _ (by decide)
-  rw [cSlot_val]; omega
+  rw [cSlot_val]; word_bound
 
 @[simp] theorem aSlot_ne_cSlot (x y x' : Nat) : aSlot x y ≠ cSlot x' := by
   intro h; have := congrArg Fin.val h
@@ -192,7 +188,6 @@ theorem cSlot_lt (x : Nat) : (cSlot x).val < 30 := by
 @[simp] theorem cSlot_ne_bSlot (x x' y' : Nat) : cSlot x ≠ bSlot x' y' := by
   intro h; have := congrArg Fin.val h
   rw [cSlot_val, bSlot_val] at this
-  have : x % 5 < 5 := Nat.mod_lt _ (by decide)
   omega
 
 @[simp] theorem cSlot_ne_rotScr (x : Nat) : cSlot x ≠ rotScr := by
@@ -220,8 +215,6 @@ theorem aSlot_eq_iff (x y x' y' : Nat) :
   · intro h
     have hv := congrArg Fin.val h
     rw [aSlot_val, aSlot_val] at hv
-    have h1 : x % 5 < 5 := Nat.mod_lt _ (by decide)
-    have h2 : x' % 5 < 5 := Nat.mod_lt _ (by decide)
     omega
   · rintro ⟨h1, h2⟩
     apply Fin.ext; rw [aSlot_val, aSlot_val, h1, h2]
@@ -233,8 +226,6 @@ theorem bSlot_eq_iff (x y x' y' : Nat) :
   · intro h
     have hv := congrArg Fin.val h
     rw [bSlot_val, bSlot_val] at hv
-    have h1 : x % 5 < 5 := Nat.mod_lt _ (by decide)
-    have h2 : x' % 5 < 5 := Nat.mod_lt _ (by decide)
     omega
   · rintro ⟨h1, h2⟩
     apply Fin.ext; rw [bSlot_val, bSlot_val, h1, h2]
@@ -646,8 +637,7 @@ theorem respects_emitOutStage {t : JasminTy} (k : Cont t) (f : SV → IV → ⟦
   | (m + 1), s => by
       have ih := respects_emitOutStage k f hk m (s + 1)
       have h := respects_emitMov (t := t)
-        ⟨s % numSlots, Nat.mod_lt _ (by decide)⟩
-        ⟨s % numSlots, Nat.mod_lt _ (by decide)⟩ _ _ ih
+        ⟨s % numSlots, by word_bound⟩ ⟨s % numSlots, by word_bound⟩ _ _ ih
       refine Respects.of_eq (h.congr ?_) (fun Γ bs immV => rfl)
       intro σ ι; rw [Function.update_eq_self]
 
@@ -720,7 +710,7 @@ theorem bSlot_mod (x y : Nat) : bSlot x y = bSlot (x % 5) (y % 5) := by
 @[simp] theorem thetaCM5_cSlot (σ : SV) (x : Nat) :
     thetaCM 5 0 σ (cSlot x) = parityM σ (x % 5) := by
   rw [cSlot_mod]
-  exact thetaCM5_cSlot_lt σ (x % 5) (Nat.mod_lt _ (by decide))
+  exact thetaCM5_cSlot_lt σ (x % 5) (by word_bound)
 
 theorem thetaDM5 (σ : SV) (ι : IV) :
     thetaDM 5 0 σ ι
@@ -830,8 +820,8 @@ theorem thetaDW_eq (σ : SV) (ι : IV) (h : ImmOK ι) (x : Nat) :
 theorem lanes_theta (σ : SV) (ι : IV) (h : ImmOK ι) :
     lanesOf (thetaDM 5 0 (thetaCM 5 0 σ) ι) = cThetaClean (lanesOf σ) := by
   funext i
-  have hx : i.val % 5 < 5 := Nat.mod_lt _ (by decide)
-  have hy : i.val / 5 < 5 := by have := i.isLt; omega
+  have hx : i.val % 5 < 5 := by word_bound
+  have hy : i.val / 5 < 5 := by word_bound
   show thetaDM 5 0 (thetaCM 5 0 σ) ι (aSlot (i.val % 5) (i.val / 5)) = _
   rw [thetaDM5_aSlot _ _ _ _ hx hy, thetaCM5_aSlot, thetaDW_eq σ ι h]
   rfl
@@ -839,9 +829,9 @@ theorem lanes_theta (σ : SV) (ι : IV) (h : ImmOK ι) :
 theorem lanes_rhopi (τ : SV) (ι : IV) (h : ImmOK ι) :
     bLanesOf (rhoPiM 25 0 τ ι) = cPi (cRho (lanesOf τ)) := by
   funext i
-  have hx : i.val % 5 < 5 := Nat.mod_lt _ (by decide)
-  have hy : i.val / 5 < 5 := by have := i.isLt; omega
-  have hm : (i.val % 5 + 3 * (i.val / 5)) % 5 < 5 := Nat.mod_lt _ (by decide)
+  have hx : i.val % 5 < 5 := by word_bound
+  have hy : i.val / 5 < 5 := by word_bound
+  have hm : (i.val % 5 + 3 * (i.val / 5)) % 5 < 5 := by word_bound
   have hlt : (i.val % 5 + 3 * (i.val / 5)) % 5 + 5 * (i.val % 5) < 25 := by omega
   show rhoPiM 25 0 τ ι (bSlot (i.val % 5) (i.val / 5)) = _
   rw [rhoPiM25_bSlot _ _ _ _ hx hy, rotModel_rho h _ _ hlt]
@@ -851,10 +841,10 @@ theorem lanes_rhopi (τ : SV) (ι : IV) (h : ImmOK ι) :
 theorem lanes_chi (β : SV) (ι : IV) (h : ImmOK ι) :
     lanesOf (chiM 25 0 β ι) = cChi (bLanesOf β) := by
   funext i
-  have hx : i.val % 5 < 5 := Nat.mod_lt _ (by decide)
-  have hy : i.val / 5 < 5 := by have := i.isLt; omega
-  have h1 : (i.val % 5 + 1) % 5 < 5 := Nat.mod_lt _ (by decide)
-  have h2 : (i.val % 5 + 2) % 5 < 5 := Nat.mod_lt _ (by decide)
+  have hx : i.val % 5 < 5 := by word_bound
+  have hy : i.val / 5 < 5 := by word_bound
+  have h1 : (i.val % 5 + 1) % 5 < 5 := by word_bound
+  have h2 : (i.val % 5 + 2) % 5 < 5 := by word_bound
   show chiM 25 0 β ι (aSlot (i.val % 5) (i.val / 5)) = _
   rw [chiM25_aSlot _ _ _ _ hx hy, h.mask]
   show _ = cchi (bLanesOf β (laneIdx (i.val % 5) (i.val / 5)))
@@ -1041,7 +1031,7 @@ iteration of §12 with `Primitives.Keccak.keccakF`. -/
 open CatCrypt.Crypto.Primitives.Keccak in
 /-- The 5×5 view of the 25 lanes: `toKState l x y = l ⟨x + 5y⟩`. -/
 def toKState (l : Lanes) : KState :=
-  fun x y => l ⟨x.val + 5 * y.val, by have := x.isLt; have := y.isLt; omega⟩
+  fun x y => l ⟨x.val + 5 * y.val, by word_bound⟩
 
 open CatCrypt.Crypto.Primitives.Keccak in
 /-- The flat ρ offset table agrees with the 5×5 one. -/

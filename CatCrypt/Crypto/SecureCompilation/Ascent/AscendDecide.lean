@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Ascend
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CoveredSCtlDecide
 
 /-!
 # Deciding the ascent fragments
@@ -27,14 +28,11 @@ constructors directly, with `decide` only on single leaves, and closes the same
 membership and `Corres` goals. `AscendMeta.lean` closes the Keccak round both ways
 (`keccakRoundBody_bitwise`, `keccakRoundBody_bitwise_decide`).
 
-`isTmpName s` is `∃ k, s = tmpName k` and is not decidable as stated. The
-decidable sufficient condition is the head character: every `tmpName k` is
-`"__sx" ++ toString k`, so a name whose first character is not `'_'` is not a
-temp. Names are tested through `String.toList`, which reduces inside a module.
+The variable test is `notTmpB` and the literal test `litOkB`, both in
+`Dialects/CoveredSCtlDecide.lean`.
 
 ## Main definitions
 
-* `notTmpB` — the head-character temp test
 * `isArithCleanB` / `isWordCleanB` — the expression fragments
 * `isAscendableB` / `isAscendableExprB` / `isAscendableBitwiseB` — the program fragments
 * `ascend!` / `ascend_expr!` / `ascend_bitwise!` — the per-fragment deciding tactics
@@ -49,17 +47,6 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
-
-/-- A name is certainly not a fresh temp when its first character is not `'_'`.
-    The empty name is not a temp either, every `tmpName` being four characters or
-    more. -/
-def notTmpB (s : String) : Bool :=
-  match s.toList with
-  | c :: _ => c != '_'
-  | []     => true
-
-/-- Literals below `2 ^ 64` are the `srcClean` leaf condition on constants. -/
-def litOkB (n : Nat) : Bool := n < 2 ^ 64
 
 /-- The arithmetic (`+`/`-`/`*`) expression fragment, as a decision procedure. -/
 def isArithCleanB : SExpr → Bool
@@ -104,12 +91,6 @@ def isAscendableBitwiseB : LowCT → Bool
   | _ => false
 
 /-! ## Soundness -/
-
-theorem notTmpB_sound (s : String) (h : notTmpB s = true) : ¬ isTmpName s := by
-  rintro ⟨k, hk⟩
-  subst hk
-  simp [notTmpB,
-    CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms.tmpName] at h
 
 theorem isArithCleanB_sound : ∀ (e : SExpr), isArithCleanB e = true → IsArithClean e
   | .SVar x, h => notTmpB_sound x h

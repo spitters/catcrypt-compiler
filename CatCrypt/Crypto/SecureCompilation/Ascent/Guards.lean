@@ -171,24 +171,9 @@ instance atrips.decidable {A : Type} (Q : A → Prop) [DecidablePred Q] (g : A �
       haveI := atrips.decidable Q g fb k (fb a)
       inferInstanceAs (Decidable (Q a ∧ (g (fb a) = true → atrips Q g fb k (fb a))))
 
-/-! ## Deciding the expression side conditions -/
+/-! ## Deciding the expression side conditions
 
-/-- `srcClean`, as a decision procedure (the `notTmpB` head-character test on
-    variables, the `2 ^ 64` bound on literals). -/
-def srcCleanB : SExpr → Bool
-  | .SVar x => notTmpB x
-  | .SLit n => litOkB n
-  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b
-  | .SShl a b | .SShr a b | .SMulHiU a b => srcCleanB a && srcCleanB b
-  | _ => false
-
-theorem srcCleanB_sound : ∀ (e : SExpr), srcCleanB e = true → srcClean e
-  | .SVar x, h => notTmpB_sound x h
-  | .SLit _, h => by simpa [srcClean, srcCleanB, litOkB] using h
-  | .SAdd a b, h | .SSub a b, h | .SMul a b, h | .SAnd a b, h | .SXor a b, h
-  | .SShl a b, h | .SShr a b, h | .SMulHiU a b, h => by
-      simp only [srcCleanB, Bool.and_eq_true] at h
-      exact ⟨srcCleanB_sound a h.1, srcCleanB_sound b h.2⟩
+`srcCleanB` and `srcCleanB_sound` are in `Dialects/CoveredSCtlDecide.lean`. -/
 
 instance SExpr.decInRange (σ : String → Nat) : ∀ (e : SExpr), Decidable (e.inRange σ)
   | .SVar x => inferInstanceAs (Decidable (σ x < 2 ^ 64))
