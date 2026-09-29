@@ -353,7 +353,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefRolledLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.ChaChaWholeKernelFront
 CatCrypt.Crypto.SecureCompilation.Dialects.ClmulVpshufbFrontValidate
-CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectCTLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceValued
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectVerifiedMiddle
@@ -383,6 +382,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSha256FullAdeq
 CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.Sha256RoundWidth32Front
 CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallPassGates
+CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectCT
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectFnCall
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectMultiOutPingPong
