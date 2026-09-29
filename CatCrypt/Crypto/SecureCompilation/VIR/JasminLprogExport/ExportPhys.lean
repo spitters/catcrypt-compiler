@@ -922,6 +922,13 @@ def legalizeBinop (dst src : LOperand) (opn : String) (mov : String := "MOV") :
        .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
        .Lopn [dst] mov [.reg reloadScratch]]
 
+/-- The two-address binop alphabet of the physical lowering: the mnemonics, after
+    their width tag is stripped, that `physBodyRmap` and its ABI variants lower
+    through `lowerTwoAddr` (and so through `legalizeBinop`). -/
+def isTwoAddrBinop (opn : String) : Bool :=
+  ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
+    (stripWidthTag opn)
+
 /-- Legalize a register copy `mov dst, src` (sources `[src]`) so it carries at
     most one memory (spill) operand. When BOTH `dst` and `src` are spill slots,
     `mov [mem], [mem]` is illegal; route through the reserved reload scratch:
@@ -1587,9 +1594,7 @@ def physBodyRmap (rmap : LOperand → LOperand) (shiftImm : ShiftImmOracle)
     (body : Lcmd) : Lcmd :=
   -- two-address mnemonics that take exactly two register sources (the optional
   -- `:64` width tag is stripped before the membership test).
-  let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn)
+  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   -- The injected legalization moves inherit the op's width: a `:64` op routes

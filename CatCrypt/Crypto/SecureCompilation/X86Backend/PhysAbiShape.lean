@@ -99,9 +99,7 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
     lowering of a native shift, and the operand renaming of every other `Lopn`. -/
 def physExpand (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
-  let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn)
+  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
@@ -310,8 +308,9 @@ theorem physExpand_livepin (shiftImm : ShiftImmOracle) (rmap : LOperand → LOpe
   have hw : stripWidthTag "LIVEPIN" = "LIVEPIN" := by decide +kernel
   have hs : isMemStore "LIVEPIN" = false := by decide +kernel
   have hl : isMemLoad "LIVEPIN" = false := by decide +kernel
+  have hb : isTwoAddrBinop "LIVEPIN" = false := by decide +kernel
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
-    simp [physExpand, hw, hs, hl, isNativeShiftRotate_livepin, notLivePin]
+    simp [physExpand, hw, hs, hl, hb, isNativeShiftRotate_livepin, notLivePin]
 
 /-- The expansions of the argument-liveness pin are all dropped by the pin filter. -/
 theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)

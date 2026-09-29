@@ -92,8 +92,7 @@ expansion therefore needs no condition on the register allocation. -/
     `lowerTwoAddr` of its renamed operands at the move `MOV`. -/
 theorem physBodyElem_binopTwoAddr (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (d s0 s1 : LOperand) (ds ss : List LOperand) (opn : String)
-    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn) = true)
+    (hbin : isTwoAddrBinop opn = true)
     (hsh : ¬ (stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR") = true)
     (h64 : ¬ hasSuffix opn ":64" = true) :
     (physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩).map (·.li_i)
@@ -106,8 +105,7 @@ theorem physBodyElem_binopTwoAddr (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     `lowerTwoAddr` of its renamed operands at the move `MOV:64`. -/
 theorem physBodyElem_binopTwoAddr64 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (d s0 s1 : LOperand) (ds ss : List LOperand) (opn : String)
-    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn) = true)
+    (hbin : isTwoAddrBinop opn = true)
     (hsh : ¬ (stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR") = true)
     (h64 : hasSuffix opn ":64" = true) :
     (physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩).map (·.li_i)

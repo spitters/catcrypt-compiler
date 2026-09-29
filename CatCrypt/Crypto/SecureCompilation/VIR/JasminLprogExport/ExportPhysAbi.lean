@@ -516,9 +516,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   -- body keeps `remapOperand` (byte-identical).
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
-  let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn)
+  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
@@ -727,9 +725,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
   -- body keeps the plain `remapOperand`, so its bytes are byte-identical.
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
-  let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn)
+  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
@@ -920,9 +916,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
   let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
-  let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
-      (stripWidthTag opn)
+  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
