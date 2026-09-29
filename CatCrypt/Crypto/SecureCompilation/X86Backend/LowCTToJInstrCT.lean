@@ -56,10 +56,9 @@ source CT result is `cmdCT`.
 
 ## Source CT ⇒ machine CT, end to end
 
-`lowerArith_source_to_machine_CT` packages the chain: a source command whose
-`cmdCT` result is `true` lowers to a machine block that is constant-time
-(same leakage trace from any two states).  This is the on-ramp tie from the
-`RustState`-level analyser to the `JState`-level constant-time class.
+`LowCTMachineCT.lowerArith_source_to_machine_CT` states the chain in the CTP-1
+model: a source command that is constant time lowers to a machine block that is
+constant time.
 -/
 
 @[expose] public section
@@ -311,30 +310,6 @@ theorem lowerArith_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
   cases hexec
   rw [SExpr.evalState_eq_eval rs _ p.toSExpr_limbFree]
   exact lowerArith_denote ρ p rs js hρ hb hmatch
-
-/-! ## 6. Source CT ⇒ machine CT, end to end
-
-`lowerArith_source_to_machine_CT`: a source command whose `cmdCT` result is
-`true` lowers to a machine block that is constant-time — the leakage trace is
-the same from any two initial states.  The on-ramp tie from the
-`RustState`-level source analyser to the `JState`-level machine class. -/
-
-/-- **Source CT result ⇒ machine constant-time.**  If the source command
-    `p.toLowCT` passes the real source CT analyser `cmdCT` (under any level
-    table / leaf table), then its lowering is constant-time at the machine
-    level (same leakage trace from any two states).
-
-    The `cmdCT` hypothesis is *consumed only on the source side*:
-    machine CT here is unconditional for this memory-free fragment (the
-    lowering is always `allDirect`), but the statement records the intended
-    contract — a CT-accepted source command compiles to CT machine code.
-    For a fragment with memory operands the `cmdCT` Public-index premise is the
-    hypothesis that selects a direct (vs. indexed) lowering. -/
-theorem lowerArith_source_to_machine_CT (ρ : RegMap) (p : ArithSrc)
-    (lt : LevelTable) (leafCT : LeafCTTable)
-    (_hsrc : cmdCT p.toLowCT lt leafCT = true) (s₁ s₂ : JState 64) :
-    blockLeak s₁ (lowerArith ρ p) = blockLeak s₂ (lowerArith ρ p) :=
-  lowerArith_constant_time ρ p s₁ s₂
 
 /-! ## 7. The basic-block compiler: a sequence of scalar-arith statements
 

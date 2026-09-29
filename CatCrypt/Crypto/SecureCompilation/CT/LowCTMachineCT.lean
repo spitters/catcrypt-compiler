@@ -2101,10 +2101,9 @@ theorem lowct_to_machine_ct_rangeFree (N : Nat) (leafSpec : LeafSpec) (lt : Leve
   lowct_to_machine_ct_towerFree N leafSpec lt pub ρ τ hρ c hwf (towerFree_of_rangeFree c hrf)
     hpub hsrc js₁ js₂ ⟨hag, inRange_of_rangeFree c hrf _, inRange_of_rangeFree c hrf _⟩
 
-/-- The single arithmetic statement of `LowCTToJInstrCT.lowerArith_source_to_machine_CT`,
-    with source constant time in the `CTP-1` model as the premise and machine
+/-- **Source CT ⇒ machine CT for one arithmetic statement**, with source constant time in the `CTP-1` model as the premise and machine
     constant time in the `CTP-1` model as the conclusion. -/
-theorem lowerArith_source_to_machine_CT' (N : Nat) (leafSpec : LeafSpec) (lt : LevelTable)
+theorem lowerArith_source_to_machine_CT (N : Nat) (leafSpec : LeafSpec) (lt : LevelTable)
     (pub : PubPred) (ρ : RegMap) (hρ : Function.Injective ρ) (p : ArithSrc) (hb : p.b ≠ p.dst)
     (hpub : ∀ x, lt x = .Public → pub (ρ x) = true)
     (hsrc : LowCTConstantTime N leafSpec .owned lt p.toLowCT) :
