@@ -33,6 +33,11 @@ round pair reads it with `load`s and writes it with `store`s. `JincElab.elabFun`
 elaborates the result to a `Com jasminDialect`, and `JincElab.emitJFunAsm`
 renders it through `Com.toLprogPhysAbi` and `renderOwned`.
 
+`JincInline.importFunRolled` keeps the round loop rolled instead: one trip is a
+round pair, the round counter is `2·idx` at the trip index `idx`, and the round
+constants are read from the `.rodata` table `KECCAK1600_RC`.
+`JincElab.emitJFunRolledAsm` renders it as a counted loop.
+
 The executable `keccak-jinc-emit` (`KeccakJincEmit.lean`) writes the rendering;
 the bench harness `bench/keccak_compare` checks it against FIPS 202.
 
@@ -41,6 +46,8 @@ the bench harness `bench/keccak_compare` checks it against FIPS 202.
 * `keccakUnit`: the concatenated source unit.
 * `keccakF1600JFun`: the imported straight-line `JFun` of `keccak_f1600`.
 * `keccakF1600Asm`: its owned AT&T rendering.
+* `keccakF1600Rolled`, `keccakF1600RolledAsm`: the import with the round loop
+  kept rolled, and its owned AT&T rendering.
 -/
 
 @[expose] public section
@@ -380,6 +387,20 @@ def keccakF1600JFun : Except String JFun :=
 def keccakF1600Asm : String :=
   match keccakF1600JFun with
   | .ok f => JincElab.emitJFunAsm f keccakF1600Sym
+  | .error e => s!"; import error: {e}"
+
+/-- `keccak_f1600` imported with its round loop kept rolled: the twelve trips of
+    the `while`, two rounds each, are one `for` over the trip index, and the round
+    constants are loads from the `.rodata` table `KECCAK1600_RC` at the indices
+    `2·idx` and `2·idx + 1`. -/
+def keccakF1600Rolled : Except String JincInline.RolledImport :=
+  JincInline.importFunRolled keccakUnit keccakF1600Sym
+
+/-- The owned AT&T rendering of `keccakF1600Rolled` (`JincElab.emitJFunRolledAsm`),
+    or the import error as an assembler comment. -/
+def keccakF1600RolledAsm : String :=
+  match keccakF1600Rolled with
+  | .ok r => JincElab.emitJFunRolledAsm r.fn r.tables keccakF1600Sym
   | .error e => s!"; import error: {e}"
 
 end CatCrypt.Crypto.Jasmin.KeccakJincImport

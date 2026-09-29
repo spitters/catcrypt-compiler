@@ -33,12 +33,23 @@ assignments with `_` and `()`, compound assignments, `if`/`else`, `for v = lo to
   known at compile time are folded (constant propagation). The conditions of `if`
   and `?:`, loop bounds and `while` guards must fold; a data-dependent branch is
   rejected, and so a `while` whose guard folds is unrolled.
+* `importFunRolled` keeps a loop rolled instead when its unrolling is `rollable`
+  (at least two trips, and `rollMinTrips` trips or `rollMinStmts` statements per
+  trip): a `for`, or a `while { pre } (c) {}` whose trips advance one
+  compile-time counter by a fixed step (`affineCounter`). The loop is emitted as
+  `for idx = 0 to n { body }` over a run-time trip index `idx`, with the counter
+  at `c0 + step · idx`. `tryRoll` evaluates the body with the names a trip writes
+  unassigned, so a body that reads a value an earlier trip left, or stores into
+  other than exactly one array, is unrolled; so is a loop inside a rolled body.
+* A read of a memory array or of a global table at a run-time index is a `load`
+  (a global table only under `importFunRolled`, from the base `b = @SYM` of its
+  `.rodata` copy); a store into a memory array at a run-time index is a
+  `storeAt`.
 * Every call to a source function is inlined, `fn` as well as `inline fn`.
 * A `reg` or `stack` array is one value per cell (scalar replacement), and every
   index into it must fold. A `reg ptr` array parameter of the evaluated function
-  is a memory array: a read is a `load` and a write a `store`, at a folded index,
-  in source order, so a call whose array arguments alias computes what the source
-  computes.
+  is a memory array: a read is a `load` and a write a `store`, in source order,
+  so a call whose array arguments alias computes what the source computes.
 * A register copy emits no statement: the destination names the source's value.
 * `!a & b` with `a` a run-time word is `BinKind.andn`; `#ROL_64(x, i)` and
   `#ROR_64(x, i)` are `Rhs.ror`.
@@ -563,7 +574,8 @@ def toW (n : Int) : Nat := (n % (w64 : Int)).toNat
 
 /-- A value during evaluation: unassigned, a compile-time integer, a compile-time
     word, a run-time word held by an emitted name, a register array (one value per
-    cell), or a memory array named by an emitted array name. -/
+    cell), a memory array named by an emitted array name, or the read-only global
+    table `nm` with its words. -/
 inductive V where
   | undef
   | int (n : Int)
@@ -571,7 +583,8 @@ inductive V where
   | w (nm : String)
   | ra (els : Array V)
   | mem (nm : String) (n : Nat)
-  deriving Repr, Inhabited
+  | gtab (nm : String) (els : Array Nat)
+  deriving Repr, Inhabited, BEq
 
 /-- The kind of a declared name. -/
 inductive Kind where
@@ -593,11 +606,20 @@ def Env.set : Env → String → V → Env
   | (y, k, u) :: r, x, v => if y == x then (y, k, v) :: r else (y, k, u) :: Env.set r x v
 
 /-- The evaluation state: the emitted statements, the emitted names that need a
-    declaration, and the fresh-name counter. -/
+    declaration, and the fresh-name counter; whether loops may be kept rolled,
+    whether evaluation is inside a rolled loop body, the statements to place ahead
+    of that loop, the base name bound for each global table read at a run-time
+    index, the tables so read, and the array names with their cell counts. -/
 structure EvSt where
   out : Array Stmt := #[]
   decls : Array String := #[]
   fresh : Nat := 0
+  roll : Bool := false
+  inBody : Bool := false
+  hoist : Array Stmt := #[]
+  gbases : List (String × String) := []
+  tables : Array (String × List Nat) := #[]
+  adecls : Array (String × Nat) := #[]
   deriving Inhabited
 
 /-- The evaluation monad. -/
@@ -800,6 +822,7 @@ def coerce (k : Kind) (v : V) : M V :=
   | .word, .w x => pure (.w x)
   | .arr, .ra els => pure (.ra els)
   | .arr, .mem nm n => pure (.mem nm n)
+  | .arr, .gtab nm els => pure (.gtab nm els)
   | _, _ => throw s!"eval: cannot store {repr v} in a {repr k}"
 
 /-- A cell value: words only, an integer taken as a word. -/
@@ -831,12 +854,141 @@ def readCell (av : V) (k : Nat) : M V := do
       emit (.assign kiName (.imm k))
       emit (.assign t (.load nm kiName))
       pure (.w t)
+  | .gtab nm els =>
+      match els[k]? with
+      | some x => pure (.cw x)
+      | none => throw s!"eval: index {k} out of bounds of {nm}"
   | v => throw s!"eval: indexing {repr v}"
+
+/-- The name holding the base address of the global table `nm`, binding it on
+    first use as `b = @nm` (`Rhs.glob` of the `@`-prefixed symbol). Inside a
+    rolled loop body the binding goes to the statements placed ahead of the
+    loop. The table joins the tables read at a run-time index. -/
+def globBase (nm : String) (els : Array Nat) : M String := do
+  match (← get).gbases.lookup nm with
+  | some b => pure b
+  | none =>
+      let b := "%g" ++ nm
+      let st : Stmt := .assign b (.glob ("@" ++ nm))
+      modify fun s =>
+        { s with gbases := (nm, b) :: s.gbases, adecls := s.adecls.push (b, els.size),
+                 tables := if s.tables.any (·.1 == nm) then s.tables
+                           else s.tables.push (nm, els.toList) }
+      if (← get).inBody then modify fun s => { s with hoist := s.hoist.push st }
+      else emit st
+      pure b
+
+/-- A cell of an array value at the run-time index held by `x`: an emitted `load`
+    of a memory array, or of a global table when loops may be kept rolled. A
+    register array is one value per cell, so its index must fold. -/
+def readCellAt (av : V) (x : String) : M V := do
+  let src ← match av with
+    | .mem nm _ => pure nm
+    | .gtab nm els =>
+        if (← get).roll then globBase nm els
+        else throw s!"eval: run-time index into the global table {nm}"
+    | v => throw s!"eval: run-time index into {repr v}"
+  let t ← fresh
+  emit (.assign t (.load src x))
+  pure (.w t)
 
 /-! ## 5. Evaluator -/
 
 /-- The bound on the iterations of one `while`. -/
 def whileFuel : Nat := 1000000
+
+/-- The trip count from which a loop is kept rolled whatever its body. -/
+def rollMinTrips : Nat := 64
+
+/-- The statements one iteration emits from which a loop is kept rolled. -/
+def rollMinStmts : Nat := 64
+
+/-- Whether a loop of `n` trips whose unrolling emits `emitted` statements is
+    kept rolled: at least two trips, and either `rollMinTrips` trips or
+    `rollMinStmts` statements per trip. -/
+def rollable (n emitted : Nat) : Bool :=
+  n ≥ 2 && (n ≥ rollMinTrips || emitted / n ≥ rollMinStmts)
+
+/-- Whether a value names no emitted run-time word, so that it stays valid
+    outside the loop that computed it. -/
+partial def isCt : V → Bool
+  | .w _ => false
+  | .ra els => els.all isCt
+  | _ => true
+
+/-- A value with every scalar and every cell unassigned. -/
+def undefLike : V → V
+  | .ra els => .ra (els.map fun _ => .undef)
+  | _ => .undef
+
+/-- The names of `env` whose value in `env'` differs. -/
+def changedNames (env env' : Env) : List String :=
+  env.filterMap fun (x, _, v) =>
+    match env'.get? x with
+    | some (_, v') => if v' == v then none else some x
+    | none => none
+
+/-- `env` with each of `xs` unassigned. -/
+def undefAll (env : Env) (xs : List String) : Env :=
+  env.map fun (x, k, v) => if xs.contains x then (x, k, undefLike v) else (x, k, v)
+
+/-- The arrays a statement list stores into, without repetition. -/
+def storedArrays (ss : Array Stmt) : List String :=
+  ss.foldl (fun acc s =>
+    match s with
+    | .store a _ _ | .storeAt a _ _ => if acc.contains a then acc else acc ++ [a]
+    | _ => acc) []
+
+/-- A statement list less each assignment to a name no later statement reads. -/
+def dropDead (ss : Array Stmt) : Array Stmt :=
+  (ss.foldr (fun s (acc, live) =>
+    let keep := match s with
+      | .assign l _ => live.contains l
+      | _ => true
+    if keep then (s :: acc, JincToCom.stmtReads s ++ live) else (acc, live))
+    (([] : List Stmt), ([] : List String))).1.toArray
+
+/-- The value `c0 + stride · idx` of a loop counter at the run-time trip index
+    `idx`, emitting the multiplication (an addition for `stride = 2`, a shift for
+    another power of two) and the addition that are not the identity. -/
+def ctrValue (idx : String) (c0 stride : Int) : M V := do
+  let t1 ← if stride == 1 then pure idx else do
+    let t ← fresh
+    let s := toW stride
+    if s == 2 then emit (.assign t (.bin .add idx (.var idx)))
+    else if s != 0 && 2 ^ s.log2 == s then emit (.assign t (.bin .shl idx (.lit s.log2)))
+    else emit (.assign t (.bin .mul idx (.lit s)))
+    pure t
+  if c0 == 0 then return .w t1
+  let t2 ← fresh
+  emit (.assign t2 (.bin .add t1 (.lit (toW c0))))
+  pure (.w t2)
+
+/-- The frame after a rolled loop: the unrolled frame `envU`, with each name the
+    loop body writes (`d`) unassigned where its unrolled value names a run-time
+    word the rolled loop does not bind. -/
+def postRollEnv (envU : Env) (d : List String) : Env :=
+  envU.map fun (x, k, v) => if d.contains x && !isCt v then (x, k, undefLike v) else (x, k, v)
+
+/-- The compile-time counter of a `while` traced by its iteration-start frames:
+    the first name holding a compile-time scalar that advances by the same
+    nonzero step at every trip, with its entry value and step. -/
+def affineCounter (starts : List Env) : Option (String × Int × Int) :=
+  let asInt : V → Option Int
+    | .int n => some n
+    | .cw n => some n
+    | _ => none
+  match starts with
+  | e0 :: e1 :: _ =>
+      e0.findSome? fun (x, _, v0) => do
+        let a ← asInt v0
+        let b ← asInt ((e1.get? x).map (·.2) |>.getD .undef)
+        let st := b - a
+        if st == 0 then none
+        let ok := starts.zipIdx.all fun (e, k) =>
+          (e.get? x).bind (fun kv => asInt kv.2) == some (a + st * k)
+        if ok then some (x, a, st) else none
+  | _ => none
 
 mutual
 
@@ -856,7 +1008,9 @@ partial def lookupVar (p : Prog) (env : Env) (x : String) : M V := do
               match p.globs.find? (·.1 == x) with
               | some (_, es) => do
                   let vs ← es.mapM (fun e => do cellVal (← evalE p [] e))
-                  pure (.ra vs.toArray)
+                  let ws := vs.filterMap constWord?
+                  if ws.length == vs.length then pure (.gtab x ws.toArray)
+                  else pure (.ra vs.toArray)
               | none => throw s!"eval: unknown name '{x}'"
 
 /-- The value of an expression, emitting the statements of its run-time part. -/
@@ -864,8 +1018,9 @@ partial def evalE (p : Prog) (env : Env) : E → M V
   | .num n => pure (.int n)
   | .var x => lookupVar p env x
   | .idx a i => do
-      let k ← constNat (← evalE p env i)
-      readCell (← lookupVar p env a) k
+      match ← evalE p env i with
+      | .w x => readCellAt (← lookupVar p env a) x
+      | vi => readCell (← lookupVar p env a) (← constNat vi)
   | .call f args => do
       match ← evalCall p env f args with
       | [v] => pure v
@@ -939,8 +1094,19 @@ partial def assignLV (p : Prog) (env : Env) (lv : LV) (v : V) : M Env := do
       | some (k, _) => pure (env.set x (← coerce k v))
       | none => throw s!"eval: assignment to undeclared '{x}'"
   | .idx a i =>
-      let k ← constNat (← evalE p env i)
+      let vi ← evalE p env i
+      if let .w x := vi then
+        match env.get? a with
+        | some (_, .mem nm _) =>
+            let y ← wordName v
+            emit (.storeAt nm (.var x) (.glob y))
+            return env
+        | _ => throw s!"eval: store into '{a}' at a run-time index"
+      let k ← constNat vi
       match env.get? a with
+      | some (_, .gtab _ els) =>
+          unless k < els.size do throw s!"eval: index {k} out of bounds of '{a}'"
+          pure (env.set a (.ra ((els.map V.cw).setIfInBounds k (← cellVal v))))
       | some (_, .ra els) =>
           unless k < els.size do throw s!"eval: index {k} out of bounds of '{a}'"
           pure (env.set a (.ra (els.setIfInBounds k (← cellVal v))))
@@ -987,9 +1153,91 @@ partial def execS (p : Prog) (env : Env) : S → M Env
       match l, h with
       | .int l, .int h =>
           unless (env.get? v).isSome do throw s!"eval: undeclared loop counter '{v}'"
-          forLoop p v l h body env
+          forStmt p v l h body env
       | _, _ => throw "eval: loop bounds not known at compile time"
-  | .while pre c post => whileLoop p pre c post whileFuel env
+  | .while pre c post => whileStmt p pre c post env
+
+/-- One trip of a loop body evaluated into its own statement list: `setup` (run
+    inside that list, so the statements it emits open the body) gives the entry
+    frame. Returns the exit frame, the body statements and the statements to
+    place ahead of the loop; the enclosing statement list is left as it was. -/
+partial def rollBody (p : Prog) (setup : M Env) (block : List S) :
+    M (Env × Array Stmt × Array Stmt) := do
+  let s ← get
+  set { s with out := #[], hoist := #[], inBody := true }
+  let env ← setup
+  let env' ← execBlock p env block
+  let s' ← get
+  set { s' with out := s.out, hoist := s.hoist, inBody := s.inBody }
+  pure (env', s'.out, s'.hoist)
+
+/-- Emit `block` as a rolled loop of `n` trips: the statements ahead of the loop,
+    then `for idx = 0 to n { body }` with `idx` the run-time trip index and the
+    counter `ctr` at `c0 + stride · idx`, less the assignments nothing in the body
+    reads (`dropDead`).
+
+    The body is evaluated once to find the names a trip writes, then again from
+    a frame in which those names are unassigned, so a body that reads a value an
+    earlier trip left fails; so does a body that stores into other than exactly
+    one array (the loop accumulator). The result frame is `envU`, the frame of
+    the unrolled loop, less the run-time values the rolled loop does not bind. -/
+partial def tryRoll (p : Prog) (n : Nat) (ctr : String) (c0 stride : Int)
+    (block : List S) (env envU : Env) : M Env := do
+  let idx ← fresh
+  let setup (undefs : List String) : M Env := do
+    let cv ← ctrValue idx c0 stride
+    pure ((undefAll env undefs).set ctr cv)
+  let s0 ← get
+  let (env1, _, _) ← rollBody p (setup []) block
+  let d := changedNames env env1
+  set s0
+  let (_, body, hoisted) ← rollBody p (setup d) block
+  unless (storedArrays body).length == 1 do
+    throw "eval: a rolled loop body stores into other than one array"
+  hoisted.forM emit
+  emit (.forTo idx 0 n (dropDead body).toList)
+  pure (postRollEnv envU d)
+
+/-- The frame after `for v = i to h { body }`, kept rolled when `rollable` and
+    `tryRoll` succeeds, unrolled otherwise. -/
+partial def forStmt (p : Prog) (v : String) (i h : Int) (body : List S) (env : Env) :
+    M Env := do
+  let s0 ← get
+  let envU ← forLoop p v i h body env
+  let s1 ← get
+  let n := (h - i).toNat
+  if !s0.roll || s0.inBody || !rollable n (s1.out.size - s0.out.size) then return envU
+  tryCatch (do set s0; tryRoll p n v i 1 body env envU) (fun _ => pure envU)
+
+/-- The iteration-start frames of `while { pre } (c) {}` unrolled, and its exit
+    frame. -/
+partial def whileTrace (p : Prog) (pre : List S) (c : E) (fuel : Nat) (env : Env)
+    (acc : List Env) : M (List Env × Env) := do
+  let env' ← execBlock p env pre
+  match truth? (← evalE p env' c) with
+  | some false => pure ((env :: acc).reverse, env')
+  | some true =>
+      if fuel == 0 then throw "eval: 'while' exceeds the unrolling bound"
+      whileTrace p pre c (fuel - 1) env' (env :: acc)
+  | none => throw "eval: data-dependent 'while' guard"
+
+/-- The frame after `while { pre } (c) { post }`. With an empty `post`, a loop
+    whose unrolling is `rollable` and whose trips advance one compile-time
+    counter by a fixed step (`affineCounter`) is kept rolled when `tryRoll`
+    succeeds; every other loop is unrolled. -/
+partial def whileStmt (p : Prog) (pre : List S) (c : E) (post : List S) (env : Env) :
+    M Env := do
+  let s0 ← get
+  if !s0.roll || s0.inBody || !post.isEmpty then
+    return ← whileLoop p pre c post whileFuel env
+  let (starts, envU) ← whileTrace p pre c whileFuel env []
+  let s1 ← get
+  let n := starts.length
+  if !rollable n (s1.out.size - s0.out.size) then return envU
+  match affineCounter starts with
+  | some (x, c0, st) =>
+      tryCatch (do set s0; tryRoll p n x c0 st pre env envU) (fun _ => pure envU)
+  | none => pure envU
 
 /-- The frame after `for v = i to h { body }`. -/
 partial def forLoop (p : Prog) (v : String) (i h : Int) (body : List S) (env : Env) :
@@ -1039,21 +1287,45 @@ def importFnM (p : Prog) (fn : Fn) : M (List Param × List V) := do
   let rs ← fn.ret.mapM (evalE p env')
   pure (params.toList, rs)
 
-/-- The straight-line `JFun` of function `f` of the source unit `src`: every call
-    inlined, every compile-time value folded, one statement per emitted operation. -/
-def importFun (src : String) (f : String) : Except String JFun := do
+/-- The imported `JFun` of function `f` of the source unit `src`, and the global
+    tables it reads at a run-time index (symbol and words), with loops kept
+    rolled when `roll` holds. -/
+def importWith (roll : Bool) (src : String) (f : String) :
+    Except String (JFun × List (String × List Nat)) := do
   let p ← parseProg src
   let some fn := p.fns.find? (·.name == f) | throw s!"import: no function '{f}'"
-  let ((params, rs), st) ← (importFnM p fn).run {}
+  let ((params, rs), st) ← (importFnM p fn).run { roll }
   let decls : List (JTy × String) :=
     (.reg 64, kiName) :: st.decls.toList.map (fun t => (.reg 64, t))
-  match rs with
-  | [.mem nm n] =>
-      pure { name := f, params, retTy := .arr 64 n, decls, inlineInts := [],
-             body := st.out.toList ++ [.ret nm] }
-  | [.w nm] =>
-      pure { name := f, params, retTy := .reg 64, decls, inlineInts := [],
-             body := st.out.toList ++ [.ret nm] }
-  | _ => throw s!"import: '{f}' must return one array parameter or one run-time word"
+      ++ st.adecls.toList.map (fun (b, n) => (.arr 64 n, b))
+  let fn : JFun ← match rs with
+    | [.mem nm n] =>
+        pure { name := f, params, retTy := .arr 64 n, decls, inlineInts := [],
+               body := st.out.toList ++ [.ret nm] }
+    | [.w nm] =>
+        pure { name := f, params, retTy := .reg 64, decls, inlineInts := [],
+               body := st.out.toList ++ [.ret nm] }
+    | _ => throw s!"import: '{f}' must return one array parameter or one run-time word"
+  pure (fn, st.tables.toList)
+
+/-- The straight-line `JFun` of function `f` of the source unit `src`: every call
+    inlined, every compile-time value folded, one statement per emitted operation. -/
+def importFun (src : String) (f : String) : Except String JFun :=
+  (importWith false src f).map (·.1)
+
+/-- A `JFun` imported with loops kept rolled, and the global tables it reads at a
+    run-time index. -/
+structure RolledImport where
+  /-- The imported function. A rolled loop is `for idx = 0 to n { body }`, `idx`
+      a run-time 64-bit trip index; `b = @SYM` binds `b` to the base of the
+      global table `SYM`. -/
+  fn : JFun
+  /-- Each global table read at a run-time index: its symbol and its words. -/
+  tables : List (String × List Nat)
+
+/-- `importFun` with every loop that is `rollable` and passes `tryRoll` kept as a
+    rolled loop. -/
+def importFunRolled (src : String) (f : String) : Except String RolledImport :=
+  (importWith true src f).map fun (fn, tables) => { fn, tables }
 
 end CatCrypt.Crypto.Jasmin.JincInline

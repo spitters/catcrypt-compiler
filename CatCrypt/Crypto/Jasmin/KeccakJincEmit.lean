@@ -17,8 +17,11 @@ root the executable runs from. The artifact is the output; its values are checke
 where it is consumed, by `bench/keccak_compare` (`make keccak-kat-jinc`) and
 `bench/symcrust_compare`.
 
+The round loop is kept rolled (`KeccakJincImport.keccakF1600RolledAsm`);
+`--unrolled` writes the fully unrolled rendering (`keccakF1600Asm`) instead.
+
 ```
-lake exe keccak-jinc-emit
+lake exe keccak-jinc-emit [--unrolled]
 ```
 -/
 
@@ -41,16 +44,24 @@ def isInstrLine (l : String) : Bool :=
 end CatCrypt.Crypto.Jasmin.KeccakJincEmit
 
 open CatCrypt.Crypto.Jasmin in
-/-- Imports `keccak_f1600`, renders it through the owned backend and writes the
-    text, exiting non-zero when the import or the elaboration fails. -/
-def main : IO UInt32 := do
-  match KeccakJincImport.keccakF1600JFun with
+/-- Imports `keccak_f1600` with its round loop kept rolled
+    (`KeccakJincImport.keccakF1600Rolled`), or fully unrolled under `--unrolled`,
+    renders it through the owned backend and writes the text, exiting non-zero
+    when the import or the elaboration fails. -/
+def main (args : List String) : IO UInt32 := do
+  let imported : Except String (JincToCom.JFun × String) :=
+    if args.contains "--unrolled" then
+      KeccakJincImport.keccakF1600JFun.map fun f =>
+        (f, JincElab.emitJFunAsm f KeccakJincImport.keccakF1600Sym)
+    else
+      KeccakJincImport.keccakF1600Rolled.map fun r =>
+        (r.fn, JincElab.emitJFunRolledAsm r.fn r.tables KeccakJincImport.keccakF1600Sym)
+  match imported with
   | .error e =>
       IO.eprintln s!"keccak-jinc-emit: import failed: {e}"
       return 1
-  | .ok f =>
+  | .ok (f, asm) =>
       IO.println s!"keccak-jinc-emit: imported {f.body.length} statements"
-      let asm := JincElab.emitJFunAsm f KeccakJincImport.keccakF1600Sym
       if asm.startsWith ";" then
         IO.eprintln s!"keccak-jinc-emit: {asm}"
         return 1

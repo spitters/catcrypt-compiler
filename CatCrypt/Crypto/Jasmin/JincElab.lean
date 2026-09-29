@@ -46,6 +46,13 @@ name extends the context. `ecDlog_elaborates` / `ecPowStore_elaborates` check th
 The `Com → .s` step is the owned backend (`Com.toLprogPhysAbi` /
 `renderLprogAtt`), rendered by `emitJincAsm`. Source parameter `j` lands in
 SysV register `j` (natural C order: parameter 0 → `RDI`).
+
+`elabStmtsG` is the elaborator over any target with a `ret` and a let-binding:
+`elabStmts` is its `Com` instance, and `elabStmtsL` its `ComL` instance, which
+keeps a `for` from `0` as one `ComL.forLoopN` node (§3b). `emitJFunRolledAsm`
+renders a function elaborated that way through `rolledLfundef`, the owned
+back end and the `rorx` selection `rorxLprog` (§6); a base binding `b = @SYM`
+is a `.rodata` symbol load.
 -/
 
 @[expose] public section
@@ -105,15 +112,29 @@ def typeOf (env : Env) (nm : String) : Option JasminTy :=
 
 /-! ## 2. The elaborator -/
 
-/-- Elaborate a statement list into `Σ τ, Com jasminDialect Γ τ`, threading the
+/-- The loop hook of `elabStmtsG`: given the context, the environment, the
+    counter, the trip count, the body and the statements after the loop of
+    `for v = 0 to n { body }`, the elaborated rest of the list. -/
+abbrev LoopHook (R : Ctxt jasminDialect → JasminTy → Type) : Type :=
+  (Γ : Ctxt jasminDialect) → Env → String → Nat → List Stmt → List Stmt →
+    Option (Σ τ : JasminTy, R Γ τ)
+
+/-- Elaborate a statement list into `Σ τ, R Γ τ` for a target `R` with a `ret`
+    and a let-binding `var` (`Com jasminDialect`, or `ComL`), threading the
     context `Γ` and the name environment `env`. Literal operands introduce a
-    `regConst` binding; const-indexed stores introduce a `regConst` index. -/
-partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
-    Option (Σ τ : JasminTy, Com jasminDialect Γ τ)
+    `regConst` binding; const-indexed stores introduce a `regConst` index;
+    `b = @SYM` binds `b` to the base of the `.rodata` table `SYM` (the reserved
+    `extCall` `loadSymPrefix ++ SYM`). A `for` from `0` goes to `loop` when it is
+    given and is unrolled otherwise. -/
+partial def elabStmtsG {R : Ctxt jasminDialect → JasminTy → Type}
+    (ret : ∀ {Γ t}, Ctxt.Var Γ t → R Γ t)
+    (var : ∀ {Γ t s}, Expr jasminDialect Γ t → R (t :: Γ) s → R Γ s)
+    (loop : Option (LoopHook R)) :
+    (Γ : Ctxt jasminDialect) → Env → List Stmt → Option (Σ τ : JasminTy, R Γ τ)
   | Γ, env, [Stmt.ret nm] => do
       let (i, t) ← envFind env nm
       let v ← mkVar Γ i t
-      return ⟨t, Com.ret v⟩
+      return ⟨t, ret v⟩
   | Γ, env, Stmt.assign lhs (Rhs.cast w src) :: rest => do
       let sTy ← typeOf env src
       match sTy with
@@ -121,8 +142,8 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let sv ← lookup Γ env src (.reg sw)
           let e : Expr jasminDialect Γ (.reg w) :=
             ⟨.castW sw w, rfl, .cons sv .nil⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.ror n src) :: rest => do
       let sTy ← typeOf env src
@@ -130,8 +151,8 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
       | .reg w =>
           let sv ← lookup Γ env src (.reg w)
           let e : Expr jasminDialect Γ (.reg w) := ⟨.rorImm w n, rfl, .cons sv .nil⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.load arr idx) :: rest => do
       let aTy ← typeOf env arr
@@ -141,8 +162,8 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let iv ← lookup Γ env idx (.reg 64)
           let e : Expr jasminDialect Γ (.reg w) :=
             ⟨.stackLoad w n, rfl, .cons av (.cons iv .nil)⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.select c t f) :: rest => do
       let cv ← lookup Γ env c (.reg 1)
@@ -153,8 +174,8 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let fv ← lookup Γ env f (.reg w)
           let e : Expr jasminDialect Γ (.reg w) :=
             ⟨.select w, rfl, .cons cv (.cons tv (.cons fv .nil))⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.bin op a (Operand.var b)) :: rest => do
       let aTy ← typeOf env a
@@ -164,8 +185,8 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let bv ← lookup Γ env b (.reg w)
           let e : Expr jasminDialect Γ (.reg w) :=
             ⟨.regArith (binOf op) w, rfl, .cons av (.cons bv .nil)⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.bin op a (Operand.lit n)) :: rest => do
       let aTy ← typeOf env a
@@ -174,36 +195,42 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           -- bind a fresh constant, then the binary op over it
           let cName := "%c" ++ toString Γ.length
           let ce : Expr jasminDialect Γ (.reg w) := ⟨.regConst w n, rfl, .nil⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((cName, .reg w) :: env)
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((cName, .reg w) :: env)
             (Stmt.assign lhs (Rhs.bin op a (Operand.var cName)) :: rest)
-          return ⟨s, Com.var ce body⟩
+          return ⟨s, var ce body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.imm n) :: rest => do
       let lTy ← typeOf env lhs
       match lTy with
       | .reg w =>
           let e : Expr jasminDialect Γ (.reg w) := ⟨.regConst w n, rfl, .nil⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.glob src) :: rest => do
+      if let '@' :: sym := src.toList then
+        let t ← typeOf env lhs
+        let e : Expr jasminDialect Γ t :=
+          ⟨.extCall (loadSymPrefix ++ String.ofList sym) [] t, rfl, .nil⟩
+        let ⟨s, body⟩ ← elabStmtsG ret var loop (t :: Γ) ((lhs, t) :: env) rest
+        return ⟨s, var e body⟩
       -- a register copy `lhs = src`, expressed as the identity shift `src <<< 0`
       let sTy ← typeOf env src
       match sTy with
       | .reg w =>
           let sv ← lookup Γ env src (.reg w)
           let e : Expr jasminDialect Γ (.reg w) := ⟨.shlImm w 0, rfl, .cons sv .nil⟩
-          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
-          return ⟨s, Com.var e body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, var e body⟩
       | _ => none
   | Γ, env, Stmt.assign lhs (Rhs.castLoad w arr idx) :: rest =>
       -- `lhs = (Wu) arr[idx]`  ≡  `%l = arr[idx]; lhs = (Wu) %l`
       let tName := "%l" ++ toString Γ.length
-      elabStmts Γ env (Stmt.assign tName (Rhs.load arr idx) ::
+      elabStmtsG ret var loop Γ env (Stmt.assign tName (Rhs.load arr idx) ::
         Stmt.assign lhs (Rhs.cast w tName) :: rest)
   | Γ, env, Stmt.compound op lhs operand :: rest =>
       -- `lhs op= operand`  ≡  `lhs = lhs op operand`
-      elabStmts Γ env (Stmt.assign lhs (Rhs.bin op lhs operand) :: rest)
+      elabStmtsG ret var loop Γ env (Stmt.assign lhs (Rhs.bin op lhs operand) :: rest)
   | Γ, env, Stmt.store arr k val :: rest => do
       let aTy ← typeOf env arr
       match aTy with
@@ -218,16 +245,16 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let vv ← lookup Γ' env' val (.reg w)
           let se : Expr jasminDialect Γ' (.stackArr w n) :=
             ⟨.stackStore w n, rfl, .cons av (.cons iv (.cons vv .nil))⟩
-          let ⟨s, body⟩ ← elabStmts (.stackArr w n :: Γ') ((arr, .stackArr w n) :: env') rest
-          return ⟨s, Com.var ce (Com.var se body)⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.stackArr w n :: Γ') ((arr, .stackArr w n) :: env') rest
+          return ⟨s, var ce (var se body)⟩
       | _ => none
   | Γ, env, Stmt.storeAt arr (Operand.lit k) val :: rest => do
       -- bind the literal index, then store at the bound name
       let iName := "%x" ++ toString Γ.length
       let ce : Expr jasminDialect Γ (.reg 64) := ⟨.regConst 64 k, rfl, .nil⟩
-      let ⟨s, body⟩ ← elabStmts (.reg 64 :: Γ) ((iName, .reg 64) :: env)
+      let ⟨s, body⟩ ← elabStmtsG ret var loop (.reg 64 :: Γ) ((iName, .reg 64) :: env)
         (Stmt.storeAt arr (Operand.var iName) val :: rest)
-      return ⟨s, Com.var ce body⟩
+      return ⟨s, var ce body⟩
   | Γ, env, Stmt.storeAt arr (Operand.var idx) (Rhs.glob val) :: rest => do
       let aTy ← typeOf env arr
       match aTy with
@@ -237,32 +264,42 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let vv ← lookup Γ env val (.reg w)
           let se : Expr jasminDialect Γ (.stackArr w n) :=
             ⟨.stackStore w n, rfl, .cons av (.cons iv (.cons vv .nil))⟩
-          let ⟨s, body⟩ ← elabStmts (.stackArr w n :: Γ) ((arr, .stackArr w n) :: env) rest
-          return ⟨s, Com.var se body⟩
+          let ⟨s, body⟩ ← elabStmtsG ret var loop (.stackArr w n :: Γ) ((arr, .stackArr w n) :: env) rest
+          return ⟨s, var se body⟩
       | _ => none
   | Γ, env, Stmt.storeAt arr idx val :: rest =>
       -- a computed right-hand side: bind it, then store the bound name
       let vName := "%v" ++ toString Γ.length
-      elabStmts Γ env (Stmt.assign vName val ::
+      elabStmtsG ret var loop Γ env (Stmt.assign vName val ::
         Stmt.storeAt arr idx (Rhs.glob vName) :: rest)
   | Γ, env, Stmt.forTo v lo hi body :: rest =>
+      match loop, lo with
+      | some h, 0 => h Γ env v hi body rest
+      | _, _ =>
       -- one unrolled iteration: the counter is a `regConst` binding, and the
       -- remaining range is the same `forTo` with `lo` advanced
       if lo < hi then do
         let ce : Expr jasminDialect Γ (.reg 64) := ⟨.regConst 64 lo, rfl, .nil⟩
-        let ⟨s, cbody⟩ ← elabStmts (.reg 64 :: Γ) ((v, .reg 64) :: env)
+        let ⟨s, cbody⟩ ← elabStmtsG ret var loop (.reg 64 :: Γ) ((v, .reg 64) :: env)
           (body ++ Stmt.forTo v (lo + 1) hi body :: rest)
-        return ⟨s, Com.var ce cbody⟩
-      else elabStmts Γ env rest
+        return ⟨s, var ce cbody⟩
+      else elabStmtsG ret var loop Γ env rest
   -- `Stmt.whileNz`: a data-dependent loop, outside the fragment this elaborator
   -- covers.
   | _, _, _ => none
 
+/-- Elaborate a statement list into `Σ τ, Com jasminDialect Γ τ` (`elabStmtsG`
+    into `Com`, every `for` unrolled). -/
+def elabStmts (Γ : Ctxt jasminDialect) (env : Env) (ss : List Stmt) :
+    Option (Σ τ : JasminTy, Com jasminDialect Γ τ) :=
+  elabStmtsG Com.ret Com.var none Γ env ss
+
 /-! ## 3. Whole-function elaboration -/
 
-/-- The local name a `name = GLOBAL` statement binds (a global table assignment). -/
+/-- The local name a `name = GLOBAL` statement binds (a global table assignment).
+    A `.rodata` base binding `b = @SYM` is not one. -/
 def globName : Stmt → Option String
-  | .assign nm (.glob _) => some nm
+  | .assign nm (.glob g) => if g.startsWith "@" then none else some nm
   | _ => none
 
 /-- Elaborate a whole parsed function: global-table locals (`name = GLOBAL`)
@@ -286,6 +323,73 @@ def elabFun (f : JFun) :
     ++ f.decls.map (fun d => (d.2, toJ d.1))
   let ⟨τ, com⟩ ← elabStmts Γ₀ env₀ body'
   return ⟨Γ₀, τ, com⟩
+
+/-! ## 3b. Rolled loops (`ComL`)
+
+`elabStmtsL` elaborates into `ComL`, keeping `for v = 0 to n { body }` as one
+`ComL.forLoopN` node (`rolledLoop`). The body must store into exactly one array,
+the accumulator threaded through the loop; `v` is the `reg 64` trip index; every
+other name the body reads before binding it is a loop invariant, passed in from
+the enclosing context. The body is elaborated by `elabStmts` over the context
+`acc :: v :: invariants`, followed by `return acc`. -/
+
+/-- The names a statement list reads before binding them, in first-read order. -/
+def freeReads (ss : List Stmt) : List String :=
+  (ss.foldl (fun (defs, acc) s =>
+    let acc' := (stmtReads s).foldl (fun a x =>
+      if defs.contains x || a.contains x then a else a ++ [x]) acc
+    (stmtDefs s ++ defs, acc')) (([] : List String), ([] : List String))).2
+
+/-- The variables of the names `nms` in context `Γ`, with their types. -/
+def invVars (Γ : Ctxt jasminDialect) (env : Env) :
+    List String → Option (Σ tys : Ctxt jasminDialect, HVector (fun ty => Ctxt.Var Γ ty) tys)
+  | [] => some ⟨[], .nil⟩
+  | nm :: rest => do
+      let t ← typeOf env nm
+      let v ← lookup Γ env nm t
+      let ⟨tys, hv⟩ ← invVars Γ env rest
+      return ⟨t :: tys, .cons v hv⟩
+
+mutual
+
+/-- The loop hook of `elabStmtsL`: `for v = 0 to n { body }` as `ComL.forLoopN`,
+    the rest of the list elaborated with the final accumulator bound to the
+    accumulator's name. -/
+partial def rolledLoop (Γ : Ctxt jasminDialect) (env : Env) (v : String) (n : Nat)
+    (body rest : List Stmt) : Option (Σ τ : JasminTy, ComL Γ τ) := do
+  let acc ← body.findSome? fun s => match s with
+    | .store a _ _ | .storeAt a _ _ => some a
+    | _ => none
+  let accTy ← typeOf env acc
+  let accV ← lookup Γ env acc accTy
+  let free := (freeReads body).filter (fun x => x != v && x != acc)
+  let ⟨invTys, invs⟩ ← invVars Γ env free
+  let envb : Env := (acc, accTy) :: (v, .reg 64) :: free.zip invTys ++ env.drop Γ.length
+  let ⟨τ, com⟩ ← elabStmts (accTy :: .reg 64 :: invTys) envb (body ++ [.ret acc])
+  if h : τ = accTy then
+    let ⟨s, k⟩ ← elabStmtsL (accTy :: Γ) ((acc, accTy) :: env) rest
+    return ⟨s, ComL.forLoopN (invTys := invTys) ⟨n, h ▸ com⟩ accV invs k⟩
+  else none
+
+/-- Elaborate a statement list into `Σ τ, ComL Γ τ`: `elabStmtsG` into `ComL`
+    with `rolledLoop` as the loop hook. -/
+partial def elabStmtsL (Γ : Ctxt jasminDialect) (env : Env) (ss : List Stmt) :
+    Option (Σ τ : JasminTy, ComL Γ τ) :=
+  elabStmtsG ComL.ret ComL.var (some rolledLoop) Γ env ss
+
+end
+
+/-- Elaborate a whole function into `ComL` over its parameters (parameter `0`
+    deepest, as in `elabFun`), keeping each `for` from `0` rolled. A plain global
+    assignment `name = GLOBAL` is not accepted. -/
+def elabFunL (f : JFun) :
+    Option ((Γ : Ctxt jasminDialect) × (τ : JasminTy) × ComL Γ τ) := do
+  let params' := f.params.reverse
+  let Γ₀ : Ctxt jasminDialect := params'.map (fun p => toJ p.ty)
+  let env₀ : Env := params'.map (fun p => (p.name, toJ p.ty))
+    ++ f.decls.map (fun d => (d.2, toJ d.1))
+  let ⟨τ, c⟩ ← elabStmtsL Γ₀ env₀ f.body
+  return ⟨Γ₀, τ, c⟩
 
 /-! ## 4. Elaboration self-check (parse → typed `Com`) -/
 
@@ -493,5 +597,111 @@ def emitJincAsmCoalesced (src : String) (fname : String) (n : Nat) : String :=
             (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce.coalesceRounds n
               (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.optimizeLprogBasicBlocks
                 (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))))
+
+/-! ## 6. Owned x86 emission of a rolled `ComL`
+
+`rolledLfundef` is the register-ABI physical export of a `ComL` whose loops
+thread one memory array (`elabFunL`), each array parameter a pointer in its
+SysV register. Before the physical register allocation (`physBody`), the virtual
+body is rewritten in three ways:
+
+* every `stackStore` result is replaced by the array it stores into
+  (`canonicalizeMemrefThread`), and each loop's accumulator by the array its seed
+  names, so a store addresses the array the source stores into and the loop
+  feedback is a self-copy;
+* a `LIVEPIN` instruction reading every argument opens the body, so the
+  allocator keeps each argument live from entry (it is removed after the
+  allocation);
+* the symbol of each `LOADSYM` (`b = @SYM`) is carried as the compile-time
+  operand `.arr SYM 0`, which the allocators leave untouched and the printer
+  renders `leaq SYM(%rip)`.
+
+`emitJFunRolledAsm` attaches each table read at a run-time index as a `.rodata`
+table (`Lprog.withRodataTable`), runs the owned back end (`ownedLprog`), selects
+`rorx` for each rotate whose destination differs from its source (`rorxLprog`),
+and prints. -/
+
+/-- `LOADSYM` with its symbol as the compile-time operand `.arr sym 0`. -/
+def symOperandFix (b : Lcmd) : Lcmd :=
+  b.map fun i => match i.li_i with
+    | .Lopn ds "LOADSYM" [.reg s] => ⟨i.li_ii, .Lopn ds "LOADSYM" [.arr s 0]⟩
+    | _ => i
+
+/-- The source of the first 64-bit copy into `acc` (a loop's seed move). -/
+def seedOf (b : Lcmd) (acc : String) : Option String :=
+  b.findSome? fun i => match i.li_i with
+    | .Lopn [.reg d] "MOV:64" [.reg s] => if d == acc then some s else none
+    | _ => none
+
+/-- The body with every store result replaced by its array and each accumulator
+    of `accs` by the array its seed names, with the induced map on names. -/
+def threadAccs (b : Lcmd) (accs : List String) : Lcmd × (String → String) :=
+  let m0 := arrChainAlias b
+  accs.foldl (fun (b, ren) acc =>
+    match seedOf b acc with
+    | some s =>
+        let tgt := canonMemrefName (arrChainAlias b) s
+        (canonicalizeMemrefThread (aliasRegBody acc tgt b),
+         fun n => let n' := ren n; if n' == acc then tgt else n')
+    | none => (b, ren))
+    (canonicalizeMemrefThread b, canonMemrefName m0)
+
+/-- The register-ABI physical `Lfundef` of a rolled `ComL` (see §6): argument `j`
+    in `sysvRegs[j]`, the result moved to `RAX`. -/
+def rolledLfundef {Γ : Ctxt jasminDialect} {τ : JasminTy} (c : ComL Γ τ) : Lfundef :=
+  let virt0 := ComL.toLfundef c
+  let pin : Lcmd :=
+    [⟨0, .Lopn [.reg "%livepin"] "LIVEPIN" (virt0.lfd_arg.map LOperand.reg)⟩]
+  let (body, ren) := threadAccs (pin ++ symOperandFix virt0.lfd_body)
+    ((ComL.loopAccRegs c Γ.length).map regName)
+  let virt := { virt0 with lfd_body := body, lfd_res := virt0.lfd_res.map ren }
+  let tbl := straightCallComposeTable virt.lfd_body (bodyPhysTable virt.lfd_body)
+  let resPhys := virt.lfd_res.map (physNameForBody virt.lfd_body tbl)
+  let abi := sysvRegs.take virt.lfd_arg.length
+  let argMat := buildArgMaterializePhys virt tbl abi
+  let pbody := (physBody (fun _ => none) virt.lfd_body).filter
+    (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
+  let retEpi : Lcmd := match resPhys with
+    | [r] => if r == "RAX" then [] else [⟨0, .Lopn [.reg "RAX"] "MOVQ" [.reg r]⟩]
+    | _ => []
+  let body' := if retEpi.isEmpty then pbody else pbody.dropLast ++ retEpi ++ [⟨0, .Lret⟩]
+  { virt with lfd_body := argMat ++ body', lfd_arg := abi,
+              lfd_tyin := virt.lfd_tyin.take abi.length, lfd_res := resPhys }
+
+/-- A 64-bit rotate by an immediate into a register other than its source, as
+    the BMI2 `rorx` (`RORX:<n>:64`); every other instruction unchanged. -/
+def rorxInstr (i : Linstr) : Linstr :=
+  match i.li_i with
+  | .Lopn [.reg d] opn [s] =>
+      match opn.splitOn ":" with
+      | ["ROR", n, "64"] =>
+          if s == .reg d then i else ⟨i.li_ii, .Lopn [.reg d] ("RORX:" ++ n ++ ":64") [s]⟩
+      | _ => i
+  | _ => i
+
+/-- `rorxInstr` on every function body. -/
+def rorxLprog (p : Lprog) : Lprog :=
+  { p with lp_funcs := p.lp_funcs.map fun (n, f) => (n, { f with lfd_body := f.lfd_body.map rorxInstr }) }
+
+/-- The `Lprog` of a `JFun` imported with rolled loops (`JincInline.importFunRolled`)
+    under the symbol `fname`, with the global tables it reads at a run-time index
+    (`tables`) as `.rodata`, before the owned back end. `none` when `elabFunL`
+    declines. -/
+def rolledLprog (f : JFun) (tables : List (String × List Nat)) (fname : String) :
+    Option Lprog := do
+  let ⟨_, _, c⟩ ← elabFunL f
+  let p : Lprog := { lp_rip := "RIP", lp_rsp := "RSP", lp_globs := [], lp_glob_names := [],
+                     lp_funcs := [(fname, rolledLfundef c)] }
+  return tables.foldl (fun p (s, ws) => p.withRodataTable s (ws.map (BitVec.ofNat 64))) p
+
+/-- The owned AT&T `.s` of `rolledLprog`: `ownedLprog`, `rorxLprog`, then the
+    printer. `"; elaboration failed"` when `elabFunL` declines. -/
+def emitJFunRolledAsm (f : JFun) (tables : List (String × List Nat)) (fname : String) :
+    String :=
+  match rolledLprog f tables fname with
+  | none => "; elaboration failed"
+  | some p =>
+      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt
+        (rorxLprog (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.ownedLprog p))
 
 end CatCrypt.Crypto.Jasmin.JincElab

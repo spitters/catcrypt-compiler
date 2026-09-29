@@ -731,6 +731,40 @@ def forRange : Stmt → Option (String × Nat × Nat)
   | .forTo v lo hi _ => some (v, lo, hi)
   | _ => none
 
+/-- The names an operand reads. -/
+def operandReads : Operand → List String
+  | .var s => [s]
+  | .lit _ => []
+
+/-- The names a right-hand side reads. The base of a `.rodata` table, `@SYM`
+    (`JincInline`), reads none. -/
+def rhsReads : Rhs → List String
+  | .cast _ src => [src]
+  | .bin _ a b => a :: operandReads b
+  | .glob g => if g.startsWith "@" then [] else [g]
+  | .load arr idx => [arr, idx]
+  | .select c t f => [c, t, f]
+  | .imm _ => []
+  | .castLoad _ arr idx => [arr, idx]
+  | .ror _ src => [src]
+
+/-- The names a straight-line statement reads; a loop statement is taken to
+    read none. -/
+def stmtReads : Stmt → List String
+  | .assign _ r => rhsReads r
+  | .compound _ lhs o => lhs :: operandReads o
+  | .store arr _ v => [arr, v]
+  | .storeAt arr i v => arr :: operandReads i ++ rhsReads v
+  | .ret nm => [nm]
+  | .whileNz _ _ => []
+  | .forTo _ _ _ _ => []
+
+/-- The name a statement binds. -/
+def stmtDefs : Stmt → List String
+  | .assign lhs _ => [lhs]
+  | .compound _ lhs _ => [lhs]
+  | _ => []
+
 /-! `mldsa_expand_a_real` parses: 2 params, `arr 32 256` return, 11 declarations,
 no `inline int` counter, 15 body statements. -/
 #guard

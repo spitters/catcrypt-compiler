@@ -60,9 +60,11 @@ register at its own location, so a renamed program addresses the same memory.
 * `reallocRun_sound`, `reallocRun_lsemStraight`: the same for the pass on one
   run, whatever the decisions.
 * `reallocLprog`: the pass on every function body, split at the instructions
-  outside the fragment. A run's live-out set is the frame cells named after it,
-  with the callee-saved, return and result registers (`retLive`) when a return
-  follows it and all fifteen general-purpose registers otherwise.
+  outside the fragment. A run's live-out set is the frame cells named after it
+  (every frame cell of the body when the body has a label, since a jump back to
+  it reaches a run from below), with the callee-saved, return and result
+  registers (`retLive`) when a return follows it and all fifteen
+  general-purpose registers otherwise.
 -/
 
 @[expose] public section
@@ -891,10 +893,20 @@ def Piece.frames : Piece → List String
 def retLive (res : List String) : List String :=
   ["RBX", "RBP", "R12", "R13", "R14", "R15", "RAX", "RDX"] ++ res.filter isLoc
 
+/-- The frame cells live out of every run of a body with a label: every frame
+    cell the body names. A jump to a label can reach a run that precedes the jump,
+    so a cell the body names anywhere may be read after any run; a body without a
+    label runs in program order and starts from no cell. -/
+def labelLiveFrames (body : Lcmd) : Std.HashSet String :=
+  if body.any (fun li => match li.li_i with | .Llabel _ _ => true | _ => false) then
+    ({} : Std.HashSet String).insertMany (body.flatMap (fun li => instrFrames li.li_i))
+  else {}
+
 /-- The pass on one body with result registers `res`: every run is re-allocated
-    with live-out set the frame cells named after it together with `retLive res`
-    when a return follows the run and the fifteen general-purpose registers
-    otherwise; every other instruction is kept. -/
+    with live-out set the frame cells named after it (every frame cell of the body
+    when it has a label, `labelLiveFrames`) together with `retLive res` when a
+    return follows the run and the fifteen general-purpose registers otherwise;
+    every other instruction is kept. -/
 def reallocBody (res : List String) (body : Lcmd) : Lcmd :=
   let r := (pieces body).foldr (fun p (acc : Lcmd × Std.HashSet String) =>
     let out : Lcmd :=
@@ -905,7 +917,7 @@ def reallocBody (res : List String) (body : Lcmd) : Lcmd :=
             | _ => physGPs
           (reallocRun (regs ++ acc.2.toList) is).map FI.toL ++ acc.1
       | .bar li => li :: acc.1
-    (out, acc.2.insertMany p.frames)) ([], {})
+    (out, acc.2.insertMany p.frames)) ([], labelLiveFrames body)
   r.1
 
 /-- The pass on every function body of a program. -/

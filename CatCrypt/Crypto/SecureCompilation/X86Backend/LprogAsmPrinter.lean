@@ -600,6 +600,34 @@ def ymmImmBinaryAtt? : String → Option String
 /-- The name part of a `<NAME>:<n>` mnemonic. -/
 def immOpName (opn : String) : String := (opn.splitOn ":").headD opn
 
+/-- The rotate count of the BMI2 non-destructive rotate mnemonic `RORX:<n>:64`
+    (`d := s` rotated right by `n`, 64-bit), `none` for every other mnemonic. -/
+def rorxCount? (opn : String) : Option Nat :=
+  match opn.splitOn ":" with
+  | ["RORX", nStr, "64"] => nStr.toNat?
+  | _ => none
+
+/-- The AT&T lines of `rorx` writing `d`: `rorxq $n, s, d` into a register
+    destination, through the scratch `R15` into a memory destination (the
+    `rorx` destination is a register). The source may be a register or memory. -/
+def renderRorx (frame spillW n : Nat) (d s : LOperand) (qsaveB : Nat := qsaveBytes) :
+    List String :=
+  let sop := resolveOperand frame spillW 64 s qsaveB
+  let dop := resolveOperand frame spillW 64 d qsaveB
+  if isMemOperand d then
+    [ "\trorxq $" ++ toString n ++ ", " ++ sop ++ ", %r15", "\tmovq %r15, " ++ dop ]
+  else [ "\trorxq $" ++ toString n ++ ", " ++ sop ++ ", " ++ dop ]
+
+/-- The AT&T lines of the `.rodata` symbol-base load `LOADSYM [.arr sym _]`
+    writing `d`: `leaq sym(%rip), d`, through the scratch `R15` into a memory
+    destination. -/
+def renderLoadSym (frame spillW : Nat) (d : LOperand) (sym : String)
+    (qsaveB : Nat := qsaveBytes) : List String :=
+  let dop := resolveOperand frame spillW 64 d qsaveB
+  if isMemOperand d then
+    [ "\tleaq " ++ sym ++ "(%rip), %r15", "\tmovq %r15, " ++ dop ]
+  else [ "\tleaq " ++ sym ++ "(%rip), " ++ dop ]
+
 /-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
     AT&T line(s). Handles the three arities the owned-RA body produces:
 
@@ -629,7 +657,11 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       if stripWidthTag opn == "SETC" then
         [ "\tsetb " ++ gpReg8 d, "\tmovzbq " ++ gpReg8 d ++ ", " ++ gpReg64 d ]
       else [ "\t# UNHANDLED-OP " ++ opn ]
+  -- The `.rodata` symbol-base load, the symbol carried as a compile-time array
+  -- operand (`.arr sym 0`), which the register allocators leave untouched.
+  | [d], "LOADSYM", [.arr sym _] => renderLoadSym frame spillW d sym qsaveB
   | [d], opn, [s] =>
+      if let some n := rorxCount? opn then renderRorx frame spillW n d s qsaveB else
       let base := stripAbiTag opn
       -- **YMM packed shift-by-immediate VEX** (batch8): the 256-bit unary packed
       -- logical shifts `VPSLLD:<n>` / `VPSRLD:<n>`, `d := a shift n` per 32-bit
