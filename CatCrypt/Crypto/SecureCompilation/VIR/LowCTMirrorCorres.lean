@@ -40,7 +40,8 @@ tables are parameters; the lemmas assume the semantics of the operators they use
 
 - `corresTrans_scalarSet`, `corresTrans_ifNz`, `corresTrans_limbStore`,
   `corresTrans_select`, `corresTrans_cloneTower`, `corresTrans_call`,
-  `corresTrans_callN`: one lemma per emitted instruction shape; `RLetU64Zero` is
+  `corresTrans_callN`, `corresTrans_copy`: one lemma per emitted instruction shape;
+  `RLetU64Zero` is
   `corresTrans_scalarSet` at `0`.
 - `corresTrans_nil`, `corresTrans_append`, `corresTrans_unrollForJ`: composition.
 - `ccall_arrs_semIr`, `ccall_arrsN_semIr`: the mirror call rules for array parameters
@@ -1084,6 +1085,53 @@ theorem corresTrans_callN {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : P
     · have hc := mirrorHeapCorr_writeOuts sid (h (callArgVals sid args heap)) s heap hSR
       exact ⟨hc.1, hc.2⟩
 
+/-! ### Whole-array copy -/
+
+/-- The array assignment `dstVar = srcVar` of two locations of tower type `t`, translated
+    at fuel `n + 2`, copies the array of `srcVar` to `dstVar`. -/
+theorem translateCmd_copy_eval (env : TransEnv) (dstVar srcVar : String)
+    (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) (sid : AScopeId) (n : Nat) (heap0 : AHeap) :
+    (translateCmd env
+        [.Cassgn (CatCrypt.Crypto.Jasmin.LowCT.locToLVal { locVar := dstVar, locSrc := t })
+          .AT_none (CatCrypt.Crypto.Jasmin.LowCT.towerToSType t)
+          (CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := srcVar, locSrc := t })]
+        sid (n + 2)).code.eval heap0 =
+      CatCrypt.Prob.SDistr.pure (⟨()⟩, setA heap0 sid dstVar t.storageBytes
+        (getA heap0 sid srcVar t.storageBytes)) := by
+  simp only [translateCmd, CatCrypt.Crypto.Jasmin.translateInstrR, CatCrypt.Deep.eval_bind,
+    CatCrypt.Deep.eval_ret, CatCrypt.Core.SPComp.bind_def, CatCrypt.Core.SPComp.pure_def,
+    CatCrypt.Crypto.Jasmin.LowCT.translatePExpr_locToPExpr_eval,
+    CatCrypt.Prob.SDistr.pure_bind]
+  simp only [CatCrypt.Crypto.Jasmin.LowCT.towerToSType, CatCrypt.Crypto.Jasmin.coerceValue,
+    ↓reduceDIte, CatCrypt.Crypto.Jasmin.translateWriteLVal, CatCrypt.Crypto.Jasmin.LowCT.locToLVal,
+    CatCrypt.Crypto.Jasmin.LowCT.locToVar]
+  erw [CatCrypt.Crypto.Jasmin.writeVar_sarr_eq]
+  exact CatCrypt.Crypto.Jasmin.LowCT.eval_put_bind_heap heap0 _ _
+    (fun h => CatCrypt.Prob.SDistr.pure ((⟨()⟩ : ULift Unit), h))
+
+/-- **`RCopy`.** The array assignment `dstVar = srcVar` of two locations of tower type
+    `t` copies the array of `srcVar` to `dstVar`. -/
+theorem corresTrans_copy {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (env : TransEnv) (sid : AScopeId) (dstVar srcVar : String)
+    (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) :
+    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
+      [.Cassgn (CatCrypt.Crypto.Jasmin.LowCT.locToLVal { locVar := dstVar, locSrc := t })
+        .AT_none (CatCrypt.Crypto.Jasmin.LowCT.towerToSType t)
+        (CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := srcVar, locSrc := t })]
+      [.MkI () (.Cassgn (.Lvar { v_var := mArrVar dstVar t.storageBytes }) .AT_none
+        (.aarr .U8 t.storageBytes) (.Pvar (mkLvar { v_var := mArrVar srcVar t.storageBytes })))]
+      (fun heap => setA heap sid dstVar t.storageBytes (getA heap sid srcVar t.storageBytes)) := by
+  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
+  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
+    exact translateCmd_copy_eval env dstVar srcVar t sid n heap
+  · refine corresSem_instr _ () ?_
+    intro s heap hSR _
+    exact ⟨_, .Eassgn _ _ _ _ _ _ _ _
+      (semPexpr_pvar_arr gd opS s { v_var := mArrVar srcVar t.storageBytes } _ _
+        (hSR.2 srcVar t.storageBytes))
+      (truncateVal_arr_self _ _) (writeLval_lvar_arr gd opS s _ _ _),
+      mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
+
 /-! ## §6. Composition over a `LowCT` fragment -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
@@ -1093,19 +1141,24 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorTranslate
 /-- The `LowCT` programs covered by `toJasminCmd_corresTrans`: skips, assertions,
     sequences, blocks, function definitions, scalar zero bindings, scalar constants,
     branches on a scalar, counted loops, literal limb stores, selections between
-    locations of one tower type, calls `RCall`/`RCallN` whose name, destinations and
-    arguments satisfy `callOk`, and clone calls whose cloned location has the clone's
-    tower type and whose inner call satisfies `callOk`. -/
+    locations of one tower type, whole-array copies between locations of one tower
+    type, calls `RCall`/`RCallN` whose name, destinations and arguments satisfy
+    `callOk`, and clone calls whose cloned location has the clone's tower type and whose
+    inner call satisfies `callOk`. -/
 def MirrorSimFragment (callOk : String → List Located → List Located → Prop) : LowCT → Prop
   | .RSkip | .RAssert _ | .RScalarSet _ _ | .RLimbStore _ _ _ => True
   | .RSeq c1 c2 | .RIfNz _ c1 c2 | .RFnDef _ _ _ c1 c2 =>
       MirrorSimFragment callOk c1 ∧ MirrorSimFragment callOk c2
   | .RBlock body | .RFor _ _ body | .RLetU64Zero _ body => MirrorSimFragment callOk body
   | .RSelect dst _ src0 src1 => src0.locSrc = dst.locSrc ∧ src1.locSrc = dst.locSrc
+  | .RCopy dst src => src.locSrc = dst.locSrc
   | .RCall f dest args => callOk f [dest] args
   | .RCallN f dests args => callOk f dests args
   | .RCloneCall _ ct od f dest args => od.locSrc = ct ∧ callOk f [dest] args
-  | _ => False
+  | .RLetZero _ _ _ | .RCallSwap _ _ _ _ | .RWhileNz _ _ | .RLimbStoreExpr _ _ _
+  | .RFnCall _ _ _ | .RTupleLoad _ _ _ | .RArrStore _ _ _ | .RArrLoad _ _ _
+  | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ | .RScalarSetExpr _ _
+  | .RCallDstThreaded _ _ _ | .RForRuntime _ _ _ => False
 
 /-- The translation of a concatenation whose parts translate. -/
 theorem translateCmdExt_append_some {a b : CatCrypt.Crypto.Jasmin.Cmd} {a' b' : Cmd}
@@ -1266,6 +1319,14 @@ theorem toJasminCmd_corresTrans {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pr
       locToGVar, locToVar, towerToSType, translateVarIExt, translateVarExt, translateSTypeExt,
       translatePExprExt, translateGVarExt, translateSType, translateWSize,
       mArrVar, mWordVar, mkLvar, translateAssgnTag]
+  | RCopy dst src =>
+    obtain ⟨d, t⟩ := dst
+    obtain ⟨s, ts⟩ := src
+    subst hc
+    refine ⟨_, _, ?_, corresTrans_copy opS gd prog env sid d s ts⟩
+    simp [translateCmdExt, translateInstrRExt, translateLValExt, locToLVal, locToPExpr,
+      locToGVar, locToVar, towerToSType, translateVarIExt, translateVarExt, translateSTypeExt,
+      translatePExprExt, translateGVarExt, mArrVar, mkLvar, translateAssgnTag]
   | RCall f dest args =>
     obtain ⟨fa, H⟩ := hcall f [dest] args hc
     exact ⟨_, fa, translateCmdExt_call f dest args, H⟩

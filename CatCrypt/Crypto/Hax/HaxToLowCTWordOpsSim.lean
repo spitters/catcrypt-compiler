@@ -632,8 +632,12 @@ theorem segment_sim {bi : Builtins} (hbi : WordBuiltins' bi) (fuel : Nat)
 /-! ### Retyping the array accesses -/
 
 /-- The array accesses of a program retyped on a table `len` of array lengths:
-    a load from an array in `len` gets a `.TU64` destination, and a store into
-    an array of length `n` in `len` gets the array type `.TBytes (8 * n)`. -/
+    a load from an array in `len` gets a `.TU64` destination, a store into
+    an array of length `n` in `len` gets the array type `.TBytes (8 * n)`, and a
+    whole-array copy whose destination, or else whose source, has length `n` in
+    `len` gets the array type `.TBytes (8 * n)` on both locations. The other
+    nodes are unchanged; the structured nodes other than `RFnDef` are retyped in
+    their bodies. -/
 def typeWordArrays (len : String → Option Nat) : LowCT → LowCT
   | .RArrLoad dst src i =>
       if (len src.locVar).isSome then .RArrLoad ⟨dst.locVar, .TU64⟩ src i
@@ -642,6 +646,10 @@ def typeWordArrays (len : String → Option Nat) : LowCT → LowCT
       match len arr.locVar with
       | some n => .RArrStore ⟨arr.locVar, .TBytes (8 * n)⟩ i src
       | none => .RArrStore arr i src
+  | .RCopy dst src =>
+      match len dst.locVar <|> len src.locVar with
+      | some n => .RCopy ⟨dst.locVar, .TBytes (8 * n)⟩ ⟨src.locVar, .TBytes (8 * n)⟩
+      | none => .RCopy dst src
   | .RSeq a b => .RSeq (typeWordArrays len a) (typeWordArrays len b)
   | .RLetZero x t b => .RLetZero x t (typeWordArrays len b)
   | .RLetU64Zero x b => .RLetU64Zero x (typeWordArrays len b)
@@ -650,7 +658,34 @@ def typeWordArrays (len : String → Option Nat) : LowCT → LowCT
   | .RFor x n b => .RFor x n (typeWordArrays len b)
   | .RForRuntime x bound b => .RForRuntime x bound (typeWordArrays len b)
   | .RBlock b => .RBlock (typeWordArrays len b)
-  | c => c
+  | .RSkip => .RSkip
+  | .RScalarSet x n => .RScalarSet x n
+  | .RCall f dst args => .RCall f dst args
+  | .RCallSwap f d1 d2 args => .RCallSwap f d1 d2 args
+  | .RCloneCall cv t od f dst args => .RCloneCall cv t od f dst args
+  | .RLimbStore loc i v => .RLimbStore loc i v
+  | .RLimbStoreExpr loc i e => .RLimbStoreExpr loc i e
+  | .RCallN f dsts args => .RCallN f dsts args
+  | .RSelect dst sel s0 s1 => .RSelect dst sel s0 s1
+  | .RAssert l => .RAssert l
+  | .RFnDef f ps rs body cont => .RFnDef f ps rs body cont
+  | .RFnCall f dsts args => .RFnCall f dsts args
+  | .RTupleLoad dst src i => .RTupleLoad dst src i
+  | .RArrStoreLit arr i src => .RArrStoreLit arr i src
+  | .RArrLoadLit dst src i => .RArrLoadLit dst src i
+  | .RScalarSetExpr x e => .RScalarSetExpr x e
+  | .RCallDstThreaded f dst args => .RCallDstThreaded f dst args
+
+/-- `typeWordArrays` maps a whole-array copy between two locations of one tower
+    type to a whole-array copy between two locations of one tower type. -/
+theorem typeWordArrays_copy_locSrc (len : String → Option Nat) (dst src : Located)
+    (h : src.locSrc = dst.locSrc) :
+    ∃ dst' src', typeWordArrays len (.RCopy dst src) = .RCopy dst' src' ∧
+      src'.locSrc = dst'.locSrc := by
+  simp only [typeWordArrays]
+  split
+  · exact ⟨_, _, rfl, rfl⟩
+  · exact ⟨_, _, rfl, h⟩
 
 /-- The store type `typeWordArrays` gives an array of `n` words encodes as
     `.memref n`. -/
