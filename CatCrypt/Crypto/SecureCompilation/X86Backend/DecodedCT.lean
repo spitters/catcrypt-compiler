@@ -1781,8 +1781,8 @@ The list forms above index the program and the certificate by position, which co
 time linear in the index, and `sweep` rebuilds the certificate list at each update.
 The forms below keep both in arrays and update the certificate in place. `checkCertA`
 is `checkCert` on the arrays' lists (`checkCertA_eq`), so `bytesCTCheckFast_sound`
-follows from `checkCert_sound`; `inferA` needs no proof, since the check validates
-whatever certificate it computes. -/
+follows from `checkCert_sound`; `inferA` and `presCtxOfA` need no proof, since the check
+validates whatever certificate and preservation data they compute. -/
 
 /-- The public set the array certificate assigns to index `pc`. -/
 def certAtA (A : Array (Option PubA)) (pc : Nat) : Option PubA := A.getD pc none
@@ -1917,18 +1917,155 @@ def inferA (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
 /-- The frame words public at some index of an array certificate. -/
 def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
 
-/-- Alternate preservation data and certificate from the certificate `A`: the data of `A`,
-    then the certificate inferred with them, until two successive certificates are equal,
-    at most `fuel` more rounds. The returned certificate is the one inferred with the returned
-    data. -/
-def fastCertLoop (prog : List RInstr) (pa : Array RInstr) (P : PubA) :
-    Nat → Array (Option PubA) → Array (Option PubA) × PresCtx
-  | fuel, A =>
-    let K := presCtxOf prog A.toList
+/-! ### The preservation certificate on arrays
+
+`presCtxOfA` runs the algorithm of `presCtxOf` with the program and the preservation
+certificate in arrays, the `ret`s and calls of the program listed once, and the
+guarantees of every function tabulated once per pass. -/
+
+/-- The indices of the `ret`s of an array program, in increasing order. -/
+def retIdxA (pa : Array RInstr) : Array Nat :=
+  (List.range pa.size).foldl (fun acc pc =>
+    match pa[pc]? with
+    | some RInstr.ret => acc.push pc
+    | _ => acc) (#[] : Array Nat)
+
+/-- The calls of an array program as pairs of index and target, in increasing order. -/
+def callIdxA (pa : Array RInstr) : Array (Nat × Nat) :=
+  (List.range pa.size).foldl (fun acc pc =>
+    match pa[pc]? with
+    | some (RInstr.call t) => acc.push (pc, t)
+    | _ => acc) (#[] : Array (Nat × Nat))
+
+/-- `presPost?` on an array certificate `D`, over the indices `rets` of the `ret`s. -/
+def presPostA? (own : Nat → Nat) (D : Array (Option PresA)) (rets : Array Nat)
+    (R0 : List String) (Q0 : List Int) (e : Nat) : Option (List String × List Int) :=
+  rets.foldl (fun acc pc =>
+    match D.getD pc none with
+    | some P =>
+        if own pc = e then
+          let R := R0.filter fun r => P.delta == 0 && P.regs.contains (r, r)
+          let Q := Q0.filter fun q => P.delta == 0 && P.cells.contains (q, .cell q)
+          match acc with
+          | none => some (R, Q)
+          | some (R', Q') => some (R'.filter R.contains, Q'.filter Q.contains)
+        else acc
+    | none => acc) none
+
+/-- `succsPres` on an array program. -/
+def succsPresA (keep : Int → Bool) (own : Nat → Nat) (Pq : Nat → List Int)
+    (post : Nat → Option (List String × List Int)) (pa : Array RInstr) (pc : Nat)
+    (P : PresA) : List (Nat × PresA) :=
+  match pa[pc]? with
+  | some (.op i) => ((presStep keep P i).map fun P' => (pc + 1, P')).toList
+  | some (.jcc _ t) => [(t, P), (pc + 1, P)]
+  | some (.push x) => ((presBlock keep P (pushOps x)).map fun P' => (pc + 1, P')).toList
+  | some (.pop x) => ((presBlock keep P (popOps x)).map fun P' => (pc + 1, P')).toList
+  | some (.call t) =>
+      (t, entryPres (Pq (own t))) ::
+        match presBlock keep P (callOps (pc + 1)), post (own t) with
+        | some P1, some (R, Q) =>
+            ((presBlock keep (presAfterCall R Q P1) retOps).map fun P3 => (pc + 1, P3)).toList
+        | _, _ => []
+  | _ => []
+
+/-- One pass of `sweepPres` on arrays, updating the certificate in place, with a flag
+    recording whether any fact changed. The guarantees of the functions with entries in
+    `es` are computed once, from the certificate before the pass. -/
+def sweepPresA (own : Nat → Nat) (Pq : Nat → List Int) (es : List Nat) (rets : Array Nat)
+    (pa : Array RInstr) (D : Array (Option PresA)) : Array (Option PresA) × Bool :=
+  let postT := es.map fun e => (e, presPostA? own D rets calleeSaved (Pq e) e)
+  let post : Nat → Option (List String × List Int) := fun e =>
+    match postT.lookup e with
+    | some p => p
+    | none => presPostA? own D rets calleeSaved (Pq e) e
+  (List.range pa.size).foldl (fun acc pc =>
+    let (B, ch) := acc
+    match B.getD pc none with
+    | none => (B, ch)
+    | some P => (succsPresA (fun _ => true) own Pq post pa pc P).foldl (fun acc so =>
+        let (B, ch) := acc
+        let old := B.getD so.1 none
+        let new := presMeetO old so.2
+        if so.1 < B.size ∧ new ≠ old then (B.setIfInBounds so.1 new, true) else (B, ch))
+        (B, ch))
+    (D, false)
+
+/-- Passes of `sweepPresA` until one changes nothing, at most `fuel` of them. -/
+def presFixA (own : Nat → Nat) (Pq : Nat → List Int) (es : List Nat) (rets : Array Nat)
+    (pa : Array RInstr) : Nat → Array (Option PresA) → Array (Option PresA)
+  | 0, D => D
+  | fuel + 1, D =>
+    let (D', ch) := sweepPresA own Pq es rets pa D
+    if ch then presFixA own Pq es rets pa fuel D' else D'
+
+/-- `inferPres` on arrays. -/
+def inferPresA (own : Nat → Nat) (Pq : Nat → List Int) (es : List Nat) (rets : Array Nat)
+    (pa : Array RInstr) : Array (Option PresA) :=
+  presFixA own Pq es rets pa pa.size
+    ((Array.replicate pa.size none).setIfInBounds 0 (some (entryPres [])))
+
+/-- `presRequests` on arrays, over the calls `calls` of the program. -/
+def presRequestsA (calls : Array (Nat × Nat)) (own : Nat → Nat) (A : Array (Option PubA))
+    (D : Array (Option PresA)) (e : Nat) : List Int :=
+  (calls.toList.flatMap fun c =>
+    if own c.2 = e then
+      let direct := match certAtA A c.1 with
+        | some a => a.cells.filterMap fun q => if far (q + 8) 0 then some (q + 8) else none
+        | none => []
+      let trans := match D.getD c.1 none with
+        | some P => P.cells.filterMap fun q =>
+            if far (q.1 - P.delta + 8) 0 then some (q.1 - P.delta + 8) else none
+        | none => []
+      direct ++ trans
+    else []).eraseDups
+
+/-- `presCtxOf` on an array program and an array certificate. The guarantees `Rp` and
+    `Pp` are tabulated at `0` and at every call target. It reads `A` only through
+    `callCellsA` of the calls of `pa`. -/
+def presCtxOfA (pa : Array RInstr) (A : Array (Option PubA)) : PresCtx :=
+  let es := (callTargets pa.toList).eraseDups
+  if es.isEmpty then PresCtx.empty else
+  let own := ownerOf es
+  let rets := retIdxA pa
+  let calls := callIdxA pa
+  let tbl : List (Nat × List Int) → Nat → List Int := fun t e => (t.lookup e).getD []
+  let step (t : List (Nat × List Int)) : List (Nat × List Int) :=
+    let D := inferPresA own (tbl t) es rets pa
+    es.map fun e => (e, presRequestsA calls own A D e)
+  let reqs := (List.range (es.length + 1)).foldl (fun t _ => step t) []
+  let D := inferPresA own (tbl reqs) es rets pa
+  let postOf : Nat → List String × List Int := fun e =>
+    (presPostA? own D rets calleeSaved (tbl reqs e) e).getD ([], [])
+  let postT := (0 :: es).map fun e => (e, postOf e)
+  let post : Nat → List String × List Int := fun e =>
+    match postT.lookup e with
+    | some p => p
+    | none => postOf e
+  { Rp := fun e => (post e).1, Pp := fun e => (post e).2, D := D.toList }
+
+/-- The frame words the certificate `A` makes public at each call of `calls`: the part of
+    `A` that `presCtxOfA` reads. -/
+def callCellsA (calls : Array (Nat × Nat)) (A : Array (Option PubA)) :
+    Array (Option (List Int)) :=
+  calls.map fun c => (certAtA A c.1).map (·.cells)
+
+/-- Alternate preservation data and certificate from the certificate `A` and its data
+    `K = presCtxOfA pa A`: the certificate inferred with `K`, then its data, until two
+    successive certificates are equal, at most `fuel` more rounds. The data are computed
+    again only when the frame words public at a call change; otherwise they are `K`, and
+    the certificate inferred with them is the one at hand. The returned certificate is the
+    one inferred with the returned data. -/
+def fastCertLoop (pa : Array RInstr) (calls : Array (Nat × Nat)) (P : PubA) :
+    Nat → Array (Option PubA) → PresCtx → Array (Option PubA) × PresCtx
+  | fuel, A, K =>
     let A' := inferAK K pa P
     match fuel with
     | 0 => (A', K)
-    | n + 1 => if A' == A then (A', K) else fastCertLoop prog pa P n A'
+    | n + 1 =>
+      if A' == A then (A', K)
+      else if callCellsA calls A' == callCellsA calls A then (A', K)
+      else fastCertLoop pa calls P n A' (presCtxOfA pa A')
 
 /-- The certificate and preservation data of the array decision: from the certificate
     without preservation data, the data of a certificate and the certificate inferred with
@@ -1936,12 +2073,18 @@ def fastCertLoop (prog : List RInstr) (pa : Array RInstr) (P : PubA) :
     keep are those public at its calls. -/
 def fastCert (prog : List RInstr) (P : PubA) : Array (Option PubA) × PresCtx :=
   let pa := prog.toArray
-  fastCertLoop prog pa P 2 (inferA pa P)
+  let A := inferA pa P
+  fastCertLoop pa (callIdxA pa) P 2 A (presCtxOfA pa A)
 
 /-- The frame words of the array decision on the certificate `A`: those of `A` and those
-    the preservation certificate of `K` keeps through a write with another base. -/
+    the preservation certificate of `K` keeps through a write with another base, each
+    once. -/
 def fastFrame (prog : List RInstr) (A : Array (Option PubA)) (K : PresCtx) : List Int :=
-  certCellsA A ++ presCells prog K.D
+  (certCellsA A ++ presCells prog K.D).eraseDups
+
+theorem mem_fastFrame {prog : List RInstr} {A : Array (Option PubA)} {K : PresCtx} {o : Int} :
+    o ∈ fastFrame prog A K ↔ o ∈ certCellsA A ∨ o ∈ presCells prog K.D := by
+  simp [fastFrame, List.mem_eraseDups]
 
 /-- The array decision on a given certificate `A` and preservation data `K`: `A` assigns
     the entry a set below `P`, the preservation certificate passes, and `checkCertA`
@@ -1968,8 +2111,8 @@ theorem bytesCTCheckFast_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
       RunL r (FrameSep (fastFrame prog (fastCert prog P).1 (fastCert prog P).2))
         prog 0 sa t sa') := by
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
-  simp only [bytesCTCheckFast, fastCheckWith, Bool.and_eq_true, succOkA_eq, checkCertA_eq,
-    List.toList_toArray] at h
+  simp only [bytesCTCheckFast, fastCheckWith, Bool.and_eq_true, succOkA_eq, checkCertA_eq]
+    at h
   obtain ⟨⟨h0, hp⟩, hc⟩ := h
   obtain ⟨b, hb, hle⟩ := succOk_spec h0
   exact (checkCert_sound hc hp h₁ hb (PubA.agree_of_le hle hag) h₂).1
