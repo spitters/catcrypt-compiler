@@ -139,7 +139,8 @@ def bypasses {w : Nat} (O : BypassOracle w) (σ : SpecState w) (base : String)
 
     A store steps `evalInstr` and pushes the word it overwrote onto the buffer. A
     memory read (`loadMem`, `loadMemIdx`, the memory source of `mulxMem` and of the
-    memory-operand arithmetic `addMem`, `adcxMem`, `adoxMem`, `imulMem`, `imulriMem`)
+    memory-operand arithmetic `addMem`, `adcxMem`, `adoxMem`, `imulMem`, `imulriMem`,
+    and of the compare `cmpMem`)
     takes the bypassed stale value when `bypasses` supplies one, consuming a unit of
     window, and otherwise steps `evalInstr`. `addToMem` does both: it reads its cell,
     possibly bypassed, and pushes the word it overwrites. Every other instruction steps
@@ -209,6 +210,12 @@ def specStep {w : Nat} (O : BypassOracle w) (σ : SpecState w) :
           { arch := σ.arch.writeB5W dst (x86_IMULt stale (BitVec.ofNat w imm))
             buf := σ.buf, window := σ.window - 1 }
       | none => { σ with arch := evalInstr σ.arch (.imulriMem dst base off imm) }
+  | .cmpMem a base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5 (x86_CMP (σ.arch.get a) stale)
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.cmpMem a base off) }
   | .addToMem base off src =>
       match bypasses O σ base off with
       | some stale =>

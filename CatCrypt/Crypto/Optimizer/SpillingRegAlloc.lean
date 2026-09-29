@@ -104,7 +104,7 @@ def writtenNames : JInstr 64 → List String
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
   -- the memory-source arithmetic writes its destination; `addToMem` writes memory only.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
-  | .addToMem _ _ _ => []
+  | .addToMem _ _ _ | .cmpMem _ _ _ => []
   | .bzhi d _ _ => [d]
 
 /-- Register names an instruction **reads** (its source operands and, for the
@@ -171,6 +171,8 @@ def readNames : JInstr 64 → List String
   | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ => [d, base]
   | .imulriMem _ base _ _ => [base]
   | .addToMem base _ s => base :: srcNames s
+  -- `cmp a, [base + off]` reads its register operand and the base register.
+  | .cmpMem a base _ => [a, base]
   -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
   | .bzhi _ src idx => [src, idx]
 

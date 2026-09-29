@@ -302,7 +302,7 @@ theorem opPub_eval {P : PubA} {o : JOperand} (h : opPub P o = true) {s₁ s₂ :
 def memBase : JInstr 64 → Option String
   | .loadMem _ b _ | .storeMem b _ _ | .mulxMem _ _ _ b _ | .addMem _ b _
   | .adcxMem _ b _ | .adoxMem _ b _ | .imulMem _ b _ | .imulriMem _ b _ _
-  | .addToMem b _ _ | .loadMemIdx _ b _ _ | .storeMemIdx b _ _ _ => some b
+  | .addToMem b _ _ | .cmpMem _ b _ | .loadMemIdx _ b _ _ | .storeMemIdx b _ _ _ => some b
   | _ => none
 
 /-- `i` writes memory through the base register `%rsp`. -/
@@ -336,6 +336,7 @@ def stepA (P : PubA) (i : JInstr 64) : PubA where
   cells := if (dstRegs i).contains "%rsp" then [] else newCells P i
   flags := match i with
     | .cmp a o => P.regs.contains a && opPub P o
+    | .cmpMem a b o => P.regs.contains a && b == "%rsp" && P.cells.contains o
     | _ => false
 
 /-- The separation hypothesis: every address `i` writes through a base other than `%rsp`
@@ -478,6 +479,16 @@ theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int} (hF : ∀ o ∈ P.
       have ha : s₁.view.get a = s₂.view.get a := by simp [AState.view, hag.1 _ hf.1]
       simp only [evalInstrA, evalInstr, JState.writeB5]
       rw [ha, opPub_eval hf.2 hag]
+    | cmpMem a b o =>
+      simp only [stepA, Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at hf
+      obtain ⟨⟨ha, rfl⟩, ho⟩ := hf
+      have ha' : s₁.view.get a = s₂.view.get a := by simp [AState.view, hag.1 _ ha]
+      have hc := hag.2.1 o ho
+      simp only [cellAt] at hc
+      have hm : s₁.view.load "%rsp" o = s₂.view.load "%rsp" o := by
+        simp [AState.view, JState.load, hc]
+      simp only [evalInstrA, evalInstr, JState.writeB5]
+      rw [ha', hm]
     | _ => simp [stepA] at hf
 
 /-! ## 4. The checker -/

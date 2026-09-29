@@ -131,7 +131,7 @@ def writtenRegs : JInstr 64 → List String
   -- the memory-source arithmetic writes its register destination; `addToMem` writes a
   -- memory cell and the flags, no register.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
-  | .addToMem _ _ _ => []
+  | .addToMem _ _ _ | .cmpMem _ _ _ => []
   | .bzhi d _ _ => [d]
 
 /-- Kill every written register's held entries (one `Held.killReg` per dst). -/
@@ -341,6 +341,7 @@ theorem load_evalInstr_nonstore {s : JState 64} (i : JInstr 64)
   -- neither shape is covered by the other arms' `writeB5W`.
   | test a s' => simp only [evalInstr, JState.writeB5, JState.load]
   | cmp a s' => simp only [evalInstr, JState.writeB5, JState.load]
+  | cmpMem a base off => simp only [evalInstr, JState.writeB5, JState.load]
   | rol d amt => simp only [evalInstr, JState.writeB2W, JState.load]
   | ror d amt => simp only [evalInstr, JState.writeB2W, JState.load]
   | _ => simp only [evalInstr, JState.setReg, JState.writeB5W, JState.writeB4W,
@@ -416,7 +417,7 @@ theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
   | addMem _ _ _ | addToMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _
-  | imulriMem _ _ _ _ =>
+  | imulriMem _ _ _ _ | cmpMem _ _ _ =>
     simp_all [writtenRegs, evalInstr, JState.get, JState.setReg, JState.writeB4W,
       JState.writeB5W, JState.writeB5W2, JState.writeB5N, JState.writeB2W,
       JState.writeCFW, JState.setRegMerge, x86_XCHG, JState.writeB5Mem, JState.writeB5,
@@ -626,7 +627,7 @@ theorem forwardStep_sound {h : Held} {s : JState 64} (hv : HeldValid h s) (i : J
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
   | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _
-  | bzhi _ _ _ =>
+  | cmpMem _ _ _ | bzhi _ _ _ =>
     exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h)
       (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   | addToMem base off src =>

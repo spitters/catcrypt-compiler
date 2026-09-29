@@ -73,7 +73,7 @@ open CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrCtLower (ctSelectFus
     these shapes is reported as possibly writing `r`. -/
 def keepsReg (r : String) : JInstr 64 → Bool
   | .cmp _ _ | .test _ _ | .testN _ _ _ | .bt _ _ | .clc | .stc
-  | .storeMem _ _ _ | .storeMemIdx _ _ _ _ | .addToMem _ _ _ => true
+  | .storeMem _ _ _ | .storeMemIdx _ _ _ _ | .addToMem _ _ _ | .cmpMem _ _ _ => true
   | .mov d _ | .add d _ | .sub d _ | .adc d _ | .sbb d _ | .imul d _ | .neg d
   | .setc d | .and_ d _ | .not_ d | .andn d _ _ | .rol d _ | .ror d _
   | .rorx d _ _ | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ | .movzx d _ _
@@ -166,7 +166,7 @@ theorem holds_stepKeep {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
   | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _
   | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _
-  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .bzhi _ _ _ => exact hkept
+  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .bzhi _ _ _ => exact hkept
 
 /-! ## 3. The class check and the leakage theorem -/
 
@@ -208,7 +208,7 @@ theorem instrLeak_eq_of_idxOK {env : KEnv} {i : JInstr 64} (h : idxOK env i = tr
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
   | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _
   | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _
-  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .bzhi _ _ _ =>
+  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .bzhi _ _ _ =>
       exact instrLeak_state_independent _ (by simpa [idxOK] using h) s₁ s₂
 
 /-- **The leakage trace of a block in the class is state-independent.** A

@@ -1043,7 +1043,8 @@ inductive JOperand where
     `ADD` at both of `check_add`'s memory kinds (`addMem` for `r_rmi`, `addToMem`
     for `m_ri`, whose output word goes to the cell through `JState.writeB5Mem`),
     `ADCX` and `ADOX` at `check_adcx`'s `r_rm` (`adcxMem`, `adoxMem`), `IMULr` at
-    `r_rm` (`imulMem`) and `IMULri` at `[r; rm; i]` (`imulriMem`). Each evaluates as
+    `r_rm` (`imulMem`), `IMULri` at `[r; rm; i]` (`imulriMem`) and `CMP` at `r_rm`
+    (`cmpMem`). Each evaluates as
     its register form with the cell's word in place of the register operand; the
     equations `runBlock_loadMem_add_eq_addMem` and its siblings (section 10) state
     that each is a `loadMem` into a scratch register followed by the register
@@ -1284,6 +1285,10 @@ inductive JInstr (w : Nat) where
   /-- `Ox86_IMULri_instr` with a memory source (`[r; rm; i]`): `dst :=` the low word
       of `[base + off] * imm`, with the flags of `x86_IMULt`. -/
   | imulriMem (dst base : String) (off : Int) (imm : Nat)
+  /-- `Ox86_CMP_instr` with a memory second operand (`r_rm`, the `3B /r` form): the
+      five flags of `a - [base + off]`, the difference discarded; no register is
+      written. -/
+  | cmpMem (a base : String) (off : Int)
   /-- `BZHI` (BMI2) on registers, `x86_BZHI`: `dst := src` with the bits at and above
       the low byte of `idx` cleared, writing the five flags (`PF` undefined).
       Non-destructive in both sources. -/
@@ -1403,6 +1408,7 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .imulMem dst base off => s.writeB5W dst (x86_IMULt (s.get dst) (s.load base off))
   | .imulriMem dst base off imm =>
       s.writeB5W dst (x86_IMULt (s.load base off) (BitVec.ofNat w imm))
+  | .cmpMem a base off => s.writeB5 (x86_CMP (s.get a) (s.load base off))
   | .bzhi d src idx => s.writeB5W d (x86_BZHI (s.get src) (s.get idx))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
@@ -1528,6 +1534,15 @@ theorem runBlock_loadMem_imulri_eq_imulriMem {w : Nat} (s : JState w) (dst base 
   congr 1
   funext r
   split <;> simp_all
+
+/-- `cmp a, [base + off]` is `loadMem t base off; cmp a t`, with `t` holding the
+    loaded word. -/
+theorem runBlock_loadMem_cmp_eq_cmpMem {w : Nat} (s : JState w) (a base t : String)
+    (off : Int) (ht : t ≠ a) :
+    runBlock s [.loadMem t base off, .cmp a (.reg t)] =
+      (evalInstr s (.cmpMem a base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5,
+    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
 
 /-- `add [base + off], src` is `loadMem t base off; add t src; storeMem base off t`,
     with `t` holding the sum, for a source other than `t`. -/

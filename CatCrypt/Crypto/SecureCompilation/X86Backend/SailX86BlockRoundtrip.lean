@@ -567,6 +567,7 @@ def renameJ (alloc : GpAlloc) : JInstr 64 → JInstr 64
   | .adoxMem d base off => .adoxMem (nameOf alloc d) (nameOf alloc base) off
   | .imulMem d base off => .imulMem (nameOf alloc d) (nameOf alloc base) off
   | .imulriMem d base off imm => .imulriMem (nameOf alloc d) (nameOf alloc base) off imm
+  | .cmpMem a base off => .cmpMem (nameOf alloc a) (nameOf alloc base) off
   | .bzhi d src idx => .bzhi (nameOf alloc d) (nameOf alloc src) (nameOf alloc idx)
 
 /-! ## 4. The covered set -/
@@ -1877,7 +1878,7 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | btr _ _ | bts _ _
   | addMem _ _ _ | addToMem _ _ _ | imulMem _ _ _
-  | imulriMem _ _ _ _ | bzhi _ _ _ => simp [decodableJ] at hd
+  | imulriMem _ _ _ _ | cmpMem _ _ _ | bzhi _ _ _ => simp [decodableJ] at hd
 
 /-- A block built from the covered forms decodes back, instruction by
     instruction, with no bytes left over. -/

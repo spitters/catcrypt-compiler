@@ -167,6 +167,7 @@ def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.JInstr.dataArgs {
   | .adoxMem d base off =>
       [(s.get d).toNat, (s.load base off).toNat, (s.flagB (·.of)).toNat]
   | .imulriMem _ base off _ => [(s.load base off).toNat]
+  | .cmpMem a base off => [(s.get a).toNat, (s.load base off).toNat]
 
 /-- The embedding of `MachineConstantTime`'s events into `CTLeak`. `MLeak.branch`
     carries no outcome and maps to `branch true`. -/

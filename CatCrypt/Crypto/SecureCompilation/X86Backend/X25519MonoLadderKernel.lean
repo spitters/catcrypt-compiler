@@ -191,6 +191,7 @@ def rebaseInstr (rmap : String → String) (bmap : String → String)
   | .adoxMem d base off => .adoxMem (rmap d) (bmap base) (off + boff base)
   | .imulMem d base off => .imulMem (rmap d) (bmap base) (off + boff base)
   | .imulriMem d base off imm => .imulriMem (rmap d) (bmap base) (off + boff base) imm
+  | .cmpMem a base off => .cmpMem (rmap a) (bmap base) (off + boff base)
   | .bzhi d src idx => .bzhi (rmap d) (rmap src) (rmap idx)
 
 /-- Rebase a whole leaf body. -/

@@ -81,13 +81,13 @@ mem2reg's safety analysis needs the *memory cells* an instruction reads (the dua
 and reads none. -/
 
 /-- The memory cell an instruction **reads** (if any): `loadMem`, `mulxMem` and the
-    memory-operand arithmetic `addMem`, `addToMem`, `adcxMem`, `adoxMem`, `imulMem` and
-    `imulriMem` read the cell at a constant offset. -/
+    memory-operand arithmetic `addMem`, `addToMem`, `adcxMem`, `adoxMem`, `imulMem`,
+    `imulriMem` and the compare `cmpMem` read the cell at a constant offset. -/
 def readCell : JInstr 64 → Option (String × Int)
   | .loadMem _ base off => some (base, off)
   | .mulxMem _ _ _ base off => some (base, off)
   | .addMem _ base off | .addToMem base off _ | .adcxMem _ base off | .adoxMem _ base off
-  | .imulMem _ base off | .imulriMem _ base off _ => some (base, off)
+  | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off => some (base, off)
   -- `lea` computes `base + idx·scale + off` into a register without dereferencing
   -- it, so it reads no cell.
   | .lea _ _ _ _ _ => none
@@ -657,7 +657,7 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
   -- The memory-operand arithmetic reads its cell, which is not `(base, off)`, and
   -- registers and flags, all equal in `s`, `t`; `addToMem` writes that cell back.
   | addMem _ b' o' | addToMem b' o' _ | adcxMem _ b' o' | adoxMem _ b' o' | imulMem _ b' o'
-  | imulriMem _ b' o' _ =>
+  | imulriMem _ b' o' _ | cmpMem _ b' o' =>
     have hne : ¬ (b' = base ∧ o' = off) := by
       intro hc; exact hread (by simp only [readCell]; rw [hc.1, hc.2])
     have hcell : s.mem b' o' = t.mem b' o' := hm b' o' hne
@@ -919,6 +919,7 @@ def readRegs : JInstr 64 → List String
   -- names a memory bank, as for `loadMem`.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ => [d]
   | .imulriMem _ _ _ _ => []
+  | .cmpMem a _ _ => [a]
   | .addToMem _ _ s => srcNames s
   | .bzhi _ a c => [a, c]               -- bzhi is non-destructive in both sources
 
@@ -955,7 +956,7 @@ where
   -- `clc`, `stc`, `testN` and `bt` write flags only.
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
-  | .addToMem _ _ _ => []
+  | .addToMem _ _ _ | .cmpMem _ _ _ => []
   | .bzhi d _ _ => [d]
 
 open InstrTransparent (writtenRegsI)
@@ -1521,6 +1522,12 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     have hcellne : ¬ (base = b ∧ o = off) := by
       intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
     simp only [evalInstr]; rw [h.load_other hcellne]; exact h.writeB5W_ne d hd _
+  | cmpMem a base o =>
+    have haρ : a ≠ ρ := by
+      intro hc; subst hc; exact hrρ (by simp [readRegs])
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
+    simp only [evalInstr]; rw [h.get haρ, h.load_other hcellne]; exact h.writeB5 _
   | adcxMem d base o | adoxMem d base o =>
     have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
     have hcellne : ¬ (base = b ∧ o = off) := by

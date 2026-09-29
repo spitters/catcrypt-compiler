@@ -108,7 +108,7 @@ def readsFlag {w : Nat} : JInstr w → Bool
     `writeB5W2`/`writeB5N` op that does not first read a flag): `add`, `sub`, `imul`,
     `imulri`, `neg`, `and_`, `or_`, `xor_`, `shl`, `shr`, `sar`, `shld`, `shrd`,
     `andn`, `bzhi`, `mul`, `imulWide`, the memory-operand `addMem`/`addToMem`/`imulMem`/
-    `imulriMem`, and `test`/`testN`/`cmp`, whose five flags are their
+    `imulriMem`, and `test`/`testN`/`cmp`/`cmpMem`, whose five flags are their
     only output.  The partial writes `adcx`/`adox`/`adcxMem`/`adoxMem`/`rol`/`ror`/`rcl`/`rcr`/`inc`/`dec`/
     `clc`/`stc`/`bt`/`btr`/`bts` and the flag-reading `adc`/`sbb` are excluded
     (`adcx`/`adox`/`adc`/`sbb`/`rcl`/`rcr` appear under `readsFlag`). -/
@@ -146,7 +146,7 @@ def writesAllFlags {w : Nat} : JInstr w → Bool
   | .inc _ | .dec _ | .clc | .stc | .bt _ _ | .btr _ _ | .bts _ _ => false
   -- The memory-operand `add` and `imul` forms write all five flags from their register,
   -- memory and immediate inputs; `adcxMem`/`adoxMem` write one flag.
-  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ => true
+  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ => true
   | .adcxMem _ _ _ | .adoxMem _ _ _ => false
   -- BMI2 `bzhi` writes the full `B5W` tuple from its two register sources.
   | .bzhi _ _ _ => true

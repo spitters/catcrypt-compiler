@@ -154,6 +154,11 @@ def decodeRexExt (r : BitVec 8) :
           | ib :: rest1 => some (.imulri reg rm (signExt8 ib), rest1)
           | [] => none
         else none
+      else if op.toNat = 0x3b then
+        match decodeMemTail (SailX86Decoder.rexX r) (modrm :: rest) with
+        | some (rf, bLow, none, off, rest1) =>
+            some (.cmpMem (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) off, rest1)
+        | _ => none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
         match rest with
         | sib :: rest1 =>
@@ -409,6 +414,35 @@ theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb
     rw [BitVec.toNat_ofNat]; unfold rex; omega
   simp only [decodeLinstr, h6, if_neg hc3, if_neg h7,
     if_neg h0f, if_neg hc4, isRex_rex _ _ _ hr hx hb, if_true, hpp, Option.or_none]
+
+/-- `CMP off(%rsp), %r` (`REX.W 3B /r` with a memory operand) decodes to a `cmpMem`
+    off `%rsp`. -/
+theorem decodeLinstr_rspCmp (r : Nat) (off : Int) (rest : List (BitVec 8))
+    (hr : r < 16) (h : dispOk32 off = true) :
+    decodeLinstr (encRspMem 1 0x3b r off ++ rest)
+      = some (.op (.cmpMem (regName r) "%rsp" off), rest) := by
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head r 4 off
+  have hdec := decodeMemTail_memTail32 r 4 off rest h
+  rw [hm, List.cons_append] at hdec
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0))
+      (BitVec.ofNat 8 0x3b :: m :: (ts ++ rest)) = none := by
+    simp [decodeRex, hmod]
+  have hs : decodeShift1 (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 0x3b
+      :: m :: (ts ++ rest)) = none := by
+    simp [decodeShift1]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 (bit r 3) 0 0) :: BitVec.ofNat 8 0x3b
+      :: m :: (ts ++ rest)) = none := by
+    simp [decodeCmp, hmod]
+  simp only [encRspMem_eq_memTail, hm, List.cons_append,
+    decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1) _ hnone
+      hs hc,
+    decodeRexExt, BitVec.toNat_ofNat, if_neg hmod,
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1), ne_eq,
+    not_true_eq_false, if_false,
+    SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1), hdec,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (Nat.zero_le 1),
+    rexB_rex _ _ _ (Nat.zero_le 1), bitsplit _ hr]
+  rfl
 
 /-- The reg-reg compare `CMP %s, %d` (`REX.W 39 /r`) decodes to `cmp d s`. -/
 theorem decodeLinstr_cmpRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (hs : s < 16) :

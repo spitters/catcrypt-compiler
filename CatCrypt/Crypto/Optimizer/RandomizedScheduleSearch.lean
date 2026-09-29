@@ -569,6 +569,7 @@ def readSet' : JInstr 64 → List String
   | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ =>
       [d, base, memCell]
   | .imulriMem _ base _ _ => [base, memCell]
+  | .cmpMem a base _ => [a, base, memCell]
   | .addToMem base _ (.reg r) => [base, r, memCell]
   | .addToMem base _ _ => [base, memCell]
   -- `lea` reads its two address registers and performs no memory access, so it

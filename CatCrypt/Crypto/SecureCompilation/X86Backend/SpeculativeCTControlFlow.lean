@@ -300,7 +300,7 @@ def instrAddrs {w : Nat} : JInstr w → List MLeak
   | .storeMem base off _ => [.mem base off]
   | .mulxMem _ _ _ base off => [.mem base off]
   | .addMem _ base off | .adcxMem _ base off | .adoxMem _ base off
-  | .imulMem _ base off | .imulriMem _ base off _ => [.mem base off]
+  | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off => [.mem base off]
   | .addToMem base off _ => [.mem base off, .mem base off]
   | _ => []
 

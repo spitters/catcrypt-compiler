@@ -898,12 +898,7 @@ def reloadMemrefBase (memrefBaseReload : String → Option String) (o : LOperand
       (4 `Lopn`s).
 
     Every emitted `Lopn` is either a MOV (which permits a memory lexpr/rexpr)
-    or has all of its non-MOV register operands in `R15`/`R14`.
-
-    The flag compare `CMP dst, src` (the loop back-edge and invariant-touch
-    compares, whose destination is their first source) takes the same four
-    shapes; the trailing `mov dst, R15` of a spilled destination leaves the
-    flags unchanged. -/
+    or has all of its non-MOV register operands in `R15`/`R14`. -/
 def legalizeBinop (dst src : LOperand) (opn : String) (mov : String := "MOV") :
     List LinstrR :=
   match dst.isSpill, src.isSpill with
@@ -926,7 +921,7 @@ def legalizeBinop (dst src : LOperand) (opn : String) (mov : String := "MOV") :
     their width tag is stripped, that `physBodyRmap` and its ABI variants lower
     through `lowerTwoAddr` (and so through `legalizeBinop`). -/
 def isTwoAddrBinop (opn : String) : Bool :=
-  ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
+  ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
     (stripWidthTag opn)
 
 /-- Legalize a register copy `mov dst, src` (sources `[src]`) so it carries at

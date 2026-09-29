@@ -260,6 +260,7 @@ def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.JInstr.mnem {w : 
   | .adoxMem _ _ _ => .adox
   | .imulMem _ _ _ => .imul
   | .imulriMem _ _ _ _ => .imul
+  | .cmpMem _ _ _ => .cmp
   | .bzhi _ _ _ => .bzhi
 
 /-- The SIMD mnemonic of an AVX2 dialect op. -/
