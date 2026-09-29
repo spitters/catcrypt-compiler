@@ -20,7 +20,6 @@ CatCrypt/Crypto/SecureCompilation/CompileFromHaxSha256CompressProductTie.lean  #
 CatCrypt/Crypto/SecureCompilation/CtMemoryGoldenPath.lean  # golden-path pattern + CT-analysis exemplar, no emitted artifact
 CatCrypt/Crypto/SecureCompilation/Dialects/AndnSelect.lean  # ISel peephole pass on Com (compiler infra)
 CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefRolledLoop.lean  # front construct: byteRolledForLoopN, a byte-cell (movb scale-1) rolled ComL.forLoopN — the loop-node front the byte-packed emits route through, not a deployed kernel (same category as the exempt loop-node emitters)
-CatCrypt/Crypto/SecureCompilation/Dialects/CryptoDialectLeakTraceValued.lean  # RHP/CT-leakage framework substrate (value-carrying trace), not an emit
 CatCrypt/Crypto/SecureCompilation/Dialects/RorImmSelect.lean  # ISel peephole pass on Com (compiler infra)
 CatCrypt/Crypto/SecureCompilation/Fe25519AddLeafGoldenPath.lean  # PROOF SUBJECT: hand-constructs a fe25519_add leaf Com to give it real jasminExtSem semantics (non-vacuous CalleeConsistent); 0 emit drivers, 0 bench consumers — not a deployed kernel, same category as the exempt JasminLsem* proof subjects
 CatCrypt/Crypto/SecureCompilation/Fe25519OrchestrationExample.lean  # worked example of the orchestration/leaf split (LowCT over named leaves), no emit artifact

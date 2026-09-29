@@ -127,6 +127,7 @@ CatCrypt.Crypto.Jasmin.SpartanSumCheckReflect
 CatCrypt.Crypto.Jasmin.TowerTupleLoad
 CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.Jasmin.VectorOps
+CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.Batch8EmitProof
 CatCrypt.Crypto.Optimizer.ComFullOpt
 CatCrypt.Crypto.Optimizer.ComOptPipeline
@@ -354,7 +355,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefRolledLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.ChaChaWholeKernelFront
 CatCrypt.Crypto.SecureCompilation.Dialects.ClmulVpshufbFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion
-CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceValued
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectVerifiedMiddle
 CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlanKernels
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
@@ -446,7 +446,6 @@ CatCrypt.Crypto.SecureCompilation.MontgomeryLadderGeneric
 CatCrypt.Crypto.SecureCompilation.MoreKernelRegistryEntries
 CatCrypt.Crypto.SecureCompilation.MultiWidthGoldenPath
 CatCrypt.Crypto.SecureCompilation.NttPassBridgeComplete
-CatCrypt.Crypto.SecureCompilation.P256FieldMulMontFront
 CatCrypt.Crypto.SecureCompilation.PipelineMap
 CatCrypt.Crypto.SecureCompilation.PlonkyRouting
 CatCrypt.Crypto.SecureCompilation.PolyRelationalCompileHigh
@@ -796,7 +795,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
-CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubOutFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddmulSubmul1CarrySelectEmit
@@ -817,7 +815,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
-CatCrypt.Crypto.SecureCompilation.X86Backend.NttBflyThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
@@ -841,7 +838,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256MsgScheduleThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundRegAlloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundT1ThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundT2ThirEmit
-CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha2BatchedEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512MsgScheduleThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512RoundT1ThirEmit
