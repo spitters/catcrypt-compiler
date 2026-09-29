@@ -86,8 +86,18 @@ def signExt8 (b : BitVec 8) : Nat := (b.signExtend 64).toNat
 def aluImm8Mnemonic (digit : Nat) : Option (String → JOperand → JInstr 64) :=
   if digit = 7 then some JInstr.cmp else aluImmMnemonic digit
 
+/-- The group-2 `/ext` of the shift-by-one form `D1 /ext`: `SHL = /4`, `SHR = /5`,
+    `SAR = /7`. -/
+def shift1Mnemonic (ext : Nat) : Option (String → JOperand → JInstr 64) :=
+  if ext = 4 then some JInstr.shl
+  else if ext = 5 then some JInstr.shr
+  else if ext = 7 then some JInstr.sar
+  else none
+
 /-- The `REX`-prefixed forms `decodeRex` has no arm for: the reg-reg compare
-    `39 /r` and the sign-extended-`imm8` group-1 form `83 /digit ib`. The third
+    `39 /r`, the sign-extended-`imm8` group-1 form `83 /digit ib`, and at
+    `REX.W = 1` the shift-by-one form `D1 /ext`, read as the shift by the immediate
+    `1`. The fourth
     arm, the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
     `REX.X`), so `decodeLinstr` reaches it on no stream. An index field of `100`
@@ -106,6 +116,8 @@ def decodeRexExt (r : BitVec 8) :
               (aluImm8Mnemonic (regField modrm)).map
                 fun mk => (mk rm (.imm (signExt8 ib)), rest1)
           | [] => none
+        else if op.toNat = 0xd1 ∧ SailX86Decoder.rexW r = 1 then
+          (shift1Mnemonic (regField modrm)).map fun mk => (mk rm (.imm 1), rest)
         else none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
         match rest with
@@ -125,8 +137,10 @@ def decodeRexExt (r : BitVec 8) :
 
 /-- Decode one instruction off the front of a byte stream. `decodeJ1` is tried
     first, so the two decoders agree wherever `decodeJ1` succeeds; the remaining
-    arms are `ret` (`C3`), `jcc rel8` (`70+cc cb`), `jcc rel32` (`0F 80+cc cd`)
-    and the `REX`-prefixed forms of `decodeRexExt`. -/
+    arms are `ret` (`C3`), `jcc rel8` (`70+cc cb`), `jcc rel32` (`0F 80+cc cd`),
+    the `REX`-prefixed forms of `decodeRexExt`, and the 32-bit `MOV $imm32, %r32`
+    without a prefix (`B8+rd id`), which zero-extends into the 64-bit register and
+    is read as the 64-bit `MOV` of the immediate. -/
 def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
   | [] => none
   | b0 :: rest =>
@@ -147,6 +161,13 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
           | _ => none
         else if isRex b0 then
           (decodeRexExt b0 rest).map fun p => (.op p.1, p.2)
+        else if 0xb8 ≤ b0.toNat ∧ b0.toNat ≤ 0xbf then
+          match rest with
+          | i0 :: i1 :: i2 :: i3 :: r =>
+              some (.op (.mov (regName (b0.toNat - 0xb8))
+                (.imm (i0.toNat + i1.toNat * 0x100 + i2.toNat * 0x10000
+                  + i3.toNat * 0x1000000))), r)
+          | _ => none
         else none
 
 /-- `decodeLinstr` extends `decodeJ1`: on a stream `decodeJ1` decodes, it returns the
@@ -361,6 +382,62 @@ theorem decodeLinstr_aluImm8 (digit : Nat) (mk : String → JOperand → JInstr 
     BitVec.toNat_ofNat, hd7, halu,
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true, signExt8_imm8 v hv]
   rfl
+
+/-- `REX.W` of a `REX.W` prefix. -/
+theorem rexW_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1) :
+    SailX86Decoder.rexW (BitVec.ofNat 8 (rex 1 r x b)) = 1 := by
+  interval_cases r <;> interval_cases x <;> interval_cases b <;> rfl
+
+/-- The shift-by-one form `op $1, %d` (`REX.W D1 /ext`) decodes to the shift its
+    extension names, by the immediate `1`. -/
+theorem decodeLinstr_shift1 (ext : Nat) (mk : String → JOperand → JInstr 64) (d : Nat)
+    (rest : List (BitVec 8)) (hext : ext < 8) (hd : d < 16)
+    (hmk : shift1Mnemonic ext = some mk) :
+    decodeLinstr (encShift1 1 ext d ++ rest) = some (.op (mk (regName d) (.imm 1)), rest) := by
+  have he7 : ext &&& 7 = ext := by
+    rw [Nat.and_two_pow_sub_one_eq_mod ext 3]; omega
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)))
+      (BitVec.ofNat 8 0xd1 :: BitVec.ofNat 8 (modRMReg ext d) :: rest) = none := by
+    simp [decodeRex, modField_modRMReg, aluMnemonic]
+  simp only [encShift1, rexOpt_w1, List.cons_append, List.nil_append,
+    decodeLinstr_rex_of_none _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _) _ hnone,
+    decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
+    BitVec.toNat_ofNat, he7, hmk,
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true]
+  rfl
+
+/-- The 32-bit `MOV $imm32, %r32` without a prefix (`B8+rd id`), for a destination
+    below `r8` and a value below `2 ^ 32`, decodes to the 64-bit `MOV` of the value:
+    the 32-bit write zero-extends into the 64-bit register. -/
+theorem decodeLinstr_movImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 8)
+    (hv : v < 2 ^ 32) :
+    decodeLinstr (encMovImmw 0 d v ++ rest) = some (.op (.mov (regName d) (.imm v)), rest) := by
+  have hb : bit d 3 = 0 := by
+    simp only [bit, Nat.shiftRight_eq_div_pow]
+    rw [Nat.div_eq_of_lt (by omega)]; rfl
+  have hop : (BitVec.ofNat 8 (0xb8 + d % 8)).toNat = 0xb8 + d := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hd]; omega
+  simp only [encMovImmw, if_true, hb, rexOpt, and_self, List.nil_append, imm32LE,
+    List.map_cons, List.map_nil, List.cons_append, List.singleton_append]
+  have hj : decodeJ1 (BitVec.ofNat 8 (0xb8 + d % 8) :: BitVec.ofNat 8 (v &&& 0xff)
+      :: BitVec.ofNat 8 ((v >>> 8) &&& 0xff) :: BitVec.ofNat 8 ((v >>> 16) &&& 0xff)
+      :: BitVec.ofNat 8 ((v >>> 24) &&& 0xff) :: rest) = none := by
+    simp only [decodeJ1, isRex, hop]
+    have e1 : ¬ (0xb8 + d = 0x66) := by omega
+    have e2 : ¬ (0xb8 + d = 0xf3) := by omega
+    have e3 : ¬ (0xb8 + d = 0xc4) := by omega
+    have e4 : ¬ (0x40 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x4f) := by omega
+    have e5 : ¬ (0xb8 + d = 0x0f) := by omega
+    simp [e1, e2, e3, e4, e5]
+  simp only [decodeLinstr, hj, hop, isRex]
+  have f1 : ¬ (0xb8 + d = 0xc3) := by omega
+  have f2 : ¬ (0x70 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x7f) := by omega
+  have f3 : ¬ (0xb8 + d = 0x0f) := by omega
+  have f4 : ¬ (0x40 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x4f) := by omega
+  have f5 : (0xb8 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0xbf) := by omega
+  simp only [f1, f2, f3, f4, f5, if_false, imm32LE_recompose v hv, Nat.add_sub_cancel_left,
+    decide_false, Bool.false_eq_true, and_self, if_true]
 
 /-- `REX.X` of a `REX.W` prefix. -/
 theorem rexX_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1) :
