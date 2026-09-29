@@ -19,7 +19,9 @@ operations `lowerSExpr` lowers (`SExprSigned`), read in the wrapping semantics
 
 * the wrapping addition, subtraction and multiplication and the left shift of `i<w>` as
   the `u64` operation followed by sign extension from `w` bits (`sextSExpr`); the
-  arithmetic right shift as `asrSExpr`, which keeps a sign-extended value sign-extended
+  arithmetic right shift as `asrSExpr`, which keeps a sign-extended value sign-extended;
+  the checked addition, subtraction and multiplication `Add#i<w>`, `Sub#i<w>`, `Mul#i<w>`
+  as the wrapping ones, whose value is the checked one where Rust does not panic
   (`SignedOp.sexpr`);
 * the conversions `cast#i<w>` as sign extension from `w` bits, and the conversions
   `cast#u32`, `cast#u64`, `cast#usize` of a signed value as its low bits
@@ -47,6 +49,7 @@ are `RLetU64Zero` bindings.
 ## Main results
 
 * `SignedOp.int_range` — the value of a signed operation lies in `[-2^63, 2^63)`.
+* `bmod_self_of_range` — a value of `i32` or `i64` is its own residue.
 * `SignedOp.sexpr_evalBV` — the scalar expression of a signed operation on the two's
   complements of two integers evaluates to the two's complement of the operation's value.
 * `evalBV_signedCast`, `toNat_residueCast` — the same for the conversions.
@@ -69,15 +72,18 @@ open CatCrypt.Crypto.SecureCompilation.Ascent (sextSExpr asrSExpr sltSExpr
 
 /-! ### Signed operations -/
 
-/-- The two-operand operations of `i32` and `i64` code. -/
+/-- The two-operand operations of `i32` and `i64` code: the wrapping operations, the
+    shifts, and the checked operations `addC`, `subC`, `mulC` of the Rust operators
+    `+`, `-`, `*`. -/
 inductive SignedOp where
-  | add | sub | mul | shl | shr
+  | add | sub | mul | shl | shr | addC | subC | mulC
   deriving DecidableEq, Repr
 
 /-- The integer value of a signed operation at width `w`: the wrapping sum, difference
     and product in `[-2^(w-1), 2^(w-1))` (`Int.bmod`); the left shift and the arithmetic
-    right shift of an operand of `i<w>` by an amount in `[0, w)`, `none` otherwise (the
-    arms of `Hax.hax64Builtins`). -/
+    right shift of an operand of `i<w>` by an amount in `[0, w)`; the checked sum,
+    difference and product of two operands of `i<w>` when it lies in `i<w>`; `none`
+    otherwise (the arms of `Hax.hax64Builtins`, where Rust panics). -/
 def SignedOp.int (w : Nat) : SignedOp → Int → Int → Option Int
   | .add, a, b => some ((a + b).bmod (2 ^ w))
   | .sub, a, b => some ((a - b).bmod (2 ^ w))
@@ -89,8 +95,21 @@ def SignedOp.int (w : Nat) : SignedOp → Int → Int → Option Int
   | .shr, a, b =>
       if -2 ^ (w - 1) ≤ a ∧ a < 2 ^ (w - 1) ∧ 0 ≤ b ∧ b < w then some (a >>> b.toNat)
       else none
+  | .addC, a, b =>
+      if -2 ^ (w - 1) ≤ a ∧ a < 2 ^ (w - 1) ∧ -2 ^ (w - 1) ≤ b ∧ b < 2 ^ (w - 1) ∧
+          -2 ^ (w - 1) ≤ a + b ∧ a + b < 2 ^ (w - 1) then some (a + b)
+      else none
+  | .subC, a, b =>
+      if -2 ^ (w - 1) ≤ a ∧ a < 2 ^ (w - 1) ∧ -2 ^ (w - 1) ≤ b ∧ b < 2 ^ (w - 1) ∧
+          -2 ^ (w - 1) ≤ a - b ∧ a - b < 2 ^ (w - 1) then some (a - b)
+      else none
+  | .mulC, a, b =>
+      if -2 ^ (w - 1) ≤ a ∧ a < 2 ^ (w - 1) ∧ -2 ^ (w - 1) ≤ b ∧ b < 2 ^ (w - 1) ∧
+          -2 ^ (w - 1) ≤ a * b ∧ a * b < 2 ^ (w - 1) then some (a * b)
+      else none
 
-/-- The width and operation of a width-tagged signed call of `i32` or `i64`. -/
+/-- The width and operation of a width-tagged signed call of `i32` or `i64` (`isize`
+    `64` bits wide). -/
 def signedOpOf : String → Option (Nat × SignedOp)
   | "wrapping_add#i32" => some (32, .add)
   | "wrapping_add#i64" => some (64, .add)
@@ -102,6 +121,15 @@ def signedOpOf : String → Option (Nat × SignedOp)
   | "Shl#i64" => some (64, .shl)
   | "Shr#i32" => some (32, .shr)
   | "Shr#i64" => some (64, .shr)
+  | "Add#i32" => some (32, .addC)
+  | "Add#i64" => some (64, .addC)
+  | "Add#isize" => some (64, .addC)
+  | "Sub#i32" => some (32, .subC)
+  | "Sub#i64" => some (64, .subC)
+  | "Sub#isize" => some (64, .subC)
+  | "Mul#i32" => some (32, .mulC)
+  | "Mul#i64" => some (64, .mulC)
+  | "Mul#isize" => some (64, .mulC)
   | _ => none
 
 /-- The widths of the signed calls are `32` and `64`. -/
@@ -118,6 +146,9 @@ def SignedOp.sexpr (w : Nat) : SignedOp → SExpr → SExpr → SExpr
   | .mul, a, b => sextSExpr w (.SMul a b)
   | .shl, a, b => sextSExpr w (.SShl a b)
   | .shr, a, b => asrSExpr a b
+  | .addC, a, b => sextSExpr w (.SAdd a b)
+  | .subC, a, b => sextSExpr w (.SSub a b)
+  | .mulC, a, b => sextSExpr w (.SMul a b)
 
 /-- The residue of an integer modulo `2^w` in `[-2^(w-1), 2^(w-1))` lies in
     `[-2^63, 2^63)` for `w ≤ 64`. -/
@@ -168,6 +199,22 @@ theorem SignedOp.int_range {w : Nat} (hw : w = 32 ∨ w = 64) (op : SignedOp) {a
         · have := Int.ediv_le_self (2 ^ b.toNat) (by omega : 0 ≤ a)
           omega
     · cases hr
+  case addC | subC | mulC =>
+    split at hr
+    · rename_i hc
+      cases hr
+      have hwp : (2 : Int) ^ (w - 1) ≤ 2 ^ 63 := pow_le_pow_right₀ (by decide) (by omega)
+      obtain ⟨-, -, -, -, h1, h2⟩ := hc
+      exact ⟨by linarith, by linarith⟩
+    · cases hr
+
+/-- A value of `i<w>`, `w` of `32` or `64`, is its own residue modulo `2^w` in
+    `[-2^(w-1), 2^(w-1))`. -/
+theorem bmod_self_of_range {w : Nat} (hw : w = 32 ∨ w = 64) {z : Int} (h1 : -2 ^ (w - 1) ≤ z)
+    (h2 : z < 2 ^ (w - 1)) : z.bmod (2 ^ w) = z := by
+  rcases hw with rfl | rfl <;>
+    exact Int.bmod_eq_of_le (by push_cast; norm_num at h1 ⊢; omega)
+      (by push_cast; norm_num at h2 ⊢; omega)
 
 /-- The two's complement of a non-negative amount below `64` reads back as the
     amount. -/
@@ -209,6 +256,27 @@ theorem SignedOp.sexpr_evalBV {w : Nat} (hw : w = 32 ∨ w = 64) (op : SignedOp)
       simp only [SignedOp.sexpr, evalBV_asrSExpr, ha, hb,
         toNat_ofInt_amount hc.2.2.1 (by omega)]
       exact sshiftRight_ofInt (by omega) (by omega) _
+    · cases hr
+  case addC =>
+    split at hr
+    · rename_i hc
+      cases hr
+      rw [← bmod_self_of_range hw hc.2.2.2.2.1 hc.2.2.2.2.2]
+      exact evalBV_sextSExpr_ofInt hw' β (by simp only [SExpr.evalBV, ha, hb, BitVec.ofInt_add])
+    · cases hr
+  case subC =>
+    split at hr
+    · rename_i hc
+      cases hr
+      rw [← bmod_self_of_range hw hc.2.2.2.2.1 hc.2.2.2.2.2]
+      exact evalBV_sextSExpr_ofInt hw' β (by simp only [SExpr.evalBV, ha, hb, ofInt_sub])
+    · cases hr
+  case mulC =>
+    split at hr
+    · rename_i hc
+      cases hr
+      rw [← bmod_self_of_range hw hc.2.2.2.2.1 hc.2.2.2.2.2]
+      exact evalBV_sextSExpr_ofInt hw' β (by simp only [SExpr.evalBV, ha, hb, BitVec.ofInt_mul])
     · cases hr
 
 /-! ### Conversions -/

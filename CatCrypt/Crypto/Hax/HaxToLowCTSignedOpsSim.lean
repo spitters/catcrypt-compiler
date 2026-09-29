@@ -44,7 +44,8 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax.WordOpsSim
 
 open _root_.Hax (ImpExpr Value Env Builtins denote hax64Builtins hax64WordOps sintShlOp
-  sintShrOp hax64WordOps_Lt hax64WordOps_Gt hax64WordOps_Le hax64WordOps_Ge)
+  sintShrOp sintSubOp sintAddOp sintMulOp hax64WordOps_Lt hax64WordOps_Gt hax64WordOps_Le
+  hax64WordOps_Ge)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
   (SEnvScalar semScalar envReader envReadU64 isTmpName)
@@ -395,6 +396,30 @@ theorem hax64Builtins_signedOp (f : String) (w : Nat) (op : SignedOp)
     | (show sintShrOp _ a b = _
        unfold sintShrOp
        split at hr <;> simp_all)
+    | (show sintSubOp _ a b = _
+       unfold sintSubOp
+       split at hr
+       · rename_i hc
+         simp only [Option.some.injEq] at hr
+         subst hr
+         rw [if_pos hc]
+       · cases hr)
+    | (show sintAddOp _ a b = _
+       unfold sintAddOp
+       split at hr
+       · rename_i hc
+         simp only [Option.some.injEq] at hr
+         subst hr
+         rw [if_pos hc]
+       · cases hr)
+    | (show sintMulOp _ a b = _
+       unfold sintMulOp
+       split at hr
+       · rename_i hc
+         simp only [Option.some.injEq] at hr
+         subst hr
+         rw [if_pos hc]
+       · cases hr)
 
 /-- Each signed conversion of `signedCastOf` runs in `hax64Builtins` as the residue in
     `[-2^(w-1), 2^(w-1))`. -/
