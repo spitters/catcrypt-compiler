@@ -68,9 +68,14 @@ word `%rsp + o`, `o ∈ F`. The soundness theorems hold for runs whose steps all
 
 ## Main results
 
-* `checkCert_sound`: under a passing certificate, two runs from an index, from states
-  agreeing on its set, have equal traces and end agreeing on the exit set of the index's
-  function; the `call` case composes the callee's run through that exit set.
+* `presCert_sound`: under a passing preservation certificate (§4b), a run of a function
+  ends with `%rsp`, its preserved callee-saved registers `Rp` and its preserved frame
+  words `Pp` at their entry values.
+* `checkCert_sound`: under a passing certificate and preservation certificate, two runs
+  from an index, from states agreeing on its set, have equal traces and end agreeing on
+  the exit set of the index's function; the `call` case composes the callee's run through
+  that exit set and keeps the caller's public registers and frame words the callee
+  preserves (`keepA_agree`).
 * `bytesCTCheck_sound`: if `bytesCTCheck r F P prog` holds, two runs of `prog` from states
   agreeing on `P`, whose steps satisfy `FrameSep F`, have equal leakage traces.
 * `bytesCTCheckFast_sound`: the same for the array form of the decision.
@@ -644,6 +649,556 @@ theorem blockOkA_sound {r : DoitRegime} {F : List Int} :
     refine ⟨?_, hA⟩
     simp only [blockLeakA, opLeak_eq hop hag, hl]
 
+/-! ## 4b. Preservation of entry values
+
+A unary analysis of one function: which registers and which frame words hold, at an
+index, the value some register or frame word held at the function's entry. Frame words
+are named by their offset from the entry `%rsp`, and `delta` is the offset of the current
+`%rsp` from the entry one. At every `ret` the callee-saved registers `Rp` and the frame
+words `Pp` of the function hold their entry values and `%rsp` is back at its entry value,
+so a caller keeps the public status of those locations across a call. -/
+
+/-- The entry value a location holds: that of a register, or of the frame word at an
+    offset from the entry `%rsp`. -/
+inductive PVal where
+  | reg (r : String)
+  | cell (q : Int)
+  deriving DecidableEq, Repr
+
+/-- The value of `v` in the entry state `se`. -/
+def PVal.val (se : AState) : PVal → BitVec 64
+  | .reg r => se.regs r
+  | .cell q => cellAt se q
+
+/-- A preservation fact at an index: `%rsp` is the entry `%rsp` plus `delta`; each pair
+    `(x, r)` of `regs` says register `x` holds the entry value of `r`; each pair `(q, v)`
+    of `cells` says the frame word at entry offset `q` holds the entry value `v`. -/
+structure PresA where
+  /-- The offset of `%rsp` from its entry value. -/
+  delta : Int
+  /-- Registers holding the entry value of a register. -/
+  regs : List (String × String)
+  /-- Frame words, by entry offset, holding an entry value. -/
+  cells : List (Int × PVal)
+  deriving DecidableEq, Repr
+
+/-- `s` satisfies `P` against the entry state `se`. -/
+def PresA.Inv (P : PresA) (se s : AState) : Prop :=
+  s.regs "%rsp" = se.regs "%rsp" + BitVec.ofInt 64 P.delta ∧
+  (∀ x r, (x, r) ∈ P.regs → x ≠ "%rsp" ∧ s.regs x = se.regs r) ∧
+  (∀ q v, (q, v) ∈ P.cells → cellAt s (q - P.delta) = v.val se)
+
+/-- The register copies `i` makes: a register-to-register `mov` copies the entry value
+    its source holds, and a load of a frame word the entry value that word holds. -/
+def presNewRegs (P : PresA) : JInstr 64 → List (String × String)
+  | .mov d (.reg s) => (P.regs.filter (·.1 == s)).map fun p => (d, p.2)
+  | .loadMem d b o =>
+      if b == "%rsp" then P.cells.filterMap fun c =>
+        match c with
+        | (q, .reg r) => if q == o + P.delta then some (d, r) else none
+        | _ => none
+      else []
+  | _ => []
+
+/-- The preservation facts after `i`, keeping the frame words through a write with a
+    base other than `%rsp` at the offsets `keep` accepts; `none` when `i` writes `%rsp`
+    other than by `lea k(%rsp), %rsp`. -/
+def presStep (keep : Int → Bool) (P : PresA) (i : JInstr 64) : Option PresA :=
+  match rspShift i with
+  | some k => some ⟨P.delta + k, P.regs, P.cells⟩
+  | none =>
+    if (dstRegs i).contains "%rsp" then none
+    else
+      let regs := (presNewRegs P i ++ P.regs.filter (fun p => !(dstRegs i).contains p.1)).filter
+        (·.1 != "%rsp")
+      let cells :=
+        if frameWrite i then
+          match i with
+          | .storeMem _ o (.reg s) =>
+              ((P.regs.filter (·.1 == s)).map fun p => (o + P.delta, PVal.reg p.2))
+                ++ P.cells.filter (fun c => far (o + P.delta) c.1)
+          | .storeMem _ o (.imm _) => P.cells.filter (fun c => far (o + P.delta) c.1)
+          | _ => []
+        else if sepWrite i then P.cells.filter (fun c => keep (c.1 - P.delta))
+        else P.cells
+      some ⟨P.delta, regs, cells⟩
+
+theorem evalInstrA_rsp_lea (s : AState) (x : String) (k : Int) :
+    (evalInstrA s (.lea "%rsp" "%rsp" x 0 k)).regs "%rsp" = s.regs "%rsp" + BitVec.ofInt 64 k := by
+  simp [evalInstrA, evalInstr, JState.setReg, JState.get, x86_LEA, AState.view]
+
+theorem writeAddr_none {s : AState} {i : JInstr 64} (hfw : frameWrite i = false)
+    (hsw : sepWrite i = false) : writeAddr s i = none := by
+  cases h : writeAddr s i with
+  | none => rfl
+  | some a => have := sepWrite_of_writeAddr h hfw; simp_all
+
+/-- **Soundness of one preservation step**, for a step satisfying `FrameSep F` and the
+    frame words kept through a write through another base at offsets in `F`. -/
+theorem presStep_sound {F : List Int} {P P' : PresA} {i : JInstr 64} {se s : AState}
+    (hF : FrameSep F s i) (h : presStep F.contains P i = some P') (hI : P.Inv se s) :
+    P'.Inv se (evalInstrA s i) := by
+  obtain ⟨hrsp, hregs, hcells⟩ := hI
+  cases hsh : rspShift i with
+  | some k =>
+    obtain ⟨x, rfl⟩ := rspShift_eq hsh
+    simp only [presStep, hsh, Option.some.injEq] at h
+    subst h
+    refine ⟨?_, fun y r hy => ?_, fun q v hq => ?_⟩
+    · rw [evalInstrA_rsp_lea, hrsp, BitVec.ofInt_add, BitVec.add_assoc]
+    · obtain ⟨hne, hv⟩ := hregs y r hy
+      refine ⟨hne, ?_⟩
+      rw [evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs, hne]), hv]
+    · have := cellAt_rspShift s x k (q - P.delta)
+      rw [show q - (P.delta + k) = q - P.delta - k by omega, this]
+      exact hcells q v hq
+  | none =>
+    simp only [presStep, hsh] at h
+    split at h
+    · simp at h
+    · rename_i hd
+      simp only [Option.some.injEq] at h
+      subst h
+      have hd' : "%rsp" ∉ dstRegs i := by simpa using hd
+      refine ⟨?_, fun y r hy => ?_, fun q v hq => ?_⟩
+      · rw [evalInstrA_regs_of_not_dst _ _ _ hd', hrsp]
+      · simp only [List.mem_filter, List.mem_append, bne_iff_ne, ne_eq] at hy
+        obtain ⟨hy | ⟨hy, hnd⟩, hne⟩ := hy
+        · refine ⟨hne, ?_⟩
+          cases i with
+          | mov d src =>
+            cases src with
+            | reg s0 =>
+              simp only [presNewRegs, List.mem_map, List.mem_filter, beq_iff_eq] at hy
+              obtain ⟨⟨s1, r1⟩, ⟨hp, rfl⟩, he⟩ := hy
+              simp only [Prod.mk.injEq] at he
+              obtain ⟨rfl, rfl⟩ := he
+              rw [← (hregs _ _ hp).2]
+              simp [evalInstrA, evalInstr, JState.setReg, JState.get, JOperand.eval, x86_MOV,
+                AState.view]
+            | imm _ => simp [presNewRegs] at hy
+          | loadMem d b o =>
+            simp only [presNewRegs] at hy
+            split at hy
+            · rename_i hb
+              simp only [beq_iff_eq] at hb
+              subst hb
+              simp only [List.mem_filterMap] at hy
+              obtain ⟨⟨q, pv⟩, hq, he⟩ := hy
+              cases pv with
+              | reg r1 =>
+                simp only at he
+                split at he
+                · rename_i hqo
+                  simp only [beq_iff_eq] at hqo
+                  simp only [Option.some.injEq, Prod.mk.injEq] at he
+                  obtain ⟨rfl, rfl⟩ := he
+                  have hc := hcells _ _ hq
+                  rw [hqo, show o + P.delta - P.delta = o by omega] at hc
+                  simp only [PVal.val] at hc
+                  rw [← hc]
+                  simp [evalInstrA, evalInstr, JState.setReg, JState.get, JState.load, x86_MOV,
+                    AState.view, cellAt]
+                · simp at he
+              | cell _ => simp at he
+            · simp at hy
+          | _ => simp [presNewRegs] at hy
+        · have hnd' : y ∉ dstRegs i := by simpa using hnd
+          refine ⟨hne, ?_⟩
+          rw [evalInstrA_regs_of_not_dst _ _ _ hnd']
+          exact (hregs y r hy).2
+      · by_cases hfw : frameWrite i = true
+        · simp only [hfw, if_true] at hq
+          cases i with
+          | storeMem b o src =>
+            have hb : b = "%rsp" := by simpa [frameWrite] using hfw
+            subst hb
+            have hw : ∀ s : AState, writeAddr s (.storeMem "%rsp" o src)
+                = some (s.regs "%rsp" + BitVec.ofInt 64 o) := fun _ => rfl
+            have hkeep : ∀ c ∈ P.cells, far (o + P.delta) c.1 = true →
+                cellAt (evalInstrA s (.storeMem "%rsp" o src)) (c.1 - P.delta)
+                  = c.2.val se := by
+              intro c hc hfar
+              simp only [far, Bool.and_eq_true, decide_eq_true_eq] at hfar
+              rw [cellAt_preserved s _ hd' _ fun a ha => by
+                rw [hw, Option.some.injEq] at ha
+                subst ha
+                exact disjoint8_add_ofInt _ _ _ (by omega) (by omega)]
+              exact hcells c.1 c.2 hc
+            cases src with
+            | reg s0 =>
+              simp only [List.mem_append, List.mem_map, List.mem_filter, beq_iff_eq] at hq
+              rcases hq with ⟨⟨s1, r1⟩, ⟨hp, rfl⟩, he⟩ | ⟨hq, hfar⟩
+              · simp only [Prod.mk.injEq] at he
+                obtain ⟨rfl, rfl⟩ := he
+                simp only [PVal.val]
+                rw [← (hregs _ _ hp).2]
+                unfold cellAt
+                rw [evalInstrA_regs_of_not_dst _ _ _ hd']
+                simp only [evalInstrA, hw, show o + P.delta - P.delta = o by omega,
+                  read64_write64_same, writeVal, JOperand.eval, AState.view, JState.get]
+              · exact hkeep (q, v) hq hfar
+            | imm _ =>
+              simp only [List.mem_filter] at hq
+              exact hkeep (q, v) hq.1 hq.2
+          | _ => simp at hq
+        · have hfw' : frameWrite i = false := by simpa using hfw
+          simp only [hfw', Bool.false_eq_true, if_false] at hq
+          by_cases hsw : sepWrite i = true
+          · simp only [hsw, if_true, List.mem_filter, List.contains_iff_mem] at hq
+            obtain ⟨hq, hin⟩ := hq
+            rw [cellAt_preserved s i hd' _ fun a ha => hF hfw' a ha _ hin]
+            exact hcells q v hq
+          · have hsw' : sepWrite i = false := by simpa using hsw
+            simp only [hsw', Bool.false_eq_true, if_false] at hq
+            rw [cellAt_preserved s i hd' _ fun a ha => by simp [writeAddr_none hfw' hsw'] at ha]
+            exact hcells q v hq
+
+/-- The preservation facts after a straight-line block. -/
+def presBlock (keep : Int → Bool) (P : PresA) : List (JInstr 64) → Option PresA
+  | [] => some P
+  | i :: is => (presStep keep P i).bind fun P' => presBlock keep P' is
+
+theorem presBlock_sound {F : List Int} :
+    ∀ (ops : List (JInstr 64)) {P P' : PresA} {se s : AState},
+      BlockOk (FrameSep F) s ops → presBlock F.contains P ops = some P' → P.Inv se s →
+        P'.Inv se (runBlockA s ops)
+  | [], _, _, _, _, _, h, hI => by
+    simp only [presBlock, Option.some.injEq] at h
+    subst h; exact hI
+  | i :: is, P, P', se, s, ⟨hok, hrest⟩, h, hI => by
+    simp only [presBlock] at h
+    cases hs : presStep F.contains P i with
+    | none => simp [hs] at h
+    | some P1 =>
+      rw [hs, Option.bind_some] at h
+      exact presBlock_sound is hrest h (presStep_sound hok hs hI)
+
+/-- `Q` claims no more than `P`, at the same `%rsp` offset. -/
+def presLe (Q P : PresA) : Bool :=
+  Q.delta == P.delta && Q.regs.all P.regs.contains && Q.cells.all P.cells.contains
+
+theorem PresA.inv_of_le {Q P : PresA} (h : presLe Q P = true) {se s : AState}
+    (hI : P.Inv se s) : Q.Inv se s := by
+  simp only [presLe, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.contains_iff_mem]
+    at h
+  obtain ⟨⟨hd, hr⟩, hc⟩ := h
+  obtain ⟨h1, h2, h3⟩ := hI
+  refine ⟨by rw [hd]; exact h1, fun x r hx => h2 x r (hr _ hx), fun q v hq => ?_⟩
+  rw [hd]; exact h3 q v (hc _ hq)
+
+/-- The facts at an entry: `%rsp` at its entry value, and every register and frame word
+    of `P` holding its own entry value. -/
+def isEntryPres (P : PresA) : Bool :=
+  P.delta == 0 && P.regs.all (fun p => p.1 == p.2 && p.1 != "%rsp")
+    && P.cells.all (fun c => c.2 == .cell c.1)
+
+theorem isEntryPres_inv {P : PresA} (h : isEntryPres P = true) (s : AState) : P.Inv s s := by
+  simp only [isEntryPres, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, bne_iff_ne, ne_eq]
+    at h
+  obtain ⟨⟨hd, hr⟩, hc⟩ := h
+  refine ⟨by simp [hd], fun x r hx => ?_, fun q v hq => ?_⟩
+  · obtain ⟨hxr, hne⟩ := hr _ hx
+    simp only at hxr hne
+    subst hxr
+    exact ⟨hne, rfl⟩
+  · have := hc _ hq
+    simp only at this
+    subst this
+    simp [hd, PVal.val]
+
+/-- What a function guarantees at return, against its entry state `se`: `%rsp` back at
+    its entry value, the registers `R` and the frame words `Q` at their entry values. -/
+def PresPost (R : List String) (Q : List Int) (se sf : AState) : Prop :=
+  sf.regs "%rsp" = se.regs "%rsp" ∧ (∀ r ∈ R, sf.regs r = se.regs r) ∧
+    (∀ q ∈ Q, cellAt sf q = cellAt se q)
+
+/-- The preservation certificate at `s`, `false` when there is none. -/
+def presSucc (D : List (Option PresA)) (s : Nat) (P : PresA) : Bool :=
+  match D.getD s none with
+  | some Q => presLe Q P
+  | none => false
+
+theorem presSucc_spec {D : List (Option PresA)} {s : Nat} {P : PresA}
+    (h : presSucc D s P = true) : ∃ Q, D.getD s none = some Q ∧ presLe Q P = true := by
+  unfold presSucc at h
+  split at h
+  · exact ⟨_, by assumption, h⟩
+  · simp at h
+
+/-- The preservation facts after a call to the function with entry `t`, from the facts
+    `P1` after `callOps`: the registers in `R` and the frame words at callee offsets in
+    `Q` keep their facts. -/
+def presAfterCall (R : List String) (Q : List Int) (P1 : PresA) : PresA :=
+  ⟨P1.delta, P1.regs.filter (fun p => R.contains p.1),
+    P1.cells.filter (fun c => Q.contains (c.1 - P1.delta))⟩
+
+/-- The preservation check at index `pc`, under the owner map `own`, the preserved
+    registers `Rp` and frame words `Pp` of each function, and the certificate `D`. -/
+def presAt (F : List Int) (own : Nat → Nat) (Rp : Nat → List String) (Pp : Nat → List Int)
+    (prog : List RInstr) (D : List (Option PresA)) (pc : Nat) : Bool :=
+  match D.getD pc none with
+  | none => true
+  | some P =>
+    match prog[pc]? with
+    | some (.op i) =>
+        (match presStep F.contains P i with
+         | some P' => presSucc D (pc + 1) P'
+         | none => false) && own (pc + 1) == own pc
+    | some (.jcc _ t) =>
+        presSucc D t P && presSucc D (pc + 1) P && own t == own pc && own (pc + 1) == own pc
+    | some (.push x) =>
+        (match presBlock F.contains P (pushOps x) with
+         | some P' => presSucc D (pc + 1) P'
+         | none => false) && own (pc + 1) == own pc
+    | some (.pop x) =>
+        (match presBlock F.contains P (popOps x) with
+         | some P' => presSucc D (pc + 1) P'
+         | none => false) && own (pc + 1) == own pc
+    | some .ret =>
+        P.delta == 0 && (Rp (own pc)).all (fun r => P.regs.contains (r, r))
+          && (Pp (own pc)).all (fun q => P.cells.contains (q, .cell q))
+    | some (.call t) =>
+        (match D.getD t none with
+         | some Qt => isEntryPres Qt
+         | none => false) &&
+        (match presBlock F.contains P (callOps (pc + 1)) with
+         | some P1 =>
+             match presBlock F.contains (presAfterCall (Rp (own t)) (Pp (own t)) P1) retOps with
+             | some P3 => presSucc D (pc + 1) P3
+             | none => false
+         | none => false) && own (pc + 1) == own pc
+    | none => true
+
+/-- The preservation check at every index. -/
+def presCert (F : List Int) (own : Nat → Nat) (Rp : Nat → List String) (Pp : Nat → List Int)
+    (prog : List RInstr) (D : List (Option PresA)) : Bool :=
+  (List.range prog.length).all (presAt F own Rp Pp prog D)
+
+theorem presAt_of_presCert {F : List Int} {own : Nat → Nat} {Rp : Nat → List String}
+    {Pp : Nat → List Int} {prog : List RInstr} {D : List (Option PresA)}
+    (hc : presCert F own Rp Pp prog D = true) {pc : Nat} {x : RInstr}
+    (hx : prog[pc]? = some x) : presAt F own Rp Pp prog D pc = true := by
+  have hlt : pc < prog.length := (List.getElem?_eq_some_iff.mp hx).1
+  exact List.all_eq_true.mp hc pc (List.mem_range.mpr hlt)
+
+/-- **Soundness of the preservation check.** A run from `pc` whose steps satisfy
+    `FrameSep F`, from a state satisfying the certificate at `pc` against the entry state
+    `se`, ends in a state where the function of `pc` has kept its guarantees. -/
+theorem presCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat}
+    {Rp : Nat → List String} {Pp : Nat → List Int} {prog : List RInstr}
+    {D : List (Option PresA)} (hc : presCert F own Rp Pp prog D = true) {pc : Nat}
+    {s : AState} {t : List CTLeak} {s' : AState} (h : RunL r (FrameSep F) prog pc s t s') :
+    ∀ {se : AState} {P : PresA}, D.getD pc none = some P → P.Inv se s →
+      PresPost (Rp (own pc)) (Pp (own pc)) se s' := by
+  induction h with
+  | @ret pc s h =>
+    intro se P hD hI
+    have hck := presAt_of_presCert hc h
+    simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq, List.all_eq_true,
+      List.contains_iff_mem] at hck
+    obtain ⟨⟨hd, hr⟩, hq⟩ := hck
+    obtain ⟨h1, h2, h3⟩ := hI
+    refine ⟨by simp [h1, hd], fun x hx => (h2 x x (hr x hx)).2, fun q hq' => ?_⟩
+    have := h3 q _ (hq q hq')
+    simpa [hd, PVal.val] using this
+  | @op pc s i t s' h hok hr ih =>
+    intro se P hD hI
+    have hck := presAt_of_presCert hc h
+    simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨hstep, hown⟩ := hck
+    cases hs : presStep F.contains P i with
+    | none => simp [hs] at hstep
+    | some P' =>
+      simp only [hs] at hstep
+      obtain ⟨Q, hQ, hle⟩ := presSucc_spec hstep
+      have := ih hQ (PresA.inv_of_le hle (presStep_sound hok hs hI))
+      rwa [hown] at this
+  | @jcc pc s cc tgt c t s' h hcc hr ih =>
+    intro se P hD hI
+    have hck := presAt_of_presCert hc h
+    simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨⟨⟨hst, hsn⟩, hot⟩, hon⟩ := hck
+    by_cases hcnd : s.view.condB c = true
+    · simp only [hcnd, if_true] at ih
+      obtain ⟨Q, hQ, hle⟩ := presSucc_spec hst
+      have := ih hQ (PresA.inv_of_le hle hI)
+      rwa [hot] at this
+    · simp only [hcnd, if_false, Bool.false_eq_true] at ih
+      obtain ⟨Q, hQ, hle⟩ := presSucc_spec hsn
+      have := ih hQ (PresA.inv_of_le hle hI)
+      rwa [hon] at this
+  | @stack pc s ri ops t s' h hops hok hr ih =>
+    intro se P hD hI
+    have hck := presAt_of_presCert hc h
+    have key : (match presBlock F.contains P ops with
+        | some P' => presSucc D (pc + 1) P'
+        | none => false) = true ∧ own (pc + 1) = own pc := by
+      cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq, Option.some.injEq] at hops <;>
+        subst hops <;> simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq] at hck <;>
+        exact hck
+    obtain ⟨hb, hown⟩ := key
+    cases hbs : presBlock F.contains P ops with
+    | none => simp [hbs] at hb
+    | some P' =>
+      simp only [hbs] at hb
+      obtain ⟨Q, hQ, hle⟩ := presSucc_spec hb
+      have := ih hQ (PresA.inv_of_le hle (presBlock_sound ops hok hbs hI))
+      rwa [hown] at this
+  | @call pc tgt s sc tc tr s' h hok hcal hokr hret ihc ihr =>
+    intro se P hD hI
+    have hck := presAt_of_presCert hc h
+    simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨⟨hent, hcl⟩, hown⟩ := hck
+    cases hQt : D.getD tgt none with
+    | none =>
+      have hQt' : D[tgt]?.getD none = none := by rw [← List.getD_eq_getElem?_getD]; exact hQt
+      simp [hQt, hQt'] at hent
+    | some Qt =>
+      have hQt' : D[tgt]?.getD none = some Qt := by
+        rw [← List.getD_eq_getElem?_getD]; exact hQt
+      simp only [hQt, hQt'] at hent
+      cases hb1 : presBlock F.contains P (callOps (pc + 1)) with
+      | none => simp [hb1] at hcl
+      | some P1 =>
+        simp only [hb1] at hcl
+        cases hb3 : presBlock F.contains
+            (presAfterCall (Rp (own tgt)) (Pp (own tgt)) P1) retOps with
+        | none => simp [hb3] at hcl
+        | some P3 =>
+          simp only [hb3] at hcl
+          obtain ⟨Q, hQ, hle⟩ := presSucc_spec hcl
+          have hI1 := presBlock_sound _ hok hb1 hI
+          obtain ⟨p1, p2, p3⟩ := ihc hQt (isEntryPres_inv hent _)
+          obtain ⟨i1, i2, i3⟩ := hI1
+          have hI2 : (presAfterCall (Rp (own tgt)) (Pp (own tgt)) P1).Inv se sc := by
+            refine ⟨by rw [p1, i1]; rfl, fun x r hx => ?_, fun q v hq => ?_⟩
+            · simp only [presAfterCall, List.mem_filter, List.contains_iff_mem] at hx
+              obtain ⟨hne, hv⟩ := i2 x r hx.1
+              exact ⟨hne, by rw [p2 x hx.2, hv]⟩
+            · simp only [presAfterCall, List.mem_filter, List.contains_iff_mem] at hq
+              simp only [presAfterCall]
+              rw [p3 _ hq.2]
+              exact i3 q v hq.1
+          have := ihr hQ (PresA.inv_of_le hle (presBlock_sound _ hokr hb3 hI2))
+          rwa [hown] at this
+
+/-- The part of the caller's public set `a` a call keeps: `%rsp`, the registers the
+    callee preserves (`R`), and the frame words at offsets `c` whose callee offset `c + 8`
+    the callee preserves (`Q`), apart from the return-address word. -/
+def keepA (R : List String) (Q : List Int) (a : PubA) : PubA :=
+  ⟨a.regs.filter (fun x => x == "%rsp" || R.contains x),
+    a.cells.filter (fun c => Q.contains (c + 8) && far (c + 8) 0), false⟩
+
+/-- The union of two public sets. -/
+def joinA (a b : PubA) : PubA := ⟨a.regs ++ b.regs, a.cells ++ b.cells, a.flags || b.flags⟩
+
+theorem joinA_agree {a b : PubA} {s₁ s₂ : AState} (ha : a.Agree s₁ s₂) (hb : b.Agree s₁ s₂) :
+    (joinA a b).Agree s₁ s₂ := by
+  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_⟩
+  · simp only [joinA, List.mem_append] at hx
+    rcases hx with hx | hx
+    · exact ha.1 x hx
+    · exact hb.1 x hx
+  · simp only [joinA, List.mem_append] at ho
+    rcases ho with ho | ho
+    · exact ha.2.1 o ho
+    · exact hb.2.1 o ho
+  · simp only [joinA, Bool.or_eq_true] at hf
+    rcases hf with hf | hf
+    · exact ha.2.2 hf
+    · exact hb.2.2 hf
+
+/-- The registers other than `%rsp` after `callOps`. -/
+theorem callOps_regs (s : AState) (n : Nat) {x : String} (hx : x ≠ "%rsp") :
+    (runBlockA s (callOps n)).regs x = s.regs x := by
+  simp only [callOps, runBlockA_cons, runBlockA_nil]
+  rw [evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs]),
+    evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs, hx])]
+
+theorem callOps_rsp (s : AState) (n : Nat) :
+    (runBlockA s (callOps n)).regs "%rsp" = s.regs "%rsp" + BitVec.ofInt 64 (-8) := by
+  simp only [callOps, runBlockA_cons, runBlockA_nil]
+  rw [evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs]), evalInstrA_rsp_lea]
+
+theorem callOps_cell (s : AState) (n : Nat) {c : Int} (hc : far (c + 8) 0 = true) :
+    cellAt (runBlockA s (callOps n)) (c + 8) = cellAt s c := by
+  simp only [callOps, runBlockA_cons, runBlockA_nil]
+  simp only [far, Bool.and_eq_true, decide_eq_true_eq] at hc
+  rw [cellAt_preserved _ _ (by simp [dstRegs]) _ fun a ha => by
+    have hw : writeAddr (evalInstrA s (.lea "%rsp" "%rsp" "%rsp" 0 (-8)))
+        (.storeMem "%rsp" 0 (.imm n)) = some ((evalInstrA s (.lea "%rsp" "%rsp" "%rsp" 0 (-8))).regs
+          "%rsp" + BitVec.ofInt 64 0) := rfl
+    rw [hw, Option.some.injEq] at ha
+    subst ha
+    exact disjoint8_add_ofInt _ _ _ (by omega) (by omega)]
+  have := cellAt_rspShift s "%rsp" (-8) c
+  rwa [show c - -8 = c + 8 by omega] at this
+
+theorem retOps_regs (s : AState) {x : String} (hx : x ≠ "%rsp") :
+    (runBlockA s retOps).regs x = s.regs x := by
+  simp only [retOps, runBlockA_cons, runBlockA_nil]
+  rw [evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs, hx])]
+
+theorem retOps_rsp (s : AState) :
+    (runBlockA s retOps).regs "%rsp" = s.regs "%rsp" + BitVec.ofInt 64 8 := by
+  simp only [retOps, runBlockA_cons, runBlockA_nil, evalInstrA_rsp_lea]
+
+theorem retOps_cell (s : AState) (c : Int) :
+    cellAt (runBlockA s retOps) c = cellAt s (c + 8) := by
+  simp only [retOps, runBlockA_cons, runBlockA_nil]
+  have := cellAt_rspShift s "%rsp" 8 (c + 8)
+  rwa [show c + 8 - 8 = c by omega] at this
+
+/-- **What a call keeps.** Two caller states agreeing on `a`, whose callees preserve the
+    registers `R` and the callee frame words `Q` (`PresPost`), agree after the return on
+    `keepA R Q a`. -/
+theorem keepA_agree {R : List String} {Q : List Int} {a : PubA} {n : Nat}
+    {s₁ s₂ sc₁ sc₂ : AState} (hag : a.Agree s₁ s₂)
+    (h₁ : PresPost R Q (runBlockA s₁ (callOps n)) sc₁)
+    (h₂ : PresPost R Q (runBlockA s₂ (callOps n)) sc₂) :
+    (keepA R Q a).Agree (runBlockA sc₁ retOps) (runBlockA sc₂ retOps) := by
+  obtain ⟨r₁, g₁, c₁⟩ := h₁
+  obtain ⟨r₂, g₂, c₂⟩ := h₂
+  refine ⟨fun x hx => ?_, fun c hc => ?_, fun hf => by simp [keepA] at hf⟩
+  · simp only [keepA, List.mem_filter, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem] at hx
+    obtain ⟨hx, hk⟩ := hx
+    by_cases hr : x = "%rsp"
+    · subst hr
+      rw [retOps_rsp, retOps_rsp, r₁, r₂, callOps_rsp, callOps_rsp, hag.1 _ hx]
+    · rcases hk with hk | hk
+      · exact absurd hk hr
+      · rw [retOps_regs _ hr, retOps_regs _ hr, g₁ x hk, g₂ x hk, callOps_regs _ _ hr,
+          callOps_regs _ _ hr]
+        exact hag.1 x hx
+  · simp only [keepA, List.mem_filter, Bool.and_eq_true, List.contains_iff_mem] at hc
+    obtain ⟨hc, hq, hfar⟩ := hc
+    rw [retOps_cell, retOps_cell, c₁ _ hq, c₂ _ hq, callOps_cell _ _ hfar, callOps_cell _ _ hfar]
+    exact hag.2.1 c hc
+
+/-- The preservation data of a program: the registers `Rp` and callee frame words `Pp`
+    each function preserves, and the certificate `D` of `presCert`. -/
+structure PresCtx where
+  /-- The preserved registers, by function entry. -/
+  Rp : Nat → List String
+  /-- The preserved frame words, as offsets from the entry `%rsp`, by function entry. -/
+  Pp : Nat → List Int
+  /-- The preservation certificate. -/
+  D : List (Option PresA)
+
+/-- The certificate `D` has an entry fact at `t`. -/
+def presEntry (D : List (Option PresA)) (t : Nat) : Bool :=
+  match D.getD t none with
+  | some Qt => isEntryPres Qt
+  | none => false
+
+theorem presEntry_spec {D : List (Option PresA)} {t : Nat} (h : presEntry D t = true) :
+    ∃ Qt, D.getD t none = some Qt ∧ isEntryPres Qt = true := by
+  unfold presEntry at h
+  split at h
+  · exact ⟨_, by assumption, h⟩
+  · simp at h
+
 /-- The check at index `pc`, under the owner map `own` (the entry index of the function
     each index belongs to) and the exit sets `X` (the public set at every `ret` of the
     function with entry `e` is above `X e`). A non-call successor has the owner of `pc`;
@@ -651,7 +1206,7 @@ theorem blockOkA_sound {r : DoitRegime} {F : List Int} :
     below the set after them, and continues after `retOps` from the exit set of `t`'s
     owner. -/
 def checkAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Bool :=
+    (K : PresCtx) (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Bool :=
   match certAt A pc with
   | none => true
   | some a => a.cells.all F.contains &&
@@ -668,20 +1223,23 @@ def checkAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → Pub
           && own (pc + 1) == own pc
     | some .ret => (X (own pc)).le a
     | some (.call t) =>
-        blockOkA r F a (callOps (pc + 1)) && succOk A t (stepBlock a (callOps (pc + 1)))
+        presEntry K.D t && blockOkA r F a (callOps (pc + 1))
+          && succOk A t (stepBlock a (callOps (pc + 1)))
           && blockOkA r F (X (own t)) retOps
-          && succOk A (pc + 1) (stepBlock (X (own t)) retOps) && own (pc + 1) == own pc
+          && succOk A (pc + 1)
+              (joinA (stepBlock (X (own t)) retOps) (keepA (K.Rp (own t)) (K.Pp (own t)) a))
+          && own (pc + 1) == own pc
     | none => true
 
 /-- The check at every index of `prog`. -/
 def checkCert (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : List RInstr) (A : List (Option PubA)) : Bool :=
-  (List.range prog.length).all (checkAt r F own X prog A)
+    (K : PresCtx) (prog : List RInstr) (A : List (Option PubA)) : Bool :=
+  (List.range prog.length).all (checkAt r F own X K prog A)
 
 theorem checkAt_of_checkCert {r : DoitRegime} {F : List Int} {own : Nat → Nat}
-    {X : Nat → PubA} {prog : List RInstr}
-    {A : List (Option PubA)} (hc : checkCert r F own X prog A = true) {pc : Nat} {x : RInstr}
-    (hx : prog[pc]? = some x) : checkAt r F own X prog A pc = true := by
+    {X : Nat → PubA} {K : PresCtx} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F own X K prog A = true) {pc : Nat} {x : RInstr}
+    (hx : prog[pc]? = some x) : checkAt r F own X K prog A pc = true := by
   have hlt : pc < prog.length := (List.getElem?_eq_some_iff.mp hx).1
   exact List.all_eq_true.mp hc pc (List.mem_range.mpr hlt)
 
@@ -695,8 +1253,9 @@ theorem condB_eq {s₁ s₂ : AState} (h : s₁.flags = s₂.flags) (c : Condt) 
     set the certificate assigns to `pc`, have equal traces and end in states agreeing on
     the exit set `X (own pc)` of the function containing `pc`. -/
 theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X : Nat → PubA}
-    {prog : List RInstr}
-    {A : List (Option PubA)} (hc : checkCert r F own X prog A = true) {pc : Nat} {s₁ : AState}
+    {K : PresCtx} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F own X K prog A = true)
+    (hp : presCert F own K.Rp K.Pp prog K.D = true) {pc : Nat} {s₁ : AState}
     {t₁ : List CTLeak} {s₁' : AState} (h₁ : RunL r (FrameSep F) prog pc s₁ t₁ s₁') :
     ∀ {a : PubA} {s₂ : AState} {t₂ : List CTLeak} {s₂' : AState}, certAt A pc = some a →
       a.Agree s₁ s₂ → RunL r (FrameSep F) prog pc s₂ t₂ s₂' →
@@ -791,7 +1350,8 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
     simp only [checkAt, hA, h, Bool.and_eq_true, beq_iff_eq] at hck
-    obtain ⟨_, ⟨⟨⟨⟨hbk, hsc⟩, hbr⟩, hsr⟩, hown⟩⟩ := hck
+    obtain ⟨_, ⟨⟨⟨⟨⟨hent, hbk⟩, hsc⟩, hbr⟩, hsr⟩, hown⟩⟩ := hck
+    obtain ⟨Qt, hQt, hQe⟩ := presEntry_spec hent
     cases h₂ with
     | ret h' => simp_all
     | op h' => simp_all
@@ -804,8 +1364,11 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
       obtain ⟨b, hb, hle⟩ := succOk_spec hsc
       obtain ⟨htc, hX⟩ := ihc hb (PubA.agree_of_le hle hag1) hcal'
       obtain ⟨hl2, hag2⟩ := blockOkA_sound _ _ hbr hX hokr hokr'
+      have hP₁ := presCert_sound hp hcal hQt (isEntryPres_inv hQe _)
+      have hP₂ := presCert_sound hp hcal' hQt (isEntryPres_inv hQe _)
+      have hkeep := keepA_agree hag hP₁ hP₂
       obtain ⟨b', hb', hle'⟩ := succOk_spec hsr
-      obtain ⟨htr, hs⟩ := ihr hb' (PubA.agree_of_le hle' hag2) hret'
+      obtain ⟨htr, hs⟩ := ihr hb' (PubA.agree_of_le hle' (joinA_agree hag2 hkeep)) hret'
       rw [hown] at hs
       exact ⟨by rw [hl1, htc, hl2, htr], hs⟩
 
@@ -897,13 +1460,144 @@ def inferIn (keep : Int → Bool) (prog : List RInstr) (P : PubA) : List (Option
 def infer (prog : List RInstr) (P : PubA) : List (Option PubA) :=
   inferIn (fun _ => true) prog P
 
+/-! ### The preservation certificate
+
+The analysis of §4b is run once per function entry with the frame words its callers ask
+it to keep: each caller's public frame words at the call, and the words the caller's own
+preservation facts track, moved to the callee's entry offsets. The requests are refined over as many
+rounds as there are callees, since a request passes down one call level per round. -/
+
+/-- The callee-saved registers of the System V convention other than `%rsp`. -/
+def calleeSaved : List String := ["%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"]
+
+/-- The entry fact of a function asked to keep the frame words `Q`. -/
+def entryPres (Q : List Int) : PresA :=
+  ⟨0, calleeSaved.map fun r => (r, r), Q.map fun q => (q, .cell q)⟩
+
+/-- The meet of two preservation facts at the same `%rsp` offset; the first when the
+    offsets differ, which the check then rejects. -/
+def presMeetO : Option PresA → PresA → Option PresA
+  | none, P => some P
+  | some Q, P =>
+      if Q.delta = P.delta then
+        some ⟨Q.delta, Q.regs.filter P.regs.contains, Q.cells.filter P.cells.contains⟩
+      else some Q
+
+/-- The registers of `R0` and the frame words of `Q0` that every reached `ret` owned by
+    `e` keeps under `D`; `none` when `e` owns no reached `ret`. -/
+def presPost? (prog : List RInstr) (own : Nat → Nat) (D : List (Option PresA))
+    (R0 : List String) (Q0 : List Int) (e : Nat) : Option (List String × List Int) :=
+  (List.range prog.length).foldl (fun acc pc =>
+    match prog[pc]?, D.getD pc none with
+    | some RInstr.ret, some P =>
+        if own pc = e then
+          let R := R0.filter fun r => P.delta == 0 && P.regs.contains (r, r)
+          let Q := Q0.filter fun q => P.delta == 0 && P.cells.contains (q, .cell q)
+          match acc with
+          | none => some (R, Q)
+          | some (R', Q') => some (R'.filter R.contains, Q'.filter Q.contains)
+        else acc
+    | _, _ => acc) none
+
+/-- The successors of `pc` in the preservation analysis with the facts each receives. -/
+def succsPres (keep : Int → Bool) (own : Nat → Nat) (Pq : Nat → List Int)
+    (post : Nat → Option (List String × List Int)) (prog : List RInstr) (pc : Nat)
+    (P : PresA) : List (Nat × PresA) :=
+  match prog[pc]? with
+  | some (.op i) => ((presStep keep P i).map fun P' => (pc + 1, P')).toList
+  | some (.jcc _ t) => [(t, P), (pc + 1, P)]
+  | some (.push x) => ((presBlock keep P (pushOps x)).map fun P' => (pc + 1, P')).toList
+  | some (.pop x) => ((presBlock keep P (popOps x)).map fun P' => (pc + 1, P')).toList
+  | some (.call t) =>
+      (t, entryPres (Pq (own t))) ::
+        match presBlock keep P (callOps (pc + 1)), post (own t) with
+        | some P1, some (R, Q) =>
+            ((presBlock keep (presAfterCall R Q P1) retOps).map fun P3 => (pc + 1, P3)).toList
+        | _, _ => []
+  | _ => []
+
+/-- One forward pass of the preservation analysis. -/
+def sweepPres (keep : Int → Bool) (own : Nat → Nat) (Pq : Nat → List Int)
+    (prog : List RInstr) (D : List (Option PresA)) : List (Option PresA) :=
+  let post : Nat → Option (List String × List Int) := fun e =>
+    presPost? prog own D calleeSaved (Pq e) e
+  (List.range prog.length).foldl (fun D pc =>
+    match D.getD pc none with
+    | none => D
+    | some P => (succsPres keep own Pq post prog pc P).foldl (fun D so =>
+        D.set so.1 (presMeetO (D.getD so.1 none) so.2)) D)
+    D
+
+/-- Passes until a pass changes nothing, at most `fuel` of them. -/
+def presFix (keep : Int → Bool) (own : Nat → Nat) (Pq : Nat → List Int) (prog : List RInstr) :
+    Nat → List (Option PresA) → List (Option PresA)
+  | 0, D => D
+  | fuel + 1, D =>
+    let D' := sweepPres keep own Pq prog D
+    if D' = D then D else presFix keep own Pq prog fuel D'
+
+/-- The preservation certificate for the requests `Pq`. -/
+def inferPres (own : Nat → Nat) (Pq : Nat → List Int) (prog : List RInstr) :
+    List (Option PresA) :=
+  presFix (fun _ => true) own Pq prog prog.length
+    ((List.replicate prog.length none).set 0 (some (entryPres [])))
+
+/-- The frame words, at callee entry offsets, the callers of `e` ask it to keep: the
+    public frame words of the main certificate `A` at each call, and every frame word the
+    caller's preservation facts track there (the words it is asked to keep and the words
+    holding its saved registers), moved to the callee's entry offsets. -/
+def presRequests (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA))
+    (D : List (Option PresA)) (Pq : Nat → List Int) (e : Nat) : List Int :=
+  ((List.range prog.length).flatMap fun pc =>
+    match prog[pc]? with
+    | some (RInstr.call t) =>
+        if own t = e then
+          let direct := match certAt A pc with
+            | some a => a.cells.filterMap fun c => if far (c + 8) 0 then some (c + 8) else none
+            | none => []
+          let trans := match D.getD pc none with
+            | some P => P.cells.filterMap fun c =>
+                if far (c.1 - P.delta + 8) 0 then some (c.1 - P.delta + 8) else none
+            | none => []
+          direct ++ trans
+        else []
+    | _ => []).eraseDups
+
+/-- The preservation data of `prog` under the main certificate `A`: the requests refined
+    over one round per callee, the certificate for them, and each function's guarantees
+    under it. A program without calls gets the empty data. -/
+def presCtxOf (prog : List RInstr) (A : List (Option PubA)) : PresCtx :=
+  let es := (callTargets prog).eraseDups
+  if es.isEmpty then { Rp := fun _ => [], Pp := fun _ => [], D := [] } else
+  let own := ownerOf es
+  let tbl : List (Nat × List Int) → Nat → List Int := fun t e => (t.lookup e).getD []
+  let step (t : List (Nat × List Int)) : List (Nat × List Int) :=
+    let D := inferPres own (tbl t) prog
+    es.map fun e => (e, presRequests prog own A D (tbl t) e)
+  let reqs := (List.range (es.length + 1)).foldl (fun t _ => step t) []
+  let D := inferPres own (tbl reqs) prog
+  let post := fun e => (presPost? prog own D calleeSaved (tbl reqs e) e).getD ([], [])
+  { Rp := fun e => (post e).1, Pp := fun e => (post e).2, D := D }
+
+/-- The frame words a pointer write of `prog` must miss so that the certificate `D` keeps
+    its frame words there. -/
+def presCells (prog : List RInstr) (D : List (Option PresA)) : List Int :=
+  ((List.range prog.length).flatMap fun pc =>
+    match prog[pc]?, D.getD pc none with
+    | some (RInstr.op i), some P =>
+        if sepWrite i then P.cells.map (fun c => c.1 - P.delta) else []
+    | _, _ => []).eraseDups
+
 /-- **The decision.** The certificate inferred within the frame words `F` assigns the
-    entry a set below `P` and passes `checkCert` under the owners of the call targets
-    and the exit sets of the certificate. -/
+    entry a set below `P`; the preservation certificate passes; and the certificate passes
+    `checkCert` under the owners of the call targets, the exit sets of the certificate
+    and the preservation data. -/
 def bytesCTCheck (r : DoitRegime) (F : List Int) (P : PubA) (prog : List RInstr) : Bool :=
   let A := inferIn F.contains prog P
   let own := ownerOf (callTargets prog)
-  succOk A 0 P && checkCert r F own (exitSet prog own A) prog A
+  let K := presCtxOf prog A
+  succOk A 0 P && presCert F own K.Rp K.Pp prog K.D
+    && checkCert r F own (exitSet prog own A) K prog A
 
 /-- **Soundness of the decision.** If `bytesCTCheck r F P prog` holds, two runs of `prog`
     from index `0` whose steps satisfy `FrameSep F`, from states agreeing on `P`, have
@@ -913,8 +1607,9 @@ theorem bytesCTCheck_sound {r : DoitRegime} {F : List Int} {P : PubA} {prog : Li
     ConstantTimeRel P.Agree (fun sa t => ∃ sa', RunL r (FrameSep F) prog 0 sa t sa') := by
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
   simp only [bytesCTCheck, Bool.and_eq_true] at h
-  obtain ⟨b, hb, hle⟩ := succOk_spec h.1
-  exact (checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂).1
+  obtain ⟨⟨h0, hp⟩, hc⟩ := h
+  obtain ⟨b, hb, hle⟩ := succOk_spec h0
+  exact (checkCert_sound hc hp h₁ hb (PubA.agree_of_le hle hag) h₂).1
 
 /-! ## 6. Frame words from the certificate, the public set from the ABI -/
 
@@ -924,18 +1619,23 @@ def certCells (A : List (Option PubA)) : List Int :=
     | some a => a.cells
     | none => []
 
-/-- `bytesCTCheck` with the frame words of the inferred certificate. -/
+/-- The frame words of the inferred certificate and those the preservation certificate
+    keeps through a write with another base. -/
+def autoFrame (P : PubA) (prog : List RInstr) : List Int :=
+  certCells (infer prog P) ++ presCells prog (presCtxOf prog (infer prog P)).D
+
+/-- `bytesCTCheck` with the frame words `autoFrame`. -/
 def bytesCTCheckAuto (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
-  bytesCTCheck r (certCells (infer prog P)) P prog
+  bytesCTCheck r (autoFrame P prog) P prog
 
 /-- **Soundness of the decision with inferred frame words.** If `bytesCTCheckAuto r P
     prog` holds, two runs of `prog` from index `0` from states agreeing on `P`, whose
-    steps satisfy `FrameSep` for the frame words of the inferred certificate, have equal
-    leakage traces. -/
+    steps satisfy `FrameSep` for the frame words `autoFrame P prog`, have equal leakage
+    traces. -/
 theorem bytesCTCheckAuto_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
     (h : bytesCTCheckAuto r P prog = true) :
     ConstantTimeRel P.Agree
-      (fun sa t => ∃ sa', RunL r (FrameSep (certCells (infer prog P))) prog 0 sa t sa') :=
+      (fun sa t => ∃ sa', RunL r (FrameSep (autoFrame P prog)) prog 0 sa t sa') :=
   bytesCTCheck_sound h
 
 open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
@@ -1002,7 +1702,7 @@ theorem abiPubA_cells_iff (ps : List (String × ParamKind)) (lt : LevelTable) (o
 /-- The reason the check fails at index `pc` of `prog` under the certificate `A` and
     the frame words `F`, or `none` when it passes there. -/
 def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Option String :=
+    (K : PresCtx) (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Option String :=
   match certAt A pc with
   | none => none
   | some a =>
@@ -1037,14 +1737,16 @@ def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA
     | some .ret =>
       if !(X (own pc)).le a then some "ret: set not above the function's exit set" else none
     | some (.call t) =>
-      if !a.regs.contains "%rsp" then some "call: secret stack pointer"
+      if !presEntry K.D t then some "call: no preservation entry fact at the callee"
+      else if !a.regs.contains "%rsp" then some "call: secret stack pointer"
       else if !blockOkA r F a (callOps (pc + 1)) then some "call: the return-address push fails"
       else if !succOk A t (stepBlock a (callOps (pc + 1))) then
         some "call: no post-fixpoint at the callee entry"
       else if !(X (own t)).regs.contains "%rsp" then
         some "call: secret stack pointer in the callee's exit set"
       else if !blockOkA r F (X (own t)) retOps then some "call: the return fails"
-      else if !succOk A (pc + 1) (stepBlock (X (own t)) retOps) then
+      else if !succOk A (pc + 1)
+          (joinA (stepBlock (X (own t)) retOps) (keepA (K.Rp (own t)) (K.Pp (own t)) a)) then
         some "call: no post-fixpoint after the return"
       else if own (pc + 1) != own pc then some "falls through into another function"
       else none
@@ -1055,9 +1757,14 @@ def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA
 def firstFailure (r : DoitRegime) (P : PubA) (prog : List RInstr) : Option (Nat × String) :=
   let A := infer prog P
   let own := ownerOf (callTargets prog)
+  let K := presCtxOf prog A
+  let F := certCells A
   if !succOk A 0 P then some (0, "entry set not below the public set") else
-  (List.range prog.length).findSome? fun pc =>
-    (failAt r (certCells A) own (exitSet prog own A) prog A pc).map (pc, ·)
+  match (List.range prog.length).find? (fun pc => !presAt F own K.Rp K.Pp prog K.D pc) with
+  | some pc => some (pc, "preservation certificate fails")
+  | none =>
+    (List.range prog.length).findSome? fun pc =>
+      (failAt r F own (exitSet prog own A) K prog A pc).map (pc, ·)
 
 /-! ## 7. Array forms of the inference and the check
 
@@ -1087,7 +1794,7 @@ theorem succOkA_eq (A : Array (Option PubA)) (s : Nat) (out : PubA) :
 
 /-- `checkAt` on an array program and an array certificate. -/
 def checkAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) : Bool :=
+    (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) : Bool :=
   match certAtA A pc with
   | none => true
   | some a => a.cells.all F.contains &&
@@ -1104,28 +1811,31 @@ def checkAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → Pu
           && own (pc + 1) == own pc
     | some .ret => (X (own pc)).le a
     | some (.call t) =>
-        blockOkA r F a (callOps (pc + 1)) && succOkA A t (stepBlock a (callOps (pc + 1)))
+        presEntry K.D t && blockOkA r F a (callOps (pc + 1))
+          && succOkA A t (stepBlock a (callOps (pc + 1)))
           && blockOkA r F (X (own t)) retOps
-          && succOkA A (pc + 1) (stepBlock (X (own t)) retOps) && own (pc + 1) == own pc
+          && succOkA A (pc + 1)
+              (joinA (stepBlock (X (own t)) retOps) (keepA (K.Rp (own t)) (K.Pp (own t)) a))
+          && own (pc + 1) == own pc
     | none => true
 
 theorem checkAtA_eq (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) :
-    checkAtA r F own X prog A pc = checkAt r F own X prog.toList A.toList pc := by
+    (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) :
+    checkAtA r F own X K prog A pc = checkAt r F own X K prog.toList A.toList pc := by
   simp only [checkAtA, checkAt, certAtA_eq, succOkA_eq, Array.getElem?_toList]
 
 /-- `checkCert` on an array program and an array certificate. -/
 def checkCertA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : Array RInstr) (A : Array (Option PubA)) : Bool :=
-  (List.range prog.size).all (checkAtA r F own X prog A)
+    (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) : Bool :=
+  (List.range prog.size).all (checkAtA r F own X K prog A)
 
 theorem checkCertA_eq (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : Array RInstr) (A : Array (Option PubA)) :
-    checkCertA r F own X prog A = checkCert r F own X prog.toList A.toList := by
+    (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) :
+    checkCertA r F own X K prog A = checkCert r F own X K prog.toList A.toList := by
   simp only [checkCertA, checkCert, Array.length_toList]
   congr 1
   funext pc
-  exact checkAtA_eq r F own X prog A pc
+  exact checkAtA_eq r F own X K prog A pc
 
 /-- Meet the set at index `s` with `out`, reporting whether it changed. -/
 def meetIntoA (A : Array (Option PubA)) (s : Nat) (out : PubA) : Array (Option PubA) × Bool :=
@@ -1190,43 +1900,65 @@ def inferA (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
 /-- The frame words public at some index of an array certificate. -/
 def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
 
-/-- **The decision on arrays.** The array certificate `inferA` assigns the entry a set
-    below `P` and passes `checkCertA` with its own frame words. -/
-def bytesCTCheckFast (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
+/-- The frame words of the array decision on the certificate `A`: those of `A` and those
+    the preservation certificate of `K` keeps through a write with another base. -/
+def fastFrame (prog : List RInstr) (A : Array (Option PubA)) (K : PresCtx) : List Int :=
+  certCellsA A ++ presCells prog K.D
+
+/-- The array decision on a given certificate `A`: `A` assigns the entry a set below `P`,
+    the preservation certificate passes, and `checkCertA` passes, all with the frame words
+    `fastFrame`. -/
+def fastCheckWith (r : DoitRegime) (P : PubA) (prog : List RInstr) (A : Array (Option PubA)) :
+    Bool :=
   let pa := prog.toArray
-  let A := inferA pa P
   let own := ownerOf (callTargets prog)
-  succOkA A 0 P && checkCertA r (certCellsA A) own (exitSetA pa own A) pa A
+  let K := presCtxOf prog A.toList
+  let F := fastFrame prog A K
+  succOkA A 0 P && presCert F own K.Rp K.Pp prog K.D
+    && checkCertA r F own (exitSetA pa own A) K pa A
+
+/-- **The decision on arrays.** `fastCheckWith` on the array certificate `inferA`. -/
+def bytesCTCheckFast (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
+  fastCheckWith r P prog (inferA prog.toArray P)
 
 /-- **Soundness of the decision on arrays.** If `bytesCTCheckFast r P prog` holds, two
     runs of `prog` from index `0` from states agreeing on `P`, whose steps satisfy
-    `FrameSep` for the frame words of the certificate `inferA`, have equal leakage
-    traces. -/
+    `FrameSep` for the frame words `fastFrame` of the certificate `inferA`, have equal
+    leakage traces. -/
 theorem bytesCTCheckFast_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
     (h : bytesCTCheckFast r P prog = true) :
     ConstantTimeRel P.Agree (fun sa t => ∃ sa',
-      RunL r (FrameSep (certCellsA (inferA prog.toArray P))) prog 0 sa t sa') := by
+      RunL r (FrameSep (fastFrame prog (inferA prog.toArray P)
+        (presCtxOf prog (inferA prog.toArray P).toList))) prog 0 sa t sa') := by
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
-  simp only [bytesCTCheckFast, Bool.and_eq_true, succOkA_eq, checkCertA_eq] at h
-  obtain ⟨b, hb, hle⟩ := succOk_spec h.1
-  exact (checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂).1
+  simp only [bytesCTCheckFast, fastCheckWith, Bool.and_eq_true, succOkA_eq, checkCertA_eq,
+    List.toList_toArray] at h
+  obtain ⟨⟨h0, hp⟩, hc⟩ := h
+  obtain ⟨b, hb, hle⟩ := succOk_spec h0
+  exact (checkCert_sound hc hp h₁ hb (PubA.agree_of_le hle hag) h₂).1
 
 /-- `failAt` on an array program and an array certificate. -/
 def failAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
-    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) : Option String :=
-  failAt r F own X prog.toList A.toList pc
+    (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) :
+    Option String :=
+  failAt r F own X K prog.toList A.toList pc
 
-/-- The first failing index of `bytesCTCheckFast` with the reason, on the certificate
-    `A` computed by `inferA` for the array program `pa`, under the owners and exit sets
-    `bytesCTCheckFast` uses. -/
+/-- The first failing index of `fastCheckWith` with the reason, on the certificate `A`
+    computed by `inferA` for the array program `pa`, under the owners, exit sets,
+    preservation data and frame words `fastCheckWith` uses. -/
 def firstFailureA (r : DoitRegime) (P : PubA) (pa : Array RInstr) (A : Array (Option PubA)) :
     Option (Nat × String) :=
   let prog := pa.toList
   let AL := A.toList
   let own := ownerOf (callTargets prog)
   let X := exitSetA pa own A
+  let K := presCtxOf prog AL
+  let F := fastFrame prog A K
   if !succOkA A 0 P then some (0, "entry set not below the public set") else
-  (List.range pa.size).findSome? fun pc =>
-    (failAt r (certCellsA A) own X prog AL pc).map (pc, ·)
+  match (List.range pa.size).find? (fun pc => !presAt F own K.Rp K.Pp prog K.D pc) with
+  | some pc => some (pc, "preservation certificate fails")
+  | none =>
+    (List.range pa.size).findSome? fun pc =>
+      (failAt r F own X K prog AL pc).map (pc, ·)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
