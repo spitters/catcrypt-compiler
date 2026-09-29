@@ -23,16 +23,16 @@ CatCrypt.Crypto.Bridges.Transfer.ForallFoldTactic
 CatCrypt.Crypto.Hash.FullSecurity
 CatCrypt.Crypto.Hash.KangarooTwelve
 CatCrypt.Crypto.Hax.HaxBorrowAlignment
-CatCrypt.Crypto.Hax.HaxExitCT
+CatCrypt.Crypto.Hax.HaxExitTypedCT
 CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeRewrites
 CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
-CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTyped
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.Hax.HaxToLowCTSim_NoShadow
 CatCrypt.Crypto.Hax.HaxToLowCTSim_RCallN
 CatCrypt.Crypto.Hax.HaxToLowCTSim_WhileTrue
+CatCrypt.Crypto.Hax.HaxToLowCTWordOpsCT
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsGeneric
 CatCrypt.Crypto.Hax.HaxToLowCTWordOpsPres
 CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
@@ -274,6 +274,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrict
+CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
 CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid
@@ -294,7 +295,6 @@ CatCrypt.Crypto.SecureCompilation.Blake2SpecTie
 CatCrypt.Crypto.SecureCompilation.Bn254TowerFrontEmit
 CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
 CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
-CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
 CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxAscon
 CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2Tie
@@ -747,6 +747,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulReduceComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Bls
@@ -949,6 +950,7 @@ CatCrypt.Hax.Ascent.AscendHaxDemo
 CatCrypt.Hax.Ascent.Coverage
 CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
+CatCrypt.Hax.Ascent.SquareDouble
 CatCrypt.Hax.ClassBuiltinsTest
 CatCrypt.Hax.PrimeirBuiltins
 CatCrypt.Hax.ReifyImpDecodeEndToEnd
