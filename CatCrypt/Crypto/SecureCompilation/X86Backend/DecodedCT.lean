@@ -1,0 +1,654 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
+public import CatCrypt.Crypto.SecureCompilation.CT.Leakage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
+
+/-!
+# Constant time of decoded programs on the address machine
+
+A leakage semantics for decoded programs (`List RInstr`) on the address machine
+`RInstrAddrMem.aMachine`, and a checker whose acceptance gives constant time in that
+semantics.
+
+## The leakage semantics
+
+`RunL r ok prog pc sa t sa'` is a halting run of `prog` from index `pc` and state `sa`
+with leakage trace `t` and final state `sa'`, in the event type `CT.CTLeak`:
+
+* an `op i` emits `opLeak r sa i`: each memory access of `i` as an `addr` event whose
+  offset is the effective address, the value of the base register plus the displacement
+  or the scaled index (region `""`, the flat memory), followed by a `vt` event with the
+  data operands when the regime `r` makes them observable;
+* a `jcc` emits the `branch` event of its outcome;
+* `ret` ends the run.
+
+Each `op` step also satisfies the side condition `ok sa i`. `RunL.halts` and `halts_runL`
+relate `RunL` with the trivial side condition to `RInstrSemantics.Halts` on `aMachine`.
+
+## The checker
+
+`PubA` is a set of public locations: registers, words `%rsp + o` of the frame given by
+their offsets `o`, and the flags. `stepA P i` is the public set after `i`: a register is
+public after a `mov` of a public operand, a `lea` of public registers, an `add`/`sub` of
+public operands, or a load of a public frame word; a frame word after a store of a public
+operand through `%rsp`; the flags after a `cmp` of public operands.
+
+`checkCert r F prog A` checks a certificate `A` (a public set per index, `none` for an
+index the analysis does not reach): at each index with a public set, every frame word
+public there is in `F`; an `op` is quiet under `r` and accesses memory through public base
+and index registers, and its successor's set is below `stepA`; a `jcc` reads public flags
+and both successors' sets are below the current one. `infer prog P` computes a certificate
+by a forward analysis, and `bytesCTCheck r F P prog` checks it with the entry set below
+`P`.
+
+## Separation
+
+The address machine has one flat memory, so a store through a base other than `%rsp` can
+overwrite a frame word. `FrameSep F sa i` is the hypothesis that it does not: every
+address that `i` writes through a base other than `%rsp` is eight bytes apart from each
+word `%rsp + o`, `o ∈ F`. The soundness theorems hold for runs whose steps all satisfy
+`FrameSep F`.
+
+## Main results
+
+* `bytesCTCheck_sound`: if `bytesCTCheck r F P prog` holds, two runs of `prog` from states
+  agreeing on `P`, whose steps satisfy `FrameSep F`, have equal leakage traces.
+* `mul1Node_bytesCT`: the checker accepts the decoded `mpn_mul_1` node with the pointer
+  arguments `%rdi`, `%rsi`, the count `%rdx` and `%rsp` public, and the multiplier `%rcx`
+  and the array contents secret; `mul1Node_secretCount_rejected` and
+  `mul1Node_secretPointer_rejected` are the rejections with the count or the result
+  pointer secret.
+* `feAddFramed_bytesCT`: the encoding of the framed `fe25519_add` decodes to a block that,
+  followed by `ret`, the checker accepts with the three pointers and `%rsp` public;
+  `feAddFramed_secretPointer_rejected` is the rejection with an input pointer secret.
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (RInstr)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
+open CatCrypt.Crypto.SecureCompilation.CT
+
+/-! ## 1. The leakage semantics -/
+
+/-- A memory event of `instrLeak` with its effective address resolved in `sa`. -/
+def resolveEv (sa : AState) : MLeak → CTLeak
+  | .branch => .branch true
+  | .mem b o => .addr "" ((sa.regs b + BitVec.ofInt 64 o).toNat : Int)
+
+/-- The leakage of one instruction on the address machine: its memory accesses at their
+    effective addresses, then a `vt` event with its data operands when the regime makes
+    them observable. -/
+def opLeak (r : DoitRegime) (sa : AState) (i : JInstr 64) : List CTLeak :=
+  (instrLeak sa.view i).map (resolveEv sa) ++
+    (if r.leaksOperands i.mnem then [.vt i.mnem (i.dataArgs sa.view)] else [])
+
+/-- A halting run of `prog` on the address machine from index `pc` and state `sa`, with
+    leakage trace `t` and final state `sa'`, each `op` step satisfying `ok`. -/
+inductive RunL (r : DoitRegime) (ok : AState → JInstr 64 → Prop) (prog : List RInstr) :
+    Nat → AState → List CTLeak → AState → Prop
+  | ret {pc : Nat} {sa : AState} (h : prog[pc]? = some .ret) : RunL r ok prog pc sa [] sa
+  | op {pc : Nat} {sa : AState} {i : JInstr 64} {t : List CTLeak} {sa' : AState}
+      (h : prog[pc]? = some (.op i)) (hok : ok sa i)
+      (hr : RunL r ok prog (pc + 1) (evalInstrA sa i) t sa') :
+      RunL r ok prog pc sa (opLeak r sa i ++ t) sa'
+  | jcc {pc : Nat} {sa : AState} {cc tgt : Nat} {c : Condt} {t : List CTLeak} {sa' : AState}
+      (h : prog[pc]? = some (.jcc cc tgt)) (hc : condtOfNibble cc = some c)
+      (hr : RunL r ok prog (if sa.view.condB c then tgt else pc + 1) sa t sa') :
+      RunL r ok prog pc sa (.branch (sa.view.condB c) :: t) sa'
+
+/-- A run with leakage is a halting run of `aMachine`. -/
+theorem RunL.halts {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {prog : List RInstr}
+    {pc : Nat} {sa : AState} {t : List CTLeak} {sa' : AState}
+    (h : RunL r ok prog pc sa t sa') : Halts aMachine prog pc sa sa' := by
+  induction h with
+  | ret h => exact ⟨_, .refl _ _, h⟩
+  | op h _ _ ih =>
+    obtain ⟨pc', hr, hret⟩ := ih
+    exact ⟨pc', .next (by simp [RInstrSemantics.step, h, aMachine]) hr, hret⟩
+  | jcc h hc _ ih =>
+    obtain ⟨pc', hr, hret⟩ := ih
+    refine ⟨pc', .next ?_ hr, hret⟩
+    simp only [RInstrSemantics.step, h, hc, Option.map_some, aMachine]
+    split <;> simp_all
+
+/-- Every halting run of `aMachine` has a leakage trace. -/
+theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : Halts aMachine prog pc sa sa') :
+    ∃ t, RunL r (fun _ _ => True) prog pc sa t sa' := by
+  obtain ⟨pc', hr, hret⟩ := h
+  induction hr with
+  | refl => exact ⟨[], .ret hret⟩
+  | @next pc s pc₁ s₁ pc₂ s₂ hs _ ih =>
+    obtain ⟨t, ht⟩ := ih hret
+    unfold RInstrSemantics.step at hs
+    split at hs
+    · exact absurd hs (by simp)
+    · rename_i i hi
+      simp only [Option.some.injEq, Next.go.injEq] at hs
+      obtain ⟨rfl, rfl⟩ := hs
+      exact ⟨_, .op hi trivial ht⟩
+    · simp at hs
+    · rename_i cc tgt hj
+      cases hc : condtOfNibble cc with
+      | none => simp [hc] at hs
+      | some c =>
+        simp only [hc, Option.map_some, Option.some.injEq] at hs
+        have hv : aMachine.view s = s.view := rfl
+        rw [hv] at hs
+        have hnext : (if s.view.condB c then tgt else pc + 1) = pc₁ ∧ s = s₁ := by
+          split at hs <;> simp only [Next.go.injEq] at hs <;> obtain ⟨rfl, rfl⟩ := hs <;>
+            simp_all
+        obtain ⟨hp, rfl⟩ := hnext
+        exact ⟨_, .jcc hj hc (hp ▸ ht)⟩
+
+/-- `RunL` under a stronger side condition is `RunL` under a weaker one. -/
+theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {prog : List RInstr}
+    (hok : ∀ sa i, ok sa i → ok' sa i) {pc : Nat} {sa : AState} {t : List CTLeak}
+    {sa' : AState} (h : RunL r ok prog pc sa t sa') : RunL r ok' prog pc sa t sa' := by
+  induction h with
+  | ret h => exact .ret h
+  | op h ho _ ih => exact .op h (hok _ _ ho) ih
+  | jcc h hc _ ih => exact .jcc h hc ih
+
+/-! ## 2. Public sets -/
+
+/-- A set of public locations: registers, words `%rsp + o` of the frame by offset, and
+    the flags. -/
+structure PubA where
+  /-- The public registers. -/
+  regs : List String
+  /-- The offsets from `%rsp` of the public frame words. -/
+  cells : List Int
+  /-- Whether the flags are public. -/
+  flags : Bool
+  deriving DecidableEq, Repr
+
+/-- The frame word at offset `o` from `%rsp`. -/
+def cellAt (sa : AState) (o : Int) : BitVec 64 :=
+  read64 sa.mem (sa.regs "%rsp" + BitVec.ofInt 64 o)
+
+/-- Two address states agree on every location of `P`. -/
+def PubA.Agree (P : PubA) (s₁ s₂ : AState) : Prop :=
+  (∀ x ∈ P.regs, s₁.regs x = s₂.regs x) ∧ (∀ o ∈ P.cells, cellAt s₁ o = cellAt s₂ o) ∧
+    (P.flags = true → s₁.flags = s₂.flags)
+
+/-- `A.le B`: every location of `A` is a location of `B`. -/
+def PubA.le (A B : PubA) : Bool :=
+  A.regs.all B.regs.contains && A.cells.all B.cells.contains && (!A.flags || B.flags)
+
+theorem PubA.agree_of_le {A B : PubA} (h : A.le B = true) {s₁ s₂ : AState}
+    (hB : B.Agree s₁ s₂) : A.Agree s₁ s₂ := by
+  simp only [PubA.le, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem,
+    Bool.or_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hr, hc⟩, hf⟩ := h
+  refine ⟨fun x hx => hB.1 x (hr x hx), fun o ho => hB.2.1 o (hc o ho), fun ha => ?_⟩
+  rcases hf with hf | hf
+  · simp [hf] at ha
+  · exact hB.2.2 hf
+
+/-- An operand whose value is determined by `P`. -/
+def opPub (P : PubA) : JOperand → Bool
+  | .reg x => P.regs.contains x
+  | .imm _ => true
+
+theorem opPub_eval {P : PubA} {o : JOperand} (h : opPub P o = true) {s₁ s₂ : AState}
+    (hag : P.Agree s₁ s₂) : o.eval s₁.view = o.eval s₂.view := by
+  cases o with
+  | reg x =>
+    simp only [opPub, List.contains_iff_mem] at h
+    simp [AState.view, hag.1 x h]
+  | imm v => rfl
+
+/-! ## 3. The transfer function -/
+
+/-- The base register of a memory access of `i`. -/
+def memBase : JInstr 64 → Option String
+  | .loadMem _ b _ | .storeMem b _ _ | .mulxMem _ _ _ b _ | .addMem _ b _
+  | .adcxMem _ b _ | .adoxMem _ b _ | .imulMem _ b _ | .imulriMem _ b _ _
+  | .addToMem b _ _ | .loadMemIdx _ b _ _ | .storeMemIdx b _ _ _ => some b
+  | _ => none
+
+/-- `i` writes memory through the base register `%rsp`. -/
+def frameWrite : JInstr 64 → Bool
+  | .storeMem b _ _ | .addToMem b _ _ | .storeMemIdx b _ _ _ => b == "%rsp"
+  | _ => false
+
+/-- The frame words at offsets `o` and `o'` do not overlap. -/
+def far (o o' : Int) : Bool := 8 ≤ (o - o').natAbs && (o - o').natAbs ≤ 2 ^ 64 - 8
+
+/-- The registers `i` writes with a value determined by `P`. -/
+def newRegs (P : PubA) : JInstr 64 → List String
+  | .mov d src => if opPub P src then [d] else []
+  | .loadMem d b o => if b == "%rsp" && P.cells.contains o then [d] else []
+  | .lea d b x _ _ => if P.regs.contains b && P.regs.contains x then [d] else []
+  | .add d src | .sub d src => if P.regs.contains d && opPub P src then [d] else []
+  | _ => []
+
+/-- The public frame words after `i`, when `i` does not write `%rsp`. -/
+def newCells (P : PubA) : JInstr 64 → List Int
+  | .storeMem b o src =>
+      if b == "%rsp" then (if opPub P src then [o] else []) ++ P.cells.filter (far o)
+      else P.cells
+  | i => if frameWrite i then [] else P.cells
+
+/-- The public set after `i`. -/
+def stepA (P : PubA) (i : JInstr 64) : PubA where
+  regs := newRegs P i ++ P.regs.filter (fun x => !(dstRegs i).contains x)
+  cells := if (dstRegs i).contains "%rsp" then [] else newCells P i
+  flags := match i with
+    | .cmp a o => P.regs.contains a && opPub P o
+    | _ => false
+
+/-- The separation hypothesis: every address `i` writes through a base other than `%rsp`
+    is eight bytes apart from each frame word `%rsp + o`, `o ∈ F`. -/
+def FrameSep (F : List Int) (sa : AState) (i : JInstr 64) : Prop :=
+  frameWrite i = false → ∀ a, writeAddr sa i = some a →
+    ∀ o ∈ F, Disjoint8 a (sa.regs "%rsp" + BitVec.ofInt 64 o)
+
+theorem evalInstrA_regs (sa : AState) (i : JInstr 64) (x : String) :
+    (evalInstrA sa i).regs x = (evalInstr sa.view i).get x := rfl
+
+theorem evalInstrA_regs_of_not_dst (sa : AState) (i : JInstr 64) (x : String)
+    (h : x ∉ dstRegs i) : (evalInstrA sa i).regs x = sa.regs x := by
+  rw [evalInstrA_regs, evalInstr_get_of_not_dst _ _ _ h]
+  rfl
+
+/-- A frame word that no write of `i` overlaps keeps its value. -/
+theorem cellAt_preserved (sa : AState) (i : JInstr 64) (hrsp : "%rsp" ∉ dstRegs i) (o : Int)
+    (hsep : ∀ a, writeAddr sa i = some a → Disjoint8 a (sa.regs "%rsp" + BitVec.ofInt 64 o)) :
+    cellAt (evalInstrA sa i) o = cellAt sa o := by
+  unfold cellAt
+  rw [evalInstrA_regs_of_not_dst sa i _ hrsp]
+  simp only [evalInstrA]
+  split
+  · rename_i a ha
+    exact read64_write64_of_disjoint _ _ _ _ (hsep a ha)
+  · rfl
+
+theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) :
+    ∀ x ∈ newRegs P i, (evalInstrA s₁ i).regs x = (evalInstrA s₂ i).regs x := by
+  intro x hx
+  rw [evalInstrA_regs, evalInstrA_regs]
+  cases i with
+  | mov d src =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      simp only [evalInstr, JState.get_setReg_same, opPub_eval h hag]
+    · simp at hx
+  | loadMem d b o =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [Bool.and_eq_true, beq_iff_eq, List.contains_iff_mem] at h
+      obtain ⟨rfl, h⟩ := h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      have := hag.2.1 o h
+      simp only [cellAt] at this
+      simp [evalInstr, JState.setReg, AState.view, this]
+    · simp at hx
+  | lea d b y sc off =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      simp [evalInstr, JState.setReg, AState.view, hag.1 _ h.1, hag.1 _ h.2]
+    · simp at hx
+  | add d src =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      have hd : s₁.view.get x = s₂.view.get x := by simp [AState.view, hag.1 _ h.1]
+      simp only [evalInstr, JState.writeB5W, JState.get]
+      rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
+        hd, opPub_eval h.2 hag]
+    · simp at hx
+  | sub d src =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [Bool.and_eq_true, List.contains_iff_mem] at h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      have hd : s₁.view.get x = s₂.view.get x := by simp [AState.view, hag.1 _ h.1]
+      simp only [evalInstr, JState.writeB5W, JState.get]
+      rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
+        hd, opPub_eval h.2 hag]
+    · simp at hx
+  | _ => simp [newRegs] at hx
+
+/-- **Soundness of one step.** Two states agreeing on `P`, each satisfying `FrameSep F`
+    at `i`, with the frame words of `P` in `F`, agree on `stepA P i` after `i`. -/
+theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int} (hF : ∀ o ∈ P.cells, o ∈ F)
+    {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) (h₁ : FrameSep F s₁ i) (h₂ : FrameSep F s₂ i) :
+    (stepA P i).Agree (evalInstrA s₁ i) (evalInstrA s₂ i) := by
+  refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_⟩
+  · simp only [stepA, List.mem_append, List.mem_filter, Bool.not_eq_true'] at hx
+    rcases hx with hx | ⟨hx, hnd⟩
+    · exact newRegs_sound P i hag x hx
+    · have hnd : x ∉ dstRegs i := by simpa using hnd
+      rw [evalInstrA_regs_of_not_dst _ _ _ hnd, evalInstrA_regs_of_not_dst _ _ _ hnd]
+      exact hag.1 x hx
+  · simp only [stepA] at ho
+    split at ho
+    · simp at ho
+    · rename_i hrsp
+      have hrsp' : "%rsp" ∉ dstRegs i := by simpa using hrsp
+      -- a write not through `%rsp` misses every frame word of `F`
+      have hpres : ∀ s : AState, FrameSep F s i → frameWrite i = false → ∀ o ∈ P.cells,
+          cellAt (evalInstrA s i) o = cellAt s o := fun s hs hfw o ho =>
+        cellAt_preserved s i hrsp' o fun a ha => hs hfw a ha o (hF o ho)
+      cases i with
+      | storeMem b off src =>
+        simp only [newCells] at ho
+        by_cases hb : b = "%rsp"
+        · subst hb
+          simp only [beq_self_eq_true, if_true, List.mem_append, List.mem_filter] at ho
+          have hw : ∀ s : AState, writeAddr s (.storeMem "%rsp" off src)
+              = some (s.regs "%rsp" + BitVec.ofInt 64 off) := fun _ => rfl
+          rcases ho with ho | ⟨ho, hfar⟩
+          · split at ho
+            · rename_i hs
+              simp only [List.mem_singleton] at ho
+              subst ho
+              unfold cellAt
+              rw [evalInstrA_regs_of_not_dst _ _ _ hrsp', evalInstrA_regs_of_not_dst _ _ _ hrsp']
+              simp only [evalInstrA, hw, read64_write64_same, writeVal, opPub_eval hs hag]
+            · simp at ho
+          · simp only [far, Bool.and_eq_true, decide_eq_true_eq] at hfar
+            have hd : ∀ s : AState, cellAt (evalInstrA s (.storeMem "%rsp" off src)) o
+                = cellAt s o := fun s =>
+              cellAt_preserved s _ hrsp' o fun a ha => by
+                rw [hw, Option.some.injEq] at ha
+                subst ha
+                exact disjoint8_add_ofInt _ _ _ hfar.1 hfar.2
+            rw [hd, hd]
+            exact hag.2.1 o ho
+        · have hfw : frameWrite (.storeMem b off src) = false := by simp [frameWrite, hb]
+          simp only [show (b == "%rsp") = false from by simpa using hb] at ho
+          rw [hpres s₁ h₁ hfw o ho, hpres s₂ h₂ hfw o ho]
+          exact hag.2.1 o ho
+      | _ =>
+        simp only [newCells] at ho
+        split at ho
+        · simp at ho
+        · rename_i hfw
+          rw [Bool.not_eq_true] at hfw
+          rw [hpres s₁ h₁ hfw o ho, hpres s₂ h₂ hfw o ho]
+          exact hag.2.1 o ho
+  · cases i with
+    | cmp a o =>
+      simp only [stepA, Bool.and_eq_true, List.contains_iff_mem] at hf
+      have ha : s₁.view.get a = s₂.view.get a := by simp [AState.view, hag.1 _ hf.1]
+      simp only [evalInstrA, evalInstr, JState.writeB5]
+      rw [ha, opPub_eval hf.2 hag]
+    | _ => simp [stepA] at hf
+
+/-! ## 4. The checker -/
+
+/-- The index register of the memory access of `i`, if any, is public. -/
+def idxOk (P : PubA) (i : JInstr 64) : Bool :=
+  match idxReg i with
+  | some x => P.regs.contains x
+  | none => true
+
+/-- The base register of the memory access of `i`, if any, is public. -/
+def baseOk (P : PubA) (i : JInstr 64) : Bool :=
+  match memBase i with
+  | some b => P.regs.contains b
+  | none => true
+
+/-- `i` is quiet under `r` and accesses memory through public base and index registers. -/
+def opOk (r : DoitRegime) (P : PubA) (i : JInstr 64) : Bool :=
+  !r.leaksOperands i.mnem && idxOk P i && baseOk P i
+
+theorem opLeak_eq {r : DoitRegime} {P : PubA} {i : JInstr 64} (h : opOk r P i = true)
+    {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) : opLeak r s₁ i = opLeak r s₂ i := by
+  simp only [opOk, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hq, hi⟩, hb⟩ := h
+  simp only [opLeak, hq]
+  have hr : ∀ x ∈ P.regs, s₁.regs x = s₂.regs x := hag.1
+  cases i <;>
+    simp_all [instrLeak, resolveEv, idxOk, baseOk, idxReg, memBase, AState.view]
+
+/-- The public set the certificate assigns to index `pc`. -/
+def certAt (A : List (Option PubA)) (pc : Nat) : Option PubA := A.getD pc none
+
+/-- The certificate assigns index `s` a public set below `out`. -/
+def succOk (A : List (Option PubA)) (s : Nat) (out : PubA) : Bool :=
+  match certAt A s with
+  | some b => b.le out
+  | none => false
+
+theorem succOk_spec {A : List (Option PubA)} {s : Nat} {out : PubA}
+    (h : succOk A s out = true) : ∃ b, certAt A s = some b ∧ b.le out = true := by
+  unfold succOk at h
+  split at h
+  · exact ⟨_, by assumption, h⟩
+  · simp at h
+
+/-- The check at index `pc`. -/
+def checkAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Option PubA))
+    (pc : Nat) : Bool :=
+  match certAt A pc with
+  | none => true
+  | some a => a.cells.all F.contains &&
+    match prog[pc]? with
+    | some (.op i) => opOk r a i && succOk A (pc + 1) (stepA a i)
+    | some (.jcc cc t) =>
+        a.flags && (condtOfNibble cc).isSome && succOk A t a && succOk A (pc + 1) a
+    | _ => true
+
+/-- The check at every index of `prog`. -/
+def checkCert (r : DoitRegime) (F : List Int) (prog : List RInstr)
+    (A : List (Option PubA)) : Bool :=
+  (List.range prog.length).all (checkAt r F prog A)
+
+theorem checkAt_of_checkCert {r : DoitRegime} {F : List Int} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F prog A = true) {pc : Nat} {x : RInstr}
+    (hx : prog[pc]? = some x) : checkAt r F prog A pc = true := by
+  have hlt : pc < prog.length := (List.getElem?_eq_some_iff.mp hx).1
+  exact List.all_eq_true.mp hc pc (List.mem_range.mpr hlt)
+
+theorem condB_eq {s₁ s₂ : AState} (h : s₁.flags = s₂.flags) (c : Condt) :
+    s₁.view.condB c = s₂.view.condB c := by
+  unfold JState.condB JState.flagB
+  simp [AState.view, h]
+
+/-- **Soundness of a certificate.** If `checkCert r F prog A` holds, two runs of `prog`
+    from index `pc`, whose steps satisfy `FrameSep F`, from states agreeing on the set the
+    certificate assigns to `pc`, have equal traces. -/
+theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F prog A = true) {pc : Nat} {s₁ : AState}
+    {t₁ : List CTLeak} {s₁' : AState} (h₁ : RunL r (FrameSep F) prog pc s₁ t₁ s₁') :
+    ∀ {a : PubA} {s₂ : AState} {t₂ : List CTLeak} {s₂' : AState}, certAt A pc = some a →
+      a.Agree s₁ s₂ → RunL r (FrameSep F) prog pc s₂ t₂ s₂' → t₁ = t₂ := by
+  induction h₁ with
+  | ret h =>
+    intro a s₂ t₂ s₂' _ _ h₂
+    cases h₂ with
+    | ret => rfl
+    | op h' => simp_all
+    | jcc h' => simp_all
+  | @op pc s₁ i t₁ s₁' h hok hr ih =>
+    intro a s₂ t₂ s₂' hA hag h₂
+    have hck := checkAt_of_checkCert hc h
+    simp only [checkAt, hA, h, Bool.and_eq_true] at hck
+    obtain ⟨hF, hop, hsucc⟩ := hck
+    have hF : ∀ o ∈ a.cells, o ∈ F := fun o ho => by
+      simpa using List.all_eq_true.mp hF o ho
+    obtain ⟨b, hb, hle⟩ := succOk_spec hsucc
+    cases h₂ with
+    | ret h' => simp_all
+    | jcc h' => simp_all
+    | @op _ _ i' t₂ _ h' hok' hr' =>
+      rw [h, Option.some.injEq, RInstr.op.injEq] at h'
+      subst h'
+      rw [opLeak_eq hop hag]
+      congr 1
+      exact ih hb (PubA.agree_of_le hle (stepA_sound a i hF hag hok hok')) hr'
+  | @jcc pc s₁ cc tgt c t₁ s₁' h hcc hr ih =>
+    intro a s₂ t₂ s₂' hA hag h₂
+    have hck := checkAt_of_checkCert hc h
+    simp only [checkAt, hA, h, Bool.and_eq_true] at hck
+    obtain ⟨_, ⟨⟨hfl, _⟩, hst⟩, hsn⟩ := hck
+    cases h₂ with
+    | ret h' => simp_all
+    | op h' => simp_all
+    | @jcc _ _ cc' tgt' c' t₂ _ h' hcc' hr' =>
+      rw [h, Option.some.injEq, RInstr.jcc.injEq] at h'
+      obtain ⟨rfl, rfl⟩ := h'
+      rw [hcc, Option.some.injEq] at hcc'
+      subst hcc'
+      have hcb := condB_eq (hag.2.2 hfl) c
+      rw [hcb]
+      congr 1
+      by_cases hcnd : s₂.view.condB c = true
+      · obtain ⟨b, hb, hle⟩ := succOk_spec hst
+        simp only [hcb, hcnd, if_true] at ih hr'
+        exact ih hb (PubA.agree_of_le hle hag) hr'
+      · obtain ⟨b, hb, hle⟩ := succOk_spec hsn
+        simp only [hcb, hcnd, if_false, Bool.false_eq_true] at ih hr'
+        exact ih hb (PubA.agree_of_le hle hag) hr'
+
+/-! ## 5. Inference and the decision -/
+
+/-- The meet of two public sets: the locations public in both. -/
+def meetA (a b : PubA) : PubA :=
+  ⟨a.regs.filter b.regs.contains, a.cells.filter b.cells.contains, a.flags && b.flags⟩
+
+/-- The meet with an unreached index (`none`) is the other set. -/
+def meetO : Option PubA → PubA → Option PubA
+  | none, b => some b
+  | some a, b => some (meetA a b)
+
+/-- The successors of index `pc` with the public set each receives from `a`. -/
+def succs (prog : List RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
+  match prog[pc]? with
+  | some (.op i) => [(pc + 1, stepA a i)]
+  | some (.jcc _ t) => [(t, a), (pc + 1, a)]
+  | _ => []
+
+/-- One forward pass over the indices of `prog`, meeting each successor's set with what
+    it receives. -/
+def sweep (prog : List RInstr) (A : List (Option PubA)) : List (Option PubA) :=
+  (List.range prog.length).foldl (fun A pc =>
+    match certAt A pc with
+    | none => A
+    | some a => (succs prog pc a).foldl (fun A so => A.set so.1 (meetO (certAt A so.1) so.2)) A)
+    A
+
+/-- Passes until a pass changes nothing, at most `fuel` of them. -/
+def sweepFix (prog : List RInstr) : Nat → List (Option PubA) → List (Option PubA)
+  | 0, A => A
+  | fuel + 1, A => let A' := sweep prog A; if A' = A then A else sweepFix prog fuel A'
+
+/-- The certificate the forward analysis computes from the entry set `P`. -/
+def infer (prog : List RInstr) (P : PubA) : List (Option PubA) :=
+  sweepFix prog prog.length ((List.replicate prog.length none).set 0 (some P))
+
+/-- **The decision.** The inferred certificate assigns the entry a set below `P` and
+    passes `checkCert`. -/
+def bytesCTCheck (r : DoitRegime) (F : List Int) (P : PubA) (prog : List RInstr) : Bool :=
+  let A := infer prog P
+  succOk A 0 P && checkCert r F prog A
+
+/-- **Soundness of the decision.** If `bytesCTCheck r F P prog` holds, two runs of `prog`
+    from index `0` whose steps satisfy `FrameSep F`, from states agreeing on `P`, have
+    equal leakage traces. -/
+theorem bytesCTCheck_sound {r : DoitRegime} {F : List Int} {P : PubA} {prog : List RInstr}
+    (h : bytesCTCheck r F P prog = true) :
+    ConstantTimeRel P.Agree (fun sa t => ∃ sa', RunL r (FrameSep F) prog 0 sa t sa') := by
+  intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
+  simp only [bytesCTCheck, Bool.and_eq_true] at h
+  obtain ⟨b, hb, hle⟩ := succOk_spec h.1
+  exact checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂
+
+/-! ## 6. The decoded `mpn_mul_1` node -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop (nodeLayout)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
+  (mul1DecPre mul1DecLoop mul1DecPost)
+
+/-- The public entry set of `mpn_mul_1`: the result pointer `%rdi`, the source pointer
+    `%rsi`, the count `%rdx` and the stack pointer. The multiplier `%rcx`, the other
+    registers, the memory and the flags are secret. -/
+def mul1PubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
+
+/-- The frame words the analysis of `mpn_mul_1` keeps public: the saved pointers at `56`
+    and `48`, the saved count at `-8` and the saved source pointer at `-128`. -/
+def mul1FrameCells : List Int := [56, 48, -8, -128]
+
+/-- **The checker accepts the decoded `mpn_mul_1` node** under DOITM, from `mul1PubA`
+    with the frame words `mul1FrameCells`. -/
+theorem mul1Node_bytesCT :
+    bytesCTCheck .doitm mul1FrameCells mul1PubA (nodeLayout mul1DecPre mul1DecLoop mul1DecPost)
+      = true := by
+  decide +kernel
+
+/-- With the count `%rdx` secret the checker rejects the node: the loop guard reads it. -/
+theorem mul1Node_secretCount_rejected :
+    bytesCTCheck .doitm mul1FrameCells ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
+      (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
+  decide +kernel
+
+/-- With the result pointer `%rdi` secret the checker rejects the node: the stores
+    address through it. -/
+theorem mul1Node_secretPointer_rejected :
+    bytesCTCheck .doitm mul1FrameCells ⟨["%rsi", "%rdx", "%rsp"], [], false⟩
+      (nodeLayout mul1DecPre mul1DecLoop mul1DecPost) = false := by
+  decide +kernel
+
+/-! ## 7. The framed field addition `fe25519_add` -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder (decodeJStream)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder (encodeJBlock)
+open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384 (s2nAlloc)
+open CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
+  (feAddFramed feAddFramed_length feAddFramed_instrOk decode_phys)
+
+/-- The public entry set of the field kernels: the output pointer `%rdi`, the input
+    pointers `%rsi` and `%rdx`, and the stack pointer. The limbs, the other registers
+    and the flags are secret. -/
+def fePubA : PubA := ⟨["%rdi", "%rsi", "%rdx", "%rsp"], [], false⟩
+
+/-- **The checker accepts the decoded `fe25519_add` bytes.** The encoding of the framed
+    field addition decodes to a block `c`, and `c` followed by `ret` passes the checker
+    under DOITM from `fePubA`, with no frame word public. -/
+theorem feAddFramed_bytesCT :
+    ∃ c, decodeJStream 57 (encodeJBlock s2nAlloc feAddFramed) = some c ∧
+      bytesCTCheck .doitm [] fePubA (c.map .op ++ [.ret]) = true :=
+  ⟨feAddFramed, feAddFramed_length ▸ decode_phys _ feAddFramed_instrOk, by decide +kernel⟩
+
+/-- With the input pointer `%rdx` secret the checker rejects the block: its loads address
+    through it. -/
+theorem feAddFramed_secretPointer_rejected :
+    bytesCTCheck .doitm [] ⟨["%rdi", "%rsi", "%rsp"], [], false⟩
+      (feAddFramed.map .op ++ [.ret]) = false := by
+  decide +kernel
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
