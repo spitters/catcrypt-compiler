@@ -72,11 +72,28 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-- A decoded instruction: a straight-line `JInstr 64` over the canonical `%rN`
     names, a conditional branch carrying its SDM condition nibble and the signed
-    displacement from the end of the branch, or `ret`. -/
+    displacement from the end of the branch, `ret`, or `pushq`/`popq` of a
+    register. -/
 inductive DInstr where
   | op (i : JInstr 64)
   | jcc (cc : Nat) (disp : Int)
   | ret
+  | push (r : String)
+  | pop (r : String)
+
+/-- `PUSH r64` (`50+r`) and `POP r64` (`58+r`) of the register numbered `n`, the opcode
+    byte `op` selecting which; `%rsp` (`n = 4`) is rejected. -/
+def decodePushPop (n op : Nat) (rest : List (BitVec 8)) :
+    Option (DInstr × List (BitVec 8)) :=
+  if n = 4 then none
+  else if 0x50 ≤ op ∧ op ≤ 0x57 then some (.push (regName n), rest)
+  else if 0x58 ≤ op ∧ op ≤ 0x5f then some (.pop (regName n), rest)
+  else none
+
+/-- `PUSH`/`POP` of `r8`–`r15` behind the `REX.B` prefix `41`. -/
+def decodeRexPushPop (r : BitVec 8) : List (BitVec 8) → Option (DInstr × List (BitVec 8))
+  | op :: rest => if r.toNat = 0x41 then decodePushPop (8 + op.toNat % 8) op.toNat rest else none
+  | [] => none
 
 /-- The 64-bit value an `imm8` sign-extends to. -/
 def signExt8 (b : BitVec 8) : Nat := (b.signExtend 64).toNat
@@ -150,7 +167,9 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
               else none
           | _ => none
         else if isRex b0 then
-          (decodeRexExt b0 rest).map fun p => (.op p.1, p.2)
+          ((decodeRexExt b0 rest).map fun p => (.op p.1, p.2)).or (decodeRexPushPop b0 rest)
+        else if 0x50 ≤ b0.toNat ∧ b0.toNat ≤ 0x5f then
+          decodePushPop (b0.toNat % 8) b0.toNat rest
         else if 0xb8 ≤ b0.toNat ∧ b0.toNat ≤ 0xbf then
           match rest with
           | i0 :: i1 :: i2 :: i3 :: r =>
@@ -345,8 +364,14 @@ theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb
   have h6 : decodeJ1_6 (BitVec.ofNat 8 (rex 1 r x b) :: rest) = none := by
     rw [decodeJ1_6_of_none _ (by rw [decodeJ1_rex _ _ _ hr hx hb]; exact hnone), hs, hc]
     rfl
+  have hpp : decodeRexPushPop (BitVec.ofNat 8 (rex 1 r x b)) rest = none := by
+    have h41 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0x41) := by
+      rw [BitVec.toNat_ofNat]; unfold rex; omega
+    cases rest with
+    | nil => rfl
+    | cons o t => simp only [decodeRexPushPop, if_neg h41]
   simp only [decodeLinstr, h6, if_neg hc3, if_neg h7,
-    if_neg h0f, isRex_rex _ _ _ hr hx hb, if_true]
+    if_neg h0f, isRex_rex _ _ _ hr hx hb, if_true, hpp, Option.or_none]
 
 /-- The reg-reg compare `CMP %s, %d` (`REX.W 39 /r`) decodes to `cmp d s`. -/
 theorem decodeLinstr_cmpRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (hs : s < 16) :
@@ -461,7 +486,8 @@ theorem decodeLinstr_movImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 8)
   have f3 : ¬ (0xb8 + d = 0x0f) := by omega
   have f4 : ¬ (0x40 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x4f) := by omega
   have f5 : (0xb8 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0xbf) := by omega
-  simp only [f1, f2, f3, f4, f5, if_false, imm32LE_recompose v hv, Nat.add_sub_cancel_left,
+  have f6 : ¬ (0x50 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x5f) := by omega
+  simp only [f1, f2, f3, f4, f5, f6, if_false, imm32LE_recompose v hv, Nat.add_sub_cancel_left,
     decide_false, Bool.false_eq_true, and_self, if_true]
 
 /-- `REX.X` of a `REX.W` prefix. -/
@@ -608,6 +634,77 @@ theorem decodeLinstr_ret (rest : List (BitVec 8)) :
   show decodeLinstr (BitVec.ofNat 8 0xc3 :: rest) = _
   simp only [decodeLinstr, decodeJ1_6_of_not_rex (show isRex (BitVec.ofNat 8 0xc3) = false by decide)]
   rfl
+
+/-- A byte `50`–`5F` without a prefix is read by `decodePushPop`. -/
+theorem decodeLinstr_pushPop_bare (b : BitVec 8) (rest : List (BitVec 8))
+    (hb : 0x50 ≤ b.toNat ∧ b.toNat ≤ 0x5f) :
+    decodeLinstr (b :: rest) = decodePushPop (b.toNat % 8) b.toNat rest := by
+  have hnr : isRex b = false := by simp only [isRex, decide_eq_false_iff_not]; omega
+  have hj : decodeJ1 (b :: rest) = none := by
+    have e1 : ¬ b.toNat = 0x66 := by omega
+    have e2 : ¬ b.toNat = 0xf3 := by omega
+    have e3 : ¬ b.toNat = 0xc4 := by omega
+    have e5 : ¬ b.toNat = 0x0f := by omega
+    simp [decodeJ1, e1, e2, e3, hnr, e5]
+  have f1 : ¬ b.toNat = 0xc3 := by omega
+  have f2 : ¬ (0x70 ≤ b.toNat ∧ b.toNat ≤ 0x7f) := by omega
+  have f3 : ¬ b.toNat = 0x0f := by omega
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, if_neg f1, if_neg f2, if_neg f3,
+    hnr, if_pos hb, Bool.false_eq_true, if_false]
+
+/-- The `REX.B` prefix `41` before a byte `50`–`5F` is read by `decodePushPop` at
+    `r8`–`r15`. -/
+theorem decodeLinstr_pushPop_rex41 (o : BitVec 8) (rest : List (BitVec 8))
+    (ho : 0x50 ≤ o.toNat ∧ o.toNat ≤ 0x5f) :
+    decodeLinstr (BitVec.ofNat 8 0x41 :: o :: rest)
+      = decodePushPop (8 + o.toNat % 8) o.toNat rest := by
+  have hr : isRex (BitVec.ofNat 8 0x41) = true := by decide
+  have hw : rexW (BitVec.ofNat 8 0x41) = 0 := by decide
+  have hj : decodeJ1 (BitVec.ofNat 8 0x41 :: o :: rest) = none := by
+    have e0 : ¬ o.toNat = 0x0f := by omega
+    have e1 : ¬ (0xb8 ≤ o.toNat ∧ o.toNat ≤ 0xbf) := by omega
+    simp [decodeJ1, hr, hw, decodeRexW0, e0, e1]
+  have h6 : decodeJ1_6 (BitVec.ofNat 8 0x41 :: o :: rest) = none := by
+    rw [decodeJ1_6_of_none _ hj]
+    rcases rest with _ | ⟨m, t⟩ <;> simp [decodeShift1, decodeCmp, hw]
+  have hx : decodeRexExt (BitVec.ofNat 8 0x41) (o :: rest) = none := by
+    rcases rest with _ | ⟨m, t⟩ <;> simp [decodeRexExt, hw]
+  simp only [decodeLinstr, h6, hx, hr, Option.map_none, Option.none_or, decodeRexPushPop]
+  rfl
+
+/-- `pushq r` (`50+r`, or `41 50+r` for `r8`–`r15`) decodes to `push r`, for every
+    canonical register but `%rsp`. -/
+theorem decodeLinstr_push (r : String) (rest : List (BitVec 8)) (hr : r ∈ gpNames)
+    (hsp : r ≠ "%rsp") :
+    decodeLinstr (LeafBytes.encPushReg r ++ rest) = some (.push r, rest) := by
+  simp only [gpNames, List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;>
+    first
+    | exact absurd rfl hsp
+    | (simp only [LeafBytes.encPushReg, gpNum, bit, Nat.reduceShiftRight, Nat.reduceAnd,
+        Nat.reduceAdd, Nat.reduceEqDiff, reduceIte, List.map_cons, List.map_nil,
+        List.cons_append,
+        List.nil_append]
+       first
+       | (rw [decodeLinstr_pushPop_rex41 _ _ (by decide)]; rfl)
+       | (rw [decodeLinstr_pushPop_bare _ _ (by decide)]; rfl))
+
+/-- `popq r` (`58+r`, or `41 58+r` for `r8`–`r15`) decodes to `pop r`, for every
+    canonical register but `%rsp`. -/
+theorem decodeLinstr_pop (r : String) (rest : List (BitVec 8)) (hr : r ∈ gpNames)
+    (hsp : r ≠ "%rsp") :
+    decodeLinstr (LeafBytes.encPopReg r ++ rest) = some (.pop r, rest) := by
+  simp only [gpNames, List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;>
+    first
+    | exact absurd rfl hsp
+    | (simp only [LeafBytes.encPopReg, gpNum, bit, Nat.reduceShiftRight, Nat.reduceAnd,
+        Nat.reduceAdd, Nat.reduceEqDiff, reduceIte, List.map_cons, List.map_nil,
+        List.cons_append,
+        List.nil_append]
+       first
+       | (rw [decodeLinstr_pushPop_rex41 _ _ (by decide)]; rfl)
+       | (rw [decodeLinstr_pushPop_bare _ _ (by decide)]; rfl))
 
 /-! ## 4. The body encoder as a recursion -/
 
@@ -836,6 +933,22 @@ inductive RInstr where
   | op (i : JInstr 64)
   | jcc (cc : Nat) (target : Nat)
   | ret
+  | push (r : String)
+  | pop (r : String)
+
+/-- The effect of `pushq r`: `%rsp` lowered by eight, then `r` stored at `[%rsp]`. -/
+def pushOps (r : String) : List (JInstr 64) :=
+  [.lea "%rsp" "%rsp" "%rsp" 0 (-8), .storeMem "%rsp" 0 (.reg r)]
+
+/-- The effect of `popq r`: `r` loaded from `[%rsp]`, then `%rsp` raised by eight. -/
+def popOps (r : String) : List (JInstr 64) :=
+  [.loadMem r "%rsp" 0, .lea "%rsp" "%rsp" "%rsp" 0 8]
+
+/-- The straight-line effect of a stack instruction, `none` for the others. -/
+def RInstr.stackOps? : RInstr → Option (List (JInstr 64))
+  | .push r => some (pushOps r)
+  | .pop r => some (popOps r)
+  | _ => none
 
 /-- Replace each branch displacement by the index of the instruction that
     starts at the target offset. -/
@@ -846,6 +959,8 @@ def resolveAll (xs : List (Nat × Nat × DInstr)) :
       match x with
       | .op i => (resolveAll xs rest).map (.op i :: ·)
       | .ret => (resolveAll xs rest).map (.ret :: ·)
+      | .push r => (resolveAll xs rest).map (.push r :: ·)
+      | .pop r => (resolveAll xs rest).map (.pop r :: ·)
       | .jcc cc d =>
           match xs.findIdx? (fun y => decide ((y.1 : Int) = (e : Int) + d)) with
           | some j => (resolveAll xs rest).map (.jcc cc j :: ·)
@@ -877,6 +992,8 @@ def expectedFrom (all : List Item) : List Item → Option (List RInstr)
       | none => expectedFrom all rest
       | some (.op i) => (expectedFrom all rest).map (.op i :: ·)
       | some .ret => (expectedFrom all rest).map (.ret :: ·)
+      | some (.push r) => (expectedFrom all rest).map (.push r :: ·)
+      | some (.pop r) => (expectedFrom all rest).map (.pop r :: ·)
       | some (.jcc cc _) =>
           match it.target.bind (fun l => labelPos l 0 0 all) with
           | some (j, _) => (expectedFrom all rest).map (.jcc cc j :: ·)
@@ -1039,6 +1156,8 @@ theorem resolveAll_layout (all : List Item) (hok : ∀ it ∈ all, ItemOK it) :
       cases x with
       | op i => simp [layoutAt, expectedFrom, hdec, resolveAll, ih']
       | ret => simp [layoutAt, expectedFrom, hdec, resolveAll, ih']
+      | push r => simp [layoutAt, expectedFrom, hdec, resolveAll, ih']
+      | pop r => simp [layoutAt, expectedFrom, hdec, resolveAll, ih']
       | jcc cc d =>
         rw [hdec] at hhead
         simp only at hhead

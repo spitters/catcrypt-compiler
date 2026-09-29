@@ -86,7 +86,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (RInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (RInstr pushOps popOps)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.SecureCompilation.CT
@@ -105,8 +105,37 @@ def opLeak (r : DoitRegime) (sa : AState) (i : JInstr 64) : List CTLeak :=
   (instrLeak sa.view i).map (resolveEv sa) ++
     (if r.leaksOperands i.mnem then [.vt i.mnem (i.dataArgs sa.view)] else [])
 
+/-- The leakage of a straight-line block on the address machine, the state threaded by
+    `evalInstrA`. -/
+def blockLeakA (r : DoitRegime) (sa : AState) : List (JInstr 64) → List CTLeak
+  | [] => []
+  | i :: is => opLeak r sa i ++ blockLeakA r (evalInstrA sa i) is
+
+/-- Every instruction of a straight-line block satisfies `ok` in the state it runs in. -/
+def BlockOk (ok : AState → JInstr 64 → Prop) (sa : AState) : List (JInstr 64) → Prop
+  | [] => True
+  | i :: is => ok sa i ∧ BlockOk ok (evalInstrA sa i) is
+
+theorem BlockOk.mono {ok ok' : AState → JInstr 64 → Prop} (hok : ∀ sa i, ok sa i → ok' sa i) :
+    ∀ (ops : List (JInstr 64)) (sa : AState), BlockOk ok sa ops → BlockOk ok' sa ops
+  | [], _, _ => trivial
+  | _ :: is, _, ⟨h, hs⟩ => ⟨hok _ _ h, BlockOk.mono hok is _ hs⟩
+
+theorem blockOk_true : ∀ (ops : List (JInstr 64)) (sa : AState), BlockOk (fun _ _ => True) sa ops
+  | [], _ => trivial
+  | _ :: is, _ => ⟨trivial, blockOk_true is _⟩
+
+/-- The fold of `aMachine`'s step over a block is `runBlockA`. -/
+theorem foldl_aMachine_exec (ops : List (JInstr 64)) :
+    ∀ sa, ops.foldl aMachine.exec sa = runBlockA sa ops := by
+  induction ops with
+  | nil => intro sa; rfl
+  | cons i is ih => intro sa; exact ih _
+
 /-- A halting run of `prog` on the address machine from index `pc` and state `sa`, with
-    leakage trace `t` and final state `sa'`, each `op` step satisfying `ok`. -/
+    leakage trace `t` and final state `sa'`, each instruction the run executes satisfying
+    `ok`. A `push` or `pop` runs its straight-line effect (`RInstr.stackOps?`) and emits
+    the leakage of that block. -/
 inductive RunL (r : DoitRegime) (ok : AState → JInstr 64 → Prop) (prog : List RInstr) :
     Nat → AState → List CTLeak → AState → Prop
   | ret {pc : Nat} {sa : AState} (h : prog[pc]? = some .ret) : RunL r ok prog pc sa [] sa
@@ -118,6 +147,10 @@ inductive RunL (r : DoitRegime) (ok : AState → JInstr 64 → Prop) (prog : Lis
       (h : prog[pc]? = some (.jcc cc tgt)) (hc : condtOfNibble cc = some c)
       (hr : RunL r ok prog (if sa.view.condB c then tgt else pc + 1) sa t sa') :
       RunL r ok prog pc sa (.branch (sa.view.condB c) :: t) sa'
+  | stack {pc : Nat} {sa : AState} {ri : RInstr} {ops : List (JInstr 64)} {t : List CTLeak}
+      {sa' : AState} (h : prog[pc]? = some ri) (hops : ri.stackOps? = some ops)
+      (hok : BlockOk ok sa ops) (hr : RunL r ok prog (pc + 1) (runBlockA sa ops) t sa') :
+      RunL r ok prog pc sa (blockLeakA r sa ops ++ t) sa'
 
 /-- A run with leakage is a halting run of `aMachine`. -/
 theorem RunL.halts {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {prog : List RInstr}
@@ -133,6 +166,11 @@ theorem RunL.halts {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {prog :
     refine ⟨pc', .next ?_ hr, hret⟩
     simp only [RInstrSemantics.step, h, hc, Option.map_some, aMachine]
     split <;> simp_all
+  | @stack pc sa ri ops _ _ h hops _ _ ih =>
+    obtain ⟨pc', hr, hret⟩ := ih
+    refine ⟨pc', .next ?_ hr, hret⟩
+    cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq, Option.some.injEq] at hops <;>
+      subst hops <;> simp only [RInstrSemantics.step, h, foldl_aMachine_exec]
 
 /-- Every halting run of `aMachine` has a leakage trace. -/
 theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AState}
@@ -163,6 +201,16 @@ theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AS
             simp_all
         obtain ⟨hp, rfl⟩ := hnext
         exact ⟨_, .jcc hj hc (hp ▸ ht)⟩
+    · rename_i x hx
+      simp only [Option.some.injEq, Next.go.injEq] at hs
+      obtain ⟨rfl, rfl⟩ := hs
+      rw [foldl_aMachine_exec] at ht
+      exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
+    · rename_i x hx
+      simp only [Option.some.injEq, Next.go.injEq] at hs
+      obtain ⟨rfl, rfl⟩ := hs
+      rw [foldl_aMachine_exec] at ht
+      exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
 
 /-- `RunL` under a stronger side condition is `RunL` under a weaker one. -/
 theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {prog : List RInstr}
@@ -172,6 +220,7 @@ theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {pro
   | ret h => exact .ret h
   | op h ho _ ih => exact .op h (hok _ _ ho) ih
   | jcc h hc _ ih => exact .jcc h hc ih
+  | stack h hops ho _ ih => exact .stack h hops (BlockOk.mono hok _ _ ho) ih
 
 /-! ## 2. Public sets -/
 
@@ -458,6 +507,33 @@ theorem succOk_spec {A : List (Option PubA)} {s : Nat} {out : PubA}
   · exact ⟨_, by assumption, h⟩
   · simp at h
 
+/-- The public set after a straight-line block. -/
+def stepBlock (a : PubA) (ops : List (JInstr 64)) : PubA := ops.foldl stepA a
+
+/-- Every instruction of a straight-line block passes `opOk` from the public set before
+    it, whose frame words are in `F`. -/
+def blockOkA (r : DoitRegime) (F : List Int) : PubA → List (JInstr 64) → Bool
+  | _, [] => true
+  | a, i :: is => a.cells.all F.contains && opOk r a i && blockOkA r F (stepA a i) is
+
+/-- **Soundness of the block check.** Two states agreeing on `a`, whose steps through
+    the block satisfy `FrameSep F`, have equal block leakage and end agreeing on
+    `stepBlock a ops`. -/
+theorem blockOkA_sound {r : DoitRegime} {F : List Int} :
+    ∀ (ops : List (JInstr 64)) (a : PubA) {s₁ s₂ : AState}, blockOkA r F a ops = true →
+      a.Agree s₁ s₂ → BlockOk (FrameSep F) s₁ ops → BlockOk (FrameSep F) s₂ ops →
+      blockLeakA r s₁ ops = blockLeakA r s₂ ops ∧
+        (stepBlock a ops).Agree (runBlockA s₁ ops) (runBlockA s₂ ops)
+  | [], _, _, _, _, hag, _, _ => ⟨rfl, hag⟩
+  | i :: is, a, s₁, s₂, h, hag, ⟨h₁, hs₁⟩, ⟨h₂, hs₂⟩ => by
+    simp only [blockOkA, Bool.and_eq_true] at h
+    obtain ⟨⟨hF, hop⟩, hrest⟩ := h
+    have hF : ∀ o ∈ a.cells, o ∈ F := fun o ho => by
+      simpa using List.all_eq_true.mp hF o ho
+    obtain ⟨hl, hA⟩ := blockOkA_sound is (stepA a i) hrest (stepA_sound a i hF hag h₁ h₂) hs₁ hs₂
+    refine ⟨?_, hA⟩
+    simp only [blockLeakA, opLeak_eq hop hag, hl]
+
 /-- The check at index `pc`. -/
 def checkAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Option PubA))
     (pc : Nat) : Bool :=
@@ -468,6 +544,10 @@ def checkAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Opti
     | some (.op i) => opOk r a i && succOk A (pc + 1) (stepA a i)
     | some (.jcc cc t) =>
         a.flags && (condtOfNibble cc).isSome && succOk A t a && succOk A (pc + 1) a
+    | some (.push x) =>
+        blockOkA r F a (pushOps x) && succOk A (pc + 1) (stepBlock a (pushOps x))
+    | some (.pop x) =>
+        blockOkA r F a (popOps x) && succOk A (pc + 1) (stepBlock a (popOps x))
     | _ => true
 
 /-- The check at every index of `prog`. -/
@@ -501,6 +581,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     | ret => rfl
     | op h' => simp_all
     | jcc h' => simp_all
+    | stack h' hops' => simp_all [RInstr.stackOps?]
   | @op pc s₁ i t₁ s₁' h hok hr ih =>
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
@@ -512,6 +593,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     cases h₂ with
     | ret h' => simp_all
     | jcc h' => simp_all
+    | stack h' hops' => simp_all [RInstr.stackOps?]
     | @op _ _ i' t₂ _ h' hok' hr' =>
       rw [h, Option.some.injEq, RInstr.op.injEq] at h'
       subst h'
@@ -526,6 +608,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     cases h₂ with
     | ret h' => simp_all
     | op h' => simp_all
+    | stack h' hops' => simp_all [RInstr.stackOps?]
     | @jcc _ _ cc' tgt' c' t₂ _ h' hcc' hr' =>
       rw [h, Option.some.injEq, RInstr.jcc.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
@@ -541,6 +624,30 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
       · obtain ⟨b, hb, hle⟩ := succOk_spec hsn
         simp only [hcb, hcnd, if_false, Bool.false_eq_true] at ih hr'
         exact ih hb (PubA.agree_of_le hle hag) hr'
+  | @stack pc s₁ ri ops t₁ s₁' h hops hok hr ih =>
+    intro a s₂ t₂ s₂' hA hag h₂
+    have hck := checkAt_of_checkCert hc h
+    have key : blockOkA r F a ops = true ∧ succOk A (pc + 1) (stepBlock a ops) = true := by
+      cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq, Option.some.injEq] at hops <;>
+        subst hops <;> simp only [checkAt, hA, h, Bool.and_eq_true] at hck <;> exact hck.2
+    obtain ⟨hbk, hsucc⟩ := key
+    obtain ⟨b, hb, hle⟩ := succOk_spec hsucc
+    cases h₂ with
+    | ret h' =>
+      rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
+    | op h' =>
+      rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
+    | jcc h' =>
+      rw [h, Option.some.injEq] at h'; subst h'; simp [RInstr.stackOps?] at hops
+    | @stack _ _ ri' ops' t₂ _ h' hops' hok' hr' =>
+      rw [h, Option.some.injEq] at h'
+      subst h'
+      rw [hops, Option.some.injEq] at hops'
+      subst hops'
+      obtain ⟨hl, hag'⟩ := blockOkA_sound ops a hbk hag hok hok'
+      rw [hl]
+      congr 1
+      exact ih hb (PubA.agree_of_le hle hag') hr'
 
 /-! ## 5. Inference and the decision -/
 
@@ -558,6 +665,8 @@ def succs (prog : List RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
+  | some (.push x) => [(pc + 1, stepBlock a (pushOps x))]
+  | some (.pop x) => [(pc + 1, stepBlock a (popOps x))]
   | _ => []
 
 /-- One forward pass over the indices of `prog`, meeting each successor's set with what
@@ -698,6 +807,16 @@ def failAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Optio
       else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
       else if !(succOk A t a && succOk A (pc + 1) a) then some "no post-fixpoint at a successor"
       else none
+    | some (.push x) =>
+      if !blockOkA r F a (pushOps x) then some "push: secret base or variable-time step"
+      else if !succOk A (pc + 1) (stepBlock a (pushOps x)) then
+        some "no post-fixpoint at the successor"
+      else none
+    | some (.pop x) =>
+      if !blockOkA r F a (popOps x) then some "pop: secret base or variable-time step"
+      else if !succOk A (pc + 1) (stepBlock a (popOps x)) then
+        some "no post-fixpoint at the successor"
+      else none
     | _ => none
 
 /-- The first index at which `bytesCTCheckAuto r P prog` fails, with the reason; `none`
@@ -743,6 +862,10 @@ def checkAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (O
     | some (.op i) => opOk r a i && succOkA A (pc + 1) (stepA a i)
     | some (.jcc cc t) =>
         a.flags && (condtOfNibble cc).isSome && succOkA A t a && succOkA A (pc + 1) a
+    | some (.push x) =>
+        blockOkA r F a (pushOps x) && succOkA A (pc + 1) (stepBlock a (pushOps x))
+    | some (.pop x) =>
+        blockOkA r F a (popOps x) && succOkA A (pc + 1) (stepBlock a (popOps x))
     | _ => true
 
 theorem checkAtA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
@@ -773,6 +896,8 @@ def succsA (prog : Array RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
+  | some (.push x) => [(pc + 1, stepBlock a (pushOps x))]
+  | some (.pop x) => [(pc + 1, stepBlock a (popOps x))]
   | _ => []
 
 /-- One forward pass over the indices, updating the certificate in place, with a flag
@@ -840,6 +965,16 @@ def failAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Op
       if !a.flags then some "branch on secret flags"
       else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
       else if !(succOkA A t a && succOkA A (pc + 1) a) then some "no post-fixpoint at a successor"
+      else none
+    | some (.push x) =>
+      if !blockOkA r F a (pushOps x) then some "push: secret base or variable-time step"
+      else if !succOkA A (pc + 1) (stepBlock a (pushOps x)) then
+        some "no post-fixpoint at the successor"
+      else none
+    | some (.pop x) =>
+      if !blockOkA r F a (popOps x) then some "pop: secret base or variable-time step"
+      else if !succOkA A (pc + 1) (stepBlock a (popOps x)) then
+        some "no post-fixpoint at the successor"
       else none
     | _ => none
 
