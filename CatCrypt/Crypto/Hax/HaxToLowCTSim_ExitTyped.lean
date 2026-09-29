@@ -943,15 +943,34 @@ def exitPlaceAt (sc : List String) (A : ExitTowers) (x : String) (t : TowerType)
     ExitTowers :=
   if (A.lookup x).isNone && !sc.contains x then (x, t) :: A else A
 
+/-- The count `k > 0` of the arguments `[v, l]` of `repeat(v, l)` with a scalar name `v` of
+    `sc` and a literal count `l` decoding to `k`. -/
+def exitRepeatWords (sc : List String) : List ImpExpr → Option Nat
+  | [.var v, .lit l] =>
+      match valueToScalar (Value.ofLit l) with
+      | some k => if sc.contains v && 0 < k then some k else none
+      | none => none
+  | _ => none
+
+/-- The number `k > 0` of the arguments of an `array_lit` whose arguments are all scalar
+    names of `sc`. -/
+def exitLitWords (sc : List String) (args : List ImpExpr) : Option Nat :=
+  let xs := exitArgNames args
+  if 0 < args.length && xs.length = args.length && xs.all sc.contains then some args.length
+  else none
+
 /-- One step of placement inference at a binding, from the scalar names `sc`.  An element
     load placed at `t'` places its array at `exitContainer t'`; an element store of a
     value placed at `t'` places its array at `exitContainer t'`; an `array_lit` with an
     argument placed at `t'` places its arguments at `t'` and its result at
-    `exitContainer t'`; the result and the arguments of a call other than a scalar call are
-    placed at the call's tower type; a copy between names takes the placement of the placed
-    side.  With `dflt`, the arrays of element loads of scalars, element stores of scalars
-    and `len`, and an `array_lit` without a placed argument with its arguments, are placed
-    at `.TFp`. -/
+    `exitContainer t'`; a `repeat` of a scalar name with a literal count `k > 0`
+    (`exitRepeatWords`) places its result at the array of `k` words `.TArr k .TU64`; the
+    result and the arguments of any other call other than a scalar call are placed at the
+    call's tower type; a copy between names takes the placement of the placed side.  With
+    `dflt`, an `array_lit` of `k > 0` scalar names (`exitLitWords`) is placed at
+    `.TArr k .TU64`, and the arrays of element loads of scalars, element stores of scalars
+    and `len`, and any other `array_lit` without a placed argument with its arguments, are
+    placed at `.TFp`. -/
 def exitTowersStep (sc : List String) (dflt : Bool) (A : ExitTowers) :
     String × ImpExpr → ExitTowers
   | (n, .app f args) =>
@@ -988,13 +1007,19 @@ def exitTowersStep (sc : List String) (dflt : Bool) (A : ExitTowers) :
             | none => A
         | none =>
             if dflt then
-              exitPlaceAt sc ((exitArgNames args).foldl (fun A x => exitPlaceAt sc A x .TFp) A)
-                n .TFp
+              match exitLitWords sc args with
+              | some k => exitPlaceAt sc A n (.TArr k .TU64)
+              | none =>
+                exitPlaceAt sc ((exitArgNames args).foldl (fun A x => exitPlaceAt sc A x .TFp) A)
+                  n .TFp
             else A
       else if exitScalarCall f then A
       else
-        let dt := towerOfCallName f
-        exitPlaceAt sc ((exitArgNames args).foldl (fun A x => exitPlaceAt sc A x dt) A) n dt
+        match (if f = "repeat" then exitRepeatWords sc args else none) with
+        | some k => exitPlaceAt sc A n (.TArr k .TU64)
+        | none =>
+          let dt := towerOfCallName f
+          exitPlaceAt sc ((exitArgNames args).foldl (fun A x => exitPlaceAt sc A x dt) A) n dt
   | (n, .var s) =>
       match A.lookup n, A.lookup s with
       | some t, none => exitPlaceAt sc A s t
