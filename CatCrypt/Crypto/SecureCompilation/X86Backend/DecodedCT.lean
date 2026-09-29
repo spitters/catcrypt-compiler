@@ -1186,6 +1186,9 @@ structure PresCtx where
   /-- The preservation certificate. -/
   D : List (Option PresA)
 
+/-- The preservation data that keeps nothing. -/
+def PresCtx.empty : PresCtx := { Rp := fun _ => [], Pp := fun _ => [], D := [] }
+
 /-- The certificate `D` has an entry fact at `t`. -/
 def presEntry (D : List (Option PresA)) (t : Nat) : Bool :=
   match D.getD t none with
@@ -1413,8 +1416,8 @@ def exitSet (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA)) (e
 /-- The successors of index `pc` with the public set each receives from `a`, under the
     owner map `own` and the partial exit sets `X?`. A call's return edge is added once
     its callee has a reached `ret`. -/
-def succs (own : Nat → Nat) (X? : Nat → Option PubA) (prog : List RInstr) (pc : Nat)
-    (a : PubA) : List (Nat × PubA) :=
+def succs (own : Nat → Nat) (X? : Nat → Option PubA) (K : PresCtx) (prog : List RInstr)
+    (pc : Nat) (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
@@ -1423,7 +1426,8 @@ def succs (own : Nat → Nat) (X? : Nat → Option PubA) (prog : List RInstr) (p
   | some (.call t) =>
       (t, stepBlock a (callOps (pc + 1))) ::
         match X? (own t) with
-        | some x => [(pc + 1, stepBlock x retOps)]
+        | some x =>
+            [(pc + 1, joinA (stepBlock x retOps) (keepA (K.Rp (own t)) (K.Pp (own t)) a))]
         | none => []
   | _ => []
 
@@ -1431,8 +1435,9 @@ def succs (own : Nat → Nat) (X? : Nat → Option PubA) (prog : List RInstr) (p
 def restrictCells (keep : Int → Bool) (a : PubA) : PubA := { a with cells := a.cells.filter keep }
 
 /-- One forward pass over the indices of `prog`, meeting each successor's set with what
-    it receives, its frame words restricted to `keep`. -/
-def sweep (keep : Int → Bool) (prog : List RInstr) (A : List (Option PubA)) :
+    it receives, its frame words restricted to `keep`, a return from a call keeping what
+    the preservation data `K` says the callee preserves. -/
+def sweep (keep : Int → Bool) (K : PresCtx) (prog : List RInstr) (A : List (Option PubA)) :
     List (Option PubA) :=
   let own := ownerOf (callTargets prog)
   let X? := exitSet? prog own A
@@ -1440,25 +1445,27 @@ def sweep (keep : Int → Bool) (prog : List RInstr) (A : List (Option PubA)) :
     match certAt A pc with
     | none => A
     | some a =>
-        (succs own X? prog pc a).foldl (fun A so =>
+        (succs own X? K prog pc a).foldl (fun A so =>
           A.set so.1 (meetO (certAt A so.1) (restrictCells keep so.2))) A)
     A
 
 /-- Passes until a pass changes nothing, at most `fuel` of them. -/
-def sweepFix (keep : Int → Bool) (prog : List RInstr) :
+def sweepFix (keep : Int → Bool) (K : PresCtx) (prog : List RInstr) :
     Nat → List (Option PubA) → List (Option PubA)
   | 0, A => A
   | fuel + 1, A =>
-    let A' := sweep keep prog A; if A' = A then A else sweepFix keep prog fuel A'
+    let A' := sweep keep K prog A; if A' = A then A else sweepFix keep K prog fuel A'
 
 /-- The certificate the forward analysis computes from the entry set `P`, keeping the
-    frame words `keep` accepts. -/
-def inferIn (keep : Int → Bool) (prog : List RInstr) (P : PubA) : List (Option PubA) :=
-  sweepFix keep prog prog.length ((List.replicate prog.length none).set 0 (some P))
+    frame words `keep` accepts and, across calls, what `K` says the callees preserve. -/
+def inferIn (keep : Int → Bool) (K : PresCtx) (prog : List RInstr) (P : PubA) :
+    List (Option PubA) :=
+  sweepFix keep K prog prog.length ((List.replicate prog.length none).set 0 (some P))
 
-/-- The certificate the forward analysis computes from the entry set `P`. -/
+/-- The certificate the forward analysis computes from the entry set `P`, keeping nothing
+    across calls beyond the callees' exit sets. -/
 def infer (prog : List RInstr) (P : PubA) : List (Option PubA) :=
-  inferIn (fun _ => true) prog P
+  inferIn (fun _ => true) PresCtx.empty prog P
 
 /-! ### The preservation certificate
 
@@ -1588,14 +1595,15 @@ def presCells (prog : List RInstr) (D : List (Option PresA)) : List Int :=
         if sepWrite i then P.cells.map (fun c => c.1 - P.delta) else []
     | _, _ => []).eraseDups
 
-/-- **The decision.** The certificate inferred within the frame words `F` assigns the
-    entry a set below `P`; the preservation certificate passes; and the certificate passes
-    `checkCert` under the owners of the call targets, the exit sets of the certificate
-    and the preservation data. -/
+/-- **The decision.** The preservation data `K` is computed from a first certificate
+    inferred within the frame words `F`, and the certificate inferred again with `K`
+    assigns the entry a set below `P`; the preservation certificate passes; and the
+    certificate passes `checkCert` under the owners of the call targets, the exit sets of
+    the certificate and `K`. -/
 def bytesCTCheck (r : DoitRegime) (F : List Int) (P : PubA) (prog : List RInstr) : Bool :=
-  let A := inferIn F.contains prog P
+  let K := presCtxOf prog (inferIn F.contains PresCtx.empty prog P)
+  let A := inferIn F.contains K prog P
   let own := ownerOf (callTargets prog)
-  let K := presCtxOf prog A
   succOk A 0 P && presCert F own K.Rp K.Pp prog K.D
     && checkCert r F own (exitSet prog own A) K prog A
 
@@ -1622,7 +1630,8 @@ def certCells (A : List (Option PubA)) : List Int :=
 /-- The frame words of the inferred certificate and those the preservation certificate
     keeps through a write with another base. -/
 def autoFrame (P : PubA) (prog : List RInstr) : List Int :=
-  certCells (infer prog P) ++ presCells prog (presCtxOf prog (infer prog P)).D
+  let K := presCtxOf prog (infer prog P)
+  certCells (inferIn (fun _ => true) K prog P) ++ presCells prog K.D
 
 /-- `bytesCTCheck` with the frame words `autoFrame`. -/
 def bytesCTCheckAuto (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
@@ -1755,10 +1764,10 @@ def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA
 /-- The first index at which `bytesCTCheckAuto r P prog` fails, with the reason; `none`
     when no index fails and the entry set is below `P`. -/
 def firstFailure (r : DoitRegime) (P : PubA) (prog : List RInstr) : Option (Nat × String) :=
-  let A := infer prog P
+  let K := presCtxOf prog (infer prog P)
+  let A := inferIn (fun _ => true) K prog P
   let own := ownerOf (callTargets prog)
-  let K := presCtxOf prog A
-  let F := certCells A
+  let F := certCells A ++ presCells prog K.D
   if !succOk A 0 P then some (0, "entry set not below the public set") else
   match (List.range prog.length).find? (fun pc => !presAt F own K.Rp K.Pp prog K.D pc) with
   | some pc => some (pc, "preservation certificate fails")
@@ -1857,8 +1866,8 @@ def exitSetA (prog : Array RInstr) (own : Nat → Nat) (A : Array (Option PubA))
   (exitSetA? prog own A e).getD ⟨[], [], false⟩
 
 /-- The successors of index `pc` of an array program with the set each receives. -/
-def succsA (own : Nat → Nat) (X? : Nat → Option PubA) (prog : Array RInstr) (pc : Nat)
-    (a : PubA) : List (Nat × PubA) :=
+def succsA (own : Nat → Nat) (X? : Nat → Option PubA) (K : PresCtx) (prog : Array RInstr)
+    (pc : Nat) (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
@@ -1867,69 +1876,83 @@ def succsA (own : Nat → Nat) (X? : Nat → Option PubA) (prog : Array RInstr) 
   | some (.call t) =>
       (t, stepBlock a (callOps (pc + 1))) ::
         match X? (own t) with
-        | some x => [(pc + 1, stepBlock x retOps)]
+        | some x =>
+            [(pc + 1, joinA (stepBlock x retOps) (keepA (K.Rp (own t)) (K.Pp (own t)) a))]
         | none => []
   | _ => []
 
 /-- One forward pass over the indices, updating the certificate in place, with a flag
     recording whether any set changed. -/
-def sweepA (prog : Array RInstr) (A : Array (Option PubA)) : Array (Option PubA) × Bool :=
+def sweepA (K : PresCtx) (prog : Array RInstr) (A : Array (Option PubA)) :
+    Array (Option PubA) × Bool :=
   let own := ownerOf (callTargets prog.toList)
   let X? := exitSetA? prog own A
   (List.range prog.size).foldl (fun acc pc =>
     let (B, ch) := acc
     match certAtA B pc with
     | none => (B, ch)
-    | some a => (succsA own X? prog pc a).foldl (fun acc so =>
+    | some a => (succsA own X? K prog pc a).foldl (fun acc so =>
         let (B, ch) := acc
         let (B', c) := meetIntoA B so.1 so.2
         (B', ch || c)) (B, ch))
     (A, false)
 
 /-- Passes until one changes nothing, at most `fuel` of them. -/
-def sweepFixA (prog : Array RInstr) : Nat → Array (Option PubA) → Array (Option PubA)
+def sweepFixA (K : PresCtx) (prog : Array RInstr) :
+    Nat → Array (Option PubA) → Array (Option PubA)
   | 0, A => A
   | fuel + 1, A =>
-    let (B, ch) := sweepA prog A
-    if ch then sweepFixA prog fuel B else B
+    let (B, ch) := sweepA K prog A
+    if ch then sweepFixA K prog fuel B else B
+
+/-- The certificate of the forward analysis from the entry set `P`, on arrays, keeping
+    across calls what `K` says the callees preserve. -/
+def inferAK (K : PresCtx) (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
+  sweepFixA K prog prog.size ((Array.replicate prog.size none).setIfInBounds 0 (some P))
 
 /-- The certificate of the forward analysis from the entry set `P`, on arrays. -/
 def inferA (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
-  sweepFixA prog prog.size ((Array.replicate prog.size none).setIfInBounds 0 (some P))
+  inferAK PresCtx.empty prog P
 
 /-- The frame words public at some index of an array certificate. -/
 def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
+
+/-- The certificate and preservation data of the array decision: the preservation data
+    of a first certificate, and the certificate inferred again with them. -/
+def fastCert (prog : List RInstr) (P : PubA) : Array (Option PubA) × PresCtx :=
+  let pa := prog.toArray
+  let K := presCtxOf prog (inferA pa P).toList
+  (inferAK K pa P, K)
 
 /-- The frame words of the array decision on the certificate `A`: those of `A` and those
     the preservation certificate of `K` keeps through a write with another base. -/
 def fastFrame (prog : List RInstr) (A : Array (Option PubA)) (K : PresCtx) : List Int :=
   certCellsA A ++ presCells prog K.D
 
-/-- The array decision on a given certificate `A`: `A` assigns the entry a set below `P`,
-    the preservation certificate passes, and `checkCertA` passes, all with the frame words
-    `fastFrame`. -/
-def fastCheckWith (r : DoitRegime) (P : PubA) (prog : List RInstr) (A : Array (Option PubA)) :
-    Bool :=
+/-- The array decision on a given certificate `A` and preservation data `K`: `A` assigns
+    the entry a set below `P`, the preservation certificate passes, and `checkCertA`
+    passes, all with the frame words `fastFrame`. -/
+def fastCheckWith (r : DoitRegime) (P : PubA) (prog : List RInstr) (A : Array (Option PubA))
+    (K : PresCtx) : Bool :=
   let pa := prog.toArray
   let own := ownerOf (callTargets prog)
-  let K := presCtxOf prog A.toList
   let F := fastFrame prog A K
   succOkA A 0 P && presCert F own K.Rp K.Pp prog K.D
     && checkCertA r F own (exitSetA pa own A) K pa A
 
-/-- **The decision on arrays.** `fastCheckWith` on the array certificate `inferA`. -/
+/-- **The decision on arrays.** `fastCheckWith` on `fastCert`. -/
 def bytesCTCheckFast (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
-  fastCheckWith r P prog (inferA prog.toArray P)
+  fastCheckWith r P prog (fastCert prog P).1 (fastCert prog P).2
 
 /-- **Soundness of the decision on arrays.** If `bytesCTCheckFast r P prog` holds, two
     runs of `prog` from index `0` from states agreeing on `P`, whose steps satisfy
-    `FrameSep` for the frame words `fastFrame` of the certificate `inferA`, have equal
-    leakage traces. -/
+    `FrameSep` for the frame words `fastFrame` of `fastCert`, have equal leakage
+    traces. -/
 theorem bytesCTCheckFast_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
     (h : bytesCTCheckFast r P prog = true) :
     ConstantTimeRel P.Agree (fun sa t => ∃ sa',
-      RunL r (FrameSep (fastFrame prog (inferA prog.toArray P)
-        (presCtxOf prog (inferA prog.toArray P).toList))) prog 0 sa t sa') := by
+      RunL r (FrameSep (fastFrame prog (fastCert prog P).1 (fastCert prog P).2))
+        prog 0 sa t sa') := by
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
   simp only [bytesCTCheckFast, fastCheckWith, Bool.and_eq_true, succOkA_eq, checkCertA_eq,
     List.toList_toArray] at h
@@ -1944,15 +1967,14 @@ def failAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → Pub
   failAt r F own X K prog.toList A.toList pc
 
 /-- The first failing index of `fastCheckWith` with the reason, on the certificate `A`
-    computed by `inferA` for the array program `pa`, under the owners, exit sets,
-    preservation data and frame words `fastCheckWith` uses. -/
-def firstFailureA (r : DoitRegime) (P : PubA) (pa : Array RInstr) (A : Array (Option PubA)) :
-    Option (Nat × String) :=
+    and the preservation data `K`, under the owners, exit sets and frame words
+    `fastCheckWith` uses. -/
+def firstFailureA (r : DoitRegime) (P : PubA) (pa : Array RInstr) (A : Array (Option PubA))
+    (K : PresCtx) : Option (Nat × String) :=
   let prog := pa.toList
   let AL := A.toList
   let own := ownerOf (callTargets prog)
   let X := exitSetA pa own A
-  let K := presCtxOf prog AL
   let F := fastFrame prog A K
   if !succOkA A 0 P then some (0, "entry set not below the public set") else
   match (List.range pa.size).find? (fun pc => !presAt F own K.Rp K.Pp prog K.D pc) with
