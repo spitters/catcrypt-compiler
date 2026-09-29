@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.YmmSelect
+public import Std.Data.HashMap
 
 /-!
 # Soundness of YMM register allocation and materialization
@@ -108,6 +109,114 @@ def allocCheckGo (d : List (String × Slot)) (scratch out : List String) :
     let r := allocCheckGo d scratch out rest
     (instrAllocOk d scratch i r.2 && r.1, liveStep i r.2)
 
+theorem allocCheckGo_snd (d : List (String × Slot)) (scratch out : List String)
+    (p : List YmmInstr) : (allocCheckGo d scratch out p).2 = ymmLiveIn out p := by
+  induction p with
+  | nil => rfl
+  | cons i rest ih => simp [allocCheckGo, ymmLiveIn, ih]
+
+/-! ## The compiled check
+
+`allocCheckGo` looks every name up in the decision list, so one instruction
+costs the size of its live set times the length of `d`. `allocCheckGoFast`
+computes the same pair with the decisions in a hash map built once, folding
+the program from the right. `allocCheckGo_eq_fast` states the equality and is
+registered with `@[csimp]`, so compiled code runs the hash-map version while the
+proofs keep the list version. `ymmAllocValid` and `ymmAllocValidClosed` are
+defined after the registration, so their compiled bodies call the hash-map
+version. -/
+
+/-- The decisions as a hash map. The first entry for a name wins, as in
+    `List.lookup`. -/
+def decisionMap (d : List (String × Slot)) : Std.HashMap String Slot :=
+  d.foldr (fun e m => m.insert e.1 e.2) ∅
+
+theorem decisionMap_getElem? (d : List (String × Slot)) (n : String) :
+    (decisionMap d)[n]? = d.lookup n := by
+  induction d with
+  | nil => simp [decisionMap]
+  | cons e t ih =>
+    obtain ⟨a, b⟩ := e
+    simp only [decisionMap, List.foldr_cons] at ih ⊢
+    rw [Std.HashMap.getElem?_insert, ih, List.lookup_cons]
+    by_cases h : a = n
+    · subst h; simp
+    · have h1 : (a == n) = false := by simp [h]
+      have h2 : (n == a) = false := by simp [Ne.symm h]
+      simp [h1, h2]
+
+/-- Whether a looked-up decision is a spill. -/
+def isSpilledSlot : Option Slot → Bool
+  | some (.spilled _) => true
+  | _ => false
+
+/-- `spilledNamesOf` with the decisions given as a lookup function. -/
+def spilledNamesBy (look : String → Option Slot) (i : YmmInstr) : List String :=
+  ((ymmReadNames i) ++ (ymmWrittenNames i)).eraseDups.filter
+    (fun n => isSpilledSlot (look n))
+
+theorem spilledNamesBy_lookup (d : List (String × Slot)) (i : YmmInstr) :
+    spilledNamesBy (fun n => d.lookup n) i = spilledNamesOf d i := by
+  unfold spilledNamesBy spilledNamesOf
+  congr 1
+  funext n
+  unfold spillSlotOf
+  dsimp only
+  rcases d.lookup n with _ | (_ | _) <;> rfl
+
+/-- `instrAllocOk` with the decisions given as a lookup function and the
+    number of scratch registers. -/
+def instrAllocOkBy (look : String → Option Slot) (nScratch : Nat) (i : YmmInstr)
+    (L : List String) : Bool :=
+  (ymmNamesOf i).all (fun n => (look n).isSome)
+    && decide ((spilledNamesBy look i).length ≤ nScratch)
+    && memOffFrame i
+    && (ymmWrittenNames i).all (fun w => L.all (fun n => n == w || look n != look w))
+
+theorem instrAllocOkBy_lookup (d : List (String × Slot)) (scratch : List String)
+    (i : YmmInstr) (L : List String) :
+    instrAllocOkBy (fun n => d.lookup n) scratch.length i L
+      = instrAllocOk d scratch i L := by
+  simp only [instrAllocOkBy, instrAllocOk, spilledNamesBy_lookup]
+
+/-- The check at instruction `i`: from the Boolean result and the live set
+    after `i`, the Boolean result and the live set before it. -/
+def allocCheckStepBy (look : String → Option Slot) (nScratch : Nat) (i : YmmInstr)
+    (r : Bool × List String) : Bool × List String :=
+  (instrAllocOkBy look nScratch i r.2 && r.1, liveStep i r.2)
+
+/-- `allocCheckGo` with the decisions given as a lookup function, as a right
+    fold over the program. -/
+def allocCheckGoBy (look : String → Option Slot) (nScratch : Nat) (out : List String)
+    (p : List YmmInstr) : Bool × List String :=
+  p.foldr (allocCheckStepBy look nScratch) (true, out)
+
+theorem allocCheckGoBy_lookup (d : List (String × Slot)) (scratch out : List String)
+    (p : List YmmInstr) :
+    allocCheckGoBy (fun n => d.lookup n) scratch.length out p
+      = allocCheckGo d scratch out p := by
+  induction p with
+  | nil => rfl
+  | cons i rest ih =>
+    simp only [allocCheckGoBy, List.foldr_cons] at ih ⊢
+    rw [ih]
+    simp only [allocCheckStepBy, allocCheckGo, instrAllocOkBy_lookup]
+
+/-- `allocCheckGo` over the hash map of the decisions. -/
+def allocCheckGoFast (d : List (String × Slot)) (scratch out : List String)
+    (p : List YmmInstr) : Bool × List String :=
+  let m := decisionMap d
+  allocCheckGoBy (fun n => m[n]?) scratch.length out p
+
+/-- The hash-map check computes the list check. -/
+@[csimp] theorem allocCheckGo_eq_fast : @allocCheckGo = @allocCheckGoFast := by
+  funext d scratch out p
+  have hm : (fun n => (decisionMap d)[n]?) = (fun n => d.lookup n) :=
+    funext (decisionMap_getElem? d)
+  simp only [allocCheckGoFast, hm, allocCheckGoBy_lookup]
+
+/-! ## The check over a program -/
+
 /-- The allocation check: distinct scratch registers, residents off them, and
     `instrAllocOk` at every instruction. -/
 def ymmAllocValid (d : List (String × Slot)) (scratch out : List String)
@@ -119,12 +228,6 @@ def ymmAllocValidClosed (d : List (String × Slot)) (scratch : List String)
     (p : List YmmInstr) : Bool :=
   let r := allocCheckGo d scratch [] p
   decide scratch.Nodup && residentsOffScratch d scratch && r.1 && r.2.isEmpty
-
-theorem allocCheckGo_snd (d : List (String × Slot)) (scratch out : List String)
-    (p : List YmmInstr) : (allocCheckGo d scratch out p).2 = ymmLiveIn out p := by
-  induction p with
-  | nil => rfl
-  | cons i rest ih => simp [allocCheckGo, ymmLiveIn, ih]
 
 /-! ## The relation -/
 

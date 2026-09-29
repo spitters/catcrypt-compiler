@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
 
 /-!
 # Constant-index folding of register-indexed loads and stores
@@ -30,8 +32,9 @@ scalar binding, and the constant index reaches the load register through one.
 ## The analysis
 
 `KEnv` maps register names to known 64-bit values. `stepK` updates it across one
-gathered instruction: an immediate `mov` records its constant, a register `mov`
-copies a known value, a memory load forgets its destination, a memory store keeps
+gathered instruction: an immediate `mov` records its constant, a `mov` from one of
+the sixteen general-purpose registers copies a known value (a `mov` from a
+`mem.<base>.<off>` name forgets its destination), a memory load forgets its destination, a memory store keeps
 everything, and every other instruction forgets everything. `foldCore` threads the
 environment through the body, reading the gathered block of each instruction.
 
@@ -48,6 +51,16 @@ environment through the body, reading the gathered block of each instruction.
   machine constant-time property of its gathered block.
 * `spellLprog`: the printable spelling of the folded forms as the `mem.<B>.<off>`
   `MOVQ` operands that `LprogAsmPrinter` and `LprogBytes` render and encode.
+* `runBlock_movImm_loadMemIdx`, `runBlock_movImm_storeMemIdx`: after `mov x, $k`,
+  the access `(%B,%x,8)` is the access at displacement `8·k` from `B`.
+* `spellMemInstr`, `lowerMemOp_spellMemInstr_load`, `lowerMemOp_spellMemInstr_store`:
+  the spelling as the array-ABI moves `LOAD:64`/`STORE:64`, which the memory arm of
+  the gather lowers to the same `loadMem`/`storeMem` as the folded forms.
+* `dropDeadImmBody`, `gatherPrinted_dropDeadImmBody`: removal of an immediate move
+  to a register that is overwritten before it is read, with block agreement;
+  `gatherPrinted_dropDeadImm_constIndexFold` composes it with the fold.
+* `foldIndexedLprog`: fold, dead-move removal and array-ABI spelling of every
+  function, the stage `LprogOptPipeline.renderOwned` applies before printing.
 -/
 
 @[expose] public section
@@ -223,9 +236,11 @@ theorem KEnv.Holds.setReg_cons {s : JState 64} {env : KEnv} (h : KEnv.Holds s en
 def stepK (env : KEnv) : JInstr 64 → KEnv
   | .mov d (.imm k) => (d, BitVec.ofNat 64 k) :: env.kill d
   | .mov d (.reg x) =>
-      match env.find x with
-      | some v => (d, v) :: env.kill d
-      | none => env.kill d
+      if isGpName x then
+        match env.find x with
+        | some v => (d, v) :: env.kill d
+        | none => env.kill d
+      else env.kill d
   | .loadMem d _ _ => env.kill d
   | .loadMemIdx d _ _ _ => env.kill d
   | .storeMem _ _ _ => env
@@ -243,12 +258,14 @@ theorem KEnv.Holds.stepK {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
       | imm k => exact h.setReg_cons d _
       | reg x =>
           simp only [ConstIndexFold.stepK, evalInstr]
-          cases hx : env.find x with
-          | none => exact h.setReg_kill d _
-          | some v =>
-              have hv : (JOperand.reg x).eval s = v := h x v hx
-              rw [hv]
-              exact h.setReg_cons d v
+          split
+          · cases hx : env.find x with
+            | none => exact h.setReg_kill d _
+            | some v =>
+                have hv : (JOperand.reg x).eval s = v := h x v hx
+                rw [hv]
+                exact h.setReg_cons d v
+          · exact h.setReg_kill d _
   | loadMem d _ _ => exact h.setReg_kill d _
   | loadMemIdx d _ _ _ => exact h.setReg_kill d _
   | storeMem B off src =>
@@ -313,6 +330,28 @@ def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
 def foldCore (p : Nat × Nat × Nat) : KEnv → Lcmd → Lcmd
   | _, [] => []
   | env, i :: is => { i with li_i := foldInstr env i.li_i } :: foldCore p (nextEnv p env i) is
+
+/-- The tail-recursive image of `foldCore`, accumulating in reverse. -/
+def foldCoreTR (p : Nat × Nat × Nat) (acc : Lcmd) : KEnv → Lcmd → Lcmd
+  | _, [] => acc.reverse
+  | env, i :: is =>
+      foldCoreTR p ({ i with li_i := foldInstr env i.li_i } :: acc) (nextEnv p env i) is
+
+theorem foldCoreTR_eq (p : Nat × Nat × Nat) (acc : Lcmd) (env : KEnv) (body : Lcmd) :
+    foldCoreTR p acc env body = acc.reverse ++ foldCore p env body := by
+  induction body generalizing acc env with
+  | nil => simp [foldCoreTR, foldCore]
+  | cons i is ih => simp [foldCoreTR, foldCore, ih]
+
+/-- `foldCore` from the empty accumulator, the form the compiler runs. -/
+def foldCoreFast (p : Nat × Nat × Nat) (env : KEnv) (body : Lcmd) : Lcmd :=
+  foldCoreTR p [] env body
+
+/-- Compiled code runs `foldCore` through its tail-recursive image, so a body of
+    tens of thousands of instructions does not exhaust the stack. -/
+@[csimp] theorem foldCore_eq_fast : @foldCore = @foldCoreFast := by
+  funext p env body
+  simp [foldCoreFast, foldCoreTR_eq]
 
 /-- The fold of a body: `foldCore` at the body's own frame parameters, kept only
     when the folded body has the same frame parameters. -/
@@ -543,5 +582,458 @@ def spellLprog (lp : Lprog) : Lprog :=
   let spell : Lcmd → Lcmd := List.map (fun i => { i with li_i := spellInstr i.li_i })
   let fs := lp.lp_funcs.map (fun f => (f.1, { f.2 with lfd_body := spell f.2.lfd_body }))
   { lp with lp_funcs := fs }
+
+/-- The spelling of the folded forms as array-ABI memory moves: `LOAD [d] [.arr B off]`
+    is `LOAD:64 [d] [mem.B.off]` and `STORE [_] [.arr B off, v]` is
+    `STORE:64 [mem.B.off] [v]` when the register operand is a general-purpose name,
+    and the `spellInstr` form otherwise. `LprogAsmPrinter` prints the two forms as
+    `movq off(%B), %d` and `movq %v, off(%B)`, `LprogBytes.encodeLopn` encodes them,
+    and `GatherMemOps.lowerMemOp` lowers them to the `loadMem`/`storeMem` the
+    unspelled forms lower to (`lowerMemOp_spellMemInstr_load`,
+    `lowerMemOp_spellMemInstr_store`). -/
+def spellMemInstr : LinstrR → LinstrR
+  | .Lopn [.reg d] "LOAD" [.arr B off] =>
+      if isGpName d then .Lopn [.reg d] "LOAD:64" [.reg (memName B off)]
+      else .Lopn [.reg d] "MOVQ" [.reg (memName B off)]
+  | .Lopn [.reg _] "STORE" [.arr B off, .reg vn] =>
+      if isGpName vn then .Lopn [.reg (memName B off)] "STORE:64" [.reg vn]
+      else .Lopn [.reg (memName B off)] "MOVQ" [.reg vn]
+  | i => i
+
+/-- `spellMemInstr` applied to every instruction of a body. -/
+def spellMemBody (body : Lcmd) : Lcmd :=
+  body.map (fun i => { i with li_i := spellMemInstr i.li_i })
+
+/-- A `mem.<B>.<off>` name over a general-purpose base parses back to `(B, off)`. -/
+theorem memNameParts_memName {B : String} (hB : isGpName B = true) (off : Nat) :
+    GatherMemOps.memNameParts (memName B off) = some (B, (off : Int)) := by
+  have hd : natOfDigits? (Nat.toDigits 10 off) = some off := by
+    simpa using VIR.JasminImmShiftMnem.natOfDigits?_toString off
+  unfold isGpName at hB
+  split at hB <;>
+    first
+    | exact absurd hB (by decide)
+    | simp [GatherMemOps.memNameParts, memName, hasPrefix, hd]
+
+/-- The spelled load lowers, through the array-ABI memory arm, to the block the
+    folded load lowers to. -/
+theorem lowerMemOp_spellMemInstr_load (frame spillW qsaveB : Nat) {d B : String} (off : Nat)
+    (hd : isGpName d = true) (hB : isGpName B = true) :
+    GatherMemOps.lowerMemOp frame spillW (spellMemInstr (.Lopn [.reg d] "LOAD" [.arr B off]))
+        qsaveB
+      = lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "LOAD" [.arr B off]) := by
+  rw [lowerPrinted_load]
+  simp only [spellMemInstr, hd, if_true]
+  exact GatherMemOps.lowerMemOp_load _ _ _ _ _ _ _ (memNameParts_memName hB off) hB hd
+
+/-- The spelled store lowers, through the array-ABI memory arm, to the block the
+    folded store lowers to. -/
+theorem lowerMemOp_spellMemInstr_store (frame spillW qsaveB : Nat) {d B vn : String}
+    (off : Nat) (hv : isGpName vn = true) (hB : isGpName B = true) :
+    GatherMemOps.lowerMemOp frame spillW
+        (spellMemInstr (.Lopn [.reg d] "STORE" [.arr B off, .reg vn])) qsaveB
+      = lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "STORE" [.arr B off, .reg vn]) := by
+  rw [lowerPrinted_store]
+  simp only [spellMemInstr, hv, if_true]
+  exact GatherMemOps.lowerMemOp_store _ _ _ _ _ _ _ (memNameParts_memName hB off) hB hv
+
+/-! ## 8. Displacement addressing at a literal index -/
+
+/-- After `mov x, $k`, the register-indexed load `(%B,%x,8)` is the load at
+    displacement `8·k` from `B`. -/
+theorem runBlock_movImm_loadMemIdx (s : JState 64) (d B x : String) {k : Nat}
+    (hk : k < 2 ^ 64) :
+    runBlock s [.mov x (.imm k), .loadMemIdx d B x 8]
+      = runBlock s [.mov x (.imm k), .loadMem d B ((8 * k : Nat) : Int)] := by
+  simp only [runBlock_cons, runBlock_nil]
+  rw [evalInstr_loadMemIdx_const _ d B x 8 (v := BitVec.ofNat 64 k)
+    (by simp [evalInstr, JState.setReg, x86_MOV])]
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+
+/-- After `mov x, $k`, the register-indexed store `(%B,%x,8)` is the store at
+    displacement `8·k` from `B`. -/
+theorem runBlock_movImm_storeMemIdx (s : JState 64) (B x : String) (src : JOperand)
+    {k : Nat} (hk : k < 2 ^ 64) :
+    runBlock s [.mov x (.imm k), .storeMemIdx B x 8 src]
+      = runBlock s [.mov x (.imm k), .storeMem B ((8 * k : Nat) : Int) src] := by
+  simp only [runBlock_cons, runBlock_nil]
+  rw [evalInstr_storeMemIdx_const _ B x 8 src (v := BitVec.ofNat 64 k)
+    (by simp [evalInstr, JState.setReg, x86_MOV])]
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+
+/-! ## 9. Dead immediate moves
+
+A fold leaves the immediate move that set the index register in place. When the
+register is overwritten before it is read, the move is dead. `transparentTo r`
+holds for the instructions that neither read nor write `r` as a machine register
+(a memory operand's base counts as a read), `overwrites r` for those that write `r`
+without reading it; every register operand of both is one of the sixteen
+general-purpose names, so a `mem.<base>.<off>` name, whose base the machine reads,
+never passes. -/
+
+/-- `i` neither reads nor writes the register `r`. -/
+def transparentTo (r : String) : JInstr 64 → Bool
+  | .mov d (.imm _) => isGpName d && d != r
+  | .mov d (.reg x) => isGpName d && isGpName x && d != r && x != r
+  | .loadMem d B _ => isGpName d && d != r && B != r
+  | .storeMem B _ (.reg v) => isGpName v && B != r && v != r
+  | .storeMem B _ (.imm _) => B != r
+  | _ => false
+
+/-- `i` writes the register `r` without reading it. -/
+def overwrites (r : String) : JInstr 64 → Bool
+  | .mov d (.imm _) => d == r
+  | .mov d (.reg x) => d == r && isGpName x && x != r
+  | .loadMem d B _ => d == r && B != r
+  | _ => false
+
+/-- Two machine states that agree everywhere except on register `r`. -/
+def AgreeOff (r : String) (s t : JState 64) : Prop :=
+  s.flags = t.flags ∧ s.mem = t.mem ∧ ∀ q, q ≠ r → s.regs q = t.regs q
+
+theorem AgreeOff.setReg {r : String} {s t : JState 64} (h : AgreeOff r s t) (d : String)
+    (v : BitVec 64) : AgreeOff r (s.setReg d v) (t.setReg d v) := by
+  obtain ⟨hf, hm, hr⟩ := h
+  refine ⟨hf, hm, fun q hq => ?_⟩
+  simp only [JState.setReg]
+  split
+  · rfl
+  · exact hr q hq
+
+theorem AgreeOff.setReg_eq {r : String} {s t : JState 64} (h : AgreeOff r s t)
+    (v : BitVec 64) : s.setReg r v = t.setReg r v := by
+  obtain ⟨hf, hm, hr⟩ := h
+  cases s
+  cases t
+  simp only at hf hm hr
+  subst hf hm
+  simp only [JState.setReg, JState.mk.injEq, and_true]
+  funext q
+  split
+  · rfl
+  · exact hr q (by assumption)
+
+theorem AgreeOff.store {r : String} {s t : JState 64} (h : AgreeOff r s t) (B : String)
+    (off : Int) (v : BitVec 64) : AgreeOff r (s.store B off v) (t.store B off v) := by
+  obtain ⟨hf, hm, hr⟩ := h
+  refine ⟨hf, ?_, hr⟩
+  simp only [JState.store, hm]
+
+theorem AgreeOff.setReg_left {r : String} (s : JState 64) (v : BitVec 64) :
+    AgreeOff r (s.setReg r v) s := by
+  refine ⟨rfl, rfl, fun q hq => ?_⟩
+  simp [JState.setReg, hq]
+
+/-- A transparent instruction keeps two states that agree off `r` agreeing off `r`. -/
+theorem AgreeOff.evalInstr_transparent {r : String} {s t : JState 64} (h : AgreeOff r s t)
+    {i : JInstr 64} (hi : transparentTo r i = true) :
+    AgreeOff r (evalInstr s i) (evalInstr t i) := by
+  cases i with
+  | mov d src =>
+      cases src with
+      | imm k => exact h.setReg d _
+      | reg x =>
+          simp only [transparentTo, Bool.and_eq_true, bne_iff_ne, ne_eq] at hi
+          have hx : s.regs x = t.regs x := h.2.2 x hi.2
+          simp only [evalInstr, JOperand.eval, JState.get, hx]
+          exact h.setReg d _
+  | loadMem d B off =>
+      simp only [evalInstr, JState.load, h.2.1]
+      exact h.setReg d _
+  | storeMem B off src =>
+      cases src with
+      | imm k => exact h.store B off _
+      | reg v =>
+          simp only [transparentTo, Bool.and_eq_true, bne_iff_ne, ne_eq] at hi
+          have hv : s.regs v = t.regs v := h.2.2 v hi.2
+          simp only [evalInstr, JOperand.eval, JState.get, hv]
+          exact h.store B off _
+  | _ => simp [transparentTo] at hi
+
+/-- An instruction that overwrites `r` without reading it sends two states that agree
+    off `r` to the same state. -/
+theorem AgreeOff.evalInstr_overwrites {r : String} {s t : JState 64} (h : AgreeOff r s t)
+    {i : JInstr 64} (hi : overwrites r i = true) : evalInstr s i = evalInstr t i := by
+  cases i with
+  | mov d src =>
+      cases src with
+      | imm k =>
+          simp only [overwrites, beq_iff_eq] at hi
+          subst hi
+          exact h.setReg_eq _
+      | reg x =>
+          simp only [overwrites, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hi
+          obtain ⟨⟨rfl, -⟩, hx⟩ := hi
+          have hx' : s.regs x = t.regs x := h.2.2 x hx
+          simp only [evalInstr, JOperand.eval, JState.get, hx']
+          exact h.setReg_eq _
+  | loadMem d B off =>
+      simp only [overwrites, Bool.and_eq_true, beq_iff_eq] at hi
+      obtain ⟨rfl, -⟩ := hi
+      simp only [evalInstr, JState.load, h.2.1]
+      exact h.setReg_eq _
+  | _ => simp [overwrites] at hi
+
+/-- The scan of a gathered block for register `r`: `some true` when an instruction
+    overwrites `r` after a transparent prefix, `some false` when an instruction that
+    is neither is reached first, `none` when the whole block is transparent. -/
+def scanBlock (r : String) : List (JInstr 64) → Option Bool
+  | [] => none
+  | i :: is =>
+      if overwrites r i then some true
+      else if transparentTo r i then scanBlock r is
+      else some false
+
+theorem scanBlock_none {r : String} :
+    ∀ {bs : List (JInstr 64)} {s t : JState 64}, scanBlock r bs = none →
+      AgreeOff r s t → AgreeOff r (runBlock s bs) (runBlock t bs)
+  | [], _, _, _, h => h
+  | i :: is, s, t, hb, h => by
+      simp only [scanBlock] at hb
+      split at hb
+      · simp at hb
+      · split at hb
+        · exact scanBlock_none (bs := is) hb (h.evalInstr_transparent (by assumption))
+        · simp at hb
+
+theorem scanBlock_true {r : String} :
+    ∀ {bs : List (JInstr 64)} {s t : JState 64}, scanBlock r bs = some true →
+      AgreeOff r s t → runBlock s bs = runBlock t bs
+  | [], _, _, hb, _ => by simp [scanBlock] at hb
+  | i :: is, s, t, hb, h => by
+      simp only [scanBlock] at hb
+      split at hb
+      · simp only [runBlock_cons, h.evalInstr_overwrites (by assumption)]
+      · split at hb
+        · exact scanBlock_true (bs := is) hb (h.evalInstr_transparent (by assumption))
+        · simp at hb
+
+/-- The register `r` is overwritten before it is read along the straight-line body:
+    the scan meets an overwrite before a return, an instruction the gather does not
+    lower, or an instruction that is not transparent. -/
+def deadAfter (p : Nat × Nat × Nat) (r : String) : Lcmd → Bool
+  | [] => false
+  | j :: js =>
+      if isLret j then false
+      else
+        match lowerPrinted p.1 p.2.1 p.2.2 j.li_i with
+        | none => false
+        | some bs =>
+            match scanBlock r bs with
+            | some b => b
+            | none => deadAfter p r js
+
+theorem gatherList_cons (p : Nat × Nat × Nat) (i : Linstr) (is : Lcmd) :
+    gatherList p (i :: is) =
+      if isLret i = true then gatherList p is
+      else (lowerPrinted p.1 p.2.1 p.2.2 i.li_i).bind
+        (fun js => (gatherList p is).map (js :: ·)) := by
+  by_cases hr : isLret i = true
+  · simp [gatherList, List.filter_cons, hr]
+  · have hr0 : isLret i = false := by simpa using hr
+    cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i <;>
+      cases hrest : gatherList p is <;>
+      simp_all [gatherList, List.filter_cons, List.mapM_cons]
+
+/-- Along a body in which `r` is dead, two states that agree off `r` run to the same
+    state. -/
+theorem deadAfter_run (p : Nat × Nat × Nat) (r : String) :
+    ∀ (body : Lcmd) (ls : List (List (JInstr 64))) (s t : JState 64),
+      deadAfter p r body = true → gatherList p body = some ls → AgreeOff r s t →
+      runBlock s ls.flatten = runBlock t ls.flatten := by
+  intro body
+  induction body with
+  | nil => intro _ _ _ hd; simp [deadAfter] at hd
+  | cons j js ih =>
+      intro ls s t hd hg h
+      by_cases hr : isLret j = true
+      · simp [deadAfter, hr] at hd
+      · rw [gatherList_cons, if_neg hr] at hg
+        simp only [deadAfter, hr, Bool.false_eq_true, if_false] at hd
+        cases hj : lowerPrinted p.1 p.2.1 p.2.2 j.li_i with
+        | none => simp [hj] at hd
+        | some bs =>
+            rw [hj] at hg
+            simp only [hj] at hd
+            cases hrest : gatherList p js with
+            | none => simp [hrest] at hg
+            | some rest =>
+                simp only [hrest, Option.bind_some, Option.map_some,
+                  Option.some.injEq] at hg
+                subst hg
+                simp only [List.flatten_cons, runBlock_append']
+                cases hb : scanBlock r bs with
+                | none =>
+                    simp only [hb] at hd
+                    exact ih rest _ _ hd hrest (scanBlock_none hb h)
+                | some b =>
+                    simp only [hb] at hd
+                    subst hd
+                    rw [scanBlock_true hb h]
+
+/-- The register an instruction sets to an immediate, when it lowers to exactly
+    that move. -/
+def deadImmReg? (p : Nat × Nat × Nat) (i : Linstr) : Option String :=
+  match lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
+  | some [.mov r (.imm _)] => if isGpName r then some r else none
+  | _ => none
+
+theorem deadImmReg?_spec {p : Nat × Nat × Nat} {i : Linstr} {r : String}
+    (h : deadImmReg? p i = some r) :
+    ∃ k, lowerPrinted p.1 p.2.1 p.2.2 i.li_i = some [.mov r (.imm k)] := by
+  unfold deadImmReg? at h
+  split at h
+  · rename_i k hl
+    split at h
+    · simp only [Option.some.injEq] at h
+      subst h
+      exact ⟨k, hl⟩
+    · simp at h
+  · simp at h
+
+/-- Drop every immediate move to a general-purpose register that is dead. -/
+def dropDeadCore (p : Nat × Nat × Nat) : Lcmd → Lcmd
+  | [] => []
+  | i :: is =>
+      match deadImmReg? p i with
+      | some r => if deadAfter p r is then dropDeadCore p is else i :: dropDeadCore p is
+      | none => i :: dropDeadCore p is
+
+/-- The tail-recursive image of `dropDeadCore`, accumulating in reverse. -/
+def dropDeadCoreTR (p : Nat × Nat × Nat) (acc : Lcmd) : Lcmd → Lcmd
+  | [] => acc.reverse
+  | i :: is =>
+      match deadImmReg? p i with
+      | some r =>
+          if deadAfter p r is then dropDeadCoreTR p acc is else dropDeadCoreTR p (i :: acc) is
+      | none => dropDeadCoreTR p (i :: acc) is
+
+theorem dropDeadCoreTR_eq (p : Nat × Nat × Nat) (acc body : Lcmd) :
+    dropDeadCoreTR p acc body = acc.reverse ++ dropDeadCore p body := by
+  induction body generalizing acc with
+  | nil => simp [dropDeadCoreTR, dropDeadCore]
+  | cons i is ih =>
+      simp only [dropDeadCoreTR, dropDeadCore]
+      split
+      · split <;> simp [ih]
+      · simp [ih]
+
+/-- `dropDeadCore` from the empty accumulator, the form the compiler runs. -/
+def dropDeadCoreFast (p : Nat × Nat × Nat) (body : Lcmd) : Lcmd := dropDeadCoreTR p [] body
+
+/-- Compiled code runs `dropDeadCore` through its tail-recursive image. -/
+@[csimp] theorem dropDeadCore_eq_fast : @dropDeadCore = @dropDeadCoreFast := by
+  funext p body
+  simp [dropDeadCoreFast, dropDeadCoreTR_eq]
+
+/-- **Block agreement at fixed frame parameters.** If the body gathers, the body
+    without its dead immediate moves gathers, and the two blocks run to the same
+    machine state from every state. -/
+theorem dropDeadCore_gather (p : Nat × Nat × Nat) :
+    ∀ (body : Lcmd) (ls : List (List (JInstr 64))), gatherList p body = some ls →
+      ∃ ls', gatherList p (dropDeadCore p body) = some ls'
+        ∧ ∀ s, runBlock s ls'.flatten = runBlock s ls.flatten := by
+  intro body
+  induction body with
+  | nil => intro ls h; exact ⟨ls, h, fun _ => rfl⟩
+  | cons i is ih =>
+      intro ls h
+      -- keeping `i` in front of a body that agrees with the tail
+      have keep : ∃ ls', gatherList p (i :: dropDeadCore p is) = some ls'
+          ∧ ∀ s, runBlock s ls'.flatten = runBlock s ls.flatten := by
+        rw [gatherList_cons] at h ⊢
+        by_cases hr : isLret i = true
+        · rw [if_pos hr] at h ⊢
+          exact ih ls h
+        · rw [if_neg hr] at h ⊢
+          cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
+          | none => simp [hi] at h
+          | some js =>
+              cases hrest : gatherList p is with
+              | none => simp [hi, hrest] at h
+              | some rest =>
+                  simp only [hi, hrest, Option.bind_some, Option.map_some,
+                    Option.some.injEq] at h
+                  subst h
+                  obtain ⟨rest', h1, h2⟩ := ih rest hrest
+                  refine ⟨js :: rest', by simp [h1], fun s => ?_⟩
+                  simp only [List.flatten_cons, runBlock_append', h2]
+      cases hd : deadImmReg? p i with
+      | none => simpa [dropDeadCore, hd] using keep
+      | some r =>
+          by_cases hdead : deadAfter p r is = true
+          · simp only [dropDeadCore, hd, hdead, if_true]
+            obtain ⟨k, hk⟩ := deadImmReg?_spec hd
+            rw [gatherList_cons] at h
+            by_cases hr : isLret i = true
+            · rw [if_pos hr] at h
+              exact ih ls h
+            · rw [if_neg hr, hk] at h
+              cases hrest : gatherList p is with
+              | none => simp [hrest] at h
+              | some rest =>
+                  simp only [hrest, Option.bind_some, Option.map_some,
+                    Option.some.injEq] at h
+                  subst h
+                  obtain ⟨rest', h1, h2⟩ := ih rest hrest
+                  refine ⟨rest', h1, fun s => ?_⟩
+                  simp only [List.flatten_cons, List.singleton_append, runBlock_cons, h2]
+                  exact (deadAfter_run p r is rest _ _ hdead hrest
+                    (AgreeOff.setReg_left (r := r) s _)).symm
+          · simpa [dropDeadCore, hd, hdead] using keep
+
+/-- The dead-move elimination of a body: `dropDeadCore` at the body's own frame
+    parameters, kept only when the result has the same frame parameters. -/
+def dropDeadImmBody (body : Lcmd) : Lcmd :=
+  let b' := dropDeadCore (bodyParams body) body
+  if bodyParams b' = bodyParams body then b' else body
+
+theorem gatherPrinted_eq (body : Lcmd) :
+    gatherPrinted body = (gatherList (bodyParams body) body).map List.flatten := rfl
+
+/-- **Semantic agreement.** If a body gathers, the body without its dead immediate
+    moves gathers, and the two blocks run to the same machine state from every
+    state. -/
+theorem gatherPrinted_dropDeadImmBody {body : Lcmd} {g : List (JInstr 64)}
+    (h : gatherPrinted body = some g) :
+    ∃ g', gatherPrinted (dropDeadImmBody body) = some g'
+      ∧ ∀ s, runBlock s g' = runBlock s g := by
+  unfold dropDeadImmBody
+  dsimp only
+  split
+  · rename_i hp
+    rw [gatherPrinted_eq, Option.map_eq_some_iff] at h
+    obtain ⟨ls, hls, rfl⟩ := h
+    obtain ⟨ls', h1, h2⟩ := dropDeadCore_gather (bodyParams body) body ls hls
+    refine ⟨ls'.flatten, ?_, h2⟩
+    rw [gatherPrinted_eq, hp, h1]
+    rfl
+  · exact ⟨g, h, fun _ => rfl⟩
+
+/-! ## 10. The owned stage -/
+
+/-- The fold, the dead-move elimination and the array-ABI spelling of one body. -/
+def foldIndexedBody (body : Lcmd) : Lcmd :=
+  spellMemBody (dropDeadImmBody (constIndexFoldBody body))
+
+/-- `foldIndexedBody` applied to every function of a program: every 64-bit
+    register-indexed access at an index the analysis knows becomes a
+    compile-time-displacement access `off(%B)`, and the immediate moves that set
+    those indices and are overwritten before a read are removed. -/
+def foldIndexedLprog (lp : Lprog) : Lprog :=
+  let fs := lp.lp_funcs.map
+    (fun f => (f.1, { f.2 with lfd_body := foldIndexedBody f.2.lfd_body }))
+  { lp with lp_funcs := fs }
+
+/-- **Semantic agreement of the fold and the elimination.** If a body gathers, its
+    folded body without dead immediate moves gathers, and the two blocks run to
+    the same machine state from every state. -/
+theorem gatherPrinted_dropDeadImm_constIndexFold {body : Lcmd} {g : List (JInstr 64)}
+    (h : gatherPrinted body = some g) :
+    ∃ g', gatherPrinted (dropDeadImmBody (constIndexFoldBody body)) = some g'
+      ∧ ∀ s, runBlock s g' = runBlock s g := by
+  obtain ⟨g1, h1, e1⟩ := gatherPrinted_constIndexFoldBody h
+  obtain ⟨g2, h2, e2⟩ := gatherPrinted_dropDeadImmBody h1
+  exact ⟨g2, h2, fun s => (e2 s).trans (e1 s)⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold

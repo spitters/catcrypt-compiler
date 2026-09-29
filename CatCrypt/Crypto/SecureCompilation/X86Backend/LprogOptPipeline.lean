@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
 public import CatCrypt.Crypto.Optimizer.LoadCSE
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 public import CatCrypt.Crypto.Optimizer.ComRangeFold
 
 /-!
@@ -40,6 +41,9 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
 ## Main results
 
 * `optimizeLprog` — the composition an emitter applies before `renderLprogAtt`.
+* `ownedLprog`, `renderOwned` — the basic-block optimizer followed by the
+  constant-index displacement fold `ConstIndexFold.foldIndexedLprog`, and its
+  printing.
 * `ownedComStage`, `renderOwnedCom` — the opt-in `Com → Com` stage before the exporter
   (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
   `Com`; `ownedComStage_denote`, `ownedComStage_outputs` — the stage's soundness for the
@@ -1218,6 +1222,16 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
     body, mapped over the whole program (`mapBodies optimizeBasicBlocks`). -/
 def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlocks p
 
+/-- The program the owned back end prints: `optimizeLprogBasicBlocks`, then
+    `ConstIndexFold.foldIndexedLprog` (constant-index accesses at a compile-time
+    displacement, dead index moves removed, spelled as the array-ABI moves
+    `LOAD:64`/`STORE:64`). The fold runs after the optimizer, so no pass that
+    keys a `mem.<base>.<off>` name as a cell independent of its base register
+    sees the displacement forms. Its block agreement over the machine model is
+    `ConstIndexFold.gatherPrinted_dropDeadImm_constIndexFold`. -/
+def ownedLprog (p : Lprog) : Lprog :=
+  ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p)
+
 /-- **The one optimizing compiler back-end.** Every owned emit driver renders its
     `Lprog` through this entry point: `optimizeLprogBasicBlocks` — the four
     verified passes (reload/spill elimination, instruction scheduling, load-CSE)
@@ -1230,11 +1244,18 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     between labels and jumps — with a proven guarantee, where the earlier
     per-function guard left any control-flow body unoptimized. The `.jazz` text
     path (`JasminPrint.emitJazz`) is the jasminc-comparison/interop side and does
-    NOT go through this. -/
-def renderOwned (p : Lprog) : String := renderLprogAtt (optimizeLprogBasicBlocks p)
+    NOT go through this.
+
+    Between the optimizer and the printer, `ownedLprog` applies
+    `ConstIndexFold.foldIndexedLprog`: a 64-bit register-indexed access whose
+    index register holds a known constant `k` is printed at the displacement
+    `8·k` from its base (`off(%B)` in place of `(%B,%x,8)`), and the immediate
+    move that set the index is removed when the register is overwritten before
+    it is read. -/
+def renderOwned (p : Lprog) : String := renderLprogAtt (ownedLprog p)
 
 /-- **The owned back end with the frame cleared before every return.**
-    `StackZeroize.zeroizeLprog` runs after `optimizeLprogBasicBlocks` and before
+    `StackZeroize.zeroizeLprog` runs after `ownedLprog` and before
     the printer, so the census `StackZeroize.writtenFrameCells` reads the body
     that is printed, and the reload and spill elimination of the optimizer never
     sees a zero store to remove. The stores go between a body's last instruction
@@ -1247,7 +1268,7 @@ def renderOwned (p : Lprog) : String := renderLprogAtt (optimizeLprogBasicBlocks
     that does not end in `Lret` is returned unchanged. An emitter whose kernel
     holds a secret in its frame composes this in place of `renderOwned`. -/
 def renderOwnedZeroized (p : Lprog) : String :=
-  renderLprogAtt (StackZeroize.zeroizeLprog (optimizeLprogBasicBlocks p))
+  renderLprogAtt (StackZeroize.zeroizeLprog (ownedLprog p))
 
 /-- Fold a use-once ABI memory load into its single vector consumer: a
     `VMOVDQU [kv.d] [mem.m]` whose spill `d` is defined once (this load) and read
@@ -1301,7 +1322,7 @@ def foldAbiLoad (p : Lprog) : Lprog :=
     vector-spill legalization, since the register is provably free. Identical to
     `renderOwned` for every other body. -/
 def renderOwnedReserveVecScratch (p : Lprog) : String :=
-  renderLprogAtt (optimizeLprogBasicBlocks (foldAbiLoad p)) none true
+  renderLprogAtt (ownedLprog (foldAbiLoad p)) none true
 
 /-! ## The `Com` stage ahead of the exporter
 
