@@ -112,6 +112,20 @@ theorem silent_call (hvt : ∀ f, M.leafVT f = false) (f : String) (d : Located)
   cases h
   simp [callLeak, hvt]
 
+/-- A multi-output call the model does not mark has no event. -/
+theorem silent_callN1 {f : String} (hvf : M.leafVT f = false) (ds ls : List Located) :
+    Silent M N leafSpec (.RCallN f ds ls) := by
+  intro rs t r h
+  cases h
+  simp [callLeak, hvf]
+
+/-- A call the model does not mark has no event. -/
+theorem silent_call1 {f : String} (hvf : M.leafVT f = false) (d : Located)
+    (ls : List Located) : Silent M N leafSpec (.RCall f d ls) := by
+  intro rs t r h
+  cases h
+  simp [callLeak, hvf]
+
 /-- A multi-output leaf call has no event in a model classing no leaf variable time. -/
 theorem silent_callN (hvt : ∀ f, M.leafVT f = false) (f : String) (ds ls : List Located) :
     Silent M N leafSpec (.RCallN f ds ls) := by
@@ -217,6 +231,109 @@ theorem callMarshal_leak (A : ExitTowers) (dt : TowerType) :
         exact ih ctx' ls' hr
     | _ => simp [callMarshal] at h
 
+/-- **The traced marshalling of call arguments.**  As `callMarshal_sim`, for traced runs:
+    from a state `rs0` with the scalar heap of `rs` and the tower slots of `rs` at the
+    non-reserved names, every traced run of the context of `callMarshal` passes through one
+    state `rs1`, with the same events, in which each argument slot holds a tower value of
+    its type related by `br` to the argument's value. -/
+theorem callMarshal_leak_inv {br : ValueTowerBridge} {A : ExitTowers} {env : Env}
+    {rs : RustState} (hag : envAgreesT br A env rs) (hmar : ExitMarshal br leafSpec)
+    (dt : TowerType) :
+    ∀ (args : List ImpExpr) (ctx : LowCT → LowCT) (ls : List Located) (vals : List Value),
+      callMarshal A dt args = some (ctx, ls) → exitArgsOk args = true →
+      List.Forall₂ (fun a v => ∃ x, a = ImpExpr.var x ∧ env x = some v) args vals →
+      ∀ rs0 : RustState, rs0.rsScalar = rs.rsScalar →
+        (∀ y, exitReserved y = false → rs0.rsTower y = rs.rsTower y) →
+        ∃ rs1, (∀ c t r, RustExecLeak N leafSpec M (ctx c) rs0 t r →
+            RustExecLeak N leafSpec M c rs1 t r) ∧
+          rs1.rsScalar = rs.rsScalar ∧
+          (∀ y, (∀ z, y ≠ exitMarshalName z) → rs1.rsTower y = rs0.rsTower y) ∧
+          (∀ z, rs1.rsTower (exitMarshalName z) = rs0.rsTower (exitMarshalName z) ∨
+            rs1.rsTower (exitMarshalName z) =
+              some ⟨dt, marshalVal leafSpec dt z (rs.rsScalar z)⟩) ∧
+          List.Forall₂ (fun v (a : Located) => ∃ val,
+            rs1.rsTower a.locVar = some ⟨a.locDst, val⟩ ∧ br a.locDst v val) vals ls := by
+  intro args
+  induction args with
+  | nil =>
+    intro ctx ls vals h _ hF rs0 hS _
+    simp only [callMarshal, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    cases hF
+    exact ⟨rs0, fun c t r hc => hc, hS, fun _ _ => rfl, fun _ => Or.inl rfl, List.Forall₂.nil⟩
+  | cons a as ih =>
+    intro ctx ls vals h hok hF rs0 hS hT
+    cases a with
+    | var x =>
+      simp only [exitArgsOk, Bool.and_eq_true, Bool.not_eq_true'] at hok
+      obtain ⟨hxr, hok⟩ := hok
+      rcases hF with _ | ⟨⟨x', hx', hxv⟩, hF⟩
+      cases hx'
+      rename_i v vs
+      rcases hr : callMarshal A dt as with _ | ⟨ctx', ls'⟩
+      · simp [callMarshal, hr] at h
+      rcases hx : A.lookup x with _ | t
+      · simp only [callMarshal, hr, hx] at h
+        split_ifs at h with hmo
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        have h8 : 8 ≤ dt.storageBytes := by simpa [exitMarshalOk] using hmo
+        obtain ⟨hsv, hdv⟩ := envAgreesT_scalar hag hxr hx hxv
+        have hSB : (rsSetTower rs0 (exitMarshalName x)
+            ⟨dt, marshalVal leafSpec dt x (rs.rsScalar x)⟩).rsScalar = rs.rsScalar := hS
+        have hTB : ∀ y, exitReserved y = false → (rsSetTower rs0 (exitMarshalName x)
+            ⟨dt, marshalVal leafSpec dt x (rs.rsScalar x)⟩).rsTower y = rs.rsTower y := by
+          intro y hy
+          rw [CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _
+            (ne_marshal_of_nonreserved hy x).symm]
+          exact hT y hy
+        obtain ⟨rs1, hinv, hS1, hT1, hM1, hF1⟩ := ih ctx' ls' vs hr hok hF _ hSB hTB
+        refine ⟨rs1, fun c t r hc => ?_, hS1, ?_, ?_, ?_⟩
+        · cases hc with
+          | letZero _ _ _ _ _ _ hc =>
+          cases hc with
+          | seq _ _ _ _ _ t1 t2 h1 h2 =>
+          cases h1 with
+          | limbStoreExpr _ _ _ _ oldV hold =>
+          rw [locatedLookup_of_rsTower _ _ dt default
+            (CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same _ _ _)] at hold
+          cases hold
+          have hev : (SExpr.SVar x).evalState
+              (rsSetTower rs0 (exitMarshalName x) ⟨dt, default⟩) = rs.rsScalar x := by
+            simp only [SExpr.evalState]
+            exact congrFun hS x
+          simp only [locatedUpdate, hev, rsSetTower_rsSetTower] at h2
+          simpa only [sexprLeak, List.nil_append] using hinv c t2 r h2
+        · intro y hy
+          rw [hT1 y hy, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _
+            (fun h => hy x h.symm)]
+        · intro z
+          by_cases hz : z = x
+          · subst hz
+            right
+            rcases hM1 z with h1 | h1
+            · rw [h1, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same]
+            · exact h1
+          · have hmz : exitMarshalName x ≠ exitMarshalName z :=
+              fun h => hz (exitMarshalName_inj h).symm
+            rcases hM1 z with h1 | h1
+            · left
+              rw [h1, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _ hmz]
+            · exact Or.inr h1
+        · refine List.Forall₂.cons ⟨marshalVal leafSpec dt x (rs.rsScalar x), ?_, ?_⟩ hF1
+          · rcases hM1 x with h1 | h1
+            · rw [h1, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same]
+            · exact h1
+          · exact hmar ⟨exitMarshalName x, dt⟩ v _ h8 hsv hdv
+      · simp only [callMarshal, hr, hx, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        obtain ⟨-, val, hval, hbr⟩ := envAgreesT_tower hag hxr hx hxv
+        obtain ⟨rs1, hinv, hS1, hT1, hM1, hF1⟩ := ih ctx' ls' vs hr hok hF rs0 hS hT
+        refine ⟨rs1, hinv, hS1, hT1, hM1, List.Forall₂.cons ⟨val, ?_, hbr⟩ hF1⟩
+        rw [hT1 x (ne_marshal_of_nonreserved hxr), hT x hxr]
+        exact hval
+    | _ => simp [callMarshal] at h
+
 theorem silent_ctx {A : ExitTowers} {dt : TowerType} {args : List ImpExpr}
     {ctx : LowCT → LowCT} {ls : List Located} (hm : callMarshal A dt args = some (ctx, ls))
     {c : LowCT} (hc : Silent M N leafSpec c) : Silent M N leafSpec (ctx c) := by
@@ -233,6 +350,15 @@ theorem silent_optCallC (hvt : ∀ f, M.leafVT f = false) {A : ExitTowers}
   unfold optCallC
   exact silent_seq (silent_letZero _ _ (silent_letZero _ _ (silent_ctx hm
     (silent_callN hvt _ _ _)))) (silent_setLimb _ _ _)
+
+/-- The call of an `Option` match on a call the model does not mark has no event. -/
+theorem silent_optCallC1 {A : ExitTowers} {f : String} (hvf : M.leafVT f = false)
+    {args : List ImpExpr} {ctx : LowCT → LowCT} {ls : List Located}
+    (hm : callMarshal A .TU64 args = some (ctx, ls)) (t : TowerType) :
+    Silent M N leafSpec (optCallC f t ctx ls) := by
+  unfold optCallC
+  exact silent_seq (silent_letZero _ _ (silent_letZero _ _ (silent_ctx hm
+    (silent_callN1 hvf _ _)))) (silent_setLimb _ _ _)
 
 end Silent
 
@@ -675,29 +801,98 @@ theorem headResT_state {env : Env} {rs q : RustState} {n : String} {w : Value}
   obtain rfl := rustExecLeak_state_eq h (hex .RSkip rs1 (RustExec.skip rs1))
   exact ⟨ha, hret⟩
 
+/-- The events a leakage model supplies for the call `f` agree on argument slots of the
+    types `ts` related by `br` to the same argument values, on which `bi` defines `f`. -/
+def CalleeEventsOk (M : LowCTLeakModel) (bi : Builtins) (br : ValueTowerBridge) (f : String)
+    (ts : List TowerType) : Prop :=
+  ∀ (vals : List Value) (v : Value) (a₁ a₂ : List (Σ t : TowerType, RustVal t)),
+    bi f vals = some v →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals a₁ →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals a₂ →
+    a₁.map (·.1) = ts → a₂.map (·.1) = ts → M.vtEvents f a₁ = M.vtEvents f a₂
+
+/-- A call a leakage model may mark under the placement `A`: a linked callee of `A` with
+    argument slot types `ts` (`exitCalleeTys`) outside `exitScalarRes`, `array_lit`,
+    `repeat`, the calls returning an `Option` and the scalar operations, whose events
+    satisfy `CalleeEventsOk` at `ts`. -/
+def CalleeMarked (M : LowCTLeakModel) (bi : Builtins) (br : ValueTowerBridge)
+    (A : ExitTowers) (f : String) : Prop :=
+  exitScalarRes f = false ∧ f ≠ "array_lit" ∧ f ≠ "repeat" ∧ exitOptTys A f = none ∧
+    (∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) ∧
+    ∃ ts dr, exitCalleeTys A f = some (ts, dr) ∧ CalleeEventsOk M bi br f ts
+
+theorem vars_of_forall₂ {env : Env} :
+    ∀ {args : List ImpExpr} {vals : List Value},
+      List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args vals →
+      ∀ e ∈ args, ∃ x, e = ImpExpr.var x
+  | [], [], .nil => fun _ h => by cases h
+  | _ :: _, _ :: _, .cons ⟨x, hx, _⟩ t => fun e he => by
+    rcases List.mem_cons.mp he with rfl | he
+    · exact ⟨x, hx⟩
+    · exact vars_of_forall₂ t e he
+
+theorem forall₂_vars_det {env : Env} :
+    ∀ {args : List ImpExpr} {v₁ v₂ : List Value},
+      List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args v₁ →
+      List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env x = some v) args v₂ → v₁ = v₂
+  | [], [], [], .nil, .nil => rfl
+  | _ :: _, _ :: _, _ :: _, .cons ⟨x, hx, h1⟩ t1, .cons ⟨y, hy, h2⟩ t2 => by
+    rw [hx] at hy
+    cases hy
+    rw [h1] at h2
+    cases h2
+    rw [forall₂_vars_det t1 t2]
+
+/-- The source leakage of a call on argument variables of a name outside the scalar
+    operations is the event `opaque` of the environment. -/
+theorem srcLeak_app_opaque {f : String}
+    (hso : ∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) :
+    ∀ (args : List ImpExpr), (∀ e ∈ args, ∃ x, e = ImpExpr.var x) → ∀ fuel env,
+      srcLeak M bi (.app f args) fuel env = .ev (.opaque env (.app f args))
+  | [], _, _, _ => rfl
+  | [a], hv, _, _ => by
+    obtain ⟨x, rfl⟩ := hv a (by simp)
+    rfl
+  | [a, b], hv, _, env => by
+    obtain ⟨x, rfl⟩ := hv a (by simp)
+    obtain ⟨y, rfl⟩ := hv b (by simp)
+    simp only [srcLeak, opLeak, hso x y]
+  | a :: b :: c :: rest, hv, _, _ => by
+    obtain ⟨x, rfl⟩ := hv a (by simp)
+    obtain ⟨y, rfl⟩ := hv b (by simp)
+    rfl
+
 /-- The events of the head of a call, element load or element store, from states
-    agreeing with environments whose source leakage of the call is equal. -/
-theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : List ImpExpr}
+    agreeing with environments whose source leakage of the call is equal, in a leakage
+    model marking only linked callees (`CalleeMarked`); the builtin's value on the argument
+    values of a marked call is defined. -/
+theorem headTrace_appL (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
+    {n f : String} (hmarL : M.leafVT f = true → ExitMarshal br leafSpec) {args : List ImpExpr}
     {k : LowCT → LowCT} (hk : appHeadT A n f args = some k) (hargs : exitArgsOk args = true)
     {fuel : Nat} {env₁ env₂ : Env} {rs₁ rs₂ q₁ q₂ : RustState} {th₁ th₂ : List CTLeak}
     {vals₁ vals₂ : List Value}
     (hF₁ : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env₁ x = some v) args vals₁)
     (hF₂ : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env₂ x = some v) args vals₂)
     (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    (hbi : M.leafVT f = true → ∃ v, bi f vals₁ = some v)
     (hL : srcLeak M bi (.app f args) fuel env₁ = srcLeak M bi (.app f args) fuel env₂)
     (h₁ : RustExecLeak N leafSpec M (k .RSkip) rs₁ th₁ q₁)
     (h₂ : RustExecLeak N leafSpec M (k .RSkip) rs₂ th₂ q₂) : th₁ = th₂ := by
+  have hunm : ∀ g, (CalleeMarked M bi br A g → False) → M.leafVT g = false := fun g hn => by
+    cases h : M.leafVT g
+    · rfl
+    · exact (hn (hvtL g h)).elim
   unfold appHeadT at hk
   rcases hso : scalarOpHeadT A n f args with _ | se
   · rw [hso] at hk
     simp only at hk
     have hcallS : ∀ {dt dr : TowerType}, callHeadAt A n f dt dr args = some k →
-        Silent M N leafSpec (k .RSkip) := fun hc => by
+        M.leafVT f = false → Silent M N leafSpec (k .RSkip) := fun hc hvf => by
       obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
       rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
-      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvf _ _)))
           (silent_seq (silent_setLimb _ _ _) silent_skip)
-      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+      · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvf _ _)))
           (silent_seq (silent_copy _ _) silent_skip)
     split_ifs at hk with hfi hfu hfl hfr
     · -- the element load
@@ -783,22 +978,85 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
     · -- an array literal: a call
       subst hfl
       obtain ⟨_, _, _, hc⟩ := arrLitHeadN_some A hk
-      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
+      have hsil : Silent M N leafSpec (k .RSkip) :=
+        hcallS hc (hunm _ fun hm => hm.2.1 rfl)
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
     · -- a `repeat` with a literal count: a call
       obtain ⟨_, _, _, _, _, _, _, _, hc⟩ := repeatHeadT_some A hk
+      have hvr : M.leafVT "repeat" = false := hunm _ fun hm => hm.2.2.1 rfl
       have hsil : Silent M N leafSpec (k .RSkip) := by
         obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
         rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
-        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvr _ _)))
             (silent_seq (silent_setLimb _ _ _) silent_skip)
-        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+        · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvr _ _)))
             (silent_seq (silent_copy _ _) silent_skip)
       rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
     · -- a call
-      obtain ⟨_, _, hc, -⟩ := callHeadT_some A hk
-      have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc
-      rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
+      obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
+      cases hvf : M.leafVT f with
+      | false =>
+        have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc hvf
+        rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
+      | true =>
+        obtain ⟨hsr, -, -, -, hsoN, ts', dr', hce, hev⟩ := hvtL f hvf
+        have hmar := hmarL hvf
+        obtain ⟨ts, rfl, hmts, rfl⟩ : ∃ ts, dt = .TU64 ∧
+            (callMarshal A .TU64 args).map (fun cl => cl.2.map (·.locDst)) = some ts ∧
+            ts = ts' := by
+          rcases hcase with ⟨h, -⟩ | ⟨-, h, -⟩ | ⟨-, h, -⟩ | ⟨ts, -, h4, h, hm4, -⟩
+          · rw [hsr] at h; cases h
+          · rw [h] at hce; cases hce
+          · rw [h] at hce; cases hce
+          · rw [hce, Option.some.injEq, Prod.mk.injEq] at h4
+            subst h
+            exact ⟨ts, rfl, hm4, h4.1.symm⟩
+        have hvars := vars_of_forall₂ hF₁
+        rw [srcLeak_app_opaque hsoN args hvars, srcLeak_app_opaque hsoN args hvars] at hL
+        injection hL with hL
+        injection hL with henv
+        subst henv
+        obtain rfl := forall₂_vars_det hF₁ hF₂
+        obtain ⟨ctx, ls, hm, hcase'⟩ := callHeadAt_some A hc
+        have htr : ∀ (T : LowCT), Silent M N leafSpec (.RSeq T .RSkip) →
+            ∀ {rs q : RustState} {th : List CTLeak}, envAgreesT br A env₁ rs →
+            RustExecLeak N leafSpec M (.RSeq (.RLetZero exitCallName dr
+              (ctx (.RCall f ⟨exitCallName, dr⟩ ls))) (.RSeq T .RSkip)) rs th q →
+            ∃ argList : List (Σ t : TowerType, RustVal t),
+              List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals₁
+                argList ∧ argList.map (·.1) = ls.map (·.locDst) ∧
+              th = M.vtEvents f argList := by
+          intro T hT rs q th hag h
+          obtain ⟨rs1, hinv, -, -, -, hF1⟩ := callMarshal_leak_inv hag hmar .TU64 args ctx ls
+            vals₁ hm hargs hF₁ (rsSetTower rs exitCallName ⟨dr, default⟩) rfl
+            (fun y hy => CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_other _ _ _ _
+              (ne_of_reserved hy exitReserved_call).symm)
+          cases h with
+          | seq _ _ _ _ _ t1 t2 h1 h2 =>
+          cases h1 with
+          | letZero _ _ _ _ _ _ h1 =>
+          have hc1 := hinv _ _ _ h1
+          cases hc1 with
+          | call _ _ _ _ _ _ _ harg _ =>
+          subst harg
+          refine ⟨_, forall₂_filterMap_rsTower hF1,
+            filterMap_rsTower_types (forall₂_rsTower_typed hF1), ?_⟩
+          rw [hT _ _ _ h2, List.append_nil]
+          simp [callLeak, hvf]
+        have hTs : ∃ T, Silent M N leafSpec (.RSeq T .RSkip) ∧
+            k = fun b => .RSeq (.RLetZero exitCallName dr
+              (ctx (.RCall f ⟨exitCallName, dr⟩ ls))) (.RSeq T b) := by
+          rcases hcase' with ⟨-, rfl⟩ | ⟨-, rfl⟩
+          · exact ⟨_, silent_seq (silent_setLimb _ _ _) silent_skip, rfl⟩
+          · exact ⟨_, silent_seq (silent_copy _ _) silent_skip, rfl⟩
+        obtain ⟨T, hT, rfl⟩ := hTs
+        obtain ⟨a₁, hA₁, hT₁, rfl⟩ := htr T hT hag₁ h₁
+        obtain ⟨a₂, hA₂, hT₂, rfl⟩ := htr T hT hag₂ h₂
+        obtain ⟨v, hv⟩ := hbi hvf
+        have hls : ls.map (·.locDst) = ts := by
+          rw [hm] at hmts
+          simpa using hmts
+        exact hev vals₁ v a₁ a₂ hv hA₁ hA₂ (hT₁.trans hls) (hT₂.trans hls)
   · -- a scalar operation
     rw [hso] at hk
     simp only [Option.some.injEq] at hk
@@ -835,6 +1093,22 @@ theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : L
         exact Option.some.inj hse
       subst hee
       simpa only [SrcLeak.ev.injEq, SrcEv.op.injEq] using hL
+
+/-- The events of the head of a call, element load or element store, from states
+    agreeing with environments whose source leakage of the call is equal, in a leakage
+    model marking no call. -/
+theorem headTrace_app (hvt : ∀ f, M.leafVT f = false) {n f : String} {args : List ImpExpr}
+    {k : LowCT → LowCT} (hk : appHeadT A n f args = some k) (hargs : exitArgsOk args = true)
+    {fuel : Nat} {env₁ env₂ : Env} {rs₁ rs₂ q₁ q₂ : RustState} {th₁ th₂ : List CTLeak}
+    {vals₁ vals₂ : List Value}
+    (hF₁ : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env₁ x = some v) args vals₁)
+    (hF₂ : List.Forall₂ (fun e v => ∃ x, e = ImpExpr.var x ∧ env₂ x = some v) args vals₂)
+    (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    (hL : srcLeak M bi (.app f args) fuel env₁ = srcLeak M bi (.app f args) fuel env₂)
+    (h₁ : RustExecLeak N leafSpec M (k .RSkip) rs₁ th₁ q₁)
+    (h₂ : RustExecLeak N leafSpec M (k .RSkip) rs₂ th₂ q₂) : th₁ = th₂ :=
+  headTrace_appL (fun g h => by rw [hvt g] at h; cases h) (fun h => by rw [hvt f] at h; cases h)
+    hk hargs hF₁ hF₂ hag₁ hag₂ (fun h => by rw [hvt f] at h; cases h) hL h₁ h₂
 
 end Heads
 
@@ -877,7 +1151,8 @@ theorem varHead_silent {n s : String} {k : LowCT → LowCT}
     · cases hk
   · cases hk
 
-theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
+/-- The binding arm, in a leakage model marking only linked callees (`CalleeMarked`). -/
+theorem exitCTT_letBindL (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
     (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (n : String) (val body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.letBind n val body) := by
@@ -965,7 +1240,8 @@ theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
         app_run_inv hL.plain fuel n f args body hargs env₁ env₁' o₁ hrun₁ hval₁
       obtain ⟨vals₂, w₂, hF₂, hbi₂, hv₂, hrun₂'⟩ :=
         app_run_inv hL.plain fuel n f args body hargs env₂ env₂' o₂ hrun₂ hval₂
-      exact ⟨fun hLa => headTrace_app hvt hk' hargs hF₁ hF₂ hag₁ hag₂ hLa hk₁ hk₂, w₁, w₂, hv₁,
+      exact ⟨fun hLa => headTrace_appL hvtL (fun _ => hL.marshal) hk' hargs hF₁ hF₂ hag₁ hag₂
+          (fun _ => ⟨w₁, hbi₁⟩) hLa hk₁ hk₂, w₁, w₂, hv₁,
         hv₂, hL.plain _ _ _ hbi₁, hL.plain _ _ _ hbi₂, hrun₁', hrun₂',
         headResT_app hL hk' hh.1 hargs hF₁ hbi₁ hag₁ hret₁,
         headResT_app hL hk' hh.1 hargs hF₂ hbi₂ hag₂ hret₂⟩
@@ -981,19 +1257,30 @@ theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
           repeat_run_inv hL.plain fuel n v l body env₁ env₁' o₁ hrun₁ hval₁
         obtain ⟨vv₂, w₂, hx₂, hbi₂, hv₂, hrun₂'⟩ :=
           repeat_run_inv hL.plain fuel n v l body env₂ env₂' o₂ hrun₂ hval₂
+        have hvr : M.leafVT "repeat" = false := by
+          cases h : M.leafVT "repeat"
+          · rfl
+          · exact absurd rfl (hvtL _ h).2.2.1
         have hsil : Silent M N leafSpec (k .RSkip) := by
           obtain ⟨_, _, _, _, _, _, _, _, hc⟩ := repeatHeadT_some A hkr
           obtain ⟨ctx, ls, hm, hcase⟩ := callHeadAt_some A hc
           rcases hcase with ⟨-, rfl⟩ | ⟨-, rfl⟩
-          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvr _ _)))
               (silent_seq (silent_setLimb _ _ _) silent_skip)
-          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call hvt _ _ _)))
+          · exact silent_seq (silent_letZero _ _ (silent_ctx hm (silent_call1 hvr _ _)))
               (silent_seq (silent_copy _ _) silent_skip)
         exact ⟨fun _ => (hsil _ _ _ hk₁).trans (hsil _ _ _ hk₂).symm, w₁, w₂, hv₁, hv₂,
           hL.plain _ _ _ hbi₁, hL.plain _ _ _ hbi₂, hrun₁', hrun₂',
           headT_repeat hL hkr hh.1 hra.1 hx₁ hbi₁ hag₁ hret₁,
           headT_repeat hL hkr hh.1 hra.1 hx₂ hbi₂ hag₂ hret₂⟩
   | _ => simp [letHeadT] at hk
+
+theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
+    (n : String) (val body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
+    ExitCTT M bi N leafSpec br A R (.letBind n val body) :=
+  exitCTT_letBindL M bi N leafSpec br A R (fun g h => by rw [hvt g] at h; cases h) hL n val body
+    ihb
 
 /-- An expression whose lowerings cannot exit and have no event. -/
 theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (e : ImpExpr)
@@ -1293,8 +1580,9 @@ theorem exitCTT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys 
 /-- **A `match` on the `Option` returned by a call**, for either order of its two arms
     `Mx`: the source event `opaque` of the `match` makes the two environments equal, so
     both calls return the same `Option`; the call has no event, the tag branches agree,
-    and the arms are those of the induction. -/
-theorem exitCTT_optMatch (hvt : ∀ f, M.leafVT f = false)
+    and the arms are those of the induction. The leakage model marks only linked callees
+    (`CalleeMarked`), which return no `Option`. -/
+theorem exitCTT_optMatchL (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
     (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (Mx : ImpExpr) (f : String) (args : List ImpExpr) (p : String) (t e : ImpExpr)
     (hleak : ∀ fuel env, srcLeak M bi Mx fuel env = .ev (.opaque env Mx))
@@ -1358,8 +1646,14 @@ theorem exitCTT_optMatch (hvt : ∀ f, M.leafVT f = false)
   | seq _ _ _ m₂ _ tc₂ ti₂ hc₂ hi₂ =>
   obtain rfl := rustExecLeak_state_eq hc₁ hexC₁
   obtain rfl := rustExecLeak_state_eq hc₂ hexC₂
-  obtain rfl := silent_optCallC hvt hm f tty _ _ _ hc₁
-  obtain rfl := silent_optCallC hvt hm f tty _ _ _ hc₂
+  have hvf : M.leafVT f = false := by
+    cases h : M.leafVT f
+    · rfl
+    · have := (hvtL f h).2.2.2.1
+      rw [hDO] at this
+      cases this
+  obtain rfl := silent_optCallC1 hvf hm tty _ _ _ hc₁
+  obtain rfl := silent_optCallC1 hvf hm tty _ _ _ hc₂
   rcases o' with _ | w
   · rw [hnone fuel env₁ env₁ happ] at hrun₁
     simp at htag₁ htag₂
@@ -1398,6 +1692,31 @@ theorem exitCTT_optMatch (hvt : ∀ f, M.leafVT f = false)
       _ _ r₁ r₂ tC xt tt₁ tt₂
       hokt hfl hT' hrun₁ hval₁ hrun₁ hval₁ hags₁ hrets₁ hags₂ hrets₂ rfl hr₁ hr₂
     rw [ht]
+
+/-- **A `match` on the `Option` returned by a call**, in a leakage model marking no call:
+    `exitCTT_optMatchL`. -/
+theorem exitCTT_optMatch (hvt : ∀ f, M.leafVT f = false)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
+    (Mx : ImpExpr) (f : String) (args : List ImpExpr) (p : String) (t e : ImpExpr)
+    (hleak : ∀ fuel env, srcLeak M bi Mx fuel env = .ev (.opaque env Mx))
+    (hOk : ∀ tl il, exitSimOkT A R tl il Mx = (!exitReserved p && exitArgsOk args &&
+      (optHeadT A f args p).isSome && exitSimOkT A R tl il t && exitSimOkT A R tl il e))
+    (hKM : ∀ tl fl, haxToLowCTKT A tl fl Mx =
+      match optHeadT A f args p, haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
+      | some (callC, bindP), some (tC, xt), some (eC, xe) =>
+          some (.RSeq callC (.RIfNz exitOptTagS (.RSeq bindP tC) eC), xt || xe)
+      | _, _, _ => none)
+    (hsome : ∀ fuel env env1 w,
+      denote' bi fuel (.app f args) env = (.val (.option (some w)), env1) →
+      denote' bi fuel Mx env = denote' bi fuel t (env1.extend p w))
+    (hnone : ∀ fuel env env1, denote' bi fuel (.app f args) env = (.val (.option none), env1) →
+      denote' bi fuel Mx env = denote' bi fuel e env1)
+    (hnonval : ∀ fuel env env1 o, denote' bi fuel (.app f args) env = (o, env1) →
+      (∀ v, o ≠ .val v) → denote' bi fuel Mx env = (o, env1))
+    (iht : ExitCTT M bi N leafSpec br A R t) (ihe : ExitCTT M bi N leafSpec br A R e) :
+    ExitCTT M bi N leafSpec br A R Mx :=
+  exitCTT_optMatchL M bi N leafSpec br A R (fun g h => by rw [hvt g] at h; cases h) hL Mx f args
+    p t e hleak hOk hKM hsome hnone hnonval iht ihe
 
 end Arms
 
@@ -1908,9 +2227,13 @@ theorem exitCTT_of_not_ok (A : ExitTowers) (R : ExitRes) (e : ImpExpr)
     `ExitLeaves` and a leakage model classing no leaf variable time (`M.leafVT f = false`
     for every `f`, as for `LowCTLeakModel.owned`), every expression satisfies `ExitCTT`.
     The condition on `M` is used at the calls: the bridge `br` is a relation, so the tower
-    arguments of a call are not determined by the environment. -/
-theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) :
+    arguments of a call are not determined by the environment. The leakage model may mark
+    linked callees (`CalleeMarked`), whose events agree on the related argument slots of
+    equal argument values (`CalleeEventsOk`). -/
+theorem haxToLowCTKT_ctL (A : ExitTowers)
+    (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
+    (R : ExitRes) (e : ImpExpr) :
     ExitCTT M bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitCTT M bi N leafSpec br A R e :=
@@ -1919,7 +2242,8 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
   | lit l => exact exitCTT_lit M bi N leafSpec br A R hL l
   | var x => exact exitCTT_var M bi N leafSpec br A R hL x
   | unitVal => exact exitCTT_unitVal M bi N leafSpec br A R hL
-  | letBind n val body _ ihb => exact exitCTT_letBind M bi N leafSpec br A R hvt hL n val body ihb
+  | letBind n val body _ ihb =>
+    exact exitCTT_letBindL M bi N leafSpec br A R hvtL hL n val body ihb
   | seq a b iha ihb => exact exitCTT_seq M bi N leafSpec br A R hL a b iha ihb
   | ifThenElse c t e _ iht ihe =>
     cases c with
@@ -1948,7 +2272,7 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
     by_cases hsh : exitMatchShape s arms = true
     · rcases exitMatchShape_cases hsh with
         ⟨f, args, p, t, e, rfl, rfl⟩ | ⟨f, args, p, t, e, rfl, rfl⟩
-      · exact exitCTT_optMatch M bi N leafSpec br A R hvt hL _ f args p t e
+      · exact exitCTT_optMatchL M bi N leafSpec br A R hvtL hL _ f args p t e
           (fun _ _ => rfl)
           (fun tl il => by cases tl <;> cases il <;> rfl)
           (fun tl fl => by cases tl <;> cases fl <;> rfl)
@@ -1956,7 +2280,7 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
           (fun fuel _ _ h => denote'_optMatch_none bi fuel h)
           (fun fuel _ _ _ h ho => denote'_match_nonval bi fuel h ho)
           (iha (.somePat (.varPat p), t) (by simp)) (iha (.nonePat, e) (by simp))
-      · exact exitCTT_optMatch M bi N leafSpec br A R hvt hL _ f args p t e
+      · exact exitCTT_optMatchL M bi N leafSpec br A R hvtL hL _ f args p t e
           (fun _ _ => rfl)
           (fun tl il => by cases tl <;> cases il <;> rfl)
           (fun tl fl => by cases tl <;> cases fl <;> rfl)
@@ -1970,11 +2294,20 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
         · exact absurd (exitMatchShape_of_ok A R h) hsh)
   | _ => exact nok _ (fun tl il => by cases tl <;> cases il <;> rfl)
 
+/-- **The typed exit-flag lowering preserves constant time**, in a leakage model classing
+    no leaf variable time: `haxToLowCTKT_ctL` with no marked call. -/
+theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) :
+    ExitCTT M bi N leafSpec br A R e :=
+  haxToLowCTKT_ctL M bi N leafSpec br A (fun g h => by rw [hvt g] at h; cases h) hL R e
+
 /-- **The typed lowered function preserves the leakage.** For a function body of the
     fragment `exitSimOkT A R` with exits at function level, two runs ending in a value
     from environments with equal source leakage, and two runs of `haxToLowCTFnT A e` from
-    states agreeing with them under `A`, have equal traces. -/
-theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    states agreeing with them under `A`, have equal traces, in a leakage model marking only
+    linked callees (`CalleeMarked`). -/
+theorem haxToLowCTFnT_leak_eqL (A : ExitTowers)
+    (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
     (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
@@ -2011,7 +2344,7 @@ theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
   | letU64Zero _ _ _ _ _ h₂ =>
   cases h₂ with
   | seq _ _ _ m₂ _ t0₂ tf₂ hc₂ hf₂ =>
-  obtain ⟨ht, hx⟩ := haxToLowCTKT_ct M bi N leafSpec br hvt A hL R e true (some exitFnSlot) fuel
+  obtain ⟨ht, hx⟩ := haxToLowCTKT_ctL M bi N leafSpec br A hvtL hL R e true (some exitFnSlot) fuel
     env₁ env₂ env₁' env₂' o₁ o₂ _ _ m₁ m₂ c0 x t0₁ t0₂ hok hctx hK0 hrun₁ hval₁ hrun₂ hval₂
     hag₁' hret₁' hag₂' hret₂' hL' hc₁ hc₂
   obtain ⟨hE₁, -⟩ := exitSimT_final hL hok hctx hK0 hrun₁ hval₁ hag₁' hret₁' hc₁
@@ -2026,6 +2359,23 @@ theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
     | ifTrue _ _ _ _ _ _ _ hv hv0 hs => cases hs; subst hv; simp [hv0, sexprLeak]
     | ifFalse _ _ _ _ _ _ h0 hs => cases hs; simp [h0]
   rw [ht, htail hf₁, htail hf₂, hf]
+
+/-- **The typed lowered function preserves the leakage**, in a leakage model classing no
+    leaf variable time: `haxToLowCTFnT_leak_eqL` with no marked call. -/
+theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) (c : LowCT)
+    (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
+    (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
+    (t₁ t₂ : List CTLeak)
+    (hrun₁ : (denote' bi fuel e).run env₁ = (o₁, env₁')) (hval₁ : ∃ v, o₁ = .val v)
+    (hrun₂ : (denote' bi fuel e).run env₂ = (o₂, env₂')) (hval₂ : ∃ v, o₂ = .val v)
+    (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    (hL' : srcLeak M bi e fuel env₁ = srcLeak M bi e fuel env₂)
+    (h₁ : RustExecLeak N leafSpec M c rs₁ t₁ r₁) (h₂ : RustExecLeak N leafSpec M c rs₂ t₂ r₂) :
+    t₁ = t₂ :=
+  haxToLowCTFnT_leak_eqL M bi N leafSpec br A (fun g h => by rw [hvt g] at h; cases h) hL R e c
+    hok hK fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
+    hL' h₁ h₂
 
 /-- **Source constant time implies constant time of the typed lowered function**, for
     runs whose source counterparts end in a value: two runs of `haxToLowCTFnT A e` from
@@ -2045,6 +2395,24 @@ theorem haxToLowCTFnT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
     t₁ = t₂ :=
   haxToLowCTFnT_leak_eq M bi N leafSpec br hvt A hL R e c hok hK fuel env₁ env₂ env₁' env₂' o₁ o₂
     rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
+    (hsrc fuel env₁ env₂ env₁' env₂' o₁ o₂ hpub hrun₁ hval₁ hrun₂ hval₂) h₁ h₂
+
+/-- `haxToLowCTFnT_ct` in a leakage model marking only linked callees (`CalleeMarked`). -/
+theorem haxToLowCTFnT_ctL (A : ExitTowers)
+    (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br A g)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
+    (R : ExitRes) (lt : LevelTable) (e : ImpExpr) (c : LowCT)
+    (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
+    (hsrc : SourceCT M bi lt e)
+    (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
+    (t₁ t₂ : List CTLeak) (hpub : PubEqEnv lt env₁ env₂)
+    (hrun₁ : (denote' bi fuel e).run env₁ = (o₁, env₁')) (hval₁ : ∃ v, o₁ = .val v)
+    (hrun₂ : (denote' bi fuel e).run env₂ = (o₂, env₂')) (hval₂ : ∃ v, o₂ = .val v)
+    (hag₁ : envAgreesT br A env₁ rs₁) (hag₂ : envAgreesT br A env₂ rs₂)
+    (h₁ : RustExecLeak N leafSpec M c rs₁ t₁ r₁) (h₂ : RustExecLeak N leafSpec M c rs₂ t₂ r₂) :
+    t₁ = t₂ :=
+  haxToLowCTFnT_leak_eqL M bi N leafSpec br A hvtL hL R e c hok hK fuel env₁ env₂ env₁' env₂'
+    o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
     (hsrc fuel env₁ env₂ env₁' env₂' o₁ o₂ hpub hrun₁ hval₁ hrun₂ hval₂) h₁ h₂
 
 /-- `haxToLowCTFnT_ct` for the function lowering `haxToLowCTFnI` under the inferred
