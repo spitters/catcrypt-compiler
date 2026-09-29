@@ -7,9 +7,9 @@ field elements or bit vectors. The largest results are about machine code that i
 actually linked: the x86 blocks of the Ed25519 implementation, and s2n-bignum's P-384
 Montgomery multiplication.
 
-The same calculus applied to hax-extracted Rust, the `FnCorres` judgement on `ImpExpr`
-with the generator `hax_ascend`, is in `CatCrypt/Hax/Ascent/` and described in
-[HAX_RUST.md](HAX_RUST.md#3-existing-rust--lean-the-ascent-on-impexpr).
+`CatCrypt/Hax/Ascent/` applies the same calculus to hax-extracted Rust, with the
+`FnCorres` judgement on `ImpExpr` and the generator `hax_ascend`;
+[HAX_RUST.md](HAX_RUST.md#3-existing-rust--lean-the-ascent-on-impexpr) describes it.
 [CORRECTNESS.md](CORRECTNESS.md) places the ascent beside the other two correctness
 techniques, descent and transfer, and lists the theorems that join them.
 

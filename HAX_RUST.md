@@ -72,9 +72,9 @@ two templates do.
 2. In a Lean module, `hax_ascend Ns` (`CatCrypt/Hax/Ascent/Coverage.lean`)
    reads the extraction in namespace `Ns`, builds its builtin table
    (`Ns.HaxGen.table`, `Ns.HaxGen.builtins`) and generates, per function `f`,
-   a shallow Lean function `Ns.HaxGen.«f».gen` with the `FnCorres` theorems
-   `Ns.HaxGen.«f».corres` (under the table of the functions before `f`) and
-   `Ns.HaxGen.«f».corres_full` (under the table of all functions).
+   a shallow Lean function `Ns.HaxGen.«f».gen`. It also declares the `FnCorres`
+   theorems `Ns.HaxGen.«f».corres`, under the table of the functions before `f`, and
+   `Ns.HaxGen.«f».corres_full`, under the table of all functions.
    `#hax_coverage Ns` lists the functions the generator does not cover. A function
    generic over a trait is specialised at the extraction's instances
    (`CatCrypt/Hax/Ascent/Monomorphise.lean`), and `Ns.HaxGen.«f».corres_generic`
