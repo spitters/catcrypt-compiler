@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.VIR.YmmSelect
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAllocSound
 public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
@@ -43,7 +43,15 @@ through `%rcx`.
 * `keccakYmm4Program`: the body, optionally passed through `YmmSelect.selectYmm`.
 * `keccakYmm4Asm`: allocation, materialization and the AT&T text.
 * `keccakYmm4Stats`: instruction and memory-access counts of the rendered kernel.
-* `keccakYmm4Checks`: EVEX spellability and frame-cell disjointness of the kernel.
+* `keccakYmm4Checks`: EVEX spellability, frame-cell disjointness and the
+  allocation check `YmmRegAllocSound.ymmAllocValidClosed` of the kernel.
+
+## Main results
+
+* `materialized_mem`: for an allocation that passes `ymmAllocValidClosed`, the
+  materialized kernel ends with the memory off the frame that `keccakYmm4Body`
+  ends with. `X4AllocEmit` evaluates the check before writing either render and
+  refuses to emit on `false`.
 -/
 
 @[expose] public section
@@ -56,6 +64,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.YmmSelect
 open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 open CatCrypt.Crypto.Optimizer.GenericRegAlloc
+open CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAllocSound
 
 /-! ## 1. Names -/
 
@@ -241,12 +250,33 @@ def keccakYmm4Stats (select : Bool) : Nat × Nat × Nat × Nat × Nat × Bool :=
   , ymmScratchNeeded d (keccakYmm4Program select), ymmAllPhysicalIn (regFile select) m )
 
 /-- `(the withheld scratch registers cover the spills, every instruction has an
-    EVEX spelling, frame cells are shared only across disjoint live ranges)` for
-    the kernel. -/
-def keccakYmm4Checks (select : Bool) : Bool × Bool × Bool :=
+    EVEX spelling, frame cells are shared only across disjoint live ranges, the
+    allocation passes `ymmAllocValidClosed`)` for the kernel. The last component
+    is the hypothesis of `YmmRegAllocSound.ymmMaterialize_sound_closed`. -/
+def keccakYmm4Checks (select : Bool) : Bool × Bool × Bool × Bool :=
   let a := allocation select
   ( ymmScratchNeeded a.2 (keccakYmm4Program select) ≤ a.1.length
   , (materialized select).all evexSpellable
-  , slotsReuseDisjoint (ranges select) a.2 )
+  , slotsReuseDisjoint (ranges select) a.2
+  , ymmAllocValidClosed a.2 a.1 (keccakYmm4Program select) )
+
+/-! ## 5. Correctness of the materialization -/
+
+/-- **The materialized kernel computes the permutation's memory**, for an
+    allocation that passes the check. Run from a physical state that agrees with
+    the virtual state on memory off the frame, the materialized program ends with
+    the memory off the frame that `keccakYmm4Body` ends with: the same output
+    lanes. The check `hv` is the fourth component of `keccakYmm4Checks`, which
+    `X4AllocEmit` evaluates before it writes the kernel and refuses to emit on
+    `false`; the instance is validated at emission, not by kernel evaluation here. -/
+theorem materialized_mem (select : Bool)
+    (hv : ymmAllocValidClosed (decisions select) (scratchUsed select)
+      (keccakYmm4Program select) = true)
+    (sv sp : YmmState)
+    (hmem : ∀ m : YmmMem, m.base ≠ ymmFrameBase → sp.mem m = sv.mem m)
+    (m : YmmMem) (hm : m.base ≠ ymmFrameBase) :
+    (ymmRun (materialized select) sp).mem m = (ymmRun keccakYmm4Body sv).mem m := by
+  rw [← keccakYmm4Program_mem select sv]
+  exact ymmMaterialize_sound_closed _ _ _ hv sv sp hmem m hm
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
