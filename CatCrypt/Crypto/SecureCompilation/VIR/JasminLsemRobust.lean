@@ -9,6 +9,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
 # Constant-time leakage over `lsem`, and the unconditional `correct ∧ robust`
+Scope: `lsemLeak` records index register names, not their values, and the CT hypotheses of the `owned_lsem_correct_and_robust_*` theorems are unused; "robust" here is correctness. Constant time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
+
 # capstone — increment 3 of porting jasmin's `lsem`
 
 Increment 1 (`JasminLsem.lean`) built the straight-line linear machine

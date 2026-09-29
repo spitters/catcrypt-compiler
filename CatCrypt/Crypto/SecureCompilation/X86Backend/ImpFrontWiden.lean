@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
 
 /-!
 # w6 — widening the source front from straight-line arith to {arith + loop + select}
+Scope: machine CT of this fragment is unconditional, so the `NoSecretControl` gate of `impSecureCompileU_constant_time` is not used by its proof; the typed hax front with `HaxExitTypedCT` and `LowCTMachineCT` supersedes this route.
+
 
 `ImpLowerCTDischarge.lean` lowers a NARROW source fragment (a right-nested
 `seq`-chain of `assign dst (app op [var a, var b])` for `op ∈ {add,mul,and,xor}`)

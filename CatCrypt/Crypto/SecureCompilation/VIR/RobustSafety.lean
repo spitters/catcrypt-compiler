@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 
 /-!
 # Robust safety preservation for the lattice → Jasmin lowering (RSP/RHP)
+Scope: `RobustlyCTSafe` is defined as the target predicate and the fragment has no loads or stores, so `robustCTPreservation` is identity preservation. Constant time of emitted code is `DecodedCT.bytesCTCheck_sound` at the bytes and `CryptoDialectCTLeak.catCT` at `Com`.
+
 
 This file builds the first **robust-compilation** artifact on the VIR `Com`
 substrate, in the Robust-Safety-Preservation (RSP) / Robust-Hyperproperty

@@ -22,6 +22,8 @@ public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
 # Pass Pipeline Orchestrator
+Scope: at this level the passes act as the identity on the CT predicate, so `optPipelineJ_isCT` holds by `rfl`; a per-pass leakage transformer is plan row CTP-5.
+
 
 Composes per-pass denotational-equivalence theorems into a single
 `pipeline_denote_eq` meta-theorem.  Lets passes compose without

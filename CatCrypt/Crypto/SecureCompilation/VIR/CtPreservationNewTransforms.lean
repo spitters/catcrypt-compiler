@@ -18,6 +18,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll
 
 /-!
 # CT preservation across the new `JForProg` Com→Com transforms
+Scope: the `applyRA_*_preserves_CT` results hold by `rfl`, since the transforms are the identity on the CT predicate at this level; a per-pass leakage transformer is plan row CTP-5.
+
 
 This file states preservation of the constant-time predicate `ctSafeJForProg`
 for two `JForProg` constructions:
