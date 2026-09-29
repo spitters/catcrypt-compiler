@@ -1288,6 +1288,18 @@ export fn sha3_256_jinc(reg u64 out in inlen) -> reg u64
   return out;
 }
 
+export fn sha3_512_jinc(reg u64 out in inlen) -> reg u64
+{
+  stack u64[25] st_s;
+  reg ptr u64[25] st;
+
+  st = st_s;
+  st = __state_init_ref(st);
+  st = __absorb_rt(st, in, inlen, SHA3, R72);
+  st, _ = __squeeze_m_ref(st, out, 64, R72);
+  return out;
+}
+
 export fn shake128_jinc(reg u64 out outlen in inlen) -> reg u64
 {
   stack u64[25] st_s;
@@ -1324,7 +1336,8 @@ def keccakSpongeUnit : String :=
 def keccakSpongePermSym : String := "_keccakf1600_ref"
 
 /-- The exported sponge symbols. -/
-def keccakSpongeSyms : List String := ["sha3_256_jinc", "shake128_jinc", "shake256_jinc"]
+def keccakSpongeSyms : List String :=
+  ["sha3_256_jinc", "sha3_512_jinc", "shake128_jinc", "shake256_jinc"]
 
 /-- The sponges and the permutation they call, each imported with its loops kept
     rolled and every call of `keccakSpongePermSym` kept as a call. -/
