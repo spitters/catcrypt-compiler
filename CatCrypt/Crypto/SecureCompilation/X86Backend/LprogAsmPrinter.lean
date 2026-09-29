@@ -682,6 +682,15 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         else
           [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s qsaveB ++ ", "
               ++ resolveOperand frame spillW 32 d qsaveB ]
+      -- `NEG d, s`: `d := 0 - s`, the one-operand `neg<sz> %d`, preceded by a copy of
+      -- `s` into `d` when they differ.
+      else if base == "NEG" then
+        let wN := mnemWidth opn
+        let dop := resolveOperand frame spillW wN d qsaveB
+        let sop := resolveOperand frame spillW wN s qsaveB
+        let negLine := "\tneg" ++ sizeSuffix wN ++ " " ++ dop
+        if sop == dop then [ negLine ]
+        else [ "\tmov" ++ sizeSuffix wN ++ " " ++ sop ++ ", " ++ dop, negLine ]
       else if (base == "MOV" || base == "MOVQ")
               && (match s with | .reg n => "XMM".isPrefixOf n | _ => false)
               && !isAnyMem d then

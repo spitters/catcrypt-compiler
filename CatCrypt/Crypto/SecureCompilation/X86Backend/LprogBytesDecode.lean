@@ -277,6 +277,26 @@ theorem decodeLinstr_movRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (h
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, bitsplit _ hs, if_true]
 
+/-- `NEG %d` (`REX.W F7 /3`) decodes to `neg d`. -/
+theorem decodeLinstr_neg (d : Nat) (rest : List (BitVec 8)) (hd : d < 16) :
+    decodeLinstr (ScalarEncoder.encUnaryF7 3 d ++ rest) = some (.op (.neg (regName d)), rest) := by
+  apply decodeLinstr_of_decodeJ1
+  simp only [ScalarEncoder.encUnaryF7, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    if_neg (show ¬(0xb8 ≤ (0xf7 : Nat) % 2 ^ 8 ∧ (0xf7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x89) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x81) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x69) by decide),
+    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc1) by decide),
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg,
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, ne_eq, not_true_eq_false,
+    if_false, if_true, show (3 : Nat) &&& 7 = 3 by decide]
+
 /-- `encRspMem` is the `[base + disp]` encoder at base `%rsp`. -/
 theorem encRspMem_eq_memTail (op r : Nat) (off : Int) :
     encRspMem 1 op r off

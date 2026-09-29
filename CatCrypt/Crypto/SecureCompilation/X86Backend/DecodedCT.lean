@@ -321,6 +321,12 @@ def frameWrite : JInstr 64 → Bool
   | .storeMem b _ _ | .addToMem b _ _ | .storeMemIdx b _ _ _ => b == "%rsp"
   | _ => false
 
+/-- `i` writes memory through a base other than `%rsp`: the writes `FrameSep` keeps apart
+    from the frame words. -/
+def sepWrite : JInstr 64 → Bool
+  | .storeMem b _ _ | .addToMem b _ _ | .storeMemIdx b _ _ _ => b != "%rsp"
+  | _ => false
+
 /-- The frame words at offsets `o` and `o'` do not overlap. -/
 def far (o o' : Int) : Bool := 8 ≤ (o - o').natAbs && (o - o').natAbs ≤ 2 ^ 64 - 8
 
@@ -332,6 +338,7 @@ def newRegs (P : PubA) : JInstr 64 → List String
   | .add d src | .sub d src | .and_ d src | .or_ d src | .xor_ d src
   | .shl d src | .shr d src | .sar d src =>
       if P.regs.contains d && opPub P src then [d] else []
+  | .neg d => if P.regs.contains d then [d] else []
   | _ => []
 
 /-- The public frame words after `i`, when `i` does not write `%rsp`. -/
@@ -456,11 +463,28 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
       rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
         hd, opPub_eval h.2 hag]
     · simp at hx
+  | neg d =>
+    simp only [newRegs] at hx
+    split at hx
+    · rename_i h
+      simp only [List.contains_iff_mem] at h
+      simp only [List.mem_singleton] at hx
+      subst hx
+      have hd : s₁.view.get x = s₂.view.get x := by simp [AState.view, hag.1 _ h]
+      simp only [evalInstr, JState.writeB5W, JState.get]
+      rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
+        hd]
+    · simp at hx
   | _ => simp [newRegs] at hx
 
 /-- **Soundness of one step.** Two states agreeing on `P`, each satisfying `FrameSep F`
     at `i`, with the frame words of `P` in `F`, agree on `stepA P i` after `i`. -/
-theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int} (hF : ∀ o ∈ P.cells, o ∈ F)
+theorem sepWrite_of_writeAddr {sa : AState} {i : JInstr 64} {a : BitVec 64}
+    (h : writeAddr sa i = some a) (hfw : frameWrite i = false) : sepWrite i = true := by
+  cases i <;> simp_all [writeAddr, frameWrite, sepWrite]
+
+theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int}
+    (hF : sepWrite i = true → ∀ o ∈ P.cells, o ∈ F)
     {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) (h₁ : FrameSep F s₁ i) (h₂ : FrameSep F s₂ i) :
     (stepA P i).Agree (evalInstrA s₁ i) (evalInstrA s₂ i) := by
   refine ⟨fun x hx => ?_, fun o ho => ?_, fun hf => ?_⟩
@@ -489,7 +513,8 @@ theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int} (hF : ∀ o ∈ P.
       -- a write not through `%rsp` misses every frame word of `F`
       have hpres : ∀ s : AState, FrameSep F s i → frameWrite i = false → ∀ o ∈ P.cells,
           cellAt (evalInstrA s i) o = cellAt s o := fun s hs hfw o ho =>
-        cellAt_preserved s i hrsp' o fun a ha => hs hfw a ha o (hF o ho)
+        cellAt_preserved s i hrsp' o fun a ha =>
+          hs hfw a ha o (hF (sepWrite_of_writeAddr ha hfw) o ho)
       cases i with
       | storeMem b off src =>
         simp only [newCells] at ho
@@ -593,10 +618,12 @@ theorem succOk_spec {A : List (Option PubA)} {s : Nat} {out : PubA}
 def stepBlock (a : PubA) (ops : List (JInstr 64)) : PubA := ops.foldl stepA a
 
 /-- Every instruction of a straight-line block passes `opOk` from the public set before
-    it, whose frame words are in `F`. -/
+    it, whose frame words are in `F` when the instruction writes through a base other
+    than `%rsp`. -/
 def blockOkA (r : DoitRegime) (F : List Int) : PubA → List (JInstr 64) → Bool
   | _, [] => true
-  | a, i :: is => a.cells.all F.contains && opOk r a i && blockOkA r F (stepA a i) is
+  | a, i :: is =>
+      (!sepWrite i || a.cells.all F.contains) && opOk r a i && blockOkA r F (stepA a i) is
 
 /-- **Soundness of the block check.** Two states agreeing on `a`, whose steps through
     the block satisfy `FrameSep F`, have equal block leakage and end agreeing on
@@ -610,7 +637,8 @@ theorem blockOkA_sound {r : DoitRegime} {F : List Int} :
   | i :: is, a, s₁, s₂, h, hag, ⟨h₁, hs₁⟩, ⟨h₂, hs₂⟩ => by
     simp only [blockOkA, Bool.and_eq_true] at h
     obtain ⟨⟨hF, hop⟩, hrest⟩ := h
-    have hF : ∀ o ∈ a.cells, o ∈ F := fun o ho => by
+    have hF : sepWrite i = true → ∀ o ∈ a.cells, o ∈ F := fun hsw o ho => by
+      simp only [hsw, Bool.not_true, Bool.false_or] at hF
       simpa using List.all_eq_true.mp hF o ho
     obtain ⟨hl, hA⟩ := blockOkA_sound is (stepA a i) hrest (stepA_sound a i hF hag h₁ h₂) hs₁ hs₂
     refine ⟨?_, hA⟩
@@ -701,7 +729,7 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
     | @op _ _ i' t₂ _ h' hok' hr' =>
       rw [h, Option.some.injEq, RInstr.op.injEq] at h'
       subst h'
-      obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle (stepA_sound a i hF hag hok hok')) hr'
+      obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle (stepA_sound a i (fun _ => hF) hag hok hok')) hr'
       rw [hown] at hs
       exact ⟨by rw [opLeak_eq hop hag, ht], hs⟩
   | @jcc pc s₁ cc tgt c t₁ s₁' h hcc hr ih =>
@@ -1009,10 +1037,13 @@ def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA
     | some .ret =>
       if !(X (own pc)).le a then some "ret: set not above the function's exit set" else none
     | some (.call t) =>
-      if !blockOkA r F a (callOps (pc + 1)) then some "call: secret stack pointer"
+      if !a.regs.contains "%rsp" then some "call: secret stack pointer"
+      else if !blockOkA r F a (callOps (pc + 1)) then some "call: the return-address push fails"
       else if !succOk A t (stepBlock a (callOps (pc + 1))) then
         some "call: no post-fixpoint at the callee entry"
-      else if !blockOkA r F (X (own t)) retOps then some "call: secret stack pointer at return"
+      else if !(X (own t)).regs.contains "%rsp" then
+        some "call: secret stack pointer in the callee's exit set"
+      else if !blockOkA r F (X (own t)) retOps then some "call: the return fails"
       else if !succOk A (pc + 1) (stepBlock (X (own t)) retOps) then
         some "call: no post-fixpoint after the return"
       else if own (pc + 1) != own pc then some "falls through into another function"

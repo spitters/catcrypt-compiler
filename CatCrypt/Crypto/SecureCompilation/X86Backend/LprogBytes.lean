@@ -1210,6 +1210,17 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                           encLoadIdx (gpNumU dn) (gpNumU bn) (gpNumU idxn) scale
                         else []
                     | _, _ => []
+                  -- `NEG [d] [s]` (`d := 0 - s`) at the 64-bit width: `REX.W F7 /3` on
+                  -- `d`, after a `mov s, d` (`REX.W 89 /r`) when the registers differ,
+                  -- as `renderLopn` prints it. Reached last, as `LEA` and `LOADIDX`.
+                  else if base == "NEG" then
+                    match d, s with
+                    | .reg dn, .reg sn =>
+                        if w = 1 && isGpName dn && isGpName sn then
+                          (if dn == sn then [] else encAluRRw 1 0x89 (gpNumU dn) (gpNumU sn))
+                            ++ ScalarEncoder.encUnaryF7 3 (gpNumU dn)
+                        else []
+                    | _, _ => []
                   else []
       | [d], [a, s] =>
           match s with
@@ -1791,6 +1802,7 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "SAR:16:64" [.reg "R8"], true)
   , (.Lopn [.reg "R8"] "CMOV:64" [.reg "RCX", .reg "RBX", .reg "RAX"], true)
   , (.Lopn [.reg "R8"] "SETC:64" [], true)
+  , (.Lopn [.reg "R8"] "NEG:64" [.reg "R8"], true)
   , (.Lopn [.reg "R8"] "ADCXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "MULXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
