@@ -77,8 +77,8 @@ variable {σ : Type}
 /-- One step of `prog` at `pc`: an `op` runs and advances, `ret` halts, a branch
     goes to its target when its condition holds on the view's flags and advances
     otherwise, and `push`/`pop` run their straight-line effect (`pushOps`, `popOps`)
-    and advance. A program counter outside `prog` or a nibble without a condition
-    is stuck. -/
+    and advance. A program counter outside `prog`, a nibble without a condition, and
+    a `call` are stuck. -/
 def step (M : Machine σ) (prog : List RInstr) (pc : Nat) (s : σ) : Option (Next σ) :=
   match prog[pc]? with
   | none => none
@@ -88,6 +88,7 @@ def step (M : Machine σ) (prog : List RInstr) (pc : Nat) (s : σ) : Option (Nex
       (condtOfNibble cc).map fun c => if (M.view s).condB c then .go t s else .go (pc + 1) s
   | some (.push r) => some (.go (pc + 1) ((LprogBytesDecode.pushOps r).foldl M.exec s))
   | some (.pop r) => some (.go (pc + 1) ((LprogBytesDecode.popOps r).foldl M.exec s))
+  | some (.call _) => none
 
 /-- Run `prog` from `pc` for at most `fuel` steps; the state at `ret`. -/
 def run (M : Machine σ) (prog : List RInstr) : Nat → Nat → σ → Option σ

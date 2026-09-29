@@ -211,6 +211,7 @@ theorem halts_runL (r : DoitRegime) {prog : List RInstr} {pc : Nat} {sa sa' : AS
       obtain ⟨rfl, rfl⟩ := hs
       rw [foldl_aMachine_exec] at ht
       exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
+    · simp at hs
 
 /-- `RunL` under a stronger side condition is `RunL` under a weaker one. -/
 theorem RunL.mono {r : DoitRegime} {ok ok' : AState → JInstr 64 → Prop} {prog : List RInstr}
@@ -293,7 +294,9 @@ def newRegs (P : PubA) : JInstr 64 → List String
   | .mov d src => if opPub P src then [d] else []
   | .loadMem d b o => if b == "%rsp" && P.cells.contains o then [d] else []
   | .lea d b x _ _ => if P.regs.contains b && P.regs.contains x then [d] else []
-  | .add d src | .sub d src => if P.regs.contains d && opPub P src then [d] else []
+  | .add d src | .sub d src | .and_ d src | .or_ d src | .xor_ d src
+  | .shl d src | .shr d src | .sar d src =>
+      if P.regs.contains d && opPub P src then [d] else []
   | _ => []
 
 /-- The public frame words after `i`, when `i` does not write `%rsp`. -/
@@ -371,19 +374,8 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
       subst hx
       simp [evalInstr, JState.setReg, AState.view, hag.1 _ h.1, hag.1 _ h.2]
     · simp at hx
-  | add d src =>
-    simp only [newRegs] at hx
-    split at hx
-    · rename_i h
-      simp only [Bool.and_eq_true, List.contains_iff_mem] at h
-      simp only [List.mem_singleton] at hx
-      subst hx
-      have hd : s₁.view.get x = s₂.view.get x := by simp [AState.view, hag.1 _ h.1]
-      simp only [evalInstr, JState.writeB5W, JState.get]
-      rw [show s₁.view.regs x = s₁.view.get x from rfl, show s₂.view.regs x = s₂.view.get x from rfl,
-        hd, opPub_eval h.2 hag]
-    · simp at hx
-  | sub d src =>
+  | add d src | sub d src | and_ d src | or_ d src | xor_ d src | shl d src | shr d src
+  | sar d src =>
     simp only [newRegs] at hx
     split at hx
     · rename_i h
@@ -548,6 +540,7 @@ def checkAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Opti
         blockOkA r F a (pushOps x) && succOk A (pc + 1) (stepBlock a (pushOps x))
     | some (.pop x) =>
         blockOkA r F a (popOps x) && succOk A (pc + 1) (stepBlock a (popOps x))
+    | some (.call _) => false
     | _ => true
 
 /-- The check at every index of `prog`. -/
@@ -817,6 +810,7 @@ def failAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Optio
       else if !succOk A (pc + 1) (stepBlock a (popOps x)) then
         some "no post-fixpoint at the successor"
       else none
+    | some (.call _) => some "call: no callee summary"
     | _ => none
 
 /-- The first index at which `bytesCTCheckAuto r P prog` fails, with the reason; `none`
@@ -866,6 +860,7 @@ def checkAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (O
         blockOkA r F a (pushOps x) && succOkA A (pc + 1) (stepBlock a (pushOps x))
     | some (.pop x) =>
         blockOkA r F a (popOps x) && succOkA A (pc + 1) (stepBlock a (popOps x))
+    | some (.call _) => false
     | _ => true
 
 theorem checkAtA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
@@ -976,6 +971,7 @@ def failAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Op
       else if !succOkA A (pc + 1) (stepBlock a (popOps x)) then
         some "no post-fixpoint at the successor"
       else none
+    | some (.call _) => some "call: no callee summary"
     | _ => none
 
 /-- The first failing index of `bytesCTCheckFast` with the reason, on the certificate

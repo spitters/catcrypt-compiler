@@ -1063,6 +1063,7 @@ def DShape.Straight : DShape → Prop
   | .one .skip => True
   | .one (.op _) => True
   | .one (.jcc _ _) => False
+  | .one (.call _) => False
   | .ops _ => True
 
 /-- The straight-line instructions of a list-valued shape. -/
@@ -1110,6 +1111,7 @@ theorem itemsFromL_opItems (P : Params) {b : Lcmd} {s : List DShape}
         | op x => exact ⟨by simp [OpItems, dItems, hlab, Shape.dec, Shape.target], by
             simp [opsOf, dItems, Shape.dec, DShape.ops']⟩
         | jcc _ _ => exact absurd hst id
+        | call _ => exact absurd hst id
       | ops pcs =>
         refine ⟨?_, ?_⟩
         · intro it hit

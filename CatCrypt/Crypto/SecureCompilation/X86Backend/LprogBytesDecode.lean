@@ -72,14 +72,16 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-- A decoded instruction: a straight-line `JInstr 64` over the canonical `%rN`
     names, a conditional branch carrying its SDM condition nibble and the signed
-    displacement from the end of the branch, `ret`, or `pushq`/`popq` of a
-    register. -/
+    displacement from the end of the branch, `ret`, `pushq`/`popq` of a
+    register, or a near `call` carrying its signed displacement from the end of
+    the call. -/
 inductive DInstr where
   | op (i : JInstr 64)
   | jcc (cc : Nat) (disp : Int)
   | ret
   | push (r : String)
   | pop (r : String)
+  | call (disp : Int)
 
 /-- `PUSH r64` (`50+r`) and `POP r64` (`58+r`) of the register numbered `n`, the opcode
     byte `op` selecting which; `%rsp` (`n = 4`) is rejected. -/
@@ -205,6 +207,10 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
               some (.op (.mov (regName (b0.toNat - 0xb8))
                 (.imm (i0.toNat + i1.toNat * 0x100 + i2.toNat * 0x10000
                   + i3.toNat * 0x1000000))), r)
+          | _ => none
+        else if b0.toNat = 0xe8 then
+          match rest with
+          | d0 :: d1 :: d2 :: d3 :: r => some (.call (sdisp32 d0 d1 d2 d3), r)
           | _ => none
         else none
 
@@ -688,6 +694,24 @@ theorem decodeLinstr_jcc32 (cc : String) (d : Int) (rest : List (BitVec 8))
     decodeLinstr (encJcc32 cc d ++ rest) = some (.jcc (ccNibble cc) d, rest) := by
   rw [decodeLinstr_jcc32_wrap, wrap32_of_dispOk32 d h]
 
+/-- `call rel32` (`E8 cd`) decodes to the call with the 32-bit wrap of its
+    displacement. -/
+theorem decodeLinstr_call32_wrap (d : Int) (rest : List (BitVec 8)) :
+    decodeLinstr (encCall32 d ++ rest) = some (.call (wrap32 d), rest) := by
+  simp only [encCall32, disp32LE, imm32LE, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append, decodeLinstr,
+    decodeJ1_6_of_not_rex (show isRex (BitVec.ofNat 8 0xe8) = false by decide)]
+  rw [show decodeJ1 (BitVec.ofNat 8 0xe8 :: _) = none from rfl]
+  simp only [BitVec.toNat_ofNat]
+  rw [sdisp32_imm32LE _ (BitVec.isLt (BitVec.ofInt 32 d)), BitVec.ofNat_toNat,
+    BitVec.setWidth_eq]
+  rfl
+
+/-- `call rel32` decodes to the call with its displacement, in range. -/
+theorem decodeLinstr_call32 (d : Int) (rest : List (BitVec 8)) (h : dispOk32 d = true) :
+    decodeLinstr (encCall32 d ++ rest) = some (.call d, rest) := by
+  rw [decodeLinstr_call32_wrap, wrap32_of_dispOk32 d h]
+
 /-- `ret` (`C3`) decodes to `ret`. -/
 theorem decodeLinstr_ret (rest : List (BitVec 8)) :
     decodeLinstr (LeafBytes.encRet ++ rest) = some (.ret, rest) := by
@@ -1049,14 +1073,15 @@ theorem decodeAt_of_decodeJStream :
 
 /-! ## 6. Branch resolution -/
 
-/-- A decoded program instruction: a branch carries the index of its target
-    instruction. -/
+/-- A decoded program instruction: a branch and a call carry the index of their
+    target instruction. -/
 inductive RInstr where
   | op (i : JInstr 64)
   | jcc (cc : Nat) (target : Nat)
   | ret
   | push (r : String)
   | pop (r : String)
+  | call (target : Nat)
 
 /-- The effect of `pushq r`: `%rsp` lowered by eight, then `r` stored at `[%rsp]`. -/
 def pushOps (r : String) : List (JInstr 64) :=
@@ -1086,6 +1111,10 @@ def resolveAll (xs : List (Nat × Nat × DInstr)) :
       | .jcc cc d =>
           match xs.findIdx? (fun y => decide ((y.1 : Int) = (e : Int) + d)) with
           | some j => (resolveAll xs rest).map (.jcc cc j :: ·)
+          | none => none
+      | .call d =>
+          match xs.findIdx? (fun y => decide ((y.1 : Int) = (e : Int) + d)) with
+          | some j => (resolveAll xs rest).map (.call j :: ·)
           | none => none
 
 /-- Decode a byte stream to a program with index-resolved branches. -/
@@ -1120,6 +1149,10 @@ def expectedFrom (all : List Item) : List Item → Option (List RInstr)
           match it.target.bind (fun l => labelPos l 0 0 all) with
           | some (j, _) => (expectedFrom all rest).map (.jcc cc j :: ·)
           | none => none
+      | some (.call _) =>
+          match it.target.bind (fun l => labelPos l 0 0 all) with
+          | some (j, _) => (expectedFrom all rest).map (.call j :: ·)
+          | none => none
 
 /-- Well-formedness of the branches of `items`, laid out from offset `off` inside
     `all`: every branch names a label that `all` defines, an instruction follows
@@ -1130,6 +1163,12 @@ def branchOK (all : List Item) : Nat → List Item → Bool
   | off, it :: rest =>
       (match it.dec with
         | some (.jcc _ d) =>
+            match it.target.bind (fun l => labelPos l 0 0 all) with
+            | some (j, t) =>
+                decide ((t : Int) = ((off + it.bytes.length : Nat) : Int) + d)
+                  && decide (j < decCount all)
+            | none => false
+        | some (.call d) =>
             match it.target.bind (fun l => labelPos l 0 0 all) with
             | some (j, t) =>
                 decide ((t : Int) = ((off + it.bytes.length : Nat) : Int) + d)
@@ -1303,6 +1342,29 @@ theorem resolveAll_layout (all : List Item) (hok : ∀ it ∈ all, ItemOK it) :
           have hfind := findIdx?_of_pairwise _ (layoutAt_pairwise all hok 0) j y hy
           rw [hy1, ht] at hfind
           simp only [layoutAt, expectedFrom, hdec, resolveAll, htgt, hfind, ih']
+      | call d =>
+        rw [hdec] at hhead
+        simp only at hhead
+        cases htgt : it.target.bind (fun l => labelPos l 0 0 all) with
+        | none => rw [htgt] at hhead; simp at hhead
+        | some p =>
+          obtain ⟨j, t⟩ := p
+          rw [htgt] at hhead
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hhead
+          obtain ⟨ht, hj⟩ := hhead
+          obtain ⟨l, _, hl⟩ :
+              ∃ l, it.target = some l ∧ labelPos l 0 0 all = some (j, t) := by
+            cases htg : it.target with
+            | none => rw [htg] at htgt; simp at htgt
+            | some l => exact ⟨l, rfl, by simpa [htg] using htgt⟩
+          have hlen := layoutAt_length all 0
+          obtain ⟨y, hy⟩ : ∃ y, (layoutAt 0 all)[j]? = some y := by
+            have : j < (layoutAt 0 all).length := by omega
+            exact ⟨_, List.getElem?_eq_getElem this⟩
+          have hy1 : y.1 = t := (layoutAt_labelPos l all hok 0 0 j t hl).2 y (by simpa using hy)
+          have hfind := findIdx?_of_pairwise _ (layoutAt_pairwise all hok 0) j y hy
+          rw [hy1, ht] at hfind
+          simp only [layoutAt, expectedFrom, hdec, resolveAll, htgt, hfind, ih']
 
 theorem decCount_le_bytes (items : List Item) (hok : ∀ it ∈ items, ItemOK it) :
     decCount items ≤ (itemBytes items).length := by
@@ -1342,16 +1404,19 @@ inductive Shape where
   | skip
   | op (i : JInstr 64)
   | jcc (cc : Nat) (l : LLabel)
+  | call (l : LLabel)
 
 /-- The decoded instruction of a shape under a displacement resolver. -/
 def Shape.dec : Shape → (LLabel → Int) → Option DInstr
   | .skip, _ => none
   | .op i, _ => some (.op i)
   | .jcc cc l, d => some (.jcc cc (wrap32 (d l)))
+  | .call l, d => some (.call (wrap32 (d l)))
 
-/-- The label a shape branches to. -/
+/-- The label a shape branches to or calls. -/
 def Shape.target : Shape → Option LLabel
   | .jcc _ l => some l
+  | .call l => some l
   | _ => none
 
 /-- The label an instruction defines. -/
@@ -1426,6 +1491,13 @@ theorem shapeOK_cond (P : Params) (cc : String) (l : LLabel) :
     rw [decodeLinstr_jcc8 cc (d l) rest hok,
       wrap32_of_dispOk32 _ (dispOk32_of_dispOk _ hok)]
   · exact decodeLinstr_jcc32_wrap cc (d l) rest
+
+/-- A call decodes to a call of its label (always the `rel32` form). -/
+theorem shapeOK_call (P : Params) (ra : Option String) (f : String) (l : LLabel) :
+    ShapeOK P (.Lcall ra (f, l)) (.call l) := by
+  intro d
+  refine ItemOK_of_decode fun rest => ?_
+  exact decodeLinstr_call32_wrap (d l) rest
 
 /-- A straight-line `Lopn` whose bytes are those of a decodable item has that
     item's shape. -/
