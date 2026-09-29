@@ -353,6 +353,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefRolledLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.ChaChaWholeKernelFront
 CatCrypt.Crypto.SecureCompilation.Dialects.ClmulVpshufbFrontValidate
+CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectCTLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceValued
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectVerifiedMiddle
