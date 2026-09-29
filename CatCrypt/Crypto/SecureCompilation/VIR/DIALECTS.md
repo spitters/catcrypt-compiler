@@ -106,6 +106,8 @@ The prime-ir op names are those the modules' docstrings cite.
 | `modArithDialect` (folded op `montInverse`) | `mod_arith.mont_inverse` | `VIR/ModArithMontInverse.lean`, `VIR/FoldedOpAgreement.lean` |
 | `ecConvertDialect` | `elliptic_curve.convert_point_type` (affine ↔ Jacobian) | `VIR/EcConvertOps.lean` |
 | `tensorExtDialect` | `tensor_ext.bit_reverse` | `VIR/TensorExtDialect.lean` |
+| `ringDialect` | `ring.*` (RNS `!ring.rq`: `add`, `sub`, `negate`, `mul`, `automorphism`, `rescale`, `base_convert`, `from/to_tensor`, `from/to_limbs`) | `VIR/RingDialect.lean` |
+| `edAffDialect` | `elliptic_curve.add/double/negate` and `convert_point_type` on `ed_affine` and `ed_extended` | `VIR/EcEdwardsAffineDialect.lean` |
 | `pairingCheckDialect` | `elliptic_curve.pairing_check` (`gtIsOne`, `pairingCheck2`, with a `publicData` flag) | `VIR/EcPairingCheckOps.lean`, `VIR/EcPairingCheckLowering.lean`, `VIR/Fp12Gt.lean` |
 
 `VIR/FoldedOpAgreement.lean` places seven ops in the two dialects that carry
@@ -126,6 +128,7 @@ A dialect's value type decides which lowerings can exist:
 | `pairingCheckDialect` | `Fp12Val p` | op level: `pairingCheck2_lower_denote` states that `pairingCheck2` denotes `gtIsOneF` of an `ext12Mul` product schedule in `fieldDialect` |
 | `cmpDialect` | booleans | `cmpLowering` into the shared-alphabet dialect `fieldCmpDialect` (`VIR/FieldCmpSum.lean`) |
 | `tensorExtDialect` | `Fin (2^k) → BitVec 64` | none |
+| `ringDialect` | residue arrays `(i : Fin L) → Fin n → ZMod (ms.get i)` | none |
 
 `fieldDialect` reaches jasmin through `Algebraic/FieldToJasminWord.lean`, outside
 the `VIR/` and `Dialects/` directories this file's edge table is drawn from.

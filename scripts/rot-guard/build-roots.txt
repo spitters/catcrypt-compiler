@@ -690,6 +690,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.RcongrLeafAutomation
 CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe
 CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocationReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.RejUniformCovered
+CatCrypt.Crypto.SecureCompilation.VIR.RingDialect
 CatCrypt.Crypto.SecureCompilation.VIR.RustExecSimulatesUnified
 CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered
 CatCrypt.Crypto.SecureCompilation.VIR.SailX86SimdDecoderVsimd
