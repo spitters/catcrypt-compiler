@@ -95,6 +95,29 @@ def decodeRexPushPop (r : BitVec 8) : List (BitVec 8) → Option (DInstr × List
   | op :: rest => if r.toNat = 0x41 then decodePushPop (8 + op.toNat % 8) op.toNat rest else none
   | [] => none
 
+/-- The BMI2 variable shift a VEX `pp` field selects: `01` `SHLX`, `11` `SHRX`, `10`
+    `SARX`. -/
+def shiftXOf (pp : Nat) : Option (String → String → String → JInstr 64) :=
+  if pp = 1 then some JInstr.shlx else if pp = 3 then some JInstr.shrx
+  else if pp = 2 then some JInstr.sarx else none
+
+/-- `SHLX`/`SHRX`/`SARX r64a, r64, r64b` after the leading `C4` of its three-byte VEX
+    prefix (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`, register-direct): the destination is
+    `ModRM.reg` extended by `R̄`, the shifted value `ModRM.rm` extended by `B̄`, the
+    count the inverted `vvvv`. -/
+def decodeShiftX : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
+  | v1 :: v2 :: op :: modrm :: rest =>
+      if op.toNat = 0xf7 ∧ v1.toNat &&& 31 = 2 ∧ (v2.toNat >>> 7) &&& 1 = 1
+          ∧ (v2.toNat >>> 2) &&& 1 = 0 ∧ modField modrm = 3 then
+        let rBit := 1 - ((v1.toNat >>> 7) &&& 1)
+        let bBit := 1 - ((v1.toNat >>> 5) &&& 1)
+        let cnt := regName (15 - ((v2.toNat >>> 3) &&& 15))
+        (shiftXOf (v2.toNat &&& 3)).map fun mk =>
+          (mk (regName (rBit * 8 + regField modrm)) (regName (bBit * 8 + rmField modrm)) cnt,
+            rest)
+      else none
+  | _ => none
+
 /-- The 64-bit value an `imm8` sign-extends to. -/
 def signExt8 (b : BitVec 8) : Nat := (b.signExtend 64).toNat
 
@@ -123,6 +146,10 @@ def decodeRexExt (r : BitVec 8) :
           | ib :: rest1 =>
               (aluImm8Mnemonic (regField modrm)).map
                 fun mk => (mk rm (.imm (signExt8 ib)), rest1)
+          | [] => none
+        else if op.toNat = 0x6b then
+          match rest with
+          | ib :: rest1 => some (.imulri reg rm (signExt8 ib), rest1)
           | [] => none
         else none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
@@ -166,6 +193,8 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
                 some (.jcc (o.toNat - 0x80) (sdisp32 d0 d1 d2 d3), r)
               else none
           | _ => none
+        else if b0.toNat = 0xc4 then
+          (decodeShiftX rest).map fun p => (.op p.1, p.2)
         else if isRex b0 then
           ((decodeRexExt b0 rest).map fun p => (.op p.1, p.2)).or (decodeRexPushPop b0 rest)
         else if 0x50 ≤ b0.toNat ∧ b0.toNat ≤ 0x5f then
@@ -370,8 +399,10 @@ theorem decodeLinstr_rex_of_none (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb
     cases rest with
     | nil => rfl
     | cons o t => simp only [decodeRexPushPop, if_neg h41]
+  have hc4 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0xc4) := by
+    rw [BitVec.toNat_ofNat]; unfold rex; omega
   simp only [decodeLinstr, h6, if_neg hc3, if_neg h7,
-    if_neg h0f, isRex_rex _ _ _ hr hx hb, if_true, hpp, Option.or_none]
+    if_neg h0f, if_neg hc4, isRex_rex _ _ _ hr hx hb, if_true, hpp, Option.or_none]
 
 /-- The reg-reg compare `CMP %s, %d` (`REX.W 39 /r`) decodes to `cmp d s`. -/
 theorem decodeLinstr_cmpRR (d s : Nat) (rest : List (BitVec 8)) (hd : d < 16) (hs : s < 16) :
@@ -432,6 +463,33 @@ theorem decodeLinstr_aluImm8 (digit : Nat) (mk : String → JOperand → JInstr 
     rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true, signExt8_imm8 v hv]
   rfl
 
+/-- The sign-extended-`imm8` multiply `imul $imm8, %d, %d` (`REX.W 6B /r ib`,
+    `encImulImm8w`) decodes to `imulri d d v`. -/
+theorem decodeLinstr_imulImm8 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hv : fitsImm8S 1 v = true) :
+    decodeLinstr (encImulImm8w 1 d v ++ rest)
+      = some (.op (.imulri (regName d) (regName d) v), rest) := by
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit d 3) 0 (bit d 3)))
+      (BitVec.ofNat 8 0x6b :: BitVec.ofNat 8 (modRMReg d d)
+        :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
+    simp [decodeRex, modField_modRMReg, aluMnemonic]
+  have hs : decodeShift1 (BitVec.ofNat 8 (rex 1 (bit d 3) 0 (bit d 3)) :: BitVec.ofNat 8 0x6b
+      :: BitVec.ofNat 8 (modRMReg d d) :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
+    simp [decodeShift1]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 (bit d 3) 0 (bit d 3)) :: BitVec.ofNat 8 0x6b
+      :: BitVec.ofNat 8 (modRMReg d d) :: BitVec.ofNat 8 (v &&& 0xff) :: rest) = none := by
+    simp [decodeCmp]
+  simp only [encImulImm8w, rexOpt_w1, List.cons_append, List.nil_append,
+    decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _) _ hnone
+      hs hc,
+    decodeRexExt, modField_modRMReg, regField_modRMReg, rmField_modRMReg,
+    BitVec.toNat_ofNat,
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
+    not_true_eq_false, if_false,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, if_true, signExt8_imm8 v hv]
+  rfl
+
 /-- The shift-by-one form `op $1, %d` (`REX.W D1 /ext`) at `ext = 4`, `5` or `7`
     decodes to `shl`, `shr` or `sar` by the immediate `1`. -/
 theorem decodeLinstr_shift1 (ext d : Nat) (rest : List (BitVec 8))
@@ -487,7 +545,8 @@ theorem decodeLinstr_movImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 8)
   have f4 : ¬ (0x40 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x4f) := by omega
   have f5 : (0xb8 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0xbf) := by omega
   have f6 : ¬ (0x50 ≤ 0xb8 + d ∧ 0xb8 + d ≤ 0x5f) := by omega
-  simp only [f1, f2, f3, f4, f5, f6, if_false, imm32LE_recompose v hv, Nat.add_sub_cancel_left,
+  have f7 : ¬ 0xb8 + d = 0xc4 := by omega
+  simp only [f1, f2, f3, f4, f5, f6, f7, if_false, imm32LE_recompose v hv, Nat.add_sub_cancel_left,
     decide_false, Bool.false_eq_true, and_self, if_true]
 
 /-- `REX.X` of a `REX.W` prefix. -/
@@ -650,7 +709,9 @@ theorem decodeLinstr_pushPop_bare (b : BitVec 8) (rest : List (BitVec 8))
   have f1 : ¬ b.toNat = 0xc3 := by omega
   have f2 : ¬ (0x70 ≤ b.toNat ∧ b.toNat ≤ 0x7f) := by omega
   have f3 : ¬ b.toNat = 0x0f := by omega
+  have f4 : ¬ b.toNat = 0xc4 := by omega
   simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, if_neg f1, if_neg f2, if_neg f3,
+    if_neg f4,
     hnr, if_pos hb, Bool.false_eq_true, if_false]
 
 /-- The `REX.B` prefix `41` before a byte `50`–`5F` is read by `decodePushPop` at
@@ -689,6 +750,54 @@ theorem decodeLinstr_push (r : String) (rest : List (BitVec 8)) (hr : r ∈ gpNa
        first
        | (rw [decodeLinstr_pushPop_rex41 _ _ (by decide)]; rfl)
        | (rw [decodeLinstr_pushPop_bare _ _ (by decide)]; rfl))
+
+/-- Bit 7 of a second VEX byte with `W = 1` and a two-bit `pp`. -/
+theorem vex2g_w (v pp : Nat) (hpp : pp < 4) :
+    (((128 + (15 - (v &&& 15)) * 8 + pp) % 2 ^ 8) >>> 7) &&& 1 = 1 := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 4, Nat.and_two_pow_sub_one_eq_mod _ 1,
+    Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- Bit 2 of a second VEX byte with a two-bit `pp` is `L = 0`. -/
+theorem vex2g_l (v pp : Nat) (hpp : pp < 4) :
+    (((128 + (15 - (v &&& 15)) * 8 + pp) % 2 ^ 8) >>> 2) &&& 1 = 0 := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 4, Nat.and_two_pow_sub_one_eq_mod _ 1,
+    Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- The low two bits of a second VEX byte are its `pp`. -/
+theorem vex2g_pp (v pp : Nat) (hpp : pp < 4) :
+    ((128 + (15 - (v &&& 15)) * 8 + pp) % 2 ^ 8) &&& 3 = pp := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 4, Nat.and_two_pow_sub_one_eq_mod _ 2]
+  omega
+
+/-- The inverted `vvvv` field of a second VEX byte recovers the register. -/
+theorem vex2g_vvvv (v pp : Nat) (hv : v < 16) (hpp : pp < 4) :
+    15 - ((((128 + (15 - (v &&& 15)) * 8 + pp) % 2 ^ 8) >>> 3) &&& 15) = v := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 4, Nat.and_two_pow_sub_one_eq_mod _ 4,
+    Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- `SHLX`/`SHRX`/`SARX` (`encShiftX ext dst src cnt`, `VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`)
+    at `ext = 4`, `5` or `7` decodes to `shlx`, `shrx` or `sarx` of `dst`, `src`,
+    `cnt`. -/
+theorem decodeLinstr_shiftX (ext dst src cnt : Nat) (rest : List (BitVec 8))
+    (hext : ext = 4 ∨ ext = 5 ∨ ext = 7) (hd : dst < 16) (hs : src < 16) (hc : cnt < 16) :
+    decodeLinstr (encShiftX ext dst src cnt ++ rest)
+      = some (.op ((if ext = 4 then JInstr.shlx else if ext = 5 then JInstr.shrx
+          else JInstr.sarx) (regName dst) (regName src) (regName cnt)), rest) := by
+  have hpp : shiftXpp ext < 4 := by unfold shiftXpp; split_ifs <;> omega
+  have hj : decodeJ1 (encShiftX ext dst src cnt ++ rest) = none := by
+    simp [encShiftX, encVex3RR, decodeJ1, decodeMulx]
+  have hnr : isRex (BitVec.ofNat 8 0xc4) = false := by decide
+  simp only [encShiftX, encVex3RR, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append] at hj ⊢
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, BitVec.toNat_ofNat,
+    decodeShiftX, vex1_map, vex2g_w _ _ hpp, vex2g_l _ _ hpp, vex2g_pp _ _ hpp,
+    vex2g_vvvv _ _ hc hpp, vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
+    vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hs]
+  rcases hext with rfl | rfl | rfl <;> simp [shiftXpp, shiftXOf]
 
 /-- `SETE`/`SETNE %d8` (`encSetccReg`, `0F 94`/`95 /0` with the byte-register `REX`)
     decodes to `setcc` of `d`, which writes the low byte and keeps the rest of the
