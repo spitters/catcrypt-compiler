@@ -27,11 +27,14 @@ on `IsCovered`. This module adds the control-flow arms, building
   `TranslateDialectDirectArms.loopCallNDestsD`).
 
 * **`RIfNz name thenBr elseBr`** — the φ-merge. Both branches are translated in
-  the entry context and merged by final-context shape: cases (A) (both
-  non-extending) and (B) (one extends) pass through one branch's `⟨Γ', vm⟩`;
-  case (C′) — both branches a `RScalarSet` on the *same* name — composes six
-  `ComCont.varBind`s (`thenV; elseV; zero; cond_eq; cond_bit; merged`); case
-  (C-otherwise) re-translates `elseBr` from the post-then `VarMap`.
+  the entry context. When neither translation binds anything (case (A)) the
+  arm emits nothing. When both branches are a `RScalarSet` on the *same* name
+  (case (C′)) it composes six `ComCont.varBind`s (`thenV; elseV; zero; cond_eq;
+  cond_bit; merged`), a select on the guard. Every other shape is declined:
+  `Com catCryptDialect` has no branch node, so a branch that binds cannot be
+  run only when the guard selects it. Such conditionals reach `Com` through
+  the guarded conversion (`TranslateDialectGuarded.translateDialectGuarded`)
+  or through the guard-indexed descent of `TranslateDialectCondDenote`.
 
 * **`RWhileNz name body`** — the data-dependent loop, gated on the guard being
   a bound scalar and on the body front-compiling, emitting a context-invariant
@@ -123,10 +126,10 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
                 if _h₂ : o₂.Γ' = Γ then
                   some { Γ' := o₁.Γ', cont := o₁.cont, vm := o₁.vm }
                 else
-                  some { Γ' := o₂.Γ', cont := o₂.cont, vm := o₂.vm }
+                  none
               else
                 if _h₂ : o₂.Γ' = Γ then
-                  some { Γ' := o₁.Γ', cont := o₁.cont, vm := o₁.vm }
+                  none
                 else
                   match asSingleScalarSet thenBr, asSingleScalarSet elseBr with
                   | some thenSet, some elseSet =>
@@ -180,19 +183,8 @@ def translateDialectControl {Γ : Ctx} (vm : VarMap Γ) :
                               (t := .bit)).bind (t := .sword 64) thenSet.name
                         some { Γ' := Γ₆, cont := pre, vm := vm'' }
                       else
-                        match translateDialectControl o₁.vm elseBr with
-                        | some o₂' =>
-                            some { Γ' := o₂'.Γ',
-                                   cont := ComCont.comp o₁.cont o₂'.cont,
-                                   vm := o₂'.vm }
-                        | none => none
-                  | _, _ =>
-                      match translateDialectControl o₁.vm elseBr with
-                      | some o₂' =>
-                          some { Γ' := o₂'.Γ',
-                                 cont := ComCont.comp o₁.cont o₂'.cont,
-                                 vm := o₂'.vm }
-                      | none => none
+                        none
+                  | _, _ => none
           | _, _ => none
       | _ => none
   | .RWhileNz name body =>

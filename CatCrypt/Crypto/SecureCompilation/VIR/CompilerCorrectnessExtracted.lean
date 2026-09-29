@@ -332,7 +332,11 @@ of the covered `LowCT` arms, whose per-op waist is exactly what the emitted
 dialect op denotes by (opaque leaves ↦ `CryptoTy.default`, dynamic array ops
 ↦ `memGetDyn`/`memSetDyn`, `SExpr` assignments ↦ the wrapping-u64
 `SExpr.evalBV`, `RFor` ↦ the per-trip fold, `RIfNz` ↦ the φ-merge select).
-It differs from `RustExec` at the following two points:
+`semScalar` runs a conditional only in the φ-merge shape (both branches a
+`RScalarSet` on one name), where it selects the branch the guard picks, as
+`RustExec` does; on every other conditional it has no run, and the front
+declines every other conditional whose branches bind. It differs from
+`RustExec` at the following two points:
 
 1. **opaque leaf calls** — `RustExec` resolves each `RCall` through the
    `leafSpec` **oracle** (`leafSpec.call …`), while the dialect — and hence

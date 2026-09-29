@@ -38,17 +38,25 @@ and `halts_runL` covers the call-free `RInstrSemantics.Halts`.
 
 `PubA` is a set of public locations: registers, words `%rsp + o` of the frame given by
 their offsets `o`, and the flags. `stepA P i` is the public set after `i`: a register is
-public after a `mov` of a public operand, a `lea` of public registers, an `add`/`sub` of
-public operands, or a load of a public frame word; a frame word after a store of a public
-operand through `%rsp`; the flags after a `cmp` of public operands.
+public after a `mov` of a public operand, a `lea` of public registers, a two-address
+arithmetic, logical or shift operation of public operands, or a load of a public frame
+word; a frame word after a store of a public operand through `%rsp`, and at offset `o - k`
+after `lea k(%rsp), %rsp` when it was public at `o`; the flags after a `cmp` of public
+operands.
 
-`checkCert r F prog A` checks a certificate `A` (a public set per index, `none` for an
-index the analysis does not reach): at each index with a public set, every frame word
-public there is in `F`; an `op` is quiet under `r` and accesses memory through public base
-and index registers, and its successor's set is below `stepA`; a `jcc` reads public flags
-and both successors' sets are below the current one. `infer prog P` computes a certificate
-by a forward analysis, and `bytesCTCheck r F P prog` checks it with the entry set below
-`P`.
+`checkCert r F own X prog A` checks a certificate `A` (a public set per index, `none` for
+an index the analysis does not reach) under an owner map `own` (the entry of the function
+each index belongs to) and exit sets `X` (one per function entry): at each index with a
+public set, every frame word public there is in `F`; an `op` is quiet under `r` and
+accesses memory through public base and index registers, and its successor's set is below
+`stepA`; a `jcc` reads public flags and both successors' sets are below the current one;
+every non-call successor has the owner of its predecessor; a `ret` is above the exit set
+of its owner. A `call t` is checked against a callee summary: `callOps` are checked,
+the callee entry `t` is below the set after them, and the successor is below the set
+`retOps` leave from the exit set of `t`'s owner. `infer prog P` computes a certificate by
+a forward analysis, and `bytesCTCheck r F P prog` checks it with the entry set below `P`,
+the owners of the call targets (`ownerOf`) and the exit sets of the certificate
+(`exitSet`).
 
 ## Separation
 
@@ -60,6 +68,9 @@ word `%rsp + o`, `o ∈ F`. The soundness theorems hold for runs whose steps all
 
 ## Main results
 
+* `checkCert_sound`: under a passing certificate, two runs from an index, from states
+  agreeing on its set, have equal traces and end agreeing on the exit set of the index's
+  function; the `call` case composes the callee's run through that exit set.
 * `bytesCTCheck_sound`: if `bytesCTCheck r F P prog` holds, two runs of `prog` from states
   agreeing on `P`, whose steps satisfy `FrameSep F`, have equal leakage traces.
 * `bytesCTCheckFast_sound`: the same for the array form of the decision.
@@ -330,10 +341,18 @@ def newCells (P : PubA) : JInstr 64 → List Int
       else P.cells
   | i => if frameWrite i then [] else P.cells
 
+/-- The displacement `k` of the frame adjustment `lea k(%rsp), %rsp`: the one write of
+    `%rsp` under which every frame word keeps its value, at an offset shifted by `-k`. -/
+def rspShift : JInstr 64 → Option Int
+  | .lea d b _ sc k => if d = "%rsp" ∧ b = "%rsp" ∧ sc = 0 then some k else none
+  | _ => none
+
 /-- The public set after `i`. -/
 def stepA (P : PubA) (i : JInstr 64) : PubA where
   regs := newRegs P i ++ P.regs.filter (fun x => !(dstRegs i).contains x)
-  cells := if (dstRegs i).contains "%rsp" then [] else newCells P i
+  cells := match rspShift i with
+    | some k => P.cells.map (· - k)
+    | none => if (dstRegs i).contains "%rsp" then [] else newCells P i
   flags := match i with
     | .cmp a o => P.regs.contains a && opPub P o
     | .cmpMem a b o => P.regs.contains a && b == "%rsp" && P.cells.contains o
@@ -364,6 +383,31 @@ theorem cellAt_preserved (sa : AState) (i : JInstr 64) (hrsp : "%rsp" ∉ dstReg
   · rename_i a ha
     exact read64_write64_of_disjoint _ _ _ _ (hsep a ha)
   · rfl
+
+theorem rspShift_eq {i : JInstr 64} {k : Int} (h : rspShift i = some k) :
+    ∃ x, i = .lea "%rsp" "%rsp" x 0 k := by
+  cases i with
+  | lea d b x sc k' =>
+    simp only [rspShift] at h
+    split at h
+    · rename_i hc
+      obtain ⟨rfl, rfl, rfl⟩ := hc
+      simp only [Option.some.injEq] at h
+      subst h
+      exact ⟨x, rfl⟩
+    · simp at h
+  | _ => simp [rspShift] at h
+
+/-- After `lea k(%rsp), %rsp` the frame word at offset `o - k` is the word that was at
+    offset `o`. -/
+theorem cellAt_rspShift (sa : AState) (x : String) (k o : Int) :
+    cellAt (evalInstrA sa (.lea "%rsp" "%rsp" x 0 k)) (o - k) = cellAt sa o := by
+  have ho : BitVec.ofInt 64 o = BitVec.ofInt 64 k + BitVec.ofInt 64 (o - k) := by
+    rw [← BitVec.ofInt_add]
+    congr 1
+    omega
+  simp [cellAt, evalInstrA, writeAddr, evalInstr, JState.setReg, JState.get, x86_LEA,
+    AState.view, ho, BitVec.add_assoc]
 
 theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.Agree s₁ s₂) :
     ∀ x ∈ newRegs P i, (evalInstrA s₁ i).regs x = (evalInstrA s₂ i).regs x := by
@@ -427,6 +471,17 @@ theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int} (hF : ∀ o ∈ P.
       rw [evalInstrA_regs_of_not_dst _ _ _ hnd, evalInstrA_regs_of_not_dst _ _ _ hnd]
       exact hag.1 x hx
   · simp only [stepA] at ho
+    cases hsh : rspShift i with
+    | some k =>
+      rw [hsh] at ho
+      obtain ⟨x, rfl⟩ := rspShift_eq hsh
+      simp only [List.mem_map] at ho
+      obtain ⟨o', ho', rfl⟩ := ho
+      rw [cellAt_rspShift, cellAt_rspShift]
+      exact hag.2.1 o' ho'
+    | none =>
+    rw [hsh] at ho
+    simp only at ho
     split at ho
     · simp at ho
     · rename_i hrsp
@@ -561,31 +616,44 @@ theorem blockOkA_sound {r : DoitRegime} {F : List Int} :
     refine ⟨?_, hA⟩
     simp only [blockLeakA, opLeak_eq hop hag, hl]
 
-/-- The check at index `pc`. -/
-def checkAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Option PubA))
-    (pc : Nat) : Bool :=
+/-- The check at index `pc`, under the owner map `own` (the entry index of the function
+    each index belongs to) and the exit sets `X` (the public set at every `ret` of the
+    function with entry `e` is above `X e`). A non-call successor has the owner of `pc`;
+    a `ret` is above the exit set of its owner; a `call t` runs `callOps`, enters `t`
+    below the set after them, and continues after `retOps` from the exit set of `t`'s
+    owner. -/
+def checkAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Bool :=
   match certAt A pc with
   | none => true
   | some a => a.cells.all F.contains &&
     match prog[pc]? with
-    | some (.op i) => opOk r a i && succOk A (pc + 1) (stepA a i)
+    | some (.op i) => opOk r a i && succOk A (pc + 1) (stepA a i) && own (pc + 1) == own pc
     | some (.jcc cc t) =>
         a.flags && (condtOfNibble cc).isSome && succOk A t a && succOk A (pc + 1) a
+          && own t == own pc && own (pc + 1) == own pc
     | some (.push x) =>
         blockOkA r F a (pushOps x) && succOk A (pc + 1) (stepBlock a (pushOps x))
+          && own (pc + 1) == own pc
     | some (.pop x) =>
         blockOkA r F a (popOps x) && succOk A (pc + 1) (stepBlock a (popOps x))
-    | some (.call _) => false
-    | _ => true
+          && own (pc + 1) == own pc
+    | some .ret => (X (own pc)).le a
+    | some (.call t) =>
+        blockOkA r F a (callOps (pc + 1)) && succOk A t (stepBlock a (callOps (pc + 1)))
+          && blockOkA r F (X (own t)) retOps
+          && succOk A (pc + 1) (stepBlock (X (own t)) retOps) && own (pc + 1) == own pc
+    | none => true
 
 /-- The check at every index of `prog`. -/
-def checkCert (r : DoitRegime) (F : List Int) (prog : List RInstr)
-    (A : List (Option PubA)) : Bool :=
-  (List.range prog.length).all (checkAt r F prog A)
+def checkCert (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : List RInstr) (A : List (Option PubA)) : Bool :=
+  (List.range prog.length).all (checkAt r F own X prog A)
 
-theorem checkAt_of_checkCert {r : DoitRegime} {F : List Int} {prog : List RInstr}
-    {A : List (Option PubA)} (hc : checkCert r F prog A = true) {pc : Nat} {x : RInstr}
-    (hx : prog[pc]? = some x) : checkAt r F prog A pc = true := by
+theorem checkAt_of_checkCert {r : DoitRegime} {F : List Int} {own : Nat → Nat}
+    {X : Nat → PubA} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F own X prog A = true) {pc : Nat} {x : RInstr}
+    (hx : prog[pc]? = some x) : checkAt r F own X prog A pc = true := by
   have hlt : pc < prog.length := (List.getElem?_eq_some_iff.mp hx).1
   exact List.all_eq_true.mp hc pc (List.mem_range.mpr hlt)
 
@@ -594,19 +662,25 @@ theorem condB_eq {s₁ s₂ : AState} (h : s₁.flags = s₂.flags) (c : Condt) 
   unfold JState.condB JState.flagB
   simp [AState.view, h]
 
-/-- **Soundness of a certificate.** If `checkCert r F prog A` holds, two runs of `prog`
-    from index `pc`, whose steps satisfy `FrameSep F`, from states agreeing on the set the
-    certificate assigns to `pc`, have equal traces. -/
-theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
-    {A : List (Option PubA)} (hc : checkCert r F prog A = true) {pc : Nat} {s₁ : AState}
+/-- **Soundness of a certificate.** If `checkCert r F own X prog A` holds, two runs of
+    `prog` from index `pc`, whose steps satisfy `FrameSep F`, from states agreeing on the
+    set the certificate assigns to `pc`, have equal traces and end in states agreeing on
+    the exit set `X (own pc)` of the function containing `pc`. -/
+theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X : Nat → PubA}
+    {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCert r F own X prog A = true) {pc : Nat} {s₁ : AState}
     {t₁ : List CTLeak} {s₁' : AState} (h₁ : RunL r (FrameSep F) prog pc s₁ t₁ s₁') :
     ∀ {a : PubA} {s₂ : AState} {t₂ : List CTLeak} {s₂' : AState}, certAt A pc = some a →
-      a.Agree s₁ s₂ → RunL r (FrameSep F) prog pc s₂ t₂ s₂' → t₁ = t₂ := by
+      a.Agree s₁ s₂ → RunL r (FrameSep F) prog pc s₂ t₂ s₂' →
+        t₁ = t₂ ∧ (X (own pc)).Agree s₁' s₂' := by
   induction h₁ with
-  | ret h =>
-    intro a s₂ t₂ s₂' _ _ h₂
+  | @ret pc s₁ h =>
+    intro a s₂ t₂ s₂' hA hag h₂
     cases h₂ with
-    | ret => rfl
+    | ret =>
+      have hck := checkAt_of_checkCert hc h
+      simp only [checkAt, hA, h, Bool.and_eq_true] at hck
+      exact ⟨rfl, PubA.agree_of_le hck.2 hag⟩
     | op h' => simp_all
     | jcc h' => simp_all
     | stack h' hops' => simp_all [RInstr.stackOps?]
@@ -614,8 +688,8 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
   | @op pc s₁ i t₁ s₁' h hok hr ih =>
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
-    simp only [checkAt, hA, h, Bool.and_eq_true] at hck
-    obtain ⟨hF, hop, hsucc⟩ := hck
+    simp only [checkAt, hA, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨hF, ⟨hop, hsucc⟩, hown⟩ := hck
     have hF : ∀ o ∈ a.cells, o ∈ F := fun o ho => by
       simpa using List.all_eq_true.mp hF o ho
     obtain ⟨b, hb, hle⟩ := succOk_spec hsucc
@@ -627,14 +701,14 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
     | @op _ _ i' t₂ _ h' hok' hr' =>
       rw [h, Option.some.injEq, RInstr.op.injEq] at h'
       subst h'
-      rw [opLeak_eq hop hag]
-      congr 1
-      exact ih hb (PubA.agree_of_le hle (stepA_sound a i hF hag hok hok')) hr'
+      obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle (stepA_sound a i hF hag hok hok')) hr'
+      rw [hown] at hs
+      exact ⟨by rw [opLeak_eq hop hag, ht], hs⟩
   | @jcc pc s₁ cc tgt c t₁ s₁' h hcc hr ih =>
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
-    simp only [checkAt, hA, h, Bool.and_eq_true] at hck
-    obtain ⟨_, ⟨⟨hfl, _⟩, hst⟩, hsn⟩ := hck
+    simp only [checkAt, hA, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨_, ⟨⟨⟨⟨⟨hfl, _⟩, hst⟩, hsn⟩, hot⟩, hon⟩⟩ := hck
     cases h₂ with
     | ret h' => simp_all
     | op h' => simp_all
@@ -646,22 +720,26 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
       rw [hcc, Option.some.injEq] at hcc'
       subst hcc'
       have hcb := condB_eq (hag.2.2 hfl) c
-      rw [hcb]
-      congr 1
       by_cases hcnd : s₂.view.condB c = true
       · obtain ⟨b, hb, hle⟩ := succOk_spec hst
         simp only [hcb, hcnd, if_true] at ih hr'
-        exact ih hb (PubA.agree_of_le hle hag) hr'
+        obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
+        rw [hot] at hs
+        exact ⟨by rw [hcb, ht], hs⟩
       · obtain ⟨b, hb, hle⟩ := succOk_spec hsn
         simp only [hcb, hcnd, if_false, Bool.false_eq_true] at ih hr'
-        exact ih hb (PubA.agree_of_le hle hag) hr'
+        obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
+        rw [hon] at hs
+        exact ⟨by rw [hcb, ht], hs⟩
   | @stack pc s₁ ri ops t₁ s₁' h hops hok hr ih =>
     intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
-    have key : blockOkA r F a ops = true ∧ succOk A (pc + 1) (stepBlock a ops) = true := by
+    have key : (blockOkA r F a ops = true ∧ succOk A (pc + 1) (stepBlock a ops) = true)
+        ∧ own (pc + 1) = own pc := by
       cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq, Option.some.injEq] at hops <;>
-        subst hops <;> simp only [checkAt, hA, h, Bool.and_eq_true] at hck <;> exact hck.2
-    obtain ⟨hbk, hsucc⟩ := key
+        subst hops <;> simp only [checkAt, hA, h, Bool.and_eq_true, beq_iff_eq] at hck <;>
+        exact hck.2
+    obtain ⟨⟨hbk, hsucc⟩, hown⟩ := key
     obtain ⟨b, hb, hle⟩ := succOk_spec hsucc
     cases h₂ with
     | ret h' =>
@@ -678,13 +756,30 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
       rw [hops, Option.some.injEq] at hops'
       subst hops'
       obtain ⟨hl, hag'⟩ := blockOkA_sound ops a hbk hag hok hok'
-      rw [hl]
-      congr 1
-      exact ih hb (PubA.agree_of_le hle hag') hr'
-  | call h =>
-    intro a s₂ t₂ s₂' hA _ _
+      obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag') hr'
+      rw [hown] at hs
+      exact ⟨by rw [hl, ht], hs⟩
+  | @call pc tgt s₁ sc₁ tc₁ tr₁ s₁' h hok hcal hokr hret ihc ihr =>
+    intro a s₂ t₂ s₂' hA hag h₂
     have hck := checkAt_of_checkCert hc h
-    simp [checkAt, hA, h] at hck
+    simp only [checkAt, hA, h, Bool.and_eq_true, beq_iff_eq] at hck
+    obtain ⟨_, ⟨⟨⟨⟨hbk, hsc⟩, hbr⟩, hsr⟩, hown⟩⟩ := hck
+    cases h₂ with
+    | ret h' => simp_all
+    | op h' => simp_all
+    | jcc h' => simp_all
+    | stack h' hops' => simp_all [RInstr.stackOps?]
+    | @call _ tgt' _ sc₂ tc₂ tr₂ _ h' hok' hcal' hokr' hret' =>
+      rw [h, Option.some.injEq, RInstr.call.injEq] at h'
+      subst h'
+      obtain ⟨hl1, hag1⟩ := blockOkA_sound _ a hbk hag hok hok'
+      obtain ⟨b, hb, hle⟩ := succOk_spec hsc
+      obtain ⟨htc, hX⟩ := ihc hb (PubA.agree_of_le hle hag1) hcal'
+      obtain ⟨hl2, hag2⟩ := blockOkA_sound _ _ hbr hX hokr hokr'
+      obtain ⟨b', hb', hle'⟩ := succOk_spec hsr
+      obtain ⟨htr, hs⟩ := ihr hb' (PubA.agree_of_le hle' hag2) hret'
+      rw [hown] at hs
+      exact ⟨by rw [hl1, htc, hl2, htr], hs⟩
 
 /-! ## 5. Inference and the decision -/
 
@@ -697,38 +792,90 @@ def meetO : Option PubA → PubA → Option PubA
   | none, b => some b
   | some a, b => some (meetA a b)
 
-/-- The successors of index `pc` with the public set each receives from `a`. -/
-def succs (prog : List RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
+/-- The targets of the calls of `prog`: the entries of its callees. -/
+def callTargets (prog : List RInstr) : List Nat :=
+  prog.filterMap fun x => match x with
+    | .call t => some t
+    | _ => none
+
+/-- The owner of index `pc` among the function entries `entries`: the greatest entry at
+    or below `pc`, else `0`. The functions of a linked program lie contiguously from
+    their entries; `checkAt` checks that every non-call edge keeps its owner. -/
+def ownerOf (entries : List Nat) (pc : Nat) : Nat :=
+  entries.foldl (fun m t => if t ≤ pc ∧ m < t then t else m) 0
+
+/-- The meet of the public sets `A` assigns to the reached `ret`s owned by entry `e`,
+    `none` when there is none. -/
+def exitSet? (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA)) (e : Nat) :
+    Option PubA :=
+  (List.range prog.length).foldl (fun acc pc =>
+    match prog[pc]?, certAt A pc with
+    | some RInstr.ret, some a => if own pc = e then meetO acc a else acc
+    | _, _ => acc) none
+
+/-- The exit set of the function with entry `e`: `exitSet?`, nothing public when it has
+    no reached `ret`. -/
+def exitSet (prog : List RInstr) (own : Nat → Nat) (A : List (Option PubA)) (e : Nat) :
+    PubA :=
+  (exitSet? prog own A e).getD ⟨[], [], false⟩
+
+/-- The successors of index `pc` with the public set each receives from `a`, under the
+    owner map `own` and the partial exit sets `X?`. A call's return edge is added once
+    its callee has a reached `ret`. -/
+def succs (own : Nat → Nat) (X? : Nat → Option PubA) (prog : List RInstr) (pc : Nat)
+    (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
   | some (.push x) => [(pc + 1, stepBlock a (pushOps x))]
   | some (.pop x) => [(pc + 1, stepBlock a (popOps x))]
+  | some (.call t) =>
+      (t, stepBlock a (callOps (pc + 1))) ::
+        match X? (own t) with
+        | some x => [(pc + 1, stepBlock x retOps)]
+        | none => []
   | _ => []
 
+/-- `a` with its frame words restricted to those `keep` accepts. -/
+def restrictCells (keep : Int → Bool) (a : PubA) : PubA := { a with cells := a.cells.filter keep }
+
 /-- One forward pass over the indices of `prog`, meeting each successor's set with what
-    it receives. -/
-def sweep (prog : List RInstr) (A : List (Option PubA)) : List (Option PubA) :=
+    it receives, its frame words restricted to `keep`. -/
+def sweep (keep : Int → Bool) (prog : List RInstr) (A : List (Option PubA)) :
+    List (Option PubA) :=
+  let own := ownerOf (callTargets prog)
+  let X? := exitSet? prog own A
   (List.range prog.length).foldl (fun A pc =>
     match certAt A pc with
     | none => A
-    | some a => (succs prog pc a).foldl (fun A so => A.set so.1 (meetO (certAt A so.1) so.2)) A)
+    | some a =>
+        (succs own X? prog pc a).foldl (fun A so =>
+          A.set so.1 (meetO (certAt A so.1) (restrictCells keep so.2))) A)
     A
 
 /-- Passes until a pass changes nothing, at most `fuel` of them. -/
-def sweepFix (prog : List RInstr) : Nat → List (Option PubA) → List (Option PubA)
+def sweepFix (keep : Int → Bool) (prog : List RInstr) :
+    Nat → List (Option PubA) → List (Option PubA)
   | 0, A => A
-  | fuel + 1, A => let A' := sweep prog A; if A' = A then A else sweepFix prog fuel A'
+  | fuel + 1, A =>
+    let A' := sweep keep prog A; if A' = A then A else sweepFix keep prog fuel A'
+
+/-- The certificate the forward analysis computes from the entry set `P`, keeping the
+    frame words `keep` accepts. -/
+def inferIn (keep : Int → Bool) (prog : List RInstr) (P : PubA) : List (Option PubA) :=
+  sweepFix keep prog prog.length ((List.replicate prog.length none).set 0 (some P))
 
 /-- The certificate the forward analysis computes from the entry set `P`. -/
 def infer (prog : List RInstr) (P : PubA) : List (Option PubA) :=
-  sweepFix prog prog.length ((List.replicate prog.length none).set 0 (some P))
+  inferIn (fun _ => true) prog P
 
-/-- **The decision.** The inferred certificate assigns the entry a set below `P` and
-    passes `checkCert`. -/
+/-- **The decision.** The certificate inferred within the frame words `F` assigns the
+    entry a set below `P` and passes `checkCert` under the owners of the call targets
+    and the exit sets of the certificate. -/
 def bytesCTCheck (r : DoitRegime) (F : List Int) (P : PubA) (prog : List RInstr) : Bool :=
-  let A := infer prog P
-  succOk A 0 P && checkCert r F prog A
+  let A := inferIn F.contains prog P
+  let own := ownerOf (callTargets prog)
+  succOk A 0 P && checkCert r F own (exitSet prog own A) prog A
 
 /-- **Soundness of the decision.** If `bytesCTCheck r F P prog` holds, two runs of `prog`
     from index `0` whose steps satisfy `FrameSep F`, from states agreeing on `P`, have
@@ -739,7 +886,7 @@ theorem bytesCTCheck_sound {r : DoitRegime} {F : List Int} {P : PubA} {prog : Li
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
   simp only [bytesCTCheck, Bool.and_eq_true] at h
   obtain ⟨b, hb, hle⟩ := succOk_spec h.1
-  exact checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂
+  exact (checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂).1
 
 /-! ## 6. Frame words from the certificate, the public set from the ABI -/
 
@@ -826,8 +973,8 @@ theorem abiPubA_cells_iff (ps : List (String × ParamKind)) (lt : LevelTable) (o
 
 /-- The reason the check fails at index `pc` of `prog` under the certificate `A` and
     the frame words `F`, or `none` when it passes there. -/
-def failAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Option PubA))
-    (pc : Nat) : Option String :=
+def failAt (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Option String :=
   match certAt A pc with
   | none => none
   | some a =>
@@ -838,31 +985,48 @@ def failAt (r : DoitRegime) (F : List Int) (prog : List RInstr) (A : List (Optio
       else if !idxOk a i then some "secret index register"
       else if !baseOk a i then some "secret base register"
       else if !succOk A (pc + 1) (stepA a i) then some "no post-fixpoint at the successor"
+      else if own (pc + 1) != own pc then some "falls through into another function"
       else none
     | some (.jcc cc t) =>
       if !a.flags then some "branch on secret flags"
       else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
       else if !(succOk A t a && succOk A (pc + 1) a) then some "no post-fixpoint at a successor"
+      else if own t != own pc || own (pc + 1) != own pc then
+        some "branch into another function"
       else none
     | some (.push x) =>
       if !blockOkA r F a (pushOps x) then some "push: secret base or variable-time step"
       else if !succOk A (pc + 1) (stepBlock a (pushOps x)) then
         some "no post-fixpoint at the successor"
+      else if own (pc + 1) != own pc then some "falls through into another function"
       else none
     | some (.pop x) =>
       if !blockOkA r F a (popOps x) then some "pop: secret base or variable-time step"
       else if !succOk A (pc + 1) (stepBlock a (popOps x)) then
         some "no post-fixpoint at the successor"
+      else if own (pc + 1) != own pc then some "falls through into another function"
       else none
-    | some (.call _) => some "call: no callee summary"
-    | _ => none
+    | some .ret =>
+      if !(X (own pc)).le a then some "ret: set not above the function's exit set" else none
+    | some (.call t) =>
+      if !blockOkA r F a (callOps (pc + 1)) then some "call: secret stack pointer"
+      else if !succOk A t (stepBlock a (callOps (pc + 1))) then
+        some "call: no post-fixpoint at the callee entry"
+      else if !blockOkA r F (X (own t)) retOps then some "call: secret stack pointer at return"
+      else if !succOk A (pc + 1) (stepBlock (X (own t)) retOps) then
+        some "call: no post-fixpoint after the return"
+      else if own (pc + 1) != own pc then some "falls through into another function"
+      else none
+    | none => none
 
 /-- The first index at which `bytesCTCheckAuto r P prog` fails, with the reason; `none`
     when no index fails and the entry set is below `P`. -/
 def firstFailure (r : DoitRegime) (P : PubA) (prog : List RInstr) : Option (Nat × String) :=
   let A := infer prog P
+  let own := ownerOf (callTargets prog)
   if !succOk A 0 P then some (0, "entry set not below the public set") else
-  (List.range prog.length).findSome? fun pc => (failAt r (certCells A) prog A pc).map (pc, ·)
+  (List.range prog.length).findSome? fun pc =>
+    (failAt r (certCells A) own (exitSet prog own A) prog A pc).map (pc, ·)
 
 /-! ## 7. Array forms of the inference and the check
 
@@ -891,38 +1055,46 @@ theorem succOkA_eq (A : Array (Option PubA)) (s : Nat) (out : PubA) :
   simp only [succOkA, succOk, certAtA_eq]
 
 /-- `checkAt` on an array program and an array certificate. -/
-def checkAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Option PubA))
-    (pc : Nat) : Bool :=
+def checkAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) : Bool :=
   match certAtA A pc with
   | none => true
   | some a => a.cells.all F.contains &&
     match prog[pc]? with
-    | some (.op i) => opOk r a i && succOkA A (pc + 1) (stepA a i)
+    | some (.op i) => opOk r a i && succOkA A (pc + 1) (stepA a i) && own (pc + 1) == own pc
     | some (.jcc cc t) =>
         a.flags && (condtOfNibble cc).isSome && succOkA A t a && succOkA A (pc + 1) a
+          && own t == own pc && own (pc + 1) == own pc
     | some (.push x) =>
         blockOkA r F a (pushOps x) && succOkA A (pc + 1) (stepBlock a (pushOps x))
+          && own (pc + 1) == own pc
     | some (.pop x) =>
         blockOkA r F a (popOps x) && succOkA A (pc + 1) (stepBlock a (popOps x))
-    | some (.call _) => false
-    | _ => true
+          && own (pc + 1) == own pc
+    | some .ret => (X (own pc)).le a
+    | some (.call t) =>
+        blockOkA r F a (callOps (pc + 1)) && succOkA A t (stepBlock a (callOps (pc + 1)))
+          && blockOkA r F (X (own t)) retOps
+          && succOkA A (pc + 1) (stepBlock (X (own t)) retOps) && own (pc + 1) == own pc
+    | none => true
 
-theorem checkAtA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
-    (A : Array (Option PubA)) (pc : Nat) :
-    checkAtA r F prog A pc = checkAt r F prog.toList A.toList pc := by
+theorem checkAtA_eq (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) :
+    checkAtA r F own X prog A pc = checkAt r F own X prog.toList A.toList pc := by
   simp only [checkAtA, checkAt, certAtA_eq, succOkA_eq, Array.getElem?_toList]
 
 /-- `checkCert` on an array program and an array certificate. -/
-def checkCertA (r : DoitRegime) (F : List Int) (prog : Array RInstr)
-    (A : Array (Option PubA)) : Bool :=
-  (List.range prog.size).all (checkAtA r F prog A)
+def checkCertA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : Array RInstr) (A : Array (Option PubA)) : Bool :=
+  (List.range prog.size).all (checkAtA r F own X prog A)
 
-theorem checkCertA_eq (r : DoitRegime) (F : List Int) (prog : Array RInstr)
-    (A : Array (Option PubA)) : checkCertA r F prog A = checkCert r F prog.toList A.toList := by
+theorem checkCertA_eq (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : Array RInstr) (A : Array (Option PubA)) :
+    checkCertA r F own X prog A = checkCert r F own X prog.toList A.toList := by
   simp only [checkCertA, checkCert, Array.length_toList]
   congr 1
   funext pc
-  exact checkAtA_eq r F prog A pc
+  exact checkAtA_eq r F own X prog A pc
 
 /-- Meet the set at index `s` with `out`, reporting whether it changed. -/
 def meetIntoA (A : Array (Option PubA)) (s : Nat) (out : PubA) : Array (Option PubA) × Bool :=
@@ -930,23 +1102,44 @@ def meetIntoA (A : Array (Option PubA)) (s : Nat) (out : PubA) : Array (Option P
   let new := meetO old out
   if new = old then (A, false) else (A.setIfInBounds s new, true)
 
+/-- `exitSet?` on an array program and an array certificate. -/
+def exitSetA? (prog : Array RInstr) (own : Nat → Nat) (A : Array (Option PubA)) (e : Nat) :
+    Option PubA :=
+  (List.range prog.size).foldl (fun acc pc =>
+    match prog[pc]?, certAtA A pc with
+    | some RInstr.ret, some a => if own pc = e then meetO acc a else acc
+    | _, _ => acc) none
+
+/-- `exitSet` on an array program and an array certificate. -/
+def exitSetA (prog : Array RInstr) (own : Nat → Nat) (A : Array (Option PubA)) (e : Nat) :
+    PubA :=
+  (exitSetA? prog own A e).getD ⟨[], [], false⟩
+
 /-- The successors of index `pc` of an array program with the set each receives. -/
-def succsA (prog : Array RInstr) (pc : Nat) (a : PubA) : List (Nat × PubA) :=
+def succsA (own : Nat → Nat) (X? : Nat → Option PubA) (prog : Array RInstr) (pc : Nat)
+    (a : PubA) : List (Nat × PubA) :=
   match prog[pc]? with
   | some (.op i) => [(pc + 1, stepA a i)]
   | some (.jcc _ t) => [(t, a), (pc + 1, a)]
   | some (.push x) => [(pc + 1, stepBlock a (pushOps x))]
   | some (.pop x) => [(pc + 1, stepBlock a (popOps x))]
+  | some (.call t) =>
+      (t, stepBlock a (callOps (pc + 1))) ::
+        match X? (own t) with
+        | some x => [(pc + 1, stepBlock x retOps)]
+        | none => []
   | _ => []
 
 /-- One forward pass over the indices, updating the certificate in place, with a flag
     recording whether any set changed. -/
 def sweepA (prog : Array RInstr) (A : Array (Option PubA)) : Array (Option PubA) × Bool :=
+  let own := ownerOf (callTargets prog.toList)
+  let X? := exitSetA? prog own A
   (List.range prog.size).foldl (fun acc pc =>
     let (B, ch) := acc
     match certAtA B pc with
     | none => (B, ch)
-    | some a => (succsA prog pc a).foldl (fun acc so =>
+    | some a => (succsA own X? prog pc a).foldl (fun acc so =>
         let (B, ch) := acc
         let (B', c) := meetIntoA B so.1 so.2
         (B', ch || c)) (B, ch))
@@ -971,7 +1164,8 @@ def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
 def bytesCTCheckFast (r : DoitRegime) (P : PubA) (prog : List RInstr) : Bool :=
   let pa := prog.toArray
   let A := inferA pa P
-  succOkA A 0 P && checkCertA r (certCellsA A) pa A
+  let own := ownerOf (callTargets prog)
+  succOkA A 0 P && checkCertA r (certCellsA A) own (exitSetA pa own A) pa A
 
 /-- **Soundness of the decision on arrays.** If `bytesCTCheckFast r P prog` holds, two
     runs of `prog` from index `0` from states agreeing on `P`, whose steps satisfy
@@ -984,45 +1178,24 @@ theorem bytesCTCheckFast_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
   intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
   simp only [bytesCTCheckFast, Bool.and_eq_true, succOkA_eq, checkCertA_eq] at h
   obtain ⟨b, hb, hle⟩ := succOk_spec h.1
-  exact checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂
+  exact (checkCert_sound h.2 h₁ hb (PubA.agree_of_le hle hag) h₂).1
 
 /-- `failAt` on an array program and an array certificate. -/
-def failAtA (r : DoitRegime) (F : List Int) (prog : Array RInstr) (A : Array (Option PubA))
-    (pc : Nat) : Option String :=
-  match certAtA A pc with
-  | none => none
-  | some a =>
-    if !(a.cells.all F.contains) then some "frame word outside the frame set" else
-    match prog[pc]? with
-    | some (.op i) =>
-      if r.leaksOperands i.mnem then some "variable-time instruction"
-      else if !idxOk a i then some "secret index register"
-      else if !baseOk a i then some "secret base register"
-      else if !succOkA A (pc + 1) (stepA a i) then some "no post-fixpoint at the successor"
-      else none
-    | some (.jcc cc t) =>
-      if !a.flags then some "branch on secret flags"
-      else if !(condtOfNibble cc).isSome then some "unknown condition nibble"
-      else if !(succOkA A t a && succOkA A (pc + 1) a) then some "no post-fixpoint at a successor"
-      else none
-    | some (.push x) =>
-      if !blockOkA r F a (pushOps x) then some "push: secret base or variable-time step"
-      else if !succOkA A (pc + 1) (stepBlock a (pushOps x)) then
-        some "no post-fixpoint at the successor"
-      else none
-    | some (.pop x) =>
-      if !blockOkA r F a (popOps x) then some "pop: secret base or variable-time step"
-      else if !succOkA A (pc + 1) (stepBlock a (popOps x)) then
-        some "no post-fixpoint at the successor"
-      else none
-    | some (.call _) => some "call: no callee summary"
-    | _ => none
+def failAtA (r : DoitRegime) (F : List Int) (own : Nat → Nat) (X : Nat → PubA)
+    (prog : Array RInstr) (A : Array (Option PubA)) (pc : Nat) : Option String :=
+  failAt r F own X prog.toList A.toList pc
 
 /-- The first failing index of `bytesCTCheckFast` with the reason, on the certificate
-    `A` computed by `inferA` for the array program `pa`. -/
+    `A` computed by `inferA` for the array program `pa`, under the owners and exit sets
+    `bytesCTCheckFast` uses. -/
 def firstFailureA (r : DoitRegime) (P : PubA) (pa : Array RInstr) (A : Array (Option PubA)) :
     Option (Nat × String) :=
+  let prog := pa.toList
+  let AL := A.toList
+  let own := ownerOf (callTargets prog)
+  let X := exitSetA pa own A
   if !succOkA A 0 P then some (0, "entry set not below the public set") else
-  (List.range pa.size).findSome? fun pc => (failAtA r (certCellsA A) pa A pc).map (pc, ·)
+  (List.range pa.size).findSome? fun pc =>
+    (failAt r (certCellsA A) own X prog AL pc).map (pc, ·)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT

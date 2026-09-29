@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
-public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectUnifiedDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectUnifiedDenote
 
 /-!
 # ML-DSA `ExpandA` (`rej_uniform`) rejection sampler as a data-dependent `RWhileNz` whole-program denote
@@ -15,56 +15,50 @@ ML-DSA-65's matrix expansion (`ExpandA`, PQClean `ml-dsa-65/clean` `poly.c`
 `rej_uniform`) rejection-samples uniform-mod-`q` coefficients from a SHAKE128 XOF
 stream: read a 23-bit candidate `t = (b0 | b1<<8 | b2<<16) & 0x7FFFFF` from the
 3-byte window, accept it iff `< q = 8380417`, advance the byte cursor `pos += 3`,
-and repeat **until the output polynomial is full**. The number of windows is
+and repeat until the output polynomial is full. The number of windows is
 decided at run time by how many candidates land below `q`, so this is a
-*data-dependent* loop — not a fixed unroll and not a counted `RFor`. The
-termination criterion (buffer full) is the `while (name != 0)` shape `RWhileNz`
-models.
+data-dependent loop, the `while (name != 0)` shape `RWhileNz` models.
 
-This re-sources that loop from a high-level `LowCT` term through the **canonical
-front**, using the `RWhileNz` waist denote of
-`TranslateDialectWhileDenote` (`rWhileNz_whole_denote` / `IsCoveredSWhile` /
-`semScalarWhile`). It is the ML-DSA twin of the ML-KEM re-sourcing
-`RejUniformCovered` (both are the `rej_uniform` control structure; ML-DSA reads a
-23-bit candidate from a 3-byte window vs ML-KEM's 12-bit candidate) and shares
-the same coverage / `isSome` / whole-program-denote recipe. The owned byte-exact
+The loop is stated as a `LowCT` term and descended through the unified front
+`transU` of `TranslateDialectUnifiedDenote`, whose whole-program denote
+`transU_denote` relates the emitted `Com` prefix to the unified waist `semU`. It
+is the ML-DSA twin of `MLKEM.RejUniformCovered` (ML-DSA reads a 23-bit candidate
+from a 3-byte window, ML-KEM a 12-bit candidate). The owned byte-exact
 counterpart is `MLDSA.SamplerEmit` (`rejUniWindowBody` / `uniGuard`).
 
 ## The source term
 
-`IsCoveredSCtl` (the body fragment the `RWhileNz` waist consumes) has no `RSeq`
-over control, so a data-dependent loop body must be a *single* `RIfNz`/`RFor`/
-straight-line node. We therefore model one `rej_uniform` window as an `RIfNz` on
-the public accept flag `lt = (cand < q)` whose **both** branches advance the
-cursor and read the next candidate — accept additionally stores the coefficient.
-This is faithful to the sampler: every window either accepts-and-advances or
-rejects-and-advances; the loop-carried candidate `cand` and accept flag `lt` are
-refreshed each trip. The whole is wrapped in `RWhileNz "remaining"`, the
-buffer-not-full guard.
+One window is `if lt { store } ; advance ; extract ; compare`: the store runs
+only when the public accept flag `lt = (cand < q)` is set, and every window
+advances the cursor and reads the next candidate. The conditional is the guarded
+block `RIfNz "lt" acceptStore RSkip`, which `semU` models by `semScalarCond` (the
+block runs iff the guard is nonzero) and `transU` descends by `condSkipD`. The
+whole is wrapped in `RWhileNz "remaining"`, the buffer-not-full guard.
 
-* `rej_extract_cand` — opaque leaf: squeeze/extract the next 23-bit candidate from
+* `rej_extract_cand` — opaque leaf: extract the next 23-bit candidate from
   the (public) SHAKE128 byte stream at the cursor.
 * `rej_lt_q` — opaque leaf: the public `< q` comparison, producing the accept flag.
 * `rej_store` — opaque leaf: store an accepted coefficient into the output.
 * `rej_advance` — opaque leaf: advance the byte cursor (`pos += 3`).
 
-The candidate stream / hash squeeze and the arithmetic are **opaque leaves**
-(their FIPS-204 correctness is the separate byte-KAT obligation, carried by the
-owned-emit kernel `MLDSA.SamplerEmit`); what is banked here is the descent
-of the **rejection control structure** — the data-dependent `while` — through the
-canonical front, with a whole-program machine denote.
+The candidate stream and the arithmetic are opaque leaves (their FIPS-204
+correctness is the byte-KAT obligation of the owned-emit kernel
+`MLDSA.SamplerEmit`); the statement here is about the rejection control
+structure.
 
-## CT note — the guard and the branch are PUBLIC
+`transU` selects its descent by the run's guard values and trip count, so the
+emitted `Com` of `transU_denote` is the unrolling of one run. The static fact
+`rejUniform_front_fires` states that both legs of one window front-compile
+through `translateDialectControl`: the taken leg (store, then the tail from the
+post-store map) and the skipped leg (the tail from the entry map).
 
-`ExpandA` expands the matrix `A` from the **public** seed `ρ`, so the XOF stream,
-every `cand < q` decision, and the buffer-full guard are public by construction
-(FIPS-204 §Algorithm 7). The `RWhileNz` guard `remaining` and the `RIfNz` flag
-`lt` therefore leak nothing secret: this is the `RejectLoop.lean` public-guard
-discipline. A *secret*-dependent loop guard or accept branch would be a CT
-violation (rejected by the `LowCT` `isCT` check); `ExpandA`'s `rej_uniform` is
-admitted (it is the fully-public sampler — unlike `ExpandS`'s `rej_eta`, which
-expands the secret vectors and only leaks the public rejection *count*). The
-buffer index is a public counter, not a secret address.
+## CT note — the guard and the branch are public
+
+`ExpandA` expands the matrix `A` from the public seed `ρ`, so the XOF stream,
+every `cand < q` decision, and the buffer-full guard are public (FIPS-204
+§Algorithm 7). The `RWhileNz` guard `remaining` and the `RIfNz` flag `lt` depend
+only on public data. `ExpandS`'s `rej_eta`, which expands the secret vectors, is a
+different sampler and is not stated here. The buffer index is a public counter.
 -/
 
 @[expose] public section
@@ -84,7 +78,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 
-/-! ## 1. The high-level source: `rej_uniform` as a data-dependent `while` -/
+/-! ## 1. The source: `rej_uniform` as a data-dependent `while` -/
 
 /-- The (public) SHAKE128 XOF byte-stream / output bundle tower type — a byte
     buffer (rate-168 SHAKE128 block, ML-DSA `ExpandA`). -/
@@ -98,35 +92,27 @@ def locS (n : String) : Located := { locVar := n, locSrc := .TU64 }
 
 /-- Advance the byte cursor (`pos += 3`) and read the next 23-bit candidate,
     recomputing the public accept flag `lt = (cand < q)`. Straight-line
-    (`IsCoveredS`): an `RSeq` of the advance, extract, and compare leaves. Both
-    `RWhileNz`-body branches share this tail — every window advances, whether the
-    candidate is accepted or rejected. -/
+    (`IsCoveredS`): an `RSeq` of the advance, extract, and compare leaves. -/
 def rejAdvanceExtract : LowCT :=
   .RSeq (.RCall "rej_advance" (locS "pos") [locS "pos"])
     (.RSeq (.RCall "rej_extract_cand" (loc "cand") [loc "buf", locS "pos"])
            (.RCall "rej_lt_q" (locS "lt") [loc "cand"]))
 
-/-- The **accept** branch: store the accepted coefficient into the output, then
-    advance + read the next candidate. Straight-line (`IsCoveredS`). -/
-def acceptBranch : LowCT :=
-  .RSeq (.RCall "rej_store" (loc "out") [loc "out", loc "cand"]) rejAdvanceExtract
+/-- Store the accepted coefficient into the output. -/
+def acceptStore : LowCT :=
+  .RCall "rej_store" (loc "out") [loc "out", loc "cand"]
 
-/-- The `rej_uniform` **window body**: branch on the public accept flag `lt`. The
-    accept branch stores the coefficient; both branches advance the cursor and
-    read the next candidate. A single `RIfNz`, so it lives in the denote-carrying
-    covered fragment `IsCoveredSCtl` (which has no `RSeq`-over-control — the
-    advance/extract tail is folded into the branches). -/
+/-- The `rej_uniform` window body: store when the public accept flag `lt` is set,
+    then advance and read the next candidate. -/
 def rejBody : LowCT :=
-  .RIfNz "lt" acceptBranch rejAdvanceExtract
+  .RSeq (.RIfNz "lt" acceptStore .RSkip) rejAdvanceExtract
 
-/-- **The whole `rej_uniform` rejection sampler as a data-dependent loop.**
-    `RWhileNz "remaining"` — iterate the window body while the output polynomial is
-    not full (`remaining != 0`). The trip count is fixed at run time by the public
-    `< q` decisions, exactly the terminating guarded-loop shape `RWhileNz` models. -/
+/-- The whole `ExpandA` rejection sampler: iterate the window body while the
+    output polynomial is not full (`remaining != 0`). -/
 def rejUniformLowCT : LowCT :=
   .RWhileNz "remaining" rejBody
 
-/-! ## 2. Coverage — the central structural proofs -/
+/-! ## 2. Coverage -/
 
 /-- The advance-and-extract tail is straight-line covered. -/
 theorem rejAdvanceExtract_coveredS : IsCoveredS rejAdvanceExtract :=
@@ -134,23 +120,25 @@ theorem rejAdvanceExtract_coveredS : IsCoveredS rejAdvanceExtract :=
     (.rSeq (.rCall "rej_extract_cand" (loc "cand") [loc "buf", locS "pos"])
            (.rCall "rej_lt_q" (locS "lt") [loc "cand"]))
 
-/-- The accept branch is straight-line covered. -/
-theorem acceptBranch_coveredS : IsCoveredS acceptBranch :=
-  .rSeq (.rCall "rej_store" (loc "out") [loc "out", loc "cand"]) rejAdvanceExtract_coveredS
+/-- The store is straight-line covered. -/
+theorem acceptStore_coveredS : IsCoveredS acceptStore :=
+  .rCall "rej_store" (loc "out") [loc "out", loc "cand"]
 
-/-- **The window body is control-covered** (`IsCoveredSCtl`): an `RIfNz` over two
-    straight-line branches. This is the central fact — it feeds the
-    `RWhileNz` whole-program denote (`rWhileNz_whole_denote`). -/
-theorem rejBody_covered : IsCoveredSCtl rejBody :=
-  .rIfNz (.ofStraight acceptBranch_coveredS) (.ofStraight rejAdvanceExtract_coveredS)
+/-- The window body is in the unified fragment: a guarded block sequenced with
+    the straight-line tail. -/
+theorem rejBody_coveredU : IsCoveredSU rejBody :=
+  .rSeq (.rCond (.ofCtl (.ofStraight acceptStore_coveredS) rfl))
+    (.rSeq (.ofCtl (.ofStraight (.rCall "rej_advance" (locS "pos") [locS "pos"])) rfl)
+      (.rSeq
+        (.ofCtl (.ofStraight (.rCall "rej_extract_cand" (loc "cand") [loc "buf", locS "pos"]))
+          rfl)
+        (.ofCtl (.ofStraight (.rCall "rej_lt_q" (locS "lt") [loc "cand"])) rfl)))
 
-/-- **The whole rejection sampler is while-covered** (`IsCoveredSWhile`): an
-    `RWhileNz` over the covered window body. Not expressible in `IsCoveredSCtl`
-    (which has no `RWhileNz`) — this is exactly the data-dependent-loop arm. -/
-theorem rejUniform_coveredWhile : IsCoveredSWhile rejUniformLowCT :=
-  .rWhileNz rejBody_covered
+/-- The whole rejection sampler is in the unified fragment. -/
+theorem rejUniform_coveredU : IsCoveredSU rejUniformLowCT :=
+  .rWhile rejBody_coveredU
 
-/-! ## 3. Concrete argument context — the front fires -/
+/-! ## 3. Concrete argument context — the window legs front-compile -/
 
 /-- The argument context: the byte bundles `buf`/`out`/`cand` and the 64-bit
     scalars `pos` (cursor), `lt` (accept flag), `remaining` (buffer-not-full
@@ -163,51 +151,40 @@ def rejArgVM :=
       (t := .sword 64) "lt").bind
       (t := .sword 64) "remaining")
 
-/-- **The canonical front fires on the whole `rej_uniform` rejection loop.** The
-    `RWhileNz` arm gates on the guard `remaining` being a bound scalar and on the
-    body front-compiling; the `RIfNz` on the bound accept flag `lt`; the leaf
-    calls resolve their arguments. The data-dependent back-edge is emitted
-    downstream (the `RejectLoop` / `rolledWhileNz` owned loop). -/
+/-- Both legs of one window front-compile through `translateDialectControl`: the
+    taken leg (the store, then the tail from the post-store map) and the skipped
+    leg (the tail from the entry map). These are the translations `transU`
+    composes per trip. -/
 theorem rejUniform_front_fires :
-    (translateDialectControl rejArgVM rejUniformLowCT).isSome := by
+    (match translateDialectControl rejArgVM acceptStore with
+      | some o => (translateDialectControl o.vm rejAdvanceExtract).isSome
+      | none => false) = true ∧
+      (translateDialectControl rejArgVM rejAdvanceExtract).isSome := by
   native_decide
 
-/-! ## 4. THE DELIVERABLE — the whole-program `RWhileNz` denote
+/-! ## 4. The whole-program denote -/
 
-For the `rej_uniform` rejection loop that terminates within `fuel` (the buffer is
-finite — the explicit termination hypothesis), the canonical front unrolled to the
-run's actual trip count denotes exactly the guard-driven do-while semantics
-`semScalarWhile`. Direct image of the `RWhileNz` waist homomorphism
-`rWhileNz_whole_denote` at `rejBody`, discharged by structural coverage
-(`rejBody_covered`). The candidate stream / `< q` / store / advance are opaque
-leaves; their FIPS-204 correctness is the separate byte-KAT obligation. -/
-
-/-- **Whole-program machine denote of the ML-DSA `ExpandA` `rej_uniform`
-    rejection sampler.** For any context/valuation/env consistent triple on which
-    the front (unrolled to the data-dependent trip count `scalarWhileTrips`)
-    descends and the guard-driven do-while `semScalarWhile` halts within `fuel`,
-    the descended dialect-`Com` prefix denotes exactly the loop's guard-driven
-    semantics (per-tail continuation). `guard` is the buffer-not-full predicate
-    (`remaining != 0`); the body preservation is `translateDialectControl_denote_ctl`
-    on `rejBody_covered`. -/
-theorem rejUniformCovered_denote
-    (guard : SEnvScalar → Bool) (fuel : Nat)
+/-- **Whole-program denote of the ML-DSA `ExpandA` rejection sampler.** For any
+    context/valuation/env consistent triple on which the unified descent succeeds
+    and the unified waist `semU` halts within `fuel`, the descended dialect-`Com`
+    prefix denotes the waist run: the store fires on the windows whose accept
+    flag is set, and every window advances. The instance of `transU_denote` at
+    `rejUniform_coveredU`. -/
+theorem rejUniformCovered_denote (fuel : Nat)
     {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
     (env env' : SEnvScalar) (o : DTransOut Γ)
     (hc : ConsistentS vm V env)
-    (htr : loopWhileD (translateBody := fun vm' => translateDialectControl vm' rejBody)
-      vm (scalarWhileTrips (fun e => semScalar rejBody e) guard fuel env) = some o)
-    (hrun : semScalarWhile (fun e => semScalar rejBody e) guard fuel env = some env') :
+    (htr : transU fuel vm env rejUniformLowCT = some o)
+    (hrun : semU fuel rejUniformLowCT env = some env') :
     ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
       ConsistentS o.vm V' env' ∧
       ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
         ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' :=
-  rWhileNz_whole_denote rejBody_covered guard fuel vm V env env' o hc htr hrun
+  transU_denote fuel rejUniform_coveredU vm V env env' o hc htr hrun
 
 /-! ## 5. Axiom audit -/
 
-#print axioms rejBody_covered
-#print axioms rejUniform_coveredWhile
+#print axioms rejUniform_coveredU
 #print axioms rejUniform_front_fires
 #print axioms rejUniformCovered_denote
 

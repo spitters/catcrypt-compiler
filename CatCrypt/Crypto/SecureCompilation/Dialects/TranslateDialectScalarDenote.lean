@@ -748,17 +748,12 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
       | none => none
   | .RFor x N body, env => semRForD (fun e => semScalar body e) x N env
   | .RIfNz name thenBr elseBr, env =>
-      -- The waist the front's `RIfNz` lowering denotes by (the exact mirror of
-      -- `translateDialectControl`'s case analysis): the guard must be a bound
-      -- scalar; when both branches are a single `RScalarSet` on the SAME name —
-      -- the (C′) φ-merge, the only case the front compiles as a
-      -- conditional — bind that name to the cmov-selected value (`zero → else`,
-      -- `nonzero → then`); every other case composes the branch semantics
-      -- sequentially (`then; else`), which is what the front's pass-through /
-      -- re-translation cases (A)/(B)/(C-otherwise) emit — in (A)/(B) the front
-      -- passes through ONE branch's prefix, and the discarded branch is
-      -- context-invariant hence env-inert (`translateDialectControl_ext`), so
-      -- the sequential composition is denotation-equal there.
+      -- The guard must be a bound scalar. When both branches are a single
+      -- `RScalarSet` on the same name (the (C′) φ-merge of the front), the name
+      -- is bound to the selected value (`zero → else`, `nonzero → then`), as
+      -- `RustExec` does. No other conditional has a waist model here: the
+      -- front declines every other shape that binds, and the guarded forms
+      -- are modelled by `semScalarGuarded` and `semScalarCond`.
       match env name with
       | some ⟨.sword w, condv⟩ =>
           match asSingleScalarSet thenBr, asSingleScalarSet elseBr with
@@ -768,8 +763,8 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
                   (phiSelect (w := w) condv (BitVec.ofNat 64 thenSet.val)
                     (BitVec.ofNat 64 elseSet.val)))
               else
-                (semScalar thenBr env).bind (fun e => semScalar elseBr e)
-          | _, _ => (semScalar thenBr env).bind (fun e => semScalar elseBr e)
+                none
+          | _, _ => none
       | _ => none
   | _, _ => none
 
@@ -932,8 +927,8 @@ def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
                   (phiSelect (w := w) condv (BitVec.ofNat 64 thenSet.val)
                     (BitVec.ofNat 64 elseSet.val)))
               else
-                (semScalarL ls thenBr env).bind (fun e => semScalarL ls elseBr e)
-          | _, _ => (semScalarL ls thenBr env).bind (fun e => semScalarL ls elseBr e)
+                none
+          | _, _ => none
       | _ => none
   | _, _ => none
 
@@ -964,8 +959,8 @@ theorem semScalarL_default : ∀ (c : LowCT) (env : SEnvScalar),
   | RLetU64Zero name body ih => intro env; simp only [semScalarL, semScalar, ih]
   | RLetZero name tt body ih => intro env; rw [semScalarL_rLetZero, semScalar_rLetZero, ih]
   | RFor x N body ih => intro env; simp only [semScalarL, semScalar, ih]
-  | RIfNz name thenBr elseBr ihT ihE =>
-      intro env; simp only [semScalarL, semScalar, ihT, ihE]
+  | RIfNz name thenBr elseBr _ _ =>
+      intro env; simp only [semScalarL, semScalar]
   | RCallN fname dests args =>
       intro env; simp only [semScalarL, semScalar, semCallNDestsL_default]
   | _ => intro env; rfl
@@ -3320,20 +3315,17 @@ twin of `TranslateDialectDirectControl.IsCoveredCtl`). Three layers:
   `RScalarSetExpr` in place of `IsCovered`'s unconditional arm;
 * **the extension/inertness invariant** (`translateDialectControl_ext`) — every
   accepted translation's output context is `Δ ++ Γ` for some pushed prefix `Δ`,
-  and a context-invariant translation (`Δ = []`) is env-INERT (`semScalar` is
-  the identity on it). This is the fact `RIfNz`'s (A)/(B) cases rest on: there
-  the front passes through ONE branch's prefix and discards the
-  other, the discarded branch is exactly the context-invariant one, and
-  inertness makes the sequential waist semantics agree with the single-branch
-  denotation. Proved over ALL of `LowCT` (no coverage hypothesis) by structural
-  induction, with per-chain auxiliaries for `lowerSExpr` / `loopCallNDestsD` /
-  `loopRForD`;
+  and a context-invariant translation (`Δ = []`) is env-inert (`semScalar` is
+  the identity on it). Proved over all of `LowCT` (no coverage hypothesis) by
+  structural induction, with per-chain auxiliaries for `lowerSExpr` /
+  `loopCallNDestsD` / `loopRForD`;
 * **the two induction cases** — `RFor` by `Nat`-induction over the meta-unroll
   (`loopRForD_denote`: each trip is a `scalar_step` counter bind composed with
   the body IH via `ComCont.comp`, the `RCallN` fold pattern with the body IH in
-  place of the opaque bind), `RIfNz` by the front's four-way case split
-  ((A)/(B1)/(B2) via branch IH + inertness; (C′) via five `consistentS_weaken`
-  steps + one `scalar_step` on the φ-merge `ite`, cased on the scrutinee). -/
+  place of the opaque bind), and `RIfNz`, where the front accepts two shapes:
+  (A), both branches binding nothing, on which `semScalar` has no run; and
+  (C′), two `RScalarSet` on one name, via five `consistentS_weaken` steps and
+  one `scalar_step` on the φ-merge `ite`, cased on the scrutinee. -/
 
 /-- The control-extended scalar-covered `LowCT` fragment: the straight-line
     covered arms plus `RFor` over covered bodies, `RIfNz` over covered
@@ -3792,7 +3784,7 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
           simp only [semScalarL] at hsem
           exact absurd hsem (by simp)
       · exact absurd htr (by simp)
-  case RIfNz name thenBr elseBr ihT ihE =>
+  case RIfNz name thenBr elseBr _ _ =>
       simp only [translateDialectControl] at htr
       split at htr
       case _ w condVar hlk =>
@@ -3802,8 +3794,8 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
           · next h₁ =>
             split at htr
             · next h₂ =>
-              -- (A): both branches context-invariant; the front passes `o₁`
-              -- through, and BOTH branches are env-inert.
+              -- (A): both branches context-invariant; the front emits nothing.
+              -- `semScalarL` runs only the (C′) shape, whose branches extend.
               simp only [Option.some.injEq] at htr
               obtain rfl := htr
               refine ⟨[], h₁, fun _ env env' hsem => ?_⟩
@@ -3811,14 +3803,7 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
               split at hsem
               case _ w' condv henv =>
                 rcases hts : asSingleScalarSet thenBr with _ | tS
-                · simp only [hts] at hsem
-                  rcases hs1 : semScalarL ls thenBr env with _ | env₁
-                  · rw [hs1] at hsem; simp at hsem
-                  · simp only [hs1, Option.bind_some] at hsem
-                    obtain ⟨Δ₁, hΔ₁, hin₁⟩ := ihT vm o₁ ht₁
-                    obtain ⟨Δ₂, hΔ₂, hin₂⟩ := ihE vm o₂ ht₂
-                    rw [hin₂ (append_eq_self_left (hΔ₂ ▸ h₂)) env₁ env' hsem,
-                      hin₁ (append_eq_self_left (hΔ₁ ▸ h₁)) env env₁ hs1]
+                · simp [hts] at hsem
                 · -- `thenBr` a single `RScalarSet` always extends — contra `h₁`.
                   obtain rfl := asSingleScalarSet_eq hts
                   have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
@@ -3826,22 +3811,12 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
                   rw [← h1'] at h₁
                   exact absurd (congrArg List.length h₁) (by simp)
               case _ => exact absurd hsem (by simp)
-            · next h₂ =>
-              -- (B1): only `elseBr` extends; the front passes `o₂` through.
-              simp only [Option.some.injEq] at htr
-              obtain rfl := htr
-              obtain ⟨Δ₂, hΔ₂, _⟩ := ihE vm o₂ ht₂
-              exact ⟨Δ₂, hΔ₂,
-                fun hnil => absurd (show o₂.Γ' = Γ by rw [hΔ₂, hnil]; rfl) h₂⟩
+            · -- (B1): only `elseBr` extends; declined.
+              exact absurd htr (by simp)
           · next h₁ =>
             split at htr
-            · next h₂ =>
-              -- (B2): only `thenBr` extends; the front passes `o₁` through.
-              simp only [Option.some.injEq] at htr
-              obtain rfl := htr
-              obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
-              exact ⟨Δ₁, hΔ₁,
-                fun hnil => absurd (show o₁.Γ' = Γ by rw [hΔ₁, hnil]; rfl) h₁⟩
+            · -- (B2): only `thenBr` extends; declined.
+              exact absurd htr (by simp)
             · next h₂ =>
               split at htr
               · next tS eS hts hes =>
@@ -3852,35 +3827,10 @@ theorem translateDialectControl_extWith (ls : SemLeafSpec) (c : LowCT) :
                   obtain rfl := htr
                   exact ⟨[.sword 64, .bit, .bit, .sword w, .sword 64, .sword 64],
                     rfl, fun h => absurd h (by simp)⟩
-                · next hname =>
-                  -- (C-otherwise, names differ): sequential re-translation.
-                  split at htr
-                  · next o₂' ht₂' =>
-                    simp only [Option.some.injEq] at htr
-                    obtain rfl := htr
-                    obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
-                    obtain ⟨Δ₂', hΔ₂', _⟩ := ihE o₁.vm o₂' ht₂'
-                    refine ⟨Δ₂' ++ Δ₁, ?_, ?_⟩
-                    · show o₂'.Γ' = (Δ₂' ++ Δ₁) ++ Γ
-                      rw [hΔ₂', hΔ₁, List.append_assoc]
-                    · intro hnil
-                      obtain ⟨h2, h1⟩ := List.append_eq_nil_iff.mp hnil
-                      exact absurd (show o₁.Γ' = Γ by rw [hΔ₁, h1]; rfl) h₁
-                  · exact absurd htr (by simp)
-              · -- (C-otherwise, not both single scalar-sets): same shape.
-                split at htr
-                · next o₂' ht₂' =>
-                  simp only [Option.some.injEq] at htr
-                  obtain rfl := htr
-                  obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
-                  obtain ⟨Δ₂', hΔ₂', _⟩ := ihE o₁.vm o₂' ht₂'
-                  refine ⟨Δ₂' ++ Δ₁, ?_, ?_⟩
-                  · show o₂'.Γ' = (Δ₂' ++ Δ₁) ++ Γ
-                    rw [hΔ₂', hΔ₁, List.append_assoc]
-                  · intro hnil
-                    obtain ⟨h2, h1⟩ := List.append_eq_nil_iff.mp hnil
-                    exact absurd (show o₁.Γ' = Γ by rw [hΔ₁, h1]; rfl) h₁
-                · exact absurd htr (by simp)
+                · -- (C-otherwise, names differ): declined.
+                  exact absurd htr (by simp)
+              · -- (C-otherwise, not both single scalar-sets): declined.
+                exact absurd htr (by simp)
         case _ => exact absurd htr (by simp)
       case _ => exact absurd htr (by simp)
   case RLetZero nm tt body ih =>
@@ -3913,9 +3863,7 @@ theorem translateDialectControl_ext (c : LowCT) :
   exact translateDialectControl_extWith defaultLeaf c
 
 /-- Context-invariant accepted translations are env-inert under `semScalarL ls`
-    (corollary of `translateDialectControl_extWith`). The `RIfNz` (A)/(B)
-    pass-through cases of the preservation theorem reduce their discarded branch
-    to this. -/
+    (corollary of `translateDialectControl_extWith`). -/
 theorem translateDialectControl_inertWith (ls : SemLeafSpec) {c : LowCT} {Γ : Ctx}
     {vm : VarMap Γ} {o : DTransOut Γ} (htr : translateDialectControl vm c = some o)
     (hΓ : o.Γ' = Γ) :
@@ -4072,12 +4020,10 @@ fragment -/
     `semScalarL ls` waist semantics.
     Induction on the coverage: the straight-line arms delegate to
     `translateDialectFull_denoteWith`; `RFor` is `loopRForD_denoteWith`'s meta-unroll
-    induction; `RIfNz` follows the front's four-way case split — the (A)/(B)
-    pass-through cases discharge the discarded (context-invariant) branch via
-    `translateDialectControl_inertWith`, the (C′) φ-merge composes five
-    `consistentS_weaken` steps with one `scalar_stepWith` on `phiIteExpr` (its
-    value reconciled by `phiIteExpr_denote`), and (C-otherwise) is the `RSeq`
-    spine over the re-translated `elseBr`. -/
+    induction; on `RIfNz` the front accepts the shape (A), both branches binding
+    nothing, on which `semScalarL` has no run, and the (C′) φ-merge, which
+    composes five `consistentS_weaken` steps with one `scalar_stepWith` on
+    `phiIteExpr` (its value reconciled by `phiIteExpr_denote`). -/
 theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
     (hcov : IsCoveredSCtl c) :
     ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
@@ -4161,7 +4107,7 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
         · show ComCont.comp (ComCont.varBind _) ob.cont tail = some com
           simp only [ComCont.comp, hcom1, hcom]
         · rw [hden, hden1]
-  | @rIfNz name thenBr elseBr hthen helse ihT ihE =>
+  | @rIfNz name thenBr elseBr _ _ _ _ =>
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectControl] at htr
       split at htr
@@ -4175,65 +4121,23 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
           · next h₁ =>
             split at htr
             · next h₂ =>
-              -- (A): both branches context-invariant; front = `o₁`, and both
-              -- branches are env-inert.
+              -- (A): both branches context-invariant; the front emits nothing.
+              -- `semScalarL` runs only the (C′) shape, whose branches extend.
               simp only [Option.some.injEq] at htr
               obtain rfl := htr
-              have hseq : (semScalarL ls thenBr env).bind
-                  (fun e => semScalarL ls elseBr e) = some env' := by
-                rcases hts : asSingleScalarSet thenBr with _ | tS
-                · simpa only [hts] using hsem
-                · obtain rfl := asSingleScalarSet_eq hts
-                  have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
-                    congrArg DTransOut.Γ' (Option.some.inj ht₁)
-                  rw [← h1'] at h₁
-                  exact absurd (congrArg List.length h₁) (by simp)
-              rcases hs1 : semScalarL ls thenBr env with _ | env₁
-              · rw [hs1] at hseq; simp at hseq
-              · simp only [hs1, Option.bind_some] at hseq
-                rw [translateDialectControl_inertWith ls ht₂ h₂ env₁ env' hseq]
-                exact ihT vm V env env₁ o₁ hc ht₁ hs1
-            · next h₂ =>
-              -- (B1): only `elseBr` extends; `thenBr` is inert, front = `o₂`.
-              simp only [Option.some.injEq] at htr
-              obtain rfl := htr
-              have hseq : (semScalarL ls thenBr env).bind
-                  (fun e => semScalarL ls elseBr e) = some env' := by
-                rcases hts : asSingleScalarSet thenBr with _ | tS
-                · simpa only [hts] using hsem
-                · obtain rfl := asSingleScalarSet_eq hts
-                  have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
-                    congrArg DTransOut.Γ' (Option.some.inj ht₁)
-                  rw [← h1'] at h₁
-                  exact absurd (congrArg List.length h₁) (by simp)
-              rcases hs1 : semScalarL ls thenBr env with _ | env₁
-              · rw [hs1] at hseq; simp at hseq
-              · simp only [hs1, Option.bind_some] at hseq
-                rw [translateDialectControl_inertWith ls ht₁ h₁ env env₁ hs1] at hseq
-                exact ihE vm V env env' o₂ hc ht₂ hseq
+              rcases hts : asSingleScalarSet thenBr with _ | tS
+              · simp [hts] at hsem
+              · obtain rfl := asSingleScalarSet_eq hts
+                have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
+                  congrArg DTransOut.Γ' (Option.some.inj ht₁)
+                rw [← h1'] at h₁
+                exact absurd (congrArg List.length h₁) (by simp)
+            · -- (B1): only `elseBr` extends; declined.
+              exact absurd htr (by simp)
           · next h₁ =>
             split at htr
-            · next h₂ =>
-              -- (B2): only `thenBr` extends; `elseBr` is inert, front = `o₁`.
-              simp only [Option.some.injEq] at htr
-              obtain rfl := htr
-              have hseq : (semScalarL ls thenBr env).bind
-                  (fun e => semScalarL ls elseBr e) = some env' := by
-                rcases hts : asSingleScalarSet thenBr with _ | tS
-                · simpa only [hts] using hsem
-                · rcases hes : asSingleScalarSet elseBr with _ | eS
-                  · simpa only [hts, hes] using hsem
-                  · obtain rfl := asSingleScalarSet_eq hes
-                    have h2' : (CryptoTy.sword 64 :: Γ : Ctx) = o₂.Γ' :=
-                      congrArg DTransOut.Γ' (Option.some.inj ht₂)
-                    rw [← h2'] at h₂
-                    exact absurd (congrArg List.length h₂) (by simp)
-              rcases hs1 : semScalarL ls thenBr env with _ | env₁
-              · rw [hs1] at hseq; simp at hseq
-              · simp only [hs1, Option.bind_some] at hseq
-                obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
-                obtain rfl := translateDialectControl_inertWith ls ht₂ h₂ env₁ env' hseq
-                exact ⟨V₁, hc₁, hcont₁⟩
+            · -- (B2): only `thenBr` extends; declined.
+              exact absurd htr (by simp)
             · next h₂ =>
               split at htr
               · next tS eS hts hes =>
@@ -4261,58 +4165,10 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
                   rw [← phiIteExpr_denote w V ((toVIRVar condVar).lookup V)
                     (BitVec.ofNat 64 tS.val) (BitVec.ofNat 64 eS.val)]
                   exact ⟨_, hcons, fun tail => ⟨_, rfl, rfl⟩⟩
-                · next hname =>
-                  -- (C-otherwise, names differ): sequential re-translation —
-                  -- the `RSeq` spine.
-                  split at htr
-                  · next o₂' ht₂' =>
-                    simp only [Option.some.injEq] at htr
-                    obtain rfl := htr
-                    simp only [hts, hes] at hsem
-                    rw [if_neg hname] at hsem
-                    rcases hs1 : semScalarL ls thenBr env with _ | env₁
-                    · rw [hs1] at hsem; simp at hsem
-                    · simp only [hs1, Option.bind_some] at hsem
-                      obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
-                      obtain ⟨V₂, hc₂, hcont₂⟩ :=
-                        ihE o₁.vm V₁ env₁ env' o₂' hc₁ ht₂' hsem
-                      refine ⟨V₂, hc₂, ?_⟩
-                      intro t tail
-                      obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
-                      obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
-                      refine ⟨com, ?_, ?_⟩
-                      · show ComCont.comp o₁.cont o₂'.cont tail = some com
-                        simp only [ComCont.comp, hcom₂, hcom]
-                      · rw [hden, hden₂]
-                  · exact absurd htr (by simp)
-              · -- (C-otherwise, not both single scalar-sets): same spine.
-                rename_i hnot
-                split at htr
-                · next o₂' ht₂' =>
-                  simp only [Option.some.injEq] at htr
-                  obtain rfl := htr
-                  have hseq : (semScalarL ls thenBr env).bind
-                      (fun e => semScalarL ls elseBr e) = some env' := by
-                    rcases hts : asSingleScalarSet thenBr with _ | tS
-                    · simpa only [hts] using hsem
-                    · rcases hes : asSingleScalarSet elseBr with _ | eS
-                      · simpa only [hts, hes] using hsem
-                      · exact (hnot tS eS hts hes).elim
-                  rcases hs1 : semScalarL ls thenBr env with _ | env₁
-                  · rw [hs1] at hseq; simp at hseq
-                  · simp only [hs1, Option.bind_some] at hseq
-                    obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
-                    obtain ⟨V₂, hc₂, hcont₂⟩ :=
-                      ihE o₁.vm V₁ env₁ env' o₂' hc₁ ht₂' hseq
-                    refine ⟨V₂, hc₂, ?_⟩
-                    intro t tail
-                    obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
-                    obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
-                    refine ⟨com, ?_, ?_⟩
-                    · show ComCont.comp o₁.cont o₂'.cont tail = some com
-                      simp only [ComCont.comp, hcom₂, hcom]
-                    · rw [hden, hden₂]
-                · exact absurd htr (by simp)
+                · -- (C-otherwise, names differ): declined.
+                  exact absurd htr (by simp)
+              · -- (C-otherwise, not both single scalar-sets): declined.
+                exact absurd htr (by simp)
         case _ => exact absurd htr (by simp)
       case _ => exact absurd htr (by simp)
 

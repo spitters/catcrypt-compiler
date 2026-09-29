@@ -500,7 +500,7 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
       exact loopRForD_preserves_noAlias
         (translateBodyD := fun vm' => translateDialectControl vm' body) x
         (fun vm'' => ih vm'') vm N hT hNA
-  | @rIfNz name thenBr elseBr hthen helse ihthen ihelse =>
+  | @rIfNz name thenBr elseBr _ _ ihthen _ =>
       rw [translateDialectControl] at hT
       cases hlk : vm.lookup name with
       | none => rw [hlk] at hT; exact absurd hT (by simp)
@@ -529,30 +529,18 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                     simp only [Option.some.injEq] at hT; subst hT
                     exact ihthen vm hdt hNA
                   · rw [dif_pos h₁, dif_neg h₂] at hT
-                    simp only [Option.some.injEq] at hT; subst hT
-                    exact ihelse vm hde hNA
+                    exact absurd hT (by simp)
                 · by_cases h₂ : o₂.Γ' = Γ
                   · rw [dif_neg h₁, dif_pos h₂] at hT
-                    simp only [Option.some.injEq] at hT; subst hT
-                    exact ihthen vm hdt hNA
+                    exact absurd hT (by simp)
                   · rw [dif_neg h₁, dif_neg h₂] at hT
                     cases hss : asSingleScalarSet thenBr with
                     | none =>
-                      rw [hss] at hT; simp only at hT
-                      cases hr : translateDialectControl o₁.vm elseBr with
-                      | none => rw [hr] at hT; exact absurd hT (by simp)
-                      | some o₂' =>
-                        rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
-                        exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+                      rw [hss] at hT; exact absurd hT (by simp)
                     | some thenSet =>
                       cases hse : asSingleScalarSet elseBr with
                       | none =>
-                        rw [hss, hse] at hT; simp only at hT
-                        cases hr : translateDialectControl o₁.vm elseBr with
-                        | none => rw [hr] at hT; exact absurd hT (by simp)
-                        | some o₂' =>
-                          rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
-                          exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+                        rw [hss, hse] at hT; exact absurd hT (by simp)
                       | some elseSet =>
                         rw [hss, hse] at hT; simp only at hT
                         by_cases hN : thenSet.name = elseSet.name
@@ -562,11 +550,7 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                             (noAlias_weaken (noAlias_weaken (noAlias_weaken hNA)))))
                             thenSet.name
                         · rw [if_neg hN] at hT
-                          cases hr : translateDialectControl o₁.vm elseBr with
-                          | none => rw [hr] at hT; exact absurd hT (by simp)
-                          | some o₂' =>
-                            rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
-                            exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+                          exact absurd hT (by simp)
   | @rLetZero name tt body _hbody ih =>
       rw [translateDialectControl_rLetZero] at hT
       exact ih vm hT hNA

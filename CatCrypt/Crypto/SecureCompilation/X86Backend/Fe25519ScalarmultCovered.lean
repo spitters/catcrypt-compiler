@@ -165,19 +165,21 @@ whole-program denote (via the control-sequencing homomorphism
 `transCtlSeq_denote_seq` over `IsCoveredSCtlSeq`, which is definitionally the
 canonical front on this `RSeq`-of-leaves term). -/
 
-/-- Nesting a conditional inside the counted loop is covered — the RFC 7748
-    ladder step is a `cswap` (conditional) plus double/add, and
-    `RFor N (RIfNz …)` is `IsCoveredSCtl` (`rFor` over `rIfNz`). -/
+/-- A bit-dependent ladder step inside the counted loop, written as a select:
+    both step variants are computed into `t1` and `t0`, and `acc` takes `t1`
+    when `bit` is nonzero and `t0` otherwise. `RFor N (RSeq … RSelect …)` is
+    `IsCoveredSCtl` (`rFor` over a straight-line body). -/
 example :
     IsCoveredSCtl
       (.RFor "i" 255
-        (.RIfNz "bit"
-          (.RCall "x25519_cswap_dblad" (loc "acc") [loc "acc"])
-          (.RCall "x25519_dblad" (loc "acc") [loc "acc"]))) :=
+        (.RSeq (.RCall "x25519_cswap_dblad" (loc "t1") [loc "acc"])
+          (.RSeq (.RCall "x25519_dblad" (loc "t0") [loc "acc"])
+            (.RSelect (loc "acc") "bit" (loc "t0") (loc "t1"))))) :=
   .rFor
-    (.rIfNz
-      (.ofStraight (.rCall "x25519_cswap_dblad" (loc "acc") [loc "acc"]))
-      (.ofStraight (.rCall "x25519_dblad" (loc "acc") [loc "acc"])))
+    (.ofStraight
+      (.rSeq (.rCall "x25519_cswap_dblad" (loc "t1") [loc "acc"])
+        (.rSeq (.rCall "x25519_dblad" (loc "t0") [loc "acc"])
+          (.rSelect (loc "acc") "bit" (loc "t0") (loc "t1")))))
 
 /-- **The full X25519 scalarmult as a multi-phase kernel:** the 255-fold ladder
     loop *sequenced* with the final `fe25519_encode` — the top-level `RSeq (RFor …) …`

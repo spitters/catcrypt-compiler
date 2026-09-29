@@ -609,17 +609,14 @@ theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c 
       refine loopRForD_leakFactors_cond _ ?_ vm _ _ h
       intro Γ'' vm'' o'' hh
       exact ih vm'' hh
-  | rIfNz hthen helse ihthen ihelse =>
+  | rIfNz _ _ ihthen _ =>
       rw [translateDialectControl] at h
       split at h
       · next w condVar =>
           split at h
           · next o₁eq o₂eq =>
               obtain ⟨k₁, hf₁⟩ := ihthen vm o₁eq
-              obtain ⟨k₂, hf₂⟩ := ihelse vm o₂eq
               split_ifs at h with hg1 hg2 hg2'
-              · rw [Option.some.injEq] at h; subst h; exact ⟨k₁, hf₁⟩
-              · rw [Option.some.injEq] at h; subst h; exact ⟨k₂, hf₂⟩
               · rw [Option.some.injEq] at h; subst h; exact ⟨k₁, hf₁⟩
               · split at h
                 · split at h
@@ -630,18 +627,8 @@ theorem translateDialectControl_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c 
                           (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
                             (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
                               (ComCont.varBind_leakFactors _)))))⟩
-                  · split at h
-                    · next o₂' heq₂' =>
-                        rw [Option.some.injEq] at h; subst h
-                        obtain ⟨k₂', hf₂'⟩ := ihelse _ heq₂'
-                        exact ⟨k₁ + k₂', ComCont.comp_leakFactors hf₁ hf₂'⟩
-                    · simp at h
-                · split at h
-                  · next o₂' heq₂' =>
-                      rw [Option.some.injEq] at h; subst h
-                      obtain ⟨k₂', hf₂'⟩ := ihelse _ heq₂'
-                      exact ⟨k₁ + k₂', ComCont.comp_leakFactors hf₁ hf₂'⟩
-                  · simp at h
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
           · simp at h
       · simp at h
   | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>
@@ -1192,17 +1179,14 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
       rw [translateDialectControl] at h
       refine loopRForD_leakFactorsTrace_cond _ ?_ vm _ _ h
       intro Γ'' vm'' o'' hh; exact ih vm'' hh
-  | rIfNz hthen helse ihthen ihelse =>
+  | rIfNz _ _ ihthen _ =>
       rw [translateDialectControl] at h
       split at h
       · next w condVar =>
           split at h
           · next o₁eq o₂eq =>
               obtain ⟨p₁, hp₁⟩ := ihthen vm o₁eq
-              obtain ⟨p₂, hp₂⟩ := ihelse vm o₂eq
               split_ifs at h with hg1 hg2 hg2'
-              · rw [Option.some.injEq] at h; subst h; exact ⟨_, hp₁⟩
-              · rw [Option.some.injEq] at h; subst h; exact ⟨_, hp₂⟩
               · rw [Option.some.injEq] at h; subst h; exact ⟨_, hp₁⟩
               · split at h
                 · split at h
@@ -1213,18 +1197,8 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
                           (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
                             (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
                               (ComCont.varBind_leakFactorsTrace _)))))⟩
-                  · split at h
-                    · next o₂' heq₂' =>
-                        rw [Option.some.injEq] at h; subst h
-                        obtain ⟨p₂', hp₂'⟩ := ihelse _ heq₂'
-                        exact ⟨_, ComCont.comp_leakFactorsTrace hp₁ hp₂'⟩
-                    · simp at h
-                · split at h
-                  · next o₂' heq₂' =>
-                      rw [Option.some.injEq] at h; subst h
-                      obtain ⟨p₂', hp₂'⟩ := ihelse _ heq₂'
-                      exact ⟨_, ComCont.comp_leakFactorsTrace hp₁ hp₂'⟩
-                  · simp at h
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
           · simp at h
       · simp at h
   | @rSeq c₁ c₂ _ _ ih₁ ih₂ =>

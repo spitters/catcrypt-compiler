@@ -15,41 +15,33 @@ set_option autoImplicit false
 /-!
 # Whole-program denote for the data-dependent CONDITIONAL-side-effect region
 
-`TranslateDialectDirectControl`'s `RIfNz` arm is a **φ-merge**: the guard chooses
-between two *values* (case (C′): both branches a same-name `RScalarSet`, fused to
-a `cmov`), and for every other shape the front passes through one branch's prefix
-or re-translates the other — the emitted `catCryptDialect` `Com` runs `then` (and
-`else`) **unconditionally** (there is no `Lcond`/label node in the dialect).
-`semScalar`'s `RIfNz` arm mirrors that: the (C-otherwise) case denotes
-`then; else` **unconditionally** (`TranslateDialectScalarDenote`, ~line 560).
+`TranslateDialectDirectControl`'s `RIfNz` arm compiles a conditional only as a
+φ-merge: the guard chooses between two values (case (C′): both branches a
+same-name `RScalarSet`, fused to a `cmov`). `Com catCryptDialect` has no branch
+node, so the front declines a conditional whose branch binds anything else, and
+`semScalar` has no run on it.
 
-So a `then`-branch that CALLS a function or WRITES state — the observe/sample
-trigger `if inlen == 8 { call duplex; store … }` — has **no** faithful waist
-model at the `semScalar` level: the φ-merge runs it always, which denotes WRONG
-when the guard is false.  The forward branch lives only at the raw `Lcmd`
-layer (`QuerySampleBranchFront.condSkip` = `CMP ; Lcond ; <then> ; label`), which
-runs its `then` band **iff** the guard holds — but that `Lcmd`-layer branch has
-no `semScalar`-waist denote.
+A `then`-branch that calls a function or writes state — the observe/sample
+trigger `if inlen == 8 { call duplex; store … }` — therefore has no model at
+the `semScalar` level. The forward branch lives at the `Lcmd` layer
+(`QuerySampleBranchFront.condSkip` = `CMP ; Lcond ; <then> ; label`), which runs
+its `then` band iff the guard holds.
 
-This sidecar supplies that model the same way `TranslateDialectWhileDenote` does
-for the `RWhileNz` waist (a control model `semScalar` has no arm for): it
-adds the **guarded-execution** waist model that `semScalar`'s φ-merge does not
-capture, together with the front descent that denotes it — the conditional twin
-of `semScalarWhile` / `loopWhileD` / `rWhileNz_whole_denote`:
+This module supplies that model the same way `TranslateDialectWhileDenote` does
+for the `RWhileNz` waist (a control model `semScalar` has no arm for): the
+guarded-execution waist model and the front descent that denotes it, the
+conditional twin of `semScalarWhile` / `loopWhileD` / `rWhileNz_whole_denote`:
 
-* `semScalarCond semBody guard` — the **guard-gated do-once** waist model
+* `semScalarCond semBody guard` — the guard-gated do-once waist model
   (`SEnvScalar` twin of `condSkip`'s run-`then`-iff-guard): run the block iff the
-  guard is nonzero on the entry env, else IDENTITY (`env ↦ env`).  This is the
-  model `semScalar`'s (C-otherwise) `RIfNz` arm LACKS — it runs `then`
-  unconditionally;
+  guard is nonzero on the entry env, else the identity (`env ↦ env`);
 * `condSkipD translateBody vm` — the **guard-indexed** front descent (the
   `loopWhileD` twin at trip ∈ {0,1}): `true ↦` the block descent
   (`translateDialectControl vm thenBlk`), `false ↦` the identity descent
   (`Γ' = Γ`, `cont = ComCont.id`, `vm` unchanged) — the skipped-block invariant;
 * `condSkipD_denote` — the descent homomorphism **by case analysis on the guard
   value** (`true` → block denote via the body IH on the `IsCoveredSCtl` block;
-  `false` → the identity denote, the block does NOT run), NOT unconditional
-  `then; else`;
+  `false` → the identity denote, the block does not run);
 * `IsCoveredSCond` — the sidecar coverage predicate (`rCond`: a guarded block
   `RIfNz name thenBlk RSkip` over an `IsCoveredSCtl` `thenBlk`);
 * `rCond_whole_denote` — the whole-program conditional denote: the front descent
@@ -82,9 +74,8 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT)
 
 The `SEnvScalar` twin of the `Lcmd`-layer `condSkip` (`CMP ; Lcond ; <then> ;
 label`): the `then` block runs **iff** the guard holds on the entry env, else the
-env is left untouched (the label is reached with no block).  This is precisely
-the waist model `semScalar`'s φ-merge `RIfNz` arm does not provide — that arm runs
-`then` unconditionally in the (C-otherwise) case. -/
+env is left untouched (the label is reached with no block). `semScalar`'s `RIfNz`
+arm has no run on this shape. -/
 
 /-- Guard-gated do-once over `SEnvScalar` (the `condSkip` waist twin).  Runs
     `semBody` iff `guard` is nonzero on the entry env; otherwise IDENTITY.  The
@@ -94,9 +85,7 @@ def semScalarCond (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnvScal
   bif guard env then semBody env else some env
 
 /-- The guard-false leg of `semScalarCond` is the identity: a skipped conditional
-    leaves the environment untouched (the block does NOT run).  The key
-    non-vacuity fact — distinguishes the forward branch from the φ-merge
-    that would run `then` regardless. -/
+    leaves the environment untouched (the block does not run). -/
 @[simp] theorem semScalarCond_false (semBody : SEnvScalar → Option SEnvScalar)
     (guard : SEnvScalar → Bool) (env : SEnvScalar) (hg : guard env = false) :
     semScalarCond semBody guard env = some env := by
@@ -132,8 +121,7 @@ def condSkipD {Γ : Ctx}
     descent is the block descent and denotes the block's `semScalar` waist (via
     the body preservation homomorphism `ihBody`, the coverage IH); when `b =
     false` the front descent is the identity and the run is env-preserving, so the
-    denote is the identity homomorphism (the block does NOT run — the key
-    non-vacuity).  NOT unconditional `then; else`. -/
+    denote is the identity homomorphism (the block does not run). -/
 theorem condSkipD_denote (body : LowCT)
     (ihBody : ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
       (env env' : SEnvScalar) (o : DTransOut Γ),
@@ -276,9 +264,8 @@ example :
 /-- **The g = 0 identity (the key non-vacuity).**  A concrete guard-gated
     call+store whose guard `inlen != 0` is FALSE (the entry env has `inlen = 0`):
     the block's side effect (the call and the store) does NOT run, and the
-    guard-gated semantics is the IDENTITY — the environment is returned unchanged.
-    This is exactly what `semScalar`'s φ-merge `RIfNz` arm would get WRONG (it
-    would run `then` regardless of the guard).  The guard's Bool value on the
+    guard-gated semantics is the identity: the environment is returned unchanged.
+    The guard's Bool value on the
     entry env is `false` (`native_decide`); `semScalarCond_false` then collapses
     the do-once to the identity. -/
 example :
