@@ -173,6 +173,14 @@ def opExpr : BinKind → SExpr → SExpr → SExpr
   | .shl, a, b => .SShl a b
   | .shr, a, b => .SShr a b
   | .or, a, b => .SSub (.SAdd a b) (.SAnd a b)
+  | .andn, a, b => .SAnd (.SXor a (.SLit (2 ^ 64 - 1))) b
+
+/-- The `SExpr` of `e` rotated right by `n` within 64 bits: `e >>> n` or-ed with
+    `e <<< (64 - n)` masked to 64 bits, and `e` itself when `n` is a multiple of 64. -/
+def rorExpr (n : Nat) (e : SExpr) : SExpr :=
+  if n % 64 = 0 then e
+  else opExpr .or (.SShr e (.SLit (n % 64)))
+    (.SAnd (.SShl e (.SLit (64 - n % 64))) (.SLit (2 ^ 64 - 1)))
 
 /-- The `SExpr` of a binary right-hand operand. -/
 def operandExpr : Operand → SExpr
@@ -199,6 +207,46 @@ def rhsExpr (env : Env) : Rhs → Option SExpr
   | .load _ _ => none
   | .castLoad _ _ _ => none
   | .select _ _ _ => none
+  | .ror n src => some (rorExpr n (.SVar src))
+
+/-- The `or` translation denotes bitwise or over wrapping 64-bit words. -/
+theorem evalBV_opExpr_or (β : String → BitVec 64) (a b : SExpr) :
+    (opExpr .or a b).evalBV β = a.evalBV β ||| b.evalBV β := by
+  simp only [opExpr, SExpr.evalBV]
+  generalize a.evalBV β = x
+  generalize b.evalBV β = y
+  bv_decide
+
+/-- The `andn` translation denotes `(~a) & b` over wrapping 64-bit words. -/
+theorem evalBV_opExpr_andn (β : String → BitVec 64) (a b : SExpr) :
+    (opExpr .andn a b).evalBV β = ~~~(a.evalBV β) &&& b.evalBV β := by
+  simp only [opExpr, SExpr.evalBV]
+  generalize a.evalBV β = x
+  generalize b.evalBV β = y
+  bv_decide
+
+/-- The rotate translation denotes `BitVec.rotateRight` over wrapping 64-bit
+    words. -/
+theorem evalBV_rorExpr (β : String → BitVec 64) (n : Nat) (e : SExpr) :
+    (rorExpr n e).evalBV β = (e.evalBV β).rotateRight n := by
+  unfold rorExpr
+  split
+  · rename_i h
+    rw [BitVec.rotateRight_def, h]
+    simp
+  · rename_i h
+    rw [evalBV_opExpr_or, BitVec.rotateRight_def]
+    simp only [SExpr.evalBV]
+    have hk : n % 64 < 64 := Nat.mod_lt _ (by decide)
+    have h1 : (BitVec.ofNat 64 (n % 64)).toNat = n % 64 := by
+      simp only [BitVec.toNat_ofNat]; omega
+    have h2 : (BitVec.ofNat 64 (64 - n % 64)).toNat = 64 - n % 64 := by
+      simp only [BitVec.toNat_ofNat]; omega
+    rw [h1, h2]
+    generalize e.evalBV β = x
+    congr 1
+    generalize x <<< (64 - n % 64) = y
+    bv_decide
 
 /-- The `Located` of a declared array, as 64-bit words. -/
 def arrLoc (env : Env) (a : String) : Option Located :=

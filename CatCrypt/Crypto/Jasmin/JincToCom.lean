@@ -19,7 +19,9 @@ assignments `x = n`, variable-indexed loads `tbl[idx]`, stores `out[idx] = v`
 at a literal or variable index and with a cast right-hand side, a global-table
 assignment `name = GLOBAL`, `while (v != 0) { … }`, `for v = lo to hi { … }`,
 and `return name`. The elaborator (`JincElab`) turns a `JFun` into a
-`Com jasminDialect`; this module is the textual front.
+`Com jasminDialect`; this module is the textual front. The rotate `Rhs.ror` and
+the operator `BinKind.andn` have no syntax in this parser; `JincInline`, the
+partial evaluator for full Jasmin source units, produces them.
 
 Targets the straight-line `ec_leaves.jinc` leaves (`ec_dlog`, `ec_pow_store`)
 and the two loop forms of the `.jazz` printer's output. Data-dependent
@@ -127,8 +129,9 @@ inductive JTy where
   | arr (w n : Nat)
   deriving Repr, BEq, Inhabited, DecidableEq
 
+/-- A binary operator. `andn a b` is `(~a) & b`, the BMI1 `ANDN`. -/
 inductive BinKind where
-  | add | sub | mul | and | or | xor | shl | shr
+  | add | sub | mul | and | or | xor | shl | shr | andn
   deriving Repr, BEq, Inhabited
 
 /-- A binary right-hand operand: a variable or a literal. -/
@@ -145,6 +148,9 @@ inductive Rhs where
   | select (cond t f : String)               -- `cond ? t : f` (branchless cmov)
   | imm (n : Nat)                            -- `= 0`
   | castLoad (w : Nat) (arr : String) (idx : String)  -- `(Wu) arr[idx]`
+  /-- `src` rotated right by the immediate `n` (`#ROR_64`; `#ROL_64 i` is
+      `ror (64 - i)`). -/
+  | ror (n : Nat) (src : String)
   deriving Repr, BEq, Inhabited
 
 inductive Stmt where

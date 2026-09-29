@@ -25,7 +25,8 @@ Elaborates a parsed straight-line `JFun` (`JincToCom`) into an intrinsically-typ
 (`Com.toLprogPhysAbi` → `renderLprogAtt`) — no jasminc. Global tables assigned by
 `name = GLOBAL` are turned into pointer parameters (the owned export emits no
 globals). The op mapping is `(Wu)x → castW`, the binary ops
-`a*b/a+b/a-b/a&b/a|b/a^b/a<<n/a>>n → regArith`, integer
+`a*b/a+b/a-b/a&b/a|b/a^b/a<<n/a>>n` and `andn a b` (`(~a) & b`) `→ regArith`,
+the rotate `ror n src → rorImm`, integer
 literals → `regConst`, `tbl[idx] → stackLoad`, `out[k]=v → stackStore`, and the
 branchless conditional `c ? a : b → select` (constant-time control flow: renders
 to `test`/`cmovcc`, no PC divergence). A bare `lhs = src` is a register copy, in
@@ -76,6 +77,7 @@ def binOf : BinKind → JasminBinOp
   | .xor => .xor
   | .shl => .shl
   | .shr => .shr
+  | .andn => .andn
 
 /-- Build the `Ctxt.Var Γ τ` at de-Bruijn index `i`, succeeding iff `Γ[i] = τ`. -/
 def mkVar : (Γ : Ctxt jasminDialect) → Nat → (τ : JasminTy) → Option (Ctxt.Var Γ τ)
@@ -119,6 +121,15 @@ partial def elabStmts : (Γ : Ctxt jasminDialect) → Env → List Stmt →
           let sv ← lookup Γ env src (.reg sw)
           let e : Expr jasminDialect Γ (.reg w) :=
             ⟨.castW sw w, rfl, .cons sv .nil⟩
+          let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
+          return ⟨s, Com.var e body⟩
+      | _ => none
+  | Γ, env, Stmt.assign lhs (Rhs.ror n src) :: rest => do
+      let sTy ← typeOf env src
+      match sTy with
+      | .reg w =>
+          let sv ← lookup Γ env src (.reg w)
+          let e : Expr jasminDialect Γ (.reg w) := ⟨.rorImm w n, rfl, .cons sv .nil⟩
           let ⟨s, body⟩ ← elabStmts (.reg w :: Γ) ((lhs, .reg w) :: env) rest
           return ⟨s, Com.var e body⟩
       | _ => none
@@ -441,6 +452,18 @@ def abiWidth : JasminTy → Nat
   | .reg w => w
   | _ => 64
 
+/-- Render the owned AT&T `.s` for an untyped `JFun`: `elabFun`, then
+    `Com.toLprogPhysAbi` and `renderOwned`, argument `j` in `sysvRegs[j]`.
+    `"; elaboration failed"` when `elabFun` declines. -/
+def emitJFunAsm (f : JFun) (fname : String) : String :=
+  match elabFun f with
+  | none => "; elaboration failed"
+  | some ⟨Γ, _, com⟩ =>
+      let abiArgs := sysvRegs.take Γ.length
+      let abiTyin := (Γ.map abiWidth).reverse
+      CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+        (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))
+
 /-- Render the owned AT&T `.s` for a parsed `.jinc` function, through
     `Com.toLprogPhysAbi` (no jasminc). Returns the parse/elab error message on
     failure. Argument `j` lands in `sysvRegs[j]` (natural C order): a 3+-argument
@@ -450,14 +473,7 @@ def abiWidth : JasminTy → Nat
 def emitJincAsm (src : String) (fname : String) : String :=
   match parseJincFun src with
   | .error e => s!"; parse error: {e}"
-  | .ok f =>
-      match elabFun f with
-      | none => "; elaboration failed"
-      | some ⟨Γ, _, com⟩ =>
-          let abiArgs := sysvRegs.take Γ.length
-          let abiTyin := (Γ.map abiWidth).reverse
-          CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
-            (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))
+  | .ok f => emitJFunAsm f fname
 
 /-- The owned AT&T `.s` for a parsed `.jinc` function after `n` rounds of
     register-copy coalescing, which computes a value in the register its copy
