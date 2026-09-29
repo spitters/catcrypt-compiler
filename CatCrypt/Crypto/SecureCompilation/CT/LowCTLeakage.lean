@@ -20,8 +20,9 @@ same observation type `CTLeak` and the same two-run definition
   the value of a `RForRuntime` bound, an `addr` event with the array variable and
   element index of every array access, a `vt` event for every scalar-expression
   node whose x86 mnemonic (under `M.mnem`) makes its operands observable in the
-  regime `M.regime`, and a `vtCall` event for a call of a leaf that `M.leafVT`
-  classes variable time.
+  regime `M.regime`, and the events `M.vtEvents` for a call that `M.leafVT` marks: a
+  `vtCall` event with the argument bytes for a variable-time leaf, the trace of its
+  lowered run for a linked callee.
 * `RustExecLeak.toRustExec` and `RustExec.exists_leak` state that the trace is
   an annotation: erasing it gives `RustExec`, and every `RustExec` run has one.
 * `LowCTConstantTime` is constant time for a `LevelTable` split: runs from
@@ -58,12 +59,22 @@ def sexprMnem : SExpr → Option X86Mnem
   | .SAsr _ _ => some .sarx
   | .SMulHiU _ _ => some .mulx
 
-/-- The parameters of the `LowCT` leakage: the hardware regime, the mnemonic of
-    each scalar-expression node, and the leaves classed variable time. -/
+/-- The bytes of a tower value, as natural numbers. -/
+def towerBytes (v : Σ t : TowerType, RustVal t) : List Nat :=
+  List.ofFn (fun j => (v.2 j).toNat)
+
+/-- The parameters of the `LowCT` leakage: the hardware regime, the mnemonic of each
+    scalar-expression node, the calls whose events the model supplies (`leafVT`), and
+    those events on the argument slots of the call (`vtEvents`). A call marked by `leafVT`
+    is a variable-time leaf, whose event is its argument bytes (the default of
+    `vtEvents`), or a linked callee, whose events are the trace of its lowered run; an
+    unmarked call has no event. -/
 structure LowCTLeakModel where
   regime : DoitRegime
   mnem : SExpr → Option X86Mnem
   leafVT : String → Bool
+  vtEvents : String → List (Σ t : TowerType, RustVal t) → List CTLeak :=
+    fun f argList => [.vtCall f (argList.map towerBytes)]
 
 /-- The model of the owned x86 route: DOITM, `sexprMnem`, no variable-time
     leaf. -/
@@ -97,15 +108,11 @@ def sexprLeak (M : LowCTLeakModel) (rs : RustState) : SExpr → List CTLeak
   | .SMulHiS a b =>
       sexprLeak M rs a ++ sexprLeak M rs b ++ nodeLeak M rs (.SMulHiS a b) a b
 
-/-- The bytes of a tower value, as natural numbers. -/
-def towerBytes (v : Σ t : TowerType, RustVal t) : List Nat :=
-  List.ofFn (fun j => (v.2 j).toNat)
-
-/-- The event of a leaf call: the argument bytes when the leaf is classed
-    variable time, nothing otherwise. -/
+/-- The events of a call: those the model supplies (`vtEvents`) for a call marked by
+    `leafVT`, nothing otherwise. -/
 def callLeak (M : LowCTLeakModel) (f : String) (argList : List (Σ t : TowerType, RustVal t)) :
     List CTLeak :=
-  if M.leafVT f then [.vtCall f (argList.map towerBytes)] else []
+  if M.leafVT f then M.vtEvents f argList else []
 
 /-! ## 2. The traced semantics -/
 
