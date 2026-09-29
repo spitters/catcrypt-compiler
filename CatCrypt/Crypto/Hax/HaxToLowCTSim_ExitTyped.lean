@@ -458,18 +458,54 @@ def exitCallTys (A : ExitTowers) (f : String) : Option TowerType := A.lookup (ex
     placement `A`: the type at `exitOptKey f`, the word type `TU64` for a scalar payload. -/
 def exitOptTys (A : ExitTowers) (f : String) : Option TowerType := A.lookup (exitOptKey f)
 
+/-- The reserved name under which a placement records the result type of a linked callee
+    `f`. -/
+def exitCalleeKey (f : String) : String := "__exit_ty!" ++ f
+
+/-- The reserved name under which a placement records the slot type of argument `i` of a
+    linked callee `f`. -/
+def exitArgKey (f : String) (i : Nat) : String := "__exit_ty?" ++ (toString i ++ "!" ++ f)
+
+/-- The slot types recorded in `A` for the arguments `i, i + 1, …` of `f`, up to the first
+    argument without one, at most `fuel` of them. -/
+def exitArgTys (A : ExitTowers) (f : String) : Nat → Nat → List TowerType
+  | 0, _ => []
+  | fuel + 1, i =>
+      match A.lookup (exitArgKey f i) with
+      | some t => t :: exitArgTys A f fuel (i + 1)
+      | none => []
+
+/-- The largest number of arguments of a linked callee `exitCalleeTys` reads. -/
+def exitArgMax : Nat := 64
+
+/-- The argument slot types and the result type of a linked callee `f` recorded in the
+    placement `A`: the type at `exitCalleeKey f`, and the types at `exitArgKey f i` for the
+    first arguments with one, at most `exitArgMax` of them. -/
+def exitCalleeTys (A : ExitTowers) (f : String) : Option (List TowerType × TowerType) :=
+  (A.lookup (exitCalleeKey f)).map fun dr => (exitArgTys A f exitArgMax 0, dr)
+
 /-- The head of a call.  A call of `exitScalarRes` bound to a scalar name runs at its tower
-    type `towerOfCallName f`.  A call with a declared result type `dr` (`exitCallTys A f`)
-    runs at `dr`, its scalar arguments marshalled at `TU64`: its result is copied into the
-    tower slot of a name placed at `dr`, or, for `dr = TU64`, from limb `0` into the scalar
-    slot of a scalar name.  A call without a declared result type runs at
-    `towerOfCallName f` into a name placed there. -/
+    type `towerOfCallName f`.  A call of a linked callee with argument slot types `ts` and
+    result type `dr` (`exitCalleeTys A f`), declaring no other type, runs at `dr` when its
+    argument slots, the scalar arguments marshalled at `TU64`, have the types `ts`.  A call
+    with a declared result type `dr` (`exitCallTys A f`) runs at `dr`, its scalar arguments
+    marshalled at `TU64`.  In both cases its result is copied into the tower slot of a name
+    placed at `dr`, or, for `dr = TU64`, from limb `0` into the scalar slot of a scalar
+    name.  A call without a declared result type runs at `towerOfCallName f` into a name
+    placed there. -/
 def callHeadT (A : ExitTowers) (n f : String) (args : List ImpExpr) :
     Option (LowCT → LowCT) :=
   if exitScalarRes f then
     if A.lookup n = none then callHeadAt A n f (towerOfCallName f) (towerOfCallName f) args
     else none
   else
+    match exitCalleeTys A f with
+    | some (ts, dr) =>
+        if (exitCallTys A f).isSome ∨ (exitOptTys A f).isSome ∨
+            (A.lookup n = none ∧ dr ≠ .TU64) ∨
+            (callMarshal A .TU64 args).map (fun cl => cl.2.map (·.locDst)) ≠ some ts then none
+        else callHeadAt A n f .TU64 dr args
+    | none =>
     match exitCallTys A f with
     | some dr =>
         if (exitOptTys A f).isSome ∨ (A.lookup n = none ∧ dr ≠ .TU64) then none
@@ -1053,6 +1089,190 @@ theorem exitOptTys_withCallKeys {D DO : String → Option TowerType} {fs : List 
   unfold exitOptTys exitWithCallKeys at h
   rw [lookup_keyed_other D fs _ (fun g => (exitOptKey_ne_callKey f g).symm)] at h
   exact lookup_keyed exitOptKey_inj DO fs _ (lookup_isCallKey_filter _ (exitIsCallKey_optKey f)) h
+
+theorem exitIsCallKey_calleeKey (f : String) : exitIsCallKey (exitCalleeKey f) = true := by
+  simp [exitIsCallKey, exitCalleeKey, String.toList_append, List.isPrefixOf]
+
+theorem exitCalleeKey_ne_callKey (f g : String) : exitCalleeKey f ≠ exitCallKey g := by
+  intro h
+  have := congrArg String.toList h
+  simp [exitCalleeKey, exitCallKey, String.toList_append] at this
+
+theorem exitCalleeKey_ne_optKey (f g : String) : exitCalleeKey f ≠ exitOptKey g := by
+  intro h
+  have := congrArg String.toList h
+  simp [exitCalleeKey, exitOptKey, String.toList_append] at this
+
+/-- The placement `exitTowers e` records no linked callee. -/
+theorem exitCalleeTys_exitTowers (e : ImpExpr) (f : String) :
+    exitCalleeTys (exitTowers e) f = none := by
+  unfold exitCalleeTys
+  rw [show (exitTowers e).lookup (exitCalleeKey f) = none from
+    lookup_isCallKey_filter _ (exitIsCallKey_calleeKey f)]
+  rfl
+
+/-- `exitWithCallKeys D DO fs rest` records no linked callee. -/
+theorem exitCalleeTys_withCallKeys (D DO : String → Option TowerType) (fs : List String)
+    (rest : ExitTowers) (f : String) :
+    exitCalleeTys (exitWithCallKeys D DO fs rest) f = none := by
+  unfold exitCalleeTys exitWithCallKeys
+  rw [lookup_keyed_other D fs _ (fun g => (exitCalleeKey_ne_callKey f g).symm),
+    lookup_keyed_other DO fs _ (fun g => (exitCalleeKey_ne_optKey f g).symm),
+    lookup_isCallKey_filter _ (exitIsCallKey_calleeKey f)]
+  rfl
+
+theorem exitIsCallKey_argPrefix (x : String) : exitIsCallKey ("__exit_ty?" ++ x) = true := by
+  simp [exitIsCallKey, String.toList_append, List.isPrefixOf]
+
+theorem exitIsCallKey_argKey (f : String) (i : Nat) : exitIsCallKey (exitArgKey f i) = true :=
+  exitIsCallKey_argPrefix _
+
+theorem argPrefix_ne_callKey (x g : String) : "__exit_ty?" ++ x ≠ exitCallKey g := by
+  intro h
+  have := congrArg String.toList h
+  simp [exitCallKey, String.toList_append] at this
+
+theorem argPrefix_ne_optKey (x g : String) : "__exit_ty?" ++ x ≠ exitOptKey g := by
+  intro h
+  have := congrArg String.toList h
+  simp [exitOptKey, String.toList_append] at this
+
+theorem argPrefix_ne_calleeKey (x g : String) : "__exit_ty?" ++ x ≠ exitCalleeKey g := by
+  intro h
+  have := congrArg String.toList h
+  simp [exitCalleeKey, String.toList_append] at this
+
+theorem exitArgKey_ne_callKey (f g : String) (i : Nat) : exitArgKey f i ≠ exitCallKey g :=
+  argPrefix_ne_callKey _ g
+
+theorem exitArgKey_ne_optKey (f g : String) (i : Nat) : exitArgKey f i ≠ exitOptKey g :=
+  argPrefix_ne_optKey _ g
+
+theorem exitArgKey_ne_calleeKey (f g : String) (i : Nat) : exitArgKey f i ≠ exitCalleeKey g :=
+  argPrefix_ne_calleeKey _ g
+
+/-- `exitWithCallKeys D DO fs rest` holds nothing at `exitCalleeKey f`. -/
+theorem lookup_calleeKey_withCallKeys (D DO : String → Option TowerType) (fs : List String)
+    (rest : ExitTowers) (f : String) :
+    (exitWithCallKeys D DO fs rest).lookup (exitCalleeKey f) = none := by
+  unfold exitWithCallKeys
+  rw [lookup_keyed_other D fs _ (fun g => (exitCalleeKey_ne_callKey f g).symm),
+    lookup_keyed_other DO fs _ (fun g => (exitCalleeKey_ne_optKey f g).symm)]
+  exact lookup_isCallKey_filter _ (exitIsCallKey_calleeKey f)
+
+/-- `exitWithCallKeys D DO fs rest` holds nothing at `exitArgKey f i`. -/
+theorem lookup_argKey_withCallKeys (D DO : String → Option TowerType) (fs : List String)
+    (rest : ExitTowers) (f : String) (i : Nat) :
+    (exitWithCallKeys D DO fs rest).lookup (exitArgKey f i) = none := by
+  unfold exitWithCallKeys
+  rw [lookup_keyed_other D fs _ (fun g => (exitArgKey_ne_callKey f g i).symm),
+    lookup_keyed_other DO fs _ (fun g => (exitArgKey_ne_optKey f g i).symm)]
+  exact lookup_isCallKey_filter _ (exitIsCallKey_argKey f i)
+
+theorem lookup_append_of_none {l r : ExitTowers} {k : String} (h : r.lookup k = none) :
+    (l ++ r).lookup k = l.lookup k := by
+  induction l with
+  | nil => simpa using h
+  | cons p l ih =>
+    obtain ⟨k', v⟩ := p
+    cases hk : (k == k') <;> simp [List.lookup, hk, ih]
+
+theorem exitArgTys_append {l r : ExitTowers} {f : String}
+    (h : ∀ i, r.lookup (exitArgKey f i) = none) :
+    ∀ fuel i, exitArgTys (l ++ r) f fuel i = exitArgTys l f fuel i
+  | 0, _ => rfl
+  | fuel + 1, i => by
+    simp only [exitArgTys, lookup_append_of_none (h i), exitArgTys_append h fuel (i + 1)]
+
+/-- The linked callees recorded in `l ++ r` are those of `l` when `r` holds nothing at the
+    keys of `f`. -/
+theorem exitCalleeTys_append {l r : ExitTowers} {f : String}
+    (hc : r.lookup (exitCalleeKey f) = none) (ha : ∀ i, r.lookup (exitArgKey f i) = none) :
+    exitCalleeTys (l ++ r) f = exitCalleeTys l f := by
+  unfold exitCalleeTys
+  rw [lookup_append_of_none hc, exitArgTys_append ha]
+
+/-- The entries of the argument slot types `ts` of `g`, from argument `i` on. -/
+def argEntries (g : String) : Nat → List TowerType → ExitTowers
+  | _, [] => []
+  | i, t :: ts => (exitArgKey g i, t) :: argEntries g (i + 1) ts
+
+/-- The placement `rest` with the linked callees `sig` (name, argument slot types, result
+    type) recorded under `exitCalleeKey` and `exitArgKey`. -/
+def exitWithCallees (sig : List (String × List TowerType × TowerType)) (rest : ExitTowers) :
+    ExitTowers :=
+  sig.flatMap (fun s => (exitCalleeKey s.1, s.2.2) :: argEntries s.1 0 s.2.1) ++ rest
+
+/-- The linked callees of `exitWithCallees sig rest` are those `sig` records, when `rest`
+    holds nothing at their keys. -/
+theorem exitCalleeTys_withCallees (sig : List (String × List TowerType × TowerType))
+    (rest : ExitTowers) (f : String) (hc : rest.lookup (exitCalleeKey f) = none)
+    (ha : ∀ i, rest.lookup (exitArgKey f i) = none) :
+    exitCalleeTys (exitWithCallees sig rest) f = exitCalleeTys (exitWithCallees sig []) f := by
+  unfold exitWithCallees
+  rw [exitCalleeTys_append hc ha, List.append_nil]
+
+theorem lookup_append_of_left_none {l r : ExitTowers} {k : String} (h : l.lookup k = none) :
+    (l ++ r).lookup k = r.lookup k := by
+  induction l with
+  | nil => rfl
+  | cons p l ih =>
+    obtain ⟨k', v⟩ := p
+    cases hk : (k == k')
+    · simp only [List.cons_append, List.lookup, hk] at h ⊢
+      exact ih h
+    · simp [List.lookup, hk] at h
+
+theorem lookup_argEntries_other (g : String) {k : String} (hk : ∀ i, exitArgKey g i ≠ k) :
+    ∀ i ts, (argEntries g i ts).lookup k = none
+  | _, [] => rfl
+  | i, t :: ts => by
+    have h1 : (k == exitArgKey g i) = false := by
+      simpa using fun h : k = exitArgKey g i => hk i h.symm
+    simp only [argEntries, List.lookup, h1]
+    exact lookup_argEntries_other g hk (i + 1) ts
+
+/-- A lookup in `exitWithCallees sig rest` at a name of neither form `exitCalleeKey g` nor
+    `exitArgKey g i` is a lookup in `rest`. -/
+theorem lookup_withCallees_other (sig : List (String × List TowerType × TowerType))
+    (rest : ExitTowers) {k : String} (hc : ∀ g, exitCalleeKey g ≠ k)
+    (ha : ∀ g i, exitArgKey g i ≠ k) :
+    (exitWithCallees sig rest).lookup k = rest.lookup k := by
+  unfold exitWithCallees
+  induction sig with
+  | nil => rfl
+  | cons s sig ih =>
+    have h1 : (k == exitCalleeKey s.1) = false := by
+      simpa using fun h : k = exitCalleeKey s.1 => hc s.1 h.symm
+    simp only [List.flatMap_cons, List.cons_append, List.append_assoc, List.lookup, h1]
+    rw [lookup_append_of_left_none (lookup_argEntries_other s.1 (fun i => ha s.1 i) 0 s.2.1)]
+    exact ih
+
+theorem exitCallTys_withCallees (sig : List (String × List TowerType × TowerType))
+    (rest : ExitTowers) (f : String) :
+    exitCallTys (exitWithCallees sig rest) f = exitCallTys rest f :=
+  lookup_withCallees_other sig rest (fun g => exitCalleeKey_ne_callKey g f)
+    (fun g i => exitArgKey_ne_callKey g f i)
+
+theorem exitOptTys_withCallees (sig : List (String × List TowerType × TowerType))
+    (rest : ExitTowers) (f : String) :
+    exitOptTys (exitWithCallees sig rest) f = exitOptTys rest f :=
+  lookup_withCallees_other sig rest (fun g => exitCalleeKey_ne_optKey g f)
+    (fun g i => exitArgKey_ne_optKey g f i)
+
+theorem exitReserved_calleeKey (g : String) : exitReserved (exitCalleeKey g) = true := by
+  simp [exitReserved, exitCalleeKey, String.toList_append, List.isPrefixOf]
+
+theorem exitReserved_argPrefix (x : String) : exitReserved ("__exit_ty?" ++ x) = true := by
+  simp [exitReserved, String.toList_append, List.isPrefixOf]
+
+/-- `exitWithCallees sig rest` places a name outside the reserved names as `rest` does. -/
+theorem lookup_withCallees_nonreserved (sig : List (String × List TowerType × TowerType))
+    (rest : ExitTowers) {n : String} (hn : exitReserved n = false) :
+    (exitWithCallees sig rest).lookup n = rest.lookup n :=
+  lookup_withCallees_other sig rest
+    (fun g h => by rw [← h, exitReserved_calleeKey] at hn; cases hn)
+    (fun g i h => by rw [← h] at hn; rw [exitArgKey, exitReserved_argPrefix] at hn; cases hn)
 
 /-- The placement of the tail value of a body under `A`, read from its first tail: the
     placement of a tail variable, `tuple` for a tail tuple, and `scalar` otherwise. -/
@@ -1731,6 +1951,31 @@ theorem leafCallAgreesArgsAt_of_len {bi : Builtins} {leafSpec : LeafSpec} {f : S
     LeafCallAgreesArgsAt bi leafSpec f dt br k e :=
   fun args vals argList oldV vRes hl _ hbi hF => h args vals argList oldV vRes hl hbi hF
 
+/-- The leaf condition of `f` on argument slots of the types `ts`: argument `i` read from a
+    slot of type `ts[i]`. -/
+def LeafCallAgreesArgsTys (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : TowerType)
+    (br : ValueTowerBridge) (ts : List TowerType) : Prop :=
+  ∀ (args : List Located) (vals : List Value) (argList : List (Σ t : TowerType, RustVal t))
+    (oldV : RustVal dt) (vRes : Value),
+    argList.map (·.1) = ts → bi f vals = some vRes →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+    br dt vRes (leafSpec.call f dt (args.map (·.locDst)) oldV argList)
+
+theorem leafCallAgreesArgsTys_of {bi : Builtins} {leafSpec : LeafSpec} {f : String}
+    {dt : TowerType} {br : ValueTowerBridge} (h : LeafCallAgreesArgs bi leafSpec f dt br)
+    (ts : List TowerType) : LeafCallAgreesArgsTys bi leafSpec f dt br ts :=
+  fun args vals argList oldV vRes _ hbi hF => h args vals argList oldV vRes hbi hF
+
+/-- `LeafCallScalar` on argument slots of the types `ts`. -/
+def LeafCallScalarTys (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : TowerType)
+    (br : ValueTowerBridge) (ts : List TowerType) : Prop :=
+  ∀ (args : List Located) (vals : List Value) (argList : List (Σ t : TowerType, RustVal t))
+    (oldV : RustVal dt) (vRes : Value),
+    argList.map (·.1) = ts → bi f vals = some vRes →
+    List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+    ScalarValN vRes ∧
+      valueToScalar vRes = some (towerLimb (leafSpec.call f dt (args.map (·.locDst)) oldV argList) 0)
+
 /-- The leaf conditions of the typed simulation, for the declared call result types `D`
     (by default none): the scalar operations, the absence of control-flow results, the
     storage of a scalar into limb `0` of a fresh tower slot of at least `8` bytes, the
@@ -1744,16 +1989,20 @@ theorem leafCallAgreesArgsAt_of_len {bi : Builtins} {leafSpec : LeafSpec} {f : S
     the calls other than the array operations with a declared
     result type `dr` at `dr` (`callD`) and, for a declared word result `TU64`, with a scalar
     result (`wordD`), the calls returning an `Option` with a declared payload type
-    `t` of `DO` (`optD`), and the `Option` constructors `None` and `Some` (`optCtors`).
-    `callD`, `wordD` and `optD` hold for the default `D` and `DO`. -/
+    `t` of `DO` (`optD`), the linked callees of `DA` with argument slot types `ts` and
+    result type `dr` on argument slots of the types `ts` (`callA`, and `wordA` for a word
+    result), and the `Option` constructors `None` and `Some` (`optCtors`).  `callD`,
+    `wordD`, `optD`, `callA` and `wordA` hold for the default `D`, `DO` and `DA`. -/
 structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridge)
     (D : String → Option TowerType := fun _ => none)
-    (DO : String → Option TowerType := fun _ => none) : Prop where
+    (DO : String → Option TowerType := fun _ => none)
+    (DA : String → Option (List TowerType × TowerType) := fun _ => none) : Prop where
   ops : ScalarOpsSoundT bi
   plain : _root_.Hax.ContinueFlag.BuiltinsPlain bi
   marshal : ExitMarshal br leafSpec
   callT : ∀ f, exitScalarRes f = false → f ≠ "index" → f ≠ "array_update" →
-    f ≠ "array_lit" → f ≠ "repeat" → LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
+    f ≠ "array_lit" → f ≠ "repeat" → DA f = none →
+    LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) br
   callS : ∀ f, exitScalarCall f = true → LeafCallScalar bi leafSpec f (towerOfCallName f) br
   /-- The leaf calls of `exitTowerScalarNames`, whose arguments are related by `br` to
       tower values and whose result is a scalar word read from limb `0` of the leaf
@@ -1775,16 +2024,29 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
     LeafRepeatAgrees bi leafSpec c br k
   /-- A call outside `exitScalarRes` and the array operations with the declared result type
       `dr` agrees at `dr`. -/
-  callD : ∀ f dr, D f = some dr → DO f = none → exitScalarRes f = false → f ≠ "index" →
-    f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
+  callD : ∀ f dr, D f = some dr → DO f = none → DA f = none → exitScalarRes f = false →
+    f ≠ "index" → f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
     LeafCallAgreesArgs bi leafSpec f dr br := by
     intro f dr h; simp at h
   /-- A call outside `exitScalarRes` and the array operations with the declared word result
       `TU64` returns a scalar word whose decoding is limb `0` of the leaf output at `TU64`. -/
-  wordD : ∀ f, D f = some .TU64 → exitScalarRes f = false → f ≠ "index" →
+  wordD : ∀ f, D f = some .TU64 → DA f = none → exitScalarRes f = false → f ≠ "index" →
     f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
     LeafCallScalar bi leafSpec f .TU64 br := by
     intro f h; simp at h
+  /-- A linked callee with argument slot types `ts` and result type `dr` agrees at `dr` on
+      argument slots of the types `ts`. -/
+  callA : ∀ f ts dr, DA f = some (ts, dr) → exitScalarRes f = false → f ≠ "index" →
+    f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
+    LeafCallAgreesArgsTys bi leafSpec f dr br ts := by
+    intro f ts dr h; simp at h
+  /-- A linked callee with argument slot types `ts` and the word result `TU64` returns, on
+      argument slots of the types `ts`, a scalar word whose decoding is limb `0` of the leaf
+      output. -/
+  wordA : ∀ f ts, DA f = some (ts, .TU64) → exitScalarRes f = false → f ≠ "index" →
+    f ≠ "array_update" → f ≠ "array_lit" → f ≠ "repeat" →
+    LeafCallScalarTys bi leafSpec f .TU64 br ts := by
+    intro f ts h; simp at h
   /-- A call outside `exitScalarRes` and the array operations with the declared `Option`
       payload type `t` satisfies `LeafCallOption` at `t`. -/
   optD : ∀ f t, DO f = some t → exitScalarRes f = false → f ≠ "index" →
@@ -1794,17 +2056,22 @@ structure ExitLeaves (bi : Builtins) (leafSpec : LeafSpec) (br : ValueTowerBridg
   /-- The builtins `None` and `Some` build `Option` values. -/
   optCtors : OptCtors bi
 
-/-- The leaf conditions for the declared types `D` and `DO` give those for any `D'` and
-    `DO'` declaring fewer, when no name `D'` declares is declared by `DO`. -/
+/-- The leaf conditions for the declared types `D`, `DO` and the linked callees `DA` give
+    those for any `D'`, `DO'`, `DA'` declaring fewer, when no name `D'` declares is declared
+    by `DO`, and every name without a linked callee in `DA'` has none in `DA`. -/
 theorem ExitLeaves.mono {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
-    {D D' DO DO' : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+    {D D' DO DO' : String → Option TowerType}
+    {DA DA' : String → Option (List TowerType × TowerType)}
+    (hL : ExitLeaves bi leafSpec br D DO DA)
     (h : ∀ f dr, D' f = some dr → D f = some dr)
     (hO : ∀ f t, DO' f = some t → DO f = some t)
-    (hdisj : ∀ f dr, D' f = some dr → DO f = none) : ExitLeaves bi leafSpec br D' DO' where
+    (hdisj : ∀ f dr, D' f = some dr → DO f = none)
+    (hA : ∀ f x, DA' f = some x → DA f = some x)
+    (hA' : ∀ f, DA' f = none → DA f = none) : ExitLeaves bi leafSpec br D' DO' DA' where
   ops := hL.ops
   plain := hL.plain
   marshal := hL.marshal
-  callT := hL.callT
+  callT f hsc h1 h2 h3 h4 hda := hL.callT f hsc h1 h2 h3 h4 (hA' f hda)
   callS := hL.callS
   callTS := hL.callTS
   index := hL.index
@@ -1813,23 +2080,27 @@ theorem ExitLeaves.mono {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBr
   updateT := hL.updateT
   arrLitN := hL.arrLitN
   repeatN := hL.repeatN
-  callD f dr hf _ := hL.callD f dr (h f dr hf) (hdisj f dr hf)
-  wordD f hf := hL.wordD f (h f _ hf)
+  callD f dr hf _ hda := hL.callD f dr (h f dr hf) (hdisj f dr hf) (hA' f hda)
+  wordD f hf hda := hL.wordD f (h f _ hf) (hA' f hda)
   optD f t hf := hL.optD f t (hO f t hf)
+  callA f ts dr hf := hL.callA f ts dr (hA f _ hf)
+  wordA f ts hf := hL.wordA f ts (hA f _ hf)
   optCtors := hL.optCtors
 
 /-- The leaf conditions for the placement `exitTowers e`, which declares no call result
-    type. -/
+    type and records no linked callee. -/
 theorem ExitLeaves.atExitTowers {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
     (hL : ExitLeaves bi leafSpec br) (e : ImpExpr) :
-    ExitLeaves bi leafSpec br (exitCallTys (exitTowers e)) (exitOptTys (exitTowers e)) :=
+    ExitLeaves bi leafSpec br (exitCallTys (exitTowers e)) (exitOptTys (exitTowers e))
+      (exitCalleeTys (exitTowers e)) :=
   hL.mono (fun f dr h => by rw [exitCallTys_exitTowers] at h; cases h)
     (fun f t h => by rw [exitOptTys_exitTowers] at h; cases h) (fun _ _ _ => rfl)
+    (fun f x h => by rw [exitCalleeTys_exitTowers] at h; cases h) (fun _ _ => rfl)
 
 /-- Every call of `exitScalarRes` satisfies `LeafCallScalar`. -/
 theorem ExitLeaves.callSR {bi : Builtins} {leafSpec : LeafSpec} {br : ValueTowerBridge}
-    {D DO : String → Option TowerType}
-    (hL : ExitLeaves bi leafSpec br D DO) {f : String} (hf : exitScalarRes f = true) :
+    {D DO : String → Option TowerType} {DA : String → Option (List TowerType × TowerType)}
+    (hL : ExitLeaves bi leafSpec br D DO DA) {f : String} (hf : exitScalarRes f = true) :
     LeafCallScalar bi leafSpec f (towerOfCallName f) br := by
   unfold exitScalarRes at hf
   rcases Bool.or_eq_true_iff.mp hf with h | h
@@ -2589,6 +2860,17 @@ theorem callMarshal_locDst (A : ExitTowers) (dt : TowerType) :
         · exact ih' a ha
     | _ => simp [callMarshal] at h
 
+/-- The tower values `RCall` reads from slots each holding a value of its declared type
+    have the declared types of the slots. -/
+theorem filterMap_rsTower_types {rs : RustState} :
+    ∀ {ls : List Located}, (∀ a ∈ ls, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩) →
+      (ls.filterMap fun a => rs.rsTower a.locVar).map (·.1) = ls.map (·.locDst)
+  | [], _ => rfl
+  | a :: as, h => by
+    obtain ⟨v, hv⟩ := h a (by simp)
+    simp only [List.filterMap_cons, hv, List.map_cons,
+      filterMap_rsTower_types (fun b hb => h b (List.mem_cons_of_mem _ hb))]
+
 theorem forall₂_rsTower_typed {br : ValueTowerBridge} {rs : RustState}
     {vals : List Value} {ls : List Located}
     (h : List.Forall₂ (fun v (a : Located) => ∃ val, rs.rsTower a.locVar = some ⟨a.locDst, val⟩ ∧
@@ -2866,15 +3148,20 @@ theorem callHeadAt_some {n f : String} {dt dr : TowerType} {args : List ImpExpr}
 /-- The call heads: a call of `exitScalarRes` bound to a scalar name at
     `towerOfCallName f`; a call with the declared result type `dr` at `dr`, bound to a
     scalar name only for `dr = TU64`; a call without a declared result type bound to a name
-    placed at `towerOfCallName f` at that type. -/
+    placed at `towerOfCallName f` at that type; a linked callee with argument slot types
+    `ts` and result type `dr` at `dr`, whose argument slots have the types `ts`, bound to a
+    scalar name only for `dr = TU64`. -/
 theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT}
     (h : callHeadT A n f args = some k) :
     ∃ dt dr, callHeadAt A n f dt dr args = some k ∧
       ((exitScalarRes f = true ∧ A.lookup n = none ∧ dr = towerOfCallName f) ∨
-        (exitScalarRes f = false ∧ exitCallTys A f = some dr ∧ exitOptTys A f = none ∧
-          (A.lookup n = none → dr = .TU64)) ∨
-        (exitScalarRes f = false ∧ exitCallTys A f = none ∧ A.lookup n = some dr ∧
-          dr = towerOfCallName f)) := by
+        (exitScalarRes f = false ∧ exitCalleeTys A f = none ∧ exitCallTys A f = some dr ∧
+          exitOptTys A f = none ∧ (A.lookup n = none → dr = .TU64)) ∨
+        (exitScalarRes f = false ∧ exitCalleeTys A f = none ∧ exitCallTys A f = none ∧
+          A.lookup n = some dr ∧ dr = towerOfCallName f) ∨
+        (∃ ts, exitScalarRes f = false ∧ exitCalleeTys A f = some (ts, dr) ∧ dt = .TU64 ∧
+          (callMarshal A .TU64 args).map (fun cl => cl.2.map (·.locDst)) = some ts ∧
+          (A.lookup n = none → dr = .TU64))) := by
   unfold callHeadT at h
   by_cases hs : exitScalarRes f = true
   · rw [if_pos hs] at h
@@ -2882,17 +3169,26 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
     exact ⟨_, _, h, Or.inl ⟨hs, hn, rfl⟩⟩
   · rw [if_neg hs] at h
     have hs' : exitScalarRes f = false := by simpa using hs
-    rcases hd : exitCallTys A f with _ | dr <;> rw [hd] at h
+    rcases hc : exitCalleeTys A f with _ | ⟨ts, dr⟩ <;> rw [hc] at h
+    · simp only at h
+      rcases hd : exitCallTys A f with _ | dr <;> rw [hd] at h
+      · simp only at h
+        split_ifs at h with hn
+        exact ⟨_, _, h, Or.inr (Or.inr (Or.inl ⟨hs', rfl, rfl, hn, rfl⟩))⟩
+      · simp only at h
+        split_ifs at h with hn
+        refine ⟨_, _, h, Or.inr (Or.inl ⟨hs', rfl, rfl, ?_, fun h0 => ?_⟩)⟩
+        · by_contra hne
+          exact hn (Or.inl (Option.isSome_iff_ne_none.mpr hne))
+        · by_contra hne
+          exact hn (Or.inr ⟨h0, hne⟩)
     · simp only at h
       split_ifs at h with hn
-      exact ⟨_, _, h, Or.inr (Or.inr ⟨hs', rfl, hn, rfl⟩)⟩
-    · simp only at h
-      split_ifs at h with hn
-      refine ⟨_, _, h, Or.inr (Or.inl ⟨hs', rfl, ?_, fun h0 => ?_⟩)⟩
+      refine ⟨_, _, h, Or.inr (Or.inr (Or.inr ⟨ts, hs', rfl, rfl, ?_, fun h0 => ?_⟩))⟩
       · by_contra hne
-        exact hn (Or.inl (Option.isSome_iff_ne_none.mpr hne))
+        exact hn (Or.inr (Or.inr (Or.inr hne)))
       · by_contra hne
-        exact hn (Or.inr ⟨h0, hne⟩)
+        exact hn (Or.inr (Or.inr (Or.inl ⟨h0, hne⟩)))
 
 /-- The call of `optHeadT` on the marshalling context `ctx` and the argument slots `ls`. -/
 def optCallC (f : String) (t : TowerType) (ctx : LowCT → LowCT) (ls : List Located) : LowCT :=
@@ -2993,7 +3289,8 @@ theorem forall₂_var3 {env : Env} {a b c : String} {vals : List Value}
   cases hx; cases hy; cases hz
   exact ⟨_, _, _, rfl, hxa, hyb, hzc⟩
 
-theorem headT_scalarOp {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem headT_scalarOp {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState}
     {n f : String} {args : List ImpExpr} {se : SExpr} {vals : List Value} {r : Value}
     (hso : scalarOpHeadT A n f args = some se) (hn : exitReserved n = false)
@@ -3018,7 +3315,8 @@ theorem rsTowerLimb_rsSetTower_same (rs : RustState) (x : String) (t : TowerType
     (v : RustVal t) (i : Nat) : rsTowerLimb (rsSetTower rs x ⟨t, v⟩) x i = towerLimb v i := by
   simp [rsTowerLimb, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same]
 
-theorem headT_index {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem headT_index {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState}
     {n : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : indexHeadT A n args = some k) (hn : exitReserved n = false)
@@ -3087,7 +3385,8 @@ theorem headT_index {D DO : String → Option TowerType} (hL : ExitLeaves bi lea
   exact RustExec.letZero _ _ _ _ _ (RustExec.seq _ _ _ _ _ hload
     (RustExec.seq _ _ _ _ _ hset h))
 
-theorem headT_update {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem headT_update {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState}
     {n : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : updateHeadT A n args = some k) (hn : exitReserved n = false)
@@ -3147,7 +3446,8 @@ theorem headT_update {D DO : String → Option TowerType} (hL : ExitLeaves bi le
     `dr`, for a value `r` without a control-flow tag that the leaf output agrees with at the
     placement of the bound name, whenever the argument values are related to the slots the
     call reads. -/
-theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem headT_callAtR {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState}
     {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
     {vals : List Value} {r : Value} (hcf : r.isControlFlow = false)
@@ -3155,10 +3455,14 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
       (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
       List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
       (exitArgsAt A dt args = true → ∀ p ∈ argList, p.1 = dt) →
+      (∃ ctx, callMarshal A dt args = some (ctx, ls)) →
+      argList.map (·.1) = ls.map (·.locDst) →
       br dr r (leafSpec.call f dr (ls.map (·.locDst)) oldV argList))
     (hS : A.lookup n = none → ∀ (ls : List Located)
       (argList : List (Σ t : TowerType, RustVal t)) (oldV : RustVal dr),
       List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals argList →
+      (∃ ctx, callMarshal A dt args = some (ctx, ls)) →
+      argList.map (·.1) = ls.map (·.locDst) →
       ScalarValN r ∧
         valueToScalar r = some (towerLimb (leafSpec.call f dr (ls.map (·.locDst)) oldV argList) 0))
     (hk : callHeadAt A n f dt dr args = some k) (hn : exitReserved n = false)
@@ -3194,6 +3498,8 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
       (ctx (.RCall f ⟨exitCallName, dr⟩ ls))) rs (rsSetTower rs1 exitCallName ⟨dr, resV⟩) :=
     RustExec.letZero _ _ _ _ _ (hex _ _ hcall)
   have hF2 := forall₂_filterMap_rsTower hF1
+  have htys : argList.map (·.1) = ls.map (·.locDst) :=
+    filterMap_rsTower_types (forall₂_rsTower_typed hF1)
   have hag2 : envAgreesT br A env (rsSetTower rs1 exitCallName ⟨dr, resV⟩) :=
     envAgreesT_setTower_reserved _ exitReserved_call
       (envAgreesT_of_eqOn hS1 (fun y hy => by
@@ -3202,7 +3508,7 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
     show rs1.rsScalar exitRetName = 0
     rw [hS1]; exact hret
   rcases hcase with ⟨hnA, rfl⟩ | ⟨hnA, rfl⟩
-  · obtain ⟨hsr, hdr⟩ := hS hnA ls argList default hF2
+  · obtain ⟨hsr, hdr⟩ := hS hnA ls argList default hF2 ⟨ctx, hm⟩ htys
     have hev : (SExpr.SLimb exitCallName 0).evalState
         (rsSetTower rs1 exitCallName ⟨dr, resV⟩) = towerLimb resV 0 := by
       simp only [SExpr.evalState]
@@ -3220,7 +3526,7 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
       rw [hv, Option.some.injEq] at hap
       subst hap
       exact hloc hat a ha
-    have hbrR := hT hnA ls argList default hF2 hty
+    have hbrR := hT hnA ls argList default hF2 hty ⟨ctx, hm⟩ htys
     refine ⟨rsSetTower (rsSetTower rs1 exitCallName ⟨dr, resV⟩) n ⟨dr, resV⟩,
       envAgreesT_extend_tower hn hnA hcf hbrR hag2, hret2,
       fun bC rs' h => ?_⟩
@@ -3230,7 +3536,8 @@ theorem headT_callAtR {D DO : String → Option TowerType} (hL : ExitLeaves bi l
 
 /-- The head of a call marshalling its scalar arguments at `dt` into a result slot of type
     `dr`, under the leaf condition of `f` at `dr` for the placement of the bound name. -/
-theorem headT_callAt {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem headT_callAt {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState}
     {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
     {vals : List Value} {r : Value}
@@ -3243,13 +3550,14 @@ theorem headT_callAt {D DO : String → Option TowerType} (hL : ExitLeaves bi le
     (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n r k :=
   headT_callAtR hL (hL.plain _ _ _ hbi)
-    (fun h ls argList oldV hF2 _ => hT h ls vals argList oldV r rfl hbi hF2)
-    (fun h ls argList oldV hF2 => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
+    (fun h ls argList oldV hF2 _ _ _ => hT h ls vals argList oldV r rfl hbi hF2)
+    (fun h ls argList oldV hF2 _ _ => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
 
 /-- `headT_callAt` for arguments held in towers at `dt` (`exitArgsAt`), under the leaf
     condition of `f` on argument slots of the type `dt`. -/
 theorem headT_callAtTyped {D DO : String → Option TowerType}
-    (hL : ExitLeaves bi leafSpec br D DO) {env : Env} {rs : RustState}
+    {DA : String → Option (List TowerType × TowerType)}
+    (hL : ExitLeaves bi leafSpec br D DO DA) {env : Env} {rs : RustState}
     {n f : String} {dt dr : TowerType} {args : List ImpExpr} {k : LowCT → LowCT}
     {vals : List Value} {r : Value} (hat : exitArgsAt A dt args = true)
     (hT : A.lookup n = some dr → LeafCallAgreesArgsAt bi leafSpec f dr br vals.length dt)
@@ -3261,11 +3569,11 @@ theorem headT_callAtTyped {D DO : String → Option TowerType}
     (hret : rs.rsScalar exitRetName = 0) :
     HeadResT N leafSpec br A env rs n r k :=
   headT_callAtR hL (hL.plain _ _ _ hbi)
-    (fun h ls argList oldV hF2 hty => hT h ls vals argList oldV r rfl (hty hat) hbi hF2)
-    (fun h ls argList oldV hF2 => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
+    (fun h ls argList oldV hF2 hty _ _ => hT h ls vals argList oldV r rfl (hty hat) hbi hF2)
+    (fun h ls argList oldV hF2 _ _ => hS h ls vals argList oldV r hbi hF2) hk hn hargs hF hag hret
 
 /-- Every head of `appHeadT` satisfies `HeadResT` at the builtin's value. -/
-theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {env : Env}
+theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {env : Env}
     {rs : RustState}
     {n f : String} {args : List ImpExpr} {k : LowCT → LowCT} {vals : List Value} {r : Value}
     (hk : appHeadT A n f args = some k) (hn : exitReserved n = false)
@@ -3291,17 +3599,33 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)
     · obtain ⟨v, l, -, -, rfl, -⟩ := repeatHeadT_some A hk
       simp [exitArgsOk] at hargs
     · obtain ⟨dt, dr, hc, hcase⟩ := callHeadT_some A hk
-      rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hd, hdo, hnone⟩ | ⟨hsc, -, hnA, rfl⟩
+      rcases hcase with ⟨hsc, hnA, rfl⟩ | ⟨hsc, hce, hd, hdo, hnone⟩ | ⟨hsc, hce, -, hnA, rfl⟩ |
+          ⟨ts, hsc, hca, rfl, hmts, hnone⟩
       · exact headT_callAt hL (fun h => by rw [hnA] at h; cases h) (fun _ => hL.callSR hsc) hc
           hn hargs hF hbi hag hret
       · refine headT_callAt hL
-          (fun _ => leafCallAgreesArgsLen_of (hL.callD f dr hd hdo hsc hfi hfu hfl hfr) _)
+          (fun _ => leafCallAgreesArgsLen_of (hL.callD f dr hd hdo hce hsc hfi hfu hfl hfr) _)
           (fun h0 => ?_) hc hn hargs hF hbi hag hret
         obtain rfl := hnone h0
-        exact hL.wordD f hd hsc hfi hfu hfl hfr
+        exact hL.wordD f hd hce hsc hfi hfu hfl hfr
       · exact headT_callAt hL
-          (fun _ => leafCallAgreesArgsLen_of (hL.callT f hsc hfi hfu hfl hfr) _)
+          (fun _ => leafCallAgreesArgsLen_of (hL.callT f hsc hfi hfu hfl hfr hce) _)
           (fun h => by rw [hnA] at h; cases h) hc hn hargs hF hbi hag hret
+      · have hts : ∀ (ls : List Located) (argList : List (Σ t : TowerType, RustVal t)),
+            (∃ ctx, callMarshal A .TU64 args = some (ctx, ls)) →
+            argList.map (·.1) = ls.map (·.locDst) → argList.map (·.1) = ts := by
+          intro ls argList ⟨ctx, hm⟩ hty
+          rw [hm] at hmts
+          simp only [Option.map_some, Option.some.injEq] at hmts
+          rw [hty, hmts]
+        refine headT_callAtR hL (hL.plain _ _ _ hbi)
+          (fun _ ls argList oldV hF2 _ hm hty =>
+            hL.callA f ts dr hca hsc hfi hfu hfl hfr ls vals argList oldV r
+              (hts ls argList hm hty) hbi hF2)
+          (fun h0 ls argList oldV hF2 hm hty => ?_) hc hn hargs hF hag hret
+        obtain rfl := hnone h0
+        exact hL.wordA f ts hca hsc hfi hfu hfl hfr ls vals argList oldV r
+          (hts ls argList hm hty) hbi hF2
   · rw [hso] at hk
     simp only [Option.some.injEq] at hk
     subst hk
@@ -3309,7 +3633,7 @@ theorem headT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)
 
 /-- The head of `let n = repeat(v, l)` with a literal count: `HeadResT` at the builtin's
     value on the value of `v` and the value of `l`. -/
-theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {env : Env}
+theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {env : Env}
     {rs : RustState} {n v : String} {l : ImpLit} {k : LowCT → LowCT} {vv r : Value}
     (hk : repeatHeadT A n [.var v, .lit l] = some k) (hn : exitReserved n = false)
     (hvr : exitReserved v = false) (hv : env v = some vv)
@@ -3320,7 +3644,8 @@ theorem headT_repeat (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys
   simp only [List.cons.injEq, ImpExpr.var.injEq, ImpExpr.lit.injEq, and_true] at hargs
   obtain ⟨rfl, rfl⟩ := hargs
   refine headT_callAtR hL (hL.plain _ _ _ hbi)
-    (fun _ ls argList oldV hF2 _ => hL.repeatN c kN hlen hmo ls vv _ r argList oldV hkN hbi hF2)
+    (fun _ ls argList oldV hF2 _ _ _ =>
+      hL.repeatN c kN hlen hmo ls vv _ r argList oldV hkN hbi hF2)
     (fun h => by rw [hnA] at h; cases h) hc hn (by simp [exitArgsOk, hvr])
     (List.Forall₂.cons ⟨_, rfl, hv⟩ List.Forall₂.nil) hag hret
 
@@ -3349,7 +3674,8 @@ theorem exitOptPayName_ne_marshal (x : String) : exitOptPayName ≠ exitMarshalN
     with `env`, with the exit flag kept, in which the builtin's result is an `Option` whose
     tag is the scalar slot `exitOptTagS` and whose payload agrees with the tower slot
     `exitOptPayName` by `optPayloadRel`. -/
-theorem optCall_sim {D DO : String → Option TowerType} (hL : ExitLeaves bi leafSpec br D DO)
+theorem optCall_sim {D DO : String → Option TowerType}
+    {DA : String → Option (List TowerType × TowerType)} (hL : ExitLeaves bi leafSpec br D DO DA)
     {env : Env} {rs : RustState} {f : String} {t : TowerType} {ctx : LowCT → LowCT}
     {ls : List Located} {args : List ImpExpr} {vals : List Value} {vRes : Value}
     (hm : callMarshal A .TU64 args = some (ctx, ls)) (hlc : LeafCallOption bi leafSpec f t br)
@@ -3434,7 +3760,7 @@ theorem optCall_sim {D DO : String → Option TowerType} (hL : ExitLeaves bi lea
     rw [rsScalar_rsSetScalar, if_pos rfl]
     exact htag
 
-theorem head_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (n f : String)
+theorem head_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (n f : String)
     (args : List ImpExpr)
     (body : ImpExpr) : HeadSimT bi N leafSpec br A R n (.app f args) body := by
   intro tl il fuel env env' o rs k hok hk hrun hval hag hret
@@ -4051,7 +4377,7 @@ theorem optBind_sim {env : Env} {rs2 : RustState} {p : String} {tty : TowerType}
 /-- **A `match` on the `Option` returned by a call**, for either order of its two arms `M`:
     the call of `optHeadT`, then the `Some` arm with the payload bound or the `None` arm by
     the tag. -/
-theorem exitSimTy_optMatch (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A))
+theorem exitSimTy_optMatch (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (M : ImpExpr) (f : String) (args : List ImpExpr) (p : String) (t e : ImpExpr)
     (hOk : ∀ tl il, exitSimOkT A R tl il M = (!exitReserved p && exitArgsOk args &&
       (optHeadT A f args p).isSome && exitSimOkT A R tl il t && exitSimOkT A R tl il e))
@@ -5129,7 +5455,7 @@ end Arms
     `haxToLowCTKT A` matches every `denote'` run that ends in a value. -/
 theorem haxToLowCTKT_simulates (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (e : ImpExpr) :
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (e : ImpExpr) :
     ExitSimTy bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitSimTy bi N leafSpec br A R e :=
@@ -5273,7 +5599,7 @@ theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     returned or final value (`outcomeAgreesT`). -/
 theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (br : ValueTowerBridge) (A : ExitTowers) (R : ExitRes)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (e : ImpExpr) (c : LowCT)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
     (hrun : (denote' bi fuel e).run env = (o, env')) (hval : ∃ v, o = .val v)
@@ -5292,7 +5618,7 @@ theorem haxToLowCTFnT_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : LeafS
     the scalar result placement: the result slot of the lowered function holds the decoding
     of the returned or final value. -/
 theorem haxToLowCTFnT_simulates_exit_scalar (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
-    (br : ValueTowerBridge) (A : ExitTowers) (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A))
+    (br : ValueTowerBridge) (A : ExitTowers) (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A .scalar true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env env' : Env) (o : Outcome) (rs : RustState)
@@ -5317,7 +5643,8 @@ theorem haxToLowCTFnT_nil_simulates_exit (bi : Builtins) (N : Nat) (leafSpec : L
     ∃ rs', RustExec N leafSpec c rs rs' ∧ outcomeScalar o = some (rs'.rsScalar exitResName) :=
   haxToLowCTFnT_simulates_exit_scalar bi N leafSpec br []
     (hL.mono (fun _ _ h => by simp [exitCallTys] at h) (fun _ _ h => by simp [exitOptTys] at h)
-      (fun _ _ _ => rfl)) e c hok hK fuel env env' o rs hrun
+      (fun _ _ _ => rfl) (fun _ _ h => by simp [exitCalleeTys] at h) (fun _ _ => rfl))
+      e c hok hK fuel env env' o rs hrun
     hval (envAgreesT_nil_of_off hag)
 
 /-- Under the empty placement the result placement is scalar or a tuple. -/
@@ -5681,5 +6008,551 @@ theorem scalarOpsSoundT_exitRange {bi : Builtins} (h : ScalarOpsSoundT bi) :
     h op va vb r na nb hop hva hvb hna hnb (exitRange_some hbi).1
 
 end Hax64Ops
+
+/-! ## Calls of lowered callees
+
+A call `g(args)` of a function whose body is lowered to the program `cg` is read in the
+source through `calleeTable` and in the target through `calleeSpec`: the source value is the
+value the callee's reading returns from its parameters bound to the argument values
+(`calleeRun`), and the leaf output is read from the result slot of the run of `cg` from the
+state `calleeEntry` built from the argument slots. `leafCallAgreesArgsTys_callee` is the leaf
+condition of `g` on argument slots of the callee's parameter slot types (`calleeArgTys`),
+from a function-level simulation of the callee. -/
+
+section Callees
+
+/-- The table `bi` in which the call `g` is the partial function `run`. -/
+def calleeTable (bi : Builtins) (g : String) (run : List Value → Option Value) : Builtins :=
+  fun f vals => if f = g then run vals else bi f vals
+
+theorem calleeTable_self (bi : Builtins) (g : String) (run : List Value → Option Value)
+    (vals : List Value) : calleeTable bi g run g vals = run vals := by
+  simp [calleeTable]
+
+theorem calleeTable_of_ne (bi : Builtins) {g f : String} (run : List Value → Option Value)
+    (h : f ≠ g) (vals : List Value) : calleeTable bi g run f vals = bi f vals := by
+  simp [calleeTable, h]
+
+/-- The leaf semantics `leafSpec` in which the call `g` runs the program `cg` from the state
+    `entry args` and returns `out dt r` of the state `r` it reaches, and keeps the
+    destination when `cg` has no run; the other calls and the other oracles are those of
+    `leafSpec`. -/
+noncomputable def calleeSpec (leafSpec : LeafSpec) (N : Nat) (g : String) (cg : LowCT)
+    (entry : List (Σ t : TowerType, RustVal t) → RustState)
+    (out : (dt : TowerType) → RustState → RustVal dt) : LeafSpec :=
+  { leafSpec with
+    call := fun f dt ds old args =>
+      if f = g then
+        open Classical in
+        if h : ∃ r, RustExec N leafSpec cg (entry args) r then out dt h.choose else old
+      else leafSpec.call f dt ds old args }
+
+theorem calleeSpec_call_of_ne (leafSpec : LeafSpec) (N : Nat) {g f : String} (cg : LowCT)
+    (entry : List (Σ t : TowerType, RustVal t) → RustState)
+    (out : (dt : TowerType) → RustState → RustVal dt) (h : f ≠ g) :
+    (calleeSpec leafSpec N g cg entry out).call f = leafSpec.call f := by
+  funext dt ds old args
+  simp [calleeSpec, h]
+
+/-- The leaf output of `g` is read from the state of a run of `cg`, when `cg` runs
+    deterministically. -/
+theorem calleeSpec_call_self (leafSpec : LeafSpec) (N : Nat) (g : String) (cg : LowCT)
+    (entry : List (Σ t : TowerType, RustVal t) → RustState)
+    (out : (dt : TowerType) → RustState → RustVal dt)
+    (hdet : ∀ rs r₁ r₂, RustExec N leafSpec cg rs r₁ → RustExec N leafSpec cg rs r₂ → r₁ = r₂)
+    {args : List (Σ t : TowerType, RustVal t)} {r : RustState}
+    (hr : RustExec N leafSpec cg (entry args) r) (dt : TowerType) (ds : List TowerType)
+    (old : RustVal dt) :
+    (calleeSpec leafSpec N g cg entry out).call g dt ds old args = out dt r := by
+  have hex : ∃ r, RustExec N leafSpec cg (entry args) r := ⟨r, hr⟩
+  simp only [calleeSpec, if_true, dif_pos hex]
+  rw [hdet _ _ _ hex.choose_spec hr]
+
+/-- The environment `ρ` with the parameters `ps` bound to the values `vals`, in order. -/
+def bindParams (ρ : Env) : List String → List Value → Env
+  | p :: ps, v :: vs => bindParams (ρ.extend p v) ps vs
+  | _, _ => ρ
+
+/-- The entry state of a callee with parameters `ps` placed by `A`, over the state `rs0`,
+    from the argument slots `args`: a parameter placed in the scalar heap holds limb `0` of
+    its slot, a parameter placed in a tower holds its slot. -/
+def calleeEntry (A : ExitTowers) (rs0 : RustState) :
+    List String → List (Σ t : TowerType, RustVal t) → RustState
+  | p :: ps, a :: as =>
+      calleeEntry A (match A.lookup p with
+        | none => rsSetScalar rs0 p (towerLimb a.2 0)
+        | some _ => rsSetTower rs0 p a) ps as
+  | _, _ => rs0
+
+/-- The argument slot types of a callee with parameters `ps` placed by `A`: the placement of
+    a parameter held in a tower, the word type `TU64` for a scalar parameter. -/
+def calleeArgTys (A : ExitTowers) (ps : List String) : List TowerType :=
+  ps.map fun p => (A.lookup p).getD .TU64
+
+/-- The value of a callee with parameters `ps` placed by `A` and result placement `R` on the
+    argument values `vals`, for the reading `read` of its body from `ρ` with the parameters
+    bound: the final value of a run ending in a value without a control-flow tag, a scalar
+    word for a scalar result, when the argument values are as many as the parameters, carry
+    no control-flow tag, and are scalar words at the scalar parameters. -/
+def calleeRun (A : ExitTowers) (R : ExitRes) (ps : List String) (read : Env → Outcome)
+    (ρ : Env) (vals : List Value) : Option Value :=
+  if vals.length = ps.length ∧
+      ((ps.zip vals).all fun pv => (A.lookup pv.1).isSome || scalarValNB pv.2) = true ∧
+      (vals.all fun v => !v.isControlFlow) = true then
+    match read (bindParams ρ ps vals) with
+    | .val v =>
+        if v.isControlFlow = false ∧ (R = .scalar → scalarValNB v = true) then some v else none
+    | _ => none
+  else none
+
+/-- The leaf output of a callee with result placement `R` at the destination type `dt`: the
+    tower result slot when it holds a value of type `dt`, and for a scalar result the limb
+    store of the scalar result slot. -/
+def calleeOut (leafSpec : LeafSpec) (R : ExitRes) (dt : TowerType) (r : RustState) :
+    RustVal dt :=
+  match R with
+  | .tower _ =>
+      match r.rsTower exitResName with
+      | some ⟨t, x⟩ => if h : t = dt then h ▸ x else default
+      | none => default
+  | _ => leafSpec.limbStore ⟨exitResName, dt⟩ default 0 (BitVec.ofNat 64 (r.rsScalar exitResName))
+
+variable {br : ValueTowerBridge} {A : ExitTowers}
+
+/-- The entry state of a callee agrees with the environment binding its parameters to the
+    argument values, when the argument slots have the parameter slot types, a scalar word
+    related at `TU64` decodes to limb `0`, and the values bound to scalar parameters are
+    scalar words. -/
+theorem calleeEntry_agrees
+    (hscal : ∀ (v : Value) (x : RustVal .TU64), br .TU64 v x → ScalarValN v →
+      valueToScalar v = some (towerLimb x 0)) :
+    ∀ (ps : List String) (vals : List Value) (args : List (Σ t : TowerType, RustVal t))
+      (ρ : Env) (rs0 : RustState),
+      envAgreesT br A ρ rs0 → (∀ p ∈ ps, exitReserved p = false) →
+      List.Forall₂ (fun v (p : Σ t : TowerType, RustVal t) => br p.1 v p.2) vals args →
+      args.map (·.1) = calleeArgTys A ps →
+      List.Forall₂ (fun p v => (A.lookup p = none → ScalarValN v) ∧ v.isControlFlow = false)
+        ps vals →
+      envAgreesT br A (bindParams ρ ps vals) (calleeEntry A rs0 ps args) := by
+  intro ps
+  induction ps with
+  | nil =>
+    intro vals args ρ rs0 hag _ _ _ hpv
+    cases hpv
+    exact hag
+  | cons p ps ih =>
+    intro vals args ρ rs0 hag hres hF hty hpv
+    rcases hpv with _ | ⟨⟨hsv, hcf⟩, hpv⟩
+    rename_i v vs
+    rcases hF with _ | ⟨hbr, hF⟩
+    rename_i a as
+    simp only [calleeArgTys, List.map_cons, List.cons.injEq] at hty
+    obtain ⟨hty1, hty⟩ := hty
+    have hp : exitReserved p = false := hres p (by simp)
+    have hres' : ∀ q ∈ ps, exitReserved q = false := fun q hq => hres q (by simp [hq])
+    obtain ⟨t, x⟩ := a
+    dsimp only at hty1 hbr
+    simp only [bindParams, calleeEntry]
+    rcases hA : A.lookup p with _ | tp
+    · rw [hA, Option.getD_none] at hty1
+      subst hty1
+      have hs := hsv hA
+      exact ih vs as _ _ (envAgreesT_extend hp hA hs (hscal v x hbr hs) hag) hres' hF hty hpv
+    · rw [hA, Option.getD_some] at hty1
+      subst hty1
+      exact ih vs as _ _ (envAgreesT_extend_tower hp hA hcf hbr hag) hres' hF hty hpv
+
+/-- **The leaf condition of a lowered callee.**  For a callee with parameters `ps` placed by
+    `A` and result placement `R`, scalar or a tower at `dt`, whose lowered program `cg` runs
+    deterministically and simulates its reading `read` from every state agreeing with the
+    environment (`hF`), the call `g` of `calleeTable bi g (calleeRun A R ps read ρ)` agrees
+    with the leaf `calleeSpec` running `cg` from `calleeEntry A rs0`, on argument slots of the
+    parameter slot types. -/
+theorem leafCallAgreesArgsTys_callee {bi : Builtins} {leafSpec : LeafSpec} {N : Nat}
+    {g : String} {cg : LowCT} {R : ExitRes} {ps : List String} {read : Env → Outcome}
+    {ρ : Env} {rs0 : RustState} {dt : TowerType}
+    (hmar : ExitMarshal br leafSpec)
+    (hscal : ∀ (v : Value) (x : RustVal .TU64), br .TU64 v x → ScalarValN v →
+      valueToScalar v = some (towerLimb x 0))
+    (hdet : ∀ rs r₁ r₂, RustExec N leafSpec cg rs r₁ → RustExec N leafSpec cg rs r₂ → r₁ = r₂)
+    (hF : ∀ env rs, envAgreesT br A env rs → (∃ v, read env = .val v) →
+      ∃ r, RustExec N leafSpec cg rs r ∧ outcomeAgreesT br R (read env) r)
+    (hρ : envAgreesT br A ρ rs0) (hres : ∀ p ∈ ps, exitReserved p = false)
+    (hR : (R = .scalar ∧ 8 ≤ dt.storageBytes) ∨ R = .tower dt) :
+    LeafCallAgreesArgsTys (calleeTable bi g (calleeRun A R ps read ρ))
+      (calleeSpec leafSpec N g cg (calleeEntry A rs0 ps) (calleeOut leafSpec R)) g dt br
+      (calleeArgTys A ps) := by
+  intro args vals argList oldV vRes hty hbi hFa
+  rw [calleeTable_self] at hbi
+  unfold calleeRun at hbi
+  split_ifs at hbi with hg
+  obtain ⟨hlen, hsc, hncf⟩ := hg
+  rcases hrd : read (bindParams ρ ps vals) with v | _ | _ | _ | _ <;> rw [hrd] at hbi <;>
+    try cases hbi
+  simp only at hbi
+  split_ifs at hbi with hv
+  cases hbi
+  obtain ⟨hvcf, hvs⟩ := hv
+  have hpv : List.Forall₂ (fun p v => (A.lookup p = none → ScalarValN v) ∧
+      v.isControlFlow = false) ps vals := by
+    rw [List.forall₂_iff_get]
+    refine ⟨hlen.symm, fun i h1 h2 => ⟨fun hA => ?_, ?_⟩⟩
+    · have hz : (ps[i], vals[i]) ∈ ps.zip vals := by
+        rw [List.mem_iff_getElem]
+        exact ⟨i, by simp [h1, h2], by simp⟩
+      have := List.all_eq_true.mp hsc _ hz
+      simp only [List.get_eq_getElem] at hA ⊢
+      simp only [hA, Option.isSome_none, Bool.false_or] at this
+      exact (scalarValNB_iff _).mp this
+    · have := List.all_eq_true.mp hncf _ (List.getElem_mem h2)
+      simpa using this
+  have hag := calleeEntry_agrees hscal ps vals argList ρ rs0 hρ hres hFa hty hpv
+  obtain ⟨r, hr, hout⟩ := hF _ _ hag ⟨vRes, hrd⟩
+  rw [calleeSpec_call_self leafSpec N g cg _ _ hdet hr]
+  rw [hrd] at hout
+  have hout' : resultAgreesT br R vRes r := by
+    cases vRes with
+    | controlFlow k w => simp at hvcf
+    | _ => exact hout
+  rcases hR with ⟨rfl, h8⟩ | rfl
+  · have hk : valueToScalar vRes = some (r.rsScalar exitResName) := hout'
+    exact hmar ⟨exitResName, dt⟩ vRes _ h8 ((scalarValNB_iff _).mp (hvs rfl)) hk
+  · obtain ⟨val, hval, hbr⟩ := hout'
+    simp only [calleeOut, hval]
+    exact hbr
+
+/-- A value of a callee with a scalar result is a scalar word. -/
+theorem calleeRun_scalar {R : ExitRes} {ps : List String} {read : Env → Outcome} {ρ : Env}
+    {vals : List Value} {v : Value} (hR : R = .scalar) (h : calleeRun A R ps read ρ vals = some v) :
+    ScalarValN v := by
+  unfold calleeRun at h
+  split_ifs at h with hg
+  rcases hrd : read (bindParams ρ ps vals) with w | _ | _ | _ | _ <;> rw [hrd] at h <;>
+    try cases h
+  simp only at h
+  split_ifs at h with hw
+  cases h
+  exact (scalarValNB_iff _).mp (hw.2 hR)
+
+/-- **The scalar leaf condition of a lowered callee with a scalar result**: the call `g`
+    returns a scalar word whose decoding is limb `0` of the leaf output at `TU64`. -/
+theorem leafCallScalarTys_callee {bi : Builtins} {leafSpec : LeafSpec} {N : Nat}
+    {g : String} {cg : LowCT} {ps : List String} {read : Env → Outcome}
+    {ρ : Env} {rs0 : RustState}
+    (hmar : ExitMarshal br leafSpec)
+    (hscal : ∀ (v : Value) (x : RustVal .TU64), br .TU64 v x → ScalarValN v →
+      valueToScalar v = some (towerLimb x 0))
+    (hdet : ∀ rs r₁ r₂, RustExec N leafSpec cg rs r₁ → RustExec N leafSpec cg rs r₂ → r₁ = r₂)
+    (hF : ∀ env rs, envAgreesT br A env rs → (∃ v, read env = .val v) →
+      ∃ r, RustExec N leafSpec cg rs r ∧ outcomeAgreesT br .scalar (read env) r)
+    (hρ : envAgreesT br A ρ rs0) (hres : ∀ p ∈ ps, exitReserved p = false) :
+    LeafCallScalarTys (calleeTable bi g (calleeRun A .scalar ps read ρ))
+      (calleeSpec leafSpec N g cg (calleeEntry A rs0 ps) (calleeOut leafSpec .scalar)) g .TU64 br
+      (calleeArgTys A ps) := by
+  intro args vals argList oldV vRes hty hbi hFa
+  have hbr := leafCallAgreesArgsTys_callee (bi := bi) (dt := .TU64) hmar hscal hdet hF hρ hres
+    (Or.inl ⟨rfl, by decide⟩) args vals argList oldV vRes hty hbi hFa
+  rw [calleeTable_self] at hbi
+  have hsv : ScalarValN vRes := calleeRun_scalar rfl hbi
+  exact ⟨hsv, hscal _ _ hbr hsv⟩
+
+section Transfer
+
+variable {bi : Builtins} {leafSpec : LeafSpec} {N : Nat} {g : String} {cg : LowCT}
+  {entry : List (Σ t : TowerType, RustVal t) → RustState}
+  {out : (dt : TowerType) → RustState → RustVal dt} {run : List Value → Option Value}
+
+theorem leafCallAgreesArgs_callee_ne {f : String} {dt : TowerType} (hf : f ≠ g)
+    (h : LeafCallAgreesArgs bi leafSpec f dt br) :
+    LeafCallAgreesArgs (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) f dt br := by
+  intro args vals argList oldV vRes hbi hF
+  rw [calleeTable_of_ne bi run hf] at hbi
+  rw [calleeSpec_call_of_ne leafSpec N cg entry out hf]
+  exact h args vals argList oldV vRes hbi hF
+
+theorem leafCallScalar_callee_ne {f : String} {dt : TowerType} (hf : f ≠ g)
+    (h : LeafCallScalar bi leafSpec f dt br) :
+    LeafCallScalar (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) f dt br := by
+  intro args vals argList oldV vRes hbi hF
+  rw [calleeTable_of_ne bi run hf] at hbi
+  rw [calleeSpec_call_of_ne leafSpec N cg entry out hf]
+  exact h args vals argList oldV vRes hbi hF
+
+theorem leafCallAgreesArgsTys_callee_ne {f : String} {dt : TowerType} {ts : List TowerType}
+    (hf : f ≠ g) (h : LeafCallAgreesArgsTys bi leafSpec f dt br ts) :
+    LeafCallAgreesArgsTys (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) f dt br
+      ts := by
+  intro args vals argList oldV vRes hty hbi hF
+  rw [calleeTable_of_ne bi run hf] at hbi
+  rw [calleeSpec_call_of_ne leafSpec N cg entry out hf]
+  exact h args vals argList oldV vRes hty hbi hF
+
+theorem leafCallScalarTys_callee_ne {f : String} {dt : TowerType} {ts : List TowerType}
+    (hf : f ≠ g) (h : LeafCallScalarTys bi leafSpec f dt br ts) :
+    LeafCallScalarTys (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) f dt br ts := by
+  intro args vals argList oldV vRes hty hbi hF
+  rw [calleeTable_of_ne bi run hf] at hbi
+  rw [calleeSpec_call_of_ne leafSpec N cg entry out hf]
+  exact h args vals argList oldV vRes hty hbi hF
+
+theorem leafCallOption_callee_ne {f : String} {t : TowerType} (hf : f ≠ g)
+    (hN : ∀ i, CatCrypt.Crypto.Jasmin.LowCT.callNLeafName f i ≠ g)
+    (h : LeafCallOption bi leafSpec f t br) :
+    LeafCallOption (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) f t br := by
+  intro args vals argList oldT oldP vRes hbi hF
+  rw [calleeTable_of_ne bi run hf] at hbi
+  rw [calleeSpec_call_of_ne leafSpec N cg entry out (hN 0),
+    calleeSpec_call_of_ne leafSpec N cg entry out (hN 1)]
+  exact h args vals argList oldT oldP vRes hbi hF
+
+end Transfer
+
+/-- **The leaf conditions with a linked callee.**  Leaf conditions `ExitLeaves` at `D`, `DO`
+    and `DA`, with `DA g = some (ts, dr)`, give those of the table extended by the callee
+    `g` (`calleeTable`) and the leaf semantics running its program (`calleeSpec`), when `g`
+    is none of the names the table interprets (a scalar operation, a scalar call, the array
+    operations, `None`, `Some`, a leaf of a multi-output call), declares no `Option` payload,
+    returns no control-flow value, and its own leaf conditions `hA` and `hW` hold. -/
+theorem ExitLeaves.withCallee {bi : Builtins} {leafSpec : LeafSpec}
+    {D DO : String → Option TowerType} {DA : String → Option (List TowerType × TowerType)}
+    (hL : ExitLeaves bi leafSpec br D DO DA) {N : Nat} {g : String} {cg : LowCT}
+    {entry : List (Σ t : TowerType, RustVal t) → RustState}
+    {out : (dt : TowerType) → RustState → RustVal dt} {run : List Value → Option Value}
+    {ts : List TowerType} {dr : TowerType} (hDAg : DA g = some (ts, dr))
+    (hDOg : DO g = none)
+    (hop : (scalarOpExprT g (.SVar "a") (.SVar "b")).isSome = false)
+    (hSg : exitScalarCall g = false) (hTSg : exitTowerScalarCall g = false)
+    (hgi : g ≠ "index") (hgu : g ≠ "array_update") (hgl : g ≠ "array_lit")
+    (hgr : g ≠ "repeat") (hgn : g ≠ "None") (hgs : g ≠ "Some")
+    (hgN : ∀ f i, CatCrypt.Crypto.Jasmin.LowCT.callNLeafName f i ≠ g)
+    (hplain : ∀ vals v, run vals = some v → v.isControlFlow = false)
+    (hA : LeafCallAgreesArgsTys (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out)
+      g dr br ts)
+    (hW : dr = .TU64 → LeafCallScalarTys (calleeTable bi g run)
+      (calleeSpec leafSpec N g cg entry out) g .TU64 br ts) :
+    ExitLeaves (calleeTable bi g run) (calleeSpec leafSpec N g cg entry out) br D DO DA where
+  ops op va vb r na nb hsome hva hvb hna hnb hbi := by
+    have hne : op ≠ g := by rintro rfl; rw [hop] at hsome; cases hsome
+    rw [calleeTable_of_ne bi run hne] at hbi
+    exact hL.ops op va vb r na nb hsome hva hvb hna hnb hbi
+  plain f vals v hbi := by
+    by_cases hf : f = g
+    · subst hf
+      rw [calleeTable_self] at hbi
+      exact hplain vals v hbi
+    · rw [calleeTable_of_ne bi run hf] at hbi
+      exact hL.plain f vals v hbi
+  marshal := hL.marshal
+  callT f hsc h1 h2 h3 h4 hda := by
+    have hne : f ≠ g := by rintro rfl; rw [hDAg] at hda; cases hda
+    exact leafCallAgreesArgs_callee_ne hne (hL.callT f hsc h1 h2 h3 h4 hda)
+  callS f hf := by
+    have hne : f ≠ g := by rintro rfl; rw [hSg] at hf; cases hf
+    exact leafCallScalar_callee_ne hne (hL.callS f hf)
+  callTS f hf := by
+    have hne : f ≠ g := by rintro rfl; rw [hTSg] at hf; cases hf
+    exact leafCallScalar_callee_ne hne (hL.callTS f hf)
+  index t vArr vIdx vRes arrV k h1 h2 h3 hbi := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgi)] at hbi
+    exact hL.index t vArr vIdx vRes arrV k h1 h2 h3 hbi
+  update arr z t vArr vIdx vSrc vRes arrV k m h1 h2 h3 h4 h5 h6 hbi := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgu)] at hbi
+    exact hL.update arr z t vArr vIdx vSrc vRes arrV k m h1 h2 h3 h4 h5 h6 hbi
+  indexT t t' vArr vIdx vRes arrV k h1 h2 h3 hbi := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgi)] at hbi
+    exact hL.indexT t t' vArr vIdx vRes arrV k h1 h2 h3 hbi
+  updateT arr t vArr vIdx vSrc vRes arrV srcV k h1 h2 h3 h4 hbi := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgu)] at hbi
+    exact hL.updateT arr t vArr vIdx vSrc vRes arrV srcV k h1 h2 h3 h4 hbi
+  arrLitN c k hc hm args vals argList oldV vRes hl hty hbi hF := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgl)] at hbi
+    rw [calleeSpec_call_of_ne leafSpec N cg entry out (Ne.symm hgl)]
+    exact hL.arrLitN c k hc hm args vals argList oldV vRes hl hty hbi hF
+  repeatN c k hc hm args vv vc vRes argList oldV hk hbi hF := by
+    rw [calleeTable_of_ne bi run (Ne.symm hgr)] at hbi
+    rw [calleeSpec_call_of_ne leafSpec N cg entry out (Ne.symm hgr)]
+    exact hL.repeatN c k hc hm args vv vc vRes argList oldV hk hbi hF
+  callD f dr' hd hdo hda hsc h1 h2 h3 h4 := by
+    have hne : f ≠ g := by rintro rfl; rw [hDAg] at hda; cases hda
+    exact leafCallAgreesArgs_callee_ne hne (hL.callD f dr' hd hdo hda hsc h1 h2 h3 h4)
+  wordD f hd hda hsc h1 h2 h3 h4 := by
+    have hne : f ≠ g := by rintro rfl; rw [hDAg] at hda; cases hda
+    exact leafCallScalar_callee_ne hne (hL.wordD f hd hda hsc h1 h2 h3 h4)
+  optD f t hdo hsc h1 h2 h3 h4 := by
+    have hne : f ≠ g := by rintro rfl; rw [hDOg] at hdo; cases hdo
+    exact leafCallOption_callee_ne hne (hgN f) (hL.optD f t hdo hsc h1 h2 h3 h4)
+  callA f ts' dr' hda hsc h1 h2 h3 h4 := by
+    by_cases hf : f = g
+    · subst hf
+      rw [hDAg, Option.some.injEq, Prod.mk.injEq] at hda
+      obtain ⟨rfl, rfl⟩ := hda
+      exact hA
+    · exact leafCallAgreesArgsTys_callee_ne hf (hL.callA f ts' dr' hda hsc h1 h2 h3 h4)
+  wordA f ts' hda hsc h1 h2 h3 h4 := by
+    by_cases hf : f = g
+    · subst hf
+      rw [hDAg, Option.some.injEq, Prod.mk.injEq] at hda
+      obtain ⟨rfl, rfl⟩ := hda
+      exact hW rfl
+    · exact leafCallScalarTys_callee_ne hf (hL.wordA f ts' hda hsc h1 h2 h3 h4)
+  optCtors := by
+    refine ⟨fun vals r h => ?_, fun vals r h => ?_⟩
+    · rw [calleeTable_of_ne bi run (Ne.symm hgn)] at h
+      exact hL.optCtors.1 vals r h
+    · rw [calleeTable_of_ne bi run (Ne.symm hgs)] at h
+      exact hL.optCtors.2 vals r h
+
+/-- A name the table does not otherwise interpret: none of a scalar operation, a scalar
+    call, the array operations, `None`, `Some`, `len`, a leaf of a multi-output call. -/
+def CalleeNameOk (g : String) : Prop :=
+  (scalarOpExprT g (.SVar "a") (.SVar "b")).isSome = false ∧ exitScalarCall g = false ∧
+    exitTowerScalarCall g = false ∧ g ≠ "index" ∧ g ≠ "array_update" ∧ g ≠ "array_lit" ∧
+    g ≠ "repeat" ∧ g ≠ "None" ∧ g ≠ "Some" ∧ g ≠ "len" ∧
+    ∀ f i, CatCrypt.Crypto.Jasmin.LowCT.callNLeafName f i ≠ g
+
+theorem callNPrefix (x : String) : "callN:".toList.isPrefixOf ("callN:" ++ x).toList = true := by
+  simp [String.toList_append, List.isPrefixOf]
+
+/-- The leaf names of a multi-output call start with `callN:`. -/
+theorem callNLeafName_prefix (f : String) (i : Nat) :
+    "callN:".toList.isPrefixOf (CatCrypt.Crypto.Jasmin.LowCT.callNLeafName f i).toList = true := by
+  unfold CatCrypt.Crypto.Jasmin.LowCT.callNLeafName
+  rw [String.append_assoc, String.append_assoc]
+  exact callNPrefix _
+
+/-- `CalleeNameOk` as a Boolean test. -/
+def calleeNameOkB (g : String) : Bool :=
+  !(scalarOpExprT g (.SVar "a") (.SVar "b")).isSome && !exitScalarCall g &&
+    !exitTowerScalarCall g &&
+    !(["index", "array_update", "array_lit", "repeat", "None", "Some", "len"].contains g) &&
+    !("callN:".toList.isPrefixOf g.toList)
+
+theorem calleeNameOk_of_B {g : String} (h : calleeNameOkB g = true) : CalleeNameOk g := by
+  simp only [calleeNameOkB, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨⟨⟨hop, hS⟩, hTS⟩, hn⟩, hN⟩ := h
+  refine ⟨hop, hS, hTS, ?_, ?_, ?_, ?_, ?_, ?_, ?_, fun f i he => ?_⟩
+  all_goals first
+    | (rintro rfl; simp at hn)
+    | (rw [← he, callNLeafName_prefix] at hN; cases hN)
+
+/-- A value of a callee carries no control-flow tag. -/
+theorem calleeRun_plain {R : ExitRes} {ps : List String} {read : Env → Outcome} {ρ : Env}
+    {vals : List Value} {v : Value} (h : calleeRun A R ps read ρ vals = some v) :
+    v.isControlFlow = false := by
+  unfold calleeRun at h
+  split_ifs at h with hg
+  rcases hrd : read (bindParams ρ ps vals) with w | _ | _ | _ | _ <;> rw [hrd] at h <;>
+    try cases h
+  simp only at h
+  split_ifs at h with hw
+  cases h
+  exact hw.1
+
+/-- The result type of a callee with result placement `R`: the tower type of a tower result,
+    the word type `TU64` otherwise. -/
+def calleeResTy : ExitRes → TowerType
+  | .tower t => t
+  | _ => .TU64
+
+/-- A callee lowered by the typed front: its name `g`, the placement `A` and the result
+    placement `R` of its lowered body, its parameters `ps`, its reading `read` on a table,
+    the environment `ρ` and the state `rs0` its parameters extend, its lowered program `cg`,
+    and the declared call result types `D`, payload placements `DO` and linked callees `DA`
+    of its own lowering. -/
+structure CalleeT where
+  g : String
+  A : ExitTowers
+  R : ExitRes
+  ps : List String
+  read : Builtins → Env → Outcome
+  ρ : Env
+  rs0 : RustState
+  cg : LowCT
+  D : String → Option TowerType
+  DO : String → Option TowerType
+  DA : String → Option (List TowerType × TowerType)
+
+/-- The argument slot types and the result type at which the callee `c` is linked. -/
+def CalleeT.sig (c : CalleeT) : List TowerType × TowerType :=
+  (calleeArgTys c.A c.ps, calleeResTy c.R)
+
+/-- The table `bi` extended by the callees `cs`, the last one lowest: each callee is the
+    value `calleeRun` of its reading on the table extended by the callees below it. -/
+def linkTable (bi : Builtins) : List CalleeT → Builtins
+  | [] => bi
+  | c :: cs =>
+      calleeTable (linkTable bi cs) c.g (calleeRun c.A c.R c.ps (c.read (linkTable bi cs)) c.ρ)
+
+/-- The leaf semantics `leafSpec` extended by the callees `cs`, the last one lowest: each
+    callee runs its lowered program on the leaf semantics extended by the callees below
+    it. -/
+noncomputable def linkSpec (leafSpec : LeafSpec) (N : Nat) : List CalleeT → LeafSpec
+  | [] => leafSpec
+  | c :: cs =>
+      calleeSpec (linkSpec leafSpec N cs) N c.g c.cg (calleeEntry c.A c.rs0 c.ps)
+        (calleeOut (linkSpec leafSpec N cs) c.R)
+
+/-- The conditions of the callee `c` above the callees `cs`: a name the table does not
+    otherwise interpret, a scalar result or a tower result of a type other than `TU64`,
+    parameters outside the reserved names, the environment `ρ` in agreement with the state
+    `rs0`, the callees `cs` recorded in its own `DA` and not in its `DO`, and the simulation
+    of its reading by its lowered program under the leaf conditions of the callees below it
+    at its own declared maps. -/
+def CalleeOk (bi : Builtins) (leafSpec : LeafSpec) (N : Nat) (br : ValueTowerBridge)
+    (c : CalleeT) (cs : List CalleeT) : Prop :=
+  CalleeNameOk c.g ∧ (c.R = .scalar ∨ ∃ t, c.R = .tower t ∧ t ≠ .TU64) ∧
+    (∀ p ∈ c.ps, exitReserved p = false) ∧ envAgreesT br c.A c.ρ c.rs0 ∧
+    (∀ c' ∈ cs, c.DA c'.g = some c'.sig ∧ c.DO c'.g = none) ∧
+    (ExitLeaves (linkTable bi cs) (linkSpec leafSpec N cs) br c.D c.DO c.DA →
+      ∀ env rs, envAgreesT br c.A env rs → (∃ v, c.read (linkTable bi cs) env = .val v) →
+        ∃ r, RustExec N (linkSpec leafSpec N cs) c.cg rs r ∧
+          outcomeAgreesT br c.R (c.read (linkTable bi cs) env) r)
+
+/-- **The leaf conditions with linked callees.**  For a table `bi` and a leaf semantics
+    `leafSpec` with leaf conditions at every `D`, `DO`, `DA`, under which a scalar word
+    related at `TU64` decodes to limb `0` and programs run deterministically, the table and
+    the leaf semantics extended by callees `cs` each satisfying `CalleeOk` above the callees
+    below it have leaf conditions at every `D`, `DO`, `DA` recording each callee in `DA` at
+    its linked types and not in `DO`. -/
+theorem exitLeaves_linkT {bi : Builtins} {leafSpec : LeafSpec} {N : Nat}
+    (hbase : ∀ (D DO : String → Option TowerType)
+      (DA : String → Option (List TowerType × TowerType)), ExitLeaves bi leafSpec br D DO DA)
+    (hscal : ∀ (v : Value) (x : RustVal .TU64), br .TU64 v x → ScalarValN v →
+      valueToScalar v = some (towerLimb x 0))
+    (hdet : ∀ (ls : LeafSpec) (c : LowCT) rs r₁ r₂, RustExec N ls c rs r₁ →
+      RustExec N ls c rs r₂ → r₁ = r₂) :
+    ∀ (cs : List CalleeT), (∀ c cs', c :: cs' <:+ cs → CalleeOk bi leafSpec N br c cs') →
+      ∀ (D DO : String → Option TowerType) (DA : String → Option (List TowerType × TowerType)),
+        (∀ c ∈ cs, DA c.g = some c.sig ∧ DO c.g = none) →
+        ExitLeaves (linkTable bi cs) (linkSpec leafSpec N cs) br D DO DA
+  | [], _, D, DO, DA, _ => hbase D DO DA
+  | c :: cs, hok, D, DO, DA, hD => by
+    have hok' : ∀ c' cs', c' :: cs' <:+ cs → CalleeOk bi leafSpec N br c' cs' :=
+      fun c' cs' hs => hok c' cs' (hs.trans (List.suffix_cons c cs))
+    have ih := exitLeaves_linkT hbase hscal hdet cs hok'
+    obtain ⟨⟨hop, hS, hTS, hgi, hgu, hgl, hgr, hgn, hgs, -, hgN⟩, hR, hres, hρ, hsub, hsim⟩ :=
+      hok c cs (List.suffix_refl _)
+    have hL := ih D DO DA (fun c' hc' => hD c' (List.mem_cons_of_mem _ hc'))
+    have hF := hsim (ih c.D c.DO c.DA hsub)
+    obtain ⟨hDAg, hDOg⟩ := hD c (List.mem_cons_self ..)
+    have hRd : (c.R = .scalar ∧ 8 ≤ (calleeResTy c.R).storageBytes) ∨
+        c.R = .tower (calleeResTy c.R) := by
+      rcases hR with h | ⟨t, h, -⟩ <;> rw [h]
+      · exact Or.inl ⟨rfl, by decide⟩
+      · exact Or.inr rfl
+    have hA := leafCallAgreesArgsTys_callee (bi := linkTable bi cs) (g := c.g) hL.marshal hscal
+      (hdet _ c.cg) hF hρ hres hRd
+    refine hL.withCallee hDAg hDOg hop hS hTS hgi hgu hgl hgr hgn hgs hgN
+      (fun _ _ h => calleeRun_plain h) hA ?_
+    intro hdr
+    have hRs : c.R = .scalar := by
+      rcases hR with h | ⟨t, h, ht⟩
+      · exact h
+      · rw [h] at hdr
+        exact absurd hdr ht
+    rw [hRs] at hF ⊢
+    exact leafCallScalarTys_callee hL.marshal hscal (hdet _ c.cg) hF hρ hres
+
+end Callees
 
 end CatCrypt.Crypto.Hax

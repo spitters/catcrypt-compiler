@@ -510,4 +510,11 @@ theorem rustExecLeak_state_eq {N : Nat} {leafSpec : LeafSpec} {M : LowCTLeakMode
   obtain ⟨_, h''⟩ := CatCrypt.Crypto.SecureCompilation.CT.RustExec.exists_leak M h'
   exact (rustExecLeak_det h h'').2
 
+/-- Two runs of a program from one state end in the same state. -/
+theorem rustExec_det {N : Nat} {leafSpec : LeafSpec} {c : LowCT} {rs r₁ r₂ : RustState}
+    (h₁ : RustExec N leafSpec c rs r₁) (h₂ : RustExec N leafSpec c rs r₂) : r₁ = r₂ := by
+  obtain ⟨_, h₁'⟩ :=
+    CatCrypt.Crypto.SecureCompilation.CT.RustExec.exists_leak LowCTLeakModel.owned h₁
+  exact rustExecLeak_state_eq h₁' h₂
+
 end CatCrypt.Crypto.Hax

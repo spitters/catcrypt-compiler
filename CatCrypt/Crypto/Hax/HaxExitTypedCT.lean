@@ -407,7 +407,7 @@ theorem notCF_of_agreeT {tl : Bool} {v : Value} {env : Env} {rs : RustState}
 
 /-- The state a traced run of the typed lowering reaches agrees with the source
     outcome. -/
-theorem exitSimT_final (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {e : ImpExpr} {tl : Bool}
+theorem exitSimT_final (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {e : ImpExpr} {tl : Bool}
     {fl : Option String} {fuel : Nat} {env env' : Env} {o : Outcome} {rs r : RustState}
     {c : LowCT} {x : Bool} {t : List CTLeak}
     (hok : exitSimOkT A R tl fl.isSome e = true) (hfl : RunCtx fl)
@@ -422,7 +422,7 @@ theorem exitSimT_final (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptT
   exact ⟨hagE, hx⟩
 
 /-- A typed lowering that cannot exit: the source run does not exit. -/
-theorem exitOf_false_of_xT (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {e : ImpExpr}
+theorem exitOf_false_of_xT (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {e : ImpExpr}
     {tl : Bool}
     {fl : Option String} {fuel : Nat} {env env' : Env} {o : Outcome} {rs r : RustState}
     {c : LowCT} {t : List CTLeak}
@@ -460,7 +460,7 @@ theorem agGuardT {c : String} (hc : exitReserved c = false) (hcs : A.lookup c = 
   exact hd.symm
 
 /-- The body of a typed loop satisfies `BodyRunAg` at `envAgreesT`. -/
-theorem bodyRunT (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {body : ImpExpr} {bC : LowCT}
+theorem bodyRunT (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {body : ImpExpr} {bC : LowCT}
     {run : String}
     {x : Bool} (hokB : exitSimOkT A R false true body = true) (hslot : exitRunSlot run = true)
     (hKB : haxToLowCTKT A false (some run) body = some (bC, x)) :
@@ -655,7 +655,7 @@ theorem headResT_var {n s : String} {k : LowCT → LowCT} {env : Env} {rs : Rust
         (RustExec.copy ⟨n, t⟩ ⟨s, t⟩ rs rfl val (locatedLookup_of_rsTower rs s t val hval')) h
 
 /-- The head of `let n = f(args)`: `HeadResT` at the builtin's value. -/
-theorem headResT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) {n f : String}
+theorem headResT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) {n f : String}
     {args : List ImpExpr}
     {k : LowCT → LowCT} {env : Env} {rs : RustState} {vals : List Value} {r : Value}
     (hk : appHeadT A n f args = some k) (hn : exitReserved n = false)
@@ -878,7 +878,7 @@ theorem varHead_silent {n s : String} {k : LowCT → LowCT}
   · cases hk
 
 theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A))
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (n : String) (val body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.letBind n val body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -996,7 +996,7 @@ theorem exitCTT_letBind (hvt : ∀ f, M.leafVT f = false)
   | _ => simp [letHeadT] at hk
 
 /-- An expression whose lowerings cannot exit and have no event. -/
-theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (e : ImpExpr)
+theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (e : ImpExpr)
     (hS : ∀ tl fl c x, exitSimOkT A R tl (Option.isSome fl) e = true →
       haxToLowCTKT A tl fl e = some (c, x) → x = false ∧ Silent M N leafSpec c) :
     ExitCTT M bi N leafSpec br A R e := by
@@ -1007,7 +1007,7 @@ theorem exitCTT_of_silent (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitO
   rw [exitOf_false_of_xT hL hok hfl hK hrun₁ hval₁ hag₁ hret₁ h₁,
     exitOf_false_of_xT hL hok hfl hK hrun₂ hval₂ hag₂ hret₂ h₂]
 
-theorem exitCTT_var (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (x : String) :
+theorem exitCTT_var (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (x : String) :
     ExitCTT M bi N leafSpec br A R (.var x) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb _ hK => by
     cases tl with
@@ -1026,7 +1026,7 @@ theorem exitCTT_var (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys 
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) :
+theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) :
     ExitCTT M bi N leafSpec br A R .unitVal :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb _ hK => by
     cases tl with
@@ -1045,7 +1045,7 @@ theorem exitCTT_unitVal (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (l : ImpLit) :
+theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (l : ImpLit) :
     ExitCTT M bi N leafSpec br A R (.lit l) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb hok hK => by
     cases tl with
@@ -1059,7 +1059,7 @@ theorem exitCTT_lit (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys 
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (es : List ImpExpr) :
+theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (es : List ImpExpr) :
     ExitCTT M bi N leafSpec br A R (.tuple es) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb hok hK => by
     cases tl with
@@ -1073,7 +1073,7 @@ theorem exitCTT_tuple (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTy
       obtain ⟨rfl, rfl⟩ := hsx
       exact ⟨rfl, silent_resultStoreT hs⟩
 
-theorem exitCTT_cfBreak (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (p : ImpExpr) :
+theorem exitCTT_cfBreak (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (p : ImpExpr) :
     ExitCTT M bi N leafSpec br A R (.cfBreak p) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
     hrun₂ hval₂ hag₁ hret₁ hag₂ hret₂ _ h₁ h₂
@@ -1117,7 +1117,7 @@ theorem exitCTT_typeAscription (e : ImpExpr) (ty : String)
     (hr hrun₁) hval₁ (hr hrun₂) hval₂ hag₁ hret₁ hag₂ hret₂ (by simpa only [srcLeak] using hLk)
     h₁ h₂
 
-theorem exitCTT_seq (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (a b : ImpExpr)
+theorem exitCTT_seq (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (a b : ImpExpr)
     (iha : ExitCTT M bi N leafSpec br A R a) (ihb : ExitCTT M bi N leafSpec br A R b) :
     ExitCTT M bi N leafSpec br A R (.seq a b) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ c xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1277,7 +1277,7 @@ theorem exitCTT_ifThenElse (v : String) (t e : ImpExpr)
     exact ⟨by rw [ht], hx⟩
 
 /-- The `Option` tails `None()` and `Some(x)`: their stores have no event. -/
-theorem exitCTT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A))
+theorem exitCTT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (f : String) (args : List ImpExpr) :
     ExitCTT M bi N leafSpec br A R (.app f args) :=
   exitCTT_of_silent M bi N leafSpec br A R hL _ fun tl fl c xb hok hK => by
@@ -1295,7 +1295,7 @@ theorem exitCTT_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys 
     both calls return the same `Option`; the call has no event, the tag branches agree,
     and the arms are those of the induction. -/
 theorem exitCTT_optMatch (hvt : ∀ f, M.leafVT f = false)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A))
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A))
     (Mx : ImpExpr) (f : String) (args : List ImpExpr) (p : String) (t e : ImpExpr)
     (hleak : ∀ fuel env, srcLeak M bi Mx fuel env = .ev (.opaque env Mx))
     (hOk : ∀ tl il, exitSimOkT A R tl il Mx = (!exitReserved p && exitArgsOk args &&
@@ -1442,7 +1442,7 @@ theorem boundIntN_of_scalar {v : Value} {H : Nat} (hs : ScalarValN v)
     simp [boundInt, Int.toNat_of_nonneg h0]
   · exact absurd rfl hnu
 
-theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (c : String)
+theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (c : String)
     (body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.whileFoldReturn (.var c) body) := by
@@ -1488,7 +1488,7 @@ theorem exitCTT_whileFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) 
       h₁ h₂
     exact ⟨ht, exitOf_eq_of_flagT hE₁ hE₂ hr⟩
 
-theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (c : String)
+theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (c : String)
     (body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.whileFold (.var c) body) := by
@@ -1544,7 +1544,7 @@ theorem exitCTT_whileFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitO
         hLk hl₁ hl₂
       exact ⟨by rw [ht], hx₁.trans hx₂.symm⟩
 
-theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (i : String)
+theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (i : String)
     (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldReturn i lo hi body) := by
@@ -1638,7 +1638,7 @@ theorem exitCTT_forFoldReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (e
       fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ t₁ t₂ hrun₁ hval₁ hrun₂ hval₂ hag₁ hag₂
       hL' h₁ h₂
 
-theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (i : String)
+theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (i : String)
     (lo hi body : ImpExpr) (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldRevReturn i lo hi body) := by
   intro tl fl fuel env₁ env₂ env₁' env₂' o₁ o₂ rs₁ rs₂ r₁ r₂ cc xb t₁ t₂ hok hfl hK hrun₁ hval₁
@@ -1684,7 +1684,7 @@ theorem exitCTT_forFoldRevReturn (hL : ExitLeaves bi leafSpec br (exitCallTys A)
       hslot hok'.2.1 hh (agExtT hok'.2.1 his) fuel env₁ env₂ env₁' env₂' o₁ o₂ _ _ r₁ r₂ t₁ t₂
       hrun₁ hval₁ hrun₂ hval₂ hag₁' hret₁' hag₂' hret₂' hL' h₁ h₂
 
-theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (i : String)
+theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (i : String)
     (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFold i lo hi body) := by
@@ -1803,7 +1803,7 @@ theorem exitCTT_forFold (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOpt
 /-- A downward counted loop that may break: its source event is `opaque`, so equal source
     leakage gives equal environments, and the trips are those of `genTripsCT` over
     `denoteForLoopRev'` counting down from `hi - 1`. -/
-theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (i : String)
+theorem exitCTT_forFoldRev (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (i : String)
     (lo hi body : ImpExpr)
     (ihb : ExitCTT M bi N leafSpec br A R body) :
     ExitCTT M bi N leafSpec br A R (.forFoldRev i lo hi body) := by
@@ -1910,7 +1910,7 @@ theorem exitCTT_of_not_ok (A : ExitTowers) (R : ExitRes) (e : ImpExpr)
     The condition on `M` is used at the calls: the bridge `br` is a relation, so the tower
     arguments of a call are not determined by the environment. -/
 theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (R : ExitRes) (e : ImpExpr) :
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) :
     ExitCTT M bi N leafSpec br A R e := by
   have nok : ∀ e : ImpExpr, (∀ tl il, exitSimOkT A R tl il e = false) →
       ExitCTT M bi N leafSpec br A R e :=
@@ -1975,7 +1975,7 @@ theorem haxToLowCTKT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
     from environments with equal source leakage, and two runs of `haxToLowCTFnT A e` from
     states agreeing with them under `A`, have equal traces. -/
 theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (R : ExitRes) (e : ImpExpr) (c : LowCT)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (e : ImpExpr) (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome) (rs₁ rs₂ r₁ r₂ : RustState)
     (t₁ t₂ : List CTLeak)
@@ -2032,7 +2032,7 @@ theorem haxToLowCTFnT_leak_eq (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
     states agreeing under `A` with environments that agree on the public variables of
     `lt` and from which the body runs to a value have equal traces. -/
 theorem haxToLowCTFnT_ct (hvt : ∀ f, M.leafVT f = false) (A : ExitTowers)
-    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A)) (R : ExitRes) (lt : LevelTable) (e : ImpExpr)
+    (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (R : ExitRes) (lt : LevelTable) (e : ImpExpr)
     (c : LowCT)
     (hok : exitSimOkT A R true true e = true) (hK : haxToLowCTFnT A e = some c)
     (hsrc : SourceCT M bi lt e)
