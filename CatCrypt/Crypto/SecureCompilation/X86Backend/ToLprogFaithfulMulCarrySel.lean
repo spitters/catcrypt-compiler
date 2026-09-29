@@ -152,28 +152,28 @@ theorem stripWidthTag_withWidthTag_CMOV (w : Nat) :
 
 /-- `MULXHI` is outside `physBody`'s two-address binop alphabet. -/
 theorem not_isBinop_MULXHI (w : Nat) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (withWidthTag w "MULXHI")) = false := by
   rw [stripWidthTag_withWidthTag_MULXHI]
   decide +kernel
 
 /-- `ADCX` is outside `physBody`'s two-address binop alphabet. -/
 theorem not_isBinop_ADCX (w : Nat) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (withWidthTag w "ADCX")) = false := by
   rw [stripWidthTag_withWidthTag_ADCX]
   decide +kernel
 
 /-- `ADCXHI` is outside `physBody`'s two-address binop alphabet. -/
 theorem not_isBinop_ADCXHI (w : Nat) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (withWidthTag w "ADCXHI")) = false := by
   rw [stripWidthTag_withWidthTag_ADCXHI]
   decide +kernel
 
 /-- `CMOV` is outside `physBody`'s two-address binop alphabet. -/
 theorem not_isBinop_CMOV (w : Nat) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (withWidthTag w "CMOV")) = false := by
   rw [stripWidthTag_withWidthTag_CMOV]
   decide +kernel
@@ -510,7 +510,7 @@ theorem physBodyElem_mulhi (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     binop alphabet to the single renamed instruction. -/
 theorem physBodyElem_src3 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (nDst nA nB nC opn : String)
-    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn) = false) :
     (physBodyElem body tbl ⟨ii, .Lopn [.reg nDst] opn
         [.reg nA, .reg nB, .reg nC]⟩).map (·.li_i)

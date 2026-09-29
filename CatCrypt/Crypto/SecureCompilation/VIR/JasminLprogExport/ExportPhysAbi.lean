@@ -517,7 +517,7 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
   let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
@@ -728,7 +728,7 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
   let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
@@ -921,7 +921,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
   let rmap := if bodyHasCall body then remapOperandCalleeSave body tbl
               else remapOperand body tbl
   let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"

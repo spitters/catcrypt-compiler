@@ -92,7 +92,7 @@ theorem hasSuffix_withWidthTag64_binOpName (bop : JasminBinOp) :
 
 /-- A non-shift binary mnemonic is in the two-address binop alphabet. -/
 theorem isBinop_withWidthTag64_binOpName (bop : JasminBinOp) (hns : NonShift bop) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (withWidthTag 64 (binOpName bop))) = true := by
   rw [stripWidthTag_withWidthTag64_binOpName]
   obtain ⟨-, -, h3⟩ := hns

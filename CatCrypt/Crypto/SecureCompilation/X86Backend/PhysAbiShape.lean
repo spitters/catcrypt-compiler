@@ -100,7 +100,7 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
 def physExpand (shiftImm : ShiftImmOracle) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
   let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"

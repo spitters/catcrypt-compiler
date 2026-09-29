@@ -143,7 +143,7 @@ theorem resolveVar_eq_reg (curDepth nArgs : Nat) {Γ : Ctxt jasminDialect}
     is in the `isBinop` alphabet. -/
 theorem binOpName_isBinop_of_nonshift (bop : JasminBinOp)
     (hns : bop ≠ .shl ∧ bop ≠ .shr ∧ bop ≠ .andn) :
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag (binOpName bop)) = true := by
   obtain ⟨h1, h2, h3⟩ := hns
   cases bop <;> first | decide +kernel | (exfalso; revert h1 h2 h3; decide)

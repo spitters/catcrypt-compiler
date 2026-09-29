@@ -97,7 +97,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulEndToEnd
 def physBodyElem (body : Lcmd) (tbl : Array Nat) (i : Linstr) : Lcmd :=
   let rmap := remapOperand body tbl
   let isBinop (opn : String) : Bool :=
-    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
@@ -162,7 +162,7 @@ theorem physBody_eq_flatMap (body : Lcmd) :
     `physBodyElem` to `(legalizeBinop (rmap d) (rmap s1) opn "MOV").map (⟨ii, ·⟩)`. -/
 theorem physBodyElem_binopCollapse (body : Lcmd) (tbl : Array Nat)
     (ii : Nat) (d s0 s1 : LOperand) (ds ss : List LOperand) (opn : String)
-    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
       (stripWidthTag opn) = true)
     (hsh : ¬ (stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR") = true)
     (h64 : ¬ hasSuffix opn ":64" = true)
@@ -192,7 +192,7 @@ def InstrRealizesBinding {w : Nat} (body : Lcmd) (tbl : Array Nat)
     (i : Linstr) (b : BinopBinding w body tbl) : Prop :=
   ∃ (nS0 : String) (ds ss : List LOperand),
     i.li_i = .Lopn (.reg b.nDst :: ds) b.opn (.reg nS0 :: .reg b.nSrc :: ss)
-    ∧ (["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+    ∧ (["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR", "CMP"].contains
         (stripWidthTag b.opn) = true)
     ∧ (¬ (stripWidthTag b.opn == "SHL" || stripWidthTag b.opn == "SHR") = true)
     ∧ (¬ hasSuffix b.opn ":64" = true)
