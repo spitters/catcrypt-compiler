@@ -23,7 +23,7 @@ constrained by an axiom citing the upstream proof.
 
 The leakage of one leaf call is a `LeakTrace` — the observable-event
 sequence of `LowCTLeakTraceDef`, the same alphabet the enclosing program's
-`LowCT.leakTrace` / `dynLeakTrace` are built from.  A leaf's leakage
+`LowCT.leakTrace` is built from.  A leaf's leakage
 function maps the leaf's arguments to the trace its execution emits, so
 control-flow decisions and memory accesses that depend on an argument show
 up as a difference between the traces at two argument values.
@@ -33,8 +33,8 @@ up as a difference between the traces at two argument values.
 A leaf is constant-time in an argument when varying that argument alone
 leaves the trace unchanged: `SecretIndependent (leak p)` for each fixed
 public argument bundle `p`.  This is Goguen–Meseguer noninterference at the
-leaf boundary, the same shape as `LowCTVartimeLeak.dynLeakTrace_noninterference`
-carries for a `LowCT` program.
+leaf boundary, the same shape as `CT.LowCTConstantTime` for a `LowCT`
+program.
 
 The predicate separates constant-time from variable-time leaves:
 `secretIndependent_const` holds of a trace that ignores its argument, and

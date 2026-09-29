@@ -15,9 +15,7 @@ This module defines the LowCT-side leakage trace: the `LeakEvent` /
 `LeakTrace` observable types and the structural function
 `LowCT.leakTrace : LowCT → LeakTrace`.
 
-It is a function of LowCT *syntax only*. The IrisBridge leakage chain
-(`LowCTVartimeLeak` → `IrisBridge/LeakageRelational` → IrisBridge) depends on
-`LowCT.leakTrace` through this module.
+It is a function of LowCT *syntax only*.
 
 The `LeakEvent` / `LeakTrace` types live in the
 `...SecureCompilation.CryptoSSA` namespace, so `open ...CryptoSSA` clients

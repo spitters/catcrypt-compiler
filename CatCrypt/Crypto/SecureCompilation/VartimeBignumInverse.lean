@@ -6,12 +6,13 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
+public import CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
 
 /-!
 # Variable-time bignum modular inverse for public-input paths
 
-This module applies the variable-time support (noninterference modulo
-public, `LowCTVartimeLeak.lean`) to a GMP-class operation: a **data-dependent,
+This module applies the public-guard rule of `cmdCT` and the level checker
+`CT.levelCheck` to a GMP-class operation: a **data-dependent,
 early-terminating modular inverse**.
 
 The early-terminating GCD step count is ~21–25 % of the CT safegcd fixed
@@ -75,28 +76,21 @@ the GCD and folds the Bezout coefficient.
   secret-dependent inverse must fall back to the fixed-step constant-time
   safegcd kernel.
 
-* **Noninterference modulo public** (`vartimeInvert_noninterference`): on
-  public inputs the dynamic leak trace — which records one `iter` event per
-  executed GCD step, i.e. the very iteration count that varies with the
-  operands — is **identical across any two runs that agree on the public
-  inputs**, relative to the named `BodyStepPreservesPublic` hypothesis (the
-  loop-body small-step semantics, which the `cmdCT` chain does not expose).
-  Differences confined to secret slots
-  are invisible; on public inputs everything is "secret-free", so the trace
-  leaks at most the public operands — exactly the policy.
-
-All of this uses the existing taint machinery (`cmdCT`, `guardPublic`,
-`cmdCT_RWhileNz_iff`, `cmdCT_RWhileNz`, `dynLeakTrace_while_noninterference`,
-`PublicEquiv`).
+* **Constant time in the traced semantics** (`vartimeInvert_ct`): the level
+  checker `CT.levelCheck` accepts the body under `publicInvertLT`, so by
+  `CT.levelCheck_sound` two `RustExecLeak` runs from states agreeing on the
+  public slots have equal traces, one `branch` event per guard test included.
+  The split is all-public, so the statement says that the trace, iteration
+  count included, is determined by the input.
+* **Negative control** (`vartimeInvert_levelCheck_rejects_secret`): the level
+  checker rejects the body under `secretInvertLT`, for every leakage model.
 
 ## Scope
 
 * The acceptance / rejection (the **typing/gating** side) is proved outright
   by reduction to `cmdCT`.
-* The loop noninterference is proved **relative to**
-  `BodyStepPreservesPublic`, a named hypothesis on the loop-body state
-  evolution (which a verified `LowCT.exec` would discharge); it is neither an
-  admitted proof nor an axiom.
+* The constant-time statement is over `RustExecLeak`, with no hypothesis on
+  the loop body or its leaves.
 * The bench (`bench/mpn_invert_safegcd_compare/vartime_invert_bench.c`) and
   KAT (`vartime_invert_kat.c`) live on the C side: the Lehmer inverse is
   checked byte-exact (5-way KAT: `Lehmer == EEA == BGCD == GMP mpz_invert == CT
@@ -115,6 +109,8 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.LowCTLeakTrace
 open CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
+open CatCrypt.Crypto.SecureCompilation.CT (LowCTLeakModel LowCTConstantTime levelCheck
+  levelCheck_sound)
 
 set_option autoImplicit false
 
@@ -241,35 +237,32 @@ theorem vartimeInvert_guard_not_public_on_secret :
   unfold guardPublic secretInvertLT
   simp
 
-/-! ## §5. Noninterference modulo public (the NI guarantee) -/
+/-! ## §5. Constant time in the traced semantics -/
 
-/-- **Noninterference for the variable-time inverse on public inputs**,
-relative to the `BodyStepPreservesPublic` hypothesis.
+/-- The level checker accepts the variable-time inverse under the public-input
+split. -/
+theorem vartimeInvert_levelCheck_accepts_public :
+    (levelCheck .owned publicInvertLT vartimeInvertBody).isSome = true := by decide
 
-The dynamic leak trace `dynLeakTraceWhile` records **one `iter` event per
-executed GCD step** — i.e. the data-dependent iteration count that varies
-with the operands. This theorem shows that, on the public-input path, that
-trace is **identical across any two runs that agree on the public inputs**:
-the early-termination timing leaks at most the public operands, which the
-policy already declassifies. (For full constant time — the all-secret
-endpoint — the same machinery forces the trace constant; but here the point
-is the public-input regime where the variable-time loop is *licensed*.)
+/-- **Constant time of the variable-time inverse on the public-input split.**
+Two terminating `RustExecLeak` runs of `vartimeInvertBody` from states that
+agree on the public slots of `publicInvertLT` have equal leakage traces, for
+every step bound `N` and leaf semantics `leafSpec`. The trace records one
+`branch` event per test of the loop guard `"g"`, so the iteration count is part
+of it. `publicInvertLT` is all-public, so the hypothesis is equality of the two
+states. -/
+theorem vartimeInvert_ct (N : Nat) (leafSpec : LeafSpec) :
+    LowCTConstantTime N leafSpec .owned publicInvertLT vartimeInvertBody := by
+  obtain ⟨lt', h⟩ := Option.isSome_iff_exists.mp vartimeInvert_levelCheck_accepts_public
+  exact (levelCheck_sound h).1
 
-This is `dynLeakTrace_while_noninterference` applied to the GCD loop;
-the `bodyStep` is the loop-body state transition (the divstep reduction), and
-`BodyStepPreservesPublic` is the named hypothesis on it, which a verified
-`LowCT.exec` would discharge. -/
-theorem vartimeInvert_noninterference
-    (bodyStep : RustState → RustState)
-    (hstep : BodyStepPreservesPublic publicInvertLT bodyStep)
-    (fuel : Nat) {rs1 rs2 : RustState}
-    (hPE : PublicEquiv publicInvertLT rs1 rs2) :
-    dynLeakTraceWhile "g" stepBody bodyStep fuel rs1 =
-      dynLeakTraceWhile "g" stepBody bodyStep fuel rs2 := by
-  refine dynLeakTrace_while_noninterference publicInvertLT invertLeafCT
-    "g" stepBody bodyStep ?_ stepBody_accepted_public hstep fuel hPE
-  unfold guardPublic publicInvertLT LevelTable.allPublic
-  rfl
+/-- **Negative control.** Under the secret-input split, where the loop guard
+`"g"` is `Secret`, the level checker rejects the variable-time inverse for every
+leakage model. -/
+theorem vartimeInvert_levelCheck_rejects_secret (M : LowCTLeakModel) :
+    levelCheck M secretInvertLT vartimeInvertBody = none := by
+  simp [levelCheck, CT.LevelCheck.check, vartimeInvertBody, CT.LevelCheck.loopFix,
+    CT.LevelCheck.lk, CT.secretBase, secretInvertLT]
 
 /-! ## §6. The GMP/CT split, stated as one theorem
 

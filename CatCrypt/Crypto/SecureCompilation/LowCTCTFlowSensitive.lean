@@ -41,13 +41,11 @@ a scalar guard with a secret value once `cmdCT` accepts them (an
 propagated scalar classification is preserved.
 
 The scalar-relevant state transition is `flowStep`; the flow-sensitive
-dynamic trace is `dynLeakTraceF`, which — unlike the sequential clause of
-`dynLeakTrace` — evaluates the second component of an `RSeq` at the state
-*reached* by the first (`flowStep c1 rs`), so a guard downstream of a
-reassignment is read after the reassignment.  Loops are treated exactly as
-in `dynLeakTrace`: a static node here, with the iteration-count leakage
-carried by the separate `dynLeakTraceWhile` + `BodyStepPreservesPublic` model
-(`LowCTVartimeLeak.lean`).
+dynamic trace is `dynLeakTraceF`, which evaluates the second component of an
+`RSeq` at the state *reached* by the first (`flowStep c1 rs`), so a guard
+downstream of a reassignment is read after the reassignment.  Loops are a
+static node here: `flowStep` is the identity on them and their trace is the
+static `LowCT.leakTrace`, so iteration counts are not observed.
 
 ## Soundness
 
@@ -60,8 +58,7 @@ public-valued expression re-establishes the invariant under the reclassified
 table.
 
 `cmdCTFlow_noninterference` restates the trace half against the ambient
-`PublicEquiv` used by `dynLeakTrace_noninterference`, so the flow-sensitive
-checker delivers the same noninterference-modulo-public conclusion.
+`PublicEquiv` of `LowCTCTAnalysis.lean`.
 -/
 
 @[expose] public section
@@ -123,8 +120,7 @@ def cmdCTFlow : LowCT → LevelTable → LeafCTTable → Option LevelTable
 `rsScalar`, and only `RScalarSet`/`RScalarSetExpr`/`RLetU64Zero` write it;
 every other constructor leaves `rsScalar` unchanged (leaf calls and tower
 ops write `rsTower`).  `flowStep` therefore tracks exactly the scalar slots a
-guard can observe.  Loops are the identity here, matching `dynLeakTraceF`
-(their iteration leakage is modelled by `dynLeakTraceWhile`). -/
+guard can observe.  Loops are the identity here, matching `dynLeakTraceF`. -/
 def flowStep : LowCT → RustState → RustState
   | .RScalarSet x n, rs => rsSetScalar rs x n
   | .RScalarSetExpr x e, rs => rsSetScalar rs x (e.eval rs.rsScalar)
@@ -138,9 +134,9 @@ def flowStep : LowCT → RustState → RustState
 
 /-! ## §4. The flow-sensitive dynamic leak trace -/
 
-/-- Flow-sensitive dynamic leak trace.  Coincides with `dynLeakTrace` on
-`RIfNz`/`RBlock`/the data-oblivious constructors, but the sequential clause
-threads state: the second command's trace is taken at `flowStep c1 rs`, so a
+/-- Flow-sensitive dynamic leak trace.  A `branchEvent` for each `RIfNz`
+followed by the taken arm, the static `LowCT.leakTrace` for the data-oblivious
+constructors, and a sequential clause that threads state: the second command's trace is taken at `flowStep c1 rs`, so a
 guard downstream of a reassignment is read *after* the reassignment. -/
 def dynLeakTraceF : LowCT → RustState → LeakTrace
   | .RIfNz cond ct cf, rs =>
@@ -410,7 +406,7 @@ theorem cmdCTFlow_sound (leafCT : LeafCTTable) :
       leaf_sound rfl (fun _ => rfl) (fun _ => rfl) hCT h
 
 /-- **Flow-sensitive noninterference modulo public.**  Restated against the
-ambient `PublicEquiv` used by `dynLeakTrace_noninterference`: an accepted
+ambient `PublicEquiv` of `LowCTCTAnalysis.lean`: an accepted
 program's flow-sensitive dynamic leak trace is a function of the public
 projection of the input only. -/
 theorem cmdCTFlow_noninterference (leafCT : LeafCTTable)
