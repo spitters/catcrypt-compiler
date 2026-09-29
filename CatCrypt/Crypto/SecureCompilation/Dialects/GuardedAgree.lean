@@ -22,7 +22,13 @@ conversion), under two side conditions:
   where a conditional adds no name to that set;
 * `InRangeG`: every expression the run evaluates is in `u64` range at the state
   it is evaluated in (no overflow, no saturating subtraction, shift amounts
-  below 64).
+  below 64), and every array index is below the element count of its array.
+
+Array operands live in the tower heap: `ifConvert_taken` carries the word-view
+reflection `TowerWordsOn` of a set `T` of tower names, typed by `τ`
+(`TowerTyped`, `ArrTy`), and assumes the in-bounds array laws `LawfulArr` of the
+leaf oracle when `T` is inhabited. `LawfulArrByteOffset.byteOffset_lawfulArr`
+is the instance for the byte-offset oracle of `LowCTMemDenote`.
 
 The proof runs the conversion of a conditional in two modes. Under a flag slot
 holding `1` (`ifConvert_taken`) the converted command tracks the `RustExec` run
@@ -39,7 +45,8 @@ the jasmin program returning a slot in `S` or written outside every conditional
 denotes the word of that slot's value at the end of the `RustExec` run.
 `translateDialectGuarded_jasmin` is its instance at `S = []`, the empty `VarMap`
 and the empty valuation: it covers only commands that read no input, and the
-jasmin program it speaks about is a closed constant.
+jasmin program it speaks about is a closed constant. Both jasmin theorems are
+stated for commands with no array access (`towerOK (fun _ => False) c`).
 
 The Boolean tests `readsB`, `afterL` and `inRangeRunBL` are sound checks of the
 scoping and in-range conditions on a concrete command and store: `true` implies
@@ -48,6 +55,7 @@ the condition, and `false` proves nothing.
 ## Main definitions
 
 * `afterG`, `readsG`: the names written before a point, and the reads condition
+* `LawfulArr`, `ArrTy`, `TowerTyped`, `EnvTyped`: the array laws and typings
 * `InRangeG`: the in-range condition of a run
 * `translateDialectGuardedIn`: the guarded translator from a bound input list
 * `readsB`, `afterL`, `inRangeRunBL`: sound Boolean checks of the side conditions
@@ -76,9 +84,46 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
   (EnvBoundOn ScalarInRange envReader_of_envBoundOn envBoundOn_updExpr scalarInRange_upd
-    envBoundOn_mono)
+    envBoundOn_mono towerOK TowerWordsOn arrWords encodeTowerWords encodeTowerWords_TU64
+    encodeTowerWords_TArr rsTower_eq_of_locatedLookup towerWordsOn_bind
+    towerWordsOn_updScalar ArrLoadWord ArrStoreWord)
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLt
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuarded
+open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA (encodeTy cryptoTyOfRustVal)
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
+
+/-! ## Array laws of the leaf oracle -/
+
+/-- The array oracles of `leafSpec` read and write one word of the word view
+    `arrWords` of a `TArr n TU64` array, at an index below `n`. -/
+structure LawfulArr (leafSpec : LeafSpec) : Prop where
+  load : ∀ (d : String) (oldV : RustVal .TU64) (n : Nat) (a : RustVal (.TArr n .TU64))
+    (idx : Nat), idx < n →
+    cryptoTyOfRustVal .TU64 (leafSpec.arrLoad ⟨d, .TU64⟩ oldV ⟨.TArr n .TU64, a⟩ idx)
+      = memGetDyn (arrWords n a) idx
+  store : ∀ (a : String) (n : Nat) (oldV : RustVal (.TArr n .TU64)) (idx : Nat)
+    (sv : RustVal .TU64), idx < n →
+    arrWords n (leafSpec.arrStore ⟨a, .TArr n .TU64⟩ oldV idx ⟨.TU64, sv⟩)
+      = memSetDyn (arrWords n oldV) idx (cryptoTyOfRustVal .TU64 sv)
+
+/-- The one-word oracle laws of `RustExecSemScalarBridge`, which hold at every
+    index, give the in-bounds laws. -/
+theorem LawfulArr.of_word {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
+    (hstore : ArrStoreWord leafSpec) : LawfulArr leafSpec :=
+  ⟨fun d oldV n a idx _ => hload.1 d oldV n a idx,
+    fun a n oldV idx sv _ => hstore.1 a n oldV idx sv⟩
+
+/-- Rewriting a memref element with its own value leaves the memref unchanged. -/
+theorem memSetDyn_memGetDyn {n : Nat} (a : Fin n → BitVec 64) (i : Nat) :
+    memSetDyn a i (memGetDyn a i) = a := by
+  cases n with
+  | zero => funext x; exact x.elim0
+  | succ m =>
+      funext j
+      simp only [memSetDyn, memGetDyn]
+      split_ifs with h
+      · rw [h]
+      · rfl
 
 /-! ## Scoping and the in-range condition -/
 
@@ -97,10 +142,18 @@ def readsG (B : String → Prop) : LowCT → Prop
   | .RLetU64Zero x b => readsG (fun y => B y ∨ y = x) b
   | .RScalarSetExpr _ e => varsIn B e
   | .RIfNz g t e => B g ∧ readsG B t ∧ readsG B e
+  | .RArrLoad _ _ i => B i
+  | .RArrStore _ i _ => B i
   | _ => True
 
+/-- The element count of a `TArr n _` array type, and `0` for every other type. -/
+def arrLenOf : TowerType → Nat
+  | .TArr n _ => n
+  | _ => 0
+
 /-- The in-range condition of a run: every expression the run of `c` from `rs`
-    evaluates is in `u64` range at the state it is evaluated in. -/
+    evaluates is in `u64` range at the state it is evaluated in, and every array
+    index is below the element count of its array. -/
 def InRangeG (N : Nat) (leafSpec : LeafSpec) : LowCT → RustState → Prop
   | .RSeq a b, rs => InRangeG N leafSpec a rs ∧
       ∀ r1, RustExec N leafSpec a rs r1 → InRangeG N leafSpec b r1
@@ -108,7 +161,45 @@ def InRangeG (N : Nat) (leafSpec : LeafSpec) : LowCT → RustState → Prop
   | .RScalarSetExpr _ e, rs => e.inRange rs.rsScalar
   | .RIfNz g t e, rs => (rs.rsScalar g ≠ 0 → InRangeG N leafSpec t rs) ∧
       (rs.rsScalar g = 0 → InRangeG N leafSpec e rs)
+  | .RArrLoad _ src i, rs => rs.rsScalar i < arrLenOf src.locDst
+  | .RArrStore arr i _, rs => rs.rsScalar i < arrLenOf arr.locDst
   | _, _ => True
+
+/-- The tower types of the array operands of `c` agree with the typing `τ`. -/
+def ArrTy (τ : String → TowerType) : LowCT → Prop
+  | .RSeq a b => ArrTy τ a ∧ ArrTy τ b
+  | .RLetU64Zero _ b => ArrTy τ b
+  | .RIfNz _ t e => ArrTy τ t ∧ ArrTy τ e
+  | .RArrLoad dst src _ => τ dst.locVar = dst.locDst ∧ τ src.locVar = src.locDst
+  | .RArrStore arr _ src => τ arr.locVar = arr.locDst ∧ τ src.locVar = src.locDst
+  | _ => True
+
+/-- Every name of `T` is bound in the tower heap at its type under `τ`. -/
+def TowerTyped (rs : RustState) (T : String → Prop) (τ : String → TowerType) : Prop :=
+  ∀ y, T y → ∃ v : RustVal (τ y), rs.rsTower y = some ⟨τ y, v⟩
+
+/-- Every name of `T` is bound in `env` at the encoding of its type under `τ`. -/
+def EnvTyped (env : SEnvScalar) (T : String → Prop) (τ : String → TowerType) : Prop :=
+  ∀ y, T y → ∃ w : ⟦encodeTy (τ y)⟧, env y = some ⟨encodeTy (τ y), w⟩
+
+theorem encodeTowerWords_fst (p : Σ t : TowerType, RustVal t) :
+    (encodeTowerWords p).1 = encodeTy p.1 := by
+  unfold encodeTowerWords
+  split <;> rfl
+
+theorem envTyped_of_tower {rs : RustState} {env : SEnvScalar} {T : String → Prop}
+    {τ : String → TowerType} (htw : TowerWordsOn rs env T) (hty : TowerTyped rs T τ)
+    (hT : ∀ y, T y → srcName y) : EnvTyped env T τ := by
+  intro y hy
+  obtain ⟨v, hv⟩ := hty y hy
+  have h := htw y hy (hT y hy).1
+  rw [hv, Option.map_some] at h
+  have hfst := encodeTowerWords_fst ⟨τ y, v⟩
+  generalize encodeTowerWords ⟨τ y, v⟩ = q at h hfst
+  obtain ⟨t, w⟩ := q
+  simp only at hfst
+  subst hfst
+  exact ⟨w, h⟩
 
 theorem le_afterG : ∀ (c : LowCT) (B : String → Prop) (y : String), B y → afterG B c y := by
   intro c
@@ -316,6 +407,9 @@ theorem ifConvert_static {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
         (fun y hy => hsubT y (hB y hy))
       exact ⟨hSe, fun y hy => hsubE y (hsubT y hy), fun y hy => hsubE y (hsubT y (hB y hy)),
         by simp only [ifConvert]; omega⟩
+  | rArrLoad _ _ _ | rArrStore _ _ _ =>
+      intro flag S k B hS hB
+      cases flag <;> exact ⟨hS, fun _ h => h, hB, by simp only [ifConvert]; omega⟩
 
 /-! ## The flag computation of a conditional -/
 
@@ -402,6 +496,165 @@ theorem semScalar_flags {flag : Option String} {g : String} {k : Nat} {env : SEn
     rw [upd_ne hyk1, hotb2 y (Or.inl hy)]
     exact hfr1 y hy hyk
 
+/-! ## The guarded array accesses -/
+
+theorem upd_ne_any {env : SEnvScalar} {x y : String} {t : CryptoTy} {w : ⟦t⟧} (h : y ≠ x) :
+    (env.upd x (t := t) w) y = env y := by
+  simp [SEnvScalar.upd, h]
+
+theorem upd_self_any {env : SEnvScalar} {x : String} {t : CryptoTy} {w : ⟦t⟧} :
+    (env.upd x (t := t) w) x = some ⟨t, w⟩ := by
+  simp [SEnvScalar.upd]
+
+theorem guardName_ne {i j : Nat} (h : i ≠ j) : guardName i ≠ guardName j :=
+  fun e => h (guardName_injective e)
+
+/-- The run of the masked index `f * i`. -/
+theorem semScalar_gIdx {f i : String} {k : Nat} {env : SEnvScalar} {fv iv : BitVec 64}
+    (hf : env f = some ⟨.sword 64, fv⟩) (hi : env i = some ⟨.sword 64, iv⟩)
+    (hft : ¬ isTmpName f) (hit : ¬ isTmpName i) :
+    ∃ env2 : SEnvScalar,
+      semScalar (gIdx f i k) env = some (env2.upd (guardName k) (t := .sword 64) (fv * iv)) ∧
+      OnlyTmpBelow env env2 0 := by
+  obtain ⟨env2, hs, hotb⟩ := semScalar_setExpr (x := guardName k)
+    (e := .SMul (.SVar f) (.SVar i)) ⟨hft, hit⟩
+    ⟨fun _ => by rw [readU64_of_env hf]; rfl, fun _ => by rw [readU64_of_env hi]; rfl⟩
+  refine ⟨env2, ?_, hotb⟩
+  rw [gIdx, hs]
+  simp only [SExpr.evalBV, envReader, hf, hi]
+
+/-- The run of a guarded load: the word slot `d` receives the select, on the flag
+    value `fv`, between its own value and the element at the masked index; every
+    other name except the lowering temporaries and the slots `guardName k`,
+    `guardName (k + 1)` is unchanged. -/
+theorem semScalar_gLoad {f i d s : String} {n k : Nat} {env : SEnvScalar}
+    {fv iv wd : BitVec 64} {ws : ⟦encodeTy (.TArr n .TU64)⟧}
+    (hf : env f = some ⟨.sword 64, fv⟩) (hi : env i = some ⟨.sword 64, iv⟩)
+    (hd : env d = some ⟨.sword 64, wd⟩) (hs : env s = some ⟨encodeTy (.TArr n .TU64), ws⟩)
+    (hft : ¬ isTmpName f) (hit : ¬ isTmpName i) (hdn : srcName d) (hsn : srcName s)
+    (hfk : f ≠ guardName k) (hfk1 : f ≠ guardName (k + 1)) :
+    ∃ env', semScalar (gLoad f k ⟨d, .TU64⟩ ⟨s, .TArr n .TU64⟩ i) env = some env' ∧
+      env' d = some ⟨.sword 64, selectWord fv wd (memGetDyn ws (fv * iv).toNat)⟩ ∧
+      ∀ y, ¬ isTmpName y → y ≠ d → y ≠ guardName k → y ≠ guardName (k + 1) →
+        env' y = env y := by
+  obtain ⟨env2, hs1, hotb⟩ := semScalar_gIdx (k := k) hf hi hft hit
+  set envA := env2.upd (guardName k) (t := .sword 64) (fv * iv) with hA
+  have hAfr : ∀ y, ¬ isTmpName y → y ≠ guardName k → envA y = env y := fun y hy hyk => by
+    rw [hA, upd_ne hyk]; exact hotb y (Or.inl hy)
+  have hsA : envA s = some ⟨encodeTy (.TArr n .TU64), ws⟩ := by
+    rw [hAfr s hsn.1 (srcName_ne_guardName hsn k)]; exact hs
+  have hkA : envA (guardName k) = some ⟨.sword 64, fv * iv⟩ := upd_self
+  have hs2 : semScalar (.RArrLoad (gWord (k + 1)) ⟨s, .TArr n .TU64⟩ (guardName k)) envA
+      = some (envA.upd (guardName (k + 1)) (t := .sword 64)
+          (memGetDyn ws (fv * iv).toNat)) := by
+    simp only [semScalar, gWord, Located.locDst, hsA, hkA]; rfl
+  set envB := envA.upd (guardName (k + 1)) (t := .sword 64) (memGetDyn ws (fv * iv).toNat)
+    with hB
+  have hfB : envB f = some ⟨.sword 64, fv⟩ := by
+    rw [hB, upd_ne hfk1, hAfr f hft hfk]; exact hf
+  have hdB : envB d = some ⟨.sword 64, wd⟩ := by
+    rw [hB, upd_ne (srcName_ne_guardName hdn _), hAfr d hdn.1 (srcName_ne_guardName hdn k)]
+    exact hd
+  have hgB : envB (guardName (k + 1)) = some ⟨.sword 64, memGetDyn ws (fv * iv).toNat⟩ :=
+    upd_self
+  have hs3 : semScalar (.RSelect ⟨d, .TU64⟩ f ⟨d, .TU64⟩ (gWord (k + 1))) envB
+      = some (envB.upd d (t := .sword 64) (selectWord fv wd (memGetDyn ws (fv * iv).toNat))) := by
+    simp only [semScalar, gWord, Located.locDst, hfB, hdB, hgB]
+  refine ⟨envB.upd d (t := .sword 64) (selectWord fv wd (memGetDyn ws (fv * iv).toNat)), ?_,
+    upd_self, ?_⟩
+  · rw [gLoad, semScalar_seq, hs1, Option.bind_some, semScalar_seq, hs2, Option.bind_some, hs3]
+  · intro y hy hyd hyk hyk1
+    rw [upd_ne hyd, hB, upd_ne hyk1, hAfr y hy hyk]
+
+/-- The run of a guarded store: the array `a` is rewritten at the masked index
+    with the select, on the flag value `fv`, between the element there and the
+    word of `s`; every other name except the lowering temporaries and the slots
+    `guardName k`, `guardName (k + 1)`, `guardName (k + 2)` is unchanged. -/
+theorem semScalar_gStore {f i a s : String} {n k : Nat} {env : SEnvScalar}
+    {fv iv sv : BitVec 64} {wa : ⟦encodeTy (.TArr n .TU64)⟧}
+    (hf : env f = some ⟨.sword 64, fv⟩) (hi : env i = some ⟨.sword 64, iv⟩)
+    (ha : env a = some ⟨encodeTy (.TArr n .TU64), wa⟩) (hs : env s = some ⟨.sword 64, sv⟩)
+    (hft : ¬ isTmpName f) (hit : ¬ isTmpName i) (han : srcName a) (hsn : srcName s)
+    (hfk : f ≠ guardName k) (hfk1 : f ≠ guardName (k + 1)) :
+    ∃ env', semScalar (gStore f k ⟨a, .TArr n .TU64⟩ i ⟨s, .TU64⟩) env = some env' ∧
+      env' a = some ⟨encodeTy (.TArr n .TU64),
+        memSetDyn wa (fv * iv).toNat (selectWord fv (memGetDyn wa (fv * iv).toNat) sv)⟩ ∧
+      ∀ y, ¬ isTmpName y → y ≠ a → y ≠ guardName k → y ≠ guardName (k + 1) →
+        y ≠ guardName (k + 2) → env' y = env y := by
+  obtain ⟨env2, hs1, hotb⟩ := semScalar_gIdx (k := k) hf hi hft hit
+  set envA := env2.upd (guardName k) (t := .sword 64) (fv * iv) with hA
+  have hAfr : ∀ y, ¬ isTmpName y → y ≠ guardName k → envA y = env y := fun y hy hyk => by
+    rw [hA, upd_ne hyk]; exact hotb y (Or.inl hy)
+  have haA : envA a = some ⟨encodeTy (.TArr n .TU64), wa⟩ := by
+    rw [hAfr a han.1 (srcName_ne_guardName han k)]; exact ha
+  have hkA : envA (guardName k) = some ⟨.sword 64, fv * iv⟩ := upd_self
+  set m := memGetDyn wa (fv * iv).toNat with hm
+  have hs2 : semScalar (.RArrLoad (gWord (k + 1)) ⟨a, .TArr n .TU64⟩ (guardName k)) envA
+      = some (envA.upd (guardName (k + 1)) (t := .sword 64) m) := by
+    simp only [semScalar, gWord, Located.locDst, haA, hkA]; rfl
+  set envB := envA.upd (guardName (k + 1)) (t := .sword 64) m with hB
+  have hfB : envB f = some ⟨.sword 64, fv⟩ := by
+    rw [hB, upd_ne hfk1, hAfr f hft hfk]; exact hf
+  have hsB : envB s = some ⟨.sword 64, sv⟩ := by
+    rw [hB, upd_ne (srcName_ne_guardName hsn _), hAfr s hsn.1 (srcName_ne_guardName hsn k)]
+    exact hs
+  have hgB : envB (guardName (k + 1)) = some ⟨.sword 64, m⟩ := upd_self
+  have hs3 : semScalar (.RSelect (gWord (k + 2)) f (gWord (k + 1)) ⟨s, .TU64⟩) envB
+      = some (envB.upd (guardName (k + 2)) (t := .sword 64) (selectWord fv m sv)) := by
+    simp only [semScalar, gWord, Located.locDst, hfB, hsB, hgB]
+  set envC := envB.upd (guardName (k + 2)) (t := .sword 64) (selectWord fv m sv) with hC
+  have hk2 : guardName (k + 2) ≠ guardName k := guardName_ne (by omega)
+  have hk21 : guardName (k + 2) ≠ guardName (k + 1) := guardName_ne (by omega)
+  have haC : envC a = some ⟨encodeTy (.TArr n .TU64), wa⟩ := by
+    rw [hC, upd_ne (srcName_ne_guardName han _), hB, upd_ne (srcName_ne_guardName han _)]
+    exact haA
+  have hkC : envC (guardName k) = some ⟨.sword 64, fv * iv⟩ := by
+    rw [hC, upd_ne (guardName_ne (by omega)), hB, upd_ne (guardName_ne (by omega))]; exact hkA
+  have hgC : envC (guardName (k + 2)) = some ⟨.sword 64, selectWord fv m sv⟩ := upd_self
+  have hs4 : semScalar (.RArrStore ⟨a, .TArr n .TU64⟩ (guardName k) (gWord (k + 2))) envC
+      = some (envC.upd a (t := encodeTy (.TArr n .TU64))
+          (memSetDyn wa (fv * iv).toNat (selectWord fv m sv))) := by
+    simp only [semScalar, gWord, Located.locDst, haC, hkC, hgC]
+    exact dif_pos rfl
+  refine ⟨envC.upd a (t := encodeTy (.TArr n .TU64))
+    (memSetDyn wa (fv * iv).toNat (selectWord fv m sv)), ?_, upd_self_any, ?_⟩
+  · rw [gStore, semScalar_seq, hs1, Option.bind_some, semScalar_seq, hs2, Option.bind_some,
+      semScalar_seq, hs3, Option.bind_some, hs4]
+  · intro y hy hya hyk hyk1 hyk2
+    refine (upd_ne_any hya).trans ?_
+    rw [hC, upd_ne hyk2, hB, upd_ne hyk1, hAfr y hy hyk]
+
+/-- `T`-names are unchanged by a run that changes only temporaries, guard slots
+    and names outside `T`, so `EnvTyped` carries over. -/
+theorem envTyped_congr {env env' : SEnvScalar} {T : String → Prop} {τ : String → TowerType}
+    (h : EnvTyped env T τ) (heq : ∀ y, T y → env' y = env y) : EnvTyped env' T τ := by
+  intro y hy
+  rw [heq y hy]; exact h y hy
+
+/-- The names the conversion adds to the bound list are the scalar writes, which lie
+    outside `T`. -/
+theorem ifConvert_notT {c : LowCT} (hc : IsCoveredSCtlGuarded c) (T : String → Prop) :
+    ∀ (flag : Option String) (S : List String) (k : Nat), towerOK T c → (∀ y ∈ S, ¬ T y) →
+      ∀ y ∈ (ifConvert flag S k c).2.1, ¬ T y := by
+  induction hc with
+  | rSkip => intro _ _ _ _ hS; exact hS
+  | rSeq _ _ iha ihb =>
+      intro flag S k ht hS
+      exact ihb flag _ _ ht.2 (iha flag S k ht.1 hS)
+  | rLetU64Zero _ _ ihb =>
+      intro flag S k ht hS
+      exact ihb flag _ k ht.2 (fun y hy => by
+        rcases List.mem_cons.mp hy with rfl | h; exact ht.1; exact hS y h)
+  | rScalarSet _ _ | rScalarSetExpr _ _ _ =>
+      intro flag S k ht hS y hy
+      rcases List.mem_cons.mp hy with rfl | h; exact ht; exact hS y h
+  | rIfNz _ _ _ iht ihe =>
+      intro flag S k ht hS
+      exact ihe _ _ _ ht.2 (iht _ S _ ht.1 hS)
+  | rArrLoad _ _ _ | rArrStore _ _ _ =>
+      intro flag S k _ hS
+      cases flag <;> exact hS
+
 /-! ## The skipped branch -/
 
 theorem gWrite_skipped {j : Nat} {S : List String} {x : String} {v : SExpr} {env : SEnvScalar}
@@ -409,12 +662,13 @@ theorem gWrite_skipped {j : Nat} {S : List String} {x : String} {v : SExpr} {env
     (hv : varsIn (BndP env) v) (hS : SrcList S) (hb : Bound env S) :
     ∃ env' : SEnvScalar, semScalar (gWrite (some (guardName j)) S x v) env = some env' ∧
       (∀ y ∈ S, env' y = env y) ∧ Bound env' (x :: S) ∧
-      (∀ i, env' (guardName i) = env (guardName i)) := by
+      (∀ i, env' (guardName i) = env (guardName i)) ∧
+      (∀ y, ¬ isTmpName y → y ≠ x → env' y = env y) := by
   obtain ⟨env2, hs, hotb⟩ := semScalar_gWrite (flag := some (guardName j)) (S := S) hcl hv hx.1
     (fun f hf => by cases hf; exact ⟨not_isTmpName_guardName j, by rw [hj]; rfl⟩)
     (fun hm => hb x hm)
   have h0 : envReader env (guardName j) = 0 := envReadU64_reader hj
-  refine ⟨_, hs, ?_, ?_, ?_⟩
+  refine ⟨_, hs, ?_, ?_, ?_, fun y hy hyx => by rw [upd_ne hyx]; exact hotb y (Or.inl hy)⟩
   · intro y hy
     by_cases hyx : y = x
     · subst hyx
@@ -446,53 +700,131 @@ theorem bndP_of_sub {B : String → Prop} {S : List String} {env : SEnvScalar}
     (hB : ∀ y, B y → y ∈ S) (hb : Bound env S) : ∀ s, B s → BndP env s :=
   fun s hs _ => hb s (hB s hs)
 
-/-- Under a flag slot holding `0`, the conversion leaves every name of `S` and every
-    guard flag below `k` unchanged, and binds every name of the output list. -/
-theorem ifConvert_skipped {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
+theorem envTyped_word {env : SEnvScalar} {T : String → Prop} {τ : String → TowerType}
+    {y : String} (h : EnvTyped env T τ) (hy : T y) (hτ : τ y = .TU64) :
+    ∃ w : BitVec 64, env y = some ⟨.sword 64, w⟩ := by
+  obtain ⟨w, hw⟩ := h y hy
+  revert w
+  rw [hτ]
+  intro w hw
+  exact ⟨w, hw⟩
+
+theorem envTyped_arr {env : SEnvScalar} {T : String → Prop} {τ : String → TowerType}
+    {y : String} {n : Nat} (h : EnvTyped env T τ) (hy : T y) (hτ : τ y = .TArr n .TU64) :
+    ∃ w : ⟦encodeTy (.TArr n .TU64)⟧, env y = some ⟨encodeTy (.TArr n .TU64), w⟩ := by
+  obtain ⟨w, hw⟩ := h y hy
+  revert w
+  rw [hτ]
+  intro w hw
+  exact ⟨w, hw⟩
+
+theorem selectWord_zero (a c : BitVec 64) : selectWord 0 a c = a := by
+  simp [selectWord]
+
+theorem selectWord_one (a c : BitVec 64) : selectWord 1 a c = c := by
+  simp [selectWord]
+
+/-- Under a flag slot holding `0`, the conversion leaves every name of `S`, every
+    guard flag below `k` and every name of the tower set `T` unchanged, and binds
+    every name of the output list. -/
+theorem ifConvert_skipped {c : LowCT} (hc : IsCoveredSCtlGuarded c) (T : String → Prop)
+    (τ : String → TowerType) (hT : ∀ y, T y → srcName y) :
     ∀ (j : Nat) (S : List String) (k : Nat) (B : String → Prop) (env : SEnvScalar),
       j < k → envReadU64 env (guardName j) = some 0 →
       SrcList S → Bound env S → (∀ y, B y → y ∈ S) → readsG B c →
+      towerOK T c → ArrTy τ c → EnvTyped env T τ →
       ∃ env', semScalar (ifConvert (some (guardName j)) S k c).1 env = some env' ∧
         (∀ y ∈ S, env' y = env y) ∧ Bound env' (ifConvert (some (guardName j)) S k c).2.1 ∧
-        (∀ i, i < k → env' (guardName i) = env (guardName i)) := by
+        (∀ i, i < k → env' (guardName i) = env (guardName i)) ∧
+        (∀ y, T y → env' y = env y) := by
   induction hc with
   | rSkip =>
-      intro j S k B env _ _ _ hb _ _
-      exact ⟨env, rfl, fun _ _ => rfl, hb, fun _ _ => rfl⟩
+      intro j S k B env _ _ _ hb _ _ _ _ _
+      exact ⟨env, rfl, fun _ _ => rfl, hb, fun _ _ => rfl, fun _ _ => rfl⟩
   | @rSeq a b ha _ iha ihb =>
-      intro j S k B env hj hjv hS hb hB hr
+      intro j S k B env hj hjv hS hb hB hr htok hty henvT
       simp only [ifConvert]
-      obtain ⟨env1, hs1, hpres1, hb1, hg1⟩ := iha j S k B env hj hjv hS hb hB hr.1
+      obtain ⟨env1, hs1, hpres1, hb1, hg1, hT1⟩ :=
+        iha j S k B env hj hjv hS hb hB hr.1 htok.1 hty.1 henvT
       obtain ⟨hSa, hsubA, hBa, hka⟩ := ifConvert_static ha (some (guardName j)) S k B hS hB
-      obtain ⟨env2, hs2, hpres2, hb2, hg2⟩ := ihb j (ifConvert (some (guardName j)) S k a).2.1
+      obtain ⟨env2, hs2, hpres2, hb2, hg2, hT2⟩ := ihb j (ifConvert (some (guardName j)) S k a).2.1
         (ifConvert (some (guardName j)) S k a).2.2 (afterG B a) env1 (by omega)
-        (by rw [readU64_eq_of_env (hg1 j hj)]; exact hjv) hSa hb1 hBa hr.2
+        (by rw [readU64_eq_of_env (hg1 j hj)]; exact hjv) hSa hb1 hBa hr.2 htok.2 hty.2
+        (envTyped_congr henvT hT1)
       refine ⟨env2, by rw [semScalar_seq, hs1, Option.bind_some]; exact hs2,
         fun y hy => (hpres2 y (hsubA y hy)).trans (hpres1 y hy), hb2,
-        fun i hi => (hg2 i (by omega)).trans (hg1 i hi)⟩
+        fun i hi => (hg2 i (by omega)).trans (hg1 i hi),
+        fun y hy => (hT2 y hy).trans (hT1 y hy)⟩
   | @rLetU64Zero x b hx _ ihb =>
-      intro j S k B env hj hjv hS hb hB hr
+      intro j S k B env hj hjv hS hb hB hr htok hty henvT
       simp only [ifConvert]
-      obtain ⟨env1, hs1, hpres1, hb1, hg1⟩ := gWrite_skipped (v := .SLit 0) hjv hx
+      obtain ⟨env1, hs1, hpres1, hb1, hg1, hfr1⟩ := gWrite_skipped (v := .SLit 0) hjv hx
         (show (0 : Nat) < 2 ^ 64 by decide) trivial hS hb
-      obtain ⟨env2, hs2, hpres2, hb2, hg2⟩ := ihb j (x :: S) k (fun y => B y ∨ y = x) env1 hj
+      have hT1 : ∀ y, T y → env1 y = env y := fun y hy =>
+        hfr1 y (hT y hy).1 (fun h => htok.1 (h ▸ hy))
+      obtain ⟨env2, hs2, hpres2, hb2, hg2, hT2⟩ := ihb j (x :: S) k (fun y => B y ∨ y = x) env1 hj
         (by rw [readU64_eq_of_env (hg1 j)]; exact hjv) (srcList_cons hx hS) hb1
-        (sub_cons x hB) hr
+        (sub_cons x hB) hr htok.2 hty (envTyped_congr henvT hT1)
       refine ⟨env2, by rw [semScalar_seq, hs1, Option.bind_some]; exact hs2,
         fun y hy => (hpres2 y (List.mem_cons_of_mem _ hy)).trans (hpres1 y hy), hb2,
-        fun i hi => (hg2 i hi).trans (hg1 i)⟩
+        fun i hi => (hg2 i hi).trans (hg1 i), fun y hy => (hT2 y hy).trans (hT1 y hy)⟩
   | @rScalarSet x n hx hn =>
-      intro j S k B env hj hjv hS hb hB hr
-      obtain ⟨env1, hs1, hpres1, hb1, hg1⟩ :=
+      intro j S k B env hj hjv hS hb hB hr htok _ _
+      obtain ⟨env1, hs1, hpres1, hb1, hg1, hfr1⟩ :=
         gWrite_skipped (v := .SLit n) hjv hx hn trivial hS hb
-      exact ⟨env1, hs1, hpres1, hb1, fun i _ => hg1 i⟩
+      exact ⟨env1, hs1, hpres1, hb1, fun i _ => hg1 i,
+        fun y hy => hfr1 y (hT y hy).1 (fun h => htok (h ▸ hy))⟩
   | @rScalarSetExpr x e hx he _ =>
-      intro j S k B env hj hjv hS hb hB hr
-      obtain ⟨env1, hs1, hpres1, hb1, hg1⟩ := gWrite_skipped (v := elimLt e) hjv hx
+      intro j S k B env hj hjv hS hb hB hr htok _ _
+      obtain ⟨env1, hs1, hpres1, hb1, hg1, hfr1⟩ := gWrite_skipped (v := elimLt e) hjv hx
         (srcClean_elimLt e he) (varsIn_elimLt e (varsIn_mono (bndP_of_sub hB hb) e hr)) hS hb
-      exact ⟨env1, hs1, hpres1, hb1, fun i _ => hg1 i⟩
+      exact ⟨env1, hs1, hpres1, hb1, fun i _ => hg1 i,
+        fun y hy => hfr1 y (hT y hy).1 (fun h => htok (h ▸ hy))⟩
+  | @rArrLoad d s i n hd hs hi =>
+      intro j S k B env hj hjv hS hb hB hr htok hty henvT
+      have hf0 : env (guardName j) = some ⟨.sword 64, (0 : BitVec 64)⟩ := env_of_readU64 hjv
+      obtain ⟨iv, hiv⟩ := Option.isSome_iff_exists.mp (hb i (hB i hr))
+      obtain ⟨wd, hwd⟩ := envTyped_word henvT htok.1 hty.1
+      obtain ⟨ws, hws⟩ := envTyped_arr henvT htok.2 hty.2
+      obtain ⟨env', hs', hd', hfr⟩ := semScalar_gLoad (k := k) hf0 (env_of_readU64 hiv) hwd hws
+        (not_isTmpName_guardName j) hi.1 hd hs (guardName_ne (by omega)) (guardName_ne (by omega))
+      have hall : ∀ y, ¬ isTmpName y → y ≠ guardName k → y ≠ guardName (k + 1) →
+          env' y = env y := by
+        intro y hy h1 h2
+        by_cases hyd : y = d
+        · subst hyd; rw [hd', hwd, selectWord_zero]
+        · exact hfr y hy hyd h1 h2
+      have hsrc : ∀ y, srcName y → env' y = env y := fun y hy =>
+        hall y hy.1 (srcName_ne_guardName hy k) (srcName_ne_guardName hy (k + 1))
+      refine ⟨env', hs', fun y hy => hsrc y (hS y hy), fun y hy => ?_, fun i' hi' => ?_,
+        fun y hy => hsrc y (hT y hy)⟩
+      · rw [readU64_eq_of_env (hsrc y (hS y hy))]; exact hb y hy
+      · exact hall _ (not_isTmpName_guardName i') (guardName_ne (by omega))
+          (guardName_ne (by omega))
+  | @rArrStore a i s n ha hi hs =>
+      intro j S k B env hj hjv hS hb hB hr htok hty henvT
+      have hf0 : env (guardName j) = some ⟨.sword 64, (0 : BitVec 64)⟩ := env_of_readU64 hjv
+      obtain ⟨iv, hiv⟩ := Option.isSome_iff_exists.mp (hb i (hB i hr))
+      obtain ⟨wa, hwa⟩ := envTyped_arr henvT htok.1 hty.1
+      obtain ⟨sv, hsv⟩ := envTyped_word henvT htok.2 hty.2
+      obtain ⟨env', hs', ha', hfr⟩ := semScalar_gStore (k := k) hf0 (env_of_readU64 hiv) hwa hsv
+        (not_isTmpName_guardName j) hi.1 ha hs (guardName_ne (by omega)) (guardName_ne (by omega))
+      have hall : ∀ y, ¬ isTmpName y → y ≠ guardName k → y ≠ guardName (k + 1) →
+          y ≠ guardName (k + 2) → env' y = env y := by
+        intro y hy h1 h2 h3
+        by_cases hya : y = a
+        · subst hya; rw [ha', hwa, selectWord_zero]; congr 2; exact memSetDyn_memGetDyn wa _
+        · exact hfr y hy hya h1 h2 h3
+      have hsrc : ∀ y, srcName y → env' y = env y := fun y hy =>
+        hall y hy.1 (srcName_ne_guardName hy k) (srcName_ne_guardName hy (k + 1))
+          (srcName_ne_guardName hy (k + 2))
+      refine ⟨env', hs', fun y hy => hsrc y (hS y hy), fun y hy => ?_, fun i' hi' => ?_,
+        fun y hy => hsrc y (hT y hy)⟩
+      · rw [readU64_eq_of_env (hsrc y (hS y hy))]; exact hb y hy
+      · exact hall _ (not_isTmpName_guardName i') (guardName_ne (by omega))
+          (guardName_ne (by omega)) (guardName_ne (by omega))
   | @rIfNz g t e hg ht he iht ihe =>
-      intro j S k B env hj hjv hS hb hB hr
+      intro j S k B env hj hjv hS hb hB hr htok hty henvT
       obtain ⟨hg', ht', he'⟩ := hr
       have hgS := hB g hg'
       simp only [ifConvert]
@@ -510,15 +842,20 @@ theorem ifConvert_skipped {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
           (srcName_ne_guardName (hS y hy) (k + 1))
       have hb3 : Bound env3 S := fun y hy => by
         rw [readU64_eq_of_env (hpres3 y hy)]; exact hb y hy
+      have hT3 : ∀ y, T y → env3 y = env y := fun y hy =>
+        hfr3 y (hT y hy).1 (srcName_ne_guardName (hT y hy) k)
+          (srcName_ne_guardName (hT y hy) (k + 1))
       obtain ⟨hSt, hsubT, _, hkt⟩ := ifConvert_static ht (some (guardName k)) S (k + 2) B hS hB
-      obtain ⟨envT, hsT, hpresT, hbT, hgT⟩ := iht k S (k + 2) B env3 (by omega) hft hS hb3 hB ht'
+      obtain ⟨envT, hsT, hpresT, hbT, hgT, hTT⟩ := iht k S (k + 2) B env3 (by omega) hft hS hb3
+        hB ht' htok.1 hty.1 (envTyped_congr henvT hT3)
       have hfeT : envReadU64 envT (guardName (k + 1)) = some 0 := by
         rw [readU64_eq_of_env (hgT (k + 1) (by omega))]; exact hfe
-      obtain ⟨envE, hsE, hpresE, hbE, hgE⟩ := ihe (k + 1)
+      obtain ⟨envE, hsE, hpresE, hbE, hgE, hTE⟩ := ihe (k + 1)
         (ifConvert (some (guardName k)) S (k + 2) t).2.1
         (ifConvert (some (guardName k)) S (k + 2) t).2.2 B envT (by omega) hfeT hSt hbT
-        (fun y hy => hsubT y (hB y hy)) he'
-      refine ⟨envE, ?_, ?_, hbE, ?_⟩
+        (fun y hy => hsubT y (hB y hy)) he' htok.2 hty.2
+        (envTyped_congr (envTyped_congr henvT hT3) hTT)
+      refine ⟨envE, ?_, ?_, hbE, ?_, fun y hy => ((hTE y hy).trans (hTT y hy)).trans (hT3 y hy)⟩
       · rw [hs3, semScalar_seq, hsT, Option.bind_some]; exact hsE
       · intro y hy; rw [hpresE y (hsubT y hy), hpresT y hy, hpres3 y hy]
       · intro i hi
@@ -592,40 +929,128 @@ theorem limbFree_of_ltClean : ∀ e : SExpr, ltClean e → e.limbFree := by
   | SMulHiS a b iha ihb => intro hcl; exact hcl.elim
   | SLimb v i => intro hcl; exact hcl.elim
 
+theorem ifConvert_arrLoad_out (flag : Option String) (S : List String) (k : Nat)
+    (dst src : Located) (i : String) : (ifConvert flag S k (.RArrLoad dst src i)).2.1 = S := by
+  cases flag <;> rfl
+
+theorem ifConvert_arrStore_out (flag : Option String) (S : List String) (k : Nat)
+    (arr : Located) (i : String) (src : Located) :
+    (ifConvert flag S k (.RArrStore arr i src)).2.1 = S := by
+  cases flag <;> rfl
+
+/-- A command with no array operand in the empty tower set has every array typing. -/
+theorem arrTy_of_towerOK_false {τ : String → TowerType} :
+    ∀ {c : LowCT}, towerOK (fun _ => False) c → ArrTy τ c := by
+  intro c
+  induction c with
+  | RSeq a b iha ihb => intro h; exact ⟨iha h.1, ihb h.2⟩
+  | RLetU64Zero _ b ih => intro h; exact ih h.2
+  | RIfNz _ t e iht ihe => intro h; exact ⟨iht h.1, ihe h.2⟩
+  | RArrLoad _ _ _ => intro h; exact h.1.elim
+  | RArrStore _ _ _ => intro h; exact h.1.elim
+  | _ => intro _; trivial
+
+/-- A guarded load with the flag on (absent, or a flag slot holding `1`) loads the
+    element at the index into the word slot `d`; every other name except the
+    lowering temporaries and the slots `guardName k`, `guardName (k + 1)` is
+    unchanged. -/
+theorem ifConvert_load_on {flag : Option String} {S : List String} {k n : Nat}
+    {d s i : String} {env : SEnvScalar} {iv wd : BitVec 64} {ws : ⟦encodeTy (.TArr n .TU64)⟧}
+    (hf : FlagOn flag k env) (hi : env i = some ⟨.sword 64, iv⟩)
+    (hd : env d = some ⟨.sword 64, wd⟩) (hs : env s = some ⟨encodeTy (.TArr n .TU64), ws⟩)
+    (hit : ¬ isTmpName i) (hdn : srcName d) (hsn : srcName s) :
+    ∃ env', semScalar (ifConvert flag S k (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TArr n .TU64⟩ i)).1 env
+        = some env' ∧
+      env' d = some ⟨.sword 64, memGetDyn ws iv.toNat⟩ ∧
+      ∀ y, ¬ isTmpName y → y ≠ d → y ≠ guardName k → y ≠ guardName (k + 1) →
+        env' y = env y := by
+  cases flag with
+  | none =>
+      refine ⟨env.upd d (t := .sword 64) (memGetDyn ws iv.toNat), ?_, upd_self,
+        fun y _ hyd _ _ => upd_ne hyd⟩
+      show semScalar (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TArr n .TU64⟩ i) env = _
+      simp only [semScalar, Located.locDst, hs, hi]; rfl
+  | some f =>
+      obtain ⟨j, rfl, hj, h1⟩ := hf f rfl
+      obtain ⟨env', hs', hd', hfr⟩ := semScalar_gLoad (k := k) (env_of_readU64 h1) hi hd hs
+        (not_isTmpName_guardName j) hit hdn hsn (guardName_ne (by omega))
+        (guardName_ne (by omega))
+      refine ⟨env', hs', ?_, hfr⟩
+      have h1i : (1 : BitVec 64) * iv = iv := by simp
+      rw [hd', selectWord_one, h1i]
+
+/-- A guarded store with the flag on writes the word of `s` at the index of the
+    array `a`; every other name except the lowering temporaries and the slots
+    `guardName k`, `guardName (k + 1)`, `guardName (k + 2)` is unchanged. -/
+theorem ifConvert_store_on {flag : Option String} {S : List String} {k n : Nat}
+    {a s i : String} {env : SEnvScalar} {iv sv : BitVec 64} {wa : ⟦encodeTy (.TArr n .TU64)⟧}
+    (hf : FlagOn flag k env) (hi : env i = some ⟨.sword 64, iv⟩)
+    (ha : env a = some ⟨encodeTy (.TArr n .TU64), wa⟩) (hs : env s = some ⟨.sword 64, sv⟩)
+    (hit : ¬ isTmpName i) (han : srcName a) (hsn : srcName s) :
+    ∃ env', semScalar (ifConvert flag S k (.RArrStore ⟨a, .TArr n .TU64⟩ i ⟨s, .TU64⟩)).1 env
+        = some env' ∧
+      env' a = some ⟨encodeTy (.TArr n .TU64), memSetDyn wa iv.toNat sv⟩ ∧
+      ∀ y, ¬ isTmpName y → y ≠ a → y ≠ guardName k → y ≠ guardName (k + 1) →
+        y ≠ guardName (k + 2) → env' y = env y := by
+  cases flag with
+  | none =>
+      refine ⟨env.upd a (t := encodeTy (.TArr n .TU64)) (memSetDyn wa iv.toNat sv), ?_,
+        upd_self_any, fun y _ hya _ _ _ => upd_ne_any hya⟩
+      show semScalar (.RArrStore ⟨a, .TArr n .TU64⟩ i ⟨s, .TU64⟩) env = _
+      simp only [semScalar, Located.locDst, ha, hs, hi]
+      exact dif_pos rfl
+  | some f =>
+      obtain ⟨j, rfl, hj, h1⟩ := hf f rfl
+      obtain ⟨env', hs', ha', hfr⟩ := semScalar_gStore (k := k) (env_of_readU64 h1) hi ha hs
+        (not_isTmpName_guardName j) hit han hsn (guardName_ne (by omega))
+        (guardName_ne (by omega))
+      refine ⟨env', hs', ?_, hfr⟩
+      have h1i : (1 : BitVec 64) * iv = iv := by simp
+      rw [ha', selectWord_one, h1i]
+
 /-- Under the absent flag or a flag slot holding `1`, the conversion tracks a
     `RustExec` run: the output environment agrees with the output state on the
-    names bound after the command. -/
+    names bound after the command and, through the word view, on the tower names
+    `T`. The array oracles satisfy `LawfulArr` when `T` is inhabited; the scalar
+    names `S` lie outside `T`, and the array operands of the command lie in `T`
+    at the types `τ`. -/
 theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
-    (hc : IsCoveredSCtlGuarded c) :
+    (hc : IsCoveredSCtlGuarded c) (T : String → Prop) (τ : String → TowerType)
+    (hT : ∀ y, T y → srcName y) (hlaw : (∃ y, T y) → LawfulArr leafSpec) :
     ∀ (flag : Option String) (S : List String) (k : Nat) (B : String → Prop)
       (rs rs' : RustState) (env : SEnvScalar),
       RustExec N leafSpec c rs rs' → InRangeG N leafSpec c rs → readsG B c →
       FlagOn flag k env → SrcList S → Bound env S → (∀ y, B y → y ∈ S) →
       EnvBoundOn rs env B → ScalarInRange rs →
+      towerOK T c → ArrTy τ c → TowerWordsOn rs env T → TowerTyped rs T τ →
+      (∀ y ∈ S, ¬ T y) →
       ∃ env', semScalar (ifConvert flag S k c).1 env = some env' ∧
         EnvBoundOn rs' env' (afterG B c) ∧ ScalarInRange rs' ∧
         Bound env' (ifConvert flag S k c).2.1 ∧
-        (∀ i, i < k → env' (guardName i) = env (guardName i)) := by
+        (∀ i, i < k → env' (guardName i) = env (guardName i)) ∧
+        TowerWordsOn rs' env' T ∧ TowerTyped rs' T τ := by
   induction hc with
   | rSkip =>
-      intro flag S k B rs rs' env hexec _ _ _ _ hb _ henv hir
+      intro flag S k B rs rs' env hexec _ _ _ _ hb _ henv hir _ _ htw htyT _
       cases hexec
-      exact ⟨env, rfl, henv, hir, hb, fun _ _ => rfl⟩
+      exact ⟨env, rfl, henv, hir, hb, fun _ _ => rfl, htw, htyT⟩
   | @rSeq a b ha _ iha ihb =>
-      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok hty htw htyT hST
       cases hexec with
       | seq _ _ _ r1 _ h1 h2 =>
           simp only [ifConvert]
-          obtain ⟨env1, hs1, henv1, hir1, hb1, hg1⟩ :=
-            iha flag S k B rs r1 env h1 hIR.1 hr.1 hf hS hb hB henv hir
+          obtain ⟨env1, hs1, henv1, hir1, hb1, hg1, htw1, htyT1⟩ :=
+            iha flag S k B rs r1 env h1 hIR.1 hr.1 hf hS hb hB henv hir htok.1 hty.1 htw htyT
+              hST
           obtain ⟨hSa, _, hBa, hka⟩ := ifConvert_static ha flag S k B hS hB
-          obtain ⟨env2, hs2, henv2, hir2, hb2, hg2⟩ :=
+          obtain ⟨env2, hs2, henv2, hir2, hb2, hg2, htw2, htyT2⟩ :=
             ihb flag (ifConvert flag S k a).2.1 (ifConvert flag S k a).2.2 (afterG B a) r1 rs'
               env1 h2 (hIR.2 r1 h1) hr.2 (flagOn_mono hf hka hg1) hSa hb1 hBa henv1 hir1
+              htok.2 hty.2 htw1 htyT1 (ifConvert_notT ha T flag S k htok.1 hST)
           exact ⟨env2, by rw [semScalar_seq, hs1, Option.bind_some]; exact hs2, henv2, hir2,
-            hb2, fun i hi => (hg2 i (by omega)).trans (hg1 i hi)⟩
+            hb2, fun i hi => (hg2 i (by omega)).trans (hg1 i hi), htw2, htyT2⟩
   | @rLetU64Zero x b hx _ ihb =>
-      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok hty htw htyT hST
       cases hexec with
       | letU64Zero _ _ _ _ hbody =>
           simp only [ifConvert]
@@ -634,22 +1059,24 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
           obtain ⟨hb1, hg1⟩ :=
             write_facts (w := (SExpr.SLit 0).evalBV (envReader env)) hotb hx hS hb
           have henv1 := envBoundOn_updExpr henv hotb x 0
-          obtain ⟨env3, hs3, henv3, hir3, hb3, hg3⟩ :=
+          obtain ⟨env3, hs3, henv3, hir3, hb3, hg3, htw3, htyT3⟩ :=
             ihb flag (x :: S) k (fun y => B y ∨ y = x) _ rs' _ hbody hIR hr
               (flagOn_mono hf (le_refl k) (fun i _ => hg1 i)) (srcList_cons hx hS) hb1
-              (sub_cons x hB) henv1 (scalarInRange_upd hir x (by norm_num))
+              (sub_cons x hB) henv1 (scalarInRange_upd hir x (by norm_num)) htok.2 hty
+              (towerWordsOn_updScalar htw hotb x htok.1 _ 0) htyT
+              (fun y hy => by rcases List.mem_cons.mp hy with rfl | h; exact htok.1; exact hST y h)
           exact ⟨env3, by rw [semScalar_seq, hs2, Option.bind_some]; exact hs3, henv3, hir3,
-            hb3, fun i hi => (hg3 i hi).trans (hg1 i)⟩
+            hb3, fun i hi => (hg3 i hi).trans (hg1 i), htw3, htyT3⟩
   | @rScalarSet x n hx hn =>
-      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok _ htw htyT _
       cases hexec
       obtain ⟨env2, hs2, hotb⟩ := gWrite_taken (v := .SLit n) (S := S) hf hx hn trivial hb
       obtain ⟨hb1, hg1⟩ :=
         write_facts (w := (SExpr.SLit n).evalBV (envReader env)) hotb hx hS hb
       exact ⟨_, hs2, envBoundOn_updExpr henv hotb x n, scalarInRange_upd hir x hn, hb1,
-        fun i _ => hg1 i⟩
+        fun i _ => hg1 i, towerWordsOn_updScalar htw hotb x htok _ n, htyT⟩
   | @rScalarSetExpr x e hx he _ =>
-      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok _ htw htyT _
       cases hexec
       rw [SExpr.evalState_eq_eval rs e (limbFree_of_ltClean e he)]
       obtain ⟨env2, hs2, hotb⟩ := gWrite_taken (v := elimLt e) (S := S) hf hx
@@ -662,9 +1089,100 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
       obtain ⟨hb1, hg1⟩ :=
         write_facts (w := BitVec.ofNat 64 (e.eval rs.rsScalar)) hotb hx hS hb
       exact ⟨_, hs2, envBoundOn_updExpr henv hotb x _,
-        scalarInRange_upd hir x (SExpr.eval_lt_of_inRange _ _ hIR), hb1, fun i _ => hg1 i⟩
+        scalarInRange_upd hir x (SExpr.eval_lt_of_inRange _ _ hIR), hb1, fun i _ => hg1 i,
+        towerWordsOn_updScalar htw hotb x htok _ _, htyT⟩
+  | @rArrLoad d s i n hd hs hi =>
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok hty htw htyT hST
+      have hlw := hlaw ⟨d, htok.1⟩
+      cases hexec with
+      | arrLoad _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have hsrcT : rs.rsTower s = some ⟨.TArr n .TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have holdT : rs.rsTower d = some ⟨.TU64, oldV⟩ := rsTower_eq_of_locatedLookup hold
+        have henvs : env s = some ⟨encodeTy (.TArr n .TU64), arrWords n srcV⟩ :=
+          towerWordsOn_bind htw htok.2 hs.1 hsrcT
+        have henvd : env d = some ⟨.sword 64, cryptoTyOfRustVal .TU64 oldV⟩ :=
+          towerWordsOn_bind htw htok.1 hd.1 holdT
+        have henvi : env i = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar i)⟩ :=
+          henv i hr hi.1
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar i)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir i), hidxv]
+        have hlt : idx < n := by rw [← hidxv]; exact hIR
+        obtain ⟨env', hs', hd', hfr⟩ := ifConvert_load_on (S := S) hf henvi henvd henvs hi.1 hd hs
+        have hsrc' : ∀ y, srcName y → y ≠ d → env' y = env y := fun y hy hyd =>
+          hfr y hy.1 hyd (srcName_ne_guardName hy k) (srcName_ne_guardName hy (k + 1))
+        have hSd : ∀ y ∈ S, y ≠ d := fun y hy hyd => hST y hy (hyd ▸ htok.1)
+        refine ⟨env', hs', fun y hy hnt => ?_, hir, fun y hy => ?_, fun i' hi' => ?_,
+          fun y hy hnt => ?_, fun y hy => ?_⟩
+        · rw [hsrc' y (hS y (hB y hy)) (hSd y (hB y hy))]; exact henv y hy hnt
+        · rw [ifConvert_arrLoad_out] at hy
+          rw [readU64_eq_of_env (hsrc' y (hS y hy) (hSd y hy))]; exact hb y hy
+        · exact hfr _ (not_isTmpName_guardName i')
+            (fun h => hd.2 ⟨i', h.symm⟩) (guardName_ne (by omega)) (guardName_ne (by omega))
+        · by_cases hyd : y = d
+          · subst hyd
+            rw [hd', hidxn]
+            simp only [locatedUpdate, rsSetTower_same, Option.map_some, Located.locDst,
+              encodeTowerWords_TU64]
+            rw [hlw.load _ _ _ _ _ hlt]
+          · rw [hsrc' y (hT y hy) hyd]
+            simp only [locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
+            exact htw y hy hnt
+        · by_cases hyd : y = d
+          · subst hyd
+            rw [hty.1]
+            exact ⟨_, rsSetTower_same _ _ _⟩
+          · simp only [locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
+            exact htyT y hy
+  | @rArrStore a i s n ha hi hs =>
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok hty htw htyT hST
+      have hlw := hlaw ⟨a, htok.1⟩
+      cases hexec with
+      | arrStore _ _ _ _ idx oldV srcV hidxv hold hsrc =>
+        have holdT : rs.rsTower a = some ⟨.TArr n .TU64, oldV⟩ := rsTower_eq_of_locatedLookup hold
+        have hsrcT : rs.rsTower s = some ⟨.TU64, srcV⟩ := rsTower_eq_of_locatedLookup hsrc
+        have henva : env a = some ⟨encodeTy (.TArr n .TU64), arrWords n oldV⟩ :=
+          towerWordsOn_bind htw htok.1 ha.1 holdT
+        have henvs : env s = some ⟨.sword 64, cryptoTyOfRustVal .TU64 srcV⟩ :=
+          towerWordsOn_bind htw htok.2 hs.1 hsrcT
+        have henvi : env i = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar i)⟩ :=
+          henv i hr hi.1
+        have hidxn : (BitVec.ofNat 64 (rs.rsScalar i)).toNat = idx := by
+          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hir i), hidxv]
+        have hlt : idx < n := by rw [← hidxv]; exact hIR
+        obtain ⟨env', hs', ha', hfr⟩ := ifConvert_store_on (S := S) hf henvi henva henvs hi.1 ha hs
+        have hsrc' : ∀ y, srcName y → y ≠ a → env' y = env y := fun y hy hya =>
+          hfr y hy.1 hya (srcName_ne_guardName hy k) (srcName_ne_guardName hy (k + 1))
+            (srcName_ne_guardName hy (k + 2))
+        have hSa : ∀ y ∈ S, y ≠ a := fun y hy hya => hST y hy (hya ▸ htok.1)
+        refine ⟨env', hs', fun y hy hnt => ?_, hir, fun y hy => ?_, fun i' hi' => ?_,
+          fun y hy hnt => ?_, fun y hy => ?_⟩
+        · rw [hsrc' y (hS y (hB y hy)) (hSa y (hB y hy))]; exact henv y hy hnt
+        · rw [ifConvert_arrStore_out] at hy
+          rw [readU64_eq_of_env (hsrc' y (hS y hy) (hSa y hy))]; exact hb y hy
+        · exact hfr _ (not_isTmpName_guardName i')
+            (fun h => ha.2 ⟨i', h.symm⟩) (guardName_ne (by omega)) (guardName_ne (by omega))
+            (guardName_ne (by omega))
+        · by_cases hya : y = a
+          · subst hya
+            rw [ha', hidxn]
+            simp only [locatedUpdate, rsSetTower_same, Option.map_some, Located.locDst,
+              encodeTowerWords_TArr]
+            rw [hlw.store _ _ _ _ _ hlt]
+          · rw [hsrc' y (hT y hy) hya]
+            simp only [locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
+            exact htw y hy hnt
+        · by_cases hya : y = a
+          · subst hya
+            rw [hty.1]
+            exact ⟨_, rsSetTower_same _ _ _⟩
+          · simp only [locatedUpdate]
+            rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
+            exact htyT y hy
   | @rIfNz g t e hg ht he iht ihe =>
-      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir
+      intro flag S k B rs rs' env hexec hIR hr hf hS hb hB henv hir htok hty htw htyT hST
       obtain ⟨hg', ht', he'⟩ := hr
       have hgS := hB g hg'
       simp only [ifConvert]
@@ -694,45 +1212,55 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
         hfr3 _ (not_isTmpName_guardName i)
           (fun h => by have := guardName_injective h; omega)
           (fun h => by have := guardName_injective h; omega)
+      have hT3 : ∀ y, T y → env3 y = env y := fun y hy =>
+        hfr3 y (hT y hy).1 (srcName_ne_guardName (hT y hy) k)
+          (srcName_ne_guardName (hT y hy) (k + 1))
+      have htw3 : TowerWordsOn rs env3 T := fun y hy hnt => by
+        rw [hT3 y hy]; exact htw y hy hnt
+      have hSTt := ifConvert_notT ht T (some (guardName k)) S (k + 2) htok.1 hST
       obtain ⟨hSt, hsubT, _, hkt⟩ := ifConvert_static ht (some (guardName k)) S (k + 2) B hS hB
       cases hexec with
       | ifTrue _ _ _ _ _ v hv hv0 hct =>
           have hpos : 0 < rs.rsScalar g := by subst hv; omega
           rw [if_pos hpos] at hft hfe
-          obtain ⟨envT, hsT, henvT, hirT, hbT, hgT⟩ :=
+          obtain ⟨envT, hsT, henvT, hirT, hbT, hgT, htwT, htyTT⟩ :=
             iht (some (guardName k)) S (k + 2) B rs rs' env3 hct (hIR.1 (by omega)) ht'
               (fun f hfe' => by cases hfe'; exact ⟨k, rfl, by omega, by rw [hft]; rfl⟩)
-              hS hb3 hB henv3 hir
+              hS hb3 hB henv3 hir htok.1 hty.1 htw3 htyT hST
           have hfeT : envReadU64 envT (guardName (k + 1)) = some 0 := by
             rw [readU64_eq_of_env (hgT (k + 1) (by omega)), hfe]; rfl
-          obtain ⟨envE, hsE, hpresE, hbE, hgE⟩ := ifConvert_skipped he (k + 1)
+          obtain ⟨envE, hsE, hpresE, hbE, hgE, hTE⟩ := ifConvert_skipped he T τ hT (k + 1)
             (ifConvert (some (guardName k)) S (k + 2) t).2.1
             (ifConvert (some (guardName k)) S (k + 2) t).2.2 B envT (by omega) hfeT hSt hbT
-            (fun y hy => hsubT y (hB y hy)) he'
-          refine ⟨envE, ?_, ?_, hirT, hbE, ?_⟩
+            (fun y hy => hsubT y (hB y hy)) he' htok.2 hty.2 (envTyped_of_tower htwT htyTT hT)
+          refine ⟨envE, ?_, ?_, hirT, hbE, ?_, fun y hy hnt => ?_, htyTT⟩
           · rw [hs3, semScalar_seq, hsT, Option.bind_some]; exact hsE
           · intro y hy hnt
             rw [hpresE y (hsubT y (hB y hy))]
             exact henvT y (le_afterG t B y hy) hnt
           · intro i hi
             rw [hgE i (by omega), hgT i (by omega)]; exact hg3 i hi
+          · rw [hTE y hy]; exact htwT y hy hnt
       | ifFalse _ _ _ _ _ hz hce =>
           have hnpos : ¬ 0 < rs.rsScalar g := by omega
           rw [if_neg hnpos] at hft hfe
-          obtain ⟨envT, hsT, hpresT, hbT, hgT⟩ := ifConvert_skipped ht k S (k + 2) B env3
-            (by omega) (by rw [hft]; rfl) hS hb3 hB ht'
+          obtain ⟨envT, hsT, hpresT, hbT, hgT, hTT⟩ := ifConvert_skipped ht T τ hT k S (k + 2) B
+            env3 (by omega) (by rw [hft]; rfl) hS hb3 hB ht' htok.1 hty.1
+            (envTyped_of_tower htw3 htyT hT)
           have henvT : EnvBoundOn rs envT B := fun y hy hnt => by
             rw [hpresT y (hB y hy)]; exact henv3 y hy hnt
-          obtain ⟨envE, hsE, henvE, hirE, hbE, hgE⟩ :=
+          have htwT : TowerWordsOn rs envT T := fun y hy hnt => by
+            rw [hTT y hy]; exact htw3 y hy hnt
+          obtain ⟨envE, hsE, henvE, hirE, hbE, hgE, htwE, htyTE⟩ :=
             ihe (some (guardName (k + 1))) (ifConvert (some (guardName k)) S (k + 2) t).2.1
               (ifConvert (some (guardName k)) S (k + 2) t).2.2 B rs rs' envT hce (hIR.2 hz) he'
               (fun f hfe' => by
                 cases hfe'
                 exact ⟨k + 1, rfl, by omega, by
                   rw [readU64_eq_of_env (hgT (k + 1) (by omega)), hfe]; rfl⟩)
-              hSt hbT (fun y hy => hsubT y (hB y hy)) henvT hir
+              hSt hbT (fun y hy => hsubT y (hB y hy)) henvT hir htok.2 hty.2 htwT htyT hSTt
           refine ⟨envE, ?_, envBoundOn_mono henvE (fun y hy => le_afterG e B y hy), hirE, hbE,
-            ?_⟩
+            ?_, htwE, htyTE⟩
           · rw [hs3, semScalar_seq, hsT, Option.bind_some]; exact hsE
           · intro i hi
             rw [hgE i (by omega), hgT i (by omega)]; exact hg3 i hi
@@ -745,14 +1273,16 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
     value. A name written only inside a conditional is not in
     `afterG (fun _ => False) c`, so the conclusion says nothing about it. -/
 theorem rustExec_semScalarGuarded_agree {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
-    (hc : IsCoveredSCtlGuarded c) {rs rs' : RustState}
+    (hc : IsCoveredSCtlGuarded c) (hscal : towerOK (fun _ => False) c) {rs rs' : RustState}
     (hexec : RustExec N leafSpec c rs rs') (hir : ScalarInRange rs)
     (hreads : readsG (fun _ => False) c) (hIR : InRangeG N leafSpec c rs) :
     ∃ env', semScalarGuarded c (fun _ => none) = some env' ∧
       EnvBoundOn rs' env' (afterG (fun _ => False) c) ∧ ScalarInRange rs' := by
-  obtain ⟨env', hs, henv, hir', _, _⟩ := ifConvert_taken hc none [] 0 (fun _ => False) rs rs'
+  obtain ⟨env', hs, henv, hir', _, _⟩ := ifConvert_taken hc (fun _ => False) (fun _ => .TU64)
+    (fun _ h => h.elim) (fun ⟨_, h⟩ => h.elim) none [] 0 (fun _ => False) rs rs'
     (fun _ => none) hexec hIR hreads (fun _ h => by cases h) (fun _ h => by cases h)
-    (fun _ h => by cases h) (fun _ h => h.elim) (fun _ h => h.elim) hir
+    (fun _ h => by cases h) (fun _ h => h.elim) (fun _ h => h.elim) hir hscal
+    (arrTy_of_towerOK_false hscal) (fun _ h => h.elim) (fun _ h => h.elim) (fun _ _ h => h)
   exact ⟨env', hs, henv, hir'⟩
 
 /-! ## Success of the translator and the emit leg -/
@@ -815,57 +1345,172 @@ theorem gWrite_transTotal {flag : Option String} {S : List String} {x : String} 
           (sexprVars_of_varsIn _ ⟨hx, hft, hcl, hx⟩ ⟨hS x hm, hfc, hv, hS x hm⟩)
       · exact .rScalarSetExpr x _ hx ⟨hft, hcl⟩ (sexprVars_of_varsIn _ ⟨hft, hcl⟩ ⟨hfc, hv⟩)
 
+theorem nameTys_upd_ne {σ : NameTys} {x y : String} {t : CryptoTy} (h : y ≠ x) :
+    (σ.upd x t) y = σ y := by
+  simp [NameTys.upd, h]
+
+theorem nameTys_upd_self {σ : NameTys} {x : String} {t : CryptoTy} : (σ.upd x t) x = some t := by
+  simp [NameTys.upd]
+
 /-- The conversion of a guarded-fragment command is in the reads-bound judgment
-    `TransTotal` from every name-to-type map claiming the bound list and the flag. -/
-theorem ifConvert_transTotal {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
+    `TransTotal` from every name-to-type map claiming the bound list and the flag
+    as words and the tower names `T` at the encodings of their types under `ty`. -/
+theorem ifConvert_transTotal {c : LowCT} (hc : IsCoveredSCtlGuarded c) (T : String → Prop)
+    (ty : String → TowerType) (hT : ∀ y, T y → srcName y) :
     ∀ (flag : Option String) (S : List String) (k : Nat) (B : String → Prop) (σ : NameTys),
       SrcList S → (∀ y, B y → y ∈ S) → readsG B c → (∀ y ∈ S, Claims σ y) →
       (∀ f, flag = some f → Claims σ f ∧ ¬ isTmpName f) →
+      towerOK T c → ArrTy ty c → (∀ y, T y → σ y = some (encodeTy (ty y))) →
       ∃ σ', TransTotal σ (ifConvert flag S k c).1 σ' ∧
         (∀ y ∈ (ifConvert flag S k c).2.1, Claims σ' y) ∧
-        (∀ y, Claims σ y → Claims σ' y) := by
+        (∀ y, Claims σ y → Claims σ' y) ∧
+        (∀ y, T y → σ' y = some (encodeTy (ty y))) := by
   induction hc with
-  | rSkip => intro _ S k B σ _ _ _ hS _; exact ⟨σ, .rSkip, hS, fun _ h => h⟩
+  | rSkip => intro _ S k B σ _ _ _ hS _ _ _ hσT; exact ⟨σ, .rSkip, hS, fun _ h => h, hσT⟩
   | @rSeq a b ha _ iha ihb =>
-      intro flag S k B σ hSrc hB hr hS hf
+      intro flag S k B σ hSrc hB hr hS hf htok hty hσT
       simp only [ifConvert]
-      obtain ⟨σ1, h1, hS1, hm1⟩ := iha flag S k B σ hSrc hB hr.1 hS hf
+      obtain ⟨σ1, h1, hS1, hm1, hT1⟩ := iha flag S k B σ hSrc hB hr.1 hS hf htok.1 hty.1 hσT
       obtain ⟨hSa, _, hBa, _⟩ := ifConvert_static ha flag S k B hSrc hB
-      obtain ⟨σ2, h2, hS2, hm2⟩ := ihb flag _ _ (afterG B a) σ1 hSa hBa hr.2 hS1
-        (fun f hfe => ⟨hm1 f (hf f hfe).1, (hf f hfe).2⟩)
-      exact ⟨σ2, .rSeq h1 h2, hS2, fun y h => hm2 y (hm1 y h)⟩
+      obtain ⟨σ2, h2, hS2, hm2, hT2⟩ := ihb flag _ _ (afterG B a) σ1 hSa hBa hr.2 hS1
+        (fun f hfe => ⟨hm1 f (hf f hfe).1, (hf f hfe).2⟩) htok.2 hty.2 hT1
+      exact ⟨σ2, .rSeq h1 h2, hS2, fun y h => hm2 y (hm1 y h), hT2⟩
   | @rLetU64Zero x b hx _ ihb =>
-      intro flag S k B σ hSrc hB hr hS hf
+      intro flag S k B σ hSrc hB hr hS hf htok hty hσT
       simp only [ifConvert]
       have hw := gWrite_transTotal (flag := flag) (S := S) (v := .SLit 0) hx.1
         (show (0 : Nat) < 2 ^ 64 by decide) trivial hf hS
-      obtain ⟨σ2, h2, hS2, hm2⟩ := ihb flag (x :: S) k (fun y => B y ∨ y = x) _
+      obtain ⟨σ2, h2, hS2, hm2, hT2⟩ := ihb flag (x :: S) k (fun y => B y ∨ y = x) _
         (srcList_cons hx hSrc) (sub_cons x hB) hr
         (fun y hy => by
           rcases List.mem_cons.mp hy with rfl | h
           · exact claims_upd_self
           · exact claims_upd (hS y h))
-        (fun f hfe => ⟨claims_upd (hf f hfe).1, (hf f hfe).2⟩)
-      exact ⟨σ2, .rSeq hw h2, hS2, fun y h => hm2 y (claims_upd h)⟩
+        (fun f hfe => ⟨claims_upd (hf f hfe).1, (hf f hfe).2⟩) htok.2 hty
+        (fun y hy => (nameTys_upd_ne (fun h : y = x => htok.1 (h ▸ hy))).trans (hσT y hy))
+      exact ⟨σ2, .rSeq hw h2, hS2, fun y h => hm2 y (claims_upd h), hT2⟩
   | @rScalarSet x n hx hn =>
-      intro flag S k B σ hSrc hB hr hS hf
+      intro flag S k B σ hSrc hB hr hS hf htok _ hσT
       refine ⟨_, gWrite_transTotal (v := .SLit n) hx.1 hn trivial hf hS, ?_,
-        fun y h => claims_upd h⟩
+        fun y h => claims_upd h,
+        fun y hy => (nameTys_upd_ne (fun h : y = x => htok (h ▸ hy))).trans (hσT y hy)⟩
       intro y hy
       rcases List.mem_cons.mp hy with rfl | h
       · exact claims_upd_self
       · exact claims_upd (hS y h)
   | @rScalarSetExpr x e hx he _ =>
-      intro flag S k B σ hSrc hB hr hS hf
+      intro flag S k B σ hSrc hB hr hS hf htok _ hσT
       refine ⟨_, gWrite_transTotal (v := elimLt e) hx.1 (srcClean_elimLt e he)
         (varsIn_elimLt e (varsIn_mono (fun s hs => hS s (hB s hs)) e hr)) hf hS, ?_,
-        fun y h => claims_upd h⟩
+        fun y h => claims_upd h,
+        fun y hy => (nameTys_upd_ne (fun h : y = x => htok (h ▸ hy))).trans (hσT y hy)⟩
       intro y hy
       rcases List.mem_cons.mp hy with rfl | h
       · exact claims_upd_self
       · exact claims_upd (hS y h)
+  | @rArrLoad d s i n hd hs hi =>
+      intro flag S k B σ hSrc hB hr hS hf htok hty hσT
+      have hσd : σ d = some (.sword 64) := by rw [hσT d htok.1, hty.1]; rfl
+      have hσs : σ s = some (encodeTy (.TArr n .TU64)) := by rw [hσT s htok.2, hty.2]
+      have hσi : Claims σ i := hS i (hB i hr)
+      cases flag with
+      | none =>
+          refine ⟨σ.upd d (encodeTy .TU64), .rArrLoad _ _ _ hd.1 (by rw [hσs]; rfl)
+            (by rw [hσi]; rfl), fun y hy => claims_upd (hS y hy), fun y h => claims_upd h,
+            fun y hy => ?_⟩
+          by_cases hyd : y = d
+          · subst hyd; rw [nameTys_upd_self, hty.1]
+          · rw [nameTys_upd_ne hyd]; exact hσT y hy
+      | some f =>
+          obtain ⟨hfc, hft⟩ := hf f rfl
+          have hne : ∀ y, srcName y → ∀ j, y ≠ guardName j := fun y hy j => srcName_ne_guardName hy j
+          have hcl : srcClean (SExpr.SMul (.SVar f) (.SVar i)) := ⟨hft, hi.1⟩
+          have h1 : TransTotal σ (gIdx f i k) (σ.upd (guardName k) (.sword 64)) :=
+            .rScalarSetExpr _ _ (not_isTmpName_guardName k) hcl
+              (sexprVars_of_varsIn _ hcl ⟨hfc, hσi⟩)
+          set σ1 := σ.upd (guardName k) (.sword 64) with hσ1
+          have h2 : TransTotal σ1 (.RArrLoad (gWord (k + 1)) ⟨s, .TArr n .TU64⟩ (guardName k))
+              (σ1.upd (guardName (k + 1)) (.sword 64)) :=
+            .rArrLoad _ _ _ (not_isTmpName_guardName (k + 1))
+              (by rw [hσ1, nameTys_upd_ne (hne s hs k), hσs]; rfl)
+              (by rw [hσ1, nameTys_upd_self]; rfl)
+          set σ2 := σ1.upd (guardName (k + 1)) (.sword 64) with hσ2
+          have h3 : TransTotal σ2 (.RSelect ⟨d, .TU64⟩ f ⟨d, .TU64⟩ (gWord (k + 1)))
+              (σ2.upd d (.sword 64)) :=
+            .rSelect _ _ _ _ hd.1 rfl (claims_upd (claims_upd hfc))
+              (by rw [hσ2, nameTys_upd_ne (hne d hd _), hσ1, nameTys_upd_ne (hne d hd _), hσd])
+              (by rw [hσ2]; exact nameTys_upd_self)
+          refine ⟨σ2.upd d (.sword 64), .rSeq h1 (.rSeq h2 h3),
+            fun y hy => claims_upd (claims_upd (claims_upd (hS y hy))),
+            fun y h => claims_upd (claims_upd (claims_upd h)), fun y hy => ?_⟩
+          by_cases hyd : y = d
+          · subst hyd; rw [nameTys_upd_self, hty.1]; rfl
+          · rw [nameTys_upd_ne hyd, hσ2, nameTys_upd_ne (hne y (hT y hy) _), hσ1,
+              nameTys_upd_ne (hne y (hT y hy) _)]
+            exact hσT y hy
+  | @rArrStore a i s n ha hi hs =>
+      intro flag S k B σ hSrc hB hr hS hf htok hty hσT
+      have hσa : σ a = some (encodeTy (.TArr n .TU64)) := by rw [hσT a htok.1, hty.1]
+      have hσs : σ s = some (.sword 64) := by rw [hσT s htok.2, hty.2]; rfl
+      have hσi : Claims σ i := hS i (hB i hr)
+      have hna : ∀ y, Claims σ y → y ≠ a := fun y hy hya => by
+        subst hya
+        unfold Claims at hy
+        rw [hσa] at hy
+        simp [encodeTy] at hy
+      cases flag with
+      | none =>
+          refine ⟨σ.upd a (encodeTy (.TArr n .TU64)),
+            .rArrStore _ _ _ ha.1 (by rw [hσa]; rfl) (by rw [hσs]; rfl) (by rw [hσi]; rfl),
+            fun y hy => ?_, fun y h => ?_, fun y hy => ?_⟩
+          · unfold Claims; rw [nameTys_upd_ne (hna y (hS y hy))]; exact hS y hy
+          · unfold Claims; rw [nameTys_upd_ne (hna y h)]; exact h
+          · by_cases hya : y = a
+            · subst hya; rw [nameTys_upd_self, hty.1]
+            · rw [nameTys_upd_ne hya]; exact hσT y hy
+      | some f =>
+          obtain ⟨hfc, hft⟩ := hf f rfl
+          have hne : ∀ y, srcName y → ∀ j, y ≠ guardName j := fun y hy j => srcName_ne_guardName hy j
+          have hcl : srcClean (SExpr.SMul (.SVar f) (.SVar i)) := ⟨hft, hi.1⟩
+          have h1 : TransTotal σ (gIdx f i k) (σ.upd (guardName k) (.sword 64)) :=
+            .rScalarSetExpr _ _ (not_isTmpName_guardName k) hcl
+              (sexprVars_of_varsIn _ hcl ⟨hfc, hσi⟩)
+          set σ1 := σ.upd (guardName k) (.sword 64) with hσ1
+          have h2 : TransTotal σ1 (.RArrLoad (gWord (k + 1)) ⟨a, .TArr n .TU64⟩ (guardName k))
+              (σ1.upd (guardName (k + 1)) (.sword 64)) :=
+            .rArrLoad _ _ _ (not_isTmpName_guardName (k + 1))
+              (by rw [hσ1, nameTys_upd_ne (hne a ha k), hσa]; rfl)
+              (by rw [hσ1, nameTys_upd_self]; rfl)
+          set σ2 := σ1.upd (guardName (k + 1)) (.sword 64) with hσ2
+          have h3 : TransTotal σ2 (.RSelect (gWord (k + 2)) f (gWord (k + 1)) ⟨s, .TU64⟩)
+              (σ2.upd (guardName (k + 2)) (.sword 64)) :=
+            .rSelect _ _ _ _ (not_isTmpName_guardName (k + 2)) rfl (claims_upd (claims_upd hfc))
+              (by rw [hσ2]; exact nameTys_upd_self)
+              (by rw [hσ2, nameTys_upd_ne (hne s hs _), hσ1, nameTys_upd_ne (hne s hs _), hσs])
+          set σ3 := σ2.upd (guardName (k + 2)) (.sword 64) with hσ3
+          have h4 : TransTotal σ3 (.RArrStore ⟨a, .TArr n .TU64⟩ (guardName k) (gWord (k + 2)))
+              (σ3.upd a (encodeTy (.TArr n .TU64))) :=
+            .rArrStore _ _ _ ha.1
+              (by rw [hσ3, nameTys_upd_ne (hne a ha _), hσ2, nameTys_upd_ne (hne a ha _), hσ1,
+                nameTys_upd_ne (hne a ha _), hσa]; rfl)
+              (by rw [hσ3]; show (NameTys.upd σ2 (guardName (k + 2)) (.sword 64)
+                (guardName (k + 2))).isSome = true
+                  rw [nameTys_upd_self]; rfl)
+              (by rw [hσ3, nameTys_upd_ne (guardName_ne (by omega)), hσ2,
+                nameTys_upd_ne (guardName_ne (by omega)), hσ1, nameTys_upd_self]; rfl)
+          have hm3 : ∀ y, Claims σ y → Claims (σ3.upd a (encodeTy (.TArr n .TU64))) y :=
+            fun y h => by
+              unfold Claims; rw [nameTys_upd_ne (hna y h)]
+              exact claims_upd (claims_upd (claims_upd h))
+          refine ⟨σ3.upd a (encodeTy (.TArr n .TU64)), .rSeq h1 (.rSeq h2 (.rSeq h3 h4)),
+            fun y hy => hm3 y (hS y hy), hm3, fun y hy => ?_⟩
+          by_cases hya : y = a
+          · subst hya; rw [nameTys_upd_self, hty.1]
+          · rw [nameTys_upd_ne hya, hσ3, nameTys_upd_ne (hne y (hT y hy) _), hσ2,
+              nameTys_upd_ne (hne y (hT y hy) _), hσ1, nameTys_upd_ne (hne y (hT y hy) _)]
+            exact hσT y hy
   | @rIfNz g t e hg ht he iht ihe =>
-      intro flag S k B σ hSrc hB hr hS hf
+      intro flag S k B σ hSrc hB hr hS hf htok hty hσT
       obtain ⟨hg', ht', he'⟩ := hr
       simp only [ifConvert]
       have hgc : Claims σ g := hS g (hB g hg')
@@ -899,18 +1544,24 @@ theorem ifConvert_transTotal {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
             (fun f hfe => claims_upd (hf f hfe).1)))
       set σ2 := σ1.upd (guardName (k + 1)) (.sword 64)
       have hm12 : ∀ y, Claims σ y → Claims σ2 y := fun y h => claims_upd (claims_upd h)
+      have hT2 : ∀ y, T y → σ2 y = some (encodeTy (ty y)) := fun y hy =>
+        (nameTys_upd_ne (srcName_ne_guardName (hT y hy) _)).trans
+          ((nameTys_upd_ne (srcName_ne_guardName (hT y hy) _)).trans (hσT y hy))
       obtain ⟨hSt, hsubT, _, _⟩ := ifConvert_static ht (some (guardName k)) S (k + 2) B hSrc hB
-      obtain ⟨σT, hT, hST, hmT⟩ := iht (some (guardName k)) S (k + 2) B σ2 hSrc hB ht'
+      obtain ⟨σT, hT', hST, hmT, hTT⟩ := iht (some (guardName k)) S (k + 2) B σ2 hSrc hB ht'
         (fun y hy => hm12 y (hS y hy))
         (fun f hfe => by
           cases hfe; exact ⟨claims_upd claims_upd_self, not_isTmpName_guardName k⟩)
-      obtain ⟨σE, hE, hSE, hmE⟩ := ihe (some (guardName (k + 1)))
+        htok.1 hty.1 hT2
+      obtain ⟨σE, hE, hSE, hmE, hTE⟩ := ihe (some (guardName (k + 1)))
         (ifConvert (some (guardName k)) S (k + 2) t).2.1
         (ifConvert (some (guardName k)) S (k + 2) t).2.2 B σT hSt
         (fun y hy => hsubT y (hB y hy)) he' hST
         (fun f hfe => by
           cases hfe; exact ⟨hmT _ claims_upd_self, not_isTmpName_guardName (k + 1)⟩)
-      exact ⟨σE, .rSeq h1 (.rSeq h2 (.rSeq hT hE)), hSE, fun y h => hmE y (hmT y (hm12 y h))⟩
+        htok.2 hty.2 hTT
+      exact ⟨σE, .rSeq h1 (.rSeq h2 (.rSeq hT' hE)), hSE, fun y h => hmE y (hmT y (hm12 y h)),
+        hTE⟩
 
 theorem afterG_srcName {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
     ∀ (B : String → Prop), (∀ y, B y → srcName y) → ∀ y, afterG B c y → srcName y := by
@@ -922,6 +1573,7 @@ theorem afterG_srcName {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
   | @rScalarSet x _ hx _ | @rScalarSetExpr x _ hx _ _ =>
       exact fun B hB y hy => by rcases hy with h | rfl; exact hB y h; exact hx
   | rIfNz _ _ _ _ _ => exact fun B hB => hB
+  | rArrLoad _ _ _ | rArrStore _ _ _ => exact fun B hB => hB
 
 /-- The guarded translator from an entry `VarMap` whose bound names are the list
     `S`: `translateDialectControl` on the guarded conversion with bound list `S`.
@@ -961,7 +1613,8 @@ theorem lookup_of_consistentS {Γ : Ctx} {vm : VarMap Γ}
     `name` that is in `S` or written outside every conditional denotes, at the
     valuation `ctMapValD V`, the word of that name's value in the output state. -/
 theorem translateDialectGuardedIn_jasmin {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
-    (hc : IsCoveredSCtlGuarded c) {Γ : Ctx} (vm : VarMap Γ)
+    (hc : IsCoveredSCtlGuarded c) (hscal : towerOK (fun _ => False) c) {Γ : Ctx}
+    (vm : VarMap Γ)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
     (S : List String) (B : String → Prop) (hS : SrcList S)
     (hBS : ∀ y, B y → y ∈ S) (hSB : ∀ y ∈ S, B y)
@@ -981,16 +1634,19 @@ theorem translateDialectGuardedIn_jasmin {N : Nat} {leafSpec : LeafSpec} {c : Lo
   have hwS : ∀ y ∈ S, env y = some ⟨.sword 64, BitVec.ofNat 64 (rs.rsScalar y)⟩ :=
     fun y hy => henv y (hSB y hy) (hS y hy).1
   have hbS : Bound env S := fun y hy => by rw [readU64_of_env (hwS y hy)]; rfl
-  obtain ⟨env', hsem, henv', _, _, _⟩ := ifConvert_taken hc none S 0 B rs rs' env hexec hIR
-    hreads (fun _ h => by cases h) hS hbS hBS henv hir
+  obtain ⟨env', hsem, henv', _, _, _, _, _⟩ := ifConvert_taken hc (fun _ => False)
+    (fun _ => .TU64) (fun _ h => h.elim) (fun ⟨_, h⟩ => h.elim) none S 0 B rs rs' env hexec hIR
+    hreads (fun _ h => by cases h) hS hbS hBS henv hir hscal (arrTy_of_towerOK_false hscal)
+    (fun _ h => h.elim) (fun _ h => h.elim) (fun _ _ h => h)
   have hsrc : srcName name :=
     afterG_srcName hc B (fun y hy => hS y (hBS y hy)) name hname
   have hval : env' name = some ⟨.sword 64, BitVec.ofNat 64 (rs'.rsScalar name)⟩ :=
     henv' name hname hsrc.1
   have hclaims : ∀ y ∈ S, Claims (listTys S) y := fun y hy => by
     simp [Claims, listTys, hy]
-  obtain ⟨σ', htot, _, _⟩ := ifConvert_transTotal hc none S 0 B (listTys S) hS hBS hreads
-    hclaims (fun _ h => by cases h)
+  obtain ⟨σ', htot, _, _, _⟩ := ifConvert_transTotal hc (fun _ => False) (fun _ => .TU64)
+    (fun _ h => h.elim) none S 0 B (listTys S) hS hBS hreads hclaims (fun _ h => by cases h)
+    hscal (arrTy_of_towerOK_false hscal) (fun _ h => h.elim)
   have hsrcT : SrcTys (listTys S) := fun x hx => by
     by_cases hm : x ∈ S
     · exact (hS x hm).1
@@ -1022,7 +1678,7 @@ theorem translateDialectGuardedIn_jasmin {N : Nat} {leafSpec : LeafSpec} {c : Lo
     every conditional denotes the word of that name's value in the output state
     of the run. `translateDialectGuardedIn_jasmin` is the form with inputs. -/
 theorem translateDialectGuarded_jasmin {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
-    (hc : IsCoveredSCtlGuarded c) {rs rs' : RustState}
+    (hc : IsCoveredSCtlGuarded c) (hscal : towerOK (fun _ => False) c) {rs rs' : RustState}
     (hexec : RustExec N leafSpec c rs rs') (hir : ScalarInRange rs)
     (hreads : readsG (fun _ => False) c) (hIR : InRangeG N leafSpec c rs)
     (name : String) (hname : afterG (fun _ => False) c name) :
@@ -1035,9 +1691,24 @@ theorem translateDialectGuarded_jasmin {N : Nat} {leafSpec : LeafSpec} {c : LowC
       cryptoDialectToJasminCom com = some jcom ∧
       jcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))
         = ctTransTy (BitVec.ofNat 64 (rs'.rsScalar name)) :=
-  translateDialectGuardedIn_jasmin hc VarMap.empty .nil (fun _ => none) [] (fun _ => False)
+  translateDialectGuardedIn_jasmin hc hscal VarMap.empty .nil (fun _ => none) [] (fun _ => False)
     (fun _ h => by cases h) (fun _ h => h.elim) (fun _ h => by cases h) consistentS_empty
     (fun _ h => h.elim) hexec hir hreads hIR name hname
+
+/-- A command the Boolean fragment test accepts has no array access. -/
+theorem towerOK_false_of_coveredGuardedB :
+    ∀ c : LowCT, coveredGuardedB c = true → towerOK (fun _ => False) c := by
+  intro c
+  induction c with
+  | RSeq a b iha ihb =>
+      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨iha h.1, ihb h.2⟩
+  | RLetU64Zero x b ih =>
+      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨fun h => h, ih h.2⟩
+  | RScalarSet _ _ | RScalarSetExpr _ _ => intro _; exact fun h => h
+  | RIfNz g t e iht ihe =>
+      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨iht h.1.2, ihe h.2⟩
+  | RSkip => intro _; trivial
+  | _ => intro h; simp [coveredGuardedB] at h
 
 /-! ## Boolean tests for the scoping and the in-range condition -/
 
@@ -1064,6 +1735,8 @@ def readsB (L : List String) : LowCT → Bool
   | .RLetU64Zero x b => readsB (x :: L) b
   | .RScalarSetExpr _ e => varsInL L e
   | .RIfNz g t e => decide (g ∈ L) && readsB L t && readsB L e
+  | .RArrLoad _ _ i => decide (i ∈ L)
+  | .RArrStore _ i _ => decide (i ∈ L)
   | _ => true
 
 theorem varsInL_sound {L : List String} {B : String → Prop} (hL : ∀ y ∈ L, B y) :
@@ -1108,6 +1781,9 @@ theorem readsB_sound : ∀ (c : LowCT) (L : List String) (B : String → Prop),
       intro L B hL h
       simp only [readsB, Bool.and_eq_true, decide_eq_true_eq] at h
       exact ⟨hL g h.1.1, iht L B hL h.1.2, ihe L B hL h.2⟩
+  | RArrLoad _ _ i | RArrStore _ i _ =>
+      intro L B hL h
+      exact hL i (by simpa [readsB] using h)
   | _ => intro _ _ _ _; trivial
 
 /-- The Boolean test for `SExpr.inRange`. -/
@@ -1188,6 +1864,7 @@ theorem inRangeRunB_sound {N : Nat} {leafSpec : LeafSpec} (k : Nat) :
           refine ⟨fun hne => ?_, fun hz => ?_⟩
           · rw [if_neg hne] at h; exact iht rs hct h
           · rw [if_pos hz] at h; exact ihe rs hce h
+  | RArrLoad _ _ _ | RArrStore _ _ _ => intro _ hc _; cases hc
   | _ => intro _ _ _; trivial
 
 /-- `inRangeRunB` over an association-list store. -/

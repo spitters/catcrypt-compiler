@@ -360,6 +360,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlanKernels
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
+CatCrypt.Crypto.SecureCompilation.Dialects.LawfulArrByteOffset
 CatCrypt.Crypto.SecureCompilation.Dialects.LeafCall128Emit
 CatCrypt.Crypto.SecureCompilation.Dialects.MemrefArrayFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity

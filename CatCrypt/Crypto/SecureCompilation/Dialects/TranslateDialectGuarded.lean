@@ -25,14 +25,20 @@ The conversion of `RIfNz g t e` under a guard flag `f` (a slot holding `0` or
 `fe`. Under a flag, every write `x := v` of either branch becomes the merge
 `x := x + f * (v - x)` when `x` is bound before it (the list `S`), and
 `x := f * v` otherwise; so the branch whose flag is `0` leaves every bound slot
-unchanged. `SLt` is replaced by `GuardedLt.ltExpr`. The output lies in the
+unchanged. A dynamic-index array access under flag `f` indexes at the masked
+index `f * i` (`gIdx`): a load `d := s[i]` loads the element into a guard slot and
+`d` selects it on `f` (`gLoad`); a store `a[i] := s` loads the element, selects
+between it and `s` on `f`, and stores the result back (`gStore`), so with
+`f = 0` the element at index `0` is rewritten with its own value.
+`SLt` is replaced by `GuardedLt.ltExpr`. The output lies in the
 straight-line covered fragment `IsCoveredS`, so the denotation theorem of
 `translateDialectControl` applies to it.
 
 ## Main definitions
 
 * `guardName`, `srcName`: the flag slots and the source names
-* `gWrite`, `ifConvert`: the guarded write and the conversion
+* `gWrite`, `gIdx`, `gLoad`, `gStore`, `ifConvert`: the guarded write, the masked
+  index, the guarded load and store, and the conversion
 * `IsCoveredSCtlGuarded`: the guarded fragment
 * `translateDialectGuarded`, `semScalarGuarded`: the translator and its scalar
   semantics
@@ -107,6 +113,32 @@ def gWrite (flag : Option String) (S : List String) (x : String) (v : SExpr) : L
 /-- The nonzero test `0 < g` of a guard slot. -/
 def nzExpr (g : String) : SExpr := ltExpr (.SLit 0) (.SVar g)
 
+/-- The masked index `f * i` of a guarded array access, written into the slot
+    `guardName k`: the index `i` when the flag `f` is `1`, and `0` when it is `0`. -/
+def gIdx (f i : String) (k : Nat) : LowCT :=
+  .RScalarSetExpr (guardName k) (.SMul (.SVar f) (.SVar i))
+
+/-- The word slot at the guard name `guardName k`. -/
+def gWord (k : Nat) : Located := ⟨guardName k, .TU64⟩
+
+/-- The guarded load `dst := src[i]` under the flag `f`: the element at the masked
+    index is loaded into `gWord (k + 1)`, and `dst` selects it when `f` is nonzero
+    and keeps its value otherwise. -/
+def gLoad (f : String) (k : Nat) (dst src : Located) (i : String) : LowCT :=
+  .RSeq (gIdx f i k)
+    (.RSeq (.RArrLoad (gWord (k + 1)) src (guardName k))
+      (.RSelect dst f dst (gWord (k + 1))))
+
+/-- The guarded store `arr[i] := src` under the flag `f`: the element at the masked
+    index is loaded into `gWord (k + 1)`, `gWord (k + 2)` selects `src` when `f` is
+    nonzero and the loaded element otherwise, and it is stored back at the masked
+    index. With `f = 0` the element at index `0` is rewritten with its own value. -/
+def gStore (f : String) (k : Nat) (arr : Located) (i : String) (src : Located) : LowCT :=
+  .RSeq (gIdx f i k)
+    (.RSeq (.RArrLoad (gWord (k + 1)) arr (guardName k))
+      (.RSeq (.RSelect (gWord (k + 2)) f (gWord (k + 1)) src)
+        (.RArrStore arr (guardName k) (gWord (k + 2)))))
+
 /-- The guarded conversion: `ifConvert flag S k c` is the straight-line command,
     the bound list after it, and the next free flag index. -/
 def ifConvert : Option String → List String → Nat → LowCT → LowCT × List String × Nat
@@ -127,11 +159,14 @@ def ifConvert : Option String → List String → Nat → LowCT → LowCT × Lis
         (.RSeq (.RScalarSetExpr (guardName (k + 1))
             (andFlag flag (.SSub (.SLit 1) (nzExpr g))))
           (.RSeq rt.1 re.1)), re.2.1, re.2.2)
+  | some f, S, k, .RArrLoad dst src i => (gLoad f k dst src i, S, k + 2)
+  | some f, S, k, .RArrStore arr i src => (gStore f k arr i src, S, k + 3)
   | _, S, k, c => (c, S, k)
 
 /-- The guarded fragment: scalar writes and `RLetU64Zero` on source names,
     `RSeq`, `RSkip`, and `RIfNz` on a source guard, over `ltClean` expressions
-    reading source names. -/
+    reading source names; and the dynamic-index load and store of a `TArr n TU64`
+    word array through a `TU64` word slot, on source names. -/
 inductive IsCoveredSCtlGuarded : LowCT → Prop
   | rSkip : IsCoveredSCtlGuarded .RSkip
   | rSeq {a b : LowCT} : IsCoveredSCtlGuarded a → IsCoveredSCtlGuarded b →
@@ -144,6 +179,10 @@ inductive IsCoveredSCtlGuarded : LowCT → Prop
       (hv : varsIn srcName e) : IsCoveredSCtlGuarded (.RScalarSetExpr x e)
   | rIfNz {g : String} {t e : LowCT} (hg : srcName g) :
       IsCoveredSCtlGuarded t → IsCoveredSCtlGuarded e → IsCoveredSCtlGuarded (.RIfNz g t e)
+  | rArrLoad {d s i : String} {n : Nat} (hd : srcName d) (hs : srcName s) (hi : srcName i) :
+      IsCoveredSCtlGuarded (.RArrLoad ⟨d, .TU64⟩ ⟨s, .TArr n .TU64⟩ i)
+  | rArrStore {a i s : String} {n : Nat} (ha : srcName a) (hi : srcName i) (hs : srcName s) :
+      IsCoveredSCtlGuarded (.RArrStore ⟨a, .TArr n .TU64⟩ i ⟨s, .TU64⟩)
 
 theorem srcClean_nzExpr {g : String} (hg : ¬ isTmpName g) : srcClean (nzExpr g) := by
   simp only [nzExpr, ltExpr, carryExpr, srcClean]
@@ -197,6 +236,20 @@ theorem ifConvert_covered {c : LowCT} (hc : IsCoveredSCtlGuarded c) :
           (.rSeq (iht _ _ _ ?_) (ihe _ _ _ ?_)))
       · intro f hf'; cases hf'; exact not_isTmpName_guardName _
       · intro f hf'; cases hf'; exact not_isTmpName_guardName _
+  | rArrLoad hd hs hi =>
+      intro flag S k hf
+      cases flag with
+      | none => exact .rArrLoad _ _ _
+      | some f =>
+          exact .rSeq (.rScalarSetExpr _ _ ⟨hf f rfl, hi.1⟩)
+            (.rSeq (.rArrLoad _ _ _) (.rSelect _ _ _ _))
+  | rArrStore ha hi hs =>
+      intro flag S k hf
+      cases flag with
+      | none => exact .rArrStore _ _ _
+      | some f =>
+          exact .rSeq (.rScalarSetExpr _ _ ⟨hf f rfl, hi.1⟩)
+            (.rSeq (.rArrLoad _ _ _) (.rSeq (.rSelect _ _ _ _) (.rArrStore _ _ _)))
 
 /-! ## The translator and its denotation -/
 

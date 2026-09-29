@@ -108,7 +108,7 @@ theorem searchJasmin_of_run (N : Nat) (leafSpec : LeafSpec) (x v : Nat)
   have hexecU : RustExec N leafSpec (searchUnrolled x) default s :=
     runK_unrollAll 3 _ _ _ hrun
   have h := translateDialectGuarded_jasmin (isCoveredSCtlGuarded_of_coveredGuardedB _ hcov)
-    hexecU (fun _ => by show (0 : Nat) < 2 ^ 64; norm_num)
+    (towerOK_false_of_coveredGuardedB _ hcov) hexecU (fun _ => by show (0 : Nat) < 2 ^ 64; norm_num)
     (readsB_sound _ [] _ (fun _ h => by cases h) hreads)
     (inRangeRunB_sound 3 _ _ (searchUnrolled_isScalarCmd x) hIR) exitResName
     (afterL_sound _ [] _ (fun _ h => by cases h) _ hname)
