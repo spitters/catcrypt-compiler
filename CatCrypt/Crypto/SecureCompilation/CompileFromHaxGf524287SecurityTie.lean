@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf524287Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax GF(524287) multiply leaf realizes the
@@ -70,15 +71,11 @@ def mulDepsSpec : MulDeps Zq524287 where
 
 /-- Encode a `Zq524287` field element as a `BitVec 64` (its canonical residue
     `< 524287`). -/
-def encF (x : Zq524287) : BitVec 64 := BitVec.ofNat 64 x.val
+def encF (x : Zq524287) : BitVec 64 := Transfer.PrimeWord.primeWord 524287 x
 
 /-- The canonical residue encoding lands below `524287#64`. -/
-theorem encF_lt (x : Zq524287) : encF x < 524287#64 := by
-  have hv : x.val < 524287 := ZMod.val_lt x
-  unfold encF
-  apply BitVec.lt_def.mpr
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-  simpa using hv
+theorem encF_lt (x : Zq524287) : encF x < 524287#64 :=
+  Transfer.PrimeWord.primeWord_lt (by decide) x
 
 /-- The function the verified-compiled GF(524287) multiply `Com` computes, read
     back into `Zq524287` via `fromNat ∘ toNat`. -/
@@ -98,11 +95,8 @@ noncomputable def toMulDeps : MulDeps Zq524287 where
     `gf524287MulFold_eq_field` plus the `Zq524287` round-trip on canonical
     residues. -/
 theorem toMulDeps_eq_spec : toMulDeps = mulDepsSpec := by
-  have hround : ∀ x : Zq524287, fromNat (encF x).toNat = x := by
-    intro x
-    unfold encF fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zq524287, fromNat (encF x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMulDeps mulDepsSpec compiledMulFn
   congr 1
   funext a b

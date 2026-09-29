@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax Mersenne-31 multiply leaf realizes the
@@ -80,15 +81,11 @@ def mulDepsSpec : MulDeps Zm31 where
 
 /-- Encode a `Zm31` field element as a `BitVec 64` (its canonical residue
     `< 2147483647`). -/
-def encF (x : Zm31) : BitVec 64 := BitVec.ofNat 64 x.val
+def encF (x : Zm31) : BitVec 64 := Transfer.PrimeWord.primeWord 2147483647 x
 
 /-- The canonical residue encoding lands below `2147483647#64`. -/
-theorem encF_lt (x : Zm31) : encF x < 2147483647#64 := by
-  have hv : x.val < 2147483647 := ZMod.val_lt x
-  unfold encF
-  apply BitVec.lt_def.mpr
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-  simpa using hv
+theorem encF_lt (x : Zm31) : encF x < 2147483647#64 :=
+  Transfer.PrimeWord.primeWord_lt (by decide) x
 
 /-- The function the verified-compiled Mersenne-31 multiply `Com` computes, read
     back into `Zm31` via `fromNat ∘ toNat`. -/
@@ -109,11 +106,8 @@ noncomputable def toMulDeps : MulDeps Zm31 where
     `m31MulFold_eq_field` (the Mersenne reduce identity, itself proved by `Nat`
     arithmetic) plus the `Zm31` round-trip on canonical residues. -/
 theorem toMulDeps_eq_spec : toMulDeps = mulDepsSpec := by
-  have hround : ∀ x : Zm31, fromNat (encF x).toNat = x := by
-    intro x
-    unfold encF fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zm31, fromNat (encF x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMulDeps mulDepsSpec compiledMulFn
   congr 1
   funext a b

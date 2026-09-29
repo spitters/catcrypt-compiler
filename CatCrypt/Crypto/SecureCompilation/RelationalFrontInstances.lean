@@ -9,6 +9,7 @@ import all Init.Data.Repr
 public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.RelationalFront
 public import Mathlib.Data.ZMod.Basic
+public import Transfer.Examples.PrimeWord
 public import Std.Tactic.BVDecide
 
 /-!
@@ -207,19 +208,15 @@ run on the serialized operands. -/
 /-- The canonical-representative encoding `ZMod 251 → BitVec 64`. -/
 def encMod251 (a : ZMod 251) : BitVec 64 := BitVec.ofNat 64 a.val
 
+/-- `encMod251` is the canonical prime word at `p = 251`. -/
+theorem encMod251_eq_primeWord : encMod251 = Transfer.PrimeWord.primeWord 251 := rfl
+
 /-- **`encMod251` is injective** (equality-reflecting): distinct residues have
     distinct `val < 251 < 2^64`, so distinct 64-bit images. This is the
     `map4`-level `enc_inj` the transport needs — note it is **not** surjective
     (`BitVec.ofNat 64 251` has no preimage). -/
-theorem encMod251_injective : Function.Injective encMod251 := by
-  intro a b hab
-  have ha : a.val < 251 := ZMod.val_lt a
-  have hb : b.val < 251 := ZMod.val_lt b
-  have hv : a.val = b.val := by
-    have := congrArg BitVec.toNat hab
-    simp only [encMod251, BitVec.toNat_ofNat] at this
-    omega
-  exact (ZMod.val_injective 251) hv
+theorem encMod251_injective : Function.Injective encMod251 :=
+  Transfer.PrimeWord.primeWord_injective (by decide)
 
 /-- **The commuting square.** The abstract `F_251` add `a + b`, serialized by
     `encMod251`, equals the emitted kernel's `bop` (`csub251` of the sum) run on

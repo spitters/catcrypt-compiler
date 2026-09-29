@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import Mathlib.Data.ZMod.Basic
+public import Transfer.Examples.PrimeWord
 public import Mathlib.Tactic.Linarith
 
 /-!
@@ -153,26 +154,20 @@ theorem csubBlk_denote {Γ : Ctxt jasminDialect} (P : Nat) (x : Ctxt.Var Γ w64)
 
 /-! ## 3. The canonical encoding -/
 
-/-- The canonical-representative encoding `x ↦ BitVec.ofNat 64 x.val`. -/
-def canonEnc (p : Nat) (x : ZMod p) : BitVec 64 := BitVec.ofNat 64 x.val
+/-- The canonical-representative encoding `x ↦ BitVec.ofNat 64 x.val`, the canonical
+    prime word `Transfer.PrimeWord.primeWord p`. -/
+abbrev canonEnc (p : Nat) : ZMod p → BitVec 64 := Transfer.PrimeWord.primeWord p
 
 theorem canonEnc_toNat {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) (x : ZMod p) :
-    (canonEnc p x).toNat = x.val := by
-  unfold canonEnc
-  rw [BitVec.toNat_ofNat]
-  exact Nat.mod_eq_of_lt (lt_of_lt_of_le (ZMod.val_lt x) hp)
+    (canonEnc p x).toNat = x.val := Transfer.PrimeWord.primeWord_toNat hp x
 
 theorem canonEnc_injective {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) :
-    Function.Injective (canonEnc p) := by
-  intro x y h
-  have := congrArg BitVec.toNat h
-  rw [canonEnc_toNat hp, canonEnc_toNat hp] at this
-  exact ZMod.val_injective p this
+    Function.Injective (canonEnc p) := Transfer.PrimeWord.primeWord_injective hp
 
 /-- A word whose value is `z.val` is the encoding of `z`. -/
 theorem eq_canonEnc_of_toNat {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) (w : BitVec 64)
     (z : ZMod p) (h : w.toNat = z.val) : w = canonEnc p z :=
-  BitVec.eq_of_toNat_eq (by rw [h, canonEnc_toNat hp])
+  Transfer.PrimeWord.eq_primeWord_of_toNat hp w z h
 
 /-! ## 4. Modulus-generic blocks on canonical representatives -/
 
@@ -309,6 +304,31 @@ theorem negBlk_denote {Γ : Ctxt jasminDialect} (a : Ctxt.Var Γ w64)
   exact csubW_neg_canonEnc hp x
 
 end Generic
+
+/-! ### The word functions as registered squares along `canonEnc` -/
+
+section Squares
+
+variable {p : Nat} [NeZero p] [hp : Fact (2 * p ≤ 2 ^ 63)]
+
+/-- Word addition followed by a conditional subtract realizes `+` along `canonEnc p`. -/
+instance csubAddRelated :
+    _root_.Transfer.RelatedBinOp (canonEnc p) (· + ·) (fun a b => csubW p (a + b)) where
+  comm x y := (csubW_add_canonEnc hp.out x y).symm
+
+/-- `a + (p − b)` followed by a conditional subtract realizes `-` along `canonEnc p`. -/
+instance csubSubRelated :
+    _root_.Transfer.RelatedBinOp (canonEnc p) (· - ·)
+      (fun a b => csubW p (a + (BitVec.ofNat 64 p - b))) where
+  comm x y := (csubW_sub_canonEnc hp.out x y).symm
+
+/-- `p − a` followed by a conditional subtract realizes negation along `canonEnc p`. -/
+instance csubNegRelated :
+    _root_.Transfer.RelatedUnOp (canonEnc p) (fun x => -x)
+      (fun a => csubW p (BitVec.ofNat 64 p - a)) where
+  comm x := (csubW_neg_canonEnc hp.out x).symm
+
+end Squares
 
 theorem constBlk_denote {Γ : Ctxt jasminDialect} {p : Nat} (x : ZMod p)
     (V : Ctxt.Valuation Γ) : (constBlk (Γ := Γ) p x).denote V = canonEnc p x := rfl

@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMacTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax FrodoKEM MAC leaf realizes the
@@ -85,7 +86,7 @@ computes, read back as a `Zq65536` element via `Zq65536.fromNat ∘ toNat` of th
 emitted `frodoMacForm`. -/
 
 /-- Encode a `Zq65536` ring element as a `BitVec 64` (its canonical residue). -/
-def encZ (x : Zq65536) : BitVec 64 := BitVec.ofNat 64 x.val
+def encZ (x : Zq65536) : BitVec 64 := Transfer.PrimeWord.primeWord 65536 x
 
 /-- The function the verified-compiled FrodoKEM MAC `Com` computes, read back into
     `Zq65536`: each of `acc`, `a`, `b` is encoded as the `BitVec 64` of its
@@ -112,13 +113,8 @@ is `frodoMacForm_eq_field` reading the `BitVec` inputs as their own `fromNat`. -
     power-of-two reduce identity) plus the `Zq65536` round-trip
     `Zq65536.fromNat ∘ ZMod.val = id`. -/
 theorem toMacDeps_eq_spec : toMacDeps = macDepsSpec := by
-  -- round-trip: encoding a `Zq65536` residue to `BitVec 64` and reading back via
-  -- `fromNat ∘ toNat` is the identity (`x.val < 65536 ≤ 2^64`, no wrap).
-  have hround : ∀ x : Zq65536, Zq65536.fromNat (encZ x).toNat = x := by
-    intro x
-    unfold encZ Zq65536.fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zq65536, Zq65536.fromNat (encZ x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMacDeps macDepsSpec compiledMacFn
   congr 1
   funext acc a b

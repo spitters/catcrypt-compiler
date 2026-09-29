@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax NTRU-HRSS MAC leaf realizes the
@@ -72,7 +73,7 @@ def macDepsSpec : MacDeps Zq8192 where
 /-! ## §3  The compiled realization instance (what the verified compiler emits) -/
 
 /-- Encode a `Zq8192` ring element as a `BitVec 64` (its canonical residue). -/
-def encZ (x : Zq8192) : BitVec 64 := BitVec.ofNat 64 x.val
+def encZ (x : Zq8192) : BitVec 64 := Transfer.PrimeWord.primeWord 8192 x
 
 /-- The function the verified-compiled NTRU-HRSS MAC `Com` computes, read back into
     `Zq8192`. -/
@@ -92,11 +93,8 @@ noncomputable def toMacDeps : MacDeps Zq8192 where
     `acc + a · b`. Closed by `ntruMacForm_eq_ring` (the power-of-two reduce
     identity) plus the `Zq8192` round-trip. -/
 theorem toMacDeps_eq_spec : toMacDeps = macDepsSpec := by
-  have hround : ∀ x : Zq8192, Zq8192.fromNat (encZ x).toNat = x := by
-    intro x
-    unfold encZ Zq8192.fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zq8192, Zq8192.fromNat (encZ x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMacDeps macDepsSpec compiledMacFn
   congr 1
   funext acc a b

@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax sntrup761 MAC leaf realizes the
@@ -81,12 +82,11 @@ def macDepsSpec : MacDeps Zq4591 where
 
 /-- Encode a `Zq4591` field element as a `BitVec 64` (its canonical residue
     `< 4591`). -/
-def encZ (x : Zq4591) : BitVec 64 := BitVec.ofNat 64 x.val
+def encZ (x : Zq4591) : BitVec 64 := Transfer.PrimeWord.primeWord 4591 x
 
 /-- `(encZ x).toNat = x.val` (the residue `< 4591 < 2^64` does not wrap). -/
-theorem encZ_toNat (x : Zq4591) : (encZ x).toNat = x.val := by
-  unfold encZ
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by have := ZMod.val_lt x; omega)]
+theorem encZ_toNat (x : Zq4591) : (encZ x).toNat = x.val :=
+  Transfer.PrimeWord.primeWord_toNat (by decide) x
 
 /-- The function the verified-compiled sntrup761 MAC `Com` computes, read back into
     `Zq4591`. -/
@@ -108,15 +108,10 @@ noncomputable def toMacDeps : MacDeps Zq4591 where
     is `< 4591 < 2^63` (all three schoolbook bounds discharged automatically), plus
     the `Zq4591` round-trip. -/
 theorem toMacDeps_eq_spec : toMacDeps = macDepsSpec := by
-  have hround : ∀ x : Zq4591, Zq4591.fromNat (encZ x).toNat = x := by
-    intro x
-    unfold Zq4591.fromNat
-    rw [encZ_toNat, ZMod.natCast_val, ZMod.cast_id]
-  have hlt4591 : ∀ x : Zq4591, encZ x < 4591#64 := by
-    intro x
-    rw [BitVec.lt_def, encZ_toNat]
-    have := ZMod.val_lt x
-    simpa using this
+  have hround : ∀ x : Zq4591, Zq4591.fromNat (encZ x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
+  have hlt4591 : ∀ x : Zq4591, encZ x < 4591#64 :=
+    Transfer.PrimeWord.primeWord_lt (by decide)
   have hacc : ∀ x : Zq4591, (encZ x).toNat < 2 ^ 63 := by
     intro x
     rw [encZ_toNat]

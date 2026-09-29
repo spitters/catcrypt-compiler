@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMulTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax HAWK MAC leaf realizes the
@@ -91,7 +92,7 @@ computes, read back as a `Zq1024` element via `Zq1024.fromNat ∘ toNat` of the
 emitted `hawkMacForm`. -/
 
 /-- Encode a `Zq1024` ring element as a `BitVec 64` (its canonical residue). -/
-def encZ (x : Zq1024) : BitVec 64 := BitVec.ofNat 64 x.val
+def encZ (x : Zq1024) : BitVec 64 := Transfer.PrimeWord.primeWord 1024 x
 
 /-- The function the verified-compiled HAWK MAC `Com` computes, read back into
     `Zq1024`: each of `acc`, `a`, `b` is encoded as the `BitVec 64` of its
@@ -120,13 +121,8 @@ MAC. This is `hawkMacForm_eq_ring` reading the `BitVec` inputs back via
     `Zq1024` round-trip `Zq1024.fromNat ∘ ZMod.val = id`. No domain restriction:
     the `& 0x3FF` mask handles full `Z/1024` wraparound for any 64-bit inputs. -/
 theorem toMacDeps_eq_spec : toMacDeps = macDepsSpec := by
-  -- round-trip: encoding a `Zq1024` residue to `BitVec 64` and reading back via
-  -- `fromNat ∘ toNat` is the identity (`x.val < 1024 ≤ 2^64`, no wrap).
-  have hround : ∀ x : Zq1024, Zq1024.fromNat (encZ x).toNat = x := by
-    intro x
-    unfold encZ Zq1024.fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zq1024, Zq1024.fromNat (encZ x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMacDeps macDepsSpec compiledMacFn
   congr 1
   funext acc a b

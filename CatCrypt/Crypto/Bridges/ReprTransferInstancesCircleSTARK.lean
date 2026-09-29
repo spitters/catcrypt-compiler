@@ -13,6 +13,7 @@ public import CatCrypt.Crypto.Bridges.ReprTransferExpr
 public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 public import Mathlib.Data.ZMod.Basic
+public import Transfer.Examples.PrimeWord
 public import Mathlib.Tactic.NormNum.Prime
 
 /-!
@@ -226,21 +227,16 @@ theorem circlestark_m31_field_realized (a b : BitVec 64)
 /-- Canonical **encode** `Zm31 → BitVec 64` (the field value as a machine word):
     always lands in the canonical residue range, so the realization holds
     unconditionally on encoded inputs. -/
-def m31Encode (a : Zm31) : BitVec 64 := BitVec.ofNat 64 a.val
+def m31Encode (a : Zm31) : BitVec 64 := Transfer.PrimeWord.primeWord 2147483647 a
 
-theorem m31Encode_toNat (a : Zm31) : (m31Encode a).toNat = a.val := by
-  unfold m31Encode
-  rw [BitVec.toNat_ofNat]
-  exact Nat.mod_eq_of_lt (lt_trans (ZMod.val_lt a) (by norm_num))
+theorem m31Encode_toNat (a : Zm31) : (m31Encode a).toNat = a.val :=
+  Transfer.PrimeWord.primeWord_toNat (by decide) a
 
-theorem m31Decode_m31Encode (a : Zm31) : m31Decode (m31Encode a) = a := by
-  unfold m31Decode fromNat; rw [m31Encode_toNat]; exact ZMod.natCast_rightInverse a
+theorem m31Decode_m31Encode (a : Zm31) : m31Decode (m31Encode a) = a :=
+  Transfer.PrimeWord.primeDec_primeWord (by decide) a
 
-theorem m31Encode_lt (a : Zm31) : m31Encode a < 2147483647#64 := by
-  rw [BitVec.lt_def, m31Encode_toNat]
-  show a.val < (2147483647#64 : BitVec 64).toNat
-  rw [show (2147483647#64 : BitVec 64).toNat = 2147483647 from by decide]
-  exact ZMod.val_lt a
+theorem m31Encode_lt (a : Zm31) : m31Encode a < 2147483647#64 :=
+  Transfer.PrimeWord.primeWord_lt (by decide) a
 
 /-- **M31 field multiply backed by the emitted Com-compiled kernel `m31MulFold`**
     (the Baby Bear `bbFieldMul` analogue). -/

@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192Tie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import Transfer.Examples.PrimeWord
 
 /-!
 # Security tie: the compile-from-hax `Z/8192Z` multiply leaf realizes the
@@ -86,15 +87,11 @@ def mulDepsSpec : MulDeps Zq8192 where
 
 /-- Encode a `Zq8192` ring element as a `BitVec 64` (its canonical residue
     `< 8192`). -/
-def encZ (x : Zq8192) : BitVec 64 := BitVec.ofNat 64 x.val
+def encZ (x : Zq8192) : BitVec 64 := Transfer.PrimeWord.primeWord 8192 x
 
 /-- The canonical residue encoding lands below `8192#64`. -/
-theorem encZ_lt (x : Zq8192) : encZ x < 8192#64 := by
-  have hv : x.val < 8192 := ZMod.val_lt x
-  unfold encZ
-  apply BitVec.lt_def.mpr
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
-  simpa using hv
+theorem encZ_lt (x : Zq8192) : encZ x < 8192#64 :=
+  Transfer.PrimeWord.primeWord_lt (by decide) x
 
 /-- The function the verified-compiled `Z/8192Z` multiply `Com` computes, read
     back into `Zq8192` via `Zq8192.fromNat ∘ toNat`. -/
@@ -115,11 +112,8 @@ noncomputable def toMulDeps : MulDeps Zq8192 where
     `ring8192MulMask_eq_ring` (the power-of-two `mod 2¹³` reduce identity) plus the
     `Zq8192` round-trip on canonical residues. -/
 theorem toMulDeps_eq_spec : toMulDeps = mulDepsSpec := by
-  have hround : ∀ x : Zq8192, Zq8192.fromNat (encZ x).toNat = x := by
-    intro x
-    unfold encZ Zq8192.fromNat
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt
-      (by have := ZMod.val_lt x; omega), ZMod.natCast_val, ZMod.cast_id]
+  have hround : ∀ x : Zq8192, Zq8192.fromNat (encZ x).toNat = x :=
+    Transfer.PrimeWord.primeDec_primeWord (by decide)
   unfold toMulDeps mulDepsSpec compiledMulFn
   congr 1
   funext a b

@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 public import CatCrypt.Crypto.Util.ZMod3329
+public import Transfer.Examples.PrimeWord
 
 /-!
 # A `ZMod 3329` coefficient value leaf for the ascent — the ML-KEM field spike
@@ -74,15 +75,19 @@ open CatCrypt.Util
     analogue of `wEnc : BitVec 64 → ZMod 2^64`. -/
 def fqEnc (w : BitVec 64) : ZMod 3329 := (w.toNat : ZMod 3329)
 
+/-- `fqEnc` is the decoder of the canonical prime word at `p = 3329`. -/
+theorem fqEnc_eq_primeDec : fqEnc = Transfer.PrimeWord.primeDec 3329 := rfl
+
 /-! ## The conditional add square (the `RelatedBinOp` analogue) -/
 
 /-- **The coefficient add square, conditional.** `fqEnc (x + y) = fqEnc x + fqEnc y`
     provided the representatives do not overflow the 64-bit slot. Unlike `wEncAdd`
     (unconditional `RelatedBinOp`), this carries the no-overflow hypothesis, because
-    `2^64 ≢ 0 (mod 3329)`. -/
+    `2^64 ≢ 0 (mod 3329)`. It is the registered guarded square
+    `Transfer.PrimeWord.decAddRelatedOn` at `p = 3329`. -/
 theorem fqEnc_add_of_lt (x y : BitVec 64) (h : x.toNat + y.toNat < 2 ^ 64) :
-    fqEnc (x + y) = fqEnc x + fqEnc y := by
-  simp only [fqEnc, BitVec.toNat_add, Nat.mod_eq_of_lt h, Nat.cast_add]
+    fqEnc (x + y) = fqEnc x + fqEnc y :=
+  (Transfer.PrimeWord.decAddRelatedOn (p := 3329)).comm x y h
 
 /-- Canonical corollary: for canonical coefficients (`< 3329`), the add square holds
     (the sum `< 6658 ≪ 2^64` never overflows the slot). This is the regime an
