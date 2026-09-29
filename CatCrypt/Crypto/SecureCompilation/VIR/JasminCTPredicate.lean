@@ -81,13 +81,23 @@ def labelOf {Γ : Ctxt jasminDialect} {s : JasminTy} :
   | .here, .cons l _ => l
   | .there v, .cons _ L => labelOf v L
 
-/-- Extend a label context with a new binding. The result of an `extCall`,
-    `regArith`, `castW` carries whatever level we record for the binding; for
-    the lowering CT proof we extend with `.Public`, which is exactly the
-    "no secret-derived address ever enters scope" invariant. -/
+/-- Extend a label context with the level of a new binding. -/
 def LabelCtxt.extend {Γ : Ctxt jasminDialect} {t : JasminTy}
     (L : LabelCtxt Γ) (l : SecretLevel) : LabelCtxt (t :: Γ) :=
   .cons l L
+
+/-- The join of the levels of a list of argument variables; `.Public` for the
+    empty list. -/
+def argsLevel {Γ : Ctxt jasminDialect} (L : LabelCtxt Γ) :
+    {ts : List JasminTy} → HVector (fun ty => Ctxt.Var Γ ty) ts → SecretLevel
+  | [], .nil => SecretLevel.Public
+  | _ :: _, .cons v rest => (labelOf v L).join (argsLevel L rest)
+
+/-- The level of a let-bound expression: the join of the levels of its
+    arguments. A result computed from a secret argument is secret. -/
+def exprLevel {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (L : LabelCtxt Γ) : SecretLevel :=
+  argsLevel L e.args
 
 /-! ## 2. Per-op CT predicate
 
@@ -120,20 +130,19 @@ def ctSafeExprJasmin {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-! ## 4. Per-program CT predicate
 
-Recursion over `Com`, mirroring `ctSafeCom`. At each `var` binding we check the
-expression's index is public, then recurse into the body in the extended label
-context. We extend with `.Public`: a freshly bound register holds the result of
-an oblivious op, so it is itself a public value as far as addressing is
-concerned. (Recording the bound level as `.Public` is the most permissive
-faithful choice — it neither hides nor invents a secret address.) -/
+Recursion over `Com`, mirroring `ctSafeCom`. At each `var` binding the
+expression's index must be public; the body is checked in the label context
+extended with `exprLevel e L`, the join of the argument levels, so an index
+computed from a secret is labelled secret. -/
 
 /-- A `Com jasminDialect` is CT-safe under a label context iff every let-bound
-    expression's index argument is public. `ret` is oblivious. -/
+    expression's index argument is public, each binding labelled with the join
+    of its argument levels. `ret` is oblivious. -/
 def ctSafeJasmin {Γ : Ctxt jasminDialect} {t : JasminTy} :
     Com jasminDialect Γ t → LabelCtxt Γ → Bool
   | .ret _, _ => true
   | .var e body, L =>
-      ctSafeExprJasmin e L && ctSafeJasmin body (L.extend SecretLevel.Public)
+      ctSafeExprJasmin e L && ctSafeJasmin body (L.extend (exprLevel e L))
 
 /-! ## 5. Decidability + Prop bridge -/
 
@@ -160,7 +169,7 @@ theorem ctSafeJasmin_var {Γ : Ctxt jasminDialect} {t s : JasminTy}
     (L : LabelCtxt Γ) :
     ctSafeJasmin (Com.var e body) L
       = (ctSafeExprJasmin e L
-          && ctSafeJasmin body (L.extend SecretLevel.Public)) := rfl
+          && ctSafeJasmin body (L.extend (exprLevel e L))) := rfl
 
 /-! ## 7. `extCall` expressions are always CT-safe
 
@@ -232,7 +241,7 @@ theorem lowerLatticeToJasmin_ctSafeJasmin :
             = Com.var (lowerExpr e) (lowerLatticeToJasmin body) from rfl]
       rw [ctSafeJasmin_var, lowerExpr_ctSafe e L]
       simp only [Bool.true_and]
-      exact lowerLatticeToJasmin_ctSafeJasmin body (L.extend SecretLevel.Public)
+      exact lowerLatticeToJasmin_ctSafeJasmin body _
 
 /-- Propositional form of the headline theorem. -/
 theorem lowerLatticeToJasmin_ctSafePropJasmin
@@ -305,5 +314,24 @@ theorem loadProg_secret_not_ctSafe :
 theorem loadProg_public_ctSafe :
     ctSafeJasmin loadProg publicIdxLabels = true := by
   native_decide
+
+/-- A `stackLoad` whose index is a value computed from the index register
+    (`castW 64 64` of it) rather than the register itself. -/
+def derivedLoadProg : Com jasminDialect loadCtxt (.reg 16) :=
+  .var (.mk (.castW 64 64) rfl (.cons (.there .here) .nil))
+    (.var (.mk (.stackLoad 16 8) rfl
+            (.cons (.there .here) (.cons .here .nil)))
+      (.ret .here))
+
+/-- A load whose index is derived from a secret register is flagged: the
+    derived binding carries the secret level of its argument. -/
+theorem derivedLoadProg_secret_not_ctSafe :
+    ctSafeJasmin derivedLoadProg secretIdxLabels = false := by
+  decide
+
+/-- The same derived-index load is CT-safe when the register is public. -/
+theorem derivedLoadProg_public_ctSafe :
+    ctSafeJasmin derivedLoadProg publicIdxLabels = true := by
+  decide
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate

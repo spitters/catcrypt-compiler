@@ -134,7 +134,8 @@ fragment and hypotheses of each.
 - `Dialects.CryptoDialectLeakTraceNative`: `Com.isConstantTime c` unfolds to
   `∀ _ _ _, Com.leakTrace c = Com.leakTrace c`, and `Com.all_com_ct` is
   `fun _ _ _ => rfl`. The declarations constrain no program. Value-dependent leakage
-  is in `Dialects/CryptoDialectLeakTraceValued.lean`,
+  on `Com` is `VIR.ComLevelCheck.Com.ctLeak` (at the dialect: `Dialects.CryptoDialectCTLeak.catCT`,
+  with the front theorem `Dialects.TranslateDialectCT.levelCheckF_ct`),
   `CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean` (`cmdCT`) and
   `X86Backend.MachineConstantTime.blockLeak`.
 - `X86Backend.LprogAsmPrinter.renderLprogAtt` applies no optimization. The `Lprog`

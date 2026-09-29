@@ -66,7 +66,8 @@ typed so that the supplied variables are visible to the hole.
   `C` accumulates from the outer valuation. This is the `Com` analogue of the
   reduction-semantics "evaluate the prefix, then run the plugged program".
 * `ctSafeCtxJasmin` lifts `ctSafeJasmin` to contexts (the prefix's own ops are
-  CT-safe, threading the same `.Public`-extension discipline as `ctSafeJasmin`),
+  CT-safe, each binding labelled with the join of its argument levels as in
+  `ctSafeJasmin`),
   and `ctSafeJasmin_plug` proves **CT-compositionality**:
   `ctSafeJasmin (plug C p)` holds iff the context's prefix is CT-safe *and* the
   plugged program is CT-safe in the propagated label context. CT is a safety
@@ -198,26 +199,26 @@ end ComCtx
 /-! ## 3. CT-safety of contexts and CT-compositionality over linking
 
 We lift `ctSafeJasmin` to contexts. A context is CT-safe iff every op in its
-let-prefix is CT-safe, threading the same `.Public`-extension discipline that
-`ctSafeJasmin` uses on `Com`. The hole imposes no constraint of its own — the
+let-prefix is CT-safe, labelling each binding with the join of its argument
+levels (`exprLevel`), as `ctSafeJasmin` does on `Com`. The hole imposes no constraint of its own — the
 plugged program carries its own CT obligation. The key lemma `ctSafeJasmin_plug`
 then shows CT is **compositional over linking**: the linked whole program is
 CT-safe iff the context prefix is CT-safe and the plugged program is CT-safe in
 the label context the prefix propagates. -/
 
 /-- The label context a Jasmin context's prefix propagates: starting from a
-    labelling `L` of the outer context `Γ`, extend by `.Public` per binding (the
-    same discipline `ctSafeJasmin` uses), reaching a labelling of the hole's
-    context `Γh`. -/
+    labelling `L` of the outer context `Γ`, label each binding with the join of
+    its argument levels (as `ctSafeJasmin` does), reaching a labelling of the
+    hole's context `Γh`. -/
 def propagateLabel :
     {Γh : Ctxt jasminDialect} → {th : JasminTy} → {Γ : Ctxt jasminDialect} →
     (C : ComCtx jasminDialect Γh th Γ) → LabelCtxt Γ → LabelCtxt Γh
   | _, _, _, .hole, L => L
-  | _, _, _, .var _ C, L => propagateLabel C (L.extend SecretLevel.Public)
+  | _, _, _, .var e C, L => propagateLabel C (L.extend (exprLevel e L))
 
 /-- **CT-safety of a context.** A Jasmin context is CT-safe under a labelling `L`
-    iff every op in its let-prefix is CT-safe, with the label context extended by
-    `.Public` per binding. The hole contributes nothing — it is the plugged
+    iff every op in its let-prefix is CT-safe, each binding labelled with the
+    join of its argument levels. The hole contributes nothing — it is the plugged
     program's own obligation. Mirrors `ctSafeJasmin` on `Com`, dropping the `ret`
     case (the hole replaces it). -/
 def ctSafeCtxJasmin :
@@ -225,7 +226,7 @@ def ctSafeCtxJasmin :
     ComCtx jasminDialect Γh th Γ → LabelCtxt Γ → Bool
   | _, _, _, .hole, _ => true
   | _, _, _, .var e C, L =>
-      ctSafeExprJasmin e L && ctSafeCtxJasmin C (L.extend SecretLevel.Public)
+      ctSafeExprJasmin e L && ctSafeCtxJasmin C (L.extend (exprLevel e L))
 
 @[simp]
 theorem ctSafeCtxJasmin_hole {Γh : Ctxt jasminDialect} {th : JasminTy}
@@ -240,7 +241,7 @@ theorem ctSafeCtxJasmin_var {Γh : Ctxt jasminDialect} {th : JasminTy}
     (L : LabelCtxt Γ) :
     ctSafeCtxJasmin (ComCtx.var e C) L
       = (ctSafeExprJasmin e L
-          && ctSafeCtxJasmin C (L.extend SecretLevel.Public)) := by
+          && ctSafeCtxJasmin C (L.extend (exprLevel e L))) := by
   simp only [ctSafeCtxJasmin]
 
 /-- **CT-compositionality over linking (the key lemma).** Constant-time safety is
@@ -261,9 +262,9 @@ theorem ctSafeJasmin_plug :
         show propagateLabel (ComCtx.hole) L = L from by simp only [propagateLabel]]
   | _, _, _, .var e C, p, L => by
       rw [ComCtx.plug_var, ctSafeJasmin_var, ctSafeCtxJasmin_var,
-        ctSafeJasmin_plug C p (L.extend SecretLevel.Public),
+        ctSafeJasmin_plug C p (L.extend (exprLevel e L)),
         show propagateLabel (ComCtx.var e C) L
-          = propagateLabel C (L.extend SecretLevel.Public) from by
+          = propagateLabel C (L.extend (exprLevel e L)) from by
             simp only [propagateLabel]]
       simp only [Bool.and_assoc]
 

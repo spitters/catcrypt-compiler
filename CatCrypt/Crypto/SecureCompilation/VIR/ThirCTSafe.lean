@@ -96,7 +96,7 @@ theorem noMem_ctSafeJasmin : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
       rw [ctSafeJasmin_var]
       simp only [ctSafeExprJasmin]
       rw [opIndexPublic_of_noMem e.op e.args L h.1, Bool.true_and]
-      exact noMem_ctSafeJasmin body (L.extend SecretLevel.Public) h.2
+      exact noMem_ctSafeJasmin body _ h.2
 
 /-! ## 2. `lowerThir` has no memory op -/
 
