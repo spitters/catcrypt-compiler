@@ -193,12 +193,13 @@ def truncate (w : Nat) (e : SExpr) : SExpr :=
 
 /-- The `SExpr` of a right-hand side that reads no memory.
 
-    `none` on four right-hand sides. `load` and `castLoad` become `RArrLoad` in
+    `none` on five right-hand sides. `load` and `castLoad` become `RArrLoad` in
     `assignRhs`. `select` has no translation: `cond ? t : f` is branch-free only
     when `cond` is known to be `0` or `1`, which the untyped AST does not
     record. A `glob` naming something other than a declared scalar is a
     global-table binding (`tbl = EC_DLOG`); `LowCT` reaches a table as a loop
-    invariant array parameter, not as a bound name. -/
+    invariant array parameter, not as a bound name. An external `call` has no
+    `LowCT` image. -/
 def rhsExpr (env : Env) : Rhs → Option SExpr
   | .bin op a b => some (opExpr op (.SVar a) (operandExpr b))
   | .imm n => some (.SLit n)
@@ -208,6 +209,7 @@ def rhsExpr (env : Env) : Rhs → Option SExpr
   | .castLoad _ _ _ => none
   | .select _ _ _ => none
   | .ror n src => some (rorExpr n (.SVar src))
+  | .call _ _ => none
 
 /-- The `or` translation denotes bitwise or over wrapping 64-bit words. -/
 theorem evalBV_opExpr_or (β : String → BitVec 64) (a b : SExpr) :
@@ -294,7 +296,7 @@ mutual
 
     `none` when a statement names an array that is not declared, indexes by a
     name that is not a declared scalar, or stores a `select` right-hand side
-    (see `rhsExpr`). -/
+    (see `rhsExpr`), and on a run-time loop `forRt`. -/
 def stmtToLowCT (env : Env) : Stmt → Option LowCT
   | .assign lhs rhs => assignRhs env lhs rhs
   | .compound op lhs rhs =>
@@ -318,6 +320,7 @@ def stmtToLowCT (env : Env) : Stmt → Option LowCT
       if lo = 0 then pure (.RFor v hi b)
       else pure (.RFor tripName (hi - lo)
         (.RSeq (.RScalarSetExpr v (.SAdd (.SVar tripName) (.SLit lo))) b))
+  | .forRt _ _ _ => none
 
 /-- A statement list as an `RSeq` chain, `RSkip` when empty. -/
 def stmtsToLowCT (env : Env) : List Stmt → Option LowCT

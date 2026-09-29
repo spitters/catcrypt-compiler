@@ -20,8 +20,10 @@ at a literal or variable index and with a cast right-hand side, a global-table
 assignment `name = GLOBAL`, `while (v != 0) { … }`, `for v = lo to hi { … }`,
 and `return name`. The elaborator (`JincElab`) turns a `JFun` into a
 `Com jasminDialect`; this module is the textual front. The rotate `Rhs.ror` and
-the operator `BinKind.andn` have no syntax in this parser; `JincInline`, the
-partial evaluator for full Jasmin source units, produces them.
+the operator `BinKind.andn`, the external call `Rhs.call` and the run-time loop
+`Stmt.forRt` have no syntax in this parser; `JincInline`, the partial evaluator
+for full Jasmin source units, produces them. `ArgSlot` records where a
+function parameter's value comes from at entry.
 
 Targets the straight-line `ec_leaves.jinc` leaves (`ec_dlog`, `ec_pow_store`)
 and the two loop forms of the `.jazz` printer's output. Data-dependent
@@ -151,6 +153,9 @@ inductive Rhs where
   /-- `src` rotated right by the immediate `n` (`#ROR_64`; `#ROL_64 i` is
       `ror (64 - i)`). -/
   | ror (n : Nat) (src : String)
+  /-- A call to the external symbol `sym` with the named arguments; the bound
+      name receives the callee's result. -/
+  | call (sym : String) (args : List String)
   deriving Repr, BEq, Inhabited
 
 inductive Stmt where
@@ -165,11 +170,22 @@ inductive Stmt where
   | whileNz (cond : String) (body : List Stmt)
   /-- `for v = lo to hi { body }` over an `inline int` counter. -/
   | forTo (v : String) (lo hi : Nat) (body : List Stmt)
+  /-- `for v = 0 to count { body }` with the trip count `count` a run-time
+      64-bit word and `v` the run-time trip index. -/
+  | forRt (v : String) (count : String) (body : List Stmt)
   deriving Repr, BEq, Inhabited
 
 structure Param where
   ty : JTy
   name : String
+  deriving Repr, BEq, Inhabited
+
+/-- Where the value of a function parameter comes from at entry: the `j`-th
+    System V argument register, or the region at byte offset `off` of the
+    function's own frame. -/
+inductive ArgSlot where
+  | abi (j : Nat)
+  | frame (off : Nat)
   deriving Repr, BEq, Inhabited
 
 structure JFun where
@@ -719,6 +735,7 @@ export fn mldsa_expand_mask_real(reg ptr u32[256] out, reg ptr u32[640] buf) -> 
 def loopBodyLength : Stmt → Nat
   | .whileNz _ body => body.length
   | .forTo _ _ _ body => body.length
+  | .forRt _ _ body => body.length
   | _ => 0
 
 /-- The guard variable of a `while (v != 0)` statement. -/
@@ -747,9 +764,10 @@ def rhsReads : Rhs → List String
   | .imm _ => []
   | .castLoad _ arr idx => [arr, idx]
   | .ror _ src => [src]
+  | .call _ args => args
 
 /-- The names a straight-line statement reads; a loop statement is taken to
-    read none. -/
+    read none of its body's names, and a run-time loop reads its trip count. -/
 def stmtReads : Stmt → List String
   | .assign _ r => rhsReads r
   | .compound _ lhs o => lhs :: operandReads o
@@ -758,6 +776,7 @@ def stmtReads : Stmt → List String
   | .ret nm => [nm]
   | .whileNz _ _ => []
   | .forTo _ _ _ _ => []
+  | .forRt _ c _ => [c]
 
 /-- The name a statement binds. -/
 def stmtDefs : Stmt → List String
