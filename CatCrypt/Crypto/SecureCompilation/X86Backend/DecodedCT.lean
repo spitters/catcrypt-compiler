@@ -1917,12 +1917,26 @@ def inferA (prog : Array RInstr) (P : PubA) : Array (Option PubA) :=
 /-- The frame words public at some index of an array certificate. -/
 def certCellsA (A : Array (Option PubA)) : List Int := certCells A.toList
 
-/-- The certificate and preservation data of the array decision: the preservation data
-    of a first certificate, and the certificate inferred again with them. -/
+/-- Alternate preservation data and certificate from the certificate `A`: the data of `A`,
+    then the certificate inferred with them, until two successive certificates are equal,
+    at most `fuel` more rounds. The returned certificate is the one inferred with the returned
+    data. -/
+def fastCertLoop (prog : List RInstr) (pa : Array RInstr) (P : PubA) :
+    Nat → Array (Option PubA) → Array (Option PubA) × PresCtx
+  | fuel, A =>
+    let K := presCtxOf prog A.toList
+    let A' := inferAK K pa P
+    match fuel with
+    | 0 => (A', K)
+    | n + 1 => if A' == A then (A', K) else fastCertLoop prog pa P n A'
+
+/-- The certificate and preservation data of the array decision: from the certificate
+    without preservation data, the data of a certificate and the certificate inferred with
+    them, alternated for at most three rounds, since the frame words a callee is asked to
+    keep are those public at its calls. -/
 def fastCert (prog : List RInstr) (P : PubA) : Array (Option PubA) × PresCtx :=
   let pa := prog.toArray
-  let K := presCtxOf prog (inferA pa P).toList
-  (inferAK K pa P, K)
+  fastCertLoop prog pa P 2 (inferA pa P)
 
 /-- The frame words of the array decision on the certificate `A`: those of `A` and those
     the preservation certificate of `K` keeps through a write with another base. -/
