@@ -490,6 +490,14 @@ def fitsImm8S (w v : Nat) : Bool :=
   let bits := if w = 1 then 64 else 32
   v < 128 || (2 ^ bits - 128 ≤ v && v < 2 ^ bits)
 
+/-- Does the immediate `v` denote itself through the `imm32` field of a group-1 form
+    (`81 /digit id`) under op width `w`? At `w = 1` the CPU sign-extends the field
+    to 64 bits, so `v` must be a small positive (`v < 2^31`) or the 64-bit image of a
+    small negative (`v ≥ 2^64 - 2^31`); at the 32-bit width every field value
+    denotes itself. -/
+def imm32Fits (w v : Nat) : Bool :=
+  w != 1 || (v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v)
+
 /-- `IMUL $imm8, %dst, %dst` (`6B /r ib`): the sign-extended-imm8 three-operand
     self-multiply `REX.W`, opcode `0x6B`, `ModRM(11, dst, dst)`, one `imm8`. gas
     picks this 4-byte form for an immediate that fits a signed byte (the fe25519
@@ -509,7 +517,8 @@ def encImulImm32w (w d v : Nat) : List (BitVec 8) :=
     mirrors the assembler's form selection: the **short** `83 /digit ib` (sign-
     extended imm8) when the value fits a signed byte at the op width (`fitsImm8S w v`
     — the common small-stride / counter case `+8`, `cmp $0`, and the U32 mask `-1`),
-    else the `81 /digit id` imm32 form. `MOV` uses `C7 /0`/`B8+r` (it has no
+    else the `81 /digit id` imm32 form when `imm32Fits w v`, and no bytes otherwise.
+    `MOV` uses `C7 /0`/`B8+r` (it has no
     `83`-style short form). The width `w` is the op's `REX.W` bit; for a U32 op the
     REX prefix is `REX.W=0` and is elided when no extension bit is set. This selection
     is what makes the encoder's bytes byte-identical to `renderLprogAtt → gas`. -/
@@ -549,8 +558,12 @@ def encImmOp (w : Nat) (base : String) (d : LOperand) (v : Nat) : List (BitVec 8
         | some ext => if v = 1 then encShift1 w ext n else encShiftImmw w ext n v
         | none =>
           match aluImmDigit base with
+          -- A 64-bit immediate outside the sign-extended `imm32` range has no
+          -- group-1 encoding; it carries no bytes rather than a different value.
           | some digit =>
-              if fitsImm8S w v then encAluImm8 w digit n v else encAluImmw w digit n v
+              if fitsImm8S w v then encAluImm8 w digit n v
+              else if imm32Fits w v then encAluImmw w digit n v
+              else []
           | none => []
   | _ => []
 

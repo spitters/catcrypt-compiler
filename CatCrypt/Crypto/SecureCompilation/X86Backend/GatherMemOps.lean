@@ -861,39 +861,48 @@ theorem dispatch_alu_imm₂ (frame spillW : Nat) (mnem base : String)
     Bool.false_eq_true, if_false]
 
 /-- **The group-1 immediate byte function.** Outside the sign-extended-imm8 range
-    `encImmOp` emits the `81 /digit id` form over the mnemonic's `aluImmDigit`,
-    which is `LprogJInstrBytesAgree` §1's width-threaded `encAluImmw`. The
-    `MOV`, `MOVQ` and `MUL` arms sit above the group-1 one and are excluded by
-    hypothesis, since the mnemonic stays a variable here. -/
+    and inside the sign-extended-imm32 one, `encImmOp` emits the `81 /digit id`
+    form over the mnemonic's `aluImmDigit`, which is `LprogJInstrBytesAgree` §1's
+    width-threaded `encAluImmw`. The `MOV`, `MOVQ` and `MUL` arms sit above the
+    group-1 one and are excluded by hypothesis, since the mnemonic stays a
+    variable here. -/
 theorem encImmOp_aluImm32 (w digit : Nat) (base dn : String) (v : Nat)
     (hsp : isSpillOrQsave dn = false)
     (hmov : ¬ base = "MOV") (hmovq : ¬ base = "MOVQ") (hmul : ¬ base = "MUL")
     (hsh : shiftImmExt base = none) (hdig : aluImmDigit base = some digit)
-    (hfit : fitsImm8S w v = false) :
+    (hfit : fitsImm8S w v = false) (h32 : imm32Fits w v = true) :
     encImmOp w base (.reg dn) v = encAluImmw w digit (gpNumU dn) v := by
-  simp [encImmOp, hsp, hsh, hdig, hfit]
+  simp [encImmOp, hsp, hsh, hdig, hfit, h32]
 
-/-- `ADC:64` over an immediate outside the imm8 range (`81 /2 id`). -/
+/-- At the 64-bit width the `imm32` range test is `aluImmGathers`. -/
+theorem imm32Fits_one (v : Nat) : imm32Fits 1 v = aluImmGathers v := by
+  simp [imm32Fits, aluImmGathers, fitsImm32S]
+
+/-- `ADC:64` over an immediate outside the imm8 range and inside the imm32 one
+    (`81 /2 id`). -/
 theorem encodeLopn_adcImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
-    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false) :
+    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false)
+    (h32 : aluImmGathers v = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "ADC:64" [.reg an, .imm v]) qsaveB
       = encAluImmw 1 2 (gpNumU dn) v := by
   rw [dispatch_alu_imm₂ frame spillW "ADC:64" "ADC" dn an v qsaveB
       (by decide +kernel) (by decide +kernel) (by decide +kernel)
       (by decide +kernel) (by decide +kernel) (by decide +kernel),
     encImmOp_aluImm32 1 2 "ADC" dn v hsp (by decide) (by decide) (by decide)
-      (by decide +kernel) (by decide +kernel) hfit]
+      (by decide +kernel) (by decide +kernel) hfit (by rw [imm32Fits_one]; exact h32)]
 
-/-- `SBB:64` over an immediate outside the imm8 range (`81 /3 id`). -/
+/-- `SBB:64` over an immediate outside the imm8 range and inside the imm32 one
+    (`81 /3 id`). -/
 theorem encodeLopn_sbbImm (frame spillW : Nat) (dn an : String) (v qsaveB : Nat)
-    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false) :
+    (hsp : isSpillOrQsave dn = false) (hfit : fitsImm8S 1 v = false)
+    (h32 : aluImmGathers v = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SBB:64" [.reg an, .imm v]) qsaveB
       = encAluImmw 1 3 (gpNumU dn) v := by
   rw [dispatch_alu_imm₂ frame spillW "SBB:64" "SBB" dn an v qsaveB
       (by decide +kernel) (by decide +kernel) (by decide +kernel)
       (by decide +kernel) (by decide +kernel) (by decide +kernel),
     encImmOp_aluImm32 1 3 "SBB" dn v hsp (by decide) (by decide) (by decide)
-      (by decide +kernel) (by decide +kernel) hfit]
+      (by decide +kernel) (by decide +kernel) hfit (by rw [imm32Fits_one]; exact h32)]
 
 /-! ## 4. The byte agreement
 
@@ -1267,7 +1276,7 @@ theorem adcImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
           (.Lopn [.reg dn] "ADC:64" [.reg dn, .imm v]) qsaveB) := by
   rw [lowerMemOp_adc_imm frame spillW qsaveB dn v hd hv, Option.map_some,
     encodeJBlock_singleton,
-    encodeLopn_adcImm frame spillW dn dn v qsaveB hdsp hfit, encAluImmw_one]
+    encodeLopn_adcImm frame spillW dn dn v qsaveB hdsp hfit hv, encAluImmw_one]
   simp [encodeJInstr, hr]
 
 /-- **The `SBB:64` immediate byte agreement**, under the same form-selection
@@ -1284,7 +1293,7 @@ theorem sbbImm_gather_bytes_agree (alloc : GpAlloc) (frame spillW : Nat)
           (.Lopn [.reg dn] "SBB:64" [.reg dn, .imm v]) qsaveB) := by
   rw [lowerMemOp_sbb_imm frame spillW qsaveB dn v hd hv, Option.map_some,
     encodeJBlock_singleton,
-    encodeLopn_sbbImm frame spillW dn dn v qsaveB hdsp hfit, encAluImmw_one]
+    encodeLopn_sbbImm frame spillW dn dn v qsaveB hdsp hfit hv, encAluImmw_one]
   simp [encodeJInstr, hr]
 
 /-! ## 5. The agreement at concrete operands

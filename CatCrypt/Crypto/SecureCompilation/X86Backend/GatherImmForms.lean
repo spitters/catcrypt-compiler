@@ -363,11 +363,13 @@ strict superset of §2 and agrees with it on every byte §2 produces. -/
 
 /-- The group-1 arithmetic immediate bytes at the U64 width, with the form
     selection `LprogBytes.encImmOp` makes: the 4-byte `83 /digit ib` inside the
-    sign-extended-imm8 range, the 7-byte `81 /digit id` outside it. -/
+    sign-extended-imm8 range, the 7-byte `81 /digit id` inside the sign-extended
+    imm32 range outside it, and no bytes beyond it. -/
 def g1ImmBytes (alloc : GpAlloc) (digit : Nat) (d : String) (v : Nat) :
     List (BitVec 8) :=
   if fitsImm8S 1 v then encAluImm8 1 digit (gpNum (regOf alloc d)) v
-  else encAluImm digit (gpNum (regOf alloc d)) v
+  else if imm32Fits 1 v then encAluImm digit (gpNum (regOf alloc d)) v
+  else []
 
 /-- Encode one scalar `JInstr 64` with the group-1 arithmetic immediate form
     selection of `encImmOp` on top of `encodeJInstr6`'s three; every other arm
@@ -403,7 +405,8 @@ theorem encImmOp_g1 (w digit : Nat) (base dn : String) (v : Nat)
     (hsh : shiftImmExt base = none) (hdig : aluImmDigit base = some digit) :
     encImmOp w base (.reg dn) v
       = if fitsImm8S w v then encAluImm8 w digit (gpNumU dn) v
-        else encAluImmw w digit (gpNumU dn) v := by
+        else if imm32Fits w v then encAluImmw w digit (gpNumU dn) v
+        else [] := by
   simp [encImmOp, hsp, hsh, hdig]
 
 /-- `g1ImmBytes` is the `encImmOp` byte function at the U64 width, under the
@@ -415,7 +418,7 @@ theorem g1ImmBytes_eq_encImmOp (alloc : GpAlloc) (digit : Nat) (base d dn : Stri
     (hr : gpNum (regOf alloc d) = gpNumU dn) :
     g1ImmBytes alloc digit d v = encImmOp 1 base (.reg dn) v := by
   rw [encImmOp_g1 1 digit base dn v hsp hmov hmovq hmul hsh hdig, g1ImmBytes, hr]
-  split <;> simp [encAluImmw_one_g1]
+  split_ifs <;> simp [encAluImmw_one_g1]
 
 /-! ### 2c. The per-opcode byte agreement
 
