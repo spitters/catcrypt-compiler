@@ -20,42 +20,31 @@ term (it is **not** `rfl`).
 
 ## Bounded-iteration rewrite engine, not a full e-graph
 
-This is a bounded-iteration rewrite engine, not a full e-graph. A full e-graph
-with explicit congruence-closure union-find and a cost-extraction phase is
-heavier than a verified first cut warrants — the union-find invariant and the
-extraction-minimality proof are a large amount of bookkeeping for the algebraic
-gains targeted here. This engine is instead a confluent set of
-denotation-preserving rewrite rules applied to a fixpoint up to a fuel bound. The
-two ingredients an e-graph gives — (1) a rule set each of whose rules is
-denotation-preserving, and (2) a cost model under which the extracted term is no
-worse than the input — are both present here:
+The engine rewrites each binding of a `Com` let-chain in place with a fixed set
+of denotation-preserving rules, and iterates the pass up to a fuel bound. It has
+no e-class data structure, no congruence closure and no extraction phase:
 
-* the rule set is `algebraicRules` below, each carrying a `*_sound`
-  denotation-equality lemma;
-* the cost model is `Expr.cost` / `Com.cost`, and `saturate_cost_le` proves the
-  rewritten `Com` has cost `≤` the input (monotone non-increasing).
+* each rule is a `BitVec` identity with its own lemma, composed in
+  `rewriteBin_sound`;
+* the cost model is `opCost` / `comCost`, and `saturate_cost_le` proves the
+  rewritten `Com` has cost at most the input's.
 
-The engine reaches a *local* fixpoint (no rule fires) within the fuel bound,
-which is the bounded-rewrite analogue of saturation. It is not guaranteed to
-find the global cost minimum (that needs the e-graph's non-destructive sharing);
-this is the documented residual.
+The engine stops after `fuel` passes; it does not compute a global cost minimum.
 
-## The rule set (each denotation-preserving)
+## The rule set
 
-Operating on `Expr jasminDialect Γ (.reg w)` with a per-position
-*known-constant environment* `KEnv` (which binders are `regConst`):
+`rewriteBin` rewrites a binary `regArith` expression `op a b` over `reg w` whose
+second operand `b` is a known constant under the known-constant environment
+`KEnv` (the binders that are `regConst`, collected by `extendK` as the engine
+descends). Six rules fire; each keeps the binder and reuses an existing variable:
 
-* **mul-by-power-of-two → shift** (strength reduction):
-  `x * 2^k  ↦  x <<< k`.  Lemma: `mul_pow2_eq_shl`.
-* **mul-by-one → identity**: `x * 1 ↦ x` (move-collapse). Lemma `mul_one`.
-* **add-zero / xor-zero / or-zero → identity**: `x ⊕ 0 ↦ x`, etc.
-* **and-allones → identity**, **and-zero → zero**, **mul-zero → zero**.
+* `x + 0`, `x ^^^ 0`, `x ||| 0`, `x * 1` ↦ `x ||| x` (denotes `x`);
+* `x * 0`, `x &&& 0` ↦ `b &&& b` (denotes `0`, since `b` holds `0`).
 
-These are exactly the algebraic optimisations done by hand in Montgomery-form
-restructuring and ring-isomorphism rewrites: the multiply-by-constant strength
-reduction (`x*2^k → x<<k`) is the core lowering used in NTT butterflies and
-Montgomery ladders; the identity/annihilator collapses remove the algebraic
-no-ops a Montgomery restructuring leaves behind.
+A constant in the first operand (`0 + x`) does not fire. The strength reduction
+`x * 2^k = x <<< k` is proved as `mul_pow2_eq_shl` but is not a rule of
+`rewriteBin`, because the shift amount needs a fresh `regConst k` binder. No rule
+rewrites `x &&& allOnes`.
 
 ## Preservation theorems
 
@@ -111,8 +100,8 @@ theorem ctSafeComJ_true {Γ : Ctxt jasminDialect} {t : JasminTy} :
 
 /-! ## 1. A simple cost model
 
-Cost counts let-bindings, with a small bonus for cheap ops: a shift is cheaper
-than a multiply, an identity collapse removes a binder. This lets
+Cost sums one weight per let-binding: a multiply weighs 4 and every other op 1,
+so the rules that replace a multiply lower the cost and the others keep it. This lets
 `saturate_cost_le` state the rewrite is non-increasing. -/
 
 /-- Cost of one op: `mul` is the expensive arm; everything else is cheap. -/
