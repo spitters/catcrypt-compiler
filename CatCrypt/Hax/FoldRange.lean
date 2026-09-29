@@ -19,8 +19,8 @@ each lemma `unseal`s locally, so downstream proofs never have to.
 
 Four ways to reason about such a loop, in increasing order of what they need:
 
-* `foldRange_step` / `foldRange_stop` — peel one iteration, or finish. Unrolls a
-  concrete-bound loop.
+* `foldRange_step` / `foldRange_stop`, stated in `Runtime` — peel one iteration,
+  or finish. Unrolls a concrete-bound loop.
 * `foldRange_rel_bounded` — relational congruence, with the step relation
   required only for indices *inside* the range (`Hax.foldRange_rel` in `Runtime`
   demands it everywhere, which is often false at out-of-range indices).
@@ -38,24 +38,10 @@ namespace Hax
 
 variable {α β : Type}
 
-/-! ## Unrolling -/
+/-! ## Unrolling
 
-unseal Hax.foldRange in
-/-- Peel the first iteration off a non-empty range. -/
-theorem foldRange_step (lo hi : Int) (init : α) (f : Int → α → α) (h : lo < hi) :
-    Hax.foldRange lo hi init f = Hax.foldRange (lo + 1) hi (f lo init) f := by
-  show Hax.foldRange.go f (hi - lo).toNat lo init
-      = Hax.foldRange.go f (hi - (lo + 1)).toNat (lo + 1) (f lo init)
-  have hc : (hi - lo).toNat = (hi - (lo + 1)).toNat + 1 := by omega
-  rw [hc, Hax.foldRange.go]
-
-unseal Hax.foldRange in
-/-- An empty range returns the initial accumulator. -/
-theorem foldRange_stop (lo hi : Int) (init : α) (f : Int → α → α) (h : ¬ lo < hi) :
-    Hax.foldRange lo hi init f = init := by
-  show Hax.foldRange.go f (hi - lo).toNat lo init = init
-  have hc : (hi - lo).toNat = 0 := by omega
-  rw [hc, Hax.foldRange.go]
+`Hax.foldRange_step` and `Hax.foldRange_stop` (peel one iteration, or finish) are
+stated in `HaxLean.Runtime`. -/
 
 /-- Reindex the step function by shifting both endpoints. -/
 theorem go_shift (fa : Int → α → α) :
