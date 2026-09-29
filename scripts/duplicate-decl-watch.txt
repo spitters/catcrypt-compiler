@@ -1,0 +1,5 @@
+# Lemma families already defined in the workspace (review 2026-09-29).
+# One short-name regex per line; scripts/duplicate-decl-guard.sh refuses a staged
+# file that adds a new definition matching one of them.
+seqAll
+memGetDyn_memSetDyn\w*

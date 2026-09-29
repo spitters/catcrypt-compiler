@@ -23,6 +23,13 @@ if [ -n "$staged_lean" ]; then
   fi
 fi
 
+# A new definition of a lemma family the workspace already has (watch list in
+# scripts/duplicate-decl-watch.txt) is refused; import the existing one.
+if [ -n "$staged_lean" ]; then
+  # shellcheck disable=SC2086
+  bash scripts/duplicate-decl-guard.sh $staged_lean || exit 1
+fi
+
 # A new module of substance states its main results in its module docstring.
 added="$(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep '\.lean$' || true)"
 if [ -n "$added" ]; then
