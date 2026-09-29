@@ -14,6 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 public import CatCrypt.Crypto.Optimizer.ComRangeFold
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -42,7 +43,8 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
 
 * `optimizeLprog` — the composition an emitter applies before `renderLprogAtt`.
 * `ownedLprog`, `renderOwned` — the basic-block optimizer followed by the
-  constant-index displacement fold `ConstIndexFold.foldIndexedLprog`, and its
+  constant-index displacement fold `ConstIndexFold.foldIndexedLprog` and the
+  general-purpose register re-allocation `LprogGpRealloc.reallocLprog`, and its
   printing.
 * `ownedComStage`, `renderOwnedCom` — the opt-in `Com → Com` stage before the exporter
   (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
@@ -1228,9 +1230,12 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     `LOAD:64`/`STORE:64`). The fold runs after the optimizer, so no pass that
     keys a `mem.<base>.<off>` name as a cell independent of its base register
     sees the displacement forms. Its block agreement over the machine model is
-    `ConstIndexFold.gatherPrinted_dropDeadImm_constIndexFold`. -/
+    `ConstIndexFold.gatherPrinted_dropDeadImm_constIndexFold`. The last stage is
+    the general-purpose register re-allocation `LprogGpRealloc.reallocLprog`,
+    which keeps every address register at its own location and is sound per run
+    by `LprogGpRealloc.reallocRun_sound`. -/
 def ownedLprog (p : Lprog) : Lprog :=
-  ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p)
+  LprogGpRealloc.reallocLprog (ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p))
 
 /-- **The one optimizing compiler back-end.** Every owned emit driver renders its
     `Lprog` through this entry point: `optimizeLprogBasicBlocks` — the four
