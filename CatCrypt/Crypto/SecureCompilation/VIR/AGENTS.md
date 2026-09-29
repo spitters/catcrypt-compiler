@@ -108,7 +108,7 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
 | `Compiler.compile_correct_front` | The hypotheses of `rustToJasminCom_endToEnd`, including `hAdequacy`; it is that theorem restated | same |
 | `CompileCorrectBaseAlu.compile_correct_riscv`, `CompileCorrectBaseAlu.compile_correct_arm` | `ComBaseAlu com` and `AllReg64 Γ` for `com : Com jasminDialect Γ (.reg 64)`. Conclusion: reading the result register after `runRBlock64` (RISC-V) or `runBBlock` (ARM) on the compiled block gives `Com.denote com V`, and every instruction of the block is base-ALU (`IsBaseAlu`) or general-purpose ALU (`IsGpAlu`) | `CompileCorrectBaseAlu.lean` |
 | `CompileCorrectAllGenuine.compile_correct_all_genuine` | `ComBaseAlu com` and `AllReg64 Γ`; `GenuineModelChoice` ranges over RISC-V and ARM only. The first conjunct of the previous row, by case on the choice | `CompileCorrectAllGenuine.lean` |
-| `CompilerCorrectAndRobust.compiler_correct_and_robust` | `LeafAgrees leafSem`; an edge `JasminIRToX86 leafSem X86Obs x86Behaviour x86CTSafe` whose observable type, behaviour and constant-time predicate are free parameters; `StraightLine c`; `RobustlyCTSafe c`. Conclusion: `x86Behaviour c V = edge.obsOf (c.denote V) ∧ x86CTSafe c`. The first conjunct is the edge field `semRefine` composed with `WholeFnLowering.lowerComToProg_sem_eq'`, the second is the field `ctPreserve`; the statement contains no x86 instruction semantics | `CompilerCorrectAndRobust.lean` |
+| `CompilerCorrectAndRobust.compiler_correct_and_robust` | `LeafAgrees leafSem`; an edge `JasminIRToX86 leafSem X86Obs x86Behaviour` whose observable type and behaviour are free parameters; `StraightLine c`. Conclusion: `x86Behaviour c V = edge.obsOf (c.denote V)`, the edge field `semRefine` composed with `WholeFnLowering.lowerComToProg_sem_eq'`; the statement contains no x86 instruction semantics and no constant-time property (byte-level constant time is `X86Backend.DecodedCT.bytesCTCheck_sound`) | `CompilerCorrectAndRobust.lean` |
 
 README.md, section "The guarantees", discusses the first four rows.
 `RustExecSimulatesUnified.lean` gives the `RustExec` leg for the unified front;
@@ -140,9 +140,9 @@ literal limb stores, selections within one tower type and admitted calls; it exc
   (`robustCTPreservation_ctx_image_uncond`), `RobustSafetyContext.lean`.
 - `RobustCompilationPipeline.lean`: `JasminVerifiedCompiler` and
   `RobustCompilationPipeline.robustCompilation_source_to_x86`, stated for the lattice
-  dialect with the x86 observable and constant-time predicate as parameters; on the
-  owned instance the predicate is `True`, so the theorem carries no constant-time
-  content for the owned backend.
+  dialect with the x86 observable as a parameter; it states value preservation and no constant-time property.
+  Constant time of emitted code is proved at the decoded bytes by
+  `X86Backend.DecodedCT.bytesCTCheck_sound`.
   `OwnedX86RobustInstance.lean`: `ownedJasminVerifiedCompiler`.
 - `CTPredicate.lean`, `JasminCTPredicate.lean`, `MaskingPredicate.lean`,
   `CtPreservationNewTransforms.lean`, `ThirCTSafe.lean`, `JForProgCT.lean`.

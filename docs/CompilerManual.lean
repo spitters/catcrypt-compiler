@@ -243,14 +243,14 @@ default value.
 
 _Robust source to x86_: `RobustCompilationPipeline.robustCompilation_source_to_x86`.
 For a lattice-dialect program lowered to Jasmin, the theorem takes the x86
-observable, behaviour and constant-time predicate as parameters. Its two conjuncts
-are the `semRefine` and `ctPreserve` fields of its hypothesis
-`JasminVerifiedCompiler`, applied to the evaluator-level result and to the
-`Com`-level constant-time result, so the statement contains no x86 instruction
-semantics. The one instance in the package,
+observable and behaviour as parameters. Its conclusion is the `semRefine` field of
+its hypothesis `JasminVerifiedCompiler` applied to the evaluator-level result, so the
+statement contains no x86 instruction semantics. The one instance in the package,
 `OwnedX86RobustInstance.ownedJasminVerifiedCompiler`, takes the evaluator result as
-the observable and `True` as the constant-time predicate. Leaf agreement and
-SSA-naming injectivity are further hypotheses.
+the observable. Leaf agreement and SSA-naming injectivity are further hypotheses.
+The theorem states no constant-time property; constant time of emitted code is
+proved at the decoded bytes by `DecodedCT.bytesCTCheck_sound`, with the acceptance
+theorems `DecodedCT.mul1Node_bytesCT` and `DecodedCT.feAddFramed_bytesCT`.
 
 _Machine code_: `ScalarLinX86Demo.com_x86_e2e`. For a straight-line `Com` over
 `ComOK` in a context of 64-bit registers (`AllReg64`), with shift amounts in range

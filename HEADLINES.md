@@ -79,18 +79,12 @@ inverse as the identity (`VIR/LatticeDialect.lean`).
 
 `VIR.RobustCompilationPipeline.robustCompilation_source_to_x86`. For every
 lattice-dialect program and valuation, composed with an x86 compiler given as a
-`JasminVerifiedCompiler` record (observable, behaviour, constant-time predicate): the
-x86 observable equals the decoded source denotation, and the compiled program
-satisfies the record's constant-time predicate `x86CTSafe`. The predicate and the
-implication `ctPreserve` are fields of the record, supplied by the caller; the
-Com-level premise (`robustCTPreservation_uncond`) states that the lowered program
-contains no stack load or store, which holds for every lattice-dialect program
-because every lowered operation is an opaque `extCall`. On the owned instance
-(`OwnedX86RobustInstance.ownedJasminVerifiedCompiler`) the predicate is `True`, so
-the theorem carries no constant-time content for the owned backend; constant-time
-evidence for emitted code is `EmitCtGate.emitChecked_gather_constant_time` and
-`AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line gathered
-blocks) and the per-kernel `blockLeak` theorems. Hypotheses: leaf agreement
+`JasminVerifiedCompiler` record (observable, behaviour): the x86 observable equals
+the decoded source denotation. The theorem states no constant-time property.
+Constant time of emitted code is proved at the decoded bytes by
+`X86Backend.DecodedCT.bytesCTCheck_sound`, with the acceptance theorems
+`DecodedCT.mul1Node_bytesCT` (`mpn_mul_1`) and `DecodedCT.feAddFramed_bytesCT`
+(`fe25519_add`). Hypotheses: leaf agreement
 `LeafAgrees`, injectivity of `freshName` and of the parameter map.
 
 ## Machine code

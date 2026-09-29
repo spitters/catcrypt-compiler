@@ -38,24 +38,23 @@ bridged to the evaluator by `lowerComToProg_sem_eq` (`runProg = Com.denote`). Th
 is what distinguishes the owned route from a carried external edge: the machine
 that realizes the record's behaviour is exhibited and proved, not assumed.
 
-## Scope boundary (constant-time and the capstone)
+## Scope boundary (constant time and the capstone)
 
-* `ownedX86CTSafe` is `True`: the `x86Target` ISA subset (`X86Backend.Model`) has
-  no memory operands and no branches, so every emitted block is constant-time by
-  construction. The owned *leakage-trace* constant-time theorem
-  (`X86Backend.CorrectAndRobust.ownedCompile_secure_and_CT`, `blockLeak`) is stated
-  over a different x86 machine (`X86Backend.Jasmin`, `JInstr`/`runBlock`) and a
-  different source (`List ArithSrc`), so it does not plug into this `Com jasminDialect`
-  value route; the `True` predicate records the by-construction fact for the
-  `x86Target` model.
+* The records carry no constant-time field. Constant time of emitted code is proved
+  at the decoded bytes: `X86Backend.DecodedCT.bytesCTCheck_sound` gives equal
+  leakage traces (branch outcomes and effective addresses) on the address machine
+  for a program accepted by `bytesCTCheck`, and `DecodedCT.mul1Node_bytesCT` and
+  `DecodedCT.feAddFramed_bytesCT` are its acceptance of the decoded `mpn_mul_1` and
+  `fe25519_add` bytes. The `x86Target` route of this file emits `Model.Instr`
+  blocks, which no encoder turns into bytes, so the checker does not apply to it.
 * The capstone quantifies over `lowerLatticeToJasmin c`, whose binders are all
   `extCall` (opaque leaves) — the owned scalar backend compiles `regArith`/`mulhi`/
   shift/const, never `extCall`. So the owned machine-realization fragment is
   disjoint from the capstone's programs: `ownedRobustCompilation_source_to_x86`
   below discharges the capstone's `jvc` hypothesis with this owned instance, but on
   the capstone's `extCall` programs the discharged `semRefine` is the definitional
-  decode, not the owned machine — the machine's teeth are on the scalar fragment
-  (`ownedX86_machine_realizes`).
+  decode, not the owned machine; the owned machine is related to the behaviour on
+  the scalar fragment (`ownedX86_machine_realizes`).
 -/
 
 @[expose] public section
@@ -93,7 +92,7 @@ def ownedObsOf : {t : JasminTy} → ⟦t⟧ → ownedX86Obs
 /-- On a `reg 64` meaning, the decode is the identity. -/
 @[simp] theorem ownedObsOf_reg64 (v : BitVec 64) : ownedObsOf (t := .reg 64) v = v := rfl
 
-/-! ## 2. The record's behaviour and CT fields -/
+/-! ## 2. The record's behaviour -/
 
 /-- The owned x86 behaviour: decode the owned jasmin-IR evaluator meaning
     (`runProg`) to the observable. This is exactly the record's value-refinement
@@ -101,12 +100,6 @@ def ownedObsOf : {t : JasminTy} → ⟦t⟧ → ownedX86Obs
 def ownedX86Behaviour (leafSem : LeafSem) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (V : Ctxt.Valuation Γ) : ownedX86Obs :=
   ownedObsOf (runProg leafSem com V)
-
-/-- The owned x86 CT predicate. The `x86Target` model (`X86Backend.Model`) has no
-    memory operands and no branches, so every emitted scalar block is constant-time
-    by construction; the predicate records this as `True`. -/
-def ownedX86CTSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (_com : Com jasminDialect Γ t) : Prop := True
 
 /-! ## 3. The owned machine realizes the behaviour on the scalar fragment
 
@@ -161,21 +154,19 @@ theorem ownedX86_machine_realizes {leafSem : LeafSem} (hLeaf : LeafAgrees leafSe
 /-! ## 4. The proved `JasminIRToX86` instance -/
 
 /-- **The owned x86 backend as a proved `JasminIRToX86` residual.** `semRefine` holds
-    by definition (`ownedX86Behaviour` is the decode of the evaluator meaning);
-    `ctPreserve` is discharged by the by-construction constant-time of the
-    `x86Target` ISA subset. Unlike the carried jasmin edge, the value refinement is
-    grounded by `ownedX86_machine_realizes`: the owned x86 machine computes this
-    behaviour on the scalar `reg 64` fragment. -/
+    by definition (`ownedX86Behaviour` is the decode of the evaluator meaning).
+    Unlike the carried jasmin edge, the value refinement is grounded by
+    `ownedX86_machine_realizes`: the owned x86 machine computes this behaviour on the
+    scalar `reg 64` fragment. -/
 def ownedJasminIRToX86 (leafSem : LeafSem) :
-    JasminIRToX86 leafSem ownedX86Obs (ownedX86Behaviour leafSem) ownedX86CTSafe where
+    JasminIRToX86 leafSem ownedX86Obs (ownedX86Behaviour leafSem) where
   obsOf := ownedObsOf
   semRefine := fun _ _ => rfl
-  ctPreserve := fun _ _ => trivial
 
 /-- The legacy `JasminVerifiedCompiler` record, built from the owned residual for
     free (`ofIRToX86` derives the redundant `psemFaithful` field). -/
 def ownedJasminVerifiedCompiler (leafSem : LeafSem) :
-    JasminVerifiedCompiler leafSem ownedX86Obs (ownedX86Behaviour leafSem) ownedX86CTSafe :=
+    JasminVerifiedCompiler leafSem ownedX86Obs (ownedX86Behaviour leafSem) :=
   JasminVerifiedCompiler.ofIRToX86 (ownedJasminIRToX86 leafSem)
 
 /-! ## 5. Capstone application: `jvc` discharged for the owned route
@@ -190,8 +181,10 @@ the disjoint scalar fragment (`ownedX86_machine_realizes`). -/
     discharged.** Specialization of `robustCompilation_source_to_x86` to the owned
     instance: for every source lattice program, the owned x86 observable of the
     emitted-and-compiled program is the decode of the transported source
-    denotation, and it is x86-CT-safe. The compiler-edge hypothesis is constructed,
-    not assumed. -/
+    denotation. The compiler-edge hypothesis is constructed, not assumed. Constant
+    time is proved at the decoded bytes by `X86Backend.DecodedCT.bytesCTCheck_sound`,
+    with the acceptance theorems `DecodedCT.mul1Node_bytesCT` and
+    `DecodedCT.feAddFramed_bytesCT`. -/
 theorem ownedRobustCompilation_source_to_x86
     {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     (hInj : Function.Injective freshName)
@@ -205,8 +198,7 @@ theorem ownedRobustCompilation_source_to_x86
                 (∃ h : s = s', h ▸ v = v'))
     (V : Ctxt.Valuation Γ) :
     ownedX86Behaviour leafSem (lowerLatticeToJasmin c) (mapVal V)
-        = ownedObsOf (transTy (c.denote V))
-      ∧ ownedX86CTSafe (lowerLatticeToJasmin c) :=
+        = ownedObsOf (transTy (c.denote V)) :=
   robustCompilation_source_to_x86 hLeaf hInj (ownedJasminVerifiedCompiler leafSem) c hPinj V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
