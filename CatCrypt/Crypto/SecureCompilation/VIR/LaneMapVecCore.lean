@@ -22,7 +22,8 @@ transform is a `FieldDialectBlockDescent.BlockLoweringData` instance: every
 other op takes an opaque nullary `extCall` fallback.
 
 The shapes live beside the packed ops they use: `qwordZmm` in `LaneMapZmm`, `dwordZmm`
-in `LaneMapZmmD`, `dwordYmm` in `Optimizer.Batch8`, `qwordYmm` in `LaneMapVec`.
+in `LaneMapZmmD`, `dwordYmm` in `Optimizer.Batch8`, `qwordYmm` in `LaneMapVec`, `wordYmm` in
+`LaneMapYmmW`.
 
 ## Main definitions
 
