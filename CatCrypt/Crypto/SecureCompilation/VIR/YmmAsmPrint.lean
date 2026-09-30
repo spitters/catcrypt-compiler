@@ -175,13 +175,17 @@ def renderYmmInstr : YmmInstr → String
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       | .vpsrldq imm, [a] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      | .vpslldq imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       -- imm8-carrying binary word blend and half permute: `\t<mn>\t$imm, src2, src1, dst`
       | .vpblendw imm, [a, b] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ b ++ ", " ++ a ++ ", " ++ dst
       | .vperm2i128 imm, [a, b] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ b ++ ", " ++ a ++ ", " ++ dst
-      -- unary high-dup move and absolute value: `\t<mn>\tsrc, dst`
+      -- unary high- and low-dup moves and absolute value: `\t<mn>\tsrc, dst`
       | .vmovshdup, [a] =>
+          "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst
+      | .vmovsldup, [a] =>
           "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst
       | .vpabsd, [a] =>
           "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst

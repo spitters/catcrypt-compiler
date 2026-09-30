@@ -574,6 +574,16 @@ def ymmTwoSrcAtt? : String → Option String
   | "VPUNPCKLQDQ" => some "vpunpcklqdq"
   | "VPUNPCKHQDQ" => some "vpunpckhqdq"
   | "VPSHUFB" => some "vpshufb"
+  | "VPMULHRSW" => some "vpmulhrsw"
+  | "VPMADDUBSW" => some "vpmaddubsw"
+  | "VPACKUSWB" => some "vpackuswb"
+  | "VPACKUSDW" => some "vpackusdw"
+  | "VPADDB" => some "vpaddb"
+  | "VPSUBB" => some "vpsubb"
+  | "VPUNPCKLBW" => some "vpunpcklbw"
+  | "VPUNPCKHBW" => some "vpunpckhbw"
+  | "VPUNPCKLWD" => some "vpunpcklwd"
+  | "VPUNPCKHWD" => some "vpunpckhwd"
   | _ => none
 
 /-- The AT&T memory operand of the 256-bit cell `x` of the array at `b` in a
@@ -615,6 +625,7 @@ def ymmImmUnaryAtt? : String → Option String
   | "VPSLLQ" => some "vpsllq"
   | "VPSRLQ" => some "vpsrlq"
   | "VPSRLDQ" => some "vpsrldq"
+  | "VPSLLDQ" => some "vpslldq"
   | _ => none
 
 /-- The AT&T mnemonic of a two-source 256-bit `YmmOp` whose immediate is carried
@@ -719,8 +730,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **VMOVSHDUP** (NTT odd-lane duplicate): `d := dup_odd s`. Single-source
       -- two-operand VEX move, no immediate. AT&T `vmovshdup %ymm<s>, %ymm<d>`.
-      else if base == "VMOVSHDUP" || base == "VPABSD" then
-        let mn := if base == "VMOVSHDUP" then "vmovshdup" else "vpabsd"
+      else if base == "VMOVSHDUP" || base == "VMOVSLDUP" || base == "VPABSD" then
+        let mn := if base == "VMOVSHDUP" then "vmovshdup"
+          else if base == "VMOVSLDUP" then "vmovsldup" else "vpabsd"
         match s, d with
         | .reg sn, .reg dn =>
             [ "\t" ++ mn ++ " " ++ resolveName frame spillW 32 sn qsaveB

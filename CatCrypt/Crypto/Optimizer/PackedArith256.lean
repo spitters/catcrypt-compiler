@@ -39,6 +39,10 @@ dword lanes, in the 8×`u32` lane model of `yDwordW`/`yOfDwordsW`.
 * `vpermdW_lane`, `vpunpck{l,h}{dq,qdq}W_lane`, `vpack{ssdw,sswb}W_lane`,
   `vpsrldqW_half`, `vperm2i128W_half`: the cross-lane ops, stated per 128-bit
   half where the instruction acts per half.
+* `vpmulhrswW_lane`, `vpmaddubswW_lane`, `vpaddbW_lane`, `vpsubbW_lane`,
+  `vmovsldupW_lane`, `vpack{uswb,usdw}W_lane`, `vpunpck{l,h}{bw,wd}W_lane`,
+  `vpslldqW_half`: the byte-lane, rounding-multiply, unsigned-pack and
+  byte/word-unpack ops of the formosa-mlkem AVX2 code.
 
 The add op is stated over `yOfDwordsW` (its defining reassembly), so its lane
 lemma is the packing round-trip proved lane-by-lane. The bitwise ops are the
@@ -58,7 +62,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
     satI32toI16W satI16toI8W perm2i128SelW
     vpaddwW vpsubwW vpmullwW vpmulhwW vpmaddwdW vpcmpgtwW vpcmpgtdW vpcmpeqdW
     vpsllwW vpsrlwW vpsrawW vpabsdW vpsigndW vpacksswbW vpackssdwW vpermdW
-    vpunpckldqW vpunpckhdqW vpunpcklqdqW vpunpckhqdqW vpblendwW vpsrldqW vperm2i128W)
+    vpunpckldqW vpunpckhdqW vpunpcklqdqW vpunpckhqdqW vpblendwW vpsrldqW vperm2i128W
+    satI16toU8W satI32toU16W vpmulhrswW vpmaddubswW vpackuswbW vpackusdwW vpaddbW vpsubbW
+    vpunpcklbwW vpunpckhbwW vpunpcklwdW vpunpckhwdW vmovsldupW vpslldqW)
 
 /-- **Packed 8-lane dword add per lane.** Dword lane `k` of `vpadddW a b`
     (`VPADDD`, 8×`u32` wrapping add) is the sum of lane `k` of `a` and lane `k`
@@ -450,5 +456,114 @@ theorem vperm2i128W_half (a b : BitVec 256) (imm : Nat) (h : Fin 2) :
   fin_cases h <;>
     simp only [vperm2i128W, yHalfW, Nat.mul_zero, Nat.mul_one, Nat.shiftRight_zero] <;>
     bv_decide
+
+/-! ## Byte-lane arithmetic, unsigned packs, word and byte unpacks
+
+The remaining ops of the ML-KEM AVX2 code: the rounding multiply-high, the
+unsigned-by-signed byte multiply-add, the byte add and subtract, the even-dword
+duplicate, the unsigned-saturating packs, the byte and word interleaves and the
+per-half byte shift left. -/
+
+/-- Word lane `k` of `vpmulhrswW a b` (`VPMULHRSW`) is bits `16‥1` of the signed
+    32-bit product of lane `k` of `a` and `b`, shifted right by 14 and
+    incremented. -/
+theorem vpmulhrswW_lane (a b : BitVec 256) (k : Fin 16) :
+    yWordW (vpmulhrswW a b) k.val
+      = BitVec.extractLsb' 1 16
+          ((BitVec.signExtend 32 (yWordW a k.val) * BitVec.signExtend 32 (yWordW b k.val)).sshiftRight 14
+            + 1) :=
+  yWordW_yOfWordsW _ k
+
+/-- Word lane `k` of `vpmaddubswW a b` (`VPMADDUBSW`) is the signed-saturated
+    sum of the products of the unsigned bytes `2k`, `2k+1` of `a` with the signed
+    bytes `2k`, `2k+1` of `b`. -/
+theorem vpmaddubswW_lane (a b : BitVec 256) (k : Fin 16) :
+    yWordW (vpmaddubswW a b) k.val
+      = satI32toI16W
+          ((yByteW a (2 * k.val)).setWidth 32 * BitVec.signExtend 32 (yByteW b (2 * k.val))
+            + (yByteW a (2 * k.val + 1)).setWidth 32
+              * BitVec.signExtend 32 (yByteW b (2 * k.val + 1))) :=
+  yWordW_yOfWordsW _ k
+
+/-- Byte lane `k` of `vpaddbW a b` (`VPADDB`) is the wrapping sum of lane `k` of
+    `a` and `b`. -/
+theorem vpaddbW_lane (a b : BitVec 256) (k : Fin 32) :
+    yByteW (vpaddbW a b) k.val = yByteW a k.val + yByteW b k.val :=
+  yByteW_yOfBytesW _ k
+
+/-- Byte lane `k` of `vpsubbW a b` (`VPSUBB`) is the wrapping difference of lane
+    `k` of `a` and `b`. -/
+theorem vpsubbW_lane (a b : BitVec 256) (k : Fin 32) :
+    yByteW (vpsubbW a b) k.val = yByteW a k.val - yByteW b k.val :=
+  yByteW_yOfBytesW _ k
+
+/-- Dword lane `k` of `vmovsldupW a` (`VMOVSLDUP`) is the even dword `2 ⌊k/2⌋` of
+    `a`. -/
+theorem vmovsldupW_lane (a : BitVec 256) (k : Fin 8) :
+    yDwordW (vmovsldupW a) k.val = yDwordW a (2 * (k.val / 2)) :=
+  yDwordW_yOfDwordsW _ k
+
+/-- In half `h`, `vpackuswbW a b` (`VPACKUSWB`) has as byte `16h+j` the
+    unsigned-saturated word `a[8h+j]` and as byte `16h+8+j` the unsigned-saturated
+    word `b[8h+j]`, for `j < 8`. -/
+theorem vpackuswbW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 8) :
+    yByteW (vpackuswbW a b) (16 * h.val + j.val) = satI16toU8W (yWordW a (8 * h.val + j.val)) ∧
+    yByteW (vpackuswbW a b) (16 * h.val + 8 + j.val)
+      = satI16toU8W (yWordW b (8 * h.val + j.val)) := by
+  simp (disch := omega) only [vpackuswbW, yByteW_yOfBytesW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- In half `h`, `vpackusdwW a b` (`VPACKUSDW`) has as word `8h+j` the
+    unsigned-saturated dword `a[4h+j]` and as word `8h+4+j` the unsigned-saturated
+    dword `b[4h+j]`, for `j < 4`. -/
+theorem vpackusdwW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 4) :
+    yWordW (vpackusdwW a b) (8 * h.val + j.val) = satI32toU16W (yDwordW a (4 * h.val + j.val)) ∧
+    yWordW (vpackusdwW a b) (8 * h.val + 4 + j.val)
+      = satI32toU16W (yDwordW b (4 * h.val + j.val)) := by
+  simp (disch := omega) only [vpackusdwW, yWordW_yOfWordsW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- In half `h`, `vpunpcklbwW a b` (`VPUNPCKLBW`) interleaves bytes `16h‥16h+7`
+    of `a` and `b`: byte `16h+2j` is `a[16h+j]` and byte `16h+2j+1` is
+    `b[16h+j]`, for `j < 8`. -/
+theorem vpunpcklbwW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 8) :
+    yByteW (vpunpcklbwW a b) (16 * h.val + 2 * j.val) = yByteW a (16 * h.val + j.val) ∧
+    yByteW (vpunpcklbwW a b) (16 * h.val + 2 * j.val + 1) = yByteW b (16 * h.val + j.val) := by
+  simp (disch := omega) only [vpunpcklbwW, yByteW_yOfBytesW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- In half `h`, `vpunpckhbwW a b` (`VPUNPCKHBW`) interleaves bytes
+    `16h+8‥16h+15` of `a` and `b`: byte `16h+2j` is `a[16h+8+j]` and byte
+    `16h+2j+1` is `b[16h+8+j]`, for `j < 8`. -/
+theorem vpunpckhbwW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 8) :
+    yByteW (vpunpckhbwW a b) (16 * h.val + 2 * j.val) = yByteW a (16 * h.val + 8 + j.val) ∧
+    yByteW (vpunpckhbwW a b) (16 * h.val + 2 * j.val + 1)
+      = yByteW b (16 * h.val + 8 + j.val) := by
+  simp (disch := omega) only [vpunpckhbwW, yByteW_yOfBytesW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- In half `h`, `vpunpcklwdW a b` (`VPUNPCKLWD`) interleaves words `8h‥8h+3`
+    of `a` and `b`: word `8h+2j` is `a[8h+j]` and word `8h+2j+1` is `b[8h+j]`,
+    for `j < 4`. -/
+theorem vpunpcklwdW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 4) :
+    yWordW (vpunpcklwdW a b) (8 * h.val + 2 * j.val) = yWordW a (8 * h.val + j.val) ∧
+    yWordW (vpunpcklwdW a b) (8 * h.val + 2 * j.val + 1) = yWordW b (8 * h.val + j.val) := by
+  simp (disch := omega) only [vpunpcklwdW, yWordW_yOfWordsW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- In half `h`, `vpunpckhwdW a b` (`VPUNPCKHWD`) interleaves words
+    `8h+4‥8h+7` of `a` and `b`: word `8h+2j` is `a[8h+4+j]` and word `8h+2j+1`
+    is `b[8h+4+j]`, for `j < 4`. -/
+theorem vpunpckhwdW_lane (a b : BitVec 256) (h : Fin 2) (j : Fin 4) :
+    yWordW (vpunpckhwdW a b) (8 * h.val + 2 * j.val) = yWordW a (8 * h.val + 4 + j.val) ∧
+    yWordW (vpunpckhwdW a b) (8 * h.val + 2 * j.val + 1) = yWordW b (8 * h.val + 4 + j.val) := by
+  simp (disch := omega) only [vpunpckhwdW, yWordW_yOfWordsW_of_lt]
+  fin_cases h <;> fin_cases j <;> simp
+
+/-- Half `h` of `vpslldqW a c` (`VPSLLDQ`) is half `h` of `a` shifted left by
+    `c` bytes, zero filled; a count of 16 or more clears the half. -/
+theorem vpslldqW_half (a : BitVec 256) (c : Nat) (h : Fin 2) :
+    yHalfW (vpslldqW a c) h.val = yHalfW a h.val <<< (8 * c) := by
+  fin_cases h <;> simp only [vpslldqW, yHalfW] <;> bv_decide
 
 end CatCrypt.Crypto.Optimizer.PackedArith256

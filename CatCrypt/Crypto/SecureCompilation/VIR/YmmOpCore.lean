@@ -68,6 +68,13 @@ that would otherwise arise once `JasminDialect` gains a `JasminOp.vymm` arm:
 | `vperm2i128` | binary | 2 × u128, `imm8`   | 128-bit half select from two sources         |
 | `vpsrlvd`/`vpsllvd` | binary | 8 × u32   | logical shifts by a per-lane count vector    |
 | `vpsrlvq`/`vpsllvq` | binary | 4 × u64   | logical shifts by a per-lane count vector    |
+| `vpmulhrsw` | binary | 16 × i16            | rounded, scaled high word of the product     |
+| `vpmaddubsw` | binary | 32 × u8·i8 → 16 × i16 | saturated sum of adjacent byte products    |
+| `vpackuswb`/`vpackusdw` | binary | per-128-lane | unsigned-saturating narrowing pack       |
+| `vpaddb`/`vpsubb` | binary | 32 × u8       | wrapping add / subtract                      |
+| `vpunpck{l,h}{bw,wd}` | binary | per-128-lane | interleave of the low / high elements     |
+| `vmovsldup` | unary  | 8 × u32 dup-even    | dword `2i,2i+1 ← src 2i` (low-dup)           |
+| `vpslldq`  | unary   | 2 × u128, `imm8`    | per-128-lane byte shift left                 |
 
 ## The anchor
 
@@ -487,6 +494,115 @@ def perm2i128SelW (a b : BitVec 256) (c : Nat) : BitVec 128 :=
 def vperm2i128W (a b : BitVec 256) (imm : Nat) : BitVec 256 :=
   perm2i128SelW a b (imm >>> 4) ++ perm2i128SelW a b imm
 
+/-! ## 2d. Byte-lane arithmetic, unsigned packs, word and byte unpacks
+
+The ops of the ML-KEM AVX2 code (formosa-mlkem) beyond §2c: the rounding
+multiply-high `vpmulhrsw`, the unsigned-by-signed byte multiply-add
+`vpmaddubsw`, the unsigned-saturating packs, the byte add and subtract, the
+byte and word interleaves, the even-dword duplicate and the per-half byte
+shift left. Each follows its Intel SDM pseudocode (VEX.256 form). -/
+
+/-- Unsigned saturation of a signed 16-bit value to 8 bits: negative values give
+    `0`, values above `255` give `255`, the rest are truncated unchanged. -/
+def satI16toU8W (x : BitVec 16) : BitVec 8 :=
+  if x.slt 0 then 0
+  else if (BitVec.ofNat 16 255).slt x then BitVec.ofNat 8 255
+  else x.setWidth 8
+
+/-- Unsigned saturation of a signed 32-bit value to 16 bits: negative values
+    give `0`, values above `65535` give `65535`, the rest are truncated
+    unchanged. -/
+def satI32toU16W (x : BitVec 32) : BitVec 16 :=
+  if x.slt 0 then 0
+  else if (BitVec.ofNat 32 65535).slt x then BitVec.ofNat 16 65535
+  else x.setWidth 16
+
+/-- `VPMULHRSW a, b`: word lane `i` is bits `16‥1` of
+    `((a_i · b_i) >>ₛ 14) + 1`, the SIGNED 16×16→32 product rounded and scaled
+    to its high half. AVX2. -/
+def vpmulhrswW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    BitVec.extractLsb' 1 16
+      ((BitVec.signExtend 32 (yWordW a i.val) * BitVec.signExtend 32 (yWordW b i.val)).sshiftRight 14
+        + 1))
+
+/-- `VPMADDUBSW a, b`: word lane `i` is the signed-saturated sum of the products
+    of the UNSIGNED bytes `2i`, `2i+1` of `a` with the SIGNED bytes `2i`, `2i+1`
+    of `b`. The 32-bit sum is exact. AVX2. -/
+def vpmaddubswW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    satI32toI16W
+      ((yByteW a (2 * i.val)).setWidth 32 * BitVec.signExtend 32 (yByteW b (2 * i.val))
+        + (yByteW a (2 * i.val + 1)).setWidth 32 * BitVec.signExtend 32 (yByteW b (2 * i.val + 1))))
+
+/-- `VPACKUSWB a, b`: in each 128-bit half `h`, bytes `0‥7` are the eight word
+    lanes of `a`'s half `h` and bytes `8‥15` those of `b`'s half `h`, each
+    narrowed with unsigned saturation. AVX2. -/
+def vpackuswbW (a b : BitVec 256) : BitVec 256 :=
+  yOfBytesW (fun i =>
+    let h := i.val / 16
+    let j := i.val % 16
+    if j < 8 then satI16toU8W (yWordW a (8 * h + j)) else satI16toU8W (yWordW b (8 * h + j - 8)))
+
+/-- `VPACKUSDW a, b`: in each 128-bit half `h`, words `0‥3` are the four dword
+    lanes of `a`'s half `h` and words `4‥7` those of `b`'s half `h`, each
+    narrowed with unsigned saturation. AVX2. -/
+def vpackusdwW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    let h := i.val / 8
+    let j := i.val % 8
+    if j < 4 then satI32toU16W (yDwordW a (4 * h + j)) else satI32toU16W (yDwordW b (4 * h + j - 4)))
+
+/-- `VPADDB a, b`: 32 wrapping 8-bit-lane additions. AVX2. -/
+def vpaddbW (a b : BitVec 256) : BitVec 256 := yOfBytesW (fun i => yByteW a i.val + yByteW b i.val)
+
+/-- `VPSUBB a, b`: 32 wrapping 8-bit-lane subtractions. AVX2. -/
+def vpsubbW (a b : BitVec 256) : BitVec 256 := yOfBytesW (fun i => yByteW a i.val - yByteW b i.val)
+
+/-- `VPUNPCKLBW a, b`: in each 128-bit half `h`, interleave the low eight bytes:
+    result bytes `16h‥16h+15` are `a[16h], b[16h], …, a[16h+7], b[16h+7]`. AVX2. -/
+def vpunpcklbwW (a b : BitVec 256) : BitVec 256 :=
+  yOfBytesW (fun i =>
+    let h := i.val / 16
+    let k := i.val % 16
+    if k % 2 = 0 then yByteW a (16 * h + k / 2) else yByteW b (16 * h + k / 2))
+
+/-- `VPUNPCKHBW a, b`: in each 128-bit half `h`, interleave the high eight bytes:
+    result bytes `16h‥16h+15` are `a[16h+8], b[16h+8], …, a[16h+15], b[16h+15]`.
+    AVX2. -/
+def vpunpckhbwW (a b : BitVec 256) : BitVec 256 :=
+  yOfBytesW (fun i =>
+    let h := i.val / 16
+    let k := i.val % 16
+    if k % 2 = 0 then yByteW a (16 * h + 8 + k / 2) else yByteW b (16 * h + 8 + k / 2))
+
+/-- `VPUNPCKLWD a, b`: in each 128-bit half `h`, interleave the low four words:
+    result words `8h‥8h+7` are `a[8h], b[8h], …, a[8h+3], b[8h+3]`. AVX2. -/
+def vpunpcklwdW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    let h := i.val / 8
+    let k := i.val % 8
+    if k % 2 = 0 then yWordW a (8 * h + k / 2) else yWordW b (8 * h + k / 2))
+
+/-- `VPUNPCKHWD a, b`: in each 128-bit half `h`, interleave the high four words:
+    result words `8h‥8h+7` are `a[8h+4], b[8h+4], …, a[8h+7], b[8h+7]`. AVX2. -/
+def vpunpckhwdW (a b : BitVec 256) : BitVec 256 :=
+  yOfWordsW (fun i =>
+    let h := i.val / 8
+    let k := i.val % 8
+    if k % 2 = 0 then yWordW a (8 * h + 4 + k / 2) else yWordW b (8 * h + 4 + k / 2))
+
+/-- `VMOVSLDUP a`: duplicate each EVEN 32-bit dword into the adjacent odd slot —
+    result dwords `2i` and `2i+1` both equal source dword `2i`. AVX2 (VEX.256). -/
+def vmovsldupW (a : BitVec 256) : BitVec 256 :=
+  yOfDwordsW (fun i => yDwordW a (2 * (i.val / 2)))
+
+/-- `VPSLLDQ a, imm8`: each 128-bit half shifted left by `imm8` bytes, zero
+    filled, with no bytes crossing between the halves; a count of 16 or more
+    clears the half. AVX2. -/
+def vpslldqW (a : BitVec 256) (imm : Nat) : BitVec 256 :=
+  (yHalfW a 1 <<< (8 * imm)) ++ (yHalfW a 0 <<< (8 * imm))
+
 /-! ## 3. The op family
 
 `YmmOp` is the dialect op set: the register-only AVX2 NTT fragment, MIXED arity
@@ -597,6 +713,30 @@ inductive YmmOp where
   | vpsrlvq
   /-- `VPSLLVQ a, b` — 4×u64 logical shift left by a per-lane count vector. Binary. AVX2. -/
   | vpsllvq
+  /-- `VPMULHRSW a, b` — 16×i16 rounded, scaled high-word product. Binary. AVX2. -/
+  | vpmulhrsw
+  /-- `VPMADDUBSW a, b` — 16×i16 saturated sums of unsigned-by-signed byte products. Binary. AVX2. -/
+  | vpmaddubsw
+  /-- `VPACKUSWB a, b` — per-128-lane unsigned-saturating pack of words to bytes. Binary. AVX2. -/
+  | vpackuswb
+  /-- `VPACKUSDW a, b` — per-128-lane unsigned-saturating pack of dwords to words. Binary. AVX2. -/
+  | vpackusdw
+  /-- `VPADDB a, b` — 32×u8 wrapping add. Binary. AVX2. -/
+  | vpaddb
+  /-- `VPSUBB a, b` — 32×u8 wrapping subtract. Binary. AVX2. -/
+  | vpsubb
+  /-- `VPUNPCKLBW a, b` — per-128-lane interleave of the low bytes. Binary. AVX2. -/
+  | vpunpcklbw
+  /-- `VPUNPCKHBW a, b` — per-128-lane interleave of the high bytes. Binary. AVX2. -/
+  | vpunpckhbw
+  /-- `VPUNPCKLWD a, b` — per-128-lane interleave of the low words. Binary. AVX2. -/
+  | vpunpcklwd
+  /-- `VPUNPCKHWD a, b` — per-128-lane interleave of the high words. Binary. AVX2. -/
+  | vpunpckhwd
+  /-- `VMOVSLDUP a` — low-dup of the even dwords. Unary. -/
+  | vmovsldup
+  /-- `VPSLLDQ a, imm8` — per-128-lane byte shift left (`imm8` baked in). Unary. AVX2. -/
+  | vpslldq (imm : Nat)
   deriving DecidableEq, Repr
 
 /-- Whether the op consumes one (`false`) or two (`true`) register operands.
@@ -653,6 +793,18 @@ def YmmOp.isBinary : YmmOp → Bool
   | .vperm2i128 _ => true
   | .vpsrlvq => true
   | .vpsllvq => true
+  | .vpmulhrsw => true
+  | .vpmaddubsw => true
+  | .vpackuswb => true
+  | .vpackusdw => true
+  | .vpaddb => true
+  | .vpsubb => true
+  | .vpunpcklbw => true
+  | .vpunpckhbw => true
+  | .vpunpcklwd => true
+  | .vpunpckhwd => true
+  | .vmovsldup => false
+  | .vpslldq _ => false
 
 /-- The jasmin/x86 (gas / AT&T) mnemonic of a `YmmOp` for asm emit. The AT&T
     print is lower-case with operands in `src…, dst` order; the printer adds the
@@ -708,6 +860,18 @@ def YmmOp.attMnemonic : YmmOp → String
   | .vperm2i128 _ => "vperm2i128"
   | .vpsrlvq => "vpsrlvq"
   | .vpsllvq => "vpsllvq"
+  | .vpmulhrsw => "vpmulhrsw"
+  | .vpmaddubsw => "vpmaddubsw"
+  | .vpackuswb => "vpackuswb"
+  | .vpackusdw => "vpackusdw"
+  | .vpaddb => "vpaddb"
+  | .vpsubb => "vpsubb"
+  | .vpunpcklbw => "vpunpcklbw"
+  | .vpunpckhbw => "vpunpckhbw"
+  | .vpunpcklwd => "vpunpcklwd"
+  | .vpunpckhwd => "vpunpckhwd"
+  | .vmovsldup => "vmovsldup"
+  | .vpslldq _ => "vpslldq"
 
 /-- The jasmin/Intel-SDM mnemonic of a `YmmOp` (upper-case, matching the
     `SimdOp.mnemonic` convention used by the dialect printer). -/
@@ -762,6 +926,18 @@ def YmmOp.jasminMnemonic : YmmOp → String
   | .vperm2i128 n => "VPERM2I128:" ++ toString n
   | .vpsrlvq => "VPSRLVQ"
   | .vpsllvq => "VPSLLVQ"
+  | .vpmulhrsw => "VPMULHRSW"
+  | .vpmaddubsw => "VPMADDUBSW"
+  | .vpackuswb => "VPACKUSWB"
+  | .vpackusdw => "VPACKUSDW"
+  | .vpaddb => "VPADDB"
+  | .vpsubb => "VPSUBB"
+  | .vpunpcklbw => "VPUNPCKLBW"
+  | .vpunpckhbw => "VPUNPCKHBW"
+  | .vpunpcklwd => "VPUNPCKLWD"
+  | .vpunpckhwd => "VPUNPCKHWD"
+  | .vmovsldup => "VMOVSLDUP"
+  | .vpslldq n => "VPSLLDQ:" ++ toString n
 
 /-! ## 4. Per-arm denotation (mixed arity)
 
@@ -826,6 +1002,18 @@ def YmmOp.denoteUnary : YmmOp → BitVec 256 → BitVec 256
   | .vperm2i128 imm, a => vperm2i128W a a imm
   | .vpsrlvq, a => vpsrlvqW a a
   | .vpsllvq, a => vpsllvqW a a
+  | .vpmulhrsw, a => vpmulhrswW a a
+  | .vpmaddubsw, a => vpmaddubswW a a
+  | .vpackuswb, a => vpackuswbW a a
+  | .vpackusdw, a => vpackusdwW a a
+  | .vpaddb, a => vpaddbW a a
+  | .vpsubb, a => vpsubbW a a
+  | .vpunpcklbw, a => vpunpcklbwW a a
+  | .vpunpckhbw, a => vpunpckhbwW a a
+  | .vpunpcklwd, a => vpunpcklwdW a a
+  | .vpunpckhwd, a => vpunpckhwdW a a
+  | .vmovsldup, a => vmovsldupW a
+  | .vpslldq imm, a => vpslldqW a imm
 
 /-- The binary-op denotation (`vpmuldq`/`vpsubq`/`vpaddd`/`vpsubd`/`vpblendd`).
     The unary arms ignore `b`. -/
@@ -880,6 +1068,18 @@ def YmmOp.denoteBinary : YmmOp → BitVec 256 → BitVec 256 → BitVec 256
   | .vperm2i128 imm, a, b => vperm2i128W a b imm
   | .vpsrlvq, a, b => vpsrlvqW a b
   | .vpsllvq, a, b => vpsllvqW a b
+  | .vpmulhrsw, a, b => vpmulhrswW a b
+  | .vpmaddubsw, a, b => vpmaddubswW a b
+  | .vpackuswb, a, b => vpackuswbW a b
+  | .vpackusdw, a, b => vpackusdwW a b
+  | .vpaddb, a, b => vpaddbW a b
+  | .vpsubb, a, b => vpsubbW a b
+  | .vpunpcklbw, a, b => vpunpcklbwW a b
+  | .vpunpckhbw, a, b => vpunpckhbwW a b
+  | .vpunpcklwd, a, b => vpunpcklwdW a b
+  | .vpunpckhwd, a, b => vpunpckhwdW a b
+  | .vmovsldup, a, _ => vmovsldupW a
+  | .vpslldq imm, a, _ => vpslldqW a imm
 
 /-- The uniform per-arm denotation, reading two `BitVec 256` operands (the unary
     arms ignore the second). This is the single dispatch the `Com` integration

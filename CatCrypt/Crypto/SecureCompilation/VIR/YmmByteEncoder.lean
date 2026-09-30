@@ -91,7 +91,17 @@ def encodeYmmVex : YmmOp → (d a b : Nat) → List (BitVec 8)
   | .vpunpckhdq,  d, a, b => encAvx2Alu 0x6a 1 d a b
   | .vpunpcklqdq, d, a, b => encAvx2Alu 0x6c 1 d a b
   | .vpunpckhqdq, d, a, b => encAvx2Alu 0x6d 1 d a b
+  | .vpackuswb,   d, a, b => encAvx2Alu 0x67 1 d a b
+  | .vpaddb,      d, a, b => encAvx2Alu 0xfc 1 d a b
+  | .vpsubb,      d, a, b => encAvx2Alu 0xf8 1 d a b
+  | .vpunpcklbw,  d, a, b => encAvx2Alu 0x60 1 d a b
+  | .vpunpckhbw,  d, a, b => encAvx2Alu 0x68 1 d a b
+  | .vpunpcklwd,  d, a, b => encAvx2Alu 0x61 1 d a b
+  | .vpunpckhwd,  d, a, b => encAvx2Alu 0x69 1 d a b
   -- `66 0F38` three-register ops (always 3-byte VEX, `W = 0`).
+  | .vpmulhrsw,   d, a, b => encAvx2_0F38 0x0b 1 d a b
+  | .vpmaddubsw,  d, a, b => encAvx2_0F38 0x04 1 d a b
+  | .vpackusdw,   d, a, b => encAvx2_0F38 0x2b 1 d a b
   | .vpmuldq,     d, a, b => encAvx2_0F38 0x28 1 d a b
   | .vpshufb,     d, a, b => encAvx2_0F38 0x00 1 d a b
   | .vpsrlvd,     d, a, b => encAvx2_0F38 0x45 1 d a b
@@ -108,6 +118,7 @@ def encodeYmmVex : YmmOp → (d a b : Nat) → List (BitVec 8)
   | .vperm2i128 imm, d, a, b => encVex3 0b00011 0b01 0 1 0x46 d a b (some imm)
   -- Unary ops, `vvvv` unused.
   | .vmovshdup,   d, a, _ => encVexAuto 0b00001 0b10 0 1 0x16 d 0 a
+  | .vmovsldup,   d, a, _ => encVexAuto 0b00001 0b10 0 1 0x12 d 0 a
   | .vpabsd,      d, a, _ => encAvx2_0F38 0x1e 1 d 0 a
   | .vpshufd imm, d, a, _ => encVpshufdU 1 d a imm
   | .vpermq imm,  d, a, _ => encVpermq 1 d a imm
@@ -122,6 +133,7 @@ def encodeYmmVex : YmmOp → (d a b : Nat) → List (BitVec 8)
   | .vpsrlq imm,  d, a, _ => encodeVsimdShiftImm 0x73 2 1 d a imm
   | .vpsllq imm,  d, a, _ => encodeVsimdShiftImm 0x73 6 1 d a imm
   | .vpsrldq imm, d, a, _ => encodeVsimdShiftImm 0x73 3 1 d a imm
+  | .vpslldq imm, d, a, _ => encodeVsimdShiftImm 0x73 7 1 d a imm
   -- EVEX-only ops.
   | .vpmullq,     _, _, _ => encUd2
   | .vprolq _,    _, _, _ => encUd2
@@ -352,5 +364,47 @@ theorem encodeYmmInst_ud2 :
 #kat encodeYmmInst .vpsrlvq 0 1 2 == ymmBytes [0xc4, 0xe2, 0xf5, 0x45, 0xc2]
 #kat encodeYmmInst .vpsllvq 2 1 9 == ymmBytes [0xc4, 0xc2, 0xf5, 0x47, 0xd1]
 #kat encodeYmmInst .vpsrlvq 12 4 6 == ymmBytes [0xc4, 0x62, 0xdd, 0x45, 0xe6]
+
+/- The byte-lane, rounding-multiply, unsigned-pack and word/byte-unpack ops, the
+   even-dword duplicate and the per-half byte shift left, against GNU as 2.42 on
+   the lines `op %ymm7, %ymm5, %ymm3`, `op %ymm9, %ymm1, %ymm2` and
+   `op %ymm6, %ymm4, %ymm12` (binary), `vmovsldup %ymm5, %ymm3` (and `%ymm9,
+   %ymm2`, `%ymm4, %ymm12`) and `vpslldq $3` over the same register pairs. -/
+#kat encodeYmmInst .vpmulhrsw 3 5 7 == ymmBytes [0xc4, 0xe2, 0x55, 0x0b, 0xdf]
+#kat encodeYmmInst .vpmulhrsw 2 1 9 == ymmBytes [0xc4, 0xc2, 0x75, 0x0b, 0xd1]
+#kat encodeYmmInst .vpmulhrsw 12 4 6 == ymmBytes [0xc4, 0x62, 0x5d, 0x0b, 0xe6]
+#kat encodeYmmInst .vpmaddubsw 3 5 7 == ymmBytes [0xc4, 0xe2, 0x55, 0x04, 0xdf]
+#kat encodeYmmInst .vpmaddubsw 2 1 9 == ymmBytes [0xc4, 0xc2, 0x75, 0x04, 0xd1]
+#kat encodeYmmInst .vpmaddubsw 12 4 6 == ymmBytes [0xc4, 0x62, 0x5d, 0x04, 0xe6]
+#kat encodeYmmInst .vpackuswb 3 5 7 == ymmBytes [0xc5, 0xd5, 0x67, 0xdf]
+#kat encodeYmmInst .vpackuswb 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0x67, 0xd1]
+#kat encodeYmmInst .vpackuswb 12 4 6 == ymmBytes [0xc5, 0x5d, 0x67, 0xe6]
+#kat encodeYmmInst .vpackusdw 3 5 7 == ymmBytes [0xc4, 0xe2, 0x55, 0x2b, 0xdf]
+#kat encodeYmmInst .vpackusdw 2 1 9 == ymmBytes [0xc4, 0xc2, 0x75, 0x2b, 0xd1]
+#kat encodeYmmInst .vpackusdw 12 4 6 == ymmBytes [0xc4, 0x62, 0x5d, 0x2b, 0xe6]
+#kat encodeYmmInst .vpaddb 3 5 7 == ymmBytes [0xc5, 0xd5, 0xfc, 0xdf]
+#kat encodeYmmInst .vpaddb 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0xfc, 0xd1]
+#kat encodeYmmInst .vpaddb 12 4 6 == ymmBytes [0xc5, 0x5d, 0xfc, 0xe6]
+#kat encodeYmmInst .vpsubb 3 5 7 == ymmBytes [0xc5, 0xd5, 0xf8, 0xdf]
+#kat encodeYmmInst .vpsubb 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0xf8, 0xd1]
+#kat encodeYmmInst .vpsubb 12 4 6 == ymmBytes [0xc5, 0x5d, 0xf8, 0xe6]
+#kat encodeYmmInst .vpunpcklbw 3 5 7 == ymmBytes [0xc5, 0xd5, 0x60, 0xdf]
+#kat encodeYmmInst .vpunpcklbw 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0x60, 0xd1]
+#kat encodeYmmInst .vpunpcklbw 12 4 6 == ymmBytes [0xc5, 0x5d, 0x60, 0xe6]
+#kat encodeYmmInst .vpunpckhbw 3 5 7 == ymmBytes [0xc5, 0xd5, 0x68, 0xdf]
+#kat encodeYmmInst .vpunpckhbw 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0x68, 0xd1]
+#kat encodeYmmInst .vpunpckhbw 12 4 6 == ymmBytes [0xc5, 0x5d, 0x68, 0xe6]
+#kat encodeYmmInst .vpunpcklwd 3 5 7 == ymmBytes [0xc5, 0xd5, 0x61, 0xdf]
+#kat encodeYmmInst .vpunpcklwd 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0x61, 0xd1]
+#kat encodeYmmInst .vpunpcklwd 12 4 6 == ymmBytes [0xc5, 0x5d, 0x61, 0xe6]
+#kat encodeYmmInst .vpunpckhwd 3 5 7 == ymmBytes [0xc5, 0xd5, 0x69, 0xdf]
+#kat encodeYmmInst .vpunpckhwd 2 1 9 == ymmBytes [0xc4, 0xc1, 0x75, 0x69, 0xd1]
+#kat encodeYmmInst .vpunpckhwd 12 4 6 == ymmBytes [0xc5, 0x5d, 0x69, 0xe6]
+#kat encodeYmmInst .vmovsldup 3 5 0 == ymmBytes [0xc5, 0xfe, 0x12, 0xdd]
+#kat encodeYmmInst .vmovsldup 2 9 0 == ymmBytes [0xc4, 0xc1, 0x7e, 0x12, 0xd1]
+#kat encodeYmmInst .vmovsldup 12 4 0 == ymmBytes [0xc5, 0x7e, 0x12, 0xe4]
+#kat encodeYmmInst (.vpslldq 3) 3 5 0 == ymmBytes [0xc5, 0xe5, 0x73, 0xfd, 0x03]
+#kat encodeYmmInst (.vpslldq 3) 2 9 0 == ymmBytes [0xc4, 0xc1, 0x6d, 0x73, 0xf9, 0x03]
+#kat encodeYmmInst (.vpslldq 3) 12 4 0 == ymmBytes [0xc5, 0x9d, 0x73, 0xfc, 0x03]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.YmmByteEncoder

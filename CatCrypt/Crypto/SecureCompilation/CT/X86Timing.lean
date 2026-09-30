@@ -77,6 +77,8 @@ inductive SimdMnem where
   | vpsllw | vpsrlw | vpsraw | vpabsd | vpsignd | vpacksswb | vpackssdw | vpermd
   | vpunpckldq | vpunpckhdq | vpunpcklqdq | vpunpckhqdq | vpblendw | vpsrldq
   | vperm2i128 | vpsrlvq | vpsllvq | vmovdqu | vpternlogq
+  | vpmulhrsw | vpmaddubsw | vpackuswb | vpackusdw | vpsubb
+  | vpunpcklbw | vpunpckhbw | vpunpcklwd | vpunpckhwd
   -- AVX-512 path
   | vmovdqu64 | vmovdqa64 | vpbroadcastq | vpbroadcastd | vpblendmd | vprold
   | vpternlogd | vmovsldup | vpandq | vporq | vpxorq | vpandnq | vpminud | vpminuq
@@ -108,17 +110,19 @@ inductive X86Mnem where
     is on the DOIT list (document 768547, 2026-02-23). -/
 def SimdMnem.timing : SimdMnem → TimingClass
   /- DOIT list, packed integer (legacy encodings with their V forms):
-     PADDB/W/D/Q, PSUBW/D/Q, PMULDQ, PMULUDQ, PMULLD, PMULLW, PMULHW, PMADDWD,
-     PAND, PANDN, POR, PXOR, PSHUFB, PSHUFD, PSLLW/D/Q, PSLLDQ, PSRLW/D/Q, PSRLDQ,
-     PSRAW/D, PCMPGTW/D, PCMPEQD, PABSD, PSIGND, PACKSSWB, PACKSSDW, PBLENDW,
-     PUNPCK{L,H}{DQ,QDQ}; legacy SSE moves MOVSHDUP, MOVSLDUP. -/
+     PADDB/W/D/Q, PSUBB/W/D/Q, PMULDQ, PMULUDQ, PMULLD, PMULLW, PMULHW, PMULHRSW,
+     PMADDWD, PMADDUBSW, PAND, PANDN, POR, PXOR, PSHUFB, PSHUFD, PSLLW/D/Q, PSLLDQ,
+     PSRLW/D/Q, PSRLDQ, PSRAW/D, PCMPGTW/D, PCMPEQD, PABSD, PSIGND, PACKSSWB,
+     PACKSSDW, PACKUSWB, PACKUSDW, PBLENDW, PUNPCK{L,H}{BW,WD,DQ,QDQ}; legacy SSE
+     moves MOVSHDUP, MOVSLDUP. -/
   | .vpmuldq | .vmovshdup | .vpsubq | .vpaddd | .vpsubd | .vpshufd | .vpmuludq
   | .vpaddq | .vpand | .vpor | .vpxor | .vpshufb | .vpsrlq | .vpsllq | .vpsrld
   | .vpslld | .vpandn | .vpmulld | .vpsrad | .vpaddw | .vpsubw | .vpmullw
   | .vpmulhw | .vpmaddwd | .vpcmpgtw | .vpcmpgtd | .vpcmpeqd | .vpsllw | .vpsrlw
   | .vpsraw | .vpabsd | .vpsignd | .vpacksswb | .vpackssdw | .vpunpckldq
   | .vpunpckhdq | .vpunpcklqdq | .vpunpckhqdq | .vpblendw | .vpsrldq | .vpslldq
-  | .vmovsldup | .vpaddb => .doit
+  | .vmovsldup | .vpaddb | .vpmulhrsw | .vpmaddubsw | .vpackuswb | .vpackusdw
+  | .vpsubb | .vpunpcklbw | .vpunpckhbw | .vpunpcklwd | .vpunpckhwd => .doit
   /- DOIT list, VEX/EVEX only: VPBLENDD, VPERMQ, VPERMD, VPERM2I128, VPERMPD,
      VPERMT2Q, VPSRLVD/Q, VPSLLVD/Q, VPMULLQ, VPROLD/Q, VPTERNLOGD/Q, VMOVDQU8/16/
      32/64 and VMOVDQA32/64 (with the legacy MOVDQU), VPBROADCASTD/Q, VPBLENDMD,
@@ -316,6 +320,18 @@ def _root_.CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect.YmmOp.simdMnem :
   | .vperm2i128 _ => .vperm2i128
   | .vpsrlvq => .vpsrlvq
   | .vpsllvq => .vpsllvq
+  | .vpmulhrsw => .vpmulhrsw
+  | .vpmaddubsw => .vpmaddubsw
+  | .vpackuswb => .vpackuswb
+  | .vpackusdw => .vpackusdw
+  | .vpaddb => .vpaddb
+  | .vpsubb => .vpsubb
+  | .vpunpcklbw => .vpunpcklbw
+  | .vpunpckhbw => .vpunpckhbw
+  | .vpunpcklwd => .vpunpcklwd
+  | .vpunpckhwd => .vpunpckhwd
+  | .vmovsldup => .vmovsldup
+  | .vpslldq _ => .vpslldq
 
 /-- The x86 mnemonic of an AVX2 dialect op. -/
 def _root_.CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect.YmmOp.mnem (op : YmmOp) :
