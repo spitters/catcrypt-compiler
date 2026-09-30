@@ -653,6 +653,8 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiAccLoopValidate
 CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
 CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLoweringToy
 CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
+CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+CatCrypt.Crypto.SecureCompilation.VIR.NFProg
 CatCrypt.Crypto.SecureCompilation.VIR.NestedLoopLowering
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.NttStageFieldGeneral
