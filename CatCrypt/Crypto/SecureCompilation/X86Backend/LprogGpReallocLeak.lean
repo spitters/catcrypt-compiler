@@ -44,8 +44,6 @@ as the source run it is related to.
 * every fragment instruction of the body steps from every state (an `Lopn`
   whose mnemonic the semantics interprets at its arity);
 * every `Lgoto` targets the function it is in;
-* no conditional branch reads a frame cell (the pass's liveness counts the frame
-  cells an `Lopn` names; a `Lcond` operand is outside it);
 * no result register of the function is a frame cell.
 
 ## Main results
@@ -787,7 +785,6 @@ theorem runWith_total {w : Nat} (sem : String → List (BitVec w) → Option (Bi
 /-- The names a kept instruction reads are in `Need` at its piece. -/
 theorem bar_reads_need {ps : List Piece} {lf : Std.HashSet String} {j : Nat} {li : Linstr}
     (hj : ps[j]? = some (.bar li))
-    (hcond : ∀ c l, li.li_i = .Lcond c l → ∀ x ∈ opNames c, isFrame x = false)
     {x : String} (hx : x ∈ readNames li.li_i) : Need ps lf j x := by
   by_cases hl : isLoc x = true
   · have hnr : ¬ RetAt ps j := by
@@ -818,9 +815,18 @@ theorem bar_reads_need {ps : List Piece} {lf : Std.HashSet String} {j : Nat} {li
               simp [opFrames, hf]
           | _ => simp [opNames] at hxo
       | Lcond c l =>
-          have := hcond c l rfl x hx
-          rw [hf] at this
-          cases this
+          simp only [readNames] at hx
+          simp only [instrFrames]
+          cases c with
+          | reg n =>
+              simp only [opNames, List.mem_singleton] at hx
+              subst hx
+              simp [opFrames, hf]
+          | arrIdx b y sc =>
+              simp only [opNames, List.mem_singleton] at hx
+              subst hx
+              simp [opFrames, hf]
+          | _ => simp [opNames] at hx
       | _ => simp [readNames] at hx
     · exact Or.inr (Or.inl ⟨isPhysGP_of_loc hl (by simpa using hf), hnr⟩)
   · exact Or.inl (by simpa using hl)
@@ -836,9 +842,6 @@ structure ReallocOk (w : Nat) (fn : String) (fd : Lfundef) : Prop where
   /-- Every `Lgoto` targets this function. -/
   goto_local : ∀ li ∈ fd.lfd_body, ∀ (fn' : String) (l : LLabel),
     li.li_i = .Lgoto (fn', l) → fn' = fn
-  /-- No conditional branch reads a frame cell. -/
-  cond_noFrame : ∀ li ∈ fd.lfd_body, ∀ c l, li.li_i = .Lcond c l →
-    ∀ x ∈ opNames c, isFrame x = false
   /-- No result register is a frame cell. -/
   res_noFrame : ∀ x ∈ fd.lfd_res, isFrame x = false
 
@@ -1083,7 +1086,7 @@ theorem sim_bar {w : Nat} {ε : Type} (L : LeakFn w ε) (P : Lprog) (fn : String
   obtain ⟨hev12, _, hnext12⟩ := lprogLeak_split L P hEq (hσ1.trans hσ2.symm) hf1 hf2
   have hreads : ∀ x ∈ readNames li.li_i,
       Need (pieces fd.lfd_body) (labelLiveFrames fd.lfd_body) j x :=
-    fun x hx => bar_reads_need hp (hok.cond_noFrame li hli) hx
+    fun x hx => bar_reads_need hp hx
   have hevt : ∀ σ τ : LstateP w,
       Inv (pieces fd.lfd_body) (labelLiveFrames fd.lfd_body) j σ.base τ.base →
       L.ev τ.base li.li_i = L.ev σ.base li.li_i :=

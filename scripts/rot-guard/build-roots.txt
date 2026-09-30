@@ -803,7 +803,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
-CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeakCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused
@@ -828,6 +827,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
+CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogDirect
 CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
