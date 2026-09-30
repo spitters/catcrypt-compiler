@@ -825,6 +825,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
+CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
