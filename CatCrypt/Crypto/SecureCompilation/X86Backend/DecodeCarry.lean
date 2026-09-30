@@ -6,8 +6,10 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem
 
 @[expose] public section
 
@@ -38,6 +40,9 @@ both flags are live.
   carry family, the flag writers and the flag-preserving register copy, tracking which of
   the two flags is live; an accepted instruction simulates its machine instructions.
 * `bodyOKC`, `decSim_of_bodyOKC`: the check over a body.
+* `coreStepC`, `mbodyOKC_sound`, `decSim_of_loopOKC`: the word-array memory check of
+  `DecodeGenMem` extended by the carry family and the flag writers; the loads, stores, moves
+  and frame reloads keep the live flags (`MCorrC`: `MCorr` with the flag agreement).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry
@@ -53,7 +58,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (lsemStepMem_of_carryArgs)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
+  (lsemStepMem_of_carryArgs lsemStepMem_flags)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
   (GCorr InjOn survives_of_injOn stepOK decSim_of_stepOK isCmpB)
@@ -371,11 +377,11 @@ theorem decSimC_of_stepOK {N : List String} (hinj : InjOn π N) {i : LinstrRM}
   (decSim_of_stepOK (Lay := Lay) (frame := frame) (K := K) (zl := zl) hinj h).weaken
     (fun _ _ _ h => h.1) (fun _ _ _ h => ⟨h.dropZf, fun hf => hf.elim, fun hf => hf.elim⟩)
 
-/-- The carry family and the flag writers on registers of `N`, with the flags live before
-    (`fl`); the flags live afterwards, or `none` for no class. -/
-def carryClass (π : String → String) (N : List String) (fl : Bool × Bool)
-    (d opn a c : String) (js : List (JInstr 64)) : Option (Bool × Bool) :=
-  if N.contains d && N.contains a && N.contains c && π d == π a then
+/-- The carry family and the flag writers `opn:64 d, a, c` with `d` and `a` in one register,
+    with the flags live before (`fl`); the flags live afterwards, or `none` for no class. -/
+def carryOp (π : String → String) (fl : Bool × Bool) (d opn a c : String)
+    (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  if π d == π a then
     match js with
     | [.adc D (.reg C)] =>
         if opn == withWidthTag 64 "ADC" && D == π d && C == π c && fl.1 then some (true, true)
@@ -398,16 +404,14 @@ def carryClass (π : String → String) (N : List String) (fl : Bool × Bool)
     | _ => none
   else none
 
-theorem carryClass_sound {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
-    {d opn a c : String} {js : List (JInstr 64)} (h : carryClass π N fl d opn a c js = some fl') :
-    DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
-      (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true))
+theorem carryOp_sound {fl fl' : Bool × Bool} {d opn a c : String} {js : List (JInstr 64)}
+    (h : carryOp π fl d opn a c js = some fl') (ha : L a) (hc : L c) (hS : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl (fl.1 = true) (fl.2 = true))
+      (CCorr π L' Lay frame K False (fl'.1 = true) (fl'.2 = true))
       [(.Lopn [.reg d] opn [.reg a, .reg c], .reg none)] js := by
-  unfold carryClass at h
-  split_ifs at h with hN
-  simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at hN
-  obtain ⟨⟨⟨hd, ha⟩, hc⟩, hda⟩ := hN
-  have hS := survives_of_injOn hinj hd
+  unfold carryOp at h
+  split_ifs at h with hda
+  simp only [beq_iff_eq] at hda
   split at h
   · split_ifs at h with hc'
     simp only [Bool.and_eq_true, beq_iff_eq] at hc'
@@ -459,6 +463,23 @@ theorem carryClass_sound {N : List String} (hinj : InjOn π N) {fl fl' : Bool ×
       (fun _ _ _ h => h)
       (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
   · cases h
+
+/-- The carry family and the flag writers on registers of `N`, with the flags live before
+    (`fl`); the flags live afterwards, or `none` for no class. -/
+def carryClass (π : String → String) (N : List String) (fl : Bool × Bool)
+    (d opn a c : String) (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  if N.contains d && N.contains a && N.contains c then carryOp π fl d opn a c js else none
+
+theorem carryClass_sound {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
+    {d opn a c : String} {js : List (JInstr 64)} (h : carryClass π N fl d opn a c js = some fl') :
+    DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+      (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true))
+      [(.Lopn [.reg d] opn [.reg a, .reg c], .reg none)] js := by
+  unfold carryClass at h
+  split_ifs at h with hN
+  simp only [Bool.and_eq_true, List.contains_iff_mem] at hN
+  obtain ⟨⟨hd, ha⟩, hc⟩ := hN
+  exact carryOp_sound h ha hc (survives_of_injOn hinj hd)
 
 /-- **The check with flag liveness.** An instruction against its machine instructions,
     from the flags live before (`fl`): a carry-family instruction or a flag writer
@@ -578,5 +599,292 @@ set_option kat.ms 1000 in
 #kat !bodyOKC id ["a", "b", "c", "d"] (false, false)
   [addI "a" "a" "b", binRegI "MUL:64" "a" "a" "b", carryI "ADC" "c" "c" "d"]
   [[.add "a" (.reg "b")], [.imul "a" (.reg "b")], [.adc "c" (.reg "d")]]
+
+/-! ## 9. Word-array memory with flag liveness -/
+
+section Mem
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecSimTactic
+
+/-- The flag agreement of `CCorr`: the machine carry (overflow) flag holds `b.cf` (`b.of`)
+    when `cl` (`ol`) holds. -/
+def FlagAg (cl ol : Prop) (sa : AState) (b : LstateM) : Prop :=
+  (cl → sa.flags.cf = some b.cf) ∧ (ol → sa.flags.of = some b.of)
+
+/-- `MCorr` with the flag agreement at the live flags `fl`. -/
+abbrev MCorrC (E : MemEnv) (base : String → BitVec 64) (rsp : BitVec 64) (s : St) (zl : Prop)
+    (fl : Bool × Bool) : AState → LstateM → Bool → Prop :=
+  fun sa b zf => MCorr E base rsp s zl sa b zf ∧ FlagAg (fl.1 = true) (fl.2 = true) sa b
+
+/-- A segment simulation carries the flag agreement when neither machine writes a flag. -/
+theorem decSim_keepFlags {I J : AState → LstateM → Bool → Prop} {ls : List LinstrRM}
+    {js : List (JInstr 64)} (h : DecSim I J ls js)
+    (hl : ∀ b zf b' zf', runStraightF ls b zf = some (b', zf') → b'.cf = b.cf ∧ b'.of = b.of)
+    (hj : ∀ sa, (aMachine.runBlock sa js).flags = sa.flags) (cl ol : Prop) :
+    DecSim (fun sa b zf => I sa b zf ∧ FlagAg cl ol sa b)
+      (fun sa b zf => J sa b zf ∧ FlagAg cl ol sa b) ls js := by
+  intro sa b zf ⟨hi, hc, ho⟩
+  obtain ⟨b', z', hr, hJ⟩ := h sa b zf hi
+  obtain ⟨e1, e2⟩ := hl b zf b' z' hr
+  refine ⟨b', z', hr, hJ, fun c => ?_, fun o => ?_⟩
+  · rw [hj sa, e1]; exact hc c
+  · rw [hj sa, e2]; exact ho o
+
+/-- An instruction that is neither a flag writer nor of the carry family keeps the flag
+    machine's carry and overflow flags. -/
+theorem fstepF_flags_quiet {i : LinstrRM} (ha : aluFlagOp? i = none) (hk : carryArgs? i = none)
+    {b b' : LstateM} {zf zf' : Bool} (h : fstepF i b zf = some (b', zf')) :
+    b'.cf = b.cf ∧ b'.of = b.of := by
+  unfold fstepF at h
+  split at h
+  · split at h
+    · cases h; exact ⟨rfl, rfl⟩
+    · cases h
+  · split at h
+    · split at h
+      · cases h; exact ⟨rfl, rfl⟩
+      · cases h
+    · rw [stepMemF_of_quiet ha hk] at h
+      obtain ⟨b1, hb1, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+      exact lsemStepMem_flags hb1
+
+/-- The machine instructions that write no flag: moves, the frame load, and the indexed load
+    and store. -/
+def keepsFlags : JInstr 64 → Bool
+  | .mov _ _ => true
+  | .loadMem _ _ _ => true
+  | .loadMemIdx _ _ _ _ => true
+  | .storeMemIdx _ _ _ _ => true
+  | _ => false
+
+theorem evalInstrA_flags_of_keeps {j : JInstr 64} (h : keepsFlags j = true) (sa : AState) :
+    (evalInstrA sa j).flags = sa.flags := by
+  cases j <;> first | rfl | exact absurd h (by simp [keepsFlags])
+
+theorem runBlock_flags_of_keeps :
+    ∀ (js : List (JInstr 64)) (sa : AState), js.all keepsFlags = true →
+      (aMachine.runBlock sa js).flags = sa.flags
+  | [], _, _ => rfl
+  | j :: js, sa, h => by
+    simp only [List.all_cons, Bool.and_eq_true] at h
+    show (aMachine.runBlock (aMachine.exec sa j) js).flags = _
+    rw [runBlock_flags_of_keeps js _ h.2, aMachine_exec, evalInstrA_flags_of_keeps h.1]
+
+theorem keepsFlags_of_machStep {E : MemEnv} {s s' : St} {j : JInstr 64}
+    (h : machStep E s j = some s') : keepsFlags j = true := by
+  unfold machStep at h
+  split at h
+  · rfl
+  · rfl
+  · exact absurd h (by simp)
+
+theorem keepsFlags_of_machRun {E : MemEnv} :
+    ∀ (js : List (JInstr 64)) (s s' : St), machRun E s js = some s' → js.all keepsFlags = true
+  | [], _, _, _ => rfl
+  | j :: js, s, s', h => by
+    obtain ⟨s1, h1, h2⟩ := Option.bind_eq_some_iff.mp h
+    simp only [List.all_cons, Bool.and_eq_true]
+    exact ⟨keepsFlags_of_machStep h1, keepsFlags_of_machRun js s1 s' h2⟩
+
+/-- An instruction and its machine instructions write no flag. -/
+def quietB (i : LinstrRM) (js : List (JInstr 64)) : Bool :=
+  (aluFlagOp? i).isNone && (carryArgs? i).isNone && js.all keepsFlags
+
+variable {E : MemEnv} {base : String → BitVec 64} {rsp : BitVec 64}
+
+/-- The carry family and the flag writers on live registers, the machine instructions
+    writing no stack register. -/
+def carryStepM (E : MemEnv) (s : St) (fl : Bool × Bool) (i : LinstrRM) (js : List (JInstr 64)) :
+    Option (St × (Bool × Bool)) :=
+  match i with
+  | (.Lopn [.reg d] opn [.reg a, .reg c], .reg none) =>
+      if decide (E.sp ∉ js.flatMap dsts) && decide (a ∈ s.1) && decide (c ∈ s.1) then
+        (carryOp E.pi fl d opn a c js).map fun fl' =>
+          ((liveW E.pi s.1 d (E.pi d), s.2.kill (js.flatMap dsts)), fl')
+      else none
+  | _ => none
+
+theorem carryStepM_sound {s s' : St} {fl fl' : Bool × Bool} {i : LinstrRM}
+    {js : List (JInstr 64)} (h : carryStepM E s fl i js = some (s', fl')) {zl : Prop} :
+    DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' False fl') [i] js := by
+  unfold carryStepM at h
+  split at h
+  · rename_i d opn a c
+    split_ifs at h with hc
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+    obtain ⟨⟨hsp, ha⟩, hc⟩ := hc
+    obtain ⟨fl'', hop, he⟩ := Option.map_eq_some_iff.mp h
+    cases he
+    have hd := DecSim.frame (MachOK E base rsp s)
+      (MachOK E base rsp (s.1, s.2.kill (js.flatMap dsts)))
+      (carryOp_sound (Lay := regLay E.rs base) (frame := regFrame E.rs rsp) (K := regK E.rs)
+        (zl := zl) (L := (· ∈ s.1)) (L' := liveAfter E.pi (· ∈ s.1) d (E.pi d)) hop ha hc
+        (fun _ hr => hr))
+      (fun sa hm => machOK_block hsp hm)
+    exact hd.weaken (fun _ _ _ h => ⟨⟨h.1.1, h.2.1, h.2.2⟩, h.1.2⟩)
+      (fun _ _ _ h => ⟨⟨corr_liveW h.1.1, h.2⟩, h.1.2.1, h.1.2.2⟩)
+  · exact absurd h (by simp)
+
+/-- **The class check with flag liveness on one instruction.** A carry-family instruction or
+    a flag writer on live registers (`carryStepM`); otherwise a class of `coreStep`, which
+    keeps the live flags when neither machine writes a flag and leaves none live otherwise. -/
+def coreStepC (E : MemEnv) (s : St) (fl : Bool × Bool) (i : LinstrRM) (js : List (JInstr 64)) :
+    Option (St × (Bool × Bool)) :=
+  match carryStepM E s fl i js with
+  | some r => some r
+  | none => (coreStep E s i js).map fun s' => (s', if quietB i js then fl else (false, false))
+
+theorem coreStepC_sound (hsep : MemSep E.rs base rsp) {s s' : St} {fl fl' : Bool × Bool}
+    {i : LinstrRM} {js : List (JInstr 64)} (h : coreStepC E s fl i js = some (s', fl'))
+    {zl : Prop} :
+    DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' False fl') [i] js := by
+  unfold coreStepC at h
+  split at h
+  · rename_i r hr
+    cases h
+    exact carryStepM_sound hr
+  · obtain ⟨s'', hc, he⟩ := Option.map_eq_some_iff.mp h
+    cases he
+    have hd := coreStep_sound hsep hc (zl := zl)
+    split
+    · rename_i hq
+      simp only [quietB, Bool.and_eq_true, Option.isNone_iff_eq_none] at hq
+      obtain ⟨⟨ha, hk⟩, hj⟩ := hq
+      exact decSim_keepFlags hd (fun b zf b' zf' hr => fstepF_flags_quiet ha hk
+        (by rwa [runStraightF_singleton] at hr)) (fun sa => runBlock_flags_of_keeps js sa hj) _ _
+    · exact hd.weaken (fun _ _ _ h => h.1)
+        (fun _ _ _ h => ⟨h, fun hf => by simp at hf, fun hf => by simp at hf⟩)
+
+/-- The machine-only classes keep the flag agreement. -/
+theorem machStepC_sound {s s' : St} {j : JInstr 64} (h : machStep E s j = some s') {zl : Prop}
+    (fl : Bool × Bool) :
+    DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' zl fl) [] [j] :=
+  decSim_keepFlags (machStep_sound h) (fun _ _ _ _ hr => by cases hr; exact ⟨rfl, rfl⟩)
+    (fun sa => runBlock_flags_of_keeps [j] sa (by simp [keepsFlags_of_machStep h])) _ _
+
+theorem machRunC_sound {js : List (JInstr 64)} {s s' : St} (h : machRun E s js = some s')
+    {zl : Prop} (fl : Bool × Bool) :
+    DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' zl fl) [] js :=
+  decSim_keepFlags (machRun_sound js s s' zl h)
+    (fun _ _ _ _ hr => by cases hr; exact ⟨rfl, rfl⟩) (fun sa => runBlock_flags_of_keeps js sa (keepsFlags_of_machRun js s s' h)) _ _
+
+/-- One flag-machine instruction against a group of machine instructions, with flag
+    liveness: a prefix of machine-only instructions, then the instructions of one class. -/
+def grpStepC (E : MemEnv) (i : LinstrRM) :
+    St → Bool × Bool → List (JInstr 64) → Option (St × (Bool × Bool))
+  | s, fl, [] => coreStepC E s fl i []
+  | s, fl, j :: js =>
+      match coreStepC E s fl i (j :: js) with
+      | some r => some r
+      | none => (machStep E s j).bind fun s1 => grpStepC E i s1 fl js
+
+theorem grpStepC_sound (hsep : MemSep E.rs base rsp) (i : LinstrRM) :
+    ∀ (js : List (JInstr 64)) (s s' : St) (fl fl' : Bool × Bool) (zl : Prop),
+      grpStepC E i s fl js = some (s', fl') →
+      DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' False fl') [i] js := by
+  intro js
+  induction js with
+  | nil => intro s s' fl fl' zl h; exact coreStepC_sound hsep h
+  | cons j js ih =>
+    intro s s' fl fl' zl h
+    simp only [grpStepC] at h
+    split at h
+    · rename_i r hc
+      cases h
+      exact coreStepC_sound hsep hc
+    · obtain ⟨s1, h1, h2⟩ := Option.bind_eq_some_iff.mp h
+      exact DecSim.mach_cons (machStepC_sound h1 fl) (ih s1 s' fl fl' zl h2)
+
+/-- **The check on a body with flag liveness.** `mbodyOK` with the live flags threaded
+    through the groups; returns the final state and live flags. -/
+def mbodyOKC (E : MemEnv) (fin : St → Bool) :
+    St → Bool × Bool → List LinstrRM → List (JInstr 64) → Option (St × (Bool × Bool))
+  | s, fl, [], js =>
+      match machRun E s js with
+      | some s' => if fin s' then some (s', fl) else none
+      | none => none
+  | s, fl, i :: is, js => (List.range (js.length + 1)).findSome? fun k =>
+      (grpStepC E i s fl (js.take k)).bind fun r => mbodyOKC E fin r.1 r.2 is (js.drop k)
+
+/-- **An accepted body simulates its machine instructions** with the flag agreement at the
+    returned live flags, and its final state satisfies `fin`. -/
+theorem mbodyOKC_sound (hsep : MemSep E.rs base rsp) (fin : St → Bool) :
+    ∀ (is : List LinstrRM) (s s' : St) (fl fl' : Bool × Bool) (js : List (JInstr 64))
+      (zl : Prop), mbodyOKC E fin s fl is js = some (s', fl') →
+      fin s' = true
+        ∧ DecSim (MCorrC E base rsp s zl fl) (MCorrC E base rsp s' False fl') is js := by
+  intro is
+  induction is with
+  | nil =>
+    intro s s' fl fl' js zl h
+    simp only [mbodyOKC] at h
+    split at h
+    · rename_i s'' hm
+      split at h
+      · rename_i hf
+        cases h
+        exact ⟨hf, (machRunC_sound hm fl).weaken (fun _ _ _ h => h)
+          (fun _ _ _ h => ⟨⟨h.1.1.mono (fun _ hr => hr) (fun hf => hf.elim) (fun _ _ h => h),
+            h.1.2⟩, h.2⟩)⟩
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  | cons i is ih =>
+    intro s s' fl fl' js zl h
+    simp only [mbodyOKC] at h
+    obtain ⟨k, -, hk⟩ := List.exists_of_findSome?_eq_some h
+    obtain ⟨r, h1, h2⟩ := Option.bind_eq_some_iff.mp hk
+    obtain ⟨hf, h2'⟩ := ih r.1 s' r.2 fl' (js.drop k) False h2
+    have := (grpStepC_sound hsep i (js.take k) s r.1 fl r.2 zl h1).append h2'
+    rw [List.take_append_drop] at this
+    exact ⟨hf, this⟩
+
+/-- The live flags `fl0` of a loop head are live in `fl`. -/
+def flagsFin (fl0 fl : Bool × Bool) : Bool := (!fl0.1 || fl.1) && (!fl0.2 || fl.2)
+
+/-- **The check on a loop body with flag liveness.** The body is accepted from the live list
+    `L0`, the abstract state `a0` and the live flags `fl0`, with a final live list containing
+    `L0` and final live flags containing `fl0`. -/
+def loopOKC (E : MemEnv) (L0 : List String) (a0 : Abs) (fl0 : Bool × Bool)
+    (is : List LinstrRM) (js : List (JInstr 64)) : Bool :=
+  match mbodyOKC E (liveFin L0) (L0, a0) fl0 is js with
+  | some (_, fl) => flagsFin fl0 fl
+  | none => false
+
+/-- **An accepted loop body simulates its machine instructions** with the flag agreement,
+    from the live list `L0`, the facts `a0` and the live flags `fl0` back to `L0` with no
+    machine facts and the live flags `fl0`. -/
+theorem decSim_of_loopOKC (hsep : MemSep E.rs base rsp) {L0 : List String} {a0 : Abs}
+    {fl0 : Bool × Bool} {is : List LinstrRM} {js : List (JInstr 64)}
+    (h : loopOKC E L0 a0 fl0 is js = true) (zl : Prop) :
+    DecSim (MCorrC E base rsp (L0, a0) zl fl0) (MCorrC E base rsp (L0, Abs.empty) False fl0)
+      is js := by
+  unfold loopOKC at h
+  split at h
+  · rename_i s' fl hs
+    obtain ⟨hf, hd⟩ := mbodyOKC_sound hsep (liveFin L0) is _ s' fl0 fl js zl hs
+    have hL : ∀ r ∈ L0, r ∈ s'.1 := by simpa [liveFin] using hf
+    simp only [flagsFin, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+    obtain ⟨h1, h2⟩ := h
+    exact hd.weaken (fun _ _ _ h => h)
+      (fun sa _ _ h => ⟨⟨h.1.1.mono (fun r hr => hL r hr) id (fun _ _ h => h),
+        h.1.2.1, Abs.holds_empty base E.nb sa⟩,
+        fun hc => h.2.1 (h1.resolve_left (by simp [hc])),
+        fun ho => h.2.2 (h2.resolve_left (by simp [ho]))⟩)
+  · exact absurd h (by simp)
+
+/- An `ADD`, register copy, `ADC` chain in one machine block, with no region. -/
+set_option kat.ms 1000 in
+#kat (mbodyOKC ⟨id, "%rsp", [], 8⟩ (fun _ => true) (["a", "b", "c", "d", "e"], Abs.empty)
+  (false, false) [addI "a" "a" "b", movRI "e" "a", carryI "ADC" "c" "c" "d"]
+  [.add "a" (.reg "b"), .mov "e" (.reg "a"), .adc "c" (.reg "d")]).isSome
+
+/- `imul` does not keep the carry flag live. -/
+#kat (mbodyOKC ⟨id, "%rsp", [], 8⟩ (fun _ => true) (["a", "b", "c", "d"], Abs.empty)
+  (false, false) [addI "a" "a" "b", binRegI "MUL:64" "a" "a" "b", carryI "ADC" "c" "c" "d"]
+  [.add "a" (.reg "b"), .imul "a" (.reg "b"), .adc "c" (.reg "d")]).isNone
+
+end Mem
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry
