@@ -1,0 +1,25 @@
+This directory contains material from mlkem-libjade.
+
+  Project:    mlkem-libjade, "ML-KEM implementation in libjade with high
+              assurance", a project of the Post-Quantum Cryptography
+              Alliance's PQ Code Package
+  Repository: https://github.com/pq-code-package/mlkem-libjade
+  Release:    v2025.12.1
+  Commit:     c2380886a0d644266661e702d5000027df095a2b (2025-12-22)
+  Licence:    Apache License, Version 2.0 (the file LICENSE in this
+              directory, copied unmodified from the upstream repository)
+
+The upstream repository names no copyright holder: its LICENSE is the
+unmodified Apache-2.0 text and its source files carry no copyright or
+licence header. The commits that add and update the ML-KEM sources are
+authored by Tiago Oliveira and Manuel Barbosa. The repository's
+MAINTAINERS.md lists Tiago Oliveira, Nigel Jones, Peter Schwabe, Manuel
+Barbosa and Miguel Quaresma.
+
+According to the upstream README, the Jasmin source was produced with the
+Formosa Crypto tool-chain (https://formosa-crypto.org). The file
+mlkem768_amd64_avx2.jazz is a single Jasmin unit printed by the Jasmin
+compiler and contains Keccak code of Formosa Crypto's formosa-keccak.
+
+The upstream repository contains no NOTICE file. This NOTICE was written for
+the CatCrypt project; it adds attribution and does not modify the licence.

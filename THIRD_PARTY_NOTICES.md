@@ -205,6 +205,44 @@ repository states it. Paths are relative to the root of this package.
   - `CatCrypt/Crypto/Jasmin/Examples/Sha256JasminDemo.lean`
   - `CatCrypt/Crypto/Jasmin/Examples/Sha256JasminFull.lean`
 
+### mlkem-libjade
+
+- Upstream: <https://github.com/pq-code-package/mlkem-libjade> (PQ Code
+  Package), release `v2025.12.1`, commit
+  `c2380886a0d644266661e702d5000027df095a2b`.
+- Licence: Apache-2.0 (`LICENSE`). The repository names no copyright holder
+  and has no `NOTICE` file; the ML-KEM sources are committed by Tiago Oliveira
+  and Manuel Barbosa. According to the upstream README, the Jasmin source was
+  produced with the Formosa Crypto tool-chain.
+- Copied material: `src/mlkem768_amd64_avx2/mlkem768_amd64_avx2.jazz` and
+  `src/mlkem768_amd64_avx2/api.h`, unmodified, with the upstream `LICENSE`,
+  under `third_party/mlkem-libjade/`. `third_party/mlkem-libjade/NOTICE` gives
+  the attribution and `third_party/mlkem-libjade/MODIFICATIONS.md` the
+  statement of changes required by section 4(b) of the licence.
+- Derived material: the ML-KEM-768 functions imported through the `.jinc`
+  importer and the assembly the owned backend renders from them.
+- Files: `third_party/mlkem-libjade/`
+
+### formosa-keccak
+
+- Upstream: <https://github.com/formosa-crypto/formosa-keccak>, commit
+  `fe5d22fa85672ffbe5cfb4845037b50cf2eaa1f7`.
+- Licence: CC0-1.0 OR Apache-2.0 (`LICENSE` holds the SPDX expression; the
+  licence texts are `LICENSES/CC0-1.0.txt` and `LICENSES/Apache-2.0.txt`). The
+  repository names no copyright holder.
+- Copied material: the Jasmin files `src/amd64/common/keccakf1600_generic.jinc`,
+  `src/amd64/ref/select_bmi1.jinc`, `src/amd64/ref/keccakf1600.jinc`,
+  `src/amd64/common/keccak1600_generic.jinc`, `src/amd64/ref/keccak1600.jinc`,
+  `src/amd64/common/subreadwrite_imem.jinc`,
+  `src/amd64/ref/keccak1600_fixedsizes.jinc`,
+  `src/amd64/avx2/keccakf1600x4_pround_inlined.jinc` and
+  `src/amd64/avx2/keccakf1600x4.jinc`, embedded as strings, verbatim except for
+  trailing whitespace.
+- Derived material: the Keccak-f[1600] permutation (scalar and four-way AVX2)
+  and the SHA3-256, SHAKE128 and SHAKE256 sponges imported through the `.jinc`
+  importer, and the assembly the owned backend renders from them.
+- Files: `CatCrypt/Crypto/Jasmin/KeccakJincImport.lean`
+
 ### Plonky3
 
 - Upstream: <https://github.com/Plonky3/Plonky3>
