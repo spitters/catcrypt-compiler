@@ -970,6 +970,7 @@ CatCrypt.Hax.ReifyImpEmit
 CatCrypt.Hax.ReifyImpEndToEnd
 CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
+CatCrypt.Hax.TExprTypingSpine
 CatCrypt.Hax.TypedToRawCode
 CatCrypt.Hax.VacuityAudit
 CatCrypt.Relational.BadEventAlgebra
