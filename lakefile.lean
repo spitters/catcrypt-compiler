@@ -2312,6 +2312,8 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogDirect,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA,
@@ -2458,10 +2460,10 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.Invariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.Model,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ParentHash,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ProtocolVerification,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.TreeInvariants,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.ProtocolVerification,
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.TreeInvariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.TreeTypes,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Properties,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Signal.Auth,
@@ -2660,10 +2662,10 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.Bridge,
     Lake.Glob.one `CatCrypt.Deep.Deterministic,
     Lake.Glob.one `CatCrypt.Deep.DeterministicInterp,
-    Lake.Glob.one `CatCrypt.Deep.Eval,
-    Lake.Glob.one `CatCrypt.Deep.GamePackage,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Deep.Eval,
+    Lake.Glob.one `CatCrypt.Deep.GamePackage,
     Lake.Glob.one `CatCrypt.Deep.Location,
     Lake.Glob.one `CatCrypt.Deep.MonadNormalize,
     Lake.Glob.one `CatCrypt.Deep.OracleGamePackage,
