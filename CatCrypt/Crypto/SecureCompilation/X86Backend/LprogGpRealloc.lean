@@ -878,9 +878,11 @@ def opFrames : LOperand → List String
   | .arr b _ => if isFrame b then [b] else []
   | .imm _ => []
 
-/-- The frame cells an instruction names. -/
+/-- The frame cells an instruction names, including the operand of a conditional
+    branch (a branch that reads a frame cell keeps that cell live). -/
 def instrFrames : LinstrR → List String
   | .Lopn dsts _ srcs => dsts.flatMap opFrames ++ srcs.flatMap opFrames
+  | .Lcond c _ => opFrames c
   | _ => []
 
 /-- The frame cells a piece names. -/

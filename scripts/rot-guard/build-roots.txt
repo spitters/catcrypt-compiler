@@ -617,6 +617,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
+CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
@@ -799,6 +800,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTGuardedCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeakCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused
