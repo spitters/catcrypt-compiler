@@ -616,7 +616,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundCatCryptEmit
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundRupicola
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
 CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
-CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapGprW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
@@ -737,7 +736,7 @@ CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AesEcbBlockObjectEmit
-CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels
+CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.Avx2YmmNttUnifiedEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.BackTranslation
