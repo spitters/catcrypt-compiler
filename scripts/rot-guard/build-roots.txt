@@ -360,6 +360,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.ClmulVpshufbFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectVerifiedMiddle
 CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlanKernels
+CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn

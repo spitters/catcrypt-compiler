@@ -1695,20 +1695,16 @@ theorem translateDialectGuarded_jasmin {N : Nat} {leafSpec : LeafSpec} {c : LowC
     (fun _ h => by cases h) (fun _ h => h.elim) (fun _ h => by cases h) consistentS_empty
     (fun _ h => h.elim) hexec hir hreads hIR name hname
 
-/-- A command the Boolean fragment test accepts has no array access. -/
-theorem towerOK_false_of_coveredGuardedB :
-    ∀ c : LowCT, coveredGuardedB c = true → towerOK (fun _ => False) c := by
-  intro c
-  induction c with
-  | RSeq a b iha ihb =>
-      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨iha h.1, ihb h.2⟩
-  | RLetU64Zero x b ih =>
-      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨fun h => h, ih h.2⟩
-  | RScalarSet _ _ | RScalarSetExpr _ _ => intro _; exact fun h => h
-  | RIfNz g t e iht ihe =>
-      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h; exact ⟨iht h.1.2, ihe h.2⟩
-  | RSkip => intro _; trivial
-  | _ => intro h; simp [coveredGuardedB] at h
+/-- A scalar-slot command has no array access. -/
+theorem towerOK_false_of_isScalarCmd {c : LowCT} (hc : GuardedUnroll.IsScalarCmd c) :
+    towerOK (fun _ => False) c := by
+  induction hc with
+  | rSkip | rWhileNz => trivial
+  | rScalarSet | rScalarSetExpr => exact fun h => h
+  | rSeq _ _ iha ihb => exact ⟨iha, ihb⟩
+  | rBlock _ ih => exact ih
+  | rLetU64Zero _ _ ih => exact ⟨fun h => h, ih⟩
+  | rIfNz _ _ _ iht ihe => exact ⟨iht, ihe⟩
 
 /-! ## Boolean tests for the scoping and the in-range condition -/
 

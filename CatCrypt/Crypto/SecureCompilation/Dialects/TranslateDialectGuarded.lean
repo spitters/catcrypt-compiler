@@ -42,7 +42,8 @@ straight-line covered fragment `IsCoveredS`, so the denotation theorem of
 * `IsCoveredSCtlGuarded`: the guarded fragment
 * `translateDialectGuarded`, `semScalarGuarded`: the translator and its scalar
   semantics
-* `coveredGuardedB`: the Boolean test for the fragment
+* `coveredGuardedB`: the Boolean test for the fragment, with the word and
+  word-array type tests `isWordB`, `isWordArrB`
 
 ## Main results
 
@@ -320,6 +321,29 @@ theorem ltCleanSrcB_sound : ∀ e : SExpr, ltCleanSrcB e = true → ltClean e �
       exact ⟨⟨(iha h.1).1, (ihb h.2).1⟩, ⟨(iha h.1).2, (ihb h.2).2⟩⟩
   | _ => intro h; simp [ltCleanSrcB] at h
 
+/-- `true` exactly on the word type `TU64`. -/
+def isWordB : TowerType → Bool
+  | .TU64 => true
+  | _ => false
+
+/-- `true` exactly on the word-array types `TArr n TU64`. -/
+def isWordArrB : TowerType → Bool
+  | .TArr _ .TU64 => true
+  | _ => false
+
+theorem eq_of_isWordB {t : TowerType} (h : isWordB t = true) : t = .TU64 := by
+  unfold isWordB at h
+  split at h
+  · rfl
+  · cases h
+
+theorem exists_of_isWordArrB {t : TowerType} (h : isWordArrB t = true) :
+    ∃ n, t = .TArr n .TU64 := by
+  unfold isWordArrB at h
+  split at h
+  · exact ⟨_, rfl⟩
+  · cases h
+
 /-- The Boolean test for `IsCoveredSCtlGuarded`. -/
 def coveredGuardedB : LowCT → Bool
   | .RSkip => true
@@ -328,6 +352,10 @@ def coveredGuardedB : LowCT → Bool
   | .RScalarSet x n => srcNameB x && decide (n < 2 ^ 64)
   | .RScalarSetExpr x e => srcNameB x && ltCleanSrcB e
   | .RIfNz g t e => srcNameB g && coveredGuardedB t && coveredGuardedB e
+  | .RArrLoad dst src i => srcNameB dst.locVar && isWordB dst.locSrc &&
+      srcNameB src.locVar && isWordArrB src.locSrc && srcNameB i
+  | .RArrStore arr i src => srcNameB arr.locVar && isWordArrB arr.locSrc &&
+      srcNameB i && srcNameB src.locVar && isWordB src.locSrc
   | _ => false
 
 theorem isCoveredSCtlGuarded_of_coveredGuardedB :
@@ -351,6 +379,22 @@ theorem isCoveredSCtlGuarded_of_coveredGuardedB :
   | RIfNz g t e iht ihe =>
       intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h
       exact .rIfNz (srcName_of_srcNameB h.1.1) (iht h.1.2) (ihe h.2)
+  | RArrLoad dst src i =>
+      obtain ⟨d, dt⟩ := dst
+      obtain ⟨s, st⟩ := src
+      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h
+      obtain ⟨⟨⟨⟨hd, hdt⟩, hs⟩, hst⟩, hi⟩ := h
+      obtain rfl := eq_of_isWordB hdt
+      obtain ⟨n, rfl⟩ := exists_of_isWordArrB hst
+      exact .rArrLoad (srcName_of_srcNameB hd) (srcName_of_srcNameB hs) (srcName_of_srcNameB hi)
+  | RArrStore arr i src =>
+      obtain ⟨a, at'⟩ := arr
+      obtain ⟨s, st⟩ := src
+      intro h; simp only [coveredGuardedB, Bool.and_eq_true] at h
+      obtain ⟨⟨⟨⟨ha, hat⟩, hi⟩, hs⟩, hst⟩ := h
+      obtain ⟨n, rfl⟩ := exists_of_isWordArrB hat
+      obtain rfl := eq_of_isWordB hst
+      exact .rArrStore (srcName_of_srcNameB ha) (srcName_of_srcNameB hi) (srcName_of_srcNameB hs)
   | _ => intro h; simp [coveredGuardedB] at h
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuarded
