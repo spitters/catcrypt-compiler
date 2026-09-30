@@ -29,9 +29,11 @@ that always fails is accepted without a comparison, since no halting run passes 
 With the wire typing `tyWire`, no block of the five `mpn_*_loop_owned` loops fails and all
 are accepted: `lsemFuelMemF` steps their array-ABI moves `MOVQ` (`qsave.<R>`) and
 `LOAD:64`/`STORE:64` (`mem.<B>.<off>`) as register copies (`JasminLsemMemFlagGuard.copyQ`).
-The one block of the X25519 ladder step is not found to fail, and the check rejects it:
-`lsemFuelMemF` steps `ADC:64` with the carry flag, and the symbolic step
-`OwnedLprogTV.symStep` describes the carry family as outside its fragment. The entry and
+The one block of the X25519 ladder step fails from every state, so the check accepts it
+without a comparison: `lsemFuelMemF` steps `ADC:64` with the carry flag and `symStep`
+describes the carry family, but the block also contains the two-source `MOV:64` and
+`MULX:64`, which `lsemFuelMemF` does not step. This acceptance says nothing about the ladder
+step's value. The entry and
 loop blocks of the rolled Keccak-f1600 fail at `LOADSYM` and `ROR:63:64`, which
 `lsemFuelMemF` does not step.
 
@@ -120,8 +122,28 @@ def keccakRolledPre : Option Lprog :=
 #kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
 #kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
 set_option kat.ms 800 in
-#kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (false, 0, 1)
+#kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (true, 1, 1)
 set_option kat.ms 2500 in
 #kat ownedResult tyWire keccakRolledPre == some (true, 2, 3)
+
+/-! ## The check on a carry chain
+
+An `ADD`, `ADC` chain is accepted against itself; replacing the `ADC` by an `ADD` drops the
+carry-in and is rejected. -/
+
+/- `add`, `adc` against itself. -/
+set_option kat.ms 1500 in
+#kat ownedCheckM ["a", "c"]
+  [(.Lopn [.reg "a"] "ADD:64" [.reg "a", .reg "b"], .reg none),
+   (.Lopn [.reg "c"] "ADC:64" [.reg "c", .reg "d"], .reg none)]
+  [(.Lopn [.reg "a"] "ADD:64" [.reg "a", .reg "b"], .reg none),
+   (.Lopn [.reg "c"] "ADC:64" [.reg "c", .reg "d"], .reg none)]
+
+/- `add`, `adc` against `add`, `add`. -/
+#kat !ownedCheckM ["a", "c"]
+  [(.Lopn [.reg "a"] "ADD:64" [.reg "a", .reg "b"], .reg none),
+   (.Lopn [.reg "c"] "ADC:64" [.reg "c", .reg "d"], .reg none)]
+  [(.Lopn [.reg "a"] "ADD:64" [.reg "a", .reg "b"], .reg none),
+   (.Lopn [.reg "c"] "ADD:64" [.reg "c", .reg "d"], .reg none)]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels

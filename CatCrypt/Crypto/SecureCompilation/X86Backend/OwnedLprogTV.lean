@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
 
@@ -19,12 +20,12 @@ halting run of `B'` from the same state, the end states agreeing on the register
 
 ## Symbolic execution
 
-A symbolic word (`STerm`) is a term over the registers and arrays at the start of a
-block; it denotes a width-tagged word `Σ w, BitVec w`, as the register file of `LstateN`
-stores it. A symbolic array (`SArr`) denotes an `ArrCell`, a symbolic flag (`SFlag`) the
-zero flag. A guard (`SG`) states a width or a shape of a symbolic value. Terms name the
-values at the block start, never registers, so a renaming of registers inside a block
-leaves them unchanged.
+A symbolic word (`STerm`) is a term over the registers, arrays, carry flag and overflow
+flag at the start of a block; it denotes a width-tagged word `Σ w, BitVec w`, as the
+register file of `LstateN` stores it, and a flag is a word of width `1`. A symbolic array
+(`SArr`) denotes an `ArrCell`, a symbolic flag (`SFlag`) the zero flag. A guard (`SG`)
+states a width or a shape of a symbolic value. Terms name the values at the block start,
+never registers, so a renaming of registers inside a block leaves them unchanged.
 
 `symStep i ss` describes one instruction `i` exactly: `ok ss' gs` when the step of
 `evalInstrPMemF` succeeds from a state `ss` describes if and only if the guards `gs`
@@ -32,9 +33,11 @@ hold, and then ends in a state `ss'` describes; `fail` when the step fails from 
 state; `unk` when the instruction is outside the described fragment. The fragment is the
 flag `CMP`, the register copies (`MOV` and the array-ABI moves `MOVQ`, `LOAD:64`,
 `STORE:64`), labels, `Lalign`, the array load and store of
-`lsemStepMem`, and the arms of `lsemStepN` (two-source arithmetic, immediate `MOV`, `NEG`,
-immediate shifts); the multiply and carry arms, `SAR`, `CMOV`, the casts and the
-compile-time-offset memory moves are `unk`. `symRun` composes the steps of a list.
+`lsemStepMem`, the arms of `lsemStepN` (two-source arithmetic, immediate `MOV`, `NEG`,
+immediate shifts) with the carry and overflow flags `withALUFlags` writes, and the carry
+family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`; the multiply arms, `SAR`, `CMOV`, the
+casts and the compile-time-offset memory moves are `unk`. `symRun` composes the steps of a
+list.
 
 ## The check
 
@@ -44,17 +47,18 @@ start state; the pair is accepted when the source block always fails or ends in 
 (no halting run passes through it), or when every guard of the rewritten block is a guard
 of the source block, two jumps name the same function, two branch conditions have the
 same symbolic value, and at each exit the final symbolic states agree on the registers live
-at the successor (on `outs` at an exit that leaves the body), on the zero flag when it is
-live, and on every array written, with every start register these values read live at the
-block. The live sets are computed by a fixpoint iteration (`liveIter`) and checked, not
-trusted.
+at the successor (on `outs` at an exit that leaves the body), on the zero, carry and
+overflow flags when the flags are live, and on every array written, with every start
+register these values read live at the block, and the flags live at the block when a value
+reads a start flag. The live sets are computed by a fixpoint iteration (`liveIter`) and
+checked, not trusted.
 
 ## Main definitions
 
 * `STerm`, `SArr`, `SFlag`, `SG`, `SSt`, `Holds`: symbolic values, states and the states
   they describe.
-* `symN`, `symSh`, `symMC`, `symCast`, `symMem`, `symStep`, `symRun`: the symbolic step
-  layer by layer, and runs.
+* `symN`, `symSh`, `symMC`, `symCast`, `symMem`, `aluFl`, `symCarry`, `symStep`, `symRun`:
+  the symbolic step layer by layer, and runs.
 * `SDec`, `symDec`: the symbolic value of a branch condition.
 * `blockOk`, `ownedCheckWith`, `ownedCheckM`: the checker.
 * `typeBody`, `dropRet`, `ownedCheckTy`, `ownedCheck`: the checker on the first functions of
@@ -64,7 +68,8 @@ trusted.
 ## Main results
 
 * `symN_sound`, `symSh_sound`, `symMC_sound`, `symCast_sound`, `symMem_sound`,
-  `symStep_sound`: each layer of the step is described exactly.
+  `aluFlT_sound`, `symCarry_sound`, `symStep_sound`: each layer of the step is described
+  exactly.
 * `symRun_sound`: the symbolic run describes the run of a list exactly.
 * `fuel_runL`, `runL_fuel`: a run through straight-line instructions of a body.
 * `decC_eq`: the symbolic branch condition describes the branch taken.
@@ -92,6 +97,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem (immShiftMnem?)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (x86_ADC x86_SBB x86_ADCX)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
+  (lsemStepMem_of_carryArgs lsemStepMem_flags)
 
 /-! ## 1. Width casts -/
 
@@ -137,6 +145,34 @@ theorem cell_of_castA {c : ArrCell} {w n : Nat} (hw : c.1 = w) (hn : c.2.1 = n) 
 
 /-! ## 2. Symbolic words, arrays, flags and guards -/
 
+/-- The bit of a width-tagged word: its least significant bit. -/
+def bitOf (x : Σ w, BitVec w) : Bool := x.2.getLsbD 0
+
+@[simp] theorem bitOf_ofBool (b : Bool) : bitOf ⟨1, BitVec.ofBool b⟩ = b := by
+  cases b <;> rfl
+
+/-- The carry flag (`ofl = false`) or the overflow flag (`ofl = true`) that the
+    arithmetic or logical operation `op` writes on `a` and `b`. -/
+def aluBit (op : AluOp) (ofl : Bool) (a b : BitVec 64) : Bool :=
+  if ofl then (aluB5 op a b).of.getD false else (aluB5 op a b).cf.getD false
+
+/-- The word a carry-family operation writes, with carry-in `c`. -/
+def carryWord : CarryOp → BitVec 64 → BitVec 64 → Bool → BitVec 64
+  | .adc, a, b, c => (x86_ADC a b c).word
+  | .sbb, a, b, c => (x86_SBB a b c).word
+  | .adcx, a, b, c => (x86_ADCX a b c).2
+  | .adox, a, b, c => (x86_ADCX a b c).2
+
+/-- The carry flag (`ofl = false`) or the overflow flag (`ofl = true`) a carry-family
+    operation writes, with carry-in `c`. `ADCX` writes only the carry flag and `ADOX` only
+    the overflow flag, each the carry out of the addition. -/
+def carryBit (op : CarryOp) (ofl : Bool) (a b : BitVec 64) (c : Bool) : Bool :=
+  match op with
+  | .adc => if ofl then (x86_ADC a b c).of.getD false else (x86_ADC a b c).cf.getD false
+  | .sbb => if ofl then (x86_SBB a b c).of.getD false else (x86_SBB a b c).cf.getD false
+  | .adcx => (x86_ADCX a b c).1.getD false
+  | .adox => (x86_ADCX a b c).1.getD false
+
 mutual
 /-- A symbolic width-tagged word over the registers and arrays at the start of a
     block. -/
@@ -155,6 +191,18 @@ inductive STerm where
   | shImm (m : String) (k : Nat) (x : STerm)
   /-- Element `i` of the array `a` read at shape `(w, n)`. -/
   | aget (a : SArr) (w n : Nat) (i : STerm)
+  /-- The carry flag (`ofl = false`) or the overflow flag (`ofl = true`) at the start, as a
+      word of width `1`. -/
+  | cin (ofl : Bool)
+  /-- The flag `aluBit op ofl` on `x` and `y` read at width `64`, as a word of width `1`;
+      `old` when `x` or `y` is not of width `64`. -/
+  | aluF (op : AluOp) (ofl : Bool) (x y old : STerm)
+  /-- The word of the carry-family operation `op` on `x` and `y` read at width `64`, with
+      the carry-in the bit of `c`. -/
+  | carryW (op : CarryOp) (x y c : STerm)
+  /-- The flag `carryBit op ofl` on `x` and `y` read at width `64`, with the carry-in the bit
+      of `c`, as a word of width `1`. -/
+  | carryF (op : CarryOp) (ofl : Bool) (x y c : STerm)
 
 /-- A symbolic array cell over the registers and arrays at the start of a block. -/
 inductive SArr where
@@ -186,10 +234,11 @@ inductive SG where
 
 section Eval
 
-variable (V : String → Σ w, BitVec w) (A : String → ArrCell)
+variable (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
 
 mutual
-/-- The value of a symbolic word, for the start registers `V` and arrays `A`. -/
+/-- The value of a symbolic word, for the start registers `V`, arrays `A`, carry flag `C`
+    and overflow flag `O`. -/
 def STerm.ev : STerm → Σ w, BitVec w
   | .reg r => V r
   | .immW w n => ⟨w, BitVec.ofNat w n⟩
@@ -198,8 +247,17 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .un m x => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2]).getD (x.ev).2⟩
   | .shImm m k x => ⟨(x.ev).1, (applyImmShiftN (x.ev).1 m k (x.ev).2).getD (x.ev).2⟩
   | .aget a w n i => ⟨w, stackGet (castA a.ev w n) (castW i.ev 64).toNat⟩
+  | .cin ofl => ⟨1, BitVec.ofBool (if ofl then O else C)⟩
+  | .aluF op ofl x y old =>
+      if (x.ev).1 = 64 ∧ (y.ev).1 = 64 then
+        ⟨1, BitVec.ofBool (aluBit op ofl (castW x.ev 64) (castW y.ev 64))⟩
+      else old.ev
+  | .carryW op x y c => ⟨64, carryWord op (castW x.ev 64) (castW y.ev 64) (bitOf c.ev)⟩
+  | .carryF op ofl x y c =>
+      ⟨1, BitVec.ofBool (carryBit op ofl (castW x.ev 64) (castW y.ev 64) (bitOf c.ev))⟩
 
-/-- The value of a symbolic array, for the start registers `V` and arrays `A`. -/
+/-- The value of a symbolic array, for the start registers `V`, arrays `A` and flags `C`,
+    `O`. -/
 def SArr.ev : SArr → ArrCell
   | .cell r => A r
   | .aset a w n i v => ⟨w, n, stackSet (castA a.ev w n) (castW i.ev 64).toNat (castW v.ev w)⟩
@@ -208,24 +266,26 @@ end
 /-- The value of a symbolic flag, for the start registers `V`, arrays `A` and flag `Z`. -/
 def SFlag.ev (Z : Bool) : SFlag → Bool
   | .init => Z
-  | .cmp x y => castW (x.ev V A) 64 == castW (y.ev V A) 64
+  | .cmp x y => castW (x.ev V A C O) 64 == castW (y.ev V A C O) 64
 
 /-- A guard holds, for the start registers `V` and arrays `A`. -/
 def SG.holds : SG → Prop
-  | .wid t w => (t.ev V A).1 = w
-  | .eqW x y => (x.ev V A).1 = (y.ev V A).1
-  | .shp a w n => (a.ev V A).1 = w ∧ (a.ev V A).2.1 = n
+  | .wid t w => (t.ev V A C O).1 = w
+  | .eqW x y => (x.ev V A C O).1 = (y.ev V A C O).1
+  | .shp a w n => (a.ev V A C O).1 = w ∧ (a.ev V A C O).2.1 = n
 
 /-- Every guard of a list holds. -/
-def AllG (gs : List SG) : Prop := ∀ g ∈ gs, g.holds V A
+def AllG (gs : List SG) : Prop := ∀ g ∈ gs, g.holds V A C O
 
 end Eval
 
-theorem allG_nil (V : String → Σ w, BitVec w) (A : String → ArrCell) : AllG V A [] := by
+theorem allG_nil (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    AllG V A C O [] := by
   simp [AllG]
 
-theorem allG_append {V : String → Σ w, BitVec w} {A : String → ArrCell} {gs hs : List SG} :
-    AllG V A (gs ++ hs) ↔ AllG V A gs ∧ AllG V A hs := by
+theorem allG_append {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {gs hs : List SG} :
+    AllG V A C O (gs ++ hs) ↔ AllG V A C O gs ∧ AllG V A C O hs := by
   simp only [AllG, List.mem_append]
   constructor
   · intro h; exact ⟨fun g hg => h g (Or.inl hg), fun g hg => h g (Or.inr hg)⟩
@@ -236,7 +296,8 @@ theorem allG_append {V : String → Σ w, BitVec w} {A : String → ArrCell} {gs
 /-! ## 3. Symbolic states -/
 
 /-- A symbolic state: a symbolic word per register, a symbolic array per name, the
-    symbolic zero flag, and the registers and names written. -/
+    symbolic zero flag, the registers and names written, and the symbolic carry and
+    overflow flags as words of width `1`. -/
 structure SSt where
   /-- The symbolic word of each register. -/
   regs : String → STerm
@@ -248,9 +309,13 @@ structure SSt where
   wr : List String
   /-- The array names written. -/
   awr : List String
+  /-- The symbolic carry flag. -/
+  cf : STerm
+  /-- The symbolic overflow flag. -/
+  of : STerm
 
 /-- The symbolic state at the start of a block. -/
-def SSt.start : SSt := ⟨STerm.reg, SArr.cell, .init, [], []⟩
+def SSt.start : SSt := ⟨STerm.reg, SArr.cell, .init, [], [], .cin false, .cin true⟩
 
 /-- `ss` with register `d` set to `t`. -/
 def SSt.setR (ss : SSt) (d : String) (t : STerm) : SSt :=
@@ -281,15 +346,17 @@ theorem SSt.Good.setA {ss : SSt} (h : ss.Good) (d : String) (a : SArr) :
   exact h.2 r hr.2
 
 /-- A flag-machine state is described by a symbolic state, for the start registers `V`,
-    arrays `A` and flag `Z`. -/
-def Holds (V : String → Σ w, BitVec w) (A : String → ArrCell) (Z : Bool) (ss : SSt)
-    (s : LstateMF) : Prop :=
-  (∀ q, s.prog.base.reg.lvm q = (ss.regs q).ev V A) ∧
-    (∀ q, s.prog.base.larr q = (ss.arrs q).ev V A) ∧ s.zf = ss.zf.ev V A Z
+    arrays `A` and flags `C`, `O`, `Z`. -/
+def Holds (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (Z : Bool)
+    (ss : SSt) (s : LstateMF) : Prop :=
+  (∀ q, s.prog.base.reg.lvm q = (ss.regs q).ev V A C O) ∧
+    (∀ q, s.prog.base.larr q = (ss.arrs q).ev V A C O) ∧ s.zf = ss.zf.ev V A C O Z ∧
+    s.prog.base.cf = bitOf (ss.cf.ev V A C O) ∧ s.prog.base.of = bitOf (ss.of.ev V A C O)
 
 theorem holds_start (s : LstateMF) :
-    Holds s.prog.base.reg.lvm s.prog.base.larr s.zf SSt.start s :=
-  ⟨fun _ => rfl, fun _ => rfl, rfl⟩
+    Holds s.prog.base.reg.lvm s.prog.base.larr s.prog.base.cf s.prog.base.of s.zf SSt.start s :=
+  ⟨fun _ => rfl, fun _ => rfl, rfl, by simp [SSt.start, STerm.ev],
+    by simp [SSt.start, STerm.ev]⟩
 
 /-! ## 4. The register-file layers -/
 
@@ -305,10 +372,10 @@ inductive ROut where
 /-- `o` describes the register-file step `f` from the register file `r`, for the start
     registers `V` and arrays `A`. -/
 def ROut.Desc (f : LstateN → Option LstateN) (V : String → Σ w, BitVec w)
-    (A : String → ArrCell) (r : LstateN) : ROut → Prop
+    (A : String → ArrCell) (C O : Bool) (r : LstateN) : ROut → Prop
   | .set d t gs =>
-      (∀ r', f r = some r' → AllG V A gs ∧ r' = (r.setReg d (t.ev V A).2).nextPc) ∧
-        (AllG V A gs → (f r).isSome)
+      (∀ r', f r = some r' → AllG V A C O gs ∧ r' = (r.setReg d (t.ev V A C O).2).nextPc) ∧
+        (AllG V A C O gs → (f r).isSome)
   | .nop => f r = some r.nextPc
   | .fail => f r = none
   | .unk => True
@@ -316,9 +383,9 @@ def ROut.Desc (f : LstateN → Option LstateN) (V : String → Σ w, BitVec w)
 /-- `o` describes the register-file step `f` exactly from every register file the
     symbolic registers `R` describe. -/
 def RSound (f : LstateN → Option LstateN) (R : String → STerm) (o : ROut) : Prop :=
-  ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (r : LstateN),
-    (∀ q, r.lvm q = (R q).ev V A) →
-    o.Desc f V A r
+  ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (r : LstateN),
+    (∀ q, r.lvm q = (R q).ev V A C O) →
+    o.Desc f V A C O r
 
 /-- The two-source mnemonics of `applyOpnN`. -/
 def binOk (m : String) : Bool :=
@@ -403,7 +470,7 @@ theorem stepN_bin_imm (r : LstateN) (dst opn ra : String) (n : Nat) :
   simp [castW]
 
 theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R (symN x R) := by
-  intro V A r hr
+  intro V A C O r hr
   unfold symN
   split
   · split_ifs with h
@@ -418,7 +485,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           simp only [ROut.Desc]
           rw [stepN_bin_reg, hr ra, hr rb]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
-            ((R ra).ev V A).2 (castW ((R rb).ev V A) ((R ra).ev V A).1))
+            ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
           simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, hv]
           split_ifs with hw
           · simp [hw]
@@ -427,7 +494,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           simp only [ROut.Desc]
           rw [stepN_bin_imm, hr ra]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
-            ((R ra).ev V A).2 (BitVec.ofNat ((R ra).ev V A).1 n))
+            ((R ra).ev V A C O).2 (BitVec.ofNat ((R ra).ev V A C O).1 n))
           simp [AllG, STerm.ev, hv]
         · rename_i hb1 hb2
           cases b with
@@ -457,7 +524,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
       · rename_i m k hm
         split_ifs with hs
         · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp
-            (applyImmShiftN_some hs k ((R a).ev V A).2)
+            (applyImmShiftN_some hs k ((R a).ev V A C O).2)
           simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, hv, AllG, STerm.ev]
         · simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg,
             applyImmShiftN_none (Bool.eq_false_iff.mpr hs)]
@@ -503,12 +570,12 @@ def symSh (x : LinstrR) (R : String → STerm) : ROut :=
   | none => symN x R
 
 theorem symSh_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepSh x) R (symSh x R) := by
-  intro V A r hr
+  intro V A C O r hr
   unfold symSh
   split
   · trivial
   · rename_i h
-    have := symN_sound x R V A r hr
+    have := symN_sound x R V A C O r hr
     simpa only [ROut.Desc, lsemStepSh_of_not_sar x r h] using this
 
 /-- The symbolic description of `lsemStepMC`: the multiply and carry arms are outside the
@@ -519,11 +586,11 @@ def symMC (x : LinstrR) (R : String → STerm) : ROut :=
   | _, _, _, _, _ => .unk
 
 theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x) R (symMC x R) := by
-  intro V A r hr
+  intro V A C O r hr
   unfold symMC
   split
   · rename_i h1 h2 h3 h4 h5
-    have := symSh_sound x R V A r hr
+    have := symSh_sound x R V A C O r hr
     simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
   · trivial
 
@@ -539,15 +606,15 @@ def symCast (i : LinstrRT) (R : String → STerm) : ROut :=
 
 theorem symCast_sound (i : LinstrRT) (R : String → STerm) :
     RSound (lsemStepCast i) R (symCast i R) := by
-  intro V A r hr
+  intro V A C O r hr
   unfold symCast
   split
   · rename_i h
-    have := symMC_sound i.1 R V A r hr
+    have := symMC_sound i.1 R V A C O r hr
     simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inl h)] using this
   · split
     · rename_i h
-      have := symMC_sound i.1 R V A r hr
+      have := symMC_sound i.1 R V A C O r hr
       simpa only [ROut.Desc, lsemStepCast_of_delegate i r (Or.inr h)] using this
     · trivial
 
@@ -569,33 +636,33 @@ def liftR (ss : SSt) : ROut → SOut
   | .unk => .unk
 
 /-- The registers and arrays of a memref state are described by `ss`. -/
-def HoldsM (V : String → Σ w, BitVec w) (A : String → ArrCell) (ss : SSt) (m : LstateM) :
-    Prop :=
-  (∀ q, m.reg.lvm q = (ss.regs q).ev V A) ∧ (∀ q, m.larr q = (ss.arrs q).ev V A)
+def HoldsM (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (ss : SSt)
+    (m : LstateM) : Prop :=
+  (∀ q, m.reg.lvm q = (ss.regs q).ev V A C O) ∧ (∀ q, m.larr q = (ss.arrs q).ev V A C O)
 
 /-- `o` describes the result `res` of a memref step from `m`: the pc advances by one and
     the word memory is kept. -/
 def SOut.DescM (res : Option LstateM) (V : String → Σ w, BitVec w)
-    (A : String → ArrCell) (m : LstateM) : SOut → Prop
+    (A : String → ArrCell) (C O : Bool) (m : LstateM) : SOut → Prop
   | .ok ss' gs =>
-      (∀ m', res = some m' → AllG V A gs ∧ HoldsM V A ss' m' ∧ m'.reg.lpc = m.reg.lpc + 1 ∧
-          m'.lmem = m.lmem) ∧
-        (AllG V A gs → res.isSome)
+      (∀ m', res = some m' → AllG V A C O gs ∧ HoldsM V A C O ss' m' ∧
+          m'.reg.lpc = m.reg.lpc + 1 ∧ m'.lmem = m.lmem) ∧
+        (AllG V A C O gs → res.isSome)
   | .fail => res = none
   | .unk => True
 
-theorem HoldsM.setR {V : String → Σ w, BitVec w} {A : String → ArrCell} {ss : SSt}
-    {m : LstateM} (h : HoldsM V A ss m) (d : String) (t : STerm) :
-    HoldsM V A (ss.setR d t) { m with reg := (m.reg.setReg d (t.ev V A).2).nextPc } := by
+theorem HoldsM.setR {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} {ss : SSt}
+    {m : LstateM} (h : HoldsM V A C O ss m) (d : String) (t : STerm) :
+    HoldsM V A C O (ss.setR d t) { m with reg := (m.reg.setReg d (t.ev V A C O).2).nextPc } := by
   refine ⟨fun q => ?_, h.2⟩
   simp only [SSt.setR, LstateN.lvm_nextPc, LstateN.lvm_setReg]
   split_ifs
   · rfl
   · exact h.1 q
 
-theorem HoldsM.setA {V : String → Σ w, BitVec w} {A : String → ArrCell} {ss : SSt}
-    {m : LstateM} (h : HoldsM V A ss m) (d : String) (a : SArr) :
-    HoldsM V A (ss.setA d a) ((m.setArr d (a.ev V A).2.2).nextPc) := by
+theorem HoldsM.setA {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} {ss : SSt}
+    {m : LstateM} (h : HoldsM V A C O ss m) (d : String) (a : SArr) :
+    HoldsM V A C O (ss.setA d a) ((m.setArr d (a.ev V A C O).2.2).nextPc) := by
   refine ⟨h.1, fun q => ?_⟩
   simp only [SSt.setA, LstateM.larr_nextPc, LstateM.larr_setArr]
   split_ifs
@@ -603,10 +670,10 @@ theorem HoldsM.setA {V : String → Σ w, BitVec w} {A : String → ArrCell} {ss
   · exact h.2 q
 
 theorem liftR_sound {f : LstateN → Option LstateN} {ss : SSt} {o : ROut}
-    (h : RSound f ss.regs o) (V : String → Σ w, BitVec w) (A : String → ArrCell)
-    (m : LstateM) (hm : HoldsM V A ss m) :
-    (liftR ss o).DescM ((f m.reg).map (fun r => { m with reg := r })) V A m := by
-  have hr := h V A m.reg hm.1
+    (h : RSound f ss.regs o) (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (m : LstateM) (hm : HoldsM V A C O ss m) :
+    (liftR ss o).DescM ((f m.reg).map (fun r => { m with reg := r })) V A C O m := by
+  have hr := h V A C O m.reg hm.1
   cases o with
   | set d t gs =>
       refine ⟨fun m' hm' => ?_, fun hg => ?_⟩
@@ -619,7 +686,7 @@ theorem liftR_sound {f : LstateN → Option LstateN} {ss : SSt} {o : ROut}
       refine ⟨fun m' hm' => ?_, fun _ => ?_⟩
       · rw [hr] at hm'
         cases hm'
-        exact ⟨allG_nil V A, hm, rfl, rfl⟩
+        exact ⟨allG_nil V A C O, hm, rfl, rfl⟩
       · simp [hr]
   | fail =>
       simp only [ROut.Desc] at hr
@@ -647,8 +714,8 @@ def symMem (i : LinstrRM) (ss : SSt) : SOut :=
   | .reg cd => liftR ss (symCast (i.1, cd) ss.regs)
 
 theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
-    (A : String → ArrCell) (m : LstateM) (hm : HoldsM V A ss m) :
-    (symMem i ss).DescM (lsemStepMem i m) V A m := by
+    (A : String → ArrCell) (C O : Bool) (m : LstateM) (hm : HoldsM V A C O ss m) :
+    (symMem i ss).DescM (lsemStepMem i m) V A C O m := by
   obtain ⟨x, tag⟩ := i
   unfold symMem
   cases tag with
@@ -679,7 +746,7 @@ theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
             (lsemStepCast (x, none) m.reg).map (fun r => { m with reg := r }) := by
           simp [lsemStepMem, hl]
         rw [heq]
-        exact liftR_sound (symCast_sound (x, none) ss.regs) V A m hm
+        exact liftR_sound (symCast_sound (x, none) ss.regs) V A C O m hm
   | store w n =>
       dsimp only
       split
@@ -708,10 +775,10 @@ theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
             (lsemStepCast (x, none) m.reg).map (fun r => { m with reg := r }) := by
           simp [lsemStepMem, hl]
         rw [heq]
-        exact liftR_sound (symCast_sound (x, none) ss.regs) V A m hm
+        exact liftR_sound (symCast_sound (x, none) ss.regs) V A C O m hm
   | loadC => trivial
   | storeC => trivial
-  | reg cd => exact liftR_sound (symCast_sound (x, cd) ss.regs) V A m hm
+  | reg cd => exact liftR_sound (symCast_sound (x, cd) ss.regs) V A C O m hm
 
 /-- The symbolic word of an operand read at width `64`, with the guards of the read;
     `none` for an operand that is read at no width. -/
@@ -720,11 +787,12 @@ def symOp64 (R : String → STerm) : LOperand → Option (STerm × List SG)
   | .imm n => some (.immW 64 n, [])
   | _ => none
 
-theorem symOp64_some {V : String → Σ w, BitVec w} {A : String → ArrCell} {R : String → STerm}
-    {r : LstateN} (hr : ∀ q, r.lvm q = (R q).ev V A) {o : LOperand} {t : STerm} {g : List SG}
-    (h : symOp64 R o = some (t, g)) :
-    evalOperandN r 64 o = (if (t.ev V A).1 = 64 then some (castW (t.ev V A) 64) else none) ∧
-      (AllG V A g ↔ (t.ev V A).1 = 64) := by
+theorem symOp64_some {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {R : String → STerm} {r : LstateN} (hr : ∀ q, r.lvm q = (R q).ev V A C O) {o : LOperand}
+    {t : STerm} {g : List SG} (h : symOp64 R o = some (t, g)) :
+    evalOperandN r 64 o =
+        (if (t.ev V A C O).1 = 64 then some (castW (t.ev V A C O) 64) else none) ∧
+      (AllG V A C O g ↔ (t.ev V A C O).1 = 64) := by
   cases o with
   | reg q =>
       simp only [symOp64, Option.some.injEq, Prod.mk.injEq] at h
@@ -741,9 +809,43 @@ theorem symOp64_none {R : String → STerm} {r : LstateN} {o : LOperand}
     (h : symOp64 R o = none) : evalOperandN r 64 o = none := by
   cases o <;> simp_all [symOp64, evalOperandN]
 
+/-- The symbolic carry flag (`ofl = false`) or overflow flag (`ofl = true`) after the memref
+    step of `i` from `ss`: for a recognised arithmetic or logical operation whose sources are
+    read at width `64`, the flag it writes (`STerm.aluF`); otherwise the flag of `ss`. -/
+def aluFlT (i : LinstrRM) (ss : SSt) (ofl : Bool) : STerm :=
+  match aluFlagOp? i with
+  | some (op, a, b) =>
+      match symOp64 ss.regs a, symOp64 ss.regs b with
+      | some (ta, _), some (tb, _) => .aluF op ofl ta tb (if ofl then ss.of else ss.cf)
+      | _, _ => if ofl then ss.of else ss.cf
+  | none => if ofl then ss.of else ss.cf
+
+/-- A description of the memref step of `i` from `ss` with the flags of `withALUFlags`. -/
+def aluFl (i : LinstrRM) (ss : SSt) : SOut → SOut
+  | .ok ss' gs => .ok { ss' with cf := aluFlT i ss false, of := aluFlT i ss true } gs
+  | .fail => .fail
+  | .unk => .unk
+
+/-- The symbolic description of the carry-family step `op d, a, b` (`carryStep`): both
+    sources are read at width `64`, and the carry-in is the carry flag, the overflow flag for
+    `ADOX`. -/
+def symCarry (op : CarryOp) (d : String) (a b : LOperand) (ss : SSt) : SOut :=
+  match symOp64 ss.regs a, symOp64 ss.regs b with
+  | some (ta, ga), some (tb, gb) =>
+      match op with
+      | .adc => .ok { ss.setR d (.carryW .adc ta tb ss.cf) with
+          cf := .carryF .adc false ta tb ss.cf, of := .carryF .adc true ta tb ss.cf } (ga ++ gb)
+      | .sbb => .ok { ss.setR d (.carryW .sbb ta tb ss.cf) with
+          cf := .carryF .sbb false ta tb ss.cf, of := .carryF .sbb true ta tb ss.cf } (ga ++ gb)
+      | .adcx => .ok { ss.setR d (.carryW .adcx ta tb ss.cf) with
+          cf := .carryF .adcx false ta tb ss.cf } (ga ++ gb)
+      | .adox => .ok { ss.setR d (.carryW .adox ta tb ss.of) with
+          of := .carryF .adox true ta tb ss.of } (ga ++ gb)
+  | _, _ => .fail
+
 /-- The symbolic description of one instruction of `evalInstrPMemF`: the flag `CMP`, the
-    register-copy `MOV`, a label, and the memref step; a branch, a jump and a carry-family
-    instruction are outside the fragment. -/
+    register-copy `MOV`, a label, the carry family, and the memref step with the flags of
+    `withALUFlags`; a branch and a jump are outside the fragment. -/
 def symStep (i : LinstrRM) (ss : SSt) : SOut :=
   match cmpArgs? i with
   | some (a, b) =>
@@ -763,8 +865,8 @@ def symStep (i : LinstrRM) (ss : SSt) : SOut :=
               | .Lgoto _ => .unk
               | _ =>
                   match carryArgs? i with
-                  | some _ => .unk
-                  | none => symMem i ss
+                  | some (op, d, a, b) => symCarry op d a b ss
+                  | none => aluFl i ss (symMem i ss)
 
 /-- A flag-machine step keeps the function and the word memory and advances the pc. -/
 def Frame (s t : LstateMF) : Prop :=
@@ -773,52 +875,76 @@ def Frame (s t : LstateMF) : Prop :=
 
 /-- `o` describes the result `res` of a flag-machine step from `s`. -/
 def SOut.Desc (res : Option LstateMF) (V : String → Σ w, BitVec w) (A : String → ArrCell)
-    (Z : Bool) (s : LstateMF) : SOut → Prop
+    (C O : Bool) (Z : Bool) (s : LstateMF) : SOut → Prop
   | .ok ss' gs =>
-      (∀ t, res = some t → AllG V A gs ∧ Holds V A Z ss' t ∧ Frame s t) ∧
-        (AllG V A gs → res.isSome)
+      (∀ t, res = some t → AllG V A C O gs ∧ Holds V A C O Z ss' t ∧ Frame s t) ∧
+        (AllG V A C O gs → res.isSome)
   | .fail => res = none
   | .unk => True
 
 /-- `o` describes the flag-machine step `g` exactly from every state `ss` describes. -/
 def StepSound (g : LstateMF → Option LstateMF) (ss : SSt) (o : SOut) : Prop :=
-  ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (Z : Bool) (s : LstateMF),
-    Holds V A Z ss s → o.Desc (g s) V A Z s
+  ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (Z : Bool)
+    (s : LstateMF), Holds V A C O Z ss s → o.Desc (g s) V A C O Z s
 
-/-- A description of a memref step describes it with the carry and overflow flags of
-    `withALUFlags` added: the flags are outside the register file and the arrays. -/
-theorem descM_withFlags {res : Option LstateM} {V : String → Σ w, BitVec w}
-    {A : String → ArrCell} {m : LstateM} {o : SOut} (i : LinstrRM)
-    (h : o.DescM res V A m) : o.DescM (res.map (withALUFlags i m)) V A m := by
-  cases o with
-  | ok ss' gs =>
-      refine ⟨fun m' hm' => ?_, fun hg => by simpa using h.2 hg⟩
-      obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp hm'
-      obtain ⟨hg, hH, hpc, hmem⟩ := h.1 b hb
-      refine ⟨hg, ⟨fun q => ?_, fun q => ?_⟩, ?_, ?_⟩
-      · rw [withALUFlags_reg]; exact hH.1 q
-      · rw [withALUFlags_larr]; exact hH.2 q
-      · rw [withALUFlags_reg]; exact hpc
-      · rw [withALUFlags_lmem]; exact hmem
-  | fail =>
-      simp only [SOut.DescM] at h ⊢
-      rw [h, Option.map_none]
-  | unk => trivial
+/-- The flags `withALUFlags` writes are described by `aluFlT`, when the step before it
+    keeps the flags. -/
+theorem aluFlT_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {ss : SSt} {m b : LstateM} (hr : ∀ q, m.reg.lvm q = (ss.regs q).ev V A C O)
+    (hc : m.cf = bitOf (ss.cf.ev V A C O)) (ho : m.of = bitOf (ss.of.ev V A C O))
+    (hb : b.cf = m.cf ∧ b.of = m.of) (i : LinstrRM) :
+    (withALUFlags i m b).cf = bitOf ((aluFlT i ss false).ev V A C O) ∧
+      (withALUFlags i m b).of = bitOf ((aluFlT i ss true).ev V A C O) := by
+  unfold withALUFlags aluFlT
+  cases hi : aluFlagOp? i with
+  | none => simp [hb.1, hb.2, hc, ho]
+  | some p =>
+    obtain ⟨op, a, c⟩ := p
+    cases h1 : symOp64 ss.regs a with
+    | none => simp [h1, symOp64_none h1, hb.1, hb.2, hc, ho]
+    | some p1 =>
+      obtain ⟨ta, ga⟩ := p1
+      cases h2 : symOp64 ss.regs c with
+      | none =>
+          simp only [h1, h2, symOp64_none (r := m.reg) h2]
+          cases evalOperandN m.reg 64 a <;> simp [hb.1, hb.2, hc, ho]
+      | some p2 =>
+        obtain ⟨tb, gb⟩ := p2
+        obtain ⟨e1, -⟩ := symOp64_some hr h1
+        obtain ⟨e2, -⟩ := symOp64_some hr h2
+        simp only [h1, h2, e1, e2, STerm.ev]
+        by_cases w1 : (ta.ev V A C O).1 = 64 <;> by_cases w2 : (tb.ev V A C O).1 = 64 <;>
+          simp [w1, w2, aluBit, hb.1, hb.2, hc, ho]
 
-theorem descM_lift {res : Option LstateM} {V : String → Σ w, BitVec w} {A : String → ArrCell}
-    {Z : Bool} {ss : SSt} {s : LstateMF} {o : SOut} (hz : ∀ ss' gs, o = .ok ss' gs → ss'.zf = ss.zf)
-    (hs : Holds V A Z ss s) (h : o.DescM res V A s.prog.base) :
-    o.Desc (res.map (fun b => { s with prog := { s.prog with base := b } })) V A Z s := by
+/-- A description of a memref step from the base of `s`, whose successful results keep the
+    flags, describes the flag-machine step with the flags of `withALUFlags`. -/
+theorem descM_liftF {res : Option LstateM} {V : String → Σ w, BitVec w} {A : String → ArrCell}
+    {C O Z : Bool} {ss : SSt} {s : LstateMF} {o : SOut} (i : LinstrRM)
+    (hz : ∀ ss' gs, o = .ok ss' gs → ss'.zf = ss.zf) (hs : Holds V A C O Z ss s)
+    (h : o.DescM res V A C O s.prog.base)
+    (hfl : ∀ b, res = some b → b.cf = s.prog.base.cf ∧ b.of = s.prog.base.of) :
+    (aluFl i ss o).Desc ((res.map (withALUFlags i s.prog.base)).map
+      (fun b => { s with prog := { s.prog with base := b } })) V A C O Z s := by
   cases o with
   | ok ss' gs =>
       have hzz := hz ss' gs rfl
       refine ⟨fun t ht => ?_, fun hg => by simpa using h.2 hg⟩
-      obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp ht
+      obtain ⟨b1, hb1, rfl⟩ := Option.map_eq_some_iff.mp ht
+      obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp hb1
       obtain ⟨hg, hH, hpc, hmem⟩ := h.1 b hb
-      exact ⟨hg, ⟨hH.1, hH.2, by rw [hzz]; exact hs.2.2⟩, rfl, hpc, hmem⟩
+      obtain ⟨ec, eo⟩ := aluFlT_sound hs.1 hs.2.2.2.1 hs.2.2.2.2 (hfl b hb) i
+      refine ⟨hg, ⟨fun q => ?_, fun q => ?_, ?_, ec, eo⟩, rfl, ?_, ?_⟩
+      · rw [withALUFlags_reg]; exact hH.1 q
+      · rw [withALUFlags_larr]; exact hH.2 q
+      · show s.zf = _
+        rw [show ({ ss' with cf := aluFlT i ss false, of := aluFlT i ss true } : SSt).zf
+          = ss.zf from hzz]
+        exact hs.2.2.1
+      · rw [withALUFlags_reg]; exact hpc
+      · rw [withALUFlags_lmem]; exact hmem
   | fail =>
       simp only [SOut.DescM] at h
-      simp [SOut.Desc, h]
+      simp [aluFl, SOut.Desc, h]
   | unk => trivial
 
 theorem liftR_zf (ss : SSt) (o : ROut) : ∀ ss' gs, liftR ss o = .ok ss' gs → ss'.zf = ss.zf := by
@@ -847,9 +973,55 @@ theorem symMem_zf (i : LinstrRM) (ss : SSt) :
   | storeC => cases h
   | reg cd => exact liftR_zf ss _ ss' gs h
 
+/-- The carry-family step is described by `symCarry`. -/
+theorem symCarry_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
+    {ss : SSt} {s : LstateMF} (op : CarryOp) (d : String) (a b : LOperand)
+    (hs : Holds V A C O Z ss s) :
+    (symCarry op d a b ss).Desc ((carryStep op d a b s.prog.base).map
+      (fun b' => { s with prog := { s.prog with base := b' } })) V A C O Z s := by
+  unfold symCarry carryStep
+  cases h1 : symOp64 ss.regs a with
+  | none => simp [SOut.Desc, symOp64_none h1]
+  | some p =>
+    obtain ⟨ta, ga⟩ := p
+    cases h2 : symOp64 ss.regs b with
+    | none => simp [SOut.Desc, symOp64_none h2]
+    | some q =>
+      obtain ⟨tb, gb⟩ := q
+      obtain ⟨e1, g1⟩ := symOp64_some hs.1 h1
+      obtain ⟨e2, g2⟩ := symOp64_some hs.1 h2
+      simp only
+      rw [e1, e2]
+      have hreg : ∀ (w : BitVec 64) (q : String),
+          ((s.prog.base.setReg d w).nextPc).reg.lvm q
+            = (if q = d then (⟨64, w⟩ : Σ w, BitVec w) else (ss.regs q).ev V A C O) := by
+        intro w q
+        simp only [LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+          LstateN.lvm_setReg]
+        split_ifs
+        · rfl
+        · exact hs.1 q
+      cases op <;> refine ⟨fun t ht => ?_, fun hg => ?_⟩
+      all_goals first
+        | (obtain ⟨h1', h2'⟩ := allG_append.mp hg
+           simp [g1.mp h1', g2.mp h2'])
+        | (by_cases c1 : (ta.ev V A C O).1 = 64
+           · by_cases c2 : (tb.ev V A C O).1 = 64
+             · simp only [c1, c2, if_true, Option.map_some, Option.some.injEq] at ht
+               subst ht
+               refine ⟨allG_append.mpr ⟨g1.mpr c1, g2.mpr c2⟩,
+                 ⟨fun q => (hreg _ q).trans ?_, hs.2.1, hs.2.2.1, ?_, ?_⟩, rfl, rfl, rfl⟩
+               all_goals first
+                 | (by_cases hq : q = d <;>
+                     simp [hq, SSt.setR, STerm.ev, carryWord, hs.2.2.2.1, hs.2.2.2.2])
+                 | simp [STerm.ev, carryBit, LstateM.setReg, LstateM.nextPc, SSt.setR,
+                     hs.2.2.2.1, hs.2.2.2.2]
+             · simp [c1, c2] at ht
+           · simp [c1] at ht)
+
 theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
     StepSound (evalInstrPMemF P i) ss (symStep i ss) := by
-  intro V A Z s hs
+  intro V A C O Z s hs
   unfold symStep
   split
   · rename_i a b hc
@@ -874,11 +1046,12 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
         simp only
         rw [e1, e2]
         refine ⟨fun t ht => ?_, fun hg => ?_⟩
-        · by_cases c1 : (ta.ev V A).1 = 64
-          · by_cases c2 : (tb.ev V A).1 = 64
+        · by_cases c1 : (ta.ev V A C O).1 = 64
+          · by_cases c2 : (tb.ev V A C O).1 = 64
             · simp only [c1, c2, if_true, Option.some.injEq] at ht
               subst ht
-              exact ⟨allG_append.mpr ⟨g1.mpr c1, g2.mpr c2⟩, ⟨hs.1, hs.2.1, rfl⟩, rfl, rfl, rfl⟩
+              exact ⟨allG_append.mpr ⟨g1.mpr c1, g2.mpr c2⟩,
+                ⟨hs.1, hs.2.1, rfl, hs.2.2.2⟩, rfl, rfl, rfl⟩
             · simp [c1, c2] at ht
           · simp [c1] at ht
         · obtain ⟨h1', h2'⟩ := allG_append.mp hg
@@ -892,7 +1065,7 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
       rw [he]
       refine ⟨fun t ht => ?_, fun _ => rfl⟩
       cases ht
-      refine ⟨allG_nil V A, ⟨fun q => ?_, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
+      refine ⟨allG_nil V A C O, ⟨fun q => ?_, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
       simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
         LstateN.lvm_setReg]
       split_ifs
@@ -911,29 +1084,36 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
           rw [he]
           refine ⟨fun t ht => ?_, fun _ => rfl⟩
           cases ht
-          exact ⟨allG_nil V A, ⟨hs.1, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
+          exact ⟨allG_nil V A C O, ⟨hs.1, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
         · trivial
         · trivial
         · rename_i h1 h2 h3
+          have hL : evalInstrPMemL P i s.prog
+              = (lsemStepMem i s.prog.base).map (fun b => { s.prog with base := b }) := by
+            unfold evalInstrPMemL
+            split
+            · rename_i h; exact (h1 _ _ h).elim
+            · rename_i h; exact (h2 _ _ h).elim
+            · rename_i h; exact (h3 _ h).elim
+            · rfl
           split
-          · trivial
+          · rename_i op d a b hk
+            have he : evalInstrPMemF P i s = (carryStep op d a b s.prog.base).map
+                (fun b' => { s with prog := { s.prog with base := b' } }) := by
+              simp only [evalInstrPMemF, hc, hm, hf, hL, lsemStepMem_of_carryArgs hk,
+                Option.map_none, hk]
+            rw [he]
+            exact symCarry_sound op d a b hs
           · rename_i hk
             have he : evalInstrPMemF P i s =
                 ((lsemStepMem i s.prog.base).map (withALUFlags i s.prog.base)).map
                   (fun b => { s with prog := { s.prog with base := b } }) := by
-              have hL : evalInstrPMemL P i s.prog
-                  = (lsemStepMem i s.prog.base).map (fun b => { s.prog with base := b }) := by
-                unfold evalInstrPMemL
-                split
-                · rename_i h; exact (h1 _ _ h).elim
-                · rename_i h; exact (h2 _ _ h).elim
-                · rename_i h; exact (h3 _ h).elim
-                · rfl
               simp only [evalInstrPMemF, hc, hm, hf, hL]
               cases lsemStepMem i s.prog.base <;> simp [hk]
             rw [he]
-            exact descM_lift (symMem_zf i ss) hs
-              (descM_withFlags i (symMem_sound i ss V A s.prog.base ⟨hs.1, hs.2.1⟩))
+            exact descM_liftF i (symMem_zf i ss) hs
+              (symMem_sound i ss V A C O s.prog.base ⟨hs.1, hs.2.1⟩)
+              (fun b hb => lsemStepMem_flags hb)
 
 /-! ## 6. Straight-line runs -/
 
@@ -965,10 +1145,10 @@ def FrameN (k : Nat) (s t : LstateMF) : Prop :=
 
 /-- `o` describes the result `res` of `k` flag-machine steps from `s`. -/
 def SOut.DescN (k : Nat) (res : Option LstateMF) (V : String → Σ w, BitVec w)
-    (A : String → ArrCell) (Z : Bool) (s : LstateMF) : SOut → Prop
+    (A : String → ArrCell) (C O : Bool) (Z : Bool) (s : LstateMF) : SOut → Prop
   | .ok ss' gs =>
-      (∀ t, res = some t → AllG V A gs ∧ Holds V A Z ss' t ∧ FrameN k s t) ∧
-        (AllG V A gs → res.isSome)
+      (∀ t, res = some t → AllG V A C O gs ∧ Holds V A C O Z ss' t ∧ FrameN k s t) ∧
+        (AllG V A C O gs → res.isSome)
   | .fail => res = none
   | .unk => True
 
@@ -977,14 +1157,14 @@ def SOut.DescN (k : Nat) (res : Option LstateMF) (V : String → Σ w, BitVec w)
     a state its final symbolic state describes; a run `symRun` reports as failing fails. -/
 theorem symRun_sound (P : LprogM) :
     ∀ (is : List LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w) (A : String → ArrCell)
-      (Z : Bool) (s : LstateMF), Holds V A Z ss s →
-      (symRun is ss).DescN is.length (runL P is s) V A Z s
-  | [], ss, V, A, Z, s, hs => by
+      (C O : Bool) (Z : Bool) (s : LstateMF), Holds V A C O Z ss s →
+      (symRun is ss).DescN is.length (runL P is s) V A C O Z s
+  | [], ss, V, A, C, O, Z, s, hs => by
       refine ⟨fun t ht => ?_, fun _ => rfl⟩
       cases ht
-      exact ⟨allG_nil V A, hs, rfl, rfl, rfl⟩
-  | i :: is, ss, V, A, Z, s, hs => by
-      have hstep := symStep_sound P i ss V A Z s hs
+      exact ⟨allG_nil V A C O, hs, rfl, rfl, rfl⟩
+  | i :: is, ss, V, A, C, O, Z, s, hs => by
+      have hstep := symStep_sound P i ss V A C O Z s hs
       simp only [symRun, runL]
       cases h1 : symStep i ss with
       | ok ss1 g1 =>
@@ -996,7 +1176,7 @@ theorem symRun_sound (P : LprogM) :
               refine ⟨fun t ht => ?_, fun hg => ?_⟩
               · obtain ⟨s1, e1, e2⟩ := Option.bind_eq_some_iff.mp ht
                 obtain ⟨hg1, hH1, hF1⟩ := hs1 s1 e1
-                have ih := symRun_sound P is ss1 V A Z s1 hH1
+                have ih := symRun_sound P is ss1 V A C O Z s1 hH1
                 rw [h2] at ih
                 obtain ⟨hg2, hH2, hF2⟩ := ih.1 t e2
                 refine ⟨allG_append.mpr ⟨hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
@@ -1005,7 +1185,7 @@ theorem symRun_sound (P : LprogM) :
                 · rw [hF2.2.2, hF1.2.2]
               · obtain ⟨hg1, hg2⟩ := allG_append.mp hg
                 obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 hg1)
-                have ih := symRun_sound P is ss1 V A Z s1 (hs1 s1 e1).2.1
+                have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                 rw [h2] at ih
                 rw [e1, Option.bind_some]
                 exact ih.2 hg2
@@ -1014,7 +1194,7 @@ theorem symRun_sound (P : LprogM) :
               cases e1 : evalInstrPMemF P i s with
               | none => rfl
               | some s1 =>
-                  have ih := symRun_sound P is ss1 V A Z s1 (hs1 s1 e1).2.1
+                  have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                   rw [h2] at ih
                   exact ih
           | unk => simp only [h2, SOut.DescN]
@@ -1052,6 +1232,13 @@ theorem symMem_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : L
   | storeC => cases h
   | reg cd => exact liftR_good hg h
 
+theorem symCarry_good {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt} (hg : ss.Good)
+    {ss' : SSt} {gs : List SG} (h : symCarry op d a b ss = .ok ss' gs) : ss'.Good := by
+  unfold symCarry at h
+  split at h
+  · cases op <;> simp only [SOut.ok.injEq] at h <;> rw [← h.1] <;> exact hg.setR _ _
+  · cases h
+
 theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : List SG}
     (h : symStep i ss = .ok ss' gs) : ss'.Good := by
   unfold symStep at h
@@ -1068,8 +1255,16 @@ theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : 
         · cases h
         · cases h
         · split at h
-          · cases h
-          · exact symMem_good i hg h
+          · exact symCarry_good hg h
+          · cases hm : symMem i ss with
+            | ok s1 g1 =>
+                rw [hm] at h
+                simp only [aluFl, SOut.ok.injEq] at h
+                rw [← h.1]
+                have := symMem_good i hg hm
+                exact this
+            | fail => rw [hm] at h; cases h
+            | unk => rw [hm] at h; cases h
 
 theorem symRun_good : ∀ (is : List LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
     symRun is ss = .ok ss' gs → ss'.Good
@@ -1114,6 +1309,10 @@ def STerm.vars : STerm → List String
   | .un _ x => x.vars
   | .shImm _ _ x => x.vars
   | .aget a _ _ i => a.vars ++ i.vars
+  | .cin _ => []
+  | .aluF _ _ x y o => x.vars ++ y.vars ++ o.vars
+  | .carryW _ x y c => x.vars ++ y.vars ++ c.vars
+  | .carryF _ _ x y c => x.vars ++ y.vars ++ c.vars
 
 /-- The start registers a symbolic array reads. -/
 def SArr.vars : SArr → List String
@@ -1121,15 +1320,36 @@ def SArr.vars : SArr → List String
   | .aset a _ _ i v => a.vars ++ i.vars ++ v.vars
 end
 
+mutual
+/-- The symbolic word reads the carry or the overflow flag at the start. -/
+def STerm.readsF : STerm → Bool
+  | .reg _ => false
+  | .immW _ _ => false
+  | .immAt _ x => x.readsF
+  | .bin _ x y => x.readsF || y.readsF
+  | .un _ x => x.readsF
+  | .shImm _ _ x => x.readsF
+  | .aget a _ _ i => a.readsF || i.readsF
+  | .cin _ => true
+  | .aluF _ _ x y o => x.readsF || y.readsF || o.readsF
+  | .carryW _ x y c => x.readsF || y.readsF || c.readsF
+  | .carryF _ _ x y c => x.readsF || y.readsF || c.readsF
+
+/-- The symbolic array reads the carry or the overflow flag at the start. -/
+def SArr.readsF : SArr → Bool
+  | .cell _ => false
+  | .aset a _ _ i v => a.readsF || i.readsF || v.readsF
+end
+
 /-- The start registers a symbolic flag reads. -/
 def SFlag.vars : SFlag → List String
   | .init => []
   | .cmp x y => x.vars ++ y.vars
 
-/-- The symbolic flag reads the flag at the start. -/
+/-- The symbolic flag reads a flag at the start. -/
 def SFlag.readsInit : SFlag → Bool
   | .init => true
-  | .cmp _ _ => false
+  | .cmp x y => x.readsF || y.readsF
 
 /-- The start registers a guard reads. -/
 def SG.vars : SG → List String
@@ -1137,58 +1357,111 @@ def SG.vars : SG → List String
   | .eqW x y => x.vars ++ y.vars
   | .shp a _ _ => a.vars
 
-mutual
-theorem STerm.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell) :
-    ∀ (t : STerm), (∀ r ∈ t.vars, V r = V' r) → t.ev V A = t.ev V' A
-  | .reg r, h => h r (by simp [STerm.vars])
-  | .immW _ _, _ => rfl
-  | .immAt _ x, h => by
-      rw [STerm.ev, STerm.ev,
-        STerm.ev_congr A x (fun r hr => h r (by simpa [STerm.vars] using hr))]
-  | .bin _ x y, h => by
-      rw [STerm.ev, STerm.ev,
-        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr])),
-        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))]
-  | .un _ x, h => by
-      rw [STerm.ev, STerm.ev,
-        STerm.ev_congr A x (fun r hr => h r (by simpa [STerm.vars] using hr))]
-  | .shImm _ _ x, h => by
-      rw [STerm.ev, STerm.ev,
-        STerm.ev_congr A x (fun r hr => h r (by simpa [STerm.vars] using hr))]
-  | .aget a _ _ i, h => by
-      rw [STerm.ev, STerm.ev,
-        SArr.ev_congr A a (fun r hr => h r (by simp [STerm.vars, hr])),
-        STerm.ev_congr A i (fun r hr => h r (by simp [STerm.vars, hr]))]
+/-- The guard reads the carry or the overflow flag at the start. -/
+def SG.readsF : SG → Bool
+  | .wid t _ => t.readsF
+  | .eqW x y => x.readsF || y.readsF
+  | .shp a _ _ => a.readsF
 
-theorem SArr.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell) :
-    ∀ (a : SArr), (∀ r ∈ a.vars, V r = V' r) → a.ev V A = a.ev V' A
-  | .cell _, _ => rfl
-  | .aset a _ _ i v, h => by
-      rw [SArr.ev, SArr.ev,
-        SArr.ev_congr A a (fun r hr => h r (by simp [SArr.vars, hr])),
-        STerm.ev_congr A i (fun r hr => h r (by simp [SArr.vars, hr])),
-        STerm.ev_congr A v (fun r hr => h r (by simp [SArr.vars, hr]))]
+mutual
+theorem STerm.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
+    {C O C' O' : Bool} :
+    ∀ (t : STerm), (∀ r ∈ t.vars, V r = V' r) → (t.readsF = true → C = C' ∧ O = O') →
+      t.ev V A C O = t.ev V' A C' O'
+  | .reg r, h, _ => h r (by simp [STerm.vars])
+  | .immW _ _, _, _ => rfl
+  | .immAt _ x, h, hf => by
+      rw [STerm.ev, STerm.ev, STerm.ev_congr A x
+        (fun r hr => h r (by simpa [STerm.vars] using hr))
+        (fun e => hf (by simpa [STerm.readsF] using e))]
+  | .bin _ x y, h, hf => by
+      rw [STerm.ev, STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .un _ x, h, hf => by
+      rw [STerm.ev, STerm.ev, STerm.ev_congr A x
+        (fun r hr => h r (by simpa [STerm.vars] using hr))
+        (fun e => hf (by simpa [STerm.readsF] using e))]
+  | .shImm _ _ x, h, hf => by
+      rw [STerm.ev, STerm.ev, STerm.ev_congr A x
+        (fun r hr => h r (by simpa [STerm.vars] using hr))
+        (fun e => hf (by simpa [STerm.readsF] using e))]
+  | .aget a _ _ i, h, hf => by
+      simp only [STerm.ev,
+        SArr.ev_congr A a (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A i (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .cin _, _, hf => by
+      obtain ⟨rfl, rfl⟩ := hf rfl
+      rfl
+  | .aluF _ _ x y o, h, hf => by
+      simp only [STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A o (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .carryW _ x y c, h, hf => by
+      simp only [STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A c (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .carryF _ _ x y c, h, hf => by
+      simp only [STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A c (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+
+theorem SArr.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
+    {C O C' O' : Bool} :
+    ∀ (a : SArr), (∀ r ∈ a.vars, V r = V' r) → (a.readsF = true → C = C' ∧ O = O') →
+      a.ev V A C O = a.ev V' A C' O'
+  | .cell _, _, _ => rfl
+  | .aset a _ _ i v, h, hf => by
+      simp only [SArr.ev,
+        SArr.ev_congr A a (fun r hr => h r (by simp [SArr.vars, hr]))
+          (fun e => hf (by simp [SArr.readsF, e])),
+        STerm.ev_congr A i (fun r hr => h r (by simp [SArr.vars, hr]))
+          (fun e => hf (by simp [SArr.readsF, e])),
+        STerm.ev_congr A v (fun r hr => h r (by simp [SArr.vars, hr]))
+          (fun e => hf (by simp [SArr.readsF, e]))]
 end
 
-theorem SFlag.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell) {Z Z' : Bool}
-    (f : SFlag) (h : ∀ r ∈ f.vars, V r = V' r) (hz : f.readsInit = true → Z = Z') :
-    f.ev V A Z = f.ev V' A Z' := by
+theorem SFlag.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
+    {C O C' O' Z Z' : Bool} (f : SFlag) (h : ∀ r ∈ f.vars, V r = V' r)
+    (hz : f.readsInit = true → Z = Z' ∧ C = C' ∧ O = O') :
+    f.ev V A C O Z = f.ev V' A C' O' Z' := by
   cases f with
-  | init => exact hz rfl
+  | init => exact (hz rfl).1
   | cmp x y =>
       simp only [SFlag.ev,
-        STerm.ev_congr A x (fun r hr => h r (by simp [SFlag.vars, hr])),
-        STerm.ev_congr A y (fun r hr => h r (by simp [SFlag.vars, hr]))]
+        STerm.ev_congr A x (fun r hr => h r (by simp [SFlag.vars, hr]))
+          (fun e => (hz (by simp [SFlag.readsInit, e])).2),
+        STerm.ev_congr A y (fun r hr => h r (by simp [SFlag.vars, hr]))
+          (fun e => (hz (by simp [SFlag.readsInit, e])).2)]
 
-theorem SG.holds_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell) (g : SG)
-    (h : ∀ r ∈ g.vars, V r = V' r) : g.holds V A ↔ g.holds V' A := by
+theorem SG.holds_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
+    {C O C' O' : Bool} (g : SG) (h : ∀ r ∈ g.vars, V r = V' r)
+    (hf : g.readsF = true → C = C' ∧ O = O') : g.holds V A C O ↔ g.holds V' A C' O' := by
   cases g with
-  | wid t w => simp only [SG.holds, STerm.ev_congr A t (fun r hr => h r hr)]
+  | wid t w => simp only [SG.holds, STerm.ev_congr A t (fun r hr => h r hr) hf]
   | eqW x y =>
       simp only [SG.holds,
-        STerm.ev_congr A x (fun r hr => h r (by simp [SG.vars, hr])),
-        STerm.ev_congr A y (fun r hr => h r (by simp [SG.vars, hr]))]
-  | shp a w n => rw [SG.holds, SG.holds, SArr.ev_congr A a (fun r hr => h r hr)]
+        STerm.ev_congr A x (fun r hr => h r (by simp [SG.vars, hr]))
+          (fun e => hf (by simp [SG.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [SG.vars, hr]))
+          (fun e => hf (by simp [SG.readsF, e]))]
+  | shp a w n => rw [SG.holds, SG.holds, SArr.ev_congr A a (fun r hr => h r hr) hf]
 
 /-! ## 8. Straight-line stretches of a run -/
 
@@ -1341,9 +1614,10 @@ def symDec (ss : SSt) (c : LOperand) : SDec :=
       | _ => .const false
 
 /-- The value of a symbolic branch condition. -/
-def SDec.ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (Z : Bool) : SDec → Bool
-  | .flag pol z => z.ev V A Z == pol
-  | .nz t => if (t.ev V A).1 = 64 then decide (castW (t.ev V A) 64 ≠ 0#64) else false
+def SDec.ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) (Z : Bool) :
+    SDec → Bool
+  | .flag pol z => z.ev V A C O Z == pol
+  | .nz t => if (t.ev V A C O).1 = 64 then decide (castW (t.ev V A C O) 64 ≠ 0#64) else false
   | .const b => b
 
 /-- The start registers a symbolic branch condition reads. -/
@@ -1352,17 +1626,18 @@ def SDec.vars : SDec → List String
   | .nz t => t.vars
   | .const _ => []
 
-/-- The symbolic branch condition reads the flag at the start. -/
+/-- The symbolic branch condition reads a flag at the start. -/
 def SDec.readsInit : SDec → Bool
   | .flag _ z => z.readsInit
-  | _ => false
+  | .nz t => t.readsF
+  | .const _ => false
 
-theorem decC_eq {V : String → Σ w, BitVec w} {A : String → ArrCell} {Z : Bool} {ss : SSt}
-    {s : LstateMF} (hs : Holds V A Z ss s) (c : LOperand) :
-    decC s c = (symDec ss c).ev V A Z := by
+theorem decC_eq {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} {Z : Bool}
+    {ss : SSt} {s : LstateMF} (hs : Holds V A C O Z ss s) (c : LOperand) :
+    decC s c = (symDec ss c).ev V A C O Z := by
   unfold decC symDec
   cases ccPol c with
-  | some pol => simp [SDec.ev, hs.2.2]
+  | some pol => simp [SDec.ev, hs.2.2.1]
   | none =>
       cases c with
       | reg r =>
@@ -1372,12 +1647,13 @@ theorem decC_eq {V : String → Σ w, BitVec w} {A : String → ArrCell} {Z : Bo
       | arr _ _ => rfl
       | arrIdx _ _ _ => rfl
 
-theorem SDec.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell) {Z Z' : Bool}
-    (d : SDec) (h : ∀ r ∈ d.vars, V r = V' r) (hz : d.readsInit = true → Z = Z') :
-    d.ev V A Z = d.ev V' A Z' := by
+theorem SDec.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
+    {C O C' O' Z Z' : Bool} (d : SDec) (h : ∀ r ∈ d.vars, V r = V' r)
+    (hz : d.readsInit = true → Z = Z' ∧ C = C' ∧ O = O') :
+    d.ev V A C O Z = d.ev V' A C' O' Z' := by
   cases d with
   | flag pol z => simp only [SDec.ev, SFlag.ev_congr A z h hz]
-  | nz t => rw [SDec.ev, SDec.ev, STerm.ev_congr A t h]
+  | nz t => rw [SDec.ev, SDec.ev, STerm.ev_congr A t h (fun e => (hz e).2)]
   | const b => rfl
 
 /-! ## 10. The checker -/
@@ -1394,6 +1670,11 @@ def bodyAt (B : List LinstrRM) (b : Block) (T : Term) : List LinstrRM :=
 
 /-- Every name of `vs` is in the live set `n`. -/
 def vIn (n : List String × Bool) (vs : List String) : Bool := vs.all (fun v => n.1.contains v)
+
+/-- A value reading the names `vs` may be compared at a block with live set `n`: every name
+    is live, and the flags are live when the value reads a flag at the start (`rf`). -/
+def okIn (n : List String × Bool) (vs : List String) (rf : Bool) : Bool :=
+  vIn n vs && (!rf || n.2)
 
 /-- The two terminator instructions agree: two jumps name the same function, and two
     branches have the same symbolic condition, which reads only live names. -/
@@ -1415,16 +1696,21 @@ def termAgree (T : Term) (n : List String × Bool) (ss ss' : SSt) :
       | _ => false
 
 /-- The two final symbolic states agree at every exit of a block with live set `n` and
-    terminator `T`: on the registers and the flag live at each successor, on `outs` when
-    the block may leave the body, and on every array written; every value compared reads
-    only names in `n`. -/
+    terminator `T`: on the registers live at each successor and, when the flags are live
+    there, on the zero, carry and overflow flags; on `outs` when the block may leave the
+    body; and on every array written. Every value compared passes `okIn n`. -/
 def exitAgree (outs : List String) (L : Nat → List String × Bool) (n : List String × Bool)
     (T : Term) (ss ss' : SSt) : Bool :=
   T.succs.all (fun j =>
-      (L j).1.all (fun r => ss.regs r == ss'.regs r && vIn n (ss.regs r).vars) &&
-        (!(L j).2 || (ss.zf == ss'.zf && vIn n ss.zf.vars && (!ss.zf.readsInit || n.2)))) &&
-    (!T.halts || outs.all (fun r => ss.regs r == ss'.regs r && vIn n (ss.regs r).vars)) &&
-    (ss.awr ++ ss'.awr).all (fun q => ss.arrs q == ss'.arrs q && vIn n (ss.arrs q).vars)
+      (L j).1.all (fun r =>
+          ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF) &&
+        (!(L j).2 || (ss.zf == ss'.zf && okIn n ss.zf.vars ss.zf.readsInit &&
+          ss.cf == ss'.cf && okIn n ss.cf.vars ss.cf.readsF &&
+          ss.of == ss'.of && okIn n ss.of.vars ss.of.readsF))) &&
+    (!T.halts ||
+      outs.all (fun r => ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF)) &&
+    (ss.awr ++ ss'.awr).all (fun q =>
+      ss.arrs q == ss'.arrs q && okIn n (ss.arrs q).vars (ss.arrs q).readsF)
 
 /-- The check of block `k` of the source body `B` (block `b`) against block `k` of the
     rewritten body `B'` (block `b'`), both with terminator `T`, for the live sets `L`. -/
@@ -1439,7 +1725,7 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start with
           | .ok ss' gs' =>
-              gs'.all (fun g => gs.contains g && vIn (L k) g.vars) &&
+              gs'.all (fun g => gs.contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false
@@ -1459,11 +1745,13 @@ def ownedCheckWith (outs : List String) (L : Nat → List String × Bool)
 
 /-- The agreement of a source state `s` and a rewritten state `s'` at a block entry with
     live set `n`: the function, the arrays, the word memory, the live registers, and the
-    zero flag when it is live. -/
+    zero, carry and overflow flags when the flags are live. -/
 def Rel (n : List String × Bool) (s s' : LstateMF) : Prop :=
   s'.prog.lfn = s.prog.lfn ∧ s'.prog.base.larr = s.prog.base.larr ∧
     s'.prog.base.lmem = s.prog.base.lmem ∧
-    (∀ r ∈ n.1, s'.prog.base.reg.lvm r = s.prog.base.reg.lvm r) ∧ (n.2 = true → s'.zf = s.zf)
+    (∀ r ∈ n.1, s'.prog.base.reg.lvm r = s.prog.base.reg.lvm r) ∧
+    (n.2 = true → s'.zf = s.zf ∧ s'.prog.base.cf = s.prog.base.cf ∧
+      s'.prog.base.of = s.prog.base.of)
 
 /-- The observable agreement of two end states: the registers `outs`, the arrays and the
     word memory. -/
@@ -1475,54 +1763,62 @@ theorem vIn_spec {n : List String × Bool} {vs : List String} (h : vIn n vs = tr
     ∀ v ∈ vs, v ∈ n.1 := by
   simpa [vIn] using h
 
+theorem okIn_spec {n : List String × Bool} {vs : List String} {rf : Bool}
+    (h : okIn n vs rf = true) : (∀ v ∈ vs, v ∈ n.1) ∧ (rf = true → n.2 = true) := by
+  simp only [okIn, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  refine ⟨vIn_spec h.1, fun hr => ?_⟩
+  rcases h.2 with h2 | h2
+  · rw [hr] at h2; cases h2
+  · exact h2
+
 theorem exitAgree_spec {outs : List String} {L : Nat → List String × Bool}
     {n : List String × Bool} {T : Term} {ss ss' : SSt} (h : exitAgree outs L n T ss ss' = true) :
     (∀ j ∈ T.succs,
-      (∀ r ∈ (L j).1, ss.regs r = ss'.regs r ∧ ∀ v ∈ (ss.regs r).vars, v ∈ n.1) ∧
-      ((L j).2 = true → ss.zf = ss'.zf ∧ (∀ v ∈ ss.zf.vars, v ∈ n.1) ∧
-        (ss.zf.readsInit = true → n.2 = true))) ∧
-    (T.halts = true → ∀ r ∈ outs, ss.regs r = ss'.regs r ∧ ∀ v ∈ (ss.regs r).vars, v ∈ n.1) ∧
-    (∀ q ∈ ss.awr ++ ss'.awr, ss.arrs q = ss'.arrs q ∧ ∀ v ∈ (ss.arrs q).vars, v ∈ n.1) := by
+      (∀ r ∈ (L j).1, ss.regs r = ss'.regs r ∧
+        okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
+      ((L j).2 = true → ss.zf = ss'.zf ∧ okIn n ss.zf.vars ss.zf.readsInit = true ∧
+        ss.cf = ss'.cf ∧ okIn n ss.cf.vars ss.cf.readsF = true ∧
+        ss.of = ss'.of ∧ okIn n ss.of.vars ss.of.readsF = true)) ∧
+    (T.halts = true → ∀ r ∈ outs, ss.regs r = ss'.regs r ∧
+      okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
+    (∀ q ∈ ss.awr ++ ss'.awr, ss.arrs q = ss'.arrs q ∧
+      okIn n (ss.arrs q).vars (ss.arrs q).readsF = true) := by
   simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true'] at h
   obtain ⟨⟨h1, h2⟩, h3⟩ := h
-  refine ⟨fun j hj => ⟨fun r hr => ?_, fun hl => ?_⟩, fun hh r hr => ?_, fun q hq => ?_⟩
-  · obtain ⟨e, v⟩ := (h1 j hj).1 r hr
-    exact ⟨e, vIn_spec v⟩
-  · rcases (h1 j hj).2 with h | ⟨⟨e, v⟩, z⟩
-    · simp [hl] at h
-    · refine ⟨e, vIn_spec v, fun hr => ?_⟩
-      rcases z with z | z
-      · simp [hr] at z
-      · exact z
+  refine ⟨fun j hj => ⟨(h1 j hj).1, fun hl => ?_⟩, fun hh r hr => ?_, h3⟩
+  · rcases (h1 j hj).2 with h | ⟨⟨⟨⟨⟨e, z⟩, ec⟩, zc⟩, eo⟩, zo⟩
+    · rw [hl] at h; cases h
+    · exact ⟨e, z, ec, zc, eo, zo⟩
   · rcases h2 with h2 | h2
-    · simp [hh] at h2
-    · obtain ⟨e, v⟩ := h2 r hr
-      exact ⟨e, vIn_spec v⟩
-  · obtain ⟨e, v⟩ := h3 q hq
-    exact ⟨e, vIn_spec v⟩
+    · rw [hh] at h2; cases h2
+    · exact h2 r hr
 
 theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : List String × Bool}
     {T : Term} {ss ss' : SSt} {V V' : String → Σ w, BitVec w} {A : String → ArrCell}
-    {Z Z' : Bool} {u u' : LstateMF} (hH : Holds V A Z ss u) (hH' : Holds V' A Z' ss' u')
-    (hV : ∀ r ∈ n.1, V' r = V r) (hZ : n.2 = true → Z' = Z) (hg : ss.Good) (hg' : ss'.Good)
+    {C O C' O' Z Z' : Bool} {u u' : LstateMF} (hH : Holds V A C O Z ss u)
+    (hH' : Holds V' A C' O' Z' ss' u') (hV : ∀ r ∈ n.1, V' r = V r)
+    (hZ : n.2 = true → Z' = Z ∧ C' = C ∧ O' = O) (hg : ss.Good) (hg' : ss'.Good)
     (hlfn : u'.prog.lfn = u.prog.lfn) (hmem : u'.prog.base.lmem = u.prog.base.lmem)
     (hex : exitAgree outs L n T ss ss' = true) :
     (∀ j ∈ T.succs, Rel (L j) u u') ∧ (T.halts = true → Obs outs u u') := by
   obtain ⟨hs, hh, ha⟩ := exitAgree_spec hex
-  have hterm : ∀ t : STerm, (∀ v ∈ t.vars, v ∈ n.1) → t.ev V' A = t.ev V A :=
-    fun t ht => STerm.ev_congr A t (fun r hr => hV r (ht r hr))
+  have hterm : ∀ t : STerm, okIn n t.vars t.readsF = true → t.ev V' A C' O' = t.ev V A C O :=
+    fun t ht => STerm.ev_congr A t (fun r hr => hV r ((okIn_spec ht).1 r hr))
+      (fun e => (hZ ((okIn_spec ht).2 e)).2)
   have harr : u'.prog.base.larr = u.prog.base.larr := by
     funext q
     rw [hH'.2.1 q, hH.2.1 q]
     by_cases hq : q ∈ ss.awr ++ ss'.awr
     · obtain ⟨e, v⟩ := ha q hq
       rw [← e]
-      exact SArr.ev_congr A _ (fun r hr => hV r (v r hr))
+      exact SArr.ev_congr A _ (fun r hr => hV r ((okIn_spec v).1 r hr))
+        (fun e => (hZ ((okIn_spec v).2 e)).2)
     · simp only [List.mem_append, not_or] at hq
       rw [hg.2 q hq.1, hg'.2 q hq.2]
       rfl
-  have hreg : ∀ r, ss.regs r = ss'.regs r → (∀ v ∈ (ss.regs r).vars, v ∈ n.1) →
+  have hreg : ∀ r, ss.regs r = ss'.regs r →
+      okIn n (ss.regs r).vars (ss.regs r).readsF = true →
       u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r := by
     intro r e v
     rw [hH'.1 r, hH.1 r, ← e]
@@ -1530,9 +1826,13 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
   refine ⟨fun j hj => ⟨hlfn, harr, hmem, fun r hr => ?_, fun hl => ?_⟩, fun hT => ?_⟩
   · obtain ⟨e, v⟩ := (hs j hj).1 r hr
     exact hreg r e v
-  · obtain ⟨e, v, z⟩ := (hs j hj).2 hl
-    rw [hH'.2.2, hH.2.2, ← e]
-    exact SFlag.ev_congr A _ (fun r hr => hV r (v r hr)) (fun hr => hZ (z hr))
+  · obtain ⟨e, z, ec, zc, eo, zo⟩ := (hs j hj).2 hl
+    refine ⟨?_, ?_, ?_⟩
+    · rw [hH'.2.2.1, hH.2.2.1, ← e]
+      exact SFlag.ev_congr A _ (fun r hr => hV r ((okIn_spec z).1 r hr))
+        (fun hr => hZ ((okIn_spec z).2 hr))
+    · rw [hH'.2.2.2.1, hH.2.2.2.1, ← ec, hterm _ zc]
+    · rw [hH'.2.2.2.2, hH.2.2.2.2, ← eo, hterm _ zo]
   · refine ⟨fun r hr => ?_, harr, hmem⟩
     obtain ⟨e, v⟩ := hh hT r hr
     exact hreg r e v
@@ -1655,7 +1955,8 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
     symRun (bodyAt B b T) SSt.start = .fail ∨
       ∃ ss gs ss' gs', symRun (bodyAt B b T) SSt.start = .ok ss gs ∧
         symRun (bodyAt B' b' T) SSt.start = .ok ss' gs' ∧
-        (∀ g ∈ gs', g ∈ gs ∧ ∀ v ∈ g.vars, v ∈ (L k).1) ∧
+        (∀ g ∈ gs', g ∈ gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
+          (g.readsF = true → (L k).2 = true)) ∧
         termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? = true ∧
         exitAgree outs L (L k) T ss ss' = true := by
   have h2 : (match symRun (bodyAt B b T) SSt.start with
@@ -1664,7 +1965,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start with
           | .ok ss' gs' =>
-              gs'.all (fun g => gs.contains g && vIn (L k) g.vars) &&
+              gs'.all (fun g => gs.contains g && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? &&
                 exitAgree outs L (L k) T ss ss'
           | _ => false) = true := by
@@ -1682,7 +1983,7 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
           simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h2
           obtain ⟨⟨hg, hta⟩, hex⟩ := h2
           exact Or.inr ⟨ss, gs, ss', gs', rfl, rfl,
-            fun g hg' => ⟨(hg g hg').1, vIn_spec (hg g hg').2⟩, hta, hex⟩
+            fun g hg' => ⟨(hg g hg').1, okIn_spec (hg g hg').2⟩, hta, hex⟩
       | fail => rw [ht] at h2; cases h2
       | unk => rw [ht] at h2; cases h2
 
@@ -1855,7 +2156,8 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
     cases he
   -- the symbolic runs of the two block bodies
   have hD := symRun_sound (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ s (holds_start s)
+    (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s
+    (holds_start s)
   rw [symRun_entry hE hle] at hD
   rcases blockOk_spec hok hret with hfail | ⟨ss, gs, ss', gs', hS, hS', hgs, hta, hex⟩
   · rw [hfail] at hD
@@ -1865,14 +2167,20 @@ theorem sim_step {outs : List String} {L : Nat → List String × Bool} {B B' : 
   rw [hS] at hD
   obtain ⟨hAll, hH, hFr⟩ := hD.1 u hu
   have hV : ∀ r ∈ (L k).1, s'.prog.base.reg.lvm r = s.prog.base.reg.lvm r := hrel.2.2.2.1
-  have hH0' : Holds s'.prog.base.reg.lvm s.prog.base.larr s'.zf SSt.start s' :=
-    ⟨fun _ => rfl, fun q => by rw [hrel.2.1]; rfl, rfl⟩
+  have hH0' : Holds s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of s'.zf
+      SSt.start s' :=
+    ⟨fun _ => rfl, fun q => by rw [hrel.2.1]; rfl, rfl, by simp [SSt.start, STerm.ev],
+      by simp [SSt.start, STerm.ev]⟩
   rw [hTk] at hle'
   have hD' := symRun_sound (singletonProgM fn B') ((B'.drop s'.prog.base.reg.lpc).take
-    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ s' hH0'
+    (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
   rw [symRun_entry hE' hle', hS'] at hD'
-  have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr gs' := fun g hg =>
-    (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2 r hr)).symm)).mp
+  have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
+    fun g hg =>
+      (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2.1 r hr)).symm)
+        (fun e => by
+          obtain ⟨-, hc, ho⟩ := hrel.2.2.2.2 ((hgs g hg).2.2 e)
+          exact ⟨hc.symm, ho.symm⟩)).mp
       (hAll g (hgs g hg).1)
   obtain ⟨u', hu'⟩ := Option.isSome_iff_exists.mp (hD'.2 hAll')
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
@@ -2026,12 +2334,12 @@ theorem ownedCheckWith_sound {outs : List String} {L : Nat → List String × Bo
     obtain ⟨-, hs0'⟩ := cfgOf_start_zero hG' hwl'
     exact simAt_all hc _ fuel 0 s s t (Nat.lt_succ_self _) h0
       (Or.inl ⟨hpc.trans hs0.symm, hpc.trans hs0'.symm⟩)
-      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => rfl⟩ hfn hrun
+      ⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ => ⟨rfl, rfl, rfl⟩⟩ hfn hrun
   · cases h
 
 /-! ## 13. Live sets -/
 
-/-- The start registers and flag block `k` needs live for the checks of `blockOk` to pass,
+/-- The start registers and flags block `k` needs live for the checks of `blockOk` to pass,
     given the live sets `L` of its successors. The result is a candidate only:
     `ownedCheckWith` checks the live sets it is given. -/
 def blockNeed (outs : List String) (L : Nat → List String × Bool) (T : Term)
@@ -2047,11 +2355,14 @@ def blockNeed (outs : List String) (L : Nat → List String × Bool) (T : Term)
             | _, _ => none
           (gs'.flatMap SG.vars ++ (dec.map SDec.vars).getD [] ++
               T.succs.flatMap (fun j => (L j).1.flatMap (fun r => (ss.regs r).vars) ++
-                (if (L j).2 then ss.zf.vars else [])) ++
+                (if (L j).2 then ss.zf.vars ++ ss.cf.vars ++ ss.of.vars else [])) ++
               (if T.halts then outs.flatMap (fun r => (ss.regs r).vars) else []) ++
               (ss.awr ++ ss'.awr).flatMap (fun q => (ss.arrs q).vars),
-            (dec.map SDec.readsInit).getD false ||
-              T.succs.any (fun j => (L j).2 && ss.zf.readsInit))
+            (dec.map SDec.readsInit).getD false || gs'.any SG.readsF ||
+              T.succs.any (fun j => (L j).1.any (fun r => (ss.regs r).readsF) ||
+                ((L j).2 && (ss.zf.readsInit || ss.cf.readsF || ss.of.readsF))) ||
+              (T.halts && outs.any (fun r => (ss.regs r).readsF)) ||
+              (ss.awr ++ ss'.awr).any (fun q => (ss.arrs q).readsF))
       | _, _ => ([], false)
 
 /-- `n` extended by the names and flag of `m`. -/
