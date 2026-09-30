@@ -30,8 +30,8 @@ the jasmin sibling:
           Lprog                    -- linearized jasmin (the `jasminc`-fed form)
 ```
 
-This backend exists for the **perf comparison** against `jasminc`'s own pipeline and
-the `jasminc_preserves_ct` anchor: by descending the jasmin `Lprog` from the
+This backend exists for the **perf comparison** against `jasminc`'s own pipeline:
+by descending the jasmin `Lprog` from the
 *same* neutral `arith` mid-level as the owned x86 path, the two targets share a
 common, verified front half (`lowerArithToJasmin`) and diverge only in the
 target-native back half.
@@ -63,13 +63,12 @@ structural back-half well-formedness**, stated below. The full
 end-to-end `Com.denote = lsem (arithToLprog …)` holds for the fragments
 `ComLsemExportFaithful[MC/Leaf]` covers; the back half is otherwise structural.
 
-## Relationship to the CT anchor
+## Relationship to constant time
 
-The `jasminc_preserves_ct` axiom (`CompilerSecurity/JasminCompilerBridge.lean`)
-is stated over the separate `Jasmin/` AST (`JasminProg` + `isCT_Cmd`), *not* over
-`Lprog`. So this file does **not** discharge a CT obligation; it positions the
-`Lprog` sibling at the point in the pipeline that feeds `jasminc`, whose CT
-preservation is the trusted anchor. The contribution here is the *neutral-mid-
+This file does **not** discharge a CT obligation; it positions the `Lprog`
+sibling at the point in the pipeline that feeds `jasminc`. Constant time at the
+shipped bytes is `DecodedCT.bytesCTCheck_sound` with the `--ct` gate. The
+contribution here is the *neutral-mid-
 level provenance* of the jasmin target — it descends from `arith`, sibling to
 the owned x86 backend — together with the structural + front-half-denote
 guarantees that compose through.

@@ -21,7 +21,7 @@ rather than a separate model checked to agree with it.
 ## What "the Jasmin model" means here, and why it is the anchor
 
 The verified pipeline hands jasmin's `Linear.lprog` to **jasminc**, whose
-constant-time-preservation theorem (`jasminc_preserves_ct`, arXiv:2511.11292)
+constant-time-preservation theorem (arXiv:2511.11292)
 is stated over the x86 semantics in the Rocq files
 
 * `jasmin/proofs/compiler/x86_instr_decl.v` — the per-instruction semantic

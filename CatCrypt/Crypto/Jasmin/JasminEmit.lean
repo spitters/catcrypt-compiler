@@ -472,7 +472,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
             bodyStr ++ "\n" ++ ind ++ "}")
   -- Conditional branch on a counter-style inequality `(gv != 0)`. This is
   -- the same `Papp2 (Oneq _) (Pvar _) (Pconst 0)` guard shape accepted by
-  -- the `Cwhile` clause above (and by `isCT_Cmd`'s `Cif` whitelist). It
+  -- the `Cwhile` clause above. It
   -- covers the sign-equality / `mpn_compare`-result branches used by the
   -- signed-mpz dispatcher in `Mpn.SignedJasminPrototype.lean`. The bodies
   -- are rendered with a deeper indent; an unsupported body instruction

@@ -24,7 +24,7 @@ semantics, and pins our model's effect with machine-checked Lean `#guard`s.
 
 The verified pipeline currently hands `lprog` to **jasminc**, the Coq-verified
 Jasmin compiler, whose constant-time-preservation theorem
-(`jasminc_preserves_ct`, arXiv:2511.11292) is stated over the x86 semantics in
+(arXiv:2511.11292) is stated over the x86 semantics in
 `jasmin/proofs/compiler/x86_instr_decl.v` (the `x86_ADD`/`x86_ADC`/… semantic
 functions) composed by `eval_op`/`eval_instr` in `arch/arch_sem.v`. Replacing
 that backend like-for-like means our `step` must agree with *that* model — so

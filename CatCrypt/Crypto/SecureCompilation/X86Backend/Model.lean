@@ -24,7 +24,7 @@ Their faithfulness rests on **agreement with Jasmin's Rocq x86 model**
 functions invoked by `eval_instr`/`eval_op` in `arch_sem.v`), which is the
 authoritative anchor because Jasmin is the like-for-like backend we replace:
 the verified pipeline currently hands `lprog` to jasminc, whose CT theorem
-(`jasminc_preserves_ct`, arXiv:2511.11292) is stated *over that same Rocq
+(arXiv:2511.11292) is stated *over that same Rocq
 model*. Matching it is therefore translation validation against the exact
 semantics the existing trust story depends on.
 
