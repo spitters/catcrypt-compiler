@@ -26,18 +26,16 @@ with the sources of the subtraction exchanged is rejected.
 On the kernels, `ownedResult` is the result of the check, the number of source blocks whose
 instructions before the terminator fail from every state, and the number of blocks. A block
 that always fails is accepted without a comparison, since no halting run passes through it.
-With the wire typing `tyWire`, every block of the five `mpn_*_loop_owned` loops, of the
-X25519 ladder step and of the rolled Keccak-f1600 fails from every state: their bodies
-contain the array-ABI moves `MOVQ` (`qsave.<R>`) and `LOAD:64`/`STORE:64`
-(`mem.<B>.<off>`) between register-shaped names, for which `lsemFuelMemF` has no step. With
-`tyCopy`, which spells these moves as the register copy `MOV:64` (the reading
-`LprogGpRealloc.reallocRun_sound` is stated under), no block of the five `mpn` loops fails
-and all are accepted; the ladder step still fails at its first `ADC:64` and the Keccak
-entry and loop blocks at `LOADSYM` and `ROR:63:64`, none of which `lsemFuelMemF` steps.
+With the wire typing `tyWire`, no block of the five `mpn_*_loop_owned` loops fails and all
+are accepted: `lsemFuelMemF` steps their array-ABI moves `MOVQ` (`qsave.<R>`) and
+`LOAD:64`/`STORE:64` (`mem.<B>.<off>`) as register copies (`JasminLsemMemFlagGuard.copyQ`).
+The one block of the X25519 ladder step fails at its first `ADC:64`, and the entry and loop
+blocks of the rolled Keccak-f1600 at `LOADSYM` and `ROR:63:64`; `lsemFuelMemF` steps none
+of these.
 
 ## Main definitions
 
-* `tagOf`, `tyWire`, `copySpell`, `tyCopy`: typings of a body.
+* `tagOf`, `tyWire`: typings of a body.
 * `blockFails`, `ownedResult`: the check on a program and its owned output, with the blocks
   that fail from every state.
 -/
@@ -65,19 +63,6 @@ def tagOf : LinstrR → MemTag
 
 /-- A body typed by `tagOf`, without its trailing `Lret`. -/
 def tyWire (c : Lcmd) : List LinstrRM := dropRet (typeBody tagOf c)
-
-/-- The array-ABI moves `MOVQ`, `LOAD:64` and `STORE:64` between register-shaped names,
-    spelled as the register copy `MOV:64`. -/
-def copySpell : LinstrR → LinstrR
-  | .Lopn [.reg d] "MOVQ" [.reg s] => .Lopn [.reg d] "MOV:64" [.reg s]
-  | .Lopn [.reg d] "LOAD:64" [.reg s] => .Lopn [.reg d] "MOV:64" [.reg s]
-  | .Lopn [.reg d] "STORE:64" [.reg s] => .Lopn [.reg d] "MOV:64" [.reg s]
-  | i => i
-
-/-- A body with the array-ABI moves spelled as copies, typed by `tagOf`, without its
-    trailing `Lret`. -/
-def tyCopy (c : Lcmd) : List LinstrRM :=
-  dropRet ((c.map fun i => copySpell i.li_i).map fun i => (i, tagOf i))
 
 /-- The registers `cpSubBody` writes. -/
 def cpOuts : List String := ["RAX", "RCX", "RDX", "R8"]
@@ -127,26 +112,14 @@ def keccakRolledPre : Option Lprog :=
 
 /-! ## Kernels, wire typing -/
 
-#kat ownedResult tyWire MpnLoopFrontEmit.andLprog == some (true, 3, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.iorLprog == some (true, 3, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.xorLprog == some (true, 3, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 3, 3)
-#kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 3, 3)
+#kat ownedResult tyWire MpnLoopFrontEmit.andLprog == some (true, 0, 3)
+#kat ownedResult tyWire MpnLoopFrontEmit.iorLprog == some (true, 0, 3)
+#kat ownedResult tyWire MpnLoopFrontEmit.xorLprog == some (true, 0, 3)
+#kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
+#kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
 set_option kat.ms 800 in
 #kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (true, 1, 1)
 set_option kat.ms 2500 in
-#kat ownedResult tyWire keccakRolledPre == some (true, 3, 3)
-
-/-! ## Kernels, array-ABI moves as copies -/
-
-#kat ownedResult tyCopy MpnLoopFrontEmit.andLprog == some (true, 0, 3)
-#kat ownedResult tyCopy MpnLoopFrontEmit.iorLprog == some (true, 0, 3)
-#kat ownedResult tyCopy MpnLoopFrontEmit.xorLprog == some (true, 0, 3)
-#kat ownedResult tyCopy MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
-#kat ownedResult tyCopy MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
-set_option kat.ms 800 in
-#kat ownedResult tyCopy (some Fe25519LfundefBridge.monoStepLprog) == some (true, 1, 1)
-set_option kat.ms 2500 in
-#kat ownedResult tyCopy keccakRolledPre == some (true, 2, 3)
+#kat ownedResult tyWire keccakRolledPre == some (true, 2, 3)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels

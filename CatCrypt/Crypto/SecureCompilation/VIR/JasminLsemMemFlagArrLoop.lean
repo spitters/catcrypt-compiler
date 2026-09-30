@@ -144,10 +144,11 @@ def ComOpsPlain : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | _, _, .ret _ => True
   | _, _, .var e body => OpPlain e.op ∧ ComOpsPlain body
 
-/-- An `Lopn` whose mnemonic is not the flag compare and does not strip to `MOV`
-    is plain under any descriptor. -/
+/-- An `Lopn` whose mnemonic is not the flag compare, does not strip to `MOV` and is
+    no array-ABI move (`copyQ`) is plain under any descriptor. -/
 theorem lopn_plain (dsts : List LOperand) (opn : String) (srcs : List LOperand)
-    (tag : MemTag) (h1 : opn ≠ withWidthTag 64 "CMP") (h2 : stripWidthTag opn ≠ "MOV") :
+    (tag : MemTag) (h1 : opn ≠ withWidthTag 64 "CMP") (h2 : stripWidthTag opn ≠ "MOV")
+    (h3 : copyQ opn = false) :
     IsLopn (LinstrR.Lopn dsts opn srcs, tag)
       ∧ cmpArgs? (LinstrR.Lopn dsts opn srcs, tag) = none
       ∧ movRegArgs? (LinstrR.Lopn dsts opn srcs, tag) = none := by
@@ -225,44 +226,48 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
   case regArith bop w =>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> cases bop <;> decide)
       (by unfold withWidthTag; split <;> cases bop <;> decide)
+      (by unfold withWidthTag; split <;> cases bop <;> decide)
   case regConst w k =>
     refine ⟨⟨_, _, _, rfl⟩, ?_, ?_⟩ <;> simp [opToLinstrR, cmpArgs?, movRegArgs?]
   case select w =>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide)
+      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
   case shrImm w k =>
     obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SHR:" ++ toString k) 'S'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
     exact lopn_plain _ _ _ _ h1 h2
+      (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case shlImm w k =>
     obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SHL:" ++ toString k) 'S'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
     exact lopn_plain _ _ _ _ h1 h2
+      (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case sarImm w k =>
     obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SAR:" ++ toString k) 'S'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
     exact lopn_plain _ _ _ _ h1 h2
+      (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case mulhi w =>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide)
+      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
   case addCarryLo w =>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide)
+      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
   case addCarryHi w =>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide)
+      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
   case castW w w' =>
     simp only [opToLinstrR]
     split
     · unfold castWMnem
-      split_ifs <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
-    · split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
+      split_ifs <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
+    · split <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
   case stackLoad w k =>
     simp only [opToLinstrR]
-    split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
+    split <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
   case stackStore w k =>
     simp only [opToLinstrR]
-    split <;> exact lopn_plain _ _ _ _ (by decide) (by decide)
+    split <;> exact lopn_plain _ _ _ _ (by decide) (by decide) (by decide)
 
 /-- The structured shift instruction is plain under any descriptor. -/
 theorem shiftLinstr_plain (mnem : String) (hm : mnem = "SHR" ∨ mnem = "SHL" ∨ mnem = "SAR")
@@ -273,7 +278,7 @@ theorem shiftLinstr_plain (mnem : String) (hm : mnem = "SHR" ∨ mnem = "SHL" �
   unfold JasminLsemShift.shiftLinstr
   rcases hm with rfl | rfl | rfl <;>
     exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide)
+      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
 
 /-- **The emitted chain is plain.** Every instruction `straightOpsMem` emits for a
     `Com` whose ops lie in the stack-memory fragment's op set is an `Lopn` that is

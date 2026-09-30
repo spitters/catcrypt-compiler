@@ -30,7 +30,8 @@ leaves them unchanged.
 `evalInstrPMemF` succeeds from a state `ss` describes if and only if the guards `gs`
 hold, and then ends in a state `ss'` describes; `fail` when the step fails from every such
 state; `unk` when the instruction is outside the described fragment. The fragment is the
-flag `CMP`, the register-copy `MOV`, labels, `Lalign`, the array load and store of
+flag `CMP`, the register copies (`MOV` and the array-ABI moves `MOVQ`, `LOAD:64`,
+`STORE:64`), labels, `Lalign`, the array load and store of
 `lsemStepMem`, and the arms of `lsemStepN` (two-source arithmetic, immediate `MOV`, `NEG`,
 immediate shifts); the multiply and carry arms, `SAR`, `CMOV`, the casts and the
 compile-time-offset memory moves are `unk`. `symRun` composes the steps of a list.

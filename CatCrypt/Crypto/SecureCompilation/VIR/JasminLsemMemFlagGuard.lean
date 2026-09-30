@@ -52,7 +52,9 @@ never edited):
      leaving the store untouched;
   2. the emitted register-copy `MOV` (`movRegArgs?`: `Lopn [.reg dst] "MOV…"
      [.reg src]` — the accumulator/counter seed and feedback moves the lowering
-     emits, which `lsemStepN` has no arm for) writes `dst := src`;
+     emits, which `lsemStepN` has no arm for), and the array-ABI moves `MOVQ`,
+     `LOAD:64`, `STORE:64` between register-shaped names (`copyQ`, each printed as
+     `movq`), write `dst := src`;
   3. the flag-reading conditional (`flagCondCC?`: `Lcond (.reg "NZ") l` = `jne`,
      `Lcond (.reg "Z") l` = `je`) jumps iff `zf` matches the condition's
      polarity.  Every other instruction delegates to `evalInstrPMemL` on the
@@ -122,16 +124,57 @@ def cmpArgs? (i : LinstrRM) : Option (LOperand × LOperand) :=
   | .Lopn [_] opn [a, b] => if opn = withWidthTag 64 "CMP" then some (a, b) else none
   | _ => none
 
-/-- The emitted register-copy `MOV` recognizer: `Lopn [.reg dst] opn [.reg src]`
-    with stripped mnemonic `"MOV"` — the accumulator seed (`MOV acc, a<k>`),
-    runtime counter seed (`MOV Lctr, a<k>`), and feedback (`MOV acc, L<d>_r<k>`)
-    moves the loop lowerings emit.  (`lsemStepN` covers only the immediate
-    `MOV dst, #n`; the register-copy form has no arm anywhere in the
-    `lsemStepMem` delegate chain.) -/
+/-- The whole-word move mnemonics of the array ABI between register-shaped names:
+    `MOVQ` (a copy between registers and `qsave.<R>` save slots), `LOAD:64` (a load
+    from an ABI cell `mem.<B>.<off>`) and `STORE:64` (a store to one).  The printer
+    renders each as the 64-bit `movq` (`LprogAsmPrinter.attBase` maps `MOVQ`, `LOAD`
+    and `STORE` to `mov`, and `LprogAsmPrinter.mnemWidth` is `64` for `MOVQ` and for a
+    `:64` tag); the name of a cell resolves to its memory operand. -/
+@[simp] def copyQ (opn : String) : Bool := opn == "MOVQ" || opn == "LOAD:64" || opn == "STORE:64"
+
+/-- A mnemonic whose first two characters are none of `MO`, `LO`, `ST` is not a
+    `copyQ` mnemonic. -/
+theorem copyQ_eq_false_of_toList {x : String} {c₁ c₂ : Char} {t : List Char}
+    (hx : x.toList = c₁ :: c₂ :: t)
+    (h : ¬ (c₁ = 'M' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'L' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'S' ∧ c₂ = 'T')) :
+    copyQ x = false := by
+  obtain ⟨hM, hL, hS⟩ := h
+  unfold copyQ
+  simp only [Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+  refine ⟨⟨fun he => hM ?_, fun he => hL ?_⟩, fun he => hS ?_⟩ <;> subst he
+  · rw [show "MOVQ".toList = ['M', 'O', 'V', 'Q'] from by decide] at hx
+    simp only [List.cons.injEq] at hx
+    exact ⟨hx.1.symm, hx.2.1.symm⟩
+  · rw [show "LOAD:64".toList = ['L', 'O', 'A', 'D', ':', '6', '4'] from by decide] at hx
+    simp only [List.cons.injEq] at hx
+    exact ⟨hx.1.symm, hx.2.1.symm⟩
+  · rw [show "STORE:64".toList = ['S', 'T', 'O', 'R', 'E', ':', '6', '4'] from by decide] at hx
+    simp only [List.cons.injEq] at hx
+    exact ⟨hx.1.symm, hx.2.1.symm⟩
+
+/-- A width-tagged mnemonic whose base starts with none of `MO`, `LO`, `ST` is not a
+    `copyQ` mnemonic. -/
+theorem copyQ_withWidthTag (w : Nat) {m : String} {c₁ c₂ : Char} {t : List Char}
+    (hm : m.toList = c₁ :: c₂ :: t)
+    (h : ¬ (c₁ = 'M' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'L' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'S' ∧ c₂ = 'T')) :
+    copyQ (withWidthTag w m) = false := by
+  unfold withWidthTag
+  split
+  · exact copyQ_eq_false_of_toList (by rw [String.toList_append, hm]; rfl) h
+  · exact copyQ_eq_false_of_toList hm h
+
+/-- The emitted register-copy recognizer: `Lopn [.reg dst] opn [.reg src]` with
+    stripped mnemonic `"MOV"` — the accumulator seed (`MOV acc, a<k>`), runtime
+    counter seed (`MOV Lctr, a<k>`), and feedback (`MOV acc, L<d>_r<k>`) moves the
+    loop lowerings emit — or with a `copyQ` mnemonic, the array-ABI moves `MOVQ`,
+    `LOAD:64` and `STORE:64` between register-shaped names.  (`lsemStepN` covers
+    only the immediate `MOV dst, #n`; the register-copy form has no arm anywhere in
+    the `lsemStepMem` delegate chain.) -/
 def movRegArgs? (i : LinstrRM) : Option (String × String) :=
   match i.fst with
   | .Lopn [.reg dst] opn [.reg src] =>
-      if stripWidthTag opn = "MOV" then some (dst, src) else none
+      if stripWidthTag opn = "MOV" then some (dst, src)
+      else if copyQ opn then some (dst, src) else none
   | _ => none
 
 /-- The flag-reading conditional recognizer: the condition operand is a
@@ -166,8 +209,9 @@ structure LstateMF where
     * the emitted flag-`CMP` (`cmpArgs?`) evaluates both operands at width 64,
       sets `zf := (va = vb)` (a compare is a subtract that only writes flags),
       and advances the pc — the store is untouched;
-    * the emitted register-copy `MOV` (`movRegArgs?`) writes `dst := src` at
-      `src`'s stored width and advances the pc, threading `zf`;
+    * the emitted register-copy `MOV` and the array-ABI moves `MOVQ`, `LOAD:64`,
+      `STORE:64` (`movRegArgs?`) write `dst := src` at `src`'s stored width and
+      advance the pc, threading `zf`;
     * the flag-reading conditional (`flagCondCC?`) jumps (via
       `evalJumpMem`) iff `zf` matches the condition-code polarity, else falls
       through — the `jne`/`je` semantics;

@@ -274,8 +274,12 @@ theorem fstepF_immShiftWire (m : String) (hm : m = "SHR" ∨ m = "SHL" ∨ m = "
   obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w (m ++ ":" ++ toString k) 'S'
     (by rw [String.toList_append, String.toList_append]
         rcases hm with rfl | rfl | rfl <;> rfl) (by decide) (by decide)
+  have h3 : copyQ (withWidthTag w (m ++ ":" ++ toString k)) = false := by
+    rcases hm with rfl | rfl | rfl <;>
+      exact copyQ_withWidthTag w (by rw [String.toList_append, String.toList_append]; rfl)
+        (by decide)
   obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst]
-    (withWidthTag w (m ++ ":" ++ toString k)) [LOperand.reg a] (.reg none) h1 h2
+    (withWidthTag w (m ++ ":" ++ toString k)) [LOperand.reg a] (.reg none) h1 h2 h3
   unfold fstepF
   rw [hc, hmv]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
@@ -445,8 +449,10 @@ theorem fstepF_immShiftStruct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m =
           (fun r => ({ s with reg := r }, zf)) := by
   obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w m 'S'
     (by rcases hm with rfl | rfl | rfl <;> rfl) (by decide) (by decide)
+  have h3 : copyQ (withWidthTag w m) = false := by
+    rcases hm with rfl | rfl | rfl <;> (unfold withWidthTag; split <;> decide)
   obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst] (withWidthTag w m)
-    [LOperand.reg src, LOperand.imm n] (.reg none) h1 h2
+    [LOperand.reg src, LOperand.imm n] (.reg none) h1 h2 h3
   unfold fstepF
   rw [hc, hmv]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),

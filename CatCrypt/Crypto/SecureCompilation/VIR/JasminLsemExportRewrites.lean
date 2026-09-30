@@ -662,7 +662,9 @@ theorem movRegArgs?_names {i : LinstrRM} {p : String × String} (h : movRegArgs?
   obtain ⟨wire, tag⟩ := i
   unfold movRegArgs? at h
   dsimp only at h
-  recog_names
+  split at h
+  · split_ifs at h <;> cases h <;> simp [instrNames, opNames]
+  · simp at h
 
 /-- A conditional jump of the instruction reads the zero flag: every `Lcond` is
     one of the two condition-code forms `flagCondCC?` recognises. -/

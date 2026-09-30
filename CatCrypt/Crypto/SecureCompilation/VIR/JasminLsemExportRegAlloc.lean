@@ -594,7 +594,9 @@ theorem movRegArgs?_shape {i : LinstrRM} {p : String × String} (h : movRegArgs?
   obtain ⟨wire, tag⟩ := i
   unfold movRegArgs? at h
   dsimp only at h
-  recog_shape
+  split at h
+  · split_ifs at h <;> cases h <;> simp [defNames, useNames, opNames]
+  · simp at h
 
 theorem flagCondCC?_jumpLabel {i : LinstrRM} {p : Bool × LLabel} (h : flagCondCC? i = some p) :
     jumpLabel? i.1 = some p.2 := by
