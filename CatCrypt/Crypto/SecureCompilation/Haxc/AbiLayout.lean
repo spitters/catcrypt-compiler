@@ -35,7 +35,9 @@ and the runtime counts stay within stated bounds.
 * `AbiLayout.Regions` — the count bounds and the separation of the pointer regions and the
   frame at an entry state.
 * `AbiLayout.EnvOf` — a hax environment binding each parameter to the value its register
-  denotes and each constant to its value.
+  denotes, each constant to its value, and no other name.
+* `AbiLayout.canonEnv`, `AbiLayout.envOf_canonEnv` — the canonical environment of an entry
+  state, which `EnvOf` admits when the names of the layout are pairwise distinct.
 * `AbiLayout.ResultOf` — a source value equals the read-back of the result.
 -/
 
@@ -152,10 +154,74 @@ def Regions (σ : AbiLayout) (sa : AState) : Prop :=
         Disjoint8 (sa.regs "%rsp" + BitVec.ofInt 64 o)
           (sa.regs p.1 + BitVec.ofNat 64 (8 * k)))
 
+/-- The names a layout binds in the source environment: the parameters, then the
+    constants. -/
+def envNames (σ : AbiLayout) : List String := σ.args.map (·.name) ++ σ.consts.map (·.1)
+
 /-- The source environment `env` corresponds to the entry state `sa`: each parameter is
-    bound to the value its register denotes (`AbiArg.read`) and each constant to its value. -/
+    bound to the value its register denotes (`AbiArg.read`), each constant to its value, and
+    no other name is bound. -/
 def EnvOf (σ : AbiLayout) (sa : AState) (env : Env) : Prop :=
-  (∀ a ∈ σ.args, env a.name = some (a.read sa)) ∧ (∀ c ∈ σ.consts, env c.1 = some c.2)
+  (∀ a ∈ σ.args, env a.name = some (a.read sa)) ∧ (∀ c ∈ σ.consts, env c.1 = some c.2) ∧
+    ∀ y, (env y).isSome → y ∈ σ.envNames
+
+/-- **The canonical source environment** of the entry state `sa`: the first parameter named
+    `y` bound to the value its register denotes, otherwise the value of the first constant
+    named `y`. -/
+def canonEnv (σ : AbiLayout) (sa : AState) : Env := fun y =>
+  match σ.args.find? (·.name == y) with
+  | some a => some (a.read sa)
+  | none => (σ.consts.find? (·.1 == y)).map (·.2)
+
+/-- Two members of a list with the same image under a map without repeated values are
+    equal. -/
+private theorem eq_of_mem_of_nodup_map {α β : Type} {f : α → β} : ∀ {l : List α},
+    (l.map f).Nodup → ∀ {x y : α}, x ∈ l → y ∈ l → f x = f y → x = y
+  | [], _, _, _, hx, _, _ => by simp at hx
+  | a :: l, h, x, y, hx, hy, hxy => by
+    simp only [List.map_cons, List.nodup_cons, List.mem_map] at h
+    rcases List.mem_cons.mp hx with rfl | hx' <;> rcases List.mem_cons.mp hy with rfl | hy'
+    · rfl
+    · exact absurd ⟨y, hy', hxy.symm⟩ h.1
+    · exact absurd ⟨x, hx', hxy⟩ h.1
+    · exact eq_of_mem_of_nodup_map h.2 hx' hy' hxy
+
+/-- When the names of the layout are pairwise distinct, the canonical environment is the
+    one the layout reads off the entry state. -/
+theorem envOf_canonEnv (σ : AbiLayout) (h : σ.envNames.Nodup) (sa : AState) :
+    σ.EnvOf sa (σ.canonEnv sa) := by
+  have hA : (σ.args.map (·.name)).Nodup := (List.nodup_append.mp h).1
+  have hC : (σ.consts.map (·.1)).Nodup := (List.nodup_append.mp h).2.1
+  have hD := (List.nodup_append.mp h).2.2
+  refine ⟨fun a ha => ?_, fun c hc => ?_, fun y hy => ?_⟩
+  · have hf : (σ.args.find? (·.name == a.name)).isSome := by
+      rw [List.find?_isSome]; exact ⟨a, ha, by simp⟩
+    obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp hf
+    have hn : a'.name = a.name := by simpa using List.find?_some ha'
+    have e : a' = a := eq_of_mem_of_nodup_map hA (List.mem_of_find?_eq_some ha') ha hn
+    subst e
+    simp [canonEnv, ha']
+  · have hnone : σ.args.find? (·.name == c.1) = none := by
+      rw [List.find?_eq_none]
+      intro a ha hac
+      exact hD a.name (List.mem_map_of_mem ha) c.1 (List.mem_map_of_mem hc) (by simpa using hac)
+    have hf : (σ.consts.find? (·.1 == c.1)).isSome := by
+      rw [List.find?_isSome]; exact ⟨c, hc, by simp⟩
+    obtain ⟨c', hc'⟩ := Option.isSome_iff_exists.mp hf
+    have hn : c'.1 = c.1 := by simpa using List.find?_some hc'
+    have e : c' = c := eq_of_mem_of_nodup_map hC (List.mem_of_find?_eq_some hc') hc hn
+    subst e
+    simp [canonEnv, hnone, hc']
+  · unfold canonEnv at hy
+    unfold envNames
+    split at hy
+    · rename_i a ha
+      have hn : a.name = y := by simpa using List.find?_some ha
+      exact List.mem_append_left _ (hn ▸ List.mem_map_of_mem (List.mem_of_find?_eq_some ha))
+    · obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp (by simpa using hy :
+        (σ.consts.find? (·.1 == y)).isSome)
+      have hn : c.1 = y := by simpa using List.find?_some hc
+      exact List.mem_append_right _ (hn ▸ List.mem_map_of_mem (List.mem_of_find?_eq_some hc))
 
 /-- The source value `v` is the read-back of the result from the entry state `sa` and the
     exit state `sa'`. -/
