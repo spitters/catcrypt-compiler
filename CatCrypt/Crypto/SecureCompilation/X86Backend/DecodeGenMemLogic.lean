@@ -146,7 +146,7 @@ def decLoopBody (prog : List RInstr) : Option (List (JInstr 64)) :=
 
 /-! ## 3. The `and` loop body -/
 
-theorem and_loopOK : loopOK andEnv logicLive ⟨[], ["%rax"], []⟩ andLoopBodyLit andLoop.body
+theorem and_loopOK : loopOK andEnv logicLive (Abs.idx "%rax") andLoopBodyLit andLoop.body
     = true := by
   decide +kernel
 
@@ -168,12 +168,12 @@ set_option kat.ms 1000 in
 #kat decLoopBody (binDecoded (andMidDecoded .and_)) == some andLoop.body
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (andMid "AND:64" "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK andEnv logicLive ⟨[], ["%rax"], []⟩ andLoopBody)
+  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") andLoopBody)
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (andMid "XOR:64" "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK andEnv logicLive ⟨[], ["%rax"], []⟩ xorLoopBody)
+  decLoopBody).any (loopOK andEnv logicLive (Abs.idx "%rax") xorLoopBody)
 
 #kat ((decodeLprog (encodeLfundefBytes (binLoopBody (iorMid "SHL:0:64") "SHL:0:64"))).bind
-  decLoopBody).any (loopOK iorEnv logicLive ⟨[], ["%rax"], []⟩ iorLoopBody)
+  decLoopBody).any (loopOK iorEnv logicLive (Abs.idx "%rax") iorLoopBody)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic

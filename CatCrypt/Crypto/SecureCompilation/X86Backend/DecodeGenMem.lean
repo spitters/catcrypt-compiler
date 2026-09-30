@@ -35,8 +35,10 @@ every region) are computed from them. The separation conditions of a store
 `MCorr E base rsp (Ls, a) zl` is `DecLsemCorr` on the live list `Ls`, the layout, frame and
 cells of the regions, together with machine facts: the stack register holds `rsp`, and the
 abstract machine state `a` holds (`Abs.Holds`): register copies `eqs`, registers whose value
-is a valid index below the bound `E.nb` (`bnd`), and registers holding the base address of a
-region (`ptr`).
+is a valid index below the bound `E.nb` (`bnd`), registers holding the base address of a
+region (`ptr`), and registers holding the word `0` (`zero`). A register class keeps the facts
+of a copy, records the move of `0`, and gives a copy followed by the addition of a register
+holding `0` the facts of the copy (`Abs.regAfter`).
 
 ## The classes
 
@@ -147,7 +149,8 @@ theorem afterStore_regK {rs : List Region} {base : String → BitVec 64} {rsp : 
 /-! ## 2. The abstract machine state -/
 
 /-- Facts about machine registers: copies `eqs` (`X` holds the value of `Y`), registers of
-    `bnd` holding a valid index, and registers of `ptr` holding the base of a region. -/
+    `bnd` holding a valid index, registers of `ptr` holding the base of a region, and
+    registers of `zero` holding the word `0`. -/
 structure Abs where
   /-- `(X, Y)`: the register `X` holds the value of the register `Y`. -/
   eqs : List (String × String)
@@ -155,28 +158,39 @@ structure Abs where
   bnd : List String
   /-- `(B, A)`: the register `B` holds the base address of the region `A`. -/
   ptr : List (String × String)
+  /-- Registers holding the word `0`. -/
+  zero : List String
   deriving DecidableEq, Repr
 
 /-- The abstract state with no facts. -/
-def Abs.empty : Abs := ⟨[], [], []⟩
+def Abs.empty : Abs := ⟨[], [], [], []⟩
+
+/-- The abstract state whose only fact is that the register `R` holds a valid index. -/
+def Abs.idx (R : String) : Abs := ⟨[], [R], [], []⟩
 
 /-- The facts of `a` hold in the machine state `sa`, for the base map `base` and the index
     bound `nb`. -/
 def Abs.Holds (a : Abs) (base : String → BitVec 64) (nb : Nat) (sa : AState) : Prop :=
   (∀ p ∈ a.eqs, sa.regs p.1 = sa.regs p.2) ∧ (∀ R ∈ a.bnd, (sa.regs R).toNat < nb)
-    ∧ (∀ p ∈ a.ptr, sa.regs p.1 = base p.2)
+    ∧ (∀ p ∈ a.ptr, sa.regs p.1 = base p.2) ∧ (∀ R ∈ a.zero, sa.regs R = 0)
 
 /-- The facts of `a` that mention none of the registers `Ws`. -/
 def Abs.kill (a : Abs) (Ws : List String) : Abs where
   eqs := a.eqs.filter (fun p => !decide (p.1 ∈ Ws) && !decide (p.2 ∈ Ws))
   bnd := a.bnd.filter (fun R => !decide (R ∈ Ws))
   ptr := a.ptr.filter (fun p => !decide (p.1 ∈ Ws))
+  zero := a.zero.filter (fun R => !decide (R ∈ Ws))
 
 /-- The facts after the copy `mov %Y, %X`. -/
 def Abs.movTo (a : Abs) (X Y : String) : Abs where
   eqs := (X, Y) :: (a.kill [X]).eqs
   bnd := if decide (Y ∈ a.bnd) then X :: (a.kill [X]).bnd else (a.kill [X]).bnd
   ptr := (a.ptr.filter (fun p => p.1 == Y)).map (fun p => (X, p.2)) ++ (a.kill [X]).ptr
+  zero := if decide (Y ∈ a.zero) then X :: (a.kill [X]).zero else (a.kill [X]).zero
+
+/-- The facts after the move of the word `0` into `X`. -/
+def Abs.zeroTo (a : Abs) (X : String) : Abs :=
+  { a.kill [X] with zero := X :: (a.kill [X]).zero }
 
 /-- The facts after the reload of the pointer of the region `A` into `S`. -/
 def Abs.reload (a : Abs) (S A : String) : Abs :=
@@ -185,25 +199,34 @@ def Abs.reload (a : Abs) (S A : String) : Abs :=
 theorem Abs.holds_empty (base : String → BitVec 64) (nb : Nat) (sa : AState) :
     Abs.empty.Holds base nb sa :=
   ⟨fun _ h => by simp [Abs.empty] at h, fun _ h => by simp [Abs.empty] at h,
-    fun _ h => by simp [Abs.empty] at h⟩
+    fun _ h => by simp [Abs.empty] at h, fun _ h => by simp [Abs.empty] at h⟩
+
+/-- The index fact holds at a state whose register `R` holds a value below the bound. -/
+theorem Abs.holds_idx (base : String → BitVec 64) {nb : Nat} {sa : AState} {R : String}
+    (h : (sa.regs R).toNat < nb) : (Abs.idx R).Holds base nb sa :=
+  ⟨fun _ hp => by simp [Abs.idx] at hp, fun R' hR' => by
+    simp only [Abs.idx, List.mem_singleton] at hR'; subst hR'; exact h,
+    fun _ hp => by simp [Abs.idx] at hp, fun _ hp => by simp [Abs.idx] at hp⟩
 
 theorem Abs.Holds.of_regs {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa sa' : AState}
     (h : a.Holds base nb sa) (hr : ∀ R, sa'.regs R = sa.regs R) : a.Holds base nb sa' :=
   ⟨fun p hp => by rw [hr, hr]; exact h.1 p hp, fun R hR => by rw [hr]; exact h.2.1 R hR,
-    fun p hp => by rw [hr]; exact h.2.2 p hp⟩
+    fun p hp => by rw [hr]; exact h.2.2.1 p hp, fun R hR => by rw [hr]; exact h.2.2.2 R hR⟩
 
 /-- The facts that mention no written register survive a write. -/
 theorem Abs.Holds.kill {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa sa' : AState}
     {Ws : List String} (h : a.Holds base nb sa) (hr : ∀ R, R ∉ Ws → sa'.regs R = sa.regs R) :
     (a.kill Ws).Holds base nb sa' := by
-  refine ⟨fun p hp => ?_, fun R hR => ?_, fun p hp => ?_⟩
+  refine ⟨fun p hp => ?_, fun R hR => ?_, fun p hp => ?_, fun R hR => ?_⟩
   · simp only [Abs.kill, List.mem_filter, Bool.and_eq_true, Bool.not_eq_true',
       decide_eq_false_iff_not] at hp
     rw [hr _ hp.2.1, hr _ hp.2.2]; exact h.1 p hp.1
   · simp only [Abs.kill, List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not] at hR
     rw [hr _ hR.2]; exact h.2.1 R hR.1
   · simp only [Abs.kill, List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not] at hp
-    rw [hr _ hp.2]; exact h.2.2 p hp.1
+    rw [hr _ hp.2]; exact h.2.2.1 p hp.1
+  · simp only [Abs.kill, List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not] at hR
+    rw [hr _ hR.2]; exact h.2.2.2 R hR.1
 
 /-- The facts after a register copy `mov %Y, %X` hold after it. -/
 theorem Abs.Holds.movTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa sa' : AState}
@@ -214,7 +237,7 @@ theorem Abs.Holds.movTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa s
     h.kill (fun R hR => by rw [hr, if_neg (by simpa using hR)])
   have hX : sa'.regs X = sa.regs Y := by rw [hr, if_pos rfl]
   have hY : sa'.regs Y = sa.regs Y := by rw [hr]; split <;> simp_all
-  refine ⟨fun p hp => ?_, fun R hR => ?_, fun p hp => ?_⟩
+  refine ⟨fun p hp => ?_, fun R hR => ?_, fun p hp => ?_, fun R hR => ?_⟩
   · rcases List.mem_cons.mp hp with rfl | hp
     · rw [hX, hY]
     · exact hk.1 p hp
@@ -227,8 +250,27 @@ theorem Abs.Holds.movTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa s
     · exact hk.2.1 R hR
   · simp only [Abs.movTo, List.mem_append, List.mem_map, List.mem_filter, beq_iff_eq] at hp
     rcases hp with ⟨q, ⟨hq, hqY⟩, rfl⟩ | hp
-    · rw [hX, ← hqY]; exact h.2.2 q hq
-    · exact hk.2.2 p hp
+    · rw [hX, ← hqY]; exact h.2.2.1 q hq
+    · exact hk.2.2.1 p hp
+  · simp only [Abs.movTo] at hR
+    split at hR
+    · rename_i hYz
+      rcases List.mem_cons.mp hR with rfl | hR
+      · rw [hX]; exact h.2.2.2 Y (by simpa using hYz)
+      · exact hk.2.2.2 R hR
+    · exact hk.2.2.2 R hR
+
+/-- The facts after the move of the word `0` into `X` hold after it. -/
+theorem Abs.Holds.zeroTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa sa' : AState}
+    {X : String} (h : a.Holds base nb sa)
+    (hr : ∀ R, sa'.regs R = if R = X then 0 else sa.regs R) :
+    (a.zeroTo X).Holds base nb sa' := by
+  have hk : (a.kill [X]).Holds base nb sa' :=
+    h.kill (fun R hR => by rw [hr, if_neg (by simpa using hR)])
+  refine ⟨hk.1, hk.2.1, hk.2.2.1, fun R hR => ?_⟩
+  rcases List.mem_cons.mp hR with rfl | hR
+  · rw [hr, if_pos rfl]
+  · exact hk.2.2.2 R hR
 
 /-! ## 3. The correspondence -/
 
@@ -546,6 +588,17 @@ theorem decSim_storeX {L : String → Prop} {zl : Prop} (hsep : Lay.Sep frame)
       rw [read64_write64_of_disjoint _ _ _ _ (hsep.slots A j C q aC hjl hq hqC)]
       exact hpC
 
+/-- The facts after a block of the register classes: a copy `mov %A, %D`; the move of `0` into
+    `D`; a copy `mov %A, %D` followed by the addition to `D` of a register other than `D`
+    holding `0`; and otherwise the facts that mention no register the block writes. -/
+def Abs.regAfter (a : Abs) (js : List (JInstr 64)) : Abs :=
+  match js with
+  | [.mov D (.reg A)] => a.movTo D A
+  | [.mov D (.imm 0)] => a.zeroTo D
+  | [.mov D (.reg A), .add D' (.reg Z)] =>
+      if D' = D ∧ Z ∈ a.zero ∧ Z ≠ D then a.movTo D A else a.kill (js.flatMap dsts)
+  | _ => a.kill (js.flatMap dsts)
+
 /-- The index register `X` of an access to the region `A` at the bound `nb`: `X` holds a
     valid index and the value of the register `I` of the index name. -/
 def idxOK (E : MemEnv) (a : Abs) (A X I : String) : Bool :=
@@ -574,7 +627,7 @@ def coreStep (E : MemEnv) (s : St) (i : LinstrRM) (js : List (JInstr 64)) : Opti
             some s
           else none
       | _ => none
-  | _ => (regStep E.pi s.1 i js).map (fun Ls' => (Ls', s.2.kill (js.flatMap dsts)))
+  | _ => (regStep E.pi s.1 i js).map (fun Ls' => (Ls', s.2.regAfter js))
 
 variable {E : MemEnv} {base : String → BitVec 64} {rsp : BitVec 64}
 
@@ -600,6 +653,35 @@ theorem machOK_block {s : St} {js : List (JInstr 64)} {sa : AState}
     MachOK E base rsp (s.1, s.2.kill (js.flatMap dsts)) (aMachine.runBlock sa js) :=
   ⟨by rw [runBlock_regs_of_not_flat js sa _ hsp]; exact h.1,
     h.2.kill (fun R hR => runBlock_regs_of_not_flat js sa R hR)⟩
+
+/-- The machine facts after a block of the register classes that does not write the stack
+    register are those of `Abs.regAfter`. -/
+theorem machOK_regAfter {s : St} {js : List (JInstr 64)} {sa : AState} (Ls : List String)
+    (hsp : E.sp ∉ js.flatMap dsts) (h : MachOK E base rsp s sa) :
+    MachOK E base rsp (Ls, s.2.regAfter js) (aMachine.runBlock sa js) := by
+  have hk := machOK_block (s := s) hsp h
+  refine ⟨hk.1, ?_⟩
+  unfold Abs.regAfter
+  split
+  · rename_i D A
+    exact h.2.movTo (fun _ => rfl)
+  · rename_i D
+    exact h.2.zeroTo (fun R => by
+      show (if R = D then BitVec.ofNat 64 0 else sa.regs R) = _
+      split <;> rfl)
+  · rename_i D A D' Z
+    split
+    · rename_i hc
+      obtain ⟨rfl, hZ, hZD⟩ := hc
+      have hz : sa.regs Z = 0 := h.2.2.2.2 Z hZ
+      refine h.2.movTo (fun R => ?_)
+      show (if R = D' then (if D' = D' then sa.regs A else sa.regs D')
+          + (if Z = D' then sa.regs A else sa.regs Z)
+        else if R = D' then sa.regs A else sa.regs R) = _
+      rw [if_neg hZD, hz, if_pos rfl]
+      split <;> simp
+    · exact hk.2
+  · exact hk.2
 
 /-- **The class check is sound.** An accepted instruction simulates its machine
     instructions from `MCorr` at `s` to `MCorr` at the returned state. -/
@@ -628,7 +710,7 @@ theorem coreStep_sound (hsep : MemSep E.rs base rsp) {s s' : St} {i : LinstrRM}
           (MachOK E base rsp (s.1, s.2.kill [E.pi d])) hs
           (fun sa hm => by
             obtain ⟨e, hk⟩ := idxOK_holds hix hm.2
-            exact ⟨hm.2.2.2 _ hptr, e, hk⟩)
+            exact ⟨hm.2.2.2.1 _ hptr, e, hk⟩)
           (fun sa hm => machOK_block (js := [.loadMemIdx (E.pi d) B X 8]) hsp hm)
         exact hf.weaken (fun _ _ _ h => h) (fun _ _ _ h =>
           ⟨(corr_liveW h.1).mono (fun _ hr => hr) (fun hf => hf.elim) (fun _ _ h => h), h.2⟩)
@@ -648,7 +730,7 @@ theorem coreStep_sound (hsep : MemSep E.rs base rsp) {s s' : St} {i : LinstrRM}
         obtain ⟨e, hk⟩ := idxOK_holds hix hm.2
         obtain ⟨b', z', hr, hJ⟩ := decSim_storeX (π := E.pi) (Lay := regLay E.rs base)
           (frame := regFrame E.rs rsp) (K := regK E.rs) (zl := zl) (L := (· ∈ s.1)) hsep.sep
-          A idx v B X hidx hv _ sa b zf ⟨hc, hm.2.2.2 _ hptr, e, rfl, hk⟩
+          A idx v B X hidx hv _ sa b zf ⟨hc, hm.2.2.2.1 _ hptr, e, rfl, hk⟩
         refine ⟨b', z', hr, hJ.mono (fun _ hr => hr) (fun hf => hf.elim)
           (afterStore_regK hsep hk), ?_⟩
         have hregs : ∀ R, (aMachine.runBlock sa [.storeMemIdx B X 8 (.reg (E.pi v))]).regs R
@@ -660,7 +742,7 @@ theorem coreStep_sound (hsep : MemSep E.rs base rsp) {s s' : St} {i : LinstrRM}
     obtain ⟨Ls', hr, rfl⟩ := Option.map_eq_some_iff.mp h
     exact DecSim.frame _ _ (regStep_sound (Lay := regLay E.rs base)
       (frame := regFrame E.rs rsp) (K := regK E.rs) (zl := zl) hr)
-      (fun sa hm => machOK_block (s := s) hsp hm)
+      (fun sa hm => machOK_regAfter Ls' hsp hm)
 
 /-! ## 6. Machine-only instructions and groups -/
 
@@ -725,10 +807,10 @@ theorem machStep_sound {s s' : St} {j : JInstr 64} (h : machStep E s j = some s'
         · rw [em, if_neg (Ne.symm hS)]; exact hm.1
         · have hk : (s.2.kill [S]).Holds base E.nb (evalInstrA sa (.loadMem S E.sp off)) :=
             hm.2.kill (fun R hR => by rw [em, if_neg (by simpa using hR)])
-          refine ⟨hk.1, hk.2.1, fun p hp => ?_⟩
+          refine ⟨hk.1, hk.2.1, fun p hp => ?_, hk.2.2.2⟩
           rcases List.mem_cons.mp hp with rfl | hp
           · exact hS1
-          · exact hk.2.2 p hp
+          · exact hk.2.2.1 p hp
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
@@ -848,13 +930,12 @@ theorem decSim_of_loopOK (hsep : MemSep E.rs base rsp) {L0 : List String} {a0 : 
     whose index register `R` holds a value below the bound, an accepted loop body from the
     fact `R ∈ bnd` simulates its machine instructions. -/
 theorem decSim_of_loopOK_idx (hsep : MemSep E.rs base rsp) {L0 : List String} {R : String}
-    {is : List LinstrRM} {js : List (JInstr 64)} (h : loopOK E L0 ⟨[], [R], []⟩ is js = true)
+    {is : List LinstrRM} {js : List (JInstr 64)} (h : loopOK E L0 (Abs.idx R) is js = true)
     (zl : Prop) :
     DecSim (fun sa b zf => MCorr E base rsp (L0, Abs.empty) zl sa b zf ∧ (sa.regs R).toNat < E.nb)
       (MCorr E base rsp (L0, Abs.empty) False) is js :=
-  (decSim_of_loopOK hsep h zl).weaken (fun _ _ _ h => ⟨h.1.1, h.1.2.1,
-    fun _ hp => by simp at hp, fun R' hR' => by
-      rw [List.mem_singleton] at hR'; subst hR'; exact h.2, fun _ hp => by simp at hp⟩)
+  (decSim_of_loopOK hsep h zl).weaken
+    (fun _ _ _ h => ⟨h.1.1, h.1.2.1, Abs.holds_idx base h.2⟩)
     (fun _ _ _ h => h)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem

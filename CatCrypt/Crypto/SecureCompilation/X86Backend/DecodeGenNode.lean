@@ -633,7 +633,7 @@ theorem decNodeMem_halts {E : MemEnv} {base : String → BitVec 64} {rsp : BitVe
     (hsep : MemSep E.rs base rsp) (fn : String) (seeds body : List LinstrRM)
     (top endL : LLabel) (ctr R : String) (L0 : List String) (pre post : List (JInstr 64))
     (l : XLoop 64) (hseedsL : seeds.all isLopnB = true) (hbodyL : body.all isLopnB = true)
-    (htopE : top ≠ endL) (hloop : loopOK E L0 ⟨[], [R], []⟩ body l.body = true)
+    (htopE : top ≠ endL) (hloop : loopOK E L0 (Abs.idx R) body l.body = true)
     (hctr : ctr ∈ L0) (hlctr : l.ctr = E.pi ctr) (hdec : decrOnce (E.pi ctr) l.body = true)
     (hinc : incrOnce R l.body = true) (hpost : post.all noStoreB = true)
     (E₀ : AState → LstateM → Bool → Prop)
@@ -877,7 +877,7 @@ def nodeCheck (σ : AbiLayout) (E : MemEnv) (seeds body : List LinstrRM) (top en
   E.sp == "%rsp" && rsOK σ E.rs
     && (preRes E (abiReg σ) σ.bounds σ.frameLo σ.frameHi L0 ctr R seeds pre).isSome
     && seeds.all isLopnB && body.all isLopnB && top != endL
-    && loopOK E L0 ⟨[], [R], []⟩ body l.body && decide (ctr ∈ L0) && l.ctr == E.pi ctr
+    && loopOK E L0 (Abs.idx R) body l.body && decide (ctr ∈ L0) && l.ctr == E.pi ctr
     && decrOnce (E.pi ctr) l.body && incrOnce R l.body && post.all noStoreB
 
 /-- The pointer slots of an accepted prologue lie in the frame range. -/
