@@ -5,8 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
 
 @[expose] public section
 
@@ -33,6 +34,10 @@ both flags are live.
 * `decSimC_adcx`, `decSimC_adox`: the two independent chains of the ADX extension.
 * `decSimC_add`, `decSimC_sub`, `decSimC_xor`: the flag writers, both flags live after.
 * `decSimC_add_adc`: an `ADD`, `ADC` carry chain decodes to `add`, `adc`.
+* `stepOKC`, `decSim_of_stepOKC`: the Boolean check `DecodeGenSim.stepOK` extended by the
+  carry family, the flag writers and the flag-preserving register copy, tracking which of
+  the two flags is live; an accepted instruction simulates its machine instructions.
+* `bodyOKC`, `decSim_of_bodyOKC`: the check over a body.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry
@@ -50,6 +55,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (lsemStepMem_of_carryArgs)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
+  (GCorr InjOn survives_of_injOn stepOK decSim_of_stepOK isCmpB)
 
 /-! ## 1. The correspondence with flag agreement -/
 
@@ -332,5 +339,244 @@ theorem decSimC_add_adc {L'' : String → Prop} (d0 a0 c0 d1 a1 c1 : String)
       [addI d0 a0 c0, carryI "ADC" d1 a1 c1]
       [.add (π d0) (.reg (π c0)), .adc (π d1) (.reg (π c1))] :=
   (decSimC_add d0 a0 c0 ha0 hc0 hda0 hL0).append (decSimC_adc d1 a1 c1 ha1 hc1 hda1 hL1)
+
+/-! ## 6. The register copy keeps the flags -/
+
+/-- `MOV:64 d, s` against `mov %s, %d`: neither machine touches a flag. -/
+theorem decSimC_movReg (d s : String) (hs : L s) (hL : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [movRI d s] [.mov (π d) (.reg (π s))] :=
+  DecSim.single fun _ b zf h =>
+    ⟨_, zf, fstepF_movRI d s b zf _ (h.1.regs s hs),
+      h.1.write d _ _ (fun _ => rfl) rfl hL (fun hz : False => hz.elim), h.2.1, h.2.2⟩
+
+/-- `MOV:64 d, s` with `d` and `s` in one machine register, against nothing. -/
+theorem decSimC_movReg_elided (d s : String) (hs : L s) (hds : π d = π s)
+    (hL : Survives π L L' d) :
+    DecSim (CCorr π L Lay frame K zl cl ol) (CCorr π L' Lay frame K False cl ol)
+      [movRI d s] [] :=
+  DecSim.lsemOnly fun sa b zf h =>
+    ⟨_, zf, fstepF_movRI d s b zf _ (h.1.regs s hs),
+      h.1.write d _ sa (fun r => by split <;> simp_all) rfl hL (fun hz : False => hz.elim),
+      h.2.1, h.2.2⟩
+
+/-! ## 7. The check with flag liveness -/
+
+/-- A register instruction of `DecodeGenSim.stepOK` simulates its machine instructions
+    with no flag live afterwards. -/
+theorem decSimC_of_stepOK {N : List String} (hinj : InjOn π N) {i : LinstrRM}
+    {js : List (JInstr 64)} (h : stepOK π N i js = true) :
+    DecSim (CCorr π (· ∈ N) Lay frame K zl cl ol)
+      (CCorr π (· ∈ N) Lay frame K False False False) [i] js :=
+  (decSim_of_stepOK (Lay := Lay) (frame := frame) (K := K) (zl := zl) hinj h).weaken
+    (fun _ _ _ h => h.1) (fun _ _ _ h => ⟨h.dropZf, fun hf => hf.elim, fun hf => hf.elim⟩)
+
+/-- The carry family and the flag writers on registers of `N`, with the flags live before
+    (`fl`); the flags live afterwards, or `none` for no class. -/
+def carryClass (π : String → String) (N : List String) (fl : Bool × Bool)
+    (d opn a c : String) (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  if N.contains d && N.contains a && N.contains c && π d == π a then
+    match js with
+    | [.adc D (.reg C)] =>
+        if opn == withWidthTag 64 "ADC" && D == π d && C == π c && fl.1 then some (true, true)
+        else none
+    | [.sbb D (.reg C)] =>
+        if opn == withWidthTag 64 "SBB" && D == π d && C == π c && fl.1 then some (true, true)
+        else none
+    | [.adcx D (.reg C)] =>
+        if opn == withWidthTag 64 "ADCX" && D == π d && C == π c && fl.1 then some (true, fl.2)
+        else none
+    | [.adox D (.reg C)] =>
+        if opn == withWidthTag 64 "ADOX" && D == π d && C == π c && fl.2 then some (fl.1, true)
+        else none
+    | [.add D (.reg C)] =>
+        if opn == "ADD:64" && D == π d && C == π c then some (true, true) else none
+    | [.sub D (.reg C)] =>
+        if opn == "SUB:64" && D == π d && C == π c then some (true, true) else none
+    | [.xor_ D (.reg C)] =>
+        if opn == "XOR:64" && D == π d && C == π c then some (true, true) else none
+    | _ => none
+  else none
+
+theorem carryClass_sound {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
+    {d opn a c : String} {js : List (JInstr 64)} (h : carryClass π N fl d opn a c js = some fl') :
+    DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+      (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true))
+      [(.Lopn [.reg d] opn [.reg a, .reg c], .reg none)] js := by
+  unfold carryClass at h
+  split_ifs at h with hN
+  simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at hN
+  obtain ⟨⟨⟨hd, ha⟩, hc⟩, hda⟩ := hN
+  have hS := survives_of_injOn hinj hd
+  split at h
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hf⟩ := hc'
+    exact (decSimC_adc (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 hf, h.2.2⟩)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hf⟩ := hc'
+    exact (decSimC_sbb (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 hf, h.2.2⟩)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hf⟩ := hc'
+    exact (decSimC_adcx (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 hf, h.2.2⟩)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, h.2.2⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hf⟩ := hc'
+    exact (decSimC_adox (cl := fl.1 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => ⟨h.1, h.2.1, fun _ => h.2.2 hf⟩)
+      (fun _ _ _ h => ⟨h.1, h.2.1, fun _ => h.2.2 trivial⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨rfl, rfl⟩, rfl⟩ := hc'
+    exact (decSimC_add (cl := fl.1 = true) (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => h)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨rfl, rfl⟩, rfl⟩ := hc'
+    exact (decSimC_sub (cl := fl.1 = true) (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => h)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
+  · split_ifs at h with hc'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc'
+    cases h
+    obtain ⟨⟨rfl, rfl⟩, rfl⟩ := hc'
+    exact (decSimC_xor (cl := fl.1 = true) (ol := fl.2 = true) d a c ha hc hda hS).weaken
+      (fun _ _ _ h => h)
+      (fun _ _ _ h => ⟨h.1, fun _ => h.2.1 trivial, fun _ => h.2.2 trivial⟩)
+  · cases h
+
+/-- **The check with flag liveness.** An instruction against its machine instructions,
+    from the flags live before (`fl`): a carry-family instruction or a flag writer
+    (`carryClass`), a register copy that keeps the flags, or any instruction of
+    `DecodeGenSim.stepOK` with no flag live afterwards. The result is the flags live
+    afterwards. -/
+def stepOKC (π : String → String) (N : List String) (fl : Bool × Bool) (i : LinstrRM)
+    (js : List (JInstr 64)) : Option (Bool × Bool) :=
+  match i with
+  | (.Lopn [.reg d] opn [.reg a, .reg c], .reg none) =>
+      match carryClass π N fl d opn a c js with
+      | some fl' => some fl'
+      | none => if stepOK π N i js then some (false, false) else none
+  | (.Lopn [.reg d] opn [.reg a], .reg none) =>
+      if N.contains d && N.contains a && opn == withWidthTag 64 "MOV" then
+        if js == [.mov (π d) (.reg (π a))] then some fl
+        else if π d == π a && js.isEmpty then some fl
+        else if stepOK π N i js then some (false, false) else none
+      else if stepOK π N i js then some (false, false) else none
+  | _ => if stepOK π N i js then some (false, false) else none
+
+theorem decSim_of_stepOKC {N : List String} (hinj : InjOn π N) {fl fl' : Bool × Bool}
+    {i : LinstrRM} {js : List (JInstr 64)} (h : stepOKC π N fl i js = some fl') :
+    DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+      (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true)) [i] js := by
+  have hfb : stepOK π N i js = true → fl' = (false, false) →
+      DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+        (CCorr π (· ∈ N) Lay frame K False (fl'.1 = true) (fl'.2 = true)) [i] js := by
+    intro hs hfl
+    subst hfl
+    exact (decSimC_of_stepOK hinj hs).weaken (fun _ _ _ h => h)
+      (fun _ _ _ h => ⟨h.1, fun hf => by simp at hf, fun hf => by simp at hf⟩)
+  unfold stepOKC at h
+  split at h
+  · rename_i d opn a c
+    split at h
+    · rename_i fl'' hcc
+      cases h
+      exact carryClass_sound hinj hcc
+    · split_ifs at h with hs
+      cases h
+      exact hfb hs rfl
+  · rename_i d opn a
+    split_ifs at h with h1 h2 h3 h4 h5
+    · cases h
+      simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at h1
+      obtain ⟨⟨hd, ha⟩, rfl⟩ := h1
+      simp only [beq_iff_eq] at h2
+      subst h2
+      exact decSimC_movReg d a ha (survives_of_injOn hinj hd)
+    · cases h
+      simp only [Bool.and_eq_true, List.contains_iff_mem, beq_iff_eq] at h1
+      obtain ⟨⟨hd, ha⟩, rfl⟩ := h1
+      simp only [Bool.and_eq_true, beq_iff_eq, List.isEmpty_iff] at h3
+      obtain ⟨hda, rfl⟩ := h3
+      exact decSimC_movReg_elided d a ha hda (survives_of_injOn hinj hd)
+    · cases h
+      exact hfb h4 rfl
+    · cases h
+      exact hfb h5 rfl
+  · split_ifs at h with hs
+    cases h
+    exact hfb hs rfl
+
+/-- A body accepted instruction by instruction, threading the live flags. -/
+def bodyOKC (π : String → String) (N : List String) :
+    Bool × Bool → List LinstrRM → List (List (JInstr 64)) → Bool
+  | _, [], [] => true
+  | fl, i :: is, js :: jss =>
+      match stepOKC π N fl i js with
+      | some fl' => bodyOKC π N fl' is jss
+      | none => false
+  | _, _, _ => false
+
+/-- **A body simulates its machine instructions**, a carry chain included. -/
+theorem decSim_of_bodyOKC {N : List String} (hinj : InjOn π N) :
+    ∀ (is : List LinstrRM) (jss : List (List (JInstr 64))) (fl : Bool × Bool) (zl : Prop),
+      bodyOKC π N fl is jss = true →
+      DecSim (CCorr π (· ∈ N) Lay frame K zl (fl.1 = true) (fl.2 = true))
+        (CCorr π (· ∈ N) Lay frame K False False False) is jss.flatten := by
+  intro is
+  induction is with
+  | nil =>
+    intro jss fl zl h
+    cases jss with
+    | nil =>
+        exact (DecSim.nil _).weaken (fun _ _ _ h => h)
+          (fun _ _ _ h => ⟨h.1.dropZf, fun hf => hf.elim, fun hf => hf.elim⟩)
+    | cons _ _ => simp [bodyOKC] at h
+  | cons i is ih =>
+    intro jss fl zl h
+    cases jss with
+    | nil => simp [bodyOKC] at h
+    | cons js jss =>
+      simp only [bodyOKC] at h
+      split at h
+      · rename_i fl' hs
+        rw [List.flatten_cons]
+        exact (decSim_of_stepOKC hinj hs).append (ih jss fl' False h)
+      · cases h
+
+/-! ## 8. The check on carry chains
+
+An `ADD`, register copy, `ADC` chain is accepted from no live flag; an `ADC` with no live
+carry flag, and an `ADC` after a copy through `imul`, are rejected. -/
+
+/- `add`, `mov`, `adc`: the copy keeps the carry flag live. -/
+set_option kat.ms 1000 in
+#kat bodyOKC id ["a", "b", "c", "d", "e"] (false, false)
+  [addI "a" "a" "b", movRI "e" "a", carryI "ADC" "c" "c" "d"]
+  [[.add "a" (.reg "b")], [.mov "e" (.reg "a")], [.adc "c" (.reg "d")]]
+
+/- `adc` with no live carry flag. -/
+#kat !bodyOKC id ["c", "d"] (false, false) [carryI "ADC" "c" "c" "d"] [[.adc "c" (.reg "d")]]
+
+/- `imul` does not keep the carry flag live. -/
+#kat !bodyOKC id ["a", "b", "c", "d"] (false, false)
+  [addI "a" "a" "b", binRegI "MUL:64" "a" "a" "b", carryI "ADC" "c" "c" "d"]
+  [[.add "a" (.reg "b")], [.imul "a" (.reg "b")], [.adc "c" (.reg "d")]]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry

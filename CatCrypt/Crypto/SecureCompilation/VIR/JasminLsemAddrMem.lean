@@ -70,8 +70,9 @@ other name keeps its previous element.
   `SimSeg.weaken`, and the instruction rules `SimSeg.load`, `SimSeg.store`, `SimSeg.reg`.
 * `runBounded_sim`: a trip-indexed family of segment simulations gives the simulation of
   the bounded fold `runBoundedStraightF` by `runBoundedStraightA`.
-* `guardedFlagLoop_addr_sim`: the state in which the flag machine `lsemFuelMemF` halts on
-  the guarded loop skeleton is related to the final state of the address fold.
+* `guardedFlagLoop_addr_sim`: the flag machine `lsemFuelMemF` halts on the guarded loop
+  skeleton in a state that agrees on registers and arrays with the fold's final state, and
+  that state is related to the final state of the address fold.
 * `saveArgs_run`, `rel_of_entry`: the entry block that stores the pointer arguments into
   their slots establishes the slot component of `Rel`.
 * `copyTrip_simSeg`: the trip `x := A[idx]; R := R[idx ↦ x]; idx += 1; n -= 1` with `A` and
@@ -97,12 +98,16 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx (disjoint8_of_toNat)
 
 /-! ## 1. The address machine -/
 
-/-- A register file and a byte-addressed memory. -/
+/-- A register file, a byte-addressed memory and the carry and overflow flags. -/
 structure LstateA where
   /-- The width-tagged register file. -/
   reg : LstateN
   /-- The byte memory. -/
   mem : AMem
+  /-- The carry flag. -/
+  cf : Bool := false
+  /-- The overflow flag. -/
+  of : Bool := false
 
 /-- Set the program counter. -/
 def LstateA.setLpc (sa : LstateA) (pc : Nat) : LstateA :=
@@ -127,9 +132,10 @@ def storeIdxA? : LinstrR → Option (String × String × Nat × String)
       if opn = "STOREIDX" then some (base, idx, sc, val) else none
   | _ => none
 
-/-- The register-file step: `fstepF` on a state with the given registers. -/
+/-- The register-file step: `fstepF` on a state with the given registers and flags. -/
 def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool) :=
-  (fstepF i { reg := sa.reg } zf).map fun bz => ({ sa with reg := bz.1.reg }, bz.2)
+  (fstepF i { reg := sa.reg, cf := sa.cf, of := sa.of } zf).map fun bz =>
+    ({ sa with reg := bz.1.reg, cf := bz.1.cf, of := bz.1.of }, bz.2)
 
 /-- One step of the address machine. `frame` maps a frame-slot name to its address. -/
 def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) (zf : Bool) :
@@ -149,8 +155,9 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
       | some (base, idx, sc, val) =>
           match sa.reg.getW base 64, sa.reg.getW idx 64, sa.reg.getW val 64 with
           | some p, some vi, some v =>
-              some ({ reg := sa.reg.nextPc,
-                      mem := write64 sa.mem (p + BitVec.ofNat 64 (sc * vi.toNat)) v }, zf)
+              some ({ sa with
+                reg := sa.reg.nextPc
+                mem := write64 sa.mem (p + BitVec.ofNat 64 (sc * vi.toNat)) v }, zf)
           | _, _, _ => none
       | none => none
   | .reg _ =>
@@ -160,7 +167,7 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
           | some a, _ => some ({ sa with reg := (sa.reg.setReg dst (read64 sa.mem a)).nextPc }, zf)
           | none, some a =>
               match sa.reg.getW src 64 with
-              | some v => some ({ reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
+              | some v => some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
               | none => none
           | none, none => regStepA i sa zf
       | none => regStepA i sa zf
@@ -227,6 +234,8 @@ structure Rel (L : Layout) (frame : String → Option (BitVec 64)) (scr : String
   cells : ∀ A j, K A j → j < L.len A ∧ ∃ arr : Fin (L.len A) → BitVec 64,
     s.getArr A 64 (L.len A) = some arr ∧ read64 sa.mem (L.addr A j) = stackGet arr j
   slots : ∀ A q, L.slot A = some q → ∃ a, frame q = some a ∧ read64 sa.mem a = L.base A
+  /-- The carry and overflow flags agree. -/
+  flags : sa.cf = s.cf ∧ sa.of = s.of
 
 /-- The cells after the store `dst := A[j ↦ _]`: under the name `dst`, the written cell and
     the cells of `A` in `K` at another address; under every other name, the cells of `K` at
@@ -291,7 +300,8 @@ theorem stackGet_stackSet_ne {n : Nat} (arr : Fin n → BitVec 64) (j j' : Nat) 
 /-- `Rel` reads the name-keyed state through its register store and its array carrier. -/
 theorem Rel.congr {L : Layout} {frame : String → Option (BitVec 64)} {scr : String}
     {K : String → Nat → Prop} {s s₁ : LstateM} {sa : LstateA} (h : Rel L frame scr K s sa)
-    (hreg : s₁.reg.lvm = s.reg.lvm) (harr : s₁.larr = s.larr) : Rel L frame scr K s₁ sa where
+    (hreg : s₁.reg.lvm = s.reg.lvm) (harr : s₁.larr = s.larr)
+    (hfl : s₁.cf = s.cf ∧ s₁.of = s.of) : Rel L frame scr K s₁ sa where
   regs := h.regs.of_lvm hreg
   cells := fun A j hK => by
     obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hK
@@ -300,6 +310,7 @@ theorem Rel.congr {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
     rw [harr]
     exact ha
   slots := h.slots
+  flags := ⟨h.flags.1.trans hfl.1.symm, h.flags.2.trans hfl.2.symm⟩
 
 /-- `Rel` is monotone in the cell predicate. -/
 theorem Rel.mono {L : Layout} {frame : String → Option (BitVec 64)} {scr : String}
@@ -308,6 +319,7 @@ theorem Rel.mono {L : Layout} {frame : String → Option (BitVec 64)} {scr : Str
   regs := h.regs
   cells := fun A j hk => h.cells A j (hK A j hk)
   slots := h.slots
+  flags := h.flags
 
 /-- `Rel` ignores the program counters. -/
 theorem Rel.setLpc {L : Layout} {frame : String → Option (BitVec 64)} {scr : String}
@@ -316,6 +328,7 @@ theorem Rel.setLpc {L : Layout} {frame : String → Option (BitVec 64)} {scr : S
   regs := h.regs
   cells := h.cells
   slots := h.slots
+  flags := h.flags
 
 /-! ## 3. One access -/
 
@@ -387,7 +400,7 @@ theorem load_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : Str
       simp only [fstepA, loadIdxA?, if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
         LstateN.getW_setReg_other _ _ _ _ _ hidx, hvia, Option.bind_some]
       refine ⟨_, rfl, ?_⟩
-      · refine ⟨?_, ?_, ?_⟩
+      · refine ⟨?_, ?_, ?_, hrel.flags⟩
         · show EqOff scr ((s.reg.setReg dst _).nextPc) _
           simp only [hptr]
           have hc : read64 sa.mem (L.base A + BitVec.ofNat 64 (8 * vi.toNat))
@@ -439,7 +452,7 @@ theorem store_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
           hvia, hvva, Option.bind_some]
         refine ⟨_, rfl, ?_⟩
         · simp only [hptr]
-          refine ⟨?_, ?_, ?_⟩
+          refine ⟨?_, ?_, ?_, hrel.flags⟩
           · exact (hrel.regs.setReg_scr_right _).nextPc_right
           · intro A' j' hk
             show j' < L.len A' ∧ ∃ arr' : Fin (L.len A') → BitVec 64,
@@ -482,13 +495,14 @@ def IsRegInstr (frame : String → Option (BitVec 64)) (i : LinstrRM) : Prop :=
     ∀ d src, slotMov? i.fst = some (d, src) → frame src = none ∧ frame d = none
 
 /-- The step of `i` is independent of the register `scr`: from register stores that agree
-    off `scr`, a successful step is matched by a step with the same flag, the results
-    agree off `scr`, and the array carrier is unchanged. -/
+    off `scr` and the same carry and overflow flags, a successful step is matched by a step
+    with the same zero flag, the results agree off `scr` and on the carry and overflow
+    flags, and the array carrier is unchanged. -/
 def RegCompat (scr : String) (i : LinstrRM) : Prop :=
   ∀ (s : LstateM) (ra : LstateN) (zf : Bool) (b : LstateM) (z : Bool),
     EqOff scr s.reg ra → fstepF i s zf = some (b, z) →
-    ∃ b' : LstateM, fstepF i { reg := ra } zf = some (b', z) ∧ EqOff scr b.reg b'.reg
-      ∧ b.larr = s.larr
+    ∃ b' : LstateM, fstepF i { reg := ra, cf := s.cf, of := s.of } zf = some (b', z)
+      ∧ EqOff scr b.reg b'.reg ∧ b.larr = s.larr ∧ b'.cf = b.cf ∧ b'.of = b.of
 
 theorem fstepA_reg {frame : String → Option (BitVec 64)} {i : LinstrRM}
     (hi : IsRegInstr frame i) (sa : LstateA) (zf : Bool) :
@@ -510,10 +524,13 @@ theorem reg_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : Stri
     (i : LinstrRM) (hi : IsRegInstr frame i) (hc : RegCompat scr i)
     (zf : Bool) (b : LstateM) (z : Bool) (hstep : fstepF i s zf = some (b, z)) :
     ∃ sa', runStraightA frame [i] sa zf = some (sa', z) ∧ Rel L frame scr K b sa' := by
-  obtain ⟨b', hb', heq, hlarr⟩ := hc s sa.reg zf b z hrel.regs hstep
-  refine ⟨{ sa with reg := b'.reg }, ?_, ?_⟩
-  · simp only [runStraightA, fstepA_reg hi, regStepA, hb', Option.map_some, Option.bind_some]
-  · refine ⟨heq, ?_, hrel.slots⟩
+  obtain ⟨b', hb', heq, hlarr, hcf, hof⟩ := hc s sa.reg zf b z hrel.regs hstep
+  refine ⟨{ sa with reg := b'.reg, cf := b'.cf, of := b'.of }, ?_, ?_⟩
+  · have hsa : ({ reg := sa.reg, cf := sa.cf, of := sa.of } : LstateM)
+        = { reg := sa.reg, cf := s.cf, of := s.of } := by rw [hrel.flags.1, hrel.flags.2]
+    simp only [runStraightA, fstepA_reg hi, regStepA, hsa, hb', Option.map_some,
+      Option.bind_some]
+  · refine ⟨heq, ?_, hrel.slots, hcf, hof⟩
     intro A j hk
     obtain ⟨hj, arr, ha, hr⟩ := hrel.cells A j hk
     refine ⟨hj, arr, ?_, hr⟩
@@ -526,6 +543,37 @@ theorem evalOperandN_eqOff {scr : String} {r r' : LstateN} (h : EqOff scr r r')
   cases o with
   | reg x => exact h.getW (fun hx => ho (by rw [hx])) 64
   | _ => rfl
+
+/-- The operands `aluFlagOp?` returns are the two sources of the instruction. -/
+theorem aluFlagOp?_ops {d : List LOperand} {opn : String} {x y : LOperand} {t : MemTag}
+    {p : AluOp × LOperand × LOperand} (h : aluFlagOp? (.Lopn d opn [x, y], t) = some p) :
+    p.2.1 = x ∧ p.2.2 = y := by
+  unfold aluFlagOp? at h
+  dsimp only at h
+  split at h
+  · rename_i heq
+    simp only [LinstrR.Lopn.injEq, List.cons.injEq] at heq
+    obtain ⟨-, -, rfl, rfl, -⟩ := heq
+    split_ifs at h <;> cases h <;> exact ⟨rfl, rfl⟩
+  · cases h
+
+/-- The flags `withALUFlags` writes from register stores that agree off `scr` are equal, when
+    the operands it reads are not `scr`. -/
+theorem withALUFlags_eqOff {scr : String} {i : LinstrRM}
+    (hflag : ∀ p, aluFlagOp? i = some p → p.2.1 ≠ .reg scr ∧ p.2.2 ≠ .reg scr)
+    {s0 s0' b b' : LstateM} (heq : EqOff scr s0.reg s0'.reg) (hb : b'.cf = b.cf ∧ b'.of = b.of) :
+    (withALUFlags i s0' b').cf = (withALUFlags i s0 b).cf
+      ∧ (withALUFlags i s0' b').of = (withALUFlags i s0 b).of := by
+  unfold withALUFlags
+  cases h : aluFlagOp? i with
+  | none => exact hb
+  | some p =>
+      obtain ⟨op, a, c⟩ := p
+      obtain ⟨ha, hc⟩ := hflag _ h
+      simp only [← evalOperandN_eqOff heq a ha, ← evalOperandN_eqOff heq c hc]
+      split
+      · exact ⟨rfl, rfl⟩
+      · exact hb
 
 /-- The flag compare is independent of `scr` when neither operand is `scr`. -/
 theorem regCompat_cmp (scr : String) (i : LinstrRM) (a c : LOperand)
@@ -543,7 +591,7 @@ theorem regCompat_cmp (scr : String) (i : LinstrRM) (a c : LOperand)
     | some vc =>
       simp only [h1, h2, Option.some.injEq, Prod.mk.injEq] at hstep
       obtain ⟨rfl, rfl⟩ := hstep
-      exact ⟨_, rfl, heq, rfl⟩
+      exact ⟨_, rfl, heq, rfl, rfl, rfl⟩
 
 /-- The register copy is independent of `scr` when its source is not `scr`. -/
 theorem regCompat_mov (scr : String) (i : LinstrRM) (dst src : String)
@@ -553,7 +601,7 @@ theorem regCompat_mov (scr : String) (i : LinstrRM) (dst src : String)
   unfold fstepF at hstep ⊢
   simp only [hcmp, hmov, readReg, Option.some.injEq, Prod.mk.injEq] at hstep ⊢
   obtain ⟨rfl, rfl⟩ := hstep
-  refine ⟨_, ⟨rfl, rfl⟩, ?_, rfl⟩
+  refine ⟨_, ⟨rfl, rfl⟩, ?_, rfl, rfl, rfl⟩
   show EqOff scr ((s.reg.setReg dst (s.reg.lvm src).2).nextPc)
     ((ra.setReg dst (ra.lvm src).2).nextPc)
   intro x hx
@@ -565,6 +613,7 @@ theorem regCompat_mov (scr : String) (i : LinstrRM) (dst src : String)
 /-- An instruction whose step reads one register `a ≠ scr` at its stored width and writes
     a function of the value to `dst` is independent of `scr`. -/
 theorem regCompat_of_unary (scr : String) (i : LinstrRM) (dst a : String) (ha : a ≠ scr)
+    (hflag : ∀ p, aluFlagOp? i = some p → p.2.1 ≠ .reg scr ∧ p.2.2 ≠ .reg scr)
     (g : (w : Nat) → BitVec w → BitVec w)
     (h : ∀ (s : LstateM) (zf : Bool) (w : Nat) (va : BitVec w), s.reg.getW a w = some va →
       fstepF i s zf = some (withALUFlags i s ((s.setReg dst (g w va)).nextPc), zf)) :
@@ -572,12 +621,16 @@ theorem regCompat_of_unary (scr : String) (i : LinstrRM) (dst a : String) (ha : 
   intro s ra zf b z heq hstep
   rcases hs : s.reg.lvm a with ⟨w, va⟩
   have hg : s.reg.getW a w = some va := getW_eq_some_iff.mpr hs
-  have hga : ({ reg := ra } : LstateM).reg.getW a w = some va := by
+  have hga : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW a w = some va := by
     show ra.getW a w = some va
     rw [← heq.getW ha]; exact hg
   rw [h s zf w va hg] at hstep
   obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj hstep
-  refine ⟨_, h _ zf w va hga, ?_, by rw [withALUFlags_larr]; rfl⟩
+  have hw := withALUFlags_eqOff (i := i) hflag (s0 := s)
+    (s0' := { reg := ra, cf := s.cf, of := s.of }) (b := (s.setReg dst (g w va)).nextPc)
+    (b' := (({ reg := ra, cf := s.cf, of := s.of } : LstateM).setReg dst (g w va)).nextPc)
+    heq ⟨rfl, rfl⟩
+  refine ⟨_, h _ zf w va hga, ?_, by rw [withALUFlags_larr]; rfl, hw.1, hw.2⟩
   rw [withALUFlags_reg, withALUFlags_reg]
   exact heq.setReg dst _
 
@@ -610,13 +663,23 @@ theorem fstepF_subImmI (dst a : String) (k : Nat) (s : LstateM) (zf : Bool) {w :
 /-- `ADD:64 dst, a, #k` is independent of `scr` when `a ≠ scr`. -/
 theorem regCompat_addImmI (scr dst a : String) (k : Nat) (ha : a ≠ scr) :
     RegCompat scr (addImmI dst a k) :=
-  regCompat_of_unary scr _ dst a ha (fun w va => va + BitVec.ofNat w k)
+  regCompat_of_unary scr _ dst a ha
+    (fun _ hp => by
+      obtain ⟨h1, h2⟩ := aluFlagOp?_ops hp
+      rw [h1, h2]
+      exact ⟨fun he => ha (LOperand.reg.inj he), fun he => LOperand.noConfusion he⟩)
+    (fun w va => va + BitVec.ofNat w k)
     fun s zf _ va hg => fstepF_addImmI dst a k s zf va hg
 
 /-- `SUB:64 dst, a, #k` is independent of `scr` when `a ≠ scr`. -/
 theorem regCompat_subImmI (scr dst a : String) (k : Nat) (ha : a ≠ scr) :
     RegCompat scr (subImmI dst a k) :=
-  regCompat_of_unary scr _ dst a ha (fun w va => va - BitVec.ofNat w k)
+  regCompat_of_unary scr _ dst a ha
+    (fun _ hp => by
+      obtain ⟨h1, h2⟩ := aluFlagOp?_ops hp
+      rw [h1, h2]
+      exact ⟨fun he => ha (LOperand.reg.inj he), fun he => LOperand.noConfusion he⟩)
+    (fun w va => va - BitVec.ofNat w k)
     fun s zf _ va hg => fstepF_subImmI dst a k s zf va hg
 
 theorem isRegInstr_addImmI (frame : String → Option (BitVec 64)) (dst a : String) (k : Nat) :
@@ -767,8 +830,9 @@ theorem runBounded_sim (K : Nat → String → Nat → Prop) (P : Nat → Lstate
 
 /-- **The guarded flag loop.** When the flag machine runs the guarded loop skeleton over
     `body` from a counter `v0 ≠ 0` under the schedule hypotheses of
-    `guardedFlagLoop_runBounded_general`, its halting state is related on `K m` to the
-    final state of `m` passes of the pointer-form body on the address machine. -/
+    `guardedFlagLoop_runBounded_general`, the fold's final state is related on `K m` to the
+    final state of `m` passes of the pointer-form body on the address machine, and the
+    halting state agrees with the fold's final state on the registers and the arrays. -/
 theorem guardedFlagLoop_addr_sim (K : Nat → String → Nat → Prop) (P : Nat → LstateM → Prop)
     (fn : String) (top endL : LLabel) (nReg : String) (body bodyA : List LinstrRM)
     (hlopn : ∀ i ∈ body, IsLopn i) (hne : top ≠ endL)
@@ -786,12 +850,13 @@ theorem guardedFlagLoop_addr_sim (K : Nat → String → Nat → Prop) (P : Nat 
       lsemFuelMemF (singletonProgM fn (guardedFlagLoopLinstrRM top endL nReg body)) n
           { prog := { base := b0, lfn := fn }, zf := zf } = some t
         ∧ runBoundedStraightA frame bodyA qA m sa = some safin
-        ∧ Rel L frame scr (K m) t.prog.base safin ∧ t.zf = true := by
+        ∧ Rel L frame scr (K m) bfin safin
+        ∧ t.prog.base.reg.lvm = bfin.reg.lvm ∧ t.prog.base.larr = bfin.larr ∧ t.zf = true := by
   obtain ⟨n, t, ht, hlvm, hlarr, hz⟩ := guardedFlagLoop_runBounded_general fn top endL nReg
     body hlopn hne b0 zf hpc v0 hv0 hv0ne m hm bfin hbound htaken hzero
   obtain ⟨safin, hA, hrelfin, _⟩ := runBounded_sim K P body bodyA 3 qA m hbody m 0 (by omega)
-    (b0.setLpc 3) sa bfin hP0 (hrel.congr rfl rfl) hbound
-  exact ⟨n, t, safin, ht, hA, hrelfin.congr hlvm hlarr, hz⟩
+    (b0.setLpc 3) sa bfin hP0 (hrel.congr rfl rfl ⟨rfl, rfl⟩) hbound
+  exact ⟨n, t, safin, ht, hA, hrelfin, hlvm, hlarr, hz⟩
 
 /-! ## 7. Regions -/
 
@@ -861,11 +926,11 @@ theorem saveArgs_run (frame : String → Option (BitVec 64)) :
       obtain ⟨hsrc, a, ha⟩ := hfr qr (by simp)
       obtain ⟨p, hp⟩ := hreg qr (by simp)
       have hstep : fstepA frame (.Lopn [.reg qr.1] "MOVQ" [.reg qr.2], MemTag.reg none) sa zf
-          = some ({ reg := sa.reg.nextPc, mem := write64 sa.mem a p }, zf) := by
+          = some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a p }, zf) := by
         simp [fstepA, slotMov?, hsrc, ha, hp]
       rw [List.pairwise_cons] at hpw
       obtain ⟨sa', hrun, hlvm, hframe, hslots⟩ :=
-        ih { reg := sa.reg.nextPc, mem := write64 sa.mem a p } zf
+        ih { sa with reg := sa.reg.nextPc, mem := write64 sa.mem a p } zf
           (fun x hx => hfr x (by simp [hx]))
           (fun x hx => by
             obtain ⟨p', hp'⟩ := hreg x (by simp [hx])
@@ -897,9 +962,10 @@ theorem rel_of_entry (L : Layout) (frame : String → Option (BitVec 64)) (scr :
     (hK : ∀ A j, K A j → j < L.len A)
     (harr : ∀ A j, K A j → ∃ arr : Fin (L.len A) → BitVec 64,
       s.getArr A 64 (L.len A) = some arr ∧ read64 sa.mem (L.addr A j) = stackGet arr j)
-    (hslots : ∀ A q, L.slot A = some q → ∃ a, frame q = some a ∧ read64 sa.mem a = L.base A) :
+    (hslots : ∀ A q, L.slot A = some q → ∃ a, frame q = some a ∧ read64 sa.mem a = L.base A)
+    (hflags : sa.cf = s.cf ∧ sa.of = s.of) :
     Rel L frame scr K s sa :=
-  ⟨hregs, fun A j hk => ⟨hK A j hk, harr A j hk⟩, hslots⟩
+  ⟨hregs, fun A j hk => ⟨hK A j hk, harr A j hk⟩, hslots, hflags⟩
 
 /-! ## 9. Instance: the copy trip with source and destination at one region
 
@@ -1022,6 +1088,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
     source is `scr`. -/
 theorem regCompat_of_binary (scr : String) (i : LinstrRM) (dst a b : String)
     (ha : a ≠ scr) (hb : b ≠ scr)
+    (hflag : ∀ p, aluFlagOp? i = some p → p.2.1 ≠ .reg scr ∧ p.2.2 ≠ .reg scr)
     (g : (w : Nat) → BitVec w → BitVec w → Option (BitVec w))
     (h : ∀ (s : LstateM) (zf : Bool) (w : Nat) (va : BitVec w), s.reg.getW a w = some va →
       fstepF i s zf = (s.reg.getW b w).bind fun vb =>
@@ -1030,11 +1097,11 @@ theorem regCompat_of_binary (scr : String) (i : LinstrRM) (dst a b : String)
   intro s ra zf bst z heq hstep
   rcases hs : s.reg.lvm a with ⟨w, va⟩
   have hg : s.reg.getW a w = some va := getW_eq_some_iff.mpr hs
-  have hga : ({ reg := ra } : LstateM).reg.getW a w = some va := by
+  have hga : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW a w = some va := by
     show ra.getW a w = some va
     rw [← heq.getW ha]; exact hg
-  have hgb : ({ reg := ra } : LstateM).reg.getW b w = s.reg.getW b w :=
-    (heq.getW hb w).symm
+  have hgb : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW b w
+      = s.reg.getW b w := (heq.getW hb w).symm
   rw [h s zf w va hg] at hstep
   rw [h _ zf w va hga, hgb]
   cases hvb : s.reg.getW b w with
@@ -1046,7 +1113,11 @@ theorem regCompat_of_binary (scr : String) (i : LinstrRM) (dst a b : String)
       simp only [hvb, hv, Option.bind_some, Option.map_some, Option.some.injEq,
         Prod.mk.injEq] at hstep ⊢
       obtain ⟨rfl, rfl⟩ := hstep
-      refine ⟨_, ⟨rfl, rfl⟩, ?_, by rw [withALUFlags_larr]; rfl⟩
+      have hw := withALUFlags_eqOff (i := i) hflag (s0 := s)
+        (s0' := { reg := ra, cf := s.cf, of := s.of }) (b := (s.setReg dst v).nextPc)
+        (b' := (({ reg := ra, cf := s.cf, of := s.of } : LstateM).setReg dst v).nextPc)
+        heq ⟨rfl, rfl⟩
+      refine ⟨_, ⟨rfl, rfl⟩, ?_, by rw [withALUFlags_larr]; rfl, hw.1, hw.2⟩
       rw [withALUFlags_reg, withALUFlags_reg]
       exact heq.setReg dst _
 
@@ -1063,13 +1134,13 @@ theorem regCompat_of_ternary (scr : String) (i : LinstrRM) (dst a b c : String)
   intro s ra zf bst z heq hstep
   rcases hs : s.reg.lvm a with ⟨w, va⟩
   have hg : s.reg.getW a w = some va := getW_eq_some_iff.mpr hs
-  have hga : ({ reg := ra } : LstateM).reg.getW a w = some va := by
+  have hga : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW a w = some va := by
     show ra.getW a w = some va
     rw [← heq.getW ha]; exact hg
-  have hgb : ({ reg := ra } : LstateM).reg.getW b w = s.reg.getW b w :=
-    (heq.getW hb w).symm
-  have hgc : ({ reg := ra } : LstateM).reg.getW c 1 = s.reg.getW c 1 :=
-    (heq.getW hcs 1).symm
+  have hgb : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW b w
+      = s.reg.getW b w := (heq.getW hb w).symm
+  have hgc : ({ reg := ra, cf := s.cf, of := s.of } : LstateM).reg.getW c 1
+      = s.reg.getW c 1 := (heq.getW hcs 1).symm
   rw [h s zf w va hg] at hstep
   rw [h _ zf w va hga, hgb, hgc]
   cases hvb : s.reg.getW b w with
@@ -1081,7 +1152,7 @@ theorem regCompat_of_ternary (scr : String) (i : LinstrRM) (dst a b c : String)
       simp only [hvb, hvc, Option.bind_some, Option.map_some, Option.some.injEq,
         Prod.mk.injEq] at hstep ⊢
       obtain ⟨rfl, rfl⟩ := hstep
-      exact ⟨_, ⟨rfl, rfl⟩, heq.setReg dst _, rfl⟩
+      exact ⟨_, ⟨rfl, rfl⟩, heq.setReg dst _, rfl, rfl, rfl⟩
 
 /-- The two-source register instruction `opn dst, a, b`. -/
 def binRegI (opn dst a b : String) : LinstrRM :=
@@ -1153,7 +1224,12 @@ theorem regCompat_binRegI (scr opn base dst a b : String) (hstrip : stripWidthTa
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
     (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (ha : a ≠ scr) (hb : b ≠ scr) : RegCompat scr (binRegI opn dst a b) :=
-  regCompat_of_binary scr _ dst a b ha hb (fun w va vb => applyOpnN w base [va, vb])
+  regCompat_of_binary scr _ dst a b ha hb
+    (fun _ hp => by
+      obtain ⟨h1, h2⟩ := aluFlagOp?_ops hp
+      rw [h1, h2]
+      exact ⟨fun he => ha (LOperand.reg.inj he), fun he => hb (LOperand.reg.inj he)⟩)
+    (fun w va vb => applyOpnN w base [va, vb])
     fun s zf _ va hg => fstepF_binRegI opn base dst a b hstrip hcmp hmul hcarry s zf va hg
 
 theorem isRegInstr_binRegI (frame : String → Option (BitVec 64)) (opn dst a b : String) :
