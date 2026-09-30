@@ -47,8 +47,8 @@ runs from the front through `LowCT`, the SSA dialects, `Com jasminDialect` and
   discharge it by `decide`.
 - The end-to-end theorems are `rustToJasminCom_endToEnd_unconditional`
   (`VIR/CompilerCorrectnessExtracted.lean`), `robustCompilation_source_to_x86`
-  (`VIR/RobustCompilationPipeline.lean`), `com_x86_e2e`, `com_arm_e2e` and
-  `com_riscv_e2e`. [HEADLINES.md](HEADLINES.md) states each with its hypotheses.
+  (`VIR/RobustCompilationPipeline.lean`; value correctness, no constant-time
+  conjunct), `com_x86_e2e`, `com_arm_e2e` and `com_riscv_e2e`. [HEADLINES.md](HEADLINES.md) states each with its hypotheses.
 - On `Lprog`, `LprogGpRealloc` re-allocates general-purpose
   registers with an untrusted allocator whose decisions a checked pass validates.
   `ConstIndexFold` rewrites each register-indexed load and store with a known index
