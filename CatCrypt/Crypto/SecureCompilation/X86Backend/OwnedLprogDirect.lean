@@ -26,8 +26,9 @@ into itself, and composes the result with `toLprogPhysAbi_lcmdDirect`.
 * `foldIndexedBody_lcmdDirect`: the constant-index fold replaces an indexed access
   by a direct one, the dead-move elimination deletes instructions, and the
   spelling writes a direct access with a `mem.<B>.<off>` register-shaped name.
-* `ownedLprog_lcmdDirect`: the three stages in sequence, the third being
-  `LprogGpReallocCT.reallocLprog_lcmdDirect`.
+* `ownedLprog_lcmdDirect`: the four stages in sequence, the third being
+  `LprogGpReallocCT.reallocLprog_lcmdDirect` and the fourth
+  `TwoAddrLegalize.twoAddrBody_lcmdDirect`.
 * `ownedLprog_toLprogPhysAbi_constant_time`: for a `Com` whose virtual body is
   index-free, every function of the owned `Lprog` gathers (under
   `ConstIndexFold.gatherPrinted`) to a block whose address and branch trace is the
@@ -324,9 +325,13 @@ theorem foldIndexedLprog_lcmdDirect {p : Lprog}
 /-- **The owned back end preserves direct addressing.** -/
 theorem ownedLprog_lcmdDirect {p : Lprog}
     (h : ∀ f ∈ p.lp_funcs, lcmdDirect f.2.lfd_body = true) :
-    ∀ f ∈ (ownedLprog p).lp_funcs, lcmdDirect f.2.lfd_body = true :=
-  LprogGpReallocCT.reallocLprog_lcmdDirect
+    ∀ f ∈ (ownedLprog p).lp_funcs, lcmdDirect f.2.lfd_body = true := by
+  have hr := LprogGpReallocCT.reallocLprog_lcmdDirect
     (foldIndexedLprog_lcmdDirect (optimizeLprogBasicBlocks_lcmdDirect h))
+  intro f hf
+  simp only [ownedLprog, mapBodies, List.mem_map] at hf
+  obtain ⟨g, hg, rfl⟩ := hf
+  exact TwoAddrLegalize.twoAddrBody_lcmdDirect (hr g hg)
 
 /-- **Constant time of the owned `Lprog` of an index-free `Com`.** If the virtual
     body of `com` has no register-indexed operand, every function of

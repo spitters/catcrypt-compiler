@@ -13,11 +13,12 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 `LprogOptPipeline.ownedLprog` is the basic-block optimizer
 `optimizeLprogBasicBlocks`, the constant-index fold `ConstIndexFold.foldIndexedLprog`
-and the register re-allocation `LprogGpRealloc.reallocLprog`. This module states
-that the three stages preserve constant time from function entry
-(`LprogLeak.EntryCT`) in the `CTLeak` model `LprogLeakCT.ctLeak`. The first two
-stages are covered by the checker of `LprogLeakTV` on every function body
-(`progCheck`), the third by `LprogGpReallocLeak.ReallocOk`.
+the register re-allocation `LprogGpRealloc.reallocLprog` and the two-address
+legalisation `TwoAddrLegalize.twoAddrBody`. This module states that the four stages
+preserve constant time from function entry (`LprogLeak.EntryCT`) in the `CTLeak`
+model `LprogLeakCT.ctLeak`. The first, second and fourth stages are covered by the
+checker of `LprogLeakTV` on every function body (`progCheck`), the third by
+`LprogGpReallocLeak.ReallocOk`.
 
 ## Main results
 
@@ -26,7 +27,7 @@ stages are covered by the checker of `LprogLeakTV` on every function body
 * `optimizeLprogBasicBlocks_ctLeak`, `foldIndexedLprog_ctLeak`: each of the two
   stages preserves `EntryCT (ctLeak w)` when `progCheck` accepts its input.
 * `ownedLprog_constant_time`:
-  `EntryCT (ctLeak w) P pub → EntryCT (ctLeak w) (ownedLprog P) pub` under the two
+  `EntryCT (ctLeak w) P pub → EntryCT (ctLeak w) (ownedLprog P) pub` under the three
   checks and `ReallocOk` on every function of the folded program.
 -/
 
@@ -48,6 +49,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc (reallocLprog)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocLeak
   (ReallocOk reallocLprog_entryCT)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (twoAddrBody)
 
 /-- The checker accepts every function body of `P` against its image under `T`. -/
 def progCheck (w : Nat) (T : Lcmd → Lcmd) (P : Lprog) : Bool :=
@@ -81,15 +83,20 @@ theorem foldIndexedLprog_ctLeak {w : Nat} (P : Lprog) (pub : LstateP w → Lstat
     (progCheck_getFundef hchk) h
 
 /-- **The owned back end preserves constant time from function entry.** The
-    optimizer and the fold are covered by the checker on their inputs, the
-    register re-allocation by `ReallocOk` on every function of its input. -/
+    optimizer, the fold and the two-address legalisation are covered by the
+    checker on their inputs, the register re-allocation by `ReallocOk` on every
+    function of its input. -/
 theorem ownedLprog_constant_time {w : Nat} (P : Lprog) (pub : LstateP w → LstateP w → Prop)
     (hopt : progCheck w optimizeBasicBlocks P = true)
     (hfold : progCheck w foldIndexedBody (optimizeLprogBasicBlocks P) = true)
     (hok : ∀ fn fd, getFundef (foldIndexedLprog (optimizeLprogBasicBlocks P)) fn = some fd →
       ReallocOk w fn fd)
+    (hleg : progCheck w twoAddrBody
+      (reallocLprog (foldIndexedLprog (optimizeLprogBasicBlocks P))) = true)
     (h : EntryCT (ctLeak w) P pub) : EntryCT (ctLeak w) (ownedLprog P) pub :=
-  reallocLprog_entryCT (ctLeak w) _ pub hok
-    (foldIndexedLprog_ctLeak _ pub hfold (optimizeLprogBasicBlocks_ctLeak P pub hopt h))
+  entryCT_of_mapped _ _ twoAddrBody pub (getFundef_mapBodies twoAddrBody _)
+    (progCheck_getFundef hleg)
+    (reallocLprog_entryCT (ctLeak w) _ pub hok
+      (foldIndexedLprog_ctLeak _ pub hfold (optimizeLprogBasicBlocks_ctLeak P pub hopt h)))
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT

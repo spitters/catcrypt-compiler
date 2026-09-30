@@ -35,6 +35,11 @@ gathered optimized block loads from a table at an index equal to the secret `RAX
 * `optimizeBasicBlocks_not_machineCT_preserving`: there is a body with a
   register-indexed load whose gathered block is constant time while the gathered
   block of its optimization is not.
+* `cpSubBody_bodyTiedOk`, `gatherPrinted_twoAddrBody_optimizeBasicBlocks_cpSubBody`,
+  `cpSubBody_legalized_machineCT`: the optimization violates the printer's
+  two-address precondition, its two-address legalisation
+  `TwoAddrLegalize.twoAddrBody` satisfies it, and the gathered legalised block is
+  constant time.
 -/
 
 @[expose] public section
@@ -119,5 +124,40 @@ theorem optimizeBasicBlocks_not_machineCT_preserving :
   ⟨cpSubBody, cpSubBlock, cpSubOptBlock, gatherPrinted_cpSubBody,
     gatherPrinted_optimizeBasicBlocks_cpSubBody, cpSubBody_machineCT,
     cpSubBody_optimized_not_machineCT⟩
+
+/-! ## The two-address legalisation of the optimized body
+
+`TwoAddrLegalize.twoAddrBody`, the last stage of `LprogOptPipeline.ownedLprog`,
+rewrites `SUB RAX ← RBX, RAX` through the scratch register `R15` and
+`ADD RDX ← RAX, RCX` through a leading copy of `RAX` into `RDX`. -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (twoAddrBody bodyTiedOk)
+
+/-- Neither `cpSubBody` nor its optimization satisfies the printer's two-address
+    precondition; the legalised optimization does. -/
+theorem cpSubBody_bodyTiedOk :
+    bodyTiedOk cpSubBody = false ∧ bodyTiedOk (optimizeBasicBlocks cpSubBody) = false ∧
+      bodyTiedOk (twoAddrBody (optimizeBasicBlocks cpSubBody)) = true := by
+  native_decide
+
+/-- The gathered block of the legalised optimized `cpSubBody`. -/
+def cpSubLegalBlock : List (JInstr 64) :=
+  [ .mov "RCX" (.reg "RAX"), .mov "R15" (.reg "RBX"), .sub "R15" (.reg "RAX"),
+    .mov "RAX" (.reg "R15"), .mov "RDX" (.reg "RAX"), .add "RDX" (.reg "RCX"),
+    .loadMemIdx "R8" "T" "RDX" 8 ]
+
+theorem gatherPrinted_twoAddrBody_optimizeBasicBlocks_cpSubBody :
+    gatherPrinted (twoAddrBody (optimizeBasicBlocks cpSubBody)) = some cpSubLegalBlock := by
+  native_decide
+
+/-- **The gathered block of the legalised optimized body is constant time**: its one
+    address event is at offset `8 · RBX` of `T`, as for the input block. -/
+theorem cpSubBody_legalized_machineCT : MachineCT .doitm rbxPub cpSubLegalBlock := by
+  intro s₁ s₂ hag
+  have h : s₁.get "RBX" = s₂.get "RBX" := hag "RBX" rfl
+  simp [cpSubLegalBlock, blockLeakCT, instrLeakCT, instrLeak, evalInstr, JInstr.mnem,
+    DoitRegime.leaksOperands, X86Mnem.timing, JState.setReg, JState.writeB5W, JOperand.eval,
+    x86_MOV, x86_SUB, x86_ADD, rflags_of_aluop] at h ⊢
+  simp [h]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT

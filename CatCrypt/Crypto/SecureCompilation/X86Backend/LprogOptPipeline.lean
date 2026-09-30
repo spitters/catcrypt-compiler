@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 public import CatCrypt.Crypto.Optimizer.ComRangeFold
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -44,8 +45,8 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
 * `optimizeLprog` — the composition an emitter applies before `renderLprogAtt`.
 * `ownedLprog`, `renderOwned` — the basic-block optimizer followed by the
   constant-index displacement fold `ConstIndexFold.foldIndexedLprog` and the
-  general-purpose register re-allocation `LprogGpRealloc.reallocLprog`, and its
-  printing.
+  general-purpose register re-allocation `LprogGpRealloc.reallocLprog` and the
+  two-address legalisation `TwoAddrLegalize.twoAddrBody`, and its printing.
 * `ownedComStage`, `renderOwnedCom` — the opt-in `Com → Com` stage before the exporter
   (the range fold of `Optimizer.ComRangeFold`, off by default) and the back end from a
   `Com`; `ownedComStage_denote`, `ownedComStage_outputs` — the stage's soundness for the
@@ -1233,9 +1234,14 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     `ConstIndexFold.gatherPrinted_dropDeadImm_constIndexFold`. The last stage is
     the general-purpose register re-allocation `LprogGpRealloc.reallocLprog`,
     which keeps every address register at its own location and is sound per run
-    by `LprogGpRealloc.reallocRun_sound`. -/
+    by `LprogGpRealloc.reallocRun_sound`. The output is legalised to the printer's
+    two-address form by `TwoAddrLegalize.twoAddrBody` on every function body, which
+    is the identity on a body that already satisfies it
+    (`TwoAddrLegalize.twoAddrBody_of_bodyTiedOk`) and preserves the straight-line
+    semantics off the scratch register (`TwoAddrLegalize.twoAddrBody_lsemStraight`). -/
 def ownedLprog (p : Lprog) : Lprog :=
-  LprogGpRealloc.reallocLprog (ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p))
+  mapBodies TwoAddrLegalize.twoAddrBody
+    (LprogGpRealloc.reallocLprog (ConstIndexFold.foldIndexedLprog (optimizeLprogBasicBlocks p)))
 
 /-- **The one optimizing compiler back-end.** Every owned emit driver renders its
     `Lprog` through this entry point: `optimizeLprogBasicBlocks` — the four

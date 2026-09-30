@@ -1237,6 +1237,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
               ++ resolveOperand frame spillW w b qsaveB ++ ", "
               ++ resolveOperand frame spillW w a qsaveB ++ ", "
               ++ resolveOperand frame spillW w d qsaveB ]
+      -- The two-address arm below prints `op b, d` and does not print `a`, so it
+      -- denotes `d := a op b` only when `a = d`; an instruction with `a ≠ d` is
+      -- refused (`TwoAddrLegalize.legalizeInstr` rewrites it before printing).
+      else if a != d then [ "\t# UNHANDLED-THREEADDR " ++ opn ]
       else
         let w := mnemWidth opn
         let mnBase := stripAbiTag opn
