@@ -417,6 +417,7 @@ CatCrypt.Crypto.SecureCompilation.FrontJasminCT
 CatCrypt.Crypto.SecureCompilation.GroundedSuitePortfolio
 CatCrypt.Crypto.SecureCompilation.HashSigProtocolKernels
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
+CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront
 CatCrypt.Crypto.SecureCompilation.HkdfProtocolKernels
 CatCrypt.Crypto.SecureCompilation.HmacKernelRegistryEntry

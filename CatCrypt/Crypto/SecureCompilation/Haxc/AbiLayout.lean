@@ -1,0 +1,167 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+public import HaxLean.Value
+
+@[expose] public section
+
+set_option autoImplicit false
+
+/-!
+# The System V layout of a compiled function
+
+An `AbiLayout` reads a hax environment and a hax result off address-machine states
+(`Ascent.AddrMem.AState`) under the System V calling convention of the v0 route set of the
+general compiler theorem: each source parameter is a `u64` scalar held in an argument
+register or a word array passed by pointer in an argument register, a list of named
+constants completes the environment, and the result is read back from registers and from
+the words at the entry pointers after the run.
+
+The layout also states the separation the compiled bytes rely on: the pointer regions are
+pairwise disjoint and disjoint from the stack words the body uses below the entry `%rsp`,
+and the runtime counts stay within stated bounds.
+
+## Main results
+
+* `wordsAt` — the words at `base + 8 j`, `j < k`, as source integers.
+* `ArgKind`, `AbiArg`, `AbiArg.read` — a parameter, its register and the value it denotes.
+* `ResultKind`, `ResultKind.read` — the read-back of a result from the entry and exit states.
+* `AbiLayout` — parameters, constants, result, count bounds and the stack frame.
+* `AbiLayout.Regions` — the count bounds and the separation of the pointer regions and the
+  frame at an entry state.
+* `AbiLayout.EnvOf` — a hax environment binding each parameter to the value its register
+  denotes and each constant to its value.
+* `AbiLayout.ResultOf` — a source value equals the read-back of the result.
+-/
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc
+
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState AMem read64 Disjoint8)
+open _root_.Hax (Value Env)
+
+/-- The `k` words at `base + 8 j`, `j < k`, of the memory `m`, each as a source integer. -/
+def wordsAt (m : AMem) (base : BitVec 64) (k : Nat) : List Value :=
+  (List.range k).map fun j => .int (read64 m (base + BitVec.ofNat 64 (8 * j))).toNat
+
+/-- How a source parameter is passed: a `u64` scalar in its register, or an array of `n`
+    words at the address its register holds. -/
+inductive ArgKind where
+  /-- A `u64` scalar held in the register. -/
+  | scalar
+  /-- An array of `n` `u64` words at the address the register holds. -/
+  | words (n : Nat)
+  deriving Repr, DecidableEq, Inhabited
+
+/-- A source parameter: its name in the hax environment, the System V register that
+    carries it (`"%rdi"`, `"%rsi"`, `"%rdx"`, `"%rcx"`, `"%r8"`, `"%r9"`) and its kind. -/
+structure AbiArg where
+  /-- The parameter name in the hax environment. -/
+  name : String
+  /-- The argument register, in the register naming of `AState.regs`. -/
+  reg : String
+  /-- Scalar or word array. -/
+  kind : ArgKind
+  deriving Repr, DecidableEq, Inhabited
+
+/-- The source value a parameter denotes at the state `sa`: the register as an integer for
+    a scalar, the words at the register's address for an array. -/
+def AbiArg.read (a : AbiArg) (sa : AState) : Value :=
+  match a.kind with
+  | .scalar => .int (sa.regs a.reg).toNat
+  | .words n => .array (wordsAt sa.mem (sa.regs a.reg) n)
+
+/-- The pointer region of a parameter: its register and its length in words, for an
+    array parameter. -/
+def AbiArg.region (a : AbiArg) : Option (String × Nat) :=
+  match a.kind with
+  | .scalar => none
+  | .words n => some (a.reg, n)
+
+/-- How a result is read back after the run. -/
+inductive ResultKind where
+  /-- The exit value of a register, as an integer. -/
+  | reg (r : String)
+  /-- The `n` words at the entry value of the register `r`, read in the exit memory. -/
+  | words (r : String) (n : Nat)
+  /-- The word at the entry value of `r` plus `8` times the entry value of `i`, read in the
+      exit memory. -/
+  | wordAt (r i : String)
+  /-- A tuple of read-backs. -/
+  | tuple (ks : List ResultKind)
+  deriving Repr, Inhabited
+
+mutual
+
+/-- The source value a result read-back denotes, from the entry state `sa` and the exit
+    state `sa'`. -/
+def ResultKind.read (sa sa' : AState) : ResultKind → Value
+  | .reg r => .int (sa'.regs r).toNat
+  | .words r n => .array (wordsAt sa'.mem (sa.regs r) n)
+  | .wordAt r i =>
+      .int (read64 sa'.mem (sa.regs r + BitVec.ofNat 64 (8 * (sa.regs i).toNat))).toNat
+  | .tuple ks => .tuple (ResultKind.readList sa sa' ks)
+
+/-- `ResultKind.read` on each entry of a list. -/
+def ResultKind.readList (sa sa' : AState) : List ResultKind → List Value
+  | [] => []
+  | k :: ks => ResultKind.read sa sa' k :: ResultKind.readList sa sa' ks
+
+end
+
+/-- The layout of a compiled function under the System V calling convention: its
+    parameters, the constants that complete the source environment, the read-back of its
+    result, upper bounds on scalar registers, and the stack words its body uses, as the
+    offsets `[frameLo, frameHi]` from the entry `%rsp`. -/
+structure AbiLayout where
+  /-- The parameters, each with its register and kind. -/
+  args : List AbiArg
+  /-- Names bound to fixed values in the source environment. -/
+  consts : List (String × Value)
+  /-- The read-back of the result. -/
+  result : ResultKind
+  /-- Upper bounds on the entry value of registers, such as a runtime count at most the
+      length of the arrays it indexes. -/
+  bounds : List (String × Nat)
+  /-- The lowest stack offset from the entry `%rsp` the body uses. -/
+  frameLo : Int
+  /-- The highest stack offset from the entry `%rsp` the body uses. -/
+  frameHi : Int
+  deriving Repr, Inhabited
+
+namespace AbiLayout
+
+/-- The pointer regions of a layout: register and length in words of each array
+    parameter, in parameter order. -/
+def regions (σ : AbiLayout) : List (String × Nat) := σ.args.filterMap AbiArg.region
+
+/-- The entry conditions of a layout at the state `sa`: every bounded register is within its
+    bound; the words of two distinct pointer regions are pairwise disjoint; and every word of
+    a pointer region is disjoint from every stack word `%rsp + o`, `frameLo ≤ o ≤ frameHi`. -/
+def Regions (σ : AbiLayout) (sa : AState) : Prop :=
+  (∀ b ∈ σ.bounds, (sa.regs b.1).toNat ≤ b.2)
+    ∧ (∀ (i j : Nat) (p q : String × Nat), i ≠ j → σ.regions[i]? = some p →
+        σ.regions[j]? = some q → ∀ k k', k < p.2 → k' < q.2 →
+          Disjoint8 (sa.regs p.1 + BitVec.ofNat 64 (8 * k))
+            (sa.regs q.1 + BitVec.ofNat 64 (8 * k')))
+    ∧ (∀ p ∈ σ.regions, ∀ k, k < p.2 → ∀ o : Int, σ.frameLo ≤ o → o ≤ σ.frameHi →
+        Disjoint8 (sa.regs "%rsp" + BitVec.ofInt 64 o)
+          (sa.regs p.1 + BitVec.ofNat 64 (8 * k)))
+
+/-- The source environment `env` corresponds to the entry state `sa`: each parameter is
+    bound to the value its register denotes (`AbiArg.read`) and each constant to its value. -/
+def EnvOf (σ : AbiLayout) (sa : AState) (env : Env) : Prop :=
+  (∀ a ∈ σ.args, env a.name = some (a.read sa)) ∧ (∀ c ∈ σ.consts, env c.1 = some c.2)
+
+/-- The source value `v` is the read-back of the result from the entry state `sa` and the
+    exit state `sa'`. -/
+def ResultOf (σ : AbiLayout) (sa sa' : AState) (v : Value) : Prop :=
+  v = σ.result.read sa sa'
+
+end AbiLayout
+
+end CatCrypt.Crypto.SecureCompilation.Haxc
