@@ -417,7 +417,6 @@ CatCrypt.Crypto.SecureCompilation.FrontJasminCT
 CatCrypt.Crypto.SecureCompilation.GroundedSuitePortfolio
 CatCrypt.Crypto.SecureCompilation.HashSigProtocolKernels
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
-CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront
 CatCrypt.Crypto.SecureCompilation.HkdfProtocolKernels
 CatCrypt.Crypto.SecureCompilation.HmacKernelRegistryEntry
@@ -758,8 +757,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
-CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit

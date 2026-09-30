@@ -2091,6 +2091,8 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT,
@@ -2256,10 +2258,10 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdxLprog,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontDenote,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpLsemTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCrateEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivQrFrontEmit,
@@ -2458,10 +2460,10 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.InitiatorAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.Invariants,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.Model,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ProtocolVerification,
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ResponderAuth,
   ]
 def pkgModules13 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ProtocolVerification,
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.EDHOC.ResponderAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Invariant,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Label,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.MLS.CommitAuth,
@@ -2660,10 +2662,10 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP256,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP384,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdP521,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdSecp256k1,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1Ecmult,
   ]
 def pkgModules14 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdSecp256k1,
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1Ecmult,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Secp256k1FieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.ValeCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Vesta,
