@@ -599,7 +599,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
-CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieEmitted
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
@@ -759,8 +758,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
-CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
@@ -771,6 +770,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519BytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519PointKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
+CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFaithful
+CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
