@@ -28,7 +28,7 @@ CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeRewrites
 CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsSim
-CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsValue
+CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsValueLoop
 CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.Hax.HaxToLowCTSim_NoShadow
@@ -360,7 +360,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.ClmulVpshufbFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion
 CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectVerifiedMiddle
 CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlanKernels
-CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRoute
+CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteFrame
 CatCrypt.Crypto.SecureCompilation.Dialects.IselGeneralAndn
 CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineRec
 CatCrypt.Crypto.SecureCompilation.Dialects.IselWholeFn
