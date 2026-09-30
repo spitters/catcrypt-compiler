@@ -737,6 +737,8 @@ CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AesEcbBlockObjectEmit
+CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels
+CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.Avx2YmmNttUnifiedEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.BackTranslation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2bGThirEmit
@@ -767,7 +769,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519BytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519PointKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
-CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
