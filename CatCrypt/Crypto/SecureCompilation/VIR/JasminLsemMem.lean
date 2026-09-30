@@ -171,6 +171,15 @@ structure LstateM where
       **additive** (a default is supplied), so every existing `LstateM` value and
       every increment-1–9 step lemma — none of which touch `lmem` — is unchanged. -/
   lmem : String → Int → BitVec 64 := fun _ _ => 0
+  /-- The carry flag `CF` of the flag machine (`JasminLsemMemFlagGuard.stepMemF`): written
+      by the 64-bit `ADD`, `SUB`, `AND`, `OR`, `XOR` and by `ADC`, `SBB`, `ADCX`; read by
+      `ADC`, `SBB`, `ADCX`. The straight-line step `lsemStepMem` neither reads nor
+      writes it. -/
+  cf : Bool := false
+  /-- The overflow flag `OF` of the flag machine: written by the 64-bit `ADD`, `SUB`,
+      `AND`, `OR`, `XOR` and by `ADC`, `SBB`, `ADOX`; read by `ADOX`. The straight-line
+      step `lsemStepMem` neither reads nor writes it. -/
+  of : Bool := false
 
 /-- Read an array **at an expected shape** `(w, n)`: `some arr` iff the stored
     cell's shape is `(w, n)`, `none` on a shape mismatch. The array analogue of

@@ -11,6 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.BigNatBitwise
 public import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
 public import CatCrypt.Crypto.SecureCompilation.BigNatShift
 public import CatCrypt.Crypto.SecureCompilation.BigNatPow
+public import CatCrypt.Crypto.SecureCompilation.BigNatGcd
 
 /-!
 # Limb kernels lowered to `natKernelDialect`
@@ -80,6 +81,12 @@ inductive LimbOp where
   | lor
   /-- Limb-wise XOR with zero padding. -/
   | xor
+  /-- Truncating carrier division `BigNatDivMod.div`, zero at a zero divisor. -/
+  | div
+  /-- Carrier remainder `BigNatDivMod.mod`, the dividend at a zero divisor. -/
+  | mod
+  /-- The Euclidean algorithm on the carrier, `BigNatGcd.gcd`. -/
+  | gcd
   deriving DecidableEq, Repr
 
 /-- The limb operations whose second argument is a `Nat`. -/
@@ -100,6 +107,9 @@ def limbDenote : LimbOp → List (BitVec 64) → List (BitVec 64) → List (BitV
   | .land => BigNatBitwise.land
   | .lor => BigNatBitwise.lor
   | .xor => BigNatBitwise.xor
+  | .div => BigNatDivMod.div
+  | .mod => BigNatDivMod.mod
+  | .gcd => BigNatGcd.gcd
 
 /-- The denotation of a limb operation with a `Nat` second argument. -/
 def limbNatDenote : LimbNatOp → List (BitVec 64) → Nat → List (BitVec 64)
@@ -117,6 +127,9 @@ def toNatOp : LimbOp → NatKernelOp
   | .land => .land
   | .lor => .lor
   | .xor => .xor
+  | .div => .div
+  | .mod => .mod
+  | .gcd => .gcd
 
 /-- The dialect instruction a `Nat`-argument limb operation lowers to. -/
 def toNatOpN : LimbNatOp → NatKernelOp
@@ -184,6 +197,27 @@ theorem lower_pow (xs : List (BitVec 64)) (k : Nat) :
           (args2 (bignumVal xs) k) :=
   BigNat.pow_natPow xs k
 
+/-- Abstracting the carrier quotient is the `Nat` quotient. -/
+theorem lower_div (xs ys : List (BitVec 64)) :
+    bignumVal (limbDenote .div xs ys)
+      = DialectDenote.denote (d := natKernelDialect) (toNatOp .div)
+          (args2 (bignumVal xs) (bignumVal ys)) :=
+  BigNatDivMod.div_val xs ys
+
+/-- Abstracting the carrier remainder is the `Nat` remainder. -/
+theorem lower_mod (xs ys : List (BitVec 64)) :
+    bignumVal (limbDenote .mod xs ys)
+      = DialectDenote.denote (d := natKernelDialect) (toNatOp .mod)
+          (args2 (bignumVal xs) (bignumVal ys)) :=
+  BigNatDivMod.mod_val xs ys
+
+/-- Abstracting the carrier gcd is the `Nat` gcd. -/
+theorem lower_gcd (xs ys : List (BitVec 64)) :
+    bignumVal (limbDenote .gcd xs ys)
+      = DialectDenote.denote (d := natKernelDialect) (toNatOp .gcd)
+          (args2 (bignumVal xs) (bignumVal ys)) :=
+  BigNatGcd.gcd_val xs ys
+
 /-! ## 4. The combined statements -/
 
 /-- **Lowering soundness, two-limb-list operations.** Abstracting the limb
@@ -207,6 +241,9 @@ theorem lower_sound (op : LimbOp) (xs ys : List (BitVec 64)) :
   | land => exact lower_land xs ys
   | lor => exact lower_lor xs ys
   | xor => exact lower_xor xs ys
+  | div => exact lower_div xs ys
+  | mod => exact lower_mod xs ys
+  | gcd => exact lower_gcd xs ys
 
 /-- **Lowering soundness, `Nat`-argument operations.** Stated through
     `evalFlatOp` for the reason given at `lower_sound`. -/

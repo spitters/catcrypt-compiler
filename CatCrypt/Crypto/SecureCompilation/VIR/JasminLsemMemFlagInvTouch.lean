@@ -181,8 +181,8 @@ theorem TouchRestoresFMN_of_plain (w : Nat) (touch : List LinstrRM) (nReg : Stri
     TouchRestoresFMN invTys w touch nReg := by
   intro invs t acc s zf hag
   obtain ⟨s', hrun, hAg, hpres⟩ := h invs t acc s hag
-  refine ⟨s', zf, ?_, hAg, hpres⟩
-  rw [runStraightF_plain touch hplain s zf, hrun, Option.map_some]
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem touch hplain s s' zf hrun
+  exact ⟨{ s' with cf := c, of := o }, zf, hF, hAg, hpres⟩
 
 /-- Boolean `PlainLopnBody` checker (per-instance discharge of the chain-plain
     side condition on the flag route). -/
@@ -502,10 +502,10 @@ theorem loopBodyInvTouchMN_tripF {w : Nat}
   obtain ⟨s1, zf1, hrunT, hAgT, hpres⟩ := htouch invs t acc bt zf hagree
   obtain ⟨bt', hrunB, hAg', hn'⟩ := loopBodyFullMN_trip update hupd nReg hna hnr
     invs t acc s1 hAgT vn (hpres.trans hn)
-  refine ⟨bt', zf1, ?_, hAg', hn'⟩
-  rw [loopBodyInvTouchMN, runStraightF_append, hrunT, Option.bind_some,
-    runStraightF_plain _ (loopBodyFullMN_plain update nReg hchain) s1 zf1, hrunB,
-    Option.map_some]
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem _
+    (loopBodyFullMN_plain update nReg hchain) s1 bt' zf1 hrunB
+  refine ⟨{ bt' with cf := c, of := o }, zf1, ?_, hAg', hn'⟩
+  rw [loopBodyInvTouchMN, runStraightF_append, hrunT, Option.bind_some, hF]
 
 /-- Peel the LAST pass off the flag bounded fold. -/
 theorem runBoundedStraightF_succ_right (body : List LinstrRM) (q : Nat) :

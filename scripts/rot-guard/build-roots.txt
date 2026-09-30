@@ -758,6 +758,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNodeLogic
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat

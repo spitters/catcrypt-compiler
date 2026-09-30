@@ -367,12 +367,12 @@ theorem loopBodyArrTouchMN_tripF {w n : Nat}
       ∧ bt'.reg.getW nReg 64 = some (vn - 1#64) := by
   obtain ⟨s1, hrunB, hAg1, hn1⟩ := loopBodyArrFullMN_trip update hupd nReg hna hnr
     invs t arrt bt hagree vn hn
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem _
+    (loopBodyArrFullMN_plain update nReg (arrMemN_straightOpsMem_plain hupd _ _)) bt s1 zf hrunB
   obtain ⟨bt', zb, hrunT, hAgT, hpres⟩ := htouch invs (t + 1)
-    (JLoopBodyN.stepC update invs t arrt) s1 zf hAg1
+    (JLoopBodyN.stepC update invs t arrt) { s1 with cf := c, of := o } zf hAg1
   refine ⟨bt', zb, ?_, hAgT, hpres.trans hn1⟩
-  rw [loopBodyArrTouchMN, runStraightF_append,
-    runStraightF_plain _ (loopBodyArrFullMN_plain update nReg (arrMemN_straightOpsMem_plain hupd _ _)) bt zf, hrunB,
-    Option.map_some, Option.bind_some]
+  rw [loopBodyArrTouchMN, runStraightF_append, hF, Option.bind_some]
   exact hrunT
 
 /-- **The trip invariant on the flag machine.** Every `runBoundedStraightF` trip

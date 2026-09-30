@@ -742,8 +742,8 @@ theorem symOp64_none {R : String → STerm} {r : LstateN} {o : LOperand}
   cases o <;> simp_all [symOp64, evalOperandN]
 
 /-- The symbolic description of one instruction of `evalInstrPMemF`: the flag `CMP`, the
-    register-copy `MOV`, a label, and the memref step; a branch or a jump is outside the
-    fragment. -/
+    register-copy `MOV`, a label, and the memref step; a branch, a jump and a carry-family
+    instruction are outside the fragment. -/
 def symStep (i : LinstrRM) (ss : SSt) : SOut :=
   match cmpArgs? i with
   | some (a, b) =>
@@ -761,7 +761,10 @@ def symStep (i : LinstrRM) (ss : SSt) : SOut :=
               | .Llabel _ _ => .ok ss []
               | .Lcond _ _ => .unk
               | .Lgoto _ => .unk
-              | _ => symMem i ss
+              | _ =>
+                  match carryArgs? i with
+                  | some _ => .unk
+                  | none => symMem i ss
 
 /-- A flag-machine step keeps the function and the word memory and advances the pc. -/
 def Frame (s t : LstateMF) : Prop :=
@@ -781,6 +784,26 @@ def SOut.Desc (res : Option LstateMF) (V : String → Σ w, BitVec w) (A : Strin
 def StepSound (g : LstateMF → Option LstateMF) (ss : SSt) (o : SOut) : Prop :=
   ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (Z : Bool) (s : LstateMF),
     Holds V A Z ss s → o.Desc (g s) V A Z s
+
+/-- A description of a memref step describes it with the carry and overflow flags of
+    `withALUFlags` added: the flags are outside the register file and the arrays. -/
+theorem descM_withFlags {res : Option LstateM} {V : String → Σ w, BitVec w}
+    {A : String → ArrCell} {m : LstateM} {o : SOut} (i : LinstrRM)
+    (h : o.DescM res V A m) : o.DescM (res.map (withALUFlags i m)) V A m := by
+  cases o with
+  | ok ss' gs =>
+      refine ⟨fun m' hm' => ?_, fun hg => by simpa using h.2 hg⟩
+      obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp hm'
+      obtain ⟨hg, hH, hpc, hmem⟩ := h.1 b hb
+      refine ⟨hg, ⟨fun q => ?_, fun q => ?_⟩, ?_, ?_⟩
+      · rw [withALUFlags_reg]; exact hH.1 q
+      · rw [withALUFlags_larr]; exact hH.2 q
+      · rw [withALUFlags_reg]; exact hpc
+      · rw [withALUFlags_lmem]; exact hmem
+  | fail =>
+      simp only [SOut.DescM] at h ⊢
+      rw [h, Option.map_none]
+  | unk => trivial
 
 theorem descM_lift {res : Option LstateM} {V : String → Σ w, BitVec w} {A : String → ArrCell}
     {Z : Bool} {ss : SSt} {s : LstateMF} {o : SOut} (hz : ∀ ss' gs, o = .ok ss' gs → ss'.zf = ss.zf)
@@ -883,7 +906,8 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
         · rename_i hl
           have he : evalInstrPMemF P i s =
               some { s with prog := { s.prog with base := s.prog.base.nextPc } } := by
-            simp only [evalInstrPMemF, hc, hm, hf, evalInstrPMemL, hl, Option.map_some]
+            have ha : aluFlagOp? i = none := by simp [aluFlagOp?, hl]
+            simp only [evalInstrPMemF, hc, hm, hf, evalInstrPMemL, hl, withALUFlags_of_none ha]
           rw [he]
           refine ⟨fun t ht => ?_, fun _ => rfl⟩
           cases ht
@@ -891,16 +915,25 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
         · trivial
         · trivial
         · rename_i h1 h2 h3
-          have he : evalInstrPMemF P i s = (lsemStepMem i s.prog.base).map
-              (fun b => { s with prog := { s.prog with base := b } }) := by
-            simp only [evalInstrPMemF, hc, hm, hf, evalInstrPMemL]
-            split
-            · rename_i h; exact (h1 _ _ h).elim
-            · rename_i h; exact (h2 _ _ h).elim
-            · rename_i h; exact (h3 _ h).elim
-            · cases lsemStepMem i s.prog.base <;> rfl
-          rw [he]
-          exact descM_lift (symMem_zf i ss) hs (symMem_sound i ss V A s.prog.base ⟨hs.1, hs.2.1⟩)
+          split
+          · trivial
+          · rename_i hk
+            have he : evalInstrPMemF P i s =
+                ((lsemStepMem i s.prog.base).map (withALUFlags i s.prog.base)).map
+                  (fun b => { s with prog := { s.prog with base := b } }) := by
+              have hL : evalInstrPMemL P i s.prog
+                  = (lsemStepMem i s.prog.base).map (fun b => { s.prog with base := b }) := by
+                unfold evalInstrPMemL
+                split
+                · rename_i h; exact (h1 _ _ h).elim
+                · rename_i h; exact (h2 _ _ h).elim
+                · rename_i h; exact (h3 _ h).elim
+                · rfl
+              simp only [evalInstrPMemF, hc, hm, hf, hL]
+              cases lsemStepMem i s.prog.base <;> simp [hk]
+            rw [he]
+            exact descM_lift (symMem_zf i ss) hs
+              (descM_withFlags i (symMem_sound i ss V A s.prog.base ⟨hs.1, hs.2.1⟩))
 
 /-! ## 6. Straight-line runs -/
 
@@ -1034,7 +1067,9 @@ theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : 
         · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact hg
         · cases h
         · cases h
-        · exact symMem_good i hg h
+        · split at h
+          · cases h
+          · exact symMem_good i hg h
 
 theorem symRun_good : ∀ (is : List LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
     symRun is ss = .ok ss' gs → ss'.Good
@@ -1255,25 +1290,32 @@ theorem evalInstrPMemF_cond (P : LprogM) (c : LOperand) (l : LLabel) (tag : MemT
     evalInstrPMemF P (.Lcond c l, tag) s =
       if decC s c = true then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
       else some { s with prog := { s.prog with base := s.prog.base.nextPc } } := by
-  unfold evalInstrPMemF decC
-  simp only [cmpArgs?, movRegArgs?, flagCondCC?_cond]
-  cases ccPol c with
-  | some pol => simp [beq_iff_eq]
+  unfold decC
+  cases hcc : ccPol c with
+  | some pol =>
+      unfold evalInstrPMemF
+      simp only [cmpArgs?, movRegArgs?, flagCondCC?_cond, hcc]
+      simp [beq_iff_eq]
   | none =>
-      simp only [Option.map_none, evalInstrPMemL]
-      split <;> simp_all
+      have hf : flagCondCC? (LinstrR.Lcond c l, tag) = none := by
+        rw [flagCondCC?_cond, hcc]; rfl
+      rw [evalInstrPMemF_delegate P _ s rfl rfl hf rfl rfl]
+      simp only [evalInstrPMemL]
+      split <;> simp
 
 theorem evalInstrPMemF_goto (P : LprogM) (x : String) (l : LLabel) (tag : MemTag)
     (s : LstateMF) :
     evalInstrPMemF P (.Lgoto (x, l), tag) s =
       if x = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
       else none := by
-  simp only [evalInstrPMemF, cmpArgs?, movRegArgs?, flagCondCC?, evalInstrPMemL]
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl]
+  simp only [evalInstrPMemL]
   split <;> simp
 
 theorem evalInstrPMemF_ret (P : LprogM) (tag : MemTag) (s : LstateMF) :
     evalInstrPMemF P (.Lret, tag) s = none := by
-  simp [evalInstrPMemF, cmpArgs?, movRegArgs?, flagCondCC?, evalInstrPMemL, lsemStepMem_ret]
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl]
+  simp [evalInstrPMemL, lsemStepMem_ret]
 
 theorem evalJumpMem_single {fn : String} {B : List LinstrRM} {l : LLabel} {q : Nat}
     (hq : findLabel l (B.map Prod.fst) = some q) (p : LstatePM) :

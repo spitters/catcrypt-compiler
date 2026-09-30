@@ -33,7 +33,8 @@ hypothesis is the System V one: arrays and registers are named by ABI parameter.
 * `straightPin`, `straightAbiBody` — the pin and the allocated virtual body.
 * `straightCertB`, `straightCertB_spec` — the check and what an accepted body satisfies.
 * `lsemFuelMemF_plain_halts` — a plain chain from program counter `0` halts under
-  `lsemFuelMemF` in the state the straight-line fold reaches.
+  `lsemFuelMemF` in the state the straight-line fold reaches, up to the carry and
+  overflow flags.
 * `straight_export_faithful_abi` — for a straight-line program that passes
   `straightCertB`, the allocated body is the pin, the chain and the return, and the chain,
   run from an ABI entry, halts with the program's denotation at the return register.
@@ -49,7 +50,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
-  (runStraightF runStraightF_plain runStraightF_lpc lsemFuelMemF_segF)
+  (runStraightF runStraightF_of_lsemStraightMem runStraightF_lpc lsemFuelMemF_segF)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
   (straightOpsMem_plain scalarMemN_comOpsPlain)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment
@@ -96,24 +97,25 @@ theorem straightCertB_spec {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-- **A plain chain halts on the flag machine.** A chain of plain `Lopn`s whose
     straight-line fold runs from `b0` to `b` halts under `lsemFuelMemF`, from program counter
-    `0`, in the state with base `b` and the flag unchanged. -/
+    `0`, in the state with base `b` up to the carry and overflow flags and `zf`
+    unchanged. -/
 theorem lsemFuelMemF_plain_halts (fn : String) (seg : List LinstrRM) (hplain : PlainLopnBody seg)
     (b0 b : LstateM) (zf : Bool) (hpc : b0.lpc = 0) (hrun : lsemStraightMem seg b0 = some b) :
-    lsemFuelMemF (singletonProgM fn seg) seg.length
+    ∃ c o, lsemFuelMemF (singletonProgM fn seg) seg.length
         { prog := { base := b0, lfn := fn }, zf := zf }
-      = some { prog := { base := b, lfn := fn }, zf := zf } := by
-  have hF : runStraightF seg b0 zf = some (b, zf) := by
-    rw [runStraightF_plain seg hplain, hrun]
-    rfl
+      = some { prog := { base := { b with cf := c, of := o }, lfn := fn }, zf := zf } := by
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem seg hplain b0 b zf hrun
+  refine ⟨c, o, ?_⟩
   have hseg := lsemFuelMemF_segF (singletonProgM fn seg) fn rfl seg b0 zf 0
     (fun i hi => (hplain i hi).1) (fun k _ => by rw [hpc, Nat.zero_add]; rfl)
   rw [Nat.add_zero] at hseg
   rw [hseg, hF, Option.bind_some]
-  have hlpc : b.lpc = seg.length := by
-    rw [runStraightF_lpc seg b0 zf b zf hF, hpc, Nat.zero_add]
+  have hlpc : ({ b with cf := c, of := o } : LstateM).lpc = seg.length := by
+    rw [runStraightF_lpc seg b0 zf _ zf hF, hpc, Nat.zero_add]
   unfold lsemFuelMemF
   simp only [findInstrMem, singletonProgM, if_true]
-  rw [show b.lpc = seg.length from hlpc, List.getElem?_eq_none (le_refl _)]
+  rw [show ({ b with cf := c, of := o } : LstateM).lpc = seg.length from hlpc,
+    List.getElem?_eq_none (le_refl _)]
 
 /-! ## 3. The export theorem -/
 
@@ -141,8 +143,9 @@ theorem straight_export_faithful_abi {Γ : Ctxt jasminDialect} {w : Nat}
   refine ⟨hbody, fun σ sa V fn b0 zf hV hb => ?_⟩
   obtain ⟨b, hrun, hval⟩ := lsemStraightMem_straightOps hmem (w := w) rfl rfl le_rfl
     (storeAgreesM_of_abi hV hb)
-  refine ⟨_, _, lsemFuelMemF_plain_halts fn _
-    (straightOpsMem_plain _ com (scalarMemN_comOpsPlain hmem) _) b0 b zf hb.pc hrun, ?_⟩
+  obtain ⟨c, o, hh⟩ := lsemFuelMemF_plain_halts fn _
+    (straightOpsMem_plain _ com (scalarMemN_comOpsPlain hmem) _) b0 b zf hb.pc hrun
+  refine ⟨_, _, hh, ?_⟩
   simpa only [evalOperandN] using hval
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertStraight

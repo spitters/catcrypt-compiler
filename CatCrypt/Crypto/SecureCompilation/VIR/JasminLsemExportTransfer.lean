@@ -282,6 +282,8 @@ theorem fstepF_immShiftWire (m : String) (hm : m = "SHR" ∨ m = "SHL" ∨ m = "
     (withWidthTag w (m ++ ":" ++ toString k)) [LOperand.reg a] (.reg none) h1 h2 h3
   unfold fstepF
   rw [hc, hmv]
+  simp only []
+  rw [stepMemF_of_quiet rfl rfl]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
     lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
   simp only [Option.map_map]
@@ -453,8 +455,16 @@ theorem fstepF_immShiftStruct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m =
     rcases hm with rfl | rfl | rfl <;> (unfold withWidthTag; split <;> decide)
   obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst] (withWidthTag w m)
     [LOperand.reg src, LOperand.imm n] (.reg none) h1 h2 h3
+  have ha : aluFlagOp? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
+      MemTag.reg none) = none := by
+    rcases hm with rfl | rfl | rfl <;> simp only [aluFlagOp?, withWidthTag] <;> split <;> simp
+  have hk : carryArgs? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
+      MemTag.reg none) = none := by
+    rcases hm with rfl | rfl | rfl <;> simp only [carryArgs?, withWidthTag] <;> split <;> simp
   unfold fstepF
   rw [hc, hmv]
+  simp only []
+  rw [stepMemF_of_quiet ha hk]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
     lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl]
   simp only [Option.map_map]
@@ -783,8 +793,19 @@ theorem evalInstrPMemF_larr (r : String) (P : LprogM) (i : LinstrRM) (s s' : Lst
         · obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
           rw [evalJumpMem_larr P _ s.prog p hp]
         · cases h; rfl
-      · obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
-        exact evalInstrPMemL_larr r P i s.prog p hi hp
+      · split at h
+        · rename_i p hp
+          cases h
+          show (withALUFlags i s.prog.base p.base).larr r = _
+          rw [withALUFlags_larr]
+          exact evalInstrPMemL_larr r P i s.prog p hi hp
+        · split at h
+          · obtain ⟨b', hb, rfl⟩ := Option.map_eq_some_iff.mp h
+            unfold carryStep at hb
+            split at hb
+            · split at hb <;> (cases hb; rfl)
+            · exact absurd hb (by simp)
+          · cases h
 
 /-- **The register-copy move leaves the array carrier unchanged.** The export's
     feedback `MOV acc, ret` updates the register cell of `acc` and no array

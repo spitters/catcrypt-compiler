@@ -7,6 +7,9 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCryptCore.Tactics.KatGuard
 
 @[expose] public section
 
@@ -59,18 +62,23 @@ never edited):
      `Lcond (.reg "Z") l` = `je`) jumps iff `zf` matches the condition's
      polarity.  Every other instruction delegates to `evalInstrPMemL` on the
      wrapped state, threading `zf` unchanged.
+* **Carry and overflow flags** (`stepMemF`): the base state carries `CF` and `OF`
+  (`LstateM.cf`, `LstateM.of`). The 64-bit `ADD`, `SUB`, `AND`, `OR`, `XOR` write
+  them (`withALUFlags`), and the carry family `ADC`, `SBB`, `ADCX`, `ADOX`
+  (`carryArgs?`, `carryStep`) reads and writes them, with the values of the decoder
+  machine's `x86_ADD`, `x86_SUB`, `x86_AND`, `x86_OR`, `x86_XOR`, `x86_ADC`, `x86_SBB`,
+  `x86_ADCX`. The flag-`CMP` writes `zf` only: no emitted instruction reads the
+  `CF` a compare writes.
 * **Conservativity square** (`lsemFuelMemF_conservative`): on a program none of
-  whose instructions is recognised by the three new arms, the flag machine *is*
+  whose instructions is recognised by the flag arms, the flag machine *is*
   the counter-register machine — `lsemFuelMemF P fuel ⟨s, zf⟩ = (lsemFuelMemL P
-  fuel s).map (⟨·, zf⟩)`.  All counter-register loop programs (counter-register
-  `Lcond`, no `CMP`, no reg-reg `MOV`) satisfy the premise, so their closed
-  theorems describe the flag machine verbatim.
+  fuel s).map (⟨·, zf⟩)`.
 * **Guard equivalence + re-tie** (`flagLoop_runBounded`): the flag-guarded loop
   `flagLoopLinstrRM top nReg body = Llabel top :: body ++ [CMP nReg,#0 ; Lcond
   NZ top]` — the EMITTED back-edge idiom, pinned to the lowering by
-  `forLoopLcmdNRt_backedge` — realises **the same fold `runBoundedLoopMem`** as
-  the counter-guarded `loopLinstrRM`, with `loopMem_runBounded`'s conclusion
-  (register store + array carrier agree with the fold).  The guard equivalence
+  `forLoopLcmdNRt_backedge` — realises the fold `runBoundedLoopMemF` of the flag
+  body-fold `lsemStraightMemF`, which agrees with the straight-line body-fold up to
+  the two flags (`lsemStraightMemF_of_lsemStraightMem`).  The guard equivalence
   is `zf`-after-`CMP nReg,#0` `= ¬ condNZ nReg` (`zf_after_cmp_eq_not_condNZ`):
   comparing the counter against zero materialises exactly the bit the
   counter-register guard reads.
@@ -92,8 +100,10 @@ zero-trip guard skips the body (accumulator = seed).
 
 **All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound}** for every named
 theorem (+ `Lean.ofReduceBool` for the `native_decide` validates).
+A carry chain (`ADD`, `ADC`; `XOR`, `ADCX`, `ADOX`; `SUB`, `SBB`) runs under the flag
+machine with the machine's values (`#kat` checks in section 12).
 Scope: the generic re-tie takes a `CMP`-free, reg-`MOV`-free body (the fold side
-is `lsemStraightMem`, which steps neither); the invariant-touch compares
+is `lsemStraightMemF`, which steps neither); the invariant-touch compares
 (`CMP ctr, invBase`, emitted only when the loop carries invariant base
 registers) and bodies with feedback `MOV`s are covered by the machine (see the
 validate, whose body has a feedback `MOV`) but not by the generic fold tie.
@@ -110,6 +120,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+  (B5W x86_ADD x86_SUB x86_AND x86_OR x86_XOR x86_ADC x86_SBB x86_ADCX)
 
 /-! ## 1. Recognizers for the three emitted forms -/
 
@@ -190,6 +202,206 @@ def flagCondCC? (i : LinstrRM) : Option (Bool × LLabel) :=
   | .Lcond (.reg "NZ") lbl => some (false, lbl)
   | _ => none
 
+/-! ## 1b. The carry and overflow flags
+
+The flags `CF` and `OF` are the fields `LstateM.cf` and `LstateM.of` of the base state, so
+the straight-line step `stepMemF` reads and writes them. Their values are those of the
+decoder's machine (`X86Backend.Jasmin.evalInstr`, the instruction semantics of
+`Ascent.RInstrAddrMem.aMachine`): the flag records of `x86_ADD`, `x86_SUB`, `x86_AND`,
+`x86_OR`, `x86_XOR`, `x86_ADC`, `x86_SBB` and the carry pair of `x86_ADCX`. -/
+
+/-- The two-source carry-family operations of the field-arithmetic lift
+    (`Fe25519LfundefBridge.jinstrToLinstrR`: `.adc`, `.sbb`, `.adcx`, `.adox`). -/
+inductive CarryOp where
+  /-- `ADC`: add with carry-in `CF`, writes `CF` and `OF`. -/
+  | adc
+  /-- `SBB`: subtract with borrow-in `CF`, writes `CF` and `OF`. -/
+  | sbb
+  /-- `ADCX`: add with carry-in `CF`, writes only `CF`. -/
+  | adcx
+  /-- `ADOX`: add with carry-in `OF`, writes only `OF`. -/
+  | adox
+  deriving DecidableEq, Repr
+
+/-- The carry-family recognizer: exactly `Lopn [.reg d] (withWidthTag 64 m) [a, b]` with
+    `m` one of `ADC`, `SBB`, `ADCX`, `ADOX`. The printer renders `m b, d`
+    (`LprogAsmPrinter.attBase`: `adc`, `sbb`, `adcx`, `adox`) when `a = d`; the flag
+    machine reads the instruction as `d := a m b` with the flag carry-in, the
+    three-address reading it gives `ADD`. The three-source forms `ADCX`/`ADOX` with an
+    explicit carry register are not recognised. -/
+def carryArgs? (i : LinstrRM) : Option (CarryOp × String × LOperand × LOperand) :=
+  match i.fst with
+  | .Lopn [.reg d] opn [a, b] =>
+      if opn = withWidthTag 64 "ADC" then some (.adc, d, a, b)
+      else if opn = withWidthTag 64 "SBB" then some (.sbb, d, a, b)
+      else if opn = withWidthTag 64 "ADCX" then some (.adcx, d, a, b)
+      else if opn = withWidthTag 64 "ADOX" then some (.adox, d, a, b)
+      else none
+  | _ => none
+
+/-- The flag-writing two-source arithmetic and logical operations at width `64`. -/
+inductive AluOp where
+  /-- `ADD`. -/
+  | add
+  /-- `SUB`. -/
+  | sub
+  /-- `AND`. -/
+  | and
+  /-- `OR`. -/
+  | or
+  /-- `XOR`. -/
+  | xor
+  deriving DecidableEq, Repr
+
+/-- The recognizer of the 64-bit arithmetic and logical operations whose `CF` and `OF`
+    the flag machine records: `Lopn [.reg _] (withWidthTag 64 m) [a, b]` with `m` one of
+    `ADD`, `SUB`, `AND`, `OR`, `XOR`. -/
+def aluFlagOp? (i : LinstrRM) : Option (AluOp × LOperand × LOperand) :=
+  match i.fst with
+  | .Lopn [.reg _] opn [a, b] =>
+      if opn = withWidthTag 64 "ADD" then some (.add, a, b)
+      else if opn = withWidthTag 64 "SUB" then some (.sub, a, b)
+      else if opn = withWidthTag 64 "AND" then some (.and, a, b)
+      else if opn = withWidthTag 64 "OR" then some (.or, a, b)
+      else if opn = withWidthTag 64 "XOR" then some (.xor, a, b)
+      else none
+  | _ => none
+
+/-- The machine's flag record of an arithmetic or logical operation. -/
+def aluB5 : AluOp → BitVec 64 → BitVec 64 → B5W 64
+  | .add, a, b => x86_ADD a b
+  | .sub, a, b => x86_SUB a b
+  | .and, a, b => x86_AND a b
+  | .or, a, b => x86_OR a b
+  | .xor, a, b => x86_XOR a b
+
+/-- The flags an instruction writes onto its post-state `s1`, computed from its
+    pre-state `s0`: for a recognised arithmetic or logical operation with both sources
+    readable at width `64`, `CF` and `OF` of its machine flag record; otherwise `s1`. -/
+def withALUFlags (i : LinstrRM) (s0 s1 : LstateM) : LstateM :=
+  match aluFlagOp? i with
+  | some (op, a, b) =>
+      match evalOperandN s0.reg 64 a, evalOperandN s0.reg 64 b with
+      | some va, some vb =>
+          { s1 with cf := (aluB5 op va vb).cf.getD false,
+                    of := (aluB5 op va vb).of.getD false }
+      | _, _ => s1
+  | none => s1
+
+/-- One carry-family step: read both sources at width `64`, compute the machine's result
+    with the carry-in flag, write the destination and the flags the instruction writes,
+    and advance the pc. -/
+def carryStep (op : CarryOp) (d : String) (a b : LOperand) (s : LstateM) :
+    Option LstateM :=
+  match evalOperandN s.reg 64 a, evalOperandN s.reg 64 b with
+  | some va, some vb =>
+      match op with
+      | .adc =>
+          some { (s.setReg d (x86_ADC va vb s.cf).word).nextPc with
+                   cf := (x86_ADC va vb s.cf).cf.getD false,
+                   of := (x86_ADC va vb s.cf).of.getD false }
+      | .sbb =>
+          some { (s.setReg d (x86_SBB va vb s.cf).word).nextPc with
+                   cf := (x86_SBB va vb s.cf).cf.getD false,
+                   of := (x86_SBB va vb s.cf).of.getD false }
+      | .adcx =>
+          some { (s.setReg d (x86_ADCX va vb s.cf).2).nextPc with
+                   cf := (x86_ADCX va vb s.cf).1.getD false }
+      | .adox =>
+          some { (s.setReg d (x86_ADCX va vb s.of).2).nextPc with
+                   of := (x86_ADCX va vb s.of).1.getD false }
+  | _, _ => none
+
+/-- **The flag machine's straight-line step on the base state**: the straight-line step
+    `lsemStepMem` with the flags of `withALUFlags`; an instruction `lsemStepMem` does not
+    step is a carry-family step (`carryArgs?`, `carryStep`) or stuck. The carry family
+    has no `lsemStepMem` step (`applyOpnN` has no `ADC`, `SBB`, `ADCX` or `ADOX` arm). -/
+def stepMemF (i : LinstrRM) (s : LstateM) : Option LstateM :=
+  match lsemStepMem i s with
+  | some b => some (withALUFlags i s b)
+  | none =>
+      match carryArgs? i with
+      | some (op, d, a, b) => carryStep op d a b s
+      | none => none
+
+@[simp] theorem withALUFlags_reg (i : LinstrRM) (s0 s1 : LstateM) :
+    (withALUFlags i s0 s1).reg = s1.reg := by
+  unfold withALUFlags; split
+  · split <;> rfl
+  · rfl
+
+@[simp] theorem withALUFlags_larr (i : LinstrRM) (s0 s1 : LstateM) :
+    (withALUFlags i s0 s1).larr = s1.larr := by
+  unfold withALUFlags; split
+  · split <;> rfl
+  · rfl
+
+@[simp] theorem withALUFlags_lmem (i : LinstrRM) (s0 s1 : LstateM) :
+    (withALUFlags i s0 s1).lmem = s1.lmem := by
+  unfold withALUFlags; split
+  · split <;> rfl
+  · rfl
+
+@[simp] theorem withALUFlags_lpc (i : LinstrRM) (s0 s1 : LstateM) :
+    (withALUFlags i s0 s1).lpc = s1.lpc := by
+  simp [LstateM.lpc]
+
+/-- `withALUFlags` changes at most the two flags. -/
+theorem withALUFlags_eq (i : LinstrRM) (s0 s1 : LstateM) :
+    ∃ c o, withALUFlags i s0 s1 = { s1 with cf := c, of := o } := by
+  unfold withALUFlags; split
+  · split
+    · exact ⟨_, _, rfl⟩
+    · exact ⟨s1.cf, s1.of, rfl⟩
+  · exact ⟨s1.cf, s1.of, rfl⟩
+
+/-- An instruction that is not a recognised arithmetic or logical operation writes no
+    flag. -/
+theorem withALUFlags_of_none {i : LinstrRM} (h : aluFlagOp? i = none) (s0 s1 : LstateM) :
+    withALUFlags i s0 s1 = s1 := by
+  unfold withALUFlags; rw [h]
+
+/-- Every carry-family step advances the pc by one. -/
+theorem carryStep_lpc (op : CarryOp) (d : String) (a b : LOperand) (s s' : LstateM)
+    (h : carryStep op d a b s = some s') : s'.lpc = s.lpc + 1 := by
+  unfold carryStep at h
+  split at h
+  · cases op <;> (obtain rfl := Option.some.inj h; simp [LstateM.lpc, LstateM.nextPc,
+      LstateM.setReg])
+  · simp at h
+
+/-- Every successful `stepMemF` step advances the pc by one. -/
+theorem stepMemF_lpc_succ (i : LinstrRM) (s s' : LstateM) (h : stepMemF i s = some s') :
+    s'.lpc = s.lpc + 1 := by
+  unfold stepMemF at h
+  cases hs : lsemStepMem i s with
+  | some b =>
+      rw [hs] at h
+      obtain rfl := Option.some.inj h
+      rw [withALUFlags_lpc]
+      exact lsemStepMem_lpc_succ i s b hs
+  | none =>
+      rw [hs] at h
+      simp only [] at h
+      split at h
+      · exact carryStep_lpc _ _ _ _ s s' h
+      · simp at h
+
+/-- Where `lsemStepMem` steps, `stepMemF` is that step with the flags of
+    `withALUFlags`. -/
+theorem stepMemF_of_lsemStepMem {i : LinstrRM} {s b : LstateM}
+    (h : lsemStepMem i s = some b) : stepMemF i s = some (withALUFlags i s b) := by
+  unfold stepMemF; rw [h]
+
+/-- On an instruction that is neither a recognised arithmetic or logical operation nor a
+    carry-family operation, `stepMemF` is `lsemStepMem`. -/
+theorem stepMemF_of_quiet {i : LinstrRM} (ha : aluFlagOp? i = none)
+    (hk : carryArgs? i = none) (s : LstateM) : stepMemF i s = lsemStepMem i s := by
+  unfold stepMemF
+  cases hs : lsemStepMem i s with
+  | some b => show some (withALUFlags i s b) = some b; rw [withALUFlags_of_none ha]
+  | none => simp only [hk]
+
 /-! ## 2. The flag-extended program state and step -/
 
 /-- The flag-extended memref program state: the loop program state `LstatePM`
@@ -215,8 +427,11 @@ structure LstateMF where
     * the flag-reading conditional (`flagCondCC?`) jumps (via
       `evalJumpMem`) iff `zf` matches the condition-code polarity, else falls
       through — the `jne`/`je` semantics;
+    * a carry-family instruction (`carryArgs?`) that `lsemStepMem` does not step is the
+      carry step `carryStep` on the base;
     * **everything else is `evalInstrPMemL` on the wrapped state**, `zf`
-      threaded unchanged. -/
+      threaded unchanged, with the carry and overflow flags of `withALUFlags` on the
+      base. -/
 def evalInstrPMemF (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF :=
   match cmpArgs? i with
   | some (a, b) =>
@@ -236,7 +451,15 @@ def evalInstrPMemF (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF 
   | some (pol, lbl) =>
       if s.zf = pol then (evalJumpMem P lbl s.prog).map (fun p => { s with prog := p })
       else some { s with prog := { s.prog with base := s.prog.base.nextPc } }
-  | none => (evalInstrPMemL P i s.prog).map (fun p => { s with prog := p })
+  | none =>
+  match evalInstrPMemL P i s.prog with
+  | some p => some { s with prog := { p with base := withALUFlags i s.prog.base p.base } }
+  | none =>
+      match carryArgs? i with
+      | some (op, d, a, b) =>
+          (carryStep op d a b s.prog.base).map
+            (fun b' => { s with prog := { s.prog with base := b' } })
+      | none => none
 
 /-- `step`: fetch (`findInstrMem` on the wrapped state) and flag-eval. -/
 def lsemStepPMemF (P : LprogM) (s : LstateMF) : Option LstateMF :=
@@ -285,20 +508,27 @@ theorem findInstrMem_singleton (fn : String) (body : List LinstrRM) (s : LstateP
 
 /-! ## 3. Conservativity: without the three emitted forms, this IS the counter-register machine -/
 
-/-- On an instruction recognised by none of the three new arms, `evalInstrPMemF`
+/-- On an instruction recognised by none of the flag arms (no flag-`CMP`, register copy,
+    condition-code `Lcond`, carry-family or flag-writing arithmetic), `evalInstrPMemF`
     is exactly the counter-register step on the wrapped state, `zf` threaded unchanged. -/
 theorem evalInstrPMemF_delegate (P : LprogM) (i : LinstrRM) (s : LstateMF)
-    (hc : cmpArgs? i = none) (hm : movRegArgs? i = none) (hf : flagCondCC? i = none) :
+    (hc : cmpArgs? i = none) (hm : movRegArgs? i = none) (hf : flagCondCC? i = none)
+    (hk : carryArgs? i = none) (ha : aluFlagOp? i = none) :
     evalInstrPMemF P i s = (evalInstrPMemL P i s.prog).map (fun p => { s with prog := p }) := by
   unfold evalInstrPMemF
   rw [hc, hm, hf]
+  cases evalInstrPMemL P i s.prog with
+  | none => simp only [hk, Option.map_none]
+  | some p => simp only [withALUFlags_of_none ha, Option.map_some]
 
 /-- A program with no emitted flag idiom: no flag-`CMP`, no register-copy `MOV`,
-    no condition-code `Lcond`.  A memref loop program (counter-register
-    back-edge, `Lopn`/call bodies) satisfies this whenever its counter register
-    is not itself named `"Z"`/`"NZ"` (the two condition-code names). -/
+    no condition-code `Lcond`, no carry-family instruction and no flag-writing
+    arithmetic.  A memref loop program with a counter-register back-edge satisfies this
+    whenever its counter register is not itself named `"Z"`/`"NZ"` (the two
+    condition-code names) and its body has no 64-bit `ADD`, `SUB`, `AND`, `OR`, `XOR`. -/
 def NoFlagIdiom (P : LprogM) : Prop :=
   ∀ i ∈ P.body, cmpArgs? i = none ∧ movRegArgs? i = none ∧ flagCondCC? i = none
+    ∧ carryArgs? i = none ∧ aluFlagOp? i = none
 
 /-- A fetched instruction is in the program body. -/
 theorem findInstrMem_mem (P : LprogM) (s : LstatePM) (i : LinstrRM)
@@ -333,8 +563,8 @@ theorem lsemFuelMemF_conservative (P : LprogM) (h : NoFlagIdiom P) :
       | none => simp only [Option.map_some]
       | some i =>
           simp only []
-          obtain ⟨hc, hm, hcc⟩ := h i (findInstrMem_mem P s i hf)
-          rw [evalInstrPMemF_delegate P i { prog := s, zf := zf } hc hm hcc]
+          obtain ⟨hc, hm, hcc, hk, ha⟩ := h i (findInstrMem_mem P s i hf)
+          rw [evalInstrPMemF_delegate P i { prog := s, zf := zf } hc hm hcc hk ha]
           cases he : evalInstrPMemL P i s with
           | none => simp
           | some s' => simpa using ih s' zf
@@ -506,46 +736,132 @@ theorem flagLoop_end_pos (top : LLabel) (nReg : String) (body : List LinstrRM) :
 
 /-! ## 8. The straight-line segment over the flag machine
 
-A body of plain `Lopn`s (no flag-`CMP`, no register-copy `MOV`) steps by the
-verbatim delegate, so a segment run is the straight-line body-fold `lsemStraightMem`
-with `zf` threaded unchanged — the flag analogue of `lsemFuelMemL_seg`. -/
+A body of plain `Lopn`s (no flag-`CMP`, no register-copy `MOV`) steps by `stepMemF`,
+so a segment run is the flag body-fold `lsemStraightMemF` with `zf` threaded
+unchanged — the flag analogue of `lsemFuelMemL_seg`. Where the straight-line
+body-fold `lsemStraightMem` runs, `lsemStraightMemF` runs to the same state up to
+the carry and overflow flags (`lsemStraightMemF_of_lsemStraightMem`). -/
 
 /-- On a plain `Lopn` (not a flag-`CMP`, not a register-copy `MOV`),
-    `evalInstrPMemF` is the straight-line/memory step `lsemStepMem` on the
+    `evalInstrPMemF` is the flag machine's straight-line step `stepMemF` on the
     wrapped base, `zf` unchanged. -/
 theorem evalInstrPMemF_lopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (hi : IsLopn i) (hc : cmpArgs? i = none) (hm : movRegArgs? i = none) :
     evalInstrPMemF P i s
-      = (lsemStepMem i s.prog.base).map
+      = (stepMemF i s.prog.base).map
           (fun b => { s with prog := { s.prog with base := b } }) := by
   have hf : flagCondCC? i = none := by
     obtain ⟨d, o, src, hd⟩ := hi
     unfold flagCondCC?
     rw [hd]
-  rw [evalInstrPMemF_delegate P i s hc hm hf, evalInstrPMemL_lopn P i s.prog hi]
-  cases lsemStepMem i s.prog.base <;> rfl
+  unfold evalInstrPMemF stepMemF
+  rw [hc, hm, hf]
+  simp only []
+  rw [evalInstrPMemL_lopn P i s.prog hi]
+  cases lsemStepMem i s.prog.base with
+  | some b => rfl
+  | none =>
+      simp only [Option.map_none]
+      cases carryArgs? i with
+      | none => rfl
+      | some q =>
+          obtain ⟨op, d, a, b⟩ := q
+          rfl
+
+/-- The flag body-fold: `stepMemF` over a segment. -/
+def lsemStraightMemF : List LinstrRM → LstateM → Option LstateM
+  | [], s => some s
+  | i :: is, s => (stepMemF i s).bind (lsemStraightMemF is)
+
+@[simp] theorem lsemStraightMemF_nil (s : LstateM) : lsemStraightMemF [] s = some s := rfl
+
+theorem lsemStraightMemF_cons (i : LinstrRM) (is : List LinstrRM) (s : LstateM) :
+    lsemStraightMemF (i :: is) s = (stepMemF i s).bind (lsemStraightMemF is) := rfl
+
+/-- The flag body-fold advances the pc by the body length. -/
+theorem lsemStraightMemF_lpc :
+    ∀ (body : List LinstrRM) (s b : LstateM),
+      lsemStraightMemF body s = some b → b.lpc = s.lpc + body.length := by
+  intro body
+  induction body with
+  | nil => intro s b h; simp only [lsemStraightMemF_nil, Option.some.injEq] at h; subst h; simp
+  | cons i is ih =>
+      intro s b h
+      rw [lsemStraightMemF_cons] at h
+      cases hstep : stepMemF i s with
+      | none => rw [hstep] at h; exact absurd h (by simp)
+      | some s' =>
+          rw [hstep, Option.bind_some] at h
+          have h1 : s'.lpc = s.lpc + 1 := stepMemF_lpc_succ i s s' hstep
+          have h2 : b.lpc = s'.lpc + is.length := ih s' b h
+          rw [h2, h1, List.length_cons]; omega
+
+/-- `lsemStepMem` neither reads nor writes the carry and overflow flags. -/
+theorem lsemStepMem_setFlags (i : LinstrRM) (s : LstateM) (c o : Bool) :
+    lsemStepMem i { s with cf := c, of := o }
+      = (lsemStepMem i s).map (fun b => { b with cf := c, of := o }) := by
+  have hg : ∀ x w n, ({ s with cf := c, of := o } : LstateM).getArr x w n = s.getArr x w n :=
+    fun _ _ _ => rfl
+  obtain ⟨li, tag⟩ := i
+  cases tag <;> simp only [lsemStepMem, Option.map_map, Function.comp_def, hg] <;>
+    (repeat' split) <;>
+    simp_all [LstateM.setReg, LstateM.setArr, LstateM.nextPc, LstateM.storeMemC,
+      Function.comp_def]
+
+/-- **The bridge to the straight-line body-fold.**  Where `lsemStraightMem` runs a
+    segment, `lsemStraightMemF` runs it from the same state with any flags to the
+    same result up to the carry and overflow flags. -/
+theorem lsemStraightMemF_of_lsemStraightMem :
+    ∀ (seg : List LinstrRM) (s b : LstateM) (c o : Bool),
+      lsemStraightMem seg s = some b →
+      ∃ c' o', lsemStraightMemF seg { s with cf := c, of := o }
+        = some { b with cf := c', of := o' } := by
+  intro seg
+  induction seg with
+  | nil =>
+      intro s b c o h
+      simp only [lsemStraightMem_nil, Option.some.injEq] at h
+      subst h
+      exact ⟨c, o, rfl⟩
+  | cons i is ih =>
+      intro s b c o h
+      rw [lsemStraightMem_cons] at h
+      cases hstep : lsemStepMem i s with
+      | none => rw [hstep] at h; exact absurd h (by simp)
+      | some s1 =>
+          rw [hstep] at h
+          simp only [] at h
+          have h1 : lsemStepMem i { s with cf := c, of := o }
+              = some { s1 with cf := c, of := o } := by
+            rw [lsemStepMem_setFlags, hstep]; rfl
+          obtain ⟨c1, o1, hw⟩ := withALUFlags_eq i { s with cf := c, of := o }
+            { s1 with cf := c, of := o }
+          obtain ⟨c', o', hr⟩ := ih s1 b c1 o1 h
+          refine ⟨c', o', ?_⟩
+          rw [lsemStraightMemF_cons, stepMemF_of_lsemStepMem h1, Option.bind_some, hw]
+          exact hr
 
 /-- A plain-`Lopn` body: every instruction is an `Lopn` and neither a flag-`CMP`
-    nor a register-copy `MOV` — the delegate fragment of the straight-line body-fold. -/
+    nor a register-copy `MOV` — the fragment of the flag body-fold `lsemStraightMemF`. -/
 def PlainLopnBody (body : List LinstrRM) : Prop :=
   ∀ i ∈ body, IsLopn i ∧ cmpArgs? i = none ∧ movRegArgs? i = none
 
 /-- **Straight-line segment run with continuation fuel** (flag machine).  The
     flag analogue of `lsemFuelMemL_seg`: a plain-`Lopn` segment at
-    positions `lpc .. lpc+|seg|-1` executes the straight-line body-fold `lsemStraightMem`
+    positions `lpc .. lpc+|seg|-1` executes the flag body-fold `lsemStraightMemF`
     on the base and continues with `f` fuel, `zf` threaded unchanged. -/
 theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
     ∀ (seg : List LinstrRM) (b0 : LstateM) (zf : Bool) (f : Nat),
       PlainLopnBody seg →
       (∀ k, k < seg.length → P.body[b0.lpc + k]? = seg[k]?) →
       lsemFuelMemF P (seg.length + f) { prog := { base := b0, lfn := fn }, zf := zf }
-        = (lsemStraightMem seg b0).bind
+        = (lsemStraightMemF seg b0).bind
             (fun b => lsemFuelMemF P f { prog := { base := b, lfn := fn }, zf := zf }) := by
   intro seg
   induction seg with
   | nil =>
       intro b0 zf f _ _
-      simp only [List.length_nil, Nat.zero_add, lsemStraightMem_nil, Option.bind_some]
+      simp only [List.length_nil, Nat.zero_add, lsemStraightMemF_nil, Option.bind_some]
   | cons i is ih =>
       intro b0 zf f hlopn hpos
       obtain ⟨hi, hc, hm⟩ := hlopn i (by simp)
@@ -561,14 +877,14 @@ theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
         lsemFuelMemF, hfetch]
       simp only []
       rw [evalInstrPMemF_lopn P i _ hi hc hm]
-      cases hstep : lsemStepMem i b0 with
+      cases hstep : stepMemF i b0 with
       | none =>
           simp only [Option.map_none]
-          rw [lsemStraightMem_cons, hstep]; rfl
+          rw [lsemStraightMemF_cons, hstep]; rfl
       | some b =>
           simp only [Option.map_some]
-          rw [lsemStraightMem_cons, hstep]
-          have hb_lpc : b.lpc = b0.lpc + 1 := lsemStepMem_lpc_succ i b0 b hstep
+          rw [lsemStraightMemF_cons, hstep, Option.bind_some]
+          have hb_lpc : b.lpc = b0.lpc + 1 := stepMemF_lpc_succ i b0 b hstep
           have hpos' : ∀ k, k < is.length → P.body[b.lpc + k]? = is[k]? := by
             intro k hk
             have hp := hpos (k + 1) (by simpa using Nat.succ_lt_succ hk)
@@ -576,10 +892,68 @@ theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
             rw [hp]; simp
           exact ih b zf f his hpos'
 
+/-- The bounded loop fold of the flag body-fold: `k` passes of `lsemStraightMemF body`,
+    each followed by the back-edge's `setLpc 1`. The flag analogue of
+    `runBoundedLoopMem`. -/
+def runBoundedLoopMemF (body : List LinstrRM) : Nat → LstateM → Option LstateM
+  | 0, s => some s
+  | k + 1, s =>
+      (lsemStraightMemF body s).bind (fun b => runBoundedLoopMemF body k (b.setLpc 1))
+
+@[simp] theorem runBoundedLoopMemF_zero (body : List LinstrRM) (s : LstateM) :
+    runBoundedLoopMemF body 0 s = some s := rfl
+
+theorem runBoundedLoopMemF_succ (body : List LinstrRM) (k : Nat) (s : LstateM) :
+    runBoundedLoopMemF body (k + 1) s =
+      (lsemStraightMemF body s).bind (fun b => runBoundedLoopMemF body k (b.setLpc 1)) :=
+  rfl
+
+/-- After at least one pass the fold's state sits at the loop top (`lpc = 1`). -/
+theorem runBoundedLoopMemF_succ_lpc :
+    ∀ (k : Nat) (body : List LinstrRM) (s bj : LstateM),
+      runBoundedLoopMemF body (k + 1) s = some bj → bj.lpc = 1 := by
+  intro k
+  induction k with
+  | zero =>
+      intro body s bj h
+      rw [runBoundedLoopMemF_succ] at h
+      cases hb : lsemStraightMemF body s with
+      | none => rw [hb] at h; simp at h
+      | some b =>
+          rw [hb, Option.bind_some, runBoundedLoopMemF_zero] at h
+          obtain rfl := Option.some.inj h
+          simp
+  | succ n ih =>
+      intro body s bj h
+      rw [runBoundedLoopMemF_succ] at h
+      cases hb : lsemStraightMemF body s with
+      | none => rw [hb] at h; simp at h
+      | some b => rw [hb, Option.bind_some] at h; exact ih body (b.setLpc 1) bj h
+
+/-- Peel the last pass of the flag loop fold. -/
+theorem runBoundedLoopMemF_succ_right :
+    ∀ (j : Nat) (body : List LinstrRM) (s : LstateM),
+      runBoundedLoopMemF body (j + 1) s =
+        (runBoundedLoopMemF body j s).bind
+          (fun bj => (lsemStraightMemF body bj).map (fun b => b.setLpc 1)) := by
+  intro j
+  induction j with
+  | zero =>
+      intro body s
+      simp only [runBoundedLoopMemF_succ, runBoundedLoopMemF_zero, Option.bind_some]
+      cases lsemStraightMemF body s <;> simp
+  | succ n ih =>
+      intro body s
+      rw [runBoundedLoopMemF_succ]
+      conv_rhs => rw [runBoundedLoopMemF_succ]
+      cases hb : lsemStraightMemF body s with
+      | none => simp
+      | some b => rw [Option.bind_some, Option.bind_some]; exact ih body (b.setLpc 1)
+
 /-! ## 9. The single-pass core: body, flag-`CMP`, back-edge -/
 
 /-- **Single loop pass — back-edge TAKEN** (flag machine).  From the top of the
-    body (`lpc = 1`), if the straight-line body-fold runs to `b` and the counter is
+    body (`lpc = 1`), if the flag body-fold runs to `b` and the counter is
     non-zero at `b` (`condNZ` — the SAME schedule hypothesis as `loopMem_runBounded`), then one
     pass (body + flag-`CMP` + taken `Lcond NZ`) consumes `body.length + 2` fuel
     and lands back at the top with base `b.setLpc 1` and `zf = false` (the `CMP`
@@ -588,7 +962,7 @@ theorem flagLoop_pass_taken (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hbody : PlainLopnBody body)
     (b0 b : LstateM) (zf : Bool) (f : Nat)
     (hpc : b0.lpc = 1)
-    (hrun : lsemStraightMem body b0 = some b)
+    (hrun : lsemStraightMemF body b0 = some b)
     (htaken : condNZ b (.reg nReg) = true) :
     lsemFuelMemF (singletonProgM fn (flagLoopLinstrRM top nReg body))
         ((body.length + 2) + f) { prog := { base := b0, lfn := fn }, zf := zf }
@@ -604,7 +978,7 @@ theorem flagLoop_pass_taken (fn : String) (top : LLabel) (nReg : String)
   rw [show (body.length + 2) + f = body.length + (2 + f) from by omega, hseg, hrun,
     Option.bind_some]
   have hb_lpc : b.lpc = 1 + body.length := by
-    have := lsemStraightMem_lpc body b0 b hrun; rw [hpc] at this; omega
+    have := lsemStraightMemF_lpc body b0 b hrun; rw [hpc] at this; omega
   obtain ⟨v, hread, hvne⟩ := condNZ_true_getW htaken
   -- (2) the flag-`CMP`: fetch at `1+|body|`, set `zf := (v == 0) = false`, pc+1.
   have hfetchCmp : findInstrMem P
@@ -651,7 +1025,7 @@ theorem flagLoop_pass_halt (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hbody : PlainLopnBody body)
     (b0 b : LstateM) (zf : Bool)
     (hpc : b0.lpc = 1)
-    (hrun : lsemStraightMem body b0 = some b)
+    (hrun : lsemStraightMemF body b0 = some b)
     (hzero : b.reg.getW nReg 64 = some 0#64) :
     lsemFuelMemF (singletonProgM fn (flagLoopLinstrRM top nReg body))
         (body.length + 2) { prog := { base := b0, lfn := fn }, zf := zf }
@@ -664,7 +1038,7 @@ theorem flagLoop_pass_halt (fn : String) (top : LLabel) (nReg : String)
         rw [hPbody, hpc]; exact flagLoop_body_pos top nReg body k hk)
   rw [hseg, hrun, Option.bind_some]
   have hb_lpc : b.lpc = 1 + body.length := by
-    have := lsemStraightMem_lpc body b0 b hrun; rw [hpc] at this; omega
+    have := lsemStraightMemF_lpc body b0 b hrun; rw [hpc] at this; omega
   -- the flag-`CMP` (fuel 2 → 1): zf := (0 == 0) = true.
   have hfetchCmp : findInstrMem P
       ({ prog := { base := b, lfn := fn }, zf := zf } : LstateMF).prog
@@ -709,18 +1083,18 @@ theorem flagLoop_pass_halt (fn : String) (top : LLabel) (nReg : String)
 
 /-- **Taken chain** (flag machine): the first `j` passes (back-edge taken after
     each — the same `condNZ` schedule as `loopMem_taken_chain`) factor
-    through the SAME fold `runBoundedLoopMem`; each pass costs `|body| + 2` fuel
+    through the fold `runBoundedLoopMemF`; each pass costs `|body| + 2` fuel
     (body + flag-`CMP` + `Lcond`), and every reentry after the first pass
     carries `zf = false` (the just-run `CMP` saw a non-zero counter). -/
 theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hbody : PlainLopnBody body)
     (b0 : LstateM) (hpc : b0.lpc = 1) :
     ∀ (j f : Nat) (zf : Bool),
-      (∀ i, 0 < i → i ≤ j → ∀ bi, runBoundedLoopMem body i b0 = some bi →
+      (∀ i, 0 < i → i ≤ j → ∀ bi, runBoundedLoopMemF body i b0 = some bi →
         condNZ bi (.reg nReg) = true) →
       lsemFuelMemF (singletonProgM fn (flagLoopLinstrRM top nReg body))
           (j * (body.length + 2) + f) { prog := { base := b0, lfn := fn }, zf := zf }
-        = (runBoundedLoopMem body j b0).bind
+        = (runBoundedLoopMemF body j b0).bind
             (fun bj => lsemFuelMemF (singletonProgM fn (flagLoopLinstrRM top nReg body)) f
               { prog := { base := bj, lfn := fn },
                 zf := if j = 0 then zf else false }) := by
@@ -729,27 +1103,27 @@ theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
   induction j with
   | zero =>
       intro f zf _
-      simp only [Nat.zero_mul, Nat.zero_add, runBoundedLoopMem_zero, Option.bind_some,
+      simp only [Nat.zero_mul, Nat.zero_add, runBoundedLoopMemF_zero, Option.bind_some,
         reduceIte]
   | succ n ih =>
       intro f zf htk
-      have htk' : ∀ i, 0 < i → i ≤ n → ∀ bi, runBoundedLoopMem body i b0 = some bi →
+      have htk' : ∀ i, 0 < i → i ≤ n → ∀ bi, runBoundedLoopMemF body i b0 = some bi →
           condNZ bi (.reg nReg) = true := fun i hi hin bi hbi => htk i hi (by omega) bi hbi
       have hfuel : (n + 1) * (body.length + 2) + f
           = n * (body.length + 2) + ((body.length + 2) + f) := by ring
       rw [hfuel, ih ((body.length + 2) + f) zf htk']
-      rw [runBoundedLoopMem_succ_right]
-      cases hj : runBoundedLoopMem body n b0 with
+      rw [runBoundedLoopMemF_succ_right]
+      cases hj : runBoundedLoopMemF body n b0 with
       | none => simp
       | some bj =>
           simp only [Option.bind_some]
           have hbj_lpc : bj.lpc = 1 := by
             cases n with
             | zero =>
-                rw [runBoundedLoopMem_zero] at hj
+                rw [runBoundedLoopMemF_zero] at hj
                 obtain rfl := Option.some.inj hj; exact hpc
-            | succ k => exact runBoundedLoopMem_succ_lpc k body b0 bj hj
-          cases hb : lsemStraightMem body bj with
+            | succ k => exact runBoundedLoopMemF_succ_lpc k body b0 bj hj
+          cases hb : lsemStraightMemF body bj with
           | none =>
               have hseg := lsemFuelMemF_seg P fn rfl body bj
                 (if n = 0 then zf else false) (2 + f) hbody
@@ -763,9 +1137,9 @@ theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
           | some blast =>
               simp only [Option.map_some, Option.bind_some]
               have htaken : condNZ blast (.reg nReg) = true := by
-                have hfold : runBoundedLoopMem body (n + 1) b0
+                have hfold : runBoundedLoopMemF body (n + 1) b0
                     = some (blast.setLpc 1) := by
-                  rw [runBoundedLoopMem_succ_right, hj, Option.bind_some, hb,
+                  rw [runBoundedLoopMemF_succ_right, hj, Option.bind_some, hb,
                     Option.map_some]
                 have := htk (n + 1) (by omega) (by omega) (blast.setLpc 1) hfold
                 rwa [condNZ_setLpc] at this
@@ -785,18 +1159,16 @@ theorem flagLoop_taken_chain (fn : String) (top : LLabel) (nReg : String)
     `1..m-1`; the counter *reads zero* after the `m`-th body-fold — the emitted
     `CMP` evaluates the counter, so the exit needs a zero read, not only
     a read miss), the machine runs `m·(|body|+2)` steps and halts in a state
-    whose base agrees with **the same fold `runBoundedLoopMem body m`** on the
-    register store and the array carrier, with `zf = true` (the exit compare).
-    The interpreter runs the emitted guard idiom; the fold — and hence
-    every consumer of `loopMem_runBounded`'s conclusion shape — is the same. -/
+    whose base agrees with the flag loop fold `runBoundedLoopMemF body m` on the
+    register store and the array carrier, with `zf = true` (the exit compare). -/
 theorem flagLoop_runBounded (fn : String) (top : LLabel) (nReg : String)
     (body : List LinstrRM) (hbody : PlainLopnBody body)
     (b0 : LstateM) (zf : Bool) (hpc : b0.lpc = 1)
     (m : Nat) (hm : 0 < m) (bprev blast bfin : LstateM)
-    (hprev : runBoundedLoopMem body (m - 1) b0 = some bprev)
-    (hlast : lsemStraightMem body bprev = some blast)
-    (hbfin : runBoundedLoopMem body m b0 = some bfin)
-    (htaken : ∀ i, 0 < i → i < m → ∀ bi, runBoundedLoopMem body i b0 = some bi →
+    (hprev : runBoundedLoopMemF body (m - 1) b0 = some bprev)
+    (hlast : lsemStraightMemF body bprev = some blast)
+    (hbfin : runBoundedLoopMemF body m b0 = some bfin)
+    (htaken : ∀ i, 0 < i → i < m → ∀ bi, runBoundedLoopMemF body i b0 = some bi →
       condNZ bi (.reg nReg) = true)
     (hzero : blast.reg.getW nReg 64 = some 0#64) :
     ∃ t : LstateMF,
@@ -808,7 +1180,7 @@ theorem flagLoop_runBounded (fn : String) (top : LLabel) (nReg : String)
   set P := singletonProgM fn (flagLoopLinstrRM top nReg body) with hP
   obtain ⟨k, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
   simp only [Nat.add_sub_cancel] at hprev
-  have htk : ∀ i, 0 < i → i ≤ k → ∀ bi, runBoundedLoopMem body i b0 = some bi →
+  have htk : ∀ i, 0 < i → i ≤ k → ∀ bi, runBoundedLoopMemF body i b0 = some bi →
       condNZ bi (.reg nReg) = true := fun i hi hik bi hbi => htaken i hi (by omega) bi hbi
   have hchain := flagLoop_taken_chain fn top nReg body hbody b0 hpc k
     (body.length + 2) zf htk
@@ -817,16 +1189,16 @@ theorem flagLoop_runBounded (fn : String) (top : LLabel) (nReg : String)
   have hprev_lpc : bprev.lpc = 1 := by
     cases k with
     | zero =>
-        rw [runBoundedLoopMem_zero] at hprev
+        rw [runBoundedLoopMemF_zero] at hprev
         obtain rfl := Option.some.inj hprev; exact hpc
-    | succ j => exact runBoundedLoopMem_succ_lpc j body b0 bprev hprev
+    | succ j => exact runBoundedLoopMemF_succ_lpc j body b0 bprev hprev
   have hhaltpass := flagLoop_pass_halt fn top nReg body hbody bprev blast
     (if k = 0 then zf else false) hprev_lpc hlast hzero
   rw [← hP] at hhaltpass
   rw [hhaltpass]
   have hbfin' : bfin = blast.setLpc 1 := by
-    have : runBoundedLoopMem body (k + 1) b0 = some (blast.setLpc 1) := by
-      rw [runBoundedLoopMem_succ_right, hprev, Option.bind_some, hlast, Option.map_some]
+    have : runBoundedLoopMemF body (k + 1) b0 = some (blast.setLpc 1) := by
+      rw [runBoundedLoopMemF_succ_right, hprev, Option.bind_some, hlast, Option.map_some]
     rw [this] at hbfin; exact (Option.some.inj hbfin).symm
   exact ⟨_, rfl, by rw [hbfin']; rfl, by rw [hbfin']; rfl, rfl⟩
 
@@ -879,7 +1251,7 @@ theorem findLabelMem_guarded_endL (top endL : LLabel) (nReg : String)
     **zero** counter: the guard `CMP nReg,#0` sets `zf = true`, the `Lcond Z
     endL` (`je`) jumps to the skip label, and the machine halts having executed
     **no body instruction** — the register store and the array carrier are
-    exactly the entry's (`runBoundedLoopMem body 0` = the identity), so a
+    exactly the entry's (`runBoundedLoopMemF body 0` = the identity), so a
     `count = 0` loop denotes correctly. -/
 theorem guardedFlagLoop_zeroTrip (fn : String) (top endL : LLabel) (nReg : String)
     (body : List LinstrRM) (hlopn : ∀ i ∈ body, IsLopn i) (htop : top ≠ endL)
@@ -998,5 +1370,46 @@ example :
 example : (lsemFuelMemF rtLoopProg 40 (rtStart 3 2)).isSome
     ∧ (lsemFuelMemF rtLoopProg 40 (rtStart 3 0)).isSome := by
   native_decide
+
+/-! ### Carry chains
+
+The instruction shapes of `Fe25519LfundefBridge.jinstrToLinstrR` (`.add d s` is
+`Lopn [d] ADD:64 [d, s]`, and likewise `ADC`, `SUB`, `SBB`, `XOR`, `ADCX`, `ADOX`) run
+under the flag machine with the carries of the decoder machine. -/
+
+/-- A register-typed instruction `Lopn [.reg d] (withWidthTag 64 m) [.reg d, .reg s]`. -/
+def twoAddrRM (m d s : String) : LinstrRM :=
+  (.Lopn [.reg d] (withWidthTag 64 m) [.reg d, .reg s], MemTag.reg none)
+
+/-- A flag-machine start state with the given 64-bit registers, pc `0`, flags clear. -/
+def regStart (vs : List (String × BitVec 64)) : LstateMF :=
+  { prog := { base := vs.foldl (fun b p => b.setReg p.1 p.2) ({} : LstateM), lfn := "f" } }
+
+/-- The registers `rs` at width `64` and the two flags after running `body`. -/
+def runRegs (body : List LinstrRM) (vs : List (String × BitVec 64)) (rs : List String) :
+    Option (List (Option (BitVec 64)) × Bool × Bool) :=
+  (lsemFuelMemF (singletonProgM "f" body) (body.length + 1) (regStart vs)).map fun t =>
+    (rs.map (fun r => t.prog.base.reg.getW r 64), t.prog.base.cf, t.prog.base.of)
+
+/-- The all-ones word `2^64 - 1`. -/
+def wMax : BitVec 64 := BitVec.allOnes 64
+
+/- `ADD` then `ADC`: `2^64 - 1 + 1` carries into `5 + 7`. -/
+#kat runRegs [twoAddrRM "ADD" "R8" "R9", twoAddrRM "ADC" "R10" "R11"]
+    [("R8", wMax), ("R9", 1), ("R10", 5), ("R11", 7)] ["R8", "R10"]
+  == some ([some 0, some 13], false, false)
+
+/- `XOR` clears both flags; `ADCX` and `ADOX` run two independent chains. -/
+#kat runRegs [twoAddrRM "XOR" "R12" "R12", twoAddrRM "ADCX" "R8" "R9",
+      twoAddrRM "ADOX" "R10" "R11", twoAddrRM "ADCX" "R13" "R12",
+      twoAddrRM "ADOX" "R14" "R12"]
+    [("R8", wMax), ("R9", 1), ("R10", wMax), ("R11", 1), ("R12", 3), ("R13", 5),
+      ("R14", 7)] ["R8", "R10", "R13", "R14"]
+  == some ([some 0, some 0, some 6, some 8], false, false)
+
+/- `SUB` then `SBB`: `0 - 1` borrows from `5 - 2`. -/
+#kat runRegs [twoAddrRM "SUB" "R8" "R9", twoAddrRM "SBB" "R10" "R11"]
+    [("R8", 0), ("R9", 1), ("R10", 5), ("R11", 2)] ["R8", "R10"]
+  == some ([some wMax, some 2], false, false)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard

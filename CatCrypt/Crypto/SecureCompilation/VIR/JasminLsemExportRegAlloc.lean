@@ -559,9 +559,96 @@ def jumpLabel? : LinstrR → Option LLabel
   | _ => none
 
 /-- The flag-machine state relation on a register name set and an array name set:
-    related memory states, the same function name and the same zero flag. -/
+    related memory states, the same function name, the same zero flag and the same
+    carry and overflow flags. -/
 def RelF2 (σ : String → String) (Nr Na : String → Prop) (s s' : LstateMF) : Prop :=
   RelM2 σ Nr Na s.prog.base s'.prog.base ∧ s'.prog.lfn = s.prog.lfn ∧ s'.zf = s.zf
+    ∧ s'.prog.base.cf = s.prog.base.cf ∧ s'.prog.base.of = s.prog.base.of
+
+/-- The flag writes of `withALUFlags` preserve the relation. -/
+theorem RelM2.withALUFlags {b b' : LstateM} (h : RelM2 σ Nr Na b b') (i i' : LinstrRM)
+    (s0 s0' : LstateM) : RelM2 σ Nr Na (withALUFlags i s0 b) (withALUFlags i' s0' b') := by
+  unfold RelM2
+  simp only [withALUFlags_reg, withALUFlags_larr, withALUFlags_lmem]
+  exact h
+
+/-- The operands a flag-writing arithmetic operation reads are source operands. -/
+theorem aluFlagOp?_uses {i : LinstrRM} {p : AluOp × LOperand × LOperand}
+    (h : aluFlagOp? i = some p) :
+    (∀ n ∈ opNames p.2.1, n ∈ useNames i.1) ∧ (∀ n ∈ opNames p.2.2, n ∈ useNames i.1) := by
+  obtain ⟨wire, tag⟩ := i
+  unfold aluFlagOp? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h <;> cases h <;> simp only [useNames, List.mem_flatMap] <;>
+      exact ⟨fun n hn => ⟨_, by simp, hn⟩, fun n hn => ⟨_, by simp, hn⟩⟩
+  · simp at h
+
+/-- A carry-family instruction writes its destination register, no array, and reads its
+    two source operands. -/
+theorem carryArgs?_shape {i : LinstrRM} {p : CarryOp × String × LOperand × LOperand}
+    (h : carryArgs? i = some p) :
+    memRegDefs i = [p.2.1] ∧ memArrDefs i = []
+      ∧ (∀ n ∈ opNames p.2.2.1, n ∈ useNames i.1) ∧ (∀ n ∈ opNames p.2.2.2, n ∈ useNames i.1) := by
+  obtain ⟨wire, tag⟩ := i
+  unfold carryArgs? at h
+  dsimp only at h
+  split at h
+  · rename_i d opn a b
+    have hm : opn ≠ "STOREIDX" := by
+      split_ifs at h <;> subst_vars <;> decide +kernel
+    have hst : storeStruct? (.Lopn [.reg d] opn [a, b]) = none := by
+      unfold storeStruct?
+      split
+      · rename_i heq
+        simp only [LinstrR.Lopn.injEq] at heq
+        obtain ⟨-, rfl, -⟩ := heq
+        rw [if_neg hm]
+      · rfl
+    have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
+      unfold storeHit?
+      cases tag <;> simp [hst]
+    split_ifs at h <;> cases h <;>
+      exact ⟨by simp [memRegDefs, hsh, defNames, opNames], by simp [memArrDefs, hsh],
+        fun n hn => by simp only [useNames, List.mem_flatMap]; exact ⟨_, by simp, hn⟩,
+        fun n hn => by simp only [useNames, List.mem_flatMap]; exact ⟨_, by simp, hn⟩⟩
+  · simp at h
+
+/-- The flags `withALUFlags` writes for the renamed instruction from a related state are
+    the flags it writes for the original instruction. -/
+theorem withALUFlags_live {i : LinstrRM} (hu : ∀ n ∈ useNames i.1, Nr n) {s0 s0' b b' : LstateM}
+    (hR : RelN σ Nr s0.reg s0'.reg) (hb : b'.cf = b.cf ∧ b'.of = b.of) :
+    (withALUFlags (renRM σ i) s0' b').cf = (withALUFlags i s0 b).cf
+      ∧ (withALUFlags (renRM σ i) s0' b').of = (withALUFlags i s0 b).of := by
+  unfold withALUFlags
+  rw [aluFlagOp?_ren]
+  cases h : aluFlagOp? i with
+  | none => exact hb
+  | some p =>
+      obtain ⟨op, a, c⟩ := p
+      obtain ⟨ha, hc⟩ := aluFlagOp?_uses h
+      simp only [Option.map_some,
+        hR.evalOperandN 64 a (fun n hn => hu n (ha n hn)),
+        hR.evalOperandN 64 c (fun n hn => hu n (hc n hn))]
+      split
+      · exact ⟨rfl, rfl⟩
+      · exact hb
+
+/-- A carry-family step under the relation. -/
+theorem carryStep_live {op : CarryOp} {d : String} {a c : LOperand}
+    (hK : Keeps σ Nr Mr [d]) (hA : ∀ r, Ma r → Na r)
+    (ha : ∀ n ∈ opNames a, Nr n) (hc : ∀ n ∈ opNames c, Nr n)
+    {s s' t : LstateM} (hR : RelM2 σ Nr Na s s') (hf : s'.cf = s.cf ∧ s'.of = s.of)
+    (h : carryStep op d a c s = some t) :
+    ∃ t', carryStep op (σ d) (renOperand σ a) (renOperand σ c) s' = some t'
+      ∧ RelM2 σ Mr Ma t t' ∧ t'.cf = t.cf ∧ t'.of = t.of := by
+  unfold carryStep at h ⊢
+  rw [hR.1.evalOperandN 64 a ha, hR.1.evalOperandN 64 c hc, hf.1, hf.2]
+  split at h
+  · cases op <;> cases h <;>
+      exact ⟨_, rfl, RelM2.setReg_keeps hR hK hA _,
+        by first | rfl | exact hf.1, by first | rfl | exact hf.2⟩
+  · cases h
 
 theorem RelM2.mono {s s' : LstateM} (h : RelM2 σ Nr Na s s') (hRg : ∀ r, Mr r → Nr r)
     (hA : ∀ r, Ma r → Na r) : RelM2 σ Mr Ma s s' :=
@@ -717,7 +804,7 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
         hR.1.1.evalOperandN 64 b (fun n hn => hu n (hb n hn))] at h ⊢
       split at h
       · cases h
-        exact ⟨_, rfl, ⟨(hR.1.mono hKr'.sub hKa'.sub).nextPc, hR.2.1, rfl⟩,
+        exact ⟨_, rfl, ⟨(hR.1.mono hKr'.sub hKa'.sub).nextPc, hR.2.1, rfl, hR.2.2.2⟩,
           Nat.le_succ_of_le hk⟩
       · simp at h
   | none =>
@@ -733,7 +820,7 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
       simp only [h2, Option.map_some, hR.1.1.readReg_reg (hu _ hr)] at h ⊢
       split at h
       · cases h
-        exact ⟨_, rfl, ⟨RelM2.setReg_keeps hR.1 hKr' hKa'.sub _, hR.2.1, hR.2.2⟩,
+        exact ⟨_, rfl, ⟨RelM2.setReg_keeps hR.1 hKr' hKa'.sub _, hR.2.1, hR.2.2.1, hR.2.2.2⟩,
           Nat.le_succ_of_le hk⟩
       · simp at h
   | none =>
@@ -768,47 +855,100 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
   | some p =>
       obtain ⟨pol, l⟩ := p
       have hl := flagCondCC?_jumpLabel h3
-      simp only [h3, hR.2.2] at h ⊢
+      simp only [h3, hR.2.2.1] at h ⊢
       split at h
       · obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hRq, hfn, hkq⟩ := evalJumpMem_live hC hk hget hl hR.1 hR.2.1 hq
-        exact ⟨{ prog := q', zf := s.zf }, by rw [if_pos (by assumption), hq']; rfl,
-          ⟨hRq, hfn, rfl⟩, hkq⟩
+        refine ⟨{ prog := q', zf := s.zf }, by rw [if_pos (by assumption), hq']; rfl,
+          ⟨hRq, hfn, rfl, ?_, ?_⟩, hkq⟩
+        · rw [(evalJumpMem_flags hq').1, (evalJumpMem_flags hq).1]; exact hR.2.2.2.1
+        · rw [(evalJumpMem_flags hq').2, (evalJumpMem_flags hq).2]; exact hR.2.2.2.2
       · cases h
         exact ⟨{ prog := { s'.prog with base := s'.prog.base.nextPc }, zf := s.zf },
           by rw [if_neg (by assumption)],
-          ⟨hfall (jumpLabel?_not_lopn hl), hR.2.1, rfl⟩, Nat.le_succ_of_le hk⟩
+          ⟨hfall (jumpLabel?_not_lopn hl), hR.2.1, rfl, hR.2.2.2⟩, Nat.le_succ_of_le hk⟩
   | none =>
   simp only [h3] at h ⊢
-  obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
   have hc := hC.cond _ i hk hget
-  suffices hL : ∃ q', evalInstrPMemL P' (renRM σ i) s'.prog = some q'
-      ∧ RelM2 σ (Lr q.base.lpc) (La q.base.lpc) q.base q'.base ∧ q'.lfn = q.lfn
-      ∧ k0 ≤ q.base.lpc by
-    obtain ⟨q', hq', hRq, hfn, hkq⟩ := hL
-    exact ⟨{ s' with prog := q' }, by rw [hq']; rfl, ⟨hRq, hfn, hR.2.2⟩, hkq⟩
-  obtain ⟨wire, tag⟩ := i
-  cases wire with
-  | Llabel kd l =>
-      simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
-      cases hq
-      exact ⟨_, rfl, hfall (fun _ _ _ he => by cases he), hR.2.1, Nat.le_succ_of_le hk⟩
-  | Lcond c l => exact absurd h3 (hc c l rfl)
-  | Lgoto tgt =>
-      obtain ⟨fn, l⟩ := tgt
-      simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
-      rw [hC.lfn]
-      split at hq
-      · rw [if_pos (by assumption)]
-        exact evalJumpMem_live hC hk hget rfl hR.1 hR.2.1 hq
-      · simp at hq
-  | Lopn d o s => exact hstep hq
-  | Lsyscall _ => exact hstep hq
-  | Lcall _ _ => exact hstep hq
-  | Lret => exact hstep hq
-  | Lalign => exact hstep hq
-  | Ligoto _ => exact hstep hq
-  | LstoreLabel _ _ => exact hstep hq
+  have hL : ∀ {q : LstatePM}, evalInstrPMemL P i s.prog = some q →
+      ∃ q', evalInstrPMemL P' (renRM σ i) s'.prog = some q'
+        ∧ RelM2 σ (Lr q.base.lpc) (La q.base.lpc) q.base q'.base ∧ q'.lfn = q.lfn
+        ∧ k0 ≤ q.base.lpc := by
+    intro q hq
+    clear h
+    obtain ⟨wire, tag⟩ := i
+    cases wire with
+    | Llabel kd l =>
+        simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
+        cases hq
+        exact ⟨_, rfl, hfall (fun _ _ _ he => by cases he), hR.2.1, Nat.le_succ_of_le hk⟩
+    | Lcond c l => exact absurd h3 (hc c l rfl)
+    | Lgoto tgt =>
+        obtain ⟨fn, l⟩ := tgt
+        simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
+        rw [hC.lfn]
+        split at hq
+        · rw [if_pos (by assumption)]
+          exact evalJumpMem_live hC hk hget rfl hR.1 hR.2.1 hq
+        · simp at hq
+    | Lopn d o s => exact hstep hq
+    | Lsyscall _ => exact hstep hq
+    | Lcall _ _ => exact hstep hq
+    | Lret => exact hstep hq
+    | Lalign => exact hstep hq
+    | Ligoto _ => exact hstep hq
+    | LstoreLabel _ _ => exact hstep hq
+  rw [carryArgs?_ren]
+  cases hq : evalInstrPMemL P i s.prog with
+  | some q =>
+      simp only [hq, Option.some.injEq] at h
+      subst h
+      obtain ⟨q', hq', hRq, hfn, hkq⟩ := hL hq
+      have hfq := evalInstrPMemL_flags hq
+      have hfq' := evalInstrPMemL_flags hq'
+      have hw := withALUFlags_live (i := i) (s0 := s.prog.base) (s0' := s'.prog.base)
+        (b := q.base) (b' := q'.base) hu hR.1.1
+        ⟨by rw [hfq'.1, hfq.1]; exact hR.2.2.2.1, by rw [hfq'.2, hfq.2]; exact hR.2.2.2.2⟩
+      refine ⟨{ prog := { base := withALUFlags (renRM σ i) s'.prog.base q'.base,
+                          lfn := q'.lfn }, zf := s'.zf },
+        by rw [hq'], ⟨?_, hfn, hR.2.2.1, hw.1, hw.2⟩, ?_⟩
+      · show RelM2 σ (Lr (withALUFlags i s.prog.base q.base).lpc)
+          (La (withALUFlags i s.prog.base q.base).lpc) _ _
+        rw [withALUFlags_lpc]
+        exact RelM2.withALUFlags hRq _ _ _ _
+      · show k0 ≤ (withALUFlags i s.prog.base q.base).lpc
+        rw [withALUFlags_lpc]; exact hkq
+  | none =>
+      simp only [hq] at h
+      cases hk3 : carryArgs? i with
+      | none => simp [hk3] at h
+      | some p =>
+          obtain ⟨op, d, a, c⟩ := p
+          obtain ⟨hmr, hma, ha, hcn⟩ := carryArgs?_shape hk3
+          simp only [hk3] at h
+          obtain ⟨u, hu', rfl⟩ := Option.map_eq_some_iff.mp h
+          rw [hmr] at hKr'
+          rw [hma] at hKa'
+          obtain ⟨u', hu'', hRu, hcf, hof⟩ := carryStep_live hKr' hKa'.sub
+            (fun n hn => hu n (ha n hn)) (fun n hn => hu n (hcn n hn)) hR.1 hR.2.2.2 hu'
+          have hk3' : carryArgs? (renRM σ i) = some (op, σ d, renOperand σ a, renOperand σ c) := by
+            rw [carryArgs?_ren, hk3]; rfl
+          have hq'none : evalInstrPMemL P' (renRM σ i) s'.prog = none := by
+            have hlopn : IsLopn (renRM σ i) := by
+              unfold carryArgs? at hk3'
+              split at hk3'
+              · rename_i heq; exact ⟨_, _, _, heq⟩
+              · cases hk3'
+            rw [evalInstrPMemL_lopn _ _ _ hlopn, lsemStepMem_of_carryArgs hk3', Option.map_none]
+          have hpc := carryStep_lpc _ _ _ _ _ _ hu'
+          refine ⟨{ prog := { base := u', lfn := s'.prog.lfn }, zf := s'.zf },
+            by rw [hq'none]; simp only [Option.map_some, hu''], ⟨?_, hR.2.1, hR.2.2.1, hcf, hof⟩,
+            ?_⟩
+          · show RelM2 σ (Lr u.lpc) (La u.lpc) u u'
+            rw [hpc]; exact hRu
+          · show k0 ≤ u.lpc
+            omega
+
 
 /-- **The flag machine under a liveness certificate.** For a program `P`, a
     renaming `σ` and a program `P'` with a certificate from `k0` on, every halting

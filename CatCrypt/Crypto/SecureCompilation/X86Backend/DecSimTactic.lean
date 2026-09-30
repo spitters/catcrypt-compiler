@@ -289,6 +289,7 @@ theorem decSim_cmpReg_r (c r C R : String) (hC : π c = C) (hR : π r = R) (hc :
     in the register `D`. The instances fix `opn`, its base mnemonic, `f` and `mk`. -/
 theorem decSim_binReg_r (opn base : String) (hstrip : stripWidthTag opn = base)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hf : ∀ x y, applyOpnN 64 base [x, y] = some (f x y))
     (mk : String → JOperand → JInstr 64)
@@ -301,13 +302,14 @@ theorem decSim_binReg_r (opn base : String) (hstrip : stripWidthTag opn = base)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI opn d a c] [mk D (.reg C)] := by
   subst hD hC
-  exact decSim_binReg opn base hstrip hcmp hmul f hf mk hmk hmkm d a c ha hc hA.symm
+  exact decSim_binReg opn base hstrip hcmp hmul hcarry f hf mk hmk hmkm d a c ha hc hA.symm
     (fun _ hr => hr)
 
 /-- A two-address operation through a copy: `opn d, a, c` against `mov %a, %d` and
     `mk %c, %d`, the registers `C` of `c` and `D` of `d` distinct. -/
 theorem decSim_binReg_mov_r (opn base : String) (hstrip : stripWidthTag opn = base)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hf : ∀ x y, applyOpnN 64 base [x, y] = some (f x y))
     (mk : String → JOperand → JInstr 64)
@@ -321,7 +323,7 @@ theorem decSim_binReg_mov_r (opn base : String) (hstrip : stripWidthTag opn = ba
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI opn d a c] [.mov D (.reg A), mk D (.reg C)] := by
   subst hD hA hC
-  exact decSim_binReg_mov opn base hstrip hcmp hmul f hf mk hmk hmkm d a c ha hc hCD
+  exact decSim_binReg_mov opn base hstrip hcmp hmul hcarry f hf mk hmk hmkm d a c ha hc hCD
     (fun _ hr => hr)
 
 theorem decSim_add_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -331,7 +333,8 @@ theorem decSim_add_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : 
       [binRegI "ADD:64" d a c] [.add D (.reg C)] :=
   decSim_binReg_r _ "ADD"
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.stripWidthTag_ADD64
-    (by decide +kernel) (by decide) (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl)
+    (by decide +kernel) (by decide) (by decide)
+    (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl)
     (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_sub_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -341,7 +344,8 @@ theorem decSim_sub_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : 
       [binRegI "SUB:64" d a c] [.sub D (.reg C)] :=
   decSim_binReg_r _ "SUB"
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.stripWidthTag_SUB64
-    (by decide +kernel) (by decide) (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl)
+    (by decide +kernel) (by decide) (by decide)
+    (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl)
     (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_and_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -349,7 +353,8 @@ theorem decSim_and_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : 
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "AND:64" d a c] [.and_ D (.reg C)] :=
-  decSim_binReg_r _ "AND" stripWidthTag_AND64 (by decide +kernel) (by decide) (· &&& ·)
+  decSim_binReg_r _ "AND" stripWidthTag_AND64 (by decide +kernel) (by decide) (by decide)
+    (· &&& ·)
     (fun _ _ => rfl) JInstr.and_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_xor_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -357,7 +362,8 @@ theorem decSim_xor_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : 
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "XOR:64" d a c] [.xor_ D (.reg C)] :=
-  decSim_binReg_r _ "XOR" stripWidthTag_XOR64 (by decide +kernel) (by decide) (· ^^^ ·)
+  decSim_binReg_r _ "XOR" stripWidthTag_XOR64 (by decide +kernel) (by decide) (by decide)
+    (· ^^^ ·)
     (fun _ _ => rfl) JInstr.xor_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_or_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -365,7 +371,8 @@ theorem decSim_or_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : �
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "OR:64" d a c] [.or_ D (.reg C)] :=
-  decSim_binReg_r _ "OR" stripWidthTag_OR64 (by decide +kernel) (by decide) (· ||| ·)
+  decSim_binReg_r _ "OR" stripWidthTag_OR64 (by decide +kernel) (by decide) (by decide)
+    (· ||| ·)
     (fun _ _ => rfl) JInstr.or_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_imul_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC : π c = C)
@@ -373,7 +380,8 @@ theorem decSim_imul_r (d a c D C : String) (hD : π d = D) (hA : π a = D) (hC :
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "MUL:64" d a c] [.imul D (.reg C)] :=
-  decSim_binReg_r _ "MUL" stripWidthTag_MUL64 (by decide +kernel) (by decide) (· * ·)
+  decSim_binReg_r _ "MUL" stripWidthTag_MUL64 (by decide +kernel) (by decide) (by decide)
+    (· * ·)
     (fun _ _ => rfl) JInstr.imul (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D C hD hA hC ha hc
 
 theorem decSim_add_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (hC : π c = C)
@@ -383,7 +391,8 @@ theorem decSim_add_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (h
       [binRegI "ADD:64" d a c] [.mov D (.reg A), .add D (.reg C)] :=
   decSim_binReg_mov_r _ "ADD"
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.stripWidthTag_ADD64
-    (by decide +kernel) (by decide) (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl)
+    (by decide +kernel) (by decide) (by decide)
+    (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl)
     (fun _ _ _ => rfl) d a c D A C hD hA hC hCD ha hc
 
 theorem decSim_sub_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (hC : π c = C)
@@ -393,7 +402,8 @@ theorem decSim_sub_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (h
       [binRegI "SUB:64" d a c] [.mov D (.reg A), .sub D (.reg C)] :=
   decSim_binReg_mov_r _ "SUB"
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.stripWidthTag_SUB64
-    (by decide +kernel) (by decide) (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl)
+    (by decide +kernel) (by decide) (by decide)
+    (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl)
     (fun _ _ _ => rfl) d a c D A C hD hA hC hCD ha hc
 
 theorem decSim_and_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (hC : π c = C)
@@ -401,7 +411,8 @@ theorem decSim_and_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (h
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "AND:64" d a c] [.mov D (.reg A), .and_ D (.reg C)] :=
-  decSim_binReg_mov_r _ "AND" stripWidthTag_AND64 (by decide +kernel) (by decide) (· &&& ·)
+  decSim_binReg_mov_r _ "AND" stripWidthTag_AND64 (by decide +kernel) (by decide) (by decide)
+    (· &&& ·)
     (fun _ _ => rfl) JInstr.and_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D A C hD hA hC
     hCD ha hc
 
@@ -410,7 +421,8 @@ theorem decSim_xor_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (h
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "XOR:64" d a c] [.mov D (.reg A), .xor_ D (.reg C)] :=
-  decSim_binReg_mov_r _ "XOR" stripWidthTag_XOR64 (by decide +kernel) (by decide) (· ^^^ ·)
+  decSim_binReg_mov_r _ "XOR" stripWidthTag_XOR64 (by decide +kernel) (by decide) (by decide)
+    (· ^^^ ·)
     (fun _ _ => rfl) JInstr.xor_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D A C hD hA hC
     hCD ha hc
 
@@ -419,7 +431,8 @@ theorem decSim_or_mov (d a c D A C : String) (hD : π d = D) (hA : π a = A) (hC
     DecSim (DecLsemCorr π L Lay frame K zl)
       (DecLsemCorr π (liveAfter π L d D) Lay frame K False)
       [binRegI "OR:64" d a c] [.mov D (.reg A), .or_ D (.reg C)] :=
-  decSim_binReg_mov_r _ "OR" stripWidthTag_OR64 (by decide +kernel) (by decide) (· ||| ·)
+  decSim_binReg_mov_r _ "OR" stripWidthTag_OR64 (by decide +kernel) (by decide) (by decide)
+    (· ||| ·)
     (fun _ _ => rfl) JInstr.or_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl) d a c D A C hD hA hC
     hCD ha hc
 

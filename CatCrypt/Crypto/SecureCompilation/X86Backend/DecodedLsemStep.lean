@@ -159,6 +159,20 @@ theorem DecLsemCorr.machWrite {sa : AState} {b : LstateM} {zf : Bool}
     exact ⟨hj, arr, ha, by rw [hmem]; exact hr⟩
   slots A q hq := by rw [hmem]; exact h.slots A q hq
 
+/-- The correspondence does not read the carry and overflow flags of the flag machine. -/
+theorem DecLsemCorr.withALUFlags {sa : AState} {b : LstateM} {zf : Bool}
+    (h : DecLsemCorr π L Lay frame K zl sa b zf) (i : LinstrRM) (s0 : LstateM) :
+    DecLsemCorr π L Lay frame K zl sa (withALUFlags i s0 b) zf where
+  regs r hr := by rw [withALUFlags_reg]; exact h.regs r hr
+  zfEq := h.zfEq
+  cells A j hk := by
+    obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hk
+    refine ⟨hj, arr, ?_, hr⟩
+    unfold LstateM.getArr
+    rw [withALUFlags_larr]
+    exact ha
+  slots := h.slots
+
 /-- The correspondence does not read the program counter. -/
 theorem DecLsemCorr.setLpc {sa : AState} {b : LstateM} {zf : Bool}
     (h : DecLsemCorr π L Lay frame K zl sa b zf) (pc : Nat) :
@@ -260,7 +274,7 @@ theorem fstepF_movRI (d s : String) (b : LstateM) (zf : Bool) (v : BitVec 64)
 
 theorem fstepF_movII (d : String) (n : Nat) (b : LstateM) (zf : Bool) :
     fstepF (movII d n) b zf = some ((b.setReg d (BitVec.ofNat 64 n)).nextPc, zf) := by
-  simp [fstepF, movII, cmpArgs?, movRegArgs?, RunBlockLsemAgree.lsemStepMem_movImm]
+  simp [fstepF, movII, cmpArgs?, movRegArgs?]
   rfl
 
 /-- **Register copy.** `MOV:64 d, s` against `mov %s, %d` on the registers of `d` and `s`. -/
@@ -296,6 +310,7 @@ theorem decSim_movImm (d : String) (n : Nat) (hL : Survives π L L' d) :
     tracked afterwards. -/
 theorem decSim_binReg (opn base : String) (hstrip : stripWidthTag opn = base)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hf : ∀ x y, applyOpnN 64 base [x, y] = some (f x y))
     (mk : String → JOperand → JInstr 64)
@@ -306,9 +321,10 @@ theorem decSim_binReg (opn base : String) (hstrip : stripWidthTag opn = base)
     (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a) (hL : Survives π L L' d) :
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [binRegI opn d a c] [mk (π d) (.reg (π c))] := by
-  refine DecSim.single fun sa b zf h => ⟨_, zf, ?_, h.write d (f (sa.regs (π a)) (sa.regs (π c)))
-    _ (fun r => by rw [hmk, hda]) (hmkm _ _ _) hL (fun hz => hz.elim)⟩
-  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul b zf _ (h.regs a ha), h.regs c hc,
+  refine DecSim.single fun sa b zf h => ⟨_, zf, ?_,
+    (h.write d (f (sa.regs (π a)) (sa.regs (π c))) _ (fun r => by rw [hmk, hda]) (hmkm _ _ _) hL
+      (fun hz => hz.elim)).withALUFlags (binRegI opn d a c) b⟩
+  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry b zf _ (h.regs a ha), h.regs c hc,
     Option.bind_some, hf, Option.map_some]
 
 theorem stripWidthTag_MUL64 : stripWidthTag "MUL:64" = "MUL" := by decide +kernel
@@ -319,7 +335,7 @@ theorem decSim_add (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [addI d a c] [.add (π d) (.reg (π c))] :=
   decSim_binReg _ "ADD" JasminLsemMemSourceTieUncond.stripWidthTag_ADD64 (by decide +kernel)
-    (by decide) (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· + ·) (fun _ _ => rfl) JInstr.add (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `SUB:64 d, a, c` against `sub %c, %d` with `d` and `a` in one register. -/
@@ -328,7 +344,7 @@ theorem decSim_sub (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [subI d a c] [.sub (π d) (.reg (π c))] :=
   decSim_binReg _ "SUB" JasminLsemMemSourceTieUncond.stripWidthTag_SUB64 (by decide +kernel)
-    (by decide) (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· - ·) (fun _ _ => rfl) JInstr.sub (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `AND:64 d, a, c` against `and %c, %d` with `d` and `a` in one register. -/
@@ -337,7 +353,7 @@ theorem decSim_and (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [andI d a c] [.and_ (π d) (.reg (π c))] :=
   decSim_binReg _ "AND" stripWidthTag_AND64 (by decide +kernel)
-    (by decide) (· &&& ·) (fun _ _ => rfl) JInstr.and_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· &&& ·) (fun _ _ => rfl) JInstr.and_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `XOR:64 d, a, c` against `xor %c, %d` with `d` and `a` in one register. -/
@@ -346,7 +362,7 @@ theorem decSim_xor (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [xorI d a c] [.xor_ (π d) (.reg (π c))] :=
   decSim_binReg _ "XOR" stripWidthTag_XOR64 (by decide +kernel)
-    (by decide) (· ^^^ ·) (fun _ _ => rfl) JInstr.xor_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· ^^^ ·) (fun _ _ => rfl) JInstr.xor_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `OR:64 d, a, c` against `or %c, %d` with `d` and `a` in one register. -/
@@ -355,7 +371,7 @@ theorem decSim_or (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [orI d a c] [.or_ (π d) (.reg (π c))] :=
   decSim_binReg _ "OR" stripWidthTag_OR64 (by decide +kernel)
-    (by decide) (· ||| ·) (fun _ _ => rfl) JInstr.or_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· ||| ·) (fun _ _ => rfl) JInstr.or_ (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `MUL:64 d, a, c` against `imul %c, %d` with `d` and `a` in one register. -/
@@ -364,7 +380,7 @@ theorem decSim_imul (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [binRegI "MUL:64" d a c] [.imul (π d) (.reg (π c))] :=
   decSim_binReg _ "MUL" stripWidthTag_MUL64 (by decide +kernel)
-    (by decide) (· * ·) (fun _ _ => rfl) JInstr.imul (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· * ·) (fun _ _ => rfl) JInstr.imul (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hda hL
 
 /-- `ADD:64 d, a, #k` against `add $k, %d` with `d` and `a` in one register. -/
@@ -374,9 +390,10 @@ theorem decSim_addImm (d a : String) (k : Nat) (ha : L a) (hda : π d = π a)
       [addImmI d a k] [.add (π d) (.imm k)] :=
   DecSim.single fun sa b zf h =>
     ⟨_, zf, fstepF_addImmI d a k b zf _ (h.regs a ha),
-      h.write d _ _ (fun r => by
-        show (if r = π d then sa.regs (π d) + BitVec.ofNat 64 k else sa.regs r) = _
-        rw [hda]) rfl hL (fun hz => hz.elim)⟩
+      DecLsemCorr.withALUFlags (h.write d (sa.regs (π a) + BitVec.ofNat 64 k)
+        (aMachine.runBlock sa [.add (π d) (.imm k)]) (fun r => by
+          show (if r = π d then sa.regs (π d) + BitVec.ofNat 64 k else sa.regs r) = _
+          rw [hda]) rfl hL (fun hz : False => hz.elim)) _ _⟩
 
 /-- `SUB:64 d, a, #k` against `sub $k, %d` with `d` and `a` in one register. -/
 theorem decSim_subImm (d a : String) (k : Nat) (ha : L a) (hda : π d = π a)
@@ -385,9 +402,10 @@ theorem decSim_subImm (d a : String) (k : Nat) (ha : L a) (hda : π d = π a)
       [subImmI d a k] [.sub (π d) (.imm k)] :=
   DecSim.single fun sa b zf h =>
     ⟨_, zf, fstepF_subImmI d a k b zf _ (h.regs a ha),
-      h.write d _ _ (fun r => by
-        show (if r = π d then sa.regs (π d) - BitVec.ofNat 64 k else sa.regs r) = _
-        rw [hda]) rfl hL (fun hz => hz.elim)⟩
+      DecLsemCorr.withALUFlags (h.write d (sa.regs (π a) - BitVec.ofNat 64 k)
+        (aMachine.runBlock sa [.sub (π d) (.imm k)]) (fun r => by
+          show (if r = π d then sa.regs (π d) - BitVec.ofNat 64 k else sa.regs r) = _
+          rw [hda]) rfl hL (fun hz : False => hz.elim)) _ _⟩
 
 /-! ## 6. Immediate shifts -/
 
@@ -469,8 +487,15 @@ theorem fstepF_mulhiI (d a c : String) (b : LstateM) (zf : Bool) (va vc : BitVec
     (ha : b.reg.getW a 64 = some va) (hc : b.reg.getW c 64 = some vc) :
     fstepF (mulhiI d a c) b zf = some ((b.setReg d (mulHiW va vc)).nextPc, zf) := by
   have h1 : withWidthTag 64 "MULXHI" ≠ withWidthTag 64 "CMP" := by decide +kernel
-  simp [fstepF, mulhiI, cmpArgs?, movRegArgs?, h1,
-    RunBlockLsemAgree.lsemStepMem_mulhi3 d a c b va vc ha hc]
+  have hL := RunBlockLsemAgree.lsemStepMem_mulhi3 d a c b va vc ha hc
+  have ha' : aluFlagOp? (mulhiI d a c) = none := by simp [aluFlagOp?, mulhiI, withWidthTag]
+  have hc' : cmpArgs? (mulhiI d a c) = none := by simp [cmpArgs?, mulhiI, h1]
+  have hm' : movRegArgs? (mulhiI d a c) = none := by
+    simp [movRegArgs?, mulhiI, withWidthTag]
+  unfold fstepF
+  rw [hc', hm']
+  simp only []
+  rw [stepMemF_of_lsemStepMem (i := mulhiI d a c) hL, withALUFlags_of_none ha']
   rfl
 
 /-- **Widening multiply.** The low half `MUL:64 lo, a, c` followed by the high half
@@ -489,8 +514,10 @@ theorem decSim_mulx (lo hi a c : String) (ha : L a) (hc : L c) (hloa : lo ≠ a)
   set va := sa.regs (π a)
   set vc := sa.regs (π c)
   have h1 : fstepF (binRegI "MUL:64" lo a c) b zf = some ((b.setReg lo (va * vc)).nextPc, zf) := by
-    rw [fstepF_binRegI _ "MUL" lo a c stripWidthTag_MUL64 (by decide +kernel) (by decide) b zf
-      _ hva, hvc, Option.bind_some]
+    rw [fstepF_binRegI _ "MUL" lo a c stripWidthTag_MUL64 (by decide +kernel) (by decide)
+      (by decide) b zf _ hva, hvc, Option.bind_some]
+    simp only [withALUFlags_of_none (show aluFlagOp? (binRegI "MUL:64" lo a c) = none by
+      simp [aluFlagOp?, binRegI, withWidthTag])]
     rfl
   set b1 := (b.setReg lo (va * vc)).nextPc
   have hva1 : b1.reg.getW a 64 = some va := by

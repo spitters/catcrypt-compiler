@@ -545,6 +545,7 @@ theorem decSim_mulhi_pinned (hi a c S D SP : String) (off : Int) (ha : L a) (hc 
     instruction `mk` on the register of `d` and the register of `c`, which differ. -/
 theorem decSim_binReg_mov (opn base : String) (hstrip : stripWidthTag opn = base)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmul : base ≠ "MULXHI")
+    (hcarry : base ≠ "ADC" ∧ base ≠ "SBB" ∧ base ≠ "ADCX" ∧ base ≠ "ADOX")
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hf : ∀ x y, applyOpnN 64 base [x, y] = some (f x y))
     (mk : String → JOperand → JInstr 64)
@@ -556,9 +557,10 @@ theorem decSim_binReg_mov (opn base : String) (hstrip : stripWidthTag opn = base
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [binRegI opn d a c] [.mov (π d) (.reg (π a)), mk (π d) (.reg (π c))] := by
   intro sa b zf h
-  refine ⟨_, zf, ?_, h.write d (f (sa.regs (π a)) (sa.regs (π c))) _ (fun r => ?_)
-    (hmkm _ _ _) hL (fun hz => hz.elim)⟩
-  · rw [runStraightF_singleton, fstepF_binRegI opn base d a c hstrip hcmp hmul b zf _
+  refine ⟨_, zf, ?_, DecLsemCorr.withALUFlags (h.write d (f (sa.regs (π a)) (sa.regs (π c)))
+    (aMachine.runBlock sa [.mov (π d) (.reg (π a)), mk (π d) (.reg (π c))]) (fun r => ?_)
+    (hmkm _ _ _) hL (fun hz : False => hz.elim)) (binRegI opn d a c) b⟩
+  · rw [runStraightF_singleton, fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry b zf _
       (h.regs a ha), h.regs c hc, Option.bind_some, hf, Option.map_some]
   · show (evalInstrA (evalInstrA sa (.mov (π d) (.reg (π a)))) (mk (π d) (.reg (π c)))).regs r
       = _
@@ -575,7 +577,7 @@ theorem decSim_imul_mov (d a c : String) (ha : L a) (hc : L c) (hdc : π c ≠ �
     DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
       [binRegI "MUL:64" d a c] [.mov (π d) (.reg (π a)), .imul (π d) (.reg (π c))] :=
   decSim_binReg_mov _ "MUL" stripWidthTag_MUL64 (by decide +kernel)
-    (by decide) (· * ·) (fun _ _ => rfl) JInstr.imul (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
+    (by decide) (by decide) (· * ·) (fun _ _ => rfl) JInstr.imul (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     d a c ha hc hdc hL
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop

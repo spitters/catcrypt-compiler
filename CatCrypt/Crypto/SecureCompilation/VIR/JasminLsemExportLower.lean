@@ -334,7 +334,8 @@ theorem evalInstrPMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P')
       have hev : ∀ (R : LprogM) (x : LstateMF),
           evalInstrPMemF R (LinstrR.Lgoto (fn, l), tag) x
             = (if fn = R.lfn then evalJumpMem R l x.prog else none).map
-                (fun p => { x with prog := p }) := fun _ _ => rfl
+                (fun p => { x with prog := p }) := fun R x => by
+        rw [evalInstrPMemF_delegate R _ x rfl rfl rfl rfl rfl]; rfl
       rw [hev] at he
       obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp he
       split at hq
@@ -455,6 +456,31 @@ theorem lsemStepMem_setLpc (i : LinstrRM) (s : LstateM) (p : Nat) :
       | rfl
       | (rw [lsemStepCast_setLpc, Option.map_map, Option.map_map]; rfl)
 
+/-- **The flag machine's straight-line step does not read the program counter.** -/
+theorem stepMemF_setLpc (i : LinstrRM) (s : LstateM) (p : Nat) :
+    stepMemF i (s.setLpc p) = (stepMemF i s).map (fun t => t.setLpc (p + 1)) := by
+  have he : ∀ w o, evalOperandN (s.setLpc p).reg w o = evalOperandN s.reg w o :=
+    fun w o => by cases o <;> rfl
+  unfold stepMemF
+  rw [lsemStepMem_setLpc]
+  cases lsemStepMem i s with
+  | some b =>
+      simp only [Option.map_some]
+      unfold withALUFlags
+      simp only [he]
+      split
+      · split <;> rfl
+      · rfl
+  | none =>
+      simp only [Option.map_none]
+      split
+      · unfold carryStep
+        simp only [he]
+        split
+        · split <;> rfl
+        · rfl
+      · rfl
+
 /-- **A straight step does not read the program counter.** -/
 theorem fstepF_setLpc (i : LinstrRM) (s : LstateM) (zf : Bool) (p : Nat) :
     fstepF i (s.setLpc p) zf
@@ -469,7 +495,7 @@ theorem fstepF_setLpc (i : LinstrRM) (s : LstateM) (zf : Bool) (p : Nat) :
   (repeat' split) <;>
     first
       | rfl
-      | (rw [lsemStepMem_setLpc, Option.map_map, Option.map_map]; rfl)
+      | (rw [stepMemF_setLpc, Option.map_map, Option.map_map]; rfl)
 
 /-- Two bases that differ in the program counter only. -/
 def EqPc (a b : LstateM) : Prop := b = a.setLpc b.lpc
@@ -588,19 +614,75 @@ theorem fstepF_movWire (d s0 mov : String) (tag : MemTag) (hmov : stripWidthTag 
   simp only [h1, h2]
   rfl
 
+/-- The memory step of a register-tagged binop is the register step `lsemStepMC`. -/
+theorem lsemStepMem_binopWire (d x : String) (s1 : LOperand) (opn : String)
+    (cd : Option Nat) (s : LstateM) :
+    lsemStepMem (binopWire d x s1 opn, .reg cd) s
+      = (lsemStepMC (binopWire d x s1 opn) s.reg).map (fun r => { s with reg := r }) := by
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inl rfl)]
+
 /-- The straight step of a register-tagged binop that is not the flag compare is
-    the register step `lsemStepMC`, with the zero flag unchanged. -/
+    the flag machine's step `stepMemF`, with the zero flag unchanged. -/
 theorem fstepF_binopWire (d x : String) (s1 : LOperand) (opn : String) (cd : Option Nat)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (s : LstateM) (zf : Bool) :
     fstepF (binopWire d x s1 opn, .reg cd) s zf
-      = (lsemStepMC (binopWire d x s1 opn) s.reg).map (fun r => ({ s with reg := r }, zf)) := by
+      = (stepMemF (binopWire d x s1 opn, .reg cd) s).map (fun b => (b, zf)) := by
   have h1 : cmpArgs? (binopWire d x s1 opn, MemTag.reg cd) = none := by
     simp only [cmpArgs?, binopWire, hcmp, if_false]
   have h2 : movRegArgs? (binopWire d x s1 opn, MemTag.reg cd) = none := rfl
   unfold fstepF
-  simp only [h1, h2, lsemStepMem_reg]
-  rw [lsemStepCast_of_delegate _ _ (Or.inl rfl), Option.map_map]
-  rfl
+  simp only [h1, h2]
+
+/-- **The flag machine's step of the two-address binop.** After the copy
+    `MOV d, s0`, the binop `OP d, d, s1` steps as `OP d, s0, s1` from the state before
+    the copy, up to the program counter, provided `s1` is not the register `d`. -/
+theorem stepMemF_twoAddr (d s0 : String) (s1 : LOperand) (opn : String) (cd : Option Nat)
+    (s : LstateM) {w : Nat} (v : BitVec w) (hc : s.reg.lvm s0 = ⟨w, v⟩) (hd : s1 ≠ .reg d) :
+    stepMemF (binopWire d d s1 opn, .reg cd) ((s.setReg d v).nextPc)
+      = (stepMemF (binopWire d s0 s1 opn, .reg cd) s).map
+          (fun t => t.setLpc (s.reg.lpc + 2)) := by
+  have hlow := lsemStepMC_twoAddr s.reg d s0 s1 opn v hc hd
+  have e1 : ∀ u, evalOperandN ((s.setReg d v).nextPc).reg u (.reg d)
+      = evalOperandN s.reg u (.reg s0) := by
+    intro u
+    have hd' : ((s.reg.setReg d v).nextPc).lvm d = s.reg.lvm s0 := by
+      rw [hc]; simp [LstateN.nextPc, LstateN.lvm_setReg]
+    simp only [evalOperandN, LstateM.reg_nextPc, LstateM.reg_setReg]
+    unfold LstateN.getW
+    rw [hd']
+  have e2 : ∀ u, evalOperandN ((s.setReg d v).nextPc).reg u s1 = evalOperandN s.reg u s1 := by
+    intro u
+    cases s1 with
+    | reg b =>
+        have hb : b ≠ d := fun h => hd (by rw [h])
+        simp only [evalOperandN, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.getW_nextPc,
+          LstateN.getW_setReg_other _ _ _ _ _ hb]
+    | _ => rfl
+  unfold stepMemF
+  rw [lsemStepMem_binopWire, lsemStepMem_binopWire]
+  rw [show ((s.setReg d v).nextPc).reg = (s.reg.setReg d v).nextPc from rfl, hlow]
+  have hset : ∀ x : BitVec 64, (((s.setReg d v).nextPc).setReg d x).nextPc
+      = ((s.setReg d x).nextPc).setLpc (s.reg.lpc + 2) := by
+    intro x
+    simp only [LstateM.setLpc, LstateM.nextPc, LstateM.setReg, LstateN.nextPc,
+      LstateN.setReg]
+    congr 2
+    funext r'
+    by_cases h : r' = d <;> simp [h]
+  cases lsemStepMC (binopWire d s0 s1 opn) s.reg with
+  | some r =>
+      simp only [Option.map_some]
+      unfold withALUFlags aluFlagOp?
+      simp only [binopWire]
+      split_ifs <;> simp only [e1, e2] <;>
+        (cases evalOperandN s.reg 64 (.reg s0) <;> cases evalOperandN s.reg 64 s1 <;> rfl)
+  | none =>
+      simp only [Option.map_none]
+      unfold carryArgs? carryStep
+      simp only [binopWire]
+      split_ifs <;> simp only [e1, e2] <;>
+        (cases evalOperandN s.reg 64 (.reg s0) <;> cases evalOperandN s.reg 64 s1 <;>
+          simp only [Option.map_some, Option.map_none, hset] <;> rfl)
 
 /-- **Two-address lowering of one binop.** When `OP d, s0, s1` steps, the pair
     `MOV d, s0 ; OP d, d, s1` runs from the same state to a state equal up to the
@@ -614,17 +696,14 @@ theorem fstepF_twoAddr (d s0 : String) (s1 : LOperand) (opn mov : String) (cd : 
     ∃ t', runStraightF [(movWire d s0 mov, tagM), (binopWire d d s1 opn, .reg cd)] s zf
         = some (t', zt) ∧ EqPc t t' := by
   rw [fstepF_binopWire d s0 s1 opn cd hcmp] at h
-  obtain ⟨r, hr, hrt⟩ := Option.map_eq_some_iff.mp h
+  obtain ⟨t0, ht, hrt⟩ := Option.map_eq_some_iff.mp h
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj hrt
   have hc : s.reg.lvm s0 = ⟨(s.reg.lvm s0).1, (s.reg.lvm s0).2⟩ := rfl
-  have hlow := lsemStepMC_twoAddr s.reg d s0 s1 opn (s.reg.lvm s0).2 hc hd
-  rw [hr, Option.map_some] at hlow
-  refine ⟨{ s with reg := setLpcN r (s.reg.lpc + 2) }, ?_, rfl⟩
+  have hs := stepMemF_twoAddr d s0 s1 opn cd s (s.reg.lvm s0).2 hc hd
+  rw [ht, Option.map_some] at hs
+  refine ⟨t0.setLpc (s.reg.lpc + 2), ?_, rfl⟩
   rw [runStraightF_cons, fstepF_movWire d s0 mov tagM hmov, Option.bind_some,
-    runStraightF_cons, fstepF_binopWire d d s1 opn cd hcmp]
-  show (Option.map _ (lsemStepMC (binopWire d d s1 opn)
-    ((s.reg.setReg d (s.reg.lvm s0).2).nextPc))).bind _ = _
-  rw [hlow]
+    runStraightF_cons, fstepF_binopWire d d s1 opn cd hcmp, hs]
   rfl
 
 theorem EqPc.trans {a b c : LstateM} (h1 : EqPc a b) (h2 : EqPc b c) : EqPc a c := by

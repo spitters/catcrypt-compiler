@@ -96,8 +96,26 @@ theorem evalInstrPMemF_next (P : LprogM) (i : LinstrRM) (s t : LstateMF)
           exact ⟨h1, Or.inr h2⟩
         · cases h
           exact ⟨rfl, Or.inl (by simp)⟩
-      · obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
-        exact evalInstrPMemL_next P i s.prog p hp
+      · split at h
+        · rename_i p hp
+          cases h
+          refine ⟨(evalInstrPMemL_next P i s.prog p hp).1, ?_⟩
+          rw [withALUFlags_lpc]
+          exact (evalInstrPMemL_next P i s.prog p hp).2
+        · split at h
+          · rename_i op d a b hk
+            obtain ⟨b', hb, rfl⟩ := Option.map_eq_some_iff.mp h
+            have hl := carryStep_lpc op d a b _ _ hb
+            have hi : ∃ ds o xs, i.1 = .Lopn ds o xs := by
+              unfold carryArgs? at hk
+              split at hk
+              · rename_i heq; exact ⟨_, _, _, heq⟩
+              · cases hk
+            obtain ⟨ds, o, xs, hi⟩ := hi
+            refine ⟨rfl, ?_⟩
+            rw [hi]
+            simp [NextPc, hl]
+          · cases h
 
 /-- The flag-extended memref semantics of program `P` as a labelled machine. -/
 def memFMachine (P : LprogM) : LMachine LstateMF where

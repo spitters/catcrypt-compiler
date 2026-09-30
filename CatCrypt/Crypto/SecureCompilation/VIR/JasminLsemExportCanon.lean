@@ -300,9 +300,9 @@ theorem getW_setReg_self (s : LstateM) (r x : String) (w : Nat) :
     exact LstateN.getW_setReg_other _ _ _ _ _ h
 
 /-- The extended step of an instruction that is neither the flag compare nor a
-    register copy is the memory step. -/
+    register copy is the flag machine's straight-line step `stepMemF`. -/
 theorem fstepF_of_plain (i : LinstrRM) (hc : cmpArgs? i = none) (hm : movRegArgs? i = none)
-    (s : LstateM) (zf : Bool) : fstepF i s zf = (lsemStepMem i s).map (fun b => (b, zf)) := by
+    (s : LstateM) (zf : Bool) : fstepF i s zf = (stepMemF i s).map (fun b => (b, zf)) := by
   unfold fstepF
   rw [hc, hm]
 
@@ -349,21 +349,28 @@ theorem canonTail_run (d : Nat) (out : String) (absent : Bool) (regs : List Stri
   have hadd : withWidthTag 64 "ADD" = "ADD:64" := by decide
   have hsub : withWidthTag 64 "SUB" = "SUB:64" := by decide
   have h2 := lsemStepMem_add64Imm (loopIdx d) (loopIdx d) 1 vi u1 ((hr1 _ _).trans hidx)
-  set u2 := (u1.setReg (loopIdx d) (vi + BitVec.ofNat 64 1)).nextPc with hu2
+  set u2 := withALUFlags
+    (.Lopn [.reg (loopIdx d)] "ADD:64" [.reg (loopIdx d), .imm 1], MemTag.reg none)
+    u1 (u1.setReg (loopIdx d) (vi + BitVec.ofNat 64 1)).nextPc with hu2
   have hctr2 : u2.reg.getW (loopCtr d) 64 = some vn := by
-    rw [hu2, LstateM.getW_setReg_nextPc_other _ _ _ _ _ (Ne.symm hic), hr1]
+    rw [hu2, withALUFlags_reg]
+    rw [LstateM.getW_setReg_nextPc_other _ _ _ _ _ (Ne.symm hic), hr1]
     exact hctr
   have h3 := lsemStepMem_sub64Imm (loopCtr d) (loopCtr d) 1 vn u2 hctr2
-  set u3 := (u2.setReg (loopCtr d) (vn - BitVec.ofNat 64 1)).nextPc with hu3
+  set u3 := withALUFlags
+    (.Lopn [.reg (loopCtr d)] "SUB:64" [.reg (loopCtr d), .imm 1], MemTag.reg none)
+    u2 (u2.setReg (loopCtr d) (vn - BitVec.ofNat 64 1)).nextPc with hu3
   have hread3 : ∀ x w, x ≠ loopIdx d → x ≠ loopCtr d → u3.reg.getW x w = u.reg.getW x w := by
     intro x w hx1 hx2
-    rw [hu3, LstateM.getW_setReg_nextPc_other _ _ _ _ _ hx2, hu2,
-      LstateM.getW_setReg_nextPc_other _ _ _ _ _ hx1, hr1]
+    rw [hu3, withALUFlags_reg]
+    rw [LstateM.getW_setReg_nextPc_other _ _ _ _ _ hx2, hu2, withALUFlags_reg]
+    rw [LstateM.getW_setReg_nextPc_other _ _ _ _ _ hx1, hr1]
   have hctr3 : u3.reg.getW (loopCtr d) 64 = some (vn - 1#64) := by
-    rw [hu3]
+    rw [hu3, withALUFlags_reg]
     exact LstateM.getW_setReg_nextPc_same u2 (loopCtr d) _
   have hidx3 : u3.reg.getW (loopIdx d) 64 = some (vi + 1#64) := by
-    rw [hu3, LstateM.getW_setReg_nextPc_other _ _ _ _ _ hic, hu2]
+    rw [hu3, withALUFlags_reg]
+    rw [LstateM.getW_setReg_nextPc_other _ _ _ _ _ hic, hu2, withALUFlags_reg]
     exact LstateM.getW_setReg_nextPc_same u1 (loopIdx d) _
   have hregs3 : ∀ r ∈ regs, (u3.reg.getW r 64).isSome := by
     intro r hr
@@ -379,21 +386,21 @@ theorem canonTail_run (d : Nat) (out : String) (absent : Bool) (regs : List Stri
       unfold loopAdvanceRM
       rw [runStraightF_cons, hadd,
         fstepF_of_plain _ (by simp [cmpArgs?, withWidthTag]) (by simp [movRegArgs?]),
-        h2, Option.map_some, Option.bind_some, runStraightF_cons, hsub,
-        fstepF_of_plain _ (by simp [cmpArgs?, withWidthTag]) (by simp [movRegArgs?]), h3, Option.map_some,
-        Option.bind_some, runStraightF_nil]
+        stepMemF_of_lsemStepMem h2, Option.map_some, Option.bind_some, runStraightF_cons, hsub,
+        fstepF_of_plain _ (by simp [cmpArgs?, withWidthTag]) (by simp [movRegArgs?]),
+        stepMemF_of_lsemStepMem h3, Option.map_some, Option.bind_some, runStraightF_nil]
     rw [List.append_assoc, runStraightF_append, hu1, Option.bind_some, runStraightF_append,
       hadv, Option.bind_some]
     exact htouch
   · show u3.larr = u.larr
-    rw [hu3, hu2]
+    simp only [hu3, hu2, withALUFlags_larr, LstateM.larr_nextPc, LstateM.larr_setReg]
     exact hl1
   · intro x w hx1 hx2
     rw [getW_setLpc]
     exact hread3 x w hx1 hx2
   · show u3.reg.lvm (loopIdx d) = _
     rw [hu3, hu2]
-    simp [LstateM.nextPc, LstateM.setReg, hic]
+    simp [withALUFlags_reg, LstateM.nextPc, LstateM.setReg, hic]
   · rw [getW_setLpc]
     exact hctr3
 
@@ -549,8 +556,13 @@ theorem canonBody_trip {w n : Nat}
     obtain ⟨j, hj, rfl⟩ := hregs r hr
     rw [hreg j (by omega) 64]
     exact hinv j hj
-  obtain ⟨u', zf', hrunT, hl, hread, hcell, hctr'⟩ := canonTail_run d out absent regs t' zf
-    (BitVec.ofNat 64 t) vn hidx hctr hregs' hτ.idxCtr
+  obtain ⟨c, o, hF⟩ := runStraightF_of_lsemStraightMem _
+    (plainLopnBody_map_renRM τ (arrMemN_straightOpsMem_plain hupd _ _)) s' t' zf hrun'
+  obtain ⟨u', zf', hrunT, hl0, hread0, hcell, hctr'⟩ := canonTail_run d out absent regs
+    { t' with cf := c, of := o } zf (BitVec.ofNat 64 t) vn hidx hctr hregs' hτ.idxCtr
+  have hl : u'.larr = t'.larr := hl0
+  have hread : ∀ x w, x ≠ loopIdx d → x ≠ loopCtr d → u'.reg.getW x w = t'.reg.getW x w :=
+    hread0
   have hnotIC : ∀ j, j < invTys.length + 2 → j ≠ invTys.length →
       τ (argName j) ≠ loopIdx d ∧ τ (argName j) ≠ loopCtr d := by
     intro j hj hjn
@@ -560,9 +572,7 @@ theorem canonBody_trip {w n : Nat}
       exact ⟨hτ.outIdx, hτ.outCtr⟩
     · exact ⟨hτ.invIdx j (by omega), hτ.invCtr j (by omega)⟩
   refine ⟨u', zf', ?_, ?_, ?_, hctr'⟩
-  · rw [runStraightF_append,
-      runStraightF_plain _ (plainLopnBody_map_renRM τ (arrMemN_straightOpsMem_plain hupd _ _))
-        s' zf, hrun', Option.map_some, Option.bind_some]
+  · rw [runStraightF_append, hF, Option.bind_some]
     exact hrunT
   · have hm3 := tripAgree_setReg_idx (tripAgree_setArr_acc hag stepv)
       (BitVec.ofNat 64 (t + 1))
@@ -750,7 +760,8 @@ theorem canonSeedsRM_run (d : Nat) (out c : String) (hc : c ≠ loopIdx d) (b0 :
   · unfold canonSeedsRM
     rw [runStraightF_cons, fstepF_movReg, Option.bind_some, runStraightF_cons,
       fstepF_of_plain _ (by simp [cmpArgs?]) (by simp [movRegArgs?]),
-      lsemStepMem_movImm64, Option.map_some, Option.bind_some, runStraightF_cons,
+      stepMemF_of_quiet rfl rfl, lsemStepMem_movImm64, Option.map_some, Option.bind_some,
+      runStraightF_cons,
       fstepF_movReg, Option.bind_some, runStraightF_nil]
   · intro x w hx
     rw [hb3, LstateM.getW_setReg_nextPc_other _ _ _ _ _ hx]

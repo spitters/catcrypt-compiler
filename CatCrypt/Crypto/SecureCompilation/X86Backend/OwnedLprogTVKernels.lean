@@ -29,9 +29,11 @@ that always fails is accepted without a comparison, since no halting run passes 
 With the wire typing `tyWire`, no block of the five `mpn_*_loop_owned` loops fails and all
 are accepted: `lsemFuelMemF` steps their array-ABI moves `MOVQ` (`qsave.<R>`) and
 `LOAD:64`/`STORE:64` (`mem.<B>.<off>`) as register copies (`JasminLsemMemFlagGuard.copyQ`).
-The one block of the X25519 ladder step fails at its first `ADC:64`, and the entry and loop
-blocks of the rolled Keccak-f1600 at `LOADSYM` and `ROR:63:64`; `lsemFuelMemF` steps none
-of these.
+The one block of the X25519 ladder step is not found to fail, and the check rejects it:
+`lsemFuelMemF` steps `ADC:64` with the carry flag, and the symbolic step
+`OwnedLprogTV.symStep` describes the carry family as outside its fragment. The entry and
+loop blocks of the rolled Keccak-f1600 fail at `LOADSYM` and `ROR:63:64`, which
+`lsemFuelMemF` does not step.
 
 ## Main definitions
 
@@ -118,7 +120,7 @@ def keccakRolledPre : Option Lprog :=
 #kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
 #kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
 set_option kat.ms 800 in
-#kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (true, 1, 1)
+#kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (false, 0, 1)
 set_option kat.ms 2500 in
 #kat ownedResult tyWire keccakRolledPre == some (true, 2, 3)
 

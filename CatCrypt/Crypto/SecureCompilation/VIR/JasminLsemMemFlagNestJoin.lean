@@ -74,7 +74,7 @@ emitted `CMP` evaluates its operand, so the guard-equivalence direction
   is `runBoundedStraightF` (passes of the extended step `fstepF`), so the body
   may contain the feedback reg-copy `MOV` and the invariant-touch `CMP` —
   `flagLoop_runBounded` covers neither (its body-fold is
-  `lsemStraightMem`) and sits at loop-offset 0 without the guard.
+  `lsemStraightMemF`) and sits at loop-offset 0 without the guard.
 
 ## Validate: the REAL rendered `forLoopLcmdNRtNested` stream
 
@@ -110,17 +110,18 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 /-! ## 1. The extended straight step: `Lopn ∪ reg-copy MOV ∪ flag-CMP`
 
 The flag segment lemma (`lsemFuelMemF_seg`) covers only `PlainLopnBody` segments —
-plain `Lopn`s stepped by the counter-register delegate.  The emitted loop bodies also carry
+plain `Lopn`s stepped by `stepMemF`.  The emitted loop bodies also carry
 the reg-copy `MOV`s (seeds/feedback) and the invariant-touch `CMP ctr,invBase`,
 which the flag machine steps through its two additive arms.  `fstepF` is the
 per-instruction spec of the flag machine on an arbitrary `Lopn`: the flag-`CMP`
-arm, the reg-copy `MOV` arm, and the `lsemStepMem` delegate — the extended
+arm, the reg-copy `MOV` arm, and the step `stepMemF` — the extended
 straight-step function the generic fold ties below run over. -/
 
 /-- One extended straight step over the bundled base + flag: the flag-`CMP`
     (sets `zf`, store untouched), the reg-copy `MOV` (writes `dst := src`), or
-    the straight-line/memory delegate (`zf` threaded).  Mirrors the three
-    non-jump arms of `evalInstrPMemF` exactly. -/
+    the flag machine's straight-line step `stepMemF` (`zf` threaded; carry family and
+    carry and overflow flags on the base).  Mirrors the non-jump arms of
+    `evalInstrPMemF` exactly. -/
 def fstepF (i : LinstrRM) (s : LstateM) (zf : Bool) : Option (LstateM × Bool) :=
   match cmpArgs? i with
   | some (a, b) =>
@@ -133,7 +134,7 @@ def fstepF (i : LinstrRM) (s : LstateM) (zf : Bool) : Option (LstateM × Bool) :
       match readReg s.reg (.reg src) with
       | some ⟨_, v⟩ => some ((s.setReg dst v).nextPc, zf)
       | none => none
-  | none => (lsemStepMem i s).map (fun b => (b, zf))
+  | none => (stepMemF i s).map (fun b => (b, zf))
 
 /-- **The extended straight-step tie** (`Lopn ∪ MOV ∪ CMP`).  On ANY `Lopn`
     instruction — including the emitted flag-`CMP` (immediate or register
@@ -149,7 +150,7 @@ theorem evalInstrPMemF_isLopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
     obtain ⟨d, o, src, hd⟩ := hi
     unfold flagCondCC?
     rw [hd]
-  unfold evalInstrPMemF fstepF
+  unfold evalInstrPMemF fstepF stepMemF
   cases hc : cmpArgs? i with
   | some ab =>
       obtain ⟨a, b⟩ := ab
@@ -172,7 +173,16 @@ theorem evalInstrPMemF_isLopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
       | none =>
           simp only [hf]
           rw [evalInstrPMemL_lopn P i s.prog hi]
-          cases lsemStepMem i s.prog.base <;> rfl
+          cases lsemStepMem i s.prog.base with
+          | some b => rfl
+          | none =>
+              simp only [Option.map_none]
+              cases carryArgs? i with
+              | none => rfl
+              | some q =>
+                  obtain ⟨op, d, a, b⟩ := q
+                  simp only []
+                  cases carryStep op d a b s.prog.base <;> rfl
 
 /-- Every successful extended straight step advances the pc by one. -/
 theorem fstepF_lpc_succ (i : LinstrRM) (s b : LstateM) (zf zb : Bool)
@@ -185,7 +195,7 @@ theorem fstepF_lpc_succ (i : LinstrRM) (s b : LstateM) (zf zb : Bool)
          simp [LstateM.lpc_nextPc])
       | (obtain ⟨bz, hbz, hrfl⟩ := Option.map_eq_some_iff.mp h
          obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hrfl
-         exact lsemStepMem_lpc_succ i s bz hbz)
+         exact stepMemF_lpc_succ i s bz hbz)
       | simp at h
 
 /-- The extended straight fold: iterate `fstepF` over a segment, threading the
@@ -224,12 +234,12 @@ theorem runStraightF_lpc :
           omega
 
 /-- On a `PlainLopnBody` segment (no flag-`CMP`, no reg-copy `MOV`) the
-    extended fold IS the straight-line body-fold with the flag threaded unchanged — the
-    conservativity of the extension. -/
+    extended fold IS the flag body-fold `lsemStraightMemF` with `zf` threaded
+    unchanged. -/
 theorem runStraightF_plain :
     ∀ (seg : List LinstrRM), PlainLopnBody seg →
       ∀ (s : LstateM) (zf : Bool),
-        runStraightF seg s zf = (lsemStraightMem seg s).map (fun b => (b, zf)) := by
+        runStraightF seg s zf = (lsemStraightMemF seg s).map (fun b => (b, zf)) := by
   intro seg
   induction seg with
   | nil => intro _ s zf; simp
@@ -237,14 +247,28 @@ theorem runStraightF_plain :
       intro hplain s zf
       obtain ⟨_, hc, hm⟩ := hplain i (by simp)
       have his : PlainLopnBody is := fun j hj => hplain j (by simp [hj])
-      rw [runStraightF_cons, lsemStraightMem_cons]
+      rw [runStraightF_cons, lsemStraightMemF_cons]
       unfold fstepF
       rw [hc, hm]
-      cases hstep : lsemStepMem i s with
+      cases hstep : stepMemF i s with
       | none => simp
       | some b =>
           simp only [Option.map_some, Option.bind_some]
           exact ih his b zf
+
+/-- **The extended fold against the straight-line body-fold.**  On a `PlainLopnBody`
+    segment that `lsemStraightMem` runs to `b`, the extended fold runs to `b` up to the
+    carry and overflow flags, with `zf` threaded unchanged. -/
+theorem runStraightF_of_lsemStraightMem (seg : List LinstrRM) (hplain : PlainLopnBody seg)
+    (s b : LstateM) (zf : Bool) (h : lsemStraightMem seg s = some b) :
+    ∃ c o, runStraightF seg s zf = some ({ b with cf := c, of := o }, zf) := by
+  obtain ⟨c, o, hc⟩ := lsemStraightMemF_of_lsemStraightMem seg s b s.cf s.of h
+  refine ⟨c, o, ?_⟩
+  rw [runStraightF_plain seg hplain s zf]
+  have hs : ({ s with cf := s.cf, of := s.of } : LstateM) = s := rfl
+  rw [hs] at hc
+  rw [hc]
+  rfl
 
 /-- **Extended straight-line segment run with continuation fuel.**  The
     `Lopn ∪ MOV ∪ CMP` extension of `lsemFuelMemF_seg`: an all-`Lopn`
@@ -1469,7 +1493,7 @@ theorem findLabelMem_guarded_top (top endL : LLabel) (nReg : String)
     carrier, with `zf = true`.  The per-pass fold is `runStraightF`, so the
     body may contain the feedback reg-copy `MOV` and the invariant-touch
     `CMP ctr,invBase` (the two emitted forms `flagLoop_runBounded`, whose
-    fold is `lsemStraightMem`, cannot step) — `JasminLsemMemFlagGuard` validates
+    fold is `lsemStraightMemF`, cannot step) — `JasminLsemMemFlagGuard` validates
     this shape only concretely (`rtLoopRM`). -/
 theorem guardedFlagLoop_runBounded_general (fn : String) (top endL : LLabel)
     (nReg : String) (body : List LinstrRM)
