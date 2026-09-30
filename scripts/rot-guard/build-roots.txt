@@ -28,7 +28,7 @@ CatCrypt.Crypto.Hax.HaxNFFront
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeLoop
 CatCrypt.Crypto.Hax.HaxToLowCTAscentBridgeRewrites
 CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsSim
-CatCrypt.Crypto.Hax.HaxToLowCTPlaced
+CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsValue
 CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.Hax.HaxToLowCTSim_NoShadow
@@ -760,6 +760,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
 CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Dot4FrontEmit
@@ -834,7 +836,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogDirect
 CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch

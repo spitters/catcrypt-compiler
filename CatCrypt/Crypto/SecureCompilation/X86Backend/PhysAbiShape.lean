@@ -1188,11 +1188,15 @@ theorem decodeLprog_node (body : Lcmd) (shs : List DShape) (P1 L P2 : Lcmd)
       ∧ sh.Straight ∧ labelOf instr.li_i = none) L sL)
     (h2 : List.Forall₂ (fun instr sh => DShapeOK (Params.ofBody body) instr.li_i sh
       ∧ sh.Straight ∧ labelOf instr.li_i = none) P2 s2)
-    (hg1 : ∀ P, DShapeOK P g1.li_i (.one (.op (.cmp ctr (.imm 0))))) (hg1l : labelOf g1.li_i = none)
-    (hg2 : ∀ P, DShapeOK P g2.li_i (.one (.jcc 4 endL))) (hg2l : labelOf g2.li_i = none)
+    (hg1 : DShapeOK (Params.ofBody body) g1.li_i (.one (.op (.cmp ctr (.imm 0)))))
+    (hg1l : labelOf g1.li_i = none)
+    (hg2 : DShapeOK (Params.ofBody body) g2.li_i (.one (.jcc 4 endL)))
+    (hg2l : labelOf g2.li_i = none)
     (hg3 : g3.li_i = .Llabel k1 top)
-    (hb1 : ∀ P, DShapeOK P b1.li_i (.one (.op (.cmp ctr (.imm 0))))) (hb1l : labelOf b1.li_i = none)
-    (hb2 : ∀ P, DShapeOK P b2.li_i (.one (.jcc 5 top))) (hb2l : labelOf b2.li_i = none)
+    (hb1 : DShapeOK (Params.ofBody body) b1.li_i (.one (.op (.cmp ctr (.imm 0)))))
+    (hb1l : labelOf b1.li_i = none)
+    (hb2 : DShapeOK (Params.ofBody body) b2.li_i (.one (.jcc 5 top)))
+    (hb2l : labelOf b2.li_i = none)
     (hb3 : b3.li_i = .Llabel k2 endL) (hr : r.li_i = .Lret) (htop : top ≠ endL)
     (hsaves : calleeSavedToSave body = [])
     (hF0 : (Int.ofNat (Params.ofBody body).frame) ≠ 0)
@@ -1214,9 +1218,9 @@ theorem decodeLprog_node (body : Lcmd) (shs : List DShape) (P1 L P2 : Lcmd)
   have hall : List.Forall₂ (fun instr sh => DShapeOK P instr.li_i sh) body shs := by
     rw [hbody, hshs]
     refine List.rel_append (h1.imp fun _ _ h => h.1) ?_
-    refine .cons (hg1 P) (.cons (hg2 P) (.cons (hlab3 P) ?_))
+    refine .cons hg1 (.cons hg2 (.cons (hlab3 P) ?_))
     refine List.rel_append (hL.imp fun _ _ h => h.1) ?_
-    refine .cons (hb1 P) (.cons (hb2 P) (.cons (hlabE P) ?_))
+    refine .cons hb1 (.cons hb2 (.cons (hlabE P) ?_))
     exact List.rel_append (h2.imp fun _ _ h => h.1) (.cons (hret P) .nil)
   rw [decodeLprog_encodeLfundefBytes_shapes body _ hsaves hF0 hF hF' hall hbr, fundefItemsL]
   obtain ⟨o1, o2, o3, o4, o5, o6, o7, o8, o9, e⟩ := itemsFromL_node P P1 L P2 s1 sL s2
