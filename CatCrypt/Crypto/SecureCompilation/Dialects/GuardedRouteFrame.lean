@@ -37,6 +37,7 @@ environment whose accumulator is the value `accTrips` computes.
 
 ## Main results
 
+* `frameCleanB`, `frameCleanB_sound` — the expression test of the check.
 * `wrOK`, `tripFrameB` — the write test and the frame check.
 * `semLowerSExpr_leaves` — a successful expression lowering reads bound words.
 * `tripFrameB_frame`, `tripFrameB_keep` — soundness of the check.
@@ -54,18 +55,37 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLt (varsIn)
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedAgree
   (BndP varsInL varsInL_sound upd_self_any upd_ne_any semLowerSExpr_bound)
-open CatCrypt.Crypto.SecureCompilation.Ascent (notTmpB notTmpB_sound srcCleanB srcCleanB_sound)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuarded
+  (srcNameB srcName_of_srcNameB)
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLoop (guardedTrips guardedTripCmd)
 open CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRoute (envOf accOf accTrips)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType Located)
 
 /-! ## 1. The check -/
 
-/-- A write of type `t` into `y` is allowed: `y` is no lowering temporary and not protected,
-    and a type the typing list gives `y` is `t`. -/
+/-- `srcClean` as a Boolean: variables that are source names (`srcNameB`), literals below
+    `2^64`, and the arithmetic, bitwise, shift and high-multiply nodes over such
+    expressions. -/
+def frameCleanB : SExpr → Bool
+  | .SVar x => srcNameB x
+  | .SLit n => decide (n < 2 ^ 64)
+  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b
+  | .SShl a b | .SShr a b | .SMulHiU a b => frameCleanB a && frameCleanB b
+  | _ => false
+
+theorem frameCleanB_sound : ∀ e : SExpr, frameCleanB e = true → srcClean e
+  | .SVar x, h => (srcName_of_srcNameB h).1
+  | .SLit n, h => show n < 2 ^ 64 from of_decide_eq_true h
+  | .SAdd a b, h | .SSub a b, h | .SMul a b, h | .SAnd a b, h | .SXor a b, h
+  | .SShl a b, h | .SShr a b, h | .SMulHiU a b, h => by
+      simp only [frameCleanB, Bool.and_eq_true] at h
+      exact ⟨frameCleanB_sound a h.1, frameCleanB_sound b h.2⟩
+
+/-- A write of type `t` into `y` is allowed: `y` is a source name (no lowering temporary and
+    no guard flag) and not protected, and a type the typing list gives `y` is `t`. -/
 def wrOK (Ty : List (String × CryptoTy)) (P : List String) (y : String) (t : CryptoTy) :
     Bool :=
-  notTmpB y && !decide (y ∈ P) &&
+  srcNameB y && !decide (y ∈ P) &&
     match Ty.lookup y with
     | some t' => decide (t' = t)
     | none => true
@@ -81,7 +101,7 @@ def tripFrameB (Ty : List (String × CryptoTy)) (P : List String) :
   | R, .RLetU64Zero x b =>
       if wrOK Ty P x (.sword 64) then tripFrameB Ty P (x :: R) b else none
   | R, .RScalarSetExpr x e =>
-      if wrOK Ty P x (.sword 64) && srcCleanB e && varsInL R e then some (x :: R) else none
+      if wrOK Ty P x (.sword 64) && frameCleanB e && varsInL R e then some (x :: R) else none
   | R, .RArrLoad dst src i =>
       if decide (dst.locDst = .TU64) && wrOK Ty P dst.locVar (.sword 64) &&
           decide (src.locVar ∈ R) && decide (i ∈ R) then some (dst.locVar :: R) else none
@@ -180,7 +200,7 @@ theorem agreeOn_upd_mem {R : List String} {e₁ e₂ : SEnvScalar} (h : AgreeOn 
 theorem wrOK_notTmp {Ty : List (String × CryptoTy)} {P : List String} {y : String}
     {t : CryptoTy} (h : wrOK Ty P y t = true) : ¬ isTmpName y := by
   simp only [wrOK, Bool.and_eq_true] at h
-  exact notTmpB_sound y h.1.1
+  exact (srcName_of_srcNameB h.1.1).1
 
 theorem wrOK_notP {Ty : List (String × CryptoTy)} {P : List String} {y : String}
     {t : CryptoTy} (h : wrOK Ty P y t = true) : y ∉ P := by
@@ -264,7 +284,7 @@ theorem tripFrameB_frame (Ty : List (String × CryptoTy)) (P : List String) :
         cases h
         simp only [Bool.and_eq_true] at hw
         obtain ⟨⟨hw, hcl⟩, hvl⟩ := hw
-        have hcl := srcCleanB_sound e hcl
+        have hcl := frameCleanB_sound e hcl
         have hvR : varsIn (· ∈ R) e := varsInL_sound (fun _ h => h) e hvl
         simp only [semScalar] at hs
         split at hs
@@ -430,7 +450,7 @@ theorem tripFrameB_keep (Ty : List (String × CryptoTy)) (P : List String) :
       · rename_i hw
         simp only [Bool.and_eq_true] at hw
         obtain ⟨⟨hw, hcl⟩, -⟩ := hw
-        have hcl := srcCleanB_sound e₀ hcl
+        have hcl := frameCleanB_sound e₀ hcl
         simp only [semScalar] at hs
         split at hs
         · rename_i a₁ nm₁ c₁ hl₁
