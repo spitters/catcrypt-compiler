@@ -206,11 +206,4 @@ theorem theta01_interleave (N : Nat) (leafSpec : LeafSpec)
   ↔ RustExec N leafSpec (blockToCmd (parityStmt 1 :: parityStmt 0 :: post)) rs rs' :=
   thetaInterleave_denote N leafSpec 0 1 (by decide) post rs rs'
 
-/-! ## §5  Status -/
-
-/-- This pass file compiles and its headline obligations
-    (`keccakPipeline_denote`, `keccakPipeline_isCT`,
-    `thetaInterleave_denote`) are closed. -/
-theorem keccakPipeline_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.KeccakPipeline

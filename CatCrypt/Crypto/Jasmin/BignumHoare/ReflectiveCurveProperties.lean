@@ -126,15 +126,11 @@ citations. -/
 
 /-! ### Category D: Prime-ness of moduli
 
-`Nat.Prime p_25519` is decidable in principle but `decide`
-times out on 256-bit numbers.  Standard discharge: cite a
-Pratt certificate or use a Mathlib `Fact` instance. -/
-
-example : True := by
-  -- Want: `p_25519 - some specific value` decidable, etc.
-  -- These work; what *doesn't* work is `Nat.Prime p_25519`
-  -- via plain `decide` — needs Pratt / native_decide / cite.
-  trivial
+`Nat.Prime p_25519` is decidable in principle but plain `decide`
+times out on 256-bit numbers. It is proved outside this module as
+`CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime`, a Pratt
+certificate that kernel `decide` checks through
+`PrattCertificate.pratt_prime`. -/
 
 /-! ### Category E: Group-theoretic properties
 

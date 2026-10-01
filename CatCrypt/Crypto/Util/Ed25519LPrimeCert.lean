@@ -5,72 +5,55 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import Mathlib.Tactic.NormNum.Prime
 public import CatCrypt.Crypto.Util.PrattCertificate
-public import CatCrypt.Crypto.Util.Ed25519L.Node7
-public import CatCrypt.Crypto.Util.Ed25519L.Node8
 
 /-!
 # Machine-checked primality of the Ed25519 group order `ℓ`
 
 `Nat.Prime ed25519Llit` for `ℓ = 2^252 + 27742317777372353535851937790883648493`
-via a recursive Lucas/Pratt certificate.
-
-`ℓ - 1 = 2^2 · 3 · 11 · A · B` has two prime factors exceeding `2^32`, so each is
-certified by its own nested Lucas certificate; those in turn descend through
-`D`, `E`, `G`, `H`, `I`, and `213441916511` until every factor is below `2^32`
-and directly checkable. The nested nodes live in the `Ed25519L` sub-directory:
-
-* `ℓ - 1 = 2^2 · 3 · 11 · A · B`,   witness `2`
-* `A - 1 = 2^4 · 3 · 23 · 58964693 · E`,   witness `5`   (`Ed25519L.Node7`)
-* `B - 1 = 2 · 7 · D`,   witness `2`   (`Ed25519L.Node8`)
-* `D - 1 = 2 · 269 · 213441916511 · G`,   witness `2`   (`Ed25519L.Node5`)
-* `E - 1 = 2 · 3 · 11 · 30703 · 82163 · 132667 · 137849`,   witness `5`   (`Ed25519L.Node6`)
-* `G - 1 = 2 · 5 · 1361 · 2851 · H`,   witness `2`   (`Ed25519L.Node3`)
-* `H - 1 = 2 · 41 · 43 · I`,   witness `17`   (`Ed25519L.Node2`)
-* `I - 1 = 2^2 · 3 · 7 · 23 · 531581 · 1224481`,   witness `2`   (`Ed25519L.Node1`)
-* `213441916511 - 1 = 2 · 5 · 73 · 292386187`,   witness `13`   (`Ed25519L.Node4`)
-
-Each certificate obligation is a separate lemma so the checks compile
-independently.
+from an inline Pratt certificate tree checked by kernel reduction
+(`PrattCertificate.pratt_prime`). Nested nodes certify the prime factors of
+`ℓ - 1` above `2^20`; the factors below `2^20` are leaves checked by trial
+division.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
-set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519LPrimeCert
 
 open CatCrypt.PrattCertificate
-open CatCrypt.Crypto.Util.Ed25519L.Node7
-open CatCrypt.Crypto.Util.Ed25519L.Node8
-
-/-! ## `ℓ = 2^252 + 27742317777372353535851937790883648493` -/
 
 /-- The Ed25519 group order `ℓ`, as a literal (definitionally equal to
     `2^252 + 27742317777372353535851937790883648493`). -/
 def ed25519Llit : ℕ :=
   0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed
 
-/-- Prime factors of `ℓ - 1`, with multiplicity; product is `ℓ - 1`. -/
-def ed25519LFactors : List ℕ := [2, 2, 3, 11, factorA, factorB]
-
-theorem ed25519LFactors_prod : ed25519LFactors.prod = ed25519Llit - 1 := by decide
-
-theorem ed25519LFactors_prime : ∀ q ∈ ed25519LFactors, Nat.Prime q := by
-  intro q hq
-  simp only [ed25519LFactors] at hq
-  fin_cases hq <;> first | exact factorA_prime | exact factorB_prime | norm_num
-
-theorem ed25519LFermat : powMod 2 (ed25519Llit - 1) ed25519Llit = 1 := by decide
-
-theorem ed25519LWitness :
-    ∀ q ∈ ed25519LFactors, powMod 2 ((ed25519Llit - 1) / q) ed25519Llit ≠ 1 := by decide
-
-/-- `Nat.Prime ed25519Llit`, machine-checked by a recursive Lucas certificate. -/
-theorem ed25519Llit_prime : Nat.Prime ed25519Llit :=
-  lucas_of_certificate ed25519Llit (by decide) 2 ed25519LFactors
-    ed25519LFactors_prod ed25519LFactors_prime ed25519LFermat ed25519LWitness
+/-- `Nat.Prime ed25519Llit`, by a Pratt certificate with root witness `2`. -/
+theorem ed25519Llit_prime : Nat.Prime ed25519Llit := by
+  pratt_prime
+    .node ed25519Llit 2
+        [2, 3, 11,
+        .node 198211423230930754013084525763697 5
+          [2, 3, 23,
+          .node 58964693 2
+            [2,
+            .node 14741173 2 [2, 3, 409477]],
+          .node 3044861653679985063343 5 [2, 3, 11, 30703, 82163, 132667, 137849]],
+        .node 276602624281642239937218680557139826668747 2
+          [2, 7,
+          .node 19757330305831588566944191468367130476339 2
+            [2, 269,
+            .node 213441916511 13
+              [2, 5, 73,
+              .node 292386187 2 [2, 3, 307, 5879]],
+            .node 172054593956031949258510691 2
+              [2, 5, 1361, 2851,
+              .node 4434155615661930479 17
+                [2, 41, 43,
+                .node 1257559732178653 2
+                  [2, 3, 7, 23, 531581,
+                  .node 1224481 13 [2, 3, 5, 2551]]]]]]]
 
 end CatCrypt.Crypto.Util.Ed25519LPrimeCert

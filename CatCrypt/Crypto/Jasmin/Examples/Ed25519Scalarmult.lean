@@ -213,17 +213,7 @@ def scalarmult256 : LowCT := rustcmd| do
     edDouble
     edCondAdd
 
-/-! ## 5. Elaboration smoke test
-
-Compile-time check that the 256-iteration unroll completes without
-hitting Lean's recursion-depth limit. The unrolled program is ~6500
-nodes (256 × 25 nodes/iter), well within budget. -/
-
-example : True := by
-  let _ := scalarmult256
-  trivial
-
-/-! ## 6. mvcgen-attachment sketch
+/-! ## 5. mvcgen-attachment sketch
 
 The Hoare-spec-and-VCgen path that closes `ed_smul` against
 `scalarmult256`. Stated here as a structural plan, not a proof — the

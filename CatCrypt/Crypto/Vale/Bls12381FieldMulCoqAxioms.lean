@@ -48,11 +48,3 @@ AUCurves' `fiat-rust/src/` set (which currently routes BLS12-381 `fp_mul`
 through a separate Bedrock2 tower); generating it is a codegen step, and it
 does not change the trust basis, which is `mulmod_correct` above.
 -/
-
-namespace CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms
-
-/-- The leaf axiom this file cites. Present so the module has content and the
-    citation table above is co-located with the axiom it documents. -/
-theorem cited : True := trivial
-
-end CatCrypt.Crypto.Vale.Bls12381FieldMulCoqAxioms

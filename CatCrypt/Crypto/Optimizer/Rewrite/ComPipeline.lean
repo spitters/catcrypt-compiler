@@ -152,7 +152,4 @@ example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (comAlgebraicPipeline 4 demoSelfSub demoK).denote V = demoSelfSub.denote V :=
   comAlgebraicPipeline_denote 4 demoSelfSub demoK V (demoK_consistent V)
 
-/-- Smoke check: the composition module builds and its obligations close. -/
-theorem comPipeline_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline

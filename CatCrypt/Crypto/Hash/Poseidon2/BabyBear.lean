@@ -432,33 +432,18 @@ def katExpected : Fin width → F := ![
   563338433, 319524748, 1741414159, 1650859320, 894311162, 1121347488, 1692793758,
   1052633829, 1344246938]
 
-/-- **KAT cross-check** *(still pending after two close-out attempts;
-    `native_decide` times out >8 min even with explicit-`x^7` sbox,
-    unrolled state sum, and numeric `diagV`)*.
+/-! ## Known-answer check
 
-    Root cause: `ZMod p`'s multiplication is symbolic in the kernel
-    (each `*` opens to `Fin.mk (·.val * ·.val % p) _` with a fresh
-    proof obligation), and the permutation's 21 rounds × 16 lanes
-    chain those operations into a term too large for `native_decide`'s
-    bytecode interpreter at this `p`.
-
-    Two paths remain open:
-
-    1. Replicate the permutation at the raw-`ℕ` level (`% p`
-       arithmetic, `Array ℕ` state) and KAT-check that. The `F`-level
-       definition becomes a thin wrapper. Verification cost drops to
-       native-machine arithmetic.
-    2. Drive the KAT through the catcrypt Rust-cmd extraction
-       pipeline (compile the permutation to MLIR/LLVM and KAT-check
-       the binary against Plonky3's). This is what
-       `high-speed-crypto-in-lean` skill exists for.
-
-    Statement (for reference):
-    ```
-    poseidon2BabyBearPermute katInput = katExpected
-    ```
-    The placeholder below is `trivial : True` so this file builds
-    cleanly while the KAT is the only remaining gap. -/
-theorem kat_pending : True := trivial
+The known-answer statement is
+```
+poseidon2BabyBearPermute katInput = katExpected
+```
+and it is not checked in this module. The state is a function `Fin width → F`
+and every round is a closure over the previous state, so each lane of a round
+re-evaluates every lane of the round before it. A check needs a
+round-state representation that stores each round's lanes (an `Array` or
+`Vector` per round), proved extensionally equal to `poseidon2BabyBearPermute`.
+`Poseidon2.FieldDialectPerm.refPermField_matches_kat` checks the same vectors
+against the `Nat`-mod-`p` mirror of the field-dialect schedule. -/
 
 end CatCrypt.Crypto.Hash.Poseidon2.BabyBear

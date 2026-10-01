@@ -160,7 +160,4 @@ example (N : Nat) (leafSpec : LeafSpec) (rs rs' : RustState) :
   tvCheckSched_sound N leafSpec demoBlock _
     (by simp only [tvCheckSched, Bool.or_eq_true, decide_eq_true_eq]; exact Or.inr trivial) rs rs'
 
-/-- Smoke check: the module builds and its obligations close. -/
-theorem tvSched_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.TranslationValidationSched

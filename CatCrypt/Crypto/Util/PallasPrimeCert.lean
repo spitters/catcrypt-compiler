@@ -5,69 +5,46 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Util.PrattCertificate
-public import Mathlib.Tactic.NormNum.Prime
 public import CatCrypt.Crypto.Util.PrattCertificate
-public meta import CatCrypt.Crypto.Util.Pallas.Node4
-public import CatCrypt.Crypto.Util.Pallas.Node4
-public meta import CatCrypt.Crypto.Util.Pallas.Node5
-public import CatCrypt.Crypto.Util.Pallas.Node5
 
 /-!
 # Machine-checked primality of the Pasta Pallas base-field prime
 
-`Nat.Prime pallaslit` via a Lucas/Pratt certificate, where `pallaslit` is the
-Pallas base-field prime
-`0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001`
-`= 28948022309329048855892746252171976963363056481941560715954676764349967630337`
-(definitionally equal to `RelationalFront.pallasQ` / `Halo2PastaFieldEmit.pallasPrime`,
-and the Vesta group order). By the Pasta cycle this is `|E_Vesta|`.
-
-The factorization is
-`pallaslit - 1 = 2^32 · 3 · 463 · 539204044132271846773 · 8999194758858563409123804352480028797519453`,
-with witness `5`. Two factors exceed `2^32`, so each is proved prime by its own
-nested Lucas certificate (`pallasA_prime`, `pallasB_prime`), which recurse once
-more through `pallasA1_prime` / `pallasB1_prime` / `pallasB2_prime`, held in the
-`Pallas.Node1`–`Pallas.Node5` sub-certificate files. Each certificate obligation
-is its own lemma so the `native_decide` checks compile independently.
+`Nat.Prime pallaslit` from an inline Pratt certificate tree checked by kernel
+reduction (`PrattCertificate.pratt_prime`). Nested nodes certify the prime factors
+of `p - 1` above `2^20`; the factors below `2^20` are leaves checked by trial
+division.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
-set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.PallasPrimeCert
 
 open CatCrypt.PrattCertificate
-open CatCrypt.Crypto.Util.Pallas.Node4
-open CatCrypt.Crypto.Util.Pallas.Node5
 
 /-- The Pasta Pallas base-field prime, as a literal (definitionally equal to
     `RelationalFront.pallasQ`). -/
 def pallaslit : Nat :=
   0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001
 
-/-- The below-`2^32` prime factors of `pallaslit - 1`, with multiplicity
-    (`2^32 · 3 · 463`). -/
-def pallasSmallFactors : List Nat := List.replicate 32 2 ++ [3, 463]
-
-/-- All prime factors of `pallaslit - 1`; the last two exceed `2^32` and are
-    proved prime by the nested certificates `pallasA_prime` / `pallasB_prime`. -/
-def pallasFactors : List Nat := pallasSmallFactors ++ [pallasAlit, pallasBlit]
-
-theorem pallasFactors_prod : pallasFactors.prod = pallaslit - 1 := by decide
-theorem pallasFactors_prime : ∀ q ∈ pallasFactors, Nat.Prime q := by
-  intro q hq
-  fin_cases hq <;> first | exact pallasA_prime | exact pallasB_prime | norm_num
-theorem pallasFermat : powMod 5 (pallaslit - 1) pallaslit = 1 := by decide
-theorem pallasWitness :
-    ∀ q ∈ pallasFactors, powMod 5 ((pallaslit - 1) / q) pallaslit ≠ 1 := by
-  decide
-
-/-- `Nat.Prime pallaslit`, machine-checked by a Lucas certificate. -/
-theorem pallaslit_prime : Nat.Prime pallaslit :=
-  lucas_of_certificate pallaslit (by decide) 5 pallasFactors
-    pallasFactors_prod pallasFactors_prime pallasFermat pallasWitness
+/-- `Nat.Prime pallaslit`, by a Pratt certificate with root witness `5`. -/
+theorem pallaslit_prime : Nat.Prime pallaslit := by
+  pratt_prime
+    .node pallaslit 5
+        [2, 3, 463,
+        .node 539204044132271846773 5
+          [2, 3, 89, 14923,
+          .node 417677162933 2 [2, 59, 1973, 897019]],
+        .node 8999194758858563409123804352480028797519453 2
+          [2, 3, 11, 2531, 115603,
+          .node 1197907 3 [2, 3, 53, 3767],
+          .node 22160661629 3
+            [2, 7, 19,
+            .node 41655379 2
+              [2, 3,
+              .node 6942563 2 [2, 11, 17, 19, 977]]],
+          .node 325086459374267 2 [2, 509, 413527, 772231]]]
 
 end CatCrypt.Crypto.Util.PallasPrimeCert

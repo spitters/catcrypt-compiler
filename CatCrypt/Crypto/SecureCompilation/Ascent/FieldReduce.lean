@@ -421,8 +421,7 @@ four chained word-steps — its `ZMod` residue `⟦T⟧ · (2^256)⁻¹`, the fo
 of `montRedc_spec`. `corresJ_montRedc4Block` wraps the whole emitted reduce block
 `Curve4MontMulProvenEmit.emitMontRedc4Block` as a `CorresJ` whose abstract transition
 lands `montRedc4` reconstructed across the top window `accNames[4..7]` and `rtop`; its
-routing hypothesis is exactly `MontRedc4RunBlockProven.montRedc4RunBlockGoal`, the
-residual recorded in `montRedc4RunBlock_gap`. -/
+routing hypothesis is exactly `MontRedc4RunBlockProven.montRedc4RunBlockGoal`. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven in
 /-- **The fused four-word reduction computes the residue.** For a modulus `N`, the

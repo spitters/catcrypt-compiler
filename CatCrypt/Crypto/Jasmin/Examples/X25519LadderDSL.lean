@@ -174,11 +174,6 @@ def ladder255 : LowCT := rustcmd| do
     let _ := i  -- i is implicit in the unrolled position
     ladderStep
 
-/-- Elaboration check: the 255-iteration unroll completes without
-    hitting Lean's recursion-depth limit. The translation through
-    `translateDialectControl` is not checked here. -/
-example : True := by trivial
-
 /-! ## 3. Standalone ladder-step entry point
 
 `ladder_step_call` wraps `ladderStep` with the per-step scratch

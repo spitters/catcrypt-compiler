@@ -488,13 +488,4 @@ theorem slpLayout_localCut_realizes {L : Nat} [DecidableEq (Layout L)]
     (lay : Layout L) : layoutConversionCost lay lay = 0 := by
   simp [layoutConversionCost]
 
-/-! ## §7  Status -/
-
-/-- Summary: the module defines the SLP detection (`slpDetect`) and packing
-    (`packedResult`/`LaneOp.toVInst`), and proves the denotation theorems
-    (`slpGroup_denote`, `slpVectorize_denote`, `vpaddd_slp_realizes`) and the
-    pairwise-independence soundness side-condition
-    (`slpVectorize_footprint_disjoint`). -/
-theorem slpVectorize_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.SLPVectorize

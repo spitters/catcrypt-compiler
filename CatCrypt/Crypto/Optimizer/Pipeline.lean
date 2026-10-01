@@ -760,12 +760,4 @@ theorem applyJForProgPipeline_ct_eq {accTy : JasminTy}
             = applyJForProgPipeline qs (q.rewrite p) := rfl
     rw [hU, ih (q.rewrite p) accL, q.ct_eq p accL]
 
-/-! ## §8  Status -/
-
-/-- This file is the orchestration layer.  Concrete passes land in
-    sibling files (`BarrettReduce.lean`, `MontgomeryReduce.lean`,
-    `SchedulerPass.lean`, …) and register themselves into the canonical
-    pipelines above. -/
-theorem pipeline_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.Pipeline

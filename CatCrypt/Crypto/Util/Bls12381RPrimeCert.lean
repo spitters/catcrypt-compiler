@@ -5,22 +5,21 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import Mathlib.Tactic.NormNum.Prime
 public import CatCrypt.Crypto.Util.PrattCertificate
 
 /-!
 # Machine-checked primality of the BLS12-381 scalar-field order
 
-`Nat.Prime bls12381Rlit` via a Lucas/Pratt certificate: witness `7` and the
-factorization `r - 1 = 2^32 · 3 · 11 · 19 · 10177 · 125527 · 859267 · 906349^2
-· 2508409 · 2529403 · 52437899 · 254760293^2`. Each of the four certificate
-obligations is its own lemma so the checks compile independently.
+`Nat.Prime bls12381Rlit` from an inline Pratt certificate tree checked by kernel
+reduction (`PrattCertificate.pratt_prime`), with root witness `7` and
+`r - 1 = 2^32 · 3 · 11 · 19 · 10177 · 125527 · 859267 · 906349^2 · 2508409
+· 2529403 · 52437899 · 254760293^2`. Factors below `2^20` are leaves checked by
+trial division.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
-set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Bls12381RPrimeCert
 
@@ -31,30 +30,18 @@ open CatCrypt.PrattCertificate
 def bls12381Rlit : Nat :=
   0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
 
-/-- The prime factors of `r - 1`, with multiplicity; product is `r - 1`. -/
-def rMinusOneFactors : List Nat :=
-  List.replicate 32 2 ++
-    [3, 11, 19, 10177, 125527, 859267, 906349, 906349,
-     2508409, 2529403, 52437899, 254760293, 254760293]
-
-theorem rFactors_prod : rMinusOneFactors.prod = bls12381Rlit - 1 := by decide
-
-theorem rFactors_prime : ∀ q ∈ rMinusOneFactors, Nat.Prime q := by
-  intro q hq
-  simp only [rMinusOneFactors, List.mem_append, List.mem_replicate] at hq
-  rcases hq with ⟨-, rfl⟩ | hq
-  · exact Nat.prime_two
-  · fin_cases hq <;> norm_num
-
-theorem rFermat : powMod 7 (bls12381Rlit - 1) bls12381Rlit = 1 := by decide
-
-theorem rWitness :
-    ∀ q ∈ rMinusOneFactors, powMod 7 ((bls12381Rlit - 1) / q) bls12381Rlit ≠ 1 := by
-  decide
-
-/-- `Nat.Prime bls12381Rlit`, machine-checked by a Lucas certificate. -/
-theorem bls12381Rlit_prime : Nat.Prime bls12381Rlit :=
-  lucas_of_certificate bls12381Rlit (by decide) 7 rMinusOneFactors
-    rFactors_prod rFactors_prime rFermat rWitness
+/-- `Nat.Prime bls12381Rlit`, by a Pratt certificate with root witness `7`. -/
+theorem bls12381Rlit_prime : Nat.Prime bls12381Rlit := by
+  pratt_prime
+    .node bls12381Rlit 7
+        [2, 3, 11, 19, 10177, 125527, 859267, 906349,
+        .node 2508409 11 [2, 3, 7, 79],
+        .node 2529403 2 [2, 3, 23, 18329],
+        .node 52437899 2 [2, 43, 609743],
+        .node 254760293 2
+          [2,
+          .node 63690073 7
+            [2, 3,
+            .node 2653753 5 [2, 3, 110573]]]]
 
 end CatCrypt.Crypto.Util.Bls12381RPrimeCert

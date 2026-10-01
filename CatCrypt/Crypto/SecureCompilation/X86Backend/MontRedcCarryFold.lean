@@ -28,9 +28,9 @@ adc accNames[7],   0
 adc rtop,          0            -- … the whole way up into rtop
 ```
 
-This module proves the missing **`valLimbs`-level `runBlock` lemma for this
-add/adc fold cascade** (residual (1) of
-`MontRedc4RunBlockProven.montRedc4RunBlock_gap`). It is the exact analogue, for
+This module proves the **`valLimbs`-level `runBlock` lemma for this add/adc fold
+cascade**, the carry-fold routing step of `MontRedc4RunBlockProven` §4. It is the
+exact analogue, for
 "add a single carry word into a higher-word register vector", of
 `FieldAddSubTierA.emitAdcChain_runBlock` (the ripple-add of two vectors): the
 same `emit_adc_*` per-instruction bridges and `Cios4LimbProven.addLimbs` /
@@ -58,10 +58,9 @@ the immediate `0` in every propagated word.
 
   `post = runBlock s (foldCascade D rcy)`. Value-exact: the carry word is added in,
   the final `CF` weighted at the top. This is the piece that turns the shift
-  brick's value into the next word-step's input-window value (see the module note
-  `carryFold_composition_note`).
+  brick's value into the next word-step's input-window value (§4).
 
-## How it composes with the shift brick (see `carryFold_composition_note`)
+## How it composes with the shift brick (§4)
 
 Writing `Higher = valLimbs (accNames[i+4..7]) + (2^64)^(4-i)·rtop`, one has, at the
 full running value `W_i = valLimbs (accNames[i..7]) + weight·rtop`,
@@ -75,8 +74,7 @@ never reaches `accNames[i+4]`. The shift brick supplies the first summand as
 `(2^64)^3·(rcy + Higher)` redistributed across `accNames[i+4..7]` and `rtop`. So
 the shift brick and this cascade lemma together give the register realisation of
 one `montgomeryReduce` step **on the full running value** — the content of one
-`hstep_i` of `MontReduceRunBlock.emitMontRedc4_value`. What this module does NOT
-close is stated in `carryFold_composition_note`.
+`hstep_i` of `MontReduceRunBlock.emitMontRedc4_value`.
 -/
 
 @[expose] public section
@@ -293,7 +291,7 @@ theorem foldCascade_runBlock (D : List String) (rcy : String) (H : List (BitVec 
     `valLimbs (D.map post.get) + (2^64)^|D| · (post CF) = valLimbs H + (s.get rcy).toNat`.
 
     This is the `valLimbs`-level `runBlock` lemma for the `add`/`adc` fold cascade
-    (residual (1) of `MontRedc4RunBlockProven.montRedc4RunBlock_gap`), built from
+    (the carry-fold step of `MontRedc4RunBlockProven` §4), built from
     `foldCascade_runBlock` + the proven `Cios4LimbProven.addLimbs_reconstruct`. -/
 theorem foldCascade_value (D : List String) (rcy : String) (H : List (BitVec 64))
     (s : JState 64)
@@ -326,66 +324,28 @@ theorem foldCascade_value (D : List String) (rcy : String) (H : List (BitVec 64)
   rw [hcfbit]
   exact hrec
 
-/-! ## 4. How this composes with the shift brick, and what remains (honest)
+/-! ## 4. How this composes with the shift brick
 
-`carryFold_composition_note` records, as documentation, exactly how
-`foldCascade_value` (this module) plus
-`MontRedc4RunBlockProven.emitMontRedcStep_shifted_window` (the shift brick) fit
-together toward the four `hstep_i` of `MontReduceRunBlock.emitMontRedc4_value`,
-and precisely what is NOT yet a theorem. -/
+Fix step `i` of the fused reduce. Let the running full value be
+`W_i = valLimbs (accNames[i..7]) + (2^64)^(8-i)·(post rtop)` (`W_0 = T`, the 512-bit
+product; `rtop` starts at `0`), and split off the higher words
+`Higher = valLimbs (accNames[i+4..7]) + (2^64)^(4-i)·rtop`, so
+`W_i = valLimbs win + (2^64)^4·Higher` with `win = accNames[i..i+3]`.
 
-/-- **The carry-fold ↔ shift-brick composition, and the residual (documentation).**
+* `MontRedc4RunBlockProven.montgomeryReduce_window_split` is the arithmetic bridge
+  `montgomeryReduce N (2^64) n' W_i
+     = montgomeryReduce N (2^64) n' (valLimbs win) + (2^64)^3·Higher`.
+* The shift brick (`MontRedc4RunBlockProven.emitMontRedcStep_shifted_window`)
+  realises the first summand: after the reduce word-step, `accNames[i+1..i+3]` and
+  `rcy` hold `valLimbs (win.drop 1) + (2^64)^3·rcy`.
+* `foldCascade_value` (this module), with `D = accNames[i+4] :: accNames[i+5..7]
+  ++ [rtop]` and carry word `rcy`, folds `rcy` into the higher words, carry absorbed
+  into `rtop`.
 
-    Fix step `i` of the fused reduce. Let the running full value be
-    `W_i = valLimbs (accNames[i..7]) + (2^64)^(8-i)·(post rtop)` (`W_0 = T`, the
-    512-bit product; rtop starts at `0`), and split off the higher words
-    `Higher = valLimbs (accNames[i+4..7]) + (2^64)^(4-i)·rtop`, so
-    `W_i = valLimbs win + (2^64)^4·Higher` with `win = accNames[i..i+3]`.
-
-    **Arithmetic bridge (a `Nat` identity, provable from `montgomeryReduce`):**
-    because `m = W_i mod 2^64 = (accNames[i]·n') mod 2^64` reads only the low
-    window word and `m·N` (five words) never reaches `accNames[i+4]`,
-
-    `montgomeryReduce N (2^64) n' W_i
-       = montgomeryReduce N (2^64) n' (valLimbs win) + (2^64)^3·Higher`.
-
-    * The shift brick (`emitMontRedcStep_shifted_window`) discharges the first
-      summand: after the reduce word-step, `accNames[i+1..i+3]` and `rcy` hold
-      `montgomeryReduce N (2^64) n' (valLimbs win) = valLimbs (win.drop 1) + (2^64)^3·rcy`.
-    * `foldCascade_value` (this module), with `D = accNames[i+4] :: accNames[i+5..7]
-      ++ [rtop]` and carry word `rcy`, discharges `(2^64)^3·(rcy + Higher)`: the fold
-      leaves `valLimbs (accNames[i+4..7]) + weight·rtop = Higher + rcy.toNat`
-      redistributed, carry absorbed into `rtop`.
-
-    Summing, `valLimbs (accNames[i+1..7]) + weight·rtop = montgomeryReduce N (2^64)
-    n' W_i = W_{i+1}` — the register realisation of ONE `hstep_i` on the full
-    running value.
-
-    **What is NOT closed here (the exact open obligations).** Turning the four
-    `hstep_i` into theorems from the instructions still needs, beyond the two value
-    bricks above:
-
-    1. *The `Nat` arithmetic bridge* boxed above — `montgomeryReduce` on the split
-       value `valLimbs win + (2^64)^4·Higher` equals the windowed reduce plus
-       `(2^64)^3·Higher`. This is a pure `Number.montgomeryReduce` divisibility fact
-       (`m` reads only the low word; `2^256·Higher` is `2^64`-divisible), NOT yet
-       stated. It is the "the higher product words ride through untouched" lemma.
-
-    2. *The four-fold state threading* — that step `i`'s output `JState` (registers
-       `accNames[i+1..7]`, `rtop`; scratch `m/dcy/rcy/hi/lo` dirty; `CF` set by the
-       final `adc rtop, 0`) re-establishes step `i+1`'s `emitMontRedcStep_shifted_window`
-       preconditions after its three leading `xor` clears (`m=dcy=rcy=0`, `CF=OF=0`),
-       and that the window/freshness hypotheses (`RowFresh`, disjointness) hold at
-       every offset `i ∈ {0,1,2,3}`. This is register-routing bookkeeping over the
-       concrete `accNames`/`pNames` layout, `runBlock`-splitting
-       `emitMontRedc4Block = emitMontRedcStepAt 0 ++ … ++ emitMontRedcStepAt 3`.
-
-    With (1) and (2), `emitMontRedcStep_shifted_window` + `foldCascade_value`
-    discharge the four `hstep_i`, reducing `MontRedc4RunBlockProven.montRedc4RunBlockGoal`
-    to ONLY residual (2) of `montRedc4RunBlock_gap` — the `emitCondSubP`
-    canonicalisation anomaly. The `add`/`adc` fold half of residual (1), which
-    `montRedc4RunBlock_gap` flagged as "no `valLimbs`-level `add`/`adc` lemma in
-    tree", is `foldCascade_value`, proved here. -/
-theorem carryFold_composition_note : True := trivial
+Summing gives `valLimbs (accNames[i+1..7]) + weight·rtop = W_{i+1}`, the register
+realisation of one word-step on the full running value. `Ascent.montRedc4RunBlock_proven`
+threads the four steps and discharges `MontRedc4RunBlockProven.montRedc4RunBlockGoal`;
+§4 of `MontRedc4RunBlockProven` states what remains between that goal and the
+canonical result. -/
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedcCarryFold

@@ -738,10 +738,4 @@ theorem scheduleBlock_isCT_eq (lt : LevelTable) (leafCT : LeafCTTable)
   | zero => intro b; rfl
   | succ k ih => intro b; simp only [bubbleN]; rw [ih (bubble b), bubble_cmdCT_eq lt leafCT b]
 
-/-! ## §8  Status -/
-
-/-- This pass file compiles and its two headline obligations
-    (`scheduleBlock_denote_eq`, `scheduleBlock_isCT_eq`) are closed. -/
-theorem schedulerPass_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.SchedulerPass

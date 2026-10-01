@@ -31,7 +31,7 @@ repository states it. Paths are relative to the root of this package.
   - `CatCrypt/Crypto/SecureCompilation/AUCurvesImport/PilotImport.lean`
   - `CatCrypt/Crypto/Pairing/Fp2TowerImport.lean`
   - `CatCrypt/Crypto/Pairing/Fp6Fp12TowerImport.lean`
-  - `CatCrypt/Crypto/Util/BLS12381PPrimeCert.lean` and `CatCrypt/Crypto/Util/BLS12381P/Node1.lean` to `Node9.lean`
+  - `CatCrypt/Crypto/Util/BLS12381PPrimeCert.lean`
   - `CatCrypt/Crypto/Util/BLS12377PPrimeCert.lean`
 
 ### fiat-crypto and CryptOpt

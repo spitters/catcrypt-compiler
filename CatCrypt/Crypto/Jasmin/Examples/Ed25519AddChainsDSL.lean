@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Jasmin.LowCTDSL
+public meta import CatCrypt.Crypto.Jasmin.LowCTDSL
+public import CatCryptCore.Tactics.KatGuard
 
 
 @[expose] public section
@@ -142,11 +144,15 @@ def fpPowP58Chain : LowCT := Rcm.run do
   rc_call "fp_sqr" (loc "t0"  TFp25519) [loc "t0" TFp25519]
   rc_call "fp_mul" (loc "out" TFp25519) [loc "t0" TFp25519, loc "z" TFp25519]
 
-/-! ## 4. Sanity checks (elaboration-time only)
+/-! ## 4. Non-triviality
 
-Smoke tests that the chain elaborates and the underlying LowCT is
-non-trivial (catches a `RSkip`-only regression). -/
+Neither chain evaluates to the empty program `RSkip`. -/
 
-example : True := by trivial
+/-- `true` exactly on the empty program `RSkip`. -/
+def isSkip : LowCT → Bool
+  | .RSkip => true
+  | _ => false
+
+#kat !isSkip fpInvChain && !isSkip fpPowP58Chain
 
 end CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL

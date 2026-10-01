@@ -128,7 +128,4 @@ example (k : KEnv [.reg 32]) (V : Ctxt.Valuation (d := jasminDialect) [.reg 32])
     (comFullOpt 4 k demoDeadTrailing).denote V = demoDeadTrailing.denote V :=
   comFullOpt_denote 4 k demoDeadTrailing V hk
 
-/-- Smoke check: the consolidation module builds and its obligations close. -/
-theorem comFullOpt_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.ComFullOpt

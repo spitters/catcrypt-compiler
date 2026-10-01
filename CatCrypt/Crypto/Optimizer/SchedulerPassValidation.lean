@@ -196,7 +196,4 @@ yields no measurable speedup on this wide-OoO core, because the hardware
 already reorders the two independent multiplies.  Static scheduling of
 this shape pays on narrow-OoO / in-order targets, not Zen4-class CPUs. -/
 
-/-- Smoke check: the validation file builds and its obligations close. -/
-theorem validation_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.SchedulerPassValidation

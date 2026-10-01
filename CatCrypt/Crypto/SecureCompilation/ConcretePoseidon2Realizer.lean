@@ -60,7 +60,7 @@ We exhibit, for each Poseidon2 primitive:
   owned-machine-code route, outside this module.  This module removes the
   *encoding* KAT (the `decode ∘ encode = id` assumption); it does **not**
   remove the *machine-code* obligation, nor the upstream Plonky3 reference-
-  vector cross-check (`kat_pending` in `BabyBear.lean`).
+  vector cross-check ("Known-answer check" in `BabyBear.lean`).
 
 ## References
 * Grassi et al., *Poseidon2*, ePrint 2023/323.

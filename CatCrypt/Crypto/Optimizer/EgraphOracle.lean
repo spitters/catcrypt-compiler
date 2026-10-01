@@ -415,9 +415,4 @@ theorem bogus_oracleOpt_denote (V : Ctxt.Valuation (d := jasminDialect) [.reg 32
     (oracleOpt demoRegCtxt bogusOracle demoMulZero).denote V = demoMulZero.denote V :=
   oracleOpt_denote demoRegCtxt bogusOracle demoMulZero V
 
-/-! ## 8. Status -/
-
-/-- Smoke check: the oracle module builds and its obligations close. -/
-theorem egraphOracle_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.EgraphOracle

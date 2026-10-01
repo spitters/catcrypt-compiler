@@ -485,9 +485,4 @@ theorem haxToLowCT_simulates_param
       | app f args => exact hAssignApp name f args c env env' rs v
       | _ => intro hHax _ _; simp [haxToLowCT] at hHax
 
-/-! ## §5  Status -/
-
-/-- Documentation marker — the chain of imports composes. -/
-theorem h3_chain_compiles : True := trivial
-
 end CatCrypt.Crypto.Hax

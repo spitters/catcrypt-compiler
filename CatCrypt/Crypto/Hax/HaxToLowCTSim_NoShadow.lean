@@ -263,9 +263,4 @@ theorem WellScopedInitial_letBind_head
     TowerFresh rs name :=
   h name (letBindNames_letBind_head name val body)
 
-/-! ## §6  Marker -/
-
-/-- Marker theorem: the file compiles and the API above is exported. -/
-theorem h3_no_shadow_compiles : True := trivial
-
 end CatCrypt.Crypto.Hax

@@ -363,9 +363,4 @@ theorem real_gate_accepts_repr :
     ∃ h, gate demoRegCtxt4 reprCom reprCom = some h :=
   gate_accepts_equal demoRegCtxt4 reprCom reprCom rfl
 
-/-! ## 8. Status -/
-
-/-- Smoke check: the selection demonstrator builds and its obligations close. -/
-theorem egraphSelectDemo_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.EgraphSelectDemo

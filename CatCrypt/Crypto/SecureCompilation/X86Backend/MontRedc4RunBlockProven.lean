@@ -49,30 +49,14 @@ fused obligation precisely, isolating exactly the two residuals that remain
   nor the six-limb `EmittedReduceWindow6Discharge` exposes it — both assume the
   whole reduce-body register realiser (`ResReducedWindow` / `ResReducedWindow6`).
 
-## What remains OPEN (the fused `montRedc4_runBlock`, stated below)
+## The fused target
 
 `montRedc4RunBlockGoal` states the target: running `emitMontRedc4Block` from a
 window-loaded state leaves `montRedc4 (valLimbs p) n' T` reconstructed in the top
-window `accNames[4..7]` (plus `rtop`). Discharging it from the instructions —
-turning `emitMontRedc4_value`'s four `hstep_i` into theorems — needs, beyond the
-shift brick proved here, the two residuals catalogued in `montRedc4RunBlock_gap`:
-
-1. **The physical carry-fold routing** — that `emitMontRedcStepAt i`'s
-   `add accNames[i+4], rcy` plus the `foldChain` `adc` cascade lands the
-   shifted-window value (this module's `emitMontRedcStep_shifted_window`) into the
-   next step's input registers with the inter-step carry propagated the whole way
-   up into `rtop`, and that this composes over the four nested steps. Needs new
-   `runBlock` reasoning for the `add`/`adc` fold cascade (no `valLimbs`-level
-   `add`/`adc` lemma is in tree yet).
-
-2. **The `emitCondSubP` anomaly** — the 10-round conditional-subtract
-   canonicaliser (`Curve4MontMulProvenEmit.condSubRounds = 10`) that the emit's own
-   comment flags as mis-canonicalising at one round (an `rtop`/borrow interaction).
-   This is the canonicalisation step from the pre-condSub `< 2·p` value to the
-   `< p` result registers `resNames`, and is the harder, KAT-gated residual.
-
-The shift brick proved here is one of the two things needed for residual (1); the
-`add`/`adc` fold cascade is the other.
+window `accNames[4..7]` (plus `rtop`). The shift brick proved here, the carry-fold
+cascade `MontRedcCarryFold.foldCascade_value` and `Ascent.montRedc4RunBlock_proven`
+discharge it. §4 states the step from this pre-`emitCondSubP` window to the
+canonical result registers `resNames`, which no theorem in this module covers.
 -/
 
 @[expose] public section
@@ -309,8 +293,7 @@ One `montgomeryReduce` word-step reads its Montgomery digit `m = (T·n') mod R` 
 from the low `R`-residue of its input, and its `/R` shift-down carries any higher
 part through unchanged. `montgomeryReduce_add_high` states this: adding `R·b` to the
 input adds exactly `b` to the output. `montgomeryReduce_window_split` is its
-four-word instance — the `Nat` identity `carryFold_composition_note` records as the
-"higher product words ride through untouched" fact, the piece that lets the shift
+four-word instance, the "higher product words ride through untouched" fact, the piece that lets the shift
 brick (`emitMontRedcStep_shifted_window`) and the carry-fold cascade
 (`MontRedcCarryFold.foldCascade_value`) act on the low window word while the higher
 running words pass through. -/
@@ -337,7 +320,7 @@ theorem montgomeryReduce_add_high (N R Nprime a b : Nat) (hR : 0 < R) :
     at radix `2^64` on `lo + (2^64)^4·hi` equals the windowed reduce plus `(2^64)^3·hi`:
     `montgomeryReduce N (2^64) n' (lo + (2^64)^4·hi)
        = montgomeryReduce N (2^64) n' lo + (2^64)^3·hi`.
-    The `Nat` arithmetic bridge of `MontRedcCarryFold.carryFold_composition_note`:
+    The `Nat` arithmetic bridge of the composition in §4 of `MontRedcCarryFold`:
     the `/R = /2^64` shift-down drops the low window word and demotes the four-word
     weight `(2^64)^4·hi` to `(2^64)^3·hi`, so the higher running words `accNames[i+4..7]`
     and `rtop` ride through one reduce step untouched (down-shifted by one word). -/
@@ -398,27 +381,25 @@ def montRedc4RunBlockGoal
               Curve4MontMulProvenEmit.rtopName).toNat
     = montRedc4 (valLimbs p) nP.toNat (valLimbs T)
 
-/-- **The residual between `montRedc4RunBlockGoal` and the full canonical result.**
-    Recorded as documentation (a `True` marker whose docstring is the content):
+/-! ## 4. From `montRedc4RunBlockGoal` to the canonical result
 
-    1. **Carry-fold routing — DISCHARGED.** `emitMontRedcStep_shifted_window` lands
-       step `i`'s value in the shifted window `accs.drop 1` with the carry in `rcy`;
-       `MontRedcCarryFold.foldCascade_value` folds that carry through
-       `accNames[i+4..7]` into `rtop`; `Ascent.montRedcStep_fold_running_value` glues
-       the two over one fused word-step; and `Ascent.montRedc4RunBlock_proven`
-       composes the four fused steps, folding the Montgomery range bound
-       (`Number.montgomeryReduce_correct`, each partial `< 2·p < 2^256`) to zero out
-       the inter-step carries and discharge `montRedc4RunBlockGoal`.
+1. **Carry-fold routing.** `emitMontRedcStep_shifted_window` lands step `i`'s value
+   in the shifted window `accs.drop 1` with the carry in `rcy`;
+   `MontRedcCarryFold.foldCascade_value` folds that carry through
+   `accNames[i+4..7]` into `rtop`; `Ascent.montRedcStep_fold_running_value` glues the
+   two over one fused word-step; and `Ascent.montRedc4RunBlock_proven` composes the
+   four fused steps, folding the Montgomery range bound
+   (`Number.montgomeryReduce_correct`, each partial `< 2·p < 2^256`) to zero out the
+   inter-step carries and discharge `montRedc4RunBlockGoal`.
 
-    2. **`emitCondSubP` anomaly.** `montRedc4RunBlockGoal` is the pre-`emitCondSubP`
-       reduce (value `< 2·p`, reconstructed across `accNames[4..7]` and `rtop`). From
-       there the 10-round `Curve4MontMulProvenEmit.emitCondSubP`
-       (`condSubRounds = 10`) canonicalises into `resNames`. The emit's own comment
-       flags a one-round `rtop`/borrow interaction that the iterated subtract works
-       around; a value proof of the canonicaliser is the remaining KAT-gated edge,
-       matching the `ResReducedWindow` realiser that both
-       `EmittedReduceWindowDischarge` and `EmittedReduceWindow6Discharge` assume. It
-       is outside `montRedc4RunBlockGoal`, which stops at the pre-condSub window. -/
-theorem montRedc4RunBlock_gap : True := trivial
+2. **`emitCondSubP`.** `montRedc4RunBlockGoal` is the pre-`emitCondSubP` reduce
+   (value `< 2·p`, reconstructed across `accNames[4..7]` and `rtop`). From there the
+   10-round `Curve4MontMulProvenEmit.emitCondSubP` (`condSubRounds = 10`)
+   canonicalises into `resNames`. The emit's own comment flags a one-round
+   `rtop`/borrow interaction that the iterated subtract works around. No theorem in
+   this module states the value of the canonicaliser: running `emitCondSubP` from a
+   window holding `v < 2·p` leaves `v mod p` in `resNames`. That statement is the
+   `ResReducedWindow` realiser that `EmittedReduceWindowDischarge` and
+   `EmittedReduceWindow6Discharge` assume. -/
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven

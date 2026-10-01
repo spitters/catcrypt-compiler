@@ -192,16 +192,17 @@ theorem demo_cost_accumulates (w : Nat) :
 We now attempt a grade the program does *not* compute — a grade contributed by a
 wrapper / spec — and pin down exactly why stock `mvcgen` cannot accumulate it. -/
 
-/-- **`PostShape` is exhaustively `pure | arg σ | except ε`.** This compiling
-    `cases` is the witness that the effect stack `mvcgen` runs on has **no** monoid-
-    grade constructor: there is no `.graded G` barrel in which a grade could
-    accumulate beside state/exceptions. Any faithful spec-only grade must *add* such
-    a constructor — an upstream `Std.Do` change. -/
-theorem postShape_exhaustive (ps : PostShape) : True := by
+/-- **`PostShape` is exhaustively `pure | arg σ | except ε`**: every shape is one of
+    the three constructors, so the effect stack `mvcgen` runs on has no monoid-grade
+    constructor, no `.graded G` barrel in which a grade could accumulate beside
+    state/exceptions. A faithful spec-only grade must add such a constructor, an
+    upstream `Std.Do` change. -/
+theorem postShape_exhaustive (ps : PostShape) :
+    ps = .pure ∨ (∃ σ ps', ps = .arg σ ps') ∨ (∃ ε ps', ps = .except ε ps') := by
   cases ps with
-  | pure => trivial
-  | arg σ ps => trivial
-  | except ε ps => trivial
+  | pure => exact Or.inl rfl
+  | arg σ ps => exact Or.inr (Or.inl ⟨σ, ps, rfl⟩)
+  | except ε ps => exact Or.inr (Or.inr ⟨ε, ps, rfl⟩)
 
 section GradeTag
 

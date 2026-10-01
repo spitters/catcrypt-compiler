@@ -29,8 +29,4 @@ namespace CatCrypt.Crypto.SecureCompilation.TExprRepr
 deriving instance Repr for Hax.ImpType
 deriving instance Repr for Hax.TExpr, Hax.TExprKind
 
-open Hax in
-/-- Smoke: a small typed TExpr reprs to re-parseable Lean syntax. -/
-example : True := by trivial
-
 end CatCrypt.Crypto.SecureCompilation.TExprRepr

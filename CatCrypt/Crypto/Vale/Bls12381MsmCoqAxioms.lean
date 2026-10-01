@@ -136,12 +136,3 @@ https://github.com/SSProve/Commitments.
 * `Commitments/theories/MSM_Spec.v` — `msm_pippenger_correct` (`:266`),
   `msm_spec` (`:92`, the naive `∏ pᵢ ^ sᵢ` reference).
 -/
-
-namespace CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms
-
-/-- The leaf denotation this file cites. Present so the module has content
-    and the citation table above is co-located with the object it
-    documents. -/
-theorem cited : True := trivial
-
-end CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms

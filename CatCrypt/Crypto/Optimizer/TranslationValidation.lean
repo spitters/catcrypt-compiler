@@ -231,7 +231,4 @@ example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
       = demoSelfSub.denote V :=
   tvCheck_sound demoSelfSub _ (by decide) V
 
-/-- Smoke check: the module builds and its obligations close. -/
-theorem tv_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.TranslationValidation

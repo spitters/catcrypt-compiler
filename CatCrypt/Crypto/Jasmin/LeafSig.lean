@@ -252,9 +252,27 @@ def noLateLoadAfterStore : List InstrR → Bool
     if hasStore i then is.all (fun j => ¬ hasLoad j)
     else noLateLoadAfterStore is
 
-/-- Smoke test: an all-load prelude followed by an all-store epilogue
-    passes. (Constructed inline to avoid coupling to specific port
-    namespaces.) -/
-example : True := by trivial
+/-- A load-free body passes `noLateLoadAfterStore`. -/
+theorem noLateLoadAfterStore_of_loadFree :
+    ∀ (body : List InstrR), (∀ j ∈ body, hasLoad j = false) →
+      noLateLoadAfterStore body = true
+  | [], _ => rfl
+  | i :: is, h => by
+    unfold noLateLoadAfterStore
+    split
+    · simpa [List.all_eq_true] using fun j hj => h j (List.mem_cons_of_mem _ hj)
+    · exact noLateLoadAfterStore_of_loadFree is (fun j hj => h j (List.mem_cons_of_mem _ hj))
+
+/-- A store-free prelude followed by a load-free epilogue passes
+    `noLateLoadAfterStore`. -/
+theorem noLateLoadAfterStore_append :
+    ∀ (pre post : List InstrR), (∀ i ∈ pre, hasStore i = false) →
+      (∀ j ∈ post, hasLoad j = false) → noLateLoadAfterStore (pre ++ post) = true
+  | [], post, _, hpost => noLateLoadAfterStore_of_loadFree post hpost
+  | i :: is, post, hpre, hpost => by
+    rw [List.cons_append]
+    unfold noLateLoadAfterStore
+    rw [if_neg (by simp [hpre i List.mem_cons_self])]
+    exact noLateLoadAfterStore_append is post (fun k hk => hpre k (List.mem_cons_of_mem _ hk)) hpost
 
 end CatCrypt.Crypto.Jasmin

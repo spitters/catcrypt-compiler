@@ -171,7 +171,4 @@ example (V : Ctxt.Valuation (d := jasminDialect) [.reg 32]) :
     (comAlgebraicPipeline 4 demoMulZero demoK).denote V = demoMulZero.denote V :=
   tvCheckAny_sound 4 demoK demoMulZero _ (by decide) V (demoK_consistent V)
 
-/-- Smoke check: the module builds and its obligations close. -/
-theorem tvAll_compiles : True := trivial
-
 end CatCrypt.Crypto.Optimizer.TranslationValidationAll

@@ -175,13 +175,35 @@ def disjointObligations (fd : FunDecl) : List (String × String) :=
       reads.map (fun r => (w, r)))
   (writeWrite ++ writeRead).eraseDups
 
-/-! ## §5. Sanity checks via `decide`
+/-! ## §5. Shape of the obligation list -/
 
-These are smoke tests: define a tiny FunDecl, check the obligation
-list. The actual ports in `S2NBignumSSA.lean` go through the same
-machinery once we land an `audit_pointerBorrow.lean` script. -/
-
-example : True := by trivial
+/-- Every obligation `(p, q)` of `disjointObligations fd` has a written pointer
+    parameter `p` and a pointer parameter `q ≠ p`, written or read-only. -/
+theorem mem_disjointObligations (fd : FunDecl) (pq : String × String)
+    (h : pq ∈ disjointObligations fd) :
+    pq.1 ∈ pointerParamsWritten fd ∧
+      (pq.2 ∈ pointerParamsWritten fd ∨ pq.2 ∈ pointerParamsReadOnly fd) ∧
+      pq.1 ≠ pq.2 := by
+  simp only [disjointObligations] at h
+  rcases List.mem_append.1 (List.mem_eraseDups.1 h) with h | h
+  · obtain ⟨p, hp, hpl⟩ := List.mem_flatMap.1 h
+    obtain ⟨q, hq, hpq⟩ := List.mem_filterMap.1 hpl
+    split at hpq
+    · cases hpq
+      refine ⟨hp, Or.inl hq, ?_⟩
+      intro (heq : p = q)
+      subst heq
+      exact String.lt_irrefl p ‹p < p›
+    · cases hpq
+  · obtain ⟨w, hw, hwl⟩ := List.mem_flatMap.1 h
+    obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hwl
+    refine ⟨hw, Or.inr hr, ?_⟩
+    rintro (heq : w = r)
+    subst heq
+    simp only [pointerParamsWritten, pointerParamsReadOnly, List.mem_filterMap] at hw hr
+    obtain ⟨_, _, hw⟩ := hw
+    obtain ⟨_, _, hr⟩ := hr
+    split at hw <;> split at hr <;> simp_all
 
 /-! ## §6. Soundness of `isPointerSafe`
 
