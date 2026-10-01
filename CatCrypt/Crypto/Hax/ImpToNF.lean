@@ -148,6 +148,9 @@ def dec : (t : NfTy) → Value → Option t.denote
   | .tcons h t, .tuple (v :: vs) =>
       (dec h v).bind fun x => (dec t (tailVal t vs)).map fun y => (x, y)
   | .slice t, .array vs => vs.mapM (dec t)
+  | .arr n t, .array vs =>
+      (vs.mapM (dec t)).bind fun ys =>
+        if h : ys.length = n then some fun i => ys[i.1]'(h ▸ i.2) else none
   | _, _ => none
 
 /-- The source values of a vector of values. -/
@@ -487,8 +490,44 @@ theorem dec_sound : ∀ (t : NfTy) (v : Value) (x : t.denote), dec t v = some x 
               simp only [List.map_cons, List.cons.injEq]
               exact ⟨dec_sound t w a ha, ih as has⟩
       | _ => simp [dec] at h
+  | .arr n t, v, x, h => by
+      cases v with
+      | array vs =>
+          simp only [dec, Option.bind_eq_some_iff] at h
+          obtain ⟨ys, hys, h⟩ := h
+          split at h
+          · rename_i hn
+            subst hn
+            simp only [Option.some.injEq] at h
+            subst h
+            have hmap : ∀ (us : List Value) (zs : List t.denote), us.mapM (dec t) = some zs →
+                us = zs.map (enc t) := by
+              intro us
+              induction us with
+              | nil =>
+                  intro zs hz
+                  simp only [List.mapM_nil, Option.pure_def, Option.some.injEq] at hz
+                  subst hz
+                  rfl
+              | cons w ws ih =>
+                  intro zs hz
+                  rw [List.mapM_cons] at hz
+                  rcases ha : dec t w with _ | a
+                  · simp [ha] at hz
+                  rcases has : ws.mapM (dec t) with _ | as
+                  · simp [ha, has] at hz
+                  simp only [ha, has, Option.bind_eq_bind, Option.bind_some, Option.pure_def,
+                    Option.some.injEq] at hz
+                  subst hz
+                  simp only [List.map_cons, List.cons.injEq]
+                  exact ⟨dec_sound t w a ha, ih as has⟩
+            simp only [enc]
+            rw [hmap vs ys hys]
+            congr 1
+            apply List.ext_getElem <;> simp
+          · cases h
+      | _ => simp [dec] at h
   | .word _, v, x, h => by cases v <;> simp [dec] at h
-  | .arr _ _, v, x, h => by cases v <;> simp [dec] at h
   | .pair _ _, v, x, h => by cases v <;> simp [dec] at h
 
 /-- The current variable of a name after one more entry. -/
@@ -2891,16 +2930,25 @@ def hax64NFWordTy : NfTy → Bool
   | .word 64 => true
   | _ => false
 
+/-- The call typing of `u64` code on integer arrays of a fixed length `n`: `index` of an
+    array at an integer is an integer; `array_update` of an array at an integer with a value
+    of a `hax64NFWordTy` type is an array of the same length. -/
+def hax64SigOfArr (f : String) (as : List NfTy) : Option NfTy :=
+  match f, as with
+  | "index", [.arr _ .int, .int] => some .int
+  | "array_update", [.arr n .int, .int, t] => if hax64NFWordTy t then some (.arr n .int) else none
+  | _, _ => none
+
 /-- **The call typing of `u64` code**: a scalar call of `hax64NFScalar` on two operands of
     `hax64NFWordTy` types has an integer result; `index` of an integer slice at an integer
     is an integer; `array_update` of an integer slice at an integer with a value of a
-    `hax64NFWordTy` type is an integer slice. -/
+    `hax64NFWordTy` type is an integer slice; on fixed-length arrays, `hax64SigOfArr`. -/
 def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
   if hax64NFScalar.contains f && as.length == 2 && as.all hax64NFWordTy then some .int
   else match f, as with
   | "index", [.slice .int, .int] => some .int
   | "array_update", [.slice .int, .int, t] => if hax64NFWordTy t then some (.slice .int) else none
-  | _, _ => none
+  | _, _ => hax64SigOfArr f as
 
 /-- The encoding of a value of a `hax64NFWordTy` type is an integer. -/
 theorem hax64NFWordTy_enc {t : NfTy} (ht : hax64NFWordTy t = true) (x : t.denote) :
@@ -2966,7 +3014,86 @@ theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
   · split at h
     · exact Or.inr (Or.inl rfl)
     · exact Or.inr (Or.inr rfl)
-    · cases h
+    · unfold hax64SigOfArr at h
+      split at h
+      · exact Or.inr (Or.inl rfl)
+      · exact Or.inr (Or.inr rfl)
+      · cases h
+
+/-- A list of `n` integers decodes as an integer array of length `n`. -/
+theorem dec_arr_int {n : Nat} (vs : List Value) (hvs : ∀ v ∈ vs, ∃ z : Int, v = .int z)
+    (hn : vs.length = n) :
+    ∃ f, dec (.arr n .int) (.array vs) = some f ∧ Value.array vs = enc (.arr n .int) f := by
+  obtain ⟨ys, hd, he⟩ := dec_slice_int vs hvs
+  change vs.mapM (dec .int) = some ys at hd
+  change Value.array vs = Value.array (ys.map (enc .int)) at he
+  simp only [Value.array.injEq] at he
+  have hl : ys.length = n := by rw [← hn, he, List.length_map]
+  subst hl
+  refine ⟨fun i => ys[i.1], ?_, ?_⟩
+  · simp only [dec, hd, Option.bind_some, dite_true]
+  · simp only [enc, he, Value.array.injEq]
+    apply List.ext_getElem <;> simp
+
+/-- The call typing of `u64` code on fixed-length integer arrays is sound for
+    `Hax.hax64Builtins`. -/
+theorem hax64Builtins_typedCallsArr (f : String) (as : List NfTy) (r : NfTy)
+    (hr : hax64SigOfArr f as = some r) (xs : HVector NfTy.denote as) (v : Value)
+    (hv : _root_.Hax.hax64Builtins f (encAll as xs) = some v) :
+    ∃ y, dec r v = some y ∧ v = enc r y := by
+  unfold hax64SigOfArr at hr
+  split at hr
+  · rename_i n
+    simp only [Option.some.injEq] at hr
+    subst hr
+    match xs with
+    | .cons g (.cons i .nil) =>
+      change (_root_.Hax.hax64WordOps "index" [enc (.arr n .int) g, .int i] <|>
+        _root_.Hax.widthArrayOps "index" [enc (.arr n .int) g, .int i]) = some v at hv
+      change (_root_.Hax.hax64WordOps "index"
+          [.array (List.ofFn fun k => enc .int (g k)), .int i] <|>
+        _root_.Hax.widthArrayOps "index"
+          [.array (List.ofFn fun k => enc .int (g k)), .int i]) = some v at hv
+      rw [_root_.Hax.hax64WordOps_index] at hv
+      change _root_.Hax.widthArrayOps "index"
+        [.array (List.ofFn fun k => enc .int (g k)), .int i] = some v at hv
+      rw [_root_.Hax.widthArrayOps_index_int] at hv
+      split at hv
+      · rcases hy : (List.ofFn fun k => enc .int (g k))[i.toNat]? with _ | y
+        · rw [hy] at hv; cases hv
+        · rw [hy] at hv
+          obtain ⟨k, hk⟩ := List.mem_ofFn.mp (List.mem_of_getElem? hy)
+          subst hk
+          change some (Value.int (g k)) = some v at hv
+          cases hv
+          exact ⟨g k, rfl, rfl⟩
+      · cases hv
+  · rename_i n t
+    split at hr
+    · rename_i ht
+      simp only [Option.some.injEq] at hr
+      subst hr
+      match xs with
+      | .cons g (.cons i (.cons x .nil)) =>
+        obtain ⟨z, hz⟩ := hax64NFWordTy_enc ht x
+        change (_root_.Hax.hax64WordOps "array_update"
+            [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x] <|>
+          _root_.Hax.widthArrayOps "array_update"
+            [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x]) = some v at hv
+        rw [_root_.Hax.hax64WordOps_array_update] at hv
+        change _root_.Hax.widthArrayOps "array_update"
+          [.array (List.ofFn fun k => enc .int (g k)), .int i, enc t x] = some v at hv
+        rw [_root_.Hax.widthArrayOps_array_update_int, hz] at hv
+        split at hv
+        · cases hv
+          refine dec_arr_int _ (fun w hw => ?_) (by simp)
+          rcases List.mem_or_eq_of_mem_set hw with hw | rfl
+          · obtain ⟨k, rfl⟩ := List.mem_ofFn.mp hw
+            exact ⟨g k, rfl⟩
+          · exact ⟨z, rfl⟩
+        · cases hv
+    · cases hr
+  · cases hr
 
 /-- **The call typing of `u64` code is sound for `Hax.hax64Builtins`.** -/
 theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigOf := by
@@ -3036,6 +3163,6 @@ theorem hax64Builtins_typedCalls : TypedCalls _root_.Hax.hax64Builtins hax64SigO
             · exact ⟨z, rfl⟩
           · cases hv
       · cases hr
-    · cases hr
+    · exact hax64Builtins_typedCallsArr f as r hr xs v hv
 
 end CatCrypt.Crypto.Hax.ImpToNF
