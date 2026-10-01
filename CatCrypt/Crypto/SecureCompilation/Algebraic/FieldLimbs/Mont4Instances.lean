@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Mont4
 public import CatCrypt.Crypto.Util.P256Verified
 public import CatCrypt.Crypto.Util.Secp256k1Verified
 public import CatCrypt.Crypto.Util.ScalarFieldVerified
+public import CatCrypt.Crypto.Util.SM2PPrimeCert
 
 /-!
 # Four-limb Montgomery moduli of the 256-bit elliptic-curve fields
@@ -36,10 +37,11 @@ transcribed value; each `nInv` is checked by `nInv_spec`.
 * `p256_mulBlk_denote`, `secp256k1_mulBlk_denote`, `sm2_mulBlk_denote`,
   `p256n_mulBlk_denote`, `secp256k1n_mulBlk_denote`: the Montgomery multiplication block
   at each modulus denotes the Montgomery form of the product.
-* `p256_invBlk_denote_inv`, `secp256k1_invBlk_denote_inv`, `p256n_invBlk_denote_inv`,
-  `secp256k1n_invBlk_denote_inv`: the inversion block at each prime with a primality
-  certificate in the tree.
+* `p256_invBlk_denote_inv`, `secp256k1_invBlk_denote_inv`, `sm2_invBlk_denote_inv`,
+  `p256n_invBlk_denote_inv`, `secp256k1n_invBlk_denote_inv`: the inversion block at
+  each prime, from its primality certificate.
 * `sm2_p_hex`: the SM2 modulus equals its published hexadecimal value.
+* `sm2_prime`: the SM2 modulus is prime.
 -/
 
 @[expose] public section
@@ -112,6 +114,11 @@ theorem sm2_p_hex :
     sm2.p = 0xFFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF := by
   decide
 
+/-- The SM2 modulus is prime, by the Lucas certificate `SM2PPrimeCert.sm2Plit_prime`. -/
+theorem sm2_prime : sm2.p.Prime := by
+  rw [sm2_p_hex]
+  exact CatCrypt.Crypto.Util.SM2PPrimeCert.sm2Plit_prime
+
 /-! ## 2. Multiplication at each modulus -/
 
 section Blocks
@@ -159,6 +166,11 @@ theorem secp256k1_invBlk_denote_inv (x : ZMod secp256k1.p)
     (hx : nv W [x₀, x₁, x₂, x₃] = (x * R secp256k1).val) :
     (invBlk secp256k1 x₀ x₁ x₂ x₃).denote W = enc secp256k1 x⁻¹ :=
   invBlk_denote_inv secp256k1 CatCrypt.Util.secp256k1_prime W _ _ _ _ x hx
+
+theorem sm2_invBlk_denote_inv (x : ZMod sm2.p)
+    (hx : nv W [x₀, x₁, x₂, x₃] = (x * R sm2).val) :
+    (invBlk sm2 x₀ x₁ x₂ x₃).denote W = enc sm2 x⁻¹ :=
+  invBlk_denote_inv sm2 sm2_prime W _ _ _ _ x hx
 
 theorem p256n_invBlk_denote_inv (x : ZMod p256n.p)
     (hx : nv W [x₀, x₁, x₂, x₃] = (x * R p256n).val) :
