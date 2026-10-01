@@ -14,6 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVBlocks
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVBlocks
 
 /-!
 # The hypotheses of the two-address completeness theorem on shipped bodies
@@ -42,12 +44,27 @@ table entries (`CombSelectFront.combSelectLprog`, 290 instructions), the elimina
 four immediate moves, the hypotheses hold with a succeeding symbolic run, and the evaluated
 check agrees.
 
+The theorems for bodies with several blocks, `OwnedLprogTV.twoAddr_ownedCheckM_complete_blocks`
+and `OwnedLprogTV.dropOk_ownedCheckM_complete_blocks`, are evaluated on the three-block loops
+`MpnLoopFrontEmit.andLprog` and `MpnLoopFrontEmit.addLprogFront`. Two-address legalisation
+receives the loops tied (no copy-route instruction), so the first theorem applies with the
+identity chunks. On the optimised `mpn_add_n` loop the dead-move elimination removes six
+immediate moves; the marks are dead within every block, the live sets converge, and the
+evaluated check agrees. The loop `rotBody 80`, which moves eighty registers one place down and
+branches back, is rejected against itself: its live sets need eighty rounds, more than the
+`4 · 2 + 64` rounds `ownedCheckM` iterates (`liveConvB` fails); `rotBody 60` is accepted.
+
 ## Main definitions
 
 * `straightWF`: the hypotheses of the theorem on a body, with a succeeding symbolic run.
 * `copyCount`: the number of instructions the copy route legalises.
 * `combSelectBody`, `foldWF`, `deadCount`: the comb select body, the hypotheses of the
   dead-move theorem on a body, and the number of eliminated moves.
+* `preTwoAddr`, `twoAddrBlocksWF`: the body two-address legalisation receives in
+  `LprogOptPipeline.ownedLprog`, and the hypotheses of the theorem for several blocks.
+* `loopMarks`, `dropBlocksWF`: the marks of the dead-move elimination, and the hypotheses of
+  the dead-move theorem for several blocks.
+* `rotBody`: a loop whose live sets converge after as many rounds as it moves registers.
 
 ## Main results
 
@@ -131,5 +148,113 @@ def deadCount (body : Lcmd) : Nat :=
 #kat foldWF tagOf (combSelectBody 4) && deadCount (combSelectBody 4) == 4
 #kat ownedCheckM ["RDX"] (typeBody tagOf (spellMemBody (constIndexFoldBody (combSelectBody 4))))
   (typeBody tagOf (foldIndexedBody (combSelectBody 4)))
+
+/-! ## Bodies with several blocks -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (cfgOf isLeader)
+
+/-- The body of the first function of a program. -/
+def firstBody (p : Option Lprog) : Lcmd :=
+  match p with
+  | some P => match P.lp_funcs with
+      | f :: _ => f.2.lfd_body
+      | [] => []
+  | none => []
+
+/-- The names `ownedCheckTy` observes for the first function of a program. -/
+def firstOuts (p : Option Lprog) : List String :=
+  match p with
+  | some P => match P.lp_funcs with
+      | f :: _ => resOuts f.2
+      | [] => []
+  | none => []
+
+/-- The body of the first function of a program as two-address legalisation receives it in
+    `LprogOptPipeline.ownedLprog`. -/
+def preTwoAddr (p : Option Lprog) : Lcmd :=
+  firstBody ((p.map LprogOptPipeline.optimizeLprogBasicBlocks).map
+    (fun P => LprogGpRealloc.reallocLprog (ConstIndexFold.foldIndexedLprog P)))
+
+/-- The number of blocks of a typed body. -/
+def blockCount (B : List LinstrRM) : Nat :=
+  match cfgOf (B.map Prod.fst) with
+  | some G => G.blocks.size
+  | none => 0
+
+/-- `cfgOf` accepts the typed body, and the symbolic run of every block not ending in `Lret`
+    lies inside the fragment. -/
+def blocksFrag (B : List LinstrRM) : Bool :=
+  match cfgOf (B.map Prod.fst) with
+  | some G => (List.range G.blocks.size).all fun k =>
+      (G.blk k).term == .ret ||
+        match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+        | .unk => false
+        | _ => true
+  | none => false
+
+/-- The hypotheses of `twoAddr_ownedCheckM_complete_blocks` on a body at the typing `tg`. -/
+def twoAddrBlocksWF (outs : List String) (tg : LinstrR → MemTag) (body : Lcmd) : Bool :=
+  !body.isEmpty && body.all (fun i => twoAddrWF i.li_i) && blocksFrag (typeBody tg body) &&
+    liveConvB outs (typeBody tg body) (typeBody tg (twoAddrBody body))
+
+/-- The marks of the dead-move elimination on the folded body, spelled and typed. -/
+def loopMarks (b : Lcmd) : List (LinstrRM × Bool) :=
+  typeMarks tagOf (spellMarks (dropDeadImmMarks (constIndexFoldBody b)))
+
+/-- The marks are dead immediate moves within every block. -/
+def blocksDropOk (M : List (LinstrRM × Bool)) : Bool :=
+  match cfgOf ((srcOf M).map Prod.fst) with
+  | some G => (List.range G.blocks.size).all fun k =>
+      (G.blk k).term == .ret ||
+        dropOk [] ((M.drop (G.blk k).start).take
+          (bstopOf (G.blk k).term (G.blk k) - (G.blk k).start))
+  | none => false
+
+/-- The hypotheses of `dropOk_ownedCheckM_complete_blocks` on a marked body. -/
+def dropBlocksWF (outs : List String) (M : List (LinstrRM × Bool)) : Bool :=
+  !M.isEmpty && M.all (fun p => !p.2 || straightR p.1.1) &&
+    (List.range M.length).all (fun pc =>
+      !isLeader (M.map fun p => p.1.1).toArray pc || !(M.getD pc ((.Lret, .reg none), false)).2) &&
+    blocksDropOk M && blocksFrag (srcOf M) && liveConvB outs (srcOf M) (keptOf M)
+
+/-- A loop whose block moves each of the registers `r1`, …, `rn` one place down to `r0`, …,
+    `r(n-1)` and branches back on `r0`. -/
+def rotBody (n : Nat) : Lcmd :=
+  [⟨0, .Llabel .internal 1⟩] ++
+    (List.range n).map (fun i => ⟨0, .Lopn [.reg s!"r{i}"] "MOV:64" [.reg s!"r{i+1}"]⟩) ++
+    [⟨0, .Lcond (.reg "r0") 1⟩, ⟨0, .Lret⟩]
+
+#kat twoAddrBlocksWF (firstOuts MpnLoopFrontEmit.andLprog) tagOf
+    (preTwoAddr MpnLoopFrontEmit.andLprog) &&
+  blockCount (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.andLprog)) == 3
+#kat ownedCheckM (firstOuts MpnLoopFrontEmit.andLprog)
+  (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.andLprog))
+  (typeBody tagOf (twoAddrBody (preTwoAddr MpnLoopFrontEmit.andLprog)))
+#kat twoAddrBlocksWF (firstOuts MpnLoopFrontEmit.addLprogFront) tagOf
+    (preTwoAddr MpnLoopFrontEmit.addLprogFront) &&
+  blockCount (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.addLprogFront)) == 3 &&
+  copyCount (preTwoAddr MpnLoopFrontEmit.addLprogFront) == 0
+#kat ownedCheckM (firstOuts MpnLoopFrontEmit.addLprogFront)
+  (typeBody tagOf (preTwoAddr MpnLoopFrontEmit.addLprogFront))
+  (typeBody tagOf (twoAddrBody (preTwoAddr MpnLoopFrontEmit.addLprogFront)))
+#kat dropBlocksWF (firstOuts MpnLoopFrontEmit.addLprogFront)
+    (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))) &&
+  ((loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))).filter
+    (·.2)).length == 6 &&
+  blockCount (srcOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
+    == 3
+#kat keptOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))) ==
+  typeBody tagOf (foldIndexedBody (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront)))
+#kat ownedCheckM (firstOuts MpnLoopFrontEmit.addLprogFront)
+  (srcOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
+  (keptOf (loopMarks (optimizeBasicBlocks (firstBody MpnLoopFrontEmit.addLprogFront))))
+set_option kat.ms 1000 in
+#kat blocksFrag (typeBody tagOf (rotBody 80)) &&
+  blockCount (typeBody tagOf (rotBody 80)) == 2 &&
+  !liveConvB [] (typeBody tagOf (rotBody 80)) (typeBody tagOf (rotBody 80)) &&
+  !ownedCheckM [] (typeBody tagOf (rotBody 80)) (typeBody tagOf (rotBody 80))
+set_option kat.ms 500 in
+#kat liveConvB [] (typeBody tagOf (rotBody 60)) (typeBody tagOf (rotBody 60)) &&
+  ownedCheckM [] (typeBody tagOf (rotBody 60)) (typeBody tagOf (rotBody 60))
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVCompleteKats
