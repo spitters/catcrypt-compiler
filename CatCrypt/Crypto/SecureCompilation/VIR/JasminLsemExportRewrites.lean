@@ -781,6 +781,152 @@ theorem carryStep_ren (hσ : RenOn σ N) {op : CarryOp} {d : String} {a c : LOpe
         by first | rfl | exact hf.1, by first | rfl | exact hf.2⟩
   · cases h
 
+/-- The register step does not step a two-source `MOV`. -/
+theorem lsemStepCast_mov2 (d opn : String) (a b : LOperand) (hm : stripWidthTag opn = "MOV")
+    (cd : Option Nat) (r : LstateN) :
+    lsemStepCast (.Lopn [.reg d] opn [a, b], cd) r = none := by
+  have hmh : mulhiStruct? (.Lopn [.reg d] opn [a, b]) = none := by
+    unfold mulhiStruct?
+    split
+    · rename_i heq
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      simp [hm]
+    · rfl
+  have hsar : sarStruct? (.Lopn [.reg d] opn [a, b]) = none := by
+    unfold sarStruct?
+    split
+    · rename_i heq
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      simp [hm]
+    · rfl
+  rw [lsemStepCast_of_delegate _ _ (Or.inl (by simp [castStruct?])),
+    lsemStepMC_of_delegate _ _ hmh (by cases a <;> cases b <;> rfl)
+      (by cases a <;> cases b <;> rfl) (by cases a <;> cases b <;> rfl)
+      (by cases a <;> cases b <;> rfl),
+    lsemStepSh_of_not_sar _ _ hsar]
+  simp only [lsemStepN]
+  cases readReg r a with
+  | none => rfl
+  | some wv =>
+      obtain ⟨w, va⟩ := wv
+      simp only []
+      cases evalOperandN r w b with
+      | none => rfl
+      | some vb => simp [hm, applyOpnN]
+
+/-- The memory step does not step a flag-quiet lift instruction. -/
+theorem lsemStepMem_of_wideArgs {i : LinstrRM} {w : WideOp} (h : wideArgs? i = some w)
+    (s : LstateM) : lsemStepMem i s = none := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · rename_i d opn a b
+    have hm : stripWidthTag opn = "MOV" := by
+      split_ifs at h with he
+      · subst he; decide +kernel
+    have hst : storeStruct? (.Lopn [.reg d] opn [a, b]) = none := by
+      unfold storeStruct?
+      split
+      · rename_i heq
+        simp only [LinstrR.Lopn.injEq] at heq
+        obtain ⟨-, rfl, -⟩ := heq
+        rw [if_neg]
+        intro he
+        subst he
+        revert hm; decide +kernel
+      · rfl
+    cases tag <;> simp [lsemStepMem, loadStruct?, hst, loadCStruct?, storeCStruct?,
+      lsemStepCast_mov2 d opn a b hm]
+  · cases tag <;> simp [lsemStepMem, loadStruct?, storeStruct?, loadCStruct?, storeCStruct?,
+      lsemStepCast, castStruct?, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
+      sbbStruct?, sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN]
+  · cases h
+
+/-- A flag-quiet lift instruction is an `Lopn`. -/
+theorem wideArgs?_isLopn {i : LinstrRM} {w : WideOp} (h : wideArgs? i = some w) : IsLopn i := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · exact ⟨_, _, _, rfl⟩
+  · exact ⟨_, _, _, rfl⟩
+  · cases h
+
+/-- The two-source `MOV` recognizer commutes with the renaming. -/
+theorem wideArgs?_ren_mov {i : LinstrRM} {d : String} {b : LOperand}
+    (h : wideArgs? i = some (.mov d b)) :
+    wideArgs? (renRM σ i) = some (.mov (σ d) (renOperand σ b)) := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h with ho
+    · cases h
+      simp [renRM, renLinstrR, wideArgs?, ho, renOperand]
+  · split_ifs at h
+    cases h
+  · cases h
+
+/-- The destination and the source of a two-source `MOV` are names and operands of the
+    instruction. -/
+theorem wideArgs?_names_mov {i : LinstrRM} {d : String} {b : LOperand}
+    (h : wideArgs? i = some (.mov d b)) :
+    d ∈ instrNames i.1 ∧ ∀ n ∈ opNames b, n ∈ instrNames i.1 := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · split_ifs at h
+    · cases h
+      exact ⟨by simp [instrNames, opNames], fun n hn => by
+        simp only [instrNames, List.mem_flatMap, List.mem_append]
+        exact ⟨_, Or.inr (by simp), hn⟩⟩
+  · split_ifs at h
+    cases h
+  · cases h
+
+/-- A two-source `MOV` step under a renaming. -/
+theorem wideStep_mov_ren (hσ : RenOn σ N) {d : String} {b : LOperand} (hd : N d)
+    (hb : ∀ n ∈ opNames b, N n) {s s' t : LstateM} (hR : RelM σ N s s')
+    (hf : s'.cf = s.cf ∧ s'.of = s.of) (h : wideStep (.mov d b) s = some t) :
+    ∃ t', wideStep (.mov (σ d) (renOperand σ b)) s' = some t'
+      ∧ RelM σ N t t' ∧ t'.cf = t.cf ∧ t'.of = t.of := by
+  simp only [wideStep] at h ⊢
+  rw [hR.1.evalOperandN 64 b hb]
+  split at h
+  · cases h
+    exact ⟨_, rfl, RelM.setReg hσ hR hd _, hf.1, hf.2⟩
+  · cases h
+
+/-- The instruction is not a widening multiply `MULX`, whose implicit source `RDX` a
+    renaming of the operands does not rename. -/
+def mulxFree (i : LinstrRM) : Bool :=
+  match wideArgs? i with
+  | some (.mulx _ _ _) => false
+  | _ => true
+
+/-- An `Lopn` with one destination is not a `MULX`. -/
+theorem mulxFree_of_lopn1 {i : LinstrRM} (h : ∃ d o s, i.1 = LinstrR.Lopn [d] o s) :
+    mulxFree i = true := by
+  obtain ⟨d, o, s, h⟩ := h
+  unfold mulxFree
+  cases hw : wideArgs? i with
+  | none => rfl
+  | some w =>
+      cases w with
+      | mov _ _ => rfl
+      | mulx lo hi b =>
+          exfalso
+          obtain ⟨wire, tag⟩ := i
+          dsimp only at h
+          subst h
+          unfold wideArgs? at hw
+          dsimp only at hw
+          split at hw <;> (try split_ifs at hw) <;> simp_all
+
 /-- The operands the flag compare returns are operands of the instruction. -/
 theorem cmpArgs?_names {i : LinstrRM} {p : LOperand × LOperand} (h : cmpArgs? i = some p) :
     (∀ n ∈ opNames p.1, n ∈ instrNames i.1) ∧ (∀ n ∈ opNames p.2, n ∈ instrNames i.1) := by
@@ -858,16 +1004,17 @@ theorem withALUFlags_ren {i : LinstrRM} (hi : ∀ n ∈ instrNames i.1, N n) {s0
       · exact ⟨rfl, rfl⟩
       · exact hb
 
-/-- A conditional jump of the instruction reads the zero flag: every `Lcond` is
-    one of the two condition-code forms `flagCondCC?` recognises. -/
+/-- A conditional jump of the instruction reads the zero flag (every `Lcond` is
+    one of the two condition-code forms `flagCondCC?` recognises), and the instruction
+    reads no implicit register (it is not a `MULX`, `mulxFree`). -/
 def CondOK (i : LinstrRM) : Prop :=
-  ∀ c l, i.1 = LinstrR.Lcond c l → flagCondCC? i ≠ none
+  (∀ c l, i.1 = LinstrR.Lcond c l → flagCondCC? i ≠ none) ∧ mulxFree i = true
 
 /-- The two programs of a renaming simulation from program counter `k0` on: the
     same function name and label positions, the renamed program holds the renamed
     instruction at every index from `k0` on, those instructions mention names of
-    `N` only and branch on the zero flag only, and every jump lands at `k0` or
-    later. -/
+    `N` only, branch on the zero flag only and read no implicit register, and every
+    jump lands at `k0` or later. -/
 structure RenProg (σ : String → String) (N : String → Prop) (k0 : Nat)
     (P P' : LprogM) : Prop where
   /-- The function names agree. -/
@@ -878,7 +1025,7 @@ structure RenProg (σ : String → String) (N : String → Prop) (k0 : Nat)
   body : ∀ k, k0 ≤ k → P'.body[k]? = (P.body[k]?).map (renRM σ)
   /-- From `k0` on the instructions mention names of `N` only. -/
   names : ∀ k i, k0 ≤ k → P.body[k]? = some i → ∀ n ∈ instrNames i.1, N n
-  /-- From `k0` on the conditionals read the zero flag. -/
+  /-- From `k0` on the conditionals read the zero flag and no instruction is a `MULX`. -/
   cond : ∀ k i, k0 ≤ k → P.body[k]? = some i → CondOK i
   /-- Every jump lands at `k0` or later. -/
   jmp : ∀ l pc, findLabelMem l P.body = some pc → k0 ≤ pc + 1
@@ -1000,7 +1147,7 @@ theorem evalInstrPMemF_ren {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
       simp only [hq, Option.some.injEq] at h
       subst h
       obtain ⟨q', hq', hRq, hfn, hkq⟩ := evalInstrPMemL_ren hσ hP i hi
-        (fun c l he => hc c l he h3) hR.1 hR.2.1 hk hq
+        (fun c l he => hc.1 c l he h3) hR.1 hR.2.1 hk hq
       have hfq := evalInstrPMemL_flags hq
       have hfq' := evalInstrPMemL_flags hq'
       have hw := withALUFlags_ren (i := i) (s0 := s.prog.base) (s0' := s'.prog.base)
@@ -1014,7 +1161,29 @@ theorem evalInstrPMemF_ren {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
   | none =>
       simp only [hq] at h
       cases hk3 : carryArgs? i with
-      | none => simp [hk3] at h
+      | none =>
+          simp only [hk3] at h
+          cases hw : wideArgs? i with
+          | none => simp [hw] at h
+          | some w =>
+              cases w with
+              | mulx lo hi b => exact absurd hc.2 (by simp [mulxFree, hw])
+              | mov d b =>
+                  obtain ⟨hd, hb⟩ := wideArgs?_names_mov hw
+                  simp only [hw] at h
+                  obtain ⟨u, hu, rfl⟩ := Option.map_eq_some_iff.mp h
+                  obtain ⟨u', hu', hRu, hcf, hof⟩ := wideStep_mov_ren hσ (hi _ hd)
+                    (fun n hn => hi n (hb n hn)) hR.1 hR.2.2.2 hu
+                  have hw' := wideArgs?_ren_mov (σ := σ) hw
+                  have hq'none : evalInstrPMemL P' (renRM σ i) s'.prog = none := by
+                    rw [evalInstrPMemL_lopn _ _ _ (wideArgs?_isLopn hw'),
+                      lsemStepMem_of_wideArgs hw', Option.map_none]
+                  refine ⟨{ prog := { base := u', lfn := s'.prog.lfn }, zf := s'.zf },
+                    by rw [hq'none]; simp only [Option.map_none, hw', Option.map_some, hu'],
+                    ⟨hRu, hR.2.1, hR.2.2.1, hcf, hof⟩, ?_⟩
+                  have := wideStep_lpc _ _ _ hu
+                  show k0 ≤ u.lpc
+                  omega
       | some p =>
           obtain ⟨op, d, a, c⟩ := p
           obtain ⟨hd, ha, hcn⟩ := carryArgs?_names hk3
@@ -1214,12 +1383,60 @@ theorem renOn_aliasRegName {from_ to_ : String} (hf : from_ ≠ "") (ht : to_ �
     unfold aliasRegName
     rw [if_neg (by simpa using fun h : "" = from_ => hf h.symm)]
 
-/-- An `Lopn` is not a conditional. -/
-theorem condOK_of_isLopn {i : LinstrRM} (h : IsLopn i) : CondOK i := by
+/-- An `Lopn` that is not a `MULX` satisfies `CondOK`. -/
+theorem condOK_of_isLopn {i : LinstrRM} (h : IsLopn i) (hm : mulxFree i = true) : CondOK i := by
   obtain ⟨d, o, s, hd⟩ := h
-  intro c l he
+  refine ⟨fun c l he => ?_, hm⟩
   rw [hd] at he
   cases he
+
+/-- An `Lopn` with one destination satisfies `CondOK`. -/
+theorem condOK_of_lopn1 {i : LinstrRM} (h : ∃ d o s, i.1 = LinstrR.Lopn [d] o s) : CondOK i :=
+  condOK_of_isLopn (by obtain ⟨d, o, s, h⟩ := h; exact ⟨_, _, _, h⟩) (mulxFree_of_lopn1 h)
+
+/-- A lowered binding writes its one destination register. -/
+theorem opToLinstrR_lopn1 (op : JasminOp) (dst : String) (srcs : List LOperand) :
+    ∃ o s, opToLinstrR op dst srcs = LinstrR.Lopn [.reg dst] o s := by
+  unfold opToLinstrR
+  split <;> (repeat' (first | exact ⟨_, _, rfl⟩ | split | dsimp only))
+
+/-- Every instruction of the typed walk has one destination. -/
+theorem loopBodyWalkNM_lopn1 (d : Nat) (accReg idxReg : String) (invRegs : List String)
+    (immSlotMap : ImmSlotMap) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (curDepth : Nat) :
+    ∀ i ∈ loopBodyWalkNM d accReg idxReg invRegs immSlotMap com curDepth,
+      ∃ d o s, i.1 = LinstrR.Lopn [d] o s := by
+  induction com generalizing curDepth with
+  | ret v => intro i hi; simp [loopBodyWalkNM] at hi
+  | var e body ih =>
+      intro i hi
+      simp only [loopBodyWalkNM, List.mem_cons] at hi
+      rcases hi with rfl | hi
+      · obtain ⟨o, s, h⟩ := opToLinstrR_lopn1 e.op (loopReg d curDepth)
+          (loopExprArgsN d accReg idxReg invRegs curDepth immSlotMap e)
+        exact ⟨_, o, s, h⟩
+      · exact ih (curDepth + 1) i hi
+
+/-- Every instruction of the looped segment has one destination. -/
+theorem forLoopBodyNRtRM_lopn1 (d : Nat) (accReg : String) {accTy : JasminTy}
+    {invTys : Ctxt jasminDialect}
+    (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
+    (invOps : List LOperand) (immSlotMap : ImmSlotMap) :
+    ∀ i ∈ forLoopBodyNRtRM d accReg update invOps immSlotMap,
+      ∃ d o s, i.1 = LinstrR.Lopn [d] o s := by
+  intro i hi
+  simp only [forLoopBodyNRtRM, List.mem_append] at hi
+  rcases hi with ((hi | hi) | hi) | hi
+  · exact loopBodyWalkNM_lopn1 _ _ _ _ _ _ _ i hi
+  · unfold loopFeedbackRM at hi
+    split at hi
+    · simp at hi
+    · simp only [List.mem_singleton] at hi; subst hi; exact ⟨_, _, _, rfl⟩
+  · simp only [loopAdvanceRM, List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl <;> exact ⟨_, _, _, rfl⟩
+  · simp only [loopTouchRM, List.mem_map] at hi
+    obtain ⟨r, _, rfl⟩ := hi
+    exact ⟨_, _, _, rfl⟩
 
 /-- Every conditional of the typed loop node reads the zero flag. -/
 theorem forLoopLcmdNRtRM_condOK (d : Nat) (accReg : String) (initOp countOp : LOperand)
@@ -1231,16 +1448,16 @@ theorem forLoopLcmdNRtRM_condOK (d : Nat) (accReg : String) (initOp countOp : LO
   simp only [forLoopLcmdNRtRM, guardedFlagLoopLinstrRM, flagLoopLinstrRM, flagBackedge,
     loopSeedsRM, List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hi
   rcases hi with (rfl | rfl | rfl) | (rfl | rfl | (rfl | hi | rfl | rfl)) | rfl
-  · exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-  · exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-  · exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-  · exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-  · intro c l _; simp [flagCondCC?]
-  · intro c l he; cases he
-  · exact condOK_of_isLopn (forLoopBodyNRtRM_isLopn d accReg update invOps immSlotMap i hi)
-  · exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-  · intro c l _; simp [flagCondCC?]
-  · intro c l he; cases he
+  · exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+  · exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+  · exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+  · exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+  · exact ⟨fun c l _ => by simp [flagCondCC?], rfl⟩
+  · exact ⟨fun c l he => (by cases he), rfl⟩
+  · exact condOK_of_lopn1 (forLoopBodyNRtRM_lopn1 d accReg update invOps immSlotMap i hi)
+  · exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+  · exact ⟨fun c l _ => by simp [flagCondCC?], rfl⟩
+  · exact ⟨fun c l he => (by cases he), rfl⟩
 
 /-- The flag step of a register-copy `MOV dst, src`: write the cell of `src` to
     `dst` and advance. -/

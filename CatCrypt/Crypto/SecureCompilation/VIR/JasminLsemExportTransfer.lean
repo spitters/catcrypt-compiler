@@ -283,7 +283,7 @@ theorem fstepF_immShiftWire (m : String) (hm : m = "SHR" ∨ m = "SHL" ∨ m = "
   unfold fstepF
   rw [hc, hmv]
   simp only []
-  rw [stepMemF_of_quiet rfl rfl]
+  rw [stepMemF_of_quiet rfl rfl rfl]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
     lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
   simp only [Option.map_map]
@@ -461,10 +461,13 @@ theorem fstepF_immShiftStruct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m =
   have hk : carryArgs? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
       MemTag.reg none) = none := by
     rcases hm with rfl | rfl | rfl <;> simp only [carryArgs?, withWidthTag] <;> split <;> simp
+  have hw : wideArgs? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
+      MemTag.reg none) = none := by
+    rcases hm with rfl | rfl | rfl <;> simp only [wideArgs?, withWidthTag] <;> split <;> simp
   unfold fstepF
   rw [hc, hmv]
   simp only []
-  rw [stepMemF_of_quiet ha hk]
+  rw [stepMemF_of_quiet ha hk hw]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
     lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl]
   simp only [Option.map_map]
@@ -805,7 +808,17 @@ theorem evalInstrPMemF_larr (r : String) (P : LprogM) (i : LinstrRM) (s s' : Lst
             split at hb
             · split at hb <;> (cases hb; rfl)
             · exact absurd hb (by simp)
-          · cases h
+          · split at h
+            · obtain ⟨b', hb, rfl⟩ := Option.map_eq_some_iff.mp h
+              unfold wideStep at hb
+              split at hb
+              · split at hb
+                · cases hb; rfl
+                · exact absurd hb (by simp)
+              · split at hb
+                · cases hb; rfl
+                · exact absurd hb (by simp)
+            · cases h
 
 /-- **The register-copy move leaves the array carrier unchanged.** The export's
     feedback `MOV acc, ret` updates the register cell of `acc` and no array

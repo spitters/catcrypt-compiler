@@ -650,6 +650,49 @@ theorem carryStep_live {op : CarryOp} {d : String} {a c : LOperand}
         by first | rfl | exact hf.1, by first | rfl | exact hf.2⟩
   · cases h
 
+/-- A two-source `MOV` writes its destination register, no array, and reads its second
+    source operand. -/
+theorem wideArgs?_shape_mov {i : LinstrRM} {d : String} {b : LOperand}
+    (h : wideArgs? i = some (.mov d b)) :
+    memRegDefs i = [d] ∧ memArrDefs i = [] ∧ (∀ n ∈ opNames b, n ∈ useNames i.1) := by
+  obtain ⟨wire, tag⟩ := i
+  unfold wideArgs? at h
+  dsimp only at h
+  split at h
+  · rename_i d' opn a b'
+    split_ifs at h with ho
+    cases h
+    have hst : storeStruct? (.Lopn [.reg d] opn [a, b]) = none := by
+      unfold storeStruct?
+      split
+      · rename_i heq
+        simp only [LinstrR.Lopn.injEq] at heq
+        obtain ⟨-, rfl, -⟩ := heq
+        rw [if_neg (by subst ho; decide +kernel)]
+      · rfl
+    have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
+      unfold storeHit?
+      cases tag <;> simp [hst]
+    exact ⟨by simp [memRegDefs, hsh, defNames, opNames], by simp [memArrDefs, hsh],
+      fun n hn => by simp only [useNames, List.mem_flatMap]; exact ⟨_, by simp, hn⟩⟩
+  · split_ifs at h
+    cases h
+  · cases h
+
+/-- A two-source `MOV` step under a liveness certificate. -/
+theorem wideStep_mov_live {d : String} {b : LOperand}
+    (hK : Keeps σ Nr Mr [d]) (hA : ∀ r, Ma r → Na r) (hb : ∀ n ∈ opNames b, Nr n)
+    {s s' t : LstateM} (hR : RelM2 σ Nr Na s s') (hf : s'.cf = s.cf ∧ s'.of = s.of)
+    (h : wideStep (.mov d b) s = some t) :
+    ∃ t', wideStep (.mov (σ d) (renOperand σ b)) s' = some t'
+      ∧ RelM2 σ Mr Ma t t' ∧ t'.cf = t.cf ∧ t'.of = t.of := by
+  simp only [wideStep] at h ⊢
+  rw [hR.1.evalOperandN 64 b hb]
+  split at h
+  · cases h
+    exact ⟨_, rfl, RelM2.setReg_keeps hR hK hA _, hf.1, hf.2⟩
+  · cases h
+
 theorem RelM2.mono {s s' : LstateM} (h : RelM2 σ Nr Na s s') (hRg : ∀ r, Mr r → Nr r)
     (hA : ∀ r, Ma r → Na r) : RelM2 σ Mr Ma s s' :=
   ⟨relN_mono h.1 hRg, fun r hr => h.2.1 r (hA r hr), h.2.2⟩
@@ -882,7 +925,7 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
         simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
         cases hq
         exact ⟨_, rfl, hfall (fun _ _ _ he => by cases he), hR.2.1, Nat.le_succ_of_le hk⟩
-    | Lcond c l => exact absurd h3 (hc c l rfl)
+    | Lcond c l => exact absurd h3 (hc.1 c l rfl)
     | Lgoto tgt =>
         obtain ⟨fn, l⟩ := tgt
         simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
@@ -921,7 +964,33 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
   | none =>
       simp only [hq] at h
       cases hk3 : carryArgs? i with
-      | none => simp [hk3] at h
+      | none =>
+          simp only [hk3] at h
+          cases hw : wideArgs? i with
+          | none => simp [hw] at h
+          | some w =>
+              cases w with
+              | mulx lo hi b => exact absurd hc.2 (by simp [mulxFree, hw])
+              | mov d b =>
+                  obtain ⟨hmr, hma, hb⟩ := wideArgs?_shape_mov hw
+                  simp only [hw] at h
+                  obtain ⟨u, hu', rfl⟩ := Option.map_eq_some_iff.mp h
+                  rw [hmr] at hKr'
+                  rw [hma] at hKa'
+                  obtain ⟨u', hu'', hRu, hcf, hof⟩ := wideStep_mov_live hKr' hKa'.sub
+                    (fun n hn => hu n (hb n hn)) hR.1 hR.2.2.2 hu'
+                  have hw' := wideArgs?_ren_mov (σ := σ) hw
+                  have hq'none : evalInstrPMemL P' (renRM σ i) s'.prog = none := by
+                    rw [evalInstrPMemL_lopn _ _ _ (wideArgs?_isLopn hw'),
+                      lsemStepMem_of_wideArgs hw', Option.map_none]
+                  have hpc := wideStep_lpc _ _ _ hu'
+                  refine ⟨{ prog := { base := u', lfn := s'.prog.lfn }, zf := s'.zf },
+                    by rw [hq'none]; simp only [Option.map_none, hw', Option.map_some, hu''],
+                    ⟨?_, hR.2.1, hR.2.2.1, hcf, hof⟩, ?_⟩
+                  · show RelM2 σ (Lr u.lpc) (La u.lpc) u u'
+                    rw [hpc]; exact hRu
+                  · show k0 ≤ u.lpc
+                    omega
       | some p =>
           obtain ⟨op, d, a, c⟩ := p
           obtain ⟨hmr, hma, ha, hcn⟩ := carryArgs?_shape hk3
@@ -1455,9 +1524,9 @@ theorem reuseBody_run (fn : String) (fuel : Nat) {s s' t : LstateMF}
     have hk := reuseBody_lt hget
     interval_cases k <;> simp [reuseBody] at hget <;> subst hget <;>
       first
-        | exact condOK_of_isLopn ⟨_, _, _, rfl⟩
-        | (intro c l he; cases he; simp [flagCondCC?])
-        | (intro c l he; cases he)
+        | exact condOK_of_lopn1 ⟨_, _, _, rfl⟩
+        | exact ⟨fun c l he => (by cases he; simp [flagCondCC?]), rfl⟩
+        | exact ⟨fun c l he => (by cases he), rfl⟩
   · intro k i _ hget
     have hk := reuseBody_lt hget
     interval_cases k <;> simp [reuseBody] at hget <;> subst hget <;>

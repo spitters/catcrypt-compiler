@@ -29,11 +29,15 @@ that always fails is accepted without a comparison, since no halting run passes 
 With the wire typing `tyWire`, no block of the five `mpn_*_loop_owned` loops fails and all
 are accepted: `lsemFuelMemF` steps their array-ABI moves `MOVQ` (`qsave.<R>`) and
 `LOAD:64`/`STORE:64` (`mem.<B>.<off>`) as register copies (`JasminLsemMemFlagGuard.copyQ`).
-The one block of the X25519 ladder step fails from every state, so the check accepts it
-without a comparison: `lsemFuelMemF` steps `ADC:64` with the carry flag and `symStep`
-describes the carry family, but the block also contains the two-source `MOV:64` and
-`MULX:64`, which `lsemFuelMemF` does not step. This acceptance says nothing about the ladder
-step's value. The entry and
+`lsemFuelMemF` steps the carry family, the two-source `MOV:64` and `MULX:64`/`MULXMEM:64`
+(`JasminLsemMemFlagGuard.wideStep`) and `symStep` describes them, so the one block of a
+prefix of the X25519 ladder step (`monoStepPrefix`) runs symbolically and is accepted.
+The check on the whole 1058-instruction step is pending: it exceeds the memory budget of a
+`#kat`. Two points are open. A value comparison on deep symbolic words walks them as trees,
+so a block whose live outputs are deep needs shared terms (a term table) or cut points
+inside the block. The ladder step writes its results to the cells `mem.RDI.<off>`, which
+are not among the results `outs`, so its acceptance compares no value until `outs` includes
+them. The entry and
 loop blocks of the rolled Keccak-f1600 fail at `LOADSYM` and `ROR:63:64`, which
 `lsemFuelMemF` does not step.
 
@@ -99,6 +103,13 @@ def ownedResult (ty : Lcmd → List LinstrRM) (p : Option Lprog) : Option (Bool 
     let B := (P.lp_funcs.head?.map (fun f => ty f.2.lfd_body)).getD []
     (ownedCheckTy ty P (ownedLprog P), ((blockFails B).filter id).length, (blockFails B).length)
 
+/-- The program of the first `n` instructions of the X25519 ladder step
+    `Fe25519LfundefBridge.monoStepLprog`, followed by `Lret`. -/
+def monoStepPrefix (n : Nat) : Lprog :=
+  { lp_funcs := [("x25519_mono_step",
+      { Fe25519LfundefBridge.monoStepFundef with
+        lfd_body := Fe25519LfundefBridge.monoStepLcmd.take n ++ [⟨0, .Lret⟩] })] }
+
 /-- The rolled Keccak-f1600 program before `ownedLprog`. -/
 def keccakRolledPre : Option Lprog :=
   match CatCrypt.Crypto.Jasmin.KeccakJincImport.keccakF1600Rolled with
@@ -122,7 +133,7 @@ def keccakRolledPre : Option Lprog :=
 #kat ownedResult tyWire MpnLoopFrontEmit.addLprogFront == some (true, 0, 3)
 #kat ownedResult tyWire MpnLoopFrontEmit.subLprogFront == some (true, 0, 3)
 set_option kat.ms 800 in
-#kat ownedResult tyWire (some Fe25519LfundefBridge.monoStepLprog) == some (true, 1, 1)
+#kat ownedResult tyWire (some (monoStepPrefix 32)) == some (true, 0, 1)
 set_option kat.ms 2500 in
 #kat ownedResult tyWire keccakRolledPre == some (true, 2, 3)
 

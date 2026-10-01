@@ -291,8 +291,8 @@ theorem decSimC_alu (opn base : String) (op : AluOp) (hstrip : stripWidthTag opn
   obtain ⟨hC, -, -⟩ := h
   have hva := hC.regs a ha
   have hvc := hC.regs c hc
-  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry b zf _ hva, hvc, Option.bind_some,
-    hf, Option.map_some]
+  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _ hva,
+    hvc, Option.bind_some, hf, Option.map_some]
   have hw := withALUFlags_reg2 (hop d a c) hva hvc
     ((b.setReg d (f (sa.regs (π a)) (sa.regs (π c)))).nextPc)
   refine ⟨_, zf, rfl, DecLsemCorr.withALUFlags (hC.write d (f (sa.regs (π a)) (sa.regs (π c)))
@@ -645,10 +645,18 @@ theorem fstepF_flags_quiet {i : LinstrRM} (ha : aluFlagOp? i = none) (hk : carry
     · split at h
       · cases h; exact ⟨rfl, rfl⟩
       · cases h
-    · rw [stepMemF_of_quiet ha hk] at h
-      obtain ⟨b1, hb1, he⟩ := Option.map_eq_some_iff.mp h
+    · obtain ⟨b1, hb1, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-      exact lsemStepMem_flags hb1
+      unfold stepMemF at hb1
+      split at hb1
+      · rename_i b2 hb2
+        cases hb1
+        rw [withALUFlags_of_none ha]
+        exact lsemStepMem_flags hb2
+      · simp only [hk] at hb1
+        split at hb1
+        · exact wideStep_flags _ _ _ hb1
+        · cases hb1
 
 /-- The machine instructions that write no flag: moves, the frame load, and the indexed load
     and store. -/

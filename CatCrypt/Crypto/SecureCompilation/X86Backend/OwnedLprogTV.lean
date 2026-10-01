@@ -34,8 +34,10 @@ state; `unk` when the instruction is outside the described fragment. The fragmen
 flag `CMP`, the register copies (`MOV` and the array-ABI moves `MOVQ`, `LOAD:64`,
 `STORE:64`), labels, `Lalign`, the array load and store of
 `lsemStepMem`, the arms of `lsemStepN` (two-source arithmetic, immediate `MOV`, `NEG`,
-immediate shifts) with the carry and overflow flags `withALUFlags` writes, and the carry
-family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`; the multiply arms, `SAR`, `CMOV`, the
+immediate shifts) with the carry and overflow flags `withALUFlags` writes, the carry
+family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`, and the two-source `MOV` and the
+widening multiplies `MULX`, `MULXMEM` of `wideStep` (`symWide`, the product words
+`STerm.mulx`); the multiply arms of `lsemStepMC`, `SAR`, `CMOV`, the
 casts and the compile-time-offset memory moves are `unk`. `symRun` composes the steps of a
 list.
 
@@ -57,7 +59,8 @@ checked, not trusted.
 
 * `STerm`, `SArr`, `SFlag`, `SG`, `SSt`, `Holds`: symbolic values, states and the states
   they describe.
-* `symN`, `symSh`, `symMC`, `symCast`, `symMem`, `aluFl`, `symCarry`, `symStep`, `symRun`:
+* `symN`, `symSh`, `symMC`, `symCast`, `symMem`, `aluFl`, `symCarry`, `symWide`, `symStep`,
+  `symRun`:
   the symbolic step layer by layer, and runs.
 * `SDec`, `symDec`: the symbolic value of a branch condition.
 * `blockOk`, `ownedCheckWith`, `ownedCheckM`: the checker.
@@ -68,7 +71,8 @@ checked, not trusted.
 ## Main results
 
 * `symN_sound`, `symSh_sound`, `symMC_sound`, `symCast_sound`, `symMem_sound`,
-  `aluFlT_sound`, `symCarry_sound`, `symStep_sound`: each layer of the step is described
+  `aluFlT_sound`, `symCarry_sound`, `symWide_sound`, `symStep_sound`: each layer of the
+  step is described
   exactly.
 * `symRun_sound`: the symbolic run describes the run of a list exactly.
 * `fuel_runL`, `runL_fuel`: a run through straight-line instructions of a body.
@@ -97,9 +101,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem (immShiftMnem?)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (x86_ADC x86_SBB x86_ADCX)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (x86_ADC x86_SBB x86_ADCX x86_MULX_lo_hi)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
-  (lsemStepMem_of_carryArgs lsemStepMem_flags)
+  (lsemStepMem_of_carryArgs lsemStepMem_of_wideArgs lsemStepMem_flags)
 
 /-! ## 1. Width casts -/
 
@@ -203,6 +207,9 @@ inductive STerm where
   /-- The flag `carryBit op ofl` on `x` and `y` read at width `64`, with the carry-in the bit
       of `c`, as a word of width `1`. -/
   | carryF (op : CarryOp) (ofl : Bool) (x y c : STerm)
+  /-- The low (`hi = false`) or high (`hi = true`) word of the widening product
+      `x86_MULX_lo_hi` of `x` and `y` read at width `64`. -/
+  | mulx (hi : Bool) (x y : STerm)
 
 /-- A symbolic array cell over the registers and arrays at the start of a block. -/
 inductive SArr where
@@ -255,6 +262,9 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .carryW op x y c => ⟨64, carryWord op (castW x.ev 64) (castW y.ev 64) (bitOf c.ev)⟩
   | .carryF op ofl x y c =>
       ⟨1, BitVec.ofBool (carryBit op ofl (castW x.ev 64) (castW y.ev 64) (bitOf c.ev))⟩
+  | .mulx hi x y =>
+      ⟨64, if hi then (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).2
+        else (x86_MULX_lo_hi (castW x.ev 64) (castW y.ev 64)).1⟩
 
 /-- The value of a symbolic array, for the start registers `V`, arrays `A` and flags `C`,
     `O`. -/
@@ -292,6 +302,111 @@ theorem allG_append {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
   · rintro ⟨h1, h2⟩ g (hg | hg)
     · exact h1 g hg
     · exact h2 g hg
+
+/-! ### The normal form of a guard
+
+A symbolic word shares its subterms, and the words of a long block are deep. A guard keeps
+only the word that fixes the width it states (`STerm.wbase`), and a guard whose widths the
+outermost constructors fix is decided (`SG.norm`), so the guards of a run stay small. -/
+
+/-- The symbolic word whose width is the width of `t`: through the operations that keep the
+    width of their first source. -/
+def STerm.wbase : STerm → STerm
+  | .immAt _ x => x.wbase
+  | .bin _ x _ => x.wbase
+  | .un _ x => x.wbase
+  | .shImm _ _ x => x.wbase
+  | t => t
+
+/-- The width of a symbolic word that its outermost constructor fixes. -/
+def STerm.wknown : STerm → Option Nat
+  | .immW w _ => some w
+  | .aget _ w _ _ => some w
+  | .cin _ => some 1
+  | .carryW .. => some 64
+  | .carryF .. => some 1
+  | .mulx .. => some 64
+  | _ => none
+
+theorem STerm.wbase_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool) :
+    ∀ t : STerm, (t.wbase.ev V A C O).1 = (t.ev V A C O).1
+  | .immAt _ x => by rw [STerm.wbase, STerm.wbase_ev V A C O x, STerm.ev]
+  | .bin _ x _ => by rw [STerm.wbase, STerm.wbase_ev V A C O x, STerm.ev]
+  | .un _ x => by rw [STerm.wbase, STerm.wbase_ev V A C O x, STerm.ev]
+  | .shImm _ _ x => by rw [STerm.wbase, STerm.wbase_ev V A C O x, STerm.ev]
+  | .reg _ => rfl
+  | .immW _ _ => rfl
+  | .aget _ _ _ _ => rfl
+  | .cin _ => rfl
+  | .aluF _ _ _ _ _ => rfl
+  | .carryW _ _ _ _ => rfl
+  | .carryF _ _ _ _ _ => rfl
+  | .mulx _ _ _ => rfl
+
+theorem STerm.wknown_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    {t : STerm} {w : Nat} (h : t.wknown = some w) : (t.ev V A C O).1 = w := by
+  cases t <;> simp only [STerm.wknown, Option.some.injEq, reduceCtorEq] at h <;>
+    simp [STerm.ev, h]
+
+/-- A guard that holds at no evaluation. -/
+def SG.falseG : SG := .wid (.immW 0 0) 1
+
+/-- The normal form of a guard: guards that hold exactly when it holds, over the width bases
+    `STerm.wbase`, and none when the outermost constructors fix agreeing widths. -/
+def SG.norm : SG → List SG
+  | .wid t w =>
+      match t.wbase.wknown with
+      | some v => if v = w then [] else [SG.falseG]
+      | none => [.wid t.wbase w]
+  | .eqW x y =>
+      match x.wbase.wknown, y.wbase.wknown with
+      | some a, some b => if a = b then [] else [SG.falseG]
+      | _, _ => [.eqW x.wbase y.wbase]
+  | .shp a w n => [.shp a w n]
+
+theorem SG.norm_iff (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (g : SG) : AllG V A C O g.norm ↔ g.holds V A C O := by
+  cases g with
+  | wid t w =>
+      have hb := STerm.wbase_ev V A C O t
+      simp only [SG.norm]
+      cases hk : t.wbase.wknown with
+      | some v =>
+          have hv := STerm.wknown_ev V A C O hk
+          by_cases e : v = w
+          · simp [e, AllG, SG.holds, ← hb, hv]
+          · simp [e, AllG, SG.holds, SG.falseG, STerm.ev, ← hb, hv]
+      | none => simp [AllG, SG.holds, hb]
+  | eqW x y =>
+      have hx := STerm.wbase_ev V A C O x
+      have hy := STerm.wbase_ev V A C O y
+      simp only [SG.norm]
+      cases kx : x.wbase.wknown with
+      | some a =>
+          cases ky : y.wbase.wknown with
+          | some b =>
+              have ha := STerm.wknown_ev V A C O kx
+              have hb := STerm.wknown_ev V A C O ky
+              by_cases e : a = b
+              · simp [e, AllG, SG.holds, ← hx, ← hy, ha, hb]
+              · simp [e, AllG, SG.holds, SG.falseG, STerm.ev, ← hx, ← hy, ha, hb]
+          | none => simp [AllG, SG.holds, hx, hy]
+      | none => simp [AllG, SG.holds, hx, hy]
+  | shp a w n => simp [SG.norm, AllG]
+
+/-- The normal form of a list of guards. -/
+def normG (gs : List SG) : List SG := gs.flatMap SG.norm
+
+@[simp] theorem normG_nil : normG [] = [] := rfl
+
+theorem allG_normG {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {gs : List SG} : AllG V A C O (normG gs) ↔ AllG V A C O gs := by
+  induction gs with
+  | nil => simp [normG, AllG]
+  | cons g gs ih =>
+      rw [show normG (g :: gs) = g.norm ++ normG gs from rfl, allG_append, ih,
+        SG.norm_iff]
+      simp [AllG]
 
 /-! ## 3. Symbolic states -/
 
@@ -843,9 +958,25 @@ def symCarry (op : CarryOp) (d : String) (a b : LOperand) (ss : SSt) : SOut :=
           of := .carryF .adox true ta tb ss.of } (ga ++ gb)
   | _, _ => .fail
 
+/-- The symbolic description of the flag-quiet lift step `wideStep`: the sources are read
+    at width `64`, the implicit first source of `MULX` is the register `mulxSrc`, and the
+    high word of `MULX` is written after the low word. -/
+def symWide (w : WideOp) (ss : SSt) : SOut :=
+  match w with
+  | .mov d b =>
+      match symOp64 ss.regs b with
+      | some (tb, gb) => .ok (ss.setR d tb) gb
+      | none => .fail
+  | .mulx lo hi b =>
+      match symOp64 ss.regs (.reg mulxSrc), symOp64 ss.regs b with
+      | some (tx, gx), some (tb, gb) =>
+          .ok ((ss.setR lo (.mulx false tx tb)).setR hi (.mulx true tx tb)) (gx ++ gb)
+      | _, _ => .fail
+
 /-- The symbolic description of one instruction of `evalInstrPMemF`: the flag `CMP`, the
-    register-copy `MOV`, a label, the carry family, and the memref step with the flags of
-    `withALUFlags`; a branch and a jump are outside the fragment. -/
+    register-copy `MOV`, a label, the carry family, the flag-quiet lift instructions, and
+    the memref step with the flags of `withALUFlags`; a branch and a jump are outside the
+    fragment. -/
 def symStep (i : LinstrRM) (ss : SSt) : SOut :=
   match cmpArgs? i with
   | some (a, b) =>
@@ -866,7 +997,10 @@ def symStep (i : LinstrRM) (ss : SSt) : SOut :=
               | _ =>
                   match carryArgs? i with
                   | some (op, d, a, b) => symCarry op d a b ss
-                  | none => aluFl i ss (symMem i ss)
+                  | none =>
+                      match wideArgs? i with
+                      | some w => symWide w ss
+                      | none => aluFl i ss (symMem i ss)
 
 /-- A flag-machine step keeps the function and the word memory and advances the pc. -/
 def Frame (s t : LstateMF) : Prop :=
@@ -1019,6 +1153,69 @@ theorem symCarry_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} 
              · simp [c1, c2] at ht
            · simp [c1] at ht)
 
+/-- The flag-quiet lift step is described by `symWide`. -/
+theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
+    {ss : SSt} {s : LstateMF} (w : WideOp) (hs : Holds V A C O Z ss s) :
+    (symWide w ss).Desc ((wideStep w s.prog.base).map
+      (fun b' => { s with prog := { s.prog with base := b' } })) V A C O Z s := by
+  cases w with
+  | mov d b =>
+    simp only [symWide, wideStep]
+    cases h1 : symOp64 ss.regs b with
+    | none => simp [SOut.Desc, symOp64_none h1]
+    | some p =>
+      obtain ⟨tb, gb⟩ := p
+      obtain ⟨e1, g1⟩ := symOp64_some hs.1 h1
+      simp only
+      rw [e1]
+      refine ⟨fun t ht => ?_, fun hg => ?_⟩
+      · by_cases c1 : (tb.ev V A C O).1 = 64
+        · simp only [c1, if_true, Option.map_some, Option.some.injEq] at ht
+          subst ht
+          refine ⟨g1.mpr c1, ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩,
+            rfl, rfl, rfl⟩
+          simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+            LstateN.lvm_setReg]
+          split_ifs
+          · exact sigma_of_castW c1
+          · exact hs.1 q
+        · simp [c1] at ht
+      · simp [g1.mp hg]
+  | mulx lo hi b =>
+    simp only [symWide, wideStep]
+    cases h0 : symOp64 ss.regs (.reg mulxSrc) with
+    | none => simp [SOut.Desc, symOp64_none h0]
+    | some p0 =>
+      obtain ⟨tx, gx⟩ := p0
+      cases h1 : symOp64 ss.regs b with
+      | none => simp [SOut.Desc, symOp64_none h1]
+      | some p1 =>
+        obtain ⟨tb, gb⟩ := p1
+        obtain ⟨e0, g0⟩ := symOp64_some hs.1 h0
+        obtain ⟨e1, g1⟩ := symOp64_some hs.1 h1
+        simp only
+        rw [e0, e1]
+        refine ⟨fun t ht => ?_, fun hg => ?_⟩
+        · by_cases c0 : (tx.ev V A C O).1 = 64
+          · by_cases c1 : (tb.ev V A C O).1 = 64
+            · simp only [c0, c1, if_true, Option.map_some, Option.some.injEq] at ht
+              subst ht
+              refine ⟨allG_append.mpr ⟨g0.mpr c0, g1.mpr c1⟩,
+                ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩, rfl, rfl, rfl⟩
+              simp only [SSt.setR, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
+                LstateN.lvm_setReg]
+              by_cases hq : q = hi
+              · simp [hq, STerm.ev]
+              · by_cases hl : q = lo
+                · subst hl
+                  simp [hq, STerm.ev]
+                · simp only [hq, hl, if_false]
+                  exact hs.1 q
+            · simp [c0, c1] at ht
+          · simp [c0] at ht
+        · obtain ⟨h0', h1'⟩ := allG_append.mp hg
+          simp [g0.mp h0', g1.mp h1']
+
 theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
     StepSound (evalInstrPMemF P i) ss (symStep i ss) := by
   intro V A C O Z s hs
@@ -1105,15 +1302,24 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
             rw [he]
             exact symCarry_sound op d a b hs
           · rename_i hk
-            have he : evalInstrPMemF P i s =
-                ((lsemStepMem i s.prog.base).map (withALUFlags i s.prog.base)).map
-                  (fun b => { s with prog := { s.prog with base := b } }) := by
-              simp only [evalInstrPMemF, hc, hm, hf, hL]
-              cases lsemStepMem i s.prog.base <;> simp [hk]
-            rw [he]
-            exact descM_liftF i (symMem_zf i ss) hs
-              (symMem_sound i ss V A C O s.prog.base ⟨hs.1, hs.2.1⟩)
-              (fun b hb => lsemStepMem_flags hb)
+            split
+            · rename_i w hw
+              have he : evalInstrPMemF P i s = (wideStep w s.prog.base).map
+                  (fun b' => { s with prog := { s.prog with base := b' } }) := by
+                simp only [evalInstrPMemF, hc, hm, hf, hL, lsemStepMem_of_wideArgs hw,
+                  Option.map_none, hk, hw]
+              rw [he]
+              exact symWide_sound w hs
+            · rename_i hw
+              have he : evalInstrPMemF P i s =
+                  ((lsemStepMem i s.prog.base).map (withALUFlags i s.prog.base)).map
+                    (fun b => { s with prog := { s.prog with base := b } }) := by
+                simp only [evalInstrPMemF, hc, hm, hf, hL]
+                cases lsemStepMem i s.prog.base <;> simp [hk, hw]
+              rw [he]
+              exact descM_liftF i (symMem_zf i ss) hs
+                (symMem_sound i ss V A C O s.prog.base ⟨hs.1, hs.2.1⟩)
+                (fun b hb => lsemStepMem_flags hb)
 
 /-! ## 6. Straight-line runs -/
 
@@ -1131,7 +1337,7 @@ def symRun : List LinstrRM → SSt → SOut
       match symStep i ss with
       | .ok ss1 g1 =>
           match symRun is ss1 with
-          | .ok ss2 g2 => .ok ss2 (g1 ++ g2)
+          | .ok ss2 g2 => .ok ss2 (normG g1 ++ g2)
           | .fail => .fail
           | .unk => .unk
       | .fail => .fail
@@ -1179,12 +1385,12 @@ theorem symRun_sound (P : LprogM) :
                 have ih := symRun_sound P is ss1 V A C O Z s1 hH1
                 rw [h2] at ih
                 obtain ⟨hg2, hH2, hF2⟩ := ih.1 t e2
-                refine ⟨allG_append.mpr ⟨hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
+                refine ⟨allG_append.mpr ⟨allG_normG.mpr hg1, hg2⟩, hH2, ?_, ?_, ?_⟩
                 · rw [hF2.1, hF1.1]
                 · rw [hF2.2.1, hF1.2.1, List.length_cons]; omega
                 · rw [hF2.2.2, hF1.2.2]
               · obtain ⟨hg1, hg2⟩ := allG_append.mp hg
-                obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 hg1)
+                obtain ⟨s1, e1⟩ := Option.isSome_iff_exists.mp (hs2 (allG_normG.mp hg1))
                 have ih := symRun_sound P is ss1 V A C O Z s1 (hs1 s1 e1).2.1
                 rw [h2] at ih
                 rw [e1, Option.bind_some]
@@ -1239,6 +1445,20 @@ theorem symCarry_good {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt} (h
   · cases op <;> simp only [SOut.ok.injEq] at h <;> rw [← h.1] <;> exact hg.setR _ _
   · cases h
 
+theorem symWide_good {w : WideOp} {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : List SG}
+    (h : symWide w ss = .ok ss' gs) : ss'.Good := by
+  cases w with
+  | mov d b =>
+      simp only [symWide] at h
+      split at h
+      · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact hg.setR _ _
+      · cases h
+  | mulx lo hi b =>
+      simp only [symWide] at h
+      split at h
+      · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact (hg.setR _ _).setR _ _
+      · cases h
+
 theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : List SG}
     (h : symStep i ss = .ok ss' gs) : ss'.Good := by
   unfold symStep at h
@@ -1256,15 +1476,17 @@ theorem symStep_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : 
         · cases h
         · split at h
           · exact symCarry_good hg h
-          · cases hm : symMem i ss with
-            | ok s1 g1 =>
-                rw [hm] at h
-                simp only [aluFl, SOut.ok.injEq] at h
-                rw [← h.1]
-                have := symMem_good i hg hm
-                exact this
-            | fail => rw [hm] at h; cases h
-            | unk => rw [hm] at h; cases h
+          · split at h
+            · exact symWide_good hg h
+            · cases hm : symMem i ss with
+              | ok s1 g1 =>
+                  rw [hm] at h
+                  simp only [aluFl, SOut.ok.injEq] at h
+                  rw [← h.1]
+                  have := symMem_good i hg hm
+                  exact this
+              | fail => rw [hm] at h; cases h
+              | unk => rw [hm] at h; cases h
 
 theorem symRun_good : ∀ (is : List LinstrRM) {ss : SSt}, ss.Good → ∀ {ss' : SSt} {gs : List SG},
     symRun is ss = .ok ss' gs → ss'.Good
@@ -1313,6 +1535,7 @@ def STerm.vars : STerm → List String
   | .aluF _ _ x y o => x.vars ++ y.vars ++ o.vars
   | .carryW _ x y c => x.vars ++ y.vars ++ c.vars
   | .carryF _ _ x y c => x.vars ++ y.vars ++ c.vars
+  | .mulx _ x y => x.vars ++ y.vars
 
 /-- The start registers a symbolic array reads. -/
 def SArr.vars : SArr → List String
@@ -1334,6 +1557,7 @@ def STerm.readsF : STerm → Bool
   | .aluF _ _ x y o => x.readsF || y.readsF || o.readsF
   | .carryW _ x y c => x.readsF || y.readsF || c.readsF
   | .carryF _ _ x y c => x.readsF || y.readsF || c.readsF
+  | .mulx _ x y => x.readsF || y.readsF
 
 /-- The symbolic array reads the carry or the overflow flag at the start. -/
 def SArr.readsF : SArr → Bool
@@ -1420,6 +1644,12 @@ theorem STerm.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCel
         STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
           (fun e => hf (by simp [STerm.readsF, e])),
         STerm.ev_congr A c (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e]))]
+  | .mulx _ x y, h, hf => by
+      simp only [STerm.ev,
+        STerm.ev_congr A x (fun r hr => h r (by simp [STerm.vars, hr]))
+          (fun e => hf (by simp [STerm.readsF, e])),
+        STerm.ev_congr A y (fun r hr => h r (by simp [STerm.vars, hr]))
           (fun e => hf (by simp [STerm.readsF, e]))]
 
 theorem SArr.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
@@ -1572,7 +1802,7 @@ theorem evalInstrPMemF_cond (P : LprogM) (c : LOperand) (l : LLabel) (tag : MemT
   | none =>
       have hf : flagCondCC? (LinstrR.Lcond c l, tag) = none := by
         rw [flagCondCC?_cond, hcc]; rfl
-      rw [evalInstrPMemF_delegate P _ s rfl rfl hf rfl rfl]
+      rw [evalInstrPMemF_delegate P _ s rfl rfl hf rfl rfl rfl]
       simp only [evalInstrPMemL]
       split <;> simp
 
@@ -1581,13 +1811,13 @@ theorem evalInstrPMemF_goto (P : LprogM) (x : String) (l : LLabel) (tag : MemTag
     evalInstrPMemF P (.Lgoto (x, l), tag) s =
       if x = P.lfn then (evalJumpMem P l s.prog).map (fun p => { s with prog := p })
       else none := by
-  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl]
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
   simp only [evalInstrPMemL]
   split <;> simp
 
 theorem evalInstrPMemF_ret (P : LprogM) (tag : MemTag) (s : LstateMF) :
     evalInstrPMemF P (.Lret, tag) s = none := by
-  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl]
+  rw [evalInstrPMemF_delegate P _ s rfl rfl rfl rfl rfl rfl]
   simp [evalInstrPMemL, lsemStepMem_ret]
 
 theorem evalJumpMem_single {fn : String} {B : List LinstrRM} {l : LLabel} {q : Nat}

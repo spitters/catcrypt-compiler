@@ -115,7 +115,21 @@ theorem evalInstrPMemF_next (P : LprogM) (i : LinstrRM) (s t : LstateMF)
             refine ⟨rfl, ?_⟩
             rw [hi]
             simp [NextPc, hl]
-          · cases h
+          · split at h
+            · rename_i w hw
+              obtain ⟨b', hb, rfl⟩ := Option.map_eq_some_iff.mp h
+              have hl := wideStep_lpc w _ _ hb
+              have hi : ∃ ds o xs, i.1 = .Lopn ds o xs := by
+                unfold wideArgs? at hw
+                split at hw
+                · rename_i heq; exact ⟨_, _, _, heq⟩
+                · rename_i heq; exact ⟨_, _, _, heq⟩
+                · cases hw
+              obtain ⟨ds, o, xs, hi⟩ := hi
+              refine ⟨rfl, ?_⟩
+              rw [hi]
+              simp [NextPc, hl]
+            · cases h
 
 /-- The flag-extended memref semantics of program `P` as a labelled machine. -/
 def memFMachine (P : LprogM) : LMachine LstateMF where

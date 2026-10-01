@@ -178,7 +178,12 @@ theorem evalInstrPMemF_isLopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
           | none =>
               simp only [Option.map_none]
               cases carryArgs? i with
-              | none => rfl
+              | none =>
+                  cases wideArgs? i with
+                  | none => rfl
+                  | some w =>
+                      simp only []
+                      cases wideStep w s.prog.base <;> rfl
               | some q =>
                   obtain ⟨op, d, a, b⟩ := q
                   simp only []

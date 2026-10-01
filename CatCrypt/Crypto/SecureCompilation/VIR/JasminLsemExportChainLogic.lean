@@ -127,11 +127,21 @@ theorem evalInstrPMemF_lpc_le (P : LprogM) (i : LinstrRM) (s t : LstateMF)
   all_goals
     first
       | (obtain rfl := Option.some.inj h; simp; omega)
+      | (obtain rfl := Option.some.inj h
+         show (withALUFlags i s.prog.base _).lpc ≤ _
+         rw [withALUFlags_lpc]
+         exact evalInstrPMemL_lpc_le P i _ _ hs ‹evalInstrPMemL P i s.prog = some _›)
       | (rw [Option.map_eq_some_iff] at h
          obtain ⟨p, hp, rfl⟩ := h
          first
            | exact evalJumpMem_lpc_le P _ _ _ hp
-           | exact evalInstrPMemL_lpc_le P i _ _ hs hp)
+           | exact evalInstrPMemL_lpc_le P i _ _ hs hp
+           | (have := carryStep_lpc _ _ _ _ _ _ hp
+              show p.lpc ≤ _
+              omega)
+           | (have := wideStep_lpc _ _ _ hp
+              show p.lpc ≤ _
+              omega))
       | simp at h
 
 /-- **The halting program counter of a flag-machine run** lies at or before the end

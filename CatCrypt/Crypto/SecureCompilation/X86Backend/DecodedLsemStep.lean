@@ -324,8 +324,8 @@ theorem decSim_binReg (opn base : String) (hstrip : stripWidthTag opn = base)
   refine DecSim.single fun sa b zf h => ⟨_, zf, ?_,
     (h.write d (f (sa.regs (π a)) (sa.regs (π c))) _ (fun r => by rw [hmk, hda]) (hmkm _ _ _) hL
       (fun hz => hz.elim)).withALUFlags (binRegI opn d a c) b⟩
-  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry b zf _ (h.regs a ha), h.regs c hc,
-    Option.bind_some, hf, Option.map_some]
+  rw [fstepF_binRegI opn base d a c hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _
+    (h.regs a ha), h.regs c hc, Option.bind_some, hf, Option.map_some]
 
 theorem stripWidthTag_MUL64 : stripWidthTag "MUL:64" = "MUL" := by decide +kernel
 
@@ -515,7 +515,7 @@ theorem decSim_mulx (lo hi a c : String) (ha : L a) (hc : L c) (hloa : lo ≠ a)
   set vc := sa.regs (π c)
   have h1 : fstepF (binRegI "MUL:64" lo a c) b zf = some ((b.setReg lo (va * vc)).nextPc, zf) := by
     rw [fstepF_binRegI _ "MUL" lo a c stripWidthTag_MUL64 (by decide +kernel) (by decide)
-      (by decide) b zf _ hva, hvc, Option.bind_some]
+      (by decide) (by decide) b zf _ hva, hvc, Option.bind_some]
     simp only [withALUFlags_of_none (show aluFlagOp? (binRegI "MUL:64" lo a c) = none by
       simp [aluFlagOp?, binRegI, withWidthTag])]
     rfl

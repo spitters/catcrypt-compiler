@@ -335,7 +335,7 @@ theorem evalInstrPMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P')
           evalInstrPMemF R (LinstrR.Lgoto (fn, l), tag) x
             = (if fn = R.lfn then evalJumpMem R l x.prog else none).map
                 (fun p => { x with prog := p }) := fun R x => by
-        rw [evalInstrPMemF_delegate R _ x rfl rfl rfl rfl rfl]; rfl
+        rw [evalInstrPMemF_delegate R _ x rfl rfl rfl rfl rfl rfl]; rfl
       rw [hev] at he
       obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp he
       split at hq
@@ -479,7 +479,10 @@ theorem stepMemF_setLpc (i : LinstrRM) (s : LstateM) (p : Nat) :
         split
         · split <;> rfl
         · rfl
-      · rfl
+      · split
+        · rename_i w _
+          cases w <;> simp only [wideStep, he] <;> split <;> rfl
+        · rfl
 
 /-- **A straight step does not read the program counter.** -/
 theorem fstepF_setLpc (i : LinstrRM) (s : LstateM) (zf : Bool) (p : Nat) :
@@ -678,7 +681,7 @@ theorem stepMemF_twoAddr (d s0 : String) (s1 : LOperand) (opn : String) (cd : Op
         (cases evalOperandN s.reg 64 (.reg s0) <;> cases evalOperandN s.reg 64 s1 <;> rfl)
   | none =>
       simp only [Option.map_none]
-      unfold carryArgs? carryStep
+      unfold carryArgs? carryStep wideArgs? wideStep
       simp only [binopWire]
       split_ifs <;> simp only [e1, e2] <;>
         (cases evalOperandN s.reg 64 (.reg s0) <;> cases evalOperandN s.reg 64 s1 <;>

@@ -68,7 +68,9 @@ never edited):
   (`carryArgs?`, `carryStep`) reads and writes them, with the values of the decoder
   machine's `x86_ADD`, `x86_SUB`, `x86_AND`, `x86_OR`, `x86_XOR`, `x86_ADC`, `x86_SBB`,
   `x86_ADCX`. The flag-`CMP` writes `zf` only: no emitted instruction reads the
-  `CF` a compare writes.
+  `CF` a compare writes. The flag-quiet lift instructions (`wideArgs?`, `wideStep`) are
+  the two-source `MOV:64 [d] [d, b]` (`d := b`) and `MULX:64`/`MULXMEM:64 [lo, hi] [b]`
+  with the implicit first source `RDX` and the values of `x86_MULX_lo_hi`.
 * **Conservativity square** (`lsemFuelMemF_conservative`): on a program none of
   whose instructions is recognised by the flag arms, the flag machine *is*
   the counter-register machine — `lsemFuelMemF P fuel ⟨s, zf⟩ = (lsemFuelMemL P
@@ -121,7 +123,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
-  (B5W x86_ADD x86_SUB x86_AND x86_OR x86_XOR x86_ADC x86_SBB x86_ADCX)
+  (B5W x86_ADD x86_SUB x86_AND x86_OR x86_XOR x86_ADC x86_SBB x86_ADCX x86_MULX_lo_hi)
 
 /-! ## 1. Recognizers for the three emitted forms -/
 
@@ -312,17 +314,62 @@ def carryStep (op : CarryOp) (d : String) (a b : LOperand) (s : LstateM) :
                    of := (x86_ADCX va vb s.of).1.getD false }
   | _, _ => none
 
+/-- The flag-quiet instructions of the field-arithmetic lift that `lsemStepMem` does not
+    step (`Fe25519LfundefBridge.jinstrToLinstrR`: `.mov`, `.mulx`, `.mulxMem`). -/
+inductive WideOp where
+  /-- The two-source copy `MOV:64 [d] [d, b]`, printed `mov b, d`: `d := b`. -/
+  | mov (d : String) (b : LOperand)
+  /-- The widening multiply `MULX:64 [lo, hi] [b]` (or `MULXMEM:64`), printed
+      `mulx b, lo, hi`: `(lo, hi) := RDX * b`, the implicit first source `RDX`. -/
+  | mulx (lo hi : String) (b : LOperand)
+
+/-- The recognizer of the flag-quiet lift instructions: the two-source `MOV:64` and the
+    widening multiplies `MULX:64` and `MULXMEM:64` (a `MULXMEM` source is the name of an ABI
+    cell, which the machine reads as a register-shaped name). -/
+def wideArgs? (i : LinstrRM) : Option WideOp :=
+  match i.fst with
+  | .Lopn [.reg d] opn [_, b] =>
+      if opn = withWidthTag 64 "MOV" then some (.mov d b) else none
+  | .Lopn [.reg lo, .reg hi] opn [b] =>
+      if opn = withWidthTag 64 "MULX" ∨ opn = withWidthTag 64 "MULXMEM" then
+        some (.mulx lo hi b)
+      else none
+  | _ => none
+
+/-- The implicit first source of `MULX`. -/
+def mulxSrc : String := "RDX"
+
+/-- One flag-quiet lift step: read the sources at width `64`, write the destinations with
+    the values of the decoder machine (`MOV` copies its source; `MULX` writes the low and
+    then the high word of `x86_MULX_lo_hi`, so the high word wins when `lo = hi`), keep the
+    flags, and advance the pc. -/
+def wideStep (w : WideOp) (s : LstateM) : Option LstateM :=
+  match w with
+  | .mov d b =>
+      match evalOperandN s.reg 64 b with
+      | some v => some ((s.setReg d v).nextPc)
+      | none => none
+  | .mulx lo hi b =>
+      match evalOperandN s.reg 64 (.reg mulxSrc), evalOperandN s.reg 64 b with
+      | some x, some y =>
+          some (((s.setReg lo (x86_MULX_lo_hi x y).1).setReg hi (x86_MULX_lo_hi x y).2).nextPc)
+      | _, _ => none
+
 /-- **The flag machine's straight-line step on the base state**: the straight-line step
     `lsemStepMem` with the flags of `withALUFlags`; an instruction `lsemStepMem` does not
-    step is a carry-family step (`carryArgs?`, `carryStep`) or stuck. The carry family
-    has no `lsemStepMem` step (`applyOpnN` has no `ADC`, `SBB`, `ADCX` or `ADOX` arm). -/
+    step is a carry-family step (`carryArgs?`, `carryStep`), a flag-quiet lift step
+    (`wideArgs?`, `wideStep`) or stuck. The carry family has no `lsemStepMem` step
+    (`applyOpnN` has no `ADC`, `SBB`, `ADCX` or `ADOX` arm). -/
 def stepMemF (i : LinstrRM) (s : LstateM) : Option LstateM :=
   match lsemStepMem i s with
   | some b => some (withALUFlags i s b)
   | none =>
       match carryArgs? i with
       | some (op, d, a, b) => carryStep op d a b s
-      | none => none
+      | none =>
+          match wideArgs? i with
+          | some w => wideStep w s
+          | none => none
 
 @[simp] theorem withALUFlags_reg (i : LinstrRM) (s0 s1 : LstateM) :
     (withALUFlags i s0 s1).reg = s1.reg := by
@@ -370,6 +417,42 @@ theorem carryStep_lpc (op : CarryOp) (d : String) (a b : LOperand) (s s' : Lstat
       LstateM.setReg])
   · simp at h
 
+/-- Every flag-quiet lift step advances the pc by one. -/
+theorem wideStep_lpc (w : WideOp) (s s' : LstateM) (h : wideStep w s = some s') :
+    s'.lpc = s.lpc + 1 := by
+  unfold wideStep at h
+  cases w with
+  | mov d b =>
+      dsimp only at h
+      split at h
+      · obtain rfl := Option.some.inj h
+        simp [LstateM.lpc, LstateM.nextPc, LstateM.setReg]
+      · simp at h
+  | mulx lo hi b =>
+      dsimp only at h
+      split at h
+      · obtain rfl := Option.some.inj h
+        simp [LstateM.lpc, LstateM.nextPc, LstateM.setReg]
+      · simp at h
+
+/-- A flag-quiet lift step keeps the carry and overflow flags. -/
+theorem wideStep_flags (w : WideOp) (s s' : LstateM) (h : wideStep w s = some s') :
+    s'.cf = s.cf ∧ s'.of = s.of := by
+  unfold wideStep at h
+  cases w with
+  | mov d b =>
+      dsimp only at h
+      split at h
+      · obtain rfl := Option.some.inj h
+        exact ⟨rfl, rfl⟩
+      · simp at h
+  | mulx lo hi b =>
+      dsimp only at h
+      split at h
+      · obtain rfl := Option.some.inj h
+        exact ⟨rfl, rfl⟩
+      · simp at h
+
 /-- Every successful `stepMemF` step advances the pc by one. -/
 theorem stepMemF_lpc_succ (i : LinstrRM) (s s' : LstateM) (h : stepMemF i s = some s') :
     s'.lpc = s.lpc + 1 := by
@@ -385,7 +468,9 @@ theorem stepMemF_lpc_succ (i : LinstrRM) (s s' : LstateM) (h : stepMemF i s = so
       simp only [] at h
       split at h
       · exact carryStep_lpc _ _ _ _ s s' h
-      · simp at h
+      · split at h
+        · exact wideStep_lpc _ s s' h
+        · simp at h
 
 /-- Where `lsemStepMem` steps, `stepMemF` is that step with the flags of
     `withALUFlags`. -/
@@ -393,14 +478,16 @@ theorem stepMemF_of_lsemStepMem {i : LinstrRM} {s b : LstateM}
     (h : lsemStepMem i s = some b) : stepMemF i s = some (withALUFlags i s b) := by
   unfold stepMemF; rw [h]
 
-/-- On an instruction that is neither a recognised arithmetic or logical operation nor a
-    carry-family operation, `stepMemF` is `lsemStepMem`. -/
+/-- On an instruction that is neither a recognised arithmetic or logical operation, a
+    carry-family operation nor a flag-quiet lift instruction, `stepMemF` is
+    `lsemStepMem`. -/
 theorem stepMemF_of_quiet {i : LinstrRM} (ha : aluFlagOp? i = none)
-    (hk : carryArgs? i = none) (s : LstateM) : stepMemF i s = lsemStepMem i s := by
+    (hk : carryArgs? i = none) (hw : wideArgs? i = none) (s : LstateM) :
+    stepMemF i s = lsemStepMem i s := by
   unfold stepMemF
   cases hs : lsemStepMem i s with
   | some b => show some (withALUFlags i s b) = some b; rw [withALUFlags_of_none ha]
-  | none => simp only [hk]
+  | none => simp only [hk, hw]
 
 /-! ## 2. The flag-extended program state and step -/
 
@@ -428,7 +515,8 @@ structure LstateMF where
       `evalJumpMem`) iff `zf` matches the condition-code polarity, else falls
       through — the `jne`/`je` semantics;
     * a carry-family instruction (`carryArgs?`) that `lsemStepMem` does not step is the
-      carry step `carryStep` on the base;
+      carry step `carryStep` on the base, and a flag-quiet lift instruction (`wideArgs?`)
+      the step `wideStep`;
     * **everything else is `evalInstrPMemL` on the wrapped state**, `zf`
       threaded unchanged, with the carry and overflow flags of `withALUFlags` on the
       base. -/
@@ -459,7 +547,12 @@ def evalInstrPMemF (P : LprogM) (i : LinstrRM) (s : LstateMF) : Option LstateMF 
       | some (op, d, a, b) =>
           (carryStep op d a b s.prog.base).map
             (fun b' => { s with prog := { s.prog with base := b' } })
-      | none => none
+      | none =>
+          match wideArgs? i with
+          | some w =>
+              (wideStep w s.prog.base).map
+                (fun b' => { s with prog := { s.prog with base := b' } })
+          | none => none
 
 /-- `step`: fetch (`findInstrMem` on the wrapped state) and flag-eval. -/
 def lsemStepPMemF (P : LprogM) (s : LstateMF) : Option LstateMF :=
@@ -509,26 +602,28 @@ theorem findInstrMem_singleton (fn : String) (body : List LinstrRM) (s : LstateP
 /-! ## 3. Conservativity: without the three emitted forms, this IS the counter-register machine -/
 
 /-- On an instruction recognised by none of the flag arms (no flag-`CMP`, register copy,
-    condition-code `Lcond`, carry-family or flag-writing arithmetic), `evalInstrPMemF`
-    is exactly the counter-register step on the wrapped state, `zf` threaded unchanged. -/
+    condition-code `Lcond`, carry-family, flag-quiet lift or flag-writing arithmetic),
+    `evalInstrPMemF` is exactly the counter-register step on the wrapped state, `zf`
+    threaded unchanged. -/
 theorem evalInstrPMemF_delegate (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (hc : cmpArgs? i = none) (hm : movRegArgs? i = none) (hf : flagCondCC? i = none)
-    (hk : carryArgs? i = none) (ha : aluFlagOp? i = none) :
+    (hk : carryArgs? i = none) (ha : aluFlagOp? i = none) (hw : wideArgs? i = none) :
     evalInstrPMemF P i s = (evalInstrPMemL P i s.prog).map (fun p => { s with prog := p }) := by
   unfold evalInstrPMemF
   rw [hc, hm, hf]
   cases evalInstrPMemL P i s.prog with
-  | none => simp only [hk, Option.map_none]
+  | none => simp only [hk, hw, Option.map_none]
   | some p => simp only [withALUFlags_of_none ha, Option.map_some]
 
 /-- A program with no emitted flag idiom: no flag-`CMP`, no register-copy `MOV`,
-    no condition-code `Lcond`, no carry-family instruction and no flag-writing
-    arithmetic.  A memref loop program with a counter-register back-edge satisfies this
-    whenever its counter register is not itself named `"Z"`/`"NZ"` (the two
-    condition-code names) and its body has no 64-bit `ADD`, `SUB`, `AND`, `OR`, `XOR`. -/
+    no condition-code `Lcond`, no carry-family instruction, no flag-quiet lift
+    instruction and no flag-writing arithmetic.  A memref loop program with a
+    counter-register back-edge satisfies this whenever its counter register is not itself
+    named `"Z"`/`"NZ"` (the two condition-code names) and its body has no 64-bit `ADD`,
+    `SUB`, `AND`, `OR`, `XOR`, two-source `MOV` or `MULX`. -/
 def NoFlagIdiom (P : LprogM) : Prop :=
   ∀ i ∈ P.body, cmpArgs? i = none ∧ movRegArgs? i = none ∧ flagCondCC? i = none
-    ∧ carryArgs? i = none ∧ aluFlagOp? i = none
+    ∧ carryArgs? i = none ∧ aluFlagOp? i = none ∧ wideArgs? i = none
 
 /-- A fetched instruction is in the program body. -/
 theorem findInstrMem_mem (P : LprogM) (s : LstatePM) (i : LinstrRM)
@@ -563,8 +658,8 @@ theorem lsemFuelMemF_conservative (P : LprogM) (h : NoFlagIdiom P) :
       | none => simp only [Option.map_some]
       | some i =>
           simp only []
-          obtain ⟨hc, hm, hcc, hk, ha⟩ := h i (findInstrMem_mem P s i hf)
-          rw [evalInstrPMemF_delegate P i { prog := s, zf := zf } hc hm hcc hk ha]
+          obtain ⟨hc, hm, hcc, hk, ha, hw⟩ := h i (findInstrMem_mem P s i hf)
+          rw [evalInstrPMemF_delegate P i { prog := s, zf := zf } hc hm hcc hk ha hw]
           cases he : evalInstrPMemL P i s with
           | none => simp
           | some s' => simpa using ih s' zf
@@ -763,7 +858,10 @@ theorem evalInstrPMemF_lopn (P : LprogM) (i : LinstrRM) (s : LstateMF)
   | none =>
       simp only [Option.map_none]
       cases carryArgs? i with
-      | none => rfl
+      | none =>
+          cases wideArgs? i with
+          | none => rfl
+          | some w => rfl
       | some q =>
           obtain ⟨op, d, a, b⟩ := q
           rfl

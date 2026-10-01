@@ -77,12 +77,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
 /-! ## 1. The pullback of a state along a renaming -/
 
 /-- The state that holds at a name `r` the register cell and the array cell the
-    state `s` holds at `τ r`, with the program counter and the word memory of
-    `s`. -/
+    state `s` holds at `τ r`, with the program counter, the word memory and the carry
+    and overflow flags of `s`. -/
 def pullM (τ : String → String) (s : LstateM) : LstateM :=
   { reg := { lvm := fun r => s.reg.lvm (τ r), lpc := s.reg.lpc }
     larr := fun r => s.larr (τ r)
-    lmem := s.lmem }
+    lmem := s.lmem
+    cf := s.cf
+    of := s.of }
 
 @[simp] theorem pullM_getW (τ : String → String) (s : LstateM) (r : String) (w : Nat) :
     (pullM τ s).reg.getW r w = s.reg.getW (τ r) w := rfl
@@ -760,7 +762,7 @@ theorem canonSeedsRM_run (d : Nat) (out c : String) (hc : c ≠ loopIdx d) (b0 :
   · unfold canonSeedsRM
     rw [runStraightF_cons, fstepF_movReg, Option.bind_some, runStraightF_cons,
       fstepF_of_plain _ (by simp [cmpArgs?]) (by simp [movRegArgs?]),
-      stepMemF_of_quiet rfl rfl, lsemStepMem_movImm64, Option.map_some, Option.bind_some,
+      stepMemF_of_quiet rfl rfl rfl, lsemStepMem_movImm64, Option.map_some, Option.bind_some,
       runStraightF_cons,
       fstepF_movReg, Option.bind_some, runStraightF_nil]
   · intro x w hx

@@ -114,16 +114,18 @@ theorem bodyAll_sound {body : List LinstrRM} {p : Nat → LinstrRM → Bool}
 
 /-- The Boolean form of `CondOK`. -/
 def condOKB (i : LinstrRM) : Bool :=
-  match i.1 with
-  | .Lcond _ _ => (flagCondCC? i).isSome
-  | _ => true
+  (match i.1 with
+    | .Lcond _ _ => (flagCondCC? i).isSome
+    | _ => true) && mulxFree i
 
 theorem condOK_of_B {i : LinstrRM} (h : condOKB i = true) : CondOK i := by
-  intro c l he
+  unfold condOKB at h
+  rw [Bool.and_eq_true] at h
+  refine ⟨fun c l he => ?_, h.2⟩
   have h' : (flagCondCC? i).isSome = true := by
-    unfold condOKB at h
-    rw [he] at h
-    exact h
+    have h1 := h.1
+    rw [he] at h1
+    exact h1
   exact Option.isSome_iff_ne_none.mp h'
 
 theorem cond_of_B {body : List LinstrRM} (h : bodyAll body (fun _ => condOKB) = true) :
@@ -551,7 +553,7 @@ theorem relF2_pullM (σ : String → String) (Nr Na : String → Prop) (p0 : Lst
     (fn : String) (zf : Bool) :
     RelF2 σ Nr Na { prog := { base := pullM σ p0, lfn := fn }, zf := zf }
       { prog := { base := p0, lfn := fn }, zf := zf } :=
-  ⟨⟨⟨rfl, fun _ _ => rfl⟩, fun _ _ => rfl, rfl⟩, rfl, rfl⟩
+  ⟨⟨⟨rfl, fun _ _ => rfl⟩, fun _ _ => rfl, rfl⟩, rfl, rfl, rfl, rfl⟩
 
 /-- A state at program counter `0` is related to itself by `RelX EqPc`. -/
 theorem relX_self (expand : LinstrRM → List LinstrRM) (P : LprogM) (s : LstateMF)
