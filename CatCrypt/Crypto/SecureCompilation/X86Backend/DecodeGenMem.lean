@@ -411,6 +411,21 @@ theorem unary_sound {L : String → Prop} {d opn a : String} {js : List (JInstr 
       obtain ⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, hda⟩ := h
       exact decSim_shrImm (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k hk0 hk ha
         hda hS
+    · rename_i D k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, hda⟩ := h
+      exact DecodeGenSim.decSim_shlImmI (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k
+        hk0 hk ha hda hS
+    · rename_i D A D' k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, rfl⟩, rfl⟩ := h
+      exact DecodeGenSim.decSim_shrImmI_mov (Lay := Lay) (frame := frame) (K := K) (zl := zl)
+        d a k hk0 hk ha hS
+    · rename_i D A D' k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, rfl⟩, rfl⟩ := h
+      exact DecodeGenSim.decSim_shlImmI_mov (Lay := Lay) (frame := frame) (K := K) (zl := zl)
+        d a k hk0 hk ha hS
     · exact absurd h (by simp)
 
 theorem op_sound {L : String → Prop} {d opn a c : String} {js : List (JInstr 64)} (ha : L a)

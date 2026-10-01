@@ -296,18 +296,69 @@ theorem shift_sound {d opn a : String} {k : Nat} {js : List (JInstr 64)} (ha : L
     · exact decSim_shlImmS d a k hk0 hk ha hda hS
     · exact decSim_shlImmS_mov d a k hk0 hk ha hS
 
+/-- `SHL:k:64 d, a` against `shl $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/
+theorem decSim_shlImmI (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hda : π d = π a) (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [immShiftI "SHL" d a k] [.shl (π d) (.imm k)] :=
+  DecSim.single fun sa b zf h =>
+    ⟨_, zf, fstepF_shlImmI d a k hk b zf _ (h.regs a ha),
+      h.write d _ _ (fun r => by
+        show (if r = π d then (x86_SHL (sa.regs (π d)) (BitVec.ofNat 64 k)).word
+          else sa.regs r) = _
+        rw [x86_SHL_word_imm _ k hk0 hk, hda]) rfl hL (fun hz => hz.elim)⟩
+
+/-- `SHR:k:64 d, a` against `mov %a, %d` and `shr $k, %d`, `0 < k < 64`. -/
+theorem decSim_shrImmI_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [immShiftI "SHR" d a k] [.mov (π d) (.reg (π a)), .shr (π d) (.imm k)] := by
+  intro sa b zf h
+  refine ⟨_, zf, ?_, h.write d (sa.regs (π a) >>> k)
+    (aMachine.runBlock sa [.mov (π d) (.reg (π a)), .shr (π d) (.imm k)]) (fun r => ?_) rfl hL
+    (fun hz => hz.elim)⟩
+  · rw [runStraightF_singleton, fstepF_shrImmI d a k hk b zf _ (h.regs a ha)]
+  · show (if r = π d then (x86_SHR (if π d = π d then sa.regs (π a) else sa.regs (π d))
+        (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
+    rw [if_pos rfl, x86_SHR_word_imm _ k hk0 hk]
+    split <;> simp_all
+
+/-- `SHL:k:64 d, a` against `mov %a, %d` and `shl $k, %d`, `0 < k < 64`. -/
+theorem decSim_shlImmI_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
+    (hL : Survives π L L' d) :
+    DecSim (DecLsemCorr π L Lay frame K zl) (DecLsemCorr π L' Lay frame K False)
+      [immShiftI "SHL" d a k] [.mov (π d) (.reg (π a)), .shl (π d) (.imm k)] := by
+  intro sa b zf h
+  refine ⟨_, zf, ?_, h.write d (sa.regs (π a) <<< k)
+    (aMachine.runBlock sa [.mov (π d) (.reg (π a)), .shl (π d) (.imm k)]) (fun r => ?_) rfl hL
+    (fun hz => hz.elim)⟩
+  · rw [runStraightF_singleton, fstepF_shlImmI d a k hk b zf _ (h.regs a ha)]
+  · show (if r = π d then (x86_SHL (if π d = π d then sa.regs (π a) else sa.regs (π d))
+        (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
+    rw [if_pos rfl, x86_SHL_word_imm _ k hk0 hk]
+    split <;> simp_all
+
 end ShiftImmS
 
 /-! ## 2. The check on one instruction -/
 
 /-- The one-source register forms: the copy and the count-`0` shift against `mov` or
-    nothing, and the right shift by a count in `(0, 64)` against `shr`. -/
+    nothing, and the right and left shifts by a count in `(0, 64)` against the machine shift
+    in place or against `mov` and the machine shift. -/
 def unaryOK (π : String → String) (d opn a : String) (js : List (JInstr 64)) : Bool :=
   ((opn == withWidthTag 64 "MOV" || opn == withWidthTag 64 ("SHL" ++ ":" ++ toString 0))
       && (js == [.mov (π d) (.reg (π a))] || (π d == π a && js.isEmpty)))
   || (match js with
       | [.shr D (.imm k)] => opn == withWidthTag 64 ("SHR" ++ ":" ++ toString k)
           && k != 0 && decide (k < 64) && D == π d && π d == π a
+      | [.shl D (.imm k)] => opn == withWidthTag 64 ("SHL" ++ ":" ++ toString k)
+          && k != 0 && decide (k < 64) && D == π d && π d == π a
+      | [.mov D (.reg A), .shr D' (.imm k)] =>
+          opn == withWidthTag 64 ("SHR" ++ ":" ++ toString k)
+          && k != 0 && decide (k < 64) && D == π d && A == π a && D' == π d
+      | [.mov D (.reg A), .shl D' (.imm k)] =>
+          opn == withWidthTag 64 ("SHL" ++ ":" ++ toString k)
+          && k != 0 && decide (k < 64) && D == π d && A == π a && D' == π d
       | _ => false)
 
 /-- The two-source register forms: the flag compare, and the two-address operations with the
@@ -381,6 +432,21 @@ theorem unary_sound (hinj : InjOn π N) {d opn a : String} {js : List (JInstr 64
       obtain ⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, hda⟩ := h
       exact decSim_shrImm (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k hk0 hk ha
         hda hS
+    · rename_i D k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, hda⟩ := h
+      exact decSim_shlImmI (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k hk0 hk ha
+        hda hS
+    · rename_i D A D' k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, rfl⟩, rfl⟩ := h
+      exact decSim_shrImmI_mov (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k hk0 hk
+        ha hS
+    · rename_i D A D' k
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨⟨rfl, hk0⟩, hk⟩, rfl⟩, rfl⟩, rfl⟩ := h
+      exact decSim_shlImmI_mov (Lay := Lay) (frame := frame) (K := K) (zl := zl) d a k hk0 hk
+        ha hS
     · exact absurd h (by simp)
 
 theorem bin_sound (hinj : InjOn π N) {d opn a c : String} {js : List (JInstr 64)}
