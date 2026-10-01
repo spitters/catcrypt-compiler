@@ -29,16 +29,24 @@ names (`liftBody`), the form the validator compares with the virtual body:
 * a load or store of another frame word is a copy from or to the name `slot.off`
   (`slotName`);
 * a compare with a frame word compares with the name `slot.off`;
-* the two-address operations, the register and immediate moves, the immediate shifts and
-  `mulx` are their flag-machine forms (`MULX:64` with its implicit source `RDX`).
+* the two-address operations, the register and immediate moves and the immediate shifts are
+  their flag-machine forms;
+* `mulx H, Lo` with its implicit source `%rdx` and the source `C` is the high word
+  `H := MULXHI:64 [RDX, C]` and the low word `Lo := MUL:64 [RDX, C]`; when the reading
+  state records that `Lo` already holds the low word of the product of `%rdx` and `C`, it is
+  the high word alone.
 
-The reading is syntactic; the decode check of the read body against the machine body is
-its soundness.
+The reading state (`LiftSt`) records syntactic facts on register values: region bases,
+the all-ones word, copies, and low words of products (from `mov D, X; imul D, Y`, kept
+through `and D, M` with `M` all-ones and through copies). The reading is syntactic; the
+decode check of the read body against the machine body, which checks these facts on the
+machine state, is its soundness.
 
 ## Main results
 
 * `liftReg`, `slotName` — the names of a register and of a frame word.
-* `LiftSt`, `liftInstr`, `liftBody` — the reading of a loop body.
+* `LiftSt`, `LiftSt.kill`, `LiftSt.copy`, `LiftSt.holdsLo` — the facts of the reading.
+* `liftInstr`, `liftBody` — the reading of a loop body.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLoopTV
@@ -60,15 +68,39 @@ def liftOp : JOperand → LOperand
   | .reg r => .reg (liftReg r)
   | .imm n => .imm n
 
-/-- The state of the reading: the machine registers holding the base of a region, with the
-    region's name. -/
+/-- The state of the reading: facts on the values of machine registers. -/
 structure LiftSt where
   /-- `(B, A)`: the register `B` holds the base of the region `A`. -/
-  ptr : List (String × String)
+  ptr : List (String × String) := []
+  /-- The registers holding the all-ones word `2 ^ 64 - 1`. -/
+  ones : List String := []
+  /-- `(D, X)`: the register `D` holds the value of the register `X`. -/
+  cp : List (String × String) := []
+  /-- `(D, X, Y)`: the register `D` holds the low word of the product of the registers `X`
+      and `Y`. -/
+  lo : List (String × String × String) := []
 
-/-- The reading state after a machine instruction writes the registers `ws`. -/
+/-- The reading state after a machine instruction writes the registers `ws`: the facts that
+    name none of them. -/
 def LiftSt.kill (st : LiftSt) (ws : List String) : LiftSt :=
-  ⟨st.ptr.filter fun p => !ws.contains p.1⟩
+  { ptr := st.ptr.filter fun p => !ws.contains p.1
+    ones := st.ones.filter fun r => !ws.contains r
+    cp := st.cp.filter fun p => !ws.contains p.1 && !ws.contains p.2
+    lo := st.lo.filter fun p => !ws.contains p.1 && !ws.contains p.2.1 && !ws.contains p.2.2 }
+
+/-- The facts after the copy `D := X` from the state `st` with the facts on `D` removed: `D`
+    holds the value of `X`, and every fact on the value of `X` holds for `D`. -/
+def LiftSt.copy (st : LiftSt) (D X : String) : LiftSt :=
+  { st with
+    ones := if st.ones.contains X then D :: st.ones else st.ones
+    cp := (D, X) :: st.cp
+    lo := (st.lo.filterMap fun p => if p.1 == X then some (D, p.2) else none) ++ st.lo }
+
+/-- The facts state that `D` holds the low word of the product of `X` and `Y`, in either
+    order of the factors or through a copy of `X`. -/
+def LiftSt.holdsLo (st : LiftSt) (D X Y : String) : Bool :=
+  let has := fun (a : String) => st.lo.contains (D, a, Y) || st.lo.contains (D, Y, a)
+  has X || st.cp.any fun p => p.1 == X && has p.2
 
 /-- The two-address operations read as `op:64 d, d, s`. -/
 def binOpName : JInstr 64 → Option (String × String × JOperand)
@@ -86,11 +118,13 @@ def binOpName : JInstr 64 → Option (String × String × JOperand)
 def liftInstr (sp : String) (rs : List Region) (st : LiftSt) (j : JInstr 64) :
     Option (LiftSt × List LinstrRM) :=
   let st' := st.kill (dsts j)
+  let op (opn D : String) (srcs : List LOperand) : LinstrRM :=
+    (.Lopn [.reg (liftReg D)] (withWidthTag 64 opn) srcs, .reg none)
   match j with
   | .loadMem S B off =>
       if B != sp || S == sp then none else
       match rs.find? (·.off == off) with
-      | some g => some (⟨(S, g.name) :: st'.ptr⟩, [])
+      | some g => some ({ st' with ptr := (S, g.name) :: st'.ptr }, [])
       | none => some (st',
           [(.Lopn [.reg (liftReg S)] (withWidthTag 64 "MOV") [.reg (slotName off)], .reg none)])
   | .storeMem B off (.reg X) =>
@@ -110,15 +144,30 @@ def liftInstr (sp : String) (rs : List Region) (st : LiftSt) (j : JInstr 64) :
             .store 64 (regLen rs A))])
       | none => none
   | .mov D s => if D == sp then none else
-      some (st', [(.Lopn [.reg (liftReg D)] (withWidthTag 64 "MOV") [liftOp s], .reg none)])
+      let st'' := match s with
+        | .reg X => if X == D then st else st'.copy D X
+        | .imm n => if n == 2 ^ 64 - 1 then { st' with ones := D :: st'.ones } else st'
+      some (st'', [op "MOV" D [liftOp s]])
+  | .imul D (.reg Y) => if D == sp then none else
+      let new := if Y == D then [] else
+        (st.cp.filter (·.1 == D)).map fun p => (D, p.2, Y)
+      some ({ st' with lo := new ++ st'.lo }, [op "MUL" D [.reg (liftReg D), .reg (liftReg Y)]])
+  | .and_ D (.reg M) => if D == sp then none else
+      some (if M != D && st.ones.contains M then st else st',
+        [op "AND" D [.reg (liftReg D), .reg (liftReg M)]])
   | .shr D (.imm k) => some (st',
       [(.Lopn [.reg (liftReg D)] (withWidthTag 64 "SHR") [.reg (liftReg D), .imm k], .reg none)])
   | .shl D (.imm k) => some (st',
       [(.Lopn [.reg (liftReg D)] (withWidthTag 64 "SHL") [.reg (liftReg D), .imm k], .reg none)])
   | .mulx H Lo (.reg S) (.reg C) =>
-      if S != "%rdx" then none else some (st',
-        [(.Lopn [.reg (liftReg Lo), .reg (liftReg H)] (withWidthTag 64 "MULX")
-          [.reg (liftReg C)], .reg none)])
+      if S != "%rdx" || H == Lo then none else
+      let srcs := [.reg (liftReg "%rdx"), .reg (liftReg C)]
+      let hi := op "MULXHI" H srcs
+      let mul := op "MUL" Lo srcs
+      if st.holdsLo Lo "%rdx" C then some (st.kill [H], [hi])
+      else if H != "%rdx" && H != C then some (st', [hi, mul])
+      else if Lo != "%rdx" && Lo != C then some (st', [mul, hi])
+      else none
   | .cmp A s => some (st,
       [(.Lopn [.reg (liftReg A)] (withWidthTag 64 "CMP") [.reg (liftReg A), liftOp s],
         .reg none)])
@@ -139,5 +188,4 @@ def liftBody (sp : String) (rs : List Region) : LiftSt → List (JInstr 64) → 
   | _, [] => some []
   | st, j :: js => (liftInstr sp rs st j).bind fun (st', is) =>
       (liftBody sp rs st' js).map (is ++ ·)
-
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLoopTV

@@ -38,7 +38,8 @@ flag `CMP`, the register copies (`MOV` and the array-ABI moves `MOVQ`, `LOAD:64`
 immediate shifts) with the carry and overflow flags `withALUFlags` writes, the carry
 family `ADC`, `SBB`, `ADCX`, `ADOX` of `carryStep`, and the two-source `MOV` and the
 widening multiplies `MULX`, `MULXMEM` of `wideStep` (`symWide`, the product words
-`STerm.mulx`); the multiply arms of `lsemStepMC`, `SAR`, `CMOV`, the
+`STerm.mulx`), and the high word `MULXHI` of `lsemStepMC` (the term `bin "MULXHI"`, `binW`);
+the carry arms of `lsemStepMC`, `SAR`, `CMOV`, the
 casts and the compile-time-offset memory moves are `unk`. `symRun` composes the steps of a
 list.
 
@@ -105,7 +106,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 
 open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (stackGet stackSet)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (stackGet stackSet mulHiW)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (lsemStepSh sarStruct? lsemStepSh_of_not_sar)
@@ -210,6 +211,12 @@ def carryBit (op : CarryOp) (ofl : Bool) (a b : BitVec 64) (c : Bool) : Bool :=
 
 deriving instance Hashable for AluOp, CarryOp
 
+/-- The two-source operation `m` at width `w`: the high word of the product (`mulHiW`) for
+    `MULXHI`, the operation of `applyOpnN` otherwise, and `a` when `applyOpnN` has no
+    operation `m`. -/
+def binW (w : Nat) (m : String) (a b : BitVec w) : BitVec w :=
+  if m = "MULXHI" then mulHiW a b else (applyOpnN w m [a, b]).getD a
+
 mutual
 /-- A symbolic width-tagged word over the registers and arrays at the start of a
     block. -/
@@ -220,8 +227,8 @@ inductive STerm where
   | immW (w n : Nat)
   /-- The immediate `n` at the width of `x`. -/
   | immAt (n : Nat) (x : STerm)
-  /-- The two-source operation `m` of `applyOpnN` at the width of `x`, with `y` zero-extended
-      or truncated to that width (`extW`). -/
+  /-- The two-source operation `m` (`binW`) at the width of `x`, with `y` zero-extended or
+      truncated to that width (`extW`). -/
   | bin (m : String) (x y : STerm)
   /-- The one-source operation `m` of `applyOpnN` at the width of `x`. -/
   | un (m : String) (x : STerm)
@@ -287,7 +294,7 @@ def STerm.ev : STerm → Σ w, BitVec w
   | .reg r => V r
   | .immW w n => ⟨w, BitVec.ofNat w n⟩
   | .immAt n x => ⟨(x.ev).1, BitVec.ofNat _ n⟩
-  | .bin m x y => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2, extW y.ev (x.ev).1]).getD (x.ev).2⟩
+  | .bin m x y => ⟨(x.ev).1, binW (x.ev).1 m (x.ev).2 (extW y.ev (x.ev).1)⟩
   | .un m x => ⟨(x.ev).1, (applyOpnN (x.ev).1 m [(x.ev).2]).getD (x.ev).2⟩
   | .shImm m k x => ⟨(x.ev).1, (applyImmShiftN (x.ev).1 m k (x.ev).2).getD (x.ev).2⟩
   | .aget a w n i => ⟨w, stackGet (castA a.ev w n) (castW i.ev 64).toNat⟩
@@ -561,6 +568,18 @@ theorem applyOpnN_bin_none {w : Nat} {m : String} (h : binOk m = false) (a b : B
   unfold applyOpnN
   split <;> simp_all
 
+theorem binW_of_binOk {w : Nat} {m : String} (h : binOk m = true) (a b : BitVec w) :
+    binW w m a b = (applyOpnN w m [a, b]).getD a := by
+  have hm : m ≠ "MULXHI" := by
+    rintro rfl
+    exact absurd h (by decide)
+  simp [binW, hm]
+
+theorem applyImmShiftN_zero {w : Nat} {m : String} (h : shOk m = true) (a : BitVec w) :
+    applyImmShiftN w m 0 a = some a := by
+  simp only [shOk, Bool.or_eq_true, beq_iff_eq] at h
+  rcases h with (h | h) | h <;> subst h <;> simp [applyImmShiftN, applyOpnN]
+
 theorem applyImmShiftN_some {w : Nat} {m : String} (h : shOk m = true) (k : Nat) (a : BitVec w) :
     (applyImmShiftN w m k a).isSome := by
   simp only [shOk, Bool.or_eq_true, beq_iff_eq] at h
@@ -577,7 +596,8 @@ theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat
     operation with an immediate `n` below `2 ^ w`, for the width `w` of its mnemonic's tag, is
     described with the second source `immW w n`, the term of a move of `n` into a register, so
     an operation on a register that holds a moved constant and the operation on the immediate
-    have one term. -/
+    have one term. A shift by the count `0` in either form is described as the copy of its
+    source, the term of a register `MOV`. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg _] opn [_, _, _] => if stripWidthTag opn = "CMOV" then .unk else .fail
@@ -589,7 +609,8 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
             | .reg rb => .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)]
             | .imm n =>
                 if stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR" then
-                  .set dst (.shImm (stripWidthTag opn) n (R ra)) []
+                  if n = 0 then .set dst (R ra) []
+                  else .set dst (.shImm (stripWidthTag opn) n (R ra)) []
                 else if n < 2 ^ widthFromTag opn then
                   .set dst (.bin (stripWidthTag opn) (R ra) (.immW (widthFromTag opn) n)) []
                 else .set dst (.bin (stripWidthTag opn) (R ra) (.immAt n (R ra))) []
@@ -603,7 +624,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
       else if stripWidthTag opn = "MOV" then .set dst (R a) []
       else
         match immShiftMnem? opn with
-        | some (m, k) => if shOk m then .set dst (.shImm m k (R a)) [] else .fail
+        | some (m, k) =>
+            if shOk m then
+              if k = 0 then .set dst (R a) [] else .set dst (.shImm m k (R a)) []
+            else .fail
         | none => .fail
   | .Lopn _ _ _ => .fail
   | .Lalign => .nop
@@ -652,7 +676,8 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           rw [stepN_bin_reg, hr ra, hr rb]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
             ((R ra).ev V A C O).2 (castW ((R rb).ev V A C O) ((R ra).ev V A C O).1))
-          simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, hv]
+          simp only [AllG, List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW_of_binOk hb,
+            hv]
           split_ifs with hw
           · simp [hw, extW_of_eq hw, hv]
           · simp [Ne.symm hw]
@@ -661,7 +686,13 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           rw [stepN_bin_imm, hr ra]
           obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (applyOpnN_bin_some hb
             ((R ra).ev V A C O).2 (BitVec.ofNat ((R ra).ev V A C O).1 n))
-          split_ifs with hs
+          split_ifs with hs hz
+          · subst hz
+            have h0 : ∀ {w : Nat} (x : BitVec w),
+                applyOpnN w (stripWidthTag opn) [x, BitVec.ofNat w 0] = some x := by
+              intro w x
+              rcases hs with hs | hs <;> simp [hs, applyOpnN]
+            simp [AllG, h0]
           · have he : ∀ {w : Nat} (x : BitVec w), applyImmShiftN w (stripWidthTag opn) n x =
                 applyOpnN w (stripWidthTag opn) [x, BitVec.ofNat w n] := by
               intro w x
@@ -669,8 +700,8 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
               rcases hs with hs | hs <;> simp [hs]
             simp [AllG, STerm.ev, he, hv]
           · rename_i hlt
-            simp [AllG, STerm.ev, extW_ofNat hlt, hv]
-          · simp [AllG, STerm.ev, extW_of_eq, hv]
+            simp [AllG, STerm.ev, binW_of_binOk hb, extW_ofNat hlt, hv]
+          · simp [AllG, STerm.ev, binW_of_binOk hb, extW_of_eq, hv]
         · rename_i hb1 hb2
           cases b with
           | reg rb => exact absurd rfl (hb1 rb)
@@ -698,7 +729,9 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · simp [ROut.Desc, lsemStepN, h2, readReg, hr a, AllG, applyOpnN]
     · split
       · rename_i m k hm
-        split_ifs with hs
+        split_ifs with hs hz
+        · subst hz
+          simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, applyImmShiftN_zero hs, AllG]
         · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp
             (applyImmShiftN_some hs k ((R a).ev V A C O).2)
           simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg, hr a, hv, AllG, STerm.ev]
@@ -754,21 +787,33 @@ theorem symSh_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepSh x)
     have := symN_sound x R V A C O r hr
     simpa only [ROut.Desc, lsemStepSh_of_not_sar x r h] using this
 
-/-- The symbolic description of `lsemStepMC`: the multiply and carry arms are outside the
-    fragment. -/
+/-- The symbolic description of `lsemStepMC`: the high word `MULXHI d, a, b` of a product is
+    the term `bin "MULXHI"` under the guard that `a` and `b` have one width; the carry arms are
+    outside the fragment. -/
 def symMC (x : LinstrR) (R : String → STerm) : ROut :=
-  match mulhiStruct? x, adcxStruct? x, adcxhiStruct? x, sbbStruct? x, sbbhiStruct? x with
-  | none, none, none, none, none => symSh x R
-  | _, _, _, _, _ => .unk
+  match mulhiStruct? x with
+  | some (d, a, b) => .set d (.bin "MULXHI" (R a) (R b)) [.eqW (R a) (R b)]
+  | none =>
+      match adcxStruct? x, adcxhiStruct? x, sbbStruct? x, sbbhiStruct? x with
+      | none, none, none, none => symSh x R
+      | _, _, _, _ => .unk
 
 theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x) R (symMC x R) := by
   intro V A C O r hr
   unfold symMC
   split
-  · rename_i h1 h2 h3 h4 h5
-    have := symSh_sound x R V A C O r hr
-    simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
-  · trivial
+  · rename_i d a b h
+    simp only [ROut.Desc, lsemStepMC, h, readReg_reg, hr a, getW_eq, hr b, AllG,
+      List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW, if_true]
+    split_ifs with hw
+    · simp [extW_of_eq hw, hw.symm]
+    · simp [Ne.symm hw]
+  · rename_i h1
+    split
+    · rename_i h2 h3 h4 h5
+      have := symSh_sound x R V A C O r hr
+      simpa only [ROut.Desc, lsemStepMC_of_delegate x r h1 h2 h3 h4 h5] using this
+    · trivial
 
 /-- The symbolic description of `lsemStepCast`: a cast with a descriptor is outside the
     fragment. -/
@@ -2735,8 +2780,10 @@ theorem symMC_subst (σ : Nat → STerm) (x : LinstrR) (R : String → STerm) :
     symMC x (fun r => (R r).subst σ) = (symMC x R).subst σ := by
   unfold symMC
   split
-  · exact symSh_subst σ x R
   · rfl
+  · split
+    · exact symSh_subst σ x R
+    · rfl
 
 theorem symCast_subst (σ : Nat → STerm) (i : LinstrRT) (R : String → STerm) :
     symCast i (fun r => (R r).subst σ) = (symCast i R).subst σ := by

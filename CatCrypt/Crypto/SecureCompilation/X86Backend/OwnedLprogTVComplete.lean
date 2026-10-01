@@ -1116,6 +1116,8 @@ theorem symCast_copy (R : String → STerm) (d x opn : String) (b : LOperand)
   have hN := symN_copy R d x opn b hb
   cases b with
   | reg y =>
+      have hy : copyRegs R d x y = R y := copyRegs_avoid_reg hb
+      have hd : copyRegs R d x d = R x := copyRegs_self R d x
       dsimp only [symCast, castStruct?, symMC, mulhiStruct?, adcxStruct?, adcxhiStruct?,
         sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
       split_ifs <;> simp_all
