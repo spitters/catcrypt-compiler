@@ -42,6 +42,7 @@ CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
 CatCrypt.Crypto.Hax.LowCTToHaxP384
 CatCrypt.Crypto.Hax.LowCTWipe
 CatCrypt.Crypto.Hax.NFToCat
+CatCrypt.Crypto.Hax.NFToCatLeak
 CatCrypt.Crypto.Hax.NFToLowCT
 CatCrypt.Crypto.Hax.NFToMLIR
 CatCrypt.Crypto.Jasmin.AES.AESEquiv
@@ -380,6 +381,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity2
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity3
 CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
+CatCrypt.Crypto.SecureCompilation.Dialects.NFDceLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakM
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
